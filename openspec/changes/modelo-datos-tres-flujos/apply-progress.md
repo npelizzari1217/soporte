@@ -416,11 +416,108 @@ El `LoginUseCase` actualmente retorna `CredencialesInvalidasError` de forma inme
 
 ---
 
+---
+
+## PR-07: RBAC base seed migration — COMPLETADO
+
+> Rama: `feat/pr07-seed-rbac` | Commit: `821038a`
+> Última actualización: 2026-06-23
+
+### Tareas completadas
+
+| Tarea | Estado | Notas |
+|-------|--------|-------|
+| 2.E.1 | ✅ | Migration idempotente `20260623010000_seed_rbac_base`. Aplicada a `soporte_master` (dev) y `soporte_master_test` (test). 6 integration tests TDD GREEN. |
+
+### Catálogo sembrado (verbatim del spec)
+
+**Roles (5):**
+
+| id (fijo) | codigo | nombre |
+|-----------|--------|--------|
+| `a0000000-0000-4000-a000-000000000001` | `ADMIN` | Administrador |
+| `a0000000-0000-4000-a000-000000000002` | `SOPORTE_IT` | Soporte IT |
+| `a0000000-0000-4000-a000-000000000003` | `MANTENIMIENTO` | Mantenimiento |
+| `a0000000-0000-4000-a000-000000000004` | `APROBADOR_COMPRAS` | Aprobador de Compras |
+| `a0000000-0000-4000-a000-000000000005` | `SOLICITANTE` | Solicitante |
+
+**Permisos (11 — verbatim del spec auth-rbac):**
+
+| id (fijo) | codigo | descripcion |
+|-----------|--------|-------------|
+| `b0000000-0000-4000-b000-000000000001` | `ticket:crear` | Crear ticket de cualquier tipo |
+| `b0000000-0000-4000-b000-000000000002` | `ticket:asignar` | Asignar o reasignar ticket |
+| `b0000000-0000-4000-b000-000000000003` | `ticket:cerrar` | Cerrar/cancelar ticket |
+| `b0000000-0000-4000-b000-000000000004` | `ticket:ver_todos` | Ver tickets de otros usuarios (no solo los propios) |
+| `b0000000-0000-4000-b000-000000000005` | `compra:aprobar` | Aprobar o rechazar ticket de compra |
+| `b0000000-0000-4000-b000-000000000006` | `compra:gestionar` | Crear/editar items y presupuestos de compra |
+| `b0000000-0000-4000-b000-000000000007` | `subtarea:actualizar` | Marcar subtareas edilicias como completadas |
+| `b0000000-0000-4000-b000-000000000008` | `equipo:gestionar` | Alta/baja/modificación de equipos informáticos |
+| `b0000000-0000-4000-b000-000000000009` | `usuario:gestionar` | Crear/modificar/desactivar usuarios |
+| `b0000000-0000-4000-b000-000000000010` | `rol:asignar` | Asignar o quitar roles a usuarios |
+| `b0000000-0000-4000-b000-000000000011` | `cliente:gestionar` | Crear/modificar clientes (solo ROOT/ADMIN global) |
+
+**roles_permisos (24 filas):**
+
+| Rol | Permisos | Origen |
+|-----|----------|--------|
+| ADMIN | todos los 11 | SPEC-EXPLICIT ("ADMIN tiene todos los permisos") |
+| SOPORTE_IT | ticket:crear, ticket:asignar, ticket:cerrar, ticket:ver_todos, equipo:gestionar (5) | SPEC-EXPLICIT: ticket:crear + ticket:ver_todos; INFERRED: ticket:asignar, ticket:cerrar, equipo:gestionar |
+| MANTENIMIENTO | ticket:crear, ticket:ver_todos, subtarea:actualizar (3) | INFERRED: gestiona subtareas edilicias (ref task 5.D.1 guard subtarea:actualizar) |
+| APROBADOR_COMPRAS | ticket:crear, ticket:ver_todos, compra:aprobar, compra:gestionar (4) | SPEC-EXPLICIT: ticket:crear + compra:aprobar; INFERRED: ticket:ver_todos, compra:gestionar |
+| SOLICITANTE | ticket:crear (1) | INFERRED: rol más básico, solo puede crear tickets |
+
+**Inferencias documentadas (no explícitas en spec):**
+- SOPORTE_IT + ticket:asignar, ticket:cerrar, equipo:gestionar: lógico para un rol de soporte IT que asigna y cierra tickets y gestiona equipos.
+- MANTENIMIENTO + ticket:ver_todos: necesita ver todos los tickets edilicios para coordinar.
+- APROBADOR_COMPRAS + ticket:ver_todos: necesita ver todos los tickets de compra. + compra:gestionar: gestiona ítems y presupuestos además de aprobar.
+- SOLICITANTE + solo ticket:crear: rol más restringido del sistema.
+
+**Decisión de UUIDs:** fijos deterministas (prefijo `a0...` roles, `b0...` permisos) para estabilidad cross-env. La join table `roles_permisos` se llena via `SELECT JOIN ON codigo` — no hardcodea IDs.
+
+### Estado de verificaciones
+
+| Check | Resultado |
+|-------|-----------|
+| `pnpm test` | **287 tests, 23 suites, todos verdes** (+6 integration) |
+| `tsc --noEmit` | ✅ limpio |
+| `pnpm lint` | ✅ fitness rule verde |
+| `app.module.spec.ts` bootstrap | ✅ verde (no wiring NestJS agregado) |
+| Dev DB: roles / permisos / roles_permisos | **5 / 11 / 24 filas** ✅ |
+| Test DB: roles / permisos / roles_permisos | **5 / 11 / 24 filas** ✅ |
+| ADMIN → todos los permisos | ✅ verificado via DB query |
+
+### Archivos creados en PR-07
+
+```
+backend/
+├── prisma_master/
+│   └── migrations/
+│       └── 20260623010000_seed_rbac_base/
+│           └── migration.sql                              — seed idempotente de RBAC
+└── src/
+    └── auth/
+        └── infrastructure/
+            └── persistence/
+                └── prisma/
+                    └── rbac-seed.integration.spec.ts      — 6 integration tests TDD
+```
+
+### Decisiones tomadas en PR-07
+
+1. **UUIDs fijos deterministas** para roles y permisos (prefijos `a0000000` y `b0000000`). Ventaja: estabilidad cross-env, fácil de referenciar en futuros seeds. La join table usa SELECT JOIN por `codigo` para evitar hardcodeo de UUIDs en el mapeo.
+2. **Migration artesanal** (no generada por Prisma): consistente con PR-03. Prisma 7 en adapter mode no puede generar seeds vía `migrate`.
+3. **Test sin TRUNCATE**: los datos de catálogo son de referencia. El test es puramente read-only + re-run idempotencia. No destruye datos.
+4. **Idempotencia verificada**: el test 5 re-corre el seed SQL completo via `pg.Pool` y confirma que los row counts no cambian.
+5. **Inferencias de mapeo**: SOPORTE_IT, MANTENIMIENTO, APROBADOR_COMPRAS y SOLICITANTE tienen asignaciones parcialmente inferidas. Se documentan explícitamente en el SQL de migración y en este documento.
+
+---
+
 ## Estado global del cambio
 
 | Fase | Progreso |
 |------|---------|
 | Fase 0 — Scaffolding + Shared | **16/16 tareas completadas** (PR-01 + PR-02) |
 | Fase 1 — MASTER: clientes | **14/15 tareas completadas** — 1.A.1–1.D.2 ✅ PR-04; 1.C.3 ✅ PR-03 |
-| Fase 2 — MASTER: auth+RBAC | **9/22** — 2.A.1–2.B.8 ✅ PR-05; 2.C.3 ✅ PR-03; 2.C.1/2.C.2/2.D.* pendientes PR-06; 2.E.1 pendiente PR-07 |
+| Fase 2 — MASTER: auth+RBAC | **10/22** — 2.A.1–2.B.8 ✅ PR-05; 2.C.3 ✅ PR-03; 2.E.1 ✅ PR-07; 2.C.1/2.C.2/2.D.* pendientes PR-06 |
 | Fases 3-7 | 0 — bloqueadas por 2.D.2 (guards — PR-06) |
