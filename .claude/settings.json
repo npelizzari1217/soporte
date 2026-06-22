@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "input=$(</dev/stdin); f=$(printf \"%s\" \"$input\" | jq -r \".tool_input.file_path // empty\"); case \"$f\" in *frontend/*|*tailwind.config.*) [ -f /home/usuario/proyectos/soporte/skills/frontend-ui/skill.md ] && r=$(</home/usuario/proyectos/soporte/skills/frontend-ui/skill.md) && jq -n --arg c \"$r\" \"{hookSpecificOutput:{hookEventName:\\\"PreToolUse\\\",additionalContext:(\\\"[Sistema de diseño Soporte — aplicar a este archivo de frontend]\\n\\\"+\\$c)}}\" ;; esac; exit 0",
+            "statusMessage": "Aplicando sistema de diseño frontend…"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash /home/usuario/.engram/soporte-context.sh",
+            "timeout": 15,
+            "statusMessage": "Cargando memoria de soporte…"
+          }
+        ]
+      }
+    ]
+  }
+}
