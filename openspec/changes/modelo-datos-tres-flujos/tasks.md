@@ -29,7 +29,8 @@
 - Criterio de done: `npm run build` pasa; `npm test` corre sin tests (0 suites).
 - **Completado PR-01:** pnpm, TypeScript 5.8 strict, Jest 30 + ts-jest, paths `@/*`, estructura hexagonal.
 
-**0.A.2** [S, dep: 0.A.1] **SETUP:** Configurar dos generators de Prisma: `prisma_master/` (output: `node_modules/.prisma/master`) y `prisma_tenant/` (output: `node_modules/.prisma/tenant`). Scripts npm: `migrate:master`, `migrate:tenant`, `generate:master`, `generate:tenant`.
+**[x] 0.A.2** [S, dep: 0.A.1] **SETUP:** Configurar dos generators de Prisma: `prisma_master/` (output: `node_modules/.prisma/master`) y `prisma_tenant/` (output: `node_modules/.prisma/tenant`). Scripts npm: `migrate:master`, `migrate:tenant`, `generate:master`, `generate:tenant`.
+- **Completado PR-02:** Prisma 7.8.0 + adapter-pg. Schemas mínimos con placeholder models. `prisma generate` produce ambos clients. Scripts agregados a package.json.
 - Ref spec: `[SPEC:design/multi-tenancy — generators separados]`
 
 **[x] 0.A.3** [S, dep: 0.A.1] **SETUP:** ESLint custom rule / lint-staged check: prohibir importación de `PrismaService` (y cualquier símbolo de `@prisma/client` o `.prisma/`) fuera de directorios `infrastructure/`. Agregar al pipeline CI como `lint:fitness`.
@@ -63,23 +64,30 @@
 
 ### 0.C — shared/infrastructure + tenancy
 
-**0.C.1** [P, dep: 0.A.2] **TEST →** Unit test de `TenantContext`: verifica que `TenantContext.set(ctx)` + `TenantContext.get()` funcionan dentro del mismo `AsyncLocalStorage` scope; verifica que fuera del scope `get()` retorna `undefined`.
+**[x] 0.C.1** [P, dep: 0.A.2] **TEST →** Unit test de `TenantContext`: verifica que `TenantContext.set(ctx)` + `TenantContext.get()` funcionan dentro del mismo `AsyncLocalStorage` scope; verifica que fuera del scope `get()` retorna `undefined`.
 - Ref spec: `[SPEC:design/multi-tenancy — TenantContext AsyncLocalStorage]`
+- **Completado PR-02:** 6 tests verdes (scope, isolation, leak, getClient, throw outside scope).
 
-**0.C.2** [S, dep: 0.C.1] **IMPL →** `shared/tenancy/tenant-context.ts`: wrapper de `AsyncLocalStorage` que almacena `{ prismaClient, dbName, clienteId }`. Método `run(ctx, fn)` y `get(): TenantContextData | undefined`.
+**[x] 0.C.2** [S, dep: 0.C.1] **IMPL →** `shared/tenancy/tenant-context.ts`: wrapper de `AsyncLocalStorage` que almacena `{ prismaClient, dbName, clienteId }`. Método `run(ctx, fn)` y `get(): TenantContextData | undefined`.
+- **Completado PR-02:** implementado con `getClient()` que lanza si no hay contexto activo.
 
-**0.C.3** [P, dep: 0.A.2] **TEST →** Unit test de `PrismaService` factory: mock de `PrismaClient`; verifica que `getMasterClient()` retorna el singleton master; verifica que `getTenantClient(dbName)` retorna cliente cacheado en segunda llamada; verifica que un `dbName` nuevo inicializa un cliente nuevo.
+**[x] 0.C.3** [P, dep: 0.A.2] **TEST →** Unit test de `PrismaService` factory: mock de `PrismaClient`; verifica que `getMasterClient()` retorna el singleton master; verifica que `getTenantClient(dbName)` retorna cliente cacheado en segunda llamada; verifica que un `dbName` nuevo inicializa un cliente nuevo.
 - Ref spec: `[SPEC:design/multi-tenancy — factory multi-tenant]`
+- **Completado PR-02:** 9 tests verdes (singleton, cache, distintos clients, buildTenantUrl, onModuleDestroy).
 
-**0.C.4** [S, dep: 0.C.3] **IMPL →** `shared/infrastructure/persistence/prisma.service.ts`: `PrismaService` con `MasterPrismaClient` fijo + `Map<string, TenantPrismaClient>` con lazy init. Método `buildTenantUrl(dbName)`.
+**[x] 0.C.4** [S, dep: 0.C.3] **IMPL →** `shared/infrastructure/persistence/prisma.service.ts`: `PrismaService` con `MasterPrismaClient` fijo + `Map<string, TenantPrismaClient>` con lazy init. Método `buildTenantUrl(dbName)`.
 - Nota: este es el ÚNICO lugar donde vive `PrismaService`; el fitness rule (0.A.3) lo protege.
+- **Completado PR-02:** Prisma 7 usa adapter-pg (Pool + PrismaPg). `prisma-clients.ts` en `infrastructure/` respeta la fitness rule.
 
-**0.C.5** [P, dep: 0.C.2, 0.C.4] **TEST →** Unit test de `TenantTransactionRunner`: verifica que el runner ejecuta el callback dentro de `client.$transaction`, que re-bindea `TenantContext` con el cliente transaccional, y que un error en el callback hace rollback.
+**[x] 0.C.5** [P, dep: 0.C.2, 0.C.4] **TEST →** Unit test de `TenantTransactionRunner`: verifica que el runner ejecuta el callback dentro de `client.$transaction`, que re-bindea `TenantContext` con el cliente transaccional, y que un error en el callback hace rollback.
 - Ref spec: `[SPEC:design/multi-tenancy — TenantTransactionRunner]`
+- **Completado PR-02:** 5 tests verdes (execute, re-bind tx, error propagation, throw outside ctx, preserve dbName/clienteId).
 
-**0.C.6** [S, dep: 0.C.5] **IMPL →** `shared/infrastructure/persistence/tenant-transaction-runner.ts`: implementa puerto `ITenantTransactionRunner`. Abre `client.$transaction(tx => ...)` y re-bindea `TenantContext` con el `tx`.
+**[x] 0.C.6** [S, dep: 0.C.5] **IMPL →** `shared/infrastructure/persistence/tenant-transaction-runner.ts`: implementa puerto `ITenantTransactionRunner`. Abre `client.$transaction(tx => ...)` y re-bindea `TenantContext` con el `tx`.
+- **Completado PR-02:** implementado con `TENANT_TRANSACTION_RUNNER` Symbol token + `ITenantTransactionRunner` interface.
 
-**0.C.7** [S, dep: 0.C.4, 0.C.6, 0.B.6] **SETUP:** Wiring NestJS: `SharedModule` (global) exporta `PrismaService`, `TenantContext`, `TenantTransactionRunner`, `IFileStorage → LocalFileStorage`. Tokens DI: `PRISMA_SERVICE`, `FILE_STORAGE`, `TENANT_TRANSACTION_RUNNER`.
+**[x] 0.C.7** [S, dep: 0.C.4, 0.C.6, 0.B.6] **SETUP:** Wiring NestJS: `SharedModule` (global) exporta `PrismaService`, `TenantContext`, `TenantTransactionRunner`, `IFileStorage → LocalFileStorage`. Tokens DI: `PRISMA_SERVICE`, `FILE_STORAGE`, `TENANT_TRANSACTION_RUNNER`.
+- **Completado PR-02:** `SharedModule` @Global creado; importado en `AppModule`. URL master desde `process.env.DATABASE_URL_MASTER`.
 
 ---
 

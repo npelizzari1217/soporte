@@ -12,7 +12,11 @@
     "test:cov": "jest --config jest.config.ts --coverage",
     "lint": "eslint \"src/**/*.ts\"",
     "lint:fitness": "eslint \"src/**/*.ts\"",
-    "format": "prettier --write \"src/**/*.ts\""
+    "format": "prettier --write \"src/**/*.ts\"",
+    "generate:master": "prisma generate --schema=prisma_master/schema.prisma",
+    "generate:tenant": "prisma generate --schema=prisma_tenant/schema.prisma",
+    "migrate:master": "prisma migrate deploy --schema=prisma_master/schema.prisma",
+    "migrate:tenant": "prisma migrate deploy --schema=prisma_tenant/schema.prisma"
   },
   "keywords": [],
   "author": "",
@@ -21,6 +25,9 @@
     "@nestjs/common": "^11.1.27",
     "@nestjs/core": "^11.1.27",
     "@nestjs/platform-express": "^11.1.27",
+    "@prisma/adapter-pg": "^7.8.0",
+    "@prisma/client": "^7.8.0",
+    "pg": "^8.22.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
     "uuidv7": "^1.2.1"
@@ -28,6 +35,7 @@
   "devDependencies": {
     "@types/jest": "^30.0.0",
     "@types/node": "^26.0.0",
+    "@types/pg": "^8.20.0",
     "@typescript-eslint/eslint-plugin": "^8.61.1",
     "@typescript-eslint/parser": "^8.61.1",
     "eslint": "^10.5.0",
@@ -35,8 +43,16 @@
     "eslint-plugin-prettier": "^5.5.6",
     "jest": "^30.4.2",
     "prettier": "^3.8.4",
+    "prisma": "^7.8.0",
     "ts-jest": "^29.4.11",
     "ts-node": "^10.9.2",
     "typescript": "^5.8.3"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@prisma/client",
+      "@prisma/engines",
+      "prisma"
+    ]
   }
 }

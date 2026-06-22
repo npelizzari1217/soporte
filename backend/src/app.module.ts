@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { SharedModule } from './shared/shared.module';
 
 /**
  * AppModule — módulo raíz de la aplicación.
@@ -7,7 +8,7 @@ import { Module } from '@nestjs/common';
  * aquí a medida que se vayan implementando en los PRs sucesivos.
  */
 @Module({
-  imports: [],
+  imports: [SharedModule],
   controllers: [],
   providers: [],
 })

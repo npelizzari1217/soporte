@@ -1,0 +1,25 @@
+// prisma_tenant/schema.prisma
+// Base de datos por TENANT (database-per-tenant).
+// Sin columna cliente_id: el cliente ES la base de datos.
+// DDL completo se agrega en PR-08.
+// En Prisma 7, la URL se pasa al constructor de PrismaClient en runtime:
+//   new PrismaClient({ datasourceUrl: buildTenantUrl(dbName) })
+
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/tenant"
+}
+
+// Modelo placeholder para que prisma generate produzca un cliente compilable.
+// Se reemplaza con el DDL completo (tickets, compras, reparaciones, etc.) en PR-08.
+model TenantSeedVersion {
+  id        String   @id @default(uuid())
+  version   String
+  appliedAt DateTime @default(now())
+
+  @@map("_tenant_seed_version")
+}

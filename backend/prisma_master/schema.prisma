@@ -1,0 +1,24 @@
+// prisma_master/schema.prisma
+// Base de datos MASTER: clientes, usuarios, RBAC, ciclos_vigentes.
+// DDL completo se agrega en PR-03.
+// En Prisma 7, la URL se pasa al constructor de PrismaClient en runtime:
+//   new PrismaClient({ datasourceUrl: buildMasterUrl() })
+
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/master"
+}
+
+// Modelo placeholder para que prisma generate produzca un cliente compilable.
+// Se reemplaza con el DDL completo (Cliente, Usuario, Role, etc.) en PR-03.
+model MasterSeedVersion {
+  id        String   @id @default(uuid())
+  version   String
+  appliedAt DateTime @default(now())
+
+  @@map("_master_seed_version")
+}
