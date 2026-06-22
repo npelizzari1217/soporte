@@ -34,9 +34,21 @@ export class RefreshTokenEntity extends BaseEntity<RefreshTokenProps> {
 
   /**
    * Reconstitución desde persistencia (mappers de infraestructura).
+   * Acepta timestamps de la DB para hidratación completa, evitando que
+   * createdAt/updatedAt/deletedAt sean sobreescritos por now().
    */
-  static reconstitute(props: RefreshTokenProps, id: string): RefreshTokenEntity {
-    return new RefreshTokenEntity(props, id);
+  static reconstitute(
+    props: RefreshTokenProps,
+    id: string,
+    createdAt: Date,
+    updatedAt: Date,
+    deletedAt: Date | null,
+  ): RefreshTokenEntity {
+    const entity = new RefreshTokenEntity(props, id);
+    (entity as any)._createdAt = createdAt;
+    (entity as any)._updatedAt = updatedAt;
+    entity._deletedAt = deletedAt;
+    return entity;
   }
 
   // ─── Getters ─────────────────────────────────────────────────────────────

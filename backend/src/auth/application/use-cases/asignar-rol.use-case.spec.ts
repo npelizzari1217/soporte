@@ -33,6 +33,9 @@ const makeRole = (codigo: string, id?: string): RoleEntity =>
   RoleEntity.reconstitute(
     { codigo, nombre: codigo, descripcion: null, permisos: [] },
     id ?? `role-${codigo}`,
+    new Date('2025-01-01T00:00:00Z'),
+    new Date('2025-01-01T00:00:00Z'),
+    null,
   );
 
 const makeUsuario = (
@@ -274,6 +277,23 @@ describe('BajaUsuarioUseCase', () => {
 
       expect(refreshTokenRepo.revokeAllByUsuarioId).toHaveBeenCalledTimes(1);
       expect(usuarioRepo.save).toHaveBeenCalledTimes(1);
+    });
+
+    it('save() se llama ANTES de revokeAllByUsuarioId() (consistencia ante fallo parcial)', async () => {
+      const usuario = makeUsuario({ id: 'user-to-delete' });
+      usuarioRepo.findById.mockResolvedValue(usuario);
+
+      const callOrder: string[] = [];
+      usuarioRepo.save.mockImplementation(async () => {
+        callOrder.push('save');
+      });
+      refreshTokenRepo.revokeAllByUsuarioId.mockImplementation(async () => {
+        callOrder.push('revokeAll');
+      });
+
+      await useCase.execute({ usuarioId: 'user-to-delete' });
+
+      expect(callOrder).toEqual(['save', 'revokeAll']);
     });
   });
 

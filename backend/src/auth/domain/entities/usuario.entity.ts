@@ -134,11 +134,14 @@ export class UsuarioEntity extends BaseEntity<UsuarioProps> {
   }
 
   /**
-   * Agrega un rol al usuario si no está ya asignado (deduplicación por id).
+   * Agrega un rol al usuario si no está ya asignado.
+   * Deduplica por id Y por codigo — el codigo es la identidad semántica
+   * del rol (UNIQUE en `roles.codigo` en DB), consistente con AsignarRolUseCase
+   * que chequea duplicados por `r.codigo === dto.rolCodigo`.
    * Usado por AsignarRolUseCase.
    */
   addRol(role: RoleEntity): void {
-    const alreadyHas = this.props.roles.some((r) => r.id === role.id);
+    const alreadyHas = this.props.roles.some((r) => r.id === role.id || r.codigo === role.codigo);
     if (!alreadyHas) {
       this.props.roles.push(role);
     }

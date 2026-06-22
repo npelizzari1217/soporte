@@ -8,6 +8,7 @@
  * - verifyPassword(): delega al IHashProvider y retorna el resultado
  */
 import { UsuarioEntity } from './usuario.entity';
+import { RoleEntity } from './role.entity';
 import { IHashProvider } from '../ports/i-hash.provider';
 
 /** Mock del IHashProvider para aislar tests de infraestructura de hashing */
@@ -185,6 +186,41 @@ describe('UsuarioEntity', () => {
       const provider = makeHashProvider({ verify: jest.fn().mockResolvedValue(false) });
       const result = await u.verifyPassword('wrong_pass', provider);
       expect(result).toBe(false);
+    });
+  });
+
+  describe('addRol()', () => {
+    const makeRole = (codigo: string, id?: string): RoleEntity =>
+      RoleEntity.create({ codigo, nombre: codigo, descripcion: null, permisos: [] }, id);
+
+    it('agrega un rol al usuario si no existe', () => {
+      const usuario = makeUsuario({ roles: [] });
+      const role = makeRole('ADMIN');
+      usuario.addRol(role);
+      expect(usuario.roles).toHaveLength(1);
+      expect(usuario.roles[0].codigo).toBe('ADMIN');
+    });
+
+    it('agrega roles con codigos distintos', () => {
+      const usuario = makeUsuario({ roles: [] });
+      usuario.addRol(makeRole('ADMIN'));
+      usuario.addRol(makeRole('SOPORTE_IT'));
+      expect(usuario.roles).toHaveLength(2);
+    });
+
+    it('no agrega un rol con el mismo id (dedup por id)', () => {
+      const role = makeRole('SOPORTE_IT', 'role-same-id');
+      const usuario = makeUsuario({ roles: [role] });
+      usuario.addRol(role);
+      expect(usuario.roles).toHaveLength(1);
+    });
+
+    it('no agrega un rol cuyo codigo ya existe aunque el id sea distinto (dedup por codigo)', () => {
+      const role1 = makeRole('ADMIN', 'id-1');
+      const role2SameCodigo = makeRole('ADMIN', 'id-2');
+      const usuario = makeUsuario({ roles: [role1] });
+      usuario.addRol(role2SameCodigo);
+      expect(usuario.roles).toHaveLength(1);
     });
   });
 });

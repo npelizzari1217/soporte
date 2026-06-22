@@ -37,9 +37,21 @@ export class PermisoEntity extends BaseEntity<PermisoProps> {
   /**
    * Reconstitución desde persistencia (datos ya validados en DB).
    * Omite la validación del código.
+   * Acepta timestamps de la DB para hidratación completa, evitando que
+   * createdAt/updatedAt/deletedAt sean sobreescritos por now().
    */
-  static reconstitute(props: PermisoProps, id: string): PermisoEntity {
-    return new PermisoEntity(props, id);
+  static reconstitute(
+    props: PermisoProps,
+    id: string,
+    createdAt: Date,
+    updatedAt: Date,
+    deletedAt: Date | null,
+  ): PermisoEntity {
+    const entity = new PermisoEntity(props, id);
+    (entity as any)._createdAt = createdAt;
+    (entity as any)._updatedAt = updatedAt;
+    entity._deletedAt = deletedAt;
+    return entity;
   }
 
   // ─── Validación interna ──────────────────────────────────────────────────

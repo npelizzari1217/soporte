@@ -15,15 +15,20 @@ export interface BajaUsuarioDto {
  * Flujo (en la misma operación lógica):
  * 1. Carga usuario por id → 404 si no existe.
  * 2. usuario.suspend(): setea activo=false + deleted_at=now().
- * 3. refreshTokenRepo.revokeAllByUsuarioId: revoca masivamente todos sus tokens.
- * 4. usuarioRepo.save: persiste el usuario modificado.
+ * 3. usuarioRepo.save: persiste el usuario modificado (activo=false toma efecto PRIMERO).
+ * 4. refreshTokenRepo.revokeAllByUsuarioId: revoca masivamente todos sus tokens.
+ *
+ * ORDEN DE ESCRITURAS (seguridad ante fallo parcial):
+ * - save() va ANTES de revokeAllByUsuarioId(). Si revokeAll falla después del save,
+ *   el usuario sigue con activo=false → no puede re-loguear. Estado consistente.
+ * - Si se invirtiera el orden y save() fallara luego del revoke, los tokens quedarían
+ *   muertos pero activo=true → el usuario podría re-loguear. Estado INCONSISTENTE.
  *
  * La fila del usuario permanece en DB (soft delete). Las soft refs en DBs tenant
  * (asignado_id, solicitante_id) siguen apuntando a un UUID válido.
  *
  * Nota: no se usa una transacción distribuida (master no tiene transacciones cross-repo
- * en este diseño). Los dos writes son atómicamente independientes; el riesgo de
- * inconsistencia parcial es mínimo y aceptado en este PR (ver PR-06 para wiring final).
+ * en este diseño). Ver PR-06 para wiring final.
  *
  * Tarea: 2.B.8
  */
@@ -43,11 +48,11 @@ export class BajaUsuarioUseCase {
     // 2. Soft delete del usuario (activo=false + deleted_at=now)
     usuario.suspend();
 
-    // 3. Revocar masivamente todos los refresh tokens del usuario
-    await this.refreshTokenRepo.revokeAllByUsuarioId(dto.usuarioId);
-
-    // 4. Persistir el usuario modificado
+    // 3. Persistir el usuario modificado PRIMERO (activo=false toma efecto en DB)
     await this.usuarioRepo.save(usuario);
+
+    // 4. Revocar masivamente todos los refresh tokens del usuario
+    await this.refreshTokenRepo.revokeAllByUsuarioId(dto.usuarioId);
 
     return Result.ok(undefined as unknown as void);
   }

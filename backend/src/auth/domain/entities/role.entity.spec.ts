@@ -96,10 +96,62 @@ describe('RoleEntity', () => {
       const role = RoleEntity.reconstitute(
         { codigo: 'ADMIN', nombre: 'Administrador', descripcion: null, permisos },
         'role-uuid',
+        new Date('2025-01-01T00:00:00Z'),
+        new Date('2025-06-01T00:00:00Z'),
+        null,
       );
       expect(role.id).toBe('role-uuid');
       expect(role.codigo).toBe('ADMIN');
       expect(role.permisos).toHaveLength(2);
+    });
+
+    it('preserva createdAt pasado como parámetro', () => {
+      const createdAt = new Date('2025-01-15T10:00:00Z');
+      const role = RoleEntity.reconstitute(
+        { codigo: 'ADMIN', nombre: 'Administrador', descripcion: null, permisos: [] },
+        'role-uuid',
+        createdAt,
+        new Date('2025-06-01T00:00:00Z'),
+        null,
+      );
+      expect(role.createdAt.getTime()).toBe(createdAt.getTime());
+    });
+
+    it('preserva updatedAt pasado como parámetro', () => {
+      const updatedAt = new Date('2025-09-01T12:00:00Z');
+      const role = RoleEntity.reconstitute(
+        { codigo: 'ADMIN', nombre: 'Administrador', descripcion: null, permisos: [] },
+        'role-uuid',
+        new Date('2025-01-01T00:00:00Z'),
+        updatedAt,
+        null,
+      );
+      expect(role.updatedAt.getTime()).toBe(updatedAt.getTime());
+    });
+
+    it('preserva deletedAt no-nulo → isDeleted() retorna true', () => {
+      const deletedAt = new Date('2025-12-01T00:00:00Z');
+      const role = RoleEntity.reconstitute(
+        { codigo: 'ADMIN', nombre: 'Administrador', descripcion: null, permisos: [] },
+        'role-uuid',
+        new Date('2025-01-01T00:00:00Z'),
+        new Date('2025-12-01T00:00:00Z'),
+        deletedAt,
+      );
+      expect(role.deletedAt?.getTime()).toBe(deletedAt.getTime());
+      expect(role.isDeleted()).toBe(true);
+    });
+
+    it('preserva deletedAt nulo → isDeleted() retorna false', () => {
+      const role = RoleEntity.reconstitute(
+        { codigo: 'ADMIN', nombre: 'Administrador', descripcion: null, permisos: [] },
+        'role-uuid',
+        new Date('2025-01-01T00:00:00Z'),
+        new Date('2025-01-01T00:00:00Z'),
+        null,
+      );
+      expect(role.deletedAt).toBeNull();
+      expect(role.isDeleted()).toBe(false);
     });
   });
 

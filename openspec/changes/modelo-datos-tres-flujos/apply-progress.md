@@ -1,8 +1,8 @@
 # Apply Progress — modelo-datos-tres-flujos
 
-> Última actualización: 2026-06-22
-> Rama activa: `feat/pr04-clientes`
-> PR actual: **PR-04** (completado)
+> Última actualización: 2026-06-23
+> Rama activa: `feat/pr05-auth-domain`
+> PR actual: **PR-05** (completado)
 
 ---
 
@@ -298,11 +298,129 @@ backend/src/clientes/
 
 ---
 
+## PR-05: auth domain entities + ports + application use cases — COMPLETADO
+
+### Tareas completadas
+
+| Tarea | Estado | Notas |
+|-------|--------|-------|
+| 2.A.1 | ✅ | 61 tests: PermisoEntity (validación `recurso:accion`), RoleEntity (addPermiso, dedup), RefreshTokenEntity (isExpired, isRevoked, revoke), UsuarioEntity (suspend, hashPassword delegación, verifyPassword) |
+| 2.A.2 | ✅ | 4 entidades de dominio en `auth/domain/entities/`: permiso, role, refresh-token, usuario. Extienden BaseEntity. CERO imports de Prisma/NestJS. |
+| 2.A.3 | ✅ | 5 puertos en `auth/domain/ports/`: IHashProvider, ITokenService (JwtPayload), IUsuarioRepository, IRefreshTokenRepository, IRoleRepository. Cada uno con Symbol DI token. |
+| 2.B.1 | ✅ | 19 tests LoginUseCase: JWT payload {sub, cliente_id, email, roles, permisos}, permisos efectivos (unión deduplicada), SHA-256 del refresh token, usuario inactivo→401, cliente inactivo→403, password incorrecto→401 |
+| 2.B.2 | ✅ | `login.use-case.ts`: verifica usuario activo, verifica password vía IHashProvider, verifica cliente activo (via IClienteRepository cross-feature), calcula permisos efectivos, firma JWT, genera refresh token SHA-256 con Node crypto |
+| 2.B.3 | ✅ | 11 tests RefreshTokenUseCase: rotación (revoca anterior + emite nuevo), busca por SHA-256(rawToken), rechazo si expires_at<now→TokenExpiradoError, rechazo si revokedAt≠null→TokenRevocadoError, token no existe→TokenInvalidoError |
+| 2.B.4 | ✅ | `refresh-token.use-case.ts`: rotación completa con SHA-256 y crypto.randomBytes |
+| 2.B.5 | ✅ | 10 tests: RevocarTokenUseCase (individual, idempotente) + RevocarTodosTokensUsuarioUseCase (bulk, delega a repo) |
+| 2.B.6 | ✅ | `revocar-token.use-case.ts` + `revocar-todos-tokens.use-case.ts` |
+| 2.B.7 | ✅ | 17 tests: AsignarRolUseCase (agrega rol, no duplica → RolYaAsignadoError, rol no existe → RolNoEncontradoError) + BajaUsuarioUseCase (activo=false, soft delete, revocación masiva de tokens en misma op) |
+| 2.B.8 | ✅ | `asignar-rol.use-case.ts` + `baja-usuario.use-case.ts` |
+
+### Estado de tests post PR-05
+- **264 tests, 22 suites, todos verdes** (`pnpm test`)
+  - +118 tests nuevos (PR-05)
+  - Baseline PR-04: 146 tests
+- **0 errores de lint** (`pnpm lint`) — fitness rule verde; cero imports de @nestjs/*, Prisma, argon2, @nestjs/jwt, passport en domain/ o application/
+- **TypeScript build limpio** (`tsc --noEmit`)
+- **Bootstrap test** (`app.module.spec.ts`) verde ✅ — no se agregó AuthModule ni wiring NestJS
+
+### Decisiones clave tomadas en PR-05
+
+1. **Cliente activo check vía IClienteRepository**: el `LoginUseCase` inyecta `IClienteRepository` de la feature `clientes/`. Cross-feature dependency en la capa de aplicación, aceptable porque ambos son el mismo dominio (MASTER). El test mockea `IClienteRepository` directamente. NO se duplicó la entidad Cliente en auth.
+
+2. **SHA-256 hashing con Node crypto (stdlib)**: el `LoginUseCase` y `RefreshTokenUseCase` usan `crypto.createHash('sha256').update(rawToken).digest('hex')`. Node crypto es stdlib, no framework de infra — cumple la fitness rule. Los tests importan `crypto` para verificar la igualdad del hash.
+
+3. **hashPassword / verifyPassword delegan al IHashProvider**: el `UsuarioEntity` recibe el `IHashProvider` como parámetro de método (no inyectado en constructor), permitiendo que los tests mocken el provider sin afectar la entidad. Argon2id real irá en Argon2HashProvider → PR-06.
+
+4. **PermisoEntity valida formato `recurso:accion`**: lanza `PermisoCodigoInvalidoError` en `create()`. El `reconstitute()` omite la validación (datos ya validados en DB).
+
+5. **Permisos efectivos = unión deduplicada con Set**: `[...new Set(usuario.roles.flatMap(r => r.permisos.map(p => p.codigo)))]`. Implementado tanto en `LoginUseCase` como en `RefreshTokenUseCase` (para regenerar JWT actualizado en cada renovación).
+
+6. **`UsuarioEntity.addRol()`**: método de dominio para AsignarRolUseCase. La deduplicación de roles se hace en el use case (chequeo por `r.codigo === dto.rolCodigo`) y en la entidad (por `r.id`).
+
+7. **BajaUsuarioUseCase**: `usuario.suspend()` + `revokeAllByUsuarioId` + `usuarioRepo.save` — los tres en la misma operación lógica (sin transacción distribuida; wiring final en PR-06).
+
+8. **Sin AuthModule, sin controllers, sin DTOs HTTP**: PR-05 es puro domain + application. No se tocó `app.module.ts`. El bootstrap test sigue verde.
+
+### Deferred a PR-06 (infra + guards + interface + AuthModule wiring)
+
+| Tareas | Motivo |
+|--------|--------|
+| 2.C.1–2.C.2 | PrismaUsuarioRepository, Argon2HashProvider, JwtTokenService |
+| 2.D.1–2.D.4 | JwtAuthGuard, RolesGuard, PermissionsGuard, TenantGuard, AuthController, AuthModule |
+| 2.E.1 | RBAC seed migration → PR-07 |
+
+### Archivos creados en PR-05
+
+```
+backend/src/auth/
+├── domain/
+│   ├── errors/
+│   │   └── auth.errors.ts                              — 9 error classes (CredencialesInvalidas, ClienteInactivo, Token*, Usuario*, Rol*, Permiso*)
+│   ├── entities/
+│   │   ├── permiso.entity.ts + spec.ts                 — validación recurso:accion, 11 tests
+│   │   ├── role.entity.ts + spec.ts                    — addPermiso (dedup por id), 14 tests
+│   │   ├── refresh-token.entity.ts + spec.ts           — isExpired, isRevoked, revoke(), 14 tests
+│   │   └── usuario.entity.ts + spec.ts                 — suspend, hashPassword, verifyPassword, addRol, 22 tests
+│   └── ports/
+│       ├── i-hash.provider.ts                          — hash(plaintext), verify(plaintext, hash) + HASH_PROVIDER token
+│       ├── i-token.service.ts                          — signJwt(JwtPayload), verifyJwt(token) + TOKEN_SERVICE token
+│       ├── i-usuario.repository.ts                     — findByEmail, findById, findByClienteId, save + USUARIO_REPOSITORY token
+│       ├── i-refresh-token.repository.ts               — findByHash, revokeAllByUsuarioId, save + REFRESH_TOKEN_REPOSITORY token
+│       └── i-role.repository.ts                        — findByCodigo, findWithPermisos + ROLE_REPOSITORY token
+└── application/
+    └── use-cases/
+        ├── login.use-case.ts + spec.ts                 — 19 tests
+        ├── refresh-token.use-case.ts + spec.ts         — 11 tests
+        ├── revocar-token.use-case.ts + spec.ts         — 10 tests (incluye RevocarTodos)
+        ├── revocar-todos-tokens.use-case.ts            — delegado al repo (bulk)
+        ├── asignar-rol.use-case.ts + spec.ts           — 17 tests (incluye BajaUsuario)
+        └── baja-usuario.use-case.ts
+```
+
+---
+
+---
+
+## PR-05 post-verify: fixes aplicados (sdd-verify PASS-WITH-WARNINGS → resuelto)
+
+> Rama: `feat/pr05-auth-domain` — enmienda al commit PR-05 existente
+
+### Fixes aplicados
+
+| Issue | Tipo | Acción |
+|-------|------|--------|
+| WARNING-2 — BajaUsuarioUseCase write ordering | security | Reordenado: `usuarioRepo.save()` PRIMERO, `revokeAllByUsuarioId()` DESPUÉS. Si el revoke falla después del save, el usuario ya tiene activo=false en DB → no puede re-loguear. Estado seguro. TDD: test de call-order con array `callOrder` (RED: orden invertido → `['revokeAll','save']`; GREEN: correcto → `['save','revokeAll']`). |
+| WARNING-3 — reconstitute() signatures | correctness | `RefreshTokenEntity.reconstitute()`, `RoleEntity.reconstitute()`, `PermisoEntity.reconstitute()` ahora aceptan `(props, id, createdAt, updatedAt, deletedAt)` igual que `UsuarioEntity.reconstitute()` y `ClienteEntity.reconstitute()`. Usan `(entity as any)._createdAt` / `(entity as any)._updatedAt` / `entity._deletedAt` para hidratar. TDD: +4 tests por entidad (createdAt preservado, updatedAt preservado, deletedAt no-nulo → isDeleted()=true, deletedAt nulo → isDeleted()=false). Callers actualizados: `asignar-rol.use-case.spec.ts` (makeRole), `login.use-case.spec.ts` (makePermisoEntity + makeRole). |
+| SUGGESTION-1 — addRol dedup por codigo | defense-in-depth | `UsuarioEntity.addRol()` ahora deduplica por `r.id === role.id || r.codigo === role.codigo`. Alinea la entidad con `AsignarRolUseCase` (que ya deduplicaba por `r.codigo === dto.rolCodigo`) y con el UNIQUE constraint en `roles.codigo` en DB. TDD: test "no agrega un rol cuyo codigo ya existe aunque el id sea distinto" (RED → GREEN). |
+
+### Deferred a PR-06 — MUST-DO (WARNING-1 deferral)
+
+**WARNING-1: Login constant-time defense (timing side-channel)**
+
+El `LoginUseCase` actualmente retorna `CredencialesInvalidasError` de forma inmediata cuando el usuario no existe o está inactivo, SIN verificar el password. Esto crea un timing side-channel: un attacker puede inferir si un email está registrado midiendo el tiempo de respuesta (la verificación argon2id tarda ~200ms).
+
+**Solución requerida en PR-06:** Antes del early return por user-not-found o user-inactivo, ejecutar un `hashProvider.verify(password, DUMMY_HASH)` con un hash argon2id válido prefijado para consumir el mismo tiempo que el path exitoso. El `DUMMY_HASH` es una constante argon2id definida en `Argon2HashProvider` (infrastructure) — no inventar una versión falsa en PR-05 porque el `Argon2HashProvider` real llega en PR-06.
+
+**Impacto**: No está bloqueando — PR-05 queda en PASS. Pero DEBE implementarse en PR-06 junto con el `Argon2HashProvider`.
+
+### Estado de tests post PR-05 post-verify
+- **281 tests, 22 suites, todos verdes** (`pnpm test`) — +17 nuevos respecto a los 264 de la entrega inicial
+  - +1 BajaUsuarioUseCase call-order test
+  - +4 RefreshTokenEntity reconstitute timestamp tests
+  - +4 RoleEntity reconstitute timestamp tests  
+  - +4 PermisoEntity reconstitute timestamp tests
+  - +4 UsuarioEntity addRol tests (incluye dedup-por-codigo)
+- **TypeScript build limpio** (`tsc --noEmit`)
+- **Lint + fitness rule verde** (`pnpm lint`)
+
+---
+
 ## Estado global del cambio
 
 | Fase | Progreso |
 |------|---------|
 | Fase 0 — Scaffolding + Shared | **16/16 tareas completadas** (PR-01 + PR-02) |
 | Fase 1 — MASTER: clientes | **14/15 tareas completadas** — 1.A.1–1.D.2 ✅ PR-04; 1.C.3 ✅ PR-03 |
-| Fase 2 — MASTER: auth+RBAC | 1/22 — 2.C.3 ✅ PR-03; demás tareas desbloqueadas |
-| Fases 3-7 | 0 — bloqueadas por Fase 2 (guards) |
+| Fase 2 — MASTER: auth+RBAC | **9/22** — 2.A.1–2.B.8 ✅ PR-05; 2.C.3 ✅ PR-03; 2.C.1/2.C.2/2.D.* pendientes PR-06; 2.E.1 pendiente PR-07 |
+| Fases 3-7 | 0 — bloqueadas por 2.D.2 (guards — PR-06) |

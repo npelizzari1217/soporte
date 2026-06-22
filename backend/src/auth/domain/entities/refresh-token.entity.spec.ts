@@ -130,10 +130,62 @@ describe('RefreshTokenEntity', () => {
       const token = RefreshTokenEntity.reconstitute(
         { usuarioId: 'u1', tokenHash: 'hash', expiresAt: exp, revokedAt: rev },
         'token-id',
+        new Date('2025-01-01T00:00:00Z'),
+        new Date('2025-06-01T00:00:00Z'),
+        null,
       );
       expect(token.id).toBe('token-id');
       expect(token.revokedAt).toBe(rev);
       expect(token.isRevoked()).toBe(true);
+    });
+
+    it('preserva createdAt pasado como parámetro', () => {
+      const createdAt = new Date('2025-01-15T10:00:00Z');
+      const token = RefreshTokenEntity.reconstitute(
+        { usuarioId: 'u1', tokenHash: 'hash', expiresAt: future, revokedAt: null },
+        'token-id',
+        createdAt,
+        new Date('2025-06-01T00:00:00Z'),
+        null,
+      );
+      expect(token.createdAt.getTime()).toBe(createdAt.getTime());
+    });
+
+    it('preserva updatedAt pasado como parámetro', () => {
+      const updatedAt = new Date('2025-06-01T12:00:00Z');
+      const token = RefreshTokenEntity.reconstitute(
+        { usuarioId: 'u1', tokenHash: 'hash', expiresAt: future, revokedAt: null },
+        'token-id',
+        new Date('2025-01-01T00:00:00Z'),
+        updatedAt,
+        null,
+      );
+      expect(token.updatedAt.getTime()).toBe(updatedAt.getTime());
+    });
+
+    it('preserva deletedAt no-nulo → isDeleted() retorna true', () => {
+      const deletedAt = new Date('2025-12-01T00:00:00Z');
+      const token = RefreshTokenEntity.reconstitute(
+        { usuarioId: 'u1', tokenHash: 'hash', expiresAt: future, revokedAt: null },
+        'token-id',
+        new Date('2025-01-01T00:00:00Z'),
+        new Date('2025-12-01T00:00:00Z'),
+        deletedAt,
+      );
+      expect(token.deletedAt?.getTime()).toBe(deletedAt.getTime());
+      expect(token.isDeleted()).toBe(true);
+    });
+
+    it('preserva deletedAt nulo → isDeleted() retorna false', () => {
+      const token = RefreshTokenEntity.reconstitute(
+        { usuarioId: 'u1', tokenHash: 'hash', expiresAt: future, revokedAt: null },
+        'token-id',
+        new Date('2025-01-01T00:00:00Z'),
+        new Date('2025-01-01T00:00:00Z'),
+        null,
+      );
+      expect(token.deletedAt).toBeNull();
+      expect(token.isDeleted()).toBe(false);
     });
   });
 });

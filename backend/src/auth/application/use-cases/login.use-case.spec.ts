@@ -31,12 +31,21 @@ import { IClienteRepository } from '../../../clientes/domain/ports/i-cliente.rep
 // ─── Factories de entidades de test ──────────────────────────────────────────
 
 const makePermisoEntity = (codigo: string, id?: string) =>
-  PermisoEntity.reconstitute({ codigo, descripcion: null }, id ?? `permiso-${codigo}`);
+  PermisoEntity.reconstitute(
+    { codigo, descripcion: null },
+    id ?? `permiso-${codigo}`,
+    new Date('2025-01-01T00:00:00Z'),
+    new Date('2025-01-01T00:00:00Z'),
+    null,
+  );
 
 const makeRole = (codigo: string, permisos: PermisoEntity[]): RoleEntity =>
   RoleEntity.reconstitute(
     { codigo, nombre: codigo, descripcion: null, permisos },
     `role-${codigo}`,
+    new Date('2025-01-01T00:00:00Z'),
+    new Date('2025-01-01T00:00:00Z'),
+    null,
   );
 
 const makeUsuario = (

@@ -61,10 +61,62 @@ describe('PermisoEntity', () => {
       const permiso = PermisoEntity.reconstitute(
         { codigo: 'equipo:gestionar', descripcion: 'Gestionar equipos' },
         'some-uuid',
+        new Date('2025-01-01T00:00:00Z'),
+        new Date('2025-06-01T00:00:00Z'),
+        null,
       );
       expect(permiso.id).toBe('some-uuid');
       expect(permiso.codigo).toBe('equipo:gestionar');
       expect(permiso.descripcion).toBe('Gestionar equipos');
+    });
+
+    it('preserva createdAt pasado como parámetro', () => {
+      const createdAt = new Date('2025-02-10T08:00:00Z');
+      const permiso = PermisoEntity.reconstitute(
+        { codigo: 'ticket:crear', descripcion: null },
+        'perm-uuid',
+        createdAt,
+        new Date('2025-06-01T00:00:00Z'),
+        null,
+      );
+      expect(permiso.createdAt.getTime()).toBe(createdAt.getTime());
+    });
+
+    it('preserva updatedAt pasado como parámetro', () => {
+      const updatedAt = new Date('2025-08-20T15:30:00Z');
+      const permiso = PermisoEntity.reconstitute(
+        { codigo: 'ticket:crear', descripcion: null },
+        'perm-uuid',
+        new Date('2025-01-01T00:00:00Z'),
+        updatedAt,
+        null,
+      );
+      expect(permiso.updatedAt.getTime()).toBe(updatedAt.getTime());
+    });
+
+    it('preserva deletedAt no-nulo → isDeleted() retorna true', () => {
+      const deletedAt = new Date('2025-11-01T00:00:00Z');
+      const permiso = PermisoEntity.reconstitute(
+        { codigo: 'ticket:crear', descripcion: null },
+        'perm-uuid',
+        new Date('2025-01-01T00:00:00Z'),
+        new Date('2025-11-01T00:00:00Z'),
+        deletedAt,
+      );
+      expect(permiso.deletedAt?.getTime()).toBe(deletedAt.getTime());
+      expect(permiso.isDeleted()).toBe(true);
+    });
+
+    it('preserva deletedAt nulo → isDeleted() retorna false', () => {
+      const permiso = PermisoEntity.reconstitute(
+        { codigo: 'ticket:crear', descripcion: null },
+        'perm-uuid',
+        new Date('2025-01-01T00:00:00Z'),
+        new Date('2025-01-01T00:00:00Z'),
+        null,
+      );
+      expect(permiso.deletedAt).toBeNull();
+      expect(permiso.isDeleted()).toBe(false);
     });
   });
 

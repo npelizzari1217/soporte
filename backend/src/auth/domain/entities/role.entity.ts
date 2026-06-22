@@ -35,9 +35,21 @@ export class RoleEntity extends BaseEntity<RoleProps> {
 
   /**
    * Reconstitución desde persistencia (mappers de infraestructura).
+   * Acepta timestamps de la DB para hidratación completa, evitando que
+   * createdAt/updatedAt/deletedAt sean sobreescritos por now().
    */
-  static reconstitute(props: RoleProps, id: string): RoleEntity {
-    return new RoleEntity({ ...props, permisos: [...props.permisos] }, id);
+  static reconstitute(
+    props: RoleProps,
+    id: string,
+    createdAt: Date,
+    updatedAt: Date,
+    deletedAt: Date | null,
+  ): RoleEntity {
+    const entity = new RoleEntity({ ...props, permisos: [...props.permisos] }, id);
+    (entity as any)._createdAt = createdAt;
+    (entity as any)._updatedAt = updatedAt;
+    entity._deletedAt = deletedAt;
+    return entity;
   }
 
   // ─── Getters ─────────────────────────────────────────────────────────────
