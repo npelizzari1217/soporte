@@ -513,11 +513,106 @@ backend/
 
 ---
 
+---
+
+## PR-06: auth infrastructure + guards + interface — COMPLETADO
+
+> Rama: `feat/pr06-auth-infra` | Commit: `65ab93c`
+> Última actualización: 2026-06-23
+
+### Tareas completadas
+
+| Tarea | Estado | Notas |
+|-------|--------|-------|
+| W1 — LoginUseCase timing defense | ✅ | `DUMMY_HASH` + `hashProvider.verify(pwd, DUMMY_HASH)` antes del early return. 21 tests verdes. |
+| W2 — BajaUsuario transactional | ✅ | `IMasterTransactionRunner` port + `MasterContext` (ALS) + `MasterTransactionRunner` (wraps `$transaction`). SharedModule actualizado. 19 tests verdes. |
+| W3 — roles+permisos hydration | ✅ | `PrismaUsuarioRepository.findByEmail/findById` siempre incluyen `usuariosRoles → rol → rolesPermisos → permiso`. 18 integration tests verdes. |
+| 2.C.1 | ✅ | 18 integration tests en `prisma-auth.integration.spec.ts`: PrismaUsuarioRepository (findByEmail, findById, save, soft-delete, multi-roles hydration), PrismaRefreshTokenRepository (save, findByHash, revokeAll), PrismaRoleRepository (findByCodigo, findWithPermisos). |
+| 2.C.2 | ✅ | `PermisoMapper`, `RoleMapper` (basic + withPermisos), `UsuarioMapper` (withRoles include constant), `RefreshTokenMapper`. Repos: `PrismaUsuarioRepository` (MasterContext-aware), `PrismaRefreshTokenRepository` (MasterContext-aware), `PrismaRoleRepository`. `Argon2HashProvider` (@node-rs/argon2). `JwtTokenService`. |
+| 2.D.1 | ✅ | 15 unit tests en `guards.spec.ts`: JwtAuthGuard (valid token, no header, invalid, no bearer), RolesGuard (public, OR match, missing, no user), PermissionsGuard (public, AND all, missing, no user), TenantGuard (valid, empty cliente_id, no user). |
+| 2.D.2 | ✅ | `JwtAuthGuard` (custom, no passport-jwt), `RolesGuard` (OR), `PermissionsGuard` (AND), `TenantGuard`. `decorators.ts`: `@Roles()`, `@RequirePermissions()`, `@CurrentUser()`. CERO queries DB en guards. |
+| 2.D.3 | ✅ | 9 unit tests `auth.controller.spec.ts` + 6 unit tests `usuarios.controller.spec.ts`. |
+| 2.D.4 | ✅ | `AuthController` (POST /auth/login|refresh|logout|logout-all), `UsuariosController` (POST /usuarios/:id/roles, DELETE /usuarios/:id). `auth.dto.ts`. `AuthModule` (JwtModule.register, useFactory para use cases, guard providers). AppModule + AppModule spec actualizados. |
+
+### Estado de tests post PR-06
+
+| Suite | Tests |
+|-------|-------|
+| Unit (sin integration) | **297/297 verdes** |
+| Integration (auth + clientes + rbac) | **39/39 verdes** |
+| **TOTAL** | **336/336 verdes** |
+
+- `tsc --noEmit`: ✅ limpio
+- `pnpm lint`: ✅ limpio
+- `app.module.spec.ts` bootstrap con AuthModule: ✅ verde
+- `jest.config.ts`: `maxWorkers: 1` agregado para evitar conflictos de DB concurrentes en integration tests
+
+### Archivos creados en PR-06
+
+```
+backend/
+├── jest.config.ts                                 — maxWorkers: 1
+├── src/
+│   ├── app.module.ts                              — importa AuthModule
+│   ├── app.module.spec.ts                         — +AuthController + JwtAuthGuard assertions
+│   ├── shared/
+│   │   ├── domain/ports/
+│   │   │   └── i-master-transaction-runner.ts     — IMasterTransactionRunner + MASTER_TRANSACTION_RUNNER token
+│   │   ├── infrastructure/persistence/
+│   │   │   └── master-transaction-runner.ts       — MasterTransactionRunner (wraps $transaction, re-binds MasterContext)
+│   │   ├── tenancy/
+│   │   │   └── master-context.ts                  — MasterContext (AsyncLocalStorage para tx master)
+│   │   └── shared.module.ts                       — +MasterContext + MASTER_TRANSACTION_RUNNER
+│   └── auth/
+│       ├── auth.module.ts                         — JwtModule + todos los DI tokens + controllers
+│       ├── application/use-cases/
+│       │   ├── login.use-case.ts                  — +DUMMY_HASH + timing defense (W1)
+│       │   ├── login.use-case.spec.ts             — +3 timing defense tests
+│       │   ├── baja-usuario.use-case.ts           — +MasterTransactionRunner wrapping (W2)
+│       │   └── asignar-rol.use-case.spec.ts       — +mock runner + atomicity test
+│       ├── infrastructure/
+│       │   ├── argon2-hash.provider.ts            — Argon2HashProvider (@node-rs/argon2, no node-gyp)
+│       │   ├── jwt-token.service.ts               — JwtTokenService (wraps JwtService)
+│       │   ├── guards/
+│       │   │   ├── decorators.ts                  — @Roles, @RequirePermissions, @CurrentUser
+│       │   │   ├── jwt-auth.guard.ts              — JwtAuthGuard (custom, no passport)
+│       │   │   ├── roles.guard.ts                 — RolesGuard (OR)
+│       │   │   ├── permissions.guard.ts           — PermissionsGuard (AND)
+│       │   │   ├── tenant.guard.ts                — TenantGuard (cliente_id check)
+│       │   │   └── guards.spec.ts                 — 15 tests (2.D.1)
+│       │   └── persistence/prisma/
+│       │       ├── permiso.mapper.ts
+│       │       ├── role.mapper.ts                 — basic + withPermisos
+│       │       ├── usuario.mapper.ts              — withRoles + USUARIO_INCLUDE constant
+│       │       ├── refresh-token.mapper.ts
+│       │       ├── prisma-usuario.repository.ts   — MasterContext-aware, sync usuarios_roles en save()
+│       │       ├── prisma-refresh-token.repository.ts — MasterContext-aware
+│       │       ├── prisma-role.repository.ts
+│       │       └── prisma-auth.integration.spec.ts — 18 integration tests (2.C.1 + W3)
+│       └── interface/
+│           ├── dtos/auth.dto.ts                   — LoginDto, RefreshDto, LogoutDto, AsignarRolDto
+│           └── controllers/
+│               ├── auth.controller.ts + spec.ts   — 9 tests
+│               └── usuarios.controller.ts + spec.ts — 6 tests
+```
+
+### Decisiones clave PR-06
+
+1. **`@node-rs/argon2` (no `argon2` de npm)**: binarios precompilados, sin node-gyp, para evitar problemas de compilación nativa en CI.
+2. **JwtAuthGuard custom (no passport-jwt strategy)**: más simple, testeable en unidad sin NestJS DI, sin dependencia de passport middleware.
+3. **Guards CERO queries DB**: los guards leen solo el payload del JWT (roles, permisos, cliente_id). La resolución de permisos efectivos ocurre en login y se embebe en el JWT.
+4. **MasterContext (ALS) + MasterTransactionRunner**: análogos a TenantContext/TenantTransactionRunner pero para la DB master. Los repos auth verifican `masterContext.getClient()` antes de caer al master client normal.
+5. **`save()` sincroniza `usuarios_roles`**: delete-all + createMany con los roles del dominio. Atómico cuando está dentro de `masterTxRunner.run()`.
+6. **CLIENTE_REPOSITORY en AuthModule**: `LoginUseCase` necesita `IClienteRepository` para verificar cliente activo. Se provee `PrismaClienteRepository` localmente en `AuthModule` (no se importa `ClientesModule`).
+7. **`maxWorkers: 1` en jest**: las 3 suites de integration tests (clientes, rbac-seed, auth) comparten `soporte_master_test`. Ejecución paralela causa conflictos de truncate. `maxWorkers: 1` resuelve sin complejidad extra.
+
+---
+
 ## Estado global del cambio
 
 | Fase | Progreso |
 |------|---------|
 | Fase 0 — Scaffolding + Shared | **16/16 tareas completadas** (PR-01 + PR-02) |
 | Fase 1 — MASTER: clientes | **14/15 tareas completadas** — 1.A.1–1.D.2 ✅ PR-04; 1.C.3 ✅ PR-03 |
-| Fase 2 — MASTER: auth+RBAC | **10/22** — 2.A.1–2.B.8 ✅ PR-05; 2.C.3 ✅ PR-03; 2.E.1 ✅ PR-07; 2.C.1/2.C.2/2.D.* pendientes PR-06 |
-| Fases 3-7 | 0 — bloqueadas por 2.D.2 (guards — PR-06) |
+| Fase 2 — MASTER: auth+RBAC | **20/22** — 2.A.1–2.B.8 ✅ PR-05; 2.C.1/2.C.2/2.D.1–2.D.4 ✅ PR-06; 2.C.3 ✅ PR-03; 2.E.1 ✅ PR-07; pendiente: 2.D.5 (registro usuario, out-of-scope PR-06) |
+| Fases 3-7 | 0 — desbloqueadas por 2.D.2 (guards listos) |
