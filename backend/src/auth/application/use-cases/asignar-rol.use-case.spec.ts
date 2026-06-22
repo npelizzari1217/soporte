@@ -21,6 +21,7 @@ import { RoleEntity } from '../../domain/entities/role.entity';
 import { IUsuarioRepository } from '../../domain/ports/i-usuario.repository';
 import { IRefreshTokenRepository } from '../../domain/ports/i-refresh-token.repository';
 import { IRoleRepository } from '../../domain/ports/i-role.repository';
+import { IMasterTransactionRunner } from '../../../shared/domain/ports/i-master-transaction-runner';
 import {
   UsuarioNoEncontradoError,
   RolNoEncontradoError,
@@ -76,6 +77,15 @@ const makeRefreshTokenRepo = (): jest.Mocked<IRefreshTokenRepository> => ({
   findByHash: jest.fn(),
   revokeAllByUsuarioId: jest.fn().mockResolvedValue(undefined),
   save: jest.fn().mockResolvedValue(undefined),
+});
+
+/**
+ * Mock del MasterTransactionRunner: pasa-a-través (pass-through).
+ * Para tests unitarios, la transacción es transparente: simplemente llama fn().
+ * El comportamiento transaccional real se testea en integration tests de infra.
+ */
+const makeMasterTxRunner = (): jest.Mocked<IMasterTransactionRunner> => ({
+  run: jest.fn().mockImplementation(async (fn: () => Promise<unknown>) => fn()),
 });
 
 // ─── AsignarRolUseCase tests ──────────────────────────────────────────────────
@@ -204,12 +214,14 @@ describe('AsignarRolUseCase', () => {
 describe('BajaUsuarioUseCase', () => {
   let usuarioRepo: jest.Mocked<IUsuarioRepository>;
   let refreshTokenRepo: jest.Mocked<IRefreshTokenRepository>;
+  let masterTxRunner: jest.Mocked<IMasterTransactionRunner>;
   let useCase: BajaUsuarioUseCase;
 
   beforeEach(() => {
     usuarioRepo = makeUsuarioRepo();
     refreshTokenRepo = makeRefreshTokenRepo();
-    useCase = new BajaUsuarioUseCase(usuarioRepo, refreshTokenRepo);
+    masterTxRunner = makeMasterTxRunner();
+    useCase = new BajaUsuarioUseCase(usuarioRepo, refreshTokenRepo, masterTxRunner);
   });
 
   describe('Baja exitosa', () => {
@@ -277,6 +289,17 @@ describe('BajaUsuarioUseCase', () => {
 
       expect(refreshTokenRepo.revokeAllByUsuarioId).toHaveBeenCalledTimes(1);
       expect(usuarioRepo.save).toHaveBeenCalledTimes(1);
+    });
+
+    it('ejecuta save() y revokeAll() dentro del MasterTransactionRunner (atomicidad master)', async () => {
+      // W2 — ambas escrituras MASTER deben ejecutarse dentro de la transacción
+      // para garantizar atomicidad. Si revokeAll falla, el save se revierte.
+      const usuario = makeUsuario({ id: 'user-to-delete' });
+      usuarioRepo.findById.mockResolvedValue(usuario);
+
+      await useCase.execute({ usuarioId: 'user-to-delete' });
+
+      expect(masterTxRunner.run).toHaveBeenCalledTimes(1);
     });
 
     it('save() se llama ANTES de revokeAllByUsuarioId() (consistencia ante fallo parcial)', async () => {

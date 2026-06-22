@@ -17,6 +17,8 @@ import { Test } from '@nestjs/testing';
 import { AppModule } from './app.module';
 import { ClientesController } from './clientes/interface/controllers/clientes.controller';
 import { RegistrarClienteUseCase } from './clientes/application/use-cases/registrar-cliente.use-case';
+import { AuthController } from './auth/interface/controllers/auth.controller';
+import { JwtAuthGuard } from './auth/infrastructure/guards/jwt-auth.guard';
 
 describe('AppModule bootstrap', () => {
   it('compila el grafo de módulos sin UnknownDependenciesException (C1 DI regression guard)', async () => {
@@ -27,6 +29,9 @@ describe('AppModule bootstrap', () => {
     expect(moduleRef).toBeDefined();
     expect(moduleRef.get(ClientesController)).toBeInstanceOf(ClientesController);
     expect(moduleRef.get(RegistrarClienteUseCase)).toBeInstanceOf(RegistrarClienteUseCase);
+    // PR-06: AuthModule wired correctly
+    expect(moduleRef.get(AuthController)).toBeInstanceOf(AuthController);
+    expect(moduleRef.get(JwtAuthGuard)).toBeInstanceOf(JwtAuthGuard);
 
     await moduleRef.close();
   });

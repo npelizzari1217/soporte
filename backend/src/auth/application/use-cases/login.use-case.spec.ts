@@ -313,12 +313,34 @@ describe('LoginUseCase', () => {
       expect(result.getError()).toBeInstanceOf(CredencialesInvalidasError);
     });
 
-    it('no llama a hashProvider.verify si el usuario no existe', async () => {
+    it('llama a hashProvider.verify con DUMMY_HASH cuando el usuario no existe (timing side-channel defense)', async () => {
+      // W1 — Constant-time defense: incluso cuando el usuario no existe, se llama
+      // verify() con DUMMY_HASH para que el tiempo de respuesta sea ~igual al path
+      // de password incorrecto (argon2id ~100ms). Evita enumerar emails via timing.
       usuarioRepo.findByEmail.mockResolvedValue(null);
 
       await useCase.execute({ email: 'noexiste@test.com', password: 'secret' });
 
-      expect(hashProvider.verify).not.toHaveBeenCalled();
+      expect(hashProvider.verify).toHaveBeenCalledWith('secret', expect.any(String));
+    });
+  });
+
+  describe('Usuario inactivo → timing defense', () => {
+    it('llama a hashProvider.verify con DUMMY_HASH cuando el usuario está inactivo (timing defense)', async () => {
+      // W1 — El path de usuario inactivo también llama verify() para normalizar timing.
+      usuarioRepo.findByEmail.mockResolvedValue(makeUsuario({ activo: false }));
+
+      await useCase.execute({ email: 'user@test.com', password: 'secret' });
+
+      expect(hashProvider.verify).toHaveBeenCalledWith('secret', expect.any(String));
+    });
+
+    it('llama a hashProvider.verify con DUMMY_HASH cuando el usuario tiene deleted_at (timing defense)', async () => {
+      usuarioRepo.findByEmail.mockResolvedValue(makeUsuario({ deletedAt: new Date() }));
+
+      await useCase.execute({ email: 'user@test.com', password: 'secret' });
+
+      expect(hashProvider.verify).toHaveBeenCalledWith('secret', expect.any(String));
     });
   });
 

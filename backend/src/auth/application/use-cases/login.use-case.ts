@@ -12,6 +12,24 @@ import { CredencialesInvalidasError, ClienteInactivoError } from '../../domain/e
 /** Duración del refresh token: 7 días en milisegundos. */
 const REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
+/**
+ * DUMMY_HASH — hash argon2id pre-calculado para defensa de timing side-channel.
+ *
+ * Usado en los paths de error rápidos (usuario no encontrado, inactivo, soft-deleted)
+ * para evitar que un atacante infiera si un email existe midiendo el tiempo de respuesta.
+ * Con argon2id real (~100ms), la diferencia entre "no encontrado" (sin hash) y "password
+ * incorrecto" (con hash) sería detectable vía timing attack.
+ *
+ * Solución: llamar hashProvider.verify(password, DUMMY_HASH) antes del early return.
+ * El resultado se descarta — solo importa consumir el tiempo de cómputo de argon2id.
+ *
+ * NOTA: regenerar con `argon2.hash('__dummy_soporte__')` si cambian los parámetros.
+ * Este valor fue pre-calculado con @node-rs/argon2 v2 defaults (m=19456, t=2, p=1).
+ * Exportado para que los tests puedan verificar que es el valor exacto usado.
+ */
+export const DUMMY_HASH =
+  '$argon2id$v=19$m=19456,t=2,p=1$WVRkm58tIpvqVSK9R5bK1A$rjXmVHNzlxSXRGSZFgXe4KPBQ1WvC6HNIuXBxZUmrAg';
+
 /** DTO de entrada para el LoginUseCase. */
 export interface LoginDto {
   email: string;
@@ -62,8 +80,13 @@ export class LoginUseCase {
     // 1. Buscar usuario por email
     const usuario = await this.usuarioRepo.findByEmail(dto.email);
 
-    // Mensaje genérico para no revelar si la cuenta existe o está suspendida
+    // Defensa de timing side-channel (W1):
+    // Siempre llamamos hashProvider.verify() para normalizar el tiempo de respuesta
+    // independientemente de si el usuario existe, está activo o fue soft-deleted.
+    // Con argon2id real (~100ms), la omisión crearía un canal de timing que permite
+    // inferir si un email está registrado. El resultado de verify() se descarta.
     if (!usuario || !usuario.activo || usuario.isDeleted()) {
+      await this.hashProvider.verify(dto.password, DUMMY_HASH);
       return Result.fail(new CredencialesInvalidasError());
     }
 

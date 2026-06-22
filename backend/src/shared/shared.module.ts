@@ -3,10 +3,15 @@ import { FILE_STORAGE } from './domain/ports/i-file-storage';
 import { LocalFileStorage } from './infrastructure/storage/local-file-storage';
 import { PrismaService } from './infrastructure/persistence/prisma.service';
 import { TenantContext } from './tenancy/tenant-context';
+import { MasterContext } from './tenancy/master-context';
 import {
   TenantTransactionRunner,
   TENANT_TRANSACTION_RUNNER,
 } from './infrastructure/persistence/tenant-transaction-runner';
+import {
+  MasterTransactionRunner,
+  MASTER_TRANSACTION_RUNNER,
+} from './infrastructure/persistence/master-transaction-runner';
 
 /**
  * SharedModule — módulo global de infraestructura compartida.
@@ -36,12 +41,21 @@ import {
     // TenantContext: wrapper de AsyncLocalStorage. Singleton por proceso.
     TenantContext,
 
+    // MasterContext: análogo a TenantContext pero para la DB master.
+    // Almacena el cliente tx durante una transacción MasterTransactionRunner.
+    MasterContext,
+
     // TenantTransactionRunner: implementación del puerto ITenantTransactionRunner.
-    // Registrado con el token Symbol para que los casos de uso puedan inyectarlo
-    // sin conocer la implementación concreta.
     {
       provide: TENANT_TRANSACTION_RUNNER,
       useClass: TenantTransactionRunner,
+    },
+
+    // MasterTransactionRunner: implementación del puerto IMasterTransactionRunner.
+    // Provee transacciones atómicas para tablas MASTER (usuarios, refresh_tokens).
+    {
+      provide: MASTER_TRANSACTION_RUNNER,
+      useClass: MasterTransactionRunner,
     },
 
     // FILE_STORAGE: IFileStorage → LocalFileStorage (dev/test).
@@ -56,12 +70,17 @@ import {
     // puedan inyectarlo en sus repositorios.
     PrismaService,
 
-    // TenantContext exportado para que TenantGuard y los repos puedan
-    // leer el cliente activo del tenant.
+    // TenantContext exportado para TenantGuard y repos tenant.
     TenantContext,
 
-    // Token de transacción: los casos de uso inyectan este token.
+    // MasterContext exportado para repos MASTER transaction-aware.
+    MasterContext,
+
+    // Token de transacción tenant.
     TENANT_TRANSACTION_RUNNER,
+
+    // Token de transacción master.
+    MASTER_TRANSACTION_RUNNER,
 
     // Token de storage: los casos de uso inyectan este token.
     FILE_STORAGE,
