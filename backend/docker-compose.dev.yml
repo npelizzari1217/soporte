@@ -1,0 +1,24 @@
+# Postgres local para desarrollo — DB MASTER del modelo database-per-tenant.
+# Uso: docker compose -f docker-compose.dev.yml up -d
+# Las DBs por-tenant se crean en runtime vía PrismaService factory (no aquí).
+services:
+  postgres-master:
+    image: postgres:16-alpine
+    container_name: soporte-postgres-master
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: soporte
+      POSTGRES_PASSWORD: soporte
+      POSTGRES_DB: soporte_master
+    ports:
+      - "5432:5432"
+    volumes:
+      - soporte_master_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U soporte -d soporte_master"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  soporte_master_data:

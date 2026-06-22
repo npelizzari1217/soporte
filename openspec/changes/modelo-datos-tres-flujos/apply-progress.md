@@ -1,8 +1,8 @@
 # Apply Progress — modelo-datos-tres-flujos
 
 > Última actualización: 2026-06-22
-> Rama activa: `feat/pr02-shared-infra-tenancy`
-> PR actual: **PR-02** (completado)
+> Rama activa: `feat/pr03-master-schema`
+> PR actual: **PR-03** (completado)
 
 ---
 
@@ -130,13 +130,75 @@ backend/
 
 ---
 
-## Pendiente para PR-03 (prisma_master DDL completo)
+---
 
-| Tarea | Descripción |
-|-------|-------------|
-| 1.C.3 | DDL completo en `prisma_master/schema.prisma`: modelos Cliente, CicloVigente, Usuario, RefreshToken, Role, Permiso, RolesPermisos, UsuariosRoles. Correr `migrate:master`. |
-| 2.C.3 | Agregar modelos Auth al schema master. |
-| 2.E.1 | Migration seed: roles, permisos, roles_permisos. |
+## PR-03: prisma_master DDL completo + primera migración — COMPLETADO
+
+### Tareas completadas
+
+| Tarea | Estado | Notas |
+|-------|--------|-------|
+| 1.C.3 | ✅ | `prisma_master/schema.prisma`: modelos `Cliente` y `CicloVigente` con todos los campos, índices y constraints del spec. |
+| 2.C.3 | ✅ | Mismo schema: modelos `Usuario`, `RefreshToken`, `Role`, `Permiso`, `RolesPermisos`, `UsuariosRoles` con todos los campos, FKs e índices. |
+
+### Estado de verificaciones PR-03
+- **`prisma validate`**: schema válido ✅
+- **`generate:master`**: Prisma Client (v7.8.0) generado en `node_modules/.prisma/master` ✅
+- **`tsc --noEmit`**: sin errores ✅
+- **`pnpm test`**: 58 tests, 6 suites, todos verdes ✅ (sin tests nuevos — PR-03 es DDL puro)
+- **`pnpm lint`**: sin errores, fitness rule verde ✅
+- **Migración**: SQL artesanal en `prisma_master/migrations/20260622120000_init_master_schema/migration.sql`. **APLICADA ✅** a Postgres 16 local (Docker) vía `pnpm run migrate:master`. Verificado en DB real: 8 tablas + `_prisma_migrations`, índice unique parcial `clientes_cuit_key (WHERE cuit IS NOT NULL)`, índice parcial `usuarios_activo_idx (WHERE deleted_at IS NULL)`, CHECK `ciclos_vigentes_dates_check (fecha_fin > fecha_inicio)`, y `created_at`/`updated_at` con `DEFAULT CURRENT_TIMESTAMP`.
+
+### Infra para aplicar la migración (Prisma 7)
+- **`prisma.config.ts`**: en Prisma 7 el `datasource` del schema YA NO acepta `url` (error P1012). La conexión del CLT de Migrate vive en `prisma.config.ts` (`datasource.url = env(DATABASE_URL_MASTER)`). El runtime NO la usa — sigue con `@prisma/adapter-pg`. Carga `.env` con `process.loadEnvFile()` nativo de Node 22 (sin dependencia `dotenv`). TODO(PR-08): parametrizar url para tenant migrations.
+- **`docker-compose.dev.yml`**: Postgres 16 master (`soporte_master`, puerto 5432, healthcheck). `docker compose -f docker-compose.dev.yml up -d`.
+- **`.env.example`** committeado / **`.env`** gitignored con `DATABASE_URL_MASTER`.
+
+### Enmienda post-verify (sdd-verify PASS-WITH-WARNINGS → resuelto)
+
+Verificación inicial arrojó 0 CRITICAL, 3 WARNING, 3 SUGGESTION. Aplicados en enmienda al commit PR-03:
+
+| Issue | Tipo | Acción tomada |
+|-------|------|---------------|
+| WARNING-2 | `updated_at` sin DEFAULT en migration SQL | Agregado `DEFAULT CURRENT_TIMESTAMP` en las 6 tablas de audit (clientes, ciclos_vigentes, roles, permisos, usuarios, refresh_tokens). `created_at` ya tenía DEFAULT — sin cambio. |
+| WARNING-1 | Divergencia partial index `usuarios.activo` | Agregado comentario inline en `@@index([activo])` del modelo `Usuario` indicando que el índice real en DB es parcial (`WHERE deleted_at IS NULL`). |
+| WARNING-3 | `cuit` partial-unique no documentada en schema | Agregado comentario `///` en el campo `Cliente.cuit` advirtiendo que la unicidad es parcial (solo via migration SQL) y que se debe usar `findFirst` (no `findUnique`). |
+| SUGGESTION-1 | Falta `@db.Text` explícito | Agregado `@db.Text` a `Usuario.passwordHash`, `RefreshToken.tokenHash`, `Role.descripcion`, `Permiso.descripcion`. No-op a nivel SQL (ya mapeaban a TEXT). |
+| SUGGESTION-3 | UUID fallback sin documentar en header | Agregada nota en el header del schema sobre `gen_random_uuid()` = UUIDv4 como red de seguridad; UUIDv7 viene de la app. |
+
+Verificaciones post-enmienda: `prisma validate` ✅ | `generate:master` ✅ | `tsc --noEmit` ✅ | 58/58 tests ✅ | lint ✅
+
+### Archivos creados/modificados en PR-03
+
+```
+backend/
+├── package.json                     — removido campo "pnpm" inerte (config ya en pnpm-workspace.yaml)
+├── prisma_master/
+│   ├── schema.prisma                — DDL completo (reemplaza placeholder MasterSeedVersion)
+│   └── migrations/
+│       ├── migration_lock.toml      — provider = "postgresql"
+│       └── 20260622120000_init_master_schema/
+│           └── migration.sql        — DDL completo + partial indexes + CHECK constraint
+```
+
+### Decisiones tomadas en PR-03
+
+1. **`@default(dbgenerated("gen_random_uuid()"))` como red de seguridad**: el backend genera UUIDv7 siempre; la DB solo actúa como fallback.
+2. **`@db.Uuid` en todos los IDs**: tipo nativo `uuid` en Postgres (no `varchar(36)`).
+3. **Partial UNIQUE en `cuit`** (`WHERE cuit IS NOT NULL`): no expresable en Prisma schema → agregado como raw SQL en la migración. En el schema Prisma, `cuit` no tiene `@unique` para no crear una constraint estándar duplicada.
+4. **Partial index en `usuarios.activo`** (`WHERE deleted_at IS NULL`): también en raw SQL migration. El schema tiene `@@index([activo])` regular para que Prisma sepa que existe un index; el partial real reemplaza al estándar en la migración.
+5. **CHECK `fecha_fin > fecha_inicio`** en `ciclos_vigentes`: raw SQL en migración. La validación de dominio va en `CicloVigenteUseCase`, pero la DB también lo refuerza.
+6. **Sin `updatedAt` en tablas join** (`roles_permisos`, `usuarios_roles`): baja es eliminación física, sin soft delete. Solo tienen `created_at`.
+7. **`passwordHash String`** (sin `@db` annotation): mapea a `TEXT` en Postgres, correcto para argon2id hashes.
+8. **Migración offline**: `prisma migrate diff` requiere datasource URL en el schema en Prisma 7 (adapter mode no expone URL al motor de migraciones). SQL generado artesanalmente y validado contra la spec.
+9. **`"pnpm"` field removido de `package.json`**: configuración ya centralizada en `pnpm-workspace.yaml` (`allowBuilds`). El campo causaba una advertencia JSON inerte.
+
+### Pendiente (se corrije aquí el bloque anterior)
+
+| Tarea | PR | Descripción |
+|-------|-----|-------------|
+| 2.E.1 | **PR-07** | Seed migration RBAC: roles, permisos, roles_permisos. (NO es PR-03) |
+| Aplicar migración | ✅ HECHO | Aplicada a Postgres 16 local (Docker). `prisma.config.ts` + `docker-compose.dev.yml` agregados. |
 
 ---
 
@@ -145,6 +207,6 @@ backend/
 | Fase | Progreso |
 |------|---------|
 | Fase 0 — Scaffolding + Shared | **16/16 tareas completadas** (PR-01: 0.A.1, 0.A.3, 0.B.1-0.B.6 / PR-02: 0.A.2, 0.C.1-0.C.7) |
-| Fase 1 — MASTER: clientes | 0/15 — DESBLOQUEADA (Fase 0 completa) |
-| Fase 2 — MASTER: auth+RBAC | 0/22 — DESBLOQUEADA (Fase 0 completa) |
+| Fase 1 — MASTER: clientes | 1/15 — 1.C.3 ✅ PR-03; demás tareas desbloqueadas |
+| Fase 2 — MASTER: auth+RBAC | 1/22 — 2.C.3 ✅ PR-03; demás tareas desbloqueadas |
 | Fases 3-7 | 0 — bloqueadas por Fase 1/2 |
