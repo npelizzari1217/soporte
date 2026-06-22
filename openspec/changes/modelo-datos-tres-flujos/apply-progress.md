@@ -1,8 +1,8 @@
 # Apply Progress — modelo-datos-tres-flujos
 
 > Última actualización: 2026-06-22
-> Rama activa: `feat/pr03-master-schema`
-> PR actual: **PR-03** (completado)
+> Rama activa: `feat/pr04-clientes`
+> PR actual: **PR-04** (completado)
 
 ---
 
@@ -202,11 +202,107 @@ backend/
 
 ---
 
+## PR-04: clientes feature — domain, application, infra, interface — COMPLETADO (post-verify fixes applied)
+
+### Tareas completadas
+
+| Tarea | Estado | Notas |
+|-------|--------|-------|
+| 1.A.1 | ✅ | 26 tests: ClienteEntity (constructor, UUIDv7, suspend, reactivate, getters) + CicloVigenteEntity (validación fecha_fin > fecha_inicio, softDelete) |
+| 1.A.2 | ✅ | `ClienteEntity` (create/reconstitute + suspend/reactivate) + `CicloVigenteEntity` (create con validación + reconstitute) — sin imports de Prisma |
+| 1.A.3 | ✅ | `IClienteRepository` (findById, findByDbName, findAll, save, delete + `CLIENTE_REPOSITORY` token) + `ICicloVigenteRepository` (findById, findAllNonDeleted, findActiveNonDeleted, findAll, save, delete + `CICLO_VIGENTE_REPOSITORY` token) |
+| 1.B.1 | ✅ | 9 tests: RegistrarClienteUseCase — UUIDv7 antes de save, 409 en dup db_name, resultado ok con datos del DTO |
+| 1.B.2 | ✅ | `RegistrarClienteUseCase` — valida unicidad de db_name, crea ClienteEntity, retorna `Result<ClienteEntity, ClienteConflictError>` |
+| 1.B.3 | ✅ | 13 tests: SuspenderClienteUseCase (activo=false + deletedAt, no dropea DB) + ReactivarClienteUseCase (activo=true + deletedAt=null) |
+| 1.B.4 | ✅ | `SuspenderClienteUseCase` + `ReactivarClienteUseCase` |
+| 1.B.5 | ✅ | 14 tests (era 12, +2 S4): CrearCicloVigenteUseCase — 422 en solapamiento, soft-deleted excluidos, activo=false excluido (S4), UUIDv7 antes de save |
+| 1.B.6 | ✅ | `CrearCicloVigenteUseCase` — usa `findActiveNonDeleted()` (activo=true AND deletedAt=null) alineado a spec |
+| 1.C.1 | ✅ | 15 integration tests (+2 S4 para findActiveNonDeleted): PrismaClienteRepository + PrismaCicloVigenteRepository |
+| 1.C.2 | ✅ | `PrismaClienteRepository` + `ClienteMapper` + `PrismaCicloVigenteRepository` (+ `findActiveNonDeleted`) + `CicloVigenteMapper` |
+| 1.D.1 | ✅ | 10 tests: ClientesController (201, 409, 204, 404) + CiclosVigentesController (201, 422) |
+| 1.D.2 | ✅ | `ClientesController` + `CiclosVigentesController` + DTOs + `ClientesModule` (PrismaService removido de providers — C1 fix) |
+| W1    | ✅ | Bootstrap test (`app.module.spec.ts`) — regression guard C1 DI bug. `@nestjs/testing@11.1.27` instalado. RED con bug, GREEN después del fix. |
+
+### Post-verify fixes (sdd-verify FAIL → post-fix)
+
+| Issue | Tipo | Acción |
+|-------|------|--------|
+| C1 — DI bug PrismaService en ClientesModule | CRITICAL | Removido `PrismaService` de `ClientesModule.providers`. Re-declararlo como shorthand (`useClass`) sombrea el @Global singleton y lanza `UnknownDependenciesException` en startup porque el constructor requiere `masterUrl: string` y NestJS no tiene provider para `String`. |
+| W1 — Bootstrap test faltante | WARNING | Agregado `src/app.module.spec.ts` con `Test.createTestingModule({ imports: [AppModule] }).compile()`. Demostrado RED (UnknownDependenciesException) → GREEN (C1 fix). `@nestjs/testing@^11.1.27` instalado como devDependency. |
+| W2 — JSDoc mentiroso en findById | WARNING | Corregido `IClienteRepository.findById` JSDoc: retorna null solo si el registro no existe; clientes soft-deleted SÍ son retornados. |
+| S4 — Overlap check más estricto que spec | SUGGESTION→fix | Agregado `findActiveNonDeleted()` al port `ICicloVigenteRepository` e implementado en `PrismaCicloVigenteRepository` (filtro `activo: true AND deletedAt: null`). `CrearCicloVigenteUseCase` ahora llama `findActiveNonDeleted()` en vez de `findAllNonDeleted()`. Tests: +2 unit (S4 scenarios) + 2 integration. |
+
+### Estado de tests post PR-04 (post-verify)
+- **146 tests, 14 suites, todos verdes** (`pnpm test`)  
+  - +1 bootstrap (app.module.spec.ts)
+  - +2 unit S4 (crear-ciclo-vigente.use-case.spec.ts)
+  - +2 integration S4 (prisma-clientes.integration.spec.ts)
+- **0 errores de lint** (`pnpm lint`) — fitness rule verde
+- **TypeScript build limpio** (`tsc --noEmit`)
+
+### Archivos creados en PR-04
+
+```
+backend/src/clientes/
+├── clientes.module.ts                                   — NestJS wiring (DI tokens, use case factories)
+├── domain/
+│   ├── errors/
+│   │   └── clientes.errors.ts                          — ClienteConflictError, ClienteNotFoundError,
+│   │                                                      CicloVigenteOverlapError, CicloVigenteInvalidDatesError
+│   ├── entities/
+│   │   ├── cliente.entity.ts + *.spec.ts               — 14 tests
+│   │   └── ciclo-vigente.entity.ts + *.spec.ts         — 12 tests
+│   └── ports/
+│       ├── i-cliente.repository.ts                     — + CLIENTE_REPOSITORY token
+│       └── i-ciclo-vigente.repository.ts               — + CICLO_VIGENTE_REPOSITORY token
+├── application/use-cases/
+│   ├── registrar-cliente.use-case.ts + *.spec.ts       — 9 tests
+│   ├── suspender-cliente.use-case.ts
+│   ├── reactivar-cliente.use-case.ts
+│   ├── suspender-cliente.use-case.spec.ts              — 13 tests (suspender + reactivar)
+│   ├── crear-ciclo-vigente.use-case.ts + *.spec.ts     — 12 tests
+├── infrastructure/persistence/prisma/
+│   ├── prisma-cliente.repository.ts
+│   ├── cliente.mapper.ts
+│   ├── prisma-ciclo-vigente.repository.ts
+│   ├── ciclo-vigente.mapper.ts
+│   └── prisma-clientes.integration.spec.ts             — 13 integration tests
+└── interface/
+    ├── controllers/
+    │   ├── clientes.controller.ts + *.spec.ts          — 7 tests
+    │   └── ciclos-vigentes.controller.ts               — 3 tests (en spec conjunto)
+    └── dtos/
+        ├── create-cliente.dto.ts
+        ├── create-ciclo-vigente.dto.ts
+        ├── cliente-response.dto.ts
+        └── ciclo-vigente-response.dto.ts
+```
+
+### Decisiones tomadas en PR-04
+
+1. **`@/` path alias no funciona en ts-jest** para archivos fuera de `shared/`: los source files y specs de clientes usan imports relativos (`../../../shared/domain/base-entity`) porque ts-jest no resuelve `@/` en compilación de archivos que no están en `shared/`. Los archivos de `shared/` usan relative imports también (patrón existente).
+2. **`ClienteEntity.reconstitute()` y `CicloVigenteEntity.reconstitute()`**: static factory para reconstitución desde DB. Usa `(entity as any)._createdAt = ...` confinado dentro del método del propio entity, no en el mapper.
+3. **`@nestjs/testing` instalado** (post-verify W1): versión `11.1.27` (match exacto con `@nestjs/common`). Usado en el bootstrap test `app.module.spec.ts`. Controller tests siguen con instanciación directa (no requieren testing module).
+4. **Integration test sin `.env`**: la URL de test se hardcodea como fallback (`process.env.DATABASE_URL_MASTER ?? 'postgresql://soporte:soporte@localhost:5432/soporte_master_test'`). Credenciales locales throwaway, seguro commitear.
+5. **TRUNCATE en beforeEach**: `TRUNCATE TABLE clientes RESTART IDENTITY CASCADE` + `TRUNCATE TABLE ciclos_vigentes RESTART IDENTITY CASCADE` para determinismo entre runs.
+6. **Open handles warning** en tests: esperado — Prisma 7 + adapter-pg mantiene la Pool abierta hasta el GC. No afecta resultados. `onModuleDestroy()` en `afterAll` intenta cerrar pero el pool de pg puede tardar.
+7. **`ICicloVigenteRepository.findAllNonDeleted()`**: el port tiene `findAllNonDeleted()` en lugar de `findByDbName()` (no aplica para ciclos). La validación de solapamiento filtra `deleted_at IS NULL` en DB.
+8. **`ClientesModule` NO debe re-declarar `PrismaService`** (post-verify C1 fix): re-declararlo como shorthand `PrismaService` (= `useClass: PrismaService`) sombrea el singleton @Global y causa `UnknownDependenciesException` en startup. Los repos reciben el singleton de SharedModule directamente.
+
+### Pendiente
+
+| Tarea | PR | Descripción |
+|-------|-----|-------------|
+| 2.A.1–2.D.4 | **PR-05/PR-06** | Auth + RBAC (domain + application + infra + guards) |
+| 2.E.1 | **PR-07** | Seed migration RBAC |
+
+---
+
 ## Estado global del cambio
 
 | Fase | Progreso |
 |------|---------|
-| Fase 0 — Scaffolding + Shared | **16/16 tareas completadas** (PR-01: 0.A.1, 0.A.3, 0.B.1-0.B.6 / PR-02: 0.A.2, 0.C.1-0.C.7) |
-| Fase 1 — MASTER: clientes | 1/15 — 1.C.3 ✅ PR-03; demás tareas desbloqueadas |
+| Fase 0 — Scaffolding + Shared | **16/16 tareas completadas** (PR-01 + PR-02) |
+| Fase 1 — MASTER: clientes | **14/15 tareas completadas** — 1.A.1–1.D.2 ✅ PR-04; 1.C.3 ✅ PR-03 |
 | Fase 2 — MASTER: auth+RBAC | 1/22 — 2.C.3 ✅ PR-03; demás tareas desbloqueadas |
-| Fases 3-7 | 0 — bloqueadas por Fase 1/2 |
+| Fases 3-7 | 0 — bloqueadas por Fase 2 (guards) |

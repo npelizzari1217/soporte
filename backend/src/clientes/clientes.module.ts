@@ -9,8 +9,6 @@ import { CLIENTE_REPOSITORY } from './domain/ports/i-cliente.repository';
 import { CICLO_VIGENTE_REPOSITORY } from './domain/ports/i-ciclo-vigente.repository';
 import { PrismaClienteRepository } from './infrastructure/persistence/prisma/prisma-cliente.repository';
 import { PrismaCicloVigenteRepository } from './infrastructure/persistence/prisma/prisma-ciclo-vigente.repository';
-import { PrismaService } from '../shared/infrastructure/persistence/prisma.service';
-
 /**
  * ClientesModule — wiring NestJS del módulo de clientes (tenants master).
  *
@@ -19,8 +17,11 @@ import { PrismaService } from '../shared/infrastructure/persistence/prisma.servi
  * - Use cases instanciados vía useFactory para inyectar los tokens correctos.
  * - Controllers reciben use cases por constructor (NestJS los inyecta por tipo).
  *
- * Importa SharedModule vía @Global(), así que PrismaService está disponible
- * sin necesidad de importarlo explícitamente aquí.
+ * PrismaService NO se declara aquí: SharedModule es @Global() y lo exporta,
+ * por lo que sus repositorios reciben el singleton global automáticamente.
+ * Re-declararlo localmente como useClass: PrismaService provoca
+ * UnknownDependenciesException porque NestJS intenta instanciar
+ * new PrismaService(masterUrl: string) sin encontrar un provider para String.
  *
  * Tarea: 1.D.2
  */
@@ -59,12 +60,6 @@ import { PrismaService } from '../shared/infrastructure/persistence/prisma.servi
         new CrearCicloVigenteUseCase(repo as any),
       inject: [CICLO_VIGENTE_REPOSITORY],
     },
-
-    // PrismaService disponible via SharedModule (@Global), pero lo registramos
-    // explícitamente aquí para que los repositorios puedan recibirlo.
-    // Si SharedModule ya lo exporta globalmente, esta línea es redundante
-    // pero inofensiva — NestJS usa el singleton del módulo global.
-    PrismaService,
   ],
   exports: [
     RegistrarClienteUseCase,

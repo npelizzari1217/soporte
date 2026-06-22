@@ -37,6 +37,13 @@ export class PrismaCicloVigenteRepository implements ICicloVigenteRepository {
     return rows.map(CicloVigenteMapper.toDomain);
   }
 
+  async findActiveNonDeleted(): Promise<CicloVigenteEntity[]> {
+    const rows = await this.client.cicloVigente.findMany({
+      where: { deletedAt: null, activo: true },
+    });
+    return rows.map(CicloVigenteMapper.toDomain);
+  }
+
   async findAll(): Promise<CicloVigenteEntity[]> {
     const rows = await this.client.cicloVigente.findMany();
     return rows.map(CicloVigenteMapper.toDomain);

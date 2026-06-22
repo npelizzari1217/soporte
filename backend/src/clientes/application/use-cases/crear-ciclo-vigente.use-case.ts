@@ -16,12 +16,12 @@ export interface CrearCicloVigenteDto {
 /**
  * CrearCicloVigenteUseCase — crea un nuevo ciclo vigente global en MASTER.
  *
- * Regla de dominio central: los rangos de fecha de ciclos activos NO deben
- * solaparse. Se usa el algoritmo de solapamiento de intervalos:
+ * Regla de dominio central: los rangos de fecha de ciclos activos (activo=true,
+ * deleted_at IS NULL) NO deben solaparse. Algoritmo:
  *   nuevaInicio <= existenteFin AND nuevaFin >= existenteInicio
  *
- * Los ciclos soft-deleted (deleted_at IS NOT NULL) son excluidos de la
- * validación → un nuevo ciclo puede solapar con ciclos ya eliminados.
+ * Ciclos soft-deleted (deleted_at IS NOT NULL) e inactivos (activo=false) son
+ * excluidos de la validación → un nuevo ciclo puede solapar con ellos.
  *
  * Retorna:
  *   - Result.ok(ciclo) si la creación fue exitosa.
@@ -35,8 +35,10 @@ export class CrearCicloVigenteUseCase {
   async execute(
     dto: CrearCicloVigenteDto,
   ): Promise<Result<CicloVigenteEntity, CicloVigenteOverlapError>> {
-    // 1. Obtener ciclos activos no eliminados para validar solapamiento
-    const ciclosActivos = await this.cicloRepo.findAllNonDeleted();
+    // 1. Obtener ciclos activos (activo=true, deletedAt=null) para validar solapamiento.
+    //    Ciclos soft-deleted e inactivos (activo=false) son ignorados — alineado a spec:
+    //    "Ciclos vigentes sin solapamiento" solo bloquea contra ciclos activos.
+    const ciclosActivos = await this.cicloRepo.findActiveNonDeleted();
 
     // 2. Verificar solapamiento de rangos de fechas
     //    Algoritmo: dos rangos [A, B] y [C, D] se solapan si A <= D AND B >= C

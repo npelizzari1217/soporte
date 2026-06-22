@@ -11,7 +11,8 @@ import { ClienteEntity } from '../entities/cliente.entity';
 export interface IClienteRepository {
   /**
    * Busca un cliente por su identificador técnico (UUIDv7).
-   * Retorna null si no existe o si fue soft-deleted.
+   * Retorna null solo si el registro no existe. Los clientes soft-deleted
+   * SÍ son retornados (la implementación no filtra por deletedAt).
    */
   findById(id: string): Promise<ClienteEntity | null>;
 

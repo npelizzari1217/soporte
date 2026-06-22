@@ -17,10 +17,18 @@ export interface ICicloVigenteRepository {
 
   /**
    * Retorna todos los ciclos vigentes que NO fueron eliminados lógicamente
-   * (deleted_at IS NULL). Usado en la validación de solapamiento de fechas:
-   * los ciclos soft-deleted NO cuentan para la validación.
+   * (deleted_at IS NULL). Incluye ciclos con activo=false.
    */
   findAllNonDeleted(): Promise<CicloVigenteEntity[]>;
+
+  /**
+   * Retorna los ciclos vigentes activos (activo=true) y no eliminados
+   * (deleted_at IS NULL). Usado en la validación de solapamiento de fechas:
+   * ciclos soft-deleted e inactivos (activo=false) NO cuentan para la validación.
+   * Alineado con spec: "Ciclos vigentes sin solapamiento" solo bloquea contra
+   * ciclos con activo=true.
+   */
+  findActiveNonDeleted(): Promise<CicloVigenteEntity[]>;
 
   /**
    * Retorna todos los ciclos vigentes (incluyendo soft-deleted).

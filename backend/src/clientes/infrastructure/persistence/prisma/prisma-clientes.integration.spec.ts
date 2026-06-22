@@ -219,6 +219,43 @@ describe('PrismaClienteRepository + PrismaCicloVigenteRepository (integration)',
       });
     });
 
+    describe('findActiveNonDeleted', () => {
+      it('excluye ciclos soft-deleted e inactivos (activo=false)', async () => {
+        const cicloActivo = CicloVigenteEntity.create(makeCicloProps(2026));
+        const cicloInactivo = CicloVigenteEntity.create({
+          ...makeCicloProps(2025),
+          activo: false,
+        });
+        const cicloEliminado = CicloVigenteEntity.create(makeCicloProps(2024));
+
+        await cicloRepo.save(cicloActivo);
+        await cicloRepo.save(cicloInactivo);
+        await cicloRepo.save(cicloEliminado);
+
+        // Soft-delete del 2024
+        cicloEliminado.softDelete();
+        await cicloRepo.save(cicloEliminado);
+
+        const active = await cicloRepo.findActiveNonDeleted();
+        const ids = active.map((c: CicloVigenteEntity) => c.id);
+
+        expect(ids).toContain(cicloActivo.id); // activo=true, no eliminado → incluido
+        expect(ids).not.toContain(cicloInactivo.id); // activo=false → excluido
+        expect(ids).not.toContain(cicloEliminado.id); // soft-deleted → excluido
+      });
+
+      it('retorna vacío cuando no hay ciclos activos', async () => {
+        const cicloInactivo = CicloVigenteEntity.create({
+          ...makeCicloProps(2025),
+          activo: false,
+        });
+        await cicloRepo.save(cicloInactivo);
+
+        const active = await cicloRepo.findActiveNonDeleted();
+        expect(active.length).toBe(0);
+      });
+    });
+
     describe('findAll', () => {
       it('findAll incluye ciclos soft-deleted', async () => {
         const ciclo1 = CicloVigenteEntity.create(makeCicloProps(2026));
