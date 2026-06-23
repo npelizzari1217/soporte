@@ -222,10 +222,12 @@
 
 ### 3.B — Dominio: máquina de estados + numerador
 
-**3.B.1** [P, dep: 3.A.2] **TEST →** Test de `BaseTicketStateMachine`: verifica todas las transiciones válidas e inválidas del diagrama base (ABIERTO→EN_PROGRESO OK; CERRADO→EN_PROGRESO rechazado; estados terminales). Verifica que `puedeTransicionar()` es pure function.
+**[x] 3.B.1** [P, dep: 3.A.2] **TEST →** Test de `BaseTicketStateMachine`: verifica todas las transiciones válidas e inválidas del diagrama base (ABIERTO→EN_PROGRESO OK; CERRADO→EN_PROGRESO rechazado; estados terminales). Verifica que `puedeTransicionar()` es pure function.
 - Ref spec: `[SPEC:tickets-core/Máquina de estados base, Transición inválida rechazada]`
+- **Completado PR-10 Slice 2:** 32 unit tests TDD (RED → GREEN). 2 describe blocks (BaseTicketStateMachine + TicketStateMachineFactory). Cubre 6 válidas, 8 terminales, 8 inválidas, 4 pureza de función, 6 factory.
 
-**3.B.2** [S, dep: 3.B.1] **IMPL →** `tickets/domain/state-machine/`: `i-ticket-state-machine.ts` (interface `puedeTransicionar(desde, hacia, ctx): boolean`), `base-ticket-state-machine.ts`, `ticket-state-machine.factory.ts` (Strategy: elige implementación según `tipos_ticket.codigo`).
+**[x] 3.B.2** [S, dep: 3.B.1] **IMPL →** `tickets/domain/state-machine/`: `i-ticket-state-machine.ts` (interface `puedeTransicionar(desde, hacia, ctx): boolean`), `base-ticket-state-machine.ts`, `ticket-state-machine.factory.ts` (Strategy: elige implementación según `tipos_ticket.codigo`).
+- **Completado PR-10 Slice 2:** 3 archivos en `tickets/domain/state-machine/`. Sin imports de Prisma ni NestJS. Función pura, singleton-safe.
 
 **3.B.3** [P, dep: 3.A.2] **TEST →** Test de `NumeradorTicket`: verifica que genera `SOP-2026-00042` dado prefijo `SOP`, año `2026`, y last sequence `41`; verifica formato de los tres flujos; verifica que la secuencia es local (no global).
 - Ref spec: `[SPEC:tickets-core/Numeración legible de tickets]`

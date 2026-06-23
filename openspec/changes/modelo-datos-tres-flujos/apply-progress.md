@@ -1,8 +1,8 @@
 # Apply Progress — modelo-datos-tres-flujos
 
 > Última actualización: 2026-06-23
-> Rama activa: `feat/pr09-tenant-seeds`
-> PR actual: **PR-09** (completado)
+> Rama activa: `feat/pr10-tickets-domain`
+> PR actual: **PR-10** (en progreso — Slice 2 completado)
 
 ---
 
@@ -919,10 +919,56 @@ backend/src/tickets/
 
 | Tareas | Slice | Descripción |
 |--------|-------|-------------|
-| 3.B.1–3.B.4 | **Slice 2** | BaseTicketStateMachine + NumeradorTicket |
-| 3.C.1–3.C.8 | **Slice 3** | Application use cases (CrearTicket, AsignarTicket, etc.) |
+| 3.B.3–3.B.4 | **Slice 3** | NumeradorTicket (service + test) |
+| 3.C.1–3.C.8 | **Slice 3+** | Application use cases (CrearTicket, AsignarTicket, etc.) |
 | 3.D.1–3.D.2 | **Slice 3+** | Infrastructure: repos Prisma + mappers |
 | 3.E.1–3.E.2 | **Slice 3+** | Interface: TicketsController + TicketsModule |
+
+---
+
+## PR-10 Slice 2: máquina de estados base + factory (3.B.1 y 3.B.2) — COMPLETADO
+
+> Rama: `feat/pr10-tickets-domain`
+> Última actualización: 2026-06-23
+
+### Tareas completadas
+
+| Tarea | Estado | Notas |
+|-------|--------|-------|
+| 3.B.1 | ✅ | 32 unit tests TDD (RED → GREEN). 2 suites: BaseTicketStateMachine (22 tests) + TicketStateMachineFactory (10 tests). Cubre: 6 transiciones válidas, 8 terminales, 8 inválidas del diagrama, 4 tests de pureza de función, 4 tests de factory behavior. |
+| 3.B.2 | ✅ | 3 archivos en `tickets/domain/state-machine/`. Sin imports de Prisma ni NestJS. Función pura, singleton-safe. `StateMachineContext` con `porcentajeAvance?: number` extensible para Fases 4 y 5. |
+
+### Estado de tests post PR-10 Slice 2
+
+| Check | Resultado |
+|-------|-----------|
+| `pnpm test` | **454 tests, 34 suites, todos verdes** (+32 nuevos de 3.B.1) |
+| `tsc --noEmit` | ✅ limpio |
+| `pnpm lint` | ✅ fitness rule verde; cero imports de @prisma/client en domain/ |
+
+### Archivos creados en PR-10 Slice 2
+
+```
+backend/src/tickets/
+└── domain/
+    └── state-machine/
+        ├── i-ticket-state-machine.ts            — interface ITicketStateMachine + StateMachineContext
+        ├── base-ticket-state-machine.ts          — implementación base (6 transiciones del diagrama)
+        ├── base-ticket-state-machine.spec.ts     — 32 tests TDD (3.B.1)
+        └── ticket-state-machine.factory.ts       — Strategy factory instance-based con register()
+```
+
+### Decisiones tomadas en PR-10 Slice 2
+
+1. **`StateMachineContext` con `porcentajeAvance?: number`**: campo opcional para que `EdiliciaStateMachine` (Fase 5) pueda evaluar la guarda `EN_PROGRESO → RESUELTO` (`porcentaje_avance = 100`). `BaseTicketStateMachine` y `ComprasStateMachine` lo ignoran. El diseño es extensible sin romper la interfaz base.
+
+2. **Constante `VALID_TRANSITIONS` como `Map<string, ReadonlySet<string>>`**: definida fuera de la clase (nivel de módulo), compartida entre instancias. Inmutable (`ReadonlySet`), segura para uso como singleton. Elimina alocaciones repetidas.
+
+3. **Factory instance-based (no estática)**: cada instancia tiene su propio `Map` de registro. Evita bleeding de estado entre tests y entre módulos. En producción NestJS gestiona el singleton. El fallback por constructor injection permite substituirlo en tests.
+
+4. **`BaseTicketStateMachine` como fallback del factory**: no hay registros iniciales explícitos. COMPRAS y EDILICIA llaman a `factory.register()` en su módulo NestJS al inicializarse (Fases 4 y 5). Para SOPORTE, el fallback base es el comportamiento correcto.
+
+5. **Pureza garantizada**: `VALID_TRANSITIONS` es constante inmutable; `puedeTransicionar` solo lee el Map y el Set sin mutarlos. El contexto no se modifica. Tests de pureza verifican: mismo resultado ante múltiples llamadas, no-mutación de ctx, independencia entre instancias.
 
 ---
 
@@ -933,5 +979,5 @@ backend/src/tickets/
 | Fase 0 — Scaffolding + Shared | **16/16 tareas completadas** (PR-01 + PR-02) |
 | Fase 1 — MASTER: clientes | **14/15 tareas completadas** — 1.A.1–1.D.2 ✅ PR-04; 1.C.3 ✅ PR-03 |
 | Fase 2 — MASTER: auth+RBAC | **20/22** — 2.A.1–2.B.8 ✅ PR-05; 2.C.1/2.C.2/2.D.1–2.D.4 ✅ PR-06; PR-06-fix ✅ CRITICALs; 2.C.3 ✅ PR-03; 2.E.1 ✅ PR-07; pendiente: 2.D.5 (registro usuario, out-of-scope) |
-| Fase 3 — TENANT: tickets-core | **5/18** — 3.D.3 ✅ PR-08; 3.D.4 ✅ PR-09; 3.A.1/3.A.2/3.A.3 ✅ PR-10 Slice 1 |
+| Fase 3 — TENANT: tickets-core | **7/18** — 3.D.3 ✅ PR-08; 3.D.4 ✅ PR-09; 3.A.1/3.A.2/3.A.3 ✅ PR-10 Slice 1; 3.B.1/3.B.2 ✅ PR-10 Slice 2 |
 | Fases 4-7 | 0 — desbloqueadas cuando Fase 3 complete |
