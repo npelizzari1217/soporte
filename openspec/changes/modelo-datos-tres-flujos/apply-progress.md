@@ -1,8 +1,8 @@
 # Apply Progress — modelo-datos-tres-flujos
 
 > Última actualización: 2026-06-23
-> Rama activa: `feat/pr10-tickets-domain`
-> PR actual: **PR-10** (en progreso — Slice 2 completado)
+> Rama activa: `feat/pr14b-reparaciones-application`
+> PR actual: **PR-14b** (completado — Application layer Edilicia 5.B.1–5.B.8)
 
 ---
 
@@ -1685,7 +1685,76 @@ backend/src/reparaciones/domain/
 
 | Tarea | Sub-PR | Descripción |
 |-------|--------|-------------|
-| 5.B.1–5.B.8 | **PR-14b** | Application use cases (CrearTicketEdilicio, CrearSubtarea, CompletarSubtarea, GestionarUbicacion) |
+| 5.B.1–5.B.8 | **PR-14b** | ✅ COMPLETADO — Application use cases (ver sección PR-14b) |
+| 5.C.1–5.C.3 | **PR-15a** | Infrastructure: repos Prisma + mappers + schema migration |
+| 5.D.1–5.D.2 | **PR-15b** | Interface: controllers + DTOs + ReparacionesModule |
+
+---
+
+## PR-14b: reparaciones application — COMPLETADO
+
+> Rama: `feat/pr14b-reparaciones-application` | Commit: `c90fcff`
+> Última actualización: 2026-06-23
+
+### Tareas completadas
+
+| Tarea | Estado | Notas |
+|-------|--------|-------|
+| 5.B.1 | ✅ | 17 tests: CrearTicketEdilicioUseCase — valida ubicacion (activo+not deleted), tipo EDILICIA, porcentaje=0, atómico |
+| 5.B.2 | ✅ | `crear-ticket-edilicio.use-case.ts` — CrearTicketEdilicioDto (extiende CrearTicketDto + ubicacionId) |
+| 5.B.3 | ✅ | 17 tests: CrearSubtareaUseCase — insert subtarea + recálculo avance + AVANCE_EDILICIO con metadata en misma tx |
+| 5.B.4 | ✅ | `crear-subtarea.use-case.ts` |
+| 5.B.5 | ✅ | 18 tests: CompletarSubtareaUseCase — completada=TRUE/completadaEn/completadaPorId + recálculo + AVANCE_EDILICIO; al 100% NO hay auto-transición |
+| 5.B.6 | ✅ | `completar-subtarea.use-case.ts` |
+| 5.B.7 | ✅ | 20 tests: GestionarUbicacionUseCase — crear (valida padre no eliminado) + eliminar BFS cascade + COMENTARIO en tickets afectados |
+| 5.B.8 | ✅ | `gestionar-ubicacion.use-case.ts` |
+
+### Estado de tests post PR-14b
+- **1032 tests, 67 suites, todos verdes** (`pnpm test`)
+  - +72 tests nuevos (PR-14b): 17+17+18+20
+  - Baseline PR-14a: 960 tests
+
+### Archivos creados en PR-14b
+
+```
+backend/src/reparaciones/
+├── domain/
+│   ├── errors/
+│   │   └── reparaciones.errors.ts          — 6 clases: UbicacionInvalidaError, TicketEdiliciaNoEncontradoError,
+│   │                                           SubtareaEdiliciaNoEncontradaError, SubtareaYaCompletadaError,
+│   │                                           PadreUbicacionEliminadoError, TicketNoEsEdiliciaError
+│   └── ports/
+│       └── i-ticket-edilicia.repository.ts — +findByUbicacionId(ubicacionId): Promise<TicketEdiliciaEntity[]>
+└── application/
+    └── use-cases/
+        ├── crear-ticket-edilicio.use-case.ts + spec  — 17 tests
+        ├── crear-subtarea.use-case.ts + spec          — 17 tests
+        ├── completar-subtarea.use-case.ts + spec      — 18 tests
+        └── gestionar-ubicacion.use-case.ts + spec     — 20 tests
+```
+
+### Decisiones tomadas en PR-14b
+
+1. **`CrearTicketEdilicioDto` extiende `CrearTicketDto`**: agrega `ubicacionId: string` como campo requerido. No se reutilizó `CrearTicketDto` directamente porque la ubicación es input externo (no interno al use case). Patrón análogo a cómo Compras tiene sus propios DTOs.
+
+2. **`ITicketEdiliciaRepository.findByUbicacionId` agregado en PR-14b**: el port fue creado en PR-14a (5.A.5) pero la necesidad de `findByUbicacionId` emergió al implementar `GestionarUbicacionUseCase` (5.B.8). El port se extendió en el mismo archivo del dominio — no es violación de capas (el port ES del dominio, actualizarlo en un PR posterior es normal).
+
+3. **`GestionarUbicacionUseCase` con métodos `crear()` y `eliminar()`**: en lugar del patrón `execute()` único, se optó por métodos explícitos porque las dos operaciones (crear vs soft-delete-cascade) tienen firmas y semántica completamente distintas. Misma justificación que `PrismaService.getMasterClient()` / `getTenantClient()`.
+
+4. **Cascada BFS en `eliminar()`**: los hijos se recolectan vía BFS usando `findByPadreId()` antes de entrar a la transacción (reads fuera de tx). Las operaciones de delete ocurren dentro de la tx. Eficiente para árboles de profundidad razonable.
+
+5. **Tipo COMENTARIO para eventos de ubicación eliminada**: el catálogo de tipo_operacion tiene CAMBIO_ESTADO | COMENTARIO | ASIGNACION | ADJUNTO | AVANCE_EDILICIO. Para el evento "ubicación eliminada, ticket afectado", COMENTARIO es el más apropiado. No se inventó un nuevo tipo (instrucción explícita del orchestrator: "clona ese patrón EXACTO, no inventes").
+
+6. **`CompletarSubtareaUseCase` construye lista virtual para recálculo**: en lugar de re-querir las subtareas después del `completar()` (que solo existe en memoria), construye `listaActualizada` mapeando la lista existente y forzando `completada=true` para el subtarea que se está completando. Evita un round-trip a DB innecesario dentro de la tx.
+
+7. **`CrearSubtareaUseCase` recálculo con lista virtual**: suma `{ completada: false, deletedAt: null }` a la lista existente. La nueva subtarea no puede estar completada al crearse (invariante de dominio: `completar()` solo existe como método explícito).
+
+8. **`CompletarSubtareaUseCase` NO tiene `ITicketRepository` ni `IEstadoRepository`**: diseño intencional para IMPOSIBILITAR la auto-transición de estado. Si el use case no tiene el repo del ticket, no puede cambiar el estado. La transición a RESUELTO es explícita vía otro use case (PR-15b).
+
+### Pendiente (sub-PRs siguientes)
+
+| Tarea | Sub-PR | Descripción |
+|-------|--------|-------------|
 | 5.C.1–5.C.3 | **PR-15a** | Infrastructure: repos Prisma + mappers + schema migration |
 | 5.D.1–5.D.2 | **PR-15b** | Interface: controllers + DTOs + ReparacionesModule |
 
