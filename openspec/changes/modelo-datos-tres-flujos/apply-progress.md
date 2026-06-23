@@ -1110,6 +1110,79 @@ backend/src/tickets/
 
 ---
 
+## PR-11b: tickets-core application use cases — asignar + adjuntar — COMPLETADO
+
+> Rama: `feat/pr11b-tickets-usecases-asignar-adjuntar`
+> Última actualización: 2026-06-23
+
+### Tareas completadas
+
+| Tarea | Estado | Notas |
+|-------|--------|-------|
+| 3.C.3 | ✅ | 19 unit tests TDD RED→GREEN. AsignarTicketUseCase spec completa. |
+| 3.C.4 | ✅ | AsignarTicketUseCase implementado. Nuevos errores: AsignadoInvalidoError, AsignadoNoElegibleError. |
+| 3.C.7 | ✅ | 19 unit tests TDD RED→GREEN. AdjuntarArchivoUseCase spec completa. |
+| 3.C.8 | ✅ | AdjuntarArchivoUseCase implementado. Pre-genera UUIDv7 para storage key + entity id coherentes. |
+
+### Modificaciones a puertos existentes
+
+| Puerto | Cambio | Razón |
+|--------|--------|-------|
+| `IUsuarioMasterChecker` | +`estaActivoEnTenant(usuarioId, clienteId)` | El asignado DEBE tener `activo=TRUE` (spec); el solicitante solo necesita `deleted_at IS NULL`. Dos métodos con semántica explícita. |
+| `IArchivoRepository` | +`linkToTicket(archivoId, ticketId)` | Necesario para crear la fila en `archivos_ticket` desde el use case. La alternativa (manejar el join dentro de `save`) oculta la operación y dificulta el test de transaccionalidad. |
+
+### Errores de dominio nuevos
+
+| Error | Code | Semántica |
+|-------|------|-----------|
+| `AsignadoInvalidoError` | `ASIGNADO_INVALIDO` | El asignado no existe en master con `activo=TRUE`, está eliminado, o no pertenece al tenant. HTTP 422. |
+| `AsignadoNoElegibleError` | `ASIGNADO_NO_ELEGIBLE` | El asignado no tiene fila en `usuario_tipos_ticket` para el tipo del ticket. HTTP 422. Independiente de RBAC. |
+
+### Estado de tests post PR-11b
+
+| Métrica | Valor |
+|---------|-------|
+| Tests totales | **588 tests, 41 suites, todos verdes** |
+| Tests nuevos en PR-11b | +38 (19 asignar + 19 adjuntar) + 3 extra en crear-ticket mock update |
+| Baseline PR-11a | 547 tests |
+| tsc --noEmit | ✅ limpio |
+| pnpm lint (+ fitness rule) | ✅ limpio (0 imports @prisma en application/) |
+
+### Archivos creados/modificados en PR-11b
+
+```
+backend/src/
+├── shared/
+│   └── domain/ports/
+│       └── i-file-storage.ts                             — sin cambios (ya existía)
+└── tickets/
+    ├── domain/
+    │   ├── errors/
+    │   │   └── tickets.errors.ts                         — +AsignadoInvalidoError, +AsignadoNoElegibleError
+    │   └── ports/
+    │       ├── i-usuario-master.checker.ts               — +estaActivoEnTenant()
+    │       └── i-archivo.repository.ts                   — +linkToTicket()
+    └── application/use-cases/
+        ├── asignar-ticket.use-case.ts                    — NUEVO (3.C.4)
+        ├── asignar-ticket.use-case.spec.ts               — NUEVO (3.C.3) — 19 tests
+        ├── adjuntar-archivo.use-case.ts                  — NUEVO (3.C.8)
+        ├── adjuntar-archivo.use-case.spec.ts             — NUEVO (3.C.7) — 19 tests
+        └── crear-ticket.use-case.spec.ts                 — MODIFICADO: +estaActivoEnTenant en mock
+```
+
+### Decisiones inferidas PR-11b
+
+| # | Decisión | Impacto |
+|---|----------|---------|
+| D-4 | `estaActivoEnTenant` como método separado de `existeEnTenant` | Sin cambio de semántica en el método existente. Si la infra necesita una sola query con OR, la implementación puede combinarlos internamente. |
+| D-5 | `linkToTicket` separado en `IArchivoRepository` | La alternativa era un `saveForTicket(archivo, ticketId)` monolítico, pero separar los métodos da control explícito de transaccionalidad al use case y facilita el test de orden. |
+| D-6 | UUIDv7 pre-generado en `AdjuntarArchivoUseCase` | Necesario para construir la storage key antes de crear el entity, y para que el id de la entidad coincida con el id en la key. Alternativa rechazada: crear entity con storageKey placeholder y mutarla post-upload (viola inmutabilidad de props). |
+| D-7 | Storage key = `tickets/{ticketId}/{archivoId}` | Patrón path-based simple. No incluye extensión (inferible desde mimeType en presentación). El infra adapter puede agregar prefijo de bucket. |
+| D-8 | Fire-and-forget en error de DB post-upload | Si upload exitoso + DB falla → archivo huérfano en storage. El use case NO llama `IFileStorage.delete`. Cleanup asíncrono per spec "MUST NOT bloquear la respuesta". |
+| D-9 | Validación `tamanoBytes > 0` ANTES del upload | Fail-fast para evitar costos de storage con datos inválidos. La misma validación existe en `ArchivoEntity.create()` pero se duplica aquí a propósito para evitar el round-trip a IFileStorage con datos inválidos. |
+
+---
+
 ## Estado global del cambio
 
 | Fase | Progreso |
@@ -1117,5 +1190,5 @@ backend/src/tickets/
 | Fase 0 — Scaffolding + Shared | **16/16 tareas completadas** (PR-01 + PR-02) |
 | Fase 1 — MASTER: clientes | **14/15 tareas completadas** — 1.A.1–1.D.2 ✅ PR-04; 1.C.3 ✅ PR-03 |
 | Fase 2 — MASTER: auth+RBAC | **20/22** — 2.A.1–2.B.8 ✅ PR-05; 2.C.1/2.C.2/2.D.1–2.D.4 ✅ PR-06; PR-06-fix ✅ CRITICALs; 2.C.3 ✅ PR-03; 2.E.1 ✅ PR-07; pendiente: 2.D.5 (registro usuario, out-of-scope) |
-| Fase 3 — TENANT: tickets-core | **13/18** — 3.D.3 ✅ PR-08; 3.D.4 ✅ PR-09; 3.A.1/3.A.2/3.A.3 ✅ PR-10 Slice 1; 3.B.1/3.B.2 ✅ PR-10 Slice 2; 3.B.3/3.B.4 ✅ PR-10 Slice 3; **3.C.1/3.C.2/3.C.5/3.C.6 ✅ PR-11a** |
+| Fase 3 — TENANT: tickets-core | **17/18** — 3.D.3 ✅ PR-08; 3.D.4 ✅ PR-09; 3.A.1/3.A.2/3.A.3 ✅ PR-10 Slice 1; 3.B.1/3.B.2 ✅ PR-10 Slice 2; 3.B.3/3.B.4 ✅ PR-10 Slice 3; 3.C.1/3.C.2/3.C.5/3.C.6 ✅ PR-11a; **3.C.3/3.C.4/3.C.7/3.C.8 ✅ PR-11b** — Pendiente: 3.D.1/3.D.2 (infra repos+mappers, PR-11c) |
 | Fases 4-7 | 0 — desbloqueadas cuando Fase 3 complete |

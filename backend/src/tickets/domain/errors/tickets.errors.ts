@@ -102,6 +102,48 @@ export class TransicionInvalidaError extends DomainError {
 }
 
 /**
+ * Error de validación cross-DB: el asignado_id no existe en master.usuarios
+ * con activo = TRUE, o no pertenece al tenant del JWT.
+ *
+ * HTTP 422 semántico — la asignación fue rechazada antes de modificar el ticket.
+ *
+ * Ref spec: [SPEC:tickets-core/Asignado debe ser elegible para el tipo de ticket]
+ * Tarea: 3.C.4
+ */
+export class AsignadoInvalidoError extends DomainError {
+  readonly code = 'ASIGNADO_INVALIDO';
+
+  constructor(asignadoId: string) {
+    super(
+      `El asignado "${asignadoId}" no existe en master.usuarios con activo=TRUE, ` +
+        `está eliminado, o no pertenece al tenant activo.`,
+    );
+  }
+}
+
+/**
+ * Error de elegibilidad: el asignado_id no tiene registro en usuario_tipos_ticket
+ * para el tipo de ticket del ticket a asignar.
+ *
+ * HTTP 422 semántico — la elegibilidad es independiente de los permisos RBAC.
+ * Un usuario puede tener permiso ticket:asignar pero no estar habilitado para
+ * atender tickets de un tipo específico.
+ *
+ * Ref spec: [SPEC:tickets-core/Elegibilidad de asignación separada de permisos]
+ * Tarea: 3.C.4
+ */
+export class AsignadoNoElegibleError extends DomainError {
+  readonly code = 'ASIGNADO_NO_ELEGIBLE';
+
+  constructor(asignadoId: string, tipoTicketId: string) {
+    super(
+      `El usuario "${asignadoId}" no está habilitado para atender tickets de tipo ` +
+        `"${tipoTicketId}". Verificar usuario_tipos_ticket.`,
+    );
+  }
+}
+
+/**
  * Error de validación de archivo: tamano_bytes debe ser mayor a 0.
  * Ref spec: [SPEC:tickets-core/archivos — CHECK tamano_bytes > 0]
  */

@@ -245,10 +245,12 @@
 **[x] 3.C.2** [S, dep: 3.C.1] **IMPL →** `tickets/application/use-cases/crear-ticket.use-case.ts`: genera UUIDv7, valida soft ref al master de `solicitante_id`, genera número, persiste ticket + operacion dentro de `TenantTransactionRunner`.
 - **Completado PR-11a:** Implementado. Nuevos puertos: `IUsuarioMasterChecker`, `ITipoTicketRepository`, `ITipoOperacionRepository`. Nuevos errores: `SolicitanteInvalidoError`, `EstadoCatalogoNoEncontradoError`, `TipoTicketNoEncontradoError`, `TipoOperacionNoEncontradoError`.
 
-**3.C.3** [P, dep: 3.A.3, 3.B.2] **TEST →** Test de `AsignarTicketUseCase`: verifica existencia de `asignado_id` en master; verifica que el usuario tiene `usuario_tipos_ticket` para el tipo del ticket (elegibilidad); verifica rechazo HTTP 422 sin elegibilidad.
+**[x] 3.C.3** [P, dep: 3.A.3, 3.B.2] **TEST →** Test de `AsignarTicketUseCase`: verifica existencia de `asignado_id` en master; verifica que el usuario tiene `usuario_tipos_ticket` para el tipo del ticket (elegibilidad); verifica rechazo HTTP 422 sin elegibilidad.
 - Ref spec: `[SPEC:tickets-core/Asignado debe ser elegible, Elegibilidad separada de permisos]`
+- **Completado PR-11b:** 19 unit tests TDD RED→GREEN. Cubre: ticket not found, estaActivoEnTenant (activo=TRUE distinto de existeEnTenant), AsignadoInvalidoError, isUserEligibleForType, AsignadoNoElegibleError, tipo_operacion ASIGNACION, ticket.assignTo(), transacción atómica.
 
-**3.C.4** [S, dep: 3.C.3] **IMPL →** `tickets/application/use-cases/asignar-ticket.use-case.ts`: valida cross-DB + elegibilidad, actualiza `asignado_id`, registra operacion `ASIGNACION`.
+**[x] 3.C.4** [S, dep: 3.C.3] **IMPL →** `tickets/application/use-cases/asignar-ticket.use-case.ts`: valida cross-DB + elegibilidad, actualiza `asignado_id`, registra operacion `ASIGNACION`.
+- **Completado PR-11b:** Implementado. Nuevos errores: AsignadoInvalidoError, AsignadoNoElegibleError. Nuevo método IUsuarioMasterChecker.estaActivoEnTenant (activo=TRUE).
 
 **[x] 3.C.5** [P, dep: 3.A.3, 3.B.2] **TEST →** Test de `TransicionarEstadoUseCase`: verifica que routea al state machine correcto via factory; verifica transición válida → actualiza `estado_id` + crea `operaciones_ticket` en misma tx; verifica transición inválida → HTTP 422 sin modificar estado.
 - Ref spec: `[SPEC:tickets-core/Transición inválida rechazada, Transición válida registra operacion]`
@@ -257,10 +259,12 @@
 **[x] 3.C.6** [S, dep: 3.C.5] **IMPL →** `tickets/application/use-cases/transicionar-estado.use-case.ts`: carga state machine via factory, evalúa `puedeTransicionar()`, ejecuta dentro de `TenantTransactionRunner`.
 - **Completado PR-11a:** Implementado. Doble validación: canTransitionTo() (invariantes entidad) + machine.puedeTransicionar() (reglas de tipo). StateMachineContext pasa `{}` — decisión inferida para Fase 5 (porcentajeAvance edilicio).
 
-**3.C.7** [P, dep: 3.A.3] **TEST →** Test de `AdjuntarArchivoUseCase`: verifica upload a `IFileStorage` antes del INSERT; verifica que solo persiste metadata en `archivos`; verifica creación de fila en `archivos_ticket`; verifica que soft delete de adjunto NO espera a storage cleanup.
+**[x] 3.C.7** [P, dep: 3.A.3] **TEST →** Test de `AdjuntarArchivoUseCase`: verifica upload a `IFileStorage` antes del INSERT; verifica que solo persiste metadata en `archivos`; verifica creación de fila en `archivos_ticket`; verifica que soft delete de adjunto NO espera a storage cleanup.
 - Ref spec: `[SPEC:tickets-core/Upload adjunto guarda solo metadata, Borrado de adjunto]`
+- **Completado PR-11b:** 19 unit tests TDD RED→GREEN. Cubre: ticket not found, upload antes de DB save, storageKey desde upload, ArchivoTamanoCeroError (validación temprana), NO llama IFileStorage.delete si DB falla (fire-and-forget), linkToTicket con archivoId+ticketId, transacción atómica, upload fuera de tx.
 
-**3.C.8** [S, dep: 3.C.7] **IMPL →** `tickets/application/use-cases/adjuntar-archivo.use-case.ts`: llama `IFileStorage.upload()`, crea entidad `Archivo`, persiste metadata + join.
+**[x] 3.C.8** [S, dep: 3.C.7] **IMPL →** `tickets/application/use-cases/adjuntar-archivo.use-case.ts`: llama `IFileStorage.upload()`, crea entidad `Archivo`, persiste metadata + join.
+- **Completado PR-11b:** Implementado. Pre-genera UUIDv7 para usar en storage key y entity id. IArchivoRepository.linkToTicket nuevo método para archivos_ticket join.
 
 ### 3.D — Infrastructure + Schema TENANT
 

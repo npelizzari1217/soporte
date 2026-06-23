@@ -75,6 +75,7 @@ describe('CrearTicketUseCase', () => {
 
   const mockUsuarioChecker = {
     existeEnTenant: jest.fn<Promise<boolean>, [string, string]>(),
+    estaActivoEnTenant: jest.fn<Promise<boolean>, [string, string]>(),
   } satisfies jest.Mocked<IUsuarioMasterChecker>;
 
   const mockTipoTicketRepo = {
