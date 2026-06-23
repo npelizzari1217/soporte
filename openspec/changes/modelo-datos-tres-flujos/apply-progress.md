@@ -1285,7 +1285,8 @@ backend/src/tickets/infrastructure/persistence/prisma/
 | Fase 1 — MASTER: clientes | **14/15 tareas completadas** — 1.A.1–1.D.2 ✅ PR-04; 1.C.3 ✅ PR-03 |
 | Fase 2 — MASTER: auth+RBAC | **20/22** — 2.A.1–2.B.8 ✅ PR-05; 2.C.1/2.C.2/2.D.1–2.D.4 ✅ PR-06; PR-06-fix ✅ CRITICALs; 2.C.3 ✅ PR-03; 2.E.1 ✅ PR-07; pendiente: 2.D.5 (registro usuario, out-of-scope) |
 | Fase 3 — TENANT: tickets-core | **21/18 COMPLETA** — 3.D.3 ✅ PR-08; 3.D.4 ✅ PR-09; 3.A.1/3.A.2/3.A.3 ✅ PR-10 Slice 1; 3.B.1/3.B.2 ✅ PR-10 Slice 2; 3.B.3/3.B.4 ✅ PR-10 Slice 3; 3.C.1/3.C.2/3.C.5/3.C.6 ✅ PR-11a; 3.C.3/3.C.4/3.C.7/3.C.8 ✅ PR-11b; 3.D.1/3.D.2 ✅ PR-11c; **3.E.1/3.E.2 ✅ PR-11d** |
-| Fases 4-7 | 0 — desbloqueadas (Fase 3 COMPLETA) |
+| Fase 4 — TENANT: Compras | **3/14** — 4.A.1/4.A.2/4.A.3 ✅ PR-12a (dominio) |
+| Fases 5-7 | 0 — desbloqueadas (Fase 3 COMPLETA) |
 
 ---
 
@@ -1343,4 +1344,108 @@ backend/package.json                         — @types/multer 2.1.0 (devDepende
 ### Commit
 
 `0bd886e` en rama `feat/pr11d-tickets-interface`
+
+---
+
+---
+
+## PR-12a: Compras — capa de dominio (4.A) — COMPLETADO
+
+> Rama: `feat/pr12a-compras-domain`
+> Última actualización: 2026-06-23
+
+### Tareas completadas
+
+| Tarea | Estado | Notas |
+|-------|--------|-------|
+| 4.A.1 | ✅ | 69 unit tests TDD RED→GREEN. 4 suites. Cubre todas las transiciones válidas/inválidas del ciclo COMPRAS + invariantes de entidades. |
+| 4.A.2 | ✅ | 3 entidades + ComprasStateMachine + errors. Sin imports de Prisma ni NestJS. Fitness rule verde. |
+| 4.A.3 | ✅ | 3 puertos con Symbol DI tokens. |
+
+### Entidades implementadas
+
+| Entidad | Archivo | Validación de dominio | Tests |
+|---------|---------|----------------------|-------|
+| `TicketCompraEntity` | `compras/domain/entities/ticket-compra.entity.ts` | campos de aprobación null inicialmente | 14 |
+| `ItemCompraEntity` | `compras/domain/entities/item-compra.entity.ts` | `cantidad > 0` → Result<ItemCompra, CantidadInvalidaError> | 18 |
+| `PresupuestoEntity` | `compras/domain/entities/presupuesto.entity.ts` | moneda ISO 4217 (ARS/USD/EUR) → Result<Presupuesto, MonedaInvalidaError>; seleccionado default false | 21 |
+
+### ComprasStateMachine — transiciones implementadas
+
+| Desde | Hacia | Resultado |
+|-------|-------|-----------|
+| ABIERTO | PENDIENTE_APROBACION | ✅ válido |
+| ABIERTO | CANCELADO | ✅ válido |
+| ABIERTO | EN_PROGRESO | ❌ BLOQUEADO (ciclo de aprobación obligatorio) |
+| PENDIENTE_APROBACION | APROBADO | ✅ válido |
+| PENDIENTE_APROBACION | RECHAZADO | ✅ válido |
+| PENDIENTE_APROBACION | CANCELADO | ✅ válido |
+| APROBADO | EN_PROGRESO | ✅ válido |
+| RECHAZADO | CERRADO | ✅ válido |
+| EN_PROGRESO | RESUELTO | ✅ válido |
+| EN_PROGRESO | CANCELADO | ✅ válido |
+| RESUELTO | CERRADO | ✅ válido |
+| RESUELTO | EN_PROGRESO | ✅ válido (reapertura) |
+| CERRADO | cualquiera | ❌ terminal |
+| CANCELADO | cualquiera | ❌ terminal |
+
+### Puertos implementados
+
+| Puerto | Token DI | Métodos |
+|--------|----------|---------|
+| `ITicketCompraRepository` | `TICKET_COMPRA_REPOSITORY` | findByTicketId, findById, save, delete |
+| `IItemCompraRepository` | `ITEM_COMPRA_REPOSITORY` | findById, findByTicketCompraId, findActiveByTicketCompraId, save, delete |
+| `IPresupuestoRepository` | `PRESUPUESTO_REPOSITORY` | findById, findByTicketCompraId, findSelectedByTicketCompraId, save, delete |
+
+### Estado de verificaciones
+
+| Check | Resultado |
+|-------|-----------|
+| `pnpm test` | **732 tests, 49 suites, todos verdes** (+69 nuevos de 4.A) |
+| `tsc --noEmit` | ✅ limpio |
+| `pnpm lint` | ✅ fitness rule verde — cero imports de @prisma/client en compras/domain/ |
+| Baseline antes de PR-12a | 663 tests, 45 suites |
+
+### Archivos creados en PR-12a
+
+```
+backend/src/compras/domain/
+├── errors/
+│   └── compras.errors.ts                              — CantidadInvalidaError, MonedaInvalidaError
+├── entities/
+│   ├── ticket-compra.entity.ts + spec.ts              — 14 unit tests TDD
+│   ├── item-compra.entity.ts + spec.ts                — 18 unit tests TDD
+│   └── presupuesto.entity.ts + spec.ts                — 21 unit tests TDD
+├── state-machine/
+│   ├── compras-state-machine.ts                       — ComprasStateMachine (ITicketStateMachine)
+│   └── compras-state-machine.spec.ts                  — 16 unit tests TDD (incl. factory integration)
+└── ports/
+    ├── i-ticket-compra.repository.ts                  — + TICKET_COMPRA_REPOSITORY token
+    ├── i-item-compra.repository.ts                    — + ITEM_COMPRA_REPOSITORY token
+    └── i-presupuesto.repository.ts                    — + PRESUPUESTO_REPOSITORY token
+```
+
+### Decisiones tomadas en PR-12a
+
+1. **`ComprasStateMachine` es implementación standalone** (no extiende `BaseTicketStateMachine`): el patrón Strategy elegido en el design usa reemplazo completo, no herencia. La máquina de COMPRAS define su propio `VALID_TRANSITIONS_COMPRAS` Map que incluye los estados del ciclo de aprobación y excluye explícitamente `ABIERTO → EN_PROGRESO`.
+
+2. **Registro en factory vía wiring NestJS** (ComprasModule — PR futuro): la factory tiene `register('COMPRAS', machine)` disponible. Los tests de 4.A.1 ya verifican la integración (`factory.register() + factory.resolve()`). El `onModuleInit` del ComprasModule llamará `factory.register('COMPRAS', new ComprasStateMachine())`.
+
+3. **`TicketCompraEntity.create(ticketId)` en lugar de `create(props)`**: la API simplificada refleja que al crear un ticket_compra todos los campos de aprobación son null por invariante de dominio. El use case no necesita especificarlos.
+
+4. **`ItemCompraEntity` con constructor `private`**: fuerza el uso de `create()` (con validación) o `reconstitute()` (sin validación). Mismo patrón que `ArchivoEntity` en tickets-core.
+
+5. **`PresupuestoEntity` valida moneda en `create()`, no en `reconstitute()`**: los datos en DB se asume que fueron validados al insertar. `reconstitute()` es bypass para el mapper de infraestructura.
+
+6. **Estados de COMPRAS YA en el seed (PR-09)**: PENDIENTE_APROBACION, APROBADO y RECHAZADO fueron sembrados en PR-09 (`c0...0002`, `c0...0003`, `c0...0004`). NO se requiere seed adicional en este PR ni en el sub-PR de infra (13a).
+
+### Decisiones inferidas documentadas
+
+| # | Decisión inferida | Resolución |
+|---|-------------------|------------|
+| D-1 | Estados PENDIENTE_APROBACION, APROBADO, RECHAZADO en seed | YA EN SEED (PR-09) — no requiere acción adicional |
+| D-2 | `montoTotal >= 0` no validado en entidad | Spec dice CHECK >= 0 en DB. La entidad no valida (valor 0 puede ser válido para cotizaciones en blanco). La DB enforcea el constraint. |
+| D-3 | `APROBADO → CANCELADO` no está en el spec COMPRAS | No incluido — la spec no lista esta transición. Si se necesita, requiere revisión de spec. |
+| D-4 | Registro de ComprasStateMachine en factory | Wiring NestJS en ComprasModule (PR-12b o cuando se cree el módulo). Test de 4.A.1 ya verifica el mecanismo. |
+
 

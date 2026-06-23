@@ -298,12 +298,15 @@
 
 ### 4.A — Dominio
 
-**4.A.1** [P, dep: 3.A.3] **TEST →** Unit tests de entidades: `TicketCompra` (campos de aprobación inicialmente null); `ItemCompra` (cantidad > 0); `Presupuesto` (moneda ISO, seleccionado default false). Test de `ComprasStateMachine`: verifica bloqueo de ABIERTO→EN_PROGRESO; verifica ABIERTO→PENDIENTE_APROBACION; verifica PENDIENTE_APROBACION→APROBADO/RECHAZADO; verifica RECHAZADO→CERRADO automático.
+**[x] 4.A.1** [P, dep: 3.A.3] **TEST →** Unit tests de entidades: `TicketCompra` (campos de aprobación inicialmente null); `ItemCompra` (cantidad > 0); `Presupuesto` (moneda ISO, seleccionado default false). Test de `ComprasStateMachine`: verifica bloqueo de ABIERTO→EN_PROGRESO; verifica ABIERTO→PENDIENTE_APROBACION; verifica PENDIENTE_APROBACION→APROBADO/RECHAZADO; verifica RECHAZADO→CERRADO automático.
 - Ref spec: `[SPEC:compras/Máquina de estados COMPRAS, Ciclo de aprobación]`
+- **Completado PR-12a:** 69 unit tests TDD RED→GREEN. 4 suites: ticket-compra.entity.spec (14), item-compra.entity.spec (18), presupuesto.entity.spec (21), compras-state-machine.spec (16 — incluye 11 transiciones válidas, 7 inválidas, 3 pureza, 4 factory integration).
 
-**4.A.2** [S, dep: 4.A.1] **IMPL →** `compras/domain/entities/`: `ticket-compra.entity.ts`, `item-compra.entity.ts`, `presupuesto.entity.ts`. `compras/domain/state-machine/compras-state-machine.ts` registrado en `TicketStateMachineFactory` para `codigo = 'COMPRAS'`.
+**[x] 4.A.2** [S, dep: 4.A.1] **IMPL →** `compras/domain/entities/`: `ticket-compra.entity.ts`, `item-compra.entity.ts`, `presupuesto.entity.ts`. `compras/domain/state-machine/compras-state-machine.ts` registrado en `TicketStateMachineFactory` para `codigo = 'COMPRAS'`.
+- **Completado PR-12a:** 3 entidades + ComprasStateMachine + compras.errors.ts. Sin imports de Prisma/NestJS. Fitness rule verde. Registro en factory via factory.register('COMPRAS', machine) — wiring NestJS en ComprasModule (PR futuro).
 
-**4.A.3** [S, dep: 4.A.2] **IMPL →** Puertos: `i-ticket-compra.repository.ts`, `i-item-compra.repository.ts`, `i-presupuesto.repository.ts`.
+**[x] 4.A.3** [S, dep: 4.A.2] **IMPL →** Puertos: `i-ticket-compra.repository.ts`, `i-item-compra.repository.ts`, `i-presupuesto.repository.ts`.
+- **Completado PR-12a:** 3 puertos con Symbol DI tokens (TICKET_COMPRA_REPOSITORY, ITEM_COMPRA_REPOSITORY, PRESUPUESTO_REPOSITORY).
 
 ### 4.B — Application
 
