@@ -332,13 +332,16 @@
 
 ### 4.C — Infrastructure + Schema
 
-**4.C.1** [P, dep: 4.A.3] **TEST →** Integration test de `PrismaTicketCompraRepository`: verifica relación 1:1 con ticket; verifica update de `aprobado_por_id`. Test de `PrismaPresupuestoRepository`: verifica swap de `seleccionado`.
+**[x] 4.C.1** [P, dep: 4.A.3] **TEST →** Integration test de `PrismaTicketCompraRepository`: verifica relación 1:1 con ticket; verifica update de `aprobado_por_id`. Test de `PrismaPresupuestoRepository`: verifica swap de `seleccionado`.
 - Ref spec: `[SPEC:compras/requirements]`
+- **Completado PR-13a:** 22 integration tests TDD GREEN. Suite: `prisma-compras.integration.spec.ts`. Cubre: TicketCompraRepository (findByTicketId 1:1, findById, save+update aprobado_por_id, delete soft), ItemCompraRepository (findById, findByTicketCompraId todos, findActiveByTicketCompraId, delete soft), PresupuestoRepository (findById, findByTicketCompraId, findSelectedByTicketCompraId, swap atómico, delete soft).
 
-**4.C.2** [S, dep: 4.C.1, 0.C.4] **IMPL →** `compras/infrastructure/persistence/prisma/`: repos + mappers para `ticket_compra`, `items_compra`, `presupuestos`, `archivos_presupuesto`.
+**[x] 4.C.2** [S, dep: 4.C.1, 0.C.4] **IMPL →** `compras/infrastructure/persistence/prisma/`: repos + mappers para `ticket_compra`, `items_compra`, `presupuestos`, `archivos_presupuesto`.
+- **Completado PR-13a:** 6 archivos: ticket-compra.mapper.ts, prisma-ticket-compra.repository.ts, item-compra.mapper.ts, prisma-item-compra.repository.ts, presupuesto.mapper.ts, prisma-presupuesto.repository.ts. archivos_presupuesto incluido en schema+FK; sin port propio en esta entrega (se agrega en 4.D cuando se conecte el upload). Fitness rule verde.
 
-**4.C.3** [P, dep: 3.D.3] **SCHEMA:** `prisma_tenant/schema.prisma` — agregar modelos `TicketCompra`, `ItemCompra`, `Presupuesto`, `ArchivoPresupuesto`. Correr migration tenant.
+**[x] 4.C.3** [P, dep: 3.D.3] **SCHEMA:** `prisma_tenant/schema.prisma` — agregar modelos `TicketCompra`, `ItemCompra`, `Presupuesto`, `ArchivoPresupuesto`. Correr migration tenant.
 - Ref spec: `[SPEC:compras/Tablas TENANT]`
+- **Completado PR-13a:** 4 modelos + back-relations en Ticket y Archivo. Migration `20260623130000_add_compras_schema` artesanal, aplicada a `soporte_tenant_test`. CHECK constraints: `items_compra.cantidad > 0`, `presupuestos.monto_total >= 0`.
 
 ### 4.D — Interface
 

@@ -1523,4 +1523,103 @@ backend/src/compras/
 
 6. **Prettier fix en spec files**: 4 spec files tenían trailing-comma warnings (prettier/prettier) — resueltos con `eslint --fix` tras la implementación.
 
+---
+
+---
+
+## PR-13a: compras infra — schema tenant + repos Prisma (4.C) — COMPLETADO
+
+> Rama: `feat/pr13a-compras-infra`
+> Última actualización: 2026-06-23
+
+### Tareas completadas
+
+| Tarea | Estado | Notas |
+|-------|--------|-------|
+| 4.C.3 | ✅ | 4 modelos Prisma en `prisma_tenant/schema.prisma`. Migration `20260623130000_add_compras_schema` aplicada a `soporte_tenant_test`. `generate:tenant` ejecutado. |
+| 4.C.1 | ✅ | 22 integration tests TDD GREEN. Suite `prisma-compras.integration.spec.ts`. |
+| 4.C.2 | ✅ | 6 archivos: 3 mappers + 3 repos (ticket_compra, items_compra, presupuestos). `archivos_presupuesto` en schema; sin repo propio (port en 4.D). |
+
+### Modelos implementados (verbatim del spec compras/Tablas TENANT)
+
+**TicketCompra** (ticket_compra):
+- `id` (UUID PK), `ticket_id` (UUID UNIQUE FK → tickets.id), `aprobado_por_id` (UUID?, soft ref master), `aprobado_en` (TIMESTAMPTZ?), `motivo_rechazo` (TEXT?), `created_at`, `updated_at`, `deleted_at`
+
+**ItemCompra** (items_compra):
+- `id`, `ticket_compra_id` (FK → ticket_compra.id), `descripcion` (VARCHAR 255), `cantidad` (NUMERIC(10,2), CHECK > 0), `unidad` (VARCHAR 50?), `precio_unitario_ref` (NUMERIC(14,2)?), `observaciones` (TEXT?), auditoría
+- INDEX: `ticket_compra_id`
+
+**Presupuesto** (presupuestos):
+- `id`, `ticket_compra_id` (FK → ticket_compra.id), `proveedor` (VARCHAR 255), `monto_total` (NUMERIC(14,2), CHECK >= 0), `moneda` (VARCHAR 10, DEFAULT 'ARS'), `fecha_cotizacion` (DATE), `seleccionado` (BOOLEAN DEFAULT FALSE), `observaciones` (TEXT?), auditoría
+- INDEX: `ticket_compra_id`
+
+**ArchivoPresupuesto** (archivos_presupuesto — join):
+- `archivo_id` (FK → archivos.id ON DELETE CASCADE), `presupuesto_id` (FK → presupuestos.id ON DELETE CASCADE), `created_at`
+- PK: (archivo_id, presupuesto_id). INDEX: `presupuesto_id`
+
+### Repos + Mappers implementados
+
+| Archivo | Puerto | Descripción |
+|---------|--------|-------------|
+| `ticket-compra.mapper.ts` | — | PrismaTicketCompra ↔ TicketCompraEntity |
+| `prisma-ticket-compra.repository.ts` | `ITicketCompraRepository` | findByTicketId, findById, save (upsert), delete (soft) |
+| `item-compra.mapper.ts` | — | PrismaItemCompra ↔ ItemCompraEntity. Convierte Decimal→number |
+| `prisma-item-compra.repository.ts` | `IItemCompraRepository` | findById, findByTicketCompraId (todos), findActiveByTicketCompraId (sin soft-deleted), save, delete |
+| `presupuesto.mapper.ts` | — | PrismaPresupuesto ↔ PresupuestoEntity. Convierte Decimal→number |
+| `prisma-presupuesto.repository.ts` | `IPresupuestoRepository` | findById, findByTicketCompraId (activos), findSelectedByTicketCompraId, save, delete |
+
+### Estado de verificaciones
+
+| Check | Resultado |
+|-------|-----------|
+| `pnpm test` (suite completa) | **831/831 verdes** (55 suites) — +22 respecto a baseline 809 de PR-12b |
+| `tsc --noEmit` | ✅ limpio |
+| `pnpm lint` | ✅ fitness rule verde |
+| Migración aplicada a `soporte_tenant_test` | ✅ |
+| `generate:tenant` | ✅ — 4 nuevos modelos disponibles en TenantPrismaClient |
+
+### Archivos creados/modificados en PR-13a
+
+```
+backend/
+├── prisma_tenant/
+│   ├── schema.prisma                            — +4 modelos, +back-relations en Ticket y Archivo
+│   └── migrations/
+│       └── 20260623130000_add_compras_schema/
+│           └── migration.sql                    — DDL compras: 4 tablas + índices + FKs + CHECKs
+├── openspec/changes/modelo-datos-tres-flujos/
+│   ├── apply-progress.md                        — sección PR-13a agregada
+│   └── tasks.md                                 — 4.C.1/2/3 marcadas [x]
+└── src/
+    └── compras/
+        └── infrastructure/
+            └── persistence/
+                └── prisma/
+                    ├── ticket-compra.mapper.ts
+                    ├── prisma-ticket-compra.repository.ts
+                    ├── item-compra.mapper.ts
+                    ├── prisma-item-compra.repository.ts
+                    ├── presupuesto.mapper.ts
+                    ├── prisma-presupuesto.repository.ts
+                    └── prisma-compras.integration.spec.ts    — 22 tests TDD GREEN
+```
+
+### Decisiones tomadas en PR-13a
+
+1. **Migration artesanal** (no generada por Prisma): consistente con el patrón del proyecto (PR-03, PR-08). Prisma 7 en adapter mode no puede generar migraciones via `migrate diff` sin URL en datasource. SQL escrito manualmente y validado contra el spec.
+
+2. **Decimal→number en mappers**: `ItemCompra.cantidad` y `Presupuesto.montoTotal` son `NUMERIC` en Postgres (Prisma los retorna como `Decimal`). `toDomain` usa `.toNumber()`. `toPersistence` pasa `number` directamente — Prisma acepta `number | string | Decimal` para campos Decimal en escritura. No se anotan tipos de retorno explícitos en `toPersistence` para evitar conflicto con el tipo model (que usa `Prisma.Decimal`).
+
+3. **`archivos_presupuesto` sin repo propio en esta entrega**: el spec define un join table igual que `archivos_ticket`. El puerto `IArchivoRepository` (tickets domain) tiene `linkToTicket`; el análogo `linkToPresupuesto` requeriría modificar ese puerto o crear uno nuevo en compras. Eso cae en 4.D (interface) donde se cablean los use cases que necesitan adjuntar archivos a presupuestos. El schema y las FKs ya están.
+
+4. **`findByTicketCompraId` en PresupuestoRepository retorna solo activos** (deleted_at IS NULL): a diferencia de ItemCompraRepository que tiene dos variantes (findByTicketCompraId=todos, findActiveByTicketCompraId=activos), el spec de IPresupuestoRepository define `findByTicketCompraId` como retornando activos. Se respeta el port existente.
+
+### Pendiente (sub-PRs siguientes)
+
+| Tarea | Sub-PR | Descripción |
+|-------|--------|-------------|
+| 4.D.1 | **PR-13b** | Controller + DTOs + wiring ComprasModule con DI tokens |
+| 4.D.2 | **PR-13b** | ComprasController, ItemsCompraController, PresupuestosController + ComprasModule |
+| 5.A–5.D | **PR-14** | Reparaciones (Edilicia) |
+| 6.A–6.D | **PR-15** | Equipos Informáticos |
 
