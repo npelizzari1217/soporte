@@ -1,9 +1,9 @@
 # Apply Progress — modelo-datos-tres-flujos
 
 > Última actualización: 2026-06-23
-> Rama activa: `feat/pr15b-reparaciones-interface`
-> PR actual: **verify-close** (WARNINGs del verify adversarial Fase 5 cerrados — commit 7913898)
-> Tests: **1110/1110** verdes
+> Rama activa: `feat/pr16a-equipos-domain`
+> PR actual: **PR-16a** (Fase 6.A — Dominio Equipos — commit 045a843)
+> Tests: **1161/1161** verdes
 
 ---
 
@@ -22,6 +22,65 @@
 ### Deuda de test-quality (no implementar sin decisión explícita)
 - **SUGGESTION-1**: Guard `=== 100` en `CompletarSubtareaUseCase` usa ruta DB→Decimal→number; sin type safety explícita en el guard path (no afecta comportamiento).
 - **SUGGESTION-2**: `EliminarUbicacionUseCase` deduplica tickets en memoria; sin integration test del caso dedup (ticket con 2 ubicaciones del árbol).
+
+---
+
+## PR-16a: Equipos — Dominio (6.A) — COMPLETADO
+
+### Tareas completadas
+
+| Tarea | Estado | Notas |
+|-------|--------|-------|
+| 6.A.1 | ✅ | 51 tests: EquipoInformatico (16), ComponenteEquipo (13), TipoComponente (8), TicketSoporte (14). TDD RED→GREEN. |
+| 6.A.2 | ✅ | 4 entidades + errors file. deactivate() ≠ softDelete(). equipo_id nullable. asignado_a_id soft ref. |
+| 6.A.3 | ✅ | 4 puertos con Symbol DI tokens. Zero imports de Prisma/NestJS. |
+
+### Estado de tests post PR-16a
+- **1161 tests, 76 suites, todos verdes** (`pnpm test`)
+- **0 errores de lint** (`pnpm lint`) — fitness rule verde
+- **TypeScript build limpio** (`tsc --noEmit`)
+- Tests base → PR-16a: 1110 → **1161** (+51 nuevos)
+
+### Archivos creados en PR-16a
+
+```
+backend/src/equipos/
+├── domain/
+│   ├── errors/
+│   │   └── equipos.errors.ts                              — TipoComponenteIdRequeridoError, EquipoInvalidoError, etc.
+│   ├── entities/
+│   │   ├── equipo-informatico.entity.ts + spec.ts          — 16 tests
+│   │   ├── componente-equipo.entity.ts + spec.ts           — 13 tests
+│   │   ├── tipos-componente.entity.ts + spec.ts            — 8 tests
+│   │   └── ticket-soporte.entity.ts + spec.ts              — 14 tests
+│   └── ports/
+│       ├── i-equipo-informatico.repository.ts              — + EQUIPO_INFORMATICO_REPOSITORY token
+│       ├── i-componente-equipo.repository.ts               — + COMPONENTE_EQUIPO_REPOSITORY token
+│       ├── i-tipos-componente.repository.ts                — + TIPOS_COMPONENTE_REPOSITORY token
+│       └── i-ticket-soporte.repository.ts                  — + TICKET_SOPORTE_REPOSITORY token
+```
+
+### Decisiones tomadas en PR-16a
+
+1. **deactivate() en EquipoInformatico**: setea `activo=false` SIN tocar `deleted_at`. Distinto de `softDelete()` (BaseEntity) que setea `deleted_at`. Mismo patrón que `UbicacionEntity.desactivar()`.
+2. **asignado_a_id como soft ref**: `EquipoInformaticoProps.asignadoAId: string | null`. El dominio NO valida existencia cross-DB — eso es responsabilidad de `AsignarEquipoUseCase` (application).
+3. **equipo_id nullable en TicketSoporte**: `TicketSoporteProps.equipoId: string | null`. Tickets de soporte pueden no referir a un equipo específico (ej. problema de red).
+4. **ComponenteEquipo.create() valida tipoComponenteId**: lanza `TipoComponenteIdRequeridoError` si el string está vacío. La validación de actividad del tipo ocurre en el use case.
+5. **TipoComponente.create() acepta activo opcional**: `create({ codigo, nombre, activo? })` con default `true`. Patrón igual a UbicacionEntity.
+6. **registrarSolucion() en TicketSoporte**: método de dominio para registrar la solución técnica al cerrar el ticket.
+7. **TicketSoporte.create()**: factory `create(ticketId, equipoId|null, id?)` con parámetros posicionales. Más legible que un props object para los pocos campos requeridos.
+
+### Estado global del cambio (post PR-16a)
+
+| Fase | Progreso |
+|------|---------|
+| Fase 0 — Scaffolding + Shared | COMPLETA |
+| Fase 1 — MASTER: clientes | COMPLETA |
+| Fase 2 — MASTER: auth+RBAC | COMPLETA |
+| Fase 3 — TENANT: tickets-core | COMPLETA |
+| Fase 4 — TENANT: Compras | COMPLETA |
+| Fase 5 — TENANT: Reparaciones | **COMPLETA + VERIFY PASS** |
+| Fase 6 — Equipos | **6.A COMPLETA** (PR-16a) — pendiente 6.B/6.C/6.D |
 
 ---
 
