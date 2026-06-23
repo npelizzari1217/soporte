@@ -48,7 +48,7 @@ tabla `ubicaciones` del módulo reparaciones, que vive en el mismo schema tenant
 |---------|--------------|-------------|----------------------|-------------|
 | `id` | `uuid` | NOT NULL | PK, UUIDv7 | — |
 | `nombre` | `varchar(255)` | NOT NULL | — | Nombre o identificador descriptivo (ej. "PC Contabilidad 03") |
-| `numero_serie` | `varchar(100)` | NULL | UNIQUE WHERE NOT NULL | Número de serie del fabricante |
+| `numero_serie` | `varchar(100)` | NULL | UNIQUE WHERE NOT NULL AND deleted_at IS NULL | Número de serie del fabricante (único solo entre equipos activos) |
 | `marca` | `varchar(100)` | NULL | — | Fabricante (ej. Dell, HP, Lenovo) |
 | `modelo` | `varchar(100)` | NULL | — | Modelo comercial |
 | `fecha_adquisicion` | `date` | NULL | — | Fecha de compra o incorporación al inventario |
@@ -60,7 +60,7 @@ tabla `ubicaciones` del módulo reparaciones, que vive en el mismo schema tenant
 | `deleted_at` | `timestamptz` | NULL | — | Ver patrón compartido |
 
 **Índices:**
-- `UNIQUE (numero_serie)` WHERE `numero_serie IS NOT NULL`
+- `UNIQUE (numero_serie)` WHERE `numero_serie IS NOT NULL AND deleted_at IS NULL` — unicidad solo entre equipos no eliminados (soft-delete libera el número de serie)
 - `INDEX (ubicacion_id)` WHERE `ubicacion_id IS NOT NULL`
 - `INDEX (asignado_a_id)` WHERE `asignado_a_id IS NOT NULL` — "equipos de este usuario"
 - `INDEX (activo)` WHERE `deleted_at IS NULL`
@@ -160,11 +160,12 @@ Puede ser NULL si el ticket de soporte no refiere a un equipo específico (ej. p
 
 ### Requirement: Inventario de equipos
 
-#### Scenario: Número de serie único (cuando provisto)
-**Given** existe un equipo con `numero_serie = 'SN-DELL-001'`  
+#### Scenario: Número de serie único entre equipos activos (cuando provisto)
+**Given** existe un equipo ACTIVO (`deleted_at IS NULL`) con `numero_serie = 'SN-DELL-001'`  
 **When** se intenta crear otro equipo con el mismo número de serie  
-**Then** la DB MUST rechazar con violación de UNIQUE  
-**And** el caso de uso MUST devolver HTTP 409
+**Then** la DB MUST rechazar con violación de UNIQUE (índice WHERE NOT NULL AND deleted_at IS NULL)  
+**And** el caso de uso MUST devolver HTTP 409  
+**Note**: la unicidad aplica SOLO entre equipos vivos. Si el equipo con 'SN-DELL-001' fue soft-deleted, un nuevo equipo puede usar el mismo número de serie (re-alta permitida).
 
 #### Scenario: Equipo sin número de serie es válido
 **Given** no todos los equipos tienen número de serie legible  
