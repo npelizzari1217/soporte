@@ -32,6 +32,17 @@ export interface ITicketEdiliciaRepository {
   save(ticketEdilicia: TicketEdiliciaEntity): Promise<void>;
 
   /**
+   * Retorna todos los satélites ticket_edilicia que referencian la ubicación indicada.
+   * Incluye tickets activos (deleted_at IS NULL). Excluye soft-deleted.
+   *
+   * Usado por GestionarUbicacionUseCase para registrar eventos en los tickets
+   * afectados cuando su ubicación es eliminada (soft delete).
+   *
+   * @param ubicacionId UUID de la ubicación.
+   */
+  findByUbicacionId(ubicacionId: string): Promise<TicketEdiliciaEntity[]>;
+
+  /**
    * Baja lógica del satélite (soft delete coherente con el ticket base).
    * NO elimina la fila — setea deleted_at.
    * Las subtareas permanecen con sus valores actuales (no se eliminan en cascada).

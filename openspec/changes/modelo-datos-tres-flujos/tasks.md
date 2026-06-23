@@ -372,25 +372,25 @@
 
 ### 5.B — Application
 
-**5.B.1** [P, dep: 5.A.5] **TEST →** Test de `CrearTicketEdilicioUseCase`: verifica creación atómica (`tickets` + `ticket_edilicia`); verifica rechazo si `ubicacion_id` inactiva o soft-deleted; verifica `porcentaje_avance = 0.00` inicial.
+**[x] 5.B.1** [P, dep: 5.A.5] **TEST →** Test de `CrearTicketEdilicioUseCase`: verifica creación atómica (`tickets` + `ticket_edilicia`); verifica rechazo si `ubicacion_id` inactiva o soft-deleted; verifica `porcentaje_avance = 0.00` inicial. **Completado PR-14b** (17 tests).
 - Ref spec: `[SPEC:reparaciones/Satélite obligatorio, ticket_edilicia requiere ubicacion válida]`
 
-**5.B.2** [S, dep: 5.B.1] **IMPL →** `reparaciones/application/use-cases/crear-ticket-edilicio.use-case.ts`.
+**[x] 5.B.2** [S, dep: 5.B.1] **IMPL →** `reparaciones/application/use-cases/crear-ticket-edilicio.use-case.ts`. **Completado PR-14b.**
 
-**5.B.3** [P, dep: 5.A.5] **TEST →** Test de `CrearSubtareaUseCase`: verifica INSERT subtarea + recalculo `porcentaje_avance` en misma tx + registro `AVANCE_EDILICIO` en `operaciones_ticket` con metadata `{ porcentaje_anterior, porcentaje_nuevo }`.
+**[x] 5.B.3** [P, dep: 5.A.5] **TEST →** Test de `CrearSubtareaUseCase`: verifica INSERT subtarea + recalculo `porcentaje_avance` en misma tx + registro `AVANCE_EDILICIO` en `operaciones_ticket` con metadata `{ porcentaje_anterior, porcentaje_nuevo }`. **Completado PR-14b** (17 tests).
 - Ref spec: `[SPEC:reparaciones/porcentaje_avance recalculado tras crear subtarea]`
 
-**5.B.4** [S, dep: 5.B.3] **IMPL →** `reparaciones/application/use-cases/crear-subtarea.use-case.ts`.
+**[x] 5.B.4** [S, dep: 5.B.3] **IMPL →** `reparaciones/application/use-cases/crear-subtarea.use-case.ts`. **Completado PR-14b.**
 
-**5.B.5** [P, dep: 5.A.5] **TEST →** Test de `CompletarSubtareaUseCase`: verifica `completada = TRUE`, `completada_en = now()`, `completada_por_id`; verifica recalculo avance + operacion `AVANCE_EDILICIO` en misma tx; verifica que al llegar a 100% el estado NO cambia automáticamente.
+**[x] 5.B.5** [P, dep: 5.A.5] **TEST →** Test de `CompletarSubtareaUseCase`: verifica `completada = TRUE`, `completada_en = now()`, `completada_por_id`; verifica recalculo avance + operacion `AVANCE_EDILICIO` en misma tx; verifica que al llegar a 100% el estado NO cambia automáticamente. **Completado PR-14b** (18 tests).
 - Ref spec: `[SPEC:reparaciones/porcentaje_avance recalculado tras completar, Guard de avance]`
 
-**5.B.6** [S, dep: 5.B.5] **IMPL →** `reparaciones/application/use-cases/completar-subtarea.use-case.ts`.
+**[x] 5.B.6** [S, dep: 5.B.5] **IMPL →** `reparaciones/application/use-cases/completar-subtarea.use-case.ts`. **Completado PR-14b.**
 
-**5.B.7** [P, dep: 5.A.5] **TEST →** Test de `GestionarUbicacionUseCase`: verifica soft delete en cascada lógica (padre → hijos); verifica que no puede referenciarse padre soft-deleted como padre_id; verifica registro de evento en `operaciones_ticket` de tickets afectados.
+**[x] 5.B.7** [P, dep: 5.A.5] **TEST →** Test de `GestionarUbicacionUseCase`: verifica soft delete en cascada lógica (padre → hijos); verifica que no puede referenciarse padre soft-deleted como padre_id; verifica registro de evento en `operaciones_ticket` de tickets afectados. **Completado PR-14b** (20 tests).
 - Ref spec: `[SPEC:reparaciones/Ubicaciones jerárquicas, Soft delete cascada]`
 
-**5.B.8** [S, dep: 5.B.7] **IMPL →** `reparaciones/application/use-cases/gestionar-ubicacion.use-case.ts`.
+**[x] 5.B.8** [S, dep: 5.B.7] **IMPL →** `reparaciones/application/use-cases/gestionar-ubicacion.use-case.ts`. **Completado PR-14b.**
 
 ### 5.C — Infrastructure + Schema
 
