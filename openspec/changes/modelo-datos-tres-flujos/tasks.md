@@ -358,17 +358,17 @@
 
 ### 5.A — Dominio
 
-**5.A.1** [P, dep: 3.A.3] **TEST →** Unit tests: `Ubicacion` (tree self-ref, `padre_id` nullable); `TicketEdilicia` (porcentaje_avance initial 0.00, CHECK 0-100); `SubtareaEdilicia` (completada default false, `completar()` setea `completada_en` + `completada_por_id`). Test de `AvanceCalculator`: verifica fórmula con 3 subtareas / 1 completada = 33.33; sin subtareas activas = 0; todas completadas = 100.00; NULLIF evita división por cero.
+**5.A.1** [x] ~~[P, dep: 3.A.3] **TEST →**~~ Unit tests TDD RED→GREEN (79 tests). `Ubicacion`, `TicketEdilicia`, `SubtareaEdilicia`, `AvanceCalculator`. **Completado PR-14a.**
 - Ref spec: `[SPEC:reparaciones/Tablas, Fórmula de porcentaje de avance]`
 
-**5.A.2** [S, dep: 5.A.1] **IMPL →** `reparaciones/domain/entities/`: `ubicacion.entity.ts`, `ticket-edilicia.entity.ts`, `subtarea-edilicia.entity.ts`. `reparaciones/domain/services/avance-calculator.ts`: función pura, testeable sin Prisma.
+**5.A.2** [x] ~~[S, dep: 5.A.1] **IMPL →**~~ `ubicacion.entity.ts`, `ticket-edilicia.entity.ts`, `subtarea-edilicia.entity.ts`, `avance-calculator.ts`. **Completado PR-14a.**
 
-**5.A.3** [P, dep: 5.A.2] **TEST →** Test de `EdiliciaStateMachine`: verifica que EN_PROGRESO→RESUELTO retorna `false` cuando `ctx.porcentajeAvance < 100`; verifica `true` cuando `=100`; verifica que completar última subtarea NO transiciona automáticamente (la transición es explícita).
+**5.A.3** [x] ~~[P, dep: 5.A.2] **TEST →**~~ Test TDD RED→GREEN `EdiliciaStateMachine`: guard EN_PROGRESO→RESUELTO (avance<100=false, =100=true), no auto-transición. **Completado PR-14a.**
 - Ref spec: `[SPEC:reparaciones/Guard de avance en transición a RESUELTO, Completar subtarea no transiciona automáticamente]`
 
-**5.A.4** [S, dep: 5.A.3] **IMPL →** `reparaciones/domain/state-machine/edilicia-state-machine.ts`: implementa `ITicketStateMachine`, registrado en factory para `codigo = 'EDILICIA'`.
+**5.A.4** [x] ~~[S, dep: 5.A.3] **IMPL →**~~ `edilicia-state-machine.ts`: implementa `ITicketStateMachine`. **Completado PR-14a.**
 
-**5.A.5** [S, dep: 5.A.4] **IMPL →** Puertos: `i-ubicacion.repository.ts`, `i-ticket-edilicia.repository.ts`, `i-subtarea-edilicia.repository.ts`.
+**5.A.5** [x] ~~[S, dep: 5.A.4] **IMPL →**~~ Puertos: `i-ubicacion.repository.ts`, `i-ticket-edilicia.repository.ts`, `i-subtarea-edilicia.repository.ts`. **Completado PR-14a.**
 
 ### 5.B — Application
 
