@@ -21,6 +21,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  ForbiddenException,
   HttpCode,
   HttpStatus,
   Post,
@@ -36,6 +37,7 @@ import { CurrentUser } from '../../infrastructure/guards/decorators';
 import { JwtPayload } from '../../domain/ports/i-token.service';
 import { LoginDto, LogoutDto, RefreshDto } from '../dtos/auth.dto';
 import {
+  ClienteInactivoError,
   CredencialesInvalidasError,
   TokenExpiradoError,
   TokenInvalidoError,
@@ -60,6 +62,9 @@ export class AuthController {
       const error = result.getError();
       if (error instanceof CredencialesInvalidasError) {
         throw new UnauthorizedException(error.message);
+      }
+      if (error instanceof ClienteInactivoError) {
+        throw new ForbiddenException(error.message);
       }
       throw new UnauthorizedException('Credenciales inválidas');
     }

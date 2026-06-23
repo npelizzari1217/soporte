@@ -12,10 +12,10 @@
  * Tarea: 2.D.3
  */
 
-import { BadRequestException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import { AuthController } from './auth.controller';
 import { Result } from '../../../shared/domain/result';
-import { CredencialesInvalidasError } from '../../domain/errors/auth.errors';
+import { ClienteInactivoError, CredencialesInvalidasError } from '../../domain/errors/auth.errors';
 
 // ─── Mocks ────────────────────────────────────────────────────────────────────
 
@@ -80,6 +80,14 @@ describe('AuthController', () => {
 
       await expect(controller.login({ email: 'u@test.com', password: 'wrong' })).rejects.toThrow(
         UnauthorizedException,
+      );
+    });
+
+    it('lanza ForbiddenException (403) cuando el cliente está inactivo', async () => {
+      loginUseCase.execute.mockResolvedValue(Result.fail(new ClienteInactivoError()));
+
+      await expect(controller.login({ email: 'u@test.com', password: 'secret' })).rejects.toThrow(
+        ForbiddenException,
       );
     });
   });
