@@ -5,7 +5,11 @@ import { EquipoInformaticoEntity } from '../../domain/entities/equipo-informatic
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function makeEquipo(id: string, numeroSerie: string | null, activo = true): EquipoInformaticoEntity {
+function makeEquipo(
+  id: string,
+  numeroSerie: string | null,
+  activo = true,
+): EquipoInformaticoEntity {
   return EquipoInformaticoEntity.reconstitute(
     {
       nombre: `Equipo ${id}`,
@@ -84,7 +88,16 @@ describe('EditarEquipoUseCase', () => {
 
     it('retorna fallo cuando el equipo fue soft-deleted', async () => {
       const equipoEliminado = EquipoInformaticoEntity.reconstitute(
-        { nombre: 'X', numeroSerie: null, marca: null, modelo: null, fechaAdquisicion: null, ubicacionId: null, asignadoAId: null, activo: true },
+        {
+          nombre: 'X',
+          numeroSerie: null,
+          marca: null,
+          modelo: null,
+          fechaAdquisicion: null,
+          ubicacionId: null,
+          asignadoAId: null,
+          activo: true,
+        },
         EQUIPO_ID,
         new Date(),
         new Date(),
@@ -103,7 +116,9 @@ describe('EditarEquipoUseCase', () => {
 
   describe('validación de unicidad de numero_serie', () => {
     it('retorna fallo (409) cuando otro equipo ya tiene el nuevo numero_serie', async () => {
-      mockEquipoRepo.findByNumeroSerie.mockResolvedValue(makeEquipo(OTRO_EQUIPO_ID, NUMERO_SERIE_NUEVO));
+      mockEquipoRepo.findByNumeroSerie.mockResolvedValue(
+        makeEquipo(OTRO_EQUIPO_ID, NUMERO_SERIE_NUEVO),
+      );
 
       const result = await useCase.execute(validDto);
 
@@ -113,7 +128,9 @@ describe('EditarEquipoUseCase', () => {
 
     it('permite conservar el mismo numero_serie (edit del mismo equipo)', async () => {
       // findByNumeroSerie retorna el MISMO equipo — no hay conflicto real
-      mockEquipoRepo.findByNumeroSerie.mockResolvedValue(makeEquipo(EQUIPO_ID, NUMERO_SERIE_ORIGINAL));
+      mockEquipoRepo.findByNumeroSerie.mockResolvedValue(
+        makeEquipo(EQUIPO_ID, NUMERO_SERIE_ORIGINAL),
+      );
 
       const result = await useCase.execute({ ...validDto, numeroSerie: NUMERO_SERIE_ORIGINAL });
 

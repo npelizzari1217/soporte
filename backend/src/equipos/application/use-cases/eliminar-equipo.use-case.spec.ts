@@ -5,11 +5,7 @@ import { EquipoInformaticoEntity } from '../../domain/entities/equipo-informatic
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function makeEquipo(
-  id: string,
-  activo: boolean,
-  deletedAt: Date | null,
-): EquipoInformaticoEntity {
+function makeEquipo(id: string, activo: boolean, deletedAt: Date | null): EquipoInformaticoEntity {
   return EquipoInformaticoEntity.reconstitute(
     {
       nombre: `Equipo ${id}`,

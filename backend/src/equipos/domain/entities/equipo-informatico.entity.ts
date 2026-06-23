@@ -179,7 +179,8 @@ export class EquipoInformaticoEntity extends BaseEntity<EquipoInformaticoProps> 
     if (campos.numeroSerie !== undefined) this.props.numeroSerie = campos.numeroSerie;
     if (campos.marca !== undefined) this.props.marca = campos.marca;
     if (campos.modelo !== undefined) this.props.modelo = campos.modelo;
-    if (campos.fechaAdquisicion !== undefined) this.props.fechaAdquisicion = campos.fechaAdquisicion;
+    if (campos.fechaAdquisicion !== undefined)
+      this.props.fechaAdquisicion = campos.fechaAdquisicion;
     if (campos.ubicacionId !== undefined) this.props.ubicacionId = campos.ubicacionId;
   }
 }

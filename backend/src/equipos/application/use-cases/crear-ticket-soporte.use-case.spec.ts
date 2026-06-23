@@ -1,7 +1,4 @@
-import {
-  CrearTicketSoporteUseCase,
-  CrearTicketSoporteDto,
-} from './crear-ticket-soporte.use-case';
+import { CrearTicketSoporteUseCase, CrearTicketSoporteDto } from './crear-ticket-soporte.use-case';
 import { ITicketRepository } from '../../../tickets/domain/ports/i-ticket.repository';
 import { IOperacionTicketRepository } from '../../../tickets/domain/ports/i-operacion-ticket.repository';
 import { IEstadoRepository } from '../../../tickets/domain/ports/i-estado.repository';
@@ -31,11 +28,7 @@ function makeEstado(id: string, codigo: string): EstadoEntity {
   );
 }
 
-function makeEquipo(
-  id: string,
-  activo: boolean,
-  deletedAt: Date | null,
-): EquipoInformaticoEntity {
+function makeEquipo(id: string, activo: boolean, deletedAt: Date | null): EquipoInformaticoEntity {
   return EquipoInformaticoEntity.reconstitute(
     {
       nombre: 'PC Test',

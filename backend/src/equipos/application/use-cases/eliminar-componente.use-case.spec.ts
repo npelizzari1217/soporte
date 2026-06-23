@@ -1,17 +1,11 @@
-import {
-  EliminarComponenteUseCase,
-  EliminarComponenteDto,
-} from './eliminar-componente.use-case';
+import { EliminarComponenteUseCase, EliminarComponenteDto } from './eliminar-componente.use-case';
 import { IComponenteEquipoRepository } from '../../domain/ports/i-componente-equipo.repository';
 import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { ComponenteEquipoEntity } from '../../domain/entities/componente-equipo.entity';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function makeComponente(
-  id: string,
-  deletedAt: Date | null = null,
-): ComponenteEquipoEntity {
+function makeComponente(id: string, deletedAt: Date | null = null): ComponenteEquipoEntity {
   return ComponenteEquipoEntity.reconstitute(
     {
       equipoId: 'eq-001',

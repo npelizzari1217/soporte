@@ -7,7 +7,6 @@ import { EquipoInformaticoEntity } from '../../domain/entities/equipo-informatic
 import { TipoComponenteEntity } from '../../domain/entities/tipos-componente.entity';
 import { ComponenteEquipoEntity } from '../../domain/entities/componente-equipo.entity';
 
-
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function makeEquipo(id: string, deletedAt: Date | null = null): EquipoInformaticoEntity {
@@ -88,7 +87,9 @@ describe('AgregarComponenteUseCase', () => {
     jest.clearAllMocks();
 
     mockEquipoRepo.findById.mockResolvedValue(makeEquipo(EQUIPO_ID));
-    mockTiposComponenteRepo.findById.mockResolvedValue(makeTipoComponente(TIPO_COMPONENTE_ID, true));
+    mockTiposComponenteRepo.findById.mockResolvedValue(
+      makeTipoComponente(TIPO_COMPONENTE_ID, true),
+    );
     mockComponenteRepo.save.mockResolvedValue(undefined);
     (mockTxRunner.run as jest.Mock).mockImplementation((fn: () => Promise<unknown>) => fn());
 
