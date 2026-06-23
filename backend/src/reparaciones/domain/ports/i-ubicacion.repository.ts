@@ -8,7 +8,7 @@ import { UbicacionEntity } from '../entities/ubicacion.entity';
  * El repositorio opera dentro del tenant activo (client desde TenantContext).
  *
  * Ref spec: [SPEC:reparaciones/Tabla ubicaciones, Ubicaciones jerárquicas]
- * Tarea: 5.A.5
+ * Tarea: 5.A.5 + PR-15a (findSubtree)
  */
 export interface IUbicacionRepository {
   /**
@@ -24,12 +24,20 @@ export interface IUbicacionRepository {
   findAllActive(): Promise<UbicacionEntity[]>;
 
   /**
-   * Retorna los hijos directos de una ubicación padre.
-   * Incluye tanto activas como inactivas (no soft-deleted).
+   * Retorna el subárbol completo a partir de la ubicación indicada:
+   * incluye la raíz misma + todos sus descendientes no soft-deleted (ANY activo).
    *
-   * @param padreId UUID del nodo padre.
+   * Implementado con CTE recursiva (WITH RECURSIVE) dentro de la transacción
+   * activa, garantizando atomicidad total de read + delete.
+   *
+   * Usado por EliminarUbicacionUseCase para obtener el árbol completo
+   * de ubicaciones a soft-deletear en una sola query dentro de la tx.
+   *
+   * @param ubicacionId UUID del nodo raíz del subárbol.
+   * @returns Array [raíz, ...descendientes] en orden BFS. Vacío si el nodo
+   *          no existe o ya fue soft-deleted.
    */
-  findByPadreId(padreId: string): Promise<UbicacionEntity[]>;
+  findSubtree(ubicacionId: string): Promise<UbicacionEntity[]>;
 
   /**
    * Persiste la ubicación (upsert: crea si no existe, actualiza si existe).
@@ -39,7 +47,8 @@ export interface IUbicacionRepository {
   /**
    * Baja lógica de la ubicación (soft delete).
    * NO elimina la fila — setea deleted_at.
-   * La propagación a hijos es responsabilidad del use case (cascada lógica).
+   * La propagación a hijos es responsabilidad del use case (EliminarUbicacionUseCase
+   * usa findSubtree + delete en loop dentro de la misma transacción).
    */
   delete(id: string): Promise<void>;
 }

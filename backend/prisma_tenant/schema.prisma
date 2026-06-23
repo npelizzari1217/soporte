@@ -180,6 +180,7 @@ model Ticket {
   operaciones    OperacionTicket[]
   archivosTicket ArchivoTicket[]
   ticketCompra   TicketCompra?
+  ticketEdilicia TicketEdilicia?
 
   @@index([tipoId])
   @@index([estadoId])
@@ -390,6 +391,102 @@ model Presupuesto {
 
   @@index([ticketCompraId])
   @@map("presupuestos")
+}
+
+// ─── REPARACIONES — Fase 5 ────────────────────────────────────────────────────
+//
+// Módulo de Reparaciones Edilicias: ubicaciones (árbol jerárquico), ticket_edilicia
+// (satélite 1:1 con tickets), subtareas_edilicia (pasos de la reparación).
+//
+// ubicaciones: árbol N niveles via self-reference padre_id (self-join).
+// ticket_edilicia: satélite 1:1 de tickets con tipo.codigo='EDILICIA'.
+//   personal_asignado_id: soft ref → master.usuarios.id (sin FK cross-DB).
+//   porcentaje_avance: NUMERIC(5,2), CHECK 0-100. Recalculado por la app.
+// subtareas_edilicia: pasos de la reparación.
+//   completada_por_id: soft ref → master.usuarios.id.
+//
+// Constraints especiales (no expresables en Prisma schema):
+//   - ticket_edilicia.porcentaje_avance: CHECK (>= 0 AND <= 100)
+//
+// Ref spec: SPEC:reparaciones/Tablas TENANT, PR-15a
+
+// ─── UBICACIONES (árbol jerárquico de locaciones físicas) ─────────────────────
+//
+// padre_id nullable: NULL = nodo raíz, NOT NULL = sub-ubicación.
+// Self-reference via relación named "UbicacionHijos".
+// Partial indexes en padre_id (WHERE NOT NULL) y activo (WHERE deleted_at IS NULL)
+// se agregan como raw SQL en la migración.
+
+model Ubicacion {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nombre      String    @db.VarChar(255)
+  descripcion String?   @db.Text
+  /// NULL = nodo raíz; NOT NULL = sub-ubicación. FK → ubicaciones.id (self-ref).
+  padreId     String?   @map("padre_id") @db.Uuid
+  activo      Boolean   @default(true)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz
+
+  padre Ubicacion?  @relation("UbicacionHijos", fields: [padreId], references: [id])
+  hijos Ubicacion[] @relation("UbicacionHijos")
+
+  ticketsEdilicia TicketEdilicia[]
+
+  @@index([padreId]) // partial WHERE padre_id IS NOT NULL — ver migration SQL
+  @@index([activo])  // partial WHERE deleted_at IS NULL — ver migration SQL
+  @@map("ubicaciones")
+}
+
+// ─── TICKET_EDILICIA (satélite 1:1 del ticket para el flujo EDILICIA) ─────────
+//
+// porcentaje_avance: NUMERIC(5,2). CHECK (>= 0 AND <= 100) en migration SQL.
+// personal_asignado_id: soft ref → master.usuarios.id. Sin FK cross-DB.
+
+model TicketEdilicia {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ticketId           String    @unique @map("ticket_id") @db.Uuid
+  ubicacionId        String    @map("ubicacion_id") @db.Uuid
+  /// Soft ref → master.usuarios.id. NULL hasta asignación de personal específico.
+  personalAsignadoId String?   @map("personal_asignado_id") @db.Uuid
+  /// CHECK (porcentaje_avance >= 0 AND porcentaje_avance <= 100) — enforced via migration SQL.
+  porcentajeAvance   Decimal   @default(0) @map("porcentaje_avance") @db.Decimal(5, 2)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt          DateTime? @map("deleted_at") @db.Timestamptz
+
+  ticket    Ticket    @relation(fields: [ticketId], references: [id])
+  ubicacion Ubicacion @relation(fields: [ubicacionId], references: [id])
+
+  subtareas SubtareaEdilicia[]
+
+  @@index([ubicacionId])
+  @@index([porcentajeAvance])
+  @@map("ticket_edilicia")
+}
+
+// ─── SUBTAREAS_EDILICIA ────────────────────────────────────────────────────────
+//
+// completada_por_id: soft ref → master.usuarios.id. Sin FK cross-DB.
+// orden: para visualización ordenada en UI. Ordenar por orden ASC, created_at ASC.
+
+model SubtareaEdilicia {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ticketEdiliciaId String    @map("ticket_edilicia_id") @db.Uuid
+  descripcion      String    @db.VarChar(255)
+  completada       Boolean   @default(false)
+  completadaEn     DateTime? @map("completada_en") @db.Timestamptz
+  /// Soft ref → master.usuarios.id. NULL mientras no esté completada.
+  completadaPorId  String?   @map("completada_por_id") @db.Uuid
+  orden            Int       @default(0)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt        DateTime? @map("deleted_at") @db.Timestamptz
+
+  ticketEdilicia TicketEdilicia @relation(fields: [ticketEdiliciaId], references: [id])
+
+  @@index([ticketEdiliciaId])
+  @@map("subtareas_edilicia")
 }
 
 // ─── ARCHIVOS_PRESUPUESTO (join N:M archivos ↔ presupuestos) ─────────────────

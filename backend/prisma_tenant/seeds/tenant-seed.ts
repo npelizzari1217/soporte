@@ -105,19 +105,24 @@ INSERT INTO tipos_ticket (id, codigo, nombre) VALUES
 ON CONFLICT (codigo) DO NOTHING;
 `;
 
-// ─ tipo_operacion (5 tipos — spec tickets-core tabla tipo_operacion) ───────────
+// ─ tipo_operacion (6 tipos — spec tickets-core + reparaciones PR-15a) ──────────
 //
-// Codigos: SPEC-EXPLICIT.
+// Codigos: SPEC-EXPLICIT (5 base) + UBICACION_ELIMINADA (Reparaciones, PR-15a).
 // Nombres: INFERRED.
 // UUIDs: prefijo f0.
 //
+// UBICACION_ELIMINADA (f0...006): registrado en operaciones_ticket cuando una
+// ubicación es eliminada (soft delete); el ticket edilicio puede requerir
+// reasignación de ubicación. Resuelve deuda TODO(PR-15a) de EliminarUbicacionUseCase.
+//
 const SEED_TIPO_OPERACION_SQL = `
 INSERT INTO tipo_operacion (id, codigo, nombre) VALUES
-  ('f0000000-0000-4000-f000-000000000001', 'CAMBIO_ESTADO',   'Cambio de estado'),
-  ('f0000000-0000-4000-f000-000000000002', 'COMENTARIO',      'Comentario'),
-  ('f0000000-0000-4000-f000-000000000003', 'ASIGNACION',      'Asignación'),
-  ('f0000000-0000-4000-f000-000000000004', 'ADJUNTO',         'Adjunto'),
-  ('f0000000-0000-4000-f000-000000000005', 'AVANCE_EDILICIO', 'Avance edilicio')
+  ('f0000000-0000-4000-f000-000000000001', 'CAMBIO_ESTADO',      'Cambio de estado'),
+  ('f0000000-0000-4000-f000-000000000002', 'COMENTARIO',         'Comentario'),
+  ('f0000000-0000-4000-f000-000000000003', 'ASIGNACION',         'Asignación'),
+  ('f0000000-0000-4000-f000-000000000004', 'ADJUNTO',            'Adjunto'),
+  ('f0000000-0000-4000-f000-000000000005', 'AVANCE_EDILICIO',    'Avance edilicio'),
+  ('f0000000-0000-4000-f000-000000000006', 'UBICACION_ELIMINADA','Ubicación eliminada')
 ON CONFLICT (codigo) DO NOTHING;
 `;
 
@@ -136,7 +141,7 @@ async function seed(): Promise<void> {
   console.log('  tipos_ticket    → OK (SOPORTE, COMPRAS, EDILICIA)');
 
   await pool.query(SEED_TIPO_OPERACION_SQL);
-  console.log('  tipo_operacion  → OK (5 tipos de evento)');
+  console.log('  tipo_operacion  → OK (6 tipos de evento, incluye UBICACION_ELIMINADA)');
 
   console.log('Seed completado. Todos los catálogos son idempotentes (ON CONFLICT DO NOTHING).');
 }

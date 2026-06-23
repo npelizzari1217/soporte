@@ -120,7 +120,7 @@ describe('CrearTicketEdilicioUseCase', () => {
   const mockUbicacionRepo = {
     findById: jest.fn(),
     findAllActive: jest.fn(),
-    findByPadreId: jest.fn(),
+    findSubtree: jest.fn(),
     save: jest.fn(),
     delete: jest.fn(),
   } satisfies jest.Mocked<IUbicacionRepository>;

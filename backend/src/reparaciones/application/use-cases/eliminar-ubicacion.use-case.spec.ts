@@ -54,7 +54,7 @@ describe('EliminarUbicacionUseCase', () => {
   const mockUbicacionRepo = {
     findById: jest.fn(),
     findAllActive: jest.fn(),
-    findByPadreId: jest.fn(),
+    findSubtree: jest.fn(),
     save: jest.fn<Promise<void>, [UbicacionEntity]>(),
     delete: jest.fn(),
   } satisfies jest.Mocked<IUbicacionRepository>;
@@ -83,13 +83,14 @@ describe('EliminarUbicacionUseCase', () => {
   beforeEach(() => {
     jest.clearAllMocks();
 
-    // Default mocks
+    // Default mocks — cubrimos el happy path base para simplificar tests individuales.
+    // findSubtree retorna [raíz] por defecto (sin descendientes).
     mockTipoOperacionRepo.findIdByCodigo.mockResolvedValue(TIPO_OPERACION_UBICACION_ELIMINADA_ID);
     mockUbicacionRepo.save.mockResolvedValue(undefined);
     mockUbicacionRepo.delete.mockResolvedValue(undefined);
     mockOperacionRepo.save.mockResolvedValue(undefined);
     mockTicketEdiliciaRepo.findByUbicacionId.mockResolvedValue([]);
-    mockUbicacionRepo.findByPadreId.mockResolvedValue([]);
+    mockUbicacionRepo.findSubtree.mockResolvedValue([makeUbicacion(PADRE_ID)]);
     (mockTxRunner.run as jest.Mock).mockImplementation((fn: () => Promise<unknown>) => fn());
 
     useCase = new EliminarUbicacionUseCase(
@@ -131,30 +132,34 @@ describe('EliminarUbicacionUseCase', () => {
 
     it('soft-deleta el padre al eliminar', async () => {
       mockUbicacionRepo.findById.mockResolvedValue(makeUbicacion(PADRE_ID));
-      mockUbicacionRepo.findByPadreId.mockResolvedValue([]);
+      // findSubtree del beforeEach: [makeUbicacion(PADRE_ID)] — solo la raíz
 
       await useCase.execute(eliminarDto);
 
       expect(mockUbicacionRepo.delete).toHaveBeenCalledWith(PADRE_ID);
     });
 
-    it('soft-deleta los hijos directos del padre', async () => {
+    it('soft-deleta los hijos directos del padre (CTE retorna raíz + hijo)', async () => {
       mockUbicacionRepo.findById.mockResolvedValue(makeUbicacion(PADRE_ID));
-      mockUbicacionRepo.findByPadreId
-        .mockResolvedValueOnce([makeUbicacion(HIJO_ID, PADRE_ID)]) // hijos del padre
-        .mockResolvedValueOnce([]); // hijos del hijo (hoja)
+      // CTE recursiva devuelve el árbol completo en una sola llamada
+      mockUbicacionRepo.findSubtree.mockResolvedValue([
+        makeUbicacion(PADRE_ID),
+        makeUbicacion(HIJO_ID, PADRE_ID),
+      ]);
 
       await useCase.execute(eliminarDto);
 
       expect(mockUbicacionRepo.delete).toHaveBeenCalledWith(HIJO_ID);
     });
 
-    it('soft-deleta los nietos (cascada recursiva de 2 niveles)', async () => {
+    it('soft-deleta los nietos (cascada recursiva de 2 niveles via CTE)', async () => {
       mockUbicacionRepo.findById.mockResolvedValue(makeUbicacion(PADRE_ID));
-      mockUbicacionRepo.findByPadreId
-        .mockResolvedValueOnce([makeUbicacion(HIJO_ID, PADRE_ID)]) // hijos del padre
-        .mockResolvedValueOnce([makeUbicacion(NIETO_ID, HIJO_ID)]) // hijos del hijo
-        .mockResolvedValueOnce([]); // hijos del nieto (hoja)
+      // CTE devuelve raíz + hijo + nieto en una sola query
+      mockUbicacionRepo.findSubtree.mockResolvedValue([
+        makeUbicacion(PADRE_ID),
+        makeUbicacion(HIJO_ID, PADRE_ID),
+        makeUbicacion(NIETO_ID, HIJO_ID),
+      ]);
 
       await useCase.execute(eliminarDto);
 
@@ -163,9 +168,9 @@ describe('EliminarUbicacionUseCase', () => {
       expect(mockUbicacionRepo.delete).toHaveBeenCalledWith(NIETO_ID);
     });
 
-    it('toda la operacion ocurre dentro de la transacción', async () => {
+    it('toda la operacion ocurre dentro de la transacción (findSubtree + delete + operaciones)', async () => {
       mockUbicacionRepo.findById.mockResolvedValue(makeUbicacion(PADRE_ID));
-      mockUbicacionRepo.findByPadreId.mockResolvedValue([]);
+      // default findSubtree del beforeEach
 
       await useCase.execute(eliminarDto);
 
@@ -183,8 +188,7 @@ describe('EliminarUbicacionUseCase', () => {
 
     it('NO registra evento cuando no hay tickets que referencien la ubicacion', async () => {
       mockUbicacionRepo.findById.mockResolvedValue(makeUbicacion(PADRE_ID));
-      mockUbicacionRepo.findByPadreId.mockResolvedValue([]);
-      mockTicketEdiliciaRepo.findByUbicacionId.mockResolvedValue([]);
+      // default: findSubtree=[raíz], findByUbicacionId=[]
 
       await useCase.execute(eliminarDto);
 
@@ -193,7 +197,7 @@ describe('EliminarUbicacionUseCase', () => {
 
     it('registra un evento UBICACION_ELIMINADA por cada ticket que referencia la ubicacion', async () => {
       mockUbicacionRepo.findById.mockResolvedValue(makeUbicacion(PADRE_ID));
-      mockUbicacionRepo.findByPadreId.mockResolvedValue([]);
+      // default findSubtree: [PADRE] (solo la raíz)
       const ticket1 = makeTicketEdilicia('te-001', 'ticket-001', PADRE_ID);
       const ticket2 = makeTicketEdilicia('te-002', 'ticket-002', PADRE_ID);
       mockTicketEdiliciaRepo.findByUbicacionId.mockResolvedValue([ticket1, ticket2]);
@@ -205,9 +209,12 @@ describe('EliminarUbicacionUseCase', () => {
 
     it('registra eventos para tickets que referencian ubicaciones hijas también', async () => {
       mockUbicacionRepo.findById.mockResolvedValue(makeUbicacion(PADRE_ID));
-      mockUbicacionRepo.findByPadreId
-        .mockResolvedValueOnce([makeUbicacion(HIJO_ID, PADRE_ID)])
-        .mockResolvedValueOnce([]);
+      // CTE devuelve raíz + hijo
+      mockUbicacionRepo.findSubtree.mockResolvedValue([
+        makeUbicacion(PADRE_ID),
+        makeUbicacion(HIJO_ID, PADRE_ID),
+      ]);
+      // findByUbicacionId se llama una vez por cada nodo del subárbol
       mockTicketEdiliciaRepo.findByUbicacionId
         .mockResolvedValueOnce([makeTicketEdilicia('te-001', 'ticket-001', PADRE_ID)])
         .mockResolvedValueOnce([makeTicketEdilicia('te-002', 'ticket-002', HIJO_ID)]);
@@ -220,9 +227,10 @@ describe('EliminarUbicacionUseCase', () => {
     it('no registra eventos duplicados cuando el mismo ticket referencia padre e hijo', async () => {
       // ticket-001 aparece en la ubicacion padre Y en la hija → solo 1 operación
       mockUbicacionRepo.findById.mockResolvedValue(makeUbicacion(PADRE_ID));
-      mockUbicacionRepo.findByPadreId
-        .mockResolvedValueOnce([makeUbicacion(HIJO_ID, PADRE_ID)])
-        .mockResolvedValueOnce([]);
+      mockUbicacionRepo.findSubtree.mockResolvedValue([
+        makeUbicacion(PADRE_ID),
+        makeUbicacion(HIJO_ID, PADRE_ID),
+      ]);
       mockTicketEdiliciaRepo.findByUbicacionId
         .mockResolvedValueOnce([makeTicketEdilicia('te-001', 'ticket-001', PADRE_ID)])
         .mockResolvedValueOnce([makeTicketEdilicia('te-001b', 'ticket-001', HIJO_ID)]); // mismo ticketId
@@ -234,7 +242,6 @@ describe('EliminarUbicacionUseCase', () => {
 
     it('las operaciones usan el tipo UBICACION_ELIMINADA', async () => {
       mockUbicacionRepo.findById.mockResolvedValue(makeUbicacion(PADRE_ID));
-      mockUbicacionRepo.findByPadreId.mockResolvedValue([]);
       mockTicketEdiliciaRepo.findByUbicacionId.mockResolvedValue([
         makeTicketEdilicia('te-001', 'ticket-001', PADRE_ID),
       ]);
@@ -250,7 +257,6 @@ describe('EliminarUbicacionUseCase', () => {
 
     it('las operaciones tienen el ticketId del ticket afectado', async () => {
       mockUbicacionRepo.findById.mockResolvedValue(makeUbicacion(PADRE_ID));
-      mockUbicacionRepo.findByPadreId.mockResolvedValue([]);
       mockTicketEdiliciaRepo.findByUbicacionId.mockResolvedValue([
         makeTicketEdilicia('te-001', 'ticket-base-001', PADRE_ID),
       ]);
@@ -265,7 +271,6 @@ describe('EliminarUbicacionUseCase', () => {
 
     it('retorna fallo cuando el tipo UBICACION_ELIMINADA no está en el catálogo', async () => {
       mockUbicacionRepo.findById.mockResolvedValue(makeUbicacion(PADRE_ID));
-      mockUbicacionRepo.findByPadreId.mockResolvedValue([]);
       mockTipoOperacionRepo.findIdByCodigo.mockResolvedValue(null);
 
       const result = await useCase.execute(eliminarDto);
@@ -280,7 +285,6 @@ describe('EliminarUbicacionUseCase', () => {
   describe('happy path', () => {
     it('retorna Result.ok cuando la ubicacion existe', async () => {
       mockUbicacionRepo.findById.mockResolvedValue(makeUbicacion(PADRE_ID));
-      mockUbicacionRepo.findByPadreId.mockResolvedValue([]);
 
       const result = await useCase.execute({ ubicacionId: PADRE_ID, autorId: AUTOR_ID });
 
