@@ -268,10 +268,12 @@
 
 ### 3.D — Infrastructure + Schema TENANT
 
-**3.D.1** [P, dep: 3.A.3] **TEST →** Integration test de `PrismaTicketRepository`: sobre DB tenant de test; verifica `save` con UUIDv7, `findById`, `findByNumero`, soft delete; verifica que `PrismaService` no se llama directamente (usa TenantContext).
+**[x] 3.D.1** [P, dep: 3.A.3] **TEST →** Integration test de `PrismaTicketRepository`: sobre DB tenant de test; verifica `save` con UUIDv7, `findById`, `findByNumero`, soft delete; verifica que `PrismaService` no se llama directamente (usa TenantContext).
 - Ref spec: `[SPEC:tickets-core/requirements]`; `[SPEC:_shared-audit-pattern/Soft delete]`
+- **Completado PR-11c:** 38 integration tests TDD GREEN. Suite: `prisma-tickets.integration.spec.ts`. Cubre los 7 repos tenant + UsuarioMasterChecker. Patrón `withTenant<T>(fn)` para simular TenantContext sin NestJS DI.
 
-**3.D.2** [S, dep: 3.D.1, 0.C.4] **IMPL →** `tickets/infrastructure/persistence/prisma/`: `prisma-ticket.repository.ts` + `ticket.mapper.ts`, `prisma-operacion-ticket.repository.ts` + mapper, `prisma-archivo.repository.ts` + mapper, `prisma-estado.repository.ts`, `prisma-usuario-tipos-ticket.repository.ts`. Todos obtienen client via `TenantContext`.
+**[x] 3.D.2** [S, dep: 3.D.1, 0.C.4] **IMPL →** `tickets/infrastructure/persistence/prisma/`: `prisma-ticket.repository.ts` + `ticket.mapper.ts`, `prisma-operacion-ticket.repository.ts` + mapper, `prisma-archivo.repository.ts` + mapper, `prisma-estado.repository.ts`, `prisma-usuario-tipos-ticket.repository.ts`. Todos obtienen client via `TenantContext`.
+- **Completado PR-11c:** 9 archivos implementados (5 repos + 4 mappers + UsuarioMasterChecker). PrismaTipoTicketRepository + PrismaTipoOperacionRepository también incluidos. Fitness rule verde.
 
 **[x] 3.D.3** [P, dep: 0.A.2] **SCHEMA:** `prisma_tenant/schema.prisma` — modelos: `Estado`, `Prioridad`, `TipoTicket`, `TipoOperacion`, `CicloCliente`, `Ticket`, `OperacionTicket`, `Archivo`, `ArchivoTicket`, `ArchivoOperacion`, `UsuarioTiposTicket`. Con todos los campos, FK, índices, CHECK constraints del spec.
 - Ref spec: `[SPEC:tickets-core/Tablas TENANT]`

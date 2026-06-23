@@ -1183,6 +1183,100 @@ backend/src/
 
 ---
 
+---
+
+## PR-11c: tickets-core infra repos Prisma + mappers (3.D.1 y 3.D.2) — COMPLETADO
+
+> Rama: `feat/pr11c-tickets-infra`
+> Última actualización: 2026-06-23
+
+### Tareas completadas
+
+| Tarea | Estado | Notas |
+|-------|--------|-------|
+| 3.D.1 | ✅ | 38 integration tests TDD RED→GREEN. Suite: `prisma-tickets.integration.spec.ts`. Cubre 7 repos tenant + UsuarioMasterChecker. |
+| 3.D.2 | ✅ | 9 archivos: 7 repos + 4 mappers + UsuarioMasterChecker. Todos los repos tenant usan TenantContext. Fitness rule verde. |
+
+### Repos implementados
+
+| Clase | Puerto | Notas |
+|-------|--------|-------|
+| `PrismaTicketRepository` | `ITicketRepository` | save, findById, findByNumero, findLastSecuencia, soft-delete |
+| `PrismaOperacionTicketRepository` | `IOperacionTicketRepository` | save (INSERT-only, timeline inmutable), findByTicketId |
+| `PrismaArchivoRepository` | `IArchivoRepository` | save (INSERT-only), findById, findByStorageKey, findByTicketId, linkToTicket, soft-delete |
+| `PrismaEstadoRepository` | `IEstadoRepository` | findById, findByCodigo, findAllActive, findAll (read-only catálogo) |
+| `PrismaUsuarioTiposTicketRepository` | `IUsuarioTiposTicketRepository` | assign (createMany skipDuplicates), isUserEligibleForType, revoke (deleteMany) |
+| `PrismaTipoTicketRepository` | `ITipoTicketRepository` | findCodigoById |
+| `PrismaTipoOperacionRepository` | `ITipoOperacionRepository` | findIdByCodigo |
+| `UsuarioMasterChecker` | `IUsuarioMasterChecker` | existeEnTenant, estaActivoEnTenant — usa PrismaService (master), NO TenantContext |
+
+### Mappers implementados
+
+| Clase | Notas |
+|-------|-------|
+| `TicketMapper` | toDomain + toPersistence. UUIDs + Date + campos nullables. |
+| `OperacionTicketMapper` | toDomain (cast metadata: Json → Record) + toPersistence (Record<string,any> por Prisma Json? quirk). |
+| `ArchivoMapper` | toDomain + toPersistence. BigInt tamano_bytes sin conversión. |
+| `EstadoMapper` | toDomain únicamente (catálogo read-only). |
+
+### Tests de integración (38 en total)
+
+| Describe | Tests | Cobertura |
+|----------|-------|-----------|
+| PrismaTicketRepository | 8 | save, findById, findByNumero, findByNumero null, findLastSecuencia, findLastSecuencia-multiple, findLastSecuencia-cero, soft-delete |
+| PrismaOperacionTicketRepository | 3 | save, findByTicketId multiple, findByTicketId excluye soft-deleted |
+| PrismaArchivoRepository | 6 | save, findById, findByStorageKey, findByTicketId via join, linkToTicket, soft-delete (no borra DB) |
+| PrismaEstadoRepository | 4 | findById, findByCodigo, findAllActive (excluye soft-deleted), findAll |
+| PrismaUsuarioTiposTicketRepository | 4 | assign, assign idempotente, isUserEligibleForType, revoke |
+| PrismaTipoTicketRepository | 2 | findCodigoById, findCodigoById null |
+| PrismaTipoOperacionRepository | 2 | findIdByCodigo, findIdByCodigo null |
+| UsuarioMasterChecker (master DB) | 4 | existeEnTenant true/false, estaActivoEnTenant true/false(inactivo) |
+| Architectural invariants | 5 | Fitness: no PrismaService en repos tenant; constructors toman TenantContext; UsuarioMasterChecker toma PrismaService |
+
+### Estado de verificaciones
+
+| Check | Resultado |
+|-------|-----------|
+| `pnpm test` | **626 tests, 42 suites, todos verdes** (+38 nuevos integration) |
+| `tsc --noEmit` | ✅ limpio |
+| `pnpm lint` | ✅ limpio — fitness rule verde, sin unused directives |
+| Fitness rule | ✅ Prisma imports solo en `infrastructure/` |
+
+### Archivos creados en PR-11c
+
+```
+backend/src/tickets/infrastructure/persistence/prisma/
+├── prisma-tickets.integration.spec.ts     — 38 integration tests TDD (3.D.1)
+├── ticket.mapper.ts                       — TicketMapper toDomain + toPersistence
+├── operacion-ticket.mapper.ts             — OperacionTicketMapper (Record<string,any> por Json? quirk)
+├── archivo.mapper.ts                      — ArchivoMapper (BigInt nativo, reconstitute)
+├── estado.mapper.ts                       — EstadoMapper toDomain (read-only)
+├── prisma-ticket.repository.ts            — PrismaTicketRepository
+├── prisma-operacion-ticket.repository.ts  — PrismaOperacionTicketRepository
+├── prisma-archivo.repository.ts           — PrismaArchivoRepository
+├── prisma-estado.repository.ts            — PrismaEstadoRepository
+├── prisma-usuario-tipos-ticket.repository.ts — PrismaUsuarioTiposTicketRepository
+├── prisma-tipo-ticket.repository.ts       — PrismaTipoTicketRepository
+├── prisma-tipo-operacion.repository.ts    — PrismaTipoOperacionRepository
+└── usuario-master.checker.ts             — UsuarioMasterChecker (master DB via PrismaService)
+```
+
+### Decisiones técnicas PR-11c
+
+1. **`OperacionTicketMapper.toPersistence()` retorna `Record<string, any>`**: Prisma 7 tipo `Json?` requiere `Prisma.DbNull` sentinel para SQL NULL en entradas tipadas. En runtime `null` → SQL NULL funciona; el tipo formal no lo acepta. Se usa `Record<string, any>` + `data as any` en el repo para eludir la restricción sin perder seguridad en dominio.
+
+2. **`findLastSecuencia` usa `contains + orderBy string`**: filtra tickets cuyo `numero` contiene `-{anio}-`, ordena descendente por string, toma 1, parsea el último segmento después del último `-`. Funciona porque los números son zero-padded a 5 dígitos (orden string = orden numérico).
+
+3. **`TenantContext.run()` como helper `withTenant<T>` en tests**: simula la activación del guard sin NestJS DI. `tenantContext.run({ prismaClient, dbName, clienteId }, fn)` — el mismo mecanismo que usa `TenantGuard.bind()` en producción.
+
+4. **`UsuarioMasterChecker` usa `PrismaService.getMasterClient()`**: la única excepción a "repos tenant usan TenantContext". El checker consulta `master.usuarios` (cross-DB). PrismaService es @Global y se inyecta directamente en el constructor. Sin TenantContext en su signature.
+
+5. **Fitness rule verificada por test**: el test `"PrismaTicketRepository constructor solo acepta TenantContext"` verifica `PrismaTicketRepository.length === 1` (un parámetro en constructor). Defense-in-depth contra futuros refactors que rompan la regla.
+
+6. **`PrismaArchivoRepository.findByTicketId` vía `archivosTicket: { some: { ticketId } }`**: join indirecto vía tabla `archivos_ticket`. Filtra `deletedAt: null` en el archivo principal. La join table no tiene soft delete.
+
+---
+
 ## Estado global del cambio
 
 | Fase | Progreso |
@@ -1190,5 +1284,5 @@ backend/src/
 | Fase 0 — Scaffolding + Shared | **16/16 tareas completadas** (PR-01 + PR-02) |
 | Fase 1 — MASTER: clientes | **14/15 tareas completadas** — 1.A.1–1.D.2 ✅ PR-04; 1.C.3 ✅ PR-03 |
 | Fase 2 — MASTER: auth+RBAC | **20/22** — 2.A.1–2.B.8 ✅ PR-05; 2.C.1/2.C.2/2.D.1–2.D.4 ✅ PR-06; PR-06-fix ✅ CRITICALs; 2.C.3 ✅ PR-03; 2.E.1 ✅ PR-07; pendiente: 2.D.5 (registro usuario, out-of-scope) |
-| Fase 3 — TENANT: tickets-core | **17/18** — 3.D.3 ✅ PR-08; 3.D.4 ✅ PR-09; 3.A.1/3.A.2/3.A.3 ✅ PR-10 Slice 1; 3.B.1/3.B.2 ✅ PR-10 Slice 2; 3.B.3/3.B.4 ✅ PR-10 Slice 3; 3.C.1/3.C.2/3.C.5/3.C.6 ✅ PR-11a; **3.C.3/3.C.4/3.C.7/3.C.8 ✅ PR-11b** — Pendiente: 3.D.1/3.D.2 (infra repos+mappers, PR-11c) |
-| Fases 4-7 | 0 — desbloqueadas cuando Fase 3 complete |
+| Fase 3 — TENANT: tickets-core | **19/18** — 3.D.3 ✅ PR-08; 3.D.4 ✅ PR-09; 3.A.1/3.A.2/3.A.3 ✅ PR-10 Slice 1; 3.B.1/3.B.2 ✅ PR-10 Slice 2; 3.B.3/3.B.4 ✅ PR-10 Slice 3; 3.C.1/3.C.2/3.C.5/3.C.6 ✅ PR-11a; 3.C.3/3.C.4/3.C.7/3.C.8 ✅ PR-11b; **3.D.1/3.D.2 ✅ PR-11c** — Pendiente: 3.E.1/3.E.2 (controllers + TicketsModule, PR-11d) |
+| Fases 4-7 | 0 — desbloqueadas cuando Fase 3 complete (3.E pending) |
