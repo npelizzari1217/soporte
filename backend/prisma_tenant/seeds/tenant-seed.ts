@@ -26,11 +26,12 @@
  *   Mismo patrón que el master RBAC seed (PR-07): estabilidad cross-environment.
  *   La clave de idempotencia es el UNIQUE ON codigo, no el UUID.
  *
- * Nota sobre nombres inferidos:
- *   El spec tickets-core define explícitamente los codigos y ordenes de los catálogos,
- *   pero NO especifica los valores de `nombre`. Se usan nombres descriptivos en español
- *   que se derivan naturalmente de cada codigo. Ver risk R-01 en el SDD apply-progress
- *   si se requiere revisión.
+ * Nota sobre nombres:
+ *   El spec tickets-core define codigos y ordenes de todos los catálogos, y los `nombre`
+ *   de `estados` (sección "Seeds obligatorios"). Los `nombre` de prioridades, tipos_ticket
+ *   y tipo_operacion NO están en el spec: son etiquetas en español inferidas del codigo,
+ *   ratificadas por el usuario (display labels, cambiables). Ver decisión PR-09 en engram.
+ *   El campo `color` (nullable) queda diferido a la UI de frontend.
  */
 
 import { Pool } from 'pg';
@@ -57,9 +58,7 @@ const pool = new Pool({ connectionString: url });
 
 // ─ estados (8 valores base — spec tickets-core tabla estados) ─────────────────
 //
-// Codigos y ordenes: SPEC-EXPLICIT (tabla "Seeds obligatorios" del spec).
-// Nombres: INFERRED — no definidos en el spec; se usan las frases en español
-//   que nombran cada estado de ciclo de vida.
+// Codigos, ordenes y nombres: SPEC-EXPLICIT (tabla "Seeds obligatorios" del spec).
 // color: omitido (nullable en schema, no definido en spec).
 // UUIDs: fijos deterministas prefijo c0 para estabilidad cross-env.
 //

@@ -136,6 +136,23 @@ describe('Tenant catalog seed (integration — 3.D.4)', () => {
       expect(parseInt(res.rows[0].count, 10)).toBe(8);
     });
 
+    it('los nombres coinciden con los definidos en el spec', async () => {
+      const res = await pool.query<{ codigo: string; nombre: string }>(
+        'SELECT codigo, nombre FROM estados',
+      );
+      const byCodigo: Record<string, string> = {};
+      for (const row of res.rows) byCodigo[row.codigo] = row.nombre;
+
+      expect(byCodigo['ABIERTO']).toBe('Abierto');
+      expect(byCodigo['PENDIENTE_APROBACION']).toBe('Pendiente de aprobación');
+      expect(byCodigo['APROBADO']).toBe('Aprobado');
+      expect(byCodigo['RECHAZADO']).toBe('Rechazado');
+      expect(byCodigo['EN_PROGRESO']).toBe('En progreso');
+      expect(byCodigo['RESUELTO']).toBe('Resuelto');
+      expect(byCodigo['CERRADO']).toBe('Cerrado');
+      expect(byCodigo['CANCELADO']).toBe('Cancelado');
+    });
+
     it('los órdenes de visualización coinciden con el spec', async () => {
       const res = await pool.query<{ codigo: string; orden: number }>(
         'SELECT codigo, orden FROM estados ORDER BY orden',
