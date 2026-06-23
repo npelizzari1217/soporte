@@ -1,9 +1,59 @@
 # Apply Progress — modelo-datos-tres-flujos
 
 > Última actualización: 2026-06-23
-> Rama activa: `feat/pr16b-equipos-application`
-> PR actual: **PR-16b-ajuste** (Fase 6.B — Ajuste post-consulta — commit 4a6a332)
-> Tests: **1242/1242** verdes (+12 vs baseline PR-16b de 1230)
+> Rama activa: `feat/pr17a-equipos-infra`
+> PR actual: **PR-17a** (Fase 6.C — Infrastructure + Schema + Seed — commit f60d8c5)
+> Tests: **1274/1274** verdes (+32 vs baseline PR-16b-ajuste de 1242)
+
+---
+
+## PR-17a: Equipos — Infrastructure + Schema + Seed (6.C) — COMPLETADO
+
+### Tareas completadas
+
+| Tarea | Estado | Notas |
+|-------|--------|-------|
+| 6.C.1 | ✅ | 32 tests: equipo (16), componente (8), tipoComponente (5), ticketSoporte (3). TDD RED→GREEN. |
+| 6.C.2 | ✅ | 9 archivos: 4 mappers + 5 repos (equipo, componente, tipoComponente, ticketSoporte, archivoEquipo). |
+| 6.C.3 | ✅ | 5 modelos en schema.prisma + migration 20260623150000_add_equipos_schema. |
+| 6.C.4 | ✅ | 10 tipos_componente sembrados idempotentemente. UUIDs prefijo a0. |
+
+### Estado de tests post PR-17a
+- **1274 tests, 87 suites, todos verdes** (`pnpm test`)
+- Tests PR-16b-ajuste → PR-17a: 1242 → **1274** (+32 nuevos, 1 suite nueva)
+- `tsc --noEmit`: ✅ limpio
+- `pnpm lint`: ✅ sin errores (corrido con `./node_modules/.bin/eslint src/equipos/infrastructure --fix`)
+
+### Archivos creados/modificados en PR-17a
+
+```
+backend/
+├── prisma_tenant/
+│   ├── schema.prisma                                     — +TipoComponente, EquipoInformatico,
+│   │                                                        ComponenteEquipo, ArchivoEquipo, TicketSoporte
+│   │                                                        (back-relations en Ticket/Archivo/Ubicacion)
+│   ├── migrations/20260623150000_add_equipos_schema/
+│   │   └── migration.sql                                 — DDL + UNIQUE PARCIAL numero_serie
+│   └── seeds/tenant-seed.ts                              — +10 tipos_componente (a0 UUIDs)
+└── src/equipos/infrastructure/persistence/prisma/
+    ├── equipo-informatico.mapper.ts
+    ├── prisma-equipo-informatico.repository.ts
+    ├── componente-equipo.mapper.ts
+    ├── prisma-componente-equipo.repository.ts
+    ├── tipo-componente.mapper.ts
+    ├── prisma-tipos-componente.repository.ts
+    ├── ticket-soporte.mapper.ts
+    ├── prisma-ticket-soporte.repository.ts
+    ├── prisma-archivo-equipo.repository.ts
+    └── prisma-equipos.integration.spec.ts                — 32 tests
+```
+
+### Decisiones tomadas / inferidas en PR-17a
+
+1. **UNIQUE PARCIAL numero_serie**: `CREATE UNIQUE INDEX ... WHERE numero_serie IS NOT NULL` en migration SQL. Prisma no soporta WHERE en índices declarativos. Verificado en tests: dos NULL coexisten, dos con misma serie non-null → P2002.
+2. **TicketSoporte.asignadoAId**: campo en DB (para uso futuro), NO modelado en TicketSoporteProps (dominio 6.A no lo creó). Persiste como null. **MARCAR para consulta** si un use case futuro lo necesita.
+3. **ArchivoEquipo sin entidad de dominio**: confirmado — no se creó en 6.A. PrismaArchivoEquipoRepository expone linkToEquipo/unlinkFromEquipo/findArchivoIdsByEquipoId. **MARCAR para consulta** si se necesita upload vía use case futuro.
+4. **Test isolation de tipos_componente**: el catalog se trunca en beforeEach y se re-siembra inline con los 10 tipos base. Garantiza aislamiento total entre tests que crean entradas custom.
 
 ---
 
