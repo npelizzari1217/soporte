@@ -1620,6 +1620,72 @@ backend/
 |-------|--------|-------------|
 | 4.D.1 | **PR-13b** | Controller + DTOs + wiring ComprasModule con DI tokens |
 | 4.D.2 | **PR-13b** | ComprasController, ItemsCompraController, PresupuestosController + ComprasModule |
-| 5.A–5.D | **PR-14** | Reparaciones (Edilicia) |
-| 6.A–6.D | **PR-15** | Equipos Informáticos |
+| 5.B–5.D | **PR-14b/15** | Reparaciones — application, infra, interface |
+| 6.A–6.D | **PR-16** | Equipos Informáticos |
+
+---
+
+## PR-14a: Reparaciones — capa de dominio (5.A) — COMPLETADO
+
+> Rama: `feat/pr14a-reparaciones-domain` | Commit: `cffd381`
+> Última actualización: 2026-06-23
+
+### Tareas completadas
+
+| Tarea | Estado | Notas |
+|-------|--------|-------|
+| 5.A.1 | ✅ | 79 unit tests TDD RED→GREEN. 5 suites: ubicacion.entity.spec, ticket-edilicia.entity.spec, subtarea-edilicia.entity.spec, avance-calculator.spec, edilicia-state-machine.spec. |
+| 5.A.2 | ✅ | 3 entidades + AvanceCalculator en `reparaciones/domain/`. Sin imports de Prisma ni NestJS. |
+| 5.A.3 | ✅ | EdiliciaStateMachine spec: guard EN_PROGRESO→RESUELTO (avance<100=false, =100=true), no auto-transición. |
+| 5.A.4 | ✅ | `edilicia-state-machine.ts`: implementa `ITicketStateMachine`. Guard conservadora (undefined porcentajeAvance → false). |
+| 5.A.5 | ✅ | 3 puertos con Symbol DI tokens: UBICACION_REPOSITORY, TICKET_EDILICIA_REPOSITORY, SUBTAREA_EDILICIA_REPOSITORY. |
+
+### Estado de tests post PR-14a
+
+| Check | Resultado |
+|-------|-----------|
+| `pnpm test` | **960 tests, 63 suites, todos verdes** (+79 nuevos de 5.A) |
+| `tsc --noEmit` | ✅ limpio |
+| `pnpm lint` | ✅ fitness rule verde — cero imports de @prisma/client en reparaciones/domain/ |
+| Baseline antes de PR-14a | 881 tests, 58 suites |
+
+### Archivos creados en PR-14a
+
+```
+backend/src/reparaciones/domain/
+├── entities/
+│   ├── ubicacion.entity.ts + spec.ts           — 12 unit tests TDD
+│   ├── ticket-edilicia.entity.ts + spec.ts      — 14 unit tests TDD
+│   └── subtarea-edilicia.entity.ts + spec.ts    — 17 unit tests TDD
+├── services/
+│   └── avance-calculator.ts + spec.ts           — 16 unit tests TDD (calcular + calcularDesdeSubtareas)
+├── state-machine/
+│   └── edilicia-state-machine.ts + spec.ts      — 16 unit tests TDD (incl. factory integration)
+└── ports/
+    ├── i-ubicacion.repository.ts                — UBICACION_REPOSITORY token
+    ├── i-ticket-edilicia.repository.ts           — TICKET_EDILICIA_REPOSITORY token
+    └── i-subtarea-edilicia.repository.ts         — SUBTAREA_EDILICIA_REPOSITORY token
+```
+
+### Decisiones tomadas en PR-14a
+
+1. **`EdiliciaStateMachine` guarda conservadora para `porcentajeAvance undefined`**: si el caller no pasa `porcentajeAvance` en el contexto, `ctx.porcentajeAvance === 100` evalúa como `false`. Alineado con el comentario del design en `i-ticket-state-machine.ts`: "Si es undefined, EdiliciaStateMachine trata la guarda como no satisfecha".
+
+2. **`AvanceCalculator.calcular()` usa `Math.round(pct * 100) / 100`**: redondea a exactamente 2 decimales. Verificado: 1/3 → 33.33, 2/3 → 66.67. La implementación en dominio es isomórfica a la fórmula SQL del spec (`ROUND(..., 2)`).
+
+3. **`AvanceCalculator` tiene dos métodos**: `calcular(completadas, total)` y `calcularDesdeSubtareas(subtareas[])`. El segundo filtra soft-deleted antes de delegar al primero. Los use cases de application pueden usar cualquiera según la información disponible.
+
+4. **`UbicacionEntity.create()` recibe un objeto params**: consistente con el patrón de `ItemCompraEntity.create()`. Permite agregar campos opcionales (descripcion, padreId) sin sobrecargar la firma positional. El id sigue siendo el segundo parámetro (patrón de todos los entities del proyecto).
+
+5. **`EdiliciaStateMachine` no extiende `BaseTicketStateMachine`**: misma decisión arquitectónica que `ComprasStateMachine` (Strategy puro, no herencia). Define su propio `VALID_TRANSITIONS_EDILICIA` Map que incluye la guarda de avance.
+
+6. **Props mutables en entidades**: pattern establecido en PR-12a. `this.props.porcentajeAvance = ...` se asigna directamente en `actualizarAvance()`. La clase `BaseEntity<TProps>` declara `protected readonly props: TProps` pero TypeScript permite mutar las propiedades del objeto (el pointer es readonly, no los valores).
+
+### Pendiente (sub-PRs siguientes)
+
+| Tarea | Sub-PR | Descripción |
+|-------|--------|-------------|
+| 5.B.1–5.B.8 | **PR-14b** | Application use cases (CrearTicketEdilicio, CrearSubtarea, CompletarSubtarea, GestionarUbicacion) |
+| 5.C.1–5.C.3 | **PR-15a** | Infrastructure: repos Prisma + mappers + schema migration |
+| 5.D.1–5.D.2 | **PR-15b** | Interface: controllers + DTOs + ReparacionesModule |
 
