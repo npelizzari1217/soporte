@@ -1,8 +1,8 @@
 # Apply Progress — modelo-datos-tres-flujos
 
 > Última actualización: 2026-06-23
-> Rama activa: `feat/pr14b-reparaciones-application`
-> PR actual: **PR-14b** (completado — Application layer Edilicia 5.B.1–5.B.8)
+> Rama activa: `feat/pr15a-reparaciones-infra`
+> PR actual: **PR-15a** (completado — Infrastructure + Schema Edilicia 5.C.1–5.C.3 + deudas seed CTE)
 
 ---
 
@@ -1755,6 +1755,108 @@ backend/src/reparaciones/
 
 | Tarea | Sub-PR | Descripción |
 |-------|--------|-------------|
-| 5.C.1–5.C.3 | **PR-15a** | Infrastructure: repos Prisma + mappers + schema migration |
+| 5.C.1–5.C.3 | **PR-15a** | COMPLETADO — ver sección PR-15a abajo |
+| 5.D.1–5.D.2 | **PR-15b** | Interface: controllers + DTOs + ReparacionesModule |
+
+---
+
+## PR-14b-fix: split GestionarUbicacionUseCase + tipo UBICACION_ELIMINADA diferido — COMPLETADO
+
+> Rama: `feat/pr14b-reparaciones-application` | Commit: `b1309ca`
+> Última actualización: 2026-06-23
+
+### Cambios post-PR-14b (decisiones del usuario)
+
+| Cambio | Motivo |
+|--------|--------|
+| `GestionarUbicacionUseCase` ELIMINADO | El usuario pidió split: un use case = un execute(). |
+| `CrearUbicacionUseCase` CREADO (9 tests) | SRP: solo crear ubicación, valida padre no eliminado. |
+| `EliminarUbicacionUseCase` CREADO (14 tests) | SRP: solo soft-delete cascade; dedup de tickets explícita. |
+| Tipo `UBICACION_ELIMINADA` → diferido a PR-15a seed | No existe en catálogo todavía; TODO marcado en use case. |
+
+**Tests**: 1032 → 1035 (+3 neto: eliminados 20 de gestionar, +9 crear, +14 eliminar, +2 dedup explícito).
+
+---
+
+## PR-15a: Infrastructure + Schema Edilicia (Fase 5.C) — COMPLETADO
+
+> Rama: `feat/pr15a-reparaciones-infra` (stacked sobre `feat/pr14b-reparaciones-application`)
+> Commit: `ed6222b`
+> Última actualización: 2026-06-23
+
+### Tareas completadas
+
+| Tarea | Estado | Notas |
+|-------|--------|-------|
+| 5.C.1 | ✅ | 32 integration tests: PrismaUbicacionRepository (incl. findSubtree CTE), PrismaTicketEdiliciaRepository, PrismaSubtareaEdiliciaRepository. TDD RED→GREEN. |
+| 5.C.2 | ✅ | 6 archivos de infra: ubicacion.mapper.ts, prisma-ubicacion.repository.ts, ticket-edilicia.mapper.ts, prisma-ticket-edilicia.repository.ts, subtarea-edilicia.mapper.ts, prisma-subtarea-edilicia.repository.ts. |
+| 5.C.3 | ✅ | Schema: modelos Ubicacion (self-ref padre_id), TicketEdilicia (porcentajeAvance NUMERIC(5,2)), SubtareaEdilicia. Migration: `20260623140000_add_reparaciones_schema`. Aplicada a soporte_tenant_test. |
+| DEUDA: seed UBICACION_ELIMINADA | ✅ | Tipo sembrado en tenant-seed.ts (UUID fijo `f0000000-0000-4000-f000-000000000006`). TODO eliminado del use case. |
+| DEUDA: CTE recursiva (Deuda #4) | ✅ | `IUbicacionRepository.findSubtree()` + `WITH RECURSIVE` en PrismaUbicacionRepository. EliminarUbicacionUseCase refactorizado: BFS externo → findSubtree dentro de tx. Atomicidad total garantizada. |
+
+### Estado de tests
+
+- **1035 (baseline PR-14b-fix) → 1067 tests totales** (32 nuevos integration tests)
+- Suites afectadas: +1 nueva suite (prisma-reparaciones.integration.spec.ts, 32 tests)
+- 3 suites existentes actualizadas por cambio de interfaz (findByPadreId→findSubtree en mocks)
+- `pnpm test`: 1067/1067 verdes
+- `tsc --noEmit`: ✅ limpio
+- `pnpm lint`: ✅ limpio
+
+### Archivos creados en PR-15a
+
+```
+backend/
+├── prisma_tenant/
+│   ├── schema.prisma                            — +Ubicacion, TicketEdilicia, SubtareaEdilicia
+│   │                                              +back-relation ticketEdilicia en Ticket
+│   ├── seeds/
+│   │   └── tenant-seed.ts                       — +UBICACION_ELIMINADA (6° tipo_operacion)
+│   └── migrations/
+│       └── 20260623140000_add_reparaciones_schema/
+│           └── migration.sql                    — ubicaciones, ticket_edilicia, subtareas_edilicia
+├── src/reparaciones/
+│   ├── domain/
+│   │   └── ports/
+│   │       └── i-ubicacion.repository.ts        — -findByPadreId / +findSubtree(ubicacionId)
+│   ├── application/use-cases/
+│   │   ├── eliminar-ubicacion.use-case.ts       — BFS→findSubtree dentro de tx; TODO eliminado
+│   │   ├── eliminar-ubicacion.use-case.spec.ts  — mock findSubtree; 14 tests actualizados
+│   │   ├── crear-ubicacion.use-case.spec.ts     — mock findSubtree (reemplaza findByPadreId)
+│   │   └── crear-ticket-edilicio.use-case.spec.ts — mock findSubtree
+│   └── infrastructure/persistence/prisma/
+│       ├── ubicacion.mapper.ts                  — toDomain (camelCase) + toDomainFromRaw (snake_case CTE)
+│       ├── prisma-ubicacion.repository.ts       — findSubtree con $queryRawUnsafe CTE
+│       ├── ticket-edilicia.mapper.ts            — porcentajeAvance.toNumber() para Decimal
+│       ├── prisma-ticket-edilicia.repository.ts
+│       ├── subtarea-edilicia.mapper.ts
+│       ├── prisma-subtarea-edilicia.repository.ts
+│       └── prisma-reparaciones.integration.spec.ts — 32 integration tests TDD GREEN
+└── src/shared/infrastructure/persistence/
+    └── tenant-seed.integration.spec.ts          — actualizado: 5→6 tipos_operacion
+```
+
+### Decisiones tomadas en PR-15a
+
+1. **`findSubtree` con `WITH RECURSIVE` dentro de `txRunner.run`**: atomicidad total (lectura del árbol + soft-deletes + registro de operaciones en la misma tx). Elimina la ventana de inconsistencia del BFS anterior (que leía fuera de tx).
+
+2. **`$queryRawUnsafe(sql, $1, $2...)` para CTE**: Prisma 7 en adapter mode requiere `$queryRawUnsafe` con parámetros posicionales. CTE excluye soft-deleted en ambas ramas (base y recursiva: `WHERE deleted_at IS NULL`).
+
+3. **Dos métodos de mapper para Ubicacion**: `toDomain` para Prisma findMany/findUnique (camelCase) y `toDomainFromRaw` para `$queryRawUnsafe` CTE (snake_case). La CTE retorna columnas snake_case según el esquema de DB.
+
+4. **`toPersistence` sin tipo de retorno explícito en TicketEdiliciaMapper**: Prisma acepta `number | string | Decimal` para campos NUMERIC en escritura. Explicit return type causaría conflicto con el tipo generado `Prisma.Decimal`. Se omite el tipo para que TypeScript infiera correctamente.
+
+5. **`porcentajeAvance.toNumber()` en TicketEdiliciaMapper.toDomain**: Prisma 7 retorna `NUMERIC(5,2)` como `Prisma.Decimal`. Conversión a `number` de JS al mapear al dominio.
+
+6. **UUID fijo `f0000000-0000-4000-f000-000000000006` para UBICACION_ELIMINADA**: patrón determinista igual que otros catálogos (prefijo `f0...`). Estabilidad cross-env, idempotente.
+
+7. **TRUNCATE order en integration spec**: `subtareas_edilicia → ticket_edilicia → ubicaciones → archivos_ticket → archivos_operacion → archivos → operaciones_ticket → tickets → ciclos_cliente`. Respeta FK constraints.
+
+8. **`findByPadreId` eliminado del port `IUbicacionRepository`**: el método nunca se usó en la implementación final. Removerlo del contrato limpia la interfaz y fuerza a los mocks a actualizarse (TypeScript excess property checking via `satisfies jest.Mocked<Interface>`).
+
+### Pendiente
+
+| Tarea | Sub-PR | Descripción |
+|-------|--------|-------------|
 | 5.D.1–5.D.2 | **PR-15b** | Interface: controllers + DTOs + ReparacionesModule |
 

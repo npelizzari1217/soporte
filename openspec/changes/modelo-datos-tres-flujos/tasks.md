@@ -400,13 +400,19 @@
 
 ### 5.C — Infrastructure + Schema
 
-**5.C.1** [P, dep: 5.A.5] **TEST →** Integration test de `PrismaSubtareaEdiliciaRepository`: verifica soft delete + exclusión en recalculo; verifica que repo de `TicketEdilicia` actualiza `porcentaje_avance`.
+**[x] 5.C.1** [P, dep: 5.A.5] **TEST →** Integration test de `PrismaSubtareaEdiliciaRepository`: verifica soft delete + exclusión en recalculo; verifica que repo de `TicketEdilicia` actualiza `porcentaje_avance`. **Completado PR-15a** (32 nuevos tests: unit + integration).
 - Ref spec: `[SPEC:reparaciones/Soft delete subtarea no cuenta en avance]`
+- Nota: también cubre `PrismaUbicacionRepository` (incl. `findSubtree` CTE) y `PrismaTicketEdiliciaRepository`.
 
-**5.C.2** [S, dep: 5.C.1, 0.C.4] **IMPL →** `reparaciones/infrastructure/persistence/prisma/`: repos + mappers para `ubicaciones`, `ticket_edilicia`, `subtareas_edilicia`.
+**[x] 5.C.2** [S, dep: 5.C.1, 0.C.4] **IMPL →** `reparaciones/infrastructure/persistence/prisma/`: repos + mappers para `ubicaciones`, `ticket_edilicia`, `subtareas_edilicia`. **Completado PR-15a.**
+- Archivos creados: ubicacion.mapper.ts, prisma-ubicacion.repository.ts (con findSubtree CTE), ticket-edilicia.mapper.ts, prisma-ticket-edilicia.repository.ts, subtarea-edilicia.mapper.ts, prisma-subtarea-edilicia.repository.ts.
 
-**5.C.3** [P, dep: 3.D.3] **SCHEMA:** `prisma_tenant/schema.prisma` — agregar modelos `Ubicacion` (self-ref `padre_id`), `TicketEdilicia`, `SubtareaEdilicia`. Correr migration.
+**[x] 5.C.3** [P, dep: 3.D.3] **SCHEMA:** `prisma_tenant/schema.prisma` — agregar modelos `Ubicacion` (self-ref `padre_id`), `TicketEdilicia`, `SubtareaEdilicia`. Correr migration. **Completado PR-15a.**
 - Ref spec: `[SPEC:reparaciones/Tablas TENANT]`
+- Migration: `20260623140000_add_reparaciones_schema`. Aplicada a `soporte_tenant_test`.
+
+**DEUDA SEED UBICACION_ELIMINADA (PR-14b):** RESUELTA PR-15a — tipo_operacion sembrado en tenant-seed.ts. TODO eliminado del use case.
+**DEUDA CTE RECURSIVA (PR-14b):** RESUELTA PR-15a — `IUbicacionRepository.findSubtree()` + CTE WITH RECURSIVE en `PrismaUbicacionRepository`. `EliminarUbicacionUseCase` refactorizado (BFS→findSubtree dentro de tx).
 
 ### 5.D — Interface
 
