@@ -261,13 +261,37 @@ describe('CompletarSubtareaUseCase', () => {
       mockSubtareaRepo.findById.mockResolvedValue(subtarea);
       mockSubtareaRepo.findActiveByTicketEdiliciaId.mockResolvedValue([subtarea]);
 
+      // Capturamos la operación guardada para inspeccionar sus campos de transición
+      let savedOperacion: OperacionTicketEntity | undefined;
+      mockOperacionRepo.save.mockImplementation(async (o) => {
+        savedOperacion = o;
+      });
+
       const result = await useCase.execute(validDto);
 
-      // El use case retorna ok con la subtarea, nunca Result.fail por "estado cambiado"
-      // y no invoca ningún estadoRepo ni ticketRepo
       expect(result.isOk()).toBe(true);
-      // El repositorio de ticket principal no debe ser llamado (no hay ticketRepo en el uc)
-      // La lógica se verifica implícitamente: el useCase no tiene ticketRepo — no puede cambiar estado
+
+      // ── ASSERTIONS ACTIVAS: ninguna ruta de cambio de estado fue invocada ──
+
+      // tipoOperacionRepo se llama SOLO 1 vez y SOLO para AVANCE_EDILICIO
+      // (nunca para CAMBIO_ESTADO ni ningún otro código de transición de estado)
+      expect(mockTipoOperacionRepo.findIdByCodigo).toHaveBeenCalledTimes(1);
+      expect(mockTipoOperacionRepo.findIdByCodigo).toHaveBeenCalledWith('AVANCE_EDILICIO');
+      expect(mockTipoOperacionRepo.findIdByCodigo).not.toHaveBeenCalledWith(
+        expect.stringMatching(/ESTADO|CAMBIO|RESUELT/i),
+      );
+
+      // Una sola operación registrada — solo AVANCE_EDILICIO, nunca un cambio de estado
+      expect(mockOperacionRepo.save).toHaveBeenCalledTimes(1);
+
+      // La operación tiene estadoAnteriorId y estadoNuevoId nulos:
+      // indica que NO es un cambio de estado del ticket sino un registro de avance edilicio
+      expect(savedOperacion!.estadoAnteriorId).toBeNull();
+      expect(savedOperacion!.estadoNuevoId).toBeNull();
+
+      // Los métodos delete nunca fueron invocados (completar ≠ eliminar)
+      expect(mockSubtareaRepo.delete).not.toHaveBeenCalled();
+      expect(mockTicketEdiliciaRepo.delete).not.toHaveBeenCalled();
     });
 
     it('retorna Result.ok(subtarea) cuando avance llega a 100%', async () => {

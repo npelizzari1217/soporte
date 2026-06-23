@@ -28,14 +28,19 @@
 import { TenantContext } from '../../../../shared/tenancy/tenant-context';
 import { PrismaService } from '../../../../shared/infrastructure/persistence/prisma.service';
 import { TenantPrismaClient } from '../../../../shared/infrastructure/persistence/prisma-clients';
+import { TenantTransactionRunner } from '../../../../shared/infrastructure/persistence/tenant-transaction-runner';
 
 import { PrismaUbicacionRepository } from './prisma-ubicacion.repository';
 import { PrismaTicketEdiliciaRepository } from './prisma-ticket-edilicia.repository';
 import { PrismaSubtareaEdiliciaRepository } from './prisma-subtarea-edilicia.repository';
+import { PrismaOperacionTicketRepository } from '../../../../tickets/infrastructure/persistence/prisma/prisma-operacion-ticket.repository';
+import { PrismaTipoOperacionRepository } from '../../../../tickets/infrastructure/persistence/prisma/prisma-tipo-operacion.repository';
 
 import { UbicacionEntity } from '../../../domain/entities/ubicacion.entity';
 import { TicketEdiliciaEntity } from '../../../domain/entities/ticket-edilicia.entity';
 import { SubtareaEdiliciaEntity } from '../../../domain/entities/subtarea-edilicia.entity';
+
+import { EliminarUbicacionUseCase } from '../../../application/use-cases/eliminar-ubicacion.use-case';
 
 // ─── Conexión de test ──────────────────────────────────────────────────────────
 const TEST_TENANT_URL =
@@ -50,6 +55,11 @@ const TIPO_EDILICIA_ID = 'e0000000-0000-4000-e000-000000000003';
 // UUID dummy para soft refs (no requieren existir en master)
 const DUMMY_USUARIO_ID = '01900000-0000-7000-8000-000000000001';
 const DUMMY_CLIENTE_ID = '01900000-0000-7000-8000-000000000002';
+
+// ID del tipo de operación UBICACION_ELIMINADA (seed PR-15a, f0...006)
+const UBICACION_ELIMINADA_TIPO_ID = 'f0000000-0000-4000-f000-000000000006';
+// Autor dummy para operaciones registradas en los integration tests de $transaction
+const AUTOR_TX_ID = '01900000-0000-7000-8000-000000000099';
 
 // ─── Suite ────────────────────────────────────────────────────────────────────
 
@@ -551,6 +561,190 @@ describe('Reparaciones Infrastructure Repos — Integration (5.C.1)', () => {
         );
         expect(activas.map((s) => s.id)).not.toContain(sub.id);
       });
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Atomicidad $transaction real — CTE + soft-delete cascada + operaciones
+  // Cierre WARNING-2 del verify adversarial Fase 5
+  // ─────────────────────────────────────────────────────────────────────────
+
+  describe('atomicidad $transaction real — CTE findSubtree + soft-delete cascada + operaciones (Cierre WARNING-2)', () => {
+    let txRunner: TenantTransactionRunner;
+    let operacionRepo: PrismaOperacionTicketRepository;
+    let tipoOperacionRepo: PrismaTipoOperacionRepository;
+
+    beforeAll(() => {
+      txRunner = new TenantTransactionRunner(tenantContext);
+      operacionRepo = new PrismaOperacionTicketRepository(tenantContext);
+      tipoOperacionRepo = new PrismaTipoOperacionRepository(tenantContext);
+    });
+
+    it('(1) findSubtree via $queryRawUnsafe funciona sobre el client transaccional (Prisma 7 adapter mode)', async () => {
+      // Setup: raíz + hijo + nieto (sin tickets; solo verificamos que la CTE funciona dentro de la tx)
+      const raiz = UbicacionEntity.create({ nombre: 'Raíz CTE TX' });
+      const hijo = UbicacionEntity.create({ nombre: 'Hijo CTE TX', padreId: raiz.id });
+      const nieto = UbicacionEntity.create({ nombre: 'Nieto CTE TX', padreId: hijo.id });
+
+      await withTenant(async () => {
+        await ubicacionRepo.save(raiz);
+        await ubicacionRepo.save(hijo);
+        await ubicacionRepo.save(nieto);
+      });
+
+      // Ejecutar findSubtree DENTRO de una $transaction real via txRunner
+      // (sin escrituras: la tx commit sin cambios, pero la CTE corrió sobre el client transaccional)
+      let treeInsideTx: UbicacionEntity[] = [];
+      await withTenant(() =>
+        txRunner.run(async () => {
+          treeInsideTx = await ubicacionRepo.findSubtree(raiz.id);
+        }),
+      );
+
+      expect(treeInsideTx).toHaveLength(3);
+      const ids = treeInsideTx.map((u) => u.id);
+      expect(ids).toContain(raiz.id);
+      expect(ids).toContain(hijo.id);
+      expect(ids).toContain(nieto.id);
+    });
+
+    it('(2) tras la tx completa: subárbol soft-deleted y UBICACION_ELIMINADA registrada', async () => {
+      // Setup: raíz + hijo + nieto
+      const raiz = UbicacionEntity.create({ nombre: 'Raíz Eliminación TX' });
+      const hijo = UbicacionEntity.create({ nombre: 'Hijo Eliminación TX', padreId: raiz.id });
+      const nieto = UbicacionEntity.create({ nombre: 'Nieto Eliminación TX', padreId: hijo.id });
+
+      await withTenant(async () => {
+        await ubicacionRepo.save(raiz);
+        await ubicacionRepo.save(hijo);
+        await ubicacionRepo.save(nieto);
+      });
+
+      // Ticket base + ticket_edilicia referenciando la raíz (recibirá la operación UBICACION_ELIMINADA)
+      const ticketIdTx = '00000002-0000-7000-8000-000000000010';
+      await tenantClient.$executeRawUnsafe(`
+        INSERT INTO tickets (id, numero, titulo, tipo_id, estado_id, prioridad_id, solicitante_id)
+        VALUES (
+          '${ticketIdTx}',
+          'EDI-TX-0001',
+          'Ticket para test tx (2)',
+          '${TIPO_EDILICIA_ID}',
+          '${ABIERTO_ID}',
+          '${PRIORIDAD_MEDIA_ID}',
+          '${DUMMY_USUARIO_ID}'
+        )
+      `);
+      const te = TicketEdiliciaEntity.create(ticketIdTx, raiz.id);
+      await withTenant(() => ticketEdiliciaRepo.save(te));
+
+      // Ejecutar el use case completo dentro de una $transaction real
+      const useCase = new EliminarUbicacionUseCase(
+        ubicacionRepo,
+        ticketEdiliciaRepo,
+        operacionRepo,
+        tipoOperacionRepo,
+        txRunner,
+      );
+
+      const result = await withTenant(() =>
+        useCase.execute({ ubicacionId: raiz.id, autorId: AUTOR_TX_ID }),
+      );
+
+      expect(result.isOk()).toBe(true);
+
+      // Verificar: todas las ubicaciones del subárbol quedan soft-deleted
+      const raizPost = await withTenant(() => ubicacionRepo.findById(raiz.id));
+      const hijoPost = await withTenant(() => ubicacionRepo.findById(hijo.id));
+      const nietoPost = await withTenant(() => ubicacionRepo.findById(nieto.id));
+      expect(raizPost).not.toBeNull();
+      expect(hijoPost).not.toBeNull();
+      expect(nietoPost).not.toBeNull();
+      expect(raizPost!.isDeleted()).toBe(true);
+      expect(hijoPost!.isDeleted()).toBe(true);
+      expect(nietoPost!.isDeleted()).toBe(true);
+
+      // Verificar: exactamente 1 operación UBICACION_ELIMINADA registrada para el ticket afectado
+      const operaciones = await withTenant(() => operacionRepo.findByTicketId(ticketIdTx));
+      const eliminacionOps = operaciones.filter(
+        (op) => op.tipoOperacionId === UBICACION_ELIMINADA_TIPO_ID,
+      );
+      expect(eliminacionOps).toHaveLength(1);
+      // La operación NO es un cambio de estado (estadoAnteriorId y estadoNuevoId son nulos)
+      expect(eliminacionOps[0].estadoAnteriorId).toBeNull();
+      expect(eliminacionOps[0].estadoNuevoId).toBeNull();
+    });
+
+    it('(3) ATOMICIDAD: si la tx falla a mitad (error en 2° delete), NADA se persiste — rollback total', async () => {
+      // Setup: raíz + hijo (2 nodos para que el spy falle en el 2° delete)
+      const raiz = UbicacionEntity.create({ nombre: 'Raíz Rollback TX' });
+      const hijo = UbicacionEntity.create({ nombre: 'Hijo Rollback TX', padreId: raiz.id });
+
+      await withTenant(async () => {
+        await ubicacionRepo.save(raiz);
+        await ubicacionRepo.save(hijo);
+      });
+
+      // Ticket base + ticket_edilicia referenciando la raíz
+      const ticketIdRollback = '00000002-0000-7000-8000-000000000011';
+      await tenantClient.$executeRawUnsafe(`
+        INSERT INTO tickets (id, numero, titulo, tipo_id, estado_id, prioridad_id, solicitante_id)
+        VALUES (
+          '${ticketIdRollback}',
+          'EDI-TX-0002',
+          'Ticket para test rollback (3)',
+          '${TIPO_EDILICIA_ID}',
+          '${ABIERTO_ID}',
+          '${PRIORIDAD_MEDIA_ID}',
+          '${DUMMY_USUARIO_ID}'
+        )
+      `);
+      const te = TicketEdiliciaEntity.create(ticketIdRollback, raiz.id);
+      await withTenant(() => ticketEdiliciaRepo.save(te));
+
+      // Spy: el primer delete (raíz) pasa, el segundo (hijo) lanza → fuerza rollback de la $transaction
+      const realDeleteFn = ubicacionRepo.delete.bind(ubicacionRepo);
+      let deleteCallCount = 0;
+      jest.spyOn(ubicacionRepo, 'delete').mockImplementation(async (id: string) => {
+        deleteCallCount++;
+        if (deleteCallCount >= 2) {
+          throw new Error('Error simulado para forzar rollback de la $transaction');
+        }
+        return realDeleteFn(id);
+      });
+
+      const useCase = new EliminarUbicacionUseCase(
+        ubicacionRepo,
+        ticketEdiliciaRepo,
+        operacionRepo,
+        tipoOperacionRepo,
+        txRunner,
+      );
+
+      try {
+        // La ejecución debe lanzar: el spy provoca que la $transaction falle y haga rollback
+        await expect(
+          withTenant(() => useCase.execute({ ubicacionId: raiz.id, autorId: AUTOR_TX_ID })),
+        ).rejects.toThrow('Error simulado');
+      } finally {
+        jest.restoreAllMocks();
+      }
+
+      // ── Verificar rollback total: NADA fue persistido ──
+
+      // a. Ninguna ubicación del subárbol quedó soft-deleted (rollback deshizo el 1er delete)
+      const raizPost = await withTenant(() => ubicacionRepo.findById(raiz.id));
+      const hijoPost = await withTenant(() => ubicacionRepo.findById(hijo.id));
+      expect(raizPost).not.toBeNull();
+      expect(hijoPost).not.toBeNull();
+      expect(raizPost!.isDeleted()).toBe(false);
+      expect(hijoPost!.isDeleted()).toBe(false);
+
+      // b. Ninguna operación UBICACION_ELIMINADA registrada (la operacionRepo.save nunca llegó a ejecutarse)
+      const operaciones = await withTenant(() => operacionRepo.findByTicketId(ticketIdRollback));
+      const eliminacionOps = operaciones.filter(
+        (op) => op.tipoOperacionId === UBICACION_ELIMINADA_TIPO_ID,
+      );
+      expect(eliminacionOps).toHaveLength(0);
     });
   });
 });
