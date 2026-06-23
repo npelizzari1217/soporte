@@ -229,10 +229,12 @@
 **[x] 3.B.2** [S, dep: 3.B.1] **IMPL →** `tickets/domain/state-machine/`: `i-ticket-state-machine.ts` (interface `puedeTransicionar(desde, hacia, ctx): boolean`), `base-ticket-state-machine.ts`, `ticket-state-machine.factory.ts` (Strategy: elige implementación según `tipos_ticket.codigo`).
 - **Completado PR-10 Slice 2:** 3 archivos en `tickets/domain/state-machine/`. Sin imports de Prisma ni NestJS. Función pura, singleton-safe.
 
-**3.B.3** [P, dep: 3.A.2] **TEST →** Test de `NumeradorTicket`: verifica que genera `SOP-2026-00042` dado prefijo `SOP`, año `2026`, y last sequence `41`; verifica formato de los tres flujos; verifica que la secuencia es local (no global).
+**[x] 3.B.3** [P, dep: 3.A.2] **TEST →** Test de `NumeradorTicket`: verifica que genera `SOP-2026-00042` dado prefijo `SOP`, año `2026`, y last sequence `41`; verifica formato de los tres flujos; verifica que la secuencia es local (no global).
 - Ref spec: `[SPEC:tickets-core/Numeración legible de tickets]`
+- **Completado PR-10 Slice 3:** 14 unit tests TDD (RED → GREEN). Suite: numerador-ticket.service.spec.ts. Cubre: SOP/COM/EDI prefijos, padding 5 dígitos, localidad de secuencia (findLastSecuencia llamado con tipoId+anio), secuencias independientes por tipo, reset por año, error en codigo desconocido.
 
-**3.B.4** [S, dep: 3.B.3] **IMPL →** `tickets/domain/services/numerador-ticket.service.ts`: genera `{PREFIJO}-{AÑO}-{SECUENCIA_5_DIGITS}`. Consulta last number por tipo via repositorio.
+**[x] 3.B.4** [S, dep: 3.B.3] **IMPL →** `tickets/domain/services/numerador-ticket.service.ts`: genera `{PREFIJO}-{AÑO}-{SECUENCIA_5_DIGITS}`. Consulta last number por tipo via repositorio.
+- **Completado PR-10 Slice 3:** `NumeradorTicket` class + `PREFIJO_POR_CODIGO` const exportada. `generarNumero(tipoId, tipoCodigo, anio)` async. `generarFormato(prefijo, anio, secuencia)` static puro. Depende solo de `Pick<ITicketRepository, 'findLastSecuencia'>`. Sin Prisma ni NestJS.
 
 ### 3.C — Application use cases
 

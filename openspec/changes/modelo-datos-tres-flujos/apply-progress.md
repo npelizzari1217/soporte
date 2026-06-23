@@ -972,6 +972,60 @@ backend/src/tickets/
 
 ---
 
+---
+
+## PR-10 Slice 3: NumeradorTicket (3.B.3 y 3.B.4) — COMPLETADO
+
+> Rama: `feat/pr10-tickets-domain`
+> Última actualización: 2026-06-23
+
+### Tareas completadas
+
+| Tarea | Estado | Notas |
+|-------|--------|-------|
+| 3.B.3 | ✅ | 14 unit tests TDD RED→GREEN. Suite: numerador-ticket.service.spec. Cubre prefijos SOP/COM/EDI, padding 5 dígitos, localidad de secuencia (findLastSecuencia llamado con tipoId+anio), secuencias independientes por tipo, reset por año, error en codigo desconocido. |
+| 3.B.4 | ✅ | `NumeradorTicket` en `tickets/domain/services/numerador-ticket.service.ts`. `PREFIJO_POR_CODIGO` exportado. `generarNumero(tipoId, tipoCodigo, anio)` async. `generarFormato(prefijo, anio, secuencia)` static puro. Pick<ITicketRepository, 'findLastSecuencia'> como dependencia. Sin Prisma ni NestJS. |
+
+### Estado de tests post PR-10 Slice 3
+
+| Check | Resultado |
+|-------|-----------|
+| `pnpm test` | **468 tests, 35 suites, todos verdes** (+14 nuevos de 3.B.3) |
+| `tsc --noEmit` | ✅ limpio |
+| `pnpm lint` | ✅ fitness rule verde; cero imports de @prisma/client en domain/ |
+
+### Archivos creados en PR-10 Slice 3
+
+```
+backend/src/tickets/
+└── domain/
+    └── services/
+        ├── numerador-ticket.service.ts       — NumeradorTicket + PREFIJO_POR_CODIGO (3.B.4)
+        └── numerador-ticket.service.spec.ts  — 14 tests TDD (3.B.3)
+```
+
+### Decisiones tomadas en PR-10 Slice 3
+
+1. **`PREFIJO_POR_CODIGO` como const exportada**: el mapa `{ SOPORTE: 'SOP', COMPRAS: 'COM', EDILICIA: 'EDI' }` se exporta como constante para que el use case (`CrearTicketUseCase`, Slice 3+) pueda acceder a él sin instanciar el servicio. También permite testearlo directamente sin mock.
+
+2. **`Pick<ITicketRepository, 'findLastSecuencia'>` en constructor**: el servicio solo necesita un método del repositorio. Usar `Pick` en lugar del tipo completo reduce el acoplamiento y simplifica el mock en tests (stub minimal).
+
+3. **`generarFormato()` static puro**: la lógica de formateo (prefijo + año + padding) es independiente del repositorio. Extraída como método estático para ser testeable sin ningún mock y reutilizable en otros contextos (ej. validación, display).
+
+4. **`tipoCodigo` como parámetro (no derivado desde `tipoId`)**: el servicio recibe `tipoCodigo` explícitamente porque la entidad `TicketEntity` solo almacena `tipoId` (UUID). El use case carga el `codigo` del tipo desde el repositorio y lo pasa. Esto mantiene el servicio sin dependencias de `IEstadoRepository` ni queries adicionales.
+
+5. **Prefijos inferidos del spec**: `SOP` (SOPORTE), `COM` (COMPRAS), `EDI` (EDILICIA). El spec los define explícitamente: "el prefijo MUST derivarse del codigo del tipo de ticket: SOP (SOPORTE), COM (COMPRAS), EDI (EDILICIA)".
+
+### Pendiente en PR-10 (otros slices)
+
+| Tareas | Slice | Descripción |
+|--------|-------|-------------|
+| 3.C.1–3.C.8 | **Slice 4+** | Application use cases (CrearTicket, AsignarTicket, etc.) |
+| 3.D.1–3.D.2 | **Slice 4+** | Infrastructure: repos Prisma + mappers |
+| 3.E.1–3.E.2 | **Slice 4+** | Interface: TicketsController + TicketsModule |
+
+---
+
 ## Estado global del cambio
 
 | Fase | Progreso |
@@ -979,5 +1033,5 @@ backend/src/tickets/
 | Fase 0 — Scaffolding + Shared | **16/16 tareas completadas** (PR-01 + PR-02) |
 | Fase 1 — MASTER: clientes | **14/15 tareas completadas** — 1.A.1–1.D.2 ✅ PR-04; 1.C.3 ✅ PR-03 |
 | Fase 2 — MASTER: auth+RBAC | **20/22** — 2.A.1–2.B.8 ✅ PR-05; 2.C.1/2.C.2/2.D.1–2.D.4 ✅ PR-06; PR-06-fix ✅ CRITICALs; 2.C.3 ✅ PR-03; 2.E.1 ✅ PR-07; pendiente: 2.D.5 (registro usuario, out-of-scope) |
-| Fase 3 — TENANT: tickets-core | **7/18** — 3.D.3 ✅ PR-08; 3.D.4 ✅ PR-09; 3.A.1/3.A.2/3.A.3 ✅ PR-10 Slice 1; 3.B.1/3.B.2 ✅ PR-10 Slice 2 |
+| Fase 3 — TENANT: tickets-core | **9/18** — 3.D.3 ✅ PR-08; 3.D.4 ✅ PR-09; 3.A.1/3.A.2/3.A.3 ✅ PR-10 Slice 1; 3.B.1/3.B.2 ✅ PR-10 Slice 2; **3.B.3/3.B.4 ✅ PR-10 Slice 3** |
 | Fases 4-7 | 0 — desbloqueadas cuando Fase 3 complete |
