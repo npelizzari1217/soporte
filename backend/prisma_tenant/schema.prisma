@@ -238,7 +238,7 @@ model Archivo {
   nombreOriginal String    @map("nombre_original") @db.VarChar(255)
   mimeType       String    @map("mime_type") @db.VarChar(100)
   /// CHECK (tamano_bytes > 0) — enforced via migration SQL.
-  tamanoBytyes   BigInt    @map("tamano_bytes")
+  tamanoBytes    BigInt    @map("tamano_bytes")
   /// Soft ref → master.usuarios.id. Sin FK cross-DB.
   subidoPorId    String    @map("subido_por_id") @db.Uuid
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
