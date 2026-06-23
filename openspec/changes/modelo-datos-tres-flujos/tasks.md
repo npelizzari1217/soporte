@@ -443,20 +443,32 @@
 
 ### 6.B — Application
 
-**6.B.1** [P, dep: 6.A.3, 3.B.2] **TEST →** Test de `CrearTicketSoporteUseCase`: verifica creación atómica `tickets` + `ticket_soporte`; verifica que si `equipo_id` provisto el equipo existe y está activo; verifica que `equipo_id = null` es válido.
+**[x] 6.B.1** [P, dep: 6.A.3, 3.B.2] **TEST →** Test de `CrearTicketSoporteUseCase`: verifica creación atómica `tickets` + `ticket_soporte`; verifica que si `equipo_id` provisto el equipo existe y está activo; verifica que `equipo_id = null` es válido.
 - Ref spec: `[SPEC:equipos/Satélite ticket_soporte, equipo_id referenciado debe existir]`
+- **Completado PR-16b:** 16 tests. TDD RED→GREEN verificado.
 
-**6.B.2** [S, dep: 6.B.1] **IMPL →** `equipos/application/use-cases/crear-ticket-soporte.use-case.ts`.
+**[x] 6.B.2** [S, dep: 6.B.1] **IMPL →** `equipos/application/use-cases/crear-ticket-soporte.use-case.ts`.
+- **Completado PR-16b:** CrearTicketSoporteUseCase — creación atómica tickets+ticket_soporte; equipo_id nullable; validación activo+not-deleted; TicketNoEsSoporteError nuevo.
 
-**6.B.3** [P, dep: 6.A.3] **TEST →** Test de `GestionarEquipoUseCase`: verifica uniqueness de `numero_serie` (409 si duplicado); verifica que `numero_serie = null` es válido (UNIQUE parcial); verifica soft delete sin cascade a tickets.
+**[x] 6.B.3** [P, dep: 6.A.3] **TEST →** Test de `GestionarEquipoUseCase` (SPLIT: ver 6.B.4): verifica uniqueness de `numero_serie` (409 si duplicado); verifica que `numero_serie = null` es válido (UNIQUE parcial); verifica soft delete sin cascade a tickets.
 - Ref spec: `[SPEC:equipos/Número de serie único, Soft delete de equipo]`
+- **Completado PR-16b:** Tests separados en crear-equipo (10 tests) + editar-equipo (10 tests) + eliminar-equipo (8 tests) = 28 tests. TDD RED→GREEN verificado.
 
-**6.B.4** [S, dep: 6.B.3] **IMPL →** `equipos/application/use-cases/gestionar-equipo.use-case.ts` (crear, editar, soft delete).
+**[x] 6.B.4** [S, dep: 6.B.3] **IMPL →** SPLIT por SRP (igual que PR-14b Ubicación): `gestionar-equipo.use-case.ts` → separado en:
+- `crear-equipo.use-case.ts` — unicidad numero_serie, activo=true default
+- `editar-equipo.use-case.ts` — unicidad con guard (mismo equipo no es conflicto), método `actualizar()` en entidad
+- `eliminar-equipo.use-case.ts` — soft delete sin cascade a tickets de soporte
+- **Completado PR-16b.** También agregado `EquipoInformaticoEntity.actualizar()` (extensión menor de dominio necesaria para edición).
 
-**6.B.5** [P, dep: 6.A.3] **TEST →** Test de `AsignarEquipoUseCase`: verifica cross-DB validation de `asignado_a_id` (existe en master, pertenece al tenant). Test de `GestionarComponenteUseCase`: verifica que tipo_componente inactivo rechaza nuevos componentes pero no afecta existentes.
+**[x] 6.B.5** [P, dep: 6.A.3] **TEST →** Test de `AsignarEquipoUseCase` (17 tests) + Test de `AgregarComponenteUseCase`/`EliminarComponenteUseCase` (SPLIT de GestionarComponente — ver 6.B.6).
 - Ref spec: `[SPEC:equipos/asignado_a_id validado, Tipo de componente inactivo]`
+- **Completado PR-16b:** 17 tests AsignarEquipo + 14 tests AgregarComponente + 10 tests EliminarComponente = 41 tests (sumando 28+16=69 total con 6.B.1/6.B.3). TDD RED→GREEN verificado.
 
-**6.B.6** [S, dep: 6.B.5] **IMPL →** `equipos/application/use-cases/asignar-equipo.use-case.ts` + `gestionar-componente.use-case.ts`.
+**[x] 6.B.6** [S, dep: 6.B.5] **IMPL →** SPLIT por SRP:
+- `asignar-equipo.use-case.ts` — cross-DB via IUsuarioMasterChecker.estaActivoEnTenant (reutiliza puerto de tickets)
+- `agregar-componente.use-case.ts` — valida tipo_componente activo; rechaza inactivo/inexistente; permite múltiples del mismo tipo
+- `eliminar-componente.use-case.ts` — soft delete de componente sin afectar equipo ni restantes
+- **Completado PR-16b.** Nuevos errores de dominio: AsignadoEquipoInvalidoError, ComponenteEquipoNoEncontradoError, TicketNoEsSoporteError.
 
 ### 6.C — Infrastructure + Schema
 
