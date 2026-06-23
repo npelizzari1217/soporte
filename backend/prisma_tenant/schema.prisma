@@ -1,9 +1,27 @@
 // prisma_tenant/schema.prisma
 // Base de datos por TENANT (database-per-tenant).
 // Sin columna cliente_id: el cliente ES la base de datos.
-// DDL completo se agrega en PR-08.
-// En Prisma 7, la URL se pasa al constructor de PrismaClient en runtime:
-//   new PrismaClient({ datasourceUrl: buildTenantUrl(dbName) })
+// DDL completo PR-08 (tarea 3.D.3): 11 modelos del módulo tickets-core.
+//
+// Decisiones de diseño (ver openspec/changes/modelo-datos-tres-flujos/design.md):
+//   - IDs: uuid nativo (@db.Uuid) + gen_random_uuid() como red de seguridad en DB.
+//     El backend genera UUIDv7 antes de cada insert (lib uuidv7).
+//   - Enums: tablas de catálogo — no enums nativos de Postgres.
+//   - Soft delete universal en entidades base: deleted_at timestamptz nullable.
+//     Las tablas join (archivos_ticket, archivos_operacion, usuario_tipos_ticket)
+//     NO tienen soft delete: baja = eliminación física (ON DELETE CASCADE / delete).
+//   - updatedAt gestionado por Prisma (@updatedAt) en entidades con soft delete.
+//   - Soft refs cross-DB: solicitante_id, asignado_id, autor_id, subido_por_id,
+//     ciclo_vigente_id y usuario_id en usuario_tipos_ticket referencian la DB master.
+//     NO tienen FK real (FK cross-DB es imposible en Postgres).
+//     Integridad validada en la capa de aplicación (use cases).
+//   - Partial indexes (ciclos_cliente.activo, tickets.ciclo_id WHERE NOT NULL,
+//     tickets.asignado_id WHERE NOT NULL) se agregan como raw SQL en la migración.
+//   - CHECK (tipos_ticket.codigo IN (...)) y CHECK (tamano_bytes > 0) son raw SQL.
+//
+// En Prisma 7, la URL se pasa al constructor via adapter:
+//   new PrismaClient({ adapter: new PrismaPg(pool) })
+// La conexión para las migraciones del CLI vive en prisma.tenant.config.ts.
 
 datasource db {
   provider = "postgresql"
@@ -14,12 +32,278 @@ generator client {
   output   = "../node_modules/.prisma/tenant"
 }
 
-// Modelo placeholder para que prisma generate produzca un cliente compilable.
-// Se reemplaza con el DDL completo (tickets, compras, reparaciones, etc.) en PR-08.
-model TenantSeedVersion {
-  id        String   @id @default(uuid())
-  version   String
-  appliedAt DateTime @default(now())
+// ─── ESTADOS (catálogo — sembrado en provisioning) ────────────────────────────
+//
+// Estados del ciclo de vida del ticket.
+// Seeds: ABIERTO, PENDIENTE_APROBACION, APROBADO, RECHAZADO, EN_PROGRESO,
+//        RESUELTO, CERRADO, CANCELADO.
+// El administrador del tenant PUEDE agregar estados propios.
+// Referenciado por tickets.estado_id, operaciones_ticket.estado_anterior_id,
+// y operaciones_ticket.estado_nuevo_id.
 
-  @@map("_tenant_seed_version")
+model Estado {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  codigo    String    @unique @db.VarChar(50)
+  nombre    String    @db.VarChar(100)
+  color     String?   @db.VarChar(20)
+  orden     Int       @default(0)
+  activo    Boolean   @default(true)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz
+
+  tickets             Ticket[]
+  operacionesAnterior OperacionTicket[] @relation("EstadoAnterior")
+  operacionesNuevo    OperacionTicket[] @relation("EstadoNuevo")
+
+  @@map("estados")
+}
+
+// ─── PRIORIDADES (catálogo — sembrado en provisioning) ───────────────────────
+//
+// Seeds: BAJA (orden 10), MEDIA (20), ALTA (30), CRITICA (40).
+
+model Prioridad {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  codigo    String    @unique @db.VarChar(50)
+  nombre    String    @db.VarChar(100)
+  color     String?   @db.VarChar(20)
+  orden     Int       @default(0)
+  activo    Boolean   @default(true)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz
+
+  tickets Ticket[]
+
+  @@map("prioridades")
+}
+
+// ─── TIPOS_TICKET (catálogo — sembrado en provisioning) ──────────────────────
+//
+// Discriminador de flujo. Seeds: SOPORTE, COMPRAS, EDILICIA.
+// CHECK (codigo IN ('SOPORTE','COMPRAS','EDILICIA')) se agrega en la migración
+// como raw SQL (Prisma no expresa CHECK constraints en el schema).
+
+model TipoTicket {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// CHECK (codigo IN ('SOPORTE','COMPRAS','EDILICIA')) — enforced via migration SQL.
+  codigo    String    @unique @db.VarChar(50)
+  nombre    String    @db.VarChar(100)
+  activo    Boolean   @default(true)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz
+
+  tickets             Ticket[]
+  usuarioTiposTicket  UsuarioTiposTicket[]
+
+  @@map("tipos_ticket")
+}
+
+// ─── TIPO_OPERACION (catálogo — sembrado en provisioning) ────────────────────
+//
+// Tipos de evento registrables en el timeline de un ticket.
+// Seeds: CAMBIO_ESTADO, COMENTARIO, ASIGNACION, ADJUNTO, AVANCE_EDILICIO.
+
+model TipoOperacion {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  codigo    String    @unique @db.VarChar(50)
+  nombre    String    @db.VarChar(100)
+  activo    Boolean   @default(true)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz
+
+  operaciones OperacionTicket[]
+
+  @@map("tipo_operacion")
+}
+
+// ─── CICLOS_CLIENTE (períodos de gestión del tenant) ─────────────────────────
+//
+// Cada fila representa un período de gestión activo en este tenant.
+// ciclo_vigente_id es soft ref → master.ciclos_vigentes.id (sin FK cross-DB).
+// El índice parcial de activo (WHERE deleted_at IS NULL) se agrega en la migración.
+
+model CicloCliente {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// Soft ref → master.ciclos_vigentes.id. Sin FK: cross-DB imposible en Postgres.
+  cicloVigenteId String    @map("ciclo_vigente_id") @db.Uuid
+  nombre         String    @db.VarChar(100)
+  fechaInicio    DateTime  @map("fecha_inicio") @db.Date
+  fechaFin       DateTime  @map("fecha_fin") @db.Date
+  activo         Boolean   @default(true)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt      DateTime? @map("deleted_at") @db.Timestamptz
+
+  tickets Ticket[]
+
+  @@index([cicloVigenteId])
+  @@index([activo]) // el índice real puede ser parcial WHERE deleted_at IS NULL — ver migration SQL
+  @@map("ciclos_cliente")
+}
+
+// ─── TICKETS (entidad central) ────────────────────────────────────────────────
+//
+// Un ticket unificado con discriminador tipo_id.
+// solicitante_id y asignado_id son soft refs → master.usuarios.id (sin FK).
+// Partial indexes en ciclo_id (WHERE NOT NULL) y asignado_id (WHERE NOT NULL)
+// se agregan como raw SQL en la migración.
+// numero: generado por la app, formato: {PREFIJO}-{YEAR}-{SEQ_5DIGITS}
+//   SOPORTE → SOP, COMPRAS → COM, EDILICIA → EDI.
+
+model Ticket {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  numero           String    @unique @db.VarChar(20)
+  titulo           String    @db.VarChar(255)
+  descripcion      String?   @db.Text
+  tipoId           String    @map("tipo_id") @db.Uuid
+  estadoId         String    @map("estado_id") @db.Uuid
+  prioridadId      String    @map("prioridad_id") @db.Uuid
+  cicloId          String?   @map("ciclo_id") @db.Uuid
+  /// Soft ref → master.usuarios.id. Sin FK cross-DB.
+  solicitanteId    String    @map("solicitante_id") @db.Uuid
+  /// Soft ref → master.usuarios.id. NULL = sin asignar.
+  asignadoId       String?   @map("asignado_id") @db.Uuid
+  fechaVencimiento DateTime? @map("fecha_vencimiento") @db.Date
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt        DateTime? @map("deleted_at") @db.Timestamptz
+
+  tipo      TipoTicket    @relation(fields: [tipoId], references: [id])
+  estado    Estado        @relation(fields: [estadoId], references: [id])
+  prioridad Prioridad     @relation(fields: [prioridadId], references: [id])
+  ciclo     CicloCliente? @relation(fields: [cicloId], references: [id])
+
+  operaciones    OperacionTicket[]
+  archivosTicket ArchivoTicket[]
+
+  @@index([tipoId])
+  @@index([estadoId])
+  @@index([prioridadId])
+  @@index([cicloId]) // partial WHERE ciclo_id IS NOT NULL — ver migration SQL
+  @@index([solicitanteId])
+  @@index([asignadoId]) // partial WHERE asignado_id IS NOT NULL — ver migration SQL
+  @@index([createdAt])
+  @@map("tickets")
+}
+
+// ─── OPERACIONES_TICKET (timeline inmutable de eventos) ───────────────────────
+//
+// Toda acción significativa sobre un ticket (cambio de estado, comentario,
+// asignación, adjunto, avance edilicio) DEBE registrarse aquí dentro de la
+// misma transacción que el cambio principal.
+// autor_id es soft ref → master.usuarios.id (sin FK cross-DB).
+// estado_anterior_id y estado_nuevo_id son FK opcionales a estados (named relations).
+
+model OperacionTicket {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ticketId         String    @map("ticket_id") @db.Uuid
+  tipoOperacionId  String    @map("tipo_operacion_id") @db.Uuid
+  descripcion      String?   @db.Text
+  estadoAnteriorId String?   @map("estado_anterior_id") @db.Uuid
+  estadoNuevoId    String?   @map("estado_nuevo_id") @db.Uuid
+  /// Soft ref → master.usuarios.id. Sin FK cross-DB.
+  autorId          String    @map("autor_id") @db.Uuid
+  metadata         Json?
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt        DateTime? @map("deleted_at") @db.Timestamptz
+
+  ticket         Ticket         @relation(fields: [ticketId], references: [id])
+  tipoOperacion  TipoOperacion  @relation(fields: [tipoOperacionId], references: [id])
+  estadoAnterior Estado?        @relation("EstadoAnterior", fields: [estadoAnteriorId], references: [id])
+  estadoNuevo    Estado?        @relation("EstadoNuevo", fields: [estadoNuevoId], references: [id])
+
+  archivosOperacion ArchivoOperacion[]
+
+  @@index([ticketId])
+  @@index([tipoOperacionId])
+  @@index([autorId])
+  @@map("operaciones_ticket")
+}
+
+// ─── ARCHIVOS (metadata de adjuntos — nunca almacena el binario) ──────────────
+//
+// El binario vive exclusivamente en IFileStorage (S3/local).
+// storage_key es el identificador del objeto en el servicio de storage.
+// CHECK (tamano_bytes > 0) se agrega como raw SQL en la migración.
+// subido_por_id es soft ref → master.usuarios.id (sin FK cross-DB).
+
+model Archivo {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  storageKey     String    @unique @map("storage_key") @db.Text
+  nombreOriginal String    @map("nombre_original") @db.VarChar(255)
+  mimeType       String    @map("mime_type") @db.VarChar(100)
+  /// CHECK (tamano_bytes > 0) — enforced via migration SQL.
+  tamanoBytyes   BigInt    @map("tamano_bytes")
+  /// Soft ref → master.usuarios.id. Sin FK cross-DB.
+  subidoPorId    String    @map("subido_por_id") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt      DateTime? @map("deleted_at") @db.Timestamptz
+
+  archivosTicket    ArchivoTicket[]
+  archivosOperacion ArchivoOperacion[]
+
+  @@map("archivos")
+}
+
+// ─── ARCHIVOS_TICKET (join N:M archivos ↔ tickets) ────────────────────────────
+//
+// Sin soft delete: la baja es eliminación física. ON DELETE CASCADE en ambos extremos.
+// PK compuesta (archivo_id, ticket_id).
+
+model ArchivoTicket {
+  archivoId String   @map("archivo_id") @db.Uuid
+  ticketId  String   @map("ticket_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  archivo Archivo @relation(fields: [archivoId], references: [id], onDelete: Cascade)
+  ticket  Ticket  @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@id([archivoId, ticketId])
+  @@index([ticketId])
+  @@map("archivos_ticket")
+}
+
+// ─── ARCHIVOS_OPERACION (join N:M archivos ↔ operaciones_ticket) ──────────────
+//
+// Sin soft delete: ON DELETE CASCADE en ambos extremos.
+// PK compuesta (archivo_id, operacion_id).
+
+model ArchivoOperacion {
+  archivoId   String   @map("archivo_id") @db.Uuid
+  operacionId String   @map("operacion_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  archivo   Archivo        @relation(fields: [archivoId], references: [id], onDelete: Cascade)
+  operacion OperacionTicket @relation(fields: [operacionId], references: [id], onDelete: Cascade)
+
+  @@id([archivoId, operacionId])
+  @@map("archivos_operacion")
+}
+
+// ─── USUARIO_TIPOS_TICKET (elegibilidad de asignación) ────────────────────────
+//
+// Define qué tipos de ticket puede atender un usuario dentro de este tenant.
+// NO es un permiso RBAC: es enrutamiento de trabajo.
+// usuario_id es soft ref → master.usuarios.id (sin FK cross-DB).
+// tipo_ticket_id tiene FK real → tipos_ticket.id (misma DB tenant).
+// Sin soft delete: baja es eliminación física de la fila.
+// PK compuesta (usuario_id, tipo_ticket_id).
+
+model UsuarioTiposTicket {
+  /// Soft ref → master.usuarios.id. Sin FK cross-DB.
+  usuarioId    String   @map("usuario_id") @db.Uuid
+  tipoTicketId String   @map("tipo_ticket_id") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  tipoTicket TipoTicket @relation(fields: [tipoTicketId], references: [id])
+
+  @@id([usuarioId, tipoTicketId])
+  @@index([usuarioId])
+  @@map("usuario_tipos_ticket")
 }
