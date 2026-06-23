@@ -30,6 +30,7 @@ import { TenantGuard } from '../../../auth/infrastructure/guards/tenant.guard';
 import { RolesGuard } from '../../../auth/infrastructure/guards/roles.guard';
 import { PermissionsGuard } from '../../../auth/infrastructure/guards/permissions.guard';
 import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
+import { PERMISSIONS_KEY } from '../../../auth/infrastructure/guards/decorators';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -213,6 +214,15 @@ describe('TicketSoporteController', () => {
     it('aplica PermissionsGuard al nivel de clase', () => {
       const guards: unknown[] = Reflect.getMetadata('__guards__', TicketSoporteController) ?? [];
       expect(guards).toContain(PermissionsGuard);
+    });
+
+    it('crearTicketSoporte requiere permiso ticket:crear (W-2)', () => {
+      const permisos: string[] =
+        Reflect.getMetadata(
+          PERMISSIONS_KEY,
+          TicketSoporteController.prototype.crearTicketSoporte,
+        ) ?? [];
+      expect(permisos).toContain('ticket:crear');
     });
   });
 });

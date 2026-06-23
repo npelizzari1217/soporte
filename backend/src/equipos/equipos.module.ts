@@ -74,7 +74,10 @@ import {
   TIPOS_COMPONENTE_REPOSITORY,
   ITiposComponenteRepository,
 } from './domain/ports/i-tipos-componente.repository';
-import { TICKET_SOPORTE_REPOSITORY } from './domain/ports/i-ticket-soporte.repository';
+import {
+  TICKET_SOPORTE_REPOSITORY,
+  ITicketSoporteRepository,
+} from './domain/ports/i-ticket-soporte.repository';
 
 // ─── Equipos infrastructure ───────────────────────────────────────────────────
 import { PrismaEquipoInformaticoRepository } from './infrastructure/persistence/prisma/prisma-equipo-informatico.repository';
@@ -227,7 +230,7 @@ import { TicketSoporteController } from './interface/controllers/ticket-soporte.
         tipoOpRepo: ITipoOperacionRepository,
         numerador: NumeradorTicket,
         txRunner: ITenantTransactionRunner,
-        ticketSoporteRepo: any,
+        ticketSoporteRepo: ITicketSoporteRepository,
         equipoRepo: IEquipoInformaticoRepository,
       ) =>
         new CrearTicketSoporteUseCase(
