@@ -181,6 +181,7 @@ model Ticket {
   archivosTicket ArchivoTicket[]
   ticketCompra   TicketCompra?
   ticketEdilicia TicketEdilicia?
+  ticketSoporte  TicketSoporte?
 
   @@index([tipoId])
   @@index([estadoId])
@@ -250,6 +251,7 @@ model Archivo {
   archivosTicket       ArchivoTicket[]
   archivosOperacion    ArchivoOperacion[]
   archivosPresupuesto  ArchivoPresupuesto[]
+  archivosEquipo       ArchivoEquipo[]
 
   @@map("archivos")
 }
@@ -432,6 +434,7 @@ model Ubicacion {
   hijos Ubicacion[] @relation("UbicacionHijos")
 
   ticketsEdilicia TicketEdilicia[]
+  equipos         EquipoInformatico[]
 
   @@index([padreId]) // partial WHERE padre_id IS NOT NULL — ver migration SQL
   @@index([activo])  // partial WHERE deleted_at IS NULL — ver migration SQL
@@ -505,4 +508,151 @@ model ArchivoPresupuesto {
   @@id([archivoId, presupuestoId])
   @@index([presupuestoId])
   @@map("archivos_presupuesto")
+}
+
+// ─── EQUIPOS — Fase 6 ─────────────────────────────────────────────────────────
+//
+// Módulo de Equipos Informáticos: tipos_componente (catálogo), equipos_informaticos,
+// componentes_equipo, archivos_equipo (adjuntos), ticket_soporte (satélite 1:1).
+//
+// tipos_componente: catálogo sembrado en provisioning (10 tipos base).
+// equipos_informaticos: inventario de equipos del tenant.
+//   numero_serie: UNIQUE parcial WHERE NOT NULL — expresado en migration SQL
+//   porque Prisma no soporta índices parciales WHERE en el schema declarativo.
+//   asignado_a_id: soft ref → master.usuarios.id (sin FK cross-DB).
+//   ubicacion_id: FK → ubicaciones.id (nullable).
+// componentes_equipo: hardware instalado en un equipo. FK a equipo + tipo.
+// archivos_equipo: adjuntos de equipo (sin entidad de dominio — solo tabla + repo).
+// ticket_soporte: satélite 1:1 con tickets de tipo SOPORTE.
+//   equipo_id: NULLABLE — un ticket de soporte puede no referenciar un equipo.
+//   asignado_a_id: soft ref → master.usuarios.id (sin FK cross-DB).
+//
+// Ref spec: SPEC:equipos/Tablas TENANT, PR-17a
+
+// ─── TIPOS_COMPONENTE (catálogo — sembrado en provisioning) ──────────────────
+//
+// Seeds: CPU, RAM, DISCO, MONITOR, TECLADO, MOUSE, GPU, FUENTE, IMPRESORA, RED.
+// codigo: UNIQUE — clave de idempotencia del seed.
+
+model TipoComponente {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  codigo    String    @unique @db.VarChar(50)
+  nombre    String    @db.VarChar(100)
+  activo    Boolean   @default(true)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz
+
+  componentes ComponenteEquipo[]
+
+  @@map("tipos_componente")
+}
+
+// ─── EQUIPOS_INFORMATICOS (inventario de equipos del tenant) ─────────────────
+//
+// numero_serie: NULLABLE. UNIQUE PARCIAL WHERE NOT NULL — definido como raw SQL
+// en la migration (no expresable en el schema Prisma declarativo).
+// asignado_a_id: soft ref → master.usuarios.id. Sin FK cross-DB.
+// ubicacion_id: FK → ubicaciones.id. NULL = sin ubicación física asignada.
+// activo: TRUE = equipo disponible. FALSE = dado de baja del inventario.
+//   Distinto de deleted_at (soft delete del registro).
+
+model EquipoInformatico {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nombre           String    @db.VarChar(255)
+  /// UNIQUE PARCIAL WHERE NOT NULL — enforced via CREATE UNIQUE INDEX en migration SQL.
+  numeroSerie      String?   @map("numero_serie") @db.VarChar(255)
+  marca            String?   @db.VarChar(100)
+  modelo           String?   @db.VarChar(100)
+  fechaAdquisicion DateTime? @map("fecha_adquisicion") @db.Date
+  /// FK → ubicaciones.id. NULL = sin ubicación asignada.
+  ubicacionId      String?   @map("ubicacion_id") @db.Uuid
+  /// Soft ref → master.usuarios.id. NULL = sin asignar. Sin FK cross-DB.
+  asignadoAId      String?   @map("asignado_a_id") @db.Uuid
+  activo           Boolean   @default(true)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt        DateTime? @map("deleted_at") @db.Timestamptz
+
+  ubicacion   Ubicacion?         @relation(fields: [ubicacionId], references: [id])
+  componentes ComponenteEquipo[]
+  archivos    ArchivoEquipo[]
+  tickets     TicketSoporte[]
+
+  @@index([ubicacionId])
+  @@index([asignadoAId])
+  @@map("equipos_informaticos")
+}
+
+// ─── COMPONENTES_EQUIPO ───────────────────────────────────────────────────────
+//
+// Hardware instalado en un equipo.
+// Un equipo puede tener múltiples componentes del mismo tipo_componente_id.
+// numero_serie: serie del componente individual (no del equipo).
+
+model ComponenteEquipo {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  equipoId         String    @map("equipo_id") @db.Uuid
+  tipoComponenteId String    @map("tipo_componente_id") @db.Uuid
+  descripcion      String?   @db.VarChar(255)
+  numeroSerie      String?   @map("numero_serie") @db.VarChar(255)
+  capacidad        String?   @db.VarChar(100)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt        DateTime? @map("deleted_at") @db.Timestamptz
+
+  equipo         EquipoInformatico @relation(fields: [equipoId], references: [id])
+  tipoComponente TipoComponente    @relation(fields: [tipoComponenteId], references: [id])
+
+  @@index([equipoId])
+  @@index([tipoComponenteId])
+  @@map("componentes_equipo")
+}
+
+// ─── ARCHIVOS_EQUIPO (adjuntos de equipo) ────────────────────────────────────
+//
+// Tabla de adjuntos para equipos_informaticos.
+// Sin entidad de dominio (no se creó en 6.A) — solo tabla + repo de infraestructura.
+// Clona el patrón de ArchivoTicket/ArchivoPresupuesto pero con FK al equipo.
+// Nota: NO tiene soft delete — la baja es eliminación física (ON DELETE CASCADE).
+// La metadata del archivo vive en la tabla archivos (Archivo model).
+// PK compuesta (archivo_id, equipo_id).
+
+model ArchivoEquipo {
+  archivoId String   @map("archivo_id") @db.Uuid
+  equipoId  String   @map("equipo_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  archivo Archivo           @relation(fields: [archivoId], references: [id], onDelete: Cascade)
+  equipo  EquipoInformatico @relation(fields: [equipoId], references: [id], onDelete: Cascade)
+
+  @@id([archivoId, equipoId])
+  @@index([equipoId])
+  @@map("archivos_equipo")
+}
+
+// ─── TICKET_SOPORTE (satélite 1:1 del ticket para el flujo SOPORTE) ───────────
+//
+// equipo_id: NULLABLE — un ticket de soporte puede no referenciar un equipo.
+// asignado_a_id: soft ref → master.usuarios.id. Sin FK cross-DB.
+// UNIQUE en ticket_id: garantiza relación 1:1 con tickets.
+
+model TicketSoporte {
+  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ticketId            String    @unique @map("ticket_id") @db.Uuid
+  /// FK → equipos_informaticos.id. NULLABLE.
+  equipoId            String?   @map("equipo_id") @db.Uuid
+  descripcionProblema String?   @map("descripcion_problema") @db.Text
+  solucionAplicada    String?   @map("solucion_aplicada") @db.Text
+  /// Soft ref → master.usuarios.id. Sin FK cross-DB.
+  asignadoAId         String?   @map("asignado_a_id") @db.Uuid
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt           DateTime? @map("deleted_at") @db.Timestamptz
+
+  ticket Ticket             @relation(fields: [ticketId], references: [id])
+  equipo EquipoInformatico? @relation(fields: [equipoId], references: [id])
+
+  @@index([equipoId])
+  @@map("ticket_soporte")
 }

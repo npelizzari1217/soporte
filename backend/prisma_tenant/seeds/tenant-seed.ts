@@ -126,22 +126,49 @@ INSERT INTO tipo_operacion (id, codigo, nombre) VALUES
 ON CONFLICT (codigo) DO NOTHING;
 `;
 
+// ─ tipos_componente (10 tipos base — spec equipos PR-17a) ────────────────────
+//
+// Codigos: SPEC-EXPLICIT (10 tipos base de hardware).
+// Nombres: INFERRED — etiquetas en español para display.
+// UUIDs: prefijo a0 (siguiendo secuencia: c0=estados, d0=prioridades, e0=tipos_ticket,
+//        f0=tipo_operacion, a0=tipos_componente).
+//
+// Nota: ON CONFLICT (codigo) DO NOTHING — idempotente.
+//
+const SEED_TIPOS_COMPONENTE_SQL = `
+INSERT INTO tipos_componente (id, codigo, nombre) VALUES
+  ('a0000000-0000-4000-a000-000000000001', 'CPU',       'Procesador'),
+  ('a0000000-0000-4000-a000-000000000002', 'RAM',       'Memoria RAM'),
+  ('a0000000-0000-4000-a000-000000000003', 'DISCO',     'Disco de almacenamiento'),
+  ('a0000000-0000-4000-a000-000000000004', 'MONITOR',   'Monitor'),
+  ('a0000000-0000-4000-a000-000000000005', 'TECLADO',   'Teclado'),
+  ('a0000000-0000-4000-a000-000000000006', 'MOUSE',     'Mouse'),
+  ('a0000000-0000-4000-a000-000000000007', 'GPU',       'Placa de video'),
+  ('a0000000-0000-4000-a000-000000000008', 'FUENTE',    'Fuente de alimentación'),
+  ('a0000000-0000-4000-a000-000000000009', 'IMPRESORA', 'Impresora'),
+  ('a0000000-0000-4000-a000-000000000010', 'RED',       'Adaptador de red')
+ON CONFLICT (codigo) DO NOTHING;
+`;
+
 // ─── Ejecución ────────────────────────────────────────────────────────────────
 
 async function seed(): Promise<void> {
   console.log(`Iniciando seed de catálogos tenant en: ${url}`);
 
   await pool.query(SEED_ESTADOS_SQL);
-  console.log('  estados         → OK (8 valores base)');
+  console.log('  estados           → OK (8 valores base)');
 
   await pool.query(SEED_PRIORIDADES_SQL);
-  console.log('  prioridades     → OK (4 niveles)');
+  console.log('  prioridades       → OK (4 niveles)');
 
   await pool.query(SEED_TIPOS_TICKET_SQL);
-  console.log('  tipos_ticket    → OK (SOPORTE, COMPRAS, EDILICIA)');
+  console.log('  tipos_ticket      → OK (SOPORTE, COMPRAS, EDILICIA)');
 
   await pool.query(SEED_TIPO_OPERACION_SQL);
-  console.log('  tipo_operacion  → OK (6 tipos de evento, incluye UBICACION_ELIMINADA)');
+  console.log('  tipo_operacion    → OK (6 tipos de evento, incluye UBICACION_ELIMINADA)');
+
+  await pool.query(SEED_TIPOS_COMPONENTE_SQL);
+  console.log('  tipos_componente  → OK (10 tipos base: CPU, RAM, DISCO, MONITOR, TECLADO, MOUSE, GPU, FUENTE, IMPRESORA, RED)');
 
   console.log('Seed completado. Todos los catálogos son idempotentes (ON CONFLICT DO NOTHING).');
 }
