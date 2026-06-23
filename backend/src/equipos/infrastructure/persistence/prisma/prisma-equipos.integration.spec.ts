@@ -249,6 +249,67 @@ describe('Equipos Infrastructure Repos — Integration (6.C.1)', () => {
       });
     });
 
+    describe('UNIQUE parcial de numero_serie — solo entre activos (W-1 correctness)', () => {
+      it('re-alta: soft-delete equipo con SN-001 + nuevo equipo con SN-001 → ÉXITO (índice solo WHERE NOT NULL AND deleted_at IS NULL)', async () => {
+        const e1 = EquipoInformaticoEntity.create({
+          nombre: 'PC Original',
+          numeroSerie: 'SN-REALTA-001',
+          marca: null,
+          modelo: null,
+          fechaAdquisicion: null,
+          ubicacionId: null,
+          asignadoAId: null,
+          activo: true,
+        });
+        await withTenant(() => equipoRepo.save(e1));
+        await withTenant(() => equipoRepo.delete(e1.id));
+
+        // Re-alta: nuevo equipo con misma serie — el soft-deleted no debe bloquear
+        const e2 = EquipoInformaticoEntity.create({
+          nombre: 'PC Nueva Re-alta',
+          numeroSerie: 'SN-REALTA-001',
+          marca: null,
+          modelo: null,
+          fechaAdquisicion: null,
+          ubicacionId: null,
+          asignadoAId: null,
+          activo: true,
+        });
+        await expect(withTenant(() => equipoRepo.save(e2))).resolves.not.toThrow();
+
+        const found = await withTenant(() => equipoRepo.findById(e2.id));
+        expect(found).not.toBeNull();
+        expect(found!.numeroSerie).toBe('SN-REALTA-001');
+        expect(found!.isDeleted()).toBe(false);
+      });
+
+      it('dos equipos ACTIVOS con misma serie non-null → conflicto DB (P2002)', async () => {
+        const e1 = EquipoInformaticoEntity.create({
+          nombre: 'PC Activo A',
+          numeroSerie: 'SN-DUP-ACTIVO',
+          marca: null,
+          modelo: null,
+          fechaAdquisicion: null,
+          ubicacionId: null,
+          asignadoAId: null,
+          activo: true,
+        });
+        const e2 = EquipoInformaticoEntity.create({
+          nombre: 'PC Activo B',
+          numeroSerie: 'SN-DUP-ACTIVO',
+          marca: null,
+          modelo: null,
+          fechaAdquisicion: null,
+          ubicacionId: null,
+          asignadoAId: null,
+          activo: true,
+        });
+        await withTenant(() => equipoRepo.save(e1));
+        // Ambos activos → conflicto garantizado
+        await expect(withTenant(() => equipoRepo.save(e2))).rejects.toThrow();
+      });
+    });
+
     describe('UNIQUE parcial de numero_serie (6.C.1 — spec)', () => {
       it('dos equipos con numero_serie = null coexisten (UNIQUE parcial WHERE NOT NULL)', async () => {
         const e1 = EquipoInformaticoEntity.create({
@@ -775,6 +836,41 @@ describe('Equipos Infrastructure Repos — Integration (6.C.1)', () => {
         expect(found).not.toBeNull();
         expect(found!.isDeleted()).toBe(true);
         expect(found!.deletedAt).not.toBeNull();
+      });
+    });
+
+    describe('soft-delete de equipo NO borra historial de tickets (W-3 spec)', () => {
+      it('soft-delete en equipo_informatico no elimina ni cascadea ticket_soporte', async () => {
+        // Crear equipo y ticket de soporte que lo referencia
+        const equipo = EquipoInformaticoEntity.create({
+          nombre: 'PC con historial',
+          numeroSerie: null,
+          marca: null,
+          modelo: null,
+          fechaAdquisicion: null,
+          ubicacionId: null,
+          asignadoAId: null,
+          activo: true,
+        });
+        await withTenant(() => equipoRepo.save(equipo));
+
+        const ts = TicketSoporteEntity.create(BASE_TICKET_ID, equipo.id);
+        await withTenant(() => ticketSoporteRepo.save(ts));
+
+        // Soft-delete del equipo
+        await withTenant(() => equipoRepo.delete(equipo.id));
+
+        // El equipo debe estar marcado como borrado
+        const equipoDeleted = await withTenant(() => equipoRepo.findById(equipo.id));
+        expect(equipoDeleted).not.toBeNull();
+        expect(equipoDeleted!.isDeleted()).toBe(true);
+
+        // Las filas de ticket_soporte PERMANECEN — no se borran ni hacen cascade
+        const tsStillExists = await withTenant(() => ticketSoporteRepo.findById(ts.id));
+        expect(tsStillExists).not.toBeNull();
+        expect(tsStillExists!.ticketId).toBe(BASE_TICKET_ID);
+        expect(tsStillExists!.equipoId).toBe(equipo.id);
+        expect(tsStillExists!.isDeleted()).toBe(false);
       });
     });
   });

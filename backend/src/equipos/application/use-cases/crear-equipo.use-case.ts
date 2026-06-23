@@ -4,6 +4,16 @@ import { EquipoInformaticoEntity } from '../../domain/entities/equipo-informatic
 import { IEquipoInformaticoRepository } from '../../domain/ports/i-equipo-informatico.repository';
 import { NumeroSerieEquipoDuplicadoError } from '../../domain/errors/equipos.errors';
 
+/** Detecta error P2002 de Prisma (UNIQUE constraint violation) sin importar tipos de infraestructura. */
+function isPrismaUniqueConstraintError(err: unknown): err is { code: string } {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    'code' in err &&
+    (err as { code: unknown }).code === 'P2002'
+  );
+}
+
 /**
  * DTO para crear un nuevo equipo informático en el inventario.
  */
@@ -31,13 +41,16 @@ export interface CrearEquipoDto {
  *
  * Flujo:
  * 1. Si numeroSerie provisto: verifica unicidad vía repositorio → 409 si duplicado.
+ *    El check app-level mira solo equipos activos (findByNumeroSerie excluye soft-deleted),
+ *    consistente con el índice DB `WHERE numero_serie IS NOT NULL AND deleted_at IS NULL`.
  * 2. Crea la EquipoInformaticoEntity (activo=true por defecto, UUIDv7).
- * 3. Persiste en transacción.
+ * 3. Persiste en transacción. Si la DB lanza P2002 (race condition), se mapea a 409.
  * 4. Retorna Result.ok(equipo).
  *
  * Sin throw — todos los fallos esperados retornan Result.fail().
  *
- * Ref spec: [SPEC:equipos/Número de serie único, Equipo sin número de serie es válido]
+ * Ref spec: [SPEC:equipos/Número de serie único solo entre activos, Equipo sin número de serie es válido]
+ * Decisión 2026-06-23: numero_serie único solo entre equipos con deleted_at IS NULL.
  * Tarea: 6.B.3 / 6.B.4
  */
 export class CrearEquipoUseCase {
@@ -47,7 +60,7 @@ export class CrearEquipoUseCase {
   ) {}
 
   async execute(dto: CrearEquipoDto): Promise<Result<EquipoInformaticoEntity, DomainError>> {
-    // 1. Verificar unicidad del numero_serie (solo cuando se provee)
+    // 1. Verificar unicidad del numero_serie entre equipos ACTIVOS (solo cuando se provee)
     if (dto.numeroSerie !== null) {
       const existente = await this.equipoRepo.findByNumeroSerie(dto.numeroSerie);
       if (existente) {
@@ -67,10 +80,19 @@ export class CrearEquipoUseCase {
       activo: true,
     });
 
-    // 3. Persistir en transacción
-    await this.txRunner.run(async () => {
-      await this.equipoRepo.save(equipo);
-    });
+    // 3. Persistir en transacción.
+    //    Guard P2002: si una carrera concurrente inserta el mismo numero_serie entre
+    //    el check del paso 1 y el save(), la DB lanza P2002. Lo mapeamos a 409.
+    try {
+      await this.txRunner.run(async () => {
+        await this.equipoRepo.save(equipo);
+      });
+    } catch (err: unknown) {
+      if (dto.numeroSerie !== null && isPrismaUniqueConstraintError(err)) {
+        return Result.fail(new NumeroSerieEquipoDuplicadoError(dto.numeroSerie));
+      }
+      throw err;
+    }
 
     return Result.ok(equipo);
   }

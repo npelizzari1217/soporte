@@ -41,7 +41,7 @@ CREATE TABLE "tipos_componente" (
 CREATE TABLE "equipos_informaticos" (
     "id"               UUID         NOT NULL DEFAULT gen_random_uuid(),
     "nombre"           VARCHAR(255) NOT NULL,
-    "numero_serie"     VARCHAR(255),
+    "numero_serie"     VARCHAR(100),
     "marca"            VARCHAR(100),
     "modelo"           VARCHAR(100),
     "fecha_adquisicion" DATE,
@@ -61,8 +61,8 @@ CREATE TABLE "componentes_equipo" (
     "id"                UUID         NOT NULL DEFAULT gen_random_uuid(),
     "equipo_id"         UUID         NOT NULL,
     "tipo_componente_id" UUID        NOT NULL,
-    "descripcion"       VARCHAR(255),
-    "numero_serie"      VARCHAR(255),
+    "descripcion"       TEXT,
+    "numero_serie"      VARCHAR(100),
     "capacidad"         VARCHAR(100),
     "created_at"        TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at"        TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -109,15 +109,15 @@ CREATE UNIQUE INDEX "tipos_componente_codigo_key" ON "tipos_componente"("codigo"
 -- ticket_soporte.ticket_id: garantiza relación 1:1 con tickets
 CREATE UNIQUE INDEX "ticket_soporte_ticket_id_key" ON "ticket_soporte"("ticket_id");
 
--- equipos_informaticos.numero_serie: UNIQUE PARCIAL WHERE NOT NULL
+-- equipos_informaticos.numero_serie: UNIQUE PARCIAL WHERE NOT NULL AND deleted_at IS NULL
 -- Prisma no puede expresar WHERE en índices declarativos.
--- Esto permite múltiples filas con numero_serie = NULL pero impide dos
--- filas con el mismo numero_serie non-null (incluso a través de soft-delete).
--- NOTA: el índice parcial aplica también a filas con deleted_at IS NOT NULL
--- (equipos soft-deleted conservan la unicidad del número de serie).
+-- Esto permite múltiples filas con numero_serie = NULL y también permite
+-- re-alta: un equipo soft-deleted libera su numero_serie para nuevas altas.
+-- La unicidad SOLO aplica entre equipos ACTIVOS (deleted_at IS NULL).
+-- Decisión de negocio (2026-06-23): numero_serie es único solo entre vivos.
 CREATE UNIQUE INDEX "equipos_informaticos_numero_serie_key"
     ON "equipos_informaticos"("numero_serie")
-    WHERE "numero_serie" IS NOT NULL;
+    WHERE "numero_serie" IS NOT NULL AND "deleted_at" IS NULL;
 
 -- ─── REGULAR INDEXES ──────────────────────────────────────────────────────────
 

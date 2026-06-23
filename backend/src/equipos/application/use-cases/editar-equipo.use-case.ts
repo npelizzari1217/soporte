@@ -7,6 +7,16 @@ import {
   NumeroSerieEquipoDuplicadoError,
 } from '../../domain/errors/equipos.errors';
 
+/** Detecta error P2002 de Prisma (UNIQUE constraint violation) sin importar tipos de infraestructura. */
+function isPrismaUniqueConstraintError(err: unknown): err is { code: string } {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    'code' in err &&
+    (err as { code: unknown }).code === 'P2002'
+  );
+}
+
 /**
  * DTO para editar un equipo informático existente.
  */
@@ -36,15 +46,17 @@ export interface EditarEquipoDto {
  *
  * Flujo:
  * 1. Carga el equipo por id → 404 si no existe o fue soft-deleted.
- * 2. Si numeroSerie provisto: verifica que ningún OTRO equipo lo use → 409 si duplicado.
- *    Si findByNumeroSerie retorna el mismo equipo (mismo id), no es conflicto.
+ * 2. Si numeroSerie provisto: verifica que ningún OTRO equipo ACTIVO lo use → 409 si duplicado.
+ *    findByNumeroSerie excluye soft-deleted, consistente con el índice DB.
+ *    Si retorna el mismo equipo (mismo id), no es conflicto.
  * 3. Aplica los cambios a la entidad.
- * 4. Persiste en transacción.
+ * 4. Persiste en transacción. Si la DB lanza P2002 (race condition), se mapea a 409.
  * 5. Retorna Result.ok(equipo).
  *
  * Sin throw — todos los fallos esperados retornan Result.fail().
  *
- * Ref spec: [SPEC:equipos/Número de serie único, Inventario de equipos]
+ * Ref spec: [SPEC:equipos/Número de serie único solo entre activos, Inventario de equipos]
+ * Decisión 2026-06-23: numero_serie único solo entre equipos con deleted_at IS NULL.
  * Tarea: 6.B.3 / 6.B.4
  */
 export class EditarEquipoUseCase {
@@ -79,10 +91,19 @@ export class EditarEquipoUseCase {
       ubicacionId: dto.ubicacionId,
     });
 
-    // 4. Persistir en transacción
-    await this.txRunner.run(async () => {
-      await this.equipoRepo.save(equipo);
-    });
+    // 4. Persistir en transacción.
+    //    Guard P2002: si una carrera concurrente inserta el mismo numero_serie entre
+    //    el check del paso 2 y el save(), la DB lanza P2002. Lo mapeamos a 409.
+    try {
+      await this.txRunner.run(async () => {
+        await this.equipoRepo.save(equipo);
+      });
+    } catch (err: unknown) {
+      if (dto.numeroSerie !== null && isPrismaUniqueConstraintError(err)) {
+        return Result.fail(new NumeroSerieEquipoDuplicadoError(dto.numeroSerie));
+      }
+      throw err;
+    }
 
     return Result.ok(equipo);
   }
