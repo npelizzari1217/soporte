@@ -285,10 +285,10 @@
 
 ### 3.E — Interface
 
-**3.E.1** [P, dep: 3.C.2, 3.C.4, 3.C.6, 3.C.8, 3.D.2] **TEST →** Unit test de `TicketsController`: mock use cases; verifica guard chain (JWT → Roles/Permissions → Tenant); verifica status codes; verifica que `@CurrentUser()` inyecta usuario del JWT correctamente.
+**3.E.1** [x] [P, dep: 3.C.2, 3.C.4, 3.C.6, 3.C.8, 3.D.2] **TEST →** Unit test de `TicketsController`: mock use cases; verifica guard chain (JWT → Roles/Permissions → Tenant); verifica status codes; verifica que `@CurrentUser()` inyecta usuario del JWT correctamente.
 - Ref spec: `[SPEC:tickets-core/TenantContext activo]`; `[SPEC:auth-rbac/Guards]`
 
-**3.E.2** [S, dep: 3.E.1] **IMPL →** `tickets/interface/controllers/tickets.controller.ts` (POST /tickets, GET /tickets/:id, PATCH /tickets/:id/estado, POST /tickets/:id/asignar, POST /tickets/:id/adjuntos) + `OperacionesController` (GET /tickets/:id/operaciones) + DTOs. Wiring `TicketsModule`.
+**3.E.2** [x] [S, dep: 3.E.1] **IMPL →** `tickets/interface/controllers/tickets.controller.ts` (POST /tickets, GET /tickets/:id, PATCH /tickets/:id/estado, POST /tickets/:id/asignar, POST /tickets/:id/adjuntos) + `OperacionesController` (GET /tickets/:id/operaciones) + DTOs. Wiring `TicketsModule`.
 
 ---
 

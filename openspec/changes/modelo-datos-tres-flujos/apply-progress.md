@@ -1284,5 +1284,63 @@ backend/src/tickets/infrastructure/persistence/prisma/
 | Fase 0 — Scaffolding + Shared | **16/16 tareas completadas** (PR-01 + PR-02) |
 | Fase 1 — MASTER: clientes | **14/15 tareas completadas** — 1.A.1–1.D.2 ✅ PR-04; 1.C.3 ✅ PR-03 |
 | Fase 2 — MASTER: auth+RBAC | **20/22** — 2.A.1–2.B.8 ✅ PR-05; 2.C.1/2.C.2/2.D.1–2.D.4 ✅ PR-06; PR-06-fix ✅ CRITICALs; 2.C.3 ✅ PR-03; 2.E.1 ✅ PR-07; pendiente: 2.D.5 (registro usuario, out-of-scope) |
-| Fase 3 — TENANT: tickets-core | **19/18** — 3.D.3 ✅ PR-08; 3.D.4 ✅ PR-09; 3.A.1/3.A.2/3.A.3 ✅ PR-10 Slice 1; 3.B.1/3.B.2 ✅ PR-10 Slice 2; 3.B.3/3.B.4 ✅ PR-10 Slice 3; 3.C.1/3.C.2/3.C.5/3.C.6 ✅ PR-11a; 3.C.3/3.C.4/3.C.7/3.C.8 ✅ PR-11b; **3.D.1/3.D.2 ✅ PR-11c** — Pendiente: 3.E.1/3.E.2 (controllers + TicketsModule, PR-11d) |
-| Fases 4-7 | 0 — desbloqueadas cuando Fase 3 complete (3.E pending) |
+| Fase 3 — TENANT: tickets-core | **21/18 COMPLETA** — 3.D.3 ✅ PR-08; 3.D.4 ✅ PR-09; 3.A.1/3.A.2/3.A.3 ✅ PR-10 Slice 1; 3.B.1/3.B.2 ✅ PR-10 Slice 2; 3.B.3/3.B.4 ✅ PR-10 Slice 3; 3.C.1/3.C.2/3.C.5/3.C.6 ✅ PR-11a; 3.C.3/3.C.4/3.C.7/3.C.8 ✅ PR-11b; 3.D.1/3.D.2 ✅ PR-11c; **3.E.1/3.E.2 ✅ PR-11d** |
+| Fases 4-7 | 0 — desbloqueadas (Fase 3 COMPLETA) |
+
+---
+
+## PR-11d: Interface layer + TicketsModule — COMPLETADO
+
+### Tareas completadas
+
+| Tarea | Estado | Notas |
+|-------|--------|-------|
+| 3.E.1 | ✅ | 29 unit tests TDD (24 TicketsController + 5 OperacionesController) |
+| 3.E.2 | ✅ | 5 endpoints + OperacionesController + DTOs + TicketsModule + AppModule |
+
+### Archivos creados en PR-11d
+
+```
+backend/src/tickets/
+├── application/use-cases/
+│   ├── obtener-ticket.use-case.ts           — thin wrapper GET /tickets/:id (clean-arch)
+│   └── listar-operaciones.use-case.ts       — thin wrapper GET /tickets/:id/operaciones
+├── interface/
+│   ├── dtos/tickets.dto.ts                  — plain interfaces (no class-validator)
+│   └── controllers/
+│       ├── tickets.controller.ts            — 5 endpoints, guard chain, error mapping
+│       ├── tickets.controller.spec.ts       — 24 unit tests TDD
+│       ├── operaciones.controller.ts        — GET /tickets/:id/operaciones
+│       └── operaciones.controller.spec.ts   — 5 unit tests TDD
+└── tickets.module.ts                        — wires 8 repos + checker + SM + numerador + 6 use cases
+backend/src/app.module.ts                    — agrega TicketsModule
+backend/package.json                         — @types/multer 2.1.0 (devDependency)
+```
+
+### Decisiones técnicas PR-11d
+
+1. **ObtenerTicketUseCase + ListarOperacionesUseCase**: thin wrappers necesarios para respetar clean-arch — controller no puede importar domain ports directamente.
+
+2. **@types/multer instalado explícitamente**: Express.Multer.File viene de `@types/multer` que NO es transitiva de `@nestjs/platform-express`. Sin ella, `tsc` falla con "Namespace 'global.Express' has no exported member 'Multer'".
+
+3. **PATCH /tickets/:id/estado sin @RequirePermissions**: cualquier usuario autenticado en el tenant puede transicionar; la state machine enforces business rules de negocio. Solo ticket:asignar para POST /tickets/:id/asignar.
+
+4. **JwtAuthGuard no re-declarado en TicketsModule**: AuthModule lo exporta; TicketsModule lo importa via `imports: [AuthModule]`.
+
+5. **Guards RolesGuard/PermissionsGuard/TenantGuard declarados como providers**: necesitan ser resolvibles en el scope del módulo para que NestJS los instancie correctamente.
+
+6. **bigint tamanoBytes serializado como `.toString()`**: JSON no soporta bigint nativamente. ArchivoResponseDto.tamanoBytes es string.
+
+### Estado de verificaciones
+
+| Check | Resultado |
+|-------|-----------|
+| `pnpm test` | **655 tests, 44 suites, todos verdes** (+29 nuevos unit tests) |
+| `tsc --noEmit` | ✅ limpio |
+| `pnpm lint` | ✅ limpio — fitness rule verde |
+| Bootstrap DI | ✅ 655 tests incluyen app.module.spec.ts (NestJS resuelve todas las deps) |
+
+### Commit
+
+`0bd886e` en rama `feat/pr11d-tickets-interface`
+

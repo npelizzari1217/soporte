@@ -1,0 +1,89 @@
+/**
+ * DTOs de entrada/salida para TicketsController y OperacionesController.
+ *
+ * Siguiendo el patrón de auth.dto.ts: interfaces planas, sin class-validator.
+ * La validación con class-validator se añade en un PR posterior si se requiere.
+ *
+ * Tarea: 3.E.2
+ */
+
+// ─── Input DTOs ───────────────────────────────────────────────────────────────
+
+/**
+ * Cuerpo HTTP para POST /tickets.
+ * Los campos clienteId, autorId y anio se extraen del JWT via @CurrentUser().
+ */
+export interface CreateTicketHttpDto {
+  titulo: string;
+  descripcion?: string | null;
+  /** UUID del tipo de ticket (FK → tipos_ticket). */
+  tipoId: string;
+  /** UUID de la prioridad (FK → prioridades). */
+  prioridadId: string;
+  /** UUID del ciclo de cliente (FK → ciclos_cliente, opcional). */
+  cicloId?: string | null;
+  /** UUID del solicitante (soft ref → master.usuarios). */
+  solicitanteId: string;
+  /** Fecha de vencimiento ISO (opcional). */
+  fechaVencimiento?: string | null;
+}
+
+/**
+ * Cuerpo HTTP para PATCH /tickets/:id/estado.
+ */
+export interface TransicionarEstadoHttpDto {
+  /** Código semántico del estado destino (ej. 'EN_PROGRESO', 'CERRADO'). */
+  nuevoEstadoCodigo: string;
+}
+
+/**
+ * Cuerpo HTTP para POST /tickets/:id/asignar.
+ */
+export interface AsignarTicketHttpDto {
+  /** UUID del usuario a asignar (soft ref → master.usuarios). */
+  asignadoId: string;
+}
+
+// ─── Response DTOs ────────────────────────────────────────────────────────────
+
+/** Shape de respuesta para un Ticket. */
+export interface TicketResponseDto {
+  id: string;
+  numero: string;
+  titulo: string;
+  descripcion: string | null;
+  tipoId: string;
+  estadoId: string;
+  prioridadId: string;
+  cicloId: string | null;
+  solicitanteId: string;
+  asignadoId: string | null;
+  fechaVencimiento: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Shape de respuesta para un Archivo adjunto. */
+export interface ArchivoResponseDto {
+  id: string;
+  storageKey: string;
+  nombreOriginal: string;
+  mimeType: string;
+  /** BigInt serializado como string para evitar pérdida de precisión en JSON. */
+  tamanoBytes: string;
+  subidoPorId: string;
+  createdAt: string;
+}
+
+/** Shape de respuesta para una OperacionTicket (entrada de timeline). */
+export interface OperacionTicketResponseDto {
+  id: string;
+  ticketId: string;
+  tipoOperacionId: string;
+  descripcion: string | null;
+  estadoAnteriorId: string | null;
+  estadoNuevoId: string | null;
+  autorId: string;
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
+}
