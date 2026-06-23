@@ -431,12 +431,15 @@
 
 ### 6.A — Dominio
 
-**6.A.1** [P, dep: 3.A.3] **TEST →** Unit tests de entidades: `EquipoInformatico` (activo default true, `deactivate()`); `ComponenteEquipo` (tipo_componente_id requerido); `TicketSoporte` (equipo_id nullable). Verifica que `asignado_a_id` es soft ref (sin FK domain-level).
+**[x] 6.A.1** [P, dep: 3.A.3] **TEST →** Unit tests de entidades: `EquipoInformatico` (activo default true, `deactivate()`); `ComponenteEquipo` (tipo_componente_id requerido); `TicketSoporte` (equipo_id nullable). Verifica que `asignado_a_id` es soft ref (sin FK domain-level).
 - Ref spec: `[SPEC:equipos/Tablas TENANT]`
+- **Completado PR-16a:** 51 tests: EquipoInformatico (16), ComponenteEquipo (13), TipoComponente (8), TicketSoporte (14). TDD RED→GREEN verificado.
 
-**6.A.2** [S, dep: 6.A.1] **IMPL →** `equipos/domain/entities/`: `equipo-informatico.entity.ts`, `componente-equipo.entity.ts`, `tipos-componente.entity.ts`, `ticket-soporte.entity.ts`.
+**[x] 6.A.2** [S, dep: 6.A.1] **IMPL →** `equipos/domain/entities/`: `equipo-informatico.entity.ts`, `componente-equipo.entity.ts`, `tipos-componente.entity.ts`, `ticket-soporte.entity.ts`.
+- **Completado PR-16a:** 4 entidades + `equipos.errors.ts`. deactivate() distinto de softDelete(). asignado_a_id soft ref. equipo_id nullable en TicketSoporte.
 
-**6.A.3** [S, dep: 6.A.2] **IMPL →** Puertos: `i-equipo-informatico.repository.ts`, `i-componente-equipo.repository.ts`, `i-tipos-componente.repository.ts`, `i-ticket-soporte.repository.ts`.
+**[x] 6.A.3** [S, dep: 6.A.2] **IMPL →** Puertos: `i-equipo-informatico.repository.ts`, `i-componente-equipo.repository.ts`, `i-tipos-componente.repository.ts`, `i-ticket-soporte.repository.ts`.
+- **Completado PR-16a:** 4 puertos con Symbol DI tokens. Sin imports de Prisma/NestJS.
 
 ### 6.B — Application
 
