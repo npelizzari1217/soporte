@@ -1,8 +1,8 @@
 # Apply Progress — modelo-datos-tres-flujos
 
 > Última actualización: 2026-06-23
-> Rama activa: `feat/pr15a-reparaciones-infra`
-> PR actual: **PR-15a** (completado — Infrastructure + Schema Edilicia 5.C.1–5.C.3 + deudas seed CTE)
+> Rama activa: `feat/pr15b-reparaciones-interface`
+> PR actual: **PR-15b** (completado — Interface + ReparacionesModule 5.D.1–5.D.2)
 
 ---
 
@@ -1854,9 +1854,77 @@ backend/
 
 8. **`findByPadreId` eliminado del port `IUbicacionRepository`**: el método nunca se usó en la implementación final. Removerlo del contrato limpia la interfaz y fuerza a los mocks a actualizarse (TypeScript excess property checking via `satisfies jest.Mocked<Interface>`).
 
-### Pendiente
+---
 
-| Tarea | Sub-PR | Descripción |
-|-------|--------|-------------|
-| 5.D.1–5.D.2 | **PR-15b** | Interface: controllers + DTOs + ReparacionesModule |
+## PR-15b: Interface + ReparacionesModule — COMPLETADO
+
+> Rama: `feat/pr15b-reparaciones-interface` | Commit: `0184926`
+> Última actualización: 2026-06-23
+
+### Tareas completadas
+
+| Tarea | Estado | Notas |
+|-------|--------|-------|
+| 5.D.1 | ✅ | 40 unit tests (ubicaciones×13, tickets-edilicio×13, subtareas×14). Guard `subtarea:actualizar` verificado via Reflect.getMetadata. |
+| 5.D.2 | ✅ | 3 controllers + DTOs + ReparacionesModule + EdiliciaStateMachine en onModuleInit. AppModule + bootstrap spec actualizados. |
+
+### Endpoints implementados
+
+| Método | Ruta | Use Case | Permiso |
+|--------|------|----------|---------|
+| POST | `/ubicaciones` | CrearUbicacionUseCase | `ticket:crear` |
+| DELETE | `/ubicaciones/:id` | EliminarUbicacionUseCase | `ticket:crear` |
+| POST | `/tickets-edilicio` | CrearTicketEdilicioUseCase | `ticket:crear` |
+| POST | `/tickets-edilicio/:id/subtareas` | CrearSubtareaUseCase | `ticket:crear` |
+| POST | `/subtareas/:id/completar` | CompletarSubtareaUseCase | **`subtarea:actualizar`** |
+
+### Estado de tests
+
+- **1067 (PR-15a) → 1107 (PR-15b)** — +40 tests
+- Suite completa: 1107/1107 verdes
+- `tsc --noEmit`: ✅ limpio
+- `pnpm lint`: ✅ limpio (fitness rule verde)
+- `app.module.spec.ts` bootstrap: ✅ verde — EdiliciaStateMachine registrada via onModuleInit
+
+### Archivos creados en PR-15b
+
+```
+backend/
+├── src/
+│   ├── app.module.ts                              — +ReparacionesModule
+│   ├── app.module.spec.ts                         — +assertions UbicacionesController + EdiliciaStateMachine
+│   └── reparaciones/
+│       ├── reparaciones.module.ts                 — wiring completo + EdiliciaStateMachine.onModuleInit
+│       └── interface/
+│           ├── dtos/
+│           │   └── reparaciones.dto.ts            — DTOs input/output de los 3 controllers
+│           └── controllers/
+│               ├── ubicaciones.controller.ts + spec.ts      — 13 tests
+│               ├── tickets-edilicio.controller.ts + spec.ts — 13 tests
+│               └── subtareas.controller.ts + spec.ts        — 14 tests
+```
+
+### Decisiones tomadas en PR-15b
+
+1. **`SubtareasController` usa `@Controller()` sin prefijo**: las dos rutas tienen prefijos distintos (`tickets-edilicio/:id/subtareas` y `subtareas/:id/completar`), por lo que el controller no puede tener un prefijo de clase. Las rutas se especifican completas en cada método `@Post()`.
+
+2. **Permiso `subtarea:actualizar` EXISTE en el seed**: fue sembrado en PR-07 con UUID fijo `b0000000-0000-4000-b000-000000000007` y asignado al rol `MANTENIMIENTO`. No es deuda — ya está disponible en catálogo.
+
+3. **Guard chain clase: `JwtAuthGuard, RolesGuard, PermissionsGuard, TenantGuard`** — idéntico a ComprasModule y TicketsModule.
+
+4. **Wiring de EdiliciaStateMachine**: ReparacionesModule implementa `OnModuleInit` e inyecta `TICKET_STATE_MACHINE_FACTORY` (singleton exportado por TicketsModule). `onModuleInit()` llama `factory.register('EDILICIA', new EdiliciaStateMachine())`. Bootstrap test verifica con `await moduleRef.init()`.
+
+5. **Prettier reformateó archivos pre-existentes**: la ejecución de `prettier --write src/reparaciones/` reformateó 10 archivos ya existentes (use cases + repos + integration spec). Cambios incluidos en el mismo commit como limpieza de formato.
+
+### Estado global del cambio
+
+| Fase | Progreso |
+|------|---------|
+| Fase 0 — Scaffolding + Shared | COMPLETA |
+| Fase 1 — MASTER: clientes | COMPLETA |
+| Fase 2 — MASTER: auth+RBAC | COMPLETA |
+| Fase 3 — TENANT: tickets-core | COMPLETA |
+| Fase 4 — TENANT: Compras | COMPLETA |
+| Fase 5 — TENANT: Reparaciones | **COMPLETA** (PR-14a+14b+15a+15b — todas las tareas 5.A→5.D) |
+| Fase 6 — Equipos | 0 |
 

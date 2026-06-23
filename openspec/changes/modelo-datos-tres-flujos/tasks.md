@@ -416,10 +416,12 @@
 
 ### 5.D — Interface
 
-**5.D.1** [P, dep: 5.B.2, 5.B.4, 5.B.6, 5.B.8, 5.C.2] **TEST →** Unit test de `UbicacionesController` + `TicketsEdilicioController` + `SubtareasController`: mock use cases; verifica guards (`subtarea:actualizar` permiso en completar).
+**[x] 5.D.1** [P, dep: 5.B.2, 5.B.4, 5.B.6, 5.B.8, 5.C.2] **TEST →** Unit test de `UbicacionesController` + `TicketsEdilicioController` + `SubtareasController`: mock use cases; verifica guards (`subtarea:actualizar` permiso en completar).
 - Ref spec: `[SPEC:auth-rbac/Permiso subtarea:actualizar]`
+- **Completado PR-15b:** 40 unit tests (ubicaciones×13, tickets-edilicio×13, subtareas×14). Guard `subtarea:actualizar` verificado via Reflect.getMetadata en completarSubtarea.
 
-**5.D.2** [S, dep: 5.D.1] **IMPL →** `reparaciones/interface/controllers/`: `ubicaciones.controller.ts`, `tickets-edilicio.controller.ts`, `subtareas.controller.ts` + DTOs. Wiring `ReparacionesModule`.
+**[x] 5.D.2** [S, dep: 5.D.1] **IMPL →** `reparaciones/interface/controllers/`: `ubicaciones.controller.ts`, `tickets-edilicio.controller.ts`, `subtareas.controller.ts` + DTOs. Wiring `ReparacionesModule`.
+- **Completado PR-15b:** 3 controllers + DTOs + ReparacionesModule + EdiliciaStateMachine registrada en onModuleInit. AppModule + bootstrap spec actualizados. Suite: 1067 → 1107 verde.
 
 ---
 
