@@ -14,7 +14,6 @@
 -- archivos_equipo: adjuntos de equipo. Join table archivos ↔ equipos. ON DELETE CASCADE.
 -- ticket_soporte: satélite 1:1 de tickets con tipo.codigo='SOPORTE'.
 --   equipo_id: NULLABLE — un ticket de soporte puede no referenciar un equipo.
---   asignado_a_id: soft ref → master.usuarios.id (sin FK cross-DB).
 --
 -- Ref spec: SPEC:equipos/Tablas TENANT
 -- Dependencia: migration 20260623140000_add_reparaciones_schema debe existir.
@@ -88,7 +87,6 @@ CREATE TABLE "archivos_equipo" (
 -- ─── TICKET_SOPORTE (satélite 1:1 del ticket para el flujo SOPORTE) ───────────
 --
 -- equipo_id: NULLABLE — un ticket de soporte puede no referenciar un equipo.
--- asignado_a_id: soft ref → master.usuarios.id. Sin FK cross-DB.
 
 CREATE TABLE "ticket_soporte" (
     "id"                   UUID        NOT NULL DEFAULT gen_random_uuid(),
@@ -96,7 +94,6 @@ CREATE TABLE "ticket_soporte" (
     "equipo_id"            UUID,
     "descripcion_problema" TEXT,
     "solucion_aplicada"    TEXT,
-    "asignado_a_id"        UUID,
     "created_at"           TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at"           TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "deleted_at"           TIMESTAMPTZ,

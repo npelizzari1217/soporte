@@ -634,7 +634,6 @@ model ArchivoEquipo {
 // ─── TICKET_SOPORTE (satélite 1:1 del ticket para el flujo SOPORTE) ───────────
 //
 // equipo_id: NULLABLE — un ticket de soporte puede no referenciar un equipo.
-// asignado_a_id: soft ref → master.usuarios.id. Sin FK cross-DB.
 // UNIQUE en ticket_id: garantiza relación 1:1 con tickets.
 
 model TicketSoporte {
@@ -644,8 +643,6 @@ model TicketSoporte {
   equipoId            String?   @map("equipo_id") @db.Uuid
   descripcionProblema String?   @map("descripcion_problema") @db.Text
   solucionAplicada    String?   @map("solucion_aplicada") @db.Text
-  /// Soft ref → master.usuarios.id. Sin FK cross-DB.
-  asignadoAId         String?   @map("asignado_a_id") @db.Uuid
   createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt           DateTime? @map("deleted_at") @db.Timestamptz
