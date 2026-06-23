@@ -851,6 +851,81 @@ backend/
 
 ---
 
+---
+
+## PR-10 Slice 1: tickets-core dominio base — entidades + puertos (3.A) — COMPLETADO
+
+> Rama: `feat/pr10-tickets-domain` | Commit: `d811b3d`
+> Última actualización: 2026-06-23
+
+### Tareas completadas
+
+| Tarea | Estado | Notas |
+|-------|--------|-------|
+| 3.A.1 | ✅ | 49 unit tests TDD (RED → GREEN). 4 suites: ticket.entity.spec, operacion-ticket.entity.spec, archivo.entity.spec, ciclo-cliente.entity.spec. Cubre: constructor/estado-inicial-ABIERTO, assignTo(), canTransitionTo(desde,hacia), inmutabilidad OperacionTicket, validación tamano_bytes, soft-ref sin FK en CicloCliente. |
+| 3.A.2 | ✅ | 6 entidades en `tickets/domain/entities/`: ticket.entity.ts, operacion-ticket.entity.ts, archivo.entity.ts, ciclo-cliente.entity.ts, estado.entity.ts, prioridad.entity.ts. Todas extienden BaseEntity. Sin imports de Prisma ni NestJS. |
+| 3.A.3 | ✅ | 6 puertos en `tickets/domain/ports/`: i-ticket.repository.ts, i-operacion-ticket.repository.ts, i-archivo.repository.ts, i-ciclo-cliente.repository.ts, i-estado.repository.ts, i-usuario-tipos-ticket.repository.ts. Con Symbol DI tokens. |
+
+### Estado de tests post PR-10 Slice 1 (post-normalización)
+
+| Check | Resultado |
+|-------|-----------|
+| `pnpm test` | **422 tests, 33 suites, todos verdes** (+49 nuevos de 3.A.1) |
+| `tsc --noEmit` | ✅ limpio |
+| `pnpm lint` | ✅ fitness rule verde; cero imports de @prisma/client en domain/ |
+
+### Archivos creados en PR-10 Slice 1
+
+```
+backend/src/tickets/
+└── domain/
+    ├── errors/
+    │   └── tickets.errors.ts                          — ArchivoTamanoCeroError
+    ├── entities/
+    │   ├── ticket.entity.ts + spec.ts                 — 17 tests (TDD GREEN)
+    │   ├── operacion-ticket.entity.ts + spec.ts       — 13 tests (TDD GREEN)
+    │   ├── archivo.entity.ts + spec.ts                — 12 tests (TDD GREEN)
+    │   ├── ciclo-cliente.entity.ts + spec.ts          — 11 tests (TDD GREEN)
+    │   ├── estado.entity.ts                           — catálogo (sin tests propios, cubierto por reconstitute pattern)
+    │   └── prioridad.entity.ts                        — catálogo (ídem)
+    └── ports/
+        ├── i-ticket.repository.ts                     — + TICKET_REPOSITORY token
+        ├── i-operacion-ticket.repository.ts           — + OPERACION_TICKET_REPOSITORY token
+        ├── i-archivo.repository.ts                    — + ARCHIVO_REPOSITORY token
+        ├── i-ciclo-cliente.repository.ts              — + CICLO_CLIENTE_REPOSITORY token
+        ├── i-estado.repository.ts                     — + ESTADO_REPOSITORY token
+        └── i-usuario-tipos-ticket.repository.ts       — + USUARIO_TIPOS_TICKET_REPOSITORY token
+```
+
+### Decisiones tomadas en PR-10 Slice 1
+
+1. **`TicketEntity` NORMALIZADO — sin `estadoCodigo`** ✅ CONFIRMADO POR USUARIO: el Ticket guarda solo `estadoId` (UUID FK → estados). Una sola fuente de verdad. El use case cargará el Estado desde `IEstadoRepository` y pasará los códigos a la state machine y a `canTransitionTo()` como parámetros.
+
+2. **`canTransitionTo(desdeEstadoCodigo, haciaEstadoCodigo): boolean`**: firma definitiva. La entidad verifica solo invariantes: `isDeleted()` + `TERMINAL_STATES.has(desdeEstadoCodigo)`. La lógica de transición específica por tipo (BaseTicketStateMachine) llega en Slice 2 (3.B). El use case carga los códigos desde IEstadoRepository antes de llamar a este método.
+
+3. **`OperacionTicketEntity` es inmutable**: no tiene métodos de mutación de negocio. `softDelete()` es el único cambio de estado permitido (herencia de BaseEntity para auditoría). Esto se verifica en los tests de inmutabilidad.
+
+4. **`ArchivoEntity.create()` retorna `Result<ArchivoEntity, ArchivoTamanoCeroError>`**: sigue el patrón del skill `error-handling`: operaciones que pueden fallar retornan Result, no throws. `reconstitute()` NO valida (datos ya validados al persistir).
+
+5. **`ArchivoEntity` tiene constructor `private`**: para forzar el uso de `create()` (con validación) o `reconstitute()` (sin validación). Los tests usan `ArchivoProps` directamente en lugar de `ConstructorParameters`.
+
+6. **`CicloClienteEntity.cicloVigenteId` es soft ref pura**: el dominio almacena el UUID sin validar existencia. La validación cross-DB es responsabilidad del use case (capa de aplicación).
+
+7. **`IUsuarioTiposTicketRepository.revoke()` elimina fila físicamente**: la tabla `usuario_tipos_ticket` no tiene soft delete por diseño (solo `created_at`, sin `deleted_at`). Documentado en el puerto.
+
+8. **`ITicketRepository.findLastSecuencia(tipoId, anio)`**: método requerido por `NumeradorTicket` (Slice 2, 3.B.4) para generar el siguiente número legible. Incluido en el puerto para que esté disponible en el wiring del Slice 2.
+
+### Pendiente en PR-10 (otros slices)
+
+| Tareas | Slice | Descripción |
+|--------|-------|-------------|
+| 3.B.1–3.B.4 | **Slice 2** | BaseTicketStateMachine + NumeradorTicket |
+| 3.C.1–3.C.8 | **Slice 3** | Application use cases (CrearTicket, AsignarTicket, etc.) |
+| 3.D.1–3.D.2 | **Slice 3+** | Infrastructure: repos Prisma + mappers |
+| 3.E.1–3.E.2 | **Slice 3+** | Interface: TicketsController + TicketsModule |
+
+---
+
 ## Estado global del cambio
 
 | Fase | Progreso |
@@ -858,5 +933,5 @@ backend/
 | Fase 0 — Scaffolding + Shared | **16/16 tareas completadas** (PR-01 + PR-02) |
 | Fase 1 — MASTER: clientes | **14/15 tareas completadas** — 1.A.1–1.D.2 ✅ PR-04; 1.C.3 ✅ PR-03 |
 | Fase 2 — MASTER: auth+RBAC | **20/22** — 2.A.1–2.B.8 ✅ PR-05; 2.C.1/2.C.2/2.D.1–2.D.4 ✅ PR-06; PR-06-fix ✅ CRITICALs; 2.C.3 ✅ PR-03; 2.E.1 ✅ PR-07; pendiente: 2.D.5 (registro usuario, out-of-scope) |
-| Fase 3 — TENANT: tickets-core | **2/18** — 3.D.3 ✅ PR-08 (schema DDL + migration); 3.D.4 ✅ PR-09 (seed catálogos) |
+| Fase 3 — TENANT: tickets-core | **5/18** — 3.D.3 ✅ PR-08; 3.D.4 ✅ PR-09; 3.A.1/3.A.2/3.A.3 ✅ PR-10 Slice 1 |
 | Fases 4-7 | 0 — desbloqueadas cuando Fase 3 complete |

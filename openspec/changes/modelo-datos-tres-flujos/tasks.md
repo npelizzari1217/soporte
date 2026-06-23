@@ -210,12 +210,15 @@
 
 ### 3.A — Dominio: entidades base del ticket
 
-**3.A.1** [P, dep: 0.C.7] **TEST →** Unit tests de entidades de dominio del tenant: `Ticket` (constructor con estado inicial `ABIERTO`, `assignTo()`, `canTransitionTo()`); `OperacionTicket` (inmutabilidad del registro); `Archivo` (validación de tamano_bytes > 0); `CicloCliente` (soft ref sin FK).
+**[x] 3.A.1** [P, dep: 0.C.7] **TEST →** Unit tests de entidades de dominio del tenant: `Ticket` (constructor con estado inicial `ABIERTO`, `assignTo()`, `canTransitionTo()`); `OperacionTicket` (inmutabilidad del registro); `Archivo` (validación de tamano_bytes > 0); `CicloCliente` (soft ref sin FK).
 - Ref spec: `[SPEC:tickets-core/Tabla tickets, operaciones_ticket, archivos, ciclos_cliente]`
+- **Completado PR-10 Slice 1:** 47 unit tests TDD GREEN. 4 suites. Cubre constructor, assignTo, canTransitionTo, inmutabilidad, Result.fail en tamano_bytes, soft ref sin FK.
 
-**3.A.2** [S, dep: 3.A.1] **IMPL →** Entidades en `tickets/domain/entities/`: `ticket.entity.ts`, `operacion-ticket.entity.ts`, `archivo.entity.ts`, `ciclo-cliente.entity.ts`, `estado.entity.ts`, `prioridad.entity.ts`. Todas extienden `BaseEntity`. Sin Prisma.
+**[x] 3.A.2** [S, dep: 3.A.1] **IMPL →** Entidades en `tickets/domain/entities/`: `ticket.entity.ts`, `operacion-ticket.entity.ts`, `archivo.entity.ts`, `ciclo-cliente.entity.ts`, `estado.entity.ts`, `prioridad.entity.ts`. Todas extienden `BaseEntity`. Sin Prisma.
+- **Completado PR-10 Slice 1:** 6 entidades implementadas. Sin imports de Prisma ni NestJS. Fitness rule verde.
 
-**3.A.3** [S, dep: 3.A.2] **IMPL →** Puertos en `tickets/domain/ports/`: `i-ticket.repository.ts`, `i-operacion-ticket.repository.ts`, `i-archivo.repository.ts`, `i-ciclo-cliente.repository.ts`, `i-estado.repository.ts`, `i-usuario-tipos-ticket.repository.ts`.
+**[x] 3.A.3** [S, dep: 3.A.2] **IMPL →** Puertos en `tickets/domain/ports/`: `i-ticket.repository.ts`, `i-operacion-ticket.repository.ts`, `i-archivo.repository.ts`, `i-ciclo-cliente.repository.ts`, `i-estado.repository.ts`, `i-usuario-tipos-ticket.repository.ts`.
+- **Completado PR-10 Slice 1:** 6 puertos con Symbol DI tokens.
 
 ### 3.B — Dominio: máquina de estados + numerador
 
