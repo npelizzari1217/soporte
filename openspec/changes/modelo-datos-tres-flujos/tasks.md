@@ -310,25 +310,25 @@
 
 ### 4.B — Application
 
-**4.B.1** [P, dep: 4.A.3, 3.B.2] **TEST →** Test de `CrearTicketCompraUseCase`: verifica creación atómica (`tickets` + `ticket_compra` en misma tx); verifica que ticket SOPORTE no genera `ticket_compra`; verifica rollback si algún INSERT falla.
+**4.B.1** [x] [P, dep: 4.A.3, 3.B.2] **TEST →** Test de `CrearTicketCompraUseCase`: verifica creación atómica (`tickets` + `ticket_compra` en misma tx); verifica que ticket SOPORTE no genera `ticket_compra`; verifica rollback si algún INSERT falla.
 - Ref spec: `[SPEC:compras/Satélite obligatorio, Creación atómica]`
 
-**4.B.2** [S, dep: 4.B.1] **IMPL →** `compras/application/use-cases/crear-ticket-compra.use-case.ts`: extiende `CrearTicketUseCase`, inserta también `ticket_compra` en la misma transacción.
+**4.B.2** [x] [S, dep: 4.B.1] **IMPL →** `compras/application/use-cases/crear-ticket-compra.use-case.ts`: extiende `CrearTicketUseCase`, inserta también `ticket_compra` en la misma transacción.
 
-**4.B.3** [P, dep: 4.A.3] **TEST →** Test de `EnviarAAprobacionUseCase`: verifica que requiere al menos 1 ítem activo (no soft-deleted); verifica transición ABIERTO→PENDIENTE_APROBACION con `operaciones_ticket`.
+**4.B.3** [x] [P, dep: 4.A.3] **TEST →** Test de `EnviarAAprobacionUseCase`: verifica que requiere al menos 1 ítem activo (no soft-deleted); verifica transición ABIERTO→PENDIENTE_APROBACION con `operaciones_ticket`.
 - Ref spec: `[SPEC:compras/Gestión de ítems, Envío a aprobación]`
 
-**4.B.4** [S, dep: 4.B.3] **IMPL →** `compras/application/use-cases/enviar-a-aprobacion.use-case.ts`.
+**4.B.4** [x] [S, dep: 4.B.3] **IMPL →** `compras/application/use-cases/enviar-a-aprobacion.use-case.ts`.
 
-**4.B.5** [P, dep: 4.A.3] **TEST →** Test de `AprobarCompraUseCase`: verifica gate `compra:aprobar` en permiso (o usa mock del guard); verifica seteo de `aprobado_por_id`, `aprobado_en`; verifica transición a `APROBADO` + operacion en misma tx. Test de `RechazarCompraUseCase`: verifica que `motivo_rechazo` es requerido; verifica doble transición RECHAZADO → CERRADO en misma tx con dos `operaciones_ticket`.
+**4.B.5** [x] [P, dep: 4.A.3] **TEST →** Test de `AprobarCompraUseCase`: verifica gate `compra:aprobar` en permiso (o usa mock del guard); verifica seteo de `aprobado_por_id`, `aprobado_en`; verifica transición a `APROBADO` + operacion en misma tx. Test de `RechazarCompraUseCase`: verifica que `motivo_rechazo` es requerido; verifica doble transición RECHAZADO → CERRADO en misma tx con dos `operaciones_ticket`.
 - Ref spec: `[SPEC:compras/Gate de aprobación, Aprobación exitosa, Rechazo requiere motivo, Ticket rechazado→CERRADO]`
 
-**4.B.6** [S, dep: 4.B.5] **IMPL →** `compras/application/use-cases/aprobar-compra.use-case.ts` + `rechazar-compra.use-case.ts`.
+**4.B.6** [x] [S, dep: 4.B.5] **IMPL →** `compras/application/use-cases/aprobar-compra.use-case.ts` + `rechazar-compra.use-case.ts`.
 
-**4.B.7** [P, dep: 4.A.3] **TEST →** Test de `SeleccionarPresupuestoUseCase`: verifica swap atómico (set anterior FALSE + nuevo TRUE en misma tx); verifica que no pueden coexistir dos con `seleccionado = TRUE`.
+**4.B.7** [x] [P, dep: 4.A.3] **TEST →** Test de `SeleccionarPresupuestoUseCase`: verifica swap atómico (set anterior FALSE + nuevo TRUE en misma tx); verifica que no pueden coexistir dos con `seleccionado = TRUE`.
 - Ref spec: `[SPEC:compras/Selección única de presupuesto]`
 
-**4.B.8** [S, dep: 4.B.7] **IMPL →** `compras/application/use-cases/seleccionar-presupuesto.use-case.ts`.
+**4.B.8** [x] [S, dep: 4.B.7] **IMPL →** `compras/application/use-cases/seleccionar-presupuesto.use-case.ts`.
 
 ### 4.C — Infrastructure + Schema
 

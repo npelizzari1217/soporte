@@ -1448,4 +1448,79 @@ backend/src/compras/domain/
 | D-3 | `APROBADO → CANCELADO` no está en el spec COMPRAS | No incluido — la spec no lista esta transición. Si se necesita, requiere revisión de spec. |
 | D-4 | Registro de ComprasStateMachine en factory | Wiring NestJS en ComprasModule (PR-12b o cuando se cree el módulo). Test de 4.A.1 ya verifica el mecanismo. |
 
+---
+
+---
+
+## PR-12b: Compras — application use cases — COMPLETADO
+
+> Rama: `feat/pr12b-compras-usecases` | apilada sobre `feat/pr12a-compras-domain`
+> Última actualización: 2026-06-23
+
+### Tareas completadas
+
+| Tarea | Estado | Notas |
+|-------|--------|-------|
+| 4.B.1 | ✅ | 19 tests: CrearTicketCompraUseCase — creación atómica tickets+ticket_compra, rechazo si tipoCodigo≠COMPRAS, integración con txRunner |
+| 4.B.2 | ✅ | `compras/application/use-cases/crear-ticket-compra.use-case.ts` — no extiende sino reimplementa CreateTicket + save ticketCompra en misma tx |
+| 4.B.3 | ✅ | 19 tests: EnviarAAprobacionUseCase — gate ≥1 ítem activo, transición ABIERTO→PENDIENTE_APROBACION, factory/state-machine, operacion en tx |
+| 4.B.4 | ✅ | `compras/application/use-cases/enviar-a-aprobacion.use-case.ts` |
+| 4.B.5 | ✅ | 18+20 tests: AprobarCompraUseCase (aprobadoPorId+aprobadoEn, transición a APROBADO, tx atómica) + RechazarCompraUseCase (motivoRechazo requerido, doble transición RECHAZADO→CERRADO, 2 operaciones) |
+| 4.B.6 | ✅ | `compras/application/use-cases/aprobar-compra.use-case.ts` + `rechazar-compra.use-case.ts` |
+| 4.B.7 | ✅ | 11 tests: SeleccionarPresupuestoUseCase — swap atómico anterior.deseleccionar()+nuevo.seleccionar(), no coexisten dos con seleccionado=true |
+| 4.B.8 | ✅ | `compras/application/use-cases/seleccionar-presupuesto.use-case.ts` |
+
+### Errores nuevos agregados en PR-12b (compras.errors.ts)
+
+5 errores agregados en `backend/src/compras/domain/errors/compras.errors.ts`:
+- `TicketNoEsComprasError` (code: TICKET_NO_ES_COMPRAS)
+- `TicketCompraNoEncontradoError` (code: TICKET_COMPRA_NO_ENCONTRADO)
+- `SinItemsActivosError` (code: SIN_ITEMS_ACTIVOS)
+- `MotivoRechazoRequeridoError` (code: MOTIVO_RECHAZO_REQUERIDO)
+- `PresupuestoNoEncontradoError` (code: PRESUPUESTO_NO_ENCONTRADO)
+
+### Estado de verificaciones
+
+| Check | Resultado |
+|-------|-----------|
+| `pnpm test` (compras/application) | **70/70 verdes** (5 suites) |
+| `pnpm test` (suite completa) | **802/802 verdes** (54 suites) — +70 respecto a PR-12a baseline de 732 |
+| `tsc --noEmit` | ✅ limpio |
+| `pnpm lint` | ✅ fitness rule verde (cero imports @prisma/client en application/) |
+
+### Archivos creados en PR-12b
+
+```
+backend/src/compras/
+├── domain/
+│   └── errors/
+│       └── compras.errors.ts                                — +5 error classes (patch sobre PR-12a)
+└── application/
+    └── use-cases/
+        ├── crear-ticket-compra.use-case.ts                  — + spec (19 tests)
+        ├── crear-ticket-compra.use-case.spec.ts
+        ├── enviar-a-aprobacion.use-case.ts                  — + spec (19 tests)
+        ├── enviar-a-aprobacion.use-case.spec.ts
+        ├── aprobar-compra.use-case.ts                       — + spec (18 tests)
+        ├── aprobar-compra.use-case.spec.ts
+        ├── rechazar-compra.use-case.ts                      — + spec (20 tests)
+        ├── rechazar-compra.use-case.spec.ts
+        ├── seleccionar-presupuesto.use-case.ts              — + spec (11 tests)
+        └── seleccionar-presupuesto.use-case.spec.ts
+```
+
+### Decisiones tomadas en PR-12b
+
+1. **`CrearTicketCompraUseCase` reimplementa (no extiende) `CrearTicketUseCase`**: permite agregar `ticketCompraRepo.save()` en el mismo `txRunner.run()` callback. La herencia hubiera requerido hook points o composición más compleja.
+
+2. **`AprobarCompraUseCase` y `RechazarCompraUseCase` delegan a `ComprasStateMachine` vía factory**: implementación inicial usaba `if (estadoActual.codigo !== 'PENDIENTE_APROBACION')` (chequeo hardcodeado). Corregido post-review en TDD estricto RED→GREEN — ahora ambos use cases inyectan `ITipoTicketRepository` + `TicketStateMachineFactory`, resuelven `factory.resolve(tipoCodigo)` y validan con `machine.puedeTransicionar`. RechazarCompra valida AMBAS transiciones de la doble secuencia (PENDIENTE→RECHAZADO y RECHAZADO→CERRADO). `EnviarAAprobacionUseCase` también usa factory (especificado en task 4.B.3).
+
+3. **Doble transición en `RechazarCompraUseCase`**: `ticket.updateEstado()` llamado dos veces (→RECHAZADO, →CERRADO); dos `OperacionTicketEntity` creadas; un solo `ticketRepo.save()` dentro del `txRunner.run()` (persiste el estado final CERRADO). El timeline queda: PENDIENTE→RECHAZADO, RECHAZADO→CERRADO.
+
+4. **Validación temprana de `motivoRechazo`** en RechazarCompra: trim check ANTES de cualquier consulta a DB (fail fast sin IO).
+
+5. **`SeleccionarPresupuestoUseCase` maneja el caso mismoPresupuesto**: si `anteriorSeleccionado.id === presupuesto.id`, no llama a `deseleccionar()` + `save(anterior)`. Solo llama `seleccionar()` + `save(presupuesto)` (idempotente). 1 sola llamada a save en ese caso.
+
+6. **Prettier fix en spec files**: 4 spec files tenían trailing-comma warnings (prettier/prettier) — resueltos con `eslint --fix` tras la implementación.
+
 
