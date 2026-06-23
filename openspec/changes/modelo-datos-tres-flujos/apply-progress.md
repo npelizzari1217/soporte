@@ -2,8 +2,49 @@
 
 > Última actualización: 2026-06-23
 > Rama activa: `feat/pr16b-equipos-application`
-> PR actual: **PR-16b** (Fase 6.B — Application Equipos — commit d64ebbe)
-> Tests: **1230/1230** verdes
+> PR actual: **PR-16b-ajuste** (Fase 6.B — Ajuste post-consulta — commit 4a6a332)
+> Tests: **1242/1242** verdes (+12 vs baseline PR-16b de 1230)
+
+---
+
+## PR-16b-ajuste: Equipos — Application ajuste post-consulta (6.B) — COMPLETADO
+
+### Tareas completadas (ajuste)
+
+| Cambio | Estado | Notas |
+|--------|--------|-------|
+| Split error tipo-componente | ✅ | `TipoComponenteNoEncontradoError` (404) separado de `TipoComponenteInactivoError` (422) en `agregar-componente.use-case.ts` |
+| ObtenerEquipoUseCase | ✅ | 3 tests — clona `ObtenerTicketUseCase`, guard soft-delete |
+| ListarEquiposUseCase | ✅ | 3 tests — delega a `findAllActive()` |
+| ObtenerComponentesPorEquipoUseCase | ✅ | 5 tests — guard equipo + `findByEquipoId` |
+
+### Estado de tests post PR-16b-ajuste
+- **1242 tests, 86 suites, todos verdes** (`pnpm test`)
+- Tests PR-16b → ajuste: 1230 → **1242** (+12 nuevos, 3 suites nuevas)
+- `tsc --noEmit`: ✅ limpio
+- `pnpm lint`: sin errores nuevos (13 pre-existentes fuera de scope de este PR)
+
+### Archivos modificados/creados en PR-16b-ajuste
+
+```
+backend/src/equipos/
+├── domain/
+│   └── errors/
+│       └── equipos.errors.ts              — +TipoComponenteNoEncontradoError (404)
+└── application/
+    └── use-cases/
+        ├── agregar-componente.use-case.ts     — split guard null→NoEncontrado / !activo→Inactivo
+        ├── agregar-componente.use-case.spec.ts — split en 2 describe: no-encontrado (2t) + inactivo (3t)
+        ├── obtener-equipo.use-case.ts + spec.ts               — 3 tests
+        ├── listar-equipos.use-case.ts + spec.ts               — 3 tests
+        └── obtener-componentes-por-equipo.use-case.ts + spec.ts — 5 tests
+```
+
+### Decisiones / hallazgos del ajuste
+
+1. **Sin puertos nuevos**: `IEquipoInformaticoRepository` (findById, findAllActive) e `IComponenteEquipoRepository` (findByEquipoId) ya tenían todos los métodos necesarios desde PR-16a. No se modificó ningún puerto.
+2. **Decisión revertida (PR-16b)**: La decisión 6 de PR-16b ("Tipo inactivo = no existe — mismo error para simplificar presentation") fue explícitamente anulada por el usuario. Ahora los errores son semánticamente distintos (404 vs 422).
+3. **ListarEquiposUseCase**: No recibe filtros por diseño. Si se necesita filtro por asignadoAId o activo, se extiende este use case o se crea uno especializado (decisión futura a consultar).
 
 ---
 
@@ -53,7 +94,7 @@ backend/src/equipos/
 3. **Cross-DB en AsignarEquipoUseCase**: reutiliza `IUsuarioMasterChecker` de `tickets/domain/ports/` (mismo puerto que `AsignarTicketUseCase`). Método `estaActivoEnTenant` (activo=TRUE requerido).
 4. **EquipoInformaticoEntity.actualizar()**: método de mutación agregado a la entidad para soportar edición. `props` es `protected readonly` — no se puede mutar desde fuera. Patrón consistente con `deactivate()`, `asignarA()`, `actualizarUbicacion()`.
 5. **Unicidad en edición**: `EditarEquipoUseCase` verifica conflicto solo cuando `findByNumeroSerie` retorna un equipo con `id !== dto.equipoId`. El mismo equipo puede conservar su número de serie sin conflicto.
-6. **Tipo inactivo = no existe** en `AgregarComponenteUseCase`: si `findById` retorna null O si `activo=FALSE` → mismo error `TipoComponenteInactivoError`. Simplifica lógica de presentation (no revela si el UUID existe o no).
+6. ~~**Tipo inactivo = no existe**~~ **REVERTIDO en PR-16b-ajuste**: La decisión original de unificar los errores fue explícitamente anulada. Ver PR-16b-ajuste: `TipoComponenteNoEncontradoError` (404) para null, `TipoComponenteInactivoError` (422) para activo=FALSE.
 7. **TxRunner siempre**: todos los use cases usan `txRunner.run()` aunque solo haya un save, para consistencia arquitectónica (si mañana se agrega un paso, ya está en tx).
 
 ### Estado global del cambio (post PR-16b)

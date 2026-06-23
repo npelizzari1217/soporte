@@ -470,6 +470,22 @@
 - `eliminar-componente.use-case.ts` — soft delete de componente sin afectar equipo ni restantes
 - **Completado PR-16b.** Nuevos errores de dominio: AsignadoEquipoInvalidoError, ComponenteEquipoNoEncontradoError, TicketNoEsSoporteError.
 
+**[x] 6.B-ajuste** [post-consulta] **Ajuste sobre PR-16b — dos decisiones resueltas:**
+
+**CAMBIO 1 — Split error tipo-componente:**
+- `TipoComponenteNoEncontradoError` (404) agregado a `equipos.errors.ts` — se devuelve cuando `findById→null`.
+- `TipoComponenteInactivoError` (422) queda para tipo que existe pero `activo=FALSE`.
+- `agregar-componente.use-case.ts`: guard separado en dos ramas (`null` → NoEncontrado, `!activo` → Inactivo).
+- `agregar-componente.use-case.spec.ts`: nuevos describe blocks `tipo de componente no encontrado` (2 tests) y `tipo de componente inactivo` (3 tests).
+
+**CAMBIO 2 — Use cases de lectura (consistencia con tickets-core):**
+- `obtener-equipo.use-case.ts` + spec (3 tests) — clona `ObtenerTicketUseCase`; guard soft-delete.
+- `listar-equipos.use-case.ts` + spec (3 tests) — delega a `findAllActive()` (filtro activo+no-deleted en repo).
+- `obtener-componentes-por-equipo.use-case.ts` + spec (5 tests) — clona `ListarOperacionesUseCase`; guard de equipo + `findByEquipoId`.
+- Sin puertos nuevos: `IEquipoInformaticoRepository` (findById, findAllActive) e `IComponenteEquipoRepository` (findByEquipoId) ya tenían todos los métodos necesarios desde PR-16a.
+- Tests: 1230 (baseline) → **1242** (+12 tests). Suite 1242/1242 verdes.
+- Commit: `feat/pr16b-equipos-application` @ 4a6a332.
+
 ### 6.C — Infrastructure + Schema
 
 **6.C.1** [P, dep: 6.A.3] **TEST →** Integration test de `PrismaEquipoInformaticoRepository`: verifica UNIQUE parcial de `numero_serie`; verifica soft delete; test de `PrismaTicketSoporteRepository`: verifica relación 1:1.
