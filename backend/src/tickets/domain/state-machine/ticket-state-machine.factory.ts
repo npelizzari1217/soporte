@@ -2,6 +2,19 @@ import { ITicketStateMachine } from './i-ticket-state-machine';
 import { BaseTicketStateMachine } from './base-ticket-state-machine';
 
 /**
+ * Token de inyección de dependencias para TicketStateMachineFactory.
+ *
+ * Permite mockear la factory en tests de use cases (PR-11+) sin acoplarse
+ * a la implementación concreta. Espejo del patrón TICKET_REPOSITORY, etc.
+ *
+ * Uso en NestJS:
+ *   providers: [{ provide: TICKET_STATE_MACHINE_FACTORY, useClass: TicketStateMachineFactory }]
+ * Uso en tests:
+ *   { provide: TICKET_STATE_MACHINE_FACTORY, useValue: mockFactory }
+ */
+export const TICKET_STATE_MACHINE_FACTORY = Symbol('TICKET_STATE_MACHINE_FACTORY');
+
+/**
  * Factory de máquinas de estados de tickets — Strategy por tipo.
  *
  * Selecciona la implementación de `ITicketStateMachine` apropiada según el

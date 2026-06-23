@@ -1,3 +1,5 @@
+import { Result } from '../../../shared/domain/result';
+import { SecuenciaAgotadaError, TipoTicketDesconocidoError } from '../errors/tickets.errors';
 import { ITicketRepository } from '../ports/i-ticket.repository';
 
 /**
@@ -41,27 +43,35 @@ export class NumeradorTicket {
    * Pasos:
    * 1. Resuelve el prefijo a partir de tipoCodigo.
    * 2. Consulta el último número de secuencia LOCAL (por tipo y año).
-   * 3. Incrementa y formatea con padding a 5 dígitos.
+   * 3. Verifica que la secuencia resultante no supere 99999 (overflow guard).
+   * 4. Incrementa y formatea con padding a 5 dígitos.
    *
-   * @param tipoId   UUID del tipo_ticket (FK en la tabla tickets).
+   * @param tipoId     UUID del tipo_ticket (FK en la tabla tickets).
    * @param tipoCodigo Codigo semántico del tipo: 'SOPORTE' | 'COMPRAS' | 'EDILICIA'.
-   * @param anio     Año del ciclo vigente o año de creación del ticket.
-   * @returns Número legible, ej. "SOP-2026-00042".
-   * @throws Error si tipoCodigo no tiene un prefijo registrado.
+   * @param anio       Año del ciclo vigente o año de creación del ticket.
+   * @returns Result.ok con el número legible (ej. "SOP-2026-00042"),
+   *          o Result.fail con TipoTicketDesconocidoError / SecuenciaAgotadaError.
    */
-  async generarNumero(tipoId: string, tipoCodigo: string, anio: number): Promise<string> {
+  async generarNumero(
+    tipoId: string,
+    tipoCodigo: string,
+    anio: number,
+  ): Promise<Result<string, TipoTicketDesconocidoError | SecuenciaAgotadaError>> {
     const prefijo = PREFIJO_POR_CODIGO[tipoCodigo];
     if (!prefijo) {
-      throw new Error(
-        `NumeradorTicket: codigo de tipo desconocido "${tipoCodigo}". ` +
-          `Valores válidos: ${Object.keys(PREFIJO_POR_CODIGO).join(', ')}`,
+      return Result.fail(
+        new TipoTicketDesconocidoError(tipoCodigo, Object.keys(PREFIJO_POR_CODIGO)),
       );
     }
 
     const lastSecuencia = await this.ticketRepository.findLastSecuencia(tipoId, anio);
     const nextSecuencia = lastSecuencia + 1;
 
-    return NumeradorTicket.generarFormato(prefijo, anio, nextSecuencia);
+    if (nextSecuencia > 99999) {
+      return Result.fail(new SecuenciaAgotadaError(tipoCodigo, anio));
+    }
+
+    return Result.ok(NumeradorTicket.generarFormato(prefijo, anio, nextSecuencia));
   }
 
   /**

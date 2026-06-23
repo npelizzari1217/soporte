@@ -14,7 +14,6 @@ const makeOperacionProps = (
 ): OperacionTicketProps => ({
   ticketId: 'ticket-uuid-1',
   tipoOperacionId: 'tipo-op-uuid-cambio-estado',
-  tipoOperacionCodigo: 'CAMBIO_ESTADO',
   descripcion: null as string | null,
   estadoAnteriorId: null as string | null,
   estadoNuevoId: 'estado-abierto-uuid',
@@ -46,12 +45,14 @@ describe('OperacionTicketEntity', () => {
   });
 
   describe('Getters de propiedades', () => {
-    it('expone ticketId, tipoOperacionId, tipoOperacionCodigo', () => {
+    it('expone ticketId y tipoOperacionId (sin tipoOperacionCodigo — modelo normalizado)', () => {
       const props = makeOperacionProps();
       const op = OperacionTicketEntity.create(props);
       expect(op.ticketId).toBe(props.ticketId);
       expect(op.tipoOperacionId).toBe(props.tipoOperacionId);
-      expect(op.tipoOperacionCodigo).toBe(props.tipoOperacionCodigo);
+      // tipoOperacionCodigo NO existe: OperacionTicket guarda solo el UUID del tipo.
+      // Una sola fuente de verdad — espejo del patrón de Ticket.estadoCodigo.
+      expect((op as any).tipoOperacionCodigo).toBeUndefined();
     });
 
     it('expone estadoAnteriorId (nullable) y estadoNuevoId (nullable)', () => {

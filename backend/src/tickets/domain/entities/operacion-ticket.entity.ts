@@ -12,8 +12,6 @@ export interface OperacionTicketProps {
   ticketId: string;
   /** UUID del tipo de operación (FK → tipo_operacion). */
   tipoOperacionId: string;
-  /** Código semántico del tipo de operación para lógica de dominio. */
-  tipoOperacionCodigo: string;
   /** Descripción libre del evento (nullable). */
   descripcion: string | null;
   /** UUID del estado anterior (nullable — null para la operación inicial). */
@@ -74,10 +72,6 @@ export class OperacionTicketEntity extends BaseEntity<OperacionTicketProps> {
 
   get tipoOperacionId(): string {
     return this.props.tipoOperacionId;
-  }
-
-  get tipoOperacionCodigo(): string {
-    return this.props.tipoOperacionCodigo;
   }
 
   get descripcion(): string | null {
