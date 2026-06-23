@@ -90,3 +90,56 @@ export class TipoComponenteInactivoError extends DomainError {
     );
   }
 }
+
+/**
+ * Error de búsqueda: el componente de equipo no existe o fue eliminado.
+ * HTTP 404 semántico.
+ *
+ * Ref spec: [SPEC:equipos/Tabla componentes_equipo]
+ * Tarea: 6.B.5 / 6.B.6
+ */
+export class ComponenteEquipoNoEncontradoError extends DomainError {
+  readonly code = 'COMPONENTE_EQUIPO_NO_ENCONTRADO';
+
+  constructor(componenteId: string) {
+    super(
+      `Componente de equipo con id "${componenteId}" no encontrado o fue eliminado (soft delete).`,
+    );
+  }
+}
+
+/**
+ * Error de validación: el asignado_a_id no corresponde a un usuario activo del tenant.
+ * HTTP 422 semántico.
+ *
+ * Ref spec: [SPEC:equipos/asignado_a_id validado como usuario activo del tenant]
+ * Tarea: 6.B.5 / 6.B.6
+ */
+export class AsignadoEquipoInvalidoError extends DomainError {
+  readonly code = 'ASIGNADO_INVALIDO';
+
+  constructor(usuarioId: string) {
+    super(
+      `El usuario "${usuarioId}" no existe en master.usuarios con activo=TRUE, ` +
+        'no fue encontrado o no pertenece al tenant. No se puede asignar el equipo.',
+    );
+  }
+}
+
+/**
+ * Error de validación: el ticket no es de tipo SOPORTE.
+ * HTTP 422 semántico.
+ *
+ * Ref spec: [SPEC:equipos/Satélite ticket_soporte para tickets IT]
+ * Tarea: 6.B.1 / 6.B.2
+ */
+export class TicketNoEsSoporteError extends DomainError {
+  readonly code = 'TICKET_NO_ES_SOPORTE';
+
+  constructor(tipoCodigo: string) {
+    super(
+      `El ticket tiene tipo "${tipoCodigo}" pero CrearTicketSoporteUseCase requiere tipo SOPORTE. ` +
+        'Usá el use case correspondiente al tipo de ticket.',
+    );
+  }
+}

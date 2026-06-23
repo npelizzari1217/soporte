@@ -156,4 +156,30 @@ export class EquipoInformaticoEntity extends BaseEntity<EquipoInformaticoProps> 
   actualizarUbicacion(ubicacionId: string | null): void {
     this.props.ubicacionId = ubicacionId;
   }
+
+  /**
+   * Actualiza los campos editables del equipo informático.
+   *
+   * Usado por EditarEquipoUseCase. Todos los campos son opcionales en el DTO;
+   * solo se actualizan los provistos (undefined = sin cambio).
+   *
+   * Nota: asignadoAId no se actualiza acá — tiene su propio use case (AsignarEquipo).
+   *
+   * @param campos Subconjunto de props a actualizar.
+   */
+  actualizar(campos: {
+    nombre?: string;
+    numeroSerie?: string | null;
+    marca?: string | null;
+    modelo?: string | null;
+    fechaAdquisicion?: Date | null;
+    ubicacionId?: string | null;
+  }): void {
+    if (campos.nombre !== undefined) this.props.nombre = campos.nombre;
+    if (campos.numeroSerie !== undefined) this.props.numeroSerie = campos.numeroSerie;
+    if (campos.marca !== undefined) this.props.marca = campos.marca;
+    if (campos.modelo !== undefined) this.props.modelo = campos.modelo;
+    if (campos.fechaAdquisicion !== undefined) this.props.fechaAdquisicion = campos.fechaAdquisicion;
+    if (campos.ubicacionId !== undefined) this.props.ubicacionId = campos.ubicacionId;
+  }
 }
