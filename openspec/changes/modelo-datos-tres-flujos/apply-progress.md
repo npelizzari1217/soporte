@@ -1026,6 +1026,90 @@ backend/src/tickets/
 
 ---
 
+---
+
+## PR-11a: tickets-core application core — CrearTicket + TransicionarEstado (3.C) — COMPLETADO
+
+> Rama: `feat/pr11a-tickets-usecases-core`
+> Última actualización: 2026-06-23
+
+### Tareas completadas
+
+| Tarea | Estado | Notas |
+|-------|--------|-------|
+| 3.C.1 | ✅ | 24 unit tests TDD RED→GREEN. Cubre: validación cross-DB, estado ABIERTO, número generado, operacion CAMBIO_ESTADO inicial (anterior=null), transacción atómica (orden de saves dentro del runner), happy path UUIDv7. |
+| 3.C.2 | ✅ | `CrearTicketUseCase` implementado. Sin imports de Prisma ni NestJS. Retorna `Result<TicketEntity, DomainError>`. |
+| 3.C.5 | ✅ | 27 unit tests TDD RED→GREEN. Cubre: ticket not found, estado resolution (actual por id, nuevo por codigo), invariante soft-deleted, routing factory, transición inválida (5 tests: no modifica estado, no crea operacion, no llama txRunner, no llama ticketSave, retorna 422 semántico), transición válida (11 tests). |
+| 3.C.6 | ✅ | `TransicionarEstadoUseCase` implementado. Doble validación: `canTransitionTo()` (invariantes entidad) + `machine.puedeTransicionar()` (reglas por tipo). |
+
+### Nuevos puertos (tickets/domain/ports/)
+
+| Puerto | Token | Descripción |
+|--------|-------|-------------|
+| `IUsuarioMasterChecker` | `USUARIO_MASTER_CHECKER` | `existeEnTenant(usuarioId, clienteId): Promise<boolean>` — validación cross-DB de soft refs |
+| `ITipoTicketRepository` | `TIPO_TICKET_REPOSITORY` | `findCodigoById(tipoId): Promise<string \| null>` — resuelve tipoCodigo para numerador y factory |
+| `ITipoOperacionRepository` | `TIPO_OPERACION_REPOSITORY` | `findIdByCodigo(codigo): Promise<string \| null>` — resuelve uuid de CAMBIO_ESTADO, ASIGNACION, etc. |
+
+### Nuevos errores (tickets/domain/errors/tickets.errors.ts)
+
+| Error | Código | Descripción |
+|-------|--------|-------------|
+| `SolicitanteInvalidoError` | `SOLICITANTE_INVALIDO` | Soft ref inválida: solicitante no existe en master o pertenece a otro tenant |
+| `EstadoCatalogoNoEncontradoError` | `ESTADO_CATALOGO_NO_ENCONTRADO` | Estado no encontrado en catálogo tenant (seed incorrecto) |
+| `TipoTicketNoEncontradoError` | `TIPO_TICKET_NO_ENCONTRADO` | Tipo ticket no encontrado (tipoId inválido) |
+| `TipoOperacionNoEncontradoError` | `TIPO_OPERACION_NO_ENCONTRADO` | Tipo operación no encontrado (seed incorrecto) |
+| `TicketNoEncontradoError` | `TICKET_NO_ENCONTRADO` | Ticket con id dado no existe (HTTP 404) |
+| `TransicionInvalidaError` | `TRANSICION_INVALIDA` | Transición rechazada por invariante o state machine (HTTP 422) |
+
+### Estado de tests post PR-11a (incl. fix D-3)
+
+| Check | Resultado |
+|-------|-----------|
+| `pnpm test` | **547 tests, 39 suites, todos verdes** (+5 tests TDD D-3 fix: tipo no encontrado en TransicionarEstado) |
+| `tsc --noEmit` | ✅ limpio |
+| `pnpm lint` | ✅ fitness rule verde — cero imports de @prisma/client en application/ ni domain/ |
+
+### Archivos creados en PR-11a
+
+```
+backend/src/tickets/
+├── domain/
+│   ├── errors/
+│   │   └── tickets.errors.ts                           — +6 errores de aplicación (SolicitanteInvalidoError, EstadoCatalogoNoEncontradoError, etc.)
+│   └── ports/
+│       ├── i-usuario-master.checker.ts                 — NUEVO: IUsuarioMasterChecker + USUARIO_MASTER_CHECKER token
+│       ├── i-tipo-ticket.repository.ts                 — NUEVO: ITipoTicketRepository + TIPO_TICKET_REPOSITORY token
+│       └── i-tipo-operacion.repository.ts              — NUEVO: ITipoOperacionRepository + TIPO_OPERACION_REPOSITORY token
+└── application/
+    └── use-cases/
+        ├── crear-ticket.use-case.ts + spec.ts          — 24 unit tests TDD
+        └── transicionar-estado.use-case.ts + spec.ts   — 32 unit tests TDD (27 originales + 5 fix D-3)
+```
+
+### Decisiones tomadas en PR-11a
+
+1. **`IUsuarioMasterChecker` mínimo (decisión inferida)**: Se creó un puerto dedicado con un único método `existeEnTenant()` en lugar de reusar `IUsuarioRepository` de auth. Razón: auth tiene métodos de escritura (save, revokeAll) no relevantes para tickets, y cruzar módulos así crea acoplamiento innecesario. La implementación concreta consultará `master.usuarios` via `MasterPrismaClient`. **Pendiente confirmación de la forma exacta del checker** — específicamente si debe verificar también que `usuario.activo = true` o solo `deleted_at IS NULL`. La spec dice "deleted_at IS NULL" pero la best practice sería verificar ambos. Se implementó verificando ambos (docs + todo).
+
+2. **`ITipoTicketRepository.findCodigoById()` mínimo**: En lugar de crear una `TipoTicketEntity` completa (scope creep), el puerto retorna directamente el `codigo` string. Suficiente para el numerador y el factory. La entidad completa llegará cuando sea necesaria (Fase 4+ con `CrearTicketCompraUseCase` que crea satélite).
+
+3. **`ITipoOperacionRepository.findIdByCodigo()` mínimo**: El `tipo_operacion` catalog es estable y tiene UUIDs deterministas. El puerto abstrae la resolución sin hardcodear UUIDs en el use case. La implementación puede cache-ar el resultado si lo desea (catálogo cambia raramente).
+
+4. **`StateMachineContext` pasa `{}` en `TransicionarEstadoUseCase`**: El contexto es vacío para el MVP actual. Cuando se implemente `EdiliciaStateMachine` (Fase 5), el DTO deberá extenderse con `porcentajeAvance?: number` y el use case construirá el ctx apropiado. **Decisión inferida: se necesita confirmar cómo el controller o el caller provee el porcentajeAvance** — si viene en el body del request o si el use case lo carga desde un port de EdiliciaRepository.
+
+5. **Doble validación de transición**: `ticket.canTransitionTo()` (invariantes de entidad: soft-delete, terminales) + `machine.puedeTransicionar()` (reglas por tipo de ticket). Ambas retornan `TransicionInvalidaError`. El mensaje incluye la razón en el primer caso. Defense in depth sin duplicar lógica.
+
+6. **`TicketStateMachineFactory` inyectada como `Pick<TicketStateMachineFactory, 'resolve'>`**: Permite mockear la factory en tests como un objeto plain `{ resolve: jest.fn() }` sin instanciar la clase real. La DI de NestJS usará el token `TICKET_STATE_MACHINE_FACTORY` en PR-11b.
+
+### Decisiones inferidas pendientes de confirmación
+
+| # | Decisión | Impacto |
+|---|----------|---------|
+| D-1 | `IUsuarioMasterChecker.existeEnTenant()` verifica `deleted_at IS NULL` + pertenecer al tenant | Confirmado por coordinador: CORRECTO — `activo = true` aplica solo al ASIGNADO (PR-11b), no al solicitante. No tocar. |
+| D-2 | `StateMachineContext` vacío `{}` en TransicionarEstado | Confirmado por coordinador: OK — reservar `porcentajeAvance?` para Edilicia Fase 5. |
+| D-3 | ~~Fallback silencioso cuando `tipoCodigo` es null~~ | **RESUELTO** — Implementado como fail loud: `TipoTicketNoEncontradoError` cuando `findCodigoById` retorna null. Razón: el ticket ya existe con ese tipoId en DB; null = inconsistencia de datos, no caso normal. Sin fallback, se evita enrutar mal a BaseTicketStateMachine cuando se registren máquinas COMPRAS/EDILICIA (Fase 4/5). +5 tests TDD agregados. |
+
+---
+
 ## Estado global del cambio
 
 | Fase | Progreso |
@@ -1033,5 +1117,5 @@ backend/src/tickets/
 | Fase 0 — Scaffolding + Shared | **16/16 tareas completadas** (PR-01 + PR-02) |
 | Fase 1 — MASTER: clientes | **14/15 tareas completadas** — 1.A.1–1.D.2 ✅ PR-04; 1.C.3 ✅ PR-03 |
 | Fase 2 — MASTER: auth+RBAC | **20/22** — 2.A.1–2.B.8 ✅ PR-05; 2.C.1/2.C.2/2.D.1–2.D.4 ✅ PR-06; PR-06-fix ✅ CRITICALs; 2.C.3 ✅ PR-03; 2.E.1 ✅ PR-07; pendiente: 2.D.5 (registro usuario, out-of-scope) |
-| Fase 3 — TENANT: tickets-core | **9/18** — 3.D.3 ✅ PR-08; 3.D.4 ✅ PR-09; 3.A.1/3.A.2/3.A.3 ✅ PR-10 Slice 1; 3.B.1/3.B.2 ✅ PR-10 Slice 2; **3.B.3/3.B.4 ✅ PR-10 Slice 3** |
+| Fase 3 — TENANT: tickets-core | **13/18** — 3.D.3 ✅ PR-08; 3.D.4 ✅ PR-09; 3.A.1/3.A.2/3.A.3 ✅ PR-10 Slice 1; 3.B.1/3.B.2 ✅ PR-10 Slice 2; 3.B.3/3.B.4 ✅ PR-10 Slice 3; **3.C.1/3.C.2/3.C.5/3.C.6 ✅ PR-11a** |
 | Fases 4-7 | 0 — desbloqueadas cuando Fase 3 complete |

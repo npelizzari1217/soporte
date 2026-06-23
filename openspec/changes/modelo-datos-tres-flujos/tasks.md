@@ -238,20 +238,24 @@
 
 ### 3.C — Application use cases
 
-**3.C.1** [P, dep: 3.A.3, 3.B.2, 3.B.4] **TEST →** Test de `CrearTicketUseCase`: verifica validación cross-DB (solicitante_id existe en master y pertenece al tenant); verifica estado inicial `ABIERTO`; verifica número generado; verifica que crea `operaciones_ticket` CAMBIO_ESTADO (`anterior=NULL`, `nuevo=ABIERTO`) en la misma transacción; verifica que si `tipo=COMPRAS` delega a `CrearTicketCompraUseCase` (o rechaza — ver Fase 4).
+**[x] 3.C.1** [P, dep: 3.A.3, 3.B.2, 3.B.4] **TEST →** Test de `CrearTicketUseCase`: verifica validación cross-DB (solicitante_id existe en master y pertenece al tenant); verifica estado inicial `ABIERTO`; verifica número generado; verifica que crea `operaciones_ticket` CAMBIO_ESTADO (`anterior=NULL`, `nuevo=ABIERTO`) en la misma transacción; verifica que si `tipo=COMPRAS` delega a `CrearTicketCompraUseCase` (o rechaza — ver Fase 4).
 - Ref spec: `[SPEC:tickets-core/Validación soft refs, Estado inicial ABIERTO, Transición válida registra operacion]`
+- **Completado PR-11a:** 24 unit tests TDD RED→GREEN. Cubre: validación cross-DB, estado ABIERTO, número generado, operacion CAMBIO_ESTADO (anterior=null, nuevo=ABIERTO), transacción atómica, happy path UUIDv7.
 
-**3.C.2** [S, dep: 3.C.1] **IMPL →** `tickets/application/use-cases/crear-ticket.use-case.ts`: genera UUIDv7, valida soft ref al master de `solicitante_id`, genera número, persiste ticket + operacion dentro de `TenantTransactionRunner`.
+**[x] 3.C.2** [S, dep: 3.C.1] **IMPL →** `tickets/application/use-cases/crear-ticket.use-case.ts`: genera UUIDv7, valida soft ref al master de `solicitante_id`, genera número, persiste ticket + operacion dentro de `TenantTransactionRunner`.
+- **Completado PR-11a:** Implementado. Nuevos puertos: `IUsuarioMasterChecker`, `ITipoTicketRepository`, `ITipoOperacionRepository`. Nuevos errores: `SolicitanteInvalidoError`, `EstadoCatalogoNoEncontradoError`, `TipoTicketNoEncontradoError`, `TipoOperacionNoEncontradoError`.
 
 **3.C.3** [P, dep: 3.A.3, 3.B.2] **TEST →** Test de `AsignarTicketUseCase`: verifica existencia de `asignado_id` en master; verifica que el usuario tiene `usuario_tipos_ticket` para el tipo del ticket (elegibilidad); verifica rechazo HTTP 422 sin elegibilidad.
 - Ref spec: `[SPEC:tickets-core/Asignado debe ser elegible, Elegibilidad separada de permisos]`
 
 **3.C.4** [S, dep: 3.C.3] **IMPL →** `tickets/application/use-cases/asignar-ticket.use-case.ts`: valida cross-DB + elegibilidad, actualiza `asignado_id`, registra operacion `ASIGNACION`.
 
-**3.C.5** [P, dep: 3.A.3, 3.B.2] **TEST →** Test de `TransicionarEstadoUseCase`: verifica que routea al state machine correcto via factory; verifica transición válida → actualiza `estado_id` + crea `operaciones_ticket` en misma tx; verifica transición inválida → HTTP 422 sin modificar estado.
+**[x] 3.C.5** [P, dep: 3.A.3, 3.B.2] **TEST →** Test de `TransicionarEstadoUseCase`: verifica que routea al state machine correcto via factory; verifica transición válida → actualiza `estado_id` + crea `operaciones_ticket` en misma tx; verifica transición inválida → HTTP 422 sin modificar estado.
 - Ref spec: `[SPEC:tickets-core/Transición inválida rechazada, Transición válida registra operacion]`
+- **Completado PR-11a:** 27 unit tests TDD RED→GREEN. Cubre: ticket not found, estado resolution, invariante entidad (soft-deleted), routing factory, transición inválida (no modifica estado, no crea operacion, no llama txRunner), transición válida (actualiza estadoId, crea operacion con anterior/nuevo, persiste en tx atómica).
 
-**3.C.6** [S, dep: 3.C.5] **IMPL →** `tickets/application/use-cases/transicionar-estado.use-case.ts`: carga state machine via factory, evalúa `puedeTransicionar()`, ejecuta dentro de `TenantTransactionRunner`.
+**[x] 3.C.6** [S, dep: 3.C.5] **IMPL →** `tickets/application/use-cases/transicionar-estado.use-case.ts`: carga state machine via factory, evalúa `puedeTransicionar()`, ejecuta dentro de `TenantTransactionRunner`.
+- **Completado PR-11a:** Implementado. Doble validación: canTransitionTo() (invariantes entidad) + machine.puedeTransicionar() (reglas de tipo). StateMachineContext pasa `{}` — decisión inferida para Fase 5 (porcentajeAvance edilicio).
 
 **3.C.7** [P, dep: 3.A.3] **TEST →** Test de `AdjuntarArchivoUseCase`: verifica upload a `IFileStorage` antes del INSERT; verifica que solo persiste metadata en `archivos`; verifica creación de fila en `archivos_ticket`; verifica que soft delete de adjunto NO espera a storage cleanup.
 - Ref spec: `[SPEC:tickets-core/Upload adjunto guarda solo metadata, Borrado de adjunto]`
