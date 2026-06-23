@@ -63,4 +63,19 @@ export class TenantContext {
     }
     return ctx.prismaClient;
   }
+
+  /**
+   * Vincula el contexto del tenant al scope asíncrono actual y todos sus descendientes.
+   *
+   * Usar desde NestJS Guards donde `run()` no puede envolver el handler del controlador.
+   * Internamente llama `AsyncLocalStorage.enterWith()`: el contexto persiste para todas
+   * las operaciones asíncronas que se derivan del scope actual (request pipeline completo).
+   *
+   * Prerequisito: llamar desde dentro del async scope del request (ej. `canActivate()`).
+   *
+   * @param ctx Datos del tenant a vincular (prismaClient, dbName, clienteId).
+   */
+  bind(ctx: TenantContextData): void {
+    this.storage.enterWith(ctx);
+  }
 }

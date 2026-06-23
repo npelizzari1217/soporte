@@ -115,4 +115,30 @@ describe('TenantContext', () => {
       );
     });
   });
+
+  describe('bind()', () => {
+    it('setea el contexto en el scope asíncrono actual (get() retorna el ctx)', () => {
+      const mockClient = makeMockClient() as any;
+      const ctx: TenantContextData = {
+        prismaClient: mockClient,
+        dbName: 'bind_test_db',
+        clienteId: 'bind-client-id',
+      };
+
+      tenantContext.bind(ctx);
+
+      expect(tenantContext.get()).toEqual(ctx);
+    });
+
+    it('permite a getClient() retornar el cliente del scope actual después de bind()', () => {
+      const mockClient = makeMockClient() as any;
+      tenantContext.bind({
+        prismaClient: mockClient,
+        dbName: 'bind_test_db',
+        clienteId: 'bind-client-id',
+      });
+
+      expect(tenantContext.getClient()).toBe(mockClient);
+    });
+  });
 });

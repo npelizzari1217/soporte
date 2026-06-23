@@ -185,23 +185,96 @@ describe('PermissionsGuard', () => {
 
 describe('TenantGuard', () => {
   let guard: TenantGuard;
+  let mockMasterClient: { cliente: { findUnique: jest.Mock } };
+  let mockPrismaService: { getMasterClient: jest.Mock; getTenantClient: jest.Mock };
+  let mockTenantContext: { bind: jest.Mock };
+
+  const CLIENTE_ID = 'c1111111-0000-4000-8000-000000000001';
+  const VALID_CLIENTE_ROW = {
+    id: CLIENTE_ID,
+    dbName: 'tenant_db_test',
+    activo: true,
+    deletedAt: null,
+  };
 
   beforeEach(() => {
-    guard = new TenantGuard();
+    mockMasterClient = { cliente: { findUnique: jest.fn() } };
+    mockPrismaService = {
+      getMasterClient: jest.fn().mockReturnValue(mockMasterClient),
+      getTenantClient: jest.fn().mockReturnValue({ isMockTenantClient: true }),
+    };
+    mockTenantContext = { bind: jest.fn() };
+    guard = new TenantGuard(mockPrismaService as any, mockTenantContext as any);
   });
 
-  it('permite cuando el JWT tiene un cliente_id válido', () => {
-    const ctx = makeContext(makePayload({ cliente_id: 'c1111111-0000-4000-8000-000000000001' }));
-    expect(guard.canActivate(ctx)).toBe(true);
-  });
+  // ─── Validación temprana (antes de consultar DB) ───────────────────────────
 
-  it('lanza ForbiddenException cuando cliente_id está vacío', () => {
+  it('lanza ForbiddenException cuando cliente_id está vacío (sin consultar DB)', async () => {
     const ctx = makeContext(makePayload({ cliente_id: '' }));
-    expect(() => guard.canActivate(ctx)).toThrow(ForbiddenException);
+    await expect(guard.canActivate(ctx)).rejects.toThrow(ForbiddenException);
+    expect(mockPrismaService.getMasterClient).not.toHaveBeenCalled();
   });
 
-  it('lanza ForbiddenException cuando no hay usuario en el request', () => {
+  it('lanza ForbiddenException cuando no hay usuario en el request', async () => {
     const ctx = makeContext(null);
-    expect(() => guard.canActivate(ctx)).toThrow(ForbiddenException);
+    await expect(guard.canActivate(ctx)).rejects.toThrow(ForbiddenException);
+    expect(mockPrismaService.getMasterClient).not.toHaveBeenCalled();
+  });
+
+  // ─── Resolución de db_name desde master.clientes (RED) ────────────────────
+
+  it('resuelve db_name desde master.clientes y permite la request', async () => {
+    mockMasterClient.cliente.findUnique.mockResolvedValue(VALID_CLIENTE_ROW);
+
+    const ctx = makeContext(makePayload({ cliente_id: CLIENTE_ID }));
+    const result = await guard.canActivate(ctx);
+
+    expect(result).toBe(true);
+    expect(mockMasterClient.cliente.findUnique).toHaveBeenCalledWith({
+      where: { id: CLIENTE_ID },
+      select: { id: true, dbName: true, activo: true, deletedAt: true },
+    });
+  });
+
+  it('lanza ForbiddenException cuando el cliente tiene activo=false', async () => {
+    mockMasterClient.cliente.findUnique.mockResolvedValue({ ...VALID_CLIENTE_ROW, activo: false });
+
+    const ctx = makeContext(makePayload({ cliente_id: CLIENTE_ID }));
+    await expect(guard.canActivate(ctx)).rejects.toThrow(ForbiddenException);
+  });
+
+  it('lanza ForbiddenException cuando el cliente tiene deleted_at seteado', async () => {
+    mockMasterClient.cliente.findUnique.mockResolvedValue({
+      ...VALID_CLIENTE_ROW,
+      deletedAt: new Date('2026-01-01'),
+    });
+
+    const ctx = makeContext(makePayload({ cliente_id: CLIENTE_ID }));
+    await expect(guard.canActivate(ctx)).rejects.toThrow(ForbiddenException);
+  });
+
+  it('lanza ForbiddenException cuando el cliente no existe en master', async () => {
+    mockMasterClient.cliente.findUnique.mockResolvedValue(null);
+
+    const ctx = makeContext(makePayload({ cliente_id: CLIENTE_ID }));
+    await expect(guard.canActivate(ctx)).rejects.toThrow(ForbiddenException);
+  });
+
+  // ─── Vinculación de TenantContext (RED) ───────────────────────────────────
+
+  it('vincula TenantContext con el cliente Prisma resuelto', async () => {
+    const tenantClient = { isMockTenantClient: true };
+    mockMasterClient.cliente.findUnique.mockResolvedValue(VALID_CLIENTE_ROW);
+    mockPrismaService.getTenantClient.mockReturnValue(tenantClient);
+
+    const ctx = makeContext(makePayload({ cliente_id: CLIENTE_ID }));
+    await guard.canActivate(ctx);
+
+    expect(mockTenantContext.bind).toHaveBeenCalledWith({
+      prismaClient: tenantClient,
+      dbName: VALID_CLIENTE_ROW.dbName,
+      clienteId: CLIENTE_ID,
+    });
+    expect(mockPrismaService.getTenantClient).toHaveBeenCalledWith(VALID_CLIENTE_ROW.dbName);
   });
 });
