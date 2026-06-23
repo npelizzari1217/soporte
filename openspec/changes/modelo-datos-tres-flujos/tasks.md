@@ -389,8 +389,14 @@
 
 **[x] 5.B.7** [P, dep: 5.A.5] **TEST →** Test de `GestionarUbicacionUseCase`: verifica soft delete en cascada lógica (padre → hijos); verifica que no puede referenciarse padre soft-deleted como padre_id; verifica registro de evento en `operaciones_ticket` de tickets afectados. **Completado PR-14b** (20 tests).
 - Ref spec: `[SPEC:reparaciones/Ubicaciones jerárquicas, Soft delete cascada]`
+- **Ajuste post-PR-14b (PR-14b-fix):** `GestionarUbicacionUseCase` separado en `CrearUbicacionUseCase` (9 tests) + `EliminarUbicacionUseCase` (14 tests, incluye dedup explícito). Total: 23 tests, neto +3 respecto a los 20 originales. Suite: 1032→1035.
 
 **[x] 5.B.8** [S, dep: 5.B.7] **IMPL →** `reparaciones/application/use-cases/gestionar-ubicacion.use-case.ts`. **Completado PR-14b.**
+- **Ajuste post-PR-14b (PR-14b-fix):** Eliminado `gestionar-ubicacion.use-case.ts` (SRP). Creados:
+  - `crear-ubicacion.use-case.ts` — `CrearUbicacionUseCase`, constructor mínimo `(ubicacionRepo, txRunner)`, método `execute()`.
+  - `eliminar-ubicacion.use-case.ts` — `EliminarUbicacionUseCase`, constructor completo `(ubicacionRepo, ticketEdiliciaRepo, operacionRepo, tipoOperacionRepo, txRunner)`, método `execute()`, tipo normalizado `UBICACION_ELIMINADA` (reemplaza `COMENTARIO`).
+  - **Deuda PR-15a:** sembrar `tipo_operacion UBICACION_ELIMINADA` en seed tenant (comentado como `TODO(PR-15a)` en el use case).
+  - **Deuda PR-15a:** BFS fuera de tx → resolver con CTE recursiva dentro de tx en 5.C.
 
 ### 5.C — Infrastructure + Schema
 

@@ -7,19 +7,7 @@ import { ITipoOperacionRepository } from '../../../tickets/domain/ports/i-tipo-o
 import { UbicacionEntity } from '../../domain/entities/ubicacion.entity';
 import { IUbicacionRepository } from '../../domain/ports/i-ubicacion.repository';
 import { ITicketEdiliciaRepository } from '../../domain/ports/i-ticket-edilicia.repository';
-import { PadreUbicacionEliminadoError, UbicacionInvalidaError } from '../../domain/errors/reparaciones.errors';
-
-/**
- * DTO para crear una nueva ubicación física.
- */
-export interface CrearUbicacionDto {
-  /** Nombre del espacio físico. */
-  nombre: string;
-  /** Descripción adicional (opcional). */
-  descripcion?: string | null;
-  /** UUID del nodo padre (null = nodo raíz). */
-  padreId?: string | null;
-}
+import { UbicacionInvalidaError } from '../../domain/errors/reparaciones.errors';
 
 /**
  * DTO para eliminar una ubicación (soft delete con cascada lógica).
@@ -32,35 +20,29 @@ export interface EliminarUbicacionDto {
 }
 
 /**
- * GestionarUbicacionUseCase — gestiona la creación y baja lógica de ubicaciones físicas.
+ * EliminarUbicacionUseCase — elimina lógicamente una ubicación y sus descendientes.
  *
- * === crear(dto) ===
  * Flujo:
- * 1. Si padreId provisto: valida que el padre existe y no fue eliminado (PadreUbicacionEliminadoError).
- * 2. Crea la UbicacionEntity (activo=true, UUIDv7).
- * 3. Persiste en la misma transacción.
- * 4. Retorna Result.ok(ubicacion).
- *
- * === eliminar(dto) ===
- * Flujo:
- * 1. Carga la ubicación a eliminar → UbicacionInvalidaError si no existe.
+ * 1. Carga la ubicación a eliminar → UbicacionInvalidaError si no existe o ya eliminada.
  * 2. Recolecta TODOS los descendientes (BFS via findByPadreId — cascada lógica).
- * 3. Para cada ubicación en el árbol (padre + todos los hijos): busca los tickets afectados.
- * 4. Resuelve el tipo de operación COMENTARIO.
+ * 3. Para cada ubicación del árbol: busca los tickets edilicios afectados.
+ * 4. Resuelve el tipo de operación UBICACION_ELIMINADA.
  * 5. Dentro de la transacción:
  *    a. Soft-deleta todas las ubicaciones del árbol.
- *    b. Para cada ticket afectado: crea y persiste una OperacionTicket COMENTARIO.
+ *    b. Para cada ticket afectado (sin duplicados): crea y persiste una OperacionTicket UBICACION_ELIMINADA.
  * 6. Retorna Result.ok(void).
  *
  * Cascada lógica: la baja se propaga solo en la capa de aplicación (NOT triggers DB).
- * El registro de eventos en tickets afectados es best-effort dentro de la misma tx.
+ * Deduplicación: si un ticket referencia padre e hijo, solo se genera 1 operación.
+ *
+ * // TODO(PR-15a): sembrar tipo_operacion UBICACION_ELIMINADA en seed tenant
  *
  * Sin throw — todos los fallos esperados retornan Result.fail().
  *
- * Ref spec: [SPEC:reparaciones/Ubicaciones jerárquicas, Soft delete cascada]
+ * Ref spec: [SPEC:reparaciones/Soft delete cascada]
  * Tarea: 5.B.7 / 5.B.8
  */
-export class GestionarUbicacionUseCase {
+export class EliminarUbicacionUseCase {
   constructor(
     private readonly ubicacionRepo: IUbicacionRepository,
     private readonly ticketEdiliciaRepo: ITicketEdiliciaRepository,
@@ -69,43 +51,7 @@ export class GestionarUbicacionUseCase {
     private readonly txRunner: ITenantTransactionRunner,
   ) {}
 
-  /**
-   * Crea una nueva ubicación física.
-   *
-   * Si se provee padreId, valida que el padre exista y no esté eliminado.
-   * Los nodos raíz (sin padreId) no requieren validación.
-   */
-  async crear(dto: CrearUbicacionDto): Promise<Result<UbicacionEntity, DomainError>> {
-    // 1. Validar el padre si se proveyó
-    if (dto.padreId) {
-      const padre = await this.ubicacionRepo.findById(dto.padreId);
-      if (!padre || padre.isDeleted()) {
-        return Result.fail(new PadreUbicacionEliminadoError(dto.padreId));
-      }
-    }
-
-    // 2. Crear la entidad (activo=true por defecto, UUIDv7 generado por BaseEntity)
-    const ubicacion = UbicacionEntity.create({
-      nombre: dto.nombre,
-      descripcion: dto.descripcion ?? null,
-      padreId: dto.padreId ?? null,
-    });
-
-    // 3. Persistir en transacción
-    await this.txRunner.run(async () => {
-      await this.ubicacionRepo.save(ubicacion);
-    });
-
-    return Result.ok(ubicacion);
-  }
-
-  /**
-   * Elimina lógicamente una ubicación y todos sus descendientes (cascada BFS).
-   *
-   * Para cada ubicación del árbol eliminado, registra una operación COMENTARIO
-   * en los tickets edilicios que la referencian.
-   */
-  async eliminar(dto: EliminarUbicacionDto): Promise<Result<void, DomainError>> {
+  async execute(dto: EliminarUbicacionDto): Promise<Result<void, DomainError>> {
     // 1. Cargar la ubicación raíz a eliminar
     const ubicacionRaiz = await this.ubicacionRepo.findById(dto.ubicacionId);
     if (!ubicacionRaiz || ubicacionRaiz.isDeleted()) {
@@ -125,13 +71,14 @@ export class GestionarUbicacionUseCase {
       }
     }
 
-    // 3. Recolectar tickets afectados por cada ubicación del árbol
-    //    Necesitamos el tipoOperacion antes de entrar en la tx (read-only query)
-    const tipoOperacionId = await this.tipoOperacionRepo.findIdByCodigo('COMENTARIO');
+    // 3. Resolver el tipo de operación antes de entrar a la tx (read-only query)
+    // TODO(PR-15a): sembrar tipo_operacion UBICACION_ELIMINADA en seed tenant
+    const tipoOperacionId = await this.tipoOperacionRepo.findIdByCodigo('UBICACION_ELIMINADA');
     if (!tipoOperacionId) {
-      return Result.fail(new TipoOperacionNoEncontradoError('COMENTARIO'));
+      return Result.fail(new TipoOperacionNoEncontradoError('UBICACION_ELIMINADA'));
     }
 
+    // 4. Recolectar tickets afectados por cada ubicación del árbol
     const ticketsAfectados = await Promise.all(
       todasLasUbicaciones.map((ub) =>
         this.ticketEdiliciaRepo.findByUbicacionId(ub.id),
@@ -159,7 +106,7 @@ export class GestionarUbicacionUseCase {
         }),
       );
 
-    // 4. Persistir todo dentro de la misma transacción (atómico)
+    // 5. Persistir todo dentro de la misma transacción (atómico)
     await this.txRunner.run(async () => {
       // a. Soft-delete de todas las ubicaciones del árbol
       for (const ubicacion of todasLasUbicaciones) {
