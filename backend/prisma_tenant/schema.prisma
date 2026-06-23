@@ -141,7 +141,7 @@ model CicloCliente {
   tickets Ticket[]
 
   @@index([cicloVigenteId])
-  @@index([activo]) // el índice real puede ser parcial WHERE deleted_at IS NULL — ver migration SQL
+  @@index([activo]) // índice regular sobre activo (el spec no pide parcial)
   @@map("ciclos_cliente")
 }
 

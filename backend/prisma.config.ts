@@ -9,8 +9,8 @@
 // de cada script (generate:master / migrate:master), que apunta a
 // prisma_master/ o prisma_tenant/. Las migraciones viven junto a cada schema.
 //
-// TODO(PR-08 — tenant migrations): parametrizar la url por target
-// (DATABASE_URL_MASTER vs. url por-tenant). Hoy solo aplica a MASTER.
+// Este config resuelve el datasource MASTER (DATABASE_URL_MASTER). Las
+// migraciones de tenant usan prisma.tenant.config.ts (DATABASE_URL_TENANT).
 import { defineConfig } from 'prisma/config';
 
 // Node 22+: carga .env sin dependencias. En CI/prod las env vars ya están en

@@ -223,14 +223,11 @@ describe('Tenant schema verification (integration — 3.D.3)', () => {
 
       expect(res.rows.length).toBeGreaterThanOrEqual(1);
 
-      // Verificar que al menos una constraint menciona SOPORTE
-      const hasCodeCheck = res.rows.some(
-        (r) =>
-          r.check_clause.includes('SOPORTE') ||
-          r.check_clause.includes("'SOPORTE'") ||
-          r.check_clause.includes('"SOPORTE"'),
-      );
-      expect(hasCodeCheck).toBe(true);
+      // Verificar que la constraint cubre los tres códigos (SOPORTE, COMPRAS, EDILICIA)
+      const clauses = res.rows.map((r) => r.check_clause).join(' ');
+      for (const codigo of ['SOPORTE', 'COMPRAS', 'EDILICIA']) {
+        expect(clauses).toContain(codigo);
+      }
     });
 
     it('archivos.tamano_bytes tiene CHECK > 0', async () => {
@@ -246,7 +243,7 @@ describe('Tenant schema verification (integration — 3.D.3)', () => {
 
       expect(res.rows.length).toBeGreaterThanOrEqual(1);
 
-      const hasPositiveCheck = res.rows.some((r) => r.check_clause.includes('0'));
+      const hasPositiveCheck = res.rows.some((r) => r.check_clause.includes('> 0'));
       expect(hasPositiveCheck).toBe(true);
     });
   });
