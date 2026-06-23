@@ -1,9 +1,69 @@
 # Apply Progress — modelo-datos-tres-flujos
 
 > Última actualización: 2026-06-23
-> Rama activa: `feat/pr17a-equipos-infra`
-> PR actual: **PR-17a-fix** (spec-alignment: quita asignado_a_id espurio de ticket_soporte — commit 35bb885)
-> Tests: **1274/1274** verdes (sin cambios en conteo — la columna no tenía tests propios)
+> Rama activa: `feat/pr17b-equipos-interface`
+> PR actual: **PR-17b** (6.D Interface: controllers + DTOs + EquiposModule — FASE 6 COMPLETA)
+> Tests: **1324/1324** verdes (+50 nuevos: EquiposController×28, ComponentesController×14, TicketSoporteController×8)
+
+---
+
+## PR-17b: Equipos — Interface (6.D) — COMPLETADO (FASE 6 COMPLETA)
+
+### Tareas completadas
+
+| Tarea | Estado | Notas |
+|-------|--------|-------|
+| 6.D.1 | ✅ | 50 tests TDD RED→GREEN: EquiposController (28 — GET×2, POST, PATCH, DELETE, asignar + guards + errores), ComponentesController (14 — GET, POST, DELETE + guards + errores 404/422), TicketSoporteController (8 — POST + guards + errores). |
+| 6.D.2 | ✅ | 3 controllers + DTOs (equipos.dto.ts) + EquiposModule + importado en AppModule + bootstrap spec actualizado. |
+
+### Estado de tests post PR-17b
+- **1324 tests, 90 suites, todos verdes** (`pnpm test`)
+- Baseline PR-17a-fix: 1274 → PR-17b: **1324** (+50 nuevos, 3 suites nuevas)
+- `tsc --noEmit`: limpio
+- `eslint src/equipos --fix`: 0 errores (1 fix auto: import no usado en ticket-soporte.controller.spec.ts)
+
+### Archivos creados/modificados en PR-17b
+
+```
+backend/src/
+├── app.module.ts                                           — +EquiposModule import
+├── app.module.spec.ts                                      — +assertions EquiposController,
+│                                                              ComponentesController,
+│                                                              TicketSoporteController,
+│                                                              CrearTicketSoporteUseCase,
+│                                                              factory.resolve('SOPORTE')
+└── equipos/
+    ├── equipos.module.ts                                   — NUEVO: wiring completo Fase 6
+    └── interface/
+        ├── dtos/
+        │   └── equipos.dto.ts                             — NUEVO: input + response DTOs
+        └── controllers/
+            ├── equipos.controller.ts + spec.ts            — NUEVO: 28 tests
+            ├── componentes.controller.ts + spec.ts        — NUEVO: 14 tests
+            └── ticket-soporte.controller.ts + spec.ts     — NUEVO: 8 tests
+```
+
+### Decisiones clave en PR-17b
+
+1. **equipo:gestionar en mutaciones**: POST/PATCH/DELETE/asignar en EquiposController y POST/DELETE en ComponentesController. GETs no requieren permiso extra (solo autenticación).
+2. **ticket:crear en TicketSoporteController**: consistente con TicketsEdilicioController. No se usa `equipo:gestionar` para crear tickets.
+3. **State machine SOPORTE**: `TicketStateMachineFactory.resolve('SOPORTE')` retorna `BaseTicketStateMachine` (fallback). Sin `onModuleInit` en EquiposModule — spec no define reglas especiales para SOPORTE.
+4. **Cross-DB checker NO duplicado**: EquiposModule importa TicketsModule que exporta `USUARIO_MASTER_CHECKER`. No se duplica `UsuarioMasterChecker`.
+5. **equipo:gestionar en seed**: EXISTE (migration 20260623010000_seed_rbac_base, id b0000000-0000-4000-b000-000000000008). No es deuda.
+6. **Fitness rule cumplida**: ningún controller ni módulo importa `@prisma/client`. Verificado con eslint.
+
+### Estado global del cambio (post PR-17b)
+
+| Fase | Progreso |
+|------|---------|
+| Fase 0 — Scaffolding + Shared | COMPLETA |
+| Fase 1 — MASTER: clientes | COMPLETA |
+| Fase 2 — MASTER: auth+RBAC | COMPLETA |
+| Fase 3 — TENANT: tickets-core | COMPLETA |
+| Fase 4 — TENANT: Compras | COMPLETA |
+| Fase 5 — TENANT: Reparaciones | COMPLETA + VERIFY PASS |
+| Fase 6 — Equipos | **COMPLETA** (6.A + 6.B + 6.C + 6.D) |
+| Fase 7 — Integración | pendiente |
 
 ---
 

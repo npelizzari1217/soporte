@@ -507,10 +507,12 @@
 
 ### 6.D — Interface
 
-**6.D.1** [P, dep: 6.B.2, 6.B.4, 6.B.6, 6.C.2] **TEST →** Unit test de `EquiposController` + `ComponentesController`: mock use cases; verifica guard `equipo:gestionar`.
+**[x] 6.D.1** [P, dep: 6.B.2, 6.B.4, 6.B.6, 6.C.2] **TEST →** Unit test de `EquiposController` + `ComponentesController`: mock use cases; verifica guard `equipo:gestionar`.
 - Ref spec: `[SPEC:auth-rbac/Permiso equipo:gestionar]`
+- **Completado PR-17b:** 50 tests: EquiposController (28), ComponentesController (14), TicketSoporteController (8). Guard `equipo:gestionar` verificado en todas las mutaciones. TDD RED→GREEN verificado.
 
-**6.D.2** [S, dep: 6.D.1] **IMPL →** `equipos/interface/controllers/`: `equipos.controller.ts`, `componentes.controller.ts`, `ticket-soporte.controller.ts` + DTOs. Wiring `EquiposModule`.
+**[x] 6.D.2** [S, dep: 6.D.1] **IMPL →** `equipos/interface/controllers/`: `equipos.controller.ts`, `componentes.controller.ts`, `ticket-soporte.controller.ts` + DTOs. Wiring `EquiposModule`.
+- **Completado PR-17b:** 3 controllers + DTOs + EquiposModule + EquiposModule importado en AppModule + bootstrap spec actualizado. Suite: 1274 → 1324 verde. FASE 6 COMPLETA.
 
 ---
 
