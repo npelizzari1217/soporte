@@ -608,11 +608,74 @@ backend/
 
 ---
 
+---
+
+## PR-06-fix: tenant guard + ClienteInactivoError → 403 — COMPLETADO
+
+> Rama: `fix/pr06-tenant-guard-cliente-inactivo` | Commits: `22e3da2`, `0689d4d`
+> Última actualización: 2026-06-23
+
+### CRITICALs resueltos (de sdd-verify)
+
+| CRITICAL | Tipo | Estado |
+|----------|------|--------|
+| CRITICAL-1: TenantGuard stub | TDD RED→GREEN | ✅ |
+| CRITICAL-2: ClienteInactivoError → 401 | TDD RED→GREEN | ✅ |
+
+### CRITICAL-1 — TenantGuard: DB resolution + TenantContext binding
+
+**Archivos modificados:**
+
+| Archivo | Cambio |
+|---------|--------|
+| `backend/src/shared/tenancy/tenant-context.ts` | +`bind(ctx)` usando `AsyncLocalStorage.enterWith()` |
+| `backend/src/shared/tenancy/tenant-context.spec.ts` | +2 tests: bind() setea contexto + getClient() post-bind |
+| `backend/src/auth/infrastructure/guards/tenant.guard.ts` | Reescritura completa: injecta PrismaService + TenantContext, consulta master.clientes, valida activo/deleted_at, vincula TenantContext |
+| `backend/src/auth/infrastructure/guards/guards.spec.ts` | +6 tests TenantGuard: resuelve db_name, activo=false, deleted_at≠null, cliente no existe, vincula TenantContext |
+
+**Tests de TenantGuard (nuevos):**
+1. "lanza ForbiddenException cuando cliente_id está vacío (sin consultar DB)" — validación temprana, sin DB
+2. "lanza ForbiddenException cuando no hay usuario en el request" — validación temprana
+3. "resuelve db_name desde master.clientes y permite la request" — happy path con DB mock
+4. "lanza ForbiddenException cuando el cliente tiene activo=false"
+5. "lanza ForbiddenException cuando el cliente tiene deleted_at seteado"
+6. "lanza ForbiddenException cuando el cliente no existe en master"
+7. "vincula TenantContext con el cliente Prisma resuelto"
+
+**Decisiones técnicas:**
+1. `TenantContext.bind()` usa `AsyncLocalStorage.enterWith()` (no `run()`): en NestJS, los guards no pueden envolver el handler del controlador con `run()`. `enterWith()` propaga el contexto a través de todo el pipeline del request (interceptors + controller + repos) desde el scope async del guard.
+2. `PrismaService.getMasterClient().cliente.findUnique()` — query directa a master.clientes usando la PK. Sin pasar por `IClienteRepository` (el guard es infraestructura, puede usar PrismaService directamente).
+3. `PrismaService` y `TenantContext` son @Global (SharedModule) — no requieren cambios en AuthModule. DI automático.
+4. `app.module.spec.ts` sigue verde — el DI graph compila correctamente con el nuevo constructor.
+
+### CRITICAL-2 — AuthController: ClienteInactivoError → ForbiddenException (403)
+
+**Archivos modificados:**
+
+| Archivo | Cambio |
+|---------|--------|
+| `backend/src/auth/interface/controllers/auth.controller.ts` | +`ClienteInactivoError` import + branch `ForbiddenException(error.message)` |
+| `backend/src/auth/interface/controllers/auth.controller.spec.ts` | +1 test: "lanza ForbiddenException (403) cuando el cliente está inactivo" |
+
+### Estado de tests post PR-06-fix
+
+| Suite | Tests |
+|-------|-------|
+| Unit (sin integration) | **304/304** |
+| Integration (auth + clientes + rbac) | **39/39** |
+| **TOTAL** | **343/343 verdes** |
+
+- `tsc --noEmit`: ✅ limpio
+- `pnpm lint`: ✅ limpio
+- `app.module.spec.ts`: ✅ verde
+
+---
+
 ## Estado global del cambio
 
 | Fase | Progreso |
 |------|---------|
 | Fase 0 — Scaffolding + Shared | **16/16 tareas completadas** (PR-01 + PR-02) |
 | Fase 1 — MASTER: clientes | **14/15 tareas completadas** — 1.A.1–1.D.2 ✅ PR-04; 1.C.3 ✅ PR-03 |
-| Fase 2 — MASTER: auth+RBAC | **20/22** — 2.A.1–2.B.8 ✅ PR-05; 2.C.1/2.C.2/2.D.1–2.D.4 ✅ PR-06; 2.C.3 ✅ PR-03; 2.E.1 ✅ PR-07; pendiente: 2.D.5 (registro usuario, out-of-scope PR-06) |
-| Fases 3-7 | 0 — desbloqueadas por 2.D.2 (guards listos) |
+| Fase 2 — MASTER: auth+RBAC | **20/22** — 2.A.1–2.B.8 ✅ PR-05; 2.C.1/2.C.2/2.D.1–2.D.4 ✅ PR-06; PR-06-fix ✅ CRITICALs; 2.C.3 ✅ PR-03; 2.E.1 ✅ PR-07; pendiente: 2.D.5 (registro usuario, out-of-scope) |
+| Fases 3-7 | 0 — desbloqueadas por guards + TenantContext binding ✅ |
