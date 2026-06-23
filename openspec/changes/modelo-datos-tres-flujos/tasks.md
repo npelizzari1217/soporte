@@ -488,16 +488,22 @@
 
 ### 6.C — Infrastructure + Schema
 
-**6.C.1** [P, dep: 6.A.3] **TEST →** Integration test de `PrismaEquipoInformaticoRepository`: verifica UNIQUE parcial de `numero_serie`; verifica soft delete; test de `PrismaTicketSoporteRepository`: verifica relación 1:1.
+**[x] 6.C.1** [P, dep: 6.A.3] **TEST →** Integration test de `PrismaEquipoInformaticoRepository`: verifica UNIQUE parcial de `numero_serie`; verifica soft delete; test de `PrismaTicketSoporteRepository`: verifica relación 1:1. **Completado PR-17a** (32 tests: equipo 16, componente 8, tipoComponente 5, ticketSoporte 3).
 - Ref spec: `[SPEC:equipos/requirements]`
 
-**6.C.2** [S, dep: 6.C.1, 0.C.4] **IMPL →** `equipos/infrastructure/persistence/prisma/`: repos + mappers para `equipos_informaticos`, `componentes_equipo`, `tipos_componente`, `archivos_equipo`, `ticket_soporte`.
+**[x] 6.C.2** [S, dep: 6.C.1, 0.C.4] **IMPL →** `equipos/infrastructure/persistence/prisma/`: repos + mappers para `equipos_informaticos`, `componentes_equipo`, `tipos_componente`, `archivos_equipo`, `ticket_soporte`. **Completado PR-17a.**
+- Archivos: equipo-informatico.mapper.ts, prisma-equipo-informatico.repository.ts, componente-equipo.mapper.ts, prisma-componente-equipo.repository.ts, tipo-componente.mapper.ts, prisma-tipos-componente.repository.ts, ticket-soporte.mapper.ts, prisma-ticket-soporte.repository.ts, prisma-archivo-equipo.repository.ts (9 archivos).
+- DECISIÓN INFERIDA: TicketSoporte.asignadoAId está en DB pero NO modelado en TicketSoporteProps (dominio no lo expone). Persiste como null. MARCAR para consulta si se necesita en use cases futuros.
+- DECISIÓN INFERIDA: ArchivoEquipo no tiene entidad de dominio (confirmado: no se creó en 6.A). PrismaArchivoEquipoRepository expone linkToEquipo/unlinkFromEquipo. MARCAR si se necesita upload vía use case futuro.
 
-**6.C.3** [P, dep: 3.D.3] **SCHEMA:** `prisma_tenant/schema.prisma` — agregar modelos `TipoComponente`, `EquipoInformatico`, `ComponenteEquipo`, `ArchivoEquipo`, `TicketSoporte`. Correr migration.
+**[x] 6.C.3** [P, dep: 3.D.3] **SCHEMA:** `prisma_tenant/schema.prisma` — agregar modelos `TipoComponente`, `EquipoInformatico`, `ComponenteEquipo`, `ArchivoEquipo`, `TicketSoporte`. Correr migration. **Completado PR-17a.**
 - Ref spec: `[SPEC:equipos/Tablas TENANT]`
+- Migration: `20260623150000_add_equipos_schema`. Aplicada a `soporte_tenant_test`.
+- UNIQUE PARCIAL `numero_serie`: `CREATE UNIQUE INDEX ... WHERE numero_serie IS NOT NULL` en migration SQL (Prisma no expresa parciales declarativos). Verificado en integration test (null coexisten, non-null duplicado → error).
 
-**6.C.4** [S, dep: 6.C.3] **SEED:** `prisma_tenant/seeds/tenant-seed.ts` — agregar `tipos_componente` (10 tipos: CPU, RAM, DISCO, MONITOR, TECLADO, MOUSE, GPU, FUENTE, IMPRESORA, RED). Idempotente.
+**[x] 6.C.4** [S, dep: 6.C.3] **SEED:** `prisma_tenant/seeds/tenant-seed.ts` — agregar `tipos_componente` (10 tipos: CPU, RAM, DISCO, MONITOR, TECLADO, MOUSE, GPU, FUENTE, IMPRESORA, RED). Idempotente. **Completado PR-17a.**
 - Ref spec: `[SPEC:equipos/Seeds de tipos_componente]`
+- UUIDs: prefijo `a0` (a0000000-0000-4000-a000-00000000000N). ON CONFLICT (codigo) DO NOTHING.
 
 ### 6.D — Interface
 
