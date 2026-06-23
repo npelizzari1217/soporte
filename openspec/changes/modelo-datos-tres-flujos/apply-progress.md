@@ -2,8 +2,19 @@
 
 > Última actualización: 2026-06-23
 > Rama activa: `feat/pr17a-equipos-infra`
-> PR actual: **PR-17a** (Fase 6.C — Infrastructure + Schema + Seed — commit f60d8c5)
-> Tests: **1274/1274** verdes (+32 vs baseline PR-16b-ajuste de 1242)
+> PR actual: **PR-17a-fix** (spec-alignment: quita asignado_a_id espurio de ticket_soporte — commit 35bb885)
+> Tests: **1274/1274** verdes (sin cambios en conteo — la columna no tenía tests propios)
+
+---
+
+## PR-17a-fix: Spec-alignment — quita asignado_a_id espurio de ticket_soporte — COMPLETADO
+
+### Corrección aplicada
+- **Problema**: PR-17a introdujo `asignado_a_id` en `ticket_soporte` sin base en el spec (equipos/spec.md líneas 113-122 no lo define).
+- **Solución**: eliminado de schema.prisma (modelo TicketSoporte), migration SQL (DDL ticket_soporte) y ticket-soporte.mapper.ts (toPersistence).
+- **DB de test**: columna droppeada vía `prisma db execute` + checksum en `_prisma_migrations` actualizado. `prisma migrate status` confirma "Database schema is up to date!".
+- **EquipoInformatico.asignadoAId**: NO modificado — ese campo sí es del spec y permanece intacto.
+- **Tests**: 1274/1274 verdes. Lint: 0 errores. tsc: limpio.
 
 ---
 
