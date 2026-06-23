@@ -1,8 +1,8 @@
 # Apply Progress — modelo-datos-tres-flujos
 
 > Última actualización: 2026-06-23
-> Rama activa: `feat/pr05-auth-domain`
-> PR actual: **PR-05** (completado)
+> Rama activa: `feat/pr09-tenant-seeds`
+> PR actual: **PR-09** (completado)
 
 ---
 
@@ -749,6 +749,108 @@ backend/
 
 ---
 
+## PR-09: seed catálogos base TENANT — COMPLETADO
+
+> Rama: `feat/pr09-tenant-seeds` | Commit: `d5b8990`
+> Última actualización: 2026-06-23
+
+### Tareas completadas
+
+| Tarea | Estado | Notas |
+|-------|--------|-------|
+| 3.D.4 | ✅ | `prisma_tenant/seeds/tenant-seed.ts` — idempotente. 11 integration tests TDD GREEN. `seed:tenant` script en package.json. |
+
+### Catálogos sembrados (verbatim del spec tickets-core)
+
+**estados (8 valores base):**
+
+| id (fijo) | codigo | nombre | orden |
+|-----------|--------|--------|-------|
+| `c0000000-0000-4000-c000-000000000001` | `ABIERTO` | Abierto | 10 |
+| `c0000000-0000-4000-c000-000000000002` | `PENDIENTE_APROBACION` | Pendiente de aprobación | 20 |
+| `c0000000-0000-4000-c000-000000000003` | `APROBADO` | Aprobado | 30 |
+| `c0000000-0000-4000-c000-000000000004` | `RECHAZADO` | Rechazado | 35 |
+| `c0000000-0000-4000-c000-000000000005` | `EN_PROGRESO` | En progreso | 40 |
+| `c0000000-0000-4000-c000-000000000006` | `RESUELTO` | Resuelto | 50 |
+| `c0000000-0000-4000-c000-000000000007` | `CERRADO` | Cerrado | 60 |
+| `c0000000-0000-4000-c000-000000000008` | `CANCELADO` | Cancelado | 70 |
+
+**prioridades (4 niveles):**
+
+| id (fijo) | codigo | nombre | orden |
+|-----------|--------|--------|-------|
+| `d0000000-0000-4000-d000-000000000001` | `BAJA` | Baja | 10 |
+| `d0000000-0000-4000-d000-000000000002` | `MEDIA` | Media | 20 |
+| `d0000000-0000-4000-d000-000000000003` | `ALTA` | Alta | 30 |
+| `d0000000-0000-4000-d000-000000000004` | `CRITICA` | Crítica | 40 |
+
+**tipos_ticket (3 discriminadores de flujo):**
+
+| id (fijo) | codigo | nombre |
+|-----------|--------|--------|
+| `e0000000-0000-4000-e000-000000000001` | `SOPORTE` | Soporte |
+| `e0000000-0000-4000-e000-000000000002` | `COMPRAS` | Compras |
+| `e0000000-0000-4000-e000-000000000003` | `EDILICIA` | Edilicia |
+
+**tipo_operacion (5 tipos de evento de timeline):**
+
+| id (fijo) | codigo | nombre |
+|-----------|--------|--------|
+| `f0000000-0000-4000-f000-000000000001` | `CAMBIO_ESTADO` | Cambio de estado |
+| `f0000000-0000-4000-f000-000000000002` | `COMENTARIO` | Comentario |
+| `f0000000-0000-4000-f000-000000000003` | `ASIGNACION` | Asignación |
+| `f0000000-0000-4000-f000-000000000004` | `ADJUNTO` | Adjunto |
+| `f0000000-0000-4000-f000-000000000005` | `AVANCE_EDILICIO` | Avance edilicio |
+
+### Valores inferidos (spec no los define explícitamente)
+
+El spec tickets-core define `codigo` y `orden` para los catálogos, pero NO los valores de `nombre`.
+Los nombres usados son inferidos del codigo (ej. `BAJA` → "Baja", `CAMBIO_ESTADO` → "Cambio de estado").
+Ver riesgo R-01 si se requiere revisión.
+
+El campo `color` (nullable en schema) se omite en el seed — el spec no define colores.
+
+### Estado de verificaciones
+
+| Check | Resultado |
+|-------|-----------|
+| `pnpm test` | **372 tests, 29 suites, todos verdes** (+11 integration de 3.D.4) |
+| `tsc --noEmit` | ✅ limpio |
+| `pnpm lint` | ✅ fitness rule verde |
+| `seed:tenant` en `soporte_tenant_test` | ✅ ejecutado |
+| Idempotencia verificada | ✅ re-run no modifica row counts |
+
+### Archivos creados/modificados en PR-09
+
+```
+backend/
+├── package.json                                   — +seed:tenant script (ts-node)
+├── prisma_tenant/
+│   └── seeds/
+│       └── tenant-seed.ts                         — seed idempotente de catálogos tenant
+└── src/
+    └── shared/
+        └── infrastructure/
+            └── persistence/
+                └── tenant-seed.integration.spec.ts — 11 integration tests TDD (3.D.4)
+```
+
+### Decisiones tomadas en PR-09
+
+1. **TypeScript script (no SQL migration)**: el tenant seed es un script TS standalone, no una migración Prisma. Razón: el fan-out de provisioning requiere ejecutar el seed por cada DB tenant individualmente, sobreescribiendo `DATABASE_URL_TENANT`. Una migration SQL en `prisma_tenant/migrations/` se aplicaría automáticamente a todos los tenants vía `migrate:tenant` en fan-out — lo cual también funciona. Se eligió el script TS para alinearse con la convención `seeds/` definida en tasks.md (3.D.4 y 6.C.4).
+2. **UUIDs deterministas**: prefijos `c0`, `d0`, `e0`, `f0` para los 4 catálogos. Mismo patrón que PR-07 (`a0`, `b0` para master RBAC). Estabilidad cross-environment. La clave de idempotencia es el UNIQUE ON `codigo`, no el UUID.
+3. **`ON CONFLICT (codigo) DO NOTHING`**: clave de idempotencia explícita en el spec. El `nombre` y `orden` no se actualizan en re-runs (DO NOTHING, no DO UPDATE). Si se necesita actualizar nombres/órdenes: separar en una migración ALTER.
+4. **`import` antes del `try/catch`**: corregido para seguir el estándar de ES modules. `process.loadEnvFile()` carga el `.env` antes de usar `pool` pero después de importar `Pool`.
+5. **Test sin TRUNCATE**: los catálogos son datos de referencia. La suite asume que `migrate:tenant` fue aplicada antes. Si se truncan y re-ejecutan tests, `seed:tenant` debe correr antes.
+
+### Riesgos documentados (R-01)
+
+| Riesgo | Tipo | Estado |
+|--------|------|--------|
+| R-01: nombres de catálogos inferidos | GAP — spec no define `nombre` para prioridades, tipos_ticket, tipo_operacion | ABIERTO — el usuario debe confirmar o sobrescribir los nombres |
+
+---
+
 ## Estado global del cambio
 
 | Fase | Progreso |
@@ -756,5 +858,5 @@ backend/
 | Fase 0 — Scaffolding + Shared | **16/16 tareas completadas** (PR-01 + PR-02) |
 | Fase 1 — MASTER: clientes | **14/15 tareas completadas** — 1.A.1–1.D.2 ✅ PR-04; 1.C.3 ✅ PR-03 |
 | Fase 2 — MASTER: auth+RBAC | **20/22** — 2.A.1–2.B.8 ✅ PR-05; 2.C.1/2.C.2/2.D.1–2.D.4 ✅ PR-06; PR-06-fix ✅ CRITICALs; 2.C.3 ✅ PR-03; 2.E.1 ✅ PR-07; pendiente: 2.D.5 (registro usuario, out-of-scope) |
-| Fase 3 — TENANT: tickets-core | **1/18** — 3.D.3 ✅ PR-08 (schema DDL + migration) |
+| Fase 3 — TENANT: tickets-core | **2/18** — 3.D.3 ✅ PR-08 (schema DDL + migration); 3.D.4 ✅ PR-09 (seed catálogos) |
 | Fases 4-7 | 0 — desbloqueadas cuando Fase 3 complete |

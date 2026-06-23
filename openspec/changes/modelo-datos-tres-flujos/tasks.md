@@ -262,8 +262,9 @@
 - Ref spec: `[SPEC:tickets-core/Tablas TENANT]`
 - **Completado PR-08:** 11 modelos + migration 20260623120000_init_tenant_schema aplicada. 18 integration tests TDD GREEN.
 
-**3.D.4** [S, dep: 3.D.3] **SEED:** `prisma_tenant/seeds/tenant-seed.ts` — idempotente (`ON CONFLICT (codigo) DO NOTHING`): `estados` (8 valores), `prioridades` (4 valores), `tipos_ticket` (SOPORTE, COMPRAS, EDILICIA), `tipo_operacion` (5 valores).
+**[x] 3.D.4** [S, dep: 3.D.3] **SEED:** `prisma_tenant/seeds/tenant-seed.ts` — idempotente (`ON CONFLICT (codigo) DO NOTHING`): `estados` (8 valores), `prioridades` (4 valores), `tipos_ticket` (SOPORTE, COMPRAS, EDILICIA), `tipo_operacion` (5 valores).
 - Ref spec: `[SPEC:tickets-core/Seeds de catálogos en provisioning, Seed idempotente]`
+- **Completado PR-09:** seed idempotente + script `seed:tenant` en package.json. 11 integration tests TDD GREEN.
 
 ### 3.E — Interface
 
