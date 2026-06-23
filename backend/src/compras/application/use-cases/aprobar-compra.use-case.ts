@@ -17,6 +17,7 @@ import { ITipoTicketRepository } from '../../../tickets/domain/ports/i-tipo-tick
 import { ITicketRepository } from '../../../tickets/domain/ports/i-ticket.repository';
 import { ITicketCompraRepository } from '../../domain/ports/i-ticket-compra.repository';
 import { TicketCompraNoEncontradoError } from '../../domain/errors/compras.errors';
+import { TicketCompraEntity } from '../../domain/entities/ticket-compra.entity';
 
 /**
  * DTO de entrada para aprobar una compra.
@@ -70,7 +71,9 @@ export class AprobarCompraUseCase {
     private readonly txRunner: ITenantTransactionRunner,
   ) {}
 
-  async execute(dto: AprobarCompraDto): Promise<Result<TicketEntity, DomainError>> {
+  async execute(
+    dto: AprobarCompraDto,
+  ): Promise<Result<{ ticket: TicketEntity; ticketCompra: TicketCompraEntity }, DomainError>> {
     // 1. Cargar el ticket; tratar soft-deleted como no encontrado
     const ticket = await this.ticketRepo.findById(dto.ticketId);
     if (!ticket || ticket.isDeleted()) {
@@ -143,6 +146,6 @@ export class AprobarCompraUseCase {
       await this.operacionRepo.save(operacion);
     });
 
-    return Result.ok(ticket);
+    return Result.ok({ ticket, ticketCompra });
   }
 }

@@ -329,11 +329,12 @@ describe('AprobarCompraUseCase', () => {
   // ─── Happy path ───────────────────────────────────────────────────────────────
 
   describe('happy path', () => {
-    it('retorna Result.ok con el ticket aprobado', async () => {
+    it('retorna Result.ok con { ticket, ticketCompra }', async () => {
       const result = await useCase.execute(validDto);
 
       expect(result.isOk()).toBe(true);
-      expect(result.getValue().estadoId).toBe(ESTADO_APROBADO_ID);
+      expect(result.getValue().ticket.estadoId).toBe(ESTADO_APROBADO_ID);
+      expect(result.getValue().ticketCompra).toBeInstanceOf(TicketCompraEntity);
     });
   });
 });

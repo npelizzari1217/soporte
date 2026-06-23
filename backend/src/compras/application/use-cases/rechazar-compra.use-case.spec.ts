@@ -350,11 +350,12 @@ describe('RechazarCompraUseCase', () => {
   // ─── Happy path ───────────────────────────────────────────────────────────────
 
   describe('happy path', () => {
-    it('retorna Result.ok con el ticket en estado CERRADO', async () => {
+    it('retorna Result.ok con { ticket, ticketCompra }', async () => {
       const result = await useCase.execute(validDto);
 
       expect(result.isOk()).toBe(true);
-      expect(result.getValue().estadoId).toBe(ESTADO_CERRADO_ID);
+      expect(result.getValue().ticket.estadoId).toBe(ESTADO_CERRADO_ID);
+      expect(result.getValue().ticketCompra).toBeInstanceOf(TicketCompraEntity);
     });
   });
 });

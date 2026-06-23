@@ -43,6 +43,7 @@ import { PermissionsGuard } from '../../../auth/infrastructure/guards/permission
 import { PERMISSIONS_KEY } from '../../../auth/infrastructure/guards/decorators';
 import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
 import { CreateTicketCompraHttpDto, RechazarCompraHttpDto } from '../dtos/compras.dto';
+import { TicketCompraEntity } from '../../domain/entities/ticket-compra.entity';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -70,6 +71,27 @@ function makeTicket(): TicketEntity {
     asignadoId: null,
     fechaVencimiento: null,
   });
+}
+
+function makeTicketCompra(
+  ticketId: string,
+  {
+    aprobadoPorId = null,
+    aprobadoEn = null,
+    motivoRechazo = null,
+  }: {
+    aprobadoPorId?: string | null;
+    aprobadoEn?: Date | null;
+    motivoRechazo?: string | null;
+  } = {},
+): TicketCompraEntity {
+  return TicketCompraEntity.reconstitute(
+    { ticketId, aprobadoPorId, aprobadoEn, motivoRechazo },
+    'tc-001',
+    new Date(),
+    new Date(),
+    null,
+  );
 }
 
 function makeCreateDto(): CreateTicketCompraHttpDto {
@@ -229,17 +251,35 @@ describe('ComprasController', () => {
   // ─── POST /compras/:id/aprobar ──────────────────────────────────────────────
 
   describe('POST /compras/:id/aprobar (aprobarCompra)', () => {
-    it('retorna 200 con el ticket en estado APROBADO', async () => {
+    it('retorna 200 con ticketId del ticket y id del ticket_compra', async () => {
       const ticket = makeTicket();
-      mocks.aprobarCompraUseCase.execute.mockResolvedValue(Result.ok(ticket));
+      const ticketCompra = makeTicketCompra(ticket.id);
+      mocks.aprobarCompraUseCase.execute.mockResolvedValue(Result.ok({ ticket, ticketCompra }));
 
       const result = await controller.aprobarCompra(ticket.id, user);
 
-      expect(result).toMatchObject({ id: ticket.id });
+      expect(result).toMatchObject({ ticketId: ticket.id, id: 'tc-001' });
       expect(mocks.aprobarCompraUseCase.execute).toHaveBeenCalledWith({
         ticketId: ticket.id,
         aprobadoPorId: 'aprobador-001',
       });
+    });
+
+    it('respuesta de aprobar incluye aprobadoPorId y aprobadoEn no nulos', async () => {
+      const ticket = makeTicket();
+      const aprobadoEn = new Date('2026-06-23T10:00:00Z');
+      const ticketCompra = makeTicketCompra(ticket.id, {
+        aprobadoPorId: 'aprobador-001',
+        aprobadoEn,
+      });
+      mocks.aprobarCompraUseCase.execute.mockResolvedValue(Result.ok({ ticket, ticketCompra }));
+
+      const result = await controller.aprobarCompra(ticket.id, user);
+
+      expect(result.id).toBe('tc-001');
+      expect(result.aprobadoPorId).toBe('aprobador-001');
+      expect(result.aprobadoEn).toBe(aprobadoEn.toISOString());
+      expect(result.motivoRechazo).toBeNull();
     });
 
     it('lanza NotFoundException cuando el ticket no existe', async () => {
@@ -270,7 +310,8 @@ describe('ComprasController', () => {
 
     it('usa el sub del JWT como aprobadoPorId (NO del body)', async () => {
       const ticket = makeTicket();
-      mocks.aprobarCompraUseCase.execute.mockResolvedValue(Result.ok(ticket));
+      const ticketCompra = makeTicketCompra(ticket.id);
+      mocks.aprobarCompraUseCase.execute.mockResolvedValue(Result.ok({ ticket, ticketCompra }));
 
       await controller.aprobarCompra('ticket-id', user);
 
@@ -285,13 +326,19 @@ describe('ComprasController', () => {
   describe('POST /compras/:id/rechazar (rechazarCompra)', () => {
     const rechazarDto: RechazarCompraHttpDto = { motivoRechazo: 'Falta de presupuesto' };
 
-    it('retorna 200 con el ticket en estado CERRADO (doble transición automática)', async () => {
+    it('retorna 200 con id del ticket_compra y motivoRechazo (doble transición automática)', async () => {
       const ticket = makeTicket();
-      mocks.rechazarCompraUseCase.execute.mockResolvedValue(Result.ok(ticket));
+      const ticketCompra = makeTicketCompra(ticket.id, {
+        aprobadoPorId: 'aprobador-001',
+        aprobadoEn: new Date(),
+        motivoRechazo: 'Falta de presupuesto',
+      });
+      mocks.rechazarCompraUseCase.execute.mockResolvedValue(Result.ok({ ticket, ticketCompra }));
 
       const result = await controller.rechazarCompra('ticket-id', rechazarDto, user);
 
-      expect(result).toMatchObject({ id: ticket.id });
+      expect(result).toMatchObject({ id: 'tc-001', ticketId: ticket.id });
+      expect(result.motivoRechazo).toBe('Falta de presupuesto');
       expect(mocks.rechazarCompraUseCase.execute).toHaveBeenCalledWith({
         ticketId: 'ticket-id',
         aprobadoPorId: 'aprobador-001',
@@ -301,7 +348,8 @@ describe('ComprasController', () => {
 
     it('usa el sub del JWT como aprobadoPorId (NO del body)', async () => {
       const ticket = makeTicket();
-      mocks.rechazarCompraUseCase.execute.mockResolvedValue(Result.ok(ticket));
+      const ticketCompra = makeTicketCompra(ticket.id);
+      mocks.rechazarCompraUseCase.execute.mockResolvedValue(Result.ok({ ticket, ticketCompra }));
 
       await controller.rechazarCompra('ticket-id', rechazarDto, user);
 
@@ -357,6 +405,12 @@ describe('ComprasController', () => {
     it('requiere permiso ticket:crear en crearTicketCompra', () => {
       const perms: string[] =
         Reflect.getMetadata(PERMISSIONS_KEY, ComprasController.prototype.crearTicketCompra) ?? [];
+      expect(perms).toContain('ticket:crear');
+    });
+
+    it('requiere permiso ticket:crear en enviarAAprobacion (flujo del solicitante)', () => {
+      const perms: string[] =
+        Reflect.getMetadata(PERMISSIONS_KEY, ComprasController.prototype.enviarAAprobacion) ?? [];
       expect(perms).toContain('ticket:crear');
     });
 

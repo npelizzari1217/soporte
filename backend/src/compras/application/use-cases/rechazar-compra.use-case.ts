@@ -20,6 +20,7 @@ import {
   MotivoRechazoRequeridoError,
   TicketCompraNoEncontradoError,
 } from '../../domain/errors/compras.errors';
+import { TicketCompraEntity } from '../../domain/entities/ticket-compra.entity';
 
 /**
  * DTO de entrada para rechazar una compra.
@@ -82,7 +83,9 @@ export class RechazarCompraUseCase {
     private readonly txRunner: ITenantTransactionRunner,
   ) {}
 
-  async execute(dto: RechazarCompraDto): Promise<Result<TicketEntity, DomainError>> {
+  async execute(
+    dto: RechazarCompraDto,
+  ): Promise<Result<{ ticket: TicketEntity; ticketCompra: TicketCompraEntity }, DomainError>> {
     // 1. Validación anticipada: motivoRechazo no puede estar vacío ni ser solo espacios
     if (!dto.motivoRechazo || dto.motivoRechazo.trim() === '') {
       return Result.fail(new MotivoRechazoRequeridoError());
@@ -187,6 +190,6 @@ export class RechazarCompraUseCase {
       await this.operacionRepo.save(operacion2);
     });
 
-    return Result.ok(ticket);
+    return Result.ok({ ticket, ticketCompra });
   }
 }

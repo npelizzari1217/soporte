@@ -38,6 +38,7 @@ import { TenantGuard } from '../../../auth/infrastructure/guards/tenant.guard';
 import { CurrentUser, RequirePermissions } from '../../../auth/infrastructure/guards/decorators';
 
 import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
+import { TicketCompraEntity } from '../../domain/entities/ticket-compra.entity';
 import {
   EstadoCatalogoNoEncontradoError,
   SolicitanteInvalidoError,
@@ -65,9 +66,14 @@ import {
   TicketCompraConTicketResponseDto,
 } from '../dtos/compras.dto';
 
-// ─── Mapper ───────────────────────────────────────────────────────────────────
+// ─── Mappers ──────────────────────────────────────────────────────────────────
 
-function toTicketCompraResponse(ticket: TicketEntity): TicketCompraConTicketResponseDto {
+/**
+ * Mapper para endpoints que solo retornan el ticket (crear, enviar-aprobacion).
+ * El id de ticket_compra no está disponible en esos use cases; se usa ticket.id
+ * como placeholder hasta que esos use cases también retornen el satélite.
+ */
+function toResponseFromTicket(ticket: TicketEntity): TicketCompraConTicketResponseDto {
   return {
     id: ticket.id,
     ticketId: ticket.id,
@@ -79,6 +85,28 @@ function toTicketCompraResponse(ticket: TicketEntity): TicketCompraConTicketResp
     motivoRechazo: null,
     createdAt: ticket.createdAt.toISOString(),
     updatedAt: ticket.updatedAt.toISOString(),
+  };
+}
+
+/**
+ * Mapper para endpoints que retornan ticket + ticketCompra (aprobar, rechazar).
+ * Usa el id real del ticket_compra y mapea los campos de aprobación del satélite.
+ */
+function toResponseWithSatelite(
+  ticket: TicketEntity,
+  ticketCompra: TicketCompraEntity,
+): TicketCompraConTicketResponseDto {
+  return {
+    id: ticketCompra.id,
+    ticketId: ticket.id,
+    numero: ticket.numero,
+    titulo: ticket.titulo,
+    estadoId: ticket.estadoId,
+    aprobadoPorId: ticketCompra.aprobadoPorId,
+    aprobadoEn: ticketCompra.aprobadoEn?.toISOString() ?? null,
+    motivoRechazo: ticketCompra.motivoRechazo,
+    createdAt: ticketCompra.createdAt.toISOString(),
+    updatedAt: ticketCompra.updatedAt.toISOString(),
   };
 }
 
@@ -140,7 +168,7 @@ export class ComprasController {
       throw new UnprocessableEntityException('No se pudo crear el ticket de compra');
     }
 
-    return toTicketCompraResponse(result.getValue());
+    return toResponseFromTicket(result.getValue());
   }
 
   /**
@@ -154,6 +182,7 @@ export class ComprasController {
    */
   @Post(':id/enviar-aprobacion')
   @HttpCode(HttpStatus.OK)
+  @RequirePermissions('ticket:crear')
   async enviarAAprobacion(
     @Param('id') id: string,
     @CurrentUser() user: JwtPayload,
@@ -184,7 +213,7 @@ export class ComprasController {
       throw new UnprocessableEntityException('No se pudo enviar el ticket a aprobación');
     }
 
-    return toTicketCompraResponse(result.getValue());
+    return toResponseFromTicket(result.getValue());
   }
 
   /**
@@ -230,7 +259,8 @@ export class ComprasController {
       throw new UnprocessableEntityException('No se pudo aprobar el ticket de compra');
     }
 
-    return toTicketCompraResponse(result.getValue());
+    const { ticket, ticketCompra } = result.getValue();
+    return toResponseWithSatelite(ticket, ticketCompra);
   }
 
   /**
@@ -281,6 +311,7 @@ export class ComprasController {
       throw new UnprocessableEntityException('No se pudo rechazar el ticket de compra');
     }
 
-    return toTicketCompraResponse(result.getValue());
+    const { ticket, ticketCompra } = result.getValue();
+    return toResponseWithSatelite(ticket, ticketCompra);
   }
 }

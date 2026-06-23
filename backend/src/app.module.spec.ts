@@ -22,12 +22,20 @@ import { JwtAuthGuard } from './auth/infrastructure/guards/jwt-auth.guard';
 import { TicketsController } from './tickets/interface/controllers/tickets.controller';
 import { CrearTicketUseCase } from './tickets/application/use-cases/crear-ticket.use-case';
 import { TICKET_REPOSITORY } from './tickets/domain/ports/i-ticket.repository';
+import {
+  TicketStateMachineFactory,
+  TICKET_STATE_MACHINE_FACTORY,
+} from './tickets/domain/state-machine/ticket-state-machine.factory';
+import { ComprasController } from './compras/interface/controllers/compras.controller';
+import { ComprasStateMachine } from './compras/domain/state-machine/compras-state-machine';
 
 describe('AppModule bootstrap', () => {
   it('compila el grafo de módulos sin UnknownDependenciesException (C1 DI regression guard)', async () => {
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
+
+    await moduleRef.init();
 
     expect(moduleRef).toBeDefined();
     expect(moduleRef.get(ClientesController)).toBeInstanceOf(ClientesController);
@@ -39,6 +47,11 @@ describe('AppModule bootstrap', () => {
     expect(moduleRef.get(TicketsController)).toBeInstanceOf(TicketsController);
     expect(moduleRef.get(CrearTicketUseCase)).toBeInstanceOf(CrearTicketUseCase);
     expect(moduleRef.get(TICKET_REPOSITORY)).toBeDefined();
+    // PR-13b: ComprasModule wired correctly
+    expect(moduleRef.get(ComprasController)).toBeInstanceOf(ComprasController);
+    // W1: onModuleInit debe registrar ComprasStateMachine — requires moduleRef.init()
+    const factory = moduleRef.get<TicketStateMachineFactory>(TICKET_STATE_MACHINE_FACTORY);
+    expect(factory.resolve('COMPRAS')).toBeInstanceOf(ComprasStateMachine);
 
     await moduleRef.close();
   });
