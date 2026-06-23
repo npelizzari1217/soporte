@@ -100,6 +100,20 @@ import { OperacionesController } from './interface/controllers/operaciones.contr
     AuthModule,
   ],
   controllers: [TicketsController, OperacionesController],
+  // Exportamos los providers que ComprasModule (Fase 4) y ReparacionesModule (Fase 5)
+  // necesitan para cablear sus propios use cases. El TICKET_STATE_MACHINE_FACTORY es
+  // el singleton compartido que las máquinas de estado de cada dominio extienden via
+  // factory.register() en onModuleInit de sus propios módulos.
+  exports: [
+    TICKET_REPOSITORY,
+    OPERACION_TICKET_REPOSITORY,
+    ESTADO_REPOSITORY,
+    TIPO_TICKET_REPOSITORY,
+    TIPO_OPERACION_REPOSITORY,
+    USUARIO_MASTER_CHECKER,
+    NumeradorTicket,
+    TICKET_STATE_MACHINE_FACTORY,
+  ],
   providers: [
     // ─── Repositorios tenant ─────────────────────────────────────────────────
     // Todos usan TenantContext (@Global) para obtener el PrismaClient del tenant.

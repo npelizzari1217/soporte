@@ -345,10 +345,10 @@
 
 ### 4.D — Interface
 
-**4.D.1** [P, dep: 4.B.2, 4.B.4, 4.B.6, 4.B.8, 4.C.2] **TEST →** Unit test de `ComprasController` e `ItemsCompraController`: mock use cases; verifica que `@RequirePermissions('compra:aprobar')` en endpoints de aprobación.
+**[x] 4.D.1** [P, dep: 4.B.2, 4.B.4, 4.B.6, 4.B.8, 4.C.2] **TEST →** Unit test de `ComprasController` e `ItemsCompraController`: mock use cases; verifica que `@RequirePermissions('compra:aprobar')` en endpoints de aprobación.
 - Ref spec: `[SPEC:compras/Gate de aprobación con permiso]`
 
-**4.D.2** [S, dep: 4.D.1] **IMPL →** `compras/interface/controllers/`: `compras.controller.ts`, `items-compra.controller.ts`, `presupuestos.controller.ts` + DTOs. Wiring `ComprasModule`.
+**[x] 4.D.2** [S, dep: 4.D.1] **IMPL →** `compras/interface/controllers/`: `compras.controller.ts`, `items-compra.controller.ts`, `presupuestos.controller.ts` + DTOs. Wiring `ComprasModule`.
 
 ---
 

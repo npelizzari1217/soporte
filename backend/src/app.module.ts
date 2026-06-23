@@ -3,6 +3,7 @@ import { SharedModule } from './shared/shared.module';
 import { ClientesModule } from './clientes/clientes.module';
 import { AuthModule } from './auth/auth.module';
 import { TicketsModule } from './tickets/tickets.module';
+import { ComprasModule } from './compras/compras.module';
 
 /**
  * AppModule — módulo raíz de la aplicación.
@@ -11,9 +12,10 @@ import { TicketsModule } from './tickets/tickets.module';
  * PR-04 agrega ClientesModule (tenants master: clientes + ciclos vigentes).
  * PR-06 agrega AuthModule (autenticación JWT + RBAC).
  * PR-11 agrega TicketsModule (tickets-core: dominio + infra + interface).
+ * PR-13b agrega ComprasModule (compras: dominio + use cases + infra + interface).
  */
 @Module({
-  imports: [SharedModule, ClientesModule, AuthModule, TicketsModule],
+  imports: [SharedModule, ClientesModule, AuthModule, TicketsModule, ComprasModule],
   controllers: [],
   providers: [],
 })

@@ -103,6 +103,21 @@ export class MotivoRechazoRequeridoError extends DomainError {
 }
 
 /**
+ * Error de búsqueda: el ítem de compra con el id indicado no existe o fue eliminado.
+ * HTTP 404 semántico.
+ *
+ * Ref spec: [SPEC:compras/Gestión de ítems]
+ * Tarea: 4.D.1 / 4.D.2
+ */
+export class ItemCompraNoEncontradoError extends DomainError {
+  readonly code = 'ITEM_COMPRA_NO_ENCONTRADO';
+
+  constructor(itemId: string) {
+    super(`Ítem de compra con id "${itemId}" no encontrado o fue eliminado (soft delete).`);
+  }
+}
+
+/**
  * Error de búsqueda: el presupuesto con el id indicado no existe o fue eliminado.
  * HTTP 404 semántico.
  *
