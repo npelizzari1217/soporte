@@ -258,8 +258,9 @@
 
 **3.D.2** [S, dep: 3.D.1, 0.C.4] **IMPL →** `tickets/infrastructure/persistence/prisma/`: `prisma-ticket.repository.ts` + `ticket.mapper.ts`, `prisma-operacion-ticket.repository.ts` + mapper, `prisma-archivo.repository.ts` + mapper, `prisma-estado.repository.ts`, `prisma-usuario-tipos-ticket.repository.ts`. Todos obtienen client via `TenantContext`.
 
-**3.D.3** [P, dep: 0.A.2] **SCHEMA:** `prisma_tenant/schema.prisma` — modelos: `Estado`, `Prioridad`, `TipoTicket`, `TipoOperacion`, `CicloCliente`, `Ticket`, `OperacionTicket`, `Archivo`, `ArchivoTicket`, `ArchivoOperacion`, `UsuarioTiposTicket`. Con todos los campos, FK, índices, CHECK constraints del spec.
+**[x] 3.D.3** [P, dep: 0.A.2] **SCHEMA:** `prisma_tenant/schema.prisma` — modelos: `Estado`, `Prioridad`, `TipoTicket`, `TipoOperacion`, `CicloCliente`, `Ticket`, `OperacionTicket`, `Archivo`, `ArchivoTicket`, `ArchivoOperacion`, `UsuarioTiposTicket`. Con todos los campos, FK, índices, CHECK constraints del spec.
 - Ref spec: `[SPEC:tickets-core/Tablas TENANT]`
+- **Completado PR-08:** 11 modelos + migration 20260623120000_init_tenant_schema aplicada. 18 integration tests TDD GREEN.
 
 **3.D.4** [S, dep: 3.D.3] **SEED:** `prisma_tenant/seeds/tenant-seed.ts` — idempotente (`ON CONFLICT (codigo) DO NOTHING`): `estados` (8 valores), `prioridades` (4 valores), `tipos_ticket` (SOPORTE, COMPRAS, EDILICIA), `tipo_operacion` (5 valores).
 - Ref spec: `[SPEC:tickets-core/Seeds de catálogos en provisioning, Seed idempotente]`

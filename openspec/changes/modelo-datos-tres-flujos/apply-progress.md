@@ -671,6 +671,84 @@ backend/
 
 ---
 
+---
+
+## PR-08: prisma_tenant DDL completo + primera migración tenant — COMPLETADO
+
+> Rama: `feat/pr08-tenant-schema` | Commits: `c31880d`, `7cab640`, `067eb03`
+> Última actualización: 2026-06-23
+
+### Tareas completadas
+
+| Tarea | Estado | Notas |
+|-------|--------|-------|
+| 3.D.3 | ✅ | 11 modelos Prisma en `prisma_tenant/schema.prisma`. Migration `20260623120000_init_tenant_schema` aplicada a `soporte_tenant_test`. 18 integration tests TDD GREEN. |
+
+### Modelos implementados (verbatim del spec tickets-core/Tablas TENANT)
+
+| Modelo Prisma | Tabla SQL | Notas destacadas |
+|---------------|-----------|-----------------|
+| `Estado` | `estados` | Named relations EstadoAnterior/EstadoNuevo para OperacionTicket |
+| `Prioridad` | `prioridades` | Catálogo con color/orden |
+| `TipoTicket` | `tipos_ticket` | CHECK codigo IN ('SOPORTE','COMPRAS','EDILICIA') — raw SQL en migration |
+| `TipoOperacion` | `tipo_operacion` | Catálogo de tipos de evento de timeline |
+| `CicloCliente` | `ciclos_cliente` | ciclo_vigente_id es soft ref cross-DB (sin FK) |
+| `Ticket` | `tickets` | solicitante_id y asignado_id son soft refs. Partial indexes WHERE NOT NULL |
+| `OperacionTicket` | `operaciones_ticket` | metadata JSONB, dos named relations a Estado |
+| `Archivo` | `archivos` | BigInt tamano_bytes, CHECK > 0, storage_key UNIQUE |
+| `ArchivoTicket` | `archivos_ticket` | PK compuesta, ON DELETE CASCADE, sin soft delete |
+| `ArchivoOperacion` | `archivos_operacion` | PK compuesta, ON DELETE CASCADE, sin soft delete |
+| `UsuarioTiposTicket` | `usuario_tipos_ticket` | usuario_id soft ref, tipo_ticket_id FK real |
+
+### Estado de verificaciones PR-08
+
+| Check | Resultado |
+|-------|-----------|
+| `pnpm test` | **361 tests, 28 suites, todos verdes** (+18 nuevos de 3.D.3) |
+| `tsc --noEmit` | ✅ limpio |
+| `pnpm lint` | ✅ fitness rule verde |
+| `prisma validate --schema=prisma_tenant/schema.prisma` | ✅ válido |
+| `generate:tenant` | ✅ Prisma Client v7.8.0 regenerado en `.prisma/tenant` |
+| Migration `20260623120000_init_tenant_schema` | ✅ aplicada a `soporte_tenant_test` |
+| 18 integration tests (3.D.3) | ✅ 18/18 GREEN |
+
+### Infra para aplicar la migración tenant (Prisma 7)
+
+- **`prisma.tenant.config.ts`**: análogo a `prisma.config.ts` pero para la DB tenant. Lee `DATABASE_URL_TENANT`. La URL puede ser una DB tenant concreta o el target del fan-out.
+- **`migrate:tenant` actualizado**: ahora pasa `--config prisma.tenant.config.ts` para que Prisma use `DATABASE_URL_TENANT` en lugar de `DATABASE_URL_MASTER`.
+- **`soporte_tenant_test`**: DB de test creada en Docker postgres. Migration aplicada. Los 18 integration tests corren contra esta DB.
+
+### Decisiones tomadas en PR-08
+
+1. **`prisma.tenant.config.ts` separado**: limpia la separación master/tenant sin contaminar `prisma.config.ts`. El `migrate:tenant` script usa `--config prisma.tenant.config.ts` → `DATABASE_URL_TENANT`.
+2. **Named relations para Estado dual**: `OperacionTicket` referencia `estados` dos veces (estado_anterior_id, estado_nuevo_id). Prisma requiere `@relation("EstadoAnterior")` / `@relation("EstadoNuevo")` + back-relations en `Estado`.
+3. **`BigInt` para `tamano_bytes`**: tipo nativo de Prisma → mapea a `BIGINT` en Postgres. No requiere `@db` annotation adicional.
+4. **Soft refs documentados con `///` inline**: `solicitante_id`, `asignado_id`, `autor_id`, `subido_por_id`, `ciclo_vigente_id`, `usuario_id` tienen comentarios `///` explicando el cross-DB sin FK.
+5. **Partial indexes en raw SQL**: `tickets.ciclo_id WHERE NOT NULL` y `tickets.asignado_id WHERE NOT NULL` no son expresables en Prisma schema. Se agregan como raw SQL en la migration. En schema Prisma, `@@index([cicloId])` regular con comentario de advertencia.
+6. **Migración artesanal**: consistente con PR-03. Prisma 7 en adapter mode no genera DDL automáticamente.
+7. **Verificación TDD**: test en `src/shared/infrastructure/persistence/tenant-schema.integration.spec.ts` consulta `information_schema` para verificar tablas, columnas, FKs, CASCADE, CHECKs y ausencia de `cliente_id`.
+
+### Archivos creados/modificados en PR-08
+
+```
+backend/
+├── prisma.tenant.config.ts                        — datasource config para CLI tenant migrations
+├── package.json                                   — migrate:tenant ahora usa --config prisma.tenant.config.ts
+├── prisma_tenant/
+│   ├── schema.prisma                              — DDL completo (reemplaza placeholder TenantSeedVersion)
+│   └── migrations/
+│       ├── migration_lock.toml                    — provider = "postgresql"
+│       └── 20260623120000_init_tenant_schema/
+│           └── migration.sql                      — DDL completo + partial indexes + CHECK constraints
+└── src/
+    └── shared/
+        └── infrastructure/
+            └── persistence/
+                └── tenant-schema.integration.spec.ts  — 18 integration tests TDD (3.D.3)
+```
+
+---
+
 ## Estado global del cambio
 
 | Fase | Progreso |
@@ -678,4 +756,5 @@ backend/
 | Fase 0 — Scaffolding + Shared | **16/16 tareas completadas** (PR-01 + PR-02) |
 | Fase 1 — MASTER: clientes | **14/15 tareas completadas** — 1.A.1–1.D.2 ✅ PR-04; 1.C.3 ✅ PR-03 |
 | Fase 2 — MASTER: auth+RBAC | **20/22** — 2.A.1–2.B.8 ✅ PR-05; 2.C.1/2.C.2/2.D.1–2.D.4 ✅ PR-06; PR-06-fix ✅ CRITICALs; 2.C.3 ✅ PR-03; 2.E.1 ✅ PR-07; pendiente: 2.D.5 (registro usuario, out-of-scope) |
-| Fases 3-7 | 0 — desbloqueadas por guards + TenantContext binding ✅ |
+| Fase 3 — TENANT: tickets-core | **1/18** — 3.D.3 ✅ PR-08 (schema DDL + migration) |
+| Fases 4-7 | 0 — desbloqueadas cuando Fase 3 complete |
