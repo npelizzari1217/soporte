@@ -32,6 +32,10 @@ import { UbicacionesController } from './reparaciones/interface/controllers/ubic
 import { TicketsEdilicioController } from './reparaciones/interface/controllers/tickets-edilicio.controller';
 import { SubtareasController } from './reparaciones/interface/controllers/subtareas.controller';
 import { EdiliciaStateMachine } from './reparaciones/domain/state-machine/edilicia-state-machine';
+import { EquiposController } from './equipos/interface/controllers/equipos.controller';
+import { ComponentesController } from './equipos/interface/controllers/componentes.controller';
+import { TicketSoporteController } from './equipos/interface/controllers/ticket-soporte.controller';
+import { CrearTicketSoporteUseCase } from './equipos/application/use-cases/crear-ticket-soporte.use-case';
 
 describe('AppModule bootstrap', () => {
   it('compila el grafo de módulos sin UnknownDependenciesException (C1 DI regression guard)', async () => {
@@ -62,6 +66,14 @@ describe('AppModule bootstrap', () => {
     expect(moduleRef.get(SubtareasController)).toBeInstanceOf(SubtareasController);
     // onModuleInit debe registrar EdiliciaStateMachine — requires moduleRef.init()
     expect(factory.resolve('EDILICIA')).toBeInstanceOf(EdiliciaStateMachine);
+    // PR-17b: EquiposModule wired correctly
+    expect(moduleRef.get(EquiposController)).toBeInstanceOf(EquiposController);
+    expect(moduleRef.get(ComponentesController)).toBeInstanceOf(ComponentesController);
+    expect(moduleRef.get(TicketSoporteController)).toBeInstanceOf(TicketSoporteController);
+    expect(moduleRef.get(CrearTicketSoporteUseCase)).toBeInstanceOf(CrearTicketSoporteUseCase);
+    // SOPORTE no registra state machine: BaseTicketStateMachine es el fallback para 'SOPORTE'.
+    // factory.resolve('SOPORTE') !== undefined — retorna la instancia de BaseTicketStateMachine.
+    expect(factory.resolve('SOPORTE')).toBeDefined();
 
     await moduleRef.close();
   });
