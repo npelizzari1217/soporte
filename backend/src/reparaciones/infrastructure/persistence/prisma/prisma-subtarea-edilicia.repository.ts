@@ -35,9 +35,7 @@ export class PrismaSubtareaEdiliciaRepository implements ISubtareaEdiliciaReposi
     return row ? SubtareaEdiliciaMapper.toDomain(row) : null;
   }
 
-  async findActiveByTicketEdiliciaId(
-    ticketEdiliciaId: string,
-  ): Promise<SubtareaEdiliciaEntity[]> {
+  async findActiveByTicketEdiliciaId(ticketEdiliciaId: string): Promise<SubtareaEdiliciaEntity[]> {
     // SOLO subtareas con deleted_at IS NULL — las soft-deleted NO cuentan en el avance.
     // Ordenadas por orden ASC, created_at ASC (spec: fórmula de avance).
     const rows = await this.client.subtareaEdilicia.findMany({
@@ -47,9 +45,7 @@ export class PrismaSubtareaEdiliciaRepository implements ISubtareaEdiliciaReposi
     return rows.map(SubtareaEdiliciaMapper.toDomain);
   }
 
-  async findAllByTicketEdiliciaId(
-    ticketEdiliciaId: string,
-  ): Promise<SubtareaEdiliciaEntity[]> {
+  async findAllByTicketEdiliciaId(ticketEdiliciaId: string): Promise<SubtareaEdiliciaEntity[]> {
     // Retorna TODAS las subtareas (incluye soft-deleted) para trazabilidad de timeline.
     const rows = await this.client.subtareaEdilicia.findMany({
       where: { ticketEdiliciaId },

@@ -28,6 +28,10 @@ import {
 } from './tickets/domain/state-machine/ticket-state-machine.factory';
 import { ComprasController } from './compras/interface/controllers/compras.controller';
 import { ComprasStateMachine } from './compras/domain/state-machine/compras-state-machine';
+import { UbicacionesController } from './reparaciones/interface/controllers/ubicaciones.controller';
+import { TicketsEdilicioController } from './reparaciones/interface/controllers/tickets-edilicio.controller';
+import { SubtareasController } from './reparaciones/interface/controllers/subtareas.controller';
+import { EdiliciaStateMachine } from './reparaciones/domain/state-machine/edilicia-state-machine';
 
 describe('AppModule bootstrap', () => {
   it('compila el grafo de módulos sin UnknownDependenciesException (C1 DI regression guard)', async () => {
@@ -52,6 +56,12 @@ describe('AppModule bootstrap', () => {
     // W1: onModuleInit debe registrar ComprasStateMachine — requires moduleRef.init()
     const factory = moduleRef.get<TicketStateMachineFactory>(TICKET_STATE_MACHINE_FACTORY);
     expect(factory.resolve('COMPRAS')).toBeInstanceOf(ComprasStateMachine);
+    // PR-15b: ReparacionesModule wired correctly
+    expect(moduleRef.get(UbicacionesController)).toBeInstanceOf(UbicacionesController);
+    expect(moduleRef.get(TicketsEdilicioController)).toBeInstanceOf(TicketsEdilicioController);
+    expect(moduleRef.get(SubtareasController)).toBeInstanceOf(SubtareasController);
+    // onModuleInit debe registrar EdiliciaStateMachine — requires moduleRef.init()
+    expect(factory.resolve('EDILICIA')).toBeInstanceOf(EdiliciaStateMachine);
 
     await moduleRef.close();
   });

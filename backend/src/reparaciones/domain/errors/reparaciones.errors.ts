@@ -50,9 +50,7 @@ export class SubtareaEdiliciaNoEncontradaError extends DomainError {
   readonly code = 'SUBTAREA_EDILICIA_NO_ENCONTRADA';
 
   constructor(subtareaId: string) {
-    super(
-      `Subtarea edilicia con id "${subtareaId}" no encontrada o fue eliminada (soft delete).`,
-    );
+    super(`Subtarea edilicia con id "${subtareaId}" no encontrada o fue eliminada (soft delete).`);
   }
 }
 

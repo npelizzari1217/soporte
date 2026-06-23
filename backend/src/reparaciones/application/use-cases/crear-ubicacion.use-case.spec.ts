@@ -1,7 +1,4 @@
-import {
-  CrearUbicacionUseCase,
-  CrearUbicacionDto,
-} from './crear-ubicacion.use-case';
+import { CrearUbicacionUseCase, CrearUbicacionDto } from './crear-ubicacion.use-case';
 import { IUbicacionRepository } from '../../domain/ports/i-ubicacion.repository';
 import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { UbicacionEntity } from '../../domain/entities/ubicacion.entity';
@@ -72,9 +69,7 @@ describe('CrearUbicacionUseCase', () => {
     });
 
     it('retorna fallo cuando el padre fue soft-deleted', async () => {
-      mockUbicacionRepo.findById.mockResolvedValue(
-        makeUbicacion(PADRE_ID, null, true, new Date()),
-      );
+      mockUbicacionRepo.findById.mockResolvedValue(makeUbicacion(PADRE_ID, null, true, new Date()));
 
       const result = await useCase.execute(crearDto);
 
@@ -97,9 +92,7 @@ describe('CrearUbicacionUseCase', () => {
     });
 
     it('no persiste nada cuando el padre está eliminado', async () => {
-      mockUbicacionRepo.findById.mockResolvedValue(
-        makeUbicacion(PADRE_ID, null, true, new Date()),
-      );
+      mockUbicacionRepo.findById.mockResolvedValue(makeUbicacion(PADRE_ID, null, true, new Date()));
 
       await useCase.execute(crearDto);
 
@@ -108,7 +101,9 @@ describe('CrearUbicacionUseCase', () => {
 
     it('la ubicacion creada tiene activo=true por defecto', async () => {
       let saved: UbicacionEntity | undefined;
-      mockUbicacionRepo.save.mockImplementation(async (u) => { saved = u; });
+      mockUbicacionRepo.save.mockImplementation(async (u) => {
+        saved = u;
+      });
 
       await useCase.execute({ nombre: 'Sala nueva', descripcion: null });
 
@@ -117,7 +112,9 @@ describe('CrearUbicacionUseCase', () => {
 
     it('la ubicacion creada tiene el nombre del DTO', async () => {
       let saved: UbicacionEntity | undefined;
-      mockUbicacionRepo.save.mockImplementation(async (u) => { saved = u; });
+      mockUbicacionRepo.save.mockImplementation(async (u) => {
+        saved = u;
+      });
 
       await useCase.execute({ nombre: 'Sala nueva', descripcion: null });
 
@@ -137,7 +134,8 @@ describe('CrearUbicacionUseCase', () => {
     it('la ubicacion creada tiene UUIDv7', async () => {
       const result = await useCase.execute({ nombre: 'Piso 1', descripcion: null });
 
-      const uuidV7Pattern = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      const uuidV7Pattern =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
       expect(result.getValue().id).toMatch(uuidV7Pattern);
     });
   });

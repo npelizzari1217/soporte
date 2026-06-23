@@ -1,4 +1,7 @@
-import { CrearTicketEdilicioUseCase, CrearTicketEdilicioDto } from './crear-ticket-edilicio.use-case';
+import {
+  CrearTicketEdilicioUseCase,
+  CrearTicketEdilicioDto,
+} from './crear-ticket-edilicio.use-case';
 import { ITicketRepository } from '../../../tickets/domain/ports/i-ticket.repository';
 import { IOperacionTicketRepository } from '../../../tickets/domain/ports/i-operacion-ticket.repository';
 import { IEstadoRepository } from '../../../tickets/domain/ports/i-estado.repository';
@@ -140,9 +143,7 @@ describe('CrearTicketEdilicioUseCase', () => {
     mockOperacionRepo.save.mockResolvedValue(undefined);
     mockTicketEdiliciaRepo.save.mockResolvedValue(undefined);
     (mockTxRunner.run as jest.Mock).mockImplementation((fn: () => Promise<unknown>) => fn());
-    mockUbicacionRepo.findById.mockResolvedValue(
-      makeUbicacion(UBICACION_ID, true, null),
-    );
+    mockUbicacionRepo.findById.mockResolvedValue(makeUbicacion(UBICACION_ID, true, null));
 
     useCase = new CrearTicketEdilicioUseCase(
       mockTicketRepo,
@@ -171,9 +172,7 @@ describe('CrearTicketEdilicioUseCase', () => {
     });
 
     it('retorna fallo cuando la ubicacion está inactiva (activo=false)', async () => {
-      mockUbicacionRepo.findById.mockResolvedValue(
-        makeUbicacion(UBICACION_ID, false, null),
-      );
+      mockUbicacionRepo.findById.mockResolvedValue(makeUbicacion(UBICACION_ID, false, null));
 
       const result = await useCase.execute(validDto);
 
@@ -182,9 +181,7 @@ describe('CrearTicketEdilicioUseCase', () => {
     });
 
     it('retorna fallo cuando la ubicacion fue soft-deleted', async () => {
-      mockUbicacionRepo.findById.mockResolvedValue(
-        makeUbicacion(UBICACION_ID, true, new Date()),
-      );
+      mockUbicacionRepo.findById.mockResolvedValue(makeUbicacion(UBICACION_ID, true, new Date()));
 
       const result = await useCase.execute(validDto);
 
@@ -253,8 +250,12 @@ describe('CrearTicketEdilicioUseCase', () => {
     it('el satélite ticket_edilicia tiene el ticketId del ticket creado', async () => {
       let savedEdilicia: TicketEdiliciaEntity | undefined;
       let savedTicket: TicketEntity | undefined;
-      mockTicketEdiliciaRepo.save.mockImplementation(async (e) => { savedEdilicia = e; });
-      mockTicketRepo.save.mockImplementation(async (t) => { savedTicket = t; });
+      mockTicketEdiliciaRepo.save.mockImplementation(async (e) => {
+        savedEdilicia = e;
+      });
+      mockTicketRepo.save.mockImplementation(async (t) => {
+        savedTicket = t;
+      });
 
       await useCase.execute(validDto);
 
@@ -263,7 +264,9 @@ describe('CrearTicketEdilicioUseCase', () => {
 
     it('el satélite ticket_edilicia tiene personalAsignadoId = null inicialmente', async () => {
       let savedEdilicia: TicketEdiliciaEntity | undefined;
-      mockTicketEdiliciaRepo.save.mockImplementation(async (e) => { savedEdilicia = e; });
+      mockTicketEdiliciaRepo.save.mockImplementation(async (e) => {
+        savedEdilicia = e;
+      });
 
       await useCase.execute(validDto);
 
@@ -292,9 +295,18 @@ describe('CrearTicketEdilicioUseCase', () => {
         callOrder.push('tx:end');
         return r;
       });
-      mockTicketRepo.save.mockImplementation(() => { callOrder.push('ticket:save'); return Promise.resolve(); });
-      mockOperacionRepo.save.mockImplementation(() => { callOrder.push('operacion:save'); return Promise.resolve(); });
-      mockTicketEdiliciaRepo.save.mockImplementation(() => { callOrder.push('edilicia:save'); return Promise.resolve(); });
+      mockTicketRepo.save.mockImplementation(() => {
+        callOrder.push('ticket:save');
+        return Promise.resolve();
+      });
+      mockOperacionRepo.save.mockImplementation(() => {
+        callOrder.push('operacion:save');
+        return Promise.resolve();
+      });
+      mockTicketEdiliciaRepo.save.mockImplementation(() => {
+        callOrder.push('edilicia:save');
+        return Promise.resolve();
+      });
 
       await useCase.execute(validDto);
 
@@ -347,7 +359,8 @@ describe('CrearTicketEdilicioUseCase', () => {
     it('el ticket tiene id en formato UUIDv7', async () => {
       const result = await useCase.execute(validDto);
 
-      const uuidV7Pattern = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      const uuidV7Pattern =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
       expect(result.getValue().id).toMatch(uuidV7Pattern);
     });
   });

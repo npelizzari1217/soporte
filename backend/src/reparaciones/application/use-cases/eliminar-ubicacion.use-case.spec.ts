@@ -1,7 +1,4 @@
-import {
-  EliminarUbicacionUseCase,
-  EliminarUbicacionDto,
-} from './eliminar-ubicacion.use-case';
+import { EliminarUbicacionUseCase, EliminarUbicacionDto } from './eliminar-ubicacion.use-case';
 import { IUbicacionRepository } from '../../domain/ports/i-ubicacion.repository';
 import { ITicketEdiliciaRepository } from '../../domain/ports/i-ticket-edilicia.repository';
 import { IOperacionTicketRepository } from '../../../tickets/domain/ports/i-operacion-ticket.repository';
@@ -28,7 +25,11 @@ function makeUbicacion(
   );
 }
 
-function makeTicketEdilicia(id: string, ticketId: string, ubicacionId: string): TicketEdiliciaEntity {
+function makeTicketEdilicia(
+  id: string,
+  ticketId: string,
+  ubicacionId: string,
+): TicketEdiliciaEntity {
   return TicketEdiliciaEntity.reconstitute(
     { ticketId, ubicacionId, personalAsignadoId: null, porcentajeAvance: 50 },
     id,
@@ -120,9 +121,7 @@ describe('EliminarUbicacionUseCase', () => {
     });
 
     it('retorna fallo cuando la ubicacion fue soft-deleted', async () => {
-      mockUbicacionRepo.findById.mockResolvedValue(
-        makeUbicacion(PADRE_ID, null, true, new Date()),
-      );
+      mockUbicacionRepo.findById.mockResolvedValue(makeUbicacion(PADRE_ID, null, true, new Date()));
 
       const result = await useCase.execute(eliminarDto);
 
@@ -247,7 +246,9 @@ describe('EliminarUbicacionUseCase', () => {
       ]);
 
       let savedOperacion: OperacionTicketEntity | undefined;
-      mockOperacionRepo.save.mockImplementation(async (o) => { savedOperacion = o; });
+      mockOperacionRepo.save.mockImplementation(async (o) => {
+        savedOperacion = o;
+      });
 
       await useCase.execute(eliminarDto);
 
@@ -262,7 +263,9 @@ describe('EliminarUbicacionUseCase', () => {
       ]);
 
       let savedOperacion: OperacionTicketEntity | undefined;
-      mockOperacionRepo.save.mockImplementation(async (o) => { savedOperacion = o; });
+      mockOperacionRepo.save.mockImplementation(async (o) => {
+        savedOperacion = o;
+      });
 
       await useCase.execute(eliminarDto);
 

@@ -19,7 +19,10 @@ import { CrearTicketDto } from '../../../tickets/application/use-cases/crear-tic
 import { TicketEdiliciaEntity } from '../../domain/entities/ticket-edilicia.entity';
 import { ITicketEdiliciaRepository } from '../../domain/ports/i-ticket-edilicia.repository';
 import { IUbicacionRepository } from '../../domain/ports/i-ubicacion.repository';
-import { TicketNoEsEdiliciaError, UbicacionInvalidaError } from '../../domain/errors/reparaciones.errors';
+import {
+  TicketNoEsEdiliciaError,
+  UbicacionInvalidaError,
+} from '../../domain/errors/reparaciones.errors';
 
 /**
  * DTO de entrada para crear un ticket edilicio.

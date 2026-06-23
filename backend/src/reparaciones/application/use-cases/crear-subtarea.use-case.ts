@@ -66,7 +66,9 @@ export class CrearSubtareaUseCase {
     }
 
     // 3. Cargar subtareas activas (deleted_at IS NULL) actuales para el recálculo
-    const subtareasActivas = await this.subtareaRepo.findActiveByTicketEdiliciaId(dto.ticketEdiliciaId);
+    const subtareasActivas = await this.subtareaRepo.findActiveByTicketEdiliciaId(
+      dto.ticketEdiliciaId,
+    );
 
     // 4. Crear la nueva subtarea (completada = false, UUIDv7 generado por BaseEntity)
     const nuevaSubtarea = SubtareaEdiliciaEntity.create({
@@ -78,7 +80,10 @@ export class CrearSubtareaUseCase {
     // 5. Recalcular avance con [existentes + nueva subtarea] (nueva no está completada)
     //    La lista virtual incluye la nueva subtarea como si ya estuviera persistida.
     const listaVirtual = [
-      ...subtareasActivas.map((s) => ({ completada: s.completada, deletedAt: s['_deletedAt'] ?? null })),
+      ...subtareasActivas.map((s) => ({
+        completada: s.completada,
+        deletedAt: s['_deletedAt'] ?? null,
+      })),
       { completada: false, deletedAt: null },
     ];
     const porcentajeAnterior = ticketEdilicia.porcentajeAvance;

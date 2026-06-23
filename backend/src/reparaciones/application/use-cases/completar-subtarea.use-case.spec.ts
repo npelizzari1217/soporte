@@ -10,7 +10,11 @@ import { OperacionTicketEntity } from '../../../tickets/domain/entities/operacio
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function makeTicketEdilicia(id: string, ticketId: string, porcentajeAvance: number): TicketEdiliciaEntity {
+function makeTicketEdilicia(
+  id: string,
+  ticketId: string,
+  porcentajeAvance: number,
+): TicketEdiliciaEntity {
   return TicketEdiliciaEntity.reconstitute(
     { ticketId, ubicacionId: 'ubicacion-001', personalAsignadoId: null, porcentajeAvance },
     id,
@@ -167,7 +171,9 @@ describe('CompletarSubtareaUseCase', () => {
   describe('completitud de la subtarea', () => {
     it('la subtarea se guarda con completada = true', async () => {
       let savedSubtarea: SubtareaEdiliciaEntity | undefined;
-      mockSubtareaRepo.save.mockImplementation(async (s) => { savedSubtarea = s; });
+      mockSubtareaRepo.save.mockImplementation(async (s) => {
+        savedSubtarea = s;
+      });
 
       await useCase.execute(validDto);
 
@@ -176,7 +182,9 @@ describe('CompletarSubtareaUseCase', () => {
 
     it('la subtarea se guarda con completadaPorId del DTO', async () => {
       let savedSubtarea: SubtareaEdiliciaEntity | undefined;
-      mockSubtareaRepo.save.mockImplementation(async (s) => { savedSubtarea = s; });
+      mockSubtareaRepo.save.mockImplementation(async (s) => {
+        savedSubtarea = s;
+      });
 
       await useCase.execute(validDto);
 
@@ -185,7 +193,9 @@ describe('CompletarSubtareaUseCase', () => {
 
     it('la subtarea se guarda con completadaEn = una fecha reciente', async () => {
       let savedSubtarea: SubtareaEdiliciaEntity | undefined;
-      mockSubtareaRepo.save.mockImplementation(async (s) => { savedSubtarea = s; });
+      mockSubtareaRepo.save.mockImplementation(async (s) => {
+        savedSubtarea = s;
+      });
       const antes = new Date();
 
       await useCase.execute(validDto);
@@ -205,7 +215,9 @@ describe('CompletarSubtareaUseCase', () => {
       mockSubtareaRepo.findActiveByTicketEdiliciaId.mockResolvedValue([subtarea]);
 
       let savedEdilicia: TicketEdiliciaEntity | undefined;
-      mockTicketEdiliciaRepo.save.mockImplementation(async (e) => { savedEdilicia = e; });
+      mockTicketEdiliciaRepo.save.mockImplementation(async (e) => {
+        savedEdilicia = e;
+      });
 
       await useCase.execute(validDto);
 
@@ -217,10 +229,16 @@ describe('CompletarSubtareaUseCase', () => {
       const pendiente2 = makeSubtarea('sub-002', TICKET_EDILICIA_ID, false);
       const pendiente3 = makeSubtarea('sub-003', TICKET_EDILICIA_ID, false);
       mockSubtareaRepo.findById.mockResolvedValue(pendiente1);
-      mockSubtareaRepo.findActiveByTicketEdiliciaId.mockResolvedValue([pendiente1, pendiente2, pendiente3]);
+      mockSubtareaRepo.findActiveByTicketEdiliciaId.mockResolvedValue([
+        pendiente1,
+        pendiente2,
+        pendiente3,
+      ]);
 
       let savedEdilicia: TicketEdiliciaEntity | undefined;
-      mockTicketEdiliciaRepo.save.mockImplementation(async (e) => { savedEdilicia = e; });
+      mockTicketEdiliciaRepo.save.mockImplementation(async (e) => {
+        savedEdilicia = e;
+      });
 
       await useCase.execute(validDto);
 
@@ -283,7 +301,9 @@ describe('CompletarSubtareaUseCase', () => {
       mockSubtareaRepo.findActiveByTicketEdiliciaId.mockResolvedValue([subtarea, yaCompletada]);
 
       let savedOperacion: OperacionTicketEntity | undefined;
-      mockOperacionRepo.save.mockImplementation(async (o) => { savedOperacion = o; });
+      mockOperacionRepo.save.mockImplementation(async (o) => {
+        savedOperacion = o;
+      });
 
       await useCase.execute(validDto);
 
@@ -295,7 +315,9 @@ describe('CompletarSubtareaUseCase', () => {
 
     it('la operacion usa el tipo AVANCE_EDILICIO', async () => {
       let savedOperacion: OperacionTicketEntity | undefined;
-      mockOperacionRepo.save.mockImplementation(async (o) => { savedOperacion = o; });
+      mockOperacionRepo.save.mockImplementation(async (o) => {
+        savedOperacion = o;
+      });
 
       await useCase.execute(validDto);
 
@@ -305,7 +327,9 @@ describe('CompletarSubtareaUseCase', () => {
 
     it('la operacion tiene el ticketId del ticket base del edilicia', async () => {
       let savedOperacion: OperacionTicketEntity | undefined;
-      mockOperacionRepo.save.mockImplementation(async (o) => { savedOperacion = o; });
+      mockOperacionRepo.save.mockImplementation(async (o) => {
+        savedOperacion = o;
+      });
 
       await useCase.execute(validDto);
 
@@ -325,9 +349,18 @@ describe('CompletarSubtareaUseCase', () => {
         callOrder.push('tx:end');
         return r;
       });
-      mockSubtareaRepo.save.mockImplementation(() => { callOrder.push('subtarea:save'); return Promise.resolve(); });
-      mockTicketEdiliciaRepo.save.mockImplementation(() => { callOrder.push('edilicia:save'); return Promise.resolve(); });
-      mockOperacionRepo.save.mockImplementation(() => { callOrder.push('operacion:save'); return Promise.resolve(); });
+      mockSubtareaRepo.save.mockImplementation(() => {
+        callOrder.push('subtarea:save');
+        return Promise.resolve();
+      });
+      mockTicketEdiliciaRepo.save.mockImplementation(() => {
+        callOrder.push('edilicia:save');
+        return Promise.resolve();
+      });
+      mockOperacionRepo.save.mockImplementation(() => {
+        callOrder.push('operacion:save');
+        return Promise.resolve();
+      });
 
       await useCase.execute(validDto);
 

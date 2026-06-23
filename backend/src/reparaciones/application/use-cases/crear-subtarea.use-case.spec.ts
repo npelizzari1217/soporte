@@ -129,7 +129,12 @@ describe('CrearSubtareaUseCase', () => {
 
     it('retorna fallo cuando el ticket_edilicia fue soft-deleted', async () => {
       const deletedEdilicia = TicketEdiliciaEntity.reconstitute(
-        { ticketId: 'ticket-001', ubicacionId: 'ubicacion-001', personalAsignadoId: null, porcentajeAvance: 0 },
+        {
+          ticketId: 'ticket-001',
+          ubicacionId: 'ubicacion-001',
+          personalAsignadoId: null,
+          porcentajeAvance: 0,
+        },
         TICKET_EDILICIA_ID,
         new Date(),
         new Date(),
@@ -158,7 +163,9 @@ describe('CrearSubtareaUseCase', () => {
   describe('creación de subtarea', () => {
     it('guarda la nueva subtarea con completada=false', async () => {
       let savedSubtarea: SubtareaEdiliciaEntity | undefined;
-      mockSubtareaRepo.save.mockImplementation(async (s) => { savedSubtarea = s; });
+      mockSubtareaRepo.save.mockImplementation(async (s) => {
+        savedSubtarea = s;
+      });
 
       await useCase.execute(validDto);
 
@@ -168,7 +175,9 @@ describe('CrearSubtareaUseCase', () => {
 
     it('guarda la nueva subtarea con la descripcion del DTO', async () => {
       let savedSubtarea: SubtareaEdiliciaEntity | undefined;
-      mockSubtareaRepo.save.mockImplementation(async (s) => { savedSubtarea = s; });
+      mockSubtareaRepo.save.mockImplementation(async (s) => {
+        savedSubtarea = s;
+      });
 
       await useCase.execute(validDto);
 
@@ -177,7 +186,9 @@ describe('CrearSubtareaUseCase', () => {
 
     it('guarda la nueva subtarea con el ticketEdiliciaId correcto', async () => {
       let savedSubtarea: SubtareaEdiliciaEntity | undefined;
-      mockSubtareaRepo.save.mockImplementation(async (s) => { savedSubtarea = s; });
+      mockSubtareaRepo.save.mockImplementation(async (s) => {
+        savedSubtarea = s;
+      });
 
       await useCase.execute(validDto);
 
@@ -194,7 +205,9 @@ describe('CrearSubtareaUseCase', () => {
       mockSubtareaRepo.findActiveByTicketEdiliciaId.mockResolvedValue([existente]);
 
       let savedEdilicia: TicketEdiliciaEntity | undefined;
-      mockTicketEdiliciaRepo.save.mockImplementation(async (e) => { savedEdilicia = e; });
+      mockTicketEdiliciaRepo.save.mockImplementation(async (e) => {
+        savedEdilicia = e;
+      });
 
       await useCase.execute(validDto);
 
@@ -206,7 +219,9 @@ describe('CrearSubtareaUseCase', () => {
       mockSubtareaRepo.findActiveByTicketEdiliciaId.mockResolvedValue([]);
 
       let savedEdilicia: TicketEdiliciaEntity | undefined;
-      mockTicketEdiliciaRepo.save.mockImplementation(async (e) => { savedEdilicia = e; });
+      mockTicketEdiliciaRepo.save.mockImplementation(async (e) => {
+        savedEdilicia = e;
+      });
 
       await useCase.execute(validDto);
 
@@ -238,7 +253,9 @@ describe('CrearSubtareaUseCase', () => {
       mockSubtareaRepo.findActiveByTicketEdiliciaId.mockResolvedValue([existente]);
 
       let savedOperacion: OperacionTicketEntity | undefined;
-      mockOperacionRepo.save.mockImplementation(async (o) => { savedOperacion = o; });
+      mockOperacionRepo.save.mockImplementation(async (o) => {
+        savedOperacion = o;
+      });
 
       await useCase.execute(validDto);
 
@@ -250,7 +267,9 @@ describe('CrearSubtareaUseCase', () => {
 
     it('la operacion usa el tipo AVANCE_EDILICIO', async () => {
       let savedOperacion: OperacionTicketEntity | undefined;
-      mockOperacionRepo.save.mockImplementation(async (o) => { savedOperacion = o; });
+      mockOperacionRepo.save.mockImplementation(async (o) => {
+        savedOperacion = o;
+      });
 
       await useCase.execute(validDto);
 
@@ -263,7 +282,9 @@ describe('CrearSubtareaUseCase', () => {
       mockTicketEdiliciaRepo.findById.mockResolvedValue(edilicia);
 
       let savedOperacion: OperacionTicketEntity | undefined;
-      mockOperacionRepo.save.mockImplementation(async (o) => { savedOperacion = o; });
+      mockOperacionRepo.save.mockImplementation(async (o) => {
+        savedOperacion = o;
+      });
 
       await useCase.execute(validDto);
 
@@ -292,9 +313,18 @@ describe('CrearSubtareaUseCase', () => {
         callOrder.push('tx:end');
         return r;
       });
-      mockSubtareaRepo.save.mockImplementation(() => { callOrder.push('subtarea:save'); return Promise.resolve(); });
-      mockTicketEdiliciaRepo.save.mockImplementation(() => { callOrder.push('edilicia:save'); return Promise.resolve(); });
-      mockOperacionRepo.save.mockImplementation(() => { callOrder.push('operacion:save'); return Promise.resolve(); });
+      mockSubtareaRepo.save.mockImplementation(() => {
+        callOrder.push('subtarea:save');
+        return Promise.resolve();
+      });
+      mockTicketEdiliciaRepo.save.mockImplementation(() => {
+        callOrder.push('edilicia:save');
+        return Promise.resolve();
+      });
+      mockOperacionRepo.save.mockImplementation(() => {
+        callOrder.push('operacion:save');
+        return Promise.resolve();
+      });
 
       await useCase.execute(validDto);
 
@@ -322,7 +352,8 @@ describe('CrearSubtareaUseCase', () => {
     it('la subtarea retornada tiene UUIDv7', async () => {
       const result = await useCase.execute(validDto);
 
-      const uuidV7Pattern = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      const uuidV7Pattern =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
       expect(result.getValue().id).toMatch(uuidV7Pattern);
     });
   });

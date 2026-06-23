@@ -366,9 +366,7 @@ describe('Reparaciones Infrastructure Repos — Integration (5.C.1)', () => {
 
     describe('findByUbicacionId()', () => {
       it('retorna los tickets edilicios que referencian la ubicación', async () => {
-        const found = await withTenant(() =>
-          ticketEdiliciaRepo.findByUbicacionId(ubicacionRaizId),
-        );
+        const found = await withTenant(() => ticketEdiliciaRepo.findByUbicacionId(ubicacionRaizId));
         expect(found).toHaveLength(1);
         expect(found[0].ticketId).toBe(baseTicketId);
       });
@@ -376,9 +374,7 @@ describe('Reparaciones Infrastructure Repos — Integration (5.C.1)', () => {
       it('excluye soft-deleted de findByUbicacionId', async () => {
         await withTenant(() => ticketEdiliciaRepo.delete(ticketEdiliciaId));
 
-        const found = await withTenant(() =>
-          ticketEdiliciaRepo.findByUbicacionId(ubicacionRaizId),
-        );
+        const found = await withTenant(() => ticketEdiliciaRepo.findByUbicacionId(ubicacionRaizId));
         expect(found).toHaveLength(0);
       });
 
@@ -386,9 +382,7 @@ describe('Reparaciones Infrastructure Repos — Integration (5.C.1)', () => {
         const otraUbic = UbicacionEntity.create({ nombre: 'Sin tickets' });
         await withTenant(() => ubicacionRepo.save(otraUbic));
 
-        const found = await withTenant(() =>
-          ticketEdiliciaRepo.findByUbicacionId(otraUbic.id),
-        );
+        const found = await withTenant(() => ticketEdiliciaRepo.findByUbicacionId(otraUbic.id));
         expect(found).toHaveLength(0);
       });
     });
@@ -438,7 +432,10 @@ describe('Reparaciones Infrastructure Repos — Integration (5.C.1)', () => {
       });
 
       it('actualiza subtarea al completar (upsert)', async () => {
-        const sub = SubtareaEdiliciaEntity.create({ ticketEdiliciaId, descripcion: 'Pintar pared' });
+        const sub = SubtareaEdiliciaEntity.create({
+          ticketEdiliciaId,
+          descripcion: 'Pintar pared',
+        });
         await withTenant(() => subtareaRepo.save(sub));
 
         const completadaEn = new Date('2026-06-23T10:00:00Z');
@@ -489,9 +486,21 @@ describe('Reparaciones Infrastructure Repos — Integration (5.C.1)', () => {
       });
 
       it('ordena por orden ASC, created_at ASC', async () => {
-        const s1 = SubtareaEdiliciaEntity.create({ ticketEdiliciaId, descripcion: 'Primero', orden: 1 });
-        const s2 = SubtareaEdiliciaEntity.create({ ticketEdiliciaId, descripcion: 'Tercero', orden: 3 });
-        const s3 = SubtareaEdiliciaEntity.create({ ticketEdiliciaId, descripcion: 'Segundo', orden: 2 });
+        const s1 = SubtareaEdiliciaEntity.create({
+          ticketEdiliciaId,
+          descripcion: 'Primero',
+          orden: 1,
+        });
+        const s2 = SubtareaEdiliciaEntity.create({
+          ticketEdiliciaId,
+          descripcion: 'Tercero',
+          orden: 3,
+        });
+        const s3 = SubtareaEdiliciaEntity.create({
+          ticketEdiliciaId,
+          descripcion: 'Segundo',
+          orden: 2,
+        });
         await withTenant(async () => {
           await subtareaRepo.save(s1);
           await subtareaRepo.save(s2);
