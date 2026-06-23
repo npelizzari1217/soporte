@@ -1,9 +1,72 @@
 # Apply Progress — modelo-datos-tres-flujos
 
 > Última actualización: 2026-06-23
-> Rama activa: `feat/pr16a-equipos-domain`
-> PR actual: **PR-16a** (Fase 6.A — Dominio Equipos — commit 045a843)
-> Tests: **1161/1161** verdes
+> Rama activa: `feat/pr16b-equipos-application`
+> PR actual: **PR-16b** (Fase 6.B — Application Equipos — commit d64ebbe)
+> Tests: **1230/1230** verdes
+
+---
+
+## PR-16b: Equipos — Application (6.B) — COMPLETADO
+
+### Tareas completadas
+
+| Tarea | Estado | Notas |
+|-------|--------|-------|
+| 6.B.1 | ✅ | 16 tests: CrearTicketSoporteUseCase — atómico, equipo_id nullable validado, TicketNoEsSoporteError. TDD RED→GREEN. |
+| 6.B.2 | ✅ | `crear-ticket-soporte.use-case.ts` |
+| 6.B.3 | ✅ | 28 tests: split en crear (10) + editar (10) + eliminar (8). TDD RED→GREEN. |
+| 6.B.4 | ✅ | SPLIT por SRP: `crear-equipo.use-case.ts` + `editar-equipo.use-case.ts` + `eliminar-equipo.use-case.ts` |
+| 6.B.5 | ✅ | 41 tests: AsignarEquipo (17) + AgregarComponente (14) + EliminarComponente (10). TDD RED→GREEN. |
+| 6.B.6 | ✅ | `asignar-equipo.use-case.ts` + `agregar-componente.use-case.ts` + `eliminar-componente.use-case.ts` |
+
+### Estado de tests post PR-16b
+- **1230 tests, 83 suites, todos verdes** (`pnpm test`)
+- Tests base → PR-16b: 1161 → **1230** (+69 nuevos, 7 suites nuevas)
+- `tsc --noEmit`: ✅ limpio
+- `pnpm lint`: ✅ fitness rule verde
+
+### Archivos creados en PR-16b
+
+```
+backend/src/equipos/
+├── domain/
+│   ├── entities/
+│   │   └── equipo-informatico.entity.ts   — +actualizar() method (mutación para edición)
+│   └── errors/
+│       └── equipos.errors.ts              — +AsignadoEquipoInvalidoError, ComponenteEquipoNoEncontradoError, TicketNoEsSoporteError
+└── application/
+    └── use-cases/
+        ├── crear-ticket-soporte.use-case.ts + spec.ts  — 16 tests
+        ├── crear-equipo.use-case.ts + spec.ts          — 10 tests
+        ├── editar-equipo.use-case.ts + spec.ts         — 10 tests
+        ├── eliminar-equipo.use-case.ts + spec.ts       — 8 tests
+        ├── asignar-equipo.use-case.ts + spec.ts        — 17 tests
+        ├── agregar-componente.use-case.ts + spec.ts    — 14 tests
+        └── eliminar-componente.use-case.ts + spec.ts   — 10 tests
+```
+
+### Decisiones tomadas en PR-16b
+
+1. **Split de GestionarEquipoUseCase por SRP** (igual que PR-14b Ubicación): `CrearEquipoUseCase` / `EditarEquipoUseCase` / `EliminarEquipoUseCase`. Cada uno tiene solo sus deps necesarias.
+2. **Split de GestionarComponenteUseCase**: `AgregarComponenteUseCase` / `EliminarComponenteUseCase`. El spec define dos operaciones con semánticas distintas — agregar valida tipo activo, eliminar solo necesita el componente.
+3. **Cross-DB en AsignarEquipoUseCase**: reutiliza `IUsuarioMasterChecker` de `tickets/domain/ports/` (mismo puerto que `AsignarTicketUseCase`). Método `estaActivoEnTenant` (activo=TRUE requerido).
+4. **EquipoInformaticoEntity.actualizar()**: método de mutación agregado a la entidad para soportar edición. `props` es `protected readonly` — no se puede mutar desde fuera. Patrón consistente con `deactivate()`, `asignarA()`, `actualizarUbicacion()`.
+5. **Unicidad en edición**: `EditarEquipoUseCase` verifica conflicto solo cuando `findByNumeroSerie` retorna un equipo con `id !== dto.equipoId`. El mismo equipo puede conservar su número de serie sin conflicto.
+6. **Tipo inactivo = no existe** en `AgregarComponenteUseCase`: si `findById` retorna null O si `activo=FALSE` → mismo error `TipoComponenteInactivoError`. Simplifica lógica de presentation (no revela si el UUID existe o no).
+7. **TxRunner siempre**: todos los use cases usan `txRunner.run()` aunque solo haya un save, para consistencia arquitectónica (si mañana se agrega un paso, ya está en tx).
+
+### Estado global del cambio (post PR-16b)
+
+| Fase | Progreso |
+|------|---------|
+| Fase 0 — Scaffolding + Shared | COMPLETA |
+| Fase 1 — MASTER: clientes | COMPLETA |
+| Fase 2 — MASTER: auth+RBAC | COMPLETA |
+| Fase 3 — TENANT: tickets-core | COMPLETA |
+| Fase 4 — TENANT: Compras | COMPLETA |
+| Fase 5 — TENANT: Reparaciones | COMPLETA + VERIFY PASS |
+| Fase 6 — Equipos | **6.A COMPLETA** (PR-16a), **6.B COMPLETA** (PR-16b) — pendiente 6.C/6.D |
 
 ---
 
