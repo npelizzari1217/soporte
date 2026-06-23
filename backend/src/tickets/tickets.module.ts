@@ -273,9 +273,12 @@ import { OperacionesController } from './interface/controllers/operaciones.contr
 
     {
       provide: ListarOperacionesUseCase,
-      useFactory: (operacionRepo: IOperacionTicketRepository): ListarOperacionesUseCase =>
-        new ListarOperacionesUseCase(operacionRepo),
-      inject: [OPERACION_TICKET_REPOSITORY],
+      // CRITICAL-2 fix: constructor now requires ITicketRepository to verify ticket existence.
+      useFactory: (
+        ticketRepo: ITicketRepository,
+        operacionRepo: IOperacionTicketRepository,
+      ): ListarOperacionesUseCase => new ListarOperacionesUseCase(ticketRepo, operacionRepo),
+      inject: [TICKET_REPOSITORY, OPERACION_TICKET_REPOSITORY],
     },
 
     // ─── Guards ──────────────────────────────────────────────────────────────

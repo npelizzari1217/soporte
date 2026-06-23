@@ -65,8 +65,9 @@ export class AsignarTicketUseCase {
 
   async execute(dto: AsignarTicketDto): Promise<Result<TicketEntity, DomainError>> {
     // 1. Cargar el ticket
+    // WARNING-1 fix: findById también devuelve tickets soft-deleted; tratarlos como no encontrados.
     const ticket = await this.ticketRepo.findById(dto.ticketId);
-    if (!ticket) {
+    if (!ticket || ticket.isDeleted()) {
       return Result.fail(new TicketNoEncontradoError(dto.ticketId));
     }
 

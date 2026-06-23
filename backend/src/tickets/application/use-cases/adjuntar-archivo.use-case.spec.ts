@@ -123,6 +123,35 @@ describe('AdjuntarArchivoUseCase', () => {
 
       expect(mockFileStorage.upload).not.toHaveBeenCalled();
     });
+
+    it('retorna TicketNoEncontradoError cuando el ticket está soft-deleted', async () => {
+      // WARNING-1: soft-deleted tickets must be treated as not found
+      const ticketBorrado = TicketEntity.reconstitute(
+        {
+          numero: 'SOP-2026-00001',
+          titulo: 'Ticket borrado',
+          descripcion: null,
+          tipoId: 'e0000000-0000-4000-e000-000000000001',
+          estadoId: 'c0000000-0000-4000-c000-000000000001',
+          prioridadId: 'd0000000-0000-4000-d000-000000000002',
+          cicloId: null,
+          solicitanteId: 'user-solicitante-001',
+          asignadoId: null,
+          fechaVencimiento: null,
+        },
+        TICKET_ID,
+        new Date(),
+        new Date(),
+        new Date(), // deletedAt !== null → soft-deleted
+      );
+      mockTicketRepo.findById.mockResolvedValue(ticketBorrado);
+
+      const result = await useCase.execute(validDto);
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError().code).toBe('TICKET_NO_ENCONTRADO');
+      expect(mockFileStorage.upload).not.toHaveBeenCalled();
+    });
   });
 
   // ─── Upload a IFileStorage ANTES del INSERT ────────────────────────────────

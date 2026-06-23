@@ -20,7 +20,9 @@ export class ObtenerTicketUseCase {
 
   async execute(id: string): Promise<Result<TicketEntity, DomainError>> {
     const ticket = await this.ticketRepo.findById(id);
-    if (!ticket) {
+    // WARNING-1 fix: findById también devuelve tickets soft-deleted; el caller
+    // debe tratarlos como no encontrados para que GET /tickets/:id dé 404.
+    if (!ticket || ticket.isDeleted()) {
       return Result.fail(new TicketNoEncontradoError(id));
     }
     return Result.ok(ticket);

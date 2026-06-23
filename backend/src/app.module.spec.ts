@@ -19,6 +19,9 @@ import { ClientesController } from './clientes/interface/controllers/clientes.co
 import { RegistrarClienteUseCase } from './clientes/application/use-cases/registrar-cliente.use-case';
 import { AuthController } from './auth/interface/controllers/auth.controller';
 import { JwtAuthGuard } from './auth/infrastructure/guards/jwt-auth.guard';
+import { TicketsController } from './tickets/interface/controllers/tickets.controller';
+import { CrearTicketUseCase } from './tickets/application/use-cases/crear-ticket.use-case';
+import { TICKET_REPOSITORY } from './tickets/domain/ports/i-ticket.repository';
 
 describe('AppModule bootstrap', () => {
   it('compila el grafo de módulos sin UnknownDependenciesException (C1 DI regression guard)', async () => {
@@ -32,6 +35,10 @@ describe('AppModule bootstrap', () => {
     // PR-06: AuthModule wired correctly
     expect(moduleRef.get(AuthController)).toBeInstanceOf(AuthController);
     expect(moduleRef.get(JwtAuthGuard)).toBeInstanceOf(JwtAuthGuard);
+    // PR-11: TicketsModule wired correctly (WARNING-2 bootstrap guard)
+    expect(moduleRef.get(TicketsController)).toBeInstanceOf(TicketsController);
+    expect(moduleRef.get(CrearTicketUseCase)).toBeInstanceOf(CrearTicketUseCase);
+    expect(moduleRef.get(TICKET_REPOSITORY)).toBeDefined();
 
     await moduleRef.close();
   });

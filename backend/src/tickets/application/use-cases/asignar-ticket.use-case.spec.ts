@@ -137,6 +137,35 @@ describe('AsignarTicketUseCase', () => {
       expect(mockTxRunner.run).not.toHaveBeenCalled();
       expect(mockTicketRepo.save).not.toHaveBeenCalled();
     });
+
+    it('retorna TicketNoEncontradoError cuando el ticket está soft-deleted', async () => {
+      // WARNING-1: soft-deleted tickets must be treated as not found
+      const ticketBorrado = TicketEntity.reconstitute(
+        {
+          numero: 'SOP-2026-00001',
+          titulo: 'Ticket borrado',
+          descripcion: null,
+          tipoId: TIPO_TICKET_ID,
+          estadoId: ESTADO_ABIERTO_ID,
+          prioridadId: 'd0000000-0000-4000-d000-000000000002',
+          cicloId: null,
+          solicitanteId: 'user-solicitante-001',
+          asignadoId: null,
+          fechaVencimiento: null,
+        },
+        'ticket-uuid-001',
+        new Date(),
+        new Date(),
+        new Date(), // deletedAt !== null → soft-deleted
+      );
+      mockTicketRepo.findById.mockResolvedValue(ticketBorrado);
+
+      const result = await useCase.execute(validDto);
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError().code).toBe('TICKET_NO_ENCONTRADO');
+      expect(mockTxRunner.run).not.toHaveBeenCalled();
+    });
   });
 
   // ─── Validación del asignado cross-DB (activo=TRUE) ──────────────────────

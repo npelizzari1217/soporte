@@ -84,6 +84,29 @@ export class TicketNoEncontradoError extends DomainError {
 }
 
 /**
+ * Error de validación HTTP 422: el `nuevoEstadoCodigo` enviado por el usuario
+ * no existe en el catálogo de estados del tenant.
+ *
+ * Semánticamente distinto de `EstadoCatalogoNoEncontradoError`:
+ * - Este error surge de la entrada del usuario (el código destino que envía en el body).
+ *   → HTTP 422 Unprocessable Entity.
+ * - `EstadoCatalogoNoEncontradoError` surge cuando el estado ACTUAL del ticket
+ *   (campo estadoId en DB) no tiene registro en el catálogo → corrupción de datos → HTTP 500.
+ *
+ * Ref spec: [SPEC:tickets-core/Transición válida]
+ * Tarea: fix CRITICAL-1 verify PR-11
+ */
+export class EstadoDestinoInvalidoError extends DomainError {
+  readonly code = 'ESTADO_DESTINO_INVALIDO';
+
+  constructor(codigoDestino: string) {
+    super(
+      `El código de estado destino "${codigoDestino}" no existe en el catálogo de estados del tenant.`,
+    );
+  }
+}
+
+/**
  * Error de dominio: la transición de estado fue rechazada.
  * Puede ser porque la entidad viola invariantes (soft-delete, estado terminal)
  * o porque la máquina de estados del tipo de ticket la prohíbe.

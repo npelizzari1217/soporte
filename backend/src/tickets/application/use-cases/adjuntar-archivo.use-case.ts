@@ -75,8 +75,10 @@ export class AdjuntarArchivoUseCase {
     dto: AdjuntarArchivoDto,
   ): Promise<Result<ArchivoEntity, DomainError | ArchivoTamanoCeroError>> {
     // 1. Cargar el ticket (verifica que existe antes de hacer cualquier trabajo costoso)
+    // WARNING-1 fix: findById también devuelve tickets soft-deleted; tratarlos como no encontrados.
+    // Esto evita subir archivos a IFileStorage para tickets borrados.
     const ticket = await this.ticketRepo.findById(dto.ticketId);
-    if (!ticket) {
+    if (!ticket || ticket.isDeleted()) {
       return Result.fail(new TicketNoEncontradoError(dto.ticketId));
     }
 

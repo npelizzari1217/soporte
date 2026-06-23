@@ -53,6 +53,7 @@ import {
   AsignadoNoElegibleError,
   ArchivoTamanoCeroError,
   EstadoCatalogoNoEncontradoError,
+  EstadoDestinoInvalidoError,
   SolicitanteInvalidoError,
   TicketNoEncontradoError,
   TipoTicketNoEncontradoError,
@@ -218,6 +219,11 @@ export class TicketsController {
       if (error instanceof TransicionInvalidaError) {
         throw new UnprocessableEntityException(error.message);
       }
+      // CRITICAL-1 fix: código de estado destino enviado por el usuario no existe → 422
+      if (error instanceof EstadoDestinoInvalidoError) {
+        throw new UnprocessableEntityException(error.message);
+      }
+      // EstadoCatalogoNoEncontradoError: estado ACTUAL del ticket no está en catálogo → corrupción → 500
       if (
         error instanceof EstadoCatalogoNoEncontradoError ||
         error instanceof TipoOperacionNoEncontradoError ||

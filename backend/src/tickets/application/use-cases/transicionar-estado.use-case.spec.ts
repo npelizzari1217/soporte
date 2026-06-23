@@ -167,13 +167,15 @@ describe('TransicionarEstadoUseCase', () => {
       expect(estadoRepo.findByCodigo).toHaveBeenCalledWith('EN_PROGRESO');
     });
 
-    it('retorna fail cuando el estado destino no existe en el catálogo', async () => {
+    it('retorna fail con EstadoDestinoInvalidoError cuando el nuevoEstadoCodigo no existe', async () => {
+      // CRITICAL-1 fix: código enviado por el usuario no existe → ESTADO_DESTINO_INVALIDO (422)
+      // distinto de ESTADO_CATALOGO_NO_ENCONTRADO (estadoId corrupto en DB → 500).
       estadoRepo.findByCodigo.mockResolvedValue(null);
 
       const result = await useCase.execute(validDto);
 
       expect(result.isFail()).toBe(true);
-      expect(result.getError().code).toBe('ESTADO_CATALOGO_NO_ENCONTRADO');
+      expect(result.getError().code).toBe('ESTADO_DESTINO_INVALIDO');
     });
   });
 

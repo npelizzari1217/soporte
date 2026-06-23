@@ -33,9 +33,11 @@ import {
   AsignadoNoElegibleError,
   ArchivoTamanoCeroError,
   EstadoCatalogoNoEncontradoError,
+  EstadoDestinoInvalidoError,
 } from '../../domain/errors/tickets.errors';
 import { JwtAuthGuard } from '../../../auth/infrastructure/guards/jwt-auth.guard';
 import { TenantGuard } from '../../../auth/infrastructure/guards/tenant.guard';
+import { RolesGuard } from '../../../auth/infrastructure/guards/roles.guard';
 import { PermissionsGuard } from '../../../auth/infrastructure/guards/permissions.guard';
 import { PERMISSIONS_KEY } from '../../../auth/infrastructure/guards/decorators';
 import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
@@ -277,6 +279,16 @@ describe('TicketsController', () => {
         expect.objectContaining({ autorId: 'user-001' }),
       );
     });
+
+    it('lanza UnprocessableEntityException cuando el código de estado destino no existe en catálogo', async () => {
+      mocks.transicionarEstadoUseCase.execute.mockResolvedValue(
+        Result.fail(new EstadoDestinoInvalidoError('ESTADO_INEXISTENTE')),
+      );
+
+      await expect(controller.transicionarEstado('ticket-id', estadoDto, user)).rejects.toThrow(
+        UnprocessableEntityException,
+      );
+    });
   });
 
   // ─── POST /tickets/:id/asignar ─────────────────────────────────────────────
@@ -388,6 +400,11 @@ describe('TicketsController', () => {
     it('aplica JwtAuthGuard al nivel de clase', () => {
       const guards: unknown[] = Reflect.getMetadata('__guards__', TicketsController) ?? [];
       expect(guards).toContain(JwtAuthGuard);
+    });
+
+    it('aplica RolesGuard al nivel de clase', () => {
+      const guards: unknown[] = Reflect.getMetadata('__guards__', TicketsController) ?? [];
+      expect(guards).toContain(RolesGuard);
     });
 
     it('aplica TenantGuard al nivel de clase', () => {

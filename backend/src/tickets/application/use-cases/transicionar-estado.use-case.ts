@@ -5,6 +5,7 @@ import { TicketEntity } from '../../domain/entities/ticket.entity';
 import { TicketStateMachineFactory } from '../../domain/state-machine/ticket-state-machine.factory';
 import {
   EstadoCatalogoNoEncontradoError,
+  EstadoDestinoInvalidoError,
   TicketNoEncontradoError,
   TipoOperacionNoEncontradoError,
   TipoTicketNoEncontradoError,
@@ -83,10 +84,12 @@ export class TransicionarEstadoUseCase {
       return Result.fail(new EstadoCatalogoNoEncontradoError(ticket.estadoId));
     }
 
-    // 3. Resolver estado destino desde el catálogo del tenant
+    // 3. Resolver estado destino desde el catálogo del tenant.
+    //    Null aquí significa que el usuario envió un código que no existe → 422
+    //    (distinto del caso 2 donde el estadoId del ticket no existe en catálogo → 500).
     const estadoNuevo = await this.estadoRepo.findByCodigo(dto.nuevoEstadoCodigo);
     if (!estadoNuevo) {
-      return Result.fail(new EstadoCatalogoNoEncontradoError(dto.nuevoEstadoCodigo));
+      return Result.fail(new EstadoDestinoInvalidoError(dto.nuevoEstadoCodigo));
     }
 
     // 4. Verificar invariantes de la entidad (soft-delete, estados terminales)
