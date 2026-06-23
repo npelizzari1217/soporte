@@ -7,6 +7,7 @@ import { EquipoInformaticoEntity } from '../../domain/entities/equipo-informatic
 import { TipoComponenteEntity } from '../../domain/entities/tipos-componente.entity';
 import { ComponenteEquipoEntity } from '../../domain/entities/componente-equipo.entity';
 
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function makeEquipo(id: string, deletedAt: Date | null = null): EquipoInformaticoEntity {
@@ -121,19 +122,31 @@ describe('AgregarComponenteUseCase', () => {
     });
   });
 
-  // ─── Tipo de componente inactivo ──────────────────────────────────────────
+  // ─── Tipo de componente no encontrado (404) ──────────────────────────────
 
-  describe('tipo de componente inactivo', () => {
-    it('retorna fallo cuando el tipo_componente no existe', async () => {
+  describe('tipo de componente no encontrado', () => {
+    it('retorna TipoComponenteNoEncontradoError (404) cuando findById devuelve null', async () => {
       mockTiposComponenteRepo.findById.mockResolvedValue(null);
 
       const result = await useCase.execute(validDto);
 
       expect(result.isFail()).toBe(true);
-      expect(result.getError().code).toBe('TIPO_COMPONENTE_INACTIVO');
+      expect(result.getError().code).toBe('TIPO_COMPONENTE_NO_ENCONTRADO');
     });
 
-    it('retorna fallo (422) cuando el tipo_componente está inactivo', async () => {
+    it('no persiste nada cuando el tipo_componente no existe', async () => {
+      mockTiposComponenteRepo.findById.mockResolvedValue(null);
+
+      await useCase.execute(validDto);
+
+      expect(mockComponenteRepo.save).not.toHaveBeenCalled();
+    });
+  });
+
+  // ─── Tipo de componente inactivo (422) ────────────────────────────────────
+
+  describe('tipo de componente inactivo', () => {
+    it('retorna TipoComponenteInactivoError (422) cuando el tipo existe pero activo=FALSE', async () => {
       mockTiposComponenteRepo.findById.mockResolvedValue(
         makeTipoComponente(TIPO_COMPONENTE_ID, false),
       );

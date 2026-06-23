@@ -23,6 +23,28 @@ export class TipoComponenteIdRequeridoError extends DomainError {
 // ─── Errores de búsqueda ──────────────────────────────────────────────────────
 
 /**
+ * Error de búsqueda: el tipo de componente con el id indicado no existe en el catálogo.
+ * HTTP 404 semántico.
+ *
+ * Distinto de TipoComponenteInactivoError (422): este error se devuelve cuando
+ * findById → null (el UUID no existe en tipos_componente).
+ * TipoComponenteInactivoError se devuelve cuando el registro existe pero activo=FALSE.
+ *
+ * Ref spec: [SPEC:equipos/Tabla tipos_componente]
+ * Tarea: 6.B-ajuste / split error tipo-componente no-encontrado vs inactivo
+ */
+export class TipoComponenteNoEncontradoError extends DomainError {
+  readonly code = 'TIPO_COMPONENTE_NO_ENCONTRADO';
+
+  constructor(tipoComponenteId: string) {
+    super(
+      `Tipo de componente con id "${tipoComponenteId}" no encontrado en el catálogo. ` +
+        'Verificar que el UUID sea correcto.',
+    );
+  }
+}
+
+/**
  * Error de búsqueda: el equipo informático no existe o fue eliminado.
  * HTTP 404 semántico.
  *

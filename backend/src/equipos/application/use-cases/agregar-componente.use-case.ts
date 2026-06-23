@@ -6,6 +6,7 @@ import { IComponenteEquipoRepository } from '../../domain/ports/i-componente-equ
 import { ITiposComponenteRepository } from '../../domain/ports/i-tipos-componente.repository';
 import {
   EquipoInformaticoNoEncontradoError,
+  TipoComponenteNoEncontradoError,
   TipoComponenteInactivoError,
 } from '../../domain/errors/equipos.errors';
 
@@ -34,9 +35,9 @@ export interface AgregarComponenteDto {
  *
  * Flujo:
  * 1. Carga el equipo → 404 si no existe o fue soft-deleted.
- * 2. Carga el tipo de componente → falla con TipoComponenteInactivoError si:
- *    - El tipo no existe (tratado como inactivo/inválido).
- *    - El tipo existe pero activo=FALSE.
+ * 2. Carga el tipo de componente → falla con:
+ *    - TipoComponenteNoEncontradoError (404) si el tipo NO existe (findById → null).
+ *    - TipoComponenteInactivoError (422) si el tipo existe pero activo=FALSE.
  *    Nota: un tipo inactivo NO afecta los componentes EXISTENTES de ese tipo;
  *    solo bloquea NUEVAS inserciones.
  * 3. Crea la ComponenteEquipoEntity (UUIDv7).
@@ -64,11 +65,14 @@ export class AgregarComponenteUseCase {
       return Result.fail(new EquipoInformaticoNoEncontradoError(dto.equipoId));
     }
 
-    // 2. Cargar el tipo de componente y verificar que está activo
-    //    Si no existe → TipoComponenteInactivoError (tratamos "no existe" igual que "inactivo"
-    //    para no revelar si el UUID existe o no — simplifica la lógica de presentation).
+    // 2. Cargar el tipo de componente y verificar que está activo.
+    //    Si no existe → TipoComponenteNoEncontradoError (404 semántico).
+    //    Si existe pero activo=FALSE → TipoComponenteInactivoError (422 semántico).
     const tipoComponente = await this.tiposComponenteRepo.findById(dto.tipoComponenteId);
-    if (!tipoComponente || !tipoComponente.activo) {
+    if (!tipoComponente) {
+      return Result.fail(new TipoComponenteNoEncontradoError(dto.tipoComponenteId));
+    }
+    if (!tipoComponente.activo) {
       return Result.fail(new TipoComponenteInactivoError(dto.tipoComponenteId));
     }
 
