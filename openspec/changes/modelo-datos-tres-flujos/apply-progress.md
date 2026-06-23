@@ -2,7 +2,26 @@
 
 > Última actualización: 2026-06-23
 > Rama activa: `feat/pr15b-reparaciones-interface`
-> PR actual: **PR-15b** (completado — Interface + ReparacionesModule 5.D.1–5.D.2)
+> PR actual: **verify-close** (WARNINGs del verify adversarial Fase 5 cerrados — commit 7913898)
+> Tests: **1110/1110** verdes
+
+---
+
+## Verify-close (Fase 5): cierre WARNINGs — COMPLETADO
+
+### WARNING-1 — Test no-auto-transición: assertions activas agregadas
+**Archivo**: `backend/src/reparaciones/application/use-cases/completar-subtarea.use-case.spec.ts`
+- Assertions agregadas: `tipoOperacionRepo.findIdByCodigo` llamado 1 vez con `AVANCE_EDILICIO`, `operacionRepo.save` 1 vez, `savedOperacion.estadoAnteriorId === null`, `estadoNuevoId === null`, `subtareaRepo.delete` y `ticketEdiliciaRepo.delete` no llamados.
+
+### WARNING-2 — Integration test atomicidad $transaction real: 3 tests agregados
+**Archivo**: `backend/src/reparaciones/infrastructure/persistence/prisma/prisma-reparaciones.integration.spec.ts`
+- (1) `findSubtree via $queryRawUnsafe funciona sobre el client transaccional (Prisma 7 adapter mode)` — **CONFIRMADO: funciona**.
+- (2) Flujo completo vía `EliminarUbicacionUseCase` con `TenantTransactionRunner` real: subárbol soft-deleted + `UBICACION_ELIMINADA` registrada — **VERDE**.
+- (3) Rollback total si la tx falla a mitad (spy en `delete` lanza en 2° llamada): ninguna ubicación soft-deleted, ninguna operación creada — **CONFIRMADO: rollback total funciona**.
+
+### Deuda de test-quality (no implementar sin decisión explícita)
+- **SUGGESTION-1**: Guard `=== 100` en `CompletarSubtareaUseCase` usa ruta DB→Decimal→number; sin type safety explícita en el guard path (no afecta comportamiento).
+- **SUGGESTION-2**: `EliminarUbicacionUseCase` deduplica tickets en memoria; sin integration test del caso dedup (ticket con 2 ubicaciones del árbol).
 
 ---
 

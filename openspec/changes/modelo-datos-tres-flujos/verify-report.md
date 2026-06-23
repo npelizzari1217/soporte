@@ -1,157 +1,98 @@
-# Verify Report — modelo-datos-tres-flujos (PR-09)
+# Verify Report — modelo-datos-tres-flujos / Fase 5 (Reparaciones-Edilicia)
 
-> Scope: PR-09 — TENANT catalog seeds (task 3.D.4)
-> Branch: `feat/pr09-tenant-seeds`
-> Verified: 2026-06-23
-> Verdict: **PASS**
+> Rama verificada: `feat/pr15b-reparaciones-interface`
+> Commit código: `0184926` | Commit docs: `359a456`
+> Fecha: 2026-06-23
+> Veredicto: **PASS-WITH-WARNINGS** — 0 CRITICAL / 2 WARNING / 2 SUGGESTION
 
 ---
 
 ## Gates
 
-| Gate | Result |
-|------|--------|
-| `pnpm test` | **372/372 green** (29 suites) |
-| `pnpm lint` | 0 errors |
-| `tsc --noEmit` | 0 errors |
+| Gate | Resultado |
+|------|-----------|
+| `pnpm test` | **1107/1107 verdes** — 226 en reparaciones (14 suites) |
+| `pnpm lint` | **0 errores** |
+| `tsc --noEmit` | **0 errores** |
+| Fitness rule `@prisma/client` fuera de `infrastructure/` | **0 violaciones** |
+| Tests `.skip`/`.todo` en reparaciones | **0** |
 
 ---
 
-## Findings Summary
+## Hallazgos clasificados
 
-| Severity | Count |
-|----------|-------|
-| CRITICAL | 0 |
-| WARNING | 0 |
-| SUGGESTION | 3 |
+### WARNING-1 — Test de no-auto-transición pasivo (structurally correct, assertively weak)
 
----
+**Archivo**: `backend/src/reparaciones/application/use-cases/completar-subtarea.use-case.spec.ts:258–283`
 
-## CRITICAL: none
+El test `'al llegar a 100% el estado del ticket NO cambia (no se llama a transición)'` solo
+afirma `result.isOk() === true`. El comentario en el código reconoce explícitamente que la
+garantía es implícita (no hay `ticketRepo` en el constructor). No hay ningún spy negativo
+(e.g., `expect(mockStateMachineFactory.canTransition).not.toHaveBeenCalled()`).
 
----
-
-## WARNING: none
+**Riesgo**: Bajo. La garantía estructural es TypeScript-enforced. Pero si alguien refactoriza el
+constructor del use case y agrega lógica de auto-transición accidental, este test no lo detectaría.
 
 ---
 
-## SUGGESTION
+### WARNING-2 — CTE findSubtree NO integration-tested dentro de `$transaction`
 
-### S-1 — Misleading comment in `tenant-seed.ts` for `estados` nombres
+**Archivo**: `backend/src/reparaciones/infrastructure/persistence/prisma/prisma-reparaciones.integration.spec.ts:225–290`
 
-**File**: `backend/prisma_tenant/seeds/tenant-seed.ts` lines 63-65
+Los tests de integración de `PrismaUbicacionRepository.findSubtree()` se ejecutan via
+`withTenant() → tenantContext.run()`, que **no abre una transacción Prisma**. La atomicidad
+real (findSubtree + delete + operaciones en la misma `$transaction`) solo está verificada a
+nivel unit con repos mockeados. No hay cobertura de integración que confirme que
+`$queryRawUnsafe` funciona correctamente sobre el client transaccional de Prisma 7 adapter mode.
 
-The comment says:
-```
-// Nombres: INFERRED — no definidos en el spec
-```
-But `spec/tickets-core/spec.md` explicitly defines all 8 nombres for `estados` in the "Seeds obligatorios" table (Abierto, Pendiente de aprobación, Aprobado, Rechazado, En progreso, Resuelto, Cerrado, Cancelado).
-
-The seed VALUES are correct and match the spec exactly. Only the comment is wrong.
-
-**Fix**: change to `// Nombres: SPEC-EXPLICIT (tabla "Seeds obligatorios" del spec tickets-core)`.
+**Riesgo**: Bajo (las integration tests del CTE pasan con normalidad; Prisma 7 soporta
+`$queryRawUnsafe` en transactions). Existe un gap de cobertura para el flujo completo transaccional.
 
 ---
 
-### S-2 — Integration test does not assert `nombre` values for `estados`
+### SUGGESTION-1 — Guard `=== 100` en EdiliciaStateMachine no cubre ruta DB→Decimal→number
 
-**File**: `backend/src/shared/infrastructure/persistence/tenant-seed.integration.spec.ts`
+**Archivo**: `backend/src/reparaciones/domain/state-machine/edilicia-state-machine.ts:81`
 
-The spec explicitly defines `nombre` for all 8 estados. The test verifies `codigo`, `orden`, `activo`, and counts — but not `nombre`. A wrong `nombre` value would pass tests silently.
-
-Since nombres are spec-defined (not inferred display labels) for this catalog, adding nombre assertions would tighten spec coverage.
-
----
-
-### S-3 — Single commit for `SEED:` task (test + impl together)
-
-Commit `d5b8990` contains both the test file and the seed implementation. This is consistent with PR-07 (RBAC seed, also a `SEED:` task, also combined test+impl in one commit). `SEED:` tasks in tasks.md are not structured as `TEST →` / `IMPL →` pairs so there is no strict TDD violation. A separate RED test commit as the first step would provide stronger process evidence for future audits.
+`ctx.porcentajeAvance === 100` usa igualdad estricta. Los tests de la state machine usan literales
+enteros. La ruta DB→`NUMERIC(5,2)`→`Decimal.toNumber()`→guard no está cubierta por un test
+end-to-end a nivel state machine. Con `NUMERIC(5,2)` el riesgo de floating-point es mínimo,
+pero un test explícito con `porcentajeAvance: 100.00` desde el mapper confirmaría la invariante.
 
 ---
 
-## Spec Fidelity Verification
+### SUGGESTION-2 — Deduplicación en EliminarUbicacionUseCase no integration-tested
 
-### estados (8): PASS
+**Archivo**: `backend/src/reparaciones/application/use-cases/eliminar-ubicacion.use-case.ts:77–95`
 
-| codigo | spec orden | seed orden | spec nombre | seed nombre |
-|--------|-----------|-----------|-------------|-------------|
-| ABIERTO | 10 | 10 | Abierto | Abierto |
-| PENDIENTE_APROBACION | 20 | 20 | Pendiente de aprobación | Pendiente de aprobación |
-| APROBADO | 30 | 30 | Aprobado | Aprobado |
-| RECHAZADO | 35 | 35 | Rechazado | Rechazado |
-| EN_PROGRESO | 40 | 40 | En progreso | En progreso |
-| RESUELTO | 50 | 50 | Resuelto | Resuelto |
-| CERRADO | 60 | 60 | Cerrado | Cerrado |
-| CANCELADO | 70 | 70 | Cancelado | Cancelado |
-
-All 8 codigos match. All 8 ordenes match. All 8 nombres match (spec-explicit).
-
-### prioridades (4): PASS
-
-BAJA(10), MEDIA(20), ALTA(30), CRITICA(40) — codigos and ordenes exact match. nombres are accepted as inferred (not spec-defined for this table, user-accepted).
-
-### tipos_ticket (3): PASS
-
-SOPORTE, COMPRAS, EDILICIA — satisfies `CHECK ("codigo" IN ('SOPORTE', 'COMPRAS', 'EDILICIA'))` from migration SQL.
-
-### tipo_operacion (5): PASS
-
-CAMBIO_ESTADO, COMENTARIO, ASIGNACION, ADJUNTO, AVANCE_EDILICIO — exact codigos match.
+La lógica de deduplicación `ticketIdVistos` está cubierta por unit tests con repos mockeados.
+No hay integration test que cree un árbol padre→hijo donde ambos nodos sean referenciados por
+el mismo `ticket_edilicia.ticket_id` y verifique que se genera una sola `OperacionTicket`.
+El schema previene este escenario (1 `ticket_edilicia` tiene 1 `ubicacion_id`), pero la esquina
+no está testeada a nivel integration.
 
 ---
 
-## Idempotency: PASS
+## Checklist de riesgos adversariales
 
-- All 4 `INSERT ... ON CONFLICT (codigo) DO NOTHING` present in seed and in test.
-- Test suite describe `5. Idempotencia del seed` counts rows BEFORE, re-executes all 4 seed SQLs via `pg.Pool`, counts rows AFTER, asserts `before == after` for all 4 tables.
-- Two-pass idempotency is genuine.
-
----
-
-## Tenant DB Target: PASS
-
-- Seed connects to `process.env.DATABASE_URL_TENANT` exclusively. Exits with error if undefined.
-- Test fallback: `postgresql://soporte:soporte@localhost:5432/soporte_tenant_test`.
-- No reference to `DATABASE_URL_MASTER` or master DB in seed or test.
-- No `cliente_id` column in any tenant table (schema verified).
-
----
-
-## CHECK Constraint Compatibility: PASS
-
-Migration SQL `20260623120000_init_tenant_schema/migration.sql` line 244:
-```sql
-CHECK ("codigo" IN ('SOPORTE', 'COMPRAS', 'EDILICIA'));
-```
-
-Seed inserts exactly `SOPORTE`, `COMPRAS`, `EDILICIA`. All three satisfy the constraint.
+| Riesgo verificado | Estado |
+|-------------------|--------|
+| Guard EN_PROGRESO→RESUELTO: false si avance<100, true si =100, false si undefined | ✓ PASS |
+| CompletarSubtarea NO auto-transiciona | ⚠ WARNING-1 |
+| AvanceCalculator: 33.33, 0, 100.00, división por cero (NULLIF) | ✓ PASS |
+| Recálculo en misma tx (callOrder spy) | ✓ PASS |
+| Soft-delete excluido del recálculo (numerador y denominador) | ✓ PASS |
+| CTE findSubtree: ancla + recursión filtran `deleted_at IS NULL`, SQL parametrizado | ✓ PASS |
+| CTE findSubtree ejecutada dentro de `$transaction` | ⚠ WARNING-2 |
+| CrearTicketEdilicio atómico + ubicación válida + avance=0 inicial | ✓ PASS |
+| UBICACION_ELIMINADA sembrado en tenant-seed + TODO eliminado del código | ✓ PASS |
+| Schema: NUMERIC(5,2)+CHECK 0-100, self-ref padre_id nullable, UNIQUE ticket_id (1:1) | ✓ PASS |
+| Guard `subtarea:actualizar` en controller + asignado a rol MANTENIMIENTO en seed | ✓ PASS |
+| EdiliciaStateMachine registrada via onModuleInit + bootstrap test usa `moduleRef.init()` | ✓ PASS |
+| Todas las tareas 5.A–5.D marcadas `[x]` con código real y tests TDD | ✓ PASS |
 
 ---
 
-## TDD Discipline: PASS
+## Siguiente fase recomendada
 
-- Task 3.D.4 is labeled `SEED:` in tasks.md — not a `TEST →` / `IMPL →` pair.
-- Strict TDD mode blocks `IMPL →` tasks until their `TEST →` is red-committed. `SEED:` tasks are not subject to this rule.
-- Pattern is consistent with PR-07 (RBAC seed: also a single commit with test+impl).
-- S-3 notes improvement opportunity for process evidence.
-
----
-
-## Domain Decisions Confirmed (Not Flagged Per Scope)
-
-| Decision | Status |
-|----------|--------|
-| nombres for prioridades/tipos_ticket/tipo_operacion inferred (not spec-defined) | ACCEPTED — display-only, changeable later |
-| `color` field omitted (nullable, deferred to frontend) | ACCEPTED — inserts succeed, nullable correctly handled |
-
----
-
-## Open Handles Warning
-
-`pnpm test` output: `Jest did not exit one second after the test run has completed`. Known behavior: Prisma 7 + adapter-pg keeps the Pool open until GC. Documented in PR-04 decisions. Not a test failure; does not affect correctness.
-
----
-
-## Next Recommended
-
-`sdd-archive` — no blocking issues found. All catalog values are spec-fidelity PASS, idempotency is real and tested, DB targeting is correct, CHECK constraints are satisfied, gates are green.
+`sdd-archive` — no hay issues CRITICAL que bloqueen el cierre del change.
