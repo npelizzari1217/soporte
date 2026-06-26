@@ -8,8 +8,9 @@
  *  3. Verifica `activo = true` y `deleted_at IS NULL` — detecta suspensión en mid-sesión.
  *  4. Obtiene el TenantPrismaClient vía `PrismaService.getTenantClient(dbName)`.
  *  5. Vincula `TenantContext` con `{ prismaClient, dbName, clienteId }` usando
- *     `bind()` (AsyncLocalStorage.enterWith) para que el contexto persista a través
- *     de todo el pipeline del request (interceptors + controller + repositorios).
+ *     `bind()`, que muta el store del scope AsyncLocalStorage inicializado por
+ *     `TenantScopeMiddleware` (fallback a `enterWith()` fuera de HTTP), para que el
+ *     contexto persista a través del pipeline (interceptors + controller + repositorios).
  *
  * Debe ejecutarse DESPUÉS de JwtAuthGuard (que hidrata `request.user`).
  *

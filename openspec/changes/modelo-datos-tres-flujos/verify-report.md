@@ -205,3 +205,161 @@ como `any`. Debería ser `ITicketSoporteRepository` para mantener type safety en
 ### Siguiente fase recomendada
 
 `sdd-archive` — los 3 WARNING son gaps de test coverage/edge cases sin CRITICAL que bloquee.
+
+---
+
+## Fase 7 (PR-18) — Integración cross-cutting: provisioning completo
+
+> Rama de desarrollo: `feat/pr17b-equipos-interface` (sin commit — ver W3)
+> Branch en apply-progress.md: `feat/pr18-integracion`
+> Fecha: 2026-06-26
+> Veredicto: **PASS-WITH-WARNINGS** — 0 CRITICAL / 4 WARNING / 2 SUGGESTION
+
+---
+
+### Gates (ejecución real, evidencia directa)
+
+| Gate | Resultado |
+|------|-----------|
+| `jest --config jest.config.ts` | **1446/1446 verdes — 98 suites** (exit 0) |
+| `jest --listTests`: smoke.e2e.spec.ts | **PRESENT** — `src/clientes/interface/smoke.e2e.spec.ts` (8 tests) |
+| `jest --listTests`: crear-cliente.e2e.spec.ts | **PRESENT** — `src/clientes/infrastructure/crear-cliente.e2e.spec.ts` (14 tests) |
+| ESLint sobre archivos Fase 7 (9 archivos `src/`) | **0 errores** (exit 0, sin output) |
+| DBs huérfanas post-suite (`soporte_e2e%`, `soporte_test%`) | **0** — query a `pg_database` retorna vacío |
+| Tareas 7.A.1–7.C.2 en tasks.md | **8/8 marcadas `[x]`** |
+
+---
+
+### F1 — Análisis adversarial: aislamiento cross-tenant (TenantContext mutable store)
+
+**Diseño verificado correctamente.** El refactor de Batch 4 es el patrón canónico de AsyncLocalStorage:
+
+- `TenantScopeMiddleware.use()` llama `storage.run({ data: null }, next)` — crea un contexto AsyncLocalStorage independiente por request, con su propio objeto `{ data: null }`.
+- `TenantGuard.canActivate()` llama `tenantContext.bind(ctx)`, que hace `store.data = ctx` sobre el objeto del scope activo.
+- Cada request tiene su propio objeto store (distinto por `run()` independiente). La mutación de `store.data` de la request A nunca afecta el store de la request B — son objetos JavaScript distintos en contextos async distintos.
+- La cobertura del middleware en `forRoutes('*')` es total: todas las rutas HTTP pasan por `TenantScopeMiddleware`. Las rutas no-tenant (e.g. `/auth/login`) quedan con `{ data: null }` sin consecuencias.
+- `bind()` llama `enterWith()` SOLO como fallback (sin scope previo: unit tests, scripts directos). El path de producción siempre tiene scope previo.
+
+**Veredicto de aislamiento: SEGURO para producción.** No hay fuga cross-tenant posible bajo el modelo de AsyncLocalStorage de Node.js.
+
+**Hallazgo asociado (W1):** los unit tests de `bind()` solo ejercen el fallback. Ver W1.
+
+---
+
+### F2 — PrismaService.onModuleDestroy() pool.end()
+
+Fix real, no regresión. El pool (`masterPool` y `tenantPools`) es privado a PrismaService (no compartido). `$disconnect()` limpia el layer de Prisma; `pool.end()` cierra las conexiones TCP subyacentes. Sin el `pool.end()`, las conexiones idle permanecen abiertas hasta el idle timeout del pool (10 s), lo que impedía `DROP DATABASE` en tests. El `.catch(() => undefined)` hace la operación idempotente ante double-shutdown. Los 2 nuevos tests en `prisma.service.spec.ts` verifican que `pool.end()` se llama correctamente en master y en todos los tenants cacheados.
+
+---
+
+### Hallazgos clasificados
+
+#### WARNING-1 (F1) — Unit tests de TenantContext.bind() solo cubren el path de fallback
+
+**Archivo**: `src/shared/tenancy/tenant-context.spec.ts:119–143`
+
+Los dos tests de `bind()` llaman `tenantContext.bind(ctx)` SIN haber llamado `initScope()` antes. Esto activa el branch `enterWith()` (fallback), NO el branch de mutación del store que es el path de producción.
+
+El path primario de producción — `initScope()` → `bind()` → `store.data = ctx` → `get()` retorna ctx en el scope del controller — NO tiene cobertura de unit test. La búsqueda de `initScope` y `TenantScopeMiddleware` en todos los archivos `.spec.ts` solo aparece en `smoke.e2e.spec.ts` (indirectamente, via HTTP).
+
+No hay test unitario que verifique: `dado un scope creado por initScope(), bind() muta el store y get() retorna el contexto en el mismo scope asíncrono`. El diseño es correcto (AsyncLocalStorage garantiza el aislamiento), pero la cobertura de unit test sobre el path de seguridad crítico es incompleta.
+
+**Impacto**: Si un futuro refactor cambia la lógica de mutación, el smoke e2e es el único net de seguridad. La detección sería tardía.
+
+---
+
+#### WARNING-2 (F3) — dropDatabase() sin pg_terminate_backend / WITH (FORCE)
+
+**Archivo**: `src/shared/infrastructure/persistence/postgres-admin.service.ts:62–65`
+
+`dropDatabase()` ejecuta `DROP DATABASE IF EXISTS "name"` sin antes terminar conexiones activas. La teardown de ambos e2e specs depende de que `prismaService.onModuleDestroy()` (o `nestApp.close()`) hayan cerrado todos los pools antes del drop.
+
+Si cualquier paso de cleanup falla antes de llegar al drop (e.g., `nestApp.close()` interrumpido), el `DROP DATABASE` falla silenciosamente (envuelto en `try/catch`) y la DB queda huérfana.
+
+PG 16 soporta `DROP DATABASE IF EXISTS "name" WITH (FORCE)` que termina conexiones automáticamente. El escenario de fallo es improbable en CI normal, pero el comando es trivial de hacer resiliente.
+
+La run actual muestra 0 DBs huérfanas — evidencia de que el path happy funciona correctamente.
+
+---
+
+#### WARNING-3 (F5) — Todo Fase 7 sin commitear en rama incorrecta
+
+**Git status** (evidencia directa):
+- Rama actual: `feat/pr17b-equipos-interface`
+- apply-progress.md dice: rama destino `feat/pr18-integracion`
+- 12 archivos nuevos (`??`) + 4 archivos modificados (`M`) sin commitear, todos Fase 7
+
+Los archivos nuevos incluyen: `scripts/`, `src/clientes/application/ports/`, `src/clientes/application/use-cases/crear-cliente.use-case.{ts,spec.ts}`, `src/clientes/infrastructure/*.{ts,spec.ts}`, `src/clientes/interface/smoke.e2e.spec.ts`, `src/shared/infrastructure/persistence/postgres-admin.service.{ts,spec.ts}`, `src/shared/tenancy/tenant-scope.middleware.ts`.
+
+Los archivos modificados son: `src/app.module.ts`, `src/clientes/clientes.module.ts`, `src/shared/infrastructure/persistence/prisma.service.{ts,spec.ts}`, `src/shared/tenancy/tenant-context.ts`.
+
+**Bloquea archive**: sin commit en rama correcta, el archive no puede cerrar el change limpiamente.
+
+---
+
+#### WARNING-4 — Rollback compensatorio no verificado con DB real (gap e2e)
+
+El spec requiere: "el sistema MUST quedar en un estado consistente (sin tenant a medio provisionar)". Los 31 unit tests de `crear-cliente.use-case.spec.ts` cubren el rollback con adapters mockeados, pero ningún e2e test simula una falla real de migración o seed con conexiones reales y verifica que el compensatorio `dropDatabase()` efectivamente elimina la DB.
+
+El contrato de "cerrar conexiones antes de retornar" que habilita el rollback está codificado en los adapters (`TenantMigrationRunnerAdapter`, `TenantSeederAdapter`) pero no verificado bajo fallo real. El riesgo es bajo — los adapters tienen `try/finally` explícitos — pero la garantía es solo estructural, no empírica.
+
+---
+
+#### SUGGESTION-1 (F4) — scripts/ sin cobertura ESLint
+
+**Archivo**: `eslint.config.js` — `files: ['src/**/*.ts']` no incluye `scripts/`
+
+`scripts/migrate-tenants.ts` y `scripts/migrate-tenants.runner.ts` no están cubiertos por ninguna regla de ESLint. El código está bien escrito (revisión manual: clean, tipado, idiomático), pero sin enforcement. A medida que crezcan los scripts, los bugs de tipado y estilo quedarán sin detectar automáticamente.
+
+Fix sugerido: agregar `{ files: ['scripts/**/*.ts'], languageOptions: {...}, plugins: {...}, rules: {...} }` a `eslint.config.js`.
+
+---
+
+#### SUGGESTION-2 — Stale JSDoc en TenantGuard
+
+**Archivo**: `src/auth/infrastructure/guards/tenant.guard.ts:9`
+
+```
+ *     `bind()` (AsyncLocalStorage.enterWith) para que el contexto persista...
+```
+
+Desde Batch 4, `bind()` usa mutación del store mutable en el path primario y `enterWith()` solo como fallback. El comment debería decir `bind()` (mutable store mutation; enterWith como fallback en unit tests/scripts sin scope previo).
+
+---
+
+### Validación de spec clientes-tenancy
+
+| Scenario del spec | Tests que lo cubren | Estado |
+|-------------------|---------------------|--------|
+| Orden estricto: crear DB → migraciones → seed → alta master → admin con rol ADMIN | `crear-cliente.use-case.spec.ts` (callOrder spy, 31 tests) + `crear-cliente.e2e.spec.ts` (real) | ✓ PASS |
+| Rollback compensatorio: drop DB si falla paso intermedio | `crear-cliente.use-case.spec.ts` (5 puntos de fallo) | ✓ PASS (unit only — ver W4) |
+| Seed idempotente (ON CONFLICT DO NOTHING) | `crear-cliente.e2e.spec.ts` (3 runs, counts invariantes) | ✓ PASS |
+| Usuario admin inicial con rol ADMIN en master | `crear-cliente.e2e.spec.ts` (query directa a master.usuarios + usuariosRoles) | ✓ PASS |
+| Catálogos sembrados: 8 estados, 4 prioridades, 3 tipos_ticket, 6 tipo_operacion, 10 tipos_componente | `crear-cliente.e2e.spec.ts` (COUNT por tabla) | ✓ PASS |
+| Suspensión mid-sesión → 403 (TenantGuard) | `smoke.e2e.spec.ts` (UPDATE activo=false + GET /tickets/:id → 403) | ✓ PASS |
+| Login con credenciales válidas → 200 + JWT | `smoke.e2e.spec.ts` | ✓ PASS |
+| Crear ticket SOPORTE + transición ABIERTO→EN_PROGRESO + operaciones timeline | `smoke.e2e.spec.ts` | ✓ PASS |
+| Cliente inactivo rechazado en login inicial | `auth` unit tests (PR-05/06, fuera de scope Fase 7) | N/A Fase 7 |
+
+---
+
+### Puntos de riesgo adversariales verificados
+
+| Punto | Estado |
+|-------|--------|
+| Fuga cross-tenant bajo concurrencia (mutable store vs enterWith) | ✓ SEGURO — AsyncLocalStorage garantiza aislamiento por run() |
+| Middleware cubre ALL routes (forRoutes('*')) | ✓ CONFIRMADO — app.module.ts |
+| Middleware NO cubre rutas que bypasean NestJS pipeline | ✓ N/A — no hay rutas fuera del pipeline NestJS |
+| bind() en fallback (enterWith) es seguro para unit tests / scripts | ✓ CORRECTO — no hay requests concurrentes en ese contexto |
+| pool.end() en onModuleDestroy() es idempotente (double-shutdown) | ✓ `.catch(() => undefined)` en ambas llamadas |
+| pool.end() no es compartido (pool owned by PrismaService) | ✓ private readonly, no expuesto |
+| Teardown e2e: DB dropeada en afterAll aunque tests fallen | ✓ — Jest garantiza afterAll; cada paso en try/catch independiente |
+| Teardown e2e: inner afterAll (tenantPool.end) antes de outer (drop) | ✓ — orden Jest correcto |
+| Orphan DBs post-suite run (post-merge de la suite completa 1446 tests) | ✓ 0 huérfanas confirmado |
+| Branch bookkeeping inconsistente | ⚠ WARNING-3 |
+
+---
+
+### Siguiente fase recomendada
+
+`sdd-archive` — no hay CRITICALs que bloqueen el cierre. Sin embargo, **W3 es un prerequisito hard**: la rama debe ser reconciliada y el work commiteado antes de archivar. Los demás warnings son mejoras de hardening y cobertura, no bloqueos funcionales.

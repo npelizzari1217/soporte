@@ -24,7 +24,9 @@ jest.mock('./prisma-clients', () => ({
 }));
 
 jest.mock('pg', () => ({
-  Pool: jest.fn().mockImplementation(() => ({})),
+  Pool: jest.fn().mockImplementation(() => ({
+    end: jest.fn().mockResolvedValue(undefined),
+  })),
 }));
 
 jest.mock('@prisma/adapter-pg', () => ({
@@ -117,6 +119,34 @@ describe('PrismaService (factory multi-tenant)', () => {
 
       expect(tenantA.$disconnect).toHaveBeenCalled();
       expect(tenantB.$disconnect).toHaveBeenCalled();
+    });
+
+    it('should call pool.end() on master pool to close TCP connections', async () => {
+      // mockImplementation devuelve un objeto nuevo ({ end: jest.fn() }),
+      // por lo que mock.results[i].value es la referencia correcta al pool
+      // retornado por el constructor, no mock.instances[i] que es 'this' interno.
+      const { Pool } = require('pg') as { Pool: jest.Mock };
+      // results[0] = masterPool (instanciado en el constructor de PrismaService)
+      const masterPoolInstance = Pool.mock.results[0].value as { end: jest.Mock };
+
+      await service.onModuleDestroy();
+
+      expect(masterPoolInstance.end).toHaveBeenCalled();
+    });
+
+    it('should call pool.end() on all tenant pools to close TCP connections', async () => {
+      service.getTenantClient('tenant_a');
+      service.getTenantClient('tenant_b');
+
+      const { Pool } = require('pg') as { Pool: jest.Mock };
+      // results[0] = masterPool, results[1] = tenant_a, results[2] = tenant_b
+      const tenantAPool = Pool.mock.results[1].value as { end: jest.Mock };
+      const tenantBPool = Pool.mock.results[2].value as { end: jest.Mock };
+
+      await service.onModuleDestroy();
+
+      expect(tenantAPool.end).toHaveBeenCalled();
+      expect(tenantBPool.end).toHaveBeenCalled();
     });
   });
 });

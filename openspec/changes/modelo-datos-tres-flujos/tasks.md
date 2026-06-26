@@ -522,30 +522,38 @@
 
 ### 7.A — PostgresAdminService + Provisioning
 
-**7.A.1** [P, dep: 0.C.7] **TEST →** Test de `PostgresAdminService`: mock de `pg.Pool` sobre DB admin (`postgres`); verifica `createDatabase(dbName)` ejecuta `CREATE DATABASE`; verifica `dropDatabase(dbName)` como compensación en rollback; verifica que usa DB admin, NO el client tenant.
+**[x] 7.A.1** [P, dep: 0.C.7] **TEST →** Test de `PostgresAdminService`: mock de `pg.Pool` sobre DB admin (`postgres`); verifica `createDatabase(dbName)` ejecuta `CREATE DATABASE`; verifica `dropDatabase(dbName)` como compensación en rollback; verifica que usa DB admin, NO el client tenant.
 - Ref spec: `[SPEC:clientes/Provisioning fallido dispara rollback compensatorio]`
+- **Completado PR-18 Batch 1:** 14 unit tests TDD RED→GREEN. Suite: `postgres-admin.service.spec.ts`. Cubre: Pool conecta a DB `postgres` (admin) no al master; createDatabase quoted identifier; dropDatabase IF EXISTS (compensación rollback segura); databaseExists con query parametrizada a pg_database; onModuleDestroy llama pool.end(); un solo Pool creado (no per-tenant).
 
-**7.A.2** [S, dep: 7.A.1] **IMPL →** `shared/infrastructure/persistence/postgres-admin.service.ts`: usa `pg.Pool` apuntando a la DB `postgres` (admin). Métodos `createDatabase`, `dropDatabase`, `databaseExists`.
+**[x] 7.A.2** [S, dep: 7.A.1] **IMPL →** `shared/infrastructure/persistence/postgres-admin.service.ts`: usa `pg.Pool` apuntando a la DB `postgres` (admin). Métodos `createDatabase`, `dropDatabase`, `databaseExists`.
+- **Completado PR-18 Batch 1:** @Injectable() + OnModuleDestroy. buildAdminUrl() deriva URL admin desde masterUrl (reemplaza dbName por 'postgres'). quoteIdentifier() con escape de comillas dobles. databaseExists usa query parametrizada ($1). Suite: 1328 → 1342 GREEN.
 
-**7.A.3** [P, dep: 1.B.2, 2.C.2, 7.A.2] **TEST →** Test de `CrearClienteUseCase` completo (provisioning): verifica orden estricto (crear DB → migraciones → seed → alta en master); verifica que fallo en "seed" → rollback (drop DB, no alta en master); verifica idempotencia del seed; verifica que el admin inicial se crea en `master.usuarios`.
+**[x] 7.A.3** [P, dep: 1.B.2, 2.C.2, 7.A.2] **TEST →** Test de `CrearClienteUseCase` completo (provisioning): verifica orden estricto (crear DB → migraciones → seed → alta en master); verifica que fallo en "seed" → rollback (drop DB, no alta en master); verifica idempotencia del seed; verifica que el admin inicial se crea en `master.usuarios`.
 - Ref spec: `[SPEC:clientes/Provisioning de tenant nuevo, Rollback compensatorio, Seed idempotente]`
+- **Completado PR-18 Batch 2:** 31 unit tests TDD RED→GREEN. Suite: `crear-cliente.use-case.spec.ts`. Cubre: orden estricto (callOrder tracking), rollback en 5 puntos de fallo (createDB, migrations, seed, save:cliente, save:admin), seed idempotente (use case llama incondicionalmente), admin user con clienteId, password hasheado. Puertos nuevos: `IPostgresAdminPort`, `ITenantMigrationRunner`, `ITenantSeeder` (en `clientes/application/ports/`).
 
-**7.A.4** [S, dep: 7.A.3] **IMPL →** `clientes/application/use-cases/crear-cliente.use-case.ts` (provisioning completo): orquesta `PostgresAdminService.createDatabase` → `runTenantMigrations` → `seedCatalogos` → `IClienteRepository.save` → crear usuario admin. Pasos compensatorios (drop DB) en caso de error intermedio.
+**[x] 7.A.4** [S, dep: 7.A.3] **IMPL →** `clientes/application/use-cases/crear-cliente.use-case.ts` (provisioning completo): orquesta `PostgresAdminService.createDatabase` → `runTenantMigrations` → `seedCatalogos` → `IClienteRepository.save` → crear usuario admin. Pasos compensatorios (drop DB) en caso de error intermedio.
+- **Completado PR-18 Batch 2:** Estrategia rollback: try/catch después de createDatabase; compensación = dropDatabase(dbName). Contrato de puertos: ITenantMigrationRunner e ITenantSeeder DEBEN cerrar conexiones antes de retornar (sea éxito o error) para permitir el DROP DATABASE sin "active connections" error. Suite: 1342 → 1373 GREEN (31 nuevos tests, 0 regressions).
 
 ### 7.B — Fan-out migration runner
 
-**7.B.1** [P, dep: 0.A.2] **TEST →** Test del fan-out runner: mock de lista de tenants (`clientes` activos + soft-deleted excluidos); verifica que ejecuta `prisma migrate deploy` con `DATABASE_URL` de cada tenant; verifica que un fallo en tenant N no aborta tenants N+1..M (no-aborting fan-out); verifica registro de resultado por tenant (success/error).
+**[x] 7.B.1** [P, dep: 0.A.2] **TEST →** Test del fan-out runner: mock de lista de tenants (`clientes` activos + soft-deleted excluidos); verifica que ejecuta `prisma migrate deploy` con `DATABASE_URL` de cada tenant; verifica que un fallo en tenant N no aborta tenants N+1..M (no-aborting fan-out); verifica registro de resultado por tenant (success/error).
 - Ref spec: `[SPEC:design/Fan-out de migraciones, riesgo de drift de esquema]`
+- **Completado PR-18 Batch 3:** 19 unit tests TDD RED→GREEN. Suite: `scripts/migrate-tenants.runner.spec.ts`. `ExecFn` inyectable (sin mock de child_process). Cubre: filtro `activo=TRUE AND deleted_at IS NULL` (soft-deleted excluidos); fan-out no-abortante (try/catch por tenant); reporte success/error por tenant; **contrato de cierre de pool** (4 tests, incl. call-order: `pool.end` antes de que `run()` resuelva).
 
-**7.B.2** [S, dep: 7.B.1] **IMPL →** `scripts/migrate-tenants.ts`: script Node que consulta `master.clientes` (solo `activo=true`, `deleted_at IS NULL`), itera, aplica `prisma migrate deploy --schema prisma_tenant/schema.prisma` con `DATABASE_URL` por tenant, registra resultado. Idempotente (Prisma migrate es idempotente por naturaleza).
+**[x] 7.B.2** [S, dep: 7.B.1] **IMPL →** `scripts/migrate-tenants.ts`: script Node que consulta `master.clientes` (solo `activo=true`, `deleted_at IS NULL`), itera, aplica `prisma migrate deploy --schema prisma_tenant/schema.prisma` con `DATABASE_URL` por tenant, registra resultado. Idempotente (Prisma migrate es idempotente por naturaleza).
+- **Completado PR-18 Batch 3:** `MigrateTenantsRunner` (clase testeable) + `migrate-tenants.ts` (thin entrypoint, exit 1 si algún tenant falla). Comando: `prisma migrate deploy --schema=prisma_tenant/schema.prisma --config prisma.tenant.config.ts` con env `DATABASE_URL_TENANT` (la variable que lee `prisma.tenant.config.ts`, no `DATABASE_URL`). URL por tenant deriva reemplazando el db_name en la master URL. Suite: 1374 → 1393 GREEN, 0 regressions. Deuda: `scripts/` fuera del scope de ESLint (ignorado por `eslint.config.js`) — el runner no tiene cobertura de lint. El entrypoint debe correrse desde `backend/` (usa `./node_modules/.bin/prisma`).
 
 ### 7.C — End-to-end: provisioning + smoke test
 
-**7.C.1** [P, dep: 7.A.4, 3.D.4, 6.C.4] **TEST →** Test e2e de provisioning completo: `CrearClienteUseCase` crea un cliente con db real → conecta a la nueva DB tenant → verifica que los 5 catálogos están sembrados (`estados`, `prioridades`, `tipos_ticket`, `tipo_operacion`, `tipos_componente`) → verifica idempotencia del seed corriendo dos veces.
+**[x] 7.C.1** [P, dep: 7.A.4, 3.D.4, 6.C.4] **TEST →** Test e2e de provisioning completo: `CrearClienteUseCase` crea un cliente con db real → conecta a la nueva DB tenant → verifica que los 5 catálogos están sembrados (`estados`, `prioridades`, `tipos_ticket`, `tipo_operacion`, `tipos_componente`) → verifica idempotencia del seed corriendo dos veces.
 - Ref spec: `[SPEC:clientes/Provisioning, Seed catálogos por tenant idempotente]`; `[SPEC:tickets-core/Nuevo tenant tiene catálogos pre-poblados]`; `[SPEC:equipos/Seeds de tipos_componente]`
+- **Completado PR-18 Batch 5 (7.C.1):** `backend/src/clientes/infrastructure/crear-cliente.e2e.spec.ts` — 14 tests e2e provisioning real con implementaciones REALES (no mocks): crea DB tenant, aplica migraciones, siembra 5 catálogos, verifica counts exactos (estados:8, prioridades:4, tipos_ticket:3, tipo_operacion:6, tipos_componente:10), verifica idempotencia (3 runs del seed, counts invariantes), verifica cliente en master.clientes y admin con rol ADMIN en master.usuarios. Teardown robusto (try/finally): cierra pools, termina conexiones activas, dropea DB tenant, limpia master. Lint: exit 0. Suite completa: 1446/1446 verdes. Sin DBs huérfanas post-run.
 
-**7.C.2** [P, dep: 7.C.1, 2.D.4, 3.E.2] **TEST →** Smoke test e2e del flujo completo: login (JWT válido) → crear ticket SOPORTE → asignar → transicionar estado → verificar `operaciones_ticket` en timeline. Login con cliente inactivo → 403. Request a endpoint tenant sin TenantGuard → 403.
+**[x] 7.C.2** [P, dep: 7.C.1, 2.D.4, 3.E.2] **TEST →** Smoke test e2e del flujo completo: login (JWT válido) → crear ticket SOPORTE → asignar → transicionar estado → verificar `operaciones_ticket` en timeline. Login con cliente inactivo → 403. Request a endpoint tenant sin TenantGuard → 403.
 - Ref spec: `[SPEC:auth-rbac/Login exitoso]; [SPEC:tickets-core/requirements]; [SPEC:clientes/Suspensión de tenant]`
+- **Completado PR-18 Batch 4 (7.C.2):** `backend/src/clientes/interface/smoke.e2e.spec.ts` — 8 smoke e2e tests (login, ticket SOPORTE, transición de estado, operaciones timeline, cliente inactivo mid-sesión 403).
 
 ---
 

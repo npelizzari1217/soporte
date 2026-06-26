@@ -141,4 +141,47 @@ describe('TenantContext', () => {
       expect(tenantContext.getClient()).toBe(mockClient);
     });
   });
+
+  describe('bind() dentro de un scope de middleware (path de producción)', () => {
+    // Los tests de bind() de arriba ejercen el fallback enterWith() (sin scope previo).
+    // Estos cubren el path REAL de producción: initScope() del middleware crea un store
+    // mutable, y bind() lo MUTA para que el controller/repos (mismo scope async) lo vean.
+    it('antes de bind() el scope existe pero get() es undefined; tras bind() get() retorna el ctx (store mutado)', () => {
+      const mockClient = makeMockClient() as any;
+      const ctx: TenantContextData = {
+        prismaClient: mockClient,
+        dbName: 'prod_path_db',
+        clienteId: 'prod-client-id',
+      };
+
+      let beforeBind: TenantContextData | undefined;
+      let afterBind: TenantContextData | undefined;
+
+      tenantContext.initScope(() => {
+        beforeBind = tenantContext.get();
+        tenantContext.bind(ctx);
+        afterBind = tenantContext.get();
+      });
+
+      // Invariante: scope inicializado pero TenantGuard aún no corrió → sin contexto.
+      expect(beforeBind).toBeUndefined();
+      // bind() mutó el store compartido del scope → el ctx es visible en el mismo scope async.
+      expect(afterBind).toEqual(ctx);
+    });
+
+    it('no filtra el contexto fuera del scope de initScope()', () => {
+      const mockClient = makeMockClient() as any;
+
+      tenantContext.initScope(() => {
+        tenantContext.bind({
+          prismaClient: mockClient,
+          dbName: 'scoped_db',
+          clienteId: 'scoped-id',
+        });
+      });
+
+      // Fuera del scope del middleware, get() vuelve a undefined.
+      expect(tenantContext.get()).toBeUndefined();
+    });
+  });
 });

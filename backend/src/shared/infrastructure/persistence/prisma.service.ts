@@ -24,9 +24,18 @@ export class PrismaService implements OnModuleDestroy {
   private readonly tenantClients = new Map<string, InstanceType<typeof TenantPrismaClient>>();
   private readonly masterUrl: string;
 
+  // pg.Pool references son necesarias para llamar pool.end() en onModuleDestroy().
+  // Prisma (@prisma/adapter-pg) NO llama pool.end() en $disconnect() porque no
+  // es dueño del pool (el pool se le pasa como argumento). Sin este cleanup
+  // explícito, las conexiones TCP del pool quedan abiertas hasta el timeout
+  // idle del pool (por defecto 10 segundos), lo que impide DROP DATABASE en tests.
+  private readonly masterPool: Pool;
+  private readonly tenantPools = new Map<string, Pool>();
+
   constructor(masterUrl: string) {
     this.masterUrl = masterUrl;
     const pool = new Pool({ connectionString: masterUrl });
+    this.masterPool = pool;
     const adapter = new PrismaPg(pool);
     this.masterClient = new MasterPrismaClient({ adapter } as any);
   }
@@ -49,6 +58,7 @@ export class PrismaService implements OnModuleDestroy {
     if (!this.tenantClients.has(dbName)) {
       const tenantUrl = this.buildTenantUrl(dbName);
       const pool = new Pool({ connectionString: tenantUrl });
+      this.tenantPools.set(dbName, pool);
       const adapter = new PrismaPg(pool);
       const client = new TenantPrismaClient({ adapter } as any);
       this.tenantClients.set(dbName, client);
@@ -77,6 +87,8 @@ export class PrismaService implements OnModuleDestroy {
    * Previene connection leaks en shutdown gracioso.
    */
   async onModuleDestroy(): Promise<void> {
+    // 1. Llamar $disconnect() en todos los clientes Prisma para cerrar el
+    //    query engine de Prisma y liberar recursos internos.
     await this.masterClient.$disconnect();
 
     const disconnectAll = Array.from(this.tenantClients.values()).map((client) =>
@@ -84,5 +96,19 @@ export class PrismaService implements OnModuleDestroy {
     );
     await Promise.all(disconnectAll);
     this.tenantClients.clear();
+
+    // 2. Cerrar explícitamente los pg.Pool subyacentes.
+    //    pool.end() espera hasta que TODAS las conexiones TCP sean destruidas
+    //    y ninguna nueva pueda ser creada. Sin esto, las conexiones idle del
+    //    pool permanecen activas hasta el idle timeout, lo que impide
+    //    DROP DATABASE en tests e2e y en shutdown de producción.
+    //    Nota: si ya fue llamado (doble shutdown), .catch() suprime el error.
+    await this.masterPool.end().catch(() => undefined);
+
+    const endAll = Array.from(this.tenantPools.values()).map((pool) =>
+      pool.end().catch(() => undefined),
+    );
+    await Promise.all(endAll);
+    this.tenantPools.clear();
   }
 }

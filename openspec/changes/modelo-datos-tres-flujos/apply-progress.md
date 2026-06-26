@@ -1,9 +1,210 @@
 # Apply Progress — modelo-datos-tres-flujos
 
-> Última actualización: 2026-06-23
-> Rama activa: `feat/pr17b-equipos-interface`
-> PR actual: **PR-17b** (6.D Interface: controllers + DTOs + EquiposModule — FASE 6 COMPLETA)
-> Tests: **1324/1324** verdes (+50 nuevos: EquiposController×28, ComponentesController×14, TicketSoporteController×8)
+> Última actualización: 2026-06-26
+> Rama activa: `feat/pr18-integracion`
+> PR actual: **PR-18 Batch 5 (7.C.1 bookkeeping)** — Fase 7 COMPLETA (verificado)
+> Tests: **1446/1446** verdes (sin cambio desde Batch 4 — 7.C.1 ya existía)
+
+---
+
+## PR-18 Batch 5 (7.C.1 bookkeeping): Verificación e2e provisioning real — COMPLETADO
+
+### Tareas completadas
+
+| Tarea | Estado | Detalle |
+|-------|--------|---------|
+| 7.C.1 (e2e provisioning) | ✅ | 14 tests en `backend/src/clientes/infrastructure/crear-cliente.e2e.spec.ts`. Test ya existía — verificado GREEN. Bookkeeping completado (tasks.md + apply-progress.md). |
+| 7.C.2 (smoke e2e) | ✅ (PR-18 Batch 4) | 8 tests en `backend/src/clientes/interface/smoke.e2e.spec.ts`. |
+
+### Verificaciones PR-18 Batch 5
+
+- **Jest spec individual**: 14/14 GREEN (`crear-cliente.e2e.spec.ts`)
+- **Jest suite completa**: 1446/1446 GREEN (98 suites)
+- **Lint**: `eslint src/clientes/infrastructure/crear-cliente.e2e.spec.ts --fix` → exit 0 (1 auto-fix menor)
+- **Orphan DB probe**: `SELECT datname FROM pg_database WHERE datname LIKE 'soporte_e2e_%'` → `[]` (ninguna huérfana)
+
+### Estado Fase 7 post Batch 5
+
+| Tarea | Estado |
+|-------|--------|
+| 7.A.1–7.A.6 | ✅ completadas |
+| 7.B.1–7.B.2 | ✅ completadas |
+| 7.C.1 e2e provisioning real | ✅ completada (14 tests verdes) |
+| 7.C.2 smoke e2e flujo completo | ✅ completada (8 tests verdes) |
+
+**FASE 7 COMPLETA. PR-18 listo para sdd-verify.**
+
+---
+
+## PR-18 Batch 4 (FINAL): Smoke E2E + TenantContext fix + PrismaService pool fix — COMPLETADO
+
+### Tareas completadas
+
+| Tarea | Estado | Detalle |
+|-------|--------|---------|
+| 7.A.5 (adapters) | ✅ | PostgresAdminAdapter (9 tests), TenantMigrationRunnerAdapter (8 tests), TenantSeederAdapter (12 tests). Ver detalle en Batch 3b (sesión previa). |
+| 7.A.6 (module wiring) | ✅ | `clientes.module.ts` cableado con los 4 adapters + CrearClienteUseCase. |
+| 7.C.1 (e2e provisioning) | ✅ | 14 tests de integración end-to-end: crear BD, migrar, sembrar, autenticar. |
+| 7.C.2 (smoke e2e) | ✅ | 8 tests smoke: login, ticket SOPORTE, transición de estado, operaciones timeline, cliente inactivo mid-sesión 403. |
+
+### Decisiones clave en PR-18 Batch 4
+
+1. **AsyncLocalStorage mutable-store pattern**: `TenantContext` ahora usa `AsyncLocalStorage<{ data: TenantContextData | null }>` (wrapper mutable). El guard llama `store.data = ctx` en lugar de `enterWith()`. Esto garantiza propagación correcta del contexto en Jest/ts-jest donde múltiples guards async crean distintos async resource IDs.
+2. **TenantScopeMiddleware**: nuevo middleware en `shared/tenancy/tenant-scope.middleware.ts` que llama `tenantContext.initScope(next)` — crea el scope mutable ANTES de que los guards corran. Registrado en `AppModule` para `'*'` rutas.
+3. **PrismaService pool.end() fix**: `PrismaService` ahora almacena referencias a los `pg.Pool` subyacentes (master + todos los tenants) y los cierra explícitamente en `onModuleDestroy()`. Prisma no llama `pool.end()` porque no es dueño del pool — sin este fix, las conexiones idle permanecían abiertas y bloqueaban `DROP DATABASE` en los tests e2e.
+4. **Teardown smoke test**: usa `nestApp.close()` (que ahora gatilla el `pool.end()` correcto) antes del DROP. Sin `pg_terminate_backend` ni `WITH (FORCE)` — el DROP es limpio.
+
+### Estado de tests post PR-18 Batch 4
+
+- Baseline Batch 3: 1393 → Batch 4: **1446** (+53 nuevos: 29 adapters + 14 e2e provisioning + 8 smoke + 2 PrismaService pool.end)
+- **98 suites, todas verdes**.
+
+### Archivos creados/modificados en PR-18 Batch 4
+
+```
+backend/src/
+├── app.module.ts                                           — +NestModule + TenantScopeMiddleware.forRoutes('*')
+├── shared/
+│   ├── infrastructure/
+│   │   └── persistence/
+│   │       ├── prisma.service.ts                          — +masterPool/tenantPools refs + pool.end() en onModuleDestroy
+│   │       └── prisma.service.spec.ts                     — +2 tests: pool.end() master + tenants
+│   └── tenancy/
+│       ├── tenant-context.ts                              — mutable-store pattern (TenantStore wrapper)
+│       └── tenant-scope.middleware.ts                     — NUEVO: initScope(next) para request pipeline
+└── clientes/
+    ├── clientes.module.ts                                 — wired: 3 adapters + CrearClienteUseCase
+    ├── infrastructure/
+    │   ├── postgres-admin.adapter.ts + spec.ts            — 9 tests
+    │   ├── tenant-migration-runner.adapter.ts + spec.ts   — 8 tests
+    │   └── tenant-seeder.adapter.ts + spec.ts             — 12 tests
+    └── interface/
+        ├── crear-cliente.e2e.spec.ts                      — 14 e2e provisioning tests
+        └── smoke.e2e.spec.ts                              — 8 smoke e2e tests
+```
+
+### Estado Fase 7 post Batch 4
+
+| Tarea | Estado |
+|-------|--------|
+| 7.A.1–7.A.6 | ✅ completadas |
+| 7.B.1–7.B.2 | ✅ completadas |
+| 7.C.1 e2e provisioning | ✅ completada |
+| 7.C.2 smoke e2e flujo completo | ✅ completada |
+
+**FASE 7 COMPLETA. PR-18 listo para sdd-verify.**
+
+---
+
+## PR-18 Batch 3: Fan-out migration runner (7.B.1 + 7.B.2) — COMPLETADO
+
+### Tareas completadas
+
+| Tarea | Estado | Detalle |
+|-------|--------|---------|
+| 7.B.1 | ✅ | 19 unit tests TDD RED→GREEN. `scripts/migrate-tenants.runner.spec.ts`. `ExecFn` inyectable (sin mock de child_process). Cubre: filtro `activo=TRUE AND deleted_at IS NULL`; fan-out no-abortante (try/catch por tenant); reporte success/error por tenant; **contrato de cierre de pool** (4 tests, call-order: `pool.end` antes de resolver). |
+| 7.B.2 | ✅ | `MigrateTenantsRunner` (clase testeable) + `scripts/migrate-tenants.ts` (thin entrypoint, exit 1 si algún tenant falla). |
+
+### Decisiones clave en PR-18 Batch 3
+
+1. **`ExecFn` inyectable**: el runner recibe la función que ejecuta `migrate deploy` como dependencia → testeable sin mockear `child_process`.
+2. **Comando**: `prisma migrate deploy --schema=prisma_tenant/schema.prisma --config prisma.tenant.config.ts` con env `DATABASE_URL_TENANT` (la variable que lee `prisma.tenant.config.ts`, NO `DATABASE_URL`).
+3. **URL por tenant**: deriva reemplazando el `db_name` en la master URL (mismo patrón que `PrismaService.buildTenantUrl`).
+4. **Cierre de pool en `finally`**: cumple el contrato definido en Batch 2 (los puertos exigen cerrar conexiones antes de retornar para no bloquear el `DROP DATABASE` del rollback).
+
+### Estado de tests post PR-18 Batch 3
+
+- Baseline Batch 2: 1374 → Batch 3: **1393** (+19 nuevos, 1 suite nueva, 0 regressions). Verificado por el orquestador corriendo las 3 suites de Fase 7 juntas (65 tests verdes) + suite completa.
+
+### Archivos creados en PR-18 Batch 3
+
+- `backend/scripts/migrate-tenants.runner.ts` — clase `MigrateTenantsRunner`
+- `backend/scripts/migrate-tenants.runner.spec.ts` — 19 tests
+- `backend/scripts/migrate-tenants.ts` — thin entrypoint
+
+### Deuda detectada en Batch 3
+
+- **`scripts/` fuera del scope de ESLint** (`eslint.config.js` los ignora) → el fan-out runner NO tiene cobertura de lint. Compila vía jest/tsc, pero no se valida estilo.
+- El entrypoint usa `./node_modules/.bin/prisma` (ruta relativa) → debe ejecutarse desde `backend/`.
+- **Pendiente para 7.C**: el `ITenantMigrationRunner` / `ITenantSeeder` / `IPostgresAdminPort` concretos (adapters NestJS injectables que usa `CrearClienteUseCase`) NO existen aún — solo los puertos (mockeados en tests). El e2e de provisioning real (7.C) los necesita.
+
+### Estado Fase 7 post Batch 3
+
+| Tarea | Estado |
+|-------|--------|
+| 7.A.1–7.A.4 | ✅ completadas |
+| 7.B.1–7.B.2 | ✅ completadas |
+| 7.C.1 e2e provisioning real | pendiente |
+| 7.C.2 smoke e2e flujo completo | pendiente |
+
+---
+
+## PR-18 Batch 2: CrearClienteUseCase provisioning completo (7.A.3 + 7.A.4) — COMPLETADO
+
+### Tareas completadas
+
+| Tarea | Estado | Notas |
+|-------|--------|-------|
+| 7.A.3 | ✅ | 32 tests TDD (31 originales + 1 ajuste). `crear-cliente.use-case.spec.ts`. Cubre orden estricto, rollback en 5 puntos de fallo, seed idempotente, admin user con clienteId, password hasheado, **rol ADMIN asignado**. |
+| 7.A.4 | ✅ | `crear-cliente.use-case.ts`. Orquesta createDatabase → runMigrations → seed → save:cliente → save:admin(+rol ADMIN). Rollback = try/catch post-createDatabase, dropDatabase en cualquier fallo. IRoleRepository inyectado; rol resuelto por código 'ADMIN'. |
+
+### Ajuste post-decisión: admin inicial recibe rol ADMIN automáticamente
+- **Problema**: admin inicial se creaba con `roles:[]` — tenant inutilizable (admin no puede operar).
+- **RED**: 1 failed (`Expected length: 1 / Received length: 0` en `savedAdmin.roles`), 31 passed.
+- **GREEN**: 32/32 tras ajuste.
+- **Spec alineada**: `specs/clientes-tenancy/spec.md` actualizada — Requirement "Provisioning": admin inicial DEBE recibir rol ADMIN automáticamente durante el provisioning.
+
+### Estado de tests post PR-18 Batch 2
+- **1374 tests, 92 suites, todos verdes**
+- Baseline PR-18 Batch 1: 1342 → Batch 2: **1374** (+32 nuevos, 1 suite nueva)
+- `eslint` todos archivos tocados --fix: exit:0
+- TDD: RED1 (TS2307 module not found) → GREEN 31/31; RED2 (roles:[]) → GREEN 32/32
+
+### Archivos creados/modificados en PR-18 Batch 2
+
+```
+backend/src/clientes/
+├── application/
+│   ├── ports/
+│   │   ├── i-postgres-admin.port.ts           — NUEVO: IPostgresAdminPort
+│   │   ├── i-tenant-migration-runner.ts        — NUEVO: ITenantMigrationRunner + token
+│   │   └── i-tenant-seeder.ts                 — NUEVO: ITenantSeeder + token
+│   └── use-cases/
+│       ├── crear-cliente.use-case.ts           — NUEVO: provisioning completo + IRoleRepository
+│       └── crear-cliente.use-case.spec.ts      — NUEVO: 32 tests
+
+openspec/changes/modelo-datos-tres-flujos/specs/clientes-tenancy/spec.md
+                                                — MODIFICADO: Requirement Provisioning alineado
+```
+
+### Decisiones clave en PR-18 Batch 2
+
+1. **IPostgresAdminPort en application/ports/**: use case depende del puerto, no de PostgresAdminService directamente (shared/infrastructure/). Regla: application → ports.
+2. **Rollback solo con dropDatabase**: try/catch post-createDatabase. Si createDatabase falla → no rollback. Cualquier paso posterior falla → dropDatabase(dbName) + re-throw.
+3. **CONTRATO crítico de puertos**: ITenantMigrationRunner e ITenantSeeder DEBEN cerrar conexiones antes de retornar. Sin esto, DROP DATABASE falla ("database is being accessed by other users").
+4. **IRoleRepository inyectado**: rol ADMIN resuelto por `findByCodigo('ADMIN')` (no UUID hardcodeado). Si no existe → throw → rollback automático via try/catch.
+5. **addRol() antes de save**: `adminUser.addRol(adminRole)` ANTES de `usuarioRepo.save()`. Sin pasar por AsignarRolUseCase (es una orquestación interna del provisioning).
+6. **Hash antes de crear entidad**: hashProvider.hash() ANTES de UsuarioEntity.create(). La entidad nunca contiene plaintext.
+7. **Seed idempotente**: el use case llama seeder.seed() incondicionalmente. Idempotencia = responsabilidad del puerto (ON CONFLICT DO NOTHING).
+
+### Estado Fase 7 post Batch 2
+
+| Tarea | Estado |
+|-------|--------|
+| 7.A.1 TEST PostgresAdminService | ✅ |
+| 7.A.2 IMPL PostgresAdminService | ✅ |
+| 7.A.3 TEST CrearClienteUseCase | ✅ |
+| 7.A.4 IMPL CrearClienteUseCase | ✅ |
+| 7.B.1 TEST fan-out migration runner | pendiente |
+| 7.B.2 IMPL fan-out migration script | pendiente |
+| 7.C.1 TEST e2e provisioning | pendiente |
+| 7.C.2 TEST smoke test e2e | pendiente |
+
+---
+
+## PR-18 Batch 1: PostgresAdminService (7.A.1 + 7.A.2) — COMPLETADO
+
+> Tests baseline Fase 6: 1328 → 1342 (+14 nuevos). Ver engram apply-progress Batch 1 para detalles.
 
 ---
 

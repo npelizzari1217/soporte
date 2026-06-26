@@ -121,7 +121,8 @@ solaparse. Validado en `CicloVigenteUseCase` antes de la inserción.
 **And** MUST sembrar los catálogos operativos: `estados`, `prioridades`, `tipos_ticket`, `tipos_componente`, `tipo_operacion`  
 **And** MUST crear el registro en `master.clientes` con `activo = TRUE`  
 **And** MUST crear el usuario administrador inicial en `master.usuarios` con `cliente_id` apuntando al nuevo cliente  
-**And** cada paso MUST ejecutarse en orden estricto: crear DB → migraciones → seed → alta en master
+**And** MUST asignar automáticamente el rol `ADMIN` al usuario administrador inicial (sin este rol el tenant queda inutilizable — el admin no puede operar)  
+**And** cada paso MUST ejecutarse en orden estricto: crear DB → migraciones → seed → alta en master.clientes → crear admin con rol ADMIN en master.usuarios
 
 #### Scenario: Provisioning fallido dispara rollback compensatorio
 **Given** el provisioning de un nuevo cliente falla en cualquier paso intermedio  
