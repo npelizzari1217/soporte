@@ -1,29 +1,27 @@
 /**
- * TicketsList — PRESENTATIONAL component.
+ * ComprasList — PRESENTATIONAL component.
  *
- * Receives `tickets` as a prop; renders a clean table.
+ * Receives `compras` as a prop; renders a clean table.
  * No API calls, no mutations, no routing — pure UI.
  *
- * Columns: Número · Título · Tipo · Prioridad (badge) · Estado (badge) · Fecha
+ * Columns: Número · Título · Estado (badge) · Aprobación · Fecha
+ *
+ * Aprobación logic:
+ *   - aprobadoEn → "Aprobada {fecha}"
+ *   - motivoRechazo → "Rechazada" + motivo as muted text
+ *   - neither → "—"
  *
  * Design: Container/Presentational per design.md §1.
  * Constitution: rounded-lg for the container card, rounded-md for badges.
  * Colors: design tokens from globals.css only (no hardcoded values).
- * Spec: [SPEC:frontend-tickets/lista-tickets]
+ * Spec: [SPEC:frontend-compras/lista-compras]
  */
 
-import { cn } from "@/lib/utils";
-import type { Ticket } from "../types";
-import {
-  labelFor,
-  ESTADOS,
-  PRIORIDADES,
-  TIPOS,
-  PRIORIDAD_BADGE,
-} from "@/shared/lib/catalogos";
+import type { Compra } from "../types";
+import { labelFor, ESTADOS } from "@/shared/lib/catalogos";
 
-interface TicketsListProps {
-  tickets: Ticket[];
+interface ComprasListProps {
+  compras: Compra[];
 }
 
 /** Format ISO date string in Argentinean locale (dd/mm/yyyy). */
@@ -35,7 +33,29 @@ function formatDate(iso: string): string {
   }).format(new Date(iso));
 }
 
-export function TicketsList({ tickets }: TicketsListProps) {
+/** Render the aprobación column content. */
+function AprobacionCell({ compra }: { compra: Compra }) {
+  if (compra.aprobadoEn) {
+    return (
+      <span className="text-foreground">
+        Aprobada {formatDate(compra.aprobadoEn)}
+      </span>
+    );
+  }
+  if (compra.motivoRechazo) {
+    return (
+      <span className="text-foreground">
+        Rechazada{" "}
+        <span className="text-muted-foreground text-xs" title={compra.motivoRechazo}>
+          ({compra.motivoRechazo})
+        </span>
+      </span>
+    );
+  }
+  return <span className="text-muted-foreground">—</span>;
+}
+
+export function ComprasList({ compras }: ComprasListProps) {
   return (
     <div className="rounded-lg border border-border bg-card overflow-hidden">
       <table className="w-full text-sm">
@@ -43,45 +63,33 @@ export function TicketsList({ tickets }: TicketsListProps) {
           <tr className="border-b border-border text-left text-muted-foreground">
             <th className="px-4 py-3 font-medium">Número</th>
             <th className="px-4 py-3 font-medium">Título</th>
-            <th className="px-4 py-3 font-medium">Tipo</th>
-            <th className="px-4 py-3 font-medium">Prioridad</th>
             <th className="px-4 py-3 font-medium">Estado</th>
+            <th className="px-4 py-3 font-medium">Aprobación</th>
             <th className="px-4 py-3 font-medium">Fecha</th>
           </tr>
         </thead>
         <tbody>
-          {tickets.map((ticket) => (
+          {compras.map((compra) => (
             <tr
-              key={ticket.id}
+              key={compra.id}
               className="border-b border-border last:border-0 transition-colors hover:bg-muted/50"
             >
               <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
-                {ticket.numero}
+                {compra.numero}
               </td>
               <td className="px-4 py-3 font-medium text-foreground">
-                {ticket.titulo}
-              </td>
-              <td className="px-4 py-3 text-muted-foreground">
-                {labelFor(TIPOS, ticket.tipoId)}
-              </td>
-              <td className="px-4 py-3">
-                <span
-                  className={cn(
-                    "inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium",
-                    PRIORIDAD_BADGE[ticket.prioridadId] ??
-                      "bg-muted text-muted-foreground",
-                  )}
-                >
-                  {labelFor(PRIORIDADES, ticket.prioridadId)}
-                </span>
+                {compra.titulo}
               </td>
               <td className="px-4 py-3">
                 <span className="inline-flex items-center rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
-                  {labelFor(ESTADOS, ticket.estadoId)}
+                  {labelFor(ESTADOS, compra.estadoId)}
                 </span>
               </td>
+              <td className="px-4 py-3 text-sm">
+                <AprobacionCell compra={compra} />
+              </td>
               <td className="px-4 py-3 text-muted-foreground">
-                {formatDate(ticket.createdAt)}
+                {formatDate(compra.createdAt)}
               </td>
             </tr>
           ))}
