@@ -33,15 +33,11 @@ function formatDate(iso: string): string {
   }).format(new Date(iso));
 }
 
-/** Render the aprobación column content. */
+/** Render the aprobación column content.
+ * A rejected compra carries BOTH motivoRechazo AND aprobadoEn (aprobadoEn = who
+ * processed it), so check rejection FIRST — otherwise a rejected purchase would
+ * mislabel as "Aprobada". */
 function AprobacionCell({ compra }: { compra: Compra }) {
-  if (compra.aprobadoEn) {
-    return (
-      <span className="text-foreground">
-        Aprobada {formatDate(compra.aprobadoEn)}
-      </span>
-    );
-  }
   if (compra.motivoRechazo) {
     return (
       <span className="text-foreground">
@@ -49,6 +45,13 @@ function AprobacionCell({ compra }: { compra: Compra }) {
         <span className="text-muted-foreground text-xs" title={compra.motivoRechazo}>
           ({compra.motivoRechazo})
         </span>
+      </span>
+    );
+  }
+  if (compra.aprobadoEn) {
+    return (
+      <span className="text-foreground">
+        Aprobada {formatDate(compra.aprobadoEn)}
       </span>
     );
   }
