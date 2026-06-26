@@ -257,20 +257,20 @@ Dependencies: PR 1 (T02, T12). T13 and T14 run in parallel.
 ---
 
 #### T13 · Auth Route Handlers — TEST→IMPL pair
-- [ ] **RED** `src/app/api/auth/login/route.test.ts` (MSW mocks backend NestJS):
+- [x] **RED** `src/app/api/auth/login/route.test.ts` (MSW mocks backend NestJS):
   - POST valid creds → backend 200 `{accessToken, refreshToken}` → response has `Set-Cookie` for `at` (httpOnly, sameSite=lax, path=/, maxAge=900) AND `rt` (maxAge=604800); body = `{ user: JwtPayload }`
   - POST → backend 401 → propagate 401, no `Set-Cookie` headers
   - POST → backend 403 → propagate 403, no `Set-Cookie` headers
-- [ ] **RED** `src/app/api/auth/refresh/route.test.ts`:
+- [x] **RED** `src/app/api/auth/refresh/route.test.ts`:
   - POST with valid `rt` cookie → backend 200 new tokens → rotates both cookies (new maxAge)
   - POST with revoked/expired `rt` → backend 401 → Set-Cookie `at` maxAge=0 + `rt` maxAge=0 + return 401
-- [ ] **RED** `src/app/api/auth/logout/route.test.ts`:
+- [x] **RED** `src/app/api/auth/logout/route.test.ts`:
   - POST → calls backend with `Authorization: Bearer <at>` AND `{ refreshToken: <rt value> }` in body
   - Response: Set-Cookie `at` maxAge=0, `rt` maxAge=0; return 200
   - POST with expired `at` cookie → still clears cookies (logout works even with expired access)
-- [ ] **RED** `src/app/api/auth/logout-all/route.test.ts`:
+- [x] **RED** `src/app/api/auth/logout-all/route.test.ts`:
   - POST → calls backend with Bearer; response clears both cookies; returns 200
-- [ ] **GREEN** `app/api/auth/login/route.ts`, `refresh/route.ts`, `logout/route.ts`, `logout-all/route.ts`
+- [x] **GREEN** `app/api/auth/login/route.ts`, `refresh/route.ts`, `logout/route.ts`, `logout-all/route.ts`
   All use `cookieAttrs`/`clearCookieAttrs` from `shared/auth/cookies.ts`
 - Spec: [SPEC:frontend-auth/login-exitoso], [SPEC:frontend-auth/creds-invalidas], [SPEC:frontend-auth/usuario-inactivo], [SPEC:frontend-auth/tenant-inactivo], [SPEC:frontend-auth/logout], [SPEC:frontend-auth/logout-all]
 - Parallel: T02+T12 → T13 (parallel to T14)
@@ -278,7 +278,7 @@ Dependencies: PR 1 (T02, T12). T13 and T14 run in parallel.
 ---
 
 #### T14 · BFF Catch-all — TEST→IMPL pair
-- [ ] **RED** `src/app/api/[...path]/route.test.ts` (NextRequest mock + MSW backend):
+- [x] **RED** `src/app/api/[...path]/route.test.ts` (NextRequest mock + MSW backend):
   - GET with `at` cookie → backend receives `Authorization: Bearer <at value>`
   - GET with query `?status=open` → backend receives `?status=open` (query string propagated)
   - POST with JSON body → body forwarded to backend; `content-type: application/json` propagated
@@ -287,7 +287,7 @@ Dependencies: PR 1 (T02, T12). T13 and T14 run in parallel.
   - Backend 401 → propagated as-is to client (no intervention, no refresh attempt)
   - Backend 200 → status + body + content-type copied verbatim
   - Path `/api/auth/login` → NOT handled by catch-all (static route wins — test confirms route.ts is only invoked for non-auth paths)
-- [ ] **GREEN** `app/api/[...path]/route.ts` exporting `GET, POST, PUT, PATCH, DELETE`
+- [x] **GREEN** `app/api/[...path]/route.ts` exporting `GET, POST, PUT, PATCH, DELETE`
   - `path = params.path.join('/')` → target `${BACKEND_URL}/api/${path}${req.nextUrl.search}`
   - CSRF: check `Origin`/`Referer` same-origin for POST/PUT/PATCH/DELETE → 403 if mismatch
   - Read `at` from `cookies()` (next/headers); add `Authorization: Bearer` if present
