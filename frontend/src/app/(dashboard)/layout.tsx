@@ -17,6 +17,7 @@
 import { cookies } from "next/headers";
 import { Providers } from "@/shared/providers/providers";
 import { AppNav } from "@/components/shell/app-nav";
+import { cookieName, COOKIE_AT } from "@/shared/auth/cookies";
 import type { JwtPayload } from "@/shared/api/types";
 
 export default async function DashboardLayout({
@@ -25,7 +26,7 @@ export default async function DashboardLayout({
   children: React.ReactNode;
 }) {
   const cookieStore = await cookies();
-  const at = cookieStore.get("at")?.value;
+  const at = cookieStore.get(cookieName(COOKIE_AT))?.value;
 
   let initialUser: JwtPayload | null = null;
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   cookieAttrs,
   clearCookieAttrs,
+  cookieName,
   COOKIE_AT,
   COOKIE_RT,
   ACCESS_MAX_AGE,
@@ -22,7 +23,7 @@ import {
  * Design: §2.4 — refresh flow, cookie rotation
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  const rt = request.cookies.get(COOKIE_RT)?.value;
+  const rt = request.cookies.get(cookieName(COOKIE_RT))?.value;
 
   const backendRes = await fetch(
     `${process.env.BACKEND_URL}/api/auth/refresh`,

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { COOKIE_AT } from "@/shared/auth/cookies";
+import { cookieName, COOKIE_AT } from "@/shared/auth/cookies";
 
 /**
  * BFF catch-all proxy — app/api/[...path]/route.ts
@@ -68,7 +68,7 @@ async function handler(
   const forwardedHeaders = new Headers();
 
   // Inject Bearer from the httpOnly at cookie — the browser cannot do this
-  const at = request.cookies.get(COOKIE_AT)?.value;
+  const at = request.cookies.get(cookieName(COOKIE_AT))?.value;
   if (at) {
     forwardedHeaders.set("authorization", `Bearer ${at}`);
   }

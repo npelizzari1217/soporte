@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { clearCookieAttrs, COOKIE_AT, COOKIE_RT } from "@/shared/auth/cookies";
+import { clearCookieAttrs, cookieName, COOKIE_AT, COOKIE_RT } from "@/shared/auth/cookies";
 
 /**
  * POST /api/auth/logout-all
@@ -12,7 +12,7 @@ import { clearCookieAttrs, COOKIE_AT, COOKIE_RT } from "@/shared/auth/cookies";
  * Design: §2.2 — logout-all flow
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  const at = request.cookies.get(COOKIE_AT)?.value ?? "";
+  const at = request.cookies.get(cookieName(COOKIE_AT))?.value ?? "";
 
   await fetch(`${process.env.BACKEND_URL}/api/auth/logout-all`, {
     method: "POST",

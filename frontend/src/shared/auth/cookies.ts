@@ -25,7 +25,7 @@ const isProduction = process.env.NODE_ENV === "production";
  * Return the cookie name, prefixed with `__Host-` in production.
  * The `__Host-` prefix requires Secure + Path=/ + no Domain — hardened in prod.
  */
-function cookieName(name: string): string {
+export function cookieName(name: string): string {
   return isProduction ? `__Host-${name}` : name;
 }
 

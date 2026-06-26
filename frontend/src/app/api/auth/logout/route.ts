@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { clearCookieAttrs, COOKIE_AT, COOKIE_RT } from "@/shared/auth/cookies";
+import { clearCookieAttrs, cookieName, COOKIE_AT, COOKIE_RT } from "@/shared/auth/cookies";
 
 /**
  * POST /api/auth/logout
@@ -14,8 +14,8 @@ import { clearCookieAttrs, COOKIE_AT, COOKIE_RT } from "@/shared/auth/cookies";
  * Design: §2.2 — logout flow
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  const at = request.cookies.get(COOKIE_AT)?.value ?? "";
-  const rt = request.cookies.get(COOKIE_RT)?.value ?? "";
+  const at = request.cookies.get(cookieName(COOKIE_AT))?.value ?? "";
+  const rt = request.cookies.get(cookieName(COOKIE_RT))?.value ?? "";
 
   // Call backend to revoke the refresh token.
   // Ignore backend errors — we always clear cookies to prevent stuck sessions.
