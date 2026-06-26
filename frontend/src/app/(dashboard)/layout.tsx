@@ -8,15 +8,15 @@
  *    UI-only hydration (user email, roles, permisos for display and permission gating).
  * 3. Passes `initialUser` to <Providers> so SessionContext is hydrated on first render
  *    with no FOUC (flash of unauthenticated content).
- * 4. Renders the persistent <AppNav> shell + page children.
+ * 4. Renders <AppShell> which provides the sidebar layout (desktop inline + mobile drawer).
  *
  * Design: [design.md §1 DashboardLayout], ADR-4 (middleware tolerante)
- * Spec: [SPEC:frontend-ui-states/authz-ui no FOUC], [SPEC:frontend-design-system/dark-mode]
+ * Spec: [SPEC:frontend-shell/req 2 flex-row layout], [SPEC:frontend-ui-states/authz-ui no FOUC]
  */
 
 import { cookies } from "next/headers";
 import { Providers } from "@/shared/providers/providers";
-import { AppNav } from "@/components/shell/app-nav";
+import { AppShell } from "@/components/shell/app-shell";
 import { cookieName, COOKIE_AT } from "@/shared/auth/cookies";
 import type { JwtPayload } from "@/shared/api/types";
 
@@ -46,10 +46,7 @@ export default async function DashboardLayout({
 
   return (
     <Providers initialUser={initialUser}>
-      <div className="flex min-h-screen flex-col">
-        <AppNav />
-        <main className="flex-1 px-6 py-6">{children}</main>
-      </div>
+      <AppShell>{children}</AppShell>
     </Providers>
   );
 }
