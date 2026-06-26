@@ -131,12 +131,12 @@ T04, T05, T06 run in parallel with each other.
 ---
 
 #### T04 · `<Skeleton>` atom — TEST→IMPL pair
-- [ ] **RED** `src/components/ui/skeleton.test.tsx`:
+- [x] **RED** `src/components/ui/skeleton.test.tsx`:
   - renders without props (no required props)
   - has `animate-pulse` class
   - `className` prop applied to root element (e.g. `h-4 w-24` visible in DOM)
   - renders no text content
-- [ ] **GREEN** `src/components/ui/skeleton.tsx`:
+- [x] **GREEN** `src/components/ui/skeleton.tsx`:
   `<div className={cn('animate-pulse rounded-md bg-muted', className)} {...props} />`
 - Spec: [SPEC:frontend-design-system/atomos Skeleton], [SPEC:frontend-ui-states/skeleton isLoading]
 - Parallel: T02+T03 → T04 (parallel to T05, T06)
@@ -144,14 +144,14 @@ T04, T05, T06 run in parallel with each other.
 ---
 
 #### T05 · `<EmptyState>` atom — TEST→IMPL pair
-- [ ] **RED** `src/components/ui/empty-state.test.tsx`:
+- [x] **RED** `src/components/ui/empty-state.test.tsx`:
   - `title` renders (required)
   - `description` renders when provided; absent when not provided
   - `icon` (ReactNode) renders when provided
   - `action` (ReactNode) renders when provided, below description
   - layout is vertical centered (flexbox column + items-center)
   - no `className` or layout prop required to look correct
-- [ ] **GREEN** `src/components/ui/empty-state.tsx`:
+- [x] **GREEN** `src/components/ui/empty-state.tsx`:
   ```tsx
   // <div className="flex flex-col items-center gap-3 py-12 text-center">
   //   {icon && <div className="text-muted-foreground">{icon}</div>}
@@ -167,12 +167,12 @@ T04, T05, T06 run in parallel with each other.
 ---
 
 #### T06 · `<Button>` loading variant — TEST→IMPL pair
-- [ ] **RED** `src/components/ui/button.test.tsx`:
+- [x] **RED** `src/components/ui/button.test.tsx`:
   - `isLoading={false}`: renders `children`, no spinner, `disabled` absent
   - `isLoading={true}`: `disabled={true}`, spinner element present, children still in DOM (not removed)
   - `isLoading={true}` + explicit `disabled={false}` → still disabled (isLoading wins)
   - root element has `rounded-md` class in default, hover, disabled, and loading states
-- [ ] **GREEN** Extend Shadcn `src/components/ui/button.tsx`:
+- [x] **GREEN** Extend Shadcn `src/components/ui/button.tsx`:
   - Add `isLoading?: boolean` to ButtonProps
   - When `isLoading=true`: force `disabled={true}`, prepend `<Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />`
   - Ensure `rounded-md` is in the base `cva` variants (Shadcn default uses `--radius` — override to always be `rounded-md`)
