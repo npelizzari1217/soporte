@@ -187,20 +187,20 @@ Dependencies: PR 1 (T02, T07). T08→T09 sequential. T10 parallel to T08. T11 af
 ---
 
 #### T08 · `normalize.ts` — TEST→IMPL pair
-- [ ] **RED** `src/shared/api/normalize.test.ts`:
+- [x] **RED** `src/shared/api/normalize.test.ts`:
   - 200 + JSON body → returns parsed body as T (type assertion)
   - 204 No Content → returns `undefined` (no JSON parse attempted)
   - 400 + `{ statusCode: 400, message: "bad input" }` → throws `ApiError(400, "bad input", ["bad input"])`
   - 422 + `{ statusCode: 422, message: ["campo req", "email inválido"] }` → throws `ApiError(422, "campo req", ["campo req", "email inválido"])`
   - catch block for `TypeError` (network) → throws `ApiError(0, "Error de red")`
-- [ ] **GREEN** `src/shared/api/normalize.ts` per design §5 contract
+- [x] **GREEN** `src/shared/api/normalize.ts` per design §5 contract
 - Spec: [SPEC:frontend-api-client/normalizacion-respuestas], [SPEC:frontend-api-client/normalizacion-errores]
 - Sequential: T07 → T08
 
 ---
 
 #### T09 · `apiFetch` + single-flight refresh — TEST→IMPL pair — **RISK #1**
-- [ ] **RED** `src/shared/api/client.test.ts` (Vitest + MSW):
+- [x] **RED** `src/shared/api/client.test.ts` (Vitest + MSW):
   - Setup MSW handlers: GET /api/tickets → 200 `[{id:'1'}]`; POST /api/auth/refresh → 200
   - `apiFetch('tickets')` → resolves `[{id:'1'}]`
   - MSW: GET /api/tickets → 401, then (after refresh) → 200; assert exactly **1** POST to /api/auth/refresh; assert final result is the success response
@@ -208,7 +208,7 @@ Dependencies: PR 1 (T02, T07). T08→T09 sequential. T10 parallel to T08. T11 af
   - Direct call to `/api/auth/refresh` with 401 → throws `ApiError(401)` immediately (no loop); assert 0 additional refresh calls
   - **Single-flight**: fire 3 concurrent `apiFetch` calls each getting 401; MSW request counter asserts exactly **1** POST to /api/auth/refresh; all 3 resolve successfully
   - Request during in-flight refresh (Promise not yet resolved): joins the existing Promise; does NOT create a second fetch to /api/auth/refresh
-- [ ] **GREEN** `src/shared/api/client.ts`:
+- [x] **GREEN** `src/shared/api/client.ts`:
   - Module-level `let refreshPromise: Promise<void> | null = null`
   - `refreshSession()`: `refreshPromise ??= fetch('/api/auth/refresh', ...).then(...).finally(() => { refreshPromise = null })`
   - `apiFetch<T>(path, init?)`: `rawFetch` → if 401 and path !== 'auth/refresh' → `await refreshSession()` → retry once → if 2nd 401 throw `ApiError(401)`
@@ -218,12 +218,12 @@ Dependencies: PR 1 (T02, T07). T08→T09 sequential. T10 parallel to T08. T11 af
 ---
 
 #### T10 · `serverFetch` — TEST→IMPL pair
-- [ ] **RED** `src/shared/api/server.test.ts` (Vitest, fetch mocked):
+- [x] **RED** `src/shared/api/server.test.ts` (Vitest, fetch mocked):
   - `serverFetch('tickets', cookieHeader)` calls `${BACKEND_URL}/api/tickets` with `Authorization: Bearer <at>` (extracted from Cookie header string)
   - 200 + JSON → returns parsed DTO
   - 204 → returns undefined
   - 401 → throws `ApiError(401)`
-- [ ] **GREEN** `src/shared/api/server.ts`:
+- [x] **GREEN** `src/shared/api/server.ts`:
   - Accepts `path: string` + `cookieHeader: string`
   - Extracts `at` value from the Cookie header string
   - Calls `fetch(${BACKEND_URL}/api/${path}, { cache: 'no-store', headers: { Authorization: 'Bearer <at>' } })`
@@ -237,14 +237,14 @@ Dependencies: PR 1 (T02, T07). T08→T09 sequential. T10 parallel to T08. T11 af
 
 #### T11 · `QueryProvider` + `query-keys.ts`
 - Type: configuration/factory (no TEST/IMPL pair — validated indirectly via hook tests T20)
-- [ ] `src/shared/api/query-keys.ts`:
+- [x] `src/shared/api/query-keys.ts`:
   factory object `{ tickets: { all: ['tickets'], detail: (id: string) => ['tickets', id] }, compras: {...}, reparaciones: {...}, equipos: {...} }`
-- [ ] `src/shared/providers/query-provider.tsx`:
+- [x] `src/shared/providers/query-provider.tsx`:
   QueryClientProvider with QueryClient defaults:
   `retry: (n, e) => e instanceof ApiError && e.statusCode >= 500 && n < 2` (NO retry on 401/4xx)
   `refetchOnWindowFocus: false`
   `staleTime: 30_000`
-- [ ] `src/shared/providers/providers.tsx`:
+- [x] `src/shared/providers/providers.tsx`:
   Composes `<QueryProvider>`. Placeholder for `<SessionProvider>` (wired in T17).
 - Spec: infrastructure for [SPEC:frontend-api-client/normalizacion-respuestas] TanStack integration
 - Sequential: T09 → T11

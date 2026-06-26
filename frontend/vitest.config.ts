@@ -8,6 +8,9 @@ export default defineConfig({
     environment: "jsdom",
     setupFiles: ["./vitest.setup.ts"],
     globals: true,
+    environmentOptions: {
+      jsdom: { url: "http://localhost/" },
+    },
   },
   resolve: {
     alias: {
