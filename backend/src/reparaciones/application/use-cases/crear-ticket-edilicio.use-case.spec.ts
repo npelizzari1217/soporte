@@ -116,6 +116,7 @@ describe('CrearTicketEdilicioUseCase', () => {
   const mockTicketEdiliciaRepo = {
     findByTicketId: jest.fn(),
     findById: jest.fn(),
+    findAll: jest.fn(),
     findByUbicacionId: jest.fn(),
     save: jest.fn<Promise<void>, [TicketEdiliciaEntity]>(),
     delete: jest.fn(),

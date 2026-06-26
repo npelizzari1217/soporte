@@ -24,6 +24,12 @@ export interface ITicketCompraRepository {
   findById(id: string): Promise<TicketCompraEntity | null>;
 
   /**
+   * Retorna todos los ticket_compra del tenant activo, ordenados por createdAt desc.
+   * Excluye registros soft-deleted.
+   */
+  findAll(): Promise<TicketCompraEntity[]>;
+
+  /**
    * Persiste el ticket_compra (upsert: crea si no existe, actualiza si existe).
    */
   save(ticketCompra: TicketCompraEntity): Promise<void>;

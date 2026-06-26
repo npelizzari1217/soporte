@@ -9,6 +9,7 @@
  * - delete() es soft delete: setea deleted_at = now().
  * - findByUbicacionId() excluye soft-deleted (deleted_at IS NULL).
  *   Usado por EliminarUbicacionUseCase para detectar tickets afectados.
+ * - findAll() retorna todos los no eliminados, más recientes primero.
  *
  * Fitness rule: ningún import de @prisma/client ni .prisma/ fuera de infrastructure/.
  *
@@ -37,6 +38,14 @@ export class PrismaTicketEdiliciaRepository implements ITicketEdiliciaRepository
   async findById(id: string): Promise<TicketEdiliciaEntity | null> {
     const row = await this.client.ticketEdilicia.findUnique({ where: { id } });
     return row ? TicketEdiliciaMapper.toDomain(row) : null;
+  }
+
+  async findAll(): Promise<TicketEdiliciaEntity[]> {
+    const rows = await this.client.ticketEdilicia.findMany({
+      where: { deletedAt: null },
+      orderBy: { createdAt: 'desc' },
+    });
+    return rows.map(TicketEdiliciaMapper.toDomain);
   }
 
   async findByUbicacionId(ubicacionId: string): Promise<TicketEdiliciaEntity[]> {

@@ -105,6 +105,7 @@ function makeCreateDto(): CreateTicketCompraHttpDto {
 
 function makeUseCaseMocks() {
   return {
+    listarComprasUseCase: { execute: jest.fn() },
     crearTicketCompraUseCase: { execute: jest.fn() },
     enviarAAprobacionUseCase: { execute: jest.fn() },
     aprobarCompraUseCase: { execute: jest.fn() },
@@ -123,11 +124,45 @@ describe('ComprasController', () => {
     mocks = makeUseCaseMocks();
     user = makeUser();
     controller = new ComprasController(
+      mocks.listarComprasUseCase as any,
       mocks.crearTicketCompraUseCase as any,
       mocks.enviarAAprobacionUseCase as any,
       mocks.aprobarCompraUseCase as any,
       mocks.rechazarCompraUseCase as any,
     );
+  });
+
+  // ─── GET /compras ───────────────────────────────────────────────────────────
+
+  describe('GET /compras (listarCompras)', () => {
+    it('retorna 200 con lista vacía cuando no hay compras', async () => {
+      mocks.listarComprasUseCase.execute.mockResolvedValue(Result.ok([]));
+
+      const result = await controller.listarCompras();
+
+      expect(result).toEqual([]);
+      expect(mocks.listarComprasUseCase.execute).toHaveBeenCalledTimes(1);
+    });
+
+    it('retorna lista de TicketCompraConTicketResponseDto mapeados con toResponseWithSatelite', async () => {
+      const ticket = makeTicket();
+      const ticketCompra = makeTicketCompra(ticket.id);
+      mocks.listarComprasUseCase.execute.mockResolvedValue(Result.ok([{ ticket, ticketCompra }]));
+
+      const result = await controller.listarCompras();
+
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe('tc-001');
+      expect(result[0].ticketId).toBe(ticket.id);
+      expect(result[0].numero).toBe('COM-2026-00001');
+    });
+
+    it('no requiere permiso adicional (solo autenticación)', () => {
+      // No PERMISSIONS_KEY metadata on the method — only class-level guards apply
+      const permsMeta =
+        Reflect.getMetadata(PERMISSIONS_KEY, ComprasController.prototype.listarCompras) ?? [];
+      expect(permsMeta).toHaveLength(0);
+    });
   });
 
   // ─── POST /compras ──────────────────────────────────────────────────────────

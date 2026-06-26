@@ -82,6 +82,7 @@ import { PrismaTicketEdiliciaRepository } from './infrastructure/persistence/pri
 import { PrismaSubtareaEdiliciaRepository } from './infrastructure/persistence/prisma/prisma-subtarea-edilicia.repository';
 
 // ─── Use cases ────────────────────────────────────────────────────────────────
+import { ListarReparacionesUseCase } from './application/use-cases/listar-reparaciones.use-case';
 import { CrearUbicacionUseCase } from './application/use-cases/crear-ubicacion.use-case';
 import { EliminarUbicacionUseCase } from './application/use-cases/eliminar-ubicacion.use-case';
 import { CrearTicketEdilicioUseCase } from './application/use-cases/crear-ticket-edilicio.use-case';
@@ -94,6 +95,7 @@ import { PermissionsGuard } from '../auth/infrastructure/guards/permissions.guar
 import { TenantGuard } from '../auth/infrastructure/guards/tenant.guard';
 
 // ─── Controllers ──────────────────────────────────────────────────────────────
+import { ReparacionesController } from './interface/controllers/reparaciones.controller';
 import { UbicacionesController } from './interface/controllers/ubicaciones.controller';
 import { TicketsEdilicioController } from './interface/controllers/tickets-edilicio.controller';
 import { SubtareasController } from './interface/controllers/subtareas.controller';
@@ -107,7 +109,12 @@ import { SubtareasController } from './interface/controllers/subtareas.controlle
     // TicketsModule exporta: repos tickets-core + NumeradorTicket + TICKET_STATE_MACHINE_FACTORY
     TicketsModule,
   ],
-  controllers: [UbicacionesController, TicketsEdilicioController, SubtareasController],
+  controllers: [
+    ReparacionesController,
+    UbicacionesController,
+    TicketsEdilicioController,
+    SubtareasController,
+  ],
   providers: [
     // ─── Repos reparaciones (tenant) ──────────────────────────────────────────
     // Usan TenantContext (@Global desde SharedModule) para obtener el PrismaClient del tenant.
@@ -246,6 +253,16 @@ import { SubtareasController } from './interface/controllers/subtareas.controlle
         TIPO_OPERACION_REPOSITORY,
         TENANT_TRANSACTION_RUNNER,
       ],
+    },
+
+    {
+      provide: ListarReparacionesUseCase,
+      useFactory: (
+        ediliciaRepo: ITicketEdiliciaRepository,
+        ticketRepo: ITicketRepository,
+        ubicacionRepo: IUbicacionRepository,
+      ) => new ListarReparacionesUseCase(ediliciaRepo, ticketRepo, ubicacionRepo),
+      inject: [TICKET_EDILICIA_REPOSITORY, TICKET_REPOSITORY, UBICACION_REPOSITORY],
     },
 
     // ─── Guards ──────────────────────────────────────────────────────────────

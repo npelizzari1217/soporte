@@ -85,6 +85,7 @@ import { PrismaItemCompraRepository } from './infrastructure/persistence/prisma/
 import { PrismaPresupuestoRepository } from './infrastructure/persistence/prisma/prisma-presupuesto.repository';
 
 // ─── Use cases ────────────────────────────────────────────────────────────────
+import { ListarComprasUseCase } from './application/use-cases/listar-compras.use-case';
 import { CrearTicketCompraUseCase } from './application/use-cases/crear-ticket-compra.use-case';
 import { EnviarAAprobacionUseCase } from './application/use-cases/enviar-a-aprobacion.use-case';
 import { AprobarCompraUseCase } from './application/use-cases/aprobar-compra.use-case';
@@ -304,6 +305,13 @@ import { PresupuestosController } from './interface/controllers/presupuestos.con
         presupuestoRepo: IPresupuestoRepository,
       ) => new AgregarPresupuestoUseCase(ticketCompraRepo, presupuestoRepo),
       inject: [TICKET_COMPRA_REPOSITORY, PRESUPUESTO_REPOSITORY],
+    },
+
+    {
+      provide: ListarComprasUseCase,
+      useFactory: (ticketCompraRepo: ITicketCompraRepository, ticketRepo: ITicketRepository) =>
+        new ListarComprasUseCase(ticketCompraRepo, ticketRepo),
+      inject: [TICKET_COMPRA_REPOSITORY, TICKET_REPOSITORY],
     },
 
     // ─── Guards ──────────────────────────────────────────────────────────────

@@ -63,6 +63,7 @@ describe('EliminarUbicacionUseCase', () => {
   const mockTicketEdiliciaRepo = {
     findByTicketId: jest.fn(),
     findById: jest.fn(),
+    findAll: jest.fn(),
     findByUbicacionId: jest.fn(),
     save: jest.fn(),
     delete: jest.fn(),

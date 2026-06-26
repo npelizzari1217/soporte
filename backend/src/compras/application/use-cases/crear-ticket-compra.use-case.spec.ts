@@ -100,6 +100,7 @@ describe('CrearTicketCompraUseCase', () => {
   const mockTicketCompraRepo = {
     findByTicketId: jest.fn(),
     findById: jest.fn(),
+    findAll: jest.fn(),
     save: jest.fn<Promise<void>, [TicketCompraEntity]>(),
     delete: jest.fn(),
   } satisfies jest.Mocked<ITicketCompraRepository>;

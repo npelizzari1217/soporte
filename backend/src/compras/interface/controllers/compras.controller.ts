@@ -2,6 +2,7 @@
  * ComprasController — endpoints REST para el módulo de compras.
  *
  * Rutas:
+ *   GET    /compras                      → ListarComprasUseCase    (autenticado)
  *   POST   /compras                      → CrearTicketCompraUseCase  [ticket:crear]
  *   POST   /compras/:id/enviar-aprobacion → EnviarAAprobacionUseCase (autenticado)
  *   POST   /compras/:id/aprobar           → AprobarCompraUseCase      [compra:aprobar]
@@ -20,6 +21,7 @@
 import {
   Body,
   Controller,
+  Get,
   HttpCode,
   HttpStatus,
   InternalServerErrorException,
@@ -48,6 +50,7 @@ import {
   TransicionInvalidaError,
 } from '../../../tickets/domain/errors/tickets.errors';
 
+import { ListarComprasUseCase } from '../../application/use-cases/listar-compras.use-case';
 import { CrearTicketCompraUseCase } from '../../application/use-cases/crear-ticket-compra.use-case';
 import { EnviarAAprobacionUseCase } from '../../application/use-cases/enviar-a-aprobacion.use-case';
 import { AprobarCompraUseCase } from '../../application/use-cases/aprobar-compra.use-case';
@@ -89,7 +92,7 @@ function toResponseFromTicket(ticket: TicketEntity): TicketCompraConTicketRespon
 }
 
 /**
- * Mapper para endpoints que retornan ticket + ticketCompra (aprobar, rechazar).
+ * Mapper para endpoints que retornan ticket + ticketCompra (listar, aprobar, rechazar).
  * Usa el id real del ticket_compra y mapea los campos de aprobación del satélite.
  */
 function toResponseWithSatelite(
@@ -116,11 +119,28 @@ function toResponseWithSatelite(
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard, TenantGuard)
 export class ComprasController {
   constructor(
+    private readonly listarComprasUseCase: ListarComprasUseCase,
     private readonly crearTicketCompraUseCase: CrearTicketCompraUseCase,
     private readonly enviarAAprobacionUseCase: EnviarAAprobacionUseCase,
     private readonly aprobarCompraUseCase: AprobarCompraUseCase,
     private readonly rechazarCompraUseCase: RechazarCompraUseCase,
   ) {}
+
+  /**
+   * GET /compras
+   * Retorna todos los tickets de compra del tenant activo, ordenados por createdAt desc.
+   * Excluye tickets soft-deleted. Solo requiere autenticación (sin permiso extra).
+   *
+   * @returns 200 OK + TicketCompraConTicketResponseDto[]
+   */
+  @Get()
+  @HttpCode(HttpStatus.OK)
+  async listarCompras(): Promise<TicketCompraConTicketResponseDto[]> {
+    const result = await this.listarComprasUseCase.execute();
+    return result
+      .getValue()
+      .map(({ ticket, ticketCompra }) => toResponseWithSatelite(ticket, ticketCompra));
+  }
 
   /**
    * POST /compras

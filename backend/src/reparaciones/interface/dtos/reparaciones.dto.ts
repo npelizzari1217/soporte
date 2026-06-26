@@ -88,3 +88,23 @@ export interface SubtareaEdiliciaResponseDto {
   createdAt: string;
   updatedAt: string;
 }
+
+/** Shape de respuesta para un ítem del listado de reparaciones edilicias. */
+export interface ReparacionListItemResponseDto {
+  /** UUID del ticket_edilicia (satélite). */
+  id: string;
+  /** UUID del ticket base. */
+  ticketId: string;
+  /** Número legible del ticket base (ej. EDI-2026-00001). */
+  numero: string;
+  titulo: string;
+  estadoId: string;
+  /** UUID de la ubicación física asociada. */
+  ubicacionId: string;
+  /** Nombre de la ubicación. Null si la ubicacion no se encuentra. */
+  ubicacionNombre: string | null;
+  /** Porcentaje de avance derivado de las subtareas (0-100). */
+  porcentajeAvance: number;
+  createdAt: string;
+  updatedAt: string;
+}

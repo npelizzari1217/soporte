@@ -24,12 +24,10 @@ export interface ITicketEdiliciaRepository {
   findById(id: string): Promise<TicketEdiliciaEntity | null>;
 
   /**
-   * Persiste el ticket_edilicia (upsert: crea si no existe, actualiza si existe).
-   *
-   * La actualización del porcentaje de avance se realiza en la misma llamada
-   * que la creación/completitud de subtareas (dentro del mismo txRunner.run()).
+   * Retorna todos los satélites ticket_edilicia del tenant activo, ordenados por createdAt desc.
+   * Excluye registros soft-deleted.
    */
-  save(ticketEdilicia: TicketEdiliciaEntity): Promise<void>;
+  findAll(): Promise<TicketEdiliciaEntity[]>;
 
   /**
    * Retorna todos los satélites ticket_edilicia que referencian la ubicación indicada.
@@ -41,6 +39,14 @@ export interface ITicketEdiliciaRepository {
    * @param ubicacionId UUID de la ubicación.
    */
   findByUbicacionId(ubicacionId: string): Promise<TicketEdiliciaEntity[]>;
+
+  /**
+   * Persiste el ticket_edilicia (upsert: crea si no existe, actualiza si existe).
+   *
+   * La actualización del porcentaje de avance se realiza en la misma llamada
+   * que la creación/completitud de subtareas (dentro del mismo txRunner.run()).
+   */
+  save(ticketEdilicia: TicketEdiliciaEntity): Promise<void>;
 
   /**
    * Baja lógica del satélite (soft delete coherente con el ticket base).
