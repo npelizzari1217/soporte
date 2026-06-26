@@ -306,12 +306,12 @@ Dependencies: PR 1 (T02, T07). Parallel to PR 2, PR 3, PR 4. T15→T16 sequentia
 ---
 
 #### T15 · `shared/auth/verify.ts` — TEST→IMPL pair
-- [ ] **RED** `src/shared/auth/verify.test.ts` (uses `test/helpers/jwt.ts`):
+- [x] **RED** `src/shared/auth/verify.test.ts` (uses `test/helpers/jwt.ts`):
   - `mintToken(payload)` → `verifyAccessToken(token)` → returns `JwtPayload` (sub, email, roles, etc.)
   - `mintExpired(payload)` → returns `'expired'`
   - `mintInvalid()` (signed with wrong secret) → returns `'invalid'`
   - malformed string (not a JWT) → returns `'invalid'`
-- [ ] **GREEN** `src/shared/auth/verify.ts`:
+- [x] **GREEN** `src/shared/auth/verify.ts`:
   `jose.jwtVerify(token, new TextEncoder().encode(process.env.JWT_SECRET!), { algorithms: ['HS256'] })`
   catch `JWTExpired` → return `'expired'`; all other errors → return `'invalid'`
   Abstraction note: comment "swap `TextEncoder` secret for `importSPKI`/`createRemoteJWKSet` if backend switches to RS256"
@@ -321,7 +321,7 @@ Dependencies: PR 1 (T02, T07). Parallel to PR 2, PR 3, PR 4. T15→T16 sequentia
 ---
 
 #### T16 · `middleware.ts` — TEST→IMPL pair
-- [ ] **RED** `middleware.test.ts` (mocks `verifyAccessToken`):
+- [x] **RED** `middleware.test.ts` (mocks `verifyAccessToken`):
   - No `at` cookie, no `rt` cookie → `NextResponse.redirect('/login')` with status 307
   - No `at`, has `rt` → `next()` (ADR-4: tolerant — client will refresh)
   - `at` valid → `next()`
@@ -332,7 +332,7 @@ Dependencies: PR 1 (T02, T07). Parallel to PR 2, PR 3, PR 4. T15→T16 sequentia
   - Path `/login`, no session → `next()` (renders login page)
   - Path `/api/auth/login` → not intercepted (matcher excludes `/api`)
   - Path `/_next/static/x.js` → not intercepted (matcher excludes `_next`)
-- [ ] **GREEN** `middleware.ts`:
+- [x] **GREEN** `middleware.ts`:
   - Imports `verifyAccessToken` from `shared/auth/verify`
   - Logic per design §6 (tolerant to expired at)
   - Matcher: `['/((?!_next/static|_next/image|favicon.ico|api|.*\\.\\w+$).*)']`
