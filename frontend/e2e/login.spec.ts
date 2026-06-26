@@ -145,7 +145,9 @@ test.describe("Login flow", () => {
     await page.getByRole("button", { name: /iniciar sesión/i }).click();
     await expect(page).not.toHaveURL(/\/login/, { timeout: 10_000 });
 
-    // Click "Cerrar sesión" in the user menu (UserMenu component in AppNav)
+    // Open the user menu dropdown (trigger = aria-haspopup button), then logout.
+    // "Cerrar sesión" only renders while the dropdown is open.
+    await page.locator('button[aria-haspopup="true"]').click();
     await page.getByRole("button", { name: /cerrar sesión/i }).click();
 
     // Should redirect to /login after logout
@@ -171,6 +173,7 @@ test.describe("Login flow", () => {
     await page.getByRole("button", { name: /iniciar sesión/i }).click();
     await expect(page).not.toHaveURL(/\/login/, { timeout: 10_000 });
 
+    await page.locator('button[aria-haspopup="true"]').click();
     await page.getByRole("button", { name: /cerrar sesión/i }).click();
     await expect(page).toHaveURL(/\/login/, { timeout: 10_000 });
 
