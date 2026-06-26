@@ -57,6 +57,7 @@ describe('AdjuntarArchivoUseCase', () => {
     findById: jest.fn<Promise<TicketEntity | null>, [string]>(),
     findByNumero: jest.fn(),
     findLastSecuencia: jest.fn(),
+    findAll: jest.fn(),
     findByEstado: jest.fn(),
     save: jest.fn(),
     delete: jest.fn(),

@@ -75,6 +75,7 @@ import { FILE_STORAGE, IFileStorage } from '../shared/domain/ports/i-file-storag
 
 // ─── Use cases ────────────────────────────────────────────────────────────────
 import { CrearTicketUseCase } from './application/use-cases/crear-ticket.use-case';
+import { ListarTicketsUseCase } from './application/use-cases/listar-tickets.use-case';
 import { ObtenerTicketUseCase } from './application/use-cases/obtener-ticket.use-case';
 import { TransicionarEstadoUseCase } from './application/use-cases/transicionar-estado.use-case';
 import { AsignarTicketUseCase } from './application/use-cases/asignar-ticket.use-case';
@@ -212,6 +213,13 @@ import { OperacionesController } from './interface/controllers/operaciones.contr
       provide: ObtenerTicketUseCase,
       useFactory: (ticketRepo: ITicketRepository): ObtenerTicketUseCase =>
         new ObtenerTicketUseCase(ticketRepo),
+      inject: [TICKET_REPOSITORY],
+    },
+
+    {
+      provide: ListarTicketsUseCase,
+      useFactory: (ticketRepo: ITicketRepository): ListarTicketsUseCase =>
+        new ListarTicketsUseCase(ticketRepo),
       inject: [TICKET_REPOSITORY],
     },
 

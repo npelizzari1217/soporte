@@ -113,6 +113,7 @@ function makeCreateDto(): CreateTicketHttpDto {
 function makeUseCaseMocks() {
   return {
     crearTicketUseCase: { execute: jest.fn() },
+    listarTicketsUseCase: { execute: jest.fn() },
     obtenerTicketUseCase: { execute: jest.fn() },
     transicionarEstadoUseCase: { execute: jest.fn() },
     asignarTicketUseCase: { execute: jest.fn() },
@@ -132,6 +133,7 @@ describe('TicketsController', () => {
     user = makeUser();
     controller = new TicketsController(
       mocks.crearTicketUseCase as any,
+      mocks.listarTicketsUseCase as any,
       mocks.obtenerTicketUseCase as any,
       mocks.transicionarEstadoUseCase as any,
       mocks.asignarTicketUseCase as any,
@@ -199,6 +201,34 @@ describe('TicketsController', () => {
           autorId: 'user-001',
         }),
       );
+    });
+  });
+
+  // ─── GET /tickets ──────────────────────────────────────────────────────────
+
+  describe('GET /tickets (listarTickets)', () => {
+    it('retorna 200 con la lista de tickets del tenant', async () => {
+      const ticket = makeTicket();
+      mocks.listarTicketsUseCase.execute.mockResolvedValue(Result.ok([ticket]));
+
+      const result = await controller.listarTickets();
+
+      expect(Array.isArray(result)).toBe(true);
+      expect(result).toHaveLength(1);
+      expect(result[0]).toMatchObject({
+        id: ticket.id,
+        numero: 'SOP-2026-00001',
+        titulo: 'Ticket de prueba',
+      });
+      expect(mocks.listarTicketsUseCase.execute).toHaveBeenCalledTimes(1);
+    });
+
+    it('retorna 200 con lista vacía cuando no hay tickets', async () => {
+      mocks.listarTicketsUseCase.execute.mockResolvedValue(Result.ok([]));
+
+      const result = await controller.listarTickets();
+
+      expect(result).toHaveLength(0);
     });
   });
 

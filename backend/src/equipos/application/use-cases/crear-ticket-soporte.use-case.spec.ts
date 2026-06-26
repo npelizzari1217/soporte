@@ -85,6 +85,7 @@ describe('CrearTicketSoporteUseCase', () => {
     findById: jest.fn(),
     findByNumero: jest.fn(),
     findLastSecuencia: jest.fn(),
+    findAll: jest.fn(),
     findByEstado: jest.fn(),
     save: jest.fn<Promise<void>, [TicketEntity]>(),
     delete: jest.fn(),

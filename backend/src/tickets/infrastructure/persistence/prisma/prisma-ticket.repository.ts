@@ -63,6 +63,14 @@ export class PrismaTicketRepository implements ITicketRepository {
     return parseInt(parts[parts.length - 1], 10) || 0;
   }
 
+  async findAll(): Promise<TicketEntity[]> {
+    const rows = await this.client.ticket.findMany({
+      where: { deletedAt: null },
+      orderBy: { createdAt: 'desc' },
+    });
+    return rows.map(TicketMapper.toDomain);
+  }
+
   async findByEstado(estadoId: string): Promise<TicketEntity[]> {
     const rows = await this.client.ticket.findMany({
       where: { estadoId, deletedAt: null },

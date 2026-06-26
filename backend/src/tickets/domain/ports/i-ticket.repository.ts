@@ -31,6 +31,12 @@ export interface ITicketRepository {
   findLastSecuencia(tipoId: string, anio: number): Promise<number>;
 
   /**
+   * Retorna todos los tickets del tenant activo, ordenados por createdAt desc.
+   * Excluye tickets soft-deleted.
+   */
+  findAll(): Promise<TicketEntity[]>;
+
+  /**
    * Retorna los tickets en un estado dado (para listados filtrados).
    * Excluye tickets soft-deleted.
    */

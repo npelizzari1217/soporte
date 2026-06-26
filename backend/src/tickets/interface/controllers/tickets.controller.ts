@@ -3,6 +3,7 @@
  *
  * Rutas:
  *   POST   /tickets                  → CrearTicketUseCase      [ticket:crear]
+ *   GET    /tickets                  → ListarTicketsUseCase    (autenticado)
  *   GET    /tickets/:id              → ObtenerTicketUseCase    (autenticado)
  *   PATCH  /tickets/:id/estado       → TransicionarEstadoUseCase (autenticado)
  *   POST   /tickets/:id/asignar      → AsignarTicketUseCase    [ticket:asignar]
@@ -43,6 +44,7 @@ import { TenantGuard } from '../../../auth/infrastructure/guards/tenant.guard';
 import { CurrentUser, RequirePermissions } from '../../../auth/infrastructure/guards/decorators';
 
 import { CrearTicketUseCase } from '../../application/use-cases/crear-ticket.use-case';
+import { ListarTicketsUseCase } from '../../application/use-cases/listar-tickets.use-case';
 import { ObtenerTicketUseCase } from '../../application/use-cases/obtener-ticket.use-case';
 import { TransicionarEstadoUseCase } from '../../application/use-cases/transicionar-estado.use-case';
 import { AsignarTicketUseCase } from '../../application/use-cases/asignar-ticket.use-case';
@@ -110,6 +112,7 @@ function toArchivoResponse(archivo: ArchivoEntity): ArchivoResponseDto {
 export class TicketsController {
   constructor(
     private readonly crearTicketUseCase: CrearTicketUseCase,
+    private readonly listarTicketsUseCase: ListarTicketsUseCase,
     private readonly obtenerTicketUseCase: ObtenerTicketUseCase,
     private readonly transicionarEstadoUseCase: TransicionarEstadoUseCase,
     private readonly asignarTicketUseCase: AsignarTicketUseCase,
@@ -164,6 +167,21 @@ export class TicketsController {
     }
 
     return toTicketResponse(result.getValue());
+  }
+
+  /**
+   * GET /tickets
+   * Retorna todos los tickets del tenant activo, ordenados por createdAt desc.
+   * Excluye tickets soft-deleted.
+   *
+   * @returns 200 OK + TicketResponseDto[]
+   */
+  @Get()
+  @HttpCode(HttpStatus.OK)
+  async listarTickets(): Promise<TicketResponseDto[]> {
+    const result = await this.listarTicketsUseCase.execute();
+    // ListarTicketsUseCase solo retorna Result.ok — no hay camino de error.
+    return result.getValue().map(toTicketResponse);
   }
 
   /**
