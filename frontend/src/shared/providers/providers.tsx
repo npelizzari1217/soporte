@@ -1,24 +1,37 @@
 "use client";
 
-import { QueryProvider } from "./query-provider";
-
 /**
  * Root provider composition.
  *
- * Current composition (PR3 — api-client slice):
- *   <QueryProvider>
- *     {children}
- *   </QueryProvider>
- *
- * T17 (PR6 — shell slice) will add:
+ * Composition (PR6 — shell slice):
  *   <QueryProvider>
  *     <SessionProvider initialUser={initialUser}>
  *       {children}
  *     </SessionProvider>
  *   </QueryProvider>
  *
- * T18 (PR6) wires this into app/layout.tsx.
+ * `initialUser` is decoded server-side in the DashboardLayout (Server Component)
+ * and passed here to hydrate the SessionContext without a FOUC.
+ *
+ * The RootLayout uses <Providers> without initialUser (isLoading=true).
+ * The DashboardLayout uses <Providers initialUser={user}> (isLoading=false immediately).
+ *
+ * Spec: [SPEC:frontend-ui-states/authz-ui SessionProvider]
  */
-export function Providers({ children }: { children: React.ReactNode }) {
-  return <QueryProvider>{children}</QueryProvider>;
+
+import { QueryProvider } from "./query-provider";
+import { SessionProvider } from "./session-provider";
+import type { JwtPayload } from "@/shared/api/types";
+
+interface ProvidersProps {
+  children: React.ReactNode;
+  initialUser?: JwtPayload | null;
+}
+
+export function Providers({ children, initialUser }: ProvidersProps) {
+  return (
+    <QueryProvider>
+      <SessionProvider initialUser={initialUser}>{children}</SessionProvider>
+    </QueryProvider>
+  );
 }

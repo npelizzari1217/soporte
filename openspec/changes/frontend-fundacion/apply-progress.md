@@ -39,8 +39,35 @@ Tasks: T15, T16 (all [x])
 Branch: feat/fe-pr5-middleware
 Commit: 33a0219
 
+## PR 6 — `shell` — DONE
+
+Tasks: T17, T18, T19 (all [x])
+Branch: feat/fe-pr6-shell (integration branch — PR1+PR2+PR3+PR4+PR5 already merged)
+
+Files created:
+- src/shared/providers/session-provider.tsx  (SessionContext, SessionProvider)
+- src/shared/providers/session-provider.test.tsx  (TDD RED→GREEN, 5 tests)
+- src/shared/hooks/use-session.ts  (useSession + can())
+- src/components/shell/app-nav.tsx  (nav links + UserMenu)
+- src/components/shell/page-header.tsx  (title + actions slot)
+- src/components/shell/user-menu.tsx  (email display + logout → POST /api/auth/logout)
+- src/app/(dashboard)/layout.tsx  (Server Component: reads at cookie, decodes JWT, passes initialUser)
+- src/app/(dashboard)/unauthorized/page.tsx  (ShieldX card, rounded-lg, Button rounded-md)
+- src/app/not-found.tsx  (404 minimal page)
+
+Files modified:
+- src/shared/providers/providers.tsx  (added SessionProvider + initialUser prop)
+- src/app/layout.tsx  (wrapped body in <Providers>)
+
+TDD: T17 followed strict RED→GREEN. RED confirmed (import error). GREEN: 5/5 tests pass.
+T18 + T19: structural/presentational — validated by tsc + lint (no unit test pair per tasks.md).
+
+Gate results:
+- vitest: 81/81 passed (15 files — 76 pre-existing + 5 new T17)
+- tsc --noEmit: 0 errors
+- next lint: 0 errors/warnings
+
 ## Status
 
-Pending: PR6 (shell — deps: PR2+PR3), PR7 (login+e2e — deps: PR4+PR6)
-Running total vitest on combined tree (PR1+PR3+PR4+PR5): 56/56 (11 files)
-PR2 adds 20 new tests (3 files) bringing atom coverage complete.
+Pending: PR7 (login+e2e — deps: PR4+PR6)
+Running total vitest: 81/81 (15 files)

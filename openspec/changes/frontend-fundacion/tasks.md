@@ -349,19 +349,19 @@ T17→T18→T19 sequential.
 ---
 
 #### T17 · `SessionProvider` + `use-session` — TEST→IMPL pair
-- [ ] **RED** `src/shared/providers/session-provider.test.tsx`:
+- [x] **RED** `src/shared/providers/session-provider.test.tsx`:
   - Without `initialUser`: `isLoading=true`, `user=null` initially
   - With `initialUser={sub:'1', email:'x@y.com', roles:['ADMIN'], permisos:['ticket:crear'], cliente_id:'c1'}`: `isLoading=false` immediately, `user` matches
   - `useSession().can('ticket:crear')` → `true`; `useSession().can('compra:aprobar')` → `false`
   - Gated element NOT in DOM when `can()` is false (assert `queryByRole` returns null)
   - `isLoading=true` → gated element not rendered (no FOUC of authz)
-- [ ] **GREEN** `src/shared/providers/session-provider.tsx`:
+- [x] **GREEN** `src/shared/providers/session-provider.tsx`:
   - `SessionContext` with `{ user: JwtPayload | null; isLoading: boolean }`
   - Accepts `initialUser?: JwtPayload | null`; initializes with `user=initialUser`, `isLoading=!initialUser`
   - If no `initialUser`: `isLoading=true` briefly (for future /api/auth/me fetch if needed — foundation leaves user=null until provided)
-- [ ] **GREEN** `src/shared/hooks/use-session.ts`:
+- [x] **GREEN** `src/shared/hooks/use-session.ts`:
   - `useContext(SessionContext)` + `can(permiso: string): boolean` checking `user.permisos.includes(permiso)`
-- [ ] Update `providers.tsx` to compose `<QueryProvider><SessionProvider initialUser={initialUser}>{children}</SessionProvider></QueryProvider>`
+- [x] Update `providers.tsx` to compose `<QueryProvider><SessionProvider initialUser={initialUser}>{children}</SessionProvider></QueryProvider>`
   (initialUser passed from layout server component)
 - Spec: [SPEC:frontend-ui-states/authz-ui SessionProvider], [SPEC:frontend-ui-states/authz-ui no FOUC]
 - Sequential: T09+T11 → T17
@@ -370,17 +370,17 @@ T17→T18→T19 sequential.
 
 #### T18 · App Shell — `RootLayout` + `DashboardLayout` + shell molecules
 - Type: structural/presentational (no TEST/IMPL pair — validated by e2e T21 and visual review)
-- [ ] `src/app/layout.tsx` (RootLayout):
+- [x] `src/app/layout.tsx` (RootLayout):
   `<html lang="es" className="dark">`, import `../styles/globals.css`, wrap children in `<Providers>`
-- [ ] `src/app/(dashboard)/layout.tsx` (DashboardLayout — Server Component):
+- [x] `src/app/(dashboard)/layout.tsx` (DashboardLayout — Server Component):
   - Read `at` cookie via `cookies()` from `next/headers`
   - Decode payload: `JSON.parse(atob(at.split('.')[1]))` as `JwtPayload` (no sig verify — only for UI, backend validates)
   - Pass as `initialUser` to `<SessionProvider>` via `<Providers initialUser={user}>`
   - Renders `<AppNav />` + `{children}`
-- [ ] `src/components/shell/app-nav.tsx`: nav links (Tickets, Compras, Reparaciones, Equipos) + `<UserMenu />`; uses `rounded-md` for interactive elements
-- [ ] `src/components/shell/page-header.tsx`: `{ title: string; actions?: ReactNode }` — `<h1>` + optional actions slot
-- [ ] `src/components/shell/user-menu.tsx`: dropdown showing `user.email`; "Cerrar sesión" → POST `/api/auth/logout` then `router.push('/login')`; uses `rounded-md` for dropdown panel
-- [ ] `src/app/not-found.tsx`: minimal 404 page with back-to-dashboard link
+- [x] `src/components/shell/app-nav.tsx`: nav links (Tickets, Compras, Reparaciones, Equipos) + `<UserMenu />`; uses `rounded-md` for interactive elements
+- [x] `src/components/shell/page-header.tsx`: `{ title: string; actions?: ReactNode }` — `<h1>` + optional actions slot
+- [x] `src/components/shell/user-menu.tsx`: dropdown showing `user.email`; "Cerrar sesión" → POST `/api/auth/logout` then `router.push('/login')`; uses `rounded-md` for dropdown panel
+- [x] `src/app/not-found.tsx`: minimal 404 page with back-to-dashboard link
 - Spec: [SPEC:frontend-design-system/dark-mode], [SPEC:frontend-design-system/radios rounded-md/-lg in shell]
 - Sequential: T04+T05+T06+T17 → T18
 
@@ -388,7 +388,7 @@ T17→T18→T19 sequential.
 
 #### T19 · `/unauthorized` page — pending resolved
 - Type: presentational (no TEST/IMPL pair)
-- [ ] `src/app/(dashboard)/unauthorized/page.tsx`:
+- [x] `src/app/(dashboard)/unauthorized/page.tsx`:
   - `<div className="rounded-lg ...">` container (8px, card style)
   - `<ShieldX />` icon (lucide-react)
   - Title: "Sin permiso de acceso"
