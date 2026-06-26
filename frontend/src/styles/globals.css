@@ -1,0 +1,50 @@
+@import "tailwindcss";
+
+@theme {
+  /* ─── Border radius ──────────────────────────────────────────── */
+  /* constitución §3: rounded-lg 8px (cards/paneles) · rounded-md 6px (botones/inputs) */
+  --radius-lg: 0.5rem;   /* 8px — cards, paneles, modales, drawers */
+  --radius-md: 0.375rem; /* 6px — botones, inputs, dropdowns, badges */
+
+  /* ─── Color palette (dark by default — Stripe/Linear aesthetic) ─ */
+  /* background: deep charcoal */
+  --color-background:          oklch(0.16 0 0);
+  --color-foreground:          oklch(0.97 0 0);
+
+  /* card: slightly lighter than background for elevation */
+  --color-card:                oklch(0.19 0 0);
+  --color-card-foreground:     oklch(0.97 0 0);
+
+  /* primary: electric blue accent */
+  --color-primary:             oklch(0.62 0.19 256);
+  --color-primary-foreground:  oklch(0.98 0 0);
+
+  /* muted: subtle backgrounds for hover states, code blocks */
+  --color-muted:               oklch(0.24 0 0);
+  --color-muted-foreground:    oklch(0.65 0 0);
+
+  /* border: subtle separator */
+  --color-border:              oklch(0.27 0 0);
+
+  /* destructive: red for errors and danger actions */
+  --color-destructive:         oklch(0.58 0.22 27);
+  --color-destructive-foreground: oklch(0.97 0 0);
+
+  /* input: same as border for consistency */
+  --color-input:               oklch(0.27 0 0);
+
+  /* ring: focus ring color (primary) */
+  --color-ring:                oklch(0.62 0.19 256);
+
+  /* accent: used for hover states on ghost/secondary elements */
+  --color-accent:              oklch(0.24 0 0);
+  --color-accent-foreground:   oklch(0.97 0 0);
+
+  /* popover: same as card */
+  --color-popover:             oklch(0.19 0 0);
+  --color-popover-foreground:  oklch(0.97 0 0);
+
+  /* secondary: muted action surfaces */
+  --color-secondary:           oklch(0.24 0 0);
+  --color-secondary-foreground: oklch(0.97 0 0);
+}
