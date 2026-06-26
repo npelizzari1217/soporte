@@ -406,7 +406,7 @@ Dependencies: PR 4 (T13) AND PR 6 (T18). T20→T21 sequential. T22 parallel to T
 ---
 
 #### T20 · `LoginForm` + `use-login` — TEST→IMPL pair
-- [ ] **RED** `src/features/auth/components/LoginForm.test.tsx` (RTL + MSW):
+- [x] **RED** `src/features/auth/components/LoginForm.test.tsx` (RTL + MSW):
   - Renders email field, password field, submit button "Iniciar sesión"
   - Submit with valid creds (MSW `/api/auth/login` → 200 `{user:{...}}`):
     - Button shows spinner + `disabled=true` during pending (check `mutation.isPending` path)
@@ -418,12 +418,12 @@ Dependencies: PR 4 (T13) AND PR 6 (T18). T20→T21 sequential. T22 parallel to T
     - Error text does NOT contain "email" or "existe" (generic)
   - Submit → MSW → 403: shows "El acceso de tu organización está suspendido" (tenant message)
   - Double-submit prevention: rapid second click while `isPending=true` does NOT fire second request
-- [ ] **GREEN** `src/features/auth/components/LoginForm.tsx` (presentational — receives `onSubmit`, `error?`, `isLoading` props)
-- [ ] **GREEN** `src/features/auth/hooks/use-login.ts`:
+- [x] **GREEN** `src/features/auth/components/LoginForm.tsx` (presentational — receives `onSubmit`, `error?`, `isLoading` props)
+- [x] **GREEN** `src/features/auth/hooks/use-login.ts`:
   - `useMutation({ mutationFn: (dto) => apiFetch('auth/login', { method: 'POST', json: dto }) })`
   - On 403: set error with specific tenant message; on other errors: generic message
   - On success: `router.push('/dashboard')`
-- [ ] **GREEN** `src/app/(auth)/login/page.tsx`: wires `<LoginForm>` + `use-login`
+- [x] **GREEN** `src/app/(auth)/login/page.tsx`: wires `<LoginForm>` + `use-login`
 - Spec: [SPEC:frontend-auth/login-exitoso], [SPEC:frontend-auth/creds-invalidas], [SPEC:frontend-auth/usuario-inactivo], [SPEC:frontend-auth/tenant-inactivo], [SPEC:frontend-ui-states/interactive-state LoginForm]
 - Sequential: T09+T13+T18 → T20
 
@@ -431,7 +431,7 @@ Dependencies: PR 4 (T13) AND PR 6 (T18). T20→T21 sequential. T22 parallel to T
 
 #### T21 · Playwright e2e — login flow
 - Type: pure e2e test (no paired impl — validates Slices 1–7 end-to-end)
-- [ ] `e2e/login.spec.ts`:
+- [x] `e2e/login.spec.ts` (spec WRITTEN; NOT EXECUTED — deferred to sdd-verify):
   - Navigate to `/tickets` → assert redirect to `/login` (middleware unauthenticated guard)
   - Navigate to `/login` → form renders (email, password, submit button)
   - Fill valid creds + submit → assert `context.cookies()` contains:
@@ -449,14 +449,15 @@ Dependencies: PR 4 (T13) AND PR 6 (T18). T20→T21 sequential. T22 parallel to T
 
 #### T22 · Feature Placeholders
 - Type: structural stubs (no TEST/IMPL pair — demonstrates atoms + validates routing)
-- [ ] `src/app/(dashboard)/page.tsx`: "Bienvenido, {user.email}" using `useSession()`; `<Skeleton>` placeholder while `isLoading`
-- [ ] `src/app/(dashboard)/tickets/page.tsx`: "Tickets" + 5× `<Skeleton className="h-16 w-full" />` placeholder (demonstrates isLoading pattern)
-- [ ] `src/app/(dashboard)/tickets/[id]/page.tsx`, `nueva/page.tsx`: stubs with `<PageHeader title="..." />`
-- [ ] `src/app/(dashboard)/compras/page.tsx`: `<EmptyState title="No hay compras todavía" description="..." icon={<ShoppingCart />} />` (demonstrates empty state)
-- [ ] `src/app/(dashboard)/compras/[id]/page.tsx`: stub
-- [ ] `src/app/(dashboard)/reparaciones/page.tsx`, `[id]/page.tsx`: stub with Skeleton demo
-- [ ] `src/app/(dashboard)/equipos/page.tsx`, `[id]/page.tsx`: stub with EmptyState demo
-- [ ] `src/features/{tickets,compras,reparaciones,equipos}/{components,hooks}/.gitkeep`
+- [x] `src/app/(dashboard)/page.tsx`: "Bienvenido, {user.email}" using `useSession()`; `<Skeleton>` placeholder while `isLoading`
+- [x] `src/app/(dashboard)/tickets/page.tsx`: "Tickets" + 5× `<Skeleton className="h-16 w-full" />` placeholder (demonstrates isLoading pattern)
+- [x] `src/app/(dashboard)/tickets/[id]/page.tsx`, `nueva/page.tsx`: stubs with `<PageHeader title="..." />`
+- [x] `src/app/(dashboard)/compras/page.tsx`: `<EmptyState title="No hay compras todavía" description="..." icon={<ShoppingCart />} />` (demonstrates empty state)
+- [x] `src/app/(dashboard)/compras/[id]/page.tsx`: stub
+- [x] `src/app/(dashboard)/reparaciones/page.tsx`, `[id]/page.tsx`: stub with Skeleton demo
+- [x] `src/app/(dashboard)/equipos/page.tsx`, `[id]/page.tsx`: stub with EmptyState demo
+- [x] `src/features/{tickets,compras,reparaciones,equipos}/{components,hooks}/.gitkeep`
+- NOTE: `src/app/page.tsx` kept as re-export stub; Next.js BUILD requires deleting it (route conflict with (dashboard)/page.tsx). Flagged for sdd-verify → sdd-archive cleanup.
 - Spec: no direct scenario — validates [SPEC:frontend-design-system/atomos] in real routing context
 - Parallel: T18+T04+T05 → T22 (can run parallel to T20 within same PR)
 
