@@ -1,92 +1,74 @@
 /**
- * TicketsList — PRESENTATIONAL component.
+ * TicketsList — PRESENTATIONAL component (S5a: migrated from <table> to CardRow).
  *
- * Receives `tickets` as a prop; renders a clean table.
+ * Receives `tickets` as a prop; renders a list of CardRow items.
  * No API calls, no mutations, no routing — pure UI.
  *
- * Columns: Número · Título · Tipo · Prioridad (badge) · Estado (badge) · Fecha
+ * Layout per card: icon (Ticket) | titulo + numero/tipo/date | prioridad badge + estado badge
  *
  * Design: Container/Presentational per design.md §1.
- * Constitution: rounded-lg for the container card, rounded-md for badges.
- * Colors: design tokens from globals.css only (no hardcoded values).
- * Spec: [SPEC:frontend-tickets/lista-tickets]
+ * Constitution: filas-tarjeta (§3) — glassmorphism rows, badges rounded-md, no tables.
+ * Colors: semantic badge tones via ESTADO_TONE / PRIORIDAD_TONE from catalogos.ts.
+ * Spec: [SPEC:frontend-design-system/req-8-filas-tarjeta]
  */
 
-import { cn } from "@/lib/utils";
-import type { Ticket } from "../types";
+import { CardRow } from '@/components/ui/card-row'
+import { Badge } from '@/components/ui/badge'
 import {
   labelFor,
   ESTADOS,
   PRIORIDADES,
   TIPOS,
-  PRIORIDAD_BADGE,
-} from "@/shared/lib/catalogos";
+  ESTADO_TONE,
+  PRIORIDAD_TONE,
+} from '@/shared/lib/catalogos'
+import { Ticket as TicketIcon } from 'lucide-react'
+import type { Ticket } from '../types'
 
 interface TicketsListProps {
-  tickets: Ticket[];
+  tickets: Ticket[]
 }
 
 /** Format ISO date string in Argentinean locale (dd/mm/yyyy). */
 function formatDate(iso: string): string {
-  return new Intl.DateTimeFormat("es-AR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  }).format(new Date(iso));
+  return new Intl.DateTimeFormat('es-AR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).format(new Date(iso))
 }
 
 export function TicketsList({ tickets }: TicketsListProps) {
   return (
-    <div className="rounded-lg border border-border bg-card overflow-hidden">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-border text-left text-muted-foreground">
-            <th className="px-4 py-3 font-medium">Número</th>
-            <th className="px-4 py-3 font-medium">Título</th>
-            <th className="px-4 py-3 font-medium">Tipo</th>
-            <th className="px-4 py-3 font-medium">Prioridad</th>
-            <th className="px-4 py-3 font-medium">Estado</th>
-            <th className="px-4 py-3 font-medium">Fecha</th>
-          </tr>
-        </thead>
-        <tbody>
-          {tickets.map((ticket) => (
-            <tr
-              key={ticket.id}
-              className="border-b border-border last:border-0 transition-colors hover:bg-muted/50"
-            >
-              <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
-                {ticket.numero}
-              </td>
-              <td className="px-4 py-3 font-medium text-foreground">
-                {ticket.titulo}
-              </td>
-              <td className="px-4 py-3 text-muted-foreground">
-                {labelFor(TIPOS, ticket.tipoId)}
-              </td>
-              <td className="px-4 py-3">
-                <span
-                  className={cn(
-                    "inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium",
-                    PRIORIDAD_BADGE[ticket.prioridadId] ??
-                      "bg-muted text-muted-foreground",
-                  )}
-                >
-                  {labelFor(PRIORIDADES, ticket.prioridadId)}
-                </span>
-              </td>
-              <td className="px-4 py-3">
-                <span className="inline-flex items-center rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
-                  {labelFor(ESTADOS, ticket.estadoId)}
-                </span>
-              </td>
-              <td className="px-4 py-3 text-muted-foreground">
-                {formatDate(ticket.createdAt)}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div className="space-y-2">
+      {tickets.map((ticket) => (
+        <CardRow
+          key={ticket.id}
+          icon={<TicketIcon className="h-5 w-5 text-muted-foreground" aria-hidden />}
+          title={ticket.titulo}
+          subtitle={
+            // Each part in its own span so findByText("SOP-2026-00001") / getByText("Soporte")
+            // continue to work in integration tests (RTL exact-match requires isolated text nodes).
+            <span>
+              <span>{ticket.numero}</span>
+              {' · '}
+              <span>{labelFor(TIPOS, ticket.tipoId)}</span>
+              {' · '}
+              <span>{formatDate(ticket.createdAt)}</span>
+            </span>
+          }
+          badges={
+            <>
+              <Badge tone={PRIORIDAD_TONE[ticket.prioridadId] ?? 'neutral'}>
+                {labelFor(PRIORIDADES, ticket.prioridadId)}
+              </Badge>
+              <Badge tone={ESTADO_TONE[ticket.estadoId] ?? 'neutral'}>
+                {labelFor(ESTADOS, ticket.estadoId)}
+              </Badge>
+            </>
+          }
+        />
+      ))}
     </div>
-  );
+  )
 }

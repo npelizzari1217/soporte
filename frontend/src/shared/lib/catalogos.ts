@@ -12,6 +12,8 @@
  * Spec: [SPEC:frontend-tickets/catalogos]
  */
 
+import type { BadgeTone } from '@/shared/lib/badge-tones'
+
 // estadoId → display label
 export const ESTADOS: Record<string, string> = {
   "c0000000-0000-4000-c000-000000000001": "Abierto",
@@ -47,14 +49,44 @@ export function labelFor(map: Record<string, string>, id: string): string {
   return map[id] ?? id;
 }
 
+
 /**
- * Tailwind utility classes for priority badge backgrounds + text.
- * Uses semantic design tokens (no hardcoded colors per constitution §3).
- * Baja → muted, Media → primary/10, Alta → amber-ish (using accent), Crítica → destructive.
+ * Maps estadoId UUID → BadgeTone for the Badge component.
+ *
+ * Tone semantics per canonical palette (tasks.md — Badge Tone Palette):
+ *   neutral → Abierto, Cerrado (dormant/completed without action needed)
+ *   warning → Pendiente de aprobación (needs attention)
+ *   success → Aprobado, Resuelto (positive outcome)
+ *   danger  → Rechazado, Cancelado (negative outcome)
+ *   info    → En progreso (active work)
+ *
+ * UUIDs verified against catalogos.ts ESTADOS map (same seed values).
  */
-export const PRIORIDAD_BADGE: Record<string, string> = {
-  "d0000000-0000-4000-d000-000000000001": "bg-muted text-muted-foreground",
-  "d0000000-0000-4000-d000-000000000002": "bg-primary/15 text-primary",
-  "d0000000-0000-4000-d000-000000000003": "bg-destructive/15 text-destructive",
-  "d0000000-0000-4000-d000-000000000004": "bg-destructive text-destructive-foreground",
+export const ESTADO_TONE: Record<string, BadgeTone> = {
+  "c0000000-0000-4000-c000-000000000001": "neutral",  // Abierto
+  "c0000000-0000-4000-c000-000000000002": "warning",  // Pendiente de aprobación
+  "c0000000-0000-4000-c000-000000000003": "success",  // Aprobado
+  "c0000000-0000-4000-c000-000000000004": "danger",   // Rechazado
+  "c0000000-0000-4000-c000-000000000005": "info",     // En progreso
+  "c0000000-0000-4000-c000-000000000006": "success",  // Resuelto
+  "c0000000-0000-4000-c000-000000000007": "neutral",  // Cerrado
+  "c0000000-0000-4000-c000-000000000008": "danger",   // Cancelado
+};
+
+/**
+ * Maps prioridadId UUID → BadgeTone for the Badge component.
+ *
+ * Tone semantics:
+ *   neutral → Baja (low urgency)
+ *   info    → Media (moderate)
+ *   warning → Alta (needs prompt attention)
+ *   danger  → Crítica (immediate action required)
+ *
+ * UUIDs verified against catalogos.ts PRIORIDADES map (same seed values).
+ */
+export const PRIORIDAD_TONE: Record<string, BadgeTone> = {
+  "d0000000-0000-4000-d000-000000000001": "neutral",  // Baja
+  "d0000000-0000-4000-d000-000000000002": "info",     // Media
+  "d0000000-0000-4000-d000-000000000003": "warning",  // Alta
+  "d0000000-0000-4000-d000-000000000004": "danger",   // Crítica
 };
