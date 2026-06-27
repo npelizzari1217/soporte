@@ -7,6 +7,7 @@
  * - email: email del usuario
  * - roles: códigos de roles asignados
  * - permisos: permisos efectivos (unión de los roles, deduplicados)
+ * - cliente_nombre: nombre del tenant del usuario (emisor garantiza; no nullable)
  *
  * Los guards verifican `roles` y `permisos` contra el JWT sin query a DB.
  */
@@ -16,6 +17,7 @@ export interface JwtPayload {
   email: string;
   roles: string[];
   permisos: string[];
+  cliente_nombre: string;
 }
 
 /**

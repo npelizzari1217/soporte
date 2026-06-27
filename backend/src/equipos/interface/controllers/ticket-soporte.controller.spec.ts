@@ -41,6 +41,7 @@ function makeUser(overrides: Partial<JwtPayload> = {}): JwtPayload {
     email: 'soporte@example.com',
     roles: ['SOPORTE_IT'],
     permisos: ['ticket:crear', 'equipo:gestionar'],
+    cliente_nombre: 'Test Corp',
     ...overrides,
   };
 }

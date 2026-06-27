@@ -56,7 +56,7 @@ export interface LoginResult {
  * 2. Verifica password via IHashProvider → 401 si incorrecto.
  * 3. Verifica que el cliente esté activo → 403 si no.
  * 4. Calcula permisos efectivos (unión de los permisos de todos los roles, deduplicados).
- * 5. Firma JWT con payload { sub, cliente_id, email, roles, permisos }.
+ * 5. Firma JWT con payload { sub, cliente_id, email, roles, permisos, cliente_nombre }.
  * 6. Genera refresh token aleatorio, almacena su SHA-256 en refresh_tokens.
  * 7. Retorna { accessToken, refreshToken: rawToken }.
  *
@@ -114,6 +114,7 @@ export class LoginUseCase {
       email: usuario.email,
       roles,
       permisos,
+      cliente_nombre: cliente.nombre,
     };
     const accessToken = this.tokenService.signJwt(payload);
 

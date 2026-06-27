@@ -70,9 +70,9 @@ const makeUsuario = (
   return u;
 };
 
-const makeCliente = (activo = true): ClienteEntity =>
+const makeCliente = (nombre = 'Empresa Test', activo = true): ClienteEntity =>
   ClienteEntity.create({
-    nombre: 'Empresa Test',
+    nombre,
     razonSocial: null,
     cuit: null,
     dbName: 'empresa_test',
@@ -140,7 +140,7 @@ describe('LoginUseCase', () => {
   describe('Login exitoso', () => {
     it('retorna accessToken y refreshToken cuando las credenciales son válidas', async () => {
       usuarioRepo.findByEmail.mockResolvedValue(makeUsuario());
-      clienteRepo.findById.mockResolvedValue(makeCliente(true));
+      clienteRepo.findById.mockResolvedValue(makeCliente());
 
       const result = await useCase.execute({ email: 'user@test.com', password: 'secret' });
 
@@ -152,7 +152,7 @@ describe('LoginUseCase', () => {
 
     it('el accessToken es el resultado de tokenService.signJwt', async () => {
       usuarioRepo.findByEmail.mockResolvedValue(makeUsuario());
-      clienteRepo.findById.mockResolvedValue(makeCliente(true));
+      clienteRepo.findById.mockResolvedValue(makeCliente());
       tokenService.signJwt.mockReturnValue('custom.jwt.token');
 
       const result = await useCase.execute({ email: 'user@test.com', password: 'secret' });
@@ -165,7 +165,7 @@ describe('LoginUseCase', () => {
       const role = makeRole('SOPORTE_IT', permisos);
       const usuario = makeUsuario({ roles: [role] });
       usuarioRepo.findByEmail.mockResolvedValue(usuario);
-      clienteRepo.findById.mockResolvedValue(makeCliente(true));
+      clienteRepo.findById.mockResolvedValue(makeCliente());
 
       let capturedPayload: JwtPayload | undefined;
       tokenService.signJwt.mockImplementation((payload) => {
@@ -192,7 +192,7 @@ describe('LoginUseCase', () => {
       const role2 = makeRole('APROBADOR_COMPRAS', [p1, p3]); // ticket:crear duplicado
       const usuario = makeUsuario({ roles: [role1, role2] });
       usuarioRepo.findByEmail.mockResolvedValue(usuario);
-      clienteRepo.findById.mockResolvedValue(makeCliente(true));
+      clienteRepo.findById.mockResolvedValue(makeCliente());
 
       let capturedPayload: JwtPayload | undefined;
       tokenService.signJwt.mockImplementation((payload) => {
@@ -214,7 +214,7 @@ describe('LoginUseCase', () => {
     it('llama a hashProvider.verify con el password crudo y el hash almacenado (no plaintext en respuesta)', async () => {
       const usuario = makeUsuario();
       usuarioRepo.findByEmail.mockResolvedValue(usuario);
-      clienteRepo.findById.mockResolvedValue(makeCliente(true));
+      clienteRepo.findById.mockResolvedValue(makeCliente());
 
       await useCase.execute({ email: 'user@test.com', password: 'mi_password' });
 
@@ -228,7 +228,7 @@ describe('LoginUseCase', () => {
 
     it('almacena SHA-256 del refresh token en refresh_tokens (no el valor crudo)', async () => {
       usuarioRepo.findByEmail.mockResolvedValue(makeUsuario());
-      clienteRepo.findById.mockResolvedValue(makeCliente(true));
+      clienteRepo.findById.mockResolvedValue(makeCliente());
 
       let savedToken: RefreshTokenEntity | undefined;
       refreshTokenRepo.save.mockImplementation(async (token) => {
@@ -252,7 +252,7 @@ describe('LoginUseCase', () => {
     it('almacena el usuarioId correcto en el refresh token', async () => {
       const usuario = makeUsuario();
       usuarioRepo.findByEmail.mockResolvedValue(usuario);
-      clienteRepo.findById.mockResolvedValue(makeCliente(true));
+      clienteRepo.findById.mockResolvedValue(makeCliente());
 
       let savedToken: RefreshTokenEntity | undefined;
       refreshTokenRepo.save.mockImplementation(async (token) => {
@@ -266,11 +266,45 @@ describe('LoginUseCase', () => {
 
     it('el refreshToken retornado tiene una longitud mínima (es un token aleatorio)', async () => {
       usuarioRepo.findByEmail.mockResolvedValue(makeUsuario());
-      clienteRepo.findById.mockResolvedValue(makeCliente(true));
+      clienteRepo.findById.mockResolvedValue(makeCliente());
 
       const result = await useCase.execute({ email: 'user@test.com', password: 'secret' });
 
       expect(result.getValue().refreshToken.length).toBeGreaterThanOrEqual(32);
+    });
+
+    it('incluye cliente_nombre igual a cliente.nombre en el payload del JWT', async () => {
+      usuarioRepo.findByEmail.mockResolvedValue(makeUsuario());
+      clienteRepo.findById.mockResolvedValue(makeCliente('Acme Corp'));
+
+      let capturedPayload: JwtPayload | undefined;
+      tokenService.signJwt.mockImplementation((payload) => {
+        capturedPayload = payload;
+        return 'signed.jwt.token';
+      });
+
+      await useCase.execute({ email: 'user@test.com', password: 'secret' });
+
+      expect(capturedPayload!.cliente_nombre).toBe('Acme Corp');
+    });
+
+    it('cliente_nombre del JWT corresponde solo al cliente del usuario autenticado', async () => {
+      // El use case llama clienteRepo.findById con usuario.clienteId → devuelve el cliente correcto
+      const usuario = makeUsuario();
+      usuarioRepo.findByEmail.mockResolvedValue(usuario);
+      clienteRepo.findById.mockResolvedValue(makeCliente('Acme Corp')); // cliente del usuario
+
+      let capturedPayload: JwtPayload | undefined;
+      tokenService.signJwt.mockImplementation((payload) => {
+        capturedPayload = payload;
+        return 'signed.jwt.token';
+      });
+
+      await useCase.execute({ email: 'user@test.com', password: 'secret' });
+
+      // Verificar que el claim proviene del cliente resuelto por el id del usuario
+      expect(clienteRepo.findById).toHaveBeenCalledWith(usuario.clienteId);
+      expect(capturedPayload!.cliente_nombre).toBe('Acme Corp');
     });
   });
 
@@ -369,7 +403,7 @@ describe('LoginUseCase', () => {
   describe('Cliente inactivo → 403', () => {
     it('retorna ClienteInactivoError cuando el cliente tiene activo=false', async () => {
       usuarioRepo.findByEmail.mockResolvedValue(makeUsuario());
-      clienteRepo.findById.mockResolvedValue(makeCliente(false));
+      clienteRepo.findById.mockResolvedValue(makeCliente('Empresa Test', false));
 
       const result = await useCase.execute({ email: 'user@test.com', password: 'secret' });
 
@@ -379,7 +413,7 @@ describe('LoginUseCase', () => {
 
     it('NO genera tokens cuando el cliente está inactivo', async () => {
       usuarioRepo.findByEmail.mockResolvedValue(makeUsuario());
-      clienteRepo.findById.mockResolvedValue(makeCliente(false));
+      clienteRepo.findById.mockResolvedValue(makeCliente('Empresa Test', false));
 
       await useCase.execute({ email: 'user@test.com', password: 'secret' });
 
@@ -400,7 +434,7 @@ describe('LoginUseCase', () => {
     it('busca el cliente por el clienteId del usuario', async () => {
       const usuario = makeUsuario();
       usuarioRepo.findByEmail.mockResolvedValue(usuario);
-      clienteRepo.findById.mockResolvedValue(makeCliente(true));
+      clienteRepo.findById.mockResolvedValue(makeCliente());
 
       await useCase.execute({ email: 'user@test.com', password: 'secret' });
 

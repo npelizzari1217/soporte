@@ -33,6 +33,7 @@ function makePayload(overrides: Partial<JwtPayload> = {}): JwtPayload {
     email: 'test@test.com',
     roles: ['ADMIN'],
     permisos: ['ticket:crear', 'compra:aprobar', 'usuario:gestionar'],
+    cliente_nombre: 'Test Corp',
     ...overrides,
   };
 }
