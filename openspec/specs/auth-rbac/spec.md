@@ -161,7 +161,7 @@ N:M entre `usuarios` y `roles`. Un usuario puede tener múltiples roles simultá
 **Given** un usuario activo con `activo = TRUE`, `deleted_at IS NULL`, y `clientes.activo = TRUE`  
 **When** envía credenciales correctas (email + password)  
 **Then** el sistema MUST verificar el hash argon2id  
-**And** MUST generar un JWT de acceso con payload: `{ sub: usuario.id, cliente_id, email, roles: [codigo], permisos: [codigo] }`  
+**And** MUST generar un JWT de acceso con payload: `{ sub: usuario.id, cliente_id, email, roles: [codigo], permisos: [codigo], cliente_nombre }`  
 **And** MUST generar un refresh token aleatorio y almacenar su `token_hash` (SHA-256) en `refresh_tokens`  
 **And** MUST devolver ambos tokens en la respuesta (access token en body; refresh token SHOULD ser httpOnly cookie)
 
@@ -187,7 +187,8 @@ N:M entre `usuarios` y `roles`. Un usuario puede tener múltiples roles simultá
 **When** el cliente lo envía al endpoint de renovación  
 **Then** el sistema MUST verificar `token_hash` en la DB  
 **And** MUST verificar que `expires_at > now()` y `revoked_at IS NULL`  
-**And** MUST emitir un nuevo JWT de acceso  
+**And** MUST re-validar que `cliente.activo = TRUE` antes de re-firmar (ver Requirement "Claim `cliente_nombre` en JWT")  
+**And** MUST emitir un nuevo JWT de acceso con `cliente_nombre` incluido  
 **And** SHOULD rotar el refresh token (revocar el anterior, emitir uno nuevo)
 
 #### Scenario: Refresh token expirado es rechazado
@@ -255,6 +256,80 @@ N:M entre `usuarios` y `roles`. Un usuario puede tener múltiples roles simultá
 **And** `permisos` MUST contener todos los permisos listados en la tabla de este spec  
 **And** `roles_permisos` MUST contener la asignación base (ej. `ADMIN` tiene todos los permisos)  
 **And** el seed MUST ser idempotente (re-ejecución no duplica filas)
+
+---
+
+### Requirement: Claim `cliente_nombre` en JWT (tenant del usuario)
+
+> Introducido en change `auth-cliente-nombre` (2026-06-27)
+
+El JWT de acceso MUST incluir el claim `cliente_nombre` con el nombre del tenant al que pertenece el usuario. El valor se deriva server-side de `usuario.clienteId` — nunca del input del cliente. Este claim permite al frontend mostrar el nombre del tenant sin endpoints adicionales.
+
+**Contrato de tipo:**
+- Backend (`i-token.service.ts` — `JwtPayload`): `cliente_nombre: string` (obligatorio, no nullable). El emisor garantiza siempre el valor.
+- Frontend (`frontend/src/shared/api/types.ts` — `JwtPayload`): `cliente_nombre?: string` (opcional). Tolera tokens emitidos antes de este change (degradación elegante obligatoria).
+
+#### Scenario: JwtPayload backend incluye `cliente_nombre` como campo requerido
+
+**Given** la interfaz `JwtPayload` del puerto `ITokenService`
+**When** se audita su definición de tipos
+**Then** MUST existir la propiedad `cliente_nombre` de tipo `string` (no opcional, no nullable)
+**And** MUST NOT existir ningún alias alternativo (`n`, `tenant_name`, `tenantName`, etc.) para el nombre del cliente
+**And** los campos `sub`, `cliente_id`, `email`, `roles`, `permisos` MUST seguir presentes sin modificación
+
+#### Scenario: JwtPayload frontend refleja `cliente_nombre` como campo opcional
+
+**Given** el tipo `JwtPayload` en `frontend/src/shared/api/types.ts`
+**When** se audita su definición de tipos
+**Then** MUST existir la propiedad `cliente_nombre?: string` (string, campo opcional)
+**And** la ausencia del claim en un token decodificado MUST producir `undefined` (no un error de tipo ni runtime)
+
+---
+
+#### Scenario: Login exitoso incluye `cliente_nombre` correcto en el JWT
+
+**Given** un usuario con `activo = TRUE` y `deleted_at IS NULL`
+**And** su cliente tiene `activo = TRUE` y `nombre = "Acme Corp"`
+**When** el usuario envía credenciales correctas al endpoint de login
+**Then** el JWT de acceso emitido MUST contener `cliente_nombre: "Acme Corp"` en su payload
+**And** `cliente_nombre` MUST ser igual a `cliente.nombre` (no `razonSocial`, no `cuit`)
+**And** los claims `sub`, `cliente_id`, `email`, `roles`, `permisos` MUST seguir presentes y correctos (sin regresión)
+
+#### Scenario: `cliente_nombre` corresponde exclusivamente al cliente del usuario autenticado
+
+**Given** existen dos clientes activos: `ClienteA` con `nombre = "Acme Corp"` y `ClienteB` con `nombre = "Beta SA"`
+**And** `usuarioA` tiene `cliente_id` apuntando a `ClienteA`
+**When** `usuarioA` hace login exitosamente
+**Then** el JWT emitido MUST contener `cliente_nombre: "Acme Corp"`
+**And** MUST NOT contener ningún dato de `ClienteB` en ningún claim
+
+---
+
+#### Scenario: Refresh con cliente inactivo es rechazado — seguridad de tenant suspendido
+
+> Requisito de seguridad: sin este check, un tenant suspendido puede renovar access tokens durante hasta 7 días (duración del refresh token). El refresh DEBE espejar el check de login.
+
+**Given** un refresh token válido de un usuario cuyo cliente tiene `activo = FALSE`
+**When** el cliente envía el refresh token al endpoint de renovación
+**Then** MUST devolver HTTP 403
+**And** MUST NOT emitir ningún JWT ni nuevo refresh token
+**And** el use case MUST retornar `ClienteInactivoError` antes de firmar el JWT
+
+#### Scenario: Refresh exitoso mantiene `cliente_nombre` en el nuevo JWT
+
+**Given** un refresh token válido de un usuario cuyo cliente tiene `nombre = "Acme Corp"`
+**When** el cliente envía el refresh token al endpoint de renovación
+**Then** el nuevo JWT de acceso MUST contener `cliente_nombre: "Acme Corp"`
+**And** `cliente_nombre` MUST ser el mismo que el login hubiera emitido para ese usuario
+**And** la rotación del refresh token MUST ocurrir normalmente
+
+#### Scenario: `cliente_nombre` del JWT renovado corresponde al cliente del usuario (no cross-tenant)
+
+**Given** un refresh token válido de `usuarioA` cuyo cliente tiene `nombre = "Acme Corp"`
+**And** existe `usuarioB` cuyo cliente tiene `nombre = "Beta SA"`
+**When** `usuarioA` renueva su token
+**Then** el nuevo JWT de `usuarioA` MUST contener `cliente_nombre: "Acme Corp"`
+**And** MUST NOT contener datos del cliente de `usuarioB` ni de ningún otro tenant
 
 ---
 

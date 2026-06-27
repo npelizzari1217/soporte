@@ -76,14 +76,47 @@ El sidebar MUST contener los ítems de navegación Tickets, Compras, Reparacione
 
 ### Requirement: Display del tenant activo en el header del sidebar
 
-El header del sidebar MUST mostrar el nombre del tenant/cliente activo de la sesión. MUST NOT renderizar ningún control para cambiar de tenant. La información es display-only.
+> Completado en change `auth-cliente-nombre` (2026-06-27). El claim `cliente_nombre` del JWT ahora provee el nombre real del tenant. Implementación: `sidebar.tsx` — `{user?.cliente_nombre || 'Soporte'}`.
+
+El header del sidebar MUST mostrar el nombre real del tenant/cliente activo de la sesión, tomado del claim `cliente_nombre` del JWT. Cuando el claim está ausente (tokens emitidos antes de este change), MUST mostrar el fallback de marca "Soporte". MUST NOT renderizar ningún control para cambiar de tenant. La información es display-only.
 
 #### Scenario: Nombre del tenant activo es visible en el header del sidebar
 
-- GIVEN el usuario está autenticado con un tenant activo
+- GIVEN el usuario está autenticado con un JWT que contiene `cliente_nombre: "Acme Corp"`
 - WHEN el sidebar renderiza
-- THEN el header del sidebar MUST mostrar el nombre del cliente/tenant activo
+- THEN el header del sidebar MUST mostrar el texto "Acme Corp" (nombre real del cliente)
+- AND MUST NOT mostrar el texto estático "Soporte"
 - AND el nombre MUST ser legible con contraste WCAG AA en modo oscuro y claro
+
+#### Scenario: El nombre mostrado corresponde al cliente del usuario autenticado
+
+- GIVEN `usuarioA` está autenticado con un JWT que contiene `cliente_nombre: "Acme Corp"`
+- WHEN el sidebar renderiza
+- THEN el header MUST mostrar "Acme Corp"
+- AND MUST NOT mostrar el nombre de ningún otro cliente
+
+#### Scenario: El avatar con la inicial del email sigue presente cuando hay `cliente_nombre`
+
+- GIVEN el usuario está autenticado con un JWT que contiene `cliente_nombre: "Acme Corp"`
+- AND el email del usuario es "juan@ejemplo.com"
+- WHEN el sidebar renderiza
+- THEN el header MUST mostrar "Acme Corp" como nombre del cliente
+- AND MUST seguir mostrando el avatar con la inicial "J" del email del usuario
+
+#### Scenario: Fallback "Soporte" cuando el claim `cliente_nombre` está ausente
+
+- GIVEN el usuario está autenticado con un JWT que NO contiene el claim `cliente_nombre` (token emitido antes de `auth-cliente-nombre`)
+- WHEN el sidebar renderiza
+- THEN el header MUST mostrar el texto "Soporte" (brand fallback)
+- AND MUST mostrar el avatar con la inicial del email del usuario
+- AND MUST NOT renderizar el string `"undefined"`, un string vacío, ni lanzar ningún error
+
+#### Scenario: String vacío en `cliente_nombre` activa el fallback
+
+- GIVEN el usuario está autenticado con un JWT que contiene `cliente_nombre: ""` (string vacío)
+- WHEN el sidebar renderiza
+- THEN el header MUST tratar el string vacío como claim ausente y mostrar "Soporte"
+- AND MUST NOT mostrar un string vacío como nombre del cliente
 
 #### Scenario: No existe control de tenant switcher
 
