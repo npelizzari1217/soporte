@@ -79,6 +79,9 @@ export class AuthController {
 
     if (result.isFail()) {
       const error = result.getError();
+      if (error instanceof ClienteInactivoError) {
+        throw new ForbiddenException(error.message);
+      }
       if (
         error instanceof TokenExpiradoError ||
         error instanceof TokenRevocadoError ||

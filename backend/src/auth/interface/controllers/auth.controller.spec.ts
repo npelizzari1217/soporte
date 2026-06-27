@@ -114,6 +114,14 @@ describe('AuthController', () => {
         UnauthorizedException,
       );
     });
+
+    it('lanza ForbiddenException (403) cuando el cliente está inactivo', async () => {
+      refreshUseCase.execute.mockResolvedValue(Result.fail(new ClienteInactivoError()));
+
+      await expect(controller.refresh({ refreshToken: 'valid-token' })).rejects.toThrow(
+        ForbiddenException,
+      );
+    });
   });
 
   // ─── logout ────────────────────────────────────────────────────────────────
@@ -150,6 +158,7 @@ describe('AuthController', () => {
         email: 'u@test.com',
         roles: [],
         permisos: [],
+        cliente_nombre: 'Test Corp',
       };
       const result = await controller.logoutAll(user);
 

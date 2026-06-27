@@ -4,11 +4,13 @@ import { DomainError } from '../../../shared/domain/result';
 import { IRefreshTokenRepository } from '../../domain/ports/i-refresh-token.repository';
 import { IUsuarioRepository } from '../../domain/ports/i-usuario.repository';
 import { ITokenService, JwtPayload } from '../../domain/ports/i-token.service';
+import { IClienteRepository } from '../../../clientes/domain/ports/i-cliente.repository';
 import { RefreshTokenEntity } from '../../domain/entities/refresh-token.entity';
 import {
   TokenExpiradoError,
   TokenRevocadoError,
   TokenInvalidoError,
+  ClienteInactivoError,
 } from '../../domain/errors/auth.errors';
 
 /** Duración del nuevo refresh token: 7 días. */
@@ -37,7 +39,8 @@ export interface RefreshResult {
  * 3. Verifica que no esté revocado → TokenRevocadoError.
  * 4. Revoca el token anterior (refreshToken.revoke() + save).
  * 5. Carga el usuario por id (para re-construir el payload del JWT).
- * 6. Firma nuevo JWT con payload actualizado.
+ * 5b. Re-valida cliente activo → ClienteInactivoError (espeja el check de login).
+ * 6. Firma nuevo JWT con payload actualizado (incluye cliente_nombre).
  * 7. Genera nuevo rawToken + SHA-256 + guarda en refresh_tokens.
  * 8. Retorna { accessToken, refreshToken: newRawToken }.
  *
@@ -48,6 +51,7 @@ export class RefreshTokenUseCase {
     private readonly refreshTokenRepo: IRefreshTokenRepository,
     private readonly usuarioRepo: IUsuarioRepository,
     private readonly tokenService: ITokenService,
+    private readonly clienteRepo: IClienteRepository,
   ) {}
 
   async execute(dto: RefreshTokenDto): Promise<Result<RefreshResult, DomainError>> {
@@ -80,6 +84,13 @@ export class RefreshTokenUseCase {
       return Result.fail(new TokenInvalidoError());
     }
 
+    // 5b. Verificar que el cliente (tenant) siga activo (espeja el check de login).
+    // Sin este check, un tenant suspendido podría renovar tokens por hasta 7 días.
+    const cliente = await this.clienteRepo.findById(usuario.clienteId);
+    if (!cliente || !cliente.activo) {
+      return Result.fail(new ClienteInactivoError());
+    }
+
     // 6. Calcular permisos efectivos y firmar nuevo JWT
     const allPermisos = usuario.roles.flatMap((r) => r.permisos.map((p) => p.codigo));
     const permisos = [...new Set(allPermisos)];
@@ -91,6 +102,7 @@ export class RefreshTokenUseCase {
       email: usuario.email,
       roles,
       permisos,
+      cliente_nombre: cliente.nombre,
     };
     const accessToken = this.tokenService.signJwt(payload);
 

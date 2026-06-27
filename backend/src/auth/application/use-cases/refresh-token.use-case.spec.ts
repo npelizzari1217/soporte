@@ -7,18 +7,23 @@
  * - Rechazo si expires_at < now() → TokenExpiradoError
  * - Rechazo si revoked_at IS NOT NULL → TokenRevocadoError
  * - Rechazo si token no existe → TokenInvalidoError
+ * - Renovación exitosa incluye cliente_nombre en el JWT
+ * - Rechazo si cliente inactivo → ClienteInactivoError
  */
 import * as crypto from 'crypto';
 import { RefreshTokenUseCase } from './refresh-token.use-case';
 import { RefreshTokenEntity } from '../../domain/entities/refresh-token.entity';
 import { UsuarioEntity } from '../../domain/entities/usuario.entity';
+import { ClienteEntity } from '../../../clientes/domain/entities/cliente.entity';
 import { IRefreshTokenRepository } from '../../domain/ports/i-refresh-token.repository';
 import { IUsuarioRepository } from '../../domain/ports/i-usuario.repository';
 import { ITokenService, JwtPayload } from '../../domain/ports/i-token.service';
+import { IClienteRepository } from '../../../clientes/domain/ports/i-cliente.repository';
 import {
   TokenExpiradoError,
   TokenRevocadoError,
   TokenInvalidoError,
+  ClienteInactivoError,
 } from '../../domain/errors/auth.errors';
 
 // ─── Factories de entidades de test ──────────────────────────────────────────
@@ -55,6 +60,11 @@ const makeUsuario = (id?: string): UsuarioEntity =>
     id,
   );
 
+// ─── Factories de test adicionales ───────────────────────────────────────────
+
+const makeCliente = (nombre = 'Acme Corp', activo = true): ClienteEntity =>
+  ClienteEntity.create({ nombre, razonSocial: null, cuit: null, dbName: 'acme', activo });
+
 // ─── Mocks de puertos ────────────────────────────────────────────────────────
 
 const makeRefreshTokenRepo = (): jest.Mocked<IRefreshTokenRepository> => ({
@@ -75,12 +85,21 @@ const makeTokenService = (): jest.Mocked<ITokenService> => ({
   verifyJwt: jest.fn().mockReturnValue(null),
 });
 
+const makeClienteRepo = (): jest.Mocked<IClienteRepository> => ({
+  findById: jest.fn(),
+  findByDbName: jest.fn(),
+  findAll: jest.fn(),
+  save: jest.fn().mockResolvedValue(undefined),
+  delete: jest.fn().mockResolvedValue(undefined),
+});
+
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
 describe('RefreshTokenUseCase', () => {
   let refreshTokenRepo: jest.Mocked<IRefreshTokenRepository>;
   let usuarioRepo: jest.Mocked<IUsuarioRepository>;
   let tokenService: jest.Mocked<ITokenService>;
+  let clienteRepo: jest.Mocked<IClienteRepository>;
   let useCase: RefreshTokenUseCase;
 
   const rawToken = 'a'.repeat(64); // simulated raw token
@@ -90,7 +109,8 @@ describe('RefreshTokenUseCase', () => {
     refreshTokenRepo = makeRefreshTokenRepo();
     usuarioRepo = makeUsuarioRepo();
     tokenService = makeTokenService();
-    useCase = new RefreshTokenUseCase(refreshTokenRepo, usuarioRepo, tokenService);
+    clienteRepo = makeClienteRepo();
+    useCase = new RefreshTokenUseCase(refreshTokenRepo, usuarioRepo, tokenService, clienteRepo);
   });
 
   describe('Renovación exitosa (rotación)', () => {
@@ -98,6 +118,7 @@ describe('RefreshTokenUseCase', () => {
       const oldToken = makeToken({ tokenHash });
       refreshTokenRepo.findByHash.mockResolvedValue(oldToken);
       usuarioRepo.findById.mockResolvedValue(makeUsuario());
+      clienteRepo.findById.mockResolvedValue(makeCliente());
 
       const result = await useCase.execute({ rawToken });
 
@@ -111,6 +132,7 @@ describe('RefreshTokenUseCase', () => {
       const oldToken = makeToken({ tokenHash });
       refreshTokenRepo.findByHash.mockResolvedValue(oldToken);
       usuarioRepo.findById.mockResolvedValue(makeUsuario());
+      clienteRepo.findById.mockResolvedValue(makeCliente());
 
       await useCase.execute({ rawToken });
 
@@ -121,6 +143,7 @@ describe('RefreshTokenUseCase', () => {
       const oldToken = makeToken({ tokenHash });
       refreshTokenRepo.findByHash.mockResolvedValue(oldToken);
       usuarioRepo.findById.mockResolvedValue(makeUsuario());
+      clienteRepo.findById.mockResolvedValue(makeCliente());
 
       // Capturar las llamadas a save para verificar la revocación
       const savedTokens: RefreshTokenEntity[] = [];
@@ -140,6 +163,7 @@ describe('RefreshTokenUseCase', () => {
       const oldToken = makeToken({ tokenHash });
       refreshTokenRepo.findByHash.mockResolvedValue(oldToken);
       usuarioRepo.findById.mockResolvedValue(makeUsuario());
+      clienteRepo.findById.mockResolvedValue(makeCliente());
 
       const result = await useCase.execute({ rawToken });
 
@@ -156,6 +180,7 @@ describe('RefreshTokenUseCase', () => {
       const oldToken = makeToken({ tokenHash });
       refreshTokenRepo.findByHash.mockResolvedValue(oldToken);
       usuarioRepo.findById.mockResolvedValue(makeUsuario());
+      clienteRepo.findById.mockResolvedValue(makeCliente());
 
       const savedTokens: RefreshTokenEntity[] = [];
       refreshTokenRepo.save.mockImplementation(async (token) => {
@@ -176,6 +201,7 @@ describe('RefreshTokenUseCase', () => {
       const oldToken = makeToken({ tokenHash, usuarioId: fixedUserId });
       refreshTokenRepo.findByHash.mockResolvedValue(oldToken);
       usuarioRepo.findById.mockResolvedValue(makeUsuario(fixedUserId));
+      clienteRepo.findById.mockResolvedValue(makeCliente());
 
       let capturedPayload: JwtPayload | undefined;
       tokenService.signJwt.mockImplementation((payload) => {
@@ -188,6 +214,49 @@ describe('RefreshTokenUseCase', () => {
       expect(capturedPayload).toBeDefined();
       expect(capturedPayload!.sub).toBe(fixedUserId);
       expect(capturedPayload!.email).toBe('user@test.com');
+    });
+
+    it('incluye cliente_nombre en el JWT firmado durante el refresh', async () => {
+      const oldToken = makeToken({ tokenHash });
+      refreshTokenRepo.findByHash.mockResolvedValue(oldToken);
+      usuarioRepo.findById.mockResolvedValue(makeUsuario());
+      clienteRepo.findById.mockResolvedValue(makeCliente('Beta SA'));
+
+      let capturedPayload: JwtPayload | undefined;
+      tokenService.signJwt.mockImplementation((payload) => {
+        capturedPayload = payload;
+        return 'new.jwt.token';
+      });
+
+      await useCase.execute({ rawToken });
+
+      expect(capturedPayload).toBeDefined();
+      expect(capturedPayload!.cliente_nombre).toBe('Beta SA');
+    });
+  });
+
+  describe('Rechazo si cliente inactivo', () => {
+    it('retorna ClienteInactivoError si el cliente está inactivo', async () => {
+      const oldToken = makeToken({ tokenHash });
+      refreshTokenRepo.findByHash.mockResolvedValue(oldToken);
+      usuarioRepo.findById.mockResolvedValue(makeUsuario());
+      clienteRepo.findById.mockResolvedValue(makeCliente('X', false));
+
+      const result = await useCase.execute({ rawToken });
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(ClienteInactivoError);
+    });
+
+    it('NO emite JWT ni nuevo refresh token si el cliente está inactivo', async () => {
+      const oldToken = makeToken({ tokenHash });
+      refreshTokenRepo.findByHash.mockResolvedValue(oldToken);
+      usuarioRepo.findById.mockResolvedValue(makeUsuario());
+      clienteRepo.findById.mockResolvedValue(makeCliente('X', false));
+
+      await useCase.execute({ rawToken });
+
+      expect(tokenService.signJwt).not.toHaveBeenCalled();
     });
   });
 

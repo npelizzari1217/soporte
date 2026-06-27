@@ -129,8 +129,9 @@ import { UsuariosController } from './interface/controllers/usuarios.controller'
         refreshTokenRepo: IRefreshTokenRepository,
         usuarioRepo: IUsuarioRepository,
         tokenService: ITokenService,
-      ) => new RefreshTokenUseCase(refreshTokenRepo, usuarioRepo, tokenService),
-      inject: [REFRESH_TOKEN_REPOSITORY, USUARIO_REPOSITORY, TOKEN_SERVICE],
+        clienteRepo: IClienteRepository,
+      ) => new RefreshTokenUseCase(refreshTokenRepo, usuarioRepo, tokenService, clienteRepo),
+      inject: [REFRESH_TOKEN_REPOSITORY, USUARIO_REPOSITORY, TOKEN_SERVICE, CLIENTE_REPOSITORY],
     },
     {
       provide: RevocarTokenUseCase,
