@@ -2,6 +2,9 @@
  * JWT payload decoded from the access token.
  * Decoded client-side for UI only (roles/permisos UI gating).
  * All actual authorization is enforced by the NestJS backend.
+ *
+ * cliente_nombre: nombre del tenant — opcional para tolerar tokens emitidos antes de
+ * auth-cliente-nombre (degradación elegante). El backend siempre lo emite post-deploy.
  */
 export interface JwtPayload {
   sub: string;
@@ -9,6 +12,7 @@ export interface JwtPayload {
   email: string;
   roles: string[];
   permisos: string[];
+  cliente_nombre?: string;
 }
 
 /**

@@ -4,9 +4,9 @@
  * Sidebar — persistent vertical navigation panel.
  *
  * Layout: w-72 flex-col aside with three zones:
- *   1. Header — tenant display (brand "Soporte" + user initial avatar). Read-only:
- *      no switcher or dropdown because clienteNombre is not yet in JwtPayload
- *      (follow-up change: auth-cliente-nombre). Fallback: email[0].toUpperCase().
+ *   1. Header — tenant display. Shows tenant name from JWT claim cliente_nombre;
+ *      falls back to brand 'Soporte' for legacy tokens. Read-only: no switcher or
+ *      dropdown. Avatar: email[0].toUpperCase().
  *   2. Nav — 4 links with Lucide icons. aria-current="page" on the active item
  *      detected via pathname.startsWith(href). Why aria-current and not a class alone:
  *      screen readers announce "current page" which is semantically correct here.
@@ -52,7 +52,7 @@ export function Sidebar() {
       <header className="flex items-center gap-3 px-5 py-5 border-b border-slate-200/50 dark:border-white/5">
         <div className="flex items-center gap-3 min-w-0">
           <span className="text-sm font-semibold tracking-tight text-foreground truncate">
-            Soporte
+            {user?.cliente_nombre || 'Soporte'}
           </span>
         </div>
         {userInitial && (

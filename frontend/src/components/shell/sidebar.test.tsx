@@ -164,4 +164,56 @@ describe("Sidebar", () => {
     const btn = screen.getByRole("button");
     expect(btn).toHaveTextContent("john@test.com");
   });
+
+  // ── Tenant display: cliente_nombre claim (auth-cliente-nombre) ────────────
+
+  it("muestra cliente_nombre cuando está presente", () => {
+    const BASE_USER = { sub: "u1", cliente_id: "c1", email: "juan@ejemplo.com", roles: [], permisos: [] };
+    mockUseSession.mockReturnValue({
+      user: { ...BASE_USER, cliente_nombre: "Acme Corp" },
+      isLoading: false,
+      can: () => false,
+    });
+    render(<Sidebar />);
+    expect(screen.getByText("Acme Corp")).toBeInTheDocument();
+    expect(screen.queryByText("Soporte")).not.toBeInTheDocument();
+  });
+
+  it("muestra fallback 'Soporte' cuando cliente_nombre está ausente", () => {
+    const BASE_USER = { sub: "u1", cliente_id: "c1", email: "juan@ejemplo.com", roles: [], permisos: [] };
+    mockUseSession.mockReturnValue({ user: { ...BASE_USER }, isLoading: false, can: () => false });
+    render(<Sidebar />);
+    expect(screen.getByText("Soporte")).toBeInTheDocument();
+  });
+
+  it("muestra fallback 'Soporte' cuando cliente_nombre es string vacío", () => {
+    const BASE_USER = { sub: "u1", cliente_id: "c1", email: "juan@ejemplo.com", roles: [], permisos: [] };
+    mockUseSession.mockReturnValue({
+      user: { ...BASE_USER, cliente_nombre: "" },
+      isLoading: false,
+      can: () => false,
+    });
+    render(<Sidebar />);
+    expect(screen.getByText("Soporte")).toBeInTheDocument();
+    // SVG icons match queryByText("") due to empty textContent — scope to <span> only
+    expect(screen.queryByText("", { selector: "span" })).not.toBeInTheDocument();
+  });
+
+  it("el avatar con la inicial del email sigue presente cuando hay cliente_nombre", () => {
+    const BASE_USER = { sub: "u1", cliente_id: "c1", email: "juan@ejemplo.com", roles: [], permisos: [] };
+    mockUseSession.mockReturnValue({
+      user: { ...BASE_USER, cliente_nombre: "Acme Corp" },
+      isLoading: false,
+      can: () => false,
+    });
+    render(<Sidebar />);
+    expect(screen.getByText("J")).toBeInTheDocument(); // inicial de 'juan@ejemplo.com'
+    expect(screen.getByText("Acme Corp")).toBeInTheDocument();
+  });
+
+  it("no renderiza el string 'undefined' en ningún caso", () => {
+    mockUseSession.mockReturnValue({ user: null, isLoading: false, can: () => false });
+    render(<Sidebar />);
+    expect(screen.queryByText("undefined")).not.toBeInTheDocument();
+  });
 });

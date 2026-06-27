@@ -1,9 +1,37 @@
 /**
  * T07 smoke test — validates ApiError, SessionExpiredError, and type contracts.
  * Validates T02 test infrastructure (Vitest + jsdom) is functional.
+ *
+ * Extended by auth-cliente-nombre: JwtPayload cliente_nombre contract.
  */
 import { describe, it, expect } from "vitest";
+import type { JwtPayload } from "./types";
 import { ApiError, SessionExpiredError } from "./types";
+
+describe("JwtPayload — contrato de tipo", () => {
+  it("acepta payload sin cliente_nombre (tokens legados)", () => {
+    const payload: JwtPayload = {
+      sub: "uuid-1",
+      cliente_id: "c-uuid",
+      email: "a@b.com",
+      roles: [],
+      permisos: [],
+    };
+    expect(payload.cliente_nombre).toBeUndefined();
+  });
+
+  it("acepta payload con cliente_nombre (tokens nuevos)", () => {
+    const payload: JwtPayload = {
+      sub: "uuid-1",
+      cliente_id: "c-uuid",
+      email: "a@b.com",
+      roles: [],
+      permisos: [],
+      cliente_nombre: "Acme Corp",
+    };
+    expect(payload.cliente_nombre).toBe("Acme Corp");
+  });
+});
 
 describe("ApiError", () => {
   it("is discriminable by instanceof", () => {
