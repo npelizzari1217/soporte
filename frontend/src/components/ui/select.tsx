@@ -26,7 +26,13 @@ export interface SelectProps {
   options: { value: string; label: string }[]
   placeholder?: string
   disabled?: boolean
+  /** When true, applies destructive border to signal a validation error. */
+  error?: boolean
   className?: string
+  /** aria-label for the trigger button — required when no visible label uses htmlFor. */
+  'aria-label'?: string
+  /** id for the trigger button — allows <label htmlFor> association. */
+  id?: string
 }
 
 function Select({
@@ -35,7 +41,10 @@ function Select({
   options,
   placeholder,
   disabled,
+  error,
   className,
+  'aria-label': ariaLabel,
+  id,
 }: SelectProps) {
   return (
     <RadixSelect.Root
@@ -44,6 +53,8 @@ function Select({
       disabled={disabled}
     >
       <RadixSelect.Trigger
+        id={id}
+        aria-label={ariaLabel}
         className={cn(
           'flex w-full items-center justify-between gap-2 ' +
           'rounded-xl border border-input bg-transparent px-3 py-2 text-sm ' +
@@ -51,6 +62,7 @@ function Select({
           'focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ' +
           'disabled:cursor-not-allowed disabled:opacity-50 ' +
           'transition-colors',
+          error && 'border-destructive',
           className
         )}
       >

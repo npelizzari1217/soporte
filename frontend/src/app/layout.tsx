@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "../styles/globals.css";
 import { Providers } from "@/shared/providers/providers";
+import { Toaster } from 'sonner'
 
 export const metadata: Metadata = {
   title: "Soporte",
@@ -54,6 +55,12 @@ export default function RootLayout({
       </head>
       <body className="bg-background text-foreground">
         <Providers>{children}</Providers>
+        {/*
+         * ADR-4: único Toaster global. Post-Providers para que sea un client island
+         * independiente. RootLayout permanece Server Component — sonner se autoinyecta
+         * como "use client" internamente.
+         */}
+        <Toaster richColors position="top-right" theme="system" />
       </body>
     </html>
   );

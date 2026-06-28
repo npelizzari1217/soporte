@@ -1,5 +1,6 @@
 /**
  * T1.3 — RootLayout FOUC script + suppressHydrationWarning (RED phase)
+ * T1.6 — Toaster montado en root layout (una sola instancia, post-Providers)
  *
  * Strategy: inspect the React element tree returned by RootLayout directly.
  * RTL can't render <html> elements properly in jsdom (they get hoisted/stripped),
@@ -17,6 +18,8 @@
 import { describe, it, expect } from "vitest";
 import React from "react";
 import RootLayout from "./layout";
+import * as fs from "node:fs";
+import * as path from "node:path";
 
 /**
  * Traverses a React element tree depth-first.
@@ -79,4 +82,19 @@ describe("RootLayout — FOUC + suppressHydrationWarning", () => {
     const html = script.props.dangerouslySetInnerHTML.__html as string;
     expect(html).toContain("prefers-color-scheme");
   });
+});
+
+describe("RootLayout — Toaster (T1.6)", () => {
+  it("el módulo layout.tsx importa Toaster desde sonner exactamente una vez", () => {
+    // Use path.resolve relative to __dirname which is set by vitest
+    const layoutPath = path.resolve(__dirname, "layout.tsx")
+    const src = fs.readFileSync(layoutPath, "utf-8")
+    const toasterImports = src.match(/Toaster/g) ?? []
+    // Must appear at least twice: once in the import line, once in the JSX
+    expect(toasterImports.length).toBeGreaterThanOrEqual(2)
+    expect(src).toContain("from 'sonner'")
+    // Must not have more than one <Toaster (one mount point)
+    const jsxOccurrences = (src.match(/<Toaster/g) ?? []).length
+    expect(jsxOccurrences).toBe(1)
+  })
 });

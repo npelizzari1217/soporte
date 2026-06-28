@@ -56,4 +56,15 @@ describe('Select', () => {
     render(<Select options={OPTIONS} disabled />)
     expect(screen.getByRole('combobox')).toBeDisabled()
   })
+
+  // T1.8 — error prop
+  it('trigger has border-destructive class when error=true', () => {
+    render(<Select options={OPTIONS} error={true} />)
+    expect(screen.getByRole('combobox').className).toContain('border-destructive')
+  })
+
+  it('trigger does NOT have border-destructive when error=false', () => {
+    render(<Select options={OPTIONS} error={false} />)
+    expect(screen.getByRole('combobox').className).not.toContain('border-destructive')
+  })
 })
