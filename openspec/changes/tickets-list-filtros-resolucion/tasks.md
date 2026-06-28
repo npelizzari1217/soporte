@@ -265,7 +265,7 @@ la relación `tipo TipoTicket @relation` (schema L175). NO SQL crudo.
 
 ---
 
-### T2.1 — Schema Prisma + migración SQL
+### [x] T2.1 — Schema Prisma + migración SQL
 
 - **Archivos**:
   - `backend/prisma_tenant/schema.prisma`
@@ -291,7 +291,7 @@ la relación `tipo TipoTicket @relation` (schema L175). NO SQL crudo.
 
 ---
 
-### T2.2 — `prisma generate` [BUILD STEP]
+### [x] T2.2 — `prisma generate` [BUILD STEP]
 
 - **Archivos**: `.prisma/tenant` (regenerado automáticamente)
 
@@ -303,7 +303,7 @@ El build de TS **empieza a fallar** en todos los archivos que referencian `row.f
 
 ---
 
-### T2.3 — [RED-COMPILE] Rename `TicketProps.fechaVencimiento` → `fechaResolucion` en dominio
+### [x] T2.3 — [RED-COMPILE] Rename `TicketProps.fechaVencimiento` → `fechaResolucion` en dominio
 
 - **Archivos**: `backend/src/tickets/domain/entities/ticket.entity.ts`
 - **Spec**: entidad refleja el campo renombrado; `PATCH /tickets/:id` ya no acepta `fechaResolucion`
@@ -321,7 +321,7 @@ Esos errores guían las tareas T2.4–T2.8.
 
 ---
 
-### T2.4 — [GREEN] Capa de aplicación — `crear-ticket.use-case.ts` + sus specs
+### [x] T2.4 — [GREEN] Capa de aplicación — `crear-ticket.use-case.ts` + sus specs
 
 - **Archivos**:
   - `backend/src/tickets/application/use-cases/crear-ticket.use-case.ts`
@@ -346,7 +346,7 @@ Esos errores guían las tareas T2.4–T2.8.
 
 ---
 
-### T2.5 — [GREEN] Capa de infraestructura — `ticket.mapper.ts` + integration spec
+### [x] T2.5 — [GREEN] Capa de infraestructura — `ticket.mapper.ts` + integration spec
 
 - **Archivos**:
   - `backend/src/tickets/infrastructure/persistence/prisma/ticket.mapper.ts`
@@ -359,7 +359,7 @@ Esos errores guían las tareas T2.4–T2.8.
 
 ---
 
-### T2.6 — [GREEN] Capa de interfaz tickets — DTOs + controller + sus specs
+### [x] T2.6 — [GREEN] Capa de interfaz tickets — DTOs + controller + sus specs
 
 - **Archivos**:
   - `backend/src/tickets/interface/dtos/tickets.dto.ts`
@@ -378,7 +378,7 @@ Esos errores guían las tareas T2.4–T2.8.
 
 ---
 
-### T2.7 — [GREEN] Otros módulos — compras, equipos, reparaciones
+### [x] T2.7 — [GREEN] Otros módulos — compras, equipos, reparaciones
 
 - **Archivos**:
   - `backend/src/compras/interface/dtos/compras.dto.ts`
@@ -404,7 +404,7 @@ en el JSON de alta de compras/soporte/edilicia a partir de este PR).
 
 ---
 
-### T2.8 — [GREEN] Frontend rename (path de LECTURA solamente)
+### [x] T2.8 — [GREEN] Frontend rename (path de LECTURA solamente)
 
 - **Archivos**:
   - `frontend/src/features/tickets/types.ts`
@@ -428,7 +428,7 @@ en el JSON de alta de compras/soporte/edilicia a partir de este PR).
 
 ---
 
-### T2.9 — [VERIFY] TypeScript compile limpio
+### [x] T2.9 — [VERIFY] TypeScript compile limpio
 
 - **Archivos**: build completo
 
