@@ -121,3 +121,151 @@ no reemplaza esa validación, la complementa mostrando solo lo que el usuario pu
 **Then** `user` MUST ser `null` mientras `isLoading === true`
 **And** los componentes hijos que renderizan contenido gated por permiso MUST mostrar skeleton o nada mientras `isLoading === true`
 **And** MUST NOT mostrar brevemente contenido de un rol incorrecto (no flash de contenido sin autorizar, FOUC de autorización)
+
+---
+
+### Requirement: Mutación exitosa MUST emitir toast de éxito E invalidar el caché de queries
+
+Toda mutación de escritura (create, update, delete) que recibe una respuesta exitosa del backend
+MUST: (1) invalidar el caché (`queryClient.invalidateQueries`) con la query key correspondiente,
+y (2) emitir un toast de éxito (`notify.success` o `toast.success`). Ambas acciones son
+obligatorias. El patrón implementado en `tickets-crud` es el de referencia para todas las entidades.
+
+ADR (tickets-crud): los efectos UI (toast, cierre de modal, reset) viven en el container hook
+(`useTicketForm`), no en el hook de mutación puro (ADR-3). Esto permite testear los hooks de
+mutación en aislamiento sin espiar `notify`. El objetivo (que el toast aparezca tras el éxito)
+se cumple; la cláusula de co-localización en `onSuccess` del hook queda como convención a decidir
+antes de replicar a otras entidades (ver deuda W2 en `tickets-crud/verify-report.md`).
+
+Agregado en change: `tickets-crud` (2026-06-28) — aplica a todas las entidades.
+
+#### Scenario: onSuccess de create — invalida queries y muestra toast de éxito
+
+- GIVEN un hook de mutación create (ej. useCreateTicket) con invalidación configurada
+- AND el backend responde 201 Created
+- WHEN la mutación completa exitosamente
+- THEN `queryClient.invalidateQueries` MUST ser llamado con la query key de la entidad
+- AND un toast de éxito (notify.success o toast.success) MUST ser emitido con mensaje no vacío
+- AND el FormModal MUST cerrarse después de que el éxito procese
+
+#### Scenario: onSuccess de update — invalida queries y muestra toast de éxito
+
+- GIVEN un hook de mutación update (ej. useUpdateTicket) con onSuccess configurado
+- AND el backend responde 200 OK
+- WHEN la mutación completa exitosamente
+- THEN `queryClient.invalidateQueries` MUST ser llamado (all + detail del item)
+- AND un toast de éxito MUST ser emitido
+
+#### Scenario: onSuccess de delete — invalida queries y muestra toast de éxito tras 204
+
+- GIVEN un hook de mutación delete (ej. useDeleteTicket) con onSuccess configurado
+- AND el backend responde 204 No Content (sin body)
+- WHEN la mutación completa exitosamente
+- THEN `queryClient.invalidateQueries` MUST ser llamado con la query key de la entidad
+- AND un toast de éxito MUST ser emitido
+- AND MUST NOT lanzarse ningún error al parsear el body vacío (apiFetch maneja 204 correctamente
+  per spec `frontend-api-client`)
+
+#### Scenario: Modal/formulario se cierra después de que el éxito procese
+
+- GIVEN el hook de mutación completó con éxito
+- WHEN el componente consumer procesa onSuccess
+- THEN el FormModal MUST cerrarse (onOpenChange(false) o equivalente)
+- AND MUST NOT cerrarse antes de que el éxito ejecute completamente
+
+---
+
+### Requirement: Error 422 (dominio) MUST mostrarse como feedback inline en el formulario
+
+Los errores 422 son errores de negocio que el usuario puede resolver corrigiendo datos. MUST
+presentarse dentro del formulario — no como toast efímero. El formulario MUST permanecer abierto.
+El mensaje de error del backend (string único) se mapea a `setError('root', { message })` de
+react-hook-form y se renderiza con `role="alert"` en el tope del form.
+
+Nota: el backend devuelve `message` como string único (no array por campo, per exploración
+`tickets-crud`). Si en futuras versiones el backend mapea a campos específicos, el helper
+`mapApiError` puede enrutarlo a `setError(fieldName, ...)`.
+
+Agregado en change: `tickets-crud` (2026-06-28) — aplica a todas las entidades.
+
+#### Scenario: 422 en create — error aparece dentro del formulario, modal sigue abierto
+
+- GIVEN el FormModal de create está abierto y el usuario completó los campos
+- AND el backend responde 422 con `{ message: "Tipo de ticket no válido" }`
+- WHEN el usuario envía el formulario
+- THEN MUST aparecer el mensaje de error visible dentro del modal (banner root con role="alert")
+- AND el modal MUST permanecer abierto (onOpenChange NO se llama con false)
+- AND MUST NOT mostrarse toast.success
+- AND el botón de submit MUST volver al estado no-loading
+
+#### Scenario: 422 en update — feedback inline, formulario sigue abierto
+
+- GIVEN el FormModal de update está abierto
+- AND el backend responde 422 con un mensaje de dominio
+- WHEN el usuario envía
+- THEN el mensaje de error MUST aparecer dentro del formulario (setError('root') o equivalente)
+- AND el modal MUST permanecer abierto con los datos del formulario intactos
+
+#### Scenario: El error inline 422 es accesible (live region)
+
+- GIVEN un error 422 setea `setError('root', { message: '...' })`
+- WHEN el mensaje de error renderiza en el formulario
+- THEN MUST tener `role="alert"` para notificar a screen readers cuando aparece
+
+---
+
+### Requirement: Errores no-422 MUST mostrarse como toast.error
+
+Los errores que no son de dominio del usuario (red, permisos, not found, internal error) no
+pueden resolverse modificando el formulario. El feedback es un toast efímero vía `notify.error`.
+El formulario puede cerrarse o mantenerse abierto según el tipo de error.
+
+Agregado en change: `tickets-crud` (2026-06-28) — aplica a todas las entidades.
+
+#### Scenario: Error de red (statusCode 0) — toast.error, formulario permanece abierto
+
+- GIVEN un formulario está enviando una mutación
+- AND MSW simula un error de red (sin respuesta HTTP)
+- WHEN la mutación falla
+- THEN `notify.error` (o `toast.error`) MUST ser llamado con un mensaje legible
+- AND el formulario MUST permanecer abierto (el usuario puede reintentar)
+
+#### Scenario: 404 Not Found — toast.error, formulario/modal se cierra
+
+- GIVEN una mutación de update o delete recibe `ApiError { statusCode: 404 }`
+- WHEN el onError procesa
+- THEN `notify.error` MUST ser llamado con mensaje indicando que el recurso no existe
+- AND el formulario/modal MUST cerrarse
+- AND la query MUST invalidarse para reflejar el estado actual
+
+#### Scenario: 500 Internal Server Error — toast.error genérico
+
+- GIVEN una mutación recibe `ApiError { statusCode: 500 }`
+- WHEN el onError procesa
+- THEN `notify.error` MUST ser llamado con un mensaje genérico de error del servidor
+
+---
+
+### Requirement: Patrón de hook de mutación testeable en aislamiento
+
+Los hooks de mutación (useCreate*, useUpdate*, useDelete*) MUST ser testeables sin el componente
+UI que los consume. El patrón es el mismo para todas las entidades (tickets-crud establece la
+convención).
+
+Agregado en change: `tickets-crud` (2026-06-28).
+
+#### Scenario: El hook de mutación es testeable con QueryClientProvider + MSW
+
+- GIVEN un test monta el hook con un QueryClientProvider y un MSW handler
+- WHEN el test llama a `result.current.mutate(dto)` (o `mutateAsync`)
+- THEN MUST poder verificar: que el request correcto se disparó, que `isPending` fue true,
+  y que tras la respuesta del MSW `isPending` volvió a false
+- AND MUST NOT requerir montar el componente UI completo
+
+#### Scenario: Estado isPending refleja correctamente el ciclo de vida de la mutación
+
+- GIVEN el hook de mutación está montado y el MSW handler tiene delay
+- WHEN se llama a `mutate(dto)`
+- THEN `result.current.isPending` MUST ser `true` mientras el request no resolvió
+- AND MUST ser `false` después de éxito o error
+- AND el componente UI que lo consume MUST poder leer `isPending` para mostrar el botón loading

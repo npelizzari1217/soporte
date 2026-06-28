@@ -322,3 +322,247 @@ y controles de UI, fuerza fondo blanco y texto negro de alta legibilidad.
 - THEN el fondo MUST ser blanco (`background: white`)
 - AND el texto MUST ser negro o gris muy oscuro para máxima legibilidad
 - AND los divisores MUST ser finos y minimalistas (1px solid con tono neutro claro)
+
+---
+
+### Requirement: <Textarea> disponible en @/components/ui como átomo de entrada de texto largo
+
+`<Textarea>` es el átomo equivalente a `<Input>` para campos de texto largo (ej. `descripcion`).
+MUST usar `forwardRef` para compatibilidad con `register()` de react-hook-form. MUST heredar las
+mismas reglas de radio que `<Input>` (`rounded-xl`). MUST aceptar prop `error?: boolean` para
+aplicar estilos de borde destructivo.
+
+Actualizado en change: `tickets-crud` (2026-06-28)
+
+#### Scenario: <Textarea> importable con rounded-xl, forwardRef y prop error
+
+- GIVEN la implementación está completa
+- WHEN cualquier feature importa `<Textarea>` desde `@/components/ui/textarea`
+- THEN el componente MUST existir en ese path
+- AND MUST renderizar con `rounded-xl` como clase base (consistente con `<Input>`)
+- AND `forwardRef` MUST funcionar: el ref apunta al elemento `HTMLTextAreaElement` real
+- AND `error={true}` MUST agregar clase `border-destructive` al textarea
+- AND `error={false}` o ausente MUST NOT agregar clase `border-destructive`
+- AND props estándar HTML (`placeholder`, `disabled`, `rows`, `className`) MUST propagarse
+
+---
+
+### Requirement: <FormField> disponible en @/components/ui con API de campo de formulario
+
+`<FormField>` es el wrapper de campo de formulario premium que combina: `<Label>` uppercase
+con tracking, el control hijo (Input, Select, Textarea, etc.), y el mensaje de error accesible.
+MUST ser importable desde `@/components/ui/form-field`. MUST ser genérico (no acoplado a
+react-hook-form internamente, aunque lo usen sus consumidores).
+
+Agregado en change: `tickets-crud` (2026-06-28)
+
+#### Scenario: <FormField> renderiza Label uppercase + control + sin error
+
+- GIVEN cualquier feature importa `<FormField>` desde `@/components/ui/form-field`
+- WHEN se renderiza `<FormField label="Título" htmlFor="titulo"><Input id="titulo" /></FormField>`
+- THEN MUST renderizar un `<label>` asociado al input (`htmlFor` correcto)
+- AND el label MUST tener estilos `text-xs tracking-wider uppercase` y color atenuado (muted)
+- AND el input MUST ser el hijo directo dentro del FormField
+- AND MUST NOT renderizar ningún mensaje de error si `error` no fue provisto
+
+#### Scenario: <FormField> con error renderiza mensaje accesible con role="alert"
+
+- GIVEN `<FormField label="Título" htmlFor="titulo" error="El título es requerido"><Input /></FormField>`
+- WHEN renderiza
+- THEN MUST aparecer el texto "El título es requerido" debajo del control
+- AND el mensaje MUST tener color destructivo (`text-destructive`)
+- AND el mensaje MUST ser accesible vía `role="alert"` (live region para screen readers)
+- NOTE: la vinculación `aria-describedby` entre el input y el mensaje de error es
+  responsabilidad del consumer (deuda técnica registrada, ver S1/a11y en tickets-crud)
+
+#### Scenario: <FormField> con prop required muestra indicador visual
+
+- GIVEN `<FormField label="Título" htmlFor="titulo" required={true}>`
+- WHEN renderiza
+- THEN el label MUST incluir un indicador visual de requerido (ej. asterisco `*`)
+
+#### Scenario: <FormField> acepta cualquier control hijo (Input, Select, Textarea)
+
+- GIVEN `<FormField label="Descripción" htmlFor="desc"><Textarea id="desc" /></FormField>`
+- WHEN renderiza
+- THEN MUST renderizar el Textarea como control sin errores de React
+- AND el Label MUST seguir asociado correctamente vía htmlFor
+
+#### Scenario: <FormField> exportable desde @/components/ui/form-field
+
+- GIVEN la implementación está completa
+- WHEN se ejecuta `import { FormField } from '@/components/ui/form-field'`
+- THEN MUST resolverse sin error
+- AND MUST exportar al menos el componente `FormField` como named export
+
+---
+
+### Requirement: <FormModal> disponible en @/components/ui — modal glassmorphism con Radix Dialog
+
+`<FormModal>` encapsula Radix Dialog con la estética glassmorphism del design system (heredada
+del spec canónico). MUST manejar apertura/cierre de forma controlada (open/onOpenChange). MUST
+preservar focus trap y ESC por defecto (comportamiento nativo de Radix Dialog). MUST ser
+agnóstico al formulario que contiene. El footer de botones MUST vivir dentro del `<form>` del
+consumer (no en el shell) para que `type="submit"` funcione con react-hook-form.
+
+Agregado en change: `tickets-crud` (2026-06-28)
+
+#### Scenario: <FormModal> exportable desde @/components/ui/form-modal
+
+- GIVEN la implementación está completa
+- WHEN se ejecuta `import { FormModal } from '@/components/ui/form-modal'`
+- THEN MUST resolverse sin error
+
+#### Scenario: <FormModal> renderiza portal con role="dialog" y aria-modal cuando open=true
+
+- GIVEN `<FormModal open={true} onOpenChange={fn} title="Crear ticket">...</FormModal>`
+- WHEN renderiza
+- THEN MUST existir en el DOM un elemento con `role="dialog"`
+- AND el `role="dialog"` MUST tener `aria-modal="true"`
+
+#### Scenario: <FormModal> muestra title como Dialog.Title accesible
+
+- GIVEN `<FormModal open={true} title="Crear ticket">`
+- WHEN renderiza
+- THEN el título "Crear ticket" MUST ser el texto del elemento Dialog.Title (accesible a screen readers)
+
+#### Scenario: <FormModal> aplica glassmorphism correcto en modo oscuro
+
+- GIVEN el tema activo es oscuro (`.dark` en `<html>`)
+- WHEN `<FormModal open={true}>` renderiza
+- THEN el overlay MUST tener `backdrop-blur` aplicado
+- AND el borde del panel MUST ser `border-white/10` o `border-white/5` (blanco translúcido)
+- AND el panel MUST tener `rounded-xl` (input-level, modal premium) o `rounded-lg` (contenedor)
+- AND MUST NOT usar borde opaco sólido
+
+#### Scenario: ESC cierra el <FormModal>
+
+- GIVEN `<FormModal open={true} onOpenChange={mockFn}>` está renderizado
+- WHEN el usuario presiona la tecla ESC
+- THEN `mockFn` MUST ser llamado con `false`
+
+#### Scenario: Click en overlay cierra el <FormModal>
+
+- GIVEN `<FormModal open={true} onOpenChange={mockFn}>` está renderizado
+- WHEN el usuario hace click en el overlay oscuro fuera del panel
+- THEN `mockFn` MUST ser llamado con `false`
+
+#### Scenario: <FormModal> con open=false no renderiza contenido en el DOM
+
+- GIVEN `<FormModal open={false} onOpenChange={fn} title="Crear">`
+- WHEN renderiza
+- THEN MUST NOT existir ningún elemento con `role="dialog"` en el DOM
+- AND los hijos MUST NOT estar montados
+
+#### Scenario: <FormModal> tiene focus trap activo cuando está abierto
+
+- GIVEN `<FormModal open={true}>` con un formulario que tiene 3 campos
+- WHEN el usuario presiona Tab repetidamente
+- THEN el foco MUST ciclar solo dentro del modal (provisto por Radix Dialog sin lógica manual)
+
+---
+
+### Requirement: <ConfirmDialog> disponible en @/components/ui — AlertDialog para acciones destructivas
+
+`<ConfirmDialog>` usa Radix AlertDialog (semántica de acción destructiva confirmada: no se
+cierra con click-outside ni ESC por defecto). MUST mostrar estado de carga en el botón de
+confirmar cuando `isPending` es true. El caller controla el estado `open` — el dialog NO
+se cierra solo tras confirmar.
+
+Agregado en change: `tickets-crud` (2026-06-28)
+
+#### Scenario: <ConfirmDialog> renderiza como AlertDialog (role="alertdialog")
+
+- GIVEN `<ConfirmDialog open={true} title="¿Eliminar ticket?" description="..." onConfirm={fn}>`
+- WHEN renderiza
+- THEN MUST existir un elemento con `role="alertdialog"` en el DOM
+- AND el título y la descripción MUST ser accesibles a screen readers
+
+#### Scenario: <ConfirmDialog> no se cierra al presionar ESC ni al hacer click en overlay
+
+- GIVEN `<ConfirmDialog open={true} onOpenChange={mockFn}>`
+- WHEN el usuario presiona ESC o hace click en el overlay
+- THEN `mockFn` MUST NOT ser llamado (Radix AlertDialog no cierra con ESC ni click-outside)
+
+#### Scenario: Botón de confirmar tiene variante destructiva y usa rounded-md
+
+- GIVEN `<ConfirmDialog open={true} confirmLabel="Eliminar" onConfirm={fn}>`
+- WHEN renderiza
+- THEN el botón de confirmar MUST usar variante destructiva (fondo rojo o equivalente)
+- AND MUST tener `rounded-md` (botón, per spec canónico)
+
+#### Scenario: Botón de confirmar muestra isLoading cuando isPending=true
+
+- GIVEN `<ConfirmDialog open={true} isPending={true} onConfirm={fn}>`
+- WHEN renderiza
+- THEN el botón de confirmar MUST mostrar estado isLoading (spinner + disabled)
+
+#### Scenario: Click en "Cancelar" llama a onOpenChange(false); click en confirmar llama a onConfirm
+
+- GIVEN `<ConfirmDialog open={true} onOpenChange={mockClose} onConfirm={mockConfirm}>`
+- WHEN el usuario hace click en "Cancelar"
+- THEN `mockClose` MUST ser llamado con `false`; `mockConfirm` MUST NOT ser llamado
+- WHEN el usuario hace click en el botón de confirmar
+- THEN `mockConfirm` MUST ser llamado exactamente una vez
+- AND el dialog MUST permanecer abierto hasta que el caller cambie `open` a false
+
+#### Scenario: confirmLabel y cancelLabel tienen valores por defecto
+
+- GIVEN `<ConfirmDialog open={true} title="¿Eliminar?" description="..." onConfirm={fn}>`
+  sin pasar confirmLabel ni cancelLabel
+- WHEN renderiza
+- THEN MUST aparecer un botón con texto por defecto (ej. "Confirmar" o "Eliminar")
+- AND MUST aparecer un botón con texto por defecto (ej. "Cancelar")
+
+---
+
+### Requirement: <Toaster> de sonner presente en el root layout (una sola instancia)
+
+`<Toaster>` de sonner MUST estar montado exactamente una vez en la aplicación, en el root
+layout. El helper `notify` (`@/shared/lib/notify`) envuelve `toast.success` y `toast.error`
+de sonner para que la librería sea swappable y espíable en tests. MUST funcionar en ambos
+modos (claro/oscuro).
+
+Agregado en change: `tickets-crud` (2026-06-28)
+
+#### Scenario: <Toaster> está en el root layout y no se repite por página
+
+- GIVEN la implementación está completa
+- WHEN se inspecciona `src/app/layout.tsx` (root layout)
+- THEN MUST haber exactamente un `<Toaster />` montado (instancia global única)
+- AND MUST NOT haber `<Toaster />` en layouts de sección ni en páginas individuales
+
+#### Scenario: notify.success y notify.error son wrappers de sonner testeables
+
+- GIVEN `@/shared/lib/notify` exporta `{ notify }`
+- WHEN un test espía `vi.spyOn(notify, 'success')` y llama a `notify.success('msg')`
+- THEN el spy registra la llamada (sin necesidad de asertar el portal DOM de sonner)
+- AND `notify.error('msg')` funciona de igual forma con `vi.spyOn(notify, 'error')`
+
+#### Scenario: Toaster adapta su tema al modo activo (claro/oscuro)
+
+- GIVEN `<Toaster theme="system">` configurado en el root layout
+- WHEN el modo activo es oscuro o claro
+- THEN las notificaciones MUST tener fondo coherente con el design system activo
+
+---
+
+### Requirement: <Select> acepta prop error para estado visual de borde destructivo
+
+El átomo `<Select>` MUST aceptar prop `error?: boolean`. Cuando `error={true}`, el Trigger
+MUST agregar clase `border-destructive`. Esto complementa el mensaje de error que provee
+`<FormField>` — el campo también pinta su borde para feedback visual inmediato.
+
+Actualizado en change: `tickets-crud` (2026-06-28)
+
+#### Scenario: <Select error={true}> aplica borde destructivo al Trigger
+
+- GIVEN `<Select error={true} options={[]} />`
+- WHEN renderiza
+- THEN el Trigger MUST tener clase `border-destructive`
+
+#### Scenario: <Select error={false}> no aplica borde destructivo
+
+- GIVEN `<Select error={false} options={[]} />`
+- WHEN renderiza
+- THEN el Trigger MUST NOT tener clase `border-destructive`
