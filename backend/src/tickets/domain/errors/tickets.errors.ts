@@ -268,3 +268,22 @@ export class CicloNoEncontradoError extends DomainError {
     super(`El ciclo con id "${cicloId}" no existe en el catálogo del tenant.`);
   }
 }
+
+// ─── PR3 — Errores de resolución de ticket ───────────────────────────────────
+
+/**
+ * Error de dominio: se intentó transicionar a RESUELTO sin proveer fechaResolucion.
+ * HTTP 422 semántico — la transición NO fue ejecutada.
+ *
+ * ADR-4: fechaResolucion es OBLIGATORIA al pasar al estado RESUELTO.
+ *
+ * Ref spec: [SPEC:tickets-list-filtros-resolucion/fechaResolucion obligatoria en RESUELTO]
+ * Tarea: T3.3
+ */
+export class FechaResolucionRequeridaError extends DomainError {
+  readonly code = 'FECHA_RESOLUCION_REQUERIDA';
+
+  constructor() {
+    super('fechaResolucion es requerida para transicionar a estado RESUELTO.');
+  }
+}

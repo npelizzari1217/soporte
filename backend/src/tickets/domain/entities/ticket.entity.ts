@@ -77,9 +77,21 @@ export class TicketEntity extends BaseEntity<TicketProps> {
   /**
    * Factory method para nuevas instancias de dominio.
    * El use case debe proveer el estadoId del estado con codigo='ABIERTO'.
+   *
+   * @param props         Propiedades del ticket.
+   * @param id            ID opcional (UUIDv7 generado si no se provee).
+   * @param fechaCreacion Override explícito de _createdAt. Permite fechas pasadas y futuras
+   *                      sin restricción de rango (ADR-5). Solo validación de formato
+   *                      en la capa HTTP. El mapper persiste createdAt solo en INSERT.
    */
-  static create(props: TicketProps, id?: string): TicketEntity {
-    return new TicketEntity(props, id);
+  static create(props: TicketProps, id?: string, fechaCreacion?: Date): TicketEntity {
+    const entity = new TicketEntity(props, id);
+    if (fechaCreacion) {
+      // Cast to any para sobreescribir el campo private readonly _createdAt heredado.
+      // Mismo patrón que reconstitute() — la entidad es "nueva" pero con fecha auditada.
+      (entity as any)._createdAt = fechaCreacion;
+    }
+    return entity;
   }
 
   /**
@@ -160,6 +172,21 @@ export class TicketEntity extends BaseEntity<TicketProps> {
    */
   updateEstado(estadoId: string): void {
     this.props.estadoId = estadoId;
+  }
+
+  /**
+   * Establece o limpia la fecha de resolución del ticket.
+   *
+   * - Llamado por TransicionarEstadoUseCase al pasar a RESUELTO (fecha requerida, ADR-4).
+   * - Llamado con null al reabrir desde RESUELTO (reapertura limpia, ADR-4).
+   *
+   * Actualiza updatedAt al momento de la mutación.
+   *
+   * @param fecha  Date al resolver, null al limpiar (reapertura).
+   */
+  setFechaResolucion(fecha: Date | null): void {
+    this.props.fechaResolucion = fecha;
+    this.touch();
   }
 
   /**

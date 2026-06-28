@@ -258,6 +258,58 @@ describe('TicketEntity', () => {
     });
   });
 
+  describe('setFechaResolucion(fecha)', () => {
+    // T3.1 — RED: estos tests fallan hasta que se implemente setFechaResolucion (T3.2)
+
+    it('setea fechaResolucion al Date dado', () => {
+      const ticket = TicketEntity.create(makeTicketProps());
+      const fecha = new Date('2026-06-28');
+      ticket.setFechaResolucion(fecha);
+      expect(ticket.fechaResolucion).toBe(fecha);
+    });
+
+    it('setea fechaResolucion a null (limpiar)', () => {
+      const ticket = TicketEntity.create(
+        makeTicketProps({ fechaResolucion: new Date('2026-06-01') }),
+      );
+      ticket.setFechaResolucion(null);
+      expect(ticket.fechaResolucion).toBeNull();
+    });
+
+    it('avanza updatedAt después de setFechaResolucion', async () => {
+      const ticket = TicketEntity.create(makeTicketProps());
+      const updatedAtAntes = ticket.updatedAt.getTime();
+      await new Promise((r) => setTimeout(r, 10));
+      ticket.setFechaResolucion(new Date('2026-06-28'));
+      expect(ticket.updatedAt.getTime()).toBeGreaterThan(updatedAtAntes);
+    });
+  });
+
+  describe('create(props, id?, fechaCreacion?) — override de createdAt', () => {
+    // T3.1 — RED: estos tests fallan hasta que se implemente el tercer parámetro (T3.2)
+
+    it('create con fechaCreacion explícita → createdAt refleja esa fecha', () => {
+      const fechaCreacion = new Date('2025-06-15');
+      const ticket = TicketEntity.create(makeTicketProps(), undefined, fechaCreacion);
+      expect(ticket.createdAt.toISOString().slice(0, 10)).toBe('2025-06-15');
+    });
+
+    it('create sin fechaCreacion → createdAt ≈ now() (margen 5s)', () => {
+      const antes = new Date();
+      const ticket = TicketEntity.create(makeTicketProps());
+      const despues = new Date(antes.getTime() + 5000);
+      expect(ticket.createdAt.getTime()).toBeGreaterThanOrEqual(antes.getTime());
+      expect(ticket.createdAt.getTime()).toBeLessThanOrEqual(despues.getTime());
+    });
+
+    it('create con fecha futura (2030-12-31) se acepta sin error', () => {
+      const fechaFutura = new Date('2030-12-31');
+      expect(() => TicketEntity.create(makeTicketProps(), undefined, fechaFutura)).not.toThrow();
+      const ticket = TicketEntity.create(makeTicketProps(), undefined, fechaFutura);
+      expect(ticket.createdAt.toISOString().slice(0, 10)).toBe('2030-12-31');
+    });
+  });
+
   describe('reconstitute()', () => {
     it('preserva los timestamps de la DB', () => {
       const createdAt = new Date('2026-01-01T00:00:00.000Z');
