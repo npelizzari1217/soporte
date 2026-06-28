@@ -447,7 +447,7 @@ Cero ocurrencias de `fechaVencimiento` fuera de `openspec/`, archivos de archivo
 
 ---
 
-### T3.1 — [RED] `ticket.entity.spec.ts` — `setFechaResolucion` + `create` con `fechaCreacion`
+### [x] T3.1 — [RED] `ticket.entity.spec.ts` — `setFechaResolucion` + `create` con `fechaCreacion`
 
 - **Archivos**: `backend/src/tickets/domain/entities/ticket.entity.spec.ts`
 - **Spec**: "setFechaResolucion(Date | null)", "create acepta fechaCreacion override de _createdAt"
@@ -464,7 +464,7 @@ Cero ocurrencias de `fechaVencimiento` fuera de `openspec/`, archivos de archivo
 
 ---
 
-### T3.2 — [GREEN] Domain: `TicketEntity.setFechaResolucion` + `create` con `fechaCreacion` override
+### [x] T3.2 — [GREEN] Domain: `TicketEntity.setFechaResolucion` + `create` con `fechaCreacion` override
 
 - **Archivos**: `backend/src/tickets/domain/entities/ticket.entity.ts`
 - **Dep**: T3.1 en RED
@@ -489,7 +489,7 @@ static create(props: TicketProps, id?: string, fechaCreacion?: Date): TicketEnti
 
 ---
 
-### T3.3 — `FechaResolucionRequeridaError` [ERROR CLASS]
+### [x] T3.3 — `FechaResolucionRequeridaError` [ERROR CLASS]
 
 - **Archivos**: `backend/src/tickets/domain/errors/tickets.errors.ts`
 - **Paralelo con**: T3.1, T3.2
@@ -506,7 +506,7 @@ export class FechaResolucionRequeridaError extends DomainError {
 
 ---
 
-### T3.4 — [RED] `transicionar-estado.use-case.spec.ts` — 4 escenarios de `fechaResolucion`
+### [x] T3.4 — [RED] `transicionar-estado.use-case.spec.ts` — 4 escenarios de `fechaResolucion`
 
 - **Archivos**: `backend/src/tickets/application/use-cases/transicionar-estado.use-case.spec.ts`
 - **Spec**: "Transición a RESUELTO sin fechaResolucion → 422", "Reapertura desde RESUELTO limpia fechaResolucion"
@@ -525,7 +525,7 @@ export class FechaResolucionRequeridaError extends DomainError {
 
 ---
 
-### T3.5 — [GREEN] `TransicionarEstadoUseCase` — guard + set/clear
+### [x] T3.5 — [GREEN] `TransicionarEstadoUseCase` — guard + set/clear
 
 - **Archivos**: `backend/src/tickets/application/use-cases/transicionar-estado.use-case.ts`
 - **Dep**: T3.4 en RED
@@ -551,7 +551,7 @@ export class FechaResolucionRequeridaError extends DomainError {
 
 ---
 
-### T3.6 — [RED] `crear-ticket.use-case.spec.ts` — `fechaCreacion` en DTO
+### [x] T3.6 — [RED] `crear-ticket.use-case.spec.ts` — `fechaCreacion` en DTO
 
 - **Archivos**: `backend/src/tickets/application/use-cases/crear-ticket.use-case.spec.ts`
 - **Spec**: "POST /tickets acepta fechaCreacion explícita", "permite fechas futuras"
@@ -564,7 +564,7 @@ export class FechaResolucionRequeridaError extends DomainError {
 
 ---
 
-### T3.7 — [GREEN] `CrearTicketUseCase` — acepta `fechaCreacion`
+### [x] T3.7 — [GREEN] `CrearTicketUseCase` — acepta `fechaCreacion`
 
 - **Archivos**: `backend/src/tickets/application/use-cases/crear-ticket.use-case.ts`
 - **Dep**: T3.6 en RED
@@ -575,7 +575,7 @@ export class FechaResolucionRequeridaError extends DomainError {
 
 ---
 
-### T3.8 — [GREEN] Infra: `TicketMapper.toPersistence` incluye `createdAt` + `PrismaTicketRepository.save` lo excluye del update
+### [x] T3.8 — [GREEN] Infra: `TicketMapper.toPersistence` incluye `createdAt` + `PrismaTicketRepository.save` lo excluye del update
 
 - **Archivos**:
   - `backend/src/tickets/infrastructure/persistence/prisma/ticket.mapper.ts`
@@ -600,7 +600,7 @@ export class FechaResolucionRequeridaError extends DomainError {
 
 ---
 
-### T3.9 — [RED] `tickets.controller.spec.ts` — `PATCH /:id/estado` + `POST /tickets` con fechas
+### [x] T3.9 — [RED] `tickets.controller.spec.ts` — `PATCH /:id/estado` + `POST /tickets` con fechas
 
 - **Archivos**: `backend/src/tickets/interface/controllers/tickets.controller.spec.ts`
 - **Spec**: "PATCH estado requiere fechaResolucion para RESUELTO", "POST acepta fechaCreacion"
@@ -622,7 +622,7 @@ export class FechaResolucionRequeridaError extends DomainError {
 
 ---
 
-### T3.10 — [GREEN] `tickets.dto.ts` + `TicketsController` handlers para fechas
+### [x] T3.10 — [GREEN] `tickets.dto.ts` + `TicketsController` handlers para fechas
 
 - **Archivos**:
   - `backend/src/tickets/interface/dtos/tickets.dto.ts`
@@ -639,7 +639,7 @@ export class FechaResolucionRequeridaError extends DomainError {
 
 ---
 
-### T3.11 — [RED+GREEN] Integration spec — `createdAt` override + `fechaResolucion` en DB
+### [x] T3.11 — [RED+GREEN] Integration spec — `createdAt` override + `fechaResolucion` en DB
 
 - **Archivos**: `backend/src/tickets/infrastructure/persistence/prisma/prisma-tickets.integration.spec.ts`
 - **Spec**: "tickets.created_at MUST reflejar fechaCreacion", "tickets.fecha_resolucion seteada en RESUELTO, NULL en reapertura"
@@ -664,7 +664,7 @@ export class FechaResolucionRequeridaError extends DomainError {
 
 ---
 
-### T4.1 — Tipos `TicketFiltros` + `CicloActivo` en `types.ts`
+### [x] T4.1 — Tipos `TicketFiltros` + `CicloActivo` en `types.ts`
 
 - **Archivos**: `frontend/src/features/tickets/types.ts`
 - **Paralelo con**: T4.2 en adelante
@@ -688,7 +688,7 @@ export type CicloActivo = {
 
 ---
 
-### T4.2 — `query-keys.ts` — agregar `list(filtros)` y `cicloActivo`
+### [x] T4.2 — `query-keys.ts` — agregar `list(filtros)` y `cicloActivo`
 
 - **Archivos**: `frontend/src/shared/api/query-keys.ts`
 - **ADR**: ADR-7
@@ -707,7 +707,7 @@ con `invalidateQueries({ queryKey: queryKeys.tickets.all })` invalidan TODAS las
 
 ---
 
-### T4.3 — [RED] `use-tickets.test.ts` (CREAR)
+### [x] T4.3 — [RED] `use-tickets.test.ts` (CREAR)
 
 - **Archivos**: `frontend/src/features/tickets/hooks/use-tickets.test.ts` (NUEVO)
 - **Spec**: "useTickets pasa filtros como query params", "Cambio de filtros produce query key distinta"
@@ -722,7 +722,7 @@ con `invalidateQueries({ queryKey: queryKeys.tickets.all })` invalidan TODAS las
 
 ---
 
-### T4.4 — [GREEN] Reescribir `use-tickets.ts`
+### [x] T4.4 — [GREEN] Reescribir `use-tickets.ts`
 
 - **Archivos**: `frontend/src/features/tickets/hooks/use-tickets.ts`
 - **Dep**: T4.3 en RED
@@ -751,7 +751,7 @@ en el container — usar `useState` o `useMemo`).
 
 ---
 
-### T4.5 — [AUDIT] Verificar `invalidateQueries` apunta a raíz `queryKeys.tickets.all`
+### [x] T4.5 — [AUDIT] Verificar `invalidateQueries` apunta a raíz `queryKeys.tickets.all`
 
 - **Archivos**:
   - `frontend/src/features/tickets/hooks/use-ticket-form.ts` (L127)
@@ -766,7 +766,7 @@ ajustar el test también.
 
 ---
 
-### T4.6 — [RED] `use-ciclo-activo.test.ts` (CREAR)
+### [x] T4.6 — [RED] `use-ciclo-activo.test.ts` (CREAR)
 
 - **Archivos**: `frontend/src/features/tickets/hooks/use-ciclo-activo.test.ts` (NUEVO)
 - **Spec**: "useCicloActivo devuelve null cuando no hay ciclo activo (HTTP 404)"
@@ -779,7 +779,7 @@ ajustar el test también.
 
 ---
 
-### T4.7 — [GREEN] `use-ciclo-activo.ts` (CREAR)
+### [x] T4.7 — [GREEN] `use-ciclo-activo.ts` (CREAR)
 
 - **Archivos**: `frontend/src/features/tickets/hooks/use-ciclo-activo.ts` (NUEVO)
 - **Dep**: T4.6 en RED
@@ -803,7 +803,7 @@ export function useCicloActivo() {
 
 ---
 
-### T4.8 — [RED] `FiltrosBar.test.tsx` (CREAR)
+### [x] T4.8 — [RED] `FiltrosBar.test.tsx` (CREAR)
 
 - **Archivos**: `frontend/src/features/tickets/components/FiltrosBar.test.tsx` (NUEVO)
 - **Spec**: "Panel de filtros renderiza con los 3 tipos", "Skeleton en inputs de fecha durante carga del ciclo activo"
@@ -821,7 +821,7 @@ export function useCicloActivo() {
 
 ---
 
-### T4.9 — [GREEN] `FiltrosBar.tsx` (CREAR) — componente presentacional
+### [x] T4.9 — [GREEN] `FiltrosBar.tsx` (CREAR) — componente presentacional
 
 - **Archivos**: `frontend/src/features/tickets/components/FiltrosBar.tsx` (NUEVO)
 - **Dep**: T4.8 en RED
@@ -843,7 +843,7 @@ del ciclo (solo los date inputs; los checkboxes de tipo no esperan el ciclo).
 
 ---
 
-### T4.10 — [RED] `TicketsPage.test.tsx` (actualizar)
+### [x] T4.10 — [RED] `TicketsPage.test.tsx` (actualizar)
 
 - **Archivos**: `frontend/src/features/tickets/components/TicketsPage.test.tsx`
 - **Spec**: "Sin ciclo activo — lista vacía con aviso y sin fetch", "Ciclo activo cargando — skeleton"
@@ -859,7 +859,7 @@ del ciclo (solo los date inputs; los checkboxes de tipo no esperan el ciclo).
 
 ---
 
-### T4.11 — [GREEN] `app/(dashboard)/tickets/page.tsx` — container reescrito
+### [x] T4.11 — [GREEN] `app/(dashboard)/tickets/page.tsx` — container reescrito
 
 - **Archivos**: `frontend/src/app/(dashboard)/tickets/page.tsx`
 - **Dep**: T4.10 en RED
