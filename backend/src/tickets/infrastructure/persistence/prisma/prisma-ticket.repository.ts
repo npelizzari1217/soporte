@@ -12,6 +12,7 @@
  * Tarea: 3.D.2
  */
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '.prisma/tenant';
 import { TenantContext } from '../../../../shared/tenancy/tenant-context';
 import { TenantPrismaClient } from '../../../../shared/infrastructure/persistence/prisma-clients';
 import { ITicketRepository, TicketFiltros } from '../../../domain/ports/i-ticket.repository';
@@ -64,8 +65,8 @@ export class PrismaTicketRepository implements ITicketRepository {
   }
 
   async findAll(filtros?: TicketFiltros): Promise<TicketEntity[]> {
-    // Construir WHERE dinámico: siempre excluir soft-deleted + aplicar filtros opcionales.
-    const where: Record<string, unknown> = { deletedAt: null };
+    // Construir WHERE dinámico con tipo correcto: siempre excluir soft-deleted.
+    const where: Prisma.TicketWhereInput = { deletedAt: null };
 
     if (filtros?.tiposIds?.length) {
       where.tipoId = { in: filtros.tiposIds };
@@ -83,7 +84,7 @@ export class PrismaTicketRepository implements ITicketRepository {
     // a tipos_ticket via la relación `tipo TipoTicket @relation` (schema L175).
     // No requiere include: true — Prisma genera el JOIN solo para el ORDER BY.
     const rows = await this.client.ticket.findMany({
-      where: where as any,
+      where,
       orderBy: [{ createdAt: 'desc' }, { tipo: { nombre: 'asc' } }],
     });
 
