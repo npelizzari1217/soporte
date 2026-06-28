@@ -1,6 +1,19 @@
 import { TicketEntity } from '../entities/ticket.entity';
 
 /**
+ * Filtros opcionales para la consulta de tickets.
+ * Todos los campos son opcionales; omitir un campo = no filtrar por él.
+ */
+export interface TicketFiltros {
+  /** UUIDs de tipos de ticket; vacío/undefined = todos los tipos. */
+  tiposIds?: string[];
+  /** Límite inferior del rango (inclusive), sobre created_at (start-of-day). */
+  fechaDesde?: Date;
+  /** Límite superior del rango (inclusive), sobre created_at (end-of-day). */
+  fechaHasta?: Date;
+}
+
+/**
  * ITicketRepository — puerto de persistencia para la entidad Ticket.
  *
  * Definido en la capa de dominio: sin imports de Prisma ni NestJS.
@@ -31,10 +44,13 @@ export interface ITicketRepository {
   findLastSecuencia(tipoId: string, anio: number): Promise<number>;
 
   /**
-   * Retorna todos los tickets del tenant activo, ordenados por createdAt desc.
+   * Retorna todos los tickets del tenant activo con filtros opcionales.
+   * Orden: createdAt DESC, luego por nombre de tipo ASC (alfabético).
    * Excluye tickets soft-deleted.
+   *
+   * @param filtros - Filtros opcionales de tipo, fechaDesde y fechaHasta.
    */
-  findAll(): Promise<TicketEntity[]>;
+  findAll(filtros?: TicketFiltros): Promise<TicketEntity[]>;
 
   /**
    * Retorna los tickets en un estado dado (para listados filtrados).
