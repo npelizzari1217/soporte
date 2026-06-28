@@ -886,7 +886,7 @@ del ciclo (solo los date inputs; los checkboxes de tipo no esperan el ciclo).
 
 ---
 
-### T5.1 — [RED] `schemas.test.ts` — nuevo contrato de `CreateTicketSchema` + `UpdateTicketSchema`
+### [x] T5.1 — [RED] `schemas.test.ts` — nuevo contrato de `CreateTicketSchema` + `UpdateTicketSchema`
 
 - **Archivos**: `frontend/src/features/tickets/schemas.test.ts`
 - **Spec**: "CreateTicketSchema acepta fechaCreacion con formato válido", "no tiene campos fechaVencimiento ni fechaResolucion"
@@ -901,7 +901,7 @@ del ciclo (solo los date inputs; los checkboxes de tipo no esperan el ciclo).
 
 ---
 
-### T5.2 — [GREEN] `schemas.ts` — actualizar schemas + `TicketFormValues`
+### [x] T5.2 — [GREEN] `schemas.ts` — actualizar schemas + `TicketFormValues`
 
 - **Archivos**: `frontend/src/features/tickets/schemas.ts`
 - **Dep**: T5.1 en RED
@@ -915,7 +915,7 @@ del ciclo (solo los date inputs; los checkboxes de tipo no esperan el ciclo).
 
 ---
 
-### T5.3 — [RED] `use-ticket-form.ts` tests — `defaultTipoId` + `fechaCreacion` + sin `fechaVencimiento`
+### [x] T5.3 — [RED] `use-ticket-form.ts` tests — `defaultTipoId` + `fechaCreacion` + sin `fechaVencimiento`
 
 - **Archivos**: `frontend/src/features/tickets/hooks/use-ticket-form.test.ts` (CREAR o actualizar)
 - **Spec**: "un solo tipo activo en filtros → tipoId pre-poblado", "formulario muestra fechaCreacion con default hoy"
@@ -930,7 +930,7 @@ del ciclo (solo los date inputs; los checkboxes de tipo no esperan el ciclo).
 
 ---
 
-### T5.4 — [GREEN] `use-ticket-form.ts` — `defaultTipoId` + `fechaCreacion` + quitar `fechaVencimiento`
+### [x] T5.4 — [GREEN] `use-ticket-form.ts` — `defaultTipoId` + `fechaCreacion` + quitar `fechaVencimiento`
 
 - **Archivos**: `frontend/src/features/tickets/hooks/use-ticket-form.ts`
 - **Dep**: T5.3 en RED
@@ -954,7 +954,7 @@ del ciclo (solo los date inputs; los checkboxes de tipo no esperan el ciclo).
 
 ---
 
-### T5.5 — [RED] `TicketFormModal.test.tsx` — form sin campo de resolución + con `fechaCreacion` + `defaultTipoId`
+### [x] T5.5 — [RED] `TicketFormModal.test.tsx` — form sin campo de resolución + con `fechaCreacion` + `defaultTipoId`
 
 - **Archivos**: `frontend/src/features/tickets/components/TicketFormModal.test.tsx`
 - **Spec**: "Formulario de alta no incluye campo de resolución", "Formulario muestra fechaCreacion"
@@ -970,7 +970,7 @@ del ciclo (solo los date inputs; los checkboxes de tipo no esperan el ciclo).
 
 ---
 
-### T5.6 — [GREEN] `TicketFormModal.tsx` — quitar `fechaVencimiento`, agregar `fechaCreacion`, `defaultTipoId` prop
+### [x] T5.6 — [GREEN] `TicketFormModal.tsx` — quitar `fechaVencimiento`, agregar `fechaCreacion`, `defaultTipoId` prop
 
 - **Archivos**: `frontend/src/features/tickets/components/TicketFormModal.tsx`
 - **Dep**: T5.5 en RED
@@ -993,7 +993,7 @@ del ciclo (solo los date inputs; los checkboxes de tipo no esperan el ciclo).
 
 ---
 
-### T5.7 — [GREEN] `app/(dashboard)/tickets/page.tsx` — `defaultTipoId` + pasar a `TicketFormModal`
+### [x] T5.7 — [GREEN] `app/(dashboard)/tickets/page.tsx` — `defaultTipoId` + pasar a `TicketFormModal`
 
 - **Archivos**: `frontend/src/app/(dashboard)/tickets/page.tsx`
 - **Spec**: "Pre-población de tipoId: exactamente 1 tipo seleccionado"
