@@ -34,6 +34,11 @@ import {
   ArchivoTamanoCeroError,
   EstadoCatalogoNoEncontradoError,
   EstadoDestinoInvalidoError,
+  TicketNoEditableError,
+  TituloInvalidoError,
+  PrioridadNoEncontradaError,
+  CicloNoEncontradoError,
+  TipoOperacionNoEncontradoError,
 } from '../../domain/errors/tickets.errors';
 import { JwtAuthGuard } from '../../../auth/infrastructure/guards/jwt-auth.guard';
 import { TenantGuard } from '../../../auth/infrastructure/guards/tenant.guard';
@@ -45,6 +50,7 @@ import {
   CreateTicketHttpDto,
   TransicionarEstadoHttpDto,
   AsignarTicketHttpDto,
+  UpdateTicketHttpDto,
 } from '../dtos/tickets.dto';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -119,6 +125,8 @@ function makeUseCaseMocks() {
     transicionarEstadoUseCase: { execute: jest.fn() },
     asignarTicketUseCase: { execute: jest.fn() },
     adjuntarArchivoUseCase: { execute: jest.fn() },
+    editarTicketUseCase: { execute: jest.fn() },
+    eliminarTicketUseCase: { execute: jest.fn() },
   };
 }
 
@@ -139,6 +147,8 @@ describe('TicketsController', () => {
       mocks.transicionarEstadoUseCase as any,
       mocks.asignarTicketUseCase as any,
       mocks.adjuntarArchivoUseCase as any,
+      mocks.editarTicketUseCase as any,
+      mocks.eliminarTicketUseCase as any,
     );
   });
 
@@ -422,6 +432,202 @@ describe('TicketsController', () => {
       await expect(controller.adjuntarArchivo('ticket-id', file, user)).rejects.toThrow(
         NotFoundException,
       );
+    });
+  });
+
+  // ─── PATCH /tickets/:id ────────────────────────────────────────────────────
+
+  describe('PATCH /tickets/:id (editarTicket)', () => {
+    const updateDto: UpdateTicketHttpDto = { titulo: 'Título actualizado' };
+
+    it('happy path: retorna 200 con TicketResponseDto (campos del ticket mutado)', async () => {
+      // Spec: tickets-core §"Edición exitosa de campos de datos"
+      const ticket = makeTicket();
+      mocks.editarTicketUseCase.execute.mockResolvedValue(Result.ok(ticket));
+
+      const result = await controller.editarTicket(ticket.id, updateDto, user);
+
+      expect(result).toMatchObject({
+        id: ticket.id,
+        numero: 'SOP-2026-00001',
+        titulo: 'Ticket de prueba',
+      });
+      expect(mocks.editarTicketUseCase.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          ticketId: ticket.id,
+          autorId: 'user-001',
+        }),
+      );
+    });
+
+    it('lanza NotFoundException cuando el ticket no existe o está soft-deleted', async () => {
+      // Spec: tickets-core §"Edición rechazada — ticket soft-deleted"
+      mocks.editarTicketUseCase.execute.mockResolvedValue(
+        Result.fail(new TicketNoEncontradoError('ticket-id')),
+      );
+
+      await expect(controller.editarTicket('ticket-id', updateDto, user)).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('lanza UnprocessableEntityException para TicketNoEditableError (estado terminal)', async () => {
+      // Spec: tickets-core §"Edición rechazada — ticket en estado terminal CERRADO"
+      mocks.editarTicketUseCase.execute.mockResolvedValue(
+        Result.fail(new TicketNoEditableError('CERRADO')),
+      );
+
+      await expect(controller.editarTicket('ticket-id', updateDto, user)).rejects.toThrow(
+        UnprocessableEntityException,
+      );
+    });
+
+    it('lanza UnprocessableEntityException para TituloInvalidoError', async () => {
+      mocks.editarTicketUseCase.execute.mockResolvedValue(
+        Result.fail(new TituloInvalidoError()),
+      );
+
+      await expect(
+        controller.editarTicket('ticket-id', { titulo: '   ' }, user),
+      ).rejects.toThrow(UnprocessableEntityException);
+    });
+
+    it('lanza UnprocessableEntityException para PrioridadNoEncontradaError', async () => {
+      mocks.editarTicketUseCase.execute.mockResolvedValue(
+        Result.fail(new PrioridadNoEncontradaError('prio-x')),
+      );
+
+      await expect(
+        controller.editarTicket('ticket-id', { prioridadId: 'prio-x' }, user),
+      ).rejects.toThrow(UnprocessableEntityException);
+    });
+
+    it('lanza UnprocessableEntityException para CicloNoEncontradoError', async () => {
+      mocks.editarTicketUseCase.execute.mockResolvedValue(
+        Result.fail(new CicloNoEncontradoError('ciclo-x')),
+      );
+
+      await expect(
+        controller.editarTicket('ticket-id', { cicloId: 'ciclo-x' }, user),
+      ).rejects.toThrow(UnprocessableEntityException);
+    });
+
+    it('lanza InternalServerErrorException para EstadoCatalogoNoEncontradoError', async () => {
+      mocks.editarTicketUseCase.execute.mockResolvedValue(
+        Result.fail(new EstadoCatalogoNoEncontradoError('estado-corrupto')),
+      );
+
+      await expect(controller.editarTicket('ticket-id', updateDto, user)).rejects.toThrow(
+        InternalServerErrorException,
+      );
+    });
+
+    it('lanza InternalServerErrorException para TipoOperacionNoEncontradoError', async () => {
+      mocks.editarTicketUseCase.execute.mockResolvedValue(
+        Result.fail(new TipoOperacionNoEncontradoError('EDICION')),
+      );
+
+      await expect(controller.editarTicket('ticket-id', updateDto, user)).rejects.toThrow(
+        InternalServerErrorException,
+      );
+    });
+
+    it('convierte fechaVencimiento string ISO a Date antes de pasarla al use case', async () => {
+      // Spec: S2-T12 — verificar conversión string → Date
+      const ticket = makeTicket();
+      mocks.editarTicketUseCase.execute.mockResolvedValue(Result.ok(ticket));
+
+      await controller.editarTicket('ticket-id', { fechaVencimiento: '2027-06-01' }, user);
+
+      const llamada = mocks.editarTicketUseCase.execute.mock.calls[0][0];
+      expect(llamada.datos.fechaVencimiento).toBeInstanceOf(Date);
+      expect(llamada.datos.fechaVencimiento.toISOString()).toContain('2027-06-01');
+    });
+
+    it('preserva fechaVencimiento null sin convertirlo a Date', async () => {
+      // null debe llegar como null (limpiar el campo), no como string ni Date
+      const ticket = makeTicket();
+      mocks.editarTicketUseCase.execute.mockResolvedValue(Result.ok(ticket));
+
+      await controller.editarTicket('ticket-id', { fechaVencimiento: null }, user);
+
+      const llamada = mocks.editarTicketUseCase.execute.mock.calls[0][0];
+      expect(llamada.datos.fechaVencimiento).toBeNull();
+    });
+
+    it('@RequirePermissions ticket:editar configurado en el handler', () => {
+      // Auth-rbac §"Usuario sin ticket:editar recibe 403"
+      const perms: string[] =
+        Reflect.getMetadata(PERMISSIONS_KEY, TicketsController.prototype.editarTicket) ?? [];
+      expect(perms).toContain('ticket:editar');
+    });
+  });
+
+  // ─── DELETE /tickets/:id ───────────────────────────────────────────────────
+
+  describe('DELETE /tickets/:id (eliminarTicket)', () => {
+    it('happy path: retorna void (204 No Content) cuando el borrado es exitoso', async () => {
+      // Locked decision L3: DELETE exitoso → 204 No Content, sin body
+      const ticket = makeTicket();
+      mocks.eliminarTicketUseCase.execute.mockResolvedValue(Result.ok(ticket));
+
+      const result = await controller.eliminarTicket('ticket-id', user);
+
+      // El handler retorna void explícito → result debe ser undefined
+      expect(result).toBeUndefined();
+      expect(mocks.eliminarTicketUseCase.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          ticketId: 'ticket-id',
+          autorId: 'user-001',
+        }),
+      );
+    });
+
+    it('idempotente: también retorna void (204) cuando el ticket ya estaba borrado', async () => {
+      // Locked decision L2: no-op idempotente → mismo 204 sin body
+      const ticket = makeTicket();
+      mocks.eliminarTicketUseCase.execute.mockResolvedValue(Result.ok(ticket));
+
+      const result = await controller.eliminarTicket('ticket-id', user);
+
+      expect(result).toBeUndefined();
+    });
+
+    it('lanza NotFoundException cuando el ticket no existe', async () => {
+      // Spec: tickets-core §"Soft delete rechazado — ticket de otro tenant"
+      mocks.eliminarTicketUseCase.execute.mockResolvedValue(
+        Result.fail(new TicketNoEncontradoError('ticket-id')),
+      );
+
+      await expect(controller.eliminarTicket('ticket-id', user)).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('lanza InternalServerErrorException para TipoOperacionNoEncontradoError', async () => {
+      // Spec: tickets-core §"Rollback si falla el registro de auditoría en eliminación"
+      mocks.eliminarTicketUseCase.execute.mockResolvedValue(
+        Result.fail(new TipoOperacionNoEncontradoError('ELIMINACION')),
+      );
+
+      await expect(controller.eliminarTicket('ticket-id', user)).rejects.toThrow(
+        InternalServerErrorException,
+      );
+    });
+
+    it('@RequirePermissions ticket:eliminar configurado en el handler', () => {
+      // Auth-rbac §"Usuario sin ticket:eliminar recibe 403 en DELETE"
+      const perms: string[] =
+        Reflect.getMetadata(PERMISSIONS_KEY, TicketsController.prototype.eliminarTicket) ?? [];
+      expect(perms).toContain('ticket:eliminar');
+    });
+
+    it('@HttpCode(204) configurado en el handler', () => {
+      // Locked decision L3: 204 No Content sin body
+      // NestJS almacena el HTTP code con la clave '__httpCode__'
+      const code: number =
+        Reflect.getMetadata('__httpCode__', TicketsController.prototype.eliminarTicket) ?? 200;
+      expect(code).toBe(204);
     });
   });
 

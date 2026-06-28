@@ -8,6 +8,7 @@
  *   PATCH  /tickets/:id/estado       → TransicionarEstadoUseCase (autenticado)
  *   POST   /tickets/:id/asignar      → AsignarTicketUseCase    [ticket:asignar]
  *   POST   /tickets/:id/adjuntos     → AdjuntarArchivoUseCase  [ticket:crear]
+ *   DELETE /tickets/:id              → EliminarTicketUseCase   [ticket:eliminar]
  *
  * Guard chain (clase): JwtAuthGuard → RolesGuard → PermissionsGuard → TenantGuard
  * El TenantGuard resuelve la DB tenant y bindea TenantContext antes de que
@@ -21,6 +22,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -49,6 +51,8 @@ import { ObtenerTicketUseCase } from '../../application/use-cases/obtener-ticket
 import { TransicionarEstadoUseCase } from '../../application/use-cases/transicionar-estado.use-case';
 import { AsignarTicketUseCase } from '../../application/use-cases/asignar-ticket.use-case';
 import { AdjuntarArchivoUseCase } from '../../application/use-cases/adjuntar-archivo.use-case';
+import { EditarTicketUseCase } from '../../application/use-cases/editar-ticket.use-case';
+import { EliminarTicketUseCase } from '../../application/use-cases/eliminar-ticket.use-case';
 
 import {
   AsignadoInvalidoError,
@@ -61,6 +65,10 @@ import {
   TipoTicketNoEncontradoError,
   TipoOperacionNoEncontradoError,
   TransicionInvalidaError,
+  TicketNoEditableError,
+  TituloInvalidoError,
+  PrioridadNoEncontradaError,
+  CicloNoEncontradoError,
 } from '../../domain/errors/tickets.errors';
 
 import {
@@ -69,6 +77,7 @@ import {
   CreateTicketHttpDto,
   TicketResponseDto,
   TransicionarEstadoHttpDto,
+  UpdateTicketHttpDto,
 } from '../dtos/tickets.dto';
 import { TicketEntity } from '../../domain/entities/ticket.entity';
 import { ArchivoEntity } from '../../domain/entities/archivo.entity';
@@ -117,6 +126,8 @@ export class TicketsController {
     private readonly transicionarEstadoUseCase: TransicionarEstadoUseCase,
     private readonly asignarTicketUseCase: AsignarTicketUseCase,
     private readonly adjuntarArchivoUseCase: AdjuntarArchivoUseCase,
+    private readonly editarTicketUseCase: EditarTicketUseCase,
+    private readonly eliminarTicketUseCase: EliminarTicketUseCase,
   ) {}
 
   /**
@@ -297,6 +308,68 @@ export class TicketsController {
   }
 
   /**
+   * PATCH /tickets/:id
+   * Actualiza los campos de datos del ticket (partial update).
+   * El estado y el tipo de ticket NO se modifican aquí.
+   *
+   * @returns 200 OK + TicketResponseDto con los datos actualizados
+   * @throws 404 NotFoundException si el ticket no existe o está soft-deleted
+   * @throws 422 UnprocessableEntityException si estado terminal, título inválido,
+   *         prioridad/ciclo inexistente en catálogo
+   * @throws 500 InternalServerErrorException si el catálogo tenant está corrupto
+   */
+  @Patch(':id')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions('ticket:editar')
+  async editarTicket(
+    @Param('id') id: string,
+    @Body() dto: UpdateTicketHttpDto,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<TicketResponseDto> {
+    // Convertir fechaVencimiento: string ISO → Date; null → null; undefined → undefined
+    const fechaVencimiento =
+      dto.fechaVencimiento !== undefined && dto.fechaVencimiento !== null
+        ? new Date(dto.fechaVencimiento)
+        : dto.fechaVencimiento;
+
+    const result = await this.editarTicketUseCase.execute({
+      ticketId: id,
+      datos: {
+        titulo: dto.titulo,
+        descripcion: dto.descripcion,
+        prioridadId: dto.prioridadId,
+        cicloId: dto.cicloId,
+        fechaVencimiento,
+      },
+      autorId: user.sub,
+    });
+
+    if (result.isFail()) {
+      const error = result.getError();
+      if (error instanceof TicketNoEncontradoError) {
+        throw new NotFoundException(error.message);
+      }
+      if (
+        error instanceof TicketNoEditableError ||
+        error instanceof TituloInvalidoError ||
+        error instanceof PrioridadNoEncontradaError ||
+        error instanceof CicloNoEncontradoError
+      ) {
+        throw new UnprocessableEntityException(error.message);
+      }
+      if (
+        error instanceof EstadoCatalogoNoEncontradoError ||
+        error instanceof TipoOperacionNoEncontradoError
+      ) {
+        throw new InternalServerErrorException(error.message);
+      }
+      throw new UnprocessableEntityException('No se pudo editar el ticket');
+    }
+
+    return toTicketResponse(result.getValue());
+  }
+
+  /**
    * POST /tickets/:id/adjuntos
    * Adjunta un archivo al ticket. El binario se sube a IFileStorage;
    * solo la metadata se persiste en DB.
@@ -337,5 +410,41 @@ export class TicketsController {
     }
 
     return toArchivoResponse(result.getValue());
+  }
+
+  /**
+   * DELETE /tickets/:id
+   * Da de baja lógica (soft-delete) el ticket indicado.
+   * Idempotente: un segundo DELETE sobre un ticket ya borrado devuelve 204 sin error
+   * y sin registrar una segunda OperacionTicket (locked decision L2).
+   *
+   * @returns 204 No Content (void) — tanto para borrado real como para no-op idempotente
+   * @throws 404 NotFoundException si el ticket no existe o pertenece a otro tenant
+   * @throws 500 InternalServerErrorException si el catálogo tenant no tiene ELIMINACION sembrado
+   */
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @RequirePermissions('ticket:eliminar')
+  async eliminarTicket(
+    @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<void> {
+    const result = await this.eliminarTicketUseCase.execute({
+      ticketId: id,
+      autorId: user.sub,
+    });
+
+    if (result.isFail()) {
+      const error = result.getError();
+      if (error instanceof TicketNoEncontradoError) {
+        throw new NotFoundException(error.message);
+      }
+      if (error instanceof TipoOperacionNoEncontradoError) {
+        throw new InternalServerErrorException(error.message);
+      }
+      throw new InternalServerErrorException('No se pudo eliminar el ticket');
+    }
+
+    // Retorno void explícito → NestJS envía 204 No Content sin body
   }
 }

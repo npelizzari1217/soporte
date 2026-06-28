@@ -48,6 +48,14 @@ import {
   USUARIO_MASTER_CHECKER,
   IUsuarioMasterChecker,
 } from './domain/ports/i-usuario-master.checker';
+import {
+  PRIORIDAD_REPOSITORY,
+  IPrioridadRepository,
+} from './domain/ports/i-prioridad.repository';
+import {
+  CICLO_CLIENTE_REPOSITORY,
+  ICicloClienteRepository,
+} from './domain/ports/i-ciclo-cliente.repository';
 
 // ─── Infrastructure repositories ──────────────────────────────────────────────
 import { PrismaTicketRepository } from './infrastructure/persistence/prisma/prisma-ticket.repository';
@@ -58,6 +66,8 @@ import { PrismaUsuarioTiposTicketRepository } from './infrastructure/persistence
 import { PrismaTipoTicketRepository } from './infrastructure/persistence/prisma/prisma-tipo-ticket.repository';
 import { PrismaTipoOperacionRepository } from './infrastructure/persistence/prisma/prisma-tipo-operacion.repository';
 import { UsuarioMasterChecker } from './infrastructure/persistence/prisma/usuario-master.checker';
+import { PrismaPrioridadRepository } from './infrastructure/persistence/prisma/prisma-prioridad.repository';
+import { PrismaCicloClienteRepository } from './infrastructure/persistence/prisma/prisma-ciclo-cliente.repository';
 
 // ─── Domain services ──────────────────────────────────────────────────────────
 import { NumeradorTicket } from './domain/services/numerador-ticket.service';
@@ -81,6 +91,8 @@ import { TransicionarEstadoUseCase } from './application/use-cases/transicionar-
 import { AsignarTicketUseCase } from './application/use-cases/asignar-ticket.use-case';
 import { AdjuntarArchivoUseCase } from './application/use-cases/adjuntar-archivo.use-case';
 import { ListarOperacionesUseCase } from './application/use-cases/listar-operaciones.use-case';
+import { EditarTicketUseCase } from './application/use-cases/editar-ticket.use-case';
+import { EliminarTicketUseCase } from './application/use-cases/eliminar-ticket.use-case';
 
 // ─── Guards ───────────────────────────────────────────────────────────────────
 import { RolesGuard } from '../auth/infrastructure/guards/roles.guard';
@@ -152,6 +164,14 @@ import { OperacionesController } from './interface/controllers/operaciones.contr
     {
       provide: USUARIO_MASTER_CHECKER,
       useClass: UsuarioMasterChecker,
+    },
+    {
+      provide: PRIORIDAD_REPOSITORY,
+      useClass: PrismaPrioridadRepository,
+    },
+    {
+      provide: CICLO_CLIENTE_REPOSITORY,
+      useClass: PrismaCicloClienteRepository,
     },
 
     // ─── Servicios de dominio ────────────────────────────────────────────────
@@ -301,6 +321,53 @@ import { OperacionesController } from './interface/controllers/operaciones.contr
         operacionRepo: IOperacionTicketRepository,
       ): ListarOperacionesUseCase => new ListarOperacionesUseCase(ticketRepo, operacionRepo),
       inject: [TICKET_REPOSITORY, OPERACION_TICKET_REPOSITORY],
+    },
+
+    {
+      provide: EditarTicketUseCase,
+      useFactory: (
+        ticketRepo: ITicketRepository,
+        estadoRepo: IEstadoRepository,
+        prioridadRepo: IPrioridadRepository,
+        cicloRepo: ICicloClienteRepository,
+        operacionRepo: IOperacionTicketRepository,
+        tipoOpRepo: ITipoOperacionRepository,
+        txRunner: ITenantTransactionRunner,
+      ) =>
+        new EditarTicketUseCase(
+          ticketRepo,
+          estadoRepo,
+          prioridadRepo,
+          cicloRepo,
+          operacionRepo,
+          tipoOpRepo,
+          txRunner,
+        ),
+      inject: [
+        TICKET_REPOSITORY,
+        ESTADO_REPOSITORY,
+        PRIORIDAD_REPOSITORY,
+        CICLO_CLIENTE_REPOSITORY,
+        OPERACION_TICKET_REPOSITORY,
+        TIPO_OPERACION_REPOSITORY,
+        TENANT_TRANSACTION_RUNNER,
+      ],
+    },
+
+    {
+      provide: EliminarTicketUseCase,
+      useFactory: (
+        ticketRepo: ITicketRepository,
+        operacionRepo: IOperacionTicketRepository,
+        tipoOpRepo: ITipoOperacionRepository,
+        txRunner: ITenantTransactionRunner,
+      ) => new EliminarTicketUseCase(ticketRepo, operacionRepo, tipoOpRepo, txRunner),
+      inject: [
+        TICKET_REPOSITORY,
+        OPERACION_TICKET_REPOSITORY,
+        TIPO_OPERACION_REPOSITORY,
+        TENANT_TRANSACTION_RUNNER,
+      ],
     },
 
     // ─── Guards ──────────────────────────────────────────────────────────────

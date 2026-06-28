@@ -46,6 +46,24 @@ export interface AsignarTicketHttpDto {
 
 // ─── Response DTOs ────────────────────────────────────────────────────────────
 
+/**
+ * Cuerpo HTTP para PATCH /tickets/:id.
+ * Todos los campos son opcionales (partial update semántico).
+ * SIN tipoId (locked decision L1 — número derivado del tipo original).
+ * SIN estado — la transición usa el endpoint PATCH /tickets/:id/estado.
+ *
+ * `fechaVencimiento` llega como string ISO; el controller la convierte a Date
+ * antes de pasarla al use case.
+ */
+export interface UpdateTicketHttpDto {
+  titulo?: string;
+  descripcion?: string | null;
+  prioridadId?: string;
+  cicloId?: string | null;
+  /** Fecha ISO (ej. '2027-06-01'). Controller convierte a Date. */
+  fechaVencimiento?: string | null;
+}
+
 /** Shape de respuesta para un Ticket. */
 export interface TicketResponseDto {
   id: string;
