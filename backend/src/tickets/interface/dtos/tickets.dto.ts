@@ -68,6 +68,13 @@ export interface CreateTicketHttpDto {
   cicloId?: string | null;
   /** UUID del solicitante (soft ref → master.usuarios). */
   solicitanteId: string;
+  /**
+   * Override de fecha de creación (ADR-5). Formato ISO 'YYYY-MM-DD'.
+   * Si se omite, se usa now() (comportamiento por defecto de @default(now())).
+   * Se permiten fechas futuras — sin restricción de rango (ADR-5).
+   * Formato inválido → 422 en el controller.
+   */
+  fechaCreacion?: string;
 }
 
 /**
@@ -76,6 +83,12 @@ export interface CreateTicketHttpDto {
 export interface TransicionarEstadoHttpDto {
   /** Código semántico del estado destino (ej. 'EN_PROGRESO', 'CERRADO'). */
   nuevoEstadoCodigo: string;
+  /**
+   * Fecha de resolución. REQUERIDA cuando nuevoEstadoCodigo === 'RESUELTO' (ADR-4).
+   * Formato ISO 'YYYY-MM-DD'. Ignorada para otros destinos.
+   * Formato inválido → 422 en el controller.
+   */
+  fechaResolucion?: string;
 }
 
 /**

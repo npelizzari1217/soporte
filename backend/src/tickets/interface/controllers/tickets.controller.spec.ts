@@ -54,6 +54,7 @@ import {
   ListarTicketsQueryDto,
   CicloActivoResponseDto,
 } from '../dtos/tickets.dto';
+import { FechaResolucionRequeridaError } from '../../domain/errors/tickets.errors';
 import { CicloClienteEntity, CicloClienteProps } from '../../domain/entities/ciclo-cliente.entity';
 import { ICicloClienteRepository } from '../../domain/ports/i-ciclo-cliente.repository';
 
@@ -763,6 +764,129 @@ describe('TicketsController', () => {
       const perms: string[] =
         Reflect.getMetadata(PERMISSIONS_KEY, TicketsController.prototype.adjuntarArchivo) ?? [];
       expect(perms).toContain('ticket:crear');
+    });
+  });
+
+  // ─── PR3: fechaResolucion OBLIGATORIA en RESUELTO (T3.9 RED) ─────────────────
+
+  describe('PATCH /tickets/:id/estado — fechaResolucion en RESUELTO (ADR-4)', () => {
+    it('pasa fechaResolucion al use case cuando destino es RESUELTO y fecha es válida', async () => {
+      const ticket = makeTicket();
+      mocks.transicionarEstadoUseCase.execute.mockResolvedValue(Result.ok(ticket));
+      const dto: TransicionarEstadoHttpDto = {
+        nuevoEstadoCodigo: 'RESUELTO',
+        fechaResolucion: '2026-06-28',
+      };
+
+      await controller.transicionarEstado('ticket-id', dto, user);
+
+      expect(mocks.transicionarEstadoUseCase.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          nuevoEstadoCodigo: 'RESUELTO',
+          fechaResolucion: expect.any(Date),
+        }),
+      );
+      const llamadaFecha = mocks.transicionarEstadoUseCase.execute.mock.calls[0][0].fechaResolucion;
+      expect((llamadaFecha as Date).toISOString().slice(0, 10)).toBe('2026-06-28');
+    });
+
+    it('lanza 422 cuando destino es RESUELTO pero falta fechaResolucion en el body', async () => {
+      const dto: TransicionarEstadoHttpDto = { nuevoEstadoCodigo: 'RESUELTO' };
+
+      await expect(controller.transicionarEstado('ticket-id', dto, user)).rejects.toThrow(
+        UnprocessableEntityException,
+      );
+      expect(mocks.transicionarEstadoUseCase.execute).not.toHaveBeenCalled();
+    });
+
+    it('lanza 422 cuando fechaResolucion tiene formato inválido', async () => {
+      const dto: TransicionarEstadoHttpDto = {
+        nuevoEstadoCodigo: 'RESUELTO',
+        fechaResolucion: 'no-es-fecha',
+      };
+
+      await expect(controller.transicionarEstado('ticket-id', dto, user)).rejects.toThrow(
+        UnprocessableEntityException,
+      );
+      expect(mocks.transicionarEstadoUseCase.execute).not.toHaveBeenCalled();
+    });
+
+    it('mapea FechaResolucionRequeridaError del use case a 422', async () => {
+      mocks.transicionarEstadoUseCase.execute.mockResolvedValue(
+        Result.fail(new FechaResolucionRequeridaError()),
+      );
+      const dto: TransicionarEstadoHttpDto = {
+        nuevoEstadoCodigo: 'RESUELTO',
+        fechaResolucion: '2026-06-28',
+      };
+
+      await expect(controller.transicionarEstado('ticket-id', dto, user)).rejects.toThrow(
+        UnprocessableEntityException,
+      );
+    });
+
+    it('ignora fechaResolucion cuando el destino NO es RESUELTO (no la pasa al use case)', async () => {
+      const ticket = makeTicket();
+      mocks.transicionarEstadoUseCase.execute.mockResolvedValue(Result.ok(ticket));
+      const dto: TransicionarEstadoHttpDto = {
+        nuevoEstadoCodigo: 'EN_PROGRESO',
+        fechaResolucion: '2026-06-28',
+      };
+
+      await controller.transicionarEstado('ticket-id', dto, user);
+
+      expect(mocks.transicionarEstadoUseCase.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          nuevoEstadoCodigo: 'EN_PROGRESO',
+          fechaResolucion: undefined,
+        }),
+      );
+    });
+  });
+
+  // ─── PR3: fechaCreacion en POST /tickets (T3.9 RED) ──────────────────────────
+
+  describe('POST /tickets — fechaCreacion override (ADR-5)', () => {
+    it('pasa fechaCreacion al use case cuando llega en el body con formato válido', async () => {
+      const ticket = makeTicket();
+      mocks.crearTicketUseCase.execute.mockResolvedValue(Result.ok(ticket));
+      const dto: CreateTicketHttpDto = {
+        ...makeCreateDto(),
+        fechaCreacion: '2026-06-15',
+      };
+
+      await controller.crearTicket(dto, user);
+
+      expect(mocks.crearTicketUseCase.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          fechaCreacion: expect.any(Date),
+        }),
+      );
+      const llamadaFecha = mocks.crearTicketUseCase.execute.mock.calls[0][0].fechaCreacion;
+      expect((llamadaFecha as Date).toISOString().slice(0, 10)).toBe('2026-06-15');
+    });
+
+    it('lanza 422 cuando fechaCreacion tiene formato inválido', async () => {
+      const dto: CreateTicketHttpDto = {
+        ...makeCreateDto(),
+        fechaCreacion: 'no-es-fecha',
+      };
+
+      await expect(controller.crearTicket(dto, user)).rejects.toThrow(UnprocessableEntityException);
+      expect(mocks.crearTicketUseCase.execute).not.toHaveBeenCalled();
+    });
+
+    it('pasa fechaCreacion undefined al use case cuando no llega en el body', async () => {
+      const ticket = makeTicket();
+      mocks.crearTicketUseCase.execute.mockResolvedValue(Result.ok(ticket));
+
+      await controller.crearTicket(makeCreateDto(), user);
+
+      expect(mocks.crearTicketUseCase.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          fechaCreacion: undefined,
+        }),
+      );
     });
   });
 });

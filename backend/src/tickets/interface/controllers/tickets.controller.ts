@@ -67,6 +67,7 @@ import {
   ArchivoTamanoCeroError,
   EstadoCatalogoNoEncontradoError,
   EstadoDestinoInvalidoError,
+  FechaResolucionRequeridaError,
   SolicitanteInvalidoError,
   TicketNoEncontradoError,
   TipoTicketNoEncontradoError,
@@ -180,6 +181,19 @@ export class TicketsController {
     @Body() dto: CreateTicketHttpDto,
     @CurrentUser() user: JwtPayload,
   ): Promise<TicketResponseDto> {
+    // Parsear fechaCreacion si viene en el body (ADR-5 — override de created_at).
+    // Formato inválido → 422. Si no viene → undefined (Prisma usa @default(now())).
+    let fechaCreacion: Date | undefined;
+    if (dto.fechaCreacion !== undefined) {
+      const parsed = new Date(dto.fechaCreacion);
+      if (isNaN(parsed.getTime())) {
+        throw new UnprocessableEntityException(
+          'fechaCreacion tiene formato inválido. Se espera ISO YYYY-MM-DD.',
+        );
+      }
+      fechaCreacion = parsed;
+    }
+
     const result = await this.crearTicketUseCase.execute({
       titulo: dto.titulo,
       descripcion: dto.descripcion ?? null,
@@ -190,6 +204,7 @@ export class TicketsController {
       clienteId: user.cliente_id,
       autorId: user.sub,
       anio: new Date().getFullYear(),
+      fechaCreacion,
     });
 
     if (result.isFail()) {
@@ -325,10 +340,30 @@ export class TicketsController {
     @Body() dto: TransicionarEstadoHttpDto,
     @CurrentUser() user: JwtPayload,
   ): Promise<TicketResponseDto> {
+    // Guard PR3 (ADR-4): fechaResolucion REQUERIDA cuando destino es RESUELTO.
+    // Validación en el controller (no llega al use case si falta/formato inválido).
+    let fechaResolucion: Date | undefined;
+    if (dto.nuevoEstadoCodigo === 'RESUELTO') {
+      if (!dto.fechaResolucion) {
+        throw new UnprocessableEntityException(
+          'fechaResolucion es requerida al transicionar a estado RESUELTO.',
+        );
+      }
+      const parsed = new Date(dto.fechaResolucion);
+      if (isNaN(parsed.getTime())) {
+        throw new UnprocessableEntityException(
+          'fechaResolucion tiene formato inválido. Se espera ISO YYYY-MM-DD.',
+        );
+      }
+      fechaResolucion = parsed;
+    }
+    // Para destinos distintos de RESUELTO: fechaResolucion se ignora (pasa undefined).
+
     const result = await this.transicionarEstadoUseCase.execute({
       ticketId: id,
       nuevoEstadoCodigo: dto.nuevoEstadoCodigo,
       autorId: user.sub,
+      fechaResolucion,
     });
 
     if (result.isFail()) {
@@ -341,6 +376,10 @@ export class TicketsController {
       }
       // CRITICAL-1 fix: código de estado destino enviado por el usuario no existe → 422
       if (error instanceof EstadoDestinoInvalidoError) {
+        throw new UnprocessableEntityException(error.message);
+      }
+      // ADR-4: fechaResolucion requerida pero no provista (segunda línea de defensa) → 422
+      if (error instanceof FechaResolucionRequeridaError) {
         throw new UnprocessableEntityException(error.message);
       }
       // EstadoCatalogoNoEncontradoError: estado ACTUAL del ticket no está en catálogo → corrupción → 500
