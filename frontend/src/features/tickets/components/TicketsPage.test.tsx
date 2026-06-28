@@ -13,14 +13,30 @@
  * Spec: [SPEC:frontend-tickets/lista-tickets]
  */
 
-import { describe, it, expect, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { server } from "../../../../test/msw/server";
 import TicketsPage from "@/app/(dashboard)/tickets/page";
 import type { Ticket } from "../types";
+
+// Session mock — grant all permissions so the gated Nuevo/Editar/Borrar controls render.
+vi.mock("@/shared/hooks/use-session", () => ({
+  useSession: () => ({
+    user: {
+      sub: "user-1",
+      email: "test@example.com",
+      cliente_id: "c1",
+      cliente_nombre: "E2E Org",
+      roles: ["ADMIN"],
+      permisos: [],
+    },
+    isLoading: false,
+    can: () => true,
+  }),
+}));
 
 // ─── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -170,5 +186,51 @@ describe("TicketsPage", () => {
     expect(
       await screen.findByRole("button", { name: /reintentar/i }),
     ).toBeInTheDocument();
+  });
+
+  // ─── Create/Edit modal wiring (regression) ────────────────────────────────────
+  // The page MUST wire onOpenCreate/onOpenEdit and render <TicketFormModal>. A prior
+  // bug rendered <TicketsList> without those props, so the buttons opened nothing —
+  // unit tests passed in isolation but the feature was dead in the running app.
+
+  it("wiring: clicking 'Nuevo ticket' opens the create modal", async () => {
+    server.use(
+      http.get("http://localhost/api/tickets", () =>
+        HttpResponse.json(mockTickets),
+      ),
+    );
+
+    const user = userEvent.setup();
+    renderTicketsPage();
+    await screen.findByText("SOP-2026-00001");
+
+    // No dialog before clicking
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /nuevo ticket/i }));
+
+    // Create modal opens with its form
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Nuevo ticket")).toBeInTheDocument();
+    expect(within(dialog).getByLabelText(/título/i)).toBeInTheDocument();
+  });
+
+  it("wiring: clicking the edit button opens the edit modal", async () => {
+    server.use(
+      http.get("http://localhost/api/tickets", () =>
+        HttpResponse.json(mockTickets),
+      ),
+    );
+
+    const user = userEvent.setup();
+    renderTicketsPage();
+    await screen.findByText("Problema con impresora");
+
+    await user.click(
+      screen.getAllByRole("button", { name: /editar ticket/i })[0],
+    );
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Editar ticket")).toBeInTheDocument();
   });
 });
