@@ -433,6 +433,49 @@ describe('Tickets Infrastructure Repos — Integration (3.D.1)', () => {
           expect(ids).not.toContain(eliminado.id);
         });
       });
+
+      it('orden secundario por nombre de tipo ASC cuando dos tickets tienen el mismo createdAt (núcleo de ADR-1)', async () => {
+        // Crea un ticket COMPRAS y uno SOPORTE con números distintos para unicidad.
+        // Nombres de tipos en catálogo: 'COMPRAS' < 'SOPORTE' (alfabético).
+        // Con idéntico created_at, el orderBy secundario { tipo: { nombre: 'asc' } }
+        // debe devolver COMPRAS primero.
+        const comprasTicket = TicketEntity.create(
+          makeTicketProps({ numero: 'COM-2026-00050', tipoId: TIPO_COMPRAS_ID }),
+        );
+        const soporteTicket = TicketEntity.create(
+          makeTicketProps({ numero: 'SOP-2026-00050', tipoId: TIPO_SOPORTE_ID }),
+        );
+
+        await withTenant(async () => {
+          await ticketRepo.save(comprasTicket);
+          await ticketRepo.save(soporteTicket);
+
+          // Forzar el mismo created_at vía SQL para que el criterio secundario sea determinante.
+          const sameDateTs = new Date('2026-01-01T12:00:00.000Z');
+          await tenantClient.$executeRawUnsafe(
+            `UPDATE tickets SET created_at = $1 WHERE id = $2`,
+            sameDateTs,
+            comprasTicket.id,
+          );
+          await tenantClient.$executeRawUnsafe(
+            `UPDATE tickets SET created_at = $1 WHERE id = $2`,
+            sameDateTs,
+            soporteTicket.id,
+          );
+
+          const result = await ticketRepo.findAll();
+
+          // Aislar solo los dos tickets del test (beforeEach trunca la tabla, pero defensivo)
+          const filtered = result.filter(
+            (t) => t.id === comprasTicket.id || t.id === soporteTicket.id,
+          );
+
+          expect(filtered).toHaveLength(2);
+          // COMPRAS (C) < SOPORTE (S) → COMPRAS primero con orden ASC por nombre
+          expect(filtered[0].tipoId).toBe(TIPO_COMPRAS_ID);
+          expect(filtered[1].tipoId).toBe(TIPO_SOPORTE_ID);
+        });
+      });
     });
   });
 
