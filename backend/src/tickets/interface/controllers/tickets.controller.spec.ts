@@ -51,7 +51,11 @@ import {
   TransicionarEstadoHttpDto,
   AsignarTicketHttpDto,
   UpdateTicketHttpDto,
+  ListarTicketsQueryDto,
+  CicloActivoResponseDto,
 } from '../dtos/tickets.dto';
+import { CicloClienteEntity, CicloClienteProps } from '../../domain/entities/ciclo-cliente.entity';
+import { ICicloClienteRepository } from '../../domain/ports/i-ciclo-cliente.repository';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -117,6 +121,23 @@ function makeCreateDto(): CreateTicketHttpDto {
   };
 }
 
+function makeCiclo(overrides: Partial<CicloClienteProps> = {}): CicloClienteEntity {
+  return CicloClienteEntity.reconstitute(
+    {
+      cicloVigenteId: 'cv-001',
+      nombre: 'Ciclo 2026',
+      fechaInicio: new Date('2026-01-01'),
+      fechaFin: new Date('2026-12-31'),
+      activo: true,
+      ...overrides,
+    },
+    'ciclo-uuid-001',
+    new Date('2026-01-01'),
+    new Date('2026-01-01'),
+    null,
+  );
+}
+
 function makeUseCaseMocks() {
   return {
     crearTicketUseCase: { execute: jest.fn() },
@@ -127,6 +148,12 @@ function makeUseCaseMocks() {
     adjuntarArchivoUseCase: { execute: jest.fn() },
     editarTicketUseCase: { execute: jest.fn() },
     eliminarTicketUseCase: { execute: jest.fn() },
+    cicloClienteRepo: {
+      findById: jest.fn(),
+      findActive: jest.fn(),
+      findAll: jest.fn(),
+      save: jest.fn(),
+    } satisfies jest.Mocked<ICicloClienteRepository>,
   };
 }
 
@@ -149,6 +176,7 @@ describe('TicketsController', () => {
       mocks.adjuntarArchivoUseCase as any,
       mocks.editarTicketUseCase as any,
       mocks.eliminarTicketUseCase as any,
+      mocks.cicloClienteRepo as any,
     );
   });
 
@@ -218,11 +246,11 @@ describe('TicketsController', () => {
   // ─── GET /tickets ──────────────────────────────────────────────────────────
 
   describe('GET /tickets (listarTickets)', () => {
-    it('retorna 200 con la lista de tickets del tenant', async () => {
+    it('retorna 200 con la lista de tickets del tenant (sin filtros)', async () => {
       const ticket = makeTicket();
       mocks.listarTicketsUseCase.execute.mockResolvedValue(Result.ok([ticket]));
 
-      const result = await controller.listarTickets();
+      const result = await controller.listarTickets({}, user);
 
       expect(Array.isArray(result)).toBe(true);
       expect(result).toHaveLength(1);
@@ -237,9 +265,71 @@ describe('TicketsController', () => {
     it('retorna 200 con lista vacía cuando no hay tickets', async () => {
       mocks.listarTicketsUseCase.execute.mockResolvedValue(Result.ok([]));
 
-      const result = await controller.listarTickets();
+      const result = await controller.listarTickets({}, user);
 
       expect(result).toHaveLength(0);
+    });
+
+    // ─── Filtros (T1.7 RED) ──────────────────────────────────────────────
+
+    it('coerce tiposIds string único a array al pasar al use case', async () => {
+      mocks.listarTicketsUseCase.execute.mockResolvedValue(Result.ok([]));
+      const query: ListarTicketsQueryDto = { tiposIds: 'uuid-a' };
+
+      await controller.listarTickets(query, user);
+
+      expect(mocks.listarTicketsUseCase.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ tiposIds: ['uuid-a'] }),
+      );
+    });
+
+    it('pasa tiposIds array tal como llega al use case', async () => {
+      mocks.listarTicketsUseCase.execute.mockResolvedValue(Result.ok([]));
+      const query: ListarTicketsQueryDto = { tiposIds: ['uuid-a', 'uuid-b'] };
+
+      await controller.listarTickets(query, user);
+
+      expect(mocks.listarTicketsUseCase.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ tiposIds: ['uuid-a', 'uuid-b'] }),
+      );
+    });
+
+    it('convierte fechaDesde a startOfDay y fechaHasta a endOfDay', async () => {
+      mocks.listarTicketsUseCase.execute.mockResolvedValue(Result.ok([]));
+      const query: ListarTicketsQueryDto = { fechaDesde: '2026-01-01', fechaHasta: '2026-06-30' };
+
+      await controller.listarTickets(query, user);
+
+      const llamada = mocks.listarTicketsUseCase.execute.mock.calls[0][0];
+      expect(llamada.fechaDesde).toBeInstanceOf(Date);
+      expect(llamada.fechaHasta).toBeInstanceOf(Date);
+      // startOfDay: 00:00:00.000
+      expect(llamada.fechaDesde.getUTCHours()).toBe(0);
+      expect(llamada.fechaDesde.getUTCMinutes()).toBe(0);
+      // endOfDay: 23:59:59.999
+      expect(llamada.fechaHasta.getUTCHours()).toBe(23);
+      expect(llamada.fechaHasta.getUTCMinutes()).toBe(59);
+    });
+
+    it('lanza UnprocessableEntityException cuando fechaDesde > fechaHasta (rango inválido)', async () => {
+      const query: ListarTicketsQueryDto = {
+        fechaDesde: '2026-12-31',
+        fechaHasta: '2026-01-01',
+      };
+
+      await expect(controller.listarTickets(query, user)).rejects.toThrow(
+        UnprocessableEntityException,
+      );
+    });
+
+    it('ignora fechaDesde con formato inválido (no lanza 422)', async () => {
+      mocks.listarTicketsUseCase.execute.mockResolvedValue(Result.ok([]));
+      const query: ListarTicketsQueryDto = { fechaDesde: 'no-es-fecha' };
+
+      await controller.listarTickets(query, user);
+
+      const llamada = mocks.listarTicketsUseCase.execute.mock.calls[0][0];
+      expect(llamada.fechaDesde).toBeUndefined();
     });
   });
 
@@ -628,6 +718,36 @@ describe('TicketsController', () => {
       const code: number =
         Reflect.getMetadata('__httpCode__', TicketsController.prototype.eliminarTicket) ?? 200;
       expect(code).toBe(204);
+    });
+  });
+
+  // ─── GET /tickets/ciclo-activo (T1.7 RED) ─────────────────────────────────
+
+  describe('GET /tickets/ciclo-activo (cicloActivo)', () => {
+    it('retorna 200 con CicloActivoResponseDto cuando hay ciclo activo', async () => {
+      const ciclo = makeCiclo();
+      mocks.cicloClienteRepo.findActive.mockResolvedValue(ciclo);
+
+      const result = (await controller.cicloActivo()) as CicloActivoResponseDto;
+
+      expect(result).toMatchObject({
+        id: 'ciclo-uuid-001',
+        nombre: 'Ciclo 2026',
+        fechaInicio: '2026-01-01',
+        fechaFin: '2026-12-31',
+        activo: true,
+      });
+    });
+
+    it('lanza NotFoundException (404) cuando no hay ciclo activo', async () => {
+      mocks.cicloClienteRepo.findActive.mockResolvedValue(null);
+
+      await expect(controller.cicloActivo()).rejects.toThrow(NotFoundException);
+    });
+
+    it('inyecta ICicloClienteRepository en el constructor', () => {
+      // El constructor debe tener exactamente 9 parámetros (8 use cases + cicloRepo)
+      expect(TicketsController.length).toBe(9);
     });
   });
 

@@ -26,11 +26,13 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Inject,
   InternalServerErrorException,
   NotFoundException,
   Param,
   Patch,
   Post,
+  Query,
   UnprocessableEntityException,
   UploadedFile,
   UseGuards,
@@ -55,6 +57,11 @@ import { EditarTicketUseCase } from '../../application/use-cases/editar-ticket.u
 import { EliminarTicketUseCase } from '../../application/use-cases/eliminar-ticket.use-case';
 
 import {
+  CICLO_CLIENTE_REPOSITORY,
+  ICicloClienteRepository,
+} from '../../domain/ports/i-ciclo-cliente.repository';
+
+import {
   AsignadoInvalidoError,
   AsignadoNoElegibleError,
   ArchivoTamanoCeroError,
@@ -74,13 +81,38 @@ import {
 import {
   ArchivoResponseDto,
   AsignarTicketHttpDto,
+  CicloActivoResponseDto,
   CreateTicketHttpDto,
+  ListarTicketsQueryDto,
   TicketResponseDto,
   TransicionarEstadoHttpDto,
   UpdateTicketHttpDto,
+  toCicloActivoResponse,
 } from '../dtos/tickets.dto';
 import { TicketEntity } from '../../domain/entities/ticket.entity';
 import { ArchivoEntity } from '../../domain/entities/archivo.entity';
+
+// ─── Utilidades de fecha ──────────────────────────────────────────────────────
+
+/**
+ * Retorna el inicio del día en UTC (00:00:00.000Z) para la fecha dada.
+ * Equivalente a date-fns startOfDay pero sin la dependencia externa.
+ */
+function startOfDayUTC(date: Date): Date {
+  const d = new Date(date);
+  d.setUTCHours(0, 0, 0, 0);
+  return d;
+}
+
+/**
+ * Retorna el fin del día en UTC (23:59:59.999Z) para la fecha dada.
+ * Equivalente a date-fns endOfDay pero sin la dependencia externa.
+ */
+function endOfDayUTC(date: Date): Date {
+  const d = new Date(date);
+  d.setUTCHours(23, 59, 59, 999);
+  return d;
+}
 
 // ─── Mappers de respuesta ─────────────────────────────────────────────────────
 
@@ -128,6 +160,8 @@ export class TicketsController {
     private readonly adjuntarArchivoUseCase: AdjuntarArchivoUseCase,
     private readonly editarTicketUseCase: EditarTicketUseCase,
     private readonly eliminarTicketUseCase: EliminarTicketUseCase,
+    @Inject(CICLO_CLIENTE_REPOSITORY)
+    private readonly cicloClienteRepo: ICicloClienteRepository,
   ) {}
 
   /**
@@ -182,17 +216,77 @@ export class TicketsController {
 
   /**
    * GET /tickets
-   * Retorna todos los tickets del tenant activo, ordenados por createdAt desc.
+   * Retorna todos los tickets del tenant activo con filtros opcionales.
+   * Orden: createdAt DESC, tipos_ticket.nombre ASC (ADR-1).
    * Excluye tickets soft-deleted.
+   *
+   * Query params:
+   *   - tiposIds: UUID o array de UUIDs (string único se coerce a array).
+   *   - fechaDesde: ISO 'YYYY-MM-DD' — convertido a startOfDay UTC.
+   *   - fechaHasta: ISO 'YYYY-MM-DD' — convertido a endOfDay UTC.
+   *   - Rango inválido (fechaDesde > fechaHasta) → 422.
+   *   - Fecha con formato inválido → filtro ignorado (no 422).
    *
    * @returns 200 OK + TicketResponseDto[]
    */
   @Get()
   @HttpCode(HttpStatus.OK)
-  async listarTickets(): Promise<TicketResponseDto[]> {
-    const result = await this.listarTicketsUseCase.execute();
+  async listarTickets(
+    @Query() q: ListarTicketsQueryDto,
+    @CurrentUser() _user: JwtPayload,
+  ): Promise<TicketResponseDto[]> {
+    // Parsear y coerce fechas (formato inválido = ignorado, no 422)
+    const desde =
+      q?.fechaDesde && !isNaN(new Date(q.fechaDesde).getTime())
+        ? startOfDayUTC(new Date(q.fechaDesde))
+        : undefined;
+    const hasta =
+      q?.fechaHasta && !isNaN(new Date(q.fechaHasta).getTime())
+        ? endOfDayUTC(new Date(q.fechaHasta))
+        : undefined;
+
+    // Rango inválido → 422
+    if (desde && hasta && desde > hasta) {
+      throw new UnprocessableEntityException(
+        'fechaDesde no puede ser mayor que fechaHasta',
+      );
+    }
+
+    // Coerce tiposIds: string único → string[]
+    const tiposIds = q?.tiposIds
+      ? Array.isArray(q.tiposIds)
+        ? q.tiposIds
+        : [q.tiposIds]
+      : undefined;
+
+    const result = await this.listarTicketsUseCase.execute({
+      tiposIds,
+      fechaDesde: desde,
+      fechaHasta: hasta,
+    });
+
     // ListarTicketsUseCase solo retorna Result.ok — no hay camino de error.
     return result.getValue().map(toTicketResponse);
+  }
+
+  /**
+   * GET /tickets/ciclo-activo
+   * Expone el ciclo activo del tenant para que el frontend determine el rango default.
+   *
+   * IMPORTANTE: esta ruta DEBE declararse ANTES de @Get(':id') para evitar
+   * que 'ciclo-activo' sea interpretado como un :id (ADR-6).
+   *
+   * @returns 200 OK + CicloActivoResponseDto
+   * @throws 404 NotFoundException si no hay ciclo activo en este tenant
+   */
+  @Get('ciclo-activo')
+  @HttpCode(HttpStatus.OK)
+  async cicloActivo(): Promise<CicloActivoResponseDto> {
+    const ciclo = await this.cicloClienteRepo.findActive();
+    if (!ciclo) {
+      throw new NotFoundException('No hay ciclo activo para este tenant');
+    }
+    return toCicloActivoResponse(ciclo);
   }
 
   /**
