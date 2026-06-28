@@ -6,6 +6,7 @@ import { TicketStateMachineFactory } from '../../domain/state-machine/ticket-sta
 import {
   EstadoCatalogoNoEncontradoError,
   EstadoDestinoInvalidoError,
+  FechaResolucionRequeridaError,
   TicketNoEncontradoError,
   TipoOperacionNoEncontradoError,
   TipoTicketNoEncontradoError,
@@ -25,6 +26,8 @@ import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
  *   El use case resuelve internamente el UUID del estado desde el catálogo.
  * - `autorId`: UUID del usuario que realiza la transición (del JWT). Se registra
  *   en la operación de timeline.
+ * - `fechaResolucion`: REQUERIDA cuando nuevoEstadoCodigo es 'RESUELTO' (ADR-4).
+ *   Ignorada si el destino no es RESUELTO.
  *
  * DECISIÓN INFERIDA: el contexto para la máquina de estados (StateMachineContext)
  * actualmente se pasa vacío `{}`. Cuando se implemente EdiliciaStateMachine (Fase 5),
@@ -35,6 +38,12 @@ export interface TransicionarEstadoDto {
   ticketId: string;
   nuevoEstadoCodigo: string;
   autorId: string;
+  /**
+   * Fecha de resolución. OBLIGATORIA si nuevoEstadoCodigo === 'RESUELTO'.
+   * Ignorada para otros destinos. Seteada a null automáticamente en reapertura
+   * (cuando el estado actual es RESUELTO y se transiciona a otro estado).
+   */
+  fechaResolucion?: Date;
 }
 
 /**
@@ -127,10 +136,27 @@ export class TransicionarEstadoUseCase {
       return Result.fail(new TipoOperacionNoEncontradoError('CAMBIO_ESTADO'));
     }
 
-    // 8. Actualizar el estadoId del ticket (mutación de la entidad)
+    // 8. Guard ADR-4: fechaResolucion OBLIGATORIA al pasar a RESUELTO.
+    //    El guard corre DESPUÉS de puedeTransicionar para no mezclar validaciones.
+    //    Si falta → fail sin mutar el ticket ni crear ninguna operación.
+    if (estadoNuevo.codigo === 'RESUELTO' && !dto.fechaResolucion) {
+      return Result.fail(new FechaResolucionRequeridaError());
+    }
+
+    // 9. Actualizar el estadoId del ticket (mutación de la entidad)
     ticket.updateEstado(estadoNuevo.id);
 
-    // 9. Crear la operación de timeline CAMBIO_ESTADO
+    // 10. Gestión de fechaResolucion según ADR-4:
+    //    - Transición a RESUELTO con fecha provista → setear.
+    //    - Reapertura (estado actual era RESUELTO) → limpiar (set null).
+    //    - Transición normal (ni origen ni destino es RESUELTO) → no tocar.
+    if (estadoNuevo.codigo === 'RESUELTO') {
+      ticket.setFechaResolucion(dto.fechaResolucion!);
+    } else if (estadoActual.codigo === 'RESUELTO') {
+      ticket.setFechaResolucion(null); // reapertura: limpia
+    }
+
+    // 11. Crear la operación de timeline CAMBIO_ESTADO
     const operacion = OperacionTicketEntity.create({
       ticketId: ticket.id,
       tipoOperacionId,
@@ -141,7 +167,7 @@ export class TransicionarEstadoUseCase {
       metadata: null,
     });
 
-    // 10. Persistir ticket actualizado + operacion en la misma transacción (atómico)
+    // 12. Persistir ticket actualizado + operacion en la misma transacción (atómico)
     await this.txRunner.run(async () => {
       await this.ticketRepo.save(ticket);
       await this.operacionRepo.save(operacion);

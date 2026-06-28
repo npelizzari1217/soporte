@@ -10,6 +10,7 @@ import { ITenantTransactionRunner } from '../../../shared/infrastructure/persist
 import { EstadoEntity } from '../../domain/entities/estado.entity';
 import { OperacionTicketEntity } from '../../domain/entities/operacion-ticket.entity';
 import { TicketEntity } from '../../domain/entities/ticket.entity';
+import { FechaResolucionRequeridaError } from '../../domain/errors/tickets.errors';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -44,10 +45,33 @@ function makeTicket(estadoId: string, tipoId: string, softDeleted = false): Tick
   );
 }
 
+function makeResueltoTicket(): TicketEntity {
+  // Ticket actualmente en estado RESUELTO con fechaResolucion seteada.
+  return TicketEntity.reconstitute(
+    {
+      numero: 'SOP-2026-00002',
+      titulo: 'Ticket resuelto',
+      descripcion: null,
+      tipoId: TIPO_TICKET_ID,
+      estadoId: ESTADO_RESUELTO_ID,
+      prioridadId: 'prio-001',
+      cicloId: null,
+      solicitanteId: 'user-solicitante',
+      asignadoId: null,
+      fechaResolucion: new Date('2026-06-20'),
+    },
+    'ticket-uuid-002',
+    new Date(),
+    new Date(),
+    null,
+  );
+}
+
 // ─── Constantes de test ───────────────────────────────────────────────────────
 
 const ESTADO_ABIERTO_ID = 'estado-abierto-uuid';
 const ESTADO_EN_PROGRESO_ID = 'estado-en-progreso-uuid';
+const ESTADO_RESUELTO_ID = 'estado-resuelto-uuid';
 const TIPO_TICKET_ID = 'tipo-ticket-uuid';
 const TIPO_OPERACION_CAMBIO_ESTADO_ID = 'tipo-op-cambio-uuid';
 const AUTOR_ID = 'user-autor-uuid';
@@ -410,6 +434,126 @@ describe('TransicionarEstadoUseCase', () => {
 
       expect(result.isFail()).toBe(true);
       expect(result.getError().code).toBe('TIPO_OPERACION_NO_ENCONTRADO');
+    });
+  });
+
+  // ─── PR3: fechaResolucion OBLIGATORIA al pasar a RESUELTO (ADR-4) ─────────────
+
+  describe('fechaResolucion — obligatoriedad y reapertura (ADR-4)', () => {
+    // T3.4 — RED: estos tests fallan hasta que se implemente la lógica en T3.5
+
+    describe('transición a RESUELTO SIN fechaResolucion', () => {
+      const dtoAResueltoSinFecha: TransicionarEstadoDto = {
+        ticketId: 'ticket-uuid-001',
+        nuevoEstadoCodigo: 'RESUELTO',
+        autorId: AUTOR_ID,
+      };
+
+      beforeEach(() => {
+        estadoRepo.findByCodigo.mockResolvedValue(makeEstado(ESTADO_RESUELTO_ID, 'RESUELTO'));
+      });
+
+      it('retorna fail con FechaResolucionRequeridaError', async () => {
+        const result = await useCase.execute(dtoAResueltoSinFecha);
+
+        expect(result.isFail()).toBe(true);
+        expect(result.getError()).toBeInstanceOf(FechaResolucionRequeridaError);
+        expect(result.getError().code).toBe('FECHA_RESOLUCION_REQUERIDA');
+      });
+
+      it('el ticket NO es mutado (estadoId permanece invariante)', async () => {
+        const ticket = makeTicket(ESTADO_ABIERTO_ID, TIPO_TICKET_ID);
+        ticketRepo.findById.mockResolvedValue(ticket);
+
+        await useCase.execute(dtoAResueltoSinFecha);
+
+        expect(ticket.estadoId).toBe(ESTADO_ABIERTO_ID);
+        expect(ticket.fechaResolucion).toBeNull();
+      });
+
+      it('ticketRepo.save NO es llamado', async () => {
+        await useCase.execute(dtoAResueltoSinFecha);
+
+        expect(ticketRepo.save).not.toHaveBeenCalled();
+        expect(operacionRepo.save).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('transición a RESUELTO CON fechaResolucion', () => {
+      const fechaResolucion = new Date('2026-06-28');
+      const dtoAResueltoConFecha: TransicionarEstadoDto = {
+        ticketId: 'ticket-uuid-001',
+        nuevoEstadoCodigo: 'RESUELTO',
+        autorId: AUTOR_ID,
+        fechaResolucion,
+      };
+
+      beforeEach(() => {
+        estadoRepo.findByCodigo.mockResolvedValue(makeEstado(ESTADO_RESUELTO_ID, 'RESUELTO'));
+      });
+
+      it('retorna Result.ok', async () => {
+        const result = await useCase.execute(dtoAResueltoConFecha);
+
+        expect(result.isOk()).toBe(true);
+      });
+
+      it('ticket.fechaResolucion queda seteada con la fecha provista', async () => {
+        const ticket = makeTicket(ESTADO_ABIERTO_ID, TIPO_TICKET_ID);
+        ticketRepo.findById.mockResolvedValue(ticket);
+
+        await useCase.execute(dtoAResueltoConFecha);
+
+        expect(ticket.fechaResolucion).toBe(fechaResolucion);
+      });
+
+      it('ticketRepo.save y operacionRepo.save son llamados', async () => {
+        await useCase.execute(dtoAResueltoConFecha);
+
+        expect(ticketRepo.save).toHaveBeenCalledTimes(1);
+        expect(operacionRepo.save).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    describe('reapertura desde RESUELTO (RESUELTO → EN_PROGRESO)', () => {
+      const dtoReapertura: TransicionarEstadoDto = {
+        ticketId: 'ticket-uuid-002',
+        nuevoEstadoCodigo: 'EN_PROGRESO',
+        autorId: AUTOR_ID,
+      };
+
+      beforeEach(() => {
+        ticketRepo.findById.mockResolvedValue(makeResueltoTicket());
+        estadoRepo.findById.mockResolvedValue(makeEstado(ESTADO_RESUELTO_ID, 'RESUELTO'));
+        estadoRepo.findByCodigo.mockResolvedValue(makeEstado(ESTADO_EN_PROGRESO_ID, 'EN_PROGRESO'));
+      });
+
+      it('ticket.fechaResolucion queda null después de la reapertura', async () => {
+        const ticket = makeResueltoTicket();
+        ticketRepo.findById.mockResolvedValue(ticket);
+
+        await useCase.execute(dtoReapertura);
+
+        expect(ticket.fechaResolucion).toBeNull();
+      });
+
+      it('retorna Result.ok', async () => {
+        const result = await useCase.execute(dtoReapertura);
+
+        expect(result.isOk()).toBe(true);
+      });
+    });
+
+    describe('transición normal SIN involucrar RESUELTO (ABIERTO → EN_PROGRESO)', () => {
+      it('setFechaResolucion NO es llamado (no se toca fechaResolucion)', async () => {
+        const ticket = makeTicket(ESTADO_ABIERTO_ID, TIPO_TICKET_ID);
+        const setFechaResolucionSpy = jest.spyOn(ticket, 'setFechaResolucion');
+        ticketRepo.findById.mockResolvedValue(ticket);
+
+        await useCase.execute(validDto); // ABIERTO → EN_PROGRESO
+
+        expect(setFechaResolucionSpy).not.toHaveBeenCalled();
+      });
     });
   });
 });

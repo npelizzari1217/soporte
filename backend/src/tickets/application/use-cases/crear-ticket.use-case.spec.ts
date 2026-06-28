@@ -343,4 +343,40 @@ describe('CrearTicketUseCase', () => {
       expect(result.getValue().asignadoId).toBeNull();
     });
   });
+
+  // ─── PR3: fechaCreacion override de createdAt (ADR-5) ────────────────────────
+
+  describe('fechaCreacion override de createdAt (ADR-5)', () => {
+    // T3.6 — RED: estos tests fallan hasta que se agregue fechaCreacion al DTO (T3.7)
+
+    it('DTO con fechaCreacion → ticket.createdAt refleja esa fecha', async () => {
+      const fechaCreacion = new Date('2025-06-15');
+      const dto = { ...validDto, fechaCreacion };
+
+      const result = await useCase.execute(dto);
+
+      expect(result.isOk()).toBe(true);
+      expect(result.getValue().createdAt.toISOString().slice(0, 10)).toBe('2025-06-15');
+    });
+
+    it('DTO con fechaCreacion futura (2030-12-31) → se acepta sin error (ADR-5)', async () => {
+      const dto = { ...validDto, fechaCreacion: new Date('2030-12-31') };
+
+      const result = await useCase.execute(dto);
+
+      expect(result.isOk()).toBe(true);
+      expect(result.getValue().createdAt.toISOString().slice(0, 10)).toBe('2030-12-31');
+    });
+
+    it('DTO SIN fechaCreacion → ticket.createdAt ≈ now() (margen 5s)', async () => {
+      const antes = new Date();
+      const result = await useCase.execute(validDto);
+      const despues = new Date(antes.getTime() + 5000);
+
+      expect(result.isOk()).toBe(true);
+      const createdAt = result.getValue().createdAt;
+      expect(createdAt.getTime()).toBeGreaterThanOrEqual(antes.getTime());
+      expect(createdAt.getTime()).toBeLessThanOrEqual(despues.getTime());
+    });
+  });
 });

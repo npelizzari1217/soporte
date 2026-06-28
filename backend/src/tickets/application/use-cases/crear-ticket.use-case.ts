@@ -24,6 +24,9 @@ import { IUsuarioMasterChecker } from '../../domain/ports/i-usuario-master.check
  *   solicitante al tenant sin pasar el JWT directamente al use case.
  * - `autorId`: viene del JWT claim; se registra en la operacion de timeline.
  * - `anio`: año para el numerador (del ciclo vigente o año en curso).
+ * - `fechaCreacion`: override explícito de created_at (ADR-5). Permite fechas
+ *   pasadas y futuras sin restricción de rango. La validación de formato ocurre
+ *   en la capa HTTP. Si se omite, se usa now() (comportamiento por defecto).
  */
 export interface CrearTicketDto {
   titulo: string;
@@ -38,6 +41,11 @@ export interface CrearTicketDto {
   autorId: string;
   /** Año para la generación del número legible. */
   anio: number;
+  /**
+   * Override explícito de created_at (ADR-5). Permite fechas pasadas y futuras.
+   * Si se omite, created_at = now() por @default(now()) de Prisma.
+   */
+  fechaCreacion?: Date;
 }
 
 /**
@@ -108,18 +116,25 @@ export class CrearTicketUseCase {
     const numero = numeroResult.getValue();
 
     // 6. Crear la entidad Ticket (UUIDv7 generado internamente por BaseEntity)
-    const ticket = TicketEntity.create({
-      numero,
-      titulo: dto.titulo,
-      descripcion: dto.descripcion ?? null,
-      tipoId: dto.tipoId,
-      estadoId: estadoAbierto.id,
-      prioridadId: dto.prioridadId,
-      cicloId: dto.cicloId ?? null,
-      solicitanteId: dto.solicitanteId,
-      asignadoId: null,
-      fechaResolucion: null,
-    });
+    //    El tercer argumento es el override de createdAt (ADR-5): si se provee,
+    //    sobreescribe _createdAt en el factory. El mapper incluirá createdAt en
+    //    el INSERT pero no en el UPDATE (ver TicketMapper.toPersistence, T3.8).
+    const ticket = TicketEntity.create(
+      {
+        numero,
+        titulo: dto.titulo,
+        descripcion: dto.descripcion ?? null,
+        tipoId: dto.tipoId,
+        estadoId: estadoAbierto.id,
+        prioridadId: dto.prioridadId,
+        cicloId: dto.cicloId ?? null,
+        solicitanteId: dto.solicitanteId,
+        asignadoId: null,
+        fechaResolucion: null,
+      },
+      undefined,
+      dto.fechaCreacion,
+    );
 
     // 7. Crear la operación de apertura: CAMBIO_ESTADO NULL → ABIERTO
     const operacion = OperacionTicketEntity.create({
