@@ -2,7 +2,7 @@ import * as React from 'react'
 import { render, screen, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
-import { FormModal } from './form-modal'
+import { FormModal, isRadixPopoverEventTarget } from './form-modal'
 
 describe('FormModal', () => {
   it('is importable as named export from @/components/ui/form-modal', async () => {
@@ -98,5 +98,41 @@ describe('FormModal', () => {
       </FormModal>
     )
     expect(screen.getByRole('button', { name: 'Guardar' })).toBeInTheDocument()
+  })
+
+  // ─── Bug: dropdown de Select (portalado) NO debe cerrar el modal ──────────────
+  // Repro: al abrir un Select de nivel/prioridad y descartarlo sin elegir opción,
+  // el pointerdown cae en el portal del Select (fuera del Dialog.Content) y Radix
+  // lo lee como "click afuera" → cerraba el formulario.
+  //
+  // El layering de punteros de Radix no es reproducible en jsdom, así que se testea
+  // el CONTRATO atómico (CONSTITUTION §5): el predicado que decide si una interacción
+  // proviene de un popover portalado de Radix y por ende NO debe descartar el modal.
+
+  describe('isRadixPopoverEventTarget (guard de cierre del modal)', () => {
+    it('es true cuando el target está dentro de un popper de Radix (Select portalado)', () => {
+      const popper = document.createElement('div')
+      popper.setAttribute('data-radix-popper-content-wrapper', '')
+      const item = document.createElement('div')
+      popper.appendChild(item)
+      expect(isRadixPopoverEventTarget(item)).toBe(true)
+    })
+
+    it('es true cuando el target está dentro del viewport de un Select de Radix', () => {
+      const viewport = document.createElement('div')
+      viewport.setAttribute('data-radix-select-viewport', '')
+      const item = document.createElement('div')
+      viewport.appendChild(item)
+      expect(isRadixPopoverEventTarget(item)).toBe(true)
+    })
+
+    it('es false para un elemento fuera de cualquier popover (click afuera genuino)', () => {
+      const plain = document.createElement('div')
+      expect(isRadixPopoverEventTarget(plain)).toBe(false)
+    })
+
+    it('es false para null / target no-Element', () => {
+      expect(isRadixPopoverEventTarget(null)).toBe(false)
+    })
   })
 })

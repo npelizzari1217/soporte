@@ -19,6 +19,23 @@ import { cn } from '@/lib/utils'
  * Design: §1.3 FormModal contract.
  */
 
+/**
+ * Selectores de contenido portalado de Radix (Select/Dropdown/Popover en popper).
+ * Estos elementos viven en document.body, FUERA del Dialog.Content, así que una
+ * interacción con ellos parece "afuera" para el Dialog y lo cerraría indebidamente.
+ */
+const RADIX_POPOVER_SELECTOR =
+  '[data-radix-popper-content-wrapper],[data-radix-select-viewport],[data-radix-select-content]'
+
+/**
+ * True si el target de una interacción proviene de un popover portalado de Radix.
+ * Usado para evitar que abrir/descartar un <Select> cierre el FormModal.
+ */
+export function isRadixPopoverEventTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false
+  return target.closest(RADIX_POPOVER_SELECTOR) !== null
+}
+
 export interface FormModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -50,6 +67,13 @@ function FormModal({
         />
         <Dialog.Content
           aria-modal="true"
+          onInteractOutside={(event) => {
+            // No cerrar el modal si la interacción nace de un Select/popover
+            // portalado de Radix (abrir o descartar el dropdown sin elegir opción).
+            if (isRadixPopoverEventTarget(event.detail.originalEvent.target)) {
+              event.preventDefault()
+            }
+          }}
           className={cn(
             'fixed left-[50%] top-[50%] z-50 w-full max-w-lg translate-x-[-50%] translate-y-[-50%]',
             'rounded-xl border border-white/10',
