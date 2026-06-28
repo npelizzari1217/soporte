@@ -101,7 +101,14 @@ Tipos de evento registrables en el timeline de un ticket.
 | `updated_at` | `timestamptz` | NOT NULL | DEFAULT now() | — |
 | `deleted_at` | `timestamptz` | NULL | — | — |
 
-**Seeds:** `CAMBIO_ESTADO`, `COMENTARIO`, `ASIGNACION`, `ADJUNTO`, `AVANCE_EDILICIO`.
+**Seeds:** `CAMBIO_ESTADO`, `COMENTARIO`, `ASIGNACION`, `ADJUNTO`, `AVANCE_EDILICIO`, `EDICION`, `ELIMINACION`.
+
+> `EDICION` y `ELIMINACION` agregados en change `tickets-editar-borrar` (2026-06-28).
+> UUIDs deterministas: `EDICION` → `f0000000-0000-4000-f000-000000000007`,
+> `ELIMINACION` → `f0000000-0000-4000-f000-000000000008`.
+> Para tenants existentes antes de este change: aplicar vía `scripts/migrate-tenants.ts`
+> (migración tenant `20260627010000_seed_tipo_operacion_edicion_eliminacion`).
+> Para tenants nuevos: incluido en el seeder estándar (`tenant-seed.ts` + `tenant-seeder.adapter.ts`).
 
 ---
 
@@ -372,7 +379,7 @@ CANCELADO → (ninguna transición — estado terminal)
 **Then** `estados` MUST contener los 8 estados base definidos en este spec  
 **And** `prioridades` MUST contener los 4 niveles base  
 **And** `tipos_ticket` MUST contener `SOPORTE`, `COMPRAS`, `EDILICIA`  
-**And** `tipo_operacion` MUST contener los 5 tipos base  
+**And** `tipo_operacion` MUST contener los 7 tipos base (incluye `EDICION` y `ELIMINACION` desde change `tickets-editar-borrar`)  
 **And** todos los registros seed MUST tener `activo = TRUE` y `deleted_at IS NULL`
 
 #### Scenario: Seed de catálogos es idempotente
@@ -396,3 +403,207 @@ CANCELADO → (ninguna transición — estado terminal)
 **When** se evalúa si un usuario puede recibir la asignación de un ticket  
 **Then** la verificación MUST ocurrir en el caso de uso (`AsignarTicketUseCase`)  
 **And** MUST NOT existir un guard genérico de Nest para `usuario_tipos_ticket`
+
+---
+
+### Requirement: Edición de campos de datos del ticket
+
+> Introducido en change `tickets-editar-borrar` (2026-06-28).
+
+`PATCH /tickets/:id` permite modificar el subconjunto de campos de datos
+del ticket. Los campos que identifican ciclo de vida, identidad del
+solicitante o número de registro son INMUTABLES por este endpoint.
+
+**Campos permitidos en el body:** `titulo`, `descripcion`, `prioridadId`,
+`cicloId`, `fechaVencimiento`. Todos opcionales (PATCH parcial).
+
+**Campos inmutables** (nunca modificables por este endpoint):
+`estadoId`, `tipoId`, `solicitanteId`, `asignadoId`, `numero`, `autorId`, `clienteId`, `anio`.
+`tipoId` es inmutable porque el número legible (`numero`) se derivó del tipo original;
+cambiar el tipo dejaría `numero` inconsistente. Los campos inmutables incluidos en el body
+MUST ser ignorados silenciosamente (no error de validación).
+
+**Validación de FK:** Si `prioridadId` viene definido, MUST verificarse que existe en
+`prioridades` — si no existe → 422. Si `cicloId` viene definido y no es `null`, MUST
+verificarse que existe en `ciclos_cliente` — si no existe → 422. `cicloId: null` limpia
+la FK sin validar (semántica "desvincular del ciclo").
+
+#### Scenario: Edición exitosa de campos de datos
+
+**Given** un ticket activo (`deleted_at IS NULL`) en estado no terminal  
+**And** el usuario autenticado tiene permiso `ticket:editar`  
+**And** el ticket pertenece al tenant del usuario  
+**When** el usuario envía `PATCH /tickets/{id}` con al menos un campo permitido  
+**Then** la respuesta MUST ser `HTTP 200` con el `TicketResponseDto` reflejando los valores actualizados  
+**And** `tickets.updated_at` MUST ser actualizado a `now()`  
+**And** los campos no incluidos en el body MUST permanecer sin cambios  
+**And** dentro de la MISMA transacción Postgres MUST registrarse una fila en `operaciones_ticket`
+con `tipo_operacion.codigo = 'EDICION'`, `autor_id` del usuario autenticado,
+y `metadata` que incluya al menos `{ camposModificados: [lista de claves modificadas] }`
+
+#### Scenario: Campo prohibido incluido en el body es ignorado
+
+**Given** un ticket activo en estado no terminal  
+**And** el usuario tiene permiso `ticket:editar`  
+**When** el body de `PATCH /tickets/{id}` incluye `estadoId`, `tipoId`, `solicitanteId` u otro campo inmutable  
+**Then** la respuesta MUST ser `HTTP 200` (no error de validación)  
+**And** los valores de los campos inmutables en la DB MUST NOT haber cambiado  
+**And** solo los campos permitidos presentes en el body MUST ser actualizados
+
+#### Scenario: Edición rechazada — ticket en estado terminal CERRADO
+
+**Given** un ticket cuyo estado actual tiene `codigo = 'CERRADO'`  
+**And** el usuario tiene permiso `ticket:editar`  
+**When** el usuario envía `PATCH /tickets/{id}` con cualquier campo válido  
+**Then** la respuesta MUST ser `HTTP 422`  
+**And** el body de error MUST comunicar que el ticket no es editable en su estado actual  
+**And** MUST NOT modificar ningún campo de la fila `tickets`  
+**And** MUST NOT registrar ninguna `operaciones_ticket`
+
+#### Scenario: Edición rechazada — ticket en estado terminal CANCELADO
+
+**Given** un ticket cuyo estado actual tiene `codigo = 'CANCELADO'`  
+**And** el usuario tiene permiso `ticket:editar`  
+**When** el usuario envía `PATCH /tickets/{id}`  
+**Then** la respuesta MUST ser `HTTP 422`  
+**And** MUST NOT modificar la fila en `tickets`
+
+#### Scenario: Edición rechazada — ticket soft-deleted
+
+**Given** un ticket con `deleted_at IS NOT NULL`  
+**When** el usuario envía `PATCH /tickets/{id}` (independientemente del permiso)  
+**Then** la respuesta MUST ser `HTTP 404`  
+**And** MUST NOT modificar la fila en `tickets`
+
+#### Scenario: Edición rechazada — ticket de otro tenant
+
+**Given** un ticket que existe en la DB del tenant B  
+**And** el usuario autenticado pertenece al tenant A  
+**When** el usuario envía `PATCH /tickets/{id}` con el ID de ese ticket  
+**Then** la respuesta MUST ser `HTTP 404` (no 403; la existencia del ticket no se revela)  
+**And** MUST NOT modificar ningún dato del tenant B
+
+#### Scenario: Edición rechazada — sin permiso ticket:editar
+
+**Given** un usuario autenticado sin el permiso `ticket:editar` en su JWT  
+**When** envía `PATCH /tickets/{id}`  
+**Then** la respuesta MUST ser `HTTP 403`  
+**And** MUST NOT ejecutar ningún caso de uso ni modificar datos
+
+---
+
+### Requirement: Soft delete de tickets
+
+> Introducido en change `tickets-editar-borrar` (2026-06-28).
+
+`DELETE /tickets/:id` da de baja lógica un ticket seteando `deleted_at`.
+A diferencia de la edición, el soft delete es permitido incluso en estados
+terminales (CERRADO/CANCELADO). La operación es **idempotente**: un segundo
+DELETE sobre un ticket ya eliminado retorna `204 No Content` sin error y sin
+registrar una segunda `OperacionTicket` de tipo ELIMINACION.
+
+#### Scenario: Soft delete exitoso de ticket activo
+
+**Given** un ticket con `deleted_at IS NULL`  
+**And** el usuario autenticado tiene permiso `ticket:eliminar`  
+**And** el ticket pertenece al tenant del usuario  
+**When** el usuario envía `DELETE /tickets/{id}`  
+**Then** la respuesta MUST ser `HTTP 204 No Content` (sin body)  
+**And** `tickets.deleted_at` MUST ser seteado a `now()`  
+**And** dentro de la MISMA transacción MUST registrarse una fila en `operaciones_ticket`
+con `tipo_operacion.codigo = 'ELIMINACION'` y `autor_id` del usuario autenticado  
+**And** MUST NOT eliminar físicamente la fila de `tickets`
+
+#### Scenario: Soft delete de ticket en estado terminal (CERRADO / CANCELADO) — permitido
+
+**Given** un ticket con `deleted_at IS NULL` cuyo estado tiene `codigo = 'CERRADO'` o `codigo = 'CANCELADO'`  
+**And** el usuario tiene permiso `ticket:eliminar`  
+**When** el usuario envía `DELETE /tickets/{id}`  
+**Then** la respuesta MUST ser `HTTP 204 No Content` (sin body)  
+**And** `tickets.deleted_at` MUST ser seteado a `now()`  
+**And** MUST NOT rechazar la operación por estar en estado terminal
+
+#### Scenario: Doble borrado — no-op idempotente
+
+**Given** un ticket con `deleted_at IS NOT NULL` (ya eliminado)  
+**And** el usuario tiene permiso `ticket:eliminar`  
+**When** el usuario envía `DELETE /tickets/{id}` por segunda vez  
+**Then** la respuesta MUST ser `HTTP 204 No Content` (no-op; éxito silencioso)  
+**And** MUST NOT modificar `deleted_at` ni `updated_at`  
+**And** MUST NOT registrar una segunda `operaciones_ticket` de tipo ELIMINACION
+
+#### Scenario: Soft delete rechazado — ticket de otro tenant
+
+**Given** un ticket que existe en la DB del tenant B  
+**And** el usuario autenticado pertenece al tenant A  
+**When** el usuario envía `DELETE /tickets/{id}`  
+**Then** la respuesta MUST ser `HTTP 404`  
+**And** MUST NOT modificar ningún dato del tenant B
+
+#### Scenario: Soft delete rechazado — sin permiso ticket:eliminar
+
+**Given** un usuario autenticado sin el permiso `ticket:eliminar` en su JWT  
+**When** envía `DELETE /tickets/{id}`  
+**Then** la respuesta MUST ser `HTTP 403`  
+**And** MUST NOT ejecutar ningún caso de uso ni modificar datos
+
+---
+
+### Requirement: Exclusión de tickets soft-deleted en listados
+
+> Introducido en change `tickets-editar-borrar` (2026-06-28).
+
+Este requirement confirma que el soft delete aplica el mismo patrón de exclusión
+(`deletedAt: null` en `findAll`/`findByEstado`) ya existente en la capa de repositorio.
+
+#### Scenario: Ticket recién eliminado no aparece en el listado
+
+**Given** un ticket que existía con `deleted_at IS NULL`  
+**And** el ticket fue eliminado vía `DELETE /tickets/{id}` exitosamente  
+**When** cualquier usuario del mismo tenant llama `GET /tickets`  
+**Then** el ticket eliminado MUST NOT aparecer en el array de respuesta  
+**And** los demás tickets activos del tenant MUST seguir apareciendo normalmente
+
+#### Scenario: GET /tickets/:id retorna 404 para ticket soft-deleted
+
+**Given** un ticket con `deleted_at IS NOT NULL`  
+**When** un usuario llama `GET /tickets/{id}`  
+**Then** la respuesta MUST ser `HTTP 404`  
+**And** MUST NOT devolver los datos del ticket eliminado
+
+---
+
+### Requirement: Auditoría transaccional de edición y eliminación
+
+> Introducido en change `tickets-editar-borrar` (2026-06-28).
+
+Las operaciones de edición y eliminación son eventos de negocio significativos
+que DEBEN quedar reflejados en el timeline inmutable `operaciones_ticket`,
+en la MISMA transacción que el cambio principal. Un fallo en el registro de
+auditoría DEBE hacer rollback del cambio principal.
+
+#### Scenario: Rollback si falla el registro de auditoría en edición
+
+**Given** un ticket activo en estado no terminal  
+**And** el registro en `operaciones_ticket` falla (ej. error de FK por seed faltante)  
+**When** `EditarTicketUseCase` intenta ejecutar  
+**Then** la transacción MUST hacer rollback completo  
+**And** `tickets` MUST permanecer sin cambios (ni los campos de datos ni `updated_at`)  
+**And** la respuesta MUST ser `HTTP 500` (error interno de catálogo no sembrado)
+
+#### Scenario: Rollback si falla el registro de auditoría en eliminación
+
+**Given** un ticket activo  
+**And** el registro en `operaciones_ticket` falla  
+**When** `EliminarTicketUseCase` intenta ejecutar  
+**Then** la transacción MUST hacer rollback completo  
+**And** `tickets.deleted_at` MUST permanecer `NULL`  
+**And** la respuesta MUST ser `HTTP 500`
+
+#### Scenario: Seed de tipo_operacion EDICION y ELIMINACION presente en todo tenant
+
+**Given** se conecta a la DB de cualquier tenant existente o nuevo  
+**When** se consulta `tipo_operacion`  
+**Then** MUST existir una fila con `codigo = 'EDICION'` y `activo = TRUE`  
+**And** MUST existir una fila con `codigo = 'ELIMINACION'` y `activo = TRUE`  
+**And** el seed MUST ser idempotente (re-ejecución no duplica filas)
