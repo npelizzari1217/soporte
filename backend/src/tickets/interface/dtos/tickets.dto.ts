@@ -6,8 +6,52 @@
  *
  * Tarea: 3.E.2
  */
+import { CicloClienteEntity } from '../../domain/entities/ciclo-cliente.entity';
 
 // ─── Input DTOs ───────────────────────────────────────────────────────────────
+
+/**
+ * Query params para GET /tickets.
+ * Los valores llegan como strings desde la URL; el controller coerce y valida.
+ *
+ * tiposIds puede llegar como string único (?tiposIds=uuid) o como array
+ * (?tiposIds[]=uuid1&tiposIds[]=uuid2). El controller normaliza a string[].
+ */
+export interface ListarTicketsQueryDto {
+  tiposIds?: string | string[];
+  /** Fecha ISO 'YYYY-MM-DD'. Controller convierte a Date con startOfDay. */
+  fechaDesde?: string;
+  /** Fecha ISO 'YYYY-MM-DD'. Controller convierte a Date con endOfDay. */
+  fechaHasta?: string;
+}
+
+/**
+ * Respuesta del endpoint GET /tickets/ciclo-activo.
+ * Retorna HTTP 404 si no hay ciclo activo (spec toma precedencia sobre ADR-2).
+ */
+export interface CicloActivoResponseDto {
+  id: string;
+  nombre: string;
+  /** Fecha ISO 'YYYY-MM-DD'. */
+  fechaInicio: string;
+  /** Fecha ISO 'YYYY-MM-DD'. */
+  fechaFin: string;
+  activo: boolean;
+}
+
+/**
+ * Mapea un CicloClienteEntity al DTO de respuesta HTTP.
+ * Las fechas se formatean como 'YYYY-MM-DD' (sin componente de hora).
+ */
+export function toCicloActivoResponse(ciclo: CicloClienteEntity): CicloActivoResponseDto {
+  return {
+    id: ciclo.id,
+    nombre: ciclo.nombre,
+    fechaInicio: ciclo.fechaInicio.toISOString().slice(0, 10),
+    fechaFin: ciclo.fechaFin.toISOString().slice(0, 10),
+    activo: ciclo.activo,
+  };
+}
 
 /**
  * Cuerpo HTTP para POST /tickets.
