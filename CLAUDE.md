@@ -60,3 +60,22 @@
 * **Validación estricta:** Validación rigurosa de tipos, sanitización de inputs y escape de outputs para prevenir inyecciones (SQL, XSS, etc.).
 * **Gestión de secretos:** PROHIBIDO hardcodear credenciales, tokens o llaves. Siempre variables de entorno (`.env`).
 * **Menor privilegio:** Diseñá consultas y mutaciones validando el contexto de usuario **y de tenant** (app multi-tenant) antes de exponer o modificar cualquier dato sensible.
+
+## 8. SKILLS DEL PROYECTO (cargar ANTES de delegar)
+
+* **Versionadas en el repo:** las skills viven en `./skills/` y el índice en `./skills/skill-registry.md`, con paths **relativos**. Viajan con el `git clone` a CUALQUIER máquina — NO dependen de `gentle-ai` ni de paths absolutos globales. (El registry de `.atl/` está gitignoreado y es solo local; el de `./skills/` es la fuente de verdad portable.)
+* **Protocolo OBLIGATORIO de carga (orquestador / cualquier agente que delega código):** antes de CADA delegación de apply/verify/design/explore/tasks, leé `./skills/skill-registry.md`, matcheá skills por **contexto de archivos + tarea** (columna `Trigger`), y pasale al sub-agente los **paths relativos** de los `SKILL.md` que matchean, con instrucción explícita de leerlos ANTES de tocar código. Inyectalos como bloque `## Project Standards (auto-resolved)`.
+* **Verificación:** chequeá el `skill_resolution` que devuelve cada sub-agente. Si es `none` o `fallback`, perdiste la inyección — re-inyectá antes de continuar.
+* **Skills clave de este stack:** backend → `clean-arch`, `nestjs-modules`, `repository-pattern`, `value-objects`, `error-handling`, `api-design`, `auth-access`; frontend → `ui-patterns`; entrega → `work-unit-commits`, `chained-pr`, `branch-pr`; review → `judgment-day`.
+* **Re-vendorizar** si cambian las skills globales: copiar `~/.config/opencode/skills/.` a `./skills/` y relativizar los `Path` del registry.
+
+## 9. DEFINITION OF DONE (ningún "done" sin esto)
+
+> Antecedente real: un sub-agente reportó "lint OK" con `pnpm lint` FALLANDO. Esta sección existe para que eso no vuelva a pasar.
+
+* **Probar y PEGAR la salida real:** ningún sub-agente reporta "done"/"verde" sin correr y pegar los números REALES de `pnpm test`, `pnpm lint` y typecheck (`tsc --noEmit`) en `backend/` y/o `frontend/` según lo tocado. Prohibido "lint OK"/"tests pass" sin evidencia.
+* **Prohibido `as any` / `as unknown as`** para esquivar el type-checker. Si TS/Prisma no tipa, buscá el tipo correcto (ej. `Prisma.XWhereInput`).
+* **Migraciones idempotentes:** guards `IF EXISTS` / `DO $$`, `RENAME COLUMN` en vez de drop+add, seguras para correr en TODAS las tenant DBs.
+* **TDD estricto:** cada criterio del spec con su test atómico (RED→GREEN). No borrar tests sin justificar el porqué.
+* **Conventional commits, SIN Co-Authored-By** ni atribución de AI.
+* **Reporte honesto:** si algo falla o se difirió, decilo. Cero verde falso.
