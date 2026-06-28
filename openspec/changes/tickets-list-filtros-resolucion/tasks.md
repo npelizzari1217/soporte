@@ -50,7 +50,7 @@ solo puede MERGEARSE después de PR3 (por el rename `Ticket.fechaResolucion` en
 
 ---
 
-### T1.1 — Puerto `ITicketRepository` + tipo `TicketFiltros` [DOMAIN CONTRACT]
+### [x] T1.1 — Puerto `ITicketRepository` + tipo `TicketFiltros` [DOMAIN CONTRACT]
 
 - **Archivos**: `backend/src/tickets/domain/ports/i-ticket.repository.ts`
 - **Spec**: "GET /tickets MUST aceptar `tiposIds[]`, `fechaDesde`, `fechaHasta`"
@@ -73,7 +73,7 @@ solo puede MERGEARSE después de PR3 (por el rename `Ticket.fechaResolucion` en
 
 ---
 
-### T1.2 — [RED] `listar-tickets.use-case.spec.ts` — filtros pass-through
+### [x] T1.2 — [RED] `listar-tickets.use-case.spec.ts` — filtros pass-through
 
 - **Archivos**: `backend/src/tickets/application/use-cases/listar-tickets.use-case.spec.ts`
 - **Spec**: use case permanece PURO (ADR-2), solo delega filtros al repo
@@ -89,7 +89,7 @@ solo puede MERGEARSE después de PR3 (por el rename `Ticket.fechaResolucion` en
 
 ---
 
-### T1.3 — [GREEN] `ListarTicketsUseCase.execute(filtros?)`
+### [x] T1.3 — [GREEN] `ListarTicketsUseCase.execute(filtros?)`
 
 - **Archivos**: `backend/src/tickets/application/use-cases/listar-tickets.use-case.ts`
 - **Dep**: T1.2 en RED
@@ -103,7 +103,7 @@ solo puede MERGEARSE después de PR3 (por el rename `Ticket.fechaResolucion` en
 
 ---
 
-### T1.4 — DTOs + mapper de respuesta del ciclo
+### [x] T1.4 — DTOs + mapper de respuesta del ciclo
 
 - **Archivos**: `backend/src/tickets/interface/dtos/tickets.dto.ts`
 - **Paralelo con**: T1.2, T1.3
@@ -132,7 +132,7 @@ solo puede MERGEARSE después de PR3 (por el rename `Ticket.fechaResolucion` en
 
 ---
 
-### T1.5 — [RED] `prisma-tickets.integration.spec.ts` — findAll con filtros + orden
+### [x] T1.5 — [RED] `prisma-tickets.integration.spec.ts` — findAll con filtros + orden
 
 - **Archivos**: `backend/src/tickets/infrastructure/persistence/prisma/prisma-tickets.integration.spec.ts`
 - **Spec**: orden `created_at DESC, tipos_ticket.nombre ASC`; filtro `tiposIds[]`; filtro rango `fechaDesde/fechaHasta`
@@ -148,7 +148,7 @@ solo puede MERGEARSE después de PR3 (por el rename `Ticket.fechaResolucion` en
 
 ---
 
-### T1.6 — [GREEN] `PrismaTicketRepository.findAll(filtros?)`
+### [x] T1.6 — [GREEN] `PrismaTicketRepository.findAll(filtros?)`
 
 - **Archivos**: `backend/src/tickets/infrastructure/persistence/prisma/prisma-ticket.repository.ts`
 - **Dep**: T1.5 en RED
@@ -179,7 +179,7 @@ la relación `tipo TipoTicket @relation` (schema L175). NO SQL crudo.
 
 ---
 
-### T1.7 — [RED] `tickets.controller.spec.ts` — filtros + cicloActivo + orden de rutas
+### [x] T1.7 — [RED] `tickets.controller.spec.ts` — filtros + cicloActivo + orden de rutas
 
 - **Archivos**: `backend/src/tickets/interface/controllers/tickets.controller.spec.ts`
 - **Spec**: coerción query params, 422 en rango inválido, GET /ciclo-activo retorna ciclo o 404, ruta estática antes de `:id`
@@ -205,7 +205,7 @@ la relación `tipo TipoTicket @relation` (schema L175). NO SQL crudo.
 
 ---
 
-### T1.8 — [GREEN] Cambios en `TicketsController` — `@Get('ciclo-activo')` + `@Get()` con filtros
+### [x] T1.8 — [GREEN] Cambios en `TicketsController` — `@Get('ciclo-activo')` + `@Get()` con filtros
 
 - **Archivos**:
   - `backend/src/tickets/interface/controllers/tickets.controller.ts`
