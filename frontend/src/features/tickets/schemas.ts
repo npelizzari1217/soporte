@@ -3,12 +3,16 @@
  *
  * Contract (verified against backend/src/tickets/interface/dtos/tickets.dto.ts):
  *   CreateTicketHttpDto: titulo (req), descripcion?, tipoId (req), prioridadId (req),
- *                        cicloId?, solicitanteId (req), fechaVencimiento?
- *   UpdateTicketHttpDto: titulo?, descripcion?, prioridadId?, cicloId?, fechaVencimiento?
+ *                        cicloId?, solicitanteId (req), fechaCreacion?
+ *   UpdateTicketHttpDto: titulo?, descripcion?, prioridadId?, cicloId?
  *                        — SIN tipoId, SIN estado (locked, per backend design).
+ *                        — SIN fechaResolucion (seteada por técnico vía PATCH /estado).
  *
  * Note: `solicitanteId` is NOT part of the form schema — it is injected at submit
  * from `useSession().user.sub`. It only appears in `CreateTicketInput` (the DTO shape).
+ *
+ * ADR-9 (tickets-list-filtros-resolucion): fechaResolucion eliminada del form de alta/edición.
+ * El alta acepta fechaCreacion (override de created_at). Permite fechas futuras (sin refine).
  *
  * Spec: tickets-ui §req Schemas Zod por operación
  */
@@ -26,8 +30,16 @@ export const CreateTicketSchema = z.object({
   tipoId: z.string().uuid('Seleccioná un tipo'),
   prioridadId: z.string().uuid('Seleccioná una prioridad'),
   cicloId: z.string().uuid().optional().nullable(),
-  /** <input type="date"> returns 'YYYY-MM-DD'. Backend accepts ISO date strings. */
-  fechaVencimiento: z.string().optional().nullable(),
+  /**
+   * fechaCreacion — override del created_at del ticket.
+   * <input type="date"> devuelve 'YYYY-MM-DD'. El backend acepta strings ISO.
+   * Se permiten fechas futuras (ADR-5, sin refine de rango).
+   * Gotcha: new Date('YYYY-MM-DD') = medianoche UTC en Timestamptz.
+   */
+  fechaCreacion: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Formato inválido (YYYY-MM-DD)')
+    .optional(),
 })
 
 export type CreateTicketForm = z.infer<typeof CreateTicketSchema>
@@ -62,8 +74,7 @@ export const UpdateTicketSchema = z.object({
   descripcion: z.string().max(1000).nullable().optional(),
   prioridadId: z.string().uuid('Seleccioná una prioridad').optional(),
   cicloId: z.string().uuid().nullable().optional(),
-  /** <input type="date"> returns 'YYYY-MM-DD'. */
-  fechaVencimiento: z.string().nullable().optional(),
+  // fechaResolucion NO es campo editable en este form (la setea el técnico vía PATCH /estado)
 })
 
 export type UpdateTicketInput = z.infer<typeof UpdateTicketSchema>
@@ -84,5 +95,6 @@ export type TicketFormValues = {
   tipoId?: string
   prioridadId?: string
   cicloId?: string | null
-  fechaVencimiento?: string | null
+  /** Fecha de creación del ticket (override del created_at). Formato 'YYYY-MM-DD'. Solo en create mode. */
+  fechaCreacion?: string
 }

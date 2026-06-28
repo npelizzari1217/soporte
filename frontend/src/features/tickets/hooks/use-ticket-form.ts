@@ -43,13 +43,23 @@ interface UseTicketFormOpts {
   onClose: () => void;
   /** Required when mode === 'edit'. Provides id for PATCH and defaultValues. */
   ticket?: Ticket;
+  /**
+   * Pre-fills tipoId in create mode when exactly 1 tipo is active in the filter.
+   * ADR-9: `filtros.tiposIds.length === 1 ? filtros.tiposIds[0] : ""`.
+   * Ignored in edit mode (tipoId is immutable after creation).
+   */
+  defaultTipoId?: string;
 }
 
 // ─── Helper ──────────────────────────────────────────────────────────────────
 
 /**
- * Maps a Ticket entity to the UpdateTicketInput shape for RHF defaultValues.
+ * Maps a Ticket entity to RHF defaultValues for edit mode.
  * Converts null → undefined for optional text fields (Zod optional, not nullable).
+ *
+ * ADR-9: fechaResolucion is NOT a form field (set by técnico via PATCH /estado).
+ * fechaVencimiento was renamed in PR2 and removed from form in PR5.
+ * fechaCreacion is a create-only field — NOT pre-filled in edit mode.
  */
 function mapTicketToForm(t: Ticket): TicketFormValues {
   return {
@@ -57,7 +67,6 @@ function mapTicketToForm(t: Ticket): TicketFormValues {
     descripcion: t.descripcion ?? undefined,
     prioridadId: t.prioridadId,
     cicloId: t.cicloId ?? undefined,
-    fechaVencimiento: t.fechaResolucion ?? undefined,
   };
 }
 
@@ -89,10 +98,16 @@ export function useTicketForm(
       : {
           titulo: "",
           descripcion: undefined,
-          tipoId: "",
+          tipoId: opts.defaultTipoId ?? "",
           prioridadId: "",
           cicloId: undefined,
-          fechaVencimiento: undefined,
+          /**
+           * Gotcha (ADR-5): <input type="date"> devuelve 'YYYY-MM-DD'.
+           * new Date('YYYY-MM-DD') = medianoche UTC en Timestamptz — aceptable
+           * para este caso (fecha sin hora). El backend acepta el string ISO.
+           * Se permiten fechas futuras (sin refine de rango).
+           */
+          fechaCreacion: new Date().toISOString().slice(0, 10),
         },
     mode: "onBlur",
   });

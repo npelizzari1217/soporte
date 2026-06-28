@@ -77,7 +77,7 @@ describe('CreateTicketSchema', () => {
     if (result.success) {
       expect(result.data.descripcion).toBeUndefined()
       expect(result.data.cicloId).toBeUndefined()
-      expect(result.data.fechaVencimiento).toBeUndefined()
+      expect(result.data.fechaCreacion).toBeUndefined()
     }
   })
 
@@ -85,14 +85,44 @@ describe('CreateTicketSchema', () => {
     expect('solicitanteId' in CreateTicketSchema.shape).toBe(false)
   })
 
-  it('succeeds with fechaVencimiento provided', () => {
+  // T5.1 — PR5 RED: fechaCreacion replaces fechaVencimiento
+  it('has fechaCreacion field (not fechaVencimiento)', () => {
+    expect('fechaCreacion' in CreateTicketSchema.shape).toBe(true)
+    expect('fechaVencimiento' in CreateTicketSchema.shape).toBe(false)
+  })
+
+  it('succeeds with valid fechaCreacion (YYYY-MM-DD)', () => {
     const result = CreateTicketSchema.safeParse({
       titulo: 'ok',
       tipoId: uuid,
       prioridadId: uuid,
-      fechaVencimiento: '2026-12-31',
+      fechaCreacion: '2026-01-15',
     })
     expect(result.success).toBe(true)
+  })
+
+  it('succeeds with future fechaCreacion (no range restriction)', () => {
+    const result = CreateTicketSchema.safeParse({
+      titulo: 'ok',
+      tipoId: uuid,
+      prioridadId: uuid,
+      fechaCreacion: '2030-12-31',
+    })
+    expect(result.success).toBe(true)
+  })
+
+  it('fails when fechaCreacion has invalid format', () => {
+    const result = CreateTicketSchema.safeParse({
+      titulo: 'ok',
+      tipoId: uuid,
+      prioridadId: uuid,
+      fechaCreacion: 'not-a-date',
+    })
+    expect(result.success).toBe(false)
+    if (!result.success) {
+      const field = result.error.issues.find((i) => i.path[0] === 'fechaCreacion')
+      expect(field).toBeDefined()
+    }
   })
 
   it('succeeds when cicloId is null', () => {
@@ -117,6 +147,11 @@ describe('UpdateTicketSchema', () => {
 
   it('does NOT have estado in the schema shape', () => {
     expect('estado' in UpdateTicketSchema.shape).toBe(false)
+  })
+
+  // T5.1 — PR5 RED: fechaVencimiento removed from update schema
+  it('does NOT have fechaVencimiento in the schema shape', () => {
+    expect('fechaVencimiento' in UpdateTicketSchema.shape).toBe(false)
   })
 
   it('succeeds with empty object (all fields optional)', () => {
