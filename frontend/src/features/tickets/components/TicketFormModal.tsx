@@ -48,11 +48,17 @@ interface TicketFormModalProps {
   onOpenChange: (open: boolean) => void;
   /** Required for edit mode — provides defaultValues and the ticket id for PATCH. */
   ticket?: Ticket;
+  /**
+   * Pre-fills tipoId in create mode when exactly 1 tipo is active in the filter.
+   * ADR-9: computed by the container — `filtros.tiposIds?.length === 1 ? filtros.tiposIds[0] : ""`.
+   * Ignored in edit mode.
+   */
+  defaultTipoId?: string;
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
-export function TicketFormModal({ mode, open, onOpenChange, ticket }: TicketFormModalProps) {
+export function TicketFormModal({ mode, open, onOpenChange, ticket, defaultTipoId }: TicketFormModalProps) {
   function handleClose() {
     onOpenChange(false);
   }
@@ -60,6 +66,7 @@ export function TicketFormModal({ mode, open, onOpenChange, ticket }: TicketForm
   const { form, onSubmit, isSubmitting } = useTicketForm(mode, {
     onClose: handleClose,
     ticket,
+    defaultTipoId,
   });
 
   const {
@@ -169,20 +176,23 @@ export function TicketFormModal({ mode, open, onOpenChange, ticket }: TicketForm
           />
         </FormField>
 
-        {/* fechaVencimiento (optional) */}
-        <FormField
-          label="Fecha de vencimiento"
-          htmlFor="fechaVencimiento"
-          error={errors.fechaVencimiento?.message}
-        >
-          <Input
-            id="fechaVencimiento"
-            type="date"
-            aria-label="Fecha de vencimiento"
-            {...register("fechaVencimiento")}
-            error={!!errors.fechaVencimiento}
-          />
-        </FormField>
+        {/* fechaCreacion — create mode only (ADR-9, ADR-5).
+            Defaults to today; editable; allows future dates. */}
+        {!isEdit && (
+          <FormField
+            label="Fecha de creación"
+            htmlFor="fechaCreacion"
+            error={errors.fechaCreacion?.message}
+          >
+            <Input
+              id="fechaCreacion"
+              type="date"
+              aria-label="Fecha de creación"
+              {...register("fechaCreacion")}
+              error={!!errors.fechaCreacion}
+            />
+          </FormField>
+        )}
 
         {/* Footer lives inside the form so type="submit" works correctly */}
         <div className="flex items-center justify-end gap-3 pt-2">

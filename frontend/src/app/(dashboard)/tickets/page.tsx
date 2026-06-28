@@ -77,13 +77,24 @@ export default function TicketsPage() {
     refetch,
   } = useTickets(filtros, enabled);
 
+  // ── defaultTipoId — ADR-9 ────────────────────────────────────────────────────
+  // Pre-fills tipoId in the create form when exactly 1 tipo is active in the filter.
+  // With 0 (todos) or 2+ tipos selected → "" (form starts empty).
+  const defaultTipoId =
+    filtros.tiposIds?.length === 1 ? filtros.tiposIds[0] : "";
+
   // ── Modal state ─────────────────────────────────────────────────────────────
   const [createOpen, setCreateOpen] = useState(false);
   const [editTicket, setEditTicket] = useState<Ticket | null>(null);
 
   const modals = (
     <>
-      <TicketFormModal mode="create" open={createOpen} onOpenChange={setCreateOpen} />
+      <TicketFormModal
+        mode="create"
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        defaultTipoId={defaultTipoId}
+      />
       {editTicket && (
         <TicketFormModal
           mode="edit"

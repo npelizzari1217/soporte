@@ -651,3 +651,108 @@ describe('TicketFormModal (edit)', () => {
     expect(submitBtn).toBeDisabled()
   })
 })
+
+// ─── PR5 / T5.5 — fechaCreacion + sin fechaVencimiento + defaultTipoId ────────
+
+describe('TicketFormModal — PR5 (create) — fechaCreacion + defaultTipoId', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  // T5.5-1: DOM does NOT have fechaVencimiento input (removed from form)
+  // RED: currently the form has <input id="fechaVencimiento"> → test fails
+  it('does NOT render a fechaVencimiento input', () => {
+    renderModal({ open: true })
+    expect(document.querySelector('[name="fechaVencimiento"]')).toBeNull()
+    expect(document.querySelector('[id="fechaVencimiento"]')).toBeNull()
+  })
+
+  // T5.5-2: DOM does NOT have fechaResolucion input (never was a form field)
+  it('does NOT render a fechaResolucion input', () => {
+    renderModal({ open: true })
+    expect(document.querySelector('[name="fechaResolucion"]')).toBeNull()
+    expect(document.querySelector('[id="fechaResolucion"]')).toBeNull()
+  })
+
+  // T5.5-3: DOM HAS fechaCreacion input (new field)
+  // RED: field doesn't exist yet → test fails
+  it('renders a fechaCreacion input', () => {
+    renderModal({ open: true })
+    expect(document.querySelector('[id="fechaCreacion"]')).not.toBeNull()
+  })
+
+  // T5.5-4: fechaCreacion input value defaults to today
+  // RED: field not there yet → value assertion fails
+  it('fechaCreacion input defaults to today in YYYY-MM-DD', () => {
+    const today = new Date().toISOString().slice(0, 10)
+    renderModal({ open: true })
+    const input = document.querySelector('[id="fechaCreacion"]') as HTMLInputElement | null
+    expect(input).not.toBeNull()
+    expect(input?.value).toBe(today)
+  })
+
+  // T5.5-5: defaultTipoId prop pre-populates tipo Select
+  // Direct render needed since renderModal helper doesn't forward defaultTipoId
+  it('defaultTipoId prop pre-populates the tipo Select', () => {
+    const soporte = 'e0000000-0000-4000-e000-000000000001'
+    const qc = new QueryClient({
+      defaultOptions: { mutations: { retry: false }, queries: { retry: false } },
+    })
+    render(
+      <QueryClientProvider client={qc}>
+        <SessionProvider initialUser={userFixture}>
+          <TicketFormModal
+            mode="create"
+            open={true}
+            onOpenChange={vi.fn()}
+            defaultTipoId={soporte}
+          />
+        </SessionProvider>
+      </QueryClientProvider>
+    )
+    const tipoTrigger = screen.getByRole('combobox', { name: /tipo/i })
+    expect(tipoTrigger).toHaveTextContent('Soporte')
+  })
+
+  // T5.5-6: without defaultTipoId → tipo Select shows placeholder (stable)
+  it('without defaultTipoId tipo Select shows placeholder', () => {
+    renderModal({ open: true })
+    const tipoTrigger = screen.getByRole('combobox', { name: /tipo/i })
+    expect(tipoTrigger).toHaveTextContent(/seleccionar tipo/i)
+  })
+
+  // T5.5-7: submit body includes fechaCreacion and does NOT include fechaVencimiento
+  // RED: fechaCreacion not sent yet → capturedBody.fechaCreacion is undefined → fails
+  it('POST body includes fechaCreacion and does NOT include fechaVencimiento', async () => {
+    const user = userEvent.setup()
+    const today = new Date().toISOString().slice(0, 10)
+    let capturedBody: Record<string, unknown> = {}
+
+    server.use(
+      http.post('http://localhost/api/tickets', async ({ request }) => {
+        capturedBody = (await request.json()) as Record<string, unknown>
+        return HttpResponse.json(ticketFixture, { status: 201 })
+      })
+    )
+
+    renderModal({ open: true })
+
+    await user.type(screen.getByRole('textbox', { name: /título/i }), 'Mi ticket')
+
+    const tipoTrigger = screen.getByRole('combobox', { name: /tipo/i })
+    await user.click(tipoTrigger)
+    await user.click(within(document.body).getByRole('option', { name: 'Soporte' }))
+
+    const prioridadTrigger = screen.getByRole('combobox', { name: /prioridad/i })
+    await user.click(prioridadTrigger)
+    await user.click(within(document.body).getByRole('option', { name: 'Baja' }))
+
+    await user.click(screen.getByRole('button', { name: /crear/i }))
+
+    await screen.findByText(/ticket creado/i).catch(() => null)
+    await new Promise((r) => setTimeout(r, 50))
+
+    expect(capturedBody.fechaCreacion).toBe(today)
+    expect('fechaVencimiento' in capturedBody).toBe(false)
+  })
+})
