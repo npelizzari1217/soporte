@@ -1,6 +1,6 @@
 import { DomainError, Result } from '../../../shared/domain/result';
 import { TicketEntity } from '../../domain/entities/ticket.entity';
-import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
+import { ITicketRepository, TicketFiltros } from '../../domain/ports/i-ticket.repository';
 
 /**
  * ListarTicketsUseCase — caso de uso de consulta para todos los tickets del tenant.
@@ -16,8 +16,15 @@ import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
 export class ListarTicketsUseCase {
   constructor(private readonly ticketRepo: ITicketRepository) {}
 
-  async execute(): Promise<Result<TicketEntity[], DomainError>> {
-    const tickets = await this.ticketRepo.findAll();
+  /**
+   * Lista los tickets del tenant aplicando los filtros opcionales.
+   *
+   * @param filtros - Filtros opcionales (tiposIds, fechaDesde, fechaHasta).
+   *   El use case permanece PURO: no consulta ciclos ni impone defaults.
+   *   La lógica de "default = ciclo activo" es responsabilidad del frontend (PR4).
+   */
+  async execute(filtros?: TicketFiltros): Promise<Result<TicketEntity[], DomainError>> {
+    const tickets = await this.ticketRepo.findAll(filtros);
     return Result.ok(tickets);
   }
 }

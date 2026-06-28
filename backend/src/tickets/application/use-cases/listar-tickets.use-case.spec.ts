@@ -9,7 +9,7 @@
  * Tarea: feat/tickets-list-mvp
  */
 import { ListarTicketsUseCase } from './listar-tickets.use-case';
-import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
+import { ITicketRepository, TicketFiltros } from '../../domain/ports/i-ticket.repository';
 import { TicketEntity, TicketProps } from '../../domain/entities/ticket.entity';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -49,7 +49,7 @@ describe('ListarTicketsUseCase', () => {
     findByNumero: jest.fn(),
     findLastSecuencia: jest.fn(),
     findByEstado: jest.fn(),
-    findAll: jest.fn<Promise<TicketEntity[]>, []>(),
+    findAll: jest.fn<Promise<TicketEntity[]>, [TicketFiltros?]>(),
     save: jest.fn(),
     delete: jest.fn(),
   } satisfies jest.Mocked<ITicketRepository>;
@@ -58,6 +58,41 @@ describe('ListarTicketsUseCase', () => {
     jest.clearAllMocks();
     useCase = new ListarTicketsUseCase(mockTicketRepo);
   });
+
+  // ─── Filtros pass-through (T1.2 RED) ─────────────────────────────────────
+
+  it('propaga tiposIds al repo cuando se pasan filtros con tiposIds', async () => {
+    const uuid = 'e0000000-0000-4000-e000-000000000001';
+    mockTicketRepo.findAll.mockResolvedValue([]);
+
+    await useCase.execute({ tiposIds: [uuid] });
+
+    expect(mockTicketRepo.findAll).toHaveBeenCalledWith({ tiposIds: [uuid] });
+  });
+
+  it('propaga filtros vacíos al repo cuando se llama execute({})', async () => {
+    mockTicketRepo.findAll.mockResolvedValue([]);
+
+    await useCase.execute({});
+
+    expect(mockTicketRepo.findAll).toHaveBeenCalledWith({});
+  });
+
+  it('llama findAll con undefined cuando execute() se llama sin argumentos', async () => {
+    mockTicketRepo.findAll.mockResolvedValue([]);
+
+    await useCase.execute();
+
+    // Sin args, el use case pasa undefined (o {} — ambos son aceptables per spec)
+    expect(mockTicketRepo.findAll).toHaveBeenCalledTimes(1);
+  });
+
+  it('NO inyecta ICicloClienteRepository — el use case permanece puro', () => {
+    // El constructor debe tener exactamente 1 parámetro (ITicketRepository)
+    expect(ListarTicketsUseCase.length).toBe(1);
+  });
+
+  // ─── Tests existentes ─────────────────────────────────────────────────────
 
   it('retorna Result.ok con la lista de tickets del tenant', async () => {
     const tickets = [
