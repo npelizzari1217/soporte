@@ -167,7 +167,7 @@ model Ticket {
   solicitanteId    String    @map("solicitante_id") @db.Uuid
   /// Soft ref → master.usuarios.id. NULL = sin asignar.
   asignadoId       String?   @map("asignado_id") @db.Uuid
-  fechaVencimiento DateTime? @map("fecha_vencimiento") @db.Date
+  fechaResolucion  DateTime? @map("fecha_resolucion") @db.Date
   createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt        DateTime? @map("deleted_at") @db.Timestamptz

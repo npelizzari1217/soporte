@@ -64,7 +64,7 @@ function makeTicket(): TicketEntity {
     cicloId: null,
     solicitanteId: 'solicitante-001',
     asignadoId: null,
-    fechaVencimiento: null,
+    fechaResolucion: null,
   });
 }
 

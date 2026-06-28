@@ -23,8 +23,8 @@ export interface CreateTicketCompraHttpDto {
   cicloId?: string | null;
   /** UUID del solicitante (soft ref → master.usuarios). */
   solicitanteId: string;
-  /** Fecha de vencimiento ISO (opcional). */
-  fechaVencimiento?: string | null;
+  /** Fecha de resolución ISO (opcional). */
+  fechaResolucion?: string | null;
 }
 
 /**

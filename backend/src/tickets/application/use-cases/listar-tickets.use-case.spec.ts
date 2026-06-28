@@ -27,7 +27,7 @@ const baseProps: TicketProps = {
   cicloId: null,
   solicitanteId: 'user-solicitante-001',
   asignadoId: null,
-  fechaVencimiento: null,
+  fechaResolucion: null,
 };
 
 function makeTicket(id: string, numero: string): TicketEntity {

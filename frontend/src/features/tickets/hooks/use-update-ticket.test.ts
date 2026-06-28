@@ -43,7 +43,7 @@ const updatedTicket: Ticket = {
   cicloId: null,
   solicitanteId: 'user-sub-abc',
   asignadoId: null,
-  fechaVencimiento: null,
+  fechaResolucion: null,
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
 }

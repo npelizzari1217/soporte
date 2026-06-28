@@ -57,7 +57,7 @@ function mapTicketToForm(t: Ticket): TicketFormValues {
     descripcion: t.descripcion ?? undefined,
     prioridadId: t.prioridadId,
     cicloId: t.cicloId ?? undefined,
-    fechaVencimiento: t.fechaVencimiento ?? undefined,
+    fechaVencimiento: t.fechaResolucion ?? undefined,
   };
 }
 

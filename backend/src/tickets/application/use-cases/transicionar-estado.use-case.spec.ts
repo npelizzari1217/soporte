@@ -35,7 +35,7 @@ function makeTicket(estadoId: string, tipoId: string, softDeleted = false): Tick
       cicloId: null,
       solicitanteId: 'user-solicitante',
       asignadoId: null,
-      fechaVencimiento: null,
+      fechaResolucion: null,
     },
     'ticket-uuid-001',
     new Date(),

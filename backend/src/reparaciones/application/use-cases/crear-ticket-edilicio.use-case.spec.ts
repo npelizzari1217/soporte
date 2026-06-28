@@ -61,7 +61,6 @@ const validDto: CrearTicketEdilicioDto = {
   clienteId: CLIENTE_ID,
   autorId: AUTOR_ID,
   anio: 2026,
-  fechaVencimiento: null,
   ubicacionId: UBICACION_ID,
 };
 

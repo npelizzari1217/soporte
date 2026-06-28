@@ -87,8 +87,8 @@ export interface CreateTicketSoporteHttpDto {
   cicloId?: string | null;
   /** UUID del solicitante (soft ref → master.usuarios). */
   solicitanteId: string;
-  /** Fecha de vencimiento ISO (opcional). */
-  fechaVencimiento?: string | null;
+  /** Fecha de resolución ISO (opcional). */
+  fechaResolucion?: string | null;
   /**
    * UUID del equipo afectado (opcional).
    * NULL si el ticket no refiere a un equipo específico (ej. problema de red).

@@ -46,7 +46,6 @@ const validDto: CrearTicketDto = {
   clienteId: CLIENTE_ID,
   autorId: AUTOR_ID,
   anio: 2026,
-  fechaVencimiento: null,
 };
 
 // ─── Suite principal ──────────────────────────────────────────────────────────

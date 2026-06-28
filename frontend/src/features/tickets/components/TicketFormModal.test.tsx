@@ -46,7 +46,7 @@ const ticketFixture: Ticket = {
   cicloId: null,
   solicitanteId: 'user-test-sub',
   asignadoId: null,
-  fechaVencimiento: null,
+  fechaResolucion: null,
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
 }
@@ -63,7 +63,7 @@ const editTicketFixture: Ticket = {
   cicloId: null,
   solicitanteId: 'user-test-sub',
   asignadoId: null,
-  fechaVencimiento: null,
+  fechaResolucion: null,
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
 }

@@ -38,7 +38,6 @@ export interface CrearTicketDto {
   autorId: string;
   /** Año para la generación del número legible. */
   anio: number;
-  fechaVencimiento?: Date | null;
 }
 
 /**
@@ -119,7 +118,7 @@ export class CrearTicketUseCase {
       cicloId: dto.cicloId ?? null,
       solicitanteId: dto.solicitanteId,
       asignadoId: null,
-      fechaVencimiento: dto.fechaVencimiento ?? null,
+      fechaResolucion: null,
     });
 
     // 7. Crear la operación de apertura: CAMBIO_ESTADO NULL → ABIERTO

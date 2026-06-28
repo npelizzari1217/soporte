@@ -16,7 +16,7 @@ export type Ticket = {
   cicloId: string | null;
   solicitanteId: string;
   asignadoId: string | null;
-  fechaVencimiento: string | null;
+  fechaResolucion: string | null;
   createdAt: string;
   updatedAt: string;
 };

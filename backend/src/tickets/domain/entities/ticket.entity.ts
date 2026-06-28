@@ -17,7 +17,6 @@ export interface ActualizarDatosTicket {
   descripcion?: string | null;
   prioridadId?: string;
   cicloId?: string | null;
-  fechaVencimiento?: Date | null;
 }
 
 /**
@@ -52,8 +51,8 @@ export interface TicketProps {
   solicitanteId: string;
   /** Soft ref → master.usuarios.id. NULL = sin asignar. */
   asignadoId: string | null;
-  /** Fecha de vencimiento SLA (nullable). */
-  fechaVencimiento: Date | null;
+  /** Fecha de resolución del ticket (nullable). */
+  fechaResolucion: Date | null;
 }
 
 /**
@@ -138,8 +137,8 @@ export class TicketEntity extends BaseEntity<TicketProps> {
     return this.props.asignadoId;
   }
 
-  get fechaVencimiento(): Date | null {
-    return this.props.fechaVencimiento;
+  get fechaResolucion(): Date | null {
+    return this.props.fechaResolucion;
   }
 
   // ─── Comportamiento de dominio ─────────────────────────────────────────
@@ -176,7 +175,6 @@ export class TicketEntity extends BaseEntity<TicketProps> {
     if (datos.descripcion !== undefined) this.props.descripcion = datos.descripcion;
     if (datos.prioridadId !== undefined) this.props.prioridadId = datos.prioridadId;
     if (datos.cicloId !== undefined) this.props.cicloId = datos.cicloId;
-    if (datos.fechaVencimiento !== undefined) this.props.fechaVencimiento = datos.fechaVencimiento;
     this.touch();
   }
 

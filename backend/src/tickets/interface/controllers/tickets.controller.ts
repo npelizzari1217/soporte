@@ -128,7 +128,7 @@ function toTicketResponse(ticket: TicketEntity): TicketResponseDto {
     cicloId: ticket.cicloId,
     solicitanteId: ticket.solicitanteId,
     asignadoId: ticket.asignadoId,
-    fechaVencimiento: ticket.fechaVencimiento?.toISOString() ?? null,
+    fechaResolucion: ticket.fechaResolucion?.toISOString() ?? null,
     createdAt: ticket.createdAt.toISOString(),
     updatedAt: ticket.updatedAt.toISOString(),
   };
@@ -187,7 +187,6 @@ export class TicketsController {
       prioridadId: dto.prioridadId,
       cicloId: dto.cicloId ?? null,
       solicitanteId: dto.solicitanteId,
-      fechaVencimiento: dto.fechaVencimiento ? new Date(dto.fechaVencimiento) : null,
       clienteId: user.cliente_id,
       autorId: user.sub,
       anio: new Date().getFullYear(),
@@ -418,12 +417,6 @@ export class TicketsController {
     @Body() dto: UpdateTicketHttpDto,
     @CurrentUser() user: JwtPayload,
   ): Promise<TicketResponseDto> {
-    // Convertir fechaVencimiento: string ISO → Date; null → null; undefined → undefined
-    const fechaVencimiento =
-      dto.fechaVencimiento !== undefined && dto.fechaVencimiento !== null
-        ? new Date(dto.fechaVencimiento)
-        : dto.fechaVencimiento;
-
     const result = await this.editarTicketUseCase.execute({
       ticketId: id,
       datos: {
@@ -431,7 +424,6 @@ export class TicketsController {
         descripcion: dto.descripcion,
         prioridadId: dto.prioridadId,
         cicloId: dto.cicloId,
-        fechaVencimiento,
       },
       autorId: user.sub,
     });

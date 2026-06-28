@@ -165,7 +165,6 @@ export class ComprasController {
       prioridadId: dto.prioridadId,
       cicloId: dto.cicloId ?? null,
       solicitanteId: dto.solicitanteId,
-      fechaVencimiento: dto.fechaVencimiento ? new Date(dto.fechaVencimiento) : null,
       clienteId: user.cliente_id,
       autorId: user.sub,
       anio: new Date().getFullYear(),

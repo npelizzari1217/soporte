@@ -21,7 +21,7 @@ const makeTicketProps = (overrides: Partial<TicketProps> = {}): TicketProps => (
   cicloId: null as string | null,
   solicitanteId: 'usuario-solicitante-uuid',
   asignadoId: null as string | null,
-  fechaVencimiento: null as Date | null,
+  fechaResolucion: null as Date | null,
   ...overrides,
 });
 
@@ -64,7 +64,7 @@ describe('TicketEntity', () => {
       expect(ticket.cicloId).toBeNull();
       expect(ticket.solicitanteId).toBe(props.solicitanteId);
       expect(ticket.asignadoId).toBeNull();
-      expect(ticket.fechaVencimiento).toBeNull();
+      expect(ticket.fechaResolucion).toBeNull(); // renombrado desde fechaVencimiento en PR2
       // estadoCodigo NO existe en la entidad: el Ticket solo guarda el UUID del estado
       expect((ticket as any).estadoCodigo).toBeUndefined();
     });
@@ -225,20 +225,6 @@ describe('TicketEntity', () => {
       const ticket = TicketEntity.create(makeTicketProps({ cicloId: 'ciclo-uuid-001' }));
       ticket.updateDatos({ cicloId: null });
       expect(ticket.cicloId).toBeNull();
-    });
-
-    it('setea fechaVencimiento a null cuando viene null', () => {
-      const fecha = new Date('2026-12-31');
-      const ticket = TicketEntity.create(makeTicketProps({ fechaVencimiento: fecha }));
-      ticket.updateDatos({ fechaVencimiento: null });
-      expect(ticket.fechaVencimiento).toBeNull();
-    });
-
-    it('actualiza fechaVencimiento cuando viene como Date', () => {
-      const ticket = TicketEntity.create(makeTicketProps({ fechaVencimiento: null }));
-      const nuevaFecha = new Date('2027-01-01');
-      ticket.updateDatos({ fechaVencimiento: nuevaFecha });
-      expect(ticket.fechaVencimiento?.getTime()).toBe(nuevaFecha.getTime());
     });
 
     it('actualiza prioridadId cuando viene definido', () => {

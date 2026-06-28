@@ -36,8 +36,8 @@ export interface CreateTicketEdilicioHttpDto {
   cicloId?: string | null;
   /** UUID del solicitante (soft ref → master.usuarios). */
   solicitanteId: string;
-  /** Fecha de vencimiento ISO (opcional). */
-  fechaVencimiento?: string | null;
+  /** Fecha de resolución ISO (opcional). */
+  fechaResolucion?: string | null;
   /** UUID de la ubicación física donde ocurre la reparación. */
   ubicacionId: string;
 }

@@ -82,7 +82,7 @@ function makeTicket(): TicketEntity {
     cicloId: null,
     solicitanteId: 'user-001',
     asignadoId: null,
-    fechaVencimiento: null,
+    fechaResolucion: null,
   });
 }
 
@@ -618,29 +618,6 @@ describe('TicketsController', () => {
       await expect(controller.editarTicket('ticket-id', updateDto, user)).rejects.toThrow(
         InternalServerErrorException,
       );
-    });
-
-    it('convierte fechaVencimiento string ISO a Date antes de pasarla al use case', async () => {
-      // Spec: S2-T12 — verificar conversión string → Date
-      const ticket = makeTicket();
-      mocks.editarTicketUseCase.execute.mockResolvedValue(Result.ok(ticket));
-
-      await controller.editarTicket('ticket-id', { fechaVencimiento: '2027-06-01' }, user);
-
-      const llamada = mocks.editarTicketUseCase.execute.mock.calls[0][0];
-      expect(llamada.datos.fechaVencimiento).toBeInstanceOf(Date);
-      expect(llamada.datos.fechaVencimiento.toISOString()).toContain('2027-06-01');
-    });
-
-    it('preserva fechaVencimiento null sin convertirlo a Date', async () => {
-      // null debe llegar como null (limpiar el campo), no como string ni Date
-      const ticket = makeTicket();
-      mocks.editarTicketUseCase.execute.mockResolvedValue(Result.ok(ticket));
-
-      await controller.editarTicket('ticket-id', { fechaVencimiento: null }, user);
-
-      const llamada = mocks.editarTicketUseCase.execute.mock.calls[0][0];
-      expect(llamada.datos.fechaVencimiento).toBeNull();
     });
 
     it('@RequirePermissions ticket:editar configurado en el handler', () => {

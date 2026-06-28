@@ -82,7 +82,7 @@ function makeTicketProps(override: Partial<TicketProps> = {}): TicketProps {
     cicloId: null,
     solicitanteId: DUMMY_USUARIO_ID,
     asignadoId: null,
-    fechaVencimiento: null,
+    fechaResolucion: null,
     ...override,
   };
 }

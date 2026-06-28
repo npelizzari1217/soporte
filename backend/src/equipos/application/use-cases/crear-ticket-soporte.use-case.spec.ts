@@ -67,7 +67,6 @@ const validDtoConEquipo: CrearTicketSoporteDto = {
   clienteId: CLIENTE_ID,
   autorId: AUTOR_ID,
   anio: 2026,
-  fechaVencimiento: null,
   equipoId: EQUIPO_ID,
 };
 

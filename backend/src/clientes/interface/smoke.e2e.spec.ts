@@ -285,7 +285,7 @@ describe('Smoke E2E — flujo completo (7.C.2)', () => {
           prioridadId: PRIORIDAD_MEDIA_ID,
           cicloId: null,
           solicitanteId: adminUserId,
-          fechaVencimiento: null,
+          fechaResolucion: null,
         },
         { Authorization: `Bearer ${jwtToken}` },
       );

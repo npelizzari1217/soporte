@@ -68,8 +68,6 @@ export interface CreateTicketHttpDto {
   cicloId?: string | null;
   /** UUID del solicitante (soft ref → master.usuarios). */
   solicitanteId: string;
-  /** Fecha de vencimiento ISO (opcional). */
-  fechaVencimiento?: string | null;
 }
 
 /**
@@ -96,16 +94,12 @@ export interface AsignarTicketHttpDto {
  * SIN tipoId (locked decision L1 — número derivado del tipo original).
  * SIN estado — la transición usa el endpoint PATCH /tickets/:id/estado.
  *
- * `fechaVencimiento` llega como string ISO; el controller la convierte a Date
- * antes de pasarla al use case.
  */
 export interface UpdateTicketHttpDto {
   titulo?: string;
   descripcion?: string | null;
   prioridadId?: string;
   cicloId?: string | null;
-  /** Fecha ISO (ej. '2027-06-01'). Controller convierte a Date. */
-  fechaVencimiento?: string | null;
 }
 
 /** Shape de respuesta para un Ticket. */
@@ -120,7 +114,7 @@ export interface TicketResponseDto {
   cicloId: string | null;
   solicitanteId: string;
   asignadoId: string | null;
-  fechaVencimiento: string | null;
+  fechaResolucion: string | null;
   createdAt: string;
   updatedAt: string;
 }
