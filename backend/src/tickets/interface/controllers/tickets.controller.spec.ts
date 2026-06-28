@@ -573,13 +573,11 @@ describe('TicketsController', () => {
     });
 
     it('lanza UnprocessableEntityException para TituloInvalidoError', async () => {
-      mocks.editarTicketUseCase.execute.mockResolvedValue(
-        Result.fail(new TituloInvalidoError()),
-      );
+      mocks.editarTicketUseCase.execute.mockResolvedValue(Result.fail(new TituloInvalidoError()));
 
-      await expect(
-        controller.editarTicket('ticket-id', { titulo: '   ' }, user),
-      ).rejects.toThrow(UnprocessableEntityException);
+      await expect(controller.editarTicket('ticket-id', { titulo: '   ' }, user)).rejects.toThrow(
+        UnprocessableEntityException,
+      );
     });
 
     it('lanza UnprocessableEntityException para PrioridadNoEncontradaError', async () => {
@@ -689,9 +687,7 @@ describe('TicketsController', () => {
         Result.fail(new TicketNoEncontradoError('ticket-id')),
       );
 
-      await expect(controller.eliminarTicket('ticket-id', user)).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(controller.eliminarTicket('ticket-id', user)).rejects.toThrow(NotFoundException);
     });
 
     it('lanza InternalServerErrorException para TipoOperacionNoEncontradoError', async () => {

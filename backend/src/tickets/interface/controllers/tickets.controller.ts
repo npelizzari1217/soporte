@@ -247,9 +247,7 @@ export class TicketsController {
 
     // Rango inválido → 422
     if (desde && hasta && desde > hasta) {
-      throw new UnprocessableEntityException(
-        'fechaDesde no puede ser mayor que fechaHasta',
-      );
+      throw new UnprocessableEntityException('fechaDesde no puede ser mayor que fechaHasta');
     }
 
     // Coerce tiposIds: string único → string[]
@@ -519,10 +517,7 @@ export class TicketsController {
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   @RequirePermissions('ticket:eliminar')
-  async eliminarTicket(
-    @Param('id') id: string,
-    @CurrentUser() user: JwtPayload,
-  ): Promise<void> {
+  async eliminarTicket(@Param('id') id: string, @CurrentUser() user: JwtPayload): Promise<void> {
     const result = await this.eliminarTicketUseCase.execute({
       ticketId: id,
       autorId: user.sub,
