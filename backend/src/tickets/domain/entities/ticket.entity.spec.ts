@@ -8,7 +8,8 @@
  * - assignTo(): setea asignadoId
  * - canTransitionTo(desde, hacia): rechaza estados terminales y tickets soft-deleted
  */
-import { TicketEntity, TicketProps } from './ticket.entity';
+import { TicketEntity, TicketProps, ActualizarDatosTicket } from './ticket.entity';
+import { TituloInvalidoError } from '../errors/tickets.errors';
 
 const makeTicketProps = (overrides: Partial<TicketProps> = {}): TicketProps => ({
   numero: 'SOP-2026-00001',
@@ -140,6 +141,126 @@ describe('TicketEntity', () => {
       ticket.softDelete();
       expect(ticket.canTransitionTo('ABIERTO', 'EN_PROGRESO')).toBe(false);
       expect(ticket.canTransitionTo('EN_PROGRESO', 'RESUELTO')).toBe(false);
+    });
+  });
+
+  describe('canEdit(estadoActualCodigo)', () => {
+    // Ref spec: tickets-core §"Edición rechazada — ticket en estado terminal"
+    // Ref spec: tickets-core §"Edición rechazada — ticket soft-deleted"
+
+    it('retorna true cuando el ticket está ABIERTO y no está eliminado', () => {
+      const ticket = TicketEntity.create(makeTicketProps());
+      expect(ticket.canEdit('ABIERTO')).toBe(true);
+    });
+
+    it('retorna true cuando el ticket está EN_PROGRESO', () => {
+      const ticket = TicketEntity.create(makeTicketProps());
+      expect(ticket.canEdit('EN_PROGRESO')).toBe(true);
+    });
+
+    it('retorna false cuando el ticket está en estado CERRADO (terminal)', () => {
+      const ticket = TicketEntity.create(makeTicketProps());
+      expect(ticket.canEdit('CERRADO')).toBe(false);
+    });
+
+    it('retorna false cuando el ticket está en estado CANCELADO (terminal)', () => {
+      const ticket = TicketEntity.create(makeTicketProps());
+      expect(ticket.canEdit('CANCELADO')).toBe(false);
+    });
+
+    it('retorna false cuando el ticket está soft-deleted, independiente del estado ABIERTO', () => {
+      const ticket = TicketEntity.create(makeTicketProps());
+      ticket.softDelete();
+      expect(ticket.canEdit('ABIERTO')).toBe(false);
+    });
+
+    it('soft-deleted tiene precedencia — retorna false aunque estado sea ABIERTO', () => {
+      const ticket = TicketEntity.create(makeTicketProps());
+      ticket.softDelete();
+      expect(ticket.canEdit('CERRADO')).toBe(false);
+    });
+  });
+
+  describe('updateDatos(datos)', () => {
+    // Ref spec: tickets-core §"Edición exitosa de campos de datos"
+    // Ref spec: tickets-core §"Campo prohibido incluido en body es ignorado"
+
+    it('no modifica ninguna prop cuando el objeto está vacío', () => {
+      const ticket = TicketEntity.create(makeTicketProps({ titulo: 'Original', descripcion: 'desc' }));
+      ticket.updateDatos({});
+      expect(ticket.titulo).toBe('Original');
+      expect(ticket.descripcion).toBe('desc');
+    });
+
+    it('actualiza el título cuando viene definido con valor no-vacío', () => {
+      const ticket = TicketEntity.create(makeTicketProps({ titulo: 'Original', descripcion: 'desc' }));
+      ticket.updateDatos({ titulo: 'Nuevo título' });
+      expect(ticket.titulo).toBe('Nuevo título');
+      expect(ticket.descripcion).toBe('desc'); // no tocado
+    });
+
+    it('lanza TituloInvalidoError cuando el título viene solo con espacios', () => {
+      const ticket = TicketEntity.create(makeTicketProps());
+      expect(() => ticket.updateDatos({ titulo: '   ' })).toThrow(TituloInvalidoError);
+    });
+
+    it('lanza TituloInvalidoError cuando el título es una cadena vacía', () => {
+      const ticket = TicketEntity.create(makeTicketProps());
+      expect(() => ticket.updateDatos({ titulo: '' })).toThrow(TituloInvalidoError);
+    });
+
+    it('setea descripcion a null cuando viene null (limpiar nullable)', () => {
+      const ticket = TicketEntity.create(makeTicketProps({ descripcion: 'Texto original' }));
+      ticket.updateDatos({ descripcion: null });
+      expect(ticket.descripcion).toBeNull();
+    });
+
+    it('actualiza descripcion cuando viene como string', () => {
+      const ticket = TicketEntity.create(makeTicketProps({ descripcion: null }));
+      ticket.updateDatos({ descripcion: 'Texto nuevo' });
+      expect(ticket.descripcion).toBe('Texto nuevo');
+    });
+
+    it('setea cicloId a null cuando viene null (limpiar nullable)', () => {
+      const ticket = TicketEntity.create(makeTicketProps({ cicloId: 'ciclo-uuid-001' }));
+      ticket.updateDatos({ cicloId: null });
+      expect(ticket.cicloId).toBeNull();
+    });
+
+    it('setea fechaVencimiento a null cuando viene null', () => {
+      const fecha = new Date('2026-12-31');
+      const ticket = TicketEntity.create(makeTicketProps({ fechaVencimiento: fecha }));
+      ticket.updateDatos({ fechaVencimiento: null });
+      expect(ticket.fechaVencimiento).toBeNull();
+    });
+
+    it('actualiza fechaVencimiento cuando viene como Date', () => {
+      const ticket = TicketEntity.create(makeTicketProps({ fechaVencimiento: null }));
+      const nuevaFecha = new Date('2027-01-01');
+      ticket.updateDatos({ fechaVencimiento: nuevaFecha });
+      expect(ticket.fechaVencimiento?.getTime()).toBe(nuevaFecha.getTime());
+    });
+
+    it('actualiza prioridadId cuando viene definido', () => {
+      const ticket = TicketEntity.create(makeTicketProps({ prioridadId: 'prio-uuid-001' }));
+      ticket.updateDatos({ prioridadId: 'prio-uuid-002' });
+      expect(ticket.prioridadId).toBe('prio-uuid-002');
+    });
+
+    it('updatedAt avanza después de updateDatos (no igual al valor inicial)', async () => {
+      const ticket = TicketEntity.create(makeTicketProps());
+      const updatedAtAntes = ticket.updatedAt.getTime();
+      // Esperamos 10ms para asegurar diferencia de timestamp incluso bajo carga
+      await new Promise((r) => setTimeout(r, 10));
+      ticket.updateDatos({ titulo: 'Nuevo' });
+      expect(ticket.updatedAt.getTime()).toBeGreaterThan(updatedAtAntes);
+    });
+
+    it('undefined no modifica la prop — descripcion sin cambios cuando viene undefined', () => {
+      const ticket = TicketEntity.create(makeTicketProps({ descripcion: 'Valor original' }));
+      const datos: ActualizarDatosTicket = { descripcion: undefined };
+      ticket.updateDatos(datos);
+      expect(ticket.descripcion).toBe('Valor original');
     });
   });
 

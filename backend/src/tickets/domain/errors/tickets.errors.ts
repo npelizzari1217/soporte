@@ -208,3 +208,63 @@ export class SecuenciaAgotadaError extends DomainError {
     );
   }
 }
+
+// ─── S2 — Errores de edición de ticket ───────────────────────────────────────
+
+/**
+ * Error de dominio: el ticket está en estado terminal (CERRADO/CANCELADO) y no puede
+ * ser editado. HTTP 422 semántico.
+ *
+ * Ref spec: [SPEC:tickets-core/Edición rechazada — ticket en estado terminal]
+ */
+export class TicketNoEditableError extends DomainError {
+  readonly code = 'TICKET_NO_EDITABLE';
+
+  constructor(estadoCodigo: string) {
+    super(
+      `El ticket no puede ser editado porque se encuentra en estado terminal "${estadoCodigo}".`,
+    );
+  }
+}
+
+/**
+ * Error de dominio: el título enviado está vacío o contiene solo espacios en blanco.
+ * HTTP 422 semántico — invariante de la entidad.
+ *
+ * Ref spec: [SPEC:tickets-core/Edición exitosa de campos de datos]
+ */
+export class TituloInvalidoError extends DomainError {
+  readonly code = 'TITULO_INVALIDO';
+
+  constructor() {
+    super('El título del ticket no puede estar vacío o contener solo espacios en blanco.');
+  }
+}
+
+/**
+ * Error de validación FK: la prioridad enviada por el usuario no existe en el
+ * catálogo de prioridades del tenant. HTTP 422 semántico.
+ *
+ * Ref spec: tickets-editar-borrar locked decision L4
+ */
+export class PrioridadNoEncontradaError extends DomainError {
+  readonly code = 'PRIORIDAD_NO_ENCONTRADA';
+
+  constructor(prioridadId: string) {
+    super(`La prioridad con id "${prioridadId}" no existe en el catálogo del tenant.`);
+  }
+}
+
+/**
+ * Error de validación FK: el cicloId enviado por el usuario no existe en el
+ * catálogo de ciclos del tenant. HTTP 422 semántico.
+ *
+ * Ref spec: tickets-editar-borrar locked decision L4
+ */
+export class CicloNoEncontradoError extends DomainError {
+  readonly code = 'CICLO_NO_ENCONTRADO';
+
+  constructor(cicloId: string) {
+    super(`El ciclo con id "${cicloId}" no existe en el catálogo del tenant.`);
+  }
+}

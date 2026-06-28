@@ -74,4 +74,12 @@ export abstract class BaseEntity<TProps> {
   isDeleted(): boolean {
     return this._deletedAt !== null;
   }
+
+  /**
+   * Actualiza updatedAt al momento actual.
+   * Llamado por subclases al mutar propiedades que deben reflejarse en el timestamp.
+   */
+  protected touch(at?: Date): void {
+    this._updatedAt = at ?? new Date();
+  }
 }

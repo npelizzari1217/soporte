@@ -1,10 +1,24 @@
 import { BaseEntity } from '../../../shared/domain/base-entity';
+import { TituloInvalidoError } from '../errors/tickets.errors';
 
 /**
  * Códigos de estado terminal: no admiten ninguna transición saliente.
  * Ref spec: [SPEC:tickets-core/Máquina de estados base]
  */
 const TERMINAL_STATES = new Set<string>(['CERRADO', 'CANCELADO']);
+
+/**
+ * Campos editables del ticket vía PATCH.
+ * `undefined` = no tocar; `null` = limpiar (solo campos nullable).
+ * NOTA: `tipoId` está EXCLUIDO (locked decision L1 — número derivado del tipo original).
+ */
+export interface ActualizarDatosTicket {
+  titulo?: string;
+  descripcion?: string | null;
+  prioridadId?: string;
+  cicloId?: string | null;
+  fechaVencimiento?: Date | null;
+}
 
 /**
  * TicketProps — shape de las propiedades de dominio del Ticket.
@@ -147,6 +161,38 @@ export class TicketEntity extends BaseEntity<TicketProps> {
    */
   updateEstado(estadoId: string): void {
     this.props.estadoId = estadoId;
+  }
+
+  /**
+   * Partial update de campos de datos. Semántica: undefined=no tocar, null=limpiar.
+   * Lanza TituloInvalidoError si titulo viene definido pero es vacío tras trim().
+   * Actualiza updatedAt al momento de la mutación.
+   */
+  updateDatos(datos: ActualizarDatosTicket): void {
+    if (datos.titulo !== undefined) {
+      if (datos.titulo.trim() === '') throw new TituloInvalidoError();
+      this.props.titulo = datos.titulo;
+    }
+    if (datos.descripcion !== undefined) this.props.descripcion = datos.descripcion;
+    if (datos.prioridadId !== undefined) this.props.prioridadId = datos.prioridadId;
+    if (datos.cicloId !== undefined) this.props.cicloId = datos.cicloId;
+    if (datos.fechaVencimiento !== undefined) this.props.fechaVencimiento = datos.fechaVencimiento;
+    this.touch();
+  }
+
+  /**
+   * Invariante de editabilidad: el ticket puede ser editado solo si no está
+   * soft-deleted y su estado actual no es terminal (CERRADO/CANCELADO).
+   *
+   * El use case carga el código del estado vía IEstadoRepository y lo pasa aquí.
+   * Espejo de canTransitionTo, separado por responsabilidad.
+   *
+   * @param estadoActualCodigo Código semántico del estado actual (ej. "ABIERTO").
+   */
+  canEdit(estadoActualCodigo: string): boolean {
+    if (this.isDeleted()) return false;
+    if (TERMINAL_STATES.has(estadoActualCodigo)) return false;
+    return true;
   }
 
   /**
