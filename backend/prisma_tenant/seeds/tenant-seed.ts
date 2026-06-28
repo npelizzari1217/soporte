@@ -122,7 +122,9 @@ INSERT INTO tipo_operacion (id, codigo, nombre) VALUES
   ('f0000000-0000-4000-f000-000000000003', 'ASIGNACION',         'Asignación'),
   ('f0000000-0000-4000-f000-000000000004', 'ADJUNTO',            'Adjunto'),
   ('f0000000-0000-4000-f000-000000000005', 'AVANCE_EDILICIO',    'Avance edilicio'),
-  ('f0000000-0000-4000-f000-000000000006', 'UBICACION_ELIMINADA','Ubicación eliminada')
+  ('f0000000-0000-4000-f000-000000000006', 'UBICACION_ELIMINADA','Ubicación eliminada'),
+  ('f0000000-0000-4000-f000-000000000007', 'EDICION',            'Edición'),
+  ('f0000000-0000-4000-f000-000000000008', 'ELIMINACION',        'Eliminación')
 ON CONFLICT (codigo) DO NOTHING;
 `;
 
@@ -165,7 +167,7 @@ async function seed(): Promise<void> {
   console.log('  tipos_ticket      → OK (SOPORTE, COMPRAS, EDILICIA)');
 
   await pool.query(SEED_TIPO_OPERACION_SQL);
-  console.log('  tipo_operacion    → OK (6 tipos de evento, incluye UBICACION_ELIMINADA)');
+  console.log('  tipo_operacion    → OK (8 tipos de evento, incluye UBICACION_ELIMINADA, EDICION, ELIMINACION)');
 
   await pool.query(SEED_TIPOS_COMPONENTE_SQL);
   console.log('  tipos_componente  → OK (10 tipos base: CPU, RAM, DISCO, MONITOR, TECLADO, MOUSE, GPU, FUENTE, IMPRESORA, RED)');

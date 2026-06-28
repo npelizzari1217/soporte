@@ -48,7 +48,7 @@ const EXPECTED_PRIORIDADES = ['BAJA', 'MEDIA', 'ALTA', 'CRITICA'];
 // tipos_ticket (discriminadores de flujo — spec explícito)
 const EXPECTED_TIPOS_TICKET = ['SOPORTE', 'COMPRAS', 'EDILICIA'];
 
-// tipo_operacion (eventos del timeline — spec explícito + UBICACION_ELIMINADA de PR-15a)
+// tipo_operacion (eventos del timeline — spec explícito + UBICACION_ELIMINADA PR-15a + EDICION/ELIMINACION tickets-editar-borrar)
 const EXPECTED_TIPO_OPERACION = [
   'CAMBIO_ESTADO',
   'COMENTARIO',
@@ -56,6 +56,8 @@ const EXPECTED_TIPO_OPERACION = [
   'ADJUNTO',
   'AVANCE_EDILICIO',
   'UBICACION_ELIMINADA',
+  'EDICION',
+  'ELIMINACION',
 ];
 
 // ─── SQL idempotente (refleja exactamente el seed) ────────────────────────────
@@ -97,7 +99,9 @@ INSERT INTO tipo_operacion (id, codigo, nombre) VALUES
   ('f0000000-0000-4000-f000-000000000003', 'ASIGNACION',          'Asignación'),
   ('f0000000-0000-4000-f000-000000000004', 'ADJUNTO',             'Adjunto'),
   ('f0000000-0000-4000-f000-000000000005', 'AVANCE_EDILICIO',     'Avance edilicio'),
-  ('f0000000-0000-4000-f000-000000000006', 'UBICACION_ELIMINADA', 'Ubicación eliminada')
+  ('f0000000-0000-4000-f000-000000000006', 'UBICACION_ELIMINADA', 'Ubicación eliminada'),
+  ('f0000000-0000-4000-f000-000000000007', 'EDICION',             'Edición'),
+  ('f0000000-0000-4000-f000-000000000008', 'ELIMINACION',         'Eliminación')
 ON CONFLICT (codigo) DO NOTHING;
 `;
 
@@ -235,7 +239,7 @@ describe('Tenant catalog seed (integration — 3.D.4)', () => {
   // ─── 4. tipo_operacion catalog ────────────────────────────────────────────
 
   describe('4. Catálogo de tipo_operacion', () => {
-    it('contiene exactamente los 6 tipos de operación (5 base + UBICACION_ELIMINADA de PR-15a)', async () => {
+    it('contiene exactamente los 8 tipos de operación (5 base + UBICACION_ELIMINADA PR-15a + EDICION/ELIMINACION tickets-editar-borrar)', async () => {
       const res = await pool.query<{ codigo: string }>(
         'SELECT codigo FROM tipo_operacion WHERE deleted_at IS NULL ORDER BY codigo',
       );
@@ -244,14 +248,14 @@ describe('Tenant catalog seed (integration — 3.D.4)', () => {
       for (const expected of EXPECTED_TIPO_OPERACION) {
         expect(codigos).toContain(expected);
       }
-      expect(res.rows.length).toBe(6);
+      expect(res.rows.length).toBe(8);
     });
 
     it('todos los tipos tienen activo=true y deleted_at IS NULL', async () => {
       const res = await pool.query<{ count: string }>(
         `SELECT COUNT(*) FROM tipo_operacion WHERE activo = TRUE AND deleted_at IS NULL`,
       );
-      expect(parseInt(res.rows[0].count, 10)).toBe(6);
+      expect(parseInt(res.rows[0].count, 10)).toBe(8);
     });
   });
 
