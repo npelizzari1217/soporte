@@ -14,7 +14,7 @@
 import { Injectable } from '@nestjs/common';
 import { TenantContext } from '../../../../shared/tenancy/tenant-context';
 import { TenantPrismaClient } from '../../../../shared/infrastructure/persistence/prisma-clients';
-import { ITicketRepository } from '../../../domain/ports/i-ticket.repository';
+import { ITicketRepository, TicketFiltros } from '../../../domain/ports/i-ticket.repository';
 import { TicketEntity } from '../../../domain/entities/ticket.entity';
 import { TicketMapper } from './ticket.mapper';
 
@@ -63,11 +63,30 @@ export class PrismaTicketRepository implements ITicketRepository {
     return parseInt(parts[parts.length - 1], 10) || 0;
   }
 
-  async findAll(): Promise<TicketEntity[]> {
+  async findAll(filtros?: TicketFiltros): Promise<TicketEntity[]> {
+    // Construir WHERE dinámico: siempre excluir soft-deleted + aplicar filtros opcionales.
+    const where: Record<string, unknown> = { deletedAt: null };
+
+    if (filtros?.tiposIds?.length) {
+      where.tipoId = { in: filtros.tiposIds };
+    }
+
+    if (filtros?.fechaDesde || filtros?.fechaHasta) {
+      where.createdAt = {
+        ...(filtros.fechaDesde && { gte: filtros.fechaDesde }),
+        ...(filtros.fechaHasta && { lte: filtros.fechaHasta }),
+      };
+    }
+
+    // Orden compuesto: createdAt DESC primario, nombre de tipo ASC secundario.
+    // El orderBy relacional { tipo: { nombre: 'asc' } } genera un JOIN automático
+    // a tipos_ticket via la relación `tipo TipoTicket @relation` (schema L175).
+    // No requiere include: true — Prisma genera el JOIN solo para el ORDER BY.
     const rows = await this.client.ticket.findMany({
-      where: { deletedAt: null },
-      orderBy: { createdAt: 'desc' },
+      where: where as any,
+      orderBy: [{ createdAt: 'desc' }, { tipo: { nombre: 'asc' } }],
     });
+
     return rows.map(TicketMapper.toDomain);
   }
 

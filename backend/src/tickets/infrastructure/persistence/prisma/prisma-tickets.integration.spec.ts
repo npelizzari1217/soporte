@@ -344,6 +344,96 @@ describe('Tickets Infrastructure Repos — Integration (3.D.1)', () => {
       // Verificación arquitectónica: constructor tiene exactamente 1 parámetro (TenantContext)
       expect(PrismaTicketRepository.length).toBe(1);
     });
+
+    // ─── findAll con filtros + orden compuesto (T1.5 RED) ────────────────────
+
+    describe('findAll(filtros?) — filtros y orden compuesto (T1.5)', () => {
+      it('sin filtros retorna todos los tickets activos del tenant ordenados por createdAt DESC', async () => {
+        const t1 = TicketEntity.create(makeTicketProps({ numero: 'SOP-2026-00001' }));
+        const t2 = TicketEntity.create(makeTicketProps({ numero: 'SOP-2026-00002' }));
+
+        await withTenant(async () => {
+          await ticketRepo.save(t1);
+          await ticketRepo.save(t2);
+
+          const all = await ticketRepo.findAll();
+          expect(all.length).toBeGreaterThanOrEqual(2);
+          // Verifica que todos los retornados no están soft-deleted
+          for (const t of all) {
+            expect(t.deletedAt).toBeNull();
+          }
+        });
+      });
+
+      it('filtra por tiposIds — retorna solo tickets del tipo indicado', async () => {
+        const sopTicket = TicketEntity.create(
+          makeTicketProps({ numero: 'SOP-2026-00010', tipoId: TIPO_SOPORTE_ID }),
+        );
+        const comTicket = TicketEntity.create(
+          makeTicketProps({ numero: 'COM-2026-00001', tipoId: TIPO_COMPRAS_ID }),
+        );
+
+        await withTenant(async () => {
+          await ticketRepo.save(sopTicket);
+          await ticketRepo.save(comTicket);
+
+          const soloSoporte = await ticketRepo.findAll({ tiposIds: [TIPO_SOPORTE_ID] });
+          const ids = soloSoporte.map((t) => t.id);
+
+          expect(ids).toContain(sopTicket.id);
+          expect(ids).not.toContain(comTicket.id);
+          // Todos tienen el tipo correcto
+          for (const t of soloSoporte) {
+            expect(t.tipoId).toBe(TIPO_SOPORTE_ID);
+          }
+        });
+      });
+
+      it('filtra por fechaDesde/fechaHasta — retorna solo tickets dentro del rango', async () => {
+        const enRango = TicketEntity.create(makeTicketProps({ numero: 'SOP-2026-00020' }));
+
+        await withTenant(async () => {
+          await ticketRepo.save(enRango);
+
+          const ahora = new Date();
+          const ayer = new Date(ahora);
+          ayer.setUTCDate(ayer.getUTCDate() - 1);
+          ayer.setUTCHours(0, 0, 0, 0);
+          const manana = new Date(ahora);
+          manana.setUTCDate(manana.getUTCDate() + 1);
+          manana.setUTCHours(23, 59, 59, 999);
+
+          const result = await ticketRepo.findAll({ fechaDesde: ayer, fechaHasta: manana });
+          const ids = result.map((t) => t.id);
+          expect(ids).toContain(enRango.id);
+        });
+      });
+
+      it('retorna [] sin error cuando tiposIds contiene un UUID inexistente', async () => {
+        await withTenant(async () => {
+          const result = await ticketRepo.findAll({
+            tiposIds: ['00000000-0000-4000-0000-000000000000'],
+          });
+          expect(result).toHaveLength(0);
+        });
+      });
+
+      it('excluye tickets soft-deleted de findAll()', async () => {
+        const activo = TicketEntity.create(makeTicketProps({ numero: 'SOP-2026-00030' }));
+        const eliminado = TicketEntity.create(makeTicketProps({ numero: 'SOP-2026-00031' }));
+
+        await withTenant(async () => {
+          await ticketRepo.save(activo);
+          await ticketRepo.save(eliminado);
+          await ticketRepo.delete(eliminado.id);
+
+          const all = await ticketRepo.findAll();
+          const ids = all.map((t) => t.id);
+          expect(ids).toContain(activo.id);
+          expect(ids).not.toContain(eliminado.id);
+        });
+      });
+    });
   });
 
   // ─────────────────────────────────────────────────────────────────────────
