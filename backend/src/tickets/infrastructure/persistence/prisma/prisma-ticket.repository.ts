@@ -100,11 +100,15 @@ export class PrismaTicketRepository implements ITicketRepository {
 
   async save(ticket: TicketEntity): Promise<void> {
     const data = TicketMapper.toPersistence(ticket);
-    const { id, ...updateData } = data;
+    // createdAt se pasa en el CREATE para respetar el override de fechaCreacion (ADR-5),
+    // pero NO en el UPDATE para no sobreescribir el timestamp de creación existente en DB.
+    // _createdAt prefijado con _ para indicar que la desestructuración es intencional
+    // (excluir del spread updateData), no un olvido de uso.
+    const { id, createdAt: _createdAt, ...updateData } = data;
     await this.client.ticket.upsert({
       where: { id },
-      create: data,
-      update: updateData,
+      create: data, // incluye createdAt explícito
+      update: updateData, // NO pisa createdAt en updates
     });
   }
 

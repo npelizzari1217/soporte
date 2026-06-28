@@ -855,4 +855,95 @@ describe('Tickets Infrastructure Repos — Integration (3.D.1)', () => {
       expect(result).toBe(true);
     });
   });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // PR3: createdAt override + fechaResolucion (T3.11 RED→GREEN)
+  // ─────────────────────────────────────────────────────────────────────────
+
+  describe('PrismaTicketRepository — PR3: createdAt override + fechaResolucion (T3.11)', () => {
+    const RESUELTO_ID = 'c0000000-0000-4000-c000-000000000006';
+
+    it('crear ticket con fechaCreacion explícita → created_at en DB refleja esa fecha', async () => {
+      // ADR-5: TicketEntity.create() con fechaCreacion → mapper incluye createdAt en INSERT.
+      const fechaCreacion = new Date('2025-06-15T00:00:00.000Z');
+      const ticket = TicketEntity.create(
+        makeTicketProps({ numero: 'SOP-2025-00001' }),
+        undefined,
+        fechaCreacion,
+      );
+
+      await withTenant(async () => {
+        await ticketRepo.save(ticket);
+        const found = await ticketRepo.findById(ticket.id);
+
+        expect(found).not.toBeNull();
+        // created_at en DB debe ser la fecha provista, no now()
+        expect(found!.createdAt.toISOString().slice(0, 10)).toBe('2025-06-15');
+      });
+    });
+
+    it('save() UPDATE no pisa createdAt existente en DB', async () => {
+      // Si se guarda un ticket dos veces (upsert), el createdAt debe permanecer igual.
+      const ticket = TicketEntity.create(makeTicketProps({ numero: 'SOP-2026-00099' }));
+
+      await withTenant(async () => {
+        await ticketRepo.save(ticket);
+        const createdAtOriginal = (await ticketRepo.findById(ticket.id))!.createdAt;
+
+        // Mutar y guardar de nuevo (UPDATE path)
+        ticket.updateEstado(EN_PROGRESO_ID);
+        await ticketRepo.save(ticket);
+
+        const found = await ticketRepo.findById(ticket.id);
+        expect(found!.createdAt.getTime()).toBe(createdAtOriginal.getTime());
+      });
+    });
+
+    it('transición a RESUELTO → fecha_resolucion seteada en DB', async () => {
+      // ADR-4: al setear ticket.fechaResolucion y guardar, el campo persiste en DB.
+      const ticket = TicketEntity.create(makeTicketProps({ numero: 'SOP-2026-00100' }));
+      const fechaResolucion = new Date('2026-06-28T00:00:00.000Z');
+
+      await withTenant(async () => {
+        await ticketRepo.save(ticket);
+
+        ticket.updateEstado(RESUELTO_ID);
+        ticket.setFechaResolucion(fechaResolucion);
+        await ticketRepo.save(ticket);
+
+        const found = await ticketRepo.findById(ticket.id);
+        expect(found).not.toBeNull();
+        expect(found!.estadoId).toBe(RESUELTO_ID);
+        expect(found!.fechaResolucion).not.toBeNull();
+        expect(found!.fechaResolucion!.toISOString().slice(0, 10)).toBe('2026-06-28');
+      });
+    });
+
+    it('reapertura (RESUELTO → EN_PROGRESO) → fecha_resolucion NULL en DB', async () => {
+      // ADR-4: al reabrir, setFechaResolucion(null) → campo debe quedar NULL en DB.
+      const ticket = TicketEntity.create(makeTicketProps({ numero: 'SOP-2026-00101' }));
+      const fechaResolucion = new Date('2026-06-20T00:00:00.000Z');
+
+      await withTenant(async () => {
+        // Llevar a RESUELTO primero
+        await ticketRepo.save(ticket);
+        ticket.updateEstado(RESUELTO_ID);
+        ticket.setFechaResolucion(fechaResolucion);
+        await ticketRepo.save(ticket);
+
+        // Verificar que está resuelto
+        const resuelto = await ticketRepo.findById(ticket.id);
+        expect(resuelto!.fechaResolucion).not.toBeNull();
+
+        // Reabrir: limpiar fechaResolucion
+        ticket.updateEstado(EN_PROGRESO_ID);
+        ticket.setFechaResolucion(null);
+        await ticketRepo.save(ticket);
+
+        const reabierto = await ticketRepo.findById(ticket.id);
+        expect(reabierto!.estadoId).toBe(EN_PROGRESO_ID);
+        expect(reabierto!.fechaResolucion).toBeNull();
+      });
+    });
+  });
 });

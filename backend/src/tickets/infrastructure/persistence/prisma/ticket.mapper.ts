@@ -37,9 +37,15 @@ export class TicketMapper {
 
   /**
    * Convierte TicketEntity → objeto plano para Prisma upsert.
-   * Excluye createdAt y updatedAt (manejados por Prisma @default/@updatedAt).
+   *
+   * Incluye `createdAt` para que el INSERT pueda respetar el override de
+   * fechaCreacion (ADR-5). `updatedAt` es manejado por Prisma @updatedAt y se
+   * excluye del objeto de persistencia.
+   *
+   * IMPORTANTE: el repositorio extrae `createdAt` antes del UPDATE para que
+   * nunca sobrescriba el timestamp de creación existente en la DB (T3.8).
    */
-  static toPersistence(entity: TicketEntity): Omit<PrismaTicket, 'createdAt' | 'updatedAt'> {
+  static toPersistence(entity: TicketEntity): Omit<PrismaTicket, 'updatedAt'> {
     return {
       id: entity.id,
       numero: entity.numero,
@@ -53,6 +59,7 @@ export class TicketMapper {
       asignadoId: entity.asignadoId,
       fechaResolucion: entity.fechaResolucion,
       deletedAt: entity.deletedAt,
+      createdAt: entity.createdAt,
     };
   }
 }
