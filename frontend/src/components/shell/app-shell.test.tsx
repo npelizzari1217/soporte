@@ -28,7 +28,7 @@ vi.mock("./sidebar", () => ({
   Sidebar: () => <div data-testid="sidebar-mock">Sidebar</div>,
 }));
 
-const mockUsePathname = vi.fn<[], string>(() => "/tickets");
+const mockUsePathname = vi.fn<() => string>(() => "/tickets");
 
 vi.mock("next/navigation", () => ({
   usePathname: () => mockUsePathname(),

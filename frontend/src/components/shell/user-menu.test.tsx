@@ -25,7 +25,7 @@ import type { JwtPayload } from "@/shared/api/types";
 
 // ── Mocks ────────────────────────────────────────────────────────────────────
 
-const mockUseSession = vi.fn<[], { user: JwtPayload | null; isLoading: boolean; can: () => boolean }>(
+const mockUseSession = vi.fn<() => { user: JwtPayload | null; isLoading: boolean; can: () => boolean }>(
   () => ({
     user: {
       email: "test@example.com",

@@ -23,9 +23,9 @@ import type { JwtPayload } from "@/shared/api/types";
 // ── Mocks ───────────────────────────────────────────────────────────────────
 // usePathname controls the active-link detection in Sidebar.
 // useRouter is needed because UserMenu (rendered in the sidebar footer) calls useRouter.
-const mockUsePathname = vi.fn<[], string>(() => "/tickets");
+const mockUsePathname = vi.fn<() => string>(() => "/tickets");
 const mockPush = vi.fn();
-const mockUseSession = vi.fn<[], { user: JwtPayload | null; isLoading: boolean; can: () => boolean }>(() => ({
+const mockUseSession = vi.fn<() => { user: JwtPayload | null; isLoading: boolean; can: () => boolean }>(() => ({
   user: null,
   isLoading: false,
   can: () => false,

@@ -24,15 +24,18 @@ import * as path from "node:path";
 /**
  * Traverses a React element tree depth-first.
  * Returns the first element whose `type` matches the given HTML tag name.
+ *
+ * Props are typed as Record<string, unknown> because React 19 changed
+ * ReactElement.props from {} to unknown — callers must narrow further.
  */
 function findEl(
   node: React.ReactNode,
   type: string,
-): React.ReactElement | null {
+): React.ReactElement<Record<string, unknown>> | null {
   if (!React.isValidElement(node)) return null;
-  if (node.type === type) return node as React.ReactElement;
+  if (node.type === type) return node as React.ReactElement<Record<string, unknown>>;
 
-  const children = (node as React.ReactElement).props?.children;
+  const children = (node as React.ReactElement<{ children?: React.ReactNode }>).props?.children;
   if (!children) return null;
 
   const childArray = Array.isArray(children) ? children : [children];
@@ -49,12 +52,12 @@ describe("RootLayout — FOUC + suppressHydrationWarning", () => {
 
   it("<html> tiene suppressHydrationWarning para evitar mismatch de hidratación", () => {
     expect(React.isValidElement(tree)).toBe(true);
-    const html = tree as React.ReactElement;
+    const html = tree as React.ReactElement<{ suppressHydrationWarning?: boolean; className?: string }>;
     expect(html.props.suppressHydrationWarning).toBe(true);
   });
 
   it("<html> NO tiene className — el script FOUC es quien gestiona la clase .dark", () => {
-    const html = tree as React.ReactElement;
+    const html = tree as React.ReactElement<{ suppressHydrationWarning?: boolean; className?: string }>;
     // className="dark" hardcodeado fue removido; la clase la aplica el script en runtime
     expect(html.props.className).toBeUndefined();
   });
@@ -67,19 +70,19 @@ describe("RootLayout — FOUC + suppressHydrationWarning", () => {
 
   it("el script contiene localStorage.getItem('theme')", () => {
     const script = findEl(tree, "script")!;
-    const html = script.props.dangerouslySetInnerHTML.__html as string;
+    const html = (script.props.dangerouslySetInnerHTML as { __html: string }).__html;
     expect(html).toContain("localStorage.getItem('theme')");
   });
 
   it("el script contiene classList.toggle('dark'", () => {
     const script = findEl(tree, "script")!;
-    const html = script.props.dangerouslySetInnerHTML.__html as string;
+    const html = (script.props.dangerouslySetInnerHTML as { __html: string }).__html;
     expect(html).toContain("classList.toggle('dark'");
   });
 
   it("el script contiene prefers-color-scheme", () => {
     const script = findEl(tree, "script")!;
-    const html = script.props.dangerouslySetInnerHTML.__html as string;
+    const html = (script.props.dangerouslySetInnerHTML as { __html: string }).__html;
     expect(html).toContain("prefers-color-scheme");
   });
 });
