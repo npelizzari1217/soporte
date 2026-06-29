@@ -3,9 +3,12 @@ import { ITenantTransactionRunner } from '../../../shared/infrastructure/persist
 import { OperacionTicketEntity } from '../../domain/entities/operacion-ticket.entity';
 import { TicketEntity } from '../../domain/entities/ticket.entity';
 import {
+  EstadoCatalogoNoEncontradoError,
+  TicketNoBorrableError,
   TicketNoEncontradoError,
   TipoOperacionNoEncontradoError,
 } from '../../domain/errors/tickets.errors';
+import { IEstadoRepository } from '../../domain/ports/i-estado.repository';
 import { IOperacionTicketRepository } from '../../domain/ports/i-operacion-ticket.repository';
 import { ITipoOperacionRepository } from '../../domain/ports/i-tipo-operacion.repository';
 import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
@@ -25,32 +28,31 @@ export interface EliminarTicketDto {
 /**
  * EliminarTicketUseCase — da de baja lógica (soft-delete) un ticket.
  *
- * Flujo:
+ * Flujo (actualizado ADR-3 — bloqueo por estado):
  * 1. Cargar el ticket por id. Si !ticket → TicketNoEncontradoError (404).
  *    Incluye tickets de otro tenant (aislamiento físico → null).
  * 2. Si ticket.isDeleted() → Result.ok(ticket) NO-OP idempotente (locked decision L2).
  *    NO se registra una segunda OperacionTicket ELIMINACION; NO se abre transacción.
- * 3. Resolver tipoOperacionId para 'ELIMINACION'. Si null → TipoOperacionNoEncontradoError (500).
- * 4. ticket.softDelete() — marca la entidad como borrada.
- * 5. Construir OperacionTicketEntity ELIMINACION con metadata: null.
- * 6. txRunner.run(() => ticketRepo.save(ticket) + operacionRepo.save(operacion)) — atómico.
- *    Se usa save(ticket) con deletedAt ya seteado; no repo.delete(id), para mantener
- *    ticket + operación en una sola transacción atómica, igual que el resto de use cases.
- * 7. Result.ok(ticket).
- *
- * NOTA: NO carga el estado (no llama estadoRepo.findById).
- * El borrado está PERMITIDO en estados terminales (CERRADO/CANCELADO).
- * Esto lo diferencia de EditarTicketUseCase que requiere canEdit().
+ * 3. Cargar el estado actual del ticket via IEstadoRepository.
+ *    Si null → EstadoCatalogoNoEncontradoError (500 — corrupción de catálogo).
+ * 4. Validar ticket.canDelete(estado.codigo).
+ *    Si false → TicketNoBorrableError (422 — solo ABIERTO puede eliminarse, ADR-3).
+ * 5. Resolver tipoOperacionId para 'ELIMINACION'. Si null → TipoOperacionNoEncontradoError (500).
+ * 6. ticket.softDelete() — marca la entidad como borrada.
+ * 7. Construir OperacionTicketEntity ELIMINACION con metadata: null.
+ * 8. txRunner.run(() => ticketRepo.save(ticket) + operacionRepo.save(operacion)) — atómico.
+ * 9. Result.ok(ticket).
  *
  * Ref spec: tickets-core §"Soft delete exitoso de ticket activo"
- * Ref spec: tickets-editar-borrar locked decision L2, L3
- * Tarea: S3-T2
+ * Ref spec: Req "Bloqueo de borrado por estado" (tickets-core/spec.md), ADR-3
+ * Change: tickets-maquina-estados-observaciones / PR1
  */
 export class EliminarTicketUseCase {
   constructor(
     private readonly ticketRepo: ITicketRepository,
     private readonly operacionRepo: IOperacionTicketRepository,
     private readonly tipoOperacionRepo: ITipoOperacionRepository,
+    private readonly estadoRepo: IEstadoRepository,
     private readonly txRunner: ITenantTransactionRunner,
   ) {}
 
@@ -66,16 +68,27 @@ export class EliminarTicketUseCase {
       return Result.ok(ticket);
     }
 
-    // 3. Resolver el id del tipo de operación ELIMINACION
+    // 3. Cargar estado actual del ticket (necesario para validar canDelete)
+    const estado = await this.estadoRepo.findById(ticket.estadoId);
+    if (!estado) {
+      return Result.fail(new EstadoCatalogoNoEncontradoError(ticket.estadoId));
+    }
+
+    // 4. Validar que el ticket esté en estado ABIERTO para poder eliminarse (ADR-3)
+    if (!ticket.canDelete(estado.codigo)) {
+      return Result.fail(new TicketNoBorrableError(estado.codigo));
+    }
+
+    // 5. Resolver el id del tipo de operación ELIMINACION
     const tipoOperacionId = await this.tipoOperacionRepo.findIdByCodigo('ELIMINACION');
     if (!tipoOperacionId) {
       return Result.fail(new TipoOperacionNoEncontradoError('ELIMINACION'));
     }
 
-    // 4. Marcar la entidad como soft-deleted
+    // 6. Marcar la entidad como soft-deleted
     ticket.softDelete();
 
-    // 5. Crear la OperacionTicket ELIMINACION (mínima, igual que ASIGNACION)
+    // 7. Crear la OperacionTicket ELIMINACION (mínima, igual que ASIGNACION)
     const operacion = OperacionTicketEntity.create({
       ticketId: ticket.id,
       tipoOperacionId,
@@ -86,7 +99,7 @@ export class EliminarTicketUseCase {
       metadata: null,
     });
 
-    // 6. Persistir ticket soft-deleted + operacion en la misma transacción (atómico)
+    // 8. Persistir ticket soft-deleted + operacion en la misma transacción (atómico)
     await this.txRunner.run(async () => {
       await this.ticketRepo.save(ticket);
       await this.operacionRepo.save(operacion);

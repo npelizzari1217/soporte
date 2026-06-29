@@ -1,30 +1,36 @@
 /**
- * S3-T1 [TEST] — Unit tests para EliminarTicketUseCase.
+ * P1.T6 [RED → GREEN con P1.T7] — Unit tests para EliminarTicketUseCase.
  *
  * Todos los repositorios son mockeados (sin Prisma ni DB).
  * El txRunner ejecuta el callback inmediatamente (patrón existente).
  *
- * Cubre:
+ * Cubre (actualizado para ADR-3 — bloqueo por estado):
  * - Ticket no existe → TicketNoEncontradoError (incluye ticket de otro tenant → null)
  * - Ticket ya borrado (isDeleted) → Result.ok no-op (sin save, sin operacion, sin tx)
  * - tipoOperacionId ELIMINACION null → TipoOperacionNoEncontradoError
- * - Happy path (ticket activo): softDelete + save + operacion ELIMINACION en tx
- * - Happy path (ticket CERRADO, no deleted): borrado permitido en terminal
+ * - Estado no encontrado en catálogo → EstadoCatalogoNoEncontradoError (500)
+ * - Ticket en APROBADO → TicketNoBorrableError (422)
+ * - Ticket en RESUELTO → TicketNoBorrableError (422)
+ * - Ticket en EN_PROGRESO → TicketNoBorrableError (422)
+ * - Ticket en CERRADO → TicketNoBorrableError (422)  ← CAMBIO: antes era permitido
+ * - Happy path (ticket en ABIERTO): softDelete + save + operacion ELIMINACION en tx
  *
- * Ref spec: tickets-core §"Soft delete exitoso de ticket activo"
- * Ref spec: tickets-core §"Soft delete rechazado — ticket de otro tenant"
- * Ref spec: tickets-editar-borrar locked decision L2 (idempotencia no-op)
- * Tarea: S3-T1
+ * Ref spec: Req "Bloqueo de borrado por estado" (tickets-core/spec.md), ADR-3
+ * Change: tickets-maquina-estados-observaciones / PR1
  */
 
 import { EliminarTicketDto, EliminarTicketUseCase } from './eliminar-ticket.use-case';
 import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
 import { IOperacionTicketRepository } from '../../domain/ports/i-operacion-ticket.repository';
 import { ITipoOperacionRepository } from '../../domain/ports/i-tipo-operacion.repository';
+import { IEstadoRepository } from '../../domain/ports/i-estado.repository';
 import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { TicketEntity, TicketProps } from '../../domain/entities/ticket.entity';
+import { EstadoEntity } from '../../domain/entities/estado.entity';
 import { OperacionTicketEntity } from '../../domain/entities/operacion-ticket.entity';
 import {
+  EstadoCatalogoNoEncontradoError,
+  TicketNoBorrableError,
   TicketNoEncontradoError,
   TipoOperacionNoEncontradoError,
 } from '../../domain/errors/tickets.errors';
@@ -35,7 +41,15 @@ const TICKET_ID = 'ticket-uuid-s3-001';
 const TIPO_OPERACION_ELIMINACION_ID = 'f0000000-0000-4000-f000-000000000008';
 const AUTOR_ID = 'user-autor-s3-001';
 const ESTADO_ABIERTO_ID = 'c0000000-0000-4000-c000-000000000001';
-const ESTADO_CERRADO_ID = 'c0000000-0000-4000-c000-000000000003';
+const ESTADO_APROBADO_ID = 'c0000000-0000-4000-c000-000000000003';
+const ESTADO_EN_PROGRESO_ID = 'c0000000-0000-4000-c000-000000000005';
+const ESTADO_RESUELTO_ID = 'c0000000-0000-4000-c000-000000000006';
+const ESTADO_CERRADO_ID = 'c0000000-0000-4000-c000-000000000007';
+
+/** Helper para crear un EstadoEntity de test. */
+function makeEstado(codigo: string, id: string): EstadoEntity {
+  return EstadoEntity.create({ codigo, nombre: codigo, color: null, orden: 10, activo: true }, id);
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -106,6 +120,13 @@ describe('EliminarTicketUseCase', () => {
     findIdByCodigo: vi.fn<Promise<string | null>, [string]>(),
   } satisfies vi.Mocked<ITipoOperacionRepository>;
 
+  const mockEstadoRepo = {
+    findById: vi.fn<Promise<EstadoEntity | null>, [string]>(),
+    findByCodigo: vi.fn(),
+    findAllActive: vi.fn(),
+    findAll: vi.fn(),
+  } satisfies vi.Mocked<IEstadoRepository>;
+
   const txRunner: ITenantTransactionRunner = {
     run: vi.fn().mockImplementation(async (cb: () => Promise<void>) => cb()),
   };
@@ -116,6 +137,7 @@ describe('EliminarTicketUseCase', () => {
       mockTicketRepo,
       mockOperacionRepo,
       mockTipoOperacionRepo,
+      mockEstadoRepo,
       txRunner,
     );
   });
@@ -161,7 +183,8 @@ describe('EliminarTicketUseCase', () => {
 
   it('retorna TipoOperacionNoEncontradoError cuando ELIMINACION no está en catálogo', async () => {
     // Spec: tickets-core §"Rollback si falla el registro de auditoría en eliminación" → 500
-    mockTicketRepo.findById.mockResolvedValue(makeActiveTicket());
+    mockTicketRepo.findById.mockResolvedValue(makeActiveTicket({ estadoId: ESTADO_ABIERTO_ID }));
+    mockEstadoRepo.findById.mockResolvedValue(makeEstado('ABIERTO', ESTADO_ABIERTO_ID));
     mockTipoOperacionRepo.findIdByCodigo.mockResolvedValue(null);
 
     const result = await useCase.execute(validDto);
@@ -172,12 +195,83 @@ describe('EliminarTicketUseCase', () => {
     expect(txRunner.run).not.toHaveBeenCalled();
   });
 
+  // ─── Estado no encontrado en catálogo ────────────────────────────────────
+
+  it('retorna EstadoCatalogoNoEncontradoError cuando estadoRepo retorna null (500)', async () => {
+    // Spec: Req "Bloqueo de borrado por estado", ADR-3
+    // El estadoId del ticket existe en DB pero no en el catálogo → corrupción de datos
+    const ticket = makeActiveTicket({ estadoId: ESTADO_ABIERTO_ID });
+    mockTicketRepo.findById.mockResolvedValue(ticket);
+    mockEstadoRepo.findById.mockResolvedValue(null);
+
+    const result = await useCase.execute(validDto);
+
+    expect(result.isFail()).toBe(true);
+    expect(result.getError()).toBeInstanceOf(EstadoCatalogoNoEncontradoError);
+    expect(mockTicketRepo.save).not.toHaveBeenCalled();
+    expect(txRunner.run).not.toHaveBeenCalled();
+  });
+
+  // ─── Bloqueo por estado (ADR-3) ───────────────────────────────────────────
+
+  it('retorna TicketNoBorrableError cuando el ticket está en APROBADO (ADR-3)', async () => {
+    const ticket = makeActiveTicket({ estadoId: ESTADO_APROBADO_ID });
+    mockTicketRepo.findById.mockResolvedValue(ticket);
+    mockEstadoRepo.findById.mockResolvedValue(makeEstado('APROBADO', ESTADO_APROBADO_ID));
+
+    const result = await useCase.execute(validDto);
+
+    expect(result.isFail()).toBe(true);
+    expect(result.getError()).toBeInstanceOf(TicketNoBorrableError);
+    expect(mockTicketRepo.save).not.toHaveBeenCalled();
+    expect(txRunner.run).not.toHaveBeenCalled();
+  });
+
+  it('retorna TicketNoBorrableError cuando el ticket está en RESUELTO (ADR-3)', async () => {
+    const ticket = makeActiveTicket({ estadoId: ESTADO_RESUELTO_ID });
+    mockTicketRepo.findById.mockResolvedValue(ticket);
+    mockEstadoRepo.findById.mockResolvedValue(makeEstado('RESUELTO', ESTADO_RESUELTO_ID));
+
+    const result = await useCase.execute(validDto);
+
+    expect(result.isFail()).toBe(true);
+    expect(result.getError()).toBeInstanceOf(TicketNoBorrableError);
+    expect(mockTicketRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('retorna TicketNoBorrableError cuando el ticket está en EN_PROGRESO (ADR-3)', async () => {
+    const ticket = makeActiveTicket({ estadoId: ESTADO_EN_PROGRESO_ID });
+    mockTicketRepo.findById.mockResolvedValue(ticket);
+    mockEstadoRepo.findById.mockResolvedValue(makeEstado('EN_PROGRESO', ESTADO_EN_PROGRESO_ID));
+
+    const result = await useCase.execute(validDto);
+
+    expect(result.isFail()).toBe(true);
+    expect(result.getError()).toBeInstanceOf(TicketNoBorrableError);
+    expect(mockTicketRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('retorna TicketNoBorrableError cuando el ticket está en CERRADO (ADR-3 — antes era permitido)', async () => {
+    // Cambio de comportamiento: antes CERRADO permitía borrado.
+    // Ahora solo ABIERTO permite borrado (whitelist estricta, ADR-3).
+    const ticket = makeActiveTicket({ estadoId: ESTADO_CERRADO_ID });
+    mockTicketRepo.findById.mockResolvedValue(ticket);
+    mockEstadoRepo.findById.mockResolvedValue(makeEstado('CERRADO', ESTADO_CERRADO_ID));
+
+    const result = await useCase.execute(validDto);
+
+    expect(result.isFail()).toBe(true);
+    expect(result.getError()).toBeInstanceOf(TicketNoBorrableError);
+    expect(mockTicketRepo.save).not.toHaveBeenCalled();
+  });
+
   // ─── Happy path — ticket activo ABIERTO ──────────────────────────────────
 
-  it('happy path: softDelete del ticket, registra OperacionTicket ELIMINACION en misma tx', async () => {
+  it('happy path: softDelete del ticket ABIERTO, registra OperacionTicket ELIMINACION en misma tx', async () => {
     // Spec: tickets-core §"Soft delete exitoso de ticket activo"
-    const ticket = makeActiveTicket();
+    const ticket = makeActiveTicket({ estadoId: ESTADO_ABIERTO_ID });
     mockTicketRepo.findById.mockResolvedValue(ticket);
+    mockEstadoRepo.findById.mockResolvedValue(makeEstado('ABIERTO', ESTADO_ABIERTO_ID));
     mockTipoOperacionRepo.findIdByCodigo.mockResolvedValue(TIPO_OPERACION_ELIMINACION_ID);
 
     const result = await useCase.execute(validDto);
@@ -200,7 +294,6 @@ describe('EliminarTicketUseCase', () => {
     expect(operacion.autorId).toBe(AUTOR_ID);
     expect(operacion.estadoAnteriorId).toBeNull();
     expect(operacion.estadoNuevoId).toBeNull();
-    // metadata null (ELIMINACION es mínima, igual que ASIGNACION)
     expect(operacion.metadata).toBeNull();
 
     // Atomicidad: ambos saves dentro del txRunner
@@ -208,23 +301,8 @@ describe('EliminarTicketUseCase', () => {
 
     // tipoOperacion consultado con el código correcto
     expect(mockTipoOperacionRepo.findIdByCodigo).toHaveBeenCalledWith('ELIMINACION');
-  });
 
-  // ─── Happy path — ticket en estado terminal CERRADO ───────────────────────
-
-  it('happy path: borrado permitido en estado terminal CERRADO (no chequea canEdit)', async () => {
-    // Spec: tickets-core §"Soft delete de ticket en estado terminal — permitido"
-    // EliminarTicketUseCase NO carga el estado ni chequea canEdit (a diferencia de editar)
-    const ticketCerrado = makeActiveTicket({ estadoId: ESTADO_CERRADO_ID });
-    mockTicketRepo.findById.mockResolvedValue(ticketCerrado);
-    mockTipoOperacionRepo.findIdByCodigo.mockResolvedValue(TIPO_OPERACION_ELIMINACION_ID);
-
-    const result = await useCase.execute(validDto);
-
-    // El borrado debe tener éxito aunque el estado sea terminal
-    expect(result.isOk()).toBe(true);
-    expect(result.getValue().isDeleted()).toBe(true);
-    expect(mockTicketRepo.save).toHaveBeenCalledTimes(1);
-    expect(mockOperacionRepo.save).toHaveBeenCalledTimes(1);
+    // estadoRepo consultado con el estadoId del ticket
+    expect(mockEstadoRepo.findById).toHaveBeenCalledWith(ESTADO_ABIERTO_ID);
   });
 });

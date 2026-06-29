@@ -212,17 +212,42 @@ export class SecuenciaAgotadaError extends DomainError {
 // ─── S2 — Errores de edición de ticket ───────────────────────────────────────
 
 /**
- * Error de dominio: el ticket está en estado terminal (CERRADO/CANCELADO) y no puede
- * ser editado. HTTP 422 semántico.
+ * Error de dominio: el ticket no puede ser editado porque su estado no es ABIERTO.
+ * HTTP 422 semántico.
  *
- * Ref spec: [SPEC:tickets-core/Edición rechazada — ticket en estado terminal]
+ * ADR-3: solo tickets en estado ABIERTO pueden editarse (whitelist estricta).
+ * Antes: el mensaje decía "estado terminal (CERRADO/CANCELADO)".
+ * Ahora: cualquier estado distinto de ABIERTO bloquea la edición.
+ *
+ * Ref spec: Enmienda "Bloqueo edición/borrado" (tickets-core/spec.md), ADR-3
+ * Change: tickets-maquina-estados-observaciones / PR1
  */
 export class TicketNoEditableError extends DomainError {
   readonly code = 'TICKET_NO_EDITABLE';
 
   constructor(estadoCodigo: string) {
     super(
-      `El ticket no puede ser editado porque se encuentra en estado terminal "${estadoCodigo}".`,
+      `El ticket no puede ser editado porque su estado no es ABIERTO (estado actual: "${estadoCodigo}").`,
+    );
+  }
+}
+
+/**
+ * Error de dominio: el ticket no puede eliminarse porque su estado no es ABIERTO.
+ * HTTP 422 semántico.
+ *
+ * ADR-3: solo tickets en estado ABIERTO pueden eliminarse (misma whitelist que edición).
+ *
+ * Ref spec: Req "Bloqueo de borrado por estado" (tickets-core/spec.md), ADR-3
+ * Change: tickets-maquina-estados-observaciones / PR1
+ */
+export class TicketNoBorrableError extends DomainError {
+  readonly code = 'TICKET_NO_BORRABLE';
+
+  constructor(estadoCodigo: string) {
+    super(
+      `El ticket no puede eliminarse porque se encuentra en estado "${estadoCodigo}". ` +
+        `Solo tickets en estado ABIERTO pueden eliminarse.`,
     );
   }
 }
