@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Sistema de Gestión de Tickets — Backend NestJS",
   "main": "dist/main.js",
+  "packageManager": "pnpm@11.5.2",
   "scripts": {
     "build": "tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json",
     "start": "node dist/main",
