@@ -26,8 +26,7 @@
 import { MigrateTenantsRunner } from './migrate-tenants.runner';
 
 const MASTER_URL =
-  process.env.DATABASE_URL_MASTER ??
-  'postgresql://soporte:soporte@localhost:5432/soporte_master';
+  process.env.DATABASE_URL_MASTER ?? 'postgresql://soporte:soporte@localhost:5432/soporte_master';
 
 async function main(): Promise<void> {
   console.log('migrate-tenants: starting fan-out...');
@@ -58,9 +57,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err: unknown) => {
-  console.error(
-    'migrate-tenants: fatal error:',
-    err instanceof Error ? err.message : String(err),
-  );
+  console.error('migrate-tenants: fatal error:', err instanceof Error ? err.message : String(err));
   process.exit(1);
 });
