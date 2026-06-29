@@ -193,9 +193,9 @@ describe('CrearClienteUseCase — e2e provisioning real (7.C.1)', () => {
       expect(parseInt(res.rows[0].count, 10)).toBe(3);
     });
 
-    it('tipo_operacion: 8 tipos de evento sembrados (incluye EDICION y ELIMINACION)', async () => {
+    it('tipo_operacion: 9 tipos de evento sembrados (incluye EDICION, ELIMINACION, OBSERVACION)', async () => {
       const res = await tenantPool.query<{ count: string }>('SELECT COUNT(*) FROM tipo_operacion');
-      expect(parseInt(res.rows[0].count, 10)).toBe(8);
+      expect(parseInt(res.rows[0].count, 10)).toBe(9);
     });
 
     it('tipos_componente: 10 tipos hardware sembrados', async () => {

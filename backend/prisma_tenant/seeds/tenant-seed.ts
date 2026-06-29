@@ -109,9 +109,10 @@ INSERT INTO tipos_ticket (id, codigo, nombre) VALUES
 ON CONFLICT (codigo) DO NOTHING;
 `;
 
-// ─ tipo_operacion (6 tipos — spec tickets-core + reparaciones PR-15a) ──────────
+// ─ tipo_operacion (9 tipos — spec tickets-core + reparaciones PR-15a + Change A PR2) ─
 //
-// Codigos: SPEC-EXPLICIT (5 base) + UBICACION_ELIMINADA (Reparaciones, PR-15a).
+// Codigos: SPEC-EXPLICIT (5 base) + UBICACION_ELIMINADA (Reparaciones, PR-15a)
+//          + EDICION, ELIMINACION + OBSERVACION (Change A tickets-maquina-estados-observaciones / PR2).
 // Nombres: INFERRED.
 // UUIDs: prefijo f0.
 //
@@ -119,16 +120,20 @@ ON CONFLICT (codigo) DO NOTHING;
 // ubicación es eliminada (soft delete); el ticket edilicio puede requerir
 // reasignación de ubicación. Resuelve deuda TODO(PR-15a) de EliminarUbicacionUseCase.
 //
+// OBSERVACION (f0...009): registro de observaciones técnicas del técnico.
+// Puede disparar auto-transición de estado desde APROBADO (ADR-2, ADR-7).
+//
 const SEED_TIPO_OPERACION_SQL = `
 INSERT INTO tipo_operacion (id, codigo, nombre) VALUES
-  ('f0000000-0000-4000-f000-000000000001', 'CAMBIO_ESTADO',      'Cambio de estado'),
-  ('f0000000-0000-4000-f000-000000000002', 'COMENTARIO',         'Comentario'),
-  ('f0000000-0000-4000-f000-000000000003', 'ASIGNACION',         'Asignación'),
-  ('f0000000-0000-4000-f000-000000000004', 'ADJUNTO',            'Adjunto'),
-  ('f0000000-0000-4000-f000-000000000005', 'AVANCE_EDILICIO',    'Avance edilicio'),
-  ('f0000000-0000-4000-f000-000000000006', 'UBICACION_ELIMINADA','Ubicación eliminada'),
-  ('f0000000-0000-4000-f000-000000000007', 'EDICION',            'Edición'),
-  ('f0000000-0000-4000-f000-000000000008', 'ELIMINACION',        'Eliminación')
+  ('f0000000-0000-4000-f000-000000000001', 'CAMBIO_ESTADO',       'Cambio de estado'),
+  ('f0000000-0000-4000-f000-000000000002', 'COMENTARIO',          'Comentario'),
+  ('f0000000-0000-4000-f000-000000000003', 'ASIGNACION',          'Asignación'),
+  ('f0000000-0000-4000-f000-000000000004', 'ADJUNTO',             'Adjunto'),
+  ('f0000000-0000-4000-f000-000000000005', 'AVANCE_EDILICIO',     'Avance edilicio'),
+  ('f0000000-0000-4000-f000-000000000006', 'UBICACION_ELIMINADA', 'Ubicación eliminada'),
+  ('f0000000-0000-4000-f000-000000000007', 'EDICION',             'Edición'),
+  ('f0000000-0000-4000-f000-000000000008', 'ELIMINACION',         'Eliminación'),
+  ('f0000000-0000-4000-f000-000000000009', 'OBSERVACION',         'Observación técnica')
 ON CONFLICT (codigo) DO NOTHING;
 `;
 
@@ -171,7 +176,7 @@ async function seed(): Promise<void> {
   console.log('  tipos_ticket      → OK (SOPORTE, COMPRAS, EDILICIA)');
 
   await pool.query(SEED_TIPO_OPERACION_SQL);
-  console.log('  tipo_operacion    → OK (8 tipos de evento, incluye UBICACION_ELIMINADA, EDICION, ELIMINACION)');
+  console.log('  tipo_operacion    → OK (9 tipos: incluye UBICACION_ELIMINADA, EDICION, ELIMINACION, OBSERVACION — Change A PR2)');
 
   await pool.query(SEED_TIPOS_COMPONENTE_SQL);
   console.log('  tipos_componente  → OK (10 tipos base: CPU, RAM, DISCO, MONITOR, TECLADO, MOUSE, GPU, FUENTE, IMPRESORA, RED)');
