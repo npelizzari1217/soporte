@@ -2,10 +2,24 @@ import { BaseEntity } from '../../../shared/domain/base-entity';
 import { TituloInvalidoError } from '../errors/tickets.errors';
 
 /**
- * Códigos de estado terminal: no admiten ninguna transición saliente.
- * Ref spec: [SPEC:tickets-core/Máquina de estados base]
+ * Códigos de estado que no admiten ninguna transición saliente ni pueden
+ * ser el estado actual de un ticket editable o borrable.
+ *
+ * - Terminales activos: RESUELTO, SIN_SOLUCION, RECHAZADO (estados finales del nuevo flujo).
+ * - Congelados legacy: CERRADO, CANCELADO, PENDIENTE_APROBACION (dead data — tickets viejos).
+ *
+ * Ref spec: Enmienda "Bloqueo edición/borrado" (tickets-core/spec.md)
+ * Ref design: ADR-3
+ * Change: tickets-maquina-estados-observaciones / PR1
  */
-const TERMINAL_STATES = new Set<string>(['CERRADO', 'CANCELADO']);
+const TERMINAL_STATES = new Set<string>([
+  'RESUELTO',
+  'SIN_SOLUCION',
+  'RECHAZADO', // terminales activos
+  'CERRADO',
+  'CANCELADO',
+  'PENDIENTE_APROBACION', // congelados legacy
+]);
 
 /**
  * Campos editables del ticket vía PATCH.
@@ -206,18 +220,33 @@ export class TicketEntity extends BaseEntity<TicketProps> {
   }
 
   /**
-   * Invariante de editabilidad: el ticket puede ser editado solo si no está
-   * soft-deleted y su estado actual no es terminal (CERRADO/CANCELADO).
+   * Invariante de editabilidad: solo tickets en estado ABIERTO y no soft-deleted
+   * pueden ser editados (whitelist estricta — ADR-3).
+   *
+   * Cambio respecto al comportamiento anterior: antes era "no-terminal".
+   * Ahora es "solo ABIERTO". EN_PROGRESO, APROBADO, SUSPENDIDO ya no son editables.
    *
    * El use case carga el código del estado vía IEstadoRepository y lo pasa aquí.
-   * Espejo de canTransitionTo, separado por responsabilidad.
    *
    * @param estadoActualCodigo Código semántico del estado actual (ej. "ABIERTO").
    */
   canEdit(estadoActualCodigo: string): boolean {
-    if (this.isDeleted()) return false;
-    if (TERMINAL_STATES.has(estadoActualCodigo)) return false;
-    return true;
+    return !this.isDeleted() && estadoActualCodigo === 'ABIERTO';
+  }
+
+  /**
+   * Invariante de borrabilidad: solo tickets en estado ABIERTO y no soft-deleted
+   * pueden eliminarse (misma whitelist que canEdit — ADR-3).
+   *
+   * Tickets ya soft-deleted → false (idempotencia manejada por el use case antes
+   * de llamar a este método).
+   *
+   * El use case carga el código del estado vía IEstadoRepository y lo pasa aquí.
+   *
+   * @param estadoActualCodigo Código semántico del estado actual (ej. "ABIERTO").
+   */
+  canDelete(estadoActualCodigo: string): boolean {
+    return !this.isDeleted() && estadoActualCodigo === 'ABIERTO';
   }
 
   /**

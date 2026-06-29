@@ -113,71 +113,191 @@ describe('TicketEntity', () => {
 
   describe('canTransitionTo(desdeEstadoCodigo, haciaEstadoCodigo)', () => {
     // El use case carga los codigos desde IEstadoRepository y los pasa a la entidad.
-    // La entidad solo verifica invariantes: soft-delete + terminal states.
+    // La entidad solo verifica invariantes: soft-delete + TERMINAL_STATES expandido.
+    // TERMINAL_STATES ahora cubre 6 estados: RESUELTO, SIN_SOLUCION, RECHAZADO (activos)
+    // + CERRADO, CANCELADO, PENDIENTE_APROBACION (congelados legacy). ADR-3.
 
-    it('retorna true cuando el estado actual no es terminal', () => {
+    it('retorna true cuando el estado actual es ABIERTO (no terminal)', () => {
       const ticket = TicketEntity.create(makeTicketProps());
-      expect(ticket.canTransitionTo('ABIERTO', 'EN_PROGRESO')).toBe(true);
+      expect(ticket.canTransitionTo('ABIERTO', 'APROBADO')).toBe(true);
     });
 
-    it('retorna true para cualquier origen no-terminal independiente del destino', () => {
+    it('retorna true para APROBADO como origen (no terminal)', () => {
+      const ticket = TicketEntity.create(makeTicketProps());
+      expect(ticket.canTransitionTo('APROBADO', 'EN_PROGRESO')).toBe(true);
+    });
+
+    it('retorna true para EN_PROGRESO como origen (no terminal)', () => {
       const ticket = TicketEntity.create(makeTicketProps());
       expect(ticket.canTransitionTo('EN_PROGRESO', 'RESUELTO')).toBe(true);
-      expect(ticket.canTransitionTo('RESUELTO', 'EN_PROGRESO')).toBe(true);
     });
 
-    it('retorna false cuando el estado actual es CERRADO (terminal)', () => {
+    it('retorna true para SUSPENDIDO como origen (no terminal)', () => {
+      const ticket = TicketEntity.create(makeTicketProps());
+      expect(ticket.canTransitionTo('SUSPENDIDO', 'EN_PROGRESO')).toBe(true);
+    });
+
+    it('retorna false cuando el estado actual es RESUELTO (terminal activo — ADR-3)', () => {
+      const ticket = TicketEntity.create(makeTicketProps());
+      expect(ticket.canTransitionTo('RESUELTO', 'EN_PROGRESO')).toBe(false);
+    });
+
+    it('retorna false cuando el estado actual es SIN_SOLUCION (terminal activo — ADR-3)', () => {
+      const ticket = TicketEntity.create(makeTicketProps());
+      expect(ticket.canTransitionTo('SIN_SOLUCION', 'ABIERTO')).toBe(false);
+    });
+
+    it('retorna false cuando el estado actual es RECHAZADO (terminal activo — ADR-3)', () => {
+      const ticket = TicketEntity.create(makeTicketProps());
+      expect(ticket.canTransitionTo('RECHAZADO', 'ABIERTO')).toBe(false);
+    });
+
+    it('retorna false cuando el estado actual es CERRADO (congelado legacy)', () => {
       const ticket = TicketEntity.create(makeTicketProps());
       expect(ticket.canTransitionTo('CERRADO', 'EN_PROGRESO')).toBe(false);
     });
 
-    it('retorna false cuando el estado actual es CANCELADO (terminal)', () => {
+    it('retorna false cuando el estado actual es CANCELADO (congelado legacy)', () => {
       const ticket = TicketEntity.create(makeTicketProps());
       expect(ticket.canTransitionTo('CANCELADO', 'ABIERTO')).toBe(false);
+    });
+
+    it('retorna false cuando el estado actual es PENDIENTE_APROBACION (congelado legacy — ADR-3)', () => {
+      const ticket = TicketEntity.create(makeTicketProps());
+      expect(ticket.canTransitionTo('PENDIENTE_APROBACION', 'APROBADO')).toBe(false);
     });
 
     it('retorna false cuando el ticket está soft-deleted, independiente del estado', () => {
       const ticket = TicketEntity.create(makeTicketProps());
       ticket.softDelete();
-      expect(ticket.canTransitionTo('ABIERTO', 'EN_PROGRESO')).toBe(false);
+      expect(ticket.canTransitionTo('ABIERTO', 'APROBADO')).toBe(false);
       expect(ticket.canTransitionTo('EN_PROGRESO', 'RESUELTO')).toBe(false);
     });
   });
 
   describe('canEdit(estadoActualCodigo)', () => {
-    // Ref spec: tickets-core §"Edición rechazada — ticket en estado terminal"
-    // Ref spec: tickets-core §"Edición rechazada — ticket soft-deleted"
+    // ADR-3: canEdit es whitelist ABIERTO-only.
+    // Solo tickets en estado ABIERTO y no soft-deleted pueden ser editados.
+    // Antes: no-terminal era suficiente. Ahora: SOLO ABIERTO.
+    // Ref spec: Enmienda "Bloqueo edición/borrado" (tickets-core/spec.md), ADR-3
+    // Change: tickets-maquina-estados-observaciones / PR1
 
     it('retorna true cuando el ticket está ABIERTO y no está eliminado', () => {
       const ticket = TicketEntity.create(makeTicketProps());
       expect(ticket.canEdit('ABIERTO')).toBe(true);
     });
 
-    it('retorna true cuando el ticket está EN_PROGRESO', () => {
+    it('retorna false cuando el ticket está EN_PROGRESO (whitelist ABIERTO-only — ADR-3)', () => {
       const ticket = TicketEntity.create(makeTicketProps());
-      expect(ticket.canEdit('EN_PROGRESO')).toBe(true);
+      expect(ticket.canEdit('EN_PROGRESO')).toBe(false);
     });
 
-    it('retorna false cuando el ticket está en estado CERRADO (terminal)', () => {
+    it('retorna false cuando el ticket está APROBADO (whitelist ABIERTO-only — ADR-3)', () => {
+      const ticket = TicketEntity.create(makeTicketProps());
+      expect(ticket.canEdit('APROBADO')).toBe(false);
+    });
+
+    it('retorna false cuando el ticket está SUSPENDIDO (whitelist ABIERTO-only — ADR-3)', () => {
+      const ticket = TicketEntity.create(makeTicketProps());
+      expect(ticket.canEdit('SUSPENDIDO')).toBe(false);
+    });
+
+    it('retorna false cuando el ticket está RESUELTO (terminal activo — ADR-3)', () => {
+      const ticket = TicketEntity.create(makeTicketProps());
+      expect(ticket.canEdit('RESUELTO')).toBe(false);
+    });
+
+    it('retorna false cuando el ticket está SIN_SOLUCION (terminal activo — ADR-3)', () => {
+      const ticket = TicketEntity.create(makeTicketProps());
+      expect(ticket.canEdit('SIN_SOLUCION')).toBe(false);
+    });
+
+    it('retorna false cuando el ticket está RECHAZADO (terminal activo — ADR-3)', () => {
+      const ticket = TicketEntity.create(makeTicketProps());
+      expect(ticket.canEdit('RECHAZADO')).toBe(false);
+    });
+
+    it('retorna false cuando el ticket está en estado CERRADO (congelado legacy)', () => {
       const ticket = TicketEntity.create(makeTicketProps());
       expect(ticket.canEdit('CERRADO')).toBe(false);
     });
 
-    it('retorna false cuando el ticket está en estado CANCELADO (terminal)', () => {
+    it('retorna false cuando el ticket está en estado CANCELADO (congelado legacy)', () => {
       const ticket = TicketEntity.create(makeTicketProps());
       expect(ticket.canEdit('CANCELADO')).toBe(false);
     });
 
-    it('retorna false cuando el ticket está soft-deleted, independiente del estado ABIERTO', () => {
+    it('retorna false cuando el ticket está soft-deleted, aunque estado sea ABIERTO', () => {
       const ticket = TicketEntity.create(makeTicketProps());
       ticket.softDelete();
       expect(ticket.canEdit('ABIERTO')).toBe(false);
     });
 
-    it('soft-deleted tiene precedencia — retorna false aunque estado sea ABIERTO', () => {
+    it('soft-deleted tiene precedencia — retorna false para cualquier estado', () => {
       const ticket = TicketEntity.create(makeTicketProps());
       ticket.softDelete();
-      expect(ticket.canEdit('CERRADO')).toBe(false);
+      expect(ticket.canEdit('ABIERTO')).toBe(false);
+      expect(ticket.canEdit('EN_PROGRESO')).toBe(false);
+    });
+  });
+
+  describe('canDelete(estadoActualCodigo)', () => {
+    // ADR-3: canDelete comparte la misma lógica que canEdit — whitelist ABIERTO-only.
+    // Solo tickets en estado ABIERTO y no soft-deleted pueden eliminarse.
+    // Ref spec: Req "Bloqueo de borrado por estado" (tickets-core/spec.md), ADR-3
+    // Change: tickets-maquina-estados-observaciones / PR1
+
+    it('retorna true cuando el ticket está ABIERTO y no está eliminado', () => {
+      const ticket = TicketEntity.create(makeTicketProps());
+      expect(ticket.canDelete('ABIERTO')).toBe(true);
+    });
+
+    it('retorna false cuando el ticket está APROBADO (solo ABIERTO puede eliminarse)', () => {
+      const ticket = TicketEntity.create(makeTicketProps());
+      expect(ticket.canDelete('APROBADO')).toBe(false);
+    });
+
+    it('retorna false cuando el ticket está EN_PROGRESO', () => {
+      const ticket = TicketEntity.create(makeTicketProps());
+      expect(ticket.canDelete('EN_PROGRESO')).toBe(false);
+    });
+
+    it('retorna false cuando el ticket está SUSPENDIDO', () => {
+      const ticket = TicketEntity.create(makeTicketProps());
+      expect(ticket.canDelete('SUSPENDIDO')).toBe(false);
+    });
+
+    it('retorna false cuando el ticket está RESUELTO (terminal activo)', () => {
+      const ticket = TicketEntity.create(makeTicketProps());
+      expect(ticket.canDelete('RESUELTO')).toBe(false);
+    });
+
+    it('retorna false cuando el ticket está SIN_SOLUCION (terminal activo)', () => {
+      const ticket = TicketEntity.create(makeTicketProps());
+      expect(ticket.canDelete('SIN_SOLUCION')).toBe(false);
+    });
+
+    it('retorna false cuando el ticket está RECHAZADO (terminal activo)', () => {
+      const ticket = TicketEntity.create(makeTicketProps());
+      expect(ticket.canDelete('RECHAZADO')).toBe(false);
+    });
+
+    it('retorna false cuando el ticket está CERRADO (congelado legacy)', () => {
+      const ticket = TicketEntity.create(makeTicketProps());
+      expect(ticket.canDelete('CERRADO')).toBe(false);
+    });
+
+    it('retorna false cuando el ticket ya está soft-deleted (isDeleted = true)', () => {
+      const ticket = TicketEntity.create(makeTicketProps());
+      ticket.softDelete();
+      expect(ticket.canDelete('ABIERTO')).toBe(false);
+    });
+
+    it('soft-deleted tiene precedencia sobre cualquier estado', () => {
+      const ticket = TicketEntity.create(makeTicketProps());
+      ticket.softDelete();
+      expect(ticket.canDelete('ABIERTO')).toBe(false);
+      expect(ticket.canDelete('EN_PROGRESO')).toBe(false);
     });
   });
 
