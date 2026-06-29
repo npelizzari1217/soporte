@@ -56,9 +56,11 @@ const pool = new Pool({ connectionString: url });
 
 // ─── Seed SQL ─────────────────────────────────────────────────────────────────
 
-// ─ estados (8 valores base — spec tickets-core tabla estados) ─────────────────
+// ─ estados (10 valores — spec tickets-core + Change A) ───────────────────────
 //
-// Codigos, ordenes y nombres: SPEC-EXPLICIT (tabla "Seeds obligatorios" del spec).
+// Codigos, ordenes y nombres: SPEC-EXPLICIT (tabla "Seeds obligatorios" del spec)
+//   + SUSPENDIDO (c0...009, orden 45) y SIN_SOLUCION (c0...00a, orden 55)
+//     agregados por Change `tickets-maquina-estados-observaciones` (ADR-7).
 // color: omitido (nullable en schema, no definido en spec).
 // UUIDs: fijos deterministas prefijo c0 para estabilidad cross-env.
 //
@@ -69,7 +71,9 @@ INSERT INTO estados (id, codigo, nombre, orden) VALUES
   ('c0000000-0000-4000-c000-000000000003', 'APROBADO',              'Aprobado',                 30),
   ('c0000000-0000-4000-c000-000000000004', 'RECHAZADO',             'Rechazado',                35),
   ('c0000000-0000-4000-c000-000000000005', 'EN_PROGRESO',           'En progreso',              40),
+  ('c0000000-0000-4000-c000-000000000009', 'SUSPENDIDO',            'Suspendido',               45),
   ('c0000000-0000-4000-c000-000000000006', 'RESUELTO',              'Resuelto',                 50),
+  ('c0000000-0000-4000-c000-00000000000a', 'SIN_SOLUCION',          'Sin solución',             55),
   ('c0000000-0000-4000-c000-000000000007', 'CERRADO',               'Cerrado',                  60),
   ('c0000000-0000-4000-c000-000000000008', 'CANCELADO',             'Cancelado',                70)
 ON CONFLICT (codigo) DO NOTHING;
@@ -158,7 +162,7 @@ async function seed(): Promise<void> {
   console.log(`Iniciando seed de catálogos tenant en: ${url}`);
 
   await pool.query(SEED_ESTADOS_SQL);
-  console.log('  estados           → OK (8 valores base)');
+  console.log('  estados           → OK (10 valores: incluye SUSPENDIDO y SIN_SOLUCION — Change A)');
 
   await pool.query(SEED_PRIORIDADES_SQL);
   console.log('  prioridades       → OK (4 niveles)');

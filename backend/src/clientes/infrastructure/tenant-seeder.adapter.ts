@@ -19,7 +19,8 @@
  *   Correr seed dos veces sobre la misma DB no produce duplicados ni errores.
  *
  * Catálogos sembrados:
- *   estados (8), prioridades (4), tipos_ticket (3), tipo_operacion (8), tipos_componente (10)
+ *   estados (10), prioridades (4), tipos_ticket (3), tipo_operacion (8), tipos_componente (10)
+ *   (10 estados incluye SUSPENDIDO y SIN_SOLUCION — Change tickets-maquina-estados-observaciones / PR1)
  *
  * Ref spec: [SPEC:clientes/Seed de catálogos por tenant es idempotente]
  * Ref spec: [SPEC:tickets-core/Nuevo tenant tiene catálogos pre-poblados]
@@ -42,7 +43,9 @@ INSERT INTO estados (id, codigo, nombre, orden) VALUES
   ('c0000000-0000-4000-c000-000000000003', 'APROBADO',              'Aprobado',                 30),
   ('c0000000-0000-4000-c000-000000000004', 'RECHAZADO',             'Rechazado',                35),
   ('c0000000-0000-4000-c000-000000000005', 'EN_PROGRESO',           'En progreso',              40),
+  ('c0000000-0000-4000-c000-000000000009', 'SUSPENDIDO',            'Suspendido',               45),
   ('c0000000-0000-4000-c000-000000000006', 'RESUELTO',              'Resuelto',                 50),
+  ('c0000000-0000-4000-c000-00000000000a', 'SIN_SOLUCION',          'Sin solución',             55),
   ('c0000000-0000-4000-c000-000000000007', 'CERRADO',               'Cerrado',                  60),
   ('c0000000-0000-4000-c000-000000000008', 'CANCELADO',             'Cancelado',                70)
 ON CONFLICT (codigo) DO NOTHING;
