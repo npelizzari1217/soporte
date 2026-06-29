@@ -16,7 +16,13 @@
  * Tarea: 2.D.1
  */
 
-import { ExecutionContext, ForbiddenException, UnauthorizedException } from '@nestjs/common';
+import {
+  ExecutionContext,
+  ForbiddenException,
+  Logger,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { RolesGuard } from './roles.guard';
@@ -34,6 +40,7 @@ function makePayload(overrides: Partial<JwtPayload> = {}): JwtPayload {
     roles: ['ADMIN'],
     permisos: ['ticket:crear', 'compra:aprobar', 'usuario:gestionar'],
     cliente_nombre: 'Test Corp',
+    is_global_admin: false,
     ...overrides,
   };
 }
@@ -41,10 +48,11 @@ function makePayload(overrides: Partial<JwtPayload> = {}): JwtPayload {
 function makeContext(
   payload: JwtPayload | null,
   _meta?: { requiredRoles?: string[]; requiredPermissions?: string[] },
+  headers?: Record<string, string>,
 ): ExecutionContext {
   const request = {
     user: payload,
-    headers: {},
+    headers: headers ?? {},
   } as any;
   return {
     switchToHttp: () => ({ getRequest: () => request }),
@@ -277,5 +285,99 @@ describe('TenantGuard', () => {
       clienteId: CLIENTE_ID,
     });
     expect(mockPrismaService.getTenantClient).toHaveBeenCalledWith(VALID_CLIENTE_ROW.dbName);
+  });
+
+  // ─── Cross-tenant via X-Tenant-Id (T3.2–T3.6) ────────────────────────────
+
+  const TARGET_CLIENTE_ID = 'c2222222-0000-4000-8000-000000000002';
+  const TARGET_CLIENTE_ROW = {
+    id: TARGET_CLIENTE_ID,
+    dbName: 'tenant_db_target',
+    activo: true,
+    deletedAt: null,
+  };
+
+  // T3.2 — non-global admin + X-Tenant-Id header → ForbiddenException
+  it('T3.2: lanza ForbiddenException cuando is_global_admin=false y X-Tenant-Id está presente', async () => {
+    const ctx = makeContext(makePayload({ is_global_admin: false }), undefined, {
+      'x-tenant-id': TARGET_CLIENTE_ID,
+    });
+
+    await expect(guard.canActivate(ctx)).rejects.toThrow(ForbiddenException);
+    // No DB lookup should happen for the target tenant
+    expect(mockPrismaService.getMasterClient).not.toHaveBeenCalled();
+  });
+
+  // T3.3 — global admin + valid X-Tenant-Id → resolves target tenant + audit log
+  it('T3.3: global admin con X-Tenant-Id válido resuelve el tenant objetivo (no propio)', async () => {
+    const targetTenantClient = { isTargetTenantClient: true };
+    mockMasterClient.cliente.findUnique.mockResolvedValue(TARGET_CLIENTE_ROW);
+    mockPrismaService.getTenantClient.mockReturnValue(targetTenantClient);
+    const logSpy = vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+
+    const ctx = makeContext(
+      makePayload({ is_global_admin: true, cliente_id: CLIENTE_ID }),
+      undefined,
+      { 'x-tenant-id': TARGET_CLIENTE_ID },
+    );
+
+    const result = await guard.canActivate(ctx);
+
+    expect(result).toBe(true);
+    expect(mockMasterClient.cliente.findUnique).toHaveBeenCalledWith({
+      where: { id: TARGET_CLIENTE_ID },
+      select: { id: true, dbName: true, activo: true, deletedAt: true },
+    });
+    expect(mockTenantContext.bind).toHaveBeenCalledWith({
+      prismaClient: targetTenantClient,
+      dbName: TARGET_CLIENTE_ROW.dbName,
+      clienteId: TARGET_CLIENTE_ID,
+    });
+    // Audit log debe registrar acceso cross-tenant
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('CROSS-TENANT'));
+    logSpy.mockRestore();
+  });
+
+  // T3.4 — global admin + X-Tenant-Id para cliente inexistente → NotFoundException
+  it('T3.4: global admin con X-Tenant-Id inexistente lanza NotFoundException', async () => {
+    mockMasterClient.cliente.findUnique.mockResolvedValue(null);
+
+    const ctx = makeContext(makePayload({ is_global_admin: true }), undefined, {
+      'x-tenant-id': 'non-existent-tenant-id',
+    });
+
+    await expect(guard.canActivate(ctx)).rejects.toThrow(NotFoundException);
+  });
+
+  // T3.5 — global admin SIN header → resuelve propio tenant (no regresión)
+  it('T3.5: global admin sin X-Tenant-Id resuelve su propio tenant', async () => {
+    mockMasterClient.cliente.findUnique.mockResolvedValue(VALID_CLIENTE_ROW);
+
+    const ctx = makeContext(makePayload({ is_global_admin: true, cliente_id: CLIENTE_ID }));
+
+    const result = await guard.canActivate(ctx);
+
+    expect(result).toBe(true);
+    expect(mockMasterClient.cliente.findUnique).toHaveBeenCalledWith({
+      where: { id: CLIENTE_ID },
+      select: { id: true, dbName: true, activo: true, deletedAt: true },
+    });
+    expect(mockTenantContext.bind).toHaveBeenCalledWith(
+      expect.objectContaining({ clienteId: CLIENTE_ID }),
+    );
+  });
+
+  // T3.6 — non-global admin SIN header → resuelve propio tenant (existing behavior)
+  it('T3.6: non-global admin sin X-Tenant-Id resuelve su propio tenant (comportamiento base)', async () => {
+    mockMasterClient.cliente.findUnique.mockResolvedValue(VALID_CLIENTE_ROW);
+
+    const ctx = makeContext(makePayload({ is_global_admin: false, cliente_id: CLIENTE_ID }));
+
+    const result = await guard.canActivate(ctx);
+
+    expect(result).toBe(true);
+    expect(mockTenantContext.bind).toHaveBeenCalledWith(
+      expect.objectContaining({ clienteId: CLIENTE_ID }),
+    );
   });
 });
