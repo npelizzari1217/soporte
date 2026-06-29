@@ -144,8 +144,8 @@ describe('ComprasStateMachine', () => {
       const factory = new TicketStateMachineFactory();
       factory.register('COMPRAS', machine);
       const soporteMachine = factory.resolve('SOPORTE');
-      // SOPORTE usa BaseTicketStateMachine: ABIERTO→EN_PROGRESO es válido
-      expect(soporteMachine.puedeTransicionar('ABIERTO', 'EN_PROGRESO', ctx)).toBe(true);
+      // SOPORTE usa BaseTicketStateMachine (ADR-1): ABIERTO→APROBADO es válido
+      expect(soporteMachine.puedeTransicionar('ABIERTO', 'APROBADO', ctx)).toBe(true);
       // Y SOPORTE NO tiene PENDIENTE_APROBACION en su flujo
       expect(soporteMachine.puedeTransicionar('ABIERTO', 'PENDIENTE_APROBACION', ctx)).toBe(false);
     });

@@ -177,9 +177,10 @@ describe('CrearClienteUseCase — e2e provisioning real (7.C.1)', () => {
       await tenantPool.end();
     });
 
-    it('estados: 8 registros base sembrados', async () => {
+    it('estados: 10 registros base sembrados (incluye SUSPENDIDO y SIN_SOLUCION — Change A)', async () => {
+      // Change tickets-maquina-estados-observaciones / PR1: seed actualizado de 8 → 10.
       const res = await tenantPool.query<{ count: string }>('SELECT COUNT(*) FROM estados');
-      expect(parseInt(res.rows[0].count, 10)).toBe(8);
+      expect(parseInt(res.rows[0].count, 10)).toBe(10);
     });
 
     it('prioridades: 4 niveles sembrados', async () => {

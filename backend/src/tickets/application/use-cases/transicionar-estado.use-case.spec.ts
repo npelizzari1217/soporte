@@ -10,7 +10,10 @@ import { ITenantTransactionRunner } from '../../../shared/infrastructure/persist
 import { EstadoEntity } from '../../domain/entities/estado.entity';
 import { OperacionTicketEntity } from '../../domain/entities/operacion-ticket.entity';
 import { TicketEntity } from '../../domain/entities/ticket.entity';
-import { FechaResolucionRequeridaError } from '../../domain/errors/tickets.errors';
+import {
+  FechaResolucionRequeridaError,
+  TransicionInvalidaError,
+} from '../../domain/errors/tickets.errors';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -515,7 +518,13 @@ describe('TransicionarEstadoUseCase', () => {
       });
     });
 
-    describe('reapertura desde RESUELTO (RESUELTO → EN_PROGRESO)', () => {
+    describe('reapertura desde RESUELTO (RESUELTO → EN_PROGRESO) — ELIMINADA (ADR-1)', () => {
+      // ADR-1: RESUELTO es ahora estado TERMINAL. El arco RESUELTO→EN_PROGRESO (reapertura)
+      // ha sido eliminado del diagrama base. Cualquier intento de reabrir un ticket RESUELTO
+      // debe ser rechazado por la invariante de entidad (canTransitionTo) antes de llegar
+      // a la máquina de estados.
+      // Change: tickets-maquina-estados-observaciones / PR1
+
       const dtoReapertura: TransicionarEstadoDto = {
         ticketId: 'ticket-uuid-002',
         nuevoEstadoCodigo: 'EN_PROGRESO',
@@ -528,29 +537,35 @@ describe('TransicionarEstadoUseCase', () => {
         estadoRepo.findByCodigo.mockResolvedValue(makeEstado(ESTADO_EN_PROGRESO_ID, 'EN_PROGRESO'));
       });
 
-      it('ticket.fechaResolucion queda null después de la reapertura', async () => {
+      it('retorna TransicionInvalidaError (RESUELTO es terminal — reapertura dead code)', async () => {
+        const result = await useCase.execute(dtoReapertura);
+
+        expect(result.isFail()).toBe(true);
+        expect(result.getError()).toBeInstanceOf(TransicionInvalidaError);
+      });
+
+      it('no modifica el ticket ni llama a save cuando la reapertura es rechazada', async () => {
         const ticket = makeResueltoTicket();
         ticketRepo.findById.mockResolvedValue(ticket);
 
         await useCase.execute(dtoReapertura);
 
-        expect(ticket.fechaResolucion).toBeNull();
-      });
-
-      it('retorna Result.ok', async () => {
-        const result = await useCase.execute(dtoReapertura);
-
-        expect(result.isOk()).toBe(true);
+        expect(ticketRepo.save).not.toHaveBeenCalled();
+        expect(operacionRepo.save).not.toHaveBeenCalled();
+        // fechaResolucion no debe cambiar — la transición fue rechazada antes de tocar el ticket
+        expect(ticket.fechaResolucion).not.toBeNull();
       });
     });
 
-    describe('transición normal SIN involucrar RESUELTO (ABIERTO → EN_PROGRESO)', () => {
+    describe('transición normal SIN involucrar estados terminales (ABIERTO → EN_PROGRESO via mock machine)', () => {
+      // El mockMachine.puedeTransicionar devuelve true por defecto (beforeEach).
+      // Este test verifica que setFechaResolucion NO se llama en transiciones no terminales.
       it('setFechaResolucion NO es llamado (no se toca fechaResolucion)', async () => {
         const ticket = makeTicket(ESTADO_ABIERTO_ID, TIPO_TICKET_ID);
         const setFechaResolucionSpy = vi.spyOn(ticket, 'setFechaResolucion');
         ticketRepo.findById.mockResolvedValue(ticket);
 
-        await useCase.execute(validDto); // ABIERTO → EN_PROGRESO
+        await useCase.execute(validDto); // ABIERTO → EN_PROGRESO (via mockMachine que retorna true)
 
         expect(setFechaResolucionSpy).not.toHaveBeenCalled();
       });

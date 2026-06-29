@@ -4,7 +4,7 @@
  * Bootstrapea la app NestJS completa y verifica el flujo end-to-end:
  *   1. Login (JWT válido) → 200
  *   2. Crear ticket SOPORTE → 201
- *   3. Transicionar estado (ABIERTO → EN_PROGRESO) → 200
+ *   3. Transicionar estado (ABIERTO → APROBADO) → 200 (ADR-1: ABIERTO→EN_PROGRESO eliminado)
  *   4. Verificar operaciones_ticket en el timeline → 2 entradas CAMBIO_ESTADO
  *   5. Solicitud con cliente inactivo (mid-sesión) → 403 (TenantGuard)
  *   6. Request sin Bearer token → 401 (JwtAuthGuard)
@@ -296,10 +296,13 @@ describe('Smoke E2E — flujo completo (7.C.2)', () => {
       ticketId = data.id!;
     });
 
-    it('PATCH /tickets/:id/estado transiciona ABIERTO → EN_PROGRESO (200)', async () => {
+    it('PATCH /tickets/:id/estado transiciona ABIERTO → APROBADO (200)', async () => {
+      // ADR-1: ABIERTO→EN_PROGRESO fue eliminado del diagrama base.
+      // ABIERTO→APROBADO es el primer arco del nuevo flujo de aprobación.
+      // Change: tickets-maquina-estados-observaciones / PR1
       const { status } = await httpPatch(
         `${baseUrl}/tickets/${ticketId}/estado`,
-        { nuevoEstadoCodigo: 'EN_PROGRESO' },
+        { nuevoEstadoCodigo: 'APROBADO' },
         { Authorization: `Bearer ${jwtToken}` },
       );
       expect(status).toBe(200);
