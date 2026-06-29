@@ -74,34 +74,34 @@ describe('ListarReparacionesUseCase', () => {
   let useCase: ListarReparacionesUseCase;
 
   const mockEdiliciaRepo = {
-    findByTicketId: jest.fn(),
-    findById: jest.fn(),
-    findAll: jest.fn<Promise<TicketEdiliciaEntity[]>, []>(),
-    findByUbicacionId: jest.fn(),
-    save: jest.fn(),
-    delete: jest.fn(),
-  } satisfies jest.Mocked<ITicketEdiliciaRepository>;
+    findByTicketId: vi.fn(),
+    findById: vi.fn(),
+    findAll: vi.fn<Promise<TicketEdiliciaEntity[]>, []>(),
+    findByUbicacionId: vi.fn(),
+    save: vi.fn(),
+    delete: vi.fn(),
+  } satisfies vi.Mocked<ITicketEdiliciaRepository>;
 
   const mockTicketRepo = {
-    findById: jest.fn(),
-    findByNumero: jest.fn(),
-    findLastSecuencia: jest.fn(),
-    findAll: jest.fn(),
-    findByEstado: jest.fn(),
-    save: jest.fn<Promise<void>, [TicketEntity]>(),
-    delete: jest.fn(),
-  } satisfies jest.Mocked<ITicketRepository>;
+    findById: vi.fn(),
+    findByNumero: vi.fn(),
+    findLastSecuencia: vi.fn(),
+    findAll: vi.fn(),
+    findByEstado: vi.fn(),
+    save: vi.fn<Promise<void>, [TicketEntity]>(),
+    delete: vi.fn(),
+  } satisfies vi.Mocked<ITicketRepository>;
 
   const mockUbicacionRepo = {
-    findById: jest.fn(),
-    findAllActive: jest.fn(),
-    findSubtree: jest.fn(),
-    save: jest.fn(),
-    delete: jest.fn(),
-  } satisfies jest.Mocked<IUbicacionRepository>;
+    findById: vi.fn(),
+    findAllActive: vi.fn(),
+    findSubtree: vi.fn(),
+    save: vi.fn(),
+    delete: vi.fn(),
+  } satisfies vi.Mocked<IUbicacionRepository>;
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
     useCase = new ListarReparacionesUseCase(mockEdiliciaRepo, mockTicketRepo, mockUbicacionRepo);
   });
 

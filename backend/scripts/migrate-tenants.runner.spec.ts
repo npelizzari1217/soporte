@@ -18,9 +18,13 @@
  */
 
 // ---- Mock de pg ----
-// Pool se mockea ANTES del import del runner (jest.mock es hoisted).
-jest.mock('pg', () => ({
-  Pool: jest.fn(),
+// vi.hoisted garantiza que Pool sea un mock funcional antes del hoisting
+// de vi.mock. Sin vi.hoisted, vi.fn() en la factory puede no tener todas
+// las capacidades de mock en Vitest 4.x.
+const MockPool = vi.hoisted(() => vi.fn());
+
+vi.mock('pg', () => ({
+  Pool: MockPool,
 }));
 
 import { Pool } from 'pg';
@@ -30,24 +34,25 @@ const MASTER_URL = 'postgresql://soporte:soporte@localhost:5432/soporte_master_t
 const SCHEMA_PATH = 'prisma_tenant/schema.prisma';
 
 describe('MigrateTenantsRunner', () => {
-  let mockQueryFn: jest.Mock;
-  let mockEndFn: jest.Mock;
-  let execFn: jest.Mock;
+  let mockQueryFn: vi.Mock;
+  let mockEndFn: vi.Mock;
+  let execFn: vi.Mock;
   let runner: MigrateTenantsRunner;
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
 
     // Mocks frescos para cada test
-    mockQueryFn = jest.fn();
-    mockEndFn = jest.fn().mockResolvedValue(undefined);
-    execFn = jest.fn().mockResolvedValue(undefined);
+    mockQueryFn = vi.fn();
+    mockEndFn = vi.fn().mockResolvedValue(undefined);
+    execFn = vi.fn().mockResolvedValue(undefined);
 
-    // Pool constructor retorna siempre el mismo mockPool (shared reference)
-    (Pool as unknown as jest.Mock).mockImplementation(() => ({
-      query: mockQueryFn,
-      end: mockEndFn,
-    }));
+    // Pool constructor retorna un objeto con los mocks.
+    // Se usa function() (no arrow) porque Vitest 4.x requiere function/class
+    // cuando el mock se usa como constructor (new Pool(...)).
+    (Pool as unknown as vi.Mock).mockImplementation(function () {
+      return { query: mockQueryFn, end: mockEndFn };
+    });
 
     // Runner creado DESPUÉS de configurar el Pool mock
     runner = new MigrateTenantsRunner({
@@ -61,14 +66,14 @@ describe('MigrateTenantsRunner', () => {
 
   describe('Constructor — inicialización del pool', () => {
     it('creates a Pool with the master URL', () => {
-      const PoolCtor = Pool as unknown as jest.Mock;
+      const PoolCtor = Pool as unknown as vi.Mock;
       expect(PoolCtor).toHaveBeenCalledTimes(1);
       const [opts] = PoolCtor.mock.calls[0] as [{ connectionString: string }];
       expect(opts.connectionString).toBe(MASTER_URL);
     });
 
     it('creates only one Pool (no pool per tenant in constructor)', () => {
-      const PoolCtor = Pool as unknown as jest.Mock;
+      const PoolCtor = Pool as unknown as vi.Mock;
       expect(PoolCtor).toHaveBeenCalledTimes(1);
     });
   });
@@ -108,11 +113,7 @@ describe('MigrateTenantsRunner', () => {
   describe('run() — prisma migrate deploy per tenant', () => {
     it('calls migrate deploy once per active tenant', async () => {
       mockQueryFn.mockResolvedValue({
-        rows: [
-          { db_name: 'tenant_a' },
-          { db_name: 'tenant_b' },
-          { db_name: 'tenant_c' },
-        ],
+        rows: [{ db_name: 'tenant_a' }, { db_name: 'tenant_b' }, { db_name: 'tenant_c' }],
       });
 
       await runner.run();

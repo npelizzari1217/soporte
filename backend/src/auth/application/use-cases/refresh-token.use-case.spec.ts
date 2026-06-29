@@ -67,39 +67,39 @@ const makeCliente = (nombre = 'Acme Corp', activo = true): ClienteEntity =>
 
 // ─── Mocks de puertos ────────────────────────────────────────────────────────
 
-const makeRefreshTokenRepo = (): jest.Mocked<IRefreshTokenRepository> => ({
-  findByHash: jest.fn(),
-  revokeAllByUsuarioId: jest.fn().mockResolvedValue(undefined),
-  save: jest.fn().mockResolvedValue(undefined),
+const makeRefreshTokenRepo = (): vi.Mocked<IRefreshTokenRepository> => ({
+  findByHash: vi.fn(),
+  revokeAllByUsuarioId: vi.fn().mockResolvedValue(undefined),
+  save: vi.fn().mockResolvedValue(undefined),
 });
 
-const makeUsuarioRepo = (): jest.Mocked<IUsuarioRepository> => ({
-  findByEmail: jest.fn(),
-  findById: jest.fn(),
-  findByClienteId: jest.fn(),
-  save: jest.fn().mockResolvedValue(undefined),
+const makeUsuarioRepo = (): vi.Mocked<IUsuarioRepository> => ({
+  findByEmail: vi.fn(),
+  findById: vi.fn(),
+  findByClienteId: vi.fn(),
+  save: vi.fn().mockResolvedValue(undefined),
 });
 
-const makeTokenService = (): jest.Mocked<ITokenService> => ({
-  signJwt: jest.fn().mockReturnValue('new.jwt.token'),
-  verifyJwt: jest.fn().mockReturnValue(null),
+const makeTokenService = (): vi.Mocked<ITokenService> => ({
+  signJwt: vi.fn().mockReturnValue('new.jwt.token'),
+  verifyJwt: vi.fn().mockReturnValue(null),
 });
 
-const makeClienteRepo = (): jest.Mocked<IClienteRepository> => ({
-  findById: jest.fn(),
-  findByDbName: jest.fn(),
-  findAll: jest.fn(),
-  save: jest.fn().mockResolvedValue(undefined),
-  delete: jest.fn().mockResolvedValue(undefined),
+const makeClienteRepo = (): vi.Mocked<IClienteRepository> => ({
+  findById: vi.fn(),
+  findByDbName: vi.fn(),
+  findAll: vi.fn(),
+  save: vi.fn().mockResolvedValue(undefined),
+  delete: vi.fn().mockResolvedValue(undefined),
 });
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
 describe('RefreshTokenUseCase', () => {
-  let refreshTokenRepo: jest.Mocked<IRefreshTokenRepository>;
-  let usuarioRepo: jest.Mocked<IUsuarioRepository>;
-  let tokenService: jest.Mocked<ITokenService>;
-  let clienteRepo: jest.Mocked<IClienteRepository>;
+  let refreshTokenRepo: vi.Mocked<IRefreshTokenRepository>;
+  let usuarioRepo: vi.Mocked<IUsuarioRepository>;
+  let tokenService: vi.Mocked<ITokenService>;
+  let clienteRepo: vi.Mocked<IClienteRepository>;
   let useCase: RefreshTokenUseCase;
 
   const rawToken = 'a'.repeat(64); // simulated raw token

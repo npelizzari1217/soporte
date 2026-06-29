@@ -41,17 +41,17 @@ function makeTicket(deletedAt: Date | null = null): TicketEntity {
 describe('ObtenerTicketUseCase', () => {
   let useCase: ObtenerTicketUseCase;
   const mockTicketRepo = {
-    findById: jest.fn<Promise<TicketEntity | null>, [string]>(),
-    findByNumero: jest.fn(),
-    findLastSecuencia: jest.fn(),
-    findAll: jest.fn(),
-    findByEstado: jest.fn(),
-    save: jest.fn(),
-    delete: jest.fn(),
-  } satisfies jest.Mocked<ITicketRepository>;
+    findById: vi.fn<Promise<TicketEntity | null>, [string]>(),
+    findByNumero: vi.fn(),
+    findLastSecuencia: vi.fn(),
+    findAll: vi.fn(),
+    findByEstado: vi.fn(),
+    save: vi.fn(),
+    delete: vi.fn(),
+  } satisfies vi.Mocked<ITicketRepository>;
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
     useCase = new ObtenerTicketUseCase(mockTicketRepo);
   });
 

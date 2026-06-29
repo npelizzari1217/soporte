@@ -57,41 +57,41 @@ describe('AgregarComponenteUseCase', () => {
   let useCase: AgregarComponenteUseCase;
 
   const mockEquipoRepo = {
-    findById: jest.fn(),
-    findByNumeroSerie: jest.fn(),
-    findAllActive: jest.fn(),
-    findByAsignadoAId: jest.fn(),
-    save: jest.fn(),
-    delete: jest.fn(),
-  } satisfies jest.Mocked<IEquipoInformaticoRepository>;
+    findById: vi.fn(),
+    findByNumeroSerie: vi.fn(),
+    findAllActive: vi.fn(),
+    findByAsignadoAId: vi.fn(),
+    save: vi.fn(),
+    delete: vi.fn(),
+  } satisfies vi.Mocked<IEquipoInformaticoRepository>;
 
   const mockComponenteRepo = {
-    findById: jest.fn(),
-    findByEquipoId: jest.fn(),
-    save: jest.fn<Promise<void>, [ComponenteEquipoEntity]>(),
-    delete: jest.fn(),
-  } satisfies jest.Mocked<IComponenteEquipoRepository>;
+    findById: vi.fn(),
+    findByEquipoId: vi.fn(),
+    save: vi.fn<Promise<void>, [ComponenteEquipoEntity]>(),
+    delete: vi.fn(),
+  } satisfies vi.Mocked<IComponenteEquipoRepository>;
 
   const mockTiposComponenteRepo = {
-    findById: jest.fn(),
-    findByCodigo: jest.fn(),
-    findAllActive: jest.fn(),
-    save: jest.fn(),
-  } satisfies jest.Mocked<ITiposComponenteRepository>;
+    findById: vi.fn(),
+    findByCodigo: vi.fn(),
+    findAllActive: vi.fn(),
+    save: vi.fn(),
+  } satisfies vi.Mocked<ITiposComponenteRepository>;
 
   const mockTxRunner: ITenantTransactionRunner = {
-    run: jest.fn().mockImplementation((fn: () => Promise<unknown>) => fn()),
+    run: vi.fn().mockImplementation((fn: () => Promise<unknown>) => fn()),
   };
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
 
     mockEquipoRepo.findById.mockResolvedValue(makeEquipo(EQUIPO_ID));
     mockTiposComponenteRepo.findById.mockResolvedValue(
       makeTipoComponente(TIPO_COMPONENTE_ID, true),
     );
     mockComponenteRepo.save.mockResolvedValue(undefined);
-    (mockTxRunner.run as jest.Mock).mockImplementation((fn: () => Promise<unknown>) => fn());
+    (mockTxRunner.run as vi.Mock).mockImplementation((fn: () => Promise<unknown>) => fn());
 
     useCase = new AgregarComponenteUseCase(
       mockEquipoRepo,
@@ -227,7 +227,7 @@ describe('AgregarComponenteUseCase', () => {
 
     it('el save ocurre DENTRO del callback del txRunner', async () => {
       const callOrder: string[] = [];
-      (mockTxRunner.run as jest.Mock).mockImplementation(async (fn: () => Promise<unknown>) => {
+      (mockTxRunner.run as vi.Mock).mockImplementation(async (fn: () => Promise<unknown>) => {
         callOrder.push('tx:start');
         const r = await fn();
         callOrder.push('tx:end');

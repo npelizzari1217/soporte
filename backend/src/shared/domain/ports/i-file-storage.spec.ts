@@ -10,11 +10,11 @@ import { IFileStorage } from './i-file-storage';
 
 // ─── Spy / mock implementation ────────────────────────────────────────────────
 class MockFileStorage implements IFileStorage {
-  upload = jest.fn(async (_key: string, _buffer: Buffer, _mime: string): Promise<string> => {
+  upload = vi.fn(async (_key: string, _buffer: Buffer, _mime: string): Promise<string> => {
     return `https://storage.example.com/${_key}`;
   });
 
-  delete = jest.fn(async (_key: string): Promise<void> => {
+  delete = vi.fn(async (_key: string): Promise<void> => {
     // no-op
   });
 }
@@ -60,8 +60,8 @@ describe('IFileStorage port', () => {
     it('should not depend on the concrete implementation — only on the IFileStorage interface', async () => {
       // The use case only knows about IFileStorage, not about MockFileStorage
       const differentMock: IFileStorage = {
-        upload: jest.fn().mockResolvedValue('different-url'),
-        delete: jest.fn().mockResolvedValue(undefined),
+        upload: vi.fn().mockResolvedValue('different-url'),
+        delete: vi.fn().mockResolvedValue(undefined),
       };
       const ucWithDifferentImpl = new AttachFileToEntityUseCase(differentMock);
 

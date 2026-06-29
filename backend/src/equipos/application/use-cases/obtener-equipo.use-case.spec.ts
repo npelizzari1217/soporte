@@ -43,16 +43,16 @@ describe('ObtenerEquipoUseCase', () => {
   let useCase: ObtenerEquipoUseCase;
 
   const mockEquipoRepo = {
-    findById: jest.fn<Promise<EquipoInformaticoEntity | null>, [string]>(),
-    findByNumeroSerie: jest.fn(),
-    findAllActive: jest.fn(),
-    findByAsignadoAId: jest.fn(),
-    save: jest.fn(),
-    delete: jest.fn(),
-  } satisfies jest.Mocked<IEquipoInformaticoRepository>;
+    findById: vi.fn<Promise<EquipoInformaticoEntity | null>, [string]>(),
+    findByNumeroSerie: vi.fn(),
+    findAllActive: vi.fn(),
+    findByAsignadoAId: vi.fn(),
+    save: vi.fn(),
+    delete: vi.fn(),
+  } satisfies vi.Mocked<IEquipoInformaticoRepository>;
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
     useCase = new ObtenerEquipoUseCase(mockEquipoRepo);
   });
 

@@ -58,17 +58,17 @@ function makeMockCiclo(): CicloVigenteEntity {
 
 // ─── Mocks de use cases ───────────────────────────────────────────────────────
 
-function makeMockRegistrar(): jest.Mocked<RegistrarClienteUseCase> {
-  return { execute: jest.fn() } as unknown as jest.Mocked<RegistrarClienteUseCase>;
+function makeMockRegistrar(): vi.Mocked<RegistrarClienteUseCase> {
+  return { execute: vi.fn() } as unknown as vi.Mocked<RegistrarClienteUseCase>;
 }
-function makeMockSuspender(): jest.Mocked<SuspenderClienteUseCase> {
-  return { execute: jest.fn() } as unknown as jest.Mocked<SuspenderClienteUseCase>;
+function makeMockSuspender(): vi.Mocked<SuspenderClienteUseCase> {
+  return { execute: vi.fn() } as unknown as vi.Mocked<SuspenderClienteUseCase>;
 }
-function makeMockReactivar(): jest.Mocked<ReactivarClienteUseCase> {
-  return { execute: jest.fn() } as unknown as jest.Mocked<ReactivarClienteUseCase>;
+function makeMockReactivar(): vi.Mocked<ReactivarClienteUseCase> {
+  return { execute: vi.fn() } as unknown as vi.Mocked<ReactivarClienteUseCase>;
 }
-function makeMockCrearCiclo(): jest.Mocked<CrearCicloVigenteUseCase> {
-  return { execute: jest.fn() } as unknown as jest.Mocked<CrearCicloVigenteUseCase>;
+function makeMockCrearCiclo(): vi.Mocked<CrearCicloVigenteUseCase> {
+  return { execute: vi.fn() } as unknown as vi.Mocked<CrearCicloVigenteUseCase>;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -77,9 +77,9 @@ function makeMockCrearCiclo(): jest.Mocked<CrearCicloVigenteUseCase> {
 
 describe('ClientesController', () => {
   let controller: ClientesController;
-  let registrar: jest.Mocked<RegistrarClienteUseCase>;
-  let suspender: jest.Mocked<SuspenderClienteUseCase>;
-  let reactivar: jest.Mocked<ReactivarClienteUseCase>;
+  let registrar: vi.Mocked<RegistrarClienteUseCase>;
+  let suspender: vi.Mocked<SuspenderClienteUseCase>;
+  let reactivar: vi.Mocked<ReactivarClienteUseCase>;
 
   beforeEach(() => {
     registrar = makeMockRegistrar();
@@ -172,7 +172,7 @@ describe('ClientesController', () => {
 
 describe('CiclosVigentesController', () => {
   let controller: CiclosVigentesController;
-  let crearCiclo: jest.Mocked<CrearCicloVigenteUseCase>;
+  let crearCiclo: vi.Mocked<CrearCicloVigenteUseCase>;
 
   beforeEach(() => {
     crearCiclo = makeMockCrearCiclo();

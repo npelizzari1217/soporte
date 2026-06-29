@@ -55,25 +55,25 @@ describe('ListarComprasUseCase', () => {
   let useCase: ListarComprasUseCase;
 
   const mockTicketCompraRepo = {
-    findByTicketId: jest.fn(),
-    findById: jest.fn(),
-    findAll: jest.fn<Promise<TicketCompraEntity[]>, []>(),
-    save: jest.fn(),
-    delete: jest.fn(),
-  } satisfies jest.Mocked<ITicketCompraRepository>;
+    findByTicketId: vi.fn(),
+    findById: vi.fn(),
+    findAll: vi.fn<Promise<TicketCompraEntity[]>, []>(),
+    save: vi.fn(),
+    delete: vi.fn(),
+  } satisfies vi.Mocked<ITicketCompraRepository>;
 
   const mockTicketRepo = {
-    findById: jest.fn(),
-    findByNumero: jest.fn(),
-    findLastSecuencia: jest.fn(),
-    findAll: jest.fn(),
-    findByEstado: jest.fn(),
-    save: jest.fn<Promise<void>, [TicketEntity]>(),
-    delete: jest.fn(),
-  } satisfies jest.Mocked<ITicketRepository>;
+    findById: vi.fn(),
+    findByNumero: vi.fn(),
+    findLastSecuencia: vi.fn(),
+    findAll: vi.fn(),
+    findByEstado: vi.fn(),
+    save: vi.fn<Promise<void>, [TicketEntity]>(),
+    delete: vi.fn(),
+  } satisfies vi.Mocked<ITicketRepository>;
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
     useCase = new ListarComprasUseCase(mockTicketCompraRepo, mockTicketRepo);
   });
 

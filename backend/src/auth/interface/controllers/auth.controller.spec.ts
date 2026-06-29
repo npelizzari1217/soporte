@@ -20,19 +20,19 @@ import { ClienteInactivoError, CredencialesInvalidasError } from '../../domain/e
 // ─── Mocks ────────────────────────────────────────────────────────────────────
 
 function makeLoginUseCase() {
-  return { execute: jest.fn() };
+  return { execute: vi.fn() };
 }
 
 function makeRefreshUseCase() {
-  return { execute: jest.fn() };
+  return { execute: vi.fn() };
 }
 
 function makeRevocarTokenUseCase() {
-  return { execute: jest.fn() };
+  return { execute: vi.fn() };
 }
 
 function makeRevocarTodosUseCase() {
-  return { execute: jest.fn() };
+  return { execute: vi.fn() };
 }
 
 // ─── Suite ────────────────────────────────────────────────────────────────────

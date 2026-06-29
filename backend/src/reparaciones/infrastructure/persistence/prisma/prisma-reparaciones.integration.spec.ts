@@ -704,7 +704,7 @@ describe('Reparaciones Infrastructure Repos — Integration (5.C.1)', () => {
       // Spy: el primer delete (raíz) pasa, el segundo (hijo) lanza → fuerza rollback de la $transaction
       const realDeleteFn = ubicacionRepo.delete.bind(ubicacionRepo);
       let deleteCallCount = 0;
-      jest.spyOn(ubicacionRepo, 'delete').mockImplementation(async (id: string) => {
+      vi.spyOn(ubicacionRepo, 'delete').mockImplementation(async (id: string) => {
         deleteCallCount++;
         if (deleteCallCount >= 2) {
           throw new Error('Error simulado para forzar rollback de la $transaction');
@@ -726,7 +726,7 @@ describe('Reparaciones Infrastructure Repos — Integration (5.C.1)', () => {
           withTenant(() => useCase.execute({ ubicacionId: raiz.id, autorId: AUTOR_TX_ID })),
         ).rejects.toThrow('Error simulado');
       } finally {
-        jest.restoreAllMocks();
+        vi.restoreAllMocks();
       }
 
       // ── Verificar rollback total: NADA fue persistido ──

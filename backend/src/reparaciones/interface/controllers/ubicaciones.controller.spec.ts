@@ -51,8 +51,8 @@ function makeUbicacion(): UbicacionEntity {
 
 function makeUseCaseMocks() {
   return {
-    crearUbicacionUseCase: { execute: jest.fn() },
-    eliminarUbicacionUseCase: { execute: jest.fn() },
+    crearUbicacionUseCase: { execute: vi.fn() },
+    eliminarUbicacionUseCase: { execute: vi.fn() },
   };
 }
 

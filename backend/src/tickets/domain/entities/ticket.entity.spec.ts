@@ -186,14 +186,18 @@ describe('TicketEntity', () => {
     // Ref spec: tickets-core §"Campo prohibido incluido en body es ignorado"
 
     it('no modifica ninguna prop cuando el objeto está vacío', () => {
-      const ticket = TicketEntity.create(makeTicketProps({ titulo: 'Original', descripcion: 'desc' }));
+      const ticket = TicketEntity.create(
+        makeTicketProps({ titulo: 'Original', descripcion: 'desc' }),
+      );
       ticket.updateDatos({});
       expect(ticket.titulo).toBe('Original');
       expect(ticket.descripcion).toBe('desc');
     });
 
     it('actualiza el título cuando viene definido con valor no-vacío', () => {
-      const ticket = TicketEntity.create(makeTicketProps({ titulo: 'Original', descripcion: 'desc' }));
+      const ticket = TicketEntity.create(
+        makeTicketProps({ titulo: 'Original', descripcion: 'desc' }),
+      );
       ticket.updateDatos({ titulo: 'Nuevo título' });
       expect(ticket.titulo).toBe('Nuevo título');
       expect(ticket.descripcion).toBe('desc'); // no tocado

@@ -81,45 +81,45 @@ const makeCliente = (nombre = 'Empresa Test', activo = true): ClienteEntity =>
 
 // ─── Mocks de puertos ────────────────────────────────────────────────────────
 
-const makeHashProvider = (): jest.Mocked<IHashProvider> => ({
-  hash: jest.fn().mockResolvedValue('$argon2id$hashed'),
-  verify: jest.fn().mockResolvedValue(true),
+const makeHashProvider = (): vi.Mocked<IHashProvider> => ({
+  hash: vi.fn().mockResolvedValue('$argon2id$hashed'),
+  verify: vi.fn().mockResolvedValue(true),
 });
 
-const makeTokenService = (): jest.Mocked<ITokenService> => ({
-  signJwt: jest.fn().mockReturnValue('signed.jwt.token'),
-  verifyJwt: jest.fn().mockReturnValue(null),
+const makeTokenService = (): vi.Mocked<ITokenService> => ({
+  signJwt: vi.fn().mockReturnValue('signed.jwt.token'),
+  verifyJwt: vi.fn().mockReturnValue(null),
 });
 
-const makeUsuarioRepo = (): jest.Mocked<IUsuarioRepository> => ({
-  findByEmail: jest.fn(),
-  findById: jest.fn(),
-  findByClienteId: jest.fn(),
-  save: jest.fn().mockResolvedValue(undefined),
+const makeUsuarioRepo = (): vi.Mocked<IUsuarioRepository> => ({
+  findByEmail: vi.fn(),
+  findById: vi.fn(),
+  findByClienteId: vi.fn(),
+  save: vi.fn().mockResolvedValue(undefined),
 });
 
-const makeClienteRepo = (): jest.Mocked<IClienteRepository> => ({
-  findByDbName: jest.fn(),
-  findById: jest.fn(),
-  findAll: jest.fn(),
-  save: jest.fn(),
-  delete: jest.fn(),
+const makeClienteRepo = (): vi.Mocked<IClienteRepository> => ({
+  findByDbName: vi.fn(),
+  findById: vi.fn(),
+  findAll: vi.fn(),
+  save: vi.fn(),
+  delete: vi.fn(),
 });
 
-const makeRefreshTokenRepo = (): jest.Mocked<IRefreshTokenRepository> => ({
-  findByHash: jest.fn(),
-  revokeAllByUsuarioId: jest.fn().mockResolvedValue(undefined),
-  save: jest.fn().mockResolvedValue(undefined),
+const makeRefreshTokenRepo = (): vi.Mocked<IRefreshTokenRepository> => ({
+  findByHash: vi.fn(),
+  revokeAllByUsuarioId: vi.fn().mockResolvedValue(undefined),
+  save: vi.fn().mockResolvedValue(undefined),
 });
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
 describe('LoginUseCase', () => {
-  let usuarioRepo: jest.Mocked<IUsuarioRepository>;
-  let clienteRepo: jest.Mocked<IClienteRepository>;
-  let hashProvider: jest.Mocked<IHashProvider>;
-  let tokenService: jest.Mocked<ITokenService>;
-  let refreshTokenRepo: jest.Mocked<IRefreshTokenRepository>;
+  let usuarioRepo: vi.Mocked<IUsuarioRepository>;
+  let clienteRepo: vi.Mocked<IClienteRepository>;
+  let hashProvider: vi.Mocked<IHashProvider>;
+  let tokenService: vi.Mocked<ITokenService>;
+  let refreshTokenRepo: vi.Mocked<IRefreshTokenRepository>;
   let useCase: LoginUseCase;
 
   beforeEach(() => {

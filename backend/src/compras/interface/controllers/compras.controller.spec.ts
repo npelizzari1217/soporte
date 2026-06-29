@@ -106,11 +106,11 @@ function makeCreateDto(): CreateTicketCompraHttpDto {
 
 function makeUseCaseMocks() {
   return {
-    listarComprasUseCase: { execute: jest.fn() },
-    crearTicketCompraUseCase: { execute: jest.fn() },
-    enviarAAprobacionUseCase: { execute: jest.fn() },
-    aprobarCompraUseCase: { execute: jest.fn() },
-    rechazarCompraUseCase: { execute: jest.fn() },
+    listarComprasUseCase: { execute: vi.fn() },
+    crearTicketCompraUseCase: { execute: vi.fn() },
+    enviarAAprobacionUseCase: { execute: vi.fn() },
+    aprobarCompraUseCase: { execute: vi.fn() },
+    rechazarCompraUseCase: { execute: vi.fn() },
   };
 }
 

@@ -80,7 +80,7 @@ function makeCreateDto(): CreateTicketEdilicioHttpDto {
 
 function makeUseCaseMocks() {
   return {
-    crearTicketEdilicioUseCase: { execute: jest.fn() },
+    crearTicketEdilicioUseCase: { execute: vi.fn() },
   };
 }
 

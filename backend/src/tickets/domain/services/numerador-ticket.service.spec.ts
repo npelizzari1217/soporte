@@ -26,7 +26,7 @@ function makeRepoStub(
   lastSecuencia: number,
 ): Pick<import('../ports/i-ticket.repository').ITicketRepository, 'findLastSecuencia'> {
   return {
-    findLastSecuencia: jest.fn().mockResolvedValue(lastSecuencia),
+    findLastSecuencia: vi.fn().mockResolvedValue(lastSecuencia),
   };
 }
 
@@ -161,7 +161,7 @@ describe('NumeradorTicket', () => {
       const tipoId = 'e0000000-0000-4000-e000-000000000001';
       const anio = 2026;
       const repo = makeRepoStub(0);
-      const findLastSecuenciaSpy = repo.findLastSecuencia as jest.Mock;
+      const findLastSecuenciaSpy = repo.findLastSecuencia as vi.Mock;
 
       const numerador = new NumeradorTicket(repo);
       await numerador.generarNumero(tipoId, 'SOPORTE', anio);
@@ -222,7 +222,7 @@ describe('NumeradorTicket', () => {
 
     it('NO llama a findLastSecuencia cuando el tipoCodigo es desconocido', async () => {
       const repo = makeRepoStub(0);
-      const spy = repo.findLastSecuencia as jest.Mock;
+      const spy = repo.findLastSecuencia as vi.Mock;
       const numerador = new NumeradorTicket(repo);
 
       await numerador.generarNumero('tipo-id', 'INVALIDO', 2026);

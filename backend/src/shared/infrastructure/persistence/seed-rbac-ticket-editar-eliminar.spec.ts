@@ -45,17 +45,13 @@ describe('Migration: seed_rbac_ticket_editar_eliminar (master)', () => {
 
   describe('permisos sembrados con UUIDs deterministas', () => {
     it("ticket:editar existe con id 'b0000000-0000-4000-b000-000000000012'", async () => {
-      const { rows } = await pool.query(
-        "SELECT id FROM permisos WHERE codigo = 'ticket:editar'",
-      );
+      const { rows } = await pool.query("SELECT id FROM permisos WHERE codigo = 'ticket:editar'");
       expect(rows).toHaveLength(1);
       expect(rows[0].id).toBe('b0000000-0000-4000-b000-000000000012');
     });
 
     it("ticket:eliminar existe con id 'b0000000-0000-4000-b000-000000000013'", async () => {
-      const { rows } = await pool.query(
-        "SELECT id FROM permisos WHERE codigo = 'ticket:eliminar'",
-      );
+      const { rows } = await pool.query("SELECT id FROM permisos WHERE codigo = 'ticket:eliminar'");
       expect(rows).toHaveLength(1);
       expect(rows[0].id).toBe('b0000000-0000-4000-b000-000000000013');
     });

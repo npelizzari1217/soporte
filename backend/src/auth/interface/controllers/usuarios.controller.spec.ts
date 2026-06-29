@@ -23,11 +23,11 @@ import {
 // ─── Mocks ────────────────────────────────────────────────────────────────────
 
 function makeAsignarRolUseCase() {
-  return { execute: jest.fn() };
+  return { execute: vi.fn() };
 }
 
 function makeBajaUsuarioUseCase() {
-  return { execute: jest.fn() };
+  return { execute: vi.fn() };
 }
 
 // ─── Suite ────────────────────────────────────────────────────────────────────

@@ -53,8 +53,8 @@ function makeCreateItemDto(): CreateItemCompraHttpDto {
 
 function makeUseCaseMocks() {
   return {
-    agregarItemCompraUseCase: { execute: jest.fn() },
-    eliminarItemCompraUseCase: { execute: jest.fn() },
+    agregarItemCompraUseCase: { execute: vi.fn() },
+    eliminarItemCompraUseCase: { execute: vi.fn() },
   };
 }
 

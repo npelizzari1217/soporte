@@ -20,12 +20,12 @@ import { ClienteNotFoundError } from '../../domain/errors/clientes.errors';
 
 // ─── Mock del repositorio ──────────────────────────────────────────────────────
 
-const makeMockRepo = (): jest.Mocked<IClienteRepository> => ({
-  findById: jest.fn(),
-  findByDbName: jest.fn(),
-  findAll: jest.fn(),
-  save: jest.fn(),
-  delete: jest.fn(),
+const makeMockRepo = (): vi.Mocked<IClienteRepository> => ({
+  findById: vi.fn(),
+  findByDbName: vi.fn(),
+  findAll: vi.fn(),
+  save: vi.fn(),
+  delete: vi.fn(),
 });
 
 const makeCliente = (activo = true) =>
@@ -43,7 +43,7 @@ const makeCliente = (activo = true) =>
 
 describe('SuspenderClienteUseCase', () => {
   let useCase: SuspenderClienteUseCase;
-  let repo: jest.Mocked<IClienteRepository>;
+  let repo: vi.Mocked<IClienteRepository>;
 
   beforeEach(() => {
     repo = makeMockRepo();
@@ -114,7 +114,7 @@ describe('SuspenderClienteUseCase', () => {
 
 describe('ReactivarClienteUseCase', () => {
   let useCase: ReactivarClienteUseCase;
-  let repo: jest.Mocked<IClienteRepository>;
+  let repo: vi.Mocked<IClienteRepository>;
 
   beforeEach(() => {
     repo = makeMockRepo();

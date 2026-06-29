@@ -119,7 +119,7 @@ describe('Result.map()', () => {
   });
 
   it('should not call the transform function when result is fail', () => {
-    const transform = jest.fn((n: number) => n * 2);
+    const transform = vi.fn((n: number) => n * 2);
     const error = new NotFoundError('Not found');
     const result = Result.fail<number, NotFoundError>(error);
 
@@ -142,7 +142,7 @@ describe('Result.map()', () => {
 
   it('should short-circuit on first failure when chaining', () => {
     const error = new ValidationError('bad');
-    const transform = jest.fn((n: number) => n * 2);
+    const transform = vi.fn((n: number) => n * 2);
 
     const result = Result.fail<number, ValidationError>(error).map(transform).map(transform);
 

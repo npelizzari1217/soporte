@@ -14,12 +14,12 @@ import { ClienteConflictError } from '../../domain/errors/clientes.errors';
 
 // ─── Mock del repositorio ──────────────────────────────────────────────────────
 
-const makeMockRepo = (): jest.Mocked<IClienteRepository> => ({
-  findById: jest.fn(),
-  findByDbName: jest.fn(),
-  findAll: jest.fn(),
-  save: jest.fn(),
-  delete: jest.fn(),
+const makeMockRepo = (): vi.Mocked<IClienteRepository> => ({
+  findById: vi.fn(),
+  findByDbName: vi.fn(),
+  findAll: vi.fn(),
+  save: vi.fn(),
+  delete: vi.fn(),
 });
 
 const validDto: RegistrarClienteDto = {
@@ -31,7 +31,7 @@ const validDto: RegistrarClienteDto = {
 
 describe('RegistrarClienteUseCase', () => {
   let useCase: RegistrarClienteUseCase;
-  let repo: jest.Mocked<IClienteRepository>;
+  let repo: vi.Mocked<IClienteRepository>;
 
   beforeEach(() => {
     repo = makeMockRepo();

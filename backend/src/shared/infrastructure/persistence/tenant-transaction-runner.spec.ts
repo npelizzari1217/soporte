@@ -17,17 +17,17 @@ describe('TenantTransactionRunner', () => {
 
   // Mock del cliente tx (el que Prisma pasa dentro del callback de $transaction)
   const makeTxClient = () => ({
-    $transaction: jest.fn(),
-    $disconnect: jest.fn(),
+    $transaction: vi.fn(),
+    $disconnect: vi.fn(),
     masterSeedVersion: {},
   });
 
   // Mock del cliente "normal" (antes de la transacción)
   const makePrismaClient = (txClient: ReturnType<typeof makeTxClient>) => ({
-    $transaction: jest
+    $transaction: vi
       .fn()
       .mockImplementation((fn: (tx: unknown) => Promise<unknown>) => fn(txClient)),
-    $disconnect: jest.fn(),
+    $disconnect: vi.fn(),
     masterSeedVersion: {},
   });
 

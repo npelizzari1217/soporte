@@ -43,17 +43,13 @@ describe('Migration: seed_tipo_operacion_edicion_eliminacion (tenant)', () => {
   // ─── tipo_operacion sembrados ──────────────────────────────────────────────
 
   it("EDICION existe con id 'f0000000-0000-4000-f000-000000000007'", async () => {
-    const { rows } = await pool.query(
-      "SELECT id FROM tipo_operacion WHERE codigo = 'EDICION'",
-    );
+    const { rows } = await pool.query("SELECT id FROM tipo_operacion WHERE codigo = 'EDICION'");
     expect(rows).toHaveLength(1);
     expect(rows[0].id).toBe('f0000000-0000-4000-f000-000000000007');
   });
 
   it("ELIMINACION existe con id 'f0000000-0000-4000-f000-000000000008'", async () => {
-    const { rows } = await pool.query(
-      "SELECT id FROM tipo_operacion WHERE codigo = 'ELIMINACION'",
-    );
+    const { rows } = await pool.query("SELECT id FROM tipo_operacion WHERE codigo = 'ELIMINACION'");
     expect(rows).toHaveLength(1);
     expect(rows[0].id).toBe('f0000000-0000-4000-f000-000000000008');
   });

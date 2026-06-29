@@ -88,30 +88,30 @@ describe('EliminarTicketUseCase', () => {
   let useCase: EliminarTicketUseCase;
 
   const mockTicketRepo = {
-    findById: jest.fn<Promise<TicketEntity | null>, [string]>(),
-    findByNumero: jest.fn(),
-    findLastSecuencia: jest.fn(),
-    findAll: jest.fn(),
-    findByEstado: jest.fn(),
-    save: jest.fn<Promise<void>, [TicketEntity]>(),
-    delete: jest.fn(),
-  } satisfies jest.Mocked<ITicketRepository>;
+    findById: vi.fn<Promise<TicketEntity | null>, [string]>(),
+    findByNumero: vi.fn(),
+    findLastSecuencia: vi.fn(),
+    findAll: vi.fn(),
+    findByEstado: vi.fn(),
+    save: vi.fn<Promise<void>, [TicketEntity]>(),
+    delete: vi.fn(),
+  } satisfies vi.Mocked<ITicketRepository>;
 
   const mockOperacionRepo = {
-    findByTicketId: jest.fn(),
-    save: jest.fn<Promise<void>, [OperacionTicketEntity]>(),
-  } satisfies jest.Mocked<IOperacionTicketRepository>;
+    findByTicketId: vi.fn(),
+    save: vi.fn<Promise<void>, [OperacionTicketEntity]>(),
+  } satisfies vi.Mocked<IOperacionTicketRepository>;
 
   const mockTipoOperacionRepo = {
-    findIdByCodigo: jest.fn<Promise<string | null>, [string]>(),
-  } satisfies jest.Mocked<ITipoOperacionRepository>;
+    findIdByCodigo: vi.fn<Promise<string | null>, [string]>(),
+  } satisfies vi.Mocked<ITipoOperacionRepository>;
 
   const txRunner: ITenantTransactionRunner = {
-    run: jest.fn().mockImplementation(async (cb: () => Promise<void>) => cb()),
+    run: vi.fn().mockImplementation(async (cb: () => Promise<void>) => cb()),
   };
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
     useCase = new EliminarTicketUseCase(
       mockTicketRepo,
       mockOperacionRepo,

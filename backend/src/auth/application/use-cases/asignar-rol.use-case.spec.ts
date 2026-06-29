@@ -61,22 +61,22 @@ const makeUsuario = (
 
 // ─── Mocks de puertos ────────────────────────────────────────────────────────
 
-const makeUsuarioRepo = (): jest.Mocked<IUsuarioRepository> => ({
-  findByEmail: jest.fn(),
-  findById: jest.fn(),
-  findByClienteId: jest.fn(),
-  save: jest.fn().mockResolvedValue(undefined),
+const makeUsuarioRepo = (): vi.Mocked<IUsuarioRepository> => ({
+  findByEmail: vi.fn(),
+  findById: vi.fn(),
+  findByClienteId: vi.fn(),
+  save: vi.fn().mockResolvedValue(undefined),
 });
 
-const makeRoleRepo = (): jest.Mocked<IRoleRepository> => ({
-  findByCodigo: jest.fn(),
-  findWithPermisos: jest.fn(),
+const makeRoleRepo = (): vi.Mocked<IRoleRepository> => ({
+  findByCodigo: vi.fn(),
+  findWithPermisos: vi.fn(),
 });
 
-const makeRefreshTokenRepo = (): jest.Mocked<IRefreshTokenRepository> => ({
-  findByHash: jest.fn(),
-  revokeAllByUsuarioId: jest.fn().mockResolvedValue(undefined),
-  save: jest.fn().mockResolvedValue(undefined),
+const makeRefreshTokenRepo = (): vi.Mocked<IRefreshTokenRepository> => ({
+  findByHash: vi.fn(),
+  revokeAllByUsuarioId: vi.fn().mockResolvedValue(undefined),
+  save: vi.fn().mockResolvedValue(undefined),
 });
 
 /**
@@ -84,15 +84,15 @@ const makeRefreshTokenRepo = (): jest.Mocked<IRefreshTokenRepository> => ({
  * Para tests unitarios, la transacción es transparente: simplemente llama fn().
  * El comportamiento transaccional real se testea en integration tests de infra.
  */
-const makeMasterTxRunner = (): jest.Mocked<IMasterTransactionRunner> => ({
-  run: jest.fn().mockImplementation(async (fn: () => Promise<unknown>) => fn()),
+const makeMasterTxRunner = (): vi.Mocked<IMasterTransactionRunner> => ({
+  run: vi.fn().mockImplementation(async (fn: () => Promise<unknown>) => fn()),
 });
 
 // ─── AsignarRolUseCase tests ──────────────────────────────────────────────────
 
 describe('AsignarRolUseCase', () => {
-  let usuarioRepo: jest.Mocked<IUsuarioRepository>;
-  let roleRepo: jest.Mocked<IRoleRepository>;
+  let usuarioRepo: vi.Mocked<IUsuarioRepository>;
+  let roleRepo: vi.Mocked<IRoleRepository>;
   let useCase: AsignarRolUseCase;
 
   beforeEach(() => {
@@ -212,9 +212,9 @@ describe('AsignarRolUseCase', () => {
 // ─── BajaUsuarioUseCase tests ─────────────────────────────────────────────────
 
 describe('BajaUsuarioUseCase', () => {
-  let usuarioRepo: jest.Mocked<IUsuarioRepository>;
-  let refreshTokenRepo: jest.Mocked<IRefreshTokenRepository>;
-  let masterTxRunner: jest.Mocked<IMasterTransactionRunner>;
+  let usuarioRepo: vi.Mocked<IUsuarioRepository>;
+  let refreshTokenRepo: vi.Mocked<IRefreshTokenRepository>;
+  let masterTxRunner: vi.Mocked<IMasterTransactionRunner>;
   let useCase: BajaUsuarioUseCase;
 
   beforeEach(() => {

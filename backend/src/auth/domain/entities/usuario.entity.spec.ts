@@ -13,10 +13,10 @@ import { IHashProvider } from '../ports/i-hash.provider';
 
 /** Mock del IHashProvider para aislar tests de infraestructura de hashing */
 const makeHashProvider = (
-  overrides: Partial<{ hash: jest.Mock; verify: jest.Mock }> = {},
+  overrides: Partial<{ hash: vi.Mock; verify: vi.Mock }> = {},
 ): IHashProvider => ({
-  hash: jest.fn().mockResolvedValue('$argon2id$hashed_value'),
-  verify: jest.fn().mockResolvedValue(true),
+  hash: vi.fn().mockResolvedValue('$argon2id$hashed_value'),
+  verify: vi.fn().mockResolvedValue(true),
   ...overrides,
 });
 
@@ -150,7 +150,7 @@ describe('UsuarioEntity', () => {
     it('almacena el hash retornado por el provider (no el plaintext)', async () => {
       const u = makeUsuario({ passwordHash: '' });
       const provider = makeHashProvider({
-        hash: jest.fn().mockResolvedValue('$argon2id$nuevo_hash'),
+        hash: vi.fn().mockResolvedValue('$argon2id$nuevo_hash'),
       });
       await u.hashPassword('mi_password_seguro', provider);
       expect(u.passwordHash).toBe('$argon2id$nuevo_hash');
@@ -176,14 +176,14 @@ describe('UsuarioEntity', () => {
 
     it('retorna true cuando hashProvider.verify retorna true', async () => {
       const u = makeUsuario({ passwordHash: 'correct_hash' });
-      const provider = makeHashProvider({ verify: jest.fn().mockResolvedValue(true) });
+      const provider = makeHashProvider({ verify: vi.fn().mockResolvedValue(true) });
       const result = await u.verifyPassword('correct_pass', provider);
       expect(result).toBe(true);
     });
 
     it('retorna false cuando hashProvider.verify retorna false', async () => {
       const u = makeUsuario({ passwordHash: 'correct_hash' });
-      const provider = makeHashProvider({ verify: jest.fn().mockResolvedValue(false) });
+      const provider = makeHashProvider({ verify: vi.fn().mockResolvedValue(false) });
       const result = await u.verifyPassword('wrong_pass', provider);
       expect(result).toBe(false);
     });

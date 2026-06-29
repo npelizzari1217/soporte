@@ -57,10 +57,10 @@ function makeContext(
 
 describe('JwtAuthGuard', () => {
   let guard: JwtAuthGuard;
-  let mockITokenService: { verifyJwt: jest.Mock };
+  let mockITokenService: { verifyJwt: vi.Mock };
 
   beforeEach(() => {
-    mockITokenService = { verifyJwt: jest.fn() };
+    mockITokenService = { verifyJwt: vi.fn() };
     guard = new JwtAuthGuard(mockITokenService as any);
   });
 
@@ -120,25 +120,25 @@ describe('RolesGuard', () => {
   });
 
   it('permite cuando no hay metadata de roles (endpoint público)', () => {
-    jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue(null);
+    vi.spyOn(reflector, 'getAllAndOverride').mockReturnValue(null);
     const ctx = makeContext(makePayload());
     expect(guard.canActivate(ctx)).toBe(true);
   });
 
   it('permite cuando el usuario tiene uno de los roles requeridos', () => {
-    jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue(['ADMIN', 'SOPORTE_IT']);
+    vi.spyOn(reflector, 'getAllAndOverride').mockReturnValue(['ADMIN', 'SOPORTE_IT']);
     const ctx = makeContext(makePayload({ roles: ['ADMIN'] }));
     expect(guard.canActivate(ctx)).toBe(true);
   });
 
   it('lanza ForbiddenException cuando el usuario no tiene ningún rol requerido', () => {
-    jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue(['ADMIN']);
+    vi.spyOn(reflector, 'getAllAndOverride').mockReturnValue(['ADMIN']);
     const ctx = makeContext(makePayload({ roles: ['SOLICITANTE'] }));
     expect(() => guard.canActivate(ctx)).toThrow(ForbiddenException);
   });
 
   it('lanza ForbiddenException cuando no hay usuario en el request (sin JwtAuthGuard previo)', () => {
-    jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue(['ADMIN']);
+    vi.spyOn(reflector, 'getAllAndOverride').mockReturnValue(['ADMIN']);
     const ctx = makeContext(null);
     expect(() => guard.canActivate(ctx)).toThrow(ForbiddenException);
   });
@@ -156,13 +156,13 @@ describe('PermissionsGuard', () => {
   });
 
   it('permite cuando no hay metadata de permisos (endpoint público)', () => {
-    jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue(null);
+    vi.spyOn(reflector, 'getAllAndOverride').mockReturnValue(null);
     const ctx = makeContext(makePayload());
     expect(guard.canActivate(ctx)).toBe(true);
   });
 
   it('permite cuando el usuario tiene todos los permisos requeridos', () => {
-    jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue(['ticket:crear', 'compra:aprobar']);
+    vi.spyOn(reflector, 'getAllAndOverride').mockReturnValue(['ticket:crear', 'compra:aprobar']);
     const ctx = makeContext(
       makePayload({ permisos: ['ticket:crear', 'compra:aprobar', 'usuario:gestionar'] }),
     );
@@ -170,13 +170,13 @@ describe('PermissionsGuard', () => {
   });
 
   it('lanza ForbiddenException cuando falta al menos un permiso requerido', () => {
-    jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue(['ticket:crear', 'rol:asignar']);
+    vi.spyOn(reflector, 'getAllAndOverride').mockReturnValue(['ticket:crear', 'rol:asignar']);
     const ctx = makeContext(makePayload({ permisos: ['ticket:crear'] }));
     expect(() => guard.canActivate(ctx)).toThrow(ForbiddenException);
   });
 
   it('lanza ForbiddenException cuando no hay usuario en el request', () => {
-    jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue(['ticket:crear']);
+    vi.spyOn(reflector, 'getAllAndOverride').mockReturnValue(['ticket:crear']);
     const ctx = makeContext(null);
     expect(() => guard.canActivate(ctx)).toThrow(ForbiddenException);
   });
@@ -186,9 +186,9 @@ describe('PermissionsGuard', () => {
 
 describe('TenantGuard', () => {
   let guard: TenantGuard;
-  let mockMasterClient: { cliente: { findUnique: jest.Mock } };
-  let mockPrismaService: { getMasterClient: jest.Mock; getTenantClient: jest.Mock };
-  let mockTenantContext: { bind: jest.Mock };
+  let mockMasterClient: { cliente: { findUnique: vi.Mock } };
+  let mockPrismaService: { getMasterClient: vi.Mock; getTenantClient: vi.Mock };
+  let mockTenantContext: { bind: vi.Mock };
 
   const CLIENTE_ID = 'c1111111-0000-4000-8000-000000000001';
   const VALID_CLIENTE_ROW = {
@@ -199,12 +199,12 @@ describe('TenantGuard', () => {
   };
 
   beforeEach(() => {
-    mockMasterClient = { cliente: { findUnique: jest.fn() } };
+    mockMasterClient = { cliente: { findUnique: vi.fn() } };
     mockPrismaService = {
-      getMasterClient: jest.fn().mockReturnValue(mockMasterClient),
-      getTenantClient: jest.fn().mockReturnValue({ isMockTenantClient: true }),
+      getMasterClient: vi.fn().mockReturnValue(mockMasterClient),
+      getTenantClient: vi.fn().mockReturnValue({ isMockTenantClient: true }),
     };
-    mockTenantContext = { bind: jest.fn() };
+    mockTenantContext = { bind: vi.fn() };
     guard = new TenantGuard(mockPrismaService as any, mockTenantContext as any);
   });
 

@@ -35,25 +35,25 @@ import { ClienteConflictError } from '../../domain/errors/clientes.errors';
 
 // ─── Factories de mocks ───────────────────────────────────────────────────────
 
-const makeClienteRepo = (): jest.Mocked<IClienteRepository> => ({
-  findById: jest.fn(),
-  findByDbName: jest.fn().mockResolvedValue(null), // default: no conflict
-  findAll: jest.fn(),
-  save: jest.fn().mockResolvedValue(undefined),
-  delete: jest.fn(),
+const makeClienteRepo = (): vi.Mocked<IClienteRepository> => ({
+  findById: vi.fn(),
+  findByDbName: vi.fn().mockResolvedValue(null), // default: no conflict
+  findAll: vi.fn(),
+  save: vi.fn().mockResolvedValue(undefined),
+  delete: vi.fn(),
 });
 
-const makeUsuarioRepo = (): jest.Mocked<IUsuarioRepository> => ({
-  findByEmail: jest.fn(),
-  findById: jest.fn(),
-  findByClienteId: jest.fn(),
-  save: jest.fn().mockResolvedValue(undefined),
+const makeUsuarioRepo = (): vi.Mocked<IUsuarioRepository> => ({
+  findByEmail: vi.fn(),
+  findById: vi.fn(),
+  findByClienteId: vi.fn(),
+  save: vi.fn().mockResolvedValue(undefined),
 });
 
 const ADMIN_ROLE_ID = 'a0000000-0000-4000-a000-000000000001';
 
-const makeRoleRepo = (): jest.Mocked<IRoleRepository> => ({
-  findByCodigo: jest
+const makeRoleRepo = (): vi.Mocked<IRoleRepository> => ({
+  findByCodigo: vi
     .fn()
     .mockResolvedValue(
       RoleEntity.create(
@@ -61,26 +61,26 @@ const makeRoleRepo = (): jest.Mocked<IRoleRepository> => ({
         ADMIN_ROLE_ID,
       ),
     ),
-  findWithPermisos: jest.fn(),
+  findWithPermisos: vi.fn(),
 });
 
-const makeAdminPort = (): jest.Mocked<IPostgresAdminPort> => ({
-  createDatabase: jest.fn().mockResolvedValue(undefined),
-  dropDatabase: jest.fn().mockResolvedValue(undefined),
-  databaseExists: jest.fn().mockResolvedValue(false),
+const makeAdminPort = (): vi.Mocked<IPostgresAdminPort> => ({
+  createDatabase: vi.fn().mockResolvedValue(undefined),
+  dropDatabase: vi.fn().mockResolvedValue(undefined),
+  databaseExists: vi.fn().mockResolvedValue(false),
 });
 
-const makeMigrationRunner = (): jest.Mocked<ITenantMigrationRunner> => ({
-  runMigrations: jest.fn().mockResolvedValue(undefined),
+const makeMigrationRunner = (): vi.Mocked<ITenantMigrationRunner> => ({
+  runMigrations: vi.fn().mockResolvedValue(undefined),
 });
 
-const makeSeeder = (): jest.Mocked<ITenantSeeder> => ({
-  seed: jest.fn().mockResolvedValue(undefined),
+const makeSeeder = (): vi.Mocked<ITenantSeeder> => ({
+  seed: vi.fn().mockResolvedValue(undefined),
 });
 
-const makeHashProvider = (): jest.Mocked<IHashProvider> => ({
-  hash: jest.fn().mockResolvedValue('$argon2id$hashed_password'),
-  verify: jest.fn(),
+const makeHashProvider = (): vi.Mocked<IHashProvider> => ({
+  hash: vi.fn().mockResolvedValue('$argon2id$hashed_password'),
+  verify: vi.fn(),
 });
 
 // ─── DTO de prueba ────────────────────────────────────────────────────────────
@@ -100,13 +100,13 @@ const validDto: CrearClienteDto = {
 
 describe('CrearClienteUseCase (provisioning completo)', () => {
   let useCase: CrearClienteUseCase;
-  let clienteRepo: jest.Mocked<IClienteRepository>;
-  let usuarioRepo: jest.Mocked<IUsuarioRepository>;
-  let roleRepo: jest.Mocked<IRoleRepository>;
-  let adminPort: jest.Mocked<IPostgresAdminPort>;
-  let migrationRunner: jest.Mocked<ITenantMigrationRunner>;
-  let seeder: jest.Mocked<ITenantSeeder>;
-  let hashProvider: jest.Mocked<IHashProvider>;
+  let clienteRepo: vi.Mocked<IClienteRepository>;
+  let usuarioRepo: vi.Mocked<IUsuarioRepository>;
+  let roleRepo: vi.Mocked<IRoleRepository>;
+  let adminPort: vi.Mocked<IPostgresAdminPort>;
+  let migrationRunner: vi.Mocked<ITenantMigrationRunner>;
+  let seeder: vi.Mocked<ITenantSeeder>;
+  let hashProvider: vi.Mocked<IHashProvider>;
 
   beforeEach(() => {
     clienteRepo = makeClienteRepo();

@@ -36,15 +36,15 @@ describe('SeleccionarPresupuestoUseCase', () => {
   let useCase: SeleccionarPresupuestoUseCase;
 
   const mockPresupuestoRepo = {
-    findById: jest.fn(),
-    findByTicketCompraId: jest.fn(),
-    findSelectedByTicketCompraId: jest.fn(),
-    save: jest.fn<Promise<void>, [PresupuestoEntity]>(),
-    delete: jest.fn(),
-  } satisfies jest.Mocked<IPresupuestoRepository>;
+    findById: vi.fn(),
+    findByTicketCompraId: vi.fn(),
+    findSelectedByTicketCompraId: vi.fn(),
+    save: vi.fn<Promise<void>, [PresupuestoEntity]>(),
+    delete: vi.fn(),
+  } satisfies vi.Mocked<IPresupuestoRepository>;
 
   const mockTxRunner: ITenantTransactionRunner = {
-    run: jest.fn().mockImplementation((fn: () => Promise<unknown>) => fn()),
+    run: vi.fn().mockImplementation((fn: () => Promise<unknown>) => fn()),
   };
 
   const validDto: SeleccionarPresupuestoDto = {
@@ -52,13 +52,13 @@ describe('SeleccionarPresupuestoUseCase', () => {
   };
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
 
     // Default: presupuesto nuevo existe, no hay presupuesto previamente seleccionado
     mockPresupuestoRepo.findById.mockResolvedValue(makePresupuesto('presupuesto-nuevo-001'));
     mockPresupuestoRepo.findSelectedByTicketCompraId.mockResolvedValue(null);
     mockPresupuestoRepo.save.mockResolvedValue(undefined);
-    (mockTxRunner.run as jest.Mock).mockImplementation((fn: () => Promise<unknown>) => fn());
+    (mockTxRunner.run as vi.Mock).mockImplementation((fn: () => Promise<unknown>) => fn());
 
     useCase = new SeleccionarPresupuestoUseCase(mockPresupuestoRepo, mockTxRunner);
   });
@@ -134,7 +134,7 @@ describe('SeleccionarPresupuestoUseCase', () => {
       const callOrder: string[] = [];
       const presupuestoAnterior = makePresupuesto('presupuesto-anterior-001', true);
       mockPresupuestoRepo.findSelectedByTicketCompraId.mockResolvedValue(presupuestoAnterior);
-      (mockTxRunner.run as jest.Mock).mockImplementation(async (fn: () => Promise<unknown>) => {
+      (mockTxRunner.run as vi.Mock).mockImplementation(async (fn: () => Promise<unknown>) => {
         callOrder.push('tx:start');
         const r = await fn();
         callOrder.push('tx:end');

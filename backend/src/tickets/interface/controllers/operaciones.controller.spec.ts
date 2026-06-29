@@ -50,10 +50,10 @@ function makeOperacion(
 
 describe('OperacionesController', () => {
   let controller: OperacionesController;
-  let listarOperacionesUseCase: { execute: jest.Mock };
+  let listarOperacionesUseCase: { execute: vi.Mock };
 
   beforeEach(() => {
-    listarOperacionesUseCase = { execute: jest.fn() };
+    listarOperacionesUseCase = { execute: vi.fn() };
     controller = new OperacionesController(listarOperacionesUseCase as any);
   });
 

@@ -141,20 +141,20 @@ function makeCiclo(overrides: Partial<CicloClienteProps> = {}): CicloClienteEnti
 
 function makeUseCaseMocks() {
   return {
-    crearTicketUseCase: { execute: jest.fn() },
-    listarTicketsUseCase: { execute: jest.fn() },
-    obtenerTicketUseCase: { execute: jest.fn() },
-    transicionarEstadoUseCase: { execute: jest.fn() },
-    asignarTicketUseCase: { execute: jest.fn() },
-    adjuntarArchivoUseCase: { execute: jest.fn() },
-    editarTicketUseCase: { execute: jest.fn() },
-    eliminarTicketUseCase: { execute: jest.fn() },
+    crearTicketUseCase: { execute: vi.fn() },
+    listarTicketsUseCase: { execute: vi.fn() },
+    obtenerTicketUseCase: { execute: vi.fn() },
+    transicionarEstadoUseCase: { execute: vi.fn() },
+    asignarTicketUseCase: { execute: vi.fn() },
+    adjuntarArchivoUseCase: { execute: vi.fn() },
+    editarTicketUseCase: { execute: vi.fn() },
+    eliminarTicketUseCase: { execute: vi.fn() },
     cicloClienteRepo: {
-      findById: jest.fn(),
-      findActive: jest.fn(),
-      findAll: jest.fn(),
-      save: jest.fn(),
-    } satisfies jest.Mocked<ICicloClienteRepository>,
+      findById: vi.fn(),
+      findActive: vi.fn(),
+      findAll: vi.fn(),
+      save: vi.fn(),
+    } satisfies vi.Mocked<ICicloClienteRepository>,
   };
 }
 

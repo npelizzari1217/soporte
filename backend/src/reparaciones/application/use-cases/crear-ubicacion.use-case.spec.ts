@@ -30,22 +30,22 @@ describe('CrearUbicacionUseCase', () => {
   let useCase: CrearUbicacionUseCase;
 
   const mockUbicacionRepo = {
-    findById: jest.fn(),
-    findAllActive: jest.fn(),
-    findSubtree: jest.fn(),
-    save: jest.fn<Promise<void>, [UbicacionEntity]>(),
-    delete: jest.fn(),
-  } satisfies jest.Mocked<IUbicacionRepository>;
+    findById: vi.fn(),
+    findAllActive: vi.fn(),
+    findSubtree: vi.fn(),
+    save: vi.fn<Promise<void>, [UbicacionEntity]>(),
+    delete: vi.fn(),
+  } satisfies vi.Mocked<IUbicacionRepository>;
 
   const mockTxRunner: ITenantTransactionRunner = {
-    run: jest.fn().mockImplementation((fn: () => Promise<unknown>) => fn()),
+    run: vi.fn().mockImplementation((fn: () => Promise<unknown>) => fn()),
   };
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
 
     mockUbicacionRepo.save.mockResolvedValue(undefined);
-    (mockTxRunner.run as jest.Mock).mockImplementation((fn: () => Promise<unknown>) => fn());
+    (mockTxRunner.run as vi.Mock).mockImplementation((fn: () => Promise<unknown>) => fn());
 
     useCase = new CrearUbicacionUseCase(mockUbicacionRepo, mockTxRunner);
   });

@@ -17,17 +17,19 @@ function makePrismaCicloRow(overrides: Partial<ReturnType<typeof buildRow>> = {}
   return buildRow(overrides);
 }
 
-function buildRow(overrides: Partial<{
-  id: string;
-  cicloVigenteId: string;
-  nombre: string;
-  fechaInicio: Date;
-  fechaFin: Date;
-  activo: boolean;
-  createdAt: Date;
-  updatedAt: Date;
-  deletedAt: Date | null;
-}> = {}) {
+function buildRow(
+  overrides: Partial<{
+    id: string;
+    cicloVigenteId: string;
+    nombre: string;
+    fechaInicio: Date;
+    fechaFin: Date;
+    activo: boolean;
+    createdAt: Date;
+    updatedAt: Date;
+    deletedAt: Date | null;
+  }> = {},
+) {
   return {
     id: CICLO_ID,
     cicloVigenteId: CICLO_VIGENTE_ID,
@@ -48,10 +50,10 @@ describe('PrismaCicloClienteRepository', () => {
   let repository: PrismaCicloClienteRepository;
 
   const mockCicloCliente = {
-    findUnique: jest.fn(),
-    findFirst: jest.fn(),
-    findMany: jest.fn(),
-    upsert: jest.fn(),
+    findUnique: vi.fn(),
+    findFirst: vi.fn(),
+    findMany: vi.fn(),
+    upsert: vi.fn(),
   };
 
   const mockPrisma = {
@@ -59,12 +61,12 @@ describe('PrismaCicloClienteRepository', () => {
   };
 
   const mockTenantContext = {
-    getClient: jest.fn().mockReturnValue(mockPrisma),
+    getClient: vi.fn().mockReturnValue(mockPrisma),
   } as unknown as TenantContext;
 
   beforeEach(() => {
-    jest.clearAllMocks();
-    mockTenantContext.getClient = jest.fn().mockReturnValue(mockPrisma);
+    vi.clearAllMocks();
+    mockTenantContext.getClient = vi.fn().mockReturnValue(mockPrisma);
     repository = new PrismaCicloClienteRepository(mockTenantContext);
   });
 

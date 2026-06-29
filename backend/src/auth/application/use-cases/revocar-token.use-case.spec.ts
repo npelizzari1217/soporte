@@ -35,16 +35,16 @@ const makeToken = (
     revokedAt: overrides.revokedAt ?? null,
   });
 
-const makeRefreshTokenRepo = (): jest.Mocked<IRefreshTokenRepository> => ({
-  findByHash: jest.fn(),
-  revokeAllByUsuarioId: jest.fn().mockResolvedValue(undefined),
-  save: jest.fn().mockResolvedValue(undefined),
+const makeRefreshTokenRepo = (): vi.Mocked<IRefreshTokenRepository> => ({
+  findByHash: vi.fn(),
+  revokeAllByUsuarioId: vi.fn().mockResolvedValue(undefined),
+  save: vi.fn().mockResolvedValue(undefined),
 });
 
 // ─── RevocarTokenUseCase tests ────────────────────────────────────────────────
 
 describe('RevocarTokenUseCase', () => {
-  let refreshTokenRepo: jest.Mocked<IRefreshTokenRepository>;
+  let refreshTokenRepo: vi.Mocked<IRefreshTokenRepository>;
   let useCase: RevocarTokenUseCase;
 
   const rawToken = 'b'.repeat(64);
@@ -128,7 +128,7 @@ describe('RevocarTokenUseCase', () => {
 // ─── RevocarTodosTokensUsuarioUseCase tests ───────────────────────────────────
 
 describe('RevocarTodosTokensUsuarioUseCase', () => {
-  let refreshTokenRepo: jest.Mocked<IRefreshTokenRepository>;
+  let refreshTokenRepo: vi.Mocked<IRefreshTokenRepository>;
   let useCase: RevocarTodosTokensUsuarioUseCase;
 
   beforeEach(() => {

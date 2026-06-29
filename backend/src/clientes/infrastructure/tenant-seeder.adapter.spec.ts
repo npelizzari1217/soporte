@@ -18,26 +18,26 @@ import { TenantSeederAdapter, PoolFactory } from './tenant-seeder.adapter';
 
 // ─── Mock de pg.Pool ──────────────────────────────────────────────────────────
 interface MockPool {
-  query: jest.MockedFunction<(sql: string) => Promise<unknown>>;
-  end: jest.MockedFunction<() => Promise<void>>;
+  query: vi.MockedFunction<(sql: string) => Promise<unknown>>;
+  end: vi.MockedFunction<() => Promise<void>>;
 }
 
 function makeMockPool(): MockPool {
   return {
-    query: jest.fn().mockResolvedValue({ rows: [], rowCount: 0 }),
-    end: jest.fn().mockResolvedValue(undefined),
+    query: vi.fn().mockResolvedValue({ rows: [], rowCount: 0 }),
+    end: vi.fn().mockResolvedValue(undefined),
   };
 }
 
 describe('TenantSeederAdapter (unit)', () => {
   const MASTER_URL = 'postgresql://user:pass@host:5432/soporte_master';
   let mockPool: MockPool;
-  let poolFactory: jest.MockedFunction<PoolFactory>;
+  let poolFactory: vi.MockedFunction<PoolFactory>;
   let adapter: TenantSeederAdapter;
 
   beforeEach(() => {
     mockPool = makeMockPool();
-    poolFactory = jest.fn().mockReturnValue(mockPool);
+    poolFactory = vi.fn().mockReturnValue(mockPool);
     adapter = new TenantSeederAdapter(MASTER_URL, poolFactory as PoolFactory);
   });
 

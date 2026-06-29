@@ -120,48 +120,48 @@ describe('EditarTicketUseCase', () => {
   let useCase: EditarTicketUseCase;
 
   const mockTicketRepo = {
-    findById: jest.fn<Promise<TicketEntity | null>, [string]>(),
-    findByNumero: jest.fn(),
-    findLastSecuencia: jest.fn(),
-    findAll: jest.fn(),
-    findByEstado: jest.fn(),
-    save: jest.fn<Promise<void>, [TicketEntity]>(),
-    delete: jest.fn(),
-  } satisfies jest.Mocked<ITicketRepository>;
+    findById: vi.fn<Promise<TicketEntity | null>, [string]>(),
+    findByNumero: vi.fn(),
+    findLastSecuencia: vi.fn(),
+    findAll: vi.fn(),
+    findByEstado: vi.fn(),
+    save: vi.fn<Promise<void>, [TicketEntity]>(),
+    delete: vi.fn(),
+  } satisfies vi.Mocked<ITicketRepository>;
 
   const mockEstadoRepo = {
-    findById: jest.fn<Promise<EstadoEntity | null>, [string]>(),
-    findByCodigo: jest.fn(),
-    findAllActive: jest.fn(),
-    findAll: jest.fn(),
-  } satisfies jest.Mocked<IEstadoRepository>;
+    findById: vi.fn<Promise<EstadoEntity | null>, [string]>(),
+    findByCodigo: vi.fn(),
+    findAllActive: vi.fn(),
+    findAll: vi.fn(),
+  } satisfies vi.Mocked<IEstadoRepository>;
 
   const mockPrioridadRepo = {
-    findById: jest.fn<Promise<any | null>, [string]>(),
-  } satisfies jest.Mocked<IPrioridadRepository>;
+    findById: vi.fn<Promise<any | null>, [string]>(),
+  } satisfies vi.Mocked<IPrioridadRepository>;
 
   const mockCicloRepo = {
-    findById: jest.fn<Promise<any | null>, [string]>(),
-    findActive: jest.fn(),
-    findAll: jest.fn(),
-    save: jest.fn(),
-  } satisfies jest.Mocked<ICicloClienteRepository>;
+    findById: vi.fn<Promise<any | null>, [string]>(),
+    findActive: vi.fn(),
+    findAll: vi.fn(),
+    save: vi.fn(),
+  } satisfies vi.Mocked<ICicloClienteRepository>;
 
   const mockOperacionRepo = {
-    findByTicketId: jest.fn(),
-    save: jest.fn<Promise<void>, [OperacionTicketEntity]>(),
-  } satisfies jest.Mocked<IOperacionTicketRepository>;
+    findByTicketId: vi.fn(),
+    save: vi.fn<Promise<void>, [OperacionTicketEntity]>(),
+  } satisfies vi.Mocked<IOperacionTicketRepository>;
 
   const mockTipoOperacionRepo = {
-    findIdByCodigo: jest.fn<Promise<string | null>, [string]>(),
-  } satisfies jest.Mocked<ITipoOperacionRepository>;
+    findIdByCodigo: vi.fn<Promise<string | null>, [string]>(),
+  } satisfies vi.Mocked<ITipoOperacionRepository>;
 
   const txRunner: ITenantTransactionRunner = {
-    run: jest.fn().mockImplementation(async (cb: () => Promise<void>) => cb()),
+    run: vi.fn().mockImplementation(async (cb: () => Promise<void>) => cb()),
   };
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
     useCase = new EditarTicketUseCase(
       mockTicketRepo,
       mockEstadoRepo,

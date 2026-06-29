@@ -51,25 +51,25 @@ describe('EditarEquipoUseCase', () => {
   let useCase: EditarEquipoUseCase;
 
   const mockEquipoRepo = {
-    findById: jest.fn(),
-    findByNumeroSerie: jest.fn(),
-    findAllActive: jest.fn(),
-    findByAsignadoAId: jest.fn(),
-    save: jest.fn<Promise<void>, [EquipoInformaticoEntity]>(),
-    delete: jest.fn(),
-  } satisfies jest.Mocked<IEquipoInformaticoRepository>;
+    findById: vi.fn(),
+    findByNumeroSerie: vi.fn(),
+    findAllActive: vi.fn(),
+    findByAsignadoAId: vi.fn(),
+    save: vi.fn<Promise<void>, [EquipoInformaticoEntity]>(),
+    delete: vi.fn(),
+  } satisfies vi.Mocked<IEquipoInformaticoRepository>;
 
   const mockTxRunner: ITenantTransactionRunner = {
-    run: jest.fn().mockImplementation((fn: () => Promise<unknown>) => fn()),
+    run: vi.fn().mockImplementation((fn: () => Promise<unknown>) => fn()),
   };
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
 
     mockEquipoRepo.findById.mockResolvedValue(makeEquipo(EQUIPO_ID, NUMERO_SERIE_ORIGINAL));
     mockEquipoRepo.findByNumeroSerie.mockResolvedValue(null); // no duplicado
     mockEquipoRepo.save.mockResolvedValue(undefined);
-    (mockTxRunner.run as jest.Mock).mockImplementation((fn: () => Promise<unknown>) => fn());
+    (mockTxRunner.run as vi.Mock).mockImplementation((fn: () => Promise<unknown>) => fn());
 
     useCase = new EditarEquipoUseCase(mockEquipoRepo, mockTxRunner);
   });
@@ -161,7 +161,7 @@ describe('EditarEquipoUseCase', () => {
 
     it('el save ocurre DENTRO del callback del txRunner', async () => {
       const callOrder: string[] = [];
-      (mockTxRunner.run as jest.Mock).mockImplementation(async (fn: () => Promise<unknown>) => {
+      (mockTxRunner.run as vi.Mock).mockImplementation(async (fn: () => Promise<unknown>) => {
         callOrder.push('tx:start');
         const r = await fn();
         callOrder.push('tx:end');

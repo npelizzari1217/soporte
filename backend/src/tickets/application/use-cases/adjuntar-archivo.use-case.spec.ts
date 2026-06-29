@@ -54,42 +54,42 @@ describe('AdjuntarArchivoUseCase', () => {
   let useCase: AdjuntarArchivoUseCase;
 
   const mockTicketRepo = {
-    findById: jest.fn<Promise<TicketEntity | null>, [string]>(),
-    findByNumero: jest.fn(),
-    findLastSecuencia: jest.fn(),
-    findAll: jest.fn(),
-    findByEstado: jest.fn(),
-    save: jest.fn(),
-    delete: jest.fn(),
-  } satisfies jest.Mocked<ITicketRepository>;
+    findById: vi.fn<Promise<TicketEntity | null>, [string]>(),
+    findByNumero: vi.fn(),
+    findLastSecuencia: vi.fn(),
+    findAll: vi.fn(),
+    findByEstado: vi.fn(),
+    save: vi.fn(),
+    delete: vi.fn(),
+  } satisfies vi.Mocked<ITicketRepository>;
 
   const mockArchivoRepo = {
-    findById: jest.fn(),
-    findByStorageKey: jest.fn(),
-    findByTicketId: jest.fn(),
-    save: jest.fn<Promise<void>, [ArchivoEntity]>(),
-    linkToTicket: jest.fn<Promise<void>, [string, string]>(),
-    delete: jest.fn(),
-  } satisfies jest.Mocked<IArchivoRepository>;
+    findById: vi.fn(),
+    findByStorageKey: vi.fn(),
+    findByTicketId: vi.fn(),
+    save: vi.fn<Promise<void>, [ArchivoEntity]>(),
+    linkToTicket: vi.fn<Promise<void>, [string, string]>(),
+    delete: vi.fn(),
+  } satisfies vi.Mocked<IArchivoRepository>;
 
   const mockFileStorage = {
-    upload: jest.fn<Promise<string>, [string, Buffer, string]>(),
-    delete: jest.fn<Promise<void>, [string]>(),
-  } satisfies jest.Mocked<IFileStorage>;
+    upload: vi.fn<Promise<string>, [string, Buffer, string]>(),
+    delete: vi.fn<Promise<void>, [string]>(),
+  } satisfies vi.Mocked<IFileStorage>;
 
   const mockTxRunner: ITenantTransactionRunner = {
-    run: jest.fn().mockImplementation((fn: () => Promise<unknown>) => fn()),
+    run: vi.fn().mockImplementation((fn: () => Promise<unknown>) => fn()),
   };
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
 
     // Default happy-path mocks
     mockTicketRepo.findById.mockResolvedValue(makeTicket());
     mockFileStorage.upload.mockResolvedValue(STORAGE_KEY_RETURNED);
     mockArchivoRepo.save.mockResolvedValue(undefined);
     mockArchivoRepo.linkToTicket.mockResolvedValue(undefined);
-    (mockTxRunner.run as jest.Mock).mockImplementation((fn: () => Promise<unknown>) => fn());
+    (mockTxRunner.run as vi.Mock).mockImplementation((fn: () => Promise<unknown>) => fn());
 
     useCase = new AdjuntarArchivoUseCase(
       mockTicketRepo,
@@ -285,7 +285,7 @@ describe('AdjuntarArchivoUseCase', () => {
     it('save y linkToTicket ocurren DENTRO del callback del runner', async () => {
       const callOrder: string[] = [];
 
-      (mockTxRunner.run as jest.Mock).mockImplementation(async (fn: () => Promise<unknown>) => {
+      (mockTxRunner.run as vi.Mock).mockImplementation(async (fn: () => Promise<unknown>) => {
         callOrder.push('tx:start');
         const r = await fn();
         callOrder.push('tx:end');
@@ -318,7 +318,7 @@ describe('AdjuntarArchivoUseCase', () => {
         callOrder.push('upload');
         return STORAGE_KEY_RETURNED;
       });
-      (mockTxRunner.run as jest.Mock).mockImplementation(async (fn: () => Promise<unknown>) => {
+      (mockTxRunner.run as vi.Mock).mockImplementation(async (fn: () => Promise<unknown>) => {
         callOrder.push('tx:start');
         const r = await fn();
         callOrder.push('tx:end');

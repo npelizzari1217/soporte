@@ -88,65 +88,65 @@ describe('EnviarAAprobacionUseCase', () => {
   let useCase: EnviarAAprobacionUseCase;
 
   const mockTicketRepo = {
-    findById: jest.fn(),
-    findByNumero: jest.fn(),
-    findLastSecuencia: jest.fn(),
-    findAll: jest.fn(),
-    findByEstado: jest.fn(),
-    save: jest.fn<Promise<void>, [TicketEntity]>(),
-    delete: jest.fn(),
-  } satisfies jest.Mocked<ITicketRepository>;
+    findById: vi.fn(),
+    findByNumero: vi.fn(),
+    findLastSecuencia: vi.fn(),
+    findAll: vi.fn(),
+    findByEstado: vi.fn(),
+    save: vi.fn<Promise<void>, [TicketEntity]>(),
+    delete: vi.fn(),
+  } satisfies vi.Mocked<ITicketRepository>;
 
   const mockOperacionRepo = {
-    findByTicketId: jest.fn(),
-    save: jest.fn<Promise<void>, [OperacionTicketEntity]>(),
-  } satisfies jest.Mocked<IOperacionTicketRepository>;
+    findByTicketId: vi.fn(),
+    save: vi.fn<Promise<void>, [OperacionTicketEntity]>(),
+  } satisfies vi.Mocked<IOperacionTicketRepository>;
 
   const mockEstadoRepo = {
-    findById: jest.fn(),
-    findByCodigo: jest.fn(),
-    findAllActive: jest.fn(),
-    findAll: jest.fn(),
-  } satisfies jest.Mocked<IEstadoRepository>;
+    findById: vi.fn(),
+    findByCodigo: vi.fn(),
+    findAllActive: vi.fn(),
+    findAll: vi.fn(),
+  } satisfies vi.Mocked<IEstadoRepository>;
 
   const mockTipoTicketRepo = {
-    findCodigoById: jest.fn<Promise<string | null>, [string]>(),
-  } satisfies jest.Mocked<ITipoTicketRepository>;
+    findCodigoById: vi.fn<Promise<string | null>, [string]>(),
+  } satisfies vi.Mocked<ITipoTicketRepository>;
 
   const mockTipoOperacionRepo = {
-    findIdByCodigo: jest.fn<Promise<string | null>, [string]>(),
-  } satisfies jest.Mocked<ITipoOperacionRepository>;
+    findIdByCodigo: vi.fn<Promise<string | null>, [string]>(),
+  } satisfies vi.Mocked<ITipoOperacionRepository>;
 
   const mockTxRunner: ITenantTransactionRunner = {
-    run: jest.fn().mockImplementation((fn: () => Promise<unknown>) => fn()),
+    run: vi.fn().mockImplementation((fn: () => Promise<unknown>) => fn()),
   };
 
   const mockTicketCompraRepo = {
-    findByTicketId: jest.fn(),
-    findById: jest.fn(),
-    findAll: jest.fn(),
-    save: jest.fn(),
-    delete: jest.fn(),
-  } satisfies jest.Mocked<ITicketCompraRepository>;
+    findByTicketId: vi.fn(),
+    findById: vi.fn(),
+    findAll: vi.fn(),
+    save: vi.fn(),
+    delete: vi.fn(),
+  } satisfies vi.Mocked<ITicketCompraRepository>;
 
   const mockItemCompraRepo = {
-    findById: jest.fn(),
-    findByTicketCompraId: jest.fn(),
-    findActiveByTicketCompraId: jest.fn(),
-    save: jest.fn(),
-    delete: jest.fn(),
-  } satisfies jest.Mocked<IItemCompraRepository>;
+    findById: vi.fn(),
+    findByTicketCompraId: vi.fn(),
+    findActiveByTicketCompraId: vi.fn(),
+    save: vi.fn(),
+    delete: vi.fn(),
+  } satisfies vi.Mocked<IItemCompraRepository>;
 
-  const mockMachine: jest.Mocked<ITicketStateMachine> = {
-    puedeTransicionar: jest.fn<boolean, [string, string, any]>(),
+  const mockMachine: vi.Mocked<ITicketStateMachine> = {
+    puedeTransicionar: vi.fn<boolean, [string, string, any]>(),
   };
 
   const mockFactory: Pick<TicketStateMachineFactory, 'resolve'> = {
-    resolve: jest.fn(),
+    resolve: vi.fn(),
   };
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
 
     // Default happy-path mocks
     const ticket = makeTicket(ESTADO_ABIERTO_ID);
@@ -162,10 +162,10 @@ describe('EnviarAAprobacionUseCase', () => {
     mockTipoTicketRepo.findCodigoById.mockResolvedValue('COMPRAS');
     mockTipoOperacionRepo.findIdByCodigo.mockResolvedValue(TIPO_OPERACION_CAMBIO_ESTADO_ID);
     mockMachine.puedeTransicionar.mockReturnValue(true);
-    (mockFactory.resolve as jest.Mock).mockReturnValue(mockMachine);
+    (mockFactory.resolve as vi.Mock).mockReturnValue(mockMachine);
     mockTicketRepo.save.mockResolvedValue(undefined);
     mockOperacionRepo.save.mockResolvedValue(undefined);
-    (mockTxRunner.run as jest.Mock).mockImplementation((fn: () => Promise<unknown>) => fn());
+    (mockTxRunner.run as vi.Mock).mockImplementation((fn: () => Promise<unknown>) => fn());
 
     useCase = new EnviarAAprobacionUseCase(
       mockTicketRepo,
@@ -294,7 +294,7 @@ describe('EnviarAAprobacionUseCase', () => {
 
     it('ticket y operacion se guardan DENTRO del callback del runner', async () => {
       const callOrder: string[] = [];
-      (mockTxRunner.run as jest.Mock).mockImplementation(async (fn: () => Promise<unknown>) => {
+      (mockTxRunner.run as vi.Mock).mockImplementation(async (fn: () => Promise<unknown>) => {
         callOrder.push('tx:start');
         const r = await fn();
         callOrder.push('tx:end');

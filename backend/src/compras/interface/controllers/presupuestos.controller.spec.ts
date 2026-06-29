@@ -54,8 +54,8 @@ function makeCreatePresupuestoDto(): CreatePresupuestoHttpDto {
 
 function makeUseCaseMocks() {
   return {
-    agregarPresupuestoUseCase: { execute: jest.fn() },
-    seleccionarPresupuestoUseCase: { execute: jest.fn() },
+    agregarPresupuestoUseCase: { execute: vi.fn() },
+    seleccionarPresupuestoUseCase: { execute: vi.fn() },
   };
 }
 

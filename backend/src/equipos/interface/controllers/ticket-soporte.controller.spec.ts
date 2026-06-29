@@ -63,7 +63,7 @@ function makeTicket(): TicketEntity {
 
 function makeUseCaseMocks() {
   return {
-    crearTicketSoporteUseCase: { execute: jest.fn() },
+    crearTicketSoporteUseCase: { execute: vi.fn() },
   };
 }
 

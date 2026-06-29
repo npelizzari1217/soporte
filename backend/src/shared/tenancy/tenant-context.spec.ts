@@ -9,8 +9,8 @@ import { TenantContext, TenantContextData } from './tenant-context';
 
 // Mock de PrismaClient para no necesitar conexión real a DB
 const makeMockClient = () => ({
-  $transaction: jest.fn(),
-  $disconnect: jest.fn(),
+  $transaction: vi.fn(),
+  $disconnect: vi.fn(),
 });
 
 describe('TenantContext', () => {

@@ -16,15 +16,9 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-const TENANT_SEED_PATH = path.resolve(
-  __dirname,
-  '../../../prisma_tenant/seeds/tenant-seed.ts',
-);
+const TENANT_SEED_PATH = path.resolve(__dirname, '../../../prisma_tenant/seeds/tenant-seed.ts');
 
-const SEEDER_ADAPTER_PATH = path.resolve(
-  __dirname,
-  './tenant-seeder.adapter.ts',
-);
+const SEEDER_ADAPTER_PATH = path.resolve(__dirname, './tenant-seeder.adapter.ts');
 
 describe('Seeders — tipo_operacion contiene EDICION y ELIMINACION', () => {
   let tenantSeedContent: string;

@@ -15,12 +15,21 @@
  */
 
 // ---- Mocks ----
-// pg.Pool mockeado ANTES del import del service (jest.mock es hoisted)
-jest.mock('pg', () => ({
-  Pool: jest.fn().mockImplementation(() => ({
-    query: jest.fn(),
-    end: jest.fn().mockResolvedValue(undefined),
-  })),
+// vi.hoisted garantiza que el mock constructor esté disponible antes del
+// import del service y del hoisting de vi.mock (patrón canónico Vitest 4.x).
+// function() en lugar de arrow — Vitest 4.x requiere function/class para
+// mocks usados como constructores (new Pool(...)).
+const MockPool = vi.hoisted(() =>
+  vi.fn().mockImplementation(function () {
+    return {
+      query: vi.fn(),
+      end: vi.fn().mockResolvedValue(undefined),
+    };
+  }),
+);
+
+vi.mock('pg', () => ({
+  Pool: MockPool,
 }));
 
 import { Pool } from 'pg';
@@ -31,22 +40,22 @@ const MASTER_URL = 'postgresql://soporte:soporte@localhost:5432/soporte_master_t
 
 describe('PostgresAdminService', () => {
   let service: PostgresAdminService;
-  let mockPool: { query: jest.Mock; end: jest.Mock };
+  let mockPool: { query: vi.Mock; end: vi.Mock };
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
     service = new PostgresAdminService(MASTER_URL);
 
     // Obtener la instancia de Pool creada durante la construcción del servicio
-    const PoolCtor = Pool as unknown as jest.Mock;
-    mockPool = PoolCtor.mock.results[0].value as { query: jest.Mock; end: jest.Mock };
+    const PoolCtor = Pool as unknown as vi.Mock;
+    mockPool = PoolCtor.mock.results[0].value as { query: vi.Mock; end: vi.Mock };
   });
 
   // ─── Constructor — conexión a DB admin, NO al tenant ────────────────────────
 
   describe('Constructor — conecta a la DB admin (postgres), no a la DB master ni tenant', () => {
     it('should connect to the postgres admin DB, not the master DB name', () => {
-      const PoolCtor = Pool as unknown as jest.Mock;
+      const PoolCtor = Pool as unknown as vi.Mock;
       const { connectionString } = PoolCtor.mock.calls[0][0] as { connectionString: string };
 
       // Debe apuntar a la DB 'postgres' (admin)
@@ -56,14 +65,14 @@ describe('PostgresAdminService', () => {
     });
 
     it('should preserve credentials and host from master URL', () => {
-      const PoolCtor = Pool as unknown as jest.Mock;
+      const PoolCtor = Pool as unknown as vi.Mock;
       const { connectionString } = PoolCtor.mock.calls[0][0] as { connectionString: string };
 
       expect(connectionString).toContain('soporte:soporte@localhost:5432');
     });
 
     it('should only create one Pool (admin), never one per tenant', () => {
-      const PoolCtor = Pool as unknown as jest.Mock;
+      const PoolCtor = Pool as unknown as vi.Mock;
       // Solo se crea un Pool — el del admin. No se crean pools por tenant aquí.
       expect(PoolCtor).toHaveBeenCalledTimes(1);
     });

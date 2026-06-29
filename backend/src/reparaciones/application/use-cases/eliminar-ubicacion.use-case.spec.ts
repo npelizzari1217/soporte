@@ -53,37 +53,37 @@ describe('EliminarUbicacionUseCase', () => {
   let useCase: EliminarUbicacionUseCase;
 
   const mockUbicacionRepo = {
-    findById: jest.fn(),
-    findAllActive: jest.fn(),
-    findSubtree: jest.fn(),
-    save: jest.fn<Promise<void>, [UbicacionEntity]>(),
-    delete: jest.fn(),
-  } satisfies jest.Mocked<IUbicacionRepository>;
+    findById: vi.fn(),
+    findAllActive: vi.fn(),
+    findSubtree: vi.fn(),
+    save: vi.fn<Promise<void>, [UbicacionEntity]>(),
+    delete: vi.fn(),
+  } satisfies vi.Mocked<IUbicacionRepository>;
 
   const mockTicketEdiliciaRepo = {
-    findByTicketId: jest.fn(),
-    findById: jest.fn(),
-    findAll: jest.fn(),
-    findByUbicacionId: jest.fn(),
-    save: jest.fn(),
-    delete: jest.fn(),
-  } satisfies jest.Mocked<ITicketEdiliciaRepository>;
+    findByTicketId: vi.fn(),
+    findById: vi.fn(),
+    findAll: vi.fn(),
+    findByUbicacionId: vi.fn(),
+    save: vi.fn(),
+    delete: vi.fn(),
+  } satisfies vi.Mocked<ITicketEdiliciaRepository>;
 
   const mockOperacionRepo = {
-    findByTicketId: jest.fn(),
-    save: jest.fn<Promise<void>, [OperacionTicketEntity]>(),
-  } satisfies jest.Mocked<IOperacionTicketRepository>;
+    findByTicketId: vi.fn(),
+    save: vi.fn<Promise<void>, [OperacionTicketEntity]>(),
+  } satisfies vi.Mocked<IOperacionTicketRepository>;
 
   const mockTipoOperacionRepo = {
-    findIdByCodigo: jest.fn<Promise<string | null>, [string]>(),
-  } satisfies jest.Mocked<ITipoOperacionRepository>;
+    findIdByCodigo: vi.fn<Promise<string | null>, [string]>(),
+  } satisfies vi.Mocked<ITipoOperacionRepository>;
 
   const mockTxRunner: ITenantTransactionRunner = {
-    run: jest.fn().mockImplementation((fn: () => Promise<unknown>) => fn()),
+    run: vi.fn().mockImplementation((fn: () => Promise<unknown>) => fn()),
   };
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
 
     // Default mocks — cubrimos el happy path base para simplificar tests individuales.
     // findSubtree retorna [raíz] por defecto (sin descendientes).
@@ -93,7 +93,7 @@ describe('EliminarUbicacionUseCase', () => {
     mockOperacionRepo.save.mockResolvedValue(undefined);
     mockTicketEdiliciaRepo.findByUbicacionId.mockResolvedValue([]);
     mockUbicacionRepo.findSubtree.mockResolvedValue([makeUbicacion(PADRE_ID)]);
-    (mockTxRunner.run as jest.Mock).mockImplementation((fn: () => Promise<unknown>) => fn());
+    (mockTxRunner.run as vi.Mock).mockImplementation((fn: () => Promise<unknown>) => fn());
 
     useCase = new EliminarUbicacionUseCase(
       mockUbicacionRepo,

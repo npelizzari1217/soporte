@@ -55,9 +55,9 @@ function makeComponente(): ComponenteEquipoEntity {
 
 function makeUseCaseMocks() {
   return {
-    agregarComponenteUseCase: { execute: jest.fn() },
-    eliminarComponenteUseCase: { execute: jest.fn() },
-    obtenerComponentesPorEquipoUseCase: { execute: jest.fn() },
+    agregarComponenteUseCase: { execute: vi.fn() },
+    eliminarComponenteUseCase: { execute: vi.fn() },
+    obtenerComponentesPorEquipoUseCase: { execute: vi.fn() },
   };
 }
 

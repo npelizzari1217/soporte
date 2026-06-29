@@ -18,17 +18,17 @@ import { PostgresAdminService } from '../../shared/infrastructure/persistence/po
 // No necesitamos mockear onModuleDestroy ni los privados.
 type ServiceMock = Pick<PostgresAdminService, 'createDatabase' | 'dropDatabase' | 'databaseExists'>;
 
-function makeServiceMock(): jest.Mocked<ServiceMock> {
+function makeServiceMock(): vi.Mocked<ServiceMock> {
   return {
-    createDatabase: jest.fn().mockResolvedValue(undefined),
-    dropDatabase: jest.fn().mockResolvedValue(undefined),
-    databaseExists: jest.fn().mockResolvedValue(true),
+    createDatabase: vi.fn().mockResolvedValue(undefined),
+    dropDatabase: vi.fn().mockResolvedValue(undefined),
+    databaseExists: vi.fn().mockResolvedValue(true),
   };
 }
 
 describe('PostgresAdminAdapter (unit)', () => {
   let adapter: PostgresAdminAdapter;
-  let service: jest.Mocked<ServiceMock>;
+  let service: vi.Mocked<ServiceMock>;
 
   beforeEach(() => {
     service = makeServiceMock();

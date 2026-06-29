@@ -52,62 +52,62 @@ describe('CrearTicketUseCase', () => {
   let useCase: CrearTicketUseCase;
 
   const mockTicketRepo = {
-    findById: jest.fn(),
-    findByNumero: jest.fn(),
-    findLastSecuencia: jest.fn(),
-    findAll: jest.fn(),
-    findByEstado: jest.fn(),
-    save: jest.fn<Promise<void>, [TicketEntity]>(),
-    delete: jest.fn(),
-  } satisfies jest.Mocked<ITicketRepository>;
+    findById: vi.fn(),
+    findByNumero: vi.fn(),
+    findLastSecuencia: vi.fn(),
+    findAll: vi.fn(),
+    findByEstado: vi.fn(),
+    save: vi.fn<Promise<void>, [TicketEntity]>(),
+    delete: vi.fn(),
+  } satisfies vi.Mocked<ITicketRepository>;
 
   const mockOperacionRepo = {
-    findByTicketId: jest.fn(),
-    save: jest.fn<Promise<void>, [OperacionTicketEntity]>(),
-  } satisfies jest.Mocked<IOperacionTicketRepository>;
+    findByTicketId: vi.fn(),
+    save: vi.fn<Promise<void>, [OperacionTicketEntity]>(),
+  } satisfies vi.Mocked<IOperacionTicketRepository>;
 
   const mockEstadoRepo = {
-    findById: jest.fn(),
-    findByCodigo: jest.fn(),
-    findAllActive: jest.fn(),
-    findAll: jest.fn(),
-  } satisfies jest.Mocked<IEstadoRepository>;
+    findById: vi.fn(),
+    findByCodigo: vi.fn(),
+    findAllActive: vi.fn(),
+    findAll: vi.fn(),
+  } satisfies vi.Mocked<IEstadoRepository>;
 
   const mockUsuarioChecker = {
-    existeEnTenant: jest.fn<Promise<boolean>, [string, string]>(),
-    estaActivoEnTenant: jest.fn<Promise<boolean>, [string, string]>(),
-  } satisfies jest.Mocked<IUsuarioMasterChecker>;
+    existeEnTenant: vi.fn<Promise<boolean>, [string, string]>(),
+    estaActivoEnTenant: vi.fn<Promise<boolean>, [string, string]>(),
+  } satisfies vi.Mocked<IUsuarioMasterChecker>;
 
   const mockTipoTicketRepo = {
-    findCodigoById: jest.fn<Promise<string | null>, [string]>(),
-  } satisfies jest.Mocked<ITipoTicketRepository>;
+    findCodigoById: vi.fn<Promise<string | null>, [string]>(),
+  } satisfies vi.Mocked<ITipoTicketRepository>;
 
   const mockTipoOperacionRepo = {
-    findIdByCodigo: jest.fn<Promise<string | null>, [string]>(),
-  } satisfies jest.Mocked<ITipoOperacionRepository>;
+    findIdByCodigo: vi.fn<Promise<string | null>, [string]>(),
+  } satisfies vi.Mocked<ITipoOperacionRepository>;
 
   const mockNumerador = {
-    generarNumero: jest.fn(),
+    generarNumero: vi.fn(),
   } satisfies Pick<NumeradorTicket, 'generarNumero'>;
 
   const mockTxRunner: ITenantTransactionRunner = {
-    run: jest.fn().mockImplementation((fn: () => Promise<unknown>) => fn()),
+    run: vi.fn().mockImplementation((fn: () => Promise<unknown>) => fn()),
   };
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
 
     // Default happy-path mocks
     mockUsuarioChecker.existeEnTenant.mockResolvedValue(true);
     mockTipoTicketRepo.findCodigoById.mockResolvedValue('SOPORTE');
     mockEstadoRepo.findByCodigo.mockResolvedValue(makeEstado(ESTADO_ABIERTO_ID, 'ABIERTO'));
     mockTipoOperacionRepo.findIdByCodigo.mockResolvedValue(TIPO_OPERACION_CAMBIO_ESTADO_ID);
-    (mockNumerador.generarNumero as jest.Mock).mockResolvedValue(
+    (mockNumerador.generarNumero as vi.Mock).mockResolvedValue(
       Result.ok<string, never>('SOP-2026-00001'),
     );
     mockTicketRepo.save.mockResolvedValue(undefined);
     mockOperacionRepo.save.mockResolvedValue(undefined);
-    (mockTxRunner.run as jest.Mock).mockImplementation((fn: () => Promise<unknown>) => fn());
+    (mockTxRunner.run as vi.Mock).mockImplementation((fn: () => Promise<unknown>) => fn());
 
     useCase = new CrearTicketUseCase(
       mockTicketRepo,
@@ -194,7 +194,7 @@ describe('CrearTicketUseCase', () => {
 
     it('propaga SecuenciaAgotadaError cuando el numerador falla', async () => {
       const error = new SecuenciaAgotadaError('SOPORTE', 2026);
-      (mockNumerador.generarNumero as jest.Mock).mockResolvedValue(Result.fail(error));
+      (mockNumerador.generarNumero as vi.Mock).mockResolvedValue(Result.fail(error));
 
       const result = await useCase.execute(validDto);
 
@@ -279,7 +279,7 @@ describe('CrearTicketUseCase', () => {
     it('el save de ticket y operacion ocurren DENTRO del callback del runner', async () => {
       const callOrder: string[] = [];
 
-      (mockTxRunner.run as jest.Mock).mockImplementation(async (fn: () => Promise<unknown>) => {
+      (mockTxRunner.run as vi.Mock).mockImplementation(async (fn: () => Promise<unknown>) => {
         callOrder.push('tx:start');
         const r = await fn();
         callOrder.push('tx:end');

@@ -57,12 +57,12 @@ function makeEquipo(): EquipoInformaticoEntity {
 
 function makeUseCaseMocks() {
   return {
-    crearEquipoUseCase: { execute: jest.fn() },
-    editarEquipoUseCase: { execute: jest.fn() },
-    eliminarEquipoUseCase: { execute: jest.fn() },
-    asignarEquipoUseCase: { execute: jest.fn() },
-    obtenerEquipoUseCase: { execute: jest.fn() },
-    listarEquiposUseCase: { execute: jest.fn() },
+    crearEquipoUseCase: { execute: vi.fn() },
+    editarEquipoUseCase: { execute: vi.fn() },
+    eliminarEquipoUseCase: { execute: vi.fn() },
+    asignarEquipoUseCase: { execute: vi.fn() },
+    obtenerEquipoUseCase: { execute: vi.fn() },
+    listarEquiposUseCase: { execute: vi.fn() },
   };
 }
 

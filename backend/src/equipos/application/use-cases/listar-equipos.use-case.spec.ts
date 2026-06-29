@@ -42,16 +42,16 @@ describe('ListarEquiposUseCase', () => {
   let useCase: ListarEquiposUseCase;
 
   const mockEquipoRepo = {
-    findById: jest.fn(),
-    findByNumeroSerie: jest.fn(),
-    findAllActive: jest.fn<Promise<EquipoInformaticoEntity[]>, []>(),
-    findByAsignadoAId: jest.fn(),
-    save: jest.fn(),
-    delete: jest.fn(),
-  } satisfies jest.Mocked<IEquipoInformaticoRepository>;
+    findById: vi.fn(),
+    findByNumeroSerie: vi.fn(),
+    findAllActive: vi.fn<Promise<EquipoInformaticoEntity[]>, []>(),
+    findByAsignadoAId: vi.fn(),
+    save: vi.fn(),
+    delete: vi.fn(),
+  } satisfies vi.Mocked<IEquipoInformaticoRepository>;
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
     useCase = new ListarEquiposUseCase(mockEquipoRepo);
   });
 

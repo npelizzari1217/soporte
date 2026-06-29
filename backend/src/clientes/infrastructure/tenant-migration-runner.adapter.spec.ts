@@ -18,11 +18,11 @@ import { TenantMigrationRunnerAdapter, ExecFn } from './tenant-migration-runner.
 
 describe('TenantMigrationRunnerAdapter (unit)', () => {
   const MASTER_URL = 'postgresql://user:pass@host:5432/soporte_master';
-  let execFn: jest.MockedFunction<ExecFn>;
+  let execFn: vi.MockedFunction<ExecFn>;
   let adapter: TenantMigrationRunnerAdapter;
 
   beforeEach(() => {
-    execFn = jest.fn().mockResolvedValue(undefined);
+    execFn = vi.fn().mockResolvedValue(undefined);
     adapter = new TenantMigrationRunnerAdapter(MASTER_URL, execFn);
   });
 
@@ -67,9 +67,7 @@ describe('TenantMigrationRunnerAdapter (unit)', () => {
     it('handles dbNames with underscores and numbers', async () => {
       await adapter.runMigrations('soporte_e2e_20260625');
       const [, env] = execFn.mock.calls[0];
-      expect(env.DATABASE_URL_TENANT).toBe(
-        'postgresql://user:pass@host:5432/soporte_e2e_20260625',
-      );
+      expect(env.DATABASE_URL_TENANT).toBe('postgresql://user:pass@host:5432/soporte_e2e_20260625');
     });
 
     it('propagates exec errors (migrations failed)', async () => {

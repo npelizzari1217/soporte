@@ -66,37 +66,37 @@ describe('CrearSubtareaUseCase', () => {
   let useCase: CrearSubtareaUseCase;
 
   const mockTicketEdiliciaRepo = {
-    findByTicketId: jest.fn(),
-    findById: jest.fn(),
-    findAll: jest.fn(),
-    findByUbicacionId: jest.fn(),
-    save: jest.fn<Promise<void>, [TicketEdiliciaEntity]>(),
-    delete: jest.fn(),
-  } satisfies jest.Mocked<ITicketEdiliciaRepository>;
+    findByTicketId: vi.fn(),
+    findById: vi.fn(),
+    findAll: vi.fn(),
+    findByUbicacionId: vi.fn(),
+    save: vi.fn<Promise<void>, [TicketEdiliciaEntity]>(),
+    delete: vi.fn(),
+  } satisfies vi.Mocked<ITicketEdiliciaRepository>;
 
   const mockSubtareaRepo = {
-    findById: jest.fn(),
-    findActiveByTicketEdiliciaId: jest.fn(),
-    findAllByTicketEdiliciaId: jest.fn(),
-    save: jest.fn<Promise<void>, [SubtareaEdiliciaEntity]>(),
-    delete: jest.fn(),
-  } satisfies jest.Mocked<ISubtareaEdiliciaRepository>;
+    findById: vi.fn(),
+    findActiveByTicketEdiliciaId: vi.fn(),
+    findAllByTicketEdiliciaId: vi.fn(),
+    save: vi.fn<Promise<void>, [SubtareaEdiliciaEntity]>(),
+    delete: vi.fn(),
+  } satisfies vi.Mocked<ISubtareaEdiliciaRepository>;
 
   const mockOperacionRepo = {
-    findByTicketId: jest.fn(),
-    save: jest.fn<Promise<void>, [OperacionTicketEntity]>(),
-  } satisfies jest.Mocked<IOperacionTicketRepository>;
+    findByTicketId: vi.fn(),
+    save: vi.fn<Promise<void>, [OperacionTicketEntity]>(),
+  } satisfies vi.Mocked<IOperacionTicketRepository>;
 
   const mockTipoOperacionRepo = {
-    findIdByCodigo: jest.fn<Promise<string | null>, [string]>(),
-  } satisfies jest.Mocked<ITipoOperacionRepository>;
+    findIdByCodigo: vi.fn<Promise<string | null>, [string]>(),
+  } satisfies vi.Mocked<ITipoOperacionRepository>;
 
   const mockTxRunner: ITenantTransactionRunner = {
-    run: jest.fn().mockImplementation((fn: () => Promise<unknown>) => fn()),
+    run: vi.fn().mockImplementation((fn: () => Promise<unknown>) => fn()),
   };
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
 
     // Happy-path mocks
     mockTicketEdiliciaRepo.findById.mockResolvedValue(makeTicketEdilicia(TICKET_EDILICIA_ID, 0));
@@ -105,7 +105,7 @@ describe('CrearSubtareaUseCase', () => {
     mockTicketEdiliciaRepo.save.mockResolvedValue(undefined);
     mockOperacionRepo.save.mockResolvedValue(undefined);
     mockTipoOperacionRepo.findIdByCodigo.mockResolvedValue(TIPO_OPERACION_AVANCE_ID);
-    (mockTxRunner.run as jest.Mock).mockImplementation((fn: () => Promise<unknown>) => fn());
+    (mockTxRunner.run as vi.Mock).mockImplementation((fn: () => Promise<unknown>) => fn());
 
     useCase = new CrearSubtareaUseCase(
       mockTicketEdiliciaRepo,
@@ -308,7 +308,7 @@ describe('CrearSubtareaUseCase', () => {
     it('subtarea, ticket_edilicia y operacion se guardan dentro del runner', async () => {
       const callOrder: string[] = [];
 
-      (mockTxRunner.run as jest.Mock).mockImplementation(async (fn: () => Promise<unknown>) => {
+      (mockTxRunner.run as vi.Mock).mockImplementation(async (fn: () => Promise<unknown>) => {
         callOrder.push('tx:start');
         const r = await fn();
         callOrder.push('tx:end');

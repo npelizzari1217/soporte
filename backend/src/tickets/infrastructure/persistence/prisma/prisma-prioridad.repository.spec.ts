@@ -16,17 +16,19 @@ function makePrismaPrioridadRow(overrides: Partial<ReturnType<typeof buildRow>> 
   return buildRow(overrides);
 }
 
-function buildRow(overrides: Partial<{
-  id: string;
-  codigo: string;
-  nombre: string;
-  color: string | null;
-  orden: number;
-  activo: boolean;
-  createdAt: Date;
-  updatedAt: Date;
-  deletedAt: Date | null;
-}> = {}) {
+function buildRow(
+  overrides: Partial<{
+    id: string;
+    codigo: string;
+    nombre: string;
+    color: string | null;
+    orden: number;
+    activo: boolean;
+    createdAt: Date;
+    updatedAt: Date;
+    deletedAt: Date | null;
+  }> = {},
+) {
   return {
     id: PRIORIDAD_ID,
     codigo: 'MEDIA',
@@ -47,7 +49,7 @@ describe('PrismaPrioridadRepository', () => {
   let repository: PrismaPrioridadRepository;
 
   const mockPrioridad = {
-    findUnique: jest.fn(),
+    findUnique: vi.fn(),
   };
 
   const mockPrisma = {
@@ -55,12 +57,12 @@ describe('PrismaPrioridadRepository', () => {
   };
 
   const mockTenantContext = {
-    getClient: jest.fn().mockReturnValue(mockPrisma),
+    getClient: vi.fn().mockReturnValue(mockPrisma),
   } as unknown as TenantContext;
 
   beforeEach(() => {
-    jest.clearAllMocks();
-    mockTenantContext.getClient = jest.fn().mockReturnValue(mockPrisma);
+    vi.clearAllMocks();
+    mockTenantContext.getClient = vi.fn().mockReturnValue(mockPrisma);
     repository = new PrismaPrioridadRepository(mockTenantContext);
   });
 

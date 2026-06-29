@@ -55,43 +55,43 @@ describe('AsignarTicketUseCase', () => {
   let useCase: AsignarTicketUseCase;
 
   const mockTicketRepo = {
-    findById: jest.fn<Promise<TicketEntity | null>, [string]>(),
-    findByNumero: jest.fn(),
-    findLastSecuencia: jest.fn(),
-    findAll: jest.fn(),
-    findByEstado: jest.fn(),
-    save: jest.fn<Promise<void>, [TicketEntity]>(),
-    delete: jest.fn(),
-  } satisfies jest.Mocked<ITicketRepository>;
+    findById: vi.fn<Promise<TicketEntity | null>, [string]>(),
+    findByNumero: vi.fn(),
+    findLastSecuencia: vi.fn(),
+    findAll: vi.fn(),
+    findByEstado: vi.fn(),
+    save: vi.fn<Promise<void>, [TicketEntity]>(),
+    delete: vi.fn(),
+  } satisfies vi.Mocked<ITicketRepository>;
 
   const mockOperacionRepo = {
-    findByTicketId: jest.fn(),
-    save: jest.fn<Promise<void>, [OperacionTicketEntity]>(),
-  } satisfies jest.Mocked<IOperacionTicketRepository>;
+    findByTicketId: vi.fn(),
+    save: vi.fn<Promise<void>, [OperacionTicketEntity]>(),
+  } satisfies vi.Mocked<IOperacionTicketRepository>;
 
   const mockUsuarioChecker = {
-    existeEnTenant: jest.fn<Promise<boolean>, [string, string]>(),
-    estaActivoEnTenant: jest.fn<Promise<boolean>, [string, string]>(),
-  } satisfies jest.Mocked<IUsuarioMasterChecker>;
+    existeEnTenant: vi.fn<Promise<boolean>, [string, string]>(),
+    estaActivoEnTenant: vi.fn<Promise<boolean>, [string, string]>(),
+  } satisfies vi.Mocked<IUsuarioMasterChecker>;
 
   const mockUsuarioTiposTicketRepo = {
-    isUserEligibleForType: jest.fn<Promise<boolean>, [string, string]>(),
-    findTipoIdsByUsuario: jest.fn(),
-    findUsuarioIdsByTipo: jest.fn(),
-    assign: jest.fn(),
-    revoke: jest.fn(),
-  } satisfies jest.Mocked<IUsuarioTiposTicketRepository>;
+    isUserEligibleForType: vi.fn<Promise<boolean>, [string, string]>(),
+    findTipoIdsByUsuario: vi.fn(),
+    findUsuarioIdsByTipo: vi.fn(),
+    assign: vi.fn(),
+    revoke: vi.fn(),
+  } satisfies vi.Mocked<IUsuarioTiposTicketRepository>;
 
   const mockTipoOperacionRepo = {
-    findIdByCodigo: jest.fn<Promise<string | null>, [string]>(),
-  } satisfies jest.Mocked<ITipoOperacionRepository>;
+    findIdByCodigo: vi.fn<Promise<string | null>, [string]>(),
+  } satisfies vi.Mocked<ITipoOperacionRepository>;
 
   const mockTxRunner: ITenantTransactionRunner = {
-    run: jest.fn().mockImplementation((fn: () => Promise<unknown>) => fn()),
+    run: vi.fn().mockImplementation((fn: () => Promise<unknown>) => fn()),
   };
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
 
     // Default happy-path mocks
     mockTicketRepo.findById.mockResolvedValue(makeTicket());
@@ -100,7 +100,7 @@ describe('AsignarTicketUseCase', () => {
     mockTipoOperacionRepo.findIdByCodigo.mockResolvedValue(TIPO_OPERACION_ASIGNACION_ID);
     mockTicketRepo.save.mockResolvedValue(undefined);
     mockOperacionRepo.save.mockResolvedValue(undefined);
-    (mockTxRunner.run as jest.Mock).mockImplementation((fn: () => Promise<unknown>) => fn());
+    (mockTxRunner.run as vi.Mock).mockImplementation((fn: () => Promise<unknown>) => fn());
 
     useCase = new AsignarTicketUseCase(
       mockTicketRepo,
@@ -289,7 +289,7 @@ describe('AsignarTicketUseCase', () => {
   describe('actualización del ticket', () => {
     it('llama ticket.assignTo con el asignadoId del DTO', async () => {
       const ticket = makeTicket();
-      const assignToSpy = jest.spyOn(ticket, 'assignTo');
+      const assignToSpy = vi.spyOn(ticket, 'assignTo');
       mockTicketRepo.findById.mockResolvedValue(ticket);
 
       await useCase.execute(validDto);
@@ -319,7 +319,7 @@ describe('AsignarTicketUseCase', () => {
     it('ticket y operacion se persisten DENTRO del callback del runner', async () => {
       const callOrder: string[] = [];
 
-      (mockTxRunner.run as jest.Mock).mockImplementation(async (fn: () => Promise<unknown>) => {
+      (mockTxRunner.run as vi.Mock).mockImplementation(async (fn: () => Promise<unknown>) => {
         callOrder.push('tx:start');
         const r = await fn();
         callOrder.push('tx:end');

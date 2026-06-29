@@ -67,8 +67,8 @@ function makeCreateSubtareaDto(): CreateSubtareaHttpDto {
 
 function makeUseCaseMocks() {
   return {
-    crearSubtareaUseCase: { execute: jest.fn() },
-    completarSubtareaUseCase: { execute: jest.fn() },
+    crearSubtareaUseCase: { execute: vi.fn() },
+    completarSubtareaUseCase: { execute: vi.fn() },
   };
 }
 

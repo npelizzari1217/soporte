@@ -237,10 +237,10 @@ describe('Smoke E2E — flujo completo (7.C.2)', () => {
 
   describe('1. Autenticación', () => {
     it('POST /auth/login con credenciales válidas retorna 200 + accessToken', async () => {
-      const { status, data } = await httpPost<{ accessToken?: string }>(
-        `${baseUrl}/auth/login`,
-        { email: SMOKE_ADMIN_EMAIL, password: SMOKE_ADMIN_PASSWORD },
-      );
+      const { status, data } = await httpPost<{ accessToken?: string }>(`${baseUrl}/auth/login`, {
+        email: SMOKE_ADMIN_EMAIL,
+        password: SMOKE_ADMIN_PASSWORD,
+      });
       expect(status).toBe(200);
       expect(data).toHaveProperty('accessToken');
       expect(typeof data.accessToken).toBe('string');
@@ -319,10 +319,9 @@ describe('Smoke E2E — flujo completo (7.C.2)', () => {
     });
 
     it('GET /tickets/:id retorna el ticket con estado actualizado', async () => {
-      const { status, data } = await httpGet<{ id?: string }>(
-        `${baseUrl}/tickets/${ticketId}`,
-        { Authorization: `Bearer ${jwtToken}` },
-      );
+      const { status, data } = await httpGet<{ id?: string }>(`${baseUrl}/tickets/${ticketId}`, {
+        Authorization: `Bearer ${jwtToken}`,
+      });
       expect(status).toBe(200);
       expect((data as { id: string }).id).toBe(ticketId);
     });

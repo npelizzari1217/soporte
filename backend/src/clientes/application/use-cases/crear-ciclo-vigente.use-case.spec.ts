@@ -16,13 +16,13 @@ import { CicloVigenteOverlapError } from '../../domain/errors/clientes.errors';
 
 // ─── Mock del repositorio ──────────────────────────────────────────────────────
 
-const makeMockRepo = (): jest.Mocked<ICicloVigenteRepository> => ({
-  findById: jest.fn(),
-  findAllNonDeleted: jest.fn(),
-  findActiveNonDeleted: jest.fn(),
-  findAll: jest.fn(),
-  save: jest.fn(),
-  delete: jest.fn(),
+const makeMockRepo = (): vi.Mocked<ICicloVigenteRepository> => ({
+  findById: vi.fn(),
+  findAllNonDeleted: vi.fn(),
+  findActiveNonDeleted: vi.fn(),
+  findAll: vi.fn(),
+  save: vi.fn(),
+  delete: vi.fn(),
 });
 
 const makeCiclo = (
@@ -59,7 +59,7 @@ const dtoFor = (fechaInicio: string, fechaFin: string): CrearCicloVigenteDto => 
 
 describe('CrearCicloVigenteUseCase', () => {
   let useCase: CrearCicloVigenteUseCase;
-  let repo: jest.Mocked<ICicloVigenteRepository>;
+  let repo: vi.Mocked<ICicloVigenteRepository>;
 
   beforeEach(() => {
     repo = makeMockRepo();

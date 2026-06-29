@@ -48,10 +48,7 @@ import {
   USUARIO_MASTER_CHECKER,
   IUsuarioMasterChecker,
 } from './domain/ports/i-usuario-master.checker';
-import {
-  PRIORIDAD_REPOSITORY,
-  IPrioridadRepository,
-} from './domain/ports/i-prioridad.repository';
+import { PRIORIDAD_REPOSITORY, IPrioridadRepository } from './domain/ports/i-prioridad.repository';
 import {
   CICLO_CLIENTE_REPOSITORY,
   ICicloClienteRepository,

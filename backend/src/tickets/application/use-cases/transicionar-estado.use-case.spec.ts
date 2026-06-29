@@ -79,13 +79,13 @@ const AUTOR_ID = 'user-autor-uuid';
 // ─── Suite principal ──────────────────────────────────────────────────────────
 
 describe('TransicionarEstadoUseCase', () => {
-  let ticketRepo: jest.Mocked<ITicketRepository>;
-  let operacionRepo: jest.Mocked<IOperacionTicketRepository>;
-  let estadoRepo: jest.Mocked<IEstadoRepository>;
-  let tipoTicketRepo: jest.Mocked<ITipoTicketRepository>;
-  let tipoOperacionRepo: jest.Mocked<ITipoOperacionRepository>;
+  let ticketRepo: vi.Mocked<ITicketRepository>;
+  let operacionRepo: vi.Mocked<IOperacionTicketRepository>;
+  let estadoRepo: vi.Mocked<IEstadoRepository>;
+  let tipoTicketRepo: vi.Mocked<ITipoTicketRepository>;
+  let tipoOperacionRepo: vi.Mocked<ITipoOperacionRepository>;
   let factory: Pick<TicketStateMachineFactory, 'resolve'>;
-  let mockMachine: jest.Mocked<ITicketStateMachine>;
+  let mockMachine: vi.Mocked<ITicketStateMachine>;
   let txRunner: ITenantTransactionRunner;
   let useCase: TransicionarEstadoUseCase;
 
@@ -97,35 +97,35 @@ describe('TransicionarEstadoUseCase', () => {
 
   beforeEach(() => {
     ticketRepo = {
-      findById: jest.fn(),
-      findByNumero: jest.fn(),
-      findLastSecuencia: jest.fn(),
-      findAll: jest.fn(),
-      findByEstado: jest.fn(),
-      save: jest.fn<Promise<void>, [TicketEntity]>(),
-      delete: jest.fn(),
+      findById: vi.fn(),
+      findByNumero: vi.fn(),
+      findLastSecuencia: vi.fn(),
+      findAll: vi.fn(),
+      findByEstado: vi.fn(),
+      save: vi.fn<Promise<void>, [TicketEntity]>(),
+      delete: vi.fn(),
     };
 
     operacionRepo = {
-      findByTicketId: jest.fn(),
-      save: jest.fn<Promise<void>, [OperacionTicketEntity]>(),
+      findByTicketId: vi.fn(),
+      save: vi.fn<Promise<void>, [OperacionTicketEntity]>(),
     };
 
     estadoRepo = {
-      findById: jest.fn(),
-      findByCodigo: jest.fn(),
-      findAllActive: jest.fn(),
-      findAll: jest.fn(),
+      findById: vi.fn(),
+      findByCodigo: vi.fn(),
+      findAllActive: vi.fn(),
+      findAll: vi.fn(),
     };
 
-    tipoTicketRepo = { findCodigoById: jest.fn() };
-    tipoOperacionRepo = { findIdByCodigo: jest.fn() };
+    tipoTicketRepo = { findCodigoById: vi.fn() };
+    tipoOperacionRepo = { findIdByCodigo: vi.fn() };
 
-    mockMachine = { puedeTransicionar: jest.fn() };
-    factory = { resolve: jest.fn().mockReturnValue(mockMachine) };
+    mockMachine = { puedeTransicionar: vi.fn() };
+    factory = { resolve: vi.fn().mockReturnValue(mockMachine) };
 
     txRunner = {
-      run: jest.fn().mockImplementation((fn: () => Promise<unknown>) => fn()),
+      run: vi.fn().mockImplementation((fn: () => Promise<unknown>) => fn()),
     };
 
     // Default happy-path mocks
@@ -395,7 +395,7 @@ describe('TransicionarEstadoUseCase', () => {
     it('ticket.save y operacion.save ocurren DENTRO del callback del runner', async () => {
       const callOrder: string[] = [];
 
-      (txRunner.run as jest.Mock).mockImplementation(async (fn: () => Promise<unknown>) => {
+      (txRunner.run as vi.Mock).mockImplementation(async (fn: () => Promise<unknown>) => {
         callOrder.push('tx:start');
         const r = await fn();
         callOrder.push('tx:end');
@@ -547,7 +547,7 @@ describe('TransicionarEstadoUseCase', () => {
     describe('transición normal SIN involucrar RESUELTO (ABIERTO → EN_PROGRESO)', () => {
       it('setFechaResolucion NO es llamado (no se toca fechaResolucion)', async () => {
         const ticket = makeTicket(ESTADO_ABIERTO_ID, TIPO_TICKET_ID);
-        const setFechaResolucionSpy = jest.spyOn(ticket, 'setFechaResolucion');
+        const setFechaResolucionSpy = vi.spyOn(ticket, 'setFechaResolucion');
         ticketRepo.findById.mockResolvedValue(ticket);
 
         await useCase.execute(validDto); // ABIERTO → EN_PROGRESO
