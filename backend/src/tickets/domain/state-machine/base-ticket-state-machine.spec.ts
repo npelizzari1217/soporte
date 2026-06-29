@@ -1,11 +1,19 @@
 /**
  * Tests — BaseTicketStateMachine + TicketStateMachineFactory
  *
- * Tarea 3.B.1 (TEST → RED): verifica todas las transiciones válidas e inválidas
- * del diagrama base definido en la spec tickets-core, y que `puedeTransicionar()`
- * sea una función pura (sin side effects, mismo input → mismo output).
+ * P1.T1 (RED → GREEN con P1.T2): verifica el nuevo grafo de 7 estados activos
+ * y 3 congelados (legacy) definido en ADR-1.
  *
- * Ref spec: [SPEC:tickets-core/Máquina de estados base, Transición inválida rechazada]
+ * Nuevo diagrama (ADR-1):
+ *   ABIERTO → {APROBADO, RECHAZADO}
+ *   APROBADO → {EN_PROGRESO, RESUELTO, SUSPENDIDO, SIN_SOLUCION}
+ *   EN_PROGRESO → {RESUELTO, SUSPENDIDO, SIN_SOLUCION}
+ *   SUSPENDIDO → {EN_PROGRESO}
+ *   Terminales activos: RESUELTO, SIN_SOLUCION, RECHAZADO (sin arcos de salida)
+ *   Congelados legacy: CERRADO, CANCELADO, PENDIENTE_APROBACION (sin arcos de ningún tipo)
+ *
+ * Ref spec: Enmienda "Máquina de estados base" (tickets-core/spec.md), ADR-1
+ * Change: tickets-maquina-estados-observaciones / PR1
  */
 
 import { BaseTicketStateMachine } from './base-ticket-state-machine';
@@ -20,95 +28,121 @@ describe('BaseTicketStateMachine', () => {
     machine = new BaseTicketStateMachine();
   });
 
-  // ─── Transiciones VÁLIDAS del diagrama base ─────────────────────────────
+  // ─── Los 10 arcos válidos del nuevo diagrama ─────────────────────────────
 
-  describe('transiciones válidas (diagrama base)', () => {
-    it('permite ABIERTO → EN_PROGRESO', () => {
-      expect(machine.puedeTransicionar('ABIERTO', 'EN_PROGRESO', ctx)).toBe(true);
-    });
-
-    it('permite ABIERTO → CANCELADO', () => {
-      expect(machine.puedeTransicionar('ABIERTO', 'CANCELADO', ctx)).toBe(true);
-    });
-
-    it('permite EN_PROGRESO → RESUELTO', () => {
-      expect(machine.puedeTransicionar('EN_PROGRESO', 'RESUELTO', ctx)).toBe(true);
-    });
-
-    it('permite EN_PROGRESO → CANCELADO', () => {
-      expect(machine.puedeTransicionar('EN_PROGRESO', 'CANCELADO', ctx)).toBe(true);
-    });
-
-    it('permite RESUELTO → CERRADO', () => {
-      expect(machine.puedeTransicionar('RESUELTO', 'CERRADO', ctx)).toBe(true);
-    });
-
-    it('permite RESUELTO → EN_PROGRESO (reapertura)', () => {
-      expect(machine.puedeTransicionar('RESUELTO', 'EN_PROGRESO', ctx)).toBe(true);
+  describe('transiciones válidas — 10 arcos del nuevo diagrama (ADR-1)', () => {
+    it.each([
+      ['ABIERTO', 'APROBADO'],
+      ['ABIERTO', 'RECHAZADO'],
+      ['APROBADO', 'EN_PROGRESO'],
+      ['APROBADO', 'RESUELTO'],
+      ['APROBADO', 'SUSPENDIDO'],
+      ['APROBADO', 'SIN_SOLUCION'],
+      ['EN_PROGRESO', 'RESUELTO'],
+      ['EN_PROGRESO', 'SUSPENDIDO'],
+      ['EN_PROGRESO', 'SIN_SOLUCION'],
+      ['SUSPENDIDO', 'EN_PROGRESO'],
+    ])('permite %s → %s', (desde, hacia) => {
+      expect(machine.puedeTransicionar(desde, hacia, ctx)).toBe(true);
     });
   });
 
-  // ─── Estados TERMINALES — ninguna transición válida ─────────────────────
+  // ─── Arco legacy eliminado ───────────────────────────────────────────────
 
-  describe('estados terminales: CERRADO y CANCELADO', () => {
-    it('rechaza CERRADO → EN_PROGRESO', () => {
-      expect(machine.puedeTransicionar('CERRADO', 'EN_PROGRESO', ctx)).toBe(false);
-    });
-
-    it('rechaza CERRADO → ABIERTO', () => {
-      expect(machine.puedeTransicionar('CERRADO', 'ABIERTO', ctx)).toBe(false);
-    });
-
-    it('rechaza CERRADO → RESUELTO', () => {
-      expect(machine.puedeTransicionar('CERRADO', 'RESUELTO', ctx)).toBe(false);
-    });
-
-    it('rechaza CERRADO → CANCELADO', () => {
-      expect(machine.puedeTransicionar('CERRADO', 'CANCELADO', ctx)).toBe(false);
-    });
-
-    it('rechaza CANCELADO → ABIERTO', () => {
-      expect(machine.puedeTransicionar('CANCELADO', 'ABIERTO', ctx)).toBe(false);
-    });
-
-    it('rechaza CANCELADO → EN_PROGRESO', () => {
-      expect(machine.puedeTransicionar('CANCELADO', 'EN_PROGRESO', ctx)).toBe(false);
-    });
-
-    it('rechaza CANCELADO → RESUELTO', () => {
-      expect(machine.puedeTransicionar('CANCELADO', 'RESUELTO', ctx)).toBe(false);
-    });
-
-    it('rechaza CANCELADO → CERRADO', () => {
-      expect(machine.puedeTransicionar('CANCELADO', 'CERRADO', ctx)).toBe(false);
+  describe('arco legacy ABIERTO → EN_PROGRESO eliminado (ADR-1)', () => {
+    it('rechaza ABIERTO → EN_PROGRESO (arco legacy eliminado del nuevo diagrama)', () => {
+      expect(machine.puedeTransicionar('ABIERTO', 'EN_PROGRESO', ctx)).toBe(false);
     });
   });
 
-  // ─── Transiciones INVÁLIDAS (saltos no contemplados en el diagrama) ─────
+  // ─── Estados TERMINALES activos (RESUELTO, SIN_SOLUCION, RECHAZADO) ─────
 
-  describe('transiciones inválidas (no están en el diagrama base)', () => {
+  describe('estados terminales activos: sin arcos de salida (ADR-1)', () => {
+    it.each([
+      ['RESUELTO', 'ABIERTO'],
+      ['RESUELTO', 'EN_PROGRESO'],
+      ['RESUELTO', 'APROBADO'],
+      ['RESUELTO', 'SUSPENDIDO'],
+      ['SIN_SOLUCION', 'ABIERTO'],
+      ['SIN_SOLUCION', 'EN_PROGRESO'],
+      ['SIN_SOLUCION', 'APROBADO'],
+      ['RECHAZADO', 'ABIERTO'],
+      ['RECHAZADO', 'EN_PROGRESO'],
+      ['RECHAZADO', 'APROBADO'],
+    ])('rechaza %s → %s (terminal activo, sin arcos de salida)', (desde, hacia) => {
+      expect(machine.puedeTransicionar(desde, hacia, ctx)).toBe(false);
+    });
+  });
+
+  // ─── Estados CONGELADOS legacy (CERRADO, CANCELADO, PENDIENTE_APROBACION) ──
+
+  describe('estados congelados legacy: sin arcos de entrada ni salida (ADR-1)', () => {
+    it.each([
+      // Congelados como origen
+      ['CERRADO', 'EN_PROGRESO'],
+      ['CERRADO', 'ABIERTO'],
+      ['CERRADO', 'RESUELTO'],
+      ['CANCELADO', 'ABIERTO'],
+      ['CANCELADO', 'EN_PROGRESO'],
+      ['PENDIENTE_APROBACION', 'ABIERTO'],
+      ['PENDIENTE_APROBACION', 'APROBADO'],
+      ['PENDIENTE_APROBACION', 'RECHAZADO'],
+      // Congelados como destino (no hay rutas que lleven a ellos)
+      ['ABIERTO', 'CERRADO'],
+      ['ABIERTO', 'CANCELADO'],
+      ['ABIERTO', 'PENDIENTE_APROBACION'],
+      ['EN_PROGRESO', 'CANCELADO'],
+      ['EN_PROGRESO', 'CERRADO'],
+    ])('rechaza %s → %s (estado congelado, sin arcos)', (desde, hacia) => {
+      expect(machine.puedeTransicionar(desde, hacia, ctx)).toBe(false);
+    });
+  });
+
+  // ─── Transiciones inválidas adicionales ─────────────────────────────────
+
+  describe('transiciones inválidas (no están en el nuevo diagrama)', () => {
     it('rechaza ABIERTO → RESUELTO (salto de estado)', () => {
       expect(machine.puedeTransicionar('ABIERTO', 'RESUELTO', ctx)).toBe(false);
     });
 
-    it('rechaza ABIERTO → CERRADO (salto de estado)', () => {
-      expect(machine.puedeTransicionar('ABIERTO', 'CERRADO', ctx)).toBe(false);
+    it('rechaza ABIERTO → SUSPENDIDO (salto de estado)', () => {
+      expect(machine.puedeTransicionar('ABIERTO', 'SUSPENDIDO', ctx)).toBe(false);
     });
 
-    it('rechaza EN_PROGRESO → ABIERTO (no hay vuelta atrás)', () => {
+    it('rechaza ABIERTO → SIN_SOLUCION (salto de estado)', () => {
+      expect(machine.puedeTransicionar('ABIERTO', 'SIN_SOLUCION', ctx)).toBe(false);
+    });
+
+    it('rechaza EN_PROGRESO → ABIERTO (sin retroceso)', () => {
       expect(machine.puedeTransicionar('EN_PROGRESO', 'ABIERTO', ctx)).toBe(false);
     });
 
-    it('rechaza EN_PROGRESO → PENDIENTE_APROBACION (exclusivo de COMPRAS)', () => {
-      expect(machine.puedeTransicionar('EN_PROGRESO', 'PENDIENTE_APROBACION', ctx)).toBe(false);
+    it('rechaza EN_PROGRESO → APROBADO (sin retroceso)', () => {
+      expect(machine.puedeTransicionar('EN_PROGRESO', 'APROBADO', ctx)).toBe(false);
     });
 
-    it('rechaza RESUELTO → ABIERTO', () => {
-      expect(machine.puedeTransicionar('RESUELTO', 'ABIERTO', ctx)).toBe(false);
+    it('rechaza SUSPENDIDO → RESUELTO (solo puede volver a EN_PROGRESO)', () => {
+      expect(machine.puedeTransicionar('SUSPENDIDO', 'RESUELTO', ctx)).toBe(false);
     });
 
-    it('rechaza RESUELTO → CANCELADO', () => {
-      expect(machine.puedeTransicionar('RESUELTO', 'CANCELADO', ctx)).toBe(false);
+    it('rechaza SUSPENDIDO → APROBADO', () => {
+      expect(machine.puedeTransicionar('SUSPENDIDO', 'APROBADO', ctx)).toBe(false);
+    });
+
+    it('rechaza APROBADO → ABIERTO (sin retroceso)', () => {
+      expect(machine.puedeTransicionar('APROBADO', 'ABIERTO', ctx)).toBe(false);
+    });
+
+    it('rechaza APROBADO → RECHAZADO (RECHAZADO solo acepta desde ABIERTO)', () => {
+      expect(machine.puedeTransicionar('APROBADO', 'RECHAZADO', ctx)).toBe(false);
+    });
+
+    it('rechaza RESUELTO → EN_PROGRESO (reapertura eliminada — RESUELTO es terminal)', () => {
+      expect(machine.puedeTransicionar('RESUELTO', 'EN_PROGRESO', ctx)).toBe(false);
+    });
+
+    it('rechaza RESUELTO → CERRADO (arc legacy eliminado)', () => {
+      expect(machine.puedeTransicionar('RESUELTO', 'CERRADO', ctx)).toBe(false);
     });
 
     it('rechaza estado desconocido como origen', () => {
@@ -124,8 +158,8 @@ describe('BaseTicketStateMachine', () => {
 
   describe('pureza de función', () => {
     it('mismo input produce mismo output (determinismo)', () => {
-      const result1 = machine.puedeTransicionar('ABIERTO', 'EN_PROGRESO', ctx);
-      const result2 = machine.puedeTransicionar('ABIERTO', 'EN_PROGRESO', ctx);
+      const result1 = machine.puedeTransicionar('ABIERTO', 'APROBADO', ctx);
+      const result2 = machine.puedeTransicionar('ABIERTO', 'APROBADO', ctx);
       expect(result1).toBe(true);
       expect(result2).toBe(true);
     });
@@ -133,24 +167,22 @@ describe('BaseTicketStateMachine', () => {
     it('no muta el contexto recibido', () => {
       const mutableCtx: StateMachineContext = { porcentajeAvance: 50 };
       const ctxSnapshot = { ...mutableCtx };
-      machine.puedeTransicionar('ABIERTO', 'EN_PROGRESO', mutableCtx);
+      machine.puedeTransicionar('ABIERTO', 'APROBADO', mutableCtx);
       expect(mutableCtx).toEqual(ctxSnapshot);
     });
 
     it('múltiples llamadas secuenciales no alteran el estado interno de la máquina', () => {
-      // Ejecutar varias transiciones intercaladas…
-      machine.puedeTransicionar('ABIERTO', 'EN_PROGRESO', ctx);
-      machine.puedeTransicionar('EN_PROGRESO', 'RESUELTO', ctx);
-      machine.puedeTransicionar('CERRADO', 'EN_PROGRESO', ctx); // inválida
-      // …y el resultado sigue siendo el mismo que en el primer call
-      expect(machine.puedeTransicionar('ABIERTO', 'EN_PROGRESO', ctx)).toBe(true);
-      expect(machine.puedeTransicionar('CERRADO', 'EN_PROGRESO', ctx)).toBe(false);
+      machine.puedeTransicionar('ABIERTO', 'APROBADO', ctx);
+      machine.puedeTransicionar('APROBADO', 'EN_PROGRESO', ctx);
+      machine.puedeTransicionar('RESUELTO', 'EN_PROGRESO', ctx); // inválida
+      expect(machine.puedeTransicionar('ABIERTO', 'APROBADO', ctx)).toBe(true);
+      expect(machine.puedeTransicionar('RESUELTO', 'EN_PROGRESO', ctx)).toBe(false);
     });
 
     it('el resultado no depende del orden de instanciación de la clase', () => {
       const machine2 = new BaseTicketStateMachine();
-      expect(machine.puedeTransicionar('RESUELTO', 'CERRADO', ctx)).toBe(
-        machine2.puedeTransicionar('RESUELTO', 'CERRADO', ctx),
+      expect(machine.puedeTransicionar('APROBADO', 'EN_PROGRESO', ctx)).toBe(
+        machine2.puedeTransicionar('APROBADO', 'EN_PROGRESO', ctx),
       );
     });
   });
@@ -171,12 +203,12 @@ describe('TicketStateMachineFactory', () => {
     expect(machine).toBeInstanceOf(BaseTicketStateMachine);
   });
 
-  it('retorna BaseTicketStateMachine como fallback para COMPRAS (no registrado aún — Fase 4)', () => {
+  it('retorna BaseTicketStateMachine como fallback para COMPRAS (no registrado aún)', () => {
     const machine = factory.resolve('COMPRAS');
     expect(machine).toBeInstanceOf(BaseTicketStateMachine);
   });
 
-  it('retorna BaseTicketStateMachine como fallback para EDILICIA (no registrado aún — Fase 5)', () => {
+  it('retorna BaseTicketStateMachine como fallback para EDILICIA (no registrado aún)', () => {
     const machine = factory.resolve('EDILICIA');
     expect(machine).toBeInstanceOf(BaseTicketStateMachine);
   });
@@ -191,14 +223,15 @@ describe('TicketStateMachineFactory', () => {
     const factory2 = new TicketStateMachineFactory();
     const customMachine = new BaseTicketStateMachine();
     factory.register('SOPORTE', customMachine);
-    // factory2 no sabe nada de lo registrado en factory
     expect(factory2.resolve('SOPORTE')).not.toBe(customMachine);
     expect(factory2.resolve('SOPORTE')).toBeInstanceOf(BaseTicketStateMachine);
   });
 
-  it('la máquina fallback tiene transiciones base operativas', () => {
+  it('la máquina fallback tiene transiciones del nuevo diagrama operativas (ADR-1)', () => {
     const machine = factory.resolve('TIPO_DESCONOCIDO');
-    expect(machine.puedeTransicionar('ABIERTO', 'EN_PROGRESO', ctx)).toBe(true);
-    expect(machine.puedeTransicionar('CERRADO', 'EN_PROGRESO', ctx)).toBe(false);
+    // Arco nuevo válido
+    expect(machine.puedeTransicionar('ABIERTO', 'APROBADO', ctx)).toBe(true);
+    // Arco legacy eliminado
+    expect(machine.puedeTransicionar('ABIERTO', 'EN_PROGRESO', ctx)).toBe(false);
   });
 });
