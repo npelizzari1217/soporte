@@ -153,13 +153,17 @@ describe('Migration: seed_rbac_ticket_editar_eliminar (master)', () => {
       expect(rows).toHaveLength(2);
     });
 
-    it('no duplica roles_permisos tras 2ª ejecución (ADMIN×2 + SOPORTE_IT×1 = 3 filas)', async () => {
+    it('no duplica roles_permisos en ADMIN+SOPORTE_IT tras 2ª ejecución (ADMIN×2 + SOPORTE_IT×1 = 3 filas)', async () => {
+      // Filtra SOLO los roles que esta migración gestiona (ADMIN y SOPORTE_IT).
+      // Otros roles (ej. ADMINISTRADOR, TECNICO de Change B) también reciben ticket:editar
+      // vía sus propias migraciones — no deben afectar el recuento de idempotencia de esta.
       const { rows } = await pool.query(`
         SELECT r.codigo AS rol, p.codigo AS permiso
         FROM roles_permisos rp
         JOIN roles r ON r.id = rp.rol_id
         JOIN permisos p ON p.id = rp.permiso_id
         WHERE p.codigo IN ('ticket:editar', 'ticket:eliminar')
+          AND r.codigo IN ('ADMIN', 'SOPORTE_IT')
         ORDER BY r.codigo, p.codigo
       `);
       // ADMIN: ticket:editar, ticket:eliminar (2)
