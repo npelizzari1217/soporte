@@ -119,10 +119,10 @@ describe('RBAC seed migration (integration — 2.E.1)', () => {
   // ─── 1. Roles catalog ─────────────────────────────────────────────────────
 
   describe('1. Catálogo de roles', () => {
-    it('contiene los 5 roles exactos del spec', async () => {
-      const res = await pool.query<{ codigo: string }>(
-        'SELECT codigo FROM roles WHERE deleted_at IS NULL ORDER BY codigo',
-      );
+    it('contiene los 5 roles exactos del spec (existen aunque estén soft-deleted por PR2)', async () => {
+      // PR2 (remap_usuarios_roles) soft-deletes los roles legacy — el seed sigue siendo correcto;
+      // los datos insertados por seed_rbac_base aún existen en la tabla.
+      const res = await pool.query<{ codigo: string }>('SELECT codigo FROM roles ORDER BY codigo');
       const codigos = res.rows.map((r) => r.codigo);
 
       for (const expected of EXPECTED_ROLES) {
