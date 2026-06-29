@@ -145,6 +145,20 @@ export interface ArchivoResponseDto {
 }
 
 /**
+ * Cuerpo HTTP para POST /tickets/:id/comentarios.
+ *
+ * - `contenido`: texto del comentario (requerido, no vacío).
+ *
+ * Nota: se valida en el controller (contenido.trim() !== '') antes de invocar el use case.
+ *
+ * Ref spec: specs/tickets-core/spec.md §POST /tickets/:id/comentarios
+ * Change: tickets-rbac-4-roles / PR4b — T4B.7
+ */
+export interface CrearComentarioRequestDto {
+  contenido: string;
+}
+
+/**
  * Cuerpo HTTP para POST /tickets/:id/observaciones.
  *
  * - `contenido`: texto de la observación técnica (requerido, no vacío).

@@ -91,6 +91,7 @@ import { ListarOperacionesUseCase } from './application/use-cases/listar-operaci
 import { EditarTicketUseCase } from './application/use-cases/editar-ticket.use-case';
 import { EliminarTicketUseCase } from './application/use-cases/eliminar-ticket.use-case';
 import { CrearObservacionUseCase } from './application/use-cases/crear-observacion.use-case';
+import { CrearComentarioUseCase } from './application/use-cases/crear-comentario.use-case';
 
 // ─── Guards ───────────────────────────────────────────────────────────────────
 import { RolesGuard } from '../auth/infrastructure/guards/roles.guard';
@@ -100,6 +101,7 @@ import { TenantGuard } from '../auth/infrastructure/guards/tenant.guard';
 // ─── Controllers ──────────────────────────────────────────────────────────────
 import { TicketsController } from './interface/controllers/tickets.controller';
 import { OperacionesController } from './interface/controllers/operaciones.controller';
+import { ComentariosController } from './interface/controllers/comentarios.controller';
 
 // ─── Module ───────────────────────────────────────────────────────────────────
 
@@ -110,7 +112,7 @@ import { OperacionesController } from './interface/controllers/operaciones.contr
     // en el contexto de TicketsModule.
     AuthModule,
   ],
-  controllers: [TicketsController, OperacionesController],
+  controllers: [TicketsController, OperacionesController, ComentariosController],
   // Exportamos los providers que ComprasModule (Fase 4) y ReparacionesModule (Fase 5)
   // necesitan para cablear sus propios use cases. El TICKET_STATE_MACHINE_FACTORY es
   // el singleton compartido que las máquinas de estado de cada dominio extienden via
@@ -385,6 +387,25 @@ import { OperacionesController } from './interface/controllers/operaciones.contr
         OPERACION_TICKET_REPOSITORY,
         TIPO_OPERACION_REPOSITORY,
         TENANT_TRANSACTION_RUNNER,
+      ],
+    },
+
+    // CrearComentarioUseCase: sin ITenantTransactionRunner (un solo write — no necesita tx).
+    // Deps: ticketRepo + estadoRepo + operacionRepo + tipoOperacionRepo.
+    // Change: tickets-rbac-4-roles / PR4b — T4B.9
+    {
+      provide: CrearComentarioUseCase,
+      useFactory: (
+        ticketRepo: ITicketRepository,
+        estadoRepo: IEstadoRepository,
+        operacionRepo: IOperacionTicketRepository,
+        tipoOpRepo: ITipoOperacionRepository,
+      ) => new CrearComentarioUseCase(ticketRepo, estadoRepo, operacionRepo, tipoOpRepo),
+      inject: [
+        TICKET_REPOSITORY,
+        ESTADO_REPOSITORY,
+        OPERACION_TICKET_REPOSITORY,
+        TIPO_OPERACION_REPOSITORY,
       ],
     },
 
