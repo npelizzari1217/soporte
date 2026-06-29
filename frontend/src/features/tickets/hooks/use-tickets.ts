@@ -27,12 +27,14 @@ import type { Ticket, TicketFiltros } from "../types";
 
 /**
  * Builds the query string from a TicketFiltros object.
- * tiposIds are appended as repeated `tiposIds[]` params (backend expects array notation).
+ * tiposIds are appended as REPEATED `tiposIds` params (NO brackets): `?tiposIds=a&tiposIds=b`.
+ * El query parser de Express NO mapea `tiposIds[]` a `q.tiposIds` (queda como key literal
+ * `tiposIds[]` → el filtro se ignora). Repetir `tiposIds` sí lo coerce a array en el backend.
  * Empty filtros → empty string (no query string appended).
  */
 function toQueryString(filtros: TicketFiltros): string {
   const params = new URLSearchParams();
-  filtros.tiposIds?.forEach((id) => params.append("tiposIds[]", id));
+  filtros.tiposIds?.forEach((id) => params.append("tiposIds", id));
   if (filtros.fechaDesde) params.set("fechaDesde", filtros.fechaDesde);
   if (filtros.fechaHasta) params.set("fechaHasta", filtros.fechaHasta);
   const qs = params.toString();
