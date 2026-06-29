@@ -144,6 +144,39 @@ export interface ArchivoResponseDto {
   createdAt: string;
 }
 
+/**
+ * Cuerpo HTTP para POST /tickets/:id/observaciones.
+ *
+ * - `contenido`: texto de la observación técnica (requerido, no vacío).
+ * - `nuevoEstadoCodigo`: si el ticket está en APROBADO, dispara auto-transición.
+ *   Default EN_PROGRESO cuando se omite y el ticket está en APROBADO.
+ *   Ignorado si el ticket no está en APROBADO.
+ *   Valores aceptados: EN_PROGRESO, RESUELTO, SUSPENDIDO, SIN_SOLUCION.
+ * - `fechaCierre`: REQUERIDA cuando nuevoEstadoCodigo === 'RESUELTO'. Formato ISO 'YYYY-MM-DD'.
+ *   Ignorada para otros destinos.
+ *
+ * Ref tasks: P2.T3 — Change tickets-maquina-estados-observaciones / PR2
+ */
+export interface CrearObservacionHttpDto {
+  contenido: string;
+  nuevoEstadoCodigo?: 'EN_PROGRESO' | 'RESUELTO' | 'SUSPENDIDO' | 'SIN_SOLUCION';
+  /**
+   * REQUERIDA cuando nuevoEstadoCodigo === 'RESUELTO'.
+   * Formato ISO 'YYYY-MM-DD'.
+   * Ignorada para otros destinos.
+   */
+  fechaCierre?: string;
+}
+
+/**
+ * Respuesta del endpoint POST /tickets/:id/observaciones (201).
+ *
+ * Ref tasks: P2.T3 — Change tickets-maquina-estados-observaciones / PR2
+ */
+export interface CrearObservacionResponseDto {
+  ticket: TicketResponseDto;
+}
+
 /** Shape de respuesta para una OperacionTicket (entrada de timeline). */
 export interface OperacionTicketResponseDto {
   id: string;

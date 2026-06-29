@@ -312,3 +312,22 @@ export class FechaResolucionRequeridaError extends DomainError {
     super('fechaResolucion es requerida para transicionar a estado RESUELTO.');
   }
 }
+
+/**
+ * Error de dominio: el ticket está en estado terminal y no puede recibir observaciones.
+ * HTTP 422 semántico.
+ *
+ * Los estados terminales (RESUELTO, SIN_SOLUCION, RECHAZADO) y los congelados legacy
+ * (CERRADO, CANCELADO, PENDIENTE_APROBACION) bloquean nuevas observaciones.
+ *
+ * Ref spec: Scenario "Observación bloqueada en estado terminal" (tickets-core/spec.md)
+ * Change: tickets-maquina-estados-observaciones / PR2
+ * Task: P2.T4
+ */
+export class ObservacionNoPermitidaError extends DomainError {
+  readonly code = 'OBSERVACION_NO_PERMITIDA';
+
+  constructor(estadoCodigo: string) {
+    super(`El ticket está en estado terminal "${estadoCodigo}" y no acepta observaciones.`);
+  }
+}
