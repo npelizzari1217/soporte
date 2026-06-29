@@ -1,0 +1,419 @@
+/**
+ * P2.T5 [RED → GREEN con P2.T6] — Unit tests para CrearObservacionUseCase.
+ *
+ * Todos los repositorios son mockeados (sin Prisma ni DB).
+ * El txRunner ejecuta el callback inmediatamente (patrón establecido en PR1).
+ *
+ * Cubre (ADR-2, ADR-7, Req Observaciones del técnico):
+ * 1.  Ticket APROBADO sin nuevoEstadoCodigo → auto-transición EN_PROGRESO (2 operaciones)
+ * 2.  Ticket APROBADO con nuevoEstadoCodigo: 'EN_PROGRESO' → equivalente al 1
+ * 3.  Ticket APROBADO + nuevoEstadoCodigo: 'RESUELTO' + fechaCierre → setFechaResolucion(fecha)
+ * 4.  Ticket APROBADO + nuevoEstadoCodigo: 'RESUELTO' SIN fechaCierre → FechaResolucionRequeridaError 422
+ * 5.  Ticket APROBADO + nuevoEstadoCodigo: 'SUSPENDIDO' → sin setFechaResolucion
+ * 6.  Ticket APROBADO + nuevoEstadoCodigo: 'SIN_SOLUCION' → setFechaResolucion(now)
+ * 7.  nuevoEstadoCodigo: 'ABIERTO' desde APROBADO → TransicionInvalidaError 422
+ * 8.  Ticket EN_PROGRESO → solo OBSERVACION, sin cambio de estado, sin fecha
+ * 9.  nuevoEstadoCodigo ignorado cuando ticket no está en APROBADO
+ * 10. Ticket en estado terminal (RESUELTO) → ObservacionNoPermitidaError 422
+ * 11. Rollback: si falla save(CAMBIO_ESTADO) → execute() rechaza (la tx rollbackea)
+ * 12. Ticket de otro tenant (findById → null) → TicketNoEncontradoError 404
+ *
+ * Ref spec: Req Observaciones del técnico (tickets-core/spec.md), ADR-2
+ * Change: tickets-maquina-estados-observaciones / PR2
+ */
+
+import { vi, describe, it, expect, beforeEach } from 'vitest';
+import { CrearObservacionDto, CrearObservacionUseCase } from './crear-observacion.use-case';
+import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
+import { IEstadoRepository } from '../../domain/ports/i-estado.repository';
+import { IOperacionTicketRepository } from '../../domain/ports/i-operacion-ticket.repository';
+import { ITipoOperacionRepository } from '../../domain/ports/i-tipo-operacion.repository';
+import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
+import { TicketEntity, TicketProps } from '../../domain/entities/ticket.entity';
+import { EstadoEntity } from '../../domain/entities/estado.entity';
+import {
+  EstadoCatalogoNoEncontradoError,
+  FechaResolucionRequeridaError,
+  ObservacionNoPermitidaError,
+  TicketNoEncontradoError,
+  TipoOperacionNoEncontradoError,
+  TransicionInvalidaError,
+} from '../../domain/errors/tickets.errors';
+
+// ─── Constantes ───────────────────────────────────────────────────────────────
+
+const TICKET_ID = 'ticket-uuid-pr2-001';
+const AUTOR_ID = 'user-autor-pr2-001';
+const _ESTADO_ABIERTO_ID = 'c0000000-0000-4000-c000-000000000001'; // disponible para tests futuros
+const ESTADO_APROBADO_ID = 'c0000000-0000-4000-c000-000000000003';
+const ESTADO_EN_PROGRESO_ID = 'c0000000-0000-4000-c000-000000000005';
+const ESTADO_SUSPENDIDO_ID = 'c0000000-0000-4000-c000-000000000009';
+const ESTADO_RESUELTO_ID = 'c0000000-0000-4000-c000-000000000006';
+const ESTADO_SIN_SOLUCION_ID = 'c0000000-0000-4000-c000-00000000000a';
+const TIPO_OP_OBSERVACION_ID = 'f0000000-0000-4000-f000-000000000009';
+const TIPO_OP_CAMBIO_ESTADO_ID = 'f0000000-0000-4000-f000-000000000001';
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function makeEstado(codigo: string, id: string): EstadoEntity {
+  return EstadoEntity.create({ codigo, nombre: codigo, color: null, orden: 10, activo: true }, id);
+}
+
+function makeTicketProps(overrides: Partial<TicketProps> = {}): TicketProps {
+  return {
+    numero: 'SOP-2026-00101',
+    titulo: 'Ticket de observación',
+    descripcion: null,
+    tipoId: 'tipo-uuid-001',
+    estadoId: ESTADO_APROBADO_ID,
+    prioridadId: 'prio-uuid-001',
+    cicloId: null,
+    solicitanteId: 'user-solicitante-001',
+    asignadoId: null,
+    fechaResolucion: null,
+    ...overrides,
+  };
+}
+
+function makeTicket(estadoId: string = ESTADO_APROBADO_ID): TicketEntity {
+  return TicketEntity.reconstitute(
+    makeTicketProps({ estadoId }),
+    TICKET_ID,
+    new Date(),
+    new Date(),
+    null,
+  );
+}
+
+const baseDto: CrearObservacionDto = {
+  ticketId: TICKET_ID,
+  texto: 'Observación del técnico',
+  autorId: AUTOR_ID,
+};
+
+// ─── Mocks factory ────────────────────────────────────────────────────────────
+
+function makeMocks() {
+  const ticketRepo: vi.Mocked<ITicketRepository> = {
+    findById: vi.fn(),
+    findByNumero: vi.fn(),
+    findLastSecuencia: vi.fn(),
+    findAll: vi.fn(),
+    findByEstado: vi.fn(),
+    save: vi.fn().mockResolvedValue(undefined),
+    delete: vi.fn(),
+  };
+
+  const estadoRepo: vi.Mocked<IEstadoRepository> = {
+    findById: vi.fn(),
+    findByCodigo: vi.fn(),
+    findAllActive: vi.fn(),
+    findAll: vi.fn(),
+  };
+
+  const operacionRepo: vi.Mocked<IOperacionTicketRepository> = {
+    findByTicketId: vi.fn(),
+    save: vi.fn().mockResolvedValue(undefined),
+  };
+
+  const tipoOperacionRepo: vi.Mocked<ITipoOperacionRepository> = {
+    findIdByCodigo: vi.fn(),
+  };
+
+  // txRunner ejecuta el callback inmediatamente (sin DB real)
+  const txRunner: ITenantTransactionRunner = {
+    run: vi.fn((fn) => fn()),
+  };
+
+  return { ticketRepo, estadoRepo, operacionRepo, tipoOperacionRepo, txRunner };
+}
+
+// ─── Suite ────────────────────────────────────────────────────────────────────
+
+describe('CrearObservacionUseCase', () => {
+  let ticketRepo: vi.Mocked<ITicketRepository>;
+  let estadoRepo: vi.Mocked<IEstadoRepository>;
+  let operacionRepo: vi.Mocked<IOperacionTicketRepository>;
+  let tipoOperacionRepo: vi.Mocked<ITipoOperacionRepository>;
+  let txRunner: ITenantTransactionRunner;
+  let useCase: CrearObservacionUseCase;
+
+  beforeEach(() => {
+    const mocks = makeMocks();
+    ticketRepo = mocks.ticketRepo;
+    estadoRepo = mocks.estadoRepo;
+    operacionRepo = mocks.operacionRepo;
+    tipoOperacionRepo = mocks.tipoOperacionRepo;
+    txRunner = mocks.txRunner;
+    useCase = new CrearObservacionUseCase(
+      ticketRepo,
+      estadoRepo,
+      operacionRepo,
+      tipoOperacionRepo,
+      txRunner,
+    );
+  });
+
+  // ─── Setup helpers compartidos ──────────────────────────────────────────────
+
+  /** Configura el mock de repos para ticket en APROBADO. */
+  function setupAprobado() {
+    const ticket = makeTicket(ESTADO_APROBADO_ID);
+    ticketRepo.findById.mockResolvedValue(ticket);
+    estadoRepo.findById.mockResolvedValue(makeEstado('APROBADO', ESTADO_APROBADO_ID));
+    tipoOperacionRepo.findIdByCodigo.mockImplementation((codigo) => {
+      if (codigo === 'OBSERVACION') return Promise.resolve(TIPO_OP_OBSERVACION_ID);
+      if (codigo === 'CAMBIO_ESTADO') return Promise.resolve(TIPO_OP_CAMBIO_ESTADO_ID);
+      return Promise.resolve(null);
+    });
+    return ticket;
+  }
+
+  // ─── Escenario 1: APROBADO sin nuevoEstadoCodigo → EN_PROGRESO ──────────────
+
+  it('Sc1: ticket APROBADO sin nuevoEstadoCodigo → auto-transición a EN_PROGRESO', async () => {
+    const ticket = setupAprobado();
+    estadoRepo.findByCodigo.mockImplementation((codigo) => {
+      if (codigo === 'EN_PROGRESO')
+        return Promise.resolve(makeEstado('EN_PROGRESO', ESTADO_EN_PROGRESO_ID));
+      return Promise.resolve(null);
+    });
+
+    const result = await useCase.execute(baseDto);
+
+    expect(result.isOk()).toBe(true);
+    // ticket.estadoId actualizado a EN_PROGRESO
+    expect(ticket.estadoId).toBe(ESTADO_EN_PROGRESO_ID);
+    // ticketRepo.save fue llamado (estado cambió)
+    expect(ticketRepo.save).toHaveBeenCalledOnce();
+    // 2 saves en operacionRepo: OBSERVACION + CAMBIO_ESTADO
+    expect(operacionRepo.save).toHaveBeenCalledTimes(2);
+    // txRunner.run fue invocado
+    expect(txRunner.run as ReturnType<typeof vi.fn>).toHaveBeenCalledOnce();
+  });
+
+  // ─── Escenario 2: APROBADO con nuevoEstadoCodigo EN_PROGRESO explícito ───────
+
+  it('Sc2: ticket APROBADO con nuevoEstadoCodigo EN_PROGRESO → idéntico al Sc1', async () => {
+    const ticket = setupAprobado();
+    estadoRepo.findByCodigo.mockImplementation((codigo) => {
+      if (codigo === 'EN_PROGRESO')
+        return Promise.resolve(makeEstado('EN_PROGRESO', ESTADO_EN_PROGRESO_ID));
+      return Promise.resolve(null);
+    });
+
+    const result = await useCase.execute({ ...baseDto, estadoDestinoCodigo: 'EN_PROGRESO' });
+
+    expect(result.isOk()).toBe(true);
+    expect(ticket.estadoId).toBe(ESTADO_EN_PROGRESO_ID);
+    expect(ticketRepo.save).toHaveBeenCalledOnce();
+    expect(operacionRepo.save).toHaveBeenCalledTimes(2);
+  });
+
+  // ─── Escenario 3: APROBADO → RESUELTO con fechaCierre ────────────────────────
+
+  it('Sc3: APROBADO + nuevoEstadoCodigo RESUELTO + fechaCierre → setFechaResolucion(fecha)', async () => {
+    const ticket = setupAprobado();
+    estadoRepo.findByCodigo.mockImplementation((codigo) => {
+      if (codigo === 'RESUELTO') return Promise.resolve(makeEstado('RESUELTO', ESTADO_RESUELTO_ID));
+      return Promise.resolve(null);
+    });
+    const fechaCierre = new Date('2026-06-29');
+    const setFechaResolucionSpy = vi.spyOn(ticket, 'setFechaResolucion');
+
+    // Re-inject ticket via findById (spy before execute)
+    ticketRepo.findById.mockResolvedValue(ticket);
+
+    const result = await useCase.execute({
+      ...baseDto,
+      estadoDestinoCodigo: 'RESUELTO',
+      fechaCierre,
+    });
+
+    expect(result.isOk()).toBe(true);
+    expect(setFechaResolucionSpy).toHaveBeenCalledWith(fechaCierre);
+    expect(ticket.estadoId).toBe(ESTADO_RESUELTO_ID);
+    expect(operacionRepo.save).toHaveBeenCalledTimes(2);
+  });
+
+  // ─── Escenario 4: APROBADO → RESUELTO SIN fechaCierre → fail 422 ─────────────
+
+  it('Sc4: APROBADO + nuevoEstadoCodigo RESUELTO SIN fechaCierre → FechaResolucionRequeridaError', async () => {
+    setupAprobado();
+
+    const result = await useCase.execute({
+      ...baseDto,
+      estadoDestinoCodigo: 'RESUELTO',
+      // fechaCierre omitida
+    });
+
+    expect(result.isFail()).toBe(true);
+    expect(result.getError()).toBeInstanceOf(FechaResolucionRequeridaError);
+    // Nada debería persistirse
+    expect(ticketRepo.save).not.toHaveBeenCalled();
+    expect(operacionRepo.save).not.toHaveBeenCalled();
+  });
+
+  // ─── Escenario 5: APROBADO → SUSPENDIDO → sin setFechaResolucion ─────────────
+
+  it('Sc5: APROBADO + nuevoEstadoCodigo SUSPENDIDO → no setea fechaResolucion', async () => {
+    const ticket = setupAprobado();
+    estadoRepo.findByCodigo.mockImplementation((codigo) => {
+      if (codigo === 'SUSPENDIDO')
+        return Promise.resolve(makeEstado('SUSPENDIDO', ESTADO_SUSPENDIDO_ID));
+      return Promise.resolve(null);
+    });
+    const setFechaResolucionSpy = vi.spyOn(ticket, 'setFechaResolucion');
+    ticketRepo.findById.mockResolvedValue(ticket);
+
+    const result = await useCase.execute({ ...baseDto, estadoDestinoCodigo: 'SUSPENDIDO' });
+
+    expect(result.isOk()).toBe(true);
+    expect(setFechaResolucionSpy).not.toHaveBeenCalled();
+    expect(ticket.estadoId).toBe(ESTADO_SUSPENDIDO_ID);
+    expect(operacionRepo.save).toHaveBeenCalledTimes(2);
+  });
+
+  // ─── Escenario 6: APROBADO → SIN_SOLUCION → setFechaResolucion(now) ──────────
+
+  it('Sc6: APROBADO + nuevoEstadoCodigo SIN_SOLUCION → setFechaResolucion(now)', async () => {
+    const ticket = setupAprobado();
+    estadoRepo.findByCodigo.mockImplementation((codigo) => {
+      if (codigo === 'SIN_SOLUCION')
+        return Promise.resolve(makeEstado('SIN_SOLUCION', ESTADO_SIN_SOLUCION_ID));
+      return Promise.resolve(null);
+    });
+    const setFechaResolucionSpy = vi.spyOn(ticket, 'setFechaResolucion');
+    ticketRepo.findById.mockResolvedValue(ticket);
+
+    const result = await useCase.execute({ ...baseDto, estadoDestinoCodigo: 'SIN_SOLUCION' });
+
+    expect(result.isOk()).toBe(true);
+    expect(setFechaResolucionSpy).toHaveBeenCalledOnce();
+    // El argumento debe ser un Date (now)
+    const llamadaCon = setFechaResolucionSpy.mock.calls[0][0];
+    expect(llamadaCon).toBeInstanceOf(Date);
+    expect(ticket.estadoId).toBe(ESTADO_SIN_SOLUCION_ID);
+  });
+
+  // ─── Escenario 7: APROBADO → ABIERTO (inválido) → TransicionInvalidaError ────
+
+  it('Sc7: nuevoEstadoCodigo ABIERTO desde APROBADO → TransicionInvalidaError 422', async () => {
+    setupAprobado();
+
+    const result = await useCase.execute({
+      ...baseDto,
+      // @ts-expect-error: probando valor inválido para la state machine
+      estadoDestinoCodigo: 'ABIERTO',
+    });
+
+    expect(result.isFail()).toBe(true);
+    expect(result.getError()).toBeInstanceOf(TransicionInvalidaError);
+    expect(ticketRepo.save).not.toHaveBeenCalled();
+    expect(operacionRepo.save).not.toHaveBeenCalled();
+  });
+
+  // ─── Escenario 8: Ticket EN_PROGRESO → solo OBSERVACION, sin cambio estado ───
+
+  it('Sc8: ticket EN_PROGRESO → registra OBSERVACION, sin cambio de estado', async () => {
+    const ticket = makeTicket(ESTADO_EN_PROGRESO_ID);
+    ticketRepo.findById.mockResolvedValue(ticket);
+    estadoRepo.findById.mockResolvedValue(makeEstado('EN_PROGRESO', ESTADO_EN_PROGRESO_ID));
+    tipoOperacionRepo.findIdByCodigo.mockResolvedValue(TIPO_OP_OBSERVACION_ID);
+
+    const result = await useCase.execute(baseDto);
+
+    expect(result.isOk()).toBe(true);
+    // Solo 1 save en operacionRepo (OBSERVACION), no CAMBIO_ESTADO
+    expect(operacionRepo.save).toHaveBeenCalledOnce();
+    // ticketRepo.save NO debería llamarse (no cambia el estado)
+    expect(ticketRepo.save).not.toHaveBeenCalled();
+    // estadoId no cambia
+    expect(ticket.estadoId).toBe(ESTADO_EN_PROGRESO_ID);
+  });
+
+  // ─── Escenario 9: nuevoEstadoCodigo ignorado fuera de APROBADO ───────────────
+
+  it('Sc9: nuevoEstadoCodigo ignorado cuando ticket no está en APROBADO', async () => {
+    const ticket = makeTicket(ESTADO_EN_PROGRESO_ID);
+    ticketRepo.findById.mockResolvedValue(ticket);
+    estadoRepo.findById.mockResolvedValue(makeEstado('EN_PROGRESO', ESTADO_EN_PROGRESO_ID));
+    tipoOperacionRepo.findIdByCodigo.mockResolvedValue(TIPO_OP_OBSERVACION_ID);
+
+    const result = await useCase.execute({ ...baseDto, estadoDestinoCodigo: 'RESUELTO' });
+
+    expect(result.isOk()).toBe(true);
+    // Estado no cambia
+    expect(ticket.estadoId).toBe(ESTADO_EN_PROGRESO_ID);
+    // Solo 1 operacion (OBSERVACION)
+    expect(operacionRepo.save).toHaveBeenCalledOnce();
+    expect(ticketRepo.save).not.toHaveBeenCalled();
+  });
+
+  // ─── Escenario 10: Estado terminal → ObservacionNoPermitidaError ──────────────
+
+  it('Sc10: ticket RESUELTO (terminal) → ObservacionNoPermitidaError 422', async () => {
+    ticketRepo.findById.mockResolvedValue(makeTicket(ESTADO_RESUELTO_ID));
+    estadoRepo.findById.mockResolvedValue(makeEstado('RESUELTO', ESTADO_RESUELTO_ID));
+
+    const result = await useCase.execute(baseDto);
+
+    expect(result.isFail()).toBe(true);
+    expect(result.getError()).toBeInstanceOf(ObservacionNoPermitidaError);
+    expect(operacionRepo.save).not.toHaveBeenCalled();
+    expect(ticketRepo.save).not.toHaveBeenCalled();
+  });
+
+  // ─── Escenario 11: Rollback — falla save(CAMBIO_ESTADO) ──────────────────────
+
+  it('Sc11: si falla save(CAMBIO_ESTADO) → execute() rechaza (transacción rollbackea)', async () => {
+    setupAprobado();
+    estadoRepo.findByCodigo.mockImplementation((codigo) => {
+      if (codigo === 'EN_PROGRESO')
+        return Promise.resolve(makeEstado('EN_PROGRESO', ESTADO_EN_PROGRESO_ID));
+      return Promise.resolve(null);
+    });
+
+    const dbError = new Error('Constraint violation en CAMBIO_ESTADO');
+    // Primera llamada (OBSERVACION) OK; segunda (CAMBIO_ESTADO) falla
+    operacionRepo.save.mockResolvedValueOnce(undefined).mockRejectedValueOnce(dbError);
+
+    await expect(useCase.execute(baseDto)).rejects.toThrow(dbError);
+  });
+
+  // ─── Escenario 12: Ticket no encontrado → TicketNoEncontradoError ─────────────
+
+  it('Sc12: ticket de otro tenant (findById → null) → TicketNoEncontradoError 404', async () => {
+    ticketRepo.findById.mockResolvedValue(null);
+
+    const result = await useCase.execute(baseDto);
+
+    expect(result.isFail()).toBe(true);
+    expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
+    expect(estadoRepo.findById).not.toHaveBeenCalled();
+    expect(operacionRepo.save).not.toHaveBeenCalled();
+  });
+
+  // ─── Extras: cobertura de infraestructura ────────────────────────────────────
+
+  it('Estado actual del ticket no existe en catálogo → EstadoCatalogoNoEncontradoError', async () => {
+    ticketRepo.findById.mockResolvedValue(makeTicket(ESTADO_APROBADO_ID));
+    estadoRepo.findById.mockResolvedValue(null); // catálogo corrupto
+
+    const result = await useCase.execute(baseDto);
+
+    expect(result.isFail()).toBe(true);
+    expect(result.getError()).toBeInstanceOf(EstadoCatalogoNoEncontradoError);
+  });
+
+  it('tipo_operacion OBSERVACION no existe en catálogo → TipoOperacionNoEncontradoError', async () => {
+    ticketRepo.findById.mockResolvedValue(makeTicket(ESTADO_EN_PROGRESO_ID));
+    estadoRepo.findById.mockResolvedValue(makeEstado('EN_PROGRESO', ESTADO_EN_PROGRESO_ID));
+    tipoOperacionRepo.findIdByCodigo.mockResolvedValue(null); // catálogo no sembrado
+
+    const result = await useCase.execute(baseDto);
+
+    expect(result.isFail()).toBe(true);
+    expect(result.getError()).toBeInstanceOf(TipoOperacionNoEncontradoError);
+  });
+});
