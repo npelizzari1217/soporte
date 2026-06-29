@@ -39,6 +39,7 @@ import {
   PrioridadNoEncontradaError,
   CicloNoEncontradoError,
   TipoOperacionNoEncontradoError,
+  ObservacionNoPermitidaError,
 } from '../../domain/errors/tickets.errors';
 import { JwtAuthGuard } from '../../../auth/infrastructure/guards/jwt-auth.guard';
 import { TenantGuard } from '../../../auth/infrastructure/guards/tenant.guard';
@@ -48,6 +49,7 @@ import { PERMISSIONS_KEY } from '../../../auth/infrastructure/guards/decorators'
 import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
 import {
   CreateTicketHttpDto,
+  CrearObservacionHttpDto,
   TransicionarEstadoHttpDto,
   AsignarTicketHttpDto,
   UpdateTicketHttpDto,
@@ -149,6 +151,7 @@ function makeUseCaseMocks() {
     adjuntarArchivoUseCase: { execute: vi.fn() },
     editarTicketUseCase: { execute: vi.fn() },
     eliminarTicketUseCase: { execute: vi.fn() },
+    crearObservacionUseCase: { execute: vi.fn() },
     cicloClienteRepo: {
       findById: vi.fn(),
       findActive: vi.fn(),
@@ -177,6 +180,7 @@ describe('TicketsController', () => {
       mocks.adjuntarArchivoUseCase as any,
       mocks.editarTicketUseCase as any,
       mocks.eliminarTicketUseCase as any,
+      mocks.crearObservacionUseCase as any,
       mocks.cicloClienteRepo as any,
     );
   });
@@ -720,8 +724,8 @@ describe('TicketsController', () => {
     });
 
     it('inyecta ICicloClienteRepository en el constructor', () => {
-      // El constructor debe tener exactamente 9 parámetros (8 use cases + cicloRepo)
-      expect(TicketsController.length).toBe(9);
+      // 10 parámetros: 9 use cases + cicloRepo (P2.T8 — se agregó crearObservacionUseCase)
+      expect(TicketsController.length).toBe(10);
     });
   });
 
@@ -887,6 +891,102 @@ describe('TicketsController', () => {
           fechaCreacion: undefined,
         }),
       );
+    });
+  });
+
+  // ─── POST /tickets/:id/observaciones (P2.T7 RED → GREEN con P2.T8) ──────────
+
+  describe('POST /tickets/:id/observaciones (crearObservacion)', () => {
+    const observacionDto: CrearObservacionHttpDto = {
+      contenido: 'Revisado el equipo, iniciando trabajo',
+    };
+
+    it('retorna 201 con TicketResponseDto cuando la observación se crea correctamente', async () => {
+      const ticket = makeTicket();
+      mocks.crearObservacionUseCase.execute.mockResolvedValue(Result.ok(ticket));
+
+      const result = await controller.crearObservacion('ticket-001', observacionDto, user);
+
+      expect(result).toMatchObject({ ticket: expect.objectContaining({ id: ticket.id }) });
+    });
+
+    it('lanza UnprocessableEntityException (422) cuando contenido está vacío', async () => {
+      await expect(
+        controller.crearObservacion('ticket-001', { contenido: '' }, user),
+      ).rejects.toThrow(UnprocessableEntityException);
+      expect(mocks.crearObservacionUseCase.execute).not.toHaveBeenCalled();
+    });
+
+    it('lanza UnprocessableEntityException (422) cuando contenido es solo espacios', async () => {
+      await expect(
+        controller.crearObservacion('ticket-001', { contenido: '   ' }, user),
+      ).rejects.toThrow(UnprocessableEntityException);
+      expect(mocks.crearObservacionUseCase.execute).not.toHaveBeenCalled();
+    });
+
+    it('lanza NotFoundException (404) cuando el ticket no existe', async () => {
+      mocks.crearObservacionUseCase.execute.mockResolvedValue(
+        Result.fail(new TicketNoEncontradoError('ticket-001')),
+      );
+
+      await expect(controller.crearObservacion('ticket-001', observacionDto, user)).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('lanza UnprocessableEntityException (422) cuando el ticket está en estado terminal', async () => {
+      mocks.crearObservacionUseCase.execute.mockResolvedValue(
+        Result.fail(new ObservacionNoPermitidaError('RESUELTO')),
+      );
+
+      await expect(controller.crearObservacion('ticket-001', observacionDto, user)).rejects.toThrow(
+        UnprocessableEntityException,
+      );
+    });
+
+    it('lanza UnprocessableEntityException (422) cuando la transición es inválida', async () => {
+      mocks.crearObservacionUseCase.execute.mockResolvedValue(
+        Result.fail(new TransicionInvalidaError('APROBADO', 'ABIERTO')),
+      );
+
+      await expect(controller.crearObservacion('ticket-001', observacionDto, user)).rejects.toThrow(
+        UnprocessableEntityException,
+      );
+    });
+
+    it('pasa autorId del JWT al use case', async () => {
+      const ticket = makeTicket();
+      mocks.crearObservacionUseCase.execute.mockResolvedValue(Result.ok(ticket));
+
+      await controller.crearObservacion('ticket-001', observacionDto, user);
+
+      expect(mocks.crearObservacionUseCase.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ autorId: 'user-001' }),
+      );
+    });
+
+    it('parsea y pasa fechaCierre al use case cuando viene en el body', async () => {
+      const ticket = makeTicket();
+      mocks.crearObservacionUseCase.execute.mockResolvedValue(Result.ok(ticket));
+      const dto: CrearObservacionHttpDto = {
+        contenido: 'Trabajo completado',
+        nuevoEstadoCodigo: 'RESUELTO',
+        fechaCierre: '2026-06-29',
+      };
+
+      await controller.crearObservacion('ticket-001', dto, user);
+
+      expect(mocks.crearObservacionUseCase.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          fechaCierre: expect.any(Date),
+        }),
+      );
+    });
+
+    it('requiere permiso ticket:observar (guard chain)', () => {
+      const perms: string[] =
+        Reflect.getMetadata(PERMISSIONS_KEY, TicketsController.prototype.crearObservacion) ?? [];
+      expect(perms).toContain('ticket:observar');
     });
   });
 });

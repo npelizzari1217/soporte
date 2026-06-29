@@ -90,6 +90,7 @@ import { AdjuntarArchivoUseCase } from './application/use-cases/adjuntar-archivo
 import { ListarOperacionesUseCase } from './application/use-cases/listar-operaciones.use-case';
 import { EditarTicketUseCase } from './application/use-cases/editar-ticket.use-case';
 import { EliminarTicketUseCase } from './application/use-cases/eliminar-ticket.use-case';
+import { CrearObservacionUseCase } from './application/use-cases/crear-observacion.use-case';
 
 // ─── Guards ───────────────────────────────────────────────────────────────────
 import { RolesGuard } from '../auth/infrastructure/guards/roles.guard';
@@ -365,6 +366,24 @@ import { OperacionesController } from './interface/controllers/operaciones.contr
         OPERACION_TICKET_REPOSITORY,
         TIPO_OPERACION_REPOSITORY,
         ESTADO_REPOSITORY,
+        TENANT_TRANSACTION_RUNNER,
+      ],
+    },
+
+    {
+      provide: CrearObservacionUseCase,
+      useFactory: (
+        ticketRepo: ITicketRepository,
+        estadoRepo: IEstadoRepository,
+        operacionRepo: IOperacionTicketRepository,
+        tipoOpRepo: ITipoOperacionRepository,
+        txRunner: ITenantTransactionRunner,
+      ) => new CrearObservacionUseCase(ticketRepo, estadoRepo, operacionRepo, tipoOpRepo, txRunner),
+      inject: [
+        TICKET_REPOSITORY,
+        ESTADO_REPOSITORY,
+        OPERACION_TICKET_REPOSITORY,
+        TIPO_OPERACION_REPOSITORY,
         TENANT_TRANSACTION_RUNNER,
       ],
     },

@@ -2,13 +2,14 @@
  * TicketsController — endpoints REST para el módulo de tickets.
  *
  * Rutas:
- *   POST   /tickets                  → CrearTicketUseCase      [ticket:crear]
- *   GET    /tickets                  → ListarTicketsUseCase    (autenticado)
- *   GET    /tickets/:id              → ObtenerTicketUseCase    (autenticado)
- *   PATCH  /tickets/:id/estado       → TransicionarEstadoUseCase (autenticado)
- *   POST   /tickets/:id/asignar      → AsignarTicketUseCase    [ticket:asignar]
- *   POST   /tickets/:id/adjuntos     → AdjuntarArchivoUseCase  [ticket:crear]
- *   DELETE /tickets/:id              → EliminarTicketUseCase   [ticket:eliminar]
+ *   POST   /tickets                      → CrearTicketUseCase        [ticket:crear]
+ *   GET    /tickets                      → ListarTicketsUseCase       (autenticado)
+ *   GET    /tickets/:id                  → ObtenerTicketUseCase       (autenticado)
+ *   PATCH  /tickets/:id/estado           → TransicionarEstadoUseCase  (autenticado)
+ *   POST   /tickets/:id/asignar          → AsignarTicketUseCase       [ticket:asignar]
+ *   POST   /tickets/:id/adjuntos         → AdjuntarArchivoUseCase     [ticket:crear]
+ *   DELETE /tickets/:id                  → EliminarTicketUseCase      [ticket:eliminar]
+ *   POST   /tickets/:id/observaciones    → CrearObservacionUseCase    [ticket:observar]
  *
  * Guard chain (clase): JwtAuthGuard → RolesGuard → PermissionsGuard → TenantGuard
  * El TenantGuard resuelve la DB tenant y bindea TenantContext antes de que
@@ -18,6 +19,7 @@
  * El mapeo de errores de dominio a HttpException se hace aquí (presentación).
  *
  * Tarea: 3.E.2
+ * Change: tickets-maquina-estados-observaciones / PR2
  */
 import {
   Body,
@@ -55,6 +57,7 @@ import { AsignarTicketUseCase } from '../../application/use-cases/asignar-ticket
 import { AdjuntarArchivoUseCase } from '../../application/use-cases/adjuntar-archivo.use-case';
 import { EditarTicketUseCase } from '../../application/use-cases/editar-ticket.use-case';
 import { EliminarTicketUseCase } from '../../application/use-cases/eliminar-ticket.use-case';
+import { CrearObservacionUseCase } from '../../application/use-cases/crear-observacion.use-case';
 
 import {
   CICLO_CLIENTE_REPOSITORY,
@@ -77,6 +80,7 @@ import {
   TituloInvalidoError,
   PrioridadNoEncontradaError,
   CicloNoEncontradoError,
+  ObservacionNoPermitidaError,
 } from '../../domain/errors/tickets.errors';
 
 import {
@@ -84,6 +88,8 @@ import {
   AsignarTicketHttpDto,
   CicloActivoResponseDto,
   CreateTicketHttpDto,
+  CrearObservacionHttpDto,
+  CrearObservacionResponseDto,
   ListarTicketsQueryDto,
   TicketResponseDto,
   TransicionarEstadoHttpDto,
@@ -161,6 +167,7 @@ export class TicketsController {
     private readonly adjuntarArchivoUseCase: AdjuntarArchivoUseCase,
     private readonly editarTicketUseCase: EditarTicketUseCase,
     private readonly eliminarTicketUseCase: EliminarTicketUseCase,
+    private readonly crearObservacionUseCase: CrearObservacionUseCase,
     @Inject(CICLO_CLIENTE_REPOSITORY)
     private readonly cicloClienteRepo: ICicloClienteRepository,
   ) {}
@@ -566,5 +573,92 @@ export class TicketsController {
     }
 
     // Retorno void explícito → NestJS envía 204 No Content sin body
+  }
+
+  /**
+   * POST /tickets/:id/observaciones
+   * Registra una observación técnica sobre el ticket.
+   *
+   * Si el ticket está en estado APROBADO, dispara auto-transición de estado:
+   * - Default: APROBADO → EN_PROGRESO (si no se indica nuevoEstadoCodigo).
+   * - Si se indica nuevoEstadoCodigo: APROBADO → {EN_PROGRESO|RESUELTO|SUSPENDIDO|SIN_SOLUCION}.
+   * - Si nuevoEstadoCodigo === 'RESUELTO', fechaCierre es REQUERIDA en el body.
+   *
+   * Si el ticket está en cualquier otro estado activo (EN_PROGRESO, SUSPENDIDO, ABIERTO),
+   * registra solo la observación sin cambiar el estado.
+   *
+   * Observaciones BLOQUEADAS en estados terminales (RESUELTO/SIN_SOLUCION/RECHAZADO/congelados).
+   *
+   * Nota seguridad: sin guard de permisos granular por arco en PR2 — eso es PR3.
+   * Solo requiere ticket:observar (autenticación + tenant validados por guard chain de clase).
+   *
+   * @returns 201 Created + CrearObservacionResponseDto
+   * @throws 422 UnprocessableEntityException si contenido vacío, estado terminal, transición inválida
+   * @throws 404 NotFoundException si el ticket no existe
+   * @throws 500 InternalServerErrorException si el catálogo tenant no está sembrado
+   *
+   * Ref spec: Req Observaciones del técnico (tickets-core/spec.md), ADR-2, ADR-7
+   * Change: tickets-maquina-estados-observaciones / PR2
+   * Task: P2.T8
+   */
+  @Post(':id/observaciones')
+  @HttpCode(HttpStatus.CREATED)
+  @RequirePermissions('ticket:observar')
+  async crearObservacion(
+    @Param('id') id: string,
+    @Body() dto: CrearObservacionHttpDto,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<CrearObservacionResponseDto> {
+    // Validar contenido no vacío (guard de presentación)
+    if (!dto.contenido || dto.contenido.trim() === '') {
+      throw new UnprocessableEntityException('contenido no puede estar vacío.');
+    }
+
+    // Parsear fechaCierre si viene en el body (solo relevante para RESUELTO)
+    let fechaCierre: Date | undefined;
+    if (dto.fechaCierre !== undefined) {
+      const parsed = new Date(dto.fechaCierre);
+      if (isNaN(parsed.getTime())) {
+        throw new UnprocessableEntityException(
+          'fechaCierre tiene formato inválido. Se espera ISO YYYY-MM-DD.',
+        );
+      }
+      fechaCierre = parsed;
+    }
+
+    const result = await this.crearObservacionUseCase.execute({
+      ticketId: id,
+      texto: dto.contenido,
+      autorId: user.sub,
+      estadoDestinoCodigo: dto.nuevoEstadoCodigo,
+      fechaCierre,
+    });
+
+    if (result.isFail()) {
+      const error = result.getError();
+      if (error instanceof TicketNoEncontradoError) {
+        throw new NotFoundException(error.message);
+      }
+      if (error instanceof ObservacionNoPermitidaError) {
+        throw new UnprocessableEntityException(error.message);
+      }
+      if (error instanceof TransicionInvalidaError) {
+        throw new UnprocessableEntityException(error.message);
+      }
+      if (error instanceof FechaResolucionRequeridaError) {
+        // TODO-PR3: rename error a FechaCierreRequeridaError
+        throw new UnprocessableEntityException(error.message);
+      }
+      // EstadoCatalogoNoEncontradoError / TipoOperacionNoEncontradoError → catálogo corrupto → 500
+      if (
+        error instanceof EstadoCatalogoNoEncontradoError ||
+        error instanceof TipoOperacionNoEncontradoError
+      ) {
+        throw new InternalServerErrorException(error.message);
+      }
+      throw new UnprocessableEntityException('No se pudo registrar la observación');
+    }
+
+    return { ticket: toTicketResponse(result.getValue()) };
   }
 }
