@@ -24,10 +24,10 @@ Los siguientes 4 permisos MUST ser agregados al catálogo de `master.permisos`.
 
 | codigo | descripcion | UUID determinista |
 |--------|-------------|-------------------|
-| `ticket:aprobar` | Aprobar un ticket (transición ABIERTO → APROBADO) | b0000000-0000-4000-b000-000000000014 |
-| `ticket:rechazar` | Rechazar un ticket (transición ABIERTO → RECHAZADO) | b0000000-0000-4000-b000-000000000015 |
-| `ticket:transicionar` | Transicionar tickets en arcos técnicos (APROBADO, EN_PROGRESO, SUSPENDIDO) | b0000000-0000-4000-b000-000000000016 |
-| `ticket:observar` | Crear observaciones técnicas sobre tickets | b0000000-0000-4000-b000-000000000017 |
+| `ticket:observar` | Crear observaciones técnicas sobre tickets | b0000000-0000-4000-b000-000000000014 |
+| `ticket:transicionar` | Transicionar tickets en arcos técnicos (APROBADO, EN_PROGRESO, SUSPENDIDO) | b0000000-0000-4000-b000-000000000015 |
+| `ticket:aprobar` | Aprobar un ticket (transición ABIERTO → APROBADO) | b0000000-0000-4000-b000-000000000016 |
+| `ticket:rechazar` | Rechazar un ticket (transición ABIERTO → RECHAZADO) | b0000000-0000-4000-b000-000000000017 |
 
 El seed MUST ser idempotente: `INSERT INTO permisos ... ON CONFLICT (codigo) DO NOTHING`.
 
@@ -47,6 +47,7 @@ Esta siembra es **provisional**. Change B SHOULD reemplazarla al redistribuir pe
 | `APROBADOR_COMPRAS` | `ticket:aprobar`, `ticket:rechazar` |
 | `SOPORTE_IT` | `ticket:transicionar`, `ticket:observar` |
 | `MANTENIMIENTO` | `ticket:transicionar`, `ticket:observar` |
+| `SOLICITANTE` | `ticket:observar` |
 
 La siembra MUST ser idempotente:
 `INSERT INTO roles_permisos (rol_id, permiso_id) ... ON CONFLICT (rol_id, permiso_id) DO NOTHING`.
