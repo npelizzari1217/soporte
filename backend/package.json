@@ -1,15 +1,15 @@
 {
   "name": "soporte-backend",
   "version": "1.0.0",
-  "description": "Sistema de Gestión de Tickets — Backend NestJS",
+  "description": "Sistema de Gesti\u00f3n de Tickets \u2014 Backend NestJS",
   "main": "dist/main.js",
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/main",
     "start:dev": "PORT=3001 ts-node -r tsconfig-paths/register src/main.ts",
-    "test": "jest --config jest.config.ts",
-    "test:watch": "jest --config jest.config.ts --watch",
-    "test:cov": "jest --config jest.config.ts --coverage",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:cov": "vitest run --coverage",
     "lint": "eslint \"src/**/*.ts\"",
     "lint:fitness": "eslint \"src/**/*.ts\"",
     "format": "prettier --write \"src/**/*.ts\"",
@@ -41,7 +41,7 @@
   },
   "devDependencies": {
     "@nestjs/testing": "^11.1.27",
-    "@types/jest": "^30.0.0",
+    "@swc/core": "^1.15.43",
     "@types/multer": "^2.1.0",
     "@types/node": "^26.0.0",
     "@types/passport": "^1.0.17",
@@ -49,15 +49,17 @@
     "@types/pg": "^8.20.0",
     "@typescript-eslint/eslint-plugin": "^8.61.1",
     "@typescript-eslint/parser": "^8.61.1",
+    "@vitest/coverage-v8": "^4.1.9",
     "eslint": "^10.5.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.6",
-    "jest": "^30.4.2",
     "prettier": "^3.8.4",
     "prisma": "^7.8.0",
-    "ts-jest": "^29.4.11",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "unplugin-swc": "^1.5.9",
+    "vite-tsconfig-paths": "^6.1.1",
+    "vitest": "^4.1.9"
   }
 }
