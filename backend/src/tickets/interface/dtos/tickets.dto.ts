@@ -88,7 +88,7 @@ export interface TransicionarEstadoHttpDto {
    * Formato ISO 'YYYY-MM-DD'. Ignorada para otros destinos.
    * Formato inválido → 422 en el controller.
    */
-  fechaResolucion?: string;
+  fechaCierre?: string;
 }
 
 /**
@@ -127,7 +127,7 @@ export interface TicketResponseDto {
   cicloId: string | null;
   solicitanteId: string;
   asignadoId: string | null;
-  fechaResolucion: string | null;
+  fechaCierre: string | null;
   createdAt: string;
   updatedAt: string;
 }

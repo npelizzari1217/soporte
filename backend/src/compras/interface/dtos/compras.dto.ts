@@ -24,7 +24,7 @@ export interface CreateTicketCompraHttpDto {
   /** UUID del solicitante (soft ref → master.usuarios). */
   solicitanteId: string;
   /** Fecha de resolución ISO (opcional). */
-  fechaResolucion?: string | null;
+  fechaCierre?: string | null;
 }
 
 /**

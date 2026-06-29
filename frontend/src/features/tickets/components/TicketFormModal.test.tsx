@@ -46,7 +46,7 @@ const ticketFixture: Ticket = {
   cicloId: null,
   solicitanteId: 'user-test-sub',
   asignadoId: null,
-  fechaResolucion: null,
+  fechaCierre: null,
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
 }
@@ -63,7 +63,7 @@ const editTicketFixture: Ticket = {
   cicloId: null,
   solicitanteId: 'user-test-sub',
   asignadoId: null,
-  fechaResolucion: null,
+  fechaCierre: null,
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
 }
@@ -667,11 +667,11 @@ describe('TicketFormModal — PR5 (create) — fechaCreacion + defaultTipoId', (
     expect(document.querySelector('[id="fechaVencimiento"]')).toBeNull()
   })
 
-  // T5.5-2: DOM does NOT have fechaResolucion input (never was a form field)
-  it('does NOT render a fechaResolucion input', () => {
+  // T5.5-2: DOM does NOT have fechaCierre input (never was a form field)
+  it('does NOT render a fechaCierre input', () => {
     renderModal({ open: true })
-    expect(document.querySelector('[name="fechaResolucion"]')).toBeNull()
-    expect(document.querySelector('[id="fechaResolucion"]')).toBeNull()
+    expect(document.querySelector('[name="fechaCierre"]')).toBeNull()
+    expect(document.querySelector('[id="fechaCierre"]')).toBeNull()
   })
 
   // T5.5-3: DOM HAS fechaCreacion input (new field)

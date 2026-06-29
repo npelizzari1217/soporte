@@ -106,7 +106,7 @@ export class CrearTicketCompraUseCase {
       cicloId: dto.cicloId ?? null,
       solicitanteId: dto.solicitanteId,
       asignadoId: null,
-      fechaResolucion: null,
+      fechaCierre: null,
     });
 
     // 7. Crear la operación de apertura: CAMBIO_ESTADO NULL → ABIERTO

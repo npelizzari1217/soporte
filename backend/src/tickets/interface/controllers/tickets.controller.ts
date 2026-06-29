@@ -48,6 +48,7 @@ import { RolesGuard } from '../../../auth/infrastructure/guards/roles.guard';
 import { PermissionsGuard } from '../../../auth/infrastructure/guards/permissions.guard';
 import { TenantGuard } from '../../../auth/infrastructure/guards/tenant.guard';
 import { CurrentUser, RequirePermissions } from '../../../auth/infrastructure/guards/decorators';
+import { TransicionEstadoPermisosGuard } from '../../../auth/infrastructure/guards/transicion-estado-permisos.guard';
 
 import { CrearTicketUseCase } from '../../application/use-cases/crear-ticket.use-case';
 import { ListarTicketsUseCase } from '../../application/use-cases/listar-tickets.use-case';
@@ -70,7 +71,7 @@ import {
   ArchivoTamanoCeroError,
   EstadoCatalogoNoEncontradoError,
   EstadoDestinoInvalidoError,
-  FechaResolucionRequeridaError,
+  FechaCierreRequeridaError,
   SolicitanteInvalidoError,
   TicketNoEncontradoError,
   TipoTicketNoEncontradoError,
@@ -135,7 +136,7 @@ function toTicketResponse(ticket: TicketEntity): TicketResponseDto {
     cicloId: ticket.cicloId,
     solicitanteId: ticket.solicitanteId,
     asignadoId: ticket.asignadoId,
-    fechaResolucion: ticket.fechaResolucion?.toISOString() ?? null,
+    fechaCierre: ticket.fechaCierre?.toISOString() ?? null,
     createdAt: ticket.createdAt.toISOString(),
     updatedAt: ticket.updatedAt.toISOString(),
   };
@@ -342,35 +343,36 @@ export class TicketsController {
    */
   @Patch(':id/estado')
   @HttpCode(HttpStatus.OK)
+  @UseGuards(TransicionEstadoPermisosGuard)
   async transicionarEstado(
     @Param('id') id: string,
     @Body() dto: TransicionarEstadoHttpDto,
     @CurrentUser() user: JwtPayload,
   ): Promise<TicketResponseDto> {
-    // Guard PR3 (ADR-4): fechaResolucion REQUERIDA cuando destino es RESUELTO.
+    // Guard PR3 (ADR-4): fechaCierre REQUERIDA cuando destino es RESUELTO.
     // Validación en el controller (no llega al use case si falta/formato inválido).
-    let fechaResolucion: Date | undefined;
+    let fechaCierre: Date | undefined;
     if (dto.nuevoEstadoCodigo === 'RESUELTO') {
-      if (!dto.fechaResolucion) {
+      if (!dto.fechaCierre) {
         throw new UnprocessableEntityException(
-          'fechaResolucion es requerida al transicionar a estado RESUELTO.',
+          'fechaCierre es requerida al transicionar a estado RESUELTO.',
         );
       }
-      const parsed = new Date(dto.fechaResolucion);
+      const parsed = new Date(dto.fechaCierre);
       if (isNaN(parsed.getTime())) {
         throw new UnprocessableEntityException(
-          'fechaResolucion tiene formato inválido. Se espera ISO YYYY-MM-DD.',
+          'fechaCierre tiene formato inválido. Se espera ISO YYYY-MM-DD.',
         );
       }
-      fechaResolucion = parsed;
+      fechaCierre = parsed;
     }
-    // Para destinos distintos de RESUELTO: fechaResolucion se ignora (pasa undefined).
+    // Para destinos distintos de RESUELTO: fechaCierre se ignora (pasa undefined).
 
     const result = await this.transicionarEstadoUseCase.execute({
       ticketId: id,
       nuevoEstadoCodigo: dto.nuevoEstadoCodigo,
       autorId: user.sub,
-      fechaResolucion,
+      fechaCierre,
     });
 
     if (result.isFail()) {
@@ -385,8 +387,8 @@ export class TicketsController {
       if (error instanceof EstadoDestinoInvalidoError) {
         throw new UnprocessableEntityException(error.message);
       }
-      // ADR-4: fechaResolucion requerida pero no provista (segunda línea de defensa) → 422
-      if (error instanceof FechaResolucionRequeridaError) {
+      // ADR-4: fechaCierre requerida pero no provista (segunda línea de defensa) → 422
+      if (error instanceof FechaCierreRequeridaError) {
         throw new UnprocessableEntityException(error.message);
       }
       // EstadoCatalogoNoEncontradoError: estado ACTUAL del ticket no está en catálogo → corrupción → 500
@@ -645,8 +647,7 @@ export class TicketsController {
       if (error instanceof TransicionInvalidaError) {
         throw new UnprocessableEntityException(error.message);
       }
-      if (error instanceof FechaResolucionRequeridaError) {
-        // TODO-PR3: rename error a FechaCierreRequeridaError
+      if (error instanceof FechaCierreRequeridaError) {
         throw new UnprocessableEntityException(error.message);
       }
       // EstadoCatalogoNoEncontradoError / TipoOperacionNoEncontradoError → catálogo corrupto → 500

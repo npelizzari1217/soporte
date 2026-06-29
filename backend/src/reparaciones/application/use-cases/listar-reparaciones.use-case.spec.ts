@@ -49,7 +49,7 @@ function makeTicket(id: string, numero: string): TicketEntity {
       cicloId: null,
       solicitanteId: 'user-001',
       asignadoId: null,
-      fechaResolucion: null,
+      fechaCierre: null,
     },
     id,
     new Date('2026-01-01T10:00:00Z'),

@@ -26,7 +26,7 @@ export class TicketMapper {
         cicloId: row.cicloId ?? null,
         solicitanteId: row.solicitanteId,
         asignadoId: row.asignadoId ?? null,
-        fechaResolucion: row.fechaResolucion ?? null,
+        fechaCierre: row.fechaCierre ?? null,
       },
       row.id,
       row.createdAt,
@@ -57,7 +57,7 @@ export class TicketMapper {
       cicloId: entity.cicloId,
       solicitanteId: entity.solicitanteId,
       asignadoId: entity.asignadoId,
-      fechaResolucion: entity.fechaResolucion,
+      fechaCierre: entity.fechaCierre,
       deletedAt: entity.deletedAt,
       createdAt: entity.createdAt,
     };

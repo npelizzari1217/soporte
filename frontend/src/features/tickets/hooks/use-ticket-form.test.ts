@@ -10,7 +10,7 @@
  *   1. Create mode with defaultTipoId → tipoId pre-populated in form.
  *   2. Create mode without defaultTipoId → tipoId = '' (stable default).
  *   3. Create mode → fechaCreacion defaults to today (YYYY-MM-DD).
- *   4. Edit mode: form values do NOT include fechaResolucion.
+ *   4. Edit mode: form values do NOT include fechaCierre.
  *   5. Submit create → POST body includes fechaCreacion.
  *
  * Spec: tickets-list-filtros-resolucion ADR-9
@@ -49,7 +49,7 @@ const ticketFixture: Ticket = {
   cicloId: null,
   solicitanteId: 'user-test-sub',
   asignadoId: null,
-  fechaResolucion: null,
+  fechaCierre: null,
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
 }
@@ -115,15 +115,15 @@ describe('useTicketForm — PR5 ADR-9', () => {
     expect(result.current.form.getValues('fechaCreacion')).toBe(today)
   })
 
-  // T5.3-4: edit mode — form values do NOT include fechaResolucion
+  // T5.3-4: edit mode — form values do NOT include fechaCierre
   // (never was a form field; mapTicketToForm doesn't set it)
-  it('edit mode: form values do NOT include fechaResolucion', () => {
+  it('edit mode: form values do NOT include fechaCierre', () => {
     const { result } = renderHook(
       () => useTicketForm('edit', { onClose: vi.fn(), ticket: ticketFixture }),
       { wrapper: makeWrapper(qc) },
     )
     const values = result.current.form.getValues()
-    expect('fechaResolucion' in values).toBe(false)
+    expect('fechaCierre' in values).toBe(false)
   })
 
   // T5.3-5: submit create → POST body includes fechaCreacion

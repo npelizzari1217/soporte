@@ -57,7 +57,7 @@ interface UseTicketFormOpts {
  * Maps a Ticket entity to RHF defaultValues for edit mode.
  * Converts null → undefined for optional text fields (Zod optional, not nullable).
  *
- * ADR-9: fechaResolucion is NOT a form field (set by técnico via PATCH /estado).
+ * ADR-9: fechaCierre is NOT a form field (set by técnico via PATCH /estado).
  * fechaVencimiento was renamed in PR2 and removed from form in PR5.
  * fechaCreacion is a create-only field — NOT pre-filled in edit mode.
  */

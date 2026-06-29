@@ -82,7 +82,7 @@ function makeTicketProps(override: Partial<TicketProps> = {}): TicketProps {
     cicloId: null,
     solicitanteId: DUMMY_USUARIO_ID,
     asignadoId: null,
-    fechaResolucion: null,
+    fechaCierre: null,
     ...override,
   };
 }
@@ -857,10 +857,10 @@ describe('Tickets Infrastructure Repos — Integration (3.D.1)', () => {
   });
 
   // ─────────────────────────────────────────────────────────────────────────
-  // PR3: createdAt override + fechaResolucion (T3.11 RED→GREEN)
+  // PR3: createdAt override + fechaCierre (T3.11 RED→GREEN)
   // ─────────────────────────────────────────────────────────────────────────
 
-  describe('PrismaTicketRepository — PR3: createdAt override + fechaResolucion (T3.11)', () => {
+  describe('PrismaTicketRepository — PR3: createdAt override + fechaCierre (T3.11)', () => {
     const RESUELTO_ID = 'c0000000-0000-4000-c000-000000000006';
 
     it('crear ticket con fechaCreacion explícita → created_at en DB refleja esa fecha', async () => {
@@ -900,49 +900,49 @@ describe('Tickets Infrastructure Repos — Integration (3.D.1)', () => {
     });
 
     it('transición a RESUELTO → fecha_resolucion seteada en DB', async () => {
-      // ADR-4: al setear ticket.fechaResolucion y guardar, el campo persiste en DB.
+      // ADR-4: al setear ticket.fechaCierre y guardar, el campo persiste en DB.
       const ticket = TicketEntity.create(makeTicketProps({ numero: 'SOP-2026-00100' }));
-      const fechaResolucion = new Date('2026-06-28T00:00:00.000Z');
+      const fechaCierre = new Date('2026-06-28T00:00:00.000Z');
 
       await withTenant(async () => {
         await ticketRepo.save(ticket);
 
         ticket.updateEstado(RESUELTO_ID);
-        ticket.setFechaResolucion(fechaResolucion);
+        ticket.setFechaCierre(fechaCierre);
         await ticketRepo.save(ticket);
 
         const found = await ticketRepo.findById(ticket.id);
         expect(found).not.toBeNull();
         expect(found!.estadoId).toBe(RESUELTO_ID);
-        expect(found!.fechaResolucion).not.toBeNull();
-        expect(found!.fechaResolucion!.toISOString().slice(0, 10)).toBe('2026-06-28');
+        expect(found!.fechaCierre).not.toBeNull();
+        expect(found!.fechaCierre!.toISOString().slice(0, 10)).toBe('2026-06-28');
       });
     });
 
     it('reapertura (RESUELTO → EN_PROGRESO) → fecha_resolucion NULL en DB', async () => {
-      // ADR-4: al reabrir, setFechaResolucion(null) → campo debe quedar NULL en DB.
+      // ADR-4: al reabrir, setFechaCierre(null) → campo debe quedar NULL en DB.
       const ticket = TicketEntity.create(makeTicketProps({ numero: 'SOP-2026-00101' }));
-      const fechaResolucion = new Date('2026-06-20T00:00:00.000Z');
+      const fechaCierre = new Date('2026-06-20T00:00:00.000Z');
 
       await withTenant(async () => {
         // Llevar a RESUELTO primero
         await ticketRepo.save(ticket);
         ticket.updateEstado(RESUELTO_ID);
-        ticket.setFechaResolucion(fechaResolucion);
+        ticket.setFechaCierre(fechaCierre);
         await ticketRepo.save(ticket);
 
         // Verificar que está resuelto
         const resuelto = await ticketRepo.findById(ticket.id);
-        expect(resuelto!.fechaResolucion).not.toBeNull();
+        expect(resuelto!.fechaCierre).not.toBeNull();
 
-        // Reabrir: limpiar fechaResolucion
+        // Reabrir: limpiar fechaCierre
         ticket.updateEstado(EN_PROGRESO_ID);
-        ticket.setFechaResolucion(null);
+        ticket.setFechaCierre(null);
         await ticketRepo.save(ticket);
 
         const reabierto = await ticketRepo.findById(ticket.id);
         expect(reabierto!.estadoId).toBe(EN_PROGRESO_ID);
-        expect(reabierto!.fechaResolucion).toBeNull();
+        expect(reabierto!.fechaCierre).toBeNull();
       });
     });
   });

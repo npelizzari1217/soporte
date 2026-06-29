@@ -45,6 +45,7 @@ import { JwtAuthGuard } from '../../../auth/infrastructure/guards/jwt-auth.guard
 import { TenantGuard } from '../../../auth/infrastructure/guards/tenant.guard';
 import { RolesGuard } from '../../../auth/infrastructure/guards/roles.guard';
 import { PermissionsGuard } from '../../../auth/infrastructure/guards/permissions.guard';
+import { TransicionEstadoPermisosGuard } from '../../../auth/infrastructure/guards/transicion-estado-permisos.guard';
 import { PERMISSIONS_KEY } from '../../../auth/infrastructure/guards/decorators';
 import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
 import {
@@ -56,7 +57,7 @@ import {
   ListarTicketsQueryDto,
   CicloActivoResponseDto,
 } from '../dtos/tickets.dto';
-import { FechaResolucionRequeridaError } from '../../domain/errors/tickets.errors';
+import { FechaCierreRequeridaError } from '../../domain/errors/tickets.errors';
 import { CicloClienteEntity, CicloClienteProps } from '../../domain/entities/ciclo-cliente.entity';
 import { ICicloClienteRepository } from '../../domain/ports/i-ciclo-cliente.repository';
 
@@ -85,7 +86,7 @@ function makeTicket(): TicketEntity {
     cicloId: null,
     solicitanteId: 'user-001',
     asignadoId: null,
-    fechaResolucion: null,
+    fechaCierre: null,
   });
 }
 
@@ -771,15 +772,15 @@ describe('TicketsController', () => {
     });
   });
 
-  // ─── PR3: fechaResolucion OBLIGATORIA en RESUELTO (T3.9 RED) ─────────────────
+  // ─── PR3: fechaCierre OBLIGATORIA en RESUELTO (T3.9 RED) ─────────────────
 
-  describe('PATCH /tickets/:id/estado — fechaResolucion en RESUELTO (ADR-4)', () => {
-    it('pasa fechaResolucion al use case cuando destino es RESUELTO y fecha es válida', async () => {
+  describe('PATCH /tickets/:id/estado — fechaCierre en RESUELTO (ADR-4)', () => {
+    it('pasa fechaCierre al use case cuando destino es RESUELTO y fecha es válida', async () => {
       const ticket = makeTicket();
       mocks.transicionarEstadoUseCase.execute.mockResolvedValue(Result.ok(ticket));
       const dto: TransicionarEstadoHttpDto = {
         nuevoEstadoCodigo: 'RESUELTO',
-        fechaResolucion: '2026-06-28',
+        fechaCierre: '2026-06-28',
       };
 
       await controller.transicionarEstado('ticket-id', dto, user);
@@ -787,14 +788,14 @@ describe('TicketsController', () => {
       expect(mocks.transicionarEstadoUseCase.execute).toHaveBeenCalledWith(
         expect.objectContaining({
           nuevoEstadoCodigo: 'RESUELTO',
-          fechaResolucion: expect.any(Date),
+          fechaCierre: expect.any(Date),
         }),
       );
-      const llamadaFecha = mocks.transicionarEstadoUseCase.execute.mock.calls[0][0].fechaResolucion;
+      const llamadaFecha = mocks.transicionarEstadoUseCase.execute.mock.calls[0][0].fechaCierre;
       expect((llamadaFecha as Date).toISOString().slice(0, 10)).toBe('2026-06-28');
     });
 
-    it('lanza 422 cuando destino es RESUELTO pero falta fechaResolucion en el body', async () => {
+    it('lanza 422 cuando destino es RESUELTO pero falta fechaCierre en el body', async () => {
       const dto: TransicionarEstadoHttpDto = { nuevoEstadoCodigo: 'RESUELTO' };
 
       await expect(controller.transicionarEstado('ticket-id', dto, user)).rejects.toThrow(
@@ -803,10 +804,10 @@ describe('TicketsController', () => {
       expect(mocks.transicionarEstadoUseCase.execute).not.toHaveBeenCalled();
     });
 
-    it('lanza 422 cuando fechaResolucion tiene formato inválido', async () => {
+    it('lanza 422 cuando fechaCierre tiene formato inválido', async () => {
       const dto: TransicionarEstadoHttpDto = {
         nuevoEstadoCodigo: 'RESUELTO',
-        fechaResolucion: 'no-es-fecha',
+        fechaCierre: 'no-es-fecha',
       };
 
       await expect(controller.transicionarEstado('ticket-id', dto, user)).rejects.toThrow(
@@ -815,13 +816,13 @@ describe('TicketsController', () => {
       expect(mocks.transicionarEstadoUseCase.execute).not.toHaveBeenCalled();
     });
 
-    it('mapea FechaResolucionRequeridaError del use case a 422', async () => {
+    it('mapea FechaCierreRequeridaError del use case a 422', async () => {
       mocks.transicionarEstadoUseCase.execute.mockResolvedValue(
-        Result.fail(new FechaResolucionRequeridaError()),
+        Result.fail(new FechaCierreRequeridaError()),
       );
       const dto: TransicionarEstadoHttpDto = {
         nuevoEstadoCodigo: 'RESUELTO',
-        fechaResolucion: '2026-06-28',
+        fechaCierre: '2026-06-28',
       };
 
       await expect(controller.transicionarEstado('ticket-id', dto, user)).rejects.toThrow(
@@ -829,12 +830,12 @@ describe('TicketsController', () => {
       );
     });
 
-    it('ignora fechaResolucion cuando el destino NO es RESUELTO (no la pasa al use case)', async () => {
+    it('ignora fechaCierre cuando el destino NO es RESUELTO (no la pasa al use case)', async () => {
       const ticket = makeTicket();
       mocks.transicionarEstadoUseCase.execute.mockResolvedValue(Result.ok(ticket));
       const dto: TransicionarEstadoHttpDto = {
         nuevoEstadoCodigo: 'EN_PROGRESO',
-        fechaResolucion: '2026-06-28',
+        fechaCierre: '2026-06-28',
       };
 
       await controller.transicionarEstado('ticket-id', dto, user);
@@ -842,9 +843,19 @@ describe('TicketsController', () => {
       expect(mocks.transicionarEstadoUseCase.execute).toHaveBeenCalledWith(
         expect.objectContaining({
           nuevoEstadoCodigo: 'EN_PROGRESO',
-          fechaResolucion: undefined,
+          fechaCierre: undefined,
         }),
       );
+    });
+  });
+
+  // ─── PR3: TransicionEstadoPermisosGuard wired in PATCH :id/estado (P3.T10) ───
+
+  describe('PATCH /tickets/:id/estado — TransicionEstadoPermisosGuard (P3.T10)', () => {
+    it('aplica TransicionEstadoPermisosGuard al handler transicionarEstado', () => {
+      const guards: unknown[] =
+        Reflect.getMetadata('__guards__', TicketsController.prototype.transicionarEstado) ?? [];
+      expect(guards).toContain(TransicionEstadoPermisosGuard);
     });
   });
 

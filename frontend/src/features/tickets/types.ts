@@ -41,7 +41,7 @@ export type Ticket = {
   cicloId: string | null;
   solicitanteId: string;
   asignadoId: string | null;
-  fechaResolucion: string | null;
+  fechaCierre: string | null;
   createdAt: string;
   updatedAt: string;
 };

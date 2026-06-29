@@ -130,7 +130,7 @@ export class CrearTicketUseCase {
         cicloId: dto.cicloId ?? null,
         solicitanteId: dto.solicitanteId,
         asignadoId: null,
-        fechaResolucion: null,
+        fechaCierre: null,
       },
       undefined,
       dto.fechaCreacion,

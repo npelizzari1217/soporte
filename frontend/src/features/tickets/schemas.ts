@@ -6,12 +6,12 @@
  *                        cicloId?, solicitanteId (req), fechaCreacion?
  *   UpdateTicketHttpDto: titulo?, descripcion?, prioridadId?, cicloId?
  *                        — SIN tipoId, SIN estado (locked, per backend design).
- *                        — SIN fechaResolucion (seteada por técnico vía PATCH /estado).
+ *                        — SIN fechaCierre (seteada por técnico vía PATCH /estado).
  *
  * Note: `solicitanteId` is NOT part of the form schema — it is injected at submit
  * from `useSession().user.sub`. It only appears in `CreateTicketInput` (the DTO shape).
  *
- * ADR-9 (tickets-list-filtros-resolucion): fechaResolucion eliminada del form de alta/edición.
+ * ADR-9 (tickets-list-filtros-resolucion): fechaCierre eliminada del form de alta/edición.
  * El alta acepta fechaCreacion (override de created_at). Permite fechas futuras (sin refine).
  *
  * Spec: tickets-ui §req Schemas Zod por operación
@@ -74,7 +74,7 @@ export const UpdateTicketSchema = z.object({
   descripcion: z.string().max(1000).nullable().optional(),
   prioridadId: z.string().uuid('Seleccioná una prioridad').optional(),
   cicloId: z.string().uuid().nullable().optional(),
-  // fechaResolucion NO es campo editable en este form (la setea el técnico vía PATCH /estado)
+  // fechaCierre NO es campo editable en este form (la setea el técnico vía PATCH /estado)
 })
 
 export type UpdateTicketInput = z.infer<typeof UpdateTicketSchema>

@@ -37,7 +37,7 @@ function makeTicket(estadoId: string, id = 'ticket-001', deleted = false): Ticke
       cicloId: null,
       solicitanteId: 'solicitante-001',
       asignadoId: null,
-      fechaResolucion: null,
+      fechaCierre: null,
     },
     id,
     new Date(),

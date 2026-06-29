@@ -88,7 +88,7 @@ export interface CreateTicketSoporteHttpDto {
   /** UUID del solicitante (soft ref → master.usuarios). */
   solicitanteId: string;
   /** Fecha de resolución ISO (opcional). */
-  fechaResolucion?: string | null;
+  fechaCierre?: string | null;
   /**
    * UUID del equipo afectado (opcional).
    * NULL si el ticket no refiere a un equipo específico (ej. problema de red).

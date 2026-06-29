@@ -40,7 +40,7 @@ const ticketFixture: Ticket = {
   cicloId: null,
   solicitanteId: "user-1",
   asignadoId: null,
-  fechaResolucion: null,
+  fechaCierre: null,
   createdAt: "2026-01-15T10:00:00Z",
   updatedAt: "2026-01-15T10:00:00Z",
 };
