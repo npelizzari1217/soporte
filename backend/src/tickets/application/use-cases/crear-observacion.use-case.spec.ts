@@ -7,10 +7,10 @@
  * Cubre (ADR-2, ADR-7, Req Observaciones del técnico):
  * 1.  Ticket APROBADO sin nuevoEstadoCodigo → auto-transición EN_PROGRESO (2 operaciones)
  * 2.  Ticket APROBADO con nuevoEstadoCodigo: 'EN_PROGRESO' → equivalente al 1
- * 3.  Ticket APROBADO + nuevoEstadoCodigo: 'RESUELTO' + fechaCierre → setFechaResolucion(fecha)
- * 4.  Ticket APROBADO + nuevoEstadoCodigo: 'RESUELTO' SIN fechaCierre → FechaResolucionRequeridaError 422
- * 5.  Ticket APROBADO + nuevoEstadoCodigo: 'SUSPENDIDO' → sin setFechaResolucion
- * 6.  Ticket APROBADO + nuevoEstadoCodigo: 'SIN_SOLUCION' → setFechaResolucion(now)
+ * 3.  Ticket APROBADO + nuevoEstadoCodigo: 'RESUELTO' + fechaCierre → setFechaCierre(fecha)
+ * 4.  Ticket APROBADO + nuevoEstadoCodigo: 'RESUELTO' SIN fechaCierre → FechaCierreRequeridaError 422
+ * 5.  Ticket APROBADO + nuevoEstadoCodigo: 'SUSPENDIDO' → sin setFechaCierre
+ * 6.  Ticket APROBADO + nuevoEstadoCodigo: 'SIN_SOLUCION' → setFechaCierre(now)
  * 7.  nuevoEstadoCodigo: 'ABIERTO' desde APROBADO → TransicionInvalidaError 422
  * 8.  Ticket EN_PROGRESO → solo OBSERVACION, sin cambio de estado, sin fecha
  * 9.  nuevoEstadoCodigo ignorado cuando ticket no está en APROBADO
@@ -33,7 +33,7 @@ import { TicketEntity, TicketProps } from '../../domain/entities/ticket.entity';
 import { EstadoEntity } from '../../domain/entities/estado.entity';
 import {
   EstadoCatalogoNoEncontradoError,
-  FechaResolucionRequeridaError,
+  FechaCierreRequeridaError,
   ObservacionNoPermitidaError,
   TicketNoEncontradoError,
   TipoOperacionNoEncontradoError,
@@ -70,7 +70,7 @@ function makeTicketProps(overrides: Partial<TicketProps> = {}): TicketProps {
     cicloId: null,
     solicitanteId: 'user-solicitante-001',
     asignadoId: null,
-    fechaResolucion: null,
+    fechaCierre: null,
     ...overrides,
   };
 }
@@ -212,14 +212,14 @@ describe('CrearObservacionUseCase', () => {
 
   // ─── Escenario 3: APROBADO → RESUELTO con fechaCierre ────────────────────────
 
-  it('Sc3: APROBADO + nuevoEstadoCodigo RESUELTO + fechaCierre → setFechaResolucion(fecha)', async () => {
+  it('Sc3: APROBADO + nuevoEstadoCodigo RESUELTO + fechaCierre → setFechaCierre(fecha)', async () => {
     const ticket = setupAprobado();
     estadoRepo.findByCodigo.mockImplementation((codigo) => {
       if (codigo === 'RESUELTO') return Promise.resolve(makeEstado('RESUELTO', ESTADO_RESUELTO_ID));
       return Promise.resolve(null);
     });
     const fechaCierre = new Date('2026-06-29');
-    const setFechaResolucionSpy = vi.spyOn(ticket, 'setFechaResolucion');
+    const setFechaCierreSpy = vi.spyOn(ticket, 'setFechaCierre');
 
     // Re-inject ticket via findById (spy before execute)
     ticketRepo.findById.mockResolvedValue(ticket);
@@ -231,14 +231,14 @@ describe('CrearObservacionUseCase', () => {
     });
 
     expect(result.isOk()).toBe(true);
-    expect(setFechaResolucionSpy).toHaveBeenCalledWith(fechaCierre);
+    expect(setFechaCierreSpy).toHaveBeenCalledWith(fechaCierre);
     expect(ticket.estadoId).toBe(ESTADO_RESUELTO_ID);
     expect(operacionRepo.save).toHaveBeenCalledTimes(2);
   });
 
   // ─── Escenario 4: APROBADO → RESUELTO SIN fechaCierre → fail 422 ─────────────
 
-  it('Sc4: APROBADO + nuevoEstadoCodigo RESUELTO SIN fechaCierre → FechaResolucionRequeridaError', async () => {
+  it('Sc4: APROBADO + nuevoEstadoCodigo RESUELTO SIN fechaCierre → FechaCierreRequeridaError', async () => {
     setupAprobado();
 
     const result = await useCase.execute({
@@ -248,50 +248,50 @@ describe('CrearObservacionUseCase', () => {
     });
 
     expect(result.isFail()).toBe(true);
-    expect(result.getError()).toBeInstanceOf(FechaResolucionRequeridaError);
+    expect(result.getError()).toBeInstanceOf(FechaCierreRequeridaError);
     // Nada debería persistirse
     expect(ticketRepo.save).not.toHaveBeenCalled();
     expect(operacionRepo.save).not.toHaveBeenCalled();
   });
 
-  // ─── Escenario 5: APROBADO → SUSPENDIDO → sin setFechaResolucion ─────────────
+  // ─── Escenario 5: APROBADO → SUSPENDIDO → sin setFechaCierre ─────────────
 
-  it('Sc5: APROBADO + nuevoEstadoCodigo SUSPENDIDO → no setea fechaResolucion', async () => {
+  it('Sc5: APROBADO + nuevoEstadoCodigo SUSPENDIDO → no setea fechaCierre', async () => {
     const ticket = setupAprobado();
     estadoRepo.findByCodigo.mockImplementation((codigo) => {
       if (codigo === 'SUSPENDIDO')
         return Promise.resolve(makeEstado('SUSPENDIDO', ESTADO_SUSPENDIDO_ID));
       return Promise.resolve(null);
     });
-    const setFechaResolucionSpy = vi.spyOn(ticket, 'setFechaResolucion');
+    const setFechaCierreSpy = vi.spyOn(ticket, 'setFechaCierre');
     ticketRepo.findById.mockResolvedValue(ticket);
 
     const result = await useCase.execute({ ...baseDto, estadoDestinoCodigo: 'SUSPENDIDO' });
 
     expect(result.isOk()).toBe(true);
-    expect(setFechaResolucionSpy).not.toHaveBeenCalled();
+    expect(setFechaCierreSpy).not.toHaveBeenCalled();
     expect(ticket.estadoId).toBe(ESTADO_SUSPENDIDO_ID);
     expect(operacionRepo.save).toHaveBeenCalledTimes(2);
   });
 
-  // ─── Escenario 6: APROBADO → SIN_SOLUCION → setFechaResolucion(now) ──────────
+  // ─── Escenario 6: APROBADO → SIN_SOLUCION → setFechaCierre(now) ──────────
 
-  it('Sc6: APROBADO + nuevoEstadoCodigo SIN_SOLUCION → setFechaResolucion(now)', async () => {
+  it('Sc6: APROBADO + nuevoEstadoCodigo SIN_SOLUCION → setFechaCierre(now)', async () => {
     const ticket = setupAprobado();
     estadoRepo.findByCodigo.mockImplementation((codigo) => {
       if (codigo === 'SIN_SOLUCION')
         return Promise.resolve(makeEstado('SIN_SOLUCION', ESTADO_SIN_SOLUCION_ID));
       return Promise.resolve(null);
     });
-    const setFechaResolucionSpy = vi.spyOn(ticket, 'setFechaResolucion');
+    const setFechaCierreSpy = vi.spyOn(ticket, 'setFechaCierre');
     ticketRepo.findById.mockResolvedValue(ticket);
 
     const result = await useCase.execute({ ...baseDto, estadoDestinoCodigo: 'SIN_SOLUCION' });
 
     expect(result.isOk()).toBe(true);
-    expect(setFechaResolucionSpy).toHaveBeenCalledOnce();
+    expect(setFechaCierreSpy).toHaveBeenCalledOnce();
     // El argumento debe ser un Date (now)
-    const llamadaCon = setFechaResolucionSpy.mock.calls[0][0];
+    const llamadaCon = setFechaCierreSpy.mock.calls[0][0];
     expect(llamadaCon).toBeInstanceOf(Date);
     expect(ticket.estadoId).toBe(ESTADO_SIN_SOLUCION_ID);
   });
@@ -415,5 +415,44 @@ describe('CrearObservacionUseCase', () => {
 
     expect(result.isFail()).toBe(true);
     expect(result.getError()).toBeInstanceOf(TipoOperacionNoEncontradoError);
+  });
+
+  // ─── W1: RECHAZADO bloquea observaciones (verify PR2 folded) ─────────────────
+
+  it('W1: ticket RECHAZADO (terminal) → ObservacionNoPermitidaError 422', async () => {
+    // ADR: RECHAZADO es estado terminal activo — bloquea observaciones igual que RESUELTO.
+    const ESTADO_RECHAZADO_ID = 'c0000000-0000-4000-c000-000000000004';
+    ticketRepo.findById.mockResolvedValue(makeTicket(ESTADO_RECHAZADO_ID));
+    estadoRepo.findById.mockResolvedValue(makeEstado('RECHAZADO', ESTADO_RECHAZADO_ID));
+
+    const result = await useCase.execute(baseDto);
+
+    expect(result.isFail()).toBe(true);
+    expect(result.getError()).toBeInstanceOf(ObservacionNoPermitidaError);
+    expect((result.getError() as ObservacionNoPermitidaError).code).toBe(
+      'OBSERVACION_NO_PERMITIDA',
+    );
+    expect(operacionRepo.save).not.toHaveBeenCalled();
+    expect(ticketRepo.save).not.toHaveBeenCalled();
+  });
+
+  // ─── S1: Rollback ante fallo en primer save (OBSERVACION) — verify PR2 folded ─
+
+  it('S1: si falla el PRIMER save (operacionRepo.save para OBSERVACION) → execute() rechaza', async () => {
+    // Ref verify PR2 suggestion S1: el Sc11 existente cubre fallo en CAMBIO_ESTADO.
+    // Este test cubre el fallo en la PRIMERA operación (OBSERVACION) cuando el ticket
+    // no está en APROBADO (solo 1 save esperado, el de OBSERVACION).
+    const ticket = makeTicket(ESTADO_EN_PROGRESO_ID);
+    ticketRepo.findById.mockResolvedValue(ticket);
+    estadoRepo.findById.mockResolvedValue(makeEstado('EN_PROGRESO', ESTADO_EN_PROGRESO_ID));
+    tipoOperacionRepo.findIdByCodigo.mockResolvedValue(TIPO_OP_OBSERVACION_ID);
+
+    const dbError = new Error('Falla al guardar OBSERVACION');
+    operacionRepo.save.mockRejectedValueOnce(dbError);
+
+    await expect(useCase.execute(baseDto)).rejects.toThrow(dbError);
+    // El ticket no debe haber cambiado de estado (no se llamó save del ticket)
+    expect(ticketRepo.save).not.toHaveBeenCalled();
+    expect(ticket.estadoId).toBe(ESTADO_EN_PROGRESO_ID);
   });
 });

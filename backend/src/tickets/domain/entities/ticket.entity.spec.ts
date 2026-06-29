@@ -21,7 +21,7 @@ const makeTicketProps = (overrides: Partial<TicketProps> = {}): TicketProps => (
   cicloId: null as string | null,
   solicitanteId: 'usuario-solicitante-uuid',
   asignadoId: null as string | null,
-  fechaResolucion: null as Date | null,
+  fechaCierre: null as Date | null,
   ...overrides,
 });
 
@@ -64,7 +64,7 @@ describe('TicketEntity', () => {
       expect(ticket.cicloId).toBeNull();
       expect(ticket.solicitanteId).toBe(props.solicitanteId);
       expect(ticket.asignadoId).toBeNull();
-      expect(ticket.fechaResolucion).toBeNull(); // renombrado desde fechaVencimiento en PR2
+      expect(ticket.fechaCierre).toBeNull(); // renombrado desde fechaVencimiento en PR2
       // estadoCodigo NO existe en la entidad: el Ticket solo guarda el UUID del estado
       expect((ticket as any).estadoCodigo).toBeUndefined();
     });
@@ -382,29 +382,27 @@ describe('TicketEntity', () => {
     });
   });
 
-  describe('setFechaResolucion(fecha)', () => {
-    // T3.1 — RED: estos tests fallan hasta que se implemente setFechaResolucion (T3.2)
+  describe('setFechaCierre(fecha)', () => {
+    // T3.1 — RED: estos tests fallan hasta que se implemente setFechaCierre (T3.2)
 
-    it('setea fechaResolucion al Date dado', () => {
+    it('setea fechaCierre al Date dado', () => {
       const ticket = TicketEntity.create(makeTicketProps());
       const fecha = new Date('2026-06-28');
-      ticket.setFechaResolucion(fecha);
-      expect(ticket.fechaResolucion).toBe(fecha);
+      ticket.setFechaCierre(fecha);
+      expect(ticket.fechaCierre).toBe(fecha);
     });
 
-    it('setea fechaResolucion a null (limpiar)', () => {
-      const ticket = TicketEntity.create(
-        makeTicketProps({ fechaResolucion: new Date('2026-06-01') }),
-      );
-      ticket.setFechaResolucion(null);
-      expect(ticket.fechaResolucion).toBeNull();
+    it('setea fechaCierre a null (limpiar)', () => {
+      const ticket = TicketEntity.create(makeTicketProps({ fechaCierre: new Date('2026-06-01') }));
+      ticket.setFechaCierre(null);
+      expect(ticket.fechaCierre).toBeNull();
     });
 
-    it('avanza updatedAt después de setFechaResolucion', async () => {
+    it('avanza updatedAt después de setFechaCierre', async () => {
       const ticket = TicketEntity.create(makeTicketProps());
       const updatedAtAntes = ticket.updatedAt.getTime();
       await new Promise((r) => setTimeout(r, 10));
-      ticket.setFechaResolucion(new Date('2026-06-28'));
+      ticket.setFechaCierre(new Date('2026-06-28'));
       expect(ticket.updatedAt.getTime()).toBeGreaterThan(updatedAtAntes);
     });
   });

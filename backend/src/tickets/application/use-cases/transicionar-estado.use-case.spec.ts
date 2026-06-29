@@ -11,7 +11,7 @@ import { EstadoEntity } from '../../domain/entities/estado.entity';
 import { OperacionTicketEntity } from '../../domain/entities/operacion-ticket.entity';
 import { TicketEntity } from '../../domain/entities/ticket.entity';
 import {
-  FechaResolucionRequeridaError,
+  FechaCierreRequeridaError,
   TransicionInvalidaError,
 } from '../../domain/errors/tickets.errors';
 
@@ -39,7 +39,7 @@ function makeTicket(estadoId: string, tipoId: string, softDeleted = false): Tick
       cicloId: null,
       solicitanteId: 'user-solicitante',
       asignadoId: null,
-      fechaResolucion: null,
+      fechaCierre: null,
     },
     'ticket-uuid-001',
     new Date(),
@@ -49,7 +49,7 @@ function makeTicket(estadoId: string, tipoId: string, softDeleted = false): Tick
 }
 
 function makeResueltoTicket(): TicketEntity {
-  // Ticket actualmente en estado RESUELTO con fechaResolucion seteada.
+  // Ticket actualmente en estado RESUELTO con fechaCierre seteada.
   return TicketEntity.reconstitute(
     {
       numero: 'SOP-2026-00002',
@@ -61,7 +61,7 @@ function makeResueltoTicket(): TicketEntity {
       cicloId: null,
       solicitanteId: 'user-solicitante',
       asignadoId: null,
-      fechaResolucion: new Date('2026-06-20'),
+      fechaCierre: new Date('2026-06-20'),
     },
     'ticket-uuid-002',
     new Date(),
@@ -440,12 +440,12 @@ describe('TransicionarEstadoUseCase', () => {
     });
   });
 
-  // ─── PR3: fechaResolucion OBLIGATORIA al pasar a RESUELTO (ADR-4) ─────────────
+  // ─── PR3: fechaCierre OBLIGATORIA al pasar a RESUELTO (ADR-4) ─────────────
 
-  describe('fechaResolucion — obligatoriedad y reapertura (ADR-4)', () => {
+  describe('fechaCierre — obligatoriedad y reapertura (ADR-4)', () => {
     // T3.4 — RED: estos tests fallan hasta que se implemente la lógica en T3.5
 
-    describe('transición a RESUELTO SIN fechaResolucion', () => {
+    describe('transición a RESUELTO SIN fechaCierre', () => {
       const dtoAResueltoSinFecha: TransicionarEstadoDto = {
         ticketId: 'ticket-uuid-001',
         nuevoEstadoCodigo: 'RESUELTO',
@@ -456,12 +456,12 @@ describe('TransicionarEstadoUseCase', () => {
         estadoRepo.findByCodigo.mockResolvedValue(makeEstado(ESTADO_RESUELTO_ID, 'RESUELTO'));
       });
 
-      it('retorna fail con FechaResolucionRequeridaError', async () => {
+      it('retorna fail con FechaCierreRequeridaError', async () => {
         const result = await useCase.execute(dtoAResueltoSinFecha);
 
         expect(result.isFail()).toBe(true);
-        expect(result.getError()).toBeInstanceOf(FechaResolucionRequeridaError);
-        expect(result.getError().code).toBe('FECHA_RESOLUCION_REQUERIDA');
+        expect(result.getError()).toBeInstanceOf(FechaCierreRequeridaError);
+        expect(result.getError().code).toBe('FECHA_CIERRE_REQUERIDA');
       });
 
       it('el ticket NO es mutado (estadoId permanece invariante)', async () => {
@@ -471,7 +471,7 @@ describe('TransicionarEstadoUseCase', () => {
         await useCase.execute(dtoAResueltoSinFecha);
 
         expect(ticket.estadoId).toBe(ESTADO_ABIERTO_ID);
-        expect(ticket.fechaResolucion).toBeNull();
+        expect(ticket.fechaCierre).toBeNull();
       });
 
       it('ticketRepo.save NO es llamado', async () => {
@@ -482,13 +482,13 @@ describe('TransicionarEstadoUseCase', () => {
       });
     });
 
-    describe('transición a RESUELTO CON fechaResolucion', () => {
-      const fechaResolucion = new Date('2026-06-28');
+    describe('transición a RESUELTO CON fechaCierre', () => {
+      const fechaCierre = new Date('2026-06-28');
       const dtoAResueltoConFecha: TransicionarEstadoDto = {
         ticketId: 'ticket-uuid-001',
         nuevoEstadoCodigo: 'RESUELTO',
         autorId: AUTOR_ID,
-        fechaResolucion,
+        fechaCierre,
       };
 
       beforeEach(() => {
@@ -501,13 +501,13 @@ describe('TransicionarEstadoUseCase', () => {
         expect(result.isOk()).toBe(true);
       });
 
-      it('ticket.fechaResolucion queda seteada con la fecha provista', async () => {
+      it('ticket.fechaCierre queda seteada con la fecha provista', async () => {
         const ticket = makeTicket(ESTADO_ABIERTO_ID, TIPO_TICKET_ID);
         ticketRepo.findById.mockResolvedValue(ticket);
 
         await useCase.execute(dtoAResueltoConFecha);
 
-        expect(ticket.fechaResolucion).toBe(fechaResolucion);
+        expect(ticket.fechaCierre).toBe(fechaCierre);
       });
 
       it('ticketRepo.save y operacionRepo.save son llamados', async () => {
@@ -552,22 +552,118 @@ describe('TransicionarEstadoUseCase', () => {
 
         expect(ticketRepo.save).not.toHaveBeenCalled();
         expect(operacionRepo.save).not.toHaveBeenCalled();
-        // fechaResolucion no debe cambiar — la transición fue rechazada antes de tocar el ticket
-        expect(ticket.fechaResolucion).not.toBeNull();
+        // fechaCierre no debe cambiar — la transición fue rechazada antes de tocar el ticket
+        expect(ticket.fechaCierre).not.toBeNull();
+      });
+    });
+
+    describe('transición a SIN_SOLUCION → setFechaCierre auto-now (ADR-6)', () => {
+      const ESTADO_SIN_SOLUCION_ID = 'estado-sin-solucion-uuid';
+
+      beforeEach(() => {
+        estadoRepo.findByCodigo.mockResolvedValue(
+          makeEstado(ESTADO_SIN_SOLUCION_ID, 'SIN_SOLUCION'),
+        );
+      });
+
+      it('retorna Result.ok', async () => {
+        const result = await useCase.execute({
+          ticketId: 'ticket-uuid-001',
+          nuevoEstadoCodigo: 'SIN_SOLUCION',
+          autorId: AUTOR_ID,
+        });
+
+        expect(result.isOk()).toBe(true);
+      });
+
+      it('ticket.fechaCierre queda seteada a una Date (now servidor)', async () => {
+        const ticket = makeTicket(ESTADO_ABIERTO_ID, TIPO_TICKET_ID);
+        ticketRepo.findById.mockResolvedValue(ticket);
+        const antes = new Date();
+
+        await useCase.execute({
+          ticketId: 'ticket-uuid-001',
+          nuevoEstadoCodigo: 'SIN_SOLUCION',
+          autorId: AUTOR_ID,
+        });
+
+        expect(ticket.fechaCierre).toBeInstanceOf(Date);
+        expect((ticket.fechaCierre as Date).getTime()).toBeGreaterThanOrEqual(antes.getTime());
+      });
+
+      it('setFechaCierre es llamado UNA vez', async () => {
+        const ticket = makeTicket(ESTADO_ABIERTO_ID, TIPO_TICKET_ID);
+        ticketRepo.findById.mockResolvedValue(ticket);
+        const spy = vi.spyOn(ticket, 'setFechaCierre');
+
+        await useCase.execute({
+          ticketId: 'ticket-uuid-001',
+          nuevoEstadoCodigo: 'SIN_SOLUCION',
+          autorId: AUTOR_ID,
+        });
+
+        expect(spy).toHaveBeenCalledOnce();
+      });
+    });
+
+    describe('transición a RECHAZADO → setFechaCierre auto-now (ADR-6)', () => {
+      const ESTADO_RECHAZADO_ID = 'estado-rechazado-uuid';
+
+      beforeEach(() => {
+        estadoRepo.findByCodigo.mockResolvedValue(makeEstado(ESTADO_RECHAZADO_ID, 'RECHAZADO'));
+      });
+
+      it('retorna Result.ok', async () => {
+        const result = await useCase.execute({
+          ticketId: 'ticket-uuid-001',
+          nuevoEstadoCodigo: 'RECHAZADO',
+          autorId: AUTOR_ID,
+        });
+
+        expect(result.isOk()).toBe(true);
+      });
+
+      it('ticket.fechaCierre queda seteada a una Date (now servidor)', async () => {
+        const ticket = makeTicket(ESTADO_ABIERTO_ID, TIPO_TICKET_ID);
+        ticketRepo.findById.mockResolvedValue(ticket);
+        const antes = new Date();
+
+        await useCase.execute({
+          ticketId: 'ticket-uuid-001',
+          nuevoEstadoCodigo: 'RECHAZADO',
+          autorId: AUTOR_ID,
+        });
+
+        expect(ticket.fechaCierre).toBeInstanceOf(Date);
+        expect((ticket.fechaCierre as Date).getTime()).toBeGreaterThanOrEqual(antes.getTime());
+      });
+
+      it('setFechaCierre es llamado UNA vez', async () => {
+        const ticket = makeTicket(ESTADO_ABIERTO_ID, TIPO_TICKET_ID);
+        ticketRepo.findById.mockResolvedValue(ticket);
+        const spy = vi.spyOn(ticket, 'setFechaCierre');
+
+        await useCase.execute({
+          ticketId: 'ticket-uuid-001',
+          nuevoEstadoCodigo: 'RECHAZADO',
+          autorId: AUTOR_ID,
+        });
+
+        expect(spy).toHaveBeenCalledOnce();
       });
     });
 
     describe('transición normal SIN involucrar estados terminales (ABIERTO → EN_PROGRESO via mock machine)', () => {
       // El mockMachine.puedeTransicionar devuelve true por defecto (beforeEach).
-      // Este test verifica que setFechaResolucion NO se llama en transiciones no terminales.
-      it('setFechaResolucion NO es llamado (no se toca fechaResolucion)', async () => {
+      // Este test verifica que setFechaCierre NO se llama en transiciones no terminales.
+      it('setFechaCierre NO es llamado (no se toca fechaCierre)', async () => {
         const ticket = makeTicket(ESTADO_ABIERTO_ID, TIPO_TICKET_ID);
-        const setFechaResolucionSpy = vi.spyOn(ticket, 'setFechaResolucion');
+        const setFechaCierreSpy = vi.spyOn(ticket, 'setFechaCierre');
         ticketRepo.findById.mockResolvedValue(ticket);
 
         await useCase.execute(validDto); // ABIERTO → EN_PROGRESO (via mockMachine que retorna true)
 
-        expect(setFechaResolucionSpy).not.toHaveBeenCalled();
+        expect(setFechaCierreSpy).not.toHaveBeenCalled();
       });
     });
   });

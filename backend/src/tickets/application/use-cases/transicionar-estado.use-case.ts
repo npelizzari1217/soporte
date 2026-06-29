@@ -6,7 +6,7 @@ import { TicketStateMachineFactory } from '../../domain/state-machine/ticket-sta
 import {
   EstadoCatalogoNoEncontradoError,
   EstadoDestinoInvalidoError,
-  FechaResolucionRequeridaError,
+  FechaCierreRequeridaError,
   TicketNoEncontradoError,
   TipoOperacionNoEncontradoError,
   TipoTicketNoEncontradoError,
@@ -26,7 +26,7 @@ import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
  *   El use case resuelve internamente el UUID del estado desde el catálogo.
  * - `autorId`: UUID del usuario que realiza la transición (del JWT). Se registra
  *   en la operación de timeline.
- * - `fechaResolucion`: REQUERIDA cuando nuevoEstadoCodigo es 'RESUELTO' (ADR-4).
+ * - `fechaCierre`: REQUERIDA cuando nuevoEstadoCodigo es 'RESUELTO' (ADR-4).
  *   Ignorada si el destino no es RESUELTO.
  *
  * DECISIÓN INFERIDA: el contexto para la máquina de estados (StateMachineContext)
@@ -39,11 +39,11 @@ export interface TransicionarEstadoDto {
   nuevoEstadoCodigo: string;
   autorId: string;
   /**
-   * Fecha de resolución. OBLIGATORIA si nuevoEstadoCodigo === 'RESUELTO'.
-   * Ignorada para otros destinos. Seteada a null automáticamente en reapertura
-   * (cuando el estado actual es RESUELTO y se transiciona a otro estado).
+   * Fecha de cierre. OBLIGATORIA si nuevoEstadoCodigo === 'RESUELTO' (caller la provee).
+   * Ignorada para SIN_SOLUCION y RECHAZADO (now() servidor) y para otros destinos.
+   * ADR-6: reapertura eliminada — RESUELTO es terminal.
    */
-  fechaResolucion?: Date;
+  fechaCierre?: Date;
 }
 
 /**
@@ -136,24 +136,27 @@ export class TransicionarEstadoUseCase {
       return Result.fail(new TipoOperacionNoEncontradoError('CAMBIO_ESTADO'));
     }
 
-    // 8. Guard ADR-4: fechaResolucion OBLIGATORIA al pasar a RESUELTO.
+    // 8. Guard ADR-4: fechaCierre OBLIGATORIA al pasar a RESUELTO.
     //    El guard corre DESPUÉS de puedeTransicionar para no mezclar validaciones.
     //    Si falta → fail sin mutar el ticket ni crear ninguna operación.
-    if (estadoNuevo.codigo === 'RESUELTO' && !dto.fechaResolucion) {
-      return Result.fail(new FechaResolucionRequeridaError());
+    if (estadoNuevo.codigo === 'RESUELTO' && !dto.fechaCierre) {
+      return Result.fail(new FechaCierreRequeridaError());
     }
 
     // 9. Actualizar el estadoId del ticket (mutación de la entidad)
     ticket.updateEstado(estadoNuevo.id);
 
-    // 10. Gestión de fechaResolucion según ADR-4:
-    //    - Transición a RESUELTO con fecha provista → setear.
-    //    - Reapertura (estado actual era RESUELTO) → limpiar (set null).
-    //    - Transición normal (ni origen ni destino es RESUELTO) → no tocar.
+    // 10. Gestión de fechaCierre según ADR-6:
+    //    - RESUELTO: fecha OBLIGATORIA del caller (ya validada en paso 8).
+    //    - SIN_SOLUCION / RECHAZADO: auto-set a now() servidor.
+    //    - Otros estados: no tocar (fecha permanece null).
+    //    NOTA: la rama "reapertura desde RESUELTO → limpiar fecha" ha sido ELIMINADA
+    //    porque RESUELTO es ahora terminal (ADR-1) — ese arco ya no existe en la máquina.
+    const TERMINAL_STATES_AUTO_NOW = new Set(['SIN_SOLUCION', 'RECHAZADO']);
     if (estadoNuevo.codigo === 'RESUELTO') {
-      ticket.setFechaResolucion(dto.fechaResolucion!);
-    } else if (estadoActual.codigo === 'RESUELTO') {
-      ticket.setFechaResolucion(null); // reapertura: limpia
+      ticket.setFechaCierre(dto.fechaCierre!);
+    } else if (TERMINAL_STATES_AUTO_NOW.has(estadoNuevo.codigo)) {
+      ticket.setFechaCierre(new Date()); // now() servidor
     }
 
     // 11. Crear la operación de timeline CAMBIO_ESTADO

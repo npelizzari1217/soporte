@@ -5,7 +5,7 @@ import { TicketEntity } from '../../domain/entities/ticket.entity';
 import { BaseTicketStateMachine } from '../../domain/state-machine/base-ticket-state-machine';
 import {
   EstadoCatalogoNoEncontradoError,
-  FechaResolucionRequeridaError,
+  FechaCierreRequeridaError,
   ObservacionNoPermitidaError,
   TicketNoEncontradoError,
   TipoOperacionNoEncontradoError,
@@ -42,20 +42,17 @@ const TERMINAL_STATES_BLOCK_OBSERVACION = new Set<string>([
  *   al estado indicado. Default EN_PROGRESO cuando se omite. Ignorado si el ticket
  *   no está en APROBADO. Valores válidos: EN_PROGRESO, RESUELTO, SUSPENDIDO, SIN_SOLUCION.
  * - `fechaCierre`: REQUERIDA cuando estadoDestinoCodigo === 'RESUELTO'.
- *   Ignorada para otros destinos. (TODO-PR3: rename a fecha_cierre en entidad)
+ *   Ignorada para otros destinos (SIN_SOLUCION usa now() servidor).
  *
- * Ref design: ADR-2, ADR-7
- * Ref tasks: P2.T6 — Change tickets-maquina-estados-observaciones / PR2
+ * Ref design: ADR-2, ADR-6, ADR-7
+ * Ref tasks: P2.T6, P3.T7 — Change tickets-maquina-estados-observaciones
  */
 export interface CrearObservacionDto {
   ticketId: string;
   texto: string;
   autorId: string;
   estadoDestinoCodigo?: 'EN_PROGRESO' | 'RESUELTO' | 'SUSPENDIDO' | 'SIN_SOLUCION';
-  /**
-   * Requerido solo cuando estadoDestinoCodigo === 'RESUELTO'.
-   * TODO-PR3: rename a fechaCierre cuando TicketEntity.setFechaResolucion → setFechaCierre.
-   */
+  /** Requerido solo cuando estadoDestinoCodigo === 'RESUELTO'. Fecha de cierre del ticket. */
   fechaCierre?: Date;
 }
 
@@ -71,9 +68,9 @@ export interface CrearObservacionDto {
  * 6. Si el estado actual es APROBADO:
  *    a. Resolver estado destino (default EN_PROGRESO si no se indica).
  *    b. Validar arco via BaseTicketStateMachine → TransicionInvalidaError 422 si inválido.
- *    c. Si destino RESUELTO: validar fechaCierre presente → FechaResolucionRequeridaError 422.
- *       Llamar ticket.setFechaResolucion(dto.fechaCierre). (TODO-PR3: rename)
- *    d. Si destino SIN_SOLUCION: ticket.setFechaResolucion(new Date()). (TODO-PR3: rename)
+ *    c. Si destino RESUELTO: validar fechaCierre presente → FechaCierreRequeridaError 422.
+ *       Llamar ticket.setFechaCierre(dto.fechaCierre). (TODO-PR3: rename)
+ *    d. Si destino SIN_SOLUCION: ticket.setFechaCierre(new Date()). (TODO-PR3: rename)
  *    e. Cargar estado destino desde catálogo → 500 si no existe.
  *    f. ticket.updateEstado(estadoDestino.id).
  *    g. Resolver tipoOperacionId de CAMBIO_ESTADO → 500 si no existe.
@@ -153,20 +150,19 @@ export class CrearObservacionUseCase {
           return Result.fail(new TransicionInvalidaError(estadoActual.codigo, destino));
         }
 
-        // Gestión de fecha de cierre según estado destino (provisional hasta PR3)
+        // Gestión de fechaCierre según estado destino (ADR-6, PR3):
+        //   - RESUELTO: requerida del caller.
+        //   - SIN_SOLUCION: now() servidor.
+        //   - SUSPENDIDO / EN_PROGRESO: no modifican fechaCierre.
         if (destino === 'RESUELTO') {
-          // fechaCierre REQUERIDA del caller cuando destino es RESUELTO
           if (!dto.fechaCierre) {
-            return Result.fail(new FechaResolucionRequeridaError());
+            return Result.fail(new FechaCierreRequeridaError());
           }
-          // TODO-PR3: rename ticket.setFechaResolucion → ticket.setFechaCierre
-          ticket.setFechaResolucion(dto.fechaCierre);
+          ticket.setFechaCierre(dto.fechaCierre);
         } else if (destino === 'SIN_SOLUCION') {
-          // now() servidor para SIN_SOLUCION
-          // TODO-PR3: rename ticket.setFechaResolucion → ticket.setFechaCierre
-          ticket.setFechaResolucion(new Date());
+          ticket.setFechaCierre(new Date()); // now() servidor
         }
-        // SUSPENDIDO y EN_PROGRESO: no modifican fechaResolucion
+        // SUSPENDIDO y EN_PROGRESO: no modifican fechaCierre
 
         // Cargar estado destino del catálogo
         const estadoDestino = await this.estadoRepo.findByCodigo(destino);

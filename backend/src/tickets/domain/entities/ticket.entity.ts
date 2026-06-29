@@ -65,8 +65,13 @@ export interface TicketProps {
   solicitanteId: string;
   /** Soft ref → master.usuarios.id. NULL = sin asignar. */
   asignadoId: string | null;
-  /** Fecha de resolución del ticket (nullable). */
-  fechaResolucion: Date | null;
+  /**
+   * Fecha de cierre del ticket (nullable).
+   * Seteada automáticamente por el use case al transicionar a un estado terminal:
+   * - RESUELTO: provista por el caller (ADR-6).
+   * - SIN_SOLUCION / RECHAZADO: now() servidor (ADR-6).
+   */
+  fechaCierre: Date | null;
 }
 
 /**
@@ -163,8 +168,8 @@ export class TicketEntity extends BaseEntity<TicketProps> {
     return this.props.asignadoId;
   }
 
-  get fechaResolucion(): Date | null {
-    return this.props.fechaResolucion;
+  get fechaCierre(): Date | null {
+    return this.props.fechaCierre;
   }
 
   // ─── Comportamiento de dominio ─────────────────────────────────────────
@@ -189,17 +194,18 @@ export class TicketEntity extends BaseEntity<TicketProps> {
   }
 
   /**
-   * Establece o limpia la fecha de resolución del ticket.
+   * Establece la fecha de cierre del ticket.
    *
-   * - Llamado por TransicionarEstadoUseCase al pasar a RESUELTO (fecha requerida, ADR-4).
-   * - Llamado con null al reabrir desde RESUELTO (reapertura limpia, ADR-4).
+   * - Llamado por TransicionarEstadoUseCase al pasar a RESUELTO (fecha requerida del caller, ADR-6).
+   * - Llamado por TransicionarEstadoUseCase al pasar a SIN_SOLUCION o RECHAZADO con now() (ADR-6).
+   * - Llamado por CrearObservacionUseCase en las mismas condiciones (ADR-2).
    *
    * Actualiza updatedAt al momento de la mutación.
    *
-   * @param fecha  Date al resolver, null al limpiar (reapertura).
+   * @param fecha  Date de cierre. Non-null: transición terminal.
    */
-  setFechaResolucion(fecha: Date | null): void {
-    this.props.fechaResolucion = fecha;
+  setFechaCierre(fecha: Date | null): void {
+    this.props.fechaCierre = fecha;
     this.touch();
   }
 

@@ -297,19 +297,19 @@ export class CicloNoEncontradoError extends DomainError {
 // ─── PR3 — Errores de resolución de ticket ───────────────────────────────────
 
 /**
- * Error de dominio: se intentó transicionar a RESUELTO sin proveer fechaResolucion.
+ * Error de dominio: se intentó transicionar a RESUELTO sin proveer fechaCierre.
  * HTTP 422 semántico — la transición NO fue ejecutada.
  *
- * ADR-4: fechaResolucion es OBLIGATORIA al pasar al estado RESUELTO.
+ * ADR-4: fechaCierre es OBLIGATORIA al pasar al estado RESUELTO.
  *
- * Ref spec: [SPEC:tickets-list-filtros-resolucion/fechaResolucion obligatoria en RESUELTO]
+ * Ref spec: [SPEC:tickets-list-filtros-resolucion/fechaCierre obligatoria en RESUELTO]
  * Tarea: T3.3
  */
-export class FechaResolucionRequeridaError extends DomainError {
-  readonly code = 'FECHA_RESOLUCION_REQUERIDA';
+export class FechaCierreRequeridaError extends DomainError {
+  readonly code = 'FECHA_CIERRE_REQUERIDA';
 
   constructor() {
-    super('fechaResolucion es requerida para transicionar a estado RESUELTO.');
+    super('fechaCierre es requerida para transicionar a estado RESUELTO.');
   }
 }
 
