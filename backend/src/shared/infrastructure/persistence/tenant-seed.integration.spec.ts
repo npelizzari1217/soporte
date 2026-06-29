@@ -30,7 +30,7 @@ const TEST_DB_URL =
 
 // ─── Catálogos esperados (verbatim del spec tickets-core) ─────────────────────
 
-// estados (8 valores base — orden definido en spec)
+// estados (10 valores — 8 base + SUSPENDIDO/SIN_SOLUCION añadidos en tickets-maquina-estados-observaciones PR1)
 const EXPECTED_ESTADOS = [
   'ABIERTO',
   'PENDIENTE_APROBACION',
@@ -40,6 +40,8 @@ const EXPECTED_ESTADOS = [
   'RESUELTO',
   'CERRADO',
   'CANCELADO',
+  'SUSPENDIDO',
+  'SIN_SOLUCION',
 ];
 
 // prioridades (4 niveles base — codigos del spec)
@@ -48,7 +50,7 @@ const EXPECTED_PRIORIDADES = ['BAJA', 'MEDIA', 'ALTA', 'CRITICA'];
 // tipos_ticket (discriminadores de flujo — spec explícito)
 const EXPECTED_TIPOS_TICKET = ['SOPORTE', 'COMPRAS', 'EDILICIA'];
 
-// tipo_operacion (eventos del timeline — spec explícito + UBICACION_ELIMINADA PR-15a + EDICION/ELIMINACION tickets-editar-borrar)
+// tipo_operacion (9 tipos — 5 base + UBICACION_ELIMINADA PR-15a + EDICION/ELIMINACION tickets-editar-borrar + OBSERVACION tickets-maquina-estados-observaciones PR2)
 const EXPECTED_TIPO_OPERACION = [
   'CAMBIO_ESTADO',
   'COMENTARIO',
@@ -58,6 +60,7 @@ const EXPECTED_TIPO_OPERACION = [
   'UBICACION_ELIMINADA',
   'EDICION',
   'ELIMINACION',
+  'OBSERVACION',
 ];
 
 // ─── SQL idempotente (refleja exactamente el seed) ────────────────────────────
@@ -71,7 +74,9 @@ INSERT INTO estados (id, codigo, nombre, orden) VALUES
   ('c0000000-0000-4000-c000-000000000005', 'EN_PROGRESO',           'En progreso',               40),
   ('c0000000-0000-4000-c000-000000000006', 'RESUELTO',              'Resuelto',                  50),
   ('c0000000-0000-4000-c000-000000000007', 'CERRADO',               'Cerrado',                   60),
-  ('c0000000-0000-4000-c000-000000000008', 'CANCELADO',             'Cancelado',                 70)
+  ('c0000000-0000-4000-c000-000000000008', 'CANCELADO',             'Cancelado',                 70),
+  ('c0000000-0000-4000-c000-000000000009', 'SUSPENDIDO',            'Suspendido',                45),
+  ('c0000000-0000-4000-c000-000000000010', 'SIN_SOLUCION',          'Sin solución',              55)
 ON CONFLICT (codigo) DO NOTHING;
 `;
 
@@ -101,7 +106,8 @@ INSERT INTO tipo_operacion (id, codigo, nombre) VALUES
   ('f0000000-0000-4000-f000-000000000005', 'AVANCE_EDILICIO',     'Avance edilicio'),
   ('f0000000-0000-4000-f000-000000000006', 'UBICACION_ELIMINADA', 'Ubicación eliminada'),
   ('f0000000-0000-4000-f000-000000000007', 'EDICION',             'Edición'),
-  ('f0000000-0000-4000-f000-000000000008', 'ELIMINACION',         'Eliminación')
+  ('f0000000-0000-4000-f000-000000000008', 'ELIMINACION',         'Eliminación'),
+  ('f0000000-0000-4000-f000-000000000009', 'OBSERVACION',         'Observación técnica')
 ON CONFLICT (codigo) DO NOTHING;
 `;
 
@@ -123,7 +129,7 @@ describe('Tenant catalog seed (integration — 3.D.4)', () => {
   // ─── 1. estados catalog ───────────────────────────────────────────────────
 
   describe('1. Catálogo de estados', () => {
-    it('contiene exactamente los 8 estados base del spec', async () => {
+    it('contiene exactamente los 10 estados del spec (8 base + SUSPENDIDO/SIN_SOLUCION de tickets-maquina-estados-observaciones PR1)', async () => {
       const res = await pool.query<{ codigo: string }>(
         'SELECT codigo FROM estados WHERE deleted_at IS NULL ORDER BY codigo',
       );
@@ -132,14 +138,14 @@ describe('Tenant catalog seed (integration — 3.D.4)', () => {
       for (const expected of EXPECTED_ESTADOS) {
         expect(codigos).toContain(expected);
       }
-      expect(res.rows.length).toBe(8);
+      expect(res.rows.length).toBe(10);
     });
 
     it('todos los estados tienen activo=true y deleted_at IS NULL', async () => {
       const res = await pool.query<{ count: string }>(
         `SELECT COUNT(*) FROM estados WHERE activo = TRUE AND deleted_at IS NULL`,
       );
-      expect(parseInt(res.rows[0].count, 10)).toBe(8);
+      expect(parseInt(res.rows[0].count, 10)).toBe(10);
     });
 
     it('los nombres coinciden con los definidos en el spec', async () => {
@@ -157,6 +163,8 @@ describe('Tenant catalog seed (integration — 3.D.4)', () => {
       expect(byCodigo['RESUELTO']).toBe('Resuelto');
       expect(byCodigo['CERRADO']).toBe('Cerrado');
       expect(byCodigo['CANCELADO']).toBe('Cancelado');
+      expect(byCodigo['SUSPENDIDO']).toBe('Suspendido');
+      expect(byCodigo['SIN_SOLUCION']).toBe('Sin solución');
     });
 
     it('los órdenes de visualización coinciden con el spec', async () => {
@@ -171,7 +179,9 @@ describe('Tenant catalog seed (integration — 3.D.4)', () => {
       expect(byOrden['APROBADO']).toBe(30);
       expect(byOrden['RECHAZADO']).toBe(35);
       expect(byOrden['EN_PROGRESO']).toBe(40);
+      expect(byOrden['SUSPENDIDO']).toBe(45);
       expect(byOrden['RESUELTO']).toBe(50);
+      expect(byOrden['SIN_SOLUCION']).toBe(55);
       expect(byOrden['CERRADO']).toBe(60);
       expect(byOrden['CANCELADO']).toBe(70);
     });
@@ -239,7 +249,7 @@ describe('Tenant catalog seed (integration — 3.D.4)', () => {
   // ─── 4. tipo_operacion catalog ────────────────────────────────────────────
 
   describe('4. Catálogo de tipo_operacion', () => {
-    it('contiene exactamente los 8 tipos de operación (5 base + UBICACION_ELIMINADA PR-15a + EDICION/ELIMINACION tickets-editar-borrar)', async () => {
+    it('contiene exactamente los 9 tipos de operación (5 base + UBICACION_ELIMINADA PR-15a + EDICION/ELIMINACION tickets-editar-borrar + OBSERVACION tickets-maquina-estados-observaciones PR2)', async () => {
       const res = await pool.query<{ codigo: string }>(
         'SELECT codigo FROM tipo_operacion WHERE deleted_at IS NULL ORDER BY codigo',
       );
@@ -248,14 +258,14 @@ describe('Tenant catalog seed (integration — 3.D.4)', () => {
       for (const expected of EXPECTED_TIPO_OPERACION) {
         expect(codigos).toContain(expected);
       }
-      expect(res.rows.length).toBe(8);
+      expect(res.rows.length).toBe(9);
     });
 
     it('todos los tipos tienen activo=true y deleted_at IS NULL', async () => {
       const res = await pool.query<{ count: string }>(
         `SELECT COUNT(*) FROM tipo_operacion WHERE activo = TRUE AND deleted_at IS NULL`,
       );
-      expect(parseInt(res.rows[0].count, 10)).toBe(8);
+      expect(parseInt(res.rows[0].count, 10)).toBe(9);
     });
   });
 
