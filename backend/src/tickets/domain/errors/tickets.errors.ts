@@ -331,3 +331,29 @@ export class ObservacionNoPermitidaError extends DomainError {
     super(`El ticket está en estado terminal "${estadoCodigo}" y no acepta observaciones.`);
   }
 }
+
+/**
+ * Error de dominio: el ticket está en estado terminal o congelado y no puede
+ * recibir nuevos comentarios.
+ * HTTP 422 semántico.
+ *
+ * Los estados terminales (RESUELTO, SIN_SOLUCION, RECHAZADO) y los congelados legacy
+ * (CERRADO, CANCELADO, PENDIENTE_APROBACION) bloquean comentarios.
+ * A diferencia de ObservacionNoPermitidaError, este error aplica al permiso
+ * ticket:comentar que usan USUARIO y COLABORADOR (sin auto-transición de estado).
+ *
+ * Ref spec: specs/tickets-core/spec.md §Comentar en estado terminal/congelado 422
+ * Ref design: ADR-2
+ * Change: tickets-rbac-4-roles / PR4a
+ * Task: T4A.7
+ */
+export class ComentarioNoPermitidoError extends DomainError {
+  readonly code = 'COMENTARIO_NO_PERMITIDO';
+
+  constructor(estadoCodigo: string) {
+    super(
+      `El ticket está en estado "${estadoCodigo}" y no acepta nuevos comentarios. ` +
+        `Solo se pueden comentar tickets en estado ABIERTO, APROBADO, EN_PROGRESO o SUSPENDIDO.`,
+    );
+  }
+}
