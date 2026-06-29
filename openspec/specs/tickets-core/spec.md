@@ -825,6 +825,140 @@ otro estado, el campo MUST ser ignorado silenciosamente.
 
 ---
 
+### Requirement: CrearComentarioUseCase — comentario aclaratorio sin transición de estado
+
+> Introducido en change `tickets-rbac-4-roles` (2026-06-29).
+> Complementa el Requirement de "Observaciones del técnico" (Change A) sin tocarlo.
+
+`POST /tickets/:id/comentarios` registra un comentario aclaratorio en el timeline del ticket.
+A diferencia de `POST /tickets/:id/observaciones`, este endpoint NEVER dispara transiciones de
+estado. Reutiliza el tipo de operación `COMENTARIO` (`f0000000-0000-4000-f000-000000000002`),
+que ya existía en el catálogo base desde el modelo de datos original.
+
+El endpoint MUST exigir el permiso `ticket:comentar` (b0..019, Change B).
+
+**Distinción crítica con `CrearObservacionUseCase`:**
+
+| Aspecto | CrearComentarioUseCase | CrearObservacionUseCase |
+|---------|----------------------|------------------------|
+| Permiso requerido | `ticket:comentar` (b0..019) | `ticket:observar` (b0..014) |
+| tipo_operacion | `COMENTARIO` (f0..002) | `OBSERVACION` (f0..009) |
+| Dispara transición | NO | SÍ (APROBADO → EN_PROGRESO cuando aplica) |
+| Roles habilitados | USUARIO, COLABORADOR, TECNICO, ADMINISTRADOR | Solo TECNICO, ADMINISTRADOR |
+| ITenantTransactionRunner | NO (1 única escritura) | SÍ (multi-step tx) |
+| estadoAnterior/Nuevo | NULL (siempre) | llenan cuando hay transición |
+
+**Body de request:**
+
+```json
+{ "contenido": "string (requerido, no vacío)" }
+```
+
+**Estados donde comentar está permitido:** ABIERTO, APROBADO, EN_PROGRESO, SUSPENDIDO.
+**Comentar está bloqueado en:** RESUELTO, SIN_SOLUCION, RECHAZADO (terminales), CERRADO, CANCELADO,
+PENDIENTE_APROBACION (congelados). Respuesta en ambos casos: HTTP 422 (`ComentarioNoPermitidoError`).
+
+#### Scenario: Usuario con ticket:comentar crea comentario en ticket ABIERTO
+
+**Given** un usuario con permiso `ticket:comentar` (rol USUARIO o superior)
+**And** existe un ticket en estado `ABIERTO` del mismo tenant
+**When** el usuario envía `POST /tickets/{id}/comentarios` con `{ "contenido": "Aclaración sobre el pedido." }`
+**Then** MUST crear una fila en `operaciones_ticket` con `tipo_operacion.codigo = 'COMENTARIO'`
+**And** MUST devolver HTTP 201 con la representación del comentario creado (OperacionTicketResponseDto)
+**And** `tickets.estado_id` MUST NOT cambiar
+**And** `tickets.estado_id` anterior MUST permanecer sin modificación (estadoAnterior/Nuevo = null)
+
+#### Scenario: Comentar en ticket APROBADO o EN_PROGRESO está permitido
+
+**Given** un usuario con permiso `ticket:comentar`
+**And** existe un ticket en estado `APROBADO` o en estado `EN_PROGRESO`
+**When** el usuario envía `POST /tickets/{id}/comentarios` con contenido válido
+**Then** MUST crear el comentario exitosamente y devolver HTTP 201
+**And** el estado del ticket MUST NOT cambiar
+**And** MUST NOT disparar ninguna transición de estado (contraste con CrearObservacionUseCase en APROBADO)
+
+#### Scenario: Comentar en ticket SUSPENDIDO está permitido
+
+**Given** un usuario con permiso `ticket:comentar`
+**And** existe un ticket en estado `SUSPENDIDO`
+**When** el usuario envía `POST /tickets/{id}/comentarios`
+**Then** MUST crear el comentario exitosamente y devolver HTTP 201
+
+#### Scenario: Comentar en ticket en estado terminal es rechazado con 422
+
+**Given** un usuario con permiso `ticket:comentar`
+**And** existe un ticket en estado `RESUELTO`, `SIN_SOLUCION` o `RECHAZADO` (terminal)
+**When** el usuario envía `POST /tickets/{id}/comentarios` con contenido válido
+**Then** MUST devolver HTTP 422 (`ComentarioNoPermitidoError`)
+**And** MUST NOT crear ninguna fila en `operaciones_ticket`
+**And** el mensaje de error MUST indicar que el ticket está en un estado que no permite comentarios
+
+#### Scenario: Comentar en ticket congelado es rechazado con 422
+
+**Given** un usuario con permiso `ticket:comentar`
+**And** existe un ticket en estado `CERRADO`, `CANCELADO` o `PENDIENTE_APROBACION` (congelado)
+**When** el usuario envía `POST /tickets/{id}/comentarios`
+**Then** MUST devolver HTTP 422 (`ComentarioNoPermitidoError`)
+**And** MUST NOT crear ninguna fila en `operaciones_ticket`
+
+#### Scenario: Request sin ticket:comentar es rechazada con 403
+
+**Given** un usuario autenticado cuyo JWT no contiene `ticket:comentar`
+**When** envía `POST /tickets/{id}/comentarios` con cualquier body
+**Then** `PermissionsGuard` MUST rechazar con HTTP 403 antes de ejecutar el use case
+**And** MUST NOT crear ninguna fila en `operaciones_ticket`
+**And** MUST NOT modificar ningún dato en la DB
+
+#### Scenario: Ticket no encontrado o perteneciente a otro tenant devuelve 404
+
+**Given** un usuario con permiso `ticket:comentar`
+**When** envía `POST /tickets/{id}/comentarios` con un `id` inexistente en su tenant
+**Then** MUST devolver HTTP 404
+**And** MUST NOT revelar si el ticket existe en otro tenant
+
+#### Scenario: Comentario con contenido vacío o solo espacios es rechazado con 422
+
+**Given** un usuario con permiso `ticket:comentar` y un ticket en estado no terminal
+**When** envía `POST /tickets/{id}/comentarios` con `contenido` vacío (`""`) o solo espacios
+**Then** MUST devolver HTTP 422
+**And** MUST NOT crear ninguna fila en `operaciones_ticket`
+
+---
+
+### Requirement: Invariante "solo Técnico cambia el estado" — aislamiento del endpoint de observaciones
+
+> Introducido en change `tickets-rbac-4-roles` (2026-06-29).
+> Requirement de no-regresión de Change A.
+
+El endpoint `POST /tickets/:id/observaciones` (Change A) permanece protegido por
+`ticket:observar` (b0..014), exclusivo de TECNICO y ADMINISTRADOR. MUST NOT ser accesible
+para roles que solo tienen `ticket:comentar` (USUARIO, COLABORADOR). Esta separación es la
+garantía de que ningún USUARIO ni COLABORADOR puede disparar una transición de estado.
+
+#### Scenario: USUARIO intenta crear una OBSERVACION y recibe 403
+
+**Given** un usuario con rol `USUARIO` (tiene `ticket:comentar`, NO tiene `ticket:observar`)
+**When** envía una request al endpoint `POST /tickets/{id}/observaciones`
+**Then** `PermissionsGuard` MUST devolver HTTP 403
+**And** MUST NOT crear ninguna observación
+**And** MUST NOT disparar ninguna transición de estado
+
+#### Scenario: COLABORADOR intenta crear una OBSERVACION y recibe 403
+
+**Given** un usuario con rol `COLABORADOR` (tiene `ticket:aprobar`, NO tiene `ticket:observar`)
+**When** envía una request al endpoint `POST /tickets/{id}/observaciones`
+**Then** `PermissionsGuard` MUST devolver HTTP 403
+
+#### Scenario: TECNICO puede crear observaciones (ticket:observar — Change A preservado)
+
+**Given** un usuario con rol `TECNICO` (tiene `ticket:observar`)
+**And** existe un ticket en estado `APROBADO`
+**When** envía `POST /tickets/{id}/observaciones` con body válido
+**Then** MUST procesar la observación según las reglas de CrearObservacionUseCase (Change A)
+**And** MUST NOT devolver 403 (no hay regresión de permisos)
+
+---
+
 ### Requirement: fechaCierre en los estados terminales (ADR-6)
 
 > Introducido en change `tickets-maquina-estados-observaciones` (2026-06-29).
