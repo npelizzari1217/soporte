@@ -161,7 +161,7 @@ Entidad central. Un ticket agrupa toda la gestión de un incidente, compra o rep
 | `solicitante_id` | `uuid` | NOT NULL | — | Soft ref → `master.usuarios.id` |
 | `asignado_id` | `uuid` | NULL | — | Soft ref → `master.usuarios.id`; NULL = sin asignar |
 | `fecha_vencimiento` | `date` | NULL | — | SLA objetivo, manejado por la app |
-| `fecha_cierre` | `date` | NULL | — | Fecha de cierre efectivo; seteada automáticamente por el use case según ADR-6 (change `tickets-maquina-estados-observaciones` 2026-06-29). Ver Requirement: fechaCierre en estados terminales |
+| `fecha_cierre` | `date` | NULL | — | Fecha de cierre efectivo; seteada automáticamente por el use case según ADR-6 (change `tickets-maquina-estados-observaciones` 2026-06-29). Ver Requirement: fechaCierre en estados terminales. **Historial de nombre:** originalmente `fecha_vencimiento`; renombrada a `fecha_resolucion` por change `tickets-list-filtros-resolucion` (2026-06-28, migration `20260628_rename_fecha_vencimiento_fecha_resolucion`); renombrada a `fecha_cierre` por change `tickets-maquina-estados-observaciones` (2026-06-29, migration `20260629030000_rename_fecha_resolucion_fecha_cierre`). |
 | `created_at` | `timestamptz` | NOT NULL | DEFAULT now() | — |
 | `updated_at` | `timestamptz` | NOT NULL | DEFAULT now() | — |
 | `deleted_at` | `timestamptz` | NULL | — | — |
@@ -467,10 +467,15 @@ del ticket. Los campos que identifican ciclo de vida, identidad del
 solicitante o número de registro son INMUTABLES por este endpoint.
 
 **Campos permitidos en el body:** `titulo`, `descripcion`, `prioridadId`,
-`cicloId`, `fechaVencimiento`. Todos opcionales (PATCH parcial).
+`cicloId`. Todos opcionales (PATCH parcial).
+
+> `fechaVencimiento` eliminado del conjunto editable en change `tickets-list-filtros-resolucion`
+> (2026-06-28). El campo `fecha_cierre` es gestionado exclusivamente vía `PATCH /tickets/:id/estado`
+> al transicionar a estado terminal (ver Requirement: fechaCierre en estados terminales).
 
 **Campos inmutables** (nunca modificables por este endpoint):
-`estadoId`, `tipoId`, `solicitanteId`, `asignadoId`, `numero`, `autorId`, `clienteId`, `anio`.
+`estadoId`, `tipoId`, `solicitanteId`, `asignadoId`, `numero`, `autorId`, `clienteId`, `anio`,
+`fechaCierre` (ni `fechaResolucion` ni `fechaVencimiento` — nombres históricos del mismo campo).
 `tipoId` es inmutable porque el número legible (`numero`) se derivó del tipo original;
 cambiar el tipo dejaría `numero` inconsistente. Los campos inmutables incluidos en el body
 MUST ser ignorados silenciosamente (no error de validación).
@@ -501,6 +506,20 @@ y `metadata` que incluya al menos `{ camposModificados: [lista de claves modific
 **Then** la respuesta MUST ser `HTTP 200` (no error de validación)  
 **And** los valores de los campos inmutables en la DB MUST NOT haber cambiado  
 **And** solo los campos permitidos presentes en el body MUST ser actualizados
+
+#### Scenario: fechaCierre en body de PATCH /tickets/:id es ignorado silenciosamente
+
+> Introducido en change `tickets-list-filtros-resolucion` (2026-06-28).
+> Aplica igualmente si el consumer envía `fechaResolucion` o `fechaVencimiento` (nombres históricos del campo).
+
+**Given** un ticket activo con `deleted_at IS NULL`
+**And** el usuario autenticado tiene permiso `ticket:editar`
+**When** el body de `PATCH /tickets/{id}` incluye `fechaCierre` (o `fechaResolucion`) con cualquier valor
+**Then** la respuesta MUST ser `HTTP 200`
+**And** `tickets.fecha_cierre` MUST NOT haber cambiado
+**And** solo los campos editables (`titulo`, `descripcion`, `prioridadId`, `cicloId`) presentes en el body MUST ser actualizados
+
+---
 
 #### Scenario: Edición rechazada — ticket en estado no-ABIERTO
 
@@ -1071,3 +1090,247 @@ garantía de que ningún USUARIO ni COLABORADOR puede disparar una transición d
 **When** el runner de migración ejecuta
 **Then** MUST saltar sin error (idempotente)
 **And** MUST NOT modificar ningún dato
+
+---
+
+### Requirement: Migración rename fecha_vencimiento → fecha_resolucion (historial)
+
+> Introducido en change `tickets-list-filtros-resolucion` (2026-06-28).
+> **Nota histórica:** Esta migración renombró la columna de `fecha_vencimiento` a `fecha_resolucion`.
+> Posteriormente, change `tickets-maquina-estados-observaciones` (2026-06-29) la renombró nuevamente
+> a `fecha_cierre`. El estado final de la columna es `fecha_cierre` — ver Requirement: Migración
+> rename fecha_resolucion → fecha_cierre (arriba). Esta sección documenta la primera etapa
+> del historial de rename para trazabilidad.
+
+La migración `RENAME COLUMN fecha_vencimiento TO fecha_resolucion` DEBE ser:
+
+1. **Idempotente**: si la columna ya fue renombrada (ej. segunda ejecución), detectarlo y saltar sin error.
+2. **Cobertura total**: ejecutarse en TODAS las tenant DBs activas.
+3. **Verificación post-migración**: confirmar que `fecha_resolucion` (o `fecha_cierre` si ya se aplicó el segundo rename) existe en cada tenant DB.
+4. **Rollback**: ante fallo, reportar qué tenants fallaron sin afectar los ya migrados.
+
+#### Scenario: Migración exitosa en tenant con columna fecha_vencimiento
+
+**Given** una tenant DB con columna `fecha_vencimiento` en la tabla `tickets`
+**When** el runner de migración ejecuta sobre ese tenant
+**Then** la columna MUST renombrarse a `fecha_resolucion`
+**And** todos los datos existentes MUST estar accesibles bajo el nuevo nombre
+**And** ninguna fila MUST perderse ni modificarse en contenido
+
+#### Scenario: Migración idempotente — tenant ya con fecha_resolucion o fecha_cierre
+
+**Given** una tenant DB donde `fecha_resolucion` (o `fecha_cierre`) ya existe
+**When** el runner de migración ejecuta nuevamente
+**Then** MUST NOT arrojar error
+**And** MUST NOT modificar ninguna columna ni dato
+
+---
+
+### Requirement: Listado filtrable con orden compuesto
+
+> Introducido en change `tickets-list-filtros-resolucion` (2026-06-28).
+
+`GET /tickets` MUST aceptar los query params opcionales:
+
+| Param | Tipo | Semántica |
+|---|---|---|
+| `tiposIds[]` | UUID[] | Filtro IN: solo tickets cuyo `tipo_id` esté en la lista. Ausente = sin restricción de tipo. |
+| `fechaDesde` | `YYYY-MM-DD` | Rango inclusivo inferior: `tickets.created_at::date >= fechaDesde` |
+| `fechaHasta` | `YYYY-MM-DD` | Rango inclusivo superior: `tickets.created_at::date <= fechaHasta` |
+
+El resultado MUST ordenarse: sort primario `tickets.created_at DESC`, sort secundario (desempate)
+`tipos_ticket.nombre ASC` (nombre del tipo en texto, orden alfabético ascendente — NOT por
+`tipo_id` ni por UUID del tipo).
+
+No hay paginación (sin `limit`/`offset`). El endpoint devuelve todos los tickets del tenant que
+cumplen los filtros, excluyendo soft-deleted. El endpoint MUST validar TenantContext antes de
+consultar la DB.
+
+**Nota:** El frontend envía el parámetro como `tiposIds=a&tiposIds=b` (repeated params, sin
+brackets). El backend DTO (`tiposIds?: string | string[]`) acepta ambos estilos — NestJS/qs
+coerce los params repetidos a array. El spec usa `tiposIds[]` como notación lógica; la ausencia
+de brackets en la URL es cosmética y no afecta la funcionalidad (SUGGESTION-1 del verify-report).
+
+#### Scenario: Sin filtros devuelve todos los tickets activos ordenados
+
+**Given** un tenant con tickets de distintos tipos y fechas, todos con `deleted_at IS NULL`
+**And** el usuario autenticado tiene permiso `ticket:ver`
+**When** el usuario llama `GET /tickets` sin query params
+**Then** la respuesta MUST ser `HTTP 200` con todos los tickets activos del tenant
+**And** el array MUST estar ordenado: primary `tickets.created_at DESC`; secondary `tipos_ticket.nombre ASC`
+**And** tickets de otros tenants MUST NOT aparecer
+
+#### Scenario: Filtro tiposIds[] limita resultados al tipo indicado
+
+**Given** un tenant con tickets de tipo SOPORTE, COMPRAS y EDILICIA
+**And** el usuario tiene permiso `ticket:ver`
+**When** el usuario llama `GET /tickets?tiposIds[]=<uuid_soporte>&tiposIds[]=<uuid_compras>`
+**Then** la respuesta MUST ser `HTTP 200`
+**And** todos los items MUST tener `tipo_id` igual a `<uuid_soporte>` o `<uuid_compras>`
+**And** tickets de tipo EDILICIA MUST NOT aparecer
+
+#### Scenario: tiposIds[] ausente no restringe por tipo
+
+**Given** tickets de los 3 tipos en el tenant
+**And** el usuario tiene permiso `ticket:ver`
+**When** el usuario llama `GET /tickets` sin el param `tiposIds[]`
+**Then** tickets de todos los tipos MUST aparecer en la respuesta
+
+#### Scenario: tiposIds[] con UUID de tipo inexistente devuelve array vacío sin error
+
+**Given** el usuario tiene permiso `ticket:ver`
+**When** el usuario llama `GET /tickets?tiposIds[]=<uuid_que_no_existe_en_este_tenant>`
+**Then** la respuesta MUST ser `HTTP 200` con un array vacío `[]`
+**And** MUST NOT devolver `HTTP 4xx` ni `HTTP 5xx`
+
+#### Scenario: Filtro fechaDesde/fechaHasta limita por rango de created_at
+
+**Given** tickets creados en fechas 2026-01-01, 2026-06-15 y 2026-12-31 en el tenant
+**And** el usuario tiene permiso `ticket:ver`
+**When** el usuario llama `GET /tickets?fechaDesde=2026-06-01&fechaHasta=2026-06-30`
+**Then** solo el ticket creado en 2026-06-15 MUST aparecer
+**And** los tickets de 2026-01-01 y 2026-12-31 MUST NOT aparecer
+
+#### Scenario: Filtros combinados (tipo + rango) aplican ambas condiciones simultáneamente
+
+**Given** tickets de tipos SOPORTE y COMPRAS en distintas fechas en el tenant
+**And** el usuario tiene permiso `ticket:ver`
+**When** el usuario llama `GET /tickets?tiposIds[]=<uuid_soporte>&fechaDesde=2026-01-01&fechaHasta=2026-06-30`
+**Then** solo tickets de tipo SOPORTE creados entre 2026-01-01 y 2026-06-30 MUST aparecer
+**And** tickets de COMPRAS y tickets fuera del rango MUST NOT aparecer
+
+#### Scenario: fechaDesde mayor que fechaHasta rechazado con 422
+
+**Given** el usuario tiene permiso `ticket:ver`
+**When** el usuario llama `GET /tickets?fechaDesde=2026-12-31&fechaHasta=2026-01-01`
+**Then** la respuesta MUST ser `HTTP 422`
+**And** el body de error MUST indicar que el rango de fechas es inválido
+**And** MUST NOT devolver datos de tickets
+
+#### Scenario: Ticket de otro tenant no aparece aunque coincida con los filtros
+
+**Given** el usuario autenticado pertenece al tenant A
+**And** el tenant B tiene tickets que coincidirían con los filtros activos
+**When** el usuario llama `GET /tickets` con o sin filtros
+**Then** los tickets del tenant B MUST NOT aparecer
+**And** el TenantContext MUST confinar los resultados a la DB del tenant A
+
+---
+
+### Requirement: GET /tickets/ciclo-activo expone el ciclo activo del tenant
+
+> Introducido en change `tickets-list-filtros-resolucion` (2026-06-28).
+
+`GET /tickets/ciclo-activo` MUST estar definido en `TicketsController` y retornar el ciclo
+activo (`activo = TRUE`, `deleted_at IS NULL`) de la tabla `ciclos_cliente` de la DB tenant
+autenticada. Este endpoint es **solo lectura**. Devuelve `HTTP 404` (no `200` con body nulo)
+cuando no hay ciclo activo — el 404 es un estado válido de negocio (no un error).
+
+El endpoint MUST validar TenantContext antes de consultar.
+
+#### Scenario: Tenant con ciclo activo — devuelve el ciclo
+
+**Given** el tenant tiene exactamente un `ciclos_cliente` con `activo = TRUE` y `deleted_at IS NULL`
+**And** el usuario autenticado tiene permiso `ticket:ver`
+**When** el usuario llama `GET /tickets/ciclo-activo`
+**Then** la respuesta MUST ser `HTTP 200`
+**And** el body MUST incluir al menos: `id`, `nombre`, `fechaInicio` (ISO date `YYYY-MM-DD`), `fechaFin` (ISO date `YYYY-MM-DD`), `activo: true`
+
+#### Scenario: Tenant sin ciclo activo — devuelve 404
+
+**Given** el tenant NO tiene ningún `ciclos_cliente` con `activo = TRUE` y `deleted_at IS NULL`
+**When** el usuario autenticado llama `GET /tickets/ciclo-activo`
+**Then** la respuesta MUST ser `HTTP 404`
+**And** el body de error MUST incluir mensaje indicando que no hay ciclo activo
+**And** MUST NOT devolver `HTTP 200` con body nulo (el 404 es la respuesta correcta)
+**And** MUST NOT exponer datos de ciclos de otros tenants
+
+#### Scenario: Sin TenantContext válido — rechazado
+
+**Given** una request sin JWT válido o sin TenantContext activo
+**When** se llama `GET /tickets/ciclo-activo`
+**Then** la respuesta MUST ser `HTTP 401` o `HTTP 403`
+**And** MUST NOT devolver datos de ningún tenant
+
+#### Scenario: Aislamiento de tenant en ciclo activo
+
+**Given** el usuario pertenece al tenant A
+**And** el tenant B tiene un ciclo activo, el tenant A no tiene ninguno
+**When** el usuario llama `GET /tickets/ciclo-activo`
+**Then** la respuesta MUST ser `HTTP 404` (no hay ciclo activo en tenant A)
+**And** MUST NOT devolver el ciclo activo del tenant B
+
+---
+
+### Requirement: POST /tickets acepta fechaCreacion explícita
+
+> Introducido en change `tickets-list-filtros-resolucion` (2026-06-28).
+
+`POST /tickets` MUST aceptar el campo opcional `fechaCreacion` (string, formato `YYYY-MM-DD`).
+Cuando está presente, `tickets.created_at` MUST ser seteado a ese valor por el use case.
+Cuando está ausente, el use case MUST usar `new Date()` (momento de creación de la request).
+El `DEFAULT now()` de Postgres permanece como fallback solo para inserciones directas (seeds,
+scripts); el use case DEBE siempre proveer el valor explícito derivado del DTO.
+
+No hay restricción sobre si la fecha es pasada o futura. La validación de usuario+tenant MUST
+ocurrir antes de persistir.
+
+#### Scenario: Alta con fechaCreacion pasada — aceptada
+
+**Given** el usuario tiene permiso `ticket:crear`
+**And** el body incluye `fechaCreacion: '2025-06-15'`
+**When** el usuario envía `POST /tickets` con todos los campos requeridos válidos
+**Then** la respuesta MUST ser `HTTP 201`
+**And** `tickets.created_at` MUST reflejar la fecha 2025-06-15
+**And** MUST NOT retornar `HTTP 422` por la fecha siendo pasada
+
+#### Scenario: Alta con fechaCreacion futura — aceptada
+
+**Given** el usuario tiene permiso `ticket:crear`
+**And** el body incluye `fechaCreacion: '2030-12-31'`
+**When** el usuario envía `POST /tickets` con campos requeridos válidos
+**Then** la respuesta MUST ser `HTTP 201`
+**And** `tickets.created_at` MUST reflejar la fecha 2030-12-31
+
+#### Scenario: Alta sin fechaCreacion — created_at setteado a now()
+
+**Given** el usuario tiene permiso `ticket:crear`
+**And** el body NO incluye el campo `fechaCreacion`
+**When** el usuario envía `POST /tickets`
+**Then** la respuesta MUST ser `HTTP 201`
+**And** `tickets.created_at` MUST ser aproximadamente el momento de ejecución del use case (margen de 5 segundos)
+
+#### Scenario: fechaCreacion con formato inválido — rechazada con 422
+
+**Given** el usuario tiene permiso `ticket:crear`
+**And** el body incluye `fechaCreacion: 'no-es-fecha'`
+**When** el usuario envía `POST /tickets`
+**Then** la respuesta MUST ser `HTTP 422`
+**And** el body de error MUST indicar que `fechaCreacion` tiene formato inválido
+
+---
+
+### Requirement: fechaResolucion al transicionar a RESUELTO — SUPERADO
+
+> Introducido en change `tickets-list-filtros-resolucion` (2026-06-28).
+> **Superado en su totalidad por change `tickets-maquina-estados-observaciones` (2026-06-29).**
+
+El change `tickets-list-filtros-resolucion` especificó el campo `fechaResolucion` en el body de
+`PATCH /tickets/:id/estado` al transicionar a `RESUELTO`, y definió un arco de "Reapertura"
+(`RESUELTO → EN_PROGRESO`) que limpiaría el campo a `NULL`.
+
+Ambos comportamientos fueron explícitamente superados por `tickets-maquina-estados-observaciones`:
+
+- **Campo renombrado**: `fechaResolucion` → `fechaCierre`. El campo HTTP en `PATCH /tickets/:id/estado`
+  es `fechaCierre` (no `fechaResolucion`). Consumers enviando `fechaResolucion` recibirán 422.
+  Ver Requirement: fechaCierre en estados terminales (ADR-6).
+
+- **Reapertura eliminada**: `RESUELTO` es estado terminal (ADR-1 de `tickets-maquina-estados-observaciones`).
+  El arco `RESUELTO → EN_PROGRESO` no existe en la máquina de estados. Los scenarios de
+  "Reapertura desde RESUELTO limpia fechaResolucion" y "Ticket reabierto vuelve a RESUELTO"
+  son permanentemente inalcanzables. Ver Requirement: Máquina de estados base — Scenario:
+  Reapertura RESUELTO → EN_PROGRESO ya no es un arco válido.
+
+Los scenarios vigentes de autorización para la transición a RESUELTO (404 para otro tenant,
+403 sin permiso) se mantienen inalterados — aplican con `fechaCierre` como campo HTTP.
+Ver Requirement: fechaCierre en estados terminales para los scenarios vigentes completos.
