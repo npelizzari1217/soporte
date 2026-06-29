@@ -103,11 +103,40 @@ Permisos mínimos seeds:
 | `cliente:gestionar` | Crear/modificar clientes (solo ROOT/ADMIN global) |
 | `ticket:editar` | Editar campos de datos de un ticket (titulo, descripcion, prioridad, ciclo, fechaVencimiento) |
 | `ticket:eliminar` | Dar de baja lógica (soft delete) un ticket |
+| `ticket:observar` | Crear observaciones técnicas sobre tickets |
+| `ticket:transicionar` | Transicionar tickets en arcos técnicos (APROBADO, EN_PROGRESO, SUSPENDIDO) |
+| `ticket:aprobar` | Aprobar un ticket (transición ABIERTO → APROBADO) |
+| `ticket:rechazar` | Rechazar un ticket (transición ABIERTO → RECHAZADO) |
 
 > `ticket:editar` y `ticket:eliminar` agregados en change `tickets-editar-borrar` (2026-06-28).
 > UUIDs deterministas: `ticket:editar` → `b0000000-0000-4000-b000-000000000012`,
 > `ticket:eliminar` → `b0000000-0000-4000-b000-000000000013`.
 > Asignación de roles: `ticket:editar` → ADMIN + SOPORTE_IT; `ticket:eliminar` → ADMIN (exclusivo).
+>
+> `ticket:observar`, `ticket:transicionar`, `ticket:aprobar`, `ticket:rechazar` agregados en
+> change `tickets-maquina-estados-observaciones` (2026-06-29).
+> UUIDs deterministas:
+> - `ticket:observar`    → `b0000000-0000-4000-b000-000000000014`
+> - `ticket:transicionar` → `b0000000-0000-4000-b000-000000000015`
+> - `ticket:aprobar`    → `b0000000-0000-4000-b000-000000000016`
+> - `ticket:rechazar`   → `b0000000-0000-4000-b000-000000000017`
+>
+> **CONTRATO INTER-CHANGE con Change B (`tickets-rbac-4-roles`):** los 4 códigos y UUIDs
+> anteriores son FIJOS. Change B MUST referenciarlos por sus códigos exactos al redistribuir
+> permisos a los nuevos roles (USUARIO, COLABORADOR, TECNICO, ADMINISTRADOR).
+> NO renombrar ni crear variantes alternativas.
+>
+> **Siembra mínima provisional (Change A):**
+> | Rol | Permisos asignados |
+> |-----|-------------------|
+> | `ADMIN` | `ticket:aprobar`, `ticket:rechazar`, `ticket:transicionar`, `ticket:observar` |
+> | `APROBADOR_COMPRAS` | `ticket:aprobar`, `ticket:rechazar` |
+> | `SOPORTE_IT` | `ticket:transicionar`, `ticket:observar` |
+> | `MANTENIMIENTO` | `ticket:transicionar`, `ticket:observar` |
+> | `SOLICITANTE` | `ticket:observar` |
+>
+> Esta siembra es **provisional**. Change B (`tickets-rbac-4-roles`) SHOULD redistribuirla
+> al definir los nuevos roles. Migración master: `20260629040000_seed_rbac_ticket_estados`.
 
 | Columna | Tipo Postgres | Nullability | Restricción / Default | Descripción |
 |---------|--------------|-------------|----------------------|-------------|
@@ -455,3 +484,85 @@ El JWT de acceso MUST incluir el claim `cliente_nombre` con el nombre del tenant
 **And** existe un ticket activo del mismo tenant  
 **When** envía `PATCH /tickets/{id}` → la respuesta MUST ser `HTTP 200` (o 422/404 por reglas de dominio, nunca 403)  
 **When** envía `DELETE /tickets/{id}` → la respuesta MUST ser `HTTP 403`
+
+---
+
+### Requirement: Catálogo de permisos de transición de tickets
+
+> Introducido en change `tickets-maquina-estados-observaciones` (2026-06-29).
+
+Los 4 permisos granulares MUST existir en `master.permisos` con sus códigos y UUIDs exactos
+antes de desplegar cualquier código que referencie `@RequirePermissions('ticket:aprobar')`
+o cualquiera de los otros 3. La presencia y forma exacta de los códigos es contrato con Change B.
+
+#### Scenario: Los 4 permisos granulares existen en master con códigos y UUIDs exactos
+
+**Given** la DB master del sistema con el seed de Change A aplicado
+**When** se consulta `SELECT codigo, id FROM permisos WHERE codigo IN ('ticket:aprobar','ticket:rechazar','ticket:transicionar','ticket:observar')`
+**Then** MUST retornar exactamente 4 filas con esos códigos
+**And** cada fila MUST tener el UUID determinista definido en este spec
+**And** `deleted_at IS NULL` para cada una
+**And** MUST NOT existir variantes de nombres distintas (ej. `ticket:approve`, `ticket:transition`)
+
+#### Scenario: Seed de permisos de transición es idempotente
+
+**Given** una DB master donde los 4 permisos ya existen
+**When** el seed de master corre nuevamente (ej. re-deploy)
+**Then** MUST NOT crear filas duplicadas en `permisos`
+**And** MUST NOT modificar los UUIDs ni los códigos existentes
+
+---
+
+### Requirement: Siembra mínima provisional de roles_permisos (Change A)
+
+> Introducido en change `tickets-maquina-estados-observaciones` (2026-06-29).
+> Esta siembra es provisional. Change B (`tickets-rbac-4-roles`) SHOULD redistribuirla.
+
+La siembra mínima garantiza que al desplegar Change A el sistema sea funcional sin esperar
+Change B. ADMIN obtiene todos los permisos; APROBADOR_COMPRAS obtiene los de aprobación/rechazo;
+SOPORTE_IT, MANTENIMIENTO y SOLICITANTE obtienen los correspondientes a su rol.
+
+#### Scenario: ADMIN tiene los 4 permisos de transición
+
+**Given** la DB master con la siembra mínima de Change A aplicada
+**And** un usuario con rol `ADMIN` hace login
+**Then** su JWT MUST incluir `ticket:aprobar`, `ticket:rechazar`, `ticket:transicionar`,
+  `ticket:observar` en el claim `permisos`
+
+#### Scenario: APROBADOR_COMPRAS tiene permisos de aprobación y rechazo
+
+**Given** la DB master con la siembra mínima de Change A aplicada
+**And** un usuario con rol `APROBADOR_COMPRAS` hace login
+**Then** su JWT MUST incluir `ticket:aprobar` y `ticket:rechazar` en el claim `permisos`
+**And** su JWT MUST NOT incluir `ticket:transicionar` ni `ticket:observar`
+
+#### Scenario: SOPORTE_IT tiene permisos técnicos
+
+**Given** la DB master con la siembra mínima de Change A aplicada
+**And** un usuario con rol `SOPORTE_IT` hace login
+**Then** su JWT MUST incluir `ticket:transicionar` y `ticket:observar` en el claim `permisos`
+**And** su JWT MUST NOT incluir `ticket:aprobar` ni `ticket:rechazar`
+
+#### Scenario: SOLICITANTE tiene ticket:observar
+
+**Given** la DB master con la siembra mínima de Change A aplicada
+**And** un usuario con rol `SOLICITANTE` hace login
+**Then** su JWT MUST incluir `ticket:observar` en el claim `permisos`
+**And** su JWT MUST NOT incluir `ticket:aprobar`, `ticket:rechazar`, ni `ticket:transicionar`
+
+#### Scenario: Siembra de roles_permisos es idempotente
+
+**Given** una DB master donde las asociaciones roles_permisos de esta siembra ya existen
+**When** el seed corre nuevamente
+**Then** MUST NOT crear filas duplicadas en `roles_permisos`
+**And** MUST NOT producir errores de conflicto de PK
+
+#### Scenario: Contrato de códigos — Change B referencia los mismos códigos exactos
+
+**Given** Change B (`tickets-rbac-4-roles`) define permisos para los roles USUARIO,
+  COLABORADOR, TECNICO, ADMINISTRADOR
+**When** Change B asigna permisos de transición de tickets a esos roles
+**Then** MUST referenciar `ticket:aprobar`, `ticket:rechazar`, `ticket:transicionar`,
+  `ticket:observar` por sus códigos exactos (NO crear nuevos códigos alternativos)
+**And** los UUIDs de esos permisos MUST coincidir con los definidos en Change A
+  (b0...0014 a b0...0017)

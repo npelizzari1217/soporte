@@ -40,16 +40,23 @@ del tenant PUEDE agregar estados propios si el modelo de negocio lo requiere.
 
 **Seeds obligatorios (por orden de inserción):**
 
-| codigo | nombre | orden |
-|--------|--------|-------|
-| `ABIERTO` | Abierto | 10 |
-| `PENDIENTE_APROBACION` | Pendiente de aprobación | 20 |
-| `APROBADO` | Aprobado | 30 |
-| `RECHAZADO` | Rechazado | 35 |
-| `EN_PROGRESO` | En progreso | 40 |
-| `RESUELTO` | Resuelto | 50 |
-| `CERRADO` | Cerrado | 60 |
-| `CANCELADO` | Cancelado | 70 |
+> Actualizado en change `tickets-maquina-estados-observaciones` (2026-06-29): 10 estados totales.
+> `SUSPENDIDO` y `SIN_SOLUCION` son nuevos. `PENDIENTE_APROBACION`, `CERRADO`, `CANCELADO` son
+> **estados congelados** — sin arcos de entrada ni salida en la máquina base; los tickets ya
+> existentes en esos estados quedan en estado definitivo sin posibilidad de transicionar.
+
+| codigo | nombre | orden | UUID determinista | Notas |
+|--------|--------|-------|-------------------|-------|
+| `ABIERTO` | Abierto | 10 | c0000000-0000-4000-c000-000000000001 | — |
+| `PENDIENTE_APROBACION` | Pendiente de aprobación | 20 | c0000000-0000-4000-c000-000000000002 | **Congelado** — sin arcos |
+| `APROBADO` | Aprobado | 30 | c0000000-0000-4000-c000-000000000003 | — |
+| `RECHAZADO` | Rechazado | 35 | c0000000-0000-4000-c000-000000000004 | **Terminal** |
+| `EN_PROGRESO` | En progreso | 40 | c0000000-0000-4000-c000-000000000005 | — |
+| `RESUELTO` | Resuelto | 50 | c0000000-0000-4000-c000-000000000006 | **Terminal** |
+| `CERRADO` | Cerrado | 60 | c0000000-0000-4000-c000-000000000007 | **Congelado** — sin arcos |
+| `CANCELADO` | Cancelado | 70 | c0000000-0000-4000-c000-000000000008 | **Congelado** — sin arcos |
+| `SUSPENDIDO` | Suspendido | 45 | c0000000-0000-4000-c000-000000000009 | **NUEVO** (2026-06-29) |
+| `SIN_SOLUCION` | Sin solución | 55 | c0000000-0000-4000-c000-00000000000a | **NUEVO** (2026-06-29) |
 
 ---
 
@@ -101,14 +108,18 @@ Tipos de evento registrables en el timeline de un ticket.
 | `updated_at` | `timestamptz` | NOT NULL | DEFAULT now() | — |
 | `deleted_at` | `timestamptz` | NULL | — | — |
 
-**Seeds:** `CAMBIO_ESTADO`, `COMENTARIO`, `ASIGNACION`, `ADJUNTO`, `AVANCE_EDILICIO`, `EDICION`, `ELIMINACION`.
+**Seeds:** `CAMBIO_ESTADO`, `COMENTARIO`, `ASIGNACION`, `ADJUNTO`, `AVANCE_EDILICIO`, `EDICION`, `ELIMINACION`, `OBSERVACION`.
 
 > `EDICION` y `ELIMINACION` agregados en change `tickets-editar-borrar` (2026-06-28).
 > UUIDs deterministas: `EDICION` → `f0000000-0000-4000-f000-000000000007`,
 > `ELIMINACION` → `f0000000-0000-4000-f000-000000000008`.
-> Para tenants existentes antes de este change: aplicar vía `scripts/migrate-tenants.ts`
+> Para tenants existentes antes de ese change: aplicar vía `scripts/migrate-tenants.ts`
 > (migración tenant `20260627010000_seed_tipo_operacion_edicion_eliminacion`).
 > Para tenants nuevos: incluido en el seeder estándar (`tenant-seed.ts` + `tenant-seeder.adapter.ts`).
+>
+> `OBSERVACION` agregado en change `tickets-maquina-estados-observaciones` (2026-06-29).
+> UUID determinista: `OBSERVACION` → `f0000000-0000-4000-f000-000000000009`.
+> Migración idempotente: `20260629020000_add_tipo_operacion_observacion`.
 
 ---
 
@@ -150,6 +161,7 @@ Entidad central. Un ticket agrupa toda la gestión de un incidente, compra o rep
 | `solicitante_id` | `uuid` | NOT NULL | — | Soft ref → `master.usuarios.id` |
 | `asignado_id` | `uuid` | NULL | — | Soft ref → `master.usuarios.id`; NULL = sin asignar |
 | `fecha_vencimiento` | `date` | NULL | — | SLA objetivo, manejado por la app |
+| `fecha_cierre` | `date` | NULL | — | Fecha de cierre efectivo; seteada automáticamente por el use case según ADR-6 (change `tickets-maquina-estados-observaciones` 2026-06-29). Ver Requirement: fechaCierre en estados terminales |
 | `created_at` | `timestamptz` | NOT NULL | DEFAULT now() | — |
 | `updated_at` | `timestamptz` | NOT NULL | DEFAULT now() | — |
 | `deleted_at` | `timestamptz` | NULL | — | — |
@@ -315,39 +327,79 @@ este tenant. No es un permiso de RBAC; es enrutamiento de trabajo. La validació
 
 ### Requirement: Máquina de estados base (todos los tipos)
 
-**Transiciones válidas comunes:**
+> Reemplazado en change `tickets-maquina-estados-observaciones` (2026-06-29).
+> El flujo legacy de 4 estados (ABIERTO → EN_PROGRESO → RESUELTO → CERRADO, con reapertura)
+> queda completamente reemplazado. Los estados terminales son RESUELTO, SIN_SOLUCION, RECHAZADO.
+> CERRADO, CANCELADO y PENDIENTE_APROBACION son estados congelados sin arcos de entrada/salida.
+
+**Transiciones válidas (y SOLO estas):**
+
 ```
-ABIERTO → EN_PROGRESO
-ABIERTO → CANCELADO
-EN_PROGRESO → RESUELTO (ver restricciones por tipo en specs de compras y reparaciones)
-EN_PROGRESO → CANCELADO
-RESUELTO → CERRADO
-RESUELTO → EN_PROGRESO  (reapertura)
-CERRADO → (ninguna transición — estado terminal)
-CANCELADO → (ninguna transición — estado terminal)
+ABIERTO     → APROBADO
+ABIERTO     → RECHAZADO
+APROBADO    → EN_PROGRESO
+APROBADO    → RESUELTO
+APROBADO    → SUSPENDIDO
+APROBADO    → SIN_SOLUCION
+EN_PROGRESO → RESUELTO
+EN_PROGRESO → SUSPENDIDO
+EN_PROGRESO → SIN_SOLUCION
+SUSPENDIDO  → EN_PROGRESO
 ```
 
+**Estados terminales** (`TERMINAL_STATES`): `RESUELTO`, `SIN_SOLUCION`, `RECHAZADO`.
+Ninguna transición de salida es posible desde ellos.
+
+**Estados congelados**: `CERRADO`, `CANCELADO`, `PENDIENTE_APROBACION`. Ninguna transición
+de entrada ni salida. Los tickets existentes en estos estados quedan en estado definitivo.
+
+Cualquier arco no listado MUST ser tratado como error de dominio (HTTP 422).
+
 #### Scenario: Transición inválida es rechazada por la máquina de estados
-**Given** un ticket en estado `CERRADO`  
-**When** un caso de uso intenta transicionar a `EN_PROGRESO`  
-**Then** `TicketStateMachineFactory` MUST seleccionar la estrategia correcta para el tipo del ticket  
-**And** `puedeTransicionar('CERRADO', 'EN_PROGRESO', ctx)` MUST retornar `false`  
-**And** el caso de uso MUST rechazar la operación con HTTP 422  
+**Given** un ticket en estado `EN_PROGRESO`
+**When** un caso de uso intenta transicionar a `ABIERTO`
+**Then** `TicketStateMachineFactory` MUST seleccionar la estrategia correcta para el tipo del ticket
+**And** `puedeTransicionar('EN_PROGRESO', 'ABIERTO', ctx)` MUST retornar `false`
+**And** el caso de uso MUST rechazar la operación con HTTP 422
 **And** MUST NOT modificar `tickets.estado_id`
 
 #### Scenario: Transición válida registra operacion en misma transacción
-**Given** un ticket en estado `ABIERTO`  
-**When** un caso de uso lo transiciona a `EN_PROGRESO`  
+**Given** un ticket en estado `APROBADO`
+**When** un caso de uso lo transiciona a `EN_PROGRESO`
 **Then** dentro de la MISMA transacción Postgres MUST:
   - actualizar `tickets.estado_id` al UUID del estado `EN_PROGRESO`
-  - insertar una fila en `operaciones_ticket` con `tipo_operacion_id` = `CAMBIO_ESTADO`, `estado_anterior_id` = UUID de `ABIERTO`, `estado_nuevo_id` = UUID de `EN_PROGRESO`, `autor_id` del usuario autenticado
+  - insertar una fila en `operaciones_ticket` con `tipo_operacion_id` = `CAMBIO_ESTADO`, `estado_anterior_id` = UUID de `APROBADO`, `estado_nuevo_id` = UUID de `EN_PROGRESO`, `autor_id` del usuario autenticado
 **And** si cualquiera de las dos operaciones falla MUST hacer rollback completo
 
 #### Scenario: Estado inicial de ticket recién creado es ABIERTO
-**Given** un caso de uso crea un ticket nuevo  
-**When** se persiste la fila  
-**Then** `tickets.estado_id` MUST apuntar al UUID del estado con `codigo = 'ABIERTO'`  
+**Given** un caso de uso crea un ticket nuevo
+**When** se persiste la fila
+**Then** `tickets.estado_id` MUST apuntar al UUID del estado con `codigo = 'ABIERTO'`
 **And** MUST registrar en `operaciones_ticket` una operación `CAMBIO_ESTADO` con `estado_anterior_id = NULL` y `estado_nuevo_id` = UUID de `ABIERTO`
+
+#### Scenario: Arco ABIERTO → EN_PROGRESO (legado) es inválido
+
+**Given** un ticket en estado `ABIERTO`
+**And** el usuario tiene permiso `ticket:transicionar`
+**When** el usuario envía `PATCH /tickets/{id}/estado` con `{ nuevoEstadoCodigo: 'EN_PROGRESO' }`
+**Then** la respuesta MUST ser `HTTP 422`
+**And** MUST NOT modificar `tickets.estado_id`
+
+#### Scenario: Estado terminal bloquea toda transición de salida
+
+**Given** un ticket en estado `RESUELTO` (aplica igualmente a `SIN_SOLUCION` o `RECHAZADO`)
+**When** cualquier caso de uso intenta transicionar a cualquier estado
+**Then** la respuesta MUST ser `HTTP 422`
+**And** MUST NOT modificar `tickets.estado_id`
+**And** MUST NOT registrar ninguna `operaciones_ticket`
+
+#### Scenario: Reapertura RESUELTO → EN_PROGRESO ya no es un arco válido
+
+**Given** un ticket en estado `RESUELTO`
+**When** se intenta la transición `RESUELTO → EN_PROGRESO`
+**Then** la respuesta MUST ser `HTTP 422`
+**And** MUST NOT modificar `tickets.estado_id`
+**And** MUST NOT limpiar `tickets.fecha_cierre`
 
 ---
 
@@ -376,10 +428,10 @@ CANCELADO → (ninguna transición — estado terminal)
 #### Scenario: Nuevo tenant tiene catálogos operativos pre-poblados
 **Given** se completa el provisioning de un nuevo cliente  
 **When** se conecta a la DB tenant y consulta las tablas de catálogo  
-**Then** `estados` MUST contener los 8 estados base definidos en este spec  
-**And** `prioridades` MUST contener los 4 niveles base  
-**And** `tipos_ticket` MUST contener `SOPORTE`, `COMPRAS`, `EDILICIA`  
-**And** `tipo_operacion` MUST contener los 7 tipos base (incluye `EDICION` y `ELIMINACION` desde change `tickets-editar-borrar`)  
+**Then** `estados` MUST contener los 10 estados base definidos en este spec (incluyendo `SUSPENDIDO` y `SIN_SOLUCION` desde change `tickets-maquina-estados-observaciones`)
+**And** `prioridades` MUST contener los 4 niveles base
+**And** `tipos_ticket` MUST contener `SOPORTE`, `COMPRAS`, `EDILICIA`
+**And** `tipo_operacion` MUST contener los 8 tipos base (incluye `EDICION` y `ELIMINACION` desde `tickets-editar-borrar`; `OBSERVACION` desde `tickets-maquina-estados-observaciones`)
 **And** todos los registros seed MUST tener `activo = TRUE` y `deleted_at IS NULL`
 
 #### Scenario: Seed de catálogos es idempotente
@@ -430,7 +482,7 @@ la FK sin validar (semántica "desvincular del ciclo").
 
 #### Scenario: Edición exitosa de campos de datos
 
-**Given** un ticket activo (`deleted_at IS NULL`) en estado no terminal  
+**Given** un ticket activo (`deleted_at IS NULL`) en estado `ABIERTO`  
 **And** el usuario autenticado tiene permiso `ticket:editar`  
 **And** el ticket pertenece al tenant del usuario  
 **When** el usuario envía `PATCH /tickets/{id}` con al menos un campo permitido  
@@ -450,23 +502,20 @@ y `metadata` que incluya al menos `{ camposModificados: [lista de claves modific
 **And** los valores de los campos inmutables en la DB MUST NOT haber cambiado  
 **And** solo los campos permitidos presentes en el body MUST ser actualizados
 
-#### Scenario: Edición rechazada — ticket en estado terminal CERRADO
+#### Scenario: Edición rechazada — ticket en estado no-ABIERTO
 
-**Given** un ticket cuyo estado actual tiene `codigo = 'CERRADO'`  
-**And** el usuario tiene permiso `ticket:editar`  
-**When** el usuario envía `PATCH /tickets/{id}` con cualquier campo válido  
-**Then** la respuesta MUST ser `HTTP 422`  
-**And** el body de error MUST comunicar que el ticket no es editable en su estado actual  
-**And** MUST NOT modificar ningún campo de la fila `tickets`  
+> Introducido en change `tickets-maquina-estados-observaciones` (2026-06-29).
+> Reemplaza los scenarios previos de "estado terminal CERRADO/CANCELADO".
+> La regla es más restrictiva: solo `ABIERTO` permite edición.
+
+**Given** un ticket cuyo estado actual tiene `codigo` diferente de `'ABIERTO'`
+  (ej. `APROBADO`, `EN_PROGRESO`, `SUSPENDIDO`, `RESUELTO`, `SIN_SOLUCION`, `RECHAZADO`, `CERRADO`, `CANCELADO`)
+**And** el usuario tiene permiso `ticket:editar`
+**When** el usuario envía `PATCH /tickets/{id}` con cualquier campo válido
+**Then** la respuesta MUST ser `HTTP 422`
+**And** el body de error MUST comunicar que el ticket no es editable en su estado actual
+**And** MUST NOT modificar ningún campo de la fila `tickets`
 **And** MUST NOT registrar ninguna `operaciones_ticket`
-
-#### Scenario: Edición rechazada — ticket en estado terminal CANCELADO
-
-**Given** un ticket cuyo estado actual tiene `codigo = 'CANCELADO'`  
-**And** el usuario tiene permiso `ticket:editar`  
-**When** el usuario envía `PATCH /tickets/{id}`  
-**Then** la respuesta MUST ser `HTTP 422`  
-**And** MUST NOT modificar la fila en `tickets`
 
 #### Scenario: Edición rechazada — ticket soft-deleted
 
@@ -504,7 +553,7 @@ registrar una segunda `OperacionTicket` de tipo ELIMINACION.
 
 #### Scenario: Soft delete exitoso de ticket activo
 
-**Given** un ticket con `deleted_at IS NULL`  
+**Given** un ticket con `deleted_at IS NULL` en estado `ABIERTO`  
 **And** el usuario autenticado tiene permiso `ticket:eliminar`  
 **And** el ticket pertenece al tenant del usuario  
 **When** el usuario envía `DELETE /tickets/{id}`  
@@ -514,14 +563,20 @@ registrar una segunda `OperacionTicket` de tipo ELIMINACION.
 con `tipo_operacion.codigo = 'ELIMINACION'` y `autor_id` del usuario autenticado  
 **And** MUST NOT eliminar físicamente la fila de `tickets`
 
-#### Scenario: Soft delete de ticket en estado terminal (CERRADO / CANCELADO) — permitido
+#### Scenario: Soft delete bloqueado — ticket en estado no-ABIERTO
 
-**Given** un ticket con `deleted_at IS NULL` cuyo estado tiene `codigo = 'CERRADO'` o `codigo = 'CANCELADO'`  
-**And** el usuario tiene permiso `ticket:eliminar`  
-**When** el usuario envía `DELETE /tickets/{id}`  
-**Then** la respuesta MUST ser `HTTP 204 No Content` (sin body)  
-**And** `tickets.deleted_at` MUST ser seteado a `now()`  
-**And** MUST NOT rechazar la operación por estar en estado terminal
+> Introducido en change `tickets-maquina-estados-observaciones` (2026-06-29).
+> Reemplaza el scenario "permitido en estado terminal CERRADO/CANCELADO".
+> El soft delete ahora requiere que el ticket esté en `ABIERTO`.
+
+**Given** un ticket con `deleted_at IS NULL` cuyo estado tiene `codigo` diferente de `'ABIERTO'`
+  (ej. `APROBADO`, `EN_PROGRESO`, `SUSPENDIDO`, `RESUELTO`, `SIN_SOLUCION`, `RECHAZADO`, `CERRADO`, `CANCELADO`)
+**And** el usuario tiene permiso `ticket:eliminar`
+**When** el usuario envía `DELETE /tickets/{id}`
+**Then** la respuesta MUST ser `HTTP 422`
+**And** el body de error MUST comunicar que el ticket no es eliminable en su estado actual
+**And** MUST NOT modificar `tickets.deleted_at`
+**And** MUST NOT registrar ninguna `operaciones_ticket` de tipo ELIMINACION
 
 #### Scenario: Doble borrado — no-op idempotente
 
@@ -607,3 +662,278 @@ auditoría DEBE hacer rollback del cambio principal.
 **Then** MUST existir una fila con `codigo = 'EDICION'` y `activo = TRUE`  
 **And** MUST existir una fila con `codigo = 'ELIMINACION'` y `activo = TRUE`  
 **And** el seed MUST ser idempotente (re-ejecución no duplica filas)
+
+---
+
+### Requirement: Autorización granular por arco de transición
+
+> Introducido en change `tickets-maquina-estados-observaciones` (2026-06-29).
+
+`PATCH /tickets/:id/estado` MUST validar que el usuario autenticado posee el permiso requerido
+para el arco específico solicitado. La ausencia del permiso MUST resultar en `HTTP 403` sin
+ejecutar ningún caso de uso.
+
+Mapa de permisos requeridos por arco:
+
+| Arco | Permiso requerido |
+|------|-------------------|
+| `ABIERTO → APROBADO` | `ticket:aprobar` |
+| `ABIERTO → RECHAZADO` | `ticket:rechazar` |
+| `APROBADO → *`, `EN_PROGRESO → *`, `SUSPENDIDO → EN_PROGRESO` | `ticket:transicionar` |
+
+#### Scenario: Transición ABIERTO → APROBADO con ticket:aprobar — permitida
+
+**Given** un ticket en estado `ABIERTO`
+**And** el usuario tiene `ticket:aprobar` en su JWT
+**When** el usuario envía `PATCH /tickets/{id}/estado` con `{ nuevoEstadoCodigo: 'APROBADO' }`
+**Then** la respuesta MUST ser `HTTP 200`
+**And** `tickets.estado_id` MUST apuntar al UUID de `APROBADO`
+
+#### Scenario: Transición ABIERTO → APROBADO sin ticket:aprobar — rechazada con 403
+
+**Given** un ticket en estado `ABIERTO`
+**And** el usuario NO tiene `ticket:aprobar` en su JWT (aunque tenga `ticket:transicionar`)
+**When** el usuario envía `PATCH /tickets/{id}/estado` con `{ nuevoEstadoCodigo: 'APROBADO' }`
+**Then** la respuesta MUST ser `HTTP 403`
+**And** MUST NOT modificar `tickets.estado_id`
+**And** MUST NOT registrar ninguna `operaciones_ticket`
+
+#### Scenario: Transición ABIERTO → RECHAZADO sin ticket:rechazar — rechazada con 403
+
+**Given** un ticket en estado `ABIERTO`
+**And** el usuario NO tiene `ticket:rechazar` en su JWT
+**When** el usuario envía `PATCH /tickets/{id}/estado` con `{ nuevoEstadoCodigo: 'RECHAZADO' }`
+**Then** la respuesta MUST ser `HTTP 403`
+**And** MUST NOT modificar `tickets.estado_id`
+
+#### Scenario: Arcos técnicos sin ticket:transicionar — rechazados con 403
+
+**Given** un ticket en estado `APROBADO`, `EN_PROGRESO` o `SUSPENDIDO`
+**And** el usuario NO tiene `ticket:transicionar` en su JWT
+**When** el usuario envía `PATCH /tickets/{id}/estado` con cualquier `nuevoEstadoCodigo` de un arco técnico
+**Then** la respuesta MUST ser `HTTP 403`
+**And** MUST NOT ejecutar ningún caso de uso ni modificar datos
+
+#### Scenario: Transición técnica con ticket:transicionar — permitida
+
+**Given** un ticket en estado `APROBADO`
+**And** el usuario tiene `ticket:transicionar` en su JWT
+**When** el usuario envía `PATCH /tickets/{id}/estado` con `{ nuevoEstadoCodigo: 'RESUELTO', fechaCierre: '2026-06-29' }`
+**Then** la respuesta MUST ser `HTTP 200`
+
+---
+
+### Requirement: Observaciones del técnico
+
+> Introducido en change `tickets-maquina-estados-observaciones` (2026-06-29).
+
+`POST /tickets/:id/observaciones` registra una observación técnica en el timeline del ticket.
+Cuando el ticket está en `APROBADO`, la operación dispara automáticamente una transición de
+estado. Todo ocurre en una ÚNICA transacción Postgres.
+
+El endpoint MUST exigir el permiso `ticket:observar`.
+
+**Body de request:**
+
+```json
+{
+  "contenido": "string (requerido, no vacío)",
+  "nuevoEstadoCodigo": "EN_PROGRESO | RESUELTO | SUSPENDIDO | SIN_SOLUCION (opcional)"
+}
+```
+
+`nuevoEstadoCodigo` solo tiene efecto cuando el ticket está en `APROBADO`. Para cualquier
+otro estado, el campo MUST ser ignorado silenciosamente.
+
+#### Scenario: Observación en ticket APROBADO — auto-transición a EN_PROGRESO (default)
+
+**Given** un ticket con `estado.codigo = 'APROBADO'` en el tenant del usuario
+**And** el usuario tiene permiso `ticket:observar`
+**When** el usuario envía `POST /tickets/{id}/observaciones` con `{ "contenido": "Inicio trabajos" }` (sin `nuevoEstadoCodigo`)
+**Then** la respuesta MUST ser `HTTP 201`
+**And** dentro de la MISMA transacción Postgres MUST:
+  - insertarse una fila en `operaciones_ticket` con `tipo_operacion.codigo = 'OBSERVACION'`,
+    `descripcion = "Inicio trabajos"`, `autor_id` del usuario autenticado
+  - actualizarse `tickets.estado_id` al UUID del estado `EN_PROGRESO`
+  - insertarse una segunda fila en `operaciones_ticket` con `tipo_operacion.codigo = 'CAMBIO_ESTADO'`,
+    `estado_anterior_id` = UUID de `APROBADO`, `estado_nuevo_id` = UUID de `EN_PROGRESO`
+**And** si cualquiera de las operaciones falla MUST hacerse rollback completo
+
+#### Scenario: Observación en ticket APROBADO + nuevoEstadoCodigo RESUELTO — directo a RESUELTO
+
+**Given** un ticket con `estado.codigo = 'APROBADO'` y `fecha_cierre IS NULL`
+**And** el usuario tiene permiso `ticket:observar`
+**When** el usuario envía `POST /tickets/{id}/observaciones`
+  con `{ "contenido": "Solucionado", "nuevoEstadoCodigo": "RESUELTO", "fechaCierre": "2026-06-29T00:00:00.000Z" }`
+**Then** la respuesta MUST ser `HTTP 201`
+**And** dentro de la MISMA transacción MUST insertarse la fila OBSERVACION, actualizarse estado a `RESUELTO`,
+  insertarse la fila CAMBIO_ESTADO, y setearse `tickets.fecha_cierre` al valor `fechaCierre` provisto
+
+#### Scenario: Observación APROBADO → RESUELTO sin fechaCierre — rechazado con 422
+
+**Given** un ticket con `estado.codigo = 'APROBADO'`
+**And** el usuario tiene permiso `ticket:observar`
+**When** el usuario envía `POST /tickets/{id}/observaciones`
+  con `{ "contenido": "Solucionado", "nuevoEstadoCodigo": "RESUELTO" }` (sin `fechaCierre`)
+**Then** la respuesta MUST ser `HTTP 422`
+**And** el error MUST tener código `FECHA_CIERRE_REQUERIDA`
+
+#### Scenario: Observación en ticket EN_PROGRESO — registra sin cambiar estado
+
+**Given** un ticket con `estado.codigo = 'EN_PROGRESO'`
+**And** el usuario tiene permiso `ticket:observar`
+**When** el usuario envía `POST /tickets/{id}/observaciones` con `{ "contenido": "Avance parcial" }`
+**Then** la respuesta MUST ser `HTTP 201`
+**And** MUST insertarse una fila en `operaciones_ticket` con `tipo_operacion.codigo = 'OBSERVACION'`
+**And** MUST NOT modificarse `tickets.estado_id`
+
+#### Scenario: nuevoEstadoCodigo ignorado cuando ticket no está en APROBADO
+
+**Given** un ticket con `estado.codigo = 'EN_PROGRESO'`
+**And** el usuario tiene permiso `ticket:observar`
+**When** el usuario envía `POST /tickets/{id}/observaciones`
+  con `{ "contenido": "Nota", "nuevoEstadoCodigo": "RESUELTO" }`
+**Then** la respuesta MUST ser `HTTP 201`
+**And** MUST insertarse la fila OBSERVACION
+**And** MUST NOT modificarse `tickets.estado_id` (el campo fue ignorado)
+
+#### Scenario: Observación bloqueada en estado terminal
+
+**Given** un ticket con `estado.codigo` en {`RESUELTO`, `SIN_SOLUCION`, `RECHAZADO`}
+**And** el usuario tiene permiso `ticket:observar`
+**When** el usuario envía `POST /tickets/{id}/observaciones` con cualquier body válido
+**Then** la respuesta MUST ser `HTTP 422`
+**And** el body de error MUST indicar que el ticket está cerrado y no acepta observaciones
+**And** MUST NOT insertarse ninguna fila en `operaciones_ticket`
+**And** MUST NOT modificarse `tickets.estado_id`
+
+#### Scenario: Observación bloqueada — sin permiso ticket:observar
+
+**Given** un usuario sin `ticket:observar` en su JWT
+**When** el usuario envía `POST /tickets/{id}/observaciones`
+**Then** la respuesta MUST ser `HTTP 403`
+**And** MUST NOT ejecutarse ningún caso de uso ni modificarse datos
+
+#### Scenario: Rollback si falla cualquier operación de la transacción
+
+**Given** un ticket en estado `APROBADO`
+**And** la inserción de la fila `CAMBIO_ESTADO` en `operaciones_ticket` falla
+**When** `CrearObservacionUseCase` intenta ejecutar
+**Then** la transacción MUST hacer rollback completo
+**And** MUST NOT persistirse la fila OBSERVACION
+**And** `tickets.estado_id` MUST permanecer en `APROBADO`
+
+---
+
+### Requirement: fechaCierre en los estados terminales (ADR-6)
+
+> Introducido en change `tickets-maquina-estados-observaciones` (2026-06-29).
+> Renombra `fecha_resolucion` → `fecha_cierre` y cambia la semántica de gestión.
+
+`tickets.fecha_cierre` se gestiona de forma distinta según el estado terminal:
+
+- **RESUELTO**: el caller DEBE incluir `fechaCierre` en el body del request (ISO 8601).
+  Si falta → `HTTP 422 FECHA_CIERRE_REQUERIDA`. Aplica a `PATCH /tickets/:id/estado`
+  y a `POST /tickets/:id/observaciones` con `nuevoEstadoCodigo: 'RESUELTO'`.
+- **SIN_SOLUCION** y **RECHAZADO**: el use case setea `fecha_cierre` a `now()::date`
+  automáticamente. El caller no la provee.
+
+#### Scenario: Transición a RESUELTO — fecha_cierre provista por el caller (REQUERIDA)
+
+**Given** un ticket con `estado.codigo = 'EN_PROGRESO'` y `fecha_cierre IS NULL`
+**And** el usuario tiene permiso `ticket:transicionar`
+**When** el usuario envía `PATCH /tickets/{id}/estado`
+  con `{ nuevoEstadoCodigo: 'RESUELTO', fechaCierre: '2026-06-29' }`
+**Then** la respuesta MUST ser `HTTP 200`
+**And** `tickets.fecha_cierre` MUST ser seteada al valor `fechaCierre` del body
+
+#### Scenario: Transición a RESUELTO sin fechaCierre — rechazado con 422
+
+**Given** un ticket con `estado.codigo = 'EN_PROGRESO'`
+**And** el usuario tiene permiso `ticket:transicionar`
+**When** el usuario envía `PATCH /tickets/{id}/estado`
+  con `{ nuevoEstadoCodigo: 'RESUELTO' }` (sin `fechaCierre`)
+**Then** la respuesta MUST ser `HTTP 422`
+**And** el error MUST tener código `FECHA_CIERRE_REQUERIDA`
+
+#### Scenario: Transición a SIN_SOLUCION — fecha_cierre seteada automáticamente
+
+**Given** un ticket con `estado.codigo = 'EN_PROGRESO'` y `fecha_cierre IS NULL`
+**And** el usuario tiene permiso `ticket:transicionar`
+**When** el usuario envía `PATCH /tickets/{id}/estado` con `{ nuevoEstadoCodigo: 'SIN_SOLUCION' }`
+**Then** la respuesta MUST ser `HTTP 200`
+**And** `tickets.fecha_cierre` MUST ser seteada a `now()::date` dentro de la MISMA transacción
+
+#### Scenario: Transición a RECHAZADO — fecha_cierre seteada automáticamente
+
+**Given** un ticket con `estado.codigo = 'ABIERTO'` y `fecha_cierre IS NULL`
+**And** el usuario tiene permiso `ticket:rechazar`
+**When** el usuario envía `PATCH /tickets/{id}/estado` con `{ nuevoEstadoCodigo: 'RECHAZADO' }`
+**Then** la respuesta MUST ser `HTTP 200`
+**And** `tickets.fecha_cierre` MUST ser seteada a `now()::date` dentro de la MISMA transacción
+
+#### Scenario: Transición a estado no-terminal NO setea fecha_cierre
+
+**Given** un ticket con `fecha_cierre IS NULL`
+**And** el usuario tiene permiso `ticket:aprobar`
+**When** el usuario transiciona el ticket a `APROBADO`
+**Then** la respuesta MUST ser `HTTP 200`
+**And** `tickets.fecha_cierre` MUST permanecer `NULL`
+
+---
+
+### Requirement: Catálogo de estados actualizado en provisioning de tenant
+
+> Introducido en change `tickets-maquina-estados-observaciones` (2026-06-29).
+
+#### Scenario: Nuevo tenant incluye los 10 estados
+
+**Given** se completa el provisioning de un nuevo cliente
+**When** se conecta a la DB tenant y consulta `estados`
+**Then** MUST existir exactamente los 10 estados definidos en la tabla de modelo de datos
+  de este spec (incluyendo `SUSPENDIDO` y `SIN_SOLUCION` con sus UUIDs deterministas)
+**And** todos MUST tener `activo = TRUE` y `deleted_at IS NULL`
+
+#### Scenario: Tenants existentes reciben SUSPENDIDO y SIN_SOLUCION por migración idempotente
+
+**Given** una tenant DB donde `SUSPENDIDO` y `SIN_SOLUCION` aún no existen
+**When** el runner de migración ejecuta sobre ese tenant
+**Then** MUST insertarse las dos filas con los UUIDs deterministas `c0...009` y `c0...00a`
+**And** la inserción MUST ser `ON CONFLICT (codigo) DO NOTHING` (idempotente)
+
+#### Scenario: tipo_operacion OBSERVACION presente en todo tenant
+
+**Given** la DB de cualquier tenant existente o nuevo
+**When** se consulta `tipo_operacion`
+**Then** MUST existir una fila con `codigo = 'OBSERVACION'` y `activo = TRUE`
+**And** el UUID MUST ser `f0000000-0000-4000-f000-000000000009`
+**And** el seed MUST ser idempotente (re-ejecución no duplica)
+
+---
+
+### Requirement: Migración rename fecha_resolucion → fecha_cierre
+
+> Introducido en change `tickets-maquina-estados-observaciones` (2026-06-29).
+> Migración: `20260629030000_rename_fecha_resolucion_fecha_cierre`.
+
+#### Scenario: Migración exitosa en tenant con columna fecha_resolucion
+
+**Given** una tenant DB con columna `fecha_resolucion` en la tabla `tickets`
+**When** el runner de migración ejecuta sobre ese tenant
+**Then** la columna MUST renombrarse a `fecha_cierre`
+**And** todos los datos existentes MUST estar accesibles bajo `fecha_cierre`
+**And** ninguna fila MUST perderse ni modificarse en contenido
+
+#### Scenario: Migración idempotente — tenant ya migrado
+
+**Given** una tenant DB donde `fecha_cierre` ya existe (migración aplicada previamente)
+**When** el runner de migración ejecuta nuevamente
+**Then** MUST NOT arrojar error
+**And** MUST NOT modificar ninguna columna ni dato
+
+#### Scenario: Migración en tenant sin fecha_resolucion (nunca tuvo la columna)
+
+**Given** una tenant DB donde `fecha_resolucion` nunca existió (tenant nuevo pre-change)
+**When** el runner de migración ejecuta
+**Then** MUST saltar sin error (idempotente)
+**And** MUST NOT modificar ningún dato
