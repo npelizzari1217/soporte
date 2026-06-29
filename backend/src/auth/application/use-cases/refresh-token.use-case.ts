@@ -103,6 +103,7 @@ export class RefreshTokenUseCase {
       roles,
       permisos,
       cliente_nombre: cliente.nombre,
+      is_global_admin: usuario.isGlobalAdmin,
     };
     const accessToken = this.tokenService.signJwt(payload);
 

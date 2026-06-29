@@ -84,16 +84,19 @@ model CicloVigente {
 // Partial index en activo WHERE deleted_at IS NULL: raw SQL en migración.
 
 model Usuario {
-  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  email        String    @unique @db.VarChar(255)
-  nombre       String    @db.VarChar(100)
-  apellido     String    @db.VarChar(100)
-  passwordHash String    @map("password_hash") @db.Text
-  clienteId    String    @map("cliente_id") @db.Uuid
-  activo       Boolean   @default(true)
-  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz
-  deletedAt    DateTime? @map("deleted_at") @db.Timestamptz
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email         String    @unique @db.VarChar(255)
+  nombre        String    @db.VarChar(100)
+  apellido      String    @db.VarChar(100)
+  passwordHash  String    @map("password_hash") @db.Text
+  clienteId     String    @map("cliente_id") @db.Uuid
+  activo        Boolean   @default(true)
+  /// true si el usuario puede acceder a tenants ajenos vía X-Tenant-Id.
+  /// NUNCA se deriva del rol — ADMINISTRADOR no implica is_global_admin.
+  isGlobalAdmin Boolean   @default(false) @map("is_global_admin")
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt     DateTime? @map("deleted_at") @db.Timestamptz
 
   cliente       Cliente         @relation(fields: [clienteId], references: [id])
   refreshTokens RefreshToken[]

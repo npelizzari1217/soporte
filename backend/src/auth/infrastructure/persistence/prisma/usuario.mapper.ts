@@ -61,6 +61,7 @@ export class UsuarioMapper {
         passwordHash: row.passwordHash,
         clienteId: row.clienteId,
         activo: row.activo,
+        isGlobalAdmin: row.isGlobalAdmin,
         roles,
       },
       row.id,
@@ -82,6 +83,7 @@ export class UsuarioMapper {
       passwordHash: entity.passwordHash,
       clienteId: entity.clienteId,
       activo: entity.activo,
+      isGlobalAdmin: entity.isGlobalAdmin,
       deletedAt: entity.deletedAt,
     };
   }

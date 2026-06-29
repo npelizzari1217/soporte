@@ -25,6 +25,13 @@ export interface UsuarioProps {
    * El LoginUseCase lo usa para calcular los permisos efectivos.
    */
   roles: RoleEntity[];
+  /**
+   * true si el usuario puede acceder a tenants ajenos vía X-Tenant-Id.
+   * Solo se setea manualmente en DB para usuarios de soporte de nivel global.
+   * NUNCA se deriva del rol — ADMINISTRADOR no implica is_global_admin.
+   * Defaults to false.
+   */
+  isGlobalAdmin?: boolean;
 }
 
 /**
@@ -46,7 +53,10 @@ export class UsuarioEntity extends BaseEntity<UsuarioProps> {
    * El passwordHash DEBE estar ya hasheado al llegar aquí (usar hashPassword() después).
    */
   static create(props: UsuarioProps, id?: string): UsuarioEntity {
-    return new UsuarioEntity({ ...props, roles: [...props.roles] }, id);
+    return new UsuarioEntity(
+      { ...props, isGlobalAdmin: props.isGlobalAdmin ?? false, roles: [...props.roles] },
+      id,
+    );
   }
 
   /**
@@ -59,7 +69,10 @@ export class UsuarioEntity extends BaseEntity<UsuarioProps> {
     updatedAt: Date,
     deletedAt: Date | null,
   ): UsuarioEntity {
-    const entity = new UsuarioEntity({ ...props, roles: [...props.roles] }, id);
+    const entity = new UsuarioEntity(
+      { ...props, isGlobalAdmin: props.isGlobalAdmin ?? false, roles: [...props.roles] },
+      id,
+    );
     (entity as any)._createdAt = createdAt;
     (entity as any)._updatedAt = updatedAt;
     entity._deletedAt = deletedAt;
@@ -94,6 +107,10 @@ export class UsuarioEntity extends BaseEntity<UsuarioProps> {
 
   get roles(): RoleEntity[] {
     return this.props.roles;
+  }
+
+  get isGlobalAdmin(): boolean {
+    return this.props.isGlobalAdmin ?? false;
   }
 
   // ─── Comportamiento de dominio ────────────────────────────────────────────

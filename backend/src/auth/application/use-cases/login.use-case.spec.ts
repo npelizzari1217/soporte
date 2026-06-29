@@ -53,6 +53,7 @@ const makeUsuario = (
     activo: boolean;
     roles: RoleEntity[];
     deletedAt: Date | null;
+    isGlobalAdmin: boolean;
   }> = {},
 ): UsuarioEntity => {
   const u = UsuarioEntity.create({
@@ -63,6 +64,7 @@ const makeUsuario = (
     clienteId: 'cliente-uuid',
     activo: overrides.activo ?? true,
     roles: overrides.roles ?? [],
+    isGlobalAdmin: overrides.isGlobalAdmin ?? false,
   });
   if (overrides.deletedAt !== undefined) {
     u._deletedAt = overrides.deletedAt;
@@ -439,6 +441,84 @@ describe('LoginUseCase', () => {
       await useCase.execute({ email: 'user@test.com', password: 'secret' });
 
       expect(clienteRepo.findById).toHaveBeenCalledWith(usuario.clienteId);
+    });
+  });
+
+  // T3.1 — JWT payload incluye claim is_global_admin (RED → GREEN con T3.12)
+  describe('JWT payload — is_global_admin claim', () => {
+    it('T3.1a: popula is_global_admin=true en el JWT cuando usuario.isGlobalAdmin=true', async () => {
+      const usuario = makeUsuario({ isGlobalAdmin: true });
+      usuarioRepo.findByEmail.mockResolvedValue(usuario);
+      clienteRepo.findById.mockResolvedValue(makeCliente());
+
+      let capturedPayload: JwtPayload | undefined;
+      tokenService.signJwt.mockImplementation((payload) => {
+        capturedPayload = payload;
+        return 'jwt.token';
+      });
+
+      await useCase.execute({ email: 'user@test.com', password: 'secret' });
+
+      expect(capturedPayload).toBeDefined();
+      expect(capturedPayload!.is_global_admin).toBe(true);
+    });
+
+    it('T3.1b: popula is_global_admin=false en el JWT cuando usuario.isGlobalAdmin=false', async () => {
+      const usuario = makeUsuario({ isGlobalAdmin: false });
+      usuarioRepo.findByEmail.mockResolvedValue(usuario);
+      clienteRepo.findById.mockResolvedValue(makeCliente());
+
+      let capturedPayload: JwtPayload | undefined;
+      tokenService.signJwt.mockImplementation((payload) => {
+        capturedPayload = payload;
+        return 'jwt.token';
+      });
+
+      await useCase.execute({ email: 'user@test.com', password: 'secret' });
+
+      expect(capturedPayload).toBeDefined();
+      expect(capturedPayload!.is_global_admin).toBe(false);
+    });
+
+    it('T3.1c: is_global_admin=false por defecto (DEFAULT FALSE garantía)', async () => {
+      // Usuario creado sin isGlobalAdmin explícito → siempre false
+      const usuario = makeUsuario();
+      usuarioRepo.findByEmail.mockResolvedValue(usuario);
+      clienteRepo.findById.mockResolvedValue(makeCliente());
+
+      let capturedPayload: JwtPayload | undefined;
+      tokenService.signJwt.mockImplementation((payload) => {
+        capturedPayload = payload;
+        return 'jwt.token';
+      });
+
+      await useCase.execute({ email: 'user@test.com', password: 'secret' });
+
+      expect(capturedPayload!.is_global_admin).toBe(false);
+    });
+
+    it('T3.1d: claims existentes (sub, cliente_id, email, roles, permisos) sin regresión', async () => {
+      const p1 = makePermisoEntity('ticket:crear');
+      const role = makeRole('ADMINISTRADOR', [p1]);
+      const usuario = makeUsuario({ roles: [role], isGlobalAdmin: true });
+      usuarioRepo.findByEmail.mockResolvedValue(usuario);
+      clienteRepo.findById.mockResolvedValue(makeCliente('Acme Corp'));
+
+      let capturedPayload: JwtPayload | undefined;
+      tokenService.signJwt.mockImplementation((payload) => {
+        capturedPayload = payload;
+        return 'jwt.token';
+      });
+
+      await useCase.execute({ email: 'user@test.com', password: 'secret' });
+
+      expect(capturedPayload!.sub).toBe(usuario.id);
+      expect(capturedPayload!.cliente_id).toBe(usuario.clienteId);
+      expect(capturedPayload!.email).toBe('user@test.com');
+      expect(capturedPayload!.roles).toContain('ADMINISTRADOR');
+      expect(capturedPayload!.permisos).toContain('ticket:crear');
+      expect(capturedPayload!.cliente_nombre).toBe('Acme Corp');
+      expect(capturedPayload!.is_global_admin).toBe(true);
     });
   });
 });

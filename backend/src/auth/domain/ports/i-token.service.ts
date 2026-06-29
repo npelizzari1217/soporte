@@ -8,6 +8,9 @@
  * - roles: códigos de roles asignados
  * - permisos: permisos efectivos (unión de los roles, deduplicados)
  * - cliente_nombre: nombre del tenant del usuario (emisor garantiza; no nullable)
+ * - is_global_admin: true si el usuario puede operar cross-tenant vía X-Tenant-Id.
+ *   false para todos los usuarios normales.
+ *   Leído por TenantGuard para honrar (o rechazar) el header X-Tenant-Id.
  *
  * Los guards verifican `roles` y `permisos` contra el JWT sin query a DB.
  */
@@ -18,6 +21,8 @@ export interface JwtPayload {
   roles: string[];
   permisos: string[];
   cliente_nombre: string;
+  /** true → TenantGuard honra X-Tenant-Id para acceso cross-tenant. */
+  is_global_admin: boolean;
 }
 
 /**
