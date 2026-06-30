@@ -61,6 +61,7 @@ import { JwtAuthGuard } from './infrastructure/guards/jwt-auth.guard';
 import { RolesGuard } from './infrastructure/guards/roles.guard';
 import { PermissionsGuard } from './infrastructure/guards/permissions.guard';
 import { TenantGuard } from './infrastructure/guards/tenant.guard';
+import { GlobalAdminGuard } from './infrastructure/guards/global-admin.guard';
 
 // ─── Controllers ──────────────────────────────────────────────────────────────
 import { AuthController } from './interface/controllers/auth.controller';
@@ -166,12 +167,14 @@ import { UsuariosController } from './interface/controllers/usuarios.controller'
     RolesGuard,
     PermissionsGuard,
     TenantGuard,
+    GlobalAdminGuard,
   ],
   exports: [
-    // Exportamos TOKEN_SERVICE para que JwtAuthGuard pueda ser usado
-    // en otros módulos si se importa AuthModule.
+    // Exportamos TOKEN_SERVICE y guards para que otros módulos que importen
+    // AuthModule puedan inyectarlos por clase (ej. ClientesModule, ReportesModule).
     TOKEN_SERVICE,
     JwtAuthGuard,
+    GlobalAdminGuard,
   ],
 })
 export class AuthModule {}
