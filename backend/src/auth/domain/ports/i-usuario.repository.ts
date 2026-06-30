@@ -27,10 +27,25 @@ export interface IUsuarioRepository {
   findById(id: string): Promise<UsuarioEntity | null>;
 
   /**
-   * Retorna todos los usuarios pertenecientes a un cliente dado.
+   * Retorna todos los usuarios activos (sin soft-delete) pertenecientes a un cliente dado.
+   * Excluye usuarios con `deleted_at IS NOT NULL`.
+   * Incluye usuarios con `activo = FALSE` (administrador ve inactivos).
    * Útil para listados administrativos por tenant.
+   *
+   * Spec ref: clientes-tenancy/GET /usuarios
+   * Tarea: T3.1
    */
   findByClienteId(clienteId: string): Promise<UsuarioEntity[]>;
+
+  /**
+   * Crea un nuevo usuario en la base de datos.
+   * Equivale a save() para entidades nuevas; expuesto como método semántico
+   * para claridad en CrearUsuarioUseCase.
+   *
+   * Spec ref: clientes-tenancy/POST /usuarios
+   * Tarea: T3.1
+   */
+  create(entity: UsuarioEntity): Promise<void>;
 
   /**
    * Persiste el usuario (upsert: crea si no existe, actualiza si existe).
