@@ -35,7 +35,7 @@ excluidos de todas las agregaciones.
 
 | Método | Path | Descripción |
 |--------|------|-------------|
-| `GET` | `/reportes/tickets-por-usuario` | Tickets agrupados por asignado |
+| `GET` | `/reportes/tickets-por-usuario` | Tickets agrupados por usuario: dos vistas (solicitante y asignado) |
 | `GET` | `/reportes/tickets-por-tipo` | Tickets agrupados por tipo de flujo |
 | `GET` | `/reportes/tickets-por-estado` | Tickets agrupados por estado (incl. terminales) |
 | `GET` | `/reportes/tiempo-resolucion` | Tiempo de resolución promedio |
@@ -48,10 +48,20 @@ excluidos de todas las agregaciones.
 
 ## Requirements
 
-### Requirement: ReporteTicketsPorUsuario — tickets agrupados por asignado
+### Requirement: ReporteTicketsPorUsuario — tickets agrupados por usuario (solicitante + asignado)
 
-`GET /reportes/tickets-por-usuario` cuenta los tickets del tenant+ciclo agrupados por `asignado_id`.
-Incluye tickets en cualquier estado que no estén soft-deleted.
+`GET /reportes/tickets-por-usuario` cuenta los tickets del tenant+ciclo agrupados por usuario, devolviendo DOS vistas: `porSolicitante` y `porAsignado`. Incluye tickets en cualquier estado que no estén soft-deleted.
+
+**Contrato de respuesta:**
+
+```json
+{
+  "porSolicitante": [{ "usuarioId": "uuid|null", "nombre": "string", "totalTickets": 0 }],
+  "porAsignado":    [{ "usuarioId": "uuid|null", "nombre": "string", "totalTickets": 0 }]
+}
+```
+
+Los UUIDs del tenant se enriquecen con `nombre` desde `master.usuarios` (query separada, sin JOIN cross-DB). Un `usuarioId: null` (ticket sin asignar) se agrupa con `nombre: "Sin asignar"`.
 
 #### Scenario: Admin-cliente obtiene conteo de tickets por asignado de su tenant
 
@@ -60,7 +70,7 @@ Incluye tickets en cualquier estado que no estén soft-deleted.
 **And** ningún cicloId es provisto (usa ciclo activo)
 **When** llama a `GET /reportes/tickets-por-usuario`
 **Then** MUST devolver HTTP 200
-**And** la respuesta MUST contener una entrada por asignado con `{ asignadoId, totalTickets }`
+**And** `porAsignado` MUST contener una entrada por usuario con `{ usuarioId, nombre, totalTickets }`
 **And** los totales MUST sumar 10
 **And** MUST solo incluir tickets WHERE `ciclo_id = C1.id AND deleted_at IS NULL`
 
@@ -78,7 +88,7 @@ Incluye tickets en cualquier estado que no estén soft-deleted.
 **When** un usuario autorizado llama a `GET /reportes/tickets-por-usuario`
 **Then** MUST NOT producir ningún error de runtime
 **And** los tickets sin asignar MUST ser excluidos o agrupados bajo
-  `{ asignadoId: null, totalTickets: N }` de forma consistente
+  `{ usuarioId: null, nombre: "Sin asignar", totalTickets: N }` de forma consistente
 
 #### Scenario: Operador obtiene reporte de tenant B via X-Tenant-Id
 
