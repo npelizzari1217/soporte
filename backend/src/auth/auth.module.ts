@@ -175,6 +175,10 @@ import { UsuariosController } from './interface/controllers/usuarios.controller'
     TOKEN_SERVICE,
     JwtAuthGuard,
     GlobalAdminGuard,
+    // TenantGuard y PermissionsGuard: usados por CiclosController (PR2) y
+    // futuros módulos de rutas tenant-scoped (PR3-PR4).
+    TenantGuard,
+    PermissionsGuard,
   ],
 })
 export class AuthModule {}
