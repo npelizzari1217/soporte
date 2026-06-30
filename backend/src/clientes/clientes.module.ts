@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 
 // ─── Ports (tokens DI) ─────────────────────────────────────────────────────────
 import { CLIENTE_REPOSITORY } from './domain/ports/i-cliente.repository';
@@ -45,6 +45,9 @@ import { CrearClienteUseCase } from './application/use-cases/crear-cliente.use-c
 import { ClientesController } from './interface/controllers/clientes.controller';
 import { CiclosVigentesController } from './interface/controllers/ciclos-vigentes.controller';
 
+// ─── AuthModule (para JwtAuthGuard + TOKEN_SERVICE) ───────────────────────────
+import { AuthModule } from '../auth/auth.module';
+
 /**
  * ClientesModule — wiring NestJS del módulo de clientes + provisioning tenant.
  *
@@ -57,16 +60,25 @@ import { CiclosVigentesController } from './interface/controllers/ciclos-vigente
  *
  * Nota DI:
  *   SharedModule es @Global() → PrismaService, TenantContext, MasterContext disponibles.
- *   AuthModule NO se importa (evita circularidad); en cambio se re-registran los repos
- *   de auth necesarios para CrearClienteUseCase (USUARIO_REPOSITORY, ROLE_REPOSITORY,
- *   HASH_PROVIDER). Esto es viable porque son @Injectable() con deps del SharedModule.
+ *   AuthModule se importa (T1.4/T1.6, PR1 admin-general) para resolver JwtAuthGuard
+ *   y TOKEN_SERVICE requeridos por los guards en ClientesController/CiclosVigentesController.
+ *   AuthModule NO importa ClientesModule → sin circularidad.
+ *   Los repos de auth (USUARIO_REPOSITORY, ROLE_REPOSITORY, HASH_PROVIDER) se siguen
+ *   re-registrando localmente para CrearClienteUseCase (evita conflicto con los providers
+ *   ya exportados por AuthModule con el mismo token).
  *
  *   IMPORTANTE: PrismaService NO se declara aquí (es @Global desde SharedModule).
  *   Re-declararlo como useClass: PrismaService lanzaría UnknownDependenciesException.
  *
- * Tarea: 1.D.2 (base) + Batch 4 Parte B (wiring provisioning)
+ * Tarea: 1.D.2 (base) + Batch 4 Parte B (wiring provisioning) + T1.4/T1.6 (guards)
  */
 @Module({
+  imports: [
+    // AuthModule exporta TOKEN_SERVICE + JwtAuthGuard → necesarios para los guards
+    // aplicados en ClientesController y CiclosVigentesController (T1.4/T1.6).
+    // AuthModule NO importa ClientesModule → sin circularidad.
+    forwardRef(() => AuthModule),
+  ],
   controllers: [ClientesController, CiclosVigentesController],
   providers: [
     // ─── Repositorios CLIENTES (adaptadores de infraestructura) ──────────────

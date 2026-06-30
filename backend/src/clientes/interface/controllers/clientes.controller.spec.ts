@@ -18,10 +18,20 @@
  * - POST /ciclos-vigentes → body del ciclo
  * - POST /ciclos-vigentes → 422 UnprocessableEntityException en solapamiento
  * - Shape correcta del CicloVigenteResponseDto
+ *
+ * T1.3 — Tests de protección JwtAuthGuard en ClientesController (RED → GREEN con T1.4)
+ * Spec ref: auth-rbac/ClientesController protegido
  */
-import { ConflictException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import {
+  ConflictException,
+  NotFoundException,
+  UnprocessableEntityException,
+  ExecutionContext,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ClientesController } from './clientes.controller';
 import { CiclosVigentesController } from './ciclos-vigentes.controller';
+import { JwtAuthGuard } from '../../../auth/infrastructure/guards/jwt-auth.guard';
 import { RegistrarClienteUseCase } from '../../application/use-cases/registrar-cliente.use-case';
 import { SuspenderClienteUseCase } from '../../application/use-cases/suspender-cliente.use-case';
 import { ReactivarClienteUseCase } from '../../application/use-cases/reactivar-cliente.use-case';
@@ -163,6 +173,72 @@ describe('ClientesController', () => {
       reactivar.execute.mockResolvedValue(Result.fail(new ClienteNotFoundError('non-existent')));
       await expect(controller.reactivar('non-existent')).rejects.toThrow(NotFoundException);
     });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T1.3 — ClientesController protegido con JwtAuthGuard
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('ClientesController — protección JwtAuthGuard (T1.3)', () => {
+  /**
+   * Verifica a nivel de metadatos que JwtAuthGuard está aplicado en el controlador.
+   * Falla en RED porque @UseGuards no está en el controlador aún.
+   * Pasa en GREEN (T1.4) cuando se agrega @UseGuards(JwtAuthGuard).
+   *
+   * Invariante: guards sin auth deben rechazar con 401 (lo verifica JwtAuthGuard directamente).
+   */
+  it('tiene JwtAuthGuard aplicado a nivel de controlador (metadata)', () => {
+    const GUARDS_METADATA = '__guards__';
+    const guards: unknown[] = Reflect.getMetadata(GUARDS_METADATA, ClientesController) ?? [];
+    expect(guards.some((g) => g === JwtAuthGuard)).toBe(true);
+  });
+
+  it('JwtAuthGuard lanza UnauthorizedException sin header Authorization (simula GET /clientes sin token)', () => {
+    // Verifica el comportamiento del guard que protegerá el controlador
+    const mockTokenService = { verifyJwt: vi.fn() };
+    const jwtGuard = new JwtAuthGuard(mockTokenService as any);
+
+    const request = { headers: {}, user: null };
+    const ctx = {
+      switchToHttp: () => ({ getRequest: () => request }),
+    } as unknown as ExecutionContext;
+
+    expect(() => jwtGuard.canActivate(ctx)).toThrow(UnauthorizedException);
+  });
+
+  it('JwtAuthGuard lanza UnauthorizedException con token expirado/malformado (simula POST /clientes)', () => {
+    const mockTokenService = { verifyJwt: vi.fn().mockReturnValue(null) };
+    const jwtGuard = new JwtAuthGuard(mockTokenService as any);
+
+    const request = { headers: { authorization: 'Bearer expired.token.here' }, user: null };
+    const ctx = {
+      switchToHttp: () => ({ getRequest: () => request }),
+    } as unknown as ExecutionContext;
+
+    expect(() => jwtGuard.canActivate(ctx)).toThrow(UnauthorizedException);
+  });
+
+  it('JwtAuthGuard retorna true con token válido (permite acceso a guards subsiguientes)', () => {
+    const validPayload = {
+      sub: 'user-uuid',
+      cliente_id: 'c-uuid',
+      email: 'u@test.com',
+      roles: ['ADMINISTRADOR'],
+      permisos: [],
+      cliente_nombre: 'Test',
+      is_global_admin: false,
+    };
+    const mockTokenService = { verifyJwt: vi.fn().mockReturnValue(validPayload) };
+    const jwtGuard = new JwtAuthGuard(mockTokenService as any);
+
+    const request = { headers: { authorization: 'Bearer valid.token' }, user: null };
+    const ctx = {
+      switchToHttp: () => ({ getRequest: () => request }),
+    } as unknown as ExecutionContext;
+
+    const result = jwtGuard.canActivate(ctx);
+    expect(result).toBe(true);
   });
 });
 
