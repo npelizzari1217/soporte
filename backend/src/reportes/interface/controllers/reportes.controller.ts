@@ -34,10 +34,22 @@ import {
 import { JwtAuthGuard } from '../../../auth/infrastructure/guards/jwt-auth.guard';
 import { TenantGuard } from '../../../auth/infrastructure/guards/tenant.guard';
 import { AdminOrGlobalGuard } from '../../infrastructure/guards/admin-or-global.guard';
-import { TicketsPorUsuarioUseCase, TicketsPorUsuarioResult } from '../../application/use-cases/tickets-por-usuario.use-case';
-import { TicketsPorTipoUseCase, TipoConTickets } from '../../application/use-cases/tickets-por-tipo.use-case';
-import { TicketsPorEstadoUseCase, EstadoConTickets } from '../../application/use-cases/tickets-por-estado.use-case';
-import { TiempoResolucionUseCase, TiempoResolucionResult } from '../../application/use-cases/tiempo-resolucion.use-case';
+import {
+  TicketsPorUsuarioUseCase,
+  TicketsPorUsuarioResult,
+} from '../../application/use-cases/tickets-por-usuario.use-case';
+import {
+  TicketsPorTipoUseCase,
+  TipoConTickets,
+} from '../../application/use-cases/tickets-por-tipo.use-case';
+import {
+  TicketsPorEstadoUseCase,
+  EstadoConTickets,
+} from '../../application/use-cases/tickets-por-estado.use-case';
+import {
+  TiempoResolucionUseCase,
+  TiempoResolucionResult,
+} from '../../application/use-cases/tiempo-resolucion.use-case';
 import { NoCicloActivoError } from '../../domain/errors/reportes.errors';
 import { ReporteQueryDto } from '../dtos/reporte-query.dto';
 

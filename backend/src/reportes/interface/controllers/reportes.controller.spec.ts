@@ -30,9 +30,7 @@ vi.mock('../../../auth/infrastructure/guards/jwt-auth.guard', () => {
 
 // ─── Imports ──────────────────────────────────────────────────────────────────
 
-import {
-  UnprocessableEntityException,
-} from '@nestjs/common';
+import { UnprocessableEntityException } from '@nestjs/common';
 import { ReportesController } from './reportes.controller';
 import { JwtAuthGuard } from '../../../auth/infrastructure/guards/jwt-auth.guard';
 import { TenantGuard } from '../../../auth/infrastructure/guards/tenant.guard';
@@ -103,9 +101,7 @@ describe('ReportesController — GET /reportes/tickets-por-usuario (T4.12)', () 
     porUsuario.execute.mockRejectedValue(new NoCicloActivoError());
     const controller = makeController(porUsuario);
 
-    await expect(controller.ticketsPorUsuario({})).rejects.toThrow(
-      UnprocessableEntityException,
-    );
+    await expect(controller.ticketsPorUsuario({})).rejects.toThrow(UnprocessableEntityException);
   });
 
   it('resultado de tickets sin asignar incluye { usuarioId: null, nombre: "Sin asignar" }', async () => {

@@ -28,10 +28,7 @@
 import { Module, forwardRef } from '@nestjs/common';
 
 // ─── Port tokens ──────────────────────────────────────────────────────────────
-import {
-  REPORTES_REPOSITORY,
-  IReportesRepository,
-} from './domain/ports/i-reportes.repository';
+import { REPORTES_REPOSITORY, IReportesRepository } from './domain/ports/i-reportes.repository';
 import { USUARIO_REPOSITORY } from '../auth/domain/ports/i-usuario.repository';
 import { IUsuarioRepository } from '../auth/domain/ports/i-usuario.repository';
 
@@ -85,10 +82,8 @@ import { AuthModule } from '../auth/auth.module';
 
     {
       provide: TicketsPorUsuarioUseCase,
-      useFactory: (
-        reportesRepo: IReportesRepository,
-        usuarioRepo: IUsuarioRepository,
-      ) => new TicketsPorUsuarioUseCase(reportesRepo, usuarioRepo),
+      useFactory: (reportesRepo: IReportesRepository, usuarioRepo: IUsuarioRepository) =>
+        new TicketsPorUsuarioUseCase(reportesRepo, usuarioRepo),
       inject: [REPORTES_REPOSITORY, USUARIO_REPOSITORY],
     },
 
