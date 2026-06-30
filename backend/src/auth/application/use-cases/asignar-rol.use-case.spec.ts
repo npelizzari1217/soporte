@@ -224,12 +224,21 @@ describe('BajaUsuarioUseCase', () => {
     useCase = new BajaUsuarioUseCase(usuarioRepo, refreshTokenRepo, masterTxRunner);
   });
 
+  // T3.6: BajaUsuarioDto ahora requiere requesterId y clienteId para cross-tenant y self-baja.
+  // makeUsuario usa clienteId: 'cliente-uuid'. Los tests pasan un requesterId diferente al
+  // usuarioId y el clienteId correcto para que los nuevos guards no bloqueen el flujo.
+  const makeDto = (usuarioId: string) => ({
+    usuarioId,
+    requesterId: 'admin-requester-uuid', // diferente al usuarioId → no self-baja
+    clienteId: 'cliente-uuid',           // igual al clienteId de makeUsuario → no cross-tenant
+  });
+
   describe('Baja exitosa', () => {
     it('retorna ok cuando el usuario existe', async () => {
       const usuario = makeUsuario({ id: 'user-to-delete' });
       usuarioRepo.findById.mockResolvedValue(usuario);
 
-      const result = await useCase.execute({ usuarioId: 'user-to-delete' });
+      const result = await useCase.execute(makeDto('user-to-delete'));
 
       expect(result.isOk()).toBe(true);
     });
@@ -243,7 +252,7 @@ describe('BajaUsuarioUseCase', () => {
         savedUsuario = u;
       });
 
-      await useCase.execute({ usuarioId: 'user-to-delete' });
+      await useCase.execute(makeDto('user-to-delete'));
 
       expect(savedUsuario!.activo).toBe(false);
     });
@@ -257,7 +266,7 @@ describe('BajaUsuarioUseCase', () => {
         savedUsuario = u;
       });
 
-      await useCase.execute({ usuarioId: 'user-to-delete' });
+      await useCase.execute(makeDto('user-to-delete'));
 
       expect(savedUsuario!.deletedAt).not.toBeNull();
       expect(savedUsuario!.isDeleted()).toBe(true);
@@ -267,7 +276,7 @@ describe('BajaUsuarioUseCase', () => {
       const usuario = makeUsuario({ id: 'user-to-delete' });
       usuarioRepo.findById.mockResolvedValue(usuario);
 
-      await useCase.execute({ usuarioId: 'user-to-delete' });
+      await useCase.execute(makeDto('user-to-delete'));
 
       expect(refreshTokenRepo.revokeAllByUsuarioId).toHaveBeenCalledWith('user-to-delete');
     });
@@ -276,7 +285,7 @@ describe('BajaUsuarioUseCase', () => {
       const usuario = makeUsuario({ id: 'user-to-delete' });
       usuarioRepo.findById.mockResolvedValue(usuario);
 
-      await useCase.execute({ usuarioId: 'user-to-delete' });
+      await useCase.execute(makeDto('user-to-delete'));
 
       expect(usuarioRepo.save).toHaveBeenCalledTimes(1);
     });
@@ -285,7 +294,7 @@ describe('BajaUsuarioUseCase', () => {
       const usuario = makeUsuario({ id: 'user-to-delete' });
       usuarioRepo.findById.mockResolvedValue(usuario);
 
-      await useCase.execute({ usuarioId: 'user-to-delete' });
+      await useCase.execute(makeDto('user-to-delete'));
 
       expect(refreshTokenRepo.revokeAllByUsuarioId).toHaveBeenCalledTimes(1);
       expect(usuarioRepo.save).toHaveBeenCalledTimes(1);
@@ -297,7 +306,7 @@ describe('BajaUsuarioUseCase', () => {
       const usuario = makeUsuario({ id: 'user-to-delete' });
       usuarioRepo.findById.mockResolvedValue(usuario);
 
-      await useCase.execute({ usuarioId: 'user-to-delete' });
+      await useCase.execute(makeDto('user-to-delete'));
 
       expect(masterTxRunner.run).toHaveBeenCalledTimes(1);
     });
@@ -314,7 +323,7 @@ describe('BajaUsuarioUseCase', () => {
         callOrder.push('revokeAll');
       });
 
-      await useCase.execute({ usuarioId: 'user-to-delete' });
+      await useCase.execute(makeDto('user-to-delete'));
 
       expect(callOrder).toEqual(['save', 'revokeAll']);
     });
@@ -324,7 +333,7 @@ describe('BajaUsuarioUseCase', () => {
     it('retorna UsuarioNoEncontradoError si el usuario no existe', async () => {
       usuarioRepo.findById.mockResolvedValue(null);
 
-      const result = await useCase.execute({ usuarioId: 'nonexistent' });
+      const result = await useCase.execute(makeDto('nonexistent'));
 
       expect(result.isFail()).toBe(true);
       expect(result.getError()).toBeInstanceOf(UsuarioNoEncontradoError);
@@ -333,7 +342,7 @@ describe('BajaUsuarioUseCase', () => {
     it('NO llama a revokeAllByUsuarioId si el usuario no existe', async () => {
       usuarioRepo.findById.mockResolvedValue(null);
 
-      await useCase.execute({ usuarioId: 'nonexistent' });
+      await useCase.execute(makeDto('nonexistent'));
 
       expect(refreshTokenRepo.revokeAllByUsuarioId).not.toHaveBeenCalled();
     });
