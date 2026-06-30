@@ -94,7 +94,7 @@ PR6 depende de PR5.
 - DOD: T1.5 en GREEN; funcionalidad existente preservada
 
 **T1.7** — [x] Crear migración idempotente `nestor@sesitec.com.ar`
-- Archivos: `backend/prisma/migrations/20260630_set_global_admin_nestor/migration.sql` (nuevo)
+- Archivos: `backend/prisma_master/migrations/20260630000000_set_global_admin_nestor/migration.sql` (nuevo)
 - Contenido:
   ```sql
   -- Migración idempotente: designa operador global inicial
