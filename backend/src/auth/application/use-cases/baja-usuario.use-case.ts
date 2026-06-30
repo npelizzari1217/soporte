@@ -3,10 +3,7 @@ import { DomainError } from '../../../shared/domain/result';
 import { IUsuarioRepository } from '../../domain/ports/i-usuario.repository';
 import { IRefreshTokenRepository } from '../../domain/ports/i-refresh-token.repository';
 import { IMasterTransactionRunner } from '../../../shared/domain/ports/i-master-transaction-runner';
-import {
-  UsuarioNoEncontradoError,
-  AutoBajaProhibidaError,
-} from '../../domain/errors/auth.errors';
+import { UsuarioNoEncontradoError, AutoBajaProhibidaError } from '../../domain/errors/auth.errors';
 
 /** DTO de entrada para BajaUsuarioUseCase. */
 export interface BajaUsuarioDto {

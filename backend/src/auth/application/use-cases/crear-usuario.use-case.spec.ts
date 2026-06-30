@@ -73,11 +73,7 @@ describe('CrearUsuarioUseCase (T3.2)', () => {
     usuarioRepo = makeUsuarioRepo();
     hashProvider = makeHashProvider();
     roleRepo = makeRoleRepo();
-    useCase = new CrearUsuarioUseCase(
-      usuarioRepo as any,
-      hashProvider as any,
-      roleRepo as any,
-    );
+    useCase = new CrearUsuarioUseCase(usuarioRepo as any, hashProvider as any, roleRepo as any);
   });
 
   describe('creación exitosa', () => {

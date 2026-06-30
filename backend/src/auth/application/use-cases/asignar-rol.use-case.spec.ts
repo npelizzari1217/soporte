@@ -230,7 +230,7 @@ describe('BajaUsuarioUseCase', () => {
   const makeDto = (usuarioId: string) => ({
     usuarioId,
     requesterId: 'admin-requester-uuid', // diferente al usuarioId → no self-baja
-    clienteId: 'cliente-uuid',           // igual al clienteId de makeUsuario → no cross-tenant
+    clienteId: 'cliente-uuid', // igual al clienteId de makeUsuario → no cross-tenant
   });
 
   describe('Baja exitosa', () => {

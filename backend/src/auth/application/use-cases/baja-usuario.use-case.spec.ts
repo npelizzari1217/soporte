@@ -14,19 +14,12 @@
  */
 
 import { BajaUsuarioUseCase, type BajaUsuarioDto } from './baja-usuario.use-case';
-import {
-  UsuarioNoEncontradoError,
-  AutoBajaProhibidaError,
-} from '../../domain/errors/auth.errors';
+import { UsuarioNoEncontradoError, AutoBajaProhibidaError } from '../../domain/errors/auth.errors';
 import { UsuarioEntity } from '../../domain/entities/usuario.entity';
 
 // ─── Factories ────────────────────────────────────────────────────────────────
 
-function makeUsuario(
-  id: string,
-  clienteId: string,
-  alreadyDeleted = false,
-): UsuarioEntity {
+function makeUsuario(id: string, clienteId: string, alreadyDeleted = false): UsuarioEntity {
   const entity = UsuarioEntity.create(
     {
       email: `user-${id}@test.com`,
