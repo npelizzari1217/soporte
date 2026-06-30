@@ -23,6 +23,7 @@
 import { Pool } from 'pg';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { join, delimiter } from 'path';
 
 const execAsync = promisify(exec);
 
@@ -91,11 +92,16 @@ export class MigrateTenantsRunner {
         const dbName = row.db_name;
         try {
           const tenantUrl = this.buildTenantUrl(dbName);
+          // `prisma` pelado + node_modules/.bin en PATH: cross-platform (Windows/Unix).
+          const binDir = join(process.cwd(), 'node_modules', '.bin');
           await this.execFn(
-            `./node_modules/.bin/prisma migrate deploy` +
+            `prisma migrate deploy` +
               ` --schema=${this.tenantSchemaPath}` +
               ` --config ${this.configPath}`,
-            { DATABASE_URL_TENANT: tenantUrl },
+            {
+              DATABASE_URL_TENANT: tenantUrl,
+              PATH: `${binDir}${delimiter}${process.env.PATH ?? ''}`,
+            },
           );
           results.push({ dbName, status: 'success' });
         } catch (err: unknown) {

@@ -24,6 +24,7 @@
  */
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { join, delimiter } from 'path';
 
 const execAsync = promisify(exec);
 
@@ -61,11 +62,18 @@ export class TenantMigrationRunnerAdapter {
    */
   async runMigrations(dbName: string): Promise<void> {
     const tenantUrl = this.buildTenantUrl(dbName);
+    // `prisma` pelado + node_modules/.bin prependeado al PATH: cross-platform.
+    // En Windows cmd resuelve `prisma.CMD` vía PATHEXT; en Unix resuelve `prisma`.
+    // (Antes era `./node_modules/.bin/prisma`, que rompe en Windows: cmd no entiende `./`.)
+    const binDir = join(process.cwd(), 'node_modules', '.bin');
     await this.execFn(
-      `./node_modules/.bin/prisma migrate deploy` +
+      `prisma migrate deploy` +
         ` --schema=prisma_tenant/schema.prisma` +
         ` --config prisma.tenant.config.ts`,
-      { DATABASE_URL_TENANT: tenantUrl },
+      {
+        DATABASE_URL_TENANT: tenantUrl,
+        PATH: `${binDir}${delimiter}${process.env.PATH ?? ''}`,
+      },
     );
   }
 
