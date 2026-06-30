@@ -17,7 +17,6 @@
  */
 import {
   ConflictException,
-  ForbiddenException,
   NotFoundException,
   UnprocessableEntityException,
   ExecutionContext,
@@ -29,7 +28,6 @@ import { CiclosVigentesController } from './ciclos-vigentes.controller';
 import { JwtAuthGuard } from '../../../auth/infrastructure/guards/jwt-auth.guard';
 import { GlobalAdminGuard } from '../../../auth/infrastructure/guards/global-admin.guard';
 import { ListarClientesUseCase } from '../../application/use-cases/listar-clientes.use-case';
-import { RegistrarClienteUseCase } from '../../application/use-cases/registrar-cliente.use-case';
 import { SuspenderClienteUseCase } from '../../application/use-cases/suspender-cliente.use-case';
 import { ReactivarClienteUseCase } from '../../application/use-cases/reactivar-cliente.use-case';
 import { CrearClienteUseCase } from '../../application/use-cases/crear-cliente.use-case';
@@ -68,9 +66,6 @@ function makeMockCiclo(): CicloVigenteEntity {
 
 function makeMockListar(): vi.Mocked<ListarClientesUseCase> {
   return { execute: vi.fn() } as unknown as vi.Mocked<ListarClientesUseCase>;
-}
-function makeMockRegistrar(): vi.Mocked<RegistrarClienteUseCase> {
-  return { execute: vi.fn() } as unknown as vi.Mocked<RegistrarClienteUseCase>;
 }
 function makeMockCrear(): vi.Mocked<CrearClienteUseCase> {
   return { execute: vi.fn() } as unknown as vi.Mocked<CrearClienteUseCase>;
@@ -140,7 +135,8 @@ describe('ClientesController — GET /clientes (T2.4)', () => {
     // NestJS almacena guards de método en descriptor.value (el fn mismo), no con propertyKey
     const methodFn = ClientesController.prototype.listar;
     const methodGuards: unknown[] = Reflect.getMetadata(GUARDS_METADATA, methodFn) ?? [];
-    const controllerGuards: unknown[] = Reflect.getMetadata(GUARDS_METADATA, ClientesController) ?? [];
+    const controllerGuards: unknown[] =
+      Reflect.getMetadata(GUARDS_METADATA, ClientesController) ?? [];
     const guardIsApplied =
       methodGuards.some((g) => g === GlobalAdminGuard) ||
       controllerGuards.some((g) => g === GlobalAdminGuard);
@@ -248,7 +244,8 @@ describe('ClientesController — POST /clientes (T2.4)', () => {
     // NestJS almacena guards de método en descriptor.value (el fn mismo), no con propertyKey
     const methodFn = ClientesController.prototype.create;
     const methodGuards: unknown[] = Reflect.getMetadata(GUARDS_METADATA, methodFn) ?? [];
-    const controllerGuards: unknown[] = Reflect.getMetadata(GUARDS_METADATA, ClientesController) ?? [];
+    const controllerGuards: unknown[] =
+      Reflect.getMetadata(GUARDS_METADATA, ClientesController) ?? [];
     const hasGlobalAdmin =
       methodGuards.some((g) => g === GlobalAdminGuard) ||
       controllerGuards.some((g) => g === GlobalAdminGuard);

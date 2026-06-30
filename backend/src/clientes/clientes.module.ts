@@ -3,6 +3,7 @@ import { Module, forwardRef } from '@nestjs/common';
 // ─── Ports (tokens DI) ─────────────────────────────────────────────────────────
 import { CLIENTE_REPOSITORY } from './domain/ports/i-cliente.repository';
 import { CICLO_VIGENTE_REPOSITORY } from './domain/ports/i-ciclo-vigente.repository';
+import { CICLO_CLIENTE_ADMIN_REPOSITORY } from './domain/ports/i-ciclo-cliente.repository';
 import { POSTGRES_ADMIN } from './application/ports/i-postgres-admin.port';
 import { TENANT_MIGRATION_RUNNER } from './application/ports/i-tenant-migration-runner';
 import { TENANT_SEEDER } from './application/ports/i-tenant-seeder';
@@ -10,6 +11,7 @@ import { TENANT_SEEDER } from './application/ports/i-tenant-seeder';
 // ─── Ports interfaces (para useFactory typing) ───────────────────────────────
 import { IClienteRepository } from './domain/ports/i-cliente.repository';
 import { ICicloVigenteRepository } from './domain/ports/i-ciclo-vigente.repository';
+import { ICicloClienteRepository } from './domain/ports/i-ciclo-cliente.repository';
 import { IPostgresAdminPort } from './application/ports/i-postgres-admin.port';
 import { ITenantMigrationRunner } from './application/ports/i-tenant-migration-runner';
 import { ITenantSeeder } from './application/ports/i-tenant-seeder';
@@ -23,6 +25,7 @@ import { HASH_PROVIDER } from '../auth/domain/ports/i-hash.provider';
 // ─── Infrastructure (repositorios concretos) ──────────────────────────────────
 import { PrismaClienteRepository } from './infrastructure/persistence/prisma/prisma-cliente.repository';
 import { PrismaCicloVigenteRepository } from './infrastructure/persistence/prisma/prisma-ciclo-vigente.repository';
+import { PrismaCicloClienteRepository } from './infrastructure/persistence/prisma/prisma-ciclo-cliente.repository';
 import { PrismaUsuarioRepository } from '../auth/infrastructure/persistence/prisma/prisma-usuario.repository';
 import { PrismaRoleRepository } from '../auth/infrastructure/persistence/prisma/prisma-role.repository';
 import { Argon2HashProvider } from '../auth/infrastructure/argon2-hash.provider';
@@ -35,28 +38,38 @@ import { TenantMigrationRunnerAdapter } from './infrastructure/tenant-migration-
 import { TenantSeederAdapter } from './infrastructure/tenant-seeder.adapter';
 
 // ─── Use Cases ────────────────────────────────────────────────────────────────
+import { ListarClientesUseCase } from './application/use-cases/listar-clientes.use-case';
 import { RegistrarClienteUseCase } from './application/use-cases/registrar-cliente.use-case';
 import { SuspenderClienteUseCase } from './application/use-cases/suspender-cliente.use-case';
 import { ReactivarClienteUseCase } from './application/use-cases/reactivar-cliente.use-case';
 import { CrearCicloVigenteUseCase } from './application/use-cases/crear-ciclo-vigente.use-case';
 import { CrearClienteUseCase } from './application/use-cases/crear-cliente.use-case';
+import { ListarCiclosUseCase } from './application/use-cases/listar-ciclos.use-case';
+import { CrearCicloTenantUseCase } from './application/use-cases/crear-ciclo-tenant.use-case';
+import { ActivarCicloUseCase } from './application/use-cases/activar-ciclo.use-case';
 
 // ─── Controllers ──────────────────────────────────────────────────────────────
 import { ClientesController } from './interface/controllers/clientes.controller';
 import { CiclosVigentesController } from './interface/controllers/ciclos-vigentes.controller';
+import { CiclosController } from './interface/controllers/ciclos.controller';
 
-// ─── AuthModule (para JwtAuthGuard + TOKEN_SERVICE) ───────────────────────────
+// ─── AuthModule (para JwtAuthGuard + TOKEN_SERVICE + TenantGuard + PermissionsGuard) ──────
 import { AuthModule } from '../auth/auth.module';
 
 /**
  * ClientesModule — wiring NestJS del módulo de clientes + provisioning tenant.
  *
- * A partir de Batch 4 (Fase 7) este módulo también provee:
- *   - PostgresAdminService: operaciones DDL de DB (CREATE/DROP/EXISTS).
- *   - PostgresAdminAdapter: adapter de IPostgresAdminPort (delega al servicio).
- *   - TenantMigrationRunnerAdapter: adapter de ITenantMigrationRunner (exec prisma migrate).
- *   - TenantSeederAdapter: adapter de ITenantSeeder (INSERT catálogos vía pg.Pool).
- *   - CrearClienteUseCase: provisioning completo (usa los 3 adapters anteriores).
+ * A partir de PR2 (admin-general T2.16) este módulo también provee:
+ *   - ListarClientesUseCase: GET /clientes (solo operador global).
+ *   - PrismaCicloClienteRepository: repositorio tenant-scoped para ciclos de gestión.
+ *   - ListarCiclosUseCase: GET /ciclos (ciclos del tenant activo).
+ *   - CrearCicloTenantUseCase: POST /ciclos (crea ciclo inactivo en el tenant).
+ *   - ActivarCicloUseCase: PATCH /ciclos/:id/activar (activa un ciclo atómicamente).
+ *   - CiclosController: endpoints /ciclos (tenant-level, ciclos_cliente).
+ *
+ * Guards disponibles via AuthModule (forwardRef):
+ *   - JwtAuthGuard, GlobalAdminGuard: exportados desde PR1.
+ *   - TenantGuard, PermissionsGuard: exportados desde PR2 (T2.16).
  *
  * Nota DI:
  *   SharedModule es @Global() → PrismaService, TenantContext, MasterContext disponibles.
@@ -70,16 +83,16 @@ import { AuthModule } from '../auth/auth.module';
  *   IMPORTANTE: PrismaService NO se declara aquí (es @Global desde SharedModule).
  *   Re-declararlo como useClass: PrismaService lanzaría UnknownDependenciesException.
  *
- * Tarea: 1.D.2 (base) + Batch 4 Parte B (wiring provisioning) + T1.4/T1.6 (guards)
+ * Tarea: 1.D.2 (base) + Batch 4 Parte B (wiring provisioning) + T1.4/T1.6 (guards) + T2.16 (PR2)
  */
 @Module({
   imports: [
-    // AuthModule exporta TOKEN_SERVICE + JwtAuthGuard → necesarios para los guards
-    // aplicados en ClientesController y CiclosVigentesController (T1.4/T1.6).
+    // AuthModule exporta TOKEN_SERVICE + JwtAuthGuard + GlobalAdminGuard + TenantGuard + PermissionsGuard
+    // → necesarios para los guards aplicados en los controllers de este módulo.
     // AuthModule NO importa ClientesModule → sin circularidad.
     forwardRef(() => AuthModule),
   ],
-  controllers: [ClientesController, CiclosVigentesController],
+  controllers: [ClientesController, CiclosVigentesController, CiclosController],
   providers: [
     // ─── Repositorios CLIENTES (adaptadores de infraestructura) ──────────────
     {
@@ -89,6 +102,12 @@ import { AuthModule } from '../auth/auth.module';
     {
       provide: CICLO_VIGENTE_REPOSITORY,
       useClass: PrismaCicloVigenteRepository,
+    },
+    // PrismaCicloClienteRepository (PR2): repositorio tenant-scoped para ciclos de gestión.
+    // Usa TenantContext (disponible via SharedModule @Global) para el client de la DB del tenant.
+    {
+      provide: CICLO_CLIENTE_ADMIN_REPOSITORY,
+      useClass: PrismaCicloClienteRepository,
     },
 
     // ─── Repositorios AUTH necesarios para CrearClienteUseCase ───────────────
@@ -140,6 +159,13 @@ import { AuthModule } from '../auth/auth.module';
     },
 
     // ─── Use Cases (application — plain classes, no @Injectable) ─────────────
+
+    // PR2: ListarClientesUseCase (GET /clientes — solo operador global)
+    {
+      provide: ListarClientesUseCase,
+      useFactory: (repo: IClienteRepository) => new ListarClientesUseCase(repo),
+      inject: [CLIENTE_REPOSITORY],
+    },
     {
       provide: RegistrarClienteUseCase,
       useFactory: (repo: IClienteRepository) => new RegistrarClienteUseCase(repo),
@@ -192,13 +218,34 @@ import { AuthModule } from '../auth/auth.module';
         HASH_PROVIDER,
       ],
     },
+
+    // PR2: Use cases de ciclos tenant-level (GET/POST /ciclos, PATCH /ciclos/:id/activar)
+    {
+      provide: ListarCiclosUseCase,
+      useFactory: (repo: ICicloClienteRepository) => new ListarCiclosUseCase(repo),
+      inject: [CICLO_CLIENTE_ADMIN_REPOSITORY],
+    },
+    {
+      provide: CrearCicloTenantUseCase,
+      useFactory: (repo: ICicloClienteRepository) => new CrearCicloTenantUseCase(repo),
+      inject: [CICLO_CLIENTE_ADMIN_REPOSITORY],
+    },
+    {
+      provide: ActivarCicloUseCase,
+      useFactory: (repo: ICicloClienteRepository) => new ActivarCicloUseCase(repo),
+      inject: [CICLO_CLIENTE_ADMIN_REPOSITORY],
+    },
   ],
   exports: [
+    ListarClientesUseCase,
     RegistrarClienteUseCase,
     SuspenderClienteUseCase,
     ReactivarClienteUseCase,
     CrearCicloVigenteUseCase,
     CrearClienteUseCase,
+    ListarCiclosUseCase,
+    CrearCicloTenantUseCase,
+    ActivarCicloUseCase,
     CLIENTE_REPOSITORY,
   ],
 })
