@@ -11,7 +11,9 @@ import { ClienteEntity } from '../../domain/entities/cliente.entity';
 
 // ─── Factories ───────────────────────────────────────────────────────────────
 
-function makeCliente(overrides?: Partial<{ activo: boolean; deletedAt: Date | null }>): ClienteEntity {
+function makeCliente(
+  overrides?: Partial<{ activo: boolean; deletedAt: Date | null }>,
+): ClienteEntity {
   const entity = ClienteEntity.create({
     nombre: 'Acme Corp',
     razonSocial: 'Acme S.A.',
