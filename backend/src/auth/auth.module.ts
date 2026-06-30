@@ -47,6 +47,8 @@ import { RevocarTokenUseCase } from './application/use-cases/revocar-token.use-c
 import { RevocarTodosTokensUsuarioUseCase } from './application/use-cases/revocar-todos-tokens.use-case';
 import { BajaUsuarioUseCase } from './application/use-cases/baja-usuario.use-case';
 import { AsignarRolUseCase } from './application/use-cases/asignar-rol.use-case';
+import { CrearUsuarioUseCase } from './application/use-cases/crear-usuario.use-case';
+import { ListarUsuariosUseCase } from './application/use-cases/listar-usuarios.use-case';
 import { MASTER_TRANSACTION_RUNNER } from '../shared/domain/ports/i-master-transaction-runner';
 import { IMasterTransactionRunner } from '../shared/domain/ports/i-master-transaction-runner';
 import { IUsuarioRepository } from './domain/ports/i-usuario.repository';
@@ -160,6 +162,23 @@ import { UsuariosController } from './interface/controllers/usuarios.controller'
       useFactory: (usuarioRepo: IUsuarioRepository, roleRepo: IRoleRepository) =>
         new AsignarRolUseCase(usuarioRepo, roleRepo),
       inject: [USUARIO_REPOSITORY, ROLE_REPOSITORY],
+    },
+    {
+      // T3.10 — CrearUsuarioUseCase: crea usuario en el tenant resuelto por TenantGuard.
+      // cliente_id viene de TenantContext (resuelto server-side, no del body).
+      provide: CrearUsuarioUseCase,
+      useFactory: (
+        usuarioRepo: IUsuarioRepository,
+        hashProvider: IHashProvider,
+        roleRepo: IRoleRepository,
+      ) => new CrearUsuarioUseCase(usuarioRepo, hashProvider, roleRepo),
+      inject: [USUARIO_REPOSITORY, HASH_PROVIDER, ROLE_REPOSITORY],
+    },
+    {
+      // T3.10 — ListarUsuariosUseCase: lista usuarios del tenant (filtrado por clienteId).
+      provide: ListarUsuariosUseCase,
+      useFactory: (usuarioRepo: IUsuarioRepository) => new ListarUsuariosUseCase(usuarioRepo),
+      inject: [USUARIO_REPOSITORY],
     },
 
     // ─── Guards (Injectable — necesitan ser providers para inyección de clase) ─
