@@ -9,6 +9,7 @@ import {
   HttpStatus,
   ConflictException,
   NotFoundException,
+  UseGuards,
 } from '@nestjs/common';
 import { RegistrarClienteUseCase } from '../../application/use-cases/registrar-cliente.use-case';
 import { SuspenderClienteUseCase } from '../../application/use-cases/suspender-cliente.use-case';
@@ -16,6 +17,7 @@ import { ReactivarClienteUseCase } from '../../application/use-cases/reactivar-c
 import { CreateClienteDto } from '../dtos/create-cliente.dto';
 import { ClienteResponseDto } from '../dtos/cliente-response.dto';
 import { ClienteConflictError, ClienteNotFoundError } from '../../domain/errors/clientes.errors';
+import { JwtAuthGuard } from '../../../auth/infrastructure/guards/jwt-auth.guard';
 
 /**
  * ClientesController — entry point HTTP para el módulo de clientes (tenants).
@@ -31,8 +33,13 @@ import { ClienteConflictError, ClienteNotFoundError } from '../../domain/errors/
  * - Mapear Result → response HTTP (200/201/204) o excepción NestJS.
  * - CERO lógica de negocio. CERO conocimiento de Prisma o DB.
  *
- * Tarea: 1.D.2
+ * Seguridad (T1.4, PR1 admin-general):
+ * - @UseGuards(JwtAuthGuard) a nivel de controlador — todos los endpoints requieren JWT válido.
+ * - Cierra el agujero de seguridad crítico: el controlador estaba ABIERTO sin autenticación.
+ *
+ * Tarea: 1.D.2 / T1.4
  */
+@UseGuards(JwtAuthGuard)
 @Controller('clientes')
 export class ClientesController {
   constructor(

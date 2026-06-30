@@ -5,6 +5,11 @@
  *
  * cliente_nombre: nombre del tenant — opcional para tolerar tokens emitidos antes de
  * auth-cliente-nombre (degradación elegante). El backend siempre lo emite post-deploy.
+ *
+ * is_global_admin: true si el usuario puede operar cross-tenant (operador Sesitec).
+ * Opcional para tolerar tokens legados sin el claim (degradación elegante).
+ * El backend ya emite este campo desde el change tickets-rbac-4-roles.
+ * Spec ref: auth-rbac/Claim is_global_admin disponible en JwtPayload frontend (admin-general)
  */
 export interface JwtPayload {
   sub: string;
@@ -13,6 +18,8 @@ export interface JwtPayload {
   roles: string[];
   permisos: string[];
   cliente_nombre?: string;
+  /** true → usuario puede operar cross-tenant via X-Tenant-Id. false/undefined → usuario normal. */
+  is_global_admin?: boolean;
 }
 
 /**
