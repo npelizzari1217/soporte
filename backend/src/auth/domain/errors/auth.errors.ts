@@ -108,3 +108,33 @@ export class PermisoCodigoInvalidoError extends DomainError {
     super(`Código de permiso inválido: "${codigo}". Formato requerido: "recurso:accion".`);
   }
 }
+
+/**
+ * AutoBajaProhibidaError — un usuario no puede darse de baja a sí mismo.
+ * → HTTP 422 en la capa de presentación.
+ *
+ * Spec ref: clientes-tenancy/PATCH /usuarios/:id/baja — Escenario self-baja.
+ * Tarea: T3.6
+ */
+export class AutoBajaProhibidaError extends DomainError {
+  readonly code = 'AUTH_AUTO_BAJA_PROHIBIDA';
+
+  constructor() {
+    super('Un usuario no puede darse de baja a sí mismo.');
+  }
+}
+
+/**
+ * UsuarioConflictError — ya existe un usuario con el email dado.
+ * → HTTP 409 en la capa de presentación.
+ *
+ * Spec ref: clientes-tenancy/POST /usuarios — Escenario email duplicado.
+ * Tarea: T3.2
+ */
+export class UsuarioConflictError extends DomainError {
+  readonly code = 'AUTH_USUARIO_CONFLICT';
+
+  constructor(email: string) {
+    super(`Ya existe un usuario con email "${email}".`);
+  }
+}

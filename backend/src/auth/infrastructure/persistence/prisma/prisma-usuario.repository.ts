@@ -58,10 +58,19 @@ export class PrismaUsuarioRepository implements IUsuarioRepository {
 
   async findByClienteId(clienteId: string): Promise<UsuarioEntity[]> {
     const rows = await this.client.usuario.findMany({
-      where: { clienteId },
+      // Excluye soft-deleted (deleted_at IS NOT NULL). Incluye activo=FALSE.
+      // Spec ref: clientes-tenancy/GET /usuarios — T3.1
+      where: { clienteId, deletedAt: null },
       include: USUARIO_INCLUDE,
     });
     return rows.map(UsuarioMapper.toDomain);
+  }
+
+  async create(entity: UsuarioEntity): Promise<void> {
+    // Delega a save() que implementa upsert.
+    // Para entidades nuevas (id generado por uuidv7 en BaseEntity), Prisma
+    // hará INSERT en lugar de UPDATE porque el id no existe en DB aún.
+    await this.save(entity);
   }
 
   async save(usuario: UsuarioEntity): Promise<void> {
