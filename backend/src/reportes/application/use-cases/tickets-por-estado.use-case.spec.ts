@@ -11,7 +11,9 @@ import { NoCicloActivoError } from '../../domain/errors/reportes.errors';
 
 // ─── Factory ─────────────────────────────────────────────────────────────────
 
-function makeAllEstados(overrides: Record<string, number> = {}): Array<{ estadoCodigo: string; total: number }> {
+function makeAllEstados(
+  overrides: Record<string, number> = {},
+): Array<{ estadoCodigo: string; total: number }> {
   const defaults: Record<string, number> = {
     ABIERTO: 0,
     PENDIENTE_APROBACION: 0,
@@ -66,9 +68,7 @@ describe('TicketsPorEstadoUseCase', () => {
 
   it('estados con 0 tickets están presentes en la respuesta', async () => {
     repo.cicloActivo.mockResolvedValue('ciclo-1');
-    repo.ticketsPorEstado.mockResolvedValue(
-      makeAllEstados({ ABIERTO: 5 }),
-    );
+    repo.ticketsPorEstado.mockResolvedValue(makeAllEstados({ ABIERTO: 5 }));
 
     const result = await useCase.execute({});
 
@@ -81,9 +81,7 @@ describe('TicketsPorEstadoUseCase', () => {
     // Si hubiera 5 tickets ABIERTO pero 2 soft-deleted, el repo devuelve 3.
     // El use case retorna exactamente lo que el repo reporta (sin filtrado extra).
     repo.cicloActivo.mockResolvedValue('ciclo-1');
-    repo.ticketsPorEstado.mockResolvedValue(
-      makeAllEstados({ ABIERTO: 3 }),
-    );
+    repo.ticketsPorEstado.mockResolvedValue(makeAllEstados({ ABIERTO: 3 }));
 
     const result = await useCase.execute({});
 

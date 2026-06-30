@@ -60,9 +60,7 @@ describe('AdminOrGlobalGuard', () => {
   });
 
   it('permite cuando is_global_admin true Y tiene rol ADMINISTRADOR', () => {
-    const ctx = makeContext(
-      makePayload({ is_global_admin: true, roles: ['ADMINISTRADOR'] }),
-    );
+    const ctx = makeContext(makePayload({ is_global_admin: true, roles: ['ADMINISTRADOR'] }));
     expect(guard.canActivate(ctx)).toBe(true);
   });
 

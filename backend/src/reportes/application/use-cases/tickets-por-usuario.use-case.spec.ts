@@ -38,15 +38,18 @@ function makeUsuarioRepo(): vi.Mocked<IUsuarioRepository> {
 }
 
 function makeUsuario(id: string, nombre: string, apellido: string): UsuarioEntity {
-  return UsuarioEntity.create({
-    email: `${nombre.toLowerCase()}@test.com`,
-    nombre,
-    apellido,
-    passwordHash: 'hash',
-    clienteId: 'c1',
-    activo: true,
-    roles: [],
-  }, id);
+  return UsuarioEntity.create(
+    {
+      email: `${nombre.toLowerCase()}@test.com`,
+      nombre,
+      apellido,
+      passwordHash: 'hash',
+      clienteId: 'c1',
+      activo: true,
+      roles: [],
+    },
+    id,
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
