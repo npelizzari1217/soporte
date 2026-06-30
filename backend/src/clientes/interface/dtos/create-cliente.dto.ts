@@ -1,15 +1,24 @@
 /**
  * CreateClienteDto — body de la request POST /clientes.
- * DTO de presentación: recibe datos del HTTP request y los pasa al use case.
+ * Incluye los datos del cliente y del usuario administrador inicial.
  *
- * Validación con class-validator se puede agregar en fases futuras.
- * Por ahora es un objeto plano tipado.
- *
- * Tarea: 1.D.2
+ * Tarea: T2.5 (extiende 1.D.2 con campos de provisioning completo)
  */
 export class CreateClienteDto {
   nombre!: string;
   razonSocial!: string | null;
   cuit!: string | null;
   dbName!: string;
+
+  /** Email del usuario administrador inicial del cliente. */
+  adminEmail!: string;
+  /** Nombre del usuario administrador inicial. */
+  adminNombre!: string;
+  /** Apellido del usuario administrador inicial. */
+  adminApellido!: string;
+  /**
+   * Contraseña del admin inicial (texto plano — se hashea server-side).
+   * NUNCA se almacena ni se devuelve en la respuesta.
+   */
+  adminPassword!: string;
 }

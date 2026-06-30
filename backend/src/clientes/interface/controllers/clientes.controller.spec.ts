@@ -1,40 +1,38 @@
 /**
- * 1.D.1 TEST — Unit tests de ClientesController + CiclosVigentesController
- *             (RED → GREEN con 1.D.2)
+ * T2.4 [RED] — Tests integración ClientesController
+ *             GET /clientes y POST /clientes con provisioning completo.
  *
- * Estrategia: instanciación directa del controller con use cases mockeados.
- * No requiere @nestjs/testing — los controllers son clases TypeScript normales.
+ * Extiende el spec previo (1.D.1) que ya cubre:
+ * - POST /clientes con RegistrarClienteUseCase (básico)
+ * - DELETE /clientes/:id
+ * - PUT /clientes/:id/reactivar
+ * - Protección JwtAuthGuard (T1.3)
  *
- * Cubre ClientesController:
- * - POST /clientes → body del cliente + status 201
- * - POST /clientes → 409 ConflictException si db_name ya existe
- * - DELETE /clientes/:id → void (suspensión exitosa)
- * - DELETE /clientes/:id → 404 NotFoundException si no existe
- * - PUT /clientes/:id/reactivar → void + 200
- * - PUT /clientes/:id/reactivar → 404 si no existe
- * - Shape correcta del ClienteResponseDto
+ * Agrega (T2.4 / T2.5):
+ * - GET /clientes → ListarClientesUseCase (global admin only)
+ * - POST /clientes → ahora usa CrearClienteUseCase (provisioning completo)
+ * - Guards: GlobalAdminGuard aplicado a GET / y POST /
  *
- * Cubre CiclosVigentesController:
- * - POST /ciclos-vigentes → body del ciclo
- * - POST /ciclos-vigentes → 422 UnprocessableEntityException en solapamiento
- * - Shape correcta del CicloVigenteResponseDto
- *
- * T1.3 — Tests de protección JwtAuthGuard en ClientesController (RED → GREEN con T1.4)
- * Spec ref: auth-rbac/ClientesController protegido
+ * Spec ref: clientes-tenancy/GET /clientes, clientes-tenancy/POST /clientes
  */
 import {
   ConflictException,
+  ForbiddenException,
   NotFoundException,
   UnprocessableEntityException,
   ExecutionContext,
   UnauthorizedException,
+  InternalServerErrorException,
 } from '@nestjs/common';
 import { ClientesController } from './clientes.controller';
 import { CiclosVigentesController } from './ciclos-vigentes.controller';
 import { JwtAuthGuard } from '../../../auth/infrastructure/guards/jwt-auth.guard';
+import { GlobalAdminGuard } from '../../../auth/infrastructure/guards/global-admin.guard';
+import { ListarClientesUseCase } from '../../application/use-cases/listar-clientes.use-case';
 import { RegistrarClienteUseCase } from '../../application/use-cases/registrar-cliente.use-case';
 import { SuspenderClienteUseCase } from '../../application/use-cases/suspender-cliente.use-case';
 import { ReactivarClienteUseCase } from '../../application/use-cases/reactivar-cliente.use-case';
+import { CrearClienteUseCase } from '../../application/use-cases/crear-cliente.use-case';
 import { CrearCicloVigenteUseCase } from '../../application/use-cases/crear-ciclo-vigente.use-case';
 import { ClienteEntity } from '../../domain/entities/cliente.entity';
 import { CicloVigenteEntity } from '../../domain/entities/ciclo-vigente.entity';
@@ -45,15 +43,15 @@ import {
   CicloVigenteOverlapError,
 } from '../../domain/errors/clientes.errors';
 
-// ─── Factories de entidades mock ──────────────────────────────────────────────
+// ─── Factories ────────────────────────────────────────────────────────────────
 
-function makeMockCliente(): ClienteEntity {
+function makeMockCliente(overrides?: Partial<{ activo: boolean }>): ClienteEntity {
   return ClienteEntity.create({
     nombre: 'Acme Corp',
     razonSocial: 'Acme S.A.',
     cuit: '20123456789',
     dbName: 'soporte_acme',
-    activo: true,
+    activo: overrides?.activo ?? true,
   });
 }
 
@@ -68,8 +66,14 @@ function makeMockCiclo(): CicloVigenteEntity {
 
 // ─── Mocks de use cases ───────────────────────────────────────────────────────
 
+function makeMockListar(): vi.Mocked<ListarClientesUseCase> {
+  return { execute: vi.fn() } as unknown as vi.Mocked<ListarClientesUseCase>;
+}
 function makeMockRegistrar(): vi.Mocked<RegistrarClienteUseCase> {
   return { execute: vi.fn() } as unknown as vi.Mocked<RegistrarClienteUseCase>;
+}
+function makeMockCrear(): vi.Mocked<CrearClienteUseCase> {
+  return { execute: vi.fn() } as unknown as vi.Mocked<CrearClienteUseCase>;
 }
 function makeMockSuspender(): vi.Mocked<SuspenderClienteUseCase> {
   return { execute: vi.fn() } as unknown as vi.Mocked<SuspenderClienteUseCase>;
@@ -82,120 +86,230 @@ function makeMockCrearCiclo(): vi.Mocked<CrearCicloVigenteUseCase> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ClientesController
+// GET /clientes (T2.4)
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('ClientesController', () => {
+describe('ClientesController — GET /clientes (T2.4)', () => {
   let controller: ClientesController;
-  let registrar: vi.Mocked<RegistrarClienteUseCase>;
+  let listar: vi.Mocked<ListarClientesUseCase>;
+  let crear: vi.Mocked<CrearClienteUseCase>;
   let suspender: vi.Mocked<SuspenderClienteUseCase>;
   let reactivar: vi.Mocked<ReactivarClienteUseCase>;
 
   beforeEach(() => {
-    registrar = makeMockRegistrar();
+    listar = makeMockListar();
+    crear = makeMockCrear();
     suspender = makeMockSuspender();
     reactivar = makeMockReactivar();
-    controller = new ClientesController(registrar, suspender, reactivar);
+    controller = new ClientesController(listar, crear, suspender, reactivar);
   });
 
-  describe('create() — POST /clientes', () => {
-    it('retorna el ClienteResponseDto con los datos del cliente', async () => {
-      const cliente = makeMockCliente();
-      registrar.execute.mockResolvedValue(Result.ok(cliente));
+  it('is_global_admin=true → 200 con lista de clientes', async () => {
+    const cliente = makeMockCliente();
+    listar.execute.mockResolvedValue([cliente]);
 
-      const response = await controller.create({
-        nombre: 'Acme Corp',
-        razonSocial: 'Acme S.A.',
-        cuit: '20123456789',
-        dbName: 'soporte_acme',
-      });
+    const response = await controller.listar();
 
-      expect(response).toMatchObject({
-        id: cliente.id,
-        nombre: 'Acme Corp',
-        razonSocial: 'Acme S.A.',
-        cuit: '20123456789',
-        dbName: 'soporte_acme',
-        activo: true,
-      });
-    });
-
-    it('lanza ConflictException (409) cuando db_name ya existe', async () => {
-      registrar.execute.mockResolvedValue(Result.fail(new ClienteConflictError('soporte_acme')));
-
-      await expect(
-        controller.create({ nombre: 'X', razonSocial: null, cuit: null, dbName: 'soporte_acme' }),
-      ).rejects.toThrow(ConflictException);
-    });
-
-    it('el response incluye id, nombre, razonSocial, cuit, dbName, activo, deletedAt', async () => {
-      const cliente = makeMockCliente();
-      registrar.execute.mockResolvedValue(Result.ok(cliente));
-
-      const response = await controller.create({
-        nombre: 'X',
-        razonSocial: null,
-        cuit: null,
-        dbName: 'x_db',
-      });
-
-      expect(response).toHaveProperty('id');
-      expect(response).toHaveProperty('nombre');
-      expect(response).toHaveProperty('razonSocial');
-      expect(response).toHaveProperty('cuit');
-      expect(response).toHaveProperty('dbName');
-      expect(response).toHaveProperty('activo');
-      expect(response).toHaveProperty('deletedAt');
-    });
+    expect(response).toHaveLength(1);
+    expect(response[0].id).toBe(cliente.id);
+    expect(response[0].nombre).toBe('Acme Corp');
   });
 
-  describe('suspend() — DELETE /clientes/:id', () => {
-    it('retorna void (204) cuando suspensión exitosa', async () => {
-      suspender.execute.mockResolvedValue(Result.ok(undefined));
-      const result = await controller.suspend('some-id');
-      expect(result).toBeUndefined();
-    });
+  it('lista vacía → 200 con array vacío (no 404)', async () => {
+    listar.execute.mockResolvedValue([]);
 
-    it('lanza NotFoundException (404) cuando el cliente no existe', async () => {
-      suspender.execute.mockResolvedValue(Result.fail(new ClienteNotFoundError('non-existent')));
-      await expect(controller.suspend('non-existent')).rejects.toThrow(NotFoundException);
-    });
+    const response = await controller.listar();
+
+    expect(response).toEqual([]);
   });
 
-  describe('reactivar() — PUT /clientes/:id/reactivar', () => {
-    it('retorna void cuando reactivación exitosa', async () => {
-      reactivar.execute.mockResolvedValue(Result.ok(undefined));
-      const result = await controller.reactivar('some-id');
-      expect(result).toBeUndefined();
-    });
+  it('cada ítem tiene id, nombre, activo, dbName', async () => {
+    const cliente = makeMockCliente();
+    listar.execute.mockResolvedValue([cliente]);
 
-    it('lanza NotFoundException (404) cuando el cliente no existe', async () => {
-      reactivar.execute.mockResolvedValue(Result.fail(new ClienteNotFoundError('non-existent')));
-      await expect(controller.reactivar('non-existent')).rejects.toThrow(NotFoundException);
-    });
+    const response = await controller.listar();
+
+    expect(response[0]).toHaveProperty('id');
+    expect(response[0]).toHaveProperty('nombre');
+    expect(response[0]).toHaveProperty('activo');
+    expect(response[0]).toHaveProperty('dbName');
+  });
+
+  it('GET / tiene GlobalAdminGuard aplicado (metadata)', () => {
+    const GUARDS_METADATA = '__guards__';
+    // NestJS almacena guards de método en descriptor.value (el fn mismo), no con propertyKey
+    const methodFn = ClientesController.prototype.listar;
+    const methodGuards: unknown[] = Reflect.getMetadata(GUARDS_METADATA, methodFn) ?? [];
+    const controllerGuards: unknown[] = Reflect.getMetadata(GUARDS_METADATA, ClientesController) ?? [];
+    const guardIsApplied =
+      methodGuards.some((g) => g === GlobalAdminGuard) ||
+      controllerGuards.some((g) => g === GlobalAdminGuard);
+    expect(guardIsApplied).toBe(true);
   });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// T1.3 — ClientesController protegido con JwtAuthGuard
+// POST /clientes — provisioning con CrearClienteUseCase (T2.4)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('ClientesController — POST /clientes (T2.4)', () => {
+  let controller: ClientesController;
+  let listar: vi.Mocked<ListarClientesUseCase>;
+  let crear: vi.Mocked<CrearClienteUseCase>;
+  let suspender: vi.Mocked<SuspenderClienteUseCase>;
+  let reactivar: vi.Mocked<ReactivarClienteUseCase>;
+
+  beforeEach(() => {
+    listar = makeMockListar();
+    crear = makeMockCrear();
+    suspender = makeMockSuspender();
+    reactivar = makeMockReactivar();
+    controller = new ClientesController(listar, crear, suspender, reactivar);
+  });
+
+  it('is_global_admin=true con body válido → 201 con id, nombre, db_name, activo:true', async () => {
+    const cliente = makeMockCliente();
+    crear.execute.mockResolvedValue(Result.ok(cliente));
+
+    const response = await controller.create({
+      nombre: 'Acme Corp',
+      razonSocial: null,
+      cuit: null,
+      dbName: 'soporte_acme',
+      adminEmail: 'admin@acme.com',
+      adminNombre: 'Admin',
+      adminApellido: 'User',
+      adminPassword: 'securepass123',
+    });
+
+    expect(response.id).toBe(cliente.id);
+    expect(response.nombre).toBe('Acme Corp');
+    expect(response.dbName).toBe('soporte_acme');
+    expect(response.activo).toBe(true);
+  });
+
+  it('adminPassword MUST NOT aparecer en la respuesta', async () => {
+    const cliente = makeMockCliente();
+    crear.execute.mockResolvedValue(Result.ok(cliente));
+
+    const response = await controller.create({
+      nombre: 'Acme Corp',
+      razonSocial: null,
+      cuit: null,
+      dbName: 'soporte_acme',
+      adminEmail: 'admin@acme.com',
+      adminNombre: 'Admin',
+      adminApellido: 'User',
+      adminPassword: 'securepass123',
+    });
+
+    const keys = Object.keys(response);
+    expect(keys).not.toContain('adminPassword');
+    expect(keys).not.toContain('password');
+    expect(keys).not.toContain('passwordHash');
+  });
+
+  it('db_name duplicado → 409 ConflictException', async () => {
+    crear.execute.mockResolvedValue(Result.fail(new ClienteConflictError('soporte_acme')));
+
+    await expect(
+      controller.create({
+        nombre: 'Acme',
+        razonSocial: null,
+        cuit: null,
+        dbName: 'soporte_acme',
+        adminEmail: 'admin@acme.com',
+        adminNombre: 'Admin',
+        adminApellido: 'User',
+        adminPassword: 'pass',
+      }),
+    ).rejects.toThrow(ConflictException);
+  });
+
+  it('fallo de provisioning (throw) → InternalServerErrorException', async () => {
+    crear.execute.mockRejectedValue(new Error('[Provisioning] Error en migración'));
+
+    await expect(
+      controller.create({
+        nombre: 'Acme',
+        razonSocial: null,
+        cuit: null,
+        dbName: 'new_acme',
+        adminEmail: 'admin@acme.com',
+        adminNombre: 'Admin',
+        adminApellido: 'User',
+        adminPassword: 'pass',
+      }),
+    ).rejects.toThrow(InternalServerErrorException);
+  });
+
+  it('POST / tiene GlobalAdminGuard aplicado (metadata)', () => {
+    const GUARDS_METADATA = '__guards__';
+    // NestJS almacena guards de método en descriptor.value (el fn mismo), no con propertyKey
+    const methodFn = ClientesController.prototype.create;
+    const methodGuards: unknown[] = Reflect.getMetadata(GUARDS_METADATA, methodFn) ?? [];
+    const controllerGuards: unknown[] = Reflect.getMetadata(GUARDS_METADATA, ClientesController) ?? [];
+    const hasGlobalAdmin =
+      methodGuards.some((g) => g === GlobalAdminGuard) ||
+      controllerGuards.some((g) => g === GlobalAdminGuard);
+    expect(hasGlobalAdmin).toBe(true);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DELETE /clientes/:id y PUT /clientes/:id/reactivar (regresión — no afectados por T2.4/T2.5)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('ClientesController — suspend/reactivar (regresión)', () => {
+  let controller: ClientesController;
+  let listar: vi.Mocked<ListarClientesUseCase>;
+  let crear: vi.Mocked<CrearClienteUseCase>;
+  let suspender: vi.Mocked<SuspenderClienteUseCase>;
+  let reactivar: vi.Mocked<ReactivarClienteUseCase>;
+
+  beforeEach(() => {
+    listar = makeMockListar();
+    crear = makeMockCrear();
+    suspender = makeMockSuspender();
+    reactivar = makeMockReactivar();
+    controller = new ClientesController(listar, crear, suspender, reactivar);
+  });
+
+  it('suspend() retorna void (204) cuando exitoso', async () => {
+    suspender.execute.mockResolvedValue(Result.ok(undefined));
+    const result = await controller.suspend('some-id');
+    expect(result).toBeUndefined();
+  });
+
+  it('suspend() lanza NotFoundException (404) cuando no existe', async () => {
+    suspender.execute.mockResolvedValue(Result.fail(new ClienteNotFoundError('non-existent')));
+    await expect(controller.suspend('non-existent')).rejects.toThrow(NotFoundException);
+  });
+
+  it('reactivar() retorna void cuando exitoso', async () => {
+    reactivar.execute.mockResolvedValue(Result.ok(undefined));
+    const result = await controller.reactivar('some-id');
+    expect(result).toBeUndefined();
+  });
+
+  it('reactivar() lanza NotFoundException (404) cuando no existe', async () => {
+    reactivar.execute.mockResolvedValue(Result.fail(new ClienteNotFoundError('non-existent')));
+    await expect(controller.reactivar('non-existent')).rejects.toThrow(NotFoundException);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T1.3 — Protección JwtAuthGuard (regresión — ya cubierta en PR1)
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('ClientesController — protección JwtAuthGuard (T1.3)', () => {
-  /**
-   * Verifica a nivel de metadatos que JwtAuthGuard está aplicado en el controlador.
-   * Falla en RED porque @UseGuards no está en el controlador aún.
-   * Pasa en GREEN (T1.4) cuando se agrega @UseGuards(JwtAuthGuard).
-   *
-   * Invariante: guards sin auth deben rechazar con 401 (lo verifica JwtAuthGuard directamente).
-   */
   it('tiene JwtAuthGuard aplicado a nivel de controlador (metadata)', () => {
     const GUARDS_METADATA = '__guards__';
     const guards: unknown[] = Reflect.getMetadata(GUARDS_METADATA, ClientesController) ?? [];
     expect(guards.some((g) => g === JwtAuthGuard)).toBe(true);
   });
 
-  it('JwtAuthGuard lanza UnauthorizedException sin header Authorization (simula GET /clientes sin token)', () => {
-    // Verifica el comportamiento del guard que protegerá el controlador
+  it('JwtAuthGuard lanza UnauthorizedException sin header Authorization', () => {
     const mockTokenService = { verifyJwt: vi.fn() };
     const jwtGuard = new JwtAuthGuard(mockTokenService as any);
 
@@ -207,7 +321,7 @@ describe('ClientesController — protección JwtAuthGuard (T1.3)', () => {
     expect(() => jwtGuard.canActivate(ctx)).toThrow(UnauthorizedException);
   });
 
-  it('JwtAuthGuard lanza UnauthorizedException con token expirado/malformado (simula POST /clientes)', () => {
+  it('JwtAuthGuard lanza UnauthorizedException con token expirado/malformado', () => {
     const mockTokenService = { verifyJwt: vi.fn().mockReturnValue(null) };
     const jwtGuard = new JwtAuthGuard(mockTokenService as any);
 
@@ -219,7 +333,7 @@ describe('ClientesController — protección JwtAuthGuard (T1.3)', () => {
     expect(() => jwtGuard.canActivate(ctx)).toThrow(UnauthorizedException);
   });
 
-  it('JwtAuthGuard retorna true con token válido (permite acceso a guards subsiguientes)', () => {
+  it('JwtAuthGuard retorna true con token válido', () => {
     const validPayload = {
       sub: 'user-uuid',
       cliente_id: 'c-uuid',
@@ -243,10 +357,10 @@ describe('ClientesController — protección JwtAuthGuard (T1.3)', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CiclosVigentesController
+// CiclosVigentesController (regresión)
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('CiclosVigentesController', () => {
+describe('CiclosVigentesController (regresión)', () => {
   let controller: CiclosVigentesController;
   let crearCiclo: vi.Mocked<CrearCicloVigenteUseCase>;
 
@@ -256,7 +370,7 @@ describe('CiclosVigentesController', () => {
   });
 
   describe('create() — POST /ciclos-vigentes', () => {
-    it('retorna el CicloVigenteResponseDto con los datos del ciclo', async () => {
+    it('retorna el CicloVigenteResponseDto', async () => {
       const ciclo = makeMockCiclo();
       crearCiclo.execute.mockResolvedValue(Result.ok(ciclo));
 
@@ -267,14 +381,10 @@ describe('CiclosVigentesController', () => {
         activo: true,
       });
 
-      expect(response).toMatchObject({
-        id: ciclo.id,
-        nombre: 'Ejercicio 2026',
-        activo: true,
-      });
+      expect(response).toMatchObject({ id: ciclo.id, nombre: 'Ejercicio 2026', activo: true });
     });
 
-    it('lanza UnprocessableEntityException (422) en solapamiento de fechas', async () => {
+    it('lanza UnprocessableEntityException (422) en solapamiento', async () => {
       crearCiclo.execute.mockResolvedValue(Result.fail(new CicloVigenteOverlapError()));
 
       await expect(
