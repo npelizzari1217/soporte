@@ -1,100 +1,159 @@
-# Verify Report: admin-general — PR1
+# Verify Report — PR2 admin-general (T2.1–T2.16)
 
-> Generado: 2026-06-30 | Scope: PR1 (T1.1–T1.10) | Verifier: sdd-verify
-> Rama: feat/admin-general-pr1-security | Verdict: PASS WITH WARNINGS
+> Generado: 2026-06-30 | Verificador: sdd-verify | Rama: feat/admin-general-pr2-clientes-ciclos (PR #16)
+> Artifacts leídos: spec (clientes-tenancy), tasks (obs #1607), apply-progress (obs #1610), design.md
 
 ---
 
-## Suite results (runs reales)
+## Verdict: PASS WITH WARNINGS
 
-| Suite | Archivos | Tests | tsc | Lint |
-|-------|----------|-------|-----|------|
-| Backend | 116 | 1784 PASS | clean | clean |
-| Frontend | 50 | 401 PASS | clean | 2 warnings pre-existentes (no son del PR1) |
+**0 CRITICAL — 2 WARNING — 4 SUGGESTION**
+
+---
+
+## Evidencia real (números, no suposiciones)
+
+| Comando | Resultado |
+|---------|-----------|
+| `pnpm test` (vitest) | 1831 tests PASS, 0 FAIL — 122 test files — 94.53s |
+| `pnpm lint` | 0 errores, 0 warnings |
+| `tsc --noEmit` | 0 errores |
 
 ---
 
 ## CRITICAL (0)
 
-Ninguno.
+Ninguno. El PR puede mergearse con los warnings documentados.
 
 ---
 
 ## WARNING (2)
 
-### W1 — GlobalAdminGuard no registrado/exportado en AuthModule
+### W1 — adminEmail 409 test ausente
+**Archivo**: `backend/src/clientes/interface/controllers/clientes.controller.spec.ts`
 
-**File**: `backend/src/auth/auth.module.ts`
+El DOD de T2.4 lista explícitamente `"adminEmail duplicado → 409"` como test requerido.
+El spec (clientes-tenancy/POST /clientes) define el scenario "adminEmail ya registrado es rechazado con 409".
+**Este test NO existe en el spec file.** Solo `db_name` duplicado y provisioning-fail están cubiertos.
 
-`GlobalAdminGuard` es `@Injectable()` y vive en `auth/infrastructure/guards/` pero NO está en `AuthModule.providers[]` ni en `AuthModule.exports[]`. El tasks T1.2 dice "registrar en auth.module.ts **si se inyecta vía DI** (o exportar como clase plana)". La implementación eligió la ruta clase-plana, lo que funciona porque el guard no tiene dependencias de constructor (NestJS instancia en demanda).
+Remedio: agregar en PR3 o como commit de fix:
+```ts
+it('adminEmail ya registrado → 409 ConflictException', async () => {
+  crear.execute.mockResolvedValue(Result.fail(new ClienteConflictError('admin@empresa.com')));
+  await expect(controller.create({ ...validBody, adminEmail: 'admin@empresa.com' }))
+    .rejects.toThrow(ConflictException);
+});
+```
 
-El problema aparece en PR2: los controllers que apliquen `@UseGuards(JwtAuthGuard, GlobalAdminGuard)` deberán importar el archivo de la clase directamente en lugar de recibirlo por `AuthModule`. Esto rompe el patrón de módulo como boundary.
+### W2 — PermissionsGuard y TenantGuard sin tests unitarios propios
+**Archivos**: `backend/src/auth/infrastructure/guards/permissions.guard.ts`, `tenant.guard.ts`
 
-**Recomendación**: agregar `GlobalAdminGuard` a `AuthModule.providers[]` y `AuthModule.exports[]` **antes de que aterrice PR2**.
+Los tests de `CiclosController` verifican que los guards estén REGISTRADOS (metadata reflection)
+pero no que EJECUTEN correctamente. Los spec scenarios:
+- "USUARIO (sin ciclo:gestionar) → 403"
+- "Sin auth → 401 en /ciclos"
+- "X-Tenant-Id resuelve al tenant objetivo"
 
-### W2 — Path de migración en tasks.md incorrecto
-
-**File**: `openspec/changes/admin-general/tasks.md`, task T1.7
-
-`tasks.md` dice: `backend/prisma/migrations/20260630_set_global_admin_nestor/migration.sql`
-
-Path real: `backend/prisma_master/migrations/20260630000000_set_global_admin_nestor/migration.sql`
-
-El directorio `backend/prisma/` **no existe** en este repo (solo existe `backend/prisma_master/`). La implementación es CORRECTA — el apply lo documentó como corrección. El tasks.md tiene una referencia inválida que puede confundir PR2+.
-
----
-
-## SUGGESTION (2)
-
-### S1 — use-session.test.ts testea lógica extraída, no el hook real
-
-**File**: `frontend/src/shared/hooks/use-session.test.ts`
-
-El test define `deriveIsGlobalAdmin()` como función espejo de la lógica del hook y la testea directamente, sin llamar `useSession()` vía `renderHook`. La forma de retorno del hook `{ user, isLoading, can, isGlobalAdmin }` no se verifica en ningún test. Es aceptable dado el constraint de React context, pero el DOD de T1.10 dice "hook retorna `{ user, isLoading, can, isGlobalAdmin }`" — ese contrato no está directamente asertado.
-
-### S2 — Comentario de forwardRef() engañoso en ClientesModule
-
-**File**: `backend/src/clientes/clientes.module.ts`, línea 81
-
-El comentario dice "AuthModule NO importa ClientesModule → sin circularidad" pero usa `forwardRef()`. El `forwardRef` es CORRECTO (hay imports a nivel de archivo Node.js: `auth.module.ts` importa archivos del módulo clientes, y `clientes.module.ts` importa `auth.module.ts`). El comentario debería aclarar que es por circularidad a nivel de archivos Node.js, no del grafo de módulos NestJS.
+...son verificados solo por inspección de metadata (`Reflect.getMetadata`), no por ejecución real.
+`GlobalAdminGuard` tiene 5 tests propios. `PermissionsGuard` y `TenantGuard` no tienen
+archivos `*.guard.spec.ts`. Esta brecha es pre-existente (guards introducidos antes de PR2).
 
 ---
 
-## Cobertura de requirements spec (T1.x)
+## SUGGESTION (4)
 
-| Tarea | Spec scenario | Estado |
-|-------|---------------|--------|
-| T1.1/T1.2 | GlobalAdminGuard: false→403, undefined→403, null→403, true→pass, O(1) no-DB | ✓ 5 tests |
-| T1.3/T1.4 | ClientesController: metadata guard, no-auth→401, expired→401, valid→passes | ✓ 4 tests |
-| T1.5/T1.6 | CiclosVigentesController: metadata guard, no-auth→401, expired→401 | ✓ 3 tests (spec no exige "valid→passes" para este controller) |
-| T1.7 | Migración idempotente nestor@sesitec.com.ar → is_global_admin=true | ✓ UPDATE WHERE (no-op si no existe) |
-| T1.8/T1.9 | JwtPayload frontend: is_global_admin?: boolean, retrocompat, cliente_nombre presente | ✓ 4 tests |
-| T1.10 | useSession.isGlobalAdmin: true/false/undefined/null + invariante ADMINISTRADOR | ✓ 5 tests (lógica extraída) |
+### S1 — cicloVigenteId placeholder
+**Archivo**: `backend/src/clientes/infrastructure/persistence/prisma/prisma-ciclo-cliente.repository.ts:85`
+
+`save()` usa `ciclo.id` como placeholder de `cicloVigenteId` (campo NOT NULL, sin FK real).
+**Técnicamente correcto**: no hay FK constraint, el tickets-module no realiza lookups en master
+usando este campo. Sin embargo, los ciclos creados vía admin panel no tienen entrada
+correspondiente en `master.ciclos_vigentes`. Cuando ambos sistemas de ciclos se unifiquen,
+habrá que migrar estos placeholders.
+
+### S2 — Filtrado de soft-deleted en memoria
+**Archivo**: `backend/src/clientes/application/use-cases/listar-clientes.use-case.ts:22`
+
+`findAll()` devuelve TODOS los clientes (incluyendo `deleted_at IS NOT NULL`) y el use case
+filtra en app layer. Funcionalmente correcto; ineficiente a escala.
+Mejor: push `WHERE deleted_at IS NULL` al `PrismaClienteRepository.findAll()`.
+
+### S3 — DTOs sin class-validator decorators
+**Archivos**: `backend/src/clientes/interface/dtos/create-ciclo.dto.ts`, `create-cliente.dto.ts`
+
+No hay `ValidationPipe` en `main.ts` y ningún DTO del proyecto usa class-validator.
+El spec dice `adminEmail: string (email válido)` — no se enforcea en el HTTP boundary.
+Strings de fecha no parseables generan `Invalid Date` que puede escapar la validación
+de la entidad (NaN comparisons son siempre false) y resultar en HTTP 500 en vez de 400.
+
+### S4 — Solapamiento con fechas adyacentes puede ser falso positivo
+**Archivo**: `backend/src/clientes/application/use-cases/crear-ciclo-tenant.use-case.ts:63`
+
+`dto.fechaFin >= existente.fechaInicio` es `true` cuando son iguales. Si ciclo A termina
+el 31/12 y ciclo B empieza el 31/12, el check bloquea la creación. Depende de si negocio
+considera ciclos adyacentes como solapamiento. La base spec no aclara si los rangos son
+`[inicio, fin)` o `[inicio, fin]`.
 
 ---
 
-## Invariantes del spec verificadas
+## Checks adversariales confirmados
 
-- `is_global_admin=true` != rol ADMINISTRADOR: ✓ ADMINISTRADOR con false → ForbiddenException (guard) y isGlobalAdmin false (hook).
-- GlobalAdminGuard no consulta DB: ✓ sin constructor injections.
-- Retrocompatibilidad: ✓ campo opcional en frontend, `undefined` → false en hook.
-- Composabilidad: ✓ guard es standalone, composable con `@UseGuards(JwtAuthGuard, GlobalAdminGuard)`.
+### cicloVigenteId placeholder: SAFE
+- Campo NOT NULL, sin FK constraint (schema: `/// Soft ref → master.ciclos_vigentes.id. Sin FK`)
+- `tickets/infrastructure` NUNCA hace lookup en master por `cicloVigenteId`
+- Usar `ciclo.id` es determinístico, único (UUIDv7), sin violación de constraint
+
+### /ciclos vs /ciclos-vigentes: CORRECTAMENTE SEPARADOS
+- `CiclosController` → `@Controller('ciclos')` → `ciclos_cliente` del tenant ✅
+- `CiclosVigentesController` → `@Controller('ciclos-vigentes')` → `master.ciclos_vigentes` ✅
+
+### adminPassword en respuesta: NO EXPUESTO
+- `ClienteResponseDto.fromEntity()` no incluye `adminPassword`, `password`, ni `passwordHash`
+- Test en `clientes.controller.spec.ts:187-206` lo verifica explícitamente ✅
+
+### ciclo:gestionar en RBAC seed: EXISTE
+- `20260629100000_seed_rbac_4_roles/migration.sql:52` — permiso definido
+- ADMINISTRADOR tiene `ciclo:gestionar` en sus 19 permisos (línea 115) ✅
+
+### Guards en CiclosController: CORRECTAMENTE REGISTRADOS
+- Nivel controlador: `JwtAuthGuard + TenantGuard`
+- Nivel método: `PermissionsGuard + @RequirePermissions('ciclo:gestionar')`
+- Metadata tests confirman registro; behavior tests ausentes (W2) ⚠️
+
+### AuthModule exporta TenantGuard + PermissionsGuard: VERIFICADO
+- `auth.module.ts:180-181` exporta ambos
+- `ClientesModule` usa `forwardRef(() => AuthModule)` → DI funcional ✅
 
 ---
 
-## Compliance arquitectónica
+## Estado de tareas PR2
 
-- GlobalAdminGuard en `infrastructure/guards/`: ✓ (auth-access skill — auth providers are infrastructure)
-- Guard sin imports de domain/application: ✓ (solo `JwtPayload` del domain port)
-- Use cases intactos: ✓
-- Controllers son thin (zero logic): ✓
-- `forwardRef` justificado: ✓ (circular file imports Node.js, no NestJS module graph)
+| Tarea | Estado | Notas |
+|-------|--------|-------|
+| T2.1 | ✅ | findAll() implementado en repo e interfaz |
+| T2.2 | ✅ | 4 tests — ListarClientesUseCase.spec.ts |
+| T2.3 | ✅ | ListarClientesUseCase — filtra en app layer |
+| T2.4 | ⚠️ | 5/6 tests — falta adminEmail 409 (W1) |
+| T2.5 | ✅ | GET /clientes + POST /clientes → provisioning |
+| T2.6 | ✅ | CicloClienteEntity + ICicloClienteRepository |
+| T2.7 | ✅ | 4 tests — ListarCiclosUseCase.spec.ts |
+| T2.8 | ✅ | ListarCiclosUseCase implementado |
+| T2.9 | ✅ | 6 tests — CrearCicloTenantUseCase.spec.ts |
+| T2.10 | ✅ | CrearCicloTenantUseCase con overlap check |
+| T2.11 | ✅ | 5 tests — ActivarCicloUseCase.spec.ts |
+| T2.12 | ✅ | ActivarCicloUseCase — lanza NotFoundException |
+| T2.13 | ✅ | PrismaCicloClienteRepository ($transaction atómico) |
+| T2.14 | ✅ | 17 tests — CiclosController.spec.ts |
+| T2.15 | ✅ | CiclosController con guards correctos |
+| T2.16 | ✅ | ClientesModule wired + ciclo:gestionar en seed |
 
 ---
 
-## Recomendación final
+## Recomendación
 
-**PASS WITH WARNINGS. PR1 puede mergearse.**
+**PR #16 puede mergearse.** Ningún CRITICAL bloquea el merge.
 
-Acción bloqueante antes de PR2: exportar `GlobalAdminGuard` desde `AuthModule` (W1).
-Acción no bloqueante: corregir path en `tasks.md` T1.7 (W2, documentación).
+Antes de lanzar PR3, agregar el test faltante de W1 (adminEmail 409).
+Los tests de PermissionsGuard/TenantGuard (W2) pueden agregarse en un commit de housekeeping
+junto con PR3 (que toca `AuthModule`).
+
