@@ -222,6 +222,23 @@ describe('ClientesController — POST /clientes (T2.4)', () => {
     ).rejects.toThrow(ConflictException);
   });
 
+  it('adminEmail duplicado → 409 ConflictException', async () => {
+    crear.execute.mockResolvedValue(Result.fail(new ClienteConflictError('admin@acme.com')));
+
+    await expect(
+      controller.create({
+        nombre: 'Acme',
+        razonSocial: null,
+        cuit: null,
+        dbName: 'soporte_acme',
+        adminEmail: 'admin@acme.com',
+        adminNombre: 'Admin',
+        adminApellido: 'User',
+        adminPassword: 'pass',
+      }),
+    ).rejects.toThrow(ConflictException);
+  });
+
   it('fallo de provisioning (throw) → InternalServerErrorException', async () => {
     crear.execute.mockRejectedValue(new Error('[Provisioning] Error en migración'));
 
