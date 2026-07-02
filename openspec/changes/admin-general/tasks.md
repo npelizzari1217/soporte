@@ -550,7 +550,7 @@ PR6 depende de PR5.
 
 ### T5.1 y T5.2 primero — son el desbloqueo crítico
 
-**T5.1** — [RED] Test BFF: `x-tenant-id` se reenvía al backend
+**T5.1** — [x] [RED] Test BFF: `x-tenant-id` se reenvía al backend
 - Archivos: `frontend/src/app/api/[...path]/route.test.ts` (modificar)
 - Tests:
   - Request con `x-tenant-id: some-uuid` → el fetch al backend incluye `x-tenant-id: some-uuid`
@@ -558,12 +558,12 @@ PR6 depende de PR5.
   - Headers `content-type` y `accept` siguen siendo reenviados (no-regression)
 - Spec ref: ADR-3 del design
 
-**T5.2** — [GREEN] Agregar `x-tenant-id` a `ALLOWED_HEADERS` en BFF
+**T5.2** — [x] [GREEN] Agregar `x-tenant-id` a `ALLOWED_HEADERS` en BFF
 - Archivos: `frontend/src/app/api/[...path]/route.ts` (modificar)
 - Cambio: agregar `"x-tenant-id"` al Set `ALLOWED_HEADERS`
 - DOD: T5.1 en GREEN; `tsc --noEmit` pasa
 
-**T5.3** — [RED] Test `TenantContext`
+**T5.3** — [x] [RED] Test `TenantContext`
 - Archivos: `frontend/src/shared/providers/tenant-context.test.tsx` (nuevo)
 - Tests:
   - Se inicializa con `clienteId` del JWT para usuario regular; `cicloId` = ciclo activo
@@ -572,19 +572,19 @@ PR6 depende de PR5.
   - `setCiclo(cicloId, cicloNombre)` actualiza `cicloId` en contexto
   - Todos los campos expuestos: `{ clienteId, clienteNombre, cicloId, cicloNombre, setCliente, setCiclo }`
 
-**T5.4** — [GREEN] Crear `TenantContext` provider
+**T5.4** — [x] [GREEN] Crear `TenantContext` provider
 - Archivos: `frontend/src/shared/providers/tenant-context.tsx` (nuevo)
 - `TenantContextValue`: `{ clienteId: string | null, clienteNombre: string | null, cicloId: string | null, cicloNombre: string | null, setCliente, setCiclo }`
 - Inicialización según rol del usuario (leído desde `useSession`)
 - DOD: T5.3 en GREEN
 
-**T5.5** — Integrar TenantContext en providers y layout
+**T5.5** — [x] Integrar TenantContext en providers y layout
 - Archivos:
   - `frontend/src/shared/providers/providers.tsx` (modificar — agregar `TenantContextProvider`)
   - `frontend/src/app/(dashboard)/layout.tsx` (verificar que providers envuelven correctamente)
 - DOD: TenantContext disponible en todos los componentes del dashboard; tsc pasa
 
-**T5.6** — [RED] Test hooks `useClientes` y `useCiclos`
+**T5.6** — [x] [RED] Test hooks `useClientes` y `useCiclos`
 - Archivos:
   - `frontend/src/features/admin/hooks/use-clientes.test.ts` (nuevo)
   - `frontend/src/features/admin/hooks/use-ciclos.test.ts` (nuevo)
@@ -596,13 +596,13 @@ PR6 depende de PR5.
   - Default ciclo activo en respuesta
   - Re-fetch cuando `clienteId` cambia
 
-**T5.7** — [GREEN] Implementar hooks `useClientes` y `useCiclos`
+**T5.7** — [x] [GREEN] Implementar hooks `useClientes` y `useCiclos`
 - Archivos:
   - `frontend/src/features/admin/hooks/use-clientes.ts` (nuevo)
   - `frontend/src/features/admin/hooks/use-ciclos.ts` (nuevo)
 - DOD: T5.6 en GREEN; usan `apiFetch` del cliente compartido
 
-**T5.8** — [RED] Test `ClienteSelector` component
+**T5.8** — [x] [RED] Test `ClienteSelector` component
 - Archivos: `frontend/src/features/admin/components/ClienteSelector.test.tsx` (nuevo)
 - Tests:
   - Renderizado solo para `isGlobalAdmin=true`; `null` para otros usuarios
@@ -612,12 +612,12 @@ PR6 depende de PR5.
   - Estado de carga correcto (disabled mientras carga)
 - Spec ref: `admin-ui/Selectores — Operador ve ambos selectores`
 
-**T5.9** — [GREEN] Crear `ClienteSelector` component
+**T5.9** — [x] [GREEN] Crear `ClienteSelector` component
 - Archivos: `frontend/src/features/admin/components/ClienteSelector.tsx` (nuevo)
 - Design: combobox/dropdown, glassmorphism card, premium dual mode, skeleton loader
 - DOD: T5.8 en GREEN; accesible (aria-label, keyboard nav)
 
-**T5.10** — [RED] Test `CicloSelector` component
+**T5.10** — [x] [RED] Test `CicloSelector` component
 - Archivos: `frontend/src/features/admin/components/CicloSelector.test.tsx` (nuevo)
 - Tests:
   - Renderizado para `isGlobalAdmin` y `ADMINISTRADOR`; ausente para USUARIO
@@ -626,7 +626,7 @@ PR6 depende de PR5.
   - Re-fetch de ciclos cuando `TenantContext.clienteId` cambia (cascade)
 - Spec ref: `admin-ui/Selectores — Admin-cliente ve solo selector de Ciclo`
 
-**T5.11** — [GREEN] Crear `CicloSelector` component
+**T5.11** — [x] [GREEN] Crear `CicloSelector` component
 - Archivos: `frontend/src/features/admin/components/CicloSelector.tsx` (nuevo)
 - DOD: T5.10 en GREEN
 
