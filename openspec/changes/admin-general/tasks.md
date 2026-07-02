@@ -698,7 +698,7 @@ PR6 depende de PR5.
 
 ### Grupo A: Pantalla Clientes (solo operador)
 
-**T6.1** — [RED] Test `ClientesPage`
+**T6.1** — [x] [RED] Test `ClientesPage`
 - Archivos: `frontend/src/features/admin/components/ClientesPage.test.tsx` (nuevo)
 - Tests:
   - Skeleton durante `GET /clientes`
@@ -711,13 +711,21 @@ PR6 depende de PR5.
   - Error genérico → muestra mensaje del servidor
 - Spec ref: `admin-ui/Pantalla Clientes`
 
-**T6.2** — [GREEN] Implementar pantalla Clientes
+**T6.2** — [x] [GREEN] Implementar pantalla Clientes
 - Archivos:
   - `frontend/src/app/(dashboard)/admin/clientes/page.tsx` (nuevo)
   - `frontend/src/features/admin/components/ClientesPage.tsx` (nuevo)
   - `frontend/src/features/admin/hooks/use-crear-cliente.ts` (nuevo)
   - `frontend/src/features/admin/types.ts` (nuevo — types compartidos del módulo admin)
 - DOD: T6.1 en GREEN; diseño premium dual; skeleton/empty/interactive states
+- Nota de implementación (PR6a): `types.ts` ya existía de PR5 (`Cliente` cubría todos
+  los campos necesarios) — no requirió extensión. Se agregaron acciones
+  Suspender/Reactivar (DELETE/PUT ya existentes en `ClientesController` de PR2) para
+  cumplir el bullet "acciones" de la fila-tarjeta del spec `admin-ui/Pantalla
+  Clientes`, implementadas inline en `ClientesPage.tsx` (sin hooks adicionales, fuera
+  del file-list original) para no ampliar el scope de archivos. Formulario con estado
+  controlado simple (`useState`), no react-hook-form + zod — no había validación
+  cliente-side requerida por el spec.
 
 ### Grupo B: Pantalla Ciclos
 
