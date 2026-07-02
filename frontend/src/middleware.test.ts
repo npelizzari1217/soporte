@@ -170,4 +170,85 @@ describe("middleware", () => {
     const exclusionRegex = /^(?!_next\/static|_next\/image|favicon\.ico|api|.*\.\w+$).*/;
     expect(exclusionRegex.test("_next/static/x.js")).toBe(false);
   });
+
+  // ── /admin/* route protection (admin-general PR5b — T5.14) ────────────────
+  //
+  // Spec: [SPEC:admin-ui/Pantalla Clientes — Protección de ruta]
+  // Frontend-only UX guard — the backend (GlobalAdminGuard/RolesGuard) is the
+  // real authority; this middleware only avoids rendering admin screens the
+  // user cannot use and redirects with a 307.
+
+  describe("/admin/* route protection", () => {
+    const ADMIN_CLIENTE_PAYLOAD: JwtPayload = {
+      sub: "2",
+      cliente_id: "c1",
+      email: "admin@cliente.com",
+      roles: ["ADMINISTRADOR"],
+      permisos: [],
+      is_global_admin: false,
+    };
+
+    const OPERADOR_PAYLOAD: JwtPayload = {
+      sub: "3",
+      cliente_id: "home",
+      email: "operador@sesitec.com.ar",
+      roles: [],
+      permisos: [],
+      is_global_admin: true,
+    };
+
+    it("redirects /admin/clientes to /tickets when the user is ADMINISTRADOR but not is_global_admin", async () => {
+      mockVerify.mockResolvedValueOnce(ADMIN_CLIENTE_PAYLOAD);
+      const req = makeRequest("/admin/clientes", { at: "valid-token" });
+      const res = await middleware(req);
+
+      expect(res.status).toBe(307);
+      expect(res.headers.get("location")).toContain("/tickets");
+    });
+
+    it("redirects /admin/clientes to /login when there is no session at all", async () => {
+      const req = makeRequest("/admin/clientes");
+      const res = await middleware(req);
+
+      expect(res.status).toBe(307);
+      expect(res.headers.get("location")).toContain("/login");
+      expect(mockVerify).not.toHaveBeenCalled();
+    });
+
+    it("passes through /admin/ciclos for ADMINISTRADOR (not global admin — no redirect)", async () => {
+      mockVerify.mockResolvedValueOnce(ADMIN_CLIENTE_PAYLOAD);
+      const req = makeRequest("/admin/ciclos", { at: "valid-token" });
+      const res = await middleware(req);
+
+      expect(res.status).toBe(200);
+      expect(res.headers.get("location")).toBeNull();
+    });
+
+    it("passes through /admin/reportes for is_global_admin (operador)", async () => {
+      mockVerify.mockResolvedValueOnce(OPERADOR_PAYLOAD);
+      const req = makeRequest("/admin/reportes", { at: "valid-token" });
+      const res = await middleware(req);
+
+      expect(res.status).toBe(200);
+      expect(res.headers.get("location")).toBeNull();
+    });
+
+    it("passes through /admin/clientes for is_global_admin (operador)", async () => {
+      mockVerify.mockResolvedValueOnce(OPERADOR_PAYLOAD);
+      const req = makeRequest("/admin/clientes", { at: "valid-token" });
+      const res = await middleware(req);
+
+      expect(res.status).toBe(200);
+      expect(res.headers.get("location")).toBeNull();
+    });
+
+    it("non-admin routes are unaffected: /tickets still passes through for ADMINISTRADOR", async () => {
+      mockVerify.mockResolvedValueOnce(ADMIN_CLIENTE_PAYLOAD);
+      const req = makeRequest("/tickets", { at: "valid-token" });
+      const res = await middleware(req);
+
+      expect(res.status).toBe(200);
+      expect(res.headers.get("location")).toBeNull();
+    });
+  });
 });

@@ -18,9 +18,18 @@
  *   passes through. The client single-flight (shared/api/client.ts) transparently
  *   handles the refresh on the first 401 response.
  *
+ * ADMIN-GENERAL PR5b (T5.14-T5.15) — /admin/* route protection:
+ *   Frontend-only UX guard; the backend (GlobalAdminGuard/RolesGuard) remains the
+ *   real authority. `/admin/clientes` additionally requires `is_global_admin: true`
+ *   in the decoded JWT — non-operator ADMINISTRADOR users are redirected to
+ *   /tickets instead of /login (they ARE authenticated, just lack this specific
+ *   privilege). The rest of `/admin/*` only needs the basic auth check already
+ *   enforced above (no extra claim check).
+ *
  * Spec: [SPEC:frontend-route-protection/sin-sesion]
  *       [SPEC:frontend-route-protection/jose-verificacion]
  *       [SPEC:frontend-route-protection/rutas-excluidas]  (ADR-4 on refresh-silencioso)
+ *       [SPEC:admin-ui/Pantalla Clientes — Protección de ruta]
  */
 import { NextResponse, type NextRequest } from "next/server";
 import { verifyAccessToken } from "@/shared/auth/verify";
@@ -115,6 +124,16 @@ export default async function middleware(
       secure: process.env.NODE_ENV === "production",
     });
     return res;
+  }
+
+  // ── /admin/clientes: requires is_global_admin (T5.14-T5.15) ──────────────
+  //
+  // `result` here is the decoded JwtPayload (valid + non-expired). ADMINISTRADOR
+  // (is_global_admin: false) is authenticated but lacks this specific privilege
+  // → redirect to /tickets rather than /login. Rest of /admin/* needs only the
+  // basic auth check already performed above.
+  if (pathname.startsWith("/admin/clientes") && result.is_global_admin !== true) {
+    return NextResponse.redirect(new URL("/tickets", request.url), { status: 307 });
   }
 
   // Valid, non-expired JWT → pass through
