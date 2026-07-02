@@ -746,7 +746,7 @@ PR6 depende de PR5.
 
 ### Grupo C: Pantalla Usuarios
 
-**T6.5** — [RED] Test `UsuariosPage`
+**T6.5** — [x] [RED] Test `UsuariosPage`
 - Archivos: `frontend/src/features/admin/components/UsuariosPage.test.tsx` (nuevo)
 - Tests:
   - Filas-tarjeta: nombre+apellido, email, badge rol, badge activo/inactivo
@@ -761,7 +761,7 @@ PR6 depende de PR5.
   - Email duplicado → "Este email ya está registrado"
 - Spec ref: `admin-ui/Pantalla Usuarios`
 
-**T6.6** — [GREEN] Implementar pantalla Usuarios
+**T6.6** — [x] [GREEN] Implementar pantalla Usuarios
 - Archivos:
   - `frontend/src/app/(dashboard)/admin/usuarios/page.tsx` (nuevo)
   - `frontend/src/features/admin/components/UsuariosPage.tsx` (nuevo)
