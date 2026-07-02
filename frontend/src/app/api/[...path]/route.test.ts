@@ -220,6 +220,81 @@ describe("BFF catch-all proxy", () => {
     expect(capturedAuth).toBeNull();
   });
 
+  // ─── x-tenant-id forwarding (admin-general PR5, T5.1) ─────────────────────────
+  // Spec ref: ADR-3 del design — el BFF debe reenviar x-tenant-id para que el
+  // cross-tenant del operador funcione (TenantGuard lo consume en el backend).
+
+  it("GET with x-tenant-id header → backend receives x-tenant-id forwarded", async () => {
+    let capturedTenantId: string | null = null;
+
+    server.use(
+      http.get(`${BACKEND}/api/ciclos`, ({ request }) => {
+        capturedTenantId = request.headers.get("x-tenant-id");
+        return HttpResponse.json([]);
+      }),
+    );
+
+    const req = new NextRequest("http://localhost/api/ciclos", {
+      method: "GET",
+      headers: {
+        cookie: "at=token",
+        "x-tenant-id": "some-uuid",
+      },
+    });
+
+    await GET(req, mkParams(["ciclos"]));
+
+    expect(capturedTenantId).toBe("some-uuid");
+  });
+
+  it("GET without x-tenant-id header → backend receives no x-tenant-id (no header artificial)", async () => {
+    let capturedTenantId: string | null = null;
+
+    server.use(
+      http.get(`${BACKEND}/api/ciclos`, ({ request }) => {
+        capturedTenantId = request.headers.get("x-tenant-id");
+        return HttpResponse.json([]);
+      }),
+    );
+
+    const req = new NextRequest("http://localhost/api/ciclos", {
+      method: "GET",
+      headers: { cookie: "at=token" },
+    });
+
+    await GET(req, mkParams(["ciclos"]));
+
+    expect(capturedTenantId).toBeNull();
+  });
+
+  it("GET with x-tenant-id → content-type and accept still forwarded (no-regression)", async () => {
+    let capturedContentType: string | null = null;
+    let capturedAccept: string | null = null;
+
+    server.use(
+      http.get(`${BACKEND}/api/ciclos`, ({ request }) => {
+        capturedContentType = request.headers.get("content-type");
+        capturedAccept = request.headers.get("accept");
+        return HttpResponse.json([]);
+      }),
+    );
+
+    const req = new NextRequest("http://localhost/api/ciclos", {
+      method: "GET",
+      headers: {
+        cookie: "at=token",
+        "x-tenant-id": "some-uuid",
+        "content-type": "application/json",
+        accept: "application/json",
+      },
+    });
+
+    await GET(req, mkParams(["ciclos"]));
+
+    expect(capturedContentType).toContain("application/json");
+    expect(capturedAccept).toContain("application/json");
+  });
+
   // ─── PUT/PATCH/DELETE export ──────────────────────────────────────────────────
 
   it("PUT with same-origin Origin → forwarded to backend", async () => {
