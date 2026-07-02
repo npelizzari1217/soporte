@@ -630,7 +630,7 @@ PR6 depende de PR5.
 - Archivos: `frontend/src/features/admin/components/CicloSelector.tsx` (nuevo)
 - DOD: T5.10 en GREEN
 
-**T5.12** — [RED] Test `Sidebar` dinámico por rol
+**T5.12** — [x] [RED] Test `Sidebar` dinámico por rol
 - Archivos: `frontend/src/components/shell/sidebar.test.tsx` (nuevo o modificar)
 - Tests:
   - `isGlobalAdmin=true` → sección ADMINISTRACIÓN con: Clientes, Ciclos, Usuarios, Reportes (en orden)
@@ -642,7 +642,7 @@ PR6 depende de PR5.
   - Sin feature flag → sidebar igual al actual (no-regression)
 - Spec ref: `admin-ui/Sección ADMINISTRACIÓN condicional`
 
-**T5.13** — [GREEN] Modificar `Sidebar` para ser dinámico
+**T5.13** — [x] [GREEN] Modificar `Sidebar` para ser dinámico
 - Archivos: `frontend/src/components/shell/sidebar.tsx` (modificar)
 - Container pattern: lee `useSession({ isGlobalAdmin, roles })` + TenantContext
 - Renderiza `ClienteSelector` y `CicloSelector` según nivel
@@ -650,7 +650,7 @@ PR6 depende de PR5.
 - Feature flag: `process.env.NEXT_PUBLIC_ADMIN_PANEL === 'true'` como gate
 - DOD: T5.12 en GREEN; 4 ítems operativos siguen sin cambios para usuarios no-admin
 
-**T5.14** — [RED] Test: protección de rutas `/admin/*` en middleware
+**T5.14** — [x] [RED] Test: protección de rutas `/admin/*` en middleware
 - Archivos: `frontend/src/middleware.test.ts` (modificar)
 - Tests:
   - `/admin/clientes` con `isGlobalAdmin=false` (ADMINISTRADOR) → redirect `/tickets`
@@ -659,12 +659,12 @@ PR6 depende de PR5.
   - `/admin/reportes` con is_global_admin → pasa
 - Spec ref: `admin-ui/Pantalla Clientes — Protección de ruta`
 
-**T5.15** — [GREEN] Agregar protección `/admin/*` en `middleware.ts`
+**T5.15** — [x] [GREEN] Agregar protección `/admin/*` en `middleware.ts`
 - Archivos: `frontend/src/middleware.ts` (modificar)
 - Regla: `/admin/clientes` requiere `is_global_admin=true`; resto de `/admin/*` requiere auth básica
 - DOD: T5.14 en GREEN; rutas no-admin no son afectadas
 
-**T5.16** — [RED] Test: estado "Elegí un cliente" en dashboard
+**T5.16** — [x] [RED] Test: estado "Elegí un cliente" en dashboard
 - Archivos: `frontend/src/app/(dashboard)/page.test.tsx` (nuevo o modificar)
 - Tests:
   - Operador con `clienteId=null` → placeholder "Elegí un cliente" visible; nav operativa deshabilitada
@@ -672,7 +672,7 @@ PR6 depende de PR5.
   - No-operador → nunca ve placeholder (contexto ya resuelto desde JWT)
 - Spec ref: `admin-ui/Estado "Elegí un cliente"`
 
-**T5.17** — [GREEN] Implementar estado "Elegí un cliente"
+**T5.17** — [x] [GREEN] Implementar estado "Elegí un cliente"
 - Archivos:
   - `frontend/src/app/(dashboard)/page.tsx` (modificar)
   - Posiblemente: `frontend/src/components/shell/empty-client-state.tsx` (nuevo componente)
