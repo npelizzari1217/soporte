@@ -729,7 +729,7 @@ PR6 depende de PR5.
 
 ### Grupo B: Pantalla Ciclos
 
-**T6.3** — [RED] Test `CiclosPage`
+**T6.3** — [x] [RED] Test `CiclosPage`
 - Archivos: `frontend/src/features/admin/components/CiclosPage.test.tsx` (nuevo)
 - Tests:
   - Filas-tarjeta: nombre, fechaInicio, fechaFin, badge activo (emerald) / inactivo
@@ -743,7 +743,7 @@ PR6 depende de PR5.
   - Operador ve ciclos del cliente seleccionado en TenantContext (X-Tenant-Id en request)
 - Spec ref: `admin-ui/Pantalla Ciclos`
 
-**T6.4** — [GREEN] Implementar pantalla Ciclos
+**T6.4** — [x] [GREEN] Implementar pantalla Ciclos
 - Archivos:
   - `frontend/src/app/(dashboard)/admin/ciclos/page.tsx` (nuevo)
   - `frontend/src/features/admin/components/CiclosPage.tsx` (nuevo)
