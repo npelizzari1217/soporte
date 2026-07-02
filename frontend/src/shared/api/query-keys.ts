@@ -50,5 +50,12 @@ export const queryKeys = {
      * propio del usuario (ADMINISTRADOR) o "sin cliente elegido" (operador).
      */
     ciclos: (clienteId: string | null) => ["admin", "ciclos", clienteId] as const,
+    /**
+     * GET /usuarios — discriminado por clienteId (misma razón que ciclos: el
+     * tenant resuelto cambia con X-Tenant-Id para el operador). Prefijo
+     * ["admin", "usuarios"] usado por los hooks de mutación para invalidar
+     * todas las variantes de clienteId de una sola vez.
+     */
+    usuarios: (clienteId: string | null) => ["admin", "usuarios", clienteId] as const,
   },
 } as const;
