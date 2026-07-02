@@ -144,7 +144,7 @@ PR6 depende de PR5.
 
 ### Orden: T2.1–T2.5 pueden paralelizarse internamente (dependen solo de PR1)
 
-**T2.1** — Extender `IClienteRepository` con `findAll(): Promise<Cliente[]>`
+**T2.1** — [x] Extender `IClienteRepository` con `findAll(): Promise<Cliente[]>`
 - Archivos:
   - `backend/src/clientes/domain/ports/i-cliente.repository.ts` (modificar)
   - `backend/src/clientes/infrastructure/persistence/prisma/prisma-cliente.repository.ts` (modificar)
@@ -152,7 +152,7 @@ PR6 depende de PR5.
 - Spec ref: `clientes-tenancy/GET /clientes — listar todos los tenants`
 - DOD: método compilado; sin test unitario separado (cubierto en T2.2)
 
-**T2.2** — [RED] Unit test `ListarClientesUseCase`
+**T2.2** — [x] [RED] Unit test `ListarClientesUseCase`
 - Archivos: `backend/src/clientes/application/use-cases/listar-clientes.use-case.spec.ts` (nuevo)
 - Tests mínimos:
   - Retorna array de clientes activos (deleted_at IS NULL)
@@ -161,12 +161,12 @@ PR6 depende de PR5.
   - No expone passwords ni datos sensibles
 - Spec ref: `clientes-tenancy/GET /clientes`
 
-**T2.3** — [GREEN] Implementar `ListarClientesUseCase`
+**T2.3** — [x] [GREEN] Implementar `ListarClientesUseCase`
 - Archivos: `backend/src/clientes/application/use-cases/listar-clientes.use-case.ts` (nuevo)
 - Inyecta `IClienteRepository`; llama `findAll()`
 - DOD: T2.2 en GREEN
 
-**T2.4** — [RED] Test integración: GET /clientes y POST /clientes en `ClientesController`
+**T2.4** — [x] [RED] Test integración: GET /clientes y POST /clientes en `ClientesController`
 - Archivos: `backend/src/clientes/interface/controllers/clientes.controller.spec.ts` (modificar)
 - Tests GET /clientes:
   - `is_global_admin=true` → 200 con lista de clientes
@@ -182,7 +182,7 @@ PR6 depende de PR5.
   - `ADMINISTRADOR (no global admin)` → 403
 - Spec ref: `clientes-tenancy/GET /clientes`, `clientes-tenancy/POST /clientes`
 
-**T2.5** — [GREEN] Agregar GET /clientes y reconectar POST /clientes → `CrearClienteUseCase`
+**T2.5** — [x] [GREEN] Agregar GET /clientes y reconectar POST /clientes → `CrearClienteUseCase`
 - Archivos: `backend/src/clientes/interface/controllers/clientes.controller.ts` (modificar)
 - Agregar:
   - `@Get() @UseGuards(JwtAuthGuard, GlobalAdminGuard)` → `ListarClientesUseCase`
@@ -192,7 +192,7 @@ PR6 depende de PR5.
 - Actualizar `backend/src/clientes/clientes.module.ts` para proveer `ListarClientesUseCase`
 - DOD: T2.4 en GREEN; provisioning completo via CrearClienteUseCase
 
-**T2.6** — Crear dominio para ciclos tenant: entidad + puerto
+**T2.6** — [x] Crear dominio para ciclos tenant: entidad + puerto
 - Archivos:
   - `backend/src/clientes/domain/entities/ciclo-cliente.entity.ts` (nuevo)
     - Campos: `id, tenantId, nombre, fechaInicio, fechaFin, activo`
@@ -201,7 +201,7 @@ PR6 depende de PR5.
 - Spec ref: `clientes-tenancy/GET /ciclos`, `clientes-tenancy/PATCH /ciclos/:id/activar`
 - DOD: entidad tiene spec de validación (fecha_fin > fecha_inicio); compila
 
-**T2.7** — [RED] Unit test `ListarCiclosUseCase`
+**T2.7** — [x] [RED] Unit test `ListarCiclosUseCase`
 - Archivos: `backend/src/clientes/application/use-cases/listar-ciclos.use-case.spec.ts` (nuevo)
 - Tests:
   - Retorna ciclos del tenant resuelto únicamente
@@ -209,11 +209,11 @@ PR6 depende de PR5.
   - Cada item incluye: `id, nombre, fecha_inicio, fecha_fin, activo`
   - MUST NOT incluir ciclos de otro tenant
 
-**T2.8** — [GREEN] Implementar `ListarCiclosUseCase`
+**T2.8** — [x] [GREEN] Implementar `ListarCiclosUseCase`
 - Archivos: `backend/src/clientes/application/use-cases/listar-ciclos.use-case.ts` (nuevo)
 - DOD: T2.7 en GREEN
 
-**T2.9** — [RED] Unit test `CrearCicloTenantUseCase`
+**T2.9** — [x] [RED] Unit test `CrearCicloTenantUseCase`
 - Archivos: `backend/src/clientes/application/use-cases/crear-ciclo-tenant.use-case.spec.ts` (nuevo)
 - Tests:
   - Crea ciclo con `activo=FALSE` por defecto
@@ -221,11 +221,11 @@ PR6 depende de PR5.
   - Fechas solapan con ciclo activo existente → `CicloVigenteOverlapError`
   - Respuesta incluye `id` del ciclo creado
 
-**T2.10** — [GREEN] Implementar `CrearCicloTenantUseCase`
+**T2.10** — [x] [GREEN] Implementar `CrearCicloTenantUseCase`
 - Archivos: `backend/src/clientes/application/use-cases/crear-ciclo-tenant.use-case.ts` (nuevo)
 - DOD: T2.9 en GREEN
 
-**T2.11** — [RED] Unit test `ActivarCicloUseCase`
+**T2.11** — [x] [RED] Unit test `ActivarCicloUseCase`
 - Archivos: `backend/src/clientes/application/use-cases/activar-ciclo.use-case.spec.ts` (nuevo)
 - Tests:
   - Activa ciclo objetivo; todos los demás del tenant quedan `activo=FALSE`
@@ -234,12 +234,12 @@ PR6 depende de PR5.
   - Ciclo inexistente → `NotFoundException`
   - Operador via X-Tenant-Id puede activar en cualquier tenant
 
-**T2.12** — [GREEN] Implementar `ActivarCicloUseCase`
+**T2.12** — [x] [GREEN] Implementar `ActivarCicloUseCase`
 - Archivos: `backend/src/clientes/application/use-cases/activar-ciclo.use-case.ts` (nuevo)
 - CRÍTICO: usar transacción Prisma (`prisma.$transaction(...)`) para atomicidad
 - DOD: T2.11 en GREEN
 
-**T2.13** — Implementar `PrismaCicloClienteRepository`
+**T2.13** — [x] Implementar `PrismaCicloClienteRepository`
 - Archivos:
   - `backend/src/clientes/infrastructure/persistence/prisma/prisma-ciclo-cliente.repository.ts` (nuevo)
   - `backend/src/clientes/infrastructure/persistence/prisma/ciclo-cliente.mapper.ts` (nuevo)
@@ -247,7 +247,7 @@ PR6 depende de PR5.
 - `activar()`: `UPDATE ciclos_cliente SET activo=false WHERE tenant_id=X` + `UPDATE SET activo=true WHERE id=Y` en `$transaction`
 - DOD: compila; integración verificada en spec del controller (T2.15)
 
-**T2.14** — [RED] Test `CiclosController` (tenant-level)
+**T2.14** — [x] [RED] Test `CiclosController` (tenant-level)
 - Archivos: `backend/src/clientes/interface/controllers/ciclos.controller.spec.ts` (nuevo)
 - Tests GET /ciclos:
   - ADMINISTRADOR → 200 con ciclos del tenant propio únicamente
@@ -265,7 +265,7 @@ PR6 depende de PR5.
   - Operador via X-Tenant-Id → 200, ciclos del tenant objetivo actualizados
 - Spec ref: `clientes-tenancy/GET /ciclos`, `POST /ciclos`, `PATCH /ciclos/:id/activar`
 
-**T2.15** — [GREEN] Crear `CiclosController` en módulo clientes
+**T2.15** — [x] [GREEN] Crear `CiclosController` en módulo clientes
 - Archivos:
   - `backend/src/clientes/interface/controllers/ciclos.controller.ts` (nuevo)
   - `backend/src/clientes/interface/dtos/create-ciclo.dto.ts` (nuevo)
@@ -274,7 +274,7 @@ PR6 depende de PR5.
 - Rutas: `@Controller('ciclos')`, GET /, POST /, PATCH /:id/activar
 - DOD: T2.14 en GREEN
 
-**T2.16** — Registrar nuevos use cases y repositorios en `ClientesModule`
+**T2.16** — [x] Registrar nuevos use cases y repositorios en `ClientesModule`
 - Archivos: `backend/src/clientes/clientes.module.ts` (modificar)
 - Proveer: `ListarCiclosUseCase, CrearCicloTenantUseCase, ActivarCicloUseCase, PrismaCicloClienteRepository`
 - Verificar que `ciclo:gestionar` existe en el seed RBAC; agregar si falta
@@ -295,7 +295,7 @@ PR6 depende de PR5.
 - El campo `cliente_id` del usuario nuevo SIEMPRE viene del `TenantGuard` (JWT o X-Tenant-Id), NUNCA del body.
 - La respuesta de cualquier endpoint de usuarios MUST NOT incluir `password_hash`.
 
-**T3.1** — Extender `IUsuarioRepository` con métodos faltantes
+**T3.1** — [x] Extender `IUsuarioRepository` con métodos faltantes
 - Archivos: `backend/src/auth/domain/ports/i-usuario.repository.ts` (modificar)
 - Métodos a agregar si no existen:
   - `create(data: CreateUsuarioData): Promise<Usuario>`
@@ -303,7 +303,7 @@ PR6 depende de PR5.
 - Archivos: `backend/src/auth/infrastructure/persistence/prisma/prisma-usuario.repository.ts` (modificar)
 - DOD: métodos compilados e implementados
 
-**T3.2** — [RED] Unit test `CrearUsuarioUseCase`
+**T3.2** — [x] [RED] Unit test `CrearUsuarioUseCase`
 - Archivos: `backend/src/auth/application/use-cases/crear-usuario.use-case.spec.ts` (nuevo)
 - Tests:
   - Crea usuario con: `cliente_id` del contexto, `activo=TRUE`, `is_global_admin=FALSE`, `password_hash` argon2id
@@ -314,12 +314,12 @@ PR6 depende de PR5.
   - `is_global_admin=TRUE` CANNOT ser establecido via este use case
 - Spec ref: `clientes-tenancy/POST /usuarios`
 
-**T3.3** — [GREEN] Implementar `CrearUsuarioUseCase`
+**T3.3** — [x] [GREEN] Implementar `CrearUsuarioUseCase`
 - Archivos: `backend/src/auth/application/use-cases/crear-usuario.use-case.ts` (nuevo)
 - Inyecta: `IUsuarioRepository`, `IHashProvider`, `IRoleRepository`
 - DOD: T3.2 en GREEN
 
-**T3.4** — [RED] Unit test `ListarUsuariosUseCase`
+**T3.4** — [x] [RED] Unit test `ListarUsuariosUseCase`
 - Archivos: `backend/src/auth/application/use-cases/listar-usuarios.use-case.spec.ts` (nuevo)
 - Tests:
   - Retorna usuarios del tenant resuelto (filtra por `cliente_id`)
@@ -329,11 +329,11 @@ PR6 depende de PR5.
   - Aislamiento: no devuelve usuarios de otros tenants
 - Spec ref: `clientes-tenancy/GET /usuarios`
 
-**T3.5** — [GREEN] Implementar `ListarUsuariosUseCase`
+**T3.5** — [x] [GREEN] Implementar `ListarUsuariosUseCase`
 - Archivos: `backend/src/auth/application/use-cases/listar-usuarios.use-case.ts` (nuevo)
 - DOD: T3.4 en GREEN
 
-**T3.6** — Auditar y extender `BajaUsuarioUseCase` para el spec
+**T3.6** — [x] Auditar y extender `BajaUsuarioUseCase` para el spec
 - Archivos: `backend/src/auth/application/use-cases/baja-usuario.use-case.ts` (revisar/modificar)
 - Verificar que el use case:
   - [ ] Hace soft-delete: `deleted_at=now(), activo=FALSE`
@@ -345,12 +345,12 @@ PR6 depende de PR5.
 - Agregar tests faltantes a: `backend/src/auth/application/use-cases/baja-usuario.use-case.spec.ts`
 - DOD: todos los escenarios del spec cubiertos en tests
 
-**T3.7** — Agregar DTO `CreateUsuarioDto` al módulo auth
+**T3.7** — [x] Agregar DTO `CreateUsuarioDto` al módulo auth
 - Archivos: `backend/src/auth/interface/dtos/auth.dto.ts` (modificar)
 - Campos: `email (IsEmail)`, `nombre`, `apellido`, `password`, `rol (IsIn(['USUARIO','COLABORADOR','TECNICO','ADMINISTRADOR']))`
 - DOD: DTO con validaciones class-validator; compila
 
-**T3.8** — [RED] Test integración: POST /usuarios, GET /usuarios, PATCH /usuarios/:id/baja
+**T3.8** — [x] [RED] Test integración: POST /usuarios, GET /usuarios, PATCH /usuarios/:id/baja
 - Archivos: `backend/src/auth/interface/controllers/usuarios.controller.spec.ts` (modificar)
 - Tests POST /usuarios:
   - ADMINISTRADOR body válido → 201; no `password`/`password_hash` en respuesta
@@ -370,7 +370,7 @@ PR6 depende de PR5.
   - TECNICO → 403
 - Spec ref: `clientes-tenancy/POST, GET, PATCH /usuarios`
 
-**T3.9** — [GREEN] Agregar POST /usuarios, GET /usuarios, PATCH /usuarios/:id/baja a `UsuariosController`
+**T3.9** — [x] [GREEN] Agregar POST /usuarios, GET /usuarios, PATCH /usuarios/:id/baja a `UsuariosController`
 - Archivos: `backend/src/auth/interface/controllers/usuarios.controller.ts` (modificar)
 - Guards: `JwtAuthGuard + PermissionsGuard(usuario:gestionar)` a nivel de controlador o endpoint
 - POST /usuarios: inyectar `clienteId` del request context (resuelto por TenantGuard), nunca del body
@@ -378,7 +378,7 @@ PR6 depende de PR5.
 - PATCH /usuarios/:id/baja: delegar a `BajaUsuarioUseCase`; inyectar `requesterId` del JWT
 - DOD: T3.8 en GREEN
 
-**T3.10** — Registrar nuevos use cases en `AuthModule`
+**T3.10** — [x] Registrar nuevos use cases en `AuthModule`
 - Archivos: `backend/src/auth/auth.module.ts` (modificar)
 - Proveer: `CrearUsuarioUseCase`, `ListarUsuariosUseCase`
 - DOD: módulo compila; `pnpm test` pasa
@@ -403,7 +403,7 @@ PR6 depende de PR5.
 - Tiempo resolución: `AVG(fecha_cierre::date - created_at::date)` en días. Solo `RESUELTO` y `SIN_SOLUCION`. Excluir `RECHAZADO`. Solo `fecha_cierre IS NOT NULL`.
 - AuthZ: `is_global_admin OR rol ADMINISTRADOR` → guard `AdminOrGlobalGuard` (nuevo, sin permiso granular).
 
-**T4.1** — Crear dominio `reportes`: puerto de repositorio
+**T4.1** — [x] Crear dominio `reportes`: puerto de repositorio
 - Archivos: `backend/src/reportes/domain/ports/i-reportes.repository.ts` (nuevo)
 - Interfaz:
   ```ts
@@ -418,7 +418,7 @@ PR6 depende de PR5.
   ```
 - DOD: interfaz compilada
 
-**T4.2** — Crear guard `AdminOrGlobalGuard`
+**T4.2** — [x] Crear guard `AdminOrGlobalGuard`
 - Archivos: `backend/src/reportes/infrastructure/guards/admin-or-global.guard.ts` (nuevo o en auth)
 - Lógica: `request.user.is_global_admin === true OR request.user.roles.includes('ADMINISTRADOR')`
 - Archivos test: `admin-or-global.guard.spec.ts` (nuevo)
@@ -429,7 +429,7 @@ PR6 depende de PR5.
   - Sin user → 403
 - DOD: tests en GREEN
 
-**T4.3** — [RED] Unit test `TicketsPorUsuarioUseCase`
+**T4.3** — [x] [RED] Unit test `TicketsPorUsuarioUseCase`
 - Archivos: `backend/src/reportes/application/use-cases/tickets-por-usuario.use-case.spec.ts` (nuevo)
 - Tests:
   - Retorna `{ porSolicitante: [...], porAsignado: [...] }` con nombres enriquecidos del master
@@ -442,12 +442,12 @@ PR6 depende de PR5.
   - Solo lectura: cero writes
 - Spec ref: `reportes/ReporteTicketsPorUsuario`; Decisión D3
 
-**T4.4** — [GREEN] Implementar `TicketsPorUsuarioUseCase`
+**T4.4** — [x] [GREEN] Implementar `TicketsPorUsuarioUseCase`
 - Archivos: `backend/src/reportes/application/use-cases/tickets-por-usuario.use-case.ts` (nuevo)
 - Inyecta: `IReportesRepository` (tenant), `IUsuarioRepository` (master, para nombres)
 - DOD: T4.3 en GREEN
 
-**T4.5** — [RED] Unit test `TicketsPorTipoUseCase`
+**T4.5** — [x] [RED] Unit test `TicketsPorTipoUseCase`
 - Archivos: `backend/src/reportes/application/use-cases/tickets-por-tipo.use-case.spec.ts` (nuevo)
 - Tests:
   - Los 3 tipos (SOPORTE, COMPRAS, EDILICIA) ALWAYS en respuesta, incluso con `total: 0`
@@ -456,12 +456,12 @@ PR6 depende de PR5.
   - Sin ciclo activo y sin `cicloId` → error 422
   - Aislamiento: no mezcla tenants
 
-**T4.6** — [GREEN] Implementar `TicketsPorTipoUseCase`
+**T4.6** — [x] [GREEN] Implementar `TicketsPorTipoUseCase`
 - Archivos: `backend/src/reportes/application/use-cases/tickets-por-tipo.use-case.ts` (nuevo)
 - Los 3 tipos fijos deben estar representados aunque el LEFT JOIN no retorne filas (merge en app layer)
 - DOD: T4.5 en GREEN
 
-**T4.7** — [RED] Unit test `TicketsPorEstadoUseCase`
+**T4.7** — [x] [RED] Unit test `TicketsPorEstadoUseCase`
 - Archivos: `backend/src/reportes/application/use-cases/tickets-por-estado.use-case.spec.ts` (nuevo)
 - Tests:
   - TODOS los estados del catálogo (10) en respuesta, incluso con `total: 0`
@@ -470,12 +470,12 @@ PR6 depende de PR5.
   - `ABIERTO: 3` si 5 tickets pero 2 tienen `deleted_at IS NOT NULL`
   - Filtra por `cicloId`
 
-**T4.8** — [GREEN] Implementar `TicketsPorEstadoUseCase`
+**T4.8** — [x] [GREEN] Implementar `TicketsPorEstadoUseCase`
 - Archivos: `backend/src/reportes/application/use-cases/tickets-por-estado.use-case.ts` (nuevo)
 - Los 10 estados deben estar siempre presentes (merge catálogo + query en app layer)
 - DOD: T4.7 en GREEN
 
-**T4.9** — [RED] Unit test `TiempoResolucionUseCase`
+**T4.9** — [x] [RED] Unit test `TiempoResolucionUseCase`
 - Archivos: `backend/src/reportes/application/use-cases/tiempo-resolucion.use-case.spec.ts` (nuevo)
 - Tests:
   - `{ promedioDias: 4.0, totalResueltos: 3 }` con 3 tickets RESUELTOS (2+4+6 días)
@@ -485,11 +485,11 @@ PR6 depende de PR5.
   - Filtra por `cicloId`
   - Granularidad DÍA (fecha_cierre - created_at::date). Decisión D2.
 
-**T4.10** — [GREEN] Implementar `TiempoResolucionUseCase`
+**T4.10** — [x] [GREEN] Implementar `TiempoResolucionUseCase`
 - Archivos: `backend/src/reportes/application/use-cases/tiempo-resolucion.use-case.ts` (nuevo)
 - DOD: T4.9 en GREEN; cero errores de división por cero
 
-**T4.11** — Implementar `PrismaReportesRepository`
+**T4.11** — [x] Implementar `PrismaReportesRepository`
 - Archivos:
   - `backend/src/reportes/infrastructure/persistence/prisma/prisma-reportes.repository.ts` (nuevo)
 - Queries sobre tenant Prisma client:
@@ -501,7 +501,7 @@ PR6 depende de PR5.
   - `cicloActivo`: `SELECT id FROM ciclos_cliente WHERE activo=true LIMIT 1`
 - DOD: compila; queries retornan shapes correctos
 
-**T4.12** — [RED] Test integración `ReportesController`
+**T4.12** — [x] [RED] Test integración `ReportesController`
 - Archivos: `backend/src/reportes/interface/controllers/reportes.controller.spec.ts` (nuevo)
 - Tests (selección representativa):
   - `GET /reportes/tickets-por-usuario` ADMINISTRADOR → 200 con `{ porSolicitante, porAsignado }`
@@ -513,7 +513,7 @@ PR6 depende de PR5.
   - is_global_admin + X-Tenant-Id → 200 con datos del tenant objetivo
 - Spec ref: `reportes` (todos los requirements)
 
-**T4.13** — [GREEN] Crear `ReportesController`
+**T4.13** — [x] [GREEN] Crear `ReportesController`
 - Archivos:
   - `backend/src/reportes/interface/controllers/reportes.controller.ts` (nuevo)
   - `backend/src/reportes/interface/dtos/reporte-response.dto.ts` (nuevo)
@@ -526,7 +526,7 @@ PR6 depende de PR5.
   - `GET /tiempo-resolucion`
 - DOD: T4.12 en GREEN
 
-**T4.14** — Crear `ReportesModule` y registrar en `AppModule`
+**T4.14** — [x] Crear `ReportesModule` y registrar en `AppModule`
 - Archivos:
   - `backend/src/reportes/reportes.module.ts` (nuevo)
   - `backend/src/app.module.ts` (modificar)
