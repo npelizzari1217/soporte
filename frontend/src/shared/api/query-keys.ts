@@ -41,4 +41,14 @@ export const queryKeys = {
     all: ["equipos"] as const,
     detail: (id: string) => ["equipos", id] as const,
   },
+  admin: {
+    /** GET /clientes — solo operador global. Root key, sin discriminador. */
+    clientes: ["admin", "clientes"] as const,
+    /**
+     * GET /ciclos — discriminado por clienteId porque el tenant resuelto (propio o
+     * cross-tenant vía X-Tenant-Id) cambia la respuesta. `clienteId: null` = tenant
+     * propio del usuario (ADMINISTRADOR) o "sin cliente elegido" (operador).
+     */
+    ciclos: (clienteId: string | null) => ["admin", "ciclos", clienteId] as const,
+  },
 } as const;
