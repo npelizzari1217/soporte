@@ -1,4 +1,5 @@
-import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule, ValidationPipe } from '@nestjs/common';
+import { APP_PIPE } from '@nestjs/core';
 import { SharedModule } from './shared/shared.module';
 import { ClientesModule } from './clientes/clientes.module';
 import { AuthModule } from './auth/auth.module';
@@ -25,6 +26,12 @@ import { TenantScopeMiddleware } from './shared/tenancy/tenant-scope.middleware'
  * ANTES de que los guards corran. Esto permite que TenantGuard.bind() use el patrón
  * de store mutable en lugar de enterWith(), garantizando la propagación correcta del
  * contexto en entornos donde múltiples guards async preceden al handler.
+ *
+ * tech-debt-validation-pipe: agrega ValidationPipe global via APP_PIPE (whitelist +
+ * transform, SIN forbidNonWhitelisted — progresivo). Se registra como provider en
+ * lugar de `app.useGlobalPipes()` en main.ts para que lo hereden los tests que
+ * bootstrapean AppModule directamente con Test.createTestingModule() (bypasean
+ * bootstrap()). Config: `{ whitelist: true, transform: true }`.
  */
 @Module({
   imports: [
@@ -39,7 +46,12 @@ import { TenantScopeMiddleware } from './shared/tenancy/tenant-scope.middleware'
     ReportesModule,
   ],
   controllers: [],
-  providers: [],
+  providers: [
+    {
+      provide: APP_PIPE,
+      useValue: new ValidationPipe({ whitelist: true, transform: true }),
+    },
+  ],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
