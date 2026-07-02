@@ -772,7 +772,7 @@ PR6 depende de PR5.
 
 ### Grupo D: Pantalla Reportes
 
-**T6.7** — [RED] Test `ReportesPage`
+**T6.7** — [x] [RED] Test `ReportesPage`
 - Archivos: `frontend/src/features/admin/components/ReportesPage.test.tsx` (nuevo)
 - Tests:
   - Emite 4 fetches paralelos con `cicloId` del TenantContext
@@ -786,7 +786,7 @@ PR6 depende de PR5.
   - Nombres de usuario presentes (enriquecidos por backend)
 - Spec ref: `admin-ui/Pantalla Reportes`; Decisiones D2, D3
 
-**T6.8** — [GREEN] Implementar pantalla Reportes
+**T6.8** — [x] [GREEN] Implementar pantalla Reportes
 - Archivos:
   - `frontend/src/app/(dashboard)/admin/reportes/page.tsx` (nuevo)
   - `frontend/src/features/admin/components/ReportesPage.tsx` (nuevo)
