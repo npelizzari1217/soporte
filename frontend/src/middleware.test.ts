@@ -197,6 +197,15 @@ describe("middleware", () => {
       is_global_admin: true,
     };
 
+    const REGULAR_PAYLOAD = (roles: string[]): JwtPayload => ({
+      sub: "4",
+      cliente_id: "c1",
+      email: "regular@cliente.com",
+      roles,
+      permisos: [],
+      is_global_admin: false,
+    });
+
     it("redirects /admin/clientes to /tickets when the user is ADMINISTRADOR but not is_global_admin", async () => {
       mockVerify.mockResolvedValueOnce(ADMIN_CLIENTE_PAYLOAD);
       const req = makeRequest("/admin/clientes", { at: "valid-token" });
@@ -249,6 +258,80 @@ describe("middleware", () => {
 
       expect(res.status).toBe(200);
       expect(res.headers.get("location")).toBeNull();
+    });
+
+    // ── CRITICAL fix: gate ALL /admin/* routes by role, not just /admin/clientes ──
+    // Spec: [SPEC:admin-ui/Pantalla Clientes — Protección de ruta]
+    // MUST: ninguna ruta bajo /admin/* MUST ser accesible para usuarios regulares
+    // (USUARIO/COLABORADOR/TECNICO).
+
+    it.each(["/admin/ciclos", "/admin/usuarios", "/admin/reportes"])(
+      "redirects %s to /tickets for a regular USUARIO (not is_global_admin, no ADMINISTRADOR role)",
+      async (path) => {
+        mockVerify.mockResolvedValueOnce(REGULAR_PAYLOAD(["USUARIO"]));
+        const req = makeRequest(path, { at: "valid-token" });
+        const res = await middleware(req);
+
+        expect(res.status).toBe(307);
+        expect(res.headers.get("location")).toContain("/tickets");
+      }
+    );
+
+    it.each(["/admin/ciclos", "/admin/usuarios", "/admin/reportes"])(
+      "redirects %s to /tickets for a COLABORADOR",
+      async (path) => {
+        mockVerify.mockResolvedValueOnce(REGULAR_PAYLOAD(["COLABORADOR"]));
+        const req = makeRequest(path, { at: "valid-token" });
+        const res = await middleware(req);
+
+        expect(res.status).toBe(307);
+        expect(res.headers.get("location")).toContain("/tickets");
+      }
+    );
+
+    it.each(["/admin/ciclos", "/admin/usuarios", "/admin/reportes"])(
+      "redirects %s to /tickets for a TECNICO",
+      async (path) => {
+        mockVerify.mockResolvedValueOnce(REGULAR_PAYLOAD(["TECNICO"]));
+        const req = makeRequest(path, { at: "valid-token" });
+        const res = await middleware(req);
+
+        expect(res.status).toBe(307);
+        expect(res.headers.get("location")).toContain("/tickets");
+      }
+    );
+
+    it.each(["/admin/ciclos", "/admin/usuarios", "/admin/reportes"])(
+      "passes through %s for ADMINISTRADOR (not is_global_admin but has the role)",
+      async (path) => {
+        mockVerify.mockResolvedValueOnce(ADMIN_CLIENTE_PAYLOAD);
+        const req = makeRequest(path, { at: "valid-token" });
+        const res = await middleware(req);
+
+        expect(res.status).toBe(200);
+        expect(res.headers.get("location")).toBeNull();
+      }
+    );
+
+    it.each(["/admin/ciclos", "/admin/usuarios", "/admin/reportes"])(
+      "passes through %s for is_global_admin (operador)",
+      async (path) => {
+        mockVerify.mockResolvedValueOnce(OPERADOR_PAYLOAD);
+        const req = makeRequest(path, { at: "valid-token" });
+        const res = await middleware(req);
+
+        expect(res.status).toBe(200);
+        expect(res.headers.get("location")).toBeNull();
+      }
+    );
+
+    it("redirects /admin/clientes to /tickets for a regular USUARIO", async () => {
+      mockVerify.mockResolvedValueOnce(REGULAR_PAYLOAD(["USUARIO"]));
+      const req = makeRequest("/admin/clientes", { at: "valid-token" });
+      const res = await middleware(req);
+
+      expect(res.status).toBe(307);
+      expect(res.headers.get("location")).toContain("/tickets");
     });
   });
 });
