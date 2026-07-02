@@ -159,4 +159,14 @@
   .divide-y > * + * {
     border-color: oklch(0.85 0 0) !important;
   }
+
+  /* Pantalla Reportes (admin-general PR6d): las tarjetas de reporte usan bordes
+     translúcidos para el glassmorphism en pantalla (border-slate-200/50,
+     dark:border-white/5 — casi invisible sobre fondo blanco forzado). Se
+     refuerza con un borde sólido para separación visual clara en impresión.
+     Spec: [SPEC:admin-ui/@media print oculta sidebar y botones de acción] */
+  .report-card {
+    border: 1px solid black !important;
+    break-inside: avoid;
+  }
 }
