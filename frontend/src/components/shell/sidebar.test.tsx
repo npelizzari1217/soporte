@@ -16,19 +16,23 @@
  * Spec: [SPEC:frontend-shell/req 1 sidebar w-72], [SPEC:frontend-shell/req 3 nav 4 secciones],
  *       [SPEC:frontend-shell/req 4 tenant display], [SPEC:frontend-shell/req 7 accesibilidad]
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import type { JwtPayload } from "@/shared/api/types";
+import { TenantContext } from "@/shared/providers/tenant-context";
 
 // ── Mocks ───────────────────────────────────────────────────────────────────
 // usePathname controls the active-link detection in Sidebar.
 // useRouter is needed because UserMenu (rendered in the sidebar footer) calls useRouter.
 const mockUsePathname = vi.fn<() => string>(() => "/tickets");
 const mockPush = vi.fn();
-const mockUseSession = vi.fn<() => { user: JwtPayload | null; isLoading: boolean; can: () => boolean }>(() => ({
+const mockUseSession = vi.fn<
+  () => { user: JwtPayload | null; isLoading: boolean; can: () => boolean; isGlobalAdmin?: boolean }
+>(() => ({
   user: null,
   isLoading: false,
   can: () => false,
+  isGlobalAdmin: false,
 }));
 
 vi.mock("next/navigation", () => ({
@@ -38,6 +42,18 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/shared/hooks/use-session", () => ({
   useSession: () => mockUseSession(),
+}));
+
+// ClienteSelector/CicloSelector fetch data via TanStack Query (useClientes/useCiclos)
+// and read TenantContext — irrelevant to Sidebar's own conditional-rendering logic,
+// which is what this suite tests. Both components already have dedicated test suites
+// (ClienteSelector.test.tsx, CicloSelector.test.tsx) covering their fetch/skeleton/cascade
+// behavior. Stubbing them here keeps this suite atomic (no QueryClientProvider/MSW needed).
+vi.mock("@/features/admin/components/ClienteSelector", () => ({
+  ClienteSelector: () => <div data-testid="cliente-selector-stub" />,
+}));
+vi.mock("@/features/admin/components/CicloSelector", () => ({
+  CicloSelector: () => <div data-testid="ciclo-selector-stub" />,
 }));
 
 // Import after mocks (vi.mock is hoisted, but imports below are resolved after hoisting)
@@ -215,5 +231,207 @@ describe("Sidebar", () => {
     mockUseSession.mockReturnValue({ user: null, isLoading: false, can: () => false });
     render(<Sidebar />);
     expect(screen.queryByText("undefined")).not.toBeInTheDocument();
+  });
+
+  // ── ADMINISTRACIÓN section (admin-general PR5b — T5.12) ─────────────────────
+  //
+  // Sidebar dinámico por rol, detrás del feature flag NEXT_PUBLIC_ADMIN_PANEL.
+  // Spec: [SPEC:admin-ui/Sección ADMINISTRACIÓN en sidebar condicional por nivel]
+
+  describe("sección ADMINISTRACIÓN (feature-flagged)", () => {
+    const OPERADOR: JwtPayload = {
+      sub: "op-1",
+      cliente_id: "home",
+      email: "operador@sesitec.com.ar",
+      roles: [],
+      permisos: [],
+      is_global_admin: true,
+    };
+
+    const ADMIN_CLIENTE: JwtPayload = {
+      sub: "admin-1",
+      cliente_id: "cliente-1",
+      email: "admin@cliente.com",
+      roles: ["ADMINISTRADOR"],
+      permisos: [],
+      is_global_admin: false,
+    };
+
+    const USUARIO: JwtPayload = {
+      sub: "user-1",
+      cliente_id: "cliente-1",
+      email: "user@cliente.com",
+      roles: ["USUARIO"],
+      permisos: [],
+      is_global_admin: false,
+    };
+
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    it("operador global ve Clientes, Ciclos, Usuarios, Reportes en orden, antes de la sección operativa", () => {
+      vi.stubEnv("NEXT_PUBLIC_ADMIN_PANEL", "true");
+      mockUseSession.mockReturnValue({ user: OPERADOR, isLoading: false, can: () => false, isGlobalAdmin: true });
+      render(<Sidebar />);
+
+      const nav = screen.getByRole("navigation", { name: "Navegación principal" });
+      const linkTexts = within(nav).getAllByRole("link").map((l) => l.textContent?.trim());
+      expect(linkTexts).toEqual([
+        "Clientes", "Ciclos", "Usuarios", "Reportes",
+        "Tickets", "Compras", "Reparaciones", "Equipos",
+      ]);
+    });
+
+    it("ADMINISTRADOR (is_global_admin=false) ve Ciclos, Usuarios, Reportes sin Clientes", () => {
+      vi.stubEnv("NEXT_PUBLIC_ADMIN_PANEL", "true");
+      mockUseSession.mockReturnValue({ user: ADMIN_CLIENTE, isLoading: false, can: () => false, isGlobalAdmin: false });
+      render(<Sidebar />);
+
+      const nav = screen.getByRole("navigation", { name: "Navegación principal" });
+      const linkTexts = within(nav).getAllByRole("link").map((l) => l.textContent?.trim());
+      expect(linkTexts).toEqual([
+        "Ciclos", "Usuarios", "Reportes",
+        "Tickets", "Compras", "Reparaciones", "Equipos",
+      ]);
+      expect(screen.queryByRole("link", { name: "Clientes" })).toBeNull();
+    });
+
+    it("USUARIO no ve sección ADMINISTRACIÓN ni divider; 4 ítems operativos intactos (no-regression)", () => {
+      vi.stubEnv("NEXT_PUBLIC_ADMIN_PANEL", "true");
+      mockUseSession.mockReturnValue({ user: USUARIO, isLoading: false, can: () => false, isGlobalAdmin: false });
+      render(<Sidebar />);
+
+      expect(screen.queryByText("Administración")).toBeNull();
+      expect(screen.queryByTestId("admin-divider")).toBeNull();
+      const nav = screen.getByRole("navigation", { name: "Navegación principal" });
+      expect(within(nav).getAllByRole("link")).toHaveLength(4);
+    });
+
+    it("ítem activo en ADMINISTRACIÓN recibe aria-current='page' y es el único", () => {
+      vi.stubEnv("NEXT_PUBLIC_ADMIN_PANEL", "true");
+      mockUsePathname.mockReturnValue("/admin/ciclos");
+      mockUseSession.mockReturnValue({ user: OPERADOR, isLoading: false, can: () => false, isGlobalAdmin: true });
+      render(<Sidebar />);
+
+      const nav = screen.getByRole("navigation", { name: "Navegación principal" });
+      const active = within(nav)
+        .getAllByRole("link")
+        .filter((l) => l.getAttribute("aria-current") === "page");
+      expect(active).toHaveLength(1);
+      expect(active[0]).toHaveTextContent("Ciclos");
+    });
+
+    it("label ADMINISTRACIÓN usa uppercase text-xs tracking-wider (design system)", () => {
+      vi.stubEnv("NEXT_PUBLIC_ADMIN_PANEL", "true");
+      mockUseSession.mockReturnValue({ user: OPERADOR, isLoading: false, can: () => false, isGlobalAdmin: true });
+      render(<Sidebar />);
+
+      const label = screen.getByText("Administración");
+      expect(label.className).toContain("text-xs");
+      expect(label.className).toContain("tracking-wider");
+      expect(label.className).toContain("uppercase");
+    });
+
+    it("el divider entre ADMINISTRACIÓN y la sección operativa es ultra-fino", () => {
+      vi.stubEnv("NEXT_PUBLIC_ADMIN_PANEL", "true");
+      mockUseSession.mockReturnValue({ user: OPERADOR, isLoading: false, can: () => false, isGlobalAdmin: true });
+      render(<Sidebar />);
+
+      const divider = screen.getByTestId("admin-divider");
+      expect(divider.className).toContain("border-t");
+    });
+
+    it("sin NEXT_PUBLIC_ADMIN_PANEL, el sidebar es igual al actual (no-regression), incluso para operador global", () => {
+      // Env var deliberately NOT stubbed → falsy/undefined, gate closed.
+      mockUseSession.mockReturnValue({ user: OPERADOR, isLoading: false, can: () => false, isGlobalAdmin: true });
+      render(<Sidebar />);
+
+      expect(screen.queryByText("Administración")).toBeNull();
+      expect(screen.queryByTestId("admin-divider")).toBeNull();
+      expect(screen.queryByTestId("cliente-selector-stub")).toBeNull();
+      expect(screen.queryByTestId("ciclo-selector-stub")).toBeNull();
+      const nav = screen.getByRole("navigation", { name: "Navegación principal" });
+      expect(within(nav).getAllByRole("link")).toHaveLength(4);
+    });
+
+    it("renderiza ClienteSelector y CicloSelector para el operador global cuando el flag está activo", () => {
+      vi.stubEnv("NEXT_PUBLIC_ADMIN_PANEL", "true");
+      mockUseSession.mockReturnValue({ user: OPERADOR, isLoading: false, can: () => false, isGlobalAdmin: true });
+      render(<Sidebar />);
+
+      expect(screen.getByTestId("cliente-selector-stub")).toBeInTheDocument();
+      expect(screen.getByTestId("ciclo-selector-stub")).toBeInTheDocument();
+    });
+
+    it("no renderiza los selectores para un usuario operativo", () => {
+      vi.stubEnv("NEXT_PUBLIC_ADMIN_PANEL", "true");
+      mockUseSession.mockReturnValue({ user: USUARIO, isLoading: false, can: () => false, isGlobalAdmin: false });
+      render(<Sidebar />);
+
+      expect(screen.queryByTestId("cliente-selector-stub")).toBeNull();
+      expect(screen.queryByTestId("ciclo-selector-stub")).toBeNull();
+    });
+
+    // ── Nav operativa deshabilitada sin cliente seleccionado (T5.16-T5.17) ──
+    //
+    // Spec: [SPEC:admin-ui/Estado "Elegí un cliente" — nav operativa deshabilitada]
+    // Sidebar reads TenantContext.clienteId (default context value if no Provider
+    // wraps it, matching the operador's real initial state — see tenant-context.tsx).
+
+    it("deshabilita visualmente la nav operativa cuando el operador no eligió cliente", () => {
+      vi.stubEnv("NEXT_PUBLIC_ADMIN_PANEL", "true");
+      mockUseSession.mockReturnValue({ user: OPERADOR, isLoading: false, can: () => false, isGlobalAdmin: true });
+      // No TenantContext.Provider wrapping → default value clienteId: null.
+      render(<Sidebar />);
+
+      const nav = screen.getByRole("navigation", { name: "Navegación principal" });
+      const ticketsLink = within(nav).getByText("Tickets").closest("a")!;
+      expect(ticketsLink).toHaveAttribute("aria-disabled", "true");
+      expect(ticketsLink).toHaveAttribute("tabindex", "-1");
+    });
+
+    it("habilita la nav operativa una vez que el operador eligió un cliente", () => {
+      vi.stubEnv("NEXT_PUBLIC_ADMIN_PANEL", "true");
+      mockUseSession.mockReturnValue({ user: OPERADOR, isLoading: false, can: () => false, isGlobalAdmin: true });
+      render(
+        <TenantContext.Provider
+          value={{
+            clienteId: "cliente-a",
+            clienteNombre: "Acme Corp",
+            cicloId: null,
+            cicloNombre: null,
+            setCliente: () => {},
+            setCiclo: () => {},
+          }}
+        >
+          <Sidebar />
+        </TenantContext.Provider>,
+      );
+
+      const nav = screen.getByRole("navigation", { name: "Navegación principal" });
+      const ticketsLink = within(nav).getByText("Tickets").closest("a")!;
+      expect(ticketsLink).not.toHaveAttribute("aria-disabled");
+    });
+
+    it("no deshabilita la nav operativa para ADMINISTRADOR (siempre tiene tenant resuelto)", () => {
+      vi.stubEnv("NEXT_PUBLIC_ADMIN_PANEL", "true");
+      mockUseSession.mockReturnValue({ user: ADMIN_CLIENTE, isLoading: false, can: () => false, isGlobalAdmin: false });
+      render(<Sidebar />);
+
+      const nav = screen.getByRole("navigation", { name: "Navegación principal" });
+      const ticketsLink = within(nav).getByText("Tickets").closest("a")!;
+      expect(ticketsLink).not.toHaveAttribute("aria-disabled");
+    });
+
+    it("sin feature flag, la nav operativa nunca se deshabilita (no-regression)", () => {
+      // Flag NOT stubbed → gate closed entirely, even for operador sin cliente.
+      mockUseSession.mockReturnValue({ user: OPERADOR, isLoading: false, can: () => false, isGlobalAdmin: true });
+      render(<Sidebar />);
+
+      const nav = screen.getByRole("navigation", { name: "Navegación principal" });
+      const ticketsLink = within(nav).getByText("Tickets").closest("a")!;
+      expect(ticketsLink).not.toHaveAttribute("aria-disabled");
+    });
   });
 });
