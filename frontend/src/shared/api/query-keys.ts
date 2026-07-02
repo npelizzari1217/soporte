@@ -51,6 +51,17 @@ export const queryKeys = {
      */
     ciclos: (clienteId: string | null) => ["admin", "ciclos", clienteId] as const,
     /**
+     * Reportes — 4 agregaciones de solo lectura, discriminadas por cicloId porque
+     * cada ciclo tiene su propio conjunto de datos (admin-general PR6d).
+     */
+    reportes: {
+      porUsuario: (cicloId: string | null) => ["admin", "reportes", "por-usuario", cicloId] as const,
+      porTipo: (cicloId: string | null) => ["admin", "reportes", "por-tipo", cicloId] as const,
+      porEstado: (cicloId: string | null) => ["admin", "reportes", "por-estado", cicloId] as const,
+      tiempoResolucion: (cicloId: string | null) =>
+        ["admin", "reportes", "tiempo-resolucion", cicloId] as const,
+    },
+    /**
      * GET /usuarios — discriminado por clienteId (misma razón que ciclos: el
      * tenant resuelto cambia con X-Tenant-Id para el operador). Prefijo
      * ["admin", "usuarios"] usado por los hooks de mutación para invalidar
