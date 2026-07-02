@@ -1,13 +1,14 @@
 /**
  * DTOs de entrada/salida para AuthController y UsuariosController.
  *
- * CreateUsuarioDto usa validación manual en el controller (rol enum) ya que
- * class-validator no está instalado. La validación de rol se realiza via
- * el enum ROLES_VALIDOS exportado desde este archivo.
+ * CreateUsuarioDto usa class-validator (convertido de interface a class):
+ * la validación de rol se realiza via @IsIn(ROLES_VALIDOS), reemplazando el
+ * chequeo manual que existía en el controller.
  *
- * Tarea: 2.D.4 + T3.7
+ * Tarea: 2.D.4 + T3.7 + tech-debt-validation-pipe (class-validator)
  */
 
+import { IsEmail, IsIn, IsNotEmpty, IsString, MinLength } from 'class-validator';
 import { UsuarioEntity } from '../../domain/entities/usuario.entity';
 
 // ─── Auth DTO ─────────────────────────────────────────────────────────────────
@@ -52,15 +53,27 @@ export type RolValido = (typeof ROLES_VALIDOS)[number];
  *
  * El cliente_id NEVER viene del body — lo resuelve TenantGuard server-side.
  *
- * Tarea: T3.7
+ * Tarea: T3.7 + tech-debt-validation-pipe (class-validator)
  */
-export interface CreateUsuarioDto {
-  email: string;
-  nombre: string;
-  apellido: string;
-  password: string;
+export class CreateUsuarioDto {
+  @IsEmail()
+  email!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  nombre!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  apellido!: string;
+
+  @IsString()
+  @MinLength(8)
+  password!: string;
+
   /** Uno de: USUARIO | COLABORADOR | TECNICO | ADMINISTRADOR */
-  rol: string;
+  @IsIn(ROLES_VALIDOS)
+  rol!: string;
 }
 
 /**
