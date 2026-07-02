@@ -24,3 +24,33 @@ export type Ciclo = {
   fechaFin: string;
   activo: boolean;
 };
+
+/**
+ * Usuario (tenant-level) — GET /usuarios, POST /usuarios. Mirrors
+ * UsuarioResponseDto (backend/src/auth/interface/dtos/auth.dto.ts).
+ * NEVER incluye password/passwordHash — invariante de seguridad del backend.
+ *
+ * Spec: [SPEC:admin-ui/Pantalla Usuarios]
+ * Introducido en: admin-general PR6c
+ */
+export type Usuario = {
+  id: string;
+  email: string;
+  nombre: string;
+  apellido: string;
+  clienteId: string;
+  activo: boolean;
+  isGlobalAdmin: boolean;
+  roles: string[];
+  createdAt: string;
+};
+
+/** Body de POST /usuarios — mirrors CreateUsuarioDto (backend). */
+export type NuevoUsuarioInput = {
+  nombre: string;
+  apellido: string;
+  email: string;
+  password: string;
+  /** Uno de: USUARIO | COLABORADOR | TECNICO | ADMINISTRADOR */
+  rol: string;
+};
