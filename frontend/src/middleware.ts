@@ -20,11 +20,13 @@
  *
  * ADMIN-GENERAL PR5b (T5.14-T5.15) — /admin/* route protection:
  *   Frontend-only UX guard; the backend (GlobalAdminGuard/RolesGuard) remains the
- *   real authority. `/admin/clientes` additionally requires `is_global_admin: true`
- *   in the decoded JWT — non-operator ADMINISTRADOR users are redirected to
- *   /tickets instead of /login (they ARE authenticated, just lack this specific
- *   privilege). The rest of `/admin/*` only needs the basic auth check already
- *   enforced above (no extra claim check).
+ *   real authority. Every `/admin/*` route requires `is_global_admin: true` OR the
+ *   ADMINISTRADOR role in the decoded JWT (see `isAllowedOnAdminRoute` below) —
+ *   regular USUARIO/COLABORADOR/TECNICO users are redirected to /tickets instead
+ *   of /login (they ARE authenticated, just lack this specific privilege).
+ *   `/admin/clientes` additionally requires `is_global_admin: true` — an
+ *   ADMINISTRADOR without that claim can reach the rest of `/admin/*` but not
+ *   `/admin/clientes` (cross-tenant client management stays operator-only).
  *
  * Spec: [SPEC:frontend-route-protection/sin-sesion]
  *       [SPEC:frontend-route-protection/jose-verificacion]
@@ -34,6 +36,35 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { verifyAccessToken } from "@/shared/auth/verify";
 import { COOKIE_AT, COOKIE_RT } from "@/shared/auth/cookies";
+import type { JwtPayload } from "@/shared/api/types";
+
+/**
+ * Authorization gate for `/admin/*` routes.
+ *
+ * Rules (spec `admin-ui` MUST — no `/admin/*` route is reachable by regular
+ * USUARIO/COLABORADOR/TECNICO users):
+ *   - Any `/admin/*` route requires `is_global_admin === true` OR the
+ *     ADMINISTRADOR role.
+ *   - `/admin/clientes` additionally requires `is_global_admin === true`
+ *     (ADMINISTRADOR alone is not enough — only the cross-tenant operator
+ *     may manage clientes).
+ *
+ * `jwt` is the decoded, valid, non-expired JwtPayload.
+ */
+function isAllowedOnAdminRoute(pathname: string, jwt: JwtPayload): boolean {
+  const isGlobalAdmin = jwt.is_global_admin === true;
+  const isAdministrador = jwt.roles.includes("ADMINISTRADOR");
+
+  if (!isGlobalAdmin && !isAdministrador) {
+    return false;
+  }
+
+  if (pathname.startsWith("/admin/clientes")) {
+    return isGlobalAdmin;
+  }
+
+  return true;
+}
 
 /**
  * Resolve the effective cookie name for the current environment.
@@ -126,13 +157,14 @@ export default async function middleware(
     return res;
   }
 
-  // ── /admin/clientes: requires is_global_admin (T5.14-T5.15) ──────────────
+  // ── /admin/*: role-gated (T5.14-T5.15, security fix post-verify) ─────────
   //
-  // `result` here is the decoded JwtPayload (valid + non-expired). ADMINISTRADOR
-  // (is_global_admin: false) is authenticated but lacks this specific privilege
-  // → redirect to /tickets rather than /login. Rest of /admin/* needs only the
-  // basic auth check already performed above.
-  if (pathname.startsWith("/admin/clientes") && result.is_global_admin !== true) {
+  // `result` here is the decoded JwtPayload (valid + non-expired). Every
+  // /admin/* route requires is_global_admin OR the ADMINISTRADOR role;
+  // /admin/clientes additionally requires is_global_admin. Users lacking the
+  // privilege are authenticated but not authorized → redirect to /tickets
+  // rather than /login.
+  if (pathname.startsWith("/admin/") && !isAllowedOnAdminRoute(pathname, result)) {
     return NextResponse.redirect(new URL("/tickets", request.url), { status: 307 });
   }
 
