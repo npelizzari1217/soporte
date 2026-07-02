@@ -26,8 +26,14 @@ import { cookieName, COOKIE_AT } from "@/shared/auth/cookies";
 
 const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
-/** Headers explicitly allowed to be forwarded to the backend. */
-const ALLOWED_HEADERS = new Set(["content-type", "accept"]);
+/**
+ * Headers explicitly allowed to be forwarded to the backend.
+ *
+ * x-tenant-id: cross-tenant selector del operador global (admin-general, ADR-3).
+ * El backend (TenantGuard) rechaza con 403 a cualquier no-operador que lo envíe,
+ * así que reenviarlo aquí es seguro — la autorización real vive en el backend.
+ */
+const ALLOWED_HEADERS = new Set(["content-type", "accept", "x-tenant-id"]);
 
 /** Headers that must never be forwarded (security + protocol). */
 const BLOCKED_HEADERS = new Set([
