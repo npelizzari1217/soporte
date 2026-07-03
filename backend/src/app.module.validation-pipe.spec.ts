@@ -21,7 +21,7 @@ import { CreateCicloDto } from './clientes/interface/dtos/create-ciclo.dto';
 import { CreateClienteDto } from './clientes/interface/dtos/create-cliente.dto';
 import { CreateCicloVigenteDto } from './clientes/interface/dtos/create-ciclo-vigente.dto';
 import { ReporteQueryDto } from './reportes/interface/dtos/reporte-query.dto';
-import { CreateUsuarioDto } from './auth/interface/dtos/auth.dto';
+import { CreateUsuarioDto, AsignarRolDto } from './auth/interface/dtos/auth.dto';
 
 // Misma config que se registra como APP_PIPE en AppModule (progresiva: sin
 // forbidNonWhitelisted para no romper payloads con props extra).
@@ -73,6 +73,22 @@ describe('ValidationPipe global — DTOs de admin-general', () => {
       const result = await makePipe().transform(payload, metadata);
       expect(result).toBeInstanceOf(CreateUsuarioDto);
       expect(result.email).toBe('ana@example.com');
+    });
+  });
+
+  describe('AsignarRolDto (POST /usuarios/:id/roles) — rbac-security-hardening', () => {
+    const metadata: ArgumentMetadata = { type: 'body', metatype: AsignarRolDto, data: '' };
+
+    it('rechaza rolCodigo="ADMIN" (legacy soft-deleted, fuera de ROLES_VALIDOS) con BadRequestException', async () => {
+      await expect(makePipe().transform({ rolCodigo: 'ADMIN' }, metadata)).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+    });
+
+    it('acepta un rolCodigo válido de ROLES_VALIDOS y lo transforma a instancia de AsignarRolDto', async () => {
+      const result = await makePipe().transform({ rolCodigo: 'TECNICO' }, metadata);
+      expect(result).toBeInstanceOf(AsignarRolDto);
+      expect(result.rolCodigo).toBe('TECNICO');
     });
   });
 

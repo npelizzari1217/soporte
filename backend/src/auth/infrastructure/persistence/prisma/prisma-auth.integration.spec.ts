@@ -350,15 +350,20 @@ describe('Auth Repositories — Integration (2.C.1)', () => {
   // ─── PrismaRoleRepository ─────────────────────────────────────────────────
 
   describe('PrismaRoleRepository', () => {
-    it('findByCodigo retorna el rol del catálogo (seed PR-07)', async () => {
-      const role = await roleRepo.findByCodigo('ADMIN');
+    it('findByCodigo retorna el rol del catálogo (seed rbac-4-roles)', async () => {
+      const role = await roleRepo.findByCodigo('ADMINISTRADOR');
       expect(role).not.toBeNull();
-      expect(role!.codigo).toBe('ADMIN');
+      expect(role!.codigo).toBe('ADMINISTRADOR');
       expect(role!.nombre).toBe('Administrador');
     });
 
     it('findByCodigo retorna null para un código inexistente', async () => {
       const role = await roleRepo.findByCodigo('ROL_INEXISTENTE');
+      expect(role).toBeNull();
+    });
+
+    it('findByCodigo NO resuelve roles legacy soft-deleted (ADMIN, remap 20260629110000)', async () => {
+      const role = await roleRepo.findByCodigo('ADMIN');
       expect(role).toBeNull();
     });
 

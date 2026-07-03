@@ -25,8 +25,8 @@ export class PrismaRoleRepository implements IRoleRepository {
   }
 
   async findByCodigo(codigo: string): Promise<RoleEntity | null> {
-    const row = await this.client.role.findUnique({
-      where: { codigo },
+    const row = await this.client.role.findFirst({
+      where: { codigo, deletedAt: null },
     });
     return row ? RoleMapper.toDomain(row) : null;
   }
