@@ -6,6 +6,6 @@
 -- La columna is_global_admin ya existe (20260629120000_add_is_global_admin).
 -- Localmente será no-op si nestor@sesitec.com.ar no existe en la DB dev.
 
-UPDATE master.usuarios
+UPDATE usuarios
 SET is_global_admin = true
 WHERE email = 'nestor@sesitec.com.ar';
