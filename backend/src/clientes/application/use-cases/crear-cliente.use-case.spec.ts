@@ -53,14 +53,17 @@ const makeUsuarioRepo = (): vi.Mocked<IUsuarioRepository> => ({
 const ADMIN_ROLE_ID = 'a0000000-0000-4000-a000-000000000001';
 
 const makeRoleRepo = (): vi.Mocked<IRoleRepository> => ({
-  findByCodigo: vi
-    .fn()
-    .mockResolvedValue(
-      RoleEntity.create(
-        { codigo: 'ADMIN', nombre: 'Administrador', descripcion: 'Acceso total', permisos: [] },
-        ADMIN_ROLE_ID,
-      ),
+  findByCodigo: vi.fn().mockResolvedValue(
+    RoleEntity.create(
+      {
+        codigo: 'ADMINISTRADOR',
+        nombre: 'Administrador',
+        descripcion: 'Acceso total',
+        permisos: [],
+      },
+      ADMIN_ROLE_ID,
     ),
+  ),
   findWithPermisos: vi.fn(),
 });
 
@@ -263,15 +266,19 @@ describe('CrearClienteUseCase (provisioning completo)', () => {
       expect(savedAdmin.passwordHash).toBe('$argon2id$hashed_password');
     });
 
-    it('el usuario admin inicial se crea con el rol ADMIN asignado (tenant inutilizable sin él)', async () => {
+    it('el usuario admin inicial se crea con el rol ADMINISTRADOR asignado (tenant inutilizable sin él)', async () => {
       // [SPEC:clientes/Provisioning de tenant nuevo]
-      // El usuario administrador inicial DEBE recibir el rol ADMIN automáticamente
+      // El usuario administrador inicial DEBE recibir el rol ADMINISTRADOR automáticamente
       // durante el provisioning. Sin este rol, el tenant queda inutilizable
       // (el admin no podría autenticarse con permisos operativos).
+      // Regresión rbac-security-hardening: 'ADMIN' es un código legacy soft-deleted
+      // (migration 20260629110000_remap_usuarios_roles) — resolverlo rompería el
+      // provisioning una vez que findByCodigo filtra deletedAt.
       await useCase.execute(validDto);
       const [savedAdmin] = usuarioRepo.save.mock.calls[0];
       expect(savedAdmin.roles).toHaveLength(1);
-      expect(savedAdmin.roles[0].codigo).toBe('ADMIN');
+      expect(savedAdmin.roles[0].codigo).toBe('ADMINISTRADOR');
+      expect(roleRepo.findByCodigo).toHaveBeenCalledWith('ADMINISTRADOR');
     });
   });
 

@@ -304,9 +304,11 @@ describe('CrearClienteUseCase — e2e provisioning real (7.C.1)', () => {
       expect(usuario).not.toBeNull();
       expect(usuario?.activo).toBe(true);
 
-      // El admin tiene rol ADMIN asignado automáticamente (Batch 2 decision)
+      // El admin tiene rol ADMINISTRADOR asignado automáticamente (Batch 2 decision).
+      // 'ADMIN' es el código legacy soft-deleted (remap 20260629110000) — rbac-security-hardening
+      // corrige el provisioning para resolver el rol activo por su código canónico.
       const roles = usuario?.usuariosRoles.map((ur) => ur.rol.codigo) ?? [];
-      expect(roles).toContain('ADMIN');
+      expect(roles).toContain('ADMINISTRADOR');
     });
   });
 });

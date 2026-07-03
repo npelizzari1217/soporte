@@ -118,15 +118,18 @@ export class CrearClienteUseCase {
       // contiene el plaintext en ningún momento de su ciclo de vida.
       const passwordHash = await this.hashProvider.hash(dto.adminPasswordPlaintext);
 
-      // Resolver el rol ADMIN por código (no por UUID hardcodeado).
-      // El rol ADMIN debe existir en master (sembrado en la migration RBAC base).
+      // Resolver el rol ADMINISTRADOR por código (no por UUID hardcodeado).
+      // El rol ADMINISTRADOR debe existir en master (sembrado en la migration
+      // seed_rbac_4_roles). 'ADMIN' es el código legacy — soft-deleted por la
+      // migration 20260629110000_remap_usuarios_roles; usarlo acá rompería el
+      // provisioning una vez que findByCodigo filtra deletedAt (rbac-security-hardening).
       // Si no existe, es un error de configuración → throw (fallo excepcional,
       // no error de dominio esperado) → el try/catch ejecutará el rollback.
-      const adminRole = await this.roleRepo.findByCodigo('ADMIN');
+      const adminRole = await this.roleRepo.findByCodigo('ADMINISTRADOR');
       if (!adminRole) {
         throw new Error(
-          '[Provisioning] Rol ADMIN no encontrado en master. ' +
-            'Verificá que la migration de seed RBAC base fue aplicada.',
+          '[Provisioning] Rol ADMINISTRADOR no encontrado en master. ' +
+            'Verificá que la migration de seed RBAC (seed_rbac_4_roles) fue aplicada.',
         );
       }
 
