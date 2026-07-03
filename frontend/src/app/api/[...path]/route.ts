@@ -57,7 +57,18 @@ async function handler(
   if (MUTATING_METHODS.has(request.method)) {
     const origin = request.headers.get("origin");
     const reqUrl = new URL(request.url);
-    const expectedOrigin = `${reqUrl.protocol}//${reqUrl.host}`;
+    // Detrás de un reverse-proxy que termina TLS (IIS/ARR), `request.url` refleja
+    // el host/protocolo INTERNO (ej. http://localhost:3100), no el público. Comparar
+    // contra eso rechaza el Origin real del navegador (https://dominio) → 403 CSRF en
+    // TODA mutación. Preferimos el origen público explícito (APP_ORIGIN) y, si no está,
+    // los headers X-Forwarded-* del proxy; recién en dev caemos a reqUrl.
+    const fwdProto = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
+    const fwdHost = request.headers.get("x-forwarded-host")?.split(",")[0]?.trim();
+    const expectedOrigin =
+      process.env.APP_ORIGIN ??
+      (fwdProto && fwdHost
+        ? `${fwdProto}://${fwdHost}`
+        : `${reqUrl.protocol}//${reqUrl.host}`);
 
     if (!origin || origin !== expectedOrigin) {
       return new NextResponse(

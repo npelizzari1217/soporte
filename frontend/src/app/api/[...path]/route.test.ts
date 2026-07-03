@@ -18,6 +18,7 @@ function mkParams(path: string[]): { params: Promise<{ path: string[] }> } {
 describe("BFF catch-all proxy", () => {
   beforeEach(() => {
     process.env.BACKEND_URL = BACKEND;
+    delete process.env.APP_ORIGIN;
   });
 
   // ─── Bearer injection ────────────────────────────────────────────────────────
@@ -131,6 +132,76 @@ describe("BFF catch-all proxy", () => {
     const res = await POST(req, mkParams(["tickets"]));
 
     expect(res.status).toBe(403);
+  });
+
+  // ─── CSRF detrás de reverse-proxy (regresión: prod HTTPS + IIS) ───────────────
+  // Bug: request.url refleja el host interno (http://localhost:3100), no el público,
+  // por lo que el Origin real del navegador (https://dominio) se rechazaba → 403 en
+  // TODA mutación en producción. El fix usa APP_ORIGIN / X-Forwarded-* como origen esperado.
+
+  it("POST behind proxy: Origin matches APP_ORIGIN → forwarded (no 403)", async () => {
+    process.env.APP_ORIGIN = "https://soporte.sesitec.net";
+    server.use(
+      http.post(`${BACKEND}/api/clientes`, () =>
+        HttpResponse.json({ id: "c1" }, { status: 201 }),
+      ),
+    );
+
+    // reqUrl interno (localhost:3100) ≠ Origin público — el caso que rompía en prod.
+    const req = new NextRequest("http://localhost:3100/api/clientes", {
+      method: "POST",
+      body: JSON.stringify({ nombre: "Acme" }),
+      headers: {
+        "content-type": "application/json",
+        cookie: "at=token",
+        origin: "https://soporte.sesitec.net",
+      },
+    });
+
+    const res = await POST(req, mkParams(["clientes"]));
+
+    expect(res.status).toBe(201);
+  });
+
+  it("POST behind proxy: Origin != APP_ORIGIN → 403", async () => {
+    process.env.APP_ORIGIN = "https://soporte.sesitec.net";
+    const req = new NextRequest("http://localhost:3100/api/clientes", {
+      method: "POST",
+      body: JSON.stringify({}),
+      headers: {
+        "content-type": "application/json",
+        cookie: "at=token",
+        origin: "https://evil.com",
+      },
+    });
+
+    const res = await POST(req, mkParams(["clientes"]));
+
+    expect(res.status).toBe(403);
+  });
+
+  it("POST behind proxy: X-Forwarded-* used when APP_ORIGIN unset", async () => {
+    server.use(
+      http.post(`${BACKEND}/api/clientes`, () =>
+        HttpResponse.json({ id: "c2" }, { status: 201 }),
+      ),
+    );
+
+    const req = new NextRequest("http://localhost:3100/api/clientes", {
+      method: "POST",
+      body: JSON.stringify({ nombre: "Acme" }),
+      headers: {
+        "content-type": "application/json",
+        cookie: "at=token",
+        origin: "https://soporte.sesitec.net",
+        "x-forwarded-proto": "https",
+        "x-forwarded-host": "soporte.sesitec.net",
+      },
+    });
+
+    const res = await POST(req, mkParams(["clientes"]));
+
+    expect(res.status).toBe(201);
   });
 
   // ─── Cookie header NOT forwarded to backend ───────────────────────────────────
