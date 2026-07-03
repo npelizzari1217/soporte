@@ -9,7 +9,9 @@
  * Responsabilidades:
  * - Listar clientes (useClientes, PR5) como filas-tarjeta: nombre, badge de estado,
  *   db_name, acciones (Suspender/Reactivar).
- * - Provisionar un nuevo cliente vía formulario modal (useCrearCliente).
+ * - Provisionar un nuevo cliente vía formulario modal (useCrearCliente). db_name
+ *   NO se pide en el formulario — el backend lo genera automáticamente a partir
+ *   del id del cliente (change auto-dbname-cliente).
  * - Suspender (DELETE /clientes/:id) / Reactivar (PUT /clientes/:id/reactivar) —
  *   endpoints ya existentes en el backend (ClientesController).
  *
@@ -19,8 +21,10 @@
  *
  * Nota de implementación: el formulario usa estado controlado simple (useState), no
  * react-hook-form + zod (a diferencia de TicketFormModal) — los campos son todos
- * texto/email/password sin validación cliente-side requerida por el spec; la única
- * validación de negocio (db_name duplicado) es server-side y se mapea acá.
+ * texto/email/password sin validación cliente-side requerida por el spec. Los
+ * errores del POST se mapean con el mapeo genérico (mapApiError); no hay un
+ * mapeo especial para 409 (el 409 por db_name duplicado ya no aplica, dado que
+ * db_name ya no es un input del usuario).
  *
  * Spec: [SPEC:admin-ui/Pantalla Clientes]
  */
@@ -42,30 +46,17 @@ import { notify } from "@/shared/lib/notify";
 import { mapApiError } from "@/shared/lib/map-api-error";
 import { apiFetch } from "@/shared/api/client";
 import { queryKeys } from "@/shared/api/query-keys";
-import { ApiError } from "@/shared/api/types";
+import type { ApiError } from "@/shared/api/types";
 import { useClientes } from "../hooks/use-clientes";
 import { useCrearCliente, type CrearClienteInput } from "../hooks/use-crear-cliente";
 
 const EMPTY_FORM: CrearClienteInput = {
   nombre: "",
-  dbName: "",
   adminEmail: "",
   adminNombre: "",
   adminApellido: "",
   adminPassword: "",
 };
-
-/**
- * Mapea errores del POST /clientes a mensajes de UI.
- * 409 (db_name duplicado) MUST mostrar el texto fijo del spec, no el mensaje crudo
- * del backend (`Ya existe un cliente con db_name "x".`) — admin-ui/Pantalla Clientes.
- */
-function mapCrearClienteError(err: unknown): string {
-  if (err instanceof ApiError && err.statusCode === 409) {
-    return "Ese identificador de DB ya existe";
-  }
-  return mapApiError(err);
-}
 
 export function ClientesPage() {
   const { data: clientes, isLoading, isError, refetch } = useClientes();
@@ -97,7 +88,7 @@ export function ClientesPage() {
       setCreateOpen(false);
       setForm(EMPTY_FORM);
     } catch (err) {
-      const msg = mapCrearClienteError(err);
+      const msg = mapApiError(err);
       setFormError(msg);
       notify.error(msg);
     }
@@ -163,16 +154,6 @@ export function ClientesPage() {
             aria-label="Nombre"
             value={form.nombre}
             onChange={handleChange("nombre")}
-          />
-        </FormField>
-
-        <FormField label="db_name" htmlFor="dbName" required>
-          <Input
-            id="dbName"
-            aria-label="db_name"
-            value={form.dbName}
-            onChange={handleChange("dbName")}
-            placeholder="identificador_unico_db"
           />
         </FormField>
 

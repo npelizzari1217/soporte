@@ -171,7 +171,6 @@ describe('ClientesController — POST /clientes (T2.4)', () => {
       nombre: 'Acme Corp',
       razonSocial: null,
       cuit: null,
-      dbName: 'soporte_acme',
       adminEmail: 'admin@acme.com',
       adminNombre: 'Admin',
       adminApellido: 'User',
@@ -180,6 +179,8 @@ describe('ClientesController — POST /clientes (T2.4)', () => {
 
     expect(response.id).toBe(cliente.id);
     expect(response.nombre).toBe('Acme Corp');
+    // dbName lo genera el backend (auto-dbname-cliente) — el response lo expone,
+    // pero NO se envía en el body del request (ver arriba, sin campo dbName).
     expect(response.dbName).toBe('soporte_acme');
     expect(response.activo).toBe(true);
   });
@@ -192,7 +193,6 @@ describe('ClientesController — POST /clientes (T2.4)', () => {
       nombre: 'Acme Corp',
       razonSocial: null,
       cuit: null,
-      dbName: 'soporte_acme',
       adminEmail: 'admin@acme.com',
       adminNombre: 'Admin',
       adminApellido: 'User',
@@ -205,24 +205,10 @@ describe('ClientesController — POST /clientes (T2.4)', () => {
     expect(keys).not.toContain('passwordHash');
   });
 
-  it('db_name duplicado → 409 ConflictException', async () => {
-    crear.execute.mockResolvedValue(Result.fail(new ClienteConflictError('soporte_acme')));
-
-    await expect(
-      controller.create({
-        nombre: 'Acme',
-        razonSocial: null,
-        cuit: null,
-        dbName: 'soporte_acme',
-        adminEmail: 'admin@acme.com',
-        adminNombre: 'Admin',
-        adminApellido: 'User',
-        adminPassword: 'pass',
-      }),
-    ).rejects.toThrow(ConflictException);
-  });
-
-  it('adminEmail duplicado → 409 ConflictException', async () => {
+  it('conflicto genérico (ClienteConflictError) → 409 ConflictException', async () => {
+    // db_name ya no es input del usuario (auto-dbname-cliente) por lo que no
+    // puede colisionar; este test cubre el mapeo genérico Result.fail(ClienteConflictError)
+    // → 409 en la capa de controller, por si el use case lo produce por otro motivo.
     crear.execute.mockResolvedValue(Result.fail(new ClienteConflictError('admin@acme.com')));
 
     await expect(
@@ -230,7 +216,6 @@ describe('ClientesController — POST /clientes (T2.4)', () => {
         nombre: 'Acme',
         razonSocial: null,
         cuit: null,
-        dbName: 'soporte_acme',
         adminEmail: 'admin@acme.com',
         adminNombre: 'Admin',
         adminApellido: 'User',
@@ -247,7 +232,6 @@ describe('ClientesController — POST /clientes (T2.4)', () => {
         nombre: 'Acme',
         razonSocial: null,
         cuit: null,
-        dbName: 'new_acme',
         adminEmail: 'admin@acme.com',
         adminNombre: 'Admin',
         adminApellido: 'User',

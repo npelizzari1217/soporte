@@ -19,9 +19,6 @@ export class CreateClienteDto {
   @IsString()
   cuit!: string | null;
 
-  @IsString()
-  dbName!: string;
-
   /** Email del usuario administrador inicial del cliente. */
   @IsEmail()
   adminEmail!: string;

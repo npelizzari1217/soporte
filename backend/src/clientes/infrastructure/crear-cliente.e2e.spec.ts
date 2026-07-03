@@ -3,17 +3,20 @@
  *
  * Verifica el flujo completo de CrearClienteUseCase con implementaciones REALES
  * (no mocks) contra Postgres local:
- *   1. PostgresAdminService crea la DB tenant.
+ *   1. PostgresAdminService crea la DB tenant (dbName AUTOGENERADO del id — ver
+ *      change auto-dbname-cliente, ya no es un input del DTO).
  *   2. TenantMigrationRunnerAdapter aplica las migraciones.
  *   3. TenantSeederAdapter siembra los 5 catálogos base.
  *   4. PrismaClienteRepository persiste el cliente en master.
  *   5. PrismaUsuarioRepository persiste el admin inicial en master.
- *   6. Conecta a la nueva DB tenant y verifica los 5 catálogos.
+ *   6. Conecta a la nueva DB tenant (usando el dbName derivado) y verifica los
+ *      5 catálogos.
  *   7. Corre el seed dos veces → counts no cambian (idempotencia).
  *
  * Configuración de DB:
  *   - MASTER: soporte_master_test (credenciales de test, throwaway).
- *   - TENANT: soporte_e2e_<timestamp> — nombre único, se dropea en afterAll.
+ *   - TENANT: soporte_<uuid sin guiones> — derivado por CrearClienteUseCase,
+ *     se descubre en runtime (result.getValue().dbName) y se dropea en afterAll.
  *
  * Teardown ROBUSTO (try/finally):
  *   - Dropea la DB tenant siempre (incluso si los tests fallan).
@@ -23,7 +26,8 @@
  * Ref spec: [SPEC:clientes/Provisioning, Seed catálogos por tenant idempotente]
  * Ref spec: [SPEC:tickets-core/Nuevo tenant tiene catálogos pre-poblados]
  * Ref spec: [SPEC:equipos/Seeds de tipos_componente]
- * Tarea: 7.C.1 (Batch 4 — Parte C)
+ * Ref spec: [SPEC:clientes/db_name autogenerado a partir del id del cliente]
+ * Tarea: 7.C.1 (Batch 4 — Parte C) — actualizado por change auto-dbname-cliente
  */
 
 import { Pool } from 'pg';
@@ -44,10 +48,13 @@ const MASTER_URL =
   process.env.DATABASE_URL_MASTER ??
   'postgresql://soporte:soporte@localhost:5432/soporte_master_test';
 
-// DB tenant creada por este test — nombre único para evitar colisiones entre runs.
+// DB tenant creada por este test — dbName se DERIVA automáticamente del id del
+// cliente dentro de CrearClienteUseCase (soporte_<uuid sin guiones>). Se
+// descubre en runtime (ver beforeAll) y se guarda en E2E_DB_NAME para el resto
+// de la suite y el teardown.
 const E2E_DB_SUFFIX = `${Date.now()}`;
-const E2E_DB_NAME = `soporte_e2e_${E2E_DB_SUFFIX}`;
 const ADMIN_EMAIL = `admin_e2e_${E2E_DB_SUFFIX}@test.local`;
+let E2E_DB_NAME: string;
 
 // ─── Suite ────────────────────────────────────────────────────────────────────
 
@@ -138,12 +145,11 @@ describe('CrearClienteUseCase — e2e provisioning real (7.C.1)', () => {
   // ─── Test 1: Provisioning completo ────────────────────────────────────────
 
   describe('Provisioning completo de nuevo tenant', () => {
-    it('CrearClienteUseCase.execute crea la DB, aplica migraciones y siembra catálogos', async () => {
+    it('CrearClienteUseCase.execute crea la DB (dbName autogenerado), aplica migraciones y siembra catálogos', async () => {
       const result = await useCase.execute({
         nombre: 'E2E Test Cliente',
         razonSocial: null,
         cuit: null,
-        dbName: E2E_DB_NAME,
         adminEmail: ADMIN_EMAIL,
         adminNombre: 'Admin',
         adminApellido: 'E2E',
@@ -152,7 +158,13 @@ describe('CrearClienteUseCase — e2e provisioning real (7.C.1)', () => {
 
       expect(result.isOk()).toBe(true);
       if (result.isOk()) {
-        expect(result.getValue().dbName).toBe(E2E_DB_NAME);
+        const cliente = result.getValue();
+        // dbName se deriva de 'soporte_' + id sin guiones, en minúsculas
+        // (change auto-dbname-cliente) — se guarda para el resto de la suite.
+        E2E_DB_NAME = cliente.dbName;
+        const idSinGuiones = cliente.id.replaceAll('-', '').toLowerCase();
+        expect(cliente.dbName).toBe(`soporte_${idSinGuiones}`);
+        expect(cliente.dbName).toMatch(/^soporte_[0-9a-f]{32}$/);
       }
     }, 60_000); // migraciones pueden tardar
 
