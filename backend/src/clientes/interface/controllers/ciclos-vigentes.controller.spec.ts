@@ -15,12 +15,14 @@
 
 import {
   ExecutionContext,
+  ForbiddenException,
   UnauthorizedException,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { CiclosVigentesController } from './ciclos-vigentes.controller';
 import { CrearCicloVigenteUseCase } from '../../application/use-cases/crear-ciclo-vigente.use-case';
 import { JwtAuthGuard } from '../../../auth/infrastructure/guards/jwt-auth.guard';
+import { GlobalAdminGuard } from '../../../auth/infrastructure/guards/global-admin.guard';
 import { CicloVigenteEntity } from '../../domain/entities/ciclo-vigente.entity';
 import { Result } from '../../../shared/domain/result';
 import { CicloVigenteOverlapError } from '../../domain/errors/clientes.errors';
@@ -81,6 +83,39 @@ describe('CiclosVigentesController — protección JwtAuthGuard (T1.5)', () => {
     } as unknown as ExecutionContext;
 
     expect(() => jwtGuard.canActivate(ctx)).toThrow(UnauthorizedException);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Protección GlobalAdminGuard — el catálogo global solo lo escribe el operador global
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('CiclosVigentesController — protección GlobalAdminGuard (catálogo global)', () => {
+  it('tiene GlobalAdminGuard aplicado en POST create (metadata)', () => {
+    const GUARDS_METADATA = '__guards__';
+    const guards: unknown[] =
+      Reflect.getMetadata(GUARDS_METADATA, CiclosVigentesController.prototype.create) ?? [];
+    expect(guards.some((g) => g === GlobalAdminGuard)).toBe(true);
+  });
+
+  it('GlobalAdminGuard lanza ForbiddenException si is_global_admin=false (no-operador escribe el catálogo)', () => {
+    const guard = new GlobalAdminGuard();
+    const request = { user: { is_global_admin: false } };
+    const ctx = {
+      switchToHttp: () => ({ getRequest: () => request }),
+    } as unknown as ExecutionContext;
+
+    expect(() => guard.canActivate(ctx)).toThrow(ForbiddenException);
+  });
+
+  it('GlobalAdminGuard permite si is_global_admin=true (operador global)', () => {
+    const guard = new GlobalAdminGuard();
+    const request = { user: { is_global_admin: true } };
+    const ctx = {
+      switchToHttp: () => ({ getRequest: () => request }),
+    } as unknown as ExecutionContext;
+
+    expect(guard.canActivate(ctx)).toBe(true);
   });
 });
 

@@ -12,16 +12,19 @@ import { CreateCicloVigenteDto } from '../dtos/create-ciclo-vigente.dto';
 import { CicloVigenteResponseDto } from '../dtos/ciclo-vigente-response.dto';
 import { CicloVigenteOverlapError } from '../../domain/errors/clientes.errors';
 import { JwtAuthGuard } from '../../../auth/infrastructure/guards/jwt-auth.guard';
+import { GlobalAdminGuard } from '../../../auth/infrastructure/guards/global-admin.guard';
 
 /**
- * CiclosVigentesController — entry point HTTP para ciclos de gestión globales.
+ * CiclosVigentesController — entry point HTTP para el CATÁLOGO GLOBAL de ciclos.
  *
  * Rutas:
- *   POST /ciclos-vigentes → crear nuevo ciclo vigente
+ *   POST /ciclos-vigentes → crear nuevo ciclo del catálogo global
  *
- * Seguridad (T1.6, PR1 admin-general):
+ * Seguridad:
  * - @UseGuards(JwtAuthGuard) a nivel de controlador — todos los endpoints requieren JWT válido.
- * - Cierra el agujero de seguridad crítico: el controlador estaba ABIERTO sin autenticación.
+ * - @UseGuards(GlobalAdminGuard) en POST — el catálogo global SOLO lo gestiona el operador
+ *   global (is_global_admin). Sin este guard, cualquier usuario autenticado de cualquier tenant
+ *   podía escribir el catálogo compartido (agujero de seguridad).
  *
  * Tarea: 1.D.2 / T1.6
  */
@@ -32,11 +35,12 @@ export class CiclosVigentesController {
 
   /**
    * POST /ciclos-vigentes
-   * Crea un nuevo ciclo vigente global.
+   * Crea un nuevo ciclo en el catálogo global. Solo operador global.
    * @returns 201 + CicloVigenteResponseDto
    * @throws 422 UnprocessableEntityException si hay solapamiento de fechas
    */
   @Post()
+  @UseGuards(GlobalAdminGuard)
   @HttpCode(HttpStatus.CREATED)
   async create(@Body() dto: CreateCicloVigenteDto): Promise<CicloVigenteResponseDto> {
     const result = await this.crearCicloVigenteUseCase.execute({
