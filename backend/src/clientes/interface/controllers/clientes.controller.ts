@@ -34,7 +34,8 @@ import { GlobalAdminGuard } from '../../../auth/infrastructure/guards/global-adm
  *
  * Guards:
  * - JwtAuthGuard a nivel de controlador (todos los endpoints requieren JWT).
- * - GlobalAdminGuard en GET / y POST / (solo operador con is_global_admin=true).
+ * - GlobalAdminGuard en TODOS los endpoints (GET /, POST /, DELETE /:id,
+ *   PUT /:id/reactivar) — solo operador con is_global_admin=true.
  *
  * Responsabilidades de esta capa:
  * - Parsear request HTTP → DTO de aplicación.
@@ -116,6 +117,7 @@ export class ClientesController {
    * @throws 404 NotFoundException si el cliente no existe
    */
   @Delete(':id')
+  @UseGuards(GlobalAdminGuard)
   @HttpCode(HttpStatus.NO_CONTENT)
   async suspend(@Param('id') id: string): Promise<void> {
     const result = await this.suspenderClienteUseCase.execute(id);
@@ -136,6 +138,7 @@ export class ClientesController {
    * @throws 404 NotFoundException si el cliente no existe
    */
   @Put(':id/reactivar')
+  @UseGuards(GlobalAdminGuard)
   @HttpCode(HttpStatus.OK)
   async reactivar(@Param('id') id: string): Promise<void> {
     const result = await this.reactivarClienteUseCase.execute(id);

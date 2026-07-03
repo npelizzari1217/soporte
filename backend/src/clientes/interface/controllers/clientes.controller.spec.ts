@@ -310,6 +310,30 @@ describe('ClientesController — suspend/reactivar (regresión)', () => {
     reactivar.execute.mockResolvedValue(Result.fail(new ClienteNotFoundError('non-existent')));
     await expect(controller.reactivar('non-existent')).rejects.toThrow(NotFoundException);
   });
+
+  it('DELETE /:id (suspend) tiene GlobalAdminGuard aplicado (metadata) — CVE hardening', () => {
+    const GUARDS_METADATA = '__guards__';
+    const methodFn = ClientesController.prototype.suspend;
+    const methodGuards: unknown[] = Reflect.getMetadata(GUARDS_METADATA, methodFn) ?? [];
+    const controllerGuards: unknown[] =
+      Reflect.getMetadata(GUARDS_METADATA, ClientesController) ?? [];
+    const hasGlobalAdmin =
+      methodGuards.some((g) => g === GlobalAdminGuard) ||
+      controllerGuards.some((g) => g === GlobalAdminGuard);
+    expect(hasGlobalAdmin).toBe(true);
+  });
+
+  it('PUT /:id/reactivar tiene GlobalAdminGuard aplicado (metadata) — CVE hardening', () => {
+    const GUARDS_METADATA = '__guards__';
+    const methodFn = ClientesController.prototype.reactivar;
+    const methodGuards: unknown[] = Reflect.getMetadata(GUARDS_METADATA, methodFn) ?? [];
+    const controllerGuards: unknown[] =
+      Reflect.getMetadata(GUARDS_METADATA, ClientesController) ?? [];
+    const hasGlobalAdmin =
+      methodGuards.some((g) => g === GlobalAdminGuard) ||
+      controllerGuards.some((g) => g === GlobalAdminGuard);
+    expect(hasGlobalAdmin).toBe(true);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
