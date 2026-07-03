@@ -30,10 +30,6 @@ export interface LogoutDto {
 
 // ─── Usuarios DTO ─────────────────────────────────────────────────────────────
 
-export interface AsignarRolDto {
-  rolCodigo: string;
-}
-
 /**
  * Roles válidos que se pueden asignar a un usuario nuevo via POST /usuarios.
  * Spec ref: clientes-tenancy/POST /usuarios — campo `rol`
@@ -41,6 +37,20 @@ export interface AsignarRolDto {
  */
 export const ROLES_VALIDOS = ['USUARIO', 'COLABORADOR', 'TECNICO', 'ADMINISTRADOR'] as const;
 export type RolValido = (typeof ROLES_VALIDOS)[number];
+
+/**
+ * AsignarRolDto — body de POST /usuarios/:id/roles (endpoint legacy, permiso rol:asignar).
+ *
+ * Convertida de interface a class (class-validator): sin este cambio el
+ * ValidationPipe global saltea la validación en silencio (metatype === Object),
+ * permitiendo asignar códigos de rol legacy soft-deleted (ej. 'ADMIN').
+ *
+ * Tarea: rbac-security-hardening — Fix 3
+ */
+export class AsignarRolDto {
+  @IsIn(ROLES_VALIDOS)
+  rolCodigo!: string;
+}
 
 /**
  * CreateUsuarioDto — body de POST /usuarios.
