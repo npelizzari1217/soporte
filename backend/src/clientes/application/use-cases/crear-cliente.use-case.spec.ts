@@ -15,7 +15,8 @@
  *   (el seeder maneja la idempotencia internamente con ON CONFLICT DO NOTHING)
  * - Admin inicial creado en master.usuarios con clienteId del cliente recién creado
  * - Password del admin hasheada (nunca plaintext en la entidad)
- * - db_name ya existe → Result.fail(ClienteConflictError) sin iniciar provisioning
+ * - dbName se DERIVA automáticamente de 'soporte_' + id (uuid sin guiones, minúsculas)
+ *   — ya no es un input del DTO (change auto-dbname-cliente).
  *
  * Ref spec: [SPEC:clientes/Provisioning de tenant nuevo, Rollback compensatorio, Seed idempotente]
  * Tarea: 7.A.3
@@ -31,13 +32,12 @@ import { ITenantSeeder } from '../ports/i-tenant-seeder';
 import { IHashProvider } from '../../../auth/domain/ports/i-hash.provider';
 import { ClienteEntity } from '../../domain/entities/cliente.entity';
 import { RoleEntity } from '../../../auth/domain/entities/role.entity';
-import { ClienteConflictError } from '../../domain/errors/clientes.errors';
 
 // ─── Factories de mocks ───────────────────────────────────────────────────────
 
 const makeClienteRepo = (): vi.Mocked<IClienteRepository> => ({
   findById: vi.fn(),
-  findByDbName: vi.fn().mockResolvedValue(null), // default: no conflict
+  findByDbName: vi.fn(),
   findAll: vi.fn(),
   save: vi.fn().mockResolvedValue(undefined),
   delete: vi.fn(),
@@ -92,7 +92,6 @@ const validDto: CrearClienteDto = {
   nombre: 'Acme Corp',
   razonSocial: 'Acme S.A.',
   cuit: '20123456789',
-  dbName: 'tenant_acme',
   adminEmail: 'admin@acme.com',
   adminNombre: 'Admin',
   adminApellido: 'Acme',
@@ -129,45 +128,6 @@ describe('CrearClienteUseCase (provisioning completo)', () => {
       seeder,
       hashProvider,
     );
-  });
-
-  // ─── Escenario: db_name ya existe → conflicto 409 ──────────────────────────
-
-  describe('Escenario: db_name ya existe → ClienteConflictError', () => {
-    beforeEach(() => {
-      const existente = ClienteEntity.create({
-        nombre: 'Existing Corp',
-        razonSocial: null,
-        cuit: null,
-        dbName: validDto.dbName,
-        activo: true,
-      });
-      clienteRepo.findByDbName.mockResolvedValue(existente);
-    });
-
-    it('retorna Result.fail(ClienteConflictError)', async () => {
-      const result = await useCase.execute(validDto);
-      expect(result.isFail()).toBe(true);
-      expect(result.getError()).toBeInstanceOf(ClienteConflictError);
-    });
-
-    it('el error incluye el db_name conflictivo en el mensaje', async () => {
-      const result = await useCase.execute(validDto);
-      expect(result.getError().message).toContain(validDto.dbName);
-    });
-
-    it('NO llama a createDatabase cuando hay conflicto', async () => {
-      await useCase.execute(validDto);
-      expect(adminPort.createDatabase).not.toHaveBeenCalled();
-    });
-
-    it('NO llama a migrationRunner, seeder, ni repos cuando hay conflicto', async () => {
-      await useCase.execute(validDto);
-      expect(migrationRunner.runMigrations).not.toHaveBeenCalled();
-      expect(seeder.seed).not.toHaveBeenCalled();
-      expect(clienteRepo.save).not.toHaveBeenCalled();
-      expect(usuarioRepo.save).not.toHaveBeenCalled();
-    });
   });
 
   // ─── Escenario: Provisioning exitoso → happy path ──────────────────────────
@@ -208,27 +168,35 @@ describe('CrearClienteUseCase (provisioning completo)', () => {
       expect(result.getValue()).toBeInstanceOf(ClienteEntity);
     });
 
-    it('el cliente tiene activo=true y el dbName del DTO', async () => {
+    it('el cliente tiene activo=true y el nombre del DTO', async () => {
       const result = await useCase.execute(validDto);
       const cliente = result.getValue();
       expect(cliente.activo).toBe(true);
-      expect(cliente.dbName).toBe(validDto.dbName);
       expect(cliente.nombre).toBe(validDto.nombre);
     });
 
-    it('llama a createDatabase con el dbName del DTO', async () => {
-      await useCase.execute(validDto);
-      expect(adminPort.createDatabase).toHaveBeenCalledWith(validDto.dbName);
+    it('deriva dbName automáticamente como soporte_<id sin guiones en minúsculas>', async () => {
+      // [SPEC:clientes/db_name autogenerado] — ya no es un input, se deriva del id.
+      const result = await useCase.execute(validDto);
+      const cliente = result.getValue();
+      const idSinGuiones = cliente.id.replaceAll('-', '').toLowerCase();
+      expect(cliente.dbName).toBe(`soporte_${idSinGuiones}`);
+      expect(cliente.dbName).toMatch(/^soporte_[0-9a-f]{32}$/);
     });
 
-    it('llama a runMigrations con el dbName del DTO', async () => {
-      await useCase.execute(validDto);
-      expect(migrationRunner.runMigrations).toHaveBeenCalledWith(validDto.dbName);
+    it('llama a createDatabase con el dbName derivado del cliente', async () => {
+      const result = await useCase.execute(validDto);
+      expect(adminPort.createDatabase).toHaveBeenCalledWith(result.getValue().dbName);
     });
 
-    it('llama a seeder.seed con el dbName del DTO', async () => {
-      await useCase.execute(validDto);
-      expect(seeder.seed).toHaveBeenCalledWith(validDto.dbName);
+    it('llama a runMigrations con el dbName derivado del cliente', async () => {
+      const result = await useCase.execute(validDto);
+      expect(migrationRunner.runMigrations).toHaveBeenCalledWith(result.getValue().dbName);
+    });
+
+    it('llama a seeder.seed con el dbName derivado del cliente', async () => {
+      const result = await useCase.execute(validDto);
+      expect(seeder.seed).toHaveBeenCalledWith(result.getValue().dbName);
     });
 
     it('el usuario admin se guarda en master.usuarios con clienteId del cliente creado', async () => {
@@ -293,7 +261,7 @@ describe('CrearClienteUseCase (provisioning completo)', () => {
 
       expect(result.isOk()).toBe(true);
       expect(seeder.seed).toHaveBeenCalledTimes(1);
-      expect(seeder.seed).toHaveBeenCalledWith(validDto.dbName);
+      expect(seeder.seed).toHaveBeenCalledWith(result.getValue().dbName);
     });
 
     it('NO falla si seeder.seed() se llama sobre una DB ya sembrada', async () => {
@@ -304,8 +272,8 @@ describe('CrearClienteUseCase (provisioning completo)', () => {
       const result = await useCase.execute(validDto);
       expect(result.isOk()).toBe(true);
 
-      // Re-configurar para segunda llamada: nuevo cliente diferente (mismo seeder)
-      clienteRepo.findByDbName.mockResolvedValue(null);
+      // Re-configurar para segunda llamada: nuevo cliente (dbName distinto, se
+      // deriva automáticamente de un nuevo id — no hace falta pasarlo).
       clienteRepo.save.mockResolvedValue(undefined);
       usuarioRepo.save.mockResolvedValue(undefined);
       adminPort.createDatabase.mockResolvedValue(undefined);
@@ -313,13 +281,14 @@ describe('CrearClienteUseCase (provisioning completo)', () => {
 
       const dto2: CrearClienteDto = {
         ...validDto,
-        dbName: 'tenant_beta',
         adminEmail: 'admin@beta.com',
       };
       const result2 = await useCase.execute(dto2);
       expect(result2.isOk()).toBe(true);
       // seeder.seed fue llamado en total 2 veces (una por provisioning)
       expect(seeder.seed).toHaveBeenCalledTimes(2);
+      // Cada provisioning genera un dbName distinto (ids distintos)
+      expect(result2.getValue().dbName).not.toBe(result.getValue().dbName);
     });
   });
 
@@ -359,9 +328,10 @@ describe('CrearClienteUseCase (provisioning completo)', () => {
       migrationRunner.runMigrations.mockRejectedValue(migrationError);
     });
 
-    it('llama a dropDatabase(dbName) como compensación', async () => {
+    it('llama a dropDatabase(dbName) como compensación (mismo dbName derivado usado en createDatabase)', async () => {
       await expect(useCase.execute(validDto)).rejects.toThrow();
-      expect(adminPort.dropDatabase).toHaveBeenCalledWith(validDto.dbName);
+      const dbNameUsado = adminPort.createDatabase.mock.calls[0][0];
+      expect(adminPort.dropDatabase).toHaveBeenCalledWith(dbNameUsado);
     });
 
     it('NO llama a seed, save:cliente, ni save:admin', async () => {
@@ -385,9 +355,10 @@ describe('CrearClienteUseCase (provisioning completo)', () => {
       seeder.seed.mockRejectedValue(seedError);
     });
 
-    it('llama a dropDatabase(dbName) como compensación', async () => {
+    it('llama a dropDatabase(dbName) como compensación (mismo dbName derivado usado en createDatabase)', async () => {
       await expect(useCase.execute(validDto)).rejects.toThrow();
-      expect(adminPort.dropDatabase).toHaveBeenCalledWith(validDto.dbName);
+      const dbNameUsado = adminPort.createDatabase.mock.calls[0][0];
+      expect(adminPort.dropDatabase).toHaveBeenCalledWith(dbNameUsado);
     });
 
     it('NO hace alta en master.clientes', async () => {
@@ -414,9 +385,10 @@ describe('CrearClienteUseCase (provisioning completo)', () => {
       clienteRepo.save.mockRejectedValue(saveError);
     });
 
-    it('llama a dropDatabase(dbName) como compensación', async () => {
+    it('llama a dropDatabase(dbName) como compensación (mismo dbName derivado usado en createDatabase)', async () => {
       await expect(useCase.execute(validDto)).rejects.toThrow();
-      expect(adminPort.dropDatabase).toHaveBeenCalledWith(validDto.dbName);
+      const dbNameUsado = adminPort.createDatabase.mock.calls[0][0];
+      expect(adminPort.dropDatabase).toHaveBeenCalledWith(dbNameUsado);
     });
 
     it('NO guarda el usuario admin si el cliente no se persistió', async () => {
@@ -438,9 +410,10 @@ describe('CrearClienteUseCase (provisioning completo)', () => {
       usuarioRepo.save.mockRejectedValue(adminError);
     });
 
-    it('llama a dropDatabase(dbName) como compensación', async () => {
+    it('llama a dropDatabase(dbName) como compensación (mismo dbName derivado usado en createDatabase)', async () => {
       await expect(useCase.execute(validDto)).rejects.toThrow();
-      expect(adminPort.dropDatabase).toHaveBeenCalledWith(validDto.dbName);
+      const dbNameUsado = adminPort.createDatabase.mock.calls[0][0];
+      expect(adminPort.dropDatabase).toHaveBeenCalledWith(dbNameUsado);
     });
 
     it('propaga el error original después del rollback', async () => {

@@ -71,8 +71,9 @@ export class ClientesController {
   /**
    * POST /clientes
    * Provisiona un nuevo cliente: DB + migraciones + seed + master record + admin user.
+   * db_name se genera automáticamente ('soporte_' + id sin guiones) — no es un
+   * input del body (change auto-dbname-cliente).
    * @returns 201 + ClienteResponseDto (sin adminPassword)
-   * @throws 409 si db_name ya existe
    * @throws 500 si el provisioning falla en cualquier paso
    */
   @Post()
@@ -84,7 +85,6 @@ export class ClientesController {
         nombre: dto.nombre,
         razonSocial: dto.razonSocial,
         cuit: dto.cuit,
-        dbName: dto.dbName,
         adminEmail: dto.adminEmail,
         adminNombre: dto.adminNombre,
         adminApellido: dto.adminApellido,

@@ -1,3 +1,4 @@
+import { uuidv7 } from 'uuidv7';
 import { Result } from '../../../shared/domain/result';
 import { ClienteEntity } from '../../domain/entities/cliente.entity';
 import { UsuarioEntity } from '../../../auth/domain/entities/usuario.entity';
@@ -15,6 +16,10 @@ import { ITenantSeeder } from '../ports/i-tenant-seeder';
  *
  * Incluye los datos del cliente y del usuario administrador inicial que
  * se crea automáticamente durante el provisioning.
+ *
+ * NO incluye dbName: se DERIVA automáticamente de 'soporte_' + el id del
+ * cliente (UUIDv7 sin guiones, en minúsculas) — ver CrearClienteUseCase.execute.
+ * Ref change: auto-dbname-cliente.
  */
 export interface CrearClienteDto {
   /** Nombre comercial del cliente. */
@@ -23,8 +28,6 @@ export interface CrearClienteDto {
   razonSocial: string | null;
   /** CUIT sin guiones, 11 dígitos (opcional). */
   cuit: string | null;
-  /** Nombre de la DB Postgres del tenant (único en el sistema). */
-  dbName: string;
   /** Email del usuario administrador inicial. */
   adminEmail: string;
   /** Nombre del usuario administrador inicial. */
@@ -39,7 +42,9 @@ export interface CrearClienteDto {
  * CrearClienteUseCase — provisioning completo de un nuevo cliente/tenant.
  *
  * Orquesta la secuencia completa de provisioning en orden estricto:
- *   1. Verificar unicidad del db_name (409 si ya existe)
+ *   1. Generar el id del cliente (UUIDv7) y derivar dbName = 'soporte_' + id
+ *      sin guiones en minúsculas. El UUID es único por construcción, por lo
+ *      que NO se requiere check de unicidad de dbName (change auto-dbname-cliente).
  *   2. Crear la DB Postgres del tenant via PostgresAdminService
  *   3. Aplicar migraciones del schema tenant
  *   4. Sembrar los catálogos operativos (idempotente)
@@ -57,15 +62,18 @@ export interface CrearClienteDto {
  *
  * Retorna:
  *   - Result.ok(cliente) si el provisioning completó con éxito.
- *   - Result.fail(ClienteConflictError) si ya existe un cliente con ese db_name.
  *   - Throws (no Result.fail) para errores de infraestructura en los pasos de
  *     provisioning (createDatabase, migrations, seed, saves). Estos son errores
- *     excepcionales, no errores de dominio esperados.
+ *     excepcionales, no errores de dominio esperados. El tipo de retorno
+ *     conserva el genérico Result<ClienteEntity, ClienteConflictError> por
+ *     consistencia con el resto del módulo, aunque esta implementación ya no
+ *     produce ese fallo (dbName ya no puede colisionar).
  *
  * Ref spec: [SPEC:clientes/Provisioning de tenant nuevo,
  *            Provisioning fallido dispara rollback compensatorio,
- *            Seed de catálogos por tenant es idempotente]
- * Tarea: 7.A.4
+ *            Seed de catálogos por tenant es idempotente,
+ *            db_name autogenerado a partir del id del cliente]
+ * Tarea: 7.A.4 (actualizado por change auto-dbname-cliente)
  */
 export class CrearClienteUseCase {
   constructor(
@@ -79,38 +87,43 @@ export class CrearClienteUseCase {
   ) {}
 
   async execute(dto: CrearClienteDto): Promise<Result<ClienteEntity, ClienteConflictError>> {
-    // ── Paso 0: Verificar unicidad del db_name ────────────────────────────────
-    // Se hace ANTES del provisioning para evitar crear una DB y luego fallar por
-    // un conflicto trivial. Esto es un error de dominio esperado → Result.fail.
-    const existente = await this.clienteRepo.findByDbName(dto.dbName);
-    if (existente) {
-      return Result.fail(new ClienteConflictError(dto.dbName));
-    }
+    // ── Paso 0: Generar id y derivar dbName ───────────────────────────────────
+    // El id se genera ANTES de crear la DB porque dbName se deriva
+    // determinísticamente de él ('soporte_' + uuid sin guiones, minúsculas).
+    // Al ser un UUIDv7 único por construcción, no existe colisión posible →
+    // no hace falta verificar unicidad de dbName (change auto-dbname-cliente).
+    const id = uuidv7();
+    const dbName = `soporte_${id.replaceAll('-', '').toLowerCase()}`;
 
     // ── Paso 1: Crear DB Postgres del tenant ──────────────────────────────────
     // Si este paso falla, la DB nunca fue creada → NO hay rollback necesario.
     // El error se propaga sin compensación.
-    await this.adminPort.createDatabase(dto.dbName);
+    await this.adminPort.createDatabase(dbName);
 
     // A partir de aquí, si cualquier paso falla → dropDatabase (compensación).
     try {
       // ── Paso 2: Aplicar migraciones del schema tenant ─────────────────────
-      await this.migrationRunner.runMigrations(dto.dbName);
+      await this.migrationRunner.runMigrations(dbName);
 
       // ── Paso 3: Sembrar catálogos operativos ──────────────────────────────
       // Idempotente: ON CONFLICT DO NOTHING en todas las tablas de catálogo.
       // El use case llama al seeder incondicionalmente — la idempotencia es
       // responsabilidad de la implementación del puerto (ITenantSeeder).
-      await this.seeder.seed(dto.dbName);
+      await this.seeder.seed(dbName);
 
       // ── Paso 4: Alta en master.clientes ───────────────────────────────────
-      const cliente = ClienteEntity.create({
-        nombre: dto.nombre,
-        razonSocial: dto.razonSocial,
-        cuit: dto.cuit,
-        dbName: dto.dbName,
-        activo: true,
-      });
+      // Se reutiliza el mismo id generado en el Paso 0 para que ClienteEntity.id
+      // coincida exactamente con el UUID usado para derivar dbName.
+      const cliente = ClienteEntity.create(
+        {
+          nombre: dto.nombre,
+          razonSocial: dto.razonSocial,
+          cuit: dto.cuit,
+          dbName,
+          activo: true,
+        },
+        id,
+      );
       await this.clienteRepo.save(cliente);
 
       // ── Paso 5: Crear usuario administrador inicial en master.usuarios ─────
@@ -151,7 +164,7 @@ export class CrearClienteUseCase {
       // IMPORTANTE: dropDatabase solo tiene éxito si los colaboradores
       // (migrationRunner, seeder) cerraron sus conexiones antes de lanzar el error.
       // Ver contrato en IPostgresAdminPort y ITenantMigrationRunner/ITenantSeeder.
-      await this.adminPort.dropDatabase(dto.dbName);
+      await this.adminPort.dropDatabase(dbName);
 
       // Re-throw el error original para que el caller vea qué paso falló.
       throw err;

@@ -91,11 +91,13 @@ const MASTER_URL =
   process.env.DATABASE_URL_MASTER ??
   'postgresql://soporte:soporte@localhost:5432/soporte_master_test';
 
-// DB tenant e2e — nombre único para evitar colisiones con otras suites.
+// DB tenant e2e — dbName se DERIVA automáticamente del id del cliente dentro
+// de CrearClienteUseCase (soporte_<uuid sin guiones> — change auto-dbname-cliente).
+// Se descubre en runtime dentro de beforeAll y se usa en el teardown.
 const SMOKE_SUFFIX = `smoke_${Date.now()}`;
-const SMOKE_DB_NAME = `soporte_e2e_${SMOKE_SUFFIX}`;
 const SMOKE_ADMIN_EMAIL = `admin_${SMOKE_SUFFIX}@test.local`;
 const SMOKE_ADMIN_PASSWORD = 'SmokeTest-123!';
+let SMOKE_DB_NAME: string;
 
 // UUIDs deterministas del seed (PR-09 + PR-17a) — estables cross-env
 const TIPO_TICKET_SOPORTE_ID = 'e0000000-0000-4000-e000-000000000001';
@@ -147,7 +149,6 @@ describe('Smoke E2E — flujo completo (7.C.2)', () => {
       nombre: 'Smoke Test Cliente',
       razonSocial: null,
       cuit: null,
-      dbName: SMOKE_DB_NAME,
       adminEmail: SMOKE_ADMIN_EMAIL,
       adminNombre: 'Admin',
       adminApellido: 'Smoke',
@@ -158,6 +159,7 @@ describe('Smoke E2E — flujo completo (7.C.2)', () => {
       throw new Error('[smoke setup] Provisioning falló');
     }
     clienteId = result.getValue().id;
+    SMOKE_DB_NAME = result.getValue().dbName;
 
     // Obtener el ID del admin user creado durante provisioning
     const adminUserRow = await prismaService.getMasterClient().usuario.findFirst({
