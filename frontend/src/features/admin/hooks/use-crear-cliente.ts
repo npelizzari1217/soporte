@@ -11,6 +11,10 @@
  * admin-ui/Pantalla Clientes) — se envían explícitamente en null para cumplir el
  * contrato tipado del DTO backend (CreateClienteDto.razonSocial/cuit: string | null).
  *
+ * dbName NO forma parte del input: el backend lo genera automáticamente a partir
+ * del id del cliente ('soporte_' + uuid sin guiones) — ver change auto-dbname-cliente
+ * y backend/src/clientes/application/use-cases/crear-cliente.use-case.ts.
+ *
  * ADR-3 (tickets convention, reutilizado acá): UI effects (toast, cierre de modal,
  * manejo de error de formulario) viven en el caller (ClientesPage), no acá — este
  * hook es puro (mutationFn + invalidation).
@@ -27,7 +31,6 @@ import type { Cliente } from "../types";
 /** Campos recolectados por el formulario "Nuevo cliente" (spec admin-ui/Pantalla Clientes). */
 export interface CrearClienteInput {
   nombre: string;
-  dbName: string;
   adminEmail: string;
   adminNombre: string;
   adminApellido: string;

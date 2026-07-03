@@ -6,14 +6,15 @@
  *
  * Tests:
  * - Skeleton durante GET /clientes.
- * - Filas-tarjeta: nombre, badge activo/suspendido, db_name, acciones.
+ * - Filas-tarjeta: nombre, badge activo/suspendido, db_name (autogenerado por el
+ *   backend — solo se muestra, no se pide en el form), acciones.
  * - Empty state: ilustración + "No hay clientes registrados" + botón "Nuevo cliente".
  * - Error state: mensaje + reintentar (paridad con TicketsPage).
- * - "Nuevo cliente" → abre formulario con: nombre, db_name, email admin, nombre admin,
- *   apellido admin, contraseña admin.
+ * - "Nuevo cliente" → abre formulario con: nombre, email admin, nombre admin,
+ *   apellido admin, contraseña admin. db_name NO es un campo del formulario
+ *   (change auto-dbname-cliente — el backend lo deriva del id del cliente).
  * - Submit → loading state en el botón.
  * - On success → toast éxito + refetch de la lista.
- * - db_name duplicado (409) → "Ese identificador de DB ya existe".
  * - Error genérico (500) → mensaje del servidor.
  * - Acciones Suspender/Reactivar según estado del cliente.
  *
@@ -139,11 +140,25 @@ describe("ClientesPage", () => {
 
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByLabelText(/^nombre$/i)).toBeInTheDocument();
-    expect(within(dialog).getByLabelText(/db_name/i)).toBeInTheDocument();
     expect(within(dialog).getByLabelText(/email admin/i)).toBeInTheDocument();
     expect(within(dialog).getByLabelText(/nombre admin/i)).toBeInTheDocument();
     expect(within(dialog).getByLabelText(/apellido admin/i)).toBeInTheDocument();
     expect(within(dialog).getByLabelText(/contraseña admin/i)).toBeInTheDocument();
+  });
+
+  it("wiring: el formulario NO pide db_name (se genera automáticamente en el backend)", async () => {
+    server.use(
+      http.get("http://localhost/api/clientes", () => HttpResponse.json(CLIENTES)),
+    );
+
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText("Acme Corp");
+
+    await user.click(screen.getByRole("button", { name: /nuevo cliente/i }));
+    const dialog = await screen.findByRole("dialog");
+
+    expect(within(dialog).queryByLabelText(/db_name/i)).not.toBeInTheDocument();
   });
 
   // ─── Submit loading state ─────────────────────────────────────────────────
@@ -165,7 +180,6 @@ describe("ClientesPage", () => {
     const dialog = await screen.findByRole("dialog");
 
     await user.type(within(dialog).getByLabelText(/^nombre$/i), "Nuevo SA");
-    await user.type(within(dialog).getByLabelText(/db_name/i), "db_nuevo");
     await user.type(within(dialog).getByLabelText(/email admin/i), "admin@nuevo.com");
     await user.type(within(dialog).getByLabelText(/nombre admin/i), "Juan");
     await user.type(within(dialog).getByLabelText(/apellido admin/i), "Perez");
@@ -205,7 +219,6 @@ describe("ClientesPage", () => {
     const dialog = await screen.findByRole("dialog");
 
     await user.type(within(dialog).getByLabelText(/^nombre$/i), "Nuevo SA");
-    await user.type(within(dialog).getByLabelText(/db_name/i), "db_nuevo");
     await user.type(within(dialog).getByLabelText(/email admin/i), "admin@nuevo.com");
     await user.type(within(dialog).getByLabelText(/nombre admin/i), "Juan");
     await user.type(within(dialog).getByLabelText(/apellido admin/i), "Perez");
@@ -216,42 +229,6 @@ describe("ClientesPage", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(successSpy).toHaveBeenCalled();
     await screen.findByText("Nuevo SA");
-  });
-
-  // ─── Error db_name duplicado ──────────────────────────────────────────────
-
-  it("error 409 db_name duplicado: muestra 'Ese identificador de DB ya existe'", async () => {
-    server.use(
-      http.get("http://localhost/api/clientes", () => HttpResponse.json(CLIENTES)),
-      http.post("http://localhost/api/clientes", () =>
-        HttpResponse.json(
-          { statusCode: 409, message: 'Ya existe un cliente con db_name "db_acme".' },
-          { status: 409 },
-        ),
-      ),
-    );
-
-    const user = userEvent.setup();
-    renderPage();
-    await screen.findByText("Acme Corp");
-
-    await user.click(screen.getByRole("button", { name: /nuevo cliente/i }));
-    const dialog = await screen.findByRole("dialog");
-
-    await user.type(within(dialog).getByLabelText(/^nombre$/i), "Dup SA");
-    await user.type(within(dialog).getByLabelText(/db_name/i), "db_acme");
-    await user.type(within(dialog).getByLabelText(/email admin/i), "admin@dup.com");
-    await user.type(within(dialog).getByLabelText(/nombre admin/i), "Juan");
-    await user.type(within(dialog).getByLabelText(/apellido admin/i), "Perez");
-    await user.type(within(dialog).getByLabelText(/contraseña admin/i), "secret123");
-
-    await user.click(within(dialog).getByRole("button", { name: /crear/i }));
-
-    expect(
-      await within(dialog).findByText("Ese identificador de DB ya existe"),
-    ).toBeInTheDocument();
-    // El modal MUST NOT cerrarse en error
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
   // ─── Error genérico ───────────────────────────────────────────────────────
@@ -275,7 +252,6 @@ describe("ClientesPage", () => {
     const dialog = await screen.findByRole("dialog");
 
     await user.type(within(dialog).getByLabelText(/^nombre$/i), "Otra SA");
-    await user.type(within(dialog).getByLabelText(/db_name/i), "db_otra");
     await user.type(within(dialog).getByLabelText(/email admin/i), "admin@otra.com");
     await user.type(within(dialog).getByLabelText(/nombre admin/i), "Ana");
     await user.type(within(dialog).getByLabelText(/apellido admin/i), "Lopez");
@@ -286,6 +262,37 @@ describe("ClientesPage", () => {
     expect(
       await within(dialog).findByText("Error interno de provisioning: fallo en migraciones"),
     ).toBeInTheDocument();
+  });
+
+  it("error 409 genérico: muestra el mensaje crudo del backend (ya no hay mapeo especial de db_name)", async () => {
+    // auto-dbname-cliente: db_name ya no es input del usuario, por lo que un 409
+    // ya no puede deberse a "db_name duplicado". El error se muestra tal cual
+    // (mapApiError genérico), sin el mensaje fijo legacy.
+    server.use(
+      http.get("http://localhost/api/clientes", () => HttpResponse.json(CLIENTES)),
+      http.post("http://localhost/api/clientes", () =>
+        HttpResponse.json({ statusCode: 409, message: "Conflicto al crear el cliente." }, { status: 409 }),
+      ),
+    );
+
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText("Acme Corp");
+
+    await user.click(screen.getByRole("button", { name: /nuevo cliente/i }));
+    const dialog = await screen.findByRole("dialog");
+
+    await user.type(within(dialog).getByLabelText(/^nombre$/i), "Dup SA");
+    await user.type(within(dialog).getByLabelText(/email admin/i), "admin@dup.com");
+    await user.type(within(dialog).getByLabelText(/nombre admin/i), "Juan");
+    await user.type(within(dialog).getByLabelText(/apellido admin/i), "Perez");
+    await user.type(within(dialog).getByLabelText(/contraseña admin/i), "secret123");
+
+    await user.click(within(dialog).getByRole("button", { name: /crear/i }));
+
+    expect(await within(dialog).findByText("Conflicto al crear el cliente.")).toBeInTheDocument();
+    // El modal MUST NOT cerrarse en error
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
   // ─── Acciones: Suspender / Reactivar ──────────────────────────────────────
