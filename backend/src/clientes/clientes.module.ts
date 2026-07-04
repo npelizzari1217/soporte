@@ -48,8 +48,9 @@ import { EditarCicloVigenteUseCase } from './application/use-cases/editar-ciclo-
 import { DesactivarCicloVigenteUseCase } from './application/use-cases/desactivar-ciclo-vigente.use-case';
 import { CrearClienteUseCase } from './application/use-cases/crear-cliente.use-case';
 import { ListarCiclosUseCase } from './application/use-cases/listar-ciclos.use-case';
-import { CrearCicloTenantUseCase } from './application/use-cases/crear-ciclo-tenant.use-case';
+import { ElegirCicloTenantUseCase } from './application/use-cases/elegir-ciclo-tenant.use-case';
 import { ActivarCicloUseCase } from './application/use-cases/activar-ciclo.use-case';
+import { ObtenerCicloActivoUseCase } from './application/use-cases/obtener-ciclo-activo.use-case';
 
 // ─── Controllers ──────────────────────────────────────────────────────────────
 import { ClientesController } from './interface/controllers/clientes.controller';
@@ -66,13 +67,16 @@ import { AuthModule } from '../auth/auth.module';
  *   - ListarClientesUseCase: GET /clientes (solo operador global).
  *   - PrismaCicloClienteRepository: repositorio tenant-scoped para ciclos de gestión.
  *   - ListarCiclosUseCase: GET /ciclos (ciclos del tenant activo).
- *   - CrearCicloTenantUseCase: POST /ciclos (crea ciclo inactivo en el tenant).
+ *   - ElegirCicloTenantUseCase: POST /ciclos (elige un ciclo del catálogo master, ADR-3).
  *   - ActivarCicloUseCase: PATCH /ciclos/:id/activar (activa un ciclo atómicamente).
+ *   - ObtenerCicloActivoUseCase: GET /ciclos/activo (lectura del activo, ADR-8).
  *   - CiclosController: endpoints /ciclos (tenant-level, ciclos_cliente).
  *
  * Guards disponibles via AuthModule (forwardRef):
  *   - JwtAuthGuard, GlobalAdminGuard: exportados desde PR1.
  *   - TenantGuard, PermissionsGuard: exportados desde PR2 (T2.16).
+ *   - PermissionsOrGlobalAdminGuard: exportado desde AuthModule (T3.2, Fase 3) —
+ *     usado en POST /ciclos y PATCH /ciclos/:id/activar (ciclo:gestionar O global admin).
  *
  * Nota DI:
  *   SharedModule es @Global() → PrismaService, TenantContext, MasterContext disponibles.
@@ -245,13 +249,19 @@ import { AuthModule } from '../auth/auth.module';
       inject: [CICLO_CLIENTE_ADMIN_REPOSITORY],
     },
     {
-      provide: CrearCicloTenantUseCase,
-      useFactory: (repo: ICicloClienteRepository) => new CrearCicloTenantUseCase(repo),
-      inject: [CICLO_CLIENTE_ADMIN_REPOSITORY],
+      provide: ElegirCicloTenantUseCase,
+      useFactory: (vigenteRepo: ICicloVigenteRepository, clienteRepo: ICicloClienteRepository) =>
+        new ElegirCicloTenantUseCase(vigenteRepo, clienteRepo),
+      inject: [CICLO_VIGENTE_REPOSITORY, CICLO_CLIENTE_ADMIN_REPOSITORY],
     },
     {
       provide: ActivarCicloUseCase,
       useFactory: (repo: ICicloClienteRepository) => new ActivarCicloUseCase(repo),
+      inject: [CICLO_CLIENTE_ADMIN_REPOSITORY],
+    },
+    {
+      provide: ObtenerCicloActivoUseCase,
+      useFactory: (repo: ICicloClienteRepository) => new ObtenerCicloActivoUseCase(repo),
       inject: [CICLO_CLIENTE_ADMIN_REPOSITORY],
     },
   ],
@@ -263,8 +273,9 @@ import { AuthModule } from '../auth/auth.module';
     CrearCicloVigenteUseCase,
     CrearClienteUseCase,
     ListarCiclosUseCase,
-    CrearCicloTenantUseCase,
+    ElegirCicloTenantUseCase,
     ActivarCicloUseCase,
+    ObtenerCicloActivoUseCase,
     CLIENTE_REPOSITORY,
   ],
 })

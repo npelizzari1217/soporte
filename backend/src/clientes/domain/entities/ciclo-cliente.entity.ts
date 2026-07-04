@@ -23,6 +23,11 @@ export interface CicloClienteAdminProps {
    * Solo UN ciclo puede estar activo por tenant a la vez.
    */
   activo: boolean;
+  /**
+   * Link real al `CicloVigenteEntity` (catálogo master) del que este ciclo
+   * fue elegido (ADR-5). Referencia, no join — nombre/fechas son snapshot.
+   */
+  cicloVigenteId: string;
 }
 
 /**
@@ -80,6 +85,10 @@ export class CicloClienteEntity extends BaseEntity<CicloClienteAdminProps> {
 
   get activo(): boolean {
     return this.props.activo;
+  }
+
+  get cicloVigenteId(): string {
+    return this.props.cicloVigenteId;
   }
 
   // ─── Comportamiento ───────────────────────────────────────────────────────

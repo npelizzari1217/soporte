@@ -10,10 +10,10 @@
  * Reglas:
  * - Obtiene el client via TenantContext (nunca PrismaService directo).
  * - activarCiclo(): desactiva todos + activa el objetivo en una sola $transaction.
- * - save(): para ciclos nuevos, genera un cicloVigenteId placeholder (el mismo id del ciclo)
- *   ya que el schema tenant requiere este campo (soft-ref a master, sin FK real).
+ * - save(): persiste cicloVigenteId REAL (link al catálogo master elegido, ADR-5).
+ * - findActive(): retorna el ciclo activo (activo=true, deletedAt=null) del tenant.
  *
- * Tarea: T2.13
+ * Tarea: T2.13 + T3.4
  */
 import { Injectable } from '@nestjs/common';
 import type { CicloCliente as PrismaCicloCliente } from '.prisma/tenant';
@@ -38,6 +38,7 @@ export class PrismaCicloClienteRepository implements ICicloClienteRepository {
         fechaInicio: row.fechaInicio,
         fechaFin: row.fechaFin,
         activo: row.activo,
+        cicloVigenteId: row.cicloVigenteId,
       },
       row.id,
       row.createdAt,
@@ -70,19 +71,16 @@ export class PrismaCicloClienteRepository implements ICicloClienteRepository {
   /**
    * Persiste un ciclo nuevo en el tenant.
    *
-   * cicloVigenteId: el schema tenant lo requiere (NOT NULL, sin FK real).
-   * Para ciclos creados via admin panel (sin referencia master), usamos el
-   * propio id del ciclo como placeholder estable. La unicidad del placeholder
-   * es garantizada por el id del ciclo (UUIDv7).
+   * cicloVigenteId: link REAL al `CicloVigente` master elegido (ADR-5). Es
+   * snapshot + referencia (ver ElegirCicloTenantUseCase) — el update NO lo
+   * toca (inmutable tras la elección).
    */
   async save(ciclo: CicloClienteEntity): Promise<void> {
     await this.client.cicloCliente.upsert({
       where: { id: ciclo.id },
       create: {
         id: ciclo.id,
-        // Placeholder: soft-ref a master. Sin FK real → cualquier UUID es válido.
-        // Se usa el propio id para que sea determinístico y único.
-        cicloVigenteId: ciclo.id,
+        cicloVigenteId: ciclo.cicloVigenteId,
         nombre: ciclo.nombre,
         fechaInicio: ciclo.fechaInicio,
         fechaFin: ciclo.fechaFin,
@@ -97,6 +95,17 @@ export class PrismaCicloClienteRepository implements ICicloClienteRepository {
         deletedAt: ciclo.deletedAt,
       },
     });
+  }
+
+  /**
+   * Retorna el ciclo activo (`activo=true`, `deletedAt=null`) del tenant, o
+   * `null` si no hay ninguno. Usado por `ObtenerCicloActivoUseCase` (ADR-8).
+   */
+  async findActive(): Promise<CicloClienteEntity | null> {
+    const row = await this.client.cicloCliente.findFirst({
+      where: { activo: true, deletedAt: null },
+    });
+    return row ? PrismaCicloClienteRepository.toDomain(row) : null;
   }
 
   /**

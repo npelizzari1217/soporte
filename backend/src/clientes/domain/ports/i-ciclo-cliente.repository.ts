@@ -27,6 +27,12 @@ export interface ICicloClienteRepository {
   findById(id: string): Promise<CicloClienteEntity | null>;
 
   /**
+   * Retorna el ciclo activo (`activo=true`, `deletedAt=null`) del tenant resuelto,
+   * o `null` si no hay ninguno. Usado por `ObtenerCicloActivoUseCase` (ADR-8).
+   */
+  findActive(): Promise<CicloClienteEntity | null>;
+
+  /**
    * Persiste un nuevo ciclo en el tenant activo.
    * El ID debe ser generado antes de llamar a este método (BaseEntity.id).
    */
