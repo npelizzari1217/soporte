@@ -11,6 +11,14 @@
 /**
  * Cuerpo HTTP para POST /compras.
  * clienteId y autorId se extraen del JWT via @CurrentUser().
+ *
+ * Fase 4 (ciclos-master-tenant, ADR-3): `cicloId` fue REMOVIDO de este DTO.
+ * El servidor determina el ciclo (el ACTIVO del tenant) vía
+ * `ResolverCicloActivoParaCreacion`, nunca el cliente HTTP. Esta interface es
+ * plana (no class-validator) — el `ValidationPipe` global salta la
+ * validación/whitelist para DTOs `metatype === Object`, así que un `cicloId`
+ * sobrante en el body pasaría tal cual, pero el controller/use case ya no lo
+ * lee (confirmado por test dedicado en `tickets.dto.validation-pipe.spec.ts`, PR1).
  */
 export interface CreateTicketCompraHttpDto {
   titulo: string;
@@ -19,12 +27,22 @@ export interface CreateTicketCompraHttpDto {
   tipoId: string;
   /** UUID de la prioridad (FK → prioridades). */
   prioridadId: string;
-  /** UUID del ciclo de cliente (FK → ciclos_cliente, opcional). */
-  cicloId?: string | null;
   /** UUID del solicitante (soft ref → master.usuarios). */
   solicitanteId: string;
   /** Fecha de resolución ISO (opcional). */
   fechaCierre?: string | null;
+}
+
+/**
+ * Query params para GET /compras.
+ *
+ * Fase 4 (ciclos-master-tenant, ADR-5): `cicloId` opcional permite consultar
+ * un ciclo histórico puntual. Sin este parámetro, el listado usa el ciclo
+ * ACTIVO del tenant (resuelto en `ListarComprasUseCase`, no en el controller).
+ */
+export interface ListarComprasQueryDto {
+  /** UUID de un ciclo de cliente puntual (histórico). Opcional. */
+  cicloId?: string;
 }
 
 /**
