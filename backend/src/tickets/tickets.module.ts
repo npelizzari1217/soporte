@@ -227,6 +227,7 @@ import { ComentariosController } from './interface/controllers/comentarios.contr
         tipoTicketRepo: ITipoTicketRepository,
         tipoOpRepo: ITipoOperacionRepository,
         numerador: NumeradorTicket,
+        resolverCicloActivo: ResolverCicloActivoParaCreacion,
         txRunner: ITenantTransactionRunner,
       ) =>
         new CrearTicketUseCase(
@@ -237,6 +238,7 @@ import { ComentariosController } from './interface/controllers/comentarios.contr
           tipoTicketRepo,
           tipoOpRepo,
           numerador,
+          resolverCicloActivo,
           txRunner,
         ),
       inject: [
@@ -247,6 +249,7 @@ import { ComentariosController } from './interface/controllers/comentarios.contr
         TIPO_TICKET_REPOSITORY,
         TIPO_OPERACION_REPOSITORY,
         NumeradorTicket,
+        ResolverCicloActivoParaCreacion,
         TENANT_TRANSACTION_RUNNER,
       ],
     },
@@ -258,11 +261,15 @@ import { ComentariosController } from './interface/controllers/comentarios.contr
       inject: [TICKET_REPOSITORY],
     },
 
+    // ListarTicketsUseCase (Fase 4, ADR-5): inyecta CICLO_CLIENTE_REPOSITORY
+    // (tickets-side) para resolver el ciclo EFECTIVO por default (activo).
     {
       provide: ListarTicketsUseCase,
-      useFactory: (ticketRepo: ITicketRepository): ListarTicketsUseCase =>
-        new ListarTicketsUseCase(ticketRepo),
-      inject: [TICKET_REPOSITORY],
+      useFactory: (
+        ticketRepo: ITicketRepository,
+        cicloClienteRepo: ICicloClienteRepository,
+      ): ListarTicketsUseCase => new ListarTicketsUseCase(ticketRepo, cicloClienteRepo),
+      inject: [TICKET_REPOSITORY, CICLO_CLIENTE_REPOSITORY],
     },
 
     {

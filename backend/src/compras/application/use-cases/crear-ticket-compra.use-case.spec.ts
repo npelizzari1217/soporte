@@ -13,6 +13,9 @@ import { EstadoEntity } from '../../../tickets/domain/entities/estado.entity';
 import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
 import { TicketCompraEntity } from '../../domain/entities/ticket-compra.entity';
 import { OperacionTicketEntity } from '../../../tickets/domain/entities/operacion-ticket.entity';
+import { CicloClienteEntity } from '../../../tickets/domain/entities/ciclo-cliente.entity';
+import { ResolverCicloActivoParaCreacion } from '../../../tickets/application/services/resolver-ciclo-activo.service';
+import { SinCicloActivoError } from '../../../tickets/domain/errors/tickets.errors';
 import { Result } from '../../../shared/domain/result';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -27,6 +30,19 @@ function makeEstado(id: string, codigo: string): EstadoEntity {
   );
 }
 
+function makeCicloActivo(id: string): CicloClienteEntity {
+  return CicloClienteEntity.create(
+    {
+      cicloVigenteId: 'cv-001',
+      nombre: 'Ciclo Activo Test',
+      fechaInicio: new Date('2026-01-01'),
+      fechaFin: new Date('2026-12-31'),
+      activo: true,
+    },
+    id,
+  );
+}
+
 // ─── Constantes de test ───────────────────────────────────────────────────────
 
 const ESTADO_ABIERTO_ID = 'c0000000-0000-4000-c000-000000000001';
@@ -35,13 +51,17 @@ const TIPO_COMPRAS_ID = 'e0000000-0000-4000-e000-000000000002';
 const SOLICITANTE_ID = 'user-solicitante-001';
 const CLIENTE_ID = 'cliente-001';
 const AUTOR_ID = 'user-autor-001';
+const CICLO_ACTIVO_ID = 'a0000000-0000-4000-a000-000000000001';
 
 const validDto: CrearTicketDto = {
   titulo: 'Compra de materiales de oficina',
   descripcion: 'Resmas de papel A4, bolígrafos y carpetas.',
   tipoId: TIPO_COMPRAS_ID,
   prioridadId: 'd0000000-0000-4000-d000-000000000002',
-  cicloId: null,
+  // Fase 4 (ADR-3): cicloId ya no se lee del DTO en creación — el use case
+  // resuelve el ciclo ACTIVO del tenant vía ResolverCicloActivoParaCreacion.
+  // Se deja un valor "trampa" para confirmar que se IGNORA (ver test dedicado).
+  cicloId: 'z0000000-0000-4000-z000-000000000099',
   solicitanteId: SOLICITANTE_ID,
   clienteId: CLIENTE_ID,
   autorId: AUTOR_ID,
@@ -104,6 +124,10 @@ describe('CrearTicketCompraUseCase', () => {
     delete: vi.fn(),
   } satisfies vi.Mocked<ITicketCompraRepository>;
 
+  const mockResolverCicloActivo = {
+    resolver: vi.fn(),
+  } satisfies Pick<ResolverCicloActivoParaCreacion, 'resolver'>;
+
   beforeEach(() => {
     vi.clearAllMocks();
 
@@ -119,6 +143,7 @@ describe('CrearTicketCompraUseCase', () => {
     mockOperacionRepo.save.mockResolvedValue(undefined);
     mockTicketCompraRepo.save.mockResolvedValue(undefined);
     (mockTxRunner.run as vi.Mock).mockImplementation((fn: () => Promise<unknown>) => fn());
+    mockResolverCicloActivo.resolver.mockResolvedValue(Result.ok(makeCicloActivo(CICLO_ACTIVO_ID)));
 
     useCase = new CrearTicketCompraUseCase(
       mockTicketRepo,
@@ -130,7 +155,38 @@ describe('CrearTicketCompraUseCase', () => {
       mockNumerador,
       mockTxRunner,
       mockTicketCompraRepo,
+      mockResolverCicloActivo,
     );
+  });
+
+  // ─── Resolución del ciclo activo (Fase 4, ADR-1/ADR-2/ADR-3) ─────────────────
+
+  describe('resolución del ciclo activo del tenant', () => {
+    it('retorna SinCicloActivoError cuando no hay ciclo activo en el tenant', async () => {
+      mockResolverCicloActivo.resolver.mockResolvedValue(Result.fail(new SinCicloActivoError()));
+
+      const result = await useCase.execute(validDto);
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError().code).toBe('SIN_CICLO_ACTIVO');
+    });
+
+    it('no persiste nada cuando no hay ciclo activo', async () => {
+      mockResolverCicloActivo.resolver.mockResolvedValue(Result.fail(new SinCicloActivoError()));
+
+      await useCase.execute(validDto);
+
+      expect(mockTxRunner.run).not.toHaveBeenCalled();
+      expect(mockTicketCompraRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('el ticket creado usa el id del ciclo activo resuelto, ignorando cicloId del DTO', async () => {
+      const result = await useCase.execute(validDto);
+
+      expect(result.isOk()).toBe(true);
+      expect(result.getValue().cicloId).toBe(CICLO_ACTIVO_ID);
+      expect(result.getValue().cicloId).not.toBe(validDto.cicloId);
+    });
   });
 
   // ─── Validación de tipo COMPRAS ───────────────────────────────────────────────

@@ -20,6 +20,7 @@
  */
 import {
   Body,
+  ConflictException,
   Controller,
   Get,
   HttpCode,
@@ -28,6 +29,7 @@ import {
   NotFoundException,
   Param,
   Post,
+  Query,
   UnprocessableEntityException,
   UseGuards,
 } from '@nestjs/common';
@@ -48,6 +50,7 @@ import {
   TipoTicketNoEncontradoError,
   TicketNoEncontradoError,
   TransicionInvalidaError,
+  SinCicloActivoError,
 } from '../../../tickets/domain/errors/tickets.errors';
 
 import { ListarComprasUseCase } from '../../application/use-cases/listar-compras.use-case';
@@ -65,6 +68,7 @@ import {
 
 import {
   CreateTicketCompraHttpDto,
+  ListarComprasQueryDto,
   RechazarCompraHttpDto,
   TicketCompraConTicketResponseDto,
 } from '../dtos/compras.dto';
@@ -128,15 +132,22 @@ export class ComprasController {
 
   /**
    * GET /compras
-   * Retorna todos los tickets de compra del tenant activo, ordenados por createdAt desc.
-   * Excluye tickets soft-deleted. Solo requiere autenticación (sin permiso extra).
+   * Retorna los tickets de compra del ciclo de gestión del tenant, ordenados por
+   * createdAt desc. Excluye tickets soft-deleted. Solo requiere autenticación
+   * (sin permiso extra).
+   *
+   * Fase 4 (ciclos-master-tenant, ADR-5): sin `?cicloId`, usa el ciclo ACTIVO
+   * del tenant (resuelto en `ListarComprasUseCase`). Con `?cicloId`, filtra por
+   * ese ciclo puntual (histórico).
    *
    * @returns 200 OK + TicketCompraConTicketResponseDto[]
    */
   @Get()
   @HttpCode(HttpStatus.OK)
-  async listarCompras(): Promise<TicketCompraConTicketResponseDto[]> {
-    const result = await this.listarComprasUseCase.execute();
+  async listarCompras(
+    @Query() q: ListarComprasQueryDto,
+  ): Promise<TicketCompraConTicketResponseDto[]> {
+    const result = await this.listarComprasUseCase.execute(q.cicloId);
     return result
       .getValue()
       .map(({ ticket, ticketCompra }) => toResponseWithSatelite(ticket, ticketCompra));
@@ -146,7 +157,11 @@ export class ComprasController {
    * POST /compras
    * Crea un nuevo ticket de compra (ticket base + satélite ticket_compra en una tx).
    *
+   * Fase 4 (ciclos-master-tenant, ADR-1/ADR-3): el ciclo del ticket lo determina
+   * el servidor (el ciclo ACTIVO del tenant) — el body ya NO acepta `cicloId`.
+   *
    * @returns 201 Created + TicketCompraConTicketResponseDto
+   * @throws 409 si no hay un ciclo activo en el tenant
    * @throws 422 si solicitante inválido o tipo no es COMPRAS
    * @throws 404 si tipo de ticket no existe en catálogo
    * @throws 500 si el catálogo tenant no está sembrado
@@ -163,7 +178,6 @@ export class ComprasController {
       descripcion: dto.descripcion ?? null,
       tipoId: dto.tipoId,
       prioridadId: dto.prioridadId,
-      cicloId: dto.cicloId ?? null,
       solicitanteId: dto.solicitanteId,
       clienteId: user.cliente_id,
       autorId: user.sub,
@@ -172,6 +186,9 @@ export class ComprasController {
 
     if (result.isFail()) {
       const error = result.getError();
+      if (error instanceof SinCicloActivoError) {
+        throw new ConflictException(error.message);
+      }
       if (error instanceof SolicitanteInvalidoError || error instanceof TicketNoEsComprasError) {
         throw new UnprocessableEntityException(error.message);
       }
