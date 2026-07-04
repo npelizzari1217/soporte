@@ -357,3 +357,25 @@ export class ComentarioNoPermitidoError extends DomainError {
     );
   }
 }
+
+// ─── FASE 4 (ciclos-master-tenant) — resolución del ciclo activo en creación ─
+
+/**
+ * Error de dominio: no hay un ciclo activo en el tenant al intentar crear un
+ * ticket (o satélite: compra/edilicia/soporte). HTTP 409 Conflict semántico
+ * (no 422): el payload es válido, pero el ESTADO del tenant no permite la
+ * operación — es corregible activando un ciclo.
+ *
+ * Usado por `ResolverCicloActivoParaCreacion` (tickets/application/services),
+ * compartido por los 4 flujos de creación (ADR-1/ADR-2).
+ *
+ * Ref design: openspec/changes/ciclos-master-tenant/design-fase4.md ADR-2
+ * Tarea: 1.1 (Fase 4, PR1)
+ */
+export class SinCicloActivoError extends DomainError {
+  readonly code = 'SIN_CICLO_ACTIVO';
+
+  constructor() {
+    super('No hay un ciclo activo en este tenant. Activá un ciclo antes de crear tickets.');
+  }
+}

@@ -80,6 +80,9 @@ import {
 } from '../shared/infrastructure/persistence/tenant-transaction-runner';
 import { FILE_STORAGE, IFileStorage } from '../shared/domain/ports/i-file-storage';
 
+// ─── Application services (colaboradores compartidos) ────────────────────────
+import { ResolverCicloActivoParaCreacion } from './application/services/resolver-ciclo-activo.service';
+
 // ─── Use cases ────────────────────────────────────────────────────────────────
 import { CrearTicketUseCase } from './application/use-cases/crear-ticket.use-case';
 import { ListarTicketsUseCase } from './application/use-cases/listar-tickets.use-case';
@@ -113,10 +116,15 @@ import { ComentariosController } from './interface/controllers/comentarios.contr
     AuthModule,
   ],
   controllers: [TicketsController, OperacionesController, ComentariosController],
-  // Exportamos los providers que ComprasModule (Fase 4) y ReparacionesModule (Fase 5)
+  // Exportamos los providers que ComprasModule, ReparacionesModule y EquiposModule
   // necesitan para cablear sus propios use cases. El TICKET_STATE_MACHINE_FACTORY es
   // el singleton compartido que las máquinas de estado de cada dominio extienden via
   // factory.register() en onModuleInit de sus propios módulos.
+  //
+  // CICLO_CLIENTE_REPOSITORY + ResolverCicloActivoParaCreacion (Fase 4,
+  // ciclos-master-tenant, ADR-1/ADR-4-Repo): se exportan para que compras/
+  // reparaciones/equipos resuelvan el ciclo activo del tenant en sus propios
+  // flujos de creación (PR2-5), sin depender del repo admin de `clientes`.
   exports: [
     TICKET_REPOSITORY,
     OPERACION_TICKET_REPOSITORY,
@@ -126,6 +134,8 @@ import { ComentariosController } from './interface/controllers/comentarios.contr
     USUARIO_MASTER_CHECKER,
     NumeradorTicket,
     TICKET_STATE_MACHINE_FACTORY,
+    CICLO_CLIENTE_REPOSITORY,
+    ResolverCicloActivoParaCreacion,
   ],
   providers: [
     // ─── Repositorios tenant ─────────────────────────────────────────────────
@@ -191,6 +201,18 @@ import { ComentariosController } from './interface/controllers/comentarios.contr
       useFactory: (ticketRepo: ITicketRepository): NumeradorTicket =>
         new NumeradorTicket(ticketRepo),
       inject: [TICKET_REPOSITORY],
+    },
+
+    // ResolverCicloActivoParaCreacion (Fase 4, ADR-1): plain class, instanciada
+    // via useFactory (mismo patrón que NumeradorTicket). Compras/Reparaciones/
+    // Equipos la inyectan en sus propios use cases de creación (PR2-5) resolviendo
+    // este provider exportado (o instanciando el suyo con el mismo repo importado
+    // de TicketsModule).
+    {
+      provide: ResolverCicloActivoParaCreacion,
+      useFactory: (cicloRepo: ICicloClienteRepository): ResolverCicloActivoParaCreacion =>
+        new ResolverCicloActivoParaCreacion(cicloRepo),
+      inject: [CICLO_CLIENTE_REPOSITORY],
     },
 
     // ─── Use cases (plain classes, instanciados via useFactory) ──────────────
