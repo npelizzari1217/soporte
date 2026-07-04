@@ -70,4 +70,42 @@ export class CicloVigenteEntity extends BaseEntity<CicloVigenteProps> {
   get activo(): boolean {
     return this.props.activo;
   }
+
+  // ─── Comportamiento (T2.1) ───────────────────────────────────────────────
+
+  /**
+   * Renombra el ciclo. Lanza error si el nombre es vacío o solo whitespace.
+   */
+  rename(nombre: string): void {
+    if (nombre.trim().length === 0) {
+      throw new Error('El nombre del ciclo vigente no puede estar vacío.');
+    }
+    this.props.nombre = nombre;
+    this.touch();
+  }
+
+  /**
+   * Reprograma las fechas del ciclo. Revalida el invariante fecha_fin > fecha_inicio.
+   * @throws CicloVigenteInvalidDatesError si fechaFin <= fechaInicio.
+   */
+  reschedule(fechaInicio: Date, fechaFin: Date): void {
+    if (fechaFin <= fechaInicio) {
+      throw new CicloVigenteInvalidDatesError();
+    }
+    this.props.fechaInicio = fechaInicio;
+    this.props.fechaFin = fechaFin;
+    this.touch();
+  }
+
+  /** Marca el ciclo como activo. */
+  activate(): void {
+    this.props.activo = true;
+    this.touch();
+  }
+
+  /** Marca el ciclo como inactivo. */
+  deactivate(): void {
+    this.props.activo = false;
+    this.touch();
+  }
 }
