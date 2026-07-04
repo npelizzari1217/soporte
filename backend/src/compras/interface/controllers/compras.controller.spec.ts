@@ -16,6 +16,7 @@
  */
 
 import {
+  ConflictException,
   NotFoundException,
   UnprocessableEntityException,
   InternalServerErrorException,
@@ -35,6 +36,7 @@ import {
   TipoTicketNoEncontradoError,
   EstadoCatalogoNoEncontradoError,
   TransicionInvalidaError,
+  SinCicloActivoError,
 } from '../../../tickets/domain/errors/tickets.errors';
 import { JwtAuthGuard } from '../../../auth/infrastructure/guards/jwt-auth.guard';
 import { TenantGuard } from '../../../auth/infrastructure/guards/tenant.guard';
@@ -139,7 +141,7 @@ describe('ComprasController', () => {
     it('retorna 200 con lista vacía cuando no hay compras', async () => {
       mocks.listarComprasUseCase.execute.mockResolvedValue(Result.ok([]));
 
-      const result = await controller.listarCompras();
+      const result = await controller.listarCompras({});
 
       expect(result).toEqual([]);
       expect(mocks.listarComprasUseCase.execute).toHaveBeenCalledTimes(1);
@@ -150,7 +152,7 @@ describe('ComprasController', () => {
       const ticketCompra = makeTicketCompra(ticket.id);
       mocks.listarComprasUseCase.execute.mockResolvedValue(Result.ok([{ ticket, ticketCompra }]));
 
-      const result = await controller.listarCompras();
+      const result = await controller.listarCompras({});
 
       expect(result).toHaveLength(1);
       expect(result[0].id).toBe('tc-001');
@@ -163,6 +165,24 @@ describe('ComprasController', () => {
       const permsMeta =
         Reflect.getMetadata(PERMISSIONS_KEY, ComprasController.prototype.listarCompras) ?? [];
       expect(permsMeta).toHaveLength(0);
+    });
+
+    // ─── Filtrado por ciclo (Fase 4, ADR-5) ─────────────────────────────────────
+
+    it('sin query, llama al use case sin cicloId (usa el ciclo activo)', async () => {
+      mocks.listarComprasUseCase.execute.mockResolvedValue(Result.ok([]));
+
+      await controller.listarCompras({});
+
+      expect(mocks.listarComprasUseCase.execute).toHaveBeenCalledWith(undefined);
+    });
+
+    it('con ?cicloId, pasa el cicloId al use case (histórico)', async () => {
+      mocks.listarComprasUseCase.execute.mockResolvedValue(Result.ok([]));
+
+      await controller.listarCompras({ cicloId: 'ciclo-historico-001' });
+
+      expect(mocks.listarComprasUseCase.execute).toHaveBeenCalledWith('ciclo-historico-001');
     });
   });
 
@@ -234,6 +254,28 @@ describe('ComprasController', () => {
       await expect(controller.crearTicketCompra(makeCreateDto(), user)).rejects.toThrow(
         InternalServerErrorException,
       );
+    });
+
+    // ─── Ciclo activo requerido (Fase 4, ADR-2) ─────────────────────────────────
+
+    it('lanza ConflictException (409) cuando no hay ciclo activo en el tenant', async () => {
+      mocks.crearTicketCompraUseCase.execute.mockResolvedValue(
+        Result.fail(new SinCicloActivoError()),
+      );
+
+      await expect(controller.crearTicketCompra(makeCreateDto(), user)).rejects.toThrow(
+        ConflictException,
+      );
+    });
+
+    it('no pasa cicloId al use case (el servidor resuelve el ciclo activo)', async () => {
+      const ticket = makeTicket();
+      mocks.crearTicketCompraUseCase.execute.mockResolvedValue(Result.ok(ticket));
+
+      await controller.crearTicketCompra(makeCreateDto(), user);
+
+      const calledWith = mocks.crearTicketCompraUseCase.execute.mock.calls[0][0];
+      expect(calledWith).not.toHaveProperty('cicloId');
     });
   });
 

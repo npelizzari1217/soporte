@@ -11,6 +11,12 @@ export interface TicketFiltros {
   fechaDesde?: Date;
   /** Límite superior del rango (inclusive), sobre created_at (end-of-day). */
   fechaHasta?: Date;
+  /**
+   * UUID de ciclos_cliente (Fase 4, ADR-5). El caller (ListarTicketsUseCase)
+   * resuelve este valor: cicloId explícito (histórico) o el ciclo ACTIVO por
+   * default. undefined/omitido = no filtrar por ciclo (uso interno del repo).
+   */
+  cicloId?: string;
 }
 
 /**

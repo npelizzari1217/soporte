@@ -6,12 +6,14 @@ import { IUsuarioMasterChecker } from '../../domain/ports/i-usuario-master.check
 import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
 import { ITipoOperacionRepository } from '../../domain/ports/i-tipo-operacion.repository';
 import { NumeradorTicket } from '../../domain/services/numerador-ticket.service';
+import { ResolverCicloActivoParaCreacion } from '../services/resolver-ciclo-activo.service';
 import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { EstadoEntity } from '../../domain/entities/estado.entity';
 import { OperacionTicketEntity } from '../../domain/entities/operacion-ticket.entity';
 import { TicketEntity } from '../../domain/entities/ticket.entity';
+import { CicloClienteEntity } from '../../domain/entities/ciclo-cliente.entity';
 import { Result } from '../../../shared/domain/result';
-import { SecuenciaAgotadaError } from '../../domain/errors/tickets.errors';
+import { SecuenciaAgotadaError, SinCicloActivoError } from '../../domain/errors/tickets.errors';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -25,6 +27,22 @@ function makeEstado(id: string, codigo: string): EstadoEntity {
   );
 }
 
+function makeCicloActivo(id: string): CicloClienteEntity {
+  return CicloClienteEntity.reconstitute(
+    {
+      cicloVigenteId: 'cv-001',
+      nombre: 'Ciclo 2026',
+      fechaInicio: new Date('2026-01-01'),
+      fechaFin: new Date('2026-12-31'),
+      activo: true,
+    },
+    id,
+    new Date('2026-01-01'),
+    new Date('2026-01-01'),
+    null,
+  );
+}
+
 // ─── Constantes de test ───────────────────────────────────────────────────────
 
 const ESTADO_ABIERTO_ID = 'c0000000-0000-4000-c000-000000000001';
@@ -33,13 +51,13 @@ const TIPO_TICKET_ID = 'e0000000-0000-4000-e000-000000000001';
 const SOLICITANTE_ID = 'user-solicitante-001';
 const CLIENTE_ID = 'cliente-001';
 const AUTOR_ID = 'user-autor-001';
+const CICLO_ACTIVO_ID = 'a0000000-0000-4000-a000-000000000001';
 
 const validDto: CrearTicketDto = {
   titulo: 'Computadora no enciende',
   descripcion: 'La PC del área de contabilidad no enciende desde hoy.',
   tipoId: TIPO_TICKET_ID,
   prioridadId: 'd0000000-0000-4000-d000-000000000002',
-  cicloId: null,
   solicitanteId: SOLICITANTE_ID,
   clienteId: CLIENTE_ID,
   autorId: AUTOR_ID,
@@ -90,6 +108,10 @@ describe('CrearTicketUseCase', () => {
     generarNumero: vi.fn(),
   } satisfies Pick<NumeradorTicket, 'generarNumero'>;
 
+  const mockResolverCicloActivo = {
+    resolver: vi.fn(),
+  } satisfies Pick<ResolverCicloActivoParaCreacion, 'resolver'>;
+
   const mockTxRunner: ITenantTransactionRunner = {
     run: vi.fn().mockImplementation((fn: () => Promise<unknown>) => fn()),
   };
@@ -105,6 +127,9 @@ describe('CrearTicketUseCase', () => {
     (mockNumerador.generarNumero as vi.Mock).mockResolvedValue(
       Result.ok<string, never>('SOP-2026-00001'),
     );
+    mockResolverCicloActivo.resolver.mockResolvedValue(
+      Result.ok<CicloClienteEntity, SinCicloActivoError>(makeCicloActivo(CICLO_ACTIVO_ID)),
+    );
     mockTicketRepo.save.mockResolvedValue(undefined);
     mockOperacionRepo.save.mockResolvedValue(undefined);
     (mockTxRunner.run as vi.Mock).mockImplementation((fn: () => Promise<unknown>) => fn());
@@ -117,8 +142,38 @@ describe('CrearTicketUseCase', () => {
       mockTipoTicketRepo,
       mockTipoOperacionRepo,
       mockNumerador,
+      mockResolverCicloActivo,
       mockTxRunner,
     );
+  });
+
+  // ─── Resolución del ciclo ACTIVO del tenant (ADR-1/ADR-2, Fase 4) ────────────
+
+  describe('resolución del ciclo activo del tenant (ADR-1, Fase 4)', () => {
+    it('propaga SinCicloActivoError cuando no hay ciclo activo en el tenant', async () => {
+      mockResolverCicloActivo.resolver.mockResolvedValue(Result.fail(new SinCicloActivoError()));
+
+      const result = await useCase.execute(validDto);
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError().code).toBe('SIN_CICLO_ACTIVO');
+    });
+
+    it('no persiste nada cuando no hay ciclo activo', async () => {
+      mockResolverCicloActivo.resolver.mockResolvedValue(Result.fail(new SinCicloActivoError()));
+
+      await useCase.execute(validDto);
+
+      expect(mockTxRunner.run).not.toHaveBeenCalled();
+      expect(mockTicketRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('asigna el id del ciclo activo resuelto al ticket creado (ignora cualquier valor previo)', async () => {
+      await useCase.execute(validDto);
+
+      const savedTicket = mockTicketRepo.save.mock.calls[0][0];
+      expect(savedTicket.cicloId).toBe(CICLO_ACTIVO_ID);
+    });
   });
 
   // ─── Validación de solicitante cross-DB ──────────────────────────────────────
