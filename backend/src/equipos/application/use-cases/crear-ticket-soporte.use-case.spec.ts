@@ -15,12 +15,31 @@ import { TicketSoporteEntity } from '../../domain/entities/ticket-soporte.entity
 import { OperacionTicketEntity } from '../../../tickets/domain/entities/operacion-ticket.entity';
 import { EquipoInformaticoEntity } from '../../domain/entities/equipo-informatico.entity';
 import { Result } from '../../../shared/domain/result';
+import { ResolverCicloActivoParaCreacion } from '../../../tickets/application/services/resolver-ciclo-activo.service';
+import { SinCicloActivoError } from '../../../tickets/domain/errors/tickets.errors';
+import { CicloClienteEntity } from '../../../tickets/domain/entities/ciclo-cliente.entity';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function makeEstado(id: string, codigo: string): EstadoEntity {
   return EstadoEntity.reconstitute(
     { codigo, nombre: codigo, color: null, orden: 10, activo: true },
+    id,
+    new Date(),
+    new Date(),
+    null,
+  );
+}
+
+function makeCicloActivo(id: string): CicloClienteEntity {
+  return CicloClienteEntity.reconstitute(
+    {
+      cicloVigenteId: 'cv-1',
+      nombre: 'Ciclo 2026',
+      fechaInicio: new Date('2026-01-01'),
+      fechaFin: new Date('2026-12-31'),
+      activo: true,
+    },
     id,
     new Date(),
     new Date(),
@@ -56,6 +75,7 @@ const EQUIPO_ID = 'eq000000-0000-4000-e000-000000000001';
 const SOLICITANTE_ID = 'user-solicitante-001';
 const CLIENTE_ID = 'cliente-001';
 const AUTOR_ID = 'user-autor-001';
+const CICLO_ACTIVO_ID = 'ciclo-activo-001';
 
 const validDtoConEquipo: CrearTicketSoporteDto = {
   titulo: 'PC no enciende',
@@ -140,6 +160,10 @@ describe('CrearTicketSoporteUseCase', () => {
     delete: vi.fn(),
   } satisfies vi.Mocked<IEquipoInformaticoRepository>;
 
+  const mockResolverCicloActivo = {
+    resolver: vi.fn(),
+  } satisfies Pick<ResolverCicloActivoParaCreacion, 'resolver'>;
+
   beforeEach(() => {
     vi.clearAllMocks();
 
@@ -156,6 +180,7 @@ describe('CrearTicketSoporteUseCase', () => {
     mockTicketSoporteRepo.save.mockResolvedValue(undefined);
     (mockTxRunner.run as vi.Mock).mockImplementation((fn: () => Promise<unknown>) => fn());
     mockEquipoRepo.findById.mockResolvedValue(makeEquipo(EQUIPO_ID, true, null));
+    mockResolverCicloActivo.resolver.mockResolvedValue(Result.ok(makeCicloActivo(CICLO_ACTIVO_ID)));
 
     useCase = new CrearTicketSoporteUseCase(
       mockTicketRepo,
@@ -168,6 +193,7 @@ describe('CrearTicketSoporteUseCase', () => {
       mockTxRunner,
       mockTicketSoporteRepo,
       mockEquipoRepo,
+      mockResolverCicloActivo,
     );
   });
 
@@ -344,6 +370,42 @@ describe('CrearTicketSoporteUseCase', () => {
 
       expect(result.isFail()).toBe(true);
       expect(result.getError().code).toBe('TIPO_TICKET_NO_ENCONTRADO');
+    });
+  });
+
+  // ─── Resolución del ciclo activo (Fase 4, ciclos-master-tenant) ───────────
+
+  describe('resolución del ciclo activo (Fase 4, ADR-1/ADR-2)', () => {
+    it('retorna SinCicloActivoError cuando no hay ciclo activo en el tenant', async () => {
+      mockResolverCicloActivo.resolver.mockResolvedValue(Result.fail(new SinCicloActivoError()));
+
+      const result = await useCase.execute(validDtoConEquipo);
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError().code).toBe('SIN_CICLO_ACTIVO');
+    });
+
+    it('no genera número ni persiste nada cuando no hay ciclo activo', async () => {
+      mockResolverCicloActivo.resolver.mockResolvedValue(Result.fail(new SinCicloActivoError()));
+
+      await useCase.execute(validDtoConEquipo);
+
+      expect(mockNumerador.generarNumero).not.toHaveBeenCalled();
+      expect(mockTxRunner.run).not.toHaveBeenCalled();
+    });
+
+    it('usa el id del ciclo activo como cicloId del ticket, ignorando cualquier cicloId del dto', async () => {
+      mockResolverCicloActivo.resolver.mockResolvedValue(
+        Result.ok(makeCicloActivo(CICLO_ACTIVO_ID)),
+      );
+      let savedTicket: TicketEntity | undefined;
+      mockTicketRepo.save.mockImplementation(async (t) => {
+        savedTicket = t;
+      });
+
+      await useCase.execute({ ...validDtoConEquipo, cicloId: 'ciclo-viejo-stale' });
+
+      expect(savedTicket!.cicloId).toBe(CICLO_ACTIVO_ID);
     });
   });
 

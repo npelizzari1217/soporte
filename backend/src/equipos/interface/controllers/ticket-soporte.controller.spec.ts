@@ -12,6 +12,7 @@
  * Tarea: 6.D.1
  */
 import {
+  ConflictException,
   InternalServerErrorException,
   NotFoundException,
   UnprocessableEntityException,
@@ -21,10 +22,12 @@ import { Result } from '../../../shared/domain/result';
 import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
 import {
   EstadoCatalogoNoEncontradoError,
+  SinCicloActivoError,
   SolicitanteInvalidoError,
   TipoTicketNoEncontradoError,
 } from '../../../tickets/domain/errors/tickets.errors';
 import { EquipoInvalidoError, TicketNoEsSoporteError } from '../../domain/errors/equipos.errors';
+import { CreateTicketSoporteHttpDto } from '../dtos/equipos.dto';
 import { JwtAuthGuard } from '../../../auth/infrastructure/guards/jwt-auth.guard';
 import { TenantGuard } from '../../../auth/infrastructure/guards/tenant.guard';
 import { RolesGuard } from '../../../auth/infrastructure/guards/roles.guard';
@@ -191,6 +194,41 @@ describe('TicketSoporteController', () => {
           user,
         ),
       ).rejects.toThrow(InternalServerErrorException);
+    });
+
+    // ─── Fase 4 (ciclos-master-tenant): ciclo activo resuelto por el servidor ──
+
+    it('lanza ConflictException (409) cuando no hay ciclo activo en el tenant', async () => {
+      mocks.crearTicketSoporteUseCase.execute.mockResolvedValue(
+        Result.fail(new SinCicloActivoError()),
+      );
+
+      await expect(
+        controller.crearTicketSoporte(
+          { titulo: 'Test', tipoId: 't', prioridadId: 'p', solicitanteId: 'u' },
+          user,
+        ),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it('ignora cualquier cicloId enviado en el body — no lo reenvía al use case', async () => {
+      const ticket = makeTicket();
+      mocks.crearTicketSoporteUseCase.execute.mockResolvedValue(Result.ok(ticket));
+
+      type DtoConCicloIdExtra = CreateTicketSoporteHttpDto & { cicloId?: string };
+      const dto: DtoConCicloIdExtra = {
+        titulo: 'PC no enciende',
+        tipoId: 'tipo-soporte-uuid',
+        prioridadId: 'prioridad-media-uuid',
+        solicitanteId: 'user-001',
+        cicloId: 'ciclo-que-el-cliente-no-deberia-controlar',
+      };
+
+      await controller.crearTicketSoporte(dto, user);
+
+      expect(mocks.crearTicketSoporteUseCase.execute).toHaveBeenCalledWith(
+        expect.not.objectContaining({ cicloId: expect.anything() }),
+      );
     });
   });
 

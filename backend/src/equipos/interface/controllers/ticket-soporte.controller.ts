@@ -10,6 +10,7 @@
  */
 import {
   Body,
+  ConflictException,
   Controller,
   HttpCode,
   HttpStatus,
@@ -30,6 +31,7 @@ import { CurrentUser, RequirePermissions } from '../../../auth/infrastructure/gu
 import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
 import {
   EstadoCatalogoNoEncontradoError,
+  SinCicloActivoError,
   SolicitanteInvalidoError,
   TipoOperacionNoEncontradoError,
   TipoTicketNoEncontradoError,
@@ -66,6 +68,7 @@ export class TicketSoporteController {
    * El equipo afectado es opcional: puede ser null si el problema no refiere a un equipo concreto.
    *
    * @returns 201 Created + TicketSoporteResponseDto
+   * @throws 409 si no hay un ciclo activo en el tenant (Fase 4, ADR-2, ciclos-master-tenant)
    * @throws 422 si solicitante inválido, equipo inactivo/inexistente o tipo no es SOPORTE
    * @throws 404 si tipo de ticket no existe en catálogo
    * @throws 500 si el catálogo tenant no está sembrado
@@ -77,12 +80,13 @@ export class TicketSoporteController {
     @Body() dto: CreateTicketSoporteHttpDto,
     @CurrentUser() user: JwtPayload,
   ): Promise<TicketSoporteResponseDto> {
+    // Fase 4 (ADR-1/ADR-3): el cicloId NO se lee del body — lo determina el
+    // servidor (ResolverCicloActivoParaCreacion, dentro del use case).
     const result = await this.crearTicketSoporteUseCase.execute({
       titulo: dto.titulo,
       descripcion: dto.descripcion ?? null,
       tipoId: dto.tipoId,
       prioridadId: dto.prioridadId,
-      cicloId: dto.cicloId ?? null,
       solicitanteId: dto.solicitanteId,
       clienteId: user.cliente_id,
       autorId: user.sub,
@@ -92,6 +96,9 @@ export class TicketSoporteController {
 
     if (result.isFail()) {
       const error = result.getError();
+      if (error instanceof SinCicloActivoError) {
+        throw new ConflictException(error.message);
+      }
       if (
         error instanceof SolicitanteInvalidoError ||
         error instanceof EquipoInvalidoError ||

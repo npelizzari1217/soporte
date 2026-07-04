@@ -72,16 +72,17 @@ PR2-5 son independientes entre sí una vez mergeado PR1 (tocan archivos disjunto
 - [ ] 4.6 GREEN `listar-reparaciones.use-case.ts`: `execute(cicloId?: string)`, inyecta `ICicloClienteRepository`, filtra `ticket.cicloId === cicloEfectivo`.
 - [ ] 4.7 RED→GREEN `tickets-edilicio.controller.spec.ts` + `reparaciones.controller.spec.ts` (si existe, o crear): 409 sin activo; listado filtrado.
 
-## Phase 5: Equipos/Soporte (PR5, base=PR1) — solo creación
+## Phase 5: Equipos/Soporte (PR5, base=PR1) — solo creación — [x] COMPLETA
 
-- [ ] 5.1 RED→GREEN `crear-ticket-soporte.use-case.spec.ts` / `.ts`: mismo patrón (`CrearTicketSoporteDto extends CrearTicketDto`).
-- [ ] 5.2 `equipos.module.ts`: agregar `ResolverCicloActivoParaCreacion` al `inject` de `CrearTicketSoporteUseCase` (importar `TicketsModule` ya está hecho).
-- [ ] 5.3 `interface/dtos/equipos.dto.ts`: remover `cicloId` de `CreateTicketSoporteHttpDto`.
-- [ ] 5.4 `ticket-soporte.controller.ts`: `POST /tickets-soporte` no pasa `cicloId`, mapea `SinCicloActivoError → 409`.
-- [ ] 5.5 RED→GREEN `ticket-soporte.controller.spec.ts`: 409 sin activo; creación ignora `cicloId` del body.
+- [x] 5.1 RED→GREEN `crear-ticket-soporte.use-case.spec.ts` / `.ts`: mismo patrón (`CrearTicketSoporteDto extends CrearTicketDto`). Inyecta `Pick<ResolverCicloActivoParaCreacion, 'resolver'>` como último parámetro del constructor; resuelve el activo tras validar solicitante+equipo, antes de resolver tipoCodigo; usa `cicloActivo.id` (ignora `dto.cicloId`, aunque el campo sigue existiendo en `CrearTicketDto` base — PR2, fuera de alcance).
+- [x] 5.2 `equipos.module.ts`: agregado `ResolverCicloActivoParaCreacion` al `inject` de `CrearTicketSoporteUseCase` (resuelto desde `TicketsModule`, ya exportado en PR1).
+- [x] 5.3 `interface/dtos/equipos.dto.ts`: removido `cicloId` de `CreateTicketSoporteHttpDto`; agregado el comentario del hallazgo de ValidationPipe (diferido desde PR1, tarea 1.5) directamente en el DTO.
+- [x] 5.4 `ticket-soporte.controller.ts`: `POST /tickets-soporte` ya no pasa `cicloId`; mapea `SinCicloActivoError → 409 ConflictException`.
+- [x] 5.5 RED→GREEN `ticket-soporte.controller.spec.ts`: test 409 sin activo; test que confirma que un `cicloId` extra en el body (vía tipo `CreateTicketSoporteHttpDto & { cicloId?: string }`, sin `as any`) se ignora y no se reenvía al use case.
+- [x] 5.6 (agregado, no en el plan original — riesgo crítico R2 pedido explícitamente): `equipos.module.spec.ts` NUEVO — bootstrapea `EquiposModule` real (+ `SharedModule`) vía `Test.createTestingModule().compile()` y confirma `ResolverCicloActivoParaCreacion` resuelto por DI. Verificado por sanity-check manual: remover el export de `ResolverCicloActivoParaCreacion` en `tickets.module.ts` hace fallar este test con `UnknownDependenciesException` real (confirmado y revertido).
 
 ## Phase 6: Verificación cruzada (cierre, tras PR2-5)
 
 - [ ] 6.1 Correr suite completa backend (`pnpm test`, `pnpm lint`, `tsc --noEmit`) — pegar salida real (DoD sección 9 CLAUDE.md).
-- [ ] 6.2 Test de bootstrap por módulo (compras/reparaciones/equipos): `Test.createTestingModule({ imports: [XModule] }).compile()` no debe lanzar error de DI (cubre R2 — `tsc` no lo atrapa).
+- [ ] 6.2 Test de bootstrap por módulo (compras/reparaciones/equipos): `Test.createTestingModule({ imports: [XModule] }).compile()` no debe lanzar error de DI (cubre R2 — `tsc` no lo atrapa). **Nota de ejecución:** la porción de `equipos` ya quedó cubierta en PR5 (tarea 5.6, `equipos.module.spec.ts`) — falta compras/reparaciones cuando se apliquen sus PRs respectivos.
 - [ ] 6.3 Confirmar que `PATCH /tickets/:id` sigue aceptando `cicloId` sin cambios (fuera de scope, ADR-3).
