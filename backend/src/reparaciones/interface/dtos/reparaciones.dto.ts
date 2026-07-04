@@ -24,6 +24,14 @@ export interface CreateUbicacionHttpDto {
 /**
  * Cuerpo HTTP para POST /tickets-edilicio.
  * clienteId y autorId se extraen del JWT via @CurrentUser().
+ *
+ * `cicloId` fue REMOVIDO (Fase 4, ciclos-master-tenant, ADR-3): el ciclo del
+ * ticket nuevo lo determina el servidor (ciclo ACTIVO del tenant), nunca el
+ * cliente. Nota de ejecución (1.5, Fase 4 PR1): el `ValidationPipe` global
+ * (`whitelist: true, transform: true`, sin `forbidNonWhitelisted`) SALTEA la
+ * validación/whitelist para DTOs que son interfaces TS planas (metatype ===
+ * Object) — un `cicloId` sobrante en el body pasa tal cual sin error 400 y
+ * sin ser aplicado (el use case ya no lo lee).
  */
 export interface CreateTicketEdilicioHttpDto {
   titulo: string;
@@ -32,14 +40,23 @@ export interface CreateTicketEdilicioHttpDto {
   tipoId: string;
   /** UUID de la prioridad (FK → prioridades). */
   prioridadId: string;
-  /** UUID del ciclo de cliente (FK → ciclos_cliente, opcional). */
-  cicloId?: string | null;
   /** UUID del solicitante (soft ref → master.usuarios). */
   solicitanteId: string;
   /** Fecha de resolución ISO (opcional). */
   fechaCierre?: string | null;
   /** UUID de la ubicación física donde ocurre la reparación. */
   ubicacionId: string;
+}
+
+/**
+ * Query params para GET /reparaciones.
+ *
+ * `cicloId` (Fase 4, ciclos-master-tenant, ADR-5): opcional. Sin especificar,
+ * el use case filtra por el ciclo ACTIVO del tenant. Con valor explícito,
+ * permite consultar el histórico de un ciclo cerrado.
+ */
+export interface ListarReparacionesQueryDto {
+  cicloId?: string;
 }
 
 /**

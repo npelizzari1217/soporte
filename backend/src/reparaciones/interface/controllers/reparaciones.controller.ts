@@ -11,9 +11,12 @@
  * Guard chain (clase): JwtAuthGuard → RolesGuard → PermissionsGuard → TenantGuard
  * GET no requiere permiso adicional — solo autenticación.
  *
- * Tarea: feat/tickets-list-mvp
+ * Filtro por ciclo (Fase 4, ciclos-master-tenant, ADR-5): `?cicloId=` opcional.
+ * Sin especificar, filtra por el ciclo ACTIVO del tenant.
+ *
+ * Tarea: feat/tickets-list-mvp; 4.4 (Fase 4, PR4)
  */
-import { Controller, Get, HttpCode, HttpStatus, UseGuards } from '@nestjs/common';
+import { Controller, Get, HttpCode, HttpStatus, Query, UseGuards } from '@nestjs/common';
 
 import { JwtAuthGuard } from '../../../auth/infrastructure/guards/jwt-auth.guard';
 import { RolesGuard } from '../../../auth/infrastructure/guards/roles.guard';
@@ -21,7 +24,10 @@ import { PermissionsGuard } from '../../../auth/infrastructure/guards/permission
 import { TenantGuard } from '../../../auth/infrastructure/guards/tenant.guard';
 
 import { ListarReparacionesUseCase } from '../../application/use-cases/listar-reparaciones.use-case';
-import { ReparacionListItemResponseDto } from '../dtos/reparaciones.dto';
+import {
+  ListarReparacionesQueryDto,
+  ReparacionListItemResponseDto,
+} from '../dtos/reparaciones.dto';
 
 // ─── Controller ───────────────────────────────────────────────────────────────
 
@@ -32,8 +38,9 @@ export class ReparacionesController {
 
   /**
    * GET /reparaciones
-   * Retorna todos los tickets edilicios del tenant activo, ordenados por createdAt desc.
-   * Excluye tickets soft-deleted. Solo requiere autenticación (sin permiso extra).
+   * Retorna los tickets edilicios del ciclo filtrado (default: ciclo ACTIVO del
+   * tenant; `?cicloId=` explícito permite consultar histórico). Excluye tickets
+   * soft-deleted. Solo requiere autenticación (sin permiso extra).
    *
    * Para cada ticket edilicio incluye: ticket base (numero, titulo, estadoId)
    * + ubicacionNombre (null si la ubicacion fue eliminada) + porcentajeAvance.
@@ -42,8 +49,10 @@ export class ReparacionesController {
    */
   @Get()
   @HttpCode(HttpStatus.OK)
-  async listarReparaciones(): Promise<ReparacionListItemResponseDto[]> {
-    const result = await this.listarReparacionesUseCase.execute();
+  async listarReparaciones(
+    @Query() query: ListarReparacionesQueryDto,
+  ): Promise<ReparacionListItemResponseDto[]> {
+    const result = await this.listarReparacionesUseCase.execute(query?.cicloId);
     return result.getValue();
   }
 }

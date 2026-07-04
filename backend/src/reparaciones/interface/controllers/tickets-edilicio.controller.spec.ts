@@ -14,6 +14,7 @@
  * Tarea: 5.D.1
  */
 import {
+  ConflictException,
   NotFoundException,
   UnprocessableEntityException,
   InternalServerErrorException,
@@ -23,6 +24,7 @@ import { Result } from '../../../shared/domain/result';
 import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
 import {
   EstadoCatalogoNoEncontradoError,
+  SinCicloActivoError,
   SolicitanteInvalidoError,
   TipoOperacionNoEncontradoError,
   TipoTicketNoEncontradoError,
@@ -134,6 +136,16 @@ describe('TicketsEdilicioController', () => {
 
       expect(mocks.crearTicketEdilicioUseCase.execute).toHaveBeenCalledWith(
         expect.objectContaining({ ubicacionId: 'ub-piso3' }),
+      );
+    });
+
+    it('lanza ConflictException (409) cuando el tenant no tiene ciclo activo (Fase 4, ciclos-master-tenant)', async () => {
+      mocks.crearTicketEdilicioUseCase.execute.mockResolvedValue(
+        Result.fail(new SinCicloActivoError()),
+      );
+
+      await expect(controller.crearTicketEdilicio(makeCreateDto(), user)).rejects.toThrow(
+        ConflictException,
       );
     });
 

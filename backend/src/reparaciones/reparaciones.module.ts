@@ -55,6 +55,14 @@ import {
   TicketStateMachineFactory,
   TICKET_STATE_MACHINE_FACTORY,
 } from '../tickets/domain/state-machine/ticket-state-machine.factory';
+import {
+  CICLO_CLIENTE_REPOSITORY,
+  ICicloClienteRepository,
+} from '../tickets/domain/ports/i-ciclo-cliente.repository';
+
+// ─── Fase 4 (ciclos-master-tenant) — colaborador de aplicación compartido ────
+// Exportado por TicketsModule junto con CICLO_CLIENTE_REPOSITORY (ADR-1/ADR-4-Repo).
+import { ResolverCicloActivoParaCreacion } from '../tickets/application/services/resolver-ciclo-activo.service';
 
 // ─── Shared tokens ────────────────────────────────────────────────────────────
 import {
@@ -178,6 +186,7 @@ import { SubtareasController } from './interface/controllers/subtareas.controlle
         txRunner: ITenantTransactionRunner,
         ticketEdiliciaRepo: ITicketEdiliciaRepository,
         ubicacionRepo: IUbicacionRepository,
+        resolverCicloActivo: ResolverCicloActivoParaCreacion,
       ) =>
         new CrearTicketEdilicioUseCase(
           ticketRepo,
@@ -190,6 +199,7 @@ import { SubtareasController } from './interface/controllers/subtareas.controlle
           txRunner,
           ticketEdiliciaRepo,
           ubicacionRepo,
+          resolverCicloActivo,
         ),
       inject: [
         TICKET_REPOSITORY,
@@ -202,6 +212,8 @@ import { SubtareasController } from './interface/controllers/subtareas.controlle
         TENANT_TRANSACTION_RUNNER,
         TICKET_EDILICIA_REPOSITORY,
         UBICACION_REPOSITORY,
+        // Fase 4 (ciclos-master-tenant, ADR-1): resuelto vía export de TicketsModule.
+        ResolverCicloActivoParaCreacion,
       ],
     },
 
@@ -261,8 +273,15 @@ import { SubtareasController } from './interface/controllers/subtareas.controlle
         ediliciaRepo: ITicketEdiliciaRepository,
         ticketRepo: ITicketRepository,
         ubicacionRepo: IUbicacionRepository,
-      ) => new ListarReparacionesUseCase(ediliciaRepo, ticketRepo, ubicacionRepo),
-      inject: [TICKET_EDILICIA_REPOSITORY, TICKET_REPOSITORY, UBICACION_REPOSITORY],
+        cicloRepo: ICicloClienteRepository,
+      ) => new ListarReparacionesUseCase(ediliciaRepo, ticketRepo, ubicacionRepo, cicloRepo),
+      inject: [
+        TICKET_EDILICIA_REPOSITORY,
+        TICKET_REPOSITORY,
+        UBICACION_REPOSITORY,
+        // Fase 4 (ciclos-master-tenant, ADR-4-Repo): resuelto vía export de TicketsModule.
+        CICLO_CLIENTE_REPOSITORY,
+      ],
     },
 
     // ─── Guards ──────────────────────────────────────────────────────────────
