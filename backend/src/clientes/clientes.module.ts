@@ -43,6 +43,9 @@ import { RegistrarClienteUseCase } from './application/use-cases/registrar-clien
 import { SuspenderClienteUseCase } from './application/use-cases/suspender-cliente.use-case';
 import { ReactivarClienteUseCase } from './application/use-cases/reactivar-cliente.use-case';
 import { CrearCicloVigenteUseCase } from './application/use-cases/crear-ciclo-vigente.use-case';
+import { ListarCiclosVigentesUseCase } from './application/use-cases/listar-ciclos-vigentes.use-case';
+import { EditarCicloVigenteUseCase } from './application/use-cases/editar-ciclo-vigente.use-case';
+import { DesactivarCicloVigenteUseCase } from './application/use-cases/desactivar-ciclo-vigente.use-case';
 import { CrearClienteUseCase } from './application/use-cases/crear-cliente.use-case';
 import { ListarCiclosUseCase } from './application/use-cases/listar-ciclos.use-case';
 import { CrearCicloTenantUseCase } from './application/use-cases/crear-ciclo-tenant.use-case';
@@ -184,6 +187,22 @@ import { AuthModule } from '../auth/auth.module';
     {
       provide: CrearCicloVigenteUseCase,
       useFactory: (repo: ICicloVigenteRepository) => new CrearCicloVigenteUseCase(repo),
+      inject: [CICLO_VIGENTE_REPOSITORY],
+    },
+    // T2.8: Use cases del CRUD del catálogo master (GET/PATCH/DELETE /ciclos-vigentes)
+    {
+      provide: ListarCiclosVigentesUseCase,
+      useFactory: (repo: ICicloVigenteRepository) => new ListarCiclosVigentesUseCase(repo),
+      inject: [CICLO_VIGENTE_REPOSITORY],
+    },
+    {
+      provide: EditarCicloVigenteUseCase,
+      useFactory: (repo: ICicloVigenteRepository) => new EditarCicloVigenteUseCase(repo),
+      inject: [CICLO_VIGENTE_REPOSITORY],
+    },
+    {
+      provide: DesactivarCicloVigenteUseCase,
+      useFactory: (repo: ICicloVigenteRepository) => new DesactivarCicloVigenteUseCase(repo),
       inject: [CICLO_VIGENTE_REPOSITORY],
     },
 
