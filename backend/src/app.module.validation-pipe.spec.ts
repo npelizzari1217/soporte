@@ -17,7 +17,7 @@
  * Tarea: tech-debt-validation-pipe
  */
 import { ValidationPipe, BadRequestException, ArgumentMetadata } from '@nestjs/common';
-import { CreateCicloDto } from './clientes/interface/dtos/create-ciclo.dto';
+import { ElegirCicloDto } from './clientes/interface/dtos/elegir-ciclo.dto';
 import { CreateClienteDto } from './clientes/interface/dtos/create-cliente.dto';
 import { CreateCicloVigenteDto } from './clientes/interface/dtos/create-ciclo-vigente.dto';
 import { ReporteQueryDto } from './reportes/interface/dtos/reporte-query.dto';
@@ -115,32 +115,26 @@ describe('ValidationPipe global — DTOs de admin-general', () => {
     });
   });
 
-  describe('CreateCicloDto (POST /ciclos)', () => {
-    const metadata: ArgumentMetadata = { type: 'body', metatype: CreateCicloDto, data: '' };
+  describe('ElegirCicloDto (POST /ciclos, ADR-3)', () => {
+    const metadata: ArgumentMetadata = { type: 'body', metatype: ElegirCicloDto, data: '' };
 
-    it('rechaza fechaInicio inválida con BadRequestException', async () => {
-      const payload = {
-        nombre: 'Ciclo 2026',
-        fechaInicio: 'no-es-una-fecha',
-        fechaFin: '2026-12-31',
-      };
+    it('rechaza cicloVigenteId no-UUID con BadRequestException', async () => {
+      const payload = { cicloVigenteId: 'no-es-un-uuid' };
       await expect(makePipe().transform(payload, metadata)).rejects.toBeInstanceOf(
         BadRequestException,
       );
     });
 
-    it('rechaza nombre vacío con BadRequestException', async () => {
-      const payload = { nombre: '', fechaInicio: '2026-01-01', fechaFin: '2026-12-31' };
-      await expect(makePipe().transform(payload, metadata)).rejects.toBeInstanceOf(
-        BadRequestException,
-      );
+    it('rechaza cicloVigenteId ausente con BadRequestException', async () => {
+      await expect(makePipe().transform({}, metadata)).rejects.toBeInstanceOf(BadRequestException);
     });
 
-    it('acepta un payload válido y lo transforma a instancia de CreateCicloDto', async () => {
-      const payload = { nombre: 'Ciclo 2026', fechaInicio: '2026-01-01', fechaFin: '2026-12-31' };
+    it('acepta un payload válido y lo transforma a instancia de ElegirCicloDto', async () => {
+      const uuid = '3fa85f64-5717-4562-b3fc-2c963f66afa6';
+      const payload = { cicloVigenteId: uuid };
       const result = await makePipe().transform(payload, metadata);
-      expect(result).toBeInstanceOf(CreateCicloDto);
-      expect(result.nombre).toBe('Ciclo 2026');
+      expect(result).toBeInstanceOf(ElegirCicloDto);
+      expect(result.cicloVigenteId).toBe(uuid);
     });
   });
 

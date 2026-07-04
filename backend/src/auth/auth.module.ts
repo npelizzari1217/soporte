@@ -64,6 +64,7 @@ import { RolesGuard } from './infrastructure/guards/roles.guard';
 import { PermissionsGuard } from './infrastructure/guards/permissions.guard';
 import { TenantGuard } from './infrastructure/guards/tenant.guard';
 import { GlobalAdminGuard } from './infrastructure/guards/global-admin.guard';
+import { PermissionsOrGlobalAdminGuard } from './infrastructure/guards/permissions-or-global-admin.guard';
 
 // ─── Controllers ──────────────────────────────────────────────────────────────
 import { AuthController } from './interface/controllers/auth.controller';
@@ -187,6 +188,9 @@ import { UsuariosController } from './interface/controllers/usuarios.controller'
     PermissionsGuard,
     TenantGuard,
     GlobalAdminGuard,
+    // T3.2 (ciclos-master-tenant, Fase 3): guard combinado ciclo:gestionar O
+    // is_global_admin — usado en POST /ciclos y PATCH /ciclos/:id/activar.
+    PermissionsOrGlobalAdminGuard,
   ],
   exports: [
     // Exportamos TOKEN_SERVICE y guards para que otros módulos que importen
@@ -198,6 +202,8 @@ import { UsuariosController } from './interface/controllers/usuarios.controller'
     // futuros módulos de rutas tenant-scoped (PR3-PR4).
     TenantGuard,
     PermissionsGuard,
+    // PermissionsOrGlobalAdminGuard: usado por CiclosController (Fase 3, T3.8).
+    PermissionsOrGlobalAdminGuard,
   ],
 })
 export class AuthModule {}
