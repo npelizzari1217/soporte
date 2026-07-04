@@ -69,15 +69,16 @@ PR2-5 son independientes entre sí una vez mergeado PR1 (tocan archivos disjunto
 
 **Nota de ejecución (entorno):** `prisma-compras.integration.spec.ts` (NO tocado en este PR) muestra fallos intermitentes en corridas de suite completa (`pnpm test`) por contención de la DB de test compartida (`soporte_tenant_test`) entre múltiples agentes de worktree corriendo en paralelo (confirmado con `pg_stat_activity` mostrando un `TRUNCATE` concurrente de otra sesión, y con dos corridas completas consecutivas mostrando conjuntos de fallos totalmente distintos y no solapados entre módulos no tocados por este PR — auth/clientes/equipos/reparaciones). La suite de compras SIN integration specs (`vitest run src/compras --exclude "**/*.integration.spec.ts"`) es 100% determinística y verde: 214/214 tests, 14/14 archivos.
 
-## Phase 4: Reparaciones (PR4, base=PR1)
+## Phase 4: Reparaciones (PR4, base=PR1) — [x] COMPLETA
 
-- [ ] 4.1 RED→GREEN `crear-ticket-edilicio.use-case.spec.ts` / `.ts`: mismo patrón (nota: `CrearTicketEdilicioDto extends CrearTicketDto`, ya sin `cicloId`).
-- [ ] 4.2 `reparaciones.module.ts`: agregar `ResolverCicloActivoParaCreacion` y `CICLO_CLIENTE_REPOSITORY` al `inject` de `CrearTicketEdilicioUseCase` y `ListarReparacionesUseCase`.
-- [ ] 4.3 `interface/dtos/reparaciones.dto.ts`: remover `cicloId` de `CreateTicketEdilicioHttpDto`; agregar `ListarReparacionesQueryDto { cicloId?: string }`.
-- [ ] 4.4 `tickets-edilicio.controller.ts`: `POST` no pasa `cicloId`, mapea 409. `reparaciones.controller.ts`: `GET` acepta `@Query() q`, pasa `q.cicloId`.
-- [ ] 4.5 RED `listar-reparaciones.use-case.spec.ts`: default activo / histórico / `[]`.
-- [ ] 4.6 GREEN `listar-reparaciones.use-case.ts`: `execute(cicloId?: string)`, inyecta `ICicloClienteRepository`, filtra `ticket.cicloId === cicloEfectivo`.
-- [ ] 4.7 RED→GREEN `tickets-edilicio.controller.spec.ts` + `reparaciones.controller.spec.ts` (si existe, o crear): 409 sin activo; listado filtrado.
+- [x] 4.1 RED→GREEN `crear-ticket-edilicio.use-case.spec.ts` / `.ts`. **Nota de ejecución:** `CrearTicketDto` (shared, tickets) todavía tiene `cicloId` porque PR2 (tickets) no está mergeado en esta base — no se tocó ese archivo compartido para no pisar PR2. El use case simplemente dejó de LEER `dto.cicloId`; usa `cicloActivo.id` resuelto por `ResolverCicloActivoParaCreacion` (inyectado como último parámetro del constructor, `Pick<ResolverCicloActivoParaCreacion, 'resolver'>`). Resolución del ciclo ubicada como paso 2 (tras validar solicitante), antes de validar ubicación — sin activo → `Result.fail(SinCicloActivoError)` sin persistir nada.
+- [x] 4.2 `reparaciones.module.ts`: agregado `ResolverCicloActivoParaCreacion` al `inject` de `CrearTicketEdilicioUseCase` y `CICLO_CLIENTE_REPOSITORY` al `inject` de `ListarReparacionesUseCase` — ambos tokens ya exportados por `TicketsModule` (PR1), sin providers nuevos en `ReparacionesModule`.
+- [x] 4.3 `interface/dtos/reparaciones.dto.ts`: removido `cicloId` de `CreateTicketEdilicioHttpDto`; agregado `ListarReparacionesQueryDto { cicloId?: string }`.
+- [x] 4.4 `tickets-edilicio.controller.ts`: `POST` ya no pasa `cicloId` (DTO ya no lo tiene), mapea `SinCicloActivoError` → 409 `ConflictException`. `reparaciones.controller.ts`: `GET` acepta `@Query() query: ListarReparacionesQueryDto`, pasa `query.cicloId` al use case.
+- [x] 4.5 RED `listar-reparaciones.use-case.spec.ts`: default activo / histórico (`cicloId` explícito ignora el activo, no llama `findActive`) / sin activo ni query → `[]` sin llamar `findAll`.
+- [x] 4.6 GREEN `listar-reparaciones.use-case.ts`: `execute(cicloId?: string)`, inyecta `Pick<ICicloClienteRepository, 'findActive'>`, resuelve `cicloEfectivo = cicloId ?? (await cicloRepo.findActive())?.id ?? null`, filtra `ticket.cicloId === cicloEfectivo` en el loop (mismo patrón in-memory que compras, ADR-5 — sin tocar el puerto/impl Prisma de `ITicketEdiliciaRepository`, ya que el filtro es sobre el ticket base, no el satélite).
+- [x] 4.7 RED→GREEN `tickets-edilicio.controller.spec.ts` (+ test 409) y `reparaciones.controller.spec.ts` (NUEVO — no existía): 409 sin activo; listado filtrado; guard chain.
+- [x] EXTRA (pedido explícito, riesgo R2): `reparaciones.module.wiring.spec.ts` (NUEVO) — bootstrapea `ReparacionesModule` real con `Test.createTestingModule({ imports: [SharedModule, ReparacionesModule] })` (sin mocks) y confirma que `CrearTicketEdilicioUseCase`/`ListarReparacionesUseCase` resuelven con `ResolverCicloActivoParaCreacion`/`CICLO_CLIENTE_REPOSITORY` inyectados vía el export chain de `TicketsModule`. `tsc` no cubre este riesgo — solo un compile real de Nest lo hace.
 
 ## Phase 5: Equipos/Soporte (PR5, base=PR1) — solo creación
 

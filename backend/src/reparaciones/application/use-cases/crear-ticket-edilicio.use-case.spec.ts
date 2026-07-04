@@ -18,6 +18,9 @@ import { TicketEdiliciaEntity } from '../../domain/entities/ticket-edilicia.enti
 import { OperacionTicketEntity } from '../../../tickets/domain/entities/operacion-ticket.entity';
 import { UbicacionEntity } from '../../domain/entities/ubicacion.entity';
 import { Result } from '../../../shared/domain/result';
+import { ResolverCicloActivoParaCreacion } from '../../../tickets/application/services/resolver-ciclo-activo.service';
+import { SinCicloActivoError } from '../../../tickets/domain/errors/tickets.errors';
+import { CicloClienteEntity } from '../../../tickets/domain/entities/ciclo-cliente.entity';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -38,6 +41,22 @@ function makeUbicacion(id: string, activo: boolean, deletedAt: Date | null): Ubi
     new Date(),
     new Date(),
     deletedAt,
+  );
+}
+
+function makeCicloActivo(id = 'ciclo-activo-id'): CicloClienteEntity {
+  return CicloClienteEntity.reconstitute(
+    {
+      cicloVigenteId: 'cv-1',
+      nombre: 'Ciclo 2026',
+      fechaInicio: new Date('2026-01-01'),
+      fechaFin: new Date('2026-12-31'),
+      activo: true,
+    },
+    id,
+    new Date(),
+    new Date(),
+    null,
   );
 }
 
@@ -129,6 +148,10 @@ describe('CrearTicketEdilicioUseCase', () => {
     delete: vi.fn(),
   } satisfies vi.Mocked<IUbicacionRepository>;
 
+  const mockResolverCicloActivo = {
+    resolver: vi.fn(),
+  } satisfies Pick<ResolverCicloActivoParaCreacion, 'resolver'>;
+
   beforeEach(() => {
     vi.clearAllMocks();
 
@@ -145,6 +168,7 @@ describe('CrearTicketEdilicioUseCase', () => {
     mockTicketEdiliciaRepo.save.mockResolvedValue(undefined);
     (mockTxRunner.run as vi.Mock).mockImplementation((fn: () => Promise<unknown>) => fn());
     mockUbicacionRepo.findById.mockResolvedValue(makeUbicacion(UBICACION_ID, true, null));
+    mockResolverCicloActivo.resolver.mockResolvedValue(Result.ok(makeCicloActivo()));
 
     useCase = new CrearTicketEdilicioUseCase(
       mockTicketRepo,
@@ -157,7 +181,42 @@ describe('CrearTicketEdilicioUseCase', () => {
       mockTxRunner,
       mockTicketEdiliciaRepo,
       mockUbicacionRepo,
+      mockResolverCicloActivo,
     );
+  });
+
+  // ─── Resolución del ciclo ACTIVO (Fase 4, ciclos-master-tenant, ADR-1) ────
+
+  describe('resolución del ciclo activo del tenant', () => {
+    it('retorna fallo SinCicloActivoError cuando el tenant no tiene ciclo activo', async () => {
+      mockResolverCicloActivo.resolver.mockResolvedValue(Result.fail(new SinCicloActivoError()));
+
+      const result = await useCase.execute(validDto);
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(SinCicloActivoError);
+      expect(result.getError().code).toBe('SIN_CICLO_ACTIVO');
+    });
+
+    it('no persiste nada cuando no hay ciclo activo', async () => {
+      mockResolverCicloActivo.resolver.mockResolvedValue(Result.fail(new SinCicloActivoError()));
+
+      await useCase.execute(validDto);
+
+      expect(mockTxRunner.run).not.toHaveBeenCalled();
+      expect(mockTicketRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('el ticket creado usa el id del ciclo activo resuelto, ignorando cualquier cicloId previo del DTO', async () => {
+      mockResolverCicloActivo.resolver.mockResolvedValue(
+        Result.ok(makeCicloActivo('ciclo-activo-xyz')),
+      );
+
+      const result = await useCase.execute(validDto);
+
+      expect(result.isOk()).toBe(true);
+      expect(result.getValue().cicloId).toBe('ciclo-activo-xyz');
+    });
   });
 
   // ─── Validación de ubicación ──────────────────────────────────────────────

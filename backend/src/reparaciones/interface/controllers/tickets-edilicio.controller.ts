@@ -10,6 +10,7 @@
  */
 import {
   Body,
+  ConflictException,
   Controller,
   HttpCode,
   HttpStatus,
@@ -30,6 +31,7 @@ import { CurrentUser, RequirePermissions } from '../../../auth/infrastructure/gu
 import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
 import {
   EstadoCatalogoNoEncontradoError,
+  SinCicloActivoError,
   SolicitanteInvalidoError,
   TipoOperacionNoEncontradoError,
   TipoTicketNoEncontradoError,
@@ -67,7 +69,11 @@ export class TicketsEdilicioController {
    * POST /tickets-edilicio
    * Crea un nuevo ticket de tipo EDILICIA (ticket base + satélite ticket_edilicia en una tx).
    *
+   * El ciclo del ticket lo determina el servidor (ciclo ACTIVO del tenant, Fase 4
+   * ciclos-master-tenant ADR-1/ADR-3) — el body ya NO acepta `cicloId`.
+   *
    * @returns 201 Created + TicketEdilicioResponseDto
+   * @throws 409 si el tenant no tiene un ciclo activo (SinCicloActivoError)
    * @throws 422 si solicitante inválido, ubicacion inválida o tipo no es EDILICIA
    * @throws 404 si tipo de ticket no existe en catálogo
    * @throws 500 si el catálogo tenant no está sembrado
@@ -84,8 +90,6 @@ export class TicketsEdilicioController {
       descripcion: dto.descripcion ?? null,
       tipoId: dto.tipoId,
       prioridadId: dto.prioridadId,
-      // TODO(Fase 4 PR4, ciclos-master-tenant): dejar de pasar cicloId (ADR-3)
-      // y mapear SinCicloActivoError → 409, igual que TicketsController (PR2).
       solicitanteId: dto.solicitanteId,
       clienteId: user.cliente_id,
       autorId: user.sub,
@@ -95,6 +99,9 @@ export class TicketsEdilicioController {
 
     if (result.isFail()) {
       const error = result.getError();
+      if (error instanceof SinCicloActivoError) {
+        throw new ConflictException(error.message);
+      }
       if (
         error instanceof SolicitanteInvalidoError ||
         error instanceof UbicacionInvalidaError ||
