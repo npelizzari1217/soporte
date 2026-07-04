@@ -23,6 +23,7 @@
  */
 import {
   Body,
+  ConflictException,
   Controller,
   Delete,
   Get,
@@ -82,6 +83,7 @@ import {
   PrioridadNoEncontradaError,
   CicloNoEncontradoError,
   ObservacionNoPermitidaError,
+  SinCicloActivoError,
 } from '../../domain/errors/tickets.errors';
 
 import {
@@ -207,7 +209,6 @@ export class TicketsController {
       descripcion: dto.descripcion ?? null,
       tipoId: dto.tipoId,
       prioridadId: dto.prioridadId,
-      cicloId: dto.cicloId ?? null,
       solicitanteId: dto.solicitanteId,
       clienteId: user.cliente_id,
       autorId: user.sub,
@@ -217,6 +218,11 @@ export class TicketsController {
 
     if (result.isFail()) {
       const error = result.getError();
+      // Fase 4 (ADR-2): sin ciclo activo en el tenant → 409 Conflict (payload
+      // válido, precondición de estado del tenant, corregible activando un ciclo).
+      if (error instanceof SinCicloActivoError) {
+        throw new ConflictException(error.message);
+      }
       if (error instanceof SolicitanteInvalidoError) {
         throw new UnprocessableEntityException(error.message);
       }
@@ -246,6 +252,9 @@ export class TicketsController {
    *   - tiposIds: UUID o array de UUIDs (string único se coerce a array).
    *   - fechaDesde: ISO 'YYYY-MM-DD' — convertido a startOfDay UTC.
    *   - fechaHasta: ISO 'YYYY-MM-DD' — convertido a endOfDay UTC.
+   *   - cicloId: UUID de ciclos_cliente para listados históricos (ADR-5). Sin
+   *     este param, el use case resuelve el ciclo ACTIVO del tenant por default.
+   *     Sin activo ni cicloId → lista vacía (invariante "siempre por ciclo").
    *   - Rango inválido (fechaDesde > fechaHasta) → 422.
    *   - Fecha con formato inválido → filtro ignorado (no 422).
    *
@@ -283,6 +292,7 @@ export class TicketsController {
       tiposIds,
       fechaDesde: desde,
       fechaHasta: hasta,
+      cicloId: q?.cicloId,
     });
 
     // ListarTicketsUseCase solo retorna Result.ok — no hay camino de error.

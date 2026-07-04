@@ -1,21 +1,26 @@
 /**
  * Unit tests para ListarTicketsUseCase.
  *
- * Verifica:
- * - Delega a ITicketRepository.findAll.
- * - Retorna Result.ok con la lista de tickets del tenant.
- * - Retorna Result.ok con lista vacía cuando no hay tickets.
+ * Fase 4 (ciclos-master-tenant, ADR-5): el use case deja de ser "puro" respecto
+ * de filtros — ahora inyecta ICicloClienteRepository (tickets-side) y resuelve
+ * el ciclo EFECTIVO: filtros.cicloId (histórico) ?? ciclo activo del tenant.
+ * Sin cicloId explícito y sin ciclo activo → lista vacía (invariante: "siempre
+ * por ciclo", nunca "todos").
  *
- * Tarea: feat/tickets-list-mvp
+ * Ref design: openspec/changes/ciclos-master-tenant/design-fase4.md ADR-5
+ * Tarea: 2.7/2.8 (Fase 4, PR2)
  */
 import { ListarTicketsUseCase } from './listar-tickets.use-case';
 import { ITicketRepository, TicketFiltros } from '../../domain/ports/i-ticket.repository';
+import { ICicloClienteRepository } from '../../domain/ports/i-ciclo-cliente.repository';
 import { TicketEntity, TicketProps } from '../../domain/entities/ticket.entity';
+import { CicloClienteEntity } from '../../domain/entities/ciclo-cliente.entity';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 const TIPO_TICKET_ID = 'e0000000-0000-4000-e000-000000000001';
 const ESTADO_ID = 'c0000000-0000-4000-c000-000000000001';
+const CICLO_ACTIVO_ID = 'a0000000-0000-4000-a000-000000000001';
 
 const baseProps: TicketProps = {
   numero: 'SOP-2026-00001',
@@ -40,6 +45,22 @@ function makeTicket(id: string, numero: string): TicketEntity {
   );
 }
 
+function makeCicloActivo(id: string = CICLO_ACTIVO_ID): CicloClienteEntity {
+  return CicloClienteEntity.reconstitute(
+    {
+      cicloVigenteId: 'cv-001',
+      nombre: 'Ciclo 2026',
+      fechaInicio: new Date('2026-01-01'),
+      fechaFin: new Date('2026-12-31'),
+      activo: true,
+    },
+    id,
+    new Date('2026-01-01'),
+    new Date('2026-01-01'),
+    null,
+  );
+}
+
 // ─── Suite ───────────────────────────────────────────────────────────────────
 
 describe('ListarTicketsUseCase', () => {
@@ -54,47 +75,70 @@ describe('ListarTicketsUseCase', () => {
     delete: vi.fn(),
   } satisfies vi.Mocked<ITicketRepository>;
 
+  const mockCicloClienteRepo = {
+    findById: vi.fn(),
+    findActive: vi.fn(),
+    findAll: vi.fn(),
+    save: vi.fn(),
+  } satisfies vi.Mocked<ICicloClienteRepository>;
+
   beforeEach(() => {
     vi.clearAllMocks();
-    useCase = new ListarTicketsUseCase(mockTicketRepo);
+    mockCicloClienteRepo.findActive.mockResolvedValue(makeCicloActivo());
+    useCase = new ListarTicketsUseCase(mockTicketRepo, mockCicloClienteRepo);
   });
 
-  // ─── Filtros pass-through (T1.2 RED) ─────────────────────────────────────
+  // ─── Resolución de ciclo efectivo (ADR-5, T2.7/T2.8) ─────────────────────
 
-  it('propaga tiposIds al repo cuando se pasan filtros con tiposIds', async () => {
-    const uuid = 'e0000000-0000-4000-e000-000000000001';
-    mockTicketRepo.findAll.mockResolvedValue([]);
+  describe('resolución del ciclo efectivo (default=activo, histórico, sin ninguno)', () => {
+    it('sin cicloId en filtros → resuelve el ciclo activo y filtra por él', async () => {
+      mockTicketRepo.findAll.mockResolvedValue([]);
 
-    await useCase.execute({ tiposIds: [uuid] });
+      await useCase.execute();
 
-    expect(mockTicketRepo.findAll).toHaveBeenCalledWith({ tiposIds: [uuid] });
+      expect(mockCicloClienteRepo.findActive).toHaveBeenCalledTimes(1);
+      expect(mockTicketRepo.findAll).toHaveBeenCalledWith(
+        expect.objectContaining({ cicloId: CICLO_ACTIVO_ID }),
+      );
+    });
+
+    it('con cicloId explícito en filtros (histórico) → usa ese cicloId sin consultar el activo', async () => {
+      mockTicketRepo.findAll.mockResolvedValue([]);
+
+      await useCase.execute({ cicloId: 'ciclo-historico-001' });
+
+      expect(mockCicloClienteRepo.findActive).not.toHaveBeenCalled();
+      expect(mockTicketRepo.findAll).toHaveBeenCalledWith(
+        expect.objectContaining({ cicloId: 'ciclo-historico-001' }),
+      );
+    });
+
+    it('sin cicloId en filtros y sin ciclo activo → retorna [] sin llamar findAll', async () => {
+      mockCicloClienteRepo.findActive.mockResolvedValue(null);
+
+      const result = await useCase.execute();
+
+      expect(result.isOk()).toBe(true);
+      expect(result.getValue()).toEqual([]);
+      expect(mockTicketRepo.findAll).not.toHaveBeenCalled();
+    });
+
+    it('preserva el resto de los filtros (tiposIds) junto con el cicloId resuelto', async () => {
+      mockTicketRepo.findAll.mockResolvedValue([]);
+      const uuid = 'e0000000-0000-4000-e000-000000000001';
+
+      await useCase.execute({ tiposIds: [uuid] });
+
+      expect(mockTicketRepo.findAll).toHaveBeenCalledWith({
+        tiposIds: [uuid],
+        cicloId: CICLO_ACTIVO_ID,
+      });
+    });
   });
 
-  it('propaga filtros vacíos al repo cuando se llama execute({})', async () => {
-    mockTicketRepo.findAll.mockResolvedValue([]);
+  // ─── Tests existentes (adaptados a la resolución de ciclo, ADR-5) ─────────
 
-    await useCase.execute({});
-
-    expect(mockTicketRepo.findAll).toHaveBeenCalledWith({});
-  });
-
-  it('llama findAll con undefined cuando execute() se llama sin argumentos', async () => {
-    mockTicketRepo.findAll.mockResolvedValue([]);
-
-    await useCase.execute();
-
-    // Sin args, el use case pasa undefined (o {} — ambos son aceptables per spec)
-    expect(mockTicketRepo.findAll).toHaveBeenCalledTimes(1);
-  });
-
-  it('NO inyecta ICicloClienteRepository — el use case permanece puro', () => {
-    // El constructor debe tener exactamente 1 parámetro (ITicketRepository)
-    expect(ListarTicketsUseCase.length).toBe(1);
-  });
-
-  // ─── Tests existentes ─────────────────────────────────────────────────────
-
-  it('retorna Result.ok con la lista de tickets del tenant', async () => {
+  it('retorna Result.ok con la lista de tickets del tenant (ciclo activo resuelto)', async () => {
     const tickets = [
       makeTicket('ticket-uuid-001', 'SOP-2026-00002'),
       makeTicket('ticket-uuid-002', 'SOP-2026-00001'),
@@ -109,7 +153,7 @@ describe('ListarTicketsUseCase', () => {
     expect(mockTicketRepo.findAll).toHaveBeenCalledTimes(1);
   });
 
-  it('retorna Result.ok con lista vacía cuando no hay tickets en el tenant', async () => {
+  it('retorna Result.ok con lista vacía cuando no hay tickets en el ciclo activo', async () => {
     mockTicketRepo.findAll.mockResolvedValue([]);
 
     const result = await useCase.execute();

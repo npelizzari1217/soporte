@@ -127,7 +127,12 @@ export class CrearTicketEdilicioUseCase {
       tipoId: dto.tipoId,
       estadoId: estadoAbierto.id,
       prioridadId: dto.prioridadId,
-      cicloId: dto.cicloId ?? null,
+      // TODO(Fase 4 PR4, ciclos-master-tenant): CrearTicketDto perdió `cicloId`
+      // (ADR-3, PR2 tickets) — el servidor lo determinará vía
+      // ResolverCicloActivoParaCreacion, igual que en CrearTicketUseCase.
+      // Stopgap compile-preserving en PR2: mismo comportamiento runtime que
+      // antes (`dto.cicloId` nunca llegaba desde el frontend → siempre `null`).
+      cicloId: null,
       solicitanteId: dto.solicitanteId,
       asignadoId: null,
       fechaCierre: null,

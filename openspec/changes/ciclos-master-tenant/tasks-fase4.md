@@ -39,18 +39,22 @@ PR2-5 son independientes entre sí una vez mergeado PR1 (tocan archivos disjunto
 - [x] 1.5 Verificar (no asumir): confirmar en `backend/src/app.module.ts` que `ValidationPipe` es `{ whitelist: true, transform: true }` SIN `forbidNonWhitelisted`, y que los 4 HTTP DTO de creación son interfaces planas (no class-validator) → un `cicloId` sobrante en body NO dispara 400 (el pipe salta validación por `metatype === Object`); documentar el hallazgo como comentario en cada DTO tocado en Fases 2-5. **Nota de ejecución:** confirmado con test dedicado (`tickets.dto.validation-pipe.spec.ts`) en vez de solo comentario — el comentario detallado del hallazgo en cada DTO específico de compras/reparaciones/equipos queda diferido a sus PRs (2-5) cuando se toquen esos archivos.
 - [x] 1.6 Verificar predicado `findActive()` en `PrismaCicloClienteRepository` (tickets-side, ya `activo:true, deletedAt:null`) vs. repo admin — alinear si difiere (R7). No unificar. **Resultado:** ambos repos ya usan `where: { activo: true, deletedAt: null }` — sin divergencia, sin cambio de código necesario.
 
-## Phase 2: Tickets (PR2, base=PR1)
+## Phase 2: Tickets (PR2, base=PR1) — [x] COMPLETA
 
-- [ ] 2.1 RED `crear-ticket.use-case.spec.ts`: mock `ResolverCicloActivoParaCreacion`; test sin activo → `SinCicloActivoError`; test con activo → `ticket.cicloId === activo.id` (ignora cualquier valor previo).
-- [ ] 2.2 GREEN `crear-ticket.use-case.ts`: quitar `cicloId` de `CrearTicketDto`; inyectar resolver; resolver activo tras validar solicitante, antes de generar número; usar `cicloActivo.id`.
-- [ ] 2.3 `tickets.module.ts`: agregar `ResolverCicloActivoParaCreacion` al `inject` de `CrearTicketUseCase`.
-- [ ] 2.4 `interface/dtos/tickets.dto.ts`: remover `cicloId` de `CreateTicketHttpDto`; agregar `cicloId?: string` a `ListarTicketsQueryDto`.
-- [ ] 2.5 `interface/controllers/tickets.controller.ts`: `POST /tickets` deja de pasar `cicloId`; mapear `SinCicloActivoError → 409 ConflictException`. `GET /tickets` pasa `q.cicloId` al use case.
-- [ ] 2.6 RED→GREEN `i-ticket.repository.ts` + `prisma-ticket.repository.ts`: `TicketFiltros.cicloId?`; `findAll` agrega `where.cicloId` cuando viene.
-- [ ] 2.7 RED `listar-tickets.use-case.spec.ts`: sin query → usa activo; con `cicloId` → histórico; sin activo ni query → `[]`.
-- [ ] 2.8 GREEN `listar-tickets.use-case.ts`: inyectar `ICicloClienteRepository`; resolver `cicloEfectivo = filtros?.cicloId ?? (await cicloRepo.findActive())?.id`; sin ninguno → `Result.ok([])` sin llamar `findAll`.
-- [ ] 2.9 `tickets.module.ts`: agregar `CICLO_CLIENTE_REPOSITORY` al `inject` de `ListarTicketsUseCase`.
-- [ ] 2.10 RED→GREEN `tickets.controller.spec.ts`: test 409 en creación sin activo; test creación ignora `cicloId` del body; test listado default/histórico/vacío.
+- [x] 2.1 RED `crear-ticket.use-case.spec.ts`: mock `ResolverCicloActivoParaCreacion`; test sin activo → `SinCicloActivoError`; test con activo → `ticket.cicloId === activo.id` (ignora cualquier valor previo).
+- [x] 2.2 GREEN `crear-ticket.use-case.ts`: quitar `cicloId` de `CrearTicketDto`; inyectar resolver; resolver activo tras validar solicitante, antes de generar número; usar `cicloActivo.id`.
+- [x] 2.3 `tickets.module.ts`: agregar `ResolverCicloActivoParaCreacion` al `inject` de `CrearTicketUseCase`.
+- [x] 2.4 `interface/dtos/tickets.dto.ts`: remover `cicloId` de `CreateTicketHttpDto`; agregar `cicloId?: string` a `ListarTicketsQueryDto`.
+- [x] 2.5 `interface/controllers/tickets.controller.ts`: `POST /tickets` deja de pasar `cicloId`; mapear `SinCicloActivoError → 409 ConflictException`. `GET /tickets` pasa `q.cicloId` al use case.
+- [x] 2.6 RED→GREEN `i-ticket.repository.ts` + `prisma-ticket.repository.ts`: `TicketFiltros.cicloId?`; `findAll` agrega `where.cicloId` cuando viene.
+- [x] 2.7 RED `listar-tickets.use-case.spec.ts`: sin query → usa activo; con `cicloId` → histórico; sin activo ni query → `[]`.
+- [x] 2.8 GREEN `listar-tickets.use-case.ts`: inyectar `ICicloClienteRepository`; resolver `cicloEfectivo = filtros?.cicloId ?? (await cicloRepo.findActive())?.id`; sin ninguno → `Result.ok([])` sin llamar `findAll`.
+- [x] 2.9 `tickets.module.ts`: agregar `CICLO_CLIENTE_REPOSITORY` al `inject` de `ListarTicketsUseCase`.
+- [x] 2.10 RED→GREEN `tickets.controller.spec.ts`: test 409 en creación sin activo; test creación ignora `cicloId` del body; test listado default/histórico/vacío.
+
+**Notas de ejecución:**
+- Test adicional (pedido explícito fuera de tasks.md, cubre R2): `tickets.module.wiring.spec.ts` — bootstrapea `TicketsModule` real con `Test.createTestingModule` e inspecciona el campo inyectado (no solo `instanceof`), porque un `useFactory` con `inject` desalineado NO lanza en `compile()` (confirmado empíricamente). Ver comentario en el archivo.
+- Fuera de scope estricto pero necesario para no romper `tsc --noEmit` del backend completo: `CrearTicketDto` es compartido por compras/reparaciones/equipos (extienden la interfaz). Se aplicó un stopgap mínimo compile-preserving (`cicloId: null` literal en vez de `dto.cicloId ?? null`) en `crear-ticket-compra.use-case.ts`, `crear-ticket-edilicio.use-case.ts`, `crear-ticket-soporte.use-case.ts` y sus 3 controllers — mismo comportamiento runtime que antes (el frontend nunca mandaba `cicloId`). Marcado con `TODO(Fase 4 PR3/PR4/PR5, ...)` en cada punto; PR3-5 deben reemplazar esto con su propio `ResolverCicloActivoParaCreacion` (ADR-1).
 
 ## Phase 3: Compras (PR3, base=PR1) — [x] COMPLETA
 
