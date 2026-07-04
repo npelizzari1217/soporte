@@ -101,4 +101,60 @@ describe('CicloVigenteEntity', () => {
       expect(ciclo.deletedAt).not.toBeNull();
     });
   });
+
+  describe('rename (T2.1)', () => {
+    it('lanza error de validación con nombre vacío', () => {
+      const ciclo = makeCiclo();
+      expect(() => ciclo.rename('')).toThrow();
+    });
+
+    it('lanza error de validación con nombre solo whitespace', () => {
+      const ciclo = makeCiclo();
+      expect(() => ciclo.rename('   ')).toThrow();
+    });
+
+    it('renombra y actualiza updatedAt', async () => {
+      const ciclo = makeCiclo();
+      const updatedAtAntes = ciclo.updatedAt;
+      await new Promise((resolve) => setTimeout(resolve, 2));
+      ciclo.rename('Nuevo nombre');
+      expect(ciclo.nombre).toBe('Nuevo nombre');
+      expect(ciclo.updatedAt.getTime()).toBeGreaterThan(updatedAtAntes.getTime());
+    });
+  });
+
+  describe('reschedule (T2.1)', () => {
+    it('lanza CicloVigenteInvalidDatesError cuando fechaFin <= fechaInicio', () => {
+      const ciclo = makeCiclo();
+      expect(() => ciclo.reschedule(new Date('2027-01-01'), new Date('2027-01-01'))).toThrow(
+        CicloVigenteInvalidDatesError,
+      );
+    });
+
+    it('actualiza fechaInicio/fechaFin y updatedAt con fechas válidas', async () => {
+      const ciclo = makeCiclo();
+      const updatedAtAntes = ciclo.updatedAt;
+      await new Promise((resolve) => setTimeout(resolve, 2));
+      const nuevaInicio = new Date('2027-01-01');
+      const nuevaFin = new Date('2027-12-31');
+      ciclo.reschedule(nuevaInicio, nuevaFin);
+      expect(ciclo.fechaInicio).toEqual(nuevaInicio);
+      expect(ciclo.fechaFin).toEqual(nuevaFin);
+      expect(ciclo.updatedAt.getTime()).toBeGreaterThan(updatedAtAntes.getTime());
+    });
+  });
+
+  describe('activate/deactivate (T2.1)', () => {
+    it('activate() deja activo=true', () => {
+      const ciclo = makeCiclo({ activo: false });
+      ciclo.activate();
+      expect(ciclo.activo).toBe(true);
+    });
+
+    it('deactivate() deja activo=false', () => {
+      const ciclo = makeCiclo({ activo: true });
+      ciclo.deactivate();
+      expect(ciclo.activo).toBe(false);
+    });
+  });
 });

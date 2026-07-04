@@ -50,3 +50,16 @@ export class CicloVigenteInvalidDatesError extends DomainError {
     super('fecha_fin debe ser estrictamente mayor que fecha_inicio.');
   }
 }
+
+/**
+ * CicloVigenteNotFoundError — se lanza cuando no se encuentra un ciclo vigente
+ * (catálogo global) por id.
+ * → HTTP 404 Not Found en la capa de presentación.
+ */
+export class CicloVigenteNotFoundError extends DomainError {
+  readonly code = 'CICLO_VIGENTE_NOT_FOUND';
+
+  constructor(id: string) {
+    super(`Ciclo vigente con id "${id}" no encontrado.`);
+  }
+}
