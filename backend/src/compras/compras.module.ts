@@ -55,6 +55,11 @@ import {
   TicketStateMachineFactory,
   TICKET_STATE_MACHINE_FACTORY,
 } from '../tickets/domain/state-machine/ticket-state-machine.factory';
+import {
+  CICLO_CLIENTE_REPOSITORY,
+  ICicloClienteRepository,
+} from '../tickets/domain/ports/i-ciclo-cliente.repository';
+import { ResolverCicloActivoParaCreacion } from '../tickets/application/services/resolver-ciclo-activo.service';
 
 // ─── Shared tokens ────────────────────────────────────────────────────────────
 import {
@@ -145,6 +150,7 @@ import { PresupuestosController } from './interface/controllers/presupuestos.con
         numerador: NumeradorTicket,
         txRunner: ITenantTransactionRunner,
         ticketCompraRepo: ITicketCompraRepository,
+        resolverCicloActivo: ResolverCicloActivoParaCreacion,
       ) =>
         new CrearTicketCompraUseCase(
           ticketRepo,
@@ -156,6 +162,7 @@ import { PresupuestosController } from './interface/controllers/presupuestos.con
           numerador,
           txRunner,
           ticketCompraRepo,
+          resolverCicloActivo,
         ),
       inject: [
         TICKET_REPOSITORY,
@@ -167,6 +174,10 @@ import { PresupuestosController } from './interface/controllers/presupuestos.con
         NumeradorTicket,
         TENANT_TRANSACTION_RUNNER,
         TICKET_COMPRA_REPOSITORY,
+        // Fase 4 (ciclos-master-tenant, ADR-1/ADR-4-Repo): ResolverCicloActivoParaCreacion
+        // es exportado por TicketsModule (ya importado arriba) — resuelve el ciclo
+        // ACTIVO del tenant vía CICLO_CLIENTE_REPOSITORY (lado tickets, NO el admin).
+        ResolverCicloActivoParaCreacion,
       ],
     },
 
@@ -309,9 +320,14 @@ import { PresupuestosController } from './interface/controllers/presupuestos.con
 
     {
       provide: ListarComprasUseCase,
-      useFactory: (ticketCompraRepo: ITicketCompraRepository, ticketRepo: ITicketRepository) =>
-        new ListarComprasUseCase(ticketCompraRepo, ticketRepo),
-      inject: [TICKET_COMPRA_REPOSITORY, TICKET_REPOSITORY],
+      useFactory: (
+        ticketCompraRepo: ITicketCompraRepository,
+        ticketRepo: ITicketRepository,
+        cicloRepo: ICicloClienteRepository,
+      ) => new ListarComprasUseCase(ticketCompraRepo, ticketRepo, cicloRepo),
+      // Fase 4 (ADR-5): CICLO_CLIENTE_REPOSITORY exportado por TicketsModule
+      // (ya importado arriba) — resuelve el ciclo activo cuando no viene ?cicloId.
+      inject: [TICKET_COMPRA_REPOSITORY, TICKET_REPOSITORY, CICLO_CLIENTE_REPOSITORY],
     },
 
     // ─── Guards ──────────────────────────────────────────────────────────────

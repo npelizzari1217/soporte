@@ -52,15 +52,18 @@ PR2-5 son independientes entre sí una vez mergeado PR1 (tocan archivos disjunto
 - [ ] 2.9 `tickets.module.ts`: agregar `CICLO_CLIENTE_REPOSITORY` al `inject` de `ListarTicketsUseCase`.
 - [ ] 2.10 RED→GREEN `tickets.controller.spec.ts`: test 409 en creación sin activo; test creación ignora `cicloId` del body; test listado default/histórico/vacío.
 
-## Phase 3: Compras (PR3, base=PR1)
+## Phase 3: Compras (PR3, base=PR1) — [x] COMPLETA
 
-- [ ] 3.1 RED→GREEN `crear-ticket-compra.use-case.spec.ts` / `.ts`: mismo patrón 2.1-2.2 (usa `CrearTicketDto` ya sin `cicloId`).
-- [ ] 3.2 `compras.module.ts`: agregar `ResolverCicloActivoParaCreacion` y `CICLO_CLIENTE_REPOSITORY` al `inject` de `CrearTicketCompraUseCase` y `ListarComprasUseCase`.
-- [ ] 3.3 `interface/dtos/compras.dto.ts`: remover `cicloId` de `CreateTicketCompraHttpDto`; agregar DTO de query `ListarComprasQueryDto { cicloId?: string }`.
-- [ ] 3.4 `interface/controllers/compras.controller.ts`: `POST /compras` no pasa `cicloId`, mapea 409; `GET /compras` acepta `@Query() q` y pasa `q.cicloId`.
-- [ ] 3.5 RED `listar-compras.use-case.spec.ts`: default activo / histórico / sin activo ni query → `[]`.
-- [ ] 3.6 GREEN `listar-compras.use-case.ts`: `execute(cicloId?: string)`, inyecta `ICicloClienteRepository`, resuelve `cicloEfectivo`, filtra `ticket.cicloId === cicloEfectivo` en el loop (o `[]` si no hay efectivo).
-- [ ] 3.7 RED→GREEN `compras.controller.spec.ts`: 409 sin activo; listado filtrado.
+- [x] 3.1 RED→GREEN `crear-ticket-compra.use-case.spec.ts` / `.ts`: mismo patrón 2.1-2.2 (usa `CrearTicketDto`; `cicloId` del DTO se IGNORA — CrearTicketDto en sí no se tocó en este PR, eso es scope de PR2/tickets, independiente).
+- [x] 3.2 `compras.module.ts`: agregado `ResolverCicloActivoParaCreacion` y `CICLO_CLIENTE_REPOSITORY` al `inject` de `CrearTicketCompraUseCase` y `ListarComprasUseCase` (resueltos vía `TicketsModule`, ya importado).
+- [x] 3.3 `interface/dtos/compras.dto.ts`: removido `cicloId` de `CreateTicketCompraHttpDto`; agregado `ListarComprasQueryDto { cicloId?: string }`.
+- [x] 3.4 `interface/controllers/compras.controller.ts`: `POST /compras` no pasa `cicloId`, mapea `SinCicloActivoError → 409 ConflictException`; `GET /compras` acepta `@Query() q: ListarComprasQueryDto` y pasa `q.cicloId`.
+- [x] 3.5 RED `listar-compras.use-case.spec.ts`: default activo / histórico / sin activo ni query → `[]` (spec reescrito completo: `makeTicket` ahora recibe `cicloId` explícito, se agregó mock `ICicloClienteRepository`).
+- [x] 3.6 GREEN `listar-compras.use-case.ts`: `execute(cicloId?: string)`, inyecta `Pick<ICicloClienteRepository, 'findActive'>`, resuelve `cicloEfectivo = cicloId ?? (await cicloRepo.findActive())?.id`, filtra `ticket.cicloId === cicloEfectivo` en el loop (o `[]` sin llamar `findAll()` si no hay efectivo).
+- [x] 3.7 RED→GREEN `compras.controller.spec.ts`: 409 sin activo; listado filtrado (`?cicloId`, default sin query).
+- [x] 3.8 (CRÍTICO R2, agregado en ejecución) `compras.module.spec.ts` NUEVO: bootstrap real de `ComprasModule` (+ `SharedModule`) vía `Test.createTestingModule().compile()` + `moduleRef.init()`. Confirma `CrearTicketCompraUseCase` y `ListarComprasUseCase` se resuelven como instancias reales (wiring DI real, no mocks). Verificado que el test SÍ detecta rotura: comentando temporalmente el import de `TicketsModule` en `compras.module.ts` reprodujo `UnknownDependenciesException`; revertido y confirmado GREEN.
+
+**Nota de ejecución (entorno):** `prisma-compras.integration.spec.ts` (NO tocado en este PR) muestra fallos intermitentes en corridas de suite completa (`pnpm test`) por contención de la DB de test compartida (`soporte_tenant_test`) entre múltiples agentes de worktree corriendo en paralelo (confirmado con `pg_stat_activity` mostrando un `TRUNCATE` concurrente de otra sesión, y con dos corridas completas consecutivas mostrando conjuntos de fallos totalmente distintos y no solapados entre módulos no tocados por este PR — auth/clientes/equipos/reparaciones). La suite de compras SIN integration specs (`vitest run src/compras --exclude "**/*.integration.spec.ts"`) es 100% determinística y verde: 214/214 tests, 14/14 archivos.
 
 ## Phase 4: Reparaciones (PR4, base=PR1)
 
