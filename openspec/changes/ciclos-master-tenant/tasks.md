@@ -173,7 +173,10 @@ Nota: el query `incluirInactivos` es opcional para este scope — si no se usa a
 
 ## FASE 3 — Elegir + activar en tenant + lectura del activo (`CiclosController`)
 
-### T3.1 — Dominio: `cicloVigenteId` en `CicloClienteEntity` (admin) [P]
+> **Estado: [x] COMPLETA (T3.1–T3.11)** — apply ejecutado, ver engram `sdd/ciclos-master-tenant/apply-progress-fase3`.
+> Suite completa: 140 test files / 1987 tests passed (baseline Fase 2 final 135/1970, +5 archivos +17 tests, 0 regresiones). `pnpm lint` limpio. `tsc --noEmit` limpio.
+
+### [x] T3.1 — Dominio: `cicloVigenteId` en `CicloClienteEntity` (admin) [P]
 **Satisface:** ADR-5 (link real sube al dominio).
 **Archivos:**
 - `backend/src/clientes/domain/entities/ciclo-cliente.entity.ts`
@@ -187,7 +190,7 @@ Nota: el query `incluirInactivos` es opcional para este scope — si no se usa a
 
 ---
 
-### T3.2 — Guard: `PermissionsOrGlobalAdminGuard` (nuevo, resuelve riesgo #1)
+### [x] T3.2 — Guard: `PermissionsOrGlobalAdminGuard` (nuevo, resuelve riesgo #1)
 **Depende de:** ninguna (guard standalone, sigue el patrón de `PermissionsGuard`/`AdminOrGlobalGuard`).
 **Satisface:** "guard de POST /ciclos" — acepta `is_global_admin` (operador global via `X-Tenant-Id`) O el permiso declarado por `@RequirePermissions(...)` (aquí `ciclo:gestionar`, ADMINISTRADOR del cliente).
 **Por qué NO reusar `AdminOrGlobalGuard` tal cual:** ese guard chequea `roles.includes('ADMINISTRADOR')` (nombre de rol), no el permiso real `ciclo:gestionar` del JWT. Acoplar a nombre de rol es frágil si RBAC evoluciona (ej. otro rol gana `ciclo:gestionar`). Este guard nuevo generaliza el patrón: lee el mismo metadata `PERMISSIONS_KEY` que `PermissionsGuard` (vía `@RequirePermissions`, sin decorators nuevos) y agrega el bypass `is_global_admin` — reusa la MISMA convención de permisos, no la de roles.
@@ -232,7 +235,7 @@ export class PermissionsOrGlobalAdminGuard implements CanActivate {
 
 ---
 
-### T3.3 — Puerto: `findActive()` en `ICicloClienteRepository` (admin) [P]
+### [x] T3.3 — Puerto: `findActive()` en `ICicloClienteRepository` (admin) [P]
 **Satisface:** ADR-8 / `ObtenerCicloActivoUseCase`.
 **Archivos:** `backend/src/clientes/domain/ports/i-ciclo-cliente.repository.ts`
 
@@ -242,7 +245,7 @@ export class PermissionsOrGlobalAdminGuard implements CanActivate {
 
 ---
 
-### T3.4 — Infraestructura: `PrismaCicloClienteRepository` — fix placeholder + `findActive`
+### [x] T3.4 — Infraestructura: `PrismaCicloClienteRepository` — fix placeholder + `findActive`
 **Depende de:** T3.1, T3.3.
 **Satisface:** ADR-5 (elimina placeholder línea 85), ADR-8 (findActive).
 **Archivos:**
@@ -264,7 +267,7 @@ export class PermissionsOrGlobalAdminGuard implements CanActivate {
 
 ---
 
-### T3.5 — DTO: `ElegirCicloDto` [P]
+### [x] T3.5 — DTO: `ElegirCicloDto` [P]
 **Satisface:** nuevo body de POST `/ciclos` (ADR-3).
 **Archivos:** `backend/src/clientes/interface/dtos/elegir-ciclo.dto.ts` (nuevo)
 
@@ -277,7 +280,7 @@ Sin test propio (declarativo) — validado en integración del controller (T3.8)
 
 ---
 
-### T3.6 — Application: `ElegirCicloTenantUseCase` (reemplaza `CrearCicloTenantUseCase`)
+### [x] T3.6 — Application: `ElegirCicloTenantUseCase` (reemplaza `CrearCicloTenantUseCase`)
 **Depende de:** T3.1, T3.5.
 **Satisface:** ADR-3/ADR-4/ADR-6 — elegir del catálogo con validación + snapshot + link real.
 **Archivos:**
@@ -328,7 +331,7 @@ Nota: `CicloVigenteInvalidDatesError` ya no puede ocurrir aquí (las fechas vien
 
 ---
 
-### T3.7 — Application: `ObtenerCicloActivoUseCase` [P respecto a T3.6, después de T3.3/T3.4]
+### [x] T3.7 — Application: `ObtenerCicloActivoUseCase` [P respecto a T3.6, después de T3.3/T3.4]
 **Depende de:** T3.3 (puerto `findActive`).
 **Satisface:** ADR-8 — lectura del activo, GET `/ciclos/activo`.
 **Archivos:**
@@ -343,7 +346,7 @@ Nota: `CicloVigenteInvalidDatesError` ya no puede ocurrir aquí (las fechas vien
 
 ---
 
-### T3.8 — Interface: `CiclosController` — GET /ciclos/activo, POST elegir, guard swap
+### [x] T3.8 — Interface: `CiclosController` — GET /ciclos/activo, POST elegir, guard swap
 **Depende de:** T3.2, T3.5, T3.6, T3.7.
 **Satisface:** ADR-3, ADR-6, ADR-7 (sin cambios en activar), ADR-8, riesgo #1 (guard), riesgo #5 (orden de rutas).
 **Archivos:**
@@ -377,7 +380,7 @@ Nota: `CicloVigenteInvalidDatesError` ya no puede ocurrir aquí (las fechas vien
 
 ---
 
-### T3.9 — Cleanup: remover código muerto `CreateCicloDto` / `CrearCicloTenantUseCase`
+### [x] T3.9 — Cleanup: remover código muerto `CreateCicloDto` / `CrearCicloTenantUseCase`
 **Depende de:** T3.8 (nada referencia ya al contrato viejo).
 **Satisface:** riesgo #3 del diseño (deuda de wiring).
 **Archivos a eliminar:**
@@ -389,7 +392,7 @@ Nota: `CicloVigenteInvalidDatesError` ya no puede ocurrir aquí (las fechas vien
 
 ---
 
-### T3.10 — Wiring: `clientes.module.ts` (Fase 3)
+### [x] T3.10 — Wiring: `clientes.module.ts` (Fase 3)
 **Depende de:** T3.6, T3.7, T3.8.
 **Archivos:** `backend/src/clientes/clientes.module.ts`
 
@@ -403,7 +406,7 @@ Nota: `CicloVigenteInvalidDatesError` ya no puede ocurrir aquí (las fechas vien
 
 ---
 
-### T3.11 — Integración: test de orden de rutas + aislamiento por rol (cierre explícito riesgo #5)
+### [x] T3.11 — Integración: test de orden de rutas + aislamiento por rol (cierre explícito riesgo #5)
 **Depende de:** T3.8, T3.10.
 **Archivos:** `backend/src/clientes/interface/controllers/ciclos.controller.spec.ts` (o un spec de integración nuevo si el proyecto separa unit/e2e, ej. `test/ciclos.e2e-spec.ts` si existe ese patrón — verificar convención real antes de crear archivo nuevo)
 
