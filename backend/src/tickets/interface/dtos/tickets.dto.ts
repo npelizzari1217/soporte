@@ -23,6 +23,12 @@ export interface ListarTicketsQueryDto {
   fechaDesde?: string;
   /** Fecha ISO 'YYYY-MM-DD'. Controller convierte a Date con endOfDay. */
   fechaHasta?: string;
+  /**
+   * UUID de ciclos_cliente para listados históricos (Fase 4, ADR-5).
+   * Si se omite, el use case resuelve el ciclo ACTIVO del tenant por default.
+   * Sin activo ni cicloId explícito → lista vacía (invariante "siempre por ciclo").
+   */
+  cicloId?: string;
 }
 
 /**
@@ -56,6 +62,15 @@ export function toCicloActivoResponse(ciclo: CicloClienteEntity): CicloActivoRes
 /**
  * Cuerpo HTTP para POST /tickets.
  * Los campos clienteId, autorId y anio se extraen del JWT via @CurrentUser().
+ *
+ * SIN `cicloId` (Fase 4, ciclos-master-tenant, ADR-3): el servidor determina
+ * el ciclo (el ACTIVO del tenant), nunca el cliente. Removido del contrato en
+ * vez de ignorado silenciosamente (contrato honesto + seguridad — evita que
+ * el cliente fuerce un cicloId arbitrario). Nota (R3, confirmado con test
+ * dedicado en tickets.dto.validation-pipe.spec.ts): al ser una interfaz plana
+ * (no class-validator), el ValidationPipe global NO valida/whitelist-ea este
+ * DTO — un `cicloId` sobrante que un cliente desactualizado siga mandando en
+ * el body es simplemente ignorado (no dispara 400, no se aplica).
  */
 export interface CreateTicketHttpDto {
   titulo: string;
@@ -64,8 +79,6 @@ export interface CreateTicketHttpDto {
   tipoId: string;
   /** UUID de la prioridad (FK → prioridades). */
   prioridadId: string;
-  /** UUID del ciclo de cliente (FK → ciclos_cliente, opcional). */
-  cicloId?: string | null;
   /** UUID del solicitante (soft ref → master.usuarios). */
   solicitanteId: string;
   /**

@@ -72,6 +72,10 @@ export class PrismaTicketRepository implements ITicketRepository {
       where.tipoId = { in: filtros.tiposIds };
     }
 
+    if (filtros?.cicloId) {
+      where.cicloId = filtros.cicloId;
+    }
+
     if (filtros?.fechaDesde || filtros?.fechaHasta) {
       where.createdAt = {
         ...(filtros.fechaDesde && { gte: filtros.fechaDesde }),

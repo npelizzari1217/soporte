@@ -19,6 +19,7 @@ import {
   NotFoundException,
   UnprocessableEntityException,
   InternalServerErrorException,
+  ConflictException,
 } from '@nestjs/common';
 import { TicketsController } from './tickets.controller';
 import { Result } from '../../../shared/domain/result';
@@ -40,6 +41,7 @@ import {
   CicloNoEncontradoError,
   TipoOperacionNoEncontradoError,
   ObservacionNoPermitidaError,
+  SinCicloActivoError,
 } from '../../domain/errors/tickets.errors';
 import { JwtAuthGuard } from '../../../auth/infrastructure/guards/jwt-auth.guard';
 import { TenantGuard } from '../../../auth/infrastructure/guards/tenant.guard';
@@ -123,6 +125,15 @@ function makeCreateDto(): CreateTicketHttpDto {
     prioridadId: 'prioridad-media',
     solicitanteId: 'user-001',
   };
+}
+
+/**
+ * Simula un cliente desactualizado que sigue mandando `cicloId` en el body
+ * de POST /tickets aunque el contrato (Fase 4, ADR-3) ya no lo declare.
+ * El controller debe ignorarlo — el servidor determina el ciclo.
+ */
+function makeCreateDtoConCicloIdLegacy(): CreateTicketHttpDto & { cicloId?: string } {
+  return { ...makeCreateDto(), cicloId: 'ciclo-forzado-por-cliente' };
 }
 
 function makeCiclo(overrides: Partial<CicloClienteProps> = {}): CicloClienteEntity {
@@ -247,6 +258,27 @@ describe('TicketsController', () => {
         }),
       );
     });
+
+    // ─── Fase 4 (ciclos-master-tenant, ADR-1/ADR-2/ADR-3) — T2.10 RED ────────
+
+    it('lanza ConflictException (409) cuando no hay ciclo activo en el tenant', async () => {
+      mocks.crearTicketUseCase.execute.mockResolvedValue(Result.fail(new SinCicloActivoError()));
+
+      await expect(controller.crearTicket(makeCreateDto(), user)).rejects.toThrow(
+        ConflictException,
+      );
+    });
+
+    it('ignora cualquier cicloId presente en el body — el servidor determina el ciclo (ADR-3)', async () => {
+      const ticket = makeTicket();
+      mocks.crearTicketUseCase.execute.mockResolvedValue(Result.ok(ticket));
+      const dto = makeCreateDtoConCicloIdLegacy();
+
+      await controller.crearTicket(dto, user);
+
+      const llamada = mocks.crearTicketUseCase.execute.mock.calls[0][0];
+      expect(llamada).not.toHaveProperty('cicloId');
+    });
   });
 
   // ─── GET /tickets ──────────────────────────────────────────────────────────
@@ -336,6 +368,28 @@ describe('TicketsController', () => {
 
       const llamada = mocks.listarTicketsUseCase.execute.mock.calls[0][0];
       expect(llamada.fechaDesde).toBeUndefined();
+    });
+
+    // ─── Fase 4 (ciclos-master-tenant, ADR-5) — T2.10 RED ────────────────────
+
+    it('pasa cicloId de la query al use case para listados históricos', async () => {
+      mocks.listarTicketsUseCase.execute.mockResolvedValue(Result.ok([]));
+      const query: ListarTicketsQueryDto = { cicloId: 'ciclo-historico-001' };
+
+      await controller.listarTickets(query, user);
+
+      expect(mocks.listarTicketsUseCase.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ cicloId: 'ciclo-historico-001' }),
+      );
+    });
+
+    it('no pasa cicloId cuando la query no lo trae (el use case resuelve el activo por default)', async () => {
+      mocks.listarTicketsUseCase.execute.mockResolvedValue(Result.ok([]));
+
+      await controller.listarTickets({}, user);
+
+      const llamada = mocks.listarTicketsUseCase.execute.mock.calls[0][0];
+      expect(llamada.cicloId).toBeUndefined();
     });
   });
 

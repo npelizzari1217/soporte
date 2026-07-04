@@ -169,6 +169,26 @@ describe('Smoke E2E — flujo completo (7.C.2)', () => {
     if (!adminUserRow) throw new Error('[smoke setup] Admin user no encontrado en master');
     adminUserId = adminUserRow.id;
 
+    // 1.5. Sembrar un ciclo ACTIVO en el tenant (Fase 4, ciclos-master-tenant,
+    // ADR-1/ADR-2): desde PR2, POST /tickets resuelve el ciclo activo del
+    // tenant y rechaza con 409 si no hay ninguno (R1, design-fase4.md — es el
+    // comportamiento deseado, no un bug). Un tenant recién provisionado NO
+    // tiene ciclo activo (la elección+activación es un paso administrativo
+    // separado, fuera de CrearClienteUseCase) — se siembra directo en
+    // ciclos_cliente vía Prisma para no acoplar este smoke test al flujo HTTP
+    // de /ciclos (probado en su propia suite). cicloVigenteId es soft ref sin
+    // FK cross-DB — cualquier UUID sirve para este smoke test.
+    const tenantClient = prismaService.getTenantClient(SMOKE_DB_NAME);
+    await tenantClient.cicloCliente.create({
+      data: {
+        cicloVigenteId: 'a0000000-0000-4000-a000-000000000001',
+        nombre: 'Ciclo Smoke Test',
+        fechaInicio: new Date('2026-01-01'),
+        fechaFin: new Date('2026-12-31'),
+        activo: true,
+      },
+    });
+
     // 2. Bootstrapear el app NestJS (lee DATABASE_URL_MASTER del entorno)
     const { AppModule } = await import('../../app.module');
     const moduleRef: TestingModule = await Test.createTestingModule({
@@ -285,7 +305,8 @@ describe('Smoke E2E — flujo completo (7.C.2)', () => {
           descripcion: 'Test desde smoke e2e',
           tipoId: TIPO_TICKET_SOPORTE_ID,
           prioridadId: PRIORIDAD_MEDIA_ID,
-          cicloId: null,
+          // SIN cicloId (Fase 4, ADR-3): el servidor lo determina vía el ciclo
+          // activo del tenant, sembrado arriba en beforeAll.
           solicitanteId: adminUserId,
           fechaCierre: null,
         },
