@@ -84,7 +84,8 @@ export class TicketsEdilicioController {
       descripcion: dto.descripcion ?? null,
       tipoId: dto.tipoId,
       prioridadId: dto.prioridadId,
-      cicloId: dto.cicloId ?? null,
+      // TODO(Fase 4 PR4, ciclos-master-tenant): dejar de pasar cicloId (ADR-3)
+      // y mapear SinCicloActivoError → 409, igual que TicketsController (PR2).
       solicitanteId: dto.solicitanteId,
       clienteId: user.cliente_id,
       autorId: user.sub,
