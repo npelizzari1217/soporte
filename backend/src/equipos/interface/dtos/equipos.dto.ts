@@ -75,6 +75,15 @@ export interface CreateComponenteHttpDto {
 /**
  * Cuerpo HTTP para POST /tickets-soporte.
  * clienteId y autorId se extraen del JWT via @CurrentUser().
+ *
+ * Fase 4 (ciclos-master-tenant, ADR-1/ADR-3): `cicloId` fue REMOVIDO del contrato.
+ * El servidor determina el ciclo activo del tenant — el cliente ya no lo provee
+ * (contrato honesto: un campo ignorado silenciosamente induce a error). Nota:
+ * como este DTO es una interface TS plana (no class-validator), NestJS resuelve
+ * `metatype === Object` y el ValidationPipe global ({ whitelist: true, transform:
+ * true }, sin forbidNonWhitelisted) salta la validación/whitelist por completo —
+ * un `cicloId` sobrante en el body pasaría sin 400, pero el controller/use case
+ * ya no lo lee (ver `tickets.dto.validation-pipe.spec.ts`, Fase 4 PR1).
  */
 export interface CreateTicketSoporteHttpDto {
   titulo: string;
@@ -83,8 +92,6 @@ export interface CreateTicketSoporteHttpDto {
   tipoId: string;
   /** UUID de la prioridad (FK → prioridades). */
   prioridadId: string;
-  /** UUID del ciclo de cliente (FK → ciclos_cliente, opcional). */
-  cicloId?: string | null;
   /** UUID del solicitante (soft ref → master.usuarios). */
   solicitanteId: string;
   /** Fecha de resolución ISO (opcional). */

@@ -14,6 +14,11 @@
  * El checker se reutiliza desde TicketsModule (USUARIO_MASTER_CHECKER exportado) — NO se
  * duplica la implementación (UsuarioMasterChecker vive en tickets/infrastructure/).
  *
+ * Fase 4 (ciclos-master-tenant, ADR-1/ADR-4-Repo): CrearTicketSoporteUseCase inyecta
+ * ResolverCicloActivoParaCreacion (resuelto desde TicketsModule, que lo exporta junto a
+ * CICLO_CLIENTE_REPOSITORY) para determinar el ciclo activo del tenant en creación —
+ * el cliente ya NO provee cicloId. Sin ciclo activo → SinCicloActivoError → HTTP 409.
+ *
  * State machine SOPORTE:
  * TicketStateMachineFactory usa BaseTicketStateMachine como fallback cuando no hay
  * una máquina registrada para el tipo pedido (resolve() → registry.get() ?? fallback).
@@ -24,10 +29,11 @@
  * - SharedModule es @Global → TENANT_TRANSACTION_RUNNER ya está disponible sin importar.
  * - TicketsModule exporta: TICKET_REPOSITORY, OPERACION_TICKET_REPOSITORY,
  *   ESTADO_REPOSITORY, TIPO_TICKET_REPOSITORY, TIPO_OPERACION_REPOSITORY,
- *   USUARIO_MASTER_CHECKER, NumeradorTicket, TICKET_STATE_MACHINE_FACTORY.
+ *   USUARIO_MASTER_CHECKER, NumeradorTicket, TICKET_STATE_MACHINE_FACTORY,
+ *   CICLO_CLIENTE_REPOSITORY, ResolverCicloActivoParaCreacion.
  * - NO re-declarar PrismaService — viene del SharedModule @Global.
  *
- * Tarea: 6.D.2
+ * Tarea: 6.D.2, 5.2 (Fase 4, PR5)
  */
 import { Module } from '@nestjs/common';
 
@@ -54,6 +60,7 @@ import {
   IUsuarioMasterChecker,
 } from '../tickets/domain/ports/i-usuario-master.checker';
 import { NumeradorTicket } from '../tickets/domain/services/numerador-ticket.service';
+import { ResolverCicloActivoParaCreacion } from '../tickets/application/services/resolver-ciclo-activo.service';
 
 // ─── Shared tokens ────────────────────────────────────────────────────────────
 import {
@@ -232,6 +239,7 @@ import { TicketSoporteController } from './interface/controllers/ticket-soporte.
         txRunner: ITenantTransactionRunner,
         ticketSoporteRepo: ITicketSoporteRepository,
         equipoRepo: IEquipoInformaticoRepository,
+        resolverCicloActivo: ResolverCicloActivoParaCreacion,
       ) =>
         new CrearTicketSoporteUseCase(
           ticketRepo,
@@ -244,6 +252,7 @@ import { TicketSoporteController } from './interface/controllers/ticket-soporte.
           txRunner,
           ticketSoporteRepo,
           equipoRepo,
+          resolverCicloActivo,
         ),
       inject: [
         TICKET_REPOSITORY,
@@ -256,6 +265,9 @@ import { TicketSoporteController } from './interface/controllers/ticket-soporte.
         TENANT_TRANSACTION_RUNNER,
         TICKET_SOPORTE_REPOSITORY,
         EQUIPO_INFORMATICO_REPOSITORY,
+        // Fase 4 (ciclos-master-tenant, ADR-1/ADR-4-Repo): resuelto desde
+        // TicketsModule (exportado junto a CICLO_CLIENTE_REPOSITORY).
+        ResolverCicloActivoParaCreacion,
       ],
     },
 
