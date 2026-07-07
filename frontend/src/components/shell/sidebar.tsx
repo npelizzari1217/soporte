@@ -16,7 +16,9 @@
  *      active item, detected via pathname.startsWith(href). Why aria-current and
  *      not a class alone: screen readers announce "current page" which is
  *      semantically correct here.
- *   4. Footer — <UserMenu> (S2 keeps the existing component; Radix upgrade is S4).
+ *   4. Footer — <UserMenu> (S2 keeps the existing component; Radix upgrade is S4)
+ *      plus <ThemeToggle> (theme-toggle change) — icon button, integrated inline,
+ *      NOT a floating/fixed element.
  *
  * ADMINISTRACIÓN section (admin-general PR5b, T5.12-T5.13):
  *   Container pattern — reads useSession({ isGlobalAdmin, user.roles }) to decide
@@ -52,6 +54,7 @@ import { TenantContext } from "@/shared/providers/tenant-context";
 import { ClienteSelector } from "@/features/admin/components/ClienteSelector";
 import { CicloSelector } from "@/features/admin/components/CicloSelector";
 import { UserMenu } from "./user-menu";
+import { ThemeToggle } from "./theme-toggle";
 
 // ── Nav link definitions ───────────────────────────────────────────────────
 
@@ -195,9 +198,12 @@ export function Sidebar() {
         </ul>
       </nav>
 
-      {/* ── Footer — UserMenu (S4 will upgrade to Radix; kept as-is for S2) ── */}
-      <div className="mt-auto border-t border-slate-200/50 dark:border-white/5 px-3 py-3">
-        <UserMenu />
+      {/* ── Footer — UserMenu + ThemeToggle (S4 will upgrade UserMenu to Radix; kept as-is for S2) ── */}
+      <div className="mt-auto border-t border-slate-200/50 dark:border-white/5 px-3 py-3 flex items-center gap-2">
+        <div className="min-w-0 flex-1">
+          <UserMenu />
+        </div>
+        <ThemeToggle />
       </div>
     </aside>
   );

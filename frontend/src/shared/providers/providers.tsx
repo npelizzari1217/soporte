@@ -3,14 +3,22 @@
 /**
  * Root provider composition.
  *
- * Composition (PR5 — admin-general, TenantContext added):
- *   <QueryProvider>
- *     <SessionProvider initialUser={initialUser}>
- *       <TenantContextProvider>
- *         {children}
- *       </TenantContextProvider>
- *     </SessionProvider>
- *   </QueryProvider>
+ * Composition (theme-toggle change — ThemeProvider added at the outermost level):
+ *   <ThemeProvider>
+ *     <QueryProvider>
+ *       <SessionProvider initialUser={initialUser}>
+ *         <TenantContextProvider>
+ *           {children}
+ *         </TenantContextProvider>
+ *       </SessionProvider>
+ *     </QueryProvider>
+ *   </ThemeProvider>
+ *
+ * ThemeProvider sits outermost and has no dependency on session/tenant/query
+ * state — it only reads localStorage/matchMedia and mutates the DOM. Placing
+ * it first keeps `useTheme()` available to any component in the tree,
+ * including ones that render before the session resolves (e.g. the sidebar
+ * footer's ThemeToggle).
  *
  * `initialUser` is decoded server-side in the DashboardLayout (Server Component)
  * and passed here to hydrate the SessionContext without a FOUC.
@@ -29,6 +37,7 @@
 import { QueryProvider } from "./query-provider";
 import { SessionProvider } from "./session-provider";
 import { TenantContextProvider } from "./tenant-context";
+import { ThemeProvider } from "./theme-provider";
 import type { JwtPayload } from "@/shared/api/types";
 
 interface ProvidersProps {
@@ -38,10 +47,12 @@ interface ProvidersProps {
 
 export function Providers({ children, initialUser }: ProvidersProps) {
   return (
-    <QueryProvider>
-      <SessionProvider initialUser={initialUser}>
-        <TenantContextProvider>{children}</TenantContextProvider>
-      </SessionProvider>
-    </QueryProvider>
+    <ThemeProvider>
+      <QueryProvider>
+        <SessionProvider initialUser={initialUser}>
+          <TenantContextProvider>{children}</TenantContextProvider>
+        </SessionProvider>
+      </QueryProvider>
+    </ThemeProvider>
   );
 }

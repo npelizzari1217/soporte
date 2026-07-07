@@ -176,9 +176,19 @@ describe("Sidebar", () => {
     // UserMenu returns null when user is null — provide a real user to make it render
     mockUseSession.mockReturnValue({ user: MOCK_USER, isLoading: false, can: () => false });
     render(<Sidebar />);
-    // UserMenu renders a button containing the user email
-    const btn = screen.getByRole("button");
+    // UserMenu renders a button containing the user email. Scoped by name
+    // because the footer now also contains the ThemeToggle icon button
+    // (theme-toggle change).
+    const btn = screen.getByRole("button", { name: /john@test\.com/i });
     expect(btn).toHaveTextContent("john@test.com");
+  });
+
+  it("renders ThemeToggle in the sidebar footer alongside UserMenu", () => {
+    mockUseSession.mockReturnValue({ user: MOCK_USER, isLoading: false, can: () => false });
+    render(<Sidebar />);
+    // ThemeToggle falls back to the default (no ThemeProvider wrapping this
+    // test) — theme: 'dark' — so it renders the Sun icon / "día" label.
+    expect(screen.getByRole("button", { name: /cambiar a modo día/i })).toBeInTheDocument();
   });
 
   // ── Tenant display: cliente_nombre claim (auth-cliente-nombre) ────────────
