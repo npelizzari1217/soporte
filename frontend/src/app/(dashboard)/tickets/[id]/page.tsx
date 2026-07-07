@@ -1,10 +1,15 @@
 /**
- * Ticket detail — /tickets/:id (stub)
+ * Ticket detail — /tickets/:id (server wrapper)
  *
- * Spec: [SPEC:frontend-design-system/atomos in routing context]
+ * Server Component: unwraps Next 15's `params: Promise<{ id }>` and delegates
+ * all rendering/state to the client container, keeping `use()` out of the
+ * container itself.
+ *
+ * Design: design.md §"Estructura Container/Presentational" (1. page.tsx)
+ * Spec: [SPEC:ticket-detail/*]
  */
 
-import { PageHeader } from "@/components/shell/page-header";
+import { TicketDetailContainer } from "@/features/tickets/components/TicketDetailContainer";
 
 interface TicketDetailPageProps {
   params: Promise<{ id: string }>;
@@ -14,12 +19,5 @@ export default async function TicketDetailPage({
   params,
 }: TicketDetailPageProps) {
   const { id } = await params;
-  return (
-    <div>
-      <PageHeader title={`Ticket #${id}`} />
-      <p className="text-sm text-muted-foreground">
-        Detalle del ticket — próximamente.
-      </p>
-    </div>
-  );
+  return <TicketDetailContainer id={id} />;
 }

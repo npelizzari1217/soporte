@@ -170,3 +170,31 @@
     break-inside: avoid;
   }
 }
+
+/* ── Ticket detail print root (ticket-detail-page, ADR-1) ──────────────────── */
+/* Whitelist isolation, scoped by :has() to only activate when the print root
+   is present in the DOM — so this block only ever affects /tickets/[id] and
+   never touches the shared shell/other pages. The action toolbar (Volver/
+   Modificar/Eliminar/Imprimir) is rendered as a SIBLING of [data-ticket-print]
+   (never a descendant), so it is hidden automatically by the `visibility:
+   hidden` on `body:has([data-ticket-print]) *` below, with no `print:hidden`
+   sprinkling required on the shell or on individual buttons.
+   NOTE: no unit test — jsdom does not execute media queries. Verification:
+   manual visual/print-preview inspection (Non-scenario, ticket-detail spec). */
+@media print {
+  body:has([data-ticket-print]) * {
+    visibility: hidden;
+  }
+
+  body:has([data-ticket-print]) [data-ticket-print],
+  body:has([data-ticket-print]) [data-ticket-print] * {
+    visibility: visible;
+  }
+
+  body:has([data-ticket-print]) [data-ticket-print] {
+    position: absolute;
+    inset: 0;
+    background: #fff;
+    color: #000;
+  }
+}
