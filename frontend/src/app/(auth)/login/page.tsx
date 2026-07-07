@@ -20,8 +20,8 @@ export default function LoginPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
-      {/* Card container — rounded-lg (8px) per constitution §3 */}
-      <div className="w-full max-w-sm rounded-lg border border-border bg-card p-8">
+      {/* Card container — rounded-lg (8px) + glassmorphism per constitution §3 */}
+      <div className="w-full max-w-sm rounded-lg border border-slate-200/50 bg-card/80 p-8 backdrop-blur dark:border-white/5">
         <div className="mb-6 text-center">
           <h1 className="text-xl font-semibold tracking-tight text-foreground">
             Iniciar sesión

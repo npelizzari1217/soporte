@@ -11,7 +11,7 @@
  *        [SPEC:frontend-auth/tenant-inactivo], [SPEC:frontend-ui-states/interactive-state LoginForm]
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -224,5 +224,79 @@ describe("LoginForm", () => {
     resolveLogin();
     await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/"));
     expect(requestCount).toBe(1);
+  });
+
+  // ─── Design compliance — Input atom (scenarios 2.1, 2.2) ────────────────────
+
+  describe("design compliance — Input atom", () => {
+    it("email field uses rounded-xl (Input atom), not rounded-md", () => {
+      renderLogin();
+      const emailField = screen.getByRole("textbox", { name: /email/i });
+      expect(emailField.className).toContain("rounded-xl");
+      expect(emailField.className).not.toContain("rounded-md");
+    });
+
+    it("password field uses rounded-xl (Input atom), not rounded-md", () => {
+      renderLogin();
+      const passwordField = screen.getByLabelText(/contraseña/i);
+      expect(passwordField.className).toContain("rounded-xl");
+      expect(passwordField.className).not.toContain("rounded-md");
+    });
+  });
+
+  // ─── Design compliance — glass card (scenarios 1.1, 1.2) ────────────────────
+
+  describe("design compliance — glass card", () => {
+    it("card container has a backdrop-blur token", () => {
+      const { container } = renderLogin();
+      const card = container.querySelector(
+        ".w-full.max-w-sm",
+      ) as HTMLElement;
+      expect(card).not.toBeNull();
+      expect(card.className).toMatch(/backdrop-blur/);
+    });
+
+    it("card container has dual-mode border tokens (not solely border-border)", () => {
+      const { container } = renderLogin();
+      const card = container.querySelector(
+        ".w-full.max-w-sm",
+      ) as HTMLElement;
+      expect(card).not.toBeNull();
+      expect(card.className).toContain("border-slate-200/50");
+      expect(card.className).toContain("dark:border-white/5");
+    });
+  });
+
+  // ─── Design compliance — dual-mode render (scenarios 3.1, 3.2) ──────────────
+
+  describe("design compliance — dual-mode render", () => {
+    afterEach(() => {
+      document.documentElement.classList.remove("dark");
+    });
+
+    it("renders without throwing under light mode (default) and shows light-mode classes", () => {
+      let container!: HTMLElement;
+      expect(() => {
+        container = renderLogin().container;
+      }).not.toThrow();
+      expect(
+        screen.getByRole("button", { name: /iniciar sesión/i }),
+      ).toBeInTheDocument();
+      const card = container.querySelector(".w-full.max-w-sm") as HTMLElement;
+      expect(card.className).toContain("border-slate-200/50");
+    });
+
+    it("renders without throwing under dark mode with the same static classes", () => {
+      document.documentElement.classList.add("dark");
+      const { container } = renderLogin();
+      expect(
+        screen.getByRole("button", { name: /iniciar sesión/i }),
+      ).toBeInTheDocument();
+      const card = container.querySelector(
+        ".w-full.max-w-sm",
+      ) as HTMLElement;
+      expect(card.className).toContain("border-slate-200/50");
+      expect(card.className).toContain("dark:border-white/5");
+    });
   });
 });

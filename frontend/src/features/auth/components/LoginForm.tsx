@@ -8,11 +8,11 @@
  *
  * Design: Container/Presentational pattern per design.md §1.
  * Spec: [SPEC:frontend-ui-states/interactive-state LoginForm]
- * Constitution: rounded-md for interactive elements (inputs, button).
+ * Constitution: rounded-xl for form inputs via the shared `Input` atom.
  */
 
-import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 interface LoginFormProps {
   onSubmit: (email: string, password: string) => void;
@@ -41,19 +41,13 @@ export function LoginForm({ onSubmit, error, isLoading }: LoginFormProps) {
         >
           Email
         </label>
-        <input
+        <Input
           id="email"
           name="email"
           type="email"
           required
           autoComplete="email"
           disabled={isLoading}
-          className={cn(
-            "rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground",
-            "placeholder:text-muted-foreground",
-            "focus:outline-none focus:ring-2 focus:ring-primary",
-            "disabled:cursor-not-allowed disabled:opacity-50",
-          )}
           placeholder="tu@email.com"
         />
       </div>
@@ -66,19 +60,13 @@ export function LoginForm({ onSubmit, error, isLoading }: LoginFormProps) {
         >
           Contraseña
         </label>
-        <input
+        <Input
           id="password"
           name="password"
           type="password"
           required
           autoComplete="current-password"
           disabled={isLoading}
-          className={cn(
-            "rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground",
-            "placeholder:text-muted-foreground",
-            "focus:outline-none focus:ring-2 focus:ring-primary",
-            "disabled:cursor-not-allowed disabled:opacity-50",
-          )}
           placeholder="••••••••"
         />
         {/* Error shown below password — generic message, no user enumeration */}
