@@ -55,6 +55,14 @@ export class RefreshTokenUseCase {
   ) {}
 
   async execute(dto: RefreshTokenDto): Promise<Result<RefreshResult, DomainError>> {
+    // 0. Guard: refresh sin token (cookie rt ausente → el frontend manda body {}).
+    //    Sin este check, crypto.createHash().update(undefined) lanza TypeError → 500.
+    //    Un token ausente es semánticamente un token inválido → 401 (contrato del BFF:
+    //    el frontend limpia cookies y redirige a /login ante un 401).
+    if (!dto.rawToken) {
+      return Result.fail(new TokenInvalidoError());
+    }
+
     // 1. Buscar token por hash SHA-256 del token crudo
     const tokenHash = crypto.createHash('sha256').update(dto.rawToken).digest('hex');
     const refreshToken = await this.refreshTokenRepo.findByHash(tokenHash);

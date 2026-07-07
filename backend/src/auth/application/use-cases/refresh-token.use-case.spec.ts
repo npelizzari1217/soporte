@@ -11,7 +11,7 @@
  * - Rechazo si cliente inactivo → ClienteInactivoError
  */
 import * as crypto from 'crypto';
-import { RefreshTokenUseCase } from './refresh-token.use-case';
+import { RefreshTokenUseCase, RefreshTokenDto } from './refresh-token.use-case';
 import { RefreshTokenEntity } from '../../domain/entities/refresh-token.entity';
 import { UsuarioEntity } from '../../domain/entities/usuario.entity';
 import { ClienteEntity } from '../../../clientes/domain/entities/cliente.entity';
@@ -232,6 +232,32 @@ describe('RefreshTokenUseCase', () => {
 
       expect(capturedPayload).toBeDefined();
       expect(capturedPayload!.cliente_nombre).toBe('Beta SA');
+    });
+  });
+
+  describe('Rechazo si rawToken ausente o vacío (edge: refresh sin cookie rt)', () => {
+    // El frontend hace JSON.stringify({ refreshToken: rt }); si la cookie rt no
+    // existe, rt=undefined y el campo se omite → el backend recibe rawToken vacío.
+    // Debe resolver a TokenInvalidoError (→ 401), NO crashear en crypto.update() (→ 500).
+    it('retorna TokenInvalidoError si rawToken es undefined (no crashea en crypto.update → 500)', async () => {
+      // Reproduce el body real: JSON.stringify({ refreshToken: undefined }) === '{}',
+      // así que el backend recibe refreshToken undefined. Sin el guard, esto crasheaba
+      // en crypto.createHash().update(undefined) → TypeError → 500.
+      const clientBody = JSON.parse('{}') as { refreshToken?: string };
+      const dto: RefreshTokenDto = { rawToken: clientBody.refreshToken as string };
+
+      const result = await useCase.execute(dto);
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(TokenInvalidoError);
+    });
+
+    it('short-circuit: no consulta el repo cuando rawToken está vacío', async () => {
+      const emptyDto: RefreshTokenDto = { rawToken: '' };
+
+      await useCase.execute(emptyDto);
+
+      expect(refreshTokenRepo.findByHash).not.toHaveBeenCalled();
     });
   });
 
