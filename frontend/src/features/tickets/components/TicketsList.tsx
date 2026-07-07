@@ -38,6 +38,7 @@ import { mapApiError } from '@/shared/lib/map-api-error'
 import { Ticket as TicketIcon, Pencil, Trash2 } from 'lucide-react'
 import { useSession } from '@/shared/hooks/use-session'
 import { useDeleteTicket } from '../hooks/use-delete-ticket'
+import { formatDate } from '../lib/format'
 import type { Ticket } from '../types'
 
 interface TicketsListProps {
@@ -46,15 +47,6 @@ interface TicketsListProps {
   onOpenCreate?: () => void
   /** Called when user clicks the edit button for a ticket. Only rendered when user has ticket:editar. */
   onOpenEdit?: (ticket: Ticket) => void
-}
-
-/** Format ISO date string in Argentinean locale (dd/mm/yyyy). */
-function formatDate(iso: string): string {
-  return new Intl.DateTimeFormat('es-AR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  }).format(new Date(iso))
 }
 
 export function TicketsList({ tickets, onOpenCreate, onOpenEdit }: TicketsListProps) {
