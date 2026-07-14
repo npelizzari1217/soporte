@@ -99,7 +99,11 @@ Info 'DATABASE_URL_MASTER cargada (valor oculto).'
 # ─── 4. Backend ──────────────────────────────────────────────────────────────
 Step '4/6  Backend: install / generate / migrate / build'
 Set-Location $BackendDir
-Invoke-Checked 'pnpm' @('install', '--frozen-lockfile')
+# --ignore-workspace: el server corre pnpm 9 y cada paquete tiene un pnpm-workspace.yaml
+# (solo `allowBuilds:`, sintaxis pnpm 10/11) que pnpm 9 interpreta como raíz de workspace
+# sin `packages:` → error "packages field missing or empty". Lo ignoramos: el lockfile es
+# v9 (compatible) y no agregamos deps nuevas. TODO: alinear server a Node 22 + pnpm 11.
+Invoke-Checked 'pnpm' @('install', '--frozen-lockfile', '--ignore-workspace')
 Invoke-Checked 'pnpm' @('run', 'generate:master')
 Invoke-Checked 'pnpm' @('run', 'generate:tenant')
 
@@ -117,7 +121,7 @@ if (-not $SkipBuild) {
 # ─── 5. Frontend ─────────────────────────────────────────────────────────────
 Step '5/6  Frontend: install / build'
 Set-Location $FrontDir
-Invoke-Checked 'pnpm' @('install', '--frozen-lockfile')
+Invoke-Checked 'pnpm' @('install', '--frozen-lockfile', '--ignore-workspace')
 if (-not $SkipBuild) {
     Invoke-Checked 'pnpm' @('run', 'build')
 }
