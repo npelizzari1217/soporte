@@ -3,13 +3,16 @@
 /**
  * Root provider composition.
  *
- * Composition (theme-toggle change — ThemeProvider added at the outermost level):
+ * Composition (idle-session-timeout change — IdleTimeoutProvider added inside
+ * SessionProvider, wrapping TenantContextProvider):
  *   <ThemeProvider>
  *     <QueryProvider>
  *       <SessionProvider initialUser={initialUser}>
- *         <TenantContextProvider>
- *           {children}
- *         </TenantContextProvider>
+ *         <IdleTimeoutProvider>
+ *           <TenantContextProvider>
+ *             {children}
+ *           </TenantContextProvider>
+ *         </IdleTimeoutProvider>
  *       </SessionProvider>
  *     </QueryProvider>
  *   </ThemeProvider>
@@ -23,6 +26,13 @@
  * `initialUser` is decoded server-side in the DashboardLayout (Server Component)
  * and passed here to hydrate the SessionContext without a FOUC.
  *
+ * IdleTimeoutProvider MUST be nested inside SessionProvider (it reads useSession
+ * to derive `enabled = user != null && !isLoading`, design ADR-4). The dashboard
+ * tree has a double-nested SessionProvider (RootLayout external, user=null →
+ * this instance no-ops; DashboardLayout internal, real user → this instance is
+ * the only one active), so a single guard correctly disables the provider on
+ * `/login` and during loading without route-based branching.
+ *
  * TenantContextProvider MUST be nested inside SessionProvider (it reads useSession
  * to derive clienteId/cicloId from the JWT) and remains inside QueryProvider so the
  * admin feature hooks (useClientes/useCiclos) can use TanStack Query.
@@ -32,8 +42,11 @@
  *
  * Spec: [SPEC:frontend-ui-states/authz-ui SessionProvider]
  * Spec: [SPEC:admin-ui/TenantContext provee cliente + ciclo al dashboard completo]
+ * Spec: [SPEC:frontend-auth/No-op del timer sin sesión autenticada]
+ * Design: idle-session-timeout ADR-4
  */
 
+import { IdleTimeoutProvider } from "./idle-timeout-provider";
 import { QueryProvider } from "./query-provider";
 import { SessionProvider } from "./session-provider";
 import { TenantContextProvider } from "./tenant-context";
@@ -50,7 +63,9 @@ export function Providers({ children, initialUser }: ProvidersProps) {
     <ThemeProvider>
       <QueryProvider>
         <SessionProvider initialUser={initialUser}>
-          <TenantContextProvider>{children}</TenantContextProvider>
+          <IdleTimeoutProvider>
+            <TenantContextProvider>{children}</TenantContextProvider>
+          </IdleTimeoutProvider>
         </SessionProvider>
       </QueryProvider>
     </ThemeProvider>
