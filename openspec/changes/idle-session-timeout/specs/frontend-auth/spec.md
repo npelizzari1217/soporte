@@ -15,11 +15,17 @@ El sistema MUST cerrar la sesión automáticamente cuando no detecta actividad (
 - WHEN transcurren 15 minutos consecutivos sin ningún evento de actividad
 - THEN el sistema MUST iniciar el flujo de corte de sesión (aviso + logout)
 
-#### Scenario: Actividad detectada reinicia el conteo de inactividad
-- GIVEN un usuario autenticado con el timer de inactividad corriendo
+#### Scenario: Actividad durante la fase activa (aviso NO visible) reinicia el conteo
+- GIVEN un usuario autenticado con el timer corriendo y el modal de aviso NO visible
 - WHEN ocurre un evento de mousemove, keydown, click o scroll
-- THEN el sistema MUST reiniciar el contador de inactividad a 0 (sujeto a debounce)
-- AND el modal de aviso, si estaba visible, MUST cerrarse
+- THEN el sistema MUST reiniciar el contador de inactividad a 0 (sujeto a debounce/throttle)
+
+#### Scenario: Durante el aviso, la actividad pasiva NO reinicia el conteo (ADR-8 — seguridad)
+- GIVEN el modal de aviso está visible (últimos `WARNING_BEFORE_MS` antes del corte)
+- WHEN ocurre actividad pasiva (mousemove, scroll, keydown) SIN clic en "Seguir conectado"
+- THEN el sistema MUST NOT reiniciar el contador ni cerrar el modal
+- AND el corte MUST proceder salvo que el usuario haga clic explícito en "Seguir conectado"
+- Rationale: durante el aviso, solo la intención explícita mantiene la sesión. Evita que el jitter del mouse o una vibración mantengan viva una estación desatendida, que es el propósito mismo de la feature. Decisión ratificada por el usuario (2026-07-15) y coherente con `design.md` ADR-8.
 
 ---
 
