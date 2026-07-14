@@ -34,7 +34,7 @@
 
 ## Fase 2 — Hook `useIdleTimeout` (unidad central, ADR-1/2/3/8)
 
-- [ ] **T5** [RED] Crear `frontend/src/shared/hooks/use-idle-timeout.test.ts`
+- [x] **T5** [RED] Crear `frontend/src/shared/hooks/use-idle-timeout.test.ts`
   - Setup: `vi.useFakeTimers()`, mock de `now()` inyectado (no `Date.now()` real), spy de `readLastActivity`/`writeLastActivity`/`signalLogout` desde `idle-storage` (`vi.mock`).
   - Casos (todos con `enabled: true` salvo el explícito):
     1. Sin actividad ni storage previo: agenda warning en `IDLE_TIMEOUT_MS - WARNING_BEFORE_MS`; `isWarning` pasa a `true` en ese instante con `secondsLeft === 60`.
@@ -50,7 +50,7 @@
   - Spec: Requirements "Auto-logout 15 min", "Aviso countdown", "Seguir conectado", "Corte real", "No-op sin sesión", "Sync cross-tab", "Persistencia ante refresh".
   - Depende de: T2, T4 (importa constantes y storage).
 
-- [ ] **T6** [GREEN] Crear `frontend/src/shared/hooks/use-idle-timeout.ts`
+- [x] **T6** [GREEN] Crear `frontend/src/shared/hooks/use-idle-timeout.ts`
   - Firma exacta de ADR-1 (`UseIdleTimeoutParams`/`UseIdleTimeoutResult`, `now` inyectable con default `Date.now`).
   - Máquina de estados `active → warning → cutoff` vía `scheduleTimers()` centralizado (ADR-1/ADR-2): `setTimeout` para warning, `setInterval(1000)` solo durante warning.
   - Init desde `readLastActivity()` en `useEffect` (nunca en render) con la lógica de ADR-2 (`elapsed >= IDLE` → cutoff inmediato; en ventana → warning con `secondsLeft` correcto; si no hay stored, `writeLastActivity(now())`).
