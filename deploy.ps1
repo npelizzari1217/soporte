@@ -6,27 +6,29 @@
     Actualiza producción de forma determinista e idempotente, en el orden correcto
     para una app multi-tenant (NestJS + Next.js) servida por servicios NSSM.
 
-    Compatibilidad con el toolchain REAL del server (Node 20 + pnpm 9.15.4):
-    el repo fija pnpm@11 (Node 22+), pero el VPS corre Node 20. Además, cada
-    paquete tiene un `pnpm-workspace.yaml` (solo `allowBuilds:`, sintaxis pnpm 10/11)
-    que pnpm 9 interpreta como raíz de workspace sin `packages:` → error
-    "packages field missing or empty" en CUALQUIER comando pnpm.
+    IMPORTANTE — toolchain del server (Node 20 + pnpm 9.15.4) vs repo (pnpm 11 / Node 22):
+    El server NO puede correr `pnpm install` de este repo:
+      - `--ignore-workspace` recrea node_modules y falla con EPERM al no poder borrar
+        el binario nativo de argon2 (bloqueado por el servicio backend en ejecución).
+      - Sin --ignore-workspace, pnpm 9 no parsea el lockfile pnpm 11 (ERR_PNPM_BROKEN_LOCKFILE)
+        ni el pnpm-workspace.yaml (sintaxis pnpm 10/11).
 
-    Solución adoptada:
-      - `pnpm install` con `--ignore-workspace` (+ CI=true para no ser interactivo).
-      - generate / migrate / build vía BINARIOS DIRECTOS de node_modules\.bin
-        (prisma, ts-node, tsc, tsc-alias, next), que NO leen el pnpm-workspace.yaml.
+    Por eso este deploy NO corre `pnpm install`. Para un deploy de solo-código (el caso
+    normal) NO hace falta: node_modules ya está instalado y los binarios directos de
+    node_modules\.bin (prisma, ts-node, tsc, tsc-alias, next) buildean sin tocar deps.
 
-    Los config de Prisma (prisma.config.ts / prisma.tenant.config.ts) resuelven la
-    conexión desde DATABASE_URL_MASTER / DATABASE_URL_TENANT del entorno, que este
-    script carga desde backend/.env antes de migrar.
+    Si el LOCKFILE cambió (dependencias nuevas), el script AVISA fuerte: esa instalación
+    es una operación de mantenimiento aparte (Node 22 + pnpm 11, o servicios detenidos).
+
+    Los config de Prisma resuelven la conexión desde DATABASE_URL_MASTER / DATABASE_URL_TENANT
+    del entorno, que este script carga desde backend/.env antes de migrar.
 
     Orden:
       1. Pre-flight y punto de rollback (commit actual).
       2. git pull --ff-only origin master.
       3. Carga backend/.env al entorno de la sesión.
-      4. Backend: install -> prisma generate -> migrate master -> migrate TODOS los tenants -> build.
-      5. Frontend: install -> build.
+      4. Backend: (aviso si cambió lockfile) -> prisma generate -> migrate master -> migrate tenants -> build.
+      5. Frontend: (aviso si cambió lockfile) -> build.
       6. Restart de servicios NSSM y verificación de estado.
 
     Cualquier error ABORTA el deploy (ErrorActionPreference = Stop) y deja impreso
@@ -39,8 +41,8 @@
     Requiere ejecutarse como administrator (control de servicios NSSM).
     Correr desde la raíz del repo:  powershell -ExecutionPolicy Bypass -File .\deploy.ps1
 
-    TODO (deuda): alinear el server a Node 22 + pnpm 11 y volver a los scripts
-    `pnpm run` nativos. Hasta entonces, este script usa binarios directos.
+    TODO (deuda): alinear el server a Node 22 + pnpm 11 y restaurar `pnpm install` +
+    los scripts `pnpm run` nativos. Hasta entonces, binarios directos y sin install.
 #>
 
 [CmdletBinding()]
@@ -58,8 +60,9 @@ $Services   = @('soporte-backend', 'soporte-frontend')
 
 function Step($msg) { Write-Host "`n=== $msg ===" -ForegroundColor Cyan }
 function Info($msg) { Write-Host "    $msg" -ForegroundColor Gray }
+function Warn($msg) { Write-Host "    ⚠ $msg" -ForegroundColor Yellow }
 
-# Corre un comando de PATH (pnpm, git) y aborta si el exit code != 0.
+# Corre un comando de PATH (git) y aborta si el exit code != 0.
 function Invoke-Checked($file, [string[]]$cmdArgs) {
     Info "> $file $($cmdArgs -join ' ')"
     & $file @cmdArgs
@@ -73,7 +76,7 @@ function Invoke-Checked($file, [string[]]$cmdArgs) {
 function Invoke-Bin($binDir, $tool, [string[]]$cmdArgs) {
     $exe = Join-Path $binDir ($tool + '.cmd')
     if (-not (Test-Path $exe)) { $exe = Join-Path $binDir $tool }
-    if (-not (Test-Path $exe)) { throw "Binario no encontrado: $exe (¿corriste install?)" }
+    if (-not (Test-Path $exe)) { throw "Binario no encontrado: $exe (node_modules incompleto)." }
     Info "> $tool $($cmdArgs -join ' ')"
     & $exe @cmdArgs
     if ($LASTEXITCODE -ne 0) {
@@ -81,15 +84,15 @@ function Invoke-Bin($binDir, $tool, [string[]]$cmdArgs) {
     }
 }
 
-# Instala deps con pnpm 9 esquivando el pnpm-workspace.yaml. CI=true evita el
-# prompt interactivo de "reinstalar node_modules". Restaura CI al salir.
-function Invoke-PnpmInstall {
-    $prev = $env:CI
-    $env:CI = 'true'
-    try {
-        Invoke-Checked 'pnpm' @('install', '--frozen-lockfile', '--ignore-workspace')
-    } finally {
-        if ($null -eq $prev) { Remove-Item Env:CI -ErrorAction SilentlyContinue } else { $env:CI = $prev }
+# Avisa (sin abortar) si el lockfile cambió entre el commit previo y HEAD: las deps
+# pueden necesitar instalación manual, que este deploy NO hace. Si faltan módulos,
+# el build fallará después con un error claro.
+function Warn-IfLockfileChanged($fromCommit, $lockPath, $label) {
+    & git diff --quiet $fromCommit HEAD -- $lockPath 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        Warn "El lockfile de $label ($lockPath) CAMBIÓ respecto de $($fromCommit.Substring(0,7))."
+        Warn "  Este deploy NO corre 'pnpm install' (server pnpm 9 incompatible con lockfile pnpm 11)."
+        Warn "  Si el build falla por módulos faltantes: instalá con Node 22 + pnpm 11 (servicios detenidos)."
     }
 }
 
@@ -135,11 +138,10 @@ if (-not $env:DATABASE_URL_MASTER) {
 Info 'DATABASE_URL_MASTER cargada (valor oculto).'
 
 # --- 4. Backend -------------------------------------------------------------
-Step '4/6  Backend: install / generate / migrate / build'
+Step '4/6  Backend: generate / migrate / build'
 Set-Location $BackendDir
 $backBin = Join-Path $BackendDir 'node_modules\.bin'
-
-Invoke-PnpmInstall
+Warn-IfLockfileChanged $rollback 'backend/pnpm-lock.yaml' 'backend'
 
 Invoke-Bin $backBin 'prisma' @('generate', '--schema=prisma_master/schema.prisma')
 Invoke-Bin $backBin 'prisma' @('generate', '--schema=prisma_tenant/schema.prisma')
@@ -157,11 +159,10 @@ if (-not $SkipBuild) {
 }
 
 # --- 5. Frontend ------------------------------------------------------------
-Step '5/6  Frontend: install / build'
+Step '5/6  Frontend: build'
 Set-Location $FrontDir
 $frontBin = Join-Path $FrontDir 'node_modules\.bin'
-
-Invoke-PnpmInstall
+Warn-IfLockfileChanged $rollback 'frontend/pnpm-lock.yaml' 'frontend'
 
 if (-not $SkipBuild) {
     Invoke-Bin $frontBin 'next' @('build')
