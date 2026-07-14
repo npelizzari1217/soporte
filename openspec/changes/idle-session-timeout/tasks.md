@@ -34,7 +34,7 @@
 
 ## Fase 2 — Hook `useIdleTimeout` (unidad central, ADR-1/2/3/8)
 
-- [ ] **T5** [RED] Crear `frontend/src/shared/hooks/use-idle-timeout.test.ts`
+- [x] **T5** [RED] Crear `frontend/src/shared/hooks/use-idle-timeout.test.ts`
   - Setup: `vi.useFakeTimers()`, mock de `now()` inyectado (no `Date.now()` real), spy de `readLastActivity`/`writeLastActivity`/`signalLogout` desde `idle-storage` (`vi.mock`).
   - Casos (todos con `enabled: true` salvo el explícito):
     1. Sin actividad ni storage previo: agenda warning en `IDLE_TIMEOUT_MS - WARNING_BEFORE_MS`; `isWarning` pasa a `true` en ese instante con `secondsLeft === 60`.
@@ -50,7 +50,7 @@
   - Spec: Requirements "Auto-logout 15 min", "Aviso countdown", "Seguir conectado", "Corte real", "No-op sin sesión", "Sync cross-tab", "Persistencia ante refresh".
   - Depende de: T2, T4 (importa constantes y storage).
 
-- [ ] **T6** [GREEN] Crear `frontend/src/shared/hooks/use-idle-timeout.ts`
+- [x] **T6** [GREEN] Crear `frontend/src/shared/hooks/use-idle-timeout.ts`
   - Firma exacta de ADR-1 (`UseIdleTimeoutParams`/`UseIdleTimeoutResult`, `now` inyectable con default `Date.now`).
   - Máquina de estados `active → warning → cutoff` vía `scheduleTimers()` centralizado (ADR-1/ADR-2): `setTimeout` para warning, `setInterval(1000)` solo durante warning.
   - Init desde `readLastActivity()` en `useEffect` (nunca en render) con la lógica de ADR-2 (`elapsed >= IDLE` → cutoff inmediato; en ventana → warning con `secondsLeft` correcto; si no hay stored, `writeLastActivity(now())`).
@@ -64,18 +64,18 @@
 
 ## Fase 3 — Dialog + Provider (presentación, ADR-4/5/6)
 
-- [ ] **T7** [RED] Crear `frontend/src/components/shell/idle-warning-dialog.test.tsx`
+- [x] **T7** [RED] Crear `frontend/src/components/shell/idle-warning-dialog.test.tsx`
   - Casos (espejo de `confirm-dialog.test.tsx`): renderiza con `open=true` y `secondsLeft=45` → el texto "45" visible en el DOM; click en "Seguir conectado" invoca `onStayConnected` exactamente 1 vez; `open=false` → contenido no está en el DOM (Radix Portal); simular `keydown` ESC → `preventDefault` se invoca / el diálogo sigue abierto (no se desmonta); contenedor del contador tiene `role="timer"` y `aria-live="polite"`.
   - Done: test corre y falla (componente no existe).
   - Spec: Requirement "Aviso de cuenta regresiva antes del corte", "Seguir conectado reinicia la sesión".
   - Depende de: nada estructural, pero conviene después de Fase 2 (paralelizable con T9 en la práctica).
 
-- [ ] **T8** [GREEN] Crear `frontend/src/components/shell/idle-warning-dialog.tsx`
+- [x] **T8** [GREEN] Crear `frontend/src/components/shell/idle-warning-dialog.tsx`
   - `@radix-ui/react-alert-dialog`, props exactas de ADR-6 (`open`, `secondsLeft`, `onStayConnected`). `onEscapeKeyDown={(e) => e.preventDefault()}`, sin cierre por click en overlay, sin botón "Cancelar". Clases idénticas a `confirm-dialog.tsx` (glass, `border-white/10`, `rounded-xl`, `w-full max-w-md`, `p-6`, animaciones `data-[state=...]`). `role="timer"` + `aria-live="polite"` en el contador; foco inicial en el botón "Seguir conectado".
   - Done: T7 pasa.
   - Depende de: T7.
 
-- [ ] **T9** [RED] Crear `frontend/src/shared/providers/idle-timeout-provider.test.tsx`
+- [x] **T9** [RED] Crear `frontend/src/shared/providers/idle-timeout-provider.test.tsx`
   - Casos (espejo de `session-provider.test.tsx`):
     1. `user === null` (vía mock de `useSession`) → no-op total: no se registran listeners de actividad ni se agenda timer (assert igual que T5.8, ahora a nivel provider).
     2. `isLoading === true` → mismo no-op, sin importar `user`.
@@ -88,7 +88,7 @@
   - Spec: Requirement "No-op sin sesión", "Corte real de sesión", "Sync cross-tab (corte)".
   - Depende de: T6 (usa el hook), T8 (renderiza el dialog).
 
-- [ ] **T10** [GREEN] Crear `frontend/src/shared/providers/idle-timeout-provider.tsx`
+- [x] **T10** [GREEN] Crear `frontend/src/shared/providers/idle-timeout-provider.tsx`
   - `"use client"`. Consume `useSession()` para derivar `enabled = user != null && !isLoading` (ADR-4). Usa `useIdleTimeout` con `onCutoff = handleCutoff`. Implementa `handleCutoff()` exacto de ADR-5 (guard `cuttingOffRef`, `signalLogout()` → `await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" }).catch(() => {})` → `window.location.assign("/login")`). Escucha `storage` con key `IDLE_LOGOUT_KEY` para cleanup-only en pestañas no-originantes. Renderiza `<IdleWarningDialog open={isWarning} secondsLeft={secondsLeft} onStayConnected={stayConnected} />` + `children`.
   - Done: T9 pasa completo.
   - Depende de: T9.
@@ -97,7 +97,7 @@
 
 ## Fase 4 — Wiring + verificación manual
 
-- [ ] **T11** Editar `frontend/src/shared/providers/providers.tsx`
+- [x] **T11** Editar `frontend/src/shared/providers/providers.tsx`
   - Montar `IdleTimeoutProvider` dentro de `SessionProvider`, envolviendo `TenantContextProvider` (composición exacta de ADR-4):
     ```tsx
     <SessionProvider initialUser={initialUser}>
@@ -110,12 +110,12 @@
   - Done: `pnpm test providers` (si existe test de composición) o smoke visual; no rompe `session-provider.test.tsx` ni `tenant-context.test.tsx` existentes.
   - Depende de: T10.
 
-- [ ] **T12** Verificación manual end-to-end (no automatizable con vitest, documentar evidencia en el reporte de apply)
+- [ ] **T12** (PENDIENTE — requiere `pnpm dev` interactivo, no ejecutable por este agente) Verificación manual end-to-end (no automatizable con vitest, documentar evidencia en el reporte de apply)
   - Levantar `pnpm dev`, loguearse, bajar `IDLE_TIMEOUT_MS`/`WARNING_BEFORE_MS` temporalmente vía override local (NO commitear el override) o esperar el ciclo real en un entorno de prueba, confirmar: (a) aparece el modal con countdown, (b) "Seguir conectado" lo cierra y resetea, (c) countdown a 0 dispara `POST /api/auth/logout` (Network tab) + redirect a `/login`, (d) refresh a los ~10 min no resetea el conteo (revisar `localStorage` key `soporte:idle:last-activity`), (e) dos pestañas: actividad en una resetea la otra; corte en una redirige la otra sin segundo `POST /api/auth/logout`.
   - Done: evidencia (screenshots o descripción de red) documentada en el apply-progress.
   - Depende de: T11.
 
-- [ ] **T13** Definition of Done (obligatorio, CLAUDE.md §9 — pegar salida REAL)
+- [x] **T13** Definition of Done (obligatorio, CLAUDE.md §9 — pegar salida REAL)
   - Correr en `frontend/`: `pnpm test`, `pnpm lint`, `pnpm tsc --noEmit` (o el script equivalente del `package.json`).
   - Pegar la salida completa de los 3 comandos en el reporte de `sdd-apply` (no resumir como "OK"/"verde" sin números).
   - Si algo falla, reportarlo tal cual — cero verde falso (CLAUDE.md §9).
