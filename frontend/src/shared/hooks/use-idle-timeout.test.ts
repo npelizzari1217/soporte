@@ -221,4 +221,50 @@ describe("useIdleTimeout", () => {
     advance(IDLE_TIMEOUT_MS - WARNING_BEFORE_MS - 1_000);
     expect(result.current.isWarning).toBe(true);
   });
+
+  it("case 10: countdown decrementa segundo a segundo durante warning (60 -> 59 -> 58 -> 57)", () => {
+    const onCutoff = vi.fn();
+    const { result } = renderHook(() =>
+      useIdleTimeout({ enabled: true, onCutoff, now }),
+    );
+
+    advance(IDLE_TIMEOUT_MS - WARNING_BEFORE_MS);
+    expect(result.current.secondsLeft).toBe(60);
+
+    advance(1_000);
+    expect(result.current.secondsLeft).toBe(59);
+
+    advance(1_000);
+    expect(result.current.secondsLeft).toBe(58);
+
+    advance(1_000);
+    expect(result.current.secondsLeft).toBe(57);
+
+    expect(onCutoff).not.toHaveBeenCalled();
+  });
+
+  it("case 11: refresh/remount con última actividad de hace ~10 min (rango medio) continúa el conteo sin resetear a 0", () => {
+    const elapsed = 10 * 60 * 1000; // 10 min transcurridos antes del mount (ej. refresh de página)
+    mockReadLastActivity.mockReturnValue(currentTime - elapsed);
+    const onCutoff = vi.fn();
+
+    const { result } = renderHook(() =>
+      useIdleTimeout({ enabled: true, onCutoff, now }),
+    );
+
+    // rango medio: ni recién montado (elapsed=0) ni ya en warning (elapsed>=14min)
+    expect(result.current.isWarning).toBe(false);
+
+    // Si el conteo se hubiera reiniciado a 0 en el remount, el warning tardaría
+    // otros 14 min en aparecer desde acá. Si continúa desde los 10 min ya
+    // transcurridos, debe aparecer 4 min (no 14) después del mount.
+    const remainingUntilWarning = IDLE_TIMEOUT_MS - WARNING_BEFORE_MS - elapsed; // 4 min
+
+    advance(remainingUntilWarning - 1_000);
+    expect(result.current.isWarning).toBe(false);
+
+    advance(1_000);
+    expect(result.current.isWarning).toBe(true);
+    expect(onCutoff).not.toHaveBeenCalled();
+  });
 });
