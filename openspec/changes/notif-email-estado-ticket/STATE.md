@@ -113,7 +113,7 @@ Test Files  150 passed (150)
 Nota: `tsconfig.eslint.json` (incluye `*.spec.ts`) tiene errores PREEXISTENTES no relacionados a este change (`Cannot find name 'it'/'expect'/'describe'` en specs viejos que no declaran los tipos globales de vitest en ese tsconfig específico — `tsconfig.json` real SÍ excluye specs y es el que usa `build`). Ninguno de los archivos nuevos/tocados de PR1 aparece en esa lista. No se tocó — fuera de scope de PR1.
 
 ### Git
-Repo real (no vacío). Working tree en `master`. **No se creó branch ni commit** — se dejaron los cambios sin commitear para que el usuario decida branch/commit tras revisar (el prompt permitía crear branch+commit local, pero se prioriza dar la oportunidad de revisión antes de fijar el mensaje/branch definitivos). Ver `next_recommended` en el resultado del sub-agente.
+Repo real (no vacío). Branch `notif-email-estado-ticket-pr1` creada desde `master`. Un commit local conventional (`feat(tickets): fundaciones de eventos de dominio para notificaciones`, sha `5b474c55`), sin Co-Authored-By. **Sin push, sin PR** — gateado por el usuario vía orquestador.
 
 ### Deferred / no tocado (correcto para PR1)
 PR2 (Email VO/errores/ports/adapter/resolver/templates), PR3 (handler/listener/wiring parcial), PR4 (puntos de publicación + reestructura CrearObservacion + DTOs/controllers) — todo pendiente, sin tocar. `tickets.module.ts`, `transicionar-estado.use-case.ts`, `crear-observacion.use-case.ts` NO se modificaron (correcto, son PR4).
