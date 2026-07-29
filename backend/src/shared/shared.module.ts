@@ -1,4 +1,5 @@
 import { Global, Module } from '@nestjs/common';
+import { EventEmitter2, EventEmitterModule } from '@nestjs/event-emitter';
 import { FILE_STORAGE } from './domain/ports/i-file-storage';
 import { LocalFileStorage } from './infrastructure/storage/local-file-storage';
 import { PrismaService } from './infrastructure/persistence/prisma.service';
@@ -12,6 +13,8 @@ import {
   MasterTransactionRunner,
   MASTER_TRANSACTION_RUNNER,
 } from './infrastructure/persistence/master-transaction-runner';
+import { DOMAIN_EVENT_PUBLISHER } from './domain/ports/i-domain-event-publisher';
+import { EventEmitterPublisher } from './infrastructure/events/event-emitter.publisher';
 
 /**
  * SharedModule — módulo global de infraestructura compartida.
@@ -21,15 +24,27 @@ import {
  *   - TenantContext       → AsyncLocalStorage del tenant activo por request
  *   - TenantTransactionRunner → wrapper de $transaction con re-bind de TenantContext
  *   - FILE_STORAGE        → IFileStorage (LocalFileStorage en dev/test)
+ *   - DOMAIN_EVENT_PUBLISHER → IDomainEventPublisher (EventEmitterPublisher,
+ *     in-process sobre EventEmitter2)
  *
  * Todos los providers usan tokens Symbol para respetar el principio de
  * inversión de dependencias: los consumidores dependen de la interfaz (token),
  * no de la implementación concreta.
  *
+ * `EventEmitterModule.forRoot()` se importa ACÁ (no solo en AppModule) porque
+ * el factory de DOMAIN_EVENT_PUBLISHER, definido en este propio módulo, inyecta
+ * EventEmitter2 — regla estándar de Nest: el módulo que consume un token en su
+ * propio provider debe importar el módulo que lo exporta. `forRoot()` es
+ * `global: true` por defecto, así que sigue disponible para toda la app sin
+ * duplicar wiring en cada módulo de feature. Ver notif-email-estado-ticket PR1:
+ * tests que bootstrapean SharedModule de forma aislada (fuera de AppModule)
+ * necesitan que EventEmitter2 resuelva sin depender de AppModule.
+ *
  * Tarea: 0.C.7
  */
 @Global()
 @Module({
+  imports: [EventEmitterModule.forRoot()],
   providers: [
     // PrismaService: factory multi-tenant inyectada con la URL master
     // desde la variable de entorno. En producción, DATABASE_URL_MASTER.
@@ -64,6 +79,15 @@ import {
       provide: FILE_STORAGE,
       useClass: LocalFileStorage,
     },
+
+    // DOMAIN_EVENT_PUBLISHER: IDomainEventPublisher → EventEmitterPublisher.
+    // @Global() para que TicketsModule (y cualquier módulo futuro) lo inyecte
+    // sin re-importar SharedModule explícitamente en sus providers.
+    {
+      provide: DOMAIN_EVENT_PUBLISHER,
+      useFactory: (emitter: EventEmitter2) => new EventEmitterPublisher(emitter),
+      inject: [EventEmitter2],
+    },
   ],
   exports: [
     // Exportar PrismaService para que los módulos de infraestructura
@@ -84,6 +108,9 @@ import {
 
     // Token de storage: los casos de uso inyectan este token.
     FILE_STORAGE,
+
+    // Token de publicación de eventos de dominio.
+    DOMAIN_EVENT_PUBLISHER,
   ],
 })
 export class SharedModule {}

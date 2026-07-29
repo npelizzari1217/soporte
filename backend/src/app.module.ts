@@ -32,6 +32,12 @@ import { TenantScopeMiddleware } from './shared/tenancy/tenant-scope.middleware'
  * lugar de `app.useGlobalPipes()` en main.ts para que lo hereden los tests que
  * bootstrapean AppModule directamente con Test.createTestingModule() (bypasean
  * bootstrap()). Config: `{ whitelist: true, transform: true }`.
+ *
+ * notif-email-estado-ticket PR1: EventEmitter2 queda disponible globalmente
+ * porque SharedModule (importado abajo, @Global) trae su propio
+ * `EventEmitterModule.forRoot()` — el módulo que lo consume en su factory de
+ * DOMAIN_EVENT_PUBLISHER es quien lo importa, no AppModule. Evita duplicar el
+ * wiring de EventEmitterModule en dos lugares distintos.
  */
 @Module({
   imports: [
