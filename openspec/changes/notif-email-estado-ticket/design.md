@@ -242,7 +242,7 @@ Requirement 10 (NFR): no hay ninguna llamada a `publish`/`send` dentro de los bl
 - **Filtro**: `esEstadoNotificable(event.estadoNuevoCodigo)` — pura, sin DB (D4). El set `ESTADOS_NOTIFICABLES` es la política de dominio.
 - **Template**: `email-templates/cambio-estado/{subject,body}.hbs`, referenciados por `body: { type:'template', name:'cambio-estado', data:{ numero, tituloTicket, estadoNuevoCodigo, ... } }`. El adapter nodemailer compila el template (provider-agnóstico: cambiar de nodemailer a SES solo toca el adapter).
 - **Wiring `tickets.module.ts`**: agregar providers `EMAIL_SENDER`→`NodemailerEmailSender`, `SOLICITANTE_EMAIL_RESOLVER`→`SolicitanteEmailResolver`, `NotificarCambioEstadoHandler` (useFactory con los 2 ports), `NotificarCambioEstadoListener` (clase provider para que EventEmitter la descubra). En los `useFactory` de `TransicionarEstadoUseCase` y `CrearObservacionUseCase`: agregar `DOMAIN_EVENT_PUBLISHER` (ambos) y `TIPO_TICKET_REPOSITORY` (crear-observación) al `inject`.
-- **`app.module.ts`**: `imports: [ EventEmitterModule.forRoot(), ... ]`.
+- **`shared/shared.module.ts`**: `imports: [ EventEmitterModule.forRoot(), ... ]` (NO en `app.module.ts`). Corrección aplicada en PR1: `SharedModule` es quien consume `EventEmitter2` en el factory de `DOMAIN_EVENT_PUBLISHER`, y varias suites preexistentes bootstrapean `SharedModule` aislado sin `AppModule` → el módulo que inyecta el token debe importar el que provee `EventEmitter2`. `forRoot()` es `global:true`, sigue disponible en toda la app.
 - **Env SMTP**: validada al bootstrap en `email-config.ts` (falta de config = throw que aborta el arranque, NO un `send()` individual — Requirement 7). Cero refs SMTP fuera de `infrastructure/` (NFR).
 
 ---

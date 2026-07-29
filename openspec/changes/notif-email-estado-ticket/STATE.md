@@ -6,12 +6,16 @@
 Notificaciones por **email** cuando **cambia el estado de un ticket** (proyecto Soporte, backend NestJS multi-tenant).
 
 ## Fase actual
-`explore` ✅ · `proposal` ✅ · `spec` ✅ · `design` ✅ · `tasks` ✅ COMPLETADA (disco + engram `sdd/notif-email-estado-ticket/tasks`) → siguiente: **`apply`** (sub-agente `sdd-apply`, modelo `sonnet`) — BLOQUEADO por decisión de entrega (ver abajo).
+`explore` ✅ · `proposal` ✅ · `spec` ✅ · `design` ✅ · `tasks` ✅ · `apply PR1` ✅ COMPLETADA (verde, 2054 tests) → siguiente: **`apply PR2`** (sub-agente `sdd-apply`, sonnet) — PAUSADO esperando OK del usuario (chained PR delivery).
 
-### ⛔ DECISIÓN DE ENTREGA PENDIENTE (Review Workload Guard, ask-on-risk)
-- Forecast: ~1150-1350 líneas, 15 archivos nuevos + 6 modificados, budget risk HIGH, chained PRs recomendadas, `Decision needed before apply: Yes`.
-- Slicing propuesto: PR1 fundaciones evento (~250) → PR2 email port/adapter/resolver/templates (~350-400) → PR3 handler/listener/wiring (~200) → PR4 puntos de publicación + reestructura CrearObservacion + DTOs/controllers + anti-regresión (~300-400, mayor riesgo).
-- FALTA que el usuario elija: chained PRs (implementar solo la próxima slice) vs single PR con size:exception aprobado.
+### Entrega: chained PRs (elegido por usuario 2026-07-29)
+- PR1 ✅ fundaciones evento (branch `notif-email-estado-ticket-pr1`, 2 commits locales, SIN push/PR).
+- PR2 ⬜ email port/adapter/resolver/templates (~350-400) — SIGUIENTE.
+- PR3 ⬜ handler/listener/wiring (~200).
+- PR4 ⬜ puntos de publicación + reestructura CrearObservacion + DTOs/controllers + anti-regresión (~300-400, mayor riesgo).
+- ⚠️ Push/PR de cada slice queda gated por el usuario (outward-facing).
+- ⚠️ ACTUALIZAR design.md §7: EventEmitterModule.forRoot() va en shared.module.ts (no app.module.ts) — ver Apply Progress PR1.
+- Gotcha entorno: usar `corepack pnpm ...` (pnpm no está en PATH global).
 
 ### Notas del design para tasks/apply
 - Blast radius: ~13 archivos nuevos + ~6 modificados (2 use cases, 2 controllers, tickets.module, app.module, package.json). REVIEW WORKLOAD: revisar forecast de sdd-tasks (posible chained PR).
