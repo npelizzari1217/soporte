@@ -1,0 +1,53 @@
+# .gitattributes — normalización de fin de línea para todo el repo
+# Objetivo: el repositorio SIEMPRE guarda LF; cada quien trabaja con lo que
+# quiera en su disco. Elimina el ruido de CRLF/LF entre Windows, macOS y Linux.
+
+# Por defecto: git detecta si el archivo es texto y normaliza a LF al commitear.
+* text=auto eol=lf
+
+# --- Código y config: LF forzado ---
+*.ts       text eol=lf
+*.tsx      text eol=lf
+*.js       text eol=lf
+*.jsx      text eol=lf
+*.mjs      text eol=lf
+*.cjs      text eol=lf
+*.json     text eol=lf
+*.md       text eol=lf
+*.css      text eol=lf
+*.scss     text eol=lf
+*.html     text eol=lf
+*.yml      text eol=lf
+*.yaml     text eol=lf
+*.prisma   text eol=lf
+*.sql      text eol=lf
+*.sh       text eol=lf
+*.env      text eol=lf
+.gitignore text eol=lf
+.gitattributes text eol=lf
+
+# --- Scripts de Windows: CRLF (PowerShell 5.1 y cmd lo esperan) ---
+*.ps1      text eol=crlf
+*.psm1     text eol=crlf
+*.bat      text eol=crlf
+*.cmd      text eol=crlf
+
+# --- Binarios: git no toca su contenido ni fin de línea ---
+*.png      binary
+*.jpg      binary
+*.jpeg     binary
+*.gif      binary
+*.ico      binary
+*.webp     binary
+*.svg      binary
+*.pdf      binary
+*.woff     binary
+*.woff2    binary
+*.ttf      binary
+*.eot      binary
+*.zip      binary
+*.wda      binary
+
+# --- Lockfiles: texto pero sin diffs ruidosos en review ---
+pnpm-lock.yaml   text eol=lf -diff
+package-lock.json text eol=lf -diff

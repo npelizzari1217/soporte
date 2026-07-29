@@ -14,8 +14,8 @@
 | Capa | Tecnología | Notas |
 |------|-----------|-------|
 | Base de datos | PostgreSQL | Relacional, auditoría, concurrencia |
-| Backend | NestJS (TypeScript) | Modular, JWT, DI, DTOs validados, patrón Repository |
-| Frontend | Next.js (TS, app router) | Tailwind + Shadcn/ui o Tremor |
+| Backend | NestJS (TypeScript) | Modular, JWT, DI, DTOs validados, patrón Repository. Tests: Vitest |
+| Frontend | Next.js (TS, app router) | Tailwind + Shadcn/ui o Tremor. Tests: Vitest |
 | Mobile (futuro) | — | El backend es 100% agnóstico al cliente |
 
 ## Convenciones de arquitectura
@@ -28,17 +28,19 @@
 - **Adjuntos:** patrón `IFileStorage` (puerto), NO blobs en DB. Reusar enfoque del proyecto `mensajeria`.
 - Patrón Repository para aislar la persistencia de la lógica de negocio.
 
-## Estado de detección (proyecto nuevo)
+## Estado actual del proyecto
 
-- Sin código todavía. Estructura `/backend` y `/frontend` a crear.
-- **Test runner:** ninguno aún → Strict TDD se activa al scaffoldear el backend (Jest con NestJS).
-- Git inicializado (commit base `1bdfd54`).
+- **Backend y frontend scaffoldeados y en marcha.** Módulos de negocio implementados: `tickets`, `compras`, `reparaciones`, `equipos`, `auth`, `clientes`, `reportes` (Screaming Architecture).
+- **Test runner:** **Vitest** en backend y frontend, Strict TDD activo (RED→GREEN). Comando: `pnpm test` (= `vitest run`).
+- **Modelo de datos vivo:** 31 entidades Prisma (8 master + 23 tenant). Fuente de verdad: `backend/prisma_master/schema.prisma` y `backend/prisma_tenant/schema.prisma`; DER en `docs/der.md`.
+- **Changes SDD:** 0 activos, 11 archivados en `openspec/changes/archive/` (proyecto entre unidades de trabajo).
+- Git inicializado (commit base `1bdfd54`); remoto en GitHub.
 
 ## Origen del modelo de datos
 
 DER legacy exportado de WinDev/WebDev (`soporte.wda`). Es un **retrato del sistema viejo, NO un esquema Postgres válido**. Ver análisis crítico en la propuesta. Decisión tomada: **diseñar los 3 flujos completos** (Ticket unificado + discriminador `TipoTicket` + tablas satélite por dominio), no migración 1:1.
 
-## Decisiones de diseño fino PENDIENTES (fase sdd-design)
+## Decisiones de diseño fino (resueltas)
 
-- Estrategia de IDs: `bigint` identity vs `UUIDv7`.
-- Modelo de permisos: ACL-legacy (matriz `UsuariosXModulos` AccesoL/A/M/I/B) vs RBAC moderno con guards de Nest.
+- **Estrategia de IDs:** `UUIDv7` (anti-IDOR en API pública/mobile, ordenable temporalmente). ✔ decidido.
+- **Modelo de permisos:** RBAC híbrido moderno (roles + permisos granulares `recurso:accion`) con guards de Nest encadenados; se descartó la ACL-legacy (`UsuariosXModulos` L/A/M/I/B). ✔ decidido.

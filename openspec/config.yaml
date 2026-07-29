@@ -13,7 +13,7 @@ context: |
   Auditoría: created_at, updated_at, deleted_at (soft delete) en TODAS las entidades.
   Adjuntos: puerto IFileStorage, metadata en DB, binario fuera (NUNCA blobs).
   API: agnóstica al cliente, respuesta unificada { success: true, data: [...] }.
-  Testing: Jest (NestJS), Strict TDD habilitado.
+  Testing: Vitest (NestJS + Next.js), Strict TDD habilitado.
   Style: TypeScript strict, Conventional Commits, snake_case ASCII en DB.
 
 rules:
@@ -39,7 +39,7 @@ rules:
     - Seguir patrones existentes del codebase
     - PrismaService prohibido fuera de infrastructure/ (fitness rule)
     tdd: true
-    test_command: "cd backend && pnpm test"   # provisional: se confirma al scaffoldear el backend
+    test_command: "cd backend && pnpm test"   # pnpm test = vitest run (backend ya scaffoldeado)
   verify:
     test_command: "cd backend && pnpm test"
     build_command: "cd backend && pnpm build"
