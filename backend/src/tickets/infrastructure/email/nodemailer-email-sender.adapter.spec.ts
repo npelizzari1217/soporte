@@ -152,6 +152,31 @@ describe('NodemailerEmailSender', () => {
       expect(call.html).toContain('&quot;&gt;&lt;img src=x onerror=alert(1)&gt;&amp;&#39;');
     });
 
+    it('elimina CR/LF de los valores interpolados en el subject — previene header injection SMTP (hardening, R7)', async () => {
+      const sendMail = vi.fn().mockResolvedValue({ messageId: 'abc123' });
+      const transporter: EmailTransporter = { sendMail };
+      const adapter = new NodemailerEmailSender(transporter, 'Soporte <no-reply@dominio.com>');
+
+      await adapter.send(
+        makeMessage({
+          body: {
+            type: 'template',
+            name: 'cambio-estado',
+            data: {
+              numero: 'SOP-2026-00042\r\nBcc: atacante@evil.com',
+              tituloTicket: 'Ticket',
+              estadoAnteriorCodigo: 'EN_PROGRESO',
+              estadoNuevoCodigo: 'RESUELTO',
+            },
+          },
+        }),
+      );
+
+      const call = sendMail.mock.calls[0][0];
+      expect(call.subject).not.toMatch(/[\r\n]/);
+      expect(call.subject).toContain('SOP-2026-00042Bcc: atacante@evil.com');
+    });
+
     it('NO escapa entidades HTML en el subject (texto plano del header, distinto contexto que el body HTML)', async () => {
       const sendMail = vi.fn().mockResolvedValue({ messageId: 'abc123' });
       const transporter: EmailTransporter = { sendMail };

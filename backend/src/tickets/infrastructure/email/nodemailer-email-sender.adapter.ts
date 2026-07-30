@@ -71,15 +71,26 @@ function escapeHtml(raw: string): string {
  * (ej. `Ticket.titulo`) no pueda inyectar markup en el cliente de correo del
  * destinatario. `false` para el subject: es texto plano de header, escaparlo
  * mostraría entidades literales ("&amp;") al usuario.
+ *
+ * `stripCrlf`: `true` SOLO para el subject — un header SMTP no puede
+ * contener `\r`/`\n` sin arriesgar header injection (inyectar headers
+ * adicionales tipo `Bcc:`). Hoy `subject.hbs` solo interpola
+ * `numero`/`estadoNuevoCodigo` (no explotable en la práctica), pero es
+ * hardening barato e independiente de `escapeHtml` (Judgment Day PR2
+ * Ronda 2, issue D). El body HTML no lo necesita — un salto de línea en
+ * HTML es inofensivo.
  */
 function interpolate(
   template: string,
   data: Record<string, unknown>,
-  options: { escapeHtml: boolean } = { escapeHtml: false },
+  options: { escapeHtml: boolean; stripCrlf?: boolean } = { escapeHtml: false },
 ): string {
   return template.replace(PLACEHOLDER, (_match, key: string) => {
     const value = data[key];
-    const stringValue = value === undefined || value === null ? '' : String(value);
+    let stringValue = value === undefined || value === null ? '' : String(value);
+    if (options.stripCrlf) {
+      stringValue = stringValue.replace(/[\r\n]/g, '');
+    }
     return options.escapeHtml ? escapeHtml(stringValue) : stringValue;
   });
 }
@@ -165,7 +176,7 @@ export class NodemailerEmailSender implements EmailSenderPort {
     const bodyTemplate = readTemplate(body.name, 'body.hbs');
 
     return {
-      subject: interpolate(subjectTemplate, body.data),
+      subject: interpolate(subjectTemplate, body.data, { escapeHtml: false, stripCrlf: true }),
       html: interpolate(bodyTemplate, body.data, { escapeHtml: true }),
     };
   }
