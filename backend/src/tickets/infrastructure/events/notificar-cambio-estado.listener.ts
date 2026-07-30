@@ -35,6 +35,7 @@ import {
   NotificarCambioEstadoHandler,
   NotificacionOutcome,
 } from '../../application/event-handlers/notificar-cambio-estado.handler';
+import { maskEmailsInText } from '../../domain/mask-email-like';
 
 @Injectable()
 export class NotificarCambioEstadoListener {
@@ -51,10 +52,17 @@ export class NotificarCambioEstadoListener {
       // Última red de seguridad: el handler documenta "NUNCA lanza", pero si
       // ese contrato se rompiera (bug futuro en un adapter), NO propagamos —
       // un unhandled rejection acá tira abajo el proceso (Node 24, sin
-      // handler global). Sin enmascarado propio: el mensaje del error NO
-      // debería traer un email en claro (el handler solo pasa causas
-      // enmascaradas), pero igual no se interpola el ticket completo, solo su id.
-      const motivo = err instanceof Error ? err.message : 'Error desconocido';
+      // handler global). El handler solo debería pasar causas ya
+      // enmascaradas, pero ese "debería" es justamente lo que este catch NO
+      // puede confiar ciegamente (Judgment Day PR3 Ronda 2, issue 3 Juez A):
+      // si un bug futuro en una capa inferior embebiera el email del
+      // destinatario en el propio `Error`, quedaría en claro en el log. Se
+      // enmascara el mensaje crudo con `maskEmailsInText()` antes de
+      // interpolarlo (mismo patrón que `sanitizeCausa()` en
+      // nodemailer-email-sender.adapter.ts: busca y enmascara SOLO
+      // ocurrencias con forma de email dentro del texto libre, sin destruir
+      // el resto del mensaje).
+      const motivo = err instanceof Error ? maskEmailsInText(err.message) : 'Error desconocido';
       this.logger.error(
         `NotificarCambioEstadoHandler.handle() rechazó la promesa para el ticket ` +
           `"${event.ticketId}" — esto NO debería pasar (contrato "nunca throw"). ` +

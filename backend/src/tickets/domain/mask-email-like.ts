@@ -29,3 +29,22 @@ export function maskEmailLike(raw: string): string {
   const domain = raw.slice(at + 1);
   return `${local.slice(0, 1)}***@${domain}`;
 }
+
+/** Detecta direcciones de email embebidas en texto libre (rechazos SMTP, mensajes de error de una capa inferior, etc.). */
+const EMAIL_IN_TEXT = /[\w.+-]+@[\w-]+\.[\w.-]+/g;
+
+/**
+ * Enmascara cualquier email en claro EMBEBIDO dentro de un texto arbitrario,
+ * preservando intacto el resto del texto — a diferencia de `maskEmailLike()`,
+ * que asume que el string COMPLETO es una dirección de email (usarlo sobre
+ * texto libre mutilaría el mensaje: todo lo que precede al primer `@` se
+ * reemplaza por un solo caracter).
+ *
+ * Reusa `maskEmailLike()` por cada ocurrencia encontrada, así que ambas
+ * funciones aplican la MISMA regla de enmascarado (Judgment Day PR3 Ronda 2,
+ * issue 3 Juez A: última red de seguridad del listener de eventos, que no
+ * puede confiar en que un `Error` de una capa inferior ya venga sin PII).
+ */
+export function maskEmailsInText(text: string): string {
+  return text.replace(EMAIL_IN_TEXT, (match) => maskEmailLike(match));
+}

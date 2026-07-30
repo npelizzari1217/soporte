@@ -151,4 +151,16 @@ describe('NotificarCambioEstadoListener', () => {
     expect(message).toContain('ticket-1');
     expect(message).not.toContain('usuario@dominio.com');
   });
+
+  it('enmascara un email embebido en err.message antes de loguear (Judgment Day PR3 Ronda 2, issue 3 Juez A)', async () => {
+    const errorSpy = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    handleSpy.mockRejectedValue(new Error('fallo interno para usuario@dominio.com'));
+
+    await expect(listener.handleTicketEstadoCambiado(makeEvent())).resolves.not.toThrow();
+
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    const [message] = errorSpy.mock.calls[0];
+    expect(message).not.toContain('usuario@dominio.com');
+    expect(message).toContain('u***@dominio.com');
+  });
 });
