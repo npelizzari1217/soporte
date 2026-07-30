@@ -101,6 +101,28 @@ describe('Email (VO)', () => {
     });
   });
 
+  describe('encapsulación real del valor crudo (Judgment Day PR2 Ronda 3, issue B)', () => {
+    it('Object.keys(email) no expone ninguna propiedad enumerable con el valor crudo', () => {
+      const email = Email.create('usuario@dominio.com').getValue();
+
+      expect(Object.keys(email)).toHaveLength(0);
+    });
+
+    it('Object.values(email) no expone el valor crudo del email', () => {
+      const email = Email.create('usuario@dominio.com').getValue();
+
+      expect(Object.values(email)).not.toContain('usuario@dominio.com');
+    });
+
+    it('el spread ({ ...email }) no expone el valor crudo del email', () => {
+      const email = Email.create('usuario@dominio.com').getValue();
+
+      const spread = { ...email } as Record<string, unknown>;
+
+      expect(Object.values(spread)).not.toContain('usuario@dominio.com');
+    });
+  });
+
   describe('equals()', () => {
     it('retorna true para dos Email con el mismo valor', () => {
       const a = Email.create('usuario@dominio.com').getValue();

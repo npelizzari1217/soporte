@@ -1,6 +1,6 @@
 import { Result } from '../../../shared/domain/result';
 import { EmailError } from '../errors/email.errors';
-import { maskEmailLike } from '../../../shared/domain/mask-email-like';
+import { maskEmailLike } from '../mask-email-like';
 
 const EMAIL_FORMAT = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -22,14 +22,26 @@ const NODE_INSPECT_CUSTOM = Symbol.for('nodejs.util.inspect.custom');
  * loguear el email completo en claro — ej. "u***@dominio.com"). Esto cubre
  * interpolación implícita (`toString()`), `JSON.stringify()` (`toJSON()`) y
  * la inspección de Node (`console.log`, vía `NODE_INSPECT_CUSTOM`) — las
- * tres formas en que el objeto puede filtrar `_value` en claro (Judgment Day
- * PR2 Ronda 2, issue B).
+ * tres formas en que el objeto puede filtrar el valor crudo en claro
+ * (Judgment Day PR2 Ronda 2, issue B).
+ *
+ * `#value` es un private field REAL de ECMAScript (no solo `private` de
+ * TS, que es únicamente compile-time): a diferencia de un campo `private`
+ * de TS, `#value` no aparece en `Object.keys()`/`Object.values()` ni se
+ * copia via spread (`{...email}`) — ninguna de esas vías puede filtrar el
+ * email crudo pese a que `toJSON()`/`inspect.custom` ya lo cubrían
+ * (Judgment Day PR2 Ronda 3, issue B — el `private` de TS solo bloqueaba
+ * el acceso en tiempo de compilación, no en runtime).
  *
  * Ref design: D8.
  * Tarea: 2.1/2.2 (PR2, notif-email-estado-ticket)
  */
 export class Email {
-  private constructor(private readonly _value: string) {}
+  readonly #value: string;
+
+  private constructor(value: string) {
+    this.#value = value;
+  }
 
   static create(raw: string): Result<Email, EmailError> {
     const trimmed = (raw ?? '').trim();
@@ -49,16 +61,16 @@ export class Email {
 
   /** Valor crudo del email — para persistencia/adapters. NUNCA para logs. */
   value(): string {
-    return this._value;
+    return this.#value;
   }
 
   /** Enmascarado apto para logs: "u***@dominio.com". */
   mask(): string {
-    return maskEmailLike(this._value);
+    return maskEmailLike(this.#value);
   }
 
   equals(other: Email): boolean {
-    return this._value === other._value;
+    return this.#value === other.#value;
   }
 
   /**
@@ -73,10 +85,9 @@ export class Email {
 
   /**
    * Enmascarado usado por `JSON.stringify(email)` / `JSON.stringify({ email })`.
-   * Sin esto, `JSON.stringify` serializa los campos privados internos
-   * (`_value`) tal cual, exponiendo el email completo en claro pese a que
-   * `toString()` ya lo protegía (Requirement 7 — Judgment Day PR2 Ronda 2,
-   * issue B).
+   * Sin esto, `JSON.stringify` serializaría el valor crudo tal cual,
+   * exponiendo el email completo en claro pese a que `toString()` ya lo
+   * protegía (Requirement 7 — Judgment Day PR2 Ronda 2, issue B).
    */
   toJSON(): string {
     return this.mask();
@@ -85,7 +96,7 @@ export class Email {
   /**
    * Personaliza `util.inspect()` (usado internamente por `console.log`) para
    * que inspeccionar el objeto directamente (`console.log(email)`) muestre
-   * el valor enmascarado en vez de `Email { _value: '...' }` en claro.
+   * el valor enmascarado en vez del valor crudo en claro.
    */
   [NODE_INSPECT_CUSTOM](): string {
     return this.mask();
