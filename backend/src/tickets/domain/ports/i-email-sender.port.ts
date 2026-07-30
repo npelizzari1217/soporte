@@ -15,6 +15,16 @@ export const EMAIL_SENDER = Symbol('EMAIL_SENDER');
  */
 export type EmailBody =
   | { type: 'text'; content: string }
+  /**
+   * `html`: `content` se envía TAL CUAL, sin escapar, al cliente de correo
+   * del destinatario. ASUME contenido ya confiable/estático (ej. un string
+   * literal armado por infra) — la capa de aplicación NUNCA debe alimentar
+   * esta variante con datos de dominio sin sanitizar (título de ticket,
+   * observaciones, cualquier input de usuario), o reintroduce el riesgo XSS
+   * que `type: 'template'` sí mitiga vía `escapeHtml` en la interpolación
+   * (ver `nodemailer-email-sender.adapter.ts`). Hoy no hay ningún caller de
+   * producción para esta variante (Judgment Day PR2 Ronda 2, issue E).
+   */
   | { type: 'html'; content: string }
   | { type: 'template'; name: string; data: Record<string, unknown> };
 
