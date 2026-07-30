@@ -68,5 +68,31 @@ describe('AuditEntry', () => {
       expect(propiedades).not.toContain('updatedAt');
       expect(propiedades).not.toContain('deletedAt');
     });
+
+    it('acepta un createdAt explícito (reconstitución desde persistencia) en vez de estampar new Date()', () => {
+      const createdAtPersistido = new Date('2020-01-01T00:00:00.000Z');
+
+      const entry = AuditEntry.create(PROPS_NO_SECRETA, 'id-fijo-de-test', createdAtPersistido);
+
+      expect(entry.createdAt.getTime()).toBe(createdAtPersistido.getTime());
+    });
+  });
+
+  describe('inmutabilidad (Judgment Day PR3 Ronda 1, issue 2)', () => {
+    it('mutar entry.props (bypass de readonly vía Object.assign) lanza TypeError — Object.freeze real en runtime', () => {
+      const entry = AuditEntry.create(PROPS_NO_SECRETA);
+
+      expect(() => Object.assign(entry.props, { valorNuevo: 'MUTADO' })).toThrow(TypeError);
+      expect(entry.props.valorNuevo).toBe('new.smtp.com');
+    });
+
+    it('mutar el objeto original pasado a create() no afecta la entidad ya construida (clona antes de congelar)', () => {
+      const propsOriginal = { ...PROPS_NO_SECRETA };
+      const entry = AuditEntry.create(propsOriginal);
+
+      propsOriginal.valorNuevo = 'MUTADO-EXTERNAMENTE';
+
+      expect(entry.props.valorNuevo).toBe('new.smtp.com');
+    });
   });
 });
