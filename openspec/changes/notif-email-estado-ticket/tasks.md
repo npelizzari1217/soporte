@@ -88,6 +88,7 @@ Cada PR: verificación propia (`pnpm test`/`lint`/`tsc --noEmit`), inicio/fin cl
 - [ ] 4.11 RED: `CANCELADO` notifica vía `PATCH` en `COMPRAS`/`EDILICIA` (R1 Scenario "transición a CANCELADO")
 - [ ] 4.12 RED: `.emit()` no bloquea la respuesta HTTP — `EventEmitterPublisher` real + listener con delay artificial (R6 Scenario "no bloquea")
 - [ ] 4.13 Verify: pegar salida real `pnpm test` / `pnpm lint` / `tsc --noEmit`, incluyendo suite completa `crear-observacion` sin regresión
+- [ ] 4.14 BACKLOG (Judgment Day PR3 Ronda 1, issue 5): enriquecer `EmailMessage.data` en `NotificarCambioEstadoHandler.handle()` con `numero`/`tituloTicket` del ticket ANTES de que el flujo real quede activo en prod — el template `cambio-estado` (subject.hbs/body.hbs) ya interpola `{{numero}}`/`{{tituloTicket}}` (ver `nodemailer-email-sender.adapter.spec.ts`), pero el evento `TicketEstadoCambiado` NO los carga (D4, filtro puro sin DB) y el payload actual del handler tampoco los agrega — hoy quedan placeholders vacíos en el email real. Requiere decisión de diseño de PR4: ¿el propio `TransicionarEstadoUseCase`/`CrearObservacionUseCase` enriquece el evento antes de publicar, o el handler resuelve el ticket vía repo adicional? NO implementar en PR3 (fuera de scope).
 
 ---
 

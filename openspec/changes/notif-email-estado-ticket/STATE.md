@@ -344,3 +344,54 @@ Branch `notif-email-estado-ticket-pr3` (creada desde `notif-email-estado-ticket-
 
 ### Cómo retomar
 Decidir: (a) aprobar PR3 → seguir con PR4 (puntos de publicación + reestructura `CrearObservacionUseCase` + DTOs/controllers + anti-regresión, mayor riesgo); (b) correr Judgment Day sobre PR3 antes de avanzar (mismo patrón que PR2); (c) pedir ajustes sobre PR3.
+
+## Judgment Day — PR3 — fixes Ronda 1 (2026-07-30)
+
+**Veredicto de los 2 jueces:** el fallback `SmtpUnavailableEmailSender` de 3.8 (arriba) era el problema real, no la solución — convertía un fail-fast intencional (D7, Requirement 7 nota infra) en fallo silencioso EN TODOS los entornos, incluido producción. Un deploy sin `SMTP_*` arrancaría "sano" y nunca mandaría mails, sin ningún log de arranque visible salvo un WARN fácil de perder.
+
+### Decisión clave: fail-fast restaurado, causa raíz resuelta en el entorno de test
+En vez de tolerar el throw de config SMTP faltante en el `useFactory` de `EMAIL_SENDER`, se resolvió la causa raíz: el problema NUNCA fue que la app deba tolerar SMTP ausente — fue que el ENTORNO DE TEST bootstrapea `TicketsModule`/`AppModule` sin `SMTP_*`. Fix: env SMTP dummy inyectada globalmente en el setup de Vitest, no en el código de producción.
+
+### Fixes aplicados
+1. **[CRITICAL] `EMAIL_SENDER` fail-fast restaurado.**
+   - `backend/src/tickets/tickets.module.ts`: el `useFactory` de `EMAIL_SENDER` volvió a ser `() => NodemailerEmailSender.fromEnv()` directo, SIN try/catch. El throw de config SMTP faltante se propaga y aborta `moduleRef.compile()`/`.init()` — comportamiento correcto para un deploy real sin SMTP.
+   - **Eliminados**: `backend/src/tickets/infrastructure/email/smtp-unavailable-email-sender.ts` y su `.spec.ts` (ya no hacen falta).
+   - `backend/src/tickets/infrastructure/email/email-config.ts`: `loadEmailConfig()` ahora lanza `SmtpConfigError` (nueva clase exportada, extiende `Error`) en vez de `Error` genérico — mismo mensaje, solo tipado, para distinguir config-faltante de un bug real en el adapter.
+   - **Entorno de test resuelto en la raíz**: nuevo `backend/test/setup-env.ts` (registrado en `vitest.config.ts` vía `setupFiles`) inyecta `SMTP_HOST/PORT/USER/PASS/FROM` DUMMY (`??=`, no pisa env real si ya está seteado) para TODA la suite. Cubre `tickets.module.wiring.spec.ts`, `equipos.module.spec.ts`, `compras.module.spec.ts`, `reparaciones.module.wiring.spec.ts`, `app.module.spec.ts`, `app.module.validation-pipe.spec.ts`, `tickets.dto.validation-pipe.spec.ts`, `smoke.e2e.spec.ts` — ninguno rompió.
+   - `tickets.module.wiring.spec.ts` actualizado: el test que antes solo pedía `EMAIL_SENDER` `toBeDefined()` ahora asserta `toBeInstanceOf(NodemailerEmailSender)` — confirma que con env dummy el DI graph resuelve el sender REAL, no un stand-in.
+   - Efecto neto: cero regresión de comportamiento en producción (sigue fail-fast, mismo mensaje de error); el entorno de test ya no depende de que el código de producción tolere config faltante.
+
+2. **[CRITICAL DoD §9] `as unknown as` eliminados de los 2 specs señalados.**
+   - `notificar-cambio-estado.handler.spec.ts`: `resolver`/`emailSender` tipados directo como `ISolicitanteEmailResolver & {...}` / `EmailSenderPort & {...}` — interfaces planas, sin cast.
+   - `notificar-cambio-estado.listener.spec.ts`: `NotificarCambioEstadoHandler` tiene campos privados (`resolver`/`emailSender`) → un objeto literal NO es asignable ni con single-cast (`as X`) sin pasar por `unknown` (TS "brands" clases con miembros privados). Se reemplazó el mock manual por una instancia REAL del handler con stubs tipados de sus 2 ports + `vi.spyOn(handler, 'handle')` — cero casts de ningún tipo, el listener recibe el tipo exacto de su constructor.
+
+3. **[WARNING] Listener sin try/catch — RED→GREEN.**
+   - `notificar-cambio-estado.listener.ts`: `await this.handler.handle(event)` ahora envuelto en `try/catch`. Si `handle()` rechaza (rompiendo su contrato "nunca throw"), se loguea `ERROR` con el `ticketId` y el motivo (sin email en claro) y NUNCA se relanza — última red de seguridad contra un unhandled rejection que en Node 24 mataría el proceso.
+   - Test RED nuevo en `notificar-cambio-estado.listener.spec.ts`: `handleSpy.mockRejectedValue(...)` → confirma que la promesa del listener resuelve (`resolves.not.toThrow()`) y que se logueó ERROR.
+
+4. **[SUGGESTION] Exhaustividad + Logger.**
+   - `notificar-cambio-estado.listener.ts`: rama `default` agregada al `switch (outcome.status)` con `const _exhaustive: never = outcome` — un `NotificacionOutcome` nuevo sin manejar rompe `tsc --noEmit` en vez de fallar en silencio. Defensivo en runtime: loguea ERROR en vez de lanzar (nunca alcanzable si el tipo se respeta).
+   - Extracción de `new Logger(...)` a constante de módulo: NO aplica — ese `new Logger('TicketsModule').warn(...)` vivía DENTRO del try/catch de `EMAIL_SENDER` que el fix 1 eliminó por completo (ya no hay ningún Logger inline en ningún factory de `tickets.module.ts`). `NotificarCambioEstadoListener` ya usaba el patrón correcto (`private readonly logger = new Logger(...)` a nivel de clase) — nada que extraer ahí.
+
+5. **[Backlog, no implementado — decisión de diseño de PR4]**
+   - `openspec/changes/notif-email-estado-ticket/tasks.md`: nuevo ítem `4.14` bajo PR4 documentando que `EmailMessage.data` necesita `numero`/`tituloTicket` (hoy placeholders vacíos, D4 — el evento no los carga) antes de que el flujo real quede activo en prod.
+
+### Evidencia real (backend/, 2026-07-30)
+`corepack pnpm test`:
+```
+Test Files  159 passed | 1 skipped (160)
+     Tests  2115 passed | 2 skipped (2117)
+  Duration  164.84s
+```
+(vs. Apply Progress PR3 original: 161→160 test files, 2119→2117 tests. Neto: -1 archivo [`smtp-unavailable-email-sender.spec.ts` eliminado, -3 tests] +1 test RED nuevo en el listener [rechazo de `handler.handle()`] = -2 tests.)
+
+`corepack pnpm lint` (== `eslint "src/**/*.ts"`): exit 0, sin output.
+`corepack pnpm exec tsc --noEmit -p tsconfig.json`: exit 0, sin output.
+
+### Archivos tocados
+- Modificados: `backend/src/tickets/tickets.module.ts`, `backend/src/tickets/infrastructure/email/email-config.ts`, `backend/src/tickets/tickets.module.wiring.spec.ts`, `backend/src/tickets/application/event-handlers/notificar-cambio-estado.handler.spec.ts`, `backend/src/tickets/infrastructure/events/notificar-cambio-estado.listener.ts`, `backend/src/tickets/infrastructure/events/notificar-cambio-estado.listener.spec.ts`, `backend/vitest.config.ts`, `openspec/changes/notif-email-estado-ticket/tasks.md`.
+- Creados: `backend/test/setup-env.ts`.
+- Eliminados: `backend/src/tickets/infrastructure/email/smtp-unavailable-email-sender.ts`, `backend/src/tickets/infrastructure/email/smtp-unavailable-email-sender.spec.ts`.
+
+### No tocado (correcto, fuera de scope PR4)
+`transicionar-estado.use-case.ts`, `crear-observacion.use-case.ts`, DTOs, controllers, y el enriquecimiento de `EmailMessage.data` con `numero`/`tituloTicket` (backlog 4.14, decisión de diseño de PR4).
