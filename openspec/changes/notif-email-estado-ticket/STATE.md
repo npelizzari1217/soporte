@@ -176,3 +176,49 @@ Los 2 skipped = test de integración gated (2.14) que skippea sin `SMTP_TEST=1`.
 
 ### Cómo retomar
 Decidir: (a) aprobar PR2 → seguir con PR3 (handler/listener/wiring); (b) pedir ajustes sobre PR2 antes de avanzar. Push/PR de cada slice sigue gateado por el usuario.
+
+---
+
+## Judgment Day — PR2 — fixes Ronda 1 (2026-07-30)
+
+**Status: DONE.** 6 issues confirmados (1 CRITICAL de build, 1 CRITICAL de seguridad XSS, 4 WARNING) arreglados RED→GREEN, estrictamente dentro de PR2 (`tickets.module.ts`, handler, listener, use cases de PR3/PR4 NO tocados).
+
+### Fixes aplicados
+
+1. **[CRITICAL] Templates `.hbs` no llegaban a `dist/`** — `backend/package.json` script `build`: se agregó paso `copyfiles -u 1 "src/tickets/infrastructure/email-templates/**/*.hbs" dist` después de `tsc-alias`. Herramienta elegida: `copyfiles@2.4.1` (devDependency nueva, cross-platform Windows/Linux, liviana — no había ninguna ya instalada). `-u 1` recorta el segmento `src/` para que el destino mirror-ee exactamente la ruta que `TEMPLATES_ROOT` resuelve en runtime (`dist/tickets/infrastructure/email-templates`). Verificado con build REAL (`pnpm run build` completo, no solo el smoke test): `dist/tickets/infrastructure/email-templates/cambio-estado/{subject,body}.hbs` quedan en la ruta exacta que espera `path.join(__dirname, '..', 'email-templates')` del adapter compilado. Smoke test agregado: `backend/src/tickets/infrastructure/email/email-templates-build.spec.ts` (verifica el script declarado, no corre el build completo en cada test run por costo).
+
+2. **[CRITICAL] XSS — `interpolate()` no escapaba HTML** — `nodemailer-email-sender.adapter.ts`: `interpolate()` ahora acepta `{ escapeHtml: boolean }`; se agregó `escapeHtml()` (entidades `& < > " '`). Se aplica `escapeHtml: true` SOLO al interpolar `body.hbs` (contexto HTML) — el `subject.hbs` queda sin escapar (es texto plano de header, escaparlo mostraría `&amp;` literal al usuario). Tests RED→GREEN en `nodemailer-email-sender.adapter.spec.ts` (uno prueba el escape en el body, otro prueba explícitamente que el subject NO se escapa).
+
+3. **[WARNING] `causa` filtraba el email completo en errores/logs (R7)** — `nodemailer-email-sender.adapter.ts`: nueva función `sanitizeCausa()` con regex `EMAIL_IN_TEXT` que detecta emails embebidos en texto libre (mensajes de rechazo SMTP) y los enmascara reusando `Email.maskRaw()`. Decisión: se hizo público `Email.maskRaw()` (antes `private static`) en `email.vo.ts` para reusar la MISMA regla de enmascarado del dominio en vez de duplicar lógica en infra — coherente con "shared kernel" de `value-objects/SKILL.md`.
+
+4. **[WARNING] `as any`/`as unknown as` en specs (DoD §9)** — Cero ocurrencias nuevas quedaron:
+   - `nodemailer-email-sender.adapter.spec.ts`: las 6 ocurrencias de `{ sendMail } as any` reemplazadas por `const transporter: EmailTransporter = { sendMail }` (tipado con la interfaz que el propio adapter exporta para esto).
+   - `solicitante-email.resolver.spec.ts`: `as unknown as PrismaService` → `as PrismaService` (single-cast). Se verificó con un scratch file + `tsc --noEmit` que el single-cast compila (la clase real tiene fields privados pero es asignable EN REVERSA a la forma estructural del mock, lo que habilita el cast de un solo paso — no hace falta pasar por `unknown`).
+
+5. **[WARNING] Resolver sin try/catch → promise reject en listener async** — `solicitante-email.resolver.ts`: el `findFirst` cross-DB ahora está en try/catch; ante fallo de infra (conexión/timeout/pool) se retorna `Result.fail(new ResolverEmailError('INFRAESTRUCTURA_INDISPONIBLE', ...))` en vez de dejar rechazar la promesa. Se agregó el código `INFRAESTRUCTURA_INDISPONIBLE` a `ResolverEmailErrorCode` (`email.errors.ts`) — no existía un código distinguible para fallos de infra vs. "email no disponible"/"usuario no encontrado", y reusar uno de esos dos habría sido semánticamente incorrecto. Mensaje del error NO incluye detalle crudo del driver (solo IDs de solicitante/tenant).
+
+6. **[WARNING] `Email` VO sin `toString()`** — `email.vo.ts`: `toString()` agregado, delega en `mask()` (nunca el valor crudo) para no reintroducir riesgo de fuga por interpolación implícita.
+
+### Decisiones no explícitamente pedidas pero necesarias
+- Nuevo código de error `INFRAESTRUCTURA_INDISPONIBLE` en `ResolverEmailErrorCode` (issue 5) — cambio aditivo mínimo, no rompe el contrato existente.
+- `Email.maskRaw()` pasó de `private` a `static` público (issue 3) — mismo motivo: reuso de lógica de dominio en vez de duplicarla en infra.
+
+### Evidencia real (backend/, 2026-07-30)
+`corepack pnpm test`: **156 test files (155 passed + 1 skipped), 2094 tests (2092 passed + 2 skipped)** — antes de este fix eran 2086 (+8 tests nuevos: 1 toString, 1 try/catch resolver, 1 causa masking, 2 XSS body/subject, 3 smoke test de build).
+`corepack pnpm lint`: exit 0 (2 errores de formato `prettier/prettier` detectados en la primera corrida sobre el spec del adapter, corregidos con `prettier --write`; verde en la corrida final).
+`corepack pnpm exec tsc --noEmit -p tsconfig.json`: exit 0.
+
+### Archivos tocados
+- `backend/package.json` (+devDependency `copyfiles`, script `build`)
+- `backend/pnpm-lock.yaml` (lockfile, por `copyfiles`)
+- `backend/src/tickets/infrastructure/email/nodemailer-email-sender.adapter.ts`
+- `backend/src/tickets/infrastructure/email/nodemailer-email-sender.adapter.spec.ts`
+- `backend/src/tickets/infrastructure/email/email-templates-build.spec.ts` (nuevo)
+- `backend/src/tickets/infrastructure/persistence/prisma/solicitante-email.resolver.ts`
+- `backend/src/tickets/infrastructure/persistence/prisma/solicitante-email.resolver.spec.ts`
+- `backend/src/tickets/domain/errors/email.errors.ts`
+- `backend/src/tickets/domain/value-objects/email.vo.ts`
+- `backend/src/tickets/domain/value-objects/email.vo.spec.ts`
+
+### No tocado (correcto, fuera de scope)
+`tickets.module.ts`, handler, listener, use cases de PR3/PR4 — cero cambios, tal como lo exigía el mandato de esta ronda.
