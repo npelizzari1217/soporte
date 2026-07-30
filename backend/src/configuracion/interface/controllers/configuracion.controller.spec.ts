@@ -283,6 +283,13 @@ describe('ConfiguracionController', () => {
         expect(repo.findAll).not.toHaveBeenCalled();
       });
 
+      it('lanza BadRequestException si categoria no es string (ej. array de query duplicada), sin llamar al repositorio', async () => {
+        await expect(controller.listar('tenant', ['a', 'b'], makePayload())).rejects.toThrow(
+          BadRequestException,
+        );
+        expect(repo.findAll).not.toHaveBeenCalled();
+      });
+
       it('mapea ScopeGlobalNoAutorizadoError (F2) a 403 cuando el actor no es global admin', async () => {
         await expect(
           controller.listar('global', undefined, makePayload({ is_global_admin: false })),

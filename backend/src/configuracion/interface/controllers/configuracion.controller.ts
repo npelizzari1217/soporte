@@ -157,9 +157,16 @@ export class ConfiguracionController {
   @RequirePermissions(PERMISO_CONFIGURACION)
   async listar(
     @Query('scope') scope: unknown,
-    @Query('categoria') categoria: string | undefined,
+    @Query('categoria') categoria: unknown,
     @CurrentUser() user: JwtPayload,
   ): Promise<ConfigResponseDto[]> {
+    // `categoria` es input público sin DTO: Express parsea `?categoria=a&categoria=b`
+    // como array y `?categoria[]=x` como objeto, así que el tipo TS mentiría en
+    // runtime. Validación fail-closed (400) antes de tocar el use case, mismo
+    // criterio que `scope` — Judgment Day PR5, hardening del boundary HTTP.
+    if (categoria !== undefined && typeof categoria !== 'string') {
+      throw new BadRequestException('El parámetro "categoria" debe ser un string.');
+    }
     const resolvedScope = buildScope(scope, user);
 
     const result = await this.leerConfigUseCase.execute({
