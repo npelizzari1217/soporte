@@ -88,3 +88,42 @@ export type ResolveConfigError =
   | CifradoError
   | InfraConfigError
   | ConfigFilaCorruptaError;
+
+/**
+ * CategoriaNoSoportadaError — `ActualizarConfigUseCase` solo admite
+ * `categoria === 'smtp'` (R8, whitelist nivel B). El modelo de datos
+ * genérico (`ConfiguracionRuntime.categoria`) soporta otras categorías sin
+ * migración adicional, pero NINGÚN caso de uso de este change las cablea —
+ * cualquier otra categoría se rechaza ANTES de tocar el repositorio.
+ *
+ * Ref design: §10, §14 F2/F3 (contexto de scope). Ref spec: Requirement 8.
+ * Tarea: 4.7 (PR4).
+ */
+export class CategoriaNoSoportadaError extends DomainError {
+  readonly code = 'CONFIG_CATEGORIA_NO_SOPORTADA' as const;
+
+  constructor(categoria: string) {
+    super(`Categoría "${categoria}" no soportada — solo "smtp" está cableada en este change.`);
+  }
+}
+
+/**
+ * ScopeGlobalNoAutorizadoError — F2 (menor privilegio, resolución
+ * autoritativa del usuario 2026-07-30, `design.md` "Resolución de forks"):
+ * escribir una fila `scope='global'` (afecta a TODOS los tenants sin config
+ * propia) requiere `is_global_admin=true` en el JWT del actor. Un actor con
+ * el permiso `configuracion:gestionar` pero SIN `is_global_admin` puede
+ * escribir su propio scope `tenant`, pero NUNCA la config global. Se valida
+ * ANTES de tocar el repositorio o el cifrado — ningún efecto secundario
+ * ocurre si este check falla.
+ *
+ * Ref design: §14 F2 (resolución autoritativa). Ref spec: Requirement 4/5
+ * (scope dual). Tarea: 4.8 (PR4).
+ */
+export class ScopeGlobalNoAutorizadoError extends DomainError {
+  readonly code = 'CONFIG_SCOPE_GLOBAL_NO_AUTORIZADO' as const;
+
+  constructor() {
+    super('Solo un usuario con is_global_admin puede escribir configuración de scope global.');
+  }
+}
