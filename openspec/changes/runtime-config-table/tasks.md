@@ -107,23 +107,23 @@ Cada PR: verificación propia (`pnpm test`/`lint`/`tsc --noEmit` en `backend/`),
 
 ## PR 6 — Swap email + fail-fast a send-time + anti-regresión (R6, R7, R8)
 
-- [ ] 6.1 RED: `EmailSenderPort.send(email, config)` — nueva firma con `SmtpConfig` explícito (R7 escenario 1)
-- [ ] 6.2 GREEN: editar `tickets/domain/ports/i-email-sender.port.ts`
-- [ ] 6.3 RED: `NodemailerEmailSender.send()` arma transporter por-envío desde `config` (no `process.env`, no `fromEnv()`) — spy `transportFactory` (R7 escenario 1)
-- [ ] 6.4 RED: 2 envíos consecutivos mismo tenant/config ⇒ 2 llamadas a `transportFactory` (R9 "sin cache", deuda aceptada)
-- [ ] 6.5 GREEN: refactor `tickets/infrastructure/email/nodemailer-email-sender.adapter.ts` — sin `(transporter, from)` ni `fromEnv()`; `sanitizeCausa(causa, pass)` redacta `config.pass` (R2 "secreto nunca fuera de memoria")
-- [ ] 6.6 Eliminar `tickets/infrastructure/email/email-config.ts` + `email-config.spec.ts` (`EmailConfig`/`SmtpConfigError` — R6)
-- [ ] 6.7 RED: auditoría de imports de `nodemailer-email-sender.adapter.ts` — sin `ISecretCipher`/`PrismaService`/`getMasterClient`/`getTenantClient` (R7 escenario 2)
-- [ ] 6.8 RED: `NotificarCambioEstadoHandler` — `configResolver` falla ⇒ outcome `no-config`, `send` NO llamado, sin throw (R6 escenario 2)
-- [ ] 6.9 RED: camino feliz con config resuelta ⇒ `send(email, config)` recibe la `SmtpConfig` correcta
-- [ ] 6.10 GREEN: editar `tickets/application/event-handlers/notificar-cambio-estado.handler.ts` — inyecta `IConfigResolver`, paso `b` (resolución) antes del resolver de email, nuevo outcome `no-config`
-- [ ] 6.11 GREEN: editar `notificar-cambio-estado.listener.ts` — `case 'no-config'` ⇒ `logger.warn(codigo, ticketId)`, NUNCA el secreto
-- [ ] 6.12 RED: bootstrap de `TicketsModule`/`ConfiguracionModule` SIN ninguna fila `ConfiguracionRuntime` categoría `smtp` ⇒ arranca sin throw (R6 escenario 1)
-- [ ] 6.13 GREEN: wire `tickets.module.ts` — `EMAIL_SENDER: useClass NodemailerEmailSender` (Dz11), `imports += [ConfiguracionModule]`, inject `CONFIG_RESOLVER` en `NotificarCambioEstadoHandler`
-- [ ] 6.14 RED: hot-reload — 2° envío usa la config ACTUALIZADA sin reinicio del proceso (R6 escenario 3)
-- [ ] 6.15 Eliminar dummy `SMTP_*` de `backend/test/setup-env.ts` (ya no se lee env); confirmar que ninguna spec de wiring dependía de esos valores
-- [ ] 6.16 Anti-regresión: re-correr suite completa de `notif-email-estado-ticket` (handler/listener/use-cases de tickets) — 100% verde tras el swap
-- [ ] 6.17 Verify final: pegar salida real `pnpm test`/`pnpm lint`/`tsc --noEmit` completos (backend) + verificar conteo de tenants migrados vs `clientes` activos (fan-out §11 design)
+- [x] 6.1 RED: `EmailSenderPort.send(email, config)` — nueva firma con `SmtpConfig` explícito (R7 escenario 1)
+- [x] 6.2 GREEN: editar `tickets/domain/ports/i-email-sender.port.ts`
+- [x] 6.3 RED: `NodemailerEmailSender.send()` arma transporter por-envío desde `config` (no `process.env`, no `fromEnv()`) — spy `transportFactory` (R7 escenario 1)
+- [x] 6.4 RED: 2 envíos consecutivos mismo tenant/config ⇒ 2 llamadas a `transportFactory` (R9 "sin cache", deuda aceptada)
+- [x] 6.5 GREEN: refactor `tickets/infrastructure/email/nodemailer-email-sender.adapter.ts` — sin `(transporter, from)` ni `fromEnv()`; `sanitizeCausa(causa, pass)` redacta `config.pass` (R2 "secreto nunca fuera de memoria")
+- [x] 6.6 Eliminar `tickets/infrastructure/email/email-config.ts` + `email-config.spec.ts` (`EmailConfig`/`SmtpConfigError` — R6)
+- [x] 6.7 RED: auditoría de imports de `nodemailer-email-sender.adapter.ts` — sin `ISecretCipher`/`PrismaService`/`getMasterClient`/`getTenantClient` (R7 escenario 2)
+- [x] 6.8 RED: `NotificarCambioEstadoHandler` — `configResolver` falla ⇒ outcome `no-config`, `send` NO llamado, sin throw (R6 escenario 2)
+- [x] 6.9 RED: camino feliz con config resuelta ⇒ `send(email, config)` recibe la `SmtpConfig` correcta
+- [x] 6.10 GREEN: editar `tickets/application/event-handlers/notificar-cambio-estado.handler.ts` — inyecta `IConfigResolver`, paso `b` (resolución) antes del resolver de email, nuevo outcome `no-config`
+- [x] 6.11 GREEN: editar `notificar-cambio-estado.listener.ts` — `case 'no-config'` ⇒ `logger.warn(codigo, ticketId)`, NUNCA el secreto
+- [x] 6.12 RED: bootstrap de `TicketsModule`/`ConfiguracionModule` SIN ninguna fila `ConfiguracionRuntime` categoría `smtp` ⇒ arranca sin throw (R6 escenario 1)
+- [x] 6.13 GREEN: wire `tickets.module.ts` — `EMAIL_SENDER: useClass NodemailerEmailSender` (Dz11), `imports += [ConfiguracionModule]`, inject `CONFIG_RESOLVER` en `NotificarCambioEstadoHandler`
+- [x] 6.14 RED: hot-reload — 2° envío usa la config ACTUALIZADA sin reinicio del proceso (R6 escenario 3) — test dedicado en `notificar-cambio-estado.handler.spec.ts` (2 `handle()` consecutivos, `configResolver.resolveSmtp` sin cache devuelve config distinta en cada llamada)
+- [x] 6.15 Eliminar dummy `SMTP_*` de `backend/test/setup-env.ts` (ya no se lee env); confirmar que ninguna spec de wiring dependía de esos valores
+- [x] 6.16 Anti-regresión: re-correr suite completa de `notif-email-estado-ticket` (handler/listener/use-cases de tickets) — 100% verde tras el swap
+- [x] 6.17 Verify final: pegar salida real `pnpm test`/`pnpm lint`/`tsc --noEmit` completos (backend) + verificar conteo de tenants migrados vs `clientes` activos (fan-out §11 design)
 
 ---
 

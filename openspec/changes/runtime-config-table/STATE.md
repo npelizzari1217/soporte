@@ -833,3 +833,102 @@ Sin push, sin PR — branch `runtime-config-table-pr5` gateado por el usuario, e
 ### Cómo retomar
 
 PR5 cerrado y verde — la API de gestión de config es alcanzable por HTTP por primera vez. Próximo work unit (Review Workload Guard, `ask-on-risk`): **PR6 — Swap `tickets/`** (contrato `send(email,config)`, adapter por-envío, elimina `email-config.ts`, `NotificarCambioEstadoHandler` resuelve config vía `IConfigResolver`, wiring + anti-regresión + verify final). Depende de PR2 (resolver, ya disponible) y PR1 (cipher, ya disponible). Mayor riesgo de regresión sobre `notif-email-estado-ticket` — extremar cuidado con la suite de ese change al final de PR6.
+
+## Apply Progress — PR6 (Swap email + fail-fast a send-time + anti-regresión — R6, R7, R8) — ÚLTIMO PR
+
+Branch: `runtime-config-table-pr6` (encadenada sobre `runtime-config-table-pr5`, ya aprobado). Sin push, sin PR — gateado por el usuario. **Cierra el change `runtime-config-table` (6/6 PRs completos)**: activa el flujo end-to-end (resolución de config runtime en DB → cifrado → envío de email) por primera vez.
+
+### Tasks (17/17 — PR6 completo)
+
+- [x] 6.1/6.2 GREEN: `EmailSenderPort.send(email, config: SmtpConfig)` — nueva firma (Dz6/R7)
+- [x] 6.3/6.4/6.5 GREEN: `NodemailerEmailSender` refactorizado — adapter PURO, arma transporter POR-ENVÍO desde `config` (sin `process.env`, sin `fromEnv()`, sin `(transporter, from)` en el constructor); `sanitizeCausa(causa, pass)` redacta `config.pass`
+- [x] 6.6 Eliminados `email-config.ts` + `email-config.spec.ts` (`EmailConfig`/`SmtpConfigError` — R6)
+- [x] 6.7 RED: auditoría estructural de imports del adapter — sin `ISecretCipher`/`PrismaService`/`getMasterClient`/`getTenantClient`
+- [x] 6.8-6.10 GREEN: `NotificarCambioEstadoHandler` inyecta `IConfigResolver`, nuevo paso `b` (resolución de config) ANTES del resolver de email, nuevo outcome `no-config`
+- [x] 6.11 GREEN: `notificar-cambio-estado.listener.ts` — `case 'no-config'` ⇒ `logger.warn(codigo, ticketId)`, nunca el secreto
+- [x] 6.12 RED: bootstrap de `TicketsModule`/`ConfiguracionModule` sin fila `ConfiguracionRuntime` categoría `smtp` ⇒ arranca sin throw (R6)
+- [x] 6.13 GREEN: wire `tickets.module.ts` — `EMAIL_SENDER: useClass NodemailerEmailSender` (Dz11), `imports += [ConfiguracionModule]`, inject `CONFIG_RESOLVER` en el handler
+- [x] 6.14 RED: hot-reload — test dedicado, 2 `handle()` consecutivos con config distinta ⇒ 2° envío usa la config NUEVA sin reiniciar el proceso
+- [x] 6.15 Eliminado dummy `SMTP_*` de `backend/test/setup-env.ts` — confirmado que ninguna spec de wiring dependía de esos valores (toda la suite corrió verde sin ellos)
+- [x] 6.16 Anti-regresión: suite `notif-email-estado-ticket` (adapter/handler/listener/wiring) — 35/35 verde (2 skip = integración gated `SMTP_TEST`), ver evidencia abajo
+- [x] 6.17 Verify final: ver evidencia real abajo. Sin migraciones nuevas en PR6 (solo código de aplicación) — el chequeo de "conteo de tenants migrados vs `clientes` activos" (§11 design) no aplica a este PR, ya cubierto en el cierre de PR1.
+
+### Archivos modificados
+
+| Archivo | Qué cambió |
+|---|---|
+| `backend/src/tickets/domain/ports/i-email-sender.port.ts` | `EmailSenderPort.send(email, config: SmtpConfig)` — nueva firma (Dz6) |
+| `backend/src/tickets/infrastructure/email/nodemailer-email-sender.adapter.ts` | Refactor completo: `transportFactory: TransportFactory` inyectable (default `nodemailer.createTransport`) reemplaza `(transporter, from)`; `send(email, config)` arma el transporter por-envío; eliminado `fromEnv()`/import de `email-config`; `sanitizeCausa(causa, pass)` redacta el secreto |
+| `backend/src/tickets/infrastructure/email/nodemailer-email-sender.adapter.spec.ts` | Reescrito — todas las specs adaptadas a `transportFactory` + `send(email, config)`; +tests: 2 envíos sin cache (6.4), redacción de `pass` en la causa, auditoría estructural de imports (6.7) |
+| `backend/src/tickets/infrastructure/email/nodemailer-email-sender.integration.spec.ts` | Adaptado al nuevo contrato — arma `SmtpConfig` explícita en vez de `fromEnv(testEnv)` |
+| `backend/src/tickets/application/event-handlers/notificar-cambio-estado.handler.ts` | `+IConfigResolver` en el constructor; paso `b` (resolución de config) antes del resolver de email; nuevo outcome `no-config`; `send()` recibe `(email, config)` |
+| `backend/src/tickets/application/event-handlers/notificar-cambio-estado.handler.spec.ts` | `+configResolver` mock en `beforeEach`; +tests: 6.8 (no-config), 6.9 (send recibe la config correcta), 6.14 (hot-reload) |
+| `backend/src/tickets/infrastructure/events/notificar-cambio-estado.listener.ts` | `+case 'no-config'` ⇒ `logger.warn` con código+ticketId |
+| `backend/src/tickets/infrastructure/events/notificar-cambio-estado.listener.spec.ts` | `handler` instanciado con `configResolver` stub; +test outcome `no-config` |
+| `backend/src/tickets/tickets.module.ts` | `+imports: [ConfiguracionModule]`; `EMAIL_SENDER: useClass NodemailerEmailSender` (reemplaza `useFactory: fromEnv()`); `NotificarCambioEstadoHandler` useFactory `+inject CONFIG_RESOLVER` (primer parámetro) |
+| `backend/src/tickets/tickets.module.wiring.spec.ts` | Reemplazado el test "rechaza el bootstrap si falta SMTP_HOST" (obsoleto — el fail-fast de boot ya no existe) por "arranca sin throw sin fila `ConfiguracionRuntime` smtp ni env SMTP_*" (R6); +assert de wiring posicional de `CONFIG_RESOLVER` en el handler (mismo patrón que `resolverCicloActivo`) |
+| `backend/test/setup-env.ts` | Eliminado el dummy `SMTP_*` (ya no se lee `process.env` en ningún punto del flujo de email) |
+| `openspec/changes/runtime-config-table/tasks.md` | Tasks 6.1-6.17 marcadas `[x]` |
+
+### Archivos eliminados
+
+| Archivo | Motivo |
+|---|---|
+| `backend/src/tickets/infrastructure/email/email-config.ts` | `EmailConfig`/`SmtpConfigError`/`loadEmailConfig()` — el fail-fast de boot por config SMTP se eliminó (R6); reemplazado por la resolución en send-time vía `IConfigResolver` |
+| `backend/src/tickets/infrastructure/email/email-config.spec.ts` | Specs del archivo anterior |
+
+### Decisiones de diseño (PR6)
+
+- **`transportFactory` con default sin decorador `@Injectable()`** (Dz11): `NodemailerEmailSender` se cablea con `useClass` en `tickets.module.ts` — NestJS no tiene metadata `design:paramtypes` para esta clase (sin decorador propio), así que resuelve el constructor con CERO argumentos inyectados, y el parámetro `transportFactory` cae en su valor por default (`nodemailer.createTransport` real). Verificado en runtime: `tickets.module.wiring.spec.ts` confirma `EMAIL_SENDER` resuelve a una instancia real de `NodemailerEmailSender` vía DI.
+- **`typeof nodemailer.createTransport` vs firma propia `TransportFactory`**: se definió `TransportFactory = (options: SmtpTransportOptions) => EmailTransporter` (tipo propio, NO el tipo exacto sobrecargado de nodemailer) — más simple para inyectar un stub en tests sin lidiar con las 6 sobrecargas de `createTransport`. `defaultTransportFactory()` (función interna, no exportada) hace de puente: llama a `nodemailer.createTransport(options)` (resolución de overload normal, no assignment-de-tipo-función) y el resultado se tipa como `EmailTransporter` por el tipo de retorno declarado de la función — cero `as any`/`as unknown as` (verificado por `tsc --noEmit` limpio).
+- **`sanitizeCausa(causa, pass)` — guard de `pass.length === 0`**: aunque `SmtpConfig.create()` garantiza que `pass` nunca es un string vacío (Dz5, ya validado en PR2), se agregó el guard explícito porque `''.split('').join(x)` insertaría el separador entre cada carácter del string — defensivo ante un futuro cambio de esa invariante, no evasión de tipado.
+- **`useClass: NodemailerEmailSender` (Dz11 literal) en vez de `useFactory`**: siguiendo design.md §7.4 al pie de la letra — el adapter ya no tiene ningún colaborador que requiera injection real (a diferencia de `fromEnv()`, que antes necesitaba el objeto `env`), así que `useClass` es la forma más simple y explícita.
+- **Test de wiring posicional para `CONFIG_RESOLVER`** (mismo criterio que el arreglo de `ResolverCicloActivoParaCreacion` en Fase 4): dado que `NotificarCambioEstadoHandler.useFactory` ahora tiene 3 parámetros posicionales (`configResolver, resolver, emailSender`), se agregó una verificación explícita del campo real de la instancia (`as unknown as` — mismo patrón YA establecido y aceptado en este archivo para `resolverCicloActivo`/`cicloClienteRepo`, ver comentario original del archivo) para blindar contra un futuro desalineamiento silencioso entre `inject` y los parámetros del factory.
+- **6.17 "conteo de tenants migrados"**: PR6 no agrega ninguna migración (solo refactor de código de aplicación/infra en `tickets/`) — ese chequeo (design §11) se hizo y cerró en PR1, que sí trajo el schema nuevo. No aplica repetirlo acá.
+
+### Evidencia real (backend/, corrida serial FOREGROUND, 2026-07-31, contra el estado exacto commiteado)
+
+**`corepack pnpm exec tsc --noEmit -p tsconfig.json`**: exit 0, sin output (limpio en el primer intento).
+
+**`corepack pnpm lint`**: primera corrida detectó 2 errores `prettier/prettier` (formato) en `nodemailer-email-sender.adapter.spec.ts` — corregidos con `eslint --fix` (solo reformateo, sin cambios de lógica). Corrida final:
+```
+$ eslint "src/**/*.ts"
+EXIT_CODE=0
+```
+(sin output, exit 0).
+
+**`corepack pnpm test`** (suite completa backend, foreground, una sola corrida real):
+```
+Test Files  179 passed | 1 skipped (180)
+     Tests  2363 passed | 2 skipped (2365)
+  Duration  160.79s
+```
+(vs. baseline PR5 — 180 archivos/2361 passed — ahora 179 archivos porque se ELIMINÓ `email-config.spec.ts` [-1 archivo]; neto +2 tests pese a remover las ~5 specs de `email-config.spec.ts`, por las specs nuevas agregadas en el swap [handler 6.8/6.9/6.14, listener no-config, adapter sin-cache/redacción-pass/auditoría-imports]. Sin regresiones — 0 tests fallidos, 0 archivos fallidos. El log `ERROR [AesGcmSecretCipher] decrypt() falló: ...` es esperado — mismo test de tampering de PR1, no un fallo real.)
+
+**Anti-regresión explícita — task 6.16 — suite `notif-email-estado-ticket` (corrida targeted, verbose, tras el swap)**:
+```
+✓ tickets.module.wiring.spec.ts (3 tests) — incluye "arranca sin throw sin fila ConfiguracionRuntime smtp ni env SMTP_*" (R6) + wiring posicional CONFIG_RESOLVER
+✓ email-templates-build.spec.ts (2 tests)
+✓ nodemailer-email-sender.adapter.spec.ts (19 tests) — incluye auditoría estructural de imports (R7 escenario 2), sin cache (R9), redacción de pass (R2)
+✓ notificar-cambio-estado.listener.spec.ts (8 tests) — incluye outcome "no-config"
+✓ notificar-cambio-estado.handler.spec.ts (7 tests) — incluye no-config (6.8), config correcta en send (6.9), hot-reload (6.14)
+↓ nodemailer-email-sender.integration.spec.ts (2 tests, skip — gated SMTP_TEST=1, comportamiento esperado)
+
+Test Files  5 passed | 1 skipped (6)
+     Tests  35 passed | 2 skipped (37)
+  Duration  6.16s
+```
+100% verde — el contrato del handler cambió (ahora resuelve config antes de enviar) pero la semántica de notificación (outcomes `skipped`/`no-email`/`send-failed`/`sent`, logging sin secretos, nunca-throw) se preservó íntegra.
+
+### Commits
+
+- `refactor(tickets): EmailSenderPort.send(email, config) — adapter de email puro, sin fromEnv` (i-email-sender.port.ts + nodemailer-email-sender.adapter.ts + specs; elimina email-config.ts/spec)
+- `feat(tickets): NotificarCambioEstadoHandler resuelve SmtpConfig via IConfigResolver antes de enviar` (handler.ts + listener.ts + specs — outcome no-config)
+- `feat(tickets): wire EMAIL_SENDER puro + CONFIG_RESOLVER en TicketsModule` (tickets.module.ts + wiring.spec.ts + setup-env.ts sin dummy SMTP)
+- `docs(runtime-config-table): marcar tasks PR6 y cerrar el change (6/6 PRs)` (tasks.md + STATE.md)
+
+Sin push, sin PR — branch `runtime-config-table-pr6` gateado por el usuario, encadenada sobre `runtime-config-table-pr5`.
+
+### Estado final del change
+
+**`runtime-config-table` — COMPLETO (6/6 PRs, 76/76 tasks totales).** Flujo end-to-end activo: config SMTP runtime en DB (tenant + global, merge por campo) → cifrado AES-256-GCM at-rest → resolución cross-DB fail-fast-a-send-time → envío de email con adapter puro → audit inmutable de cada cambio → API HTTP con RBAC (`configuracion:gestionar`) + F2 (scope global solo `is_global_admin`). Pendiente fuera de este change (documentado, no bloqueante): `.env.example` con `CONFIG_ENCRYPTION_KEY` de ejemplo (desviación #3, PR1 — el sandbox del agente deniega acceso a `.env*`); rotación de clave de cifrado (deuda D6 aceptada); cache de transporter (deuda R9 aceptada).
