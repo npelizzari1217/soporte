@@ -441,3 +441,74 @@ Sin push, sin PR — branch `runtime-config-table-pr3` gateado por el usuario, e
 ### Cómo retomar
 
 PR3 cerrado y verde. Próximo work unit (Review Workload Guard, `ask-on-risk`): **PR4 — CRUD config: use cases + repos + scope global (F2)** — depende de PR2 (cipher/resolver) y PR3 (evento audit, ya disponible). Al implementar `ActualizarConfigUseCase` en PR4, aplicar `maskIfSecret()` (de `configuracion/domain/mask-secret.ts`, ya disponible desde PR3) ANTES de construir `ConfiguracionCambiada` — es el único punto de la cadena completa donde el plaintext de un secreto podría filtrarse hacia el audit.
+
+## Judgment Day — PR3 — fixes Ronda 1
+
+Fix-agent quirúrgico sobre la capa de audit (branch `runtime-config-table-pr3`, sin push). 6 hallazgos de la ronda de revisión — 1 MEDIUM real (Juez A, el más importante), 2 reales confirmados A+B, 1 MEDIUM (Juez B), 2 LOW (Juez B). Todos resueltos.
+
+### Arreglos aplicados
+
+1. **[MEDIUM real, Juez A — el más importante] Defense-in-depth del masking ausente en el handler.** `AuditConfiguracionHandler.handle()` confiaba ciegamente en que `event.valorAnterior`/`valorNuevo` YA venían enmascarados (garantía del write use case, PR4) — pero `maskIfSecret()` (el guard central, pure e idempotente) no se llamaba en ningún punto de PR3. Un olvido futuro en PR4 habría filtrado el secreto en claro directo a `audit_entries`, sin ninguna red de contención en esta capa. FIX: `handle()` aplica `maskIfSecret(event.valorAnterior, event.esSecreto)` y `maskIfSecret(event.valorNuevo, event.esSecreto)` DEFENSIVAMENTE al construir el `AuditEntryProps` — idempotente, re-enmascarar un valor ya enmascarado es un no-op verificado por `mask-secret.spec.ts`.
+   - `backend/src/configuracion/application/event-handlers/audit-configuracion.handler.ts`
+   - Tests (+2): evento `esSecreto=true` con plaintext crudo en los valores ⇒ el `AuditEntry` persistido lleva los valores ENMASCARADOS, nunca el plaintext; idempotencia cuando el evento ya viene enmascarado.
+
+2. **[real, confirmado A+B] `AuditEntry` no era realmente inmutable.** `AuditEntryProps` no tenía campos `readonly` y `create()` guardaba el objeto `props` sin clonar — `entry.props.valorNuevo = 'x'` mutaba la entidad en runtime (contradice Dz8 + la regla dura de inmutabilidad del audit-log skill). FIX: todos los campos de `AuditEntryProps` marcados `readonly` (defensa compile-time); `create()` clona (`{ ...props }`) y aplica `Object.freeze()` ANTES de construir la entidad (defensa runtime real) — mutar el objeto original pasado a `create()` ya no afecta la entidad, y mutar `entry.props` (bypaseando `readonly` vía `Object.assign`, sin casts) lanza `TypeError` porque ESM corre siempre en strict mode.
+   - `backend/src/configuracion/domain/entities/audit-entry.entity.ts`
+   - Tests (+2): `Object.assign(entry.props, {...})` lanza `TypeError` y no muta una re-lectura; mutar el objeto original pasado a `create()` no afecta la entidad ya construida.
+
+3. **[real, confirmado A+B] Dual-scope confiaba en `dbName` crudo del caller.** `ConfigScope` llevaba `dbName` crudo para el scope tenant, y `PrismaAuditLog.record()` lo pasaba directo a `getTenantClient(scope.dbName)` sin validar ni re-resolver — a diferencia del patrón R9 ya establecido en `PrismaConfigResolver` (que re-resuelve `dbName` desde `master.clientes` por `clienteId`). Un evento construido con datos incorrectos podía apuntar a la DB de OTRO tenant. FIX: `ConfigScope` (variante tenant) ahora lleva `clienteId` en vez de `dbName`. `PrismaAuditLog.record()` re-resuelve el `dbName` real desde `master.clientes` (`activo=true`, `deletedAt=null`) por `clienteId` — mismo patrón exacto que `PrismaConfigResolver.findTenantRows()` (`resolveTenantDbName()`, con su propio try/catch para no violar "nunca lanza" ante un `clienteId` no-UUID). `clienteId` inexistente/inactivo/malformado ⇒ `Result.fail(AuditError)` ANTES de tocar `getTenantClient()` — sin cross-DB posible. Como PR4 todavía no emite el evento, cambiar el shape ahora no rompe ningún camino de producción real.
+   - `backend/src/configuracion/domain/events/configuracion-cambiada.event.ts` (`ConfigScope.tenant.clienteId`)
+   - `backend/src/configuracion/infrastructure/persistence/prisma/audit-log.adapter.ts` (`resolveTenantDbName()`)
+   - `backend/src/configuracion/domain/ports/i-audit-log.port.ts` (doc actualizado)
+   - Specs actualizados a `clienteId` (dejaron de usar `dbName` crudo en el `ConfigScope` de test): `configuracion-cambiada.event.spec.ts`, `audit-configuracion.handler.spec.ts`, `audit-configuracion.listener.spec.ts`, `audit-log.adapter.spec.ts`.
+   - Tests nuevos (+2) en `audit-log.adapter.spec.ts`: scope tenant con `clienteId` válido resuelve `dbName` vía `master.clientes.findFirst` y escribe en la DB correcta; `clienteId` inexistente/inactivo ⇒ `Result.fail`, nunca llama `getTenantClient`; `clienteId` malformado (findFirst rechaza) ⇒ `Result.fail`, nunca lanza.
+
+4. **[MEDIUM, Juez B] `createdAt` no se preservaba al reconstituir.** `AuditEntry.create()` siempre estampaba `new Date()`, sin parámetro para un `createdAt` ya persistido — un futuro mapper de lectura habría reportado "ahora" en vez del timestamp real de la fila. FIX: `create(props, id?, createdAt?)` acepta un `createdAt` OPCIONAL (espejo del `id` opcional) — si no se provee, sigue estampando `new Date()` (alta nueva); si se provee, lo preserva tal cual (reconstitución desde persistencia).
+   - `backend/src/configuracion/domain/entities/audit-entry.entity.ts`
+   - Test (+1): `create(props, id, createdAt)` preserva el `createdAt` dado, sin pisarlo.
+
+5. **[LOW, Juez B] Tests de borde del masking.** Faltaban casos explícitos de borde en `mask-secret.spec.ts`.
+   - `backend/src/configuracion/domain/mask-secret.spec.ts`
+   - Tests (+2): `maskIfSecret('', true)` ⇒ enmascarado (un secreto vacío sigue siendo secreto); `maskIfSecret(SECRET_MASK, true)` ⇒ `SECRET_MASK` (idempotencia).
+
+6. **[LOW, Juez B] Documentar la decisión de inmutabilidad a nivel DB.** La inmutabilidad de `audit_entries` es hoy solo convención de aplicación (readonly + `Object.freeze()` del fix #2, más la disciplina de NO llamar `.update()`/`.delete()` sobre `auditEntry` en ningún adapter) — no hay trigger ni regla WORM en Postgres que la haga cumplir a nivel de motor. Documentado acá como decisión explícita: un guard WORM de DB (regla/trigger que rechace `UPDATE`/`DELETE` sobre `audit_entries`) queda como consideración futura, NO bloqueante — implementarlo ahora sería scope/migración fan-out fuera de esta ronda quirúrgica. Sin cambios de código/migración en este fix.
+
+### Obligación forward para PR4 (actualizada)
+
+El **REQUISITO DURO** de "Judgment Day — PR1 — fixes Ronda 2" fix #6 sigue en pie sin cambios: el write use case (`ActualizarConfigUseCase`, PR4) DEBE aplicar `maskIfSecret()` en el ORIGEN antes de construir `ConfiguracionCambiada` — cero excepciones. El fix #1 de esta ronda agrega una red de contención en `AuditConfiguracionHandler` (defense-in-depth, idempotente), pero eso NO reemplaza ni relaja esa obligación: el masking en el origen sigue siendo el contrato primario (evita que el plaintext viaje siquiera por el evento/bus de eventos, no solo que llegue a `audit_entries`). El Judgment Day de PR4 debe seguir verificando explícitamente ese punto (spy sobre el evento publicado, assert `esSecreto=true` ⇒ valores `=== SECRET_MASK`), independientemente de que el handler de PR3 ahora tenga su propia red de seguridad.
+
+También relevante para PR4: `ConfigScope` (variante tenant) ahora requiere `clienteId`, no `dbName` — el write use case debe construir el evento con `{ kind: 'tenant', clienteId }` (el `clienteId` que ya tiene disponible del contexto de request), no con un `dbName` resuelto a mano.
+
+### Diferido a PRs posteriores (NO implementado en esta ronda — fuera de scope)
+
+- **Guard WORM de DB** (trigger/regla que rechace `UPDATE`/`DELETE` sobre `audit_entries`): consideración futura no bloqueante, ver fix #6. Requeriría nueva migración — fan-out fuera del scope quirúrgico de esta ronda.
+
+### Evidencia real (backend/, corrida serial FOREGROUND, 2026-07-30, contra el estado exacto commiteado)
+
+**`corepack pnpm test`**:
+```
+Test Files  172 passed | 1 skipped (173)
+     Tests  2265 passed | 2 skipped (2267)
+  Duration  155.89s
+```
+(vs. baseline Apply Progress PR3 — 2256 passed — +9 tests netos de esta ronda: 2 de defense-in-depth masking en el handler [fix #1], 2 de inmutabilidad real de `AuditEntry` [fix #2], 2 de resolución `clienteId`→`dbName` inválido/malformado en el adapter [fix #3], 1 de `createdAt` preservado al reconstituir [fix #4], 2 de bordes de `maskIfSecret` [fix #5]. Sin regresiones — corrida única, sin necesidad de una segunda pasada. El log `ERROR [AesGcmSecretCipher] decrypt() falló: ...` es esperado — pertenece a un test de PR1 que fuerza tampering del `authTag`, no un fallo real.)
+
+**`corepack pnpm lint`**:
+```
+$ eslint "src/**/*.ts"
+EXIT_CODE=0
+```
+(sin output, exit 0, sin correcciones necesarias esta ronda).
+
+**`corepack pnpm exec tsc --noEmit -p tsconfig.json`**: exit 0, sin output.
+
+**Revisión fresca (adversarial, sub-agente sin contexto previo)**: 0 CRITICAL, 0 WARNING, 0 SUGGESTION. Verificó explícitamente: `getTenantClient()` nunca se alcanza antes de resolver `clienteId` con éxito (los 3 caminos — válido, inexistente, malformado — trazados); el filtro `activo=true, deletedAt=null` es idéntico byte a byte al de `PrismaConfigResolver.findTenantRows()`; `Object.freeze` se aplica al clon, nunca al objeto original; cero referencias residuales a `dbName` crudo en `ConfigScope` en todo `backend/src`; cero `as any`/`as unknown as`; cero interpolación de errores crudos de driver o de secretos en logs; capa `domain/` sigue libre de imports de NestJS/Prisma.
+
+### Commits
+
+- `test(configuracion): bordes de maskIfSecret — secreto vacio e idempotencia` (mask-secret.spec.ts — fix #5)
+- `fix(configuracion): AuditEntry inmutable con readonly+freeze y createdAt opcional en reconstitucion` (audit-entry.entity.ts + spec — fixes #2 y #4, mismo archivo)
+- `fix(configuracion): ConfigScope tenant lleva clienteId, PrismaAuditLog re-resuelve dbName (R9), defense-in-depth de maskIfSecret en el handler` (configuracion-cambiada.event.ts + spec, i-audit-log.port.ts, audit-log.adapter.ts + spec, audit-configuracion.listener.spec.ts, audit-configuracion.handler.ts + spec — fixes #1 y #3, agrupados porque el rename de `ConfigScope` obliga a tocar el fixture de `handler.spec.ts` en el mismo commit para que compile)
+- `docs(configuracion): documentar decision de inmutabilidad a nivel app y fixes Judgment Day PR3 Ronda 1` (STATE.md — fix #6)
+
+Sin push, sin PR — branch `runtime-config-table-pr3` gateado por el usuario, igual que Apply Progress PR3.
