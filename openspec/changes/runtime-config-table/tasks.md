@@ -65,19 +65,19 @@ Cada PR: verificación propia (`pnpm test`/`lint`/`tsc --noEmit` en `backend/`),
 
 ## PR 3 — Audit inmutable (R5)
 
-- [ ] 3.1 Crear `configuracion/domain/mask-secret.ts` (`maskIfSecret`, `SECRET_MASK`) (design §5.1)
-- [ ] 3.2 RED: `AuditEntry.create()` — entidad plana, `id`+`createdAt`, SIN `updatedAt`/`deletedAt` (Dz8, §9 NFR spec)
-- [ ] 3.3 GREEN: crear `configuracion/domain/entities/audit-entry.entity.ts`
-- [ ] 3.4 Crear `configuracion/domain/events/configuracion-cambiada.event.ts` (`ConfiguracionCambiada`, `ConfigScope`, `CONFIGURACION_CAMBIADA`)
-- [ ] 3.5 Crear `configuracion/domain/ports/i-audit-log.port.ts` (`AuditLogPort`, `AUDIT_LOG`, `AuditError`)
-- [ ] 3.6 RED: `AuditConfiguracionHandler` persiste `AuditEntry` vía `AuditLogPort.record()` a partir del evento
-- [ ] 3.7 RED: `AuditLogPort.record()` falla ⇒ se loguea ERROR, NO propaga ni revierte (R5 escenario "fallo de audit")
-- [ ] 3.8 GREEN: crear `configuracion/application/event-handlers/audit-configuracion.handler.ts`
-- [ ] 3.9 RED: `AuditConfiguracionListener` (`@OnEvent(CONFIGURACION_CAMBIADA)`) delega, try/catch de última red (patrón `notificar-cambio-estado.listener.ts`)
-- [ ] 3.10 GREEN: crear `configuracion/infrastructure/events/audit-configuracion.listener.ts`
-- [ ] 3.11 RED: `PrismaAuditLog.record()` — `scope.kind==='tenant'` ⇒ `getTenantClient(dbName).auditEntry.create`; `'global'` ⇒ `getMasterClient().auditEntry.create` (R5 escenario "scope dual")
-- [ ] 3.12 GREEN: crear `configuracion/infrastructure/persistence/prisma/audit-log.adapter.ts`
-- [ ] 3.13 Verify: pegar salida real tests/lint/tsc
+- [x] 3.1 Crear `configuracion/domain/mask-secret.ts` (`maskIfSecret`, `SECRET_MASK`) (design §5.1)
+- [x] 3.2 RED: `AuditEntry.create()` — entidad plana, `id`+`createdAt`, SIN `updatedAt`/`deletedAt` (Dz8, §9 NFR spec)
+- [x] 3.3 GREEN: crear `configuracion/domain/entities/audit-entry.entity.ts`
+- [x] 3.4 Crear `configuracion/domain/events/configuracion-cambiada.event.ts` (`ConfiguracionCambiada`, `ConfigScope`, `CONFIGURACION_CAMBIADA`)
+- [x] 3.5 Crear `configuracion/domain/ports/i-audit-log.port.ts` (`AuditLogPort`, `AUDIT_LOG`, `AuditError`)
+- [x] 3.6 RED: `AuditConfiguracionHandler` persiste `AuditEntry` vía `AuditLogPort.record()` a partir del evento
+- [x] 3.7 RED: `AuditLogPort.record()` falla ⇒ se loguea ERROR, NO propaga ni revierte (R5 escenario "fallo de audit")
+- [x] 3.8 GREEN: crear `configuracion/application/event-handlers/audit-configuracion.handler.ts`
+- [x] 3.9 RED: `AuditConfiguracionListener` (`@OnEvent(CONFIGURACION_CAMBIADA)`) delega, try/catch de última red (patrón `notificar-cambio-estado.listener.ts`)
+- [x] 3.10 GREEN: crear `configuracion/infrastructure/events/audit-configuracion.listener.ts`
+- [x] 3.11 RED: `PrismaAuditLog.record()` — `scope.kind==='tenant'` ⇒ `getTenantClient(dbName).auditEntry.create`; `'global'` ⇒ `getMasterClient().auditEntry.create` (R5 escenario "scope dual")
+- [x] 3.12 GREEN: crear `configuracion/infrastructure/persistence/prisma/audit-log.adapter.ts`
+- [x] 3.13 Verify: pegar salida real tests/lint/tsc
 
 ## PR 4 — CRUD config: use cases + repos + scope global (F2) (R3, R5, R8)
 

@@ -348,3 +348,96 @@ EXIT_CODE=0
 - `docs(configuracion): documentar desviacion D5 y fixes Judgment Day PR2 Ronda 1` (STATE.md)
 
 Sin push, sin PR — branch `runtime-config-table-pr2` gateado por el usuario, igual que Apply Progress PR2.
+
+## Apply Progress — PR3 (Audit inmutable — R5)
+
+Branch: `runtime-config-table-pr3` (encadenada sobre `runtime-config-table-pr2`, ya aprobado). Sin push, sin PR — gateado por el usuario.
+
+### Tasks (13/13 — PR3 completo)
+
+- [x] 3.1 `configuracion/domain/mask-secret.ts` (`maskIfSecret`, `SECRET_MASK`)
+- [x] 3.2 RED/GREEN: `AuditEntry.create()` — entidad plana, `id`+`createdAt`, SIN `updatedAt`/`deletedAt` (Dz8)
+- [x] 3.3 GREEN: `configuracion/domain/entities/audit-entry.entity.ts`
+- [x] 3.4 `configuracion/domain/events/configuracion-cambiada.event.ts` (`ConfiguracionCambiada`, `ConfigScope`, `CONFIGURACION_CAMBIADA`)
+- [x] 3.5 `configuracion/domain/ports/i-audit-log.port.ts` (`AuditLogPort`, `AUDIT_LOG`, `AuditError`)
+- [x] 3.6 RED: `AuditConfiguracionHandler` persiste `AuditEntry` vía `AuditLogPort.record()`
+- [x] 3.7 RED: `AuditLogPort.record()` falla ⇒ outcome `failed` tipado, NO propaga ni revierte
+- [x] 3.8 GREEN: `configuracion/application/event-handlers/audit-configuracion.handler.ts`
+- [x] 3.9 RED: `AuditConfiguracionListener` (`@OnEvent`) delega, try/catch de última red
+- [x] 3.10 GREEN: `configuracion/infrastructure/events/audit-configuracion.listener.ts`
+- [x] 3.11 RED: `PrismaAuditLog.record()` — scope dual (tenant/global)
+- [x] 3.12 GREEN: `configuracion/infrastructure/persistence/prisma/audit-log.adapter.ts`
+- [x] 3.13 Verify: ver evidencia real abajo
+
+### Archivos nuevos
+
+| Archivo | Qué hace |
+|---|---|
+| `backend/src/configuracion/domain/mask-secret.ts` | `maskIfSecret(valor, esSecreto)` + `SECRET_MASK='********'` — única fuente de verdad del enmascarado dentro de `configuracion/` (design §5.1). Usado por el write use case (PR4, aún no implementado) al construir el evento y por `AuditConfiguracionHandler` de forma indirecta (recibe el valor ya enmascarado). |
+| `backend/src/configuracion/domain/mask-secret.spec.ts` | Unit — enmascara si `esSecreto`, preserva `null`, nunca retorna/contiene el plaintext, pasa igual si no-secreto. |
+| `backend/src/configuracion/domain/entities/audit-entry.entity.ts` | `AuditEntry` — entidad plana inmutable (Dz8, NO extiende `BaseEntity`): `id`(uuidv7)+`props`+`createdAt`, sin `updatedAt`/`deletedAt`. `create(props, id?)` genera id nuevo o acepta uno explícito (reconstitución). |
+| `backend/src/configuracion/domain/entities/audit-entry.entity.spec.ts` | Unit — construcción, id generado vs explícito, `createdAt=now()`, `valorAnterior` null, ausencia de `updatedAt`/`deletedAt` (verificado por `Object.keys`, sin casts). |
+| `backend/src/configuracion/domain/events/configuracion-cambiada.event.ts` | `ConfiguracionCambiada` (`DomainEvent`) + `ConfigScope` (`tenant`\|`global`) + token `CONFIGURACION_CAMBIADA='configuracion.cambiada'`. Transporta `valorAnterior`/`valorNuevo` YA enmascarados si `esSecreto` (Dz7) — la clase NO enmascara, solo transporta. |
+| `backend/src/configuracion/domain/events/configuracion-cambiada.event.spec.ts` | Unit — forma del evento, scope tenant/global, `esSecreto=true` con valores enmascarados, `valorAnterior` null. |
+| `backend/src/configuracion/domain/ports/i-audit-log.port.ts` | Puerto `AuditLogPort.record(entry, scope)` + token `AUDIT_LOG` + `AuditError` (`code='AUDIT_WRITE_FAILED'`). |
+| `backend/src/configuracion/application/event-handlers/audit-configuracion.handler.ts` | `AuditConfiguracionHandler` (application, PURO — sin decorators NestJS, mismo patrón que `NotificarCambioEstadoHandler`): construye `AuditEntry` desde el evento y llama `AuditLogPort.record()`. NUNCA lanza — retorna `AuditConfiguracionOutcome` (`recorded`\|`failed`). Exporta `ACCION_CONFIG_ACTUALIZADA='config.actualizada'`. |
+| `backend/src/configuracion/application/event-handlers/audit-configuracion.handler.spec.ts` | Unit — persiste con los datos del evento, valores ya enmascarados pasan intactos, fallo de `record()` ⇒ outcome `failed` con `codigo`/`categoria`/`clave`, nunca lanza. |
+| `backend/src/configuracion/infrastructure/events/audit-configuracion.listener.ts` | `AuditConfiguracionListener` (`@Injectable()` `@OnEvent(CONFIGURACION_CAMBIADA)`) — delega en el handler, decide el nivel de log según el outcome (`recorded`⇒silencio, `failed`⇒`logger.error` con categoria/clave/codigo/motivo, NUNCA con `valorAnterior`/`valorNuevo`), try/catch de última red (mismo patrón que `notificar-cambio-estado.listener.ts`). |
+| `backend/src/configuracion/infrastructure/events/audit-configuracion.listener.spec.ts` | Unit — delega con el evento, silencio en `recorded`, `logger.error` en `failed` sin exponer valores, nunca propaga (ni en fallo del handler ni en outcome `failed`), última red ante rechazo inesperado de `handle()`. |
+| `backend/src/configuracion/infrastructure/persistence/prisma/audit-log.adapter.ts` | `PrismaAuditLog implements AuditLogPort` — `scope.kind==='tenant'` ⇒ `getTenantClient(dbName).auditEntry.create`; `'global'` ⇒ `getMasterClient().auditEntry.create`. Persiste `entry.props` TAL CUAL (nunca transforma/enmascara — esa garantía es aguas arriba). Try/catch de infra ⇒ `Result.fail(AuditError)`, nunca lanza. |
+| `backend/src/configuracion/infrastructure/persistence/prisma/audit-log.adapter.spec.ts` | Unit — scope tenant/global cada uno con su cliente correcto y sin tocar el otro, fila secreta persiste el valor enmascarado tal cual llega, fallo de infra en ambos scopes ⇒ `Result.fail(AuditError)`. |
+
+### Archivos modificados
+
+| Archivo | Qué cambió |
+|---|---|
+| `openspec/changes/runtime-config-table/tasks.md` | Tasks 3.1-3.13 marcadas `[x]`. |
+
+### Cumplimiento del REQUISITO DURO (Judgment Day PR1 Ronda 2, fix #6)
+
+El writer de `audit_entries` (PrismaAuditLog) **nunca enmascara ni descifra** — persiste `entry.props` exactamente como llega. La garantía de que `valorAnterior`/`valorNuevo` jamás contienen el plaintext de un secreto es responsabilidad de la capa que CONSTRUYE el evento (`ActualizarConfigUseCase`, PR4, vía `maskIfSecret()`) — en PR3 esa capa todavía no existe, así que **no hay ningún camino de producción real que escriba en `audit_entries` todavía**. Lo que sí queda construido y verificado en PR3:
+
+1. `maskIfSecret()` — el helper de masking, con tests que verifican que el output NUNCA contiene ni es igual al plaintext de entrada.
+2. `AuditEntry`/`AuditConfiguracionHandler`/`AuditConfiguracionListener`/`PrismaAuditLog` — toda la cadena transporta y persiste los valores tal cual los recibe, sin loggear `valorAnterior`/`valorNuevo` en ningún punto (verificado explícitamente en `audit-configuracion.listener.spec.ts`: el mensaje de ERROR de fallo de audit NUNCA contiene `********` ni ningún valor).
+3. Cuando PR4 implemente `ActualizarConfigUseCase`, DEBE llamar `maskIfSecret()` antes de construir `ConfiguracionCambiada` — ese es el único punto de la cadena donde el plaintext podría filtrarse, y es EXTERNO al scope de PR3. El Judgment Day de PR4 debe verificar ese punto específico (spy sobre el evento publicado, assert que `esSecreto=true` ⇒ valores `=== '********'`).
+
+### Notas de diseño
+
+- `AuditConfiguracionHandler`/`AuditConfiguracionListener` replican EXACTAMENTE el split D2/D3 de `NotificarCambioEstadoHandler`/`.listener.ts` (change `notif-email-estado-ticket`): el handler es una clase plana de `application/` sin decorators que retorna un outcome tipado y NUNCA lanza; el listener (`infrastructure/`, `@Injectable()`/`@OnEvent`) es el único lugar con `Logger` de `@nestjs/common` y decide qué loguear según el outcome, con try/catch de última red por si el contrato "nunca throw" se rompiera en el futuro.
+- `AuditEntry` NO se testea con casts (`as any`/`as unknown as` prohibidos, DoD §9): la verificación de que NO expone `updatedAt`/`deletedAt` usa `Object.keys(entry)` en vez de castear a `Record<string, unknown>`.
+- No se creó `ConfiguracionModule` en este PR (wiring NestJS es tarea 4.12, PR4) — mismo criterio que PR2: `AuditConfiguracionHandler`/`AuditConfiguracionListener`/`PrismaAuditLog` se testean directamente por constructor, sin bootstrap de Nest.
+- `PrismaAuditLog` pasa `createdAt: entry.createdAt` explícito en el `create()` (en vez de dejar que el `@default(now())` de Postgres lo setee) — mismo criterio que otros mappers cuando el dominio ya calculó el timestamp (consistencia entre el `AuditEntry` en memoria y la fila persistida, sin drift de milisegundos entre `AuditEntry.create()` y el INSERT real).
+- `id: entry.id` se pasa explícito en el `create()` (generado por `uuidv7()` en `AuditEntry.create()`) — mismo patrón que `UsuarioMapper.toPersistence()`/`PrismaUsuarioRepository` (el id se genera en el backend antes del INSERT, no se delega al `dbgenerated("gen_random_uuid()")` del schema).
+
+### Evidencia real (backend/, corrida serial FOREGROUND, 2026-07-30, contra el estado exacto commiteado)
+
+**`corepack pnpm test`**:
+```
+Test Files  172 passed | 1 skipped (173)
+     Tests  2256 passed | 2 skipped (2258)
+  Duration  176.51s
+```
+(vs. baseline PR2 Ronda 1 — 2226 passed — +30 tests netos de PR3: 6 de `mask-secret.spec.ts`, 7 de `audit-entry.entity.spec.ts`, 3 de `configuracion-cambiada.event.spec.ts`, 4 de `audit-configuracion.handler.spec.ts`, 5 de `audit-configuracion.listener.spec.ts`, 5 de `audit-log.adapter.spec.ts`. Sin regresiones. El log `ERROR [AesGcmSecretCipher] decrypt() falló: ...` es esperado — pertenece a un test de PR1 que fuerza tampering del `authTag`, no un fallo real.)
+
+**`corepack pnpm lint`**: primera corrida detectó 1 error `@typescript-eslint/no-unused-vars` (`Result` importado sin usar en `audit-configuracion.listener.spec.ts`) — corregido eliminando el import. Corrida final:
+```
+$ eslint "src/**/*.ts"
+EXIT_CODE=0
+```
+(sin output, exit 0).
+
+**`corepack pnpm exec tsc --noEmit -p tsconfig.json`**: exit 0, sin output.
+
+### Commits
+
+- `feat(configuracion): masking helper y entidad AuditEntry inmutable` (mask-secret.ts + audit-entry.entity.ts + specs)
+- `feat(configuracion): evento ConfiguracionCambiada y puerto AuditLogPort` (event + port)
+- `feat(configuracion): handler y listener async de auditoria de config` (handler + listener + specs)
+- `feat(configuracion): adapter Prisma de audit log con scope dual` (audit-log.adapter.ts + spec)
+- `docs(configuracion): marcar tasks PR3 y documentar Apply Progress` (tasks.md + STATE.md)
+
+Sin push, sin PR — branch `runtime-config-table-pr3` gateado por el usuario, encadenada sobre `runtime-config-table-pr2`.
+
+### Cómo retomar
+
+PR3 cerrado y verde. Próximo work unit (Review Workload Guard, `ask-on-risk`): **PR4 — CRUD config: use cases + repos + scope global (F2)** — depende de PR2 (cipher/resolver) y PR3 (evento audit, ya disponible). Al implementar `ActualizarConfigUseCase` en PR4, aplicar `maskIfSecret()` (de `configuracion/domain/mask-secret.ts`, ya disponible desde PR3) ANTES de construir `ConfiguracionCambiada` — es el único punto de la cadena completa donde el plaintext de un secreto podría filtrarse hacia el audit.
