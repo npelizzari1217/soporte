@@ -1,19 +1,30 @@
 /**
- * 2.11 — RED: NodemailerEmailSender — éxito ⇒ Result.ok; fallo SMTP ⇒
- * Result.fail(EmailError) enmascarado, NUNCA throw.
+ * 6.3/6.4/6.7 — RED: NodemailerEmailSender — adapter puro, arma el
+ * transporter POR-ENVÍO desde una `SmtpConfig` explícita (no `process.env`,
+ * no `fromEnv()`), sin cache entre envíos, sin importar `ISecretCipher`/
+ * `PrismaService`/clientes Prisma.
  *
- * El adapter recibe un `Transporter` ya construido (seam de test — evita
- * abrir conexiones SMTP reales en unit tests). El wiring real
- * (`NodemailerEmailSender.fromEnv()`) se ejercita solo en el test de
- * integración gated (2.14).
+ * El adapter recibe `transportFactory` como seam de test (evita abrir
+ * conexiones SMTP reales en unit tests) — reemplaza el `Transporter`
+ * inyectado por constructor de PR2 (notif-email-estado-ticket), eliminado en
+ * el swap de PR6 (runtime-config-table).
  *
- * Ref spec: Requirement 7 Scenarios "ok"/"fail tipado".
- * Ref tasks: PR2 2.11
+ * Ref spec: Requirement 2 (secreto nunca fuera de memoria), Requirement 6
+ * (fail-fast a send-time), Requirement 7 (adapter puro, arma transporter
+ * por-envío), Requirement 9 (sin cache de transporter).
+ * Ref tasks: PR6 6.3, 6.4, 6.7 (runtime-config-table).
  */
-import { NodemailerEmailSender, EmailTransporter } from './nodemailer-email-sender.adapter';
+import * as fs from 'fs';
+import * as path from 'path';
+import {
+  NodemailerEmailSender,
+  EmailTransporter,
+  SmtpTransportOptions,
+} from './nodemailer-email-sender.adapter';
 import { Email } from '../../domain/value-objects/email.vo';
 import { EmailError } from '../../domain/errors/email.errors';
 import { EmailMessage } from '../../domain/ports/i-email-sender.port';
+import { SmtpConfig } from '../../../shared/domain/value-objects/smtp-config.vo';
 
 describe('NodemailerEmailSender', () => {
   const to = Email.create('usuario@dominio.com').getValue();
@@ -27,15 +38,41 @@ describe('NodemailerEmailSender', () => {
     };
   }
 
-  describe('send()', () => {
-    it('retorna Result.ok(undefined) cuando el transporter entrega el mensaje sin error', async () => {
-      const sendMail = vi.fn().mockResolvedValue({ messageId: 'abc123' });
-      const transporter: EmailTransporter = { sendMail };
-      const adapter = new NodemailerEmailSender(transporter, 'Soporte <no-reply@dominio.com>');
+  function makeConfig(
+    overrides: Partial<Parameters<typeof SmtpConfig.create>[0]> = {},
+  ): SmtpConfig {
+    return SmtpConfig.create({
+      host: 'smtp.dominio.com',
+      port: 587,
+      secure: false,
+      user: 'no-reply@dominio.com',
+      pass: 'super-secreto',
+      from: 'Soporte <no-reply@dominio.com>',
+      ...overrides,
+    }).getValue();
+  }
 
-      const result = await adapter.send(makeMessage());
+  function makeTransportFactory(sendMail: ReturnType<typeof vi.fn>) {
+    const transporter: EmailTransporter = { sendMail };
+    return vi.fn().mockReturnValue(transporter);
+  }
+
+  describe('send()', () => {
+    it('arma el transporter POR-ENVÍO a partir de la SmtpConfig recibida (no process.env, no fromEnv) — R7 escenario 1', async () => {
+      const sendMail = vi.fn().mockResolvedValue({ messageId: 'abc123' });
+      const transportFactory = makeTransportFactory(sendMail);
+      const config = makeConfig();
+      const adapter = new NodemailerEmailSender(transportFactory);
+
+      const result = await adapter.send(makeMessage(), config);
 
       expect(result.isOk()).toBe(true);
+      expect(transportFactory).toHaveBeenCalledWith({
+        host: 'smtp.dominio.com',
+        port: 587,
+        secure: false,
+        auth: { user: 'no-reply@dominio.com', pass: 'super-secreto' },
+      } satisfies SmtpTransportOptions);
       expect(sendMail).toHaveBeenCalledWith(
         expect.objectContaining({
           from: 'Soporte <no-reply@dominio.com>',
@@ -46,12 +83,31 @@ describe('NodemailerEmailSender', () => {
       );
     });
 
+    it('2 envíos consecutivos ⇒ 2 llamadas a transportFactory, sin cache (R9, deuda documentada)', async () => {
+      const sendMail = vi.fn().mockResolvedValue({ messageId: 'abc123' });
+      const transportFactory = makeTransportFactory(sendMail);
+      const adapter = new NodemailerEmailSender(transportFactory);
+
+      await adapter.send(makeMessage(), makeConfig({ host: 'smtp-1.dominio.com' }));
+      await adapter.send(makeMessage(), makeConfig({ host: 'smtp-2.dominio.com' }));
+
+      expect(transportFactory).toHaveBeenCalledTimes(2);
+      expect(transportFactory).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({ host: 'smtp-1.dominio.com' }),
+      );
+      expect(transportFactory).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({ host: 'smtp-2.dominio.com' }),
+      );
+    });
+
     it('retorna Result.fail(EmailError) con destinatario enmascarado cuando el transporter rechaza (nunca throw)', async () => {
       const sendMail = vi.fn().mockRejectedValue(new Error('Connection refused'));
-      const transporter: EmailTransporter = { sendMail };
-      const adapter = new NodemailerEmailSender(transporter, 'Soporte <no-reply@dominio.com>');
+      const transportFactory = makeTransportFactory(sendMail);
+      const adapter = new NodemailerEmailSender(transportFactory);
 
-      const result = await adapter.send(makeMessage());
+      const result = await adapter.send(makeMessage(), makeConfig());
 
       expect(result.isFail()).toBe(true);
       expect(result.getError()).toBeInstanceOf(EmailError);
@@ -62,10 +118,10 @@ describe('NodemailerEmailSender', () => {
 
     it('nunca lanza — send() siempre resuelve la promesa incluso ante fallo del transporter', async () => {
       const sendMail = vi.fn().mockRejectedValue(new Error('timeout'));
-      const transporter: EmailTransporter = { sendMail };
-      const adapter = new NodemailerEmailSender(transporter, 'Soporte <no-reply@dominio.com>');
+      const transportFactory = makeTransportFactory(sendMail);
+      const adapter = new NodemailerEmailSender(transportFactory);
 
-      await expect(adapter.send(makeMessage())).resolves.not.toThrow();
+      await expect(adapter.send(makeMessage(), makeConfig())).resolves.not.toThrow();
     });
 
     it('enmascara el email del destinatario dentro de la "causa" del error cuando el rechazo SMTP lo incluye en claro (R7)', async () => {
@@ -74,10 +130,10 @@ describe('NodemailerEmailSender', () => {
         .mockRejectedValue(
           new Error('550 5.1.1 <usuario@dominio.com>: Recipient address rejected: User unknown'),
         );
-      const transporter: EmailTransporter = { sendMail };
-      const adapter = new NodemailerEmailSender(transporter, 'Soporte <no-reply@dominio.com>');
+      const transportFactory = makeTransportFactory(sendMail);
+      const adapter = new NodemailerEmailSender(transportFactory);
 
-      const result = await adapter.send(makeMessage());
+      const result = await adapter.send(makeMessage(), makeConfig());
 
       expect(result.isFail()).toBe(true);
       const error = result.getError();
@@ -86,20 +142,38 @@ describe('NodemailerEmailSender', () => {
       expect(error.message).not.toContain('usuario@dominio.com');
     });
 
+    it('redacta el secreto SMTP (config.pass) si aparece en claro dentro de la "causa" del error (R2, defensa extra)', async () => {
+      const sendMail = vi
+        .fn()
+        .mockRejectedValue(new Error('535 Authentication failed for password super-secreto'));
+      const transportFactory = makeTransportFactory(sendMail);
+      const adapter = new NodemailerEmailSender(transportFactory);
+
+      const result = await adapter.send(makeMessage(), makeConfig({ pass: 'super-secreto' }));
+
+      expect(result.isFail()).toBe(true);
+      const error = result.getError();
+      expect(error.causa).not.toContain('super-secreto');
+      expect(error.causa).toContain('********');
+    });
+
     it('body type "text" envía como texto plano', async () => {
       const sendMail = vi.fn().mockResolvedValue({ messageId: 'abc123' });
-      const transporter: EmailTransporter = { sendMail };
-      const adapter = new NodemailerEmailSender(transporter, 'Soporte <no-reply@dominio.com>');
+      const transportFactory = makeTransportFactory(sendMail);
+      const adapter = new NodemailerEmailSender(transportFactory);
 
-      await adapter.send(makeMessage({ body: { type: 'text', content: 'texto plano' } }));
+      await adapter.send(
+        makeMessage({ body: { type: 'text', content: 'texto plano' } }),
+        makeConfig(),
+      );
 
       expect(sendMail).toHaveBeenCalledWith(expect.objectContaining({ text: 'texto plano' }));
     });
 
     it('body type "template" compila subject.hbs/body.hbs desde email-templates/ e interpola los datos', async () => {
       const sendMail = vi.fn().mockResolvedValue({ messageId: 'abc123' });
-      const transporter: EmailTransporter = { sendMail };
-      const adapter = new NodemailerEmailSender(transporter, 'Soporte <no-reply@dominio.com>');
+      const transportFactory = makeTransportFactory(sendMail);
+      const adapter = new NodemailerEmailSender(transportFactory);
 
       await adapter.send(
         makeMessage({
@@ -114,6 +188,7 @@ describe('NodemailerEmailSender', () => {
             },
           },
         }),
+        makeConfig(),
       );
 
       expect(sendMail).toHaveBeenCalledWith(
@@ -129,8 +204,8 @@ describe('NodemailerEmailSender', () => {
 
     it('escapa entidades HTML de los datos del template en el body — previene XSS (tituloTicket con markup)', async () => {
       const sendMail = vi.fn().mockResolvedValue({ messageId: 'abc123' });
-      const transporter: EmailTransporter = { sendMail };
-      const adapter = new NodemailerEmailSender(transporter, 'Soporte <no-reply@dominio.com>');
+      const transportFactory = makeTransportFactory(sendMail);
+      const adapter = new NodemailerEmailSender(transportFactory);
 
       await adapter.send(
         makeMessage({
@@ -145,6 +220,7 @@ describe('NodemailerEmailSender', () => {
             },
           },
         }),
+        makeConfig(),
       );
 
       const call = sendMail.mock.calls[0][0];
@@ -154,8 +230,8 @@ describe('NodemailerEmailSender', () => {
 
     it('elimina CR/LF de los valores interpolados en el subject — previene header injection SMTP (hardening, R7)', async () => {
       const sendMail = vi.fn().mockResolvedValue({ messageId: 'abc123' });
-      const transporter: EmailTransporter = { sendMail };
-      const adapter = new NodemailerEmailSender(transporter, 'Soporte <no-reply@dominio.com>');
+      const transportFactory = makeTransportFactory(sendMail);
+      const adapter = new NodemailerEmailSender(transportFactory);
 
       await adapter.send(
         makeMessage({
@@ -170,6 +246,7 @@ describe('NodemailerEmailSender', () => {
             },
           },
         }),
+        makeConfig(),
       );
 
       const call = sendMail.mock.calls[0][0];
@@ -179,14 +256,15 @@ describe('NodemailerEmailSender', () => {
 
     it('elimina CR/LF del subject cuando el body es type "text" — previene header injection SMTP (Judgment Day PR2 Ronda 3, issue D)', async () => {
       const sendMail = vi.fn().mockResolvedValue({ messageId: 'abc123' });
-      const transporter: EmailTransporter = { sendMail };
-      const adapter = new NodemailerEmailSender(transporter, 'Soporte <no-reply@dominio.com>');
+      const transportFactory = makeTransportFactory(sendMail);
+      const adapter = new NodemailerEmailSender(transportFactory);
 
       await adapter.send(
         makeMessage({
           subject: 'Asunto\r\nBcc: atacante@evil.com',
           body: { type: 'text', content: 'texto plano' },
         }),
+        makeConfig(),
       );
 
       const call = sendMail.mock.calls[0][0];
@@ -196,14 +274,15 @@ describe('NodemailerEmailSender', () => {
 
     it('elimina CR/LF del subject cuando el body es type "html" — previene header injection SMTP (Judgment Day PR2 Ronda 3, issue D)', async () => {
       const sendMail = vi.fn().mockResolvedValue({ messageId: 'abc123' });
-      const transporter: EmailTransporter = { sendMail };
-      const adapter = new NodemailerEmailSender(transporter, 'Soporte <no-reply@dominio.com>');
+      const transportFactory = makeTransportFactory(sendMail);
+      const adapter = new NodemailerEmailSender(transportFactory);
 
       await adapter.send(
         makeMessage({
           subject: 'Asunto\r\nBcc: atacante@evil.com',
           body: { type: 'html', content: '<p>contenido</p>' },
         }),
+        makeConfig(),
       );
 
       const call = sendMail.mock.calls[0][0];
@@ -213,8 +292,8 @@ describe('NodemailerEmailSender', () => {
 
     it('NO escapa entidades HTML en el subject (texto plano del header, distinto contexto que el body HTML)', async () => {
       const sendMail = vi.fn().mockResolvedValue({ messageId: 'abc123' });
-      const transporter: EmailTransporter = { sendMail };
-      const adapter = new NodemailerEmailSender(transporter, 'Soporte <no-reply@dominio.com>');
+      const transportFactory = makeTransportFactory(sendMail);
+      const adapter = new NodemailerEmailSender(transportFactory);
 
       await adapter.send(
         makeMessage({
@@ -229,11 +308,33 @@ describe('NodemailerEmailSender', () => {
             },
           },
         }),
+        makeConfig(),
       );
 
       const call = sendMail.mock.calls[0][0];
       expect(call.subject).toContain('SOP & 2026');
       expect(call.subject).not.toContain('&amp;');
+    });
+  });
+
+  describe('auditoría estructural de imports (R7 escenario 2)', () => {
+    it('el archivo fuente NUNCA importa ISecretCipher, PrismaService, getMasterClient ni getTenantClient', () => {
+      const source = fs.readFileSync(
+        path.join(__dirname, 'nodemailer-email-sender.adapter.ts'),
+        'utf8',
+      );
+      const codeLines = source
+        .split('\n')
+        .filter((line) => !line.trim().startsWith('*') && !line.trim().startsWith('//'));
+      const code = codeLines.join('\n');
+
+      expect(code).not.toMatch(/from ['"].*i-secret-cipher['"]/);
+      expect(code).not.toMatch(/SECRET_CIPHER/);
+      expect(code).not.toMatch(/ISecretCipher/);
+      expect(code).not.toMatch(/PrismaService/);
+      expect(code).not.toMatch(/getMasterClient/);
+      expect(code).not.toMatch(/getTenantClient/);
+      expect(code).not.toMatch(/from ['"].*email-config['"]/);
     });
   });
 });

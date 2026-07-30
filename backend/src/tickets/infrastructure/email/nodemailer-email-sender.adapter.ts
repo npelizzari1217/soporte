@@ -6,9 +6,20 @@
  * archivo (skill messaging-notifications, D7).
  *
  * Contrato: éxito ⇒ Result.ok(undefined); fallo del proveedor SMTP ⇒
- * Result.fail(EmailError) con el destinatario ENMASCARADO — NUNCA throw
- * para fallos esperados de envío (el throw queda reservado para config SMTP
- * faltante al bootstrap, ver email-config.ts).
+ * Result.fail(EmailError) con el destinatario ENMASCARADO — NUNCA throw.
+ *
+ * Adapter PURO (runtime-config-table PR6, Dz6/Dz11/R7): `send(email, config)`
+ * recibe la `SmtpConfig` YA RESUELTA y arma el transporter **por-envío** a
+ * partir de esa config — SIN `constructor(transporter, from)`, SIN
+ * `fromEnv()`, SIN leer `process.env`. La resolución cross-DB y el
+ * descifrado del secreto viven en `configuracion/` (`IConfigResolver`),
+ * consumidos por `NotificarCambioEstadoHandler` ANTES de llamar a este
+ * puerto — este archivo NUNCA importa `ISecretCipher`, `PrismaService`,
+ * `getMasterClient` ni `getTenantClient` (R7 escenario 2, verificado por
+ * auditoría estructural en el spec). `email-config.ts`/`SmtpConfigError`
+ * (fail-fast de boot) se ELIMINARON — el fail-fast se corrió a send-time
+ * (spec Requirement 6): sin config resoluble, `send()` ni siquiera se
+ * invoca (outcome `no-config` en el handler).
  *
  * Templating: interpolación simple `{{clave}}` sobre los .hbs de
  * `email-templates/<name>/{subject,body}.hbs` — se eligió deliberadamente
@@ -17,18 +28,18 @@
  * necesita helpers/condicionales de handlebars real en el futuro, es un
  * cambio aislado a este archivo (el port no cambia).
  *
- * Ref spec: Requirement 7.
- * Ref design: §5, §7, D7.
- * Tarea: 2.11/2.12/2.13 (PR2, notif-email-estado-ticket)
+ * Ref spec: Requirement 6, Requirement 7.
+ * Ref design: §5 Dz6/Dz11, §7.1.
+ * Tarea: 6.3/6.4/6.5 (PR6, runtime-config-table)
  */
-import * as fs from 'fs';
 import * as path from 'path';
+import * as fs from 'fs';
 import * as nodemailer from 'nodemailer';
 import { EmailSenderPort, EmailMessage } from '../../domain/ports/i-email-sender.port';
 import { EmailError } from '../../domain/errors/email.errors';
 import { Result } from '../../../shared/domain/result';
 import { maskEmailsInText } from '../../domain/mask-email-like';
-import { EmailConfig, loadEmailConfig } from './email-config';
+import { SmtpConfig } from '../../../shared/domain/value-objects/smtp-config.vo';
 
 /** Subconjunto de nodemailer.Transporter que este adapter necesita — facilita el mock en tests. */
 export interface EmailTransporter {
@@ -39,6 +50,24 @@ export interface EmailTransporter {
     text?: string;
     html?: string;
   }): Promise<unknown>;
+}
+
+/** Opciones que este adapter pasa a `transportFactory` — subconjunto de
+ * `SMTPTransport.Options` que se puede construir enteramente desde una
+ * `SmtpConfig` ya resuelta (sin tocar `process.env`). */
+export interface SmtpTransportOptions {
+  host: string;
+  port: number;
+  secure: boolean;
+  auth: { user: string; pass: string };
+}
+
+/** Factory de transporter — seam de test (evita abrir conexiones SMTP reales
+ * en unit tests) e inyectable por constructor. Default: `nodemailer.createTransport`. */
+export type TransportFactory = (options: SmtpTransportOptions) => EmailTransporter;
+
+function defaultTransportFactory(options: SmtpTransportOptions): EmailTransporter {
+  return nodemailer.createTransport(options);
 }
 
 /**
@@ -120,39 +149,41 @@ function readTemplate(name: string, file: 'subject.hbs' | 'body.hbs'): string {
  * rejected`). R7 exige que el email NUNCA quede en claro en errores/logs —
  * `causa` es responsabilidad del transporter, no del dominio, así que no se
  * puede confiar en que ya venga enmascarado.
+ *
+ * `pass` (NUEVO, PR6, design §5.1): además del masking de emails, redacta
+ * cualquier ocurrencia literal del secreto SMTP en claro — defensa extra
+ * (spec Requirement 2 "el secreto en claro nunca aparece fuera de memoria"):
+ * un rechazo SMTP raramente incluye el password, pero no se confía en el
+ * texto libre de un error de infra ajeno.
  */
-function sanitizeCausa(causa: string): string {
-  return maskEmailsInText(causa);
+function sanitizeCausa(causa: string, pass: string): string {
+  const maskedEmails = maskEmailsInText(causa);
+  if (pass.length === 0) return maskedEmails;
+  return maskedEmails.split(pass).join('********');
 }
 
 export class NodemailerEmailSender implements EmailSenderPort {
-  constructor(
-    private readonly transporter: EmailTransporter,
-    private readonly from: string,
-  ) {}
+  /** `transportFactory`: seam de test, default `nodemailer.createTransport` — SIN estado de config propio. */
+  constructor(private readonly transportFactory: TransportFactory = defaultTransportFactory) {}
 
   /**
-   * Construye el adapter leyendo y validando la config SMTP del entorno
-   * (lanza al bootstrap si falta — ver email-config.ts). Punto de wiring
-   * real usado por el `useFactory` de EMAIL_SENDER en tickets.module.ts.
+   * Arma el transporter POR-ENVÍO a partir de la `SmtpConfig` recibida (no
+   * `process.env`, no `fromEnv()` — Dz6/Dz11, R7 escenario 1). Sin cache de
+   * transporter entre envíos (R9, deuda documentada — spec §9).
    */
-  static fromEnv(env: NodeJS.ProcessEnv = process.env): NodemailerEmailSender {
-    const config: EmailConfig = loadEmailConfig(env);
-    const transporter = nodemailer.createTransport({
-      host: config.host,
-      port: config.port,
-      secure: config.secure,
-      auth: { user: config.user, pass: config.pass },
-    });
-    return new NodemailerEmailSender(transporter, config.from);
-  }
-
-  async send(email: EmailMessage): Promise<Result<void, EmailError>> {
+  async send(email: EmailMessage, config: SmtpConfig): Promise<Result<void, EmailError>> {
     try {
+      const transporter = this.transportFactory({
+        host: config.host,
+        port: config.port,
+        secure: config.secure,
+        auth: { user: config.user, pass: config.pass },
+      });
+
       const { subject, text, html } = this.resolveContent(email);
 
-      await this.transporter.sendMail({
-        from: this.from,
+      await transporter.sendMail({
+        from: config.from,
         to: email.to.value(),
         subject,
         text,
@@ -163,7 +194,7 @@ export class NodemailerEmailSender implements EmailSenderPort {
     } catch (err) {
       const rawCausa = err instanceof Error ? err.message : 'Error desconocido al enviar el email';
       return Result.fail(
-        new EmailError(email.to.mask(), sanitizeCausa(rawCausa), 'EMAIL_SEND_FAILED'),
+        new EmailError(email.to.mask(), sanitizeCausa(rawCausa, config.pass), 'EMAIL_SEND_FAILED'),
       );
     }
   }

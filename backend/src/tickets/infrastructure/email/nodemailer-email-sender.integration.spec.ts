@@ -1,6 +1,12 @@
 /**
- * 2.14 — Integración GATED: NodemailerEmailSender contra un servidor SMTP de
- * test real (maildev/mailhog), habilitada SOLO con `SMTP_TEST=1`.
+ * 2.14 (PR2, notif-email-estado-ticket) — Integración GATED: NodemailerEmailSender
+ * contra un servidor SMTP de test real (maildev/mailhog), habilitada SOLO con
+ * `SMTP_TEST=1`.
+ *
+ * Actualizado en PR6 (runtime-config-table, Dz6/Dz11): el adapter ya no lee
+ * `process.env.SMTP_*` ni expone `fromEnv()` — la config se arma explícitamente
+ * como `SmtpConfig` (el mismo VO que produce `IConfigResolver` en producción)
+ * y se pasa a `send(email, config)`.
  *
  * Por defecto (sin `SMTP_TEST=1` en el entorno) esta suite se SALTEA
  * completa — no rompe `pnpm test` en máquinas/CI sin maildev/mailhog
@@ -12,11 +18,12 @@
  *      (o mailhog equivalente, puerto SMTP por defecto 1025).
  *   2. `SMTP_TEST=1 SMTP_TEST_HOST=localhost SMTP_TEST_PORT=1025 pnpm test -- nodemailer-email-sender.integration`
  *
- * Ref design: §8 tabla testing "Adapter nodemailer real".
- * Ref tasks: PR2 2.14
+ * Ref design: §8 tabla testing "Adapter nodemailer real"; §7.1 (PR6, transporter por-envío).
+ * Ref tasks: PR2 2.14; PR6 6.5 (adaptado al nuevo contrato).
  */
 import { NodemailerEmailSender } from './nodemailer-email-sender.adapter';
 import { Email } from '../../domain/value-objects/email.vo';
+import { SmtpConfig } from '../../../shared/domain/value-objects/smtp-config.vo';
 
 const SMTP_TEST_ENABLED = process.env.SMTP_TEST === '1';
 
@@ -24,25 +31,29 @@ describe.skipIf(!SMTP_TEST_ENABLED)(
   'NodemailerEmailSender — integración real (SMTP_TEST=1)',
   () => {
     it('envía un mensaje real end-to-end a través de un servidor SMTP de test', async () => {
-      const testEnv = {
-        SMTP_HOST: process.env.SMTP_TEST_HOST ?? 'localhost',
-        SMTP_PORT: process.env.SMTP_TEST_PORT ?? '1025',
-        SMTP_USER: process.env.SMTP_TEST_USER ?? 'test',
-        SMTP_PASS: process.env.SMTP_TEST_PASS ?? 'test',
-        SMTP_FROM: process.env.SMTP_TEST_FROM ?? 'Soporte <no-reply@soporte.test>',
-      } as NodeJS.ProcessEnv;
+      const config = SmtpConfig.create({
+        host: process.env.SMTP_TEST_HOST ?? 'localhost',
+        port: process.env.SMTP_TEST_PORT ?? '1025',
+        secure: false,
+        user: process.env.SMTP_TEST_USER ?? 'test',
+        pass: process.env.SMTP_TEST_PASS ?? 'test',
+        from: process.env.SMTP_TEST_FROM ?? 'Soporte <no-reply@soporte.test>',
+      }).getValue();
 
-      const adapter = NodemailerEmailSender.fromEnv(testEnv);
+      const adapter = new NodemailerEmailSender();
       const to = Email.create('destinatario@soporte.test').getValue();
 
-      const result = await adapter.send({
-        to,
-        subject: 'Integración SMTP_TEST',
-        body: {
-          type: 'text',
-          content: 'Mensaje de prueba de integración (nodemailer-email-sender).',
+      const result = await adapter.send(
+        {
+          to,
+          subject: 'Integración SMTP_TEST',
+          body: {
+            type: 'text',
+            content: 'Mensaje de prueba de integración (nodemailer-email-sender).',
+          },
         },
-      });
+        config,
+      );
 
       expect(result.isOk()).toBe(true);
     });

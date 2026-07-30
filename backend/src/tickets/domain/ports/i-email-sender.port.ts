@@ -1,4 +1,5 @@
 import { Result } from '../../../shared/domain/result';
+import { SmtpConfig } from '../../../shared/domain/value-objects/smtp-config.vo';
 import { Email } from '../value-objects/email.vo';
 import { EmailError } from '../errors/email.errors';
 
@@ -38,16 +39,23 @@ export interface EmailMessage {
  * EmailSenderPort — única forma en que la capa de aplicación envía emails.
  *
  * Contrato `Result<void, EmailError>` (D7, skill error-handling) — NUNCA
- * `Promise<T>` + throw. Divergencia deliberada del precedente `IFileStorage`
- * (Promise+throw): ese patrón queda como deuda, no como referencia a imitar.
- * El `throw` queda reservado para errores de infraestructura verdaderamente
- * irrecuperables en el límite del adapter (ej. config SMTP faltante al
- * bootstrap — ver email-config.ts).
+ * `Promise<T>` + throw.
  *
- * Ref spec: Requirement 7.
- * Ref design: §5, D7.
- * Tarea: 2.5 (PR2, notif-email-estado-ticket)
+ * `send(email, config)` (EDITADO — runtime-config-table PR6, Dz6/R7): recibe
+ * la `SmtpConfig` YA RESUELTA y descifrada como parámetro explícito — el
+ * adapter (`NodemailerEmailSender`) es PURO: arma el transporter por-envío a
+ * partir de `config`, NUNCA resuelve config cross-DB ni invoca
+ * `ISecretCipher`. La resolución (tenant→global, descifrado) vive en
+ * `application`/`configuracion` (`IConfigResolver`), ANTES de llamar a
+ * `send()`. El fail-fast de config SMTP faltante/inválida se corrió de
+ * boot-time (antes: `email-config.ts`, eliminado) a send-time — un envío sin
+ * config resoluble nunca llega a invocar este puerto (outcome `no-config` en
+ * `NotificarCambioEstadoHandler`, spec Requirement 6).
+ *
+ * Ref spec: Requirement 6, Requirement 7.
+ * Ref design: §5 Dz6, §7.1/§7.2.
+ * Tarea: 6.1/6.2 (PR6, runtime-config-table)
  */
 export interface EmailSenderPort {
-  send(email: EmailMessage): Promise<Result<void, EmailError>>;
+  send(email: EmailMessage, config: SmtpConfig): Promise<Result<void, EmailError>>;
 }
