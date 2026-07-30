@@ -2,21 +2,25 @@ import { TicketEstadoCambiado, TICKET_ESTADO_CAMBIADO } from './ticket-estado-ca
 
 /**
  * 1.5 — RED: forma de TicketEstadoCambiado — 10 campos no nulos.
+ * 4.14 — actualizado a 12 campos: +`numero` +`tituloTicket` (enriquecimiento
+ * del evento, decisión de diseño del usuario 2026-07-30, PR4).
  *
  * Ref spec: R9 Scenario "El evento publicado contiene todos los campos requeridos".
  * Ref design: §5 (firma real), D4 (estadoAnteriorCodigo/estadoNuevoCodigo).
- * Tarea: PR1 1.5
+ * Tarea: PR1 1.5, PR4 4.14
  */
 describe('TicketEstadoCambiado', () => {
   it('expone TICKET_ESTADO_CAMBIADO como eventName de la constante', () => {
     expect(TICKET_ESTADO_CAMBIADO).toBe('ticket.estado.cambiado');
   });
 
-  it('construye el evento con los 10 campos requeridos, todos no nulos', () => {
+  it('construye el evento con los 12 campos requeridos, todos no nulos', () => {
     const occurredAt = new Date('2026-07-29T12:00:00.000Z');
 
     const event = new TicketEstadoCambiado(
       'ticket-uuid',
+      'SOP-2026-00001',
+      'Ticket de test',
       'SOPORTE',
       'estado-anterior-uuid',
       'estado-nuevo-uuid',
@@ -30,6 +34,8 @@ describe('TicketEstadoCambiado', () => {
 
     expect(event.eventName).toBe(TICKET_ESTADO_CAMBIADO);
     expect(event.ticketId).toBe('ticket-uuid');
+    expect(event.numero).toBe('SOP-2026-00001');
+    expect(event.tituloTicket).toBe('Ticket de test');
     expect(event.tipoCodigo).toBe('SOPORTE');
     expect(event.estadoAnteriorId).toBe('estado-anterior-uuid');
     expect(event.estadoNuevoId).toBe('estado-nuevo-uuid');
@@ -43,6 +49,8 @@ describe('TicketEstadoCambiado', () => {
     // Ningún campo requerido es null/undefined.
     const camposRequeridos = [
       event.ticketId,
+      event.numero,
+      event.tituloTicket,
       event.tipoCodigo,
       event.estadoAnteriorId,
       event.estadoNuevoId,

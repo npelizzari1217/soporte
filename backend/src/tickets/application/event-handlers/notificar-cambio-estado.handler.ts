@@ -50,11 +50,11 @@ export class NotificarCambioEstadoHandler {
     }
 
     const email = resolved.getValue();
-    // Payload del template limitado a lo disponible en el evento (D4): el
-    // evento NO carga número/título del ticket (deliberado — filtro puro sin
-    // DB). Enriquecer el email con esos datos es una mejora de infraestructura
-    // futura (no bloquea R2/R4/R5 de este PR, que solo exigen el contrato de
-    // outcomes) — documentado como limitación conocida en STATE.md.
+    // Payload del template (PR4, task 4.14): el evento ahora carga
+    // `numero`/`tituloTicket` (enriquecimiento decidido por el usuario
+    // 2026-07-30) — sin volver a consultar el ticket. El filtro de
+    // notificabilidad (D4) sigue siendo puro sobre `estadoNuevoCodigo`; estos
+    // 2 campos son solo datos de display para el template `cambio-estado`.
     const sendResult = await this.emailSender.send({
       to: email,
       subject: `Ticket actualizado: ${event.estadoNuevoCodigo}`,
@@ -63,6 +63,8 @@ export class NotificarCambioEstadoHandler {
         name: 'cambio-estado',
         data: {
           ticketId: event.ticketId,
+          numero: event.numero,
+          tituloTicket: event.tituloTicket,
           tipoCodigo: event.tipoCodigo,
           estadoAnteriorCodigo: event.estadoAnteriorCodigo,
           estadoNuevoCodigo: event.estadoNuevoCodigo,

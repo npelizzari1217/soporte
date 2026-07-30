@@ -31,6 +31,8 @@ import { EmailSenderPort } from '../../domain/ports/i-email-sender.port';
 function makeEvent(): TicketEstadoCambiado {
   return new TicketEstadoCambiado(
     'ticket-1',
+    'SOP-2026-00001',
+    'Ticket de test',
     'SOPORTE',
     'estado-anterior-id',
     'estado-nuevo-id',

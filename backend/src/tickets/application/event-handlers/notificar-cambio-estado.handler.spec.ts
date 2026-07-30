@@ -24,6 +24,8 @@ import { Result } from '../../../shared/domain/result';
 function makeEvent(overrides: Partial<TicketEstadoCambiado> = {}): TicketEstadoCambiado {
   const base = new TicketEstadoCambiado(
     'ticket-1',
+    'SOP-2026-00001',
+    'Ticket de test',
     'SOPORTE',
     'estado-anterior-id',
     'estado-nuevo-id',
@@ -115,5 +117,25 @@ describe('NotificarCambioEstadoHandler', () => {
     const sentMessage = emailSender.send.mock.calls[0][0] as EmailMessage;
     expect(sentMessage.to).toBe(email);
     expect(sentMessage.body.type).toBe('template');
+  });
+
+  it('4.14 — mapea numero/tituloTicket del evento al EmailMessage.data (enriquecimiento PR4)', async () => {
+    const event = makeEvent({
+      estadoNuevoCodigo: 'CERRADO',
+      numero: 'SOP-2026-00042',
+      tituloTicket: 'Impresora no enciende',
+    });
+    const email = Email.create('usuario@dominio.com').getValue();
+    resolver.resolver.mockResolvedValue(Result.ok(email));
+    emailSender.send.mockResolvedValue(Result.ok(undefined));
+
+    await handler.handle(event);
+
+    const sentMessage = emailSender.send.mock.calls[0][0] as EmailMessage;
+    expect(sentMessage.body.type).toBe('template');
+    if (sentMessage.body.type === 'template') {
+      expect(sentMessage.body.data.numero).toBe('SOP-2026-00042');
+      expect(sentMessage.body.data.tituloTicket).toBe('Impresora no enciende');
+    }
   });
 });
