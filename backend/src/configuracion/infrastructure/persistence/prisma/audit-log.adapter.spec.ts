@@ -161,4 +161,19 @@ describe('PrismaAuditLog', () => {
     expect(result.isFail()).toBe(true);
     expect(result.getError().code).toBe('AUDIT_WRITE_FAILED');
   });
+
+  it('arreglo 2 (Judgment Day PR4 Ronda 1): scope.kind inválido ⇒ Result.fail(AuditError), NUNCA cae en master/global por default', async () => {
+    const entry = buildEntry(false, 'new.smtp.com');
+    // JSON.parse (sin `as any`/`as unknown as`, prohibidos en este
+    // proyecto) para simular un scope malformado que cruza el boundary en
+    // runtime sin que el compilador lo objete.
+    const scopeMalformado: ConfigScope = JSON.parse('{"kind":"master"}');
+
+    const result = await adapter.record(entry, scopeMalformado);
+
+    expect(result.isFail()).toBe(true);
+    expect(result.getError().code).toBe('AUDIT_WRITE_FAILED');
+    expect(mockGlobalAuditCreate).not.toHaveBeenCalled();
+    expect(mockGetTenantClient).not.toHaveBeenCalled();
+  });
 });

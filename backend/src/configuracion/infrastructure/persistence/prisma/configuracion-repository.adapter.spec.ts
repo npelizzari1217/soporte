@@ -13,7 +13,10 @@
 import { PrismaConfiguracionRepository } from './configuracion-repository.adapter';
 import { PrismaService } from '../../../../shared/infrastructure/persistence/prisma.service';
 import { ConfigScope } from '../../../domain/events/configuracion-cambiada.event';
-import { InfraConfigError } from '../../../domain/errors/config.errors';
+import {
+  ConfigConflictoConcurrenteError,
+  InfraConfigError,
+} from '../../../domain/errors/config.errors';
 import { UpsertConfiguracionInput } from '../../../domain/ports/i-configuracion-repository';
 
 describe('PrismaConfiguracionRepository', () => {
@@ -251,6 +254,73 @@ describe('PrismaConfiguracionRepository', () => {
 
       expect(result.isFail()).toBe(true);
       expect(result.getError()).toBeInstanceOf(InfraConfigError);
+      expect(mockGetTenantClient).not.toHaveBeenCalled();
+    });
+
+    it('arreglo 4 (Judgment Day PR4 Ronda 1): P2002 (TOCTOU concurrente) ⇒ Result.fail(ConfigConflictoConcurrenteError), distinguible de InfraConfigError — scope global', async () => {
+      mockGlobalFindFirst.mockResolvedValue(null);
+      mockGlobalCreate.mockRejectedValue({ code: 'P2002', message: 'Unique constraint failed' });
+
+      const result = await adapter.upsert(SCOPE_GLOBAL, upsertInput);
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(ConfigConflictoConcurrenteError);
+      expect(result.getError().code).toBe('CONFIG_CONFLICTO_CONCURRENTE');
+    });
+
+    it('arreglo 4: P2002 en scope tenant también se mapea a ConfigConflictoConcurrenteError', async () => {
+      mockTenantFindFirst.mockResolvedValue(null);
+      mockTenantCreate.mockRejectedValue({ code: 'P2002', message: 'Unique constraint failed' });
+
+      const result = await adapter.upsert(SCOPE_TENANT, upsertInput);
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(ConfigConflictoConcurrenteError);
+    });
+
+    it('arreglo 4: un error de infra SIN code P2002 sigue mapeando a InfraConfigError genérico, no a ConfigConflictoConcurrenteError', async () => {
+      mockGlobalFindFirst.mockResolvedValue(null);
+      mockGlobalCreate.mockRejectedValue(new Error('conexión caída'));
+
+      const result = await adapter.upsert(SCOPE_GLOBAL, upsertInput);
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(InfraConfigError);
+      expect(result.getError()).not.toBeInstanceOf(ConfigConflictoConcurrenteError);
+    });
+  });
+
+  describe('arreglo 2 — fail-open a global por scope.kind no validado (Judgment Day PR4 Ronda 1)', () => {
+    // JSON.parse (sin `as any`/`as unknown as`, prohibidos en este
+    // proyecto) para simular un scope malformado que cruza el boundary en
+    // runtime sin que el compilador lo objete.
+    const SCOPE_MALFORMADO: ConfigScope = JSON.parse('{"kind":"master"}');
+
+    it('findAll con scope.kind inválido ⇒ Result.fail(InfraConfigError), NUNCA llama getMasterClient ni getTenantClient', async () => {
+      const result = await adapter.findAll(SCOPE_MALFORMADO);
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(InfraConfigError);
+      expect(mockGlobalFindMany).not.toHaveBeenCalled();
+      expect(mockGetTenantClient).not.toHaveBeenCalled();
+    });
+
+    it('findByClave con scope.kind inválido ⇒ Result.fail(InfraConfigError), NUNCA opera sobre master/global', async () => {
+      const result = await adapter.findByClave(SCOPE_MALFORMADO, 'smtp', 'host');
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(InfraConfigError);
+      expect(mockGlobalFindFirst).not.toHaveBeenCalled();
+      expect(mockGetTenantClient).not.toHaveBeenCalled();
+    });
+
+    it('upsert con scope.kind inválido ⇒ Result.fail(InfraConfigError), NUNCA escribe en master/global por default', async () => {
+      const result = await adapter.upsert(SCOPE_MALFORMADO, upsertInput);
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(InfraConfigError);
+      expect(mockGlobalCreate).not.toHaveBeenCalled();
+      expect(mockGlobalUpdate).not.toHaveBeenCalled();
       expect(mockGetTenantClient).not.toHaveBeenCalled();
     });
   });
