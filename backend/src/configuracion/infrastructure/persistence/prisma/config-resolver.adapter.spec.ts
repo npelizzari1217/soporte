@@ -15,7 +15,12 @@ import { PrismaService } from '../../../../shared/infrastructure/persistence/pri
 import { ISecretCipher } from '../../../../shared/domain/ports/i-secret-cipher';
 import { Result } from '../../../../shared/domain/result';
 import { CifradoError } from '../../../../shared/domain/errors/cifrado.errors';
-import { ConfigIncompletaError, NoConfigError } from '../../../domain/errors/config.errors';
+import {
+  ConfigFilaCorruptaError,
+  ConfigIncompletaError,
+  InfraConfigError,
+  NoConfigError,
+} from '../../../domain/errors/config.errors';
 
 type ConfigRow = {
   clave: string;
@@ -247,6 +252,150 @@ describe('PrismaConfigResolver', () => {
       expect(result.getError()).toBeInstanceOf(CifradoError);
       expect(result.getError().code).toBe('CONFIG_CIFRADO_INVALIDO');
       expect(mockDecrypt).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('resolveSmtp() — fallo de infraestructura (Judgment Day PR2 Ronda 1, issue 1)', () => {
+    it('clienteId no-UUID: `cliente.findFirst` LANZA (PrismaClientValidationError) ⇒ Result.fail(InfraConfigError), NUNCA throw', async () => {
+      mockClienteFindFirst.mockRejectedValue(
+        new Error('Invalid `prisma.cliente.findFirst()` invocation: Argument `id` is missing.'),
+      );
+      mockGlobalConfigFindMany.mockResolvedValue([]);
+
+      await expect(resolver.resolveSmtp('no-es-un-uuid')).resolves.not.toThrow();
+      const result = await resolver.resolveSmtp('no-es-un-uuid');
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(InfraConfigError);
+      expect(result.getError().code).toBe('CONFIG_INFRA_ERROR');
+    });
+
+    it('el tenant client LANZA al consultar configuracionRuntime ⇒ Result.fail(InfraConfigError), NUNCA throw', async () => {
+      mockTenantConfigFindMany.mockRejectedValue(new Error('connection terminated unexpectedly'));
+      mockGlobalConfigFindMany.mockResolvedValue([]);
+
+      const result = await resolver.resolveSmtp(CLIENTE_A);
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(InfraConfigError);
+      expect(result.getError().code).toBe('CONFIG_INFRA_ERROR');
+    });
+
+    it('la config global LANZA al consultarse ⇒ Result.fail(InfraConfigError), NUNCA throw', async () => {
+      mockTenantConfigFindMany.mockResolvedValue([]);
+      mockGlobalConfigFindMany.mockRejectedValue(new Error('pool timeout'));
+
+      const result = await resolver.resolveSmtp(CLIENTE_A);
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(InfraConfigError);
+      expect(result.getError().code).toBe('CONFIG_INFRA_ERROR');
+    });
+  });
+
+  describe('resolveSmtp() — merge por VALOR, no por presencia de fila (Judgment Day PR2 Ronda 1, issue 2)', () => {
+    it('tenant tiene fila `host` con valor vacío + global `host` completa ⇒ usa el `host` GLOBAL, Result.ok', async () => {
+      mockTenantConfigFindMany.mockResolvedValue([
+        filaNoSecreta('host', ''),
+        filaNoSecreta('port', '587'),
+        filaNoSecreta('secure', 'true'),
+        filaNoSecreta('user', 'tenant-user'),
+        filaNoSecreta('pass', 'tenant-pass'),
+        filaNoSecreta('from', 'tenant@dominio.com'),
+      ]);
+      mockGlobalConfigFindMany.mockResolvedValue([filaNoSecreta('host', 'global.smtp.com')]);
+
+      const result = await resolver.resolveSmtp(CLIENTE_A);
+
+      expect(result.isOk()).toBe(true);
+      expect(result.getValue().host).toBe('global.smtp.com');
+    });
+
+    it('tenant tiene fila `host` solo con espacios en blanco + global `host` completa ⇒ usa el `host` GLOBAL', async () => {
+      mockTenantConfigFindMany.mockResolvedValue([
+        filaNoSecreta('host', '   '),
+        filaNoSecreta('port', '587'),
+        filaNoSecreta('secure', 'true'),
+        filaNoSecreta('user', 'tenant-user'),
+        filaNoSecreta('pass', 'tenant-pass'),
+        filaNoSecreta('from', 'tenant@dominio.com'),
+      ]);
+      mockGlobalConfigFindMany.mockResolvedValue([filaNoSecreta('host', 'global.smtp.com')]);
+
+      const result = await resolver.resolveSmtp(CLIENTE_A);
+
+      expect(result.isOk()).toBe(true);
+      expect(result.getValue().host).toBe('global.smtp.com');
+    });
+
+    it('tenant `host` vacío y global tampoco tiene `host` ⇒ Result.fail(ConfigIncompletaError) (no rompe el caso ni-ni)', async () => {
+      mockTenantConfigFindMany.mockResolvedValue([
+        filaNoSecreta('host', ''),
+        filaNoSecreta('port', '587'),
+        filaNoSecreta('secure', 'true'),
+        filaNoSecreta('user', 'tenant-user'),
+        filaNoSecreta('pass', 'tenant-pass'),
+        filaNoSecreta('from', 'tenant@dominio.com'),
+      ]);
+      mockGlobalConfigFindMany.mockResolvedValue([]);
+
+      const result = await resolver.resolveSmtp(CLIENTE_A);
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(ConfigIncompletaError);
+    });
+  });
+
+  describe('resolveSmtp() — fila corrupta vs. config incompleta (Judgment Day PR2 Ronda 1, issue 6)', () => {
+    it('fila esSecreto=true con iv/authTag null ⇒ Result.fail(ConfigFilaCorruptaError), DISTINTO de ConfigIncompletaError', async () => {
+      mockTenantConfigFindMany.mockResolvedValue([
+        filaNoSecreta('host', 'tenant.smtp.com'),
+        filaNoSecreta('port', '587'),
+        filaNoSecreta('secure', 'true'),
+        filaNoSecreta('user', 'tenant-user'),
+        { clave: 'pass', valor: 'ciphertext-corrupto', esSecreto: true, iv: null, authTag: null },
+        filaNoSecreta('from', 'tenant@dominio.com'),
+      ]);
+      mockGlobalConfigFindMany.mockResolvedValue([]);
+
+      const result = await resolver.resolveSmtp(CLIENTE_A);
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(ConfigFilaCorruptaError);
+      expect(result.getError()).not.toBeInstanceOf(ConfigIncompletaError);
+      expect(result.getError().code).toBe('CONFIG_FILA_CORRUPTA');
+      expect(mockDecrypt).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('resolveSmtp() — cliente inactivo/inexistente (Judgment Day PR2 Ronda 1, issue 5 — R9)', () => {
+    it('`cliente.findFirst` resuelve null ⇒ NO se llama getTenantClient, cae a solo-global (Result.ok)', async () => {
+      mockClienteFindFirst.mockResolvedValue(null);
+      mockGlobalConfigFindMany.mockResolvedValue([
+        filaNoSecreta('host', 'global.smtp.com'),
+        filaNoSecreta('port', '25'),
+        filaNoSecreta('secure', 'false'),
+        filaNoSecreta('user', 'global-user'),
+        filaNoSecreta('pass', 'global-pass'),
+        filaNoSecreta('from', 'global@dominio.com'),
+      ]);
+
+      const result = await resolver.resolveSmtp('cliente-inactivo-o-inexistente');
+
+      expect(result.isOk()).toBe(true);
+      expect(result.getValue().host).toBe('global.smtp.com');
+      expect(mockGetTenantClient).not.toHaveBeenCalled();
+    });
+
+    it('`cliente.findFirst` resuelve null y tampoco hay config global ⇒ Result.fail(NoConfigError)', async () => {
+      mockClienteFindFirst.mockResolvedValue(null);
+      mockGlobalConfigFindMany.mockResolvedValue([]);
+
+      const result = await resolver.resolveSmtp('cliente-inactivo-o-inexistente');
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(NoConfigError);
+      expect(mockGetTenantClient).not.toHaveBeenCalled();
     });
   });
 });
