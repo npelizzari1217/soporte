@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { DomainError, Result } from '../../../shared/domain/result';
 import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { IDomainEventPublisher } from '../../../shared/domain/ports/i-domain-event-publisher';
@@ -121,13 +122,24 @@ interface ExecuteTxOutcome {
  * La lógica de transición se reproduce inline dentro del mismo txRunner.run().
  *
  * Sin throw para errores de dominio esperados — todos retornan Result.fail().
- * Errores de infraestructura (DB) sí burbujean como throw para rollback de transacción.
+ * Errores de infraestructura (DB) DENTRO de txRunner.run() sí burbujean como
+ * throw para que la transacción rollback-ee (comportamiento nativo del
+ * runner — no se toca acá). Errores de infraestructura POST-commit (el
+ * lookup de `tipoCodigo` vía `tipoTicketRepo.findCodigoById` o el
+ * `publisher.publish` del §8) son un caso DISTINTO: la tx ya resolvió y el
+ * ticket + las operaciones YA están persistidos, así que un throw ahí nunca
+ * puede "revertir" nada — solo tumbaría una respuesta que debería ser 200/201.
+ * Por eso ese tramo se envuelve en try/catch (log-and-swallow, Judgment Day
+ * PR4 Ronda 1): el error se loguea y `execute()` retorna igual el
+ * `Result.ok` ya obtenido del `txRunner.run`.
  *
  * Ref spec: Req Observaciones del técnico (tickets-core/spec.md), Requirement 3 (PR4)
  * Ref design: ADR-2, ADR-7, §6.B, D6
  * Ref tasks: P2.T6 — Change tickets-maquina-estados-observaciones / PR2; 4.6-4.8 (PR4)
  */
 export class CrearObservacionUseCase {
+  private readonly logger = new Logger(CrearObservacionUseCase.name);
+
   constructor(
     private readonly ticketRepo: ITicketRepository,
     private readonly estadoRepo: IEstadoRepository,
@@ -287,23 +299,40 @@ export class CrearObservacionUseCase {
       outcome.result.isOk() &&
       esEstadoNotificable(paraPublicar.estadoNuevoCodigo)
     ) {
-      const tipoCodigo = await this.tipoTicketRepo.findCodigoById(paraPublicar.tipoId);
-      if (tipoCodigo) {
-        this.publisher.publish(
-          new TicketEstadoCambiado(
-            dto.ticketId,
-            paraPublicar.numero,
-            paraPublicar.tituloTicket,
-            tipoCodigo,
-            paraPublicar.estadoAnteriorId,
-            paraPublicar.estadoNuevoId,
-            paraPublicar.estadoAnteriorCodigo,
-            paraPublicar.estadoNuevoCodigo,
-            paraPublicar.solicitanteId,
-            dto.autorId,
-            dto.clienteId,
-            new Date(),
-          ),
+      // Guard defensivo (Judgment Day PR4 Ronda 1, CRITICAL): la tx YA
+      // committeó acá — el ticket y las OperacionTicket ya están persistidos.
+      // Si `findCodigoById` o `publisher.publish` rechazan/lanzan (DB caída,
+      // timeout, pool agotado), NUNCA debe propagarse: el controller no tiene
+      // catch genérico y un throw acá se traduciría en un 500 crudo pese a
+      // que la operación ya fue exitosa — peor, un retry del cliente
+      // duplicaría la OBSERVACION. Fire-and-forget real: se loguea y se
+      // sigue, sin exponer datos sensibles (solo el mensaje del error).
+      try {
+        const tipoCodigo = await this.tipoTicketRepo.findCodigoById(paraPublicar.tipoId);
+        if (tipoCodigo) {
+          this.publisher.publish(
+            new TicketEstadoCambiado(
+              dto.ticketId,
+              paraPublicar.numero,
+              paraPublicar.tituloTicket,
+              tipoCodigo,
+              paraPublicar.estadoAnteriorId,
+              paraPublicar.estadoNuevoId,
+              paraPublicar.estadoAnteriorCodigo,
+              paraPublicar.estadoNuevoCodigo,
+              paraPublicar.solicitanteId,
+              dto.autorId,
+              dto.clienteId,
+              new Date(),
+            ),
+          );
+        }
+      } catch (err) {
+        const motivo = err instanceof Error ? err.message : 'Error desconocido';
+        this.logger.error(
+          `Fallo POST-commit al resolver/publicar TicketEstadoCambiado para el ticket ` +
+            `"${dto.ticketId}": ${motivo}. La observación y el cambio de estado ya ` +
+            `committeados NO se ven afectados.`,
         );
       }
     }

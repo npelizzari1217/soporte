@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { DomainError, Result } from '../../../shared/domain/result';
 import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { IDomainEventPublisher } from '../../../shared/domain/ports/i-domain-event-publisher';
@@ -79,6 +80,8 @@ export interface TransicionarEstadoDto {
  * Tarea: 3.C.6
  */
 export class TransicionarEstadoUseCase {
+  private readonly logger = new Logger(TransicionarEstadoUseCase.name);
+
   constructor(
     private readonly ticketRepo: ITicketRepository,
     private readonly operacionRepo: IOperacionTicketRepository,
@@ -190,22 +193,37 @@ export class TransicionarEstadoUseCase {
     //     dominio solo si el estado destino es notificable (R1/R2). Nunca
     //     dentro de txRunner.run() (R6/R10 — nada de publish/send en la tx).
     if (esEstadoNotificable(estadoNuevo.codigo)) {
-      this.publisher.publish(
-        new TicketEstadoCambiado(
-          ticket.id,
-          ticket.numero,
-          ticket.titulo,
-          tipoCodigo,
-          estadoActual.id,
-          estadoNuevo.id,
-          estadoActual.codigo,
-          estadoNuevo.codigo,
-          ticket.solicitanteId,
-          dto.autorId,
-          dto.clienteId,
-          new Date(),
-        ),
-      );
+      // Guard defensivo (consistente con CrearObservacionUseCase, Judgment
+      // Day PR4 Ronda 1): la tx YA committeó — ticket + operacion ya están
+      // persistidos. Si `publisher.publish` alguna vez lanza (bug futuro en
+      // un adapter, event bus caído), NUNCA debe propagarse: tumbaría una
+      // respuesta que ya debería ser 200. Log-and-swallow, sin exponer datos
+      // sensibles (solo el mensaje del error).
+      try {
+        this.publisher.publish(
+          new TicketEstadoCambiado(
+            ticket.id,
+            ticket.numero,
+            ticket.titulo,
+            tipoCodigo,
+            estadoActual.id,
+            estadoNuevo.id,
+            estadoActual.codigo,
+            estadoNuevo.codigo,
+            ticket.solicitanteId,
+            dto.autorId,
+            dto.clienteId,
+            new Date(),
+          ),
+        );
+      } catch (err) {
+        const motivo = err instanceof Error ? err.message : 'Error desconocido';
+        this.logger.error(
+          `Fallo POST-commit al publicar TicketEstadoCambiado para el ticket ` +
+            `"${ticket.id}": ${motivo}. La transición de estado ya committeada NO ` +
+            `se ve afectada.`,
+        );
+      }
     }
 
     return Result.ok(ticket);

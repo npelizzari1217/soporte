@@ -23,6 +23,7 @@
  */
 
 import { vi, describe, it, expect, beforeEach } from 'vitest';
+import { Logger } from '@nestjs/common';
 import { CrearObservacionDto, CrearObservacionUseCase } from './crear-observacion.use-case';
 import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
 import { IEstadoRepository } from '../../domain/ports/i-estado.repository';
@@ -655,6 +656,46 @@ describe('CrearObservacionUseCase', () => {
       expect(result.isFail()).toBe(true);
       expect(publisher.publish).not.toHaveBeenCalled();
       expect(tipoTicketRepo.findCodigoById).not.toHaveBeenCalled();
+    });
+
+    // ─── Judgment Day PR4 Ronda 1 — CRITICAL: guard post-commit ────────────────
+    // Ref: findCodigoById()/publish() post-commit SIN try/catch → un reject
+    // se propaga fuera de execute() pese a que la tx ya committeó (ticket +
+    // OperacionTicket ya persistidos). Rompe el invariante fire-and-forget
+    // (R6/R10) y expondría un retry-duplicado si el cliente reintentara tras
+    // un 500 crudo.
+
+    it('4.8 (RED→GREEN) — findCodigoById RECHAZA post-commit: execute() sigue devolviendo Result.ok de la observación ya committeada, no propaga el throw, y loguea el error', async () => {
+      const ticket = setupAprobado();
+      estadoRepo.findByCodigo.mockImplementation((codigo) => {
+        if (codigo === 'RESUELTO')
+          return Promise.resolve(makeEstado('RESUELTO', ESTADO_RESUELTO_ID));
+        return Promise.resolve(null);
+      });
+      ticketRepo.findById.mockResolvedValue(ticket);
+      const dbError = new Error('Pool de conexiones agotado');
+      tipoTicketRepo.findCodigoById.mockRejectedValue(dbError);
+      const errorSpy = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+
+      const result = await useCase.execute({
+        ...baseDto,
+        estadoDestinoCodigo: 'RESUELTO',
+        fechaCierre: new Date('2026-06-29'),
+      });
+
+      // La tx ya committeó: el fallo POST-commit (lookup de la notificación)
+      // NUNCA debe romper la respuesta de una operación ya persistida.
+      expect(result.isOk()).toBe(true);
+      expect(result.getValue().estadoId).toBe(ESTADO_RESUELTO_ID);
+      // Nada revierte la tx ya committeada — los saves ya ocurrieron una sola vez.
+      expect(ticketRepo.save).toHaveBeenCalledOnce();
+      expect(operacionRepo.save).toHaveBeenCalledTimes(2);
+      // Sin tipoCodigo no se puede armar el evento → NO se publica.
+      expect(publisher.publish).not.toHaveBeenCalled();
+      // Se loguea el error (nivel ERROR) para no perder observabilidad del fallo.
+      expect(errorSpy).toHaveBeenCalledOnce();
+
+      errorSpy.mockRestore();
     });
   });
 });

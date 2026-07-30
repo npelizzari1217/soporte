@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { TransicionarEstadoDto, TransicionarEstadoUseCase } from './transicionar-estado.use-case';
 import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
 import { IOperacionTicketRepository } from '../../domain/ports/i-operacion-ticket.repository';
@@ -807,6 +808,40 @@ describe('TransicionarEstadoUseCase', () => {
         const published = publisher.publish.mock.calls[0][0] as TicketEstadoCambiado;
         expect(published.tipoCodigo).toBe('EDILICIA');
         expect(published.estadoNuevoCodigo).toBe('CANCELADO');
+      });
+    });
+
+    // ─── Judgment Day PR4 Ronda 1 — guard defensivo consistente con crear-observacion ──
+    // Ref: publisher.publish() post-commit sin try/catch — si emit() alguna vez
+    // lanza, no debe tumbar una transición ya committeada (log-and-swallow).
+
+    describe('4.12 (RED→GREEN) — publisher.publish() lanza post-commit', () => {
+      it('execute() sigue devolviendo Result.ok de la transición ya committeada, no propaga el throw, y loguea el error', async () => {
+        estadoRepo.findByCodigo.mockResolvedValue(makeEstado(ESTADO_RESUELTO_ID, 'RESUELTO'));
+        const ticket = makeTicket(ESTADO_ABIERTO_ID, TIPO_TICKET_ID);
+        ticketRepo.findById.mockResolvedValue(ticket);
+        const publishError = new Error('Event bus no disponible');
+        publisher.publish.mockImplementation(() => {
+          throw publishError;
+        });
+        const errorSpy = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+
+        const result = await useCase.execute({
+          ticketId: 'ticket-uuid-001',
+          nuevoEstadoCodigo: 'RESUELTO',
+          autorId: AUTOR_ID,
+          clienteId: CLIENTE_ID,
+          fechaCierre: new Date('2026-06-28'),
+        });
+
+        expect(result.isOk()).toBe(true);
+        expect(result.getValue().estadoId).toBe(ESTADO_RESUELTO_ID);
+        // La tx ya committeó — no se re-invoca ni se revierte nada.
+        expect(ticketRepo.save).toHaveBeenCalledOnce();
+        expect(operacionRepo.save).toHaveBeenCalledOnce();
+        expect(errorSpy).toHaveBeenCalledOnce();
+
+        errorSpy.mockRestore();
       });
     });
   });
