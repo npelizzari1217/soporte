@@ -46,7 +46,25 @@ export class Email {
     return this._value === other._value;
   }
 
-  private static maskRaw(raw: string): string {
+  /**
+   * Representación en string apta para interpolación implícita (template
+   * literals, concatenación, logging). Delega en `mask()` — NUNCA el valor
+   * crudo — para no reintroducir el riesgo de fuga de Requirement 7 si el
+   * VO se interpola accidentalmente en un mensaje o log.
+   */
+  toString(): string {
+    return this.mask();
+  }
+
+  /**
+   * Enmascarado de un string crudo — sin pasar por `Email.create()` (no
+   * requiere formato válido). Público para que infra pueda enmascarar
+   * emails que aparecen incrustados en texto libre no controlado por el
+   * dominio (ej. mensajes de error de un proveedor SMTP externo,
+   * `nodemailer-email-sender.adapter.ts`), reusando la misma regla de
+   * enmascarado que el resto del dominio (Requirement 7).
+   */
+  static maskRaw(raw: string): string {
     if (raw.length === 0) return '(vacío)';
 
     const at = raw.indexOf('@');

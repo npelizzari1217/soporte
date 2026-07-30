@@ -62,6 +62,15 @@ describe('Email (VO)', () => {
     });
   });
 
+  describe('toString()', () => {
+    it('delega en mask() para no filtrar el email completo por interpolación implícita', () => {
+      const email = Email.create('usuario@dominio.com').getValue();
+
+      expect(email.toString()).toBe(email.mask());
+      expect(email.toString()).toBe('u***@dominio.com');
+    });
+  });
+
   describe('equals()', () => {
     it('retorna true para dos Email con el mismo valor', () => {
       const a = Email.create('usuario@dominio.com').getValue();
