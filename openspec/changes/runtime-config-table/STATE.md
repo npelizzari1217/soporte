@@ -592,7 +592,11 @@ EXIT_CODE=0
 
 ### Commits
 
-Pendientes de crear en este mismo turno (ver STATE.md tras el commit) — conventional, sin Co-Authored-By.
+- `feat(configuracion): errores y puerto del repositorio CRUD (R8, F2)` (config.errors.ts + i-configuracion-repository.ts)
+- `feat(configuracion): use cases de lectura y actualizacion de config (R3, R5, R8, F2)` (leer-config/actualizar-config use cases + specs)
+- `feat(configuracion): adapter Prisma del repositorio CRUD con scope dual (Dz9, R9)` (configuracion-repository.adapter.ts + specs unit/integration)
+- `feat(configuracion): ConfiguracionModule cablea la cadena PR1-PR4 (Dz12)` (configuracion.module.ts + spec de wiring)
+- `docs(configuracion): marcar tasks PR4 y documentar Apply Progress` (tasks.md + STATE.md)
 
 Sin push, sin PR — branch `runtime-config-table-pr4` gateado por el usuario, encadenada sobre `runtime-config-table-pr3`.
 
