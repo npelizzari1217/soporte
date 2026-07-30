@@ -52,7 +52,12 @@ describe('SharedModule bootstrap — SECRET_CIPHER (F1 fail-fast)', () => {
     expect(process.env.CONFIG_ENCRYPTION_KEY).toBe(previous);
   });
 
-  it('rechaza el bootstrap si CONFIG_ENCRYPTION_KEY tiene longitud inválida (F1 fail-fast)', async () => {
+  // Nota: con el predicado compartido `checkConfigEncryptionKeyFormat` (orden trim→formato→longitud),
+  // este fixture de 16 chars falla en la rama 'formato' (no matchea el regex de 44 chars) ANTES del
+  // chequeo de longitud. La rama 'longitud' es inalcanzable en la práctica porque el regex ya ancla el
+  // largo; su cobertura unitaria vive en config-encryption-key.spec.ts. Acá solo verificamos el
+  // fail-fast de bootstrap ante una clave con formato/longitud inválidos.
+  it('rechaza el bootstrap si CONFIG_ENCRYPTION_KEY tiene formato/longitud inválidos (F1 fail-fast)', async () => {
     const previous = process.env.CONFIG_ENCRYPTION_KEY;
     process.env.CONFIG_ENCRYPTION_KEY = Buffer.alloc(10, 1).toString('base64');
 
