@@ -29,6 +29,7 @@ import { CICLO_CLIENTE_REPOSITORY } from './domain/ports/i-ciclo-cliente.reposit
 import { EMAIL_SENDER } from './domain/ports/i-email-sender.port';
 import { SOLICITANTE_EMAIL_RESOLVER } from './domain/ports/i-solicitante-email.resolver';
 import { SolicitanteEmailResolver } from './infrastructure/persistence/prisma/solicitante-email.resolver';
+import { NodemailerEmailSender } from './infrastructure/email/nodemailer-email-sender.adapter';
 import { NotificarCambioEstadoHandler } from './application/event-handlers/notificar-cambio-estado.handler';
 import { NotificarCambioEstadoListener } from './infrastructure/events/notificar-cambio-estado.listener';
 
@@ -81,19 +82,19 @@ describe('TicketsModule bootstrap (Fase 4, PR2 — R2 DI wiring regression guard
   });
 
   // PR3 (notif-email-estado-ticket, task 3.8): EMAIL_SENDER/SOLICITANTE_EMAIL_RESOLVER
-  // + NotificarCambioEstadoHandler/Listener wireados. Este entorno de test NO tiene
-  // SMTP_* configurado (mismo entorno que ya tolera DATABASE_URL_MASTER ausente para
-  // PrismaService) — el useFactory de EMAIL_SENDER debe capturar ese fallo de config
-  // y NO abortar compile()/init() (ver SmtpUnavailableEmailSender, deviación
-  // documentada en STATE.md Apply Progress PR3).
-  it('resuelve EMAIL_SENDER/SOLICITANTE_EMAIL_RESOLVER y el handler/listener de notificación sin SMTP configurado', async () => {
+  // + NotificarCambioEstadoHandler/Listener wireados. EMAIL_SENDER es fail-fast
+  // (Judgment Day PR3 Ronda 1 — ver STATE.md): el useFactory YA NO captura el
+  // throw de config SMTP faltante. Este entorno de test recibe SMTP_* DUMMY vía
+  // el setup global de Vitest (`test/setup-env.ts`), así que EMAIL_SENDER
+  // resuelve a un `NodemailerEmailSender` real (no a un stand-in de resguardo).
+  it('resuelve EMAIL_SENDER a un NodemailerEmailSender real (env SMTP dummy del setup global) y wirea SOLICITANTE_EMAIL_RESOLVER + handler/listener', async () => {
     const moduleRef = await Test.createTestingModule({
       imports: [SharedModule, TicketsModule],
     }).compile();
 
     await moduleRef.init();
 
-    expect(moduleRef.get(EMAIL_SENDER)).toBeDefined();
+    expect(moduleRef.get(EMAIL_SENDER)).toBeInstanceOf(NodemailerEmailSender);
     expect(moduleRef.get(SOLICITANTE_EMAIL_RESOLVER)).toBeInstanceOf(SolicitanteEmailResolver);
     expect(moduleRef.get(NotificarCambioEstadoHandler)).toBeInstanceOf(
       NotificarCambioEstadoHandler,

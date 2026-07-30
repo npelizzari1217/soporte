@@ -6,6 +6,10 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
+    // Env SMTP dummy para toda la suite — EMAIL_SENDER (tickets.module.ts)
+    // es fail-fast (Judgment Day PR3 Ronda 1) y los specs de wiring
+    // bootstrapean TicketsModule/AppModule sin SMTP_* real configurado.
+    setupFiles: ['./test/setup-env.ts'],
     // Equivalent to jest maxWorkers:1 — integration suites share the same
     // test DB; sequential execution avoids truncate conflicts.
     fileParallelism: false,

@@ -21,7 +21,7 @@
  *
  * Tarea: 3.E.2
  */
-import { Logger, Module } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 
 // ─── Domain ports (tokens + interfaces) ──────────────────────────────────────
@@ -72,7 +72,6 @@ import { PrismaPrioridadRepository } from './infrastructure/persistence/prisma/p
 import { PrismaCicloClienteRepository } from './infrastructure/persistence/prisma/prisma-ciclo-cliente.repository';
 import { SolicitanteEmailResolver } from './infrastructure/persistence/prisma/solicitante-email.resolver';
 import { NodemailerEmailSender } from './infrastructure/email/nodemailer-email-sender.adapter';
-import { SmtpUnavailableEmailSender } from './infrastructure/email/smtp-unavailable-email-sender';
 import { NotificarCambioEstadoListener } from './infrastructure/events/notificar-cambio-estado.listener';
 
 // ─── Domain services ──────────────────────────────────────────────────────────
@@ -467,39 +466,19 @@ import { ComentariosController } from './interface/controllers/comentarios.contr
     },
 
     // EMAIL_SENDER: NodemailerEmailSender.fromEnv() valida la config SMTP y
-    // LANZA si falta (D7, Requirement 7 nota infra — por diseño, la app NO
-    // debe arrancar con config SMTP incompleta en producción real).
+    // LANZA `SmtpConfigError` si falta (D7, Requirement 7 nota infra — por
+    // diseño, la app NO debe arrancar con config SMTP incompleta). Fail-fast
+    // RESTAURADO en Judgment Day PR3 Ronda 1 (ver STATE.md): el throw se deja
+    // propagar sin control acá — un deploy sin SMTP configurado NO debe
+    // arrancar "sano" y fallar en silencio en el primer envío real.
     //
-    // DEVIACIÓN DOCUMENTADA (ver STATE.md, Apply Progress PR3): ese throw NO
-    // puede propagarse sin control desde este useFactory, porque NestJS
-    // instancia TODOS los providers de forma EAGER durante
-    // moduleRef.compile()/.init() (confirmado empíricamente — mismo motivo
-    // por el que PrismaService usa `DATABASE_URL_MASTER ?? ''` en vez de
-    // lanzar). Varios tests de wiring YA EXISTENTES (equipos.module.spec,
-    // compras.module.spec, reparaciones.module.wiring.spec,
-    // tickets.module.wiring.spec, app.module.spec) bootstrapean el grafo de
-    // DI completo de TicketsModule SIN `SMTP_*` configurado — si este
-    // useFactory lanzara, esos tests (hoy verdes) romperían.
-    //
-    // Se captura el error de config y se sustituye por
-    // SmtpUnavailableEmailSender: NUNCA lanza, siempre falla explícito
-    // (Result.fail) en el primer send() real, logueado como WARN acá mismo
-    // para que quede visible en el arranque real si faltara config en un
-    // entorno donde SÍ se espera SMTP (staging/producción).
+    // El entorno de test (specs de wiring que bootstrapean TicketsModule/
+    // AppModule vía Test.createTestingModule) NO debe depender de este
+    // catch-all: en su lugar, el setup global de Vitest inyecta env SMTP
+    // dummy (ver `test/setup-env.ts` + `setupFiles` en `vitest.config.ts`).
     {
       provide: EMAIL_SENDER,
-      useFactory: (): EmailSenderPort => {
-        try {
-          return NodemailerEmailSender.fromEnv();
-        } catch (err) {
-          const motivo = err instanceof Error ? err.message : 'Configuración SMTP inválida';
-          new Logger('TicketsModule').warn(
-            `EMAIL_SENDER: SMTP no configurado al bootstrap (${motivo}). ` +
-              `El envío de emails de notificación fallará con Result.fail hasta que se configure.`,
-          );
-          return new SmtpUnavailableEmailSender(motivo);
-        }
-      },
+      useFactory: (): EmailSenderPort => NodemailerEmailSender.fromEnv(),
     },
 
     // NotificarCambioEstadoHandler: plain class (application, sin decorators
