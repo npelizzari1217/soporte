@@ -7,9 +7,11 @@ import { ITipoOperacionRepository } from '../../domain/ports/i-tipo-operacion.re
 import { TicketStateMachineFactory } from '../../domain/state-machine/ticket-state-machine.factory';
 import { ITicketStateMachine } from '../../domain/state-machine/i-ticket-state-machine';
 import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
+import { IDomainEventPublisher } from '../../../shared/domain/ports/i-domain-event-publisher';
 import { EstadoEntity } from '../../domain/entities/estado.entity';
 import { OperacionTicketEntity } from '../../domain/entities/operacion-ticket.entity';
 import { TicketEntity } from '../../domain/entities/ticket.entity';
+import { TicketEstadoCambiado } from '../../domain/events/ticket-estado-cambiado.event';
 import {
   FechaCierreRequeridaError,
   TransicionInvalidaError,
@@ -90,12 +92,16 @@ describe('TransicionarEstadoUseCase', () => {
   let factory: Pick<TicketStateMachineFactory, 'resolve'>;
   let mockMachine: vi.Mocked<ITicketStateMachine>;
   let txRunner: ITenantTransactionRunner;
+  let publisher: vi.Mocked<IDomainEventPublisher>;
   let useCase: TransicionarEstadoUseCase;
+
+  const CLIENTE_ID = 'cliente-uuid-tenant-a';
 
   const validDto: TransicionarEstadoDto = {
     ticketId: 'ticket-uuid-001',
     nuevoEstadoCodigo: 'EN_PROGRESO',
     autorId: AUTOR_ID,
+    clienteId: CLIENTE_ID,
   };
 
   beforeEach(() => {
@@ -131,6 +137,8 @@ describe('TransicionarEstadoUseCase', () => {
       run: vi.fn().mockImplementation((fn: () => Promise<unknown>) => fn()),
     };
 
+    publisher = { publish: vi.fn() };
+
     // Default happy-path mocks
     ticketRepo.findById.mockResolvedValue(makeTicket(ESTADO_ABIERTO_ID, TIPO_TICKET_ID));
     estadoRepo.findById.mockResolvedValue(makeEstado(ESTADO_ABIERTO_ID, 'ABIERTO'));
@@ -149,6 +157,7 @@ describe('TransicionarEstadoUseCase', () => {
       tipoOperacionRepo,
       factory,
       txRunner,
+      publisher,
     );
   });
 
@@ -450,6 +459,7 @@ describe('TransicionarEstadoUseCase', () => {
         ticketId: 'ticket-uuid-001',
         nuevoEstadoCodigo: 'RESUELTO',
         autorId: AUTOR_ID,
+        clienteId: CLIENTE_ID,
       };
 
       beforeEach(() => {
@@ -488,6 +498,7 @@ describe('TransicionarEstadoUseCase', () => {
         ticketId: 'ticket-uuid-001',
         nuevoEstadoCodigo: 'RESUELTO',
         autorId: AUTOR_ID,
+        clienteId: CLIENTE_ID,
         fechaCierre,
       };
 
@@ -529,6 +540,7 @@ describe('TransicionarEstadoUseCase', () => {
         ticketId: 'ticket-uuid-002',
         nuevoEstadoCodigo: 'EN_PROGRESO',
         autorId: AUTOR_ID,
+        clienteId: CLIENTE_ID,
       };
 
       beforeEach(() => {
@@ -571,6 +583,7 @@ describe('TransicionarEstadoUseCase', () => {
           ticketId: 'ticket-uuid-001',
           nuevoEstadoCodigo: 'SIN_SOLUCION',
           autorId: AUTOR_ID,
+          clienteId: CLIENTE_ID,
         });
 
         expect(result.isOk()).toBe(true);
@@ -585,6 +598,7 @@ describe('TransicionarEstadoUseCase', () => {
           ticketId: 'ticket-uuid-001',
           nuevoEstadoCodigo: 'SIN_SOLUCION',
           autorId: AUTOR_ID,
+          clienteId: CLIENTE_ID,
         });
 
         expect(ticket.fechaCierre).toBeInstanceOf(Date);
@@ -600,6 +614,7 @@ describe('TransicionarEstadoUseCase', () => {
           ticketId: 'ticket-uuid-001',
           nuevoEstadoCodigo: 'SIN_SOLUCION',
           autorId: AUTOR_ID,
+          clienteId: CLIENTE_ID,
         });
 
         expect(spy).toHaveBeenCalledOnce();
@@ -618,6 +633,7 @@ describe('TransicionarEstadoUseCase', () => {
           ticketId: 'ticket-uuid-001',
           nuevoEstadoCodigo: 'RECHAZADO',
           autorId: AUTOR_ID,
+          clienteId: CLIENTE_ID,
         });
 
         expect(result.isOk()).toBe(true);
@@ -632,6 +648,7 @@ describe('TransicionarEstadoUseCase', () => {
           ticketId: 'ticket-uuid-001',
           nuevoEstadoCodigo: 'RECHAZADO',
           autorId: AUTOR_ID,
+          clienteId: CLIENTE_ID,
         });
 
         expect(ticket.fechaCierre).toBeInstanceOf(Date);
@@ -647,6 +664,7 @@ describe('TransicionarEstadoUseCase', () => {
           ticketId: 'ticket-uuid-001',
           nuevoEstadoCodigo: 'RECHAZADO',
           autorId: AUTOR_ID,
+          clienteId: CLIENTE_ID,
         });
 
         expect(spy).toHaveBeenCalledOnce();
@@ -664,6 +682,131 @@ describe('TransicionarEstadoUseCase', () => {
         await useCase.execute(validDto); // ABIERTO → EN_PROGRESO (via mockMachine que retorna true)
 
         expect(setFechaCierreSpy).not.toHaveBeenCalled();
+      });
+    });
+  });
+
+  // ─── PR4 4.3/4.4/4.11: publicación post-commit de TicketEstadoCambiado ───────
+  // Ref spec: R2 Scenarios 1-2, R6 "nada dentro de la tx", R1 "transición a CANCELADO".
+  // Ref design: §6.A (publish tras txRunner.run(), antes del return).
+
+  describe('publicación post-commit del evento TicketEstadoCambiado (D1, D4, D5)', () => {
+    describe('4.3 — estado destino notificable (RESUELTO)', () => {
+      const dto: TransicionarEstadoDto = {
+        ticketId: 'ticket-uuid-001',
+        nuevoEstadoCodigo: 'RESUELTO',
+        autorId: AUTOR_ID,
+        clienteId: CLIENTE_ID,
+        fechaCierre: new Date('2026-06-28'),
+      };
+
+      beforeEach(() => {
+        estadoRepo.findByCodigo.mockResolvedValue(makeEstado(ESTADO_RESUELTO_ID, 'RESUELTO'));
+      });
+
+      it('publisher.publish() es llamado UNA vez con el evento TicketEstadoCambiado correcto', async () => {
+        const ticket = makeTicket(ESTADO_ABIERTO_ID, TIPO_TICKET_ID);
+        ticketRepo.findById.mockResolvedValue(ticket);
+
+        await useCase.execute(dto);
+
+        expect(publisher.publish).toHaveBeenCalledOnce();
+        const published = publisher.publish.mock.calls[0][0] as TicketEstadoCambiado;
+        expect(published).toBeInstanceOf(TicketEstadoCambiado);
+        expect(published.ticketId).toBe(ticket.id);
+        expect(published.numero).toBe(ticket.numero);
+        expect(published.tituloTicket).toBe(ticket.titulo);
+        expect(published.tipoCodigo).toBe('SOPORTE');
+        expect(published.estadoAnteriorCodigo).toBe('ABIERTO');
+        expect(published.estadoNuevoCodigo).toBe('RESUELTO');
+        expect(published.solicitanteId).toBe(ticket.solicitanteId);
+        expect(published.autorId).toBe(AUTOR_ID);
+        expect(published.tenantId).toBe(CLIENTE_ID);
+        expect(published.occurredAt).toBeInstanceOf(Date);
+      });
+
+      it('la transición sigue retornando Result.ok sin importar el publisher', async () => {
+        const result = await useCase.execute(dto);
+
+        expect(result.isOk()).toBe(true);
+      });
+    });
+
+    describe('4.3 — estado destino NO notificable (EN_PROGRESO)', () => {
+      it('publisher.publish() NO es llamado', async () => {
+        await useCase.execute(validDto); // ABIERTO → EN_PROGRESO
+
+        expect(publisher.publish).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('4.4 — nada de publicación ocurre DENTRO del callback del txRunner (R6/R10)', () => {
+      it('publisher.publish es invocado DESPUÉS de que txRunner.run resuelve, nunca durante', async () => {
+        const callOrder: string[] = [];
+        estadoRepo.findByCodigo.mockResolvedValue(makeEstado(ESTADO_RESUELTO_ID, 'RESUELTO'));
+
+        (txRunner.run as vi.Mock).mockImplementation(async (fn: () => Promise<unknown>) => {
+          callOrder.push('tx:start');
+          const r = await fn();
+          callOrder.push('tx:end');
+          return r;
+        });
+        publisher.publish.mockImplementation(() => {
+          callOrder.push('publisher:publish');
+        });
+
+        await useCase.execute({
+          ticketId: 'ticket-uuid-001',
+          nuevoEstadoCodigo: 'RESUELTO',
+          autorId: AUTOR_ID,
+          clienteId: CLIENTE_ID,
+          fechaCierre: new Date('2026-06-28'),
+        });
+
+        const txEnd = callOrder.indexOf('tx:end');
+        const publishCall = callOrder.indexOf('publisher:publish');
+        expect(publishCall).toBeGreaterThan(-1);
+        expect(txEnd).toBeLessThan(publishCall);
+      });
+    });
+
+    describe('4.11 — transición a CANCELADO notifica vía PATCH en COMPRAS/EDILICIA (R1)', () => {
+      const ESTADO_CANCELADO_ID = 'estado-cancelado-uuid';
+
+      beforeEach(() => {
+        estadoRepo.findByCodigo.mockResolvedValue(makeEstado(ESTADO_CANCELADO_ID, 'CANCELADO'));
+      });
+
+      it('COMPRAS: publisher.publish() es llamado con estadoNuevoCodigo CANCELADO', async () => {
+        tipoTicketRepo.findCodigoById.mockResolvedValue('COMPRAS');
+
+        await useCase.execute({
+          ticketId: 'ticket-uuid-001',
+          nuevoEstadoCodigo: 'CANCELADO',
+          autorId: AUTOR_ID,
+          clienteId: CLIENTE_ID,
+        });
+
+        expect(publisher.publish).toHaveBeenCalledOnce();
+        const published = publisher.publish.mock.calls[0][0] as TicketEstadoCambiado;
+        expect(published.tipoCodigo).toBe('COMPRAS');
+        expect(published.estadoNuevoCodigo).toBe('CANCELADO');
+      });
+
+      it('EDILICIA: publisher.publish() es llamado con estadoNuevoCodigo CANCELADO', async () => {
+        tipoTicketRepo.findCodigoById.mockResolvedValue('EDILICIA');
+
+        await useCase.execute({
+          ticketId: 'ticket-uuid-001',
+          nuevoEstadoCodigo: 'CANCELADO',
+          autorId: AUTOR_ID,
+          clienteId: CLIENTE_ID,
+        });
+
+        expect(publisher.publish).toHaveBeenCalledOnce();
+        const published = publisher.publish.mock.calls[0][0] as TicketEstadoCambiado;
+        expect(published.tipoCodigo).toBe('EDILICIA');
+        expect(published.estadoNuevoCodigo).toBe('CANCELADO');
       });
     });
   });

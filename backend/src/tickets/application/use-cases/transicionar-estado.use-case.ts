@@ -1,8 +1,11 @@
 import { DomainError, Result } from '../../../shared/domain/result';
 import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
+import { IDomainEventPublisher } from '../../../shared/domain/ports/i-domain-event-publisher';
 import { OperacionTicketEntity } from '../../domain/entities/operacion-ticket.entity';
 import { TicketEntity } from '../../domain/entities/ticket.entity';
 import { TicketStateMachineFactory } from '../../domain/state-machine/ticket-state-machine.factory';
+import { TicketEstadoCambiado } from '../../domain/events/ticket-estado-cambiado.event';
+import { esEstadoNotificable } from '../../domain/policies/estados-notificables.policy';
 import {
   EstadoCatalogoNoEncontradoError,
   EstadoDestinoInvalidoError,
@@ -38,6 +41,12 @@ export interface TransicionarEstadoDto {
   ticketId: string;
   nuevoEstadoCodigo: string;
   autorId: string;
+  /**
+   * UUID del tenant/cliente (del JWT, poblado por el controller — patrón
+   * `CrearTicketDto.clienteId`, D5). Viaja en `TicketEstadoCambiado.tenantId`
+   * para que el resolver cross-DB de email consulte el tenant correcto.
+   */
+  clienteId: string;
   /**
    * Fecha de cierre. OBLIGATORIA si nuevoEstadoCodigo === 'RESUELTO' (caller la provee).
    * Ignorada para SIN_SOLUCION y RECHAZADO (now() servidor) y para otros destinos.
@@ -78,6 +87,7 @@ export class TransicionarEstadoUseCase {
     private readonly tipoOperacionRepo: ITipoOperacionRepository,
     private readonly factory: Pick<TicketStateMachineFactory, 'resolve'>,
     private readonly txRunner: ITenantTransactionRunner,
+    private readonly publisher: IDomainEventPublisher,
   ) {}
 
   async execute(dto: TransicionarEstadoDto): Promise<Result<TicketEntity, DomainError>> {
@@ -175,6 +185,28 @@ export class TransicionarEstadoUseCase {
       await this.ticketRepo.save(ticket);
       await this.operacionRepo.save(operacion);
     });
+
+    // 13. POST-COMMIT (fuera de la tx, design §6.A): publicar el evento de
+    //     dominio solo si el estado destino es notificable (R1/R2). Nunca
+    //     dentro de txRunner.run() (R6/R10 — nada de publish/send en la tx).
+    if (esEstadoNotificable(estadoNuevo.codigo)) {
+      this.publisher.publish(
+        new TicketEstadoCambiado(
+          ticket.id,
+          ticket.numero,
+          ticket.titulo,
+          tipoCodigo,
+          estadoActual.id,
+          estadoNuevo.id,
+          estadoActual.codigo,
+          estadoNuevo.codigo,
+          ticket.solicitanteId,
+          dto.autorId,
+          dto.clienteId,
+          new Date(),
+        ),
+      );
+    }
 
     return Result.ok(ticket);
   }
