@@ -603,3 +603,103 @@ Sin push, sin PR — branch `runtime-config-table-pr4` gateado por el usuario, e
 ### Cómo retomar
 
 PR4 cerrado y verde — la cadena completa PR1-PR4 está cableada y activa por primera vez vía `ConfiguracionModule` (bootstrap real verificado). Próximo work unit (Review Workload Guard, `ask-on-risk`): **PR5 — API de gestión** (`ConfiguracionController` + DTOs + RBAC + wiring en `app.module.ts`). Al implementar el controller, resolver `actorEsGlobalAdmin` desde `@CurrentUser() user: JwtPayload` (`user.is_global_admin`) y pasarlo al DTO de `ActualizarConfigUseCase` — el enforcement de F2 YA existe y está testeado, PR5 solo conecta el JWT. Recordar también wirear `ConfiguracionModule` en `app.module.ts` (no lo hace este PR4, solo lo define).
+
+## Judgment Day — PR4 — fixes Ronda 1
+
+Fix-agent quirúrgico sobre la capa CRUD de config (branch `runtime-config-table-pr4`, sin push). 5 hallazgos de la ronda de revisión — 2 CRITICAL (confirmado A+B / Juez A), 1 HIGH (Juez A), 1 MEDIUM (A+B), 1 LOW agrupado. Todos resueltos. Auditoría de seguridad/aislamiento de tenant — máximo cuidado, sin atajos.
+
+### Diseño del fix: identidad del actor
+
+Grep confirmado sobre `backend/src/auth/domain` (2026-07-31): NO existe un VO `UserIdentity`/actor reusable — las entidades ahí (`usuario.entity.ts`, `role.entity.ts`, `permiso.entity.ts`) modelan persistencia RBAC, no un contrato de identidad para cruzar el boundary de un use case. Se definió `ActorContext { clienteId: string | null; esGlobalAdmin: boolean }` nuevo en `configuracion/domain/actor-context.ts` (auth-access skill regla 4: "Pass UserIdentity to use cases as a parameter", nunca un boolean suelto). Reemplaza el `actorEsGlobalAdmin: boolean` que tenía `ActualizarConfigDto` desde Apply Progress PR4, y se agrega (nuevo) al DTO de `LeerConfigUseCase`, que antes no recibía ninguna identidad de actor.
+
+**REQUISITO DURO para PR5 (documentado en el propio `ActorContext` y acá)**: `actor.clienteId`/`actor.esGlobalAdmin` DEBEN resolverse EXCLUSIVAMENTE del JWT verificado (`req.user`/`@CurrentUser()`, claim `is_global_admin`) — NUNCA del body/query de la request. Un actor que pudiera setear su propio `ActorContext` desde el payload podría impersonar a un global-admin o reclamar el tenant de otro cliente.
+
+### Arreglos aplicados
+
+1. **[CRITICAL, confirmado A+B] Ownership de tenant ausente (write + read).** Antes de esta ronda, los use cases delegaban TODO el límite de tenant a un controller (PR5) inexistente — el único gate era F2 (`scope=global` sin `is_global_admin`). Un actor de scope `tenant` podía pasar `scope.clienteId` de OTRO tenant y el use case lo aceptaba sin más: leía/escribía la config de cualquier tenant ajeno. FIX: en AMBOS use cases, ANTES de tocar el repositorio — `scope.kind==='global'` requiere `actor.esGlobalAdmin` (`ScopeGlobalNoAutorizadoError`, ya existía); `scope.kind==='tenant'` requiere `actor.esGlobalAdmin` **O** `scope.clienteId === actor.clienteId` (nuevo `ScopeTenantNoAutorizadoError`, `code='CONFIG_SCOPE_TENANT_NO_AUTORIZADO'`). Vale para LEER y ACTUALIZAR por igual.
+   - `backend/src/configuracion/domain/errors/config.errors.ts` (+`ScopeTenantNoAutorizadoError`)
+   - `backend/src/configuracion/domain/actor-context.ts` (nuevo)
+   - `backend/src/configuracion/application/use-cases/leer-config.use-case.ts` (+`actor: ActorContext` en el DTO, +gate de autorización)
+   - `backend/src/configuracion/application/use-cases/actualizar-config.use-case.ts` (`actorEsGlobalAdmin` → `actor: ActorContext`, +gate de ownership)
+   - Tests (+10 entre ambos specs): (a) actor de tenant leyendo/escribiendo su propio tenant ⇒ ok; (b) actor de tenant con `scope.clienteId` de OTRO tenant ⇒ rechazado ANTES de persistir/leer (`findAll`/`findByClave`/`upsert` NUNCA llamados); (c) global-admin ⇒ puede cualquier tenant + global, en lectura y escritura.
+
+2. **[CRITICAL, Juez A] Fail-open a global por `scope.kind` no validado.** Los adapters (`configuracion-repository.adapter.ts` Y `audit-log.adapter.ts`, confirmado en ambos) usaban `if (kind==='tenant') {...} else {...master/global...}` — CUALQUIER `kind` no-`'tenant'` (malformado, tampereado, o un valor futuro no contemplado) caía en la rama `else` y operaba sobre MASTER/GLOBAL por default. El gate del use case (antes de esta ronda) solo chequeaba `===  'global'` explícito, sin rechazar otros valores. FIX: nuevo `InvalidScopeError` (`code='CONFIG_SCOPE_INVALIDO'`) + guard runtime `esScopeKindValido()` (`configuracion/domain/validar-scope.ts`) invocado en AMBOS use cases ANTES de autorizar/tocar el repositorio (fail-closed). En los DOS adapters, el `if/else` se reemplazó por un `switch (scope.kind)` EXHAUSTIVO (`'tenant'`/`'global'`) con rama `default` que rechaza explícitamente (`Result.fail`, nunca opera sobre master/global) — defensa en profundidad, por si algún caller futuro invoca el adapter sin pasar por el use case.
+   - `backend/src/configuracion/domain/errors/config.errors.ts` (+`InvalidScopeError`)
+   - `backend/src/configuracion/domain/validar-scope.ts` (nuevo, `esScopeKindValido()`)
+   - `backend/src/configuracion/application/use-cases/leer-config.use-case.ts` / `actualizar-config.use-case.ts` (guard de scope.kind como paso 1)
+   - `backend/src/configuracion/infrastructure/persistence/prisma/configuracion-repository.adapter.ts` (`findAll`/`findByClave`/`upsert` → `switch`/`default`)
+   - `backend/src/configuracion/infrastructure/persistence/prisma/audit-log.adapter.ts` (`record()` → `switch`/`default`)
+   - Tests (+9): un `scope.kind` inválido/malformado (construido vía `JSON.parse` — sin `as any`/`as unknown as`, prohibidos en este proyecto — para simular el cruce de boundary en runtime) es rechazado en ambos use cases y en los 4 métodos de adapter (`findAll`, `findByClave`, `upsert`, `record`) — jamás escribe/lee en global/master.
+
+3. **[HIGH, Juez A] Round-trip del placeholder enmascarado corrompía el secreto.** `LeerConfigUseCase` SIEMPRE devuelve `SECRET_MASK` (`'********'`) para filas `esSecreto=true` (R3) — un frontend que lea, muestre y reenvíe el formulario sin tocar ese campo reenviaría literalmente el placeholder. `ActualizarConfigUseCase` lo cifraba y persistía como si fuera el secreto real, sobrescribiendo silenciosamente el password/API-key legítimo con un valor irrecuperable (la fila vieja ya está pisada). FIX: nuevo `ValorEnmascaradoNoPermitidoError` (`code='CONFIG_VALOR_ENMASCARADO_NO_PERMITIDO'`) — se rechaza cuando `dto.esSecreto && dto.valor === SECRET_MASK`, ANTES de leer la fila existente, cifrar o persistir.
+   - `backend/src/configuracion/domain/errors/config.errors.ts` (+`ValorEnmascaradoNoPermitidoError`)
+   - `backend/src/configuracion/application/use-cases/actualizar-config.use-case.ts`
+   - Tests (+2): update de secreto con valor `'********'` ⇒ rechazado, `encrypt()`/`findByClave()`/`upsert()` NUNCA llamados; update NO-secreto con el mismo literal ⇒ permitido (el guard es específico de `esSecreto`, no del string en sí).
+
+4. **[MEDIUM, A+B] TOCTOU en `upsert()`.** La ventana entre `findFirst` (resolución de existencia) y `create`/`update` no es atómica (Dz9 — no hay `.upsert()` nativo posible sobre el partial unique index) — una escritura concurrente para la misma `(categoria, clave)` del mismo scope podía violar el índice y Prisma lo reportaba `P2002`, mapeado al mismo `InfraConfigError` genérico que cualquier otro fallo de infra (timeout, conexión caída) — un caller no podía distinguir "reintentá, fue una carrera" de "la infra está caída". FIX: nuevo `ConfigConflictoConcurrenteError` (`code='CONFIG_CONFLICTO_CONCURRENTE'`), `IConfiguracionRepository.upsert()` ampliado a `Result<ConfiguracionRow, InfraConfigError | ConfigConflictoConcurrenteError>`. El adapter detecta `P2002` vía duck-typing sobre `err.code` (mismo patrón `isPrismaUniqueConstraintError` que `equipos/application/use-cases/crear-equipo.use-case.ts`) y lo mapea al error distinguible, en ambos scopes (tenant y global). No se envolvió en `$transaction` (la ventana sigue existiendo entre `findFirst` y `create`/`update` — el fix es la DETECCIÓN correcta del conflicto vía el índice de DB, no su eliminación; envolver en transacción no cierra la ventana porque el conflicto lo detecta el índice, no un lock explícito, y forzar un lock pesimista sobre esta tabla de config sería over-engineering fuera del scope quirúrgico de esta ronda).
+   - `backend/src/configuracion/domain/errors/config.errors.ts` (+`ConfigConflictoConcurrenteError`)
+   - `backend/src/configuracion/domain/ports/i-configuracion-repository.ts` (`upsert()` error union ampliado)
+   - `backend/src/configuracion/infrastructure/persistence/prisma/configuracion-repository.adapter.ts`
+   - Tests (+3): `P2002` en scope global y en scope tenant ⇒ `ConfigConflictoConcurrenteError`; un error de infra SIN `code='P2002'` sigue mapeando a `InfraConfigError` genérico (no se mezclan).
+
+5. **[LOW] Orden de validación + module spec.**
+   - Orden final en AMBOS use cases (patrón authenticate→authorize→business del auth-access skill): validar `scope.kind` → autorizar (global→`isGlobalAdmin`; tenant→ownership) → R8 whitelist (solo en `ActualizarConfigUseCase`) → guard del placeholder (solo update) → cifrar/persistir → publicar evento. Sin cambio de comportamiento observable (ninguna de las validaciones tenía efectos secundarios), solo consistencia con el patrón del skill.
+   - `configuracion.module.spec.ts`: el test Dz12 ("NO es `@Global()`") ahora asserta también que `CONFIGURACION_REPOSITORY`, `AUDIT_LOG`, `LeerConfigUseCase` y `ActualizarConfigUseCase` NO están disponibles en un árbol que no importa el módulo — antes de esta ronda solo se verificaba `CONFIG_RESOLVER`; un `@Global()` agregado por error, o un provider agregado sin pasar por `exports`, no lo habría atrapado ningún otro test para los 4 providers restantes.
+   - `backend/src/configuracion/application/use-cases/leer-config.use-case.ts` / `actualizar-config.use-case.ts` (reorden + docblocks actualizados)
+   - `backend/src/configuracion/configuracion.module.spec.ts` (+4 asserts en el test Dz12 existente, sin test nuevo)
+
+### Archivos nuevos
+
+| Archivo | Qué hace |
+|---|---|
+| `backend/src/configuracion/domain/actor-context.ts` | `ActorContext { clienteId: string \| null; esGlobalAdmin: boolean }` — identidad de autorización mínima que ambos use cases reciben en su DTO. Documenta el REQUISITO DURO para PR5 (resolver EXCLUSIVAMENTE del JWT verificado). |
+| `backend/src/configuracion/domain/validar-scope.ts` | `esScopeKindValido(kind): kind is ConfigScope['kind']` — guard runtime que cierra el hueco de `scope.kind` malformado cruzando el boundary de use case (arreglo 2). |
+
+### Archivos modificados
+
+| Archivo | Qué cambió |
+|---|---|
+| `backend/src/configuracion/domain/errors/config.errors.ts` | +`ScopeTenantNoAutorizadoError`, +`InvalidScopeError`, +`ValorEnmascaradoNoPermitidoError`, +`ConfigConflictoConcurrenteError` |
+| `backend/src/configuracion/domain/ports/i-configuracion-repository.ts` | `upsert()` error union: `InfraConfigError` → `InfraConfigError \| ConfigConflictoConcurrenteError` |
+| `backend/src/configuracion/application/use-cases/leer-config.use-case.ts` | +`actor: ActorContext` en `LeerConfigDto`, +gate de `scope.kind` + ownership de tenant/F2, `LeerConfigError` ampliado |
+| `backend/src/configuracion/application/use-cases/actualizar-config.use-case.ts` | `actorEsGlobalAdmin: boolean` → `actor: ActorContext`, +gate de `scope.kind` + ownership de tenant, +guard del placeholder enmascarado, reorden de validaciones, `ActualizarConfigError` ampliado |
+| `backend/src/configuracion/infrastructure/persistence/prisma/configuracion-repository.adapter.ts` | `findAll`/`findByClave`/`upsert`: `if/else` → `switch`/`default` fail-closed; `upsert` detecta `P2002` → `ConfigConflictoConcurrenteError` |
+| `backend/src/configuracion/infrastructure/persistence/prisma/audit-log.adapter.ts` | `record()`: `if/else` → `switch`/`default` fail-closed |
+| `backend/src/configuracion/configuracion.module.spec.ts` | Test Dz12 ampliado con 4 asserts adicionales |
+| `backend/src/configuracion/application/use-cases/leer-config.use-case.spec.ts` | Actor en todos los DTOs de test, +7 tests (ownership + scope inválido) |
+| `backend/src/configuracion/application/use-cases/actualizar-config.use-case.spec.ts` | Actor en todos los DTOs de test, +8 tests (ownership + scope inválido + placeholder) |
+| `backend/src/configuracion/infrastructure/persistence/prisma/configuracion-repository.adapter.spec.ts` | +6 tests (P2002 en ambos scopes + no-P2002 sigue genérico + scope inválido en 3 métodos) |
+| `backend/src/configuracion/infrastructure/persistence/prisma/audit-log.adapter.spec.ts` | +1 test (scope inválido) |
+
+### Evidencia real (backend/, corrida serial FOREGROUND, 2026-07-31)
+
+**`corepack pnpm test`**:
+```
+Test Files  177 passed | 1 skipped (178)
+     Tests  2324 passed | 2 skipped (2326)
+  Duration  157.25s
+```
+(vs. baseline Apply Progress PR4 — 2304 passed — +20 tests netos de esta ronda. Sin regresiones. El log `ERROR [AesGcmSecretCipher] decrypt() falló: ...` es esperado — pertenece a un test de PR1 que fuerza tampering del `authTag`, no un fallo real.)
+
+**`corepack pnpm lint`**: primera corrida detectó 9 errores `prettier/prettier` (formato, imports multilínea) en 5 archivos — corregidos con `eslint --fix` (solo reformateo, sin cambios de lógica). Corrida final:
+```
+$ eslint "src/**/*.ts"
+EXIT_CODE=0
+```
+
+**`corepack pnpm exec tsc --noEmit -p tsconfig.json`**: exit 0, sin output.
+
+### Diferido a PRs posteriores (NO implementado en esta ronda — fuera de scope)
+
+- **Lock explícito / `$transaction` para cerrar la ventana TOCTOU del arreglo 4**: se documentó por qué no se implementó (el fix es la detección correcta del conflicto, no su eliminación) — considerarlo solo si el volumen de escrituras concurrentes reales sobre la misma `(categoria, clave)` lo justifica.
+- **PR5 — Controller**: sigue pendiente, ahora con un REQUISITO DURO adicional documentado en `ActorContext` (resolver `clienteId`/`esGlobalAdmin` EXCLUSIVAMENTE del JWT verificado).
+
+### Commits
+
+- `feat(configuracion): ActorContext, validar-scope y nuevos errores de dominio` (`actor-context.ts`, `validar-scope.ts`, `config.errors.ts` +4 errores, `i-configuracion-repository.ts` — soporte de dominio para los 4 arreglos)
+- `fix(configuracion): ownership de tenant, scope.kind invalido y placeholder enmascarado en ambos use cases` (`leer-config.use-case.ts`/`actualizar-config.use-case.ts` + specs — arreglos 1, 2 y 3)
+- `fix(configuracion): switch exhaustivo fail-closed de scope.kind y deteccion de P2002 en los adapters` (`configuracion-repository.adapter.ts`/`audit-log.adapter.ts` + specs — arreglos 2 y 4)
+- `test(configuracion): asserts adicionales de no-exportacion en el wiring guard Dz12` (`configuracion.module.spec.ts` — arreglo 5)
+- `docs(configuracion): documentar fixes Judgment Day PR4 Ronda 1` (STATE.md)
+
+Sin push, sin PR — branch `runtime-config-table-pr4` gateado por el usuario, igual que Apply Progress PR4.
