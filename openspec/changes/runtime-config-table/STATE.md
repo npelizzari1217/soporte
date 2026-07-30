@@ -703,3 +703,55 @@ EXIT_CODE=0
 - `docs(configuracion): documentar fixes Judgment Day PR4 Ronda 1` (STATE.md)
 
 Sin push, sin PR — branch `runtime-config-table-pr4` gateado por el usuario, igual que Apply Progress PR4.
+
+## Judgment Day — PR4 — fixes Ronda 2
+
+Fix-agent quirúrgico sobre la capa CRUD de config (branch `runtime-config-table-pr4`, sin push). 2 hallazgos de la ronda de revisión — 1 CRITICAL (Juez B) + 1 MEDIUM (authz duplicada, mismo hallazgo) y 1 LOW (Juez A). Ambos resueltos.
+
+### Arreglos aplicados
+
+1. **[CRITICAL, Juez B] Bypass de ownership por `null === null` + [MEDIUM] authz duplicada.** AMBOS use cases (`leer-config.use-case.ts`/`actualizar-config.use-case.ts`) tenían el MISMO bloque copy-pasteado: `const esPropioTenant = dto.scope.clienteId === dto.actor.clienteId; if (!dto.actor.esGlobalAdmin && !esPropioTenant) return Result.fail(...)`. Con `actor.clienteId === null` (ej. un actor sin tenant propio) y un `scope.clienteId === null` malformado (cruza el boundary vía JSON.parse, mismo vector que el `scope.kind` inválido de Ronda 1) la comparación `null === null` evaluaba `true` — `esPropioTenant` quedaba `true` y el gate NO disparaba. Lo único que salvaba el caso en producción era que Prisma lanza al recibir `clienteId: null` en el `where` — coincidencia del ORM, no autorización real. FIX: nuevo `autorizarScope(actor, scope)` en `configuracion/domain/validar-scope.ts` (auth-access skill regla 5: "Role/permission logic lives in DOMAIN") — ÚNICA fuente de verdad de esta autorización, reemplaza el bloque duplicado en AMBOS use cases. Fail-closed: `scope.kind==='tenant'` solo autoriza si `actor.esGlobalAdmin` O (`actor.clienteId !== null && typeof scope.clienteId === 'string' && scope.clienteId.length > 0 && scope.clienteId === actor.clienteId`) — `null` NUNCA satisface ownership, y un `clienteId` string vacío tampoco.
+   - `backend/src/configuracion/domain/validar-scope.ts` (+`autorizarScope()`)
+   - `backend/src/configuracion/application/use-cases/leer-config.use-case.ts` (bloque copy-paste → `autorizarScope(dto.actor, dto.scope)`)
+   - `backend/src/configuracion/application/use-cases/actualizar-config.use-case.ts` (ídem)
+   - Tests (+7 domain, +4 entre ambos use case specs): `validar-scope.spec.ts` (nuevo) cubre (a) el bypass exacto `actor.clienteId:null` + `scope.clienteId:null` malformado ⇒ rechazado, (b) `scope.clienteId` string vacío ⇒ rechazado (incluso "coincidiendo" con un `actor.clienteId` también vacío), (c) tenant propio ⇒ ok, (d) tenant ajeno ⇒ rechazado, (e) global-admin ⇒ cualquier tenant + global ok, + scope global sin admin ⇒ rechazado. Ambos use case specs replican el bypass (a) y el caso (b) contra el flujo completo (`repo.findAll`/`findByClave`/`upsert` NUNCA llamados).
+
+2. **[LOW, Juez A] Placeholder sin trim.** `ActualizarConfigUseCase` comparaba `dto.valor === SECRET_MASK` — no cubría `' ******** '` (con espacios, ej. copy-paste desde un input HTML) que cifraría y corrompería el secreto real. FIX: `dto.esSecreto && dto.valor.trim() === SECRET_MASK`.
+   - `backend/src/configuracion/application/use-cases/actualizar-config.use-case.ts`
+   - Test (+1): valor `' ******** '` (esSecreto=true) ⇒ `ValorEnmascaradoNoPermitidoError`, `encrypt()` NUNCA llamado.
+
+### Archivos modificados
+
+| Archivo | Qué cambió |
+|---|---|
+| `backend/src/configuracion/domain/validar-scope.ts` | +`autorizarScope(actor, scope)` — única fuente de verdad de authz de scope, fail-closed ante `null`/string vacío |
+| `backend/src/configuracion/domain/validar-scope.spec.ts` | Nuevo — 7 tests de `autorizarScope` |
+| `backend/src/configuracion/application/use-cases/leer-config.use-case.ts` | Bloque copy-paste de authz → `autorizarScope()` |
+| `backend/src/configuracion/application/use-cases/actualizar-config.use-case.ts` | Bloque copy-paste de authz → `autorizarScope()`; `dto.valor === SECRET_MASK` → `dto.valor.trim() === SECRET_MASK` |
+| `backend/src/configuracion/application/use-cases/leer-config.use-case.spec.ts` | +2 tests (bypass `null===null` + `clienteId` vacío) |
+| `backend/src/configuracion/application/use-cases/actualizar-config.use-case.spec.ts` | +3 tests (bypass `null===null` + `clienteId` vacío + placeholder con espacios) |
+
+### Evidencia real (backend/, corrida serial FOREGROUND, 2026-07-31)
+
+**`corepack pnpm test`**:
+```
+Test Files  178 passed | 1 skipped (179)
+      Tests  2336 passed | 2 skipped (2338)
+   Duration  157.66s
+```
+(vs. baseline Ronda 1 — 2324 passed — +12 tests netos de esta ronda: 7 `validar-scope.spec.ts` (nuevo) + 2 `leer-config.use-case.spec.ts` + 3 `actualizar-config.use-case.spec.ts`. Sin regresiones. El log `ERROR [AesGcmSecretCipher] decrypt() falló: ...` es esperado, mismo test de tampering de PR1 que en rondas anteriores.)
+
+**`corepack pnpm lint`**: primera corrida detectó 1 error `prettier/prettier` (formato de objeto multilínea) en `validar-scope.spec.ts` — corregido con `eslint --fix` (solo reformateo, sin cambio de lógica). Corrida final:
+```
+$ eslint "src/**/*.ts"
+EXIT_CODE=0
+```
+
+**`corepack pnpm exec tsc --noEmit -p tsconfig.json`**: exit 0, sin output.
+
+### Commits
+
+- `fix(configuracion): centralizar autorizacion de scope en dominio, cerrar bypass null===null y trim del placeholder` (`validar-scope.ts` +`autorizarScope()`, ambos use cases, specs — arreglos 1 y 2, mismos archivos)
+- `docs(configuracion): documentar fixes Judgment Day PR4 Ronda 2` (STATE.md)
+
+Sin push, sin PR — branch `runtime-config-table-pr4` gateado por el usuario, igual que rondas anteriores.
