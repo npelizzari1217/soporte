@@ -39,6 +39,16 @@ const MIGRATION_FILE = path.resolve(
   '../../../../../prisma_master/migrations/20260629100000_seed_rbac_4_roles/migration.sql',
 );
 
+// Postrequisite (runtime-config-table PR1, F4/F2): seed_rbac_configuracion_gestionar
+// agrega configuracion:gestionar a ADMINISTRADOR. Se aplica explícitamente
+// acá (en vez de depender del orden incidental de otros archivos de spec en
+// la misma corrida de suite) para que T1.6 sea determinista sin importar el
+// orden de ejecución de archivos — mismo principio que PREREQ_MIGRATION_FILE.
+const POSTREQ_MIGRATION_FILE = path.resolve(
+  __dirname,
+  '../../../../../prisma_master/migrations/20260701010000_seed_rbac_configuracion_gestionar/migration.sql',
+);
+
 // ─── UUIDs autoritativos (tasks.md §UUID Reference — override del spec) ─────────
 const ROLE_UUIDS: Record<string, string> = {
   USUARIO: 'a0000000-0000-4000-a000-000000000006',
@@ -77,6 +87,11 @@ const ADMINISTRADOR_PERMISOS = [
   'rol:asignar',
   'cliente:gestionar',
   'ciclo:gestionar',
+  // configuracion:gestionar (b0..020): sembrado por
+  // 20260701010000_seed_rbac_configuracion_gestionar (runtime-config-table
+  // PR1, F4/F2) — asignado a ADMINISTRADOR, el rol admin realmente activo
+  // (ver nota de desviación en el propio archivo de esa migración).
+  'configuracion:gestionar',
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────────
@@ -95,6 +110,9 @@ describe('Migration: seed_rbac_4_roles (integration — PR1, Change B)', () => {
     // La nueva migración. RED si el archivo no existe (ENOENT). GREEN cuando exista.
     const sql = fs.readFileSync(MIGRATION_FILE, 'utf8');
     await pool.query(sql);
+    // Postrequisite (ver comentario en POSTREQ_MIGRATION_FILE) — determinismo de T1.6.
+    const postreqSql = fs.readFileSync(POSTREQ_MIGRATION_FILE, 'utf8');
+    await pool.query(postreqSql);
   });
 
   afterAll(async () => {
@@ -192,12 +210,12 @@ describe('Migration: seed_rbac_4_roles (integration — PR1, Change B)', () => {
     });
   });
 
-  // ─── T1.6 — ADMINISTRADOR: 19 permisos ───────────────────────────────────
+  // ─── T1.6 — ADMINISTRADOR: 20 permisos (19 de Change B + configuracion:gestionar PR1) ──
 
-  describe('T1.6 — ADMINISTRADOR: todos los 19 permisos', () => {
-    it('tiene exactamente 19 permisos incluyendo ticket:eliminar, usuario:gestionar, rol:asignar, cliente:gestionar, ciclo:gestionar', async () => {
+  describe('T1.6 — ADMINISTRADOR: todos los 20 permisos (19 de Change B + configuracion:gestionar)', () => {
+    it('tiene exactamente 20 permisos incluyendo ticket:eliminar, usuario:gestionar, rol:asignar, cliente:gestionar, ciclo:gestionar, configuracion:gestionar', async () => {
       const permisos = await permisosDeRol('ADMINISTRADOR');
-      expect(permisos).toHaveLength(19);
+      expect(permisos).toHaveLength(20);
       for (const p of ADMINISTRADOR_PERMISOS) expect(permisos).toContain(p);
     });
   });

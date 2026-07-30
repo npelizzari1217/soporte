@@ -17,6 +17,9 @@ import { DOMAIN_EVENT_PUBLISHER } from './domain/ports/i-domain-event-publisher'
 import { EventEmitterPublisher } from './infrastructure/events/event-emitter.publisher';
 import { LOGGER } from './domain/ports/i-logger.port';
 import { NestLoggerAdapter } from './infrastructure/logging/nest-logger.adapter';
+import { SECRET_CIPHER } from './domain/ports/i-secret-cipher';
+import { AesGcmSecretCipher } from './infrastructure/crypto/aes-gcm-secret-cipher.adapter';
+import { validateConfigEncryptionKey } from './infrastructure/crypto/config-encryption-key';
 
 /**
  * SharedModule — módulo global de infraestructura compartida.
@@ -31,6 +34,12 @@ import { NestLoggerAdapter } from './infrastructure/logging/nest-logger.adapter'
  *   - LOGGER                → ILogger (NestLoggerAdapter, envuelve el Logger
  *     de @nestjs/common — único punto donde application/ toca el framework
  *     de logging, vía el puerto)
+ *   - SECRET_CIPHER          → ISecretCipher (AesGcmSecretCipher). El useFactory
+ *     valida `CONFIG_ENCRYPTION_KEY` (presencia + longitud AES-256) ANTES de
+ *     construir el adapter — fail-fast de boot (F1, runtime-config-table PR1).
+ *     Mismo patrón que EMAIL_SENDER en `tickets.module.ts`: el throw de
+ *     `validateConfigEncryptionKey()` NO se captura acá — debe abortar el
+ *     arranque de la app.
  *
  * Todos los providers usan tokens Symbol para respetar el principio de
  * inversión de dependencias: los consumidores dependen de la interfaz (token),
@@ -101,6 +110,17 @@ import { NestLoggerAdapter } from './infrastructure/logging/nest-logger.adapter'
       provide: LOGGER,
       useClass: NestLoggerAdapter,
     },
+
+    // SECRET_CIPHER: ISecretCipher → AesGcmSecretCipher. Fail-fast (F1): valida
+    // CONFIG_ENCRYPTION_KEY al bootstrap, ANTES de instanciar el adapter — un
+    // deploy sin la clave (o con longitud inválida) NO debe arrancar "sano".
+    {
+      provide: SECRET_CIPHER,
+      useFactory: () => {
+        validateConfigEncryptionKey(process.env);
+        return new AesGcmSecretCipher(process.env);
+      },
+    },
   ],
   exports: [
     // Exportar PrismaService para que los módulos de infraestructura
@@ -128,6 +148,10 @@ import { NestLoggerAdapter } from './infrastructure/logging/nest-logger.adapter'
     // Token de logging: los use cases de application/ inyectan este token
     // en vez de importar @nestjs/common Logger directamente.
     LOGGER,
+
+    // Token de cifrado: el resolver de config (`configuracion/`) y el write
+    // use case inyectan este token para cifrar/descifrar valores esSecreto.
+    SECRET_CIPHER,
   ],
 })
 export class SharedModule {}

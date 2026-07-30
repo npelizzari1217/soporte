@@ -206,3 +206,54 @@ model UsuariosRoles {
   @@index([rolId])
   @@map("usuarios_roles")
 }
+
+// ─── CONFIGURACION_RUNTIME (config operativa key-value, scope global) ─────────
+//
+// Idéntico shape en prisma_master y prisma_tenant (runtime-config-table PR1).
+// `valor` va cifrado (AES-256-GCM, ISecretCipher) si esSecreto — cleartext
+// SOLO en memoria durante encrypt/decrypt.
+// Unicidad (categoria, clave): PARTIAL UNIQUE INDEX (WHERE deleted_at IS NULL)
+// via raw SQL en la migración — Prisma no expresa partial unique (Dz9, mismo
+// patrón que Cliente.cuit). Lookups por findFirst, NUNCA findUnique.
+
+model ConfiguracionRuntime {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  categoria      String    @db.VarChar(50)
+  clave          String    @db.VarChar(100)
+  valor          String    @db.Text
+  tipo           String    @db.VarChar(20)
+  esSecreto      Boolean   @default(false) @map("es_secreto")
+  iv             String?   @db.VarChar(64)
+  authTag        String?   @map("auth_tag") @db.VarChar(64)
+  actualizadoPor String?   @map("actualizado_por") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt      DateTime? @map("deleted_at") @db.Timestamptz
+
+  @@index([categoria])
+  @@map("configuracion_runtime")
+}
+
+// ─── AUDIT_ENTRIES (log de auditoría inmutable de cambios de config) ──────────
+//
+// Idéntico shape en ambos schemas. NO extiende el patrón soft-delete
+// universal del proyecto (Dz8, desviación deliberada — spec §0): un audit
+// borrable/mutable deja de ser evidencia. Solo id + createdAt.
+// valorAnterior/valorNuevo van ENMASCARADOS si esSecreto — el cleartext
+// NUNCA se persiste acá.
+
+model AuditEntry {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  actorId       String   @map("actor_id") @db.Uuid
+  accion        String   @db.VarChar(50)
+  categoria     String   @db.VarChar(50)
+  clave         String   @db.VarChar(100)
+  valorAnterior String?  @map("valor_anterior") @db.Text
+  valorNuevo    String?  @map("valor_nuevo") @db.Text
+  esSecreto     Boolean  @default(false) @map("es_secreto")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([categoria, clave])
+  @@index([createdAt])
+  @@map("audit_entries")
+}
