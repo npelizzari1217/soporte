@@ -40,4 +40,12 @@ describe('maskIfSecret', () => {
   it('retorna null cuando esSecreto=false y el valor es null', () => {
     expect(maskIfSecret(null, false)).toBeNull();
   });
+
+  it('enmascara un secreto vacío (string "") — un valor vacío no deja de ser secreto', () => {
+    expect(maskIfSecret('', true)).toBe(SECRET_MASK);
+  });
+
+  it('es idempotente: re-enmascarar un valor ya enmascarado (SECRET_MASK) da el mismo SECRET_MASK', () => {
+    expect(maskIfSecret(SECRET_MASK, true)).toBe(SECRET_MASK);
+  });
 });
