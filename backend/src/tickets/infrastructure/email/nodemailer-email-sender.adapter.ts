@@ -41,7 +41,13 @@ export interface EmailTransporter {
   }): Promise<unknown>;
 }
 
-const TEMPLATES_ROOT = path.join(__dirname, '..', 'email-templates');
+/**
+ * Exportado (no solo interno) para que `email-templates-build.spec.ts` pueda
+ * derivar, con path math real, la ruta relativa que el script `build` debe
+ * reproducir en `dist/` — en vez de comparar contra un substring hardcodeado
+ * del script (Judgment Day PR2 Ronda 2, issue A).
+ */
+export const TEMPLATES_ROOT = path.join(__dirname, '..', 'email-templates');
 const PLACEHOLDER = /{{\s*([\w.]+)\s*}}/g;
 
 const HTML_ESCAPE_MAP: Record<string, string> = {
