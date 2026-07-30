@@ -112,15 +112,20 @@ export class SmtpConfig {
     return trimmed.length > 0 ? trimmed : undefined;
   }
 
+  /** Puerto TCP válido: entero en el rango `1-65535`. Judgment Day PR2 Ronda 1, issue 6. */
   private static readPort(value: unknown): number | undefined {
     if (typeof value === 'number') {
-      return Number.isFinite(value) ? value : undefined;
+      return SmtpConfig.isValidPort(value) ? value : undefined;
     }
     if (typeof value === 'string' && value.trim().length > 0) {
       const parsed = Number(value.trim());
-      return Number.isFinite(parsed) ? parsed : undefined;
+      return SmtpConfig.isValidPort(parsed) ? parsed : undefined;
     }
     return undefined;
+  }
+
+  private static isValidPort(value: number): boolean {
+    return Number.isInteger(value) && value >= 1 && value <= 65535;
   }
 
   private static readBoolean(value: unknown): boolean | undefined {
@@ -153,6 +158,33 @@ export class SmtpConfig {
 
   get from(): string {
     return this.#props.from;
+  }
+
+  /**
+   * Comparación por valor (contrato value-objects — ver `Email.equals()`).
+   * Compara los 6 campos, incluido `pass` en claro (comparación interna en
+   * memoria, no expone nada — a diferencia de `toString()`).
+   */
+  equals(other: SmtpConfig): boolean {
+    if (!(other instanceof SmtpConfig)) return false;
+    return (
+      this.#props.host === other.#props.host &&
+      this.#props.port === other.#props.port &&
+      this.#props.secure === other.#props.secure &&
+      this.#props.user === other.#props.user &&
+      this.#props.pass === other.#props.pass &&
+      this.#props.from === other.#props.from
+    );
+  }
+
+  /**
+   * Representación en string apta para interpolación implícita (template
+   * literals, concatenación, logging). Delega en `toSafeLog()` — NUNCA el
+   * `pass` en claro — mismo razonamiento que `Email#toString()`.
+   */
+  toString(): string {
+    const safe = this.toSafeLog();
+    return `SmtpConfig(host=${safe.host}, port=${safe.port}, secure=${safe.secure}, user=${safe.user}, pass=${safe.pass}, from=${safe.from})`;
   }
 
   /** Serialización segura: `pass` SIEMPRE enmascarado. */

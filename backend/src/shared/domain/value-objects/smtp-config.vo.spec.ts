@@ -85,6 +85,73 @@ describe('SmtpConfig', () => {
       const result = SmtpConfig.create({});
       expect(result.isFail()).toBe(true);
     });
+
+    it.each([0, -1, -25, 65536, 100000, 1.5])(
+      'retorna Result.fail(ConfigIncompletaError) cuando `port` está fuera de rango 1-65535 (%s)',
+      (portInvalido) => {
+        const result = SmtpConfig.create({ ...CONFIG_COMPLETA, port: portInvalido });
+
+        expect(result.isFail()).toBe(true);
+        expect(result.getError()).toBeInstanceOf(ConfigIncompletaError);
+        expect(result.getError().code).toBe('CONFIG_INCOMPLETA');
+      },
+    );
+
+    it.each([1, 587, 65535])(
+      'acepta `port` en los bordes del rango válido 1-65535 (%s)',
+      (portValido) => {
+        const result = SmtpConfig.create({ ...CONFIG_COMPLETA, port: portValido });
+
+        expect(result.isOk()).toBe(true);
+        expect(result.getValue().port).toBe(portValido);
+      },
+    );
+  });
+
+  describe('equals()', () => {
+    it('retorna true cuando los 6 campos son iguales', () => {
+      const a = SmtpConfig.create(CONFIG_COMPLETA).getValue();
+      const b = SmtpConfig.create({ ...CONFIG_COMPLETA }).getValue();
+
+      expect(a.equals(b)).toBe(true);
+    });
+
+    it.each(['host', 'port', 'secure', 'user', 'pass', 'from'] as const)(
+      'retorna false cuando difiere el campo "%s"',
+      (campo) => {
+        const a = SmtpConfig.create(CONFIG_COMPLETA).getValue();
+        const distinto: Record<string, unknown> = {
+          host: 'otro.smtp.com',
+          port: 2525,
+          secure: false,
+          user: 'otro-usuario',
+          pass: 'otro-secreto',
+          from: 'otro@dominio.com',
+        };
+        const b = SmtpConfig.create({ ...CONFIG_COMPLETA, [campo]: distinto[campo] }).getValue();
+
+        expect(a.equals(b)).toBe(false);
+      },
+    );
+  });
+
+  describe('toString()', () => {
+    it('NUNCA expone el `pass` en claro, ni por interpolación implícita', () => {
+      const config = SmtpConfig.create(CONFIG_COMPLETA).getValue();
+
+      const interpolado = `${config}`;
+
+      expect(interpolado).not.toContain('super-secreto-123');
+      expect(interpolado).toContain('********');
+      expect(interpolado).toContain('smtp.dominio.com');
+    });
+
+    it('String(config) devuelve la representación enmascarada', () => {
+      const config = SmtpConfig.create(CONFIG_COMPLETA).getValue();
+
+      expect(String(config)).toBe(config.toString());
+      expect(config.toString()).not.toContain('super-secreto-123');
+    });
   });
 
   describe('masking del secreto (`pass`)', () => {
