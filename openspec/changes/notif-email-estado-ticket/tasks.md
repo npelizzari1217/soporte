@@ -45,21 +45,21 @@ Cada PR: verificación propia (`pnpm test`/`lint`/`tsc --noEmit`), inicio/fin cl
 
 ## PR 2 — Email: VO, errores, ports, adapter nodemailer, resolver cross-DB, templates
 
-- [ ] 2.1 RED: `Email.create()` válido/inválido, `mask()`, `equals()` (design D8, tabla testing "VO Email")
-- [ ] 2.2 GREEN: crear `tickets/domain/value-objects/email.vo.ts`
-- [ ] 2.3 RED: `EmailError`/`ResolverEmailError` — códigos distinguibles, destinatario enmascarado (R7 Scenario "Result.fail tipado", R8 Scenario "email nulo")
-- [ ] 2.4 GREEN: crear `tickets/domain/errors/email.errors.ts`
-- [ ] 2.5 Definir `EmailSenderPort`/`EmailMessage`/`EmailBody` en `tickets/domain/ports/i-email-sender.port.ts` (R7)
-- [ ] 2.6 Definir `ISolicitanteEmailResolver` en `tickets/domain/ports/i-solicitante-email.resolver.ts` (R8)
-- [ ] 2.7 RED: resolver — ok (mismo tenant), fail (no existe/otro tenant), fail (email vacío), vía `PrismaService.getMasterClient()` mockeado (R8 Scenarios 1-3, NFR aislamiento multi-tenant)
-- [ ] 2.8 GREEN: crear `tickets/infrastructure/persistence/prisma/solicitante-email.resolver.ts` (espejo `UsuarioMasterChecker`)
-- [ ] 2.9 RED: `email-config.ts` lanza al bootstrap si falta env SMTP (R7 nota infra; NFR "cero config SMTP fuera de infra")
-- [ ] 2.10 GREEN: crear `tickets/infrastructure/email/email-config.ts`
-- [ ] 2.11 RED: adapter nodemailer — éxito ⇒ `Result.ok`; fallo SMTP ⇒ `Result.fail(EmailError)` enmascarado, nunca throw (R7 Scenarios "ok"/"fail tipado")
-- [ ] 2.12 GREEN: crear `tickets/infrastructure/email/nodemailer-email-sender.adapter.ts`
-- [ ] 2.13 Crear templates `tickets/infrastructure/email-templates/cambio-estado/{subject,body}.hbs`
-- [ ] 2.14 Integración gated (`SMTP_TEST=1`, maildev/mailhog): adapter envía mensaje real end-to-end (tabla testing "Adapter nodemailer real")
-- [ ] 2.15 Verify: pegar salida real `pnpm test` / `pnpm lint` / `tsc --noEmit`
+- [x] 2.1 RED: `Email.create()` válido/inválido, `mask()`, `equals()` (design D8, tabla testing "VO Email")
+- [x] 2.2 GREEN: crear `tickets/domain/value-objects/email.vo.ts`
+- [x] 2.3 RED: `EmailError`/`ResolverEmailError` — códigos distinguibles, destinatario enmascarado (R7 Scenario "Result.fail tipado", R8 Scenario "email nulo")
+- [x] 2.4 GREEN: crear `tickets/domain/errors/email.errors.ts`
+- [x] 2.5 Definir `EmailSenderPort`/`EmailMessage`/`EmailBody` en `tickets/domain/ports/i-email-sender.port.ts` (R7)
+- [x] 2.6 Definir `ISolicitanteEmailResolver` en `tickets/domain/ports/i-solicitante-email.resolver.ts` (R8)
+- [x] 2.7 RED: resolver — ok (mismo tenant), fail (no existe/otro tenant), fail (email vacío), vía `PrismaService.getMasterClient()` mockeado (R8 Scenarios 1-3, NFR aislamiento multi-tenant)
+- [x] 2.8 GREEN: crear `tickets/infrastructure/persistence/prisma/solicitante-email.resolver.ts` (espejo `UsuarioMasterChecker`)
+- [x] 2.9 RED: `email-config.ts` lanza al bootstrap si falta env SMTP (R7 nota infra; NFR "cero config SMTP fuera de infra")
+- [x] 2.10 GREEN: crear `tickets/infrastructure/email/email-config.ts`
+- [x] 2.11 RED: adapter nodemailer — éxito ⇒ `Result.ok`; fallo SMTP ⇒ `Result.fail(EmailError)` enmascarado, nunca throw (R7 Scenarios "ok"/"fail tipado")
+- [x] 2.12 GREEN: crear `tickets/infrastructure/email/nodemailer-email-sender.adapter.ts`
+- [x] 2.13 Crear templates `tickets/infrastructure/email-templates/cambio-estado/{subject,body}.hbs`
+- [x] 2.14 Integración gated (`SMTP_TEST=1`, maildev/mailhog): adapter envía mensaje real end-to-end (tabla testing "Adapter nodemailer real") — DIFERIDA: gate implementado y verificado (skip limpio sin SMTP_TEST=1), no se ejecutó contra un maildev/mailhog real en esta sesión (no disponible en el entorno). Ver Apply Progress PR2 en STATE.md.
+- [x] 2.15 Verify: pegar salida real `pnpm test` / `pnpm lint` / `tsc --noEmit`
 
 ## PR 3 — Handler puro + listener + wiring parcial
 

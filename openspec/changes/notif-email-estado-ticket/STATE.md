@@ -124,3 +124,55 @@ PR2 (Email VO/errores/ports/adapter/resolver/templates), PR3 (handler/listener/w
 
 ### Cómo retomar
 Decidir: (a) usuario aprueba PR1 → commit local + eventual push/PR (fuera del alcance de este sub-agente) → seguir con PR2; (b) pedir ajustes sobre PR1 antes de avanzar.
+
+---
+
+## Apply Progress — PR2 (Email: VO, errores, ports, adapter, resolver, templates) — 2026-07-30
+
+**Status: DONE.** Tasks 2.1–2.15 completas (RED→GREEN estricto). Branch `notif-email-estado-ticket-pr2` (encadenada sobre PR1). Sin push/PR (gateado por usuario).
+
+> Nota de proceso: el sub-agente `sdd-apply` implementó y verificó todo, pero se cortó dos veces por errores server-side (500 y 529 Overloaded) antes de commitear. El orquestador cerró el tramo final: re-corrió la verificación REAL (abajo) y commiteó. Las 15 tasks ya estaban marcadas por el sub-agente antes del corte.
+
+### Tasks completadas
+- 2.1/2.2 RED→GREEN `Email` VO (`create()` valida formato, `mask()`, `equals()`).
+- 2.3/2.4 RED→GREEN `EmailError`/`ResolverEmailError` — códigos distinguibles, destinatario ENMASCARADO en el mensaje del error.
+- 2.5 `EmailSenderPort`/`EmailMessage`/`EmailBody` en domain/ports.
+- 2.6 `ISolicitanteEmailResolver` en domain/ports.
+- 2.7/2.8 RED→GREEN resolver cross-DB (`solicitante-email.resolver.ts`), espejo de `UsuarioMasterChecker`, vía `PrismaService.getMasterClient()` mockeado — ok mismo tenant, fail no existe/otro tenant, fail email vacío (aislamiento multi-tenant).
+- 2.9/2.10 RED→GREEN `email-config.ts` — lanza al bootstrap si falta env SMTP (cero config SMTP fuera de infra).
+- 2.11/2.12 RED→GREEN adapter nodemailer — éxito⇒`Result.ok`, fallo SMTP⇒`Result.fail(EmailError)` enmascarado, NUNCA throw.
+- 2.13 templates `.hbs` (`cambio-estado/{subject,body}.hbs`).
+- 2.14 **DIFERIDA**: gate de integración implementado y verificado (skip limpio sin `SMTP_TEST=1`), NO ejecutado contra maildev/mailhog real (no disponible en el entorno). Es 1 de los 2 tests skipped de la suite.
+- 2.15 Verify — evidencia real abajo.
+
+### Archivos creados
+- `backend/src/tickets/domain/value-objects/email.vo.ts` (+ `.spec.ts`)
+- `backend/src/tickets/domain/errors/email.errors.ts` (+ `.spec.ts`)
+- `backend/src/tickets/domain/ports/i-email-sender.port.ts`
+- `backend/src/tickets/domain/ports/i-solicitante-email.resolver.ts`
+- `backend/src/tickets/infrastructure/persistence/prisma/solicitante-email.resolver.ts` (+ `.spec.ts`)
+- `backend/src/tickets/infrastructure/email/email-config.ts` (+ `.spec.ts`)
+- `backend/src/tickets/infrastructure/email/nodemailer-email-sender.adapter.ts` (+ `.spec.ts` + `.integration.spec.ts` gated)
+- `backend/src/tickets/infrastructure/email-templates/cambio-estado/subject.hbs`, `body.hbs`
+
+### Archivos modificados
+- `openspec/changes/notif-email-estado-ticket/tasks.md` (2.1–2.15 marcadas)
+
+### Evidencia real (backend/, 2026-07-30)
+`corepack pnpm test` (== `vitest run`):
+```
+Test Files  155 passed | 1 skipped (156)
+     Tests  2084 passed | 2 skipped (2086)
+  Duration  168.32s
+```
+`corepack pnpm lint` (== `eslint "src/**/*.ts"`): exit 0, sin output.
+`corepack pnpm exec tsc --noEmit -p tsconfig.json`: exit 0, sin output.
+
+Los 2 skipped = test de integración gated (2.14) que skippea sin `SMTP_TEST=1`. PR1 tenía 2054 tests; ahora 2086 (+32) por los specs nuevos de PR2.
+
+### Deferred / no tocado (correcto para PR2)
+- PR3 (handler puro + listener + wiring de `tickets.module.ts`) y PR4 (puntos de publicación + reestructura CrearObservacion + DTOs/controllers). `tickets.module.ts`, `transicionar-estado.use-case.ts`, `crear-observacion.use-case.ts` NO se tocaron.
+- El wiring de los providers `EMAIL_SENDER`/`SOLICITANTE_EMAIL_RESOLVER` es de PR3 (task 3.8) — por eso los adapters existen pero aún no están registrados en el módulo.
+
+### Cómo retomar
+Decidir: (a) aprobar PR2 → seguir con PR3 (handler/listener/wiring); (b) pedir ajustes sobre PR2 antes de avanzar. Push/PR de cada slice sigue gateado por el usuario.
