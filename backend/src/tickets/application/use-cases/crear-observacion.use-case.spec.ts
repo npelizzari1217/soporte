@@ -23,7 +23,6 @@
  */
 
 import { vi, describe, it, expect, beforeEach } from 'vitest';
-import { Logger } from '@nestjs/common';
 import { CrearObservacionDto, CrearObservacionUseCase } from './crear-observacion.use-case';
 import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
 import { IEstadoRepository } from '../../domain/ports/i-estado.repository';
@@ -32,6 +31,7 @@ import { ITipoOperacionRepository } from '../../domain/ports/i-tipo-operacion.re
 import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
 import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { IDomainEventPublisher } from '../../../shared/domain/ports/i-domain-event-publisher';
+import { ILogger } from '../../../shared/domain/ports/i-logger.port';
 import { TicketEntity, TicketProps } from '../../domain/entities/ticket.entity';
 import { EstadoEntity } from '../../domain/entities/estado.entity';
 import { TicketEstadoCambiado } from '../../domain/events/ticket-estado-cambiado.event';
@@ -140,6 +140,11 @@ function makeMocks() {
     publish: vi.fn(),
   };
 
+  // logger (puerto ILogger, Judgment Day PR4 Ronda 2): stub tipado, sin casts.
+  const logger: vi.Mocked<ILogger> = {
+    error: vi.fn(),
+  };
+
   // txRunner ejecuta el callback inmediatamente (sin DB real)
   const txRunner: ITenantTransactionRunner = {
     run: vi.fn((fn) => fn()),
@@ -152,6 +157,7 @@ function makeMocks() {
     tipoOperacionRepo,
     tipoTicketRepo,
     publisher,
+    logger,
     txRunner,
   };
 }
@@ -165,6 +171,7 @@ describe('CrearObservacionUseCase', () => {
   let tipoOperacionRepo: vi.Mocked<ITipoOperacionRepository>;
   let tipoTicketRepo: vi.Mocked<ITipoTicketRepository>;
   let publisher: vi.Mocked<IDomainEventPublisher>;
+  let logger: vi.Mocked<ILogger>;
   let txRunner: ITenantTransactionRunner;
   let useCase: CrearObservacionUseCase;
 
@@ -176,6 +183,7 @@ describe('CrearObservacionUseCase', () => {
     tipoOperacionRepo = mocks.tipoOperacionRepo;
     tipoTicketRepo = mocks.tipoTicketRepo;
     publisher = mocks.publisher;
+    logger = mocks.logger;
     txRunner = mocks.txRunner;
     useCase = new CrearObservacionUseCase(
       ticketRepo,
@@ -185,6 +193,7 @@ describe('CrearObservacionUseCase', () => {
       txRunner,
       tipoTicketRepo,
       publisher,
+      logger,
     );
   });
 
@@ -675,7 +684,6 @@ describe('CrearObservacionUseCase', () => {
       ticketRepo.findById.mockResolvedValue(ticket);
       const dbError = new Error('Pool de conexiones agotado');
       tipoTicketRepo.findCodigoById.mockRejectedValue(dbError);
-      const errorSpy = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
 
       const result = await useCase.execute({
         ...baseDto,
@@ -692,10 +700,70 @@ describe('CrearObservacionUseCase', () => {
       expect(operacionRepo.save).toHaveBeenCalledTimes(2);
       // Sin tipoCodigo no se puede armar el evento → NO se publica.
       expect(publisher.publish).not.toHaveBeenCalled();
-      // Se loguea el error (nivel ERROR) para no perder observabilidad del fallo.
-      expect(errorSpy).toHaveBeenCalledOnce();
+      // Se loguea el error (nivel ERROR, vía el puerto ILogger) para no
+      // perder observabilidad del fallo.
+      expect(logger.error).toHaveBeenCalledOnce();
+    });
 
-      errorSpy.mockRestore();
+    // ─── Judgment Day PR4 Ronda 2 — WARNING: PII + stack en el log del catch ──
+
+    it('WARNING Ronda 2 — el mensaje logueado enmascara un email embebido en el error, y el stack se pasa como 2do argumento', async () => {
+      const ticket = setupAprobado();
+      estadoRepo.findByCodigo.mockImplementation((codigo) => {
+        if (codigo === 'RESUELTO')
+          return Promise.resolve(makeEstado('RESUELTO', ESTADO_RESUELTO_ID));
+        return Promise.resolve(null);
+      });
+      ticketRepo.findById.mockResolvedValue(ticket);
+      const dbError = new Error('Pool de conexiones agotado, contactar admin@dbhost.internal');
+      tipoTicketRepo.findCodigoById.mockRejectedValue(dbError);
+
+      await useCase.execute({
+        ...baseDto,
+        estadoDestinoCodigo: 'RESUELTO',
+        fechaCierre: new Date('2026-06-29'),
+      });
+
+      expect(logger.error).toHaveBeenCalledOnce();
+      const [mensajeLogueado, stackLogueado] = logger.error.mock.calls[0];
+      expect(mensajeLogueado).not.toContain('admin@dbhost.internal');
+      expect(mensajeLogueado).toContain('a***@dbhost.internal');
+      expect(stackLogueado).toBe(dbError.stack);
+    });
+
+    // ─── Judgment Day PR4 Ronda 2 — WARNING: cobertura del reject de publisher.publish ──
+    // Ref: el try guarda DOS fallos posibles (findCodigoById Y publisher.publish),
+    // pero solo el primero tenía test. Este cubre el segundo: findCodigoById
+    // resuelve OK y publisher.publish LANZA sincrónicamente (D10 — publish() es
+    // `: void`, no async, así que "lanza" y no "rechaza").
+
+    it('WARNING Ronda 2 (RED→GREEN) — publisher.publish() LANZA sincrónicamente post-commit: execute() sigue devolviendo Result.ok, traga el error, loguea 1 vez', async () => {
+      const ticket = setupAprobado();
+      estadoRepo.findByCodigo.mockImplementation((codigo) => {
+        if (codigo === 'RESUELTO')
+          return Promise.resolve(makeEstado('RESUELTO', ESTADO_RESUELTO_ID));
+        return Promise.resolve(null);
+      });
+      ticketRepo.findById.mockResolvedValue(ticket);
+      tipoTicketRepo.findCodigoById.mockResolvedValue('SOPORTE');
+      const publishError = new Error('Event bus no disponible');
+      publisher.publish.mockImplementation(() => {
+        throw publishError;
+      });
+
+      const result = await useCase.execute({
+        ...baseDto,
+        estadoDestinoCodigo: 'RESUELTO',
+        fechaCierre: new Date('2026-06-29'),
+      });
+
+      expect(result.isOk()).toBe(true);
+      expect(result.getValue().estadoId).toBe(ESTADO_RESUELTO_ID);
+      // La tx ya committeó — nada se re-invoca ni se revierte.
+      expect(ticketRepo.save).toHaveBeenCalledOnce();
+      expect(operacionRepo.save).toHaveBeenCalledTimes(2);
+      expect(publisher.publish).toHaveBeenCalledOnce();
+      expect(logger.error).toHaveBeenCalledOnce();
     });
   });
 });

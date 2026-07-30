@@ -1,4 +1,3 @@
-import { Logger } from '@nestjs/common';
 import { TransicionarEstadoDto, TransicionarEstadoUseCase } from './transicionar-estado.use-case';
 import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
 import { IOperacionTicketRepository } from '../../domain/ports/i-operacion-ticket.repository';
@@ -9,6 +8,7 @@ import { TicketStateMachineFactory } from '../../domain/state-machine/ticket-sta
 import { ITicketStateMachine } from '../../domain/state-machine/i-ticket-state-machine';
 import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { IDomainEventPublisher } from '../../../shared/domain/ports/i-domain-event-publisher';
+import { ILogger } from '../../../shared/domain/ports/i-logger.port';
 import { EstadoEntity } from '../../domain/entities/estado.entity';
 import { OperacionTicketEntity } from '../../domain/entities/operacion-ticket.entity';
 import { TicketEntity } from '../../domain/entities/ticket.entity';
@@ -94,6 +94,7 @@ describe('TransicionarEstadoUseCase', () => {
   let mockMachine: vi.Mocked<ITicketStateMachine>;
   let txRunner: ITenantTransactionRunner;
   let publisher: vi.Mocked<IDomainEventPublisher>;
+  let logger: vi.Mocked<ILogger>;
   let useCase: TransicionarEstadoUseCase;
 
   const CLIENTE_ID = 'cliente-uuid-tenant-a';
@@ -140,6 +141,8 @@ describe('TransicionarEstadoUseCase', () => {
 
     publisher = { publish: vi.fn() };
 
+    logger = { error: vi.fn() };
+
     // Default happy-path mocks
     ticketRepo.findById.mockResolvedValue(makeTicket(ESTADO_ABIERTO_ID, TIPO_TICKET_ID));
     estadoRepo.findById.mockResolvedValue(makeEstado(ESTADO_ABIERTO_ID, 'ABIERTO'));
@@ -159,6 +162,7 @@ describe('TransicionarEstadoUseCase', () => {
       factory,
       txRunner,
       publisher,
+      logger,
     );
   });
 
@@ -824,7 +828,6 @@ describe('TransicionarEstadoUseCase', () => {
         publisher.publish.mockImplementation(() => {
           throw publishError;
         });
-        const errorSpy = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
 
         const result = await useCase.execute({
           ticketId: 'ticket-uuid-001',
@@ -839,9 +842,35 @@ describe('TransicionarEstadoUseCase', () => {
         // La tx ya committeó — no se re-invoca ni se revierte nada.
         expect(ticketRepo.save).toHaveBeenCalledOnce();
         expect(operacionRepo.save).toHaveBeenCalledOnce();
-        expect(errorSpy).toHaveBeenCalledOnce();
+        expect(logger.error).toHaveBeenCalledOnce();
+      });
+    });
 
-        errorSpy.mockRestore();
+    // ─── Judgment Day PR4 Ronda 2 — WARNING: PII + stack en el log del catch ──
+
+    describe('WARNING Ronda 2 — enmascarado de PII + stack en el catch post-commit', () => {
+      it('el mensaje logueado enmascara un email embebido en el error, y el stack se pasa como 2do argumento', async () => {
+        estadoRepo.findByCodigo.mockResolvedValue(makeEstado(ESTADO_RESUELTO_ID, 'RESUELTO'));
+        const ticket = makeTicket(ESTADO_ABIERTO_ID, TIPO_TICKET_ID);
+        ticketRepo.findById.mockResolvedValue(ticket);
+        const publishError = new Error('Event bus no disponible, contactar admin@dbhost.internal');
+        publisher.publish.mockImplementation(() => {
+          throw publishError;
+        });
+
+        await useCase.execute({
+          ticketId: 'ticket-uuid-001',
+          nuevoEstadoCodigo: 'RESUELTO',
+          autorId: AUTOR_ID,
+          clienteId: CLIENTE_ID,
+          fechaCierre: new Date('2026-06-28'),
+        });
+
+        expect(logger.error).toHaveBeenCalledOnce();
+        const [mensajeLogueado, stackLogueado] = logger.error.mock.calls[0];
+        expect(mensajeLogueado).not.toContain('admin@dbhost.internal');
+        expect(mensajeLogueado).toContain('a***@dbhost.internal');
+        expect(stackLogueado).toBe(publishError.stack);
       });
     });
   });

@@ -1,12 +1,13 @@
-import { Logger } from '@nestjs/common';
 import { DomainError, Result } from '../../../shared/domain/result';
 import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { IDomainEventPublisher } from '../../../shared/domain/ports/i-domain-event-publisher';
+import { ILogger } from '../../../shared/domain/ports/i-logger.port';
 import { OperacionTicketEntity } from '../../domain/entities/operacion-ticket.entity';
 import { TicketEntity } from '../../domain/entities/ticket.entity';
 import { TicketStateMachineFactory } from '../../domain/state-machine/ticket-state-machine.factory';
 import { TicketEstadoCambiado } from '../../domain/events/ticket-estado-cambiado.event';
 import { esEstadoNotificable } from '../../domain/policies/estados-notificables.policy';
+import { maskEmailsInText } from '../../domain/mask-email-like';
 import {
   EstadoCatalogoNoEncontradoError,
   EstadoDestinoInvalidoError,
@@ -75,13 +76,23 @@ export interface TransicionarEstadoDto {
  *
  * Sin throw — todos los fallos esperados retornan Result.fail().
  *
+ * Errores de infraestructura (DB) DENTRO de txRunner.run() (paso 12) sí
+ * burbujean como throw para que la transacción rollback-ee (comportamiento
+ * nativo del runner — no se toca acá). El `publisher.publish()` del paso 13
+ * es un caso DISTINTO: ocurre POST-COMMIT (fuera del txRunner.run), cuando
+ * el ticket y la operación YA están persistidos — un throw ahí nunca puede
+ * "revertir" nada, solo tumbaría una respuesta que debería ser 200. Por eso
+ * ese tramo se envuelve en try/catch (log-and-swallow, Judgment Day PR4
+ * Ronda 1, consistente con `CrearObservacionUseCase`): el error se loguea
+ * (vía el puerto `ILogger`, inyectado — NUNCA `@nestjs/common` Logger
+ * directo en application/, clean-arch/SKILL.md; fix de Judgment Day PR4
+ * Ronda 2) y `execute()` retorna igual el `Result.ok(ticket)` ya obtenido.
+ *
  * Ref spec: [SPEC:tickets-core/Transición inválida rechazada]
  * Ref spec: [SPEC:tickets-core/Transición válida registra operacion en misma transacción]
  * Tarea: 3.C.6
  */
 export class TransicionarEstadoUseCase {
-  private readonly logger = new Logger(TransicionarEstadoUseCase.name);
-
   constructor(
     private readonly ticketRepo: ITicketRepository,
     private readonly operacionRepo: IOperacionTicketRepository,
@@ -91,6 +102,7 @@ export class TransicionarEstadoUseCase {
     private readonly factory: Pick<TicketStateMachineFactory, 'resolve'>,
     private readonly txRunner: ITenantTransactionRunner,
     private readonly publisher: IDomainEventPublisher,
+    private readonly logger: ILogger,
   ) {}
 
   async execute(dto: TransicionarEstadoDto): Promise<Result<TicketEntity, DomainError>> {
@@ -217,11 +229,17 @@ export class TransicionarEstadoUseCase {
           ),
         );
       } catch (err) {
-        const motivo = err instanceof Error ? err.message : 'Error desconocido';
+        // PII: el mensaje puede traer un email embebido — se enmascara con
+        // maskEmailsInText() antes de loguearlo (mismo patrón que
+        // NotificarCambioEstadoListener y CrearObservacionUseCase). El
+        // stack SÍ se loguea crudo: frames de código, bajo riesgo de PII.
+        const motivo = err instanceof Error ? maskEmailsInText(err.message) : 'Error desconocido';
+        const stack = err instanceof Error ? err.stack : undefined;
         this.logger.error(
           `Fallo POST-commit al publicar TicketEstadoCambiado para el ticket ` +
             `"${ticket.id}": ${motivo}. La transición de estado ya committeada NO ` +
             `se ve afectada.`,
+          stack,
         );
       }
     }

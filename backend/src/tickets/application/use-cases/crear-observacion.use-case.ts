@@ -1,12 +1,13 @@
-import { Logger } from '@nestjs/common';
 import { DomainError, Result } from '../../../shared/domain/result';
 import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { IDomainEventPublisher } from '../../../shared/domain/ports/i-domain-event-publisher';
+import { ILogger } from '../../../shared/domain/ports/i-logger.port';
 import { OperacionTicketEntity } from '../../domain/entities/operacion-ticket.entity';
 import { TicketEntity } from '../../domain/entities/ticket.entity';
 import { BaseTicketStateMachine } from '../../domain/state-machine/base-ticket-state-machine';
 import { TicketEstadoCambiado } from '../../domain/events/ticket-estado-cambiado.event';
 import { esEstadoNotificable } from '../../domain/policies/estados-notificables.policy';
+import { maskEmailsInText } from '../../domain/mask-email-like';
 import {
   EstadoCatalogoNoEncontradoError,
   FechaCierreRequeridaError,
@@ -130,7 +131,9 @@ interface ExecuteTxOutcome {
  * ticket + las operaciones YA están persistidos, así que un throw ahí nunca
  * puede "revertir" nada — solo tumbaría una respuesta que debería ser 200/201.
  * Por eso ese tramo se envuelve en try/catch (log-and-swallow, Judgment Day
- * PR4 Ronda 1): el error se loguea y `execute()` retorna igual el
+ * PR4 Ronda 1): el error se loguea (vía el puerto `ILogger`, inyectado —
+ * NUNCA `@nestjs/common` Logger directo en application/, clean-arch/SKILL.md;
+ * fix de Judgment Day PR4 Ronda 2) y `execute()` retorna igual el
  * `Result.ok` ya obtenido del `txRunner.run`.
  *
  * Ref spec: Req Observaciones del técnico (tickets-core/spec.md), Requirement 3 (PR4)
@@ -138,8 +141,6 @@ interface ExecuteTxOutcome {
  * Ref tasks: P2.T6 — Change tickets-maquina-estados-observaciones / PR2; 4.6-4.8 (PR4)
  */
 export class CrearObservacionUseCase {
-  private readonly logger = new Logger(CrearObservacionUseCase.name);
-
   constructor(
     private readonly ticketRepo: ITicketRepository,
     private readonly estadoRepo: IEstadoRepository,
@@ -148,6 +149,7 @@ export class CrearObservacionUseCase {
     private readonly txRunner: ITenantTransactionRunner,
     private readonly tipoTicketRepo: ITipoTicketRepository,
     private readonly publisher: IDomainEventPublisher,
+    private readonly logger: ILogger,
   ) {}
 
   async execute(dto: CrearObservacionDto): Promise<Result<TicketEntity, DomainError>> {
@@ -328,11 +330,19 @@ export class CrearObservacionUseCase {
           );
         }
       } catch (err) {
-        const motivo = err instanceof Error ? err.message : 'Error desconocido';
+        // PII: el mensaje puede traer un email embebido (rechazo SMTP, error
+        // de una capa inferior) — se enmascara con maskEmailsInText() antes
+        // de loguearlo (mismo patrón que NotificarCambioEstadoListener,
+        // Judgment Day PR3 Ronda 2 issue 3 Juez A). El stack SÍ se loguea
+        // crudo: son frames de código, bajo riesgo de PII, y ayudan a
+        // debuggear la causa real del fallo post-commit.
+        const motivo = err instanceof Error ? maskEmailsInText(err.message) : 'Error desconocido';
+        const stack = err instanceof Error ? err.stack : undefined;
         this.logger.error(
           `Fallo POST-commit al resolver/publicar TicketEstadoCambiado para el ticket ` +
             `"${dto.ticketId}": ${motivo}. La observación y el cambio de estado ya ` +
             `committeados NO se ven afectados.`,
+          stack,
         );
       }
     }

@@ -21,6 +21,7 @@ import { TicketStateMachineFactory } from '../../domain/state-machine/ticket-sta
 import { ITicketStateMachine } from '../../domain/state-machine/i-ticket-state-machine';
 import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { IDomainEventPublisher } from '../../../shared/domain/ports/i-domain-event-publisher';
+import { ILogger } from '../../../shared/domain/ports/i-logger.port';
 import { EstadoEntity } from '../../domain/entities/estado.entity';
 import { TicketEntity, TicketProps } from '../../domain/entities/ticket.entity';
 import { TicketEstadoCambiado } from '../../domain/events/ticket-estado-cambiado.event';
@@ -101,6 +102,7 @@ describe('TicketEstadoCambiado — misma forma en ambos caminos de publicación 
       resolve: vi.fn().mockReturnValue(mockMachineA),
     };
     const txRunnerA: ITenantTransactionRunner = { run: vi.fn((fn) => fn()) };
+    const loggerA: ILogger = { error: vi.fn() };
 
     const transicionarUseCase = new TransicionarEstadoUseCase(
       ticketRepoA,
@@ -111,6 +113,7 @@ describe('TicketEstadoCambiado — misma forma en ambos caminos de publicación 
       factoryA,
       txRunnerA,
       publisherA,
+      loggerA,
     );
 
     const dtoA: TransicionarEstadoDto = {
@@ -161,6 +164,7 @@ describe('TicketEstadoCambiado — misma forma en ambos caminos de publicación 
       findCodigoById: vi.fn().mockResolvedValue('SOPORTE'),
     };
     const txRunnerB: ITenantTransactionRunner = { run: vi.fn((fn) => fn()) };
+    const loggerB: ILogger = { error: vi.fn() };
 
     const crearObservacionUseCase = new CrearObservacionUseCase(
       ticketRepoB,
@@ -170,6 +174,7 @@ describe('TicketEstadoCambiado — misma forma en ambos caminos de publicación 
       txRunnerB,
       tipoTicketRepoB,
       publisherB,
+      loggerB,
     );
 
     const dtoB: CrearObservacionDto = {

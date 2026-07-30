@@ -62,6 +62,7 @@ import {
   DOMAIN_EVENT_PUBLISHER,
   IDomainEventPublisher,
 } from '../shared/domain/ports/i-domain-event-publisher';
+import { LOGGER, ILogger } from '../shared/domain/ports/i-logger.port';
 
 // ─── Infrastructure repositories ──────────────────────────────────────────────
 import { PrismaTicketRepository } from './infrastructure/persistence/prisma/prisma-ticket.repository';
@@ -296,6 +297,7 @@ import { ComentariosController } from './interface/controllers/comentarios.contr
         factory: TicketStateMachineFactory,
         txRunner: ITenantTransactionRunner,
         publisher: IDomainEventPublisher,
+        logger: ILogger,
       ) =>
         new TransicionarEstadoUseCase(
           ticketRepo,
@@ -306,6 +308,7 @@ import { ComentariosController } from './interface/controllers/comentarios.contr
           factory,
           txRunner,
           publisher,
+          logger,
         ),
       inject: [
         TICKET_REPOSITORY,
@@ -316,6 +319,7 @@ import { ComentariosController } from './interface/controllers/comentarios.contr
         TICKET_STATE_MACHINE_FACTORY,
         TENANT_TRANSACTION_RUNNER,
         DOMAIN_EVENT_PUBLISHER,
+        LOGGER,
       ],
     },
 
@@ -427,6 +431,7 @@ import { ComentariosController } from './interface/controllers/comentarios.contr
         txRunner: ITenantTransactionRunner,
         tipoTicketRepo: ITipoTicketRepository,
         publisher: IDomainEventPublisher,
+        logger: ILogger,
       ) =>
         new CrearObservacionUseCase(
           ticketRepo,
@@ -436,6 +441,7 @@ import { ComentariosController } from './interface/controllers/comentarios.contr
           txRunner,
           tipoTicketRepo,
           publisher,
+          logger,
         ),
       inject: [
         TICKET_REPOSITORY,
@@ -445,6 +451,7 @@ import { ComentariosController } from './interface/controllers/comentarios.contr
         TENANT_TRANSACTION_RUNNER,
         TIPO_TICKET_REPOSITORY,
         DOMAIN_EVENT_PUBLISHER,
+        LOGGER,
       ],
     },
 

@@ -15,6 +15,8 @@ import {
 } from './infrastructure/persistence/master-transaction-runner';
 import { DOMAIN_EVENT_PUBLISHER } from './domain/ports/i-domain-event-publisher';
 import { EventEmitterPublisher } from './infrastructure/events/event-emitter.publisher';
+import { LOGGER } from './domain/ports/i-logger.port';
+import { NestLoggerAdapter } from './infrastructure/logging/nest-logger.adapter';
 
 /**
  * SharedModule — módulo global de infraestructura compartida.
@@ -26,6 +28,9 @@ import { EventEmitterPublisher } from './infrastructure/events/event-emitter.pub
  *   - FILE_STORAGE        → IFileStorage (LocalFileStorage en dev/test)
  *   - DOMAIN_EVENT_PUBLISHER → IDomainEventPublisher (EventEmitterPublisher,
  *     in-process sobre EventEmitter2)
+ *   - LOGGER                → ILogger (NestLoggerAdapter, envuelve el Logger
+ *     de @nestjs/common — único punto donde application/ toca el framework
+ *     de logging, vía el puerto)
  *
  * Todos los providers usan tokens Symbol para respetar el principio de
  * inversión de dependencias: los consumidores dependen de la interfaz (token),
@@ -88,6 +93,14 @@ import { EventEmitterPublisher } from './infrastructure/events/event-emitter.pub
       useFactory: (emitter: EventEmitter2) => new EventEmitterPublisher(emitter),
       inject: [EventEmitter2],
     },
+
+    // LOGGER: ILogger → NestLoggerAdapter. @Global() para que cualquier use
+    // case de application/ lo inyecte sin importar @nestjs/common directo
+    // (clean-arch/SKILL.md dependency rule — Judgment Day PR4 Ronda 2).
+    {
+      provide: LOGGER,
+      useClass: NestLoggerAdapter,
+    },
   ],
   exports: [
     // Exportar PrismaService para que los módulos de infraestructura
@@ -111,6 +124,10 @@ import { EventEmitterPublisher } from './infrastructure/events/event-emitter.pub
 
     // Token de publicación de eventos de dominio.
     DOMAIN_EVENT_PUBLISHER,
+
+    // Token de logging: los use cases de application/ inyectan este token
+    // en vez de importar @nestjs/common Logger directamente.
+    LOGGER,
   ],
 })
 export class SharedModule {}
