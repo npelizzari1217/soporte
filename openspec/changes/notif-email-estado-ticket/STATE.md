@@ -522,3 +522,64 @@ Branch `notif-email-estado-ticket-pr4` (creada desde `notif-email-estado-ticket-
 
 ### Cómo retomar
 PR4 es el ÚLTIMO PR planificado (tasks.md no tiene PR5). Decidir: (a) correr Judgment Day sobre PR4 (mismo patrón que PR2/PR3, dado el riesgo alto de este PR) antes de dar por cerrado el change; (b) aprobar directo y avanzar a `sdd-verify`/`sdd-archive`; (c) pedir ajustes sobre PR4.
+
+---
+
+## Judgment Day — PR4 — fixes Ronda 1 (2026-07-30)
+
+**Veredicto de los 2 jueces:** 1 CRITICAL confirmado (bloque post-commit sin try/catch en `CrearObservacionUseCase`), 1 fix defensivo consistente aplicado por analogía en `TransicionarEstadoUseCase`, 1 docstring desactualizado, 1 WARNING theoretical dejado como backlog (no arreglado, fuera de scope).
+
+### Fixes aplicados
+
+1. **[CRITICAL] Guard post-commit en `crear-observacion.use-case.ts`** (~líneas 284-320).
+   El bloque POST-COMMIT (`tipoTicketRepo.findCodigoById(...)` + construcción del `TicketEstadoCambiado` + `publisher.publish(...)`) NO estaba en try/catch. Si `findCodigoById` (o el publish) rechazaba la promesa DESPUÉS de que la tx ya committeó (DB drop, timeout, pool agotado), el reject se propagaba fuera de `execute()` → el controller no tiene catch genérico → 500 crudo al cliente, PESE a que el ticket + las filas de `OperacionTicket` YA estaban persistidas. Rompía el invariante fire-and-forget (R6/R10) y violaba error-handling regla 4 (todo `catch` debe mapear/re-wrap; acá directamente faltaba el catch). Peor: un retry del cliente ante el 500 habría duplicado la OBSERVACION.
+   **Fix**: todo el bloque post-commit envuelto en try/catch. En el catch: `this.logger.error(...)` (nuevo `private readonly logger = new Logger(CrearObservacionUseCase.name)`, mismo patrón que `NotificarCambioEstadoListener`) con el `ticketId` y `err.message` (sin datos sensibles adicionales — el mensaje del error de infra no contiene PII en este flujo), y NO se relanza — se retorna igual `outcome.result` (el `Result.ok` ya obtenido del `txRunner.run`, la tx ya resuelta no se toca).
+   **RED→GREEN**: nuevo test `4.8` en `crear-observacion.use-case.spec.ts` — `tipoTicketRepo.findCodigoById.mockRejectedValue(dbError)` tras un `setupAprobado()` → `RESUELTO` (estado notificable). Confirma: `result.isOk()` true con el ticket committeado, `ticketRepo.save`/`operacionRepo.save` llamados exactamente 1 vez / 2 veces (nada se re-invoca ni revierte), `publisher.publish` NO llamado (sin tipoCodigo no se arma el evento), y `Logger.prototype.error` llamado 1 vez. RED confirmado antes del fix (el error se propagaba sin catch, test fallaba con el `Error` crudo); GREEN tras envolver en try/catch.
+
+2. **[Consistencia, no CRITICAL en sí — mismo patrón defensivo] Guard en `transicionar-estado.use-case.ts`** (~líneas 192-214).
+   `TransicionarEstadoUseCase` resuelve `tipoCodigo` ANTES de la tx (no tiene la misma exposición de lookup post-commit que crear-observacion), pero su `publisher.publish()` post-commit igual podía lanzar sin red de seguridad. Por consistencia arquitectónica (mismo invariante fire-and-forget, R6/R10) se aplicó el mismo guard: `publisher.publish(...)` envuelto en try/catch, catch loguea `this.logger.error(...)` (nuevo `private readonly logger = new Logger(TransicionarEstadoUseCase.name)`) con el `ticket.id` y el motivo, sin relanzar — retorna igual `Result.ok(ticket)` de la transición ya committeada.
+   **RED→GREEN**: nuevo test `4.12` en `transicionar-estado.use-case.spec.ts` — `publisher.publish.mockImplementation(() => { throw publishError; })` en una transición `RESUELTO` (notificable). Confirma `result.isOk()` true, `ticketRepo.save`/`operacionRepo.save` llamados 1 vez cada uno (sin duplicar), y `Logger.prototype.error` llamado 1 vez.
+
+3. **[Docstring, Juez B] Comentario desactualizado en `crear-observacion.use-case.ts`** (~línea 123-124, ahora ~123-133).
+   El comentario decía "Errores de infraestructura (DB) sí burbujean como throw para rollback de transacción" — ya no era exacto para el tramo post-commit tras el fix 1. Actualizado para separar explícitamente DOS casos: errores DENTRO de `txRunner.run()` → siguen burbujeando → rollback nativo del runner (sin cambios, no se tocó esa semántica); errores POST-commit (lookup/publish de la notificación) → se capturan en el nuevo try/catch y NUNCA rompen la respuesta de una operación ya committeada.
+
+### Backlog / known-limitation (NO arreglado — fuera de scope de esta ronda, por instrucción explícita)
+- **WARNING theoretical — `clienteId` de `CrearObservacionDto`/`TransicionarEstadoDto` viaja desde el JWT crudo, no desde un `TenantContext` ligado**, en el camino global-admin cross-tenant (`is_global_admin`). Es el mismo patrón heredado de `CrearTicketDto` (D5) — no es un bug introducido por PR4, es una decisión de modelo de tenant preexistente. Cerrarlo implicaría cambiar cómo se resuelve el tenant efectivo para usuarios `is_global_admin`, fuera del alcance quirúrgico de este fix. Dejado como nota de backlog para una futura revisión del modelo de tenant.
+
+### Evidencia real (backend/, 2026-07-30, corrida serial FOREGROUND)
+
+**Suites aisladas (RED→GREEN, anti-regresión explícita):**
+```
+corepack pnpm exec vitest run src/tickets/application/use-cases/crear-observacion.use-case.spec.ts src/tickets/application/use-cases/transicionar-estado.use-case.spec.ts
+Test Files  2 passed (2)
+     Tests  78 passed (78)
+```
+(24 preexistentes de `crear-observacion` + 1 nuevo [4.8] = 25; 52 preexistentes de `transicionar-estado` + 1 nuevo [4.12] = 53. Total 78, todos verdes.)
+
+**Suite completa `pnpm test` (== `vitest run`):**
+```
+Test Files  160 passed | 1 skipped (161)
+     Tests  2142 passed | 2 skipped (2144)
+  Duration  169.45s
+```
+(vs. PR4 Apply original: 2140/2142 → +2 tests netos de esta ronda [4.8 + 4.12].)
+
+`corepack pnpm lint` (== `eslint "src/**/*.ts"`): **exit 0, sin output.**
+`corepack pnpm exec tsc --noEmit -p tsconfig.json`: **exit 0, sin output.**
+
+### Archivos tocados
+- `backend/src/tickets/application/use-cases/crear-observacion.use-case.ts` (+`Logger` import, +campo `logger`, try/catch en bloque post-commit, docstring actualizado)
+- `backend/src/tickets/application/use-cases/crear-observacion.use-case.spec.ts` (+`Logger` import, +test 4.8)
+- `backend/src/tickets/application/use-cases/transicionar-estado.use-case.ts` (+`Logger` import, +campo `logger`, try/catch en `publisher.publish()` post-commit)
+- `backend/src/tickets/application/use-cases/transicionar-estado.use-case.spec.ts` (+`Logger` import, +test 4.12)
+
+### No tocado (correcto, fuera de scope de esta ronda)
+- Ningún cambio de lógica de negocio dentro de `txRunner.run()` en ninguno de los 2 use cases — la atomicidad no se tocó, solo se agregó el guard post-commit.
+- `clienteId`/`TenantContext` (backlog arriba) — sin cambios.
+- Ningún otro archivo del change.
+
+### Git
+Branch `notif-email-estado-ticket-pr4` (sin cambiar). Commit(s) conventional de esta ronda, sin Co-Authored-By. **Sin push, sin PR** — gateado por el usuario.
+
+### Cómo retomar
+Judgment Day PR4 Ronda 1 cerrada. Decidir: (a) correr Ronda 2 de jueces sobre estos fixes (mismo patrón que PR2/PR3); (b) dar por aprobado PR4 y avanzar a `sdd-verify`/`sdd-archive`; (c) decidir push/PR de la cadena completa (PR1-PR4).
