@@ -583,3 +583,78 @@ Branch `notif-email-estado-ticket-pr4` (sin cambiar). Commit(s) conventional de 
 
 ### Cómo retomar
 Judgment Day PR4 Ronda 1 cerrada. Decidir: (a) correr Ronda 2 de jueces sobre estos fixes (mismo patrón que PR2/PR3); (b) dar por aprobado PR4 y avanzar a `sdd-verify`/`sdd-archive`; (c) decidir push/PR de la cadena completa (PR1-PR4).
+
+---
+
+## Judgment Day — PR4 — fixes Ronda 2 (2026-07-30)
+
+**Veredicto de los 2 jueces:** cero CRITICAL. 3 WARNING reales confirmados (puerto `ILogger`, PII+stack en el log, cobertura del reject de `publisher.publish`), 1 SUGGESTION (docstring parity). El fix de Ronda 1 (guard post-commit try/catch) era funcionalmente correcto — atomicidad intacta, `Result.ok` preservado — pero había introducido un `new Logger()` de `@nestjs/common` DIRECTO en `application/`, violando la dependency rule NON-NEGOTIABLE de `clean-arch/SKILL.md`.
+
+### Corrección de la justificación errónea de Ronda 1
+La nota de Ronda 1 (fix 1) justificaba el `new Logger(CrearObservacionUseCase.name)` citando "mismo patrón que `NotificarCambioEstadoListener`". Ese precedente era incorrecto: `NotificarCambioEstadoListener` vive en `tickets/infrastructure/events/` (infra), donde importar `@nestjs/common` Logger directo SÍ es válido — la dependency rule permite `infrastructure/` → framework. `CrearObservacionUseCase`/`TransicionarEstadoUseCase` viven en `tickets/application/use-cases/` (application), donde NO. El precedente citado nunca aplicaba a la capa donde se usó. Se resuelve con el puerto `ILogger` (abajo).
+
+### Fixes aplicados
+
+1. **[WARNING real, confirmado 2 jueces] Puerto `ILogger`.**
+   - Nuevo `backend/src/shared/domain/ports/i-logger.port.ts`: interfaz `ILogger` (mínima — solo `error(message: string, stack?: string): void`, lo único que los 2 use cases necesitan) + token `LOGGER = Symbol('LOGGER')`. Mismo patrón exacto que `IDomainEventPublisher`/`DOMAIN_EVENT_PUBLISHER`.
+   - Nuevo `backend/src/shared/infrastructure/logging/nest-logger.adapter.ts`: `NestLoggerAdapter implements ILogger`, envuelve `new Logger('Application')` de `@nestjs/common` — ÚNICO punto donde `application/` toca el framework de logging, y lo toca indirectamente vía el puerto. Contexto fijo `'Application'` (singleton global, no hay contexto por-clase como antes — los mensajes ya incluyen el `ticketId` en el texto, así que no se pierde trazabilidad real).
+   - `shared.module.ts`: provider `{ provide: LOGGER, useClass: NestLoggerAdapter }` + export, `@Global()` (mismo patrón que `DOMAIN_EVENT_PUBLISHER`).
+   - `crear-observacion.use-case.ts`/`transicionar-estado.use-case.ts`: eliminado `import { Logger } from '@nestjs/common'` y `new Logger(...)`; `logger: ILogger` agregado como ÚLTIMO parámetro del constructor (plain class, sin `@Injectable()`/`@Inject()` — mismo patrón que `publisher: IDomainEventPublisher`, wireado vía `useFactory`+`inject` en el módulo, NO decorators, consistente con `nestjs-modules/SKILL.md` "use cases NO usan decorators NestJS").
+   - `tickets.module.ts`: `LOGGER` agregado al `inject` de ambos use cases (último elemento del array, mismo orden que el parámetro del constructor).
+   - Verificado con grep: cero imports de `@nestjs/common`/infra en ninguno de los 2 use cases (solo quedan menciones en comentarios explicando la regla).
+   - Tests: stub tipado `const logger: vi.Mocked<ILogger> = { error: vi.fn() }` en ambos specs — CERO casts (`as any`/`as unknown as`).
+
+2. **[WARNING real] PII enmascarada + stack en el log del catch.**
+   - Ambos catch post-commit: `err.message` pasa por `maskEmailsInText()` (`tickets/domain/mask-email-like.ts`) antes de loguearse — mismo patrón que `NotificarCambioEstadoListener` (PR3 Ronda 2). `err.stack` se pasa como 2do argumento (`logger.error(mensaje, stack)`) — frames de código, bajo riesgo de PII, mejora la debuggabilidad del fallo post-commit.
+   - Tests RED→GREEN nuevos en ambos specs: error con un email embebido en el mensaje (`'... contactar admin@dbhost.internal'`) → asserta que el mensaje logueado NO contiene el email crudo, SÍ contiene la forma enmascarada (`a***@dbhost.internal`), y que el 2do argumento es exactamente `error.stack`.
+
+3. **[WARNING real] Cobertura faltante: `publisher.publish` que lanza en `crear-observacion`.**
+   - El try post-commit de `CrearObservacionUseCase` guarda DOS fallos posibles (`findCodigoById` Y `publisher.publish`), pero solo el primero tenía test (4.8, Ronda 1). Nuevo test: `findCodigoById` resuelve un código válido y `publisher.publish` LANZA sincrónicamente (D10 — `publish(): void`, no async, así que "lanza", no "rechaza") → `execute()` sigue devolviendo `Result.ok` del ticket ya committeado, `ticketRepo.save`/`operacionRepo.save` NO se re-invocan, `logger.error` llamado exactamente 1 vez.
+
+4. **[SUGGESTION] Docstring parity.**
+   - `transicionar-estado.use-case.ts`: agregado el párrafo que espeja el de `crear-observacion` — distingue explícitamente errores DENTRO de `txRunner.run()` (burbujean, rollback nativo, sin cambios) de errores POST-commit del `publisher.publish()` (try/catch, log-and-swallow, `Result.ok` preservado). Ambos docstrings mencionan ahora que el logueo va vía el puerto `ILogger`, no `@nestjs/common` Logger directo.
+
+### Archivos creados
+- `backend/src/shared/domain/ports/i-logger.port.ts`
+- `backend/src/shared/infrastructure/logging/nest-logger.adapter.ts`
+
+### Archivos modificados
+- `backend/src/shared/shared.module.ts` (+provider/export `LOGGER`)
+- `backend/src/tickets/tickets.module.ts` (+`LOGGER` en `inject` de ambos use cases)
+- `backend/src/tickets/application/use-cases/crear-observacion.use-case.ts` (puerto `ILogger`, masking+stack, docstring)
+- `backend/src/tickets/application/use-cases/crear-observacion.use-case.spec.ts` (stub `ILogger`, +2 tests)
+- `backend/src/tickets/application/use-cases/transicionar-estado.use-case.ts` (puerto `ILogger`, masking+stack, docstring parity)
+- `backend/src/tickets/application/use-cases/transicionar-estado.use-case.spec.ts` (stub `ILogger`, +1 test)
+- `backend/src/tickets/application/use-cases/ticket-estado-cambiado-forma-identica.spec.ts` (stub `ILogger` en ambas instanciaciones directas — sin tocar aserciones)
+
+### No tocado (correcto, fuera de scope de esta ronda)
+- Ningún cambio de lógica transaccional ni de guards de negocio dentro de `txRunner.run()` en ninguno de los 2 use cases — atomicidad intacta.
+- `clienteId`/`TenantContext` (backlog Ronda 1) — sin cambios.
+
+### Evidencia real (backend/, 2026-07-30, corrida serial FOREGROUND)
+
+**Suites aisladas (anti-regresión explícita):**
+```
+corepack pnpm exec vitest run src/tickets/application/use-cases/crear-observacion.use-case.spec.ts src/tickets/application/use-cases/transicionar-estado.use-case.spec.ts
+Test Files  2 passed (2)
+     Tests  81 passed (81)
+```
+(25 preexistentes `crear-observacion` [24 + 4.8 de Ronda 1] + 2 nuevos = 27; 54 preexistentes `transicionar-estado` [53 + 4.12 de Ronda 1] + 1 nuevo = 54. Total 81.)
+
+**Suite completa `pnpm test`:**
+```
+Test Files  160 passed | 1 skipped (161)
+     Tests  2145 passed | 2 skipped (2147)
+   Duration  ~168-170s
+```
+(vs. Ronda 1: 2142 → 2145, +3 tests netos de esta ronda.)
+
+`corepack pnpm lint`: 1 error de formato `prettier/prettier` detectado (indentación multilinea en `transicionar-estado.use-case.spec.ts`), corregido con `eslint --fix`; **exit 0, sin output** en la corrida final. Re-corrida completa de `pnpm test` tras el fix confirmó los mismos 2145/2147 — el auto-fix no cambió comportamiento, solo formato.
+
+`corepack pnpm exec tsc --noEmit -p tsconfig.json`: **exit 0, sin output.**
+
+### Git
+Branch `notif-email-estado-ticket-pr4` (sin cambiar). Commit(s) conventional de esta ronda, sin Co-Authored-By. **Sin push, sin PR** — gateado por el usuario.
+
+### Cómo retomar
+Judgment Day PR4 Ronda 2 cerrada. Decidir: (a) correr Ronda 3 de jueces (mismo patrón que PR2/PR3); (b) dar por aprobado PR4 y avanzar a `sdd-verify`/`sdd-archive`; (c) decidir push/PR de la cadena completa (PR1-PR4).
