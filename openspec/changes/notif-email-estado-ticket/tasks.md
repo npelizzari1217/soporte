@@ -75,20 +75,20 @@ Cada PR: verificación propia (`pnpm test`/`lint`/`tsc --noEmit`), inicio/fin cl
 
 ## PR 4 — Puntos de publicación + DTOs/controllers + anti-regresión
 
-- [ ] 4.1 Agregar `clienteId` a `TransicionarEstadoDto` y `CrearObservacionDto` (D5)
-- [ ] 4.2 Poblar `clienteId` desde JWT en `tickets.controller.ts` y `operaciones.controller.ts` (patrón `CrearTicketDto`)
-- [ ] 4.3 RED: `TransicionarEstadoUseCase` — estado clave ⇒ `publisher.publish()` post-`txRunner.run()` con evento completo; estado no-clave ⇒ no publica (R2 Scenarios 1-2, R9 Scenario "campos requeridos")
-- [ ] 4.4 RED: dentro del `txRunner.run` mock NO se invoca `publish`/`send` (R6 Scenario "durable", R10 NFR "nada dentro de la tx")
-- [ ] 4.5 GREEN: modificar `transicionar-estado.use-case.ts` — publish tras commit (design §6.A)
-- [ ] 4.6 RED: `CrearObservacionUseCase` — `APROBADO`→clave ⇒ publica tras commit; no-`APROBADO` ⇒ no publica; `APROBADO`→no-clave ⇒ no publica (R3 Scenarios 1-3, **anti-regresión crítica**)
-- [ ] 4.7 RED: correr suite EXISTENTE `crear-observacion.use-case.spec.ts` — debe seguir 100% verde tras la reestructura (riesgo atomicidad, design §9)
-- [ ] 4.8 GREEN: reestructurar `crear-observacion.use-case.ts` — extraer return de `txRunner.run`, publicar afuera con `tipoTicketRepo.findCodigoById` (design §6.B, D6)
-- [ ] 4.9 Inyectar `DOMAIN_EVENT_PUBLISHER` (ambos use cases) + `TIPO_TICKET_REPOSITORY` (crear-observación) en `tickets.module.ts`
-- [ ] 4.10 RED: evento publicado por ambos caminos tiene forma idéntica (R9 Scenario "misma forma")
-- [ ] 4.11 RED: `CANCELADO` notifica vía `PATCH` en `COMPRAS`/`EDILICIA` (R1 Scenario "transición a CANCELADO")
-- [ ] 4.12 RED: `.emit()` no bloquea la respuesta HTTP — `EventEmitterPublisher` real + listener con delay artificial (R6 Scenario "no bloquea")
-- [ ] 4.13 Verify: pegar salida real `pnpm test` / `pnpm lint` / `tsc --noEmit`, incluyendo suite completa `crear-observacion` sin regresión
-- [ ] 4.14 BACKLOG (Judgment Day PR3 Ronda 1, issue 5): enriquecer `EmailMessage.data` en `NotificarCambioEstadoHandler.handle()` con `numero`/`tituloTicket` del ticket ANTES de que el flujo real quede activo en prod — el template `cambio-estado` (subject.hbs/body.hbs) ya interpola `{{numero}}`/`{{tituloTicket}}` (ver `nodemailer-email-sender.adapter.spec.ts`), pero el evento `TicketEstadoCambiado` NO los carga (D4, filtro puro sin DB) y el payload actual del handler tampoco los agrega — hoy quedan placeholders vacíos en el email real. Requiere decisión de diseño de PR4: ¿el propio `TransicionarEstadoUseCase`/`CrearObservacionUseCase` enriquece el evento antes de publicar, o el handler resuelve el ticket vía repo adicional? NO implementar en PR3 (fuera de scope).
+- [x] 4.1 Agregar `clienteId` a `TransicionarEstadoDto` y `CrearObservacionDto` (D5)
+- [x] 4.2 Poblar `clienteId` desde JWT en `tickets.controller.ts` (patrón `CrearTicketDto`) — desviación documentada: `operaciones.controller.ts` NO usa ninguno de los 2 DTOs (solo expone `GET /tickets/:id/operaciones`, timeline de solo lectura); ambos endpoints (`PATCH /tickets/:id/estado` y `POST /tickets/:id/observaciones`) viven en `tickets.controller.ts`. Ver STATE.md Apply Progress PR4.
+- [x] 4.3 RED: `TransicionarEstadoUseCase` — estado clave ⇒ `publisher.publish()` post-`txRunner.run()` con evento completo; estado no-clave ⇒ no publica (R2 Scenarios 1-2, R9 Scenario "campos requeridos")
+- [x] 4.4 RED: dentro del `txRunner.run` mock NO se invoca `publish`/`send` (R6 Scenario "durable", R10 NFR "nada dentro de la tx")
+- [x] 4.5 GREEN: modificar `transicionar-estado.use-case.ts` — publish tras commit (design §6.A)
+- [x] 4.6 RED: `CrearObservacionUseCase` — `APROBADO`→clave ⇒ publica tras commit; no-`APROBADO` ⇒ no publica; `APROBADO`→no-clave ⇒ no publica (R3 Scenarios 1-3, **anti-regresión crítica**)
+- [x] 4.7 RED: correr suite EXISTENTE `crear-observacion.use-case.spec.ts` — debe seguir 100% verde tras la reestructura (riesgo atomicidad, design §9) — 24/24 verde (15 preexistentes + 9 nuevas de PR4)
+- [x] 4.8 GREEN: reestructurar `crear-observacion.use-case.ts` — extraer return de `txRunner.run`, publicar afuera con `tipoTicketRepo.findCodigoById` (design §6.B, D6)
+- [x] 4.9 Inyectar `DOMAIN_EVENT_PUBLISHER` (ambos use cases) + `TIPO_TICKET_REPOSITORY` (crear-observación) en `tickets.module.ts`
+- [x] 4.10 RED: evento publicado por ambos caminos tiene forma idéntica (R9 Scenario "misma forma") — `ticket-estado-cambiado-forma-identica.spec.ts`
+- [x] 4.11 RED: `CANCELADO` notifica vía `PATCH` en `COMPRAS`/`EDILICIA` (R1 Scenario "transición a CANCELADO")
+- [x] 4.12 RED: `.emit()` no bloquea la respuesta HTTP — `EventEmitterPublisher` real + listener con delay artificial (R6 Scenario "no bloquea")
+- [x] 4.13 Verify: pegar salida real `pnpm test` / `pnpm lint` / `tsc --noEmit`, incluyendo suite completa `crear-observacion` sin regresión — ver STATE.md Apply Progress PR4
+- [x] 4.14 Enriquecimiento del evento (decisión de diseño del usuario 2026-07-30): `TicketEstadoCambiado` pasa a 12 campos (+`numero` +`tituloTicket`), poblados por ambos use cases desde la `TicketEntity` que ya tienen en la mano al publicar (SIN query extra, D4 se amplía pero no se contradice). `NotificarCambioEstadoHandler.handle()` mapea `numero`/`tituloTicket` al `EmailMessage.data`. Test de forma del evento (PR1) actualizado a 12 campos.
 
 ---
 

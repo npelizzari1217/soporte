@@ -6,13 +6,13 @@
 Notificaciones por **email** cuando **cambia el estado de un ticket** (proyecto Soporte, backend NestJS multi-tenant).
 
 ## Fase actual
-`explore` ✅ · `proposal` ✅ · `spec` ✅ · `design` ✅ · `tasks` ✅ · `apply PR1` ✅ COMPLETADA (verde, 2054 tests) → siguiente: **`apply PR2`** (sub-agente `sdd-apply`, sonnet) — PAUSADO esperando OK del usuario (chained PR delivery).
+`explore` ✅ · `proposal` ✅ · `spec` ✅ · `design` ✅ · `tasks` ✅ · `apply PR1` ✅ · `apply PR2` ✅ (Judgment Day Rondas 1-3, APROBADO) · `apply PR3` ✅ (Judgment Day Rondas 1-3) · `apply PR4` ✅ COMPLETADA (verde, 2140 tests) — **último PR del change**. Siguiente: `sdd-verify` y/o Judgment Day sobre PR4, luego decisión de entrega (push/PR) por el usuario.
 
 ### Entrega: chained PRs (elegido por usuario 2026-07-29)
 - PR1 ✅ fundaciones evento (branch `notif-email-estado-ticket-pr1`, 2 commits locales, SIN push/PR).
-- PR2 ⬜ email port/adapter/resolver/templates (~350-400) — SIGUIENTE.
-- PR3 ⬜ handler/listener/wiring (~200).
-- PR4 ⬜ puntos de publicación + reestructura CrearObservacion + DTOs/controllers + anti-regresión (~300-400, mayor riesgo).
+- PR2 ✅ email port/adapter/resolver/templates (Judgment Day Rondas 1-3, APROBADO).
+- PR3 ✅ handler/listener/wiring (Judgment Day Rondas 1-3).
+- PR4 ✅ COMPLETADO — puntos de publicación + reestructura CrearObservacion + DTOs/controllers + anti-regresión + enriquecimiento del evento (branch `notif-email-estado-ticket-pr4`, encadenada sobre PR3). Es el ÚLTIMO PR planificado del change. Sin push/PR — gateado por el usuario.
 - ⚠️ Push/PR de cada slice queda gated por el usuario (outward-facing).
 - ⚠️ ACTUALIZAR design.md §7: EventEmitterModule.forRoot() va en shared.module.ts (no app.module.ts) — ver Apply Progress PR1.
 - Gotcha entorno: usar `corepack pnpm ...` (pnpm no está en PATH global).
@@ -433,3 +433,92 @@ Ronda 3 de jueces sobre PR3: 3 WARNINGs confirmados por 2 jueces, los 3 concentr
 ### Evidencia real (backend/, 2026-07-30, corrida serial)
 `corepack pnpm test`: `Test Files 159 passed | 1 skipped (160)` · `Tests 2121 passed | 2 skipped (2123)`.
 `corepack pnpm lint`: exit 0. `corepack pnpm exec tsc --noEmit -p tsconfig.json`: exit 0.
+
+---
+
+## Apply Progress — PR4 (Puntos de publicación + DTOs/controllers + anti-regresión) — 2026-07-30
+
+**Status: DONE.** Tasks 4.1–4.14 completas (RED→GREEN estricto). Branch `notif-email-estado-ticket-pr4` (encadenada sobre PR3, que ya pasó Judgment Day Rondas 1-3). Sin push/PR (gateado por usuario). **Es el PR MÁS RIESGOSO del change** (reestructura de atomicidad + puntos de publicación) — el riesgo se manejó con máximo cuidado: la suite `crear-observacion.use-case.spec.ts` preexistente (15 tests) quedó 100% verde, con 9 tests nuevos agregados (24/24 total).
+
+### Decisión de diseño del usuario (2026-07-30) — enriquecimiento del evento (task 4.14)
+El backlog de Judgment Day PR3 Ronda 1 (issue 5) dejó pendiente que `EmailMessage.data` renderizaba `numero`/`tituloTicket` vacíos porque el evento no los cargaba. El usuario decidió: **el use case enriquece el evento**, no el handler.
+- `TicketEstadoCambiado` pasa de 10 a **12 campos**: se agregan `numero: string` y `tituloTicket: string`, insertados justo después de `ticketId` (agrupación semántica "qué ticket es"). Firma completa: `(ticketId, numero, tituloTicket, tipoCodigo, estadoAnteriorId, estadoNuevoId, estadoAnteriorCodigo, estadoNuevoCodigo, solicitanteId, autorId, tenantId, occurredAt)`.
+- Ambos use cases pueblan estos 2 campos desde la `TicketEntity` que YA tienen en la mano al publicar (post-commit) — `ticket.numero`/`ticket.titulo` (getters ya existentes, sin cambios en la entidad) — **sin query extra**.
+- `NotificarCambioEstadoHandler.handle()` ahora mapea `event.numero`/`event.tituloTicket` al `EmailMessage.data` (antes quedaban ausentes del payload del template).
+- **D4 se AMPLÍA, no se contradice**: la decisión de NOTIFICAR sigue siendo pura sobre `estadoNuevoCodigo` (`esEstadoNotificable`), sin tocar la DB. Los 2 campos nuevos son solo payload de display para el template — no entran en el filtro de notificabilidad.
+- Actualizado: `ticket-estado-cambiado.event.spec.ts` (PR1) a 12 campos; `notificar-cambio-estado.handler.spec.ts`/`notificar-cambio-estado.listener.spec.ts` (PR3) — sus helpers `makeEvent()` actualizados a la nueva firma de 12 args; +1 test nuevo en el handler que asserta el mapeo `numero`/`tituloTicket` → `EmailMessage.data`.
+
+### Tasks completadas
+- **4.1** `clienteId: string` agregado a `TransicionarEstadoDto` y `CrearObservacionDto` (D5).
+- **4.2** `clienteId` poblado desde `user.cliente_id` (JWT) en `tickets.controller.ts`, en AMBOS métodos (`transicionarEstado` y `crearObservacion`) — **desviación documentada respecto de tasks.md/design.md**: ambos mencionaban "`tickets.controller.ts` + `operaciones.controller.ts`", pero se verificó contra el código real que `OperacionesController` SOLO expone `GET /tickets/:id/operaciones` (timeline de solo lectura) y NUNCA invoca `TransicionarEstadoUseCase` ni `CrearObservacionUseCase` — ambos endpoints que sí los invocan (`PATCH /tickets/:id/estado`, `POST /tickets/:id/observaciones`) viven en `TicketsController`. `operaciones.controller.ts` quedó sin tocar (correcto — no tiene ningún DTO que poblar). 2 tests nuevos en `tickets.controller.spec.ts` confirman `clienteId: 'cli-abc'` llega a ambos use cases.
+- **4.3/4.4 RED → 4.5 GREEN**: `TransicionarEstadoUseCase` — inyecta `IDomainEventPublisher` (8º parámetro del constructor, al final — mínimo diff en tests existentes). Tras `await this.txRunner.run(...)`, si `esEstadoNotificable(estadoNuevo.codigo)`, publica `TicketEstadoCambiado` completo (con `ticket.numero`/`ticket.titulo`). Estado no-clave ⇒ no publica. Nuevo describe block "publicación post-commit..." con 6 tests: evento correcto (RESUELTO), Result.ok preservado, no-clave no publica, orden call (`tx:end` ANTES de `publisher:publish`), CANCELADO vía COMPRAS, CANCELADO vía EDILICIA.
+- **4.6/4.7 RED → 4.8 GREEN**: reestructura de `CrearObservacionUseCase` (design §6.B, D6) — ver detalle abajo. Nuevo describe block "publicación post-commit... (auto-transición)" con 8 tests: RESUELTO publica con evento correcto, orden call (post-commit), SUSPENDIDO no publica, EN_PROGRESO (default) no publica, SIN_SOLUCION publica, ticket no-APROBADO no publica (y NO llama `tipoTicketRepo.findCodigoById`), `findCodigoById→null` no publica (guard D6), transición inválida (Sc7) no publica ni resuelve tipoCodigo.
+- **4.9**: `tickets.module.ts` — `DOMAIN_EVENT_PUBLISHER` agregado al `inject` de `TransicionarEstadoUseCase` (8º arg) y de `CrearObservacionUseCase`; `TIPO_TICKET_REPOSITORY` agregado al `inject` de `CrearObservacionUseCase` (ya existía en `TicketsModule.providers`, solo faltaba inyectarlo en este use case). Verificado con `tickets.module.wiring.spec.ts` (compile()/init() reales, sin `UnknownDependenciesException`).
+- **4.10**: nuevo archivo `ticket-estado-cambiado-forma-identica.spec.ts` — construye AMBOS use cases con datos de ticket equivalentes (mismo `ticketId`/`numero`/`titulo`/`solicitanteId`/`tenantId`/`autorId`, mismo destino `RESUELTO`), ejecuta ambos caminos, y compara: mismas claves (`Object.keys` ordenadas), mismo tipo por campo, y valores de negocio idénticos donde el escenario los hace coincidir. 1 test, verde.
+- **4.11**: 2 tests nuevos en `transicionar-estado.use-case.spec.ts` — `tipoTicketRepo.findCodigoById` mockeado a `'COMPRAS'`/`'EDILICIA'`, destino `CANCELADO`, aserta `publisher.publish` llamado con `estadoNuevoCodigo: 'CANCELADO'` y el `tipoCodigo` correspondiente (R1).
+- **4.12**: nuevo test en `event-emitter.publisher.spec.ts` — `EventEmitter2` REAL (no mock) + listener async con `setTimeout(50ms)`; confirma que `publish()` retorna en <20ms (sin esperar el listener) y que el listener eventualmente completa (fire-and-forget, sin pérdida).
+- **4.13**: evidencia real pegada abajo, incluyendo la suite `crear-observacion` aislada.
+- **4.14**: ver "Decisión de diseño del usuario" arriba.
+
+### La reestructura de `CrearObservacionUseCase` (design §6.B, D6) — cómo se preservó la atomicidad
+El riesgo central de este PR (design §9): `execute()` era `return this.txRunner.run(async () => { ...cuerpo completo...; return Result.ok(ticket); })`. Publicar post-commit exige código DESPUÉS de que `run()` resuelva, pero todo el cuerpo vivía DENTRO del callback.
+
+**Regla seguida al pie de la letra**: el CUERPO del `txRunner.run` (qué se lee, qué se muta, qué se persiste, en qué orden, con qué guards) **NO cambió una sola línea de lógica de negocio**. El ÚNICO cambio estructural fue:
+1. Se definió un tipo interno `ExecuteTxOutcome = { result: Result<TicketEntity, DomainError>; publicar: CambioEstadoParaPublicar | null }`.
+2. TODOS los `return Result.fail(...)`/`return Result.ok(ticket)` que antes eran el valor de retorno DIRECTO del callback pasaron a ser `return { result: Result.fail(...), publicar: null }` / `return { result: Result.ok(ticket), publicar }` — mismo camino de código, mismo orden de validaciones, mismos guards, solo se envuelve el `Result` en un objeto junto a los datos de publicación (`estadoAnteriorId/estadoNuevoId/...codigo/solicitanteId/tipoId/numero/tituloTicket` — armados donde `ticket`/`estadoActual`/`estadoDestino` YA estaban en scope, dentro del `if (estadoActual.codigo === 'APROBADO')`).
+3. `execute()` ahora hace `const outcome = await this.txRunner.run<ExecuteTxOutcome>(...)`, y DESPUÉS de ese `await` (fuera de la tx): si `outcome.publicar` existe Y `outcome.result.isOk()` Y `esEstadoNotificable(outcome.publicar.estadoNuevoCodigo)`, resuelve `tipoCodigo` vía `tipoTicketRepo.findCodigoById(outcome.publicar.tipoId)` (D6 — lookup guardado, condicional, solo cuando hubo auto-transición a estado notificable) y publica. Retorna `outcome.result`.
+4. **Ningún guard de negocio se reordenó, se eliminó ni se relajó.** Los 12 `return` tempranos (ticket no encontrado, estado catálogo corrupto, estado terminal, tipoOperación no encontrada ×2, transición inválida, fechaCierre requerida, estado destino no encontrado) siguen exactamente en el mismo punto del flujo, con la misma condición — solo cambió la FORMA del valor de retorno, nunca la lógica que decide cuándo retornar.
+5. **Verificación empírica de que la tx sigue rollbackeando igual**: Sc11 (falla `save(CAMBIO_ESTADO)` → `execute()` rechaza) y S1 (falla el primer `save(OBSERVACION)` → rechaza) — AMBOS siguen verdes sin tocarlos. Razón: el callback sigue siendo la MISMA función async; si `await this.operacionRepo.save(...)` rechaza dentro de él, la promesa del callback rechaza igual que antes, y como el mock de test (`txRunner.run: vi.fn((fn) => fn())`) solo llama y retorna `fn()` sin envolver en try/catch, el rechazo se propaga sin cambios hasta `await this.txRunner.run(...)` en `execute()`.
+6. **Resultado**: la suite completa `crear-observacion.use-case.spec.ts` (15 tests preexistentes, TODOS sin modificar ni un assert) pasó 100% verde en la primera corrida tras la reestructura — sin necesidad de ningún ajuste retroactivo.
+
+### Archivos creados
+- `backend/src/tickets/application/use-cases/ticket-estado-cambiado-forma-identica.spec.ts` (task 4.10)
+
+### Archivos modificados
+- `backend/src/tickets/domain/events/ticket-estado-cambiado.event.ts` (+`numero`/+`tituloTicket`, 10→12 campos, task 4.14)
+- `backend/src/tickets/domain/events/ticket-estado-cambiado.event.spec.ts` (actualizado a 12 campos)
+- `backend/src/tickets/application/event-handlers/notificar-cambio-estado.handler.ts` (mapea `numero`/`tituloTicket` a `EmailMessage.data`, task 4.14)
+- `backend/src/tickets/application/event-handlers/notificar-cambio-estado.handler.spec.ts` (`makeEvent()` a 12 args, +1 test de mapeo)
+- `backend/src/tickets/infrastructure/events/notificar-cambio-estado.listener.spec.ts` (`makeEvent()` a 12 args)
+- `backend/src/shared/infrastructure/events/event-emitter.publisher.spec.ts` (+1 test 4.12, EventEmitter2 real)
+- `backend/src/tickets/application/use-cases/transicionar-estado.use-case.ts` (+`clienteId` en DTO, +`publisher` en ctor, publish post-commit, task 4.3-4.5)
+- `backend/src/tickets/application/use-cases/transicionar-estado.use-case.spec.ts` (+`clienteId` en todos los DTOs literales del archivo, +publisher mock, +describe block de 6 tests)
+- `backend/src/tickets/application/use-cases/crear-observacion.use-case.ts` (+`clienteId` en DTO, +`tipoTicketRepo`+`publisher` en ctor, **reestructura** del `txRunner.run`, tasks 4.6-4.8)
+- `backend/src/tickets/application/use-cases/crear-observacion.use-case.spec.ts` (+`tipoTicketRepo`+`publisher` en mocks/ctor, +describe block de 8 tests)
+- `backend/src/tickets/tickets.module.ts` (+`DOMAIN_EVENT_PUBLISHER` en `inject` de ambos use cases, +`TIPO_TICKET_REPOSITORY` en `inject` de `CrearObservacionUseCase`, task 4.9)
+- `backend/src/tickets/interface/controllers/tickets.controller.ts` (+`clienteId: user.cliente_id` en ambas llamadas a use case, task 4.2)
+- `backend/src/tickets/interface/controllers/tickets.controller.spec.ts` (+2 tests de propagación de `clienteId`)
+- `openspec/changes/notif-email-estado-ticket/tasks.md` (4.1–4.14 marcadas)
+
+### No tocado (correcto, fuera de scope PR4)
+- `backend/src/tickets/interface/controllers/operaciones.controller.ts` — no invoca ninguno de los 2 use cases modificados (ver desviación 4.2 arriba).
+- `TicketEntity` (`ticket.entity.ts`) — sin cambios; `numero`/`titulo` ya existían como getters públicos, reusados tal cual.
+- Ningún cambio de schema/migración (confirmado, cero DB tocada en este change completo).
+
+### Evidencia real (backend/, 2026-07-30, corrida serial)
+
+**Suite `crear-observacion` aislada (anti-regresión, evidencia explícita pedida):**
+```
+corepack pnpm exec vitest run src/tickets/application/use-cases/crear-observacion.use-case.spec.ts
+Test Files  1 passed (1)
+     Tests  24 passed (24)
+```
+(15 tests preexistentes de PR2, TODOS verdes sin modificar — + 9 tests nuevos de PR4: 8 de publicación + 0 adicionales de rollback ya cubiertos por Sc11/S1 preexistentes.)
+
+**Suite completa `pnpm test` (== `vitest run`):**
+```
+Test Files  160 passed | 1 skipped (161)
+     Tests  2140 passed | 2 skipped (2142)
+  Duration  ~174-180s
+```
+(vs. PR3 Judgment Day Ronda 3: 160 files / 2123 tests → PR4 agrega 1 archivo nuevo [`ticket-estado-cambiado-forma-identica.spec.ts`] + 19 tests netos: 1 handler [4.14] + 2 controller [4.2] + 6 transicionar-estado [4.3/4.4/4.11] + 8 crear-observacion [4.6/4.7] + 1 forma-idéntica [4.10] + 1 publisher [4.12] = 19.)
+
+`corepack pnpm lint` (== `eslint "src/**/*.ts"`): 5 errores de formato `prettier/prettier` detectados en la primera corrida (indentación de argumentos multilinea en 2 archivos), corregidos con `eslint --fix`; **exit 0, sin output** en la corrida final. Re-corrida completa de `pnpm test` después del `--fix` confirmó los mismos 2140/2142 — el auto-fix no cambió comportamiento, solo formato.
+
+`corepack pnpm exec tsc --noEmit -p tsconfig.json`: **exit 0, sin output.**
+
+### Git
+Branch `notif-email-estado-ticket-pr4` (creada desde `notif-email-estado-ticket-pr3` local, que ya incluye Judgment Day Rondas 1-3). Commit(s) conventional pendientes de esta sesión, sin Co-Authored-By. **Sin push, sin PR** — gateado por el usuario.
+
+### Cómo retomar
+PR4 es el ÚLTIMO PR planificado (tasks.md no tiene PR5). Decidir: (a) correr Judgment Day sobre PR4 (mismo patrón que PR2/PR3, dado el riesgo alto de este PR) antes de dar por cerrado el change; (b) aprobar directo y avanzar a `sdd-verify`/`sdd-archive`; (c) pedir ajustes sobre PR4.
