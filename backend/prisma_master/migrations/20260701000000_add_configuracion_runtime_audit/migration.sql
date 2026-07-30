@@ -19,6 +19,16 @@
 --
 -- audit_entries NO tiene updated_at/deleted_at (Dz8, inmutable por diseño —
 -- un log de auditoría soft-eliminable/mutable deja de ser evidencia).
+--
+-- CHECK es_secreto→iv/auth_tag (Judgment Day PR1 Ronda 1, WARNING confirmado):
+-- una fila con es_secreto=true DEBE tener iv/auth_tag NOT NULL — sin este
+-- guard, el schema permitiría persistir un "secreto" sin cifrar (iv/auth_tag
+-- nulos), inconsistente con el contrato de `ISecretCipher`. Expresado como
+-- parte de la propia CREATE TABLE (no una migración ALTER separada) para
+-- mantenerlo idempotente vía el mismo `IF NOT EXISTS` de la tabla.
+--
+-- audit_entries.actor_id: SIN FK a "usuarios" — ver nota en su CREATE TABLE
+-- más abajo (intencional, espeja tenant).
 
 -- ─── CreateTable: configuracion_runtime ──────────────────────────────────────
 
@@ -36,10 +46,19 @@ CREATE TABLE IF NOT EXISTS "configuracion_runtime" (
     "updated_at"      TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "deleted_at"      TIMESTAMPTZ,
 
-    CONSTRAINT "configuracion_runtime_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "configuracion_runtime_pkey" PRIMARY KEY ("id"),
+    CONSTRAINT "configuracion_runtime_secreto_iv_auth_tag_check"
+      CHECK (("es_secreto" = false) OR ("iv" IS NOT NULL AND "auth_tag" IS NOT NULL))
 );
 
 -- ─── CreateTable: audit_entries ──────────────────────────────────────────────
+--
+-- actor_id SIN FK a "usuarios" (que en master SÍ existe): sacrificio DELIBERADO
+-- de integridad referencial para mantener el shape IDÉNTICO entre master y
+-- tenant (en tenant, "usuarios" vive en master — cross-DB, imposible expresar
+-- FK física). Se prioriza el mismo DDL/mismo modelo Prisma en ambos schemas
+-- por sobre la FK que master sí podría tener. No agregar la FK acá sin
+-- también resolver cómo el espejo tenant la reemplazaría.
 
 CREATE TABLE IF NOT EXISTS "audit_entries" (
     "id"             UUID NOT NULL DEFAULT gen_random_uuid(),

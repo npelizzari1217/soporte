@@ -13,6 +13,12 @@
 --   WHERE deleted_at IS NULL (Dz9 design — @@unique de Prisma no expresa
 --   partial unique; lookups por findFirst, NUNCA findUnique).
 -- audit_entries: sin updated_at/deleted_at (Dz8, inmutable por diseño).
+--
+-- CHECK es_secreto→iv/auth_tag (Judgment Day PR1 Ronda 1, WARNING confirmado,
+-- espejo EXACTO del guard en la migración master homónima): una fila con
+-- es_secreto=true DEBE tener iv/auth_tag NOT NULL — sin este guard el schema
+-- permitiría persistir un "secreto" sin cifrar. Parte de la propia CREATE
+-- TABLE (idempotente vía el mismo IF NOT EXISTS de la tabla).
 
 -- ─── CreateTable: configuracion_runtime ──────────────────────────────────────
 
@@ -30,7 +36,9 @@ CREATE TABLE IF NOT EXISTS "configuracion_runtime" (
     "updated_at"      TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "deleted_at"      TIMESTAMPTZ,
 
-    CONSTRAINT "configuracion_runtime_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "configuracion_runtime_pkey" PRIMARY KEY ("id"),
+    CONSTRAINT "configuracion_runtime_secreto_iv_auth_tag_check"
+      CHECK (("es_secreto" = false) OR ("iv" IS NOT NULL AND "auth_tag" IS NOT NULL))
 );
 
 -- ─── CreateTable: audit_entries ──────────────────────────────────────────────
