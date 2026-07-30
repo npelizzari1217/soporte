@@ -26,7 +26,7 @@
  */
 import { Result } from '../../../shared/domain/result';
 import { ConfigScope } from '../events/configuracion-cambiada.event';
-import { InfraConfigError } from '../errors/config.errors';
+import { ConfigConflictoConcurrenteError, InfraConfigError } from '../errors/config.errors';
 
 /** Token de inyección de dependencias para IConfiguracionRepository en NestJS. */
 export const CONFIGURACION_REPOSITORY = Symbol('CONFIGURACION_REPOSITORY');
@@ -91,9 +91,16 @@ export interface IConfiguracionRepository {
   /**
    * Crea la fila `(categoria, clave)` del scope si no existe una activa, o
    * la actualiza si ya existe. NUNCA lanza.
+   *
+   * TOCTOU (Judgment Day PR4 Ronda 1, arreglo 4): la resolución de
+   * existencia (`findFirst`) y la escritura (`create`/`update`) NO son
+   * atómicas — una violación del partial unique index por una escritura
+   * concurrente se reporta como `ConfigConflictoConcurrenteError`,
+   * distinguible de un `InfraConfigError` genérico (timeout, conexión
+   * caída).
    */
   upsert(
     scope: ConfigScope,
     row: UpsertConfiguracionInput,
-  ): Promise<Result<ConfiguracionRow, InfraConfigError>>;
+  ): Promise<Result<ConfiguracionRow, InfraConfigError | ConfigConflictoConcurrenteError>>;
 }

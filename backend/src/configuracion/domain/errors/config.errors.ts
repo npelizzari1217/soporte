@@ -127,3 +127,98 @@ export class ScopeGlobalNoAutorizadoError extends DomainError {
     super('Solo un usuario con is_global_admin puede escribir configuración de scope global.');
   }
 }
+
+/**
+ * ScopeTenantNoAutorizadoError — ownership de tenant (arreglo 1, Judgment
+ * Day PR4 Ronda 1, confirmado A+B): un actor de scope `tenant` (sin
+ * `esGlobalAdmin`) solo puede leer/escribir la configuración de SU PROPIO
+ * `clienteId`. Antes de esta ronda, un actor de tenant podía pasar
+ * `scope.clienteId` de OTRO tenant y el use case no lo rechazaba — el
+ * único gate existente (F2) solo cubría `scope.kind === 'global'`. Se
+ * valida ANTES de tocar el repositorio (leer o escribir) — mismo criterio
+ * que `ScopeGlobalNoAutorizadoError`.
+ *
+ * Ref: STATE.md "Judgment Day — PR4 — fixes Ronda 1", arreglo 1.
+ */
+export class ScopeTenantNoAutorizadoError extends DomainError {
+  readonly code = 'CONFIG_SCOPE_TENANT_NO_AUTORIZADO' as const;
+
+  constructor() {
+    super('El actor no está autorizado a operar sobre la configuración de un tenant ajeno.');
+  }
+}
+
+/**
+ * InvalidScopeError — `scope.kind` fuera de `'tenant'|'global'` (arreglo 2,
+ * Judgment Day PR4 Ronda 1, hallazgo Juez A: fail-open a global por
+ * `scope.kind` no validado). Los adapters mapeaban CUALQUIER `kind`
+ * distinto de `'tenant'` a la rama `else` (global/master) por default — un
+ * `scope` malformado/tampereado que cruzara el boundary de use case podía
+ * terminar escribiendo/leyendo en la config GLOBAL sin haberlo pedido
+ * explícitamente. Se valida en AMBOS use cases ANTES de autorizar o tocar
+ * el repositorio (fail-closed) — ver `esScopeKindValido()` en
+ * `configuracion/domain/validar-scope.ts`.
+ *
+ * Ref: STATE.md "Judgment Day — PR4 — fixes Ronda 1", arreglo 2.
+ */
+export class InvalidScopeError extends DomainError {
+  readonly code = 'CONFIG_SCOPE_INVALIDO' as const;
+
+  constructor(kindRecibido: unknown) {
+    super(
+      `Scope de configuración inválido: "${String(kindRecibido)}" — solo se admite "tenant" o "global".`,
+    );
+  }
+}
+
+/**
+ * ValorEnmascaradoNoPermitidoError — round-trip del placeholder enmascarado
+ * (arreglo 3, Judgment Day PR4 Ronda 1, hallazgo Juez A). `LeerConfigUseCase`
+ * SIEMPRE devuelve `SECRET_MASK` ('********') para filas `esSecreto=true` —
+ * un frontend que lea, muestre y reenvíe el formulario sin que el usuario
+ * toque el campo del secreto reenviaría literalmente ese placeholder.
+ * `ActualizarConfigUseCase` NUNCA debe cifrar y persistir ese literal como
+ * si fuera el secreto real — sobrescribiría el password/API-key legítimo
+ * con el string `'********'` de forma silenciosa (pérdida de datos + el
+ * secreto real queda irrecuperable, ya que solo existía en la fila que se
+ * acaba de pisar). Se rechaza ANTES de cifrar/persistir.
+ *
+ * Ref: STATE.md "Judgment Day — PR4 — fixes Ronda 1", arreglo 3.
+ */
+export class ValorEnmascaradoNoPermitidoError extends DomainError {
+  readonly code = 'CONFIG_VALOR_ENMASCARADO_NO_PERMITIDO' as const;
+
+  constructor() {
+    super(
+      'El valor recibido es el placeholder enmascarado ("********") — no se puede persistir ' +
+        'como el secreto real. Si no se quiere cambiar el secreto, omití el campo o enviá el valor real.',
+    );
+  }
+}
+
+/**
+ * ConfigConflictoConcurrenteError — TOCTOU en `upsert()` (arreglo 4,
+ * Judgment Day PR4 Ronda 1, confirmado A+B). `PrismaConfiguracionRepository
+ * .upsert()` resuelve existencia vía `findFirst` y luego decide
+ * `create`/`update` (Dz9 — no hay `.upsert()` nativo posible sobre el
+ * partial unique index) — hay una ventana entre el `findFirst` y el
+ * `create`/`update` donde OTRA escritura concurrente para la misma
+ * `(categoria, clave)` del mismo scope puede ganar la carrera. La DB lo
+ * detecta vía el partial unique index y Prisma lo reporta como `P2002`
+ * (unique constraint violation). Antes de esta ronda, ese `P2002` se
+ * mapeaba al mismo `InfraConfigError` genérico que cualquier otro fallo de
+ * infra (timeout, conexión caída) — un caller no podía distinguir "reintentá,
+ * fue una carrera" de "la infra está caída". Distinguible por `code`.
+ *
+ * Ref: STATE.md "Judgment Day — PR4 — fixes Ronda 1", arreglo 4.
+ */
+export class ConfigConflictoConcurrenteError extends DomainError {
+  readonly code = 'CONFIG_CONFLICTO_CONCURRENTE' as const;
+
+  constructor(categoria: string, clave: string) {
+    super(
+      `Conflicto de escritura concurrente para "${categoria}.${clave}" — otra escritura ganó ` +
+        'la carrera. Reintentá la operación.',
+    );
+  }
+}
