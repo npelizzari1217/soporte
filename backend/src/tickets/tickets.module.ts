@@ -23,6 +23,7 @@
  */
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
+import { ConfiguracionModule } from '../configuracion/configuracion.module';
 
 // ─── Domain ports (tokens + interfaces) ──────────────────────────────────────
 import { TICKET_REPOSITORY, ITicketRepository } from './domain/ports/i-ticket.repository';
@@ -58,6 +59,7 @@ import {
   SOLICITANTE_EMAIL_RESOLVER,
   ISolicitanteEmailResolver,
 } from './domain/ports/i-solicitante-email.resolver';
+import { CONFIG_RESOLVER, IConfigResolver } from '../configuracion/domain/ports/i-config-resolver';
 import {
   DOMAIN_EVENT_PUBLISHER,
   IDomainEventPublisher,
@@ -128,6 +130,11 @@ import { ComentariosController } from './interface/controllers/comentarios.contr
     // Necesarios para que JwtAuthGuard (con @Inject(TOKEN_SERVICE)) sea resolvible
     // en el contexto de TicketsModule.
     AuthModule,
+    // ConfiguracionModule exporta CONFIG_RESOLVER (PR6, runtime-config-table,
+    // Dz12) — NotificarCambioEstadoHandler lo necesita para resolver la
+    // SmtpConfig del tenant ANTES de enviar (design §7.2). NO @Global — import
+    // explícito (nestjs-modules skill).
+    ConfiguracionModule,
   ],
   controllers: [TicketsController, OperacionesController, ComentariosController],
   // Exportamos los providers que ComprasModule, ReparacionesModule y EquiposModule
@@ -492,31 +499,29 @@ import { ComentariosController } from './interface/controllers/comentarios.contr
       useClass: SolicitanteEmailResolver,
     },
 
-    // EMAIL_SENDER: NodemailerEmailSender.fromEnv() valida la config SMTP y
-    // LANZA `SmtpConfigError` si falta (D7, Requirement 7 nota infra — por
-    // diseño, la app NO debe arrancar con config SMTP incompleta). Fail-fast
-    // RESTAURADO en Judgment Day PR3 Ronda 1 (ver STATE.md): el throw se deja
-    // propagar sin control acá — un deploy sin SMTP configurado NO debe
-    // arrancar "sano" y fallar en silencio en el primer envío real.
-    //
-    // El entorno de test (specs de wiring que bootstrapean TicketsModule/
-    // AppModule vía Test.createTestingModule) NO debe depender de este
-    // catch-all: en su lugar, el setup global de Vitest inyecta env SMTP
-    // dummy (ver `test/setup-env.ts` + `setupFiles` en `vitest.config.ts`).
+    // EMAIL_SENDER: adapter PURO — arma el transporter POR-ENVÍO a partir de
+    // la SmtpConfig que le pasa el handler (Dz6/Dz11, PR6 runtime-config-table).
+    // Ya NO lee `process.env` ni valida nada al bootstrap: el fail-fast de
+    // config SMTP se corrió a send-time (R6) — `useClass` en vez del
+    // `useFactory: () => NodemailerEmailSender.fromEnv()` de PR3
+    // (notif-email-estado-ticket), eliminado junto con `email-config.ts`.
     {
       provide: EMAIL_SENDER,
-      useFactory: (): EmailSenderPort => NodemailerEmailSender.fromEnv(),
+      useClass: NodemailerEmailSender,
     },
 
     // NotificarCambioEstadoHandler: plain class (application, sin decorators
-    // NestJS) — instanciada via useFactory con los 2 ports (D2).
+    // NestJS) — instanciada via useFactory con los 3 ports (D2). CONFIG_RESOLVER
+    // (PR6, Dz6) resuelve la SmtpConfig del tenant ANTES de emailSender.send().
     {
       provide: NotificarCambioEstadoHandler,
       useFactory: (
+        configResolver: IConfigResolver,
         resolver: ISolicitanteEmailResolver,
         emailSender: EmailSenderPort,
-      ): NotificarCambioEstadoHandler => new NotificarCambioEstadoHandler(resolver, emailSender),
-      inject: [SOLICITANTE_EMAIL_RESOLVER, EMAIL_SENDER],
+      ): NotificarCambioEstadoHandler =>
+        new NotificarCambioEstadoHandler(configResolver, resolver, emailSender),
+      inject: [CONFIG_RESOLVER, SOLICITANTE_EMAIL_RESOLVER, EMAIL_SENDER],
     },
 
     // NotificarCambioEstadoListener: clase provider `@Injectable()`/`@OnEvent`

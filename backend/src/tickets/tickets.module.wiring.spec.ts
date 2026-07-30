@@ -32,7 +32,7 @@ import { SolicitanteEmailResolver } from './infrastructure/persistence/prisma/so
 import { NodemailerEmailSender } from './infrastructure/email/nodemailer-email-sender.adapter';
 import { NotificarCambioEstadoHandler } from './application/event-handlers/notificar-cambio-estado.handler';
 import { NotificarCambioEstadoListener } from './infrastructure/events/notificar-cambio-estado.listener';
-import { SmtpConfigError } from './infrastructure/email/email-config';
+import { CONFIG_RESOLVER } from '../configuracion/domain/ports/i-config-resolver';
 
 describe('TicketsModule bootstrap (Fase 4, PR2 — R2 DI wiring regression guard)', () => {
   it('compila sin UnknownDependenciesException y resuelve el resolver de ciclo activo por DI', async () => {
@@ -82,13 +82,12 @@ describe('TicketsModule bootstrap (Fase 4, PR2 — R2 DI wiring regression guard
     await moduleRef.close();
   });
 
-  // PR3 (notif-email-estado-ticket, task 3.8): EMAIL_SENDER/SOLICITANTE_EMAIL_RESOLVER
-  // + NotificarCambioEstadoHandler/Listener wireados. EMAIL_SENDER es fail-fast
-  // (Judgment Day PR3 Ronda 1 — ver STATE.md): el useFactory YA NO captura el
-  // throw de config SMTP faltante. Este entorno de test recibe SMTP_* DUMMY vía
-  // el setup global de Vitest (`test/setup-env.ts`), así que EMAIL_SENDER
-  // resuelve a un `NodemailerEmailSender` real (no a un stand-in de resguardo).
-  it('resuelve EMAIL_SENDER a un NodemailerEmailSender real (env SMTP dummy del setup global) y wirea SOLICITANTE_EMAIL_RESOLVER + handler/listener', async () => {
+  // PR3 (notif-email-estado-ticket, task 3.8) + PR6 (runtime-config-table,
+  // task 6.13): EMAIL_SENDER/SOLICITANTE_EMAIL_RESOLVER/CONFIG_RESOLVER +
+  // NotificarCambioEstadoHandler/Listener wireados. EMAIL_SENDER ya NO es
+  // fail-fast (Dz11, PR6): `useClass` puro, sin `fromEnv()` — resuelve
+  // siempre, sin depender de env SMTP.
+  it('resuelve EMAIL_SENDER a un NodemailerEmailSender real y wirea SOLICITANTE_EMAIL_RESOLVER + CONFIG_RESOLVER + handler/listener', async () => {
     const moduleRef = await Test.createTestingModule({
       imports: [SharedModule, TicketsModule],
     }).compile();
@@ -97,43 +96,37 @@ describe('TicketsModule bootstrap (Fase 4, PR2 — R2 DI wiring regression guard
 
     expect(moduleRef.get(EMAIL_SENDER)).toBeInstanceOf(NodemailerEmailSender);
     expect(moduleRef.get(SOLICITANTE_EMAIL_RESOLVER)).toBeInstanceOf(SolicitanteEmailResolver);
-    expect(moduleRef.get(NotificarCambioEstadoHandler)).toBeInstanceOf(
-      NotificarCambioEstadoHandler,
-    );
+    const handler = moduleRef.get(NotificarCambioEstadoHandler);
+    expect(handler).toBeInstanceOf(NotificarCambioEstadoHandler);
     expect(moduleRef.get(NotificarCambioEstadoListener)).toBeInstanceOf(
       NotificarCambioEstadoListener,
     );
 
+    // Verificación de wiring POSICIONAL (mismo criterio que
+    // `resolverCicloActivo` más arriba en este archivo): un useFactory con
+    // `inject` desalineado NO lanza en compile()/init() — Nest pasa los
+    // valores en el orden dado, silenciosamente. CONFIG_RESOLVER es el
+    // primer parámetro nuevo del useFactory de NotificarCambioEstadoHandler
+    // (PR6, task 6.13) — se inspecciona el campo real de la instancia.
+    const configResolverInjected = (handler as unknown as { configResolver: unknown })
+      .configResolver;
+    expect(configResolverInjected).toBe(moduleRef.get(CONFIG_RESOLVER));
+
     await moduleRef.close();
   });
 
-  // Judgment Day PR3 Ronda 2, issue 2 (Juez B, el más importante): el env
-  // SMTP dummy global de `test/setup-env.ts` hace que EMAIL_SENDER SIEMPRE
-  // resuelva con éxito en el resto de la suite, así que ningún test cubría
-  // que el bootstrap ABORTE de verdad si falta config SMTP. Si alguien
-  // reintrodujera el try/catch+fallback en el useFactory de EMAIL_SENDER
-  // (revertiendo el fail-fast de Ronda 1), este test es el ÚNICO que lo
-  // detectaría — sin él, `compile()` seguiría resolviendo silenciosamente.
-  it('rechaza el bootstrap si falta SMTP_HOST — EMAIL_SENDER debe seguir siendo fail-fast (regression-guard, Judgment Day PR3 Ronda 2)', async () => {
-    const previousSmtpHost = process.env.SMTP_HOST;
-    delete process.env.SMTP_HOST;
-
-    try {
-      await expect(
-        Test.createTestingModule({
-          imports: [SharedModule, TicketsModule],
-        }).compile(),
-      ).rejects.toThrow(SmtpConfigError);
-    } finally {
-      // Restaura el env dummy global (test/setup-env.ts) para no contaminar
-      // el resto de la suite — sea cual sea el valor previo.
-      if (previousSmtpHost === undefined) {
-        delete process.env.SMTP_HOST;
-      } else {
-        process.env.SMTP_HOST = previousSmtpHost;
-      }
-    }
-
-    expect(process.env.SMTP_HOST).toBe(previousSmtpHost);
+  // R6 (runtime-config-table PR6, spec Requirement 6): el fail-fast de boot
+  // por config SMTP SE ELIMINÓ — la app arranca SIEMPRE, con o sin fila de
+  // `ConfiguracionRuntime` categoría `smtp` en DB (y sin ningún env `SMTP_*`,
+  // que ya no se lee en ningún punto del wiring). Reemplaza el test previo
+  // "rechaza el bootstrap si falta SMTP_HOST" (Judgment Day PR3 Ronda 2 de
+  // notif-email-estado-ticket), obsoleto tras el swap: `SmtpConfigError`/
+  // `email-config.ts` ya NO existen (task 6.6).
+  it('arranca sin throw aunque no haya ninguna fila ConfiguracionRuntime de categoría smtp ni env SMTP_* (R6, fail-fast corrido a send-time)', async () => {
+    await expect(
+      Test.createTestingModule({
+        imports: [SharedModule, TicketsModule],
+      }).compile(),
+    ).resolves.toBeDefined();
   });
 });
