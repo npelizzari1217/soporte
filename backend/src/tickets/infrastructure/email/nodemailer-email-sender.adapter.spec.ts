@@ -177,6 +177,40 @@ describe('NodemailerEmailSender', () => {
       expect(call.subject).toContain('SOP-2026-00042Bcc: atacante@evil.com');
     });
 
+    it('elimina CR/LF del subject cuando el body es type "text" — previene header injection SMTP (Judgment Day PR2 Ronda 3, issue D)', async () => {
+      const sendMail = vi.fn().mockResolvedValue({ messageId: 'abc123' });
+      const transporter: EmailTransporter = { sendMail };
+      const adapter = new NodemailerEmailSender(transporter, 'Soporte <no-reply@dominio.com>');
+
+      await adapter.send(
+        makeMessage({
+          subject: 'Asunto\r\nBcc: atacante@evil.com',
+          body: { type: 'text', content: 'texto plano' },
+        }),
+      );
+
+      const call = sendMail.mock.calls[0][0];
+      expect(call.subject).not.toMatch(/[\r\n]/);
+      expect(call.subject).toBe('AsuntoBcc: atacante@evil.com');
+    });
+
+    it('elimina CR/LF del subject cuando el body es type "html" — previene header injection SMTP (Judgment Day PR2 Ronda 3, issue D)', async () => {
+      const sendMail = vi.fn().mockResolvedValue({ messageId: 'abc123' });
+      const transporter: EmailTransporter = { sendMail };
+      const adapter = new NodemailerEmailSender(transporter, 'Soporte <no-reply@dominio.com>');
+
+      await adapter.send(
+        makeMessage({
+          subject: 'Asunto\r\nBcc: atacante@evil.com',
+          body: { type: 'html', content: '<p>contenido</p>' },
+        }),
+      );
+
+      const call = sendMail.mock.calls[0][0];
+      expect(call.subject).not.toMatch(/[\r\n]/);
+      expect(call.subject).toBe('AsuntoBcc: atacante@evil.com');
+    });
+
     it('NO escapa entidades HTML en el subject (texto plano del header, distinto contexto que el body HTML)', async () => {
       const sendMail = vi.fn().mockResolvedValue({ messageId: 'abc123' });
       const transporter: EmailTransporter = { sendMail };

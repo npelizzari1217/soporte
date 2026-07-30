@@ -27,7 +27,7 @@ import * as nodemailer from 'nodemailer';
 import { EmailSenderPort, EmailMessage } from '../../domain/ports/i-email-sender.port';
 import { EmailError } from '../../domain/errors/email.errors';
 import { Result } from '../../../shared/domain/result';
-import { maskEmailLike } from '../../../shared/domain/mask-email-like';
+import { maskEmailLike } from '../../domain/mask-email-like';
 import { EmailConfig, loadEmailConfig } from './email-config';
 
 /** Subconjunto de nodemailer.Transporter que este adapter necesita — facilita el mock en tests. */
@@ -72,27 +72,34 @@ function escapeHtml(raw: string): string {
  * destinatario. `false` para el subject: es texto plano de header, escaparlo
  * mostraría entidades literales ("&amp;") al usuario.
  *
- * `stripCrlf`: `true` SOLO para el subject — un header SMTP no puede
- * contener `\r`/`\n` sin arriesgar header injection (inyectar headers
- * adicionales tipo `Bcc:`). Hoy `subject.hbs` solo interpola
- * `numero`/`estadoNuevoCodigo` (no explotable en la práctica), pero es
- * hardening barato e independiente de `escapeHtml` (Judgment Day PR2
- * Ronda 2, issue D). El body HTML no lo necesita — un salto de línea en
- * HTML es inofensivo.
+ * El strip de CR/LF del subject NO vive acá — se aplica de forma
+ * incondicional sobre `subject` en `resolveContent()`, cubriendo las 3
+ * variantes (`text`/`html`/`template`) desde un único punto (Judgment Day
+ * PR2 Ronda 3, issue D — antes solo cubría el subject interpolado de
+ * `template`, dejando `text`/`html` con `email.subject` sin sanitizar).
  */
 function interpolate(
   template: string,
   data: Record<string, unknown>,
-  options: { escapeHtml: boolean; stripCrlf?: boolean } = { escapeHtml: false },
+  options: { escapeHtml: boolean } = { escapeHtml: false },
 ): string {
   return template.replace(PLACEHOLDER, (_match, key: string) => {
     const value = data[key];
-    let stringValue = value === undefined || value === null ? '' : String(value);
-    if (options.stripCrlf) {
-      stringValue = stringValue.replace(/[\r\n]/g, '');
-    }
+    const stringValue = value === undefined || value === null ? '' : String(value);
     return options.escapeHtml ? escapeHtml(stringValue) : stringValue;
   });
+}
+
+/**
+ * Elimina `\r`/`\n` de un subject antes de que llegue a `sendMail()` — un
+ * header SMTP no puede contener saltos de línea sin arriesgar header
+ * injection (inyectar headers adicionales tipo `Bcc:`). Se aplica de forma
+ * INCONDICIONAL en `resolveContent()` sobre las 3 variantes de body, no
+ * solo sobre el subject interpolado de `template` (Judgment Day PR2
+ * Ronda 3, issue D).
+ */
+function stripCrlf(subject: string): string {
+  return subject.replace(/[\r\n]/g, '');
 }
 
 function readTemplate(name: string, file: 'subject.hbs' | 'body.hbs'): string {
@@ -104,7 +111,7 @@ const EMAIL_IN_TEXT = /[\w.+-]+@[\w-]+\.[\w.-]+/g;
 
 /**
  * Enmascara cualquier email en claro dentro de un texto arbitrario —
- * reusa `maskEmailLike()` (shared/domain, misma regla que `Email.mask()`).
+ * reusa `maskEmailLike()` (tickets/domain, misma regla que `Email.mask()`).
  *
  * Los rechazos SMTP reales suelen incluir la dirección completa del
  * destinatario (ej. `550 5.1.1 <usuario@dominio.com>: Recipient address
@@ -161,23 +168,27 @@ export class NodemailerEmailSender implements EmailSenderPort {
 
   private resolveContent(email: EmailMessage): { subject: string; text?: string; html?: string } {
     const { body } = email;
+    let subject: string;
+    let text: string | undefined;
+    let html: string | undefined;
 
     if (body.type === 'text') {
-      return { subject: email.subject, text: body.content };
+      subject = email.subject;
+      text = body.content;
+    } else if (body.type === 'html') {
+      subject = email.subject;
+      html = body.content;
+    } else {
+      // body.type === 'template': subject.hbs y body.hbs viven en el mismo
+      // directorio (design §7) — se compilan juntos con los mismos datos.
+      const subjectTemplate = readTemplate(body.name, 'subject.hbs');
+      const bodyTemplate = readTemplate(body.name, 'body.hbs');
+      subject = interpolate(subjectTemplate, body.data, { escapeHtml: false });
+      html = interpolate(bodyTemplate, body.data, { escapeHtml: true });
     }
 
-    if (body.type === 'html') {
-      return { subject: email.subject, html: body.content };
-    }
-
-    // body.type === 'template': subject.hbs y body.hbs viven en el mismo
-    // directorio (design §7) — se compilan juntos con los mismos datos.
-    const subjectTemplate = readTemplate(body.name, 'subject.hbs');
-    const bodyTemplate = readTemplate(body.name, 'body.hbs');
-
-    return {
-      subject: interpolate(subjectTemplate, body.data, { escapeHtml: false, stripCrlf: true }),
-      html: interpolate(bodyTemplate, body.data, { escapeHtml: true }),
-    };
+    // Strip de CR/LF INCONDICIONAL — cubre las 3 variantes desde un único
+    // punto antes de que el subject llegue a sendMail() (issue D).
+    return { subject: stripCrlf(subject), text, html };
   }
 }
