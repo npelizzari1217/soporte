@@ -50,18 +50,18 @@ Cada PR: verificación propia (`pnpm test`/`lint`/`tsc --noEmit` en `backend/`),
 
 ## PR 2 — Resolver cross-DB + `SmtpConfig` VO (R1, R9)
 
-- [ ] 2.1 RED: `SmtpConfig.create()` — completa ⇒ `Result.ok`; falta campo o `port` no numérico ⇒ `Result.fail(ConfigIncompletaError)` (Dz5)
-- [ ] 2.2 GREEN: crear `shared/domain/value-objects/smtp-config.vo.ts` (+ `toSafeLog()` enmascara `pass`)
-- [ ] 2.3 Crear `configuracion/domain/errors/config.errors.ts` (`ConfigIncompletaError`, `NoConfigError`, `ResolveConfigError`)
-- [ ] 2.4 Crear `configuracion/domain/ports/i-config-resolver.ts` (`IConfigResolver`, `CONFIG_RESOLVER`, `resolveSmtp`)
-- [ ] 2.5 RED: tenant con `smtp.*` completa + global distinta ⇒ resultado usa valores del TENANT (R1 escenario 1)
-- [ ] 2.6 RED: tenant sin fila, global completa ⇒ resultado usa valores GLOBALES (R1 escenario 2)
-- [ ] 2.7 RED: ni tenant ni global ⇒ `Result.fail(NoConfigError)`, sin throw (R1 escenario 3)
-- [ ] 2.8 RED: merge por campo — tenant `{host}` + global `{port,user,pass,from}` ⇒ `ok`; tenant `{host}` + global `{host,port}` sin `user` ⇒ `Result.fail(ConfigIncompletaError)` (R1 escenario 4, Dz4)
-- [ ] 2.9 RED: resuelve `dbName` de A desde `master.clientes` por `clienteId` y consulta SOLO esa DB — nunca mezcla con B (R1 escenario 5, R9 aislamiento)
-- [ ] 2.10 RED: `pass` (esSecreto) se descifra vía `ISecretCipher.decrypt()`; falla ⇒ `Result.fail(CifradoError)` propagado (R2 "clave ausente/inválida en send-time")
-- [ ] 2.11 GREEN: crear `configuracion/infrastructure/persistence/prisma/config-resolver.adapter.ts` (`PrismaConfigResolver`) — mockea `getTenantClient`/`getMasterClient`/`ISecretCipher`
-- [ ] 2.12 Verify: pegar salida real tests/lint/tsc
+- [x] 2.1 RED: `SmtpConfig.create()` — completa ⇒ `Result.ok`; falta campo o `port` no numérico ⇒ `Result.fail(ConfigIncompletaError)` (Dz5)
+- [x] 2.2 GREEN: crear `shared/domain/value-objects/smtp-config.vo.ts` (+ `toSafeLog()` enmascara `pass`)
+- [x] 2.3 Crear `configuracion/domain/errors/config.errors.ts` (`ConfigIncompletaError`, `NoConfigError`, `ResolveConfigError`) — **DESVIACIÓN**: `ConfigIncompletaError` vive físicamente en `shared/domain/errors/config-incompleta.error.ts`, re-exportada acá (ver STATE.md)
+- [x] 2.4 Crear `configuracion/domain/ports/i-config-resolver.ts` (`IConfigResolver`, `CONFIG_RESOLVER`, `resolveSmtp`)
+- [x] 2.5 RED: tenant con `smtp.*` completa + global distinta ⇒ resultado usa valores del TENANT (R1 escenario 1)
+- [x] 2.6 RED: tenant sin fila, global completa ⇒ resultado usa valores GLOBALES (R1 escenario 2)
+- [x] 2.7 RED: ni tenant ni global ⇒ `Result.fail(NoConfigError)`, sin throw (R1 escenario 3)
+- [x] 2.8 RED: merge por campo — tenant `{host}` + global `{port,user,pass,from}` ⇒ `ok`; tenant `{host}` + global `{host,port}` sin `user` ⇒ `Result.fail(ConfigIncompletaError)` (R1 escenario 4, Dz4)
+- [x] 2.9 RED: resuelve `dbName` de A desde `master.clientes` por `clienteId` y consulta SOLO esa DB — nunca mezcla con B (R1 escenario 5, R9 aislamiento)
+- [x] 2.10 RED: `pass` (esSecreto) se descifra vía `ISecretCipher.decrypt()`; falla ⇒ `Result.fail(CifradoError)` propagado (R2 "clave ausente/inválida en send-time")
+- [x] 2.11 GREEN: crear `configuracion/infrastructure/persistence/prisma/config-resolver.adapter.ts` (`PrismaConfigResolver`) — mockea `getTenantClient`/`getMasterClient`/`ISecretCipher`
+- [x] 2.12 Verify: pegar salida real tests/lint/tsc
 
 ## PR 3 — Audit inmutable (R5)
 

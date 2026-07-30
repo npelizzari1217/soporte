@@ -206,3 +206,78 @@ EXIT_CODE=0
 - `docs(configuracion): documentar CHECK, idempotencia de migracion y contrato de masking en audit` (schema.prisma + migraciones + STATE.md)
 
 Sin push, sin PR — branch `runtime-config-table-pr1` gateado por el usuario, igual que Apply Progress PR1 y Ronda 1.
+
+## Apply Progress — PR2 (Resolver cross-DB + `SmtpConfig` VO — R1, R9)
+
+Branch: `runtime-config-table-pr2` (encadenada sobre `runtime-config-table-pr1`, ya aprobado). Sin push, sin PR — gateado por el usuario.
+
+### Tasks (12/12 — PR2 completo)
+
+- [x] 2.1 RED: `SmtpConfig.create()` — completa ⇒ ok; falta campo/`port` no numérico ⇒ `ConfigIncompletaError`
+- [x] 2.2 GREEN: `shared/domain/value-objects/smtp-config.vo.ts`
+- [x] 2.3 `configuracion/domain/errors/config.errors.ts` (`ConfigIncompletaError` re-exportada, `NoConfigError`, `ResolveConfigError`) — ver desviación #1
+- [x] 2.4 `configuracion/domain/ports/i-config-resolver.ts` (`IConfigResolver`, `CONFIG_RESOLVER`, `resolveSmtp`)
+- [x] 2.5 RED: tenant completa + global distinta ⇒ usa TENANT (R1 escenario 1)
+- [x] 2.6 RED: tenant sin fila, global completa ⇒ usa GLOBAL (R1 escenario 2)
+- [x] 2.7 RED: ni tenant ni global ⇒ `Result.fail(NoConfigError)`, sin throw (R1 escenario 3)
+- [x] 2.8 RED: merge por campo — ok con merge parcial; incompleta ⇒ `ConfigIncompletaError` (R1 escenario 4, Dz4)
+- [x] 2.9 RED: aislamiento cross-DB — resuelve `dbName` de A por `clienteId`, nunca consulta la DB de B (R1 escenario 5, R9)
+- [x] 2.10 RED: `pass` esSecreto se descifra vía `ISecretCipher.decrypt()`; falla ⇒ `Result.fail(CifradoError)` propagado (R2)
+- [x] 2.11 GREEN: `configuracion/infrastructure/persistence/prisma/config-resolver.adapter.ts` (`PrismaConfigResolver`)
+- [x] 2.12 Verify: ver evidencia real abajo
+
+### Archivos nuevos
+
+| Archivo | Qué hace |
+|---|---|
+| `backend/src/shared/domain/errors/config-incompleta.error.ts` | `ConfigIncompletaError extends DomainError` (`code='CONFIG_INCOMPLETA'`) — ver desviación #1 |
+| `backend/src/shared/domain/value-objects/smtp-config.vo.ts` | VO `SmtpConfig` self-validating: `create()` valida completitud + castea `port`/`secure` desde string (valores crudos de `ConfiguracionRuntime.valor`); `toSafeLog()`/`toJSON()`/`[inspect.custom]` enmascaran `pass` SIEMPRE (defensa en profundidad, mismo patrón que `Email` VO); `#props` es private field REAL de ECMAScript. Exporta `SMTP_CONFIG_CAMPOS_REQUERIDOS` (reusado por el resolver). |
+| `backend/src/shared/domain/value-objects/smtp-config.vo.spec.ts` | Unit — completa/incompleta/port no numérico/secure inválido, + 3 tests de masking (`toSafeLog`, `JSON.stringify`, `util.inspect`) |
+| `backend/src/configuracion/domain/errors/config.errors.ts` | Re-exporta `ConfigIncompletaError` (físicamente en `shared/`) + define `NoConfigError` + `ResolveConfigError` (unión) |
+| `backend/src/configuracion/domain/ports/i-config-resolver.ts` | Puerto `IConfigResolver` + token `CONFIG_RESOLVER` + método `resolveSmtp(clienteId)` |
+| `backend/src/configuracion/infrastructure/persistence/prisma/config-resolver.adapter.ts` | `PrismaConfigResolver` — merge por campo tenant→global (Dz4), resuelve `dbName` desde `master.clientes` (precedente `TenantGuard`/`SolicitanteEmailResolver`), descifra `esSecreto` vía `ISecretCipher`, arma `SmtpConfig` |
+| `backend/src/configuracion/infrastructure/persistence/prisma/config-resolver.adapter.spec.ts` | Unit — 7 tests cubriendo R1 escenarios 1-5, R9 aislamiento, R2 fallo de descifrado |
+
+### Desviaciones documentadas
+
+1. **`ConfigIncompletaError` NO vive físicamente en `configuracion/domain/errors/config.errors.ts` como dice `design.md` §5 literal.** Vive en `shared/domain/errors/config-incompleta.error.ts` y se re-exporta desde `configuracion/domain/errors/config.errors.ts` para conservar la superficie pública de la tarea 2.3. Motivo: `SmtpConfig.create()` (VO de `shared/domain/value-objects`, Dz1) la consume directamente. Si viviera en `configuracion/domain`, el VO de `shared/` importaría de un dominio específico (`configuracion/`), invirtiendo la regla de dependencias de clean-arch (`shared` no puede depender de un dominio hoja) — exactamente el mismo razonamiento que ya aplicó Dz2 para `CifradoError`/`ISecretCipher` (ambos viven en `shared/` porque los consume un componente cross-dominio). El import público `from '.../configuracion/domain/errors/config.errors'` sigue funcionando idéntico para cualquier consumidor futuro (PR3/PR4) gracias al re-export — cero impacto downstream.
+2. **`SmtpConfig.toSafeLog()` no usa `SECRET_MASK` de `configuracion/domain/mask-secret.ts`** (ese archivo es tarea 3.1, PR3 — no existe todavía). Se usa el literal `'********'` directamente en el VO, igual al valor que `design.md` §5.1 documenta para `SECRET_MASK`. Cuando PR3 cree `mask-secret.ts`, considerar si vale la pena que el VO importe la constante compartida (haría que `shared/` dependa de `configuracion/` de nuevo — mismo problema que desviación #1; probablemente mejor dejar el VO con su propio literal local, ya que es un valor estable y trivial).
+3. **Endurecimiento de seguridad no pedido explícitamente por las tareas 2.1/2.2, pero consistente con el patrón `Email` VO y CLAUDE.md §7:** `SmtpConfig` implementa `toJSON()` y `[Symbol.for('nodejs.util.inspect.custom')]` (además del `toSafeLog()` que sí pide `design.md`) para que `JSON.stringify()` y `console.log()`/`util.inspect()` NUNCA expongan `pass` en claro por accidente — mismo razonamiento que llevó a los Judgment Day de `notif-email-estado-ticket` a agregar esas mismas defensas al VO `Email`. Cubierto por tests dedicados en `smtp-config.vo.spec.ts`.
+
+### Notas de diseño
+
+- El merge por campo (Dz4) itera `SMTP_CONFIG_CAMPOS_REQUERIDOS` (exportado por el VO, no duplicado en el resolver): por cada campo, `tenantByClave.get(campo) ?? globalByClave.get(campo)`; si ninguno tiene el campo, se omite (queda faltante para que `SmtpConfig.create()` lo detecte al final).
+- Descifrado: si una fila tiene `esSecreto=true` pero `iv`/`authTag` son `null` (dato corrupto — no debería pasar nunca gracias al `CHECK` de PR1, pero el tipo Prisma es `string | null` y hay que manejarlo), se devuelve `ConfigIncompletaError` en vez de intentar `decrypt()` con valores `null`.
+- Resolución de `dbName`: `master.clientes.findFirst({ id: clienteId, activo: true, deletedAt: null }, select: { dbName: true })` — mismo criterio de "cliente activo" que usa `TenantGuard` (`tenant.guard.ts`). Si el cliente no existe/está inactivo, el resolver NO lanza — simplemente no hay filas de tenant, y cae a la lógica de global/`NO_CONFIG` (comportamiento no cubierto por un escenario específico del spec de PR2, pero consistente con "nunca lanza").
+- Aislamiento (R9, tarea 2.9): el resolver NUNCA usa `TenantContext` — resuelve `dbName` explícito por `clienteId` en cada llamada, mismo patrón que `SolicitanteEmailResolver`/`UsuarioMasterChecker` (precedente de PR2 de `notif-email-estado-ticket`). Test dedicado verifica que `getTenantClient` se invoca SOLO con el `dbName` del cliente resuelto, nunca con el de otro tenant.
+- No se creó `ConfiguracionModule` en este PR (wiring NestJS es tarea 4.12, PR4) — `PrismaConfigResolver` se instancia/testea directamente por constructor, igual que `SolicitanteEmailResolver`/`UsuarioMasterChecker`.
+
+### Evidencia real (backend/, corrida serial FOREGROUND, 2026-07-30, contra el estado exacto commiteado)
+
+**`corepack pnpm test`**:
+```
+Test Files  166 passed | 1 skipped (167)
+     Tests  2199 passed | 2 skipped (2201)
+  Duration  174.42s
+```
+(vs. baseline PR1 Ronda 2 — 2178 passed — +21 tests netos de PR2: 9 de `smtp-config.vo.spec.ts`, 7 de `config-resolver.adapter.spec.ts`, resto de variaciones `it.each`. Sin regresiones. El log `ERROR [AesGcmSecretCipher] decrypt() falló: ...` que aparece en la corrida es esperado — pertenece a un test de PR1 que fuerza tampering del `authTag` y verifica el log, no un fallo real.)
+
+**`corepack pnpm lint`**: primera corrida detectó 10 errores `prettier/prettier` (formato) en los 2 archivos del resolver — corregidos con `eslint --fix` (solo reformateo, sin cambios de lógica). Corrida final:
+```
+$ eslint "src/**/*.ts"
+EXIT_CODE=0
+```
+(sin output, exit 0).
+
+**`corepack pnpm exec tsc --noEmit -p tsconfig.json`**: exit 0, sin output.
+
+### Commits
+
+- `feat(configuracion): SmtpConfig VO y errores de resolucion de config` (VO + errores + puerto)
+- `feat(configuracion): resolver cross-DB de config SMTP con merge por campo` (adapter + specs)
+
+Sin push, sin PR — branch `runtime-config-table-pr2` gateado por el usuario, encadenada sobre `runtime-config-table-pr1`.
+
+### Cómo retomar
+
+PR2 cerrado y verde. Próximo work unit (Review Workload Guard, `ask-on-risk`): **PR3 — Audit inmutable** (depende del esquema DB de PR1, ya disponible). Antes de arrancar PR3, leer el **REQUISITO DURO** documentado en "Judgment Day — PR1 — fixes Ronda 2" fix #6: el writer de `audit_entries` DEBE enmascarar `valorAnterior`/`valorNuevo` para toda fila `esSecreto=true` — cero excepciones.
