@@ -262,3 +262,26 @@ Decidir: (a) aprobar PR2 → seguir con PR3 (handler/listener/wiring); (b) pedir
 
 ### Cómo retomar
 Decidir: (a) aprobar PR2 (Ronda 2 incluida) → seguir con PR3; (b) pedir ajustes adicionales sobre PR2 antes de avanzar.
+
+---
+
+## Judgment Day — PR2 — fixes Ronda 3 (2026-07-30)
+
+Ronda 3 de jueces: los 5 fixes de Ronda 2 quedaron verificados correctos (ambos jueces corrieron build/tests reales). Cero real WARNING **confirmados** por 2 jueces. El Juez B levantó 2 real WARNINGs (single-judge pero correctos y baratos) que se arreglaron igual, más 1 theoretical confirmado por ambos que se cerró de raíz.
+
+### Arreglos aplicados
+- **C** [scope-rule]: `maskEmailLike` movido de `shared/domain/` → `backend/src/tickets/domain/mask-email-like.ts` (+ spec). Solo lo usa la feature `tickets`, no cruza bounded contexts → no correspondía al shared kernel global (CLAUDE.md §2). Imports actualizados en `email.vo.ts` y adapter; cero refs colgadas.
+- **D** [seguridad, fix incompleto de Ronda 2]: el strip de CR/LF del subject ahora es **INCONDICIONAL** en `resolveContent()` (`stripCrlf(subject)` sobre las 3 variantes `template`/`text`/`html`), no solo la rama `template`. Antes `text`/`html` pasaban `email.subject` crudo a `sendMail()` → header injection SMTP latente que PR3 iba a heredar. RED→GREEN con payload `\r\nBcc:` en `text` y `html`.
+- **B** [fuga por enumeración]: `Email._value` (private de TS, solo compile-time) → `#value` (private field REAL de ECMAScript). Ahora `Object.keys(email)`, `{...email}`, `Object.values(email)` NO exponen el crudo; `toString()`/`toJSON()`/`[inspect.custom]` siguen delegando en `mask()`. `.value()` es el único acceso explícito al crudo.
+
+### Residuales dejados como INFO (trazados, no arreglados — no lo ameritan)
+- Smoke test del build usa `process.chdir(BACKEND_ROOT)` (efecto global de proceso); seguro HOY porque `vitest.config.ts` fija `fileParallelism: false`. Si esa opción se relaja, revisar este test.
+- `copyfiles.d.ts` es una ambient declaration sin guarda; si algún día se instala `@types/copyfiles`, puede colisionar por declaration merging.
+- `type:'html'` del port asume contenido confiable (documentado en `i-email-sender.port.ts`); sin caller de prod hoy — PR3 no debe alimentarlo con datos de dominio sin sanitizar.
+
+### Evidencia real (backend/, 2026-07-30)
+`corepack pnpm test`: `Test Files 157 passed | 1 skipped (158)` · `Tests 2103 passed | 2 skipped (2105)`.
+`corepack pnpm lint`: exit 0. `corepack pnpm exec tsc --noEmit -p tsconfig.json`: exit 0.
+
+### Veredicto
+**Judgment Day PR2 — APROBADO** tras Ronda 3: cero CRITICAL, cero real WARNING pendientes. Siguiente: PR3 (handler + listener + wiring).
