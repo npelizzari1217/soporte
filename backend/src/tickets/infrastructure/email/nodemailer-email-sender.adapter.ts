@@ -26,6 +26,7 @@ import * as path from 'path';
 import * as nodemailer from 'nodemailer';
 import { EmailSenderPort, EmailMessage } from '../../domain/ports/i-email-sender.port';
 import { EmailError } from '../../domain/errors/email.errors';
+import { Email } from '../../domain/value-objects/email.vo';
 import { Result } from '../../../shared/domain/result';
 import { EmailConfig, loadEmailConfig } from './email-config';
 
@@ -43,15 +44,59 @@ export interface EmailTransporter {
 const TEMPLATES_ROOT = path.join(__dirname, '..', 'email-templates');
 const PLACEHOLDER = /{{\s*([\w.]+)\s*}}/g;
 
-function interpolate(template: string, data: Record<string, unknown>): string {
+const HTML_ESCAPE_MAP: Record<string, string> = {
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;',
+  "'": '&#39;',
+};
+
+/** Escapa entidades HTML (`& < > " '`) — previene XSS al interpolar texto libre del dominio (ej. `Ticket.titulo`) dentro de un email HTML. */
+function escapeHtml(raw: string): string {
+  return raw.replace(/[&<>"']/g, (char) => HTML_ESCAPE_MAP[char]);
+}
+
+/**
+ * Interpola `{{clave}}` sobre un template.
+ *
+ * `escapeHtml`: `true` cuando el template se renderiza como HTML (body del
+ * mail) — cada valor interpolado se escapa para que texto libre del dominio
+ * (ej. `Ticket.titulo`) no pueda inyectar markup en el cliente de correo del
+ * destinatario. `false` para el subject: es texto plano de header, escaparlo
+ * mostraría entidades literales ("&amp;") al usuario.
+ */
+function interpolate(
+  template: string,
+  data: Record<string, unknown>,
+  options: { escapeHtml: boolean } = { escapeHtml: false },
+): string {
   return template.replace(PLACEHOLDER, (_match, key: string) => {
     const value = data[key];
-    return value === undefined || value === null ? '' : String(value);
+    const stringValue = value === undefined || value === null ? '' : String(value);
+    return options.escapeHtml ? escapeHtml(stringValue) : stringValue;
   });
 }
 
 function readTemplate(name: string, file: 'subject.hbs' | 'body.hbs'): string {
   return fs.readFileSync(path.join(TEMPLATES_ROOT, name, file), 'utf-8').trim();
+}
+
+/** Detecta direcciones de email embebidas en texto libre (ej. mensajes de rechazo SMTP). */
+const EMAIL_IN_TEXT = /[\w.+-]+@[\w-]+\.[\w.-]+/g;
+
+/**
+ * Enmascara cualquier email en claro dentro de un texto arbitrario —
+ * reusa `Email.maskRaw()` (misma regla que el resto del dominio).
+ *
+ * Los rechazos SMTP reales suelen incluir la dirección completa del
+ * destinatario (ej. `550 5.1.1 <usuario@dominio.com>: Recipient address
+ * rejected`). R7 exige que el email NUNCA quede en claro en errores/logs —
+ * `causa` es responsabilidad del transporter, no del dominio, así que no se
+ * puede confiar en que ya venga enmascarado.
+ */
+function sanitizeCausa(causa: string): string {
+  return causa.replace(EMAIL_IN_TEXT, (match) => Email.maskRaw(match));
 }
 
 export class NodemailerEmailSender implements EmailSenderPort {
@@ -90,8 +135,10 @@ export class NodemailerEmailSender implements EmailSenderPort {
 
       return Result.ok(undefined);
     } catch (err) {
-      const causa = err instanceof Error ? err.message : 'Error desconocido al enviar el email';
-      return Result.fail(new EmailError(email.to.mask(), causa, 'EMAIL_SEND_FAILED'));
+      const rawCausa = err instanceof Error ? err.message : 'Error desconocido al enviar el email';
+      return Result.fail(
+        new EmailError(email.to.mask(), sanitizeCausa(rawCausa), 'EMAIL_SEND_FAILED'),
+      );
     }
   }
 
@@ -113,7 +160,7 @@ export class NodemailerEmailSender implements EmailSenderPort {
 
     return {
       subject: interpolate(subjectTemplate, body.data),
-      html: interpolate(bodyTemplate, body.data),
+      html: interpolate(bodyTemplate, body.data, { escapeHtml: true }),
     };
   }
 }
