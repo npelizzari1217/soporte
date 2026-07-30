@@ -382,6 +382,7 @@ export class TicketsController {
       ticketId: id,
       nuevoEstadoCodigo: dto.nuevoEstadoCodigo,
       autorId: user.sub,
+      clienteId: user.cliente_id,
       fechaCierre,
     });
 
@@ -642,6 +643,7 @@ export class TicketsController {
       ticketId: id,
       texto: dto.contenido,
       autorId: user.sub,
+      clienteId: user.cliente_id,
       estadoDestinoCodigo: dto.nuevoEstadoCodigo,
       fechaCierre,
     });

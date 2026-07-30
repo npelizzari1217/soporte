@@ -440,6 +440,17 @@ describe('TicketsController', () => {
       );
     });
 
+    it('4.2 — puebla clienteId desde el JWT (user.cliente_id, patrón CrearTicketDto — D5)', async () => {
+      const ticket = makeTicket();
+      mocks.transicionarEstadoUseCase.execute.mockResolvedValue(Result.ok(ticket));
+
+      await controller.transicionarEstado(ticket.id, estadoDto, user);
+
+      expect(mocks.transicionarEstadoUseCase.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ clienteId: 'cli-abc' }),
+      );
+    });
+
     it('lanza UnprocessableEntityException en transición inválida', async () => {
       mocks.transicionarEstadoUseCase.execute.mockResolvedValue(
         Result.fail(new TransicionInvalidaError('CERRADO', 'EN_PROGRESO')),
@@ -1027,6 +1038,17 @@ describe('TicketsController', () => {
 
       expect(mocks.crearObservacionUseCase.execute).toHaveBeenCalledWith(
         expect.objectContaining({ autorId: 'user-001' }),
+      );
+    });
+
+    it('4.2 — puebla clienteId desde el JWT (user.cliente_id, patrón CrearTicketDto — D5)', async () => {
+      const ticket = makeTicket();
+      mocks.crearObservacionUseCase.execute.mockResolvedValue(Result.ok(ticket));
+
+      await controller.crearObservacion('ticket-001', observacionDto, user);
+
+      expect(mocks.crearObservacionUseCase.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ clienteId: 'cli-abc' }),
       );
     });
 
