@@ -28,9 +28,12 @@ import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
 import { IEstadoRepository } from '../../domain/ports/i-estado.repository';
 import { IOperacionTicketRepository } from '../../domain/ports/i-operacion-ticket.repository';
 import { ITipoOperacionRepository } from '../../domain/ports/i-tipo-operacion.repository';
+import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
 import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
+import { IDomainEventPublisher } from '../../../shared/domain/ports/i-domain-event-publisher';
 import { TicketEntity, TicketProps } from '../../domain/entities/ticket.entity';
 import { EstadoEntity } from '../../domain/entities/estado.entity';
+import { TicketEstadoCambiado } from '../../domain/events/ticket-estado-cambiado.event';
 import {
   EstadoCatalogoNoEncontradoError,
   FechaCierreRequeridaError,
@@ -85,10 +88,13 @@ function makeTicket(estadoId: string = ESTADO_APROBADO_ID): TicketEntity {
   );
 }
 
+const CLIENTE_ID = 'cliente-uuid-tenant-a';
+
 const baseDto: CrearObservacionDto = {
   ticketId: TICKET_ID,
   texto: 'Observación del técnico',
   autorId: AUTOR_ID,
+  clienteId: CLIENTE_ID,
 };
 
 // ─── Mocks factory ────────────────────────────────────────────────────────────
@@ -120,12 +126,33 @@ function makeMocks() {
     findIdByCodigo: vi.fn(),
   };
 
+  // tipoTicketRepo (D6): resuelve tipoCodigo post-commit, solo si hubo
+  // auto-transición a estado notificable. Default 'SOPORTE' — sensato para
+  // no dejar el mock "colgado" en los escenarios que SÍ publican (RESUELTO,
+  // SIN_SOLUCION ya están en el set notificable).
+  const tipoTicketRepo: vi.Mocked<ITipoTicketRepository> = {
+    findCodigoById: vi.fn().mockResolvedValue('SOPORTE'),
+  };
+
+  // publisher (D1): fire-and-forget, publish() no retorna nada relevante.
+  const publisher: vi.Mocked<IDomainEventPublisher> = {
+    publish: vi.fn(),
+  };
+
   // txRunner ejecuta el callback inmediatamente (sin DB real)
   const txRunner: ITenantTransactionRunner = {
     run: vi.fn((fn) => fn()),
   };
 
-  return { ticketRepo, estadoRepo, operacionRepo, tipoOperacionRepo, txRunner };
+  return {
+    ticketRepo,
+    estadoRepo,
+    operacionRepo,
+    tipoOperacionRepo,
+    tipoTicketRepo,
+    publisher,
+    txRunner,
+  };
 }
 
 // ─── Suite ────────────────────────────────────────────────────────────────────
@@ -135,6 +162,8 @@ describe('CrearObservacionUseCase', () => {
   let estadoRepo: vi.Mocked<IEstadoRepository>;
   let operacionRepo: vi.Mocked<IOperacionTicketRepository>;
   let tipoOperacionRepo: vi.Mocked<ITipoOperacionRepository>;
+  let tipoTicketRepo: vi.Mocked<ITipoTicketRepository>;
+  let publisher: vi.Mocked<IDomainEventPublisher>;
   let txRunner: ITenantTransactionRunner;
   let useCase: CrearObservacionUseCase;
 
@@ -144,6 +173,8 @@ describe('CrearObservacionUseCase', () => {
     estadoRepo = mocks.estadoRepo;
     operacionRepo = mocks.operacionRepo;
     tipoOperacionRepo = mocks.tipoOperacionRepo;
+    tipoTicketRepo = mocks.tipoTicketRepo;
+    publisher = mocks.publisher;
     txRunner = mocks.txRunner;
     useCase = new CrearObservacionUseCase(
       ticketRepo,
@@ -151,6 +182,8 @@ describe('CrearObservacionUseCase', () => {
       operacionRepo,
       tipoOperacionRepo,
       txRunner,
+      tipoTicketRepo,
+      publisher,
     );
   });
 
@@ -454,5 +487,174 @@ describe('CrearObservacionUseCase', () => {
     // El ticket no debe haber cambiado de estado (no se llamó save del ticket)
     expect(ticketRepo.save).not.toHaveBeenCalled();
     expect(ticket.estadoId).toBe(ESTADO_EN_PROGRESO_ID);
+  });
+
+  // ─── PR4 4.6/4.7: publicación post-commit de TicketEstadoCambiado ────────────
+  // Ref spec: R3 Scenarios 1-3 (anti-regresión CRÍTICA — la reestructura del
+  // txRunner.run NO debe cambiar la semántica transaccional de ningún test
+  // de arriba, todos siguen 100% verdes).
+  // Ref design: §6.B (extraer return del txRunner.run, publicar afuera), D6.
+
+  describe('publicación post-commit del evento TicketEstadoCambiado (auto-transición, D1/D4/D6)', () => {
+    it('4.6 — APROBADO → RESUELTO (estado clave): publica tras el commit con el evento correcto', async () => {
+      const ticket = setupAprobado();
+      estadoRepo.findByCodigo.mockImplementation((codigo) => {
+        if (codigo === 'RESUELTO')
+          return Promise.resolve(makeEstado('RESUELTO', ESTADO_RESUELTO_ID));
+        return Promise.resolve(null);
+      });
+      ticketRepo.findById.mockResolvedValue(ticket);
+      tipoTicketRepo.findCodigoById.mockResolvedValue('SOPORTE');
+      const fechaCierre = new Date('2026-06-29');
+
+      const result = await useCase.execute({
+        ...baseDto,
+        estadoDestinoCodigo: 'RESUELTO',
+        fechaCierre,
+      });
+
+      expect(result.isOk()).toBe(true);
+      expect(publisher.publish).toHaveBeenCalledOnce();
+      const published = publisher.publish.mock.calls[0][0] as TicketEstadoCambiado;
+      expect(published).toBeInstanceOf(TicketEstadoCambiado);
+      expect(published.ticketId).toBe(TICKET_ID);
+      expect(published.numero).toBe(ticket.numero);
+      expect(published.tituloTicket).toBe(ticket.titulo);
+      expect(published.tipoCodigo).toBe('SOPORTE');
+      expect(published.estadoAnteriorCodigo).toBe('APROBADO');
+      expect(published.estadoNuevoCodigo).toBe('RESUELTO');
+      expect(published.solicitanteId).toBe(ticket.solicitanteId);
+      expect(published.autorId).toBe(AUTOR_ID);
+      expect(published.tenantId).toBe(CLIENTE_ID);
+      expect(tipoTicketRepo.findCodigoById).toHaveBeenCalledWith(ticket.tipoId);
+    });
+
+    it('4.6 — publisher.publish() es invocado DESPUÉS de que txRunner.run resuelve (R6/R10)', async () => {
+      const ticket = setupAprobado();
+      estadoRepo.findByCodigo.mockImplementation((codigo) => {
+        if (codigo === 'RESUELTO')
+          return Promise.resolve(makeEstado('RESUELTO', ESTADO_RESUELTO_ID));
+        return Promise.resolve(null);
+      });
+      ticketRepo.findById.mockResolvedValue(ticket);
+      const callOrder: string[] = [];
+
+      (txRunner.run as ReturnType<typeof vi.fn>).mockImplementation(
+        async (fn: () => Promise<unknown>) => {
+          callOrder.push('tx:start');
+          const r = await fn();
+          callOrder.push('tx:end');
+          return r;
+        },
+      );
+      publisher.publish.mockImplementation(() => {
+        callOrder.push('publisher:publish');
+      });
+
+      await useCase.execute({
+        ...baseDto,
+        estadoDestinoCodigo: 'RESUELTO',
+        fechaCierre: new Date('2026-06-29'),
+      });
+
+      const txEnd = callOrder.indexOf('tx:end');
+      const publishCall = callOrder.indexOf('publisher:publish');
+      expect(publishCall).toBeGreaterThan(-1);
+      expect(txEnd).toBeLessThan(publishCall);
+    });
+
+    it('4.6 — APROBADO → SUSPENDIDO (estado NO clave): NO publica', async () => {
+      const ticket = setupAprobado();
+      estadoRepo.findByCodigo.mockImplementation((codigo) => {
+        if (codigo === 'SUSPENDIDO')
+          return Promise.resolve(makeEstado('SUSPENDIDO', ESTADO_SUSPENDIDO_ID));
+        return Promise.resolve(null);
+      });
+      ticketRepo.findById.mockResolvedValue(ticket);
+
+      const result = await useCase.execute({ ...baseDto, estadoDestinoCodigo: 'SUSPENDIDO' });
+
+      expect(result.isOk()).toBe(true);
+      expect(publisher.publish).not.toHaveBeenCalled();
+    });
+
+    it('4.6 — APROBADO → EN_PROGRESO (default, estado NO clave): NO publica', async () => {
+      const ticket = setupAprobado();
+      estadoRepo.findByCodigo.mockImplementation((codigo) => {
+        if (codigo === 'EN_PROGRESO')
+          return Promise.resolve(makeEstado('EN_PROGRESO', ESTADO_EN_PROGRESO_ID));
+        return Promise.resolve(null);
+      });
+      ticketRepo.findById.mockResolvedValue(ticket);
+
+      const result = await useCase.execute(baseDto);
+
+      expect(result.isOk()).toBe(true);
+      expect(publisher.publish).not.toHaveBeenCalled();
+    });
+
+    it('4.6 — APROBADO → SIN_SOLUCION (estado clave): publica tras el commit', async () => {
+      const ticket = setupAprobado();
+      estadoRepo.findByCodigo.mockImplementation((codigo) => {
+        if (codigo === 'SIN_SOLUCION')
+          return Promise.resolve(makeEstado('SIN_SOLUCION', ESTADO_SIN_SOLUCION_ID));
+        return Promise.resolve(null);
+      });
+      ticketRepo.findById.mockResolvedValue(ticket);
+
+      const result = await useCase.execute({ ...baseDto, estadoDestinoCodigo: 'SIN_SOLUCION' });
+
+      expect(result.isOk()).toBe(true);
+      expect(publisher.publish).toHaveBeenCalledOnce();
+      const published = publisher.publish.mock.calls[0][0] as TicketEstadoCambiado;
+      expect(published.estadoNuevoCodigo).toBe('SIN_SOLUCION');
+    });
+
+    it('4.7 (anti-regresión) — ticket NO en APROBADO (EN_PROGRESO, solo observación): NO publica', async () => {
+      const ticket = makeTicket(ESTADO_EN_PROGRESO_ID);
+      ticketRepo.findById.mockResolvedValue(ticket);
+      estadoRepo.findById.mockResolvedValue(makeEstado('EN_PROGRESO', ESTADO_EN_PROGRESO_ID));
+      tipoOperacionRepo.findIdByCodigo.mockResolvedValue(TIPO_OP_OBSERVACION_ID);
+
+      const result = await useCase.execute(baseDto);
+
+      expect(result.isOk()).toBe(true);
+      expect(publisher.publish).not.toHaveBeenCalled();
+      expect(tipoTicketRepo.findCodigoById).not.toHaveBeenCalled();
+    });
+
+    it('4.7 (anti-regresión) — falla al resolver tipoCodigo (findCodigoById → null): NO publica, pero el Result sigue OK', async () => {
+      const ticket = setupAprobado();
+      estadoRepo.findByCodigo.mockImplementation((codigo) => {
+        if (codigo === 'RESUELTO')
+          return Promise.resolve(makeEstado('RESUELTO', ESTADO_RESUELTO_ID));
+        return Promise.resolve(null);
+      });
+      ticketRepo.findById.mockResolvedValue(ticket);
+      tipoTicketRepo.findCodigoById.mockResolvedValue(null);
+
+      const result = await useCase.execute({
+        ...baseDto,
+        estadoDestinoCodigo: 'RESUELTO',
+        fechaCierre: new Date('2026-06-29'),
+      });
+
+      expect(result.isOk()).toBe(true);
+      expect(publisher.publish).not.toHaveBeenCalled();
+    });
+
+    it('4.7 (anti-regresión) — transición inválida (Sc7, ABIERTO desde APROBADO): NO publica ni resuelve tipoCodigo', async () => {
+      setupAprobado();
+
+      const result = await useCase.execute({
+        ...baseDto,
+        // @ts-expect-error: probando valor inválido para la state machine
+        estadoDestinoCodigo: 'ABIERTO',
+      });
+
+      expect(result.isFail()).toBe(true);
+      expect(publisher.publish).not.toHaveBeenCalled();
+      expect(tipoTicketRepo.findCodigoById).not.toHaveBeenCalled();
+    });
   });
 });

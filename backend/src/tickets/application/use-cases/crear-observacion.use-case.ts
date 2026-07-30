@@ -1,8 +1,11 @@
 import { DomainError, Result } from '../../../shared/domain/result';
 import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
+import { IDomainEventPublisher } from '../../../shared/domain/ports/i-domain-event-publisher';
 import { OperacionTicketEntity } from '../../domain/entities/operacion-ticket.entity';
 import { TicketEntity } from '../../domain/entities/ticket.entity';
 import { BaseTicketStateMachine } from '../../domain/state-machine/base-ticket-state-machine';
+import { TicketEstadoCambiado } from '../../domain/events/ticket-estado-cambiado.event';
+import { esEstadoNotificable } from '../../domain/policies/estados-notificables.policy';
 import {
   EstadoCatalogoNoEncontradoError,
   FechaCierreRequeridaError,
@@ -14,6 +17,7 @@ import {
 import { IEstadoRepository } from '../../domain/ports/i-estado.repository';
 import { IOperacionTicketRepository } from '../../domain/ports/i-operacion-ticket.repository';
 import { ITipoOperacionRepository } from '../../domain/ports/i-tipo-operacion.repository';
+import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
 import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
 
 /**
@@ -51,9 +55,38 @@ export interface CrearObservacionDto {
   ticketId: string;
   texto: string;
   autorId: string;
+  /**
+   * UUID del tenant/cliente (del JWT, poblado por el controller — patrón
+   * `CrearTicketDto.clienteId`, D5). Viaja en `TicketEstadoCambiado.tenantId`
+   * cuando la observación dispara una auto-transición notificable.
+   */
+  clienteId: string;
   estadoDestinoCodigo?: 'EN_PROGRESO' | 'RESUELTO' | 'SUSPENDIDO' | 'SIN_SOLUCION';
   /** Requerido solo cuando estadoDestinoCodigo === 'RESUELTO'. Fecha de cierre del ticket. */
   fechaCierre?: Date;
+}
+
+/**
+ * Datos mínimos del cambio de estado para publicar `TicketEstadoCambiado`
+ * DESPUÉS de que la transacción resuelva (post-commit, design §6.B, D6).
+ * Se arma DENTRO del callback del `txRunner.run` (donde `ticket`/`estadoActual`/
+ * `estadoDestino` están en scope) pero NO se publica ahí — solo se retorna.
+ */
+interface CambioEstadoParaPublicar {
+  estadoAnteriorId: string;
+  estadoNuevoId: string;
+  estadoAnteriorCodigo: string;
+  estadoNuevoCodigo: string;
+  solicitanteId: string;
+  tipoId: string;
+  numero: string;
+  tituloTicket: string;
+}
+
+/** Shape de retorno interno del callback del `txRunner.run` (design §6.B). */
+interface ExecuteTxOutcome {
+  result: Result<TicketEntity, DomainError>;
+  publicar: CambioEstadoParaPublicar | null;
 }
 
 /**
@@ -78,7 +111,11 @@ export interface CrearObservacionDto {
  * 7. Persistir en la misma transacción:
  *    - Si auto-transición: ticketRepo.save + operacionRepo.save(obs) + operacionRepo.save(cambio)
  *    - Si no auto-transición: solo operacionRepo.save(obs)
- * 8. Retorna Result.ok(ticket).
+ * 8. POST-COMMIT (PR4, design §6.B, D6, fuera del txRunner.run): si hubo
+ *    auto-transición a un estado notificable, resuelve `tipoCodigo` vía
+ *    `ITipoTicketRepository.findCodigoById` y publica `TicketEstadoCambiado`.
+ *    NUNCA dentro de la transacción (R6/R10).
+ * 9. Retorna Result.ok(ticket) (o el fail correspondiente).
  *
  * NOTA ADR-2: NO llama a TransicionarEstadoUseCase (evitar txRunner anidado no atómico).
  * La lógica de transición se reproduce inline dentro del mismo txRunner.run().
@@ -86,9 +123,9 @@ export interface CrearObservacionDto {
  * Sin throw para errores de dominio esperados — todos retornan Result.fail().
  * Errores de infraestructura (DB) sí burbujean como throw para rollback de transacción.
  *
- * Ref spec: Req Observaciones del técnico (tickets-core/spec.md)
- * Ref design: ADR-2, ADR-7
- * Ref tasks: P2.T6 — Change tickets-maquina-estados-observaciones / PR2
+ * Ref spec: Req Observaciones del técnico (tickets-core/spec.md), Requirement 3 (PR4)
+ * Ref design: ADR-2, ADR-7, §6.B, D6
+ * Ref tasks: P2.T6 — Change tickets-maquina-estados-observaciones / PR2; 4.6-4.8 (PR4)
  */
 export class CrearObservacionUseCase {
   constructor(
@@ -97,32 +134,43 @@ export class CrearObservacionUseCase {
     private readonly operacionRepo: IOperacionTicketRepository,
     private readonly tipoOperacionRepo: ITipoOperacionRepository,
     private readonly txRunner: ITenantTransactionRunner,
+    private readonly tipoTicketRepo: ITipoTicketRepository,
+    private readonly publisher: IDomainEventPublisher,
   ) {}
 
   async execute(dto: CrearObservacionDto): Promise<Result<TicketEntity, DomainError>> {
-    return this.txRunner.run(async () => {
+    const outcome = await this.txRunner.run<ExecuteTxOutcome>(async () => {
       // 1. Cargar ticket → 404 si no existe (también cubre ticket de otro tenant)
       const ticket = await this.ticketRepo.findById(dto.ticketId);
       if (!ticket) {
-        return Result.fail(new TicketNoEncontradoError(dto.ticketId));
+        return { result: Result.fail(new TicketNoEncontradoError(dto.ticketId)), publicar: null };
       }
 
       // 2. Cargar estado actual desde el catálogo del tenant
       //    Null aquí indica corrupción de datos (estadoId del ticket no en catálogo) → 500
       const estadoActual = await this.estadoRepo.findById(ticket.estadoId);
       if (!estadoActual) {
-        return Result.fail(new EstadoCatalogoNoEncontradoError(ticket.estadoId));
+        return {
+          result: Result.fail(new EstadoCatalogoNoEncontradoError(ticket.estadoId)),
+          publicar: null,
+        };
       }
 
       // 3. Validar que el estado no sea terminal ni congelado
       if (TERMINAL_STATES_BLOCK_OBSERVACION.has(estadoActual.codigo)) {
-        return Result.fail(new ObservacionNoPermitidaError(estadoActual.codigo));
+        return {
+          result: Result.fail(new ObservacionNoPermitidaError(estadoActual.codigo)),
+          publicar: null,
+        };
       }
 
       // 4. Resolver tipoOperacionId de OBSERVACION
       const tipoObservacionId = await this.tipoOperacionRepo.findIdByCodigo('OBSERVACION');
       if (!tipoObservacionId) {
-        return Result.fail(new TipoOperacionNoEncontradoError('OBSERVACION'));
+        return {
+          result: Result.fail(new TipoOperacionNoEncontradoError('OBSERVACION')),
+          publicar: null,
+        };
       }
 
       // 5. Crear OperacionTicketEntity tipo OBSERVACION
@@ -139,6 +187,7 @@ export class CrearObservacionUseCase {
 
       // 6. Auto-transición desde APROBADO (ADR-2)
       let cambioEstado: OperacionTicketEntity | null = null;
+      let publicar: CambioEstadoParaPublicar | null = null;
 
       if (estadoActual.codigo === 'APROBADO') {
         // Resolver estado destino: default EN_PROGRESO si no se especifica
@@ -147,7 +196,10 @@ export class CrearObservacionUseCase {
         // Validar arco via BaseTicketStateMachine (sin factory — siempre base, ADR-2)
         const machine = new BaseTicketStateMachine();
         if (!machine.puedeTransicionar(estadoActual.codigo, destino, {})) {
-          return Result.fail(new TransicionInvalidaError(estadoActual.codigo, destino));
+          return {
+            result: Result.fail(new TransicionInvalidaError(estadoActual.codigo, destino)),
+            publicar: null,
+          };
         }
 
         // Gestión de fechaCierre según estado destino (ADR-6, PR3):
@@ -156,7 +208,7 @@ export class CrearObservacionUseCase {
         //   - SUSPENDIDO / EN_PROGRESO: no modifican fechaCierre.
         if (destino === 'RESUELTO') {
           if (!dto.fechaCierre) {
-            return Result.fail(new FechaCierreRequeridaError());
+            return { result: Result.fail(new FechaCierreRequeridaError()), publicar: null };
           }
           ticket.setFechaCierre(dto.fechaCierre);
         } else if (destino === 'SIN_SOLUCION') {
@@ -168,7 +220,10 @@ export class CrearObservacionUseCase {
         const estadoDestino = await this.estadoRepo.findByCodigo(destino);
         if (!estadoDestino) {
           // destino no existe en catálogo (seed incompleto) → 500
-          return Result.fail(new EstadoCatalogoNoEncontradoError(destino));
+          return {
+            result: Result.fail(new EstadoCatalogoNoEncontradoError(destino)),
+            publicar: null,
+          };
         }
 
         // Actualizar estadoId del ticket (mutación de entidad)
@@ -177,7 +232,10 @@ export class CrearObservacionUseCase {
         // Resolver tipoOperacionId de CAMBIO_ESTADO
         const tipoCambioEstadoId = await this.tipoOperacionRepo.findIdByCodigo('CAMBIO_ESTADO');
         if (!tipoCambioEstadoId) {
-          return Result.fail(new TipoOperacionNoEncontradoError('CAMBIO_ESTADO'));
+          return {
+            result: Result.fail(new TipoOperacionNoEncontradoError('CAMBIO_ESTADO')),
+            publicar: null,
+          };
         }
 
         // Crear OperacionTicketEntity tipo CAMBIO_ESTADO
@@ -190,6 +248,20 @@ export class CrearObservacionUseCase {
           autorId: dto.autorId,
           metadata: null,
         });
+
+        // Datos para publicar POST-COMMIT (design §6.B) — solo se ARMAN acá,
+        // donde ticket/estadoActual/estadoDestino están en scope. La
+        // publicación real ocurre DESPUÉS de que txRunner.run() resuelva.
+        publicar = {
+          estadoAnteriorId: estadoActual.id,
+          estadoNuevoId: estadoDestino.id,
+          estadoAnteriorCodigo: estadoActual.codigo,
+          estadoNuevoCodigo: estadoDestino.codigo,
+          solicitanteId: ticket.solicitanteId,
+          tipoId: ticket.tipoId,
+          numero: ticket.numero,
+          tituloTicket: ticket.titulo,
+        };
       }
 
       // 7. Persistir dentro de la misma transacción (atómico)
@@ -203,7 +275,39 @@ export class CrearObservacionUseCase {
         await this.operacionRepo.save(cambioEstado);
       }
 
-      return Result.ok(ticket);
+      return { result: Result.ok(ticket), publicar };
     });
+
+    // 8. POST-COMMIT (fuera de la tx, design §6.B/D6): publicar solo si hubo
+    //    auto-transición a un estado notificable Y la transacción resolvió OK.
+    //    Nunca dentro de txRunner.run() (R6/R10).
+    const paraPublicar = outcome.publicar;
+    if (
+      paraPublicar &&
+      outcome.result.isOk() &&
+      esEstadoNotificable(paraPublicar.estadoNuevoCodigo)
+    ) {
+      const tipoCodigo = await this.tipoTicketRepo.findCodigoById(paraPublicar.tipoId);
+      if (tipoCodigo) {
+        this.publisher.publish(
+          new TicketEstadoCambiado(
+            dto.ticketId,
+            paraPublicar.numero,
+            paraPublicar.tituloTicket,
+            tipoCodigo,
+            paraPublicar.estadoAnteriorId,
+            paraPublicar.estadoNuevoId,
+            paraPublicar.estadoAnteriorCodigo,
+            paraPublicar.estadoNuevoCodigo,
+            paraPublicar.solicitanteId,
+            dto.autorId,
+            dto.clienteId,
+            new Date(),
+          ),
+        );
+      }
+    }
+
+    return outcome.result;
   }
 }
