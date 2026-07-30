@@ -97,13 +97,13 @@ Cada PR: verificación propia (`pnpm test`/`lint`/`tsc --noEmit` en `backend/`),
 
 ## PR 5 — API de gestión (R3, R4)
 
-- [ ] 5.1 Crear DTOs `configuracion/interface/dtos/{actualizar-config-http,config-response}.dto.ts`
-- [ ] 5.2 RED: `PermissionsGuard` con JWT con `configuracion:gestionar` ⇒ autoriza `GET`/`PUT`; sin el permiso ⇒ `403` antes del caso de uso (R4 escenarios 1-2)
-- [ ] 5.3 RED: JWT emitido ANTES de otorgar el permiso ⇒ sigue `403` aunque ya exista en DB (R4 escenario D9 stale)
-- [ ] 5.4 GREEN: crear `configuracion/interface/controllers/configuracion.controller.ts` — `@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard, TenantGuard)`, `@RequirePermissions('configuracion:gestionar')` en `GET`/`PUT`
-- [ ] 5.5 RED: `PUT scope=global` por ADMIN-de-tenant (sin `is_global_admin`) ⇒ rechazado (F2, integración controller→use case)
-- [ ] 5.6 Wire `ConfiguracionController` + `ConfiguracionModule` en `app.module.ts`
-- [ ] 5.7 Verify: pegar salida real tests/lint/tsc
+- [x] 5.1 Crear DTOs `configuracion/interface/dtos/{actualizar-config-http,config-response}.dto.ts`
+- [x] 5.2 RED: `PermissionsGuard` con JWT con `configuracion:gestionar` ⇒ autoriza `GET`/`PUT`; sin el permiso ⇒ `403` antes del caso de uso (R4 escenarios 1-2)
+- [x] 5.3 RED: JWT emitido ANTES de otorgar el permiso ⇒ sigue `403` aunque ya exista en DB (R4 escenario D9 stale)
+- [x] 5.4 GREEN: crear `configuracion/interface/controllers/configuracion.controller.ts` — `@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard, TenantGuard)`, `@RequirePermissions('configuracion:gestionar')` en `GET`/`PUT`
+- [x] 5.5 RED: `PUT scope=global` por ADMIN-de-tenant (sin `is_global_admin`) ⇒ rechazado (F2, integración controller→use case)
+- [x] 5.6 Wire `ConfiguracionController` + `ConfiguracionModule` en `app.module.ts`
+- [x] 5.7 Verify: pegar salida real tests/lint/tsc
 
 ## PR 6 — Swap email + fail-fast a send-time + anti-regresión (R6, R7, R8)
 

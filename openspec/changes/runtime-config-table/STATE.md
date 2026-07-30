@@ -755,3 +755,81 @@ EXIT_CODE=0
 - `docs(configuracion): documentar fixes Judgment Day PR4 Ronda 2` (STATE.md)
 
 Sin push, sin PR — branch `runtime-config-table-pr4` gateado por el usuario, igual que rondas anteriores.
+
+## Apply Progress — PR5 (API de gestión — R3, R4)
+
+Branch: `runtime-config-table-pr5` (encadenada sobre `runtime-config-table-pr4`, ya aprobado). Sin push, sin PR — gateado por el usuario. Hace la feature alcanzable por HTTP por primera vez (`ConfiguracionController` wireado en `AppModule`).
+
+### Tasks (7/7 — PR5 completo)
+
+- [x] 5.1 DTOs `configuracion/interface/dtos/{actualizar-config-http,config-response}.dto.ts`
+- [x] 5.2 RED: `PermissionsGuard` real sobre los handlers reales del controller — JWT con `configuracion:gestionar` autoriza GET/PUT; sin el permiso ⇒ 403 antes del caso de uso
+- [x] 5.3 RED: D9 — JWT emitido ANTES de otorgar el permiso sigue 403 (mismo código de rechazo que "sin permiso": el guard nunca consulta DB)
+- [x] 5.4 GREEN: `configuracion/interface/controllers/configuracion.controller.ts` — guard chain `JwtAuthGuard, RolesGuard, PermissionsGuard, TenantGuard` + `@RequirePermissions('configuracion:gestionar')` en GET/PUT
+- [x] 5.5 RED: integración F2 — `PUT scope=global` por ADMIN-de-tenant (sin `is_global_admin`) rechazado con el use case REAL (no mockeado), antes de tocar el repositorio
+- [x] 5.6 Wire `ConfiguracionController` + `ConfiguracionModule` (`imports: [AuthModule]`) en `app.module.ts`
+- [x] 5.7 Verify: ver evidencia real abajo
+
+### Cumplimiento de la OBLIGACIÓN DURA (Judgment Day PR4 Ronda 1 — `ActorContext`)
+
+El controller resuelve la identidad del actor **exclusivamente del JWT verificado** (`@CurrentUser() user: JwtPayload`): `buildActorContext(user)` lee `user.cliente_id`/`user.is_global_admin` — dos funciones puras (`buildActorContext`/`buildScope`) son los ÚNICOS puntos del controller que construyen `ActorContext`/`ConfigScope`, y ninguna de las dos lee del body/query salvo el `kind` público (`'tenant'|'global'`, no una identidad). El `clienteId` de un scope `tenant` SIEMPRE es `user.cliente_id` — el DTO de PUT (`ActualizarConfigHttpDto`) deliberadamente NO tiene un campo `clienteId`, así que no hay forma de que un actor reclame el tenant de otro cliente desde el body. Verificado explícitamente en `configuracion.controller.spec.ts` ("construye ConfigScope/actorId EXCLUSIVAMENTE del JWT...") y en la integración F2 (`configuracion.controller.f2.integration.spec.ts`).
+
+### Archivos nuevos
+
+| Archivo | Qué hace |
+|---|---|
+| `backend/src/configuracion/interface/dtos/actualizar-config-http.dto.ts` | Body de `PUT /configuracion` — `class-validator` (`@IsIn(['tenant','global'])`, etc.). Sin campo `clienteId` (obligación dura). |
+| `backend/src/configuracion/interface/dtos/config-response.dto.ts` | Response de GET/PUT — `fromRow(ConfigLecturaRow)`, mismo patrón `fromEntity` que `ClienteResponseDto`. `valor` ya viene enmascarado del use case si `esSecreto`. |
+| `backend/src/configuracion/interface/controllers/configuracion.controller.ts` | `ConfiguracionController` — `GET`/`PUT /configuracion`, guard chain + `@RequirePermissions`, `buildActorContext`/`buildScope` (identidad SOLO del JWT), `mapConfigError` (errores de dominio → HttpException: 400/403/409/500). |
+| `backend/src/configuracion/interface/controllers/configuracion.controller.spec.ts` | Unit — guard chain (metadata), RBAC real sobre handlers reales (R4 + D9), construcción de scope/actor y mapeo de errores usando los use cases REALES de PR4 con el repositorio (interfaz) mockeado. |
+| `backend/src/configuracion/interface/controllers/configuracion.controller.f2.integration.spec.ts` | Integración (5.5) — `ActualizarConfigUseCase` REAL (no mockeado) wireado en el controller; PUT scope=global de un ADMIN-de-tenant sin `is_global_admin` rechazado con 403 antes de tocar `repo.findByClave`/`repo.upsert`/`secretCipher.encrypt`/`publisher.publish`. |
+
+### Archivos modificados
+
+| Archivo | Qué cambió |
+|---|---|
+| `backend/src/configuracion/configuracion.module.ts` | `+imports: [AuthModule]` (para que `JwtAuthGuard` resuelva `TOKEN_SERVICE`, mismo patrón que `TicketsModule`), `+controllers: [ConfiguracionController]` |
+| `backend/src/configuracion/configuracion.module.spec.ts` | +1 assert: `moduleRef.get(ConfiguracionController)` resuelve por DI (wiring regression guard ampliado a PR5) |
+| `backend/src/app.module.ts` | `+ConfiguracionModule` en `imports` (feature alcanzable por HTTP por primera vez) |
+| `openspec/changes/runtime-config-table/tasks.md` | Tasks 5.1-5.7 marcadas `[x]` |
+
+### Decisiones de diseño (PR5)
+
+- **GET sin DTO de query** (design §10 literal): `@Query('scope') scope: unknown, @Query('categoria') categoria: string | undefined` — validación manual con `esScopeKindValido()` (dominio, ya existía desde PR4) en vez de una DTO/pipe adicional. Evita duplicar la validación de `scope.kind` que ya vive en dominio.
+- **`ActualizarConfigHttpDto` sin `clienteId`**: el `scope` HTTP solo lleva el `kind`; el `clienteId` de un scope tenant es SIEMPRE `user.cliente_id` (obligación dura). Distinto del `ConfigScope` de dominio (que sí lleva `clienteId` para scope tenant) — el controller es quien completa ese campo, nunca el cliente HTTP.
+- **`mapConfigError` — mapeo HTTP**: `InvalidScopeError`/`CategoriaNoSoportadaError`/`ValorEnmascaradoNoPermitidoError` ⇒ 400; `ScopeGlobalNoAutorizadoError`/`ScopeTenantNoAutorizadoError` ⇒ 403; `ConfigConflictoConcurrenteError` ⇒ 409; `CifradoError`/`InfraConfigError` ⇒ 500 genérico (mensaje NUNCA expone detalle interno de infra/driver — error-handling skill).
+- **Tests del controller usan los use cases REALES de PR4** (repositorio/cipher/publisher/logger mockeados, que son interfaces sin campos privados) en vez de mockear `LeerConfigUseCase`/`ActualizarConfigUseCase` directamente — esas clases SÍ tienen campos privados y no son duck-typeables sin `as any` (prohibido, DoD §9 CLAUDE.md). Precedente existente (`presupuestos.controller.spec.ts`/`tickets.controller.spec.ts`) usa `as any` para esto — PR5 evita esa deuda mockeando en la capa de puertos en su lugar.
+- **`ExecutionContext` mockeado con `as unknown as ExecutionContext`** en los tests de RBAC — única excepción deliberada a la prohibición de `as unknown as`: mismo patrón EXACTO ya establecido y aceptado en `auth/infrastructure/guards/guards.spec.ts`/`transicion-estado-permisos.guard.spec.ts` (interfaz de framework con ~8 métodos, implementar todos sin cast sería desproporcionado para un test que no evade tipado de negocio real).
+- **`scope` inválido simulado vía `JSON.parse`** (no `as any`/`as unknown as`) para cruzar el boundary de tipos en runtime — mismo patrón que `validar-scope.spec.ts` (PR4 Judgment Day Ronda 2).
+
+### Evidencia real (backend/, corrida serial FOREGROUND, 2026-07-31)
+
+**`corepack pnpm exec tsc --noEmit -p tsconfig.json`**: exit 0, sin output.
+
+**`corepack pnpm lint`**: primera corrida detectó 9 errores `prettier/prettier` (formato) en `configuracion.controller.ts`/`configuracion.controller.spec.ts` — corregidos con `eslint --fix` (solo reformateo, sin cambios de lógica). Corrida final:
+```
+$ eslint "src/**/*.ts"
+EXIT_CODE=0
+```
+(sin output, exit 0).
+
+**`corepack pnpm test`**:
+```
+Test Files  180 passed | 1 skipped (181)
+     Tests  2361 passed | 2 skipped (2363)
+  Duration  161.47s
+```
+(vs. baseline PR4 Ronda 2 — 2336 passed — +25 tests netos de PR5: guard chain metadata (3), RBAC real R4/D9 (5), handlers GET/PUT scope+actor+mapeo de errores (17, entre `configuracion.controller.spec.ts` y `configuracion.controller.f2.integration.spec.ts`). Sin regresiones. El log `ERROR [AesGcmSecretCipher] decrypt() falló: ...` es esperado — mismo test de tampering de PR1, no un fallo real.)
+
+### Commits
+
+- `feat(configuracion): DTOs HTTP de gestion de config` (`actualizar-config-http.dto.ts`, `config-response.dto.ts`)
+- `feat(configuracion): ConfiguracionController con RBAC y resolucion de identidad exclusivamente del JWT` (`configuracion.controller.ts` + specs unit/integracion F2)
+- `feat(configuracion): wire ConfiguracionController y ConfiguracionModule en AppModule` (`configuracion.module.ts` + spec, `app.module.ts`)
+- `docs(configuracion): marcar tasks PR5 y documentar Apply Progress` (tasks.md + STATE.md)
+
+Sin push, sin PR — branch `runtime-config-table-pr5` gateado por el usuario, encadenada sobre `runtime-config-table-pr4`.
+
+### Cómo retomar
+
+PR5 cerrado y verde — la API de gestión de config es alcanzable por HTTP por primera vez. Próximo work unit (Review Workload Guard, `ask-on-risk`): **PR6 — Swap `tickets/`** (contrato `send(email,config)`, adapter por-envío, elimina `email-config.ts`, `NotificarCambioEstadoHandler` resuelve config vía `IConfigResolver`, wiring + anti-regresión + verify final). Depende de PR2 (resolver, ya disponible) y PR1 (cipher, ya disponible). Mayor riesgo de regresión sobre `notif-email-estado-ticket` — extremar cuidado con la suite de ese change al final de PR6.
