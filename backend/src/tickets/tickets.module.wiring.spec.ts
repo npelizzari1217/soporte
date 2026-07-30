@@ -32,6 +32,7 @@ import { SolicitanteEmailResolver } from './infrastructure/persistence/prisma/so
 import { NodemailerEmailSender } from './infrastructure/email/nodemailer-email-sender.adapter';
 import { NotificarCambioEstadoHandler } from './application/event-handlers/notificar-cambio-estado.handler';
 import { NotificarCambioEstadoListener } from './infrastructure/events/notificar-cambio-estado.listener';
+import { SmtpConfigError } from './infrastructure/email/email-config';
 
 describe('TicketsModule bootstrap (Fase 4, PR2 — R2 DI wiring regression guard)', () => {
   it('compila sin UnknownDependenciesException y resuelve el resolver de ciclo activo por DI', async () => {
@@ -104,5 +105,35 @@ describe('TicketsModule bootstrap (Fase 4, PR2 — R2 DI wiring regression guard
     );
 
     await moduleRef.close();
+  });
+
+  // Judgment Day PR3 Ronda 2, issue 2 (Juez B, el más importante): el env
+  // SMTP dummy global de `test/setup-env.ts` hace que EMAIL_SENDER SIEMPRE
+  // resuelva con éxito en el resto de la suite, así que ningún test cubría
+  // que el bootstrap ABORTE de verdad si falta config SMTP. Si alguien
+  // reintrodujera el try/catch+fallback en el useFactory de EMAIL_SENDER
+  // (revertiendo el fail-fast de Ronda 1), este test es el ÚNICO que lo
+  // detectaría — sin él, `compile()` seguiría resolviendo silenciosamente.
+  it('rechaza el bootstrap si falta SMTP_HOST — EMAIL_SENDER debe seguir siendo fail-fast (regression-guard, Judgment Day PR3 Ronda 2)', async () => {
+    const previousSmtpHost = process.env.SMTP_HOST;
+    delete process.env.SMTP_HOST;
+
+    try {
+      await expect(
+        Test.createTestingModule({
+          imports: [SharedModule, TicketsModule],
+        }).compile(),
+      ).rejects.toThrow(SmtpConfigError);
+    } finally {
+      // Restaura el env dummy global (test/setup-env.ts) para no contaminar
+      // el resto de la suite — sea cual sea el valor previo.
+      if (previousSmtpHost === undefined) {
+        delete process.env.SMTP_HOST;
+      } else {
+        process.env.SMTP_HOST = previousSmtpHost;
+      }
+    }
+
+    expect(process.env.SMTP_HOST).toBe(previousSmtpHost);
   });
 });

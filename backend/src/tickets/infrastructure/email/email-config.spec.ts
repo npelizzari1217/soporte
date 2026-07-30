@@ -7,7 +7,7 @@
  *
  * Ref tasks: PR2 2.9
  */
-import { loadEmailConfig } from './email-config';
+import { loadEmailConfig, SmtpConfigError } from './email-config';
 
 function buildEnv(overrides: Partial<NodeJS.ProcessEnv> = {}): NodeJS.ProcessEnv {
   return {
@@ -45,6 +45,10 @@ describe('loadEmailConfig()', () => {
     delete env.SMTP_HOST;
 
     expect(() => loadEmailConfig(env)).toThrow(/SMTP_HOST/);
+    // Aserción por TIPO (no solo por mensaje, Judgment Day PR3 Ronda 2, issue
+    // 1 — 2 jueces): si alguien reemplaza `throw new SmtpConfigError(...)`
+    // por `throw new Error(...)` con el mismo texto, este assert lo detecta.
+    expect(() => loadEmailConfig(env)).toThrow(SmtpConfigError);
   });
 
   it('lanza si falta SMTP_USER y SMTP_PASS (lista ambas variables faltantes)', () => {
@@ -59,5 +63,7 @@ describe('loadEmailConfig()', () => {
     const env = buildEnv({ SMTP_PORT: 'no-es-un-numero' });
 
     expect(() => loadEmailConfig(env)).toThrow(/SMTP_PORT/);
+    // Aserción por TIPO — ver comentario en el caso "falta SMTP_HOST".
+    expect(() => loadEmailConfig(env)).toThrow(SmtpConfigError);
   });
 });
