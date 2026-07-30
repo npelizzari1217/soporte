@@ -5,12 +5,21 @@ export const CONFIGURACION_CAMBIADA = 'configuracion.cambiada';
 
 /**
  * ConfigScope — distingue si el cambio de config ocurrió en la DB de un
- * tenant (`getTenantClient(dbName)`) o en master (`getMasterClient()`,
- * config global — F2, solo `isGlobalAdmin`). El `AuditLogPort` usa este
- * mismo shape para elegir la DB donde persistir el `AuditEntry` (R5 "scope
- * dual" — nunca cruzado).
+ * tenant o en master (`getMasterClient()`, config global — F2, solo
+ * `isGlobalAdmin`). El `AuditLogPort` usa este mismo shape para elegir la DB
+ * donde persistir el `AuditEntry` (R5 "scope dual" — nunca cruzado).
+ *
+ * El scope tenant lleva `clienteId` (NO `dbName` crudo — Judgment Day PR3
+ * Ronda 1, issue 3 — real confirmado A+B): confiar en un `dbName` que viaja
+ * desde el caller es la misma clase de bug que R9 ya cerró en
+ * `PrismaConfigResolver` — un evento construido con datos incorrectos (bug,
+ * tampering, o simplemente un caller mal escrito) podría apuntar a la DB de
+ * OTRO tenant. `PrismaAuditLog.record()` re-resuelve el `dbName` real desde
+ * `master.clientes` por `clienteId` (mismo patrón que
+ * `PrismaConfigResolver.findTenantRows()`) antes de escribir — nunca confía
+ * en un `dbName` ajeno a esa resolución.
  */
-export type ConfigScope = { kind: 'tenant'; dbName: string } | { kind: 'global' };
+export type ConfigScope = { kind: 'tenant'; clienteId: string } | { kind: 'global' };
 
 /**
  * ConfiguracionCambiada — evento de dominio publicado por

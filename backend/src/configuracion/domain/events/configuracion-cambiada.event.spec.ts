@@ -19,7 +19,7 @@ describe('ConfiguracionCambiada', () => {
 
   it('construye el evento con scope tenant y valores no-secretos', () => {
     const occurredAt = new Date('2026-07-30T12:00:00.000Z');
-    const scope: ConfigScope = { kind: 'tenant', dbName: 'tenant_a_db' };
+    const scope: ConfigScope = { kind: 'tenant', clienteId: 'cliente-uuid-a' };
 
     const event = new ConfiguracionCambiada(
       scope,
@@ -33,7 +33,7 @@ describe('ConfiguracionCambiada', () => {
     );
 
     expect(event.eventName).toBe(CONFIGURACION_CAMBIADA);
-    expect(event.scope).toEqual({ kind: 'tenant', dbName: 'tenant_a_db' });
+    expect(event.scope).toEqual({ kind: 'tenant', clienteId: 'cliente-uuid-a' });
     expect(event.actorId).toBe('actor-uuid');
     expect(event.categoria).toBe('smtp');
     expect(event.clave).toBe('host');
@@ -65,7 +65,7 @@ describe('ConfiguracionCambiada', () => {
 
   it('acepta valorAnterior null (primer set de una clave, sin fila previa)', () => {
     const event = new ConfiguracionCambiada(
-      { kind: 'tenant', dbName: 'tenant_a_db' },
+      { kind: 'tenant', clienteId: 'cliente-uuid-a' },
       'actor-uuid',
       'smtp',
       'from',

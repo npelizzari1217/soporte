@@ -25,7 +25,7 @@ import { ConfiguracionCambiada } from '../../domain/events/configuracion-cambiad
 
 function makeEvent(): ConfiguracionCambiada {
   return new ConfiguracionCambiada(
-    { kind: 'tenant', dbName: 'tenant_a_db' },
+    { kind: 'tenant', clienteId: 'cliente-uuid-a' },
     'actor-uuid',
     'smtp',
     'pass',

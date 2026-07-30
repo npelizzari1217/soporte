@@ -20,7 +20,7 @@ import { Result } from '../../../shared/domain/result';
 
 function makeEventoNoSecreto(): ConfiguracionCambiada {
   return new ConfiguracionCambiada(
-    { kind: 'tenant', dbName: 'tenant_a_db' },
+    { kind: 'tenant', clienteId: 'cliente-uuid-a' },
     'actor-uuid',
     'smtp',
     'host',
@@ -63,7 +63,7 @@ describe('AuditConfiguracionHandler', () => {
       expect(entryArg.props.valorAnterior).toBe('old.smtp.com');
       expect(entryArg.props.valorNuevo).toBe('new.smtp.com');
       expect(entryArg.props.esSecreto).toBe(false);
-      expect(scopeArg).toEqual({ kind: 'tenant', dbName: 'tenant_a_db' });
+      expect(scopeArg).toEqual({ kind: 'tenant', clienteId: 'cliente-uuid-a' });
     });
 
     it('persiste el AuditEntry con los valores YA enmascarados tal cual llegan del evento cuando esSecreto=true', async () => {
@@ -76,6 +76,43 @@ describe('AuditConfiguracionHandler', () => {
 
       const [entryArg] = recordSpy.mock.calls[0];
       expect(entryArg.props.esSecreto).toBe(true);
+      expect(entryArg.props.valorAnterior).toBe('********');
+      expect(entryArg.props.valorNuevo).toBe('********');
+    });
+
+    it('defense-in-depth: si el evento "esSecreto=true" trae un valor SIN enmascarar (plaintext crudo por un olvido aguas arriba en PR4), el AuditEntry persistido lleva el valor ENMASCARADO, nunca el plaintext', async () => {
+      const recordSpy = vi.fn().mockResolvedValue(Result.ok(undefined));
+      const auditLog: AuditLogPort = { record: recordSpy };
+      const handler = new AuditConfiguracionHandler(auditLog);
+      const eventoConPlaintextCrudo = new ConfiguracionCambiada(
+        { kind: 'global' },
+        'actor-uuid',
+        'smtp',
+        'pass',
+        'password-viejo-en-claro',
+        'password-nuevo-en-claro',
+        true,
+        new Date('2026-07-30T12:00:00.000Z'),
+      );
+
+      await handler.handle(eventoConPlaintextCrudo);
+
+      const [entryArg] = recordSpy.mock.calls[0];
+      expect(entryArg.props.valorAnterior).toBe('********');
+      expect(entryArg.props.valorNuevo).toBe('********');
+      expect(entryArg.props.valorAnterior).not.toBe('password-viejo-en-claro');
+      expect(entryArg.props.valorNuevo).not.toBe('password-nuevo-en-claro');
+    });
+
+    it('defense-in-depth es idempotente: si el evento YA trae el valor enmascarado, el AuditEntry persistido sigue enmascarado (re-enmascarar SECRET_MASK es un no-op)', async () => {
+      const recordSpy = vi.fn().mockResolvedValue(Result.ok(undefined));
+      const auditLog: AuditLogPort = { record: recordSpy };
+      const handler = new AuditConfiguracionHandler(auditLog);
+      const event = makeEventoSecreto();
+
+      await handler.handle(event);
+
+      const [entryArg] = recordSpy.mock.calls[0];
       expect(entryArg.props.valorAnterior).toBe('********');
       expect(entryArg.props.valorNuevo).toBe('********');
     });

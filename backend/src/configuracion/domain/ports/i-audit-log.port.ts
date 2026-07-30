@@ -8,9 +8,12 @@
  * audit es un side-effect fire-and-forget, no la operación principal.
  *
  * `scope` (mismo shape que `ConfigScope` del evento) decide la DB destino en
- * el adapter: `tenant` → `getTenantClient(dbName).auditEntry.create(...)`;
- * `global` → `getMasterClient().auditEntry.create(...)` (R5 "scope dual" —
- * nunca cruzado).
+ * el adapter: `tenant` → resuelve `dbName` desde `master.clientes` por
+ * `clienteId` (patrón R9, ver `PrismaConfigResolver`) y persiste vía
+ * `getTenantClient(dbName).auditEntry.create(...)`; `global` →
+ * `getMasterClient().auditEntry.create(...)` (R5 "scope dual" — nunca
+ * cruzado). `clienteId` inválido/inexistente/inactivo ⇒
+ * `Result.fail(AuditError)`, nunca escribe en otra DB.
  *
  * Ref design: §5, §8. Ref spec: R5. Tarea: 3.5 (PR3).
  */
