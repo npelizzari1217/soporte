@@ -14,11 +14,17 @@
  * que `TicketsModule`). `compile()`/`init()` no abren conexión real a DB
  * (`PrismaService` es lazy — mismo patrón que `shared.module.spec.ts`).
  *
- * Segundo test (Dz12): confirma que `ConfiguracionModule` NO es `@Global()`
- * — `CONFIG_RESOLVER` NO debe estar disponible en un árbol que no lo importa
- * explícitamente.
+ * Segundo test (Dz12, ampliado en Judgment Day PR4 Ronda 1 arreglo 5):
+ * confirma que `ConfiguracionModule` NO es `@Global()` — NINGÚN provider
+ * suyo (`CONFIG_RESOLVER`, `CONFIGURACION_REPOSITORY`, `AUDIT_LOG`,
+ * `LeerConfigUseCase`, `ActualizarConfigUseCase`) debe estar disponible en
+ * un árbol que no lo importa explícitamente. Antes de esta ronda solo se
+ * verificaba `CONFIG_RESOLVER` — un `@Global()` agregado por error, o un
+ * provider agregado sin pasar por `exports`, no lo habría atrapado ningún
+ * otro test existente para los 4 providers restantes.
  *
- * Ref design: §2 Dz12. Tarea: 4.12 (PR4).
+ * Ref design: §2 Dz12. Tarea: 4.12 (PR4). Ref: STATE.md "Judgment Day — PR4
+ * — fixes Ronda 1", arreglo 5.
  */
 import { Module } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
@@ -54,7 +60,7 @@ describe('ConfiguracionModule bootstrap (tarea 4.12 — wiring regression guard)
     await moduleRef.close();
   });
 
-  it('Dz12: ConfiguracionModule NO es @Global — CONFIG_RESOLVER no disponible en un árbol que no lo importa', async () => {
+  it('Dz12: ConfiguracionModule NO es @Global — ningún provider (CONFIG_RESOLVER, CONFIGURACION_REPOSITORY, AUDIT_LOG, los 2 use cases) disponible en un árbol que no lo importa', async () => {
     @Module({})
     class ModuloAjenoSinConfiguracion {}
 
@@ -65,6 +71,10 @@ describe('ConfiguracionModule bootstrap (tarea 4.12 — wiring regression guard)
     await moduleRef.init();
 
     expect(() => moduleRef.get(CONFIG_RESOLVER)).toThrow();
+    expect(() => moduleRef.get(CONFIGURACION_REPOSITORY)).toThrow();
+    expect(() => moduleRef.get(AUDIT_LOG)).toThrow();
+    expect(() => moduleRef.get(LeerConfigUseCase)).toThrow();
+    expect(() => moduleRef.get(ActualizarConfigUseCase)).toThrow();
 
     await moduleRef.close();
   });
