@@ -58,6 +58,10 @@ import {
   SOLICITANTE_EMAIL_RESOLVER,
   ISolicitanteEmailResolver,
 } from './domain/ports/i-solicitante-email.resolver';
+import {
+  DOMAIN_EVENT_PUBLISHER,
+  IDomainEventPublisher,
+} from '../shared/domain/ports/i-domain-event-publisher';
 
 // ─── Infrastructure repositories ──────────────────────────────────────────────
 import { PrismaTicketRepository } from './infrastructure/persistence/prisma/prisma-ticket.repository';
@@ -291,6 +295,7 @@ import { ComentariosController } from './interface/controllers/comentarios.contr
         tipoOpRepo: ITipoOperacionRepository,
         factory: TicketStateMachineFactory,
         txRunner: ITenantTransactionRunner,
+        publisher: IDomainEventPublisher,
       ) =>
         new TransicionarEstadoUseCase(
           ticketRepo,
@@ -300,6 +305,7 @@ import { ComentariosController } from './interface/controllers/comentarios.contr
           tipoOpRepo,
           factory,
           txRunner,
+          publisher,
         ),
       inject: [
         TICKET_REPOSITORY,
@@ -309,6 +315,7 @@ import { ComentariosController } from './interface/controllers/comentarios.contr
         TIPO_OPERACION_REPOSITORY,
         TICKET_STATE_MACHINE_FACTORY,
         TENANT_TRANSACTION_RUNNER,
+        DOMAIN_EVENT_PUBLISHER,
       ],
     },
 
@@ -418,13 +425,26 @@ import { ComentariosController } from './interface/controllers/comentarios.contr
         operacionRepo: IOperacionTicketRepository,
         tipoOpRepo: ITipoOperacionRepository,
         txRunner: ITenantTransactionRunner,
-      ) => new CrearObservacionUseCase(ticketRepo, estadoRepo, operacionRepo, tipoOpRepo, txRunner),
+        tipoTicketRepo: ITipoTicketRepository,
+        publisher: IDomainEventPublisher,
+      ) =>
+        new CrearObservacionUseCase(
+          ticketRepo,
+          estadoRepo,
+          operacionRepo,
+          tipoOpRepo,
+          txRunner,
+          tipoTicketRepo,
+          publisher,
+        ),
       inject: [
         TICKET_REPOSITORY,
         ESTADO_REPOSITORY,
         OPERACION_TICKET_REPOSITORY,
         TIPO_OPERACION_REPOSITORY,
         TENANT_TRANSACTION_RUNNER,
+        TIPO_TICKET_REPOSITORY,
+        DOMAIN_EVENT_PUBLISHER,
       ],
     },
 
