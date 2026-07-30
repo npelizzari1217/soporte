@@ -222,3 +222,43 @@ Decidir: (a) aprobar PR2 → seguir con PR3 (handler/listener/wiring); (b) pedir
 
 ### No tocado (correcto, fuera de scope)
 `tickets.module.ts`, handler, listener, use cases de PR3/PR4 — cero cambios, tal como lo exigía el mandato de esta ronda.
+
+---
+
+## Judgment Day — PR2 — fixes Ronda 2 (2026-07-30)
+
+**Status: DONE.** 5 issues confirmados (0 CRITICAL, 4 WARNING, 1 SUGGESTION doc-only) arreglados RED→GREEN, estrictamente dentro de PR2 (`tickets.module.ts`, handler, listener, use cases de PR3/PR4 NO tocados).
+
+### Fixes aplicados
+
+**A. [WARNING] Smoke test del build era tautológico** — `email-templates-build.spec.ts` reescrito para ejecutar `copyfiles` REAL (la librería, no un mock) contra un `tmpDir`, con los parámetros (`glob`, `-u N`) parseados dinámicamente del script `build` real de `package.json` (no hardcodeados). La ruta esperada se deriva con `path.relative()` a partir de `TEMPLATES_ROOT` — ahora exportado del adapter (`nodemailer-email-sender.adapter.ts`) en vez de recalculado — contra la raíz de `src/`, aprovechando que `tsc` mirror-ea esa misma estructura relativa en `dist/`. Se ejecuta con `process.chdir(BACKEND_ROOT)` durante la copia para replicar el mismo cwd que usa pnpm al correr `build` (el recorte `-u N` de `copyfiles` opera sobre la FORMA del path que matchea el glob — con un glob absoluto el recorte da un resultado distinto al de producción). Verificado con mutation test manual: cambiar `TEMPLATES_ROOT` a `path.join(__dirname, '..', '..', 'email-templates')` (un nivel de más) hace fallar el test — se revirtió después de confirmar la detección. Nuevo archivo `copyfiles.d.ts` (declaración ambiente mínima; `copyfiles` no publica tipos propios).
+
+**B. [WARNING] `toString()` no evita fuga por logging de objeto** — `email.vo.ts`: agregado `toJSON()` (delega en `mask()`, usado por `JSON.stringify()`) y `[Symbol.for('nodejs.util.inspect.custom')]()` (delega en `mask()`, usado por `console.log`/`util.inspect()`). El símbolo se registra vía `Symbol.for(...)` — NO se importa `'util'` en domain, así no se viola clean-arch; `const` con inicializador `Symbol.for(...)` es tipado por TS como `unique symbol`, válido como nombre de miembro computado de clase sin necesidad de cast. Tests RED→GREEN confirmaron el leak real antes del fix: `JSON.stringify(email)` → `{"_value":"usuario@dominio.com"}` y `util.inspect(email)` → `Email { _value: 'usuario@dominio.com' }`.
+
+**C. [WARNING] `Email.maskRaw` público debilitaba el VO** — algoritmo de enmascarado extraído a `backend/src/shared/domain/mask-email-like.ts` (`export function maskEmailLike(raw: string): string`), función pura del shared kernel. `Email.mask()` y `sanitizeCausa()` (adapter) ahora reusan esa función; `Email.maskRaw` fue ELIMINADO del VO (no solo `private` — ya no hacía falta ningún método interno, `mask()` llama directo a `maskEmailLike`). Decisión de ubicación: `shared/domain/` (no `tickets/domain/`) porque es lógica de shared kernel reusable fuera del contexto de tickets si en el futuro otro bounded context necesita enmascarar emails. Grep confirmó que `Email.maskRaw` no tenía otros consumidores. Test unitario nuevo: `mask-email-like.spec.ts`.
+
+**D. [WARNING] CRLF injection en subject (hardening)** — `nodemailer-email-sender.adapter.ts`: `interpolate()` ahora acepta `stripCrlf?: boolean`, independiente de `escapeHtml`; se aplica `stripCrlf: true` SOLO al interpolar `subject.hbs` (el body HTML no lo necesita). Test RED→GREEN con un valor conteniendo `\r\nBcc: atacante@evil.com` interpolado en `numero` — confirmado que sin el fix el subject resultante contenía el CRLF crudo.
+
+**E. [SUGGESTION doc-only] Path `type:'html'` no escapa** — comentario agregado en `i-email-sender.port.ts` sobre la variante `EmailBody` `{ type: 'html' }`, documentando que asume contenido ya confiable/estático y que la capa de aplicación NUNCA debe alimentarla con datos de dominio sin sanitizar. Sin cambio de comportamiento, sin test nuevo (por diseño del fix).
+
+### Evidencia real (backend/, 2026-07-30)
+`corepack pnpm test`: **158 test files (157 passed + 1 skipped), 2100 tests (2098 passed + 2 skipped)** — antes de esta ronda eran 2094 (+6: 3 toJSON/inspect, 1 CRLF subject, 3 `maskEmailLike` menos 1 test neto del build spec que redujo de 3 a 2 casos = +6 netos).
+`corepack pnpm lint`: exit 0 (184 errores CRLF/formato detectados tras una edición vía PowerShell que reescribió `nodemailer-email-sender.adapter.ts` con line-endings CRLF — corregidos con `prettier --write`; verde en la corrida final).
+`corepack pnpm exec tsc --noEmit -p tsconfig.json`: exit 0.
+
+### Archivos tocados
+- `backend/src/tickets/infrastructure/email/email-templates-build.spec.ts` (reescrito — ejecución real)
+- `backend/src/tickets/infrastructure/email/copyfiles.d.ts` (nuevo)
+- `backend/src/tickets/infrastructure/email/nodemailer-email-sender.adapter.ts` (`TEMPLATES_ROOT` exportado, `stripCrlf`, usa `maskEmailLike`)
+- `backend/src/tickets/infrastructure/email/nodemailer-email-sender.adapter.spec.ts` (+1 test CRLF)
+- `backend/src/tickets/domain/value-objects/email.vo.ts` (`toJSON()`, inspect symbol, `maskRaw` eliminado, usa `maskEmailLike`)
+- `backend/src/tickets/domain/value-objects/email.vo.spec.ts` (+3 tests JSON/inspect)
+- `backend/src/shared/domain/mask-email-like.ts` (nuevo)
+- `backend/src/shared/domain/mask-email-like.spec.ts` (nuevo)
+- `backend/src/tickets/domain/ports/i-email-sender.port.ts` (comentario doc-only)
+
+### No tocado (correcto, fuera de scope)
+`tickets.module.ts`, handler, listener, use cases de PR3/PR4 — cero cambios.
+
+### Cómo retomar
+Decidir: (a) aprobar PR2 (Ronda 2 incluida) → seguir con PR3; (b) pedir ajustes adicionales sobre PR2 antes de avanzar.
