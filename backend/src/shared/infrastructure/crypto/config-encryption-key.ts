@@ -54,42 +54,101 @@ export class ConfigEncryptionKeyError extends Error {
 }
 
 /**
+ * Resultado tipado del predicado compartido `checkConfigEncryptionKeyFormat`.
+ * `reason` distingue las 3 formas de invalidez que boot-time (throw) y
+ * lazy (Result.fail) deben diagnosticar IGUAL para el mismo input.
+ */
+export type ConfigEncryptionKeyCheckResult =
+  | { ok: true; key: Buffer }
+  | { ok: false; reason: 'missing' }
+  | { ok: false; reason: 'formato' }
+  | { ok: false; reason: 'longitud'; receivedBytes: number };
+
+/**
+ * checkConfigEncryptionKeyFormat — predicado ÚNICO de validación de
+ * presencia+forma de `CONFIG_ENCRYPTION_KEY`, compartido por
+ * `validateConfigEncryptionKey()` (boot-time, throw) y
+ * `AesGcmSecretCipher.loadKey()` (lazy, `Result.fail`).
+ *
+ * FIX (Judgment Day PR1 Ronda 2, confirmado A+B): antes de este predicado,
+ * `validateConfigEncryptionKey()` chequeaba longitud→formato y `loadKey()`
+ * chequeaba formato→longitud — el MISMO input inválido producía DOS
+ * diagnósticos distintos según qué camino lo validara. Ahora ambos DEBEN
+ * llamar a este predicado — nunca reimplementar el orden.
+ *
+ * Orden FIJO: trim → formato (regex) → longitud decodificada. El chequeo de
+ * FORMATO va primero: `STRICT_BASE64_32_BYTES` ancla el string a exactamente
+ * 44 caracteres (43 + "="), así que cualquier clave con largo genuinamente
+ * incorrecto (ej. 16 u 48 bytes) ya falla el regex por forma — el branch
+ * `'longitud'` queda como defensa adicional (solo alcanzable si el regex se
+ * relajara a futuro para admitir strings de otro largo).
+ *
+ * `.trim()` sobre el valor CRUDO, ANTES de regex/decode (Judgment Day PR1
+ * Ronda 2, REGRESIÓN confirmada): el recipe documentado
+ * `openssl rand -base64 32 > key.txt` agrega un `\n` final — una clave VÁLIDA
+ * leída de archivo (ej. K8s `secretKeyRef`) sería rechazada sin este trim.
+ * Solo se recorta whitespace en los EXTREMOS: basura intercalada en el medio
+ * sigue siendo rechazada (el regex no la tolera).
+ *
+ * @param raw valor crudo de `CONFIG_ENCRYPTION_KEY` (puede venir con
+ *            whitespace de borde si se cargó desde archivo).
+ */
+export function checkConfigEncryptionKeyFormat(
+  raw: string | undefined,
+): ConfigEncryptionKeyCheckResult {
+  if (!raw) {
+    return { ok: false, reason: 'missing' };
+  }
+
+  const trimmed = raw.trim();
+
+  if (!STRICT_BASE64_32_BYTES.test(trimmed)) {
+    return { ok: false, reason: 'formato' };
+  }
+
+  const key = Buffer.from(trimmed, 'base64');
+  if (key.length !== KEY_BYTES) {
+    return { ok: false, reason: 'longitud', receivedBytes: key.length };
+  }
+
+  return { ok: true, key };
+}
+
+/**
  * Valida presencia+forma de `CONFIG_ENCRYPTION_KEY`. Lanza
  * `ConfigEncryptionKeyError` si falta o si el base64 no decodifica a
  * exactamente 32 bytes. El mensaje de error NUNCA interpola el valor de la
  * clave (spec R2 — el secreto nunca aparece fuera de memoria).
  *
+ * Delega TODO el chequeo a `checkConfigEncryptionKeyFormat()` (fuente única
+ * del orden trim→formato→longitud) — solo mapea el resultado a un mensaje.
+ *
  * @param env fuente de variables de entorno (default `process.env`;
  *            parametrizado para tests deterministas sin mutar el entorno real).
  */
 export function validateConfigEncryptionKey(env: NodeJS.ProcessEnv = process.env): void {
-  const raw = env.CONFIG_ENCRYPTION_KEY;
+  const result = checkConfigEncryptionKeyFormat(env.CONFIG_ENCRYPTION_KEY);
 
-  if (!raw) {
-    throw new ConfigEncryptionKeyError(
-      'CONFIG_ENCRYPTION_KEY ausente. La app no puede arrancar sin una clave de ' +
-        'cifrado AES-256 válida (base64 de 32 bytes, ej. "openssl rand -base64 32") ' +
-        '(ver shared/infrastructure/crypto/config-encryption-key.ts).',
-    );
+  if (result.ok) {
+    return;
   }
 
-  // Chequeo de LONGITUD primero (mensaje específico "longitud" para claves
-  // genuinamente cortas/largas — preserva el contrato de mensaje existente).
-  const keyLength = Buffer.from(raw, 'base64').length;
-  if (keyLength !== KEY_BYTES) {
-    throw new ConfigEncryptionKeyError(
-      `CONFIG_ENCRYPTION_KEY tiene longitud inválida: se esperaban ${KEY_BYTES} bytes ` +
-        `(base64), se recibieron ${keyLength}. Generar con "openssl rand -base64 32".`,
-    );
-  }
-
-  // Chequeo de FORMATO junto/después del de longitud: atrapa el caso donde
-  // `Buffer.from(raw,'base64')` IGNORÓ basura no-base64 y aun así decodificó
-  // a 32 bytes "por casualidad" — la longitud sola no lo detecta.
-  if (!STRICT_BASE64_32_BYTES.test(raw)) {
-    throw new ConfigEncryptionKeyError(
-      'CONFIG_ENCRYPTION_KEY tiene formato base64 inválido: se esperan 43 caracteres ' +
-        'base64 + 1 "=" de padding (32 bytes exactos). Generar con "openssl rand -base64 32".',
-    );
+  switch (result.reason) {
+    case 'missing':
+      throw new ConfigEncryptionKeyError(
+        'CONFIG_ENCRYPTION_KEY ausente. La app no puede arrancar sin una clave de ' +
+          'cifrado AES-256 válida (base64 de 32 bytes, ej. "openssl rand -base64 32") ' +
+          '(ver shared/infrastructure/crypto/config-encryption-key.ts).',
+      );
+    case 'formato':
+      throw new ConfigEncryptionKeyError(
+        'CONFIG_ENCRYPTION_KEY tiene formato base64 inválido: se esperan 43 caracteres ' +
+          'base64 + 1 "=" de padding (32 bytes exactos). Generar con "openssl rand -base64 32".',
+      );
+    case 'longitud':
+      throw new ConfigEncryptionKeyError(
+        `CONFIG_ENCRYPTION_KEY tiene longitud inválida: se esperaban ${KEY_BYTES} bytes ` +
+          `(base64), se recibieron ${result.receivedBytes}. Generar con "openssl rand -base64 32".`,
+      );
   }
 }

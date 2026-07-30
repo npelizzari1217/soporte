@@ -22,7 +22,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { CipherPayload, ISecretCipher } from '../../domain/ports/i-secret-cipher';
 import { CifradoError } from '../../domain/errors/cifrado.errors';
 import { Result } from '../../domain/result';
-import { KEY_BYTES, STRICT_BASE64_32_BYTES } from './config-encryption-key';
+import { checkConfigEncryptionKeyFormat } from './config-encryption-key';
 
 const ALGO = 'aes-256-gcm';
 const IV_BYTES = 12; // 96-bit nonce recomendado para GCM
@@ -38,23 +38,28 @@ export class AesGcmSecretCipher implements ISecretCipher {
   constructor(private readonly env: NodeJS.ProcessEnv = process.env) {}
 
   private loadKey(): Result<Buffer, CifradoError> {
-    const raw = this.env.CONFIG_ENCRYPTION_KEY;
-    if (!raw) {
-      return Result.fail(new CifradoError('CONFIG_ENCRYPTION_KEY ausente.'));
+    // Delega TODO el chequeo (trim → formato → longitud) al predicado
+    // compartido de config-encryption-key.ts — NUNCA reimplementar el orden
+    // acá. Antes de este fix, este método reimplementaba formato→longitud
+    // mientras `validateConfigEncryptionKey()` hacía longitud→formato: el
+    // MISMO input inválido daba dos diagnósticos distintos según el camino
+    // (Judgment Day PR1 Ronda 2, confirmado A+B).
+    const result = checkConfigEncryptionKeyFormat(this.env.CONFIG_ENCRYPTION_KEY);
+
+    if (result.ok) {
+      return Result.ok(result.key);
     }
-    // Formato base64 ESTRICTO antes del chequeo de longitud decodificada:
-    // `Buffer.from(raw,'base64')` ignora silenciosamente basura no-base64 —
-    // una clave malformada puede decodificar "por casualidad" a 32 bytes
-    // (Judgment Day PR1 Ronda 1, WARNING confirmado). Fuente única del
-    // regex/constante en config-encryption-key.ts (fix duplicación KEY_BYTES).
-    if (!STRICT_BASE64_32_BYTES.test(raw)) {
-      return Result.fail(new CifradoError('CONFIG_ENCRYPTION_KEY tiene formato base64 inválido.'));
+
+    switch (result.reason) {
+      case 'missing':
+        return Result.fail(new CifradoError('CONFIG_ENCRYPTION_KEY ausente.'));
+      case 'formato':
+        return Result.fail(
+          new CifradoError('CONFIG_ENCRYPTION_KEY tiene formato base64 inválido.'),
+        );
+      case 'longitud':
+        return Result.fail(new CifradoError('CONFIG_ENCRYPTION_KEY tiene longitud inválida.'));
     }
-    const key = Buffer.from(raw, 'base64');
-    if (key.length !== KEY_BYTES) {
-      return Result.fail(new CifradoError('CONFIG_ENCRYPTION_KEY tiene longitud inválida.'));
-    }
-    return Result.ok(key);
   }
 
   encrypt(plaintext: string): Result<CipherPayload, CifradoError> {
