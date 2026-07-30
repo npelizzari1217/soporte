@@ -13,6 +13,13 @@
  * `emitter.emit()` (no `emitAsync`), así que este handler async corre
  * desacoplado del ciclo request/response sin bloquear la respuesta HTTP.
  *
+ * Última red de seguridad (Judgment Day PR3 Ronda 1): `handler.handle()`
+ * documenta "NUNCA lanza", pero si un bug futuro en algún adapter rompiera
+ * ese contrato, una promesa rechazada sin `try/catch` acá sería un unhandled
+ * rejection — sin handler global de proceso, Node 24 lo trata como fatal y
+ * mata el proceso. Se loguea ERROR sin exponer el email en claro y NUNCA se
+ * relanza.
+ *
  * Ref spec: Requirement 4 (WARN, sin exponer datos sensibles), Requirement 5
  * (fallo SMTP logueado, no revierte la transición).
  * Ref design: §5, §7, D2, D3.
@@ -24,7 +31,10 @@ import {
   TICKET_ESTADO_CAMBIADO,
   TicketEstadoCambiado,
 } from '../../domain/events/ticket-estado-cambiado.event';
-import { NotificarCambioEstadoHandler } from '../../application/event-handlers/notificar-cambio-estado.handler';
+import {
+  NotificarCambioEstadoHandler,
+  NotificacionOutcome,
+} from '../../application/event-handlers/notificar-cambio-estado.handler';
 
 @Injectable()
 export class NotificarCambioEstadoListener {
@@ -34,7 +44,24 @@ export class NotificarCambioEstadoListener {
 
   @OnEvent(TICKET_ESTADO_CAMBIADO)
   async handleTicketEstadoCambiado(event: TicketEstadoCambiado): Promise<void> {
-    const outcome = await this.handler.handle(event);
+    let outcome: NotificacionOutcome;
+    try {
+      outcome = await this.handler.handle(event);
+    } catch (err) {
+      // Última red de seguridad: el handler documenta "NUNCA lanza", pero si
+      // ese contrato se rompiera (bug futuro en un adapter), NO propagamos —
+      // un unhandled rejection acá tira abajo el proceso (Node 24, sin
+      // handler global). Sin enmascarado propio: el mensaje del error NO
+      // debería traer un email en claro (el handler solo pasa causas
+      // enmascaradas), pero igual no se interpola el ticket completo, solo su id.
+      const motivo = err instanceof Error ? err.message : 'Error desconocido';
+      this.logger.error(
+        `NotificarCambioEstadoHandler.handle() rechazó la promesa para el ticket ` +
+          `"${event.ticketId}" — esto NO debería pasar (contrato "nunca throw"). ` +
+          `Motivo: ${motivo}.`,
+      );
+      return;
+    }
 
     switch (outcome.status) {
       case 'skipped':
@@ -63,6 +90,17 @@ export class NotificarCambioEstadoListener {
             `hacia "${outcome.destinatarioEnmascarado}".`,
         );
         return;
+
+      default: {
+        // Exhaustividad: si se agrega un status nuevo a NotificacionOutcome
+        // sin manejarlo acá, esto rompe la compilación (tsc --noEmit) en vez
+        // de fallar en silencio en runtime. Defensivo en runtime (no debería
+        // ser alcanzable): loguea en vez de lanzar — el listener NUNCA
+        // propaga (mismo principio que el try/catch de arriba).
+        const _exhaustive: never = outcome;
+        this.logger.error(`NotificacionOutcome no manejado: ${JSON.stringify(_exhaustive)}`);
+        return;
+      }
     }
   }
 }

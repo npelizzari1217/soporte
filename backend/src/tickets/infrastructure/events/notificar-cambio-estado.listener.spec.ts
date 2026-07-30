@@ -9,6 +9,15 @@
  * over-mocking) y se espía `Logger.prototype` (mismo patrón que
  * `guards.spec.ts`).
  *
+ * `NotificarCambioEstadoHandler` es una clase concreta con campos privados
+ * (`resolver`/`emailSender`) — un objeto literal `{ handle: vi.fn() }` NO es
+ * asignable a ese tipo sin pasar por `unknown` (TS "brands" las clases con
+ * miembros privados). En vez de `as unknown as`/`as any` (prohibido, DoD
+ * §9), se instancia el handler REAL con stubs tipados de sus 2 ports
+ * (`ISolicitanteEmailResolver`/`EmailSenderPort`, interfaces planas) y se
+ * espía `handle()` con `vi.spyOn` — cero casts, el listener sigue recibiendo
+ * el tipo exacto que declara su constructor.
+ *
  * Ref design: §5 (D3 — el handler retorna outcome, el listener loguea).
  * Ref tasks: PR3 3.6.
  */
@@ -16,6 +25,8 @@ import { Logger } from '@nestjs/common';
 import { NotificarCambioEstadoListener } from './notificar-cambio-estado.listener';
 import { NotificarCambioEstadoHandler } from '../../application/event-handlers/notificar-cambio-estado.handler';
 import { TicketEstadoCambiado } from '../../domain/events/ticket-estado-cambiado.event';
+import { ISolicitanteEmailResolver } from '../../domain/ports/i-solicitante-email.resolver';
+import { EmailSenderPort } from '../../domain/ports/i-email-sender.port';
 
 function makeEvent(): TicketEstadoCambiado {
   return new TicketEstadoCambiado(
@@ -33,14 +44,16 @@ function makeEvent(): TicketEstadoCambiado {
 }
 
 describe('NotificarCambioEstadoListener', () => {
-  let handler: { handle: ReturnType<typeof vi.fn> };
+  let handler: NotificarCambioEstadoHandler;
+  let handleSpy: ReturnType<typeof vi.spyOn>;
   let listener: NotificarCambioEstadoListener;
 
   beforeEach(() => {
-    handler = { handle: vi.fn() };
-    listener = new NotificarCambioEstadoListener(
-      handler as unknown as NotificarCambioEstadoHandler,
-    );
+    const resolver: ISolicitanteEmailResolver = { resolver: vi.fn() };
+    const emailSender: EmailSenderPort = { send: vi.fn() };
+    handler = new NotificarCambioEstadoHandler(resolver, emailSender);
+    handleSpy = vi.spyOn(handler, 'handle');
+    listener = new NotificarCambioEstadoListener(handler);
   });
 
   afterEach(() => {
@@ -48,19 +61,19 @@ describe('NotificarCambioEstadoListener', () => {
   });
 
   it('delega en el handler con el evento recibido', async () => {
-    handler.handle.mockResolvedValue({ status: 'skipped' });
+    handleSpy.mockResolvedValue({ status: 'skipped' });
     const event = makeEvent();
 
     await listener.handleTicketEstadoCambiado(event);
 
-    expect(handler.handle).toHaveBeenCalledWith(event);
+    expect(handleSpy).toHaveBeenCalledWith(event);
   });
 
   it('outcome "skipped" no loguea nada', async () => {
     const warnSpy = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
     const errorSpy = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
     const logSpy = vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
-    handler.handle.mockResolvedValue({ status: 'skipped' });
+    handleSpy.mockResolvedValue({ status: 'skipped' });
 
     await listener.handleTicketEstadoCambiado(makeEvent());
 
@@ -71,7 +84,7 @@ describe('NotificarCambioEstadoListener', () => {
 
   it('outcome "no-email" loguea WARN con contexto, sin email en claro', async () => {
     const warnSpy = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
-    handler.handle.mockResolvedValue({
+    handleSpy.mockResolvedValue({
       status: 'no-email',
       motivo: 'Solicitante no encontrado en master.usuarios',
       solicitanteId: 'solicitante-1',
@@ -89,7 +102,7 @@ describe('NotificarCambioEstadoListener', () => {
 
   it('outcome "send-failed" loguea ERROR con destinatario enmascarado, sin email en claro', async () => {
     const errorSpy = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
-    handler.handle.mockResolvedValue({
+    handleSpy.mockResolvedValue({
       status: 'send-failed',
       destinatarioEnmascarado: 'u***@dominio.com',
       causa: 'Timeout SMTP',
@@ -107,7 +120,7 @@ describe('NotificarCambioEstadoListener', () => {
 
   it('outcome "sent" loguea a nivel log/info con destinatario enmascarado', async () => {
     const logSpy = vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
-    handler.handle.mockResolvedValue({
+    handleSpy.mockResolvedValue({
       status: 'sent',
       destinatarioEnmascarado: 'u***@dominio.com',
       ticketId: 'ticket-1',
@@ -122,8 +135,20 @@ describe('NotificarCambioEstadoListener', () => {
   });
 
   it('nunca lanza incluso si el handler retorna un outcome inesperado', async () => {
-    handler.handle.mockResolvedValue({ status: 'skipped' });
+    handleSpy.mockResolvedValue({ status: 'skipped' });
 
     await expect(listener.handleTicketEstadoCambiado(makeEvent())).resolves.not.toThrow();
+  });
+
+  it('nunca propaga el rechazo cuando handler.handle() rechaza la promesa (RED→GREEN, item 3 Judgment Day PR3 Ronda 1)', async () => {
+    const errorSpy = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    handleSpy.mockRejectedValue(new Error('bug futuro en un adapter'));
+
+    await expect(listener.handleTicketEstadoCambiado(makeEvent())).resolves.not.toThrow();
+
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    const [message] = errorSpy.mock.calls[0];
+    expect(message).toContain('ticket-1');
+    expect(message).not.toContain('usuario@dominio.com');
   });
 });

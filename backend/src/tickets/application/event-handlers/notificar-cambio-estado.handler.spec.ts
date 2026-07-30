@@ -38,17 +38,14 @@ function makeEvent(overrides: Partial<TicketEstadoCambiado> = {}): TicketEstadoC
 }
 
 describe('NotificarCambioEstadoHandler', () => {
-  let resolver: { resolver: ReturnType<typeof vi.fn> };
-  let emailSender: { send: ReturnType<typeof vi.fn> };
+  let resolver: ISolicitanteEmailResolver & { resolver: ReturnType<typeof vi.fn> };
+  let emailSender: EmailSenderPort & { send: ReturnType<typeof vi.fn> };
   let handler: NotificarCambioEstadoHandler;
 
   beforeEach(() => {
     resolver = { resolver: vi.fn() };
     emailSender = { send: vi.fn() };
-    handler = new NotificarCambioEstadoHandler(
-      resolver as unknown as ISolicitanteEmailResolver,
-      emailSender as unknown as EmailSenderPort,
-    );
+    handler = new NotificarCambioEstadoHandler(resolver, emailSender);
   });
 
   it('3.1 — estado no-clave ⇒ outcome "skipped", send() NO es llamado', async () => {
