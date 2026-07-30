@@ -1,3 +1,4 @@
+import * as util from 'util';
 import { Email } from './email.vo';
 import { EmailError } from '../errors/email.errors';
 
@@ -68,6 +69,35 @@ describe('Email (VO)', () => {
 
       expect(email.toString()).toBe(email.mask());
       expect(email.toString()).toBe('u***@dominio.com');
+    });
+  });
+
+  describe('JSON.stringify() / inspección de Node (Judgment Day PR2 Ronda 2, issue B)', () => {
+    it('JSON.stringify(email) no expone el valor crudo — usa el enmascarado vía toJSON()', () => {
+      const email = Email.create('usuario@dominio.com').getValue();
+
+      const serialized = JSON.stringify(email);
+
+      expect(serialized).not.toContain('usuario@dominio.com');
+      expect(serialized).toContain('u***@dominio.com');
+    });
+
+    it('JSON.stringify({ email }) tampoco expone el valor crudo cuando el VO está anidado', () => {
+      const email = Email.create('usuario@dominio.com').getValue();
+
+      const serialized = JSON.stringify({ email });
+
+      expect(serialized).not.toContain('usuario@dominio.com');
+      expect(serialized).toContain('u***@dominio.com');
+    });
+
+    it('util.inspect(email) (lo que usa console.log internamente) no expone el valor crudo', () => {
+      const email = Email.create('usuario@dominio.com').getValue();
+
+      const inspected = util.inspect(email);
+
+      expect(inspected).not.toContain('usuario@dominio.com');
+      expect(inspected).toContain('u***@dominio.com');
     });
   });
 

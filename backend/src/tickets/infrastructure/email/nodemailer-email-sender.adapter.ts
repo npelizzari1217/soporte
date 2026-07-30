@@ -26,8 +26,8 @@ import * as path from 'path';
 import * as nodemailer from 'nodemailer';
 import { EmailSenderPort, EmailMessage } from '../../domain/ports/i-email-sender.port';
 import { EmailError } from '../../domain/errors/email.errors';
-import { Email } from '../../domain/value-objects/email.vo';
 import { Result } from '../../../shared/domain/result';
+import { maskEmailLike } from '../../../shared/domain/mask-email-like';
 import { EmailConfig, loadEmailConfig } from './email-config';
 
 /** Subconjunto de nodemailer.Transporter que este adapter necesita — facilita el mock en tests. */
@@ -93,7 +93,7 @@ const EMAIL_IN_TEXT = /[\w.+-]+@[\w-]+\.[\w.-]+/g;
 
 /**
  * Enmascara cualquier email en claro dentro de un texto arbitrario —
- * reusa `Email.maskRaw()` (misma regla que el resto del dominio).
+ * reusa `maskEmailLike()` (shared/domain, misma regla que `Email.mask()`).
  *
  * Los rechazos SMTP reales suelen incluir la dirección completa del
  * destinatario (ej. `550 5.1.1 <usuario@dominio.com>: Recipient address
@@ -102,7 +102,7 @@ const EMAIL_IN_TEXT = /[\w.+-]+@[\w-]+\.[\w.-]+/g;
  * puede confiar en que ya venga enmascarado.
  */
 function sanitizeCausa(causa: string): string {
-  return causa.replace(EMAIL_IN_TEXT, (match) => Email.maskRaw(match));
+  return causa.replace(EMAIL_IN_TEXT, (match) => maskEmailLike(match));
 }
 
 export class NodemailerEmailSender implements EmailSenderPort {
