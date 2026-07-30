@@ -8,6 +8,7 @@ import { ComprasModule } from './compras/compras.module';
 import { ReparacionesModule } from './reparaciones/reparaciones.module';
 import { EquiposModule } from './equipos/equipos.module';
 import { ReportesModule } from './reportes/reportes.module';
+import { ConfiguracionModule } from './configuracion/configuracion.module';
 import { TenantScopeMiddleware } from './shared/tenancy/tenant-scope.middleware';
 
 /**
@@ -21,6 +22,9 @@ import { TenantScopeMiddleware } from './shared/tenancy/tenant-scope.middleware'
  * PR-15b agrega ReparacionesModule (reparaciones: dominio + infra + interface).
  * PR-17b agrega EquiposModule (equipos: controllers + DTOs + module wiring).
  * PR4 admin-general agrega ReportesModule (reportes: 4 agregaciones por tenant+ciclo).
+ * runtime-config-table PR5 agrega ConfiguracionModule (API de gestión de config
+ * runtime — categoría smtp, RBAC configuracion:gestionar) — hace la feature
+ * alcanzable por HTTP por primera vez (PR1-PR4 la construyeron sin cablear).
  *
  * PR-18 Batch 4: agrega TenantScopeMiddleware — inicializa el scope AsyncLocalStorage
  * ANTES de que los guards corran. Esto permite que TenantGuard.bind() use el patrón
@@ -50,6 +54,8 @@ import { TenantScopeMiddleware } from './shared/tenancy/tenant-scope.middleware'
     EquiposModule,
     // PR4 — reportes: 4 agregaciones de solo lectura por tenant+ciclo
     ReportesModule,
+    // runtime-config-table PR5 — API de gestión de configuración runtime (smtp)
+    ConfiguracionModule,
   ],
   controllers: [],
   providers: [

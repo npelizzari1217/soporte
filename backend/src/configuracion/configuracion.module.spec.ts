@@ -40,9 +40,10 @@ import { AuditConfiguracionHandler } from './application/event-handlers/audit-co
 import { AuditConfiguracionListener } from './infrastructure/events/audit-configuracion.listener';
 import { LeerConfigUseCase } from './application/use-cases/leer-config.use-case';
 import { ActualizarConfigUseCase } from './application/use-cases/actualizar-config.use-case';
+import { ConfiguracionController } from './interface/controllers/configuracion.controller';
 
-describe('ConfiguracionModule bootstrap (tarea 4.12 — wiring regression guard)', () => {
-  it('compila sin UnknownDependenciesException y resuelve toda la cadena PR1-PR4 por DI', async () => {
+describe('ConfiguracionModule bootstrap (tarea 4.12/5.6 — wiring regression guard)', () => {
+  it('compila sin UnknownDependenciesException y resuelve toda la cadena PR1-PR5 por DI', async () => {
     const moduleRef = await Test.createTestingModule({
       imports: [SharedModule, ConfiguracionModule],
     }).compile();
@@ -56,6 +57,10 @@ describe('ConfiguracionModule bootstrap (tarea 4.12 — wiring regression guard)
     expect(moduleRef.get(AuditConfiguracionListener)).toBeInstanceOf(AuditConfiguracionListener);
     expect(moduleRef.get(LeerConfigUseCase)).toBeInstanceOf(LeerConfigUseCase);
     expect(moduleRef.get(ActualizarConfigUseCase)).toBeInstanceOf(ActualizarConfigUseCase);
+    // PR5 — el controller HTTP resuelve por DI (JwtAuthGuard/RolesGuard/
+    // PermissionsGuard/TenantGuard vía `imports: [AuthModule]`, sin lo cual
+    // `compile()` ya habría lanzado UnknownDependenciesException).
+    expect(moduleRef.get(ConfiguracionController)).toBeInstanceOf(ConfiguracionController);
 
     await moduleRef.close();
   });

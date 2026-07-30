@@ -1,10 +1,15 @@
 /**
  * ConfiguracionModule — módulo NestJS del dominio `configuracion/`.
  *
- * Cablea, por primera vez, la cadena completa construida en PR1-PR4:
- * cifrado (`SECRET_CIPHER`, de `SharedModule` @Global) + resolver cross-DB
- * (`CONFIG_RESOLVER`, PR2) + audit inmutable (`AUDIT_LOG` + handler +
- * listener, PR3) + CRUD (`CONFIGURACION_REPOSITORY` + los 2 use cases, PR4).
+ * Cablea la cadena completa construida en PR1-PR4 (cifrado, resolver
+ * cross-DB, audit inmutable, CRUD) + el `ConfiguracionController` (PR5, API
+ * HTTP de gestión) — esto hace la feature alcanzable por HTTP por primera
+ * vez, una vez importado en `AppModule` (tarea 5.6).
+ *
+ * `imports: [AuthModule]` — necesario para que `JwtAuthGuard` (`@Inject
+ * TOKEN_SERVICE`) sea resolvible dentro del contexto de este módulo, mismo
+ * patrón que `TicketsModule` (que usa el MISMO guard chain
+ * `JwtAuthGuard, RolesGuard, PermissionsGuard, TenantGuard`).
  *
  * Dz12 (design §2): **NO** `@Global()`. Solo `tickets/` (envío, PR6) y el
  * propio `configuracion/` (CRUD, este módulo/PR5) consumen `CONFIG_RESOLVER`
@@ -35,6 +40,9 @@
  */
 import { Module } from '@nestjs/common';
 
+// ─── AuthModule (JwtAuthGuard + TenantGuard + PermissionsGuard) ──────────────
+import { AuthModule } from '../auth/auth.module';
+
 // ─── Domain ports (tokens + interfaces) ──────────────────────────────────────
 import { CONFIG_RESOLVER } from './domain/ports/i-config-resolver';
 import {
@@ -60,8 +68,13 @@ import { AuditConfiguracionHandler } from './application/event-handlers/audit-co
 import { LeerConfigUseCase } from './application/use-cases/leer-config.use-case';
 import { ActualizarConfigUseCase } from './application/use-cases/actualizar-config.use-case';
 
+// ─── Interface — controller (PR5) ────────────────────────────────────────────
+import { ConfiguracionController } from './interface/controllers/configuracion.controller';
+
 @Module({
+  imports: [AuthModule],
   exports: [CONFIG_RESOLVER],
+  controllers: [ConfiguracionController],
   providers: [
     // ─── Resolver cross-DB (PR2) ────────────────────────────────────────────
     {
