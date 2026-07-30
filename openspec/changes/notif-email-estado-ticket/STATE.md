@@ -285,3 +285,62 @@ Ronda 3 de jueces: los 5 fixes de Ronda 2 quedaron verificados correctos (ambos 
 
 ### Veredicto
 **Judgment Day PR2 — APROBADO** tras Ronda 3: cero CRITICAL, cero real WARNING pendientes. Siguiente: PR3 (handler + listener + wiring).
+
+---
+
+## Apply Progress — PR3 (Handler puro + listener + wiring parcial) — 2026-07-30
+
+**Status: DONE.** Tasks 3.1–3.9 completas (RED→GREEN estricto). Branch `notif-email-estado-ticket-pr3` (encadenada sobre PR2, que ya pasó Judgment Day). Sin push/PR (gateado por usuario).
+
+### Tasks completadas
+- 3.1-3.4 RED → 3.5 GREEN: `NotificarCambioEstadoHandler` (application, PURO — sin decorators NestJS). `handle(event)` NUNCA throw:
+  - estado no-clave ⇒ `{status:'skipped'}`, `resolver`/`emailSender` NO llamados.
+  - resolver falla (huérfano/sin email) ⇒ `{status:'no-email', motivo, solicitanteId, ticketId}`.
+  - `emailSender.send` falla ⇒ `{status:'send-failed', destinatarioEnmascarado, causa, ticketId}` (usa `EmailError.destinatarioEnmascarado`/`.causa`, ya enmascarados desde PR2 Judgment Day).
+  - camino feliz ⇒ `{status:'sent', destinatarioEnmascarado, ticketId}`.
+- 3.6 RED → 3.7 GREEN: `NotificarCambioEstadoListener` (`@Injectable()` + `@OnEvent(TICKET_ESTADO_CAMBIADO)`), delega 100% en el handler y mapea el outcome a nivel de log: `skipped`→sin log, `no-email`→`logger.warn`, `send-failed`→`logger.error`, `sent`→`logger.log`. Nunca llama `.value()` sobre ningún `Email` — solo usa `destinatarioEnmascarado`/`motivo`/`causa`, ya strings seguros de loguear.
+- 3.8: wire en `tickets.module.ts` — `SOLICITANTE_EMAIL_RESOLVER`→`SolicitanteEmailResolver` (`useClass`), `EMAIL_SENDER`→factory con fallback (ver deviación abajo), `NotificarCambioEstadoHandler` (`useFactory` con los 2 ports inyectados), `NotificarCambioEstadoListener` (clase provider, sin `exports` — el `DiscoveryService` de `@nestjs/event-emitter` la detecta igual). Verificado: DI graph resuelve completo.
+- 3.9 Verify: evidencia real abajo.
+
+### Desviación de diseño (documentada, no silenciosa) — EMAIL_SENDER wiring
+`design.md` §7 y `email-config.ts` establecen que la config SMTP se valida AL BOOTSTRAP y aborta el arranque si falta (Requirement 7 nota infra, D7) — `NodemailerEmailSender.fromEnv()` sigue lanzando exactamente así, sin cambios, cuando se invoca directamente.
+
+**Problema encontrado al implementar 3.8:** NestJS instancia TODOS los providers de un módulo de forma EAGER durante `moduleRef.compile()`/`.init()` (confirmado empíricamente, no solo supuesto — mismo comportamiento que ya forzó el fallback `DATABASE_URL_MASTER ?? ''` de `PrismaService` en PR previo). Este entorno de test/CI **no tiene `SMTP_*` configurado** (confirmado: `node -e "console.log(!!process.env.SMTP_HOST)"` → `false`, y `vitest.config.ts` no carga `dotenv`). Si `EMAIL_SENDER` se hubiera cableado como `useFactory: () => NodemailerEmailSender.fromEnv()` directo, los siguientes tests YA EXISTENTES y verdes se habrían roto (verificado antes y después del fix):
+- `tickets.module.wiring.spec.ts`, `equipos.module.spec.ts`, `compras.module.spec.ts`, `reparaciones.module.wiring.spec.ts`, `app.module.spec.ts` (todos bootstrapean el grafo de DI completo de `TicketsModule` sin SMTP).
+
+**Fix aplicado:** nueva clase `SmtpUnavailableEmailSender implements EmailSenderPort` (`tickets/infrastructure/email/smtp-unavailable-email-sender.ts`, con spec RED→GREEN propio). El `useFactory` de `EMAIL_SENDER` en `tickets.module.ts` envuelve `NodemailerEmailSender.fromEnv()` en `try/catch`: si lanza (SMTP no configurado), loguea un WARN vía `Logger('TicketsModule')` y retorna `SmtpUnavailableEmailSender` en su lugar — un sender que NUNCA lanza y siempre resuelve `Result.fail(EmailError)` en el primer `send()` real, con la causa de config preservada (enmascarada). Efecto: el arranque real en producción con `SMTP_*` presente construye `NodemailerEmailSender` normalmente (comportamiento sin cambios); un arranque de test/dev sin SMTP configurado NO aborta el DI graph, y el fallo de notificación queda visible en logs recién en el primer intento de envío real — consistente con R5/R6 (el email nunca es parte del camino crítico de la transición).
+Test agregado a `tickets.module.wiring.spec.ts`: bootstrapea `SharedModule + TicketsModule` sin SMTP y confirma que `EMAIL_SENDER`/`SOLICITANTE_EMAIL_RESOLVER`/`NotificarCambioEstadoHandler`/`NotificarCambioEstadoListener` resuelven sin excepción.
+
+### Limitación conocida (no bloquea PR3, documentada para PR4/futuro)
+El handler construye el `EmailMessage` (`body: {type:'template', name:'cambio-estado', data:{...}}`) solo con los campos disponibles en `TicketEstadoCambiado` (`ticketId`, `tipoCodigo`, `estadoAnteriorCodigo`, `estadoNuevoCodigo`) — el evento, por diseño (D4), NO carga `numero`/`tituloTicket` del ticket (los templates `.hbs` de PR2 sí los referencian). Esos dos placeholders renderizan vacíos hoy. Task 3.4 ya anticipaba esto ("parcial — sin use case real"): la forma completa del evento y su consumo real recién se ejercitan en PR4 (puntos de publicación). Si se necesita enriquecer el email con número/título, es un cambio de infraestructura aislado al handler o al evento — no bloquea ningún requirement de PR3 (R1/R4/R5, que solo exigen el contrato de outcomes).
+
+### Archivos creados
+- `backend/src/tickets/application/event-handlers/notificar-cambio-estado.handler.ts` (+ `.spec.ts`)
+- `backend/src/tickets/infrastructure/events/notificar-cambio-estado.listener.ts` (+ `.spec.ts`)
+- `backend/src/tickets/infrastructure/email/smtp-unavailable-email-sender.ts` (+ `.spec.ts`) — deviación documentada arriba
+
+### Archivos modificados
+- `backend/src/tickets/tickets.module.ts` (+providers `SOLICITANTE_EMAIL_RESOLVER`, `EMAIL_SENDER`, `NotificarCambioEstadoHandler`, `NotificarCambioEstadoListener`)
+- `backend/src/tickets/tickets.module.wiring.spec.ts` (+1 test de resolución DI para los 4 tokens/clases nuevos)
+- `openspec/changes/notif-email-estado-ticket/tasks.md` (3.1–3.9 marcadas)
+
+### No tocado (correcto, fuera de scope PR3)
+`transicionar-estado.use-case.ts`, `crear-observacion.use-case.ts`, DTOs, controllers — PR4. `DOMAIN_EVENT_PUBLISHER` NO se inyectó en ningún use case (eso es PR4); el listener es un SUSCRIPTOR, no necesita el publisher.
+
+### Evidencia real (backend/, 2026-07-30)
+`corepack pnpm test` (== `vitest run`):
+```
+Test Files  160 passed | 1 skipped (161)
+     Tests  2117 passed | 2 skipped (2119)
+  Duration  175.38s
+```
+(antes de PR3: 158 files / 2105 tests — PR3 agrega 3 archivos de test nuevos + 14 tests: 4 handler, 6 listener, 3 smtp-unavailable-sender, 1 wiring nuevo.)
+
+`corepack pnpm lint` (== `eslint "src/**/*.ts"`): exit 0, sin output.
+`corepack pnpm exec tsc --noEmit -p tsconfig.json`: exit 0, sin output.
+
+### Git
+Branch `notif-email-estado-ticket-pr3` (creada desde `notif-email-estado-ticket-pr2` local, que ya incluye los fixes de Judgment Day Rondas 1-3). Commit conventional pendiente de esta sesión, sin Co-Authored-By. **Sin push, sin PR** — gateado por el usuario.
+
+### Cómo retomar
+Decidir: (a) aprobar PR3 → seguir con PR4 (puntos de publicación + reestructura `CrearObservacionUseCase` + DTOs/controllers + anti-regresión, mayor riesgo); (b) correr Judgment Day sobre PR3 antes de avanzar (mismo patrón que PR2); (c) pedir ajustes sobre PR3.

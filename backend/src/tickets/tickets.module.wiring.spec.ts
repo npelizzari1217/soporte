@@ -26,6 +26,11 @@ import { CrearTicketUseCase } from './application/use-cases/crear-ticket.use-cas
 import { ListarTicketsUseCase } from './application/use-cases/listar-tickets.use-case';
 import { ResolverCicloActivoParaCreacion } from './application/services/resolver-ciclo-activo.service';
 import { CICLO_CLIENTE_REPOSITORY } from './domain/ports/i-ciclo-cliente.repository';
+import { EMAIL_SENDER } from './domain/ports/i-email-sender.port';
+import { SOLICITANTE_EMAIL_RESOLVER } from './domain/ports/i-solicitante-email.resolver';
+import { SolicitanteEmailResolver } from './infrastructure/persistence/prisma/solicitante-email.resolver';
+import { NotificarCambioEstadoHandler } from './application/event-handlers/notificar-cambio-estado.handler';
+import { NotificarCambioEstadoListener } from './infrastructure/events/notificar-cambio-estado.listener';
 
 describe('TicketsModule bootstrap (Fase 4, PR2 — R2 DI wiring regression guard)', () => {
   it('compila sin UnknownDependenciesException y resuelve el resolver de ciclo activo por DI', async () => {
@@ -71,6 +76,31 @@ describe('TicketsModule bootstrap (Fase 4, PR2 — R2 DI wiring regression guard
     const cicloRepoInjectado = (listarTicketsUseCase as unknown as { cicloClienteRepo: unknown })
       .cicloClienteRepo;
     expect(cicloRepoInjectado).toBe(moduleRef.get(CICLO_CLIENTE_REPOSITORY));
+
+    await moduleRef.close();
+  });
+
+  // PR3 (notif-email-estado-ticket, task 3.8): EMAIL_SENDER/SOLICITANTE_EMAIL_RESOLVER
+  // + NotificarCambioEstadoHandler/Listener wireados. Este entorno de test NO tiene
+  // SMTP_* configurado (mismo entorno que ya tolera DATABASE_URL_MASTER ausente para
+  // PrismaService) — el useFactory de EMAIL_SENDER debe capturar ese fallo de config
+  // y NO abortar compile()/init() (ver SmtpUnavailableEmailSender, deviación
+  // documentada en STATE.md Apply Progress PR3).
+  it('resuelve EMAIL_SENDER/SOLICITANTE_EMAIL_RESOLVER y el handler/listener de notificación sin SMTP configurado', async () => {
+    const moduleRef = await Test.createTestingModule({
+      imports: [SharedModule, TicketsModule],
+    }).compile();
+
+    await moduleRef.init();
+
+    expect(moduleRef.get(EMAIL_SENDER)).toBeDefined();
+    expect(moduleRef.get(SOLICITANTE_EMAIL_RESOLVER)).toBeInstanceOf(SolicitanteEmailResolver);
+    expect(moduleRef.get(NotificarCambioEstadoHandler)).toBeInstanceOf(
+      NotificarCambioEstadoHandler,
+    );
+    expect(moduleRef.get(NotificarCambioEstadoListener)).toBeInstanceOf(
+      NotificarCambioEstadoListener,
+    );
 
     await moduleRef.close();
   });

@@ -63,15 +63,15 @@ Cada PR: verificación propia (`pnpm test`/`lint`/`tsc --noEmit`), inicio/fin cl
 
 ## PR 3 — Handler puro + listener + wiring parcial
 
-- [ ] 3.1 RED: `NotificarCambioEstadoHandler.handle()` — estado no-clave ⇒ outcome `skipped`, `send` NO llamado (R1/R2 filtro no-clave)
-- [ ] 3.2 RED: resolver falla (huérfano / sin email) ⇒ outcome `no-email`, sin throw (R4 Scenarios 1-2)
-- [ ] 3.3 RED: `emailSender.send` falla ⇒ outcome `send-failed`, sin throw (R5 Scenario "SMTP falla")
-- [ ] 3.4 RED: camino feliz ⇒ outcome `sent` (R2 Scenario "dispara email", parcial — sin use case real)
-- [ ] 3.5 GREEN: crear `tickets/application/event-handlers/notificar-cambio-estado.handler.ts`
-- [ ] 3.6 RED: `NotificarCambioEstadoListener` (`@OnEvent`) delega y loguea outcome (WARN/ERROR), sin exponer email en claro (R4/R5 logging)
-- [ ] 3.7 GREEN: crear `tickets/infrastructure/events/notificar-cambio-estado.listener.ts`
-- [ ] 3.8 Wire providers en `tickets.module.ts`: `EMAIL_SENDER`, `SOLICITANTE_EMAIL_RESOLVER`, `NotificarCambioEstadoHandler`, `NotificarCambioEstadoListener`
-- [ ] 3.9 Verify: pegar salida real `pnpm test` / `pnpm lint` / `tsc --noEmit`
+- [x] 3.1 RED: `NotificarCambioEstadoHandler.handle()` — estado no-clave ⇒ outcome `skipped`, `send` NO llamado (R1/R2 filtro no-clave)
+- [x] 3.2 RED: resolver falla (huérfano / sin email) ⇒ outcome `no-email`, sin throw (R4 Scenarios 1-2)
+- [x] 3.3 RED: `emailSender.send` falla ⇒ outcome `send-failed`, sin throw (R5 Scenario "SMTP falla")
+- [x] 3.4 RED: camino feliz ⇒ outcome `sent` (R2 Scenario "dispara email", parcial — sin use case real)
+- [x] 3.5 GREEN: crear `tickets/application/event-handlers/notificar-cambio-estado.handler.ts`
+- [x] 3.6 RED: `NotificarCambioEstadoListener` (`@OnEvent`) delega y loguea outcome (WARN/ERROR), sin exponer email en claro (R4/R5 logging)
+- [x] 3.7 GREEN: crear `tickets/infrastructure/events/notificar-cambio-estado.listener.ts`
+- [x] 3.8 Wire providers en `tickets.module.ts`: `EMAIL_SENDER`, `SOLICITANTE_EMAIL_RESOLVER`, `NotificarCambioEstadoHandler`, `NotificarCambioEstadoListener` — ver deviación documentada (SmtpUnavailableEmailSender) en STATE.md Apply Progress PR3
+- [x] 3.9 Verify: pegar salida real `pnpm test` / `pnpm lint` / `tsc --noEmit` — ver STATE.md Apply Progress PR3
 
 ## PR 4 — Puntos de publicación + DTOs/controllers + anti-regresión
 

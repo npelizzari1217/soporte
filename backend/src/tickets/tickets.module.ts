@@ -21,7 +21,7 @@
  *
  * Tarea: 3.E.2
  */
-import { Module } from '@nestjs/common';
+import { Logger, Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 
 // ─── Domain ports (tokens + interfaces) ──────────────────────────────────────
@@ -53,6 +53,11 @@ import {
   CICLO_CLIENTE_REPOSITORY,
   ICicloClienteRepository,
 } from './domain/ports/i-ciclo-cliente.repository';
+import { EMAIL_SENDER, EmailSenderPort } from './domain/ports/i-email-sender.port';
+import {
+  SOLICITANTE_EMAIL_RESOLVER,
+  ISolicitanteEmailResolver,
+} from './domain/ports/i-solicitante-email.resolver';
 
 // ─── Infrastructure repositories ──────────────────────────────────────────────
 import { PrismaTicketRepository } from './infrastructure/persistence/prisma/prisma-ticket.repository';
@@ -65,6 +70,10 @@ import { PrismaTipoOperacionRepository } from './infrastructure/persistence/pris
 import { UsuarioMasterChecker } from './infrastructure/persistence/prisma/usuario-master.checker';
 import { PrismaPrioridadRepository } from './infrastructure/persistence/prisma/prisma-prioridad.repository';
 import { PrismaCicloClienteRepository } from './infrastructure/persistence/prisma/prisma-ciclo-cliente.repository';
+import { SolicitanteEmailResolver } from './infrastructure/persistence/prisma/solicitante-email.resolver';
+import { NodemailerEmailSender } from './infrastructure/email/nodemailer-email-sender.adapter';
+import { SmtpUnavailableEmailSender } from './infrastructure/email/smtp-unavailable-email-sender';
+import { NotificarCambioEstadoListener } from './infrastructure/events/notificar-cambio-estado.listener';
 
 // ─── Domain services ──────────────────────────────────────────────────────────
 import { NumeradorTicket } from './domain/services/numerador-ticket.service';
@@ -95,6 +104,7 @@ import { EditarTicketUseCase } from './application/use-cases/editar-ticket.use-c
 import { EliminarTicketUseCase } from './application/use-cases/eliminar-ticket.use-case';
 import { CrearObservacionUseCase } from './application/use-cases/crear-observacion.use-case';
 import { CrearComentarioUseCase } from './application/use-cases/crear-comentario.use-case';
+import { NotificarCambioEstadoHandler } from './application/event-handlers/notificar-cambio-estado.handler';
 
 // ─── Guards ───────────────────────────────────────────────────────────────────
 import { RolesGuard } from '../auth/infrastructure/guards/roles.guard';
@@ -445,6 +455,68 @@ import { ComentariosController } from './interface/controllers/comentarios.contr
     RolesGuard,
     PermissionsGuard,
     TenantGuard,
+
+    // ─── Notificaciones por email al cambiar el estado (PR3, notif-email-estado-ticket) ──
+
+    // SOLICITANTE_EMAIL_RESOLVER: usa PrismaService (master) — mismo patrón que
+    // USUARIO_MASTER_CHECKER, SIN TenantContext (el listener async puede correr
+    // fuera del ciclo request/response).
+    {
+      provide: SOLICITANTE_EMAIL_RESOLVER,
+      useClass: SolicitanteEmailResolver,
+    },
+
+    // EMAIL_SENDER: NodemailerEmailSender.fromEnv() valida la config SMTP y
+    // LANZA si falta (D7, Requirement 7 nota infra — por diseño, la app NO
+    // debe arrancar con config SMTP incompleta en producción real).
+    //
+    // DEVIACIÓN DOCUMENTADA (ver STATE.md, Apply Progress PR3): ese throw NO
+    // puede propagarse sin control desde este useFactory, porque NestJS
+    // instancia TODOS los providers de forma EAGER durante
+    // moduleRef.compile()/.init() (confirmado empíricamente — mismo motivo
+    // por el que PrismaService usa `DATABASE_URL_MASTER ?? ''` en vez de
+    // lanzar). Varios tests de wiring YA EXISTENTES (equipos.module.spec,
+    // compras.module.spec, reparaciones.module.wiring.spec,
+    // tickets.module.wiring.spec, app.module.spec) bootstrapean el grafo de
+    // DI completo de TicketsModule SIN `SMTP_*` configurado — si este
+    // useFactory lanzara, esos tests (hoy verdes) romperían.
+    //
+    // Se captura el error de config y se sustituye por
+    // SmtpUnavailableEmailSender: NUNCA lanza, siempre falla explícito
+    // (Result.fail) en el primer send() real, logueado como WARN acá mismo
+    // para que quede visible en el arranque real si faltara config en un
+    // entorno donde SÍ se espera SMTP (staging/producción).
+    {
+      provide: EMAIL_SENDER,
+      useFactory: (): EmailSenderPort => {
+        try {
+          return NodemailerEmailSender.fromEnv();
+        } catch (err) {
+          const motivo = err instanceof Error ? err.message : 'Configuración SMTP inválida';
+          new Logger('TicketsModule').warn(
+            `EMAIL_SENDER: SMTP no configurado al bootstrap (${motivo}). ` +
+              `El envío de emails de notificación fallará con Result.fail hasta que se configure.`,
+          );
+          return new SmtpUnavailableEmailSender(motivo);
+        }
+      },
+    },
+
+    // NotificarCambioEstadoHandler: plain class (application, sin decorators
+    // NestJS) — instanciada via useFactory con los 2 ports (D2).
+    {
+      provide: NotificarCambioEstadoHandler,
+      useFactory: (
+        resolver: ISolicitanteEmailResolver,
+        emailSender: EmailSenderPort,
+      ): NotificarCambioEstadoHandler => new NotificarCambioEstadoHandler(resolver, emailSender),
+      inject: [SOLICITANTE_EMAIL_RESOLVER, EMAIL_SENDER],
+    },
+
+    // NotificarCambioEstadoListener: clase provider `@Injectable()`/`@OnEvent`
+    // para que el `DiscoveryService` de @nestjs/event-emitter la detecte y
+    // suscriba automáticamente al bootstrap (no requiere `exports`).
+    NotificarCambioEstadoListener,
   ],
 })
 export class TicketsModule {}
