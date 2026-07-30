@@ -97,7 +97,9 @@ describe('NotificarCambioEstadoListener', () => {
     const [message] = warnSpy.mock.calls[0];
     expect(message).toContain('ticket-1');
     expect(message).toContain('solicitante-1');
-    expect(message).not.toMatch(/[\w.+-]+@[\w-]+\.[\w.-]+/);
+    // Red de seguridad "sin email en claro": mismo patrón que la producción
+    // (maskEmailsInText), incluyendo dominios de una etiqueta tipo user@localhost.
+    expect(message).not.toMatch(/[\w.+-]+@[\w-]+(?:\.[\w-]+)*/);
   });
 
   it('outcome "send-failed" loguea ERROR con destinatario enmascarado, sin email en claro', async () => {
