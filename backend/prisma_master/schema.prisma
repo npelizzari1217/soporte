@@ -215,6 +215,9 @@ model UsuariosRoles {
 // Unicidad (categoria, clave): PARTIAL UNIQUE INDEX (WHERE deleted_at IS NULL)
 // via raw SQL en la migración — Prisma no expresa partial unique (Dz9, mismo
 // patrón que Cliente.cuit). Lookups por findFirst, NUNCA findUnique.
+// CHECK (es_secreto=false OR iv/auth_tag NOT NULL): también raw SQL en la
+// migración (Prisma no expresa CHECK constraints) — no lo pierdas en un
+// futuro `prisma migrate dev`, hay que re-agregarlo a mano en la migración generada.
 
 model ConfiguracionRuntime {
   id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid

@@ -19,6 +19,13 @@
 -- es_secreto=true DEBE tener iv/auth_tag NOT NULL — sin este guard el schema
 -- permitiría persistir un "secreto" sin cifrar. Parte de la propia CREATE
 -- TABLE (idempotente vía el mismo IF NOT EXISTS de la tabla).
+--
+-- NOTA de idempotencia (Judgment Day PR1 Ronda 2, espejo del aviso en la
+-- migración master): `CREATE TABLE IF NOT EXISTS` es un no-op si la tabla YA
+-- existe en el tenant — NO agrega el CHECK a una tenant DB que corrió esta
+-- migración pre-fix. Cada tenant DB debe verificarse a mano (`pg_constraint`)
+-- y, si falta, recrear la tabla o agregar el CHECK vía `ALTER TABLE ... ADD
+-- CONSTRAINT` manual.
 
 -- ─── CreateTable: configuracion_runtime ──────────────────────────────────────
 
@@ -42,6 +49,18 @@ CREATE TABLE IF NOT EXISTS "configuracion_runtime" (
 );
 
 -- ─── CreateTable: audit_entries ──────────────────────────────────────────────
+--
+-- CONTRATO DE SECRETOS EN AUDIT (Judgment Day PR1 Ronda 2, forward-risk —
+-- REQUISITO DURO para PR3, ver design Dz7 — espejo EXACTO del contrato
+-- documentado en la migración master homónima): esta tabla NO tiene
+-- iv/auth_tag. Para filas con es_secreto=true, "valor_anterior"/"valor_nuevo"
+-- DEBEN guardar el valor ENMASCARADO (ej. "***"), NUNCA el secreto en claro
+-- NI cifrado. Hoy (PR1) no existe writer que inserte acá (es PR3); este
+-- comentario es el contrato autoritativo que ese writer DEBE cumplir.
+-- Deliberadamente SIN CHECK de DB: el enmascarado válido ES un string NOT
+-- NULL, así que un guard "es_secreto ⇒ NULL" rompería el masking en vez de
+-- exigirlo. Verificación real: Judgment Day de PR3 (cero plaintext de
+-- secreto en el audit).
 
 CREATE TABLE IF NOT EXISTS "audit_entries" (
     "id"             UUID NOT NULL DEFAULT gen_random_uuid(),

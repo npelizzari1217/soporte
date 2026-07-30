@@ -27,6 +27,15 @@
 -- parte de la propia CREATE TABLE (no una migración ALTER separada) para
 -- mantenerlo idempotente vía el mismo `IF NOT EXISTS` de la tabla.
 --
+-- NOTA de idempotencia (Judgment Day PR1 Ronda 2): `CREATE TABLE IF NOT
+-- EXISTS` es un no-op si la tabla YA existe — NO agrega el CHECK a una tabla
+-- creada por una corrida PREVIA de esta misma migración (pre-fix, sin el
+-- CHECK). Cualquier DB que haya corrido esta migración ANTES de que este
+-- guard se agregara debe verificarse a mano (`\d configuracion_runtime` /
+-- consultar `pg_constraint`) y, si falta, recrear la tabla o agregar el
+-- CHECK vía `ALTER TABLE ... ADD CONSTRAINT` manual — este archivo por sí
+-- solo NO lo corrige retroactivamente.
+--
 -- audit_entries.actor_id: SIN FK a "usuarios" — ver nota en su CREATE TABLE
 -- más abajo (intencional, espeja tenant).
 
@@ -59,6 +68,21 @@ CREATE TABLE IF NOT EXISTS "configuracion_runtime" (
 -- FK física). Se prioriza el mismo DDL/mismo modelo Prisma en ambos schemas
 -- por sobre la FK que master sí podría tener. No agregar la FK acá sin
 -- también resolver cómo el espejo tenant la reemplazaría.
+--
+-- CONTRATO DE SECRETOS EN AUDIT (Judgment Day PR1 Ronda 2, forward-risk —
+-- REQUISITO DURO para PR3, ver design Dz7): a diferencia de
+-- configuracion_runtime, esta tabla NO tiene columnas iv/auth_tag. Para filas
+-- con es_secreto=true, "valor_anterior"/"valor_nuevo" DEBEN guardar el valor
+-- ENMASCARADO (ej. "***"), NUNCA el secreto en claro NI cifrado — el audit no
+-- es un vault, es un log. Hoy (PR1) no existe writer que inserte en esta
+-- tabla (es PR3); este comentario es el contrato autoritativo que ese writer
+-- DEBE cumplir. Deliberadamente SIN CHECK de DB que fuerce NULL para
+-- es_secreto=true: el enmascarado válido ES un string NOT NULL (ej. "***"),
+-- así que un guard "es_secreto ⇒ NULL" rompería el masking en vez de
+-- exigirlo — no hay forma barata de expresar "valor enmascarado, no
+-- plaintext" como CHECK de Postgres sin acoplarlo al formato exacto del
+-- masking. La verificación real queda para el Judgment Day de PR3 (cero
+-- plaintext de secreto en el audit).
 
 CREATE TABLE IF NOT EXISTS "audit_entries" (
     "id"             UUID NOT NULL DEFAULT gen_random_uuid(),

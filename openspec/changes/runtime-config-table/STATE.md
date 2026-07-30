@@ -137,3 +137,72 @@ EXIT_CODE=0
 - `fix(crypto): validacion base64 estricta, log crudo en decrypt(), IV unico` (config-encryption-key.ts + adapter.ts + specs)
 
 Sin push, sin PR — branch `runtime-config-table-pr1` gateado por el usuario, igual que Apply Progress PR1.
+
+## Judgment Day — PR1 — fixes Ronda 2
+
+Fix-agent quirúrgico sobre la capa de cifrado + migraciones (branch `runtime-config-table-pr1`, sin push). 6 hallazgos de la ronda de revisión — 5 reales/confirmados (1 REGRESIÓN prioritaria), 1 forward-risk documentado (sin implementar writer, es PR3). Todos resueltos.
+
+### Arreglos aplicados
+
+1. **[MEDIUM real — REGRESIÓN, prioridad] La regex base64 rechazaba una clave válida con whitespace final.** El recipe documentado `openssl rand -base64 32 > key.txt` agrega un `\n` final — una clave VÁLIDA leída de archivo (ej. K8s `secretKeyRef`) era rechazada al bootstrap (boot failure evitable). FIX: `.trim()` sobre el valor crudo de `CONFIG_ENCRYPTION_KEY` ANTES de la regex y del decode, en `checkConfigEncryptionKeyFormat()` (fuente única, ver fix #2) — usado por `validateConfigEncryptionKey()` y `loadKey()` del adapter. Solo recorta whitespace de BORDE: basura intercalada en el medio sigue rechazada.
+   - `backend/src/shared/infrastructure/crypto/config-encryption-key.ts`
+   - `backend/src/shared/infrastructure/crypto/aes-gcm-secret-cipher.adapter.ts`
+   - Specs (+5 tests): `config-encryption-key.spec.ts` (acepta `\n` final, acepta espacios de borde, rechaza basura intercalada), `aes-gcm-secret-cipher.adapter.spec.ts` (encrypt/decrypt con clave `\n` final, encrypt con espacios de borde)
+
+2. **[confirmado A+B] Orden de validación divergente entre los dos validators.** `config-encryption-key.ts` validaba longitud→formato; el adapter validaba formato→longitud — el MISMO input inválido daba dos mensajes/diagnósticos distintos. FIX: extraído `checkConfigEncryptionKeyFormat(raw): {ok:true;key:Buffer} | {ok:false;reason:'missing'|'formato'|'longitud'}` en `config-encryption-key.ts` — predicado ÚNICO con orden FIJO trim→formato→longitud (formato primero). `validateConfigEncryptionKey()` y `loadKey()` del adapter SOLO mapean el resultado a su propio tipo de error (`ConfigEncryptionKeyError` throw / `CifradoError` Result.fail) — ninguno reimplementa el orden. Nota: como `STRICT_BASE64_32_BYTES` ancla el string a 44 caracteres exactos, una clave de 16 u 48 bytes ya falla el chequeo de FORMATO (no llega al chequeo de longitud) — el branch `'longitud'` queda como defensa adicional. Se ajustó el test preexistente de "16 bytes ⇒ /longitud/i" a "⇒ /formato/i" (documentado inline por qué cambió).
+   - `backend/src/shared/infrastructure/crypto/config-encryption-key.ts`
+   - `backend/src/shared/infrastructure/crypto/aes-gcm-secret-cipher.adapter.ts`
+   - Specs (+5 tests): `config-encryption-key.spec.ts` (predicado da `reason='formato'` para 16 y 48 bytes, mismo reason entre ambos, `validateConfigEncryptionKey()` da `/formato/i` para ambos), `aes-gcm-secret-cipher.adapter.spec.ts` (validator y `encrypt()` coinciden en `/formato/i` para 16 y 48 bytes)
+
+3. **[LOW] Test de no-filtrado de secreto en el log de decrypt().** Agregado test que espía `Logger.prototype.error` (`vi.spyOn`, mismo patrón que `notificar-cambio-estado.listener.spec.ts`) en el path de tampering (authTag alterado) y asserta que el string logueado NUNCA contiene el plaintext ni `payload.valor`, y SÍ contiene contenido real de `err.message` (verificado por el prefijo `"decrypt() falló: "` seguido de texto no vacío — el texto exacto de `err.message` lo define node:crypto/OpenSSL y no se hardcodea).
+   - `backend/src/shared/infrastructure/crypto/aes-gcm-secret-cipher.adapter.spec.ts` (+1 test)
+
+4. **[LOW] Comentario del CHECK en schema.prisma.** Agregada una línea junto al comentario existente del partial unique index en el modelo `ConfiguracionRuntime` (ambos schemas), documentando que el `CHECK (es_secreto=false OR iv/auth_tag NOT NULL)` vive como raw SQL en la migración — para que un futuro `prisma migrate dev` no lo pierda silenciosamente.
+   - `backend/prisma_master/schema.prisma`
+   - `backend/prisma_tenant/schema.prisma`
+
+5. **[LOW] Nota de idempotencia del CHECK en las migraciones.** Aclarado en ambas migraciones `add_configuracion_runtime_audit` que `CREATE TABLE IF NOT EXISTS` es un no-op si la tabla YA existe — NO agrega el CHECK a una DB que corrió la migración ANTES de que el guard se agregara (Ronda 1). Esas DBs deben verificarse a mano (`pg_constraint`) y, si falta, recrear la tabla o agregar el CHECK vía `ALTER TABLE ... ADD CONSTRAINT` manual — el archivo de migración por sí solo no lo corrige retroactivamente.
+   - `backend/prisma_master/migrations/20260701000000_add_configuracion_runtime_audit/migration.sql`
+   - `backend/prisma_tenant/migrations/20260701000000_add_configuracion_runtime_audit/migration.sql`
+
+6. **[MEDIUM forward-risk] Contrato de secretos en `audit_entries` — REQUISITO DURO para PR3.** `audit_entries` no tiene `iv`/`auth_tag` (a diferencia de `configuracion_runtime`) y hoy (PR1) no existe writer (es PR3). Documentado EXPLÍCITAMENTE en el `CREATE TABLE audit_entries` de ambas migraciones: para filas `es_secreto=true`, `valor_anterior`/`valor_nuevo` DEBEN guardar el valor ENMASCARADO (ej. `"***"`), NUNCA el secreto en claro NI cifrado — el audit no es un vault, es un log (design Dz7). Deliberadamente SIN CHECK de DB: el valor enmascarado válido ES un string NOT NULL, así que un guard `es_secreto ⇒ NULL` rompería el masking en vez de exigirlo; no hay forma barata de expresar "enmascarado, no plaintext" como CHECK de Postgres sin acoplarlo al formato exacto del masking. Solo doc + este requisito en STATE — NO se implementó el writer (fuera de scope, PR3).
+   - `backend/prisma_master/migrations/20260701000000_add_configuracion_runtime_audit/migration.sql`
+   - `backend/prisma_tenant/migrations/20260701000000_add_configuracion_runtime_audit/migration.sql`
+
+   **REQUISITO DURO PARA PR3** (leer antes de implementar el writer de audit):
+   - El writer de `audit_entries` DEBE enmascarar `valor_anterior`/`valor_nuevo` para toda fila con `es_secreto=true`. Cero excepciones — ni siquiera para debugging.
+   - El Judgment Day de PR3 DEBE incluir una verificación explícita de "cero plaintext de secreto en el audit" (grep/assert sobre el valor persistido, no solo sobre la ruta de código).
+   - Esto es contrato de diseño (Dz7), no una sugerencia — un writer que persista el secreto en claro en `audit_entries` es una vulnerabilidad de exfiltración de datos, no un bug cosmético.
+
+### Diferido a PRs posteriores (NO implementado en esta ronda — fuera de scope)
+
+- **Writer de `audit_entries` con masking real**: pertenece a PR3 (fix #6 documenta el contrato duro que ese writer debe cumplir).
+- **`CHECK (tipo IN (...))`**: pendiente de que se defina el catálogo cerrado de tipos (PR2/PR4) — sin cambios en esta ronda.
+
+### Evidencia real (backend/, corrida serial FOREGROUND, 2026-07-30)
+
+**`corepack pnpm test`** (corrida final, contra el estado exacto commiteado):
+```
+Test Files  164 passed | 1 skipped (165)
+     Tests  2178 passed | 2 skipped (2180)
+  Duration  171.36s
+```
+(vs. baseline 2166 passed de Ronda 1 — +12 tests netos de esta ronda: 3 de trim en `config-encryption-key.spec.ts`, 4 de diagnóstico compartido en `config-encryption-key.spec.ts`, 2 de trim + 2 de diagnóstico compartido + 1 de no-filtrado de log en `aes-gcm-secret-cipher.adapter.spec.ts`. Sin regresiones. Una corrida intermedia falló por un typo de test (`jest.spyOn` en vez de `vi.spyOn` — este proyecto usa Vitest, no Jest); corregido antes de la corrida final reportada acá.)
+
+**`corepack pnpm lint`**:
+```
+$ eslint "src/**/*.ts"
+EXIT_CODE=0
+```
+(sin output, exit 0, sin correcciones necesarias esta ronda).
+
+**`corepack pnpm exec tsc --noEmit -p tsconfig.json`**: exit 0, sin output.
+
+**Test DB — drift**: ningún cambio de esta ronda modifica DDL (solo comentarios SQL/Prisma) — matemáticamente no puede introducir drift de schema. `prisma migrate status --schema=prisma_master/schema.prisma` contra la DB alcanzable desde este shell (`soporte_master`) confirma `Database schema is up to date!` sin warnings de checksum/drift. La verificación equivalente contra `soporte_tenant_test` no pudo correrse por CLI directo en este shell (`DATABASE_URL_TENANT` se resuelve dentro del proceso de Vitest vía `test/setup-env.ts`, no está exportada al shell) — la evidencia indirecta es la suite completa de integración (`prisma-*.integration.spec.ts`, `tenant-schema.integration.spec.ts`, etc.) corriendo en verde contra `soporte_master_test`/`soporte_tenant_test` reales.
+
+### Commits
+
+- `fix(crypto): unificar validacion de CONFIG_ENCRYPTION_KEY con trim y predicado compartido` (config-encryption-key.ts + adapter.ts + specs)
+- `docs(configuracion): documentar CHECK, idempotencia de migracion y contrato de masking en audit` (schema.prisma + migraciones + STATE.md)
+
+Sin push, sin PR — branch `runtime-config-table-pr1` gateado por el usuario, igual que Apply Progress PR1 y Ronda 1.
