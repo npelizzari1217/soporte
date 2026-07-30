@@ -9,18 +9,43 @@
  * auditoría de imports en `leer-config.use-case.spec.ts`, mismo criterio que
  * R7 "adapter no importa cipher/prisma").
  *
+ * Orden de validación (Judgment Day PR4 Ronda 1, arreglo 1 + arreglo 2 —
+ * patrón authenticate→authorize→business del auth-access skill):
+ *   1. `scope.kind` válido (`esScopeKindValido`) ⇒ si no, `InvalidScopeError`
+ *      — fail-CLOSED, nunca cae en global por default (arreglo 2).
+ *   2. Autorización de scope — `global` requiere `actor.esGlobalAdmin`;
+ *      `tenant` requiere `actor.esGlobalAdmin` O ser dueño del tenant
+ *      (`scope.clienteId === actor.clienteId`) — arreglo 1, vale para LEER
+ *      igual que para escribir. Antes de esta ronda, el use case delegaba
+ *      TODO el límite de tenant a un controller (PR5) que todavía no existe
+ *      — cualquier actor podía leer la config de CUALQUIER tenant.
+ *
  * Ref design: §3.3, §10. Ref spec: Requirement 3. Tarea: 4.2-4.4 (PR4).
+ * Ref: STATE.md "Judgment Day — PR4 — fixes Ronda 1".
  */
 import { Result } from '../../../shared/domain/result';
 import { maskIfSecret } from '../../domain/mask-secret';
+import { ActorContext } from '../../domain/actor-context';
+import { esScopeKindValido } from '../../domain/validar-scope';
 import { ConfigScope } from '../../domain/events/configuracion-cambiada.event';
 import { IConfiguracionRepository } from '../../domain/ports/i-configuracion-repository';
-import { InfraConfigError } from '../../domain/errors/config.errors';
+import {
+  InfraConfigError,
+  InvalidScopeError,
+  ScopeGlobalNoAutorizadoError,
+  ScopeTenantNoAutorizadoError,
+} from '../../domain/errors/config.errors';
 
 export interface LeerConfigDto {
   readonly scope: ConfigScope;
   /** Filtro opcional — si se omite, lista TODAS las categorías del scope. */
   readonly categoria?: string;
+  /**
+   * Identidad de autorización del actor (F2 + ownership de tenant — arreglo
+   * 1, Judgment Day PR4 Ronda 1). PR5 DEBE resolverla EXCLUSIVAMENTE del
+   * JWT verificado — ver docblock de `ActorContext`.
+   */
+  readonly actor: ActorContext;
 }
 
 /**
@@ -36,10 +61,36 @@ export interface ConfigLecturaRow {
   readonly esSecreto: boolean;
 }
 
+export type LeerConfigError =
+  | InvalidScopeError
+  | ScopeGlobalNoAutorizadoError
+  | ScopeTenantNoAutorizadoError
+  | InfraConfigError;
+
 export class LeerConfigUseCase {
   constructor(private readonly repo: IConfiguracionRepository) {}
 
-  async execute(dto: LeerConfigDto): Promise<Result<ConfigLecturaRow[], InfraConfigError>> {
+  async execute(dto: LeerConfigDto): Promise<Result<ConfigLecturaRow[], LeerConfigError>> {
+    // 1. Validar scope.kind — fail-closed ante cualquier valor malformado,
+    //    ANTES de autorizar o tocar el repositorio (arreglo 2).
+    if (!esScopeKindValido(dto.scope.kind)) {
+      return Result.fail(new InvalidScopeError(dto.scope.kind));
+    }
+
+    // 2. Autorizar — ownership de tenant + privilegio global (arreglo 1).
+    //    Sin este gate, un actor de tenant podía leer la config de
+    //    CUALQUIER OTRO tenant (o la global) con solo cambiar `scope`.
+    if (dto.scope.kind === 'global') {
+      if (!dto.actor.esGlobalAdmin) {
+        return Result.fail(new ScopeGlobalNoAutorizadoError());
+      }
+    } else {
+      const esPropioTenant = dto.scope.clienteId === dto.actor.clienteId;
+      if (!dto.actor.esGlobalAdmin && !esPropioTenant) {
+        return Result.fail(new ScopeTenantNoAutorizadoError());
+      }
+    }
+
     const result = await this.repo.findAll(dto.scope, dto.categoria);
     if (result.isFail()) {
       return Result.fail(result.getError());
