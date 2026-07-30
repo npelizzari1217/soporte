@@ -281,3 +281,70 @@ Sin push, sin PR — branch `runtime-config-table-pr2` gateado por el usuario, e
 ### Cómo retomar
 
 PR2 cerrado y verde. Próximo work unit (Review Workload Guard, `ask-on-risk`): **PR3 — Audit inmutable** (depende del esquema DB de PR1, ya disponible). Antes de arrancar PR3, leer el **REQUISITO DURO** documentado en "Judgment Day — PR1 — fixes Ronda 2" fix #6: el writer de `audit_entries` DEBE enmascarar `valorAnterior`/`valorNuevo` para toda fila `esSecreto=true` — cero excepciones.
+
+## Judgment Day — PR2 — fixes Ronda 1
+
+Fix-agent quirúrgico sobre el resolver cross-DB + `SmtpConfig` VO (branch `runtime-config-table-pr2`, sin push). 6 hallazgos de la ronda de revisión — 2 WARNING reales (prioridad), 2 confirmados A+B, 1 desviación a documentar, 1 test faltante, 3 arreglos "baratos" agrupados. Todos resueltos.
+
+### Arreglos aplicados
+
+1. **[WARNING real, prioridad] `resolveSmtp` podía hacer THROW con `clienteId` inválido.** `masterClient.cliente.findFirst({where:{id: clienteId}})` con un `clienteId` no-UUID lanza `PrismaClientValidationError` — sin manejo, el reject se propagaba fuera de `resolveSmtp()`, violando el contrato "NUNCA lanza" (el resolver corre en un listener async sin boundary HTTP, mismo contexto que `SolicitanteEmailResolver`). FIX: nuevo error `InfraConfigError` (`code='CONFIG_INFRA_ERROR'`) en `config.errors.ts`, agregado a la unión `ResolveConfigError`. `findTenantRows()` y `findGlobalRows()` envuelven CADA llamada Prisma (master + tenant) en try/catch propio (mismo patrón que `SolicitanteEmailResolver`: catch-all sin interpolar el error crudo del driver, que puede contener detalles de conexión sensibles) y mapean a `Result.fail(InfraConfigError)`.
+   - `backend/src/configuracion/domain/errors/config.errors.ts` (+`InfraConfigError`)
+   - `backend/src/configuracion/infrastructure/persistence/prisma/config-resolver.adapter.ts`
+   - Tests (+3): `clienteId` no-UUID con `findFirst` rechazado, tenant `findMany` rechazado, global `findMany` rechazado — los 3 verifican `resolves.not.toThrow()` y `Result.fail(InfraConfigError)`.
+
+2. **[real, confirmado A+B] El merge caía a global por AUSENCIA de fila, no por valor vacío.** `tenantByClave.get(campo) ?? globalByClave.get(campo)` solo caía a global si el tenant NO tenía fila — una fila de tenant con `valor` vacío/blanco (no-secreto) se tomaba igual y NUNCA caía a una global válida, produciendo `ConfigIncompletaError` cuando debía funcionar (contradice design §3.1: el fallback es sobre el VALOR). FIX: extraído `resolverFilaParaCampo()` — una fila de tenant NO-secreta con `valor.trim().length === 0` se trata como "campo NO cubierto" y cae a la fila global. Las filas secretas (`esSecreto=true`, `valor`=ciphertext) NO aplican esta regla — su corrupción se detecta por separado vía `iv`/`authTag` (fix #6). Los 3 casos ya cubiertos (tenant completo gana, ausencia total cae a global, ni-ni ⇒ `NoConfigError`) siguen verdes sin cambios.
+   - `backend/src/configuracion/infrastructure/persistence/prisma/config-resolver.adapter.ts`
+   - Tests (+3): tenant `host=''` + global completa ⇒ usa global; tenant `host='   '` (solo whitespace) + global completa ⇒ usa global; tenant `host=''` + global también sin `host` ⇒ `ConfigIncompletaError` (no rompe el caso ni-ni).
+
+3. **[LOW, confirmado A+B] `SmtpConfig` VO sin `equals()`/`toString()`.** Faltaba el contrato completo de value-objects (precedente `Email` VO). FIX: `equals(other: SmtpConfig)` compara los 6 campos por valor (incluido `pass` en claro — comparación interna en memoria, no expone nada); `toString()` delega en `toSafeLog()` (mismo patrón que `Email#toString()` → `mask()`) para que la interpolación implícita (template literals, `String(config)`) NUNCA filtre `pass` en claro.
+   - `backend/src/shared/domain/value-objects/smtp-config.vo.ts`
+   - Tests (+8): `equals()` true con los 6 campos iguales, false por cada campo distinto (`it.each`); `toString()`/interpolación implícita/`String(config)` nunca contienen el `pass` en claro y sí el resto de campos + máscara.
+
+4. **[WARNING real, Juez A] Desviación de D5 documentada (solo doc, sin refactor).** El design/proposal D5 dice que la resolución (merge/fallback/descifrado) vive en `application`, pero está en el adapter de infra (`PrismaConfigResolver`). Verificado: sigue EXACTAMENTE el precedente `IConfigResolver` (puerto `domain/ports`) + `PrismaConfigResolver` (adapter `infrastructure/persistence/prisma`), espejo de `ISolicitanteEmailResolver`/`SolicitanteEmailResolver` (aceptado en `notif-email-estado-ticket`, sin capa `application/` propia). Decisión deliberada — NO se refactorizó a `application/` (sería over-engineering contra el precedente ya aceptado en un change hermano). Documentado acá como desviación de D5, sin tocar código.
+
+5. **[test, Juez B] Faltaba el branch cliente inactivo/inexistente.** No había test donde `cliente.findFirst` resuelve `null`. FIX: agregados 2 tests — `findFirst → null` + global completa ⇒ NO se llama `getTenantClient()`, cae a solo-global (`Result.ok`); `findFirst → null` + sin global ⇒ `Result.fail(NoConfigError)`, tampoco se llama `getTenantClient()`. El comportamiento de producción YA era correcto (`if (!cliente) return Result.ok([])`, sin cambios de código) — Aislamiento R9 ahora con cobertura explícita.
+   - `backend/src/configuracion/infrastructure/persistence/prisma/config-resolver.adapter.spec.ts` (+2 tests, sin cambio de código de producción)
+
+6. **[baratos, agrupados] `Promise.all`, fila corrupta con error distinto, rango de puerto.**
+   - **`Promise.all`**: `findTenantRows()` y `findGlobalRows()` son independientes (master + tenant en paralelo) — `resolveSmtp()` ahora hace `const [tenantRowsResult, globalRowsResult] = await Promise.all([...])` en vez de dos `await` secuenciales (hot path de envío de mail).
+   - **Fila corrupta ≠ config incompleta**: una fila `esSecreto=true` con `iv`/`authTag` en `null` mapeaba a `ConfigIncompletaError` (mismo código que "falta campo"), confundiendo corrupción de datos con config de negocio faltante en monitoreo. Nuevo error `ConfigFilaCorruptaError` (`code='CONFIG_FILA_CORRUPTA'`) en `config.errors.ts`, agregado a `ResolveConfigError`. Test dedicado verifica el código distinto y que `decrypt()` NUNCA se llama con datos corruptos.
+   - **Rango de puerto**: `SmtpConfig.readPort()` solo validaba `Number.isFinite` — aceptaba `port=0`, negativos, `1.5` y valores > 65535. FIX: `isValidPort()` exige entero en `1-65535`. Tests con `it.each` para los bordes inválidos (`0`, `-1`, `-25`, `65536`, `100000`, `1.5`) y válidos (`1`, `587`, `65535`).
+   - `backend/src/configuracion/domain/errors/config.errors.ts` (+`ConfigFilaCorruptaError`)
+   - `backend/src/configuracion/infrastructure/persistence/prisma/config-resolver.adapter.ts`
+   - `backend/src/shared/domain/value-objects/smtp-config.vo.ts`
+   - Tests (+7): 1 fila corrupta con código distinguible, 6 de rango de puerto (`it.each` inválidos + válidos).
+
+### Diferido a PRs posteriores (NO implementado en esta ronda — fuera de scope)
+
+- Ninguno — los 6 hallazgos de esta ronda se resolvieron íntegramente dentro de PR2 (no requieren wiring NestJS ni cambios de schema).
+
+### Evidencia real (backend/, corrida serial FOREGROUND, 2026-07-30, contra el estado exacto commiteado)
+
+**`corepack pnpm test`**:
+```
+Test Files  166 passed | 1 skipped (167)
+     Tests  2226 passed | 2 skipped (2228)
+  Duration  172.86s
+```
+(vs. baseline PR2 — 2199 passed — +27 tests netos de esta ronda: 3 de `InfraConfigError` en el resolver, 3 de merge por valor no por presencia de fila, 8 de `equals()`/`toString()` en el VO, 4 de cliente inactivo/inexistente [2 tests reales + variantes], 7 de fila corrupta + rango de puerto. Sin regresiones. El log `ERROR [AesGcmSecretCipher] decrypt() falló: ...` es esperado — pertenece a un test de PR1 que fuerza tampering del `authTag`, no un fallo real.)
+
+**`corepack pnpm lint`**: primera corrida detectó 3 errores `prettier/prettier` (formato) en `config-resolver.adapter.ts` — corregidos con `eslint --fix` (solo reformateo, sin cambios de lógica). Corrida final:
+```
+$ eslint "src/**/*.ts"
+EXIT_CODE=0
+```
+(sin output, exit 0).
+
+**`corepack pnpm exec tsc --noEmit -p tsconfig.json`**: exit 0, sin output.
+
+### Commits
+
+- `fix(configuracion): resolver nunca lanza ante fallo de infra Prisma` (`InfraConfigError` + try/catch en `findTenantRows`/`findGlobalRows`)
+- `fix(configuracion): merge tenant->global por valor, no por presencia de fila` (`resolverFilaParaCampo`)
+- `feat(shared): equals() y toString() enmascarado en SmtpConfig VO`
+- `fix(configuracion): fila corrupta con error distinto de config incompleta + rango de puerto + Promise.all` (`ConfigFilaCorruptaError`, `isValidPort`, resolución paralela)
+- `test(configuracion): cobertura de cliente inactivo/inexistente en el resolver`
+- `docs(configuracion): documentar desviacion D5 y fixes Judgment Day PR2 Ronda 1` (STATE.md)
+
+Sin push, sin PR — branch `runtime-config-table-pr2` gateado por el usuario, igual que Apply Progress PR2.
