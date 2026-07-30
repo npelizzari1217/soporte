@@ -10,16 +10,18 @@
  * `guards.spec.ts`).
  *
  * `NotificarCambioEstadoHandler` es una clase concreta con campos privados
- * (`resolver`/`emailSender`) — un objeto literal `{ handle: vi.fn() }` NO es
- * asignable a ese tipo sin pasar por `unknown` (TS "brands" las clases con
- * miembros privados). En vez de `as unknown as`/`as any` (prohibido, DoD
- * §9), se instancia el handler REAL con stubs tipados de sus 2 ports
- * (`ISolicitanteEmailResolver`/`EmailSenderPort`, interfaces planas) y se
- * espía `handle()` con `vi.spyOn` — cero casts, el listener sigue recibiendo
- * el tipo exacto que declara su constructor.
+ * (`configResolver`/`resolver`/`emailSender`) — un objeto literal
+ * `{ handle: vi.fn() }` NO es asignable a ese tipo sin pasar por `unknown`
+ * (TS "brands" las clases con miembros privados). En vez de
+ * `as unknown as`/`as any` (prohibido, DoD §9), se instancia el handler REAL
+ * con stubs tipados de sus 3 ports (`IConfigResolver`/
+ * `ISolicitanteEmailResolver`/`EmailSenderPort`, interfaces planas — PR6
+ * agregó `IConfigResolver`) y se espía `handle()` con `vi.spyOn` — cero
+ * casts, el listener sigue recibiendo el tipo exacto que declara su
+ * constructor.
  *
  * Ref design: §5 (D3 — el handler retorna outcome, el listener loguea).
- * Ref tasks: PR3 3.6.
+ * Ref tasks: PR3 3.6; PR6 6.11 (case 'no-config').
  */
 import { Logger } from '@nestjs/common';
 import { NotificarCambioEstadoListener } from './notificar-cambio-estado.listener';
@@ -27,6 +29,7 @@ import { NotificarCambioEstadoHandler } from '../../application/event-handlers/n
 import { TicketEstadoCambiado } from '../../domain/events/ticket-estado-cambiado.event';
 import { ISolicitanteEmailResolver } from '../../domain/ports/i-solicitante-email.resolver';
 import { EmailSenderPort } from '../../domain/ports/i-email-sender.port';
+import { IConfigResolver } from '../../../configuracion/domain/ports/i-config-resolver';
 
 function makeEvent(): TicketEstadoCambiado {
   return new TicketEstadoCambiado(
@@ -51,9 +54,10 @@ describe('NotificarCambioEstadoListener', () => {
   let listener: NotificarCambioEstadoListener;
 
   beforeEach(() => {
+    const configResolver: IConfigResolver = { resolveSmtp: vi.fn() };
     const resolver: ISolicitanteEmailResolver = { resolver: vi.fn() };
     const emailSender: EmailSenderPort = { send: vi.fn() };
-    handler = new NotificarCambioEstadoHandler(resolver, emailSender);
+    handler = new NotificarCambioEstadoHandler(configResolver, resolver, emailSender);
     handleSpy = vi.spyOn(handler, 'handle');
     listener = new NotificarCambioEstadoListener(handler);
   });
@@ -82,6 +86,24 @@ describe('NotificarCambioEstadoListener', () => {
     expect(warnSpy).not.toHaveBeenCalled();
     expect(errorSpy).not.toHaveBeenCalled();
     expect(logSpy).not.toHaveBeenCalled();
+  });
+
+  it('outcome "no-config" loguea WARN con código+ticket, sin el secreto (R6, PR6)', async () => {
+    const warnSpy = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    handleSpy.mockResolvedValue({
+      status: 'no-config',
+      motivo: 'Sin config SMTP para el tenant "tenant-1".',
+      codigo: 'NO_CONFIG',
+      ticketId: 'ticket-1',
+    });
+
+    await listener.handleTicketEstadoCambiado(makeEvent());
+
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    const [message] = warnSpy.mock.calls[0];
+    expect(message).toContain('ticket-1');
+    expect(message).toContain('NO_CONFIG');
+    expect(message).toContain('Sin config SMTP');
   });
 
   it('outcome "no-email" loguea WARN con contexto, sin email en claro', async () => {

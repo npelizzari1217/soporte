@@ -77,6 +77,16 @@ export class NotificarCambioEstadoListener {
         // ruido en la mayoría de las transiciones, que NO notifican).
         return;
 
+      case 'no-config':
+        // R6 (runtime-config-table PR6): config SMTP no resoluble (sin fila,
+        // incompleta, o fallo de descifrado) — WARN con código+ticket, NUNCA
+        // el secreto (que ni siquiera llegó a resolverse en este outcome).
+        this.logger.warn(
+          `No se pudo notificar el cambio de estado del ticket "${outcome.ticketId}": ` +
+            `sin config SMTP resoluble (código "${outcome.codigo}"): ${outcome.motivo}.`,
+        );
+        return;
+
       case 'no-email':
         this.logger.warn(
           `No se pudo notificar el cambio de estado del ticket "${outcome.ticketId}": ` +
