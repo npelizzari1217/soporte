@@ -30,8 +30,21 @@ export function maskEmailLike(raw: string): string {
   return `${local.slice(0, 1)}***@${domain}`;
 }
 
-/** Detecta direcciones de email embebidas en texto libre (rechazos SMTP, mensajes de error de una capa inferior, etc.). */
-const EMAIL_IN_TEXT = /[\w.+-]+@[\w-]+\.[\w.-]+/g;
+/**
+ * Detecta direcciones de email embebidas en texto libre (rechazos SMTP,
+ * mensajes de error de una capa inferior, etc.).
+ *
+ * El dominio acepta 1+ etiquetas (`(?:\.[\w-]+)*` — cero o más repeticiones
+ * de un punto seguido de una etiqueta sin puntos) en vez de exigir un punto
+ * literal: `no-reply@localhost` es una dirección real y común en entornos
+ * de test/dev (ver `backend/test/setup-env.ts`, `SMTP_HOST='localhost'`) que
+ * la versión anterior del regex dejaba SIN enmascarar (Judgment Day PR3
+ * Ronda 3, issue 3). Los grupos son disjuntos (la clase inicial no incluye
+ * `.`, y cada repetición exige un `.` literal antes del siguiente tramo) —
+ * sin cuantificadores anidados solapados, así que no hay riesgo de
+ * catastrophic backtracking.
+ */
+const EMAIL_IN_TEXT = /[\w.+-]+@[\w-]+(?:\.[\w-]+)*/g;
 
 /**
  * Enmascara cualquier email en claro EMBEBIDO dentro de un texto arbitrario,
