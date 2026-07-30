@@ -395,3 +395,26 @@ Test Files  159 passed | 1 skipped (160)
 
 ### No tocado (correcto, fuera de scope PR4)
 `transicionar-estado.use-case.ts`, `crear-observacion.use-case.ts`, DTOs, controllers, y el enriquecimiento de `EmailMessage.data` con `numero`/`tituloTicket` (backlog 4.14, decisión de diseño de PR4).
+
+---
+
+## Judgment Day — PR3 — fixes Ronda 2 (2026-07-30)
+
+Ronda 2 de jueces sobre PR3: el fail-fast de Ronda 1 quedó verificado correcto (factory sin try/catch, `SmtpUnavailableEmailSender` eliminado sin refs, `setup-env.ts` confinado a tests y fuera del build). Cero CRITICAL nuevos. Se arreglaron 3 real WARNINGs de cobertura de test + logging.
+
+### Arreglos
+- **1** [confirmado 2 jueces]: `email-config.spec.ts` ahora asserta `toThrow(SmtpConfigError)` **por tipo** (no solo regex del mensaje) — un `throw new Error` genérico ya no pasaría verde.
+- **2** [Juez B, el más agudo]: agregado test de **wiring negativo** en `tickets.module.wiring.spec.ts` — hace `delete process.env.SMTP_HOST` y asserta que `Test.createTestingModule({imports:[SharedModule, TicketsModule]}).compile()` **rechaza con `SmtpConfigError`**, restaurando el env en `finally`. Blinda la regresión del CRITICAL de Ronda 1 (antes el env dummy global hacía que el guard fuera ciego).
+- **3** [Juez A]: el catch de última red del listener ahora enmascara `err.message` con la nueva `maskEmailsInText()` (en `tickets/domain/mask-email-like.ts`) — enmascara emails EMBEBIDOS en texto libre sin mutilar el resto (a diferencia de `maskEmailLike()`, que asume que el string entero es un email). Evita fuga de PII si un bug de capa inferior mete el email crudo en el Error.
+
+### Residuales dejados como INFO (trazados, no arreglados)
+- `main.ts` sin `.catch()`/`process.exit(1)` explícito: el proceso igual muere ante `SmtpConfigError` al bootstrap (unhandled rejection de Node ≥15), pero no de forma prolija. Pre-existente, fuera de PR3.
+- `backend/test/setup-env.ts` fuera del scope de `eslint "src/**"` (archivo trivial).
+- Retry-with-backoff (messaging-notifications regla 4) no implementado: es decisión de diseño D5/D6 ("no revierte la transición"), no de este PR.
+
+### Nota sobre tests de integración (diagnóstico honesto)
+Durante el juicio, correr los 2 jueces en paralelo hizo fallar specs `*.integration.spec.ts` (reparaciones `$transaction`, tickets FK) por pisarse el estado de una DB de test compartida. **Corrida SERIAL única del orquestador: 2117 passed / 2 skipped, TODO verde** — confirmado que eran flakiness de concurrencia, no regresión de PR3 (que no toca reparaciones ni persistencia de tickets).
+
+### Evidencia real (backend/, 2026-07-30, corrida serial)
+`corepack pnpm test`: `Test Files 159 passed | 1 skipped (160)` · `Tests 2117 passed | 2 skipped (2119)`.
+`corepack pnpm lint`: exit 0. `corepack pnpm exec tsc --noEmit -p tsconfig.json`: exit 0.
