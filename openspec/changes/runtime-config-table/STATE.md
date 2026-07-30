@@ -80,3 +80,60 @@ EXIT_CODE=0
 ### Cómo retomar
 
 PR1 cerrado y verde. Decidir con el usuario (Review Workload Guard, `ask-on-risk`): siguiente work unit es **PR2 — Resolver cross-DB + `SmtpConfig` VO** (depende de `ISecretCipher`, ya disponible). Antes de arrancar PR2, considerar resolver la desviación #3 (`.env.example`) manualmente fuera del sandbox de este agente.
+
+## Judgment Day — PR1 — fixes Ronda 1
+
+Fix-agent quirúrgico sobre la capa de cifrado (branch `runtime-config-table-pr1`, sin push). 6 hallazgos de la ronda de revisión — 4 reales confirmados, 1 teórico, 1 suggestion. Todos resueltos.
+
+### Arreglos aplicados
+
+1. **[WARNING real] Validación base64 laxa de la clave.** `Buffer.from(raw,'base64')` ignora silenciosamente caracteres inválidos — una clave malformada con ≥43 chars base64 válidos decodificaba igual a 32 bytes y pasaba el chequeo de solo-longitud. RED: test con clave con basura (`$$$` intercalado) que decodifica a 32 bytes mediante `Buffer.from` pero es formato inválido. GREEN: `STRICT_BASE64_32_BYTES = /^[A-Za-z0-9+/]{43}=$/` en `config-encryption-key.ts`, chequeado en `validateConfigEncryptionKey()` (después del chequeo de longitud, para preservar el mensaje `/longitud/i` de los tests preexistentes) y en `loadKey()` del adapter (antes del chequeo de longitud). Mensaje de error nunca interpola la clave.
+   - `backend/src/shared/infrastructure/crypto/config-encryption-key.ts`
+   - `backend/src/shared/infrastructure/crypto/aes-gcm-secret-cipher.adapter.ts`
+   - Specs: `config-encryption-key.spec.ts` (+2 tests), `aes-gcm-secret-cipher.adapter.spec.ts` (+1 test)
+
+2. **[WARNING real] Faltaba test de IV único (invariante GCM crítica).** Agregado test que cifra el mismo plaintext dos veces y asserta `iv1 !== iv2`, `ciphertext1 !== ciphertext2`, IV de 12 bytes, y que ambos payloads siguen descifrando al plaintext original. `randomBytes(IV_BYTES)` ya garantizaba la invariante — este test la deja cubierta.
+   - `backend/src/shared/infrastructure/crypto/aes-gcm-secret-cipher.adapter.spec.ts` (+1 test)
+
+3. **[WARNING real] CHECK constraint es_secreto→iv/auth_tag NOT NULL.** Agregado `CHECK ((es_secreto = false) OR (iv IS NOT NULL AND auth_tag IS NOT NULL))` a `configuracion_runtime` en ambas migraciones (master + tenant), como parte de la propia `CREATE TABLE IF NOT EXISTS` (idempotente). Verificado con INSERT real: fila `es_secreto=true` con `iv`/`auth_tag` NULL es rechazada por Postgres en ambas DBs; fila `es_secreto=false` con NULL sigue permitida.
+   - `backend/prisma_master/migrations/20260701000000_add_configuracion_runtime_audit/migration.sql`
+   - `backend/prisma_tenant/migrations/20260701000000_add_configuracion_runtime_audit/migration.sql`
+   - **Test DB**: en esta sesión, `soporte_master` NO tenía la migración `20260701000000_add_configuracion_runtime_audit` aplicada ni registrada en `_prisma_migrations` (tablas `configuracion_runtime`/`audit_entries` no existían) — se aplicó formalmente (junto con `20260630000000_set_global_admin_nestor` y `20260701010000_seed_rbac_configuracion_gestionar`, también pendientes) vía `prisma migrate deploy --schema=prisma_master/schema.prisma`. `soporte_tenant_test` SÍ tenía las tablas creadas pero **sin** registro en `_prisma_migrations` (aplicación manual/raw previa, no trackeada) y vacías (0 filas) — se dropearon (`DROP TABLE IF EXISTS ... CASCADE`, sin pérdida de datos) y se re-aplicaron formalmente vía `prisma migrate deploy --schema=prisma_tenant/schema.prisma --config prisma.tenant.config.ts` con `DATABASE_URL_TENANT` apuntando a `soporte_tenant_test`. `prisma migrate status` confirma "Database schema is up to date!" sin drift en ambas DBs tras el fix.
+
+4. **[WARNING teórico] decrypt() catch-all perdía señal.** El catch de `decrypt()` mapeaba toda excepción a `CifradoError` sin loguear la causa cruda (tampering esperado vs. bug real como `payload.iv` undefined eran indistinguibles). GREEN: loguea `err.message`/tipo + stack vía `new Logger(AesGcmSecretCipher.name)` de `@nestjs/common` (infra puede importar el framework directo — mismo precedente que `TenantGuard`/`NotificarCambioEstadoListener`, ver `i-logger.port.ts`) ANTES de mapear a `CifradoError`. Nunca loguea `payload.valor` ni la clave. Contrato `decrypt()` nunca throw / `Result.fail` intacto — verificado en la corrida real (el log de `ERROR [AesGcmSecretCipher] decrypt() falló: Error: Unsupported state or unable to authenticate data` aparece durante el test de tampering, sin abortar la suite).
+   - `backend/src/shared/infrastructure/crypto/aes-gcm-secret-cipher.adapter.ts`
+
+5. **[SUGGESTION] KEY_BYTES duplicado.** Exportado desde `config-encryption-key.ts` (fuente única), importado en el adapter — eliminado el `const KEY_BYTES = 32` duplicado.
+
+6. **[SUGGESTION] Documentar no-FK en audit master.** Comentario agregado en la migración master documentando que `audit_entries.actor_id` sacrifica deliberadamente la FK a `usuarios` (que en master sí existe) para mantener el shape idéntico entre master y tenant (donde la FK cross-DB es imposible).
+   - `backend/prisma_master/migrations/20260701000000_add_configuracion_runtime_audit/migration.sql`
+
+### Diferido a PRs posteriores (NO implementado en esta ronda — fuera de scope)
+
+- **Enmascarado de secretos en el audit `valor_anterior`/`valor_nuevo`**: pertenece al write use case (PR3), que todavía no existe.
+- **`CHECK (tipo IN (...))`**: pendiente de que se defina el catálogo cerrado de tipos (PR2/PR4).
+
+### Evidencia real (backend/, corrida serial FOREGROUND, 2026-07-30)
+
+**`corepack pnpm test`** (corrida final, contra el estado exacto commiteado):
+```
+Test Files  164 passed | 1 skipped (165)
+     Tests  2166 passed | 2 skipped (2168)
+  Duration  172.59s
+```
+(vs. baseline 2162 passed de la sección anterior de este STATE.md — +4 tests netos de esta ronda: 2 de validación de formato base64, 1 de IV único, 1 de encrypt() con clave malformada. Sin regresiones.)
+
+**`corepack pnpm lint`**: 1 error `prettier/prettier` detectado en la primera corrida (line-wrap del `logger.error(...)` en el catch de `decrypt()`), corregido a una sola línea. Corrida final:
+```
+$ eslint "src/**/*.ts"
+EXIT_CODE=0
+```
+
+**`corepack pnpm exec tsc --noEmit -p tsconfig.json`**: exit 0, sin output.
+
+### Commits
+
+- `fix(configuracion): CHECK es_secreto->iv/auth_tag + doc no-FK audit_entries` (migraciones)
+- `fix(crypto): validacion base64 estricta, log crudo en decrypt(), IV unico` (config-encryption-key.ts + adapter.ts + specs)
+
+Sin push, sin PR — branch `runtime-config-table-pr1` gateado por el usuario, igual que Apply Progress PR1.
