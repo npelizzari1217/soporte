@@ -36,5 +36,33 @@ describe('EventEmitterPublisher', () => {
 
       expect(result).toBeUndefined();
     });
+
+    // 4.12 (PR4) — R6 Scenario "`.emit()` no bloquea la respuesta HTTP del
+    // endpoint de transición": con un EventEmitter2 REAL (no mock) y un
+    // listener async deliberadamente lento, publish() debe retornar sin
+    // esperar a que el listener complete. Ref design §8 (tabla testing R6).
+    it('4.12 — con EventEmitter2 REAL y un listener async lento, publish() retorna sin esperar (R6 no bloquea)', async () => {
+      const realEmitter = new EventEmitter2();
+      const publisher = new EventEmitterPublisher(realEmitter);
+      let listenerTerminado = false;
+      realEmitter.on('fake.event.ocurrido', async () => {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        listenerTerminado = true;
+      });
+      const event = new FakeEvent();
+
+      const antes = Date.now();
+      const result = publisher.publish(event);
+      const transcurrido = Date.now() - antes;
+
+      // publish() retornó sincrónicamente — no esperó los 50ms del listener.
+      expect(result).toBeUndefined();
+      expect(transcurrido).toBeLessThan(20);
+      expect(listenerTerminado).toBe(false);
+
+      // El listener eventualmente completa (fire-and-forget, no se pierde).
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      expect(listenerTerminado).toBe(true);
+    });
   });
 });
