@@ -94,5 +94,36 @@ describe('AuditEntry', () => {
 
       expect(entry.props.valorNuevo).toBe('new.smtp.com');
     });
+
+    it('mutar el Date devuelto por createdAt NO corrompe el timestamp de la entidad (Ronda 2)', () => {
+      const createdAtPersistido = new Date('2020-01-01T00:00:00.000Z');
+      const entry = AuditEntry.create(PROPS_NO_SECRETA, 'id-fijo', createdAtPersistido);
+
+      entry.createdAt.setFullYear(2099);
+
+      expect(entry.createdAt.getFullYear()).toBe(2020);
+    });
+
+    it('cada lectura de createdAt devuelve una copia fresca (distinta instancia de Date)', () => {
+      const entry = AuditEntry.create(PROPS_NO_SECRETA);
+
+      expect(entry.createdAt).not.toBe(entry.createdAt);
+      expect(entry.createdAt.getTime()).toBe(entry.createdAt.getTime());
+    });
+
+    it('mutar el Date original pasado a create() no afecta la entidad (se guarda el epoch, no la referencia)', () => {
+      const createdAtOriginal = new Date('2020-01-01T00:00:00.000Z');
+      const entry = AuditEntry.create(PROPS_NO_SECRETA, 'id-fijo', createdAtOriginal);
+
+      createdAtOriginal.setFullYear(2099);
+
+      expect(entry.createdAt.getFullYear()).toBe(2020);
+    });
+
+    it('rechaza un createdAt inválido (Invalid Date) en vez de persistir NaN', () => {
+      expect(() => AuditEntry.create(PROPS_NO_SECRETA, 'id-fijo', new Date('no-es-fecha'))).toThrow(
+        /createdAt inválido/,
+      );
+    });
   });
 });
