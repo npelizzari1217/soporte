@@ -18,23 +18,37 @@
  * Ref design: §2 Dz2/Dz3, §6. Ref spec: R2. Tarea: 1.8 (PR1).
  */
 import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { CipherPayload, ISecretCipher } from '../../domain/ports/i-secret-cipher';
 import { CifradoError } from '../../domain/errors/cifrado.errors';
 import { Result } from '../../domain/result';
+import { KEY_BYTES, STRICT_BASE64_32_BYTES } from './config-encryption-key';
 
 const ALGO = 'aes-256-gcm';
 const IV_BYTES = 12; // 96-bit nonce recomendado para GCM
-const KEY_BYTES = 32; // AES-256
 
 @Injectable()
 export class AesGcmSecretCipher implements ISecretCipher {
+  // Infra puede importar `Logger` de `@nestjs/common` directo (mismo
+  // precedente que `NotificarCambioEstadoListener`/`TenantGuard` — solo
+  // `application/` debe pasar por el puerto `ILogger`, ver
+  // shared/domain/ports/i-logger.port.ts).
+  private readonly logger = new Logger(AesGcmSecretCipher.name);
+
   constructor(private readonly env: NodeJS.ProcessEnv = process.env) {}
 
   private loadKey(): Result<Buffer, CifradoError> {
     const raw = this.env.CONFIG_ENCRYPTION_KEY;
     if (!raw) {
       return Result.fail(new CifradoError('CONFIG_ENCRYPTION_KEY ausente.'));
+    }
+    // Formato base64 ESTRICTO antes del chequeo de longitud decodificada:
+    // `Buffer.from(raw,'base64')` ignora silenciosamente basura no-base64 —
+    // una clave malformada puede decodificar "por casualidad" a 32 bytes
+    // (Judgment Day PR1 Ronda 1, WARNING confirmado). Fuente única del
+    // regex/constante en config-encryption-key.ts (fix duplicación KEY_BYTES).
+    if (!STRICT_BASE64_32_BYTES.test(raw)) {
+      return Result.fail(new CifradoError('CONFIG_ENCRYPTION_KEY tiene formato base64 inválido.'));
     }
     const key = Buffer.from(raw, 'base64');
     if (key.length !== KEY_BYTES) {
@@ -78,7 +92,17 @@ export class AesGcmSecretCipher implements ISecretCipher {
         decipher.final(), // lanza si el authTag no valida — capturado acá
       ]);
       return Result.ok(plaintext.toString('utf8'));
-    } catch {
+    } catch (err) {
+      // Logueamos la excepción CRUDA antes de mapearla a CifradoError — sin
+      // esto, tampering (authTag inválido, esperado) y un bug real (ej.
+      // `payload.iv` undefined → TypeError) son indistinguibles desde afuera
+      // (Judgment Day PR1 Ronda 1, WARNING teórico). Solo `err.message`/tipo:
+      // NUNCA `payload.valor` ni la clave (spec R2 — el secreto en claro
+      // nunca sale de memoria, ni siquiera en un log). El contrato
+      // "decrypt() nunca throw / Result.fail" se mantiene — esto es logging,
+      // no re-throw.
+      const raw = err instanceof Error ? err : new Error(String(err));
+      this.logger.error(`decrypt() falló: ${raw.constructor.name}: ${raw.message}`, raw.stack);
       // Clave equivocada, authTag alterado (tampering) o payload corrupto →
       // error tipado sin filtrar detalle crudo del cripto-fallo (spec R2).
       return Result.fail(

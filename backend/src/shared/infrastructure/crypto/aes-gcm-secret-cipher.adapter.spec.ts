@@ -86,5 +86,44 @@ describe('AesGcmSecretCipher', () => {
       expect(result!.isFail()).toBe(true);
       expect(result!.getError()).toBeInstanceOf(CifradoError);
     });
+
+    // WARNING (Judgment Day PR1 Ronda 1, confirmado): Buffer.from(raw,'base64')
+    // ignora silenciosamente basura no-base64 intercalada — una clave
+    // malformada con ≥43 chars base64 válidos decodifica igual a 32 bytes y
+    // hoy pasaría el chequeo de solo-longitud sin que nadie lo note.
+    it('encrypt() con CONFIG_ENCRYPTION_KEY de formato base64 inválido (aunque decodifique a 32 bytes) retorna Result.fail(CifradoError)', () => {
+      const validKey = Buffer.alloc(32, 7).toString('base64');
+      const malformedKey = `${validKey.slice(0, 20)}$$$${validKey.slice(20)}`;
+      expect(Buffer.from(malformedKey, 'base64').length).toBe(32);
+
+      const cipher = new AesGcmSecretCipher(buildEnv({ CONFIG_ENCRYPTION_KEY: malformedKey }));
+
+      const result = cipher.encrypt('valor');
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(CifradoError);
+    });
+  });
+
+  describe('R2 escenario 3 — dos encrypt() del mismo plaintext ⇒ IV y ciphertext únicos (invariante GCM)', () => {
+    it('encrypt() del mismo plaintext dos veces produce IVs distintos, ciphertexts distintos, e IV de 12 bytes', () => {
+      const cipher = new AesGcmSecretCipher(buildEnv());
+      const plaintext = 'mismo-plaintext-cifrado-dos-veces';
+
+      const payload1 = cipher.encrypt(plaintext).getValue();
+      const payload2 = cipher.encrypt(plaintext).getValue();
+
+      // Nonce reuse en AES-GCM rompe la confidencialidad e integridad del
+      // esquema completo — esta es la invariante MÁS crítica a proteger.
+      expect(payload1.iv).not.toBe(payload2.iv);
+      expect(payload1.valor).not.toBe(payload2.valor);
+
+      expect(Buffer.from(payload1.iv, 'base64').length).toBe(12);
+      expect(Buffer.from(payload2.iv, 'base64').length).toBe(12);
+
+      // Ambos deben seguir descifrando correctamente al plaintext original.
+      expect(cipher.decrypt(payload1).getValue()).toBe(plaintext);
+      expect(cipher.decrypt(payload2).getValue()).toBe(plaintext);
+    });
   });
 });

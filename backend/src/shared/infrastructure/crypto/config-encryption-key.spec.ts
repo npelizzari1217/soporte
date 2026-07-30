@@ -55,4 +55,37 @@ describe('validateConfigEncryptionKey()', () => {
       expect((err as Error).message).not.toContain(secretLookingValue);
     }
   });
+
+  // WARNING (Judgment Day PR1 Ronda 1, confirmado): Buffer.from(raw,'base64')
+  // IGNORA silenciosamente caracteres inválidos en vez de rechazarlos. Una
+  // clave malformada (con basura no-base64 intercalada) puede seguir
+  // decodificando a exactamente 32 bytes si tiene ≥43 caracteres base64
+  // válidos — y hoy pasaría la validación sin que nadie lo note.
+  it('lanza ConfigEncryptionKeyError si la clave tiene formato base64 inválido aunque decodifique a 32 bytes', () => {
+    const validKey = Buffer.alloc(32, 7).toString('base64');
+    // Inserta basura no-base64 en el medio. Node ignora "$$$" al decodificar
+    // vía Buffer.from(_, 'base64'), así que el largo decodificado sigue
+    // siendo 32 bytes — la validación de SOLO longitud (bug real) no detecta
+    // esto. Confirmado (pre-fix): Buffer.from(malformed,'base64').length === 32.
+    const malformedKey = `${validKey.slice(0, 20)}$$$${validKey.slice(20)}`;
+    expect(Buffer.from(malformedKey, 'base64').length).toBe(32);
+
+    const env = { CONFIG_ENCRYPTION_KEY: malformedKey } as NodeJS.ProcessEnv;
+
+    expect(() => validateConfigEncryptionKey(env)).toThrow(ConfigEncryptionKeyError);
+    expect(() => validateConfigEncryptionKey(env)).toThrow(/formato/i);
+  });
+
+  it('el mensaje de error de formato inválido NUNCA interpola el valor de la clave', () => {
+    const validKey = Buffer.alloc(32, 7).toString('base64');
+    const malformedKey = `${validKey.slice(0, 20)}$$$${validKey.slice(20)}`;
+    const env = { CONFIG_ENCRYPTION_KEY: malformedKey } as NodeJS.ProcessEnv;
+
+    try {
+      validateConfigEncryptionKey(env);
+      throw new Error('debía lanzar');
+    } catch (err) {
+      expect((err as Error).message).not.toContain(malformedKey);
+    }
+  });
 });
