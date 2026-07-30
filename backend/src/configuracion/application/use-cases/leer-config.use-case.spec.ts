@@ -220,6 +220,37 @@ describe('LeerConfigUseCase', () => {
       expect(result.getError().code).toBe('CONFIG_SCOPE_TENANT_NO_AUTORIZADO');
       expect(repo.findAll).not.toHaveBeenCalled();
     });
+
+    it('CRITICAL (Judgment Day PR4 Ronda 2, Juez B) — actor{clienteId:null} + scope{tenant, clienteId:null} malformado ⇒ rechazado, NUNCA null===null', async () => {
+      const repo = buildRepoStub([]);
+      const useCase = new LeerConfigUseCase(repo);
+      const actorSinTenant: ActorContext = { clienteId: null, esGlobalAdmin: false };
+      // JSON.parse (sin `as any`/`as unknown as`) para simular el scope
+      // malformado que antes bypaseaba el gate vía `null === null`.
+      const scopeMalformado: ConfigScope = JSON.parse('{"kind":"tenant","clienteId":null}');
+
+      const result = await useCase.execute(
+        buildDto({ scope: scopeMalformado, actor: actorSinTenant }),
+      );
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError().code).toBe('CONFIG_SCOPE_TENANT_NO_AUTORIZADO');
+      expect(repo.findAll).not.toHaveBeenCalled();
+    });
+
+    it('scope.clienteId string vacío ⇒ rechazado', async () => {
+      const repo = buildRepoStub([]);
+      const useCase = new LeerConfigUseCase(repo);
+      const actorConClienteIdVacio: ActorContext = { clienteId: '', esGlobalAdmin: false };
+
+      const result = await useCase.execute(
+        buildDto({ scope: { kind: 'tenant', clienteId: '' }, actor: actorConClienteIdVacio }),
+      );
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError().code).toBe('CONFIG_SCOPE_TENANT_NO_AUTORIZADO');
+      expect(repo.findAll).not.toHaveBeenCalled();
+    });
   });
 
   describe('arreglo 2 — fail-open a global por scope.kind no validado (Judgment Day PR4 Ronda 1)', () => {

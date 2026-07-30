@@ -73,7 +73,7 @@ import {
 } from '../../domain/events/configuracion-cambiada.event';
 import { maskIfSecret, SECRET_MASK } from '../../domain/mask-secret';
 import { ActorContext } from '../../domain/actor-context';
-import { esScopeKindValido } from '../../domain/validar-scope';
+import { autorizarScope, esScopeKindValido } from '../../domain/validar-scope';
 import { IConfiguracionRepository } from '../../domain/ports/i-configuracion-repository';
 import { ConfigLecturaRow } from './leer-config.use-case';
 
@@ -129,17 +129,13 @@ export class ActualizarConfigUseCase {
     }
 
     // 2. Autorizar — ownership de tenant + privilegio global (arreglo 1),
-    //    ANTES de la regla de negocio R8 (patrón authenticate→authorize→
-    //    business del auth-access skill).
-    if (dto.scope.kind === 'global') {
-      if (!dto.actor.esGlobalAdmin) {
-        return Result.fail(new ScopeGlobalNoAutorizadoError());
-      }
-    } else {
-      const esPropioTenant = dto.scope.clienteId === dto.actor.clienteId;
-      if (!dto.actor.esGlobalAdmin && !esPropioTenant) {
-        return Result.fail(new ScopeTenantNoAutorizadoError());
-      }
+    //    centralizado en `autorizarScope` (dominio, Judgment Day PR4 Ronda 2
+    //    arreglo 1 CRITICAL + authz-duplicada MEDIUM) — fail-closed, `null`
+    //    NUNCA satisface ownership. ANTES de la regla de negocio R8 (patrón
+    //    authenticate→authorize→business del auth-access skill).
+    const autorizacion = autorizarScope(dto.actor, dto.scope);
+    if (autorizacion.isFail()) {
+      return Result.fail(autorizacion.getError());
     }
 
     // 3. R8 — whitelist nivel B, ANTES de cualquier efecto secundario.
@@ -147,10 +143,15 @@ export class ActualizarConfigUseCase {
       return Result.fail(new CategoriaNoSoportadaError(dto.categoria));
     }
 
-    // 4. Guard del placeholder enmascarado (arreglo 3) — ANTES de cifrar o
-    //    persistir. Un secreto NUNCA puede "actualizarse" al literal que la
-    //    propia lectura devuelve para ocultarlo.
-    if (dto.esSecreto && dto.valor === SECRET_MASK) {
+    // 4. Guard del placeholder enmascarado (arreglo 3, más fix LOW Juez A
+    //    Ronda 2: `.trim()` ANTES de comparar) — ANTES de cifrar o persistir.
+    //    Un secreto NUNCA puede "actualizarse" al literal que la propia
+    //    lectura devuelve para ocultarlo. Sin el `.trim()`, un placeholder
+    //    con espacios (' ******** ' — copy-paste desde un input HTML, o un
+    //    frontend que no recorta el campo) NO calzaba con `=== SECRET_MASK`
+    //    y se cifraba/persistía como si fuera el secreto real, corrompiendo
+    //    el valor legítimo con el literal enmascarado.
+    if (dto.esSecreto && dto.valor.trim() === SECRET_MASK) {
       return Result.fail(new ValorEnmascaradoNoPermitidoError());
     }
 

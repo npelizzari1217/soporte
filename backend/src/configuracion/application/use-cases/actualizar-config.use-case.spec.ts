@@ -384,6 +384,41 @@ describe('ActualizarConfigUseCase', () => {
       expect(result.getError()).toBeInstanceOf(ScopeTenantNoAutorizadoError);
       expect(collaborators.repo.upsert).not.toHaveBeenCalled();
     });
+
+    it('CRITICAL (Judgment Day PR4 Ronda 2, Juez B) — actor{clienteId:null} + scope{tenant, clienteId:null} malformado ⇒ rechazado, NUNCA null===null', async () => {
+      const collaborators = buildCollaborators({});
+      const useCase = buildUseCase(collaborators);
+      const actorSinTenant: ActorContext = { clienteId: null, esGlobalAdmin: false };
+      // JSON.parse (sin `as any`/`as unknown as`) para simular el scope
+      // malformado que antes bypaseaba el gate vía `null === null`.
+      const scopeMalformado: ConfigScope = JSON.parse('{"kind":"tenant","clienteId":null}');
+
+      const result = await useCase.execute(
+        buildDto({ scope: scopeMalformado, actor: actorSinTenant }),
+      );
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(ScopeTenantNoAutorizadoError);
+      expect(result.getError().code).toBe('CONFIG_SCOPE_TENANT_NO_AUTORIZADO');
+      expect(collaborators.repo.findByClave).not.toHaveBeenCalled();
+      expect(collaborators.repo.upsert).not.toHaveBeenCalled();
+      expect(collaborators.cipher.encrypt).not.toHaveBeenCalled();
+      expect(collaborators.publisher.publish).not.toHaveBeenCalled();
+    });
+
+    it('scope.clienteId string vacío ⇒ rechazado', async () => {
+      const collaborators = buildCollaborators({});
+      const useCase = buildUseCase(collaborators);
+      const actorConClienteIdVacio: ActorContext = { clienteId: '', esGlobalAdmin: false };
+
+      const result = await useCase.execute(
+        buildDto({ scope: { kind: 'tenant', clienteId: '' }, actor: actorConClienteIdVacio }),
+      );
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(ScopeTenantNoAutorizadoError);
+      expect(collaborators.repo.upsert).not.toHaveBeenCalled();
+    });
   });
 
   describe('arreglo 2 — fail-open a global por scope.kind no validado (Judgment Day PR4 Ronda 1)', () => {
@@ -442,6 +477,29 @@ describe('ActualizarConfigUseCase', () => {
 
       expect(result.isOk()).toBe(true);
       expect(collaborators.repo.upsert).toHaveBeenCalledTimes(1);
+    });
+
+    it('LOW (Juez A Ronda 2) — placeholder con espacios (" ******** ") también se rechaza vía .trim()', async () => {
+      const collaborators = buildCollaborators({
+        existing: buildPersistedRow({
+          clave: 'pass',
+          valor: 'ciphertext-real-viejo',
+          esSecreto: true,
+        }),
+      });
+      const useCase = buildUseCase(collaborators);
+
+      const result = await useCase.execute(
+        buildDto({ clave: 'pass', esSecreto: true, valor: ` ${SECRET_MASK} ` }),
+      );
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(ValorEnmascaradoNoPermitidoError);
+      expect(result.getError().code).toBe('CONFIG_VALOR_ENMASCARADO_NO_PERMITIDO');
+      expect(collaborators.cipher.encrypt).not.toHaveBeenCalled();
+      expect(collaborators.repo.findByClave).not.toHaveBeenCalled();
+      expect(collaborators.repo.upsert).not.toHaveBeenCalled();
+      expect(collaborators.publisher.publish).not.toHaveBeenCalled();
     });
   });
 });

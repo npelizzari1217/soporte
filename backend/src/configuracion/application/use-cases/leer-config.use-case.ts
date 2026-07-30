@@ -26,7 +26,7 @@
 import { Result } from '../../../shared/domain/result';
 import { maskIfSecret } from '../../domain/mask-secret';
 import { ActorContext } from '../../domain/actor-context';
-import { esScopeKindValido } from '../../domain/validar-scope';
+import { autorizarScope, esScopeKindValido } from '../../domain/validar-scope';
 import { ConfigScope } from '../../domain/events/configuracion-cambiada.event';
 import { IConfiguracionRepository } from '../../domain/ports/i-configuracion-repository';
 import {
@@ -77,18 +77,15 @@ export class LeerConfigUseCase {
       return Result.fail(new InvalidScopeError(dto.scope.kind));
     }
 
-    // 2. Autorizar — ownership de tenant + privilegio global (arreglo 1).
-    //    Sin este gate, un actor de tenant podía leer la config de
-    //    CUALQUIER OTRO tenant (o la global) con solo cambiar `scope`.
-    if (dto.scope.kind === 'global') {
-      if (!dto.actor.esGlobalAdmin) {
-        return Result.fail(new ScopeGlobalNoAutorizadoError());
-      }
-    } else {
-      const esPropioTenant = dto.scope.clienteId === dto.actor.clienteId;
-      if (!dto.actor.esGlobalAdmin && !esPropioTenant) {
-        return Result.fail(new ScopeTenantNoAutorizadoError());
-      }
+    // 2. Autorizar — ownership de tenant + privilegio global (arreglo 1),
+    //    centralizado en `autorizarScope` (dominio, Judgment Day PR4 Ronda 2
+    //    arreglo 1 CRITICAL + authz-duplicada MEDIUM) — fail-closed, `null`
+    //    NUNCA satisface ownership. Sin este gate, un actor de tenant podía
+    //    leer la config de CUALQUIER OTRO tenant (o la global) con solo
+    //    cambiar `scope`.
+    const autorizacion = autorizarScope(dto.actor, dto.scope);
+    if (autorizacion.isFail()) {
+      return Result.fail(autorizacion.getError());
     }
 
     const result = await this.repo.findAll(dto.scope, dto.categoria);
