@@ -10,6 +10,7 @@
  */
 import { SolicitanteEmailResolver } from './solicitante-email.resolver';
 import { PrismaService } from '../../../../shared/infrastructure/persistence/prisma.service';
+import { ResolverEmailError } from '../../../domain/errors/email.errors';
 
 const SOLICITANTE_ID = 'solicitante-uuid-001';
 const CLIENTE_ID = 'cliente-uuid-001';
@@ -27,7 +28,7 @@ describe('SolicitanteEmailResolver', () => {
 
   const mockPrismaService = {
     getMasterClient: vi.fn().mockReturnValue(mockMasterClient),
-  } as unknown as PrismaService;
+  } as PrismaService;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -88,6 +89,17 @@ describe('SolicitanteEmailResolver', () => {
       await expect(resolver.resolver(SOLICITANTE_ID, CLIENTE_ID)).resolves.not.toThrow();
       const result = await resolver.resolver(SOLICITANTE_ID, CLIENTE_ID);
       expect(result.isFail()).toBe(true);
+    });
+
+    it('retorna Result.fail en vez de rechazar la promesa cuando la master DB falla (conexión/timeout)', async () => {
+      mockUsuario.findFirst.mockRejectedValue(new Error('Connection terminated unexpectedly'));
+
+      await expect(resolver.resolver(SOLICITANTE_ID, CLIENTE_ID)).resolves.not.toThrow();
+      const result = await resolver.resolver(SOLICITANTE_ID, CLIENTE_ID);
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(ResolverEmailError);
+      expect(result.getError().code).toBe('INFRAESTRUCTURA_INDISPONIBLE');
     });
   });
 });

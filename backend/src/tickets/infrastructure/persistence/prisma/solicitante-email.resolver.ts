@@ -37,14 +37,29 @@ export class SolicitanteEmailResolver implements ISolicitanteEmailResolver {
     solicitanteId: string,
     clienteId: string,
   ): Promise<Result<Email, ResolverEmailError>> {
-    const row = await this.masterClient.usuario.findFirst({
-      where: {
-        id: solicitanteId,
-        clienteId,
-        deletedAt: null,
-      },
-      select: { email: true },
-    });
+    let row: { email: string | null } | null;
+    try {
+      row = await this.masterClient.usuario.findFirst({
+        where: {
+          id: solicitanteId,
+          clienteId,
+          deletedAt: null,
+        },
+        select: { email: true },
+      });
+    } catch {
+      // Fallo de infraestructura (conexión/timeout/pool caído en la master
+      // DB) — se mapea al límite a un ResolverEmailError tipado en vez de
+      // dejar rechazar la promesa (corre en un listener async, Requirement
+      // 8 "nunca lanza excepción"). No se propaga el mensaje crudo del
+      // driver: puede contener detalles de conexión sensibles.
+      return Result.fail(
+        new ResolverEmailError(
+          'INFRAESTRUCTURA_INDISPONIBLE',
+          `No se pudo consultar master.usuarios para resolver el solicitante "${solicitanteId}" del tenant "${clienteId}".`,
+        ),
+      );
+    }
 
     if (!row) {
       return Result.fail(

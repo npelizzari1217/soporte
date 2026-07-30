@@ -28,7 +28,10 @@ export class EmailError extends DomainError {
   }
 }
 
-export type ResolverEmailErrorCode = 'USUARIO_NO_ENCONTRADO' | 'EMAIL_NO_DISPONIBLE';
+export type ResolverEmailErrorCode =
+  | 'USUARIO_NO_ENCONTRADO'
+  | 'EMAIL_NO_DISPONIBLE'
+  | 'INFRAESTRUCTURA_INDISPONIBLE';
 
 /**
  * ResolverEmailError — error de dominio del resolver cross-DB del email del
