@@ -418,3 +418,18 @@ Durante el juicio, correr los 2 jueces en paralelo hizo fallar specs `*.integrat
 ### Evidencia real (backend/, 2026-07-30, corrida serial)
 `corepack pnpm test`: `Test Files 159 passed | 1 skipped (160)` · `Tests 2117 passed | 2 skipped (2119)`.
 `corepack pnpm lint`: exit 0. `corepack pnpm exec tsc --noEmit -p tsconfig.json`: exit 0.
+
+---
+
+## Judgment Day — PR3 — fixes Ronda 3 (2026-07-30)
+
+Ronda 3 de jueces sobre PR3: 3 WARNINGs confirmados por 2 jueces, los 3 concentrados en `tickets/domain/mask-email-like.ts` (introducido en Ronda 2) y su único consumidor de infra. Cero CRITICAL.
+
+### Arreglos
+- **1** [DRY, confirmado 2 jueces]: `nodemailer-email-sender.adapter.ts` tenía su PROPIA constante `EMAIL_IN_TEXT` con el mismo regex copy-pasteado de `mask-email-like.ts` (arrastrado de PR2, antes de que `maskEmailsInText()` existiera). Eliminada la copia local; `sanitizeCausa()` ahora delega en `maskEmailsInText()` importada de `../../domain/mask-email-like` — una sola fuente de verdad para el detector de emails embebidos. Comportamiento observable sin cambios (mismos tests del adapter, verdes).
+- **2** [cobertura, confirmado 2 jueces]: `maskEmailsInText()` solo tenía cobertura indirecta (vía `sanitizeCausa()`/listener). Agregado `describe('maskEmailsInText()', ...)` en `mask-email-like.spec.ts` con 4 casos atómicos: (a) texto sin ningún email → passthrough intacto, (b) un email embebido con texto alrededor → solo el email enmascarado, (c) múltiples emails en el mismo texto → todos enmascarados, (d) dominio de una sola etiqueta (`user@localhost`) → cubre el arreglo 3.
+- **3** [RED→GREEN, confirmado 2 jueces]: el regex `EMAIL_IN_TEXT` exigía un punto literal en el dominio (`[\w-]+\.[\w.-]+`), así que `no-reply@localhost` NUNCA se enmascaraba — una fuga de PII real dado que `backend/test/setup-env.ts` fija `SMTP_HOST='localhost'` (entorno de test/dev común). Test RED agregado primero (caso (d) del arreglo 2) confirmando la falla; luego relajado el regex a `[\w.+-]+@[\w-]+(?:\.[\w-]+)*` — dominio de 1+ etiquetas sin puntos anidados/solapados (sin riesgo de catastrophic backtracking). Verificado que no rompe ningún test existente de `maskEmailLike`/`sanitizeCausa`/listener.
+
+### Evidencia real (backend/, 2026-07-30, corrida serial)
+`corepack pnpm test`: `Test Files 159 passed | 1 skipped (160)` · `Tests 2121 passed | 2 skipped (2123)`.
+`corepack pnpm lint`: exit 0. `corepack pnpm exec tsc --noEmit -p tsconfig.json`: exit 0.
