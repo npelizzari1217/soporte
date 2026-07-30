@@ -27,7 +27,7 @@ import * as nodemailer from 'nodemailer';
 import { EmailSenderPort, EmailMessage } from '../../domain/ports/i-email-sender.port';
 import { EmailError } from '../../domain/errors/email.errors';
 import { Result } from '../../../shared/domain/result';
-import { maskEmailLike } from '../../domain/mask-email-like';
+import { maskEmailsInText } from '../../domain/mask-email-like';
 import { EmailConfig, loadEmailConfig } from './email-config';
 
 /** Subconjunto de nodemailer.Transporter que este adapter necesita — facilita el mock en tests. */
@@ -106,12 +106,14 @@ function readTemplate(name: string, file: 'subject.hbs' | 'body.hbs'): string {
   return fs.readFileSync(path.join(TEMPLATES_ROOT, name, file), 'utf-8').trim();
 }
 
-/** Detecta direcciones de email embebidas en texto libre (ej. mensajes de rechazo SMTP). */
-const EMAIL_IN_TEXT = /[\w.+-]+@[\w-]+\.[\w.-]+/g;
-
 /**
  * Enmascara cualquier email en claro dentro de un texto arbitrario —
- * reusa `maskEmailLike()` (tickets/domain, misma regla que `Email.mask()`).
+ * delega en `maskEmailsInText()` (tickets/domain), única fuente de verdad
+ * del regex de detección + `maskEmailLike()` (misma regla que `Email.mask()`
+ * usa para el destinatario). Antes este adapter tenía su propia copia del
+ * regex `EMAIL_IN_TEXT` — consolidado en `mask-email-like.ts` para no
+ * mantener dos implementaciones del mismo detector (Judgment Day PR3
+ * Ronda 3, issue 1).
  *
  * Los rechazos SMTP reales suelen incluir la dirección completa del
  * destinatario (ej. `550 5.1.1 <usuario@dominio.com>: Recipient address
@@ -120,7 +122,7 @@ const EMAIL_IN_TEXT = /[\w.+-]+@[\w-]+\.[\w.-]+/g;
  * puede confiar en que ya venga enmascarado.
  */
 function sanitizeCausa(causa: string): string {
-  return causa.replace(EMAIL_IN_TEXT, (match) => maskEmailLike(match));
+  return maskEmailsInText(causa);
 }
 
 export class NodemailerEmailSender implements EmailSenderPort {
