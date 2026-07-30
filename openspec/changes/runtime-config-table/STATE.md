@@ -512,3 +512,90 @@ EXIT_CODE=0
 - `docs(configuracion): documentar decision de inmutabilidad a nivel app y fixes Judgment Day PR3 Ronda 1` (STATE.md — fix #6)
 
 Sin push, sin PR — branch `runtime-config-table-pr3` gateado por el usuario, igual que Apply Progress PR3.
+
+## Apply Progress — PR4 (CRUD config: use cases + repos + scope global F2 — R3, R5, R8)
+
+Branch: `runtime-config-table-pr4` (encadenada sobre `runtime-config-table-pr3`, ya aprobado). Sin push, sin PR — gateado por el usuario. Cablea la cadena COMPLETA de PR1-PR4 por primera vez vía `ConfiguracionModule`.
+
+### Tasks (13/13 — PR4 completo)
+
+- [x] 4.1 `configuracion/domain/ports/i-configuracion-repository.ts` (`IConfiguracionRepository`, `ConfiguracionRow`, `UpsertConfiguracionInput`, `CONFIGURACION_REPOSITORY`)
+- [x] 4.2/4.3 RED: `LeerConfigUseCase` — esSecreto ⇒ `'********'`; no-secreta ⇒ real; NUNCA descifra (auditoría estructural de imports)
+- [x] 4.4 GREEN: `configuracion/application/use-cases/leer-config.use-case.ts`
+- [x] 4.5/4.6 RED: `ActualizarConfigUseCase` — update no-secreto ⇒ evento real; update secreto ⇒ cifra + evento enmascarado (Dz7)
+- [x] 4.7 RED: `categoria !== 'smtp'` rechazada (R8)
+- [x] 4.8 RED: F2 — `scope=global` sin `is_global_admin` rechazado ANTES de persistir; `scope=tenant` con permiso permitido
+- [x] 4.9 GREEN: `configuracion/application/use-cases/actualizar-config.use-case.ts`
+- [x] 4.10 GREEN: `configuracion/infrastructure/persistence/prisma/configuracion-repository.adapter.ts` (scope dual R9, `findFirst` NUNCA `findUnique` Dz9)
+- [x] 4.11 RED integración: 2 filas activas misma `(categoria,clave)` ⇒ conflicto DB (P2002, partial unique index)
+- [x] 4.12 `configuracion/configuracion.module.ts` — NO `@Global()` (Dz12), activa la cadena PR1-PR4 por primera vez
+- [x] 4.13 Verify: ver evidencia real abajo
+
+### Archivos nuevos
+
+| Archivo | Qué hace |
+|---|---|
+| `backend/src/configuracion/domain/ports/i-configuracion-repository.ts` | Puerto `IConfiguracionRepository` (`findAll`/`findByClave`/`upsert`) + `ConfiguracionRow`/`UpsertConfiguracionInput` + token `CONFIGURACION_REPOSITORY`. Reusa `ConfigScope` de `configuracion-cambiada.event.ts` (mismo shape que `AuditLogPort` — R9, `clienteId` no `dbName` crudo). |
+| `backend/src/configuracion/application/use-cases/leer-config.use-case.ts` | `LeerConfigUseCase` — NO importa `ISecretCipher` en absoluto (garantía estructural R3: nunca puede descifrar). Enmascara vía `maskIfSecret()`. |
+| `backend/src/configuracion/application/use-cases/leer-config.use-case.spec.ts` | Unit — R3 escenarios 1-2, múltiples filas mixtas, propagación de `categoria`/fallo de infra, auditoría estructural de imports (filtra comentarios para no auto-matchear la prosa que documenta la garantía). |
+| `backend/src/configuracion/application/use-cases/actualizar-config.use-case.ts` | `ActualizarConfigUseCase` — orden de validación: R8 (categoria) → F2 (scope global) → lee fila previa (enmascarada si esSecreto, nunca descifrada) → cifra si esSecreto → `repo.upsert()` → publica `ConfiguracionCambiada` YA enmascarado (Dz7/REQUISITO DURO) → `publish()` post-commit en try/catch log-and-swallow (mismo patrón que `TransicionarEstadoUseCase`). |
+| `backend/src/configuracion/application/use-cases/actualizar-config.use-case.spec.ts` | Unit — R5 escenarios 1-2 (incl. assert `JSON.stringify(event)` sin el cleartext), R8, F2 (3 variantes), `valorAnterior=null` sin fila previa, fallos de `encrypt`/`findByClave`/`upsert`, `publish()` que lanza (log-and-swallow). |
+| `backend/src/configuracion/infrastructure/persistence/prisma/configuracion-repository.adapter.ts` | `PrismaConfiguracionRepository` — scope dual (tenant re-resuelve `dbName` por `clienteId` vía `master.clientes`, igual que `PrismaConfigResolver`/`PrismaAuditLog`; global vía `getMasterClient()`). `findFirst` NUNCA `findUnique` (Dz9) — `upsert()` NO usa `.upsert()` nativo de Prisma (no hay `where` unique para el partial index) sino `findFirst`+`create`/`update` manual. |
+| `backend/src/configuracion/infrastructure/persistence/prisma/configuracion-repository.adapter.spec.ts` | Unit — routing tenant/global, `findFirst` (nunca `findUnique`), create-vs-update en `upsert`, fallos de infra ⇒ `Result.fail`, `clienteId` inexistente/inactivo. |
+| `backend/src/configuracion/infrastructure/persistence/prisma/configuracion-repository.adapter.integration.spec.ts` | Integración (4.11) — inserta 2 filas activas misma `(categoria,clave)` directo vía Prisma (bypass del repo) ⇒ P2002; soft-delete + nueva fila activa coexisten (índice parcial); categorías distintas con misma clave sin conflicto. DB real `soporte_master_test`. |
+| `backend/src/configuracion/configuracion.module.ts` | `ConfiguracionModule` — NO `@Global()` (Dz12). Wirea `CONFIG_RESOLVER` (PrismaConfigResolver, PR2), `CONFIGURACION_REPOSITORY` (PrismaConfiguracionRepository), `AUDIT_LOG` (PrismaAuditLog, PR3) + `AuditConfiguracionHandler`/`Listener`, y los 2 use cases de PR4. `exports: [CONFIG_RESOLVER]` únicamente. |
+| `backend/src/configuracion/configuracion.module.spec.ts` | Bootstrap/wiring regression guard (mismo patrón que `tickets.module.wiring.spec.ts`) — resuelve toda la cadena PR1-PR4 por DI real; confirma que NO es `@Global()` (un módulo que no lo importa no puede resolver `CONFIG_RESOLVER`). |
+
+### Archivos modificados
+
+| Archivo | Qué cambió |
+|---|---|
+| `backend/src/configuracion/domain/errors/config.errors.ts` | + `CategoriaNoSoportadaError` (`CONFIG_CATEGORIA_NO_SOPORTADA`, R8), `ScopeGlobalNoAutorizadoError` (`CONFIG_SCOPE_GLOBAL_NO_AUTORIZADO`, F2) |
+| `openspec/changes/runtime-config-table/tasks.md` | Tasks 4.1-4.13 marcadas `[x]` |
+
+### Cumplimiento de las OBLIGACIONES FORWARD (Judgment Day PR3)
+
+1. **Enmascarado en ORIGEN**: `ActualizarConfigUseCase` llama `maskIfSecret()` (de `configuracion/domain/mask-secret.ts`, PR3) ANTES de construir `ConfiguracionCambiada` para AMBOS `valorAnterior` y `valorNuevo` — el cleartext del secreto nunca entra al evento. Verificado explícitamente en el spec: `expect(JSON.stringify(event)).not.toContain('super-secreto-en-claro')`. `AuditConfiguracionHandler` (PR3) sigue re-aplicando el guard como defense-in-depth idempotente — ambas redes activas.
+2. **`ConfigScope` con `clienteId`, no `dbName`**: `ActualizarConfigUseCase` construye el evento con el `scope: ConfigScope` recibido del DTO (que para tenant lleva `clienteId`, tipado por el propio `ConfigScope` de PR3 — imposible pasar `dbName` por construcción, TypeScript lo rechaza). `PrismaConfiguracionRepository`/`PrismaAuditLog` re-resuelven el `dbName` real independientemente (R9).
+
+### Decisión de diseño: F2 resuelto en el use case, no en un guard
+
+`ActualizarConfigDto` incluye `actorEsGlobalAdmin: boolean` — **desviación documentada** respecto a la firma literal de `design.md` §3.2 (que no lista este campo). PR4 no cablea el controller (eso es PR5) y el use case debe poder enforzar F2 de forma autónoma y testeable ANTES de que exista ningún guard HTTP. Sigue el precedente `auth-access/SKILL.md` ("Pass UserIdentity to use cases as a parameter — never trust the token alone dentro de application/"): el use case NO decodifica JWT ni consulta DB — recibe el claim `is_global_admin` ya resuelto del caller. Cuando PR5 cablee `ConfiguracionController`, deberá resolver `actorEsGlobalAdmin` desde `@CurrentUser() user: JwtPayload` (`user.is_global_admin`, mismo campo que lee `AdminOrGlobalGuard`) y pasarlo al DTO — el enforcement real YA existe y está testeado en PR4; PR5 solo necesita conectar el JWT al parámetro.
+
+### Notas de diseño
+
+- `IConfiguracionRepository.upsert()` NO usa `.upsert()` nativo de Prisma: la unicidad `(categoria, clave)` es un partial unique index raw SQL (Dz9, PR1) sin `@@unique` en el schema — no hay `where` unique disponible. El adapter resuelve existencia vía `findFirst` (nunca `findUnique`) y decide `create`/`update` manualmente, igual en ambos scopes.
+- `LeerConfigUseCase` no depende de `ISecretCipher` en absoluto (ni el constructor lo acepta) — la garantía de "nunca descifra para leer" es estructural (imposible de romper por accidente), no solo conductual. El test de auditoría de imports filtra líneas de comentario (`*`/`//`) antes de aplicar los regex, para no auto-matchear la prosa que documenta esa misma garantía.
+- `ActualizarConfigUseCase` NO recibe `ILogger`/`IDomainEventPublisher` como opcionales — el `publish()` post-commit sigue el mismo patrón log-and-swallow que `TransicionarEstadoUseCase`/`CrearObservacionUseCase` (Judgment Day de `notif-email-estado-ticket`): la fila ya está persistida antes de publicar, así que un fallo del publisher NUNCA debe tumbar una respuesta que ya debería ser éxito.
+- `ConfiguracionModule.exports` solo incluye `CONFIG_RESOLVER` — `SECRET_CIPHER` NO se re-exporta porque ya es `@Global()` desde `SharedModule` (mismo criterio que `TicketsModule`, que tampoco re-exporta `PrismaService`/`LOGGER`/`DOMAIN_EVENT_PUBLISHER` pese a consumirlos). Documentado como desviación de la letra literal de Dz12 en el docblock del propio módulo.
+- El test de wiring (`configuracion.module.spec.ts`) confirma la ausencia de `@Global()` de forma POSITIVA: bootstrapea un módulo vacío que NO importa `ConfiguracionModule` y verifica que `moduleRef.get(CONFIG_RESOLVER)` lanza — sin este test, un `@Global()` agregado por error no lo atraparía ningún otro test existente.
+
+### Evidencia real (backend/, corrida serial FOREGROUND, 2026-07-31, contra el estado exacto commiteado)
+
+**`corepack pnpm test`** (corrida final, tras corregir 1 falla propia — ver nota abajo):
+```
+Test Files  177 passed | 1 skipped (178)
+     Tests  2304 passed | 2 skipped (2306)
+  Duration  157.74s
+```
+(vs. baseline PR3 Ronda 1 — 2265 passed — +39 tests netos de PR4: 5 `leer-config.use-case.spec.ts`, 11 `actualizar-config.use-case.spec.ts`, 14 `configuracion-repository.adapter.spec.ts`, 3 `configuracion-repository.adapter.integration.spec.ts`, 2 `configuracion.module.spec.ts`, resto de variaciones. Sin regresiones. El log `ERROR [AesGcmSecretCipher] decrypt() falló: ...` es esperado — pertenece a un test de PR1 que fuerza tampering del `authTag`, no un fallo real.)
+
+**Nota honesta**: la primera corrida de `pnpm test` tuvo 1 falla propia — el test estructural de `leer-config.use-case.spec.ts` (tarea 4.3) usaba un regex ingenuo (`/ISecretCipher/`) que matcheaba la propia prosa del docblock del archivo fuente (que EXPLICA la garantía de "nunca importa ISecretCipher" usando esas palabras). Corregido filtrando líneas de comentario antes de aplicar los regex — la auditoría ahora es sobre CÓDIGO real (imports/llamadas), no sobre texto libre. Re-corrida limpia, evidencia de arriba.
+
+**`corepack pnpm lint`**: primera corrida detectó 15 errores (14 `prettier/prettier` + 1 `@typescript-eslint/no-unused-vars`: `IConfigResolver` importado sin usar en `configuracion.module.ts`, quedó solo el token `CONFIG_RESOLVER`). Corregidos con `eslint --fix` (formato) + edición manual (import no usado). Corrida final:
+```
+$ eslint "src/**/*.ts"
+EXIT_CODE=0
+```
+
+**`corepack pnpm exec tsc --noEmit -p tsconfig.json`**: exit 0, sin output.
+
+### Commits
+
+Pendientes de crear en este mismo turno (ver STATE.md tras el commit) — conventional, sin Co-Authored-By.
+
+Sin push, sin PR — branch `runtime-config-table-pr4` gateado por el usuario, encadenada sobre `runtime-config-table-pr3`.
+
+### Cómo retomar
+
+PR4 cerrado y verde — la cadena completa PR1-PR4 está cableada y activa por primera vez vía `ConfiguracionModule` (bootstrap real verificado). Próximo work unit (Review Workload Guard, `ask-on-risk`): **PR5 — API de gestión** (`ConfiguracionController` + DTOs + RBAC + wiring en `app.module.ts`). Al implementar el controller, resolver `actorEsGlobalAdmin` desde `@CurrentUser() user: JwtPayload` (`user.is_global_admin`) y pasarlo al DTO de `ActualizarConfigUseCase` — el enforcement de F2 YA existe y está testeado, PR5 solo conecta el JWT. Recordar también wirear `ConfiguracionModule` en `app.module.ts` (no lo hace este PR4, solo lo define).

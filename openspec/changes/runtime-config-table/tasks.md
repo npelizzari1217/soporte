@@ -81,19 +81,19 @@ Cada PR: verificación propia (`pnpm test`/`lint`/`tsc --noEmit` en `backend/`),
 
 ## PR 4 — CRUD config: use cases + repos + scope global (F2) (R3, R5, R8)
 
-- [ ] 4.1 Crear `configuracion/domain/ports/i-configuracion-repository.ts` — `findAll(scope, categoria?)`, `findByClave(scope, categoria, clave)`, `upsert(scope, row)` (repository-pattern)
-- [ ] 4.2 RED: `LeerConfigUseCase` — fila `esSecreto` ⇒ `'********'`; no-secreta ⇒ valor real (R3 escenarios 1-2)
-- [ ] 4.3 RED: `LeerConfigUseCase` NUNCA descifra para leer (spy `ISecretCipher.decrypt` no invocado)
-- [ ] 4.4 GREEN: crear `configuracion/application/use-cases/leer-config.use-case.ts`
-- [ ] 4.5 RED: `ActualizarConfigUseCase` update no-secreto ⇒ evento con `valorAnterior`/`valorNuevo` reales, `esSecreto:false` (R5 escenario 1)
-- [ ] 4.6 RED: update secreto ⇒ cifra vía `ISecretCipher.encrypt()`, evento con valores ENMASCARADOS, cleartext ausente (R5 escenario 2, Dz7)
-- [ ] 4.7 RED: `categoria !== 'smtp'` ⇒ rechazado (R8, whitelist nivel B)
-- [ ] 4.8 RED: `scope==='global'` y `actorId` sin `is_global_admin` ⇒ rechazado ANTES de persistir; `scope==='tenant'` con permiso ⇒ permitido (F2 — claim JWT `is_global_admin`, precedente `AdminOrGlobalGuard`)
-- [ ] 4.9 GREEN: crear `configuracion/application/use-cases/actualizar-config.use-case.ts`
-- [ ] 4.10 GREEN: crear `configuracion/infrastructure/persistence/prisma/configuracion-repository.adapter.ts` (tenant vía `getTenantClient`, global vía `getMasterClient`, `findFirst` NUNCA `findUnique` — Dz9)
-- [ ] 4.11 RED: integración — insertar 2 filas activas misma `(categoria,clave)` ⇒ falla por el partial unique index (riesgo §15 design)
-- [ ] 4.12 Crear `configuracion/configuracion.module.ts` — exporta `CONFIG_RESOLVER`+`SECRET_CIPHER`, NO `@Global()` (Dz12)
-- [ ] 4.13 Verify: pegar salida real tests/lint/tsc
+- [x] 4.1 Crear `configuracion/domain/ports/i-configuracion-repository.ts` — `findAll(scope, categoria?)`, `findByClave(scope, categoria, clave)`, `upsert(scope, row)` (repository-pattern)
+- [x] 4.2 RED: `LeerConfigUseCase` — fila `esSecreto` ⇒ `'********'`; no-secreta ⇒ valor real (R3 escenarios 1-2)
+- [x] 4.3 RED: `LeerConfigUseCase` NUNCA descifra para leer (spy `ISecretCipher.decrypt` no invocado)
+- [x] 4.4 GREEN: crear `configuracion/application/use-cases/leer-config.use-case.ts`
+- [x] 4.5 RED: `ActualizarConfigUseCase` update no-secreto ⇒ evento con `valorAnterior`/`valorNuevo` reales, `esSecreto:false` (R5 escenario 1)
+- [x] 4.6 RED: update secreto ⇒ cifra vía `ISecretCipher.encrypt()`, evento con valores ENMASCARADOS, cleartext ausente (R5 escenario 2, Dz7)
+- [x] 4.7 RED: `categoria !== 'smtp'` ⇒ rechazado (R8, whitelist nivel B)
+- [x] 4.8 RED: `scope==='global'` y `actorId` sin `is_global_admin` ⇒ rechazado ANTES de persistir; `scope==='tenant'` con permiso ⇒ permitido (F2 — claim JWT `is_global_admin`, precedente `AdminOrGlobalGuard`)
+- [x] 4.9 GREEN: crear `configuracion/application/use-cases/actualizar-config.use-case.ts`
+- [x] 4.10 GREEN: crear `configuracion/infrastructure/persistence/prisma/configuracion-repository.adapter.ts` (tenant vía `getTenantClient`, global vía `getMasterClient`, `findFirst` NUNCA `findUnique` — Dz9)
+- [x] 4.11 RED: integración — insertar 2 filas activas misma `(categoria,clave)` ⇒ falla por el partial unique index (riesgo §15 design)
+- [x] 4.12 Crear `configuracion/configuracion.module.ts` — exporta `CONFIG_RESOLVER`+`SECRET_CIPHER`, NO `@Global()` (Dz12)
+- [x] 4.13 Verify: pegar salida real tests/lint/tsc
 
 ## PR 5 — API de gestión (R3, R4)
 
