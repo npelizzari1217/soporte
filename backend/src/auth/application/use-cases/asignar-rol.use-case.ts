@@ -12,6 +12,13 @@ import {
 export interface AsignarRolDto {
   usuarioId: string;
   rolCodigo: string;
+  /**
+   * Tenant del actor, resuelto server-side desde TenantContext (D7) —
+   * NUNCA del body. Valida que el usuario objetivo pertenece al mismo tenant
+   * (root cross-tenant vía X-Tenant-Id: TenantGuard bindea clienteId=target).
+   * Spec ref: root-tenant-admin R4/Dz4.
+   */
+  clienteId: string;
 }
 
 /**
@@ -19,12 +26,15 @@ export interface AsignarRolDto {
  *
  * Flujo:
  * 1. Carga usuario por id (con roles actuales) → 404 si no existe.
+ * 1.b) Guard cross-tenant: usuario.clienteId !== dto.clienteId → 404
+ *      (misma respuesta que "no existe", anti-enumeración — patrón de
+ *      baja-usuario.use-case.ts, Dz4).
  * 2. Verifica que el rol no esté ya asignado (por código) → 409 si existe.
  * 3. Carga el rol por código → 404 si no existe.
  * 4. Agrega el rol al usuario (usuario.addRol).
  * 5. Persiste el usuario (el repo sincroniza usuarios_roles).
  *
- * Tarea: 2.B.8
+ * Tarea: 2.B.8 + root-tenant-admin A.12 (Dz4)
  */
 export class AsignarRolUseCase {
   constructor(
@@ -36,6 +46,13 @@ export class AsignarRolUseCase {
     // 1. Cargar usuario con roles actuales
     const usuario = await this.usuarioRepo.findById(dto.usuarioId);
     if (!usuario) {
+      return Result.fail(new UsuarioNoEncontradoError(dto.usuarioId));
+    }
+
+    // 1.b) Guard cross-tenant: el usuario objetivo debe pertenecer al tenant
+    //      del actor. Responde con UsuarioNoEncontradoError (misma que "no
+    //      existe") para evitar leakage de información sobre otros tenants.
+    if (usuario.clienteId !== dto.clienteId) {
       return Result.fail(new UsuarioNoEncontradoError(dto.usuarioId));
     }
 

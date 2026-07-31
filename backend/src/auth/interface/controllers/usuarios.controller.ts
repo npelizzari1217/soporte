@@ -163,15 +163,21 @@ export class UsuariosController {
 
   /**
    * POST /usuarios/:id/roles — asigna un rol a un usuario (legacy endpoint).
+   *
+   * clienteId resuelto server-side desde TenantContext (NUNCA del body, D7):
+   * valida que el usuario objetivo pertenece al tenant del actor (R4/Dz4).
    */
   @Post(':id/roles')
   @UseGuards(PermissionsGuard)
   @RequirePermissions('rol:asignar')
   @HttpCode(HttpStatus.CREATED)
   async asignarRol(@Param('id') id: string, @Body() dto: AsignarRolDto): Promise<void> {
+    const clienteId = this.tenantContext.get()!.clienteId;
+
     const result = await this.asignarRolUseCase.execute({
       usuarioId: id,
       rolCodigo: dto.rolCodigo,
+      clienteId,
     });
 
     if (result.isFail()) {

@@ -108,7 +108,11 @@ describe('AsignarRolUseCase', () => {
       usuarioRepo.findById.mockResolvedValue(usuario);
       roleRepo.findByCodigo.mockResolvedValue(rol);
 
-      const result = await useCase.execute({ usuarioId: 'user-1', rolCodigo: 'SOPORTE_IT' });
+      const result = await useCase.execute({
+        usuarioId: 'user-1',
+        rolCodigo: 'SOPORTE_IT',
+        clienteId: 'cliente-uuid',
+      });
 
       expect(result.isOk()).toBe(true);
     });
@@ -124,7 +128,11 @@ describe('AsignarRolUseCase', () => {
         savedUsuario = u;
       });
 
-      await useCase.execute({ usuarioId: 'user-1', rolCodigo: 'SOPORTE_IT' });
+      await useCase.execute({
+        usuarioId: 'user-1',
+        rolCodigo: 'SOPORTE_IT',
+        clienteId: 'cliente-uuid',
+      });
 
       expect(savedUsuario!.roles).toHaveLength(1);
       expect(savedUsuario!.roles[0].codigo).toBe('SOPORTE_IT');
@@ -134,7 +142,7 @@ describe('AsignarRolUseCase', () => {
       usuarioRepo.findById.mockResolvedValue(makeUsuario());
       roleRepo.findByCodigo.mockResolvedValue(makeRole('ADMIN'));
 
-      await useCase.execute({ usuarioId: 'any', rolCodigo: 'ADMIN' });
+      await useCase.execute({ usuarioId: 'any', rolCodigo: 'ADMIN', clienteId: 'cliente-uuid' });
 
       expect(usuarioRepo.save).toHaveBeenCalledTimes(1);
     });
@@ -143,7 +151,11 @@ describe('AsignarRolUseCase', () => {
       usuarioRepo.findById.mockResolvedValue(makeUsuario());
       roleRepo.findByCodigo.mockResolvedValue(makeRole('APROBADOR_COMPRAS'));
 
-      await useCase.execute({ usuarioId: 'any', rolCodigo: 'APROBADOR_COMPRAS' });
+      await useCase.execute({
+        usuarioId: 'any',
+        rolCodigo: 'APROBADOR_COMPRAS',
+        clienteId: 'cliente-uuid',
+      });
 
       expect(roleRepo.findByCodigo).toHaveBeenCalledWith('APROBADOR_COMPRAS');
     });
@@ -156,7 +168,11 @@ describe('AsignarRolUseCase', () => {
       usuarioRepo.findById.mockResolvedValue(usuario);
       roleRepo.findByCodigo.mockResolvedValue(makeRole('SOPORTE_IT', 'role-soporte'));
 
-      const result = await useCase.execute({ usuarioId: 'any', rolCodigo: 'SOPORTE_IT' });
+      const result = await useCase.execute({
+        usuarioId: 'any',
+        rolCodigo: 'SOPORTE_IT',
+        clienteId: 'cliente-uuid',
+      });
 
       expect(result.isFail()).toBe(true);
       expect(result.getError()).toBeInstanceOf(RolYaAsignadoError);
@@ -168,7 +184,11 @@ describe('AsignarRolUseCase', () => {
       usuarioRepo.findById.mockResolvedValue(usuario);
       roleRepo.findByCodigo.mockResolvedValue(makeRole('SOPORTE_IT', 'role-soporte'));
 
-      await useCase.execute({ usuarioId: 'any', rolCodigo: 'SOPORTE_IT' });
+      await useCase.execute({
+        usuarioId: 'any',
+        rolCodigo: 'SOPORTE_IT',
+        clienteId: 'cliente-uuid',
+      });
 
       expect(usuarioRepo.save).not.toHaveBeenCalled();
     });
@@ -179,7 +199,11 @@ describe('AsignarRolUseCase', () => {
       usuarioRepo.findById.mockResolvedValue(usuario);
       roleRepo.findByCodigo.mockResolvedValue(makeRole('ADMIN', 'role-admin'));
 
-      const result = await useCase.execute({ usuarioId: 'any', rolCodigo: 'ADMIN' });
+      const result = await useCase.execute({
+        usuarioId: 'any',
+        rolCodigo: 'ADMIN',
+        clienteId: 'cliente-uuid',
+      });
 
       expect(result.isOk()).toBe(true);
     });
@@ -190,7 +214,11 @@ describe('AsignarRolUseCase', () => {
       usuarioRepo.findById.mockResolvedValue(makeUsuario());
       roleRepo.findByCodigo.mockResolvedValue(null);
 
-      const result = await useCase.execute({ usuarioId: 'any', rolCodigo: 'ROL_INEXISTENTE' });
+      const result = await useCase.execute({
+        usuarioId: 'any',
+        rolCodigo: 'ROL_INEXISTENTE',
+        clienteId: 'cliente-uuid',
+      });
 
       expect(result.isFail()).toBe(true);
       expect(result.getError()).toBeInstanceOf(RolNoEncontradoError);
@@ -201,10 +229,71 @@ describe('AsignarRolUseCase', () => {
     it('retorna UsuarioNoEncontradoError si el usuario no existe', async () => {
       usuarioRepo.findById.mockResolvedValue(null);
 
-      const result = await useCase.execute({ usuarioId: 'nonexistent', rolCodigo: 'ADMIN' });
+      const result = await useCase.execute({
+        usuarioId: 'nonexistent',
+        rolCodigo: 'ADMIN',
+        clienteId: 'cliente-uuid',
+      });
 
       expect(result.isFail()).toBe(true);
       expect(result.getError()).toBeInstanceOf(UsuarioNoEncontradoError);
+    });
+  });
+
+  // ─── Aislamiento de tenant (R4/Dz4 — root-tenant-admin PR-A) ────────────────
+  describe('Aislamiento de tenant (R4/Dz4)', () => {
+    // [CRITICAL] A.8+A.9 colapsados: este test reproduce la fuga cross-tenant
+    // contra el contrato ACTUAL de AsignarRolDto. Con el código previo al fix
+    // (sin `clienteId` ni chequeo de tenant) este test FALLA en RED, demostrando
+    // que un ADMINISTRADOR podía asignar rol a un usuario de OTRO tenant sin
+    // bloqueo. Tras Dz4 (A.12) pasa en GREEN con UsuarioNoEncontradoError (404).
+    it('asignar rol a usuario de OTRO tenant → UsuarioNoEncontradoError (404) (R4-b)', async () => {
+      const usuarioDeOtroTenant = makeUsuario({ id: 'user-tenant-b' });
+      // El usuario objetivo pertenece a 'cliente-uuid' (ver makeUsuario);
+      // el actor opera en 'cliente-uuid-A' (tenant distinto).
+      usuarioRepo.findById.mockResolvedValue(usuarioDeOtroTenant);
+      roleRepo.findByCodigo.mockResolvedValue(makeRole('ADMIN'));
+
+      const result = await useCase.execute({
+        usuarioId: 'user-tenant-b',
+        rolCodigo: 'ADMIN',
+        clienteId: 'cliente-uuid-A',
+      });
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(UsuarioNoEncontradoError);
+      expect(usuarioRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('asignar rol al MISMO tenant sigue funcionando sin regresión (R4-c)', async () => {
+      const usuarioMismoTenant = makeUsuario({ id: 'user-tenant-a' });
+      usuarioRepo.findById.mockResolvedValue(usuarioMismoTenant);
+      roleRepo.findByCodigo.mockResolvedValue(makeRole('ADMIN'));
+
+      const result = await useCase.execute({
+        usuarioId: 'user-tenant-a',
+        rolCodigo: 'ADMIN',
+        clienteId: 'cliente-uuid', // mismo clienteId que makeUsuario
+      });
+
+      expect(result.isOk()).toBe(true);
+      expect(usuarioRepo.save).toHaveBeenCalledTimes(1);
+    });
+
+    it('root asigna rol cross-tenant vía clienteId=target (X-Tenant-Id resuelto) (R4-d)', async () => {
+      // TenantGuard.resolveCrossTenant bindea clienteId=tenant objetivo cuando el
+      // actor es root; el controller pasa ese clienteId server-side (D7).
+      const usuarioDelTenantObjetivo = makeUsuario({ id: 'user-target-tenant' });
+      usuarioRepo.findById.mockResolvedValue(usuarioDelTenantObjetivo);
+      roleRepo.findByCodigo.mockResolvedValue(makeRole('ADMIN'));
+
+      const result = await useCase.execute({
+        usuarioId: 'user-target-tenant',
+        rolCodigo: 'ADMIN',
+        clienteId: 'cliente-uuid', // = clienteId del usuario objetivo (target tenant)
+      });
+
+      expect(result.isOk()).toBe(true);
     });
   });
 });

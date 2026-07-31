@@ -335,7 +335,19 @@ describe('UsuariosController — POST /usuarios/:id/roles (regresión T3.8)', ()
     expect(asignarRol.execute).toHaveBeenCalledWith({
       usuarioId: 'user-uuid',
       rolCodigo: 'TECNICO',
+      clienteId: 'tenant-a-uuid',
     });
+  });
+
+  it('pasa clienteId del TenantContext (NUNCA del body) — root-tenant-admin R4/Dz4', async () => {
+    const { controller, asignarRol } = makeController();
+    asignarRol.execute.mockResolvedValue(Result.ok(undefined));
+
+    await controller.asignarRol('user-uuid', { rolCodigo: 'TECNICO' });
+
+    expect(asignarRol.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ clienteId: 'tenant-a-uuid' }),
+    );
   });
 
   it('usuario no encontrado → NotFoundException', async () => {
