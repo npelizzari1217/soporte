@@ -35,6 +35,7 @@ vi.mock('../../../shared/infrastructure/persistence/prisma.service', () => ({
 import {
   BadRequestException,
   ConflictException,
+  ExecutionContext,
   ForbiddenException,
   NotFoundException,
   UnprocessableEntityException,
@@ -413,6 +414,24 @@ describe('UsuariosController — POST /usuarios/root (B.5-B.9)', () => {
     const guards = (Reflect.getMetadata(GUARDS_METADATA, UsuariosController.prototype.crearRoot) ??
       []) as unknown[];
     expect(guards).toContain(GlobalAdminGuard);
+  });
+
+  it('[R2-c, Judgment Day Ronda 1 FIX 5] GlobalAdminGuard.canActivate rechaza un actor NO-root con ForbiddenException', () => {
+    // Complementa el test de metadata de arriba: ese test solo prueba que el
+    // guard está DECLARADO en la ruta, no que efectivamente rechaza. Acá se
+    // invoca GlobalAdminGuard.canActivate() directamente contra un request de
+    // un actor no-root, reusando el mismo patrón de
+    // global-admin.guard.spec.ts (mock mínimo de ExecutionContext vía
+    // switchToHttp().getRequest()).
+    const guard = new GlobalAdminGuard();
+    const request = { user: makeJwtUser('admin-uuid', { is_global_admin: false }) };
+    const ctx = {
+      switchToHttp: () => ({ getRequest: () => request }),
+      getHandler: () => ({}),
+      getClass: () => ({}),
+    } as unknown as ExecutionContext;
+
+    expect(() => guard.canActivate(ctx)).toThrow(ForbiddenException);
   });
 
   it('actor root, body válido → 201 con usuario isGlobalAdmin=true', async () => {

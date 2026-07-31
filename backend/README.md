@@ -26,9 +26,17 @@ corepack pnpm run seed:root        # bootstrap idempotente del primer usuario ro
 ("root"), leyendo las credenciales de las variables `ROOT_ADMIN_*` (ver
 `.env.example`). Es **idempotente**: correrlo varias veces (redeploys) no
 duplica la fila ni pisa la contraseña ya establecida — solo garantiza que el
-flag `isGlobalAdmin` quede en `true`. Si falta cualquiera de las 5 variables
+flag `isGlobalAdmin` quede en `true` (y reactiva la cuenta si estaba
+suspendida o soft-deleted). Si falta cualquiera de las 5 variables
 `ROOT_ADMIN_*`, el script falla ruidosamente (nunca hardcodea credenciales ni
 hace no-op silencioso).
+
+> **Rotar `ROOT_ADMIN_PASSWORD` NO rota el password de un root ya existente.**
+> Si la fila ya existe, `seed:root` solo actualiza `isGlobalAdmin`/`activo`/
+> `deletedAt` — nunca toca `passwordHash`, sin importar qué valor tenga
+> `ROOT_ADMIN_PASSWORD` en ese momento. Para cambiar el password de un root
+> existente usá el flujo normal de cambio de password de la aplicación, no
+> este seed.
 
 Variables requeridas por `seed:root`:
 

@@ -4,19 +4,30 @@
  * Contrato verificado (design root-tenant-admin §2.8, Dz3):
  * - requireEnv(): env presente → devuelve el valor; env ausente/vacía → throw ruidoso.
  * - readRootBootstrapEnv(): agrupa las 5 env ROOT_ADMIN_* — falta cualquiera → throw.
- * - bootstrapRoot(): upsert por email en `master.usuarios` —
+ * - bootstrapRoot(): findUnique + create/update por email en `master.usuarios` —
  *   · no existe la fila → la crea con isGlobalAdmin=true (R3-a).
  *   · ya existe (root o no) → re-run idempotente, sin duplicar, isGlobalAdmin
  *     sigue true (R3-b [CRITICAL]).
  *   · ya existe con isGlobalAdmin=false → solo actualiza isGlobalAdmin=true,
  *     NO pisa nombre/apellido/passwordHash (R3-c).
+ *   · ya existe → NO rehashea el password (FIX 3, Judgment Day PR-B Ronda 1):
+ *     el argon2id hash es costoso y el camino update lo descartaba igual.
+ *   · ya existe suspendida/soft-deleted (activo=false/deletedAt seteado) →
+ *     el update la reactiva (activo=true, deletedAt=null) además de
+ *     isGlobalAdmin=true (FIX 4, Judgment Day PR-B Ronda 1 — Juez B,
+ *     robustez R3 "MUST NOT quedar sin ningún root usable").
  *
  * Los tests de bootstrapRoot() son de integración (DB master de test real,
  * mismo patrón que prisma-auth.integration.spec.ts: TEST_DB_URL,
  * soporte_master_test, TRUNCATE en beforeEach).
  *
+ * Mocks de IHashProvider tipados a la interfaz completa (sin `as any`,
+ * Judgment Day PR-B Ronda 1, FIX 2) — `verify` se incluye aunque el seed no
+ * lo invoque, porque `bootstrapRoot` recibe el parámetro tipado como
+ * `IHashProvider` completo (no `Partial<...>`).
+ *
  * Spec ref: root-tenant-admin R3
- * Tarea: B.11-B.15
+ * Tarea: B.11-B.15; Judgment Day root-tenant-admin PR-B Ronda 1 (FIX 2, FIX 3, FIX 4)
  */
 
 import {
@@ -29,6 +40,7 @@ import { PrismaService } from '../../src/shared/infrastructure/persistence/prism
 import { MasterPrismaClient } from '../../src/shared/infrastructure/persistence/prisma-clients';
 import { ClienteEntity } from '../../src/clientes/domain/entities/cliente.entity';
 import { PrismaClienteRepository } from '../../src/clientes/infrastructure/persistence/prisma/prisma-cliente.repository';
+import type { IHashProvider } from '../../src/auth/domain/ports/i-hash.provider';
 
 // ─── requireEnv() / readRootBootstrapEnv() — unit, sin DB ─────────────────────
 
@@ -116,8 +128,11 @@ function makeEnv(overrides?: Partial<RootBootstrapEnv>): RootBootstrapEnv {
   };
 }
 
-function makeFakeHashProvider() {
-  return { hash: vi.fn(async (plaintext: string) => `hashed:${plaintext}`) };
+function makeFakeHashProvider(): IHashProvider {
+  return {
+    hash: vi.fn(async (plaintext: string) => `hashed:${plaintext}`),
+    verify: vi.fn(),
+  };
 }
 
 describe('bootstrapRoot (B.11-B.15, integración)', () => {
@@ -152,7 +167,7 @@ describe('bootstrapRoot (B.11-B.15, integración)', () => {
   });
 
   it('crea la fila si no existe, con isGlobalAdmin=true (R3-a)', async () => {
-    await bootstrapRoot(masterClient, makeEnv({ clienteId }), makeFakeHashProvider() as any);
+    await bootstrapRoot(masterClient, makeEnv({ clienteId }), makeFakeHashProvider());
 
     const row = await masterClient.usuario.findUnique({
       where: { email: 'root-bootstrap@integration.test' },
@@ -165,8 +180,8 @@ describe('bootstrapRoot (B.11-B.15, integración)', () => {
     const env = makeEnv({ clienteId });
     const hashProvider = makeFakeHashProvider();
 
-    await bootstrapRoot(masterClient, env, hashProvider as any);
-    await bootstrapRoot(masterClient, env, hashProvider as any); // re-run (redeploy)
+    await bootstrapRoot(masterClient, env, hashProvider);
+    await bootstrapRoot(masterClient, env, hashProvider); // re-run (redeploy)
 
     const rows = await masterClient.usuario.findMany({
       where: { email: 'root-bootstrap@integration.test' },
@@ -189,7 +204,7 @@ describe('bootstrapRoot (B.11-B.15, integración)', () => {
       },
     });
 
-    await bootstrapRoot(masterClient, makeEnv({ clienteId }), makeFakeHashProvider() as any);
+    await bootstrapRoot(masterClient, makeEnv({ clienteId }), makeFakeHashProvider());
 
     const row = await masterClient.usuario.findUnique({
       where: { email: 'root-bootstrap@integration.test' },
@@ -198,6 +213,58 @@ describe('bootstrapRoot (B.11-B.15, integración)', () => {
     // Columnas preexistentes NO pisadas por el update mínimo.
     expect(row?.nombre).toBe('Nombre Original');
     expect(row?.apellido).toBe('Apellido Original');
+    expect(row?.passwordHash).toBe('hash-preexistente-no-debe-pisarse');
+  });
+
+  it('[FIX 3, Judgment Day Ronda 1] fila ya existente → NO rehashea el password', async () => {
+    await masterClient.usuario.create({
+      data: {
+        email: 'root-bootstrap@integration.test',
+        nombre: 'Nombre Original',
+        apellido: 'Apellido Original',
+        passwordHash: 'hash-preexistente-no-debe-pisarse',
+        clienteId,
+        activo: true,
+        isGlobalAdmin: false,
+      },
+    });
+    const hashProvider = makeFakeHashProvider();
+
+    await bootstrapRoot(masterClient, makeEnv({ clienteId }), hashProvider);
+
+    // El hash argon2id (costoso) NUNCA debe calcularse cuando el camino es
+    // update — el resultado se descarta igual, no hay razón para pagar el costo.
+    expect(hashProvider.hash).not.toHaveBeenCalled();
+  });
+
+  it('[FIX 4, Judgment Day Ronda 1] fila existente suspendida/soft-deleted → el update la reactiva', async () => {
+    // Simula ROOT_ADMIN_EMAIL apuntando a una cuenta dada de baja (activo=false,
+    // deletedAt seteado) — sin FIX 4, el seed solo flippea isGlobalAdmin pero la
+    // cuenta sigue sin poder loguear (contradice R3: no debe quedar sin ningún
+    // root USABLE).
+    await masterClient.usuario.create({
+      data: {
+        email: 'root-bootstrap@integration.test',
+        nombre: 'Nombre Original',
+        apellido: 'Apellido Original',
+        passwordHash: 'hash-preexistente-no-debe-pisarse',
+        clienteId,
+        activo: false,
+        deletedAt: new Date(),
+        isGlobalAdmin: false,
+      },
+    });
+
+    await bootstrapRoot(masterClient, makeEnv({ clienteId }), makeFakeHashProvider());
+
+    const row = await masterClient.usuario.findUnique({
+      where: { email: 'root-bootstrap@integration.test' },
+    });
+    expect(row?.isGlobalAdmin).toBe(true);
+    expect(row?.activo).toBe(true);
+    expect(row?.deletedAt).toBeNull();
+    // Columnas ajenas a la reactivación siguen sin pisarse.
+    expect(row?.nombre).toBe('Nombre Original');
     expect(row?.passwordHash).toBe('hash-preexistente-no-debe-pisarse');
   });
 });

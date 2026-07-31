@@ -10,10 +10,18 @@
  *     hardcodeadas").
  *   - Falla RUIDOSAMENTE (throw) si falta cualquier env obligatoria — nunca
  *     un no-op silencioso.
- *   - Es idempotente vía `upsert` por `email` (UNIQUE en `usuarios.email`):
- *     crea la fila si no existe (con `isGlobalAdmin=true`, password argon2id,
- *     `activo=true`, sin roles); si ya existe, ACTUALIZA únicamente
- *     `isGlobalAdmin=true` sin pisar `passwordHash`/`nombre`/`apellido`.
+ *   - Es idempotente vía `findUnique` + `create`/`update` por `email` (UNIQUE en
+ *     `usuarios.email`): crea la fila si no existe (con `isGlobalAdmin=true`,
+ *     password argon2id, `activo=true`, sin roles); si ya existe, ACTUALIZA
+ *     únicamente `isGlobalAdmin=true`/`activo=true`/`deletedAt=null` sin pisar
+ *     `passwordHash`/`nombre`/`apellido` (Judgment Day PR-B Ronda 1, FIX 3/FIX 4):
+ *       · FIX 3: el hash argon2id (costoso) SOLO se calcula cuando se va a
+ *         crear la fila — el camino `update` nunca lo necesita ni lo pisa.
+ *       · FIX 4: reactiva `activo`/`deletedAt` en el update — si
+ *         `ROOT_ADMIN_EMAIL` apunta a una cuenta suspendida o soft-deleted,
+ *         el seed la reactiva en vez de dejar un root con el flag en true
+ *         pero inutilizable para loguear (R3 "MUST NOT quedar sin ningún
+ *         root usable").
  *
  * Uso (post `migrate:master`):
  *   pnpm run seed:root
@@ -78,14 +86,29 @@ export async function bootstrapRoot(
   env: RootBootstrapEnv,
   hashProvider: IHashProvider = new Argon2HashProvider(),
 ): Promise<void> {
-  const passwordHash = await hashProvider.hash(env.password);
+  // Idempotente por email (UNIQUE): findUnique primero para decidir
+  // create vs update SIN hashear salvo que se vaya a crear la fila
+  // (FIX 3 — el argon2id hash es costoso y el camino update lo descartaba
+  // igual, aunque corriera en cada run).
+  const existing = await masterClient.usuario.findUnique({ where: { email: env.email } });
 
-  // Idempotente: upsert por email (UNIQUE).
-  //  - create: fila nueva con isGlobalAdmin=true, activo=true, sin roles.
-  //  - update: SOLO isGlobalAdmin=true (no pisa password/nombre/otras columnas).
-  await masterClient.usuario.upsert({
-    where: { email: env.email },
-    create: {
+  if (existing) {
+    // update: SOLO isGlobalAdmin=true + reactivación de cuenta (FIX 4) — no
+    // pisa password/nombre/otras columnas. `activo=true`/`deletedAt=null`
+    // garantizan que un root suspendido o soft-deleted vuelva a ser un root
+    // USABLE (R3), no solo un flag encendido sobre una cuenta inaccesible.
+    await masterClient.usuario.update({
+      where: { email: env.email },
+      data: { isGlobalAdmin: true, activo: true, deletedAt: null },
+    });
+    return;
+  }
+
+  // create: fila nueva con isGlobalAdmin=true, activo=true, sin roles.
+  // Hash argon2id calculado SOLO acá, donde realmente se persiste.
+  const passwordHash = await hashProvider.hash(env.password);
+  await masterClient.usuario.create({
+    data: {
       email: env.email,
       nombre: env.nombre,
       apellido: env.apellido,
@@ -94,7 +117,6 @@ export async function bootstrapRoot(
       activo: true,
       isGlobalAdmin: true,
     },
-    update: { isGlobalAdmin: true },
   });
 }
 
