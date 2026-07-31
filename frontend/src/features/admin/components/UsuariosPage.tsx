@@ -17,8 +17,15 @@
  * Diseño (CONSTITUTION §3): filas-tarjeta glassmorphism, skeleton loader,
  * empty state con acción, botón con loading state, ConfirmDialog destructivo.
  *
+ * Switch "Root" (R6/Dz2-UI): visible SOLO si `isGlobalAdmin` (mismo gate que
+ * `ClienteSelector.tsx` — `if (!isGlobalAdmin) return null`). Activarlo
+ * cambia el submit a `POST /usuarios/root` (useCrearRoot) en vez de
+ * `POST /usuarios` (useCrearUsuario); un no-root nunca ve el control, por lo
+ * tanto ningún camino de UI permite setear `isGlobalAdmin=true` (R6-b [CRITICAL]).
+ *
  * Spec: [SPEC:admin-ui/Pantalla Usuarios]
- * Tarea: T6.5 (RED) + T6.6 (GREEN), admin-general PR6c
+ * Spec: [SPEC:admin-ui/R6 Creación de root visible solo para roots en la UI]
+ * Tarea: T6.5 (RED) + T6.6 (GREEN), admin-general PR6c; C.9-C.12 root-tenant-admin PR-C
  */
 
 import { useState } from "react";
@@ -34,12 +41,15 @@ import { FormModal } from "@/components/ui/form-modal";
 import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { notify } from "@/shared/lib/notify";
 import { mapApiError } from "@/shared/lib/map-api-error";
 import { useSession } from "@/shared/hooks/use-session";
 import { ApiError } from "@/shared/api/types";
 import { useUsuariosAdmin } from "../hooks/use-usuarios-admin";
 import { useCrearUsuario } from "../hooks/use-crear-usuario";
+import { useCrearRoot } from "../hooks/use-crear-root";
 import { useBajaUsuario } from "../hooks/use-baja-usuario";
 import type { NuevoUsuarioInput } from "../types";
 
@@ -60,7 +70,7 @@ const EMPTY_FORM: NuevoUsuarioInput = {
 };
 
 export function UsuariosPage() {
-  const { user } = useSession();
+  const { user, isGlobalAdmin } = useSession();
   const { data, isLoading, isError, refetch } = useUsuariosAdmin();
 
   const [confirmId, setConfirmId] = useState<string | null>(null);
@@ -68,11 +78,15 @@ export function UsuariosPage() {
 
   const [createOpen, setCreateOpen] = useState(false);
   const [form, setForm] = useState<NuevoUsuarioInput>(EMPTY_FORM);
+  const [esRoot, setEsRoot] = useState(false);
   const [formError, setFormError] = useState<string | undefined>(undefined);
   const crearUsuario = useCrearUsuario();
+  const crearRoot = useCrearRoot();
+  const isSubmitting = esRoot ? crearRoot.isPending : crearUsuario.isPending;
 
   function openCreate() {
     setForm(EMPTY_FORM);
+    setEsRoot(false);
     setFormError(undefined);
     setCreateOpen(true);
   }
@@ -93,8 +107,15 @@ export function UsuariosPage() {
     e.preventDefault();
     setFormError(undefined);
     try {
-      await crearUsuario.mutateAsync(form);
-      notify.success("Usuario creado");
+      if (esRoot) {
+        // Root (Dz2-UI/R6): POST /usuarios/root — SIN rol, isGlobalAdmin=true.
+        const { nombre, apellido, email, password } = form;
+        await crearRoot.mutateAsync({ nombre, apellido, email, password });
+        notify.success("Usuario root creado");
+      } else {
+        await crearUsuario.mutateAsync(form);
+        notify.success("Usuario creado");
+      }
       setCreateOpen(false);
     } catch (err) {
       if (err instanceof ApiError && err.statusCode === 409) {
@@ -150,16 +171,30 @@ export function UsuariosPage() {
           />
         </FormField>
 
-        <FormField label="Rol" htmlFor="usuario-rol" required>
-          <Select
-            id="usuario-rol"
-            aria-label="Rol"
-            value={form.rol}
-            onValueChange={(value) => setForm({ ...form, rol: value })}
-            options={ROL_OPTIONS}
-            placeholder="Seleccionar rol"
-          />
-        </FormField>
+        {isGlobalAdmin && (
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-input px-3 py-2.5">
+            <Label htmlFor="usuario-root-switch">Root (acceso global)</Label>
+            <Switch
+              id="usuario-root-switch"
+              aria-label="Root"
+              checked={esRoot}
+              onCheckedChange={setEsRoot}
+            />
+          </div>
+        )}
+
+        {!esRoot && (
+          <FormField label="Rol" htmlFor="usuario-rol" required>
+            <Select
+              id="usuario-rol"
+              aria-label="Rol"
+              value={form.rol}
+              onValueChange={(value) => setForm({ ...form, rol: value })}
+              options={ROL_OPTIONS}
+              placeholder="Seleccionar rol"
+            />
+          </FormField>
+        )}
 
         <FormField label="Contraseña" htmlFor="usuario-password" required>
           <Input
@@ -177,11 +212,11 @@ export function UsuariosPage() {
             type="button"
             variant="outline"
             onClick={() => setCreateOpen(false)}
-            disabled={crearUsuario.isPending}
+            disabled={isSubmitting}
           >
             Cancelar
           </Button>
-          <Button type="submit" isLoading={crearUsuario.isPending}>
+          <Button type="submit" isLoading={isSubmitting}>
             Crear
           </Button>
         </div>

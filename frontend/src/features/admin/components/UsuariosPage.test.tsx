@@ -36,6 +36,15 @@ const ADMIN: JwtPayload = {
   is_global_admin: false,
 };
 
+const ROOT: JwtPayload = {
+  sub: "root-1",
+  cliente_id: "cliente-home",
+  email: "root@test.com",
+  roles: [],
+  permisos: [],
+  is_global_admin: true,
+};
+
 const USUARIOS_FIXTURE = [
   {
     id: "admin-1",
@@ -338,5 +347,77 @@ describe("UsuariosPage", () => {
     await user.click(within(dialog).getByRole("button", { name: /confirmar|dar de baja/i }));
 
     await waitFor(() => expect(notifyError).toHaveBeenCalledWith(expect.any(String)));
+  });
+
+  // ─── R6: Switch "Root" gateado por isGlobalAdmin (Dz2-UI) ───────────────────
+
+  describe("Switch root en alta de usuarios (R6/Dz2-UI)", () => {
+    it("R6-a: root ve el Switch 'Root'; activarlo y enviar llama a POST /usuarios/root", async () => {
+      const rootCall: { body: Record<string, string> | null } = { body: null };
+      let usuariosPostCalled = false;
+      server.use(
+        http.get("http://localhost/api/usuarios", () => HttpResponse.json([])),
+        http.post("http://localhost/api/usuarios/root", async ({ request }) => {
+          const body = (await request.json()) as Record<string, string>;
+          rootCall.body = body;
+          return HttpResponse.json(
+            {
+              id: "root-2",
+              email: body.email,
+              nombre: body.nombre,
+              apellido: body.apellido,
+              clienteId: "cliente-home",
+              activo: true,
+              isGlobalAdmin: true,
+              roles: [],
+              createdAt: "2026-01-01T00:00:00Z",
+            },
+            { status: 201 },
+          );
+        }),
+        http.post("http://localhost/api/usuarios", () => {
+          usuariosPostCalled = true;
+          return HttpResponse.json({}, { status: 201 });
+        }),
+      );
+
+      const user = userEvent.setup();
+      renderPage(ROOT);
+
+      await user.click(await screen.findByRole("button", { name: /nuevo usuario/i }));
+
+      const rootSwitch = screen.getByRole("switch", { name: /root/i });
+      expect(rootSwitch).toBeInTheDocument();
+      expect(rootSwitch).toHaveAttribute("aria-checked", "false");
+
+      await user.click(rootSwitch);
+      expect(rootSwitch).toHaveAttribute("aria-checked", "true");
+
+      await user.type(screen.getByLabelText(/^nombre$/i), "Nuevo");
+      await user.type(screen.getByLabelText(/apellido/i), "Root");
+      await user.type(screen.getByLabelText(/^email$/i), "nuevoroot@test.com");
+      await user.type(screen.getByLabelText(/contraseña/i), "Secreta123!");
+
+      await user.click(screen.getByRole("button", { name: /^crear$/i }));
+
+      await waitFor(() => expect(rootCall.body).not.toBeNull());
+      expect(rootCall.body?.email).toBe("nuevoroot@test.com");
+      expect(usuariosPostCalled).toBe(false);
+    });
+
+    it("R6-b [CRITICAL]: ADMINISTRADOR no-root NO ve el Switch 'Root'", async () => {
+      server.use(
+        http.get("http://localhost/api/usuarios", () => HttpResponse.json(USUARIOS_FIXTURE)),
+      );
+
+      const user = userEvent.setup();
+      renderPage(ADMIN);
+
+      await screen.findByText("Ana Admin");
+      await user.click(screen.getByRole("button", { name: /nuevo usuario/i }));
+
+      expect(screen.queryByRole("switch", { name: /root/i })).not.toBeInTheDocument();
+      expect(screen.queryByText(/root \(acceso global\)/i)).not.toBeInTheDocument();
+    });
   });
 });

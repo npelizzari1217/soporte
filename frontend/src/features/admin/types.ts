@@ -93,3 +93,16 @@ export type NuevoUsuarioInput = {
   /** Uno de: USUARIO | COLABORADOR | TECNICO | ADMINISTRADOR */
   rol: string;
 };
+
+/**
+ * Body de POST /usuarios/root — mirrors CreateRootDto (backend, auth.dto.ts).
+ * SIN campo `rol`: el root nace sin rol RBAC (ortogonalidad, Dz1/R1).
+ *
+ * Spec: [SPEC:admin-ui/R6 Creación de root visible solo para roots en la UI]
+ */
+export type NuevoRootInput = {
+  nombre: string;
+  apellido: string;
+  email: string;
+  password: string;
+};
