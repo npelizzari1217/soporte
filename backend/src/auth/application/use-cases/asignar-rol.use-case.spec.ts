@@ -280,21 +280,13 @@ describe('AsignarRolUseCase', () => {
       expect(usuarioRepo.save).toHaveBeenCalledTimes(1);
     });
 
-    it('root asigna rol cross-tenant vía clienteId=target (X-Tenant-Id resuelto) (R4-d)', async () => {
-      // TenantGuard.resolveCrossTenant bindea clienteId=tenant objetivo cuando el
-      // actor es root; el controller pasa ese clienteId server-side (D7).
-      const usuarioDelTenantObjetivo = makeUsuario({ id: 'user-target-tenant' });
-      usuarioRepo.findById.mockResolvedValue(usuarioDelTenantObjetivo);
-      roleRepo.findByCodigo.mockResolvedValue(makeRole('ADMIN'));
-
-      const result = await useCase.execute({
-        usuarioId: 'user-target-tenant',
-        rolCodigo: 'ADMIN',
-        clienteId: 'cliente-uuid', // = clienteId del usuario objetivo (target tenant)
-      });
-
-      expect(result.isOk()).toBe(true);
-    });
+    // R4-d ("root asigna rol cross-tenant vía clienteId=target / X-Tenant-Id
+    // resuelto") NO se prueba a este nivel: el use case es agnóstico a root,
+    // solo compara el clienteId resuelto contra el del usuario objetivo — ese
+    // escenario es idéntico en los hechos a R4-c (mismo clienteId → ok), así
+    // que un test aparte aquí sería tautológico y daría falsa confianza sobre
+    // la resolución de root/X-Tenant-Id. La cobertura real de "root resuelve
+    // el tenant objetivo" vive en tenant.guard.spec.ts (R1-c).
   });
 });
 

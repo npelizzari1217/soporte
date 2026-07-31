@@ -343,10 +343,18 @@ describe('UsuariosController — POST /usuarios/:id/roles (regresión T3.8)', ()
     const { controller, asignarRol } = makeController();
     asignarRol.execute.mockResolvedValue(Result.ok(undefined));
 
-    await controller.asignarRol('user-uuid', { rolCodigo: 'TECNICO' });
+    // Body hostil: intenta colar un clienteId propio para forzar cross-tenant.
+    // AsignarRolDto solo declara rolCodigo, pero el excess-property check de TS
+    // solo aplica a literales de objeto pasados directo — via variable intermedia
+    // compila por structural typing, sin necesitar `as any`.
+    const bodyHostil = { rolCodigo: 'TECNICO', clienteId: 'evil-tenant' };
+    await controller.asignarRol('user-uuid', bodyHostil);
 
     expect(asignarRol.execute).toHaveBeenCalledWith(
       expect.objectContaining({ clienteId: 'tenant-a-uuid' }),
+    );
+    expect(asignarRol.execute).not.toHaveBeenCalledWith(
+      expect.objectContaining({ clienteId: 'evil-tenant' }),
     );
   });
 
