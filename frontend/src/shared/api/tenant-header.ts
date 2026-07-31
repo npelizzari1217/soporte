@@ -21,7 +21,30 @@ export function setTenantHeader(clienteId: string | null): void {
   currentTenantId = clienteId;
 }
 
-/** Lee el tenant activo actual. `null` = no inyectar X-Tenant-Id. */
-export function getTenantHeader(): string | null {
+/**
+ * Detecta entorno server (Next.js SSR/RSC) vs. browser.
+ * Extraída como función propia para poder inyectarla en tests: jsdom siempre
+ * define `window`, así que el branch real de servidor no es alcanzable en el
+ * entorno de test sin esta indirección (evita mockear globals o `as any`).
+ */
+function isServer(): boolean {
+  return typeof window === "undefined";
+}
+
+/**
+ * Lee el tenant activo actual. `null` = no inyectar X-Tenant-Id.
+ *
+ * Guarda SSR (Judgment Day R1, defensa en profundidad): el holder es un
+ * singleton module-level. En el server de Next ese estado se comparte entre
+ * requests concurrentes de USUARIOS DISTINTOS — si algún día un Server
+ * Component invocara `apiFetch`/`getTenantHeader`, esta guarda garantiza
+ * `null` SIEMPRE en ese entorno, cerrando la clase de fuga de raíz sin
+ * depender solo de que el caller sea disciplinado sobre "solo client".
+ *
+ * `checkIsServer` es inyectable (default = `isServer` real) únicamente para
+ * poder testear el branch server desde jsdom.
+ */
+export function getTenantHeader(checkIsServer: () => boolean = isServer): string | null {
+  if (checkIsServer()) return null;
   return currentTenantId;
 }

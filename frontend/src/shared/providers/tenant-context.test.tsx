@@ -175,12 +175,20 @@ describe("TenantContext", () => {
     });
 
     it("no-root: el holder queda SIEMPRE null (R5-c [CRITICAL])", () => {
+      // Ensucia el holder con un valor "poison" de una sesión root previa —
+      // si el efecto puente NO lo resetea activamente, este test debe fallar
+      // (antes pasaba igual porque el default del módulo ya era null: FIX 5).
+      setTenantHeader("cliente-poison");
+
       renderWithUser(REGULAR_USER);
 
       expect(getTenantHeader()).toBeNull();
     });
 
     it("root sin cliente seleccionado: el holder queda null", () => {
+      // Mismo endurecimiento: poison previo + assert de reset activo (FIX 5).
+      setTenantHeader("cliente-poison");
+
       renderWithUser(OPERADOR_USER);
 
       expect(getTenantHeader()).toBeNull();

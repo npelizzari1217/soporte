@@ -25,4 +25,22 @@ describe("tenant-header", () => {
     setTenantHeader(null);
     expect(getTenantHeader()).toBeNull();
   });
+
+  // ─── Guarda SSR (Judgment Day R1 — defensa en profundidad) ────────────────
+  //
+  // jsdom siempre define `window`, así que el branch real de servidor no es
+  // alcanzable en este entorno de test sin inyección. `getTenantHeader` acepta
+  // un `checkIsServer` inyectable (default = detección real de `window`) para
+  // poder ejercitar el branch server sin `as any` ni mockear globals.
+  it("getTenantHeader(checkIsServer): si checkIsServer() === true, SIEMPRE null aunque el holder tenga valor (guarda SSR)", () => {
+    setTenantHeader("cliente-poison");
+
+    expect(getTenantHeader(() => true)).toBeNull();
+  });
+
+  it("getTenantHeader(checkIsServer): si checkIsServer() === false (browser), devuelve el valor del holder", () => {
+    setTenantHeader("cliente-123");
+
+    expect(getTenantHeader(() => false)).toBe("cliente-123");
+  });
 });

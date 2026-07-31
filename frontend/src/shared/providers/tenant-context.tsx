@@ -23,7 +23,7 @@
  * Design: ADR-3 (admin-general)
  */
 
-import { createContext, useCallback, useEffect, useState } from "react";
+import { createContext, useCallback, useEffect, useLayoutEffect, useState } from "react";
 import { apiFetch } from "@/shared/api/client";
 import { setTenantHeader } from "@/shared/api/tenant-header";
 import { useSession } from "@/shared/hooks/use-session";
@@ -77,7 +77,19 @@ export function TenantContextProvider({ children }: TenantContextProviderProps) 
   // seleccionado. Para cualquier no-root el holder queda SIEMPRE null (R5-c
   // [CRITICAL]). Cleanup en unmount/logout evita filtrar el tenant entre
   // sesiones (ej. cambio de usuario sin recargar la página).
-  useEffect(() => {
+  //
+  // useLayoutEffect (Judgment Day R1, FIX 2 — micro-race de orden de effects):
+  // React corre TODOS los layout effects del árbol (fase de commit, antes del
+  // paint) antes de correr CUALQUIER passive effect (useEffect) del árbol. Si
+  // este puente fuera un useEffect normal y un componente hijo (ej. una query
+  // que llama apiFetch en su propio useEffect) corriera en la misma pasada de
+  // commit, no hay garantía de orden entre efectos hermanos/hijos vs. este —
+  // el hijo podría leer el holder ANTES de que el puente lo sincronice con la
+  // sesión actual (ventana teórica en un switch de usuario same-tab sin
+  // remount del provider). useLayoutEffect fuerza a este puente a ejecutarse
+  // en la fase de layout, estrictamente anterior a la fase de passive effects
+  // para el mismo commit, cerrando la ventana sin tocar el resto de la app.
+  useLayoutEffect(() => {
     setTenantHeader(isGlobalAdmin && clienteId ? clienteId : null);
     return () => setTenantHeader(null);
   }, [isGlobalAdmin, clienteId]);
