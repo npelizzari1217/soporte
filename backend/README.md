@@ -48,6 +48,13 @@ Variables requeridas por `seed:root`:
 | `ROOT_ADMIN_APELLIDO` | Apellido |
 | `ROOT_ADMIN_CLIENTE_ID` | UUID del cliente (tenant) de origen — `usuarios.cliente_id` es NOT NULL |
 
+> **`ROOT_ADMIN_EMAIL` NO debe apuntar a una cuenta suspendida/deshabilitada a
+> propósito.** `seed:root` reactiva la cuenta (`activo:true`, `deletedAt:null`)
+> en CADA corrida para garantizar que siempre exista un root usable (R3) — si
+> esa dirección corresponde a un usuario que alguien desactivó
+> deliberadamente (ej. baja de seguridad), el próximo redeploy la reactiva sin
+> aviso.
+
 ## Otros seeds
 
 - `seed:tenant` — catálogos operativos base (estados, prioridades, tipos de

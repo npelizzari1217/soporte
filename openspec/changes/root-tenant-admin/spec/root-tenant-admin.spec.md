@@ -83,7 +83,9 @@ comportamiento observable.
 #### Scenario: Bootstrap actualiza el flag si el usuario ya existe sin root
 - GIVEN existe una fila con el email del env pero `isGlobalAdmin = false`
 - WHEN se ejecuta el bootstrap
-- THEN MUST setear `isGlobalAdmin = true` sin alterar otras columnas
+- THEN MUST setear `isGlobalAdmin = true` y reactivar la cuenta (`activo = true`,
+  `deletedAt = null`) — intencional para garantizar un root usable en cada
+  corrida — sin alterar `nombre`/`apellido`/`passwordHash`
 
 #### Scenario: Credenciales del bootstrap nunca hardcodeadas
 - GIVEN el código del mecanismo de bootstrap

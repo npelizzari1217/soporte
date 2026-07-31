@@ -45,8 +45,19 @@ export interface CrearRootDto {
  * resultado de la operación. El email del objetivo es dato auditable legítimo
  * (no se enmascara); el password NUNCA se incluye en el mensaje.
  *
+ * El `logger.log` de auditoría corre POST-COMMIT (el root ya está persistido
+ * vía `usuarioRepo.create`, paso 5) — un throw ahí nunca puede "revertir"
+ * nada, solo tumbaría una respuesta que ya debería ser 200/201. Por eso se
+ * envuelve en try/catch log-and-swallow (mismo patrón que el guard post-commit
+ * de `crear-observacion.use-case.ts`/`transicionar-estado.use-case.ts`,
+ * Judgment Day PR4 Ronda 1): si el logger falla, se traga el error y
+ * `execute()` retorna igual el `Result.ok` ya obtenido. A diferencia de esos
+ * use cases, acá la operación que puede fallar ES el logger mismo, así que
+ * no hay un segundo canal (`logger.error`) al que reportar sin arriesgar otro
+ * throw — el catch queda deliberadamente vacío.
+ *
  * Spec ref: root-tenant-admin R2, R7 (Dz2)
- * Tarea: B.4; Judgment Day root-tenant-admin PR-B Ronda 1 (FIX 1)
+ * Tarea: B.4; Judgment Day root-tenant-admin PR-B Ronda 1 (FIX 1), Ronda 2 (FIX 2)
  */
 export class CrearRootUseCase {
   constructor(
@@ -86,9 +97,18 @@ export class CrearRootUseCase {
     await this.usuarioRepo.create(entity);
 
     // 6. Auditar (actor, objetivo, timestamp) — SOLO camino de éxito, R2.
-    this.logger.log(
-      `ROOT CREADO | actor=${dto.actor.id} | objetivo=${entity.email} | at=${new Date().toISOString()}`,
-    );
+    //    Guard post-commit (Judgment Day PR-B Ronda 2): el root YA está
+    //    persistido acá — si el logger lanza, se traga (log-and-swallow, sin
+    //    relanzar) para que la respuesta siga siendo el Result.ok ya obtenido.
+    try {
+      this.logger.log(
+        `ROOT CREADO | actor=${dto.actor.id} | objetivo=${entity.email} | at=${new Date().toISOString()}`,
+      );
+    } catch {
+      // Deliberadamente vacío: la auditoría nunca debe decidir el resultado
+      // de la operación (docblock de la clase). No hay segundo canal seguro
+      // al que reportar (el propio logger es el que falló).
+    }
 
     return Result.ok(entity);
   }

@@ -102,7 +102,7 @@ describe('TicketEstadoCambiado — misma forma en ambos caminos de publicación 
       resolve: vi.fn().mockReturnValue(mockMachineA),
     };
     const txRunnerA: ITenantTransactionRunner = { run: vi.fn((fn) => fn()) };
-    const loggerA: ILogger = { error: vi.fn() };
+    const loggerA: ILogger = { error: vi.fn(), log: vi.fn() };
 
     const transicionarUseCase = new TransicionarEstadoUseCase(
       ticketRepoA,
@@ -164,7 +164,7 @@ describe('TicketEstadoCambiado — misma forma en ambos caminos de publicación 
       findCodigoById: vi.fn().mockResolvedValue('SOPORTE'),
     };
     const txRunnerB: ITenantTransactionRunner = { run: vi.fn((fn) => fn()) };
-    const loggerB: ILogger = { error: vi.fn() };
+    const loggerB: ILogger = { error: vi.fn(), log: vi.fn() };
 
     const crearObservacionUseCase = new CrearObservacionUseCase(
       ticketRepoB,

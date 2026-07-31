@@ -141,8 +141,12 @@ function makeMocks() {
   };
 
   // logger (puerto ILogger, Judgment Day PR4 Ronda 2): stub tipado, sin casts.
+  // `log()` agregado en Judgment Day root-tenant-admin PR-B Ronda 1 (miembro
+  // requerido del puerto) — completado acá en PR-B Ronda 2 para satisfacer
+  // ILogger completo sin `as any`.
   const logger: vi.Mocked<ILogger> = {
     error: vi.fn(),
+    log: vi.fn(),
   };
 
   // txRunner ejecuta el callback inmediatamente (sin DB real)

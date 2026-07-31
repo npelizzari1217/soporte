@@ -463,3 +463,123 @@ $ corepack pnpm exec vitest run \
 - Commit 1 (work-unit): `feat(auth): auditar creación de root` (FIX 1).
 - Commit 2 (work-unit): `test(auth): endurecer tests y robustez del seed root` (FIX 2-6).
 - Sin push, sin PR.
+
+---
+
+## PR-B — Judgment Day Ronda 2 (fixes aplicados)
+
+Fix agent quirúrgico sobre `root-tenant-admin-pr2`, strict_tdd (RED→GREEN). Sin push, sin PR. NO se
+tocó PR-C.
+
+### FIX 1 (WARNING real, confirmado por 2 jueces) — 3 mocks de `ILogger` incompletos (TS2741)
+
+El fix de Ronda 1 agregó `log(message: string): void` como miembro REQUERIDO al puerto `ILogger`
+(`shared/domain/ports/i-logger.port.ts`), pero 3 mocks pre-existentes (de ANTES de esa ronda, en
+`tickets/application/use-cases/`) solo declaraban `{ error: vi.fn() }` — dejaban de satisfacer la
+interfaz completa (TS2741 "Property 'log' is missing"). No rompía los gates (`tsconfig.json` excluye
+specs) pero era deuda de tipos real. Se completaron los 3 con `log: vi.fn()`, sin `as any`:
+
+- `ticket-estado-cambiado-forma-identica.spec.ts` (`loggerA`/`loggerB`, líneas 105/167).
+- `crear-observacion.use-case.spec.ts` (`logger` en `makeMocks()`, línea ~144).
+- `transicionar-estado.use-case.spec.ts` (`logger` en `beforeEach`, línea ~144).
+
+**Evidencia (tsc spec-inclusive, `tsconfig.eslint.json` — incluye `**/*.spec.ts`)**: antes del fix,
+2 TS2741 confirmados en `ticket-estado-cambiado-forma-identica.spec.ts` líneas 105/167 (los otros 2
+mocks usan `vi.Mocked<ILogger>` y el ambiente de esta tsconfig no resuelve el namespace `vi` como
+tipo — TS2503 pre-existente y ajeno, enmascara el TS2741 ahí, pero el fix real es el mismo). Después
+del fix: 0 ocurrencias de TS2741 en los 3 archivos target (diff línea por línea confirmado). Targeted
+`vitest run` de los 3 archivos: 3 passed, 82 tests passed.
+
+### FIX 2 (WARNING theoretical → alineado con patrón del proyecto) — audit post-commit sin try/catch
+
+`CrearRootUseCase`: el `this.logger.log(...)` de auditoría (paso 6) corría DESPUÉS de
+`usuarioRepo.create(entity)` (paso 5, ya persistido) pero SIN try/catch — un throw ahí habría
+propagado un 500 pese a que el root ya estaba creado, violando el propio docblock de la clase ("la
+auditoría nunca debe decidir el resultado de la operación") y divergiendo del patrón ya establecido
+en PR4 (`crear-observacion.use-case.ts`/`transicionar-estado.use-case.ts`: guard try/catch
+log-and-swallow sobre side-effects post-commit).
+
+RED confirmado: nuevo test `logger.log RECHAZA/lanza post-commit: execute() igual devuelve Result.ok
+del root ya creado, no relanza, create llamado 1 vez` — falla contra el código sin guard
+(`Error: Logger de auditoría no disponible` propagado desde `execute()`).
+
+GREEN: se envolvió el `logger.log` de auditoría en try/catch. A diferencia del patrón de PR4 (donde
+el catch loguea el error vía `logger.error`), acá la operación que puede fallar ES el logger mismo —
+no hay un segundo canal seguro al que reportar sin arriesgar otro throw, así que el catch queda
+deliberadamente vacío (swallow puro, sin relogueo). El root ya persistido se retorna igual vía
+`Result.ok`.
+
+### FIX 3 (doc menor, Juez A suggestion) — README: cuenta deshabilitada a propósito
+
+`backend/README.md`: se agregó una nota junto a la tabla de envs de `seed:root` aclarando que
+`ROOT_ADMIN_EMAIL` NO debe apuntar a una cuenta suspendida/deshabilitada a propósito, porque
+`seed:root` la reactiva (`activo:true`, `deletedAt:null`) en cada corrida para garantizar un root
+usable (R3) — si esa cuenta fue desactivada deliberadamente (ej. baja de seguridad), el próximo
+redeploy la reactiva sin aviso.
+
+### FIX 4 (doc menor, Juez B suggestion) — spec.md: reconciliar wording de R3
+
+`openspec/changes/root-tenant-admin/spec/root-tenant-admin.spec.md`: el escenario "Bootstrap
+actualiza el flag si el usuario ya existe sin root" decía "sin alterar otras columnas", que divergía
+del comportamiento real (el `update` también reactiva `activo`/`deletedAt`, agregado en Ronda 1 FIX
+4 de PR-B). Ajustado el wording para aclarar que la reactivación es intencional (garantiza un root
+usable en cada corrida) y que lo que NO se toca es específicamente `nombre`/`apellido`/`passwordHash`.
+Cambio de texto de spec solamente, sin tocar código.
+
+### Evidencia real (desde `backend/`)
+
+```
+$ corepack pnpm test
+ Test Files  1 failed | 162 passed | 1 skipped (164)
+      Tests  1 failed | 2188 passed | 2 skipped (2191)
+
+FAIL src/auth/infrastructure/persistence/prisma/rbac-4-roles-seed.integration.spec.ts
+  > tiene exactamente 19 permisos... ADMINISTRADOR
+  AssertionError: expected [...] to have a length of 19 but got 20
+  (PRE-EXISTENTE — idéntico a rondas anteriores, ajeno a root-tenant-admin. NO tocado.)
+
+$ corepack pnpm exec eslint "src/**/*.ts"
+(sin output — 0 errores, 0 warnings)
+
+$ corepack pnpm exec tsc --noEmit -p tsconfig.json
+(sin output — 0 errores de tipos)
+
+$ corepack pnpm exec tsc --noEmit -p tsconfig.eslint.json   # spec-inclusive, confirma FIX 1
+# 0 ocurrencias de TS2741 en los 3 archivos target (antes: 2 confirmadas). El resto de errores
+# de esta tsconfig son ruido pre-existente y ajeno (vitest globals sin tipar: TS2582/TS2304/TS2503
+# en TODOS los specs del repo, incluida esta misma corrida — no relacionado a ILogger).
+```
+
+Targeted (archivos tocados por Judgment Day Ronda 2):
+
+```
+$ corepack pnpm exec vitest run \
+    src/tickets/application/use-cases/ticket-estado-cambiado-forma-identica.spec.ts \
+    src/tickets/application/use-cases/crear-observacion.use-case.spec.ts \
+    src/tickets/application/use-cases/transicionar-estado.use-case.spec.ts \
+    src/auth/application/use-cases/crear-root.use-case.spec.ts
+ Test Files  4 passed (4) | Tests  97 passed (97)
+```
+
+**Resumen: 2188 passed / 1 failed (preexistente, ajeno) / 2 skipped. Lint limpio. Typecheck limpio
+(gate principal + spec-inclusive para FIX 1).**
+
+### Archivos modificados (Judgment Day Ronda 2)
+
+- `backend/src/tickets/application/use-cases/ticket-estado-cambiado-forma-identica.spec.ts` (mocks
+  `loggerA`/`loggerB` completos)
+- `backend/src/tickets/application/use-cases/crear-observacion.use-case.spec.ts` (mock `logger`
+  completo en `makeMocks()`)
+- `backend/src/tickets/application/use-cases/transicionar-estado.use-case.spec.ts` (mock `logger`
+  completo en `beforeEach`)
+- `backend/src/auth/application/use-cases/crear-root.use-case.ts` (try/catch log-and-swallow sobre
+  la auditoría post-commit)
+- `backend/src/auth/application/use-cases/crear-root.use-case.spec.ts` (+test RED→GREEN del guard)
+- `backend/README.md` (+nota cuenta deshabilitada)
+- `openspec/changes/root-tenant-admin/spec/root-tenant-admin.spec.md` (wording R3 reconciliado)
+
+### Git
+
+- Branch: `root-tenant-admin-pr2` (continúa desde los commits de Ronda 1).
+- Commit work-unit: `fix(auth): completar mocks de ILogger y guardar audit post-commit`.
+- Sin push, sin PR.

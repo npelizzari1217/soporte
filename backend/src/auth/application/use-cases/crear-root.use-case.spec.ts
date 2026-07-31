@@ -220,6 +220,33 @@ describe('CrearRootUseCase (B.1-B.4)', () => {
     });
   });
 
+  describe('guard post-commit: logger.log lanza durante la auditoría [Judgment Day Ronda 2 FIX 2]', () => {
+    // Ref: el docblock del use case dice que la auditoría NUNCA debe decidir
+    // el resultado de la operación — el root ya está persistido (paso 5,
+    // usuarioRepo.create) ANTES de auditar (paso 6). Alineado con el patrón
+    // establecido en PR4 (crear-observacion.use-case.ts/transicionar-estado.
+    // use-case.ts): guard try/catch log-and-swallow sobre el side-effect
+    // post-commit, para que un throw ahí no tumbe una respuesta que ya
+    // debería ser 200/201.
+    it('logger.log RECHAZA/lanza post-commit: execute() igual devuelve Result.ok del root ya creado, no relanza, create llamado 1 vez', async () => {
+      vi.mocked(usuarioRepo.findByEmail).mockResolvedValue(null);
+      vi.mocked(usuarioRepo.create).mockResolvedValue(undefined);
+      vi.mocked(logger.log).mockImplementation(() => {
+        throw new Error('Logger de auditoría no disponible');
+      });
+
+      const result = await useCase.execute(makeDto());
+
+      expect(result.isOk()).toBe(true);
+      expect(result.getValue().email).toBe('nuevo-root@empresa.com');
+      expect(result.getValue().isGlobalAdmin).toBe(true);
+      // El root ya está persistido — el fallo de auditoría no debe re-invocar
+      // ni revertir nada.
+      expect(usuarioRepo.create).toHaveBeenCalledTimes(1);
+      expect(logger.log).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('errores', () => {
     it('email duplicado → UsuarioConflictError', async () => {
       vi.mocked(usuarioRepo.findByEmail).mockResolvedValue(makeUsuarioExistente());

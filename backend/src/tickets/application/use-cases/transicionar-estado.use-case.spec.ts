@@ -141,7 +141,7 @@ describe('TransicionarEstadoUseCase', () => {
 
     publisher = { publish: vi.fn() };
 
-    logger = { error: vi.fn() };
+    logger = { error: vi.fn(), log: vi.fn() };
 
     // Default happy-path mocks
     ticketRepo.findById.mockResolvedValue(makeTicket(ESTADO_ABIERTO_ID, TIPO_TICKET_ID));
