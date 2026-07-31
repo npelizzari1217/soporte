@@ -389,6 +389,10 @@ describe("UsuariosPage", () => {
       const rootSwitch = screen.getByRole("switch", { name: /root/i });
       expect(rootSwitch).toBeInTheDocument();
       expect(rootSwitch).toHaveAttribute("aria-checked", "false");
+      // FIX 3 (a11y, Judgment Day R1): el accessible name debe venir del
+      // <Label htmlFor> visible ("Root (acceso global)"), no de un
+      // aria-label recortado ("Root") que lo pise.
+      expect(rootSwitch).toHaveAccessibleName("Root (acceso global)");
 
       await user.click(rootSwitch);
       expect(rootSwitch).toHaveAttribute("aria-checked", "true");
@@ -403,6 +407,47 @@ describe("UsuariosPage", () => {
       await waitFor(() => expect(rootCall.body).not.toBeNull());
       expect(rootCall.body?.email).toBe("nuevoroot@test.com");
       expect(usuariosPostCalled).toBe(false);
+    });
+
+    it("FIX 4 (interactive-state): el Switch 'Root' se deshabilita mientras el form envía", async () => {
+      server.use(
+        http.get("http://localhost/api/usuarios", () => HttpResponse.json([])),
+        http.post("http://localhost/api/usuarios/root", async () => {
+          await delay(30);
+          return HttpResponse.json(
+            {
+              id: "root-2",
+              email: "nuevoroot@test.com",
+              nombre: "Nuevo",
+              apellido: "Root",
+              clienteId: "cliente-home",
+              activo: true,
+              isGlobalAdmin: true,
+              roles: [],
+              createdAt: "2026-01-01T00:00:00Z",
+            },
+            { status: 201 },
+          );
+        }),
+      );
+
+      const user = userEvent.setup();
+      renderPage(ROOT);
+
+      await user.click(await screen.findByRole("button", { name: /nuevo usuario/i }));
+
+      const rootSwitch = screen.getByRole("switch", { name: /root/i });
+      await user.click(rootSwitch);
+
+      await user.type(screen.getByLabelText(/^nombre$/i), "Nuevo");
+      await user.type(screen.getByLabelText(/apellido/i), "Root");
+      await user.type(screen.getByLabelText(/^email$/i), "nuevoroot@test.com");
+      await user.type(screen.getByLabelText(/contraseña/i), "Secreta123!");
+
+      const submitPromise = user.click(screen.getByRole("button", { name: /^crear$/i }));
+
+      await waitFor(() => expect(rootSwitch).toBeDisabled());
+      await submitPromise;
     });
 
     it("R6-b [CRITICAL]: ADMINISTRADOR no-root NO ve el Switch 'Root'", async () => {

@@ -174,11 +174,15 @@ export function UsuariosPage() {
         {isGlobalAdmin && (
           <div className="flex items-center justify-between gap-3 rounded-xl border border-input px-3 py-2.5">
             <Label htmlFor="usuario-root-switch">Root (acceso global)</Label>
+            {/* Sin aria-label (Judgment Day R1, FIX 3): un aria-label pisa el
+                accessible name por sobre el <Label htmlFor> visible, así que
+                el lector de pantalla anunciaba "Root" en vez del texto
+                completo. El htmlFor/id ya asocia el Label como accessible name. */}
             <Switch
               id="usuario-root-switch"
-              aria-label="Root"
               checked={esRoot}
               onCheckedChange={setEsRoot}
+              disabled={isSubmitting}
             />
           </div>
         )}
