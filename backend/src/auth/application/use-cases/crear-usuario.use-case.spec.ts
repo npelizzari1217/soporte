@@ -148,6 +148,20 @@ describe('CrearUsuarioUseCase (T3.2)', () => {
 
       expect(result.getValue().isGlobalAdmin).toBe(false);
     });
+
+    it('el alta normal SIEMPRE crea isGlobalAdmin=false, incluso si el actor es root [CRITICAL] (root-tenant-admin R2-d/B.6)', async () => {
+      // CrearUsuarioDto no expone ningún campo de authz/actor: no hay forma de
+      // colar isGlobalAdmin=true por este camino, sin importar quién sea el
+      // actor HTTP. El único camino que eleva el flag es CrearRootUseCase.
+      usuarioRepo.findByEmail.mockResolvedValue(null);
+      roleRepo.findByCodigo.mockResolvedValue(makeRol('ADMINISTRADOR'));
+      usuarioRepo.create.mockResolvedValue(undefined);
+
+      const result = await useCase.execute(makeDto({ rolCodigo: 'ADMINISTRADOR' }));
+
+      expect(result.isOk()).toBe(true);
+      expect(result.getValue().isGlobalAdmin).toBe(false);
+    });
   });
 
   describe('errores', () => {

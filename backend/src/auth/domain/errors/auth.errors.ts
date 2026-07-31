@@ -138,3 +138,22 @@ export class UsuarioConflictError extends DomainError {
     super(`Ya existe un usuario con email "${email}".`);
   }
 }
+
+/**
+ * RootRequeridoError — el actor no es root e intentó crear un root.
+ * → HTTP 403 en la capa de presentación.
+ *
+ * Autorización de aplicación, independiente del guard de presentación
+ * (defensa en profundidad, R7/Dz2). Si el guard se removiera por error,
+ * CrearRootUseCase igual rechaza.
+ *
+ * Spec ref: root-tenant-admin R2, R7
+ * Tarea: B.3
+ */
+export class RootRequeridoError extends DomainError {
+  readonly code = 'AUTH_ROOT_REQUERIDO';
+
+  constructor() {
+    super('Solo un usuario root puede crear otro usuario root.');
+  }
+}

@@ -49,6 +49,7 @@ import { BajaUsuarioUseCase } from './application/use-cases/baja-usuario.use-cas
 import { AsignarRolUseCase } from './application/use-cases/asignar-rol.use-case';
 import { CrearUsuarioUseCase } from './application/use-cases/crear-usuario.use-case';
 import { ListarUsuariosUseCase } from './application/use-cases/listar-usuarios.use-case';
+import { CrearRootUseCase } from './application/use-cases/crear-root.use-case';
 import { MASTER_TRANSACTION_RUNNER } from '../shared/domain/ports/i-master-transaction-runner';
 import { IMasterTransactionRunner } from '../shared/domain/ports/i-master-transaction-runner';
 import { IUsuarioRepository } from './domain/ports/i-usuario.repository';
@@ -180,6 +181,15 @@ import { UsuariosController } from './interface/controllers/usuarios.controller'
       provide: ListarUsuariosUseCase,
       useFactory: (usuarioRepo: IUsuarioRepository) => new ListarUsuariosUseCase(usuarioRepo),
       inject: [USUARIO_REPOSITORY],
+    },
+    {
+      // B.9 (root-tenant-admin Dz2) — CrearRootUseCase: único camino de
+      // aplicación que eleva isGlobalAdmin=true. Doble authz: GlobalAdminGuard
+      // (presentación) + actor.isRoot revalidado en el use case (aplicación).
+      provide: CrearRootUseCase,
+      useFactory: (usuarioRepo: IUsuarioRepository, hashProvider: IHashProvider) =>
+        new CrearRootUseCase(usuarioRepo, hashProvider),
+      inject: [USUARIO_REPOSITORY, HASH_PROVIDER],
     },
 
     // ─── Guards (Injectable — necesitan ser providers para inyección de clase) ─

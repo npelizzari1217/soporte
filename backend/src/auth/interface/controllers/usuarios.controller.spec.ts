@@ -35,9 +35,11 @@ vi.mock('../../../shared/infrastructure/persistence/prisma.service', () => ({
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
+import { GUARDS_METADATA } from '@nestjs/common/constants';
 import { UsuariosController } from './usuarios.controller';
 import { Result } from '../../../shared/domain/result';
 import {
@@ -46,9 +48,11 @@ import {
   RolYaAsignadoError,
   AutoBajaProhibidaError,
   UsuarioConflictError,
+  RootRequeridoError,
 } from '../../domain/errors/auth.errors';
 import { UsuarioEntity } from '../../domain/entities/usuario.entity';
 import { TenantContext } from '../../../shared/tenancy/tenant-context';
+import { GlobalAdminGuard } from '../../infrastructure/guards/global-admin.guard';
 import type { JwtPayload } from '../../domain/ports/i-token.service';
 
 // ─── Factories ────────────────────────────────────────────────────────────────
@@ -69,6 +73,10 @@ function makeListarUsuariosUseCase() {
   return { execute: vi.fn() };
 }
 
+function makeCrearRootUseCase() {
+  return { execute: vi.fn() };
+}
+
 function makeTenantContext(clienteId = 'tenant-a-uuid'): TenantContext {
   return {
     get: vi.fn().mockReturnValue({ clienteId, dbName: 'db_a', prismaClient: {} }),
@@ -79,7 +87,7 @@ function makeTenantContext(clienteId = 'tenant-a-uuid'): TenantContext {
   } as unknown as TenantContext;
 }
 
-function makeJwtUser(sub = 'requester-uuid'): JwtPayload {
+function makeJwtUser(sub = 'requester-uuid', overrides?: Partial<JwtPayload>): JwtPayload {
   return {
     sub,
     cliente_id: 'tenant-a-uuid',
@@ -88,6 +96,7 @@ function makeJwtUser(sub = 'requester-uuid'): JwtPayload {
     permisos: ['usuario:gestionar'],
     cliente_nombre: 'Empresa A',
     is_global_admin: false,
+    ...overrides,
   };
 }
 
@@ -109,15 +118,17 @@ function makeController() {
   const baja = makeBajaUsuarioUseCase();
   const crear = makeCrearUsuarioUseCase();
   const listar = makeListarUsuariosUseCase();
+  const crearRoot = makeCrearRootUseCase();
   const tenantCtx = makeTenantContext();
   const controller = new UsuariosController(
     asignarRol as any,
     baja as any,
     crear as any,
     listar as any,
+    crearRoot as any,
     tenantCtx,
   );
-  return { controller, asignarRol, baja, crear, listar, tenantCtx };
+  return { controller, asignarRol, baja, crear, listar, crearRoot, tenantCtx };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -257,6 +268,7 @@ describe('UsuariosController — GET /usuarios (T3.8)', () => {
       makeBajaUsuarioUseCase() as any,
       makeCrearUsuarioUseCase() as any,
       listar as any,
+      makeCrearRootUseCase() as any,
       tenantCtx,
     );
     listar.execute.mockResolvedValue([]);
@@ -383,5 +395,100 @@ describe('UsuariosController — POST /usuarios/:id/roles (regresión T3.8)', ()
     await expect(controller.asignarRol('u1', { rolCodigo: 'ADMIN' })).rejects.toThrow(
       BadRequestException,
     );
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /usuarios/root (B.5-B.9 — root-tenant-admin Dz2, R2/R7)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('UsuariosController — POST /usuarios/root (B.5-B.9)', () => {
+  it('[CRITICAL] la ruta declara GlobalAdminGuard vía @UseGuards (R2-c)', () => {
+    // Verifica el wiring de guard a nivel de metadata de Nest — el mismo mecanismo
+    // que evalúa NestJS en runtime al resolver @UseGuards(). GlobalAdminGuard en sí
+    // ya está cubierto unitariamente en global-admin.guard.spec.ts (rechaza
+    // is_global_admin=false con ForbiddenException); acá confirmamos que la ruta
+    // crearRoot() efectivamente lo tiene declarado (si el guard se quitara del
+    // método, este test detecta la regresión de wiring).
+    const guards = (Reflect.getMetadata(GUARDS_METADATA, UsuariosController.prototype.crearRoot) ??
+      []) as unknown[];
+    expect(guards).toContain(GlobalAdminGuard);
+  });
+
+  it('actor root, body válido → 201 con usuario isGlobalAdmin=true', async () => {
+    const { controller, crearRoot } = makeController();
+    const entity = UsuarioEntity.create({
+      email: 'nuevo-root@empresa.com',
+      nombre: 'Root',
+      apellido: 'Dos',
+      passwordHash: 'hashed_value_secret',
+      clienteId: 'tenant-a-uuid',
+      activo: true,
+      isGlobalAdmin: true,
+      roles: [],
+    });
+    crearRoot.execute.mockResolvedValue(Result.ok(entity));
+
+    const result = await controller.crearRoot(
+      { email: 'nuevo-root@empresa.com', nombre: 'Root', apellido: 'Dos', password: 'secret123' },
+      makeJwtUser('actor-root-uuid', { is_global_admin: true }),
+    );
+
+    expect(result.isGlobalAdmin).toBe(true);
+    expect((result as any).passwordHash).toBeUndefined();
+  });
+
+  it('resuelve clienteId de TenantContext (NUNCA del body) y actor.isRoot del JWT', async () => {
+    const { controller, crearRoot } = makeController();
+    crearRoot.execute.mockResolvedValue(
+      Result.ok(
+        UsuarioEntity.create({
+          email: 'r@e.com',
+          nombre: 'R',
+          apellido: 'D',
+          passwordHash: 'x',
+          clienteId: 'tenant-a-uuid',
+          activo: true,
+          isGlobalAdmin: true,
+          roles: [],
+        }),
+      ),
+    );
+
+    await controller.crearRoot(
+      { email: 'r@e.com', nombre: 'R', apellido: 'D', password: 'secret123' },
+      makeJwtUser('actor-root-uuid', { is_global_admin: true }),
+    );
+
+    expect(crearRoot.execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        clienteId: 'tenant-a-uuid',
+        actor: { id: 'actor-root-uuid', isRoot: true },
+      }),
+    );
+  });
+
+  it('[CRITICAL] actor no-root (defensa de aplicación) → RootRequeridoError → 403 ForbiddenException', async () => {
+    const { controller, crearRoot } = makeController();
+    crearRoot.execute.mockResolvedValue(Result.fail(new RootRequeridoError()));
+
+    await expect(
+      controller.crearRoot(
+        { email: 'x@e.com', nombre: 'X', apellido: 'Y', password: 'secret123' },
+        makeJwtUser('admin-uuid', { is_global_admin: false }),
+      ),
+    ).rejects.toThrow(ForbiddenException);
+  });
+
+  it('email ya existe → 409 ConflictException', async () => {
+    const { controller, crearRoot } = makeController();
+    crearRoot.execute.mockResolvedValue(Result.fail(new UsuarioConflictError('dup@root.com')));
+
+    await expect(
+      controller.crearRoot(
+        { email: 'dup@root.com', nombre: 'X', apellido: 'Y', password: 'secret123' },
+        makeJwtUser('actor-root-uuid', { is_global_admin: true }),
+      ),
+    ).rejects.toThrow(ConflictException);
   });
 });

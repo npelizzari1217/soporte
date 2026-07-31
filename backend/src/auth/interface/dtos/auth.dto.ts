@@ -87,6 +87,33 @@ export class CreateUsuarioDto {
 }
 
 /**
+ * CreateRootDto — body de POST /usuarios/root.
+ *
+ * NO incluye `rol`: el root nace SIN rol RBAC (ortogonalidad, Dz1 — ser root no
+ * implica ser ADMINISTRADOR). `clienteId` NUNCA viene del body (D7) — se
+ * resuelve server-side desde TenantContext, igual que en `CreateUsuarioDto`.
+ *
+ * Spec ref: root-tenant-admin R2 (Dz2)
+ * Tarea: B.7
+ */
+export class CreateRootDto {
+  @IsEmail()
+  email!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  nombre!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  apellido!: string;
+
+  @IsString()
+  @MinLength(8)
+  password!: string;
+}
+
+/**
  * UsuarioResponseDto — respuesta de GET /usuarios y POST /usuarios.
  *
  * INVARIANTE DE SEGURIDAD: NUNCA incluye passwordHash ni password.
