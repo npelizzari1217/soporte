@@ -502,12 +502,20 @@ import { ComentariosController } from './interface/controllers/comentarios.contr
     // EMAIL_SENDER: adapter PURO — arma el transporter POR-ENVÍO a partir de
     // la SmtpConfig que le pasa el handler (Dz6/Dz11, PR6 runtime-config-table).
     // Ya NO lee `process.env` ni valida nada al bootstrap: el fail-fast de
-    // config SMTP se corrió a send-time (R6) — `useClass` en vez del
-    // `useFactory: () => NodemailerEmailSender.fromEnv()` de PR3
-    // (notif-email-estado-ticket), eliminado junto con `email-config.ts`.
+    // config SMTP se corrió a send-time (R6).
+    //
+    // `useFactory` en vez de `useClass` (Judgment Day PR6 Ronda 1, item 4):
+    // `useClass: NodemailerEmailSender` solo funcionaba porque la clase NO
+    // tiene `@Injectable()` — Nest la construye sin args (`new
+    // NodemailerEmailSender()`), lo que hace caer `transportFactory` a su
+    // default. Frágil: si en el futuro alguien agrega `@Injectable()` a
+    // `NodemailerEmailSender` (ej. para inyectarle algo), Nest intentaría
+    // resolver el constructor por metadata de diseño y este wiring rompería
+    // en silencio (sin error de compilación, solo en runtime del bootstrap).
+    // `useFactory` no depende de esa ausencia de metadata.
     {
       provide: EMAIL_SENDER,
-      useClass: NodemailerEmailSender,
+      useFactory: (): NodemailerEmailSender => new NodemailerEmailSender(),
     },
 
     // NotificarCambioEstadoHandler: plain class (application, sin decorators

@@ -33,6 +33,10 @@ import { NodemailerEmailSender } from './infrastructure/email/nodemailer-email-s
 import { NotificarCambioEstadoHandler } from './application/event-handlers/notificar-cambio-estado.handler';
 import { NotificarCambioEstadoListener } from './infrastructure/events/notificar-cambio-estado.listener';
 import { CONFIG_RESOLVER } from '../configuracion/domain/ports/i-config-resolver';
+import { TicketEstadoCambiado } from './domain/events/ticket-estado-cambiado.event';
+import { Email } from './domain/value-objects/email.vo';
+import { Result } from '../shared/domain/result';
+import { SmtpConfig } from '../shared/domain/value-objects/smtp-config.vo';
 
 describe('TicketsModule bootstrap (Fase 4, PR2 — R2 DI wiring regression guard)', () => {
   it('compila sin UnknownDependenciesException y resuelve el resolver de ciclo activo por DI', async () => {
@@ -85,8 +89,10 @@ describe('TicketsModule bootstrap (Fase 4, PR2 — R2 DI wiring regression guard
   // PR3 (notif-email-estado-ticket, task 3.8) + PR6 (runtime-config-table,
   // task 6.13): EMAIL_SENDER/SOLICITANTE_EMAIL_RESOLVER/CONFIG_RESOLVER +
   // NotificarCambioEstadoHandler/Listener wireados. EMAIL_SENDER ya NO es
-  // fail-fast (Dz11, PR6): `useClass` puro, sin `fromEnv()` — resuelve
-  // siempre, sin depender de env SMTP.
+  // fail-fast (Dz11, PR6): `useFactory: () => new NodemailerEmailSender()`
+  // (Judgment Day PR6 Ronda 1, item 4 — antes `useClass`, frágil ante un
+  // futuro `@Injectable()` en la clase), sin `fromEnv()` — resuelve siempre,
+  // sin depender de env SMTP.
   it('resuelve EMAIL_SENDER a un NodemailerEmailSender real y wirea SOLICITANTE_EMAIL_RESOLVER + CONFIG_RESOLVER + handler/listener', async () => {
     const moduleRef = await Test.createTestingModule({
       imports: [SharedModule, TicketsModule],
@@ -102,15 +108,76 @@ describe('TicketsModule bootstrap (Fase 4, PR2 — R2 DI wiring regression guard
       NotificarCambioEstadoListener,
     );
 
-    // Verificación de wiring POSICIONAL (mismo criterio que
-    // `resolverCicloActivo` más arriba en este archivo): un useFactory con
-    // `inject` desalineado NO lanza en compile()/init() — Nest pasa los
-    // valores en el orden dado, silenciosamente. CONFIG_RESOLVER es el
-    // primer parámetro nuevo del useFactory de NotificarCambioEstadoHandler
-    // (PR6, task 6.13) — se inspecciona el campo real de la instancia.
-    const configResolverInjected = (handler as unknown as { configResolver: unknown })
-      .configResolver;
-    expect(configResolverInjected).toBe(moduleRef.get(CONFIG_RESOLVER));
+    await moduleRef.close();
+  });
+
+  // Judgment Day PR6 Ronda 1, item 3: reemplaza la introspección previa
+  // `(handler as unknown as { configResolver: unknown }).configResolver`
+  // (prohibida, DoD §9 — `as unknown as`) por verificación de wiring
+  // POSICIONAL vía COMPORTAMIENTO, mismo criterio que
+  // `notificar-cambio-estado.listener.spec.ts` de este PR (cero casts,
+  // stubs tipados de los 3 ports).
+  //
+  // Se overridean CONFIG_RESOLVER/SOLICITANTE_EMAIL_RESOLVER/EMAIL_SENDER con
+  // stubs DISTINGUIBLES antes de compile() — Nest sigue resolviendo el
+  // useFactory de NotificarCambioEstadoHandler con el MISMO array `inject` de
+  // producción (`tickets.module.ts`), solo cambia lo que cada token
+  // resuelve. Si `inject` estuviera desalineado respecto de los parámetros
+  // del useFactory (el bug real que este test previene — ver comentario del
+  // test anterior), `emailSenderStub.send()` recibiría un valor que NO es el
+  // `SmtpConfig` devuelto por `configResolverStub`, porque el primer
+  // parámetro habría quedado bindeado a otro provider. Se detecta por
+  // identidad de referencia del objeto `SmtpConfig`, sin tocar ningún campo
+  // privado de la instancia.
+  it('CONFIG_RESOLVER es efectivamente el primer parámetro posicional del useFactory de NotificarCambioEstadoHandler (verificación vía comportamiento)', async () => {
+    const smtpConfig = SmtpConfig.create({
+      host: 'smtp.wiring-test.com',
+      port: 587,
+      secure: false,
+      user: 'no-reply@wiring-test.com',
+      pass: 'wiring-secret',
+      from: 'Soporte <no-reply@wiring-test.com>',
+    }).getValue();
+    const email = Email.create('solicitante@wiring-test.com').getValue();
+
+    const configResolverStub = { resolveSmtp: vi.fn().mockResolvedValue(Result.ok(smtpConfig)) };
+    const solicitanteResolverStub = { resolver: vi.fn().mockResolvedValue(Result.ok(email)) };
+    const emailSenderStub = { send: vi.fn().mockResolvedValue(Result.ok(undefined)) };
+
+    const moduleRef = await Test.createTestingModule({
+      imports: [SharedModule, TicketsModule],
+    })
+      .overrideProvider(CONFIG_RESOLVER)
+      .useValue(configResolverStub)
+      .overrideProvider(SOLICITANTE_EMAIL_RESOLVER)
+      .useValue(solicitanteResolverStub)
+      .overrideProvider(EMAIL_SENDER)
+      .useValue(emailSenderStub)
+      .compile();
+
+    await moduleRef.init();
+
+    const handler = moduleRef.get(NotificarCambioEstadoHandler);
+    const event = new TicketEstadoCambiado(
+      'ticket-wiring-1',
+      'SOP-2026-99999',
+      'Ticket de wiring test',
+      'SOPORTE',
+      'estado-anterior-id',
+      'estado-nuevo-id',
+      'EN_PROGRESO',
+      'RESUELTO',
+      'solicitante-wiring-1',
+      'autor-wiring-1',
+      'tenant-wiring-1',
+      new Date('2026-07-30T12:00:00.000Z'),
+    );
+
+    const outcome = await handler.handle(event);
+
+    expect(configResolverStub.resolveSmtp).toHaveBeenCalledWith('tenant-wiring-1');
+    expect(emailSenderStub.send).toHaveBeenCalledWith(expect.anything(), smtpConfig);
+    expect(outcome.status).toBe('sent');
 
     await moduleRef.close();
   });
