@@ -24,8 +24,10 @@ Branch: `root-tenant-admin-pr1` (desde `master`). Sin push, sin PR (gateado por 
       código ACTUAL (sin `clienteId`/check) → **RED confirmado** (ver evidencia abajo). Tras el fix
       Dz4 (A.12) → GREEN. No quedó test muerto separado.
 - [x] A.10 Mismo tenant sigue asignando ok sin regresión (R4-c) — GREEN.
-- [x] A.11 Root cross-tenant vía `clienteId=target` (simulando `X-Tenant-Id` resuelto por
-      `TenantGuard.resolveCrossTenant`) sigue funcionando (R4-d) — GREEN.
+- [x] A.11 Root cross-tenant (R4-d): el test dedicado en `asignar-rol.use-case.spec.ts` se
+      **eliminó en Judgment Day PR-A** por tautológico (idéntico a R4-c a nivel use case, que es
+      agnóstico a "root": solo compara `clienteId` resuelto). Cobertura real del escenario root
+      cross-tenant vía `X-Tenant-Id` en `tenant.guard.spec.ts` (R1-c). Ver desviación #4.
 - [x] A.12 `asignar-rol.use-case.ts`: `AsignarRolDto` suma `clienteId: string`; tras cargar el
       usuario, `if (usuario.clienteId !== dto.clienteId) return Result.fail(new
       UsuarioNoEncontradoError(dto.usuarioId))` (mismo patrón que `baja-usuario.use-case.ts:69-71`).
@@ -61,6 +63,15 @@ Branch: `root-tenant-admin-pr1` (desde `master`). Sin push, sin PR (gateado por 
    falla es IDÉNTICA — preexiste al change `root-tenant-admin` y es ajena a Dz1/Dz4 (permisos RBAC,
    no root/tenant). Fuera de alcance de PR-A; queda para backlog separado. NO se modificó ese
    archivo ni el seed de permisos.
+5. **Test R4-d dedicado eliminado en Judgment Day PR-A** (registrado en verify): la task A.11 pedía
+   un test "root asigna cross-tenant vía `X-Tenant-Id` (clienteId=target)" en
+   `asignar-rol.use-case.spec.ts`. En el endurecimiento de Judgment Day PR-A ambos jueces lo marcaron
+   **tautológico** (idéntico a R4-c: el use case es agnóstico a "root", solo compara el `clienteId`
+   resuelto contra el del usuario objetivo), así que se eliminó y se reemplazó por un comentario que
+   apunta a la cobertura real. El escenario root cross-tenant (resolución de `X-Tenant-Id`) está
+   cubierto en `tenant.guard.spec.ts` (R1-c), donde vive la lógica de `resolveCrossTenant`. La task
+   A.11 queda `[x]` porque el comportamiento está cubierto, pero SIN test dedicado en el spec del use
+   case — desviación consciente, no verde falso.
 
 ### Archivos creados
 
@@ -74,8 +85,8 @@ Branch: `root-tenant-admin-pr1` (desde `master`). Sin push, sin PR (gateado por 
 - `backend/src/auth/application/use-cases/asignar-rol.use-case.ts` (+`clienteId` en
   `AsignarRolDto`, +guard cross-tenant tras cargar el usuario)
 - `backend/src/auth/application/use-cases/asignar-rol.use-case.spec.ts` (+`clienteId` en todas las
-  invocaciones existentes; +suite "Aislamiento de tenant (R4/Dz4)" con 3 tests: R4-b [CRITICAL],
-  R4-c, R4-d)
+  invocaciones existentes; +suite "Aislamiento de tenant (R4/Dz4)" con 2 tests: R4-b [CRITICAL],
+  R4-c — el test R4-d se eliminó en Judgment Day PR-A por tautológico, ver desviación #4)
 - `backend/src/auth/interface/controllers/usuarios.controller.ts` (`asignarRol` resuelve
   `clienteId` de `TenantContext`)
 - `backend/src/auth/interface/controllers/usuarios.controller.spec.ts` (test legacy actualizado +

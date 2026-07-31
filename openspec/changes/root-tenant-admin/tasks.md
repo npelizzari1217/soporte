@@ -41,7 +41,7 @@ Chain strategy: stacked-to-main
 - [x] A.7 Confirmar A.4-A.6 en GREEN sin tocar `tenant.guard.ts` (son regresión, no fix) — commit work-unit 1: "test(auth): cubrir isRoot() y regresión de tenant.guard".
 - [x] A.8+A.9 [RED][CRITICAL] `asignar-rol.use-case.spec.ts`: **colapsado por ajuste del orquestador** en UN solo test ("asignar rol a usuario de OTRO tenant → UsuarioNoEncontradoError (404) (R4-b)") — corrido contra el código ACTUAL, confirmado RED (output pegado en STATE.md), luego GREEN tras A.12. No quedó test muerto separado.
 - [x] A.10 [RED→GREEN] `asignar-rol.use-case.spec.ts`: mismo tenant sigue asignando ok sin regresión (R4-c).
-- [x] A.11 [RED→GREEN] `asignar-rol.use-case.spec.ts`: root cross-tenant vía `X-Tenant-Id` (clienteId=target) sigue funcionando (R4-d).
+- [x] A.11 (R4-d) root cross-tenant vía `X-Tenant-Id` (clienteId=target): test dedicado **eliminado en Judgment Day PR-A por tautológico** (idéntico a R4-c; el use case es agnóstico a root). Cobertura real del escenario en `tenant.guard.spec.ts` (R1-c). Ver STATE.md desviación PR-A #5.
 - [x] A.12 [GREEN] `asignar-rol.use-case.ts`: sumar `clienteId` a `AsignarRolDto`, chequeo `usuario.clienteId !== dto.clienteId → Result.fail(UsuarioNoEncontradoError)` tras cargar el usuario (Dz4) — pasa A.9-A.11, A.8 deja de reproducir la fuga.
 - [x] A.13 [GREEN] `usuarios.controller.ts` (`asignarRol`): resolver `clienteId` de `this.tenantContext.get()!.clienteId`, nunca del body (D7, Dz4).
 - [x] A.14 Evidencia real: correr `corepack pnpm test`, `corepack pnpm lint`, `corepack pnpm exec tsc --noEmit -p tsconfig.json` en `backend/` (serial si hay tests de integración compartidos) y pegar los números tal cual. Ver `STATE.md`.
