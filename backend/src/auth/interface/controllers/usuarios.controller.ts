@@ -3,6 +3,7 @@
  *
  * Rutas:
  *   POST   /usuarios              → CrearUsuarioUseCase    [JwtAuthGuard, TenantGuard, usuario:gestionar]
+ *   POST   /usuarios/root         → CrearRootUseCase       [JwtAuthGuard, TenantGuard, GlobalAdminGuard]
  *   GET    /usuarios              → ListarUsuariosUseCase  [JwtAuthGuard, TenantGuard, usuario:gestionar]
  *   PATCH  /usuarios/:id/baja    → BajaUsuarioUseCase     [JwtAuthGuard, TenantGuard, usuario:gestionar]
  *   POST   /usuarios/:id/roles   → AsignarRolUseCase      [JwtAuthGuard, TenantGuard, rol:asignar]
