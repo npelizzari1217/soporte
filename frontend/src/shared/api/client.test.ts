@@ -1,11 +1,13 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../test/msw/server";
 import { apiFetch } from "@/shared/api/client";
 import { ApiError, SessionExpiredError } from "@/shared/api/types";
+import { setTenantHeader } from "@/shared/api/tenant-header";
 
 // Spec: [SPEC:frontend-api-client/retry-401]
 // Spec: [SPEC:frontend-api-client/single-flight]
+// Spec: [SPEC:frontend-api-client/R5 Propagación centralizada de X-Tenant-Id]
 
 const BASE = "http://localhost";
 
@@ -190,5 +192,80 @@ describe("apiFetch", () => {
     // Second cycle (separate call later): 401 → fresh refresh → retry
     await apiFetch("tickets");
     expect(refreshCallCount).toBe(2); // new refresh initiated
+  });
+
+  // ─── R5: X-Tenant-Id centralizado (holder module-level, Dz5) ────────────────
+
+  describe("X-Tenant-Id centralizado (Dz5/R5)", () => {
+    afterEach(() => {
+      // Aislar tests entre sí — el holder es module-level (singleton).
+      setTenantHeader(null);
+    });
+
+    it("R5-c [CRITICAL]: holder null (no-root) → NINGUNA request incluye X-Tenant-Id", async () => {
+      let receivedHeader: string | null = "not-called";
+      server.use(
+        http.get(`${BASE}/api/tickets`, ({ request }) => {
+          receivedHeader = request.headers.get("x-tenant-id");
+          return HttpResponse.json([]);
+        }),
+      );
+
+      await apiFetch("tickets");
+
+      expect(receivedHeader).toBeNull();
+    });
+
+    it("R5-a/R5-b [CRITICAL]: holder con clienteId → header inyectado en request arbitraria (tickets/compras/equipos/reparaciones)", async () => {
+      setTenantHeader("cliente-acme");
+      const received: Record<string, string | null> = {};
+
+      server.use(
+        http.get(`${BASE}/api/tickets`, ({ request }) => {
+          received.tickets = request.headers.get("x-tenant-id");
+          return HttpResponse.json([]);
+        }),
+        http.get(`${BASE}/api/compras`, ({ request }) => {
+          received.compras = request.headers.get("x-tenant-id");
+          return HttpResponse.json([]);
+        }),
+        http.get(`${BASE}/api/equipos`, ({ request }) => {
+          received.equipos = request.headers.get("x-tenant-id");
+          return HttpResponse.json([]);
+        }),
+        http.get(`${BASE}/api/reparaciones`, ({ request }) => {
+          received.reparaciones = request.headers.get("x-tenant-id");
+          return HttpResponse.json([]);
+        }),
+      );
+
+      await Promise.all([
+        apiFetch("tickets"),
+        apiFetch("compras"),
+        apiFetch("equipos"),
+        apiFetch("reparaciones"),
+      ]);
+
+      expect(received.tickets).toBe("cliente-acme");
+      expect(received.compras).toBe("cliente-acme");
+      expect(received.equipos).toBe("cliente-acme");
+      expect(received.reparaciones).toBe("cliente-acme");
+    });
+
+    it("precedencia: header X-Tenant-Id explícito NO es pisado por el holder", async () => {
+      setTenantHeader("cliente-holder");
+      let receivedHeader: string | null = null;
+
+      server.use(
+        http.get(`${BASE}/api/ciclos`, ({ request }) => {
+          receivedHeader = request.headers.get("x-tenant-id");
+          return HttpResponse.json([]);
+        }),
+      );
+
+      await apiFetch("ciclos", { headers: { "X-Tenant-Id": "cliente-explicito" } });
+
+      expect(receivedHeader).toBe("cliente-explicito");
+    });
   });
 });

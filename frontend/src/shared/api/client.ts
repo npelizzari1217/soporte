@@ -1,5 +1,6 @@
 import { ApiError, SessionExpiredError, type ApiFetchInit } from "./types";
 import { normalize } from "./normalize";
+import { getTenantHeader } from "./tenant-header";
 
 /**
  * Browser-side authenticated fetch with single-flight 401 refresh.
@@ -41,6 +42,13 @@ function refreshSession(): Promise<void> {
 /**
  * Low-level fetch to `/api/{path}`.
  * Handles the `json` shorthand in ApiFetchInit: serializes body + sets Content-Type.
+ *
+ * X-Tenant-Id centralizado (Dz5/R5): lee `getTenantHeader()` (holder module-level
+ * sincronizado por el efecto puente de `TenantContextProvider`) e inyecta el header
+ * SOLO si hay valor y la request no lo trae ya explícito — la precedencia protege
+ * el fetch de ciclos en `tenant-context.tsx` (headers explícitos existentes en
+ * `useCrearUsuario`/`useUsuariosAdmin` siguen funcionando sin cambios). Un no-root
+ * NUNCA envía el header porque el holder queda SIEMPRE `null` para ese caso (R5-c).
  */
 async function rawFetch(path: string, init?: ApiFetchInit): Promise<Response> {
   const { json, body, ...rest } = init ?? {};
@@ -52,6 +60,11 @@ async function rawFetch(path: string, init?: ApiFetchInit): Promise<Response> {
     if (!headers.has("content-type")) {
       headers.set("content-type", "application/json");
     }
+  }
+
+  const tenantId = getTenantHeader();
+  if (tenantId && !headers.has("x-tenant-id")) {
+    headers.set("x-tenant-id", tenantId);
   }
 
   return fetch(`/api/${path}`, { ...rest, headers, body: reqBody });

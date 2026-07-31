@@ -25,6 +25,7 @@
 
 import { createContext, useCallback, useEffect, useState } from "react";
 import { apiFetch } from "@/shared/api/client";
+import { setTenantHeader } from "@/shared/api/tenant-header";
 import { useSession } from "@/shared/hooks/use-session";
 
 export interface TenantContextValue {
@@ -69,6 +70,17 @@ export function TenantContextProvider({ children }: TenantContextProviderProps) 
   );
   const [cicloId, setCicloId] = useState<string | null>(null);
   const [cicloNombre, setCicloNombre] = useState<string | null>(null);
+
+  // Efecto puente (Dz5/R5): sincroniza el holder module-level de transporte
+  // (shared/api/tenant-header.ts) con el ÚNICO criterio de seguridad que decide
+  // si una request lleva X-Tenant-Id: root (isGlobalAdmin) CON un cliente
+  // seleccionado. Para cualquier no-root el holder queda SIEMPRE null (R5-c
+  // [CRITICAL]). Cleanup en unmount/logout evita filtrar el tenant entre
+  // sesiones (ej. cambio de usuario sin recargar la página).
+  useEffect(() => {
+    setTenantHeader(isGlobalAdmin && clienteId ? clienteId : null);
+    return () => setTenantHeader(null);
+  }, [isGlobalAdmin, clienteId]);
 
   // Resuelve el ciclo activo del tenant resuelto cada vez que clienteId cambia.
   // Operador sin cliente seleccionado: no hay tenant que resolver, no fetch.

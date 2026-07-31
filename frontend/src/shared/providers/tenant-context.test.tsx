@@ -16,12 +16,13 @@
  */
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterEach } from "vitest";
 import { useContext } from "react";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../test/msw/server";
 import { SessionProvider } from "./session-provider";
 import { TenantContext, TenantContextProvider } from "./tenant-context";
+import { getTenantHeader, setTenantHeader } from "@/shared/api/tenant-header";
 import type { JwtPayload } from "@/shared/api/types";
 
 const REGULAR_USER: JwtPayload = {
@@ -163,5 +164,47 @@ describe("TenantContext", () => {
     expect(screen.getByTestId("keys").textContent).toBe(
       "cicloId,cicloNombre,clienteId,clienteNombre,setCiclo,setCliente",
     );
+  });
+
+  // ─── Efecto puente: X-Tenant-Id centralizado (Dz5/R5) ───────────────────────
+
+  describe("efecto puente setTenantHeader (Dz5/R5)", () => {
+    afterEach(() => {
+      // Aislar tests entre sí — el holder es module-level (singleton).
+      setTenantHeader(null);
+    });
+
+    it("no-root: el holder queda SIEMPRE null (R5-c [CRITICAL])", () => {
+      renderWithUser(REGULAR_USER);
+
+      expect(getTenantHeader()).toBeNull();
+    });
+
+    it("root sin cliente seleccionado: el holder queda null", () => {
+      renderWithUser(OPERADOR_USER);
+
+      expect(getTenantHeader()).toBeNull();
+    });
+
+    it("root con cliente seleccionado: el holder se sincroniza con clienteId", async () => {
+      const user = userEvent.setup();
+      renderWithUser(OPERADOR_USER);
+
+      await user.click(screen.getByText("set-cliente"));
+
+      await waitFor(() => expect(getTenantHeader()).toBe("cliente-2"));
+    });
+
+    it("cleanup en unmount: el holder vuelve a null (logout/cambio de sesión)", async () => {
+      const user = userEvent.setup();
+      const { unmount } = renderWithUser(OPERADOR_USER);
+
+      await user.click(screen.getByText("set-cliente"));
+      await waitFor(() => expect(getTenantHeader()).toBe("cliente-2"));
+
+      unmount();
+
+      expect(getTenantHeader()).toBeNull();
+    });
   });
 });
