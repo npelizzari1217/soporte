@@ -18,7 +18,8 @@
     "generate:tenant": "prisma generate --schema=prisma_tenant/schema.prisma",
     "migrate:master": "prisma migrate deploy --schema=prisma_master/schema.prisma",
     "migrate:tenant": "prisma migrate deploy --schema=prisma_tenant/schema.prisma --config prisma.tenant.config.ts",
-    "seed:tenant": "ts-node prisma_tenant/seeds/tenant-seed.ts"
+    "seed:tenant": "ts-node prisma_tenant/seeds/tenant-seed.ts",
+    "seed:root": "ts-node prisma_master/seeds/root-bootstrap.seed.ts"
   },
   "keywords": [],
   "author": "",
