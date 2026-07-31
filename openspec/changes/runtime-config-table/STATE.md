@@ -932,3 +932,80 @@ Sin push, sin PR — branch `runtime-config-table-pr6` gateado por el usuario, e
 ### Estado final del change
 
 **`runtime-config-table` — COMPLETO (6/6 PRs, 76/76 tasks totales).** Flujo end-to-end activo: config SMTP runtime en DB (tenant + global, merge por campo) → cifrado AES-256-GCM at-rest → resolución cross-DB fail-fast-a-send-time → envío de email con adapter puro → audit inmutable de cada cambio → API HTTP con RBAC (`configuracion:gestionar`) + F2 (scope global solo `is_global_admin`). Pendiente fuera de este change (documentado, no bloqueante): `.env.example` con `CONFIG_ENCRYPTION_KEY` de ejemplo (desviación #3, PR1 — el sandbox del agente deniega acceso a `.env*`); rotación de clave de cifrado (deuda D6 aceptada); cache de transporter (deuda R9 aceptada).
+
+## Judgment Day — PR6 — fixes Ronda 1
+
+Fix-agent quirúrgico sobre el swap de PR6 (adapter puro + `IConfigResolver`), branch `runtime-config-table-pr6`, sin push. 6 hallazgos de la ronda de revisión — 1 HIGH (fuga de secreto, prioridad), 2 docblocks obsoletos, 2 confirmados A+B/Juez B, 1 test de integración faltante, 1 diferido con justificación técnica.
+
+### Arreglos aplicados
+
+1. **[HIGH, prioridad — fuga de secreto] `sanitizeCausa` redactaba solo match exacto.** `maskEmailsInText()` corría ANTES de redactar `pass`, y la redacción usaba `String.split(pass)` (match exacto, case-sensitive). Dos fugas reales: (a) un rechazo SMTP con casing distinto al de `config.pass`, o con el secreto embebido en **base64** (respuestas AUTH LOGIN/PLAIN), nunca matcheaba; (b) si `pass` era email-like, `maskEmailsInText()` ya lo había mutado (`user@dominio.com` → `u***@dominio.com`) ANTES del split, que entonces nunca encontraba el string original. FIX: `sanitizeCausa()` ahora llama a `redactSecret()` PRIMERO (regex `gi` del pass escapado + su forma `Buffer.from(pass,'utf8').toString('base64')`) y recién DESPUÉS a `maskEmailsInText()`. Limitación residual documentada inline: un secreto truncado/partido en fragmentos arbitrarios no se puede redactar sin heurísticas de fuzzy-matching, fuera de scope — la defensa primaria sigue siendo no propagar el `causa` crudo de errores AUTH más allá de este adapter.
+   - `backend/src/tickets/infrastructure/email/nodemailer-email-sender.adapter.ts` (`redactSecret()`/`escapeRegExp()` nuevas, `sanitizeCausa()` reescrita)
+   - Tests (+3, RED→GREEN): casing distinto, forma base64 del pass, pass email-like (asserta el string EXACTO `'535 Authentication failed for ********'` para probar el orden de las 2 operaciones) — `nodemailer-email-sender.adapter.spec.ts`
+
+2. **[MED/LOW] Docblocks obsoletos citando `EMAIL_SENDER`/`email-config.ts`/`loadEmailConfig`/`SmtpConfigError`, eliminados por PR6.** Actualizados 4 comentarios (2 archivos) que citaban ese fail-fast retirado como "mismo patrón". Verificado técnicamente ANTES de reescribir: `JWT_SECRET` (`auth.module.ts`) y `DATABASE_URL_MASTER` (`shared.module.ts`) NO son un precedente equivalente — ambos degradan silenciosamente a un default (`?? 'soporte-dev-secret-change-in-prod'` / `?? '''`) en vez de lanzar. Los comentarios ahora documentan que `CONFIG_ENCRYPTION_KEY` es, a la fecha, el único valor de infra con fail-fast real de boot en el codebase, y notan explícitamente que el precedente citado antes se retiró en PR6.
+   - `backend/src/shared/infrastructure/crypto/config-encryption-key.ts` (2 docblocks)
+   - `backend/src/shared/shared.module.ts` (1 docblock)
+   - `backend/src/tickets/domain/mask-email-like.ts` (referencia a `SMTP_HOST='localhost'` de `test/setup-env.ts`, también eliminado por PR6)
+
+3. **[LOW, confirmado A+B] `as unknown as` en `tickets.module.wiring.spec.ts` — DoD §9.** Reemplazada la introspección `(handler as unknown as {configResolver: unknown}).configResolver` por un test nuevo que verifica el wiring posicional del useFactory de `NotificarCambioEstadoHandler` VÍA COMPORTAMIENTO: overridea `CONFIG_RESOLVER`/`SOLICITANTE_EMAIL_RESOLVER`/`EMAIL_SENDER` con stubs distinguibles ANTES de `compile()` (Nest sigue resolviendo el MISMO array `inject` de producción), llama `handler.handle(event)` real, y confirma que `emailSenderStub.send()` recibió por identidad de referencia el `SmtpConfig` que devolvió `configResolverStub` — si `inject` estuviera desalineado, ese valor vendría de otro provider. Cero casts.
+   - `backend/src/tickets/tickets.module.wiring.spec.ts`
+
+4. **[LOW, Juez B] `NodemailerEmailSender` wiring frágil con `useClass`.** `useClass: NodemailerEmailSender` en `tickets.module.ts` solo funcionaba porque la clase NO tiene `@Injectable()` (Nest la construye sin args). FIX: `useFactory: () => new NodemailerEmailSender()` — no depende de la ausencia de metadata de diseño; si en el futuro alguien agrega `@Injectable()` a la clase, el wiring sigue funcionando igual.
+   - `backend/src/tickets/tickets.module.ts`
+   - `backend/src/tickets/tickets.module.wiring.spec.ts` (comentario actualizado)
+
+5. **[MED, Juez B] Faltaba test de integración end-to-end del descifrado.** Agregado `config-resolver.adapter.integration.spec.ts` — instancia `PrismaConfigResolver` REAL contra el test DB (`soporte_master_test`) + `AesGcmSecretCipher` REAL (con `CONFIG_ENCRYPTION_KEY` dummy de `test/setup-env.ts`), inserta una fila `esSecreto=true` con el `pass` CIFRADO de verdad (más 5 filas no-secretas) en `master.configuracion_runtime` categoría `smtp` GLOBAL, y confirma que `resolveSmtp()` descifra correctamente el `pass` dentro del `SmtpConfig` resultante. Usa un `clienteId` (UUID) inexistente en `master.clientes` para que el merge caiga 100% a global sin necesitar levantar una DB de tenant completa — el flujo de `decrypt()` es idéntico sea cual sea el origen de la fila. NO gateado por env (a diferencia de `nodemailer-email-sender.integration.spec.ts`, que requiere un servidor SMTP externo): sigue el mismo patrón que el resto de `*.integration.spec.ts` del repo, que ya asumen Postgres de test disponible para `pnpm test`. `beforeEach`/`afterEach` limpian solo las filas `categoria:'smtp'` + las `clave` que el test usa.
+   - `backend/src/configuracion/infrastructure/persistence/prisma/config-resolver.adapter.integration.spec.ts` (nuevo)
+
+6. **[LOW, Juez A] `await` secuencial en el handler — EVALUADO, NO APLICADO.** El fix propuesto (`Promise.all([configResolver.resolveSmtp(...), resolver.resolver(...)])`) parte de la premisa "son independientes y nunca-lanzan" — verificada FALSA contra el código real: el test preexistente `6.8` (`notificar-cambio-estado.handler.spec.ts`) asserta explícitamente `expect(resolver.resolver).not.toHaveBeenCalled()` cuando `configResolver.resolveSmtp()` falla — el short-circuit es un contrato deliberado (evita una consulta cross-DB a `master.usuarios` innecesaria cuando ya se sabe que no se puede enviar el mail). Aplicar `Promise.all()` dispararía ambas llamadas incondicionalmente, rompiendo ese test GREEN preexistente sin que el fix lo pidiera ni lo justificara. El propio fix pedido lo condicionaba a "si no complica la lógica de branching de outcomes" — acá sí la complica (pierde el short-circuit), así que se dejó el `await` secuencial intacto. Sin cambios de código.
+
+### Diferido / no aplicado (con justificación)
+
+- **Item 6 (Promise.all)**: NO aplicado — ver justificación arriba. Preserva el contrato de short-circuit ya cubierto por el test `6.8` existente.
+
+### Evidencia real (backend/, corrida serial FOREGROUND, 2026-07-31, contra el estado exacto commiteado)
+
+**`corepack pnpm test`** (suite completa, una sola corrida real):
+```
+Test Files  180 passed | 1 skipped (181)
+     Tests  2368 passed | 2 skipped (2370)
+  Duration  160.86s
+```
+(vs. baseline PR6 — 179 archivos/2363 passed — ahora 180 archivos porque se agregó `config-resolver.adapter.integration.spec.ts` [+1 archivo]; +5 tests netos: 3 de redacción de secreto (casing/base64/email-like), 1 de wiring posicional vía comportamiento, 1 de integración real de descifrado. Sin regresiones. El log `ERROR [AesGcmSecretCipher] decrypt() falló: ...` es esperado — mismo test de tampering de PR1, no un fallo real.)
+
+**`corepack pnpm lint`**:
+```
+$ eslint "src/**/*.ts"
+EXIT_CODE=0
+```
+(sin output, exit 0, sin correcciones necesarias esta ronda).
+
+**`corepack pnpm exec tsc --noEmit -p tsconfig.json`**: exit 0, sin output.
+
+**Anti-regresión explícita — suite notif-email/tickets + config-resolver (corrida targeted, verbose)**:
+```
+✓ config-resolver.adapter.integration.spec.ts (1 test) — descifrado end-to-end REAL
+✓ tickets.module.wiring.spec.ts (4 tests) — incluye el nuevo test de wiring vía comportamiento
+✓ nodemailer-email-sender.adapter.spec.ts (22 tests) — incluye las 3 nuevas de redacción de secreto
+✓ config-resolver.adapter.spec.ts (13 tests) — unit, sin cambios de código de producción en este resolver
+✓ notificar-cambio-estado.listener.spec.ts (8 tests)
+✓ notificar-cambio-estado.handler.spec.ts (7 tests) — incluye 6.8 (short-circuit intacto)
+↓ nodemailer-email-sender.integration.spec.ts (2 tests, skip — gated SMTP_TEST=1, comportamiento esperado)
+
+Test Files  6 passed | 1 skipped (7)
+     Tests  54 passed | 2 skipped (56)
+  Duration  7.41s
+```
+100% verde.
+
+### Commits
+
+- `fix(tickets): redactar secreto SMTP case-insensitive + base64 antes del email-masking` (nodemailer-email-sender.adapter.ts + spec)
+- `docs(shared,tickets): actualizar docblocks que citaban el fail-fast EMAIL_SENDER/email-config.ts eliminado en PR6` (config-encryption-key.ts + shared.module.ts + mask-email-like.ts)
+- `test(tickets): reemplazar introspeccion de campo privado por verificacion de wiring via comportamiento` (tickets.module.wiring.spec.ts)
+- `fix(tickets): EMAIL_SENDER via useFactory en vez de useClass — no depende de ausencia de @Injectable()` (tickets.module.ts + wiring.spec.ts)
+- `test(configuracion): integracion real de PrismaConfigResolver — descifrado end-to-end` (config-resolver.adapter.integration.spec.ts)
+- `docs(runtime-config-table): Judgment Day PR6 Ronda 1 — fixes + item 6 no aplicado con justificacion` (STATE.md)
+
+Sin push, sin PR — branch `runtime-config-table-pr6` gateado por el usuario.
