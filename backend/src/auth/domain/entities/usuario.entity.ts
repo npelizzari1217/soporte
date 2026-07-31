@@ -116,6 +116,15 @@ export class UsuarioEntity extends BaseEntity<UsuarioProps> {
   // ─── Comportamiento de dominio ────────────────────────────────────────────
 
   /**
+   * isRoot — alias de negocio de isGlobalAdmin (terminología "root", R1/Dz1).
+   * Mismo valor que isGlobalAdmin; sin campo nuevo, sin columna nueva, sin claim JWT nuevo.
+   * "root" = capacidad de plataforma; NUNCA se deriva del rol RBAC (ortogonalidad, D6).
+   */
+  isRoot(): boolean {
+    return this.isGlobalAdmin;
+  }
+
+  /**
    * Suspende el usuario: setea activo=false y realiza soft delete.
    * El TenantGuard/JwtAuthGuard rechazará futuros requests de este usuario.
    * Los refresh tokens deben revocarse en la misma operación (BajaUsuarioUseCase).

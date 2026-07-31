@@ -29,6 +29,7 @@ const makeUsuario = (
     clienteId: string;
     activo: boolean;
     roles: any[];
+    isGlobalAdmin: boolean;
   }> = {},
 ) =>
   UsuarioEntity.create({
@@ -186,6 +187,27 @@ describe('UsuarioEntity', () => {
       const provider = makeHashProvider({ verify: vi.fn().mockResolvedValue(false) });
       const result = await u.verifyPassword('wrong_pass', provider);
       expect(result).toBe(false);
+    });
+  });
+
+  describe('isRoot()', () => {
+    // Spec ref: root-tenant-admin R1 (Dz1) — isRoot() alias de isGlobalAdmin.
+    it('devuelve true cuando isGlobalAdmin=true (R1-a)', () => {
+      const usuario = makeUsuario({ isGlobalAdmin: true });
+      expect(usuario.isRoot()).toBe(true);
+      expect(usuario.isRoot()).toBe(usuario.isGlobalAdmin);
+    });
+
+    it('[CRITICAL] rol ADMINISTRADOR con isGlobalAdmin=false → isRoot()===false (R1-b)', () => {
+      const roleAdmin = RoleEntity.create({
+        codigo: 'ADMINISTRADOR',
+        nombre: 'Administrador',
+        descripcion: null,
+        permisos: [],
+      });
+      const usuario = makeUsuario({ roles: [roleAdmin], isGlobalAdmin: false });
+      expect(usuario.roles.some((r) => r.codigo === 'ADMINISTRADOR')).toBe(true);
+      expect(usuario.isRoot()).toBe(false);
     });
   });
 
