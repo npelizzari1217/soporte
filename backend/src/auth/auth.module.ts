@@ -58,6 +58,7 @@ import { IRoleRepository } from './domain/ports/i-role.repository';
 import { IClienteRepository } from '../clientes/domain/ports/i-cliente.repository';
 import { IHashProvider } from './domain/ports/i-hash.provider';
 import { ITokenService } from './domain/ports/i-token.service';
+import { LOGGER, ILogger } from '../shared/domain/ports/i-logger.port';
 
 // ─── Guards ───────────────────────────────────────────────────────────────────
 import { JwtAuthGuard } from './infrastructure/guards/jwt-auth.guard';
@@ -186,10 +187,13 @@ import { UsuariosController } from './interface/controllers/usuarios.controller'
       // B.9 (root-tenant-admin Dz2) — CrearRootUseCase: único camino de
       // aplicación que eleva isGlobalAdmin=true. Doble authz: GlobalAdminGuard
       // (presentación) + actor.isRoot revalidado en el use case (aplicación).
+      // LOGGER inyectado (Judgment Day PR-B Ronda 1, FIX 1): audita la
+      // creación exitosa (actor, objetivo, timestamp) vía el puerto ILogger,
+      // @Global() en SharedModule — mismo patrón que CrearObservacionUseCase.
       provide: CrearRootUseCase,
-      useFactory: (usuarioRepo: IUsuarioRepository, hashProvider: IHashProvider) =>
-        new CrearRootUseCase(usuarioRepo, hashProvider),
-      inject: [USUARIO_REPOSITORY, HASH_PROVIDER],
+      useFactory: (usuarioRepo: IUsuarioRepository, hashProvider: IHashProvider, logger: ILogger) =>
+        new CrearRootUseCase(usuarioRepo, hashProvider, logger),
+      inject: [USUARIO_REPOSITORY, HASH_PROVIDER, LOGGER],
     },
 
     // ─── Guards (Injectable — necesitan ser providers para inyección de clase) ─

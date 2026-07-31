@@ -28,4 +28,8 @@ export class NestLoggerAdapter implements ILogger {
   error(message: string, stack?: string): void {
     this.logger.error(message, stack);
   }
+
+  log(message: string): void {
+    this.logger.log(message);
+  }
 }
