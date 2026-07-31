@@ -174,8 +174,12 @@ function escapeRegExp(raw: string): string {
 
 /**
  * Redacta el secreto SMTP en texto libre — case-insensitive, y también su
- * forma base64 (lo que embeben las respuestas AUTH LOGIN/PLAIN de un
- * rechazo SMTP). Se ejecuta ANTES de `maskEmailsInText()` (ver nota arriba).
+ * forma base64. Sobre el base64: un rechazo SMTP normalmente NO devuelve el
+ * blob de credenciales (RFC 4954), y AUTH PLAIN concatena `authzid\0authcid\0
+ * passwd` antes de codificar — así que `base64(pass)` a secas SOLO matchearía
+ * un eco tipo AUTH LOGIN (que codifica el pass por separado) o un log de
+ * terceros que embeba el secreto en base64. Es defensa en profundidad, no una
+ * garantía de protocolo. Se ejecuta ANTES de `maskEmailsInText()` (ver nota arriba).
  *
  * LIMITACIÓN RESIDUAL documentada (no se expande el scope de este fix): un
  * secreto TRUNCADO o partido en fragmentos arbitrarios dentro de `causa` NO

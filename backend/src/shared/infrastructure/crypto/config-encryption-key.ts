@@ -3,9 +3,11 @@
  * `CONFIG_ENCRYPTION_KEY`, la clave AES-256 usada por `AesGcmSecretCipher`.
  *
  * F1 (design.md §"Resolución de forks — AUTORITATIVA"): la clave de cifrado
- * es infra tier-bootstrap — mismo trato que `JWT_SECRET`/`DATABASE_URL_MASTER`.
- * Se valida presencia+forma AL ARRANCAR la app; si falta o tiene longitud
- * inválida para AES-256, la app NO arranca (throw en el boot).
+ * es infra tier-bootstrap y se valida presencia+forma AL ARRANCAR la app; si
+ * falta o tiene longitud inválida para AES-256, la app NO arranca (throw en el
+ * boot). OJO: NO comparar con `JWT_SECRET`/`DATABASE_URL_MASTER` como
+ * "precedente de fail-fast" — esos degradan a un default, no lanzan (ver nota
+ * abajo). Hoy `CONFIG_ENCRYPTION_KEY` es el único fail-fast real de boot.
  *
  * Distinción clave (spec R2/R6): esta validación es de la CLAVE (infra) — las
  * FILAS de config (datos) siguen degradando graciosamente en send-time
