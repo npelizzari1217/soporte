@@ -151,15 +151,54 @@ function readTemplate(name: string, file: 'subject.hbs' | 'body.hbs'): string {
  * puede confiar en que ya venga enmascarado.
  *
  * `pass` (NUEVO, PR6, design §5.1): además del masking de emails, redacta
- * cualquier ocurrencia literal del secreto SMTP en claro — defensa extra
- * (spec Requirement 2 "el secreto en claro nunca aparece fuera de memoria"):
- * un rechazo SMTP raramente incluye el password, pero no se confía en el
- * texto libre de un error de infra ajeno.
+ * cualquier ocurrencia del secreto SMTP en claro — defensa extra (spec
+ * Requirement 2 "el secreto en claro nunca aparece fuera de memoria"): un
+ * rechazo SMTP raramente incluye el password, pero no se confía en el texto
+ * libre de un error de infra ajeno.
+ *
+ * FIX (Judgment Day PR6 Ronda 1, HIGH — fuga de secreto): la versión anterior
+ * corría `maskEmailsInText()` ANTES de redactar `pass` y buscaba un match
+ * EXACTO vía `String.split(pass)`. Dos fugas reales:
+ *   (a) `split(pass)` exige el secreto completo con el MISMO casing — un
+ *       rechazo SMTP con casing distinto (o el secreto embebido en **base64**,
+ *       como devuelven las respuestas AUTH LOGIN/PLAIN) no matcheaba nunca.
+ *   (b) si `pass` es email-like, `maskEmailsInText()` ya lo había mutado
+ *       (ej. `user@dominio.com` → `u***@dominio.com`) ANTES del split — el
+ *       split buscaba el string original y nunca lo encontraba.
+ * Ahora el secreto se redacta PRIMERO (regex case-insensitive + su forma
+ * base64), y el masking de emails corre DESPUÉS sobre el texto ya redactado.
  */
+function escapeRegExp(raw: string): string {
+  return raw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Redacta el secreto SMTP en texto libre — case-insensitive, y también su
+ * forma base64 (lo que embeben las respuestas AUTH LOGIN/PLAIN de un
+ * rechazo SMTP). Se ejecuta ANTES de `maskEmailsInText()` (ver nota arriba).
+ *
+ * LIMITACIÓN RESIDUAL documentada (no se expande el scope de este fix): un
+ * secreto TRUNCADO o partido en fragmentos arbitrarios dentro de `causa` NO
+ * se puede redactar sin un límite razonable de qué constituye "el secreto" —
+ * cubrir eso exigiría heurísticas propias de un fuzzy-matcher, fuera de
+ * alcance acá. La defensa PRIMARIA sigue siendo no propagar el `causa` crudo
+ * de errores de AUTH nodemailer más allá de este adapter; esta función es
+ * defensa EN PROFUNDIDAD (exacto + casing + base64), no la única barrera.
+ */
+function redactSecret(text: string, pass: string): string {
+  if (pass.length === 0) return text;
+
+  const variantes = new Set([pass, Buffer.from(pass, 'utf8').toString('base64')]);
+  let redacted = text;
+  for (const variante of variantes) {
+    if (variante.length === 0) continue;
+    redacted = redacted.replace(new RegExp(escapeRegExp(variante), 'gi'), '********');
+  }
+  return redacted;
+}
+
 function sanitizeCausa(causa: string, pass: string): string {
-  const maskedEmails = maskEmailsInText(causa);
-  if (pass.length === 0) return maskedEmails;
-  return maskedEmails.split(pass).join('********');
+  return maskEmailsInText(redactSecret(causa, pass));
 }
 
 export class NodemailerEmailSender implements EmailSenderPort {

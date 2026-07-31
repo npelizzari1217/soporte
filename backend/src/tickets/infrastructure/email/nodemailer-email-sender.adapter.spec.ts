@@ -157,6 +157,56 @@ describe('NodemailerEmailSender', () => {
       expect(error.causa).toContain('********');
     });
 
+    it('redacta el secreto SMTP con casing distinto al de config.pass (case-insensitive, Judgment Day PR6 Ronda 1, issue 1a)', async () => {
+      const sendMail = vi
+        .fn()
+        .mockRejectedValue(new Error('535 Authentication failed for password SUPER-SECRETO'));
+      const transportFactory = makeTransportFactory(sendMail);
+      const adapter = new NodemailerEmailSender(transportFactory);
+
+      const result = await adapter.send(makeMessage(), makeConfig({ pass: 'super-secreto' }));
+
+      expect(result.isFail()).toBe(true);
+      const error = result.getError();
+      expect(error.causa).not.toContain('SUPER-SECRETO');
+      expect(error.causa).toContain('********');
+    });
+
+    it('redacta la forma base64 del secreto SMTP — respuestas AUTH LOGIN/PLAIN embeben el pass en base64 (Judgment Day PR6 Ronda 1, issue 1a)', async () => {
+      const passBase64 = Buffer.from('super-secreto', 'utf8').toString('base64');
+      const sendMail = vi
+        .fn()
+        .mockRejectedValue(new Error(`535 Authentication failed: ${passBase64}`));
+      const transportFactory = makeTransportFactory(sendMail);
+      const adapter = new NodemailerEmailSender(transportFactory);
+
+      const result = await adapter.send(makeMessage(), makeConfig({ pass: 'super-secreto' }));
+
+      expect(result.isFail()).toBe(true);
+      const error = result.getError();
+      expect(error.causa).not.toContain(passBase64);
+      expect(error.causa).toContain('********');
+    });
+
+    it('redacta un pass email-like sin dejarlo mutado a medias por el email-masking — el secreto se redacta ANTES del masking de emails (Judgment Day PR6 Ronda 1, issue 1b)', async () => {
+      const sendMail = vi
+        .fn()
+        .mockRejectedValue(new Error('535 Authentication failed for user@dominio.com'));
+      const transportFactory = makeTransportFactory(sendMail);
+      const adapter = new NodemailerEmailSender(transportFactory);
+
+      const result = await adapter.send(makeMessage(), makeConfig({ pass: 'user@dominio.com' }));
+
+      expect(result.isFail()).toBe(true);
+      const error = result.getError();
+      expect(error.causa).not.toContain('user@dominio.com');
+      // Si el email-masking corriera ANTES de la redacción del secreto, esto
+      // quedaría como "u***@dominio.com" (mutado a medias) en vez de
+      // "********" (redactado por completo) — el string exacto prueba el
+      // orden correcto de las 2 operaciones.
+      expect(error.causa).toBe('535 Authentication failed for ********');
+    });
+
     it('body type "text" envía como texto plano', async () => {
       const sendMail = vi.fn().mockResolvedValue({ messageId: 'abc123' });
       const transportFactory = makeTransportFactory(sendMail);
