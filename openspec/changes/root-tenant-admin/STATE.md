@@ -792,3 +792,140 @@ introducidos (confirmado con `grep` dirigido a los archivos tocados de este PR).
 - Commit 2 (work-unit): `feat(admin): toggle root gateado en alta de usuarios` (C.9-C.12).
 - Sin push, sin PR — entrega afuera gateada por el usuario vía orquestador
   (delivery_strategy: ask-on-risk, Review Workload Forecast: Chained PRs recomendado).
+
+---
+
+## PR-C — Judgment Day Ronda 1 (fixes aplicados)
+
+Fix agent quirúrgico sobre `root-tenant-admin-pr3`, strict_tdd (RED→GREEN). Sin push, sin PR. Solo
+frontend — backend NO tocado.
+
+### FIX 1 (defensa en profundidad, AMBOS jueces) — guarda SSR en el holder
+
+`getTenantHeader()`/`setTenantHeader()` (holder module-level, `shared/api/tenant-header.ts`) no
+forzaban entorno client. El estado module-level en el server de Next se comparte entre requests de
+distintos usuarios — si algún día un Server Component llegara a invocar `apiFetch`/
+`getTenantHeader`, el tenant de un usuario podría filtrarse a otro.
+
+RED confirmado: `tenant-header.test.ts` — nuevo test `getTenantHeader(checkIsServer): si
+checkIsServer() === true, SIEMPRE null aunque el holder tenga valor` fallaba (`expected
+'cliente-poison' to be null`, recibía el valor del holder).
+
+GREEN: `getTenantHeader` agrega una guarda dura — función interna `isServer()`
+(`typeof window === 'undefined'`) evaluada primero; si es server, devuelve `null` SIEMPRE, sin leer
+el holder. `checkIsServer` es un parámetro inyectable (default = `isServer` real) para poder
+ejercitar el branch server desde jsdom (que siempre define `window`) sin `as any` ni mockear
+globals. Se agregó también un test explícito del branch browser (`checkIsServer(() => false)` →
+devuelve el valor real del holder) para no dejar el nuevo parámetro sin cobertura.
+
+### FIX 2 (micro-race orden de effects, AMBOS jueces, defensa en profundidad) — `useLayoutEffect`
+
+Ventana teórica: en un switch de usuario same-tab SIN remount del `TenantContextProvider`, un
+effect hijo (ej. una query que llama `apiFetch` en su propio `useEffect`) podría correr ANTES que
+el efecto puente del provider, leyendo el holder con un valor stale de la sesión root previa.
+
+**Mecanismo elegido: (a) `useLayoutEffect` en vez de `useEffect` para el efecto puente.** Se
+descartaron (b) sumar `user?.sub` a las deps (el criterio de seguridad ya es
+`isGlobalAdmin && clienteId`, no la identidad del usuario — sumar `sub` no cierra la ventana de
+orden, solo agrega una dependencia redundante) y (c) resetear a `null` en el arranque del provider
+si `!isGlobalAdmin` (el efecto ya hace exactamente eso en cada corrida, agregar un segundo reset al
+montaje sería duplicar lógica sin cerrar la ventana real, que es de ORDEN entre efectos, no de
+valor inicial). `useLayoutEffect` es la garantía nativa de React más simple: TODOS los layout
+effects del árbol corren en la fase de commit (antes del paint) y ESTRICTAMENTE antes de CUALQUIER
+passive effect (`useEffect`) del mismo commit, sin importar la posición en el árbol — cierra la
+ventana de raíz sin tocar nada más.
+
+Test: se endurecieron los 2 tests tautológicos "holder null" en `tenant-context.test.tsx`
+(ensuciando el holder con `setTenantHeader('cliente-poison')` antes de renderizar) — ver FIX 5, que
+cubre exactamente el escenario pedido para este fix (poison de sesión previa → mount con usuario no
+afectado → holder queda `null`, confirmando que el efecto lo resetea activamente y no que el
+default del módulo ya era `null`).
+
+### FIX 3 (a11y, Juez B) — `aria-label` pisaba el `Label` visible
+
+`UsuariosPage.tsx`: el `<Switch>` root tenía `aria-label="Root"` Y un `<Label htmlFor=
+"usuario-root-switch">Root (acceso global)</Label>` visible. El `aria-label` gana como accessible
+name sobre la asociación `label[for]`/`id` → el lector de pantalla anunciaba "Root", no el texto
+completo visible.
+
+RED confirmado: nuevo assert `expect(rootSwitch).toHaveAccessibleName("Root (acceso global)")` en
+el test R6-a fallaba (`Received: Root`).
+
+GREEN: se quitó el `aria-label` del `<Switch>`. El `<button role="switch">` es labelable en HTML5,
+así que `<Label htmlFor="usuario-root-switch">` (con el mismo `id` en el Switch) provee el
+accessible name completo sin ningún cambio adicional.
+
+### FIX 4 (interactive-state, Juez A) — Switch sin `disabled` durante submit
+
+`UsuariosPage.tsx`: el Switch root no se deshabilitaba mientras el form enviaba (Cancelar/Crear sí
+lo hacían vía `isSubmitting`). RED confirmado: nuevo test "el Switch 'Root' se deshabilita mientras
+el form envía" — `expect(rootSwitch).toBeDisabled()` fallaba durante el POST en vuelo. GREEN:
+`disabled={isSubmitting}` agregado al `<Switch>`, mismo flag que ya gatea `Button` Cancelar.
+
+### FIX 5 (tests tautológicos, Juez A) — endurecer los 2 tests "holder null"
+
+`tenant-context.test.tsx` (`efecto puente setTenantHeader (Dz5/R5)`): "no-root: el holder queda
+SIEMPRE null" y "root sin cliente seleccionado: el holder queda null" pasaban aunque se borrara el
+efecto puente, porque el default module-level del holder ya era `null`. Se agregó
+`setTenantHeader('cliente-poison')` antes de `renderWithUser(...)` en ambos, de forma que el test
+ahora prueba que el efecto ACTIVAMENTE resetea el holder, no que nunca lo tocó. (Ambos siguen en
+GREEN — el efecto puente ya reseteaba correctamente; el cambio es de calidad del test, no de
+comportamiento.)
+
+### Evidencia real (desde `frontend/`)
+
+```
+$ corepack pnpm test
+ Test Files  73 passed (73)
+      Tests  606 passed (606)
+   Duration  143.78s
+
+$ corepack pnpm lint
+`next lint` is deprecated and will be removed in Next.js 16 (aviso informativo, sin acción).
+./src/components/shell/app-shell.test.tsx
+  23:15  Warning: 'JwtPayload' is defined but never used.
+./src/features/tickets/components/TicketFormModal.test.tsx
+  73:10  Warning: 'makeWrapper' is defined but never used.
+  415:11  Warning: 'dialog' is assigned a value but never used.
+(0 errores — 3 warnings PRE-EXISTENTES, ajenos, en archivos no tocados por este fix; exit code 0)
+
+$ corepack pnpm exec tsc --noEmit
+(sin output — 0 errores de tipos)
+```
+
+Targeted (archivos tocados por Judgment Day Ronda 1):
+
+```
+$ corepack pnpm exec vitest run src/shared/api/tenant-header.test.ts
+ Test Files  1 passed (1) | Tests  5 passed (5)
+
+$ corepack pnpm exec vitest run src/shared/providers/tenant-context.test.tsx
+ Test Files  1 passed (1) | Tests  9 passed (9)
+
+$ corepack pnpm exec vitest run src/features/admin/components/UsuariosPage.test.tsx
+ Test Files  1 passed (1) | Tests  15 passed (15)
+```
+
+**Resumen: 606 passed / 0 failed / 0 skipped (73 archivos, sube de 603 a 606 por los 3 tests nuevos
+de este fix). Lint limpio (0 errores, 3 warnings preexistentes ajenos). Typecheck limpio. Cero
+`as any`/`as unknown as` introducidos (confirmado con `git diff | grep`).**
+
+### Archivos modificados (Judgment Day Ronda 1)
+
+- `frontend/src/shared/api/tenant-header.ts` (+guarda SSR `isServer()`, `checkIsServer` inyectable)
+- `frontend/src/shared/api/tenant-header.test.ts` (+2 tests: guarda SSR, branch browser)
+- `frontend/src/shared/providers/tenant-context.tsx` (efecto puente: `useEffect` → `useLayoutEffect`)
+- `frontend/src/shared/providers/tenant-context.test.tsx` (2 tests "holder null" endurecidos con
+  poison previo)
+- `frontend/src/features/admin/components/UsuariosPage.tsx` (Switch root: `-aria-label`,
+  `+disabled={isSubmitting}`)
+- `frontend/src/features/admin/components/UsuariosPage.test.tsx` (+assert accessible name en R6-a,
+  +test "Switch se deshabilita durante submit")
+
+### Git
+
+- Branch: `root-tenant-admin-pr3` (continúa desde los commits de PR-C).
+- Commit 1 (work-unit): `fix(api): endurecer aislamiento del holder de X-Tenant-Id` (FIX 1, FIX 2,
+  FIX 5).
+- Commit 2 (work-unit): `fix(admin): a11y y estado del switch root` (FIX 3, FIX 4).
+- Sin push, sin PR.
