@@ -51,26 +51,26 @@ Chain strategy: stacked-to-main
 
 ## PR-B — Creación de root + bootstrap (depende de PR-A) (Dz2 R2/R7, Dz3 R3)
 
-- [ ] B.0 Verificar entorno: confirmar `IHashProvider`, `IUsuarioRepository`, `Argon2HashProvider`, `USUARIO_REPOSITORY`/`HASH_PROVIDER` tokens y paths de import existen antes de escribir tests.
-- [ ] B.1 [RED] `crear-root.use-case.spec.ts`: actor root crea usuario con `isGlobalAdmin=true`, `roles=[]`, 201 (R2-a).
-- [ ] B.2 [RED][CRITICAL] `crear-root.use-case.spec.ts`: actor `isRoot=false` → `RootRequeridoError`, sin crear usuario (R2-b / R7-a, doble validación).
-- [ ] B.3 [GREEN] `auth.errors.ts`: agregar `RootRequeridoError extends DomainError` (code `AUTH_ROOT_REQUERIDO`, Dz2 firma 2.2).
-- [ ] B.4 [GREEN] Crear `crear-root.use-case.ts` (`CrearRootUseCase`, firma 2.3): valida `actor.isRoot` primero, luego unicidad de email, luego crea entidad con `isGlobalAdmin=true, roles=[]`, hashea password, persiste — pasa B.1/B.2.
-- [ ] B.5 [RED][CRITICAL] `usuarios.controller.spec.ts`: `POST /usuarios/root` con actor ADMINISTRADOR no-root → 403 vía `GlobalAdminGuard` (R2-c, integration).
-- [ ] B.6 [RED][CRITICAL] `crear-usuario.use-case.spec.ts`: `POST /usuarios` (alta normal) SIEMPRE crea `isGlobalAdmin=false`, incluso si el actor es root (R2-d) — confirma que el use case existente ignora cualquier flag entrante.
-- [ ] B.7 [GREEN] `auth.dto.ts`: agregar `CreateRootDto` (`email`, `nombre`, `apellido`, `password`; SIN campo `rol`, firma 2.5).
-- [ ] B.8 [GREEN] `usuarios.controller.ts`: agregar `POST /usuarios/root` con `@UseGuards(GlobalAdminGuard)`, resolver `clienteId` de `TenantContext`, mapear `RootRequeridoError→403`, `UsuarioConflictError→409` (firma 2.6) — pasa B.5.
-- [ ] B.9 [GREEN] `auth.module.ts`: wiring `useFactory` de `CrearRootUseCase` (inject `USUARIO_REPOSITORY`, `HASH_PROVIDER`), sumar dependencia al constructor de `UsuariosController` (firma 2.7).
-- [ ] B.10 Confirmar B.6 sigue en GREEN sin tocar `crear-usuario.use-case.ts` (regresión verificada, no requiere fix).
-- [ ] B.11 [RED] `root-bootstrap.seed.spec.ts`: crea la fila si no existe, `isGlobalAdmin=true` (R3-a).
-- [ ] B.12 [RED][CRITICAL] `root-bootstrap.seed.spec.ts`: re-run idempotente, sin duplicar fila, flag sigue `true` (R3-b).
-- [ ] B.13 [RED] `root-bootstrap.seed.spec.ts`: actualiza solo `isGlobalAdmin=true` si ya existe, no pisa otras columnas (R3-c).
-- [ ] B.14 [RED] `root-bootstrap.seed.spec.ts`: falta cualquier `ROOT_ADMIN_*` env → throw ruidoso, cero literales hardcodeados (R3-d).
-- [ ] B.15 [GREEN] Crear `prisma_master/seeds/root-bootstrap.seed.ts` (`requireEnv` + `upsert` por email, Argon2HashProvider real, firma 2.8) — pasa B.11-B.14.
-- [ ] B.16 Agregar script `"seed:root": "ts-node prisma_master/seeds/root-bootstrap.seed.ts"` en `backend/package.json`.
-- [ ] B.17 Documentar `ROOT_ADMIN_EMAIL/PASSWORD/NOMBRE/APELLIDO/CLIENTE_ID` en `.env.example` + README (runbook de deploy: `migrate:master` → `seed:root`).
-- [ ] B.18 Evidencia real: correr `corepack pnpm test`, `corepack pnpm lint`, `corepack pnpm exec tsc --noEmit -p tsconfig.json` en `backend/` y pegar los números tal cual.
-- [ ] B.19 Commits work-unit (conventional): 1) "feat(auth): crear usuario root con doble validación" (B.1-B.10), 2) "feat(auth): bootstrap idempotente del primer root" (B.11-B.17).
+- [x] B.0 Verificar entorno: confirmar `IHashProvider`, `IUsuarioRepository`, `Argon2HashProvider`, `USUARIO_REPOSITORY`/`HASH_PROVIDER` tokens y paths de import existen antes de escribir tests.
+- [x] B.1 [RED] `crear-root.use-case.spec.ts`: actor root crea usuario con `isGlobalAdmin=true`, `roles=[]`, 201 (R2-a).
+- [x] B.2 [RED][CRITICAL] `crear-root.use-case.spec.ts`: actor `isRoot=false` → `RootRequeridoError`, sin crear usuario (R2-b / R7-a, doble validación).
+- [x] B.3 [GREEN] `auth.errors.ts`: agregar `RootRequeridoError extends DomainError` (code `AUTH_ROOT_REQUERIDO`, Dz2 firma 2.2).
+- [x] B.4 [GREEN] Crear `crear-root.use-case.ts` (`CrearRootUseCase`, firma 2.3): valida `actor.isRoot` primero, luego unicidad de email, luego crea entidad con `isGlobalAdmin=true, roles=[]`, hashea password, persiste — pasa B.1/B.2.
+- [x] B.5 [RED][CRITICAL] `usuarios.controller.spec.ts`: `POST /usuarios/root` con actor ADMINISTRADOR no-root → 403 vía `GlobalAdminGuard` (R2-c, integration).
+- [x] B.6 [RED][CRITICAL] `crear-usuario.use-case.spec.ts`: `POST /usuarios` (alta normal) SIEMPRE crea `isGlobalAdmin=false`, incluso si el actor es root (R2-d) — confirma que el use case existente ignora cualquier flag entrante.
+- [x] B.7 [GREEN] `auth.dto.ts`: agregar `CreateRootDto` (`email`, `nombre`, `apellido`, `password`; SIN campo `rol`, firma 2.5).
+- [x] B.8 [GREEN] `usuarios.controller.ts`: agregar `POST /usuarios/root` con `@UseGuards(GlobalAdminGuard)`, resolver `clienteId` de `TenantContext`, mapear `RootRequeridoError→403`, `UsuarioConflictError→409` (firma 2.6) — pasa B.5.
+- [x] B.9 [GREEN] `auth.module.ts`: wiring `useFactory` de `CrearRootUseCase` (inject `USUARIO_REPOSITORY`, `HASH_PROVIDER`), sumar dependencia al constructor de `UsuariosController` (firma 2.7).
+- [x] B.10 Confirmar B.6 sigue en GREEN sin tocar `crear-usuario.use-case.ts` (regresión verificada, no requiere fix).
+- [x] B.11 [RED] `root-bootstrap.seed.spec.ts`: crea la fila si no existe, `isGlobalAdmin=true` (R3-a).
+- [x] B.12 [RED][CRITICAL] `root-bootstrap.seed.spec.ts`: re-run idempotente, sin duplicar fila, flag sigue `true` (R3-b).
+- [x] B.13 [RED] `root-bootstrap.seed.spec.ts`: actualiza solo `isGlobalAdmin=true` si ya existe, no pisa otras columnas (R3-c).
+- [x] B.14 [RED] `root-bootstrap.seed.spec.ts`: falta cualquier `ROOT_ADMIN_*` env → throw ruidoso, cero literales hardcodeados (R3-d).
+- [x] B.15 [GREEN] Crear `prisma_master/seeds/root-bootstrap.seed.ts` (`requireEnv` + `upsert` por email, Argon2HashProvider real, firma 2.8) — pasa B.11-B.14.
+- [x] B.16 Agregar script `"seed:root": "ts-node prisma_master/seeds/root-bootstrap.seed.ts"` en `backend/package.json`.
+- [x] B.17 Documentar `ROOT_ADMIN_EMAIL/PASSWORD/NOMBRE/APELLIDO/CLIENTE_ID` en `.env.example` + README (runbook de deploy: `migrate:master` → `seed:root`).
+- [x] B.18 Evidencia real: correr `corepack pnpm test`, `corepack pnpm lint`, `corepack pnpm exec tsc --noEmit -p tsconfig.json` en `backend/` y pegar los números tal cual.
+- [x] B.19 Commits work-unit (conventional): 1) "feat(auth): crear usuario root con doble validación" (B.1-B.10), 2) "feat(auth): bootstrap idempotente del primer root" (B.11-B.17).
 
 ---
 
