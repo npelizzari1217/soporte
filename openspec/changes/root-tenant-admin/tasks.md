@@ -76,21 +76,21 @@ Chain strategy: stacked-to-main
 
 ## PR-C — Frontend: X-Tenant-Id centralizado + UI root (depende de PR-B) (Dz5 R5, Dz2-UI R6)
 
-- [ ] C.0 Verificar entorno: confirmar paths de `apiFetch`/`rawFetch` (`client.ts`), `TenantContextProvider`, `useSession`, `ClienteSelector` existen y tipan antes de escribir tests.
-- [ ] C.1 [RED][CRITICAL] `tenant-header.spec.ts` + `client.spec.ts`: usuario no-root nunca envía `X-Tenant-Id` (holder queda `null`) (R5-c).
-- [ ] C.2 [RED][CRITICAL] `client.spec.ts`: root con cliente seleccionado → header inyectado en request arbitraria (tickets/compras/equipos/reparaciones heredan del mismo punto) (R5-a, R5-b).
-- [ ] C.3 [RED] `client.spec.ts`: header `X-Tenant-Id` explícito ya presente NO es pisado por el holder (precedencia; protege el fetch de ciclos en `tenant-context.tsx:87`).
-- [ ] C.4 [GREEN] Crear `shared/api/tenant-header.ts` (`setTenantHeader`/`getTenantHeader`, holder module-level, firma 2.9).
-- [ ] C.5 [GREEN] `client.ts` (`rawFetch`): inyectar `X-Tenant-Id` desde `getTenantHeader()` solo si hay valor y `!headers.has('x-tenant-id')` (firma 2.10) — pasa C.1-C.3.
-- [ ] C.6 [RED] `tenant-context.spec.tsx`: efecto puente llama `setTenantHeader(isGlobalAdmin && clienteId ? clienteId : null)`; cleanup en unmount/logout setea `null`.
-- [ ] C.7 [GREEN] `tenant-context.tsx`: agregar `useEffect` puente con cleanup (firma 2.11) — pasa C.6.
-- [ ] C.8 [CRITICAL] Verificación cruzada (sin nuevo test): confirmar que R5-d (backend rechaza 403 cross-tenant de no-root aunque el frontend mandara el header) sigue cubierto por `tenant.guard.spec.ts` de PR-A — no requiere cambio.
-- [ ] C.9 [RED] `UsuariosPage.spec.tsx`: root ve el `Switch` "Root"; al activarlo y enviar, llama `POST /usuarios/root` con `isGlobalAdmin=true` (R6-a).
-- [ ] C.10 [RED][CRITICAL] `UsuariosPage.spec.tsx`: ADMINISTRADOR no-root NO renderiza el `Switch`; ningún camino de UI setea el flag (R6-b).
-- [ ] C.11 [GREEN] `features/admin/types.ts`: agregar `NuevoRootInput`; crear `hooks/use-crear-root.ts` (`useCrearRoot`, firma 2.12).
-- [ ] C.12 [GREEN] `UsuariosPage.tsx`: gatear `Switch` por `isGlobalAdmin` (`useSession`), branch de submit `crearRoot.mutateAsync` vs `crearUsuario.mutateAsync` (firma 2.13) — pasa C.9/C.10.
-- [ ] C.13 Evidencia real: correr `corepack pnpm test`, `corepack pnpm lint`, `corepack pnpm exec tsc --noEmit -p tsconfig.json` en `frontend/` y pegar los números tal cual.
-- [ ] C.14 Commits work-unit (conventional): 1) "feat(api): centralizar X-Tenant-Id vía holder module-level" (C.1-C.8), 2) "feat(admin): toggle root gateado en alta de usuarios" (C.9-C.12).
+- [x] C.0 Verificar entorno: confirmar paths de `apiFetch`/`rawFetch` (`client.ts`), `TenantContextProvider`, `useSession`, `ClienteSelector` existen y tipan antes de escribir tests.
+- [x] C.1 [RED][CRITICAL] `tenant-header.test.ts` + `client.test.ts`: usuario no-root nunca envía `X-Tenant-Id` (holder queda `null`) (R5-c).
+- [x] C.2 [RED][CRITICAL] `client.test.ts`: root con cliente seleccionado → header inyectado en request arbitraria (tickets/compras/equipos/reparaciones heredan del mismo punto) (R5-a, R5-b).
+- [x] C.3 [RED] `client.test.ts`: header `X-Tenant-Id` explícito ya presente NO es pisado por el holder (precedencia; protege el fetch de ciclos en `tenant-context.tsx:87`).
+- [x] C.4 [GREEN] Crear `shared/api/tenant-header.ts` (`setTenantHeader`/`getTenantHeader`, holder module-level, firma 2.9).
+- [x] C.5 [GREEN] `client.ts` (`rawFetch`): inyectar `X-Tenant-Id` desde `getTenantHeader()` solo si hay valor y `!headers.has('x-tenant-id')` (firma 2.10) — pasa C.1-C.3.
+- [x] C.6 [RED] `tenant-context.test.tsx`: efecto puente llama `setTenantHeader(isGlobalAdmin && clienteId ? clienteId : null)`; cleanup en unmount/logout setea `null`.
+- [x] C.7 [GREEN] `tenant-context.tsx`: agregar `useEffect` puente con cleanup (firma 2.11) — pasa C.6.
+- [x] C.8 [CRITICAL] Verificación cruzada (sin nuevo test): confirmado que R5-d (backend rechaza 403 cross-tenant de no-root aunque el frontend mandara el header) sigue cubierto por `tenant.guard.spec.ts` de PR-A — no requirió cambio.
+- [x] C.9 [RED] `UsuariosPage.test.tsx`: root ve el `Switch` "Root"; al activarlo y enviar, llama `POST /usuarios/root` con `isGlobalAdmin=true` (R6-a).
+- [x] C.10 [RED][CRITICAL] `UsuariosPage.test.tsx`: ADMINISTRADOR no-root NO renderiza el `Switch`; ningún camino de UI setea el flag (R6-b).
+- [x] C.11 [GREEN] `features/admin/types.ts`: agregar `NuevoRootInput`; crear `hooks/use-crear-root.ts` (`useCrearRoot`, firma 2.12).
+- [x] C.12 [GREEN] `UsuariosPage.tsx`: gatear `Switch` por `isGlobalAdmin` (`useSession`), branch de submit `crearRoot.mutateAsync` vs `crearUsuario.mutateAsync` (firma 2.13) — pasa C.9/C.10.
+- [x] C.13 Evidencia real: correr `corepack pnpm test`, `corepack pnpm lint`, `corepack pnpm exec tsc --noEmit` en `frontend/` — ver `STATE.md`.
+- [x] C.14 Commits work-unit (conventional): 1) "feat(api): centralizar X-Tenant-Id vía holder module-level" (C.1-C.8), 2) "feat(admin): toggle root gateado en alta de usuarios" (C.9-C.12).
 
 ---
 

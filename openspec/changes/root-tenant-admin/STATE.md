@@ -583,3 +583,212 @@ $ corepack pnpm exec vitest run \
 - Branch: `root-tenant-admin-pr2` (continúa desde los commits de Ronda 1).
 - Commit work-unit: `fix(auth): completar mocks de ILogger y guardar audit post-commit`.
 - Sin push, sin PR.
+
+---
+
+## PR-C — Frontend: X-Tenant-Id centralizado + UI root (Dz5 R5, Dz2-UI R6) — APLICADO
+
+Branch: `root-tenant-admin-pr3` (desde `root-tenant-admin-pr2` — depende del endpoint
+`POST /usuarios/root` de PR-B, verificado con `git log` antes de empezar: commits
+`50b4586c`/`1d13740e`/`2cf0633f` presentes). Sin push, sin PR (gateado por el usuario vía
+orquestador). Solo frontend — backend NO tocado en este PR.
+
+### Tasks completadas (C.0–C.14)
+
+- [x] C.0 Verificación de entorno — confirmado contra código real: `apiFetch`/`rawFetch`
+      (`client.ts`, singleton `refreshPromise` ya existente como precedente del patrón
+      module-level), `TenantContextProvider` (`shared/providers/tenant-context.tsx`,
+      expone `{clienteId, clienteNombre, cicloId, cicloNombre, setCliente, setCiclo}`),
+      `useSession` (`shared/hooks/use-session.ts`, expone `isGlobalAdmin`), `ClienteSelector`
+      (`features/admin/components/ClienteSelector.tsx:34`, gate `if (!isGlobalAdmin) return
+      null`) — todos existen y tipan correcto. Confirmado que `@radix-ui/react-switch` NO
+      está instalado en `package.json`/`node_modules` (solo alert-dialog/dialog/dropdown-menu
+      /select/slot) — ver desviación #1.
+- [x] C.1-C.3 [RED][CRITICAL] `tenant-header.test.ts` (nuevo archivo, no existía) +
+      `client.test.ts` (extendido) — RED confirmado (`Cannot find module "./tenant-header"`
+      para el holder; `AssertionError: expected null to be 'cliente-acme'` para la inyección
+      de header en request arbitraria). Cubre R5-c (no-root nunca envía el header), R5-a/R5-b
+      (root con cliente → header en tickets/compras/equipos/reparaciones), precedencia
+      (header explícito no pisado por el holder).
+- [x] C.4-C.5 [GREEN] `shared/api/tenant-header.ts` (holder module-level
+      `setTenantHeader`/`getTenantHeader`) + `client.ts` (`rawFetch`): inyecta
+      `X-Tenant-Id` desde `getTenantHeader()` solo si hay valor y `!headers.has('x-tenant-id')`
+      — pasa C.1-C.3 (10 tests en `client.test.ts`, 3 en `tenant-header.test.ts`).
+- [x] C.6-C.7 [RED→GREEN] `tenant-context.test.tsx` (extendido) + `tenant-context.tsx`:
+      efecto puente `setTenantHeader(isGlobalAdmin && clienteId ? clienteId : null)` con
+      cleanup `return () => setTenantHeader(null)`. RED confirmado (holder seguía en
+      `"cliente-2"` tras `unmount()`, sin sincronizar en `set-cliente`), GREEN tras agregar
+      el `useEffect`. 4 tests nuevos: no-root→holder null, root sin cliente→holder null,
+      root con cliente→holder=clienteId, cleanup en unmount.
+- [x] C.8 Verificación cruzada (sin test nuevo): confirmado que R5-d (backend rechaza 403
+      cross-tenant de un no-root aunque mande el header) sigue cubierto por
+      `tenant.guard.spec.ts` de PR-A (tasks A.4-A.7) — no requirió cambio, la defensa
+      backend no se relaja.
+- [x] C.9-C.10 [RED][CRITICAL] `UsuariosPage.test.tsx` (extendido) — RED confirmado
+      (`TestingLibraryElementError: Unable to find an accessible element with the role
+      "switch"`). Cubre R6-a (root ve el Switch, ON+submit → POST /usuarios/root) y
+      R6-b [CRITICAL] (ADMINISTRADOR no-root NO ve el Switch).
+- [x] C.11 [GREEN] `features/admin/types.ts` (+`NuevoRootInput`, mirrors `CreateRootDto`
+      sin campo `rol`) + `features/admin/hooks/use-crear-root.ts` (nuevo, `useCrearRoot` →
+      `POST usuarios/root`, invalida `['admin','usuarios']`, SIN header explícito — lo
+      inyecta el holder centralizado de C.4-C.5).
+- [x] C.12 [GREEN] `UsuariosPage.tsx`: `const { user, isGlobalAdmin } = useSession()`;
+      `Switch` "Root (acceso global)" renderizado solo si `isGlobalAdmin` (mismo gate que
+      `ClienteSelector.tsx:34`); estado local `esRoot` (default `false`); cuando `esRoot`
+      se oculta el `Select` de Rol (root nace sin rol RBAC, Dz1/Dz2) y el submit rama a
+      `crearRoot.mutateAsync({nombre,apellido,email,password})` en vez de
+      `crearUsuario.mutateAsync(form)` — pasa C.9/C.10 (14/14 tests en `UsuariosPage.test.tsx`).
+- [x] C.13 Evidencia real — ver sección de abajo.
+- [x] C.14 Commits work-unit (ver Git).
+
+### Desviaciones documentadas (no silenciosas)
+
+1. **Switch nativo (`role="switch"` + `<button>`) en vez de `@radix-ui/react-switch`.**
+   El design (§2.13) menciona `Switch` sin fijar la librería. Se verificó
+   `package.json`/`node_modules/@radix-ui` ANTES de codear (CLAUDE.md §5.1 "contrato
+   antes que andamiaje"): el paquete `@radix-ui/react-switch` NO está instalado (solo
+   `react-alert-dialog`/`react-dialog`/`react-dropdown-menu`/`react-select`/`react-slot`).
+   Sumar una dependencia nueva solo para un control con 2 estados —cuyo comportamiento
+   completo (`role="switch"`, `aria-checked`, toggle por click/Enter/Space vía el
+   `<button>` nativo) se resuelve con ~15 líneas— es superficie evitable. Se construyó
+   un átomo `components/ui/switch.tsx` siguiendo el mismo patrón `cva`/`forwardRef`/`cn`
+   que `Input`/`Badge`/`Label`, fully controlled (`checked`/`onCheckedChange`, sin estado
+   propio), con test suite atómica (`switch.test.tsx`, 5 tests: estado inicial, checked=true,
+   click invierte, disabled no dispara, `id` se propaga). Si el proyecto necesita más
+   adelante animaciones/portal/gestos avanzados de Radix, migrar es un cambio local
+   acotado a este único archivo (mismo contrato `checked`/`onCheckedChange`).
+2. **Archivos de test `.test.ts(x)`, no `.spec.ts(x)` como sugiere el design (§5/§6).**
+   El repo entero usa la convención `*.test.ts`/`*.test.tsx` (confirmado: `client.test.ts`,
+   `tenant-context.test.tsx`, `UsuariosPage.test.tsx`, todos los átomos de
+   `components/ui/*.test.tsx` ya existentes) — CERO archivo `.spec.ts` en `frontend/`. Se
+   siguió el precedente real del repo (`tenant-header.test.ts`, extensiones de
+   `client.test.ts`/`tenant-context.test.tsx`/`UsuariosPage.test.tsx`) en vez de introducir
+   una segunda convención de nombrado de tests en el mismo proyecto (CLAUDE.md §5.1 "NO
+   inventes imports/convenciones — confirmá contra código real").
+3. **`Select` de Rol se oculta (no solo se deshabilita) cuando `esRoot=true`.** El design
+   no especifica el detalle visual; se optó por ocultar el campo en vez de mostrarlo
+   deshabilitado porque `CreateRootDto` (backend) no acepta `rol` — mostrarlo aunque sea
+   deshabilitado sugeriría al usuario que el root SÍ tiene un rol asociado, contradiciendo
+   la ortogonalidad root/RBAC (Dz1). Consistente con `ui-patterns` (Select solo cuando el
+   campo aplica al estado actual del formulario).
+4. **Un objeto-ref (`{ body: ... }`) en vez de una variable `let` mutable en el test
+   `R6-a`**, para capturar el body de `POST /usuarios/root` dentro del handler `msw`. Una
+   variable `let rootCallBody: Record<string,string> | null` reasignada dentro del
+   handler async producía un error real de `tsc --noEmit` (`TS2339: Property 'email' does
+   not exist on type 'never'`) por una interacción de inferencia de tipos entre el genérico
+   de `http.post` y el control-flow narrowing de TypeScript sobre variables cerradas por
+   closures asíncronas — no un `as any`/cast forzado, sino un patrón (ref-object) que
+   evita el problema de raíz sin perder tipado estricto (DoD §9, "prohibido `as any`").
+5. **No se tocó `useCrearUsuario`/`useUsuariosAdmin`** (headers explícitos `X-Tenant-Id`
+   preexistentes) — el design (Dz5, "Tradeoff") los declara redundantes pero a MANTENER
+   sin regresión; el test de precedencia (C.3) confirma que coexisten sin conflicto con
+   el holder centralizado.
+6. **`root-bootstrap`/backend NO tocados** — PR-C es estrictamente frontend, como pautado.
+   No se re-corrió la suite de `backend/` en este PR (ya evidenciada en PR-B/Judgment Day
+   Ronda 1-2 de este mismo STATE.md).
+
+### Archivos creados
+
+- `frontend/src/shared/api/tenant-header.ts`
+- `frontend/src/shared/api/tenant-header.test.ts`
+- `frontend/src/components/ui/switch.tsx`
+- `frontend/src/components/ui/switch.test.tsx`
+- `frontend/src/features/admin/hooks/use-crear-root.ts`
+
+### Archivos modificados
+
+- `frontend/src/shared/api/client.ts` (`rawFetch`: inyección de `X-Tenant-Id` desde el holder)
+- `frontend/src/shared/api/client.test.ts` (+suite "X-Tenant-Id centralizado (Dz5/R5)": 3 tests)
+- `frontend/src/shared/providers/tenant-context.tsx` (+efecto puente `setTenantHeader` con cleanup)
+- `frontend/src/shared/providers/tenant-context.test.tsx` (+suite "efecto puente setTenantHeader
+  (Dz5/R5)": 4 tests)
+- `frontend/src/features/admin/types.ts` (+`NuevoRootInput`)
+- `frontend/src/features/admin/components/UsuariosPage.tsx` (+`Switch` root gateado por
+  `isGlobalAdmin`, branch de submit `crearRoot`/`crearUsuario`, oculta `Select` de Rol si `esRoot`)
+- `frontend/src/features/admin/components/UsuariosPage.test.tsx` (+suite "Switch root en alta
+  de usuarios (R6/Dz2-UI)": 2 tests, R6-a y R6-b [CRITICAL])
+- `openspec/changes/root-tenant-admin/tasks.md` (C.0-C.14 marcadas `[x]`)
+
+### Evidencia RED (confirmando el contrato ausente antes del fix)
+
+```
+FAIL src/shared/api/tenant-header.test.ts
+Error: Failed to resolve import "./tenant-header" from "src/shared/api/tenant-header.test.ts"
+
+FAIL src/shared/api/client.test.ts > apiFetch > X-Tenant-Id centralizado (Dz5/R5) >
+  R5-a/R5-b [CRITICAL]: holder con clienteId → header inyectado en request arbitraria
+AssertionError: expected null to be 'cliente-acme'
+
+FAIL src/components/ui/switch.test.tsx
+Error: Failed to resolve import "./switch" from "src/components/ui/switch.test.tsx"
+
+FAIL src/shared/providers/tenant-context.test.tsx > TenantContext > efecto puente
+  setTenantHeader (Dz5/R5) > root con cliente seleccionado: el holder se sincroniza con clienteId
+AssertionError: expected null to be 'cliente-2' (esperado tras waitFor)
+FAIL ... > cleanup en unmount: el holder vuelve a null
+AssertionError: expected 'cliente-2' to be null
+
+FAIL src/features/admin/components/UsuariosPage.test.tsx > Switch root en alta de usuarios
+  (R6/Dz2-UI) > R6-a: root ve el Switch 'Root'; activarlo y enviar llama a POST /usuarios/root
+TestingLibraryElementError: Unable to find an accessible element with the role "switch"
+```
+
+### Evidencia GREEN (targeted, tras cada fix)
+
+```
+$ corepack pnpm exec vitest run src/shared/api/tenant-header.test.ts
+ Test Files  1 passed (1) | Tests  3 passed (3)
+
+$ corepack pnpm exec vitest run src/shared/api/client.test.ts src/shared/api/tenant-header.test.ts
+ Test Files  2 passed (2) | Tests  13 passed (13)
+
+$ corepack pnpm exec vitest run src/shared/providers/tenant-context.test.tsx src/shared/api/client.test.ts src/shared/api/tenant-header.test.ts
+ Test Files  3 passed (3) | Tests  22 passed (22)
+
+$ corepack pnpm exec vitest run src/components/ui/switch.test.tsx
+ Test Files  1 passed (1) | Tests  5 passed (5)
+
+$ corepack pnpm exec vitest run src/features/admin/components/UsuariosPage.test.tsx
+ Test Files  1 passed (1) | Tests  14 passed (14)
+```
+
+### Evidencia real — C.13 (suite completa + lint + tsc, desde `frontend/`)
+
+```
+$ corepack pnpm test
+ Test Files  73 passed (73)
+      Tests  603 passed (603)
+   Duration  169.44s
+
+$ corepack pnpm lint
+`next lint` is deprecated and will be removed in Next.js 16 (aviso informativo, sin acción).
+./src/components/shell/app-shell.test.tsx
+  23:15  Warning: 'JwtPayload' is defined but never used.
+./src/features/tickets/components/TicketFormModal.test.tsx
+  73:10  Warning: 'makeWrapper' is defined but never used.
+  415:11  Warning: 'dialog' is assigned a value but never used.
+(0 errores — 3 warnings PRE-EXISTENTES, ajenos a root-tenant-admin, confirmados en
+ archivos no tocados por este PR)
+
+$ corepack pnpm exec tsc --noEmit
+(sin output — 0 errores de tipos)
+```
+
+**Resumen: 603 passed / 0 failed / 0 skipped (73 archivos). Lint limpio (0 errores, 3
+warnings preexistentes ajenos). Typecheck limpio. Cero `as any`/`as unknown as`
+introducidos (confirmado con `grep` dirigido a los archivos tocados de este PR).**
+
+### Qué queda (fuera de alcance de root-tenant-admin)
+
+- Dz6 (dedupe `ROLES_VALIDOS` backend/frontend) — diferido explícitamente a Fase 2
+  (ver tasks.md "Fuera de alcance").
+- Migrar `components/ui/switch.tsx` a `@radix-ui/react-switch` si el proyecto adopta
+  esa dependencia más adelante — cambio local, mismo contrato `checked`/`onCheckedChange`.
+
+### Git
+
+- Branch: `root-tenant-admin-pr3` (desde `root-tenant-admin-pr2`).
+- Commit 1 (work-unit): `feat(api): centralizar X-Tenant-Id vía holder module-level` (C.1-C.8).
+- Commit 2 (work-unit): `feat(admin): toggle root gateado en alta de usuarios` (C.9-C.12).
+- Sin push, sin PR — entrega afuera gateada por el usuario vía orquestador
+  (delivery_strategy: ask-on-risk, Review Workload Forecast: Chained PRs recomendado).
