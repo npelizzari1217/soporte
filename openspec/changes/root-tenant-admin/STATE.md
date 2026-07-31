@@ -329,3 +329,137 @@ $ corepack pnpm exec tsc --noEmit -p tsconfig.json
 - Commit 2 (work-unit): `feat(auth): bootstrap idempotente del primer root` (B.11-B.17).
 - Sin push, sin PR — entrega afuera gateada por el usuario vía orquestador (delivery_strategy:
   ask-on-risk, Review Workload Forecast: Chained PRs recomendado).
+
+---
+
+## PR-B — Judgment Day Ronda 1 (fixes aplicados)
+
+Fix agent quirúrgico sobre `root-tenant-admin-pr2`, strict_tdd (RED→GREEN). Sin push, sin PR.
+
+### FIX 1 (PRINCIPAL, WARNING confirmado por 2 jueces) — Auditar la creación de root
+
+`CrearRootUseCase` no dejaba rastro de quién creaba un superusuario de plataforma, pese a que el
+spec R2 exige `MUST ... auditarse (actor, objetivo, timestamp)` en el camino de éxito.
+
+**Mecanismo reusado**: se investigó el código real (no se inventó nada nuevo). No existe un
+`AuditLogPort`/tabla de auditoría persistente en el repo — el mecanismo reusable existente es el
+puerto `ILogger` (`shared/domain/ports/i-logger.port.ts`, ya wireado `@Global()` en
+`shared.module.ts`, mismo puerto que usan `crear-observacion.use-case.ts`/
+`transicionar-estado.use-case.ts` para log-and-swallow post-commit), combinado con el formato de
+mensaje estructurado que ya usa `TenantGuard.resolveCrossTenant` para auditoría cross-tenant
+(`"EVENTO | campo=valor | ... | at=ISO"`, infra, `new Logger().log(...)` directo — válido ahí por
+ser infraestructura). `ILogger` solo tenía `error()`; se le agregó `log()` (consumidor real, no
+especulativo) e implementación en `NestLoggerAdapter`.
+
+- RED confirmado: `crear-root.use-case.spec.ts` — 3 tests nuevos fallando (`logger.log` nunca
+  llamado, `CrearRootUseCase` con firma de 2 args).
+- GREEN: `CrearRootUseCase` recibe `ILogger` como 3er constructor param; tras
+  `usuarioRepo.create(entity)` y ANTES de `return Result.ok`, emite
+  `"ROOT CREADO | actor=${dto.actor.id} | objetivo=${entity.email} | at=${ISO}"`. Solo en el camino
+  de éxito — NO en `RootRequeridoError` ni `UsuarioConflictError` (sin precedente en el repo de
+  auditar intentos fallidos para esta acción). Email del objetivo es dato auditable legítimo (no se
+  enmascara); password NUNCA aparece en el mensaje (test explícito). Wiring `useFactory`+`inject`
+  actualizado en `auth.module.ts` (suma `LOGGER`).
+
+### FIX 2 (SUGGESTION confirmada por 2 jueces) — `as any` en tests nuevos de PR-B
+
+`crear-root.use-case.spec.ts` y `root-bootstrap.seed.spec.ts` reemplazaron todos los `as any` por
+mocks tipados a `IUsuarioRepository`/`IHashProvider`/`ILogger` (factories tipadas al retorno de la
+interfaz; `vi.mocked(...)` en los call sites que necesitan `.mockResolvedValue`/`.mockImplementation`
+sin perder el chequeo estructural). `makeFakeHashProvider()` del seed ahora implementa `IHashProvider`
+completo (`hash` + `verify`) en vez de un objeto parcial. Cero `as any`/`as unknown as` en ambos
+archivos — confirmado con `tsc --noEmit`.
+
+### FIX 3 (SUGGESTION confirmada por 2 jueces) — Seed re-hasheaba en cada run
+
+`root-bootstrap.seed.ts`: el hash argon2id (costoso) corría incondicionalmente aunque el camino
+`update` lo descartara. Reestructurado a `findUnique` por email primero: si existe → `update` (sin
+hashear); si no existe → hashea y `create`. RED confirmado contra la implementación vieja (vía
+`git stash` de `root-bootstrap.seed.ts`, DB de test real): `hashProvider.hash` llamado igual en el
+camino update. GREEN tras el fix: test explícito `hashProvider.hash` NO llamado en update.
+
+### FIX 4 (WARNING theoretical, Juez B — robustez R3) — Seed no reactivaba cuenta suspendida
+
+En el mismo camino `update`, se agrega `activo: true, deletedAt: null` además de
+`isGlobalAdmin: true`. Motivo: si `ROOT_ADMIN_EMAIL` apunta a un usuario suspendido/soft-deleted, el
+seed viejo flippeaba el flag pero la cuenta seguía sin poder loguear (contradice R3 "MUST NOT quedar
+sin ningún root usable"). RED confirmado (mismo `git stash`): `activo`/`deletedAt` no se tocaban. Test
+nuevo cubre usuario existente con `activo:false`/`deletedAt` seteado → tras el seed queda
+`activo:true, deletedAt:null, isGlobalAdmin:true`, sin pisar `nombre`/`passwordHash`.
+
+### FIX 5 (SUGGESTION, Juez A) — Test del guard R2-c era metadata-only
+
+`usuarios.controller.spec.ts`: el test de `POST /usuarios/root` solo verificaba que
+`GlobalAdminGuard` estuviera declarado en `@UseGuards` (metadata). Se agregó un test complementario
+(sin borrar el de metadata) que instancia `GlobalAdminGuard` e invoca `canActivate()` directo contra
+un request de actor no-root, esperando `ForbiddenException` — mismo patrón que
+`global-admin.guard.spec.ts`.
+
+### FIX 6 (doc, Juez A) — README rotation note
+
+`backend/README.md`: nota agregada aclarando que rotar `ROOT_ADMIN_PASSWORD` y re-correr `seed:root`
+NO cambia el password de un root existente (el `update` no toca `passwordHash`) — para rotar el
+password se usa el flujo normal de cambio de password.
+
+### Evidencia real (desde `backend/`)
+
+```
+$ corepack pnpm test
+ Test Files  1 failed | 162 passed | 1 skipped (164)
+      Tests  1 failed | 2187 passed | 2 skipped (2190)
+   Duration  269.32s
+
+FAIL src/auth/infrastructure/persistence/prisma/rbac-4-roles-seed.integration.spec.ts
+  > tiene exactamente 19 permisos... ADMINISTRADOR
+  AssertionError: expected [...] to have a length of 19 but got 20
+  (PRE-EXISTENTE — idéntico a PR-A/PR-B, ajeno a root-tenant-admin. NO tocado.)
+
+$ corepack pnpm exec eslint "src/**/*.ts"
+(sin output — 0 errores, 0 warnings)
+
+$ corepack pnpm exec tsc --noEmit -p tsconfig.json
+(sin output — 0 errores de tipos)
+
+# prisma_master/seeds/ fuera de "include" del tsconfig principal (mismo alcance documentado en
+# PR-B) — verificado standalone con las mismas compilerOptions + --types vitest/globals,node:
+# 0 errores.
+```
+
+Targeted (archivos tocados por Judgment Day):
+
+```
+$ corepack pnpm exec vitest run \
+    src/auth/application/use-cases/crear-root.use-case.spec.ts \
+    prisma_master/seeds/root-bootstrap.seed.spec.ts \
+    src/auth/interface/controllers/usuarios.controller.spec.ts \
+    src/auth/infrastructure/guards/global-admin.guard.spec.ts \
+    src/auth/auth.module.spec.ts \
+    src/tickets/application/use-cases/crear-observacion.use-case.spec.ts \
+    src/tickets/application/use-cases/transicionar-estado.use-case.spec.ts
+ Test Files  7 passed (7) | Tests  142 passed (142)
+```
+
+**Resumen: 2187 passed / 1 failed (preexistente, ajeno) / 2 skipped. Lint limpio. Typecheck limpio.**
+
+### Archivos modificados (Judgment Day Ronda 1)
+
+- `backend/src/shared/domain/ports/i-logger.port.ts` (+`log()`)
+- `backend/src/shared/infrastructure/logging/nest-logger.adapter.ts` (+`log()`)
+- `backend/src/auth/application/use-cases/crear-root.use-case.ts` (+`ILogger`, +auditoría)
+- `backend/src/auth/application/use-cases/crear-root.use-case.spec.ts` (+tests de auditoría, mocks
+  tipados sin `as any`)
+- `backend/src/auth/auth.module.ts` (+`LOGGER` en wiring de `CrearRootUseCase`)
+- `backend/prisma_master/seeds/root-bootstrap.seed.ts` (findUnique+create/update, no re-hash, +
+  reactivación `activo`/`deletedAt`)
+- `backend/prisma_master/seeds/root-bootstrap.seed.spec.ts` (+tests FIX 3/FIX 4, mocks tipados sin
+  `as any`)
+- `backend/src/auth/interface/controllers/usuarios.controller.spec.ts` (+test de rechazo real del
+  guard)
+- `backend/README.md` (+nota de rotation)
+
+### Git
+
+- Branch: `root-tenant-admin-pr2` (continúa desde los commits de PR-B).
+- Commit 1 (work-unit): `feat(auth): auditar creación de root` (FIX 1).
+- Commit 2 (work-unit): `test(auth): endurecer tests y robustez del seed root` (FIX 2-6).
+- Sin push, sin PR.
