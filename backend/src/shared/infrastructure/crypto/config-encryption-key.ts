@@ -11,9 +11,19 @@
  * FILAS de config (datos) siguen degradando graciosamente en send-time
  * (`ISecretCipher.decrypt()` nunca lanza, retorna `Result.fail(CifradoError)`).
  *
- * Se invoca desde el `useFactory` de `SECRET_CIPHER` en `shared.module.ts`
- * (mismo patrón que `loadEmailConfig()` invocado desde el `useFactory` de
- * `EMAIL_SENDER` en `tickets.module.ts` — NUNCA se captura el throw acá).
+ * Se invoca desde el `useFactory` de `SECRET_CIPHER` en `shared.module.ts` —
+ * el throw de esta función NUNCA se captura ahí, para que aborte el arranque
+ * de la app.
+ *
+ * Nota (PR6, runtime-config-table): este comentario citaba antes como "mismo
+ * patrón" a `loadEmailConfig()` invocado desde el `useFactory` de
+ * `EMAIL_SENDER` en `tickets.module.ts` — ese fail-fast se ELIMINÓ en PR6
+ * junto con `email-config.ts` (el fail-fast SMTP se corrió a send-time, spec
+ * Requirement 6). `JWT_SECRET`/`DATABASE_URL_MASTER` tampoco son un
+ * precedente equivalente: ambos degradan silenciosamente a un valor por
+ * defecto (`?? 'soporte-dev-secret-change-in-prod'` / `?? ''`) en vez de
+ * lanzar — a la fecha, `CONFIG_ENCRYPTION_KEY` es el único valor de infra que
+ * hace fail-fast real de boot en este codebase.
  *
  * Formato esperado: base64 de 32 bytes exactos (`openssl rand -base64 32`).
  *
@@ -44,7 +54,9 @@ export const STRICT_BASE64_32_BYTES = /^[A-Za-z0-9+/]{43}=$/;
 /**
  * ConfigEncryptionKeyError — error tipado que distingue "clave de cifrado
  * ausente o con formato inválido" de cualquier otro bug en el bootstrap.
- * Mismo patrón que `SmtpConfigError` (tickets/infrastructure/email/email-config.ts).
+ * Nota (PR6, runtime-config-table): este comentario citaba antes como "mismo
+ * patrón" a `SmtpConfigError` (`tickets/infrastructure/email/email-config.ts`)
+ * — ambos se ELIMINARON en PR6 (el fail-fast SMTP se corrió a send-time).
  */
 export class ConfigEncryptionKeyError extends Error {
   constructor(message: string) {

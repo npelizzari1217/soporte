@@ -37,9 +37,11 @@ import { validateConfigEncryptionKey } from './infrastructure/crypto/config-encr
  *   - SECRET_CIPHER          → ISecretCipher (AesGcmSecretCipher). El useFactory
  *     valida `CONFIG_ENCRYPTION_KEY` (presencia + longitud AES-256) ANTES de
  *     construir el adapter — fail-fast de boot (F1, runtime-config-table PR1).
- *     Mismo patrón que EMAIL_SENDER en `tickets.module.ts`: el throw de
- *     `validateConfigEncryptionKey()` NO se captura acá — debe abortar el
- *     arranque de la app.
+ *     El throw de `validateConfigEncryptionKey()` NO se captura acá — debe
+ *     abortar el arranque de la app. (El precedente que este comentario citaba
+ *     antes — "mismo patrón que EMAIL_SENDER en `tickets.module.ts`" — se
+ *     retiró en PR6, runtime-config-table: `EMAIL_SENDER` ya NO es fail-fast,
+ *     ver `shared/infrastructure/crypto/config-encryption-key.ts`.)
  *
  * Todos los providers usan tokens Symbol para respetar el principio de
  * inversión de dependencias: los consumidores dependen de la interfaz (token),

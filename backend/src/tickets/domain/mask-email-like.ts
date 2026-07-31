@@ -37,12 +37,16 @@ export function maskEmailLike(raw: string): string {
  * El dominio acepta 1+ etiquetas (`(?:\.[\w-]+)*` — cero o más repeticiones
  * de un punto seguido de una etiqueta sin puntos) en vez de exigir un punto
  * literal: `no-reply@localhost` es una dirección real y común en entornos
- * de test/dev (ver `backend/test/setup-env.ts`, `SMTP_HOST='localhost'`) que
- * la versión anterior del regex dejaba SIN enmascarar (Judgment Day PR3
- * Ronda 3, issue 3). Los grupos son disjuntos (la clase inicial no incluye
- * `.`, y cada repetición exige un `.` literal antes del siguiente tramo) —
- * sin cuantificadores anidados solapados, así que no hay riesgo de
- * catastrophic backtracking.
+ * de test/dev (dominio de una sola etiqueta, sin punto) que la versión
+ * anterior del regex dejaba SIN enmascarar (Judgment Day PR3 Ronda 3, issue
+ * 3). Nota (PR6, runtime-config-table): el dummy `SMTP_HOST='localhost'` de
+ * `backend/test/setup-env.ts` que motivó originalmente este caso se ELIMINÓ
+ * en PR6 (el adapter ya no lee `process.env.SMTP_*`) — el detector sigue
+ * cubriendo la forma porque `no-reply@localhost` es una dirección real e
+ * independiente de ese dummy de test. Los grupos son disjuntos (la clase
+ * inicial no incluye `.`, y cada repetición exige un `.` literal antes del
+ * siguiente tramo) — sin cuantificadores anidados solapados, así que no hay
+ * riesgo de catastrophic backtracking.
  */
 const EMAIL_IN_TEXT = /[\w.+-]+@[\w-]+(?:\.[\w-]+)*/g;
 
