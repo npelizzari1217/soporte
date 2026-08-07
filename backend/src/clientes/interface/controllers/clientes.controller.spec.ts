@@ -11,6 +11,7 @@ import {
   ConflictException,
   ForbiddenException,
   InternalServerErrorException,
+  NotFoundException,
 } from '@nestjs/common';
 import { ClientesController } from './clientes.controller';
 import { Result } from '../../../shared/domain/result';
@@ -18,6 +19,7 @@ import { ClienteEntity } from '../../domain/entities/cliente.entity';
 import {
   AdminEmailYaRegistradoError,
   AdministradorRoleNotFoundError,
+  ClienteNoEncontradoError,
   OnlyRootCanCreateClienteError,
 } from '../../domain/errors/clientes.errors';
 import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
@@ -25,11 +27,24 @@ import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
 function buildController() {
   const crearClienteUseCase = { execute: vi.fn() };
   const listarClientesUseCase = { execute: vi.fn() };
+  const editarClienteUseCase = { execute: vi.fn() };
+  const desactivarClienteUseCase = { execute: vi.fn() };
+  const reactivarClienteUseCase = { execute: vi.fn() };
   const controller = new ClientesController(
     crearClienteUseCase as any,
     listarClientesUseCase as any,
+    editarClienteUseCase as any,
+    desactivarClienteUseCase as any,
+    reactivarClienteUseCase as any,
   );
-  return { controller, crearClienteUseCase, listarClientesUseCase };
+  return {
+    controller,
+    crearClienteUseCase,
+    listarClientesUseCase,
+    editarClienteUseCase,
+    desactivarClienteUseCase,
+    reactivarClienteUseCase,
+  };
 }
 
 const ROOT_USER: JwtPayload = {
@@ -145,6 +160,95 @@ describe('ClientesController (T8.4)', () => {
           activo: true,
         },
       ]);
+    });
+  });
+
+  function buildCliente() {
+    return ClienteEntity.create({
+      nombre: 'ACME S.A.',
+      razonSocial: null,
+      cuit: null,
+      dbName: 'soporte_deadbeef',
+      activo: true,
+    });
+  }
+
+  describe('PATCH /clientes/:id (editar)', () => {
+    it('edita el cliente y retorna 200 con el DTO de respuesta', async () => {
+      const { controller, editarClienteUseCase } = buildController();
+      const cliente = buildCliente();
+      editarClienteUseCase.execute.mockResolvedValue(Result.ok(cliente));
+
+      const result = await controller.editar(cliente.id, {
+        nombre: 'ACME Modificada',
+        razonSocial: 'ACME Sociedad Anónima',
+      } as any);
+
+      expect(result.id).toBe(cliente.id);
+      expect(editarClienteUseCase.execute).toHaveBeenCalledWith({
+        clienteId: cliente.id,
+        nombre: 'ACME Modificada',
+        razonSocial: 'ACME Sociedad Anónima',
+        cuit: undefined,
+      });
+    });
+
+    it('propaga 404 NotFoundException cuando el cliente no existe', async () => {
+      const { controller, editarClienteUseCase } = buildController();
+      editarClienteUseCase.execute.mockResolvedValue(
+        Result.fail(new ClienteNoEncontradoError('id-inexistente')),
+      );
+
+      await expect(
+        controller.editar('id-inexistente', { nombre: 'X' } as any),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  describe('PATCH /clientes/:id/desactivar', () => {
+    it('desactiva el cliente y retorna 200 con el DTO de respuesta (activo=false)', async () => {
+      const { controller, desactivarClienteUseCase } = buildController();
+      const cliente = buildCliente();
+      cliente.suspend();
+      desactivarClienteUseCase.execute.mockResolvedValue(Result.ok(cliente));
+
+      const result = await controller.desactivar(cliente.id);
+
+      expect(result.activo).toBe(false);
+      expect(desactivarClienteUseCase.execute).toHaveBeenCalledWith(cliente.id);
+    });
+
+    it('propaga 404 NotFoundException cuando el cliente no existe', async () => {
+      const { controller, desactivarClienteUseCase } = buildController();
+      desactivarClienteUseCase.execute.mockResolvedValue(
+        Result.fail(new ClienteNoEncontradoError('id-inexistente')),
+      );
+
+      await expect(controller.desactivar('id-inexistente')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+  });
+
+  describe('PATCH /clientes/:id/activar', () => {
+    it('reactiva el cliente y retorna 200 con el DTO de respuesta (activo=true)', async () => {
+      const { controller, reactivarClienteUseCase } = buildController();
+      const cliente = buildCliente();
+      reactivarClienteUseCase.execute.mockResolvedValue(Result.ok(cliente));
+
+      const result = await controller.activar(cliente.id);
+
+      expect(result.activo).toBe(true);
+      expect(reactivarClienteUseCase.execute).toHaveBeenCalledWith(cliente.id);
+    });
+
+    it('propaga 404 NotFoundException cuando el cliente no existe', async () => {
+      const { controller, reactivarClienteUseCase } = buildController();
+      reactivarClienteUseCase.execute.mockResolvedValue(
+        Result.fail(new ClienteNoEncontradoError('id-inexistente')),
+      );
+
+      await expect(controller.activar('id-inexistente')).rejects.toBeInstanceOf(NotFoundException);
     });
   });
 });

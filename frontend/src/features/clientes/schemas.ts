@@ -11,3 +11,11 @@ export const crearClienteSchema = z.object({
   adminPassword: z.string().min(8, "Mínimo 8 caracteres"),
 });
 export type CrearClienteFormValues = z.infer<typeof crearClienteSchema>;
+
+/** Espejo de `UpdateClienteDto` (backend). Edición de datos comerciales — solo ROOT. dbName inmutable. */
+export const editarClienteSchema = z.object({
+  nombre: z.string().min(1, "El nombre es requerido"),
+  razonSocial: z.string().optional().or(z.literal("")),
+  cuit: z.string().optional().or(z.literal("")),
+});
+export type EditarClienteFormValues = z.infer<typeof editarClienteSchema>;

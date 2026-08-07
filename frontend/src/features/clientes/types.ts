@@ -23,3 +23,14 @@ export interface CreateClienteDto {
   adminApellido: string;
   adminPassword: string;
 }
+
+/**
+ * Body de `PATCH /clientes/:id` — edición de datos comerciales (solo ROOT).
+ * Espejo de `UpdateClienteDto` (backend). NO incluye `dbName` (inmutable) ni
+ * campos de admin.
+ */
+export interface UpdateClienteDto {
+  nombre?: string;
+  razonSocial?: string;
+  cuit?: string;
+}

@@ -83,6 +83,18 @@ export class ClienteEntity extends BaseEntity<ClienteProps> {
   // ─── Comportamiento de dominio ─────────────────────────────────────────
 
   /**
+   * Edita datos comerciales. dbName es INMUTABLE (identifica la DB física).
+   * Solo toca los campos provistos (semántica de patch parcial: `undefined`
+   * = "no tocar", `null` = "limpiar" para los nullables).
+   */
+  editar(cambios: { nombre?: string; razonSocial?: string | null; cuit?: string | null }): void {
+    if (cambios.nombre !== undefined) this.props.nombre = cambios.nombre;
+    if (cambios.razonSocial !== undefined) this.props.razonSocial = cambios.razonSocial;
+    if (cambios.cuit !== undefined) this.props.cuit = cambios.cuit;
+    this.touch();
+  }
+
+  /**
    * Suspende el cliente: setea activo=false y realiza soft delete.
    * La DB tenant del cliente NO se dropea — permanece intacta.
    * El TenantGuard/resolverScope rechazará requests/scopes de este cliente

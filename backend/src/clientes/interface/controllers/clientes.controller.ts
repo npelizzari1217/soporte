@@ -28,15 +28,22 @@ import {
   HttpCode,
   HttpStatus,
   InternalServerErrorException,
+  NotFoundException,
+  Param,
+  Patch,
   Post,
   UseGuards,
 } from '@nestjs/common';
 import { CrearClienteUseCase } from '../../application/use-cases/crear-cliente.use-case';
 import { ListarClientesUseCase } from '../../application/use-cases/listar-clientes.use-case';
-import { CreateClienteDto, ClienteResponseDto } from '../dtos/cliente.dto';
+import { EditarClienteUseCase } from '../../application/use-cases/editar-cliente.use-case';
+import { DesactivarClienteUseCase } from '../../application/use-cases/desactivar-cliente.use-case';
+import { ReactivarClienteUseCase } from '../../application/use-cases/reactivar-cliente.use-case';
+import { CreateClienteDto, UpdateClienteDto, ClienteResponseDto } from '../dtos/cliente.dto';
 import { ClienteEntity } from '../../domain/entities/cliente.entity';
 import {
   AdminEmailYaRegistradoError,
+  ClienteNoEncontradoError,
   OnlyRootCanCreateClienteError,
 } from '../../domain/errors/clientes.errors';
 import { JwtAuthGuard } from '../../../auth/infrastructure/guards/jwt-auth.guard';
@@ -62,9 +69,12 @@ function toResponseDto(cliente: ClienteEntity): ClienteResponseDto {
  */
 function toHttpException(
   error: DomainError,
-): ForbiddenException | ConflictException | InternalServerErrorException {
+): ForbiddenException | ConflictException | NotFoundException | InternalServerErrorException {
   if (error instanceof OnlyRootCanCreateClienteError) {
     return new ForbiddenException(error.message);
+  }
+  if (error instanceof ClienteNoEncontradoError) {
+    return new NotFoundException(error.message);
   }
   if (error instanceof AdminEmailYaRegistradoError) {
     return new ConflictException(error.message);
@@ -80,6 +90,9 @@ export class ClientesController {
   constructor(
     private readonly crearClienteUseCase: CrearClienteUseCase,
     private readonly listarClientesUseCase: ListarClientesUseCase,
+    private readonly editarClienteUseCase: EditarClienteUseCase,
+    private readonly desactivarClienteUseCase: DesactivarClienteUseCase,
+    private readonly reactivarClienteUseCase: ReactivarClienteUseCase,
   ) {}
 
   /**
@@ -122,6 +135,70 @@ export class ClientesController {
       },
       { isGlobalAdmin: user.is_global_admin },
     );
+
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+
+    return toResponseDto(result.getValue());
+  }
+
+  /**
+   * PATCH /clientes/:id
+   * Edita los datos comerciales de un cliente (nombre/razón social/CUIT).
+   * dbName es inmutable (no editable). Solo ROOT.
+   * @returns 200 + ClienteResponseDto
+   * @throws 404 NotFoundException si el cliente no existe
+   */
+  @Patch(':id')
+  @HttpCode(HttpStatus.OK)
+  async editar(
+    @Param('id') id: string,
+    @Body() dto: UpdateClienteDto,
+  ): Promise<ClienteResponseDto> {
+    const result = await this.editarClienteUseCase.execute({
+      clienteId: id,
+      nombre: dto.nombre,
+      razonSocial: dto.razonSocial,
+      cuit: dto.cuit,
+    });
+
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+
+    return toResponseDto(result.getValue());
+  }
+
+  /**
+   * PATCH /clientes/:id/desactivar
+   * Baja lógica: `activo=false` + soft delete. La DB física del tenant NO se
+   * elimina — reversible vía `activar`. Solo ROOT.
+   * @returns 200 + ClienteResponseDto con activo=false
+   * @throws 404 NotFoundException si el cliente no existe
+   */
+  @Patch(':id/desactivar')
+  @HttpCode(HttpStatus.OK)
+  async desactivar(@Param('id') id: string): Promise<ClienteResponseDto> {
+    const result = await this.desactivarClienteUseCase.execute(id);
+
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+
+    return toResponseDto(result.getValue());
+  }
+
+  /**
+   * PATCH /clientes/:id/activar
+   * Revierte la baja lógica: `activo=true` + limpia deletedAt. Solo ROOT.
+   * @returns 200 + ClienteResponseDto con activo=true
+   * @throws 404 NotFoundException si el cliente no existe
+   */
+  @Patch(':id/activar')
+  @HttpCode(HttpStatus.OK)
+  async activar(@Param('id') id: string): Promise<ClienteResponseDto> {
+    const result = await this.reactivarClienteUseCase.execute(id);
 
     if (result.isFail()) {
       throw toHttpException(result.getError());

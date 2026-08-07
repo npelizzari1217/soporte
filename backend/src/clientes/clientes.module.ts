@@ -65,10 +65,14 @@ import { EliminarCicloVigenteUseCase } from './application/use-cases/eliminar-ci
 import { ListarCiclosVigentesAdminUseCase } from './application/use-cases/listar-ciclos-vigentes-admin.use-case';
 import { ElegirCicloTenantUseCase } from './application/use-cases/elegir-ciclo-tenant.use-case';
 import { ActivarCicloUseCase } from './application/use-cases/activar-ciclo.use-case';
+import { DesactivarCicloUseCase } from './application/use-cases/desactivar-ciclo.use-case';
 import { ListarCiclosUseCase } from './application/use-cases/listar-ciclos.use-case';
 import { ProvisionarTenantDatabaseUseCase } from './application/use-cases/provisionar-tenant-database.use-case';
 import { CrearClienteUseCase } from './application/use-cases/crear-cliente.use-case';
 import { ListarClientesUseCase } from './application/use-cases/listar-clientes.use-case';
+import { EditarClienteUseCase } from './application/use-cases/editar-cliente.use-case';
+import { DesactivarClienteUseCase } from './application/use-cases/desactivar-cliente.use-case';
+import { ReactivarClienteUseCase } from './application/use-cases/reactivar-cliente.use-case';
 
 // ─── Controllers ─────────────────────────────────────────────────────────────
 import { CicloVigenteController } from './interface/controllers/ciclos-vigentes.controller';
@@ -145,6 +149,11 @@ import { ClientesController } from './interface/controllers/clientes.controller'
       inject: [CICLO_CLIENTE_REPOSITORY],
     },
     {
+      provide: DesactivarCicloUseCase,
+      useFactory: (repo: ICicloClienteRepository) => new DesactivarCicloUseCase(repo),
+      inject: [CICLO_CLIENTE_REPOSITORY],
+    },
+    {
       provide: ListarCiclosUseCase,
       useFactory: (repo: ICicloClienteRepository) => new ListarCiclosUseCase(repo),
       inject: [CICLO_CLIENTE_REPOSITORY],
@@ -152,6 +161,21 @@ import { ClientesController } from './interface/controllers/clientes.controller'
     {
       provide: ListarClientesUseCase,
       useFactory: (repo: IClienteRepository) => new ListarClientesUseCase(repo),
+      inject: [CLIENTE_REPOSITORY],
+    },
+    {
+      provide: EditarClienteUseCase,
+      useFactory: (repo: IClienteRepository) => new EditarClienteUseCase(repo),
+      inject: [CLIENTE_REPOSITORY],
+    },
+    {
+      provide: DesactivarClienteUseCase,
+      useFactory: (repo: IClienteRepository) => new DesactivarClienteUseCase(repo),
+      inject: [CLIENTE_REPOSITORY],
+    },
+    {
+      provide: ReactivarClienteUseCase,
+      useFactory: (repo: IClienteRepository) => new ReactivarClienteUseCase(repo),
       inject: [CLIENTE_REPOSITORY],
     },
     {

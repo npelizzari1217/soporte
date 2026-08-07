@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { AdminNav } from "@/components/shell/admin-nav";
 import { notifyError } from "@/shared/lib/toast";
 import { CrearClienteDialog } from "./crear-cliente-dialog";
+import { ClienteAcciones } from "./cliente-acciones";
 import type { Cliente } from "../types";
 
 export function ClientesAdminView() {
@@ -45,6 +46,11 @@ function ClientesAdminContent() {
       key: "activo",
       header: "Estado",
       render: (row) => (row.activo ? <Badge variant="success">Activo</Badge> : <Badge variant="outline">Inactivo</Badge>),
+    },
+    {
+      key: "id",
+      header: "Acciones",
+      render: (row) => <ClienteAcciones cliente={row} />,
     },
   ];
 

@@ -92,6 +92,19 @@ export class OnlyRootCanCreateClienteError extends DomainError {
 }
 
 /**
+ * ClienteNoEncontradoError — el `clienteId` recibido por los use cases de ABM
+ * de clientes (editar/desactivar/reactivar) no existe en `master.clientes`.
+ * → HTTP 404 Not Found en la capa de presentación.
+ */
+export class ClienteNoEncontradoError extends DomainError {
+  readonly code = 'CLIENTE_NO_ENCONTRADO';
+
+  constructor(id: string) {
+    super(`Cliente con id "${id}" no encontrado.`);
+  }
+}
+
+/**
  * AdministradorRoleNotFoundError — el rol `ADMINISTRADOR` no existe en el
  * catálogo RBAC (`master.roles`) al momento de provisionar un cliente nuevo.
  * No debería ocurrir en un sistema correctamente sembrado (R1, seed

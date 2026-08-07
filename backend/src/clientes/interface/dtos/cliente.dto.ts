@@ -6,7 +6,7 @@
  *
  * Tarea: T8.4 (PR8 — CrearClienteUseCase + ClientesController)
  */
-import { IsEmail, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsEmail, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
 
 /** Body de `POST /clientes`. Solo ROOT (`GlobalAdminGuard`, R16). */
 export class CreateClienteDto {
@@ -36,6 +36,30 @@ export class CreateClienteDto {
   @IsString()
   @IsNotEmpty()
   adminPassword!: string;
+}
+
+/**
+ * Body de `PATCH /clientes/:id` (edición de datos comerciales, solo ROOT).
+ * Patch parcial: todos los campos son opcionales. NO incluye `dbName`
+ * (inmutable — identifica la DB física) ni campos de admin (el ABM de admins
+ * es otro flujo).
+ */
+export class UpdateClienteDto {
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(200)
+  nombre?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  razonSocial?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  cuit?: string;
 }
 
 /** Respuesta de `POST /clientes`. */
