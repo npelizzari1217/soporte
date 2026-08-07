@@ -25,7 +25,7 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
     <div className="relative">
       <select
         className={cn(
-          "flex h-9 w-full appearance-none rounded-xl border border-input bg-transparent px-3 py-2 pr-8 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 transition-colors",
+          "flex h-9 w-full appearance-none rounded-xl border border-input bg-background text-foreground px-3 py-2 pr-8 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 transition-colors [&>option]:bg-background [&>option]:text-foreground",
           error && "border-destructive focus-visible:ring-destructive/30",
           className,
         )}

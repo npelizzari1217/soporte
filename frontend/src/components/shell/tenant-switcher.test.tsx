@@ -84,6 +84,26 @@ describe("TenantSwitcher", () => {
     await waitFor(() => expect(capturedBody).toEqual({ clienteId: "c2" }));
     await waitFor(() => expect(refreshMock).toHaveBeenCalledTimes(1));
   });
+
+  it("tras el switch aplica la sesión nueva client-side: el trigger pasa a mostrar el cliente elegido", async () => {
+    // Fix: el switch debe llamar setUser(user) para actualizar la sesión en el
+    // cliente (SessionProvider inicializa con useState(initialUser) una sola vez,
+    // por lo que router.refresh() solo no basta). Verificamos que el label del
+    // trigger cambie de "Cliente Uno" a "Cliente Dos".
+    server.use(
+      http.post("/api/auth/switch", () =>
+        HttpResponse.json({ user: { ...PAYLOAD, cliente_id: "c2", cliente_nombre: "Cliente Dos" } }),
+      ),
+    );
+
+    const user = userEvent.setup();
+    renderSwitcher();
+
+    await user.click(screen.getByRole("button", { name: /cliente uno/i }));
+    await user.click(await screen.findByRole("menuitem", { name: /cliente dos/i }));
+
+    expect(await screen.findByRole("button", { name: /cliente dos/i })).toBeInTheDocument();
+  });
 });
 
 // ROOT (is_global_admin): sin membresías propias — el switcher debe listar

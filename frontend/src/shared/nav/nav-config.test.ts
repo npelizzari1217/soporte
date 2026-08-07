@@ -54,6 +54,18 @@ describe("nav-config", () => {
     expect(items.map((i) => i.href)).not.toContain("/admin/clientes");
   });
 
+  it("is_global_admin=true → ve Ciclos (catálogo master ROOT, sdd/ciclos-abm-root)", () => {
+    const user = makeUser({ permisos: [], is_global_admin: true });
+    const items = visibleNavItems(user);
+    expect(items.map((i) => i.href)).toContain("/ciclos");
+  });
+
+  it("is_global_admin=false → NO ve Ciclos (catálogo master ROOT) aunque tenga otros permisos", () => {
+    const user = makeUser({ permisos: ["ciclo:gestionar"], is_global_admin: false });
+    const items = visibleNavItems(user);
+    expect(items.map((i) => i.href)).not.toContain("/ciclos");
+  });
+
   it("is_global_admin=true con permisos=[] → ve TODOS los ítems del menú (ROOT puede TODO)", () => {
     const user = makeUser({ permisos: [], is_global_admin: true });
     const items = visibleNavItems(user);

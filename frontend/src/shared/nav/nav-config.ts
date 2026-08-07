@@ -1,5 +1,15 @@
 import type { LucideIcon } from "lucide-react";
-import { Ticket, LayoutDashboard, BookOpen, Settings, Building2, ShoppingCart, Wrench, Monitor } from "lucide-react";
+import {
+  Ticket,
+  LayoutDashboard,
+  BookOpen,
+  Settings,
+  Building2,
+  ShoppingCart,
+  Wrench,
+  Monitor,
+  CalendarRange,
+} from "lucide-react";
 import type { JwtPayload } from "@/shared/api/types";
 
 /**
@@ -47,6 +57,16 @@ export const NAV_ITEMS: NavItem[] = [
     href: "/admin/clientes",
     label: "Clientes",
     icon: Building2,
+    visible: (_can, isGlobalAdmin) => isGlobalAdmin,
+  },
+  {
+    href: "/ciclos",
+    label: "Ciclos",
+    icon: CalendarRange,
+    // Catálogo MASTER de ciclos (ABM del ROOT, sdd/ciclos-abm-root). Distinto
+    // de `/admin/ciclos` (adopción/activación por el admin del cliente,
+    // gateado por `ciclo:gestionar` dentro de `/admin/catalogos`) — este ítem
+    // es EXCLUSIVO de ROOT, igual que "Clientes".
     visible: (_can, isGlobalAdmin) => isGlobalAdmin,
   },
   {

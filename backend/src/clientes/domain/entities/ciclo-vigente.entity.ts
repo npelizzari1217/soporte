@@ -75,4 +75,29 @@ export class CicloVigenteEntity extends BaseEntity<CicloVigenteProps> {
   get activo(): boolean {
     return this.props.activo;
   }
+
+  // ─── Mutaciones (ABM ROOT — ciclos-abm-root) ────────────────────────────
+
+  /**
+   * Renombra el ciclo. Sin validación de unicidad (R20 no la exige para el
+   * catálogo global, igual que en `CrearCicloVigenteUseCase`).
+   */
+  rename(nombre: string): void {
+    this.props.nombre = nombre;
+    this.touch();
+  }
+
+  /**
+   * Reprograma las fechas del ciclo.
+   * @throws CicloVigenteInvalidDatesError si `fechaFin <= fechaInicio`
+   *   (mismo invariante estructural de `create()`, R20).
+   */
+  reschedule(fechaInicio: Date, fechaFin: Date): void {
+    if (fechaFin <= fechaInicio) {
+      throw new CicloVigenteInvalidDatesError();
+    }
+    this.props.fechaInicio = fechaInicio;
+    this.props.fechaFin = fechaFin;
+    this.touch();
+  }
 }

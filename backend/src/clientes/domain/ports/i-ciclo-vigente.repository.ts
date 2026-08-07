@@ -28,6 +28,17 @@ export interface ICicloVigenteRepository {
    * libre de UUID, sin catálogo).
    */
   findAllActivos(): Promise<CicloVigenteEntity[]>;
+
+  /**
+   * Retorna TODOS los ciclos del catálogo global, INCLUYENDO los
+   * soft-deleted (mismo criterio que `findById` — el consumidor decide qué
+   * hacer con `isDeleted()`), ordenados por `fechaInicio DESC`. Exclusivo
+   * de `GET /ciclos-vigentes/admin` (ROOT, `sdd/ciclos-abm-root`): la
+   * pantalla ABM del catálogo master necesita ver el historial completo
+   * para poder editar/dar de baja, a diferencia de `findAllActivos()` que
+   * solo sirve para poblar el selector de adopción del tenant.
+   */
+  findAll(): Promise<CicloVigenteEntity[]>;
 }
 
 /** Token de inyección de dependencias para ICicloVigenteRepository en NestJS. */

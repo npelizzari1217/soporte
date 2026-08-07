@@ -6,7 +6,7 @@
  *
  * Tarea: T9.3 (PR9 — Ciclos)
  */
-import { IsDateString, IsNotEmpty, IsString } from 'class-validator';
+import { IsDateString, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
 /** Body de `POST /ciclos-vigentes`. Fechas como ISO 8601 (YYYY-MM-DD). */
 export class CreateCicloVigenteDto {
@@ -21,6 +21,27 @@ export class CreateCicloVigenteDto {
   fechaFin!: string;
 }
 
+/**
+ * Body de `PATCH /ciclos-vigentes/:id` (sdd/ciclos-abm-root). PATCH
+ * semántico: campos ausentes/`undefined` no se tocan. `nombre` no acepta
+ * string vacío si viene provisto (`@IsNotEmpty` solo corre si el campo
+ * está presente, por `@IsOptional`).
+ */
+export class UpdateCicloVigenteDto {
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  nombre?: string;
+
+  @IsOptional()
+  @IsDateString()
+  fechaInicio?: string;
+
+  @IsOptional()
+  @IsDateString()
+  fechaFin?: string;
+}
+
 /** Respuesta de `POST /ciclos-vigentes` y `GET /ciclos-vigentes` (item 4). */
 export interface CicloVigenteResponseDto {
   id: string;
@@ -28,4 +49,14 @@ export interface CicloVigenteResponseDto {
   fechaInicio: string;
   fechaFin: string;
   activo: boolean;
+}
+
+/**
+ * Respuesta de `GET /ciclos-vigentes/admin` (sdd/ciclos-abm-root, ROOT).
+ * Extiende la respuesta pública con `eliminado` — la pantalla ABM necesita
+ * distinguir ciclos soft-deleted (deshabilita editar/eliminar) sin exponer
+ * ese detalle en la respuesta pública que consume el tenant.
+ */
+export interface CicloVigenteAdminResponseDto extends CicloVigenteResponseDto {
+  eliminado: boolean;
 }

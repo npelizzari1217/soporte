@@ -60,6 +60,9 @@ import { TenantSeederAdapter } from './infrastructure/tenant-seeder.adapter';
 // ─── Use Cases (plain classes — instanciadas vía useFactory) ─────────────────
 import { CrearCicloVigenteUseCase } from './application/use-cases/crear-ciclo-vigente.use-case';
 import { ListarCiclosVigentesUseCase } from './application/use-cases/listar-ciclos-vigentes.use-case';
+import { EditarCicloVigenteUseCase } from './application/use-cases/editar-ciclo-vigente.use-case';
+import { EliminarCicloVigenteUseCase } from './application/use-cases/eliminar-ciclo-vigente.use-case';
+import { ListarCiclosVigentesAdminUseCase } from './application/use-cases/listar-ciclos-vigentes-admin.use-case';
 import { ElegirCicloTenantUseCase } from './application/use-cases/elegir-ciclo-tenant.use-case';
 import { ActivarCicloUseCase } from './application/use-cases/activar-ciclo.use-case';
 import { ListarCiclosUseCase } from './application/use-cases/listar-ciclos.use-case';
@@ -111,6 +114,21 @@ import { ClientesController } from './interface/controllers/clientes.controller'
     {
       provide: ListarCiclosVigentesUseCase,
       useFactory: (repo: ICicloVigenteRepository) => new ListarCiclosVigentesUseCase(repo),
+      inject: [CICLO_VIGENTE_REPOSITORY],
+    },
+    {
+      provide: EditarCicloVigenteUseCase,
+      useFactory: (repo: ICicloVigenteRepository) => new EditarCicloVigenteUseCase(repo),
+      inject: [CICLO_VIGENTE_REPOSITORY],
+    },
+    {
+      provide: EliminarCicloVigenteUseCase,
+      useFactory: (repo: ICicloVigenteRepository) => new EliminarCicloVigenteUseCase(repo),
+      inject: [CICLO_VIGENTE_REPOSITORY],
+    },
+    {
+      provide: ListarCiclosVigentesAdminUseCase,
+      useFactory: (repo: ICicloVigenteRepository) => new ListarCiclosVigentesAdminUseCase(repo),
       inject: [CICLO_VIGENTE_REPOSITORY],
     },
     {

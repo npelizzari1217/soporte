@@ -43,4 +43,11 @@ export class PrismaCicloVigenteRepository implements ICicloVigenteRepository {
     });
     return rows.map((row) => CicloVigenteMapper.toDomain(row));
   }
+
+  async findAll(): Promise<CicloVigenteEntity[]> {
+    const rows = await this.client.cicloVigente.findMany({
+      orderBy: { fechaInicio: 'desc' },
+    });
+    return rows.map((row) => CicloVigenteMapper.toDomain(row));
+  }
 }

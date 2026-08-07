@@ -27,7 +27,7 @@ import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { ChevronDown } from "lucide-react";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { apiFetch } from "@/shared/api/client";
 import { useSession } from "@/shared/hooks/use-session";
@@ -42,15 +42,24 @@ interface SwitchOption {
 }
 
 export function TenantSwitcher() {
-  const { user, isGlobalAdmin } = useSession();
+  const { user, isGlobalAdmin, setUser } = useSession();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const clientesQuery = useClientes(isGlobalAdmin);
 
   const mutation = useMutation({
     mutationFn: (clienteId: string) =>
       apiFetch<{ user: JwtPayload }>("auth/switch", { method: "POST", json: { clienteId } }),
-    onSuccess: () => {
+    onSuccess: (result) => {
+      // Aplicar la sesión re-emitida en el cliente: SessionProvider inicializa
+      // `user` con useState(initialUser) UNA sola vez, por lo que router.refresh()
+      // por sí solo NO actualiza la sesión client-side. setUser sí (el provider
+      // lo expone justo para esto). Luego invalidamos la caché de datos para que
+      // TODO se recargue scopeado al cliente elegido (la cookie `at` nueva ya
+      // apunta a ese tenant), y refrescamos los Server Components.
+      setUser(result.user);
+      queryClient.invalidateQueries();
       setOpen(false);
       router.refresh();
     },

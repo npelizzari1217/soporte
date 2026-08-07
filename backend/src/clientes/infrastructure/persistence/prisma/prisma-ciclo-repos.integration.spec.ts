@@ -138,6 +138,67 @@ describe('Ciclos Prisma Repositories — Integration (T9.2 + T9.6)', () => {
       const found = await cicloVigenteRepo.findById('00000000-0000-4000-8000-000000000000');
       expect(found).toBeNull();
     });
+
+    it('rename()/reschedule() + save() persisten la edición (sdd/ciclos-abm-root)', async () => {
+      const ciclo = CicloVigenteEntity.create({
+        nombre: 'Ciclo 2026',
+        fechaInicio: new Date('2026-01-01'),
+        fechaFin: new Date('2026-12-31'),
+        activo: true,
+      });
+      await cicloVigenteRepo.save(ciclo);
+
+      ciclo.rename('Ciclo 2026 renombrado');
+      ciclo.reschedule(new Date('2026-02-01'), new Date('2026-11-30'));
+      await cicloVigenteRepo.save(ciclo);
+
+      const found = await cicloVigenteRepo.findById(ciclo.id);
+      expect(found!.nombre).toBe('Ciclo 2026 renombrado');
+      expect(found!.fechaInicio).toEqual(new Date('2026-02-01'));
+      expect(found!.fechaFin).toEqual(new Date('2026-11-30'));
+    });
+
+    it('softDelete() + save() persisten la baja lógica (sdd/ciclos-abm-root)', async () => {
+      const ciclo = CicloVigenteEntity.create({
+        nombre: 'Ciclo a eliminar',
+        fechaInicio: new Date('2026-01-01'),
+        fechaFin: new Date('2026-12-31'),
+        activo: true,
+      });
+      await cicloVigenteRepo.save(ciclo);
+
+      ciclo.softDelete();
+      await cicloVigenteRepo.save(ciclo);
+
+      const found = await cicloVigenteRepo.findById(ciclo.id);
+      expect(found!.isDeleted()).toBe(true);
+      const activos = await cicloVigenteRepo.findAllActivos();
+      expect(activos.find((c) => c.id === ciclo.id)).toBeUndefined();
+    });
+
+    it('findAll() retorna TODOS los ciclos, incluyendo soft-deleted (sdd/ciclos-abm-root)', async () => {
+      const activo = CicloVigenteEntity.create({
+        nombre: 'Ciclo activo findAll',
+        fechaInicio: new Date('2026-01-01'),
+        fechaFin: new Date('2026-06-30'),
+        activo: true,
+      });
+      const eliminado = CicloVigenteEntity.create({
+        nombre: 'Ciclo eliminado findAll',
+        fechaInicio: new Date('2025-01-01'),
+        fechaFin: new Date('2025-06-30'),
+        activo: true,
+      });
+      eliminado.softDelete();
+      await cicloVigenteRepo.save(activo);
+      await cicloVigenteRepo.save(eliminado);
+
+      const todos = await cicloVigenteRepo.findAll();
+
+      expect(todos).toHaveLength(2);
+      const nombres = todos.map((c) => c.nombre).sort();
+      expect(nombres).toEqual(['Ciclo activo findAll', 'Ciclo eliminado findAll']);
+    });
   });
 
   // ─── T9.6 — PrismaCicloClienteRepository (tenant, activarCiclo transaccional) ──
