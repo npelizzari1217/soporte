@@ -3,3 +3,8 @@ allowBuilds:
   '@swc/core': true
   prisma: true
   unrs-resolver: true
+# Prisma 7 genera el client en node_modules/.prisma y hace require de @prisma/* runtime
+# (client-runtime-utils, engines); con el layout estricto de pnpm no se resuelven desde .prisma/.
+# Los hoisteamos al node_modules raiz. (pnpm 11 lee esto del workspace yaml, no del .npmrc.)
+publicHoistPattern:
+  - '@prisma/*'
