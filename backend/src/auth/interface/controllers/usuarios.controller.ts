@@ -50,7 +50,10 @@ import { ListarUsuariosTenantUseCase } from '../../application/use-cases/listar-
 import { CrearUsuarioTenantUseCase } from '../../application/use-cases/crear-usuario-tenant.use-case';
 import { CambiarRolUsuarioTenantUseCase } from '../../application/use-cases/cambiar-rol-usuario-tenant.use-case';
 import { DesactivarMembresiaUsuarioTenantUseCase } from '../../application/use-cases/desactivar-membresia-usuario-tenant.use-case';
+import { AsignarModulosUsuarioTenantUseCase } from '../../application/use-cases/asignar-modulos-usuario-tenant.use-case';
+import { ObtenerModulosUsuarioTenantUseCase } from '../../application/use-cases/obtener-modulos-usuario-tenant.use-case';
 import {
+  AsignarModulosDto,
   CambiarRolUsuarioDto,
   CreateUsuarioTenantDto,
   UsuarioTenantMembresiaResponseDto,
@@ -62,12 +65,14 @@ import { UsuarioEntity } from '../../domain/entities/usuario.entity';
 import {
   MembresiaNoEncontradaError,
   MembresiaYaActivaError,
+  ModuloInvalidoError,
 } from '../../domain/errors/auth.errors';
 import { JwtAuthGuard } from '../../infrastructure/guards/jwt-auth.guard';
 import { TenantGuard } from '../../infrastructure/guards/tenant.guard';
 import { PermissionsGuard } from '../../infrastructure/guards/permissions.guard';
 import { CurrentUser, RequirePermissions } from '../../infrastructure/guards/decorators';
 import { JwtPayload } from '../../domain/ports/i-token.service';
+import { actorTienePermiso, actorTieneAlgunPermiso } from '../../domain/permisos.util';
 import { DomainError } from '../../../shared/domain/result';
 
 /** Permisos que habilitan la lista BÁSICA de `GET /usuarios` (OR, no AND). */
@@ -114,7 +119,10 @@ function toHttpException(
   if (error instanceof MembresiaYaActivaError) {
     return new ConflictException(error.message);
   }
-  // RolNoEncontradoError: input inválido del actor (rolCodigo inexistente).
+  if (error instanceof ModuloInvalidoError) {
+    return new UnprocessableEntityException(error.message);
+  }
+  // RolNoEncontradoError: input inválido del actor (rolCodigo inexistente) → 422.
   return new UnprocessableEntityException(error.message);
 }
 
@@ -126,6 +134,8 @@ export class UsuariosController {
     private readonly crearUsuarioTenantUseCase: CrearUsuarioTenantUseCase,
     private readonly cambiarRolUsuarioTenantUseCase: CambiarRolUsuarioTenantUseCase,
     private readonly desactivarMembresiaUsuarioTenantUseCase: DesactivarMembresiaUsuarioTenantUseCase,
+    private readonly obtenerModulosUsuarioTenantUseCase: ObtenerModulosUsuarioTenantUseCase,
+    private readonly asignarModulosUsuarioTenantUseCase: AsignarModulosUsuarioTenantUseCase,
   ) {}
 
   /**
@@ -135,13 +145,13 @@ export class UsuariosController {
    */
   @Get()
   async listar(@CurrentUser() actor: JwtPayload): Promise<UsuarioTenantResponseDto[]> {
-    const tieneAccesoBasico = PERMISOS_LISTA_BASICA.some((p) => actor.permisos.includes(p));
+    const tieneAccesoBasico = actorTieneAlgunPermiso(actor, PERMISOS_LISTA_BASICA);
     if (!tieneAccesoBasico) {
       throw new ForbiddenException(
         `Acceso denegado: se requiere alguno de [${PERMISOS_LISTA_BASICA.join(', ')}]`,
       );
     }
-    const incluirEmail = actor.permisos.includes(PERMISO_DATOS_SENSIBLES);
+    const incluirEmail = actorTienePermiso(actor, PERMISO_DATOS_SENSIBLES);
 
     const result = await this.listarUsuariosTenantUseCase.execute({
       clienteId: actor.cliente_id as string,
@@ -231,5 +241,50 @@ export class UsuariosController {
     if (result.isFail()) {
       throw toHttpException(result.getError());
     }
+  }
+
+  /**
+   * GET /usuarios/:id/modulos
+   * Módulos funcionales actualmente asignados al usuario `:id` EN EL CLIENTE
+   * DEL TOKEN (feature 5.2 CAPA 4). Prellena el control de asignación del
+   * front. Un usuario sin módulos asignados devuelve `{ modulos: [] }`.
+   */
+  @Get(':id/modulos')
+  @RequirePermissions('usuario:gestionar')
+  async obtenerModulos(
+    @CurrentUser() actor: JwtPayload,
+    @Param('id') usuarioId: string,
+  ): Promise<{ modulos: string[] }> {
+    const result = await this.obtenerModulosUsuarioTenantUseCase.execute({
+      clienteId: actor.cliente_id as string,
+      usuarioId,
+    });
+    return { modulos: result.getValue() };
+  }
+
+  /**
+   * PATCH /usuarios/:id/modulos
+   * Reemplaza el set completo de módulos del usuario `:id` EN EL CLIENTE DEL
+   * TOKEN (feature 5.2 CAPA 4). `clienteId` SIEMPRE es `actor.cliente_id`.
+   * @throws 404 si no existe membresía activa de ese usuario en este cliente
+   * @throws 422 si algún módulo no pertenece al catálogo `MODULOS`
+   */
+  @Patch(':id/modulos')
+  @RequirePermissions('usuario:gestionar', 'rol:asignar')
+  async asignarModulos(
+    @CurrentUser() actor: JwtPayload,
+    @Param('id') usuarioId: string,
+    @Body() dto: AsignarModulosDto,
+  ): Promise<{ usuarioId: string; modulos: string[] }> {
+    const result = await this.asignarModulosUsuarioTenantUseCase.execute({
+      clienteId: actor.cliente_id as string,
+      usuarioId,
+      modulos: dto.modulos,
+    });
+
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+    return { usuarioId, modulos: result.getValue() };
   }
 }

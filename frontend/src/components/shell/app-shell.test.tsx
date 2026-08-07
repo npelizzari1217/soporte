@@ -18,6 +18,7 @@ const usuario: JwtPayload = {
   is_global_admin: false,
   cliente_nombre: "Cliente Uno",
   membresias: [],
+  modulos: [],
 };
 
 function renderShell() {

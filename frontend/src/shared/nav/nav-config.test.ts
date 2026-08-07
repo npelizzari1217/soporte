@@ -11,6 +11,7 @@ function makeUser(overrides: Partial<JwtPayload> = {}): JwtPayload {
     is_global_admin: false,
     cliente_nombre: "Cliente Uno",
     membresias: [],
+    modulos: [],
     ...overrides,
   };
 }
@@ -71,6 +72,30 @@ describe("nav-config", () => {
     const items = visibleNavItems(user);
     const hrefs = items.map((i) => i.href);
     expect(hrefs).toEqual(expect.arrayContaining(NAV_ITEMS.map((i) => i.href)));
+  });
+
+  it("con permiso compra:gestionar pero SIN módulo COMPRAS → NO ve /compras (5.2 CAPA 3)", () => {
+    const user = makeUser({ permisos: ["compra:gestionar"], modulos: [] });
+    const items = visibleNavItems(user);
+    expect(items.map((i) => i.href)).not.toContain("/compras");
+  });
+
+  it("con permiso compra:gestionar Y módulo COMPRAS → SÍ ve /compras", () => {
+    const user = makeUser({ permisos: ["compra:gestionar"], modulos: ["COMPRAS"] });
+    const items = visibleNavItems(user);
+    expect(items.map((i) => i.href)).toContain("/compras");
+  });
+
+  it("con módulo COMPRAS pero SIN permiso compra:gestionar → NO ve /compras (AND, no OR)", () => {
+    const user = makeUser({ permisos: [], modulos: ["COMPRAS"] });
+    const items = visibleNavItems(user);
+    expect(items.map((i) => i.href)).not.toContain("/compras");
+  });
+
+  it("ROOT (is_global_admin) → ve /compras aunque modulos=[] (ve todos los módulos)", () => {
+    const user = makeUser({ permisos: [], modulos: [], is_global_admin: true });
+    const items = visibleNavItems(user);
+    expect(items.map((i) => i.href)).toContain("/compras");
   });
 
   it("null user (no logueado) → no revienta, devuelve solo ítems públicos (ninguno gated)", () => {

@@ -18,6 +18,7 @@ import { MembresiaEntity } from '../../domain/entities/membresia.entity';
 import {
   MembresiaNoEncontradaError,
   MembresiaYaActivaError,
+  ModuloInvalidoError,
   RolNoEncontradoError,
 } from '../../domain/errors/auth.errors';
 import { JwtPayload } from '../../domain/ports/i-token.service';
@@ -27,11 +28,15 @@ function buildController() {
   const crearUsuarioTenantUseCase = { execute: vi.fn() };
   const cambiarRolUsuarioTenantUseCase = { execute: vi.fn() };
   const desactivarMembresiaUsuarioTenantUseCase = { execute: vi.fn() };
+  const obtenerModulosUsuarioTenantUseCase = { execute: vi.fn() };
+  const asignarModulosUsuarioTenantUseCase = { execute: vi.fn() };
   const controller = new UsuariosController(
     listarUsuariosTenantUseCase as any,
     crearUsuarioTenantUseCase as any,
     cambiarRolUsuarioTenantUseCase as any,
     desactivarMembresiaUsuarioTenantUseCase as any,
+    obtenerModulosUsuarioTenantUseCase as any,
+    asignarModulosUsuarioTenantUseCase as any,
   );
   return {
     controller,
@@ -39,6 +44,8 @@ function buildController() {
     crearUsuarioTenantUseCase,
     cambiarRolUsuarioTenantUseCase,
     desactivarMembresiaUsuarioTenantUseCase,
+    obtenerModulosUsuarioTenantUseCase,
+    asignarModulosUsuarioTenantUseCase,
   };
 }
 
@@ -107,6 +114,25 @@ describe('UsuariosController (gestión mínima de usuarios, sdd/beta-frontend §
 
       await expect(controller.listar(actor)).rejects.toBeInstanceOf(ForbiddenException);
       expect(listarUsuariosTenantUseCase.execute).not.toHaveBeenCalled();
+    });
+
+    // Regresión (sdd/root-access-fix): un ROOT scopeado a un tenant tiene
+    // permisos=[]. El chequeo inline de acceso/email NO pasa por
+    // PermissionsGuard (regla OR), así que debe honrar is_global_admin igual
+    // que el guard — antes le daba 403 (podía CREAR usuarios pero no verlos).
+    it('ROOT (is_global_admin, permisos=[]) lista CON email sin recibir 403', async () => {
+      const { controller, listarUsuariosTenantUseCase } = buildController();
+      listarUsuariosTenantUseCase.execute.mockResolvedValue(Result.ok([MEMBRESIA_ITEM]));
+      const actor = buildActor({ permisos: [], is_global_admin: true });
+
+      const result = await controller.listar(actor);
+
+      expect(listarUsuariosTenantUseCase.execute).toHaveBeenCalledWith({
+        clienteId: 'cliente-token',
+      });
+      expect(result).toEqual([
+        { id: 'u1', nombre: 'Ada', apellido: 'Tec', rol: 'TECNICO', email: 'ada@test.com' },
+      ]);
     });
   });
 
@@ -245,6 +271,69 @@ describe('UsuariosController (gestión mínima de usuarios, sdd/beta-frontend §
       await expect(controller.desactivarMembresia(actor, 'usuario-ajeno')).rejects.toBeInstanceOf(
         NotFoundException,
       );
+    });
+  });
+
+  describe('GET /usuarios/:id/modulos', () => {
+    it('retorna { modulos } del cliente del token', async () => {
+      const { controller, obtenerModulosUsuarioTenantUseCase } = buildController();
+      obtenerModulosUsuarioTenantUseCase.execute.mockResolvedValue(
+        Result.ok(['SOPORTE', 'COMPRAS']),
+      );
+      const actor = buildActor({ permisos: ['usuario:gestionar'] });
+
+      const result = await controller.obtenerModulos(actor, 'usuario-1');
+
+      expect(obtenerModulosUsuarioTenantUseCase.execute).toHaveBeenCalledWith({
+        clienteId: 'cliente-token',
+        usuarioId: 'usuario-1',
+      });
+      expect(result).toEqual({ modulos: ['SOPORTE', 'COMPRAS'] });
+    });
+  });
+
+  describe('PATCH /usuarios/:id/modulos', () => {
+    it('asigna los módulos y retorna { usuarioId, modulos }, clienteId SIEMPRE del actor', async () => {
+      const { controller, asignarModulosUsuarioTenantUseCase } = buildController();
+      asignarModulosUsuarioTenantUseCase.execute.mockResolvedValue(
+        Result.ok(['SOPORTE', 'EQUIPOS']),
+      );
+      const actor = buildActor({ permisos: ['usuario:gestionar', 'rol:asignar'] });
+
+      const result = await controller.asignarModulos(actor, 'usuario-1', {
+        modulos: ['SOPORTE', 'EQUIPOS'],
+      } as any);
+
+      expect(asignarModulosUsuarioTenantUseCase.execute).toHaveBeenCalledWith({
+        clienteId: 'cliente-token',
+        usuarioId: 'usuario-1',
+        modulos: ['SOPORTE', 'EQUIPOS'],
+      });
+      expect(result).toEqual({ usuarioId: 'usuario-1', modulos: ['SOPORTE', 'EQUIPOS'] });
+    });
+
+    it('propaga 404 NotFoundException cuando la membresía no existe en este cliente', async () => {
+      const { controller, asignarModulosUsuarioTenantUseCase } = buildController();
+      asignarModulosUsuarioTenantUseCase.execute.mockResolvedValue(
+        Result.fail(new MembresiaNoEncontradaError()),
+      );
+      const actor = buildActor({ permisos: ['usuario:gestionar', 'rol:asignar'] });
+
+      await expect(
+        controller.asignarModulos(actor, 'usuario-ajeno', { modulos: ['SOPORTE'] } as any),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('propaga 422 UnprocessableEntityException cuando algún módulo es inválido', async () => {
+      const { controller, asignarModulosUsuarioTenantUseCase } = buildController();
+      asignarModulosUsuarioTenantUseCase.execute.mockResolvedValue(
+        Result.fail(new ModuloInvalidoError(['INEXISTENTE'])),
+      );
+      const actor = buildActor({ permisos: ['usuario:gestionar', 'rol:asignar'] });
+
+      await expect(
+        controller.asignarModulos(actor, 'usuario-1', { modulos: ['INEXISTENTE'] } as any),
+      ).rejects.toBeInstanceOf(UnprocessableEntityException);
     });
   });
 });

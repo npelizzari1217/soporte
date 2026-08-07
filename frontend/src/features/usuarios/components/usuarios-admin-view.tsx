@@ -25,6 +25,7 @@ import { notifyError } from "@/shared/lib/toast";
 import { CrearUsuarioDialog } from "./crear-usuario-dialog";
 import { CambiarRolControl } from "./cambiar-rol-control";
 import { DesactivarMembresiaControl } from "./desactivar-membresia-control";
+import { AsignarModulosControl } from "./asignar-modulos-control";
 import type { UsuarioTenant } from "../types";
 
 export function UsuariosAdminView() {
@@ -52,6 +53,7 @@ function UsuariosAdminContent() {
         <Can permiso="rol:asignar">
           <div className="flex items-center gap-2">
             <CambiarRolControl usuario={row} />
+            <AsignarModulosControl usuario={row} />
             <DesactivarMembresiaControl usuario={row} />
           </div>
         </Can>

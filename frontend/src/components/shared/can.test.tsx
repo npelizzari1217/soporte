@@ -18,6 +18,7 @@ const userWithAsignar: JwtPayload = {
   is_global_admin: false,
   cliente_nombre: "Cliente Uno",
   membresias: [],
+  modulos: [],
 };
 
 describe("Can", () => {

@@ -7,6 +7,7 @@
  *   - `user`          JwtPayload | null  — decoded JWT payload (null while loading)
  *   - `isLoading`     boolean            — true when no initialUser was provided (prevents FOUC)
  *   - `can(permiso)`  boolean            — true if is_global_admin OR user.permisos includes the given permiso
+ *   - `canModulo(m)`  boolean            — true if is_global_admin OR user.modulos includes the given módulo
  *   - `isGlobalAdmin` boolean            — true if user.is_global_admin === true (root cross-tenant)
  *   - `setUser`       (u: JwtPayload) => void — applies a freshly re-emitted user (tenant switch)
  *
@@ -29,8 +30,18 @@ export function useSession() {
     return user.is_global_admin || user.permisos.includes(permiso);
   }
 
+  /**
+   * Returns true if the current user tiene el módulo dado. Always false when
+   * loading. ROOT (`is_global_admin`) ve TODOS los módulos — es un flag
+   * ortogonal al rol (mismo criterio que `can`).
+   */
+  function canModulo(modulo: string): boolean {
+    if (!user) return false;
+    return user.is_global_admin || (user.modulos ?? []).includes(modulo);
+  }
+
   /** True when the JWT contains is_global_admin: true (root/super-admin). */
   const isGlobalAdmin: boolean = user?.is_global_admin ?? false;
 
-  return { user, isLoading, can, isGlobalAdmin, setUser };
+  return { user, isLoading, can, canModulo, isGlobalAdmin, setUser };
 }

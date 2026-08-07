@@ -17,6 +17,7 @@ const ROOT_PAYLOAD: JwtPayload = {
     { cliente_id: "c1", nombre: "Cliente Uno", rol: "ADMINISTRADOR" },
     { cliente_id: "c2", nombre: "Cliente Dos", rol: "TECNICO" },
   ],
+  modulos: [],
 };
 
 const TENANT_PAYLOAD: JwtPayload = {
@@ -27,6 +28,7 @@ const TENANT_PAYLOAD: JwtPayload = {
   is_global_admin: false,
   cliente_nombre: "Cliente Uno",
   membresias: [{ cliente_id: "c1", nombre: "Cliente Uno", rol: "USUARIO" }],
+  modulos: [],
 };
 
 function Probe() {

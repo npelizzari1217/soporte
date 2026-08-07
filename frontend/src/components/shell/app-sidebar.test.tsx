@@ -25,6 +25,7 @@ const usuario: JwtPayload = {
   is_global_admin: false,
   cliente_nombre: "Cliente Uno",
   membresias: [],
+  modulos: [],
 };
 
 const administrador: JwtPayload = {
@@ -35,6 +36,7 @@ const administrador: JwtPayload = {
   is_global_admin: false,
   cliente_nombre: "Cliente Uno",
   membresias: [],
+  modulos: [],
 };
 
 describe("AppSidebar", () => {

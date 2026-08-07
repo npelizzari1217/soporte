@@ -24,6 +24,7 @@ describe("useCan", () => {
       is_global_admin: false,
       cliente_nombre: "Cliente Uno",
       membresias: [],
+      modulos: [],
     };
     const { result } = renderHook(() => useCan("ticket:asignar"), { wrapper: wrapperWithUser(user) });
     expect(result.current).toBe(true);
@@ -38,6 +39,7 @@ describe("useCan", () => {
       is_global_admin: false,
       cliente_nombre: "Cliente Uno",
       membresias: [],
+      modulos: [],
     };
     const { result } = renderHook(() => useCan("ticket:asignar"), { wrapper: wrapperWithUser(user) });
     expect(result.current).toBe(false);

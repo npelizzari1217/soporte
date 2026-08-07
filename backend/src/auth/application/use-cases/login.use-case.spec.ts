@@ -30,6 +30,7 @@ import {
 } from '../../domain/errors/auth.errors';
 import { IUsuarioRepository } from '../../domain/ports/i-usuario.repository';
 import { IMembresiaRepository, MembresiaResuelta } from '../../domain/ports/i-membresia.repository';
+import { IUsuarioClienteModuloRepository } from '../../domain/ports/i-usuario-cliente-modulo.repository';
 import { IRefreshTokenRepository } from '../../domain/ports/i-refresh-token.repository';
 import { IHashProvider } from '../../domain/ports/i-hash.provider';
 import { ITokenService, JwtPayload } from '../../domain/ports/i-token.service';
@@ -114,6 +115,10 @@ const makeRefreshTokenRepo = (): vi.Mocked<IRefreshTokenRepository> => ({
   save: vi.fn().mockResolvedValue(undefined),
 });
 
+const makeModulosRepo = (): vi.Mocked<IUsuarioClienteModuloRepository> => ({
+  findModulosByUsuarioYCliente: vi.fn().mockResolvedValue([]),
+});
+
 describe('LoginUseCase', () => {
   let usuarioRepo: ReturnType<typeof makeUsuarioRepo>;
   let membresiaRepo: ReturnType<typeof makeMembresiaRepo>;
@@ -121,6 +126,7 @@ describe('LoginUseCase', () => {
   let hashProvider: ReturnType<typeof makeHashProvider>;
   let tokenService: ReturnType<typeof makeTokenService>;
   let refreshTokenRepo: ReturnType<typeof makeRefreshTokenRepo>;
+  let modulosRepo: ReturnType<typeof makeModulosRepo>;
   let useCase: LoginUseCase;
 
   beforeEach(() => {
@@ -130,6 +136,7 @@ describe('LoginUseCase', () => {
     hashProvider = makeHashProvider();
     tokenService = makeTokenService();
     refreshTokenRepo = makeRefreshTokenRepo();
+    modulosRepo = makeModulosRepo();
     useCase = new LoginUseCase(
       usuarioRepo,
       membresiaRepo,
@@ -137,6 +144,7 @@ describe('LoginUseCase', () => {
       hashProvider,
       tokenService,
       refreshTokenRepo,
+      modulosRepo,
     );
   });
 

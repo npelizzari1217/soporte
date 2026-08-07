@@ -32,6 +32,7 @@ import { ClienteEntity } from '../../../clientes/domain/entities/cliente.entity'
 import { IRefreshTokenRepository } from '../../domain/ports/i-refresh-token.repository';
 import { IUsuarioRepository } from '../../domain/ports/i-usuario.repository';
 import { IMembresiaRepository, MembresiaResuelta } from '../../domain/ports/i-membresia.repository';
+import { IUsuarioClienteModuloRepository } from '../../domain/ports/i-usuario-cliente-modulo.repository';
 import { IClienteRepository } from '../../../clientes/domain/ports/i-cliente.repository';
 import { ITokenService, JwtPayload } from '../../domain/ports/i-token.service';
 import {
@@ -133,6 +134,10 @@ const makeTokenService = (): vi.Mocked<ITokenService> => ({
   verifyJwt: vi.fn().mockReturnValue(null),
 });
 
+const makeModulosRepo = (): vi.Mocked<IUsuarioClienteModuloRepository> => ({
+  findModulosByUsuarioYCliente: vi.fn().mockResolvedValue([]),
+});
+
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
 describe('RefreshTokenUseCase', () => {
@@ -141,6 +146,7 @@ describe('RefreshTokenUseCase', () => {
   let membresiaRepo: vi.Mocked<IMembresiaRepository>;
   let clienteRepo: vi.Mocked<IClienteRepository>;
   let tokenService: vi.Mocked<ITokenService>;
+  let modulosRepo: vi.Mocked<IUsuarioClienteModuloRepository>;
   let useCase: RefreshTokenUseCase;
 
   const rawToken = 'a'.repeat(64);
@@ -152,12 +158,14 @@ describe('RefreshTokenUseCase', () => {
     membresiaRepo = makeMembresiaRepo();
     clienteRepo = makeClienteRepo();
     tokenService = makeTokenService();
+    modulosRepo = makeModulosRepo();
     useCase = new RefreshTokenUseCase(
       refreshTokenRepo,
       usuarioRepo,
       membresiaRepo,
       clienteRepo,
       tokenService,
+      modulosRepo,
     );
   });
 

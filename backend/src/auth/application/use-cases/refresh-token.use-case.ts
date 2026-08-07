@@ -4,6 +4,7 @@ import { DomainError } from '../../../shared/domain/result';
 import { IRefreshTokenRepository } from '../../domain/ports/i-refresh-token.repository';
 import { IUsuarioRepository } from '../../domain/ports/i-usuario.repository';
 import { IMembresiaRepository } from '../../domain/ports/i-membresia.repository';
+import { IUsuarioClienteModuloRepository } from '../../domain/ports/i-usuario-cliente-modulo.repository';
 import { IClienteRepository } from '../../../clientes/domain/ports/i-cliente.repository';
 import { ITokenService, JwtPayload } from '../../domain/ports/i-token.service';
 import { RefreshTokenEntity } from '../../domain/entities/refresh-token.entity';
@@ -67,6 +68,7 @@ export class RefreshTokenUseCase {
     private readonly membresiaRepo: IMembresiaRepository,
     private readonly clienteRepo: IClienteRepository,
     private readonly tokenService: ITokenService,
+    private readonly modulosRepo: IUsuarioClienteModuloRepository,
   ) {}
 
   async execute(dto: RefreshTokenDto): Promise<Result<RefreshResult, DomainError>> {
@@ -109,6 +111,7 @@ export class RefreshTokenUseCase {
       refreshToken.clienteId,
       this.membresiaRepo,
       this.clienteRepo,
+      this.modulosRepo,
     );
     if (scopeResult.isFail()) {
       return Result.fail(scopeResult.getError());
@@ -130,6 +133,7 @@ export class RefreshTokenUseCase {
         nombre: m.clienteNombre,
         rol: m.rolCodigo,
       })),
+      modulos: scope.modulos,
     };
     const accessToken = this.tokenService.signJwt(payload);
 

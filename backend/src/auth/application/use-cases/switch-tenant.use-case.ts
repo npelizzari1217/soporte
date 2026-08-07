@@ -1,6 +1,7 @@
 import { Result } from '../../../shared/domain/result';
 import { DomainError } from '../../../shared/domain/result';
 import { IMembresiaRepository } from '../../domain/ports/i-membresia.repository';
+import { IUsuarioClienteModuloRepository } from '../../domain/ports/i-usuario-cliente-modulo.repository';
 import { IClienteRepository } from '../../../clientes/domain/ports/i-cliente.repository';
 import { ITokenService, JwtPayload } from '../../domain/ports/i-token.service';
 import { ILogger } from '../../../shared/domain/ports/i-logger.port';
@@ -44,6 +45,7 @@ export class SwitchTenantUseCase {
     private readonly clienteRepo: IClienteRepository,
     private readonly tokenService: ITokenService,
     private readonly logger: ILogger,
+    private readonly modulosRepo: IUsuarioClienteModuloRepository,
   ) {}
 
   async execute(dto: SwitchTenantDto): Promise<Result<SwitchTenantResult, DomainError>> {
@@ -52,6 +54,7 @@ export class SwitchTenantUseCase {
       dto.clienteId,
       this.membresiaRepo,
       this.clienteRepo,
+      this.modulosRepo,
     );
 
     if (scopeResult.isFail()) {
@@ -73,6 +76,7 @@ export class SwitchTenantUseCase {
         nombre: m.clienteNombre,
         rol: m.rolCodigo,
       })),
+      modulos: scope.modulos,
     };
     const accessToken = this.tokenService.signJwt(payload);
 

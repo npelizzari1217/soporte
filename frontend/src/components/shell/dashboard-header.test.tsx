@@ -23,6 +23,7 @@ const PAYLOAD: JwtPayload = {
   is_global_admin: false,
   cliente_nombre: "Cliente Uno",
   membresias: [{ cliente_id: "c1", nombre: "Cliente Uno", rol: "ADMINISTRADOR" }],
+  modulos: [],
 };
 
 function renderHeader() {

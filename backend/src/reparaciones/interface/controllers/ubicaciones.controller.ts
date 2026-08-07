@@ -38,7 +38,8 @@ import {
 import { JwtAuthGuard } from '../../../auth/infrastructure/guards/jwt-auth.guard';
 import { TenantGuard } from '../../../auth/infrastructure/guards/tenant.guard';
 import { PermissionsGuard } from '../../../auth/infrastructure/guards/permissions.guard';
-import { RequirePermissions } from '../../../auth/infrastructure/guards/decorators';
+import { ModulosGuard } from '../../../auth/infrastructure/guards/modulos.guard';
+import { RequireModulo, RequirePermissions } from '../../../auth/infrastructure/guards/decorators';
 import { DomainError } from '../../../shared/domain/result';
 
 import { CrearUbicacionUseCase } from '../../application/use-cases/crear-ubicacion.use-case';
@@ -71,7 +72,8 @@ function toHttpException(error: DomainError): NotFoundException | UnprocessableE
   return new UnprocessableEntityException(error.message);
 }
 
-@UseGuards(JwtAuthGuard, TenantGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, TenantGuard, PermissionsGuard, ModulosGuard)
+@RequireModulo('EDILICIA')
 @Controller('ubicaciones')
 export class UbicacionesController {
   constructor(

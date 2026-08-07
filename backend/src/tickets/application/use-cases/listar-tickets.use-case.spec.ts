@@ -14,8 +14,17 @@ describe('ListarTicketsUseCase', () => {
       count: vi.fn().mockResolvedValue(0),
     };
     const cicloClienteRepo = { findActive: vi.fn().mockResolvedValue(cicloActivo) };
-    const useCase = new ListarTicketsUseCase(ticketRepo as never, cicloClienteRepo as never);
-    return { useCase, ticketRepo, cicloClienteRepo };
+    // Por default cada código resuelve a `tipo-<codigo>-id` (el tenant tiene
+    // los tipos built-in). Los tests de módulo lo sobreescriben si hace falta.
+    const tipoTicketRepo = {
+      findIdByCodigo: vi.fn(async (codigo: string) => `tipo-${codigo}-id`),
+    };
+    const useCase = new ListarTicketsUseCase(
+      ticketRepo as never,
+      cicloClienteRepo as never,
+      tipoTicketRepo as never,
+    );
+    return { useCase, ticketRepo, cicloClienteRepo, tipoTicketRepo };
   }
 
   const CICLO = CicloClienteEntity.create(
@@ -172,5 +181,68 @@ describe('ListarTicketsUseCase', () => {
 
     const filtrosRecibidos = c.ticketRepo.findAll.mock.calls[0][0];
     expect(filtrosRecibidos.busqueda).toBeUndefined();
+  });
+
+  describe('gate de módulo (5.2 CAPA 2)', () => {
+    it('modulosPermitidos=null (ROOT/ADMINISTRADOR) → no filtra por tipo', async () => {
+      const c = makeCollaborators(CICLO);
+
+      await c.useCase.execute({
+        actorId: 'actor-uuid',
+        tienePermisoVerTodos: true,
+        modulosPermitidos: null,
+      });
+
+      expect(c.tipoTicketRepo.findIdByCodigo).not.toHaveBeenCalled();
+      const filtrosRecibidos = c.ticketRepo.findAll.mock.calls[0][0];
+      expect(filtrosRecibidos.tiposIds).toBeUndefined();
+    });
+
+    it("modulosPermitidos=['SOPORTE'] → filtra a los tipoIds del código SOPORTE", async () => {
+      const c = makeCollaborators(CICLO);
+
+      await c.useCase.execute({
+        actorId: 'actor-uuid',
+        tienePermisoVerTodos: true,
+        modulosPermitidos: ['SOPORTE'],
+      });
+
+      expect(c.tipoTicketRepo.findIdByCodigo).toHaveBeenCalledWith('SOPORTE');
+      expect(c.ticketRepo.findAll).toHaveBeenCalledWith(
+        expect.objectContaining({ tiposIds: ['tipo-SOPORTE-id'] }),
+      );
+    });
+
+    it("modulosPermitidos=['EQUIPOS'] (sin tipo mapeable) → items vacío, sin tocar el repo de tickets", async () => {
+      const c = makeCollaborators(CICLO);
+
+      const result = await c.useCase.execute({
+        actorId: 'actor-uuid',
+        tienePermisoVerTodos: true,
+        modulosPermitidos: ['EQUIPOS'],
+      });
+
+      expect(result.isOk()).toBe(true);
+      expect(result.getValue().items).toEqual([]);
+      expect(result.getValue().total).toBe(0);
+      expect(c.tipoTicketRepo.findIdByCodigo).not.toHaveBeenCalled();
+      expect(c.ticketRepo.findAll).not.toHaveBeenCalled();
+    });
+
+    it('intersecta el tipo pedido por el caller con los tipos del módulo (nunca amplía el scope)', async () => {
+      const c = makeCollaborators(CICLO);
+
+      // Usuario con SOPORTE (→ tipo-SOPORTE-id) pide explícitamente un tipo
+      // fuera de su módulo → intersección vacía → items vacío.
+      const result = await c.useCase.execute({
+        actorId: 'actor-uuid',
+        tienePermisoVerTodos: true,
+        modulosPermitidos: ['SOPORTE'],
+        filtros: { tiposIds: ['tipo-COMPRAS-id'] },
+      });
+
+      expect(result.getValue().items).toEqual([]);
+      expect(c.ticketRepo.findAll).not.toHaveBeenCalled();
+    });
   });
 });

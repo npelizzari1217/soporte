@@ -282,3 +282,24 @@ model RolesPermisos {
   @@index([permisoId])
   @@map("roles_permisos")
 }
+
+// ─── USUARIO_CLIENTE_MODULOS (asignación de módulos por usuario y cliente) ─────
+//
+// Eje de autorización "módulos funcionales" (SOPORTE/COMPRAS/EDILICIA/EQUIPOS),
+// ortogonal al RBAC (roles/permisos). Un usuario normal solo opera los módulos
+// asignados en el cliente activo; ROOT/ADMINISTRADOR ven TODOS sin fila acá.
+// Soft ref cross-DB (usuario_id/cliente_id) sin @relation — mismo patrón que el
+// resto del schema. `modulo` es el código del catálogo fijo (ver
+// src/shared/domain/modulos.ts), guardado como VarChar para altas sin migración.
+
+model UsuarioClienteModulo {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  usuarioId String   @map("usuario_id") @db.Uuid
+  clienteId String   @map("cliente_id") @db.Uuid
+  modulo    String   @db.VarChar(50)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@unique([usuarioId, clienteId, modulo])
+  @@index([usuarioId, clienteId])
+  @@map("usuario_cliente_modulos")
+}

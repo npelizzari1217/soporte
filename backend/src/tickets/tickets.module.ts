@@ -216,9 +216,12 @@ import { CatalogosController } from './interface/controllers/catalogos.controlle
     },
     {
       provide: ListarTicketsUseCase,
-      useFactory: (ticketRepo: ITicketRepository, cicloRepo: ICicloClienteRepository) =>
-        new ListarTicketsUseCase(ticketRepo, cicloRepo),
-      inject: [TICKET_REPOSITORY, CICLO_CLIENTE_REPOSITORY],
+      useFactory: (
+        ticketRepo: ITicketRepository,
+        cicloRepo: ICicloClienteRepository,
+        tipoTicketRepo: ITipoTicketRepository,
+      ) => new ListarTicketsUseCase(ticketRepo, cicloRepo, tipoTicketRepo),
+      inject: [TICKET_REPOSITORY, CICLO_CLIENTE_REPOSITORY, TIPO_TICKET_REPOSITORY],
     },
     {
       provide: EditarTicketUseCase,

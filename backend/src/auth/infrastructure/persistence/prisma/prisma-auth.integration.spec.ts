@@ -18,6 +18,7 @@ import { PrismaClienteRepository } from '../../../../clientes/infrastructure/per
 import { PrismaUsuarioRepository } from './prisma-usuario.repository';
 import { PrismaMembresiaRepository } from './prisma-membresia.repository';
 import { PrismaRefreshTokenRepository } from './prisma-refresh-token.repository';
+import { PrismaUsuarioClienteModuloRepository } from './prisma-usuario-cliente-modulo.repository';
 import { ClienteEntity } from '../../../../clientes/domain/entities/cliente.entity';
 import { UsuarioEntity } from '../../../domain/entities/usuario.entity';
 import { RoleEntity } from '../../../domain/entities/role.entity';
@@ -55,6 +56,7 @@ describe('Auth Use Cases — Integration end-to-end (T5.5)', () => {
   let usuarioRepo: PrismaUsuarioRepository;
   let membresiaRepo: PrismaMembresiaRepository;
   let refreshTokenRepo: PrismaRefreshTokenRepository;
+  let modulosRepo: PrismaUsuarioClienteModuloRepository;
   let hashProvider: Argon2HashProvider;
   let tokenService: JwtTokenService;
   let logger: TestLogger;
@@ -72,6 +74,7 @@ describe('Auth Use Cases — Integration end-to-end (T5.5)', () => {
     usuarioRepo = new PrismaUsuarioRepository(prismaService);
     membresiaRepo = new PrismaMembresiaRepository(prismaService);
     refreshTokenRepo = new PrismaRefreshTokenRepository(prismaService);
+    modulosRepo = new PrismaUsuarioClienteModuloRepository(prismaService);
     hashProvider = new Argon2HashProvider();
     tokenService = new JwtTokenService(
       new JwtService({ secret: JWT_SECRET, signOptions: { expiresIn: '15m', algorithm: 'HS256' } }),
@@ -84,6 +87,7 @@ describe('Auth Use Cases — Integration end-to-end (T5.5)', () => {
       hashProvider,
       tokenService,
       refreshTokenRepo,
+      modulosRepo,
     );
     refreshTokenUseCase = new RefreshTokenUseCase(
       refreshTokenRepo,
@@ -91,6 +95,7 @@ describe('Auth Use Cases — Integration end-to-end (T5.5)', () => {
       membresiaRepo,
       clienteRepo,
       tokenService,
+      modulosRepo,
     );
     logoutUseCase = new LogoutUseCase(refreshTokenRepo);
     logoutAllUseCase = new LogoutAllUseCase(refreshTokenRepo);
@@ -98,7 +103,13 @@ describe('Auth Use Cases — Integration end-to-end (T5.5)', () => {
 
   beforeEach(() => {
     logger = new TestLogger();
-    switchTenantUseCase = new SwitchTenantUseCase(membresiaRepo, clienteRepo, tokenService, logger);
+    switchTenantUseCase = new SwitchTenantUseCase(
+      membresiaRepo,
+      clienteRepo,
+      tokenService,
+      logger,
+      modulosRepo,
+    );
   });
 
   afterAll(async () => {

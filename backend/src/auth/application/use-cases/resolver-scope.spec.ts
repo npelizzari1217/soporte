@@ -16,7 +16,9 @@ import { resolverScope } from './resolver-scope';
 import { ClienteEntity } from '../../../clientes/domain/entities/cliente.entity';
 import { IClienteRepository } from '../../../clientes/domain/ports/i-cliente.repository';
 import { IMembresiaRepository, MembresiaResuelta } from '../../domain/ports/i-membresia.repository';
+import { IUsuarioClienteModuloRepository } from '../../domain/ports/i-usuario-cliente-modulo.repository';
 import { ClienteNoAutorizadoError } from '../../domain/errors/auth.errors';
+import { TODOS_LOS_MODULOS } from '../../../shared/domain/modulos';
 
 const makeCliente = (
   overrides: Partial<{ activo: boolean; deleted: boolean; nombre: string }> = {},
@@ -56,13 +58,19 @@ const makeMembresiaRepo = (): vi.Mocked<IMembresiaRepository> => ({
   create: vi.fn().mockResolvedValue(undefined),
 });
 
+const makeModulosRepo = (): vi.Mocked<IUsuarioClienteModuloRepository> => ({
+  findModulosByUsuarioYCliente: vi.fn().mockResolvedValue([]),
+});
+
 describe('resolverScope', () => {
   let clienteRepo: ReturnType<typeof makeClienteRepo>;
   let membresiaRepo: ReturnType<typeof makeMembresiaRepo>;
+  let modulosRepo: ReturnType<typeof makeModulosRepo>;
 
   beforeEach(() => {
     clienteRepo = makeClienteRepo();
     membresiaRepo = makeMembresiaRepo();
+    modulosRepo = makeModulosRepo();
   });
 
   describe('clienteId === null (token master)', () => {
@@ -72,6 +80,7 @@ describe('resolverScope', () => {
         null,
         membresiaRepo,
         clienteRepo,
+        modulosRepo,
       );
 
       expect(result.isOk()).toBe(true);
@@ -80,6 +89,7 @@ describe('resolverScope', () => {
         clienteNombre: null,
         rol: null,
         permisos: [],
+        modulos: TODOS_LOS_MODULOS(),
       });
       expect(clienteRepo.findById).not.toHaveBeenCalled();
     });
@@ -90,6 +100,7 @@ describe('resolverScope', () => {
         null,
         membresiaRepo,
         clienteRepo,
+        modulosRepo,
       );
 
       expect(result.isFail()).toBe(true);
@@ -106,6 +117,7 @@ describe('resolverScope', () => {
         'cliente-x',
         membresiaRepo,
         clienteRepo,
+        modulosRepo,
       );
 
       expect(result.isFail()).toBe(true);
@@ -120,6 +132,7 @@ describe('resolverScope', () => {
         'cliente-1',
         membresiaRepo,
         clienteRepo,
+        modulosRepo,
       );
 
       expect(result.isFail()).toBe(true);
@@ -134,6 +147,7 @@ describe('resolverScope', () => {
         'cliente-1',
         membresiaRepo,
         clienteRepo,
+        modulosRepo,
       );
 
       expect(result.isFail()).toBe(true);
@@ -149,6 +163,7 @@ describe('resolverScope', () => {
         'cliente-1',
         membresiaRepo,
         clienteRepo,
+        modulosRepo,
       );
 
       expect(result.isFail()).toBe(true);
@@ -168,6 +183,7 @@ describe('resolverScope', () => {
         'cliente-1',
         membresiaRepo,
         clienteRepo,
+        modulosRepo,
       );
 
       expect(result.isOk()).toBe(true);
@@ -176,6 +192,7 @@ describe('resolverScope', () => {
         clienteNombre: 'Acme SA',
         rol: 'ADMINISTRADOR',
         permisos: ['cliente:gestionar'],
+        modulos: TODOS_LOS_MODULOS(),
       });
     });
 
@@ -188,6 +205,7 @@ describe('resolverScope', () => {
         'cliente-1',
         membresiaRepo,
         clienteRepo,
+        modulosRepo,
       );
 
       expect(result.isOk()).toBe(true);
@@ -196,6 +214,7 @@ describe('resolverScope', () => {
         clienteNombre: 'Acme SA',
         rol: null,
         permisos: [],
+        modulos: TODOS_LOS_MODULOS(),
       });
     });
   });
@@ -212,6 +231,7 @@ describe('resolverScope', () => {
         'cliente-1',
         membresiaRepo,
         clienteRepo,
+        modulosRepo,
       );
 
       expect(result.isOk()).toBe(true);
@@ -220,6 +240,7 @@ describe('resolverScope', () => {
         clienteNombre: 'Acme SA',
         rol: 'TECNICO',
         permisos: ['ticket:editar', 'ticket:crear'],
+        modulos: [],
       });
     });
 
@@ -232,6 +253,7 @@ describe('resolverScope', () => {
         'cliente-1',
         membresiaRepo,
         clienteRepo,
+        modulosRepo,
       );
 
       expect(result.isFail()).toBe(true);
@@ -247,12 +269,82 @@ describe('resolverScope', () => {
         'cliente-1',
         membresiaRepo,
         clienteRepo,
+        modulosRepo,
       );
 
       expect(membresiaRepo.findActivaByUsuarioYCliente).toHaveBeenCalledWith(
         'user-42',
         'cliente-1',
       );
+    });
+  });
+
+  // ─── Eje de módulos (feature 5.2 CAPA 1) ────────────────────────────────────
+  describe('modulos', () => {
+    it('ROOT (isGlobalAdmin) con cliente → TODOS los módulos, sin consultar modulosRepo', async () => {
+      clienteRepo.findById.mockResolvedValue(makeCliente());
+      membresiaRepo.findActivaByUsuarioYCliente.mockResolvedValue(null);
+
+      const result = await resolverScope(
+        { usuarioId: 'root-1', isGlobalAdmin: true },
+        'cliente-1',
+        membresiaRepo,
+        clienteRepo,
+        modulosRepo,
+      );
+
+      expect(result.getValue().modulos).toEqual(TODOS_LOS_MODULOS());
+      expect(modulosRepo.findModulosByUsuarioYCliente).not.toHaveBeenCalled();
+    });
+
+    it('ADMINISTRADOR (membresía rolCodigo ADMINISTRADOR) → TODOS los módulos, sin consultar modulosRepo', async () => {
+      clienteRepo.findById.mockResolvedValue(makeCliente());
+      membresiaRepo.findActivaByUsuarioYCliente.mockResolvedValue(
+        makeMembresiaResuelta({ rolCodigo: 'ADMINISTRADOR' }),
+      );
+
+      const result = await resolverScope(
+        { usuarioId: 'user-1', isGlobalAdmin: false },
+        'cliente-1',
+        membresiaRepo,
+        clienteRepo,
+        modulosRepo,
+      );
+
+      expect(result.getValue().modulos).toEqual(TODOS_LOS_MODULOS());
+      expect(modulosRepo.findModulosByUsuarioYCliente).not.toHaveBeenCalled();
+    });
+
+    it('usuario normal → exactamente los módulos asignados que devuelve modulosRepo', async () => {
+      clienteRepo.findById.mockResolvedValue(makeCliente());
+      membresiaRepo.findActivaByUsuarioYCliente.mockResolvedValue(
+        makeMembresiaResuelta({ rolCodigo: 'TECNICO' }),
+      );
+      modulosRepo.findModulosByUsuarioYCliente.mockResolvedValue(['SOPORTE']);
+
+      const result = await resolverScope(
+        { usuarioId: 'user-1', isGlobalAdmin: false },
+        'cliente-1',
+        membresiaRepo,
+        clienteRepo,
+        modulosRepo,
+      );
+
+      expect(result.getValue().modulos).toEqual(['SOPORTE']);
+      expect(modulosRepo.findModulosByUsuarioYCliente).toHaveBeenCalledWith('user-1', 'cliente-1');
+    });
+
+    it('token master (clienteId null, root) → TODOS los módulos', async () => {
+      const result = await resolverScope(
+        { usuarioId: 'root-1', isGlobalAdmin: true },
+        null,
+        membresiaRepo,
+        clienteRepo,
+        modulosRepo,
+      );
+
+      expect(result.getValue().modulos).toEqual(TODOS_LOS_MODULOS());
+      expect(modulosRepo.findModulosByUsuarioYCliente).not.toHaveBeenCalled();
     });
   });
 });

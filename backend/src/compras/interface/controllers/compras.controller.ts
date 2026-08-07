@@ -48,7 +48,12 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../../../auth/infrastructure/guards/jwt-auth.guard';
 import { TenantGuard } from '../../../auth/infrastructure/guards/tenant.guard';
 import { PermissionsGuard } from '../../../auth/infrastructure/guards/permissions.guard';
-import { CurrentUser, RequirePermissions } from '../../../auth/infrastructure/guards/decorators';
+import { ModulosGuard } from '../../../auth/infrastructure/guards/modulos.guard';
+import {
+  CurrentUser,
+  RequireModulo,
+  RequirePermissions,
+} from '../../../auth/infrastructure/guards/decorators';
 import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
 import { DomainError } from '../../../shared/domain/result';
 import { validarAdjunto } from '../../../tickets/interface/pipes/validar-archivo-adjunto';
@@ -136,7 +141,8 @@ function toHttpException(
   return new UnprocessableEntityException(error.message);
 }
 
-@UseGuards(JwtAuthGuard, TenantGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, TenantGuard, PermissionsGuard, ModulosGuard)
+@RequireModulo('COMPRAS')
 @Controller('compras')
 export class ComprasController {
   constructor(

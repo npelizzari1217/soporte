@@ -36,9 +36,11 @@ import { USUARIO_REPOSITORY } from './domain/ports/i-usuario.repository';
 import { MEMBRESIA_REPOSITORY } from './domain/ports/i-membresia.repository';
 import { REFRESH_TOKEN_REPOSITORY } from './domain/ports/i-refresh-token.repository';
 import { ROLE_REPOSITORY } from './domain/ports/i-role.repository';
+import { USUARIO_CLIENTE_MODULO_REPOSITORY } from './domain/ports/i-usuario-cliente-modulo.repository';
 import { CLIENTE_REPOSITORY } from '../clientes/domain/ports/i-cliente.repository';
 import { PrismaUsuarioRepository } from './infrastructure/persistence/prisma/prisma-usuario.repository';
 import { PrismaMembresiaRepository } from './infrastructure/persistence/prisma/prisma-membresia.repository';
+import { PrismaUsuarioClienteModuloRepository } from './infrastructure/persistence/prisma/prisma-usuario-cliente-modulo.repository';
 import { PrismaRefreshTokenRepository } from './infrastructure/persistence/prisma/prisma-refresh-token.repository';
 import { PrismaRoleRepository } from './infrastructure/persistence/prisma/prisma-role.repository';
 import { PrismaClienteRepository } from '../clientes/infrastructure/persistence/prisma/prisma-cliente.repository';
@@ -60,9 +62,12 @@ import { ListarUsuariosTenantUseCase } from './application/use-cases/listar-usua
 import { CrearUsuarioTenantUseCase } from './application/use-cases/crear-usuario-tenant.use-case';
 import { CambiarRolUsuarioTenantUseCase } from './application/use-cases/cambiar-rol-usuario-tenant.use-case';
 import { DesactivarMembresiaUsuarioTenantUseCase } from './application/use-cases/desactivar-membresia-usuario-tenant.use-case';
+import { AsignarModulosUsuarioTenantUseCase } from './application/use-cases/asignar-modulos-usuario-tenant.use-case';
+import { ObtenerModulosUsuarioTenantUseCase } from './application/use-cases/obtener-modulos-usuario-tenant.use-case';
 import { ListarRolesUseCase } from './application/use-cases/listar-roles.use-case';
 import { IUsuarioRepository } from './domain/ports/i-usuario.repository';
 import { IMembresiaRepository } from './domain/ports/i-membresia.repository';
+import { IUsuarioClienteModuloRepository } from './domain/ports/i-usuario-cliente-modulo.repository';
 import { IRefreshTokenRepository } from './domain/ports/i-refresh-token.repository';
 import { IClienteRepository } from '../clientes/domain/ports/i-cliente.repository';
 import { IHashProvider } from './domain/ports/i-hash.provider';
@@ -93,6 +98,10 @@ import { RolesController } from './interface/controllers/roles.controller';
     { provide: MEMBRESIA_REPOSITORY, useClass: PrismaMembresiaRepository },
     { provide: REFRESH_TOKEN_REPOSITORY, useClass: PrismaRefreshTokenRepository },
     { provide: ROLE_REPOSITORY, useClass: PrismaRoleRepository },
+    {
+      provide: USUARIO_CLIENTE_MODULO_REPOSITORY,
+      useClass: PrismaUsuarioClienteModuloRepository,
+    },
     // CLIENTE_REPOSITORY: cross-feature. resolverScope/TenantGuard verifican
     // cliente activo. ClientesModule NO exporta este token todavía.
     { provide: CLIENTE_REPOSITORY, useClass: PrismaClienteRepository },
@@ -113,6 +122,7 @@ import { RolesController } from './interface/controllers/roles.controller';
         hashProvider: IHashProvider,
         tokenService: ITokenService,
         refreshTokenRepo: IRefreshTokenRepository,
+        modulosRepo: IUsuarioClienteModuloRepository,
       ) =>
         new LoginUseCase(
           usuarioRepo,
@@ -121,6 +131,7 @@ import { RolesController } from './interface/controllers/roles.controller';
           hashProvider,
           tokenService,
           refreshTokenRepo,
+          modulosRepo,
         ),
       inject: [
         USUARIO_REPOSITORY,
@@ -129,6 +140,7 @@ import { RolesController } from './interface/controllers/roles.controller';
         HASH_PROVIDER,
         TOKEN_SERVICE,
         REFRESH_TOKEN_REPOSITORY,
+        USUARIO_CLIENTE_MODULO_REPOSITORY,
       ],
     },
     {
@@ -139,6 +151,7 @@ import { RolesController } from './interface/controllers/roles.controller';
         membresiaRepo: IMembresiaRepository,
         clienteRepo: IClienteRepository,
         tokenService: ITokenService,
+        modulosRepo: IUsuarioClienteModuloRepository,
       ) =>
         new RefreshTokenUseCase(
           refreshTokenRepo,
@@ -146,6 +159,7 @@ import { RolesController } from './interface/controllers/roles.controller';
           membresiaRepo,
           clienteRepo,
           tokenService,
+          modulosRepo,
         ),
       inject: [
         REFRESH_TOKEN_REPOSITORY,
@@ -153,6 +167,7 @@ import { RolesController } from './interface/controllers/roles.controller';
         MEMBRESIA_REPOSITORY,
         CLIENTE_REPOSITORY,
         TOKEN_SERVICE,
+        USUARIO_CLIENTE_MODULO_REPOSITORY,
       ],
     },
     {
@@ -174,8 +189,15 @@ import { RolesController } from './interface/controllers/roles.controller';
         clienteRepo: IClienteRepository,
         tokenService: ITokenService,
         logger: ILogger,
-      ) => new SwitchTenantUseCase(membresiaRepo, clienteRepo, tokenService, logger),
-      inject: [MEMBRESIA_REPOSITORY, CLIENTE_REPOSITORY, TOKEN_SERVICE, LOGGER],
+        modulosRepo: IUsuarioClienteModuloRepository,
+      ) => new SwitchTenantUseCase(membresiaRepo, clienteRepo, tokenService, logger, modulosRepo),
+      inject: [
+        MEMBRESIA_REPOSITORY,
+        CLIENTE_REPOSITORY,
+        TOKEN_SERVICE,
+        LOGGER,
+        USUARIO_CLIENTE_MODULO_REPOSITORY,
+      ],
     },
     // ─── Gestión mínima de usuarios (sdd/beta-frontend/spec §5) ──────────────
     {
@@ -205,6 +227,21 @@ import { RolesController } from './interface/controllers/roles.controller';
       useFactory: (membresiaRepo: IMembresiaRepository) =>
         new DesactivarMembresiaUsuarioTenantUseCase(membresiaRepo),
       inject: [MEMBRESIA_REPOSITORY],
+    },
+    // ─── Asignación de módulos (feature 5.2 CAPA 4) ─────────────────────────
+    {
+      provide: ObtenerModulosUsuarioTenantUseCase,
+      useFactory: (modulosRepo: IUsuarioClienteModuloRepository) =>
+        new ObtenerModulosUsuarioTenantUseCase(modulosRepo),
+      inject: [USUARIO_CLIENTE_MODULO_REPOSITORY],
+    },
+    {
+      provide: AsignarModulosUsuarioTenantUseCase,
+      useFactory: (
+        modulosRepo: IUsuarioClienteModuloRepository,
+        membresiaRepo: IMembresiaRepository,
+      ) => new AsignarModulosUsuarioTenantUseCase(modulosRepo, membresiaRepo),
+      inject: [USUARIO_CLIENTE_MODULO_REPOSITORY, MEMBRESIA_REPOSITORY],
     },
     {
       provide: ListarRolesUseCase,

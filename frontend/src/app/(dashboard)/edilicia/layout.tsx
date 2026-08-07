@@ -1,0 +1,14 @@
+/**
+ * EdiliciaLayout — Server Component: gate REAL del área `/edilicia/*` por MÓDULO
+ * (5.2 CAPA 3). El sidebar ya oculta el ítem "Edilicia" a quien no tiene el
+ * módulo, pero eso es solo UI; esta capa impide el acceso por URL directa.
+ * Ver `moduloLayoutGate` para el detalle del patrón (refresh tolerante R26).
+ */
+import { moduloLayoutGate } from "@/shared/auth/modulo-layout-gate";
+
+export default async function EdiliciaLayout({
+  children,
+}: Readonly<{ children: React.ReactNode }>) {
+  await moduloLayoutGate("EDILICIA");
+  return <>{children}</>;
+}

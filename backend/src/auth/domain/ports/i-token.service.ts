@@ -14,6 +14,10 @@
  * - cliente_nombre: nombre del cliente scopeado; `null` si `cliente_id` es null.
  * - membresias: TODAS las membresías activas del usuario (alimenta el
  *   switcher del front, R6).
+ * - modulos: módulos funcionales que el usuario puede operar en `cliente_id`
+ *   (SOPORTE/COMPRAS/EDILICIA/EQUIPOS). ROOT (is_global_admin), ADMINISTRADOR
+ *   (membresía con rolCodigo ADMINISTRADOR) y el token MASTER llevan TODOS los
+ *   módulos; cualquier otro usuario lleva solo los asignados en ese cliente.
  *
  * Los guards verifican `rol`/`permisos`/`is_global_admin` contra el JWT sin
  * query a DB (R11, R13, R14).
@@ -26,6 +30,7 @@ export interface JwtPayload {
   is_global_admin: boolean;
   cliente_nombre: string | null;
   membresias: { cliente_id: string; nombre: string; rol: string }[];
+  modulos: string[];
 }
 
 /**

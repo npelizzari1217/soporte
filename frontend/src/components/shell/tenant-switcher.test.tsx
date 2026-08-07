@@ -27,6 +27,7 @@ const PAYLOAD: JwtPayload = {
     { cliente_id: "c1", nombre: "Cliente Uno", rol: "ADMINISTRADOR" },
     { cliente_id: "c2", nombre: "Cliente Dos", rol: "TECNICO" },
   ],
+  modulos: [],
 };
 
 function renderSwitcher(user: JwtPayload | null = PAYLOAD) {
@@ -116,6 +117,7 @@ const ROOT_PAYLOAD: JwtPayload = {
   is_global_admin: true,
   cliente_nombre: null,
   membresias: [],
+  modulos: [],
 };
 
 describe("TenantSwitcher — ROOT (is_global_admin, sin membresias)", () => {

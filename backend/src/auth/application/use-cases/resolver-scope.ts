@@ -2,7 +2,12 @@ import { Result } from '../../../shared/domain/result';
 import { DomainError } from '../../../shared/domain/result';
 import { IClienteRepository } from '../../../clientes/domain/ports/i-cliente.repository';
 import { IMembresiaRepository } from '../../domain/ports/i-membresia.repository';
+import { IUsuarioClienteModuloRepository } from '../../domain/ports/i-usuario-cliente-modulo.repository';
 import { ClienteNoAutorizadoError } from '../../domain/errors/auth.errors';
+import { TODOS_LOS_MODULOS } from '../../../shared/domain/modulos';
+
+/** Rol (por membresía) que otorga acceso a TODOS los módulos del cliente. */
+const ROL_ADMINISTRADOR = 'ADMINISTRADOR';
 
 /**
  * Actor mínimo requerido por resolverScope. `usuarioId` identifica al
@@ -29,6 +34,11 @@ export interface ScopeResuelto {
   clienteNombre: string | null;
   rol: string | null;
   permisos: string[];
+  /**
+   * Módulos funcionales operables en `clienteId`. ROOT/ADMINISTRADOR/token
+   * MASTER llevan TODOS; el resto, solo los asignados en ese cliente.
+   */
+  modulos: string[];
 }
 
 /**
@@ -58,22 +68,26 @@ export interface ScopeResuelto {
  * @param clienteId      Cliente solicitado, o `null` para token master.
  * @param membresiaRepo  Puerto de resolución de membresías (R4/R5).
  * @param clienteRepo    Puerto de lectura de clientes (valida vivo/activo).
+ * @param modulosRepo    Puerto de resolución de módulos asignados por cliente.
  */
 export async function resolverScope(
   actor: ResolverScopeActor,
   clienteId: string | null,
   membresiaRepo: IMembresiaRepository,
   clienteRepo: IClienteRepository,
+  modulosRepo: IUsuarioClienteModuloRepository,
 ): Promise<Result<ScopeResuelto, DomainError>> {
   if (clienteId === null) {
     if (!actor.isGlobalAdmin) {
       return Result.fail(new ClienteNoAutorizadoError());
     }
+    // Token MASTER (solo root): ve TODOS los módulos.
     return Result.ok({
       clienteId: null,
       clienteNombre: null,
       rol: null,
       permisos: [],
+      modulos: TODOS_LOS_MODULOS(),
     });
   }
 
@@ -88,10 +102,18 @@ export async function resolverScope(
     return Result.fail(new ClienteNoAutorizadoError());
   }
 
+  // ROOT y ADMINISTRADOR ven TODOS los módulos; el resto, solo los asignados
+  // en este cliente (eje de autorización ortogonal al RBAC — feature 5.2).
+  const esAdminTotal = actor.isGlobalAdmin || membresia?.rolCodigo === ROL_ADMINISTRADOR;
+  const modulos = esAdminTotal
+    ? TODOS_LOS_MODULOS()
+    : await modulosRepo.findModulosByUsuarioYCliente(actor.usuarioId, clienteId);
+
   return Result.ok({
     clienteId,
     clienteNombre: cliente.nombre,
     rol: membresia?.rolCodigo ?? null,
     permisos: membresia?.permisos ?? [],
+    modulos,
   });
 }

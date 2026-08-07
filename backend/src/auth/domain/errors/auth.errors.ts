@@ -152,3 +152,18 @@ export class MembresiaNoEncontradaError extends DomainError {
     super('No se encontró una membresía de este usuario en este cliente.');
   }
 }
+
+/**
+ * ModuloInvalidoError — uno o más códigos de módulo recibidos al asignar
+ * módulos a un usuario (`PATCH /usuarios/:id/modulos`) no pertenecen al
+ * catálogo `MODULOS` (`shared/domain/modulos`). Validación de INPUT del actor
+ * (ADMINISTRADOR), defensa en profundidad detrás del `@IsIn` del DTO.
+ * → HTTP 422 en la capa de presentación.
+ */
+export class ModuloInvalidoError extends DomainError {
+  readonly code = 'AUTH_MODULO_INVALIDO';
+
+  constructor(modulos: string[]) {
+    super(`Módulo(s) inválido(s): ${modulos.join(', ')}.`);
+  }
+}

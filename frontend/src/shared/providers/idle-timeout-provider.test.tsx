@@ -18,6 +18,7 @@ const PAYLOAD: JwtPayload = {
   is_global_admin: false,
   cliente_nombre: "Cliente Uno",
   membresias: [],
+  modulos: [],
 };
 
 describe("IdleTimeoutProvider", () => {

@@ -3,6 +3,7 @@ import { Result } from '../../../shared/domain/result';
 import { DomainError } from '../../../shared/domain/result';
 import { IUsuarioRepository } from '../../domain/ports/i-usuario.repository';
 import { IMembresiaRepository } from '../../domain/ports/i-membresia.repository';
+import { IUsuarioClienteModuloRepository } from '../../domain/ports/i-usuario-cliente-modulo.repository';
 import { IRefreshTokenRepository } from '../../domain/ports/i-refresh-token.repository';
 import { IHashProvider } from '../../domain/ports/i-hash.provider';
 import { ITokenService, JwtPayload } from '../../domain/ports/i-token.service';
@@ -97,6 +98,7 @@ export class LoginUseCase {
     private readonly hashProvider: IHashProvider,
     private readonly tokenService: ITokenService,
     private readonly refreshTokenRepo: IRefreshTokenRepository,
+    private readonly modulosRepo: IUsuarioClienteModuloRepository,
   ) {}
 
   async execute(dto: LoginDto): Promise<Result<LoginResult, DomainError>> {
@@ -154,6 +156,7 @@ export class LoginUseCase {
       clienteIdObjetivo,
       this.membresiaRepo,
       this.clienteRepo,
+      this.modulosRepo,
     );
 
     if (scopeResult.isFail()) {
@@ -174,6 +177,7 @@ export class LoginUseCase {
         nombre: m.clienteNombre,
         rol: m.rolCodigo,
       })),
+      modulos: scope.modulos,
     };
     const accessToken = this.tokenService.signJwt(payload);
 

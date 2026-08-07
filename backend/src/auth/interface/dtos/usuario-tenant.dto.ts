@@ -10,7 +10,17 @@
  * estricto (spec §5: "NUNCA permite crear membresías en otro cliente que no
  * sea el del token").
  */
-import { IsEmail, IsNotEmpty, IsString, Matches, MinLength } from 'class-validator';
+import {
+  ArrayUnique,
+  IsArray,
+  IsEmail,
+  IsIn,
+  IsNotEmpty,
+  IsString,
+  Matches,
+  MinLength,
+} from 'class-validator';
+import { MODULOS } from '../../../shared/domain/modulos';
 
 /** `rolCodigo`: mayúsculas/guion bajo, sin espacios (consistente con el seed RBAC real). */
 const ROL_CODIGO_PATTERN = /^[A-Z_]+$/;
@@ -46,6 +56,21 @@ export class CambiarRolUsuarioDto {
     message: 'rolCodigo debe ser mayúsculas/guion bajo, sin espacios',
   })
   rolCodigo!: string;
+}
+
+/**
+ * Body de `PATCH /usuarios/:id/modulos` (feature 5.2 CAPA 4). Permisos
+ * `usuario:gestionar` + `rol:asignar`. Reemplaza el set completo de módulos
+ * del usuario en el cliente del token. `@IsIn([...MODULOS])` valida contra el
+ * catálogo real de módulos (única fuente de verdad, `shared/domain/modulos`);
+ * `@ArrayUnique` evita duplicados en el body (el repo igual deduplica).
+ */
+export class AsignarModulosDto {
+  @IsArray()
+  @IsString({ each: true })
+  @ArrayUnique()
+  @IsIn([...MODULOS], { each: true })
+  modulos!: string[];
 }
 
 /**

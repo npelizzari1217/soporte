@@ -14,6 +14,9 @@
  * - `cliente_nombre`: nombre del cliente scopeado; `null` si `cliente_id` es null.
  * - `membresias`: TODAS las membresías activas del usuario (alimenta el
  *   switcher del front, R28).
+ * - `modulos`: módulos habilitados para el usuario (SOPORTE/COMPRAS/EDILICIA/
+ *   EQUIPOS). ROOT y ADMINISTRADOR reciben todos. Alimenta el gating por
+ *   módulo del front (5.2 CAPA 3). `[]` cuando el usuario no tiene ninguno.
  *
  * Decodificado en el BFF (login/switch, sin verificación — viene del backend
  * confiable) y verificado con `jose` en el middleware Edge (R26). Toda
@@ -27,6 +30,7 @@ export interface JwtPayload {
   is_global_admin: boolean;
   cliente_nombre: string | null;
   membresias: { cliente_id: string; nombre: string; rol: string }[];
+  modulos: string[];
 }
 
 /**
@@ -40,9 +44,12 @@ export interface JwtPayload {
  * @param accessToken  Raw JWT string (`header.payload.signature`).
  */
 export function decodeJwtPayload(accessToken: string): JwtPayload {
-  return JSON.parse(
+  const payload = JSON.parse(
     Buffer.from(accessToken.split(".")[1], "base64url").toString(),
   ) as JwtPayload;
+  // Defensivo: tokens viejos (previos a 5.2) no traen `modulos`. Normalizamos
+  // a `[]` para que los consumidores no dependan de un campo undefined.
+  return { ...payload, modulos: payload.modulos ?? [] };
 }
 
 /**

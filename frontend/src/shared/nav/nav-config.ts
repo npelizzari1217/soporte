@@ -11,6 +11,7 @@ import {
   CalendarRange,
 } from "lucide-react";
 import type { JwtPayload } from "@/shared/api/types";
+import { PERMISOS_ADMIN } from "@/shared/auth/admin-access";
 
 /**
  * nav-config — single source of truth for the sidebar navigation (ADR-4).
@@ -24,7 +25,11 @@ export interface NavItem {
   href: string;
   label: string;
   icon: LucideIcon;
-  visible: (can: (permiso: string) => boolean, isGlobalAdmin: boolean) => boolean;
+  visible: (
+    can: (permiso: string) => boolean,
+    isGlobalAdmin: boolean,
+    canModulo: (modulo: string) => boolean,
+  ) => boolean;
 }
 
 export const NAV_ITEMS: NavItem[] = [
@@ -50,8 +55,9 @@ export const NAV_ITEMS: NavItem[] = [
     href: "/admin/catalogos",
     label: "Admin",
     icon: Settings,
-    visible: (can) =>
-      can("catalogo:gestionar") || can("cliente:gestionar") || can("ciclo:gestionar") || can("usuario:gestionar"),
+    // Misma lista que el gate server-side de `/admin` (admin-access.ts) — una
+    // sola fuente de verdad para "quién ve/entra al área admin".
+    visible: (can) => PERMISOS_ADMIN.some((p) => can(p)),
   },
   {
     href: "/admin/clientes",
@@ -73,19 +79,22 @@ export const NAV_ITEMS: NavItem[] = [
     href: "/compras",
     label: "Compras",
     icon: ShoppingCart,
-    visible: (can) => can("compra:gestionar"),
+    // Gating por MÓDULO (5.2 CAPA 3) AND permiso: además de tener el permiso,
+    // el módulo COMPRAS debe estar habilitado para el usuario.
+    visible: (can, _iga, canModulo) => canModulo("COMPRAS") && can("compra:gestionar"),
   },
   {
     href: "/edilicia",
     label: "Edilicia",
     icon: Wrench,
-    visible: (can) => can("subtarea:actualizar") || can("catalogo:gestionar"),
+    visible: (can, _iga, canModulo) =>
+      canModulo("EDILICIA") && (can("subtarea:actualizar") || can("catalogo:gestionar")),
   },
   {
     href: "/equipos",
     label: "Equipos",
     icon: Monitor,
-    visible: (can) => can("equipo:gestionar"),
+    visible: (can, _iga, canModulo) => canModulo("EQUIPOS") && can("equipo:gestionar"),
   },
 ];
 
@@ -97,5 +106,7 @@ export const NAV_ITEMS: NavItem[] = [
 export function visibleNavItems(user: JwtPayload | null): NavItem[] {
   const isGlobalAdmin = user?.is_global_admin ?? false;
   const can = (permiso: string): boolean => isGlobalAdmin || (user?.permisos.includes(permiso) ?? false);
-  return NAV_ITEMS.filter((item) => item.visible(can, isGlobalAdmin));
+  const canModulo = (modulo: string): boolean =>
+    isGlobalAdmin || (user?.modulos?.includes(modulo) ?? false);
+  return NAV_ITEMS.filter((item) => item.visible(can, isGlobalAdmin, canModulo));
 }

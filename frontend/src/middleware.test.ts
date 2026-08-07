@@ -32,6 +32,7 @@ const VALID_PAYLOAD: JwtPayload = {
   is_global_admin: false,
   cliente_nombre: "Cliente Uno",
   membresias: [{ cliente_id: "c1", nombre: "Cliente Uno", rol: "TECNICO" }],
+  modulos: [],
 };
 
 function makeRequest(path: string, cookies: Record<string, string> = {}): NextRequest {

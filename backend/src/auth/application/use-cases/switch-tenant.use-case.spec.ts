@@ -17,6 +17,7 @@
 import { SwitchTenantUseCase, SwitchTenantDto } from './switch-tenant.use-case';
 import { ClienteEntity } from '../../../clientes/domain/entities/cliente.entity';
 import { IMembresiaRepository, MembresiaResuelta } from '../../domain/ports/i-membresia.repository';
+import { IUsuarioClienteModuloRepository } from '../../domain/ports/i-usuario-cliente-modulo.repository';
 import { IClienteRepository } from '../../../clientes/domain/ports/i-cliente.repository';
 import { ITokenService, JwtPayload } from '../../domain/ports/i-token.service';
 import { ILogger } from '../../../shared/domain/ports/i-logger.port';
@@ -67,11 +68,16 @@ const makeLogger = (): vi.Mocked<ILogger> => ({
   log: vi.fn(),
 });
 
+const makeModulosRepo = (): vi.Mocked<IUsuarioClienteModuloRepository> => ({
+  findModulosByUsuarioYCliente: vi.fn().mockResolvedValue([]),
+});
+
 describe('SwitchTenantUseCase', () => {
   let membresiaRepo: vi.Mocked<IMembresiaRepository>;
   let clienteRepo: vi.Mocked<IClienteRepository>;
   let tokenService: vi.Mocked<ITokenService>;
   let logger: vi.Mocked<ILogger>;
+  let modulosRepo: vi.Mocked<IUsuarioClienteModuloRepository>;
   let useCase: SwitchTenantUseCase;
 
   beforeEach(() => {
@@ -79,7 +85,14 @@ describe('SwitchTenantUseCase', () => {
     clienteRepo = makeClienteRepo();
     tokenService = makeTokenService();
     logger = makeLogger();
-    useCase = new SwitchTenantUseCase(membresiaRepo, clienteRepo, tokenService, logger);
+    modulosRepo = makeModulosRepo();
+    useCase = new SwitchTenantUseCase(
+      membresiaRepo,
+      clienteRepo,
+      tokenService,
+      logger,
+      modulosRepo,
+    );
   });
 
   describe('Root → cualquier cliente activo no borrado', () => {
@@ -161,9 +174,9 @@ describe('SwitchTenantUseCase', () => {
   });
 
   describe('Emite SOLO access token (no rota refresh)', () => {
-    it('el constructor toma exactamente 4 puertos (sin IRefreshTokenRepository — no rota refresh)', () => {
+    it('el constructor toma exactamente 5 puertos (sin IRefreshTokenRepository — no rota refresh)', () => {
       expect(useCase).toBeInstanceOf(SwitchTenantUseCase);
-      expect(SwitchTenantUseCase.length).toBe(4);
+      expect(SwitchTenantUseCase.length).toBe(5);
     });
 
     it('el resultado exitoso solo expone accessToken', async () => {
