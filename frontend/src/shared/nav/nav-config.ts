@@ -69,9 +69,13 @@ export const NAV_ITEMS: NavItem[] = [
   },
 ];
 
-/** Filters `NAV_ITEMS` for a given (possibly null/unauthenticated) user. */
+/**
+ * Filters `NAV_ITEMS` for a given (possibly null/unauthenticated) user. ROOT
+ * (`is_global_admin`) bypasses `can()` — it's a flag, not a rol, and by
+ * design it can do EVERYTHING (same criterion as `useSession().can`).
+ */
 export function visibleNavItems(user: JwtPayload | null): NavItem[] {
-  const can = (permiso: string): boolean => user?.permisos.includes(permiso) ?? false;
   const isGlobalAdmin = user?.is_global_admin ?? false;
+  const can = (permiso: string): boolean => isGlobalAdmin || (user?.permisos.includes(permiso) ?? false);
   return NAV_ITEMS.filter((item) => item.visible(can, isGlobalAdmin));
 }

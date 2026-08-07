@@ -54,6 +54,13 @@ describe("nav-config", () => {
     expect(items.map((i) => i.href)).not.toContain("/admin/clientes");
   });
 
+  it("is_global_admin=true con permisos=[] → ve TODOS los ítems del menú (ROOT puede TODO)", () => {
+    const user = makeUser({ permisos: [], is_global_admin: true });
+    const items = visibleNavItems(user);
+    const hrefs = items.map((i) => i.href);
+    expect(hrefs).toEqual(expect.arrayContaining(NAV_ITEMS.map((i) => i.href)));
+  });
+
   it("null user (no logueado) → no revienta, devuelve solo ítems públicos (ninguno gated)", () => {
     const items = visibleNavItems(null);
     expect(items.every((i) => i.href !== "/dashboard" && i.href !== "/admin/clientes")).toBe(true);

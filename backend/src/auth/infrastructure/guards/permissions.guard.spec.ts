@@ -70,4 +70,25 @@ describe('PermissionsGuard (R13)', () => {
 
     expect(guard.canActivate(context)).toBe(true);
   });
+
+  it('ROOT (is_global_admin=true) SIN los permisos requeridos → true (bypass, ROOT puede TODO)', () => {
+    const guard = buildGuard(['ticket:crear', 'ticket:eliminar']);
+    const rootUser: JwtPayload = {
+      ...BASE_PAYLOAD,
+      is_global_admin: true,
+      permisos: [],
+      cliente_id: null,
+      rol: null,
+    };
+    const context = buildContext(rootUser);
+
+    expect(guard.canActivate(context)).toBe(true);
+  });
+
+  it('usuario NO-ROOT (is_global_admin=false) sin permisos → sigue en ForbiddenException (no se rompe el caso normal)', () => {
+    const guard = buildGuard(['ticket:crear', 'ticket:eliminar']);
+    const context = buildContext({ ...BASE_PAYLOAD, is_global_admin: false, permisos: [] });
+
+    expect(() => guard.canActivate(context)).toThrow(ForbiddenException);
+  });
 });

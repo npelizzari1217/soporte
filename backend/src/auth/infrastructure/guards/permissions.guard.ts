@@ -9,7 +9,13 @@
  * IMPORTANTE: NUNCA consulta la DB — evalúa `payload.permisos` del JWT.
  * Debe correr DESPUÉS de `JwtAuthGuard`.
  *
- * Tarea: T6.3 (PR6 — Guards + AuthController + AuthModule)
+ * ROOT (`is_global_admin=true`) bypassea el chequeo de permisos: no es un
+ * rol, es un flag ortogonal, y por diseño puede TODO (mismo criterio que
+ * `GlobalAdminGuard`). Esto cierra el hueco por el cual un ROOT con
+ * `permisos=[]` recibía 403 en endpoints gateados por permiso.
+ *
+ * Tarea: T6.3 (PR6 — Guards + AuthController + AuthModule); fix ROOT bypass
+ * (sdd/root-access-fix).
  */
 import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
@@ -35,6 +41,10 @@ export class PermissionsGuard implements CanActivate {
 
     if (!user) {
       throw new ForbiddenException('Acceso denegado: usuario no autenticado');
+    }
+
+    if (user.is_global_admin) {
+      return true;
     }
 
     const missingPermissions = requiredPermissions.filter((p) => !user.permisos.includes(p));

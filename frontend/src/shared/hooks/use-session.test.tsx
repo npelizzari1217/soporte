@@ -50,6 +50,16 @@ describe("useSession", () => {
     expect(screen.getByTestId("admin")).toHaveTextContent("true");
   });
 
+  it("root MASTER token (is_global_admin: true, permisos: []) → can(cualquier permiso) es true (ROOT puede TODO)", () => {
+    render(
+      <SessionProvider initialUser={ROOT_PAYLOAD}>
+        <Probe />
+      </SessionProvider>,
+    );
+    expect(screen.getByTestId("can-crear")).toHaveTextContent("true");
+    expect(screen.getByTestId("can-borrar")).toHaveTextContent("true");
+  });
+
   it("tenant-scoped user → isGlobalAdmin false, can() reflects permisos array exactly", () => {
     render(
       <SessionProvider initialUser={TENANT_PAYLOAD}>

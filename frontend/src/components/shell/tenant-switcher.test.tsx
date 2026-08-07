@@ -85,3 +85,65 @@ describe("TenantSwitcher", () => {
     await waitFor(() => expect(refreshMock).toHaveBeenCalledTimes(1));
   });
 });
+
+// ROOT (is_global_admin): sin membresías propias — el switcher debe listar
+// TODOS los clientes de la plataforma vía GET /clientes en vez de membresias[].
+const ROOT_PAYLOAD: JwtPayload = {
+  sub: "root-1",
+  cliente_id: null,
+  rol: null,
+  permisos: [],
+  is_global_admin: true,
+  cliente_nombre: null,
+  membresias: [],
+};
+
+describe("TenantSwitcher — ROOT (is_global_admin, sin membresias)", () => {
+  beforeEach(() => {
+    refreshMock.mockClear();
+    server.use(
+      http.get("/api/clientes", () =>
+        HttpResponse.json([
+          { id: "c1", nombre: "Cliente Uno", razonSocial: null, cuit: null, dbName: "t1", activo: true },
+          { id: "c2", nombre: "Cliente Dos", razonSocial: null, cuit: null, dbName: "t2", activo: true },
+        ]),
+      ),
+    );
+  });
+
+  it("trigger muestra fallback 'Elegí un cliente' (cliente_nombre null en master)", () => {
+    renderSwitcher(ROOT_PAYLOAD);
+    expect(screen.getByRole("button", { name: /elegí un cliente/i })).toBeInTheDocument();
+  });
+
+  it("lista TODOS los clientes de la plataforma vía GET /clientes, no membresias[] (vacío)", async () => {
+    const user = userEvent.setup();
+    renderSwitcher(ROOT_PAYLOAD);
+
+    await user.click(screen.getByRole("button", { name: /elegí un cliente/i }));
+
+    expect(await screen.findByRole("menuitem", { name: /cliente uno/i })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /cliente dos/i })).toBeInTheDocument();
+  });
+
+  it("seleccionar un cliente llama POST /api/auth/switch con { clienteId } y refresca", async () => {
+    let capturedBody: unknown = null;
+    server.use(
+      http.post("/api/auth/switch", async ({ request }) => {
+        capturedBody = await request.json();
+        return HttpResponse.json({
+          user: { ...ROOT_PAYLOAD, cliente_id: "c1", cliente_nombre: "Cliente Uno" },
+        });
+      }),
+    );
+
+    const user = userEvent.setup();
+    renderSwitcher(ROOT_PAYLOAD);
+
+    await user.click(screen.getByRole("button", { name: /elegí un cliente/i }));
+    await user.click(await screen.findByRole("menuitem", { name: /cliente uno/i }));
+
+    await waitFor(() => expect(capturedBody).toEqual({ clienteId: "c1" }));
+    await waitFor(() => expect(refreshMock).toHaveBeenCalledTimes(1));
+  });
+});

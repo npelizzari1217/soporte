@@ -1,20 +1,26 @@
 "use client";
 
 /**
- * TenantSwitcher — dropdown to jump between the memberships (`membresias[]`)
- * embedded in the current JWT. A root user (`is_global_admin: true`) is not
- * restricted to a subset — the token already carries every membership it can
- * switch into, so the same list applies to root and non-root users alike.
+ * TenantSwitcher — dropdown to jump between clients.
+ *
+ * Two sources depending on the actor (ROOT is a flag, not a rol — it has NO
+ * memberships of its own, so it needs a different source to switch tenants):
+ *   - Non-ROOT: `membresias[]` embedded in the current JWT — the token
+ *     already carries every membership it can switch into.
+ *   - ROOT (`is_global_admin: true`): `GET /clientes` (platform-wide,
+ *     `GlobalAdminGuard`-only) — lists EVERY client so root can jump into
+ *     any tenant even without a membership row (backend `resolverScope`
+ *     already authorizes root for any live client without membership).
  *
  * Flow (R28):
- *   1. User picks a membership from the dropdown.
+ *   1. User picks a cliente from the dropdown.
  *   2. POST /api/auth/switch { clienteId } — the BFF re-emits the `at` cookie
  *      scoped to that cliente (does NOT rotate `rt` — ADR-4).
  *   3. `router.refresh()` re-runs the Server Component tree (DashboardLayout),
  *      which re-decodes the now-updated `at` cookie and hydrates a fresh
  *      SessionProvider — no client-side state duplication of the session.
  *
- * Spec: [R28] Switcher en el shell.
+ * Spec: [R28] Switcher en el shell; sdd/root-access-fix (ROOT sin membresías).
  */
 
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
@@ -25,12 +31,21 @@ import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { apiFetch } from "@/shared/api/client";
 import { useSession } from "@/shared/hooks/use-session";
+import { useClientes } from "@/features/clientes/hooks/use-clientes";
 import type { JwtPayload } from "@/shared/api/types";
 
+/** Normalized switch option — either a `membresia` (non-root) or a `Cliente` (root). */
+interface SwitchOption {
+  clienteId: string;
+  label: string;
+  sublabel?: string;
+}
+
 export function TenantSwitcher() {
-  const { user } = useSession();
+  const { user, isGlobalAdmin } = useSession();
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const clientesQuery = useClientes(isGlobalAdmin);
 
   const mutation = useMutation({
     mutationFn: (clienteId: string) =>
@@ -45,6 +60,10 @@ export function TenantSwitcher() {
   });
 
   if (!user) return null;
+
+  const options: SwitchOption[] = isGlobalAdmin
+    ? (clientesQuery.data ?? []).map((c) => ({ clienteId: c.id, label: c.nombre }))
+    : user.membresias.map((m) => ({ clienteId: m.cliente_id, label: m.nombre, sublabel: m.rol }));
 
   return (
     <DropdownMenu.Root open={open} onOpenChange={setOpen}>
@@ -65,18 +84,18 @@ export function TenantSwitcher() {
           align="start"
           sideOffset={4}
         >
-          {user.membresias.map((m) => (
+          {options.map((o) => (
             <DropdownMenu.Item
-              key={m.cliente_id}
-              disabled={mutation.isPending || m.cliente_id === user.cliente_id}
+              key={o.clienteId}
+              disabled={mutation.isPending || o.clienteId === user.cliente_id}
               onSelect={(e) => {
                 e.preventDefault();
-                mutation.mutate(m.cliente_id);
+                mutation.mutate(o.clienteId);
               }}
               className="flex items-center justify-between rounded-sm px-3 py-2 text-sm cursor-pointer select-none outline-none hover:bg-muted focus:bg-muted data-[highlighted]:bg-muted data-[disabled]:opacity-50 data-[disabled]:cursor-not-allowed"
             >
-              <span>{m.nombre}</span>
-              <span className="text-xs text-muted-foreground">{m.rol}</span>
+              <span>{o.label}</span>
+              {o.sublabel && <span className="text-xs text-muted-foreground">{o.sublabel}</span>}
             </DropdownMenu.Item>
           ))}
         </DropdownMenu.Content>
