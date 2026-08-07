@@ -30,16 +30,14 @@ export class UsuarioMasterChecker implements IUsuarioMasterChecker {
    * solicitante puede estar inactivo y seguir siendo una referencia válida.
    */
   async existeEnTenant(usuarioId: string, clienteId: string): Promise<boolean> {
+    // El ROOT (is_global_admin) opera en CUALQUIER tenant sin membresía propia,
+    // por lo que es un solicitante válido en cualquier cliente. Para el resto,
+    // se exige una membresía viva en el cliente indicado.
     const row = await this.masterClient.usuario.findFirst({
       where: {
         id: usuarioId,
         deletedAt: null,
-        membresias: {
-          some: {
-            clienteId,
-            deletedAt: null,
-          },
-        },
+        OR: [{ isGlobalAdmin: true }, { membresias: { some: { clienteId, deletedAt: null } } }],
       },
       select: { id: true },
     });
@@ -52,18 +50,17 @@ export class UsuarioMasterChecker implements IUsuarioMasterChecker {
    * usuario ni su membresía en el tenant pueden estar desactivados.
    */
   async estaActivoEnTenant(usuarioId: string, clienteId: string): Promise<boolean> {
+    // El ROOT (is_global_admin) activo es elegible en cualquier tenant sin
+    // membresía. Para el resto, se exige membresía ACTIVA en el cliente.
     const row = await this.masterClient.usuario.findFirst({
       where: {
         id: usuarioId,
         activo: true,
         deletedAt: null,
-        membresias: {
-          some: {
-            clienteId,
-            activo: true,
-            deletedAt: null,
-          },
-        },
+        OR: [
+          { isGlobalAdmin: true },
+          { membresias: { some: { clienteId, activo: true, deletedAt: null } } },
+        ],
       },
       select: { id: true },
     });

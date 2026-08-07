@@ -213,4 +213,24 @@ describe('UsuarioMasterChecker — integration (T14, T15)', () => {
       expect(result.size).toBe(0);
     });
   });
+
+  describe('ROOT (is_global_admin) sin membresía es elegible en cualquier tenant', () => {
+    it('existeEnTenant y estaActivoEnTenant → true para un root sin membresía en el cliente', async () => {
+      const cliente = await createCliente('root-elegible');
+      const root = await masterClient.usuario.create({
+        data: {
+          email: 'checker_root@integration.test',
+          nombre: 'Root',
+          apellido: 'Checker',
+          passwordHash: 'hash-fake',
+          activo: true,
+          isGlobalAdmin: true,
+        },
+      });
+
+      // Sin ninguna membresía en `cliente`, el root debe ser solicitante/asignado válido.
+      expect(await checker.existeEnTenant(root.id, cliente.id)).toBe(true);
+      expect(await checker.estaActivoEnTenant(root.id, cliente.id)).toBe(true);
+    });
+  });
 });
