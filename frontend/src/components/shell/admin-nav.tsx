@@ -26,7 +26,10 @@ const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { href: "/admin/ciclos", label: "Ciclos", visible: (can) => can("ciclo:gestionar") },
   { href: "/admin/usuarios", label: "Usuarios", visible: (can) => can("usuario:gestionar") },
   { href: "/admin/routing", label: "Routing", visible: (can) => can("usuario:gestionar") },
-  { href: "/admin/clientes", label: "Clientes", visible: (_can, isGlobalAdmin) => isGlobalAdmin },
+  // "Clientes" NO vive en el área Admin: es exclusivo de ROOT (plataforma),
+  // no una sección administrable por el ADMINISTRADOR del tenant. Se accede
+  // por su ítem top-level propio del sidebar (nav-config.ts), gateado por
+  // `is_global_admin`. Ver también el ítem master "Ciclos" (mismo criterio).
 ];
 
 export function AdminNav() {
