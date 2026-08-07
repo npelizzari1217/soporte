@@ -1,0 +1,47 @@
+/**
+ * equipos.module.spec.ts — T13.7: wiring de `EquiposModule`.
+ *
+ * Inspecciona la metadata del decorador `@Module()` directamente (sin
+ * compilar el árbol de módulos ni requerir DB) — mismo patrón que
+ * `compras.module.spec.ts`/`reparaciones.module.spec.ts`. Verifica que
+ * `EquiposController` y `SoporteController` estén registrados, que
+ * `TicketsModule` y `ReparacionesModule` estén importados (reuso de
+ * providers — ADR-3 y validación de `ubicacionId`, respectivamente), y que
+ * los 4 repos de dominio estén exportados.
+ *
+ * Tarea: T13.7.
+ */
+import 'reflect-metadata';
+import { EquiposModule } from './equipos.module';
+import { EquiposController } from './interface/controllers/equipos.controller';
+import { SoporteController } from './interface/controllers/soporte.controller';
+import { TicketsModule } from '../tickets/tickets.module';
+import { ReparacionesModule } from '../reparaciones/reparaciones.module';
+import { EQUIPO_INFORMATICO_REPOSITORY } from './domain/ports/i-equipo-informatico.repository';
+import { COMPONENTE_EQUIPO_REPOSITORY } from './domain/ports/i-componente-equipo.repository';
+import { TIPO_COMPONENTE_REPOSITORY } from './domain/ports/i-tipo-componente.repository';
+import { TICKET_SOPORTE_REPOSITORY } from './domain/ports/i-ticket-soporte.repository';
+
+describe('EquiposModule wiring (T13.7)', () => {
+  it('registra EquiposController y SoporteController', () => {
+    const controllers = (Reflect.getMetadata('controllers', EquiposModule) ?? []) as unknown[];
+    expect(controllers).toContain(EquiposController);
+    expect(controllers).toContain(SoporteController);
+  });
+
+  it('importa TicketsModule (reusa providers exportados, ADR-3) y ReparacionesModule (UBICACION_REPOSITORY)', () => {
+    const imports = (Reflect.getMetadata('imports', EquiposModule) ?? []) as unknown[];
+    expect(imports).toContain(TicketsModule);
+    expect(imports).toContain(ReparacionesModule);
+  });
+
+  it.each([
+    EQUIPO_INFORMATICO_REPOSITORY,
+    COMPONENTE_EQUIPO_REPOSITORY,
+    TIPO_COMPONENTE_REPOSITORY,
+    TICKET_SOPORTE_REPOSITORY,
+  ])('%s está exportado', (token) => {
+    const exportsList = (Reflect.getMetadata('exports', EquiposModule) ?? []) as unknown[];
+    expect(exportsList).toContain(token);
+  });
+});

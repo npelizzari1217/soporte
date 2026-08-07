@@ -1,0 +1,73 @@
+/**
+ * PrismaEquipoInformaticoRepository — implementación del puerto
+ * IEquipoInformaticoRepository.
+ *
+ * Reglas:
+ * - Obtiene el cliente Prisma del tenant activo vía TenantContext.getClient().
+ *   NUNCA recibe PrismaService ni llama a PrismaService directamente.
+ * - save() es un upsert por id (INSERT si nuevo, UPDATE si existe); nunca
+ *   pisa `createdAt` en el UPDATE (mismo patrón que PrismaTicketRepository).
+ * - delete() es SIEMPRE soft delete (deletedAt), nunca DELETE físico.
+ *
+ * Tarea: T11.2.
+ */
+import { Injectable } from '@nestjs/common';
+import { TenantContext } from '../../../../shared/tenancy/tenant-context';
+import { TenantPrismaClient } from '../../../../shared/infrastructure/persistence/prisma-clients';
+import { IEquipoInformaticoRepository } from '../../../domain/ports/i-equipo-informatico.repository';
+import { EquipoInformaticoEntity } from '../../../domain/entities/equipo-informatico.entity';
+import { EquipoInformaticoMapper } from './equipo-informatico.mapper';
+
+@Injectable()
+export class PrismaEquipoInformaticoRepository implements IEquipoInformaticoRepository {
+  constructor(private readonly tenantContext: TenantContext) {}
+
+  private get client(): InstanceType<typeof TenantPrismaClient> {
+    return this.tenantContext.getClient() as InstanceType<typeof TenantPrismaClient>;
+  }
+
+  async findById(id: string): Promise<EquipoInformaticoEntity | null> {
+    const row = await this.client.equipoInformatico.findUnique({ where: { id } });
+    return row ? EquipoInformaticoMapper.toDomain(row) : null;
+  }
+
+  async findByNumeroSerie(numeroSerie: string): Promise<EquipoInformaticoEntity | null> {
+    const row = await this.client.equipoInformatico.findFirst({
+      where: { numeroSerie, deletedAt: null },
+    });
+    return row ? EquipoInformaticoMapper.toDomain(row) : null;
+  }
+
+  async findAllActive(): Promise<EquipoInformaticoEntity[]> {
+    const rows = await this.client.equipoInformatico.findMany({
+      where: { deletedAt: null, activo: true },
+      orderBy: { createdAt: 'desc' },
+    });
+    return rows.map(EquipoInformaticoMapper.toDomain);
+  }
+
+  async findByAsignadoAId(asignadoAId: string): Promise<EquipoInformaticoEntity[]> {
+    const rows = await this.client.equipoInformatico.findMany({
+      where: { asignadoAId, deletedAt: null },
+      orderBy: { createdAt: 'desc' },
+    });
+    return rows.map(EquipoInformaticoMapper.toDomain);
+  }
+
+  async save(equipo: EquipoInformaticoEntity): Promise<void> {
+    const data = EquipoInformaticoMapper.toPersistence(equipo);
+    const { createdAt: _createdAt, ...updateData } = data;
+    await this.client.equipoInformatico.upsert({
+      where: { id: data.id },
+      create: data,
+      update: updateData,
+    });
+  }
+
+  async delete(id: string): Promise<void> {
+    await this.client.equipoInformatico.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
+  }
+}

@@ -1,0 +1,560 @@
+/**
+ * auth.e2e.spec.ts — TDD RED phase (T6.5/T6.6, PR6 — cierre de la fase).
+ *
+ * E2E real de punta a punta (HTTP → guards → controller → use cases → Prisma
+ * REAL contra `soporte_master_test`), bootstrapeando `AuthModule` +
+ * `SharedModule` con NestJS `TestingModule` real (sin mocks de infra).
+ *
+ * Cubre R3–R14: login (1/varias membresías/root), refresh con rotación,
+ * switch (autorizado/denegado, root cross-tenant), y los 4 guards (R11–R14)
+ * ejercidos vía HTTP real — no solo en unidad.
+ *
+ * Nota de diseño — `TestProtectedController`: al momento de este PR ningún
+ * módulo de negocio (tickets/clientes/etc.) tiene endpoints reales que usen
+ * `TenantGuard`/`PermissionsGuard`/`GlobalAdminGuard` (siguen scaffoldeados
+ * vacíos — esos guards recién se consumirán en PRs de features futuras). Sin
+ * un endpoint real no hay forma de probar el guard vía HTTP genuino (las
+ * specs unitarias de cada guard, en `infrastructure/guards/*.spec.ts`, ya
+ * cubren su lógica aislada). Se declara acá un controller MÍNIMO de test,
+ * dentro de un módulo que solo importa `SharedModule`+`AuthModule` (los
+ * guards se resuelven vía los tokens que `AuthModule` ya exporta) — NO se
+ * toca código de producción. Se elimina naturalmente cuando el primer
+ * controller de negocio real los reemplace.
+ *
+ * Nota — sin `supertest`: se usa `fetch` nativo de Node (mismo patrón
+ * probado en `soporte1/backend/src/clientes/interface/smoke.e2e.spec.ts`),
+ * evitando agregar una dependencia nueva al proyecto para este PR.
+ */
+import { Pool } from 'pg';
+import {
+  Controller,
+  Get,
+  INestApplication,
+  MiddlewareConsumer,
+  Module,
+  NestModule,
+  UseGuards,
+  ValidationPipe,
+} from '@nestjs/common';
+import { Test, TestingModule } from '@nestjs/testing';
+
+import { SharedModule } from '../../../shared/shared.module';
+import { AuthModule } from '../../auth.module';
+import { TenantScopeMiddleware } from '../../../shared/tenancy/tenant-scope.middleware';
+import { JwtAuthGuard } from '../../infrastructure/guards/jwt-auth.guard';
+import { TenantGuard } from '../../infrastructure/guards/tenant.guard';
+import { PermissionsGuard } from '../../infrastructure/guards/permissions.guard';
+import { GlobalAdminGuard } from '../../infrastructure/guards/global-admin.guard';
+import { CurrentUser, RequirePermissions } from '../../infrastructure/guards/decorators';
+import { JwtPayload } from '../../domain/ports/i-token.service';
+
+import { PrismaService } from '../../../shared/infrastructure/persistence/prisma.service';
+import { MasterPrismaClient } from '../../../shared/infrastructure/persistence/prisma-clients';
+import { PrismaClienteRepository } from '../../../clientes/infrastructure/persistence/prisma/prisma-cliente.repository';
+import { PrismaUsuarioRepository } from '../../infrastructure/persistence/prisma/prisma-usuario.repository';
+import { ClienteEntity } from '../../../clientes/domain/entities/cliente.entity';
+import { UsuarioEntity } from '../../domain/entities/usuario.entity';
+import { RoleEntity } from '../../domain/entities/role.entity';
+import { PermisoEntity } from '../../domain/entities/permiso.entity';
+import { Argon2HashProvider } from '../../infrastructure/argon2-hash.provider';
+
+const TEST_DB_URL =
+  process.env.DATABASE_URL_MASTER ??
+  'postgresql://soporte:soporte@localhost:5432/soporte_master_test';
+
+const PLAINTEXT_PASSWORD = 'E2eSecret!123';
+
+// ─── Test harness: controller mínimo (ver nota de diseño arriba) ────────────
+
+@Controller('test-protected')
+class TestProtectedController {
+  @Get('tenant-only')
+  @UseGuards(JwtAuthGuard, TenantGuard)
+  tenantOnly(@CurrentUser() user: JwtPayload): { clienteId: string | null } {
+    return { clienteId: user.cliente_id };
+  }
+
+  @Get('permission-gated')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('ticket:crear')
+  permissionGated(): { ok: true } {
+    return { ok: true };
+  }
+
+  @Get('root-only')
+  @UseGuards(JwtAuthGuard, GlobalAdminGuard)
+  rootOnly(): { ok: true } {
+    return { ok: true };
+  }
+}
+
+@Module({
+  imports: [SharedModule, AuthModule],
+  controllers: [TestProtectedController],
+})
+class TestHarnessModule implements NestModule {
+  configure(consumer: MiddlewareConsumer): void {
+    consumer.apply(TenantScopeMiddleware).forRoutes('*');
+  }
+}
+
+// ─── Helpers HTTP (fetch nativo) ─────────────────────────────────────────────
+
+type Headers = Record<string, string>;
+
+async function httpPost<T = unknown>(
+  url: string,
+  body: unknown,
+  headers: Headers = {},
+): Promise<{ status: number; data: T }> {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...headers },
+    body: JSON.stringify(body),
+  });
+  const data = (await res.json().catch(() => null)) as T;
+  return { status: res.status, data };
+}
+
+async function httpGet<T = unknown>(
+  url: string,
+  headers: Headers = {},
+): Promise<{ status: number; data: T }> {
+  const res = await fetch(url, {
+    method: 'GET',
+    headers: { Accept: 'application/json', ...headers },
+  });
+  const data = (await res.json().catch(() => null)) as T;
+  return { status: res.status, data };
+}
+
+function bearer(token: string): Headers {
+  return { Authorization: `Bearer ${token}` };
+}
+
+// ─── Suite ────────────────────────────────────────────────────────────────
+
+describe('Auth e2e (R3–R14, PR6)', () => {
+  let app: INestApplication;
+  let baseUrl: string;
+  let prismaService: PrismaService;
+  let masterClient: InstanceType<typeof MasterPrismaClient>;
+  let clienteRepo: PrismaClienteRepository;
+  let usuarioRepo: PrismaUsuarioRepository;
+  let hashProvider: Argon2HashProvider;
+
+  beforeAll(async () => {
+    if (!process.env.DATABASE_URL_MASTER) {
+      process.env.DATABASE_URL_MASTER = TEST_DB_URL;
+    }
+
+    const moduleRef: TestingModule = await Test.createTestingModule({
+      imports: [TestHarnessModule],
+    }).compile();
+
+    app = moduleRef.createNestApplication();
+    app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+    await app.init();
+    await app.listen(0);
+
+    const port = (app.getHttpServer() as { address: () => { port: number } }).address().port;
+    baseUrl = `http://localhost:${port}`;
+
+    prismaService = new PrismaService(TEST_DB_URL);
+    masterClient = prismaService.getMasterClient();
+    clienteRepo = new PrismaClienteRepository(prismaService);
+    usuarioRepo = new PrismaUsuarioRepository(prismaService);
+    hashProvider = new Argon2HashProvider();
+  }, 60_000);
+
+  afterAll(async () => {
+    try {
+      await app?.close();
+    } catch (_err) {
+      /* no-op */
+    }
+    try {
+      await prismaService?.onModuleDestroy();
+    } catch (_err) {
+      /* no-op */
+    }
+  }, 30_000);
+
+  beforeEach(async () => {
+    await masterClient.$executeRawUnsafe(
+      'TRUNCATE TABLE membresias, refresh_tokens, roles_permisos, usuarios, clientes, roles, permisos RESTART IDENTITY CASCADE',
+    );
+  });
+
+  // ─── Fixtures ─────────────────────────────────────────────────────────
+
+  async function createCliente(suffix: string, activo = true): Promise<ClienteEntity> {
+    const cliente = ClienteEntity.create({
+      nombre: `E2E Cliente ${suffix}`,
+      razonSocial: null,
+      cuit: null,
+      dbName: `test_auth_e2e_${suffix}`,
+      activo,
+    });
+    await clienteRepo.save(cliente);
+    return cliente;
+  }
+
+  async function createRoleConPermisos(
+    codigo: string,
+    permisoCodigos: string[],
+  ): Promise<RoleEntity> {
+    const permisos = permisoCodigos.map((c) =>
+      PermisoEntity.create({ codigo: c, descripcion: null }),
+    );
+    const role = RoleEntity.create({ codigo, nombre: codigo, descripcion: null, permisos });
+
+    await masterClient.role.create({
+      data: { id: role.id, codigo: role.codigo, nombre: role.nombre },
+    });
+    for (const permiso of permisos) {
+      await masterClient.permiso.upsert({
+        where: { codigo: permiso.codigo },
+        create: { id: permiso.id, codigo: permiso.codigo },
+        update: {},
+      });
+      const permisoRow = await masterClient.permiso.findUniqueOrThrow({
+        where: { codigo: permiso.codigo },
+      });
+      await masterClient.rolesPermisos.create({
+        data: { rolId: role.id, permisoId: permisoRow.id },
+      });
+    }
+    return role;
+  }
+
+  async function createUsuario(
+    suffix: string,
+    overrides: Partial<{ isGlobalAdmin: boolean }> = {},
+  ): Promise<UsuarioEntity> {
+    const usuario = UsuarioEntity.create({
+      email: `e2e_${suffix}@auth.test`,
+      nombre: 'E2E',
+      apellido: 'User',
+      passwordHash: await hashProvider.hash(PLAINTEXT_PASSWORD),
+      activo: true,
+      isGlobalAdmin: overrides.isGlobalAdmin ?? false,
+    });
+    await usuarioRepo.save(usuario);
+    return usuario;
+  }
+
+  async function createMembresia(
+    usuarioId: string,
+    clienteId: string,
+    rolId: string,
+    activo = true,
+  ): Promise<void> {
+    await masterClient.membresia.create({ data: { usuarioId, clienteId, rolId, activo } });
+  }
+
+  async function login(email: string, password = PLAINTEXT_PASSWORD, clienteId?: string) {
+    return httpPost<{
+      accessToken?: string;
+      refreshToken?: string;
+      needsClienteSelection?: true;
+      membresias?: { cliente_id: string; nombre: string; rol: string }[];
+    }>(`${baseUrl}/auth/login`, { email, password, ...(clienteId ? { clienteId } : {}) });
+  }
+
+  // ─── R3–R6 — Login ────────────────────────────────────────────────────
+
+  describe('POST /auth/login (R3–R6)', () => {
+    it('1 membresía activa → 200 { accessToken, refreshToken }', async () => {
+      const cliente = await createCliente('login-1m');
+      const role = await createRoleConPermisos('TECNICO', ['ticket:editar']);
+      const usuario = await createUsuario('login-1m');
+      await createMembresia(usuario.id, cliente.id, role.id);
+
+      const { status, data } = await login(usuario.email);
+
+      expect(status).toBe(200);
+      expect(data.accessToken).toEqual(expect.any(String));
+      expect(data.refreshToken).toEqual(expect.any(String));
+    });
+
+    it('>1 membresías sin clienteId → 200 { needsClienteSelection, membresias }, re-login con clienteId → tokens', async () => {
+      const clienteA = await createCliente('login-multi-a');
+      const clienteB = await createCliente('login-multi-b');
+      const roleA = await createRoleConPermisos('TECNICO', ['ticket:editar']);
+      const roleB = await createRoleConPermisos('USUARIO', ['ticket:crear']);
+      const usuario = await createUsuario('login-multi');
+      await createMembresia(usuario.id, clienteA.id, roleA.id);
+      await createMembresia(usuario.id, clienteB.id, roleB.id);
+
+      const selection = await login(usuario.email);
+      expect(selection.status).toBe(200);
+      expect(selection.data.needsClienteSelection).toBe(true);
+      expect(selection.data.membresias).toHaveLength(2);
+      expect(selection.data.accessToken).toBeUndefined();
+
+      const chosen = await login(usuario.email, PLAINTEXT_PASSWORD, clienteA.id);
+      expect(chosen.status).toBe(200);
+      expect(chosen.data.accessToken).toEqual(expect.any(String));
+    });
+
+    it('root sin clienteId → 200, token MASTER', async () => {
+      const root = await createUsuario('login-root', { isGlobalAdmin: true });
+
+      const { status } = await login(root.email);
+
+      expect(status).toBe(200);
+    });
+
+    it('password incorrecto → 401', async () => {
+      const usuario = await createUsuario('login-badpass');
+
+      const { status } = await login(usuario.email, 'wrong-password');
+
+      expect(status).toBe(401);
+    });
+
+    it('body inválido (email malformado) → 400 (ValidationPipe)', async () => {
+      const { status } = await httpPost(`${baseUrl}/auth/login`, {
+        email: 'no-es-un-email',
+        password: 'x',
+      });
+
+      expect(status).toBe(400);
+    });
+  });
+
+  // ─── R8 — Refresh con rotación ────────────────────────────────────────
+
+  describe('POST /auth/refresh (R8)', () => {
+    it('refresh feliz → rota tokens (nuevos != anteriores)', async () => {
+      const root = await createUsuario('refresh-happy', { isGlobalAdmin: true });
+      const loginRes = await login(root.email);
+      const oldRefresh = loginRes.data.refreshToken!;
+
+      const { status, data } = await httpPost<{ accessToken: string; refreshToken: string }>(
+        `${baseUrl}/auth/refresh`,
+        { refreshToken: oldRefresh },
+      );
+
+      expect(status).toBe(200);
+      expect(data.refreshToken).not.toBe(oldRefresh);
+    });
+
+    it('reuso del refresh ya rotado → 401 (TokenRevocado)', async () => {
+      const root = await createUsuario('refresh-reuse', { isGlobalAdmin: true });
+      const loginRes = await login(root.email);
+      const oldRefresh = loginRes.data.refreshToken!;
+
+      await httpPost(`${baseUrl}/auth/refresh`, { refreshToken: oldRefresh });
+      const { status } = await httpPost(`${baseUrl}/auth/refresh`, { refreshToken: oldRefresh });
+
+      expect(status).toBe(401);
+    });
+
+    it('token inexistente → 401', async () => {
+      const { status } = await httpPost(`${baseUrl}/auth/refresh`, { refreshToken: 'no-existe' });
+      expect(status).toBe(401);
+    });
+  });
+
+  // ─── R9 — Logout / logout-all ───────────────────────────────────────────
+
+  describe('POST /auth/logout + /auth/logout-all (R9)', () => {
+    it('logout revoca el token: refrescar después → 401', async () => {
+      const root = await createUsuario('logout-single', { isGlobalAdmin: true });
+      const { data } = await login(root.email);
+
+      const logoutRes = await httpPost(`${baseUrl}/auth/logout`, {
+        refreshToken: data.refreshToken,
+      });
+      expect(logoutRes.status).toBe(204);
+
+      const refreshRes = await httpPost(`${baseUrl}/auth/refresh`, {
+        refreshToken: data.refreshToken,
+      });
+      expect(refreshRes.status).toBe(401);
+    });
+
+    it('logout-all revoca todos los refresh tokens del usuario autenticado', async () => {
+      const root = await createUsuario('logout-all', { isGlobalAdmin: true });
+      const login1 = await login(root.email);
+      const login2 = await login(root.email);
+
+      const logoutAllRes = await httpPost(
+        `${baseUrl}/auth/logout-all`,
+        {},
+        bearer(login1.data.accessToken!),
+      );
+      expect(logoutAllRes.status).toBe(204);
+
+      const refresh1 = await httpPost(`${baseUrl}/auth/refresh`, {
+        refreshToken: login1.data.refreshToken,
+      });
+      const refresh2 = await httpPost(`${baseUrl}/auth/refresh`, {
+        refreshToken: login2.data.refreshToken,
+      });
+      expect(refresh1.status).toBe(401);
+      expect(refresh2.status).toBe(401);
+    });
+  });
+
+  // ─── R10 — Switch tenant ────────────────────────────────────────────────
+
+  describe('POST /auth/switch (R10)', () => {
+    it('usuario normal salta a un cliente con membresía → 200 { accessToken }', async () => {
+      const clienteA = await createCliente('switch-ok-a');
+      const clienteB = await createCliente('switch-ok-b');
+      const role = await createRoleConPermisos('TECNICO', ['ticket:editar']);
+      const usuario = await createUsuario('switch-ok');
+      await createMembresia(usuario.id, clienteA.id, role.id);
+      await createMembresia(usuario.id, clienteB.id, role.id);
+
+      const loginRes = await login(usuario.email, PLAINTEXT_PASSWORD, clienteA.id);
+      const { status, data } = await httpPost<{ accessToken: string }>(
+        `${baseUrl}/auth/switch`,
+        { clienteId: clienteB.id },
+        bearer(loginRes.data.accessToken!),
+      );
+
+      expect(status).toBe(200);
+      expect(data.accessToken).toEqual(expect.any(String));
+    });
+
+    it('usuario normal SIN membresía en el cliente destino → 403', async () => {
+      const clienteOrigen = await createCliente('switch-denied-origen');
+      const clienteDestino = await createCliente('switch-denied-destino');
+      const role = await createRoleConPermisos('TECNICO', ['ticket:editar']);
+      const usuario = await createUsuario('switch-denied');
+      await createMembresia(usuario.id, clienteOrigen.id, role.id);
+
+      const loginRes = await login(usuario.email);
+      const { status } = await httpPost(
+        `${baseUrl}/auth/switch`,
+        { clienteId: clienteDestino.id },
+        bearer(loginRes.data.accessToken!),
+      );
+
+      expect(status).toBe(403);
+    });
+
+    it('sin Bearer token → 401', async () => {
+      const cliente = await createCliente('switch-no-auth');
+      const { status } = await httpPost(`${baseUrl}/auth/switch`, { clienteId: cliente.id });
+      expect(status).toBe(401);
+    });
+  });
+
+  // ─── R11–R14 — Guards vía HTTP real (incl. root cross-tenant) ──────────
+
+  describe('Guards vía HTTP real (R11–R14)', () => {
+    it('JwtAuthGuard (R11): ruta protegida sin Bearer → 401', async () => {
+      const { status } = await httpGet(`${baseUrl}/test-protected/root-only`);
+      expect(status).toBe(401);
+    });
+
+    it('GlobalAdminGuard (R14): root → 200; usuario normal → 403 (ortogonalidad: rol ADMINISTRADOR no alcanza)', async () => {
+      const root = await createUsuario('guard-root', { isGlobalAdmin: true });
+      const rootLogin = await login(root.email);
+      const rootOnly = await httpGet(
+        `${baseUrl}/test-protected/root-only`,
+        bearer(rootLogin.data.accessToken!),
+      );
+      expect(rootOnly.status).toBe(200);
+
+      const cliente = await createCliente('guard-admin-normal');
+      const roleAdmin = await createRoleConPermisos('ADMINISTRADOR', [
+        'ticket:eliminar',
+        'usuario:gestionar',
+      ]);
+      const normalAdmin = await createUsuario('guard-admin-normal');
+      await createMembresia(normalAdmin.id, cliente.id, roleAdmin.id);
+      const normalLogin = await login(normalAdmin.email);
+      const denied = await httpGet(
+        `${baseUrl}/test-protected/root-only`,
+        bearer(normalLogin.data.accessToken!),
+      );
+      expect(denied.status).toBe(403);
+    });
+
+    it('PermissionsGuard (R13): usuario CON el permiso → 200; usuario SIN el permiso → 403', async () => {
+      const cliente = await createCliente('guard-permisos');
+      const roleConPermiso = await createRoleConPermisos('COLABORADOR', ['ticket:crear']);
+      const roleSinPermiso = await createRoleConPermisos('TECNICO_SIN_CREAR', ['ticket:editar']);
+      const usuarioCon = await createUsuario('guard-permiso-con');
+      const usuarioSin = await createUsuario('guard-permiso-sin');
+      await createMembresia(usuarioCon.id, cliente.id, roleConPermiso.id);
+      await createMembresia(usuarioSin.id, cliente.id, roleSinPermiso.id);
+
+      const loginCon = await login(usuarioCon.email);
+      const okRes = await httpGet(
+        `${baseUrl}/test-protected/permission-gated`,
+        bearer(loginCon.data.accessToken!),
+      );
+      expect(okRes.status).toBe(200);
+
+      const loginSin = await login(usuarioSin.email);
+      const deniedRes = await httpGet(
+        `${baseUrl}/test-protected/permission-gated`,
+        bearer(loginSin.data.accessToken!),
+      );
+      expect(deniedRes.status).toBe(403);
+    });
+
+    it('TenantGuard (R12): cliente_id null (token master) → 403; cliente activo → 200; cliente suspendido mid-sesión → 403', async () => {
+      const cliente = await createCliente('guard-tenant');
+      const role = await createRoleConPermisos('TECNICO', ['ticket:editar']);
+      const usuario = await createUsuario('guard-tenant');
+      await createMembresia(usuario.id, cliente.id, role.id);
+      const loginRes = await login(usuario.email);
+
+      const okRes = await httpGet(
+        `${baseUrl}/test-protected/tenant-only`,
+        bearer(loginRes.data.accessToken!),
+      );
+      expect(okRes.status).toBe(200);
+
+      cliente.suspend();
+      await clienteRepo.save(cliente);
+      const suspendedRes = await httpGet(
+        `${baseUrl}/test-protected/tenant-only`,
+        bearer(loginRes.data.accessToken!),
+      );
+      expect(suspendedRes.status).toBe(403);
+    });
+
+    it('root cross-tenant (ADR-4): token master → 403 en ruta tenant; tras switch a un cliente activo → 200 (sin necesitar membresía)', async () => {
+      const cliente = await createCliente('guard-root-cross');
+      const root = await createUsuario('guard-root-cross', { isGlobalAdmin: true });
+
+      const masterLogin = await login(root.email);
+      const masterOnTenant = await httpGet(
+        `${baseUrl}/test-protected/tenant-only`,
+        bearer(masterLogin.data.accessToken!),
+      );
+      expect(masterOnTenant.status).toBe(403);
+
+      const switchRes = await httpPost<{ accessToken: string }>(
+        `${baseUrl}/auth/switch`,
+        { clienteId: cliente.id },
+        bearer(masterLogin.data.accessToken!),
+      );
+      expect(switchRes.status).toBe(200);
+
+      const scopedOnTenant = await httpGet(
+        `${baseUrl}/test-protected/tenant-only`,
+        bearer(switchRes.data.accessToken),
+      );
+      expect(scopedOnTenant.status).toBe(200);
+      expect((scopedOnTenant.data as { clienteId: string }).clienteId).toBe(cliente.id);
+    });
+  });
+
+  // ─── Sanity: la instancia sigue siendo Pool-clean (ninguna otra DB tocada) ──
+
+  it('sanity: DATABASE_URL_MASTER apunta a una DB *_test', () => {
+    const pool = new Pool({ connectionString: TEST_DB_URL });
+    expect(TEST_DB_URL).toMatch(/_test$/);
+    void pool.end();
+  });
+});

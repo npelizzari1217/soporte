@@ -1,0 +1,154 @@
+/**
+ * T7.4 / T1.1-T1.2 (Fase 3, ADR-5) [INT] — Test de integración de
+ * `TenantSeederAdapter` sobre una DB tenant REAL, recién creada y migrada
+ * (encadena T7.2 + T7.3 + T7.4 sin mocks, contra Postgres real).
+ *
+ * SEGURIDAD: crea UNA sola DB efímera `soporte_prov_seed_<rand>_test`
+ * (prefijo `soporte_prov_`, sufijo `_test`) vía `PostgresAdminService`, la
+ * migra vía `TenantMigrationRunnerAdapter` (subproceso real de
+ * `prisma migrate deploy`), siembra vía `TenantSeederAdapter`, y la borra en
+ * `afterAll`. NUNCA toca `soporte_master`, `soporte_master_test`,
+ * `soporte_tenant_test`, `soporte_e2e` ni las bases `soporte_019f...`.
+ *
+ * Contrato verificado (R19, ampliado Fase 3 ADR-5/F3-S1):
+ * - Tras `seed()`, la DB tenant tiene 6 estados / 4 prioridades /
+ *   7 tipo_operacion (5 de R19 + APROBACION/RECHAZO) / 4 tipos_ticket /
+ *   10 tipos_componente persistidos con los códigos exactos.
+ * - Correr `seed()` una segunda vez sobre la MISMA DB no duplica filas ni
+ *   lanza error (idempotencia real, no solo mockeada).
+ *
+ * Este spec es lento (spawnea `prisma migrate deploy` real) — corre en
+ * `beforeAll`, una sola vez para toda la suite.
+ *
+ * Ref spec: sdd/auth-multitenancy/spec §R19; sdd/flujos-especializados/spec §F3-S1
+ * Ref design: sdd/flujos-especializados/design ADR-5
+ * Tarea: T7.4 (base) / T1.1-T1.2 (Fase 3, PR1 gated)
+ */
+import { randomBytes } from 'node:crypto';
+import { Pool } from 'pg';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { PostgresAdminService } from './postgres-admin.service';
+import { TenantMigrationRunnerAdapter } from './tenant-migration-runner.adapter';
+import { TenantSeederAdapter } from './tenant-seeder.adapter';
+import { TenantPrismaClient } from '../../shared/infrastructure/persistence/prisma-clients';
+
+const MASTER_URL =
+  process.env.DATABASE_URL_MASTER ??
+  'postgresql://soporte:soporte@localhost:5432/soporte_master_test';
+
+const DB_NAME = `soporte_prov_seed_${randomBytes(4).toString('hex')}_test`;
+
+function buildTenantUrl(dbName: string): string {
+  const url = new URL(MASTER_URL);
+  url.pathname = `/${dbName}`;
+  return url.toString();
+}
+
+describe('TenantSeederAdapter (T7.4, integración — Postgres real, DB efímera)', () => {
+  const admin = new PostgresAdminService(MASTER_URL);
+  const migrationRunner = new TenantMigrationRunnerAdapter(MASTER_URL);
+  const seeder = new TenantSeederAdapter(MASTER_URL);
+
+  let verifyPool: Pool;
+  let verifyClient: InstanceType<typeof TenantPrismaClient>;
+
+  beforeAll(async () => {
+    await admin.createDatabase(DB_NAME);
+    await migrationRunner.run(DB_NAME);
+
+    verifyPool = new Pool({ connectionString: buildTenantUrl(DB_NAME) });
+    verifyClient = new TenantPrismaClient({ adapter: new PrismaPg(verifyPool) });
+  }, 60_000);
+
+  afterAll(async () => {
+    await verifyClient.$disconnect();
+    await verifyPool.end();
+    await admin.dropDatabase(DB_NAME);
+  });
+
+  it('[CRITICAL] seed() persiste los 5 catálogos con los códigos exactos en la DB tenant real', async () => {
+    await seeder.seed(DB_NAME);
+
+    const estados = await verifyClient.estado.findMany({ orderBy: { orden: 'asc' } });
+    expect(estados.map((e) => e.codigo)).toEqual([
+      'NUEVO',
+      'ASIGNADO',
+      'EN_PROCESO',
+      'RESUELTO',
+      'CERRADO',
+      'CANCELADO',
+    ]);
+
+    const prioridades = await verifyClient.prioridad.findMany({ orderBy: { orden: 'asc' } });
+    expect(prioridades.map((p) => p.codigo)).toEqual(['BAJA', 'MEDIA', 'ALTA', 'CRITICA']);
+
+    const tipoOperacion = await verifyClient.tipoOperacion.findMany({ orderBy: { nombre: 'asc' } });
+    expect(tipoOperacion).toHaveLength(7);
+    expect(tipoOperacion.map((t) => t.codigo).sort()).toEqual(
+      [
+        'CAMBIO_ESTADO',
+        'COMENTARIO',
+        'ASIGNACION',
+        'ADJUNTO',
+        'AVANCE_EDILICIO',
+        'APROBACION',
+        'RECHAZO',
+      ].sort(),
+    );
+
+    const tiposTicket = await verifyClient.tipoTicket.findMany({ orderBy: { codigo: 'asc' } });
+    expect(tiposTicket.map((t) => t.codigo).sort()).toEqual(
+      ['SOPORTE', 'COMPRAS', 'EDILICIA', 'MANTENIMIENTO'].sort(),
+    );
+
+    const tiposComponente = await verifyClient.tipoComponente.findMany({
+      orderBy: { codigo: 'asc' },
+    });
+    expect(tiposComponente).toHaveLength(10);
+    expect(tiposComponente.map((t) => t.codigo).sort()).toEqual(
+      [
+        'CPU',
+        'RAM',
+        'DISCO',
+        'MONITOR',
+        'TECLADO',
+        'MOUSE',
+        'GPU',
+        'FUENTE',
+        'IMPRESORA',
+        'RED',
+      ].sort(),
+    );
+
+    // Fase 4 (S1, GATE G1): sla_config sembrado 1:1 con prioridades.
+    const slaConfigs = await verifyClient.slaConfig.findMany({
+      include: { prioridad: { select: { codigo: true } } },
+    });
+    expect(slaConfigs).toHaveLength(4);
+    const horasPorCodigo = Object.fromEntries(slaConfigs.map((s) => [s.prioridad.codigo, s.horas]));
+    expect(horasPorCodigo).toEqual({ CRITICA: 4, ALTA: 8, MEDIA: 24, BAJA: 48 });
+    expect(slaConfigs.every((s) => s.activo)).toBe(true);
+  }, 30_000);
+
+  it('[CRITICAL] correr seed() una segunda vez NO duplica filas ni falla (R19, ampliado F3-S1)', async () => {
+    await seeder.seed(DB_NAME);
+    await seeder.seed(DB_NAME); // re-run
+
+    const [estados, prioridades, tipoOperacion, tiposTicket, tiposComponente, slaConfigs] =
+      await Promise.all([
+        verifyClient.estado.findMany(),
+        verifyClient.prioridad.findMany(),
+        verifyClient.tipoOperacion.findMany(),
+        verifyClient.tipoTicket.findMany(),
+        verifyClient.tipoComponente.findMany(),
+        verifyClient.slaConfig.findMany(),
+      ]);
+
+    expect(estados).toHaveLength(6);
+    expect(prioridades).toHaveLength(4);
+    expect(tipoOperacion).toHaveLength(7);
+    expect(tiposTicket).toHaveLength(4);
+    expect(tiposComponente).toHaveLength(10);
+    expect(slaConfigs).toHaveLength(4);
+  }, 30_000);
+});

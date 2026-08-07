@@ -1,0 +1,686 @@
+// prisma_tenant/schema.prisma
+// Base de datos por TENANT (database-per-tenant).
+// Sin columna cliente_id: el cliente ES la base de datos (routing vía
+// master.clientes.db_name → PrismaService.getTenantClient()).
+//
+// Decisiones de diseño:
+//   - IDs: uuid nativo (@db.Uuid) + gen_random_uuid() como red de seguridad en
+//     DB. El backend genera UUIDv7 antes de cada insert (lib `uuidv7`).
+//   - Enums: tablas de catálogo — no enums nativos de Postgres, para permitir
+//     altas sin migración de schema (tipos_ticket es editable por el admin).
+//   - Soft delete universal en entidades con identidad propia: deleted_at
+//     timestamptz nullable. Las tablas join puras (archivos_ticket,
+//     archivos_operacion, archivos_presupuesto, archivos_equipo,
+//     usuario_tipos_ticket) NO tienen soft delete: la baja es eliminación
+//     física (ON DELETE CASCADE / delete).
+//   - updatedAt gestionado por Prisma (@updatedAt) en entidades con soft delete.
+//   - Soft refs cross-DB: solicitante_id, asignado_id, autor_id, subido_por_id,
+//     ciclo_vigente_id, aprobado_por_id, personal_asignado_id,
+//     completada_por_id, asignado_a_id y usuario_id en usuario_tipos_ticket
+//     referencian filas de la DB master (usuarios / ciclos_vigentes).
+//     NO tienen FK real — una FK cross-DB es imposible en Postgres (cada
+//     tenant es una base de datos física distinta). La integridad se valida
+//     en la capa de aplicación (use cases), NO en la DB.
+//   - Partial indexes (ciclos_cliente.activo, tickets.ciclo_id WHERE NOT NULL,
+//     tickets.asignado_id WHERE NOT NULL, ubicaciones.padre_id/activo,
+//     equipos_informaticos.numero_serie) se agregan como raw SQL en la
+//     migración — Prisma no expresa índices/UNIQUE parciales en el schema.
+//   - CHECK (tipos_ticket.codigo IN (...)), CHECK (tamano_bytes > 0),
+//     CHECK (cantidad > 0), CHECK (monto_total >= 0),
+//     CHECK (porcentaje_avance BETWEEN 0 AND 100) son raw SQL en migración.
+//
+// En Prisma 7, la URL se pasa al constructor vía adapter:
+//   new PrismaClient({ adapter: new PrismaPg(pool) })
+// La conexión para las migraciones del CLI vive en prisma.tenant.config.ts.
+
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/tenant"
+}
+
+// ─── ESTADOS (catálogo FIJO — sembrado en provisioning) ───────────────────────
+//
+// Estados del ciclo de vida del ticket. NO editable por el admin del tenant
+// (a diferencia de tipos_ticket): el flujo de transición de estados vive en
+// la capa de aplicación y depende de códigos conocidos.
+// Seeds: ABIERTO, PENDIENTE_APROBACION, APROBADO, RECHAZADO, EN_PROGRESO,
+//        RESUELTO, CERRADO, CANCELADO.
+// Referenciado por tickets.estado_id, operaciones_ticket.estado_anterior_id
+// y operaciones_ticket.estado_nuevo_id.
+
+model Estado {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  codigo    String    @unique @db.VarChar(50)
+  nombre    String    @db.VarChar(100)
+  color     String?   @db.VarChar(20)
+  orden     Int       @default(0)
+  activo    Boolean   @default(true)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz
+
+  tickets             Ticket[]
+  operacionesAnterior OperacionTicket[] @relation("EstadoAnterior")
+  operacionesNuevo    OperacionTicket[] @relation("EstadoNuevo")
+
+  @@map("estados")
+}
+
+// ─── PRIORIDADES (catálogo FIJO — sembrado en provisioning) ──────────────────
+//
+// Seeds: BAJA (orden 10), MEDIA (20), ALTA (30), CRITICA (40).
+// Usado por el módulo SLA para calcular sla_vence_at en tickets.
+
+model Prioridad {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  codigo    String    @unique @db.VarChar(50)
+  nombre    String    @db.VarChar(100)
+  color     String?   @db.VarChar(20)
+  orden     Int       @default(0)
+  activo    Boolean   @default(true)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz
+
+  tickets   Ticket[]
+  slaConfig SlaConfig?
+
+  @@map("prioridades")
+}
+
+// ─── TIPOS_TICKET (catálogo EDITABLE — sembrado en provisioning) ─────────────
+//
+// Discriminador de flujo. Seeds base: SOPORTE, COMPRAS, EDILICIA. A diferencia
+// de estados/prioridades, el administrador del tenant PUEDE agregar tipos
+// propios (por eso no hay CHECK de codigo IN (...) acá — el CHECK original de
+// soporte1 se retira; la app decide qué satélite (ticket_soporte /
+// ticket_compra / ticket_edilicia) corresponde por convención de código, y
+// tipos custom simplemente no tienen satélite).
+
+model TipoTicket {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  codigo    String    @unique @db.VarChar(50)
+  nombre    String    @db.VarChar(100)
+  activo    Boolean   @default(true)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz
+
+  tickets            Ticket[]
+  usuarioTiposTicket UsuarioTiposTicket[]
+  kbArticulos        KbArticulo[]
+
+  @@map("tipos_ticket")
+}
+
+// ─── TIPO_OPERACION (catálogo — sembrado en provisioning) ────────────────────
+//
+// Tipos de evento registrables en el timeline de un ticket.
+// Seeds: CAMBIO_ESTADO, COMENTARIO, ASIGNACION, ADJUNTO, AVANCE_EDILICIO.
+
+model TipoOperacion {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  codigo    String    @unique @db.VarChar(50)
+  nombre    String    @db.VarChar(100)
+  activo    Boolean   @default(true)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz
+
+  operaciones OperacionTicket[]
+
+  @@map("tipo_operacion")
+}
+
+// ─── CICLOS_CLIENTE (períodos de gestión del tenant) ─────────────────────────
+//
+// Cada fila representa un período de gestión activo en este tenant.
+// ciclo_vigente_id es soft ref → master.ciclos_vigentes.id (sin FK cross-DB).
+// El índice parcial de activo (WHERE deleted_at IS NULL) se agrega en la
+// migración.
+
+model CicloCliente {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// Soft ref → master.ciclos_vigentes.id. Sin FK: cross-DB imposible en Postgres.
+  cicloVigenteId String    @map("ciclo_vigente_id") @db.Uuid
+  nombre         String    @db.VarChar(100)
+  fechaInicio    DateTime  @map("fecha_inicio") @db.Date
+  fechaFin       DateTime  @map("fecha_fin") @db.Date
+  activo         Boolean   @default(true)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt      DateTime? @map("deleted_at") @db.Timestamptz
+
+  tickets Ticket[]
+
+  @@index([cicloVigenteId])
+  @@index([activo]) // índice regular sobre activo (el spec no pide parcial)
+  @@map("ciclos_cliente")
+}
+
+// ─── TICKETS (entidad central) ────────────────────────────────────────────────
+//
+// Un ticket unificado con discriminador tipo_id.
+// solicitante_id y asignado_id son soft refs → master.usuarios.id (sin FK).
+// Partial indexes en ciclo_id (WHERE NOT NULL) y asignado_id (WHERE NOT NULL)
+// se agregan como raw SQL en la migración.
+// numero: correlativo por tenant, generado por la app (NO por la DB — evita
+// depender de una sequence compartida entre tipos), formato:
+//   {PREFIJO}-{YEAR}-{SEQ_5DIGITS}   ej. SOP-2026-00042
+//   SOPORTE → SOP, COMPRAS → COM, EDILICIA → EDI (tipos custom: prefijo propio).
+// ticket_referencia_id: self-FK nullable — "este ticket continúa de #X"
+// (ej. una reapertura o un ticket derivado). Sin ON DELETE especial: la baja
+// de un ticket es siempre soft delete, nunca DELETE físico.
+// sla_vence_at / vencido: calculados por el módulo SLA a partir de
+// prioridad + tipo (y, a futuro, calendario laboral). `vencido` es una
+// bandera desnormalizada, recalculada por un job/use case — NO un
+// GENERATED ALWAYS de Postgres, porque depender de now() en un cálculo
+// generado complica los tests y el control de husos horarios.
+
+model Ticket {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  numero        String    @unique @db.VarChar(20)
+  titulo        String    @db.VarChar(255)
+  descripcion   String?   @db.Text
+  tipoId        String    @map("tipo_id") @db.Uuid
+  estadoId      String    @map("estado_id") @db.Uuid
+  prioridadId   String    @map("prioridad_id") @db.Uuid
+  cicloId       String?   @map("ciclo_id") @db.Uuid
+  /// Self-FK nullable → tickets.id. "Este ticket continúa de #X".
+  ticketReferenciaId String? @map("ticket_referencia_id") @db.Uuid
+  /// Soft ref → master.usuarios.id. Sin FK cross-DB.
+  solicitanteId String    @map("solicitante_id") @db.Uuid
+  /// Soft ref → master.usuarios.id. NULL = sin asignar.
+  asignadoId    String?   @map("asignado_id") @db.Uuid
+  /// Calculado por el módulo SLA (prioridad + tipo). NULL = sin SLA aplicable.
+  slaVenceAt    DateTime? @map("sla_vence_at") @db.Timestamptz
+  /// Desnormalizado — recalculado por el módulo SLA, no autocalculado en DB.
+  vencido       Boolean   @default(false)
+  fechaCierre   DateTime? @map("fecha_cierre") @db.Date
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt     DateTime? @map("deleted_at") @db.Timestamptz
+
+  tipo             TipoTicket    @relation(fields: [tipoId], references: [id])
+  estado           Estado        @relation(fields: [estadoId], references: [id])
+  prioridad        Prioridad     @relation(fields: [prioridadId], references: [id])
+  ciclo            CicloCliente? @relation(fields: [cicloId], references: [id])
+  ticketReferencia Ticket?       @relation("TicketContinuacion", fields: [ticketReferenciaId], references: [id])
+  ticketsDerivados Ticket[]      @relation("TicketContinuacion")
+
+  operaciones    OperacionTicket[]
+  archivosTicket ArchivoTicket[]
+  ticketCompra   TicketCompra?
+  ticketEdilicia TicketEdilicia?
+  ticketSoporte  TicketSoporte?
+
+  @@index([tipoId])
+  @@index([estadoId])
+  @@index([prioridadId])
+  @@index([cicloId]) // partial WHERE ciclo_id IS NOT NULL — ver migration SQL
+  @@index([ticketReferenciaId]) // partial WHERE ticket_referencia_id IS NOT NULL — ver migration SQL
+  @@index([solicitanteId])
+  @@index([asignadoId]) // partial WHERE asignado_id IS NOT NULL — ver migration SQL
+  @@index([createdAt])
+  @@index([vencido])
+  @@map("tickets")
+}
+
+// ─── OPERACIONES_TICKET (timeline inmutable de eventos) ───────────────────────
+//
+// Toda acción significativa sobre un ticket (cambio de estado, comentario,
+// asignación, adjunto, avance edilicio) DEBE registrarse acá dentro de la
+// misma transacción que el cambio principal.
+// autor_id es soft ref → master.usuarios.id (sin FK cross-DB).
+// estado_anterior_id y estado_nuevo_id son FK opcionales a estados (named
+// relations).
+// es_interno: distingue una nota interna (visible solo para
+// staff/administración) de una nota pública (visible también para el
+// solicitante). Default false — por defecto una operación es pública, salvo
+// que se marque explícitamente como interna al crearla.
+
+model OperacionTicket {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ticketId         String    @map("ticket_id") @db.Uuid
+  tipoOperacionId  String    @map("tipo_operacion_id") @db.Uuid
+  descripcion      String?   @db.Text
+  estadoAnteriorId String?   @map("estado_anterior_id") @db.Uuid
+  estadoNuevoId    String?   @map("estado_nuevo_id") @db.Uuid
+  /// Soft ref → master.usuarios.id. Sin FK cross-DB.
+  autorId          String    @map("autor_id") @db.Uuid
+  /// true = comentario/nota interna (staff). false = visible para el solicitante.
+  esInterno        Boolean   @default(false) @map("es_interno")
+  metadata         Json?
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt        DateTime? @map("deleted_at") @db.Timestamptz
+
+  ticket         Ticket         @relation(fields: [ticketId], references: [id])
+  tipoOperacion  TipoOperacion  @relation(fields: [tipoOperacionId], references: [id])
+  estadoAnterior Estado?        @relation("EstadoAnterior", fields: [estadoAnteriorId], references: [id])
+  estadoNuevo    Estado?        @relation("EstadoNuevo", fields: [estadoNuevoId], references: [id])
+
+  archivosOperacion ArchivoOperacion[]
+
+  @@index([ticketId])
+  @@index([tipoOperacionId])
+  @@index([autorId])
+  @@index([esInterno])
+  @@map("operaciones_ticket")
+}
+
+// ─── ARCHIVOS (metadata de adjuntos — nunca almacena el binario) ──────────────
+//
+// El binario vive exclusivamente en IFileStorage (S3/local) — esta tabla solo
+// guarda metadata + la clave del objeto en el servicio de storage.
+// storage_key es el identificador del objeto en el servicio de storage.
+// CHECK (tamano_bytes > 0) se agrega como raw SQL en la migración.
+// subido_por_id es soft ref → master.usuarios.id (sin FK cross-DB).
+
+model Archivo {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  storageKey     String    @unique @map("storage_key") @db.Text
+  nombreOriginal String    @map("nombre_original") @db.VarChar(255)
+  mimeType       String    @map("mime_type") @db.VarChar(100)
+  /// CHECK (tamano_bytes > 0) — enforced via migration SQL.
+  tamanoBytes    BigInt    @map("tamano_bytes")
+  /// Soft ref → master.usuarios.id. Sin FK cross-DB.
+  subidoPorId    String    @map("subido_por_id") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt      DateTime? @map("deleted_at") @db.Timestamptz
+
+  archivosTicket      ArchivoTicket[]
+  archivosOperacion   ArchivoOperacion[]
+  archivosPresupuesto ArchivoPresupuesto[]
+  archivosEquipo      ArchivoEquipo[]
+
+  @@map("archivos")
+}
+
+// ─── ARCHIVOS_TICKET (join N:M archivos ↔ tickets) ────────────────────────────
+//
+// Sin soft delete: la baja es eliminación física. ON DELETE CASCADE en ambos
+// extremos. PK compuesta (archivo_id, ticket_id).
+
+model ArchivoTicket {
+  archivoId String   @map("archivo_id") @db.Uuid
+  ticketId  String   @map("ticket_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  archivo Archivo @relation(fields: [archivoId], references: [id], onDelete: Cascade)
+  ticket  Ticket  @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@id([archivoId, ticketId])
+  @@index([ticketId])
+  @@map("archivos_ticket")
+}
+
+// ─── ARCHIVOS_OPERACION (join N:M archivos ↔ operaciones_ticket) ──────────────
+//
+// Sin soft delete: ON DELETE CASCADE en ambos extremos.
+// PK compuesta (archivo_id, operacion_id).
+
+model ArchivoOperacion {
+  archivoId   String   @map("archivo_id") @db.Uuid
+  operacionId String   @map("operacion_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  archivo   Archivo         @relation(fields: [archivoId], references: [id], onDelete: Cascade)
+  operacion OperacionTicket @relation(fields: [operacionId], references: [id], onDelete: Cascade)
+
+  @@id([archivoId, operacionId])
+  @@map("archivos_operacion")
+}
+
+// ─── USUARIO_TIPOS_TICKET (elegibilidad de asignación) ────────────────────────
+//
+// Define qué tipos de ticket puede atender un usuario dentro de este tenant.
+// NO es un permiso RBAC: es enrutamiento de trabajo.
+// usuario_id es soft ref → master.usuarios.id (sin FK cross-DB).
+// tipo_ticket_id tiene FK real → tipos_ticket.id (misma DB tenant).
+// Sin soft delete: baja es eliminación física de la fila.
+// PK compuesta (usuario_id, tipo_ticket_id).
+
+model UsuarioTiposTicket {
+  /// Soft ref → master.usuarios.id. Sin FK cross-DB.
+  usuarioId    String   @map("usuario_id") @db.Uuid
+  tipoTicketId String   @map("tipo_ticket_id") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  tipoTicket TipoTicket @relation(fields: [tipoTicketId], references: [id])
+
+  @@id([usuarioId, tipoTicketId])
+  @@index([usuarioId])
+  @@map("usuario_tipos_ticket")
+}
+
+// ─── COMPRAS ───────────────────────────────────────────────────────────────────
+//
+// Módulo de Compras: ticket_compra (satélite 1:1), items_compra, presupuestos,
+// archivos_presupuesto (join).
+//
+// ticket_compra: satélite obligatorio de tickets con tipo.codigo='COMPRAS'.
+//   aprobado_por_id es soft ref → master.usuarios.id (sin FK cross-DB).
+// items_compra: ítems de la compra. CHECK (cantidad > 0) en migration SQL.
+// presupuestos: cotizaciones de proveedores. CHECK (monto_total >= 0).
+//   Invariante de negocio: solo un seleccionado=TRUE por ticket_compra_id
+//   (garantizado por el use case correspondiente con transacción atómica, NO
+//   por un constraint de DB).
+// archivos_presupuesto: join table archivos ↔ presupuestos. ON DELETE CASCADE.
+
+model TicketCompra {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ticketId      String    @unique @map("ticket_id") @db.Uuid
+  /// Soft ref → master.usuarios.id. NULL hasta la decisión de aprobación.
+  aprobadoPorId String?   @map("aprobado_por_id") @db.Uuid
+  aprobadoEn    DateTime? @map("aprobado_en") @db.Timestamptz
+  /// Obligatorio cuando la decisión es RECHAZADO.
+  motivoRechazo String?   @map("motivo_rechazo") @db.Text
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt     DateTime? @map("deleted_at") @db.Timestamptz
+
+  ticket       Ticket        @relation(fields: [ticketId], references: [id])
+  items        ItemCompra[]
+  presupuestos Presupuesto[]
+
+  @@map("ticket_compra")
+}
+
+model ItemCompra {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ticketCompraId    String    @map("ticket_compra_id") @db.Uuid
+  descripcion       String    @db.VarChar(255)
+  /// CHECK (cantidad > 0) — enforced via migration SQL.
+  cantidad          Decimal   @db.Decimal(10, 2)
+  unidad            String?   @db.VarChar(50)
+  precioUnitarioRef Decimal?  @map("precio_unitario_ref") @db.Decimal(14, 2)
+  observaciones     String?   @db.Text
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt         DateTime? @map("deleted_at") @db.Timestamptz
+
+  ticketCompra TicketCompra @relation(fields: [ticketCompraId], references: [id])
+
+  @@index([ticketCompraId])
+  @@map("items_compra")
+}
+
+model Presupuesto {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ticketCompraId  String    @map("ticket_compra_id") @db.Uuid
+  proveedor       String    @db.VarChar(255)
+  /// CHECK (monto_total >= 0) — enforced via migration SQL.
+  montoTotal      Decimal   @map("monto_total") @db.Decimal(14, 2)
+  /// ISO 4217: ARS, USD, EUR. DEFAULT 'ARS'.
+  moneda          String    @default("ARS") @db.VarChar(10)
+  fechaCotizacion DateTime  @map("fecha_cotizacion") @db.Date
+  /// Solo uno puede ser TRUE por ticket_compra_id (swap atómico en el use case).
+  seleccionado    Boolean   @default(false)
+  observaciones   String?   @db.Text
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz
+
+  ticketCompra        TicketCompra         @relation(fields: [ticketCompraId], references: [id])
+  archivosPresupuesto ArchivoPresupuesto[]
+
+  @@index([ticketCompraId])
+  @@map("presupuestos")
+}
+
+model ArchivoPresupuesto {
+  archivoId     String   @map("archivo_id") @db.Uuid
+  presupuestoId String   @map("presupuesto_id") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  archivo     Archivo     @relation(fields: [archivoId], references: [id], onDelete: Cascade)
+  presupuesto Presupuesto @relation(fields: [presupuestoId], references: [id], onDelete: Cascade)
+
+  @@id([archivoId, presupuestoId])
+  @@index([presupuestoId])
+  @@map("archivos_presupuesto")
+}
+
+// ─── REPARACIONES EDILICIAS ────────────────────────────────────────────────────
+//
+// ubicaciones (árbol jerárquico), ticket_edilicia (satélite 1:1 con tickets),
+// subtareas_edilicia (pasos de la reparación).
+//
+// ubicaciones: árbol N niveles vía self-reference padre_id (self-join).
+// ticket_edilicia: satélite 1:1 de tickets con tipo.codigo='EDILICIA'.
+//   personal_asignado_id: soft ref → master.usuarios.id (sin FK cross-DB).
+//   porcentaje_avance: NUMERIC(5,2), CHECK 0-100. Recalculado por la app.
+// subtareas_edilicia: pasos de la reparación.
+//   completada_por_id: soft ref → master.usuarios.id.
+
+model Ubicacion {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nombre      String    @db.VarChar(255)
+  descripcion String?   @db.Text
+  /// NULL = nodo raíz; NOT NULL = sub-ubicación. FK → ubicaciones.id (self-ref).
+  padreId     String?   @map("padre_id") @db.Uuid
+  activo      Boolean   @default(true)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz
+
+  padre Ubicacion?  @relation("UbicacionHijos", fields: [padreId], references: [id])
+  hijos Ubicacion[] @relation("UbicacionHijos")
+
+  ticketsEdilicia TicketEdilicia[]
+  equipos         EquipoInformatico[]
+
+  @@index([padreId]) // partial WHERE padre_id IS NOT NULL — ver migration SQL
+  @@index([activo])  // partial WHERE deleted_at IS NULL — ver migration SQL
+  @@map("ubicaciones")
+}
+
+model TicketEdilicia {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ticketId           String    @unique @map("ticket_id") @db.Uuid
+  ubicacionId        String    @map("ubicacion_id") @db.Uuid
+  /// Soft ref → master.usuarios.id. NULL hasta asignación de personal específico.
+  personalAsignadoId String?   @map("personal_asignado_id") @db.Uuid
+  /// CHECK (porcentaje_avance >= 0 AND porcentaje_avance <= 100) — migration SQL.
+  porcentajeAvance   Decimal   @default(0) @map("porcentaje_avance") @db.Decimal(5, 2)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt          DateTime? @map("deleted_at") @db.Timestamptz
+
+  ticket    Ticket    @relation(fields: [ticketId], references: [id])
+  ubicacion Ubicacion @relation(fields: [ubicacionId], references: [id])
+
+  subtareas SubtareaEdilicia[]
+
+  @@index([ubicacionId])
+  @@index([porcentajeAvance])
+  @@map("ticket_edilicia")
+}
+
+model SubtareaEdilicia {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ticketEdiliciaId String    @map("ticket_edilicia_id") @db.Uuid
+  descripcion      String    @db.VarChar(255)
+  completada       Boolean   @default(false)
+  completadaEn     DateTime? @map("completada_en") @db.Timestamptz
+  /// Soft ref → master.usuarios.id. NULL mientras no esté completada.
+  completadaPorId  String?   @map("completada_por_id") @db.Uuid
+  orden            Int       @default(0)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt        DateTime? @map("deleted_at") @db.Timestamptz
+
+  ticketEdilicia TicketEdilicia @relation(fields: [ticketEdiliciaId], references: [id])
+
+  @@index([ticketEdiliciaId])
+  @@map("subtareas_edilicia")
+}
+
+// ─── EQUIPOS INFORMÁTICOS ──────────────────────────────────────────────────────
+//
+// tipos_componente (catálogo), equipos_informaticos, componentes_equipo,
+// archivos_equipo (adjuntos), ticket_soporte (satélite 1:1).
+//
+// tipos_componente: catálogo sembrado en provisioning (10 tipos base).
+// equipos_informaticos: inventario de equipos del tenant.
+//   numero_serie: UNIQUE parcial WHERE NOT NULL — raw SQL en migración.
+//   asignado_a_id: soft ref → master.usuarios.id (sin FK cross-DB).
+//   ubicacion_id: FK → ubicaciones.id (nullable).
+// componentes_equipo: hardware instalado en un equipo. FK a equipo + tipo.
+// archivos_equipo: adjuntos de equipo (sin entidad de dominio propia — solo
+//   tabla + repo de infraestructura, clona el patrón de ArchivoTicket).
+// ticket_soporte: satélite 1:1 con tickets de tipo SOPORTE.
+//   equipo_id: NULLABLE — un ticket de soporte puede no referenciar un equipo.
+
+model TipoComponente {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  codigo    String    @unique @db.VarChar(50)
+  nombre    String    @db.VarChar(100)
+  activo    Boolean   @default(true)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz
+
+  componentes ComponenteEquipo[]
+
+  @@map("tipos_componente")
+}
+
+model EquipoInformatico {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nombre           String    @db.VarChar(255)
+  /// UNIQUE PARCIAL WHERE NOT NULL — enforced via CREATE UNIQUE INDEX en migration SQL.
+  numeroSerie      String?   @map("numero_serie") @db.VarChar(255)
+  marca            String?   @db.VarChar(100)
+  modelo           String?   @db.VarChar(100)
+  fechaAdquisicion DateTime? @map("fecha_adquisicion") @db.Date
+  /// FK → ubicaciones.id. NULL = sin ubicación asignada.
+  ubicacionId      String?   @map("ubicacion_id") @db.Uuid
+  /// Soft ref → master.usuarios.id. NULL = sin asignar. Sin FK cross-DB.
+  asignadoAId      String?   @map("asignado_a_id") @db.Uuid
+  activo           Boolean   @default(true)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt        DateTime? @map("deleted_at") @db.Timestamptz
+
+  ubicacion   Ubicacion?         @relation(fields: [ubicacionId], references: [id])
+  componentes ComponenteEquipo[]
+  archivos    ArchivoEquipo[]
+  tickets     TicketSoporte[]
+
+  @@index([ubicacionId])
+  @@index([asignadoAId])
+  @@map("equipos_informaticos")
+}
+
+model ComponenteEquipo {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  equipoId         String    @map("equipo_id") @db.Uuid
+  tipoComponenteId String    @map("tipo_componente_id") @db.Uuid
+  descripcion      String?   @db.VarChar(255)
+  numeroSerie      String?   @map("numero_serie") @db.VarChar(255)
+  capacidad        String?   @db.VarChar(100)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt        DateTime? @map("deleted_at") @db.Timestamptz
+
+  equipo         EquipoInformatico @relation(fields: [equipoId], references: [id])
+  tipoComponente TipoComponente    @relation(fields: [tipoComponenteId], references: [id])
+
+  @@index([equipoId])
+  @@index([tipoComponenteId])
+  @@map("componentes_equipo")
+}
+
+model ArchivoEquipo {
+  archivoId String   @map("archivo_id") @db.Uuid
+  equipoId  String   @map("equipo_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  archivo Archivo           @relation(fields: [archivoId], references: [id], onDelete: Cascade)
+  equipo  EquipoInformatico @relation(fields: [equipoId], references: [id], onDelete: Cascade)
+
+  @@id([archivoId, equipoId])
+  @@index([equipoId])
+  @@map("archivos_equipo")
+}
+
+model TicketSoporte {
+  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ticketId            String    @unique @map("ticket_id") @db.Uuid
+  /// FK → equipos_informaticos.id. NULLABLE.
+  equipoId            String?   @map("equipo_id") @db.Uuid
+  descripcionProblema String?   @map("descripcion_problema") @db.Text
+  solucionAplicada    String?   @map("solucion_aplicada") @db.Text
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt           DateTime? @map("deleted_at") @db.Timestamptz
+
+  ticket Ticket             @relation(fields: [ticketId], references: [id])
+  equipo EquipoInformatico? @relation(fields: [equipoId], references: [id])
+
+  @@index([equipoId])
+  @@map("ticket_soporte")
+}
+
+// ─── KB_ARTICULOS (base de conocimiento) ───────────────────────────────────────
+//
+// Artículos de ayuda del tenant. tipo_ticket_id es opcional: permite tipar el
+// artículo por flujo (SOPORTE/COMPRAS/EDILICIA/custom) para sugerirlo en el
+// contexto correspondiente, pero un artículo general puede no tener tipo.
+// autor_id: soft ref → master.usuarios.id (sin FK cross-DB). Nullable porque
+// un artículo puede haberse migrado/importado sin autor identificado.
+// visible_para_solicitante: default FALSE — por defecto un artículo es interno
+// (solo staff); el admin lo publica explícitamente para que lo vea también
+// el solicitante (portal de autoservicio).
+
+model KbArticulo {
+  id                      String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  titulo                  String    @db.VarChar(255)
+  contenido               String    @db.Text
+  tipoTicketId            String?   @map("tipo_ticket_id") @db.Uuid
+  /// Soft ref → master.usuarios.id. Sin FK cross-DB. Nullable.
+  autorId                 String?   @map("autor_id") @db.Uuid
+  visibleParaSolicitante  Boolean   @default(false) @map("visible_para_solicitante")
+  activo                  Boolean   @default(true)
+  createdAt               DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt               DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt               DateTime? @map("deleted_at") @db.Timestamptz
+
+  tipoTicket TipoTicket? @relation(fields: [tipoTicketId], references: [id])
+
+  @@index([tipoTicketId])
+  @@index([visibleParaSolicitante])
+  @@map("kb_articulos")
+}
+
+// ─── SLA_CONFIG (config de SLA por prioridad — Fase 4, módulo SLA) ────────────
+//
+// Una fila por prioridad del catálogo FIJO (prioridad_id UNIQUE) — NO se
+// crean/eliminan filas, solo se edita `horas`/`activo` (S1). Sembrada en
+// provisioning con defaults: CRITICA=4h, ALTA=8h, MEDIA=24h, BAJA=48h.
+// CHECK (horas > 0) se agrega como raw SQL en la migración (mismo criterio
+// que items_compra.cantidad/presupuestos.monto_total).
+// Editable por ADMINISTRADOR (permiso `catalogo:gestionar`, reusado — sin
+// permiso nuevo, decisión del dueño).
+
+model SlaConfig {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  prioridadId String    @unique @map("prioridad_id") @db.Uuid
+  /// CHECK (horas > 0) — enforced via migration SQL.
+  horas       Int
+  activo      Boolean   @default(true)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz
+
+  prioridad Prioridad @relation(fields: [prioridadId], references: [id])
+
+  @@map("sla_config")
+}

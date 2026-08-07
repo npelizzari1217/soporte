@@ -1,0 +1,122 @@
+"use client";
+
+/**
+ * PrioridadFormDialog — crear/editar una `Prioridad` (T4.3). Mismo patrón
+ * que `TipoTicketFormDialog`; agrega `color` (opcional) y `orden` (entero,
+ * gobierna el orden de visualización).
+ */
+import { useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import type { ReactNode } from "react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { useCrearPrioridad, useEditarPrioridad } from "../hooks/use-catalogo-mutations";
+import { prioridadSchema, type PrioridadFormValues } from "../schemas";
+import type { Prioridad } from "@/features/tickets/types";
+
+export interface PrioridadFormDialogProps {
+  trigger: ReactNode;
+  prioridad?: Prioridad;
+}
+
+export function PrioridadFormDialog({ trigger, prioridad }: PrioridadFormDialogProps) {
+  const [open, setOpen] = useState(false);
+  const isEdit = !!prioridad;
+  const crearMutation = useCrearPrioridad();
+  const editarMutation = useEditarPrioridad(prioridad?.id ?? "");
+  const mutation = isEdit ? editarMutation : crearMutation;
+
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors },
+  } = useForm<PrioridadFormValues>({
+    resolver: zodResolver(prioridadSchema),
+    defaultValues: prioridad
+      ? { codigo: prioridad.codigo, nombre: prioridad.nombre, color: prioridad.color ?? "", orden: prioridad.orden }
+      : { codigo: "", nombre: "", color: "", orden: 0 },
+  });
+
+  function submit(values: PrioridadFormValues) {
+    mutation.mutate(
+      { codigo: values.codigo, nombre: values.nombre, color: values.color || undefined, orden: values.orden },
+      {
+        onSuccess: () => {
+          setOpen(false);
+          reset();
+        },
+      },
+    );
+  }
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) reset();
+      }}
+    >
+      <DialogTrigger asChild>{trigger}</DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{isEdit ? "Editar prioridad" : "Nueva prioridad"}</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit(submit)} className="flex flex-col gap-4" noValidate>
+          <div className="flex flex-col gap-1">
+            <label htmlFor="prioridad-codigo" className="text-sm font-medium text-foreground">
+              Código
+            </label>
+            <Input id="prioridad-codigo" error={!!errors.codigo} {...register("codigo")} />
+            {errors.codigo && (
+              <p role="alert" className="text-sm text-destructive">
+                {errors.codigo.message}
+              </p>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label htmlFor="prioridad-nombre" className="text-sm font-medium text-foreground">
+              Nombre
+            </label>
+            <Input id="prioridad-nombre" error={!!errors.nombre} {...register("nombre")} />
+            {errors.nombre && (
+              <p role="alert" className="text-sm text-destructive">
+                {errors.nombre.message}
+              </p>
+            )}
+          </div>
+
+          <div className="flex gap-4">
+            <div className="flex flex-1 flex-col gap-1">
+              <label htmlFor="prioridad-color" className="text-sm font-medium text-foreground">
+                Color (opcional)
+              </label>
+              <Input id="prioridad-color" placeholder="#f97316" {...register("color")} />
+            </div>
+            <div className="flex flex-1 flex-col gap-1">
+              <label htmlFor="prioridad-orden" className="text-sm font-medium text-foreground">
+                Orden
+              </label>
+              <Input id="prioridad-orden" type="number" error={!!errors.orden} {...register("orden")} />
+              {errors.orden && (
+                <p role="alert" className="text-sm text-destructive">
+                  {errors.orden.message}
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <Button type="submit" isLoading={mutation.isPending}>
+              {isEdit ? "Guardar" : "Crear"}
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}

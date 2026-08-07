@@ -1,0 +1,111 @@
+@import "tailwindcss";
+
+/*
+ * Estrategia de tokens duales (Tailwind v4 CSS-first + shadcn/ui v4).
+ *
+ * Tres bloques:
+ *   1. @theme         → tokens estáticos (radios, fuente) — no cambian por modo
+ *   2. @theme inline  → indirección: las utilidades de Tailwind referencian vars
+ *                       CSS que sí flipean según el selector activo (.dark / :root)
+ *   3. :root / .dark  → valores reales light/dark; el script FOUC en <head> aplica
+ *                       la clase .dark antes del primer paint, sin flash
+ *
+ * Tema por CLASE persistida en localStorage — NUNCA prefers-color-scheme como
+ * fuente de verdad (solo como fallback inicial si no hay preferencia guardada).
+ */
+
+/* Activa las reglas dark cuando la clase .dark está en el ancestro */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ── Tokens estáticos ───────────────────────────────────────────────────── */
+@theme {
+  --radius-lg: 0.5rem;    /* 8px  — cards, paneles, modales, drawers */
+  --radius-md: 0.375rem;  /* 6px  — botones, dropdowns, badges */
+  --radius-xl: 0.75rem;   /* 12px — inputs, forms */
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+}
+
+/* ── Indirección de colores ─────────────────────────────────────────────── */
+@theme inline {
+  --color-background:             var(--background);
+  --color-foreground:             var(--foreground);
+  --color-card:                   var(--card);
+  --color-card-foreground:        var(--card-foreground);
+  --color-primary:                var(--primary);
+  --color-primary-foreground:     var(--primary-foreground);
+  --color-muted:                  var(--muted);
+  --color-muted-foreground:       var(--muted-foreground);
+  --color-border:                 var(--border);
+  --color-input:                  var(--input);
+  --color-ring:                   var(--ring);
+  --color-accent:                 var(--accent);
+  --color-accent-foreground:      var(--accent-foreground);
+  --color-popover:                var(--popover);
+  --color-popover-foreground:     var(--popover-foreground);
+  --color-secondary:              var(--secondary);
+  --color-secondary-foreground:   var(--secondary-foreground);
+  --color-destructive:            var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+}
+
+/* ── LIGHT — valores por defecto (:root) ────────────────────────────────── */
+:root {
+  --background:             oklch(0.99 0 0);
+  --foreground:             oklch(0.20 0 0);
+
+  --card:                   oklch(1 0 0);
+  --card-foreground:        oklch(0.20 0 0);
+
+  --primary:                oklch(0.62 0.19 256);
+  --primary-foreground:     oklch(0.98 0 0);
+
+  --muted:                  oklch(0.94 0 0);
+  --muted-foreground:       oklch(0.50 0 0);
+
+  --border:                 oklch(0.88 0 0);
+  --input:                  oklch(0.88 0 0);
+  --ring:                   oklch(0.62 0.19 256);
+
+  --accent:                 oklch(0.94 0 0);
+  --accent-foreground:      oklch(0.20 0 0);
+
+  --popover:                oklch(1 0 0);
+  --popover-foreground:     oklch(0.20 0 0);
+
+  --secondary:              oklch(0.94 0 0);
+  --secondary-foreground:   oklch(0.20 0 0);
+
+  --destructive:            oklch(0.58 0.22 27);
+  --destructive-foreground: oklch(0.97 0 0);
+}
+
+/* ── DARK ────────────────────────────────────────────────────────────────── */
+.dark {
+  --background:             oklch(0.16 0 0);
+  --foreground:             oklch(0.97 0 0);
+
+  --card:                   oklch(0.19 0 0);
+  --card-foreground:        oklch(0.97 0 0);
+
+  --primary:                oklch(0.62 0.19 256);
+  --primary-foreground:     oklch(0.98 0 0);
+
+  --muted:                  oklch(0.24 0 0);
+  --muted-foreground:       oklch(0.65 0 0);
+
+  --border:                 oklch(0.27 0 0);
+  --input:                  oklch(0.27 0 0);
+  --ring:                   oklch(0.62 0.19 256);
+
+  --accent:                 oklch(0.24 0 0);
+  --accent-foreground:      oklch(0.97 0 0);
+
+  --popover:                oklch(0.19 0 0);
+  --popover-foreground:     oklch(0.97 0 0);
+
+  --secondary:              oklch(0.24 0 0);
+  --secondary-foreground:   oklch(0.97 0 0);
+
+  --destructive:            oklch(0.58 0.22 27);
+  --destructive-foreground: oklch(0.97 0 0);
+}

@@ -1,0 +1,284 @@
+// prisma_master/schema.prisma
+// Base de datos MASTER: clientes (tenants), usuarios (identidad global),
+// membresías (pertenencia usuario↔cliente con rol por membresía), RBAC
+// (roles/permisos) y ciclos vigentes (catálogo global).
+//
+// Decisiones de diseño:
+//   - IDs: uuid nativo (@db.Uuid) + gen_random_uuid() como red de seguridad en
+//     DB. El backend genera UUIDv7 antes de cada insert (lib `uuidv7`) — el
+//     default de DB es un fallback, no el flujo normal de escritura.
+//   - Enums: tablas de catálogo (roles, permisos) — no enums nativos de
+//     Postgres, para permitir altas sin migración de schema.
+//   - Soft delete universal: deleted_at timestamptz nullable en toda entidad
+//     con identidad propia. Las tablas de join puro (roles_permisos) no lo
+//     llevan: la baja ahí es eliminación física de la fila de asociación.
+//   - updatedAt gestionado por Prisma (@updatedAt).
+//   - Partial unique index en clientes.cuit y partial index en usuarios.activo
+//     se agregan como raw SQL en la migración (Prisma no expresa índices
+//     parciales WHERE en el schema declarativo).
+//   - CHECK (fecha_fin > fecha_inicio) en ciclos_vigentes: raw SQL en migración.
+//
+// ─── ROOT vs ADMINISTRADOR (aclaración del dueño del producto) ────────────────
+//
+// Son dos figuras DISTINTAS, modeladas en capas distintas:
+//
+//   - ROOT = super-admin GLOBAL de la plataforma (cross-tenant). Se modela acá
+//     con `usuarios.is_global_admin`. Es el ÚNICO autorizado a crear filas en
+//     `clientes` y en `ciclos_vigentes`, y el único que puede saltar a
+//     cualquier tenant (header X-Tenant-Id) sin ser miembro de ese cliente.
+//     Un usuario ROOT puede no tener ninguna membresía (o tener una de
+//     bootstrap). El seed de bootstrap (variables ROOT_ADMIN_*) crea el primer
+//     usuario con `is_global_admin = true`.
+//   - ADMINISTRADOR = un ROL más, que vive DENTRO de `membresias` (junto a los
+//     demás roles del catálogo). Gestiona usuarios/roles/catálogos SOLO del
+//     cliente de esa membresía; NO crea clientes ni ciclos.
+//
+// La regla "solo ROOT crea clientes/ciclos" NO se expresa como constraint de
+// base de datos: se enforcea en la capa de aplicación (guards/use cases,
+// Fase 1). Acá el schema solo deja existir el flag que la autorización
+// necesita.
+//
+// En Prisma 7, la URL se pasa al constructor vía adapter:
+//   new PrismaClient({ adapter: new PrismaPg(pool) })
+
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/master"
+}
+
+// ─── CLIENTES (catálogo de tenants) ───────────────────────────────────────────
+//
+// Cada fila = una organización con su propia DB Postgres operativa (db_name).
+// db_name es el discriminador de routing: el guard de tenant (a implementar en
+// auth/) lo usa para obtener el PrismaClient del tenant vía PrismaService. La
+// DB del cliente NUNCA contiene esta tabla.
+//
+// Alta exclusiva de ROOT (usuarios.is_global_admin = true) — enforced en la
+// capa de aplicación, no acá.
+// Partial UNIQUE en cuit (WHERE cuit IS NOT NULL) se agrega en la migración.
+
+model Cliente {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nombre      String    @db.VarChar(255)
+  razonSocial String?   @map("razon_social") @db.VarChar(255)
+  /// Unicidad parcial: enforced SOLO vía partial unique index en la migración
+  /// SQL (WHERE cuit IS NOT NULL). Prisma no conoce ese index — usar
+  /// findFirst (NO findUnique) para lookups por cuit.
+  cuit        String?   @db.VarChar(13)
+  dbName      String    @unique @map("db_name") @db.VarChar(100)
+  activo      Boolean   @default(true)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz
+
+  membresias Membresia[]
+
+  @@index([activo])
+  @@map("clientes")
+}
+
+// ─── CICLOS VIGENTES (catálogo global de ciclos de gestión) ───────────────────
+//
+// Ciclos como "Ejercicio 2026". Los tenants los referencian vía soft ref desde
+// tenant.ciclos_cliente.ciclo_vigente_id (cross-DB, sin FK de nivel DB).
+// Validación de no-solapamiento: en el use case de aplicación, NO en trigger
+// de DB. CHECK (fecha_fin > fecha_inicio) se agrega como raw SQL en migración.
+//
+// Alta exclusiva de ROOT (usuarios.is_global_admin = true) — enforced en la
+// capa de aplicación, no acá.
+
+model CicloVigente {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nombre      String    @db.VarChar(100)
+  fechaInicio DateTime  @map("fecha_inicio") @db.Date
+  fechaFin    DateTime  @map("fecha_fin") @db.Date
+  activo      Boolean   @default(true)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz
+
+  @@index([activo])
+  @@index([fechaInicio, fechaFin])
+  @@map("ciclos_vigentes")
+}
+
+// ─── USUARIOS ─────────────────────────────────────────────────────────────────
+//
+// Identidad global de todos los usuarios (cross-tenant). Siempre se valida
+// contra esta tabla en el login. El JWT incluye la lista de membresías
+// (cliente_id + rol) resueltas al momento de login → el guard de tenant
+// enruta al PrismaClient del tenant correspondiente.
+//
+// A diferencia de un modelo con `cliente_id` único por usuario, acá la
+// pertenencia a un cliente vive en `membresias` (N:N): un usuario puede
+// pertenecer a más de un cliente, con un rol distinto en cada uno.
+//
+// Las soft refs desde tablas tenant (asignado_id, solicitante_id, autor_id,
+// etc.) apuntan a este id SIN FK de nivel DB (cross-DB). La integridad se
+// valida en los use cases.
+// Partial index en activo WHERE deleted_at IS NULL: raw SQL en migración.
+
+model Usuario {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email        String    @unique @db.VarChar(255)
+  nombre       String    @db.VarChar(100)
+  apellido     String    @db.VarChar(100)
+  passwordHash String    @map("password_hash") @db.Text
+  activo       Boolean   @default(true)
+  /// Distingue al ROOT (super-admin cross-tenant) de un ADMINISTRADOR
+  /// (rol scoped a un cliente, vive en Membresia.rolId). NUNCA se deriva del
+  /// rol de una membresía — un rol ADMINISTRADOR no implica is_global_admin.
+  /// Único authorized a crear `clientes`/`ciclos_vigentes` y a acceder a
+  /// cualquier tenant vía header X-Tenant-Id sin ser miembro. Ver nota ROOT
+  /// vs ADMINISTRADOR al inicio de este archivo. Sembrado por el seed de
+  /// bootstrap (ROOT_ADMIN_*) con is_global_admin = true.
+  isGlobalAdmin Boolean   @default(false) @map("is_global_admin")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt    DateTime? @map("deleted_at") @db.Timestamptz
+
+  refreshTokens RefreshToken[]
+  membresias    Membresia[]
+
+  @@index([activo]) // el índice real en DB es parcial: WHERE deleted_at IS NULL — ver migration SQL
+  @@map("usuarios")
+}
+
+// ─── MEMBRESIAS (N:N usuario ↔ cliente, con rol POR membresía) ───────────────
+//
+// Reemplaza el par (usuarios.cliente_id único + usuarios_roles) de un modelo
+// single-tenant-per-user: acá un usuario puede tener una fila de membresía por
+// cada (cliente, rol) al que pertenece. El rol NO es un atributo del usuario:
+// es un atributo de LA MEMBRESÍA — el mismo usuario puede ser ADMINISTRADOR en
+// el cliente A y SOLICITANTE en el cliente B, o incluso tener dos roles
+// distintos dentro del mismo cliente (dos filas de membresía).
+//
+// Un usuario ROOT (is_global_admin = true) puede no tener ninguna membresía —
+// su autorización cross-tenant no depende de esta tabla.
+//
+// Sin soft delete de identidad propia: `activo` es el mecanismo de baja
+// lógica (revocar acceso sin perder el historial de la membresía). Se agrega
+// `deletedAt` igual, por consistencia con el resto del schema y para permitir
+// borrado lógico duro si hace falta despachar la fila de listados activos.
+
+model Membresia {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  usuarioId String    @map("usuario_id") @db.Uuid
+  clienteId String    @map("cliente_id") @db.Uuid
+  rolId     String    @map("rol_id") @db.Uuid
+  activo    Boolean   @default(true)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id])
+  cliente Cliente @relation(fields: [clienteId], references: [id])
+  rol     Role    @relation(fields: [rolId], references: [id])
+
+  @@unique([usuarioId, clienteId, rolId])
+  @@index([usuarioId])
+  @@index([clienteId])
+  @@index([rolId])
+  @@map("membresias")
+}
+
+// ─── REFRESH TOKENS ───────────────────────────────────────────────────────────
+//
+// Almacena el SHA-256 del refresh token crudo (nunca el valor en claro).
+// Lookup por token_hash: O(1) vía UNIQUE index.
+// Revocación masiva por usuario_id: cubierta por el index en usuario_id.
+//
+// Opción B (decisión #2025, reemplaza ADR-2 de sdd/auth-multitenancy/design):
+// el refresh token lleva `cliente_id` EXPLÍCITO — el scope resuelto al emitir
+// el token (login/refresh/rotación) queda embebido en la fila, en vez de
+// depender de una "pista" que el BFF debía derivar decodificando el access
+// token expirado y que el backend revalidaba por separado. Re-scope
+// inequívoco: el refresh SIEMPRE sabe a qué cliente pertenece sin insumos
+// externos. `null` = token emitido para el scope MASTER (root sin tenant
+// seleccionado, R4). Sin FK físico a `clientes.id` (soft ref, mismo patrón
+// que el resto del schema) — la validación de "cliente vivo/activo" ocurre
+// en `resolverScope` (application), no en la DB.
+
+model RefreshToken {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  usuarioId String    @map("usuario_id") @db.Uuid
+  /// Cliente al que quedó scopeado este refresh token en el momento de su
+  /// emisión. `null` = scope MASTER (root). Ver nota "Opción B" arriba.
+  clienteId String?   @map("cliente_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash") @db.Text
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id])
+
+  @@index([usuarioId])
+  @@map("refresh_tokens")
+}
+
+// ─── ROLES (catálogo de roles del sistema) ────────────────────────────────────
+//
+// codigo es el identificador funcional (snake_case en mayúsculas), ej.
+// ADMINISTRADOR, SOPORTE_IT, MANTENIMIENTO, APROBADOR_COMPRAS, SOLICITANTE.
+// ADMINISTRADOR es un rol como cualquier otro acá — scoped a la membresía en
+// la que aparece. NO confundir con ROOT (usuarios.is_global_admin).
+
+model Role {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  codigo      String    @unique @db.VarChar(50)
+  nombre      String    @db.VarChar(100)
+  descripcion String?   @db.Text
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz
+
+  rolesPermisos RolesPermisos[]
+  membresias    Membresia[]
+
+  @@map("roles")
+}
+
+// ─── PERMISOS (catálogo de permisos atómicos) ─────────────────────────────────
+//
+// Convención: recurso:accion en minúsculas (ej. ticket:crear, compra:aprobar).
+// El permiso efectivo de un usuario en un cliente = unión de permisos de los
+// roles de sus membresías ACTIVAS para ese cliente. Resolución en login →
+// embebida en JWT → guards no consultan DB en cada request.
+
+model Permiso {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  codigo      String    @unique @db.VarChar(100)
+  descripcion String?   @db.Text
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz
+
+  rolesPermisos RolesPermisos[]
+
+  @@map("permisos")
+}
+
+// ─── ROLES_PERMISOS (N:M join) ────────────────────────────────────────────────
+//
+// Define qué permisos otorga cada rol.
+// Sin soft delete: la baja es eliminación física de la fila de asociación.
+// PK compuesta (rol_id, permiso_id) garantiza unicidad del par.
+
+model RolesPermisos {
+  rolId     String   @map("rol_id") @db.Uuid
+  permisoId String   @map("permiso_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  rol     Role    @relation(fields: [rolId], references: [id])
+  permiso Permiso @relation(fields: [permisoId], references: [id])
+
+  @@id([rolId, permisoId])
+  @@index([permisoId])
+  @@map("roles_permisos")
+}

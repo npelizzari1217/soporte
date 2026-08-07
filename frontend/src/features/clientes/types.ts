@@ -1,0 +1,25 @@
+/**
+ * Tipos del dominio Admin > Clientes — espejo de
+ * `backend/src/clientes/interface/dtos/cliente.dto.ts` (R16-R18, T8.4).
+ * Exclusivo ROOT (`is_global_admin`), NUNCA por `permisos` (ortogonal —
+ * mismo criterio que `JwtPayload.is_global_admin`).
+ */
+
+export interface Cliente {
+  id: string;
+  nombre: string;
+  razonSocial: string | null;
+  cuit: string | null;
+  dbName: string;
+  activo: boolean;
+}
+
+export interface CreateClienteDto {
+  nombre: string;
+  razonSocial?: string;
+  cuit?: string;
+  adminEmail: string;
+  adminNombre: string;
+  adminApellido: string;
+  adminPassword: string;
+}

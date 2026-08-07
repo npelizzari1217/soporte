@@ -1,0 +1,288 @@
+/**
+ * DTOs de entrada/salida para `EquiposController` (F3-Q1..Q3, PR12).
+ *
+ * Mismo patrón que `compras/interface/dtos/compras.dto.ts`: `class-validator`
+ * valida el body en `POST`/`PATCH`; el `ValidationPipe({whitelist:true,transform:true})`
+ * global (`AppModule`) lo aplica automáticamente.
+ *
+ * Tarea: T12.6.
+ */
+import { IsDateString, IsOptional, IsString, IsUUID, MinLength } from 'class-validator';
+import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
+import { EquipoInformaticoEntity } from '../../domain/entities/equipo-informatico.entity';
+import { ComponenteEquipoEntity } from '../../domain/entities/componente-equipo.entity';
+import { TipoComponenteEntity } from '../../domain/entities/tipo-componente.entity';
+import { TicketSoporteEntity } from '../../domain/entities/ticket-soporte.entity';
+
+// ─── Input DTOs ───────────────────────────────────────────────────────────────
+
+/** Body de `POST /equipos` (F3-Q1). */
+export class CreateEquipoHttpDto {
+  @IsString()
+  @MinLength(1)
+  nombre!: string;
+
+  @IsOptional()
+  @IsString()
+  numeroSerie?: string | null;
+
+  @IsOptional()
+  @IsString()
+  marca?: string | null;
+
+  @IsOptional()
+  @IsString()
+  modelo?: string | null;
+
+  @IsOptional()
+  @IsDateString()
+  fechaAdquisicion?: string | null;
+
+  @IsOptional()
+  @IsUUID()
+  ubicacionId?: string | null;
+}
+
+/** Body de `PATCH /equipos/:id` (F3-Q1). Todos los campos opcionales (PATCH semántico). */
+export class EditarEquipoHttpDto {
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  nombre?: string;
+
+  @IsOptional()
+  @IsString()
+  numeroSerie?: string | null;
+
+  @IsOptional()
+  @IsString()
+  marca?: string | null;
+
+  @IsOptional()
+  @IsString()
+  modelo?: string | null;
+
+  @IsOptional()
+  @IsDateString()
+  fechaAdquisicion?: string | null;
+
+  @IsOptional()
+  @IsUUID()
+  ubicacionId?: string | null;
+}
+
+/** Body de `POST /equipos/:id/asignar` (F3-Q1). `null`/ausente desasigna. */
+export class AsignarEquipoHttpDto {
+  @IsOptional()
+  @IsUUID()
+  asignadoAId?: string | null;
+}
+
+/** Body de `POST /soporte` (F3-Q4). `solicitanteId`/`autorId` vienen del JWT. `equipoId` OPCIONAL. */
+export class CreateTicketSoporteHttpDto {
+  @IsString()
+  @MinLength(1)
+  titulo!: string;
+
+  @IsOptional()
+  @IsString()
+  descripcion?: string | null;
+
+  @IsUUID()
+  prioridadId!: string;
+
+  @IsOptional()
+  @IsUUID()
+  equipoId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  descripcionProblema?: string | null;
+}
+
+/** Body de `POST /soporte/:id/solucion` (F3-Q5). */
+export class RegistrarSolucionHttpDto {
+  @IsString()
+  @MinLength(1)
+  solucion!: string;
+}
+
+/** Body de `POST /equipos/:id/componentes` (F3-Q2). */
+export class CreateComponenteHttpDto {
+  @IsUUID()
+  tipoComponenteId!: string;
+
+  @IsOptional()
+  @IsString()
+  descripcion?: string | null;
+
+  @IsOptional()
+  @IsString()
+  numeroSerie?: string | null;
+
+  @IsOptional()
+  @IsString()
+  capacidad?: string | null;
+}
+
+// ─── Response DTOs ────────────────────────────────────────────────────────────
+
+/** Shape de respuesta de un equipo informático. */
+export interface EquipoResponseDto {
+  id: string;
+  nombre: string;
+  numeroSerie: string | null;
+  marca: string | null;
+  modelo: string | null;
+  fechaAdquisicion: string | null;
+  ubicacionId: string | null;
+  asignadoAId: string | null;
+  activo: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Convierte `EquipoInformaticoEntity` al shape de respuesta HTTP. */
+export function toEquipoResponseDto(equipo: EquipoInformaticoEntity): EquipoResponseDto {
+  return {
+    id: equipo.id,
+    nombre: equipo.nombre,
+    numeroSerie: equipo.numeroSerie,
+    marca: equipo.marca,
+    modelo: equipo.modelo,
+    fechaAdquisicion: equipo.fechaAdquisicion ? equipo.fechaAdquisicion.toISOString() : null,
+    ubicacionId: equipo.ubicacionId,
+    asignadoAId: equipo.asignadoAId,
+    activo: equipo.activo,
+    createdAt: equipo.createdAt.toISOString(),
+    updatedAt: equipo.updatedAt.toISOString(),
+  };
+}
+
+/** Shape de respuesta de un componente de equipo. */
+export interface ComponenteResponseDto {
+  id: string;
+  equipoId: string;
+  tipoComponenteId: string;
+  descripcion: string | null;
+  numeroSerie: string | null;
+  capacidad: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Convierte `ComponenteEquipoEntity` al shape de respuesta HTTP. */
+export function toComponenteResponseDto(componente: ComponenteEquipoEntity): ComponenteResponseDto {
+  return {
+    id: componente.id,
+    equipoId: componente.equipoId,
+    tipoComponenteId: componente.tipoComponenteId,
+    descripcion: componente.descripcion,
+    numeroSerie: componente.numeroSerie,
+    capacidad: componente.capacidad,
+    createdAt: componente.createdAt.toISOString(),
+    updatedAt: componente.updatedAt.toISOString(),
+  };
+}
+
+/**
+ * Shape de respuesta de `GET /equipos/:id` (sdd/beta-frontend item 1 — G7):
+ * detalle con `componentes` EMBEBIDOS — antes el frontend dependía solo del
+ * cache de sesión poblado por las mutaciones de agregar/eliminar componente.
+ */
+export interface EquipoDetalleResponseDto extends EquipoResponseDto {
+  componentes: ComponenteResponseDto[];
+}
+
+/** Convierte un `EquipoDetalle` (equipo + componentes) al shape de respuesta HTTP. */
+export function toEquipoDetalleResponseDto(detalle: {
+  equipo: EquipoInformaticoEntity;
+  componentes: ComponenteEquipoEntity[];
+}): EquipoDetalleResponseDto {
+  return {
+    ...toEquipoResponseDto(detalle.equipo),
+    componentes: detalle.componentes.map(toComponenteResponseDto),
+  };
+}
+
+/**
+ * Shape de respuesta unificado para un ticket de soporte (F3-Q4).
+ * `id` = `ticketSoporte.id` (satélite); `ticketId` = id del `Ticket` base.
+ */
+export interface TicketSoporteConTicketResponseDto {
+  id: string;
+  ticketId: string;
+  numero: string;
+  titulo: string;
+  estadoId: string;
+  equipoId: string | null;
+  descripcionProblema: string | null;
+  solucionAplicada: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Convierte `{ticket, ticketSoporte}` al shape de respuesta unificado. */
+export function toTicketSoporteResponseDto(
+  ticket: TicketEntity,
+  ticketSoporte: TicketSoporteEntity,
+): TicketSoporteConTicketResponseDto {
+  return {
+    id: ticketSoporte.id,
+    ticketId: ticket.id,
+    numero: ticket.numero,
+    titulo: ticket.titulo,
+    estadoId: ticket.estadoId,
+    equipoId: ticketSoporte.equipoId,
+    descripcionProblema: ticketSoporte.descripcionProblema,
+    solucionAplicada: ticketSoporte.solucionAplicada,
+    createdAt: ticketSoporte.createdAt.toISOString(),
+    updatedAt: ticketSoporte.updatedAt.toISOString(),
+  };
+}
+
+/**
+ * Shape de respuesta de solo el satélite `ticket_soporte` (sin datos del
+ * ticket base) — usado por `POST /soporte/:id/solucion`, que no vuelve a
+ * cargar el `Ticket` base.
+ */
+export interface TicketSoporteResponseDto {
+  id: string;
+  ticketId: string;
+  equipoId: string | null;
+  descripcionProblema: string | null;
+  solucionAplicada: string | null;
+  updatedAt: string;
+}
+
+/** Convierte `TicketSoporteEntity` (solo satélite) al shape de respuesta HTTP. */
+export function toTicketSoporteOnlyResponseDto(
+  ticketSoporte: TicketSoporteEntity,
+): TicketSoporteResponseDto {
+  return {
+    id: ticketSoporte.id,
+    ticketId: ticketSoporte.ticketId,
+    equipoId: ticketSoporte.equipoId,
+    descripcionProblema: ticketSoporte.descripcionProblema,
+    solucionAplicada: ticketSoporte.solucionAplicada,
+    updatedAt: ticketSoporte.updatedAt.toISOString(),
+  };
+}
+
+/** Shape de respuesta de un tipo de componente (catálogo read-only, F3-Q3). */
+export interface TipoComponenteResponseDto {
+  id: string;
+  codigo: string;
+  nombre: string;
+  activo: boolean;
+}
+
+/** Convierte `TipoComponenteEntity` al shape de respuesta HTTP. */
+export function toTipoComponenteResponseDto(tipo: TipoComponenteEntity): TipoComponenteResponseDto {
+  return {
+    id: tipo.id,
+    codigo: tipo.codigo,
+    nombre: tipo.nombre,
+    activo: tipo.activo,
+  };
+}

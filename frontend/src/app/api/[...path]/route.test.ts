@@ -1,0 +1,119 @@
+import { beforeEach, describe, it, expect } from "vitest";
+import { http, HttpResponse } from "msw";
+import { server } from "../../../../test/msw/server";
+import { NextRequest } from "next/server";
+import { GET, POST, PATCH, DELETE } from "./route";
+
+/**
+ * Generic BFF proxy — `/api/{...path}` forwards authenticated requests to
+ * `BACKEND_URL/{path}`, injecting `Authorization: Bearer <at>` from the
+ * httpOnly `at` cookie server-side (browser never sees the token).
+ *
+ * NOT explicitly listed in tasks.md — added as a prerequisite for B1: every
+ * feature hook calls `apiFetch('tickets')` etc. expecting `/api/tickets` to
+ * exist and reach the real backend (ADR-2), but only `/api/auth/*` BFF
+ * routes existed before this batch. Deviation documented in apply-progress.
+ */
+const BACKEND = "http://testbackend/api";
+
+describe("/api/[...path] generic BFF proxy", () => {
+  beforeEach(() => {
+    process.env.BACKEND_URL = BACKEND;
+  });
+
+  it("GET: forwards Authorization bearer from the `at` cookie and preserves the query string", async () => {
+    let capturedAuth: string | null = null;
+    let capturedUrl = "";
+    server.use(
+      http.get(`${BACKEND}/tickets`, ({ request }) => {
+        capturedAuth = request.headers.get("authorization");
+        capturedUrl = request.url;
+        return HttpResponse.json({ items: [], total: 0, pagina: 1, porPagina: 10 });
+      }),
+    );
+
+    const req = new NextRequest("http://localhost/api/tickets?estado=abc&pagina=2", {
+      headers: { cookie: "at=token123" },
+    });
+    const res = await GET(req, { params: Promise.resolve({ path: ["tickets"] }) });
+
+    expect(res.status).toBe(200);
+    expect(capturedAuth).toBe("Bearer token123");
+    expect(capturedUrl).toContain("estado=abc");
+    expect(capturedUrl).toContain("pagina=2");
+  });
+
+  it("GET: no `at` cookie → forwards without an Authorization header (backend is the real gate, returns its own 401)", async () => {
+    let capturedAuth: string | null | undefined;
+    server.use(
+      http.get(`${BACKEND}/tickets`, ({ request }) => {
+        capturedAuth = request.headers.get("authorization");
+        return new HttpResponse(null, { status: 401 });
+      }),
+    );
+
+    const req = new NextRequest("http://localhost/api/tickets");
+    const res = await GET(req, { params: Promise.resolve({ path: ["tickets"] }) });
+
+    expect(capturedAuth).toBeNull();
+    expect(res.status).toBe(401);
+  });
+
+  it("POST: forwards JSON body + joins multi-segment paths (nested resource routes)", async () => {
+    let capturedBody: unknown = null;
+    server.use(
+      http.post(`${BACKEND}/tickets/abc-123/comentarios`, async ({ request }) => {
+        capturedBody = await request.json();
+        return HttpResponse.json({ id: "op-1" }, { status: 201 });
+      }),
+    );
+
+    const req = new NextRequest("http://localhost/api/tickets/abc-123/comentarios", {
+      method: "POST",
+      headers: { cookie: "at=token123", "content-type": "application/json" },
+      body: JSON.stringify({ texto: "hola", esInterno: true }),
+    });
+    const res = await POST(req, {
+      params: Promise.resolve({ path: ["tickets", "abc-123", "comentarios"] }),
+    });
+
+    expect(res.status).toBe(201);
+    expect(capturedBody).toEqual({ texto: "hola", esInterno: true });
+  });
+
+  it("PATCH: propagates backend error status + NestJS error body verbatim (apiFetch normalize() depends on this shape)", async () => {
+    server.use(
+      http.patch(`${BACKEND}/tickets/abc-123/estado`, () =>
+        HttpResponse.json({ statusCode: 422, message: "Transición inválida" }, { status: 422 }),
+      ),
+    );
+
+    const req = new NextRequest("http://localhost/api/tickets/abc-123/estado", {
+      method: "PATCH",
+      headers: { cookie: "at=token123", "content-type": "application/json" },
+      body: JSON.stringify({ nuevoEstadoCodigo: "CERRADO" }),
+    });
+    const res = await PATCH(req, {
+      params: Promise.resolve({ path: ["tickets", "abc-123", "estado"] }),
+    });
+
+    expect(res.status).toBe(422);
+    expect(await res.json()).toEqual({ statusCode: 422, message: "Transición inválida" });
+  });
+
+  it("DELETE: backend 204 No Content → proxy returns 204 without attempting a JSON parse", async () => {
+    server.use(
+      http.delete(`${BACKEND}/usuarios/u1/membresia`, () => new HttpResponse(null, { status: 204 })),
+    );
+
+    const req = new NextRequest("http://localhost/api/usuarios/u1/membresia", {
+      method: "DELETE",
+      headers: { cookie: "at=token123" },
+    });
+    const res = await DELETE(req, {
+      params: Promise.resolve({ path: ["usuarios", "u1", "membresia"] }),
+    });
+
+    expect(res.status).toBe(204);
+  });
+});

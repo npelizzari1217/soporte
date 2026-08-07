@@ -1,0 +1,70 @@
+"use client";
+
+/**
+ * ClientesAdminView — CONTAINER client component montado por
+ * `/admin/clientes` (T4.6). Gate por `isGlobalAdmin` — NUNCA por `permisos`
+ * (ROOT es ortogonal al rol/permisos de una membresía, ADR-4 / JwtPayload).
+ * `<Can>` no sirve acá (solo chequea `permisos`) — se usa `useSession()`
+ * directo, mismo patrón documentado en `nav-config.ts` para el ítem
+ * "Clientes" del sidebar.
+ */
+import { useSession } from "@/shared/hooks/use-session";
+import { useClientes } from "../hooks/use-clientes";
+import { ErrorState } from "@/components/shared/error-state";
+import { PageHeader } from "@/components/shared/page-header";
+import { DataTable, type Column } from "@/components/shared/data-table";
+import { Badge } from "@/components/ui/badge";
+import { AdminNav } from "@/components/shell/admin-nav";
+import { notifyError } from "@/shared/lib/toast";
+import { CrearClienteDialog } from "./crear-cliente-dialog";
+import type { Cliente } from "../types";
+
+export function ClientesAdminView() {
+  const { isGlobalAdmin } = useSession();
+
+  return (
+    <div>
+      <AdminNav />
+      {isGlobalAdmin ? (
+        <ClientesAdminContent />
+      ) : (
+        <ErrorState message="Solo ROOT puede administrar clientes." />
+      )}
+    </div>
+  );
+}
+
+function ClientesAdminContent() {
+  const clientesQuery = useClientes();
+
+  const columns: Column<Cliente>[] = [
+    { key: "nombre", header: "Nombre" },
+    { key: "cuit", header: "CUIT", render: (row) => row.cuit ?? "—" },
+    { key: "dbName", header: "Base de datos" },
+    {
+      key: "activo",
+      header: "Estado",
+      render: (row) => (row.activo ? <Badge variant="success">Activo</Badge> : <Badge variant="outline">Inactivo</Badge>),
+    },
+  ];
+
+  return (
+    <div>
+      <PageHeader
+        title="Clientes"
+        description="Tenants de la plataforma (solo ROOT)."
+        actions={<CrearClienteDialog />}
+      />
+      <DataTable
+        columns={columns}
+        data={clientesQuery.data ?? []}
+        getRowKey={(row) => row.id}
+        isLoading={clientesQuery.isLoading}
+        error={clientesQuery.isError ? "No se pudieron cargar los clientes." : undefined}
+        onRetry={() => clientesQuery.refetch().catch(notifyError)}
+        emptyTitle="Sin clientes"
+        emptyDescription="Creá el primero con el botón «Nuevo cliente»."
+      />
+    </div>
+  );
+}
