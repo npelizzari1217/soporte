@@ -59,6 +59,7 @@ import { TenantGuard } from '../../../auth/infrastructure/guards/tenant.guard';
 import { PermissionsGuard } from '../../../auth/infrastructure/guards/permissions.guard';
 import { CurrentUser, RequirePermissions } from '../../../auth/infrastructure/guards/decorators';
 import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
+import { actorTienePermiso } from '../../../auth/domain/permisos.util';
 import { DomainError } from '../../../shared/domain/result';
 
 const PERMISO_KB_GESTIONAR = 'kb:gestionar';
@@ -124,7 +125,7 @@ export class KbController {
     @Query() query: ListKbArticulosQueryDto,
   ): Promise<ListKbArticulosResponseDto> {
     const result = await this.listarKbArticulosUseCase.execute({
-      tienePermisoVerTodos: user.permisos.includes(PERMISO_VER_TODOS),
+      tienePermisoVerTodos: actorTienePermiso(user, PERMISO_VER_TODOS),
       tipoTicketId: query.tipoTicketId,
       busqueda: query.busqueda,
       page: query.page,
@@ -152,7 +153,7 @@ export class KbController {
   ): Promise<KbArticuloResponseDto> {
     const result = await this.obtenerKbArticuloUseCase.execute({
       id,
-      tienePermisoVerTodos: user.permisos.includes(PERMISO_VER_TODOS),
+      tienePermisoVerTodos: actorTienePermiso(user, PERMISO_VER_TODOS),
     });
 
     if (result.isFail()) {

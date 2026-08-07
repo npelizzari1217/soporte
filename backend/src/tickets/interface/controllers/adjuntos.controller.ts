@@ -44,6 +44,7 @@ import { TenantGuard } from '../../../auth/infrastructure/guards/tenant.guard';
 import { PermissionsGuard } from '../../../auth/infrastructure/guards/permissions.guard';
 import { CurrentUser } from '../../../auth/infrastructure/guards/decorators';
 import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
+import { actorTienePermiso } from '../../../auth/domain/permisos.util';
 
 const PERMISO_VER_TODOS = 'ticket:ver_todos';
 const PERMISO_EDITAR = 'ticket:editar';
@@ -77,8 +78,8 @@ export class AdjuntosController {
       buffer: archivo.buffer,
       subidoPorId: user.sub,
       actorId: user.sub,
-      tienePermisoVerTodos: user.permisos.includes(PERMISO_VER_TODOS),
-      tienePermisoEditar: user.permisos.includes(PERMISO_EDITAR),
+      tienePermisoVerTodos: actorTienePermiso(user, PERMISO_VER_TODOS),
+      tienePermisoEditar: actorTienePermiso(user, PERMISO_EDITAR),
     });
 
     if (result.isFail()) {
@@ -113,8 +114,8 @@ export class AdjuntosController {
       buffer: archivo.buffer,
       subidoPorId: user.sub,
       actorId: user.sub,
-      tienePermisoVerTodos: user.permisos.includes(PERMISO_VER_TODOS),
-      tienePermisoEditar: user.permisos.includes(PERMISO_EDITAR),
+      tienePermisoVerTodos: actorTienePermiso(user, PERMISO_VER_TODOS),
+      tienePermisoEditar: actorTienePermiso(user, PERMISO_EDITAR),
     });
 
     if (result.isFail()) {

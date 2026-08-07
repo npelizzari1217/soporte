@@ -86,6 +86,7 @@ import { TenantGuard } from '../../../auth/infrastructure/guards/tenant.guard';
 import { PermissionsGuard } from '../../../auth/infrastructure/guards/permissions.guard';
 import { CurrentUser, RequirePermissions } from '../../../auth/infrastructure/guards/decorators';
 import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
+import { actorTienePermiso } from '../../../auth/domain/permisos.util';
 import { DomainError } from '../../../shared/domain/result';
 import {
   IUsuarioMasterChecker,
@@ -215,9 +216,15 @@ export class TicketsController {
     @CurrentUser() user: JwtPayload,
     @Query() query: ListTicketsQueryDto,
   ): Promise<ListTicketsResponseDto> {
+    // Gate de módulo (5.2 CAPA 2): ROOT y ADMINISTRADOR ven todos los tipos
+    // (incl. custom del tenant); el resto sólo los tipos de sus módulos.
+    const sinRestriccionModulo = user.is_global_admin || user.rol === 'ADMINISTRADOR';
+    const modulosPermitidos = sinRestriccionModulo ? null : user.modulos;
+
     const result = await this.listarTicketsUseCase.execute({
       actorId: user.sub,
-      tienePermisoVerTodos: user.permisos.includes(PERMISO_VER_TODOS),
+      tienePermisoVerTodos: actorTienePermiso(user, PERMISO_VER_TODOS),
+      modulosPermitidos,
       pagina: query.pagina,
       porPagina: query.porPagina,
       filtros: {
@@ -258,7 +265,7 @@ export class TicketsController {
     const result = await this.obtenerTicketUseCase.execute({
       ticketId: id,
       actorId: user.sub,
-      tienePermisoVerTodos: user.permisos.includes(PERMISO_VER_TODOS),
+      tienePermisoVerTodos: actorTienePermiso(user, PERMISO_VER_TODOS),
     });
 
     if (result.isFail()) {
@@ -389,7 +396,7 @@ export class TicketsController {
     @Body() dto: CreateComentarioDto,
   ): Promise<OperacionResponseDto> {
     const esInterno = dto.esInterno ?? false;
-    if (esInterno && !user.permisos.includes(PERMISO_OBSERVAR)) {
+    if (esInterno && !actorTienePermiso(user, PERMISO_OBSERVAR)) {
       throw new ForbiddenException(
         `Acceso denegado: se requiere el permiso "${PERMISO_OBSERVAR}" para crear un comentario interno.`,
       );
@@ -424,8 +431,8 @@ export class TicketsController {
     const result = await this.listarTimelineUseCase.execute({
       ticketId: id,
       actorId: user.sub,
-      tienePermisoVerTodos: user.permisos.includes(PERMISO_VER_TODOS),
-      tienePermisoObservar: user.permisos.includes(PERMISO_OBSERVAR),
+      tienePermisoVerTodos: actorTienePermiso(user, PERMISO_VER_TODOS),
+      tienePermisoObservar: actorTienePermiso(user, PERMISO_OBSERVAR),
     });
 
     if (result.isFail()) {
