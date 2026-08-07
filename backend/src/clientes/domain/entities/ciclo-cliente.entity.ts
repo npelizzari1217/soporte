@@ -85,4 +85,15 @@ export class CicloClienteEntity extends BaseEntity<CicloClienteProps> {
     this.props.activo = true;
     this.touch();
   }
+
+  /**
+   * Marca este ciclo como inactivo. A diferencia de `activate()`, NO tiene
+   * efecto sobre los demás ciclos del tenant: desactivar deja al tenant
+   * simplemente sin ciclo activo (0 activos es un estado válido). El use case
+   * persiste el cambio con el `save()` normal — no requiere transacción.
+   */
+  deactivate(): void {
+    this.props.activo = false;
+    this.touch();
+  }
 }

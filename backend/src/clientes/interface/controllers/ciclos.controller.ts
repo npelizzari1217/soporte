@@ -33,6 +33,7 @@ import {
 } from '@nestjs/common';
 import { ElegirCicloTenantUseCase } from '../../application/use-cases/elegir-ciclo-tenant.use-case';
 import { ActivarCicloUseCase } from '../../application/use-cases/activar-ciclo.use-case';
+import { DesactivarCicloUseCase } from '../../application/use-cases/desactivar-ciclo.use-case';
 import { ListarCiclosUseCase } from '../../application/use-cases/listar-ciclos.use-case';
 import { ElegirCicloDto, CicloResponseDto, ListarCiclosResponseDto } from '../dtos/ciclo.dto';
 import { CicloClienteEntity } from '../../domain/entities/ciclo-cliente.entity';
@@ -68,6 +69,7 @@ export class CiclosController {
   constructor(
     private readonly elegirCicloTenantUseCase: ElegirCicloTenantUseCase,
     private readonly activarCicloUseCase: ActivarCicloUseCase,
+    private readonly desactivarCicloUseCase: DesactivarCicloUseCase,
     private readonly listarCiclosUseCase: ListarCiclosUseCase,
   ) {}
 
@@ -125,6 +127,30 @@ export class CiclosController {
   @HttpCode(HttpStatus.OK)
   async activar(@Param('id') id: string): Promise<CicloResponseDto> {
     const result = await this.activarCicloUseCase.execute(id);
+
+    if (result.isFail()) {
+      const error = result.getError();
+      if (error instanceof CicloClienteNotFoundError) {
+        throw new NotFoundException(error.message);
+      }
+      throw error;
+    }
+
+    return toResponseDto(result.getValue());
+  }
+
+  /**
+   * PATCH /ciclos/:id/desactivar
+   * Desactiva el ciclo indicado. SIN efecto sobre los demás: el tenant queda
+   * sin ciclo activo (0 activos es válido). Contraparte de `activar`.
+   * @returns 200 + CicloResponseDto con activo=false
+   * @throws 404 si el ciclo no existe en el tenant
+   */
+  @Patch(':id/desactivar')
+  @RequirePermissions('ciclo:gestionar')
+  @HttpCode(HttpStatus.OK)
+  async desactivar(@Param('id') id: string): Promise<CicloResponseDto> {
+    const result = await this.desactivarCicloUseCase.execute(id);
 
     if (result.isFail()) {
       const error = result.getError();

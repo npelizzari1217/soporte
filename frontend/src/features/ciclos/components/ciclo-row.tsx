@@ -3,12 +3,14 @@
 /**
  * CicloRow — PRESENTATIONAL. Activar SIEMPRE detrás de `ConfirmDialog`
  * (activa este ciclo, desactiva TODOS los demás del tenant en la misma
- * transacción — R22 backend, efecto no trivial de deshacer).
+ * transacción — R22 backend, efecto no trivial de deshacer). Desactivar es
+ * directo (sin confirm): no tiene cascada, solo deja al tenant sin ciclo
+ * activo (0 activos es válido) y se revierte volviendo a activar.
  */
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
-import { useActivarCiclo } from "../hooks/use-ciclos-mutations";
+import { useActivarCiclo, useDesactivarCiclo } from "../hooks/use-ciclos-mutations";
 import type { CicloTenant } from "@/features/dashboard/types";
 
 export interface CicloRowProps {
@@ -16,7 +18,8 @@ export interface CicloRowProps {
 }
 
 export function CicloRow({ ciclo }: CicloRowProps) {
-  const mutation = useActivarCiclo();
+  const activar = useActivarCiclo();
+  const desactivar = useDesactivarCiclo();
 
   return (
     <div className="flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-3">
@@ -25,7 +28,17 @@ export function CicloRow({ ciclo }: CicloRowProps) {
         {ciclo.fechaInicio} → {ciclo.fechaFin}
       </span>
       {ciclo.activo ? (
-        <Badge variant="success">Activo</Badge>
+        <>
+          <Badge variant="success">Activo</Badge>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={desactivar.isPending}
+            onClick={() => desactivar.mutate(ciclo.id)}
+          >
+            Desactivar
+          </Button>
+        </>
       ) : (
         <ConfirmDialog
           trigger={
@@ -36,8 +49,8 @@ export function CicloRow({ ciclo }: CicloRowProps) {
           title="Activar ciclo"
           description={`¿Confirmás activar "${ciclo.nombre}"? Se desactivará el ciclo actualmente activo del tenant.`}
           confirmLabel="Confirmar"
-          isConfirming={mutation.isPending}
-          onConfirm={() => mutation.mutate(ciclo.id)}
+          isConfirming={activar.isPending}
+          onConfirm={() => activar.mutate(ciclo.id)}
         />
       )}
     </div>

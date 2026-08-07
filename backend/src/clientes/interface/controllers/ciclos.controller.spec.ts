@@ -20,13 +20,21 @@ describe('CiclosController (T9.7)', () => {
   function buildController() {
     const elegirCicloTenantUseCase = { execute: vi.fn() };
     const activarCicloUseCase = { execute: vi.fn() };
+    const desactivarCicloUseCase = { execute: vi.fn() };
     const listarCiclosUseCase = { execute: vi.fn() };
     const controller = new CiclosController(
       elegirCicloTenantUseCase as any,
       activarCicloUseCase as any,
+      desactivarCicloUseCase as any,
       listarCiclosUseCase as any,
     );
-    return { controller, elegirCicloTenantUseCase, activarCicloUseCase, listarCiclosUseCase };
+    return {
+      controller,
+      elegirCicloTenantUseCase,
+      activarCicloUseCase,
+      desactivarCicloUseCase,
+      listarCiclosUseCase,
+    };
   }
 
   const cicloAdoptado = CicloClienteEntity.create({
@@ -107,6 +115,42 @@ describe('CiclosController (T9.7)', () => {
       );
 
       await expect(controller.activar('id-inexistente')).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  describe('PATCH /ciclos/:id/desactivar', () => {
+    it('desactiva el ciclo y retorna 200 con el DTO de respuesta (activo=false)', async () => {
+      const { controller, desactivarCicloUseCase } = buildController();
+      const desactivado = CicloClienteEntity.reconstitute(
+        {
+          nombre: 'Ciclo 2026',
+          fechaInicio: new Date('2026-01-01'),
+          fechaFin: new Date('2026-12-31'),
+          activo: false,
+          cicloVigenteId: 'master-1',
+        },
+        cicloAdoptado.id,
+        new Date(),
+        new Date(),
+        null,
+      );
+      desactivarCicloUseCase.execute.mockResolvedValue(Result.ok(desactivado));
+
+      const result = await controller.desactivar(cicloAdoptado.id);
+
+      expect(result.activo).toBe(false);
+      expect(desactivarCicloUseCase.execute).toHaveBeenCalledWith(cicloAdoptado.id);
+    });
+
+    it('propaga 404 NotFoundException cuando el ciclo no existe en el tenant', async () => {
+      const { controller, desactivarCicloUseCase } = buildController();
+      desactivarCicloUseCase.execute.mockResolvedValue(
+        Result.fail(new CicloClienteNotFoundError('id-inexistente')),
+      );
+
+      await expect(controller.desactivar('id-inexistente')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
     });
   });
 

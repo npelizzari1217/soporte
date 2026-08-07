@@ -36,3 +36,15 @@ export function useActivarCiclo() {
     onError: notifyError,
   });
 }
+
+export function useDesactivarCiclo() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => apiFetch<CicloTenant>(`ciclos/${id}/desactivar`, { method: "PATCH" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["ciclos"] });
+      notifySuccess("Ciclo desactivado.");
+    },
+    onError: notifyError,
+  });
+}
