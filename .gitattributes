@@ -1,0 +1,8 @@
+# Normaliza los fines de línea: LF en el repo y en el checkout (evita el ruido
+# CRLF↔LF en Windows que mete prettier/editores). `text=auto` detecta binarios.
+* text=auto eol=lf
+
+# Scripts específicos de Windows: se quedan con CRLF.
+*.ps1 text eol=crlf
+*.cmd text eol=crlf
+*.bat text eol=crlf
