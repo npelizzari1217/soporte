@@ -69,6 +69,24 @@ export interface IUsuarioMasterChecker {
    * @returns Map de `usuarioId` → `{ nombre, apellido }` (solo los encontrados).
    */
   resolverNombres(usuarioIds: string[]): Promise<Map<string, { nombre: string; apellido: string }>>;
+
+  /**
+   * Resuelve la autorización por MÓDULO de un usuario en un cliente, para la
+   * elegibilidad de asignación (feature: elegibilidad por catálogo). Espeja el
+   * criterio de `resolverScope`: ROOT (`is_global_admin`) y ADMINISTRADOR
+   * (membresía activa con rol `ADMINISTRADOR` en el cliente) ven TODOS los
+   * módulos (`esAdminTotal = true`); el resto, solo los asignados en
+   * `usuario_cliente_modulos`.
+   *
+   * @param usuarioId UUID del usuario (asignado).
+   * @param clienteId UUID del cliente activo.
+   * @returns `esAdminTotal` (ve todo) y `modulos` (códigos asignados; ignorado
+   *          por el caller si `esAdminTotal`).
+   */
+  getAutorizacionModulos(
+    usuarioId: string,
+    clienteId: string,
+  ): Promise<{ esAdminTotal: boolean; modulos: string[] }>;
 }
 
 /** Token de inyección de dependencias para IUsuarioMasterChecker en NestJS. */

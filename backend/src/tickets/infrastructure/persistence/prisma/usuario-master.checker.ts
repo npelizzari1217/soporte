@@ -83,4 +83,41 @@ export class UsuarioMasterChecker implements IUsuarioMasterChecker {
     });
     return new Map(rows.map((row) => [row.id, { nombre: row.nombre, apellido: row.apellido }]));
   }
+
+  /**
+   * ROOT o ADMINISTRADOR (membresía activa con rol `ADMINISTRADOR` en el
+   * cliente) → `esAdminTotal = true`. El resto → `modulos` asignados en
+   * `usuario_cliente_modulos`. Mismo criterio de "ve todo" que `resolverScope`.
+   */
+  async getAutorizacionModulos(
+    usuarioId: string,
+    clienteId: string,
+  ): Promise<{ esAdminTotal: boolean; modulos: string[] }> {
+    const usuario = await this.masterClient.usuario.findFirst({
+      where: { id: usuarioId, deletedAt: null },
+      select: { isGlobalAdmin: true },
+    });
+
+    const esAdmin =
+      (await this.masterClient.membresia.findFirst({
+        where: {
+          usuarioId,
+          clienteId,
+          activo: true,
+          deletedAt: null,
+          rol: { codigo: 'ADMINISTRADOR' },
+        },
+        select: { id: true },
+      })) !== null;
+
+    if (usuario?.isGlobalAdmin || esAdmin) {
+      return { esAdminTotal: true, modulos: [] };
+    }
+
+    const rows = await this.masterClient.usuarioClienteModulo.findMany({
+      where: { usuarioId, clienteId },
+      select: { modulo: true },
+    });
+    return { esAdminTotal: false, modulos: rows.map((r) => r.modulo) };
+  }
 }

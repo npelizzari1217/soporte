@@ -644,7 +644,7 @@ describe('Tickets e2e (T4-T8, PR6)', () => {
   // ─── T14/T15 — Asignación manual (PR8) ─────────────────────────────────────
 
   describe('PATCH /tickets/:id/asignar (T14, T15)', () => {
-    it('TECNICO con ticket:asignar asigna a un agente elegible (usuario_tipos_ticket); USUARIO sin el permiso recibe 403', async () => {
+    it('TECNICO con ticket:asignar asigna a un agente elegible (módulo del catálogo); USUARIO sin el permiso recibe 403', async () => {
       const cliente = await createClienteTenant();
       const roleUsuario = await createRoleConPermisos('USUARIO', [
         'ticket:crear',
@@ -665,7 +665,9 @@ describe('Tickets e2e (T4-T8, PR6)', () => {
       await createMembresia(agente.id, cliente.id, roleAgente.id);
       const loginUsuario = await login(usuario.email);
       const loginTecnico = await login(tecnico.email);
-      const tipoId = await createTipoTicketAislado('ASIG');
+      // Tipo SOPORTE (seedeado): mapea al módulo SOPORTE — la elegibilidad de
+      // asignación es por MÓDULO del catálogo asignado al usuario.
+      const tipoId = tipoSoporteId;
 
       const created = await httpPost<TicketResponseDto>(
         `${baseUrl}/tickets`,
@@ -681,7 +683,7 @@ describe('Tickets e2e (T4-T8, PR6)', () => {
       );
       expect(denegado.status).toBe(403);
 
-      // TECNICO con ticket:asignar, pero el agente aún NO es elegible (sin fila en usuario_tipos_ticket) → 422.
+      // TECNICO con ticket:asignar, pero el agente aún NO tiene el módulo SOPORTE → 422.
       const noElegible = await httpPatch(
         `${baseUrl}/tickets/${created.data.id}/asignar`,
         { asignadoId: agente.id },
@@ -689,12 +691,12 @@ describe('Tickets e2e (T4-T8, PR6)', () => {
       );
       expect(noElegible.status).toBe(422);
 
-      // Habilita al agente para el tipo (routing, T3) — inserción directa (repo probado en spec dedicado).
-      await tenantClient.usuarioTiposTicket.create({
-        data: { usuarioId: agente.id, tipoTicketId: tipoId },
+      // Habilita al agente asignándole el módulo SOPORTE en el cliente (master).
+      await masterClient.usuarioClienteModulo.create({
+        data: { usuarioId: agente.id, clienteId: cliente.id, modulo: 'SOPORTE' },
       });
 
-      // TECNICO con ticket:asignar + agente elegible → asignación válida.
+      // TECNICO con ticket:asignar + agente con el módulo → asignación válida.
       const permitido = await httpPatch<TicketResponseDto>(
         `${baseUrl}/tickets/${created.data.id}/asignar`,
         { asignadoId: agente.id },

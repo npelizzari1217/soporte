@@ -1,13 +1,11 @@
 /**
- * T8.1/T8.2 [UNIT] — RED→GREEN: `AsignarTicketUseCase`.
+ * [UNIT] — `AsignarTicketUseCase`.
  *
- * Todos los puertos mockeados (`vi.fn`) — sin DB. Cubre T14 (asignación
- * manual válida: asignado activo+en tenant, elegible por
- * `usuario_tipos_ticket`, operación ASIGNACION en la misma tx) y T15
- * (elegibilidad ortogonal al permiso — un asignador con `ticket:asignar`
- * pero un asignado NO elegible sigue fallando 422).
- *
- * Ref spec: sdd/tickets-core/spec T14, T15. Tarea: T8.1, T8.2.
+ * Todos los puertos mockeados (`vi.fn`) — sin DB. Cubre asignación manual
+ * válida (asignado activo+en tenant, ELEGIBLE POR MÓDULO/CATÁLOGO, operación
+ * ASIGNACION en la misma tx) y la regla de elegibilidad por módulo: ROOT/
+ * ADMINISTRADOR pueden todo; un usuario normal solo si tiene el módulo que
+ * mapea al tipo del ticket; sin él → 422 (ortogonal al permiso del asignador).
  */
 import { AsignarTicketUseCase, AsignarTicketDto } from './asignar-ticket.use-case';
 import { TicketEntity } from '../../domain/entities/ticket.entity';
@@ -58,11 +56,20 @@ describe('AsignarTicketUseCase', () => {
     const usuarioMasterChecker = {
       existeEnTenant: vi.fn(),
       estaActivoEnTenant: vi.fn().mockResolvedValue(true),
+      // Por defecto: usuario normal CON el módulo SOPORTE (elegible para el
+      // ticket de tipo SOPORTE que arma makeTicket).
+      getAutorizacionModulos: vi
+        .fn()
+        .mockResolvedValue({ esAdminTotal: false, modulos: ['SOPORTE'] }),
     };
-    const usuarioTiposTicketRepo = {
-      isUserEligibleForType: vi.fn().mockResolvedValue(true),
-      assign: vi.fn(),
-      revoke: vi.fn(),
+    // Mapea código de tipo -> tipoId del tenant (SOPORTE = el tipo del ticket).
+    const CODIGO_A_ID: Record<string, string> = {
+      SOPORTE: 'tipo-soporte-uuid',
+      COMPRAS: 'tipo-compras-uuid',
+      EDILICIA: 'tipo-edilicia-uuid',
+    };
+    const tipoTicketRepo = {
+      findIdByCodigo: vi.fn(async (codigo: string) => CODIGO_A_ID[codigo] ?? null),
     };
     const tipoOperacionRepo = {
       findIdByCodigo: vi.fn().mockResolvedValue('tipo-op-asignacion-uuid'),
@@ -73,7 +80,7 @@ describe('AsignarTicketUseCase', () => {
       ticketRepo as never,
       operacionRepo as never,
       usuarioMasterChecker as never,
-      usuarioTiposTicketRepo as never,
+      tipoTicketRepo as never,
       tipoOperacionRepo as never,
       txRunner as never,
     );
@@ -83,7 +90,7 @@ describe('AsignarTicketUseCase', () => {
       ticketRepo,
       operacionRepo,
       usuarioMasterChecker,
-      usuarioTiposTicketRepo,
+      tipoTicketRepo,
       tipoOperacionRepo,
       txRunner,
     };
@@ -153,14 +160,18 @@ describe('AsignarTicketUseCase', () => {
 
     expect(result.isFail()).toBe(true);
     expect(result.getError()).toBeInstanceOf(AsignadoInvalidoError);
-    expect(c.usuarioTiposTicketRepo.isUserEligibleForType).not.toHaveBeenCalled();
+    expect(c.usuarioMasterChecker.getAutorizacionModulos).not.toHaveBeenCalled();
     expect(c.txRunner.run).not.toHaveBeenCalled();
   });
 
-  it('T14/T15: asignado sin fila en usuario_tipos_ticket para el tipo del ticket → AsignadoNoElegibleError (422), sin tx', async () => {
+  it('asignado normal SIN el módulo del tipo del ticket → AsignadoNoElegibleError (422), sin tx', async () => {
     const c = makeCollaborators();
     c.ticketRepo.findById.mockResolvedValue(makeTicket());
-    c.usuarioTiposTicketRepo.isUserEligibleForType.mockResolvedValue(false);
+    // Tiene COMPRAS, pero el ticket es de tipo SOPORTE → no elegible.
+    c.usuarioMasterChecker.getAutorizacionModulos.mockResolvedValue({
+      esAdminTotal: false,
+      modulos: ['COMPRAS'],
+    });
 
     const result = await c.useCase.execute(baseDto());
 
@@ -170,30 +181,51 @@ describe('AsignarTicketUseCase', () => {
     expect(c.ticketRepo.save).not.toHaveBeenCalled();
   });
 
-  it('T15: elegibilidad es ortogonal al permiso — la validación de negocio no depende de qué permiso tenga el asignador (fuera del alcance del use case)', async () => {
-    // El use case no recibe ni evalúa permisos (eso lo resuelve PermissionsGuard
-    // en la capa de interface, T10-style). Este test documenta que, aun con
-    // datos de "asignador con permiso" implícitos en el DTO (autorId), el
-    // rechazo por elegibilidad ocurre igual — la elegibilidad no se salta.
+  it('asignado normal sin ningún módulo → AsignadoNoElegibleError (422)', async () => {
     const c = makeCollaborators();
     c.ticketRepo.findById.mockResolvedValue(makeTicket());
-    c.usuarioTiposTicketRepo.isUserEligibleForType.mockResolvedValue(false);
+    c.usuarioMasterChecker.getAutorizacionModulos.mockResolvedValue({
+      esAdminTotal: false,
+      modulos: [],
+    });
 
-    const result = await c.useCase.execute(baseDto({ autorId: 'tecnico-con-permiso-uuid' }));
+    const result = await c.useCase.execute(baseDto());
 
     expect(result.isFail()).toBe(true);
     expect(result.getError()).toBeInstanceOf(AsignadoNoElegibleError);
   });
 
-  it('elegibilidad se verifica contra el tipoId ACTUAL del ticket', async () => {
+  it('CORE: un técnico CON el módulo del catálogo puede ser asignado/tomar el ticket', async () => {
     const c = makeCollaborators();
     c.ticketRepo.findById.mockResolvedValue(makeTicket());
+    c.usuarioMasterChecker.getAutorizacionModulos.mockResolvedValue({
+      esAdminTotal: false,
+      modulos: ['SOPORTE'],
+    });
 
-    await c.useCase.execute(baseDto());
+    const result = await c.useCase.execute(baseDto());
 
-    expect(c.usuarioTiposTicketRepo.isUserEligibleForType).toHaveBeenCalledWith(
+    expect(result.isOk()).toBe(true);
+    expect(result.getValue().asignadoId).toBe('agente-uuid');
+    // La elegibilidad se resuelve para el asignado en el cliente del ticket.
+    expect(c.usuarioMasterChecker.getAutorizacionModulos).toHaveBeenCalledWith(
       'agente-uuid',
-      'tipo-soporte-uuid',
+      'cliente-uuid',
     );
+  });
+
+  it('ROOT/ADMINISTRADOR (esAdminTotal) es elegible aunque no tenga módulos cargados', async () => {
+    const c = makeCollaborators();
+    c.ticketRepo.findById.mockResolvedValue(makeTicket());
+    c.usuarioMasterChecker.getAutorizacionModulos.mockResolvedValue({
+      esAdminTotal: true,
+      modulos: [],
+    });
+
+    const result = await c.useCase.execute(baseDto());
+
+    expect(result.isOk()).toBe(true);
+    // No necesita resolver tipos por módulo cuando ve todo.
+    expect(c.tipoTicketRepo.findIdByCodigo).not.toHaveBeenCalled();
   });
 });

@@ -5,8 +5,9 @@ import { OperacionTicketEntity } from '../../domain/entities/operacion-ticket.en
 import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
 import { IOperacionTicketRepository } from '../../domain/ports/i-operacion-ticket.repository';
 import { IUsuarioMasterChecker } from '../../domain/ports/i-usuario-master.checker';
-import { IUsuarioTiposTicketRepository } from '../../domain/ports/i-usuario-tipos-ticket.repository';
+import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
 import { ITipoOperacionRepository } from '../../domain/ports/i-tipo-operacion.repository';
+import { MODULO_A_TIPO_CODIGO } from '../../../shared/domain/modulos';
 import {
   TicketNoEncontradoError,
   AsignadoInvalidoError,
@@ -45,11 +46,15 @@ export interface AsignarTicketDto {
  * 2. Valida que el asignado existe en `master.usuarios` con `activo=true` y
  *    pertenece (vía membresía activa) al tenant activo (cross-DB,
  *    `IUsuarioMasterChecker.estaActivoEnTenant`). Si no → `AsignadoInvalidoError` (422).
- * 3. Valida elegibilidad: el asignado debe tener fila en `usuario_tipos_ticket`
- *    para el `tipoId` ACTUAL del ticket (T3, routing — dato, NO permiso RBAC).
- *    Si no → `AsignadoNoElegibleError` (422). Esta validación es ORTOGONAL al
- *    permiso `ticket:asignar` del actor (T15): un actor con el permiso puede
- *    intentar asignar a alguien no elegible y de todos modos falla acá.
+ * 3. Valida elegibilidad POR MÓDULO/CATÁLOGO: el asignado es elegible si es
+ *    ROOT/ADMINISTRADOR (ven todo) o si tiene asignado el módulo que
+ *    corresponde al tipo ACTUAL del ticket (`MODULO_A_TIPO_CODIGO`). Reemplaza
+ *    el routing `usuario_tipos_ticket` por el eje de módulos por usuario: "un
+ *    técnico con acceso al catálogo puede tomar/ser asignado al ticket". Si no
+ *    → `AsignadoNoElegibleError` (422). Ortogonal al permiso `ticket:asignar`
+ *    del actor (T15): un actor con el permiso puede intentar asignar a alguien
+ *    sin el módulo y de todos modos falla acá. Los tipos custom (sin módulo)
+ *    solo los puede tomar ROOT/ADMINISTRADOR.
  * 4. Resuelve el id del tipo de operación `ASIGNACION` del catálogo tenant
  *    (catálogo FIJO garantizado por el seed — su ausencia es un fallo de
  *    infraestructura, no un error del caller: `throw` defensivo, mismo
@@ -75,11 +80,11 @@ export class AsignarTicketUseCase {
   constructor(
     private readonly ticketRepo: ITicketRepository,
     private readonly operacionRepo: IOperacionTicketRepository,
-    private readonly usuarioMasterChecker: Pick<IUsuarioMasterChecker, 'estaActivoEnTenant'>,
-    private readonly usuarioTiposTicketRepo: Pick<
-      IUsuarioTiposTicketRepository,
-      'isUserEligibleForType'
+    private readonly usuarioMasterChecker: Pick<
+      IUsuarioMasterChecker,
+      'estaActivoEnTenant' | 'getAutorizacionModulos'
     >,
+    private readonly tipoTicketRepo: Pick<ITipoTicketRepository, 'findIdByCodigo'>,
     private readonly tipoOperacionRepo: ITipoOperacionRepository,
     private readonly txRunner: ITenantTransactionRunner,
   ) {}
@@ -98,10 +103,26 @@ export class AsignarTicketUseCase {
       return Result.fail(new AsignadoInvalidoError(dto.asignadoId));
     }
 
-    const esElegible = await this.usuarioTiposTicketRepo.isUserEligibleForType(
+    // Elegibilidad por módulo/catálogo: ROOT/ADMINISTRADOR pueden todo; el
+    // resto, solo si tiene el módulo que mapea al tipo del ticket. Se resuelven
+    // los tipoIds permitidos desde los módulos del asignado (codigo -> id) y se
+    // chequea que el tipo del ticket esté entre ellos.
+    const auth = await this.usuarioMasterChecker.getAutorizacionModulos(
       dto.asignadoId,
-      ticket.tipoId,
+      dto.clienteId,
     );
+    let esElegible = auth.esAdminTotal;
+    if (!esElegible) {
+      const codigosPermitidos = auth.modulos
+        .map((modulo) => MODULO_A_TIPO_CODIGO[modulo])
+        .filter((codigo): codigo is string => Boolean(codigo));
+      const tipoIdsPermitidos = (
+        await Promise.all(
+          codigosPermitidos.map((codigo) => this.tipoTicketRepo.findIdByCodigo(codigo)),
+        )
+      ).filter((id): id is string => id !== null);
+      esElegible = tipoIdsPermitidos.includes(ticket.tipoId);
+    }
     if (!esElegible) {
       return Result.fail(new AsignadoNoElegibleError(dto.asignadoId, ticket.tipoId));
     }
