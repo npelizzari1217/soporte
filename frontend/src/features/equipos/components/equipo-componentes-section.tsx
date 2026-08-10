@@ -17,6 +17,7 @@
  * `tipoNombre`/`tipoActivo` (shape básico), se enriquece acá con el
  * catálogo ya cargado (siempre activo, por venir del selector).
  */
+import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -47,6 +48,15 @@ export function EquipoComponentesSection({ equipoId, componentes }: EquipoCompon
   const tiposComponenteQuery = useTiposComponente();
   const agregarMutation = useAgregarComponente(equipoId);
   const eliminarMutation = useEliminarComponente(equipoId);
+
+  // El cache local (`staleTime: Infinity`) solo se actualiza por las mutaciones
+  // locales de agregar/quitar. Cuando el detalle del equipo se re-fetchea (p.ej.
+  // al desactivar un tipo desde el ABM, que invalida `["equipo"]`), llega un
+  // `componentes` fresco por props: lo sincronizamos para que el aviso "Dado de
+  // baja" y los nombres reflejen el estado actual sin recarga dura (F5).
+  useEffect(() => {
+    queryClient.setQueryData<ComponenteConTipo[]>(["componentes", equipoId], componentes);
+  }, [componentes, equipoId, queryClient]);
 
   const {
     register,

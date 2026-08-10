@@ -18,6 +18,12 @@ const QUERY_KEY = ["tipos-componente-admin"];
 
 function invalidate(queryClient: QueryClient): void {
   queryClient.invalidateQueries({ queryKey: QUERY_KEY });
+  // Un cambio en el catálogo master (alta/renombre/activar/desactivar) impacta
+  // fuera del ABM: el selector de alta de componentes (solo activos) y el
+  // detalle de cada equipo (nombre + aviso "Dado de baja" del tipo). Se
+  // invalidan ambos para que se reflejen SIN recargar (F5).
+  queryClient.invalidateQueries({ queryKey: ["equipos", "tipos-componente"] });
+  queryClient.invalidateQueries({ queryKey: ["equipo"] });
 }
 
 export function useTiposComponenteAdmin() {
