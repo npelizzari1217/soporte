@@ -5,13 +5,12 @@
  *   POST /tickets/:id/adjuntos     → AdjuntarArchivoUseCase (adjunta directo al ticket)
  *   POST /operaciones/:id/adjuntos → AdjuntarArchivoUseCase (adjunta a una operación existente)
  *
- * `@Controller()` sin prefijo (mismo criterio que `RoutingController`, que
- * expone `/routing` — un recurso NO anidado bajo `/tickets`): acá el
- * segundo endpoint cuelga de `/operaciones`, una base de ruta distinta a
- * `/tickets`, así que ambos métodos declaran su path completo.
+ * `@Controller()` sin prefijo (para exponer recursos NO anidados bajo
+ * `/tickets`): acá el segundo endpoint cuelga de `/operaciones`, una base de
+ * ruta distinta a `/tickets`, así que ambos métodos declaran su path completo.
  *
  * Guards: `JwtAuthGuard` + `TenantGuard` + `PermissionsGuard` (mismo patrón
- * que `TicketsController`/`RoutingController`) — pero SIN
+ * que `TicketsController`) — pero SIN
  * `@RequirePermissions`: ADR-2 no define un permiso RBAC dedicado para
  * adjuntar. El acceso (solicitante, o `ticket:ver_todos`/`ticket:editar`)
  * se resuelve DENTRO de `AdjuntarArchivoUseCase` (mismo criterio que el

@@ -2,7 +2,7 @@
  * tickets.e2e.spec.ts — E2E real de punta a punta (HTTP → guards →
  * TicketsController → use cases → Prisma REAL) para el CRUD lectura/
  * creación de tickets (T4, T6, T7, T8 — PR6), transición de estados (T9,
- * T10, T12 — PR7), asignación/routing (T3, T14, T15 — PR8) y timeline
+ * T10, T12 — PR7), asignación (T14, T15 — PR8) y timeline
  * tipado/comentarios (T16-T19 — PR9).
  *
  * SEGURIDAD: provisiona UNA sola DB tenant efímera
@@ -114,27 +114,6 @@ async function httpPatch<T = unknown>(
   });
   const data = (await res.json().catch(() => null)) as T;
   return { status: res.status, data };
-}
-
-/** POST sin body (endpoints de routing — la PK compuesta viaja en la URL). */
-async function httpPostNoBody<T = unknown>(
-  url: string,
-  headers: Headers = {},
-): Promise<{ status: number; data: T }> {
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { Accept: 'application/json', ...headers },
-  });
-  const data = (await res.json().catch(() => null)) as T;
-  return { status: res.status, data };
-}
-
-async function httpDelete(url: string, headers: Headers = {}): Promise<{ status: number }> {
-  const res = await fetch(url, {
-    method: 'DELETE',
-    headers: { Accept: 'application/json', ...headers },
-  });
-  return { status: res.status };
 }
 
 /** POST multipart/form-data (endpoints de adjuntos, PR10 — T20-T22). */
@@ -736,71 +715,6 @@ describe('Tickets e2e (T4-T8, PR6)', () => {
         `${baseUrl}/tickets/${created.data.id}/asignar`,
         { asignadoId: '01900000-0000-7000-8000-000000000099' },
         bearer(loginTecnico.accessToken),
-      );
-      expect(status).toBe(422);
-    });
-  });
-
-  // ─── T3 — Routing usuario↔tipo_ticket (PR8) ────────────────────────────────
-
-  describe('POST|DELETE /routing/:usuarioId/:tipoTicketId (T3)', () => {
-    it('ADMINISTRADOR con usuario:gestionar asocia y desasocia; USUARIO sin el permiso recibe 403', async () => {
-      const cliente = await createClienteTenant();
-      const roleUsuario = await createRoleConPermisos('USUARIO', [
-        'ticket:crear',
-        'ticket:comentar',
-      ]);
-      const roleAdmin = await createRoleConPermisos('ADMINISTRADOR', ['usuario:gestionar']);
-      const usuario = await createUsuario(`usr-${randomBytes(2).toString('hex')}`);
-      const admin = await createUsuario(`adm-${randomBytes(2).toString('hex')}`);
-      const agente = await createUsuario(`age-${randomBytes(2).toString('hex')}`);
-      await createMembresia(usuario.id, cliente.id, roleUsuario.id);
-      await createMembresia(admin.id, cliente.id, roleAdmin.id);
-      const loginUsuario = await login(usuario.email);
-      const loginAdmin = await login(admin.email);
-      const tipoId = await createTipoTicketAislado('ROUTE');
-
-      // USUARIO sin usuario:gestionar → 403.
-      const denegado = await httpPostNoBody(
-        `${baseUrl}/routing/${agente.id}/${tipoId}`,
-        bearer(loginUsuario.accessToken),
-      );
-      expect(denegado.status).toBe(403);
-
-      // ADMINISTRADOR asocia → 201, fila física creada.
-      const asociado = await httpPostNoBody(
-        `${baseUrl}/routing/${agente.id}/${tipoId}`,
-        bearer(loginAdmin.accessToken),
-      );
-      expect(asociado.status).toBe(201);
-      const filaCreada = await tenantClient.usuarioTiposTicket.findUnique({
-        where: { usuarioId_tipoTicketId: { usuarioId: agente.id, tipoTicketId: tipoId } },
-      });
-      expect(filaCreada).not.toBeNull();
-
-      // ADMINISTRADOR desasocia → 204, fila eliminada físicamente.
-      const desasociado = await httpDelete(
-        `${baseUrl}/routing/${agente.id}/${tipoId}`,
-        bearer(loginAdmin.accessToken),
-      );
-      expect(desasociado.status).toBe(204);
-      const filaEliminada = await tenantClient.usuarioTiposTicket.findUnique({
-        where: { usuarioId_tipoTicketId: { usuarioId: agente.id, tipoTicketId: tipoId } },
-      });
-      expect(filaEliminada).toBeNull();
-    });
-
-    it('tipoTicketId inexistente en el catálogo del tenant → 422', async () => {
-      const cliente = await createClienteTenant();
-      const roleAdmin = await createRoleConPermisos('ADMINISTRADOR', ['usuario:gestionar']);
-      const admin = await createUsuario(`adm-${randomBytes(2).toString('hex')}`);
-      const agente = await createUsuario(`age-${randomBytes(2).toString('hex')}`);
-      await createMembresia(admin.id, cliente.id, roleAdmin.id);
-      const loginAdmin = await login(admin.email);
-
-      const { status } = await httpPostNoBody(
-        `${baseUrl}/routing/${agente.id}/01900000-0000-7000-8000-000000000099`,
-        bearer(loginAdmin.accessToken),
       );
       expect(status).toBe(422);
     });

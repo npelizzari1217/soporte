@@ -33,11 +33,6 @@ import {
   ICicloClienteRepository,
 } from './domain/ports/i-ciclo-cliente.repository';
 import { PrismaCicloClienteRepository } from './infrastructure/persistence/prisma/prisma-ciclo-cliente.repository';
-import {
-  USUARIO_TIPOS_TICKET_REPOSITORY,
-  IUsuarioTiposTicketRepository,
-} from './domain/ports/i-usuario-tipos-ticket.repository';
-import { PrismaUsuarioTiposTicketRepository } from './infrastructure/persistence/prisma/prisma-usuario-tipos-ticket.repository';
 
 import { NumeradorTicket } from './domain/services/numerador-ticket.service';
 import { ResolverCicloActivoParaCreacion } from './application/services/resolver-ciclo-activo.service';
@@ -60,9 +55,6 @@ import { TransicionarEstadoUseCase } from './application/use-cases/transicionar-
 import { AsignarTicketUseCase } from './application/use-cases/asignar-ticket.use-case';
 import { AsignarYPonerEnProcesoUseCase } from './application/use-cases/asignar-y-poner-en-proceso.use-case';
 import { ListarTecnicosAsignablesUseCase } from './application/use-cases/listar-tecnicos-asignables.use-case';
-import { AsociarUsuarioTipoTicketUseCase } from './application/use-cases/asociar-usuario-tipo-ticket.use-case';
-import { DesasociarUsuarioTipoTicketUseCase } from './application/use-cases/desasociar-usuario-tipo-ticket.use-case';
-import { ListarRoutingUseCase } from './application/use-cases/listar-routing.use-case';
 import { CrearComentarioUseCase } from './application/use-cases/crear-comentario.use-case';
 import { ListarTimelineUseCase } from './application/use-cases/listar-timeline.use-case';
 import { AdjuntarArchivoUseCase } from './application/use-cases/adjuntar-archivo.use-case';
@@ -77,7 +69,6 @@ import { ListarPrioridadesUseCase } from './application/use-cases/listar-priorid
 import { ListarEstadosUseCase } from './application/use-cases/listar-estados.use-case';
 import { ListarTiposOperacionUseCase } from './application/use-cases/listar-tipos-operacion.use-case';
 import { TicketsController } from './interface/controllers/tickets.controller';
-import { RoutingController } from './interface/controllers/routing.controller';
 import { AdjuntosController } from './interface/controllers/adjuntos.controller';
 import { CatalogosController } from './interface/controllers/catalogos.controller';
 
@@ -109,13 +100,11 @@ import { CatalogosController } from './interface/controllers/catalogos.controlle
  *   `POST/GET/GET:id/PATCH:id /tickets`.
  * - PR7 (Fase 2): `TransicionarEstadoUseCase` (T9/T10/T12/T13) +
  *   `TicketStateMachineFactory`. Endpoint `PATCH /tickets/:id/estado`.
- * - PR8 (Fase 2): `USUARIO_TIPOS_TICKET_REPOSITORY` (routing usuario↔tipo,
- *   T3) + `AsignarTicketUseCase` (T14/T15, reusa `USUARIO_MASTER_CHECKER`
- *   de PR1) + `AsociarUsuarioTipoTicketUseCase`/
- *   `DesasociarUsuarioTipoTicketUseCase` (routing CRUD). Endpoints
- *   `PATCH /tickets/:id/asignar` (`TicketsController`) y
- *   `POST|DELETE /routing/:usuarioId/:tipoTicketId` (`RoutingController`,
- *   controller nuevo — el routing NO es un recurso anidado de `/tickets`).
+ * - PR8 (Fase 2): `AsignarTicketUseCase` (T14/T15, reusa `USUARIO_MASTER_CHECKER`
+ *   de PR1). Endpoint `PATCH /tickets/:id/asignar` (`TicketsController`).
+ *   La elegibilidad de asignación se resuelve por el módulo del catálogo del
+ *   `TipoTicket` (vía `TIPO_TICKET_REPOSITORY`), no por una tabla de routing
+ *   usuario↔tipo dedicada.
  * - PR9 (Fase 2): `CrearComentarioUseCase` (T16/T17, reusa `ESTADO_REPOSITORY`
  *   + `TIPO_OPERACION_REPOSITORY`/`DOMAIN_EVENT_PUBLISHER` ya registrados) +
  *   `ListarTimelineUseCase` (T18, reusa `TICKET_REPOSITORY`/
@@ -127,8 +116,8 @@ import { CatalogosController } from './interface/controllers/catalogos.controlle
  *   `TIPO_OPERACION_REPOSITORY` ya registrados desde PR2/PR5 + `FILE_STORAGE`
  *   de `SharedModule`, `@Global`). Endpoints `POST /tickets/:id/adjuntos` y
  *   `POST /operaciones/:id/adjuntos` (`AdjuntosController`, controller
- *   nuevo — mismo criterio que `RoutingController`: `/operaciones` no
- *   cuelga de `/tickets`).
+ *   nuevo con `@Controller()` sin prefijo: `/operaciones` no cuelga de
+ *   `/tickets`).
  * - PR11 (Fase 2): CRUD editable de catálogos (T2 — `tipos_ticket`/
  *   `prioridades`; `estados` permanece FIJO, sin CRUD). Reusa
  *   `TIPO_TICKET_REPOSITORY`/`PRIORIDAD_REPOSITORY` ya registrados desde
@@ -145,7 +134,7 @@ import { CatalogosController } from './interface/controllers/catalogos.controlle
  */
 @Module({
   imports: [AuthModule],
-  controllers: [TicketsController, RoutingController, AdjuntosController, CatalogosController],
+  controllers: [TicketsController, AdjuntosController, CatalogosController],
   providers: [
     { provide: USUARIO_MASTER_CHECKER, useClass: UsuarioMasterChecker },
     { provide: ESTADO_REPOSITORY, useClass: PrismaEstadoRepository },
@@ -156,7 +145,6 @@ import { CatalogosController } from './interface/controllers/catalogos.controlle
     { provide: OPERACION_TICKET_REPOSITORY, useClass: PrismaOperacionTicketRepository },
     { provide: ARCHIVO_REPOSITORY, useClass: PrismaArchivoRepository },
     { provide: CICLO_CLIENTE_REPOSITORY, useClass: PrismaCicloClienteRepository },
-    { provide: USUARIO_TIPOS_TICKET_REPOSITORY, useClass: PrismaUsuarioTiposTicketRepository },
 
     {
       provide: NumeradorTicket,
@@ -341,26 +329,6 @@ import { CatalogosController } from './interface/controllers/catalogos.controlle
       ],
     },
     {
-      provide: AsociarUsuarioTipoTicketUseCase,
-      useFactory: (
-        tipoTicketRepo: ITipoTicketRepository,
-        usuarioTiposTicketRepo: IUsuarioTiposTicketRepository,
-      ) => new AsociarUsuarioTipoTicketUseCase(tipoTicketRepo, usuarioTiposTicketRepo),
-      inject: [TIPO_TICKET_REPOSITORY, USUARIO_TIPOS_TICKET_REPOSITORY],
-    },
-    {
-      provide: DesasociarUsuarioTipoTicketUseCase,
-      useFactory: (usuarioTiposTicketRepo: IUsuarioTiposTicketRepository) =>
-        new DesasociarUsuarioTipoTicketUseCase(usuarioTiposTicketRepo),
-      inject: [USUARIO_TIPOS_TICKET_REPOSITORY],
-    },
-    {
-      provide: ListarRoutingUseCase,
-      useFactory: (usuarioTiposTicketRepo: IUsuarioTiposTicketRepository) =>
-        new ListarRoutingUseCase(usuarioTiposTicketRepo),
-      inject: [USUARIO_TIPOS_TICKET_REPOSITORY],
-    },
-    {
       provide: CrearComentarioUseCase,
       useFactory: (
         ticketRepo: ITicketRepository,
@@ -486,7 +454,6 @@ import { CatalogosController } from './interface/controllers/catalogos.controlle
     OPERACION_TICKET_REPOSITORY,
     ARCHIVO_REPOSITORY,
     CICLO_CLIENTE_REPOSITORY,
-    USUARIO_TIPOS_TICKET_REPOSITORY,
   ],
 })
 export class TicketsModule {}

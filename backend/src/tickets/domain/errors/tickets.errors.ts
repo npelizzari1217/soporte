@@ -104,9 +104,10 @@ export class AsignadoInvalidoError extends DomainError {
 }
 
 /**
- * AsignadoNoElegibleError — el `asignadoId` no tiene fila en
- * `usuario_tipos_ticket` para el `tipoId` del ticket. La elegibilidad
- * (routing) es ortogonal al permiso RBAC `ticket:asignar`.
+ * AsignadoNoElegibleError — el `asignadoId` no es elegible para atender el
+ * `tipoId` del ticket: la elegibilidad se resuelve por el módulo del catálogo
+ * del `TipoTicket`. La elegibilidad es ortogonal al permiso RBAC
+ * `ticket:asignar`.
  * → HTTP 422 en la capa de presentación.
  *
  * Ref spec: T14, T15.
@@ -117,7 +118,7 @@ export class AsignadoNoElegibleError extends DomainError {
   constructor(asignadoId: string, tipoTicketId: string) {
     super(
       `El usuario "${asignadoId}" no está habilitado para atender tickets de tipo ` +
-        `"${tipoTicketId}". Verificar usuario_tipos_ticket.`,
+        `"${tipoTicketId}". Verificar el módulo del tipo de ticket.`,
     );
   }
 }

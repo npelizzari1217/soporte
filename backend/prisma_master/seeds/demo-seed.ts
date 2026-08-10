@@ -86,7 +86,6 @@ import {
 import { CrearTicketUseCase, type CrearTicketDto } from '../../src/tickets/application/use-cases/crear-ticket.use-case';
 import { TransicionarEstadoUseCase } from '../../src/tickets/application/use-cases/transicionar-estado.use-case';
 import { AsignarTicketUseCase } from '../../src/tickets/application/use-cases/asignar-ticket.use-case';
-import { AsociarUsuarioTipoTicketUseCase } from '../../src/tickets/application/use-cases/asociar-usuario-tipo-ticket.use-case';
 
 import { CrearTicketCompraUseCase } from '../../src/compras/application/use-cases/crear-ticket-compra.use-case';
 import { AgregarItemCompraUseCase } from '../../src/compras/application/use-cases/agregar-item-compra.use-case';
@@ -609,18 +608,6 @@ async function seedDemoTenantData(
 
     const anio = new Date().getUTCFullYear();
     const catalogos = await cargarCatalogos(tenantClient);
-
-    // Routing (usuario_tipos_ticket): el TECNICO demo debe estar habilitado
-    // para atender SOPORTE/MANTENIMIENTO — si no, `AsignarTicketUseCase`
-    // rechaza la asignación (espejo real de `RoutingController`/T3).
-    const asociarRouting = app.get(AsociarUsuarioTipoTicketUseCase);
-    for (const tipoCodigo of ['SOPORTE', 'MANTENIMIENTO']) {
-      const tipoId = catalogos.tipoIdPorCodigo.get(tipoCodigo)!;
-      const r = await asociarRouting.execute({ usuarioId: usuarios.tecnico, tipoTicketId: tipoId });
-      if (r.isFail()) {
-        throw new Error(`[demo-seed] No se pudo habilitar el routing demo (${tipoCodigo}): ${r.getError().message}`);
-      }
-    }
 
     const ticketsDemo: TicketDemoSpec[] = [
       {

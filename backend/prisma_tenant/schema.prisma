@@ -10,13 +10,12 @@
 //     altas sin migración de schema (tipos_ticket es editable por el admin).
 //   - Soft delete universal en entidades con identidad propia: deleted_at
 //     timestamptz nullable. Las tablas join puras (archivos_ticket,
-//     archivos_operacion, archivos_presupuesto, archivos_equipo,
-//     usuario_tipos_ticket) NO tienen soft delete: la baja es eliminación
-//     física (ON DELETE CASCADE / delete).
+//     archivos_operacion, archivos_presupuesto, archivos_equipo) NO tienen
+//     soft delete: la baja es eliminación física (ON DELETE CASCADE / delete).
 //   - updatedAt gestionado por Prisma (@updatedAt) en entidades con soft delete.
 //   - Soft refs cross-DB: solicitante_id, asignado_id, autor_id, subido_por_id,
 //     ciclo_vigente_id, aprobado_por_id, personal_asignado_id,
-//     completada_por_id, asignado_a_id y usuario_id en usuario_tipos_ticket
+//     completada_por_id y asignado_a_id
 //     referencian filas de la DB master (usuarios / ciclos_vigentes).
 //     NO tienen FK real — una FK cross-DB es imposible en Postgres (cada
 //     tenant es una base de datos física distinta). La integridad se valida
@@ -110,9 +109,8 @@ model TipoTicket {
   updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt DateTime? @map("deleted_at") @db.Timestamptz
 
-  tickets            Ticket[]
-  usuarioTiposTicket UsuarioTiposTicket[]
-  kbArticulos        KbArticulo[]
+  tickets     Ticket[]
+  kbArticulos KbArticulo[]
 
   @@map("tipos_ticket")
 }
@@ -335,28 +333,6 @@ model ArchivoOperacion {
 
   @@id([archivoId, operacionId])
   @@map("archivos_operacion")
-}
-
-// ─── USUARIO_TIPOS_TICKET (elegibilidad de asignación) ────────────────────────
-//
-// Define qué tipos de ticket puede atender un usuario dentro de este tenant.
-// NO es un permiso RBAC: es enrutamiento de trabajo.
-// usuario_id es soft ref → master.usuarios.id (sin FK cross-DB).
-// tipo_ticket_id tiene FK real → tipos_ticket.id (misma DB tenant).
-// Sin soft delete: baja es eliminación física de la fila.
-// PK compuesta (usuario_id, tipo_ticket_id).
-
-model UsuarioTiposTicket {
-  /// Soft ref → master.usuarios.id. Sin FK cross-DB.
-  usuarioId    String   @map("usuario_id") @db.Uuid
-  tipoTicketId String   @map("tipo_ticket_id") @db.Uuid
-  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
-
-  tipoTicket TipoTicket @relation(fields: [tipoTicketId], references: [id])
-
-  @@id([usuarioId, tipoTicketId])
-  @@index([usuarioId])
-  @@map("usuario_tipos_ticket")
 }
 
 // ─── COMPRAS ───────────────────────────────────────────────────────────────────

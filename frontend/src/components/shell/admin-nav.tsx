@@ -25,7 +25,6 @@ const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { href: "/admin/sla", label: "SLA", visible: (can) => can("catalogo:gestionar") },
   { href: "/admin/ciclos", label: "Ciclos", visible: (can) => can("ciclo:gestionar") },
   { href: "/admin/usuarios", label: "Usuarios", visible: (can) => can("usuario:gestionar") },
-  { href: "/admin/routing", label: "Routing", visible: (can) => can("usuario:gestionar") },
   // "Clientes" NO vive en el área Admin: es exclusivo de ROOT (plataforma),
   // no una sección administrable por el ADMINISTRADOR del tenant. Se accede
   // por su ítem top-level propio del sidebar (nav-config.ts), gateado por

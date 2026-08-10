@@ -352,8 +352,8 @@ export class TicketsController {
    * asignación MANUAL; el sistema nunca auto-asigna. Requiere
    * `ticket:asignar`. El `asignadoId` debe existir/estar activo en el
    * tenant (cross-DB) y ser elegible para el `tipoId` del ticket
-   * (`usuario_tipos_ticket`, T3) — la elegibilidad es ortogonal al permiso
-   * del actor (T15).
+   * (elegibilidad por el módulo del catálogo del tipo) — la elegibilidad es
+   * ortogonal al permiso del actor (T15).
    * @throws 403 sin `ticket:asignar`
    * @throws 404 ticket inexistente/otro tenant
    * @throws 422 asignado inválido (`AsignadoInvalidoError`) o no elegible (`AsignadoNoElegibleError`)
