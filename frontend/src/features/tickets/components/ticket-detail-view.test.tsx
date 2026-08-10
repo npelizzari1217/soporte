@@ -56,6 +56,9 @@ function mockBackend() {
       ]),
     ),
     http.get("/api/catalogos/tipo-operacion", () => HttpResponse.json([])),
+    // TICKET es de tipo SOPORTE (ti1) — el detalle consulta el equipo vinculado.
+    // Default sin equipo asociado; los tests de la tarjeta lo sobreescriben.
+    http.get(`/api/soporte/${TICKET_ID}`, () => HttpResponse.json({ equipo: null })),
   );
 }
 
@@ -187,5 +190,58 @@ describe("TicketDetailView — bloqueo de edición una vez EN_PROCESO", () => {
 
     expect(screen.getByRole("button", { name: /^editar$/i })).toBeInTheDocument();
     expect(screen.queryByText(/solo ROOT puede editar/i)).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * Tarjeta "Equipo en mantenimiento" — el detalle de un ticket SOPORTE
+ * resalta el equipo vinculado (satélite `ticket_soporte.equipoId`, ya
+ * persistido al crear el ticket desde Equipos). Solo se consulta/muestra
+ * cuando el tipo del ticket resuelve a SOPORTE.
+ */
+describe("TicketDetailView — tarjeta de equipo en mantenimiento", () => {
+  beforeEach(() => mockBackend());
+
+  it("ticket SOPORTE con equipo vinculado → muestra la tarjeta con nombre y nº de serie", async () => {
+    server.use(
+      http.get(`/api/soporte/${TICKET_ID}`, () =>
+        HttpResponse.json({ equipo: { id: "e1", nombre: "Notebook Dell", numeroSerie: "SN-123" } }),
+      ),
+    );
+
+    renderWithProviders(<TicketDetailView ticketId={TICKET_ID} />, { user: buildUser() });
+
+    expect(await screen.findByText(/equipo en mantenimiento/i)).toBeInTheDocument();
+    expect(screen.getByText("Notebook Dell")).toBeInTheDocument();
+    expect(screen.getByText(/SN-123/)).toBeInTheDocument();
+  });
+
+  it("ticket SOPORTE sin equipo vinculado → NO muestra la tarjeta (mockBackend ya retorna equipo:null)", async () => {
+    renderWithProviders(<TicketDetailView ticketId={TICKET_ID} />, { user: buildUser() });
+
+    await screen.findByText("Impresora rota");
+    expect(screen.queryByText(/equipo en mantenimiento/i)).not.toBeInTheDocument();
+  });
+
+  it("ticket NO-SOPORTE → no consulta GET /soporte/:ticketId ni muestra la tarjeta", async () => {
+    let soporteEndpointLlamado = false;
+    server.use(
+      http.get("/api/catalogos/tipos-ticket", () =>
+        HttpResponse.json([
+          { id: "ti1", codigo: "COMPRAS", nombre: "Compras", activo: true, createdAt: "", updatedAt: "" },
+        ]),
+      ),
+      http.get(`/api/soporte/${TICKET_ID}`, () => {
+        soporteEndpointLlamado = true;
+        return HttpResponse.json({ equipo: { id: "e1", nombre: "No debería llegar", numeroSerie: null } });
+      }),
+    );
+
+    renderWithProviders(<TicketDetailView ticketId={TICKET_ID} />, { user: buildUser() });
+
+    await screen.findByText("Impresora rota");
+    await waitFor(() => expect(screen.getByRole("heading", { name: /actividad/i })).toBeInTheDocument());
+    expect(soporteEndpointLlamado).toBe(false);
+    expect(screen.queryByText(/equipo en mantenimiento/i)).not.toBeInTheDocument();
   });
 });

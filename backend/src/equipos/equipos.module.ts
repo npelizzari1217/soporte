@@ -67,6 +67,7 @@ import { EliminarComponenteUseCase } from './application/use-cases/eliminar-comp
 import { ListarTiposComponenteUseCase } from './application/use-cases/listar-tipos-componente.use-case';
 import { CrearTicketSoporteUseCase } from './application/use-cases/crear-ticket-soporte.use-case';
 import { RegistrarSolucionUseCase } from './application/use-cases/registrar-solucion.use-case';
+import { ObtenerEquipoDeTicketUseCase } from './application/use-cases/obtener-equipo-de-ticket.use-case';
 
 import { EquiposController } from './interface/controllers/equipos.controller';
 import { SoporteController } from './interface/controllers/soporte.controller';
@@ -254,6 +255,14 @@ import { SoporteController } from './interface/controllers/soporte.controller';
       useFactory: (ticketSoporteRepo: ITicketSoporteRepository) =>
         new RegistrarSolucionUseCase(ticketSoporteRepo),
       inject: [TICKET_SOPORTE_REPOSITORY],
+    },
+    {
+      provide: ObtenerEquipoDeTicketUseCase,
+      useFactory: (
+        ticketSoporteRepo: ITicketSoporteRepository,
+        equipoRepo: IEquipoInformaticoRepository,
+      ) => new ObtenerEquipoDeTicketUseCase(ticketSoporteRepo, equipoRepo),
+      inject: [TICKET_SOPORTE_REPOSITORY, EQUIPO_INFORMATICO_REPOSITORY],
     },
   ],
   exports: [EQUIPO_INFORMATICO_REPOSITORY, COMPONENTE_EQUIPO_REPOSITORY, TICKET_SOPORTE_REPOSITORY],

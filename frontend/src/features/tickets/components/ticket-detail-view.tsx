@@ -9,6 +9,7 @@ import { useMemo, useState } from "react";
 import { useTicket, useTicketTimeline } from "../hooks/use-ticket";
 import { useTiposTicket, usePrioridades, useEstados, useTiposOperacion } from "../hooks/use-catalogos";
 import { useTecnicosAsignables } from "../hooks/use-tecnicos-asignables";
+import { useEquipoDeTicket } from "../hooks/use-equipo-de-ticket";
 import {
   useAsignarEnProceso,
   useComentar,
@@ -31,6 +32,10 @@ import { TicketTransitionControl } from "./ticket-transition-control";
 import { TicketAsignarEnProcesoControl } from "./ticket-asignar-en-proceso-control";
 import { TicketEditForm } from "./ticket-edit-form";
 import { TicketAttachmentUpload } from "./ticket-attachment-upload";
+import { TicketEquipoMantenimientoCard } from "./ticket-equipo-mantenimiento-card";
+
+/** Código del tipo de ticket que habilita la consulta del equipo vinculado (satélite `ticket_soporte`). */
+const TIPO_SOPORTE_CODIGO = "SOPORTE";
 
 export interface TicketDetailViewProps {
   ticketId: string;
@@ -46,6 +51,13 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
   const puedeAsignar = useCan("ticket:asignar");
   const { isGlobalAdmin } = useSession();
   const tecnicosQuery = useTecnicosAsignables(ticketId, puedeAsignar);
+
+  // Solo consulta el equipo vinculado cuando el tipo del ticket ya se resolvió a SOPORTE
+  // (los demás tipos no tienen satélite `ticket_soporte`, GET /soporte/:ticketId no aplica).
+  const tipoCodigoMap = useMemo(() => buildIdToCodigoMap(tiposQuery.data ?? []), [tiposQuery.data]);
+  const tipoCodigo = ticketQuery.data ? tipoCodigoMap.get(ticketQuery.data.tipoId) : undefined;
+  const esTicketSoporte = tipoCodigo === TIPO_SOPORTE_CODIGO;
+  const equipoDeTicketQuery = useEquipoDeTicket(ticketId, esTicketSoporte);
 
   const comentarMutation = useComentar(ticketId);
   const transicionarMutation = useTransicionarEstado(ticketId);
@@ -95,6 +107,10 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
         prioridadCodigo={prioridadCodigoMap.get(ticket.prioridadId)}
         tipoNombre={tipoNombreMap.get(ticket.tipoId)}
       />
+
+      {esTicketSoporte && equipoDeTicketQuery.data?.equipo && (
+        <TicketEquipoMantenimientoCard equipo={equipoDeTicketQuery.data.equipo} />
+      )}
 
       <div className="flex flex-wrap items-center gap-3">
         {estadoCodigo && puedeAsignarYPonerEnProceso(estadoCodigo) && (

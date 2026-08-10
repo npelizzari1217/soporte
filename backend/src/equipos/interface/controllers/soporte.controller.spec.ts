@@ -56,13 +56,20 @@ describe('SoporteController (T13.4)', () => {
   function buildController() {
     const crearTicketSoporteUseCase = { execute: vi.fn() };
     const registrarSolucionUseCase = { execute: vi.fn() };
+    const obtenerEquipoDeTicketUseCase = { execute: vi.fn() };
 
     const controller = new SoporteController(
       crearTicketSoporteUseCase as any,
       registrarSolucionUseCase as any,
+      obtenerEquipoDeTicketUseCase as any,
     );
 
-    return { controller, crearTicketSoporteUseCase, registrarSolucionUseCase };
+    return {
+      controller,
+      crearTicketSoporteUseCase,
+      registrarSolucionUseCase,
+      obtenerEquipoDeTicketUseCase,
+    };
   }
 
   describe('POST /soporte', () => {
@@ -155,6 +162,31 @@ describe('SoporteController (T13.4)', () => {
         SoporteController.prototype.registrarSolucion,
       );
       expect(meta).toEqual(['ticket:editar']);
+    });
+  });
+
+  describe('GET /soporte/:ticketId', () => {
+    it('retorna el equipo vinculado al ticket', async () => {
+      const { controller, obtenerEquipoDeTicketUseCase } = buildController();
+      obtenerEquipoDeTicketUseCase.execute.mockResolvedValue(
+        Result.ok({ equipo: { id: 'equipo-1', nombre: 'Notebook Dell', numeroSerie: 'SN-123' } }),
+      );
+
+      const result = await controller.obtenerEquipoDeTicket('ticket-1');
+
+      expect(result).toEqual({
+        equipo: { id: 'equipo-1', nombre: 'Notebook Dell', numeroSerie: 'SN-123' },
+      });
+      expect(obtenerEquipoDeTicketUseCase.execute).toHaveBeenCalledWith({ ticketId: 'ticket-1' });
+    });
+
+    it('retorna equipo:null cuando el ticket no tiene equipo asociado', async () => {
+      const { controller, obtenerEquipoDeTicketUseCase } = buildController();
+      obtenerEquipoDeTicketUseCase.execute.mockResolvedValue(Result.ok({ equipo: null }));
+
+      const result = await controller.obtenerEquipoDeTicket('ticket-1');
+
+      expect(result).toEqual({ equipo: null });
     });
   });
 });

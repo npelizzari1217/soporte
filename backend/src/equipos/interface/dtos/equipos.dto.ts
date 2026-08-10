@@ -14,6 +14,7 @@ import { ComponenteEquipoEntity } from '../../domain/entities/componente-equipo.
 import { TicketSoporteEntity } from '../../domain/entities/ticket-soporte.entity';
 import { TipoComponenteCatalogoItem } from '../../application/use-cases/listar-tipos-componente.use-case';
 import { ComponenteEquipoConTipo } from '../../application/use-cases/obtener-equipo.use-case';
+import { EquipoDeTicketResultado } from '../../application/use-cases/obtener-equipo-de-ticket.use-case';
 
 // ─── Input DTOs ───────────────────────────────────────────────────────────────
 
@@ -287,6 +288,23 @@ export function toTicketSoporteOnlyResponseDto(
     solucionAplicada: ticketSoporte.solucionAplicada,
     updatedAt: ticketSoporte.updatedAt.toISOString(),
   };
+}
+
+/**
+ * Shape de respuesta de `GET /soporte/:ticketId` — equipo vinculado al
+ * ticket de soporte (o `null` si el ticket no tiene satélite `ticket_soporte`
+ * o no tiene equipo asociado). Usado por el frontend para resaltar el
+ * "equipo en mantenimiento" en el detalle del ticket.
+ */
+export interface EquipoDeTicketResponseDto {
+  equipo: { id: string; nombre: string; numeroSerie: string | null } | null;
+}
+
+/** Convierte `EquipoDeTicketResultado` al shape de respuesta HTTP. */
+export function toEquipoDeTicketResponseDto(
+  resultado: EquipoDeTicketResultado,
+): EquipoDeTicketResponseDto {
+  return { equipo: resultado.equipo };
 }
 
 /**

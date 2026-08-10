@@ -3,8 +3,10 @@
  * (F3-Q4, F3-Q5).
  *
  * Rutas:
- *   POST /soporte              → CrearTicketSoporteUseCase  [ticket:crear]
- *   POST /soporte/:id/solucion → RegistrarSolucionUseCase   [ticket:editar]
+ *   POST /soporte                  → CrearTicketSoporteUseCase       [ticket:crear]
+ *   POST /soporte/:id/solucion     → RegistrarSolucionUseCase        [ticket:editar]
+ *   GET  /soporte/:ticketId        → ObtenerEquipoDeTicketUseCase    (sin permiso extra,
+ *                                    igual criterio que `TicketsController.findOne`)
  *
  * `:id` = id del `Ticket` BASE (mismo criterio que las rutas de aprobar/
  * rechazar de `ComprasController`: los use cases de este módulo reciben
@@ -19,6 +21,7 @@ import {
   Body,
   ConflictException,
   Controller,
+  Get,
   HttpCode,
   HttpStatus,
   NotFoundException,
@@ -50,6 +53,7 @@ import {
 
 import { CrearTicketSoporteUseCase } from '../../application/use-cases/crear-ticket-soporte.use-case';
 import { RegistrarSolucionUseCase } from '../../application/use-cases/registrar-solucion.use-case';
+import { ObtenerEquipoDeTicketUseCase } from '../../application/use-cases/obtener-equipo-de-ticket.use-case';
 
 import {
   EquipoInvalidoError,
@@ -61,8 +65,10 @@ import {
   RegistrarSolucionHttpDto,
   TicketSoporteConTicketResponseDto,
   TicketSoporteResponseDto,
+  EquipoDeTicketResponseDto,
   toTicketSoporteOnlyResponseDto,
   toTicketSoporteResponseDto,
+  toEquipoDeTicketResponseDto,
 } from '../dtos/equipos.dto';
 
 /** Mapea un `DomainError` de los use cases de soporte a la `HttpException` correspondiente. */
@@ -95,6 +101,7 @@ export class SoporteController {
   constructor(
     private readonly crearTicketSoporteUseCase: CrearTicketSoporteUseCase,
     private readonly registrarSolucionUseCase: RegistrarSolucionUseCase,
+    private readonly obtenerEquipoDeTicketUseCase: ObtenerEquipoDeTicketUseCase,
   ) {}
 
   /**
@@ -152,5 +159,23 @@ export class SoporteController {
       throw toHttpException(result.getError());
     }
     return toTicketSoporteOnlyResponseDto(result.getValue());
+  }
+
+  /**
+   * GET /soporte/:ticketId
+   * Resuelve el equipo vinculado al ticket de soporte (`equipo: null` si no
+   * tiene satélite `ticket_soporte` o no tiene equipo asociado — nunca 404).
+   * Usado por el frontend para resaltar el "equipo en mantenimiento" en el
+   * detalle del ticket.
+   */
+  @Get(':ticketId')
+  async obtenerEquipoDeTicket(
+    @Param('ticketId') ticketId: string,
+  ): Promise<EquipoDeTicketResponseDto> {
+    const result = await this.obtenerEquipoDeTicketUseCase.execute({ ticketId });
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+    return toEquipoDeTicketResponseDto(result.getValue());
   }
 }

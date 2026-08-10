@@ -159,3 +159,18 @@ export interface TecnicoAsignable {
   nombre: string;
   apellido: string;
 }
+
+/**
+ * Equipo vinculado a un ticket de soporte (espejo de `EquipoDeTicketResponseDto`
+ * del backend, `GET /soporte/:ticketId`). `equipo: null` = el ticket no tiene
+ * satélite `ticket_soporte` o no tiene equipo asociado (ej. problemas de red/accesos).
+ */
+export interface EquipoDeTicket {
+  id: string;
+  nombre: string;
+  numeroSerie: string | null;
+}
+
+export interface EquipoDeTicketResponse {
+  equipo: EquipoDeTicket | null;
+}
