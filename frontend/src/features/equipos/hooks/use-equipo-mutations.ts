@@ -13,6 +13,7 @@ import { notifyError, notifySuccess } from "@/shared/lib/toast";
 import type {
   AsignarEquipoDto,
   Componente,
+  ComponenteConTipo,
   CreateComponenteDto,
   CreateEquipoDto,
   EditarEquipoDto,
@@ -69,15 +70,19 @@ export function useAsignarEquipo(id: string) {
   });
 }
 
+/**
+ * `POST /equipos/:id/componentes` devuelve el shape BÁSICO (`Componente`,
+ * sin `tipoNombre`/`tipoActivo` — el use case de alta solo verifica
+ * `activo`, no enriquece). Enriquecer el item para la cache local
+ * (`["componentes", equipoId]`, tipada `ComponenteConTipo[]`) queda a cargo
+ * del caller, que SÍ conoce el catálogo de tipos activos elegido en el
+ * selector (`EquipoComponentesSection`).
+ */
 export function useAgregarComponente(equipoId: string) {
-  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (dto: CreateComponenteDto) =>
       apiFetch<Componente>(`equipos/${equipoId}/componentes`, { method: "POST", json: dto }),
-    onSuccess: (componente) => {
-      queryClient.setQueryData<Componente[]>(["componentes", equipoId], (old = []) => [...old, componente]);
-      notifySuccess("Componente agregado.");
-    },
+    onSuccess: () => notifySuccess("Componente agregado."),
     onError: notifyError,
   });
 }
@@ -88,7 +93,7 @@ export function useEliminarComponente(equipoId: string) {
     mutationFn: (componenteId: string) =>
       apiFetch<void>(`equipos/${equipoId}/componentes/${componenteId}`, { method: "DELETE" }),
     onSuccess: (_data, componenteId) => {
-      queryClient.setQueryData<Componente[]>(["componentes", equipoId], (old = []) =>
+      queryClient.setQueryData<ComponenteConTipo[]>(["componentes", equipoId], (old = []) =>
         old.filter((c) => c.id !== componenteId),
       );
       notifySuccess("Componente eliminado.");

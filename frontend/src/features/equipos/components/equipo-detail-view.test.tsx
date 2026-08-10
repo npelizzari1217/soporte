@@ -27,7 +27,9 @@ const EQUIPO_DETALLE = {
     {
       id: "c1",
       equipoId: EQUIPO_ID,
-      tipoComponenteId: "tc1",
+      tipoComponenteCodigo: "RAM",
+      tipoNombre: "Memoria RAM",
+      tipoActivo: true,
       descripcion: "RAM 16GB",
       numeroSerie: null,
       capacidad: "16GB",
@@ -40,9 +42,7 @@ const EQUIPO_DETALLE = {
 function mockBackend() {
   server.use(
     http.get(`/api/equipos/${EQUIPO_ID}`, () => HttpResponse.json(EQUIPO_DETALLE)),
-    http.get("/api/equipos/tipos-componente", () =>
-      HttpResponse.json([{ id: "tc1", codigo: "RAM", nombre: "Memoria RAM", activo: true }]),
-    ),
+    http.get("/api/equipos/tipos-componente", () => HttpResponse.json([{ codigo: "RAM", nombre: "Memoria RAM" }])),
     http.get("/api/usuarios", () => HttpResponse.json([])),
   );
 }
