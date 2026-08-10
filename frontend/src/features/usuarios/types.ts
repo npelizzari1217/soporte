@@ -33,6 +33,15 @@ export interface CambiarRolUsuarioDto {
   rolCodigo: string;
 }
 
+/**
+ * Body de `PATCH usuarios/:id` — edita SOLO nombre y/o apellido (identidad
+ * global del usuario). El `email` NO se edita (identidad de acceso única).
+ */
+export interface EditarUsuarioDto {
+  nombre?: string;
+  apellido?: string;
+}
+
 export interface UsuarioTenantMembresia {
   usuarioId: string;
   email: string;

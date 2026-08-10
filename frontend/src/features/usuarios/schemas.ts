@@ -16,3 +16,10 @@ export const cambiarRolSchema = z.object({
   rolCodigo: z.string().regex(ROL_CODIGO_PATTERN, "Rol inválido"),
 });
 export type CambiarRolFormValues = z.infer<typeof cambiarRolSchema>;
+
+/** Edición de identidad del usuario: nombre y apellido (el email no se edita). */
+export const editarUsuarioSchema = z.object({
+  nombre: z.string().min(1, "Requerido").max(100, "Máximo 100 caracteres"),
+  apellido: z.string().min(1, "Requerido").max(100, "Máximo 100 caracteres"),
+});
+export type EditarUsuarioFormValues = z.infer<typeof editarUsuarioSchema>;

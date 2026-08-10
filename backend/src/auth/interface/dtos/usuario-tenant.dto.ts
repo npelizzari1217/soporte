@@ -16,8 +16,10 @@ import {
   IsEmail,
   IsIn,
   IsNotEmpty,
+  IsOptional,
   IsString,
   Matches,
+  MaxLength,
   MinLength,
 } from 'class-validator';
 import { MODULOS } from '../../../shared/domain/modulos';
@@ -56,6 +58,25 @@ export class CambiarRolUsuarioDto {
     message: 'rolCodigo debe ser mayúsculas/guion bajo, sin espacios',
   })
   rolCodigo!: string;
+}
+
+/**
+ * Body de `PATCH /usuarios/:id`. Permiso `usuario:gestionar` (ADMINISTRADOR;
+ * ROOT bypassa el guard). Edita SOLO nombre y/o apellido — el `email` NO es
+ * editable (identidad de acceso global). Ambos campos son opcionales (patch
+ * parcial): enviar solo los que se quieren cambiar. `@MaxLength(100)` acota la
+ * longitud, mismo criterio que el resto de datos de identidad.
+ */
+export class EditarUsuarioDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  nombre?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  apellido?: string;
 }
 
 /**

@@ -23,6 +23,7 @@ import { DataTable, type Column } from "@/components/shared/data-table";
 import { AdminNav } from "@/components/shell/admin-nav";
 import { notifyError } from "@/shared/lib/toast";
 import { CrearUsuarioDialog } from "./crear-usuario-dialog";
+import { EditarUsuarioDialog } from "./editar-usuario-dialog";
 import { CambiarRolControl } from "./cambiar-rol-control";
 import { DesactivarMembresiaControl } from "./desactivar-membresia-control";
 import { AsignarModulosControl } from "./asignar-modulos-control";
@@ -50,13 +51,18 @@ function UsuariosAdminContent() {
       key: "id",
       header: "Acciones",
       render: (row) => (
-        <Can permiso="rol:asignar">
-          <div className="flex items-center gap-2">
-            <CambiarRolControl usuario={row} />
-            <AsignarModulosControl usuario={row} />
-            <DesactivarMembresiaControl usuario={row} />
-          </div>
-        </Can>
+        <div className="flex items-center gap-2">
+          <Can permiso="usuario:gestionar">
+            <EditarUsuarioDialog usuario={row} />
+          </Can>
+          <Can permiso="rol:asignar">
+            <div className="flex items-center gap-2">
+              <CambiarRolControl usuario={row} />
+              <AsignarModulosControl usuario={row} />
+              <DesactivarMembresiaControl usuario={row} />
+            </div>
+          </Can>
+        </div>
       ),
     },
   ];

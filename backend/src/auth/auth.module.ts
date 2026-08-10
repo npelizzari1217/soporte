@@ -61,6 +61,7 @@ import { SwitchTenantUseCase } from './application/use-cases/switch-tenant.use-c
 import { ListarUsuariosTenantUseCase } from './application/use-cases/listar-usuarios-tenant.use-case';
 import { CrearUsuarioTenantUseCase } from './application/use-cases/crear-usuario-tenant.use-case';
 import { CambiarRolUsuarioTenantUseCase } from './application/use-cases/cambiar-rol-usuario-tenant.use-case';
+import { EditarUsuarioTenantUseCase } from './application/use-cases/editar-usuario-tenant.use-case';
 import { DesactivarMembresiaUsuarioTenantUseCase } from './application/use-cases/desactivar-membresia-usuario-tenant.use-case';
 import { AsignarModulosUsuarioTenantUseCase } from './application/use-cases/asignar-modulos-usuario-tenant.use-case';
 import { ObtenerModulosUsuarioTenantUseCase } from './application/use-cases/obtener-modulos-usuario-tenant.use-case';
@@ -221,6 +222,12 @@ import { RolesController } from './interface/controllers/roles.controller';
       useFactory: (membresiaRepo: IMembresiaRepository, roleRepo: IRoleRepository) =>
         new CambiarRolUsuarioTenantUseCase(membresiaRepo, roleRepo),
       inject: [MEMBRESIA_REPOSITORY, ROLE_REPOSITORY],
+    },
+    {
+      provide: EditarUsuarioTenantUseCase,
+      useFactory: (usuarioRepo: IUsuarioRepository, membresiaRepo: IMembresiaRepository) =>
+        new EditarUsuarioTenantUseCase(usuarioRepo, membresiaRepo),
+      inject: [USUARIO_REPOSITORY, MEMBRESIA_REPOSITORY],
     },
     {
       provide: DesactivarMembresiaUsuarioTenantUseCase,

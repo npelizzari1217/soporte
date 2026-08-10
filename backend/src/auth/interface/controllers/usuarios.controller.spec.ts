@@ -30,6 +30,7 @@ function buildController() {
   const desactivarMembresiaUsuarioTenantUseCase = { execute: vi.fn() };
   const obtenerModulosUsuarioTenantUseCase = { execute: vi.fn() };
   const asignarModulosUsuarioTenantUseCase = { execute: vi.fn() };
+  const editarUsuarioTenantUseCase = { execute: vi.fn() };
   const controller = new UsuariosController(
     listarUsuariosTenantUseCase as any,
     crearUsuarioTenantUseCase as any,
@@ -37,6 +38,7 @@ function buildController() {
     desactivarMembresiaUsuarioTenantUseCase as any,
     obtenerModulosUsuarioTenantUseCase as any,
     asignarModulosUsuarioTenantUseCase as any,
+    editarUsuarioTenantUseCase as any,
   );
   return {
     controller,
@@ -46,6 +48,7 @@ function buildController() {
     desactivarMembresiaUsuarioTenantUseCase,
     obtenerModulosUsuarioTenantUseCase,
     asignarModulosUsuarioTenantUseCase,
+    editarUsuarioTenantUseCase,
   };
 }
 
@@ -236,6 +239,52 @@ describe('UsuariosController (gestión mínima de usuarios, sdd/beta-frontend §
 
       await expect(
         controller.cambiarRol(actor, 'usuario-ajeno', { rolCodigo: 'TECNICO' } as any),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  describe('PATCH /usuarios/:id', () => {
+    it('edita nombre/apellido y retorna { usuarioId, nombre, apellido }, clienteId SIEMPRE del actor', async () => {
+      const { controller, editarUsuarioTenantUseCase } = buildController();
+      const usuario = UsuarioEntity.reconstitute(
+        {
+          email: 'ada@test.com',
+          nombre: 'Ada',
+          apellido: 'Lovelace',
+          passwordHash: 'hash',
+          activo: true,
+        },
+        'usuario-1',
+        new Date(),
+        new Date(),
+        null,
+      );
+      editarUsuarioTenantUseCase.execute.mockResolvedValue(Result.ok(usuario));
+      const actor = buildActor({ permisos: ['usuario:gestionar'] });
+
+      const result = await controller.editar(actor, 'usuario-1', {
+        nombre: 'Ada',
+        apellido: 'Lovelace',
+      } as any);
+
+      expect(editarUsuarioTenantUseCase.execute).toHaveBeenCalledWith({
+        clienteId: 'cliente-token',
+        usuarioId: 'usuario-1',
+        nombre: 'Ada',
+        apellido: 'Lovelace',
+      });
+      expect(result).toEqual({ usuarioId: 'usuario-1', nombre: 'Ada', apellido: 'Lovelace' });
+    });
+
+    it('propaga 404 NotFoundException cuando no hay membresía activa en este cliente', async () => {
+      const { controller, editarUsuarioTenantUseCase } = buildController();
+      editarUsuarioTenantUseCase.execute.mockResolvedValue(
+        Result.fail(new MembresiaNoEncontradaError()),
+      );
+      const actor = buildActor({ permisos: ['usuario:gestionar'] });
+
+      await expect(
+        controller.editar(actor, 'usuario-ajeno', { nombre: 'X' } as any),
       ).rejects.toBeInstanceOf(NotFoundException);
     });
   });

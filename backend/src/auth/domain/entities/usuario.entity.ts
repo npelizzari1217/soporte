@@ -103,6 +103,21 @@ export class UsuarioEntity extends BaseEntity<UsuarioProps> {
   // ─── Comportamiento de dominio ────────────────────────────────────────────
 
   /**
+   * Edita datos de identidad del usuario (nombre y/o apellido). El `email`
+   * NO es editable acá: es la identidad de acceso global única (ADR-1). Estos
+   * datos son GLOBALES: el cambio afecta al usuario en TODOS sus tenants, no
+   * solo en el cliente desde el que se lo edita.
+   *
+   * Semántica de patch parcial (mismo criterio que `ClienteEntity.editar`):
+   * `undefined` = "no tocar" ese campo. Toca `updatedAt` vía `touch()`.
+   */
+  editar(cambios: { nombre?: string; apellido?: string }): void {
+    if (cambios.nombre !== undefined) this.props.nombre = cambios.nombre;
+    if (cambios.apellido !== undefined) this.props.apellido = cambios.apellido;
+    this.touch();
+  }
+
+  /**
    * isRoot — alias de negocio de isGlobalAdmin (terminología "root").
    * Mismo valor que isGlobalAdmin; NUNCA se deriva del rol de una membresía.
    */

@@ -6,6 +6,7 @@
  *   GET    /usuarios               → ListarUsuariosTenantUseCase   (ticket:asignar | ticket:ver_todos | usuario:gestionar)
  *   POST   /usuarios               → CrearUsuarioTenantUseCase     [usuario:gestionar + rol:asignar]
  *   PATCH  /usuarios/:id/rol       → CambiarRolUsuarioTenantUseCase [usuario:gestionar + rol:asignar]
+ *   PATCH  /usuarios/:id           → EditarUsuarioTenantUseCase      [usuario:gestionar]
  *   DELETE /usuarios/:id/membresia → DesactivarMembresiaUsuarioTenantUseCase [usuario:gestionar + rol:asignar]
  *
  * Guards: `JwtAuthGuard` + `TenantGuard` a nivel de controller (requieren JWT
@@ -49,6 +50,7 @@ import {
 import { ListarUsuariosTenantUseCase } from '../../application/use-cases/listar-usuarios-tenant.use-case';
 import { CrearUsuarioTenantUseCase } from '../../application/use-cases/crear-usuario-tenant.use-case';
 import { CambiarRolUsuarioTenantUseCase } from '../../application/use-cases/cambiar-rol-usuario-tenant.use-case';
+import { EditarUsuarioTenantUseCase } from '../../application/use-cases/editar-usuario-tenant.use-case';
 import { DesactivarMembresiaUsuarioTenantUseCase } from '../../application/use-cases/desactivar-membresia-usuario-tenant.use-case';
 import { AsignarModulosUsuarioTenantUseCase } from '../../application/use-cases/asignar-modulos-usuario-tenant.use-case';
 import { ObtenerModulosUsuarioTenantUseCase } from '../../application/use-cases/obtener-modulos-usuario-tenant.use-case';
@@ -56,6 +58,7 @@ import {
   AsignarModulosDto,
   CambiarRolUsuarioDto,
   CreateUsuarioTenantDto,
+  EditarUsuarioDto,
   UsuarioTenantMembresiaResponseDto,
   UsuarioTenantResponseDto,
 } from '../dtos/usuario-tenant.dto';
@@ -136,6 +139,7 @@ export class UsuariosController {
     private readonly desactivarMembresiaUsuarioTenantUseCase: DesactivarMembresiaUsuarioTenantUseCase,
     private readonly obtenerModulosUsuarioTenantUseCase: ObtenerModulosUsuarioTenantUseCase,
     private readonly asignarModulosUsuarioTenantUseCase: AsignarModulosUsuarioTenantUseCase,
+    private readonly editarUsuarioTenantUseCase: EditarUsuarioTenantUseCase,
   ) {}
 
   /**
@@ -218,6 +222,35 @@ export class UsuariosController {
       membresiaId: membresia.id,
       activo: membresia.activo,
     };
+  }
+
+  /**
+   * PATCH /usuarios/:id
+   * Edita nombre y/o apellido del usuario `:id` (identidad GLOBAL: afecta al
+   * usuario en TODOS sus tenants). El `email` NO es editable. Solo se permite
+   * si el usuario tiene membresía ACTIVA en el cliente del token (aislamiento).
+   * Permiso `usuario:gestionar` (ADMINISTRADOR lo tiene; ROOT bypassa el guard).
+   * @throws 404 si no existe membresía activa de ese usuario en este cliente
+   */
+  @Patch(':id')
+  @RequirePermissions('usuario:gestionar')
+  async editar(
+    @CurrentUser() actor: JwtPayload,
+    @Param('id') usuarioId: string,
+    @Body() dto: EditarUsuarioDto,
+  ): Promise<{ usuarioId: string; nombre: string; apellido: string }> {
+    const result = await this.editarUsuarioTenantUseCase.execute({
+      clienteId: actor.cliente_id as string,
+      usuarioId,
+      nombre: dto.nombre,
+      apellido: dto.apellido,
+    });
+
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+    const usuario = result.getValue();
+    return { usuarioId: usuario.id, nombre: usuario.nombre, apellido: usuario.apellido };
   }
 
   /**
