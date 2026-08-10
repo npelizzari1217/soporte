@@ -31,6 +31,10 @@ const ESTADOS: Record<string, EstadoEntity> = {
     { codigo: 'ASIGNADO', nombre: 'Asignado', color: null, orden: 2, activo: true },
     'estado-asignado-uuid',
   ),
+  EN_PROCESO: EstadoEntity.create(
+    { codigo: 'EN_PROCESO', nombre: 'En proceso', color: null, orden: 3, activo: true },
+    'estado-en-proceso-uuid',
+  ),
   RESUELTO: EstadoEntity.create(
     { codigo: 'RESUELTO', nombre: 'Resuelto', color: null, orden: 4, activo: true },
     'estado-resuelto-uuid',
@@ -67,6 +71,7 @@ function baseDto(overrides: Partial<TransicionarEstadoDto> = {}): TransicionarEs
     ticketId: 'ticket-uuid',
     nuevoEstadoCodigo: 'ASIGNADO',
     autorId: 'tecnico-uuid',
+    actorEsCorrector: false,
     ...overrides,
   };
 }
@@ -351,5 +356,83 @@ describe('TransicionarEstadoUseCase', () => {
     expect(result.getError()).toBeInstanceOf(TransicionInvalidaError);
     expect(ticket.estadoId).toBe('estado-cancelado-uuid');
     expect(c.txRunner.run).not.toHaveBeenCalled();
+  });
+
+  // ─── Salto correctivo (ROOT/ADMINISTRADOR) ───────────────────────────────
+  describe('salto correctivo (actorEsCorrector)', () => {
+    it('corrector: EN_PROCESO→ASIGNADO (volver atrás, NO es arco) → OK, muta y registra CAMBIO_ESTADO', async () => {
+      const c = makeCollaborators();
+      c.ticketRepo.findById.mockResolvedValue(makeTicket('EN_PROCESO'));
+
+      const result = await c.useCase.execute(
+        baseDto({ nuevoEstadoCodigo: 'ASIGNADO', actorEsCorrector: true }),
+      );
+
+      expect(result.isOk()).toBe(true);
+      expect(result.getValue().estadoId).toBe('estado-asignado-uuid');
+      expect(c.txRunner.run).toHaveBeenCalledTimes(1);
+      expect(c.operacionRepo.save).toHaveBeenCalledTimes(1);
+      const op = c.operacionRepo.save.mock.calls[0][0];
+      expect(op.estadoAnteriorId).toBe('estado-en-proceso-uuid');
+      expect(op.estadoNuevoId).toBe('estado-asignado-uuid');
+    });
+
+    it('corrector: reabrir desde terminal CERRADO→EN_PROCESO (no-terminal) → OK (bypassa canTransitionTo)', async () => {
+      const c = makeCollaborators();
+      c.ticketRepo.findById.mockResolvedValue(makeTicket('CERRADO'));
+
+      const result = await c.useCase.execute(
+        baseDto({ nuevoEstadoCodigo: 'EN_PROCESO', actorEsCorrector: true }),
+      );
+
+      expect(result.isOk()).toBe(true);
+      expect(result.getValue().estadoId).toBe('estado-en-proceso-uuid');
+      expect(c.txRunner.run).toHaveBeenCalledTimes(1);
+    });
+
+    it('corrector: NO puede saltar a un estado terminal fuera de arco (NUEVO→CERRADO) → TransicionInvalidaError', async () => {
+      const c = makeCollaborators();
+      const ticket = makeTicket('NUEVO');
+      c.ticketRepo.findById.mockResolvedValue(ticket);
+
+      const result = await c.useCase.execute(
+        baseDto({ nuevoEstadoCodigo: 'CERRADO', actorEsCorrector: true }),
+      );
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(TransicionInvalidaError);
+      expect(ticket.estadoId).toBe('estado-nuevo-uuid');
+      expect(c.txRunner.run).not.toHaveBeenCalled();
+    });
+
+    it('corrector: un ticket soft-deleted sigue siendo inválido (404), el salto NO lo reabre', async () => {
+      const c = makeCollaborators();
+      const ticket = makeTicket('CERRADO');
+      ticket.softDelete();
+      c.ticketRepo.findById.mockResolvedValue(ticket);
+
+      const result = await c.useCase.execute(
+        baseDto({ nuevoEstadoCodigo: 'EN_PROCESO', actorEsCorrector: true }),
+      );
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
+      expect(c.txRunner.run).not.toHaveBeenCalled();
+    });
+
+    it('NO-corrector: intento del mismo salto (EN_PROCESO→ASIGNADO) → TransicionInvalidaError', async () => {
+      const c = makeCollaborators();
+      const ticket = makeTicket('EN_PROCESO');
+      c.ticketRepo.findById.mockResolvedValue(ticket);
+
+      const result = await c.useCase.execute(
+        baseDto({ nuevoEstadoCodigo: 'ASIGNADO', actorEsCorrector: false }),
+      );
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(TransicionInvalidaError);
+      expect(ticket.estadoId).toBe('estado-en-proceso-uuid');
+      expect(c.txRunner.run).not.toHaveBeenCalled();
+    });
   });
 });

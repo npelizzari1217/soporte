@@ -85,6 +85,7 @@ import {
   ComentarioNoPermitidoError,
   ArchivoTamanoCeroError,
   TipoArchivoNoPermitidoError,
+  TicketBloqueadoParaEdicionError,
 } from '../../domain/errors/tickets.errors';
 import { JwtAuthGuard } from '../../../auth/infrastructure/guards/jwt-auth.guard';
 import { TenantGuard } from '../../../auth/infrastructure/guards/tenant.guard';
@@ -104,9 +105,12 @@ const PERMISO_OBSERVAR = 'ticket:observar';
 /** Mapea un `DomainError` de los use cases de tickets a la `HttpException` correspondiente. */
 export function toHttpException(
   error: DomainError,
-): NotFoundException | UnprocessableEntityException | ConflictException {
+): NotFoundException | UnprocessableEntityException | ConflictException | ForbiddenException {
   if (error instanceof TicketNoEncontradoError) {
     return new NotFoundException(error.message);
+  }
+  if (error instanceof TicketBloqueadoParaEdicionError) {
+    return new ForbiddenException(error.message);
   }
   if (
     error instanceof TipoTicketNoEncontradoError ||
@@ -286,19 +290,29 @@ export class TicketsController {
   /**
    * PATCH /tickets/:id
    * Edita titulo/descripcion/prioridadId. El `estado` NUNCA se cambia por
-   * esta vía (T9, endpoint dedicado en PR7).
-   * @throws 403 sin `ticket:editar` (PermissionsGuard)
+   * esta vía (T9, endpoint dedicado en PR7). Regla de bloqueo por estado: una
+   * vez que el ticket entra EN_PROCESO (o posterior), SOLO ROOT
+   * (`is_global_admin`) puede editar; en NUEVO/ASIGNADO edita cualquier
+   * TECNICO+ (`ticket:editar`).
+   * @throws 403 sin `ticket:editar` (PermissionsGuard), o ticket EN_PROCESO+
+   *             editado por un no-ROOT (`TicketBloqueadoParaEdicionError`)
    * @throws 404 ticket inexistente/otro tenant
    * @throws 422 prioridadId inexistente en el catálogo
    */
   @Patch(':id')
   @RequirePermissions('ticket:editar')
-  async update(@Param('id') id: string, @Body() dto: EditTicketDto): Promise<TicketResponseDto> {
+  async update(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Body() dto: EditTicketDto,
+  ): Promise<TicketResponseDto> {
     const result = await this.editarTicketUseCase.execute({
       ticketId: id,
       titulo: dto.titulo,
       descripcion: dto.descripcion,
       prioridadId: dto.prioridadId,
+      // ROOT edita SIEMPRE, incluso con el ticket EN_PROCESO o posterior.
+      actorEsRoot: user.is_global_admin,
     });
 
     if (result.isFail()) {
@@ -317,10 +331,15 @@ export class TicketsController {
    * (`ticket:transicionar`) — USUARIO/COLABORADOR reciben 403
    * (`PermissionsGuard`). El evento `TicketEstadoCambiado` se emite
    * internamente en el use case cuando el destino es notificable.
+   *
+   * Salto correctivo: ROOT (`is_global_admin`) y ADMINISTRADOR del cliente
+   * pueden ADEMÁS mover el ticket a cualquier estado NO terminal salteando el
+   * grafo (volver atrás/corregir, incluso reabrir desde CERRADO/CANCELADO).
+   * Para LLEGAR a un estado terminal se usan los arcos normales.
    * @throws 403 sin `ticket:transicionar`
    * @throws 404 ticket inexistente/otro tenant
    * @throws 422 `nuevoEstadoCodigo` inexistente en el catálogo, o transición
-   *             inválida (incl. reapertura desde CERRADO/CANCELADO — T11)
+   *             inválida (arco no válido y sin salto correctivo aplicable)
    */
   @Patch(':id/estado')
   @RequirePermissions('ticket:transicionar')
@@ -333,6 +352,9 @@ export class TicketsController {
       ticketId: id,
       nuevoEstadoCodigo: dto.nuevoEstadoCodigo,
       autorId: user.sub,
+      // Salto correctivo: ROOT (flag ortogonal) o ADMINISTRADOR del cliente
+      // pueden mover el ticket a cualquier estado NO terminal salteando el grafo.
+      actorEsCorrector: user.is_global_admin || user.rol === 'ADMINISTRADOR',
     });
 
     if (result.isFail()) {

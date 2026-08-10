@@ -17,6 +17,25 @@ export class TicketNoEncontradoError extends DomainError {
 }
 
 /**
+ * TicketBloqueadoParaEdicionError — el ticket ya entró EN_PROCESO (o un
+ * estado posterior: RESUELTO/CERRADO/CANCELADO) y el actor NO es ROOT
+ * (`is_global_admin`). Una vez fuera de NUEVO/ASIGNADO, la edición de datos
+ * (título/descripción/prioridad) queda reservada a ROOT — el resto ya no
+ * puede tocar los datos aunque tenga `ticket:editar`.
+ * → HTTP 403 en la capa de presentación.
+ */
+export class TicketBloqueadoParaEdicionError extends DomainError {
+  readonly code = 'TICKET_BLOQUEADO_PARA_EDICION';
+
+  constructor(estadoCodigo: string) {
+    super(
+      `El ticket está en estado "${estadoCodigo}": solo ROOT puede editar ` +
+        `título/descripción/prioridad una vez que entró EN_PROCESO.`,
+    );
+  }
+}
+
+/**
  * TipoTicketNoEncontradoError — el `tipoId` enviado al crear un ticket no
  * existe en el catálogo `tipos_ticket` del tenant.
  * → HTTP 422 en la capa de presentación.

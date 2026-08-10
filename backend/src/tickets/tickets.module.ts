@@ -218,9 +218,10 @@ import { CatalogosController } from './interface/controllers/catalogos.controlle
       useFactory: (
         ticketRepo: ITicketRepository,
         prioridadRepo: IPrioridadRepository,
+        estadoRepo: IEstadoRepository,
         eventPublisher: IDomainEventPublisher,
-      ) => new EditarTicketUseCase(ticketRepo, prioridadRepo, eventPublisher),
-      inject: [TICKET_REPOSITORY, PRIORIDAD_REPOSITORY, DOMAIN_EVENT_PUBLISHER],
+      ) => new EditarTicketUseCase(ticketRepo, prioridadRepo, estadoRepo, eventPublisher),
+      inject: [TICKET_REPOSITORY, PRIORIDAD_REPOSITORY, ESTADO_REPOSITORY, DOMAIN_EVENT_PUBLISHER],
     },
     {
       provide: TicketStateMachineFactory,

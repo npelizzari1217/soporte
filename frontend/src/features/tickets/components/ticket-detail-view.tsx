@@ -17,8 +17,9 @@ import {
   useTransicionarEstado,
 } from "../hooks/use-ticket-mutations";
 import { buildIdToCodigoMap } from "../lib/catalog-map";
-import { puedeAsignarYPonerEnProceso } from "../lib/estado-transitions";
+import { puedeAsignarYPonerEnProceso, puedeEditarDatos } from "../lib/estado-transitions";
 import { useCan } from "@/shared/hooks/use-can";
+import { useSession } from "@/shared/hooks/use-session";
 import { DetailSkeleton } from "@/components/shared/skeletons";
 import { ErrorState } from "@/components/shared/error-state";
 import { Can } from "@/components/shared/can";
@@ -43,6 +44,7 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
   const estadosQuery = useEstados();
   const tiposOperacionQuery = useTiposOperacion();
   const puedeAsignar = useCan("ticket:asignar");
+  const { isGlobalAdmin } = useSession();
   const tecnicosQuery = useTecnicosAsignables(ticketId, puedeAsignar);
 
   const comentarMutation = useComentar(ticketId);
@@ -81,6 +83,9 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
 
   const ticket = ticketQuery.data;
   const estadoCodigo = estadoCodigoMap.get(ticket.estadoId);
+  // Bloqueo de edición por estado (mirror backend): una vez EN_PROCESO+, solo
+  // ROOT edita. Si el estado aún no se resolvió (catálogo cargando), no bloquea.
+  const edicionPermitida = estadoCodigo ? puedeEditarDatos(estadoCodigo, isGlobalAdmin) : true;
 
   return (
     <div className="flex flex-col gap-6">
@@ -107,13 +112,19 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
           />
         )}
         <Can permiso="ticket:editar">
-          <Button variant="outline" size="sm" onClick={() => setEditando((v) => !v)}>
-            {editando ? "Cancelar edición" : "Editar"}
-          </Button>
+          {edicionPermitida ? (
+            <Button variant="outline" size="sm" onClick={() => setEditando((v) => !v)}>
+              {editando ? "Cancelar edición" : "Editar"}
+            </Button>
+          ) : (
+            <span className="text-sm text-muted-foreground">
+              En proceso: solo ROOT puede editar.
+            </span>
+          )}
         </Can>
       </div>
 
-      {editando && (
+      {editando && edicionPermitida && (
         <TicketEditForm
           defaultValues={{
             titulo: ticket.titulo,

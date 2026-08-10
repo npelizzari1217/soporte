@@ -16,6 +16,7 @@ import {
   EstadoDestinoInvalidoError,
   TransicionInvalidaError,
 } from '../../domain/errors/tickets.errors';
+import { ESTADOS_TERMINALES } from '../../domain/state-machine/estados.constants';
 
 /**
  * Estados destino que setean `fecha_cierre` al alcanzarse (T12).
@@ -41,6 +42,14 @@ export interface TransicionarEstadoDto {
   ticketId: string;
   nuevoEstadoCodigo: string;
   autorId: string;
+  /**
+   * `true` si el actor puede hacer un "salto correctivo": ROOT
+   * (`is_global_admin`) o ADMINISTRADOR del cliente. El salto permite mover
+   * el ticket a CUALQUIER estado NO terminal salteando el grafo (volver
+   * atrás/corregir, incluso reabrir desde un estado terminal). NUNCA lleva a
+   * un estado terminal (CERRADO/CANCELADO): para eso están los arcos normales.
+   */
+  actorEsCorrector: boolean;
 }
 
 /**
@@ -112,14 +121,23 @@ export class TransicionarEstadoUseCase {
       );
     }
 
-    // Doble validación (T9/T11): invariantes de la ENTIDAD (soft-delete,
-    // estado terminal — cubre el rechazo de reapertura T7.4) Y el grafo de
-    // arcos de la máquina de estados resuelta por tipo (ADR-3).
+    // Doble validación (T9/T11) del ARCO NORMAL: invariantes de la ENTIDAD
+    // (soft-delete, estado terminal — cubre el rechazo de reapertura T7.4) Y
+    // el grafo de arcos de la máquina de estados resuelta por tipo (ADR-3).
     const entidadPermite = ticket.canTransitionTo(estadoActual.codigo, estadoDestino.codigo);
     const maquina = this.stateMachineFactory.resolve(tipoTicket.codigo);
     const arcoValido = maquina.puedeTransicionar(estadoActual.codigo, estadoDestino.codigo, {});
+    const arcoNormal = entidadPermite && arcoValido;
 
-    if (!entidadPermite || !arcoValido) {
+    // Salto correctivo (ROOT/ADMINISTRADOR): mover el ticket a CUALQUIER
+    // estado NO terminal salteando el grafo — incluso reabrir desde un estado
+    // terminal (CERRADO/CANCELADO). BYPASSEA `canTransitionTo`/`puedeTransicionar`
+    // a propósito. NUNCA lleva a un terminal (para CERRAR/CANCELAR van los
+    // arcos normales). El ticket soft-deleted YA se rechazó como 404 arriba,
+    // así que el salto nunca opera sobre un ticket borrado.
+    const saltoCorrectivo = dto.actorEsCorrector && !ESTADOS_TERMINALES.has(estadoDestino.codigo);
+
+    if (!arcoNormal && !saltoCorrectivo) {
       return Result.fail(new TransicionInvalidaError(estadoActual.codigo, estadoDestino.codigo));
     }
 

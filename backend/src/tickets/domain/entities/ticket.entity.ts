@@ -1,11 +1,13 @@
 import { BaseEntity } from '../../../shared/domain/base-entity';
+import { ESTADOS_TERMINALES } from '../state-machine/estados.constants';
 
 /**
  * Estados sin arcos de salida (ADR-3): una vez alcanzados, el ticket no
- * puede transicionar a ningún otro estado. RESUELTO NO es terminal: tiene
- * un arco de salida válido hacia CERRADO.
+ * puede transicionar a ningún otro estado por el flujo normal. RESUELTO NO
+ * es terminal: tiene un arco de salida válido hacia CERRADO. Se reusa la
+ * constante compartida (`estados.constants`) para no duplicar los códigos.
  */
-const TERMINAL_STATES = new Set<string>(['CERRADO', 'CANCELADO']);
+const TERMINAL_STATES = ESTADOS_TERMINALES;
 
 /**
  * TicketProps — shape completo de las propiedades de dominio del Ticket

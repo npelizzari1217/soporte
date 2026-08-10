@@ -231,6 +231,7 @@ describe('MANTENIMIENTO — flujo BASE sin código nuevo (F3-M1, ADR-10)', () =>
         ticketId: ticket.id,
         nuevoEstadoCodigo: 'ASIGNADO',
         autorId: DUMMY_USUARIO_ID,
+        actorEsCorrector: false,
       }),
     );
 

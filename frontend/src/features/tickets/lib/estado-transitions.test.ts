@@ -1,8 +1,10 @@
 import { describe, it, expect } from "vitest";
 import {
+  getEstadosCorrectivos,
   getManualNextStates,
   getValidNextStates,
   puedeAsignarYPonerEnProceso,
+  puedeEditarDatos,
 } from "./estado-transitions";
 
 /**
@@ -67,6 +69,51 @@ describe("puedeAsignarYPonerEnProceso", () => {
     "%s NO ofrece el control unificado",
     (estado) => {
       expect(puedeAsignarYPonerEnProceso(estado)).toBe(false);
+    },
+  );
+});
+
+/**
+ * Salto correctivo (ROOT/ADMINISTRADOR): destinos = todos los NO terminales
+ * menos el estado actual. NUNCA incluye CERRADO/CANCELADO.
+ */
+describe("getEstadosCorrectivos", () => {
+  it.each([
+    ["NUEVO", ["ASIGNADO", "EN_PROCESO", "RESUELTO"]],
+    ["EN_PROCESO", ["NUEVO", "ASIGNADO", "RESUELTO"]],
+    ["CERRADO", ["NUEVO", "ASIGNADO", "EN_PROCESO", "RESUELTO"]],
+    ["CANCELADO", ["NUEVO", "ASIGNADO", "EN_PROCESO", "RESUELTO"]],
+  ] as const)("desde %s → %j (no terminales menos el actual)", (desde, esperado) => {
+    expect(getEstadosCorrectivos(desde)).toEqual(esperado);
+  });
+
+  it.each(["CERRADO", "CANCELADO"] as const)("nunca ofrece el terminal %s como destino", (terminal) => {
+    for (const desde of ["NUEVO", "ASIGNADO", "EN_PROCESO", "RESUELTO", "CERRADO", "CANCELADO"]) {
+      expect(getEstadosCorrectivos(desde)).not.toContain(terminal);
+    }
+  });
+});
+
+/**
+ * Regla de bloqueo de edición por estado (mirror backend): EN_PROCESO+ → solo
+ * ROOT. NUEVO/ASIGNADO → cualquiera con permiso. ROOT edita siempre.
+ */
+describe("puedeEditarDatos", () => {
+  it.each(["NUEVO", "ASIGNADO"] as const)("no-ROOT en %s → puede editar", (estado) => {
+    expect(puedeEditarDatos(estado, false)).toBe(true);
+  });
+
+  it.each(["EN_PROCESO", "RESUELTO", "CERRADO", "CANCELADO"] as const)(
+    "no-ROOT en %s → NO puede editar (bloqueado)",
+    (estado) => {
+      expect(puedeEditarDatos(estado, false)).toBe(false);
+    },
+  );
+
+  it.each(["NUEVO", "ASIGNADO", "EN_PROCESO", "RESUELTO", "CERRADO", "CANCELADO"] as const)(
+    "ROOT en %s → puede editar SIEMPRE",
+    (estado) => {
+      expect(puedeEditarDatos(estado, true)).toBe(true);
     },
   );
 });

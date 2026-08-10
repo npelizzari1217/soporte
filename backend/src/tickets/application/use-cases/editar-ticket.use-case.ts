@@ -5,9 +5,12 @@ import { TicketReprioritizadoEvent } from '../../domain/events/ticket-reprioriti
 import {
   TicketNoEncontradoError,
   PrioridadNoEncontradaError,
+  TicketBloqueadoParaEdicionError,
 } from '../../domain/errors/tickets.errors';
 import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
 import { IPrioridadRepository } from '../../domain/ports/i-prioridad.repository';
+import { IEstadoRepository } from '../../domain/ports/i-estado.repository';
+import { ESTADOS_PRE_PROCESO } from '../../domain/state-machine/estados.constants';
 
 /**
  * DTO de entrada de `EditarTicketUseCase` (T8 — PATCH semántico).
@@ -21,6 +24,12 @@ export interface EditarTicketDto {
   titulo?: string;
   descripcion?: string | null;
   prioridadId?: string;
+  /**
+   * `true` si el actor es ROOT (`is_global_admin`). ROOT edita SIEMPRE,
+   * incluso con el ticket EN_PROCESO o posterior. El resto solo puede editar
+   * mientras el ticket esté en NUEVO/ASIGNADO (`ESTADOS_PRE_PROCESO`).
+   */
+  actorEsRoot: boolean;
 }
 
 /**
@@ -46,6 +55,7 @@ export class EditarTicketUseCase {
   constructor(
     private readonly ticketRepo: ITicketRepository,
     private readonly prioridadRepo: IPrioridadRepository,
+    private readonly estadoRepo: IEstadoRepository,
     private readonly eventPublisher: IDomainEventPublisher,
   ) {}
 
@@ -53,6 +63,23 @@ export class EditarTicketUseCase {
     const ticket = await this.ticketRepo.findById(dto.ticketId);
     if (!ticket || ticket.isDeleted()) {
       return Result.fail(new TicketNoEncontradoError(dto.ticketId));
+    }
+
+    // Regla de bloqueo por estado: una vez que el ticket sale de
+    // NUEVO/ASIGNADO (entra EN_PROCESO o posterior), SOLO ROOT puede editar
+    // los datos. ROOT bypassa SIEMPRE. El catálogo de estados es FIJO (ADR-1)
+    // — su ausencia es un bug de infraestructura, no un error del caller:
+    // throw defensivo (mismo criterio que `TransicionarEstadoUseCase`).
+    if (!dto.actorEsRoot) {
+      const estadoActual = await this.estadoRepo.findById(ticket.estadoId);
+      if (!estadoActual) {
+        throw new Error(
+          `Catálogo de estados inconsistente: no existe el estado con id "${ticket.estadoId}" en el tenant activo.`,
+        );
+      }
+      if (!ESTADOS_PRE_PROCESO.has(estadoActual.codigo)) {
+        return Result.fail(new TicketBloqueadoParaEdicionError(estadoActual.codigo));
+      }
     }
 
     if (dto.prioridadId !== undefined) {

@@ -16,7 +16,10 @@ import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
 import { Result } from '../../../shared/domain/result';
 import { OperacionTicketEntity } from '../../domain/entities/operacion-ticket.entity';
 import { TicketEntity } from '../../domain/entities/ticket.entity';
-import { TicketNoEncontradoError } from '../../domain/errors/tickets.errors';
+import {
+  TicketNoEncontradoError,
+  TicketBloqueadoParaEdicionError,
+} from '../../domain/errors/tickets.errors';
 
 type Ctor = ConstructorParameters<typeof TicketsController>;
 
@@ -281,5 +284,119 @@ describe('TicketsController — asignación unificada (asignables + asignar-en-p
       autorId: 'usr-2',
       clienteId: 'cliente-1',
     });
+  });
+});
+
+describe('TicketsController — bloqueo de edición y salto correctivo (actor flags)', () => {
+  function makeTicketEntity(): TicketEntity {
+    return TicketEntity.create(
+      {
+        numero: 'SOP-2026-0001',
+        titulo: 'Ticket',
+        descripcion: null,
+        tipoId: 'ti1',
+        estadoId: 'e-en-proceso',
+        prioridadId: 'p1',
+        cicloId: null,
+        ticketReferenciaId: null,
+        solicitanteId: 'u-sol',
+      },
+      'ticket-1',
+    );
+  }
+
+  function buildController(overrides: {
+    editarTicket?: { execute: ReturnType<typeof vi.fn> };
+    transicionar?: { execute: ReturnType<typeof vi.fn> };
+  }) {
+    const stub = () => ({ execute: vi.fn() });
+    const editarTicket = overrides.editarTicket ?? stub();
+    const transicionar = overrides.transicionar ?? stub();
+    const usuarioMasterChecker = { resolverNombres: vi.fn().mockResolvedValue(new Map()) };
+
+    const controller = new TicketsController(
+      stub() as Ctor[0],
+      stub() as Ctor[1],
+      stub() as Ctor[2],
+      editarTicket as unknown as Ctor[3], // editarTicketUseCase
+      transicionar as unknown as Ctor[4], // transicionarEstadoUseCase
+      stub() as Ctor[5],
+      stub() as Ctor[6],
+      stub() as Ctor[7],
+      usuarioMasterChecker as unknown as Ctor[8],
+    );
+    return { controller, editarTicket, transicionar };
+  }
+
+  it('update: ROOT → delega con actorEsRoot=true', async () => {
+    const editarTicket = { execute: vi.fn().mockResolvedValue(Result.ok(makeTicketEntity())) };
+    const { controller } = buildController({ editarTicket });
+
+    await controller.update(ROOT, 'ticket-1', { titulo: 'X' });
+
+    expect(editarTicket.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ ticketId: 'ticket-1', actorEsRoot: true }),
+    );
+  });
+
+  it('update: ADMINISTRADOR (no-ROOT) → delega con actorEsRoot=false', async () => {
+    const editarTicket = { execute: vi.fn().mockResolvedValue(Result.ok(makeTicketEntity())) };
+    const { controller } = buildController({ editarTicket });
+
+    await controller.update(ADMINISTRADOR, 'ticket-1', { titulo: 'X' });
+
+    expect(editarTicket.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ actorEsRoot: false }),
+    );
+  });
+
+  it('update: TicketBloqueadoParaEdicionError → 403 ForbiddenException', async () => {
+    const editarTicket = {
+      execute: vi
+        .fn()
+        .mockResolvedValue(Result.fail(new TicketBloqueadoParaEdicionError('EN_PROCESO'))),
+    };
+    const { controller } = buildController({ editarTicket });
+
+    await expect(
+      controller.update(USUARIO_SOPORTE, 'ticket-1', { titulo: 'X' }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('transicionarEstado: ROOT → actorEsCorrector=true', async () => {
+    const transicionar = { execute: vi.fn().mockResolvedValue(Result.ok(makeTicketEntity())) };
+    const { controller } = buildController({ transicionar });
+
+    await controller.transicionarEstado(ROOT, 'ticket-1', { nuevoEstadoCodigo: 'ASIGNADO' });
+
+    expect(transicionar.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ actorEsCorrector: true }),
+    );
+  });
+
+  it('transicionarEstado: ADMINISTRADOR → actorEsCorrector=true', async () => {
+    const transicionar = { execute: vi.fn().mockResolvedValue(Result.ok(makeTicketEntity())) };
+    const { controller } = buildController({ transicionar });
+
+    await controller.transicionarEstado(ADMINISTRADOR, 'ticket-1', {
+      nuevoEstadoCodigo: 'ASIGNADO',
+    });
+
+    expect(transicionar.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ actorEsCorrector: true }),
+    );
+  });
+
+  it('transicionarEstado: rol no-ADMINISTRADOR/no-ROOT → actorEsCorrector=false (solo arcos normales)', async () => {
+    const transicionar = { execute: vi.fn().mockResolvedValue(Result.ok(makeTicketEntity())) };
+    const { controller } = buildController({ transicionar });
+
+    await controller.transicionarEstado(USUARIO_SOPORTE, 'ticket-1', {
+      nuevoEstadoCodigo: 'CANCELADO',
+    });
+
+    expect(transicionar.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ actorEsCorrector: false }),
+    );
   });
 });

@@ -155,3 +155,37 @@ describe("TicketDetailView — gating de acciones por permiso", () => {
     expect(screen.getByText(/vencido/i)).toBeInTheDocument();
   });
 });
+
+describe("TicketDetailView — bloqueo de edición una vez EN_PROCESO", () => {
+  beforeEach(() => mockBackend());
+
+  it("EN_PROCESO + no-ROOT con ticket:editar → sin botón Editar, muestra la nota de bloqueo", async () => {
+    server.use(
+      http.get(`/api/tickets/${TICKET_ID}`, () => HttpResponse.json({ ...TICKET, estadoId: "e-en-proceso" })),
+    );
+
+    renderWithProviders(<TicketDetailView ticketId={TICKET_ID} />, {
+      user: buildUser({ rol: "ADMINISTRADOR", permisos: ["ticket:editar"] }),
+    });
+
+    await screen.findByText("Impresora rota");
+
+    expect(screen.queryByRole("button", { name: /^editar$/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/solo ROOT puede editar/i)).toBeInTheDocument();
+  });
+
+  it("EN_PROCESO + ROOT → botón Editar habilitado (ROOT edita siempre)", async () => {
+    server.use(
+      http.get(`/api/tickets/${TICKET_ID}`, () => HttpResponse.json({ ...TICKET, estadoId: "e-en-proceso" })),
+    );
+
+    renderWithProviders(<TicketDetailView ticketId={TICKET_ID} />, {
+      user: buildUser({ rol: null, is_global_admin: true, permisos: [] }),
+    });
+
+    await screen.findByText("Impresora rota");
+
+    expect(screen.getByRole("button", { name: /^editar$/i })).toBeInTheDocument();
+    expect(screen.queryByText(/solo ROOT puede editar/i)).not.toBeInTheDocument();
+  });
+});

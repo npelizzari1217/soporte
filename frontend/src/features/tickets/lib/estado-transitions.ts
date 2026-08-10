@@ -50,3 +50,37 @@ export function getManualNextStates(estadoActualCodigo: string): TicketEstadoCod
 export function puedeAsignarYPonerEnProceso(estadoActualCodigo: string): boolean {
   return estadoActualCodigo === "NUEVO" || estadoActualCodigo === "ASIGNADO";
 }
+
+/**
+ * Estados PREVIOS a EN_PROCESO — mirror de `ESTADOS_PRE_PROCESO` del backend.
+ * Mientras el ticket esté en uno de estos, la edición de datos sigue abierta a
+ * TECNICO+; una vez EN_PROCESO (o posterior), solo ROOT.
+ */
+const ESTADOS_PRE_PROCESO: TicketEstadoCodigo[] = ["NUEVO", "ASIGNADO"];
+
+/**
+ * Estados NO terminales — destinos del "salto correctivo" de ROOT/ADMINISTRADOR
+ * (volver atrás/corregir/reabrir). Mirror del backend: el salto NUNCA lleva a un
+ * terminal (CERRADO/CANCELADO).
+ */
+const ESTADOS_CORRECTIVOS: TicketEstadoCodigo[] = ["NUEVO", "ASIGNADO", "EN_PROCESO", "RESUELTO"];
+
+/**
+ * Devuelve los estados NO terminales a los que un corrector (ROOT/ADMINISTRADOR)
+ * puede saltar DESDE `estadoActualCodigo` (todos los correctivos menos el actual).
+ * UI-only — el backend revalida (salto correctivo, doble capa).
+ */
+export function getEstadosCorrectivos(estadoActualCodigo: string): TicketEstadoCodigo[] {
+  return ESTADOS_CORRECTIVOS.filter((codigo) => codigo !== estadoActualCodigo);
+}
+
+/**
+ * True si la edición de datos (título/descripción/prioridad) está permitida en
+ * `estadoActualCodigo` para el actor. Regla: una vez EN_PROCESO (o posterior),
+ * solo ROOT. ROOT (`esRoot=true`) puede SIEMPRE. Mirror del backend
+ * (`EditarTicketUseCase` + `TicketBloqueadoParaEdicionError`) — es UX, no la barrera.
+ */
+export function puedeEditarDatos(estadoActualCodigo: string, esRoot: boolean): boolean {
+  if (esRoot) return true;
+  return ESTADOS_PRE_PROCESO.includes(estadoActualCodigo as TicketEstadoCodigo);
+}
