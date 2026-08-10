@@ -390,6 +390,23 @@ describe('TransicionarEstadoUseCase', () => {
       expect(c.txRunner.run).toHaveBeenCalledTimes(1);
     });
 
+    it('regresión: reabrir CERRADO (con fecha_cierre)→EN_PROCESO LIMPIA fecha_cierre', async () => {
+      const c = makeCollaborators();
+      const ticket = makeTicket('CERRADO');
+      ticket.setFechaCierre(new Date('2026-01-01T00:00:00Z'));
+      c.ticketRepo.findById.mockResolvedValue(ticket);
+
+      const result = await c.useCase.execute(
+        baseDto({ nuevoEstadoCodigo: 'EN_PROCESO', actorEsCorrector: true }),
+      );
+
+      expect(result.isOk()).toBe(true);
+      expect(result.getValue().estadoId).toBe('estado-en-proceso-uuid');
+      // El ticket dejó de estar cerrado → su fecha_cierre debe quedar en null
+      // (invariante: fecha_cierre no-nula ⟺ estado ∈ {RESUELTO, CERRADO}).
+      expect(result.getValue().fechaCierre).toBeNull();
+    });
+
     it('corrector: NO puede saltar a un estado terminal fuera de arco (NUEVO→CERRADO) → TransicionInvalidaError', async () => {
       const c = makeCollaborators();
       const ticket = makeTicket('NUEVO');

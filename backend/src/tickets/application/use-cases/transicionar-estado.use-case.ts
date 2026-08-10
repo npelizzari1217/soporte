@@ -153,8 +153,14 @@ export class TransicionarEstadoUseCase {
 
     await this.txRunner.run(async () => {
       ticket.updateEstado(estadoDestino.id);
+      // Invariante: `fecha_cierre` es no-nula SI Y SOLO SI el estado cierra
+      // (RESUELTO/CERRADO). Al alcanzar un estado que cierra la seteamos; al
+      // salir de él (salto correctivo que reabre un ticket terminal) la
+      // limpiamos — de lo contrario quedaría pegada la fecha del cierre viejo.
       if (ESTADOS_QUE_CIERRAN.has(estadoDestino.codigo)) {
         ticket.setFechaCierre(new Date());
+      } else {
+        ticket.setFechaCierre(null);
       }
 
       const operacion = OperacionTicketEntity.create({
