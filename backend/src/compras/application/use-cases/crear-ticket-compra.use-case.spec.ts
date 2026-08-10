@@ -2,10 +2,10 @@
  * T4.1/T4.2 [UNIT] — RED→GREEN: `CrearTicketCompraUseCase`.
  *
  * Todos los puertos mockeados (`vi.fn`) — sin DB. Crea, en UNA transacción,
- * el `Ticket` base (tipo COMPRAS, resuelto internamente vía
- * `tipoTicketRepo.findByCodigo('COMPRAS')` — el DTO NO recibe `tipoId`),
- * la operación de apertura CAMBIO_ESTADO, y el satélite `ticket_compra`
- * (ADR-3). Valida solicitante (master) y ciclo activo del tenant.
+ * el `Ticket` base (tipo de compra ELEGIDO por el caller vía `tipoId`,
+ * validado con `tipoTicketRepo.findById` — B1), la operación de apertura
+ * CAMBIO_ESTADO, y el satélite `ticket_compra` (ADR-3). Valida solicitante
+ * (master) y ciclo activo del tenant.
  *
  * Ref spec: sdd/flujos-especializados/spec F3-C1. Ref design: ADR-3,
  * "Firmas TS clave" (CrearTicketCompraDto). Tarea: T4.1, T4.2.
@@ -18,12 +18,14 @@ import { TipoTicketEntity } from '../../../tickets/domain/entities/tipo-ticket.e
 import {
   SolicitanteInvalidoError,
   SinCicloActivoError,
+  TipoTicketNoEncontradoError,
 } from '../../../tickets/domain/errors/tickets.errors';
 
 function baseDto(overrides: Partial<CrearTicketCompraDto> = {}): CrearTicketCompraDto {
   return {
     titulo: 'Compra de notebooks',
     descripcion: 'Para el equipo de soporte',
+    tipoId: 'tipo-compras-uuid',
     prioridadId: 'prioridad-media-uuid',
     solicitanteId: 'solicitante-uuid',
     clienteId: 'cliente-uuid',
@@ -40,7 +42,7 @@ describe('CrearTicketCompraUseCase', () => {
     const ticketCompraRepo = { save: vi.fn().mockResolvedValue(undefined) };
     const estadoRepo = { findIdByCodigo: vi.fn().mockResolvedValue('estado-nuevo-uuid') };
     const tipoTicketRepo = {
-      findByCodigo: vi
+      findById: vi
         .fn()
         .mockResolvedValue(
           TipoTicketEntity.create(
@@ -114,7 +116,7 @@ describe('CrearTicketCompraUseCase', () => {
     expect(ticket.solicitanteId).toBe('solicitante-uuid');
     expect(ticket.cicloId).toBe('ciclo-activo-uuid');
 
-    expect(c.tipoTicketRepo.findByCodigo).toHaveBeenCalledWith('COMPRAS');
+    expect(c.tipoTicketRepo.findById).toHaveBeenCalledWith('tipo-compras-uuid');
     expect(c.txRunner.run).toHaveBeenCalledTimes(1);
     expect(c.ticketRepo.save).toHaveBeenCalledWith(ticket);
     expect(c.operacionRepo.save).toHaveBeenCalledTimes(1);
@@ -150,10 +152,14 @@ describe('CrearTicketCompraUseCase', () => {
     expect(c.txRunner.run).not.toHaveBeenCalled();
   });
 
-  it('catalogo COMPRAS inconsistente (fallo de infraestructura) → throw defensivo', async () => {
+  it('tipoId inexistente en el catálogo del tenant → TipoTicketNoEncontradoError, sin tocar la tx', async () => {
     const c = makeCollaborators();
-    c.tipoTicketRepo.findByCodigo.mockResolvedValue(null);
+    c.tipoTicketRepo.findById.mockResolvedValue(null);
 
-    await expect(c.useCase.execute(baseDto())).rejects.toThrow(/COMPRAS/);
+    const result = await c.useCase.execute(baseDto({ tipoId: 'tipo-inexistente-uuid' }));
+
+    expect(result.isFail()).toBe(true);
+    expect(result.getError()).toBeInstanceOf(TipoTicketNoEncontradoError);
+    expect(c.txRunner.run).not.toHaveBeenCalled();
   });
 });

@@ -175,6 +175,7 @@ export class ComprasController {
     const result = await this.crearTicketCompraUseCase.execute({
       titulo: dto.titulo,
       descripcion: dto.descripcion ?? null,
+      tipoId: dto.tipoId,
       prioridadId: dto.prioridadId,
       solicitanteId: user.sub,
       clienteId: user.cliente_id as string,

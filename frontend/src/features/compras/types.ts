@@ -53,6 +53,7 @@ export interface Presupuesto {
 export interface CrearTicketCompraDto {
   titulo: string;
   descripcion?: string | null;
+  tipoId: string;
   prioridadId: string;
 }
 

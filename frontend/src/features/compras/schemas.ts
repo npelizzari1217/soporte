@@ -5,6 +5,7 @@ import { MONEDAS } from "./types";
 export const crearCompraSchema = z.object({
   titulo: z.string().min(1, "El título es requerido"),
   descripcion: z.string().optional(),
+  tipoId: z.string().uuid("Elegí un tipo de compra"),
   prioridadId: z.string().uuid("Elegí una prioridad"),
 });
 export type CrearCompraFormValues = z.infer<typeof crearCompraSchema>;

@@ -43,6 +43,10 @@ export class CreateTicketCompraHttpDto {
   @IsString()
   descripcion?: string | null;
 
+  /** Tipo de compra elegido por el usuario (B1). Debe existir en el tenant. */
+  @IsUUID()
+  tipoId!: string;
+
   @IsUUID()
   prioridadId!: string;
 }

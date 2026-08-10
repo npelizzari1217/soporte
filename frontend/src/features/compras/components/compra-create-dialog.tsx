@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select } from "@/components/ui/select";
-import { usePrioridades } from "@/features/tickets/hooks/use-catalogos";
+import { usePrioridades, useTiposTicket } from "@/features/tickets/hooks/use-catalogos";
 import { useCrearCompra } from "../hooks/use-compra-mutations";
 import { crearCompraSchema, type CrearCompraFormValues } from "../schemas";
 
@@ -22,6 +22,7 @@ export function CompraCreateDialog() {
   const [open, setOpen] = useState(false);
   const router = useRouter();
   const prioridadesQuery = usePrioridades();
+  const tiposQuery = useTiposTicket();
   const crearMutation = useCrearCompra();
 
   const {
@@ -33,7 +34,12 @@ export function CompraCreateDialog() {
 
   function submit(values: CrearCompraFormValues) {
     crearMutation.mutate(
-      { titulo: values.titulo, descripcion: values.descripcion || undefined, prioridadId: values.prioridadId },
+      {
+        titulo: values.titulo,
+        descripcion: values.descripcion || undefined,
+        tipoId: values.tipoId,
+        prioridadId: values.prioridadId,
+      },
       {
         onSuccess: (compra) => {
           setOpen(false);
@@ -77,6 +83,27 @@ export function CompraCreateDialog() {
               Descripción
             </label>
             <Textarea id="compra-descripcion" {...register("descripcion")} />
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label htmlFor="compra-tipo" className="text-sm font-medium text-foreground">
+              Tipo de compra
+            </label>
+            <Select id="compra-tipo" error={!!errors.tipoId} defaultValue="" {...register("tipoId")}>
+              <option value="" disabled>
+                Elegí un tipo de compra
+              </option>
+              {(tiposQuery.data ?? []).map((tipo) => (
+                <option key={tipo.id} value={tipo.id}>
+                  {tipo.nombre}
+                </option>
+              ))}
+            </Select>
+            {errors.tipoId && (
+              <p role="alert" className="text-sm text-destructive">
+                {errors.tipoId.message}
+              </p>
+            )}
           </div>
 
           <div className="flex flex-col gap-1">

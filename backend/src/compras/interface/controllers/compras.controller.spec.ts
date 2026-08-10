@@ -119,6 +119,7 @@ describe('ComprasController (T4.6, T5.7)', () => {
         {
           titulo: 'Compra de notebooks',
           descripcion: null,
+          tipoId: 'tipo-compras-uuid',
           prioridadId: 'prioridad-media-uuid',
         } as any,
         USER,
@@ -128,7 +129,11 @@ describe('ComprasController (T4.6, T5.7)', () => {
       expect(result.ticketId).toBe('ticket-uuid');
       expect(result.numero).toBe('COM-2026-00001');
       expect(crearTicketCompraUseCase.execute).toHaveBeenCalledWith(
-        expect.objectContaining({ solicitanteId: 'usuario-uuid', autorId: 'usuario-uuid' }),
+        expect.objectContaining({
+          tipoId: 'tipo-compras-uuid',
+          solicitanteId: 'usuario-uuid',
+          autorId: 'usuario-uuid',
+        }),
       );
     });
 

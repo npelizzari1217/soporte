@@ -10,19 +10,19 @@ import { IEstadoRepository } from '../../../tickets/domain/ports/i-estado.reposi
 import { ITipoTicketRepository } from '../../../tickets/domain/ports/i-tipo-ticket.repository';
 import { ITipoOperacionRepository } from '../../../tickets/domain/ports/i-tipo-operacion.repository';
 import { IUsuarioMasterChecker } from '../../../tickets/domain/ports/i-usuario-master.checker';
-import { SolicitanteInvalidoError } from '../../../tickets/domain/errors/tickets.errors';
+import {
+  SolicitanteInvalidoError,
+  TipoTicketNoEncontradoError,
+} from '../../../tickets/domain/errors/tickets.errors';
 import { TicketCompraEntity } from '../../domain/entities/ticket-compra.entity';
 import { ITicketCompraRepository } from '../../domain/ports/i-ticket-compra.repository';
-
-/** Código fijo del tipo de ticket resuelto por este use case (F3-C1). */
-const TIPO_CODIGO_COMPRAS = 'COMPRAS';
 
 /**
  * DTO de entrada de `CrearTicketCompraUseCase`.
  *
- * A diferencia de `CrearTicketDto` (núcleo `tickets/`), NO recibe `tipoId`:
- * el tipo se resuelve internamente por código ('COMPRAS', catálogo FIJO
- * sembrado en Fase 1) — este use case SIEMPRE crea tickets de compra.
+ * `tipoId`: el tipo de compra lo ELIGE el caller (B1). El use case ya no fija
+ * el código 'COMPRAS' — cada tenant puede tener tipos de compra propios
+ * (custom del catálogo). Se valida que el `tipoId` exista en el tenant.
  *
  * `solicitanteId`/`autorId` = JWT.sub (mismo criterio que `CrearTicketDto`).
  * `anio` lo resuelve el controller (server-side, nunca el cliente HTTP).
@@ -32,6 +32,7 @@ const TIPO_CODIGO_COMPRAS = 'COMPRAS';
 export interface CrearTicketCompraDto {
   titulo: string;
   descripcion?: string | null;
+  tipoId: string;
   prioridadId: string;
   solicitanteId: string;
   clienteId: string;
@@ -47,8 +48,8 @@ export interface CrearTicketCompraDto {
  * creación del satélite `ticket_compra` en la MISMA transacción:
  * 1. Valida que el solicitante exista en el tenant (`IUsuarioMasterChecker`).
  * 2. Resuelve el ciclo ACTIVO del tenant (nunca lo decide el caller).
- * 3. Resuelve el tipo COMPRAS por código (catálogo FIJO — su ausencia es
- *    un fallo de infraestructura, `throw` defensivo).
+ * 3. Valida que el `tipoId` elegido por el caller exista en el catálogo del
+ *    tenant (B1 — el tipo de compra ya no es fijo). Ausente → `Result.fail`.
  * 4. Resuelve el estado NUEVO y el tipo de operación CAMBIO_ESTADO
  *    (catálogos FIJOS, mismo criterio).
  * 5. **DENTRO de la transacción** (`ITenantTransactionRunner.run`): genera
@@ -68,7 +69,7 @@ export class CrearTicketCompraUseCase {
     private readonly operacionRepo: Pick<IOperacionTicketRepository, 'save'>,
     private readonly ticketCompraRepo: Pick<ITicketCompraRepository, 'save'>,
     private readonly estadoRepo: Pick<IEstadoRepository, 'findIdByCodigo'>,
-    private readonly tipoTicketRepo: Pick<ITipoTicketRepository, 'findByCodigo'>,
+    private readonly tipoTicketRepo: Pick<ITipoTicketRepository, 'findById'>,
     private readonly tipoOperacionRepo: Pick<ITipoOperacionRepository, 'findIdByCodigo'>,
     private readonly usuarioMasterChecker: Pick<IUsuarioMasterChecker, 'existeEnTenant'>,
     private readonly numerador: Pick<NumeradorTicket, 'generarNumero'>,
@@ -95,14 +96,16 @@ export class CrearTicketCompraUseCase {
     }
     const cicloActivo = cicloResult.getValue();
 
-    // 3-4. Catálogos FIJOS garantizados por el seed (Fase 1) — su ausencia
-    //    es un bug de infraestructura, no un error del caller: throw defensivo.
-    const tipoCompras = await this.tipoTicketRepo.findByCodigo(TIPO_CODIGO_COMPRAS);
-    if (!tipoCompras) {
-      throw new Error(
-        `Catálogo de tipos de ticket inconsistente: no existe el tipo "${TIPO_CODIGO_COMPRAS}" en el tenant activo.`,
-      );
+    // 3. Tipo de compra ELEGIDO por el caller (B1) — debe existir en el
+    //    catálogo del tenant. A diferencia de los catálogos FIJOS de abajo,
+    //    esto es un error esperado del caller (tipoId inválido) → Result.fail.
+    const tipo = await this.tipoTicketRepo.findById(dto.tipoId);
+    if (!tipo) {
+      return Result.fail(new TipoTicketNoEncontradoError(dto.tipoId));
     }
+
+    // 4. Catálogos FIJOS garantizados por el seed (Fase 1) — su ausencia
+    //    es un bug de infraestructura, no un error del caller: throw defensivo.
     const estadoNuevoId = await this.estadoRepo.findIdByCodigo('NUEVO');
     if (!estadoNuevoId) {
       throw new Error(
@@ -119,11 +122,7 @@ export class CrearTicketCompraUseCase {
     // 5. Sección crítica: numeración (advisory lock, ADR-5 Fase 2) +
     //    persistencia atómica de ticket + operación + satélite.
     return this.txRunner.run(async () => {
-      const numeroResult = await this.numerador.generarNumero(
-        tipoCompras.id,
-        tipoCompras.codigo,
-        dto.anio,
-      );
+      const numeroResult = await this.numerador.generarNumero(tipo.id, tipo.codigo, dto.anio);
       if (numeroResult.isFail()) {
         return Result.fail<{ ticket: TicketEntity; ticketCompra: TicketCompraEntity }, DomainError>(
           numeroResult.getError(),
@@ -134,7 +133,7 @@ export class CrearTicketCompraUseCase {
         numero: numeroResult.getValue(),
         titulo: dto.titulo,
         descripcion: dto.descripcion ?? null,
-        tipoId: tipoCompras.id,
+        tipoId: tipo.id,
         estadoId: estadoNuevoId,
         prioridadId: dto.prioridadId,
         cicloId: cicloActivo.id,
