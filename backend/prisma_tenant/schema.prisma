@@ -500,33 +500,21 @@ model SubtareaEdilicia {
 
 // ─── EQUIPOS INFORMÁTICOS ──────────────────────────────────────────────────────
 //
-// tipos_componente (catálogo), equipos_informaticos, componentes_equipo,
-// archivos_equipo (adjuntos), ticket_soporte (satélite 1:1).
+// equipos_informaticos, componentes_equipo, archivos_equipo (adjuntos),
+// ticket_soporte (satélite 1:1).
 //
-// tipos_componente: catálogo sembrado en provisioning (10 tipos base).
 // equipos_informaticos: inventario de equipos del tenant.
 //   numero_serie: UNIQUE parcial WHERE NOT NULL — raw SQL en migración.
 //   asignado_a_id: soft ref → master.usuarios.id (sin FK cross-DB).
 //   ubicacion_id: FK → ubicaciones.id (nullable).
-// componentes_equipo: hardware instalado en un equipo. FK a equipo + tipo.
+// componentes_equipo: hardware instalado en un equipo. FK a equipo.
+//   tipo_componente_codigo: soft ref → master.tipos_componente.codigo (sin FK
+//   cross-DB) — el catálogo tenant `tipos_componente` se ELIMINÓ en PR4b
+//   (sdd/tipos-componente-master); el catálogo ahora es global (MASTER).
 // archivos_equipo: adjuntos de equipo (sin entidad de dominio propia — solo
 //   tabla + repo de infraestructura, clona el patrón de ArchivoTicket).
 // ticket_soporte: satélite 1:1 con tickets de tipo SOPORTE.
 //   equipo_id: NULLABLE — un ticket de soporte puede no referenciar un equipo.
-
-model TipoComponente {
-  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  codigo    String    @unique @db.VarChar(50)
-  nombre    String    @db.VarChar(100)
-  activo    Boolean   @default(true)
-  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
-  deletedAt DateTime? @map("deleted_at") @db.Timestamptz
-
-  componentes ComponenteEquipo[]
-
-  @@map("tipos_componente")
-}
 
 model EquipoInformatico {
   id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
@@ -556,21 +544,24 @@ model EquipoInformatico {
 }
 
 model ComponenteEquipo {
-  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  equipoId         String    @map("equipo_id") @db.Uuid
-  tipoComponenteId String    @map("tipo_componente_id") @db.Uuid
-  descripcion      String?   @db.VarChar(255)
-  numeroSerie      String?   @map("numero_serie") @db.VarChar(255)
-  capacidad        String?   @db.VarChar(100)
-  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz
-  deletedAt        DateTime? @map("deleted_at") @db.Timestamptz
+  id       String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  equipoId String @map("equipo_id") @db.Uuid
+  /// Soft ref → master.tipos_componente.codigo (sin FK cross-DB). Contract
+  /// (PR4b): NOT NULL — poblado por el backfill de PR4a, catálogo tenant
+  /// `tipos_componente` eliminado (ver migración 20260805194710_init_tenant
+  /// para el estado previo con `tipo_componente_id` FK).
+  tipoComponenteCodigo String    @map("tipo_componente_codigo") @db.VarChar(50)
+  descripcion          String?   @db.VarChar(255)
+  numeroSerie          String?   @map("numero_serie") @db.VarChar(255)
+  capacidad            String?   @db.VarChar(100)
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt            DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt            DateTime? @map("deleted_at") @db.Timestamptz
 
-  equipo         EquipoInformatico @relation(fields: [equipoId], references: [id])
-  tipoComponente TipoComponente    @relation(fields: [tipoComponenteId], references: [id])
+  equipo EquipoInformatico @relation(fields: [equipoId], references: [id])
 
   @@index([equipoId])
-  @@index([tipoComponenteId])
+  @@index([tipoComponenteCodigo])
   @@map("componentes_equipo")
 }
 

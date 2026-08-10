@@ -12,8 +12,9 @@
  *
  * Contrato verificado (R19, ampliado Fase 3 ADR-5/F3-S1):
  * - Tras `seed()`, la DB tenant tiene 6 estados / 4 prioridades /
- *   7 tipo_operacion (5 de R19 + APROBACION/RECHAZO) / 4 tipos_ticket /
- *   10 tipos_componente persistidos con los códigos exactos.
+ *   7 tipo_operacion (5 de R19 + APROBACION/RECHAZO) / 4 tipos_ticket
+ *   persistidos con los códigos exactos. `tipos_componente` YA NO se siembra
+ *   por tenant (PR4b, sdd/tipos-componente-master — catálogo GLOBAL en MASTER).
  * - Correr `seed()` una segunda vez sobre la MISMA DB no duplica filas ni
  *   lanza error (idempotencia real, no solo mockeada).
  *
@@ -66,7 +67,7 @@ describe('TenantSeederAdapter (T7.4, integración — Postgres real, DB efímera
     await admin.dropDatabase(DB_NAME);
   });
 
-  it('[CRITICAL] seed() persiste los 5 catálogos con los códigos exactos en la DB tenant real', async () => {
+  it('[CRITICAL] seed() persiste los 4 catálogos con los códigos exactos en la DB tenant real', async () => {
     await seeder.seed(DB_NAME);
 
     const estados = await verifyClient.estado.findMany({ orderBy: { orden: 'asc' } });
@@ -101,25 +102,6 @@ describe('TenantSeederAdapter (T7.4, integración — Postgres real, DB efímera
       ['SOPORTE', 'COMPRAS', 'EDILICIA', 'MANTENIMIENTO'].sort(),
     );
 
-    const tiposComponente = await verifyClient.tipoComponente.findMany({
-      orderBy: { codigo: 'asc' },
-    });
-    expect(tiposComponente).toHaveLength(10);
-    expect(tiposComponente.map((t) => t.codigo).sort()).toEqual(
-      [
-        'CPU',
-        'RAM',
-        'DISCO',
-        'MONITOR',
-        'TECLADO',
-        'MOUSE',
-        'GPU',
-        'FUENTE',
-        'IMPRESORA',
-        'RED',
-      ].sort(),
-    );
-
     // Fase 4 (S1, GATE G1): sla_config sembrado 1:1 con prioridades.
     const slaConfigs = await verifyClient.slaConfig.findMany({
       include: { prioridad: { select: { codigo: true } } },
@@ -134,21 +116,18 @@ describe('TenantSeederAdapter (T7.4, integración — Postgres real, DB efímera
     await seeder.seed(DB_NAME);
     await seeder.seed(DB_NAME); // re-run
 
-    const [estados, prioridades, tipoOperacion, tiposTicket, tiposComponente, slaConfigs] =
-      await Promise.all([
-        verifyClient.estado.findMany(),
-        verifyClient.prioridad.findMany(),
-        verifyClient.tipoOperacion.findMany(),
-        verifyClient.tipoTicket.findMany(),
-        verifyClient.tipoComponente.findMany(),
-        verifyClient.slaConfig.findMany(),
-      ]);
+    const [estados, prioridades, tipoOperacion, tiposTicket, slaConfigs] = await Promise.all([
+      verifyClient.estado.findMany(),
+      verifyClient.prioridad.findMany(),
+      verifyClient.tipoOperacion.findMany(),
+      verifyClient.tipoTicket.findMany(),
+      verifyClient.slaConfig.findMany(),
+    ]);
 
     expect(estados).toHaveLength(6);
     expect(prioridades).toHaveLength(4);
     expect(tipoOperacion).toHaveLength(7);
     expect(tiposTicket).toHaveLength(4);
-    expect(tiposComponente).toHaveLength(10);
     expect(slaConfigs).toHaveLength(4);
   }, 30_000);
 });

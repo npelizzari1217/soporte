@@ -7,12 +7,13 @@
  *
  * Tarea: T12.6.
  */
-import { IsDateString, IsOptional, IsString, IsUUID, MinLength } from 'class-validator';
+import { IsDateString, IsOptional, IsString, MinLength, IsUUID } from 'class-validator';
 import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
 import { EquipoInformaticoEntity } from '../../domain/entities/equipo-informatico.entity';
 import { ComponenteEquipoEntity } from '../../domain/entities/componente-equipo.entity';
-import { TipoComponenteEntity } from '../../domain/entities/tipo-componente.entity';
 import { TicketSoporteEntity } from '../../domain/entities/ticket-soporte.entity';
+import { TipoComponenteCatalogoItem } from '../../application/use-cases/listar-tipos-componente.use-case';
+import { ComponenteEquipoConTipo } from '../../application/use-cases/obtener-equipo.use-case';
 
 // ─── Input DTOs ───────────────────────────────────────────────────────────────
 
@@ -109,8 +110,9 @@ export class RegistrarSolucionHttpDto {
 
 /** Body de `POST /equipos/:id/componentes` (F3-Q2). */
 export class CreateComponenteHttpDto {
-  @IsUUID()
-  tipoComponenteId!: string;
+  @IsString()
+  @MinLength(1)
+  tipoComponenteCodigo!: string;
 
   @IsOptional()
   @IsString()
@@ -159,11 +161,16 @@ export function toEquipoResponseDto(equipo: EquipoInformaticoEntity): EquipoResp
   };
 }
 
-/** Shape de respuesta de un componente de equipo. */
+/**
+ * Shape de respuesta de un componente de equipo (`POST /equipos/:id/componentes`,
+ * `DELETE .../componentes/:id`). PR4b: `tipoComponenteCodigo` reemplaza a
+ * `tipoComponenteId` — shape básico, SIN enriquecer (el use case de alta no
+ * resuelve `nombre` del catálogo MASTER, solo verifica `activo`).
+ */
 export interface ComponenteResponseDto {
   id: string;
   equipoId: string;
-  tipoComponenteId: string;
+  tipoComponenteCodigo: string;
   descripcion: string | null;
   numeroSerie: string | null;
   capacidad: string | null;
@@ -171,12 +178,12 @@ export interface ComponenteResponseDto {
   updatedAt: string;
 }
 
-/** Convierte `ComponenteEquipoEntity` al shape de respuesta HTTP. */
+/** Convierte `ComponenteEquipoEntity` al shape de respuesta HTTP básico. */
 export function toComponenteResponseDto(componente: ComponenteEquipoEntity): ComponenteResponseDto {
   return {
     id: componente.id,
     equipoId: componente.equipoId,
-    tipoComponenteId: componente.tipoComponenteId,
+    tipoComponenteCodigo: componente.tipoComponenteCodigo,
     descripcion: componente.descripcion,
     numeroSerie: componente.numeroSerie,
     capacidad: componente.capacidad,
@@ -186,22 +193,44 @@ export function toComponenteResponseDto(componente: ComponenteEquipoEntity): Com
 }
 
 /**
+ * Shape de respuesta de un componente EMBEBIDO en el detalle de equipo
+ * (`GET /equipos/:id`) — extiende el shape básico con `tipoNombre`/
+ * `tipoActivo` resueltos en batch desde el catálogo MASTER
+ * (`ObtenerEquipoUseCase`, PR4b).
+ */
+export interface ComponenteConTipoResponseDto extends ComponenteResponseDto {
+  tipoNombre: string | null;
+  tipoActivo: boolean;
+}
+
+/** Convierte un `ComponenteEquipoConTipo` (componente + nombre/estado MASTER) al shape de respuesta HTTP. */
+export function toComponenteConTipoResponseDto(
+  item: ComponenteEquipoConTipo,
+): ComponenteConTipoResponseDto {
+  return {
+    ...toComponenteResponseDto(item.componente),
+    tipoNombre: item.tipoNombre,
+    tipoActivo: item.tipoActivo,
+  };
+}
+
+/**
  * Shape de respuesta de `GET /equipos/:id` (sdd/beta-frontend item 1 — G7):
  * detalle con `componentes` EMBEBIDOS — antes el frontend dependía solo del
  * cache de sesión poblado por las mutaciones de agregar/eliminar componente.
  */
 export interface EquipoDetalleResponseDto extends EquipoResponseDto {
-  componentes: ComponenteResponseDto[];
+  componentes: ComponenteConTipoResponseDto[];
 }
 
-/** Convierte un `EquipoDetalle` (equipo + componentes) al shape de respuesta HTTP. */
+/** Convierte un `EquipoDetalle` (equipo + componentes con tipo) al shape de respuesta HTTP. */
 export function toEquipoDetalleResponseDto(detalle: {
   equipo: EquipoInformaticoEntity;
-  componentes: ComponenteEquipoEntity[];
+  componentes: ComponenteEquipoConTipo[];
 }): EquipoDetalleResponseDto {
   return {
     ...toEquipoResponseDto(detalle.equipo),
-    componentes: detalle.componentes.map(toComponenteResponseDto),
+    componentes: detalle.componentes.map(toComponenteConTipoResponseDto),
   };
 }
 
@@ -269,20 +298,26 @@ export function toTicketSoporteOnlyResponseDto(
   };
 }
 
-/** Shape de respuesta de un tipo de componente (catálogo read-only, F3-Q3). */
+/**
+ * Shape de respuesta de un tipo de componente (catálogo read-only, F3-Q3).
+ *
+ * PR3 (sdd/tipos-componente-master): el catálogo se lee desde MASTER vía
+ * `ITipoComponenteMasterChecker.listarActivos()`, que ya solo expone
+ * `{codigo, nombre}` de los tipos ACTIVOS (el filtro `activo=true` ocurre en
+ * la query) — sin `id` (MASTER no expone su UUID interno a este listado) ni
+ * `activo` (siempre `true`, redundante).
+ */
 export interface TipoComponenteResponseDto {
-  id: string;
   codigo: string;
   nombre: string;
-  activo: boolean;
 }
 
-/** Convierte `TipoComponenteEntity` al shape de respuesta HTTP. */
-export function toTipoComponenteResponseDto(tipo: TipoComponenteEntity): TipoComponenteResponseDto {
+/** Convierte un item del catálogo MASTER al shape de respuesta HTTP. */
+export function toTipoComponenteResponseDto(
+  tipo: TipoComponenteCatalogoItem,
+): TipoComponenteResponseDto {
   return {
-    id: tipo.id,
     codigo: tipo.codigo,
     nombre: tipo.nombre,
-    activo: tipo.activo,
   };
 }

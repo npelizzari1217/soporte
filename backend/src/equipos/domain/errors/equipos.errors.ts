@@ -61,36 +61,37 @@ export class NumeroSerieDuplicadoError extends DomainError {
 }
 
 /**
- * TipoComponenteIdRequeridoError — falta `tipoComponenteId` al crear un
- * componente de equipo. NORMALIZADO a `Result.fail` (ADR-9): soporte1
+ * TipoComponenteCodigoRequeridoError — falta `tipoComponenteCodigo` al crear
+ * un componente de equipo. NORMALIZADO a `Result.fail` (ADR-9): soporte1
  * lanzaba excepción; este proyecto usa el mismo criterio Result que el
  * resto de factories.
  * → HTTP 422 en la capa de presentación.
  *
- * Ref spec: F3-Q2.
+ * Ref spec: F3-Q2. Ref: sdd/tipos-componente-master (PR4b — dominio pasa a
+ * referenciar el catálogo MASTER por `codigo`, no por `id` tenant).
  */
-export class TipoComponenteIdRequeridoError extends DomainError {
-  readonly code = 'TIPO_COMPONENTE_ID_REQUERIDO';
+export class TipoComponenteCodigoRequeridoError extends DomainError {
+  readonly code = 'TIPO_COMPONENTE_CODIGO_REQUERIDO';
 
   constructor() {
-    super('tipoComponenteId es obligatorio para crear un componente de equipo.');
+    super('tipoComponenteCodigo es obligatorio para crear un componente de equipo.');
   }
 }
 
 /**
- * TipoComponenteInactivoError — el `tipoComponenteId` referenciado existe
- * pero está `activo=false`. Un tipo inactivo bloquea NUEVOS componentes
- * (los ya existentes no se ven afectados).
+ * TipoComponenteInactivoError — el `tipoComponenteCodigo` referenciado no
+ * existe en el catálogo MASTER o existe pero está `activo=false`. Un tipo
+ * inactivo bloquea NUEVOS componentes (los ya existentes no se ven afectados).
  * → HTTP 422 en la capa de presentación.
  *
- * Ref spec: F3-Q2.
+ * Ref spec: F3-Q2. Ref: sdd/tipos-componente-master (PR4b).
  */
 export class TipoComponenteInactivoError extends DomainError {
   readonly code = 'TIPO_COMPONENTE_INACTIVO';
 
-  constructor(tipoComponenteId: string) {
+  constructor(tipoComponenteCodigo: string) {
     super(
-      `El tipo de componente con id "${tipoComponenteId}" está inactivo. ` +
+      `El tipo de componente con código "${tipoComponenteCodigo}" está inactivo o no existe. ` +
         `No se pueden agregar nuevos componentes de este tipo.`,
     );
   }

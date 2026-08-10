@@ -1,16 +1,19 @@
 /**
  * T11.1, T11.3 [INTEGRATION] — RED→GREEN: PrismaEquipoInformaticoRepository,
- * PrismaComponenteEquipoRepository, PrismaTipoComponenteRepository,
- * PrismaTicketSoporteRepository (save / find / delete) contra Postgres REAL
- * (`soporte_tenant_test`).
+ * PrismaComponenteEquipoRepository, PrismaTicketSoporteRepository
+ * (save / find / delete) contra Postgres REAL (`soporte_tenant_test`).
  *
  * Fixtures propios prefijados `T11_TEST_*` (mismo patrón que
  * `prisma-compras.integration.spec.ts`, PR3 / `prisma-reparaciones.integration.spec.ts`,
  * PR7): la DB de test NO corre `TenantSeederAdapter` automáticamente, solo
- * está migrada — `tipos_componente` se siembra como fixture propio de esta
- * suite (no depende del seed real de PR1, que corre contra DBs efímeras).
- * Cleanup en `afterAll` acotado por los ids de fixture de ESTA suite (nunca
- * TRUNCATE global — la DB es compartida).
+ * está migrada. Cleanup en `afterAll` acotado por los ids de fixture de ESTA
+ * suite (nunca TRUNCATE global — la DB es compartida).
+ *
+ * PR4b (sdd/tipos-componente-master): `PrismaTipoComponenteRepository` (y el
+ * catálogo tenant `tipos_componente`) se ELIMINARON — `componentes_equipo`
+ * referencia el catálogo MASTER por `tipoComponenteCodigo` (soft ref, sin FK
+ * cross-DB), por eso esta suite usa códigos de fixture (`T11_TEST_RAM`) en
+ * vez de un `id` de catálogo tenant.
  *
  * Ref spec: sdd/flujos-especializados/spec F3-Q1..Q4. Ref design: "Archivos
  * afectados" PR11, riesgo técnico #6 (índice único parcial numero_serie).
@@ -24,7 +27,6 @@ import { TenantPrismaClient } from '../../../../shared/infrastructure/persistenc
 import { PrismaTicketRepository } from '../../../../tickets/infrastructure/persistence/prisma/prisma-ticket.repository';
 import { PrismaEquipoInformaticoRepository } from './prisma-equipo-informatico.repository';
 import { PrismaComponenteEquipoRepository } from './prisma-componente-equipo.repository';
-import { PrismaTipoComponenteRepository } from './prisma-tipo-componente.repository';
 import { PrismaTicketSoporteRepository } from './prisma-ticket-soporte.repository';
 
 import { TicketEntity, TicketProps } from '../../../../tickets/domain/entities/ticket.entity';
@@ -47,14 +49,13 @@ describe('Equipos Persistence Repos — Integration (PR11)', () => {
   let ticketRepo: PrismaTicketRepository;
   let equipoRepo: PrismaEquipoInformaticoRepository;
   let componenteRepo: PrismaComponenteEquipoRepository;
-  let tipoComponenteRepo: PrismaTipoComponenteRepository;
   let ticketSoporteRepo: PrismaTicketSoporteRepository;
 
   let tipoSoporteId: string;
   let estadoNuevoId: string;
   let prioridadMediaId: string;
-  let tipoComponenteRamId: string;
-  let tipoComponenteCpuInactivoId: string;
+  /** Código de fixture del tipo de componente (soft ref a MASTER — sin fila real en esta DB). */
+  const tipoComponenteRamCodigo = 'T11_TEST_RAM';
 
   const RUN_PREFIX = randomBytes(2).toString('hex');
   let numeroCounter = 0;
@@ -120,7 +121,6 @@ describe('Equipos Persistence Repos — Integration (PR11)', () => {
     ticketRepo = new PrismaTicketRepository(tenantContext);
     equipoRepo = new PrismaEquipoInformaticoRepository(tenantContext);
     componenteRepo = new PrismaComponenteEquipoRepository(tenantContext);
-    tipoComponenteRepo = new PrismaTipoComponenteRepository(tenantContext);
     ticketSoporteRepo = new PrismaTicketSoporteRepository(tenantContext);
 
     const tipoSoporte = await tenantClient.tipoTicket.create({
@@ -137,16 +137,6 @@ describe('Equipos Persistence Repos — Integration (PR11)', () => {
       data: { codigo: 'T11_TEST_MEDIA', nombre: 'Media Test PR11', orden: 1, activo: true },
     });
     prioridadMediaId = prioridadMedia.id;
-
-    const tipoRam = await tenantClient.tipoComponente.create({
-      data: { codigo: 'T11_TEST_RAM', nombre: 'RAM Test PR11', activo: true },
-    });
-    tipoComponenteRamId = tipoRam.id;
-
-    const tipoCpuInactivo = await tenantClient.tipoComponente.create({
-      data: { codigo: 'T11_TEST_CPU_INACTIVO', nombre: 'CPU Inactivo Test PR11', activo: false },
-    });
-    tipoComponenteCpuInactivoId = tipoCpuInactivo.id;
   }, 30_000);
 
   afterAll(async () => {
@@ -164,9 +154,6 @@ describe('Equipos Persistence Repos — Integration (PR11)', () => {
       });
       await tenantClient.equipoInformatico.deleteMany({ where: { id: { in: equipoIdsCreados } } });
     }
-    await tenantClient.tipoComponente.deleteMany({
-      where: { id: { in: [tipoComponenteRamId, tipoComponenteCpuInactivoId] } },
-    });
     await tenantClient.prioridad.delete({ where: { id: prioridadMediaId } });
     await tenantClient.estado.delete({ where: { id: estadoNuevoId } });
     await tenantClient.tipoTicket.delete({ where: { id: tipoSoporteId } });
@@ -255,21 +242,21 @@ describe('Equipos Persistence Repos — Integration (PR11)', () => {
       const equipo = await crearEquipo();
       const componente1 = ComponenteEquipoEntity.create({
         equipoId: equipo.id,
-        tipoComponenteId: tipoComponenteRamId,
+        tipoComponenteCodigo: tipoComponenteRamCodigo,
         descripcion: 'RAM slot 1',
         numeroSerie: null,
         capacidad: '8GB',
       }).getValue();
       const componente2 = ComponenteEquipoEntity.create({
         equipoId: equipo.id,
-        tipoComponenteId: tipoComponenteRamId,
+        tipoComponenteCodigo: tipoComponenteRamCodigo,
         descripcion: 'RAM slot 2',
         numeroSerie: null,
         capacidad: '8GB',
       }).getValue();
       const componenteABorrar = ComponenteEquipoEntity.create({
         equipoId: equipo.id,
-        tipoComponenteId: tipoComponenteRamId,
+        tipoComponenteCodigo: tipoComponenteRamCodigo,
         descripcion: 'RAM a borrar',
         numeroSerie: null,
         capacidad: '4GB',
@@ -283,25 +270,6 @@ describe('Equipos Persistence Repos — Integration (PR11)', () => {
 
         const activos = await componenteRepo.findActiveByEquipoId(equipo.id);
         expect(activos.map((c) => c.id).sort()).toEqual([componente1.id, componente2.id].sort());
-      });
-    });
-  });
-
-  describe('PrismaTipoComponenteRepository', () => {
-    it('findAllActive() retorna solo tipos activos (excluye T11_TEST_CPU_INACTIVO)', async () => {
-      await withTenant(async () => {
-        const activos = await tipoComponenteRepo.findAllActive();
-        expect(activos.some((t) => t.id === tipoComponenteRamId)).toBe(true);
-        expect(activos.some((t) => t.id === tipoComponenteCpuInactivoId)).toBe(false);
-      });
-    });
-
-    it('findByCodigo() resuelve el tipo por código estable', async () => {
-      await withTenant(async () => {
-        const tipo = await tipoComponenteRepo.findByCodigo('T11_TEST_RAM');
-        expect(tipo).not.toBeNull();
-        expect(tipo!.id).toBe(tipoComponenteRamId);
-        expect(tipo!.activo).toBe(true);
       });
     });
   });

@@ -47,10 +47,10 @@ import {
 } from './domain/ports/i-componente-equipo.repository';
 import { PrismaComponenteEquipoRepository } from './infrastructure/persistence/prisma/prisma-componente-equipo.repository';
 import {
-  TIPO_COMPONENTE_REPOSITORY,
-  ITipoComponenteRepository,
-} from './domain/ports/i-tipo-componente.repository';
-import { PrismaTipoComponenteRepository } from './infrastructure/persistence/prisma/prisma-tipo-componente.repository';
+  TIPO_COMPONENTE_MASTER_CHECKER,
+  ITipoComponenteMasterChecker,
+} from './domain/ports/i-tipo-componente-master.checker';
+import { TipoComponenteMasterChecker } from './infrastructure/persistence/prisma/tipo-componente-master.checker';
 import {
   TICKET_SOPORTE_REPOSITORY,
   ITicketSoporteRepository,
@@ -77,8 +77,8 @@ import { SoporteController } from './interface/controllers/soporte.controller';
  * F3-M1).
  *
  * Inventario de equipos IT (`equipos_informaticos`), componentes
- * (`componentes_equipo`), catálogo read-only de tipos de componente
- * (`tipos_componente`, PR1) y el satélite `ticket_soporte` 1:0..1 de
+ * (`componentes_equipo`, referencian el catálogo MASTER de tipos de
+ * componente por `codigo` — PR4b) y el satélite `ticket_soporte` 1:0..1 de
  * `Ticket` (con vínculo OPCIONAL a un equipo).
  *
  * Wiring (PR10-PR13, screaming module hexagonal — domain/ → application/ →
@@ -99,6 +99,14 @@ import { SoporteController } from './interface/controllers/soporte.controller';
  * - `EquiposController` expone el inventario + componentes + catálogo de
  *   tipos; `SoporteController` expone la creación de tickets de soporte y
  *   el registro de solución.
+ * - PR3/PR4b (sdd/tipos-componente-master): `ListarTiposComponenteUseCase`,
+ *   `AgregarComponenteUseCase` (verifica `activo` por código) y
+ *   `ObtenerEquipoUseCase` (enriquece componentes con nombre/estado, batch)
+ *   leen el catálogo desde MASTER vía `TIPO_COMPONENTE_MASTER_CHECKER`
+ *   (checker cross-DB decoplado del módulo `tipos-componente/`, mismo
+ *   criterio que `USUARIO_MASTER_CHECKER`). El catálogo tenant
+ *   `tipos_componente`/`TIPO_COMPONENTE_REPOSITORY` se ELIMINÓ en PR4b —
+ *   ya nada lo referencia.
  *
  * FITNESS RULE: PrismaService y @prisma/client solo pueden importarse desde
  * infrastructure/ (ver backend/eslint.config.js).
@@ -118,7 +126,7 @@ import { SoporteController } from './interface/controllers/soporte.controller';
   providers: [
     { provide: EQUIPO_INFORMATICO_REPOSITORY, useClass: PrismaEquipoInformaticoRepository },
     { provide: COMPONENTE_EQUIPO_REPOSITORY, useClass: PrismaComponenteEquipoRepository },
-    { provide: TIPO_COMPONENTE_REPOSITORY, useClass: PrismaTipoComponenteRepository },
+    { provide: TIPO_COMPONENTE_MASTER_CHECKER, useClass: TipoComponenteMasterChecker },
     { provide: TICKET_SOPORTE_REPOSITORY, useClass: PrismaTicketSoporteRepository },
 
     {
@@ -155,8 +163,13 @@ import { SoporteController } from './interface/controllers/soporte.controller';
       useFactory: (
         equipoRepo: IEquipoInformaticoRepository,
         componenteRepo: IComponenteEquipoRepository,
-      ) => new ObtenerEquipoUseCase(equipoRepo, componenteRepo),
-      inject: [EQUIPO_INFORMATICO_REPOSITORY, COMPONENTE_EQUIPO_REPOSITORY],
+        tipoComponenteMasterChecker: ITipoComponenteMasterChecker,
+      ) => new ObtenerEquipoUseCase(equipoRepo, componenteRepo, tipoComponenteMasterChecker),
+      inject: [
+        EQUIPO_INFORMATICO_REPOSITORY,
+        COMPONENTE_EQUIPO_REPOSITORY,
+        TIPO_COMPONENTE_MASTER_CHECKER,
+      ],
     },
     {
       provide: ListarEquiposUseCase,
@@ -182,12 +195,12 @@ import { SoporteController } from './interface/controllers/soporte.controller';
       provide: AgregarComponenteUseCase,
       useFactory: (
         equipoRepo: IEquipoInformaticoRepository,
-        tipoComponenteRepo: ITipoComponenteRepository,
+        tipoComponenteMasterChecker: ITipoComponenteMasterChecker,
         componenteRepo: IComponenteEquipoRepository,
-      ) => new AgregarComponenteUseCase(equipoRepo, tipoComponenteRepo, componenteRepo),
+      ) => new AgregarComponenteUseCase(equipoRepo, tipoComponenteMasterChecker, componenteRepo),
       inject: [
         EQUIPO_INFORMATICO_REPOSITORY,
-        TIPO_COMPONENTE_REPOSITORY,
+        TIPO_COMPONENTE_MASTER_CHECKER,
         COMPONENTE_EQUIPO_REPOSITORY,
       ],
     },
@@ -199,9 +212,9 @@ import { SoporteController } from './interface/controllers/soporte.controller';
     },
     {
       provide: ListarTiposComponenteUseCase,
-      useFactory: (tipoComponenteRepo: ITipoComponenteRepository) =>
-        new ListarTiposComponenteUseCase(tipoComponenteRepo),
-      inject: [TIPO_COMPONENTE_REPOSITORY],
+      useFactory: (tipoComponenteMasterChecker: ITipoComponenteMasterChecker) =>
+        new ListarTiposComponenteUseCase(tipoComponenteMasterChecker),
+      inject: [TIPO_COMPONENTE_MASTER_CHECKER],
     },
     {
       provide: CrearTicketSoporteUseCase,
@@ -252,11 +265,6 @@ import { SoporteController } from './interface/controllers/soporte.controller';
       inject: [TICKET_SOPORTE_REPOSITORY],
     },
   ],
-  exports: [
-    EQUIPO_INFORMATICO_REPOSITORY,
-    COMPONENTE_EQUIPO_REPOSITORY,
-    TIPO_COMPONENTE_REPOSITORY,
-    TICKET_SOPORTE_REPOSITORY,
-  ],
+  exports: [EQUIPO_INFORMATICO_REPOSITORY, COMPONENTE_EQUIPO_REPOSITORY, TICKET_SOPORTE_REPOSITORY],
 })
 export class EquiposModule {}

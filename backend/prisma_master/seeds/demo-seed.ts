@@ -302,15 +302,13 @@ interface UsuariosDemo {
 
 /** Resuelve por código los ids de los catálogos FIJOS sembrados por el provisioning. */
 async function cargarCatalogos(tenantClient: TenantPrismaClient) {
-  const [tipos, prioridades, tiposComponente] = await Promise.all([
+  const [tipos, prioridades] = await Promise.all([
     tenantClient.tipoTicket.findMany(),
     tenantClient.prioridad.findMany(),
-    tenantClient.tipoComponente.findMany(),
   ]);
   return {
     tipoIdPorCodigo: new Map(tipos.map((t) => [t.codigo, t.id])),
     prioridadIdPorCodigo: new Map(prioridades.map((p) => [p.codigo, p.id])),
-    tipoComponenteIdPorCodigo: new Map(tiposComponente.map((t) => [t.codigo, t.id])),
   };
 }
 
@@ -369,6 +367,7 @@ async function crearTicketDemo(
         ticketId,
         nuevoEstadoCodigo,
         autorId: spec.asignarAId ?? spec.solicitanteId,
+        actorEsCorrector: false,
       });
       if (r.isFail()) {
         throw new Error(
@@ -415,6 +414,7 @@ async function crearComprasDemo(
     const result = await crearCompra.execute({
       titulo: spec.titulo,
       descripcion: null,
+      tipoId: catalogos.tipoIdPorCodigo.get('COMPRAS')!,
       prioridadId: catalogos.prioridadIdPorCodigo.get(spec.prioridadCodigo)!,
       solicitanteId: spec.solicitanteId,
       clienteId,
@@ -515,7 +515,7 @@ async function crearEquiposDemo(
   ] as const) {
     const r = await agregarComponente.execute({
       equipoId: notebookId,
-      tipoComponenteId: catalogos.tipoComponenteIdPorCodigo.get(codigo)!,
+      tipoComponenteCodigo: codigo,
       capacidad,
     });
     if (r.isFail()) {

@@ -9,6 +9,7 @@ import {
   Wrench,
   Monitor,
   CalendarRange,
+  Tag,
 } from "lucide-react";
 import type { JwtPayload } from "@/shared/api/types";
 import { PERMISOS_ADMIN } from "@/shared/auth/admin-access";
@@ -73,6 +74,16 @@ export const NAV_ITEMS: NavItem[] = [
     // de `/admin/ciclos` (adopción/activación por el admin del cliente,
     // gateado por `ciclo:gestionar` dentro de `/admin/catalogos`) — este ítem
     // es EXCLUSIVO de ROOT, igual que "Clientes".
+    visible: (_can, isGlobalAdmin) => isGlobalAdmin,
+  },
+  {
+    href: "/admin/tipos-componente",
+    label: "Tipos de componente",
+    icon: Tag,
+    // Catálogo MASTER de tipos de componente (ABM del ROOT, PR5,
+    // sdd/tipos-componente-master). Exclusivo de ROOT, mismo criterio que
+    // "Clientes" y "Ciclos" (master) — NO vive en `AdminNav` (esa sub-nav es
+    // solo para secciones gateadas por `permisos` del tenant).
     visible: (_can, isGlobalAdmin) => isGlobalAdmin,
   },
   {

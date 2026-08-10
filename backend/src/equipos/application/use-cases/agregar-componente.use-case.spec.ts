@@ -1,15 +1,18 @@
 import { describe, it, expect, vi } from 'vitest';
 import { AgregarComponenteUseCase } from './agregar-componente.use-case';
 import { EquipoInformaticoEntity } from '../../domain/entities/equipo-informatico.entity';
-import { TipoComponenteEntity } from '../../domain/entities/tipo-componente.entity';
 import {
   EquipoNoEncontradoError,
   TipoComponenteInactivoError,
 } from '../../domain/errors/equipos.errors';
 
 /**
- * T12.4 [U][RED] — AgregarComponenteUseCase: tipo inactivo →
+ * T12.4 [U][RED] — AgregarComponenteUseCase: tipo inactivo/inexistente →
  * TipoComponenteInactivoError; N del mismo tipo permitido.
+ *
+ * PR4b (sdd/tipos-componente-master): la verificación de "tipo activo" pasa
+ * de `ITipoComponenteRepository` (catálogo tenant, eliminado) a
+ * `ITipoComponenteMasterChecker.estaActivo(codigo)` (catálogo MASTER cross-DB).
  *
  * Ref spec: sdd/flujos-especializados/spec F3-Q2.
  */
@@ -25,29 +28,20 @@ describe('AgregarComponenteUseCase', () => {
       asignadoAId: null,
     });
   }
-  function makeTipo(activo: boolean) {
-    return TipoComponenteEntity.reconstitute(
-      { codigo: 'RAM', nombre: 'Memoria RAM', activo },
-      'tipo-ram',
-      new Date(),
-      new Date(),
-      null,
-    );
-  }
 
   it('falla con EquipoNoEncontradoError si el equipo no existe', async () => {
     const equipoRepo = { findById: vi.fn().mockResolvedValue(null) };
-    const tipoComponenteRepo = { findById: vi.fn() };
+    const tipoComponenteMasterChecker = { estaActivo: vi.fn() };
     const componenteRepo = { save: vi.fn() };
     const useCase = new AgregarComponenteUseCase(
       equipoRepo as never,
-      tipoComponenteRepo as never,
+      tipoComponenteMasterChecker as never,
       componenteRepo as never,
     );
 
     const result = await useCase.execute({
       equipoId: 'no-existe',
-      tipoComponenteId: 'tipo-ram',
+      tipoComponenteCodigo: 'RAM',
       descripcion: null,
       numeroSerie: null,
       capacidad: null,
@@ -56,50 +50,51 @@ describe('AgregarComponenteUseCase', () => {
     expect(result.getError()).toBeInstanceOf(EquipoNoEncontradoError);
   });
 
-  it('falla con TipoComponenteInactivoError si el tipo está inactivo', async () => {
+  it('falla con TipoComponenteInactivoError si el tipo está inactivo (o no existe) en MASTER', async () => {
     const equipo = makeEquipo();
     const equipoRepo = { findById: vi.fn().mockResolvedValue(equipo) };
-    const tipoComponenteRepo = { findById: vi.fn().mockResolvedValue(makeTipo(false)) };
+    const tipoComponenteMasterChecker = { estaActivo: vi.fn().mockResolvedValue(false) };
     const componenteRepo = { save: vi.fn() };
     const useCase = new AgregarComponenteUseCase(
       equipoRepo as never,
-      tipoComponenteRepo as never,
+      tipoComponenteMasterChecker as never,
       componenteRepo as never,
     );
 
     const result = await useCase.execute({
       equipoId: equipo.id,
-      tipoComponenteId: 'tipo-ram',
+      tipoComponenteCodigo: 'RAM',
       descripcion: null,
       numeroSerie: null,
       capacidad: null,
     });
     expect(result.isFail()).toBe(true);
     expect(result.getError()).toBeInstanceOf(TipoComponenteInactivoError);
+    expect(tipoComponenteMasterChecker.estaActivo).toHaveBeenCalledWith('RAM');
     expect(componenteRepo.save).not.toHaveBeenCalled();
   });
 
   it('permite agregar N componentes del mismo tipo (sin restricción de unicidad)', async () => {
     const equipo = makeEquipo();
     const equipoRepo = { findById: vi.fn().mockResolvedValue(equipo) };
-    const tipoComponenteRepo = { findById: vi.fn().mockResolvedValue(makeTipo(true)) };
+    const tipoComponenteMasterChecker = { estaActivo: vi.fn().mockResolvedValue(true) };
     const componenteRepo = { save: vi.fn() };
     const useCase = new AgregarComponenteUseCase(
       equipoRepo as never,
-      tipoComponenteRepo as never,
+      tipoComponenteMasterChecker as never,
       componenteRepo as never,
     );
 
     const resultado1 = await useCase.execute({
       equipoId: equipo.id,
-      tipoComponenteId: 'tipo-ram',
+      tipoComponenteCodigo: 'RAM',
       descripcion: 'Slot 1',
       numeroSerie: null,
       capacidad: '8GB',
     });
     const resultado2 = await useCase.execute({
       equipoId: equipo.id,
-      tipoComponenteId: 'tipo-ram',
+      tipoComponenteCodigo: 'RAM',
       descripcion: 'Slot 2',
       numeroSerie: null,
       capacidad: '8GB',

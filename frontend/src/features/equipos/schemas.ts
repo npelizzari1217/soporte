@@ -11,7 +11,7 @@ export const crearEquipoSchema = z.object({
 export type CrearEquipoFormValues = z.infer<typeof crearEquipoSchema>;
 
 export const componenteSchema = z.object({
-  tipoComponenteId: z.string().uuid("Elegí un tipo de componente"),
+  tipoComponenteCodigo: z.string().min(1, "Elegí un tipo de componente"),
   descripcion: z.string().optional(),
   numeroSerie: z.string().optional(),
   capacidad: z.string().optional(),
