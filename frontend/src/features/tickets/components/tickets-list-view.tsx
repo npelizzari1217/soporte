@@ -86,6 +86,19 @@ export function TicketsListView() {
       header: "Prioridad",
       render: (row) => <PriorityBadge prioridad={prioridadCodigoMap.get(row.prioridadId) ?? "-"} />,
     },
+    {
+      key: "asignadoId",
+      header: "Técnico asignado",
+      // El backend resuelve batch cross-DB `asignadoNombre`/`asignadoApellido`
+      // (puede ser null si el ticket no tiene asignado o si el usuario fue
+      // removido del tenant); en ambos casos mostramos "Sin asignar".
+      render: (row) =>
+        row.asignadoId && row.asignadoNombre ? (
+          `${row.asignadoNombre} ${row.asignadoApellido ?? ""}`.trim()
+        ) : (
+          <span className="text-muted-foreground">Sin asignar</span>
+        ),
+    },
   ];
 
   return (

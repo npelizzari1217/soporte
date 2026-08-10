@@ -69,6 +69,25 @@ describe("TicketsListView", () => {
     expect(screen.getByTestId("priority-badge")).toHaveTextContent("Alta");
   });
 
+  it("muestra el técnico asignado cuando el ticket lo tiene, y «Sin asignar» cuando no", async () => {
+    server.use(
+      http.get("/api/tickets", () =>
+        HttpResponse.json({
+          items: [
+            { ...TICKET, id: "t1", titulo: "Con técnico", asignadoId: "u9", asignadoNombre: "Ana", asignadoApellido: "Pérez" },
+            { ...TICKET, id: "t2", titulo: "Sin técnico", asignadoId: null },
+          ],
+          total: 2,
+          pagina: 1,
+          porPagina: 10,
+        }),
+      ),
+    );
+    renderWithProviders(<TicketsListView />, { user: buildUser({ permisos: ["ticket:ver_todos"] }) });
+    expect(await screen.findByText("Ana Pérez")).toBeInTheDocument();
+    expect(screen.getByText("Sin asignar")).toBeInTheDocument();
+  });
+
   it("click en una fila navega al detalle del ticket", async () => {
     const user = userEvent.setup();
     renderWithProviders(<TicketsListView />, { user: buildUser({ permisos: ["ticket:ver_todos"] }) });
