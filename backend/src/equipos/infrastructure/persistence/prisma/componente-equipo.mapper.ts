@@ -31,8 +31,15 @@ export class ComponenteEquipoMapper {
    * Convierte ComponenteEquipoEntity → objeto plano para Prisma upsert.
    * Incluye `createdAt` para que el repo lo use en el CREATE y lo excluya
    * del UPDATE (nunca pisar el timestamp de creación existente en DB).
+   *
+   * `tipoComponenteCodigo` se EXCLUYE a propósito durante la fase expand
+   * (PR4a): la columna la puebla el backfill one-off, no la app, y omitirla
+   * evita pisar el valor backfilleado en un UPDATE. El dominio pasa a manejar
+   * `codigo` (y se quita `tipoComponenteId`) en el contract, PR4b.
    */
-  static toPersistence(entity: ComponenteEquipoEntity): Omit<PrismaComponenteEquipo, 'updatedAt'> {
+  static toPersistence(
+    entity: ComponenteEquipoEntity,
+  ): Omit<PrismaComponenteEquipo, 'updatedAt' | 'tipoComponenteCodigo'> {
     return {
       id: entity.id,
       equipoId: entity.equipoId,

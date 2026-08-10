@@ -559,6 +559,8 @@ model ComponenteEquipo {
   id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   equipoId         String    @map("equipo_id") @db.Uuid
   tipoComponenteId String    @map("tipo_componente_id") @db.Uuid
+  /// Soft ref → master.tipos_componente.codigo (sin FK cross-DB). Poblado por backfill (PR4a), pasa a NOT NULL en el contract (PR4b).
+  tipoComponenteCodigo String?   @map("tipo_componente_codigo") @db.VarChar(50)
   descripcion      String?   @db.VarChar(255)
   numeroSerie      String?   @map("numero_serie") @db.VarChar(255)
   capacidad        String?   @db.VarChar(100)
@@ -571,6 +573,7 @@ model ComponenteEquipo {
 
   @@index([equipoId])
   @@index([tipoComponenteId])
+  @@index([tipoComponenteCodigo])
   @@map("componentes_equipo")
 }
 
