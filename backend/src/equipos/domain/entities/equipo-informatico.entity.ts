@@ -17,8 +17,6 @@ export interface EquipoInformaticoProps {
   fechaAdquisicion: Date | null;
   /** FK → ubicaciones.id. NULL = sin ubicación asignada. */
   ubicacionId: string | null;
-  /** Soft ref → master.usuarios.id. NULL = sin asignar. */
-  asignadoAId: string | null;
   /**
    * `true` = disponible/en uso; `false` = dado de baja (fuera de servicio).
    * DISTINTO de `deletedAt` (soft delete): un equipo `activo=false`
@@ -97,10 +95,6 @@ export class EquipoInformaticoEntity extends BaseEntity<EquipoInformaticoProps> 
     return this.props.ubicacionId;
   }
 
-  get asignadoAId(): string | null {
-    return this.props.asignadoAId;
-  }
-
   get activo(): boolean {
     return this.props.activo;
   }
@@ -121,16 +115,6 @@ export class EquipoInformaticoEntity extends BaseEntity<EquipoInformaticoProps> 
   /** Reactiva un equipo previamente dado de baja. */
   activate(): void {
     this.props.activo = true;
-    this.touch();
-  }
-
-  /**
-   * Asigna (o desasigna con `null`) el equipo a un usuario. La validación
-   * de existencia del usuario en master es responsabilidad del use case
-   * (`AsignarEquipoUseCase`, `IUsuarioMasterChecker`).
-   */
-  asignarA(usuarioId: string | null): void {
-    this.props.asignadoAId = usuarioId;
     this.touch();
   }
 

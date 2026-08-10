@@ -103,7 +103,6 @@ describe('Equipos Persistence Repos — Integration (PR11)', () => {
       modelo: null,
       fechaAdquisicion: null,
       ubicacionId: null,
-      asignadoAId: null,
       ...overrides,
     });
     await withTenant(async () => {
@@ -201,7 +200,6 @@ describe('Equipos Persistence Repos — Integration (PR11)', () => {
         modelo: null,
         fechaAdquisicion: null,
         ubicacionId: null,
-        asignadoAId: null,
       });
 
       await expect(

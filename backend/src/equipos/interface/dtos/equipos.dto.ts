@@ -72,13 +72,6 @@ export class EditarEquipoHttpDto {
   ubicacionId?: string | null;
 }
 
-/** Body de `POST /equipos/:id/asignar` (F3-Q1). `null`/ausente desasigna. */
-export class AsignarEquipoHttpDto {
-  @IsOptional()
-  @IsUUID()
-  asignadoAId?: string | null;
-}
-
 /** Body de `POST /soporte` (F3-Q4). `solicitanteId`/`autorId` vienen del JWT. `equipoId` OPCIONAL. */
 export class CreateTicketSoporteHttpDto {
   @IsString()
@@ -138,7 +131,6 @@ export interface EquipoResponseDto {
   modelo: string | null;
   fechaAdquisicion: string | null;
   ubicacionId: string | null;
-  asignadoAId: string | null;
   activo: boolean;
   createdAt: string;
   updatedAt: string;
@@ -154,7 +146,6 @@ export function toEquipoResponseDto(equipo: EquipoInformaticoEntity): EquipoResp
     modelo: equipo.modelo,
     fechaAdquisicion: equipo.fechaAdquisicion ? equipo.fechaAdquisicion.toISOString() : null,
     ubicacionId: equipo.ubicacionId,
-    asignadoAId: equipo.asignadoAId,
     activo: equipo.activo,
     createdAt: equipo.createdAt.toISOString(),
     updatedAt: equipo.updatedAt.toISOString(),

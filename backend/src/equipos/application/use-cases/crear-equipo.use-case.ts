@@ -77,7 +77,6 @@ export class CrearEquipoUseCase {
       modelo: dto.modelo,
       fechaAdquisicion: dto.fechaAdquisicion,
       ubicacionId: dto.ubicacionId ?? null,
-      asignadoAId: null,
     });
 
     try {

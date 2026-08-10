@@ -11,7 +11,6 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/shared/api/client";
 import { notifyError, notifySuccess } from "@/shared/lib/toast";
 import type {
-  AsignarEquipoDto,
   Componente,
   ComponenteConTipo,
   CreateComponenteDto,
@@ -52,19 +51,6 @@ export function useEliminarEquipo() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["equipos"] });
       notifySuccess("Equipo dado de baja.");
-    },
-    onError: notifyError,
-  });
-}
-
-export function useAsignarEquipo(id: string) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (dto: AsignarEquipoDto) => apiFetch<Equipo>(`equipos/${id}/asignar`, { method: "POST", json: dto }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["equipos"] });
-      queryClient.invalidateQueries({ queryKey: ["equipo", id] });
-      notifySuccess("Equipo asignado.");
     },
     onError: notifyError,
   });

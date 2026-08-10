@@ -62,7 +62,6 @@ import { EditarEquipoUseCase } from './application/use-cases/editar-equipo.use-c
 import { ObtenerEquipoUseCase } from './application/use-cases/obtener-equipo.use-case';
 import { ListarEquiposUseCase } from './application/use-cases/listar-equipos.use-case';
 import { EliminarEquipoUseCase } from './application/use-cases/eliminar-equipo.use-case';
-import { AsignarEquipoUseCase } from './application/use-cases/asignar-equipo.use-case';
 import { AgregarComponenteUseCase } from './application/use-cases/agregar-componente.use-case';
 import { EliminarComponenteUseCase } from './application/use-cases/eliminar-componente.use-case';
 import { ListarTiposComponenteUseCase } from './application/use-cases/listar-tipos-componente.use-case';
@@ -182,14 +181,6 @@ import { SoporteController } from './interface/controllers/soporte.controller';
       useFactory: (equipoRepo: IEquipoInformaticoRepository) =>
         new EliminarEquipoUseCase(equipoRepo),
       inject: [EQUIPO_INFORMATICO_REPOSITORY],
-    },
-    {
-      provide: AsignarEquipoUseCase,
-      useFactory: (
-        equipoRepo: IEquipoInformaticoRepository,
-        usuarioMasterChecker: IUsuarioMasterChecker,
-      ) => new AsignarEquipoUseCase(equipoRepo, usuarioMasterChecker),
-      inject: [EQUIPO_INFORMATICO_REPOSITORY, USUARIO_MASTER_CHECKER],
     },
     {
       provide: AgregarComponenteUseCase,

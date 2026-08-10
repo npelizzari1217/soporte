@@ -18,7 +18,6 @@ describe('ObtenerEquipoUseCase', () => {
       modelo: null,
       fechaAdquisicion: null,
       ubicacionId: null,
-      asignadoAId: null,
     });
   }
 

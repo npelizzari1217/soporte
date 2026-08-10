@@ -25,9 +25,6 @@ export interface IEquipoInformaticoRepository {
   /** Retorna todos los equipos activos (`activo=true`, no soft-deleted) del tenant. */
   findAllActive(): Promise<EquipoInformaticoEntity[]>;
 
-  /** Retorna los equipos asignados a un usuario (`asignadoAId`), no soft-deleted. */
-  findByAsignadoAId(asignadoAId: string): Promise<EquipoInformaticoEntity[]>;
-
   /** Persiste el equipo (upsert: crea si no existe, actualiza si existe). */
   save(equipo: EquipoInformaticoEntity): Promise<void>;
 

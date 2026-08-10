@@ -3,8 +3,9 @@
 /**
  * EquipoDetailView — CONTAINER montado por `/equipos/[id]` (T5.13). Editar
  * inline (form con valores por defecto) + baja lógica detrás de
- * `ConfirmDialog` + asignar + componentes. Gate `equipo:gestionar` (todas
- * las mutaciones), consistente con `EquiposController`.
+ * `ConfirmDialog` + componentes. Gate `equipo:gestionar` (todas las
+ * mutaciones), consistente con `EquiposController`. La asignación a
+ * personas se eliminó del dominio Equipos — vive solo en `Ticket`.
  */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -21,7 +22,6 @@ import { useEquipo } from "../hooks/use-equipos";
 import { useEditarEquipo, useEliminarEquipo } from "../hooks/use-equipo-mutations";
 import { crearEquipoSchema, type CrearEquipoFormValues } from "../schemas";
 import { EquipoComponentesSection } from "./equipo-componentes-section";
-import { EquipoAsignarControl } from "./equipo-asignar-control";
 
 export interface EquipoDetailViewProps {
   equipoId: string;
@@ -122,7 +122,6 @@ export function EquipoDetailView({ equipoId }: EquipoDetailViewProps) {
         </form>
       )}
 
-      <EquipoAsignarControl equipoId={equipo.id} asignadoActualId={equipo.asignadoAId} />
       <EquipoComponentesSection equipoId={equipo.id} componentes={equipo.componentes} />
     </div>
   );

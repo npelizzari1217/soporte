@@ -22,7 +22,6 @@ import {
   TipoComponenteInactivoError,
   ComponenteNoEncontradoError,
 } from '../../domain/errors/equipos.errors';
-import { AsignadoInvalidoError } from '../../../tickets/domain/errors/tickets.errors';
 
 function makeEquipo(): EquipoInformaticoEntity {
   return EquipoInformaticoEntity.create(
@@ -33,7 +32,6 @@ function makeEquipo(): EquipoInformaticoEntity {
       modelo: 'Latitude',
       fechaAdquisicion: null,
       ubicacionId: null,
-      asignadoAId: null,
     },
     'equipo-uuid',
   );
@@ -46,7 +44,6 @@ describe('EquiposController (T12.6)', () => {
     const obtenerEquipoUseCase = { execute: vi.fn() };
     const listarEquiposUseCase = { execute: vi.fn() };
     const eliminarEquipoUseCase = { execute: vi.fn() };
-    const asignarEquipoUseCase = { execute: vi.fn() };
     const agregarComponenteUseCase = { execute: vi.fn() };
     const eliminarComponenteUseCase = { execute: vi.fn() };
     const listarTiposComponenteUseCase = { execute: vi.fn() };
@@ -57,7 +54,6 @@ describe('EquiposController (T12.6)', () => {
       obtenerEquipoUseCase as any,
       listarEquiposUseCase as any,
       eliminarEquipoUseCase as any,
-      asignarEquipoUseCase as any,
       agregarComponenteUseCase as any,
       eliminarComponenteUseCase as any,
       listarTiposComponenteUseCase as any,
@@ -70,7 +66,6 @@ describe('EquiposController (T12.6)', () => {
       obtenerEquipoUseCase,
       listarEquiposUseCase,
       eliminarEquipoUseCase,
-      asignarEquipoUseCase,
       agregarComponenteUseCase,
       eliminarComponenteUseCase,
       listarTiposComponenteUseCase,
@@ -186,42 +181,6 @@ describe('EquiposController (T12.6)', () => {
 
     it('declara @RequirePermissions("equipo:gestionar")', () => {
       const meta = Reflect.getMetadata(PERMISSIONS_KEY, EquiposController.prototype.eliminar);
-      expect(meta).toEqual(['equipo:gestionar']);
-    });
-  });
-
-  describe('POST /equipos/:id/asignar', () => {
-    it('asigna el equipo', async () => {
-      const { controller, asignarEquipoUseCase } = buildController();
-      const equipo = makeEquipo();
-      equipo.asignarA('usuario-1');
-      asignarEquipoUseCase.execute.mockResolvedValue(Result.ok(equipo));
-
-      const result = await controller.asignar(
-        'equipo-uuid',
-        { asignadoAId: 'usuario-1' } as any,
-        { sub: 'actor-1', cliente_id: 'cliente-1' } as any,
-      );
-      expect(result.asignadoAId).toBe('usuario-1');
-    });
-
-    it('asignado inválido → 422', async () => {
-      const { controller, asignarEquipoUseCase } = buildController();
-      asignarEquipoUseCase.execute.mockResolvedValue(
-        Result.fail(new AsignadoInvalidoError('usuario-invalido')),
-      );
-
-      await expect(
-        controller.asignar(
-          'equipo-uuid',
-          { asignadoAId: 'usuario-invalido' } as any,
-          { sub: 'actor-1', cliente_id: 'cliente-1' } as any,
-        ),
-      ).rejects.toThrow(UnprocessableEntityException);
-    });
-
-    it('declara @RequirePermissions("equipo:gestionar")', () => {
-      const meta = Reflect.getMetadata(PERMISSIONS_KEY, EquiposController.prototype.asignar);
       expect(meta).toEqual(['equipo:gestionar']);
     });
   });

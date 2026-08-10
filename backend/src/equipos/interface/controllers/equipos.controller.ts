@@ -9,7 +9,6 @@
  *   GET    /equipos/:id                           → ObtenerEquipoUseCase            (autenticado)
  *   PATCH  /equipos/:id                           → EditarEquipoUseCase             [equipo:gestionar]
  *   DELETE /equipos/:id                           → EliminarEquipoUseCase           [equipo:gestionar]
- *   POST   /equipos/:id/asignar                   → AsignarEquipoUseCase            [equipo:gestionar]
  *   POST   /equipos/:id/componentes                → AgregarComponenteUseCase        [equipo:gestionar]
  *   DELETE /equipos/:id/componentes/:componenteId  → EliminarComponenteUseCase       [equipo:gestionar]
  *
@@ -46,22 +45,15 @@ import { JwtAuthGuard } from '../../../auth/infrastructure/guards/jwt-auth.guard
 import { TenantGuard } from '../../../auth/infrastructure/guards/tenant.guard';
 import { PermissionsGuard } from '../../../auth/infrastructure/guards/permissions.guard';
 import { ModulosGuard } from '../../../auth/infrastructure/guards/modulos.guard';
-import {
-  CurrentUser,
-  RequireModulo,
-  RequirePermissions,
-} from '../../../auth/infrastructure/guards/decorators';
-import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
+import { RequireModulo, RequirePermissions } from '../../../auth/infrastructure/guards/decorators';
 import { DomainError } from '../../../shared/domain/result';
 import { UbicacionInvalidaError } from '../../../reparaciones/domain/errors/reparaciones.errors';
-import { AsignadoInvalidoError } from '../../../tickets/domain/errors/tickets.errors';
 
 import { CrearEquipoUseCase } from '../../application/use-cases/crear-equipo.use-case';
 import { EditarEquipoUseCase } from '../../application/use-cases/editar-equipo.use-case';
 import { ObtenerEquipoUseCase } from '../../application/use-cases/obtener-equipo.use-case';
 import { ListarEquiposUseCase } from '../../application/use-cases/listar-equipos.use-case';
 import { EliminarEquipoUseCase } from '../../application/use-cases/eliminar-equipo.use-case';
-import { AsignarEquipoUseCase } from '../../application/use-cases/asignar-equipo.use-case';
 import { AgregarComponenteUseCase } from '../../application/use-cases/agregar-componente.use-case';
 import { EliminarComponenteUseCase } from '../../application/use-cases/eliminar-componente.use-case';
 import { ListarTiposComponenteUseCase } from '../../application/use-cases/listar-tipos-componente.use-case';
@@ -76,7 +68,6 @@ import {
 } from '../../domain/errors/equipos.errors';
 
 import {
-  AsignarEquipoHttpDto,
   ComponenteResponseDto,
   CreateComponenteHttpDto,
   CreateEquipoHttpDto,
@@ -100,8 +91,7 @@ function toHttpException(error: DomainError): NotFoundException | UnprocessableE
     error instanceof NumeroSerieDuplicadoError ||
     error instanceof TipoComponenteCodigoRequeridoError ||
     error instanceof TipoComponenteInactivoError ||
-    error instanceof UbicacionInvalidaError ||
-    error instanceof AsignadoInvalidoError
+    error instanceof UbicacionInvalidaError
   ) {
     return new UnprocessableEntityException(error.message);
   }
@@ -120,7 +110,6 @@ export class EquiposController {
     private readonly obtenerEquipoUseCase: ObtenerEquipoUseCase,
     private readonly listarEquiposUseCase: ListarEquiposUseCase,
     private readonly eliminarEquipoUseCase: EliminarEquipoUseCase,
-    private readonly asignarEquipoUseCase: AsignarEquipoUseCase,
     private readonly agregarComponenteUseCase: AgregarComponenteUseCase,
     private readonly eliminarComponenteUseCase: EliminarComponenteUseCase,
     private readonly listarTiposComponenteUseCase: ListarTiposComponenteUseCase,
@@ -232,32 +221,6 @@ export class EquiposController {
     if (result.isFail()) {
       throw toHttpException(result.getError());
     }
-  }
-
-  /**
-   * POST /equipos/:id/asignar
-   * Asigna (o desasigna con `asignadoAId` ausente/null) el equipo a un usuario.
-   * @throws 404 equipo inexistente
-   * @throws 422 usuario asignado inválido
-   */
-  @Post(':id/asignar')
-  @RequirePermissions('equipo:gestionar')
-  @HttpCode(HttpStatus.OK)
-  async asignar(
-    @Param('id') id: string,
-    @Body() dto: AsignarEquipoHttpDto,
-    @CurrentUser() user: JwtPayload,
-  ): Promise<EquipoResponseDto> {
-    const result = await this.asignarEquipoUseCase.execute({
-      equipoId: id,
-      asignadoAId: dto.asignadoAId ?? null,
-      clienteId: user.cliente_id as string,
-    });
-
-    if (result.isFail()) {
-      throw toHttpException(result.getError());
-    }
-    return toEquipoResponseDto(result.getValue());
   }
 
   /**

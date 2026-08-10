@@ -14,8 +14,8 @@
 //     soft delete: la baja es eliminación física (ON DELETE CASCADE / delete).
 //   - updatedAt gestionado por Prisma (@updatedAt) en entidades con soft delete.
 //   - Soft refs cross-DB: solicitante_id, asignado_id, autor_id, subido_por_id,
-//     ciclo_vigente_id, aprobado_por_id, personal_asignado_id,
-//     completada_por_id y asignado_a_id
+//     ciclo_vigente_id, aprobado_por_id, personal_asignado_id y
+//     completada_por_id
 //     referencian filas de la DB master (usuarios / ciclos_vigentes).
 //     NO tienen FK real — una FK cross-DB es imposible en Postgres (cada
 //     tenant es una base de datos física distinta). La integridad se valida
@@ -505,8 +505,10 @@ model SubtareaEdilicia {
 //
 // equipos_informaticos: inventario de equipos del tenant.
 //   numero_serie: UNIQUE parcial WHERE NOT NULL — raw SQL en migración.
-//   asignado_a_id: soft ref → master.usuarios.id (sin FK cross-DB).
 //   ubicacion_id: FK → ubicaciones.id (nullable).
+//   NOTA: los equipos NO se asignan a personas — la asignación vive
+//   únicamente en el ticket (`ticket_soporte`/`ticket.asignado_id`); la
+//   columna `asignado_a_id` de esta tabla se DROPEÓ.
 // componentes_equipo: hardware instalado en un equipo. FK a equipo.
 //   tipo_componente_codigo: soft ref → master.tipos_componente.codigo (sin FK
 //   cross-DB) — el catálogo tenant `tipos_componente` se ELIMINÓ en PR4b
@@ -526,8 +528,6 @@ model EquipoInformatico {
   fechaAdquisicion DateTime? @map("fecha_adquisicion") @db.Date
   /// FK → ubicaciones.id. NULL = sin ubicación asignada.
   ubicacionId      String?   @map("ubicacion_id") @db.Uuid
-  /// Soft ref → master.usuarios.id. NULL = sin asignar. Sin FK cross-DB.
-  asignadoAId      String?   @map("asignado_a_id") @db.Uuid
   activo           Boolean   @default(true)
   createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz
@@ -539,7 +539,6 @@ model EquipoInformatico {
   tickets     TicketSoporte[]
 
   @@index([ubicacionId])
-  @@index([asignadoAId])
   @@map("equipos_informaticos")
 }
 

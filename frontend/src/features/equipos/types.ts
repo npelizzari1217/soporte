@@ -27,7 +27,6 @@ export interface Equipo {
   modelo: string | null;
   fechaAdquisicion: string | null;
   ubicacionId: string | null;
-  asignadoAId: string | null;
   activo: boolean;
   createdAt: string;
   updatedAt: string;
@@ -81,10 +80,6 @@ export interface EditarEquipoDto {
   modelo?: string | null;
   fechaAdquisicion?: string | null;
   ubicacionId?: string | null;
-}
-
-export interface AsignarEquipoDto {
-  asignadoAId?: string | null;
 }
 
 export interface CreateComponenteDto {

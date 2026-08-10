@@ -23,7 +23,6 @@ describe('EditarEquipoUseCase', () => {
       modelo: null,
       fechaAdquisicion: null,
       ubicacionId: null,
-      asignadoAId: null,
       ...overrides,
     });
   }

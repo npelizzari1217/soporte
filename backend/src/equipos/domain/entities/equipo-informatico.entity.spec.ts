@@ -3,7 +3,8 @@ import { EquipoInformaticoEntity } from './equipo-informatico.entity';
 
 /**
  * T10.1 [U][RED] — EquipoInformaticoEntity: `deactivate()` (activo=false)
- * distinto de `softDelete()` (deletedAt); `asignarA`/`actualizar`.
+ * distinto de `softDelete()` (deletedAt); `actualizar()`. La asignación a
+ * personas se eliminó del dominio Equipos — vive solo en `Ticket`.
  *
  * Ref spec: sdd/flujos-especializados/spec F3-Q1. Ref design: ADR-9.
  */
@@ -16,7 +17,6 @@ describe('EquipoInformaticoEntity', () => {
       modelo: 'Latitude 5420',
       fechaAdquisicion: new Date('2025-01-01'),
       ubicacionId: null,
-      asignadoAId: null,
     });
   }
 
@@ -42,14 +42,6 @@ describe('EquipoInformaticoEntity', () => {
     expect(equipo.activo).toBe(true);
   });
 
-  it('asignarA() setea asignadoAId (nullable)', () => {
-    const equipo = makeEquipo();
-    equipo.asignarA('01900000-0000-7000-8000-000000000001');
-    expect(equipo.asignadoAId).toBe('01900000-0000-7000-8000-000000000001');
-    equipo.asignarA(null);
-    expect(equipo.asignadoAId).toBeNull();
-  });
-
   it('actualizar() aplica PATCH semántico (undefined no toca, null limpia)', () => {
     const equipo = makeEquipo();
     equipo.actualizar({ nombre: 'Notebook Dell 5420 (actualizado)', marca: undefined });
@@ -73,7 +65,6 @@ describe('EquipoInformaticoEntity', () => {
         modelo: null,
         fechaAdquisicion: null,
         ubicacionId: null,
-        asignadoAId: null,
         activo: false,
       },
       'id-reconstituido',

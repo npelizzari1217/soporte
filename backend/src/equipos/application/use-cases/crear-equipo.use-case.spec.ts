@@ -53,7 +53,6 @@ describe('CrearEquipoUseCase', () => {
       modelo: null,
       fechaAdquisicion: null,
       ubicacionId: null,
-      asignadoAId: null,
     });
     const { equipoRepo, ubicacionRepo, txRunner } = makeDeps({
       equipoRepo: {

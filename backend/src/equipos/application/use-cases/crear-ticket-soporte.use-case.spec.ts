@@ -112,7 +112,6 @@ describe('CrearTicketSoporteUseCase', () => {
         modelo: null,
         fechaAdquisicion: null,
         ubicacionId: null,
-        asignadoAId: null,
       },
       'equipo-1',
     );
@@ -147,7 +146,6 @@ describe('CrearTicketSoporteUseCase', () => {
         modelo: null,
         fechaAdquisicion: null,
         ubicacionId: null,
-        asignadoAId: null,
       },
       'equipo-1',
     );
@@ -171,7 +169,6 @@ describe('CrearTicketSoporteUseCase', () => {
         modelo: null,
         fechaAdquisicion: null,
         ubicacionId: null,
-        asignadoAId: null,
       },
       'equipo-1',
     );
