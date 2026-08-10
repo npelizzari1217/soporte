@@ -109,9 +109,10 @@ model CicloVigente {
 // ─── TIPOS_COMPONENTE (catálogo global MASTER de tipos de componente) ────────
 //
 // Catálogo MAESTRO de tipos de componente (CPU, RAM, DISCO, etc.), dueño
-// único de la fuente de verdad de `codigo`. Distinto del catálogo tenant
-// `tipos_componente` en `prisma_tenant/schema.prisma` (read-only, sembrado en
-// provisioning) — la reconciliación entre ambos catálogos es alcance de PR2+.
+// único y global de la fuente de verdad de `codigo`. Es el ÚNICO catálogo de
+// tipos de componente del sistema: el `ComponenteEquipo` de cada tenant lo
+// referencia por `codigo` (soft-ref cross-DB, sin FK). El antiguo catálogo
+// per-tenant `tipos_componente` fue eliminado (migración contract).
 //
 // Sin `deleted_at`: la baja lógica es exclusivamente vía `activo=false` (a
 // diferencia del resto del schema master, este catálogo no soft-elimina
