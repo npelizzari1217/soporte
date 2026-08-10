@@ -13,7 +13,25 @@ describe("TicketTransitionControl", () => {
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
   });
 
-  it("con permiso, estado EN_PROCESO → ofrece EXACTAMENTE [RESUELTO, CANCELADO], nada más (regla de flujo T1.10)", () => {
+  it("estado NUEVO → el arco de arranque (ASIGNADO) lo cubre el control unificado; manual ofrece SOLO [CANCELADO]", () => {
+    renderWithProviders(
+      <TicketTransitionControl estadoActualCodigo="NUEVO" onTransicionar={vi.fn()} isSubmitting={false} />,
+      { user: buildUser({ permisos: ["ticket:transicionar"] }) },
+    );
+    const options = screen.getAllByRole("option").map((o) => o.textContent);
+    expect(options).toEqual(["Cancelado"]);
+  });
+
+  it("estado ASIGNADO → el arco EN_PROCESO lo cubre el control unificado; manual ofrece SOLO [CANCELADO]", () => {
+    renderWithProviders(
+      <TicketTransitionControl estadoActualCodigo="ASIGNADO" onTransicionar={vi.fn()} isSubmitting={false} />,
+      { user: buildUser({ permisos: ["ticket:transicionar"] }) },
+    );
+    const options = screen.getAllByRole("option").map((o) => o.textContent);
+    expect(options).toEqual(["Cancelado"]);
+  });
+
+  it("con permiso, estado EN_PROCESO → ofrece EXACTAMENTE [RESUELTO, CANCELADO] (flujo posterior, sin cambios)", () => {
     renderWithProviders(
       <TicketTransitionControl estadoActualCodigo="EN_PROCESO" onTransicionar={vi.fn()} isSubmitting={false} />,
       { user: buildUser({ permisos: ["ticket:transicionar"] }) },
@@ -35,13 +53,13 @@ describe("TicketTransitionControl", () => {
     const user = userEvent.setup();
     const onTransicionar = vi.fn();
     renderWithProviders(
-      <TicketTransitionControl estadoActualCodigo="NUEVO" onTransicionar={onTransicionar} isSubmitting={false} />,
+      <TicketTransitionControl estadoActualCodigo="EN_PROCESO" onTransicionar={onTransicionar} isSubmitting={false} />,
       { user: buildUser({ permisos: ["ticket:transicionar"] }) },
     );
 
-    await user.selectOptions(screen.getByRole("combobox"), "ASIGNADO");
+    await user.selectOptions(screen.getByRole("combobox"), "RESUELTO");
     await user.click(screen.getByRole("button", { name: /confirmar/i }));
 
-    expect(onTransicionar).toHaveBeenCalledWith("ASIGNADO");
+    expect(onTransicionar).toHaveBeenCalledWith("RESUELTO");
   });
 });

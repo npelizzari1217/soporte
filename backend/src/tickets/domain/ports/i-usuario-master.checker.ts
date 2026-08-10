@@ -87,6 +87,33 @@ export interface IUsuarioMasterChecker {
     usuarioId: string,
     clienteId: string,
   ): Promise<{ esAdminTotal: boolean; modulos: string[] }>;
+
+  /**
+   * Lista los TÉCNICOS elegibles para atender un ticket de un módulo dado, en
+   * un cliente. Un técnico es elegible si cumple TODAS estas condiciones:
+   * - usuario `activo=true` y no soft-deleted en `master.usuarios`;
+   * - tiene una membresía ACTIVA (`activo=true`, `deletedAt IS NULL`) con rol
+   *   `codigo='TECNICO'` en el cliente indicado;
+   * - tiene asignado el `modulo` en `usuario_cliente_modulos`
+   *   (usuarioId + clienteId + modulo).
+   *
+   * Alimenta el combo del control unificado "Asignar y poner en proceso": a
+   * diferencia de `getAutorizacionModulos` (que resuelve la elegibilidad de UN
+   * asignado concreto y bypassa a ROOT/ADMINISTRADOR), este método devuelve
+   * exclusivamente el universo de TÉCNICOS por módulo — el criterio de armado
+   * de la lista, no el de validación de una asignación puntual.
+   *
+   * @param clienteId UUID del cliente activo (TenantContext.clienteId).
+   * @param modulo Código del módulo del tipo del ticket (ver `modulos.ts`), o
+   *               `null` si el ticket es de un tipo custom sin módulo. Con
+   *               `null` NO hay técnicos elegibles por catálogo → `[]`.
+   * @returns Lista de técnicos `{ id, nombre, apellido }` (vacía si `modulo`
+   *          es `null` o no hay técnicos con ese módulo en el cliente).
+   */
+  listarTecnicosAsignables(
+    clienteId: string,
+    modulo: string | null,
+  ): Promise<{ id: string; nombre: string; apellido: string }[]>;
 }
 
 /** Token de inyección de dependencias para IUsuarioMasterChecker en NestJS. */

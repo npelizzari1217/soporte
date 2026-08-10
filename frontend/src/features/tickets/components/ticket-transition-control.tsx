@@ -2,15 +2,17 @@
 
 /**
  * TicketTransitionControl — PRESENTATIONAL, gated por `ticket:transicionar`
- * (TECNICO+). Solo ofrece los destinos válidos desde el estado actual
- * (`getValidNextStates` — T1.10, sin reapertura). El backend revalida el
- * mismo grafo (ADR-3) — esto es UX, no la única barrera.
+ * (TECNICO+). Ofrece los destinos MANUALES desde el estado actual
+ * (`getManualNextStates`): el grafo válido MENOS los arcos de arranque
+ * (NUEVO→ASIGNADO, ASIGNADO→EN_PROCESO) que ahora cubre el control unificado
+ * "Asignar y poner en proceso" — así no quedan dos caminos al mismo destino.
+ * El backend revalida el grafo completo (ADR-3) — esto es UX, no la barrera.
  */
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { useCan } from "@/shared/hooks/use-can";
-import { getValidNextStates } from "../lib/estado-transitions";
+import { getManualNextStates } from "../lib/estado-transitions";
 import type { TicketEstadoCodigo } from "../types";
 
 const ESTADO_LABEL: Record<TicketEstadoCodigo, string> = {
@@ -34,7 +36,7 @@ export function TicketTransitionControl({
   isSubmitting,
 }: TicketTransitionControlProps) {
   const puedeTransicionar = useCan("ticket:transicionar");
-  const opciones = getValidNextStates(estadoActualCodigo);
+  const opciones = getManualNextStates(estadoActualCodigo);
   const [destino, setDestino] = useState<string>(opciones[0] ?? "");
 
   if (!puedeTransicionar) return null;

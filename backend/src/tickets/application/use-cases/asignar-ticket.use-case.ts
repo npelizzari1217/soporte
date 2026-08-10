@@ -7,7 +7,7 @@ import { IOperacionTicketRepository } from '../../domain/ports/i-operacion-ticke
 import { IUsuarioMasterChecker } from '../../domain/ports/i-usuario-master.checker';
 import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
 import { ITipoOperacionRepository } from '../../domain/ports/i-tipo-operacion.repository';
-import { MODULO_A_TIPO_CODIGO } from '../../../shared/domain/modulos';
+import { esAsignadoElegiblePorModulo } from '../services/elegibilidad-asignado';
 import {
   TicketNoEncontradoError,
   AsignadoInvalidoError,
@@ -103,26 +103,17 @@ export class AsignarTicketUseCase {
       return Result.fail(new AsignadoInvalidoError(dto.asignadoId));
     }
 
-    // Elegibilidad por módulo/catálogo: ROOT/ADMINISTRADOR pueden todo; el
-    // resto, solo si tiene el módulo que mapea al tipo del ticket. Se resuelven
-    // los tipoIds permitidos desde los módulos del asignado (codigo -> id) y se
-    // chequea que el tipo del ticket esté entre ellos.
-    const auth = await this.usuarioMasterChecker.getAutorizacionModulos(
+    // Elegibilidad por módulo/catálogo (regla compartida con
+    // AsignarYPonerEnProcesoUseCase — ver `esAsignadoElegiblePorModulo`):
+    // ROOT/ADMINISTRADOR pueden todo; el resto, solo si tiene el módulo que
+    // mapea al tipo del ticket.
+    const esElegible = await esAsignadoElegiblePorModulo(
       dto.asignadoId,
       dto.clienteId,
+      ticket.tipoId,
+      this.usuarioMasterChecker,
+      this.tipoTicketRepo,
     );
-    let esElegible = auth.esAdminTotal;
-    if (!esElegible) {
-      const codigosPermitidos = auth.modulos
-        .map((modulo) => MODULO_A_TIPO_CODIGO[modulo])
-        .filter((codigo): codigo is string => Boolean(codigo));
-      const tipoIdsPermitidos = (
-        await Promise.all(
-          codigosPermitidos.map((codigo) => this.tipoTicketRepo.findIdByCodigo(codigo)),
-        )
-      ).filter((id): id is string => id !== null);
-      esElegible = tipoIdsPermitidos.includes(ticket.tipoId);
-    }
     if (!esElegible) {
       return Result.fail(new AsignadoNoElegibleError(dto.asignadoId, ticket.tipoId));
     }

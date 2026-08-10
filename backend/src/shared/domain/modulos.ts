@@ -28,3 +28,26 @@ export const MODULO_A_TIPO_CODIGO: Record<string, string> = {
   COMPRAS: 'COMPRAS',
   EDILICIA: 'EDILICIA',
 };
+
+/**
+ * Mapa inverso `código de tipo de ticket → módulo funcional` — deriva el
+ * módulo al que pertenece un tipo de ticket a partir de su `codigo`.
+ *
+ * Es el inverso exacto de `MODULO_A_TIPO_CODIGO`: solo los tipos de catálogo
+ * fijo (SOPORTE/COMPRAS/EDILICIA) mapean a un módulo. Un tipo CUSTOM del tenant
+ * (cualquier código fuera de este mapa) NO tiene módulo → `resolverModuloDeTipoCodigo`
+ * devuelve `null`, y la elegibilidad por módulo lo trata como "solo ROOT/ADMIN".
+ */
+export const TIPO_CODIGO_A_MODULO: Record<string, string> = Object.fromEntries(
+  Object.entries(MODULO_A_TIPO_CODIGO).map(([modulo, tipoCodigo]) => [tipoCodigo, modulo]),
+);
+
+/**
+ * Resuelve el módulo funcional de un tipo de ticket por su `codigo`, o `null`
+ * si es un tipo custom sin módulo asociado (ver `TIPO_CODIGO_A_MODULO`).
+ *
+ * @param tipoCodigo Código semántico del tipo de ticket (ej. "SOPORTE").
+ * @returns El código del módulo (ej. "SOPORTE") o `null` si no mapea.
+ */
+export const resolverModuloDeTipoCodigo = (tipoCodigo: string): string | null =>
+  TIPO_CODIGO_A_MODULO[tipoCodigo] ?? null;

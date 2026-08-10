@@ -20,3 +20,33 @@ const VALID_TRANSITIONS: Record<string, TicketEstadoCodigo[]> = {
 export function getValidNextStates(estadoActualCodigo: string): TicketEstadoCodigo[] {
   return VALID_TRANSITIONS[estadoActualCodigo] ?? [];
 }
+
+/**
+ * Arcos "de arranque" que ahora cubre el control unificado "Asignar y poner en
+ * proceso" (NUEVO→ASIGNADO y ASIGNADO→EN_PROCESO). Se excluyen del flujo de
+ * transición MANUAL para no ofrecer dos caminos confusos al mismo destino.
+ */
+const ARCO_CUBIERTO_POR_ASIGNACION: Record<string, TicketEstadoCodigo> = {
+  NUEVO: "ASIGNADO",
+  ASIGNADO: "EN_PROCESO",
+};
+
+/**
+ * Estados destino del flujo de transición MANUAL (control "avanzar estado"):
+ * `getValidNextStates` menos el arco de arranque que cubre el botón combinado.
+ * Desde NUEVO/ASIGNADO queda solo CANCELADO; desde EN_PROCESO/RESUELTO no
+ * cambia (RESUELTO/CERRADO/CANCELADO siguen siendo manuales).
+ */
+export function getManualNextStates(estadoActualCodigo: string): TicketEstadoCodigo[] {
+  const cubierto = ARCO_CUBIERTO_POR_ASIGNACION[estadoActualCodigo];
+  return getValidNextStates(estadoActualCodigo).filter((codigo) => codigo !== cubierto);
+}
+
+/**
+ * True si desde `estadoActualCodigo` el ticket puede llegar a EN_PROCESO vía el
+ * control unificado "Asignar y poner en proceso" (solo NUEVO/ASIGNADO). Gatea
+ * el montaje de ese control en el detalle.
+ */
+export function puedeAsignarYPonerEnProceso(estadoActualCodigo: string): boolean {
+  return estadoActualCodigo === "NUEVO" || estadoActualCodigo === "ASIGNADO";
+}

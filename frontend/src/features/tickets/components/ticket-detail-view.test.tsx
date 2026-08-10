@@ -8,13 +8,14 @@ import { TicketDetailView } from "./ticket-detail-view";
 
 const TICKET_ID = "t1";
 
+/** Ticket base en estado NUEVO — desde acá se muestra el control unificado "Asignar y poner en proceso". */
 const TICKET = {
   id: TICKET_ID,
   numero: "SOP-2026-0001",
   titulo: "Impresora rota",
   descripcion: "No imprime a color",
   tipoId: "ti1",
-  estadoId: "e-en-proceso",
+  estadoId: "e-nuevo",
   prioridadId: "p-alta",
   cicloId: null,
   ticketReferenciaId: null,
@@ -35,6 +36,12 @@ function mockBackend() {
   server.use(
     http.get(`/api/tickets/${TICKET_ID}`, () => HttpResponse.json(TICKET)),
     http.get(`/api/tickets/${TICKET_ID}/timeline`, () => HttpResponse.json([])),
+    http.get(`/api/tickets/${TICKET_ID}/asignables`, () =>
+      HttpResponse.json([
+        { id: "u-tecnico", nombre: "Carlos", apellido: "Díaz" },
+        { id: "u-tecnico-2", nombre: "Ana", apellido: "García" },
+      ]),
+    ),
     http.get("/api/catalogos/tipos-ticket", () =>
       HttpResponse.json([{ id: "ti1", codigo: "SOPORTE", nombre: "Soporte", activo: true, createdAt: "", updatedAt: "" }]),
     ),
@@ -42,10 +49,13 @@ function mockBackend() {
       HttpResponse.json([{ id: "p-alta", codigo: "ALTA", nombre: "Alta", color: null, orden: 3, activo: true, createdAt: "", updatedAt: "" }]),
     ),
     http.get("/api/catalogos/estados", () =>
-      HttpResponse.json([{ id: "e-en-proceso", codigo: "EN_PROCESO", nombre: "En proceso", color: null, orden: 3, activo: true }]),
+      HttpResponse.json([
+        { id: "e-nuevo", codigo: "NUEVO", nombre: "Nuevo", color: null, orden: 1, activo: true },
+        { id: "e-en-proceso", codigo: "EN_PROCESO", nombre: "En proceso", color: null, orden: 3, activo: true },
+        { id: "e-resuelto", codigo: "RESUELTO", nombre: "Resuelto", color: null, orden: 4, activo: true },
+      ]),
     ),
     http.get("/api/catalogos/tipo-operacion", () => HttpResponse.json([])),
-    http.get("/api/usuarios", () => HttpResponse.json([])),
   );
 }
 
@@ -74,10 +84,11 @@ describe("TicketDetailView — gating de acciones por permiso", () => {
       expect(screen.queryByRole("combobox", { name: /nuevo estado/i })).not.toBeInTheDocument();
     }
 
+    // Control unificado "Asignar y poner en proceso" (visible en NUEVO/ASIGNADO con ticket:asignar).
     if (esperados.asignar) {
-      expect(screen.getByRole("combobox", { name: /asignar a/i })).toBeInTheDocument();
+      expect(screen.getByRole("combobox", { name: /asignar técnico/i })).toBeInTheDocument();
     } else {
-      expect(screen.queryByRole("combobox", { name: /asignar a/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("combobox", { name: /asignar técnico/i })).not.toBeInTheDocument();
     }
 
     if (esperados.editar) {
@@ -87,9 +98,31 @@ describe("TicketDetailView — gating de acciones por permiso", () => {
     }
   });
 
-  it("transicionar a un estado válido → PATCH /tickets/:id/estado con el código elegido, e invalida el detalle", async () => {
+  it("control unificado → PATCH /tickets/:id/asignar-en-proceso con el técnico elegido", async () => {
     let capturedBody: unknown = null;
     server.use(
+      http.patch(`/api/tickets/${TICKET_ID}/asignar-en-proceso`, async ({ request }) => {
+        capturedBody = await request.json();
+        return HttpResponse.json({ ...TICKET, estadoId: "e-en-proceso", asignadoId: "u-tecnico-2" });
+      }),
+    );
+
+    const user = userEvent.setup();
+    renderWithProviders(<TicketDetailView ticketId={TICKET_ID} />, {
+      user: buildUser({ permisos: ["ticket:asignar"] }),
+    });
+
+    await screen.findByText("Impresora rota");
+    await user.selectOptions(screen.getByRole("combobox", { name: /asignar técnico/i }), "u-tecnico-2");
+    await user.click(screen.getByRole("button", { name: /asignar y poner en proceso/i }));
+
+    await waitFor(() => expect(capturedBody).toEqual({ asignadoId: "u-tecnico-2" }));
+  });
+
+  it("transicionar posterior (EN_PROCESO→RESUELTO) → PATCH /tickets/:id/estado con el código elegido", async () => {
+    let capturedBody: unknown = null;
+    server.use(
+      http.get(`/api/tickets/${TICKET_ID}`, () => HttpResponse.json({ ...TICKET, estadoId: "e-en-proceso" })),
       http.patch(`/api/tickets/${TICKET_ID}/estado`, async ({ request }) => {
         capturedBody = await request.json();
         return HttpResponse.json({ ...TICKET, estadoId: "e-resuelto" });

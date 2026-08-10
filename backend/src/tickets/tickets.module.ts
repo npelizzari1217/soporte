@@ -58,6 +58,8 @@ import { ListarTicketsUseCase } from './application/use-cases/listar-tickets.use
 import { EditarTicketUseCase } from './application/use-cases/editar-ticket.use-case';
 import { TransicionarEstadoUseCase } from './application/use-cases/transicionar-estado.use-case';
 import { AsignarTicketUseCase } from './application/use-cases/asignar-ticket.use-case';
+import { AsignarYPonerEnProcesoUseCase } from './application/use-cases/asignar-y-poner-en-proceso.use-case';
+import { ListarTecnicosAsignablesUseCase } from './application/use-cases/listar-tecnicos-asignables.use-case';
 import { AsociarUsuarioTipoTicketUseCase } from './application/use-cases/asociar-usuario-tipo-ticket.use-case';
 import { DesasociarUsuarioTipoTicketUseCase } from './application/use-cases/desasociar-usuario-tipo-ticket.use-case';
 import { ListarRoutingUseCase } from './application/use-cases/listar-routing.use-case';
@@ -293,6 +295,48 @@ import { CatalogosController } from './interface/controllers/catalogos.controlle
         USUARIO_MASTER_CHECKER,
         TIPO_TICKET_REPOSITORY,
         TIPO_OPERACION_REPOSITORY,
+        TENANT_TX_RUNNER,
+      ],
+    },
+    {
+      provide: ListarTecnicosAsignablesUseCase,
+      useFactory: (
+        ticketRepo: ITicketRepository,
+        tipoTicketRepo: ITipoTicketRepository,
+        usuarioMasterChecker: IUsuarioMasterChecker,
+      ) => new ListarTecnicosAsignablesUseCase(ticketRepo, tipoTicketRepo, usuarioMasterChecker),
+      inject: [TICKET_REPOSITORY, TIPO_TICKET_REPOSITORY, USUARIO_MASTER_CHECKER],
+    },
+    {
+      provide: AsignarYPonerEnProcesoUseCase,
+      useFactory: (
+        ticketRepo: ITicketRepository,
+        operacionRepo: IOperacionTicketRepository,
+        estadoRepo: IEstadoRepository,
+        tipoTicketRepo: ITipoTicketRepository,
+        tipoOperacionRepo: ITipoOperacionRepository,
+        usuarioMasterChecker: IUsuarioMasterChecker,
+        stateMachineFactory: TicketStateMachineFactory,
+        txRunner: ITenantTransactionRunner,
+      ) =>
+        new AsignarYPonerEnProcesoUseCase(
+          ticketRepo,
+          operacionRepo,
+          estadoRepo,
+          tipoTicketRepo,
+          tipoOperacionRepo,
+          usuarioMasterChecker,
+          stateMachineFactory,
+          txRunner,
+        ),
+      inject: [
+        TICKET_REPOSITORY,
+        OPERACION_TICKET_REPOSITORY,
+        ESTADO_REPOSITORY,
+        TIPO_TICKET_REPOSITORY,
+        TIPO_OPERACION_REPOSITORY,
+        USUARIO_MASTER_CHECKER,
+        TicketStateMachineFactory,
         TENANT_TX_RUNNER,
       ],
     },

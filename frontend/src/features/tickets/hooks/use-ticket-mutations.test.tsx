@@ -5,6 +5,7 @@ import { http, HttpResponse } from "msw";
 import type { ReactNode } from "react";
 import { server } from "../../../../test/msw/server";
 import {
+  useAsignarEnProceso,
   useAsignarTicket,
   useComentar,
   useCrearTicket,
@@ -60,6 +61,23 @@ describe("Tickets mutations — invalidación de cache (ADR-2)", () => {
   it("asignar ticket → invalida detalle + timeline + lista", async () => {
     server.use(http.patch(`/api/tickets/${TICKET_ID}/asignar`, () => HttpResponse.json({ id: TICKET_ID })));
     const { result } = renderHook(() => useAsignarTicket(TICKET_ID), { wrapper: wrapper(queryClient) });
+
+    result.current.mutate({ asignadoId: "u1" });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    const keys = invalidatedQueryKeys(invalidateSpy);
+    expect(keys).toContainEqual(["ticket", TICKET_ID]);
+    expect(keys).toContainEqual(["ticket", TICKET_ID, "timeline"]);
+    expect(keys).toContainEqual(["tickets"]);
+  });
+
+  it("asignar y poner en proceso → invalida detalle + timeline + lista", async () => {
+    server.use(
+      http.patch(`/api/tickets/${TICKET_ID}/asignar-en-proceso`, () =>
+        HttpResponse.json({ id: TICKET_ID }),
+      ),
+    );
+    const { result } = renderHook(() => useAsignarEnProceso(TICKET_ID), { wrapper: wrapper(queryClient) });
 
     result.current.mutate({ asignadoId: "u1" });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));

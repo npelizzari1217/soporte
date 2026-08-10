@@ -8,15 +8,17 @@
 import { useMemo, useState } from "react";
 import { useTicket, useTicketTimeline } from "../hooks/use-ticket";
 import { useTiposTicket, usePrioridades, useEstados, useTiposOperacion } from "../hooks/use-catalogos";
-import { useUsuariosAsignables } from "../hooks/use-usuarios-asignables";
+import { useTecnicosAsignables } from "../hooks/use-tecnicos-asignables";
 import {
-  useAsignarTicket,
+  useAsignarEnProceso,
   useComentar,
   useEditarTicket,
   useSubirAdjunto,
   useTransicionarEstado,
 } from "../hooks/use-ticket-mutations";
 import { buildIdToCodigoMap } from "../lib/catalog-map";
+import { puedeAsignarYPonerEnProceso } from "../lib/estado-transitions";
+import { useCan } from "@/shared/hooks/use-can";
 import { DetailSkeleton } from "@/components/shared/skeletons";
 import { ErrorState } from "@/components/shared/error-state";
 import { Can } from "@/components/shared/can";
@@ -25,7 +27,7 @@ import { TicketHeader } from "./ticket-header";
 import { TicketTimeline } from "./ticket-timeline";
 import { TicketCommentForm } from "./ticket-comment-form";
 import { TicketTransitionControl } from "./ticket-transition-control";
-import { TicketAssignControl } from "./ticket-assign-control";
+import { TicketAsignarEnProcesoControl } from "./ticket-asignar-en-proceso-control";
 import { TicketEditForm } from "./ticket-edit-form";
 import { TicketAttachmentUpload } from "./ticket-attachment-upload";
 
@@ -40,11 +42,12 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
   const prioridadesQuery = usePrioridades();
   const estadosQuery = useEstados();
   const tiposOperacionQuery = useTiposOperacion();
-  const usuariosQuery = useUsuariosAsignables();
+  const puedeAsignar = useCan("ticket:asignar");
+  const tecnicosQuery = useTecnicosAsignables(ticketId, puedeAsignar);
 
   const comentarMutation = useComentar(ticketId);
   const transicionarMutation = useTransicionarEstado(ticketId);
-  const asignarMutation = useAsignarTicket(ticketId);
+  const asignarEnProcesoMutation = useAsignarEnProceso(ticketId);
   const editarMutation = useEditarTicket(ticketId);
   const adjuntarMutation = useSubirAdjunto(ticketId);
 
@@ -89,6 +92,13 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
       />
 
       <div className="flex flex-wrap items-center gap-3">
+        {estadoCodigo && puedeAsignarYPonerEnProceso(estadoCodigo) && (
+          <TicketAsignarEnProcesoControl
+            tecnicos={tecnicosQuery.data ?? []}
+            onAsignar={(asignadoId) => asignarEnProcesoMutation.mutate({ asignadoId })}
+            isSubmitting={asignarEnProcesoMutation.isPending}
+          />
+        )}
         {estadoCodigo && (
           <TicketTransitionControl
             estadoActualCodigo={estadoCodigo}
@@ -96,12 +106,6 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
             isSubmitting={transicionarMutation.isPending}
           />
         )}
-        <TicketAssignControl
-          usuarios={usuariosQuery.data ?? []}
-          asignadoActualId={ticket.asignadoId}
-          onAsignar={(asignadoId) => asignarMutation.mutate({ asignadoId })}
-          isSubmitting={asignarMutation.isPending}
-        />
         <Can permiso="ticket:editar">
           <Button variant="outline" size="sm" onClick={() => setEditando((v) => !v)}>
             {editando ? "Cancelar edición" : "Editar"}

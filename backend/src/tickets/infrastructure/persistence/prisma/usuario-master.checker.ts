@@ -120,4 +120,47 @@ export class UsuarioMasterChecker implements IUsuarioMasterChecker {
     });
     return { esAdminTotal: false, modulos: rows.map((r) => r.modulo) };
   }
+
+  /**
+   * Técnicos elegibles por módulo en un cliente. Dos consultas (no N+1):
+   * `usuario_cliente_modulos` NO tiene `@relation` a `Usuario` (soft ref
+   * cross-DB), así que no se puede filtrar el módulo con un `some` anidado en
+   * `usuario.findMany`. Se resuelven primero los `usuarioId` con el módulo
+   * asignado en el cliente y luego se intersecan con los técnicos activos que
+   * tienen membresía ACTIVA con rol TECNICO en ese cliente.
+   *
+   * Con `modulo === null` (tipo custom sin módulo) no hay elegibles por
+   * catálogo → se retorna `[]` sin golpear la DB.
+   */
+  async listarTecnicosAsignables(
+    clienteId: string,
+    modulo: string | null,
+  ): Promise<{ id: string; nombre: string; apellido: string }[]> {
+    if (modulo === null) {
+      return [];
+    }
+
+    const conModulo = await this.masterClient.usuarioClienteModulo.findMany({
+      where: { clienteId, modulo },
+      select: { usuarioId: true },
+    });
+    const idsConModulo = conModulo.map((r) => r.usuarioId);
+    if (idsConModulo.length === 0) {
+      return [];
+    }
+
+    const rows = await this.masterClient.usuario.findMany({
+      where: {
+        id: { in: idsConModulo },
+        activo: true,
+        deletedAt: null,
+        membresias: {
+          some: { clienteId, activo: true, deletedAt: null, rol: { codigo: 'TECNICO' } },
+        },
+      },
+      select: { id: true, nombre: true, apellido: true },
+      orderBy: [{ apellido: 'asc' }, { nombre: 'asc' }],
+    });
+    return rows.map((r) => ({ id: r.id, nombre: r.nombre, apellido: r.apellido }));
+  }
 }

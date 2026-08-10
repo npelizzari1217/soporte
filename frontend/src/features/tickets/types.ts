@@ -148,3 +148,14 @@ export interface UsuarioAsignable {
   rol: string;
   email?: string;
 }
+
+/**
+ * Técnico elegible para atender un ticket (espejo de `TecnicoAsignable` del
+ * backend, `GET /tickets/:id/asignables`). Ya viene filtrado por el módulo del
+ * tipo del ticket — el combo lo muestra tal cual.
+ */
+export interface TecnicoAsignable {
+  id: string;
+  nombre: string;
+  apellido: string;
+}

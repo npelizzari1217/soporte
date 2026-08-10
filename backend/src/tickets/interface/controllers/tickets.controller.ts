@@ -48,6 +48,11 @@ import { ListarTicketsUseCase } from '../../application/use-cases/listar-tickets
 import { EditarTicketUseCase } from '../../application/use-cases/editar-ticket.use-case';
 import { TransicionarEstadoUseCase } from '../../application/use-cases/transicionar-estado.use-case';
 import { AsignarTicketUseCase } from '../../application/use-cases/asignar-ticket.use-case';
+import { AsignarYPonerEnProcesoUseCase } from '../../application/use-cases/asignar-y-poner-en-proceso.use-case';
+import {
+  ListarTecnicosAsignablesUseCase,
+  TecnicoAsignable,
+} from '../../application/use-cases/listar-tecnicos-asignables.use-case';
 import { CrearComentarioUseCase } from '../../application/use-cases/crear-comentario.use-case';
 import { ListarTimelineUseCase } from '../../application/use-cases/listar-timeline.use-case';
 import {
@@ -140,6 +145,8 @@ export class TicketsController {
     private readonly crearComentarioUseCase: CrearComentarioUseCase,
     private readonly listarTimelineUseCase: ListarTimelineUseCase,
     @Inject(USUARIO_MASTER_CHECKER) private readonly usuarioMasterChecker: IUsuarioMasterChecker,
+    private readonly listarTecnicosAsignablesUseCase: ListarTecnicosAsignablesUseCase,
+    private readonly asignarYPonerEnProcesoUseCase: AsignarYPonerEnProcesoUseCase,
   ) {}
 
   /**
@@ -373,6 +380,69 @@ export class TicketsController {
       ticketAsignado.id,
     );
     return toTicketResponseDto(ticketAsignado, nombresAsignado);
+  }
+
+  /**
+   * GET /tickets/:id/asignables
+   * Lista los TÉCNICOS elegibles para atender el ticket (combo del control
+   * unificado "Asignar y poner en proceso"). Elegibilidad por módulo del tipo
+   * del ticket: técnicos activos con membresía TECNICO en el tenant y el
+   * módulo asignado. Un tipo custom (sin módulo) devuelve `[]`.
+   * Requiere `ticket:asignar`. `clienteId` = `cliente_id` del JWT.
+   * @throws 403 sin `ticket:asignar`
+   * @throws 404 ticket inexistente/otro tenant
+   */
+  @Get(':id/asignables')
+  @RequirePermissions('ticket:asignar')
+  async asignables(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+  ): Promise<TecnicoAsignable[]> {
+    const result = await this.listarTecnicosAsignablesUseCase.execute({
+      ticketId: id,
+      clienteId: user.cliente_id as string,
+    });
+
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+    return result.getValue();
+  }
+
+  /**
+   * PATCH /tickets/:id/asignar-en-proceso
+   * Asigna un técnico Y avanza el ticket hasta EN_PROCESO en una sola acción
+   * atómica (rediseño de la asignación). Recorre los arcos válidos desde el
+   * estado actual (NUEVO→ASIGNADO→EN_PROCESO). Requiere AMBOS permisos
+   * `ticket:asignar` y `ticket:transicionar`. `asignadoId` en el body;
+   * `clienteId`/`autorId` del JWT.
+   * @throws 403 sin `ticket:asignar` o `ticket:transicionar`
+   * @throws 404 ticket inexistente/otro tenant
+   * @throws 422 asignado inválido/no elegible, o el estado actual no puede
+   *             llegar a EN_PROCESO (RESUELTO/CERRADO/CANCELADO)
+   */
+  @Patch(':id/asignar-en-proceso')
+  @RequirePermissions('ticket:asignar', 'ticket:transicionar')
+  async asignarEnProceso(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Body() dto: AsignarTicketDto,
+  ): Promise<TicketResponseDto> {
+    const result = await this.asignarYPonerEnProcesoUseCase.execute({
+      ticketId: id,
+      asignadoId: dto.asignadoId,
+      autorId: user.sub,
+      clienteId: user.cliente_id as string,
+    });
+
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+    const ticketEnProceso = result.getValue();
+    const nombresEnProceso = (await this.resolverNombresPorTicket([ticketEnProceso])).get(
+      ticketEnProceso.id,
+    );
+    return toTicketResponseDto(ticketEnProceso, nombresEnProceso);
   }
 
   /**

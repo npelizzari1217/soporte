@@ -10,11 +10,13 @@
  * list/detalle/timeline. `PermissionsGuard` ya bypassea al ROOT; estos chequeos
  * inline deben honrar el MISMO criterio.
  */
-import { ForbiddenException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { TicketsController } from './tickets.controller';
 import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
 import { Result } from '../../../shared/domain/result';
 import { OperacionTicketEntity } from '../../domain/entities/operacion-ticket.entity';
+import { TicketEntity } from '../../domain/entities/ticket.entity';
+import { TicketNoEncontradoError } from '../../domain/errors/tickets.errors';
 
 type Ctor = ConstructorParameters<typeof TicketsController>;
 
@@ -198,5 +200,86 @@ describe('TicketsController.findAll — gate de módulo (5.2 CAPA 2)', () => {
     expect(listarTickets.execute).toHaveBeenCalledWith(
       expect.objectContaining({ modulosPermitidos: null }),
     );
+  });
+});
+
+describe('TicketsController — asignación unificada (asignables + asignar-en-proceso)', () => {
+  function buildController(overrides: {
+    listarTecnicos?: { execute: ReturnType<typeof vi.fn> };
+    asignarEnProceso?: { execute: ReturnType<typeof vi.fn> };
+  }) {
+    const stub = () => ({ execute: vi.fn() });
+    const listarTecnicos = overrides.listarTecnicos ?? stub();
+    const asignarEnProceso = overrides.asignarEnProceso ?? stub();
+    const usuarioMasterChecker = { resolverNombres: vi.fn().mockResolvedValue(new Map()) };
+
+    const controller = new TicketsController(
+      stub() as Ctor[0],
+      stub() as Ctor[1],
+      stub() as Ctor[2],
+      stub() as Ctor[3],
+      stub() as Ctor[4],
+      stub() as Ctor[5],
+      stub() as Ctor[6],
+      stub() as Ctor[7],
+      usuarioMasterChecker as unknown as Ctor[8],
+      listarTecnicos as unknown as Ctor[9], // listarTecnicosAsignablesUseCase
+      asignarEnProceso as unknown as Ctor[10], // asignarYPonerEnProcesoUseCase
+    );
+    return { controller, listarTecnicos, asignarEnProceso };
+  }
+
+  it('GET :id/asignables → delega con el clienteId del JWT y devuelve la lista de técnicos', async () => {
+    const tecnicos = [{ id: 'tec-1', nombre: 'Ana', apellido: 'García' }];
+    const listarTecnicos = { execute: vi.fn().mockResolvedValue(Result.ok(tecnicos)) };
+    const { controller } = buildController({ listarTecnicos });
+
+    const res = await controller.asignables(USUARIO_SOPORTE, 'ticket-1');
+
+    expect(listarTecnicos.execute).toHaveBeenCalledWith({
+      ticketId: 'ticket-1',
+      clienteId: 'cliente-1',
+    });
+    expect(res).toEqual(tecnicos);
+  });
+
+  it('GET :id/asignables → ticket inexistente propaga 404', async () => {
+    const listarTecnicos = {
+      execute: vi.fn().mockResolvedValue(Result.fail(new TicketNoEncontradoError('ticket-x'))),
+    };
+    const { controller } = buildController({ listarTecnicos });
+
+    await expect(controller.asignables(USUARIO_SOPORTE, 'ticket-x')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+  });
+
+  it('PATCH :id/asignar-en-proceso → delega con asignadoId del body + autor/cliente del JWT', async () => {
+    const ticket = TicketEntity.create(
+      {
+        numero: 'SOP-2026-0001',
+        titulo: 'Ticket',
+        descripcion: null,
+        tipoId: 'ti1',
+        estadoId: 'e-en-proceso',
+        prioridadId: 'p1',
+        cicloId: null,
+        ticketReferenciaId: null,
+        solicitanteId: 'u-sol',
+      },
+      'ticket-1',
+    );
+    ticket.assignTo('agente-1');
+    const asignarEnProceso = { execute: vi.fn().mockResolvedValue(Result.ok(ticket)) };
+    const { controller } = buildController({ asignarEnProceso });
+
+    await controller.asignarEnProceso(USUARIO_SOPORTE, 'ticket-1', { asignadoId: 'agente-1' });
+
+    expect(asignarEnProceso.execute).toHaveBeenCalledWith({
+      ticketId: 'ticket-1',
+      asignadoId: 'agente-1',
+      autorId: 'usr-2',
+      clienteId: 'cliente-1',
+    });
   });
 });

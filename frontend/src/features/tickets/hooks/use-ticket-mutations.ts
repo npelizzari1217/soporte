@@ -79,6 +79,25 @@ export function useAsignarTicket(id: string) {
   });
 }
 
+/**
+ * Control unificado de asignación: asigna un técnico Y pone el ticket en
+ * proceso en una sola acción atómica (`PATCH /tickets/:id/asignar-en-proceso`).
+ * Reemplaza el par asignar + transicionar manual para el arranque del ticket.
+ * Invalida detalle + timeline + lista (cambia asignado Y estado).
+ */
+export function useAsignarEnProceso(id: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (dto: { asignadoId: string }) =>
+      apiFetch<Ticket>(`tickets/${id}/asignar-en-proceso`, { method: "PATCH", json: dto }),
+    onSuccess: () => {
+      invalidateTicketAndList(queryClient, id);
+      notifySuccess("Ticket asignado y en proceso.");
+    },
+    onError: notifyError,
+  });
+}
+
 export function useComentar(id: string) {
   const queryClient = useQueryClient();
   return useMutation({
