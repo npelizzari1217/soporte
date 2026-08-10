@@ -3,6 +3,7 @@ import { APP_PIPE } from '@nestjs/core';
 import { SharedModule } from './shared/shared.module';
 import { AuthModule } from './auth/auth.module';
 import { ClientesModule } from './clientes/clientes.module';
+import { TiposComponenteModule } from './tipos-componente/tipos-componente.module';
 import { TicketsModule } from './tickets/tickets.module';
 import { ComprasModule } from './compras/compras.module';
 import { ReparacionesModule } from './reparaciones/reparaciones.module';
@@ -38,6 +39,7 @@ import { TenantScopeMiddleware } from './shared/tenancy/tenant-scope.middleware'
     SharedModule,
     AuthModule,
     ClientesModule,
+    TiposComponenteModule,
     TicketsModule,
     ComprasModule,
     ReparacionesModule,
