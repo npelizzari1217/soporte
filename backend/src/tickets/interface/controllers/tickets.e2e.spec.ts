@@ -342,6 +342,23 @@ describe('Tickets e2e (T4-T8, PR6)', () => {
     return { accessToken, clienteId: cliente.id };
   }
 
+  /**
+   * Actor ADMINISTRADOR: SIN restricción de módulo (5.2 CAPA 2) — ve todos los
+   * tipos, incluidos los custom del tenant. Necesario en los tests de listado
+   * que aíslan el conteo con un `tipo_ticket` custom único: ese tipo NO mapea a
+   * ningún módulo (el gate sólo mapea tipos BASE), así que sería invisible para
+   * un USUARIO module-scoped. El listado (paginación/búsqueda/filtro por tipo)
+   * es lo que estos tests validan, no el gate de módulo.
+   */
+  async function crearActorAdministrador(): Promise<{ accessToken: string; clienteId: string }> {
+    const cliente = await createClienteTenant();
+    const role = await createRoleConPermisos('ADMINISTRADOR', ['ticket:crear', 'ticket:comentar']);
+    const usuario = await createUsuario(randomBytes(3).toString('hex'));
+    await createMembresia(usuario.id, cliente.id, role.id);
+    const { accessToken } = await login(usuario.email);
+    return { accessToken, clienteId: cliente.id };
+  }
+
   // ─── T4/T5 — Creación + numeración ──────────────────────────────────────
 
   describe('POST /tickets (T4, T5)', () => {
@@ -401,7 +418,7 @@ describe('Tickets e2e (T4-T8, PR6)', () => {
 
   describe('GET /tickets (T7)', () => {
     it('lista los tickets creados por el actor, filtrados por tipo, con metadata de paginación', async () => {
-      const actor = await crearActorUsuario();
+      const actor = await crearActorAdministrador();
       const tipoId = await createTipoTicketAislado('LIST');
 
       await httpPost(
@@ -428,7 +445,7 @@ describe('Tickets e2e (T4-T8, PR6)', () => {
     });
 
     it('B1/B6: filtra por busqueda (titulo) combinado con tipo — case-insensitive', async () => {
-      const actor = await crearActorUsuario();
+      const actor = await crearActorAdministrador();
       const tipoId = await createTipoTicketAislado('SEARCH');
 
       await httpPost(
