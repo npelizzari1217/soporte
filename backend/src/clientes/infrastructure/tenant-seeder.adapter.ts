@@ -1,7 +1,7 @@
 /**
  * TenantSeederAdapter — implementación de `ITenantSeeder`: siembra los
- * catálogos base (estados, prioridades, tipo_operacion, tipos_ticket,
- * tipos_componente) de una DB tenant recién migrada.
+ * catálogos base (estados, prioridades, tipo_operacion, tipos_ticket) de una
+ * DB tenant recién migrada.
  *
  * Catálogos sembrados (R19; `estados` reemplazado por decisión #2025, que
  * corrige la lista original de 8 códigos de R19 a los 6 finales; ampliado
@@ -15,14 +15,16 @@
  * - `tipos_ticket` (4, base EDITABLE por el admin del tenant — este seed
  *   solo garantiza el piso): SOPORTE, COMPRAS, EDILICIA, MANTENIMIENTO
  *   (no-IT).
- * - `tipos_componente` (10, FIJO, Fase 3 F3-Q3): CPU, RAM, DISCO, MONITOR,
- *   TECLADO, MOUSE, GPU, FUENTE, IMPRESORA, RED — catálogo read-only para
- *   `equipos/` (sin CRUD editable en Fase 3).
+ *
+ * `tipos_componente` (Fase 3 F3-Q3) se sembraba acá como catálogo tenant
+ * FIJO — ELIMINADO en PR4b (sdd/tipos-componente-master): el catálogo pasó a
+ * ser GLOBAL, sembrado una única vez en `master.tipos_componente` (PR1 de
+ * `sdd/tipos-componente-master`), no por tenant.
  *
  * Idempotencia (R19): cada catálogo usa `createMany({ skipDuplicates: true
  * })`, equivalente a `INSERT ... ON CONFLICT (codigo) DO NOTHING` — correr
  * `seed()` dos veces sobre la misma DB no duplica filas ni lanza error
- * (`codigo` es `@unique` en los 5 modelos, ver `prisma_tenant/schema.prisma`).
+ * (`codigo` es `@unique` en los modelos sembrados, ver `prisma_tenant/schema.prisma`).
  *
  * `createClient` es inyectable (por defecto abre su propio `pg.Pool` +
  * `TenantPrismaClient`, independiente de `PrismaService`/`TenantContext` —
@@ -98,24 +100,6 @@ const TIPOS_TICKET = [
 ];
 
 /**
- * Catálogo FIJO de tipos_componente (Fase 3 ADR-5/F3-Q3) — read-only en
- * Fase 3 (sin CRUD editable; `activo` es flag preparado a futuro). Usado
- * por `equipos/ComponenteEquipoEntity`.
- */
-const TIPOS_COMPONENTE = [
-  { codigo: 'CPU', nombre: 'CPU' },
-  { codigo: 'RAM', nombre: 'Memoria RAM' },
-  { codigo: 'DISCO', nombre: 'Disco' },
-  { codigo: 'MONITOR', nombre: 'Monitor' },
-  { codigo: 'TECLADO', nombre: 'Teclado' },
-  { codigo: 'MOUSE', nombre: 'Mouse' },
-  { codigo: 'GPU', nombre: 'Placa de video' },
-  { codigo: 'FUENTE', nombre: 'Fuente de alimentación' },
-  { codigo: 'IMPRESORA', nombre: 'Impresora' },
-  { codigo: 'RED', nombre: 'Placa de red' },
-];
-
-/**
  * Defaults de horas de SLA por código de prioridad (Fase 4, S1, GATE G1) —
  * sembrados 1:1 sobre el catálogo FIJO de prioridades, editables luego por
  * ADMINISTRADOR (`catalogo:gestionar`) vía `EditarSlaConfigUseCase`.
@@ -142,7 +126,6 @@ export class TenantSeederAdapter implements ITenantSeeder {
       await client.prioridad.createMany({ data: PRIORIDADES, skipDuplicates: true });
       await client.tipoOperacion.createMany({ data: TIPO_OPERACION, skipDuplicates: true });
       await client.tipoTicket.createMany({ data: TIPOS_TICKET, skipDuplicates: true });
-      await client.tipoComponente.createMany({ data: TIPOS_COMPONENTE, skipDuplicates: true });
       await this.seedSlaConfig(client);
     } finally {
       await client.$disconnect();

@@ -4,6 +4,10 @@
  *
  * IMPORTANTE: archivo en infrastructure/ — puede importar de '.prisma/tenant'.
  *
+ * PR4b (sdd/tipos-componente-master, contract): el dominio pasa a manejar
+ * `tipoComponenteCodigo` — se quita `tipoComponenteId` (columna/relación
+ * eliminadas del schema tenant en este mismo PR).
+ *
  * Tarea: T11.2.
  */
 import type { ComponenteEquipo as PrismaComponenteEquipo } from '.prisma/tenant';
@@ -15,7 +19,7 @@ export class ComponenteEquipoMapper {
     return ComponenteEquipoEntity.reconstitute(
       {
         equipoId: row.equipoId,
-        tipoComponenteId: row.tipoComponenteId,
+        tipoComponenteCodigo: row.tipoComponenteCodigo,
         descripcion: row.descripcion ?? null,
         numeroSerie: row.numeroSerie ?? null,
         capacidad: row.capacidad ?? null,
@@ -31,19 +35,12 @@ export class ComponenteEquipoMapper {
    * Convierte ComponenteEquipoEntity → objeto plano para Prisma upsert.
    * Incluye `createdAt` para que el repo lo use en el CREATE y lo excluya
    * del UPDATE (nunca pisar el timestamp de creación existente en DB).
-   *
-   * `tipoComponenteCodigo` se EXCLUYE a propósito durante la fase expand
-   * (PR4a): la columna la puebla el backfill one-off, no la app, y omitirla
-   * evita pisar el valor backfilleado en un UPDATE. El dominio pasa a manejar
-   * `codigo` (y se quita `tipoComponenteId`) en el contract, PR4b.
    */
-  static toPersistence(
-    entity: ComponenteEquipoEntity,
-  ): Omit<PrismaComponenteEquipo, 'updatedAt' | 'tipoComponenteCodigo'> {
+  static toPersistence(entity: ComponenteEquipoEntity): Omit<PrismaComponenteEquipo, 'updatedAt'> {
     return {
       id: entity.id,
       equipoId: entity.equipoId,
-      tipoComponenteId: entity.tipoComponenteId,
+      tipoComponenteCodigo: entity.tipoComponenteCodigo,
       descripcion: entity.descripcion,
       numeroSerie: entity.numeroSerie,
       capacidad: entity.capacidad,

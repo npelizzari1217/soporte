@@ -1,11 +1,16 @@
 import { BaseEntity } from '../../../shared/domain/base-entity';
 import { Result } from '../../../shared/domain/result';
-import { TipoComponenteIdRequeridoError } from '../errors/equipos.errors';
+import { TipoComponenteCodigoRequeridoError } from '../errors/equipos.errors';
 
 /**
  * ComponenteEquipoProps — shape de las propiedades de un componente físico
  * asociado a un equipo (F3-Q2). Sin imports de Prisma ni NestJS — dominio
  * puro.
+ *
+ * PR4b (sdd/tipos-componente-master): `tipoComponenteCodigo` reemplaza a
+ * `tipoComponenteId` — el dominio pasa a referenciar el catálogo MASTER
+ * (`master.tipos_componente`) por código estable (ej. "RAM"), no por el `id`
+ * UUID del catálogo tenant `tipos_componente` (eliminado en este PR).
  *
  * Ref spec: sdd/flujos-especializados/spec F3-Q2 (Tabla componentes_equipo).
  * Tarea: T10.3, T10.4.
@@ -13,8 +18,8 @@ import { TipoComponenteIdRequeridoError } from '../errors/equipos.errors';
 export interface ComponenteEquipoProps {
   /** UUID del equipo al que pertenece (FK → equipos_informaticos.id). */
   equipoId: string;
-  /** UUID del tipo de componente (FK → tipos_componente.id). Obligatorio. */
-  tipoComponenteId: string;
+  /** Código estable del tipo de componente (soft ref → master.tipos_componente.codigo). Obligatorio. */
+  tipoComponenteCodigo: string;
   descripcion: string | null;
   numeroSerie: string | null;
   capacidad: string | null;
@@ -24,15 +29,15 @@ export interface ComponenteEquipoProps {
  * ComponenteEquipoEntity — parte física asociada a un `EquipoInformatico`
  * (F3-Q2, ADR-9).
  *
- * DECISIÓN (ADR-9): `create()` retorna `Result.fail(TipoComponenteIdRequeridoError)`
- * cuando falta `tipoComponenteId` — NORMALIZADO al patrón `Result` del resto
+ * DECISIÓN (ADR-9): `create()` retorna `Result.fail(TipoComponenteCodigoRequeridoError)`
+ * cuando falta `tipoComponenteCodigo` — NORMALIZADO al patrón `Result` del resto
  * de factories del proyecto (soporte1, la referencia probada, lanzaba una
  * excepción en este caso).
  *
- * La validación de que el tipo esté `activo` (bloquea nuevos componentes de
- * tipos inactivos) es responsabilidad del use case
- * (`AgregarComponenteUseCase`, requiere el repo de tipos), no de esta
- * entidad — el dominio puro no tiene acceso a los repos.
+ * La validación de que el tipo esté `activo` en el catálogo MASTER (bloquea
+ * nuevos componentes de tipos inactivos/inexistentes) es responsabilidad del
+ * use case (`AgregarComponenteUseCase`, requiere `ITipoComponenteMasterChecker`),
+ * no de esta entidad — el dominio puro no tiene acceso a checkers/repos.
  *
  * Ref spec: sdd/flujos-especializados/spec F3-Q2. Ref design: ADR-9, "Firmas
  * TS clave" (ComponenteEquipoEntity). Tarea: T10.3, T10.4.
@@ -43,22 +48,22 @@ export class ComponenteEquipoEntity extends BaseEntity<ComponenteEquipoProps> {
   }
 
   /**
-   * Factory method con validación de dominio (`tipoComponenteId` requerido).
-   * Retorna `Result.fail(TipoComponenteIdRequeridoError)` si está vacío/ausente.
+   * Factory method con validación de dominio (`tipoComponenteCodigo` requerido).
+   * Retorna `Result.fail(TipoComponenteCodigoRequeridoError)` si está vacío/ausente.
    */
   static create(
     props: ComponenteEquipoProps,
     id?: string,
-  ): Result<ComponenteEquipoEntity, TipoComponenteIdRequeridoError> {
-    if (!props.tipoComponenteId) {
-      return Result.fail(new TipoComponenteIdRequeridoError());
+  ): Result<ComponenteEquipoEntity, TipoComponenteCodigoRequeridoError> {
+    if (!props.tipoComponenteCodigo) {
+      return Result.fail(new TipoComponenteCodigoRequeridoError());
     }
     return Result.ok(new ComponenteEquipoEntity(props, id));
   }
 
   /**
    * Reconstitución desde persistencia (mappers de infraestructura). NO
-   * re-valida `tipoComponenteId`: los datos ya fueron validados al persistir.
+   * re-valida `tipoComponenteCodigo`: los datos ya fueron validados al persistir.
    */
   static reconstitute(
     props: ComponenteEquipoProps,
@@ -79,8 +84,8 @@ export class ComponenteEquipoEntity extends BaseEntity<ComponenteEquipoProps> {
     return this.props.equipoId;
   }
 
-  get tipoComponenteId(): string {
-    return this.props.tipoComponenteId;
+  get tipoComponenteCodigo(): string {
+    return this.props.tipoComponenteCodigo;
   }
 
   get descripcion(): string | null {

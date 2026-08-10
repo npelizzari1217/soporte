@@ -9,10 +9,12 @@
  * - Siembra `estados` (6: NUEVO, ASIGNADO, EN_PROCESO, RESUELTO, CERRADO,
  *   CANCELADO), `prioridades` (4), `tipo_operacion` (7: los 5 de R19 +
  *   APROBACION/RECHAZO de Fase 3 F3-S1), `tipos_ticket` base incl.
- *   MANTENIMIENTO (4), `tipos_componente` (10, Fase 3 F3-Q3/F3-S1) — cada
- *   catálogo vía `createMany` con `skipDuplicates: true` (equivalente a
- *   `ON CONFLICT (codigo) DO NOTHING`, por eso correr el seed dos veces no
- *   duplica ni falla).
+ *   MANTENIMIENTO (4) — cada catálogo vía `createMany` con
+ *   `skipDuplicates: true` (equivalente a `ON CONFLICT (codigo) DO NOTHING`,
+ *   por eso correr el seed dos veces no duplica ni falla).
+ * - `tipos_componente` (Fase 3 F3-Q3) YA NO se siembra acá — PR4b
+ *   (sdd/tipos-componente-master) lo movió a un catálogo GLOBAL en MASTER,
+ *   sembrado una única vez (fuera del alcance de `TenantSeederAdapter`).
  * - `seed` MUST cerrar el client (`$disconnect`) y el pool (`pool.end`)
  *   antes de retornar, incluso si una siembra falla (R18: sin conexiones
  *   activas, si no el DROP de rollback falla).
@@ -42,7 +44,6 @@ function makeFakeClient() {
     },
     tipoOperacion: { createMany: vi.fn().mockResolvedValue({ count: 7 }) },
     tipoTicket: { createMany: vi.fn().mockResolvedValue({ count: 4 }) },
-    tipoComponente: { createMany: vi.fn().mockResolvedValue({ count: 10 }) },
     slaConfig: { createMany: vi.fn().mockResolvedValue({ count: 4 }) },
     $disconnect: vi.fn().mockResolvedValue(undefined),
   };
@@ -109,28 +110,6 @@ describe('TenantSeederAdapter (T7.4, unit — createClient mockeado)', () => {
     ]);
   });
 
-  it('[CRITICAL] siembra los 10 tipos_componente (Fase 3 F3-Q3/F3-S1)', async () => {
-    const client = makeFakeClient();
-    const createClient = vi.fn().mockReturnValue({ client, pool: makeFakePool() });
-    const adapter = new TenantSeederAdapter(MASTER_URL, createClient);
-
-    await adapter.seed('soporte_prov_demo_test');
-
-    const [[{ data }]] = client.tipoComponente.createMany.mock.calls;
-    expect(data.map((t: { codigo: string }) => t.codigo)).toEqual([
-      'CPU',
-      'RAM',
-      'DISCO',
-      'MONITOR',
-      'TECLADO',
-      'MOUSE',
-      'GPU',
-      'FUENTE',
-      'IMPRESORA',
-      'RED',
-    ]);
-  });
-
   it('[CRITICAL] siembra tipos_ticket base incluyendo MANTENIMIENTO (no-IT)', async () => {
     const client = makeFakeClient();
     const createClient = vi.fn().mockReturnValue({ client, pool: makeFakePool() });
@@ -158,7 +137,6 @@ describe('TenantSeederAdapter (T7.4, unit — createClient mockeado)', () => {
     expect(client.prioridad.createMany.mock.calls[0]![0].skipDuplicates).toBe(true);
     expect(client.tipoOperacion.createMany.mock.calls[0]![0].skipDuplicates).toBe(true);
     expect(client.tipoTicket.createMany.mock.calls[0]![0].skipDuplicates).toBe(true);
-    expect(client.tipoComponente.createMany.mock.calls[0]![0].skipDuplicates).toBe(true);
   });
 
   it('[CRITICAL] construye el client con el dbName recibido', async () => {

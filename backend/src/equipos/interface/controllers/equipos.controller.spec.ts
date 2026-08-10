@@ -128,20 +128,27 @@ describe('EquiposController (T12.6)', () => {
       expect(result.componentes).toEqual([]);
     });
 
-    it('embebe los componentes activos del equipo (item 1 — G7)', async () => {
+    it('embebe los componentes activos del equipo, enriquecidos con tipo MASTER (item 1 — G7)', async () => {
       const { controller, obtenerEquipoUseCase } = buildController();
       const componente = ComponenteEquipoEntity.create({
         equipoId: 'equipo-uuid',
-        tipoComponenteId: 'tipo-ram-uuid',
+        tipoComponenteCodigo: 'RAM',
         descripcion: '16GB',
+        numeroSerie: null,
+        capacidad: null,
       }).getValue();
       obtenerEquipoUseCase.execute.mockResolvedValue(
-        Result.ok({ equipo: makeEquipo(), componentes: [componente] }),
+        Result.ok({
+          equipo: makeEquipo(),
+          componentes: [{ componente, tipoNombre: 'Memoria RAM', tipoActivo: true }],
+        }),
       );
 
       const result = await controller.obtener('equipo-uuid');
       expect(result.componentes).toHaveLength(1);
       expect(result.componentes[0].descripcion).toBe('16GB');
+      expect(result.componentes[0].tipoNombre).toBe('Memoria RAM');
+      expect(result.componentes[0].tipoActivo).toBe(true);
     });
 
     it('equipo inexistente → 404', async () => {
@@ -224,7 +231,7 @@ describe('EquiposController (T12.6)', () => {
       const { controller, agregarComponenteUseCase } = buildController();
       const componente = ComponenteEquipoEntity.create({
         equipoId: 'equipo-uuid',
-        tipoComponenteId: 'tipo-ram',
+        tipoComponenteCodigo: 'RAM',
         descripcion: null,
         numeroSerie: null,
         capacidad: null,
@@ -232,19 +239,19 @@ describe('EquiposController (T12.6)', () => {
       agregarComponenteUseCase.execute.mockResolvedValue(Result.ok(componente));
 
       const result = await controller.agregarComponente('equipo-uuid', {
-        tipoComponenteId: 'tipo-ram',
+        tipoComponenteCodigo: 'RAM',
       } as any);
-      expect(result.tipoComponenteId).toBe('tipo-ram');
+      expect(result.tipoComponenteCodigo).toBe('RAM');
     });
 
     it('tipo inactivo → 422', async () => {
       const { controller, agregarComponenteUseCase } = buildController();
       agregarComponenteUseCase.execute.mockResolvedValue(
-        Result.fail(new TipoComponenteInactivoError('tipo-ram')),
+        Result.fail(new TipoComponenteInactivoError('RAM')),
       );
 
       await expect(
-        controller.agregarComponente('equipo-uuid', { tipoComponenteId: 'tipo-ram' } as any),
+        controller.agregarComponente('equipo-uuid', { tipoComponenteCodigo: 'RAM' } as any),
       ).rejects.toThrow(UnprocessableEntityException);
     });
 

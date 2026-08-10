@@ -70,7 +70,7 @@ import {
   EquipoNoEncontradoError,
   EquipoInvalidoError,
   NumeroSerieDuplicadoError,
-  TipoComponenteIdRequeridoError,
+  TipoComponenteCodigoRequeridoError,
   TipoComponenteInactivoError,
   ComponenteNoEncontradoError,
 } from '../../domain/errors/equipos.errors';
@@ -98,7 +98,7 @@ function toHttpException(error: DomainError): NotFoundException | UnprocessableE
   if (
     error instanceof EquipoInvalidoError ||
     error instanceof NumeroSerieDuplicadoError ||
-    error instanceof TipoComponenteIdRequeridoError ||
+    error instanceof TipoComponenteCodigoRequeridoError ||
     error instanceof TipoComponenteInactivoError ||
     error instanceof UbicacionInvalidaError ||
     error instanceof AsignadoInvalidoError
@@ -275,7 +275,7 @@ export class EquiposController {
   ): Promise<ComponenteResponseDto> {
     const result = await this.agregarComponenteUseCase.execute({
       equipoId: id,
-      tipoComponenteId: dto.tipoComponenteId,
+      tipoComponenteCodigo: dto.tipoComponenteCodigo,
       descripcion: dto.descripcion ?? null,
       numeroSerie: dto.numeroSerie ?? null,
       capacidad: dto.capacidad ?? null,

@@ -7,7 +7,7 @@ describe('EliminarComponenteUseCase', () => {
   it('aplica soft delete si el componente existe', async () => {
     const componente = ComponenteEquipoEntity.create({
       equipoId: 'equipo-1',
-      tipoComponenteId: 'tipo-ram',
+      tipoComponenteCodigo: 'RAM',
       descripcion: null,
       numeroSerie: null,
       capacidad: null,
