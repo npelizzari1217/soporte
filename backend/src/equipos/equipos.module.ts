@@ -52,6 +52,11 @@ import {
 } from './domain/ports/i-tipo-componente.repository';
 import { PrismaTipoComponenteRepository } from './infrastructure/persistence/prisma/prisma-tipo-componente.repository';
 import {
+  TIPO_COMPONENTE_MASTER_CHECKER,
+  ITipoComponenteMasterChecker,
+} from './domain/ports/i-tipo-componente-master.checker';
+import { TipoComponenteMasterChecker } from './infrastructure/persistence/prisma/tipo-componente-master.checker';
+import {
   TICKET_SOPORTE_REPOSITORY,
   ITicketSoporteRepository,
 } from './domain/ports/i-ticket-soporte.repository';
@@ -99,6 +104,12 @@ import { SoporteController } from './interface/controllers/soporte.controller';
  * - `EquiposController` expone el inventario + componentes + catálogo de
  *   tipos; `SoporteController` expone la creación de tickets de soporte y
  *   el registro de solución.
+ * - PR3 (sdd/tipos-componente-master): `ListarTiposComponenteUseCase` lee el
+ *   catálogo desde MASTER vía `TIPO_COMPONENTE_MASTER_CHECKER` (checker
+ *   cross-DB decoplado del módulo `tipos-componente/`, mismo criterio que
+ *   `USUARIO_MASTER_CHECKER`). `TIPO_COMPONENTE_REPOSITORY` (tenant) NO se
+ *   removió — `AgregarComponenteUseCase` lo sigue usando para validar
+ *   `tipoComponenteId` de un componente al agregarlo (PR4b lo migrará).
  *
  * FITNESS RULE: PrismaService y @prisma/client solo pueden importarse desde
  * infrastructure/ (ver backend/eslint.config.js).
@@ -119,6 +130,7 @@ import { SoporteController } from './interface/controllers/soporte.controller';
     { provide: EQUIPO_INFORMATICO_REPOSITORY, useClass: PrismaEquipoInformaticoRepository },
     { provide: COMPONENTE_EQUIPO_REPOSITORY, useClass: PrismaComponenteEquipoRepository },
     { provide: TIPO_COMPONENTE_REPOSITORY, useClass: PrismaTipoComponenteRepository },
+    { provide: TIPO_COMPONENTE_MASTER_CHECKER, useClass: TipoComponenteMasterChecker },
     { provide: TICKET_SOPORTE_REPOSITORY, useClass: PrismaTicketSoporteRepository },
 
     {
@@ -199,9 +211,9 @@ import { SoporteController } from './interface/controllers/soporte.controller';
     },
     {
       provide: ListarTiposComponenteUseCase,
-      useFactory: (tipoComponenteRepo: ITipoComponenteRepository) =>
-        new ListarTiposComponenteUseCase(tipoComponenteRepo),
-      inject: [TIPO_COMPONENTE_REPOSITORY],
+      useFactory: (tipoComponenteMasterChecker: ITipoComponenteMasterChecker) =>
+        new ListarTiposComponenteUseCase(tipoComponenteMasterChecker),
+      inject: [TIPO_COMPONENTE_MASTER_CHECKER],
     },
     {
       provide: CrearTicketSoporteUseCase,

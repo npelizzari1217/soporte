@@ -16,7 +16,6 @@ import { PERMISSIONS_KEY } from '../../../auth/infrastructure/guards/decorators'
 import { Result } from '../../../shared/domain/result';
 import { EquipoInformaticoEntity } from '../../domain/entities/equipo-informatico.entity';
 import { ComponenteEquipoEntity } from '../../domain/entities/componente-equipo.entity';
-import { TipoComponenteEntity } from '../../domain/entities/tipo-componente.entity';
 import {
   EquipoNoEncontradoError,
   NumeroSerieDuplicadoError,
@@ -283,13 +282,7 @@ describe('EquiposController (T12.6)', () => {
   describe('GET /equipos/tipos-componente', () => {
     it('lista los tipos de componente activos SIN requerir permiso de escritura', async () => {
       const { controller, listarTiposComponenteUseCase } = buildController();
-      const tipo = TipoComponenteEntity.reconstitute(
-        { codigo: 'RAM', nombre: 'Memoria RAM', activo: true },
-        'tipo-ram',
-        new Date(),
-        new Date(),
-        null,
-      );
+      const tipo = { codigo: 'RAM', nombre: 'Memoria RAM' };
       listarTiposComponenteUseCase.execute.mockResolvedValue(Result.ok([tipo]));
 
       const result = await controller.listarTiposComponente();
