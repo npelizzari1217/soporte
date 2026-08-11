@@ -12,7 +12,7 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ push: pushMock }) }));
 function mockBackend() {
   server.use(
     http.get("/api/catalogos/tipos-ticket", () =>
-      HttpResponse.json([{ id: "11111111-1111-1111-1111-111111111111", codigo: "SOPORTE", nombre: "Soporte", activo: true, createdAt: "", updatedAt: "" }]),
+      HttpResponse.json([{ id: "11111111-1111-1111-1111-111111111111", codigo: "SOPORTE", nombre: "Soporte", modulo: "SOPORTE", activo: true, createdAt: "", updatedAt: "" }]),
     ),
     http.get("/api/catalogos/prioridades", () =>
       HttpResponse.json([{ id: "22222222-2222-2222-2222-222222222222", codigo: "ALTA", nombre: "Alta", color: null, orden: 3, activo: true, createdAt: "", updatedAt: "" }]),

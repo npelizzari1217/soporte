@@ -13,6 +13,8 @@ import type { ReactNode } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
+import { MODULOS } from "@/shared/auth/modulo-access";
 import { useCrearTipoTicket, useEditarTipoTicket } from "../hooks/use-catalogo-mutations";
 import { tipoTicketSchema, type TipoTicketFormValues } from "../schemas";
 import type { TipoTicket } from "@/features/tickets/types";
@@ -36,7 +38,9 @@ export function TipoTicketFormDialog({ trigger, tipo }: TipoTicketFormDialogProp
     formState: { errors },
   } = useForm<TipoTicketFormValues>({
     resolver: zodResolver(tipoTicketSchema),
-    defaultValues: tipo ? { codigo: tipo.codigo, nombre: tipo.nombre } : { codigo: "", nombre: "" },
+    defaultValues: tipo
+      ? { codigo: tipo.codigo, nombre: tipo.nombre, modulo: tipo.modulo }
+      : { codigo: "", nombre: "" },
   });
 
   function submit(values: TipoTicketFormValues) {
@@ -82,6 +86,32 @@ export function TipoTicketFormDialog({ trigger, tipo }: TipoTicketFormDialogProp
             {errors.nombre && (
               <p role="alert" className="text-sm text-destructive">
                 {errors.nombre.message}
+              </p>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label htmlFor="tipo-modulo" className="text-sm font-medium text-foreground">
+              Módulo
+            </label>
+            <Select
+              id="tipo-modulo"
+              error={!!errors.modulo}
+              defaultValue={tipo?.modulo ?? ""}
+              {...register("modulo")}
+            >
+              <option value="" disabled>
+                Elegí un módulo
+              </option>
+              {MODULOS.map((modulo) => (
+                <option key={modulo} value={modulo}>
+                  {modulo}
+                </option>
+              ))}
+            </Select>
+            {errors.modulo && (
+              <p role="alert" className="text-sm text-destructive">
+                {errors.modulo.message}
               </p>
             )}
           </div>

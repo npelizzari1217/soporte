@@ -14,10 +14,19 @@ import type { Estado, Prioridad, TipoOperacion, TipoTicket } from "../types";
 /** Catálogos activos cambian con poca frecuencia (admin CRUD, B4) — staleTime más largo que el default. */
 const CATALOGO_STALE_TIME = 5 * 60_000;
 
-export function useTiposTicket() {
+/**
+ * Tipos de ticket del catálogo. Con `modulo` filtra al módulo funcional
+ * (B2: separación estricta) — el backend acepta `?modulo=COMPRAS`. Sin
+ * `modulo` devuelve todos (comportamiento previo, usado por listas/labels
+ * que mapean `tipoId → nombre` sin importar el módulo).
+ */
+export function useTiposTicket(modulo?: string) {
   return useQuery({
-    queryKey: ["catalogos", "tipos-ticket"],
-    queryFn: () => apiFetch<TipoTicket[]>("catalogos/tipos-ticket"),
+    queryKey: ["catalogos", "tipos-ticket", modulo ?? "all"],
+    queryFn: () =>
+      apiFetch<TipoTicket[]>(
+        modulo ? `catalogos/tipos-ticket?modulo=${encodeURIComponent(modulo)}` : "catalogos/tipos-ticket",
+      ),
     staleTime: CATALOGO_STALE_TIME,
   });
 }

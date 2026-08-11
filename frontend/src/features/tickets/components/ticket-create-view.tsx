@@ -16,7 +16,14 @@ import type { CrearTicketDto } from "../types";
 
 export function TicketCreateView() {
   const router = useRouter();
-  const tiposQuery = useTiposTicket();
+  // B2: este es el alta genérica alcanzada desde el botón "Nuevo ticket" de
+  // la lista universal `/tickets` — el resto de los módulos tienen su propia
+  // alta dedicada (COMPRAS: CompraCreateDialog; EDILICIA: ReparacionCreateDialog;
+  // EQUIPOS: TicketSoporteCreateDialog, todas sin selector de tipo). El único
+  // alta con selector de tipo libre es esta, y corresponde al soporte técnico
+  // general → se filtra a SOPORTE para respetar la separación estricta por
+  // módulo (no permitir elegir un tipo de COMPRAS/EDILICIA/EQUIPOS acá).
+  const tiposQuery = useTiposTicket("SOPORTE");
   const prioridadesQuery = usePrioridades();
   const crearMutation = useCrearTicket();
 

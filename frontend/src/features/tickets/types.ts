@@ -8,6 +8,8 @@
  * genérico de `apiFetch<T>()`.
  */
 
+import type { Modulo } from "@/shared/auth/modulo-access";
+
 export type TicketEstadoCodigo = "NUEVO" | "ASIGNADO" | "EN_PROCESO" | "RESUELTO" | "CERRADO" | "CANCELADO";
 
 export interface Ticket {
@@ -107,6 +109,8 @@ export interface TipoTicket {
   id: string;
   codigo: string;
   nombre: string;
+  /** Módulo funcional dueño del tipo (B2: separación estricta por módulo). */
+  modulo: Modulo;
   activo: boolean;
   createdAt: string;
   updatedAt: string;

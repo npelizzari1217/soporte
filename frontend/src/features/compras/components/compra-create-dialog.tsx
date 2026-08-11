@@ -22,7 +22,9 @@ export function CompraCreateDialog() {
   const [open, setOpen] = useState(false);
   const router = useRouter();
   const prioridadesQuery = usePrioridades();
-  const tiposQuery = useTiposTicket();
+  // B2: solo tipos del módulo COMPRAS — el backend rechaza (422) un alta de
+  // compra con un tipo de otro módulo.
+  const tiposQuery = useTiposTicket("COMPRAS");
   const crearMutation = useCrearCompra();
 
   const {

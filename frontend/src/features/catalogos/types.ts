@@ -8,14 +8,19 @@
  * Ref spec: sdd/beta-frontend/spec R-M4. Ref design: ADR-1/ADR-2. Tarea: T4.1-T4.3.
  */
 
+import type { Modulo } from "@/shared/auth/modulo-access";
+
 export interface CreateTipoTicketDto {
   codigo: string;
   nombre: string;
+  /** B2: módulo funcional dueño del tipo. Requerido por el backend. */
+  modulo: Modulo;
 }
 
 export interface EditTipoTicketDto {
   codigo?: string;
   nombre?: string;
+  modulo?: Modulo;
 }
 
 export interface CreatePrioridadDto {

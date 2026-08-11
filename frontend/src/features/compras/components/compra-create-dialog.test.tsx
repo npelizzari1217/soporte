@@ -18,7 +18,7 @@ function mockBackend(onCreate: (body: Record<string, unknown>) => void) {
   server.use(
     http.get("/api/catalogos/tipos-ticket", () =>
       HttpResponse.json([
-        { id: TIPO_ID, codigo: "COMPRAS_GENERALES", nombre: "Compras generales", activo: true, createdAt: "", updatedAt: "" },
+        { id: TIPO_ID, codigo: "COMPRAS_GENERALES", nombre: "Compras generales", modulo: "COMPRAS", activo: true, createdAt: "", updatedAt: "" },
       ]),
     ),
     http.get("/api/catalogos/prioridades", () =>

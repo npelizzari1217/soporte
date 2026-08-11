@@ -43,7 +43,7 @@ function mockBackend() {
       ]),
     ),
     http.get("/api/catalogos/tipos-ticket", () =>
-      HttpResponse.json([{ id: "ti1", codigo: "SOPORTE", nombre: "Soporte", activo: true, createdAt: "", updatedAt: "" }]),
+      HttpResponse.json([{ id: "ti1", codigo: "SOPORTE", nombre: "Soporte", modulo: "SOPORTE", activo: true, createdAt: "", updatedAt: "" }]),
     ),
     http.get("/api/catalogos/prioridades", () =>
       HttpResponse.json([{ id: "p-alta", codigo: "ALTA", nombre: "Alta", color: null, orden: 3, activo: true, createdAt: "", updatedAt: "" }]),
@@ -228,7 +228,7 @@ describe("TicketDetailView — tarjeta de equipo en mantenimiento", () => {
     server.use(
       http.get("/api/catalogos/tipos-ticket", () =>
         HttpResponse.json([
-          { id: "ti1", codigo: "COMPRAS", nombre: "Compras", activo: true, createdAt: "", updatedAt: "" },
+          { id: "ti1", codigo: "COMPRAS", nombre: "Compras", modulo: "COMPRAS", activo: true, createdAt: "", updatedAt: "" },
         ]),
       ),
       http.get(`/api/soporte/${TICKET_ID}`, () => {

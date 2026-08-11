@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MODULOS } from "@/shared/auth/modulo-access";
 
 /**
  * Validación cliente-side de los forms de catálogos (Admin > Catálogos,
@@ -14,6 +15,9 @@ export const tipoTicketSchema = z.object({
     .min(1, "El código es requerido")
     .regex(CODIGO_PATTERN, "Mayúsculas/números/guion bajo, sin espacios"),
   nombre: z.string().min(1, "El nombre es requerido"),
+  // B2: el módulo es requerido — reusa `MODULOS` (única fuente de verdad,
+  // `shared/auth/modulo-access`). El placeholder "" del select cae acá.
+  modulo: z.enum(MODULOS, { errorMap: () => ({ message: "El módulo es requerido" }) }),
 });
 export type TipoTicketFormValues = z.infer<typeof tipoTicketSchema>;
 
