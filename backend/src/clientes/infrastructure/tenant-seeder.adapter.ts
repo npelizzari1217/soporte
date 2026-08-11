@@ -94,16 +94,16 @@ const TIPO_OPERACION = [
 /**
  * Catálogo BASE (editable) de tipos_ticket (R19) — incluye MANTENIMIENTO (no-IT).
  *
- * `modulo` (B2): coincide con la heurística del backfill de la migración
- * `20260811120000_add_modulo_to_tipos_ticket` para que un tenant recién seedeado
- * y uno migrado queden idénticos. MANTENIMIENTO no matchea ningún módulo por
- * substring → cae al fallback SOPORTE; el ADMINISTRADOR puede reasignarlo por ABM.
+ * `modulo` (B2): un tenant recién seedeado queda idéntico a uno migrado. Los
+ * canónicos mapean a sí mismos; MANTENIMIENTO se clasifica en EDILICIA
+ * (mantenimiento edilicio) — decisión de producto, coincide con la migración
+ * correctiva `20260811130000_reclasificar_mantenimiento_a_edilicia`.
  */
 const TIPOS_TICKET = [
   { codigo: 'SOPORTE', nombre: 'Soporte', modulo: 'SOPORTE' },
   { codigo: 'COMPRAS', nombre: 'Compras', modulo: 'COMPRAS' },
   { codigo: 'EDILICIA', nombre: 'Edilicia', modulo: 'EDILICIA' },
-  { codigo: 'MANTENIMIENTO', nombre: 'Mantenimiento', modulo: 'SOPORTE' },
+  { codigo: 'MANTENIMIENTO', nombre: 'Mantenimiento', modulo: 'EDILICIA' },
 ];
 
 /**

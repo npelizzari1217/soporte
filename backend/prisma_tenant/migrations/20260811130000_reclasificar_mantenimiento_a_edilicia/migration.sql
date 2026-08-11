@@ -1,0 +1,11 @@
+-- B2 (refinamiento): reclasificar el tipo base MANTENIMIENTO al módulo EDILICIA.
+--
+-- La migración anterior (20260811120000) backfilleó MANTENIMIENTO al fallback
+-- SOPORTE (no matchea ningún módulo por substring). Decisión de producto:
+-- MANTENIMIENTO pertenece a EDILICIA (mantenimiento edilicio). Esta migración
+-- corrige el dato en los tenants existentes; el seeder de tenants nuevos ya
+-- siembra MANTENIMIENTO con modulo=EDILICIA directamente.
+--
+-- Idempotente (UPDATE por codigo exacto). Solo afecta el tipo base 'MANTENIMIENTO';
+-- tipos custom del tenant NO se tocan.
+UPDATE "tipos_ticket" SET "modulo" = 'EDILICIA' WHERE "codigo" = 'MANTENIMIENTO';
