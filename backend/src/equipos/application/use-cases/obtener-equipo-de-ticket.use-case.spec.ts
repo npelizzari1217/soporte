@@ -21,7 +21,10 @@ describe('ObtenerEquipoDeTicketUseCase', () => {
     const equipoRepo = {
       findById: vi.fn().mockResolvedValue(overrides?.equipo ?? null),
     };
-    const useCase = new ObtenerEquipoDeTicketUseCase(ticketSoporteRepo as never, equipoRepo as never);
+    const useCase = new ObtenerEquipoDeTicketUseCase(
+      ticketSoporteRepo as never,
+      equipoRepo as never,
+    );
     return { useCase, ticketSoporteRepo, equipoRepo };
   }
 
@@ -32,7 +35,14 @@ describe('ObtenerEquipoDeTicketUseCase', () => {
       descripcionProblema: 'No prende',
     });
     const equipo = EquipoInformaticoEntity.create(
-      { nombre: 'Notebook Dell', numeroSerie: 'SN-123', marca: null, modelo: null, fechaAdquisicion: null, ubicacionId: null },
+      {
+        nombre: 'Notebook Dell',
+        numeroSerie: 'SN-123',
+        marca: null,
+        modelo: null,
+        fechaAdquisicion: null,
+        ubicacionId: null,
+      },
       'equipo-1',
     );
     const { useCase, equipoRepo } = makeUseCase({ ticketSoporte, equipo });

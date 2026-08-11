@@ -136,7 +136,11 @@ export class AsignarYPonerEnProcesoUseCase {
 
     // Resuelve y valida el camino de arcos hasta EN_PROCESO ANTES de la
     // transacción (nada se muta si algún arco es inválido).
-    const pasosResult = await this.resolverPasosHastaEnProceso(ticket, estadoActual, tipoTicket.codigo);
+    const pasosResult = await this.resolverPasosHastaEnProceso(
+      ticket,
+      estadoActual,
+      tipoTicket.codigo,
+    );
     if (pasosResult.isFail()) {
       return Result.fail(pasosResult.getError());
     }

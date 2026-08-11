@@ -63,7 +63,10 @@ export class ListarTecnicosAsignablesUseCase {
     }
 
     const modulo = resolverModuloDeTipoCodigo(tipoTicket.codigo);
-    const tecnicos = await this.usuarioMasterChecker.listarTecnicosAsignables(dto.clienteId, modulo);
+    const tecnicos = await this.usuarioMasterChecker.listarTecnicosAsignables(
+      dto.clienteId,
+      modulo,
+    );
     return Result.ok(tecnicos);
   }
 }
