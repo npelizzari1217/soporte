@@ -40,6 +40,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UnprocessableEntityException,
   UseGuards,
 } from '@nestjs/common';
@@ -118,11 +119,19 @@ export class CatalogosController {
    * del controller (`Reflector.getAllAndOverride` prioriza metadata de
    * handler sobre metadata de clase) — necesario porque las rutas de
    * escritura de ESTE mismo controller sí lo exigen a nivel de clase.
+   *
+   * `?modulo=COMPRAS` (opcional, B2) filtra por módulo: el alta de cada
+   * módulo pide solo sus tipos (separación estricta). Un módulo inválido → 422.
    */
   @Get('tipos-ticket')
   @RequirePermissions()
-  async listarTiposTicket(): Promise<TipoTicketResponseDto[]> {
-    const result = await this.listarTiposTicketUseCase.execute();
+  async listarTiposTicket(
+    @Query('modulo') modulo?: string,
+  ): Promise<TipoTicketResponseDto[]> {
+    const result = await this.listarTiposTicketUseCase.execute({ modulo });
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
     return result.getValue().map(toTipoTicketResponseDto);
   }
 

@@ -19,6 +19,7 @@ import {
   SolicitanteInvalidoError,
   SinCicloActivoError,
   TipoTicketNoEncontradoError,
+  TipoTicketModuloNoCorrespondeError,
 } from '../../../tickets/domain/errors/tickets.errors';
 
 function baseDto(overrides: Partial<CrearTicketCompraDto> = {}): CrearTicketCompraDto {
@@ -46,7 +47,7 @@ describe('CrearTicketCompraUseCase', () => {
         .fn()
         .mockResolvedValue(
           TipoTicketEntity.create(
-            { codigo: 'COMPRAS', nombre: 'Compras', activo: true },
+            { codigo: 'COMPRAS', nombre: 'Compras', modulo: 'COMPRAS', activo: true },
             'tipo-compras-uuid',
           ),
         ),
@@ -160,6 +161,23 @@ describe('CrearTicketCompraUseCase', () => {
 
     expect(result.isFail()).toBe(true);
     expect(result.getError()).toBeInstanceOf(TipoTicketNoEncontradoError);
+    expect(c.txRunner.run).not.toHaveBeenCalled();
+  });
+
+  it('B2: tipo de OTRO módulo (no COMPRAS) → TipoTicketModuloNoCorrespondeError, sin tocar la tx', async () => {
+    const c = makeCollaborators();
+    // Un tipo válido pero del módulo SOPORTE: el alta de compras debe rechazarlo.
+    c.tipoTicketRepo.findById.mockResolvedValue(
+      TipoTicketEntity.create(
+        { codigo: 'SOPORTE', nombre: 'Soporte', modulo: 'SOPORTE', activo: true },
+        'tipo-soporte-uuid',
+      ),
+    );
+
+    const result = await c.useCase.execute(baseDto({ tipoId: 'tipo-soporte-uuid' }));
+
+    expect(result.isFail()).toBe(true);
+    expect(result.getError()).toBeInstanceOf(TipoTicketModuloNoCorrespondeError);
     expect(c.txRunner.run).not.toHaveBeenCalled();
   });
 });

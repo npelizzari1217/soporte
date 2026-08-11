@@ -57,7 +57,7 @@ describe('PrismaKbArticuloRepository — Integration (K5)', () => {
     await tenantClient.tipoTicket.deleteMany({ where: { codigo: TIPO_CODIGO } });
 
     const tipo = await tenantClient.tipoTicket.create({
-      data: { codigo: TIPO_CODIGO, nombre: 'Test KB', activo: true },
+      data: { codigo: TIPO_CODIGO, nombre: 'Test KB', activo: true, modulo: 'SOPORTE' },
     });
     tipoTicketId = tipo.id;
 

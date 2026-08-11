@@ -1,6 +1,5 @@
 import { IUsuarioMasterChecker } from '../../domain/ports/i-usuario-master.checker';
 import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
-import { MODULO_A_TIPO_CODIGO } from '../../../shared/domain/modulos';
 
 /**
  * Regla de elegibilidad de un ASIGNADO por MÓDULO/CATÁLOGO, compartida por
@@ -8,10 +7,12 @@ import { MODULO_A_TIPO_CODIGO } from '../../../shared/domain/modulos';
  * fuente de verdad de la regla, ambos flujos deben rechazar exactamente los
  * mismos asignados).
  *
- * Criterio (espeja `resolverScope`): ROOT/ADMINISTRADOR (`esAdminTotal`) son
- * elegibles para cualquier tipo; el resto solo si tienen el módulo que mapea
- * al tipo ACTUAL del ticket (`MODULO_A_TIPO_CODIGO`). Los tipos custom (sin
- * módulo) solo los puede tomar ROOT/ADMINISTRADOR.
+ * Criterio: ROOT/ADMINISTRADOR (`esAdminTotal`) son elegibles para cualquier
+ * tipo; el resto solo si tienen asignado el `modulo` del tipo ACTUAL del ticket
+ * (B2: se lee la columna `tipos_ticket.modulo`, fuente de verdad). Con la
+ * separación estricta cada tipo — incluidos los custom — pertenece a un módulo
+ * real, así que un asignado con ese módulo ya es elegible (antes los custom
+ * solo los tomaba ROOT/ADMIN por no tener módulo derivable del `codigo`).
  *
  * Ortogonal al permiso RBAC `ticket:asignar` del ACTOR (T15): un actor con el
  * permiso puede intentar asignar a alguien no elegible y de todos modos falla.
@@ -20,7 +21,7 @@ import { MODULO_A_TIPO_CODIGO } from '../../../shared/domain/modulos';
  * @param clienteId UUID del cliente activo (para resolver la autorización).
  * @param tipoId UUID del tipo ACTUAL del ticket a asignar.
  * @param usuarioMasterChecker Puerto cross-DB que resuelve la autorización por módulo.
- * @param tipoTicketRepo Puerto para resolver `codigo de tipo → id` en el tenant.
+ * @param tipoTicketRepo Puerto para cargar el tipo (y su `modulo`) en el tenant.
  * @returns `true` si el asignado es elegible para el tipo del ticket.
  */
 export async function esAsignadoElegiblePorModulo(
@@ -28,19 +29,17 @@ export async function esAsignadoElegiblePorModulo(
   clienteId: string,
   tipoId: string,
   usuarioMasterChecker: Pick<IUsuarioMasterChecker, 'getAutorizacionModulos'>,
-  tipoTicketRepo: Pick<ITipoTicketRepository, 'findIdByCodigo'>,
+  tipoTicketRepo: Pick<ITipoTicketRepository, 'findById'>,
 ): Promise<boolean> {
   const auth = await usuarioMasterChecker.getAutorizacionModulos(asignadoId, clienteId);
   if (auth.esAdminTotal) {
     return true;
   }
 
-  const codigosPermitidos = auth.modulos
-    .map((modulo) => MODULO_A_TIPO_CODIGO[modulo])
-    .filter((codigo): codigo is string => Boolean(codigo));
-  const tipoIdsPermitidos = (
-    await Promise.all(codigosPermitidos.map((codigo) => tipoTicketRepo.findIdByCodigo(codigo)))
-  ).filter((id): id is string => id !== null);
+  const tipo = await tipoTicketRepo.findById(tipoId);
+  if (!tipo) {
+    return false;
+  }
 
-  return tipoIdsPermitidos.includes(tipoId);
+  return auth.modulos.includes(tipo.modulo);
 }

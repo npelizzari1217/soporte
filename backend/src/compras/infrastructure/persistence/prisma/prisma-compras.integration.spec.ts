@@ -116,7 +116,7 @@ describe('Compras Persistence Repos — Integration (PR3)', () => {
     presupuestoRepo = new PrismaPresupuestoRepository(tenantContext);
 
     const tipoCompras = await tenantClient.tipoTicket.create({
-      data: { codigo: 'T3_TEST_COMPRAS', nombre: 'Compras Test PR3', activo: true },
+      data: { codigo: 'T3_TEST_COMPRAS', nombre: 'Compras Test PR3', activo: true, modulo: 'COMPRAS' },
     });
     tipoComprasId = tipoCompras.id;
 

@@ -135,10 +135,10 @@ describe('Tickets Persistence Repos — Integration (PR5)', () => {
     cicloRepo = new PrismaCicloClienteRepository(tenantContext);
 
     const tipoSoporte = await tenantClient.tipoTicket.create({
-      data: { codigo: 'T5_TEST_SOPORTE', nombre: 'Soporte Test PR5', activo: true },
+      data: { codigo: 'T5_TEST_SOPORTE', nombre: 'Soporte Test PR5', activo: true, modulo: 'SOPORTE' },
     });
     const tipoCompras = await tenantClient.tipoTicket.create({
-      data: { codigo: 'T5_TEST_COMPRAS', nombre: 'Compras Test PR5', activo: true },
+      data: { codigo: 'T5_TEST_COMPRAS', nombre: 'Compras Test PR5', activo: true, modulo: 'COMPRAS' },
     });
     tipoSoporteId = tipoSoporte.id;
     tipoComprasId = tipoCompras.id;
@@ -479,6 +479,7 @@ describe('Tickets Persistence Repos — Integration (PR5)', () => {
             codigo: `T5_TEST_PAG_${randomBytes(3).toString('hex')}`,
             activo: true,
             nombre: 'Paginacion',
+            modulo: 'SOPORTE',
           },
         });
 
@@ -566,6 +567,7 @@ describe('Tickets Persistence Repos — Integration (PR5)', () => {
             codigo: `T5_TEST_BUSQ_${randomBytes(3).toString('hex')}`,
             activo: true,
             nombre: 'Busqueda',
+            modulo: 'SOPORTE',
           },
         });
 

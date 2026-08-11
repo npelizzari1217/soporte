@@ -67,7 +67,7 @@ describe('PrismaTicketRepository — Aislamiento cross-tenant real (T5.7, T23)',
 
     const suffix = randomBytes(3).toString('hex');
     const tipoA = await tenantAClient.tipoTicket.create({
-      data: { codigo: `T5ISOA${suffix}`, nombre: 'Aislamiento Tenant A', activo: true },
+      data: { codigo: `T5ISOA${suffix}`, nombre: 'Aislamiento Tenant A', activo: true, modulo: 'SOPORTE' },
     });
     tipoAId = tipoA.id;
 

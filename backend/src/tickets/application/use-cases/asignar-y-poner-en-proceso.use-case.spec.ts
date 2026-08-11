@@ -70,7 +70,7 @@ describe('AsignarYPonerEnProcesoUseCase', () => {
       findByCodigo: vi.fn((codigo: string) => Promise.resolve(ESTADOS[codigo] ?? null)),
     };
     const tipoTicketRepo = {
-      findById: vi.fn().mockResolvedValue({ codigo: 'SOPORTE' }),
+      findById: vi.fn().mockResolvedValue({ codigo: 'SOPORTE', modulo: 'SOPORTE' }),
       findIdByCodigo: vi.fn(async (codigo: string) =>
         codigo === 'SOPORTE' ? 'tipo-soporte-uuid' : null,
       ),

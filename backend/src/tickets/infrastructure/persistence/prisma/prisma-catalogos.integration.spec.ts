@@ -95,12 +95,13 @@ describe('Catálogos Prisma Repositories — Integration (T2.3)', () => {
     });
 
     await tenantClient.tipoTicket.create({
-      data: { codigo: ACTIVE_TIPO_TICKET, nombre: 'Test Activo', activo: true },
+      data: { codigo: ACTIVE_TIPO_TICKET, nombre: 'Test Activo', modulo: 'SOPORTE', activo: true },
     });
     await tenantClient.tipoTicket.create({
       data: {
         codigo: DELETED_TIPO_TICKET,
         nombre: 'Test Baja',
+        modulo: 'SOPORTE',
         activo: true,
         deletedAt: new Date(),
       },
@@ -280,6 +281,7 @@ describe('Catálogos Prisma Repositories — Integration (T2.3)', () => {
       const tipo = TipoTicketEntity.create({
         codigo: NUEVO_CODIGO,
         nombre: 'Nuevo desde repo',
+        modulo: 'SOPORTE',
         activo: true,
       });
 
@@ -295,6 +297,7 @@ describe('Catálogos Prisma Repositories — Integration (T2.3)', () => {
       const tipo = TipoTicketEntity.create({
         codigo: NUEVO_CODIGO,
         nombre: 'Original',
+        modulo: 'SOPORTE',
         activo: true,
       });
       await tipoTicketRepo.save(tipo);

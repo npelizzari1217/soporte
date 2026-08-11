@@ -13,6 +13,7 @@ import {
   TipoTicketCodigoDuplicadoError,
   PrefijoTipoTicketColisionError,
   TipoTicketDesconocidoError,
+  ModuloTipoTicketInvalidoError,
 } from '../../domain/errors/tickets.errors';
 
 describe('CrearTipoTicketUseCase', () => {
@@ -31,25 +32,46 @@ describe('CrearTipoTicketUseCase', () => {
   it('crea el tipo de ticket y lo persiste cuando codigo y prefijo son únicos', async () => {
     const c = makeCollaborators();
 
-    const result = await c.useCase.execute({ codigo: 'RRHH', nombre: 'Recursos Humanos' });
+    const result = await c.useCase.execute({
+      codigo: 'RRHH',
+      nombre: 'Recursos Humanos',
+      modulo: 'SOPORTE',
+    });
 
     expect(result.isOk()).toBe(true);
     const tipo = result.getValue();
     expect(tipo.codigo).toBe('RRHH');
     expect(tipo.nombre).toBe('Recursos Humanos');
+    expect(tipo.modulo).toBe('SOPORTE');
     expect(tipo.activo).toBe(true);
     expect(c.tipoTicketRepo.save).toHaveBeenCalledWith(tipo);
+  });
+
+  it('modulo inválido → ModuloTipoTicketInvalidoError (422), sin tocar el repo', async () => {
+    const c = makeCollaborators();
+
+    const result = await c.useCase.execute({
+      codigo: 'RRHH',
+      nombre: 'Recursos Humanos',
+      modulo: 'INVENTADO',
+    });
+
+    expect(result.isFail()).toBe(true);
+    expect(result.getError()).toBeInstanceOf(ModuloTipoTicketInvalidoError);
+    expect(c.tipoTicketRepo.findByCodigo).not.toHaveBeenCalled();
+    expect(c.tipoTicketRepo.save).not.toHaveBeenCalled();
   });
 
   it('codigo ya existente (activo o soft-deleted) → TipoTicketCodigoDuplicadoError (422), sin persistir', async () => {
     const existente = TipoTicketEntity.create({
       codigo: 'SOPORTE',
       nombre: 'Soporte',
+      modulo: 'SOPORTE',
       activo: true,
     });
     const c = makeCollaborators([existente]);
 
-    const result = await c.useCase.execute({ codigo: 'SOPORTE', nombre: 'Duplicado' });
+    const result = await c.useCase.execute({ codigo: 'SOPORTE', nombre: 'Duplicado', modulo: 'SOPORTE' });
 
     expect(result.isFail()).toBe(true);
     expect(result.getError()).toBeInstanceOf(TipoTicketCodigoDuplicadoError);
@@ -61,11 +83,12 @@ describe('CrearTipoTicketUseCase', () => {
     const existente = TipoTicketEntity.create({
       codigo: 'COMPRAS',
       nombre: 'Compras',
+      modulo: 'COMPRAS',
       activo: true,
     });
     const c = makeCollaborators([existente]);
 
-    const result = await c.useCase.execute({ codigo: 'COMISION', nombre: 'Comisiones' });
+    const result = await c.useCase.execute({ codigo: 'COMISION', nombre: 'Comisiones', modulo: 'SOPORTE' });
 
     expect(result.isFail()).toBe(true);
     expect(result.getError()).toBeInstanceOf(PrefijoTipoTicketColisionError);
@@ -76,13 +99,14 @@ describe('CrearTipoTicketUseCase', () => {
     const dadoDeBaja = TipoTicketEntity.create({
       codigo: 'COMPRAS',
       nombre: 'Compras',
+      modulo: 'COMPRAS',
       activo: false,
     });
     dadoDeBaja.desactivar();
     const c = makeCollaborators([dadoDeBaja]);
     // findByCodigo solo se llama con el codigo nuevo (distinto), no colisiona ahí.
 
-    const result = await c.useCase.execute({ codigo: 'COMISION', nombre: 'Comisiones' });
+    const result = await c.useCase.execute({ codigo: 'COMISION', nombre: 'Comisiones', modulo: 'SOPORTE' });
 
     expect(result.isOk()).toBe(true);
   });
@@ -90,7 +114,7 @@ describe('CrearTipoTicketUseCase', () => {
   it('codigo degenerado (sin caracteres alfanuméricos) → TipoTicketDesconocidoError (422), sin persistir', async () => {
     const c = makeCollaborators();
 
-    const result = await c.useCase.execute({ codigo: '###', nombre: 'Inválido' });
+    const result = await c.useCase.execute({ codigo: '###', nombre: 'Inválido', modulo: 'SOPORTE' });
 
     expect(result.isFail()).toBe(true);
     expect(result.getError()).toBeInstanceOf(TipoTicketDesconocidoError);

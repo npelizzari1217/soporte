@@ -355,3 +355,39 @@ export class PrioridadCodigoDuplicadaError extends DomainError {
     super(`Ya existe una prioridad con codigo "${codigo}" en este tenant (activa o dada de baja).`);
   }
 }
+
+/**
+ * ModuloTipoTicketInvalidoError — el `modulo` provisto al crear/editar un
+ * `TipoTicket` no es uno de los módulos funcionales válidos (`MODULOS`:
+ * SOPORTE/COMPRAS/EDILICIA/EQUIPOS). B2: cada tipo pertenece a EXACTAMENTE un
+ * módulo (columna NOT NULL), así que el alta exige un módulo válido.
+ * → HTTP 422 en la capa de presentación.
+ */
+export class ModuloTipoTicketInvalidoError extends DomainError {
+  readonly code = 'MODULO_TIPO_TICKET_INVALIDO';
+
+  constructor(modulo: string) {
+    super(
+      `El módulo "${modulo}" no es un módulo funcional válido ` +
+        `(SOPORTE, COMPRAS, EDILICIA, EQUIPOS).`,
+    );
+  }
+}
+
+/**
+ * TipoTicketModuloNoCorrespondeError — el `tipoId` elegido en el alta de un
+ * flujo especializado pertenece a un módulo distinto del esperado (B2,
+ * separación estricta). Ej.: crear un ticket de compra con un tipo cuyo
+ * `modulo` no es COMPRAS. El alta de cada módulo solo acepta sus propios tipos.
+ * → HTTP 422 en la capa de presentación.
+ */
+export class TipoTicketModuloNoCorrespondeError extends DomainError {
+  readonly code = 'TIPO_TICKET_MODULO_NO_CORRESPONDE';
+
+  constructor(tipoId: string, moduloEsperado: string, moduloReal: string) {
+    super(
+      `El tipo de ticket "${tipoId}" pertenece al módulo "${moduloReal}", ` +
+        `pero este flujo requiere un tipo del módulo "${moduloEsperado}".`,
+    );
+  }
+}

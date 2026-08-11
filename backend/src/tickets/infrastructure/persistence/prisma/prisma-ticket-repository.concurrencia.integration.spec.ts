@@ -56,7 +56,7 @@ describe('PrismaTicketRepository.findLastSecuencia — Concurrencia real (T5.2, 
 
     const suffix = randomBytes(3).toString('hex');
     const tipo = await tenantClient.tipoTicket.create({
-      data: { codigo: `T5CONC${suffix}`, nombre: 'Concurrencia Test PR5', activo: true },
+      data: { codigo: `T5CONC${suffix}`, nombre: 'Concurrencia Test PR5', activo: true, modulo: 'SOPORTE' },
     });
     tipoConcurrenciaId = tipo.id;
 

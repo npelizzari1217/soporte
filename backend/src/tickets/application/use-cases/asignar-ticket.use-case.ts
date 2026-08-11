@@ -84,7 +84,7 @@ export class AsignarTicketUseCase {
       IUsuarioMasterChecker,
       'estaActivoEnTenant' | 'getAutorizacionModulos'
     >,
-    private readonly tipoTicketRepo: Pick<ITipoTicketRepository, 'findIdByCodigo'>,
+    private readonly tipoTicketRepo: Pick<ITipoTicketRepository, 'findById'>,
     private readonly tipoOperacionRepo: ITipoOperacionRepository,
     private readonly txRunner: ITenantTransactionRunner,
   ) {}

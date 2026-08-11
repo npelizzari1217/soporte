@@ -8,16 +8,20 @@
  */
 import type { TipoTicket as PrismaTipoTicket } from '.prisma/tenant';
 import { TipoTicketEntity } from '../../../domain/entities/tipo-ticket.entity';
+import { Modulo } from '../../../../shared/domain/modulos';
 
 export class TipoTicketMapper {
   /**
    * Convierte una fila de DB Prisma → TipoTicketEntity de dominio.
+   * `modulo` se persiste como VarChar; el CHECK de valores válidos lo garantiza
+   * la capa de aplicación (crear/editar validan contra `MODULOS`).
    */
   static toDomain(row: PrismaTipoTicket): TipoTicketEntity {
     return TipoTicketEntity.reconstitute(
       {
         codigo: row.codigo,
         nombre: row.nombre,
+        modulo: row.modulo as Modulo,
         activo: row.activo,
       },
       row.id,
@@ -37,6 +41,7 @@ export class TipoTicketMapper {
       id: entity.id,
       codigo: entity.codigo,
       nombre: entity.nombre,
+      modulo: entity.modulo,
       activo: entity.activo,
       deletedAt: entity.deletedAt,
       createdAt: entity.createdAt,

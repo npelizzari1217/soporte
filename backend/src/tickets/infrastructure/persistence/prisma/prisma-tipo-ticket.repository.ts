@@ -17,6 +17,7 @@ import { TenantContext } from '../../../../shared/tenancy/tenant-context';
 import { TenantPrismaClient } from '../../../../shared/infrastructure/persistence/prisma-clients';
 import { ITipoTicketRepository } from '../../../domain/ports/i-tipo-ticket.repository';
 import { TipoTicketEntity } from '../../../domain/entities/tipo-ticket.entity';
+import { Modulo } from '../../../../shared/domain/modulos';
 import { TipoTicketMapper } from './tipo-ticket.mapper';
 
 @Injectable()
@@ -48,6 +49,14 @@ export class PrismaTipoTicketRepository implements ITipoTicketRepository {
   async findAllActive(): Promise<TipoTicketEntity[]> {
     const rows = await this.client.tipoTicket.findMany({
       where: { deletedAt: null },
+      orderBy: { codigo: 'asc' },
+    });
+    return rows.map(TipoTicketMapper.toDomain);
+  }
+
+  async findAllActiveByModulo(modulo: Modulo): Promise<TipoTicketEntity[]> {
+    const rows = await this.client.tipoTicket.findMany({
+      where: { deletedAt: null, modulo },
       orderBy: { codigo: 'asc' },
     });
     return rows.map(TipoTicketMapper.toDomain);

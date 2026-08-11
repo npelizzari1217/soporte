@@ -1,4 +1,5 @@
 import { TipoTicketEntity } from '../entities/tipo-ticket.entity';
+import { Modulo } from '../../../shared/domain/modulos';
 
 /**
  * ITipoTicketRepository — puerto de acceso al catálogo EDITABLE de tipos de
@@ -35,6 +36,13 @@ export interface ITipoTicketRepository {
    * Retorna todos los tipos de ticket activos (no soft-deleted) del tenant.
    */
   findAllActive(): Promise<TipoTicketEntity[]>;
+
+  /**
+   * Retorna los tipos de ticket activos (no soft-deleted) de un MÓDULO
+   * específico (B2, separación estricta). Alimenta el selector de tipo del
+   * alta de cada módulo (ej. el alta de compras solo ve tipos de COMPRAS).
+   */
+  findAllActiveByModulo(modulo: Modulo): Promise<TipoTicketEntity[]>;
 
   /**
    * Persiste un `TipoTicketEntity` (upsert por id: INSERT si es nuevo,

@@ -5,15 +5,19 @@ import {
   TipoTicketCodigoDuplicadoError,
   PrefijoTipoTicketColisionError,
   TipoTicketDesconocidoError,
+  ModuloTipoTicketInvalidoError,
 } from '../../domain/errors/tickets.errors';
 import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
 import { NumeradorTicket } from '../../domain/services/numerador-ticket.service';
+import { esModuloValido, Modulo } from '../../../shared/domain/modulos';
 
 /** DTO de entrada de `EditarTipoTicketUseCase` (T2, PR11) — PATCH semántico. */
 export interface EditarTipoTicketDto {
   id: string;
   codigo?: string;
   nombre?: string;
+  /** Reasignar el módulo dueño del tipo (B2). Si viene, se valida contra `MODULOS`. */
+  modulo?: string;
 }
 
 /**
@@ -41,6 +45,10 @@ export class EditarTipoTicketUseCase {
       return Result.fail(new TipoTicketNoEncontradoError(dto.id));
     }
 
+    if (dto.modulo !== undefined && !esModuloValido(dto.modulo)) {
+      return Result.fail(new ModuloTipoTicketInvalidoError(dto.modulo));
+    }
+
     if (dto.codigo !== undefined && dto.codigo !== tipo.codigo) {
       const existente = await this.tipoTicketRepo.findByCodigo(dto.codigo);
       if (existente && existente.id !== tipo.id) {
@@ -63,7 +71,11 @@ export class EditarTipoTicketUseCase {
       }
     }
 
-    tipo.actualizar({ codigo: dto.codigo, nombre: dto.nombre });
+    tipo.actualizar({
+      codigo: dto.codigo,
+      nombre: dto.nombre,
+      modulo: dto.modulo as Modulo | undefined,
+    });
     await this.tipoTicketRepo.save(tipo);
 
     return Result.ok(tipo);

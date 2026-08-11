@@ -120,7 +120,7 @@ describe('Reparaciones Persistence Repos — Integration (PR7)', () => {
     ubicacionRepo = new PrismaUbicacionRepository(tenantContext);
 
     const tipoEdilicia = await tenantClient.tipoTicket.create({
-      data: { codigo: 'T7_TEST_EDILICIA', nombre: 'Edilicia Test PR7', activo: true },
+      data: { codigo: 'T7_TEST_EDILICIA', nombre: 'Edilicia Test PR7', activo: true, modulo: 'EDILICIA' },
     });
     tipoEdiliciaId = tipoEdilicia.id;
 

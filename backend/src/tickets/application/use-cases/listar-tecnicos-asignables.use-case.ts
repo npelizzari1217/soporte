@@ -2,7 +2,6 @@ import { DomainError, Result } from '../../../shared/domain/result';
 import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
 import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
 import { IUsuarioMasterChecker } from '../../domain/ports/i-usuario-master.checker';
-import { resolverModuloDeTipoCodigo } from '../../../shared/domain/modulos';
 import { TicketNoEncontradoError } from '../../domain/errors/tickets.errors';
 
 /** DTO de entrada de `ListarTecnicosAsignablesUseCase`. */
@@ -25,15 +24,11 @@ export interface TecnicoAsignable {
  *
  * Flujo:
  * 1. Carga el ticket. Si no existe o está soft-deleted → `TicketNoEncontradoError` (404).
- * 2. Resuelve el MÓDULO del tipo del ticket: `tipoTicketRepo.findById(ticket.tipoId)`
- *    devuelve el `codigo` del tipo y `resolverModuloDeTipoCodigo(codigo)` lo mapea
- *    a su módulo (o `null` si es un tipo CUSTOM sin módulo). Se prefiere resolver
- *    por el `codigo` del tipo (una sola consulta, usando el mapa inverso
- *    `TIPO_CODIGO_A_MODULO`) antes que recorrer `MODULO_A_TIPO_CODIGO` haciendo
- *    N `findIdByCodigo` — mismo resultado, menos I/O, y aprovecha el mapa inverso.
- * 3. Delega en `usuarioMasterChecker.listarTecnicosAsignables(clienteId, modulo)`:
- *    con `modulo === null` (tipo custom) la lista es `[]` (no hay técnicos
- *    elegibles por catálogo).
+ * 2. Carga el tipo del ticket (`tipoTicketRepo.findById(ticket.tipoId)`) y lee su
+ *    `modulo` directo de la columna (B2, fuente de verdad). Antes se derivaba por
+ *    convención de `codigo`, lo que dejaba a los tipos CUSTOM sin módulo (`null`)
+ *    y por ende sin técnicos asignables; ahora todo tipo tiene un módulo real.
+ * 3. Delega en `usuarioMasterChecker.listarTecnicosAsignables(clienteId, modulo)`.
  *
  * Solo LECTURA: no muta ni abre transacción. Sin throw para fallos esperados.
  */
@@ -62,10 +57,9 @@ export class ListarTecnicosAsignablesUseCase {
       );
     }
 
-    const modulo = resolverModuloDeTipoCodigo(tipoTicket.codigo);
     const tecnicos = await this.usuarioMasterChecker.listarTecnicosAsignables(
       dto.clienteId,
-      modulo,
+      tipoTicket.modulo,
     );
     return Result.ok(tecnicos);
   }

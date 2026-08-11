@@ -99,11 +99,19 @@ model Prioridad {
 // soporte1 se retira; la app decide qué satélite (ticket_soporte /
 // ticket_compra / ticket_edilicia) corresponde por convención de código, y
 // tipos custom simplemente no tienen satélite).
+//
+// `modulo` (B2): módulo funcional dueño del tipo (SOPORTE/COMPRAS/EDILICIA/
+// EQUIPOS). Separación ESTRICTA: cada tipo pertenece a exactamente un módulo.
+// Es la fuente de verdad de la relación tipo↔módulo (antes se derivaba por
+// convención de `codigo`, dejando a los tipos custom sin módulo → sin técnicos
+// asignables). El alta de cada módulo filtra por esta columna y la elegibilidad
+// de asignación la lee directo.
 
 model TipoTicket {
   id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   codigo    String    @unique @db.VarChar(50)
   nombre    String    @db.VarChar(100)
+  modulo    String    @db.VarChar(50)
   activo    Boolean   @default(true)
   createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
@@ -112,6 +120,7 @@ model TipoTicket {
   tickets     Ticket[]
   kbArticulos KbArticulo[]
 
+  @@index([modulo, activo])
   @@map("tipos_ticket")
 }
 

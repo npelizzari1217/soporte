@@ -103,7 +103,7 @@ describe('Aislamiento cross-tenant real — repos satélite de Fase 3 (TV.2)', (
 
     const suffix = randomBytes(3).toString('hex');
     const tipo = await tenantAClient.tipoTicket.create({
-      data: { codigo: `TVISO${suffix}`, nombre: 'Aislamiento TV Test', activo: true },
+      data: { codigo: `TVISO${suffix}`, nombre: 'Aislamiento TV Test', activo: true, modulo: 'SOPORTE' },
     });
     tipoId = tipo.id;
     const estado = await tenantAClient.estado.create({

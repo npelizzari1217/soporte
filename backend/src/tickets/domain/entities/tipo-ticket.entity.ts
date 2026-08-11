@@ -1,4 +1,5 @@
 import { BaseEntity } from '../../../shared/domain/base-entity';
+import { Modulo } from '../../../shared/domain/modulos';
 
 /**
  * TipoTicketProps — shape de las propiedades del catálogo TipoTicket.
@@ -6,11 +7,13 @@ import { BaseEntity } from '../../../shared/domain/base-entity';
  *
  * A diferencia de Estado/Prioridad, `tipos_ticket` NO tiene columnas
  * color/orden en el schema real (`prisma_tenant/schema.prisma`) — el
- * discriminador de flujo es únicamente `codigo`.
+ * discriminador de flujo es `codigo`, y `modulo` (B2) define el módulo
+ * funcional dueño del tipo (separación estricta: exactamente uno).
  */
 export interface TipoTicketProps {
   codigo: string;
   nombre: string;
+  modulo: Modulo;
   activo: boolean;
 }
 
@@ -58,6 +61,10 @@ export class TipoTicketEntity extends BaseEntity<TipoTicketProps> {
     return this.props.nombre;
   }
 
+  get modulo(): Modulo {
+    return this.props.modulo;
+  }
+
   get activo(): boolean {
     return this.props.activo;
   }
@@ -74,12 +81,15 @@ export class TipoTicketEntity extends BaseEntity<TipoTicketProps> {
    *
    * Ref spec: sdd/tickets-core/spec T2. Tarea: T11.1.
    */
-  actualizar(datos: { codigo?: string; nombre?: string }): void {
+  actualizar(datos: { codigo?: string; nombre?: string; modulo?: Modulo }): void {
     if (datos.codigo !== undefined) {
       this.props.codigo = datos.codigo;
     }
     if (datos.nombre !== undefined) {
       this.props.nombre = datos.nombre;
+    }
+    if (datos.modulo !== undefined) {
+      this.props.modulo = datos.modulo;
     }
     this.touch();
   }

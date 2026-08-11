@@ -13,6 +13,7 @@ import { IUsuarioMasterChecker } from '../../../tickets/domain/ports/i-usuario-m
 import {
   SolicitanteInvalidoError,
   TipoTicketNoEncontradoError,
+  TipoTicketModuloNoCorrespondeError,
 } from '../../../tickets/domain/errors/tickets.errors';
 import { TicketCompraEntity } from '../../domain/entities/ticket-compra.entity';
 import { ITicketCompraRepository } from '../../domain/ports/i-ticket-compra.repository';
@@ -20,9 +21,10 @@ import { ITicketCompraRepository } from '../../domain/ports/i-ticket-compra.repo
 /**
  * DTO de entrada de `CrearTicketCompraUseCase`.
  *
- * `tipoId`: el tipo de compra lo ELIGE el caller (B1). El use case ya no fija
- * el código 'COMPRAS' — cada tenant puede tener tipos de compra propios
- * (custom del catálogo). Se valida que el `tipoId` exista en el tenant.
+ * `tipoId`: el tipo de compra lo ELIGE el caller entre los tipos del módulo
+ * COMPRAS (cada tenant puede tener tipos de compra custom). Se valida que el
+ * `tipoId` exista en el tenant Y que su `modulo` sea COMPRAS (B2, separación
+ * estricta) — un tipo de otro módulo se rechaza.
  *
  * `solicitanteId`/`autorId` = JWT.sub (mismo criterio que `CrearTicketDto`).
  * `anio` lo resuelve el controller (server-side, nunca el cliente HTTP).
@@ -49,7 +51,7 @@ export interface CrearTicketCompraDto {
  * 1. Valida que el solicitante exista en el tenant (`IUsuarioMasterChecker`).
  * 2. Resuelve el ciclo ACTIVO del tenant (nunca lo decide el caller).
  * 3. Valida que el `tipoId` elegido por el caller exista en el catálogo del
- *    tenant (B1 — el tipo de compra ya no es fijo). Ausente → `Result.fail`.
+ *    tenant y sea del módulo COMPRAS (B2). Ausente/otro módulo → `Result.fail`.
  * 4. Resuelve el estado NUEVO y el tipo de operación CAMBIO_ESTADO
  *    (catálogos FIJOS, mismo criterio).
  * 5. **DENTRO de la transacción** (`ITenantTransactionRunner.run`): genera
@@ -96,12 +98,18 @@ export class CrearTicketCompraUseCase {
     }
     const cicloActivo = cicloResult.getValue();
 
-    // 3. Tipo de compra ELEGIDO por el caller (B1) — debe existir en el
-    //    catálogo del tenant. A diferencia de los catálogos FIJOS de abajo,
-    //    esto es un error esperado del caller (tipoId inválido) → Result.fail.
+    // 3. Tipo de compra ELEGIDO por el caller — debe existir en el catálogo del
+    //    tenant Y pertenecer al módulo COMPRAS (B2, separación estricta: el alta
+    //    de compras solo acepta tipos de compra). Errores esperados del caller
+    //    (tipoId inválido o de otro módulo) → Result.fail.
     const tipo = await this.tipoTicketRepo.findById(dto.tipoId);
     if (!tipo) {
       return Result.fail(new TipoTicketNoEncontradoError(dto.tipoId));
+    }
+    if (tipo.modulo !== 'COMPRAS') {
+      return Result.fail(
+        new TipoTicketModuloNoCorrespondeError(dto.tipoId, 'COMPRAS', tipo.modulo),
+      );
     }
 
     // 4. Catálogos FIJOS garantizados por el seed (Fase 1) — su ausencia

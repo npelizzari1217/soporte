@@ -14,6 +14,10 @@ export type Modulo = (typeof MODULOS)[number];
 /** Copia mutable para poblar el JWT (ROOT/ADMINISTRADOR ven todo). */
 export const TODOS_LOS_MODULOS = (): string[] => [...MODULOS];
 
+/** Type guard: `true` si el string es un módulo funcional válido. */
+export const esModuloValido = (valor: string): valor is Modulo =>
+  (MODULOS as readonly string[]).includes(valor);
+
 /**
  * Mapa módulo funcional → código de tipo de ticket, para filtrar el listado
  * de tickets por los módulos asignados al usuario (feature 5.2 CAPA 2).
@@ -30,24 +34,26 @@ export const MODULO_A_TIPO_CODIGO: Record<string, string> = {
 };
 
 /**
- * Mapa inverso `código de tipo de ticket → módulo funcional` — deriva el
- * módulo al que pertenece un tipo de ticket a partir de su `codigo`.
+ * Infiere el módulo funcional de un tipo de ticket a partir de su `codigo`,
+ * por coincidencia de substring: si el código contiene el nombre de un módulo
+ * (COMPRAS/EDILICIA/EQUIPOS) → ese módulo; si no matchea ninguno → `SOPORTE`
+ * (fallback catch-all). Los canónicos (SOPORTE/COMPRAS/EDILICIA) caen en la
+ * misma lógica.
  *
- * Es el inverso exacto de `MODULO_A_TIPO_CODIGO`: solo los tipos de catálogo
- * fijo (SOPORTE/COMPRAS/EDILICIA) mapean a un módulo. Un tipo CUSTOM del tenant
- * (cualquier código fuera de este mapa) NO tiene módulo → `resolverModuloDeTipoCodigo`
- * devuelve `null`, y la elegibilidad por módulo lo trata como "solo ROOT/ADMIN".
- */
-export const TIPO_CODIGO_A_MODULO: Record<string, string> = Object.fromEntries(
-  Object.entries(MODULO_A_TIPO_CODIGO).map(([modulo, tipoCodigo]) => [tipoCodigo, modulo]),
-);
-
-/**
- * Resuelve el módulo funcional de un tipo de ticket por su `codigo`, o `null`
- * si es un tipo custom sin módulo asociado (ver `TIPO_CODIGO_A_MODULO`).
+ * ⚠️ Debe mantenerse en SYNC con el backfill SQL de la migración
+ * `20260811120000_add_modulo_to_tipos_ticket` (mismo orden de prioridad).
  *
- * @param tipoCodigo Código semántico del tipo de ticket (ej. "SOPORTE").
- * @returns El código del módulo (ej. "SOPORTE") o `null` si no mapea.
+ * Uso: NO es la fuente de verdad en runtime (esa es la columna `modulo` de
+ * `tipos_ticket`); sirve como default sugerido en el ABM y documenta/verifica
+ * la heurística del backfill B2.
+ *
+ * @param codigo Código semántico del tipo de ticket (ej. "COMPRAS_GENERALES").
+ * @returns El módulo inferido.
  */
-export const resolverModuloDeTipoCodigo = (tipoCodigo: string): string | null =>
-  TIPO_CODIGO_A_MODULO[tipoCodigo] ?? null;
+export const inferirModuloDeCodigo = (codigo: string): Modulo => {
+  const upper = codigo.toUpperCase();
+  // Prioridad COMPRAS > EDILICIA > EQUIPOS; SOPORTE es el fallback (por eso se
+  // excluye de la búsqueda: cualquier no-match cae a él).
+  const match = MODULOS.find((m) => m !== 'SOPORTE' && upper.includes(m));
+  return match ?? 'SOPORTE';
+};

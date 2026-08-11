@@ -10,7 +10,7 @@
 import { TipoTicketEntity } from './tipo-ticket.entity';
 
 function baseProps() {
-  return { codigo: 'SOPORTE', nombre: 'Soporte', activo: true };
+  return { codigo: 'SOPORTE', nombre: 'Soporte', modulo: 'SOPORTE' as const, activo: true };
 }
 
 describe('TipoTicketEntity', () => {
@@ -28,6 +28,7 @@ describe('TipoTicketEntity', () => {
       const tipo = TipoTicketEntity.create({
         codigo: 'RRHH',
         nombre: 'Recursos Humanos',
+        modulo: 'SOPORTE',
         activo: true,
       });
       expect(tipo.codigo).toBe('RRHH');
@@ -40,7 +41,7 @@ describe('TipoTicketEntity', () => {
       const updatedAt = new Date('2026-02-01T00:00:00Z');
 
       const tipo = TipoTicketEntity.reconstitute(
-        { codigo: 'MANTENIMIENTO', nombre: 'Mantenimiento', activo: true },
+        { codigo: 'MANTENIMIENTO', nombre: 'Mantenimiento', modulo: 'SOPORTE', activo: true },
         'db-uuid-mant',
         createdAt,
         updatedAt,

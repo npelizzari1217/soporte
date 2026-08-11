@@ -5,14 +5,18 @@
  *
  * Tarea: T11.3 (PR11 — CatalogosController + DTOs)
  */
-import { IsBoolean, IsInt, IsOptional, IsString, Matches, MinLength } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsOptional, IsString, Matches, MinLength } from 'class-validator';
 import { TipoTicketEntity } from '../../domain/entities/tipo-ticket.entity';
 import { PrioridadEntity } from '../../domain/entities/prioridad.entity';
 import { EstadoEntity } from '../../domain/entities/estado.entity';
 import { TipoOperacionEntity } from '../../domain/entities/tipo-operacion.entity';
+import { MODULOS } from '../../../shared/domain/modulos';
 
 /** `codigo` de catálogo: mayúsculas/números/guion bajo, sin espacios (consistente con el seed real). */
 const CODIGO_PATTERN = /^[A-Z0-9_]+$/;
+
+/** Copia mutable de `MODULOS` para el validador `@IsIn` (class-validator exige array mutable). */
+const MODULOS_VALIDOS = [...MODULOS];
 
 /** Body de `POST /catalogos/tipos-ticket` (T2). */
 export class CreateTipoTicketDto {
@@ -26,6 +30,10 @@ export class CreateTipoTicketDto {
   @IsString()
   @MinLength(1)
   nombre!: string;
+
+  /** Módulo funcional dueño del tipo (B2, requerido — separación estricta). */
+  @IsIn(MODULOS_VALIDOS, { message: 'modulo debe ser uno de: SOPORTE, COMPRAS, EDILICIA, EQUIPOS' })
+  modulo!: string;
 }
 
 /** Body de `PATCH /catalogos/tipos-ticket/:id` (T2) — PATCH parcial. */
@@ -42,6 +50,11 @@ export class EditTipoTicketDto {
   @IsString()
   @MinLength(1)
   nombre?: string;
+
+  /** Reasignar el módulo dueño del tipo (B2). */
+  @IsOptional()
+  @IsIn(MODULOS_VALIDOS, { message: 'modulo debe ser uno de: SOPORTE, COMPRAS, EDILICIA, EQUIPOS' })
+  modulo?: string;
 }
 
 /** Body de `POST /catalogos/prioridades` (T2). */
@@ -100,6 +113,7 @@ export interface TipoTicketResponseDto {
   id: string;
   codigo: string;
   nombre: string;
+  modulo: string;
   activo: boolean;
   createdAt: string;
   updatedAt: string;
@@ -111,6 +125,7 @@ export function toTipoTicketResponseDto(tipo: TipoTicketEntity): TipoTicketRespo
     id: tipo.id,
     codigo: tipo.codigo,
     nombre: tipo.nombre,
+    modulo: tipo.modulo,
     activo: tipo.activo,
     createdAt: tipo.createdAt.toISOString(),
     updatedAt: tipo.updatedAt.toISOString(),

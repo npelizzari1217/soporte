@@ -62,14 +62,10 @@ describe('AsignarTicketUseCase', () => {
         .fn()
         .mockResolvedValue({ esAdminTotal: false, modulos: ['SOPORTE'] }),
     };
-    // Mapea código de tipo -> tipoId del tenant (SOPORTE = el tipo del ticket).
-    const CODIGO_A_ID: Record<string, string> = {
-      SOPORTE: 'tipo-soporte-uuid',
-      COMPRAS: 'tipo-compras-uuid',
-      EDILICIA: 'tipo-edilicia-uuid',
-    };
+    // El tipo del ticket (tipo-soporte-uuid) pertenece al módulo SOPORTE (B2:
+    // la elegibilidad lee la columna `modulo` vía findById, no deriva por codigo).
     const tipoTicketRepo = {
-      findIdByCodigo: vi.fn(async (codigo: string) => CODIGO_A_ID[codigo] ?? null),
+      findById: vi.fn().mockResolvedValue({ codigo: 'SOPORTE', modulo: 'SOPORTE' }),
     };
     const tipoOperacionRepo = {
       findIdByCodigo: vi.fn().mockResolvedValue('tipo-op-asignacion-uuid'),
@@ -225,7 +221,7 @@ describe('AsignarTicketUseCase', () => {
     const result = await c.useCase.execute(baseDto());
 
     expect(result.isOk()).toBe(true);
-    // No necesita resolver tipos por módulo cuando ve todo.
-    expect(c.tipoTicketRepo.findIdByCodigo).not.toHaveBeenCalled();
+    // No necesita cargar el tipo por módulo cuando ve todo (short-circuit esAdminTotal).
+    expect(c.tipoTicketRepo.findById).not.toHaveBeenCalled();
   });
 });

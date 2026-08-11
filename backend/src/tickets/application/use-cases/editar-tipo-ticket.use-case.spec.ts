@@ -30,7 +30,7 @@ describe('EditarTipoTicketUseCase', () => {
 
   it('actualiza el nombre sin tocar el codigo (sin revalidar unicidad/prefijo)', async () => {
     const tipo = TipoTicketEntity.create(
-      { codigo: 'SOPORTE', nombre: 'Soporte', activo: true },
+      { codigo: 'SOPORTE', nombre: 'Soporte', modulo: 'SOPORTE', activo: true },
       'id-1',
     );
     const c = makeCollaborators(tipo);
@@ -44,7 +44,10 @@ describe('EditarTipoTicketUseCase', () => {
   });
 
   it('cambia el codigo cuando es único y su prefijo no colisiona', async () => {
-    const tipo = TipoTicketEntity.create({ codigo: 'RRHH', nombre: 'RRHH', activo: true }, 'id-1');
+    const tipo = TipoTicketEntity.create(
+      { codigo: 'RRHH', nombre: 'RRHH', modulo: 'SOPORTE', activo: true },
+      'id-1',
+    );
     const c = makeCollaborators(tipo);
 
     const result = await c.useCase.execute({ id: 'id-1', codigo: 'RECURSOS' });
@@ -63,9 +66,12 @@ describe('EditarTipoTicketUseCase', () => {
   });
 
   it('nuevo codigo ya usado por OTRO tipo → TipoTicketCodigoDuplicadoError (422), sin persistir', async () => {
-    const tipo = TipoTicketEntity.create({ codigo: 'RRHH', nombre: 'RRHH', activo: true }, 'id-1');
+    const tipo = TipoTicketEntity.create(
+      { codigo: 'RRHH', nombre: 'RRHH', modulo: 'SOPORTE', activo: true },
+      'id-1',
+    );
     const otro = TipoTicketEntity.create(
-      { codigo: 'SOPORTE', nombre: 'Soporte', activo: true },
+      { codigo: 'SOPORTE', nombre: 'Soporte', modulo: 'SOPORTE', activo: true },
       'id-2',
     );
     const c = makeCollaborators(tipo, [otro]);
@@ -78,9 +84,12 @@ describe('EditarTipoTicketUseCase', () => {
   });
 
   it('nuevo codigo con prefijo que colisiona con OTRO tipo ACTIVO → PrefijoTipoTicketColisionError (422)', async () => {
-    const tipo = TipoTicketEntity.create({ codigo: 'RRHH', nombre: 'RRHH', activo: true }, 'id-1');
+    const tipo = TipoTicketEntity.create(
+      { codigo: 'RRHH', nombre: 'RRHH', modulo: 'SOPORTE', activo: true },
+      'id-1',
+    );
     const otro = TipoTicketEntity.create(
-      { codigo: 'COMPRAS', nombre: 'Compras', activo: true },
+      { codigo: 'COMPRAS', nombre: 'Compras', modulo: 'COMPRAS', activo: true },
       'id-2',
     );
     const c = makeCollaborators(tipo, [otro]);
@@ -94,7 +103,7 @@ describe('EditarTipoTicketUseCase', () => {
 
   it('re-enviar el MISMO codigo actual no dispara revalidación de duplicado contra sí mismo', async () => {
     const tipo = TipoTicketEntity.create(
-      { codigo: 'SOPORTE', nombre: 'Soporte', activo: true },
+      { codigo: 'SOPORTE', nombre: 'Soporte', modulo: 'SOPORTE', activo: true },
       'id-1',
     );
     const c = makeCollaborators(tipo);

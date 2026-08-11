@@ -51,7 +51,7 @@ describe('CatalogosController — GET (sdd/beta-frontend G1)', () => {
     it('retorna la lista activa mapeada a DTO', async () => {
       const { controller, listarTiposTicketUseCase } = buildController();
       const tipo = TipoTicketEntity.reconstitute(
-        { codigo: 'SOPORTE', nombre: 'Soporte', activo: true },
+        { codigo: 'SOPORTE', nombre: 'Soporte', modulo: 'SOPORTE', activo: true },
         'tipo-1',
         new Date(),
         new Date(),

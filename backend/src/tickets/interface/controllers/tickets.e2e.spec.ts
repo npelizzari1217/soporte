@@ -328,6 +328,7 @@ describe('Tickets e2e (T4-T8, PR6)', () => {
         codigo: `${prefijo}${randomBytes(3).toString('hex').toUpperCase()}`,
         nombre: prefijo,
         activo: true,
+        modulo: 'SOPORTE',
       },
     });
     return tipo.id;
@@ -1103,7 +1104,7 @@ describe('Tickets e2e (T4-T8, PR6)', () => {
         activo: boolean;
       }>(
         `${baseUrl}/catalogos/tipos-ticket`,
-        { codigo, nombre: 'Categoría E2E' },
+        { codigo, nombre: 'Categoría E2E', modulo: 'SOPORTE' },
         bearer(admin.accessToken),
       );
       expect(creado.status).toBe(201);
@@ -1152,7 +1153,7 @@ describe('Tickets e2e (T4-T8, PR6)', () => {
 
       const { status } = await httpPost(
         `${baseUrl}/catalogos/tipos-ticket`,
-        { codigo: `NOPERM${randomBytes(2).toString('hex').toUpperCase()}`, nombre: 'Sin permiso' },
+        { codigo: `NOPERM${randomBytes(2).toString('hex').toUpperCase()}`, nombre: 'Sin permiso', modulo: 'SOPORTE' },
         bearer(actor.accessToken),
       );
 
@@ -1169,7 +1170,7 @@ describe('Tickets e2e (T4-T8, PR6)', () => {
 
       const { status, data } = await httpPost<{ message: string }>(
         `${baseUrl}/catalogos/tipos-ticket`,
-        { codigo: codigoColisionante, nombre: 'Colisión de prefijo' },
+        { codigo: codigoColisionante, nombre: 'Colisión de prefijo', modulo: 'SOPORTE' },
         bearer(admin.accessToken),
       );
 

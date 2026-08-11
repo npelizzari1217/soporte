@@ -76,7 +76,7 @@ describe('PrismaSlaTicketQueryRepository + PrismaSlaTicketWriteRepository — In
     writeRepo = new PrismaSlaTicketWriteRepository(tenantContext);
 
     const tipo = await tenantClient.tipoTicket.create({
-      data: { codigo: `${PREFIX}TIPO`, nombre: 'Fixture', activo: true },
+      data: { codigo: `${PREFIX}TIPO`, nombre: 'Fixture', activo: true, modulo: 'SOPORTE' },
     });
     tipoId = tipo.id;
 

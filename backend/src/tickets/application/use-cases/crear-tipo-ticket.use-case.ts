@@ -4,14 +4,18 @@ import {
   TipoTicketCodigoDuplicadoError,
   PrefijoTipoTicketColisionError,
   TipoTicketDesconocidoError,
+  ModuloTipoTicketInvalidoError,
 } from '../../domain/errors/tickets.errors';
 import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
 import { NumeradorTicket } from '../../domain/services/numerador-ticket.service';
+import { esModuloValido } from '../../../shared/domain/modulos';
 
 /** DTO de entrada de `CrearTipoTicketUseCase` (T2, PR11). */
 export interface CrearTipoTicketDto {
   codigo: string;
   nombre: string;
+  /** Módulo funcional dueño del tipo (B2, requerido — separación estricta). */
+  modulo: string;
 }
 
 /**
@@ -43,6 +47,10 @@ export class CrearTipoTicketUseCase {
   ) {}
 
   async execute(dto: CrearTipoTicketDto): Promise<Result<TipoTicketEntity, DomainError>> {
+    if (!esModuloValido(dto.modulo)) {
+      return Result.fail(new ModuloTipoTicketInvalidoError(dto.modulo));
+    }
+
     const existente = await this.tipoTicketRepo.findByCodigo(dto.codigo);
     if (existente) {
       return Result.fail(new TipoTicketCodigoDuplicadoError(dto.codigo));
@@ -61,7 +69,12 @@ export class CrearTipoTicketUseCase {
       );
     }
 
-    const tipo = TipoTicketEntity.create({ codigo: dto.codigo, nombre: dto.nombre, activo: true });
+    const tipo = TipoTicketEntity.create({
+      codigo: dto.codigo,
+      nombre: dto.nombre,
+      modulo: dto.modulo,
+      activo: true,
+    });
     await this.tipoTicketRepo.save(tipo);
 
     return Result.ok(tipo);
