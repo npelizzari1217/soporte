@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useCrearEquipo } from "../hooks/use-equipo-mutations";
 import { crearEquipoSchema, type CrearEquipoFormValues } from "../schemas";
-import { calcularValorResidual, hoyISO, parseImporte } from "../depreciacion";
+import { baseDepreciacion, calcularValorResidual, hoyISO, parseImporte } from "../depreciacion";
 
 export function EquipoCreateDialog() {
   const [open, setOpen] = useState(false);
@@ -31,15 +31,26 @@ export function EquipoCreateDialog() {
   } = useForm<CrearEquipoFormValues>({ resolver: zodResolver(crearEquipoSchema) });
 
   const importeActual = watch("importe");
+  const valorResidualActual = watch("valorResidual");
   const porcentajeActual = watch("porcentajeDepreciacion");
-  const puedeAplicar = !!parseImporte(importeActual) && !!(porcentajeActual && porcentajeActual.trim());
+  // Depreciación COMPUESTA: la base es el valor residual actual (si ya hubo un
+  // cálculo previo) o, si no, el importe original.
+  const base = baseDepreciacion(parseImporte(importeActual), parseImporte(valorResidualActual));
+  const baseEsResidual = parseImporte(valorResidualActual) !== null;
+  const puedeAplicar = base !== null && !!(porcentajeActual && porcentajeActual.trim());
 
-  /** Aplica el % de depreciación: setea valor residual (derivado) + fecha = hoy (editable). */
+  /**
+   * Aplica el % de depreciación sobre la base (valor residual actual o importe):
+   * setea el nuevo valor residual (derivado) + fecha = hoy (editable).
+   */
   function aplicarDepreciacion() {
-    const importe = parseImporte(getValues("importe"));
+    const baseActual = baseDepreciacion(
+      parseImporte(getValues("importe")),
+      parseImporte(getValues("valorResidual")),
+    );
     const porcentaje = parseImporte(getValues("porcentajeDepreciacion"));
-    if (importe === null || porcentaje === null) return;
-    setValue("valorResidual", String(calcularValorResidual(importe, porcentaje)), {
+    if (baseActual === null || porcentaje === null) return;
+    setValue("valorResidual", String(calcularValorResidual(baseActual, porcentaje)), {
       shouldValidate: true,
     });
     setValue("fechaValorResidual", hoyISO(), { shouldValidate: true });
@@ -176,6 +187,11 @@ export function EquipoCreateDialog() {
             {errors.porcentajeDepreciacion && (
               <p role="alert" className="text-sm text-destructive">
                 {errors.porcentajeDepreciacion.message}
+              </p>
+            )}
+            {base !== null && (
+              <p className="text-xs text-muted-foreground">
+                Se deprecia sobre {baseEsResidual ? "el valor residual actual" : "el importe"}: ${base}
               </p>
             )}
             <div className="flex flex-col gap-1">
