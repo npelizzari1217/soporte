@@ -11,22 +11,39 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { UbicacionSelect } from "@/features/edilicia/components/ubicacion-select";
-import { useUbicaciones } from "@/features/edilicia/hooks/use-ubicaciones";
+import { Textarea } from "@/components/ui/textarea";
 import { useCrearEquipo } from "../hooks/use-equipo-mutations";
 import { crearEquipoSchema, type CrearEquipoFormValues } from "../schemas";
+import { calcularValorResidual, hoyISO, parseImporte } from "../depreciacion";
 
 export function EquipoCreateDialog() {
   const [open, setOpen] = useState(false);
   const crearMutation = useCrearEquipo();
-  const ubicacionesQuery = useUbicaciones();
 
   const {
     register,
     handleSubmit,
     reset,
+    watch,
+    getValues,
+    setValue,
     formState: { errors },
   } = useForm<CrearEquipoFormValues>({ resolver: zodResolver(crearEquipoSchema) });
+
+  const importeActual = watch("importe");
+  const porcentajeActual = watch("porcentajeDepreciacion");
+  const puedeAplicar = !!parseImporte(importeActual) && !!(porcentajeActual && porcentajeActual.trim());
+
+  /** Aplica el % de depreciación: setea valor residual (derivado) + fecha = hoy (editable). */
+  function aplicarDepreciacion() {
+    const importe = parseImporte(getValues("importe"));
+    const porcentaje = parseImporte(getValues("porcentajeDepreciacion"));
+    if (importe === null || porcentaje === null) return;
+    setValue("valorResidual", String(calcularValorResidual(importe, porcentaje)), {
+      shouldValidate: true,
+    });
+    setValue("fechaValorResidual", hoyISO(), { shouldValidate: true });
+  }
 
   function submit(values: CrearEquipoFormValues) {
     crearMutation.mutate(
@@ -36,7 +53,12 @@ export function EquipoCreateDialog() {
         marca: values.marca || undefined,
         modelo: values.modelo || undefined,
         fechaAdquisicion: values.fechaAdquisicion || undefined,
-        ubicacionId: values.ubicacionId || undefined,
+        ubicacion: values.ubicacion ? values.ubicacion.toUpperCase() : undefined,
+        importe: parseImporte(values.importe) ?? undefined,
+        fechaValoracion: values.fechaValoracion || undefined,
+        observaciones: values.observaciones || undefined,
+        valorResidual: parseImporte(values.valorResidual) ?? undefined,
+        fechaValorResidual: values.fechaValorResidual || undefined,
       },
       {
         onSuccess: () => {
@@ -102,13 +124,80 @@ export function EquipoCreateDialog() {
             <label htmlFor="equipo-ubicacion" className="text-sm font-medium text-foreground">
               Ubicación
             </label>
-            <UbicacionSelect
+            <Input
               id="equipo-ubicacion"
-              ubicaciones={ubicacionesQuery.data ?? []}
-              emptyLabel="Sin ubicación"
-              {...register("ubicacionId")}
+              className="uppercase placeholder:normal-case"
+              placeholder="Texto libre (se guarda en mayúscula)"
+              {...register("ubicacion")}
             />
           </div>
+
+          <div className="flex flex-col gap-1">
+            <label htmlFor="equipo-importe" className="text-sm font-medium text-foreground">
+              Importe (valor del equipo)
+            </label>
+            <Input id="equipo-importe" type="number" step="0.01" min="0" {...register("importe")} />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label htmlFor="equipo-fecha-valoracion" className="text-sm font-medium text-foreground">
+              Fecha de valoración
+            </label>
+            <Input id="equipo-fecha-valoracion" type="date" {...register("fechaValoracion")} />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label htmlFor="equipo-observaciones" className="text-sm font-medium text-foreground">
+              Observaciones
+            </label>
+            <Textarea id="equipo-observaciones" rows={3} {...register("observaciones")} />
+          </div>
+
+          {/* Depreciación: el % NO se guarda; solo deriva el valor residual + su fecha. */}
+          <div className="flex flex-col gap-3 rounded-md border border-border p-3">
+            <p className="text-sm font-medium text-foreground">Depreciación</p>
+            <div className="flex items-end gap-2">
+              <div className="flex flex-1 flex-col gap-1">
+                <label htmlFor="equipo-porcentaje" className="text-sm font-medium text-foreground">
+                  % de depreciación
+                </label>
+                <Input
+                  id="equipo-porcentaje"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  max="999.99"
+                  error={!!errors.porcentajeDepreciacion}
+                  {...register("porcentajeDepreciacion")}
+                />
+              </div>
+              <Button type="button" variant="outline" disabled={!puedeAplicar} onClick={aplicarDepreciacion}>
+                Aplicar
+              </Button>
+            </div>
+            {errors.porcentajeDepreciacion && (
+              <p role="alert" className="text-sm text-destructive">
+                {errors.porcentajeDepreciacion.message}
+              </p>
+            )}
+            <div className="flex flex-col gap-1">
+              <label htmlFor="equipo-valor-residual" className="text-sm font-medium text-foreground">
+                Valor residual
+              </label>
+              <Input
+                id="equipo-valor-residual"
+                type="number"
+                step="0.01"
+                min="0"
+                {...register("valorResidual")}
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label htmlFor="equipo-fecha-residual" className="text-sm font-medium text-foreground">
+                Fecha del valor residual
+              </label>
+              <Input id="equipo-fecha-residual" type="date" {...register("fechaValorResidual")} />
+            </div>
+          </div>
+
           <div className="flex justify-end gap-2">
             <Button type="submit" isLoading={crearMutation.isPending}>
               Crear

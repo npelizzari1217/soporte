@@ -26,7 +26,16 @@ export interface Equipo {
   marca: string | null;
   modelo: string | null;
   fechaAdquisicion: string | null;
-  ubicacionId: string | null;
+  /** Ubicación como texto libre (siempre en mayúscula). */
+  ubicacion: string | null;
+  /** Valor del equipo + fecha de la valoración. */
+  importe: number | null;
+  fechaValoracion: string | null;
+  /** Observaciones libres del técnico. */
+  observaciones: string | null;
+  /** Valor residual (post-depreciación) + fecha del cálculo. El % NO se persiste. */
+  valorResidual: number | null;
+  fechaValorResidual: string | null;
   activo: boolean;
   createdAt: string;
   updatedAt: string;
@@ -70,7 +79,12 @@ export interface CreateEquipoDto {
   marca?: string | null;
   modelo?: string | null;
   fechaAdquisicion?: string | null;
-  ubicacionId?: string | null;
+  ubicacion?: string | null;
+  importe?: number | null;
+  fechaValoracion?: string | null;
+  observaciones?: string | null;
+  valorResidual?: number | null;
+  fechaValorResidual?: string | null;
 }
 
 export interface EditarEquipoDto {
@@ -79,7 +93,12 @@ export interface EditarEquipoDto {
   marca?: string | null;
   modelo?: string | null;
   fechaAdquisicion?: string | null;
-  ubicacionId?: string | null;
+  ubicacion?: string | null;
+  importe?: number | null;
+  fechaValoracion?: string | null;
+  observaciones?: string | null;
+  valorResidual?: number | null;
+  fechaValorResidual?: string | null;
 }
 
 export interface CreateComponenteDto {

@@ -17,12 +17,12 @@ import { PageHeader } from "@/components/shared/page-header";
 import { Can } from "@/components/shared/can";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
-import { UbicacionSelect } from "@/features/edilicia/components/ubicacion-select";
-import { useUbicaciones } from "@/features/edilicia/hooks/use-ubicaciones";
 import { useEquipo } from "../hooks/use-equipos";
 import { useEditarEquipo, useEliminarEquipo } from "../hooks/use-equipo-mutations";
 import { crearEquipoSchema, type CrearEquipoFormValues } from "../schemas";
+import { calcularValorResidual, hoyISO, parseImporte } from "../depreciacion";
 import { EquipoComponentesSection } from "./equipo-componentes-section";
 
 export interface EquipoDetailViewProps {
@@ -34,15 +34,32 @@ export function EquipoDetailView({ equipoId }: EquipoDetailViewProps) {
   const equipoQuery = useEquipo(equipoId);
   const editarMutation = useEditarEquipo(equipoId);
   const eliminarMutation = useEliminarEquipo();
-  const ubicacionesQuery = useUbicaciones();
   const [editando, setEditando] = useState(false);
 
   const {
     register,
     handleSubmit,
     reset,
+    watch,
+    getValues,
+    setValue,
     formState: { errors },
   } = useForm<CrearEquipoFormValues>({ resolver: zodResolver(crearEquipoSchema) });
+
+  const importeActual = watch("importe");
+  const porcentajeActual = watch("porcentajeDepreciacion");
+  const puedeAplicar = !!parseImporte(importeActual) && !!(porcentajeActual && porcentajeActual.trim());
+
+  /** Aplica el % de depreciación: setea valor residual (derivado) + fecha = hoy (editable). */
+  function aplicarDepreciacion() {
+    const importe = parseImporte(getValues("importe"));
+    const porcentaje = parseImporte(getValues("porcentajeDepreciacion"));
+    if (importe === null || porcentaje === null) return;
+    setValue("valorResidual", String(calcularValorResidual(importe, porcentaje)), {
+      shouldValidate: true,
+    });
+    setValue("fechaValorResidual", hoyISO(), { shouldValidate: true });
+  }
 
   if (equipoQuery.isLoading) return <DetailSkeleton />;
   if (equipoQuery.isError || !equipoQuery.data) {
@@ -68,7 +85,12 @@ export function EquipoDetailView({ equipoId }: EquipoDetailViewProps) {
         marca: values.marca || null,
         modelo: values.modelo || null,
         fechaAdquisicion: values.fechaAdquisicion || null,
-        ubicacionId: values.ubicacionId || null,
+        ubicacion: values.ubicacion ? values.ubicacion.toUpperCase() : null,
+        importe: parseImporte(values.importe),
+        fechaValoracion: values.fechaValoracion || null,
+        observaciones: values.observaciones || null,
+        valorResidual: parseImporte(values.valorResidual),
+        fechaValorResidual: values.fechaValorResidual || null,
       },
       { onSuccess: () => setEditando(false) },
     );
@@ -93,7 +115,15 @@ export function EquipoDetailView({ equipoId }: EquipoDetailViewProps) {
                     modelo: equipo.modelo ?? "",
                     // ISO ("2026-08-11T00:00:00.000Z") → "YYYY-MM-DD" que espera <input type="date">.
                     fechaAdquisicion: equipo.fechaAdquisicion ? equipo.fechaAdquisicion.slice(0, 10) : "",
-                    ubicacionId: equipo.ubicacionId ?? "",
+                    ubicacion: equipo.ubicacion ?? "",
+                    importe: equipo.importe != null ? String(equipo.importe) : "",
+                    fechaValoracion: equipo.fechaValoracion ? equipo.fechaValoracion.slice(0, 10) : "",
+                    observaciones: equipo.observaciones ?? "",
+                    valorResidual: equipo.valorResidual != null ? String(equipo.valorResidual) : "",
+                    fechaValorResidual: equipo.fechaValorResidual
+                      ? equipo.fechaValorResidual.slice(0, 10)
+                      : "",
+                    porcentajeDepreciacion: "",
                   });
                   setEditando((v) => !v);
                 }}
@@ -159,14 +189,80 @@ export function EquipoDetailView({ equipoId }: EquipoDetailViewProps) {
             <label htmlFor="editar-equipo-ubicacion" className="text-sm font-medium text-foreground">
               Ubicación
             </label>
-            <UbicacionSelect
+            <Input
               id="editar-equipo-ubicacion"
-              ubicaciones={ubicacionesQuery.data ?? []}
-              emptyLabel="Sin ubicación"
-              defaultValue={equipo.ubicacionId ?? ""}
-              {...register("ubicacionId")}
+              className="uppercase placeholder:normal-case"
+              placeholder="Texto libre (se guarda en mayúscula)"
+              {...register("ubicacion")}
             />
           </div>
+
+          <div className="flex flex-col gap-1">
+            <label htmlFor="editar-equipo-importe" className="text-sm font-medium text-foreground">
+              Importe (valor del equipo)
+            </label>
+            <Input id="editar-equipo-importe" type="number" step="0.01" min="0" {...register("importe")} />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label htmlFor="editar-equipo-fecha-valoracion" className="text-sm font-medium text-foreground">
+              Fecha de valoración
+            </label>
+            <Input id="editar-equipo-fecha-valoracion" type="date" {...register("fechaValoracion")} />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label htmlFor="editar-equipo-observaciones" className="text-sm font-medium text-foreground">
+              Observaciones
+            </label>
+            <Textarea id="editar-equipo-observaciones" rows={3} {...register("observaciones")} />
+          </div>
+
+          {/* Depreciación: el % NO se guarda; solo deriva el valor residual + su fecha. */}
+          <div className="flex flex-col gap-3 rounded-md border border-border p-3">
+            <p className="text-sm font-medium text-foreground">Depreciación</p>
+            <div className="flex items-end gap-2">
+              <div className="flex flex-1 flex-col gap-1">
+                <label htmlFor="editar-equipo-porcentaje" className="text-sm font-medium text-foreground">
+                  % de depreciación
+                </label>
+                <Input
+                  id="editar-equipo-porcentaje"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  max="999.99"
+                  error={!!errors.porcentajeDepreciacion}
+                  {...register("porcentajeDepreciacion")}
+                />
+              </div>
+              <Button type="button" variant="outline" disabled={!puedeAplicar} onClick={aplicarDepreciacion}>
+                Aplicar
+              </Button>
+            </div>
+            {errors.porcentajeDepreciacion && (
+              <p role="alert" className="text-sm text-destructive">
+                {errors.porcentajeDepreciacion.message}
+              </p>
+            )}
+            <div className="flex flex-col gap-1">
+              <label htmlFor="editar-equipo-valor-residual" className="text-sm font-medium text-foreground">
+                Valor residual
+              </label>
+              <Input
+                id="editar-equipo-valor-residual"
+                type="number"
+                step="0.01"
+                min="0"
+                {...register("valorResidual")}
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label htmlFor="editar-equipo-fecha-residual" className="text-sm font-medium text-foreground">
+                Fecha del valor residual
+              </label>
+              <Input id="editar-equipo-fecha-residual" type="date" {...register("fechaValorResidual")} />
+            </div>
+          </div>
+
           <Button type="submit" isLoading={editarMutation.isPending} className="self-start">
             Guardar
           </Button>
