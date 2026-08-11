@@ -45,6 +45,15 @@ export interface ITipoTicketRepository {
   findAllActiveByModulo(modulo: Modulo): Promise<TipoTicketEntity[]>;
 
   /**
+   * Retorna los `id` de TODOS los tipos de ticket (incluidos los soft-deleted)
+   * cuyo `modulo` esté en el set dado. Alimenta el gate de visibilidad por
+   * módulo del listado de tickets (5.2 CAPA 2): incluye tipos custom y tipos
+   * dados de baja (un ticket con un tipo desactivado sigue siendo visible para
+   * los usuarios de ese módulo). Set vacío → `[]` sin tocar la DB.
+   */
+  findIdsByModulos(modulos: Modulo[]): Promise<string[]>;
+
+  /**
    * Persiste un `TipoTicketEntity` (upsert por id: INSERT si es nuevo,
    * UPDATE si ya existe). Usado por el CRUD editable (T2, PR11):
    * crear/editar/dar de baja/reactivar.

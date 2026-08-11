@@ -231,6 +231,21 @@ describe('Catálogos Prisma Repositories — Integration (T2.3)', () => {
       expect(codigos).toContain(ACTIVE_TIPO_TICKET);
       expect(codigos).not.toContain(DELETED_TIPO_TICKET);
     });
+
+    it('findIdsByModulos() incluye tipos ACTIVOS y DADOS DE BAJA del módulo (gate 5.2, B2)', async () => {
+      const activo = await tipoTicketRepo.findByCodigo(ACTIVE_TIPO_TICKET);
+      const baja = await tipoTicketRepo.findByCodigo(DELETED_TIPO_TICKET);
+      const ids = await tipoTicketRepo.findIdsByModulos(['SOPORTE']);
+      // A diferencia de findAllActive, el gate de módulo DEBE incluir el
+      // soft-deleted: un ticket con un tipo desactivado sigue visible para los
+      // usuarios de ese módulo.
+      expect(ids).toContain(activo!.id);
+      expect(ids).toContain(baja!.id);
+    });
+
+    it('findIdsByModulos([]) retorna [] sin tocar la DB', async () => {
+      expect(await tipoTicketRepo.findIdsByModulos([])).toEqual([]);
+    });
   });
 
   // ─── PrismaTipoOperacionRepository ───────────────────────────────────────

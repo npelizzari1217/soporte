@@ -19,21 +19,6 @@ export const esModuloValido = (valor: string): valor is Modulo =>
   (MODULOS as readonly string[]).includes(valor);
 
 /**
- * Mapa módulo funcional → código de tipo de ticket, para filtrar el listado
- * de tickets por los módulos asignados al usuario (feature 5.2 CAPA 2).
- *
- * EQUIPOS NO mapea a ningún tipo de ticket (el módulo agrupa inventario +
- * soporte, pero el flujo de tickets de soporte usa el tipo SOPORTE) — por eso
- * queda fuera del mapa: un usuario con SOLO EQUIPOS no ve ningún tipo de
- * ticket en el listado.
- */
-export const MODULO_A_TIPO_CODIGO: Record<string, string> = {
-  SOPORTE: 'SOPORTE',
-  COMPRAS: 'COMPRAS',
-  EDILICIA: 'EDILICIA',
-};
-
-/**
  * Infiere el módulo funcional de un tipo de ticket a partir de su `codigo`,
  * por coincidencia de substring: si el código contiene el nombre de un módulo
  * (COMPRAS/EDILICIA/EQUIPOS) → ese módulo; si no matchea ninguno → `SOPORTE`

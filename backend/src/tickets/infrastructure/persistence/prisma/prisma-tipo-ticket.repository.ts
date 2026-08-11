@@ -62,6 +62,19 @@ export class PrismaTipoTicketRepository implements ITipoTicketRepository {
     return rows.map(TipoTicketMapper.toDomain);
   }
 
+  async findIdsByModulos(modulos: Modulo[]): Promise<string[]> {
+    if (modulos.length === 0) {
+      return [];
+    }
+    // Sin filtro de `deletedAt`: el gate de módulo debe incluir tipos dados de
+    // baja para no ocultar tickets cuyo tipo fue desactivado después.
+    const rows = await this.client.tipoTicket.findMany({
+      where: { modulo: { in: modulos } },
+      select: { id: true },
+    });
+    return rows.map((row) => row.id);
+  }
+
   /**
    * Upsert por id (T11.1, PR11): INSERT si es nuevo, UPDATE si existe.
    * Nunca pisa `createdAt` en el UPDATE.

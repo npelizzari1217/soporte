@@ -1,5 +1,5 @@
 import { DomainError, Result } from '../../../shared/domain/result';
-import { MODULO_A_TIPO_CODIGO } from '../../../shared/domain/modulos';
+import { esModuloValido } from '../../../shared/domain/modulos';
 import { TicketEntity } from '../../domain/entities/ticket.entity';
 import { ITicketRepository, TicketFiltros } from '../../domain/ports/i-ticket.repository';
 import { ICicloClienteRepository } from '../../domain/ports/i-ciclo-cliente.repository';
@@ -54,9 +54,9 @@ export interface ListarTicketsResult {
  *   `count()` se consulta con los MISMOS filtros pero SIN paginación, para
  *   que `total` refleje el universo completo, no la página actual.
  * - Gate de módulo (5.2 CAPA 2): si `dto.modulosPermitidos !== null`, se
- *   traducen los módulos a códigos de tipo (`MODULO_A_TIPO_CODIGO`,
- *   descartando los que no mapean como EQUIPOS), se resuelven esos códigos a
- *   los `tipoId` del tenant y se INTERSECTAN con `filtros.tiposIds` (nunca se
+ *   resuelven los `tipoId` cuyo `modulo` (columna de `tipos_ticket`, B2) esté
+ *   entre los módulos del usuario — incluidos los tipos CUSTOM del tenant y los
+ *   de módulo EQUIPOS — y se INTERSECTAN con `filtros.tiposIds` (nunca se
  *   permite ver un tipo fuera de los módulos del usuario). Conjunto permitido
  *   vacío → `{ items: [], total: 0 }`. `null` = sin restricción
  *   (ROOT/ADMINISTRADOR).
@@ -116,11 +116,12 @@ export class ListarTicketsUseCase {
   }
 
   /**
-   * Traduce los módulos permitidos del usuario a los `tipoId` de tipos de
-   * ticket visibles en el tenant. `null` (sin restricción) → devuelve `null`.
-   * Los módulos que no mapean a un tipo (EQUIPOS) o cuyos códigos no existen
-   * en el tenant se descartan; el resultado puede ser un array vacío (usuario
-   * sin ningún tipo visible).
+   * Resuelve los `tipoId` visibles del tenant a partir de los módulos permitidos
+   * del usuario, leyendo la columna `modulo` de `tipos_ticket` (B2). `null`
+   * (sin restricción) → devuelve `null`. Incluye tipos CUSTOM y de cualquier
+   * módulo (EQUIPOS entre ellos); los strings que no son módulos válidos se
+   * descartan. El resultado puede ser un array vacío (ningún tipo de esos
+   * módulos en el tenant → usuario sin tipos visibles).
    */
   private async resolverTiposPorModulo(
     modulosPermitidos: string[] | null | undefined,
@@ -129,15 +130,8 @@ export class ListarTicketsUseCase {
       return null;
     }
 
-    const codigos = modulosPermitidos
-      .map((modulo) => MODULO_A_TIPO_CODIGO[modulo])
-      .filter((codigo): codigo is string => codigo !== undefined);
-
-    const idsResueltos = await Promise.all(
-      codigos.map((codigo) => this.tipoTicketRepo.findIdByCodigo(codigo)),
-    );
-
-    return idsResueltos.filter((id): id is string => id !== null);
+    const modulos = modulosPermitidos.filter(esModuloValido);
+    return this.tipoTicketRepo.findIdsByModulos(modulos);
   }
 
   /**

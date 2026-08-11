@@ -47,8 +47,8 @@ export interface AsignarTicketDto {
  *    pertenece (vía membresía activa) al tenant activo (cross-DB,
  *    `IUsuarioMasterChecker.estaActivoEnTenant`). Si no → `AsignadoInvalidoError` (422).
  * 3. Valida elegibilidad POR MÓDULO/CATÁLOGO: el asignado es elegible si es
- *    ROOT/ADMINISTRADOR (ven todo) o si tiene asignado el módulo que
- *    corresponde al tipo ACTUAL del ticket (`MODULO_A_TIPO_CODIGO`). Reemplaza
+ *    ROOT/ADMINISTRADOR (ven todo) o si tiene asignado el `modulo` del tipo
+ *    ACTUAL del ticket (columna `tipos_ticket.modulo`, B2). Reemplaza
  *    el routing `usuario_tipos_ticket` por el eje de módulos por usuario: "un
  *    técnico con acceso al catálogo puede tomar/ser asignado al ticket". Si no
  *    → `AsignadoNoElegibleError` (422). Ortogonal al permiso `ticket:asignar`

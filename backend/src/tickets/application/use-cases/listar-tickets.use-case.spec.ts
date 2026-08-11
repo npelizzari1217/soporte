@@ -14,10 +14,19 @@ describe('ListarTicketsUseCase', () => {
       count: vi.fn().mockResolvedValue(0),
     };
     const cicloClienteRepo = { findActive: vi.fn().mockResolvedValue(cicloActivo) };
-    // Por default cada código resuelve a `tipo-<codigo>-id` (el tenant tiene
-    // los tipos built-in). Los tests de módulo lo sobreescriben si hace falta.
+    // B2: el gate de módulo resuelve tipoIds por la columna `modulo`. El mock
+    // mapea cada módulo a sus tipoIds del tenant (COMPRAS incluye un tipo CUSTOM;
+    // EQUIPOS no tiene ningún tipo en este tenant).
+    const TIPOS_POR_MODULO: Record<string, string[]> = {
+      SOPORTE: ['tipo-SOPORTE-id'],
+      COMPRAS: ['tipo-COMPRAS-id', 'tipo-COMPRAS_GENERALES-id'],
+      EDILICIA: ['tipo-EDILICIA-id'],
+      EQUIPOS: [],
+    };
     const tipoTicketRepo = {
-      findIdByCodigo: vi.fn(async (codigo: string) => `tipo-${codigo}-id`),
+      findIdsByModulos: vi.fn(async (modulos: string[]) =>
+        modulos.flatMap((m) => TIPOS_POR_MODULO[m] ?? []),
+      ),
     };
     const useCase = new ListarTicketsUseCase(
       ticketRepo as never,
@@ -193,12 +202,12 @@ describe('ListarTicketsUseCase', () => {
         modulosPermitidos: null,
       });
 
-      expect(c.tipoTicketRepo.findIdByCodigo).not.toHaveBeenCalled();
+      expect(c.tipoTicketRepo.findIdsByModulos).not.toHaveBeenCalled();
       const filtrosRecibidos = c.ticketRepo.findAll.mock.calls[0][0];
       expect(filtrosRecibidos.tiposIds).toBeUndefined();
     });
 
-    it("modulosPermitidos=['SOPORTE'] → filtra a los tipoIds del código SOPORTE", async () => {
+    it("modulosPermitidos=['SOPORTE'] → filtra a los tipoIds del módulo SOPORTE", async () => {
       const c = makeCollaborators(CICLO);
 
       await c.useCase.execute({
@@ -207,13 +216,29 @@ describe('ListarTicketsUseCase', () => {
         modulosPermitidos: ['SOPORTE'],
       });
 
-      expect(c.tipoTicketRepo.findIdByCodigo).toHaveBeenCalledWith('SOPORTE');
+      expect(c.tipoTicketRepo.findIdsByModulos).toHaveBeenCalledWith(['SOPORTE']);
       expect(c.ticketRepo.findAll).toHaveBeenCalledWith(
         expect.objectContaining({ tiposIds: ['tipo-SOPORTE-id'] }),
       );
     });
 
-    it("modulosPermitidos=['EQUIPOS'] (sin tipo mapeable) → items vacío, sin tocar el repo de tickets", async () => {
+    it("B2: modulosPermitidos=['COMPRAS'] incluye los tipos CUSTOM del módulo (antes se perdían)", async () => {
+      const c = makeCollaborators(CICLO);
+
+      await c.useCase.execute({
+        actorId: 'actor-uuid',
+        tienePermisoVerTodos: true,
+        modulosPermitidos: ['COMPRAS'],
+      });
+
+      // El tipo custom COMPRAS_GENERALES entra en el gate porque su columna
+      // modulo=COMPRAS; con la convención vieja por codigo quedaba afuera.
+      expect(c.ticketRepo.findAll).toHaveBeenCalledWith(
+        expect.objectContaining({ tiposIds: ['tipo-COMPRAS-id', 'tipo-COMPRAS_GENERALES-id'] }),
+      );
+    });
+
+    it("modulosPermitidos=['EQUIPOS'] sin tipos de ese módulo en el tenant → items vacío, sin tocar el repo de tickets", async () => {
       const c = makeCollaborators(CICLO);
 
       const result = await c.useCase.execute({
@@ -225,7 +250,7 @@ describe('ListarTicketsUseCase', () => {
       expect(result.isOk()).toBe(true);
       expect(result.getValue().items).toEqual([]);
       expect(result.getValue().total).toBe(0);
-      expect(c.tipoTicketRepo.findIdByCodigo).not.toHaveBeenCalled();
+      expect(c.tipoTicketRepo.findIdsByModulos).toHaveBeenCalledWith(['EQUIPOS']);
       expect(c.ticketRepo.findAll).not.toHaveBeenCalled();
     });
 
