@@ -6,6 +6,8 @@ export const crearEquipoSchema = z.object({
   numeroSerie: z.string().optional(),
   marca: z.string().optional(),
   modelo: z.string().optional(),
+  /** `<input type="date">` → "YYYY-MM-DD" (o "" sin fecha). El backend valida @IsDateString. */
+  fechaAdquisicion: z.string().optional().or(z.literal("")),
   ubicacionId: z.string().uuid().optional().or(z.literal("")),
 });
 export type CrearEquipoFormValues = z.infer<typeof crearEquipoSchema>;

@@ -18,6 +18,8 @@ import { Can } from "@/components/shared/can";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { UbicacionSelect } from "@/features/edilicia/components/ubicacion-select";
+import { useUbicaciones } from "@/features/edilicia/hooks/use-ubicaciones";
 import { useEquipo } from "../hooks/use-equipos";
 import { useEditarEquipo, useEliminarEquipo } from "../hooks/use-equipo-mutations";
 import { crearEquipoSchema, type CrearEquipoFormValues } from "../schemas";
@@ -32,6 +34,7 @@ export function EquipoDetailView({ equipoId }: EquipoDetailViewProps) {
   const equipoQuery = useEquipo(equipoId);
   const editarMutation = useEditarEquipo(equipoId);
   const eliminarMutation = useEliminarEquipo();
+  const ubicacionesQuery = useUbicaciones();
   const [editando, setEditando] = useState(false);
 
   const {
@@ -56,12 +59,16 @@ export function EquipoDetailView({ equipoId }: EquipoDetailViewProps) {
   const equipo = equipoQuery.data;
 
   function submit(values: CrearEquipoFormValues) {
+    // PATCH con formulario pre-poblado: un campo que quedó vacío = el usuario lo
+    // limpió → se manda `null` (el backend distingue null=limpiar de undefined=mantener).
     editarMutation.mutate(
       {
         nombre: values.nombre,
-        numeroSerie: values.numeroSerie || undefined,
-        marca: values.marca || undefined,
-        modelo: values.modelo || undefined,
+        numeroSerie: values.numeroSerie || null,
+        marca: values.marca || null,
+        modelo: values.modelo || null,
+        fechaAdquisicion: values.fechaAdquisicion || null,
+        ubicacionId: values.ubicacionId || null,
       },
       { onSuccess: () => setEditando(false) },
     );
@@ -84,6 +91,9 @@ export function EquipoDetailView({ equipoId }: EquipoDetailViewProps) {
                     numeroSerie: equipo.numeroSerie ?? "",
                     marca: equipo.marca ?? "",
                     modelo: equipo.modelo ?? "",
+                    // ISO ("2026-08-11T00:00:00.000Z") → "YYYY-MM-DD" que espera <input type="date">.
+                    fechaAdquisicion: equipo.fechaAdquisicion ? equipo.fechaAdquisicion.slice(0, 10) : "",
+                    ubicacionId: equipo.ubicacionId ?? "",
                   });
                   setEditando((v) => !v);
                 }}
@@ -115,6 +125,47 @@ export function EquipoDetailView({ equipoId }: EquipoDetailViewProps) {
               Nombre
             </label>
             <Input id="editar-equipo-nombre" error={!!errors.nombre} {...register("nombre")} />
+            {errors.nombre && (
+              <p role="alert" className="text-sm text-destructive">
+                {errors.nombre.message}
+              </p>
+            )}
+          </div>
+          <div className="flex flex-col gap-1">
+            <label htmlFor="editar-equipo-serie" className="text-sm font-medium text-foreground">
+              Número de serie
+            </label>
+            <Input id="editar-equipo-serie" {...register("numeroSerie")} />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label htmlFor="editar-equipo-marca" className="text-sm font-medium text-foreground">
+              Marca
+            </label>
+            <Input id="editar-equipo-marca" {...register("marca")} />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label htmlFor="editar-equipo-modelo" className="text-sm font-medium text-foreground">
+              Modelo
+            </label>
+            <Input id="editar-equipo-modelo" {...register("modelo")} />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label htmlFor="editar-equipo-fecha" className="text-sm font-medium text-foreground">
+              Fecha de adquisición
+            </label>
+            <Input id="editar-equipo-fecha" type="date" {...register("fechaAdquisicion")} />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label htmlFor="editar-equipo-ubicacion" className="text-sm font-medium text-foreground">
+              Ubicación
+            </label>
+            <UbicacionSelect
+              id="editar-equipo-ubicacion"
+              ubicaciones={ubicacionesQuery.data ?? []}
+              emptyLabel="Sin ubicación"
+              defaultValue={equipo.ubicacionId ?? ""}
+              {...register("ubicacionId")}
+            />
           </div>
           <Button type="submit" isLoading={editarMutation.isPending} className="self-start">
             Guardar
