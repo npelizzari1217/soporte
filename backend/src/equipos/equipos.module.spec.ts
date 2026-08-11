@@ -5,8 +5,7 @@
  * compilar el árbol de módulos ni requerir DB) — mismo patrón que
  * `compras.module.spec.ts`/`reparaciones.module.spec.ts`. Verifica que
  * `EquiposController` y `SoporteController` estén registrados, que
- * `TicketsModule` y `ReparacionesModule` estén importados (reuso de
- * providers — ADR-3 y validación de `ubicacionId`, respectivamente), y que
+ * `TicketsModule` esté importado (reuso de providers — ADR-3), y que
  * los 3 repos de dominio estén exportados (PR4b: `TIPO_COMPONENTE_REPOSITORY`
  * tenant se eliminó — el catálogo ahora se lee desde MASTER).
  *
@@ -17,7 +16,6 @@ import { EquiposModule } from './equipos.module';
 import { EquiposController } from './interface/controllers/equipos.controller';
 import { SoporteController } from './interface/controllers/soporte.controller';
 import { TicketsModule } from '../tickets/tickets.module';
-import { ReparacionesModule } from '../reparaciones/reparaciones.module';
 import { EQUIPO_INFORMATICO_REPOSITORY } from './domain/ports/i-equipo-informatico.repository';
 import { COMPONENTE_EQUIPO_REPOSITORY } from './domain/ports/i-componente-equipo.repository';
 import { TICKET_SOPORTE_REPOSITORY } from './domain/ports/i-ticket-soporte.repository';
@@ -29,10 +27,9 @@ describe('EquiposModule wiring (T13.7)', () => {
     expect(controllers).toContain(SoporteController);
   });
 
-  it('importa TicketsModule (reusa providers exportados, ADR-3) y ReparacionesModule (UBICACION_REPOSITORY)', () => {
+  it('importa TicketsModule (reusa providers exportados, ADR-3)', () => {
     const imports = (Reflect.getMetadata('imports', EquiposModule) ?? []) as unknown[];
     expect(imports).toContain(TicketsModule);
-    expect(imports).toContain(ReparacionesModule);
   });
 
   it.each([EQUIPO_INFORMATICO_REPOSITORY, COMPONENTE_EQUIPO_REPOSITORY, TICKET_SOPORTE_REPOSITORY])(

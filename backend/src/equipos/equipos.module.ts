@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { TicketsModule } from '../tickets/tickets.module';
-import { ReparacionesModule } from '../reparaciones/reparaciones.module';
 
 import { TICKET_REPOSITORY, ITicketRepository } from '../tickets/domain/ports/i-ticket.repository';
 import {
@@ -84,10 +83,6 @@ import { SoporteController } from './interface/controllers/soporte.controller';
  *   TIPO_TICKET_REPOSITORY, TIPO_OPERACION_REPOSITORY,
  *   USUARIO_MASTER_CHECKER, CICLO_CLIENTE_REPOSITORY) — NO se reimplementan,
  *   se inyectan por token (mismo patrón que `ComprasModule`/`ReparacionesModule`).
- * - Importa `ReparacionesModule` (histórico: los equipos validaban su
- *   `ubicacionId` contra el catálogo `UBICACION_REPOSITORY`). Desde que la
- *   ubicación del equipo pasó a TEXTO LIBRE, ese acoplamiento ya NO se usa —
- *   el import quedó vestigial y es candidato a eliminar.
  * - `NumeradorTicket`/`ResolverCicloActivoParaCreacion` son clases planas
  *   (sin `@Injectable`) — se resuelven vía `useFactory`, igual que en
  *   `ComprasModule`/`ReparacionesModule`.
@@ -114,10 +109,10 @@ import { SoporteController } from './interface/controllers/soporte.controller';
  */
 @Module({
   // AuthModule: ver comentario equivalente en compras.module.ts (mismo gap,
-  // descubierto por sdd/beta-frontend B6, T6.2) — ni TicketsModule ni
-  // ReparacionesModule re-exportan AuthModule, así que los guards de
-  // EquiposController/SoporteController lo necesitan importado acá explícitamente.
-  imports: [AuthModule, TicketsModule, ReparacionesModule],
+  // descubierto por sdd/beta-frontend B6, T6.2) — TicketsModule no re-exporta
+  // AuthModule, así que los guards de EquiposController/SoporteController lo
+  // necesitan importado acá explícitamente.
+  imports: [AuthModule, TicketsModule],
   controllers: [EquiposController, SoporteController],
   providers: [
     { provide: EQUIPO_INFORMATICO_REPOSITORY, useClass: PrismaEquipoInformaticoRepository },
