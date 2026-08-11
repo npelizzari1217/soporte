@@ -4,6 +4,7 @@ import { http, HttpResponse } from "msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { server } from "../../../../test/msw/server";
 import { useLogin } from "./use-login";
+import { writeLastActivity } from "@/shared/auth/idle-storage";
 
 // Spec: [R23] BFF login route — flujo de 1 vs varias membresías.
 // Spec: PR11 — use-login container hook.
@@ -17,6 +18,10 @@ vi.mock("sonner", () => ({
   toast: { error: vi.fn() },
 }));
 
+vi.mock("@/shared/auth/idle-storage", () => ({
+  writeLastActivity: vi.fn(),
+}));
+
 function wrapper({ children }: { children: React.ReactNode }) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
@@ -25,6 +30,7 @@ function wrapper({ children }: { children: React.ReactNode }) {
 describe("useLogin", () => {
   beforeEach(() => {
     pushMock.mockClear();
+    vi.mocked(writeLastActivity).mockClear();
   });
 
   it("single-membership login (200 with { user }) → redirects to / directly, no membresías state", async () => {
@@ -42,6 +48,30 @@ describe("useLogin", () => {
 
     await waitFor(() => expect(pushMock).toHaveBeenCalledWith("/"));
     expect(result.current.membresias).toBeNull();
+    // Regresión (bug idle-timeout): un login exitoso DEBE resetear el reloj de
+    // inactividad a "ahora", si no un timestamp añejo en localStorage dispara el
+    // auto-logout inmediato y rebota a /login.
+    expect(writeLastActivity).toHaveBeenCalledWith(expect.any(Number));
+  });
+
+  it("needsClienteSelection NO resetea el idle clock todavía (aún no hay sesión)", async () => {
+    server.use(
+      http.post("/api/auth/login", () =>
+        HttpResponse.json({
+          needsClienteSelection: true,
+          membresias: [{ cliente_id: "c1", nombre: "Cliente Uno", rol: "ADMINISTRADOR" }],
+        }),
+      ),
+    );
+
+    const { result } = renderHook(() => useLogin(), { wrapper });
+
+    act(() => {
+      result.current.login("multi@example.com", "secret123");
+    });
+
+    await waitFor(() => expect(result.current.membresias).not.toBeNull());
+    expect(writeLastActivity).not.toHaveBeenCalled();
   });
 
   it("multi-membership login (needsClienteSelection) → exposes membresias[], does NOT redirect yet", async () => {

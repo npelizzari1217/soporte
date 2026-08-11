@@ -25,6 +25,7 @@ import { toast } from "sonner";
 import { apiFetch } from "@/shared/api/client";
 import { ApiError } from "@/shared/api/types";
 import type { JwtPayload } from "@/shared/api/types";
+import { writeLastActivity } from "@/shared/auth/idle-storage";
 import type { Membresia } from "../components/ClienteSelection";
 
 interface LoginDto {
@@ -60,6 +61,12 @@ export function useLogin() {
         setPendingCredentials({ email: variables.email, password: variables.password });
         return;
       }
+      // Reset del reloj de inactividad: una sesión NUEVA arranca limpia. La
+      // persistencia de `last-activity` está pensada para sobrevivir un F5 (no
+      // dejar bypassear el idle-timeout recargando), NO un login nuevo — sin
+      // esto, un timestamp añejo (>15min) de una sesión previa dispara el corte
+      // inmediato apenas entrás y te rebota a /login.
+      writeLastActivity(Date.now());
       router.push("/");
     },
 
