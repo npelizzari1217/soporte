@@ -19,6 +19,14 @@ con aislamiento físico **database-per-tenant**.
     membresías (usuario↔cliente↔rol, N:N), roles/permisos, refresh tokens, ciclos vigentes.
   - `prisma_tenant/schema.prisma` — una base de datos por cliente: tickets, timeline de
     operaciones, compras, reparaciones edilicias, equipos informáticos, base de conocimiento.
+    - **`equipos_informaticos`** (inventario IT): `nombre`, `numero_serie` (único parcial
+      cuando no es null), `marca`, `modelo`, `fecha_adquisicion`, `ubicacion` (texto libre,
+      siempre en MAYÚSCULA), `importe` + `fecha_valoracion` (valoración del equipo),
+      `observaciones` (texto libre del técnico), `valor_residual` + `fecha_valor_residual`
+      (depreciación), `activo` (baja lógica). El **% de depreciación NO se persiste**: es una
+      ayuda de cálculo en la UI que deriva `valor_residual = importe × (1 − %/100)` y setea la
+      fecha en el día actual (editable). La ubicación es texto libre — ya no referencia el
+      catálogo de `ubicaciones` (que sigue en uso para reparaciones edilicias).
 - **Auth**: `@nestjs/jwt` + `passport-jwt` + `@node-rs/argon2` (hashing de passwords).
 - **Validación**: `class-validator` / `class-transformer` con `ValidationPipe` global
   (`whitelist: true, transform: true`).
