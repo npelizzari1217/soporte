@@ -70,6 +70,8 @@ import {
 } from '../../src/clientes/domain/ports/i-postgres-admin.port';
 
 import { CrearUsuarioTenantUseCase } from '../../src/auth/application/use-cases/crear-usuario-tenant.use-case';
+import { AsignarModulosUsuarioTenantUseCase } from '../../src/auth/application/use-cases/asignar-modulos-usuario-tenant.use-case';
+import { TODOS_LOS_MODULOS } from '../../src/shared/domain/modulos';
 import { MembresiaYaActivaError } from '../../src/auth/domain/errors/auth.errors';
 import { USUARIO_REPOSITORY, type IUsuarioRepository } from '../../src/auth/domain/ports/i-usuario.repository';
 import {
@@ -242,6 +244,32 @@ async function provisionUsuarioTenant(
     );
   }
   return resolveUsuarioId(app, email);
+}
+
+/**
+ * Asigna al TÉCNICO demo TODOS los módulos funcionales (usuario_cliente_modulos)
+ * para que sea ELEGIBLE como asignado de cualquier tipo de ticket (B2). Sin esto
+ * la elegibilidad por módulo (`esAsignadoElegiblePorModulo`) rechaza la asignación
+ * de los tickets demo: el TECNICO no es admin-total, así que su elegibilidad
+ * depende de la tabla `usuario_cliente_modulos` (que `CrearUsuarioTenantUseCase`
+ * NO puebla). Idempotente: `setModulos` reemplaza el set, un re-run no duplica.
+ */
+async function asignarModulosTecnico(
+  app: INestApplicationContext,
+  clienteId: string,
+  tecnicoId: string,
+): Promise<void> {
+  const asignarModulos = app.get(AsignarModulosUsuarioTenantUseCase);
+  const result = await asignarModulos.execute({
+    clienteId,
+    usuarioId: tecnicoId,
+    modulos: TODOS_LOS_MODULOS(),
+  });
+  if (result.isFail()) {
+    throw new Error(
+      `[demo-seed] No se pudieron asignar los módulos al técnico demo: ${result.getError().message}`,
+    );
+  }
 }
 
 // ─── 3. Ciclo demo (master → adoptado + activado en el tenant) ─────────────
@@ -746,6 +774,10 @@ export async function runDemoSeed(
     colaborador: colaboradorId,
     usuario: usuarioId,
   };
+
+  // El técnico debe tener módulos ANTES de sembrar los datos (seedDemoTenantData
+  // asigna tickets al técnico y la elegibilidad por módulo se evalúa ahí).
+  await asignarModulosTecnico(app, clienteId, tecnicoId);
 
   const sembrado = await seedDemoTenantData(app, { clienteId, dbName, prismaService, tenantContext, usuarios });
 
