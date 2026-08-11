@@ -134,7 +134,7 @@ export async function bootstrapRoot(
 // ─── Ejecución directa (ts-node) ───────────────────────────────────────────────
 // Node 22+: carga .env sin dependencias adicionales. En CI/prod las env vars
 // ya están en el entorno real, por eso el try/catch (no debe fallar si no hay
-// archivo .env). Mismo patrón que prisma_tenant/seeds/tenant-seed.ts.
+// archivo .env). Mismo patrón que prisma_master/seeds/demo-seed.ts.
 if (require.main === module) {
   try {
     process.loadEnvFile();
