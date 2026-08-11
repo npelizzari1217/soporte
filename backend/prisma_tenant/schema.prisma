@@ -459,7 +459,6 @@ model Ubicacion {
   hijos Ubicacion[] @relation("UbicacionHijos")
 
   ticketsEdilicia TicketEdilicia[]
-  equipos         EquipoInformatico[]
 
   @@index([padreId]) // partial WHERE padre_id IS NOT NULL — ver migration SQL
   @@index([activo])  // partial WHERE deleted_at IS NULL — ver migration SQL
@@ -535,19 +534,28 @@ model EquipoInformatico {
   marca            String?   @db.VarChar(100)
   modelo           String?   @db.VarChar(100)
   fechaAdquisicion DateTime? @map("fecha_adquisicion") @db.Date
-  /// FK → ubicaciones.id. NULL = sin ubicación asignada.
-  ubicacionId      String?   @map("ubicacion_id") @db.Uuid
+  /// Ubicación física como TEXTO LIBRE (siempre en mayúscula, normalizado en la
+  /// capa de aplicación). Antes era FK a `ubicaciones` — se pasó a texto libre.
+  ubicacion        String?   @db.VarChar(255)
+  /// Valoración del equipo: importe (valor) + fecha en que se registró.
+  importe          Decimal?  @db.Decimal(14, 2)
+  fechaValoracion  DateTime? @map("fecha_valoracion") @db.Date
+  /// Observaciones libres del técnico.
+  observaciones    String?   @db.Text
+  /// Valor residual (post-depreciación) + fecha del cálculo. El PORCENTAJE de
+  /// depreciación NO se persiste — es solo una ayuda de cálculo en la UI que
+  /// deriva `valorResidual` = importe × (1 − %/100).
+  valorResidual      Decimal?  @map("valor_residual") @db.Decimal(14, 2)
+  fechaValorResidual DateTime? @map("fecha_valor_residual") @db.Date
   activo           Boolean   @default(true)
   createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt        DateTime? @map("deleted_at") @db.Timestamptz
 
-  ubicacion   Ubicacion?         @relation(fields: [ubicacionId], references: [id])
   componentes ComponenteEquipo[]
   archivos    ArchivoEquipo[]
   tickets     TicketSoporte[]
 
-  @@index([ubicacionId])
   @@map("equipos_informaticos")
 }
 

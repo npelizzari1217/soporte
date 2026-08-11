@@ -31,7 +31,12 @@ function makeEquipo(): EquipoInformaticoEntity {
       marca: 'Dell',
       modelo: 'Latitude',
       fechaAdquisicion: null,
-      ubicacionId: null,
+      ubicacion: null,
+      importe: null,
+      fechaValoracion: null,
+      observaciones: null,
+      valorResidual: null,
+      fechaValorResidual: null,
     },
     'equipo-uuid',
   );

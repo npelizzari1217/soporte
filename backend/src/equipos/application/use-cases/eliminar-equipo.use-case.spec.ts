@@ -11,7 +11,12 @@ describe('EliminarEquipoUseCase', () => {
       marca: null,
       modelo: null,
       fechaAdquisicion: null,
-      ubicacionId: null,
+      ubicacion: null,
+      importe: null,
+      fechaValoracion: null,
+      observaciones: null,
+      valorResidual: null,
+      fechaValorResidual: null,
     });
     const equipoRepo = { findById: vi.fn().mockResolvedValue(equipo), delete: vi.fn() };
     const useCase = new EliminarEquipoUseCase(equipoRepo as never);
@@ -28,7 +33,12 @@ describe('EliminarEquipoUseCase', () => {
       marca: null,
       modelo: null,
       fechaAdquisicion: null,
-      ubicacionId: null,
+      ubicacion: null,
+      importe: null,
+      fechaValoracion: null,
+      observaciones: null,
+      valorResidual: null,
+      fechaValorResidual: null,
     });
     equipo.softDelete();
     const equipoRepo = { findById: vi.fn().mockResolvedValue(equipo), delete: vi.fn() };

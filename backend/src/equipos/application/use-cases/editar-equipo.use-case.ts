@@ -1,7 +1,5 @@
 import { DomainError, Result } from '../../../shared/domain/result';
 import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
-import { IUbicacionRepository } from '../../../reparaciones/domain/ports/i-ubicacion.repository';
-import { UbicacionInvalidaError } from '../../../reparaciones/domain/errors/reparaciones.errors';
 import { EquipoInformaticoEntity } from '../../domain/entities/equipo-informatico.entity';
 import { IEquipoInformaticoRepository } from '../../domain/ports/i-equipo-informatico.repository';
 import {
@@ -27,7 +25,13 @@ export interface EditarEquipoDto {
   marca?: string | null;
   modelo?: string | null;
   fechaAdquisicion?: Date | null;
-  ubicacionId?: string | null;
+  /** Ubicación como TEXTO LIBRE (la entidad la normaliza a mayúscula). */
+  ubicacion?: string | null;
+  importe?: number | null;
+  fechaValoracion?: Date | null;
+  observaciones?: string | null;
+  valorResidual?: number | null;
+  fechaValorResidual?: Date | null;
 }
 
 /**
@@ -35,13 +39,13 @@ export interface EditarEquipoDto {
  *
  * Flujo:
  * 1. Carga el equipo → `EquipoNoEncontradoError` si no existe/eliminado.
- * 2. Si `ubicacionId` fue provisto (no `undefined`, no `null`): valida
- *    existencia (reusa `IUbicacionRepository` de `ReparacionesModule`).
- * 3. Si `numeroSerie` fue provisto y difiere del actual: verifica unicidad
+ * 2. Si `numeroSerie` fue provisto y difiere del actual: verifica unicidad
  *    excluyendo el propio equipo → `NumeroSerieDuplicadoError` si
  *    pertenece a OTRO equipo.
- * 4. Aplica `actualizar()` y persiste en transacción (con la misma defensa
- *    P2002 que `CrearEquipoUseCase`).
+ * 3. Aplica `actualizar()` (que normaliza `ubicacion` a mayúscula) y persiste
+ *    en transacción (con la misma defensa P2002 que `CrearEquipoUseCase`).
+ *
+ * La ubicación pasó de FK (catálogo) a TEXTO LIBRE — ya no se valida.
  *
  * Sin throw para fallos esperados — todos se modelan con `Result.fail()`.
  *
@@ -53,7 +57,6 @@ export class EditarEquipoUseCase {
       IEquipoInformaticoRepository,
       'findById' | 'findByNumeroSerie' | 'save'
     >,
-    private readonly ubicacionRepo: Pick<IUbicacionRepository, 'findById'>,
     private readonly txRunner: ITenantTransactionRunner,
   ) {}
 
@@ -61,13 +64,6 @@ export class EditarEquipoUseCase {
     const equipo = await this.equipoRepo.findById(dto.equipoId);
     if (!equipo || equipo.isDeleted()) {
       return Result.fail(new EquipoNoEncontradoError(dto.equipoId));
-    }
-
-    if (dto.ubicacionId) {
-      const ubicacion = await this.ubicacionRepo.findById(dto.ubicacionId);
-      if (!ubicacion || ubicacion.isDeleted()) {
-        return Result.fail(new UbicacionInvalidaError(dto.ubicacionId));
-      }
     }
 
     if (
@@ -87,7 +83,12 @@ export class EditarEquipoUseCase {
       marca: dto.marca,
       modelo: dto.modelo,
       fechaAdquisicion: dto.fechaAdquisicion,
-      ubicacionId: dto.ubicacionId,
+      ubicacion: dto.ubicacion,
+      importe: dto.importe,
+      fechaValoracion: dto.fechaValoracion,
+      observaciones: dto.observaciones,
+      valorResidual: dto.valorResidual,
+      fechaValorResidual: dto.fechaValorResidual,
     });
 
     try {

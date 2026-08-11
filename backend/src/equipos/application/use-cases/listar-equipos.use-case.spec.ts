@@ -10,7 +10,12 @@ describe('ListarEquiposUseCase', () => {
       marca: null,
       modelo: null,
       fechaAdquisicion: null,
-      ubicacionId: null,
+      ubicacion: null,
+      importe: null,
+      fechaValoracion: null,
+      observaciones: null,
+      valorResidual: null,
+      fechaValorResidual: null,
     });
     const equipoRepo = { findAllActive: vi.fn().mockResolvedValue([equipo]) };
     const useCase = new ListarEquiposUseCase(equipoRepo as never);

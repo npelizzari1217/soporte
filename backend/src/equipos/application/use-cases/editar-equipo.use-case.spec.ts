@@ -9,6 +9,8 @@ import {
 /**
  * T12.1 [U][RED] — EditarEquipoUseCase: numeroSerie duplicado →
  * NumeroSerieDuplicadoError; equipo inexistente → EquipoNoEncontradoError.
+ * La ubicación es TEXTO LIBRE (no se valida) — el use case ya no inyecta
+ * `ubicacionRepo`.
  *
  * Ref spec: sdd/flujos-especializados/spec F3-Q1.
  */
@@ -22,20 +24,20 @@ describe('EditarEquipoUseCase', () => {
       marca: null,
       modelo: null,
       fechaAdquisicion: null,
-      ubicacionId: null,
+      ubicacion: null,
+      importe: null,
+      fechaValoracion: null,
+      observaciones: null,
+      valorResidual: null,
+      fechaValorResidual: null,
       ...overrides,
     });
   }
 
   it('falla con EquipoNoEncontradoError si el equipo no existe', async () => {
     const equipoRepo = { findById: vi.fn().mockResolvedValue(null), save: vi.fn() };
-    const ubicacionRepo = { findById: vi.fn() };
     const txRunner = { run: vi.fn((fn: () => Promise<unknown>) => fn()) };
-    const useCase = new EditarEquipoUseCase(
-      equipoRepo as never,
-      ubicacionRepo as never,
-      txRunner as never,
-    );
+    const useCase = new EditarEquipoUseCase(equipoRepo as never, txRunner as never);
 
     const result = await useCase.execute({ equipoId: 'no-existe', nombre: 'X' });
     expect(result.isFail()).toBe(true);
@@ -45,13 +47,8 @@ describe('EditarEquipoUseCase', () => {
   it('edita nombre/marca (PATCH semántico) y persiste', async () => {
     const equipo = makeEquipo();
     const equipoRepo = { findById: vi.fn().mockResolvedValue(equipo), save: vi.fn() };
-    const ubicacionRepo = { findById: vi.fn() };
     const txRunner = { run: vi.fn((fn: () => Promise<unknown>) => fn()) };
-    const useCase = new EditarEquipoUseCase(
-      equipoRepo as never,
-      ubicacionRepo as never,
-      txRunner as never,
-    );
+    const useCase = new EditarEquipoUseCase(equipoRepo as never, txRunner as never);
 
     const result = await useCase.execute({ equipoId: equipo.id, nombre: 'Editado' });
     expect(result.isOk()).toBe(true);
@@ -67,13 +64,8 @@ describe('EditarEquipoUseCase', () => {
       findByNumeroSerie: vi.fn().mockResolvedValue(otroEquipoConEseSerie),
       save: vi.fn(),
     };
-    const ubicacionRepo = { findById: vi.fn() };
     const txRunner = { run: vi.fn((fn: () => Promise<unknown>) => fn()) };
-    const useCase = new EditarEquipoUseCase(
-      equipoRepo as never,
-      ubicacionRepo as never,
-      txRunner as never,
-    );
+    const useCase = new EditarEquipoUseCase(equipoRepo as never, txRunner as never);
 
     const result = await useCase.execute({ equipoId: equipo.id, numeroSerie: 'SN-OTRO' });
     expect(result.isFail()).toBe(true);
@@ -88,13 +80,8 @@ describe('EditarEquipoUseCase', () => {
       findByNumeroSerie: vi.fn().mockResolvedValue(equipo),
       save: vi.fn(),
     };
-    const ubicacionRepo = { findById: vi.fn() };
     const txRunner = { run: vi.fn((fn: () => Promise<unknown>) => fn()) };
-    const useCase = new EditarEquipoUseCase(
-      equipoRepo as never,
-      ubicacionRepo as never,
-      txRunner as never,
-    );
+    const useCase = new EditarEquipoUseCase(equipoRepo as never, txRunner as never);
 
     const result = await useCase.execute({ equipoId: equipo.id, numeroSerie: 'SN-MISMO' });
     expect(result.isOk()).toBe(true);

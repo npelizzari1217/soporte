@@ -15,8 +15,18 @@ export interface EquipoInformaticoProps {
   marca: string | null;
   modelo: string | null;
   fechaAdquisicion: Date | null;
-  /** FK → ubicaciones.id. NULL = sin ubicación asignada. */
-  ubicacionId: string | null;
+  /** Ubicación física como TEXTO LIBRE, siempre en mayúscula (normalizado en la capa de aplicación). */
+  ubicacion: string | null;
+  /** Valoración del equipo: importe (valor). */
+  importe: number | null;
+  /** Fecha en que se registró el importe. */
+  fechaValoracion: Date | null;
+  /** Observaciones libres del técnico. */
+  observaciones: string | null;
+  /** Valor residual (post-depreciación). El % de depreciación NO se persiste (solo ayuda de cálculo en la UI). */
+  valorResidual: number | null;
+  /** Fecha del cálculo del valor residual. */
+  fechaValorResidual: Date | null;
   /**
    * `true` = disponible/en uso; `false` = dado de baja (fuera de servicio).
    * DISTINTO de `deletedAt` (soft delete): un equipo `activo=false`
@@ -52,7 +62,8 @@ export class EquipoInformaticoEntity extends BaseEntity<EquipoInformaticoProps> 
     props: Omit<EquipoInformaticoProps, 'activo'>,
     id?: string,
   ): EquipoInformaticoEntity {
-    return new EquipoInformaticoEntity({ ...props, activo: true }, id);
+    const ubicacion = props.ubicacion != null ? props.ubicacion.toUpperCase() : null;
+    return new EquipoInformaticoEntity({ ...props, ubicacion, activo: true }, id);
   }
 
   /** Reconstitución desde persistencia (mappers de infraestructura). */
@@ -91,8 +102,28 @@ export class EquipoInformaticoEntity extends BaseEntity<EquipoInformaticoProps> 
     return this.props.fechaAdquisicion;
   }
 
-  get ubicacionId(): string | null {
-    return this.props.ubicacionId;
+  get ubicacion(): string | null {
+    return this.props.ubicacion;
+  }
+
+  get importe(): number | null {
+    return this.props.importe;
+  }
+
+  get fechaValoracion(): Date | null {
+    return this.props.fechaValoracion;
+  }
+
+  get observaciones(): string | null {
+    return this.props.observaciones;
+  }
+
+  get valorResidual(): number | null {
+    return this.props.valorResidual;
+  }
+
+  get fechaValorResidual(): Date | null {
+    return this.props.fechaValorResidual;
   }
 
   get activo(): boolean {
@@ -118,16 +149,13 @@ export class EquipoInformaticoEntity extends BaseEntity<EquipoInformaticoProps> 
     this.touch();
   }
 
-  /** Cambia la ubicación física del equipo. La validación de existencia es responsabilidad del use case. */
-  actualizarUbicacion(ubicacionId: string | null): void {
-    this.props.ubicacionId = ubicacionId;
-    this.touch();
-  }
-
   /**
    * Actualiza los campos editables de datos (PATCH semántico, mismo
    * criterio que `UbicacionEntity.actualizar`): campos `undefined` NO se
    * tocan; los campos nullable en `null` limpian el valor explícitamente.
+   *
+   * `ubicacion` se normaliza SIEMPRE a mayúscula (texto libre, invariante de
+   * dominio) cuando no es null.
    */
   actualizar(datos: {
     nombre?: string;
@@ -135,7 +163,12 @@ export class EquipoInformaticoEntity extends BaseEntity<EquipoInformaticoProps> 
     marca?: string | null;
     modelo?: string | null;
     fechaAdquisicion?: Date | null;
-    ubicacionId?: string | null;
+    ubicacion?: string | null;
+    importe?: number | null;
+    fechaValoracion?: Date | null;
+    observaciones?: string | null;
+    valorResidual?: number | null;
+    fechaValorResidual?: Date | null;
   }): void {
     if (datos.nombre !== undefined) {
       this.props.nombre = datos.nombre;
@@ -152,8 +185,23 @@ export class EquipoInformaticoEntity extends BaseEntity<EquipoInformaticoProps> 
     if (datos.fechaAdquisicion !== undefined) {
       this.props.fechaAdquisicion = datos.fechaAdquisicion;
     }
-    if (datos.ubicacionId !== undefined) {
-      this.props.ubicacionId = datos.ubicacionId;
+    if (datos.ubicacion !== undefined) {
+      this.props.ubicacion = datos.ubicacion !== null ? datos.ubicacion.toUpperCase() : null;
+    }
+    if (datos.importe !== undefined) {
+      this.props.importe = datos.importe;
+    }
+    if (datos.fechaValoracion !== undefined) {
+      this.props.fechaValoracion = datos.fechaValoracion;
+    }
+    if (datos.observaciones !== undefined) {
+      this.props.observaciones = datos.observaciones;
+    }
+    if (datos.valorResidual !== undefined) {
+      this.props.valorResidual = datos.valorResidual;
+    }
+    if (datos.fechaValorResidual !== undefined) {
+      this.props.fechaValorResidual = datos.fechaValorResidual;
     }
     this.touch();
   }

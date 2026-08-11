@@ -47,7 +47,6 @@ import { PermissionsGuard } from '../../../auth/infrastructure/guards/permission
 import { ModulosGuard } from '../../../auth/infrastructure/guards/modulos.guard';
 import { RequireModulo, RequirePermissions } from '../../../auth/infrastructure/guards/decorators';
 import { DomainError } from '../../../shared/domain/result';
-import { UbicacionInvalidaError } from '../../../reparaciones/domain/errors/reparaciones.errors';
 
 import { CrearEquipoUseCase } from '../../application/use-cases/crear-equipo.use-case';
 import { EditarEquipoUseCase } from '../../application/use-cases/editar-equipo.use-case';
@@ -90,14 +89,23 @@ function toHttpException(error: DomainError): NotFoundException | UnprocessableE
     error instanceof EquipoInvalidoError ||
     error instanceof NumeroSerieDuplicadoError ||
     error instanceof TipoComponenteCodigoRequeridoError ||
-    error instanceof TipoComponenteInactivoError ||
-    error instanceof UbicacionInvalidaError
+    error instanceof TipoComponenteInactivoError
   ) {
     return new UnprocessableEntityException(error.message);
   }
   // Deviación de diseño no mapeada explícitamente: 422 por defecto (nunca
   // 500 silencioso para un DomainError, que por definición es un fallo esperado).
   return new UnprocessableEntityException(error.message);
+}
+
+/**
+ * Mapea un campo fecha (string ISO) del PATCH al dominio con semántica de PATCH:
+ * `undefined` = no tocar, `null` = limpiar, string → `Date`.
+ */
+function fechaPatch(valor: string | null | undefined): Date | null | undefined {
+  if (valor === undefined) return undefined;
+  if (valor === null) return null;
+  return new Date(valor);
 }
 
 @UseGuards(JwtAuthGuard, TenantGuard, PermissionsGuard, ModulosGuard)
@@ -118,7 +126,7 @@ export class EquiposController {
   /**
    * POST /equipos
    * Crea un equipo en el inventario.
-   * @throws 422 numeroSerie duplicado, ubicacionId inválido
+   * @throws 422 numeroSerie duplicado
    */
   @Post()
   @RequirePermissions('equipo:gestionar')
@@ -130,7 +138,12 @@ export class EquiposController {
       marca: dto.marca ?? null,
       modelo: dto.modelo ?? null,
       fechaAdquisicion: dto.fechaAdquisicion ? new Date(dto.fechaAdquisicion) : null,
-      ubicacionId: dto.ubicacionId ?? null,
+      ubicacion: dto.ubicacion ?? null,
+      importe: dto.importe ?? null,
+      fechaValoracion: dto.fechaValoracion ? new Date(dto.fechaValoracion) : null,
+      observaciones: dto.observaciones ?? null,
+      valorResidual: dto.valorResidual ?? null,
+      fechaValorResidual: dto.fechaValorResidual ? new Date(dto.fechaValorResidual) : null,
     });
 
     if (result.isFail()) {
@@ -178,7 +191,7 @@ export class EquiposController {
    * PATCH /equipos/:id
    * Edita datos del equipo (PATCH semántico).
    * @throws 404 equipo inexistente
-   * @throws 422 numeroSerie duplicado, ubicacionId inválido
+   * @throws 422 numeroSerie duplicado
    */
   @Patch(':id')
   @RequirePermissions('equipo:gestionar')
@@ -193,13 +206,13 @@ export class EquiposController {
       numeroSerie: dto.numeroSerie,
       marca: dto.marca,
       modelo: dto.modelo,
-      fechaAdquisicion:
-        dto.fechaAdquisicion === undefined
-          ? undefined
-          : dto.fechaAdquisicion === null
-            ? null
-            : new Date(dto.fechaAdquisicion),
-      ubicacionId: dto.ubicacionId,
+      fechaAdquisicion: fechaPatch(dto.fechaAdquisicion),
+      ubicacion: dto.ubicacion,
+      importe: dto.importe,
+      fechaValoracion: fechaPatch(dto.fechaValoracion),
+      observaciones: dto.observaciones,
+      valorResidual: dto.valorResidual,
+      fechaValorResidual: fechaPatch(dto.fechaValorResidual),
     });
 
     if (result.isFail()) {

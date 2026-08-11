@@ -31,10 +31,6 @@ import {
   ITenantTransactionRunner,
   TENANT_TX_RUNNER,
 } from '../shared/infrastructure/persistence/tenant-transaction-runner';
-import {
-  UBICACION_REPOSITORY,
-  IUbicacionRepository,
-} from '../reparaciones/domain/ports/i-ubicacion.repository';
 
 import {
   EQUIPO_INFORMATICO_REPOSITORY,
@@ -88,10 +84,10 @@ import { SoporteController } from './interface/controllers/soporte.controller';
  *   TIPO_TICKET_REPOSITORY, TIPO_OPERACION_REPOSITORY,
  *   USUARIO_MASTER_CHECKER, CICLO_CLIENTE_REPOSITORY) — NO se reimplementan,
  *   se inyectan por token (mismo patrón que `ComprasModule`/`ReparacionesModule`).
- * - Importa `ReparacionesModule` para reusar `UBICACION_REPOSITORY`
- *   (catálogo tenant-wide de ubicaciones, compartido entre Edilicia y
- *   Equipos — la validación de `ubicacionId` de `crear/editar-equipo` NO
- *   duplica la entidad/puerto `Ubicacion`).
+ * - Importa `ReparacionesModule` (histórico: los equipos validaban su
+ *   `ubicacionId` contra el catálogo `UBICACION_REPOSITORY`). Desde que la
+ *   ubicación del equipo pasó a TEXTO LIBRE, ese acoplamiento ya NO se usa —
+ *   el import quedó vestigial y es candidato a eliminar.
  * - `NumeradorTicket`/`ResolverCicloActivoParaCreacion` son clases planas
  *   (sin `@Injectable`) — se resuelven vía `useFactory`, igual que en
  *   `ComprasModule`/`ReparacionesModule`.
@@ -142,21 +138,15 @@ import { SoporteController } from './interface/controllers/soporte.controller';
     },
     {
       provide: CrearEquipoUseCase,
-      useFactory: (
-        equipoRepo: IEquipoInformaticoRepository,
-        ubicacionRepo: IUbicacionRepository,
-        txRunner: ITenantTransactionRunner,
-      ) => new CrearEquipoUseCase(equipoRepo, ubicacionRepo, txRunner),
-      inject: [EQUIPO_INFORMATICO_REPOSITORY, UBICACION_REPOSITORY, TENANT_TX_RUNNER],
+      useFactory: (equipoRepo: IEquipoInformaticoRepository, txRunner: ITenantTransactionRunner) =>
+        new CrearEquipoUseCase(equipoRepo, txRunner),
+      inject: [EQUIPO_INFORMATICO_REPOSITORY, TENANT_TX_RUNNER],
     },
     {
       provide: EditarEquipoUseCase,
-      useFactory: (
-        equipoRepo: IEquipoInformaticoRepository,
-        ubicacionRepo: IUbicacionRepository,
-        txRunner: ITenantTransactionRunner,
-      ) => new EditarEquipoUseCase(equipoRepo, ubicacionRepo, txRunner),
-      inject: [EQUIPO_INFORMATICO_REPOSITORY, UBICACION_REPOSITORY, TENANT_TX_RUNNER],
+      useFactory: (equipoRepo: IEquipoInformaticoRepository, txRunner: ITenantTransactionRunner) =>
+        new EditarEquipoUseCase(equipoRepo, txRunner),
+      inject: [EQUIPO_INFORMATICO_REPOSITORY, TENANT_TX_RUNNER],
     },
     {
       provide: ObtenerEquipoUseCase,

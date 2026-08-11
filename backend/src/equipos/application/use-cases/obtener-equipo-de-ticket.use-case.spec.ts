@@ -41,7 +41,12 @@ describe('ObtenerEquipoDeTicketUseCase', () => {
         marca: null,
         modelo: null,
         fechaAdquisicion: null,
-        ubicacionId: null,
+        ubicacion: null,
+        importe: null,
+        fechaValoracion: null,
+        observaciones: null,
+        valorResidual: null,
+        fechaValorResidual: null,
       },
       'equipo-1',
     );

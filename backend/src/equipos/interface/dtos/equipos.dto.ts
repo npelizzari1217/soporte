@@ -7,7 +7,7 @@
  *
  * Tarea: T12.6.
  */
-import { IsDateString, IsOptional, IsString, MinLength, IsUUID } from 'class-validator';
+import { IsDateString, IsNumber, IsOptional, IsString, MinLength, IsUUID } from 'class-validator';
 import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
 import { EquipoInformaticoEntity } from '../../domain/entities/equipo-informatico.entity';
 import { ComponenteEquipoEntity } from '../../domain/entities/componente-equipo.entity';
@@ -40,9 +40,32 @@ export class CreateEquipoHttpDto {
   @IsDateString()
   fechaAdquisicion?: string | null;
 
+  /** Ubicación como texto libre (el backend la normaliza a mayúscula). */
   @IsOptional()
-  @IsUUID()
-  ubicacionId?: string | null;
+  @IsString()
+  ubicacion?: string | null;
+
+  /** Importe/valor del equipo (2 decimales). */
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  importe?: number | null;
+
+  @IsOptional()
+  @IsDateString()
+  fechaValoracion?: string | null;
+
+  @IsOptional()
+  @IsString()
+  observaciones?: string | null;
+
+  /** Valor residual (post-depreciación, 2 decimales). El % de depreciación NO se persiste. */
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  valorResidual?: number | null;
+
+  @IsOptional()
+  @IsDateString()
+  fechaValorResidual?: string | null;
 }
 
 /** Body de `PATCH /equipos/:id` (F3-Q1). Todos los campos opcionales (PATCH semántico). */
@@ -69,8 +92,28 @@ export class EditarEquipoHttpDto {
   fechaAdquisicion?: string | null;
 
   @IsOptional()
-  @IsUUID()
-  ubicacionId?: string | null;
+  @IsString()
+  ubicacion?: string | null;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  importe?: number | null;
+
+  @IsOptional()
+  @IsDateString()
+  fechaValoracion?: string | null;
+
+  @IsOptional()
+  @IsString()
+  observaciones?: string | null;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  valorResidual?: number | null;
+
+  @IsOptional()
+  @IsDateString()
+  fechaValorResidual?: string | null;
 }
 
 /** Body de `POST /soporte` (F3-Q4). `solicitanteId`/`autorId` vienen del JWT. `equipoId` OPCIONAL. */
@@ -131,7 +174,12 @@ export interface EquipoResponseDto {
   marca: string | null;
   modelo: string | null;
   fechaAdquisicion: string | null;
-  ubicacionId: string | null;
+  ubicacion: string | null;
+  importe: number | null;
+  fechaValoracion: string | null;
+  observaciones: string | null;
+  valorResidual: number | null;
+  fechaValorResidual: string | null;
   activo: boolean;
   createdAt: string;
   updatedAt: string;
@@ -146,7 +194,12 @@ export function toEquipoResponseDto(equipo: EquipoInformaticoEntity): EquipoResp
     marca: equipo.marca,
     modelo: equipo.modelo,
     fechaAdquisicion: equipo.fechaAdquisicion ? equipo.fechaAdquisicion.toISOString() : null,
-    ubicacionId: equipo.ubicacionId,
+    ubicacion: equipo.ubicacion,
+    importe: equipo.importe,
+    fechaValoracion: equipo.fechaValoracion ? equipo.fechaValoracion.toISOString() : null,
+    observaciones: equipo.observaciones,
+    valorResidual: equipo.valorResidual,
+    fechaValorResidual: equipo.fechaValorResidual ? equipo.fechaValorResidual.toISOString() : null,
     activo: equipo.activo,
     createdAt: equipo.createdAt.toISOString(),
     updatedAt: equipo.updatedAt.toISOString(),

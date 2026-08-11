@@ -1,13 +1,13 @@
 import { describe, it, expect, vi } from 'vitest';
 import { CrearEquipoUseCase } from './crear-equipo.use-case';
 import { EquipoInformaticoEntity } from '../../domain/entities/equipo-informatico.entity';
-import { UbicacionEntity } from '../../../reparaciones/domain/entities/ubicacion.entity';
 import { NumeroSerieDuplicadoError } from '../../domain/errors/equipos.errors';
-import { UbicacionInvalidaError } from '../../../reparaciones/domain/errors/reparaciones.errors';
 
 /**
  * T12.1 [U][RED] — CrearEquipoUseCase: numeroSerie duplicado →
- * NumeroSerieDuplicadoError; ubicacionId validado.
+ * NumeroSerieDuplicadoError. La ubicación pasó de FK (catálogo) a TEXTO LIBRE
+ * — ya no se valida contra el catálogo, por eso el use case ya no inyecta
+ * `ubicacionRepo` ni produce `UbicacionInvalidaError`.
  *
  * Ref spec: sdd/flujos-especializados/spec F3-Q1.
  */
@@ -17,20 +17,13 @@ describe('CrearEquipoUseCase', () => {
       findByNumeroSerie: vi.fn().mockResolvedValue(null),
       save: vi.fn().mockResolvedValue(undefined),
     };
-    const ubicacionRepo = {
-      findById: vi.fn().mockResolvedValue(null),
-    };
     const txRunner = { run: vi.fn((fn: () => Promise<unknown>) => fn()) };
-    return { equipoRepo, ubicacionRepo, txRunner, ...overrides };
+    return { equipoRepo, txRunner, ...overrides };
   }
 
-  it('crea el equipo cuando numeroSerie/ubicacionId son válidos (o ausentes)', async () => {
-    const { equipoRepo, ubicacionRepo, txRunner } = makeDeps();
-    const useCase = new CrearEquipoUseCase(
-      equipoRepo as never,
-      ubicacionRepo as never,
-      txRunner as never,
-    );
+  it('crea el equipo cuando numeroSerie es válido (o ausente)', async () => {
+    const { equipoRepo, txRunner } = makeDeps();
+    const useCase = new CrearEquipoUseCase(equipoRepo as never, txRunner as never);
 
     const result = await useCase.execute({
       nombre: 'Notebook A',
@@ -38,7 +31,7 @@ describe('CrearEquipoUseCase', () => {
       marca: null,
       modelo: null,
       fechaAdquisicion: null,
-      ubicacionId: null,
+      ubicacion: null,
     });
 
     expect(result.isOk()).toBe(true);
@@ -52,19 +45,20 @@ describe('CrearEquipoUseCase', () => {
       marca: null,
       modelo: null,
       fechaAdquisicion: null,
-      ubicacionId: null,
+      ubicacion: null,
+      importe: null,
+      fechaValoracion: null,
+      observaciones: null,
+      valorResidual: null,
+      fechaValorResidual: null,
     });
-    const { equipoRepo, ubicacionRepo, txRunner } = makeDeps({
+    const { equipoRepo, txRunner } = makeDeps({
       equipoRepo: {
         findByNumeroSerie: vi.fn().mockResolvedValue(equipoExistente),
         save: vi.fn(),
       },
     });
-    const useCase = new CrearEquipoUseCase(
-      equipoRepo as never,
-      ubicacionRepo as never,
-      txRunner as never,
-    );
+    const useCase = new CrearEquipoUseCase(equipoRepo as never, txRunner as never);
 
     const result = await useCase.execute({
       nombre: 'Notebook B',
@@ -72,7 +66,7 @@ describe('CrearEquipoUseCase', () => {
       marca: null,
       modelo: null,
       fechaAdquisicion: null,
-      ubicacionId: null,
+      ubicacion: null,
     });
 
     expect(result.isFail()).toBe(true);
@@ -80,38 +74,9 @@ describe('CrearEquipoUseCase', () => {
     expect(equipoRepo.save).not.toHaveBeenCalled();
   });
 
-  it('falla con UbicacionInvalidaError si ubicacionId no existe', async () => {
-    const { equipoRepo, ubicacionRepo, txRunner } = makeDeps();
-    const useCase = new CrearEquipoUseCase(
-      equipoRepo as never,
-      ubicacionRepo as never,
-      txRunner as never,
-    );
-
-    const result = await useCase.execute({
-      nombre: 'Notebook C',
-      numeroSerie: null,
-      marca: null,
-      modelo: null,
-      fechaAdquisicion: null,
-      ubicacionId: 'ubicacion-inexistente',
-    });
-
-    expect(result.isFail()).toBe(true);
-    expect(result.getError()).toBeInstanceOf(UbicacionInvalidaError);
-    expect(equipoRepo.save).not.toHaveBeenCalled();
-  });
-
-  it('crea el equipo cuando ubicacionId existe y no está eliminada', async () => {
-    const ubicacion = UbicacionEntity.create({ nombre: 'Piso 3' });
-    const { equipoRepo, ubicacionRepo, txRunner } = makeDeps({
-      ubicacionRepo: { findById: vi.fn().mockResolvedValue(ubicacion) },
-    });
-    const useCase = new CrearEquipoUseCase(
-      equipoRepo as never,
-      ubicacionRepo as never,
-      txRunner as never,
-    );
+  it('crea el equipo (ubicacion es texto libre, no se valida)', async () => {
+    const { equipoRepo, txRunner } = makeDeps();
+    const useCase = new CrearEquipoUseCase(equipoRepo as never, txRunner as never);
 
     const result = await useCase.execute({
       nombre: 'Notebook D',
@@ -119,9 +84,12 @@ describe('CrearEquipoUseCase', () => {
       marca: null,
       modelo: null,
       fechaAdquisicion: null,
-      ubicacionId: ubicacion.id,
+      ubicacion: 'Piso 3',
     });
 
     expect(result.isOk()).toBe(true);
+    // texto libre normalizado a mayúscula por la entidad, sin lookup de catálogo.
+    expect(result.getValue().ubicacion).toBe('PISO 3');
+    expect(equipoRepo.save).toHaveBeenCalledTimes(1);
   });
 });

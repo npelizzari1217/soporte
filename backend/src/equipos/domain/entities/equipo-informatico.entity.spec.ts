@@ -16,7 +16,12 @@ describe('EquipoInformaticoEntity', () => {
       marca: 'Dell',
       modelo: 'Latitude 5420',
       fechaAdquisicion: new Date('2025-01-01'),
-      ubicacionId: null,
+      ubicacion: null,
+      importe: null,
+      fechaValoracion: null,
+      observaciones: null,
+      valorResidual: null,
+      fechaValorResidual: null,
     });
   }
 
@@ -48,10 +53,27 @@ describe('EquipoInformaticoEntity', () => {
     expect(equipo.nombre).toBe('Notebook Dell 5420 (actualizado)');
     expect(equipo.marca).toBe('Dell');
 
-    equipo.actualizar({ ubicacionId: 'ubi-1' });
-    expect(equipo.ubicacionId).toBe('ubi-1');
-    equipo.actualizar({ ubicacionId: null });
-    expect(equipo.ubicacionId).toBeNull();
+    equipo.actualizar({ ubicacion: 'oficina 1' });
+    expect(equipo.ubicacion).toBe('OFICINA 1'); // normalizada a mayúscula (invariante de dominio)
+    equipo.actualizar({ ubicacion: null });
+    expect(equipo.ubicacion).toBeNull();
+  });
+
+  it('create() normaliza ubicacion a mayúscula', () => {
+    const equipo = EquipoInformaticoEntity.create({
+      nombre: 'Notebook Dell 5420',
+      numeroSerie: 'SN-002',
+      marca: null,
+      modelo: null,
+      fechaAdquisicion: null,
+      ubicacion: 'oficina 1',
+      importe: null,
+      fechaValoracion: null,
+      observaciones: null,
+      valorResidual: null,
+      fechaValorResidual: null,
+    });
+    expect(equipo.ubicacion).toBe('OFICINA 1');
   });
 
   it('reconstitute() restaura estado desde persistencia', () => {
@@ -64,7 +86,12 @@ describe('EquipoInformaticoEntity', () => {
         marca: null,
         modelo: null,
         fechaAdquisicion: null,
-        ubicacionId: null,
+        ubicacion: null,
+        importe: null,
+        fechaValoracion: null,
+        observaciones: null,
+        valorResidual: null,
+        fechaValorResidual: null,
         activo: false,
       },
       'id-reconstituido',
