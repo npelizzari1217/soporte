@@ -71,7 +71,11 @@ describe('CrearTipoTicketUseCase', () => {
     });
     const c = makeCollaborators([existente]);
 
-    const result = await c.useCase.execute({ codigo: 'SOPORTE', nombre: 'Duplicado', modulo: 'SOPORTE' });
+    const result = await c.useCase.execute({
+      codigo: 'SOPORTE',
+      nombre: 'Duplicado',
+      modulo: 'SOPORTE',
+    });
 
     expect(result.isFail()).toBe(true);
     expect(result.getError()).toBeInstanceOf(TipoTicketCodigoDuplicadoError);
@@ -88,7 +92,11 @@ describe('CrearTipoTicketUseCase', () => {
     });
     const c = makeCollaborators([existente]);
 
-    const result = await c.useCase.execute({ codigo: 'COMISION', nombre: 'Comisiones', modulo: 'SOPORTE' });
+    const result = await c.useCase.execute({
+      codigo: 'COMISION',
+      nombre: 'Comisiones',
+      modulo: 'SOPORTE',
+    });
 
     expect(result.isFail()).toBe(true);
     expect(result.getError()).toBeInstanceOf(PrefijoTipoTicketColisionError);
@@ -106,7 +114,11 @@ describe('CrearTipoTicketUseCase', () => {
     const c = makeCollaborators([dadoDeBaja]);
     // findByCodigo solo se llama con el codigo nuevo (distinto), no colisiona ahí.
 
-    const result = await c.useCase.execute({ codigo: 'COMISION', nombre: 'Comisiones', modulo: 'SOPORTE' });
+    const result = await c.useCase.execute({
+      codigo: 'COMISION',
+      nombre: 'Comisiones',
+      modulo: 'SOPORTE',
+    });
 
     expect(result.isOk()).toBe(true);
   });
@@ -114,7 +126,11 @@ describe('CrearTipoTicketUseCase', () => {
   it('codigo degenerado (sin caracteres alfanuméricos) → TipoTicketDesconocidoError (422), sin persistir', async () => {
     const c = makeCollaborators();
 
-    const result = await c.useCase.execute({ codigo: '###', nombre: 'Inválido', modulo: 'SOPORTE' });
+    const result = await c.useCase.execute({
+      codigo: '###',
+      nombre: 'Inválido',
+      modulo: 'SOPORTE',
+    });
 
     expect(result.isFail()).toBe(true);
     expect(result.getError()).toBeInstanceOf(TipoTicketDesconocidoError);

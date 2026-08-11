@@ -92,11 +92,21 @@ describe('PrismaDashboardRepository — Integration (PR-D)', () => {
     repo = new PrismaDashboardRepository(tenantContext);
 
     const tipo = await tenantClient.tipoTicket.create({
-      data: { codigo: `D_TEST_TIPO_${RUN_PREFIX}`, nombre: 'Tipo Dashboard Test', activo: true, modulo: 'SOPORTE' },
+      data: {
+        codigo: `D_TEST_TIPO_${RUN_PREFIX}`,
+        nombre: 'Tipo Dashboard Test',
+        activo: true,
+        modulo: 'SOPORTE',
+      },
     });
     tipoId = tipo.id;
     const tipoOtro = await tenantClient.tipoTicket.create({
-      data: { codigo: `D_TEST_TIPO2_${RUN_PREFIX}`, nombre: 'Tipo Dashboard Test 2', activo: true, modulo: 'SOPORTE' },
+      data: {
+        codigo: `D_TEST_TIPO2_${RUN_PREFIX}`,
+        nombre: 'Tipo Dashboard Test 2',
+        activo: true,
+        modulo: 'SOPORTE',
+      },
     });
     tipoOtroId = tipoOtro.id;
 

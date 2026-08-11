@@ -125,9 +125,7 @@ export class CatalogosController {
    */
   @Get('tipos-ticket')
   @RequirePermissions()
-  async listarTiposTicket(
-    @Query('modulo') modulo?: string,
-  ): Promise<TipoTicketResponseDto[]> {
+  async listarTiposTicket(@Query('modulo') modulo?: string): Promise<TipoTicketResponseDto[]> {
     const result = await this.listarTiposTicketUseCase.execute({ modulo });
     if (result.isFail()) {
       throw toHttpException(result.getError());

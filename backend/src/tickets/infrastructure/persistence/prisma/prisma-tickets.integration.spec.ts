@@ -135,10 +135,20 @@ describe('Tickets Persistence Repos — Integration (PR5)', () => {
     cicloRepo = new PrismaCicloClienteRepository(tenantContext);
 
     const tipoSoporte = await tenantClient.tipoTicket.create({
-      data: { codigo: 'T5_TEST_SOPORTE', nombre: 'Soporte Test PR5', activo: true, modulo: 'SOPORTE' },
+      data: {
+        codigo: 'T5_TEST_SOPORTE',
+        nombre: 'Soporte Test PR5',
+        activo: true,
+        modulo: 'SOPORTE',
+      },
     });
     const tipoCompras = await tenantClient.tipoTicket.create({
-      data: { codigo: 'T5_TEST_COMPRAS', nombre: 'Compras Test PR5', activo: true, modulo: 'COMPRAS' },
+      data: {
+        codigo: 'T5_TEST_COMPRAS',
+        nombre: 'Compras Test PR5',
+        activo: true,
+        modulo: 'COMPRAS',
+      },
     });
     tipoSoporteId = tipoSoporte.id;
     tipoComprasId = tipoCompras.id;

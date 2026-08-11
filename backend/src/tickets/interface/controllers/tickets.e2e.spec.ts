@@ -1153,7 +1153,11 @@ describe('Tickets e2e (T4-T8, PR6)', () => {
 
       const { status } = await httpPost(
         `${baseUrl}/catalogos/tipos-ticket`,
-        { codigo: `NOPERM${randomBytes(2).toString('hex').toUpperCase()}`, nombre: 'Sin permiso', modulo: 'SOPORTE' },
+        {
+          codigo: `NOPERM${randomBytes(2).toString('hex').toUpperCase()}`,
+          nombre: 'Sin permiso',
+          modulo: 'SOPORTE',
+        },
         bearer(actor.accessToken),
       );
 

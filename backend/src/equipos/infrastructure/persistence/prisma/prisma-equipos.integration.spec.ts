@@ -123,7 +123,12 @@ describe('Equipos Persistence Repos — Integration (PR11)', () => {
     ticketSoporteRepo = new PrismaTicketSoporteRepository(tenantContext);
 
     const tipoSoporte = await tenantClient.tipoTicket.create({
-      data: { codigo: 'T11_TEST_SOPORTE', nombre: 'Soporte Test PR11', activo: true, modulo: 'SOPORTE' },
+      data: {
+        codigo: 'T11_TEST_SOPORTE',
+        nombre: 'Soporte Test PR11',
+        activo: true,
+        modulo: 'SOPORTE',
+      },
     });
     tipoSoporteId = tipoSoporte.id;
 
