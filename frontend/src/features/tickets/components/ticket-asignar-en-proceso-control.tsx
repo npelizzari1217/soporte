@@ -1,7 +1,9 @@
 "use client";
 
 /**
- * TicketAsignarEnProcesoControl — PRESENTATIONAL, gated por `ticket:asignar`.
+ * TicketAsignarEnProcesoControl — PRESENTATIONAL, gated por `ticket:asignar`
+ * Y `ticket:transicionar` (ambos, como el endpoint PATCH
+ * /tickets/:id/asignar-en-proceso, que exige los dos permisos).
  *
  * Control UNIFICADO del arranque del ticket: un combo con SOLO los técnicos
  * elegibles (ya filtrados por el backend según el módulo del tipo) + un único
@@ -30,9 +32,10 @@ export function TicketAsignarEnProcesoControl({
   isSubmitting,
 }: TicketAsignarEnProcesoControlProps) {
   const puedeAsignar = useCan("ticket:asignar");
+  const puedeTransicionar = useCan("ticket:transicionar");
   const [seleccionado, setSeleccionado] = useState("");
 
-  if (!puedeAsignar) return null;
+  if (!puedeAsignar || !puedeTransicionar) return null;
 
   return (
     <div className="flex items-center gap-2">

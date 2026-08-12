@@ -2,15 +2,17 @@
 
 /**
  * EquiposListView — CONTAINER montado por `/equipos` (T5.12). "Nuevo
- * ticket de soporte" es SIEMPRE visible a quien tenga `ticket:crear`
- * (independiente del inventario); la tabla de inventario (crear/ver
- * detalle) queda gateada por `equipo:gestionar` — mismo criterio "vista de
- * gestión" que `CatalogosAdminView` (B4), pero SIN ocultar la creación de
- * tickets de soporte a quien no gestiona equipos (deviación deliberada vs.
- * B4, documentada en apply-progress).
+ * ticket de soporte" se muestra a quien tenga `ticket:crear` Y el módulo
+ * SOPORTE (el endpoint POST /soporte exige `@RequireModulo('SOPORTE')` +
+ * `ticket:crear`): sin el módulo, el botón daba 403 al enviar. Independiente
+ * del inventario de equipos, que queda gateado por `equipo:gestionar` — mismo
+ * criterio "vista de gestión" que `CatalogosAdminView` (B4), pero SIN ocultar
+ * la creación de tickets de soporte a quien no gestiona equipos (deviación
+ * deliberada vs. B4, documentada en apply-progress).
  */
 import { useRouter } from "next/navigation";
 import { useEquipos } from "../hooks/use-equipos";
+import { useSession } from "@/shared/hooks/use-session";
 import { DataTable, type Column } from "@/components/shared/data-table";
 import { PageHeader } from "@/components/shared/page-header";
 import { Can } from "@/components/shared/can";
@@ -24,6 +26,7 @@ import type { Equipo } from "../types";
 export function EquiposListView() {
   const router = useRouter();
   const equiposQuery = useEquipos();
+  const { canModulo } = useSession();
 
   const columns: Column<Equipo>[] = [
     { key: "nombre", header: "Nombre" },
@@ -41,9 +44,11 @@ export function EquiposListView() {
       <PageHeader
         title="Equipos IT"
         actions={
-          <Can permiso="ticket:crear">
-            <TicketSoporteCreateDialog />
-          </Can>
+          canModulo("SOPORTE") ? (
+            <Can permiso="ticket:crear">
+              <TicketSoporteCreateDialog />
+            </Can>
+          ) : undefined
         }
       />
       <Can
