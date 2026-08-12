@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, waitFor, act } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -9,10 +9,10 @@ import { writeLastActivity } from "@/shared/auth/idle-storage";
 // Spec: [R23] BFF login route — flujo de 1 vs varias membresías.
 // Spec: PR11 — use-login container hook.
 
-const pushMock = vi.fn();
-vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: pushMock }),
-}));
+// use-login navega con window.location.assign (recarga completa de página en el
+// login, ver su JSDoc), NO con router.push — por eso mockeamos window.location.
+const assignMock = vi.fn();
+const originalLocation = window.location;
 
 vi.mock("sonner", () => ({
   toast: { error: vi.fn() },
@@ -29,8 +29,22 @@ function wrapper({ children }: { children: React.ReactNode }) {
 
 describe("useLogin", () => {
   beforeEach(() => {
-    pushMock.mockClear();
+    assignMock.mockClear();
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: {
+        href: "http://localhost:3000/login",
+        origin: "http://localhost:3000",
+        pathname: "/login",
+        assign: assignMock,
+        replace: vi.fn(),
+      },
+    });
     vi.mocked(writeLastActivity).mockClear();
+  });
+
+  afterEach(() => {
+    Object.defineProperty(window, "location", { configurable: true, value: originalLocation });
   });
 
   it("single-membership login (200 with { user }) → redirects to / directly, no membresías state", async () => {
@@ -46,7 +60,7 @@ describe("useLogin", () => {
       result.current.login("user@example.com", "secret123");
     });
 
-    await waitFor(() => expect(pushMock).toHaveBeenCalledWith("/"));
+    await waitFor(() => expect(assignMock).toHaveBeenCalledWith("/"));
     expect(result.current.membresias).toBeNull();
     // Regresión (bug idle-timeout): un login exitoso DEBE resetear el reloj de
     // inactividad a "ahora", si no un timestamp añejo en localStorage dispara el
@@ -95,7 +109,7 @@ describe("useLogin", () => {
 
     await waitFor(() => expect(result.current.membresias).not.toBeNull());
     expect(result.current.membresias).toHaveLength(2);
-    expect(pushMock).not.toHaveBeenCalled();
+    expect(assignMock).not.toHaveBeenCalled();
   });
 
   it("selectCliente after multi-membership → re-posts with { email, password, clienteId } and redirects on success", async () => {
@@ -125,7 +139,7 @@ describe("useLogin", () => {
       result.current.selectCliente("c2");
     });
 
-    await waitFor(() => expect(pushMock).toHaveBeenCalledWith("/"));
+    await waitFor(() => expect(assignMock).toHaveBeenCalledWith("/"));
     expect(capturedBody).toEqual({
       email: "multi@example.com",
       password: "secret123",
@@ -148,7 +162,7 @@ describe("useLogin", () => {
     });
 
     await waitFor(() => expect(toast.error).toHaveBeenCalled());
-    expect(pushMock).not.toHaveBeenCalled();
+    expect(assignMock).not.toHaveBeenCalled();
   });
 
   it("403 tenant suspendido → shows the specific suspended-tenant toast message", async () => {

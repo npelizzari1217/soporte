@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -8,10 +8,9 @@ import LoginPage from "./page";
 
 // Spec: [R23] BFF login route — página completa: 1 vs varias membresías.
 
-const pushMock = vi.fn();
-vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: pushMock }),
-}));
+// El login navega con window.location.assign (recarga completa), no router.push.
+const assignMock = vi.fn();
+const originalLocation = window.location;
 
 vi.mock("sonner", () => ({
   toast: { error: vi.fn() },
@@ -28,7 +27,21 @@ function renderPage() {
 
 describe("LoginPage", () => {
   beforeEach(() => {
-    pushMock.mockClear();
+    assignMock.mockClear();
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: {
+        href: "http://localhost:3000/login",
+        origin: "http://localhost:3000",
+        pathname: "/login",
+        assign: assignMock,
+        replace: vi.fn(),
+      },
+    });
+  });
+
+  afterEach(() => {
+    Object.defineProperty(window, "location", { configurable: true, value: originalLocation });
   });
 
   it("single membership → submitting valid credentials redirects to /", async () => {
@@ -45,7 +58,7 @@ describe("LoginPage", () => {
     await user.type(screen.getByLabelText(/contraseña/i), "secret123");
     await user.click(screen.getByRole("button", { name: /iniciar sesión/i }));
 
-    await waitFor(() => expect(pushMock).toHaveBeenCalledWith("/"));
+    await waitFor(() => expect(assignMock).toHaveBeenCalledWith("/"));
   });
 
   it("multiple memberships → shows the cliente selector, picking one redirects to /", async () => {
@@ -79,6 +92,6 @@ describe("LoginPage", () => {
 
     await user.click(screen.getByRole("button", { name: /cliente dos/i }));
 
-    await waitFor(() => expect(pushMock).toHaveBeenCalledWith("/"));
+    await waitFor(() => expect(assignMock).toHaveBeenCalledWith("/"));
   });
 });

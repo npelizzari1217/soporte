@@ -11,16 +11,23 @@
  *   2. `selectCliente(clienteId)` re-posts `{ email, password, clienteId }`
  *      using the credentials captured from step 1.
  *
- * On success: navigates to `/` (the (dashboard) route group maps to `/`, NOT
- * `/dashboard`). Errors surface as sonner toasts (403 → tenant suspended,
- * anything else → generic message, no user enumeration).
+ * On success: hace una navegación de PÁGINA COMPLETA a `/` (`window.location`,
+ * NO `router.push`). Un login es un cambio de identidad: con navegación cliente
+ * el Router Cache de Next sirve el RSC de la sesión anterior y el
+ * `SessionProvider` (que hidrata `user` una sola vez desde la cookie decodificada
+ * server-side) queda con el usuario viejo → el menú/datos no se actualizan hasta
+ * un F5. La recarga completa fuerza server-render fresco con la cookie nueva y
+ * limpia TODA la caché cliente (Router Cache, React Query, SessionProvider).
+ * El (dashboard) route group mapea a `/`, NO `/dashboard`.
+ *
+ * Errores como toasts (403 → tenant suspendido; otro → mensaje genérico, sin
+ * enumeración de usuarios).
  *
  * Spec: [R23] BFF login route. Design: Container/Presentational pattern.
  */
 
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { apiFetch } from "@/shared/api/client";
 import { ApiError } from "@/shared/api/types";
@@ -45,7 +52,6 @@ function isNeedsClienteSelection(
 }
 
 export function useLogin() {
-  const router = useRouter();
   const [membresias, setMembresias] = useState<Membresia[] | null>(null);
   const [pendingCredentials, setPendingCredentials] = useState<{
     email: string;
@@ -67,7 +73,9 @@ export function useLogin() {
       // esto, un timestamp añejo (>15min) de una sesión previa dispara el corte
       // inmediato apenas entrás y te rebota a /login.
       writeLastActivity(Date.now());
-      router.push("/");
+      // Navegación de página completa (ver JSDoc): resetea toda la caché cliente
+      // para que el nuevo usuario no herede sesión/menú/datos del anterior.
+      window.location.assign("/");
     },
 
     onError: (err) => {
