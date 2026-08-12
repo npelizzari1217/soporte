@@ -73,6 +73,13 @@ model Estado {
 //
 // Seeds: BAJA (orden 10), MEDIA (20), ALTA (30), CRITICA (40).
 // Usado por el módulo SLA para calcular sla_vence_at en tickets.
+//
+// sla_horas/sla_activo (antes vivían en la tabla separada `sla_config`,
+// eliminada — el SLA es un atributo de la prioridad, no una entidad propia):
+// horas objetivo de resolución para tickets de esta prioridad. NULL = sin
+// SLA aplicable. CHECK (sla_horas IS NULL OR sla_horas > 0) en migración.
+// Editable por ADMINISTRADOR (permiso `catalogo:gestionar`) desde el mismo
+// form de Catálogos > Prioridades.
 
 model Prioridad {
   id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
@@ -81,12 +88,14 @@ model Prioridad {
   color     String?   @db.VarChar(20)
   orden     Int       @default(0)
   activo    Boolean   @default(true)
+  /// CHECK (sla_horas IS NULL OR sla_horas > 0) — enforced via migration SQL.
+  slaHoras  Int?      @map("sla_horas")
+  slaActivo Boolean   @default(true) @map("sla_activo")
   createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt DateTime? @map("deleted_at") @db.Timestamptz
 
-  tickets   Ticket[]
-  slaConfig SlaConfig?
+  tickets Ticket[]
 
   @@map("prioridades")
 }
@@ -643,27 +652,3 @@ model KbArticulo {
   @@map("kb_articulos")
 }
 
-// ─── SLA_CONFIG (config de SLA por prioridad — Fase 4, módulo SLA) ────────────
-//
-// Una fila por prioridad del catálogo FIJO (prioridad_id UNIQUE) — NO se
-// crean/eliminan filas, solo se edita `horas`/`activo` (S1). Sembrada en
-// provisioning con defaults: CRITICA=4h, ALTA=8h, MEDIA=24h, BAJA=48h.
-// CHECK (horas > 0) se agrega como raw SQL en la migración (mismo criterio
-// que items_compra.cantidad/presupuestos.monto_total).
-// Editable por ADMINISTRADOR (permiso `catalogo:gestionar`, reusado — sin
-// permiso nuevo, decisión del dueño).
-
-model SlaConfig {
-  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  prioridadId String    @unique @map("prioridad_id") @db.Uuid
-  /// CHECK (horas > 0) — enforced via migration SQL.
-  horas       Int
-  activo      Boolean   @default(true)
-  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz
-  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz
-
-  prioridad Prioridad @relation(fields: [prioridadId], references: [id])
-
-  @@map("sla_config")
-}

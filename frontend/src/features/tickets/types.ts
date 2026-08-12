@@ -123,6 +123,9 @@ export interface Prioridad {
   color: string | null;
   orden: number;
   activo: boolean;
+  /** Horas objetivo de SLA (movido de la tabla separada `sla_config` a `prioridades`). `null` = sin SLA aplicable. */
+  slaHoras: number | null;
+  slaActivo: boolean;
   createdAt: string;
   updatedAt: string;
 }

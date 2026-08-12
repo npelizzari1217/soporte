@@ -29,5 +29,14 @@ export const prioridadSchema = z.object({
   nombre: z.string().min(1, "El nombre es requerido"),
   color: z.string().optional().or(z.literal("")),
   orden: z.coerce.number().int("El orden debe ser un número entero"),
+  // SLA (movido de la tabla separada `sla_config` a `prioridades`, T2/PR11):
+  // string en el form (espejo del patrón `importe`/`valorResidual` de
+  // equipos) — "" = sin SLA aplicable, convertido a `null` al enviar.
+  slaHoras: z
+    .string()
+    .regex(/^[1-9]\d*$/, "Las horas de SLA deben ser un número entero mayor a 0")
+    .optional()
+    .or(z.literal("")),
+  slaActivo: z.boolean(),
 });
 export type PrioridadFormValues = z.infer<typeof prioridadSchema>;

@@ -33,7 +33,20 @@ export interface NavItem {
   ) => boolean;
 }
 
-export const NAV_ITEMS: NavItem[] = [
+/**
+ * NavSection — agrupa ítems bajo un encabezado opcional (`title`). `title:
+ * null` es la sección "default" (sin header visual, top-level). `visible`
+ * es un gate a nivel de SECCIÓN (ej. "ROOT" completa solo para
+ * `is_global_admin`); además, cada ítem sigue filtrando por su propio
+ * `visible` (permisos/módulo) — ambos gates aplican (AND).
+ */
+export interface NavSection {
+  title: string | null;
+  visible?: (isGlobalAdmin: boolean) => boolean;
+  items: NavItem[];
+}
+
+const DEFAULT_SECTION_ITEMS: NavItem[] = [
   {
     href: "/tickets",
     label: "Tickets",
@@ -61,6 +74,30 @@ export const NAV_ITEMS: NavItem[] = [
     visible: (can) => PERMISOS_ADMIN.some((p) => can(p)),
   },
   {
+    href: "/compras",
+    label: "Compras",
+    icon: ShoppingCart,
+    // Gating por MÓDULO (5.2 CAPA 3) AND permiso: además de tener el permiso,
+    // el módulo COMPRAS debe estar habilitado para el usuario.
+    visible: (can, _iga, canModulo) => canModulo("COMPRAS") && can("compra:gestionar"),
+  },
+  {
+    href: "/edilicia",
+    label: "Edilicia",
+    icon: Wrench,
+    visible: (can, _iga, canModulo) =>
+      canModulo("EDILICIA") && (can("subtarea:actualizar") || can("catalogo:gestionar")),
+  },
+  {
+    href: "/equipos",
+    label: "Equipos",
+    icon: Monitor,
+    visible: (can, _iga, canModulo) => canModulo("EQUIPOS") && can("equipo:gestionar"),
+  },
+];
+
+const ROOT_SECTION_ITEMS: NavItem[] = [
+  {
     href: "/admin/clientes",
     label: "Clientes",
     icon: Building2,
@@ -86,38 +123,53 @@ export const NAV_ITEMS: NavItem[] = [
     // solo para secciones gateadas por `permisos` del tenant).
     visible: (_can, isGlobalAdmin) => isGlobalAdmin,
   },
-  {
-    href: "/compras",
-    label: "Compras",
-    icon: ShoppingCart,
-    // Gating por MÓDULO (5.2 CAPA 3) AND permiso: además de tener el permiso,
-    // el módulo COMPRAS debe estar habilitado para el usuario.
-    visible: (can, _iga, canModulo) => canModulo("COMPRAS") && can("compra:gestionar"),
-  },
-  {
-    href: "/edilicia",
-    label: "Edilicia",
-    icon: Wrench,
-    visible: (can, _iga, canModulo) =>
-      canModulo("EDILICIA") && (can("subtarea:actualizar") || can("catalogo:gestionar")),
-  },
-  {
-    href: "/equipos",
-    label: "Equipos",
-    icon: Monitor,
-    visible: (can, _iga, canModulo) => canModulo("EQUIPOS") && can("equipo:gestionar"),
-  },
 ];
 
 /**
- * Filters `NAV_ITEMS` for a given (possibly null/unauthenticated) user. ROOT
- * (`is_global_admin`) bypasses `can()` — it's a flag, not a rol, and by
- * design it can do EVERYTHING (same criterion as `useSession().can`).
+ * NAV_SECTIONS — single source of truth for the sidebar navigation (ADR-4),
+ * agrupada. La sección "ROOT" agrupa los 3 ítems exclusivos de plataforma
+ * (Clientes, Ciclos master, Tipos de componente) bajo un header visible SOLO
+ * para `is_global_admin`; el resto vive en la sección default (sin header).
  */
-export function visibleNavItems(user: JwtPayload | null): NavItem[] {
+export const NAV_SECTIONS: NavSection[] = [
+  { title: null, items: DEFAULT_SECTION_ITEMS },
+  { title: "ROOT", visible: (isGlobalAdmin) => isGlobalAdmin, items: ROOT_SECTION_ITEMS },
+];
+
+/**
+ * NAV_ITEMS — vista plana de `NAV_SECTIONS`, para consumidores que no
+ * necesitan la agrupación (ej. `Breadcrumbs`, que solo busca por `href`).
+ */
+export const NAV_ITEMS: NavItem[] = NAV_SECTIONS.flatMap((section) => section.items);
+
+/**
+ * Filters `NAV_SECTIONS` for a given (possibly null/unauthenticated) user.
+ * ROOT (`is_global_admin`) bypasses `can()` — it's a flag, not a rol, and by
+ * design it can do EVERYTHING (same criterion as `useSession().can`).
+ *
+ * Drops sections whose section-level `visible` is false, AND sections left
+ * with zero items after the item-level filter (avoids rendering an empty
+ * header).
+ */
+export function visibleNavSections(user: JwtPayload | null): NavSection[] {
   const isGlobalAdmin = user?.is_global_admin ?? false;
   const can = (permiso: string): boolean => isGlobalAdmin || (user?.permisos.includes(permiso) ?? false);
   const canModulo = (modulo: string): boolean =>
     isGlobalAdmin || (user?.modulos?.includes(modulo) ?? false);
-  return NAV_ITEMS.filter((item) => item.visible(can, isGlobalAdmin, canModulo));
+
+  return NAV_SECTIONS.filter((section) => section.visible?.(isGlobalAdmin) ?? true)
+    .map((section) => ({
+      ...section,
+      items: section.items.filter((item) => item.visible(can, isGlobalAdmin, canModulo)),
+    }))
+    .filter((section) => section.items.length > 0);
+}
+
+/**
+ * Filters `NAV_ITEMS` for a given (possibly null/unauthenticated) user.
+ * Vista plana de `visibleNavSections` — se mantiene por compatibilidad con
+ * consumidores/tests que no necesitan la agrupación por sección.
+ */
+export function visibleNavItems(user: JwtPayload | null): NavItem[] {
+  return visibleNavSections(user).flatMap((section) => section.items);
 }

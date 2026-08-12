@@ -5,7 +5,17 @@
  *
  * Tarea: T11.3 (PR11 — CatalogosController + DTOs)
  */
-import { IsBoolean, IsIn, IsInt, IsOptional, IsString, Matches, MinLength } from 'class-validator';
+import {
+  IsBoolean,
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsString,
+  Matches,
+  Min,
+  MinLength,
+  ValidateIf,
+} from 'class-validator';
 import { TipoTicketEntity } from '../../domain/entities/tipo-ticket.entity';
 import { PrioridadEntity } from '../../domain/entities/prioridad.entity';
 import { EstadoEntity } from '../../domain/entities/estado.entity';
@@ -76,6 +86,20 @@ export class CreatePrioridadDto {
 
   @IsInt()
   orden!: number;
+
+  /**
+   * Horas objetivo de SLA (movido de `sla_config` a `prioridades`). Omitido
+   * o `null` = sin SLA aplicable a esta prioridad.
+   */
+  @IsOptional()
+  @ValidateIf((_object, value) => value !== null)
+  @IsInt()
+  @Min(1)
+  slaHoras?: number | null;
+
+  @IsOptional()
+  @IsBoolean()
+  slaActivo?: boolean;
 }
 
 /** Body de `PATCH /catalogos/prioridades/:id` (T2) — PATCH parcial. */
@@ -100,6 +124,21 @@ export class EditPrioridadDto {
   @IsOptional()
   @IsInt()
   orden?: number;
+
+  /**
+   * Horas objetivo de SLA (movido de `sla_config` a `prioridades`) — PATCH
+   * parcial: `undefined` no toca el valor, `null` limpia el SLA
+   * explícitamente (sin SLA aplicable).
+   */
+  @IsOptional()
+  @ValidateIf((_object, value) => value !== null)
+  @IsInt()
+  @Min(1)
+  slaHoras?: number | null;
+
+  @IsOptional()
+  @IsBoolean()
+  slaActivo?: boolean;
 }
 
 /** Body de `PATCH /catalogos/{tipos-ticket|prioridades}/:id/estado` (T2) — activar/desactivar. */
@@ -132,7 +171,11 @@ export function toTipoTicketResponseDto(tipo: TipoTicketEntity): TipoTicketRespo
   };
 }
 
-/** Response shape de una prioridad (T2). */
+/**
+ * Response shape de una prioridad (T2). `slaHoras`/`slaActivo`: SLA movido
+ * de la tabla separada `sla_config` a `prioridades` — mismo concepto
+ * (horas objetivo de resolución), ahora editable en este mismo form.
+ */
 export interface PrioridadResponseDto {
   id: string;
   codigo: string;
@@ -140,6 +183,8 @@ export interface PrioridadResponseDto {
   color: string | null;
   orden: number;
   activo: boolean;
+  slaHoras: number | null;
+  slaActivo: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -153,6 +198,8 @@ export function toPrioridadResponseDto(prioridad: PrioridadEntity): PrioridadRes
     color: prioridad.color,
     orden: prioridad.orden,
     activo: prioridad.activo,
+    slaHoras: prioridad.slaHoras,
+    slaActivo: prioridad.slaActivo,
     createdAt: prioridad.createdAt.toISOString(),
     updatedAt: prioridad.updatedAt.toISOString(),
   };

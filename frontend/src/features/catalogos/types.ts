@@ -28,6 +28,9 @@ export interface CreatePrioridadDto {
   nombre: string;
   color?: string | null;
   orden: number;
+  /** Horas objetivo de SLA (movido de `sla_config` a `prioridades`). Omitido/null = sin SLA aplicable. */
+  slaHoras?: number | null;
+  slaActivo?: boolean;
 }
 
 export interface EditPrioridadDto {
@@ -35,6 +38,8 @@ export interface EditPrioridadDto {
   nombre?: string;
   color?: string | null;
   orden?: number;
+  slaHoras?: number | null;
+  slaActivo?: boolean;
 }
 
 export interface CambiarEstadoActivoDto {

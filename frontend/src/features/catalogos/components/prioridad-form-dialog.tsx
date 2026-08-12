@@ -12,6 +12,7 @@ import type { ReactNode } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useCrearPrioridad, useEditarPrioridad } from "../hooks/use-catalogo-mutations";
 import { prioridadSchema, type PrioridadFormValues } from "../schemas";
 import type { Prioridad } from "@/features/tickets/types";
@@ -32,17 +33,33 @@ export function PrioridadFormDialog({ trigger, prioridad }: PrioridadFormDialogP
     register,
     handleSubmit,
     reset,
+    watch,
+    setValue,
     formState: { errors },
   } = useForm<PrioridadFormValues>({
     resolver: zodResolver(prioridadSchema),
     defaultValues: prioridad
-      ? { codigo: prioridad.codigo, nombre: prioridad.nombre, color: prioridad.color ?? "", orden: prioridad.orden }
-      : { codigo: "", nombre: "", color: "", orden: 0 },
+      ? {
+          codigo: prioridad.codigo,
+          nombre: prioridad.nombre,
+          color: prioridad.color ?? "",
+          orden: prioridad.orden,
+          slaHoras: prioridad.slaHoras !== null ? String(prioridad.slaHoras) : "",
+          slaActivo: prioridad.slaActivo,
+        }
+      : { codigo: "", nombre: "", color: "", orden: 0, slaHoras: "", slaActivo: true },
   });
 
   function submit(values: PrioridadFormValues) {
     mutation.mutate(
-      { codigo: values.codigo, nombre: values.nombre, color: values.color || undefined, orden: values.orden },
+      {
+        codigo: values.codigo,
+        nombre: values.nombre,
+        color: values.color || undefined,
+        orden: values.orden,
+        slaHoras: values.slaHoras ? Number(values.slaHoras) : null,
+        slaActivo: values.slaActivo,
+      },
       {
         onSuccess: () => {
           setOpen(false);
@@ -108,6 +125,34 @@ export function PrioridadFormDialog({ trigger, prioridad }: PrioridadFormDialogP
                 </p>
               )}
             </div>
+          </div>
+
+          <div className="flex gap-4">
+            <div className="flex flex-1 flex-col gap-1">
+              <label htmlFor="prioridad-sla-horas" className="text-sm font-medium text-foreground">
+                Horas de SLA (resolución objetivo)
+              </label>
+              <Input
+                id="prioridad-sla-horas"
+                type="number"
+                min={1}
+                placeholder="Sin SLA"
+                error={!!errors.slaHoras}
+                {...register("slaHoras")}
+              />
+              {errors.slaHoras && (
+                <p role="alert" className="text-sm text-destructive">
+                  {errors.slaHoras.message}
+                </p>
+              )}
+            </div>
+            <label className="flex items-center gap-2 self-end pb-2 text-sm text-foreground">
+              <Checkbox
+                checked={watch("slaActivo")}
+                onCheckedChange={(checked) => setValue("slaActivo", checked === true)}
+              />
+              SLA activo
+            </label>
           </div>
 
           <div className="flex justify-end gap-2">

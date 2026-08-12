@@ -27,6 +27,18 @@ describe('PrioridadEntity', () => {
       const prioridad = PrioridadEntity.create({ ...baseProps(), color: null });
       expect(prioridad.color).toBeNull();
     });
+
+    it('slaHoras/slaActivo default a null/true cuando no se proveen (sin SLA configurado aún)', () => {
+      const prioridad = PrioridadEntity.create(baseProps());
+      expect(prioridad.slaHoras).toBeNull();
+      expect(prioridad.slaActivo).toBe(true);
+    });
+
+    it('acepta slaHoras/slaActivo explícitos', () => {
+      const prioridad = PrioridadEntity.create({ ...baseProps(), slaHoras: 8, slaActivo: false });
+      expect(prioridad.slaHoras).toBe(8);
+      expect(prioridad.slaActivo).toBe(false);
+    });
   });
 
   describe('reconstitute()', () => {
@@ -87,6 +99,27 @@ describe('PrioridadEntity', () => {
       expect(prioridad.color).toBeNull();
       expect(prioridad.nombre).toBe('Media');
       expect(prioridad.codigo).toBe('MEDIA');
+    });
+
+    it.each([
+      ['setea slaHoras/slaActivo cuando se proveen', { slaHoras: 12, slaActivo: false }, 12, false],
+      ['slaHoras:null limpia el SLA explícitamente', { slaHoras: null }, null, true],
+    ])('%s', (_label, datos, slaHorasEsperado, slaActivoEsperado) => {
+      const prioridad = PrioridadEntity.create({ ...baseProps(), slaHoras: 8, slaActivo: true });
+
+      prioridad.actualizar(datos);
+
+      expect(prioridad.slaHoras).toBe(slaHorasEsperado);
+      expect(prioridad.slaActivo).toBe(slaActivoEsperado);
+    });
+
+    it('slaHoras/slaActivo undefined no se tocan (PATCH semántico)', () => {
+      const prioridad = PrioridadEntity.create({ ...baseProps(), slaHoras: 8, slaActivo: true });
+
+      prioridad.actualizar({ nombre: 'Media alta' });
+
+      expect(prioridad.slaHoras).toBe(8);
+      expect(prioridad.slaActivo).toBe(true);
     });
   });
 

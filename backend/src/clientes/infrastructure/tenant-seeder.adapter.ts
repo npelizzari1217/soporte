@@ -67,12 +67,18 @@ const ESTADOS = [
   { codigo: 'CANCELADO', nombre: 'Cancelado', orden: 60 },
 ];
 
-/** Catálogo FIJO de prioridades (R19). */
+/**
+ * Catálogo FIJO de prioridades (R19). `slaHoras`/`slaActivo` (Fase 4, S1,
+ * GATE G1 — movidos de la tabla separada `sla_config`, eliminada, a
+ * columnas propias de `prioridades`): defaults de horas objetivo de SLA,
+ * editables luego por ADMINISTRADOR (`catalogo:gestionar`) vía
+ * `EditarPrioridadUseCase`.
+ */
 const PRIORIDADES = [
-  { codigo: 'BAJA', nombre: 'Baja', orden: 10 },
-  { codigo: 'MEDIA', nombre: 'Media', orden: 20 },
-  { codigo: 'ALTA', nombre: 'Alta', orden: 30 },
-  { codigo: 'CRITICA', nombre: 'Crítica', orden: 40 },
+  { codigo: 'BAJA', nombre: 'Baja', orden: 10, slaHoras: 48, slaActivo: true },
+  { codigo: 'MEDIA', nombre: 'Media', orden: 20, slaHoras: 24, slaActivo: true },
+  { codigo: 'ALTA', nombre: 'Alta', orden: 30, slaHoras: 8, slaActivo: true },
+  { codigo: 'CRITICA', nombre: 'Crítica', orden: 40, slaHoras: 4, slaActivo: true },
 ];
 
 /**
@@ -106,18 +112,6 @@ const TIPOS_TICKET = [
   { codigo: 'MANTENIMIENTO', nombre: 'Mantenimiento', modulo: 'EDILICIA' },
 ];
 
-/**
- * Defaults de horas de SLA por código de prioridad (Fase 4, S1, GATE G1) —
- * sembrados 1:1 sobre el catálogo FIJO de prioridades, editables luego por
- * ADMINISTRADOR (`catalogo:gestionar`) vía `EditarSlaConfigUseCase`.
- */
-const SLA_HORAS_POR_PRIORIDAD: Record<string, number> = {
-  CRITICA: 4,
-  ALTA: 8,
-  MEDIA: 24,
-  BAJA: 48,
-};
-
 @Injectable()
 export class TenantSeederAdapter implements ITenantSeeder {
   constructor(
@@ -133,31 +127,10 @@ export class TenantSeederAdapter implements ITenantSeeder {
       await client.prioridad.createMany({ data: PRIORIDADES, skipDuplicates: true });
       await client.tipoOperacion.createMany({ data: TIPO_OPERACION, skipDuplicates: true });
       await client.tipoTicket.createMany({ data: TIPOS_TICKET, skipDuplicates: true });
-      await this.seedSlaConfig(client);
     } finally {
       await client.$disconnect();
       await pool.end();
     }
-  }
-
-  /**
-   * Siembra `sla_config` (Fase 4, S1, GATE G1) — una fila por prioridad
-   * recién sembrada, con los defaults de `SLA_HORAS_POR_PRIORIDAD`. Corre
-   * DESPUÉS de `prioridad.createMany` porque depende de los `id` (UUID)
-   * generados por esa siembra (`prioridad.findMany` los relee por `codigo`).
-   * Idempotente vía `skipDuplicates: true` (`prioridad_id` es UNIQUE).
-   */
-  private async seedSlaConfig(client: TenantClient): Promise<void> {
-    const prioridades = await client.prioridad.findMany({
-      where: { codigo: { in: Object.keys(SLA_HORAS_POR_PRIORIDAD) } },
-      select: { id: true, codigo: true },
-    });
-    const data = prioridades.map((p: { id: string; codigo: string }) => ({
-      prioridadId: p.id,
-      horas: SLA_HORAS_POR_PRIORIDAD[p.codigo],
-      activo: true,
-    }));
-    await client.slaConfig.createMany({ data, skipDuplicates: true });
   }
 }
 

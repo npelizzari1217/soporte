@@ -83,6 +83,12 @@ describe('TenantSeederAdapter (T7.4, integración — Postgres real, DB efímera
     const prioridades = await verifyClient.prioridad.findMany({ orderBy: { orden: 'asc' } });
     expect(prioridades.map((p) => p.codigo)).toEqual(['BAJA', 'MEDIA', 'ALTA', 'CRITICA']);
 
+    // Fase 4 (S1, GATE G1): sla_horas/sla_activo sembrados 1:1 con prioridades
+    // (movido de la tabla separada `sla_config`, eliminada).
+    const horasPorCodigo = Object.fromEntries(prioridades.map((p) => [p.codigo, p.slaHoras]));
+    expect(horasPorCodigo).toEqual({ CRITICA: 4, ALTA: 8, MEDIA: 24, BAJA: 48 });
+    expect(prioridades.every((p) => p.slaActivo)).toBe(true);
+
     const tipoOperacion = await verifyClient.tipoOperacion.findMany({ orderBy: { nombre: 'asc' } });
     expect(tipoOperacion).toHaveLength(7);
     expect(tipoOperacion.map((t) => t.codigo).sort()).toEqual(
@@ -101,33 +107,22 @@ describe('TenantSeederAdapter (T7.4, integración — Postgres real, DB efímera
     expect(tiposTicket.map((t) => t.codigo).sort()).toEqual(
       ['SOPORTE', 'COMPRAS', 'EDILICIA', 'MANTENIMIENTO'].sort(),
     );
-
-    // Fase 4 (S1, GATE G1): sla_config sembrado 1:1 con prioridades.
-    const slaConfigs = await verifyClient.slaConfig.findMany({
-      include: { prioridad: { select: { codigo: true } } },
-    });
-    expect(slaConfigs).toHaveLength(4);
-    const horasPorCodigo = Object.fromEntries(slaConfigs.map((s) => [s.prioridad.codigo, s.horas]));
-    expect(horasPorCodigo).toEqual({ CRITICA: 4, ALTA: 8, MEDIA: 24, BAJA: 48 });
-    expect(slaConfigs.every((s) => s.activo)).toBe(true);
   }, 30_000);
 
   it('[CRITICAL] correr seed() una segunda vez NO duplica filas ni falla (R19, ampliado F3-S1)', async () => {
     await seeder.seed(DB_NAME);
     await seeder.seed(DB_NAME); // re-run
 
-    const [estados, prioridades, tipoOperacion, tiposTicket, slaConfigs] = await Promise.all([
+    const [estados, prioridades, tipoOperacion, tiposTicket] = await Promise.all([
       verifyClient.estado.findMany(),
       verifyClient.prioridad.findMany(),
       verifyClient.tipoOperacion.findMany(),
       verifyClient.tipoTicket.findMany(),
-      verifyClient.slaConfig.findMany(),
     ]);
 
     expect(estados).toHaveLength(6);
     expect(prioridades).toHaveLength(4);
     expect(tipoOperacion).toHaveLength(7);
     expect(tiposTicket).toHaveLength(4);
-    expect(slaConfigs).toHaveLength(4);
   }, 30_000);
 });

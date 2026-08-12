@@ -14,9 +14,10 @@ export class CalcularSlaVenceService {
    *
    * @param creadoEn Fecha de creación del ticket (ancla — nunca la fecha de
    *                 repriorización, S3).
-   * @param horas    Horas configuradas para la prioridad (`sla_config.horas`).
-   *                 Debe ser > 0 — invariante ya validada por `SlaConfigEntity`;
-   *                 revalidada acá defensivamente.
+   * @param horas    Horas configuradas para la prioridad (`prioridades.sla_horas`
+   *                 — antes vivía en la tabla separada `sla_config`, eliminada).
+   *                 Debe ser > 0 — invariante validada en la capa de aplicación
+   *                 (DTO de Catálogos); revalidada acá defensivamente.
    * @throws Error si `horas` no es un entero positivo (config inconsistente).
    */
   venceAt(creadoEn: Date, horas: number): Date {

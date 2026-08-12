@@ -28,23 +28,14 @@ import { TenantSeederAdapter } from './tenant-seeder.adapter';
 
 const MASTER_URL = 'postgresql://soporte:soporte@localhost:5432/soporte_master';
 
-const PRIORIDAD_ROWS = [
-  { id: 'id-baja', codigo: 'BAJA' },
-  { id: 'id-media', codigo: 'MEDIA' },
-  { id: 'id-alta', codigo: 'ALTA' },
-  { id: 'id-critica', codigo: 'CRITICA' },
-];
-
 function makeFakeClient() {
   return {
     estado: { createMany: vi.fn().mockResolvedValue({ count: 6 }) },
     prioridad: {
       createMany: vi.fn().mockResolvedValue({ count: 4 }),
-      findMany: vi.fn().mockResolvedValue(PRIORIDAD_ROWS),
     },
     tipoOperacion: { createMany: vi.fn().mockResolvedValue({ count: 7 }) },
     tipoTicket: { createMany: vi.fn().mockResolvedValue({ count: 4 }) },
-    slaConfig: { createMany: vi.fn().mockResolvedValue({ count: 4 }) },
     $disconnect: vi.fn().mockResolvedValue(undefined),
   };
 }
@@ -88,6 +79,28 @@ describe('TenantSeederAdapter (T7.4, unit — createClient mockeado)', () => {
       'MEDIA',
       'ALTA',
       'CRITICA',
+    ]);
+  });
+
+  it('[CRITICAL] siembra los defaults de sla_horas/sla_activo por prioridad (Fase 4, S1, GATE G1 — movido a prioridades)', async () => {
+    const client = makeFakeClient();
+    const createClient = vi.fn().mockReturnValue({ client, pool: makeFakePool() });
+    const adapter = new TenantSeederAdapter(MASTER_URL, createClient);
+
+    await adapter.seed('soporte_prov_demo_test');
+
+    const [[{ data }]] = client.prioridad.createMany.mock.calls;
+    expect(
+      data.map((p: { codigo: string; slaHoras: number; slaActivo: boolean }) => ({
+        codigo: p.codigo,
+        slaHoras: p.slaHoras,
+        slaActivo: p.slaActivo,
+      })),
+    ).toEqual([
+      { codigo: 'BAJA', slaHoras: 48, slaActivo: true },
+      { codigo: 'MEDIA', slaHoras: 24, slaActivo: true },
+      { codigo: 'ALTA', slaHoras: 8, slaActivo: true },
+      { codigo: 'CRITICA', slaHoras: 4, slaActivo: true },
     ]);
   });
 
@@ -172,47 +185,5 @@ describe('TenantSeederAdapter (T7.4, unit — createClient mockeado)', () => {
 
     expect(client.$disconnect).toHaveBeenCalledTimes(1);
     expect(pool.end).toHaveBeenCalledTimes(1);
-  });
-
-  it('[CRITICAL] siembra sla_config con los defaults por prioridad (Fase 4, S1, GATE G1)', async () => {
-    const client = makeFakeClient();
-    const createClient = vi.fn().mockReturnValue({ client, pool: makeFakePool() });
-    const adapter = new TenantSeederAdapter(MASTER_URL, createClient);
-
-    await adapter.seed('soporte_prov_demo_test');
-
-    expect(client.slaConfig.createMany).toHaveBeenCalledWith({
-      data: expect.arrayContaining([
-        { prioridadId: 'id-baja', horas: 48, activo: true },
-        { prioridadId: 'id-media', horas: 24, activo: true },
-        { prioridadId: 'id-alta', horas: 8, activo: true },
-        { prioridadId: 'id-critica', horas: 4, activo: true },
-      ]),
-      skipDuplicates: true,
-    });
-    expect(client.slaConfig.createMany.mock.calls[0]![0].data).toHaveLength(4);
-  });
-
-  it('sla_config se siembra DESPUÉS de prioridades (depende de sus ids recién creados)', async () => {
-    const client = makeFakeClient();
-    const createClient = vi.fn().mockReturnValue({ client, pool: makeFakePool() });
-    const adapter = new TenantSeederAdapter(MASTER_URL, createClient);
-    const orden: string[] = [];
-    client.prioridad.createMany.mockImplementation(async () => {
-      orden.push('prioridad.createMany');
-      return { count: 4 };
-    });
-    client.prioridad.findMany.mockImplementation(async () => {
-      orden.push('prioridad.findMany');
-      return PRIORIDAD_ROWS;
-    });
-    client.slaConfig.createMany.mockImplementation(async () => {
-      orden.push('slaConfig.createMany');
-      return { count: 4 };
-    });
-
-    await adapter.seed('soporte_prov_demo_test');
-
-    expect(orden).toEqual(['prioridad.createMany', 'prioridad.findMany', 'slaConfig.createMany']);
   });
 });

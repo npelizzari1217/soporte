@@ -10,19 +10,19 @@
  *
  * Spec: R-M0 Shell/layout premium.
  */
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSession } from "@/shared/hooks/use-session";
-import { visibleNavItems } from "@/shared/nav/nav-config";
+import { visibleNavSections } from "@/shared/nav/nav-config";
 
 export function AppSidebar() {
   const { user } = useSession();
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
-  const items = visibleNavItems(user);
+  const sections = visibleNavSections(user);
 
   return (
     <nav
@@ -46,29 +46,58 @@ export function AppSidebar() {
         )}
       </button>
 
-      <ul className="flex flex-1 flex-col gap-1 p-2">
-        {items.map((item) => {
-          const isActive = pathname === item.href || pathname?.startsWith(`${item.href}/`);
-          const Icon = item.icon;
+      <div className="flex flex-1 flex-col gap-1 overflow-y-auto p-2">
+        {sections.map((section) => {
+          // Enlaza el encabezado de sección con su lista vía `aria-labelledby`
+          // para que el lector de pantalla anuncie el grupo (ej. "ROOT"). Solo
+          // aplica expandido: colapsado el label es un `<hr>` decorativo.
+          const headingId =
+            section.title !== null && !collapsed
+              ? `nav-section-${section.title.toLowerCase().replace(/\s+/g, "-")}`
+              : undefined;
           return (
-            <li key={item.href}>
-              <Link
-                href={item.href}
-                aria-current={isActive ? "page" : undefined}
-                className={cn(
-                  "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
-                  isActive
-                    ? "bg-primary text-primary-foreground"
-                    : "text-foreground hover:bg-muted",
-                )}
-              >
-                <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
-                {!collapsed && <span className="truncate">{item.label}</span>}
-              </Link>
-            </li>
+            <Fragment key={section.title ?? "default"}>
+              {section.title !== null &&
+                (collapsed ? (
+                  // Colapsado: el label de texto no entra en el riel angosto —
+                  // un divisor fino marca el corte de sección sin romper el
+                  // layout compacto.
+                  <hr className="my-1 border-t border-border" aria-hidden="true" />
+                ) : (
+                  <span
+                    id={headingId}
+                    className="px-3 pt-3 text-xs font-semibold uppercase text-muted-foreground"
+                  >
+                    {section.title}
+                  </span>
+                ))}
+              <ul className="flex flex-col gap-1" aria-labelledby={headingId}>
+                {section.items.map((item) => {
+                  const isActive = pathname === item.href || pathname?.startsWith(`${item.href}/`);
+                  const Icon = item.icon;
+                  return (
+                    <li key={item.href}>
+                      <Link
+                        href={item.href}
+                        aria-current={isActive ? "page" : undefined}
+                        className={cn(
+                          "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                          isActive
+                            ? "bg-primary text-primary-foreground"
+                            : "text-foreground hover:bg-muted",
+                        )}
+                      >
+                        <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                        {!collapsed && <span className="truncate">{item.label}</span>}
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            </Fragment>
           );
         })}
-      </ul>
+      </div>
     </nav>
   );
 }
