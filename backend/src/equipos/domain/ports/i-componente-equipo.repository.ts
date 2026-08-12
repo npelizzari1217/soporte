@@ -14,6 +14,13 @@ export interface IComponenteEquipoRepository {
   /** Retorna los componentes ACTIVOS (no soft-deleted) de un equipo. Permite N por tipo (F3-Q2). */
   findActiveByEquipoId(equipoId: string): Promise<ComponenteEquipoEntity[]>;
 
+  /**
+   * Retorna TODOS los componentes de un equipo (activos + soft-deleted) —
+   * usado por `ObtenerEquipoUseCase` para mostrar el historial completo en
+   * el detalle del equipo (listado enriquecido, item "componentes de equipo").
+   */
+  findAllByEquipoId(equipoId: string): Promise<ComponenteEquipoEntity[]>;
+
   /** Persiste el componente (upsert). */
   save(componente: ComponenteEquipoEntity): Promise<void>;
 

@@ -59,6 +59,8 @@ import { ListarEquiposUseCase } from './application/use-cases/listar-equipos.use
 import { EliminarEquipoUseCase } from './application/use-cases/eliminar-equipo.use-case';
 import { AgregarComponenteUseCase } from './application/use-cases/agregar-componente.use-case';
 import { EliminarComponenteUseCase } from './application/use-cases/eliminar-componente.use-case';
+import { EditarComponenteUseCase } from './application/use-cases/editar-componente.use-case';
+import { ReactivarComponenteUseCase } from './application/use-cases/reactivar-componente.use-case';
 import { ListarTiposComponenteUseCase } from './application/use-cases/listar-tipos-componente.use-case';
 import { CrearTicketSoporteUseCase } from './application/use-cases/crear-ticket-soporte.use-case';
 import { RegistrarSolucionUseCase } from './application/use-cases/registrar-solucion.use-case';
@@ -185,6 +187,20 @@ import { SoporteController } from './interface/controllers/soporte.controller';
       provide: EliminarComponenteUseCase,
       useFactory: (componenteRepo: IComponenteEquipoRepository) =>
         new EliminarComponenteUseCase(componenteRepo),
+      inject: [COMPONENTE_EQUIPO_REPOSITORY],
+    },
+    {
+      provide: EditarComponenteUseCase,
+      useFactory: (
+        componenteRepo: IComponenteEquipoRepository,
+        tipoComponenteMasterChecker: ITipoComponenteMasterChecker,
+      ) => new EditarComponenteUseCase(componenteRepo, tipoComponenteMasterChecker),
+      inject: [COMPONENTE_EQUIPO_REPOSITORY, TIPO_COMPONENTE_MASTER_CHECKER],
+    },
+    {
+      provide: ReactivarComponenteUseCase,
+      useFactory: (componenteRepo: IComponenteEquipoRepository) =>
+        new ReactivarComponenteUseCase(componenteRepo),
       inject: [COMPONENTE_EQUIPO_REPOSITORY],
     },
     {

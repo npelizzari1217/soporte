@@ -99,4 +99,54 @@ export class ComponenteEquipoEntity extends BaseEntity<ComponenteEquipoProps> {
   get capacidad(): string | null {
     return this.props.capacidad;
   }
+
+  /** `true` si el componente NO fue dado de baja (`deletedAt == null`). Derivado, no persiste aparte. */
+  get activo(): boolean {
+    return !this.isDeleted();
+  }
+
+  // ─── Comportamiento de dominio ─────────────────────────────────────────
+
+  /**
+   * Actualiza los campos editables (PATCH semántico, mismo criterio que
+   * `EquipoInformaticoEntity.actualizar`): campos `undefined` NO se tocan;
+   * los opcionales (`descripcion`, `numeroSerie`, `capacidad`) en `null`
+   * limpian el valor explícitamente.
+   *
+   * `tipoComponenteCodigo` es obligatorio en el dominio — el use case
+   * (`EditarComponenteUseCase`) es responsable de rechazar un valor vacío
+   * ANTES de llamar acá (mismo criterio que `create()`: esta entidad no
+   * re-valida en `actualizar()`, solo en el factory).
+   */
+  actualizar(datos: {
+    tipoComponenteCodigo?: string;
+    descripcion?: string | null;
+    numeroSerie?: string | null;
+    capacidad?: string | null;
+  }): void {
+    if (datos.tipoComponenteCodigo !== undefined) {
+      this.props.tipoComponenteCodigo = datos.tipoComponenteCodigo;
+    }
+    if (datos.descripcion !== undefined) {
+      this.props.descripcion = datos.descripcion;
+    }
+    if (datos.numeroSerie !== undefined) {
+      this.props.numeroSerie = datos.numeroSerie;
+    }
+    if (datos.capacidad !== undefined) {
+      this.props.capacidad = datos.capacidad;
+    }
+    this.touch();
+  }
+
+  /**
+   * Revierte la baja lógica (reactivación): limpia `deletedAt` y actualiza
+   * `updatedAt`. Contraparte de `softDelete()` (heredado de `BaseEntity`).
+   * El use case (`ReactivarComponenteUseCase`) es responsable de rechazar
+   * la reactivación de un componente que ya está activo.
+   */
+  reactivar(): void {
+    this._deletedAt = null;
+    this.touch();
+  }
 }

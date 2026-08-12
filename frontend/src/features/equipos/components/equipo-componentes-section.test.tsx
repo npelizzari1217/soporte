@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { describe, it, expect, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -43,6 +43,8 @@ describe("EquipoComponentesSection", () => {
         descripcion: null,
         numeroSerie: null,
         capacidad: null,
+        activo: true,
+        deletedAt: null,
         createdAt: "2026-01-01T00:00:00.000Z",
         updatedAt: "2026-01-01T00:00:00.000Z",
       },
@@ -67,6 +69,8 @@ describe("EquipoComponentesSection", () => {
         descripcion: null,
         numeroSerie: null,
         capacidad: "16GB",
+        activo: true,
+        deletedAt: null,
         createdAt: "2026-01-01T00:00:00.000Z",
         updatedAt: "2026-01-01T00:00:00.000Z",
       },
@@ -99,6 +103,8 @@ describe("EquipoComponentesSection", () => {
       descripcion: null,
       numeroSerie: null,
       capacidad: null,
+      activo: true,
+      deletedAt: null,
       createdAt: "2026-01-01T00:00:00.000Z",
       updatedAt: "2026-01-01T00:00:00.000Z",
     };
@@ -140,6 +146,8 @@ describe("EquipoComponentesSection", () => {
           descripcion: null,
           numeroSerie: null,
           capacidad: "1TB",
+          activo: true,
+          deletedAt: null,
           createdAt: "2026-01-01T00:00:00.000Z",
           updatedAt: "2026-01-01T00:00:00.000Z",
         });
@@ -157,5 +165,104 @@ describe("EquipoComponentesSection", () => {
 
     await waitFor(() => expect(bodyRecibido).not.toBeNull());
     expect(bodyRecibido).toMatchObject({ tipoComponenteCodigo: "DISCO" });
+  });
+
+  it("un componente dado de baja se muestra tachado/gris, SIN Editar/Dar de baja, CON 'Reactivar'; uno activo tiene Editar/Dar de baja", async () => {
+    const componentes = [
+      {
+        id: "activo-1",
+        equipoId: EQUIPO_ID,
+        tipoComponenteCodigo: "RAM",
+        tipoNombre: "Memoria RAM",
+        tipoActivo: true,
+        descripcion: null,
+        numeroSerie: null,
+        capacidad: "8GB",
+        activo: true,
+        deletedAt: null,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
+      {
+        id: "baja-1",
+        equipoId: EQUIPO_ID,
+        tipoComponenteCodigo: "DISCO",
+        tipoNombre: "Disco rígido",
+        tipoActivo: true,
+        descripcion: null,
+        numeroSerie: null,
+        capacidad: "1TB",
+        activo: false,
+        deletedAt: "2026-02-01T00:00:00.000Z",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-02-01T00:00:00.000Z",
+      },
+    ];
+
+    renderWithProviders(<EquipoComponentesSection equipoId={EQUIPO_ID} componentes={componentes} />, {
+      user: buildUser({ permisos: ["equipo:gestionar"] }),
+    });
+
+    const nombreActivo = await screen.findByText(/memoria ram — 8gb/i);
+    const filaActiva = nombreActivo.closest("li")!;
+    expect(nombreActivo.parentElement!.className).not.toContain("line-through");
+    expect(within(filaActiva).getByLabelText(/editar componente/i)).toBeInTheDocument();
+    expect(within(filaActiva).getByLabelText(/dar de baja componente/i)).toBeInTheDocument();
+    expect(within(filaActiva).queryByRole("button", { name: /reactivar/i })).not.toBeInTheDocument();
+
+    const nombreBaja = screen.getByText(/disco rígido — 1tb/i);
+    const filaBaja = nombreBaja.closest("li")!;
+    expect(nombreBaja.parentElement!.className).toContain("line-through");
+    expect(within(filaBaja).queryByLabelText(/editar componente/i)).not.toBeInTheDocument();
+    expect(within(filaBaja).queryByLabelText(/dar de baja componente/i)).not.toBeInTheDocument();
+    expect(within(filaBaja).getByRole("button", { name: /reactivar/i })).toBeInTheDocument();
+    expect(within(filaBaja).getByText(/dado de baja:/i)).toBeInTheDocument();
+  });
+
+  it("al reactivar, dispara PATCH /equipos/:id/componentes/:componenteId/reactivar", async () => {
+    const user = userEvent.setup();
+    let metodoRecibido: string | null = null;
+    server.use(
+      http.patch(`/api/equipos/${EQUIPO_ID}/componentes/baja-1/reactivar`, ({ request }) => {
+        metodoRecibido = request.method;
+        return HttpResponse.json({
+          id: "baja-1",
+          equipoId: EQUIPO_ID,
+          tipoComponenteCodigo: "DISCO",
+          descripcion: null,
+          numeroSerie: null,
+          capacidad: "1TB",
+          activo: true,
+          deletedAt: null,
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-02-02T00:00:00.000Z",
+        });
+      }),
+    );
+
+    const componentes = [
+      {
+        id: "baja-1",
+        equipoId: EQUIPO_ID,
+        tipoComponenteCodigo: "DISCO",
+        tipoNombre: "Disco rígido",
+        tipoActivo: true,
+        descripcion: null,
+        numeroSerie: null,
+        capacidad: "1TB",
+        activo: false,
+        deletedAt: "2026-02-01T00:00:00.000Z",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-02-01T00:00:00.000Z",
+      },
+    ];
+
+    renderWithProviders(<EquipoComponentesSection equipoId={EQUIPO_ID} componentes={componentes} />, {
+      user: buildUser({ permisos: ["equipo:gestionar"] }),
+    });
+
+    await user.click(await screen.findByRole("button", { name: /reactivar/i }));
+
+    await waitFor(() => expect(metodoRecibido).toBe("PATCH"));
   });
 });
