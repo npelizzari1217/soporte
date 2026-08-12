@@ -31,10 +31,15 @@ async function login(page: Page, creds: { email: string; password: string }): Pr
   await page.waitForURL("**/tickets");
 }
 
-/** Crea un ticket mínimo (título único) y devuelve el título usado. */
+/**
+ * Crea un ticket mínimo (título único) y devuelve el título usado. El alta
+ * dejó de ser una ruta dedicada (`/tickets/nuevo`) y ahora es un modal abierto
+ * desde el botón "Nuevo ticket" de la lista (feat/ui-premium-educandow).
+ */
 async function crearTicket(page: Page, prefijo: string): Promise<string> {
   const titulo = `${prefijo} ${Date.now()}`;
-  await page.goto("/tickets/nuevo");
+  await page.goto("/tickets");
+  await page.getByRole("button", { name: /nuevo ticket/i }).click();
   await page.getByLabel(/título/i).fill(titulo);
   await page.getByLabel(/^tipo$/i).selectOption({ index: 1 });
   await page.getByLabel(/^prioridad$/i).selectOption({ index: 1 });

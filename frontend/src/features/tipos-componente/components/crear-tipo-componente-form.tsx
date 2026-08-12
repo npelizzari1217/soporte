@@ -3,8 +3,9 @@
 /**
  * CrearTipoComponenteForm — PRESENTATIONAL. Alta de un tipo de componente en
  * el catálogo master (PR5, sdd/tipos-componente-master, `POST
- * /tipos-componente`). Mismo patrón que `AdoptarCicloForm`
- * (`features/ciclos`): form inline arriba de la lista, sin modal.
+ * /tipos-componente`). Envuelto por `CrearTipoComponenteDialog` (modal,
+ * feat/ui-premium-educandow) — mismo patrón que `AdoptarCicloForm`/
+ * `AdoptarCicloDialog` (`features/ciclos`).
  */
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -13,7 +14,12 @@ import { Button } from "@/components/ui/button";
 import { crearTipoComponenteSchema, type CrearTipoComponenteFormValues } from "../schemas";
 import { useCrearTipoComponente } from "../hooks/use-tipos-componente";
 
-export function CrearTipoComponenteForm() {
+export interface CrearTipoComponenteFormProps {
+  /** Se llama tras un alta exitosa, además del reset del form (ej. cerrar el modal contenedor). */
+  onSuccess?: () => void;
+}
+
+export function CrearTipoComponenteForm({ onSuccess }: CrearTipoComponenteFormProps = {}) {
   const mutation = useCrearTipoComponente();
   const {
     register,
@@ -26,7 +32,12 @@ export function CrearTipoComponenteForm() {
   });
 
   function submit(values: CrearTipoComponenteFormValues) {
-    mutation.mutate(values, { onSuccess: () => reset() });
+    mutation.mutate(values, {
+      onSuccess: () => {
+        reset();
+        onSuccess?.();
+      },
+    });
   }
 
   return (

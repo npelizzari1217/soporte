@@ -101,6 +101,44 @@ describe("TicketDetailView — gating de acciones por permiso", () => {
     }
   });
 
+  it("editar (modal) → click en «Editar» abre el modal precargado y guardar dispara PATCH /tickets/:id", async () => {
+    // `editarTicketSchema` exige `prioridadId` UUID (z.uuid()) — el fixture
+    // TICKET usa el id legible "p-alta" para el resto de los tests (no
+    // sensibles a este detalle); acá se sobreescribe por uno UUID válido
+    // para poder ejercer el submit real del form.
+    const PRIORIDAD_UUID = "33333333-3333-3333-3333-333333333333";
+    let capturedBody: unknown = null;
+    server.use(
+      http.get(`/api/tickets/${TICKET_ID}`, () => HttpResponse.json({ ...TICKET, prioridadId: PRIORIDAD_UUID })),
+      http.get("/api/catalogos/prioridades", () =>
+        HttpResponse.json([{ id: PRIORIDAD_UUID, codigo: "ALTA", nombre: "Alta", color: null, orden: 3, activo: true, createdAt: "", updatedAt: "" }]),
+      ),
+      http.patch(`/api/tickets/${TICKET_ID}`, async ({ request }) => {
+        capturedBody = await request.json();
+        return HttpResponse.json({ ...TICKET, titulo: "Impresora arreglada" });
+      }),
+    );
+
+    const user = userEvent.setup();
+    renderWithProviders(<TicketDetailView ticketId={TICKET_ID} />, {
+      user: buildUser({ permisos: ["ticket:editar"] }),
+    });
+
+    await screen.findByText("Impresora rota");
+    expect(screen.queryByLabelText("Título")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /^editar$/i }));
+    const tituloInput = await screen.findByLabelText("Título");
+    expect(tituloInput).toHaveValue("Impresora rota");
+
+    await user.clear(tituloInput);
+    await user.type(tituloInput, "Impresora arreglada");
+    await user.click(screen.getByRole("button", { name: /guardar/i }));
+
+    await waitFor(() => expect(capturedBody).toMatchObject({ titulo: "Impresora arreglada" }));
+    await waitFor(() => expect(screen.queryByLabelText("Título")).not.toBeInTheDocument());
+  });
+
   it("control unificado → PATCH /tickets/:id/asignar-en-proceso con el técnico elegido", async () => {
     let capturedBody: unknown = null;
     server.use(

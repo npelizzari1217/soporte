@@ -3,7 +3,7 @@
 /**
  * KbArticuloForm — PRESENTATIONAL. Form crear/editar (R-M3 / T3.4): título +
  * contenido (textarea markdown liviano, sin WYSIWYG pesado, ADR-6). Gate
- * `kb:gestionar` lo aplica el caller (`KbCreateView`/`KbEditView`).
+ * `kb:gestionar` lo aplica el caller (`KbArticleCreateDialog`/`KbArticleEditDialog`).
  */
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";

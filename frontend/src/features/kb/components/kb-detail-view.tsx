@@ -8,16 +8,15 @@
  * ADR-6: "sin lib WYSIWYG", esta es la opción "texto plano" explícitamente
  * permitida (sin `dangerouslySetInnerHTML`, cero riesgo XSS).
  */
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useKbArticulo } from "../hooks/use-kb-articulo";
 import { useCambiarVisibilidadKbArticulo, useEliminarKbArticulo } from "../hooks/use-kb-mutations";
 import { DetailSkeleton } from "@/components/shared/skeletons";
 import { ErrorState } from "@/components/shared/error-state";
 import { Can } from "@/components/shared/can";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/shared/page-header";
+import { KbArticleEditDialog } from "./kb-article-edit-dialog";
 import { KbVisibilityToggle } from "./kb-visibility-toggle";
 import { KbDeleteControl } from "./kb-delete-control";
 
@@ -52,9 +51,7 @@ export function KbDetailView({ articuloId }: KbDetailViewProps) {
         actions={
           <Can permiso="kb:gestionar">
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" asChild>
-                <Link href={`/kb/${articulo.id}/editar`}>Editar</Link>
-              </Button>
+              <KbArticleEditDialog articulo={articulo} />
               <KbVisibilityToggle
                 visible={articulo.visibleParaSolicitante}
                 onConfirm={() => visibilidadMutation.mutate({ visible: !articulo.visibleParaSolicitante })}

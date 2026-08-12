@@ -20,8 +20,8 @@ export default function LoginPage() {
   const { login, selectCliente, membresias, isPending } = useLogin();
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background p-4">
-      <div className="w-full max-w-sm rounded-lg border border-slate-200/50 bg-card/80 p-8 backdrop-blur dark:border-white/5">
+    <div className="flex min-h-screen items-center justify-center bg-[linear-gradient(135deg,var(--background)_0%,var(--login-gradient-accent)_100%)] p-4">
+      <div className="w-full max-w-sm rounded-lg border border-border bg-card/80 p-8 shadow-xl backdrop-blur">
         <div className="mb-6 text-center">
           <h1 className="text-xl font-semibold tracking-tight text-foreground">Iniciar sesión</h1>
           <p className="mt-1 text-sm text-muted-foreground">

@@ -18,7 +18,7 @@ import { ErrorState } from "@/components/shared/error-state";
 import { EmptyState } from "@/components/shared/empty-state";
 import { PageHeader } from "@/components/shared/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CrearTipoComponenteForm } from "./crear-tipo-componente-form";
+import { CrearTipoComponenteDialog } from "./crear-tipo-componente-dialog";
 import { TipoComponenteRow } from "./tipo-componente-row";
 
 export function TiposComponenteAdminView() {
@@ -44,7 +44,7 @@ function TiposComponenteAdminContent() {
       <PageHeader title="Tipos de componente" description="Catálogo maestro de tipos de componente (solo ROOT)." />
 
       <div className="mb-4">
-        <CrearTipoComponenteForm />
+        <CrearTipoComponenteDialog />
       </div>
 
       {tiposQuery.isLoading && (
@@ -63,7 +63,7 @@ function TiposComponenteAdminContent() {
       )}
 
       {!tiposQuery.isLoading && !tiposQuery.isError && tipos.length === 0 && (
-        <EmptyState icon={Tag} title="Sin tipos de componente" description="Creá el primero con el formulario de arriba." />
+        <EmptyState icon={Tag} title="Sin tipos de componente" description="Creá el primero con el botón de arriba." />
       )}
 
       {!tiposQuery.isLoading && !tiposQuery.isError && tipos.length > 0 && (
