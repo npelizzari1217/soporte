@@ -84,4 +84,36 @@ describe('EditarPrioridadUseCase', () => {
     expect(result.isOk()).toBe(true);
     expect(result.getValue().nombre).toBe('Alta v2');
   });
+
+  it('edita slaHoras/slaActivo (SLA movido de sla_config a prioridades)', async () => {
+    const prioridad = make('ALTA', 'id-1');
+    const c = makeCollaborators(prioridad);
+
+    const result = await c.useCase.execute({ id: 'id-1', slaHoras: 8, slaActivo: false });
+
+    expect(result.isOk()).toBe(true);
+    expect(result.getValue().slaHoras).toBe(8);
+    expect(result.getValue().slaActivo).toBe(false);
+  });
+
+  it('slaHoras:null limpia el SLA explícitamente (sin SLA aplicable)', async () => {
+    const prioridad = PrioridadEntity.create(
+      {
+        codigo: 'ALTA',
+        nombre: 'ALTA',
+        color: null,
+        orden: 10,
+        activo: true,
+        slaHoras: 8,
+        slaActivo: true,
+      },
+      'id-1',
+    );
+    const c = makeCollaborators(prioridad);
+
+    const result = await c.useCase.execute({ id: 'id-1', slaHoras: null });
+
+    expect(result.isOk()).toBe(true);
+    expect(result.getValue().slaHoras).toBeNull();
+  });
 });

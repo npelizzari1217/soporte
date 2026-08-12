@@ -4,12 +4,11 @@ import { AuthModule } from '../auth/auth.module';
 import { TicketsModule } from '../tickets/tickets.module';
 import { TICKET_REPOSITORY, ITicketRepository } from '../tickets/domain/ports/i-ticket.repository';
 import { ESTADO_REPOSITORY, IEstadoRepository } from '../tickets/domain/ports/i-estado.repository';
-
 import {
-  SLA_CONFIG_REPOSITORY,
-  ISlaConfigRepository,
-} from './domain/ports/i-sla-config.repository';
-import { PrismaSlaConfigRepository } from './infrastructure/persistence/prisma/prisma-sla-config.repository';
+  PRIORIDAD_REPOSITORY,
+  IPrioridadRepository,
+} from '../tickets/domain/ports/i-prioridad.repository';
+
 import {
   SLA_TICKET_WRITE_REPOSITORY,
   ISlaTicketWriteRepository,
@@ -24,15 +23,11 @@ import { TENANT_ENUMERATOR, ITenantEnumerator } from './domain/ports/i-tenant-en
 import { PrismaTenantEnumerator } from './infrastructure/persistence/prisma/prisma-tenant-enumerator';
 
 import { CalcularSlaVenceService } from './domain/services/calcular-sla-vence.service';
-import { EditarSlaConfigUseCase } from './application/use-cases/editar-sla-config.use-case';
-import { ListarSlaConfigUseCase } from './application/use-cases/listar-sla-config.use-case';
 import { AplicarSlaUseCase } from './application/use-cases/aplicar-sla.use-case';
 import { MarcarVencidosUseCase } from './application/use-cases/marcar-vencidos.use-case';
 
 import { AplicarSlaListener } from './infrastructure/listeners/aplicar-sla.listener';
 import { SlaSweepScheduler } from './infrastructure/schedulers/sla-sweep.scheduler';
-
-import { SlaConfigController } from './interface/controllers/sla-config.controller';
 
 import { TenantContext } from '../shared/tenancy/tenant-context';
 import { PrismaService } from '../shared/infrastructure/persistence/prisma.service';
@@ -45,35 +40,38 @@ import {
 /**
  * SlaModule — módulo NestJS del dominio "sla" (Fase 4, PR-SLA-1 + PR-SLA-2).
  *
- * Cálculo y seguimiento de SLA sobre tickets: config editable por prioridad
- * (S1), cálculo de `sla_vence_at` al crear/repriorizar (S2/S3, vía listeners
+ * Cálculo y seguimiento de SLA sobre tickets: cálculo de `sla_vence_at` al
+ * crear/repriorizar (S2/S3, vía listeners
  * `ticket.creado`/`ticket.reprioritizado` emitidos ADITIVAMENTE por
  * `TicketsModule`), y barrido periódico multi-tenant de vencimiento (S4/S5)
  * que emite `sla.vencido` (consumido por Notificaciones, PR-N — fuera de
  * este alcance).
  *
+ * El CRUD de configuración de SLA (antes S1: tabla separada `sla_config`,
+ * `SlaConfigController` en `/sla/config`) se ELIMINÓ — las horas/activo de
+ * SLA pasaron a ser columnas de `prioridades` (`slaHoras`/`slaActivo`),
+ * editables desde `CatalogosController` (`/catalogos/prioridades`,
+ * `TicketsModule`). Este módulo ahora es SOLO cálculo/seguimiento.
+ *
  * Wiring:
- * - Repos: SLA_CONFIG_REPOSITORY, SLA_TICKET_WRITE_REPOSITORY,
- *   SLA_TICKET_QUERY_REPOSITORY (tenant, vía TenantContext),
- *   TENANT_ENUMERATOR (master, vía PrismaService — S5).
- * - Use cases: Editar/ListarSlaConfig (S1), AplicarSla (S2/S3, escucha
- *   eventos vía AplicarSlaListener), MarcarVencidos (S4, corrido por tenant
- *   desde SlaSweepScheduler).
+ * - Repos: SLA_TICKET_WRITE_REPOSITORY, SLA_TICKET_QUERY_REPOSITORY (tenant,
+ *   vía TenantContext), TENANT_ENUMERATOR (master, vía PrismaService — S5).
+ * - Use cases: AplicarSla (S2/S3, escucha eventos vía AplicarSlaListener —
+ *   lee `slaHoras`/`slaActivo` vía `PRIORIDAD_REPOSITORY`, exportado por
+ *   `TicketsModule`), MarcarVencidos (S4, corrido por tenant desde
+ *   SlaSweepScheduler).
  * - `ScheduleModule.forRoot()`: habilita `@Cron` para `SlaSweepScheduler`
  *   (GATE G2 — dep nueva `@nestjs/schedule`).
- * - Importa `TicketsModule` (para TICKET_REPOSITORY/ESTADO_REPOSITORY, que
- *   `AplicarSlaUseCase` necesita para leer `createdAt`/`estadoId` del ticket
- *   — el módulo SLA NO reimplementa ese acceso) y `AuthModule` (guards de
- *   `SlaConfigController`, reusa `catalogo:gestionar` — sin permiso nuevo).
+ * - Importa `TicketsModule` (para TICKET_REPOSITORY/ESTADO_REPOSITORY/
+ *   PRIORIDAD_REPOSITORY, que `AplicarSlaUseCase` necesita — el módulo SLA
+ *   NO reimplementa ese acceso) y `AuthModule`.
  *
  * FITNESS RULE: PrismaService y @prisma/client solo pueden importarse desde
  * infrastructure/ (ver backend/eslint.config.js).
  */
 @Module({
   imports: [AuthModule, TicketsModule, ScheduleModule.forRoot()],
-  controllers: [SlaConfigController],
   providers: [
-    { provide: SLA_CONFIG_REPOSITORY, useClass: PrismaSlaConfigRepository },
     { provide: SLA_TICKET_WRITE_REPOSITORY, useClass: PrismaSlaTicketWriteRepository },
     { provide: SLA_TICKET_QUERY_REPOSITORY, useClass: PrismaSlaTicketQueryRepository },
     { provide: TENANT_ENUMERATOR, useClass: PrismaTenantEnumerator },
@@ -81,33 +79,23 @@ import {
     { provide: CalcularSlaVenceService, useFactory: () => new CalcularSlaVenceService() },
 
     {
-      provide: EditarSlaConfigUseCase,
-      useFactory: (repo: ISlaConfigRepository) => new EditarSlaConfigUseCase(repo),
-      inject: [SLA_CONFIG_REPOSITORY],
-    },
-    {
-      provide: ListarSlaConfigUseCase,
-      useFactory: (repo: ISlaConfigRepository) => new ListarSlaConfigUseCase(repo),
-      inject: [SLA_CONFIG_REPOSITORY],
-    },
-    {
       provide: AplicarSlaUseCase,
       useFactory: (
-        slaConfigRepo: ISlaConfigRepository,
+        prioridadRepo: IPrioridadRepository,
         slaTicketWriteRepo: ISlaTicketWriteRepository,
         ticketRepo: ITicketRepository,
         estadoRepo: IEstadoRepository,
         calculador: CalcularSlaVenceService,
       ) =>
         new AplicarSlaUseCase(
-          slaConfigRepo,
+          prioridadRepo,
           slaTicketWriteRepo,
           ticketRepo,
           estadoRepo,
           calculador,
         ),
       inject: [
-        SLA_CONFIG_REPOSITORY,
+        PRIORIDAD_REPOSITORY,
         SLA_TICKET_WRITE_REPOSITORY,
         TICKET_REPOSITORY,
         ESTADO_REPOSITORY,
@@ -148,6 +136,6 @@ import {
       inject: [TENANT_ENUMERATOR, TenantContext, PrismaService, MarcarVencidosUseCase, LOGGER],
     },
   ],
-  exports: [SLA_CONFIG_REPOSITORY, SLA_TICKET_WRITE_REPOSITORY, SLA_TICKET_QUERY_REPOSITORY],
+  exports: [SLA_TICKET_WRITE_REPOSITORY, SLA_TICKET_QUERY_REPOSITORY],
 })
 export class SlaModule {}

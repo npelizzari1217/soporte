@@ -3,6 +3,12 @@ import { BaseEntity } from '../../../shared/domain/base-entity';
 /**
  * PrioridadProps — shape de las propiedades del catálogo Prioridad.
  * Sin imports de Prisma ni NestJS — dominio puro.
+ *
+ * `slaHoras`/`slaActivo` (antes vivían en la entidad separada `SlaConfig`,
+ * eliminada — el SLA es un atributo de la prioridad, no una entidad propia):
+ * horas objetivo de resolución de SLA para tickets de esta prioridad.
+ * `slaHoras: null` = sin SLA aplicable (mismo significado que "sin fila en
+ * sla_config" antes de la migración).
  */
 export interface PrioridadProps {
   codigo: string;
@@ -10,7 +16,20 @@ export interface PrioridadProps {
   color: string | null;
   orden: number;
   activo: boolean;
+  slaHoras: number | null;
+  slaActivo: boolean;
 }
+
+/**
+ * Props aceptadas por `create()`/`reconstitute()`: `slaHoras`/`slaActivo`
+ * son OPCIONALES en la llamada (default `null`/`true`, "sin SLA configurado
+ * aún") para no romper los call sites existentes de otros módulos
+ * (tickets, catálogos) que no manipulan SLA — sigue siendo imposible leer
+ * `prioridad.slaHoras`/`prioridad.slaActivo` como `undefined` una vez
+ * construida la entidad (`PrioridadProps` los exige).
+ */
+export type PrioridadCreateProps = Omit<PrioridadProps, 'slaHoras' | 'slaActivo'> &
+  Partial<Pick<PrioridadProps, 'slaHoras' | 'slaActivo'>>;
 
 /**
  * PrioridadEntity — entidad de dominio del catálogo FIJO de 4 prioridades
@@ -24,21 +43,21 @@ export class PrioridadEntity extends BaseEntity<PrioridadProps> {
   /**
    * Factory method para nuevas instancias de dominio.
    */
-  static create(props: PrioridadProps, id?: string): PrioridadEntity {
-    return new PrioridadEntity(props, id);
+  static create(props: PrioridadCreateProps, id?: string): PrioridadEntity {
+    return new PrioridadEntity({ slaHoras: null, slaActivo: true, ...props }, id);
   }
 
   /**
    * Reconstitución desde persistencia (mappers de infraestructura).
    */
   static reconstitute(
-    props: PrioridadProps,
+    props: PrioridadCreateProps,
     id: string,
     createdAt: Date,
     updatedAt: Date,
     deletedAt: Date | null,
   ): PrioridadEntity {
-    const entity = new PrioridadEntity(props, id);
+    const entity = new PrioridadEntity({ slaHoras: null, slaActivo: true, ...props }, id);
     Object.assign(entity, { _createdAt: createdAt, _updatedAt: updatedAt });
     entity._deletedAt = deletedAt;
     return entity;
@@ -66,15 +85,26 @@ export class PrioridadEntity extends BaseEntity<PrioridadProps> {
     return this.props.activo;
   }
 
+  /** Horas objetivo de resolución de SLA. `null` = sin SLA aplicable a esta prioridad. */
+  get slaHoras(): number | null {
+    return this.props.slaHoras;
+  }
+
+  /** SLA activo/inactivo. Sin efecto si `slaHoras` es `null` (mismo criterio que antes en `sla_config.activo`). */
+  get slaActivo(): boolean {
+    return this.props.slaActivo;
+  }
+
   // ─── Comportamiento de dominio (T2, CRUD editable — PR11) ────────────────
 
   /**
-   * Actualiza los campos editables del catálogo (T2): `codigo`, `nombre`,
-   * `color`, `orden`. La unicidad de `codigo` se valida en la capa de
-   * aplicación (`EditarPrioridadUseCase`), no acá.
+   * Actualiza los campos editables del catálogo (T2, ampliado con SLA):
+   * `codigo`, `nombre`, `color`, `orden`, `slaHoras`, `slaActivo`. La
+   * unicidad de `codigo` se valida en la capa de aplicación
+   * (`EditarPrioridadUseCase`), no acá.
    *
-   * Campos `undefined` NO se tocan (PATCH semántico); `color: null` limpia
-   * el valor explícitamente.
+   * Campos `undefined` NO se tocan (PATCH semántico); `color: null` y
+   * `slaHoras: null` limpian el valor explícitamente ("sin SLA aplicable").
    *
    * Ref spec: sdd/tickets-core/spec T2. Tarea: T11.2.
    */
@@ -83,6 +113,8 @@ export class PrioridadEntity extends BaseEntity<PrioridadProps> {
     nombre?: string;
     color?: string | null;
     orden?: number;
+    slaHoras?: number | null;
+    slaActivo?: boolean;
   }): void {
     if (datos.codigo !== undefined) {
       this.props.codigo = datos.codigo;
@@ -95,6 +127,12 @@ export class PrioridadEntity extends BaseEntity<PrioridadProps> {
     }
     if (datos.orden !== undefined) {
       this.props.orden = datos.orden;
+    }
+    if (datos.slaHoras !== undefined) {
+      this.props.slaHoras = datos.slaHoras;
+    }
+    if (datos.slaActivo !== undefined) {
+      this.props.slaActivo = datos.slaActivo;
     }
     this.touch();
   }

@@ -1,13 +1,16 @@
 "use client";
 
 /**
- * AdminNav — sub-navegación de `/admin/*` (Catálogos/SLA/Ciclos/Clientes).
+ * AdminNav — sub-navegación de `/admin/*` (Catálogos/Ciclos/Usuarios). El
+ * ítem "SLA" se ELIMINÓ: el SLA pasó a ser un atributo de la prioridad
+ * (`slaHoras`/`slaActivo`), editable desde el mismo form de Catálogos >
+ * Prioridades — sin sección propia.
  * `NAV_ITEMS` (shared/nav/nav-config.ts) solo tiene UN ítem "Admin" en el
  * sidebar principal (apunta a `/admin/catalogos`) — este componente es el
- * que permite moverse entre las 4 secciones DENTRO del área admin, cada una
+ * que permite moverse entre las secciones DENTRO del área admin, cada una
  * gateada por su propio permiso (ADR-4: gating por `can()`, nunca por rol
- * directo). Reusado por las 4 páginas `/admin/*` (decisión de esta sesión,
- * no listada en tasks.md — evita duplicar la barra de navegación 4 veces).
+ * directo). Reusado por las páginas `/admin/*` (decisión de esta sesión,
+ * no listada en tasks.md — evita duplicar la barra de navegación en cada una).
  */
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -22,7 +25,6 @@ interface AdminNavItem {
 
 const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { href: "/admin/catalogos", label: "Catálogos", visible: (can) => can("catalogo:gestionar") },
-  { href: "/admin/sla", label: "SLA", visible: (can) => can("catalogo:gestionar") },
   { href: "/admin/ciclos", label: "Ciclos", visible: (can) => can("ciclo:gestionar") },
   { href: "/admin/usuarios", label: "Usuarios", visible: (can) => can("usuario:gestionar") },
   // "Clientes" NO vive en el área Admin: es exclusivo de ROOT (plataforma),

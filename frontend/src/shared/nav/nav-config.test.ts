@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { NAV_ITEMS, visibleNavItems } from "./nav-config";
+import { NAV_ITEMS, visibleNavItems, visibleNavSections } from "./nav-config";
 import type { JwtPayload } from "@/shared/api/types";
 
 function makeUser(overrides: Partial<JwtPayload> = {}): JwtPayload {
@@ -106,5 +106,33 @@ describe("nav-config", () => {
   it("NAV_ITEMS declara al menos Tickets, Dashboard, KB y Admin", () => {
     const hrefs = NAV_ITEMS.map((i) => i.href);
     expect(hrefs).toEqual(expect.arrayContaining(["/tickets", "/dashboard", "/kb", "/admin/catalogos"]));
+  });
+
+  describe("visibleNavSections", () => {
+    it("ROOT (is_global_admin) → ve la sección 'ROOT' con Clientes, Ciclos y Tipos de componente", () => {
+      const user = makeUser({ permisos: [], is_global_admin: true });
+      const sections = visibleNavSections(user);
+      const rootSection = sections.find((s) => s.title === "ROOT");
+      expect(rootSection).toBeDefined();
+      expect(rootSection?.items.map((i) => i.href)).toEqual(
+        expect.arrayContaining(["/admin/clientes", "/ciclos", "/admin/tipos-componente"]),
+      );
+    });
+
+    it("ADMINISTRADOR no-root (con catalogo:gestionar) → ve Admin pero NO la sección 'ROOT'", () => {
+      const user = makeUser({ permisos: ["catalogo:gestionar"], is_global_admin: false });
+      const sections = visibleNavSections(user);
+      expect(sections.find((s) => s.title === "ROOT")).toBeUndefined();
+      const defaultSection = sections.find((s) => s.title === null);
+      expect(defaultSection?.items.map((i) => i.href)).toContain("/admin/catalogos");
+    });
+
+    it("usuario plano (sin permisos) → no ve la sección 'ROOT' ni Admin", () => {
+      const user = makeUser({ permisos: [], is_global_admin: false });
+      const sections = visibleNavSections(user);
+      expect(sections.find((s) => s.title === "ROOT")).toBeUndefined();
+      const allHrefs = sections.flatMap((s) => s.items.map((i) => i.href));
+      expect(allHrefs).not.toContain("/admin/catalogos");
+    });
   });
 });

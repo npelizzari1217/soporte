@@ -3,12 +3,18 @@ import { PrioridadEntity } from '../../domain/entities/prioridad.entity';
 import { PrioridadCodigoDuplicadaError } from '../../domain/errors/tickets.errors';
 import { IPrioridadRepository } from '../../domain/ports/i-prioridad.repository';
 
-/** DTO de entrada de `CrearPrioridadUseCase` (T2, PR11). */
+/**
+ * DTO de entrada de `CrearPrioridadUseCase` (T2, PR11).
+ * `slaHoras`/`slaActivo` (SLA movido de `sla_config` a `prioridades`):
+ * omitidos → `slaHoras: null` (sin SLA aplicable), `slaActivo: true`.
+ */
 export interface CrearPrioridadDto {
   codigo: string;
   nombre: string;
   color?: string | null;
   orden: number;
+  slaHoras?: number | null;
+  slaActivo?: boolean;
 }
 
 /**
@@ -36,6 +42,8 @@ export class CrearPrioridadUseCase {
       color: dto.color ?? null,
       orden: dto.orden,
       activo: true,
+      slaHoras: dto.slaHoras ?? null,
+      slaActivo: dto.slaActivo ?? true,
     });
     await this.prioridadRepo.save(prioridad);
 

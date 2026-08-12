@@ -6,13 +6,19 @@ import {
 } from '../../domain/errors/tickets.errors';
 import { IPrioridadRepository } from '../../domain/ports/i-prioridad.repository';
 
-/** DTO de entrada de `EditarPrioridadUseCase` (T2, PR11) — PATCH semántico. */
+/**
+ * DTO de entrada de `EditarPrioridadUseCase` (T2, PR11) — PATCH semántico.
+ * `slaHoras`/`slaActivo` (SLA movido de `sla_config` a `prioridades`):
+ * `undefined` no toca el valor; `slaHoras: null` limpia el SLA explícitamente.
+ */
 export interface EditarPrioridadDto {
   id: string;
   codigo?: string;
   nombre?: string;
   color?: string | null;
   orden?: number;
+  slaHoras?: number | null;
+  slaActivo?: boolean;
 }
 
 /**
@@ -49,6 +55,8 @@ export class EditarPrioridadUseCase {
       nombre: dto.nombre,
       color: dto.color,
       orden: dto.orden,
+      slaHoras: dto.slaHoras,
+      slaActivo: dto.slaActivo,
     });
     await this.prioridadRepo.save(prioridad);
 

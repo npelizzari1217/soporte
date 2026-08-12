@@ -39,6 +39,17 @@ const administrador: JwtPayload = {
   modulos: [],
 };
 
+const root: JwtPayload = {
+  sub: "3",
+  cliente_id: "c1",
+  rol: "ADMINISTRADOR",
+  permisos: [],
+  is_global_admin: true,
+  cliente_nombre: "Cliente Uno",
+  membresias: [],
+  modulos: [],
+};
+
 describe("AppSidebar", () => {
   it("USUARIO (sin ticket:ver_todos) → ve el link Tickets pero NO el link Dashboard", () => {
     renderWithUser(usuario);
@@ -65,5 +76,28 @@ describe("AppSidebar", () => {
     await user.click(toggle);
     const after = toggle.getAttribute("aria-expanded");
     expect(after).not.toBe(before);
+  });
+
+  it("ROOT (is_global_admin) → ve el header 'ROOT' y sus 3 ítems (Clientes, Ciclos, Tipos de componente)", () => {
+    renderWithUser(root);
+    expect(screen.getByText("ROOT")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /clientes/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /^ciclos$/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /tipos de componente/i })).toBeInTheDocument();
+  });
+
+  it("ADMINISTRADOR no-root → NO ve el header 'ROOT' ni sus ítems", () => {
+    renderWithUser(administrador);
+    expect(screen.queryByText("ROOT")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /clientes/i })).not.toBeInTheDocument();
+  });
+
+  it("colapsado + ROOT → oculta el texto del header (rail angosto) pero conserva el link por href", async () => {
+    const user = userEvent.setup();
+    const { container } = renderWithUser(root);
+    const toggle = screen.getByRole("button", { name: /colapsar|expandir|menú/i });
+    await user.click(toggle);
+    expect(screen.queryByText("ROOT")).not.toBeInTheDocument();
+    expect(container.querySelector('a[href="/admin/clientes"]')).toBeInTheDocument();
   });
 });

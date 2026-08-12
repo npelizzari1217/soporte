@@ -1,8 +1,8 @@
-import { ISlaConfigRepository } from '../../domain/ports/i-sla-config.repository';
 import { ISlaTicketWriteRepository } from '../../domain/ports/i-sla-ticket-write.repository';
 import { CalcularSlaVenceService } from '../../domain/services/calcular-sla-vence.service';
 import { ITicketRepository } from '../../../tickets/domain/ports/i-ticket.repository';
 import { IEstadoRepository } from '../../../tickets/domain/ports/i-estado.repository';
+import { IPrioridadRepository } from '../../../tickets/domain/ports/i-prioridad.repository';
 
 /**
  * Estados sin arcos de salida (mismo catálogo que `TERMINAL_STATES` de
@@ -29,11 +29,16 @@ export interface AplicarSlaDto {
  * usar el `createdAt` PERSISTIDO como ancla fija (S3), no el instante en que
  * el evento se emitió/consumió.
  *
+ * Fuente de las horas de SLA: `IPrioridadRepository` (`prioridad.slaHoras`/
+ * `slaActivo`) — antes leía la tabla separada `sla_config` (`ISlaConfigRepository`,
+ * eliminada). El CÁLCULO no cambió, solo el origen de los datos: el SLA es
+ * un atributo de la prioridad, editable desde Catálogos.
+ *
  * Ref spec: sdd/premium/spec S2, S3. Ref design: ADR-P2, ADR-P4. Tarea: SA12.
  */
 export class AplicarSlaUseCase {
   constructor(
-    private readonly slaConfigRepo: Pick<ISlaConfigRepository, 'findByPrioridad'>,
+    private readonly prioridadRepo: Pick<IPrioridadRepository, 'findById'>,
     private readonly slaTicketWriteRepo: Pick<ISlaTicketWriteRepository, 'setSlaVenceAt'>,
     private readonly ticketRepo: Pick<ITicketRepository, 'findById'>,
     private readonly estadoRepo: Pick<IEstadoRepository, 'findById'>,
@@ -76,13 +81,16 @@ export class AplicarSlaUseCase {
   }
 
   /**
-   * Cálculo + persistencia compartidos por ambos flujos (S2/S3): sin config
-   * activa para la prioridad → `sla_vence_at = null` (sin SLA aplicable).
+   * Cálculo + persistencia compartidos por ambos flujos (S2/S3): sin
+   * `slaHoras` configurado, o `slaActivo=false`, o prioridad inexistente
+   * (defensivo) → `sla_vence_at = null` (sin SLA aplicable).
    */
   private async aplicar(ticketId: string, prioridadId: string, creadoEn: Date): Promise<void> {
-    const config = await this.slaConfigRepo.findByPrioridad(prioridadId);
+    const prioridad = await this.prioridadRepo.findById(prioridadId);
     const venceAt =
-      config && config.activo ? this.calculador.venceAt(creadoEn, config.horas) : null;
+      prioridad && prioridad.slaHoras !== null && prioridad.slaActivo
+        ? this.calculador.venceAt(creadoEn, prioridad.slaHoras)
+        : null;
     await this.slaTicketWriteRepo.setSlaVenceAt(ticketId, venceAt);
   }
 }

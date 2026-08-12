@@ -21,6 +21,8 @@ export class PrioridadMapper {
         color: row.color ?? null,
         orden: row.orden,
         activo: row.activo,
+        slaHoras: row.slaHoras ?? null,
+        slaActivo: row.slaActivo,
       },
       row.id,
       row.createdAt,
@@ -31,8 +33,9 @@ export class PrioridadMapper {
 
   /**
    * Convierte PrioridadEntity → objeto plano para Prisma upsert (T11.2,
-   * PR11). Incluye `createdAt` para que el repo lo use en el CREATE y lo
-   * excluya del UPDATE (nunca pisar el timestamp de creación existente).
+   * PR11; slaHoras/slaActivo agregados al mover el SLA a `prioridades`).
+   * Incluye `createdAt` para que el repo lo use en el CREATE y lo excluya
+   * del UPDATE (nunca pisar el timestamp de creación existente).
    */
   static toPersistence(entity: PrioridadEntity): Omit<PrismaPrioridad, 'updatedAt'> {
     return {
@@ -42,6 +45,8 @@ export class PrioridadMapper {
       color: entity.color,
       orden: entity.orden,
       activo: entity.activo,
+      slaHoras: entity.slaHoras,
+      slaActivo: entity.slaActivo,
       deletedAt: entity.deletedAt,
       createdAt: entity.createdAt,
     };
