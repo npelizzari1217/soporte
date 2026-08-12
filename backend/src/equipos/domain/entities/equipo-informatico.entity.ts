@@ -150,9 +150,9 @@ export class EquipoInformaticoEntity extends BaseEntity<EquipoInformaticoProps> 
   }
 
   /**
-   * Actualiza los campos editables de datos (PATCH semántico, mismo
-   * criterio que `UbicacionEntity.actualizar`): campos `undefined` NO se
-   * tocan; los campos nullable en `null` limpian el valor explícitamente.
+   * Actualiza los campos editables de datos (PATCH semántico): campos
+   * `undefined` NO se tocan; los campos nullable en `null` limpian el valor
+   * explícitamente.
    *
    * `ubicacion` se normaliza SIEMPRE a mayúscula (texto libre, invariante de
    * dominio) cuando no es null.

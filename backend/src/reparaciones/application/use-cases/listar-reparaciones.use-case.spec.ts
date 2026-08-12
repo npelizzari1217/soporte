@@ -1,14 +1,15 @@
 /**
  * T8.5 [UNIT][RED→GREEN] — `ListarReparacionesUseCase`.
  *
- * Resuelve ticket base + ubicación para cada satélite `ticket_edilicia`
- * (join en memoria). Omite huérfanos sin ticket base.
+ * Resuelve ticket base + subtareas para cada satélite `ticket_edilicia`
+ * (join en memoria). `ubicacion` viaja embebida como texto libre en el
+ * propio satélite (ex-catálogo Ubicacion removido). Omite huérfanos sin
+ * ticket base.
  *
  * Ref spec: sdd/flujos-especializados/spec F3-E1. Tarea: T8.5.
  */
 import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
 import { TicketEdiliciaEntity } from '../../domain/entities/ticket-edilicia.entity';
-import { UbicacionEntity } from '../../domain/entities/ubicacion.entity';
 import { ListarReparacionesUseCase } from './listar-reparaciones.use-case';
 
 function makeTicket(id: string): TicketEntity {
@@ -32,28 +33,24 @@ describe('ListarReparacionesUseCase', () => {
   function buildDeps() {
     const ediliciaRepo = { findAll: vi.fn() };
     const ticketRepo = { findById: vi.fn() };
-    const ubicacionRepo = { findById: vi.fn() };
     const subtareaRepo = { findActiveByTicketEdiliciaId: vi.fn().mockResolvedValue([]) };
     const useCase = new ListarReparacionesUseCase(
       ediliciaRepo as any,
       ticketRepo as any,
-      ubicacionRepo as any,
       subtareaRepo as any,
     );
-    return { useCase, ediliciaRepo, ticketRepo, ubicacionRepo, subtareaRepo };
+    return { useCase, ediliciaRepo, ticketRepo, subtareaRepo };
   }
 
-  it('resuelve ticket + ubicación + subtareas para cada ticket_edilicia', async () => {
-    const { useCase, ediliciaRepo, ticketRepo, ubicacionRepo, subtareaRepo } = buildDeps();
+  it('resuelve ticket + subtareas para cada ticket_edilicia', async () => {
+    const { useCase, ediliciaRepo, ticketRepo, subtareaRepo } = buildDeps();
     const edilicia = TicketEdiliciaEntity.create(
-      { ticketId: 'ticket-uuid', ubicacionId: 'ubicacion-uuid' },
+      { ticketId: 'ticket-uuid', ubicacion: 'Edificio Central' },
       'edilicia-uuid',
     );
     const ticket = makeTicket('ticket-uuid');
-    const ubicacion = UbicacionEntity.create({ nombre: 'Edificio Central' }, 'ubicacion-uuid');
     ediliciaRepo.findAll.mockResolvedValue([edilicia]);
     ticketRepo.findById.mockResolvedValue(ticket);
-    ubicacionRepo.findById.mockResolvedValue(ubicacion);
     subtareaRepo.findActiveByTicketEdiliciaId.mockResolvedValue(['subtarea-a']);
 
     const result = await useCase.execute();
@@ -63,7 +60,6 @@ describe('ListarReparacionesUseCase', () => {
     expect(items).toHaveLength(1);
     expect(items[0].ticket).toBe(ticket);
     expect(items[0].ticketEdilicia).toBe(edilicia);
-    expect(items[0].ubicacion).toBe(ubicacion);
     expect(items[0].subtareas).toEqual(['subtarea-a']);
     expect(subtareaRepo.findActiveByTicketEdiliciaId).toHaveBeenCalledWith('edilicia-uuid');
   });
@@ -71,7 +67,7 @@ describe('ListarReparacionesUseCase', () => {
   it('omite satélites huérfanos (sin ticket base)', async () => {
     const { useCase, ediliciaRepo, ticketRepo } = buildDeps();
     const edilicia = TicketEdiliciaEntity.create(
-      { ticketId: 'ticket-huerfano-uuid', ubicacionId: 'ubicacion-uuid' },
+      { ticketId: 'ticket-huerfano-uuid', ubicacion: 'Edificio Central' },
       'edilicia-uuid',
     );
     ediliciaRepo.findAll.mockResolvedValue([edilicia]);
@@ -81,21 +77,5 @@ describe('ListarReparacionesUseCase', () => {
 
     expect(result.isOk()).toBe(true);
     expect(result.getValue()).toEqual([]);
-  });
-
-  it('ubicacion=null si la ubicación referenciada no se encuentra', async () => {
-    const { useCase, ediliciaRepo, ticketRepo, ubicacionRepo } = buildDeps();
-    const edilicia = TicketEdiliciaEntity.create(
-      { ticketId: 'ticket-uuid', ubicacionId: 'ubicacion-borrada-uuid' },
-      'edilicia-uuid',
-    );
-    ediliciaRepo.findAll.mockResolvedValue([edilicia]);
-    ticketRepo.findById.mockResolvedValue(makeTicket('ticket-uuid'));
-    ubicacionRepo.findById.mockResolvedValue(null);
-
-    const result = await useCase.execute();
-
-    expect(result.isOk()).toBe(true);
-    expect(result.getValue()[0].ubicacion).toBeNull();
   });
 });

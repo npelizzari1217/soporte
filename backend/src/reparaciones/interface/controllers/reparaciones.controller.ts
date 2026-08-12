@@ -62,7 +62,6 @@ import { CompletarSubtareaUseCase } from '../../application/use-cases/completar-
 import { EliminarSubtareaUseCase } from '../../application/use-cases/eliminar-subtarea.use-case';
 
 import {
-  UbicacionInvalidaError,
   TicketEdiliciaNoEncontradoError,
   SubtareaNoEncontradaError,
 } from '../../domain/errors/reparaciones.errors';
@@ -92,7 +91,7 @@ function toHttpException(
   if (error instanceof SinCicloActivoError || error instanceof SecuenciaAgotadaError) {
     return new ConflictException(error.message);
   }
-  if (error instanceof SolicitanteInvalidoError || error instanceof UbicacionInvalidaError) {
+  if (error instanceof SolicitanteInvalidoError) {
     return new UnprocessableEntityException(error.message);
   }
   // Deviación de diseño no mapeada explícitamente: 422 por defecto (nunca
@@ -117,7 +116,7 @@ export class ReparacionesController {
    * Crea un ticket edilicio (ticket base + satélite `ticket_edilicia`, ADR-3).
    * `solicitanteId`/`autorId` = JWT.sub; `anio` lo resuelve el servidor.
    * @throws 409 sin ciclo activo
-   * @throws 422 solicitante inválido, ubicación inválida
+   * @throws 422 solicitante inválido
    */
   @Post()
   @RequirePermissions('ticket:crear')
@@ -130,7 +129,7 @@ export class ReparacionesController {
       titulo: dto.titulo,
       descripcion: dto.descripcion ?? null,
       prioridadId: dto.prioridadId,
-      ubicacionId: dto.ubicacionId,
+      ubicacion: dto.ubicacion ?? null,
       solicitanteId: user.sub,
       clienteId: user.cliente_id as string,
       autorId: user.sub,

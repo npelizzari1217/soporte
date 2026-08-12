@@ -443,41 +443,23 @@ model ArchivoPresupuesto {
 
 // ─── REPARACIONES EDILICIAS ────────────────────────────────────────────────────
 //
-// ubicaciones (árbol jerárquico), ticket_edilicia (satélite 1:1 con tickets),
-// subtareas_edilicia (pasos de la reparación).
+// ticket_edilicia (satélite 1:1 con tickets), subtareas_edilicia (pasos de la
+// reparación).
 //
-// ubicaciones: árbol N niveles vía self-reference padre_id (self-join).
 // ticket_edilicia: satélite 1:1 de tickets con tipo.codigo='EDILICIA'.
+//   ubicacion: TEXTO LIBRE (VarChar 255). Antes era una FK a un catálogo
+//     `ubicaciones` (árbol), removido — módulo que no se usa (migración
+//     20260812160000_remover_ubicaciones, backfill del nombre a texto).
 //   personal_asignado_id: soft ref → master.usuarios.id (sin FK cross-DB).
 //   porcentaje_avance: NUMERIC(5,2), CHECK 0-100. Recalculado por la app.
 // subtareas_edilicia: pasos de la reparación.
 //   completada_por_id: soft ref → master.usuarios.id.
 
-model Ubicacion {
-  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  nombre      String    @db.VarChar(255)
-  descripcion String?   @db.Text
-  /// NULL = nodo raíz; NOT NULL = sub-ubicación. FK → ubicaciones.id (self-ref).
-  padreId     String?   @map("padre_id") @db.Uuid
-  activo      Boolean   @default(true)
-  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz
-  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz
-
-  padre Ubicacion?  @relation("UbicacionHijos", fields: [padreId], references: [id])
-  hijos Ubicacion[] @relation("UbicacionHijos")
-
-  ticketsEdilicia TicketEdilicia[]
-
-  @@index([padreId]) // partial WHERE padre_id IS NOT NULL — ver migration SQL
-  @@index([activo])  // partial WHERE deleted_at IS NULL — ver migration SQL
-  @@map("ubicaciones")
-}
-
 model TicketEdilicia {
   id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   ticketId           String    @unique @map("ticket_id") @db.Uuid
-  ubicacionId        String    @map("ubicacion_id") @db.Uuid
+  /// Texto libre (ex-FK a catálogo `ubicaciones`, removido — ver migración 20260812160000).
+  ubicacion          String?   @db.VarChar(255)
   /// Soft ref → master.usuarios.id. NULL hasta asignación de personal específico.
   personalAsignadoId String?   @map("personal_asignado_id") @db.Uuid
   /// CHECK (porcentaje_avance >= 0 AND porcentaje_avance <= 100) — migration SQL.
@@ -487,11 +469,9 @@ model TicketEdilicia {
   deletedAt          DateTime? @map("deleted_at") @db.Timestamptz
 
   ticket    Ticket    @relation(fields: [ticketId], references: [id])
-  ubicacion Ubicacion @relation(fields: [ubicacionId], references: [id])
 
   subtareas SubtareaEdilicia[]
 
-  @@index([ubicacionId])
   @@index([porcentajeAvance])
   @@map("ticket_edilicia")
 }

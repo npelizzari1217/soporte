@@ -1,6 +1,5 @@
 /**
- * `/edilicia` — Server Component fino (ADR-1: ruta única "(+ubicaciones)").
- * Gate vive dentro de `EdiliciaView` (`<Can>`).
+ * `/edilicia` — Server Component fino. Gate vive dentro de `EdiliciaView` (`<Can>`).
  */
 import { EdiliciaView } from "@/features/edilicia/components/edilicia-view";
 

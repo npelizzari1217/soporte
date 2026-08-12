@@ -35,13 +35,6 @@ export class PrismaTicketEdiliciaRepository implements ITicketEdiliciaRepository
     return row ? TicketEdiliciaMapper.toDomain(row) : null;
   }
 
-  async findByUbicacionId(ubicacionId: string): Promise<TicketEdiliciaEntity[]> {
-    const rows = await this.client.ticketEdilicia.findMany({
-      where: { ubicacionId, deletedAt: null },
-    });
-    return rows.map(TicketEdiliciaMapper.toDomain);
-  }
-
   async findAll(): Promise<TicketEdiliciaEntity[]> {
     const rows = await this.client.ticketEdilicia.findMany({
       where: { deletedAt: null },

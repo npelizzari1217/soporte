@@ -26,12 +26,6 @@ export interface ITicketEdiliciaRepository {
   findById(id: string): Promise<TicketEdiliciaEntity | null>;
 
   /**
-   * Retorna todos los `ticket_edilicia` que referencian la ubicación
-   * indicada. Excluye soft-deleted.
-   */
-  findByUbicacionId(ubicacionId: string): Promise<TicketEdiliciaEntity[]>;
-
-  /**
    * Retorna todos los `ticket_edilicia` del tenant activo, ordenados por
    * `created_at DESC`. Excluye soft-deleted.
    */

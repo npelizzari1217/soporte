@@ -41,7 +41,7 @@ describe('CompletarSubtareaUseCase', () => {
       'subtarea-uuid',
     );
     const edilicia = TicketEdiliciaEntity.create(
-      { ticketId: 'ticket-uuid', ubicacionId: 'ubicacion-uuid' },
+      { ticketId: 'ticket-uuid', ubicacion: 'Edificio Central' },
       'edilicia-uuid',
     );
     subtareaRepo.findById.mockResolvedValue(subtarea);

@@ -15,8 +15,8 @@ import { BaseEntity } from '../../../shared/domain/base-entity';
 export interface TicketEdiliciaProps {
   /** UUID del ticket base (FK → tickets.id). Relación 1:0..1. */
   ticketId: string;
-  /** UUID de la ubicación donde ocurre la reparación (FK → ubicaciones.id). */
-  ubicacionId: string;
+  /** Ubicación física donde ocurre la reparación (texto libre, opcional). */
+  ubicacion: string | null;
   /** Soft ref → master.usuarios.id. NULL hasta que se asigne personal específico. */
   personalAsignadoId: string | null;
   /** Porcentaje de avance derivado de las subtareas activas (0.00 - 100.00). */
@@ -47,17 +47,17 @@ export class TicketEdiliciaEntity extends BaseEntity<TicketEdiliciaProps> {
    * Factory method para una nueva instancia de `ticket_edilicia`.
    * `porcentajeAvance` comienza en 0; `personalAsignadoId` en `null`.
    *
-   * @param props Solo `ticketId`/`ubicacionId` — el resto son invariantes de creación.
+   * @param props Solo `ticketId`/`ubicacion` — el resto son invariantes de creación.
    * @param id    UUID opcional. Si no se provee, se genera un UUIDv7 nuevo.
    */
   static create(
-    props: { ticketId: string; ubicacionId: string },
+    props: { ticketId: string; ubicacion?: string | null },
     id?: string,
   ): TicketEdiliciaEntity {
     return new TicketEdiliciaEntity(
       {
         ticketId: props.ticketId,
-        ubicacionId: props.ubicacionId,
+        ubicacion: props.ubicacion ?? null,
         personalAsignadoId: null,
         porcentajeAvance: 0,
       },
@@ -87,8 +87,8 @@ export class TicketEdiliciaEntity extends BaseEntity<TicketEdiliciaProps> {
     return this.props.ticketId;
   }
 
-  get ubicacionId(): string {
-    return this.props.ubicacionId;
+  get ubicacion(): string | null {
+    return this.props.ubicacion;
   }
 
   get personalAsignadoId(): string | null {

@@ -27,7 +27,6 @@ import {
 import {
   TicketEdiliciaNoEncontradoError,
   SubtareaNoEncontradaError,
-  UbicacionInvalidaError,
 } from '../../domain/errors/reparaciones.errors';
 import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
 
@@ -89,7 +88,7 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
       const { controller, crearTicketEdilicioUseCase } = buildController();
       const ticket = makeTicket();
       const ticketEdilicia = TicketEdiliciaEntity.create(
-        { ticketId: ticket.id, ubicacionId: 'ubicacion-uuid' },
+        { ticketId: ticket.id, ubicacion: 'Edificio Central' },
         'edilicia-uuid',
       );
       crearTicketEdilicioUseCase.execute.mockResolvedValue(Result.ok({ ticket, ticketEdilicia }));
@@ -99,7 +98,7 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
           titulo: 'Reparar cañería',
           descripcion: null,
           prioridadId: 'prioridad-uuid',
-          ubicacionId: 'ubicacion-uuid',
+          ubicacion: 'Edificio Central',
         } as any,
         USER,
       );
@@ -109,31 +108,12 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
       expect(crearTicketEdilicioUseCase.execute).toHaveBeenCalledWith(
         expect.objectContaining({
           titulo: 'Reparar cañería',
-          ubicacionId: 'ubicacion-uuid',
+          ubicacion: 'Edificio Central',
           solicitanteId: 'usuario-uuid',
           clienteId: 'cliente-uuid',
           autorId: 'usuario-uuid',
         }),
       );
-    });
-
-    it('mapea UbicacionInvalidaError → 422', async () => {
-      const { controller, crearTicketEdilicioUseCase } = buildController();
-      crearTicketEdilicioUseCase.execute.mockResolvedValue(
-        Result.fail(new UbicacionInvalidaError('ubicacion-uuid')),
-      );
-
-      await expect(
-        controller.crear(
-          {
-            titulo: 'X',
-            descripcion: null,
-            prioridadId: 'p',
-            ubicacionId: 'ubicacion-uuid',
-          } as any,
-          USER,
-        ),
-      ).rejects.toBeInstanceOf(UnprocessableEntityException);
     });
 
     it('mapea SolicitanteInvalidoError → 422', async () => {
@@ -144,7 +124,7 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
 
       await expect(
         controller.crear(
-          { titulo: 'X', descripcion: null, prioridadId: 'p', ubicacionId: 'u' } as any,
+          { titulo: 'X', descripcion: null, prioridadId: 'p', ubicacion: null } as any,
           USER,
         ),
       ).rejects.toBeInstanceOf(UnprocessableEntityException);
@@ -156,7 +136,7 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
 
       await expect(
         controller.crear(
-          { titulo: 'X', descripcion: null, prioridadId: 'p', ubicacionId: 'u' } as any,
+          { titulo: 'X', descripcion: null, prioridadId: 'p', ubicacion: null } as any,
           USER,
         ),
       ).rejects.toMatchObject({ status: 409 });
@@ -173,11 +153,11 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
       const { controller, listarReparacionesUseCase } = buildController();
       const ticket = makeTicket();
       const ticketEdilicia = TicketEdiliciaEntity.create(
-        { ticketId: ticket.id, ubicacionId: 'ubicacion-uuid' },
+        { ticketId: ticket.id, ubicacion: 'Edificio Central' },
         'edilicia-uuid',
       );
       listarReparacionesUseCase.execute.mockResolvedValue(
-        Result.ok([{ ticket, ticketEdilicia, ubicacion: null, subtareas: [] }]),
+        Result.ok([{ ticket, ticketEdilicia, subtareas: [] }]),
       );
 
       const result = await controller.listar();
@@ -191,7 +171,7 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
       const { controller, listarReparacionesUseCase } = buildController();
       const ticket = makeTicket();
       const ticketEdilicia = TicketEdiliciaEntity.create(
-        { ticketId: ticket.id, ubicacionId: 'ubicacion-uuid' },
+        { ticketId: ticket.id, ubicacion: 'Edificio Central' },
         'edilicia-uuid',
       );
       const subtarea = SubtareaEdiliciaEntity.create(
@@ -199,7 +179,7 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
         'subtarea-uuid',
       );
       listarReparacionesUseCase.execute.mockResolvedValue(
-        Result.ok([{ ticket, ticketEdilicia, ubicacion: null, subtareas: [subtarea] }]),
+        Result.ok([{ ticket, ticketEdilicia, subtareas: [subtarea] }]),
       );
 
       const result = await controller.listar();

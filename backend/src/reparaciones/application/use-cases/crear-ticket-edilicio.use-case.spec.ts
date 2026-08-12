@@ -1,8 +1,8 @@
 /**
  * T8.1 [UNIT][RED] — `CrearTicketEdilicioUseCase`.
  *
- * base+satélite en 1 tx; valida ubicación existe/activa/no eliminada
- * (`UbicacionInvalidaError`); numero EDI-.
+ * base+satélite en 1 tx; `ubicacion` es texto libre opcional (sin catálogo
+ * que validar, ex-Ubicacion removido); numero EDI-.
  *
  * Ref spec: sdd/flujos-especializados/spec F3-E1. Ref design: ADR-3.
  * Tarea: T8.1, T8.2.
@@ -10,10 +10,8 @@
 import { Result } from '../../../shared/domain/result';
 import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
 import { CicloClienteEntity } from '../../../tickets/domain/entities/ciclo-cliente.entity';
-import { UbicacionEntity } from '../../domain/entities/ubicacion.entity';
 import { CrearTicketEdilicioUseCase } from './crear-ticket-edilicio.use-case';
 import { SolicitanteInvalidoError } from '../../../tickets/domain/errors/tickets.errors';
-import { UbicacionInvalidaError } from '../../domain/errors/reparaciones.errors';
 
 function makeCicloActivo(): CicloClienteEntity {
   return CicloClienteEntity.reconstitute(
@@ -31,10 +29,6 @@ function makeCicloActivo(): CicloClienteEntity {
   );
 }
 
-function makeUbicacionActiva(id = 'ubicacion-uuid'): UbicacionEntity {
-  return UbicacionEntity.create({ nombre: 'Edificio Central' }, id);
-}
-
 describe('CrearTicketEdilicioUseCase', () => {
   function buildDeps() {
     const ticketRepo = { save: vi.fn() };
@@ -50,7 +44,6 @@ describe('CrearTicketEdilicioUseCase', () => {
     const resolverCicloActivo = {
       resolver: vi.fn().mockResolvedValue(Result.ok(makeCicloActivo())),
     };
-    const ubicacionRepo = { findById: vi.fn().mockResolvedValue(makeUbicacionActiva()) };
     const txRunner = { run: vi.fn((fn: () => Promise<unknown>) => fn()) };
 
     const useCase = new CrearTicketEdilicioUseCase(
@@ -63,7 +56,6 @@ describe('CrearTicketEdilicioUseCase', () => {
       usuarioMasterChecker as any,
       numerador as any,
       resolverCicloActivo as any,
-      ubicacionRepo as any,
       txRunner as any,
     );
 
@@ -73,7 +65,6 @@ describe('CrearTicketEdilicioUseCase', () => {
       operacionRepo,
       ticketEdiliciaRepo,
       usuarioMasterChecker,
-      ubicacionRepo,
     };
   }
 
@@ -81,7 +72,7 @@ describe('CrearTicketEdilicioUseCase', () => {
     titulo: 'Reparar cañería',
     descripcion: null,
     prioridadId: 'prioridad-media-uuid',
-    ubicacionId: 'ubicacion-uuid',
+    ubicacion: 'Edificio Central',
     solicitanteId: 'usuario-uuid',
     clienteId: 'cliente-uuid',
     autorId: 'usuario-uuid',
@@ -98,11 +89,20 @@ describe('CrearTicketEdilicioUseCase', () => {
     expect(ticket).toBeInstanceOf(TicketEntity);
     expect(ticket.numero).toBe('EDI-2026-00001');
     expect(ticketEdilicia.ticketId).toBe(ticket.id);
-    expect(ticketEdilicia.ubicacionId).toBe('ubicacion-uuid');
+    expect(ticketEdilicia.ubicacion).toBe('Edificio Central');
     expect(ticketEdilicia.porcentajeAvance).toBe(0);
     expect(ticketRepo.save).toHaveBeenCalledWith(ticket);
     expect(operacionRepo.save).toHaveBeenCalled();
     expect(ticketEdiliciaRepo.save).toHaveBeenCalledWith(ticketEdilicia);
+  });
+
+  it('ubicacion es opcional — null si no se provee', async () => {
+    const { useCase } = buildDeps();
+
+    const result = await useCase.execute({ ...baseDto, ubicacion: null });
+
+    expect(result.isOk()).toBe(true);
+    expect(result.getValue().ticketEdilicia.ubicacion).toBeNull();
   });
 
   it('falla con SolicitanteInvalidoError si el solicitante no existe en el tenant', async () => {
@@ -113,39 +113,5 @@ describe('CrearTicketEdilicioUseCase', () => {
 
     expect(result.isFail()).toBe(true);
     expect(result.getError()).toBeInstanceOf(SolicitanteInvalidoError);
-  });
-
-  it('falla con UbicacionInvalidaError si la ubicación no existe', async () => {
-    const { useCase, ubicacionRepo } = buildDeps();
-    ubicacionRepo.findById.mockResolvedValue(null);
-
-    const result = await useCase.execute(baseDto);
-
-    expect(result.isFail()).toBe(true);
-    expect(result.getError()).toBeInstanceOf(UbicacionInvalidaError);
-  });
-
-  it('falla con UbicacionInvalidaError si la ubicación está inactiva', async () => {
-    const { useCase, ubicacionRepo } = buildDeps();
-    const inactiva = makeUbicacionActiva();
-    inactiva.desactivar();
-    ubicacionRepo.findById.mockResolvedValue(inactiva);
-
-    const result = await useCase.execute(baseDto);
-
-    expect(result.isFail()).toBe(true);
-    expect(result.getError()).toBeInstanceOf(UbicacionInvalidaError);
-  });
-
-  it('falla con UbicacionInvalidaError si la ubicación fue eliminada (soft delete)', async () => {
-    const { useCase, ubicacionRepo } = buildDeps();
-    const eliminada = makeUbicacionActiva();
-    eliminada.softDelete();
-    ubicacionRepo.findById.mockResolvedValue(eliminada);
-
-    const result = await useCase.execute(baseDto);
-
-    expect(result.isFail()).toBe(true);
-    expect(result.getError()).toBeInstanceOf(UbicacionInvalidaError);
   });
 });

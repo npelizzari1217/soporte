@@ -32,7 +32,7 @@ export function ReparacionesList() {
   const columns: Column<ReparacionListItem>[] = [
     { key: "numero", header: "Número" },
     { key: "titulo", header: "Título" },
-    { key: "ubicacionNombre", header: "Ubicación", render: (row) => row.ubicacionNombre ?? "—" },
+    { key: "ubicacion", header: "Ubicación", render: (row) => row.ubicacion ?? "—" },
     { key: "porcentajeAvance", header: "Avance", render: (row) => <AvanceCell porcentaje={row.porcentajeAvance} /> },
     {
       key: "id",

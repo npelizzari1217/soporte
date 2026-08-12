@@ -14,11 +14,11 @@ describe('TicketEdiliciaEntity', () => {
     it('crea el satélite con porcentajeAvance=0 y personalAsignadoId=null', () => {
       const entity = TicketEdiliciaEntity.create({
         ticketId: 'ticket-uuid',
-        ubicacionId: 'ubicacion-uuid',
+        ubicacion: 'Oficina Central',
       });
 
       expect(entity.ticketId).toBe('ticket-uuid');
-      expect(entity.ubicacionId).toBe('ubicacion-uuid');
+      expect(entity.ubicacion).toBe('Oficina Central');
       expect(entity.porcentajeAvance).toBe(0);
       expect(entity.personalAsignadoId).toBeNull();
       expect(entity.id).toMatch(/^[0-9a-f-]{36}$/);
@@ -26,10 +26,15 @@ describe('TicketEdiliciaEntity', () => {
 
     it('acepta un id explícito (mapper de infraestructura)', () => {
       const entity = TicketEdiliciaEntity.create(
-        { ticketId: 'ticket-uuid', ubicacionId: 'ubicacion-uuid' },
+        { ticketId: 'ticket-uuid', ubicacion: 'Oficina Central' },
         'explicit-id',
       );
       expect(entity.id).toBe('explicit-id');
+    });
+
+    it('ubicacion es opcional — null si no se provee', () => {
+      const entity = TicketEdiliciaEntity.create({ ticketId: 'ticket-uuid' });
+      expect(entity.ubicacion).toBeNull();
     });
   });
 
@@ -41,7 +46,7 @@ describe('TicketEdiliciaEntity', () => {
       const entity = TicketEdiliciaEntity.reconstitute(
         {
           ticketId: 'ticket-uuid',
-          ubicacionId: 'ubicacion-uuid',
+          ubicacion: 'Oficina Central',
           personalAsignadoId: 'usuario-uuid',
           porcentajeAvance: 50,
         },
@@ -63,7 +68,7 @@ describe('TicketEdiliciaEntity', () => {
     it('actualiza el porcentaje de avance', () => {
       const entity = TicketEdiliciaEntity.create({
         ticketId: 'ticket-uuid',
-        ubicacionId: 'ubicacion-uuid',
+        ubicacion: 'Oficina Central',
       });
 
       entity.actualizarAvance(75.5);
@@ -76,7 +81,7 @@ describe('TicketEdiliciaEntity', () => {
     it('asigna el personal de mantenimiento ejecutor', () => {
       const entity = TicketEdiliciaEntity.create({
         ticketId: 'ticket-uuid',
-        ubicacionId: 'ubicacion-uuid',
+        ubicacion: 'Oficina Central',
       });
 
       entity.asignarPersonal('tecnico-uuid');
@@ -87,7 +92,7 @@ describe('TicketEdiliciaEntity', () => {
     it('desasigna el personal cuando se pasa null', () => {
       const entity = TicketEdiliciaEntity.create({
         ticketId: 'ticket-uuid',
-        ubicacionId: 'ubicacion-uuid',
+        ubicacion: 'Oficina Central',
       });
       entity.asignarPersonal('tecnico-uuid');
 

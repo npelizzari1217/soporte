@@ -32,9 +32,7 @@ import { PrismaTicketCompraRepository } from '../compras/infrastructure/persiste
 import { TicketCompraEntity } from '../compras/domain/entities/ticket-compra.entity';
 
 import { PrismaTicketEdiliciaRepository } from '../reparaciones/infrastructure/persistence/prisma/prisma-ticket-edilicia.repository';
-import { PrismaUbicacionRepository } from '../reparaciones/infrastructure/persistence/prisma/prisma-ubicacion.repository';
 import { TicketEdiliciaEntity } from '../reparaciones/domain/entities/ticket-edilicia.entity';
-import { UbicacionEntity } from '../reparaciones/domain/entities/ubicacion.entity';
 
 import { PrismaTicketSoporteRepository } from './infrastructure/persistence/prisma/prisma-ticket-soporte.repository';
 import { TicketSoporteEntity } from './domain/entities/ticket-soporte.entity';
@@ -58,13 +56,11 @@ describe('Aislamiento cross-tenant real — repos satélite de Fase 3 (TV.2)', (
   let ticketRepo: PrismaTicketRepository;
   let ticketCompraRepo: PrismaTicketCompraRepository;
   let ticketEdiliciaRepo: PrismaTicketEdiliciaRepository;
-  let ubicacionRepo: PrismaUbicacionRepository;
   let ticketSoporteRepo: PrismaTicketSoporteRepository;
 
   let tipoId: string;
   let estadoId: string;
   let prioridadId: string;
-  let ubicacionAId: string;
 
   let ticketCompraAId: string;
   let ticketEdiliciaAId: string;
@@ -98,7 +94,6 @@ describe('Aislamiento cross-tenant real — repos satélite de Fase 3 (TV.2)', (
     ticketRepo = new PrismaTicketRepository(tenantContext);
     ticketCompraRepo = new PrismaTicketCompraRepository(tenantContext);
     ticketEdiliciaRepo = new PrismaTicketEdiliciaRepository(tenantContext);
-    ubicacionRepo = new PrismaUbicacionRepository(tenantContext);
     ticketSoporteRepo = new PrismaTicketSoporteRepository(tenantContext);
 
     const suffix = randomBytes(3).toString('hex');
@@ -158,15 +153,11 @@ describe('Aislamiento cross-tenant real — repos satélite de Fase 3 (TV.2)', (
     ticketIdsCreados.push(ticketCompraBase.id);
     ticketCompraAId = ticketCompra.id;
 
-    // Fixture: Ubicacion + TicketEdilicia en el tenant A.
-    const ubicacionA = UbicacionEntity.create({ nombre: 'Ubicación aislamiento TV.2' });
-    await withTenantA(() => ubicacionRepo.save(ubicacionA));
-    ubicacionAId = ubicacionA.id;
-
+    // Fixture: TicketEdilicia en el tenant A (ubicacion como texto libre).
     const ticketEdiliciaBase = TicketEntity.create(makeTicketProps(`TVE${suffix.slice(0, 5)}`));
     const ticketEdilicia = TicketEdiliciaEntity.create({
       ticketId: ticketEdiliciaBase.id,
-      ubicacionId: ubicacionAId,
+      ubicacion: 'Ubicación aislamiento TV.2',
     });
     await withTenantA(async () => {
       await ticketRepo.save(ticketEdiliciaBase);
@@ -203,7 +194,6 @@ describe('Aislamiento cross-tenant real — repos satélite de Fase 3 (TV.2)', (
       });
       await tenantAClient.ticket.deleteMany({ where: { id: { in: ticketIdsCreados } } });
     }
-    await tenantAClient.ubicacion.delete({ where: { id: ubicacionAId } });
     await tenantAClient.tipoTicket.delete({ where: { id: tipoId } });
     await tenantAClient.estado.delete({ where: { id: estadoId } });
     await tenantAClient.prioridad.delete({ where: { id: prioridadId } });

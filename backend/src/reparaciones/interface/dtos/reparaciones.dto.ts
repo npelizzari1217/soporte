@@ -1,5 +1,5 @@
 /**
- * DTOs de entrada/salida para `ReparacionesController`/`UbicacionesController`
+ * DTOs de entrada/salida para `ReparacionesController`
  * (F3-E1..E5, PR8/PR9).
  *
  * Mismo patrón que `compras/interface/dtos/compras.dto.ts`: `class-validator`
@@ -8,10 +8,9 @@
  *
  * Tarea: T8.6, T9.6.
  */
-import { IsBoolean, IsInt, IsOptional, IsString, IsUUID, Min, MinLength } from 'class-validator';
+import { IsInt, IsOptional, IsString, IsUUID, Min, MinLength } from 'class-validator';
 import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
 import { TicketEdiliciaEntity } from '../../domain/entities/ticket-edilicia.entity';
-import { UbicacionEntity } from '../../domain/entities/ubicacion.entity';
 import { SubtareaEdiliciaEntity } from '../../domain/entities/subtarea-edilicia.entity';
 import { ReparacionConTicket } from '../../application/use-cases/listar-reparaciones.use-case';
 
@@ -30,43 +29,10 @@ export class CreateTicketEdilicioHttpDto {
   @IsUUID()
   prioridadId!: string;
 
-  @IsUUID()
-  ubicacionId!: string;
-}
-
-/** Body de `POST /ubicaciones` (F3-E2). */
-export class CreateUbicacionHttpDto {
-  @IsString()
-  @MinLength(1)
-  nombre!: string;
-
+  /** Ubicación física de la reparación, texto libre (opcional). */
   @IsOptional()
   @IsString()
-  descripcion?: string | null;
-
-  @IsOptional()
-  @IsUUID()
-  padreId?: string | null;
-}
-
-/** Body de `PATCH /ubicaciones/:id` (F3-E2). Todos los campos opcionales (PATCH semántico). */
-export class EditarUbicacionHttpDto {
-  @IsOptional()
-  @IsString()
-  @MinLength(1)
-  nombre?: string;
-
-  @IsOptional()
-  @IsString()
-  descripcion?: string | null;
-
-  @IsOptional()
-  @IsUUID()
-  padreId?: string | null;
-
-  @IsOptional()
-  @IsBoolean()
-  activo?: boolean;
+  ubicacion?: string | null;
 }
 
 /** Body de `POST /reparaciones/:reparacionId/subtareas` (F3-E3). `autorId` viene del JWT. */
@@ -93,7 +59,7 @@ export interface TicketEdiliciaConTicketResponseDto {
   numero: string;
   titulo: string;
   estadoId: string;
-  ubicacionId: string;
+  ubicacion: string | null;
   personalAsignadoId: string | null;
   porcentajeAvance: number;
   createdAt: string;
@@ -111,7 +77,7 @@ export function toTicketEdiliciaResponseDto(
     numero: ticket.numero,
     titulo: ticket.titulo,
     estadoId: ticket.estadoId,
-    ubicacionId: ticketEdilicia.ubicacionId,
+    ubicacion: ticketEdilicia.ubicacion,
     personalAsignadoId: ticketEdilicia.personalAsignadoId,
     porcentajeAvance: ticketEdilicia.porcentajeAvance,
     createdAt: ticketEdilicia.createdAt.toISOString(),
@@ -121,12 +87,11 @@ export function toTicketEdiliciaResponseDto(
 
 /**
  * Shape de respuesta de un ítem del listado de reparaciones (F3-E1), incluye
- * `ubicacionNombre` resuelto y las `subtareas` EMBEBIDAS (sdd/beta-frontend
- * item 1 — G7: antes no había forma de recargarlas tras un refresh de
- * página; el frontend dependía solo del cache de sesión de las mutaciones).
+ * las `subtareas` EMBEBIDAS (sdd/beta-frontend item 1 — G7: antes no había
+ * forma de recargarlas tras un refresh de página; el frontend dependía solo
+ * del cache de sesión de las mutaciones).
  */
 export interface ReparacionListItemResponseDto extends TicketEdiliciaConTicketResponseDto {
-  ubicacionNombre: string | null;
   subtareas: SubtareaEdiliciaResponseDto[];
 }
 
@@ -136,32 +101,7 @@ export function toReparacionListItemResponseDto(
 ): ReparacionListItemResponseDto {
   return {
     ...toTicketEdiliciaResponseDto(item.ticket, item.ticketEdilicia),
-    ubicacionNombre: item.ubicacion ? item.ubicacion.nombre : null,
     subtareas: item.subtareas.map(toSubtareaEdiliciaResponseDto),
-  };
-}
-
-/** Shape de respuesta de una ubicación física. */
-export interface UbicacionResponseDto {
-  id: string;
-  nombre: string;
-  descripcion: string | null;
-  padreId: string | null;
-  activo: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
-
-/** Convierte `UbicacionEntity` al shape de respuesta HTTP. */
-export function toUbicacionResponseDto(ubicacion: UbicacionEntity): UbicacionResponseDto {
-  return {
-    id: ubicacion.id,
-    nombre: ubicacion.nombre,
-    descripcion: ubicacion.descripcion,
-    padreId: ubicacion.padreId,
-    activo: ubicacion.activo,
-    createdAt: ubicacion.createdAt.toISOString(),
-    updatedAt: ubicacion.updatedAt.toISOString(),
   };
 }
 
