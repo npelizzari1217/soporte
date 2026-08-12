@@ -24,7 +24,7 @@
  */
 
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { ChevronDown } from "lucide-react";
+import { Building2, ChevronDown } from "lucide-react";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -80,9 +80,18 @@ export function TenantSwitcher() {
         <button
           type="button"
           disabled={mutation.isPending}
-          className="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm text-foreground hover:bg-muted transition-colors disabled:opacity-50"
+          aria-label={`Cliente actual: ${user.cliente_nombre ?? "Elegí un cliente"}. Abrir selector de cliente.`}
+          className="flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-2.5 text-foreground shadow-sm transition-all hover:shadow-md hover:bg-muted disabled:opacity-50 disabled:pointer-events-none"
         >
-          <span className="max-w-[180px] truncate">{user.cliente_nombre ?? "Elegí un cliente"}</span>
+          <Building2 className="h-5 w-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <span className="flex flex-col items-start leading-tight">
+            <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              Cliente
+            </span>
+            <span className="max-w-[240px] truncate text-base font-semibold">
+              {user.cliente_nombre ?? "Elegí un cliente"}
+            </span>
+          </span>
           <ChevronDown className="h-4 w-4 opacity-60 shrink-0" aria-hidden="true" />
         </button>
       </DropdownMenu.Trigger>

@@ -32,7 +32,12 @@ export interface SwitchTenantResult {
  *    `ClienteNoAutorizado`.
  * 2. Si autorizado, re-carga `membresias[]` completo del actor (mismo shape
  *    que login/refresh — ADR-3, alimenta el switcher del front) y firma un
- *    nuevo access token.
+ *    nuevo access token. `nombre`/`apellido` se propagan TAL CUAL del payload
+ *    decodificado entrante (`dto.actor`, ya verificado por JwtAuthGuard) —
+ *    son identidad global, no cambian al saltar de tenant, y no ameritan una
+ *    carga extra a DB. Defensivo: tokens emitidos ANTES de este campo pueden
+ *    no traerlo durante la ventana de rollout → default `''` (se repuebla
+ *    solo en el próximo login).
  * 3. Audita el salto vía `ILogger.log` con formato
  *    `SWITCH TENANT | usuario={sub} | from={cliente_id} | to={clienteId} | at={ISO}`
  *    — SOLO en el camino de éxito (un intento rechazado no es un salto real).
@@ -77,6 +82,11 @@ export class SwitchTenantUseCase {
         rol: m.rolCodigo,
       })),
       modulos: scope.modulos,
+      // Identidad global: se propaga del payload entrante ya verificado, sin
+      // carga extra a DB. Defensivo para tokens pre-rollout que aún no la
+      // traen (ver docstring de la clase).
+      nombre: dto.actor.nombre ?? '',
+      apellido: dto.actor.apellido ?? '',
     };
     const accessToken = this.tokenService.signJwt(payload);
 

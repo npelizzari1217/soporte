@@ -24,6 +24,8 @@ const PAYLOAD: JwtPayload = {
   cliente_nombre: "Cliente Uno",
   membresias: [{ cliente_id: "c1", nombre: "Cliente Uno", rol: "ADMINISTRADOR" }],
   modulos: [],
+  nombre: "Juan",
+  apellido: "Pérez",
 };
 
 function renderHeader() {

@@ -28,6 +28,8 @@ const PAYLOAD: JwtPayload = {
     { cliente_id: "c2", nombre: "Cliente Dos", rol: "TECNICO" },
   ],
   modulos: [],
+  nombre: "Juan",
+  apellido: "Pérez",
 };
 
 function renderSwitcher(user: JwtPayload | null = PAYLOAD) {
@@ -105,6 +107,26 @@ describe("TenantSwitcher", () => {
 
     expect(await screen.findByRole("button", { name: /cliente dos/i })).toBeInTheDocument();
   });
+
+  it("usuario con UNA sola membresía → el trigger sigue mostrando el cliente prominente (no se oculta)", async () => {
+    const singleMembershipUser: JwtPayload = {
+      ...PAYLOAD,
+      membresias: [{ cliente_id: "c1", nombre: "Cliente Uno", rol: "ADMINISTRADOR" }],
+    };
+    const user = userEvent.setup();
+    renderSwitcher(singleMembershipUser);
+
+    const trigger = screen.getByRole("button", { name: /cliente uno/i });
+    expect(trigger).toBeInTheDocument();
+
+    // La única opción del menú (el propio cliente) queda deshabilitada — no
+    // hay a dónde saltar, pero el trigger en sí NO se oculta (R28 + prominencia).
+    await user.click(trigger);
+    expect(await screen.findByRole("menuitem", { name: /cliente uno/i })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+  });
 });
 
 // ROOT (is_global_admin): sin membresías propias — el switcher debe listar
@@ -118,6 +140,8 @@ const ROOT_PAYLOAD: JwtPayload = {
   cliente_nombre: null,
   membresias: [],
   modulos: [],
+  nombre: "Root",
+  apellido: "Master",
 };
 
 describe("TenantSwitcher — ROOT (is_global_admin, sin membresias)", () => {

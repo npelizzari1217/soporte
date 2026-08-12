@@ -8,6 +8,13 @@
  * (mobile handled by the parent shell wrapping this in a Sheet — see
  * app.shell.tsx, T0.5).
  *
+ * Un bloque de identidad (nombre completo + tipo de usuario, vía
+ * `tipoUsuario`) vive ENCIMA de las secciones de navegación — es contexto de
+ * "quién soy" que precede al "a dónde voy". Es collapse-aware: expandido
+ * muestra nombre + tipo; colapsado (riel angosto) muestra solo un círculo de
+ * iniciales, mismo criterio que el resto del riel (texto se oculta, ícono
+ * queda).
+ *
  * Spec: R-M0 Shell/layout premium.
  */
 import { Fragment, useState } from "react";
@@ -17,6 +24,18 @@ import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSession } from "@/shared/hooks/use-session";
 import { visibleNavSections } from "@/shared/nav/nav-config";
+import { tipoUsuario } from "@/shared/auth/tipo-usuario";
+
+/**
+ * Iniciales para el avatar compacto (riel colapsado): primera letra de
+ * nombre + primera letra de apellido, en mayúsculas. Si ambos vienen vacíos
+ * (token pre-rollout sin identidad, ver `decodeJwtPayload`) cae a "?" — nunca
+ * un círculo vacío.
+ */
+function iniciales(nombre: string, apellido: string): string {
+  const ini = `${nombre.charAt(0)}${apellido.charAt(0)}`.toUpperCase();
+  return ini || "?";
+}
 
 export function AppSidebar() {
   const { user } = useSession();
@@ -45,6 +64,30 @@ export function AppSidebar() {
           <PanelLeftClose className="h-4 w-4" aria-hidden="true" />
         )}
       </button>
+
+      {user && (
+        <div
+          className={cn(
+            "flex items-center border-b border-border",
+            collapsed ? "justify-center py-3" : "gap-3 px-3 py-3",
+          )}
+        >
+          <div
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground"
+            aria-hidden="true"
+          >
+            {iniciales(user.nombre, user.apellido)}
+          </div>
+          {!collapsed && (
+            <div className="min-w-0 flex-1 leading-tight">
+              <p className="truncate text-sm font-semibold text-foreground">
+                {`${user.nombre} ${user.apellido}`.trim() || "Usuario"}
+              </p>
+              <p className="truncate text-xs text-muted-foreground">{tipoUsuario(user)}</p>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="flex flex-1 flex-col gap-1 overflow-y-auto p-2">
         {sections.map((section) => {

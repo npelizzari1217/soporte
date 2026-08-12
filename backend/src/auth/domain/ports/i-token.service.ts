@@ -18,6 +18,14 @@
  *   (SOPORTE/COMPRAS/EDILICIA/EQUIPOS). ROOT (is_global_admin), ADMINISTRADOR
  *   (membresía con rolCodigo ADMINISTRADOR) y el token MASTER llevan TODOS los
  *   módulos; cualquier otro usuario lleva solo los asignados en ese cliente.
+ * - nombre/apellido: identidad del usuario (UsuarioEntity), CONSTANTE entre
+ *   tenants — no vienen de resolverScope (eso es scope de tenant, esto es
+ *   identidad global). Se populan en LoginUseCase desde la UsuarioEntity ya
+ *   cargada; SwitchTenantUseCase/RefreshTokenUseCase los propagan desde el
+ *   payload/entidad ya disponibles, sin una carga extra a DB dedicada a esto.
+ *   Alimentan el bloque de usuario del sidebar (front). Default `''` en
+ *   SwitchTenantUseCase para tokens emitidos antes de este campo (ventana de
+ *   rollout) — se repueblan solos en el próximo login.
  *
  * Los guards verifican `rol`/`permisos`/`is_global_admin` contra el JWT sin
  * query a DB (R11, R13, R14).
@@ -31,6 +39,8 @@ export interface JwtPayload {
   cliente_nombre: string | null;
   membresias: { cliente_id: string; nombre: string; rol: string }[];
   modulos: string[];
+  nombre: string;
+  apellido: string;
 }
 
 /**

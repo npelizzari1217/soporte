@@ -33,6 +33,8 @@ const VALID_PAYLOAD: JwtPayload = {
   cliente_nombre: "Cliente Uno",
   membresias: [{ cliente_id: "c1", nombre: "Cliente Uno", rol: "TECNICO" }],
   modulos: [],
+  nombre: "Juan",
+  apellido: "Pérez",
 };
 
 function makeRequest(path: string, cookies: Record<string, string> = {}): NextRequest {

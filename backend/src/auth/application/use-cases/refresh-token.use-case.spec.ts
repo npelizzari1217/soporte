@@ -294,6 +294,20 @@ describe('RefreshTokenUseCase', () => {
         { cliente_id: 'cliente-1', nombre: 'Acme SA', rol: 'TECNICO' },
       ]);
     });
+
+    it('el nuevo payload incluye nombre/apellido de la UsuarioEntity recargada', async () => {
+      setupHappyPath();
+      let captured: JwtPayload | undefined;
+      tokenService.signJwt.mockImplementation((p) => {
+        captured = p;
+        return 'new.jwt.token';
+      });
+
+      await useCase.execute({ rawToken });
+
+      expect(captured!.nombre).toBe('Juan');
+      expect(captured!.apellido).toBe('Perez');
+    });
   });
 
   describe('Refresh feliz (root, clienteId embebido null → token master)', () => {

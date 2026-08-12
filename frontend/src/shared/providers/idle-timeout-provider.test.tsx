@@ -19,6 +19,8 @@ const PAYLOAD: JwtPayload = {
   cliente_nombre: "Cliente Uno",
   membresias: [],
   modulos: [],
+  nombre: "Juan",
+  apellido: "Pérez",
 };
 
 describe("IdleTimeoutProvider", () => {

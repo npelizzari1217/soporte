@@ -37,6 +37,8 @@ export function buildUser(overrides: Partial<JwtPayload> = {}): JwtPayload {
     cliente_nombre: "Cliente Uno",
     membresias: [],
     modulos: [],
+    nombre: "Juan",
+    apellido: "Pérez",
     ...overrides,
   };
 }
