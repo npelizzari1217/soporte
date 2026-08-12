@@ -150,7 +150,9 @@ describe("TicketDetailView — gating de acciones por permiso", () => {
 
     const user = userEvent.setup();
     renderWithProviders(<TicketDetailView ticketId={TICKET_ID} />, {
-      user: buildUser({ permisos: ["ticket:asignar"] }),
+      // El control "Asignar y poner en proceso" exige AMBOS permisos (asigna Y
+      // transiciona a EN_PROCESO en una acción) — espeja el endpoint.
+      user: buildUser({ permisos: ["ticket:asignar", "ticket:transicionar"] }),
     });
 
     await screen.findByText("Impresora rota");
