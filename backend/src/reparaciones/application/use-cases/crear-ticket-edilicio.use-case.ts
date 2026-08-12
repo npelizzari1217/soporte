@@ -13,8 +13,6 @@ import { IUsuarioMasterChecker } from '../../../tickets/domain/ports/i-usuario-m
 import { SolicitanteInvalidoError } from '../../../tickets/domain/errors/tickets.errors';
 import { TicketEdiliciaEntity } from '../../domain/entities/ticket-edilicia.entity';
 import { ITicketEdiliciaRepository } from '../../domain/ports/i-ticket-edilicia.repository';
-import { IUbicacionRepository } from '../../domain/ports/i-ubicacion.repository';
-import { UbicacionInvalidaError } from '../../domain/errors/reparaciones.errors';
 
 /** Código fijo del tipo de ticket resuelto por este use case (F3-E1). */
 const TIPO_CODIGO_EDILICIA = 'EDILICIA';
@@ -35,8 +33,8 @@ export interface CrearTicketEdilicioDto {
   titulo: string;
   descripcion?: string | null;
   prioridadId: string;
-  /** UUID de la ubicación física de la reparación. Debe existir, estar activa y no eliminada. */
-  ubicacionId: string;
+  /** Ubicación física de la reparación, texto libre (opcional). */
+  ubicacion?: string | null;
   solicitanteId: string;
   clienteId: string;
   autorId: string;
@@ -47,18 +45,16 @@ export interface CrearTicketEdilicioDto {
  * CrearTicketEdilicioUseCase — creación atómica de un ticket edilicio
  * (F3-E1, ADR-3).
  *
- * Extiende el patrón de `CrearTicketCompraUseCase` agregando la validación
- * de `ubicacionId` (existente, activa, no eliminada) y la creación del
- * satélite `ticket_edilicia` en la MISMA transacción:
+ * Extiende el patrón de `CrearTicketCompraUseCase` agregando la creación del
+ * satélite `ticket_edilicia` en la MISMA transacción (`ubicacion` es texto
+ * libre, opcional — sin catálogo que validar, ex-Ubicacion removido):
  * 1. Valida que el solicitante exista en el tenant (`IUsuarioMasterChecker`).
  * 2. Resuelve el ciclo ACTIVO del tenant (nunca lo decide el caller).
- * 3. Valida `ubicacionId`: debe existir, estar `activo` y no eliminada —
- *    si no, `Result.fail(UbicacionInvalidaError)`.
- * 4. Resuelve el tipo EDILICIA por código (catálogo FIJO — su ausencia es
+ * 3. Resuelve el tipo EDILICIA por código (catálogo FIJO — su ausencia es
  *    un fallo de infraestructura, `throw` defensivo).
- * 5. Resuelve el estado NUEVO y el tipo de operación CAMBIO_ESTADO
+ * 4. Resuelve el estado NUEVO y el tipo de operación CAMBIO_ESTADO
  *    (catálogos FIJOS, mismo criterio).
- * 6. **DENTRO de la transacción**: genera el `numero` (prefijo EDI, ADR-4,
+ * 5. **DENTRO de la transacción**: genera el `numero` (prefijo EDI, ADR-4,
  *    ya resuelto), crea `TicketEntity` + `OperacionTicketEntity` de
  *    apertura + `TicketEdiliciaEntity` satélite (porcentajeAvance=0,
  *    personalAsignadoId=null), y persiste las 3 entidades.
@@ -79,7 +75,6 @@ export class CrearTicketEdilicioUseCase {
     private readonly usuarioMasterChecker: Pick<IUsuarioMasterChecker, 'existeEnTenant'>,
     private readonly numerador: Pick<NumeradorTicket, 'generarNumero'>,
     private readonly resolverCicloActivo: Pick<ResolverCicloActivoParaCreacion, 'resolver'>,
-    private readonly ubicacionRepo: Pick<IUbicacionRepository, 'findById'>,
     private readonly txRunner: ITenantTransactionRunner,
   ) {}
 
@@ -102,13 +97,7 @@ export class CrearTicketEdilicioUseCase {
     }
     const cicloActivo = cicloResult.getValue();
 
-    // 3. Validar ubicacionId: debe existir, estar activa y no eliminada.
-    const ubicacion = await this.ubicacionRepo.findById(dto.ubicacionId);
-    if (!ubicacion || !ubicacion.activo || ubicacion.isDeleted()) {
-      return Result.fail(new UbicacionInvalidaError(dto.ubicacionId));
-    }
-
-    // 4-5. Catálogos FIJOS garantizados por el seed (Fase 1) — su ausencia
+    // 3-4. Catálogos FIJOS garantizados por el seed (Fase 1) — su ausencia
     //    es un bug de infraestructura, no un error del caller: throw defensivo.
     const tipoEdilicia = await this.tipoTicketRepo.findByCodigo(TIPO_CODIGO_EDILICIA);
     if (!tipoEdilicia) {
@@ -129,7 +118,7 @@ export class CrearTicketEdilicioUseCase {
       );
     }
 
-    // 6. Sección crítica: numeración (advisory lock, ADR-5 Fase 2) +
+    // 5. Sección crítica: numeración (advisory lock, ADR-5 Fase 2) +
     //    persistencia atómica de ticket + operación + satélite.
     return this.txRunner.run(async () => {
       const numeroResult = await this.numerador.generarNumero(
@@ -169,7 +158,7 @@ export class CrearTicketEdilicioUseCase {
 
       const ticketEdilicia = TicketEdiliciaEntity.create({
         ticketId: ticket.id,
-        ubicacionId: dto.ubicacionId,
+        ubicacion: dto.ubicacion ?? null,
       });
 
       await this.ticketRepo.save(ticket);

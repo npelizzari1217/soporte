@@ -10,16 +10,6 @@
  * el ticket edilicio) sigue siendo la fuente confiable de avance agregado.
  */
 
-export interface Ubicacion {
-  id: string;
-  nombre: string;
-  descripcion: string | null;
-  padreId: string | null;
-  activo: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
-
 /** Shape unificado de un ticket edilicio (`TicketEdiliciaConTicketResponseDto`). `id` = id del satélite `ticket_edilicia`. */
 export interface TicketEdilicia {
   id: string;
@@ -27,16 +17,16 @@ export interface TicketEdilicia {
   numero: string;
   titulo: string;
   estadoId: string;
-  ubicacionId: string;
+  /** Ubicación física de la reparación, texto libre (ex-catálogo Ubicacion removido). */
+  ubicacion: string | null;
   personalAsignadoId: string | null;
   porcentajeAvance: number;
   createdAt: string;
   updatedAt: string;
 }
 
-/** Ítem del listado de `GET /reparaciones` (extiende `TicketEdilicia` + nombre de ubicación resuelto + subtareas embebidas). */
+/** Ítem del listado de `GET /reparaciones` (extiende `TicketEdilicia` + subtareas embebidas). */
 export interface ReparacionListItem extends TicketEdilicia {
-  ubicacionNombre: string | null;
   subtareas: SubtareaEdilicia[];
 }
 
@@ -52,24 +42,12 @@ export interface SubtareaEdilicia {
   updatedAt: string;
 }
 
-export interface CreateUbicacionDto {
-  nombre: string;
-  descripcion?: string | null;
-  padreId?: string | null;
-}
-
-export interface EditarUbicacionDto {
-  nombre?: string;
-  descripcion?: string | null;
-  padreId?: string | null;
-  activo?: boolean;
-}
-
 export interface CrearTicketEdilicioDto {
   titulo: string;
   descripcion?: string | null;
   prioridadId: string;
-  ubicacionId: string;
+  /** Texto libre, opcional. */
+  ubicacion?: string | null;
 }
 
 export interface CreateSubtareaDto {

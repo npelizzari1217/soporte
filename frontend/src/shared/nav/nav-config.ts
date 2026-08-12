@@ -85,8 +85,7 @@ const DEFAULT_SECTION_ITEMS: NavItem[] = [
     href: "/edilicia",
     label: "Edilicia",
     icon: Wrench,
-    visible: (can, _iga, canModulo) =>
-      canModulo("EDILICIA") && (can("subtarea:actualizar") || can("catalogo:gestionar")),
+    visible: (can, _iga, canModulo) => canModulo("EDILICIA") && can("subtarea:actualizar"),
   },
   {
     href: "/equipos",

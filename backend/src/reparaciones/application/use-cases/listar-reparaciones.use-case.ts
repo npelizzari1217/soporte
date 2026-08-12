@@ -3,17 +3,13 @@ import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
 import { ITicketRepository } from '../../../tickets/domain/ports/i-ticket.repository';
 import { SubtareaEdiliciaEntity } from '../../domain/entities/subtarea-edilicia.entity';
 import { TicketEdiliciaEntity } from '../../domain/entities/ticket-edilicia.entity';
-import { UbicacionEntity } from '../../domain/entities/ubicacion.entity';
 import { ISubtareaEdiliciaRepository } from '../../domain/ports/i-subtarea-edilicia.repository';
 import { ITicketEdiliciaRepository } from '../../domain/ports/i-ticket-edilicia.repository';
-import { IUbicacionRepository } from '../../domain/ports/i-ubicacion.repository';
 
-/** Un ticket edilicio resuelto junto a su ticket base, ubicación y subtareas (para listados). */
+/** Un ticket edilicio resuelto junto a su ticket base y subtareas (para listados). */
 export interface ReparacionConTicket {
   ticket: TicketEntity;
   ticketEdilicia: TicketEdiliciaEntity;
-  /** `null` si la ubicación referenciada ya no se encuentra (no debería pasar en producción). */
-  ubicacion: UbicacionEntity | null;
   /** Subtareas ACTIVAS del checklist (sdd/beta-frontend item 1 — G7, embebido). */
   subtareas: SubtareaEdiliciaEntity[];
 }
@@ -23,12 +19,13 @@ export interface ReparacionConTicket {
  * edilicios del tenant (F3-E1).
  *
  * Obtiene todos los `TicketEdiliciaEntity` activos y resuelve el `Ticket`
- * base, la `UbicacionEntity` y las subtareas de cada uno (join en memoria —
- * mismo patrón que `ListarComprasUseCase`, T4.5). Embeber subtareas (item 1,
- * G7) evita depender SOLO del cache de sesión poblado por mutaciones — antes
- * se perdía al recargar la página. Satélites sin ticket base asociado
- * (registros huérfanos, no debería pasar en producción) se omiten
- * silenciosamente.
+ * base y las subtareas de cada uno (join en memoria — mismo patrón que
+ * `ListarComprasUseCase`, T4.5). `ubicacion` viaja embebida como texto libre
+ * en el propio `TicketEdiliciaEntity` (ex-catálogo Ubicacion removido — no
+ * requiere resolución aparte). Embeber subtareas (item 1, G7) evita depender
+ * SOLO del cache de sesión poblado por mutaciones — antes se perdía al
+ * recargar la página. Satélites sin ticket base asociado (registros
+ * huérfanos, no debería pasar en producción) se omiten silenciosamente.
  *
  * Tarea: T8.5.
  */
@@ -36,7 +33,6 @@ export class ListarReparacionesUseCase {
   constructor(
     private readonly ediliciaRepo: Pick<ITicketEdiliciaRepository, 'findAll'>,
     private readonly ticketRepo: Pick<ITicketRepository, 'findById'>,
-    private readonly ubicacionRepo: Pick<IUbicacionRepository, 'findById'>,
     private readonly subtareaRepo: Pick<
       ISubtareaEdiliciaRepository,
       'findActiveByTicketEdiliciaId'
@@ -52,9 +48,8 @@ export class ListarReparacionesUseCase {
       if (!ticket) {
         continue;
       }
-      const ubicacion = await this.ubicacionRepo.findById(ticketEdilicia.ubicacionId);
       const subtareas = await this.subtareaRepo.findActiveByTicketEdiliciaId(ticketEdilicia.id);
-      items.push({ ticket, ticketEdilicia, ubicacion, subtareas });
+      items.push({ ticket, ticketEdilicia, subtareas });
     }
 
     return Result.ok(items);

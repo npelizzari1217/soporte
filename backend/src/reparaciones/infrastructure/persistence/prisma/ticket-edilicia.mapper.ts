@@ -19,7 +19,7 @@ export class TicketEdiliciaMapper {
     return TicketEdiliciaEntity.reconstitute(
       {
         ticketId: row.ticketId,
-        ubicacionId: row.ubicacionId,
+        ubicacion: row.ubicacion ?? null,
         personalAsignadoId: row.personalAsignadoId ?? null,
         porcentajeAvance: Number(row.porcentajeAvance),
       },
@@ -43,7 +43,7 @@ export class TicketEdiliciaMapper {
     return {
       id: entity.id,
       ticketId: entity.ticketId,
-      ubicacionId: entity.ubicacionId,
+      ubicacion: entity.ubicacion,
       personalAsignadoId: entity.personalAsignadoId,
       porcentajeAvance: entity.porcentajeAvance,
       deletedAt: entity.deletedAt,

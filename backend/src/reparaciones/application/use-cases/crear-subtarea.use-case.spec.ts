@@ -42,7 +42,7 @@ describe('CrearSubtareaUseCase', () => {
   it('crea la subtarea, recalcula avance (0 con 1 sola subtarea sin completar) y registra AVANCE_EDILICIO', async () => {
     const { useCase, ticketEdiliciaRepo, subtareaRepo, operacionRepo } = buildDeps();
     const edilicia = TicketEdiliciaEntity.create(
-      { ticketId: 'ticket-uuid', ubicacionId: 'ubicacion-uuid' },
+      { ticketId: 'ticket-uuid', ubicacion: 'Edificio Central' },
       'edilicia-uuid',
     );
     ticketEdiliciaRepo.findById.mockResolvedValue(edilicia);
@@ -62,7 +62,7 @@ describe('CrearSubtareaUseCase', () => {
   it('recalcula avance considerando subtareas activas existentes', async () => {
     const { useCase, ticketEdiliciaRepo, subtareaRepo, operacionRepo } = buildDeps();
     const edilicia = TicketEdiliciaEntity.create(
-      { ticketId: 'ticket-uuid', ubicacionId: 'ubicacion-uuid' },
+      { ticketId: 'ticket-uuid', ubicacion: 'Edificio Central' },
       'edilicia-uuid',
     );
     ticketEdiliciaRepo.findById.mockResolvedValue(edilicia);

@@ -14,15 +14,12 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select } from "@/components/ui/select";
 import { usePrioridades } from "@/features/tickets/hooks/use-catalogos";
-import { useUbicaciones } from "../hooks/use-ubicaciones";
 import { useCrearReparacion } from "../hooks/use-reparacion-mutations";
 import { crearReparacionSchema, type CrearReparacionFormValues } from "../schemas";
-import { UbicacionSelect } from "./ubicacion-select";
 
 export function ReparacionCreateDialog() {
   const [open, setOpen] = useState(false);
   const prioridadesQuery = usePrioridades();
-  const ubicacionesQuery = useUbicaciones();
   const crearMutation = useCrearReparacion();
 
   const {
@@ -38,7 +35,7 @@ export function ReparacionCreateDialog() {
         titulo: values.titulo,
         descripcion: values.descripcion || undefined,
         prioridadId: values.prioridadId,
-        ubicacionId: values.ubicacionId,
+        ubicacion: values.ubicacion || undefined,
       },
       {
         onSuccess: () => {
@@ -88,15 +85,10 @@ export function ReparacionCreateDialog() {
             <label htmlFor="reparacion-ubicacion" className="text-sm font-medium text-foreground">
               Ubicación
             </label>
-            <UbicacionSelect
-              id="reparacion-ubicacion"
-              ubicaciones={ubicacionesQuery.data ?? []}
-              error={!!errors.ubicacionId}
-              {...register("ubicacionId")}
-            />
-            {errors.ubicacionId && (
+            <Input id="reparacion-ubicacion" error={!!errors.ubicacion} {...register("ubicacion")} />
+            {errors.ubicacion && (
               <p role="alert" className="text-sm text-destructive">
-                {errors.ubicacionId.message}
+                {errors.ubicacion.message}
               </p>
             )}
           </div>

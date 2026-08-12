@@ -41,29 +41,22 @@ import {
   ISubtareaEdiliciaRepository,
 } from './domain/ports/i-subtarea-edilicia.repository';
 import { PrismaSubtareaEdiliciaRepository } from './infrastructure/persistence/prisma/prisma-subtarea-edilicia.repository';
-import { UBICACION_REPOSITORY, IUbicacionRepository } from './domain/ports/i-ubicacion.repository';
-import { PrismaUbicacionRepository } from './infrastructure/persistence/prisma/prisma-ubicacion.repository';
 
 import { CrearTicketEdilicioUseCase } from './application/use-cases/crear-ticket-edilicio.use-case';
 import { ListarReparacionesUseCase } from './application/use-cases/listar-reparaciones.use-case';
-import { CrearUbicacionUseCase } from './application/use-cases/crear-ubicacion.use-case';
-import { ListarUbicacionesUseCase } from './application/use-cases/listar-ubicaciones.use-case';
-import { EditarUbicacionUseCase } from './application/use-cases/editar-ubicacion.use-case';
-import { EliminarUbicacionUseCase } from './application/use-cases/eliminar-ubicacion.use-case';
 import { CrearSubtareaUseCase } from './application/use-cases/crear-subtarea.use-case';
 import { CompletarSubtareaUseCase } from './application/use-cases/completar-subtarea.use-case';
 import { EliminarSubtareaUseCase } from './application/use-cases/eliminar-subtarea.use-case';
 
 import { ReparacionesController } from './interface/controllers/reparaciones.controller';
-import { UbicacionesController } from './interface/controllers/ubicaciones.controller';
 
 /**
  * ReparacionesModule — módulo NestJS del dominio "reparaciones" (Fase 3,
  * F3-E1..E5).
  *
- * Flujo de reparaciones edilicias: ubicaciones jerárquicas (catálogo del
- * tenant), ticket_edilicia (satélite 1:0..1 de Ticket), subtareas_edilicia
- * (checklist de avance, `AvanceCalculator`).
+ * Flujo de reparaciones edilicias: ticket_edilicia (satélite 1:0..1 de
+ * Ticket, con `ubicacion` como texto libre — ex-catálogo Ubicacion
+ * removido), subtareas_edilicia (checklist de avance, `AvanceCalculator`).
  *
  * Wiring (PR6-PR9, screaming module hexagonal — domain/ → application/ →
  * infrastructure/ → interface/):
@@ -77,8 +70,7 @@ import { UbicacionesController } from './interface/controllers/ubicaciones.contr
  *   puertos por token, igual que en `ComprasModule`.
  * - `TENANT_TX_RUNNER` se inyecta desde `SharedModule` (`@Global`, sin
  *   necesidad de reimportarlo).
- * - `ReparacionesController` expone `POST/GET /reparaciones` + subtareas;
- *   `UbicacionesController` expone el CRUD del catálogo de ubicaciones.
+ * - `ReparacionesController` expone `POST/GET /reparaciones` + subtareas.
  *
  * FITNESS RULE: PrismaService y @prisma/client solo pueden importarse desde
  * infrastructure/ (ver backend/eslint.config.js).
@@ -86,14 +78,13 @@ import { UbicacionesController } from './interface/controllers/ubicaciones.contr
 @Module({
   // AuthModule: ver comentario equivalente en compras.module.ts (mismo gap,
   // descubierto por sdd/beta-frontend B6, T6.2) — TicketsModule NO
-  // re-exporta AuthModule, así que los guards de ReparacionesController/
-  // UbicacionesController lo necesitan importado acá explícitamente.
+  // re-exporta AuthModule, así que los guards de ReparacionesController lo
+  // necesitan importado acá explícitamente.
   imports: [AuthModule, TicketsModule],
-  controllers: [ReparacionesController, UbicacionesController],
+  controllers: [ReparacionesController],
   providers: [
     { provide: TICKET_EDILICIA_REPOSITORY, useClass: PrismaTicketEdiliciaRepository },
     { provide: SUBTAREA_EDILICIA_REPOSITORY, useClass: PrismaSubtareaEdiliciaRepository },
-    { provide: UBICACION_REPOSITORY, useClass: PrismaUbicacionRepository },
 
     {
       provide: NumeradorTicket,
@@ -118,7 +109,6 @@ import { UbicacionesController } from './interface/controllers/ubicaciones.contr
         usuarioMasterChecker: IUsuarioMasterChecker,
         numerador: NumeradorTicket,
         resolverCicloActivo: ResolverCicloActivoParaCreacion,
-        ubicacionRepo: IUbicacionRepository,
         txRunner: ITenantTransactionRunner,
       ) =>
         new CrearTicketEdilicioUseCase(
@@ -131,7 +121,6 @@ import { UbicacionesController } from './interface/controllers/ubicaciones.contr
           usuarioMasterChecker,
           numerador,
           resolverCicloActivo,
-          ubicacionRepo,
           txRunner,
         ),
       inject: [
@@ -144,7 +133,6 @@ import { UbicacionesController } from './interface/controllers/ubicaciones.contr
         USUARIO_MASTER_CHECKER,
         NumeradorTicket,
         ResolverCicloActivoParaCreacion,
-        UBICACION_REPOSITORY,
         TENANT_TX_RUNNER,
       ],
     },
@@ -153,39 +141,9 @@ import { UbicacionesController } from './interface/controllers/ubicaciones.contr
       useFactory: (
         ediliciaRepo: ITicketEdiliciaRepository,
         ticketRepo: ITicketRepository,
-        ubicacionRepo: IUbicacionRepository,
         subtareaRepo: ISubtareaEdiliciaRepository,
-      ) => new ListarReparacionesUseCase(ediliciaRepo, ticketRepo, ubicacionRepo, subtareaRepo),
-      inject: [
-        TICKET_EDILICIA_REPOSITORY,
-        TICKET_REPOSITORY,
-        UBICACION_REPOSITORY,
-        SUBTAREA_EDILICIA_REPOSITORY,
-      ],
-    },
-    {
-      provide: CrearUbicacionUseCase,
-      useFactory: (ubicacionRepo: IUbicacionRepository, txRunner: ITenantTransactionRunner) =>
-        new CrearUbicacionUseCase(ubicacionRepo, txRunner),
-      inject: [UBICACION_REPOSITORY, TENANT_TX_RUNNER],
-    },
-    {
-      provide: ListarUbicacionesUseCase,
-      useFactory: (ubicacionRepo: IUbicacionRepository) =>
-        new ListarUbicacionesUseCase(ubicacionRepo),
-      inject: [UBICACION_REPOSITORY],
-    },
-    {
-      provide: EditarUbicacionUseCase,
-      useFactory: (ubicacionRepo: IUbicacionRepository, txRunner: ITenantTransactionRunner) =>
-        new EditarUbicacionUseCase(ubicacionRepo, txRunner),
-      inject: [UBICACION_REPOSITORY, TENANT_TX_RUNNER],
-    },
-    {
-      provide: EliminarUbicacionUseCase,
-      useFactory: (ubicacionRepo: IUbicacionRepository, txRunner: ITenantTransactionRunner) =>
-        new EliminarUbicacionUseCase(ubicacionRepo, txRunner),
-      inject: [UBICACION_REPOSITORY, TENANT_TX_RUNNER],
+      ) => new ListarReparacionesUseCase(ediliciaRepo, ticketRepo, subtareaRepo),
+      inject: [TICKET_EDILICIA_REPOSITORY, TICKET_REPOSITORY, SUBTAREA_EDILICIA_REPOSITORY],
     },
     {
       provide: CrearSubtareaUseCase,
@@ -260,6 +218,6 @@ import { UbicacionesController } from './interface/controllers/ubicaciones.contr
       ],
     },
   ],
-  exports: [TICKET_EDILICIA_REPOSITORY, SUBTAREA_EDILICIA_REPOSITORY, UBICACION_REPOSITORY],
+  exports: [TICKET_EDILICIA_REPOSITORY, SUBTAREA_EDILICIA_REPOSITORY],
 })
 export class ReparacionesModule {}

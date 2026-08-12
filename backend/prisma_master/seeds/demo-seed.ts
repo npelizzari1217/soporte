@@ -93,7 +93,6 @@ import { CrearTicketCompraUseCase } from '../../src/compras/application/use-case
 import { AgregarItemCompraUseCase } from '../../src/compras/application/use-cases/agregar-item-compra.use-case';
 import { AgregarPresupuestoUseCase } from '../../src/compras/application/use-cases/agregar-presupuesto.use-case';
 
-import { CrearUbicacionUseCase } from '../../src/reparaciones/application/use-cases/crear-ubicacion.use-case';
 import { CrearTicketEdilicioUseCase } from '../../src/reparaciones/application/use-cases/crear-ticket-edilicio.use-case';
 import { CrearSubtareaUseCase } from '../../src/reparaciones/application/use-cases/crear-subtarea.use-case';
 
@@ -475,7 +474,7 @@ async function crearComprasDemo(
   }
 }
 
-/** Crea 1 ubicación + 1 ticket edilicio con 2 subtareas de ejemplo. */
+/** Crea 1 ticket edilicio (ubicación como texto libre) con 2 subtareas de ejemplo. */
 async function crearEdiliciaDemo(
   app: INestApplicationContext,
   clienteId: string,
@@ -483,18 +482,12 @@ async function crearEdiliciaDemo(
   catalogos: Awaited<ReturnType<typeof cargarCatalogos>>,
   usuarios: UsuariosDemo,
 ): Promise<void> {
-  const crearUbicacion = app.get(CrearUbicacionUseCase);
-  const ubicacionResult = await crearUbicacion.execute({ nombre: 'Oficina Central — Planta Baja' });
-  if (ubicacionResult.isFail()) {
-    throw new Error(`[demo-seed] No se pudo crear la ubicación demo: ${ubicacionResult.getError().message}`);
-  }
-
   const crearTicketEdilicio = app.get(CrearTicketEdilicioUseCase);
   const result = await crearTicketEdilicio.execute({
     titulo: 'Reparar filtración de agua en sala de servidores',
     descripcion: 'Se detectó humedad en la pared cercana al rack principal.',
     prioridadId: catalogos.prioridadIdPorCodigo.get('CRITICA')!,
-    ubicacionId: ubicacionResult.getValue().id,
+    ubicacion: 'Oficina Central — Planta Baja',
     solicitanteId: usuarios.usuario,
     clienteId,
     autorId: usuarios.usuario,

@@ -37,7 +37,7 @@ describe('EliminarSubtareaUseCase', () => {
   it('elimina la subtarea y recalcula el avance sobre las activas restantes', async () => {
     const { useCase, subtareaRepo, ticketEdiliciaRepo, operacionRepo } = buildDeps();
     const edilicia = TicketEdiliciaEntity.create(
-      { ticketId: 'ticket-uuid', ubicacionId: 'ubicacion-uuid' },
+      { ticketId: 'ticket-uuid', ubicacion: 'Edificio Central' },
       'edilicia-uuid',
     );
     edilicia.actualizarAvance(50);
@@ -69,7 +69,7 @@ describe('EliminarSubtareaUseCase', () => {
   it('recalcula a 0 cuando no quedan subtareas activas', async () => {
     const { useCase, subtareaRepo, ticketEdiliciaRepo } = buildDeps();
     const edilicia = TicketEdiliciaEntity.create(
-      { ticketId: 'ticket-uuid', ubicacionId: 'ubicacion-uuid' },
+      { ticketId: 'ticket-uuid', ubicacion: 'Edificio Central' },
       'edilicia-uuid',
     );
     edilicia.actualizarAvance(100);
