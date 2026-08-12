@@ -56,7 +56,8 @@ describe("TiposComponenteAdminView (PR5, sdd/tipos-componente-master)", () => {
     renderWithProviders(<TiposComponenteAdminView />, { user: buildUser({ is_global_admin: true }) });
     await screen.findByText("Monitor");
 
-    await user.type(screen.getByLabelText(/^código$/i), "MOUSE");
+    await user.click(screen.getByRole("button", { name: /^nuevo tipo$/i }));
+    await user.type(await screen.findByLabelText(/^código$/i), "MOUSE");
     await user.type(screen.getByLabelText(/^nombre$/i), "Mouse");
     await user.click(screen.getByRole("button", { name: /^crear$/i }));
 

@@ -13,7 +13,12 @@ import { adoptarCicloSchema, type AdoptarCicloFormValues } from "../schemas";
 import { useAdoptarCiclo } from "../hooks/use-ciclos-mutations";
 import { useCiclosVigentes } from "../hooks/use-ciclos-vigentes";
 
-export function AdoptarCicloForm() {
+export interface AdoptarCicloFormProps {
+  /** Se llama tras un alta exitosa, además del reset del form (ej. cerrar el modal contenedor). */
+  onSuccess?: () => void;
+}
+
+export function AdoptarCicloForm({ onSuccess }: AdoptarCicloFormProps = {}) {
   const mutation = useAdoptarCiclo();
   const ciclosVigentesQuery = useCiclosVigentes();
   const {
@@ -24,7 +29,12 @@ export function AdoptarCicloForm() {
   } = useForm<AdoptarCicloFormValues>({ resolver: zodResolver(adoptarCicloSchema), defaultValues: { cicloVigenteId: "" } });
 
   function submit(values: AdoptarCicloFormValues) {
-    mutation.mutate(values.cicloVigenteId, { onSuccess: () => reset() });
+    mutation.mutate(values.cicloVigenteId, {
+      onSuccess: () => {
+        reset();
+        onSuccess?.();
+      },
+    });
   }
 
   return (

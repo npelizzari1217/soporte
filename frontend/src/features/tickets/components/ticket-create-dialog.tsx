@@ -1,20 +1,24 @@
 "use client";
 
 /**
- * TicketCreateView — CONTAINER client component montado por `/tickets/nuevo`
- * (ADR-1). Gate `ticket:crear` (`<Can>`, ADR-4) — el backend re-valida vía
- * `@RequirePermissions('ticket:crear')` de todos modos.
+ * TicketCreateDialog — modal para crear un ticket general (R-M1 / T1.8),
+ * abierto desde el botón "Nuevo ticket" de la lista universal `/tickets`
+ * (conversión a modal, feat/ui-premium-educandow — antes ruta dedicada
+ * `/tickets/nuevo`, revisión de ADR-1). Gate `ticket:crear` lo aplica el
+ * caller (`TicketsListView`, vía `<Can>`).
  */
+import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Plus } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 import { useTiposTicket, usePrioridades } from "../hooks/use-catalogos";
 import { useCrearTicket } from "../hooks/use-ticket-mutations";
-import { Can } from "@/components/shared/can";
-import { PageHeader } from "@/components/shared/page-header";
-import { ErrorState } from "@/components/shared/error-state";
 import { TicketCreateForm } from "./ticket-create-form";
 import type { CrearTicketDto } from "../types";
 
-export function TicketCreateView() {
+export function TicketCreateDialog() {
+  const [open, setOpen] = useState(false);
   const router = useRouter();
   // B2: este es el alta genérica alcanzada desde el botón "Nuevo ticket" de
   // la lista universal `/tickets` — el resto de los módulos tienen su propia
@@ -29,21 +33,32 @@ export function TicketCreateView() {
 
   function handleSubmit(dto: CrearTicketDto) {
     crearMutation.mutate(dto, {
-      onSuccess: (ticket) => router.push(`/tickets/${ticket.id}`),
+      onSuccess: (ticket) => {
+        setOpen(false);
+        router.push(`/tickets/${ticket.id}`);
+      },
     });
   }
 
   return (
-    <Can permiso="ticket:crear" fallback={<ErrorState message="No tenés permiso para crear tickets." />}>
-      <div>
-        <PageHeader title="Nuevo ticket" />
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button>
+          <Plus className="h-4 w-4" aria-hidden="true" />
+          Nuevo ticket
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Nuevo ticket</DialogTitle>
+        </DialogHeader>
         <TicketCreateForm
           tipos={tiposQuery.data ?? []}
           prioridades={prioridadesQuery.data ?? []}
           onSubmit={handleSubmit}
           isSubmitting={crearMutation.isPending}
         />
-      </div>
-    </Can>
+      </DialogContent>
+    </Dialog>
   );
 }

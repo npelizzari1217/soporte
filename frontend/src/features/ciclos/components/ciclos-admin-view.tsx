@@ -14,7 +14,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { PageHeader } from "@/components/shared/page-header";
 import { AdminNav } from "@/components/shell/admin-nav";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AdoptarCicloForm } from "./adoptar-ciclo-form";
+import { AdoptarCicloDialog } from "./adoptar-ciclo-dialog";
 import { CicloRow } from "./ciclo-row";
 
 export function CiclosAdminView() {
@@ -36,7 +36,7 @@ function CiclosAdminContent() {
       <PageHeader title="Ciclos" description="Ciclos de gestión adoptados por el tenant." />
 
       <div className="mb-4">
-        <AdoptarCicloForm />
+        <AdoptarCicloDialog />
       </div>
 
       {ciclosQuery.isLoading && (

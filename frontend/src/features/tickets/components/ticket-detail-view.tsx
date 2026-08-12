@@ -5,7 +5,7 @@
  * (ADR-1). Orquesta detalle + timeline + acciones gateadas por permiso
  * (R-M1 / T1.6-T1.13).
  */
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useTicket, useTicketTimeline } from "../hooks/use-ticket";
 import { useTiposTicket, usePrioridades, useEstados, useTiposOperacion } from "../hooks/use-catalogos";
 import { useTecnicosAsignables } from "../hooks/use-tecnicos-asignables";
@@ -24,13 +24,12 @@ import { useSession } from "@/shared/hooks/use-session";
 import { DetailSkeleton } from "@/components/shared/skeletons";
 import { ErrorState } from "@/components/shared/error-state";
 import { Can } from "@/components/shared/can";
-import { Button } from "@/components/ui/button";
 import { TicketHeader } from "./ticket-header";
 import { TicketTimeline } from "./ticket-timeline";
 import { TicketCommentForm } from "./ticket-comment-form";
 import { TicketTransitionControl } from "./ticket-transition-control";
 import { TicketAsignarEnProcesoControl } from "./ticket-asignar-en-proceso-control";
-import { TicketEditForm } from "./ticket-edit-form";
+import { TicketEditDialog } from "./ticket-edit-dialog";
 import { TicketAttachmentUpload } from "./ticket-attachment-upload";
 import { TicketEquipoMantenimientoCard } from "./ticket-equipo-mantenimiento-card";
 
@@ -64,8 +63,6 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
   const asignarEnProcesoMutation = useAsignarEnProceso(ticketId);
   const editarMutation = useEditarTicket(ticketId);
   const adjuntarMutation = useSubirAdjunto(ticketId);
-
-  const [editando, setEditando] = useState(false);
 
   const estadoCodigoMap = useMemo(() => buildIdToCodigoMap(estadosQuery.data ?? []), [estadosQuery.data]);
   const prioridadCodigoMap = useMemo(
@@ -129,9 +126,16 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
         )}
         <Can permiso="ticket:editar">
           {edicionPermitida ? (
-            <Button variant="outline" size="sm" onClick={() => setEditando((v) => !v)}>
-              {editando ? "Cancelar edición" : "Editar"}
-            </Button>
+            <TicketEditDialog
+              defaultValues={{
+                titulo: ticket.titulo,
+                descripcion: ticket.descripcion ?? "",
+                prioridadId: ticket.prioridadId,
+              }}
+              prioridades={prioridadesQuery.data ?? []}
+              onSubmit={(values) => editarMutation.mutate(values)}
+              isSubmitting={editarMutation.isPending}
+            />
           ) : (
             <span className="text-sm text-muted-foreground">
               En proceso: solo ROOT puede editar.
@@ -139,23 +143,6 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
           )}
         </Can>
       </div>
-
-      {editando && edicionPermitida && (
-        <TicketEditForm
-          defaultValues={{
-            titulo: ticket.titulo,
-            descripcion: ticket.descripcion ?? "",
-            prioridadId: ticket.prioridadId,
-          }}
-          prioridades={prioridadesQuery.data ?? []}
-          onSubmit={(values) => {
-            editarMutation.mutate(values);
-            setEditando(false);
-          }}
-          onCancel={() => setEditando(false)}
-          isSubmitting={editarMutation.isPending}
-        />
-      )}
 
       <section>
         <h2 className="mb-3 text-sm font-semibold text-foreground">Actividad</h2>

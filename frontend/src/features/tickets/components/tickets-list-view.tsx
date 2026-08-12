@@ -14,7 +14,6 @@
  */
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useMemo } from "react";
-import { Plus } from "lucide-react";
 import { useTickets } from "../hooks/use-tickets";
 import { useTiposTicket, usePrioridades, useEstados } from "../hooks/use-catalogos";
 import { useUsuariosAsignables } from "../hooks/use-usuarios-asignables";
@@ -24,8 +23,8 @@ import { FilterBar } from "@/components/shared/filter-bar";
 import { Pagination } from "@/components/shared/pagination";
 import { PageHeader } from "@/components/shared/page-header";
 import { Can } from "@/components/shared/can";
-import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
+import { TicketCreateDialog } from "./ticket-create-dialog";
 import { StatusBadge, type TicketEstado } from "@/components/ui/status-badge";
 import { PriorityBadge } from "@/components/ui/priority-badge";
 import { notifyError } from "@/shared/lib/toast";
@@ -107,10 +106,7 @@ export function TicketsListView() {
         title="Tickets"
         actions={
           <Can permiso="ticket:crear">
-            <Button onClick={() => router.push("/tickets/nuevo")}>
-              <Plus className="h-4 w-4" aria-hidden="true" />
-              Nuevo ticket
-            </Button>
+            <TicketCreateDialog />
           </Can>
         }
       />

@@ -31,7 +31,7 @@ export function DashboardHeader() {
   }
 
   return (
-    <header className="flex items-center justify-between border-b border-slate-200/50 bg-card px-4 py-2 dark:border-white/5">
+    <header className="flex items-center justify-between border-b border-border bg-card px-4 py-2">
       <TenantSwitcher />
       <div className="flex items-center gap-2">
         <ThemeToggle />

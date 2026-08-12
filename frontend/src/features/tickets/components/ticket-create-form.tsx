@@ -3,7 +3,7 @@
 /**
  * TicketCreateForm — PRESENTATIONAL. Form de creación (R-M1 / T1.8):
  * título/descripción/tipo/prioridad + referencia opcional ("Continúa de
- * #X"). Gate `ticket:crear` lo aplica el caller (`TicketCreateView`).
+ * #X"). Gate `ticket:crear` lo aplica el caller (`TicketCreateDialog`).
  */
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";

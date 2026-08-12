@@ -80,7 +80,11 @@ describe("CiclosAdminView", () => {
     renderWithProviders(<CiclosAdminView />, { user: buildUser({ permisos: ["ciclo:gestionar"] }) });
     await screen.findByText("2026-S1");
 
-    await user.selectOptions(screen.getByLabelText(/adoptar ciclo/i), CICLO_VIGENTE_1_ID);
+    await user.click(screen.getByRole("button", { name: /^adoptar ciclo$/i }));
+    // Regex acotada al label del select — el título del modal ("Adoptar
+    // ciclo") también matchea /adoptar ciclo/i vía aria-labelledby del
+    // DialogContent y produce match múltiple en getByLabelText.
+    await user.selectOptions(await screen.findByLabelText(/adoptar ciclo \(catálogo master\)/i), CICLO_VIGENTE_1_ID);
     await user.click(screen.getByRole("button", { name: /^adoptar$/i }));
 
     await waitFor(() => expect(postBody).toEqual({ cicloVigenteId: CICLO_VIGENTE_1_ID }));
