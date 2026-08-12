@@ -35,6 +35,14 @@ export class PrismaComponenteEquipoRepository implements IComponenteEquipoReposi
     return rows.map(ComponenteEquipoMapper.toDomain);
   }
 
+  async findAllByEquipoId(equipoId: string): Promise<ComponenteEquipoEntity[]> {
+    const rows = await this.client.componenteEquipo.findMany({
+      where: { equipoId },
+      orderBy: { createdAt: 'asc' },
+    });
+    return rows.map(ComponenteEquipoMapper.toDomain);
+  }
+
   async save(componente: ComponenteEquipoEntity): Promise<void> {
     const data = ComponenteEquipoMapper.toPersistence(componente);
     const { createdAt: _createdAt, ...updateData } = data;

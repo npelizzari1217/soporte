@@ -48,6 +48,10 @@ export interface Componente {
   descripcion: string | null;
   numeroSerie: string | null;
   capacidad: string | null;
+  /** `false` = dado de baja (soft-delete). Listado enriquecido: `GET /equipos/:id` ahora trae TODOS los componentes, no solo los activos. */
+  activo: boolean;
+  /** `null` si está activo; fecha de baja lógica si fue soft-deleted. */
+  deletedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -103,6 +107,14 @@ export interface EditarEquipoDto {
 
 export interface CreateComponenteDto {
   tipoComponenteCodigo: string;
+  descripcion?: string | null;
+  numeroSerie?: string | null;
+  capacidad?: string | null;
+}
+
+/** Body de `PATCH /equipos/:id/componentes/:componenteId` (PATCH semántico: `undefined` = no tocar). */
+export interface EditarComponenteDto {
+  tipoComponenteCodigo?: string;
   descripcion?: string | null;
   numeroSerie?: string | null;
   capacidad?: string | null;

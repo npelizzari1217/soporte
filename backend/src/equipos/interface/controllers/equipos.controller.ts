@@ -9,8 +9,10 @@
  *   GET    /equipos/:id                           → ObtenerEquipoUseCase            (autenticado)
  *   PATCH  /equipos/:id                           → EditarEquipoUseCase             [equipo:gestionar]
  *   DELETE /equipos/:id                           → EliminarEquipoUseCase           [equipo:gestionar]
- *   POST   /equipos/:id/componentes                → AgregarComponenteUseCase        [equipo:gestionar]
- *   DELETE /equipos/:id/componentes/:componenteId  → EliminarComponenteUseCase       [equipo:gestionar]
+ *   POST   /equipos/:id/componentes                          → AgregarComponenteUseCase     [equipo:gestionar]
+ *   DELETE /equipos/:id/componentes/:componenteId             → EliminarComponenteUseCase    [equipo:gestionar]
+ *   PATCH  /equipos/:id/componentes/:componenteId             → EditarComponenteUseCase      [equipo:gestionar]
+ *   PATCH  /equipos/:id/componentes/:componenteId/reactivar   → ReactivarComponenteUseCase   [equipo:gestionar]
  *
  * `GET /equipos/tipos-componente` se declara ANTES de `GET /equipos/:id` en
  * la clase para que Nest lo matchee como ruta estática y NO como
@@ -55,6 +57,8 @@ import { ListarEquiposUseCase } from '../../application/use-cases/listar-equipos
 import { EliminarEquipoUseCase } from '../../application/use-cases/eliminar-equipo.use-case';
 import { AgregarComponenteUseCase } from '../../application/use-cases/agregar-componente.use-case';
 import { EliminarComponenteUseCase } from '../../application/use-cases/eliminar-componente.use-case';
+import { EditarComponenteUseCase } from '../../application/use-cases/editar-componente.use-case';
+import { ReactivarComponenteUseCase } from '../../application/use-cases/reactivar-componente.use-case';
 import { ListarTiposComponenteUseCase } from '../../application/use-cases/listar-tipos-componente.use-case';
 
 import {
@@ -64,12 +68,15 @@ import {
   TipoComponenteCodigoRequeridoError,
   TipoComponenteInactivoError,
   ComponenteNoEncontradoError,
+  ComponenteDadoDeBajaError,
+  ComponenteYaActivoError,
 } from '../../domain/errors/equipos.errors';
 
 import {
   ComponenteResponseDto,
   CreateComponenteHttpDto,
   CreateEquipoHttpDto,
+  EditarComponenteHttpDto,
   EditarEquipoHttpDto,
   EquipoDetalleResponseDto,
   EquipoResponseDto,
@@ -89,7 +96,9 @@ function toHttpException(error: DomainError): NotFoundException | UnprocessableE
     error instanceof EquipoInvalidoError ||
     error instanceof NumeroSerieDuplicadoError ||
     error instanceof TipoComponenteCodigoRequeridoError ||
-    error instanceof TipoComponenteInactivoError
+    error instanceof TipoComponenteInactivoError ||
+    error instanceof ComponenteDadoDeBajaError ||
+    error instanceof ComponenteYaActivoError
   ) {
     return new UnprocessableEntityException(error.message);
   }
@@ -120,6 +129,8 @@ export class EquiposController {
     private readonly eliminarEquipoUseCase: EliminarEquipoUseCase,
     private readonly agregarComponenteUseCase: AgregarComponenteUseCase,
     private readonly eliminarComponenteUseCase: EliminarComponenteUseCase,
+    private readonly editarComponenteUseCase: EditarComponenteUseCase,
+    private readonly reactivarComponenteUseCase: ReactivarComponenteUseCase,
     private readonly listarTiposComponenteUseCase: ListarTiposComponenteUseCase,
   ) {}
 
@@ -272,12 +283,61 @@ export class EquiposController {
   @RequirePermissions('equipo:gestionar')
   @HttpCode(HttpStatus.NO_CONTENT)
   async eliminarComponente(
-    @Param('id') _id: string,
+    @Param('id') equipoId: string,
     @Param('componenteId') componenteId: string,
   ): Promise<void> {
-    const result = await this.eliminarComponenteUseCase.execute({ componenteId });
+    const result = await this.eliminarComponenteUseCase.execute({ equipoId, componenteId });
     if (result.isFail()) {
       throw toHttpException(result.getError());
     }
+  }
+
+  /**
+   * PATCH /equipos/:id/componentes/:componenteId
+   * Edita un componente ACTIVO (listado enriquecido de componentes).
+   * @throws 404 componente inexistente
+   * @throws 422 componente dado de baja, o tipo de componente inexistente/inactivo
+   */
+  @Patch(':id/componentes/:componenteId')
+  @RequirePermissions('equipo:gestionar')
+  @HttpCode(HttpStatus.OK)
+  async editarComponente(
+    @Param('id') equipoId: string,
+    @Param('componenteId') componenteId: string,
+    @Body() dto: EditarComponenteHttpDto,
+  ): Promise<ComponenteResponseDto> {
+    const result = await this.editarComponenteUseCase.execute({
+      equipoId,
+      componenteId,
+      tipoComponenteCodigo: dto.tipoComponenteCodigo,
+      descripcion: dto.descripcion,
+      numeroSerie: dto.numeroSerie,
+      capacidad: dto.capacidad,
+    });
+
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+    return toComponenteResponseDto(result.getValue());
+  }
+
+  /**
+   * PATCH /equipos/:id/componentes/:componenteId/reactivar
+   * Revierte la baja lógica de un componente (listado enriquecido de componentes).
+   * @throws 404 componente inexistente
+   * @throws 422 componente ya activo
+   */
+  @Patch(':id/componentes/:componenteId/reactivar')
+  @RequirePermissions('equipo:gestionar')
+  @HttpCode(HttpStatus.OK)
+  async reactivarComponente(
+    @Param('id') equipoId: string,
+    @Param('componenteId') componenteId: string,
+  ): Promise<ComponenteResponseDto> {
+    const result = await this.reactivarComponenteUseCase.execute({ equipoId, componenteId });
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+    return toComponenteResponseDto(result.getValue());
   }
 }

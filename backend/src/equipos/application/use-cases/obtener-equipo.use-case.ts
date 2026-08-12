@@ -23,7 +23,11 @@ export interface ComponenteEquipoConTipo {
   tipoActivo: boolean;
 }
 
-/** Detalle de un equipo + sus componentes activos (sdd/beta-frontend item 1 — G7, embebido). */
+/**
+ * Detalle de un equipo + TODOS sus componentes (activos + dados de baja —
+ * el listado enriquecido muestra el historial completo, item "componentes
+ * de equipo": antes solo traía los ACTIVOS).
+ */
 export interface EquipoDetalle {
   equipo: EquipoInformaticoEntity;
   componentes: ComponenteEquipoConTipo[];
@@ -31,10 +35,15 @@ export interface EquipoDetalle {
 
 /**
  * ObtenerEquipoUseCase — obtiene el detalle de un equipo del inventario
- * (F3-Q1), embebiendo sus componentes ACTIVOS enriquecidos con
- * nombre/estado del catálogo MASTER (item 1 — cierra G7: antes
- * `GET /equipos/:id` no traía `componentes`, el frontend dependía solo del
- * cache de sesión poblado por las mutaciones de agregar/eliminar).
+ * (F3-Q1), embebiendo TODOS sus componentes (activos + soft-deleted)
+ * enriquecidos con nombre/estado del catálogo MASTER (item 1 — cierra G7:
+ * antes `GET /equipos/:id` no traía `componentes`, el frontend dependía
+ * solo del cache de sesión poblado por las mutaciones de agregar/eliminar).
+ *
+ * DECISIÓN (listado enriquecido de componentes): pasa de
+ * `findActiveByEquipoId` a `findAllByEquipoId` — el detalle necesita
+ * mostrar también los componentes dados de baja (tachados en la UI, con
+ * acción "Reactivar"), no solo los activos.
  *
  * PR4b (sdd/tipos-componente-master): resuelve `{tipoNombre, tipoActivo}` en
  * UN solo batch vía `ITipoComponenteMasterChecker.resolver` (sin N+1) —
@@ -45,7 +54,7 @@ export interface EquipoDetalle {
 export class ObtenerEquipoUseCase {
   constructor(
     private readonly equipoRepo: Pick<IEquipoInformaticoRepository, 'findById'>,
-    private readonly componenteRepo: Pick<IComponenteEquipoRepository, 'findActiveByEquipoId'>,
+    private readonly componenteRepo: Pick<IComponenteEquipoRepository, 'findAllByEquipoId'>,
     private readonly tipoComponenteMasterChecker: Pick<ITipoComponenteMasterChecker, 'resolver'>,
   ) {}
 
@@ -54,7 +63,7 @@ export class ObtenerEquipoUseCase {
     if (!equipo || equipo.isDeleted()) {
       return Result.fail(new EquipoNoEncontradoError(dto.equipoId));
     }
-    const componentes = await this.componenteRepo.findActiveByEquipoId(equipo.id);
+    const componentes = await this.componenteRepo.findAllByEquipoId(equipo.id);
 
     const codigos = componentes.map((c) => c.tipoComponenteCodigo);
     const tiposMap = await this.tipoComponenteMasterChecker.resolver(codigos);

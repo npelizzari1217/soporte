@@ -32,6 +32,8 @@ const EQUIPO_DETALLE = {
       descripcion: "RAM 16GB",
       numeroSerie: null,
       capacidad: "16GB",
+      activo: true,
+      deletedAt: null,
       createdAt: "2026-01-01T00:00:00.000Z",
       updatedAt: "2026-01-01T00:00:00.000Z",
     },

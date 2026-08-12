@@ -4,6 +4,8 @@ import { IComponenteEquipoRepository } from '../../domain/ports/i-componente-equ
 
 /** DTO de entrada para eliminar (soft delete) un componente de equipo (F3-Q2). */
 export interface EliminarComponenteDto {
+  /** Equipo dueño (de la URL) — se valida que el componente le pertenezca. */
+  equipoId: string;
   componenteId: string;
 }
 
@@ -26,7 +28,8 @@ export class EliminarComponenteUseCase {
 
   async execute(dto: EliminarComponenteDto): Promise<Result<void, DomainError>> {
     const componente = await this.componenteRepo.findById(dto.componenteId);
-    if (!componente || componente.isDeleted()) {
+    // Pertenencia: un componente de OTRO equipo se trata como no encontrado.
+    if (!componente || componente.equipoId !== dto.equipoId || componente.isDeleted()) {
       return Result.fail(new ComponenteNoEncontradoError(dto.componenteId));
     }
 

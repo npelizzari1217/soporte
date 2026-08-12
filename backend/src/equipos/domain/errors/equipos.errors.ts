@@ -113,6 +113,36 @@ export class ComponenteNoEncontradoError extends DomainError {
 }
 
 /**
+ * ComponenteDadoDeBajaError — se intentó editar un componente que ya está
+ * dado de baja (soft-deleted). Hay que reactivarlo primero.
+ * → HTTP 422 en la capa de presentación.
+ *
+ * Ref spec: F3-Q2 (listado enriquecido — editar/reactivar componentes).
+ */
+export class ComponenteDadoDeBajaError extends DomainError {
+  readonly code = 'COMPONENTE_DADO_DE_BAJA';
+
+  constructor(id: string) {
+    super(`El componente con id "${id}" está dado de baja. Reactivalo antes de editarlo.`);
+  }
+}
+
+/**
+ * ComponenteYaActivoError — se intentó reactivar un componente que ya está
+ * activo (no fue soft-deleted).
+ * → HTTP 422 en la capa de presentación.
+ *
+ * Ref spec: F3-Q2 (listado enriquecido — editar/reactivar componentes).
+ */
+export class ComponenteYaActivoError extends DomainError {
+  readonly code = 'COMPONENTE_YA_ACTIVO';
+
+  constructor(id: string) {
+    super(`El componente con id "${id}" ya está activo.`);
+  }
+}
+
+/**
  * TicketSoporteNoEncontradoError — el satélite `ticket_soporte` con el
  * id/ticketId indicado no existe.
  * → HTTP 404 en la capa de presentación.

@@ -21,6 +21,8 @@ import {
   NumeroSerieDuplicadoError,
   TipoComponenteInactivoError,
   ComponenteNoEncontradoError,
+  ComponenteDadoDeBajaError,
+  ComponenteYaActivoError,
 } from '../../domain/errors/equipos.errors';
 
 function makeEquipo(): EquipoInformaticoEntity {
@@ -51,6 +53,8 @@ describe('EquiposController (T12.6)', () => {
     const eliminarEquipoUseCase = { execute: vi.fn() };
     const agregarComponenteUseCase = { execute: vi.fn() };
     const eliminarComponenteUseCase = { execute: vi.fn() };
+    const editarComponenteUseCase = { execute: vi.fn() };
+    const reactivarComponenteUseCase = { execute: vi.fn() };
     const listarTiposComponenteUseCase = { execute: vi.fn() };
 
     const controller = new EquiposController(
@@ -61,6 +65,8 @@ describe('EquiposController (T12.6)', () => {
       eliminarEquipoUseCase as any,
       agregarComponenteUseCase as any,
       eliminarComponenteUseCase as any,
+      editarComponenteUseCase as any,
+      reactivarComponenteUseCase as any,
       listarTiposComponenteUseCase as any,
     );
 
@@ -73,6 +79,8 @@ describe('EquiposController (T12.6)', () => {
       eliminarEquipoUseCase,
       agregarComponenteUseCase,
       eliminarComponenteUseCase,
+      editarComponenteUseCase,
+      reactivarComponenteUseCase,
       listarTiposComponenteUseCase,
     };
   }
@@ -247,6 +255,91 @@ describe('EquiposController (T12.6)', () => {
       await expect(controller.eliminarComponente('equipo-uuid', 'no-existe')).rejects.toThrow(
         NotFoundException,
       );
+    });
+  });
+
+  describe('PATCH /equipos/:id/componentes/:componenteId', () => {
+    it('edita el componente', async () => {
+      const { controller, editarComponenteUseCase } = buildController();
+      const componente = ComponenteEquipoEntity.create({
+        equipoId: 'equipo-uuid',
+        tipoComponenteCodigo: 'RAM',
+        descripcion: 'Editado',
+        numeroSerie: null,
+        capacidad: null,
+      }).getValue();
+      editarComponenteUseCase.execute.mockResolvedValue(Result.ok(componente));
+
+      const result = await controller.editarComponente('equipo-uuid', 'componente-1', {
+        descripcion: 'Editado',
+      } as any);
+      expect(result.descripcion).toBe('Editado');
+    });
+
+    it('componente dado de baja → 422', async () => {
+      const { controller, editarComponenteUseCase } = buildController();
+      editarComponenteUseCase.execute.mockResolvedValue(
+        Result.fail(new ComponenteDadoDeBajaError('componente-1')),
+      );
+
+      await expect(
+        controller.editarComponente('equipo-uuid', 'componente-1', {} as any),
+      ).rejects.toThrow(UnprocessableEntityException);
+    });
+
+    it('componente inexistente → 404', async () => {
+      const { controller, editarComponenteUseCase } = buildController();
+      editarComponenteUseCase.execute.mockResolvedValue(
+        Result.fail(new ComponenteNoEncontradoError('no-existe')),
+      );
+
+      await expect(
+        controller.editarComponente('equipo-uuid', 'no-existe', {} as any),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('declara @RequirePermissions("equipo:gestionar")', () => {
+      const meta = Reflect.getMetadata(
+        PERMISSIONS_KEY,
+        EquiposController.prototype.editarComponente,
+      );
+      expect(meta).toEqual(['equipo:gestionar']);
+    });
+  });
+
+  describe('PATCH /equipos/:id/componentes/:componenteId/reactivar', () => {
+    it('reactiva el componente', async () => {
+      const { controller, reactivarComponenteUseCase } = buildController();
+      const componente = ComponenteEquipoEntity.create({
+        equipoId: 'equipo-uuid',
+        tipoComponenteCodigo: 'RAM',
+        descripcion: null,
+        numeroSerie: null,
+        capacidad: null,
+      }).getValue();
+      reactivarComponenteUseCase.execute.mockResolvedValue(Result.ok(componente));
+
+      const result = await controller.reactivarComponente('equipo-uuid', 'componente-1');
+      expect(result.tipoComponenteCodigo).toBe('RAM');
+    });
+
+    it('componente ya activo → 422', async () => {
+      const { controller, reactivarComponenteUseCase } = buildController();
+      reactivarComponenteUseCase.execute.mockResolvedValue(
+        Result.fail(new ComponenteYaActivoError('componente-1')),
+      );
+
+      await expect(controller.reactivarComponente('equipo-uuid', 'componente-1')).rejects.toThrow(
+        UnprocessableEntityException,
+      );
+    });
+
+    it('declara @RequirePermissions("equipo:gestionar")', () => {
+      const meta = Reflect.getMetadata(
+        PERMISSIONS_KEY,
+        EquiposController.prototype.reactivarComponente,
+      );
+      expect(meta).toEqual(['equipo:gestionar']);
     });
   });
 

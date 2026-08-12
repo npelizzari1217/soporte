@@ -57,4 +57,53 @@ describe('ComponenteEquipoEntity', () => {
     expect(componente.id).toBe('componente-1');
     expect(componente.tipoComponenteCodigo).toBe('CPU');
   });
+
+  it('activo es true recién creado y false luego de softDelete()', () => {
+    const componente = ComponenteEquipoEntity.create({
+      equipoId: 'equipo-1',
+      tipoComponenteCodigo: 'RAM',
+      descripcion: null,
+      numeroSerie: null,
+      capacidad: null,
+    }).getValue();
+    expect(componente.activo).toBe(true);
+
+    componente.softDelete();
+    expect(componente.activo).toBe(false);
+    expect(componente.deletedAt).not.toBeNull();
+  });
+
+  it('actualizar() aplica PATCH semántico: undefined no toca, null limpia', () => {
+    const componente = ComponenteEquipoEntity.create({
+      equipoId: 'equipo-1',
+      tipoComponenteCodigo: 'RAM',
+      descripcion: 'Original',
+      numeroSerie: 'SN-1',
+      capacidad: '8GB',
+    }).getValue();
+
+    componente.actualizar({ descripcion: null, capacidad: '16GB' });
+
+    expect(componente.descripcion).toBeNull();
+    expect(componente.capacidad).toBe('16GB');
+    expect(componente.numeroSerie).toBe('SN-1'); // no tocado (undefined)
+    expect(componente.tipoComponenteCodigo).toBe('RAM'); // no tocado (undefined)
+  });
+
+  it('reactivar() limpia deletedAt de un componente dado de baja', () => {
+    const componente = ComponenteEquipoEntity.create({
+      equipoId: 'equipo-1',
+      tipoComponenteCodigo: 'RAM',
+      descripcion: null,
+      numeroSerie: null,
+      capacidad: null,
+    }).getValue();
+    componente.softDelete();
+    expect(componente.activo).toBe(false);
+
+    componente.reactivar();
+
+    expect(componente.activo).toBe(true);
+    expect(componente.deletedAt).toBeNull();
+  });
 });

@@ -40,7 +40,7 @@ describe('ObtenerEquipoUseCase', () => {
     const equipo = makeEquipo();
     const componente = makeComponente(equipo.id, 'RAM');
     const equipoRepo = { findById: vi.fn().mockResolvedValue(equipo) };
-    const componenteRepo = { findActiveByEquipoId: vi.fn().mockResolvedValue([componente]) };
+    const componenteRepo = { findAllByEquipoId: vi.fn().mockResolvedValue([componente]) };
     const tipoComponenteMasterChecker = {
       resolver: vi
         .fn()
@@ -65,7 +65,7 @@ describe('ObtenerEquipoUseCase', () => {
     const equipo = makeEquipo();
     const componente = makeComponente(equipo.id, 'DESCONTINUADO');
     const equipoRepo = { findById: vi.fn().mockResolvedValue(equipo) };
-    const componenteRepo = { findActiveByEquipoId: vi.fn().mockResolvedValue([componente]) };
+    const componenteRepo = { findAllByEquipoId: vi.fn().mockResolvedValue([componente]) };
     const tipoComponenteMasterChecker = { resolver: vi.fn().mockResolvedValue(new Map()) };
     const useCase = new ObtenerEquipoUseCase(
       equipoRepo as never,
@@ -82,7 +82,7 @@ describe('ObtenerEquipoUseCase', () => {
   it('sin componentes → no consulta el catálogo MASTER (batch vacío)', async () => {
     const equipo = makeEquipo();
     const equipoRepo = { findById: vi.fn().mockResolvedValue(equipo) };
-    const componenteRepo = { findActiveByEquipoId: vi.fn().mockResolvedValue([]) };
+    const componenteRepo = { findAllByEquipoId: vi.fn().mockResolvedValue([]) };
     const tipoComponenteMasterChecker = { resolver: vi.fn().mockResolvedValue(new Map()) };
     const useCase = new ObtenerEquipoUseCase(
       equipoRepo as never,
@@ -97,7 +97,7 @@ describe('ObtenerEquipoUseCase', () => {
 
   it('falla con EquipoNoEncontradoError si no existe (sin consultar componentes ni catálogo)', async () => {
     const equipoRepo = { findById: vi.fn().mockResolvedValue(null) };
-    const componenteRepo = { findActiveByEquipoId: vi.fn() };
+    const componenteRepo = { findAllByEquipoId: vi.fn() };
     const tipoComponenteMasterChecker = { resolver: vi.fn() };
     const useCase = new ObtenerEquipoUseCase(
       equipoRepo as never,
@@ -108,7 +108,31 @@ describe('ObtenerEquipoUseCase', () => {
     const result = await useCase.execute({ equipoId: 'no-existe' });
     expect(result.isFail()).toBe(true);
     expect(result.getError()).toBeInstanceOf(EquipoNoEncontradoError);
-    expect(componenteRepo.findActiveByEquipoId).not.toHaveBeenCalled();
+    expect(componenteRepo.findAllByEquipoId).not.toHaveBeenCalled();
     expect(tipoComponenteMasterChecker.resolver).not.toHaveBeenCalled();
+  });
+
+  it('incluye componentes dados de baja (activo=false, deletedAt seteado) — listado enriquecido', async () => {
+    const equipo = makeEquipo();
+    const componente = makeComponente(equipo.id, 'RAM');
+    componente.softDelete();
+    const equipoRepo = { findById: vi.fn().mockResolvedValue(equipo) };
+    const componenteRepo = { findAllByEquipoId: vi.fn().mockResolvedValue([componente]) };
+    const tipoComponenteMasterChecker = {
+      resolver: vi
+        .fn()
+        .mockResolvedValue(new Map([['RAM', { nombre: 'Memoria RAM', activo: true }]])),
+    };
+    const useCase = new ObtenerEquipoUseCase(
+      equipoRepo as never,
+      componenteRepo as never,
+      tipoComponenteMasterChecker as never,
+    );
+
+    const result = await useCase.execute({ equipoId: equipo.id });
+    expect(result.isOk()).toBe(true);
+    const [item] = result.getValue().componentes;
+    expect(item.componente.activo).toBe(false);
+    expect(item.componente.deletedAt).not.toBeNull();
   });
 });

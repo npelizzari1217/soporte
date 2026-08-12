@@ -164,6 +164,31 @@ export class CreateComponenteHttpDto {
   capacidad?: string | null;
 }
 
+/**
+ * Body de `PATCH /equipos/:id/componentes/:componenteId` (listado enriquecido
+ * de componentes — editar). PATCH semántico: `undefined` = no tocar. Si se
+ * provee `tipoComponenteCodigo`, no puede ser vacío (campo obligatorio del
+ * dominio, mismo criterio que `EditarEquipoHttpDto.nombre`).
+ */
+export class EditarComponenteHttpDto {
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  tipoComponenteCodigo?: string;
+
+  @IsOptional()
+  @IsString()
+  descripcion?: string | null;
+
+  @IsOptional()
+  @IsString()
+  numeroSerie?: string | null;
+
+  @IsOptional()
+  @IsString()
+  capacidad?: string | null;
+}
+
 // ─── Response DTOs ────────────────────────────────────────────────────────────
 
 /** Shape de respuesta de un equipo informático. */
@@ -208,9 +233,14 @@ export function toEquipoResponseDto(equipo: EquipoInformaticoEntity): EquipoResp
 
 /**
  * Shape de respuesta de un componente de equipo (`POST /equipos/:id/componentes`,
- * `DELETE .../componentes/:id`). PR4b: `tipoComponenteCodigo` reemplaza a
- * `tipoComponenteId` — shape básico, SIN enriquecer (el use case de alta no
- * resuelve `nombre` del catálogo MASTER, solo verifica `activo`).
+ * `PATCH .../componentes/:id`, `PATCH .../componentes/:id/reactivar`). PR4b:
+ * `tipoComponenteCodigo` reemplaza a `tipoComponenteId` — shape básico, SIN
+ * enriquecer (el use case de alta no resuelve `nombre` del catálogo MASTER,
+ * solo verifica `activo`).
+ *
+ * `activo`/`deletedAt` (listado enriquecido de componentes): derivados de
+ * `deletedAt == null` — necesarios para que el frontend distinga
+ * activos/dados de baja en el listado embebido de `GET /equipos/:id`.
  */
 export interface ComponenteResponseDto {
   id: string;
@@ -219,6 +249,8 @@ export interface ComponenteResponseDto {
   descripcion: string | null;
   numeroSerie: string | null;
   capacidad: string | null;
+  activo: boolean;
+  deletedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -232,6 +264,8 @@ export function toComponenteResponseDto(componente: ComponenteEquipoEntity): Com
     descripcion: componente.descripcion,
     numeroSerie: componente.numeroSerie,
     capacidad: componente.capacidad,
+    activo: componente.activo,
+    deletedAt: componente.deletedAt ? componente.deletedAt.toISOString() : null,
     createdAt: componente.createdAt.toISOString(),
     updatedAt: componente.updatedAt.toISOString(),
   };
