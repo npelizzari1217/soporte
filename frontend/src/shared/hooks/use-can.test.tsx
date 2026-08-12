@@ -25,6 +25,8 @@ describe("useCan", () => {
       cliente_nombre: "Cliente Uno",
       membresias: [],
       modulos: [],
+      nombre: "Juan",
+      apellido: "Pérez",
     };
     const { result } = renderHook(() => useCan("ticket:asignar"), { wrapper: wrapperWithUser(user) });
     expect(result.current).toBe(true);
@@ -40,6 +42,8 @@ describe("useCan", () => {
       cliente_nombre: "Cliente Uno",
       membresias: [],
       modulos: [],
+      nombre: "Juan",
+      apellido: "Pérez",
     };
     const { result } = renderHook(() => useCan("ticket:asignar"), { wrapper: wrapperWithUser(user) });
     expect(result.current).toBe(false);

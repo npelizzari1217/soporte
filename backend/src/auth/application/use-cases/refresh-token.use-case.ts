@@ -57,9 +57,10 @@ export interface RefreshResult {
  *    cliente vivo; normal→exige membresía activa en ese cliente; `null`→
  *    solo válido si root). Cliente inactivo/borrado o membresía revocada
  *    desde la emisión → `ClienteNoAutorizado` (propagado de resolverScope).
- * 7. Firma nuevo access token (payload completo, incl. `membresias[]`) y
- *    emite un nuevo refresh token que persiste el MISMO `clienteId`
- *    resuelto (rotación mantiene el scope).
+ * 7. Firma nuevo access token (payload completo, incl. `membresias[]` y
+ *    `nombre`/`apellido` de la UsuarioEntity ya recargada en el paso 5, sin
+ *    query extra) y emite un nuevo refresh token que persiste el MISMO
+ *    `clienteId` resuelto (rotación mantiene el scope).
  */
 export class RefreshTokenUseCase {
   constructor(
@@ -134,6 +135,10 @@ export class RefreshTokenUseCase {
         rol: m.rolCodigo,
       })),
       modulos: scope.modulos,
+      // Identidad global: la UsuarioEntity ya está recargada (paso 5), sin
+      // query extra dedicada a esto.
+      nombre: usuario.nombre,
+      apellido: usuario.apellido,
     };
     const accessToken = this.tokenService.signJwt(payload);
 

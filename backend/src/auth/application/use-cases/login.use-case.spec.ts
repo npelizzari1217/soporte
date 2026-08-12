@@ -550,6 +550,25 @@ describe('LoginUseCase', () => {
       expect(saved!.clienteId).toBeNull();
     });
 
+    it('el payload incluye nombre/apellido de la UsuarioEntity autenticada', async () => {
+      usuarioRepo.findByEmail.mockResolvedValue(makeUsuario());
+      const membresia = makeMembresiaResuelta();
+      membresiaRepo.findActivasByUsuario.mockResolvedValue([membresia]);
+      clienteRepo.findById.mockResolvedValue(makeCliente());
+      membresiaRepo.findActivaByUsuarioYCliente.mockResolvedValue(membresia);
+
+      let captured: JwtPayload | undefined;
+      tokenService.signJwt.mockImplementation((p) => {
+        captured = p;
+        return 'jwt.token';
+      });
+
+      await useCase.execute({ email: 'user@test.com', password: 'secret' });
+
+      expect(captured!.nombre).toBe('Juan');
+      expect(captured!.apellido).toBe('Perez');
+    });
+
     it('el sub del payload es el id del usuario autenticado', async () => {
       const usuario = makeUsuario();
       usuarioRepo.findByEmail.mockResolvedValue(usuario);

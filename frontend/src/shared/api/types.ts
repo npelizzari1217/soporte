@@ -17,6 +17,10 @@
  * - `modulos`: módulos habilitados para el usuario (SOPORTE/COMPRAS/EDILICIA/
  *   EQUIPOS). ROOT y ADMINISTRADOR reciben todos. Alimenta el gating por
  *   módulo del front (5.2 CAPA 3). `[]` cuando el usuario no tiene ninguno.
+ * - `nombre`/`apellido`: identidad del usuario (constante entre tenants).
+ *   Alimenta el bloque de usuario del sidebar. Tokens emitidos antes de
+ *   agregar este campo pueden no traerlo — `decodeJwtPayload` normaliza a
+ *   `""` (mismo criterio defensivo que `modulos`).
  *
  * Decodificado en el BFF (login/switch, sin verificación — viene del backend
  * confiable) y verificado con `jose` en el middleware Edge (R26). Toda
@@ -31,6 +35,8 @@ export interface JwtPayload {
   cliente_nombre: string | null;
   membresias: { cliente_id: string; nombre: string; rol: string }[];
   modulos: string[];
+  nombre: string;
+  apellido: string;
 }
 
 /**
@@ -47,9 +53,15 @@ export function decodeJwtPayload(accessToken: string): JwtPayload {
   const payload = JSON.parse(
     Buffer.from(accessToken.split(".")[1], "base64url").toString(),
   ) as JwtPayload;
-  // Defensivo: tokens viejos (previos a 5.2) no traen `modulos`. Normalizamos
-  // a `[]` para que los consumidores no dependan de un campo undefined.
-  return { ...payload, modulos: payload.modulos ?? [] };
+  // Defensivo: tokens viejos (previos a 5.2) no traen `modulos`; tokens
+  // previos al agregado de identidad no traen `nombre`/`apellido`.
+  // Normalizamos para que los consumidores no dependan de un campo undefined.
+  return {
+    ...payload,
+    modulos: payload.modulos ?? [],
+    nombre: payload.nombre ?? "",
+    apellido: payload.apellido ?? "",
+  };
 }
 
 /**

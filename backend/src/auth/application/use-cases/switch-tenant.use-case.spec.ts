@@ -42,6 +42,9 @@ const makeActorPayload = (overrides: Partial<JwtPayload> = {}): JwtPayload => ({
   is_global_admin: false,
   cliente_nombre: 'Acme SA',
   membresias: [],
+  modulos: [],
+  nombre: 'Juan',
+  apellido: 'Perez',
   ...overrides,
 });
 
@@ -277,6 +280,46 @@ describe('SwitchTenantUseCase', () => {
       await useCase.execute({ actor, clienteId: 'cliente-2' });
 
       expect(captured!.sub).toBe('usuario-fijo');
+    });
+  });
+
+  describe('Identidad (nombre/apellido) — propagada del payload entrante, sin carga extra a DB', () => {
+    it('propaga nombre/apellido TAL CUAL del actor (payload entrante ya verificado)', async () => {
+      const actor = makeActorPayload({ is_global_admin: true, nombre: 'Ana', apellido: 'Gómez' });
+      clienteRepo.findById.mockResolvedValue(makeCliente('Beta SA'));
+      membresiaRepo.findActivaByUsuarioYCliente.mockResolvedValue(makeMembresiaResuelta());
+
+      let captured: JwtPayload | undefined;
+      tokenService.signJwt.mockImplementation((p) => {
+        captured = p;
+        return 'new.access.token';
+      });
+
+      await useCase.execute({ actor, clienteId: 'cliente-2' });
+
+      expect(captured!.nombre).toBe('Ana');
+      expect(captured!.apellido).toBe('Gómez');
+    });
+
+    it('token pre-rollout sin nombre/apellido en el payload entrante → default "" (no crashea)', async () => {
+      // Simula un token emitido ANTES de agregar estos campos: el actor
+      // decodificado no los trae (ventana de rollout — ver docstring de la clase).
+      const actor = makeActorPayload({ is_global_admin: true });
+      delete (actor as Partial<JwtPayload>).nombre;
+      delete (actor as Partial<JwtPayload>).apellido;
+      clienteRepo.findById.mockResolvedValue(makeCliente('Beta SA'));
+      membresiaRepo.findActivaByUsuarioYCliente.mockResolvedValue(makeMembresiaResuelta());
+
+      let captured: JwtPayload | undefined;
+      tokenService.signJwt.mockImplementation((p) => {
+        captured = p;
+        return 'new.access.token';
+      });
+
+      await useCase.execute({ actor, clienteId: 'cliente-2' });
+
+      expect(captured!.nombre).toBe('');
+      expect(captured!.apellido).toBe('');
     });
   });
 });

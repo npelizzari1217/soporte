@@ -19,6 +19,8 @@ const usuario: JwtPayload = {
   cliente_nombre: "Cliente Uno",
   membresias: [],
   modulos: [],
+  nombre: "Juan",
+  apellido: "Pérez",
 };
 
 function renderShell() {

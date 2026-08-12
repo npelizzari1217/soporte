@@ -12,6 +12,8 @@ function user(overrides: Partial<JwtPayload>): JwtPayload {
     cliente_nombre: "Acme",
     membresias: [],
     modulos: [],
+    nombre: "Juan",
+    apellido: "Pérez",
     ...overrides,
   };
 }

@@ -87,8 +87,8 @@ export type LoginResult =
  *    compartida con switch/refresh — PR4) para validar el `clienteId`
  *    objetivo y resolver rol/permisos/nombre del cliente.
  * 6. Firma el JWT con el payload nuevo (`rol` singular, `membresias[]`
- *    completo — R6) y genera un refresh token aleatorio, persistiendo SOLO
- *    su SHA-256 (R7).
+ *    completo — R6, `nombre`/`apellido` de la UsuarioEntity ya cargada) y
+ *    genera un refresh token aleatorio, persistiendo SOLO su SHA-256 (R7).
  */
 export class LoginUseCase {
   constructor(
@@ -178,6 +178,10 @@ export class LoginUseCase {
         rol: m.rolCodigo,
       })),
       modulos: scope.modulos,
+      // Identidad global del usuario (constante entre tenants) — la
+      // UsuarioEntity ya está cargada en este flujo, sin query extra.
+      nombre: usuario.nombre,
+      apellido: usuario.apellido,
     };
     const accessToken = this.tokenService.signJwt(payload);
 

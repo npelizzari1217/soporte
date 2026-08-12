@@ -26,6 +26,8 @@ const usuario: JwtPayload = {
   cliente_nombre: "Cliente Uno",
   membresias: [],
   modulos: [],
+  nombre: "Juan",
+  apellido: "Pérez",
 };
 
 const administrador: JwtPayload = {
@@ -37,6 +39,8 @@ const administrador: JwtPayload = {
   cliente_nombre: "Cliente Uno",
   membresias: [],
   modulos: [],
+  nombre: "Ana",
+  apellido: "Gómez",
 };
 
 const root: JwtPayload = {
@@ -48,6 +52,8 @@ const root: JwtPayload = {
   cliente_nombre: "Cliente Uno",
   membresias: [],
   modulos: [],
+  nombre: "Root",
+  apellido: "Master",
 };
 
 describe("AppSidebar", () => {
@@ -99,5 +105,41 @@ describe("AppSidebar", () => {
     await user.click(toggle);
     expect(screen.queryByText("ROOT")).not.toBeInTheDocument();
     expect(container.querySelector('a[href="/admin/clientes"]')).toBeInTheDocument();
+  });
+
+  describe("Bloque de identidad (nombre + tipo de usuario)", () => {
+    it("expandido → muestra nombre completo y tipo de usuario derivado", () => {
+      renderWithUser(usuario);
+      expect(screen.getByText("Juan Pérez")).toBeInTheDocument();
+      expect(screen.getByText("Usuario")).toBeInTheDocument();
+    });
+
+    it("ADMINISTRADOR no-root → tipo de usuario es 'Administrador'", () => {
+      renderWithUser(administrador);
+      expect(screen.getByText("Ana Gómez")).toBeInTheDocument();
+      expect(screen.getByText("Administrador")).toBeInTheDocument();
+    });
+
+    it("ROOT (is_global_admin) → tipo de usuario es 'Root', sin importar el rol de la membresía", () => {
+      renderWithUser(root);
+      expect(screen.getByText("Root Master")).toBeInTheDocument();
+      expect(screen.getAllByText("Root").length).toBeGreaterThan(0);
+    });
+
+    it("colapsado → oculta nombre/tipo, muestra solo el círculo de iniciales", async () => {
+      const user = userEvent.setup();
+      renderWithUser(usuario);
+      const toggle = screen.getByRole("button", { name: /colapsar|expandir|menú/i });
+      await user.click(toggle);
+
+      expect(screen.queryByText("Juan Pérez")).not.toBeInTheDocument();
+      expect(screen.queryByText("Usuario")).not.toBeInTheDocument();
+      expect(screen.getByText("JP")).toBeInTheDocument();
+    });
+
+    it("sin usuario (sesión cargando) → no rompe, no renderiza el bloque de identidad", () => {
+      renderWithUser(null);
+      expect(screen.queryByText("Juan Pérez")).not.toBeInTheDocument();
+    });
   });
 });
