@@ -59,16 +59,21 @@ export function useEliminarEquipo() {
 /**
  * `POST /equipos/:id/componentes` devuelve el shape BÁSICO (`Componente`,
  * sin `tipoNombre`/`tipoActivo` — el use case de alta solo verifica
- * `activo`, no enriquece). Enriquecer el item para la cache local
- * (`["componentes", equipoId]`, tipada `ComponenteConTipo[]`) queda a cargo
- * del caller, que SÍ conoce el catálogo de tipos activos elegido en el
- * selector (`EquipoComponentesSection`).
+ * `activo`, no enriquece). Mismo criterio de cache que `useEliminarComponente`:
+ * invalida `["equipo", equipoId]` para re-traer el detalle fresco (que ya
+ * enriquece con `tipoNombre`/`tipoActivo`) en vez de actualizar
+ * optimistamente — el `useEffect` de `EquipoComponentesSection` sincroniza
+ * el cache local por props.
  */
 export function useAgregarComponente(equipoId: string) {
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (dto: CreateComponenteDto) =>
       apiFetch<Componente>(`equipos/${equipoId}/componentes`, { method: "POST", json: dto }),
-    onSuccess: () => notifySuccess("Componente agregado."),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["equipo", equipoId] });
+      notifySuccess("Componente agregado.");
+    },
     onError: notifyError,
   });
 }

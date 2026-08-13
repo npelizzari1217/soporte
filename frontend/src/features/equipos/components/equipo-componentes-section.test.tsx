@@ -80,7 +80,10 @@ describe("EquipoComponentesSection", () => {
       user: buildUser({ permisos: ["equipo:gestionar"] }),
     });
 
-    expect(await screen.findByText(/memoria ram — 16gb/i)).toBeInTheDocument();
+    const fila = within(await screen.findByTestId("componente-c2"));
+    const celdas = fila.getAllByRole("cell");
+    expect(celdas[0]).toHaveTextContent("Memoria RAM");
+    expect(celdas[3]).toHaveTextContent("16GB");
     expect(screen.queryByText(/dado de baja/i)).not.toBeInTheDocument();
   });
 
@@ -122,49 +125,81 @@ describe("EquipoComponentesSection", () => {
     expect(await screen.findByText(/dado de baja/i)).toBeInTheDocument();
   });
 
-  it("el selector de alta solo ofrece tipos activos del catálogo", async () => {
+  it("N3: ya no expone un form de alta inline (retirado, alta vive en el toolbar vía ComponenteCreateDialog)", async () => {
     renderWithProviders(<EquipoComponentesSection equipoId={EQUIPO_ID} componentes={[]} />, {
       user: buildUser({ permisos: ["equipo:gestionar"] }),
     });
 
-    await screen.findByRole("option", { name: /memoria ram/i });
-    const options = screen.getAllByRole("option").map((option) => option.textContent);
-    expect(options).toEqual(expect.arrayContaining(["Memoria RAM", "Disco rígido"]));
-    expect(options).not.toContain("Teclado mecánico");
+    expect(screen.queryByRole("button", { name: /agregar componente/i })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/^tipo$/i)).not.toBeInTheDocument();
   });
 
-  it("al dar de alta un componente, envía tipoComponenteCodigo con el código elegido", async () => {
-    const user = userEvent.setup();
-    let bodyRecibido: Record<string, unknown> | null = null;
-    server.use(
-      http.post(`/api/equipos/${EQUIPO_ID}/componentes`, async ({ request }) => {
-        bodyRecibido = (await request.json()) as Record<string, unknown>;
-        return HttpResponse.json({
-          id: "c3",
-          equipoId: EQUIPO_ID,
-          tipoComponenteCodigo: "DISCO",
-          descripcion: null,
-          numeroSerie: null,
-          capacidad: "1TB",
-          activo: true,
-          deletedAt: null,
-          createdAt: "2026-01-01T00:00:00.000Z",
-          updatedAt: "2026-01-01T00:00:00.000Z",
-        });
-      }),
-    );
+  it("N1: los encabezados de columna son Tipo / Descripción / Nro de serie / Capacidad / Acciones (sr-only), en ese orden", async () => {
+    const componentes = [
+      {
+        id: "c1",
+        equipoId: EQUIPO_ID,
+        tipoComponenteCodigo: "RAM",
+        tipoNombre: "Memoria RAM",
+        tipoActivo: true,
+        descripcion: null,
+        numeroSerie: null,
+        capacidad: null,
+        activo: true,
+        deletedAt: null,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
+    ];
 
+    renderWithProviders(<EquipoComponentesSection equipoId={EQUIPO_ID} componentes={componentes} />, {
+      user: buildUser({ permisos: ["equipo:gestionar"] }),
+    });
+
+    const headers = await screen.findAllByRole("columnheader");
+    expect(headers.map((h) => h.textContent)).toEqual(["Tipo", "Descripción", "Nro de serie", "Capacidad", "Acciones"]);
+  });
+
+  it("N2: descripción y número de serie ausentes renderizan '—' con aria-hidden", async () => {
+    const componentes = [
+      {
+        id: "c-vacio",
+        equipoId: EQUIPO_ID,
+        tipoComponenteCodigo: "RAM",
+        tipoNombre: "Memoria RAM",
+        tipoActivo: true,
+        descripcion: null,
+        numeroSerie: null,
+        capacidad: null,
+        activo: true,
+        deletedAt: null,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
+    ];
+
+    renderWithProviders(<EquipoComponentesSection equipoId={EQUIPO_ID} componentes={componentes} />, {
+      user: buildUser({ permisos: ["equipo:gestionar"] }),
+    });
+
+    const fila = within(await screen.findByTestId("componente-c-vacio"));
+    const celdas = fila.getAllByRole("cell");
+    // Descripción (1), Nro de serie (2), Capacidad (3): las tres vacías en este fixture.
+    for (const indice of [1, 2, 3]) {
+      expect(celdas[indice]).toHaveTextContent("—");
+      const marcador = celdas[indice].querySelector('[aria-hidden="true"]');
+      expect(marcador).not.toBeNull();
+      expect(marcador).toHaveTextContent("—");
+    }
+  });
+
+  it("N4: sin componentes no renderiza la tabla, muestra 'Sin componentes.'", async () => {
     renderWithProviders(<EquipoComponentesSection equipoId={EQUIPO_ID} componentes={[]} />, {
       user: buildUser({ permisos: ["equipo:gestionar"] }),
     });
 
-    await screen.findByRole("option", { name: /disco rígido/i });
-    await user.selectOptions(screen.getByLabelText(/tipo/i), "DISCO");
-    await user.type(screen.getByLabelText(/capacidad/i), "1TB");
-    await user.click(screen.getByRole("button", { name: /agregar componente/i }));
-
-    await waitFor(() => expect(bodyRecibido).not.toBeNull());
-    expect(bodyRecibido).toMatchObject({ tipoComponenteCodigo: "DISCO" });
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    expect(screen.getByText("Sin componentes.")).toBeVisible();
   });
 
   it("un componente dado de baja se muestra tachado/gris, SIN Editar/Dar de baja, CON 'Reactivar'; uno activo tiene Editar/Dar de baja", async () => {
@@ -203,20 +238,22 @@ describe("EquipoComponentesSection", () => {
       user: buildUser({ permisos: ["equipo:gestionar"] }),
     });
 
-    const nombreActivo = await screen.findByText(/memoria ram — 8gb/i);
-    const filaActiva = nombreActivo.closest("li")!;
-    expect(nombreActivo.parentElement!.className).not.toContain("line-through");
-    expect(within(filaActiva).getByLabelText(/editar componente/i)).toBeInTheDocument();
-    expect(within(filaActiva).getByLabelText(/dar de baja componente/i)).toBeInTheDocument();
-    expect(within(filaActiva).queryByRole("button", { name: /reactivar/i })).not.toBeInTheDocument();
+    const filaActiva = within(await screen.findByTestId("componente-activo-1"));
+    const celdasActiva = filaActiva.getAllByRole("cell");
+    expect(celdasActiva[0]).toHaveTextContent("Memoria RAM");
+    expect(celdasActiva[0].className).not.toContain("line-through");
+    expect(filaActiva.getByLabelText(/editar componente/i)).toBeInTheDocument();
+    expect(filaActiva.getByLabelText(/dar de baja componente/i)).toBeInTheDocument();
+    expect(filaActiva.queryByRole("button", { name: /reactivar/i })).not.toBeInTheDocument();
 
-    const nombreBaja = screen.getByText(/disco rígido — 1tb/i);
-    const filaBaja = nombreBaja.closest("li")!;
-    expect(nombreBaja.parentElement!.className).toContain("line-through");
-    expect(within(filaBaja).queryByLabelText(/editar componente/i)).not.toBeInTheDocument();
-    expect(within(filaBaja).queryByLabelText(/dar de baja componente/i)).not.toBeInTheDocument();
-    expect(within(filaBaja).getByRole("button", { name: /reactivar/i })).toBeInTheDocument();
-    expect(within(filaBaja).getByText(/dado de baja:/i)).toBeInTheDocument();
+    const filaBaja = within(screen.getByTestId("componente-baja-1"));
+    const celdasBaja = filaBaja.getAllByRole("cell");
+    expect(celdasBaja[0]).toHaveTextContent("Disco rígido");
+    expect(celdasBaja[0].className).toContain("line-through");
+    expect(filaBaja.queryByLabelText(/editar componente/i)).not.toBeInTheDocument();
+    expect(filaBaja.queryByLabelText(/dar de baja componente/i)).not.toBeInTheDocument();
+    expect(filaBaja.getByRole("button", { name: /reactivar/i })).toBeInTheDocument();
+    expect(filaBaja.getByText(/dado de baja:/i)).toBeInTheDocument();
   });
 
   it("al reactivar, dispara PATCH /equipos/:id/componentes/:componenteId/reactivar", async () => {

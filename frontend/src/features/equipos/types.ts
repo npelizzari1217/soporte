@@ -5,8 +5,10 @@
  * `GET /equipos/:id` ahora embebe `componentes[]` (item 1 backend-gaps —
  * cierra G7): `EquipoDetailView` pasa esa lista real como dato inicial a
  * `EquipoComponentesSection`, que la usa para sembrar su cache local
- * (`["componentes", equipoId]`) — las mutaciones (agregar/eliminar) siguen
- * reflejándose ahí optimistamente.
+ * (`["componentes", equipoId]`). Las mutaciones (agregar/eliminar/editar/
+ * reactivar) NO actualizan esa cache optimistamente: invalidan
+ * `["equipo", equipoId]` y el `useEffect` de sincronización de props la
+ * refresca con el detalle fresco ya enriquecido.
  *
  * PR6 (sdd/tipos-componente-master): `tipoComponenteId` desaparece —
  * `Componente` espeja `ComponenteResponseDto` (`tipoComponenteCodigo`,
