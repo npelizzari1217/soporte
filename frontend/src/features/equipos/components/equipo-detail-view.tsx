@@ -6,6 +6,11 @@
  * componentes. Gate `equipo:gestionar` (todas las mutaciones), consistente con
  * `EquiposController`. La asignación a personas se eliminó del dominio Equipos
  * — vive solo en `Ticket`.
+ *
+ * Toolbar de acciones: incluye `ComponenteCreateDialog` (alta de componente
+ * con los 4 campos completos). El form inline de alta que existía antes en
+ * `EquipoComponentesSection` (solo tipo + capacidad, incompleto) fue
+ * retirado — el alta vive únicamente acá.
  */
 import { useRouter } from "next/navigation";
 import { DetailSkeleton } from "@/components/shared/skeletons";
@@ -16,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { useEquipo } from "../hooks/use-equipos";
 import { useEliminarEquipo } from "../hooks/use-equipo-mutations";
+import { ComponenteCreateDialog } from "./componente-create-dialog";
 import { EquipoComponentesSection } from "./equipo-componentes-section";
 import { EquipoEditDialog } from "./equipo-edit-dialog";
 
@@ -50,6 +56,7 @@ export function EquipoDetailView({ equipoId }: EquipoDetailViewProps) {
         actions={
           <Can permiso="equipo:gestionar">
             <div className="flex items-center gap-2">
+              <ComponenteCreateDialog equipoId={equipo.id} />
               <EquipoEditDialog equipo={equipo} />
               <ConfirmDialog
                 trigger={

@@ -56,6 +56,27 @@ describe("EquipoDetailView — consume componentes embebidos de GET /equipos/:id
       user: buildUser({ permisos: ["equipo:gestionar"] }),
     });
 
-    expect(await screen.findByText(/memoria ram — 16gb/i)).toBeInTheDocument();
+    expect(await screen.findByText("Memoria RAM")).toBeInTheDocument();
+    expect(screen.getByText("16GB")).toBeInTheDocument();
+  });
+
+  it("muestra el botón «Agregar componente» del toolbar (único, WU3 retiró el form inline), con permiso equipo:gestionar", async () => {
+    renderWithProviders(<EquipoDetailView equipoId={EQUIPO_ID} />, {
+      user: buildUser({ permisos: ["equipo:gestionar"] }),
+    });
+
+    // Un solo botón "Agregar componente": el trigger del toolbar. El form
+    // inline de `EquipoComponentesSection` fue retirado en WU3/PR-B.
+    const botones = await screen.findAllByRole("button", { name: /agregar componente/i });
+    expect(botones).toHaveLength(1);
+  });
+
+  it("oculta el botón «Agregar componente» del toolbar sin permiso equipo:gestionar", async () => {
+    renderWithProviders(<EquipoDetailView equipoId={EQUIPO_ID} />, {
+      user: buildUser({ permisos: [] }),
+    });
+
+    await screen.findByText("Notebook Dell");
+    expect(screen.queryByRole("button", { name: /agregar componente/i })).not.toBeInTheDocument();
   });
 });
