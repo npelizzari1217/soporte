@@ -12,7 +12,8 @@
  *
  * Contrato verificado (R19, ampliado Fase 3 ADR-5/F3-S1):
  * - Tras `seed()`, la DB tenant tiene 6 estados / 4 prioridades /
- *   7 tipo_operacion (5 de R19 + APROBACION/RECHAZO) / 4 tipos_ticket
+ *   5 tipo_operacion (los de R19; APROBACION/RECHAZO removidos en PR-1 de
+ *   sdd/redisenio-modulo-compras) / 3 tipos_ticket
  *   persistidos con los códigos exactos. `tipos_componente` YA NO se siembra
  *   por tenant (PR4b, sdd/tipos-componente-master — catálogo GLOBAL en MASTER).
  * - Correr `seed()` una segunda vez sobre la MISMA DB no duplica filas ni
@@ -90,17 +91,9 @@ describe('TenantSeederAdapter (T7.4, integración — Postgres real, DB efímera
     expect(prioridades.every((p) => p.slaActivo)).toBe(true);
 
     const tipoOperacion = await verifyClient.tipoOperacion.findMany({ orderBy: { nombre: 'asc' } });
-    expect(tipoOperacion).toHaveLength(7);
+    expect(tipoOperacion).toHaveLength(5);
     expect(tipoOperacion.map((t) => t.codigo).sort()).toEqual(
-      [
-        'CAMBIO_ESTADO',
-        'COMENTARIO',
-        'ASIGNACION',
-        'ADJUNTO',
-        'AVANCE_EDILICIO',
-        'APROBACION',
-        'RECHAZO',
-      ].sort(),
+      ['CAMBIO_ESTADO', 'COMENTARIO', 'ASIGNACION', 'ADJUNTO', 'AVANCE_EDILICIO'].sort(),
     );
 
     const tiposTicket = await verifyClient.tipoTicket.findMany({ orderBy: { codigo: 'asc' } });
@@ -122,7 +115,7 @@ describe('TenantSeederAdapter (T7.4, integración — Postgres real, DB efímera
 
     expect(estados).toHaveLength(6);
     expect(prioridades).toHaveLength(4);
-    expect(tipoOperacion).toHaveLength(7);
+    expect(tipoOperacion).toHaveLength(5);
     expect(tiposTicket).toHaveLength(3);
   }, 30_000);
 });
