@@ -172,6 +172,7 @@ model CicloCliente {
   deletedAt      DateTime? @map("deleted_at") @db.Timestamptz
 
   tickets Ticket[]
+  compras Compra[]
 
   @@index([cicloVigenteId])
   @@index([activo]) // índice regular sobre activo (el spec no pide parcial)
@@ -198,28 +199,28 @@ model CicloCliente {
 // generado complica los tests y el control de husos horarios.
 
 model Ticket {
-  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  numero        String    @unique @db.VarChar(20)
-  titulo        String    @db.VarChar(255)
-  descripcion   String?   @db.Text
-  tipoId        String    @map("tipo_id") @db.Uuid
-  estadoId      String    @map("estado_id") @db.Uuid
-  prioridadId   String    @map("prioridad_id") @db.Uuid
-  cicloId       String?   @map("ciclo_id") @db.Uuid
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  numero             String    @unique @db.VarChar(20)
+  titulo             String    @db.VarChar(255)
+  descripcion        String?   @db.Text
+  tipoId             String    @map("tipo_id") @db.Uuid
+  estadoId           String    @map("estado_id") @db.Uuid
+  prioridadId        String    @map("prioridad_id") @db.Uuid
+  cicloId            String?   @map("ciclo_id") @db.Uuid
   /// Self-FK nullable → tickets.id. "Este ticket continúa de #X".
-  ticketReferenciaId String? @map("ticket_referencia_id") @db.Uuid
+  ticketReferenciaId String?   @map("ticket_referencia_id") @db.Uuid
   /// Soft ref → master.usuarios.id. Sin FK cross-DB.
-  solicitanteId String    @map("solicitante_id") @db.Uuid
+  solicitanteId      String    @map("solicitante_id") @db.Uuid
   /// Soft ref → master.usuarios.id. NULL = sin asignar.
-  asignadoId    String?   @map("asignado_id") @db.Uuid
+  asignadoId         String?   @map("asignado_id") @db.Uuid
   /// Calculado por el módulo SLA (prioridad + tipo). NULL = sin SLA aplicable.
-  slaVenceAt    DateTime? @map("sla_vence_at") @db.Timestamptz
+  slaVenceAt         DateTime? @map("sla_vence_at") @db.Timestamptz
   /// Desnormalizado — recalculado por el módulo SLA, no autocalculado en DB.
-  vencido       Boolean   @default(false)
-  fechaCierre   DateTime? @map("fecha_cierre") @db.Date
-  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz
-  deletedAt     DateTime? @map("deleted_at") @db.Timestamptz
+  vencido            Boolean   @default(false)
+  fechaCierre        DateTime? @map("fecha_cierre") @db.Date
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt          DateTime? @map("deleted_at") @db.Timestamptz
 
   tipo             TipoTicket    @relation(fields: [tipoId], references: [id])
   estado           Estado        @relation(fields: [estadoId], references: [id])
@@ -274,10 +275,10 @@ model OperacionTicket {
   updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt        DateTime? @map("deleted_at") @db.Timestamptz
 
-  ticket         Ticket         @relation(fields: [ticketId], references: [id])
-  tipoOperacion  TipoOperacion  @relation(fields: [tipoOperacionId], references: [id])
-  estadoAnterior Estado?        @relation("EstadoAnterior", fields: [estadoAnteriorId], references: [id])
-  estadoNuevo    Estado?        @relation("EstadoNuevo", fields: [estadoNuevoId], references: [id])
+  ticket         Ticket        @relation(fields: [ticketId], references: [id])
+  tipoOperacion  TipoOperacion @relation(fields: [tipoOperacionId], references: [id])
+  estadoAnterior Estado?       @relation("EstadoAnterior", fields: [estadoAnteriorId], references: [id])
+  estadoNuevo    Estado?       @relation("EstadoNuevo", fields: [estadoNuevoId], references: [id])
 
   archivosOperacion ArchivoOperacion[]
 
@@ -309,9 +310,9 @@ model Archivo {
   updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt      DateTime? @map("deleted_at") @db.Timestamptz
 
-  archivosTicket      ArchivoTicket[]
-  archivosOperacion   ArchivoOperacion[]
-  archivosEquipo      ArchivoEquipo[]
+  archivosTicket    ArchivoTicket[]
+  archivosOperacion ArchivoOperacion[]
+  archivosEquipo    ArchivoEquipo[]
 
   @@map("archivos")
 }
@@ -378,7 +379,7 @@ model TicketEdilicia {
   updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt          DateTime? @map("deleted_at") @db.Timestamptz
 
-  ticket    Ticket    @relation(fields: [ticketId], references: [id])
+  ticket Ticket @relation(fields: [ticketId], references: [id])
 
   subtareas SubtareaEdilicia[]
 
@@ -426,30 +427,30 @@ model SubtareaEdilicia {
 //   equipo_id: NULLABLE — un ticket de soporte puede no referenciar un equipo.
 
 model EquipoInformatico {
-  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  nombre           String    @db.VarChar(255)
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nombre             String    @db.VarChar(255)
   /// UNIQUE PARCIAL WHERE NOT NULL — enforced via CREATE UNIQUE INDEX en migration SQL.
-  numeroSerie      String?   @map("numero_serie") @db.VarChar(255)
-  marca            String?   @db.VarChar(100)
-  modelo           String?   @db.VarChar(100)
-  fechaAdquisicion DateTime? @map("fecha_adquisicion") @db.Date
+  numeroSerie        String?   @map("numero_serie") @db.VarChar(255)
+  marca              String?   @db.VarChar(100)
+  modelo             String?   @db.VarChar(100)
+  fechaAdquisicion   DateTime? @map("fecha_adquisicion") @db.Date
   /// Ubicación física como TEXTO LIBRE (siempre en mayúscula, normalizado en la
   /// capa de aplicación). Antes era FK a `ubicaciones` — se pasó a texto libre.
-  ubicacion        String?   @db.VarChar(255)
+  ubicacion          String?   @db.VarChar(255)
   /// Valoración del equipo: importe (valor) + fecha en que se registró.
-  importe          Decimal?  @db.Decimal(14, 2)
-  fechaValoracion  DateTime? @map("fecha_valoracion") @db.Date
+  importe            Decimal?  @db.Decimal(14, 2)
+  fechaValoracion    DateTime? @map("fecha_valoracion") @db.Date
   /// Observaciones libres del técnico.
-  observaciones    String?   @db.Text
+  observaciones      String?   @db.Text
   /// Valor residual (post-depreciación) + fecha del cálculo. El PORCENTAJE de
   /// depreciación NO se persiste — es solo una ayuda de cálculo en la UI que
   /// deriva `valorResidual` = importe × (1 − %/100).
   valorResidual      Decimal?  @map("valor_residual") @db.Decimal(14, 2)
   fechaValorResidual DateTime? @map("fecha_valor_residual") @db.Date
-  activo           Boolean   @default(true)
-  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz
-  deletedAt        DateTime? @map("deleted_at") @db.Timestamptz
+  activo             Boolean   @default(true)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt          DateTime? @map("deleted_at") @db.Timestamptz
 
   componentes ComponenteEquipo[]
   archivos    ArchivoEquipo[]
@@ -459,8 +460,8 @@ model EquipoInformatico {
 }
 
 model ComponenteEquipo {
-  id       String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  equipoId String @map("equipo_id") @db.Uuid
+  id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  equipoId             String    @map("equipo_id") @db.Uuid
   /// Soft ref → master.tipos_componente.codigo (sin FK cross-DB). Contract
   /// (PR4b): NOT NULL — poblado por el backfill de PR4a, catálogo tenant
   /// `tipos_componente` eliminado (ver migración 20260805194710_init_tenant
@@ -523,17 +524,17 @@ model TicketSoporte {
 // el solicitante (portal de autoservicio).
 
 model KbArticulo {
-  id                      String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  titulo                  String    @db.VarChar(255)
-  contenido               String    @db.Text
-  tipoTicketId            String?   @map("tipo_ticket_id") @db.Uuid
+  id                     String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  titulo                 String    @db.VarChar(255)
+  contenido              String    @db.Text
+  tipoTicketId           String?   @map("tipo_ticket_id") @db.Uuid
   /// Soft ref → master.usuarios.id. Sin FK cross-DB. Nullable.
-  autorId                 String?   @map("autor_id") @db.Uuid
-  visibleParaSolicitante  Boolean   @default(false) @map("visible_para_solicitante")
-  activo                  Boolean   @default(true)
-  createdAt               DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt               DateTime  @updatedAt @map("updated_at") @db.Timestamptz
-  deletedAt               DateTime? @map("deleted_at") @db.Timestamptz
+  autorId                String?   @map("autor_id") @db.Uuid
+  visibleParaSolicitante Boolean   @default(false) @map("visible_para_solicitante")
+  activo                 Boolean   @default(true)
+  createdAt              DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt              DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt              DateTime? @map("deleted_at") @db.Timestamptz
 
   tipoTicket TipoTicket? @relation(fields: [tipoTicketId], references: [id])
 
@@ -542,3 +543,138 @@ model KbArticulo {
   @@map("kb_articulos")
 }
 
+// ─── COMPRAS (reconstrucción desde cero — PR-2, sdd/redisenio-modulo-compras) ─
+//
+// Reemplaza el módulo legacy demolido en PR-1 (ticket_compra/items_compra/
+// presupuestos/archivos_presupuesto). Ver sdd/redisenio-modulo-compras
+// (spec/design) para la tabla de verdad de estados y los ADRs.
+//
+// Compra: raíz del agregado. numero correlativo por año (COM-{anio}-{00000}),
+// generado por la app, NO por la DB (mismo patrón que tickets.numero).
+// ciclo_id es FK real (misma DB tenant) — a diferencia de solicitante_id, que
+// es soft ref cross-DB a master.usuarios. Cancelación atómica: cancelada_en/
+// cancelado_por_id/motivo_cancelacion son todos NULL o todos NOT NULL — CHECK
+// en migración.
+//
+// ItemCompra: vive DENTRO del agregado Compra (ADR-C2 — puerto único,
+// divergencia declarada vs `equipos`: todos los invariantes de este dominio
+// son cross-item, ej. estado derivado de cabecera). estado_aprobacion es
+// máquina de UN paso sin retorno (PENDIENTE → APROBADO|RECHAZADO).
+// decidido_por_id/decidido_en (NO aprobado_por_id/aprobado_en — ADR-C6,
+// rename deliberado: el campo también se escribe en el RECHAZO, por lo que
+// "aprobado_*" mentiría sobre su contenido en esa fila). cantidad_comprada/
+// cantidad_entregada NUNCA retroceden (regla de aplicación) y están acotadas
+// 0 <= entregada <= comprada <= cantidad (CHECK). cerrado_con_faltante es
+// TERMINAL y solo es posible sobre un ítem APROBADO (CHECK).
+//
+// OperacionCompra: bitácora append-only del agregado. SIN updated_at NI
+// deleted_at — expresión ESTRUCTURAL del append-only (ADR-C4), complementa la
+// firma del puerto (`crear`/`listarPorCompra`, sin update/delete — S37).
+// item_compra_id NULL = operación de cabecera (ej. CREACION, CANCELACION).
+// tipo: catálogo CERRADO de 10 valores, uno por cada comando mutador del
+// agregado (ADR-C4) — CHECK en migración, sin tabla de catálogo (ADR-C7:
+// mismo criterio que tipo_operacion vs tipos_ticket — este set no es
+// editable por el admin del tenant).
+//
+// Enums (estado_aprobacion, moneda, tipo de operación): VarChar + CHECK, NO
+// enum nativo de Postgres ni tabla de catálogo (ADR-C7 — precedente ya
+// establecido en tipos_ticket/tipo_operacion de este mismo schema).
+//
+// CHECKs — ver migración `20260813130000_compras_schema_checks` y su spec
+// colocado `compras-checks.integration.spec.ts` (H6: un `it` por CHECK,
+// probado con el INSERT raw que lo viola, no leyendo el DDL).
+
+model Compra {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  numero            String    @unique @db.VarChar(20)
+  fechaSolicitud    DateTime  @map("fecha_solicitud") @db.Date
+  motivo            String    @db.VarChar(255)
+  descripcion       String?   @db.Text
+  /// Soft ref → master.usuarios.id. Sin FK cross-DB.
+  solicitanteId     String    @map("solicitante_id") @db.Uuid
+  cicloId           String    @map("ciclo_id") @db.Uuid
+  /// CHECK cancelación atómica (los 3 campos NULL o los 3 NOT NULL) — migration SQL.
+  canceladaEn       DateTime? @map("cancelada_en") @db.Timestamptz
+  /// Soft ref → master.usuarios.id. Sin FK cross-DB.
+  canceladoPorId    String?   @map("cancelado_por_id") @db.Uuid
+  motivoCancelacion String?   @map("motivo_cancelacion") @db.Text
+
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz
+
+  ciclo CicloCliente @relation(fields: [cicloId], references: [id])
+
+  items       ItemCompra[]
+  operaciones OperacionCompra[]
+
+  @@index([cicloId])
+  @@index([solicitanteId])
+  @@index([createdAt])
+  @@index([canceladaEn]) // partial WHERE cancelada_en IS NOT NULL — ver migration SQL
+  @@map("compras")
+}
+
+model ItemCompra {
+  id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  compraId             String    @map("compra_id") @db.Uuid
+  descripcion          String    @db.VarChar(255)
+  /// CHECK (cantidad > 0) — migration SQL.
+  cantidad             Decimal   @db.Decimal(10, 2)
+  proveedor            String    @db.VarChar(255)
+  /// CHECK (monto >= 0) — migration SQL.
+  monto                Decimal   @db.Decimal(14, 2)
+  /// CHECK (moneda IN ('ARS','USD','EUR')) — migration SQL.
+  moneda               String    @default("ARS") @db.VarChar(10)
+  fechaCotizacion      DateTime  @map("fecha_cotizacion") @db.Date
+  observaciones        String?   @db.Text
+  /// CHECK (estado_aprobacion IN ('PENDIENTE','APROBADO','RECHAZADO')) — migration SQL.
+  estadoAprobacion     String    @default("PENDIENTE") @map("estado_aprobacion") @db.VarChar(20)
+  /// Soft ref → master.usuarios.id. NULL mientras PENDIENTE — CHECK decisión atómica.
+  decididoPorId        String?   @map("decidido_por_id") @db.Uuid
+  decididoEn           DateTime? @map("decidido_en") @db.Timestamptz
+  /// NUNCA retrocede (regla de aplicación). CHECK (0 <= cantidad_comprada <= cantidad).
+  cantidadComprada     Decimal   @default(0) @map("cantidad_comprada") @db.Decimal(10, 2)
+  /// NUNCA retrocede (regla de aplicación). CHECK (0 <= cantidad_entregada <= cantidad_comprada).
+  cantidadEntregada    Decimal   @default(0) @map("cantidad_entregada") @db.Decimal(10, 2)
+  /// TERMINAL. Solo posible sobre ítem APROBADO — CHECK.
+  cerradoConFaltante   Boolean   @default(false) @map("cerrado_con_faltante")
+  motivoCierreFaltante String?   @map("motivo_cierre_faltante") @db.Text
+
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz
+
+  compra Compra @relation(fields: [compraId], references: [id])
+
+  operaciones OperacionCompra[]
+
+  @@index([compraId])
+  @@index([compraId, estadoAprobacion])
+  @@map("items_compra")
+}
+
+model OperacionCompra {
+  id           String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  compraId     String  @map("compra_id") @db.Uuid
+  /// NULL = operación de cabecera (ej. CREACION, CANCELACION).
+  itemCompraId String? @map("item_compra_id") @db.Uuid
+  /// CHECK (tipo IN (10 valores)) — catálogo CERRADO, ver migration SQL.
+  tipo         String  @db.VarChar(40)
+  /// Soft ref → master.usuarios.id. Sin FK cross-DB.
+  usuarioId    String  @map("usuario_id") @db.Uuid
+  detalle      String  @db.Text
+  datos        Json?
+
+  // SIN updatedAt NI deletedAt — bitácora append-only (ver comentario de
+  // cabecera de esta sección). NO agregar por "simetría" con las otras
+  // entidades: es una decisión deliberada del design (ADR-C4).
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  compra     Compra      @relation(fields: [compraId], references: [id])
+  itemCompra ItemCompra? @relation(fields: [itemCompraId], references: [id])
+
+  @@index([compraId, createdAt])
+  @@index([itemCompraId])
+  @@map("operaciones_compra")
+}
