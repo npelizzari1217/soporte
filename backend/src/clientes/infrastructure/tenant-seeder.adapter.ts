@@ -107,7 +107,6 @@ const TIPO_OPERACION = [
  */
 const TIPOS_TICKET = [
   { codigo: 'SOPORTE', nombre: 'Soporte', modulo: 'SOPORTE' },
-  { codigo: 'COMPRAS', nombre: 'Compras', modulo: 'COMPRAS' },
   { codigo: 'EDILICIA', nombre: 'Edilicia', modulo: 'EDILICIA' },
   { codigo: 'MANTENIMIENTO', nombre: 'Mantenimiento', modulo: 'EDILICIA' },
 ];

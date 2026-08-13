@@ -7,16 +7,14 @@
  * Reglas:
  * - Obtiene el cliente vía TenantContext (nunca PrismaService directo).
  * - save() es solo INSERT (los archivos son inmutables una vez subidos).
- * - linkToTicket()/linkToOperacion()/linkToPresupuesto() crean las filas de
- *   join (`archivos_ticket`/`archivos_operacion`/`archivos_presupuesto`) —
- *   DEBEN llamarse DESPUÉS de save() y dentro de la MISMA transacción
- *   (ADR-7 Fase 2 / ADR-8 Fase 3, T22). El schema real tiene TRES tablas de
- *   join (a diferencia de la referencia soporte1, que solo tiene
- *   `archivos_ticket`).
+ * - linkToTicket()/linkToOperacion() crean las filas de join
+ *   (`archivos_ticket`/`archivos_operacion`) — DEBEN llamarse DESPUÉS de
+ *   save() y dentro de la MISMA transacción (ADR-7, T22).
  *
  * Tarea: alcance PR5 explícito de Fase 2 (adelanta desde PR10 — ver
- * apply-progress). `linkToPresupuesto` agregado en Fase 3 (T3.3, ADR-8,
- * extensión retrocompatible del puerto).
+ * apply-progress). `linkToPresupuesto` (Fase 3, ADR-8) fue removido en
+ * sdd/redisenio-modulo-compras PR-1 junto con `archivos_presupuesto` y su
+ * único consumidor (`compras/AdjuntarPresupuestoUseCase`).
  */
 import { Injectable } from '@nestjs/common';
 import { TenantContext } from '../../../../shared/tenancy/tenant-context';
@@ -44,10 +42,5 @@ export class PrismaArchivoRepository implements IArchivoRepository {
 
   async linkToOperacion(archivoId: string, operacionId: string): Promise<void> {
     await this.client.archivoOperacion.create({ data: { archivoId, operacionId } });
-  }
-
-  /** Fase 3 (ADR-8): join `archivos_presupuesto` ↔ `compras/AdjuntarPresupuestoUseCase`. */
-  async linkToPresupuesto(archivoId: string, presupuestoId: string): Promise<void> {
-    await this.client.archivoPresupuesto.create({ data: { archivoId, presupuestoId } });
   }
 }

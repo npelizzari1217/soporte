@@ -200,12 +200,13 @@ describe('MANTENIMIENTO — flujo BASE sin código nuevo (F3-M1, ADR-10)', () =>
       expect(row).not.toBeNull();
 
       // SIN tabla especializada: ningún satélite de Fase 3 referencia este ticket.
-      const [ticketCompra, ticketEdilicia, ticketSoporte] = await Promise.all([
-        tenantClient.ticketCompra.findUnique({ where: { ticketId: ticket.id } }),
+      // (sdd/redisenio-modulo-compras, PR-1: `ticket_compra` fue eliminado junto
+      // con el resto del módulo legacy — el chequeo de compras se repone en
+      // PR-12 sobre el modelo nuevo `Compra`.)
+      const [ticketEdilicia, ticketSoporte] = await Promise.all([
         tenantClient.ticketEdilicia.findUnique({ where: { ticketId: ticket.id } }),
         tenantClient.ticketSoporte.findUnique({ where: { ticketId: ticket.id } }),
       ]);
-      expect(ticketCompra).toBeNull();
       expect(ticketEdilicia).toBeNull();
       expect(ticketSoporte).toBeNull();
     });

@@ -9,7 +9,6 @@ import { ITicketRepository } from '../ports/i-ticket.repository';
  */
 const PREFIJO_BASE: Readonly<Record<string, string>> = {
   SOPORTE: 'SOP',
-  COMPRAS: 'COM',
   EDILICIA: 'EDI',
   MANTENIMIENTO: 'MAN',
 };

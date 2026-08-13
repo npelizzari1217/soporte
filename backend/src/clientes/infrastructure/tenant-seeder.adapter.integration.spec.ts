@@ -105,7 +105,7 @@ describe('TenantSeederAdapter (T7.4, integración — Postgres real, DB efímera
 
     const tiposTicket = await verifyClient.tipoTicket.findMany({ orderBy: { codigo: 'asc' } });
     expect(tiposTicket.map((t) => t.codigo).sort()).toEqual(
-      ['SOPORTE', 'COMPRAS', 'EDILICIA', 'MANTENIMIENTO'].sort(),
+      ['SOPORTE', 'EDILICIA', 'MANTENIMIENTO'].sort(),
     );
   }, 30_000);
 
@@ -123,6 +123,6 @@ describe('TenantSeederAdapter (T7.4, integración — Postgres real, DB efímera
     expect(estados).toHaveLength(6);
     expect(prioridades).toHaveLength(4);
     expect(tipoOperacion).toHaveLength(7);
-    expect(tiposTicket).toHaveLength(4);
+    expect(tiposTicket).toHaveLength(3);
   }, 30_000);
 });

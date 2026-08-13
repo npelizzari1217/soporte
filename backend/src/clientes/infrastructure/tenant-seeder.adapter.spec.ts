@@ -133,7 +133,6 @@ describe('TenantSeederAdapter (T7.4, unit — createClient mockeado)', () => {
     const [[{ data }]] = client.tipoTicket.createMany.mock.calls;
     expect(data.map((t: { codigo: string }) => t.codigo)).toEqual([
       'SOPORTE',
-      'COMPRAS',
       'EDILICIA',
       'MANTENIMIENTO',
     ]);

@@ -45,7 +45,7 @@ export class TicketStateMachineFactory {
    * Devuelve la máquina de estados para el tipo de ticket indicado.
    * Si el tipo no está registrado, retorna el fallback (`BaseTicketStateMachine`).
    *
-   * @param tipoTicketCodigo Valor de `tipos_ticket.codigo` (ej. 'SOPORTE', 'COMPRAS', 'EDILICIA').
+   * @param tipoTicketCodigo Valor de `tipos_ticket.codigo` (ej. 'SOPORTE', 'EDILICIA').
    */
   resolve(tipoTicketCodigo: string): ITicketStateMachine {
     return this.registry.get(tipoTicketCodigo) ?? this.fallback;
@@ -53,9 +53,9 @@ export class TicketStateMachineFactory {
 
   /**
    * Registra (o sobrescribe) una implementación específica para un tipo de ticket.
-   * Llamado por los módulos de Compras (Fase 4) y Edilicia (Fase 5) en su wiring.
+   * Llamado por los módulos de negocio (ej. Edilicia) en su wiring.
    *
-   * @param tipoTicketCodigo Código del tipo de ticket (ej. 'COMPRAS').
+   * @param tipoTicketCodigo Código del tipo de ticket.
    * @param machine Implementación de `ITicketStateMachine` para ese tipo.
    */
   register(tipoTicketCodigo: string, machine: ITicketStateMachine): void {

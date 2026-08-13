@@ -39,6 +39,14 @@ export const inferirModuloDeCodigo = (codigo: string): Modulo => {
   const upper = codigo.toUpperCase();
   // Prioridad COMPRAS > EDILICIA > EQUIPOS; SOPORTE es el fallback (por eso se
   // excluye de la búsqueda: cualquier no-match cae a él).
+  //
+  // NO-OP DELIBERADO (sdd/redisenio-modulo-compras, PR-1, hueco H5): tras la
+  // demolición del módulo legacy no existe ningún `tipos_ticket.codigo` que
+  // contenga "COMPRAS", así que esta rama queda muerta hasta que el dominio
+  // se reconstruya. Se deja intacta a propósito: `MODULOS` (línea 9) sigue
+  // siendo la fuente de verdad del gating por módulo (JWT, guards), y el
+  // fallback a SOPORTE ante un no-match es inofensivo. Tocar esto acá sería
+  // una desviación fuera del alcance de PR-1.
   const match = MODULOS.find((m) => m !== 'SOPORTE' && upper.includes(m));
   return match ?? 'SOPORTE';
 };

@@ -156,9 +156,6 @@ describe('runDemoSeed — integración real (T6.1, sdd/beta-frontend)', () => {
         try {
           ticketCountTrasPrimera = await tenantClient.ticket.count();
           expect(ticketCountTrasPrimera).toBeGreaterThanOrEqual(8);
-          expect(await tenantClient.ticketCompra.count()).toBe(2);
-          expect(await tenantClient.itemCompra.count()).toBeGreaterThanOrEqual(2);
-          expect(await tenantClient.presupuesto.count()).toBeGreaterThanOrEqual(3);
           expect(await tenantClient.ticketEdilicia.count()).toBe(1);
           expect(await tenantClient.subtareaEdilicia.count()).toBe(2);
           expect(await tenantClient.equipoInformatico.count()).toBe(2);

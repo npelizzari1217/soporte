@@ -89,10 +89,6 @@ import { CrearTicketUseCase, type CrearTicketDto } from '../../src/tickets/appli
 import { TransicionarEstadoUseCase } from '../../src/tickets/application/use-cases/transicionar-estado.use-case';
 import { AsignarTicketUseCase } from '../../src/tickets/application/use-cases/asignar-ticket.use-case';
 
-import { CrearTicketCompraUseCase } from '../../src/compras/application/use-cases/crear-ticket-compra.use-case';
-import { AgregarItemCompraUseCase } from '../../src/compras/application/use-cases/agregar-item-compra.use-case';
-import { AgregarPresupuestoUseCase } from '../../src/compras/application/use-cases/agregar-presupuesto.use-case';
-
 import { CrearTicketEdilicioUseCase } from '../../src/reparaciones/application/use-cases/crear-ticket-edilicio.use-case';
 import { CrearSubtareaUseCase } from '../../src/reparaciones/application/use-cases/crear-subtarea.use-case';
 
@@ -405,75 +401,6 @@ async function crearTicketDemo(
   }
 }
 
-/** Crea 1-2 tickets de compra con items + presupuestos de ejemplo. */
-async function crearComprasDemo(
-  app: INestApplicationContext,
-  clienteId: string,
-  anio: number,
-  catalogos: Awaited<ReturnType<typeof cargarCatalogos>>,
-  usuarios: UsuariosDemo,
-): Promise<void> {
-  const crearCompra = app.get(CrearTicketCompraUseCase);
-  const agregarItem = app.get(AgregarItemCompraUseCase);
-  const agregarPresupuesto = app.get(AgregarPresupuestoUseCase);
-
-  const specs = [
-    {
-      titulo: 'Compra de notebooks para el equipo de soporte',
-      solicitanteId: usuarios.colaborador,
-      prioridadCodigo: 'ALTA',
-      items: [{ descripcion: 'Notebook 15" 16GB RAM', cantidad: 3, unidad: 'u' }],
-      presupuestos: [
-        { proveedor: 'TecnoDistribuidora SA', montoTotal: 2_850_000, moneda: 'ARS' },
-        { proveedor: 'ImportCompu SRL', montoTotal: 2_990_000, moneda: 'ARS' },
-      ],
-    },
-    {
-      titulo: 'Compra de licencias de antivirus corporativo',
-      solicitanteId: usuarios.administrador,
-      prioridadCodigo: 'MEDIA',
-      items: [{ descripcion: 'Licencia antivirus (paquete 50 puestos)', cantidad: 1, unidad: 'u' }],
-      presupuestos: [{ proveedor: 'SecureSoft', montoTotal: 450_000, moneda: 'ARS' }],
-    },
-  ];
-
-  for (const spec of specs) {
-    const result = await crearCompra.execute({
-      titulo: spec.titulo,
-      descripcion: null,
-      tipoId: catalogos.tipoIdPorCodigo.get('COMPRAS')!,
-      prioridadId: catalogos.prioridadIdPorCodigo.get(spec.prioridadCodigo)!,
-      solicitanteId: spec.solicitanteId,
-      clienteId,
-      autorId: spec.solicitanteId,
-      anio,
-    });
-    if (result.isFail()) {
-      throw new Error(`[demo-seed] No se pudo crear la compra demo "${spec.titulo}": ${result.getError().message}`);
-    }
-    const ticketCompraId = result.getValue().ticketCompra.id;
-
-    for (const item of spec.items) {
-      const r = await agregarItem.execute({ ticketCompraId, ...item });
-      if (r.isFail()) {
-        throw new Error(`[demo-seed] No se pudo agregar el ítem a la compra demo: ${r.getError().message}`);
-      }
-    }
-    for (const presupuesto of spec.presupuestos) {
-      const r = await agregarPresupuesto.execute({
-        ticketCompraId,
-        proveedor: presupuesto.proveedor,
-        montoTotal: presupuesto.montoTotal,
-        moneda: presupuesto.moneda,
-        fechaCotizacion: new Date(),
-      });
-      if (r.isFail()) {
-        throw new Error(`[demo-seed] No se pudo agregar el presupuesto a la compra demo: ${r.getError().message}`);
-      }
-    }
-  }
-}
-
 /** Crea 1 ticket edilicio (ubicación como texto libre) con 2 subtareas de ejemplo. */
 async function crearEdiliciaDemo(
   app: INestApplicationContext,
@@ -703,7 +630,6 @@ async function seedDemoTenantData(
       await crearTicketDemo(app, clienteId, anio, spec, catalogos);
     }
 
-    await crearComprasDemo(app, clienteId, anio, catalogos, usuarios);
     await crearEdiliciaDemo(app, clienteId, anio, catalogos, usuarios);
     await crearEquiposDemo(app, clienteId, anio, catalogos, usuarios);
     await crearKbDemo(app, usuarios.administrador);

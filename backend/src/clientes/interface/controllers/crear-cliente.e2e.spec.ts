@@ -365,7 +365,7 @@ describe('Crear Cliente e2e — provisioning real (T8.5, R16-R19)', () => {
 
         const tiposTicket = await tenantClient.tipoTicket.findMany({ orderBy: { codigo: 'asc' } });
         expect(tiposTicket.map((t) => t.codigo).sort()).toEqual(
-          ['SOPORTE', 'COMPRAS', 'EDILICIA', 'MANTENIMIENTO'].sort(),
+          ['SOPORTE', 'EDILICIA', 'MANTENIMIENTO'].sort(),
         );
       } finally {
         await tenantClient.$disconnect();

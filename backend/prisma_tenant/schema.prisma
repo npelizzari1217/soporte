@@ -230,7 +230,6 @@ model Ticket {
 
   operaciones    OperacionTicket[]
   archivosTicket ArchivoTicket[]
-  ticketCompra   TicketCompra?
   ticketEdilicia TicketEdilicia?
   ticketSoporte  TicketSoporte?
 
@@ -312,7 +311,6 @@ model Archivo {
 
   archivosTicket      ArchivoTicket[]
   archivosOperacion   ArchivoOperacion[]
-  archivosPresupuesto ArchivoPresupuesto[]
   archivosEquipo      ArchivoEquipo[]
 
   @@map("archivos")
@@ -351,94 +349,6 @@ model ArchivoOperacion {
 
   @@id([archivoId, operacionId])
   @@map("archivos_operacion")
-}
-
-// ─── COMPRAS ───────────────────────────────────────────────────────────────────
-//
-// Módulo de Compras: ticket_compra (satélite 1:1), items_compra, presupuestos,
-// archivos_presupuesto (join).
-//
-// ticket_compra: satélite obligatorio de tickets con tipo.codigo='COMPRAS'.
-//   aprobado_por_id es soft ref → master.usuarios.id (sin FK cross-DB).
-// items_compra: ítems de la compra. CHECK (cantidad > 0) en migration SQL.
-// presupuestos: cotizaciones de proveedores. CHECK (monto_total >= 0).
-//   Invariante de negocio: solo un seleccionado=TRUE por ticket_compra_id
-//   (garantizado por el use case correspondiente con transacción atómica, NO
-//   por un constraint de DB).
-// archivos_presupuesto: join table archivos ↔ presupuestos. ON DELETE CASCADE.
-
-model TicketCompra {
-  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  ticketId      String    @unique @map("ticket_id") @db.Uuid
-  /// Soft ref → master.usuarios.id. NULL hasta la decisión de aprobación.
-  aprobadoPorId String?   @map("aprobado_por_id") @db.Uuid
-  aprobadoEn    DateTime? @map("aprobado_en") @db.Timestamptz
-  /// Obligatorio cuando la decisión es RECHAZADO.
-  motivoRechazo String?   @map("motivo_rechazo") @db.Text
-  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz
-  deletedAt     DateTime? @map("deleted_at") @db.Timestamptz
-
-  ticket       Ticket        @relation(fields: [ticketId], references: [id])
-  items        ItemCompra[]
-  presupuestos Presupuesto[]
-
-  @@map("ticket_compra")
-}
-
-model ItemCompra {
-  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  ticketCompraId    String    @map("ticket_compra_id") @db.Uuid
-  descripcion       String    @db.VarChar(255)
-  /// CHECK (cantidad > 0) — enforced via migration SQL.
-  cantidad          Decimal   @db.Decimal(10, 2)
-  unidad            String?   @db.VarChar(50)
-  precioUnitarioRef Decimal?  @map("precio_unitario_ref") @db.Decimal(14, 2)
-  observaciones     String?   @db.Text
-  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz
-  deletedAt         DateTime? @map("deleted_at") @db.Timestamptz
-
-  ticketCompra TicketCompra @relation(fields: [ticketCompraId], references: [id])
-
-  @@index([ticketCompraId])
-  @@map("items_compra")
-}
-
-model Presupuesto {
-  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  ticketCompraId  String    @map("ticket_compra_id") @db.Uuid
-  proveedor       String    @db.VarChar(255)
-  /// CHECK (monto_total >= 0) — enforced via migration SQL.
-  montoTotal      Decimal   @map("monto_total") @db.Decimal(14, 2)
-  /// ISO 4217: ARS, USD, EUR. DEFAULT 'ARS'.
-  moneda          String    @default("ARS") @db.VarChar(10)
-  fechaCotizacion DateTime  @map("fecha_cotizacion") @db.Date
-  /// Solo uno puede ser TRUE por ticket_compra_id (swap atómico en el use case).
-  seleccionado    Boolean   @default(false)
-  observaciones   String?   @db.Text
-  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz
-  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz
-
-  ticketCompra        TicketCompra         @relation(fields: [ticketCompraId], references: [id])
-  archivosPresupuesto ArchivoPresupuesto[]
-
-  @@index([ticketCompraId])
-  @@map("presupuestos")
-}
-
-model ArchivoPresupuesto {
-  archivoId     String   @map("archivo_id") @db.Uuid
-  presupuestoId String   @map("presupuesto_id") @db.Uuid
-  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
-
-  archivo     Archivo     @relation(fields: [archivoId], references: [id], onDelete: Cascade)
-  presupuesto Presupuesto @relation(fields: [presupuestoId], references: [id], onDelete: Cascade)
-
-  @@id([archivoId, presupuestoId])
-  @@index([presupuestoId])
-  @@map("archivos_presupuesto")
 }
 
 // ─── REPARACIONES EDILICIAS ────────────────────────────────────────────────────

@@ -1,51 +1,34 @@
 "use client";
 
 /**
- * CompraDetailView — CONTAINER montado por `/compras/[id]` (T5.3). `id` de
- * ruta = id del `Ticket` BASE (`ticketId`, mismo criterio que aprobar/
- * rechazar). Consume `GET /compras/:id` (`useCompra`, item 1 backend-gaps —
- * cierra G7) con items/presupuestos EMBEBIDOS como fuente inicial real.
+ * CompraDetailView — placeholder tras la demolición del módulo legacy
+ * (sdd/redisenio-modulo-compras, PR-1). El detalle real se reconstruye en
+ * PR-25 sobre el nuevo dominio `Compra`/`ItemCompra`/`OperacionCompra`.
+ *
+ * La prop nace directamente como `compraId` (NO `ticketId`, como en el
+ * módulo legacy): el nuevo dominio identifica la compra por su propio id
+ * agregado, no por el id del `Ticket` base.
  */
-import { DetailSkeleton } from "@/components/shared/skeletons";
-import { ErrorState } from "@/components/shared/error-state";
+import { Construction } from "lucide-react";
+import { EmptyState } from "@/components/shared/empty-state";
 import { PageHeader } from "@/components/shared/page-header";
-import { Can } from "@/components/shared/can";
-import { useCompra } from "../hooks/use-compras";
-import { CompraItemsSection } from "./compra-items-section";
-import { CompraPresupuestosSection } from "./compra-presupuestos-section";
-import { CompraDecisionActions } from "./compra-decision-actions";
 
 export interface CompraDetailViewProps {
-  ticketId: string;
+  compraId: string;
 }
 
-export function CompraDetailView({ ticketId }: CompraDetailViewProps) {
-  const compraQuery = useCompra(ticketId);
-
-  if (compraQuery.isLoading) return <DetailSkeleton />;
-  if (compraQuery.isError || !compraQuery.data) {
-    return (
-      <ErrorState
-        message="No se pudo cargar la compra."
-        onRetry={() => {
-          compraQuery.refetch().catch(() => {});
-        }}
-      />
-    );
-  }
-
-  const compra = compraQuery.data;
-
+export function CompraDetailView({ compraId }: CompraDetailViewProps) {
   return (
-    <Can permiso="compra:gestionar" fallback={<ErrorState message="No tenés permiso para ver esta compra." />}>
-      <div className="flex flex-col gap-6">
-        <PageHeader
-          title={`${compra.numero} — ${compra.titulo}`}
-          actions={<CompraDecisionActions compra={compra} />}
-        />
-        <CompraItemsSection compraId={compra.id} items={compra.items} />
-        <CompraPresupuestosSection compraId={compra.id} presupuestos={compra.presupuestos} />
-      </div>
-    </Can>
+    <div className="space-y-6">
+      <PageHeader
+        title="Detalle de compra"
+        description={`Gestión de la solicitud de compra ${compraId}`}
+      />
+      <EmptyState
+        icon={Construction}
+        title="Módulo en reconstrucción"
+        description="El módulo de Compras está siendo rediseñado. Va a estar disponible próximamente."
+      />
+    </div>
   );
 }

@@ -1,12 +1,16 @@
 /**
  * TV.2 [INTEGRATION] — Aislamiento cross-tenant REAL de los repos satélite
- * de Fase 3 (compras, reparaciones, equipos): un repo bindeado al
+ * de Fase 3 (reparaciones, equipos): un repo bindeado al
  * TenantContext del tenant A (una DB física) NO ve filas del tenant B (OTRA
  * DB física) — mismo patrón que
  * `tickets/infrastructure/persistence/prisma/prisma-ticket-repository.aislamiento.integration.spec.ts`
  * (Fase 2, T5.7/T23), extendido a un repo representativo de cada módulo
- * satélite nuevo: `PrismaTicketCompraRepository`, `PrismaTicketEdiliciaRepository`,
- * `PrismaTicketSoporteRepository`.
+ * satélite nuevo: `PrismaTicketEdiliciaRepository`, `PrismaTicketSoporteRepository`.
+ *
+ * NOTA (sdd/redisenio-modulo-compras, PR-1): el caso de `compras` fue
+ * removido de acá tras la demolición del módulo legacy. El aislamiento
+ * cross-tenant para el dominio nuevo se repone en PR-12 con
+ * `PrismaCompraRepository`.
  *
  * SEGURIDAD: crea UNA sola DB efímera `soporte_prov_f3iso_<rand>_test`
  * (prefijo `soporte_prov_`, sufijo `_test`) vía `PostgresAdminService`, la
@@ -27,9 +31,6 @@ import { TenantMigrationRunnerAdapter } from '../clientes/infrastructure/tenant-
 
 import { PrismaTicketRepository } from '../tickets/infrastructure/persistence/prisma/prisma-ticket.repository';
 import { TicketEntity, TicketProps } from '../tickets/domain/entities/ticket.entity';
-
-import { PrismaTicketCompraRepository } from '../compras/infrastructure/persistence/prisma/prisma-ticket-compra.repository';
-import { TicketCompraEntity } from '../compras/domain/entities/ticket-compra.entity';
 
 import { PrismaTicketEdiliciaRepository } from '../reparaciones/infrastructure/persistence/prisma/prisma-ticket-edilicia.repository';
 import { TicketEdiliciaEntity } from '../reparaciones/domain/entities/ticket-edilicia.entity';
@@ -54,7 +55,6 @@ describe('Aislamiento cross-tenant real — repos satélite de Fase 3 (TV.2)', (
   let tenantContext: TenantContext;
 
   let ticketRepo: PrismaTicketRepository;
-  let ticketCompraRepo: PrismaTicketCompraRepository;
   let ticketEdiliciaRepo: PrismaTicketEdiliciaRepository;
   let ticketSoporteRepo: PrismaTicketSoporteRepository;
 
@@ -62,7 +62,6 @@ describe('Aislamiento cross-tenant real — repos satélite de Fase 3 (TV.2)', (
   let estadoId: string;
   let prioridadId: string;
 
-  let ticketCompraAId: string;
   let ticketEdiliciaAId: string;
   let ticketSoporteAId: string;
 
@@ -92,7 +91,6 @@ describe('Aislamiento cross-tenant real — repos satélite de Fase 3 (TV.2)', (
     tenantContext = new TenantContext();
 
     ticketRepo = new PrismaTicketRepository(tenantContext);
-    ticketCompraRepo = new PrismaTicketCompraRepository(tenantContext);
     ticketEdiliciaRepo = new PrismaTicketEdiliciaRepository(tenantContext);
     ticketSoporteRepo = new PrismaTicketSoporteRepository(tenantContext);
 
@@ -143,16 +141,6 @@ describe('Aislamiento cross-tenant real — repos satélite de Fase 3 (TV.2)', (
       };
     }
 
-    // Fixture: TicketCompra en el tenant A.
-    const ticketCompraBase = TicketEntity.create(makeTicketProps(`TVC${suffix.slice(0, 5)}`));
-    const ticketCompra = TicketCompraEntity.create({ ticketId: ticketCompraBase.id });
-    await withTenantA(async () => {
-      await ticketRepo.save(ticketCompraBase);
-      await ticketCompraRepo.save(ticketCompra);
-    });
-    ticketIdsCreados.push(ticketCompraBase.id);
-    ticketCompraAId = ticketCompra.id;
-
     // Fixture: TicketEdilicia en el tenant A (ubicacion como texto libre).
     const ticketEdiliciaBase = TicketEntity.create(makeTicketProps(`TVE${suffix.slice(0, 5)}`));
     const ticketEdilicia = TicketEdiliciaEntity.create({
@@ -183,9 +171,6 @@ describe('Aislamiento cross-tenant real — repos satélite de Fase 3 (TV.2)', (
 
   afterAll(async () => {
     if (ticketIdsCreados.length > 0) {
-      await tenantAClient.ticketCompra.deleteMany({
-        where: { ticketId: { in: ticketIdsCreados } },
-      });
       await tenantAClient.ticketEdilicia.deleteMany({
         where: { ticketId: { in: ticketIdsCreados } },
       });
@@ -200,14 +185,6 @@ describe('Aislamiento cross-tenant real — repos satélite de Fase 3 (TV.2)', (
     await prismaService.onModuleDestroy();
     await admin.dropDatabase(TENANT_B_DB_NAME);
   }, 60_000);
-
-  it('[CRITICAL] PrismaTicketCompraRepository bindeado al tenant B NO ve el ticket_compra del tenant A', async () => {
-    const foundA = await withTenantA(() => ticketCompraRepo.findById(ticketCompraAId));
-    expect(foundA).not.toBeNull();
-
-    const foundB = await withTenantB(() => ticketCompraRepo.findById(ticketCompraAId));
-    expect(foundB).toBeNull();
-  });
 
   it('[CRITICAL] PrismaTicketEdiliciaRepository bindeado al tenant B NO ve el ticket_edilicia del tenant A', async () => {
     const foundA = await withTenantA(() => ticketEdiliciaRepo.findById(ticketEdiliciaAId));
