@@ -1,16 +1,21 @@
 /**
  * T1.1, T1.3 [INT] — Integration: seed_rbac_4_roles_permisos (PR1) +
  * add_permiso_catalogo_gestionar (PR2, Fase 2 tickets-core) +
- * add_permiso_kb_gestionar (PR-K, Fase 4 premium).
+ * add_permiso_kb_gestionar (PR-K, Fase 4 premium) +
+ * remove_permiso_compra_de_tecnico (PR-3, redisenio-modulo-compras).
  *
  * Verifica que la migración `20260805110000_seed_rbac_4_roles_permisos`
  * siembre correctamente los 4 roles (USUARIO/COLABORADOR/TECNICO/ADMINISTRADOR)
  * y los 19 permisos base, que la migración aditiva
  * `20260806120000_add_permiso_catalogo_gestionar` (PR2) agregue el permiso
- * 20 (`catalogo:gestionar`) exclusivo de ADMINISTRADOR, y que
+ * 20 (`catalogo:gestionar`) exclusivo de ADMINISTRADOR, que
  * `20260806170000_add_permiso_kb_gestionar` (PR-K, K4) agregue el permiso 21
- * (`kb:gestionar`) a TECNICO + ADMINISTRADOR — matriz acumulativa final:
- * USUARIO=2, COLABORADOR=7, TECNICO=15, ADMINISTRADOR=21. Las tres
+ * (`kb:gestionar`) a TECNICO + ADMINISTRADOR, y que la migración aditiva
+ * `20260813130000_remove_permiso_compra_de_tecnico` (PR-3) le quite a
+ * TECNICO las asignaciones de `compra:gestionar`/`compra:aprobar` en
+ * `roles_permisos` (SIN borrar las filas de `permisos`, que siguen siendo
+ * usadas por COLABORADOR y ADMINISTRADOR) — matriz acumulativa final:
+ * USUARIO=2, COLABORADOR=7, TECNICO=13, ADMINISTRADOR=21. Las cuatro
  * migraciones son idempotentes (re-ejecutarlas no cambia row counts).
  *
  * Estrategia TDD:
@@ -55,6 +60,14 @@ const MIGRATION_FILE_KB = path.resolve(
   '../../../../../prisma_master/migrations/20260806170000_add_permiso_kb_gestionar/migration.sql',
 );
 
+// PR-3 (redisenio-modulo-compras) — quita a TECNICO las asignaciones de
+// compra:gestionar/compra:aprobar en roles_permisos. Aditiva: NO borra filas
+// de `permisos` (las siguen usando COLABORADOR y ADMINISTRADOR).
+const MIGRATION_FILE_COMPRA_TECNICO = path.resolve(
+  __dirname,
+  '../../../../../prisma_master/migrations/20260813130000_remove_permiso_compra_de_tecnico/migration.sql',
+);
+
 // ─── UUIDs autoritativos (migration.sql — comentario de cabecera) ────────────
 const ROLE_UUIDS: Record<string, string> = {
   USUARIO: 'a0000000-0000-4000-a000-000000000001',
@@ -75,8 +88,22 @@ const COLABORADOR_PERMISOS = [
   'ticket:rechazar',
 ];
 
+// PR-3 (redisenio-modulo-compras): TECNICO deja de gestionar/aprobar compras
+// (S38/S39 de la spec — 403 en ambos). Como COLABORADOR_PERMISOS incluye
+// compra:gestionar/compra:aprobar y TECNICO_PERMISOS_BASE los heredaba vía
+// spread, se filtran EXPLÍCITAMENTE acá: TECNICO pasa de 14 a 12 permisos
+// base (15→13 con kb:gestionar). ADMINISTRADOR los recupera explícitamente
+// más abajo para no perderlos en cascada (ver ADMINISTRADOR_PERMISOS_BASE).
+//
+// ROMPE LA JERARQUÍA ACUMULATIVA A PROPÓSITO: COLABORADOR queda pudiendo
+// aprobar compras que TECNICO, su superior, tiene prohibidas. El spec §4.11
+// no se pronunció sobre COLABORADOR; el hueco se elevó al maintainer el
+// 2026-08-13 y la decisión fue COLABORADOR sí / TECNICO y USUARIO no.
+// Este `filter` es la decisión, no un descuido — ver el bloque de la
+// migración `20260813130000_remove_permiso_compra_de_tecnico` antes de
+// tocarlo.
 const TECNICO_PERMISOS_BASE = [
-  ...COLABORADOR_PERMISOS,
+  ...COLABORADOR_PERMISOS.filter((p) => p !== 'compra:gestionar' && p !== 'compra:aprobar'),
   'ticket:editar',
   'ticket:transicionar',
   'ticket:observar',
@@ -91,8 +118,13 @@ const TECNICO_PERMISOS_BASE = [
 // de 14 a 15 permisos.
 const TECNICO_PERMISOS = [...TECNICO_PERMISOS_BASE, 'kb:gestionar'];
 
+// ADMINISTRADOR retiene compra:gestionar/compra:aprobar (PR-3: ya no forman
+// parte de TECNICO_PERMISOS_BASE, así que se re-agregan explícitamente para
+// que la cascada no se los lleve puestos). Total sin cambios: 19.
 const ADMINISTRADOR_PERMISOS_BASE = [
   ...TECNICO_PERMISOS_BASE,
+  'compra:gestionar',
+  'compra:aprobar',
   'ticket:eliminar',
   'usuario:gestionar',
   'rol:asignar',
@@ -140,6 +172,12 @@ describe('Migration: seed_rbac_4_roles_permisos (integration — PR1)', () => {
     // — RED si el archivo no existe (ENOENT), GREEN cuando exista.
     const sqlKb = fs.readFileSync(MIGRATION_FILE_KB, 'utf8');
     await pool.query(sqlKb);
+
+    // PR-3: aplica la migración aditiva que le quita a TECNICO
+    // compra:gestionar/compra:aprobar — RED si el archivo no existe (ENOENT),
+    // GREEN cuando exista.
+    const sqlCompraTecnico = fs.readFileSync(MIGRATION_FILE_COMPRA_TECNICO, 'utf8');
+    await pool.query(sqlCompraTecnico);
   });
 
   afterAll(async () => {
@@ -216,15 +254,17 @@ describe('Migration: seed_rbac_4_roles_permisos (integration — PR1)', () => {
     });
   });
 
-  // ─── TECNICO: 15 permisos (14 base + kb:gestionar PR-K) ────────────────────
+  // ─── TECNICO: 13 permisos (12 base + kb:gestionar PR-K; PR-3 le quita compra:gestionar/aprobar) ──
 
-  describe('TECNICO: acumula COLABORADOR + 7 + kb:gestionar (PR-K)', () => {
-    it('tiene exactamente 15 permisos incluyendo ticket:transicionar, ticket:observar y kb:gestionar; NO tiene ticket:eliminar ni ciclo:gestionar', async () => {
+  describe('TECNICO: acumula COLABORADOR - compras + 7 + kb:gestionar (PR-K)', () => {
+    it('tiene exactamente 13 permisos incluyendo ticket:transicionar, ticket:observar y kb:gestionar; NO tiene ticket:eliminar, ciclo:gestionar, compra:gestionar ni compra:aprobar', async () => {
       const permisos = await permisosDeRol('TECNICO');
-      expect(permisos).toHaveLength(15);
+      expect(permisos).toHaveLength(13);
       for (const p of TECNICO_PERMISOS) expect(permisos).toContain(p);
       expect(permisos).not.toContain('ticket:eliminar');
       expect(permisos).not.toContain('ciclo:gestionar');
+      expect(permisos).not.toContain('compra:gestionar');
+      expect(permisos).not.toContain('compra:aprobar');
     });
   });
 
@@ -283,7 +323,7 @@ describe('Migration: seed_rbac_4_roles_permisos (integration — PR1)', () => {
   // ─── Idempotencia ───────────────────────────────────────────────────────
 
   describe('idempotencia: 2ª ejecución no cambia row counts', () => {
-    it('re-ejecutar ambas migraciones no modifica roles, permisos ni roles_permisos', async () => {
+    it('re-ejecutar las cuatro migraciones no modifica roles, permisos ni roles_permisos', async () => {
       const [rolesBefore, permisosBefore, rpBefore] = await Promise.all([
         pool.query<{ count: string }>('SELECT COUNT(*) FROM roles'),
         pool.query<{ count: string }>('SELECT COUNT(*) FROM permisos'),
@@ -296,6 +336,8 @@ describe('Migration: seed_rbac_4_roles_permisos (integration — PR1)', () => {
       await pool.query(sqlCatalogo);
       const sqlKb = fs.readFileSync(MIGRATION_FILE_KB, 'utf8');
       await pool.query(sqlKb);
+      const sqlCompraTecnico = fs.readFileSync(MIGRATION_FILE_COMPRA_TECNICO, 'utf8');
+      await pool.query(sqlCompraTecnico);
 
       const [rolesAfter, permisosAfter, rpAfter] = await Promise.all([
         pool.query<{ count: string }>('SELECT COUNT(*) FROM roles'),
