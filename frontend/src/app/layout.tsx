@@ -40,7 +40,16 @@ export default function RootLayout({
          */}
         <script dangerouslySetInnerHTML={{ __html: FOUC_SCRIPT }} />
       </head>
-      <body className="bg-background text-foreground">
+      {/*
+       * suppressHydrationWarning: extensiones del navegador (ColorZilla inyecta
+       * `cz-shortcut-listen`, Grammarly `data-gr-ext-installed`, etc.) agregan
+       * atributos al <body> ANTES de que React hidrate, y el mismatch resultante
+       * no lo puede evitar la app. Es seguro acá porque `className` es una
+       * constante: no hay ningún mismatch legítimo que esto pueda tapar. La
+       * directiva es superficial — silencia este elemento, no el árbol de abajo.
+       * Mismo criterio que el <html> de arriba, que lo lleva por el FOUC_SCRIPT.
+       */}
+      <body className="bg-background text-foreground" suppressHydrationWarning>
         <Providers>{children}</Providers>
         <Toaster richColors position="top-right" theme="system" />
       </body>
