@@ -27,28 +27,51 @@ describe('CHECKs de compras/items_compra/operaciones_compra — migración 20260
   let cicloId: string;
   let numeroSeq = 0;
 
+  /**
+   * Borra SOLO las filas de este spec, acotadas por su propio `cicloId`.
+   *
+   * La DB tenant de test es COMPARTIDA con el resto de las integration specs,
+   * así que un `DELETE FROM <tabla>` sin filtro le vuela los fixtures a quien
+   * corra después. Orden por FKs: hijas antes que padres.
+   */
+  async function limpiarDatosDeEsteSpec(): Promise<void> {
+    await client.query(
+      'DELETE FROM operaciones_compra WHERE compra_id IN (SELECT id FROM compras WHERE ciclo_id = $1)',
+      [cicloId],
+    );
+    await client.query(
+      'DELETE FROM items_compra WHERE compra_id IN (SELECT id FROM compras WHERE ciclo_id = $1)',
+      [cicloId],
+    );
+    await client.query('DELETE FROM compras WHERE ciclo_id = $1', [cicloId]);
+  }
+
   beforeAll(async () => {
     client = new Client({ connectionString: TENANT_TEST_URL });
     await client.connect();
+
+    // `activo: false` A PROPÓSITO. `PrismaCicloClienteRepository.findActive()`
+    // es un `findFirst({ where: { activo: true } })` SIN `orderBy`: con dos
+    // ciclos activos, Postgres puede devolver cualquiera de los dos y variar
+    // entre corridas. Un ciclo activo de más en la DB compartida vuelve
+    // intermitente cualquier spec que resuelva el ciclo activo. Acá sólo hace
+    // falta un destino de FK válido, no un ciclo vigente.
+    const ciclo = await client.query(
+      `INSERT INTO ciclos_cliente (id, ciclo_vigente_id, nombre, fecha_inicio, fecha_fin, activo, updated_at)
+       VALUES (gen_random_uuid(), gen_random_uuid(), 'Ciclo test CHECKs compras', '2026-01-01', '2026-12-31', false, now())
+       RETURNING id`,
+    );
+    cicloId = ciclo.rows[0].id as string;
   });
 
   afterAll(async () => {
+    await limpiarDatosDeEsteSpec();
+    await client.query('DELETE FROM ciclos_cliente WHERE id = $1', [cicloId]);
     await client.end();
   });
 
   beforeEach(async () => {
-    // Orden por FKs: hijas antes que padres.
-    await client.query('DELETE FROM operaciones_compra');
-    await client.query('DELETE FROM items_compra');
-    await client.query('DELETE FROM compras');
-    await client.query('DELETE FROM ciclos_cliente');
-
-    const ciclo = await client.query(
-      `INSERT INTO ciclos_cliente (id, ciclo_vigente_id, nombre, fecha_inicio, fecha_fin, activo, updated_at)
-       VALUES (gen_random_uuid(), gen_random_uuid(), 'Ciclo test compras', '2026-01-01', '2026-12-31', true, now())
-       RETURNING id`,
-    );
-    cicloId = ciclo.rows[0].id as string;
+    await limpiarDatosDeEsteSpec();
   });
 
   /** Numero único por test — evita choques con el UNIQUE de `numero` entre corridas del mismo archivo. */
