@@ -27,6 +27,7 @@ import {
 import { CompraEntity } from '../../domain/entities/compra.entity';
 import { ItemCompraEntity } from '../../domain/entities/item-compra.entity';
 import {
+  CompraCanceladaError,
   CompraNoEncontradaError,
   ItemCompraNoEncontradoError,
   CantidadEntregadaExcedeCompradaError,
@@ -65,6 +66,54 @@ function compraConItemComprado(
   const item = compra.items[0];
   item.aprobar('aprobador-uuid');
   item.registrarCompra(cantidadComprada);
+  return { compra, item };
+}
+
+/**
+ * Compra YA CANCELADA con un ítem que ya tiene `cantidadComprada` registrada.
+ * Construida vía `reconstitute()` (no `compra.cancelar()`): con
+ * `cantidadComprada > 0` la cancelación real fallaría por S29
+ * (`CompraConComprasRegistradasError`) — acá se simula directamente el
+ * estado persistido para probar que el guard de esta capa de aplicación
+ * también corta el registro de entrega sobre una compra cancelada.
+ */
+function compraCanceladaConItemComprado(
+  cantidad = 10,
+  cantidadComprada = 6,
+): { compra: CompraEntity; item: ItemCompraEntity } {
+  const item = ItemCompraEntity.create(
+    {
+      compraId: 'compra-uuid',
+      descripcion: 'Resma de papel A4',
+      cantidad,
+      proveedor: 'Proveedor SA',
+      monto: 1500,
+      moneda: 'ARS',
+      fechaCotizacion: new Date('2026-08-01'),
+      observaciones: null,
+    },
+    'item-uuid',
+  );
+  item.aprobar('aprobador-uuid');
+  item.registrarCompra(cantidadComprada);
+  const compra = CompraEntity.reconstitute(
+    {
+      numero: 'COM-2026-00001',
+      fechaSolicitud: new Date('2026-08-01'),
+      motivo: 'Compra de insumos',
+      descripcion: null,
+      solicitanteId: 'solicitante-uuid',
+      cicloId: 'ciclo-uuid',
+      canceladaEn: new Date('2026-08-05'),
+      canceladoPorId: 'usuario-cancelador',
+      motivoCancelacion: 'Ya no se necesita',
+    },
+    [item],
+    'compra-uuid',
+    new Date('2026-08-01'),
+    new Date('2026-08-01'),
+    null,
+  );
   return { compra, item };
 }
 
@@ -188,5 +237,19 @@ describe('RegistrarEntregaDeItemUseCase', () => {
 
     expect(result.isFail()).toBe(true);
     expect(result.getError()).toBeInstanceOf(ItemCompraNoEncontradoError);
+  });
+
+  it('compra cancelada -> CompraCanceladaError, sin mutar el ítem, sin persistir y sin abrir la tx', async () => {
+    const { compra, item } = compraCanceladaConItemComprado(10, 6);
+    const c = makeCollaborators(compra);
+
+    const result = await c.useCase.execute(baseDto(compra, item, { cantidadEntregada: 3 }));
+
+    expect(result.isFail()).toBe(true);
+    expect(result.getError()).toBeInstanceOf(CompraCanceladaError);
+    expect(item.cantidadEntregada).toBe(0);
+    expect(c.compraRepo.guardarItem).not.toHaveBeenCalled();
+    expect(c.registrarOperacion.registrar).not.toHaveBeenCalled();
+    expect(c.txRunner.run).not.toHaveBeenCalled();
   });
 });

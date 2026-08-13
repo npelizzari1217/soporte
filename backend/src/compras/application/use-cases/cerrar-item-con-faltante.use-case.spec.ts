@@ -29,6 +29,7 @@ import {
 import { CompraEntity, CompraProps } from '../../domain/entities/compra.entity';
 import { ItemCompraEntity, ItemCompraCreateProps } from '../../domain/entities/item-compra.entity';
 import {
+  CompraCanceladaError,
   CompraNoEncontradaError,
   ItemCompraNoEncontradoError,
   ItemCompraYaCerradoError,
@@ -259,5 +260,26 @@ describe('CerrarItemConFaltanteUseCase', () => {
       expect(result.isFail()).toBe(true);
       expect(result.getError()).toBeInstanceOf(ItemCompraYaCerradoError);
     });
+  });
+
+  it('compra cancelada -> CompraCanceladaError, sin mutar el ítem, sin persistir y sin abrir la tx', async () => {
+    const c = makeCollaborators();
+    const item = crearItemAprobadoConCompra(6); // faltante real: cantidad=10, comprada=6
+    const compra = crearCompraConItem(item, {
+      canceladaEn: new Date('2026-02-01'),
+      canceladoPorId: 'usuario-cancelador',
+      motivoCancelacion: 'Ya no se necesita',
+    });
+    c.compraRepo.findByIdConItems.mockResolvedValue(compra);
+
+    const result = await c.useCase.execute(baseDto());
+
+    expect(result.isFail()).toBe(true);
+    expect(result.getError()).toBeInstanceOf(CompraCanceladaError);
+    expect(item.cerradoConFaltante).toBe(false);
+    expect(item.motivoCierreFaltante).toBeNull();
+    expect(c.compraRepo.guardarItem).not.toHaveBeenCalled();
+    expect(c.registrarOperacionCompra.registrar).not.toHaveBeenCalled();
+    expect(c.txRunner.run).not.toHaveBeenCalled();
   });
 });

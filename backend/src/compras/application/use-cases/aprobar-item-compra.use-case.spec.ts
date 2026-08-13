@@ -15,14 +15,21 @@
  *   `rechazar-item-compra.use-case.spec.ts`.
  * - S35: exactamente 1 `OperacionCompra` por aprobación exitosa, con el
  *   `tipo` correcto (`ITEM_APROBADO`).
+ * - Hueco de spec resuelto por el maintainer: §4.2 (S5) SÍ reserva "compra
+ *   cancelada" para el ABM de ítems, pero §4.3 (S8) nunca lo dijo para la
+ *   decisión. PR-16 documentó esa ausencia como intencional; el maintainer
+ *   la cerró — aprobar sobre una compra cancelada también falla con
+ *   `CompraCanceladaError`, SIN mutar y SIN bitácora, igual que el ABM.
  *
- * Ref spec: sdd/redisenio-modulo-compras/spec §4.3 (S8, S10), §4.10 (S35).
- * Ref design: ADR-C2, ADR-C4, ADR-C6. Tarea: PR-16.
+ * Ref spec: sdd/redisenio-modulo-compras/spec §4.2 (S5), §4.3 (S8, S10),
+ * §4.10 (S35). Ref design: ADR-C2, ADR-C4, ADR-C6. Tarea: PR-16 + guard de
+ * remediación (compra cancelada en decisión por ítem).
  */
 import { AprobarItemCompraUseCase, AprobarItemCompraDto } from './aprobar-item-compra.use-case';
 import { CompraEntity, CompraProps } from '../../domain/entities/compra.entity';
 import { ItemCompraEntity, ItemCompraCreateProps } from '../../domain/entities/item-compra.entity';
 import {
+  CompraCanceladaError,
   CompraNoEncontradaError,
   ItemCompraNoEncontradoError,
   ItemCompraYaDecididoError,
@@ -211,5 +218,34 @@ describe('AprobarItemCompraUseCase', () => {
         expect(c.txRunner.run).not.toHaveBeenCalled();
       },
     );
+  });
+
+  it('S5 (extendido a la decisión): compra cancelada -> CompraCanceladaError, SIN mutar y SIN registrar bitácora', async () => {
+    const c = makeCollaborators();
+    const item = ItemCompraEntity.create(crearItemPropsValidas(), ITEM_ID);
+    const estadoPrevio = item.estadoAprobacion;
+    const decididoPorIdPrevio = item.decididoPorId;
+    const decididoEnPrevio = item.decididoEn;
+    const compra = crearCompraConItem(item, {
+      canceladaEn: new Date('2026-02-01'),
+      canceladoPorId: 'usuario-cancelador',
+      motivoCancelacion: 'Ya no se necesita',
+    });
+    c.compraRepo.findByIdConItems.mockResolvedValue(compra);
+
+    const result = await c.useCase.execute(baseDto());
+
+    expect(result.isFail()).toBe(true);
+    expect(result.getError()).toBeInstanceOf(CompraCanceladaError);
+
+    // NO muta: el ítem queda exactamente como estaba.
+    expect(item.estadoAprobacion).toBe(estadoPrevio);
+    expect(item.decididoPorId).toBe(decididoPorIdPrevio);
+    expect(item.decididoEn).toBe(decididoEnPrevio);
+
+    // NO registra bitácora — una decisión rechazada no es un evento del timeline.
+    expect(c.registrarOperacionCompra.registrar).toHaveBeenCalledTimes(0);
+    expect(c.compraRepo.guardarItem).not.toHaveBeenCalled();
+    expect(c.txRunner.run).not.toHaveBeenCalled();
   });
 });

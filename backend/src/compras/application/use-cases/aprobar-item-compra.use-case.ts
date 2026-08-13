@@ -2,6 +2,7 @@ import { DomainError, Result } from '../../../shared/domain/result';
 import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { ItemCompraEntity } from '../../domain/entities/item-compra.entity';
 import {
+  CompraCanceladaError,
   CompraNoEncontradaError,
   ItemCompraNoEncontradoError,
 } from '../../domain/errors/compras.errors';
@@ -42,17 +43,25 @@ export interface AprobarItemCompraDto {
  *
  * NO existe "aprobar la compra": el estado de la cabecera es 100% derivado
  * (`derivarEstadoCompra`, ADR-C1) — este caso de uso jamás toca `CompraEntity`
- * más que para localizar el ítem, y no persiste la cabecera.
+ * más que para localizar el ítem y leer `canceladaEn`, y no persiste la
+ * cabecera.
  *
- * No hay guarda de "compra cancelada" (a diferencia del ABM de ítems, S5):
- * la spec (§4.3) no reserva esa combinación para S8/S10, y `CompraEntity`
- * no expone un método de decisión que la aplique — este caso de uso no
- * inventa una regla que la spec no pide.
+ * Guarda de "compra cancelada" (hueco de spec resuelto por el maintainer):
+ * §4.2 (S5) SÍ reserva esa combinación para el ABM de ítems, pero §4.3
+ * nunca lo dijo para S8/S10 — PR-16 documentó esa ausencia como
+ * intencional, y el maintainer la cerró para eliminar la asimetría (no
+ * podías editar/eliminar un ítem de una compra cancelada, pero SÍ
+ * aprobarlo/rechazarlo). El guard lee `compra.canceladaEn` (getter público
+ * ya existente) y corre ANTES de decidir el ítem y ANTES de abrir la
+ * transacción — no requiere tocar `CompraEntity`: `asegurarNoCancelada()`
+ * es privado y exclusivo del ABM (`agregarItem`/`editarItem`/
+ * `eliminarItem`), y este caso de uso nunca llamó a esos métodos.
  *
  * Sin throw para fallos esperados — todos se modelan con `Result.fail()`.
  *
- * Ref spec: sdd/redisenio-modulo-compras/spec §4.3 (S8, S10), §4.10 (S35).
- * Ref design: ADR-C2, ADR-C4, ADR-C6. Tarea: PR-16.
+ * Ref spec: sdd/redisenio-modulo-compras/spec §4.2 (S5), §4.3 (S8, S10),
+ * §4.10 (S35). Ref design: ADR-C2, ADR-C4, ADR-C6. Tarea: PR-16 + guard de
+ * remediación (compra cancelada en decisión por ítem).
  */
 export class AprobarItemCompraUseCase {
   constructor(
@@ -65,6 +74,10 @@ export class AprobarItemCompraUseCase {
     const compra = await this.compraRepo.findByIdConItems(dto.compraId);
     if (!compra) {
       return Result.fail(new CompraNoEncontradaError(dto.compraId));
+    }
+
+    if (compra.canceladaEn !== null) {
+      return Result.fail(new CompraCanceladaError(compra.id));
     }
 
     const item = compra.items.find((i) => i.id === dto.itemId && !i.isDeleted());

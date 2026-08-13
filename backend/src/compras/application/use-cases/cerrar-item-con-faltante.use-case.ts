@@ -2,6 +2,7 @@ import { DomainError, Result } from '../../../shared/domain/result';
 import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { ItemCompraEntity } from '../../domain/entities/item-compra.entity';
 import {
+  CompraCanceladaError,
   CompraNoEncontradaError,
   ItemCompraNoEncontradoError,
 } from '../../domain/errors/compras.errors';
@@ -49,13 +50,24 @@ export interface CerrarItemConFaltanteDto {
  *
  * Flujo:
  * 1. Carga la compra CON sus ítems -> `CompraNoEncontradaError` si no existe.
- * 2. Busca el ítem ACTIVO (no soft-deleted) dentro del agregado ->
+ * 2. Guarda de "compra cancelada" (`compra.canceladaEn !== null`) ->
+ *    `CompraCanceladaError`, ANTES de buscar el ítem y SIN entrar a la
+ *    transacción. Guard de remediación (mismo criterio que
+ *    `AprobarItemCompraUseCase`/`RechazarItemCompraUseCase`): S29 prohíbe
+ *    cancelar una compra con algún ítem `cantidadComprada > 0` (el camino
+ *    correcto ahí ES cerrar con faltante), pero si se pudiera cerrar un
+ *    ítem con faltante DESPUÉS de cancelar la compra, se llegaría por la
+ *    puerta de atrás al mismo estado que S29 existe para impedir — el
+ *    invariante quedaría burlado. No requiere tocar `CompraEntity`:
+ *    `canceladaEn` es un getter público y `asegurarNoCancelada()` es
+ *    privado y exclusivo del ABM (`agregarItem`/`editarItem`/`eliminarItem`).
+ * 3. Busca el ítem ACTIVO (no soft-deleted) dentro del agregado ->
  *    `ItemCompraNoEncontradoError` si no está.
- * 3. `item.cerrarConFaltante(motivo)` — si falla (terminalidad, motivo
+ * 4. `item.cerrarConFaltante(motivo)` — si falla (terminalidad, motivo
  *    vacío, o sin faltante real), retorna el error SIN mutar ningún campo y
  *    SIN entrar a la transacción — ni `guardarItem` ni la bitácora se
  *    llaman.
- * 4. Si el cierre es válido: DENTRO de la transacción
+ * 5. Si el cierre es válido: DENTRO de la transacción
  *    (`ITenantTransactionRunner.run`), persiste el ítem y registra la
  *    operación `ITEM_CERRADO_CON_FALTANTE` (S35: exactamente 1 por mutación
  *    exitosa).
@@ -63,7 +75,8 @@ export interface CerrarItemConFaltanteDto {
  * Sin throw para fallos esperados — todos se modelan con `Result.fail()`.
  *
  * Ref spec: sdd/redisenio-modulo-compras/spec §4.7 (S22-S25), §4.10 (S35).
- * Ref design: ADR-C1, ADR-C2, ADR-C4. Tarea: PR-18.
+ * Ref design: ADR-C1, ADR-C2, ADR-C4. Tarea: PR-18 + guard de remediación
+ * (compra cancelada en cierre con faltante).
  */
 export class CerrarItemConFaltanteUseCase {
   constructor(
@@ -76,6 +89,10 @@ export class CerrarItemConFaltanteUseCase {
     const compra = await this.compraRepo.findByIdConItems(dto.compraId);
     if (!compra) {
       return Result.fail(new CompraNoEncontradaError(dto.compraId));
+    }
+
+    if (compra.canceladaEn !== null) {
+      return Result.fail(new CompraCanceladaError(compra.id));
     }
 
     const item = compra.items.find((i) => i.id === dto.itemId && !i.isDeleted());

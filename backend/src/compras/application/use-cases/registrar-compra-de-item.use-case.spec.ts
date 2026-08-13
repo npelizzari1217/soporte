@@ -29,6 +29,7 @@ import {
 import { CompraEntity } from '../../domain/entities/compra.entity';
 import { ItemCompraEntity } from '../../domain/entities/item-compra.entity';
 import {
+  CompraCanceladaError,
   CompraNoEncontradaError,
   ItemCompraNoEncontradoError,
   ItemCompraNoAprobadoError,
@@ -214,5 +215,21 @@ describe('RegistrarCompraDeItemUseCase', () => {
 
     expect(result.isFail()).toBe(true);
     expect(result.getError()).toBeInstanceOf(ItemCompraNoEncontradoError);
+  });
+
+  it('compra cancelada -> CompraCanceladaError, sin mutar el ítem, sin persistir y sin abrir la tx', async () => {
+    const { compra, item } = compraConItemAprobado(10);
+    const cancelacion = compra.cancelar('usuario-cancelador', 'Ya no se necesita');
+    expect(cancelacion.isOk()).toBe(true); // precondición del test: la cancelación en sí es válida
+    const c = makeCollaborators(compra);
+
+    const result = await c.useCase.execute(baseDto(compra, item, { cantidadComprada: 4 }));
+
+    expect(result.isFail()).toBe(true);
+    expect(result.getError()).toBeInstanceOf(CompraCanceladaError);
+    expect(item.cantidadComprada).toBe(0);
+    expect(c.compraRepo.guardarItem).not.toHaveBeenCalled();
+    expect(c.registrarOperacion.registrar).not.toHaveBeenCalled();
+    expect(c.txRunner.run).not.toHaveBeenCalled();
   });
 });
