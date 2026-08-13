@@ -17,6 +17,7 @@
  * ADR-C2, ADR-C5. Tarea: PR-11.
  */
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '.prisma/tenant';
 import { TenantContext } from '../../../../shared/tenancy/tenant-context';
 import { TenantPrismaClient } from '../../../../shared/infrastructure/persistence/prisma-clients';
 import { ICompraRepository, CompraListFiltros } from '../../../domain/ports/i-compra.repository';
@@ -50,22 +51,45 @@ export class PrismaCompraRepository implements ICompraRepository {
   }
 
   /**
-   * Retorna las compras del tenant activo con sus ítems cargados (S32),
-   * excluye soft-deleted, ordenadas por `created_at DESC`. `filtros.limit`/
-   * `filtros.offset` aplican paginación vía `take`/`skip` — una sola
-   * sentencia SQL gracias al `include` (el `count` de paginación, si el
-   * caller lo necesita, es una segunda sentencia aparte, a cargo del caso de
-   * uso — S32 exige máximo 2, no 1).
+   * `where` compartido por `findAllConItems` y `count` — la MISMA condición
+   * de filtro para ambas sentencias, sin duplicar la lógica (hoy es
+   * constante porque `CompraListFiltros` solo tiene paginación; si en el
+   * futuro se agregan filtros de negocio, se construyen ACÁ una sola vez).
+   */
+  private buildWhere(): Prisma.CompraWhereInput {
+    return { deletedAt: null };
+  }
+
+  /**
+   * Retorna las compras del tenant activo con sus ítems cargados, excluye
+   * soft-deleted, ordenadas por `created_at DESC`. `filtros.limit`/
+   * `filtros.offset` aplican paginación vía `take`/`skip`. El `include` de
+   * ítems son 2 sentencias SQL FIJAS medidas empíricamente (R17, PR-12) —
+   * ver JSDoc de `count()` para la 3ª sentencia (excepción documentada a
+   * S32) y por qué NO se usa `COUNT(*) OVER()` para evitarla.
    */
   async findAllConItems(filtros?: CompraListFiltros): Promise<CompraEntity[]> {
     const rows = await this.client.compra.findMany({
-      where: { deletedAt: null },
+      where: this.buildWhere(),
       include: { items: true },
       orderBy: { createdAt: 'desc' },
       ...(filtros?.limit !== undefined && { take: filtros.limit }),
       ...(filtros?.offset !== undefined && { skip: filtros.offset }),
     });
     return rows.map((row) => CompraMapper.toDomain(row));
+  }
+
+  /**
+   * Cuenta el total de compras que cumplen el MISMO `where` que
+   * `findAllConItems` (`buildWhere()`), IGNORANDO `limit`/`offset` — usado
+   * por `ListarComprasUseCase` para `total` de paginación. Tipado: el SDK
+   * de Prisma tipa `count()` como `Promise<number>` de forma nativa (a
+   * diferencia de `$queryRaw` con `COUNT(*) OVER()`, que deserializa
+   * `bigint` — ver JSDoc de `ICompraRepository.count` para el resto de la
+   * comparación). EXCEPCIÓN DOCUMENTADA a S32: ver JSDoc del puerto.
+   */
+  async count(): Promise<number> {
+    return this.client.compra.count({ where: this.buildWhere() });
   }
 
   /**

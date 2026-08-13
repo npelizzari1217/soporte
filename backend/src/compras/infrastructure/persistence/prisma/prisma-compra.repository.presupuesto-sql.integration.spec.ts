@@ -1,12 +1,32 @@
 /**
- * PR-12 [INTEGRATION] — RED→GREEN: S32, presupuesto de sentencias SQL.
+ * PR-12/PR-20 [INTEGRATION] — RED→GREEN: S32, presupuesto de sentencias SQL.
  *
- * `findAllConItems` debe resolver UNA página en MÁXIMO 2 sentencias SQL
- * (spec §4.9: "1 para las compras+items vía `include`, otra para el `count`
- * de paginación, si el caller lo necesita" — este spec mide SOLO
- * `findAllConItems`, sin `count`, así que el presupuesto real esperado acá
- * es 1). Medido de VERDAD contando las sentencias emitidas por Prisma vía
- * `$on('query', ...)` — no por inspección del código fuente.
+ * Una página completa (`findAllConItems` + `count()` para el `total` de
+ * paginación) debe resolverse en MÁXIMO 3 sentencias SQL. Medido de VERDAD
+ * contando las sentencias emitidas por Prisma vía `$on('query', ...)` — no
+ * por inspección del código fuente.
+ *
+ * **EXCEPCIÓN DOCUMENTADA a S32 (el "2" original) — por qué 3 y no 2**:
+ * S32 fijó "máximo 2 sentencias SQL por página" y esa regla fue escrita
+ * CONTRA el patrón N+1 — la patología es la consulta POR FILA (o por
+ * ítem), que crece linealmente con el tamaño de la página. `findAllConItems`
+ * ya mide 2 sentencias fijas (`include` de una relación 1:N = SELECT base +
+ * SELECT de la relación, R17, medido en este mismo spec). `count()` agrega
+ * una 3ª sentencia, pero es **O(1)**: una única sentencia agregada que NO
+ * crece con la cantidad de filas de la página ni con la cantidad de ítems
+ * por compra. Tres sentencias FIJAS siguen respetando el espíritu de S32 —
+ * la prohibición del N+1 sigue vigente sin excepciones; lo que cambia es
+ * que se admite un tercer round-trip fijo y aislado para la metadata de
+ * paginación (`total`), en vez de forzarlo dentro de las primeras dos.
+ *
+ * Se descartó `COUNT(*) OVER()` (window function) para mantener el "2"
+ * literal — ver `sdd/redisenio-modulo-compras/count-en-consulta`: rompe el
+ * contrato del mapper (columnas snake_case crudas vía `$queryRaw`), el
+ * total deserializa `bigint`, y si la página pedida devuelve CERO filas la
+ * window function no tiene fila donde llevar el total (el caso exacto en
+ * que más se necesita). `count()` aislado y tipado evita las tres
+ * fragilidades a cambio de UNA sentencia SQL adicional — el patrón estándar
+ * de la industria (`findMany` + `count()` con el mismo `where`).
  *
  * `PrismaService.getTenantClient()`/`TenantContext` NO exponen el evento
  * `query` (el cliente se construye sin `log` configurado) — este spec
@@ -41,8 +61,12 @@ const TENANT_TEST_DB_NAME = 'soporte_tenant_test';
 const CLIENTE_ID = 'test-cliente-pr12-sql-budget';
 const DUMMY_USUARIO_ID = '01900000-0000-7000-8000-000000000001';
 
-/** Presupuesto duro de S32: máximo de sentencias SQL por página de `findAllConItems`. */
-const PRESUPUESTO_MAXIMO_SENTENCIAS = 2;
+/**
+ * Presupuesto duro de una página completa: `findAllConItems` (2 sentencias
+ * fijas, R17) + `count()` (1 sentencia fija, O(1) — excepción documentada a
+ * S32, ver JSDoc del archivo). Total: 3, NO 2.
+ */
+const PRESUPUESTO_MAXIMO_SENTENCIAS = 3;
 
 describe('PrismaCompraRepository.findAllConItems — Presupuesto de sentencias SQL (S32)', () => {
   let prismaServiceParaUrl: PrismaService;
@@ -161,6 +185,23 @@ describe('PrismaCompraRepository.findAllConItems — Presupuesto de sentencias S
       `[S32] Sentencias SQL emitidas por findAllConItems: ${sentenciasEmitidas.length}` +
         ` -> ${JSON.stringify(sentenciasEmitidas)}`,
     );
-    expect(sentenciasEmitidas.length).toBeLessThanOrEqual(PRESUPUESTO_MAXIMO_SENTENCIAS);
+    expect(sentenciasEmitidas.length).toBeLessThanOrEqual(2);
+  }, 15_000);
+
+  it(`[CRITICAL] una página completa (findAllConItems + count) resuelve en EXACTAMENTE ${PRESUPUESTO_MAXIMO_SENTENCIAS} sentencias SQL — excepción documentada a S32 (O(1), no crece con la página)`, async () => {
+    const [pagina, total] = await withTenant(() =>
+      Promise.all([compraRepo.findAllConItems({ limit: 10, offset: 0 }), compraRepo.count()]),
+    );
+
+    expect(pagina.length).toBeGreaterThan(0);
+    expect(total).toBeGreaterThanOrEqual(pagina.length);
+
+    console.info(
+      `[S32+count] Sentencias SQL emitidas por findAllConItems+count: ${sentenciasEmitidas.length}` +
+        ` -> ${JSON.stringify(sentenciasEmitidas)}`,
+    );
+    // Exactamente 3, no "a lo sumo": el punto del test es demostrar que la
+    // excepción documentada agrega UNA sola sentencia fija, ni más ni menos.
+    expect(sentenciasEmitidas.length).toBe(PRESUPUESTO_MAXIMO_SENTENCIAS);
   }, 15_000);
 });

@@ -4,8 +4,9 @@
  * — ver spec dedicado `prisma-compra.repository.concurrencia.integration.spec.ts`
  * para S3/ADR-C5/H7).
  *
- * Cubre las 5 operaciones de `ICompraRepository` (ADR-C2): `guardar`,
- * `guardarItem`, `findByIdConItems`, `findAllConItems`, `findLastSecuencia`
+ * Cubre las 6 operaciones de `ICompraRepository` (ADR-C2): `guardar`,
+ * `guardarItem`, `findByIdConItems`, `findAllConItems`, `count` (PR-20,
+ * total de paginación — excepción documentada a S32), `findLastSecuencia`
  * (formato/orden, LEFT-ANCHORED — ver JSDoc del repo), y el aislamiento
  * (repo sin `TenantContext` activo lanza, mismo criterio que
  * `PrismaTicketRepository`).
@@ -298,6 +299,76 @@ describe('PrismaCompraRepository — Integration (PR-11, secuencial)', () => {
       } finally {
         await tenantClient.compra.deleteMany({ where: { cicloId: cicloPaginacion.id } });
         await tenantClient.cicloCliente.delete({ where: { id: cicloPaginacion.id } });
+      }
+    });
+  });
+
+  describe('count(filtros?) — PR-20, total de paginación (excepción documentada a S32)', () => {
+    it('el total es el del filtro completo, NO el tamaño de la página (más filas que el limit pedido)', async () => {
+      const suffix = randomBytes(2).toString('hex');
+      const cicloCount = await tenantClient.cicloCliente.create({
+        data: {
+          cicloVigenteId: DUMMY_USUARIO_ID,
+          nombre: `PR20TEST_COUNT_${suffix}`,
+          fechaInicio: new Date('2026-01-01'),
+          fechaFin: new Date('2026-12-31'),
+          activo: false,
+        },
+      });
+
+      try {
+        await withTenant(async () => {
+          // 5 compras propias, pero se pide una página de 2 -> total debe
+          // ser 5 (el universo filtrado), no 2 (el tamaño de la página).
+          for (let i = 0; i < 5; i += 1) {
+            await compraRepo.guardar(makeCompra({ cicloId: cicloCount.id }));
+          }
+
+          const pagina = await compraRepo.findAllConItems({ limit: 2, offset: 0 });
+          const total = await compraRepo.count();
+
+          expect(pagina.length).toBe(2);
+          expect(total).toBeGreaterThanOrEqual(5);
+        });
+      } finally {
+        await tenantClient.compra.deleteMany({ where: { cicloId: cicloCount.id } });
+        await tenantClient.cicloCliente.delete({ where: { id: cicloCount.id } });
+      }
+    });
+
+    it('[borde que descartó COUNT(*) OVER()] página vacía (offset más allá del total) -> total sigue siendo correcto', async () => {
+      const suffix = randomBytes(2).toString('hex');
+      const cicloVacio = await tenantClient.cicloCliente.create({
+        data: {
+          cicloVigenteId: DUMMY_USUARIO_ID,
+          nombre: `PR20TEST_EMPTY_${suffix}`,
+          fechaInicio: new Date('2026-01-01'),
+          fechaFin: new Date('2026-12-31'),
+          activo: false,
+        },
+      });
+
+      try {
+        await withTenant(async () => {
+          const compra = makeCompra({ cicloId: cicloVacio.id });
+          await compraRepo.guardar(compra);
+
+          const totalReal = await compraRepo.count();
+          // offset muy por encima del universo total del tenant -> página vacía.
+          const paginaVacia = await compraRepo.findAllConItems({ limit: 10, offset: 100_000 });
+          const totalTrasPaginaVacia = await compraRepo.count();
+
+          expect(paginaVacia).toEqual([]);
+          // `count()` es una consulta INDEPENDIENTE de `findAllConItems`: no
+          // depende de que la página tenga filas para devolver el total
+          // correcto (a diferencia de `COUNT(*) OVER()`, que SÍ dependía de
+          // eso — ver sdd/redisenio-modulo-compras/count-en-consulta).
+          expect(totalTrasPaginaVacia).toBe(totalReal);
+          expect(totalTrasPaginaVacia).toBeGreaterThan(0);
+        });
+      } finally {
+        await tenantClient.compra.deleteMany({ where: { cicloId: cicloVacio.id } });
+        await tenantClient.cicloCliente.delete({ where: { id: cicloVacio.id } });
       }
     });
   });

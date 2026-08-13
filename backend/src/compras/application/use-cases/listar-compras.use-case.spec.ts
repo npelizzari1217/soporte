@@ -1,5 +1,5 @@
 /**
- * PR-19 [UNIT] — RED→GREEN: `ListarComprasUseCase` (§4.9, S32-S34, H3).
+ * PR-19/PR-20 [UNIT] — RED→GREEN: `ListarComprasUseCase` (§4.9, S32-S34, H3).
  *
  * Todos los puertos mockeados (`vi.fn()`) — sin DB. Cubre:
  * - S33: el DTO de cada fila expone `estado`/`comprado`/`cerrado`/
@@ -9,13 +9,22 @@
  *   delegan en `derivarEstadoCompra`, ADR-C1): NO hay una segunda
  *   implementación de la tabla de verdad en este caso de uso.
  * - Paginación: `pagina`/`porPagina` se traducen a `limit`/`offset` sobre
- *   `ICompraRepository.findAllConItems` — el ÚNICO método de lectura que usa
- *   este caso de uso (S32: no se agrega ningún `include`/consulta extra).
+ *   `ICompraRepository.findAllConItems`.
  * - Defaults de paginación cuando el DTO no los provee.
- * - Sin compras -> `{ items: [] }`, sin error.
+ * - Sin compras -> `{ items: [], total }`, sin error.
+ * - `total` (PR-20, cierra el gap declarado en PR-19/H3): sale de
+ *   `ICompraRepository.count()`, EN PARALELO con `findAllConItems`
+ *   (`Promise.all`), SIN `limit`/`offset` — refleja el universo filtrado
+ *   completo, no el tamaño de la página. Incluye el borde que descartó la
+ *   alternativa de `COUNT(*) OVER()` (ver
+ *   `sdd/redisenio-modulo-compras/count-en-consulta`): página vacía
+ *   (`findAllConItems` devuelve `[]`) pero `total` sigue siendo el real,
+ *   porque `count()` es una consulta INDEPENDIENTE, no depende de que la
+ *   página tenga filas.
  *
  * Ref spec: sdd/redisenio-modulo-compras/spec §4.9 (S32, S33, S34). Ref
- * design: ADR-C1, ADR-C2. Ref tasks: PR-19, H3.
+ * design: ADR-C1, ADR-C2. Ref tasks: PR-19, H3; excepción `total` cerrada en
+ * `sdd/redisenio-modulo-compras/count-en-consulta`.
  */
 import { ListarComprasUseCase } from './listar-compras.use-case';
 import { CompraEntity, CompraProps } from '../../domain/entities/compra.entity';
@@ -68,7 +77,10 @@ function crearCompra(
 
 describe('ListarComprasUseCase', () => {
   function makeCollaborators() {
-    const compraRepo = { findAllConItems: vi.fn().mockResolvedValue([]) };
+    const compraRepo = {
+      findAllConItems: vi.fn().mockResolvedValue([]),
+      count: vi.fn().mockResolvedValue(0),
+    };
     const useCase = new ListarComprasUseCase(compraRepo as never);
     return { useCase, compraRepo };
   }
@@ -116,7 +128,7 @@ describe('ListarComprasUseCase', () => {
     expect(fila.cerrado).toBe(false);
   });
 
-  it('traduce pagina/porPagina a limit/offset del ÚNICO método de lectura del puerto (S32)', async () => {
+  it('traduce pagina/porPagina a limit/offset de findAllConItems (S32) — count() no recibe paginación', async () => {
     const c = makeCollaborators();
 
     await c.useCase.execute({ pagina: 3, porPagina: 10 });
@@ -143,5 +155,41 @@ describe('ListarComprasUseCase', () => {
 
     expect(result.isOk()).toBe(true);
     expect(result.getValue().items).toEqual([]);
+  });
+
+  it('total refleja el universo filtrado completo, NO el tamaño de la página (más filas que porPagina)', async () => {
+    const c = makeCollaborators();
+    const compraA = crearCompra('compra-a');
+    const compraB = crearCompra('compra-b');
+    // Página de 2 pero el filtro completo tiene 5 compras -> total debe ser 5, no 2.
+    c.compraRepo.findAllConItems.mockResolvedValue([compraA, compraB]);
+    c.compraRepo.count.mockResolvedValue(5);
+
+    const result = await c.useCase.execute({ pagina: 1, porPagina: 2 });
+
+    expect(result.getValue().items).toHaveLength(2);
+    expect(result.getValue().total).toBe(5);
+  });
+
+  it('el borde que descartó COUNT(*) OVER(): página vacía (offset más allá del total) pero total sigue siendo correcto', async () => {
+    const c = makeCollaborators();
+    // findAllConItems no tiene fila para "llevar" un total embebido en la
+    // misma sentencia -- por eso count() es una consulta INDEPENDIENTE.
+    c.compraRepo.findAllConItems.mockResolvedValue([]);
+    c.compraRepo.count.mockResolvedValue(5);
+
+    const result = await c.useCase.execute({ pagina: 100, porPagina: 2 });
+
+    expect(result.getValue().items).toEqual([]);
+    expect(result.getValue().total).toBe(5);
+  });
+
+  it('count() se llama SIN limit/offset (mide el universo completo, no la página) y en paralelo con findAllConItems', async () => {
+    const c = makeCollaborators();
+
+    await c.useCase.execute({ pagina: 3, porPagina: 10 });
+
+    expect(c.compraRepo.count).toHaveBeenCalledTimes(1);
+    expect(c.compraRepo.count).toHaveBeenCalledWith();
   });
 });

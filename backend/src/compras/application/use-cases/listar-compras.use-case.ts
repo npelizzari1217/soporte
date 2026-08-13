@@ -32,9 +32,15 @@ export interface CompraListItemDto {
   totalesPorMoneda: Record<string, number>;
 }
 
-/** Resultado paginado de `ListarComprasUseCase`. Sin `total`: `ICompraRepository` no expone `count()` (ADR-C2 no lo definió, y este PR no puede agregar métodos al puerto — ver riesgo R17: cualquier sentencia SQL extra por página competiría con el presupuesto de S32). */
+/**
+ * Resultado paginado de `ListarComprasUseCase`. `total` es el universo
+ * filtrado completo (vía `ICompraRepository.count()`), NO el tamaño de la
+ * página actual — sigue siendo correcto incluso cuando `items` viene vacío
+ * (offset más allá del total).
+ */
 export interface ListarComprasResult {
   items: CompraListItemDto[];
+  total: number;
   pagina: number;
   porPagina: number;
 }
@@ -50,33 +56,45 @@ export interface ListarComprasResult {
  * estructural "tx ⇒ bitácora" de ADR-C4/PR-22 — degradaría el predicado que
  * hace detectable en compilación el olvido de bitácora en un mutador nuevo.
  *
- * Único método de lectura usado: `ICompraRepository.findAllConItems`
- * (S32: máximo 2 sentencias SQL por página, ya medido en PR-12 — este caso
- * de uso NO agrega ningún `include`/consulta adicional, ni siquiera un
- * `count()` de paginación: el puerto no lo expone).
+ * Dos métodos de lectura del puerto, en paralelo (`Promise.all`):
+ * `findAllConItems` (la página) y `count` (el total del filtro completo,
+ * IGNORANDO `limit`/`offset`) — mismo patrón que `ListarTicketsUseCase`
+ * (T7). `count()` es una 3ª sentencia SQL fija y aislada, EXCEPCIÓN
+ * DOCUMENTADA a S32 (ver JSDoc de `ICompraRepository.count`): el límite de
+ * 2 se fijó contra el N+1 (consulta POR FILA), y un `count()` es O(1) — no
+ * crece con la página ni con los ítems. La prohibición del N+1 sigue
+ * vigente sin excepciones; solo se admite este tercer round-trip fijo.
  *
- * Alcance de tenant (S41): `findAllConItems` ya está scopeado por
- * `TenantContext` en la implementación concreta (PR-11/PR-12) — este caso de
- * uso NO recibe ni aplica un parámetro `clienteId`.
+ * Alcance de tenant (S41): tanto `findAllConItems` como `count` ya están
+ * scopeados por `TenantContext` en la implementación concreta (PR-11/PR-12)
+ * — este caso de uso NO recibe ni aplica un parámetro `clienteId`.
  *
  * Ref spec: sdd/redisenio-modulo-compras/spec §4.9 (S32, S33, S34). Ref
- * design: ADR-C1, ADR-C2, ADR-C4. Ref tasks: PR-19, H3, R17.
+ * design: ADR-C1, ADR-C2, ADR-C4. Ref tasks: PR-19, H3, R17; excepción de
+ * `total` cerrada en `sdd/redisenio-modulo-compras/count-en-consulta`.
  */
 export class ListarComprasUseCase {
-  constructor(private readonly compraRepo: Pick<ICompraRepository, 'findAllConItems'>) {}
+  constructor(private readonly compraRepo: Pick<ICompraRepository, 'findAllConItems' | 'count'>) {}
 
   async execute(dto: ListarComprasDto = {}): Promise<Result<ListarComprasResult, DomainError>> {
     const pagina = dto.pagina ?? PAGINA_DEFAULT;
     const porPagina = dto.porPagina ?? POR_PAGINA_DEFAULT;
 
-    const filtros: CompraListFiltros = {
+    const filtrosPagina: CompraListFiltros = {
       limit: porPagina,
       offset: (pagina - 1) * porPagina,
     };
-    const compras = await this.compraRepo.findAllConItems(filtros);
+    // `count()` SIN limit/offset: mide el universo filtrado completo, no la
+    // página — así el total sigue siendo correcto incluso cuando la página
+    // pedida devuelve cero filas (offset más allá del total).
+    const [compras, total] = await Promise.all([
+      this.compraRepo.findAllConItems(filtrosPagina),
+      this.compraRepo.count(),
+    ]);
 
     return Result.ok({
       items: compras.map(ListarComprasUseCase.aFilaListado),
+      total,
       pagina,
       porPagina,
     });
