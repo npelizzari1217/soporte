@@ -142,3 +142,63 @@ function derivarEstadoDesdeConteos(n: number, nP: number, nA: number, nR: number
   }
   return 'RECHAZADO'; // T5: nP=0, nA=0, nR=n>=1
 }
+
+/**
+ * Convierte una cantidad/monto a centésimas ENTERAS y redondeadas —
+ * ADR-C3. Toda comparación y suma de cantidades/montos del módulo de
+ * compras pasa por acá, sin excepción.
+ *
+ * Por qué: JS representa fracciones decimales en binario IEEE-754, así que
+ * operaciones tan simples como `0.7 - 0.6` dan `0.09999999999999998` en vez
+ * de `0.1` (undershoot) — comparar ese resultado con `>=` contra `0.1` en
+ * float directo da un falso negativo. `0.1 + 0.2` da el error simétrico
+ * (`0.30000000000000004`, overshoot) que en una comparación `>=` puede
+ * pasar desapercibido por casualidad, pero NO es confiable: la única forma
+ * de comparar y sumar cantidades/montos sin depender de en qué dirección
+ * redondeó el float es hacerlo en una escala entera. `Math.round` (no
+ * `Math.floor`/truncado) evita que el propio redondeo a centésimas
+ * introduzca un nuevo sesgo sistemático hacia abajo.
+ *
+ * @param n Valor en unidades "normales" (ej. `cantidad=0.3`, `monto=150000.5`).
+ */
+export function enCentesimas(n: number): number {
+  return Math.round(n * 100);
+}
+
+/** Vista mínima de un ítem para derivar si está "comprado" (ADR-C3, §3). */
+export interface ItemParaComprado {
+  readonly cantidad: number;
+  readonly cantidadComprada: number;
+  readonly cerradoConFaltante: boolean;
+}
+
+/**
+ * `true` si `cantidadComprada` alcanza o supera `cantidad`, o si el ítem fue
+ * cerrado con faltante — la cláusula OR deliberada de S22: el cierre con
+ * faltante marca `comprado=true` PESE a no haber alcanzado la cantidad
+ * pedida, porque a partir de ese momento no hay más compra posible sobre
+ * ese ítem (S25, terminal). Comparación en centésimas (ADR-C3).
+ */
+export function itemComprado(item: ItemParaComprado): boolean {
+  return (
+    enCentesimas(item.cantidadComprada) >= enCentesimas(item.cantidad) || item.cerradoConFaltante
+  );
+}
+
+/** Vista mínima de un ítem para derivar si está "entregado" (ADR-C3, §3). */
+export interface ItemParaEntregado {
+  readonly cantidad: number;
+  readonly cantidadEntregada: number;
+  readonly cerradoConFaltante: boolean;
+}
+
+/**
+ * `true` si `cantidadEntregada` alcanza o supera `cantidad`, o si el ítem
+ * fue cerrado con faltante — misma cláusula OR que `itemComprado` (S22).
+ * Comparación en centésimas (ADR-C3).
+ */
+export function itemEntregado(item: ItemParaEntregado): boolean {
+  return (
+    enCentesimas(item.cantidadEntregada) >= enCentesimas(item.cantidad) || item.cerradoConFaltante
+  );
+}

@@ -1,19 +1,33 @@
 import { describe, it, expect } from 'vitest';
 import { ItemCompraEntity, ItemCompraCreateProps } from './item-compra.entity';
-import { ItemCompraCongeladoError, ItemCompraYaDecididoError } from '../errors/compras.errors';
+import {
+  ItemCompraCongeladoError,
+  ItemCompraYaDecididoError,
+  ItemCompraNoAprobadoError,
+  CantidadCompradaExcedeSolicitadaError,
+  CantidadCompradaRetrocedeError,
+  CantidadEntregadaExcedeCompradaError,
+  CantidadEntregadaRetrocedeError,
+  ItemCompraYaCerradoError,
+  ItemSinFaltanteError,
+  MotivoCierreFaltanteRequeridoError,
+} from '../errors/compras.errors';
 
 /**
- * PR-6 [UNIT] — RED→GREEN: `ItemCompraEntity`, parte 1 de 2.
+ * PR-6/PR-7 [UNIT] — RED→GREEN: `ItemCompraEntity`.
  *
- * Cubre: `create()` con validación de campos base, `get decidido()`
+ * PR-6 (parte 1): `create()` con validación de campos base, `get decidido()`
  * (ADR-C3: APROBADO **y** RECHAZADO), el congelamiento de
  * `cantidad`/`monto`/`moneda` (S13, sobre AMBOS estados decididos) y la
  * decisión por ítem con re-decisión bloqueada y sin mutación (S10).
  *
- * FUERA DE ALCANCE (PR-7): registrar compra/entrega, cierre con faltante,
- * aritmética en centésimas.
+ * PR-7 (parte 2): `registrarCompra`/`registrarEntrega`/`cerrarConFaltante`,
+ * los getters `comprado`/`entregado` (delegan en `itemComprado`/
+ * `itemEntregado` de `domain/services/estado-compra.ts`, ADR-C1) y la
+ * aritmética en centésimas (ADR-C3) — LA TRAMPA DEL FLOAT es la razón de
+ * ser de esta parte.
  *
- * Ref spec: sdd/redisenio-modulo-compras/spec §4.2-§4.4, §6. Tarea: PR-6.
+ * Ref spec: sdd/redisenio-modulo-compras/spec §4.2-§4.7, §6. Tareas: PR-6, PR-7.
  */
 
 function crearPropsValidas(overrides: Partial<ItemCompraCreateProps> = {}): ItemCompraCreateProps {
@@ -28,6 +42,13 @@ function crearPropsValidas(overrides: Partial<ItemCompraCreateProps> = {}): Item
     observaciones: null,
     ...overrides,
   };
+}
+
+/** Crea un ítem ya APROBADO — precondición de §4.5/§4.6/§4.7 (S16). */
+function crearItemAprobado(overrides: Partial<ItemCompraCreateProps> = {}): ItemCompraEntity {
+  const item = ItemCompraEntity.create(crearPropsValidas(overrides));
+  item.aprobar('usuario-1');
+  return item;
 }
 
 describe('ItemCompraEntity', () => {
@@ -265,6 +286,199 @@ describe('ItemCompraEntity', () => {
       item.actualizar({});
       expect(item.observaciones).toBeNull();
       expect(item.descripcion).toBe('Notebook Dell Latitude'); // no tocado
+    });
+  });
+
+  // ───────────────────────────────────────────────────────────────────────
+  // PR-7 — LA TRAMPA DEL FLOAT (ADR-C3): razón de ser de `enCentesimas`.
+  // ───────────────────────────────────────────────────────────────────────
+  describe('LA TRAMPA DEL FLOAT — aritmética en centésimas (ADR-C3)', () => {
+    it('cantidad=0.3, cantidadComprada=0.1+0.2 (0.30000000000000004) => comprado debe ser true', () => {
+      const item = crearItemAprobado({ cantidad: 0.3 });
+
+      const result = item.registrarCompra(0.1 + 0.2);
+
+      expect(result.isOk()).toBe(true);
+      expect(item.comprado).toBe(true);
+    });
+
+    it('caso real de UNDERSHOOT de float: cantidad=0.1, cantidadComprada=0.7-0.6 (0.09999999999999998 en float directo, MENOR a 0.1) => comprado debe ser true', () => {
+      // A diferencia del caso 0.1+0.2 (que por casualidad redondea hacia
+      // arriba y ya da `true` incluso comparando floats directos), este
+      // caso SÍ falla con `cantidadComprada >= cantidad` en float directo:
+      // 0.7-0.6 === 0.09999999999999998 < 0.1. Verificado empíricamente
+      // antes de implementar (ver apply-progress-pr7). Es el caso que
+      // demuestra la necesidad real de `Math.round(x*100)`.
+      const item = crearItemAprobado({ cantidad: 0.1 });
+
+      const result = item.registrarCompra(0.7 - 0.6);
+
+      expect(result.isOk()).toBe(true);
+      expect(item.comprado).toBe(true);
+    });
+  });
+
+  describe('registrarCompra() — §4.5', () => {
+    it('S15: compra parcial OK, comprado sigue false', () => {
+      const item = crearItemAprobado({ cantidad: 10 });
+
+      const result = item.registrarCompra(4);
+
+      expect(result.isOk()).toBe(true);
+      expect(item.cantidadComprada).toBe(4);
+      expect(item.comprado).toBe(false);
+    });
+
+    it('S16: registrar compra sobre un ítem NO aprobado falla con ItemCompraNoAprobadoError', () => {
+      const item = ItemCompraEntity.create(crearPropsValidas());
+
+      const result = item.registrarCompra(1);
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(ItemCompraNoAprobadoError);
+      expect(item.cantidadComprada).toBe(0);
+    });
+
+    it('S17: comprar más de lo pedido falla con CantidadCompradaExcedeSolicitadaError, sin mutar', () => {
+      const item = crearItemAprobado({ cantidad: 5 });
+
+      const result = item.registrarCompra(6);
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(CantidadCompradaExcedeSolicitadaError);
+      expect(item.cantidadComprada).toBe(0);
+    });
+
+    it('S18: retroceder la cantidad comprada falla con CantidadCompradaRetrocedeError, sin mutar', () => {
+      const item = crearItemAprobado({ cantidad: 10 });
+      item.registrarCompra(6);
+
+      const result = item.registrarCompra(3);
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(CantidadCompradaRetrocedeError);
+      expect(item.cantidadComprada).toBe(6);
+    });
+
+    it('registrar la misma cantidad ya registrada NO es retroceso (>=, no >)', () => {
+      const item = crearItemAprobado({ cantidad: 10 });
+      item.registrarCompra(6);
+
+      const result = item.registrarCompra(6);
+
+      expect(result.isOk()).toBe(true);
+      expect(item.cantidadComprada).toBe(6);
+    });
+  });
+
+  describe('registrarEntrega() — §4.6', () => {
+    it('S19: entrega dentro de lo comprado OK', () => {
+      const item = crearItemAprobado({ cantidad: 10 });
+      item.registrarCompra(8);
+
+      const result = item.registrarEntrega(5);
+
+      expect(result.isOk()).toBe(true);
+      expect(item.cantidadEntregada).toBe(5);
+    });
+
+    it('S20: entregar más de lo comprado falla con CantidadEntregadaExcedeCompradaError, sin mutar', () => {
+      const item = crearItemAprobado({ cantidad: 10 });
+      item.registrarCompra(5);
+
+      const result = item.registrarEntrega(6);
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(CantidadEntregadaExcedeCompradaError);
+      expect(item.cantidadEntregada).toBe(0);
+    });
+
+    it('S21: retroceder la cantidad entregada falla con CantidadEntregadaRetrocedeError, sin mutar', () => {
+      const item = crearItemAprobado({ cantidad: 10 });
+      item.registrarCompra(8);
+      item.registrarEntrega(5);
+
+      const result = item.registrarEntrega(2);
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(CantidadEntregadaRetrocedeError);
+      expect(item.cantidadEntregada).toBe(5);
+    });
+  });
+
+  describe('cerrarConFaltante() — §4.7', () => {
+    it('S22: el cierre con faltante marca comprado Y entregado true por la cláusula OR, pese a 5<6', () => {
+      const item = crearItemAprobado({ cantidad: 6 });
+      item.registrarCompra(5);
+
+      const result = item.cerrarConFaltante('proveedor discontinuó el producto');
+
+      expect(result.isOk()).toBe(true);
+      expect(item.cerradoConFaltante).toBe(true);
+      expect(item.motivoCierreFaltante).toBe('proveedor discontinuó el producto');
+      expect(item.cantidadComprada).toBe(5); // NO se fuerza a la cantidad pedida
+      expect(item.comprado).toBe(true);
+      expect(item.entregado).toBe(true);
+    });
+
+    it('S23: cerrar sin faltante real (cantidadComprada >= cantidad) falla con ItemSinFaltanteError', () => {
+      const item = crearItemAprobado({ cantidad: 5 });
+      item.registrarCompra(5);
+
+      const result = item.cerrarConFaltante('motivo');
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(ItemSinFaltanteError);
+      expect(item.cerradoConFaltante).toBe(false);
+    });
+
+    it('S24: cerrar sin motivo falla con MotivoCierreFaltanteRequeridoError', () => {
+      const item = crearItemAprobado({ cantidad: 6 });
+      item.registrarCompra(5);
+
+      const result = item.cerrarConFaltante('');
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(MotivoCierreFaltanteRequeridoError);
+      expect(item.cerradoConFaltante).toBe(false);
+    });
+
+    describe('S25: TERMINALIDAD — cerrar con faltante bloquea TODO lo posterior sobre el ítem', () => {
+      it('cerrar dos veces falla con ItemCompraYaCerradoError', () => {
+        const item = crearItemAprobado({ cantidad: 6 });
+        item.registrarCompra(5);
+        item.cerrarConFaltante('motivo 1');
+
+        const result = item.cerrarConFaltante('motivo 2');
+
+        expect(result.isFail()).toBe(true);
+        expect(result.getError()).toBeInstanceOf(ItemCompraYaCerradoError);
+      });
+
+      it('registrar una compra después del cierre falla con ItemCompraYaCerradoError', () => {
+        const item = crearItemAprobado({ cantidad: 6 });
+        item.registrarCompra(5);
+        item.cerrarConFaltante('motivo');
+
+        const result = item.registrarCompra(6);
+
+        expect(result.isFail()).toBe(true);
+        expect(result.getError()).toBeInstanceOf(ItemCompraYaCerradoError);
+      });
+
+      it('registrar una entrega después del cierre falla con ItemCompraYaCerradoError', () => {
+        const item = crearItemAprobado({ cantidad: 6 });
+        item.registrarCompra(5);
+        item.registrarEntrega(5);
+        item.cerrarConFaltante('motivo');
+
+        // Mismo valor ya registrado (5): no excede, no retrocede — sólo el
+        // cierre terminal debe bloquear esta llamada.
+        const result = item.registrarEntrega(5);
+
+        expect(result.isFail()).toBe(true);
+        expect(result.getError()).toBeInstanceOf(ItemCompraYaCerradoError);
+      });
     });
   });
 });

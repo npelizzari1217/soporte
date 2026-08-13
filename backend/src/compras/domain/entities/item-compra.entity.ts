@@ -1,27 +1,41 @@
 import { BaseEntity } from '../../../shared/domain/base-entity';
 import { DomainError, Result } from '../../../shared/domain/result';
-import { ItemCompraCongeladoError, ItemCompraYaDecididoError } from '../errors/compras.errors';
-import { EstadoAprobacionItem } from '../services/estado-compra';
+import {
+  CantidadCompradaExcedeSolicitadaError,
+  CantidadCompradaRetrocedeError,
+  CantidadEntregadaExcedeCompradaError,
+  CantidadEntregadaRetrocedeError,
+  ItemCompraCongeladoError,
+  ItemCompraNoAprobadoError,
+  ItemCompraYaCerradoError,
+  ItemCompraYaDecididoError,
+  ItemSinFaltanteError,
+  MotivoCierreFaltanteRequeridoError,
+} from '../errors/compras.errors';
+import {
+  enCentesimas,
+  EstadoAprobacionItem,
+  itemComprado,
+  itemEntregado,
+} from '../services/estado-compra';
 
 /**
- * ItemCompraEntity — parte 1 de 2 (sdd/redisenio-modulo-compras, PR-6).
+ * ItemCompraEntity — completa (sdd/redisenio-modulo-compras, PR-6 + PR-7).
  *
- * Cubre: `create()` con validación de campos base, la decisión por ítem
- * (§4.3: `aprobar`/`rechazar`, máquina de un solo paso) y el congelamiento
- * de `cantidad`/`monto`/`moneda` una vez decidido (§4.4).
+ * PR-6 (parte 1): `create()` con validación de campos base, la decisión por
+ * ítem (§4.3: `aprobar`/`rechazar`, máquina de un solo paso) y el
+ * congelamiento de `cantidad`/`monto`/`moneda` una vez decidido (§4.4).
  *
- * FUERA DE ALCANCE de este archivo en PR-6 (se agrega en PR-7, "parte 2 de
- * 2"): `registrarCompra`/`registrarEntrega`/`cerrarConFaltante`, la
- * aritmética en centésimas (ADR-C3) y los getters `comprado`/`entregado`
- * consumidos por `derivarEstadoCompra` (PR-4). `cantidadComprada`,
- * `cantidadEntregada`, `cerradoConFaltante` y `motivoCierreFaltante` ya
- * viven en `ItemCompraProps` (greenfield, evita romper el shape en PR-7) y
- * se inicializan en sus valores por defecto desde `create()`, pero esta
- * parte no expone mutadores para ellos.
+ * PR-7 (parte 2): ejecución de la compra —
+ * `registrarCompra`/`registrarEntrega`/`cerrarConFaltante` (§4.5-§4.7), los
+ * getters `comprado`/`entregado` que DELEGAN en `itemComprado`/
+ * `itemEntregado` de `domain/services/estado-compra.ts` (ADR-C1: la regla
+ * vive en un solo lugar, esta entidad no la re-implementa) y la aritmética
+ * en centésimas (ADR-C3) para toda comparación/suma de cantidades.
  *
- * Ref spec: sdd/redisenio-modulo-compras/spec §1 (modelo), §4.2-§4.4, §6.
- * Ref design: ADR-C3, ADR-C6 (rename `decididoPorId`/`decididoEn`).
- * Tarea: PR-6.
+ * Ref spec: sdd/redisenio-modulo-compras/spec §1 (modelo), §4.2-§4.7, §6.
+ * Ref design: ADR-C1, ADR-C3, ADR-C6 (rename `decididoPorId`/`decididoEn`).
+ * Tareas: PR-6, PR-7.
  */
 
 /** Monedas admitidas (design, CHECK `moneda IN ('ARS','USD','EUR')`, ADR-C7). */
@@ -229,6 +243,25 @@ export class ItemCompraEntity extends BaseEntity<ItemCompraProps> {
     return this.props.estadoAprobacion !== 'PENDIENTE';
   }
 
+  /**
+   * `true` si `cantidadComprada` alcanza `cantidad`, o si el ítem fue
+   * cerrado con faltante (S22, cláusula OR). DELEGA en `itemComprado` de
+   * `domain/services/estado-compra.ts` (ADR-C1) — la entidad NO
+   * re-implementa la regla ni la aritmética en centésimas.
+   */
+  get comprado(): boolean {
+    return itemComprado(this.props);
+  }
+
+  /**
+   * `true` si `cantidadEntregada` alcanza `cantidad`, o si el ítem fue
+   * cerrado con faltante (S22, cláusula OR). DELEGA en `itemEntregado` de
+   * `domain/services/estado-compra.ts` (ADR-C1) — misma razón que `comprado`.
+   */
+  get entregado(): boolean {
+    return itemEntregado(this.props);
+  }
+
   // ─── Comportamiento de dominio ─────────────────────────────────────────
 
   /**
@@ -347,6 +380,116 @@ export class ItemCompraEntity extends BaseEntity<ItemCompraProps> {
   private asegurarNoCongelado(): Result<void, DomainError> {
     if (this.decidido) {
       return Result.fail(new ItemCompraCongeladoError(this.id));
+    }
+    return Result.ok(undefined);
+  }
+
+  // ─── Ejecución de la compra (§4.5-§4.7, PR-7) ──────────────────────────
+
+  /**
+   * Registra la cantidad TOTAL comprada hasta el momento (§4.5). No es un
+   * delta: `cantidadComprada` recibe el nuevo acumulado y el guard exige
+   * que sea `>=` al valor ya registrado (spec §7.3: nunca retrocede) y
+   * `<=` la cantidad solicitada. Comparaciones en centésimas (ADR-C3, ver
+   * `enCentesimas`) — un error de carga queda registrado hasta que exista
+   * un caso de uso de corrección explícito (hoy fuera de alcance).
+   *
+   * Orden de guards: terminalidad (S25) primero — un ítem cerrado con
+   * faltante no admite NINGUNA compra posterior, sin importar el valor —
+   * después "no aprobado" (S16), después exceso (S17) y retroceso (S18).
+   */
+  registrarCompra(cantidadComprada: number): Result<void, DomainError> {
+    const guardCierre = this.asegurarNoCerrado();
+    if (guardCierre.isFail()) {
+      return guardCierre;
+    }
+    if (this.props.estadoAprobacion !== 'APROBADO') {
+      return Result.fail(new ItemCompraNoAprobadoError(this.id));
+    }
+
+    const nuevaCent = enCentesimas(cantidadComprada);
+    if (nuevaCent > enCentesimas(this.props.cantidad)) {
+      return Result.fail(new CantidadCompradaExcedeSolicitadaError(this.id));
+    }
+    if (nuevaCent < enCentesimas(this.props.cantidadComprada)) {
+      return Result.fail(new CantidadCompradaRetrocedeError(this.id));
+    }
+
+    this.props.cantidadComprada = cantidadComprada;
+    this.touch();
+    return Result.ok(undefined);
+  }
+
+  /**
+   * Registra la cantidad TOTAL entregada hasta el momento (§4.6). Mismo
+   * criterio de acumulado (no delta) y de nunca-retroceso que
+   * `registrarCompra`, pero acotado contra `cantidadComprada` en vez de
+   * `cantidad` (no se puede entregar más de lo que se compró).
+   * Comparaciones en centésimas (ADR-C3).
+   */
+  registrarEntrega(cantidadEntregada: number): Result<void, DomainError> {
+    const guardCierre = this.asegurarNoCerrado();
+    if (guardCierre.isFail()) {
+      return guardCierre;
+    }
+
+    const nuevaCent = enCentesimas(cantidadEntregada);
+    if (nuevaCent > enCentesimas(this.props.cantidadComprada)) {
+      return Result.fail(new CantidadEntregadaExcedeCompradaError(this.id));
+    }
+    if (nuevaCent < enCentesimas(this.props.cantidadEntregada)) {
+      return Result.fail(new CantidadEntregadaRetrocedeError(this.id));
+    }
+
+    this.props.cantidadEntregada = cantidadEntregada;
+    this.touch();
+    return Result.ok(undefined);
+  }
+
+  /**
+   * Cierra el ítem con faltante (§4.7, req 9): registra que no se va a
+   * completar la cantidad pedida y por qué. TERMINAL (S25, spec §6
+   * invariante 3) — a partir de acá `asegurarNoCerrado()` bloquea cualquier
+   * `registrarCompra`/`registrarEntrega`/`cerrarConFaltante` posterior
+   * sobre este ítem.
+   *
+   * S22 (la cláusula OR): NO fuerza `cantidadComprada`/`cantidadEntregada`
+   * a la cantidad pedida — deja el faltante real registrado y son los
+   * getters `comprado`/`entregado` (vía `itemComprado`/`itemEntregado`)
+   * los que pasan a `true` por el flag `cerradoConFaltante`, no por haber
+   * alcanzado la cantidad.
+   *
+   * Orden de guards: terminalidad primero (S25 — cerrar dos veces también
+   * debe dar `ItemCompraYaCerradoError`, no un error distinto), motivo
+   * requerido (S24), y por último faltante real (S23): sin faltante real
+   * no hay nada que cerrar.
+   */
+  cerrarConFaltante(motivo: string): Result<void, DomainError> {
+    const guardCierre = this.asegurarNoCerrado();
+    if (guardCierre.isFail()) {
+      return guardCierre;
+    }
+    if (!motivo || motivo.trim().length === 0) {
+      return Result.fail(new MotivoCierreFaltanteRequeridoError(this.id));
+    }
+    if (enCentesimas(this.props.cantidadComprada) >= enCentesimas(this.props.cantidad)) {
+      return Result.fail(new ItemSinFaltanteError(this.id));
+    }
+
+    this.props.cerradoConFaltante = true;
+    this.props.motivoCierreFaltante = motivo;
+    this.touch();
+    return Result.ok(undefined);
+  }
+
+  /**
+   * Guard de terminalidad (S25, spec §6 invariante 3) CENTRALIZADO: el
+   * único lugar que decide si el ítem admite compras/entregas/cierres
+   * nuevos. `cerradoConFaltante` es un estado sin retorno.
+   */
+  private asegurarNoCerrado(): Result<void, DomainError> {
+    if (this.props.cerradoConFaltante) {
+      return Result.fail(new ItemCompraYaCerradoError(this.id));
     }
     return Result.ok(undefined);
   }

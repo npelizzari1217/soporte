@@ -15,7 +15,10 @@
 import {
   CompraParaDerivacion,
   derivarEstadoCompra,
+  enCentesimas,
   EstadoCompra,
+  itemComprado,
+  itemEntregado,
   ItemParaDerivacion,
 } from './estado-compra';
 
@@ -292,4 +295,81 @@ it('Regla 0 gana sobre cualquier combinación', () => {
   expect(resultado.estado).toBe('CANCELADO');
   expect(resultado.comprado).toBe(false);
   expect(resultado.cerrado).toBe(false);
+});
+
+// ---------------------------------------------------------------------------
+// PR-7 — `enCentesimas` / `itemComprado` / `itemEntregado` (ADR-C3).
+// ---------------------------------------------------------------------------
+
+describe('enCentesimas — ADR-C3', () => {
+  it.each([
+    [0.3, 30],
+    [0.1, 10],
+    [150000, 15000000],
+    [0, 0],
+  ])('redondea %s a %s centésimas', (n, esperado) => {
+    expect(enCentesimas(n)).toBe(esperado);
+  });
+
+  it('LA TRAMPA DEL FLOAT: enCentesimas(0.1+0.2) === enCentesimas(0.3) (30 === 30), a diferencia de la comparación directa', () => {
+    expect(0.1 + 0.2 === 0.3).toBe(false); // el problema que motiva ADR-C3
+    expect(enCentesimas(0.1 + 0.2)).toBe(enCentesimas(0.3));
+  });
+
+  it('caso de UNDERSHOOT: enCentesimas(0.7-0.6) === enCentesimas(0.1) (10 === 10), pese a que 0.7-0.6 < 0.1 en float directo', () => {
+    expect(0.7 - 0.6 < 0.1).toBe(true); // el float directo se queda corto
+    expect(enCentesimas(0.7 - 0.6)).toBe(enCentesimas(0.1));
+  });
+});
+
+describe('itemComprado / itemEntregado — ADR-C3', () => {
+  it.each([
+    [
+      'cantidadComprada < cantidad, sin cierre',
+      { cantidad: 10, cantidadComprada: 5, cerradoConFaltante: false },
+      false,
+    ],
+    [
+      'cantidadComprada === cantidad',
+      { cantidad: 10, cantidadComprada: 10, cerradoConFaltante: false },
+      true,
+    ],
+    [
+      'cantidadComprada > cantidad',
+      { cantidad: 10, cantidadComprada: 12, cerradoConFaltante: false },
+      true,
+    ],
+    [
+      'cerradoConFaltante=true con cantidadComprada < cantidad (S22, la cláusula OR)',
+      { cantidad: 10, cantidadComprada: 5, cerradoConFaltante: true },
+      true,
+    ],
+    [
+      'LA TRAMPA DEL FLOAT: cantidad=0.1, cantidadComprada=0.7-0.6 (undershoot en float directo)',
+      { cantidad: 0.1, cantidadComprada: 0.7 - 0.6, cerradoConFaltante: false },
+      true,
+    ],
+  ])('itemComprado: %s => %s', (_desc, item, esperado) => {
+    expect(itemComprado(item)).toBe(esperado);
+  });
+
+  it.each([
+    [
+      'cantidadEntregada < cantidad, sin cierre',
+      { cantidad: 10, cantidadEntregada: 5, cerradoConFaltante: false },
+      false,
+    ],
+    [
+      'cantidadEntregada === cantidad',
+      { cantidad: 10, cantidadEntregada: 10, cerradoConFaltante: false },
+      true,
+    ],
+    [
+      'cerradoConFaltante=true con cantidadEntregada < cantidad (S22, la cláusula OR)',
+      { cantidad: 10, cantidadEntregada: 5, cerradoConFaltante: true },
+      true,
+    ],
+  ])('itemEntregado: %s => %s', (_desc, item, esperado) => {
+    expect(itemEntregado(item)).toBe(esperado);
+  });
 });
