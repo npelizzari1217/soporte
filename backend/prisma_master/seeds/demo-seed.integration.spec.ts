@@ -104,9 +104,6 @@ describe('runDemoSeed — integración real (T6.1, sdd/beta-frontend)', () => {
   }, 60_000);
 
   afterAll(async () => {
-    if (dbNameCreada) {
-      await postgresAdmin.dropDatabase(dbNameCreada).catch(() => undefined);
-    }
     await masterClient.membresia.deleteMany({
       where: { usuario: { email: { in: Object.values(EMAILS) } } },
     });
@@ -114,8 +111,24 @@ describe('runDemoSeed — integración real (T6.1, sdd/beta-frontend)', () => {
     await masterClient.cliente.deleteMany({ where: { nombre: CLIENTE_NOMBRE } });
     await masterClient.cicloVigente.deleteMany({ where: { nombre: CICLO_NOMBRE } });
 
+    // Cierra `app` (dispara `PrismaService.onModuleDestroy` vía el ciclo de
+    // vida de Nest, liberando el pool cacheado del tenant demo — abierto por
+    // `runDemoSeed`/`crearComprasDemo` vía `PrismaService.getTenantClient`)
+    // ANTES de dropear la DB física. `DROP DATABASE` rechaza el drop si
+    // quedan conexiones abiertas ("database is being accessed by other
+    // users"), y `dropDatabase` traga ese error en silencio
+    // (`.catch(() => undefined)`) — con el orden anterior (drop ANTES de
+    // cerrar `app`), la DB física del tenant demo quedaba SIEMPRE huérfana.
+    // Bug pre-existente (no introducido por sdd/redisenio-modulo-compras
+    // PR-14): confirmado con ~30 DBs `soporte_demo_seed_it_*_test`
+    // residuales en la instancia de test, con timestamps (UUIDv7 embebido en
+    // el nombre) que datan de antes de este PR.
     await app?.close();
     await prismaService?.onModuleDestroy();
+
+    if (dbNameCreada) {
+      await postgresAdmin.dropDatabase(dbNameCreada).catch(() => undefined);
+    }
   }, 60_000);
 
   it(
@@ -161,6 +174,14 @@ describe('runDemoSeed — integración real (T6.1, sdd/beta-frontend)', () => {
           expect(await tenantClient.equipoInformatico.count()).toBe(2);
           expect(await tenantClient.componenteEquipo.count()).toBe(2);
           expect(await tenantClient.ticketSoporte.count()).toBe(1);
+          // sdd/redisenio-modulo-compras PR-14 [H2]: modelo nuevo
+          // (compra/itemCompra/operacionCompra) — 2 compras demo (5 ítems
+          // en total), cada `AgregarItemCompraUseCase` exitoso registra 1
+          // `OperacionCompra{ITEM_AGREGADO}` (S35) además de la
+          // `OperacionCompra{CREACION}` de cada `CrearCompraUseCase`.
+          expect(await tenantClient.compra.count()).toBe(2);
+          expect(await tenantClient.itemCompra.count()).toBe(5);
+          expect(await tenantClient.operacionCompra.count()).toBe(7);
           expect(await tenantClient.kbArticulo.count()).toBe(2);
           const kbVisibles = await tenantClient.kbArticulo.count({ where: { visibleParaSolicitante: true } });
           expect(kbVisibles).toBe(1);
