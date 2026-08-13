@@ -9,6 +9,9 @@ import { ItemCompraEntity, ItemCompraProps } from './item-compra.entity';
 import { derivarEstadoCompra, CompraParaDerivacion } from '../services/estado-compra';
 import {
   CompraCanceladaError,
+  CompraConComprasRegistradasError,
+  CompraYaCanceladaError,
+  CompraYaCerradaError,
   ItemCompraAprobadoNoEliminableError,
   ItemCompraCongeladoError,
   ItemCompraNoEncontradoError,
@@ -369,6 +372,137 @@ describe('CompraEntity', () => {
       expect(compra.estado).toBe('CANCELADO');
       expect(compra.comprado).toBe(false);
       expect(compra.cerrado).toBe(false);
+    });
+  });
+
+  describe('cancelar() — §4.8 (PR-9, parte 2/2)', () => {
+    it('S27: cancela una compra sin compras registradas — OK, setea canceladaEn/canceladoPorId/motivoCancelacion', () => {
+      const compra = CompraEntity.create(crearPropsValidas());
+      compra.agregarItem(datosItemValido());
+      const momento = new Date('2026-02-01');
+
+      const result = compra.cancelar('usuario-2', 'Ya no se necesita', momento);
+
+      expect(result.isOk()).toBe(true);
+      expect(compra.canceladaEn).toBe(momento);
+      expect(compra.canceladoPorId).toBe('usuario-2');
+      expect(compra.motivoCancelacion).toBe('Ya no se necesita');
+      expect(compra.estado).toBe('CANCELADO');
+    });
+
+    it('S31: cancela una compra SIN ítems (n=0) — PERMITIDO (guarda existencial sobre conjunto vacío no viola, a diferencia de §3)', () => {
+      const compra = CompraEntity.create(crearPropsValidas());
+      expect(compra.items).toHaveLength(0);
+
+      const result = compra.cancelar('usuario-2', 'No se necesita más', new Date());
+
+      expect(result.isOk()).toBe(true);
+      expect(compra.estado).toBe('CANCELADO');
+    });
+
+    it('S29: cancelar con algún ítem con cantidadComprada > 0 -> CompraConComprasRegistradasError (el camino correcto es cerrar con faltante)', () => {
+      const compra = CompraEntity.create(crearPropsValidas());
+      compra.agregarItem(datosItemValido({ cantidad: 5 }));
+      const item = compra.items[0];
+      item.aprobar('usuario-1');
+      item.registrarCompra(2);
+
+      const result = compra.cancelar('usuario-2', 'Motivo cualquiera', new Date());
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(CompraConComprasRegistradasError);
+      expect(compra.canceladaEn).toBeNull();
+    });
+
+    it('S28: cancelar una compra ya cerrada -> CompraYaCerradaError', () => {
+      const compra = CompraEntity.create(crearPropsValidas());
+      compra.agregarItem(datosItemValido({ cantidad: 3 }));
+      const item = compra.items[0];
+      item.aprobar('usuario-1');
+      item.registrarCompra(3);
+      item.registrarEntrega(3);
+      expect(compra.cerrado).toBe(true); // precondición del test
+
+      const result = compra.cancelar('usuario-2', 'Motivo cualquiera', new Date());
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(CompraYaCerradaError);
+      expect(compra.canceladaEn).toBeNull();
+    });
+
+    it('S30: cancelar una compra ya cancelada -> CompraYaCanceladaError, sin sobrescribir los datos de la primera cancelación', () => {
+      const compra = CompraEntity.create(crearPropsValidas());
+      const primeraCancelacion = compra.cancelar('usuario-2', 'Primer motivo', new Date());
+      expect(primeraCancelacion.isOk()).toBe(true);
+
+      const result = compra.cancelar('usuario-3', 'Segundo intento', new Date());
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(CompraYaCanceladaError);
+      expect(compra.canceladoPorId).toBe('usuario-2');
+      expect(compra.motivoCancelacion).toBe('Primer motivo');
+    });
+
+    it('cancelar sin motivoCancelacion es una precondición de dominio -> throw (ningún error del catálogo de 19 está reservado para esto)', () => {
+      const compra = CompraEntity.create(crearPropsValidas());
+
+      expect(() => compra.cancelar('usuario-2', '', new Date())).toThrow();
+      expect(() => compra.cancelar('usuario-2', '   ', new Date())).toThrow();
+      expect(compra.canceladaEn).toBeNull();
+    });
+
+    it('Regla 0 tras cancelar: CANCELADO aunque TODOS los ítems estén APROBADO (sin comprar, T3 sin la cancelación)', () => {
+      const compra = CompraEntity.create(crearPropsValidas());
+      compra.agregarItem(datosItemValido());
+      const item = compra.items[0];
+      item.aprobar('usuario-1');
+      expect(compra.estado).toBe('APROBADO'); // precondición del test: sin cancelar, T3
+
+      const result = compra.cancelar('usuario-2', 'Motivo cualquiera', new Date());
+
+      expect(result.isOk()).toBe(true);
+      expect(compra.estado).toBe('CANCELADO');
+    });
+  });
+
+  describe('totalesPorMoneda — §7 punto 1 (decisión confirmada por el usuario)', () => {
+    it('suma monto × cantidad de TODOS los ítems no eliminados, SIN filtrar por estadoAprobacion', () => {
+      const compra = CompraEntity.create(crearPropsValidas());
+      compra.agregarItem(datosItemValido({ descripcion: 'Pendiente', monto: 10, cantidad: 1 }));
+      compra.agregarItem(datosItemValido({ descripcion: 'Aprobado', monto: 20, cantidad: 1 }));
+      compra.agregarItem(datosItemValido({ descripcion: 'Rechazado', monto: 30, cantidad: 1 }));
+      const [, aprobado, rechazado] = compra.items;
+      aprobado.aprobar('usuario-1');
+      rechazado.rechazar('usuario-1');
+
+      expect(compra.totalesPorMoneda).toEqual({ ARS: 60 });
+    });
+
+    it('agrupa por moneda cuando hay más de una moneda en la misma compra', () => {
+      const compra = CompraEntity.create(crearPropsValidas());
+      compra.agregarItem(datosItemValido({ moneda: 'ARS', monto: 100, cantidad: 2 }));
+      compra.agregarItem(datosItemValido({ moneda: 'USD', monto: 50, cantidad: 3 }));
+
+      expect(compra.totalesPorMoneda).toEqual({ ARS: 200, USD: 150 });
+    });
+
+    it('excluye los ítems eliminados (soft-delete) del total', () => {
+      const compra = CompraEntity.create(crearPropsValidas());
+      compra.agregarItem(datosItemValido({ monto: 100, cantidad: 1 }));
+      const item = compra.items[0];
+      compra.eliminarItem(item.id);
+
+      expect(compra.totalesPorMoneda).toEqual({});
+    });
+
+    it('aritmética en centésimas (ADR-C3): suma exacta donde la suma en float directo da un resultado distinto (verificado: 0.1+0.1+0.1 !== 0.3)', () => {
+      const compra = CompraEntity.create(crearPropsValidas());
+      compra.agregarItem(datosItemValido({ monto: 0.1, cantidad: 1 }));
+      compra.agregarItem(datosItemValido({ monto: 0.1, cantidad: 1 }));
+      compra.agregarItem(datosItemValido({ monto: 0.1, cantidad: 1 }));
+
+      expect(0.1 + 0.1 + 0.1).not.toBe(0.3); // documenta la trampa que este test evita
+      expect(compra.totalesPorMoneda.ARS).toBe(0.3);
     });
   });
 });

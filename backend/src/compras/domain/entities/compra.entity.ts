@@ -2,10 +2,13 @@ import { BaseEntity } from '../../../shared/domain/base-entity';
 import { DomainError, Result } from '../../../shared/domain/result';
 import {
   CompraCanceladaError,
+  CompraConComprasRegistradasError,
+  CompraYaCanceladaError,
+  CompraYaCerradaError,
   ItemCompraAprobadoNoEliminableError,
   ItemCompraNoEncontradoError,
 } from '../errors/compras.errors';
-import { derivarEstadoCompra, EstadoCompra } from '../services/estado-compra';
+import { derivarEstadoCompra, enCentesimas, EstadoCompra } from '../services/estado-compra';
 import {
   ItemCompraActualizarProps,
   ItemCompraCreateProps,
@@ -28,14 +31,17 @@ import {
  * como parámetro obligatorio): no existe un camino de hidratación parcial
  * donde el getter pueda mentir por datos incompletos.
  *
- * ALCANCE de esta parte (PR-8, §4.1 + §4.2): `create()` con validación de
- * campos base, el ABM de ítems (`agregarItem`/`editarItem`/`eliminarItem`,
- * S4-S7) y los getters derivados. `cancelar()` y `totalesPorMoneda` quedan
- * DEFERIDOS a PR-9 (parte 2/2) — no se tocan acá.
+ * ALCANCE PR-8 (§4.1 + §4.2): `create()` con validación de campos base, el
+ * ABM de ítems (`agregarItem`/`editarItem`/`eliminarItem`, S4-S7) y los
+ * getters derivados.
  *
- * Ref spec: sdd/redisenio-modulo-compras/spec §1, §2, §4.1, §4.2, §6.
- * Ref design: ADR-C1, ADR-C2.
- * Tarea: PR-8.
+ * ALCANCE PR-9, parte 2/2 (§4.8 + §7 punto 1): `cancelar()` (S27-S31) y el
+ * getter `totalesPorMoneda` (suma TODOS los ítems activos, sin filtrar por
+ * `estadoAprobacion` — decisión confirmada del usuario, no un supuesto).
+ *
+ * Ref spec: sdd/redisenio-modulo-compras/spec §1, §2, §4.1, §4.2, §4.8, §6, §7.1.
+ * Ref design: ADR-C1, ADR-C2, ADR-C3.
+ * Tareas: PR-8, PR-9.
  */
 
 /** Shape completo de las propiedades persistidas de una `Compra` (spec §1). */
@@ -332,5 +338,109 @@ export class CompraEntity extends BaseEntity<CompraProps> {
       return Result.fail(new CompraCanceladaError(this.id));
     }
     return Result.ok(undefined);
+  }
+
+  // ─── Cancelación (§4.8, PR-9 parte 2/2) ────────────────────────────────
+
+  /**
+   * Cancela la compra (§4.8, S27-S31). El efecto es puramente estructural:
+   * setea `canceladaEn`/`canceladoPorId`/`motivoCancelacion`, y a partir de
+   * ahí `derivarEstadoCompra` (ADR-C1) aplica la Regla 0 sola — este método
+   * NO repite la tabla de verdad ni fuerza `estado='CANCELADO'` a mano.
+   *
+   * Orden de guards (cada uno corta antes de mutar nada):
+   * 1. `motivoCancelacion` no vacío — precondición de dominio modelada con
+   *    `throw`, mismo criterio que `validarCamposBase`/`ItemCompraEntity`:
+   *    NINGUNO de los 19 errores del catálogo (`compras.errors.ts`) está
+   *    reservado para "cancelar sin motivo" — §4.8 y §5 no listan ese
+   *    escenario como error de negocio. Es una violación de contrato del
+   *    caller (equivalente a un bug si el DTO/`class-validator` de la capa
+   *    HTTP hizo su trabajo), no un camino a modelar con `Result`. Este PR
+   *    NO crea errores nuevos.
+   * 2. S30 ya cancelada -> `CompraYaCanceladaError` (idempotencia: no
+   *    sobrescribe los datos de la primera cancelación).
+   * 3. S28 ya cerrada -> `CompraYaCerradaError` (todos los ítems aprobados
+   *    ya fueron entregados o cerrados con faltante: la ejecución de la
+   *    compra ya terminó, cancelar no tiene sentido de negocio).
+   * 4. S29 — guarda EXISTENCIAL "¿algún ítem activo tiene
+   *    `cantidadComprada > 0`?" -> `CompraConComprasRegistradasError`: el
+   *    camino correcto para esa situación es cerrar ese ítem con faltante,
+   *    no cancelar la compra entera. Sobre `itemsActivos()` VACÍO (`n=0`,
+   *    S31) esta guarda NO se dispara: `[].some(...)` es `false`, y esa
+   *    `false` es la respuesta CORRECTA, no un caso límite a parchear.
+   *    **Asimetría deliberada respecto de §3**: acá el cuantificador es
+   *    EXISTENCIAL y la vacuidad `false` es la lectura correcta del spec;
+   *    en `derivarEstadoCompra` el cuantificador es UNIVERSAL sobre el
+   *    subconjunto aprobado y ahí la vacuidad se fuerza a `false` por
+   *    decisión explícita del usuario (spec §3). Son dos reglas distintas
+   *    sobre dos formas distintas de cuantificar — no se unifican.
+   */
+  cancelar(
+    canceladoPorId: string,
+    motivoCancelacion: string,
+    canceladaEn: Date = new Date(),
+  ): Result<void, DomainError> {
+    if (!motivoCancelacion || motivoCancelacion.trim().length === 0) {
+      throw new Error('CompraEntity.cancelar: motivoCancelacion es obligatorio.');
+    }
+    if (this.props.canceladaEn !== null) {
+      return Result.fail(new CompraYaCanceladaError(this.id));
+    }
+    if (this.cerrado) {
+      return Result.fail(new CompraYaCerradaError(this.id));
+    }
+    const algunItemConCompraRegistrada = this.itemsActivos().some(
+      (item) => item.cantidadComprada > 0,
+    );
+    if (algunItemConCompraRegistrada) {
+      return Result.fail(new CompraConComprasRegistradasError(this.id));
+    }
+
+    this.props.canceladaEn = canceladaEn;
+    this.props.canceladoPorId = canceladoPorId;
+    this.props.motivoCancelacion = motivoCancelacion;
+    this.touch();
+    return Result.ok(undefined);
+  }
+
+  // ─── Totales (§7 punto 1, PR-9 parte 2/2) ──────────────────────────────
+
+  /**
+   * Suma `monto × cantidad` de TODOS los ítems ACTIVOS (no eliminados) de
+   * la compra, agrupada por `moneda` — spec §7 punto 1, **decisión
+   * CONFIRMADA por el usuario, no un supuesto**: NO filtra por
+   * `estadoAprobacion` (incluye PENDIENTE y RECHAZADO). Representa cuánto
+   * se está PIDIENDO en total, el número que se mira para decidir si
+   * aprobar — no cuánto se aprobó ni cuánto se ejecutó.
+   *
+   * Aritmética en centésimas ENTERAS de punta a punta (ADR-C3,
+   * `enCentesimas`): `monto` y `cantidad` tienen precisión `Decimal(x,2)`,
+   * así que `enCentesimas(monto) * enCentesimas(cantidad)` es SIEMPRE una
+   * multiplicación de dos enteros (exacta en float64 para montos/cantidades
+   * de magnitud razonable) — dividir ese producto por 100 y redondear da el
+   * subtotal del ítem en centésimas de moneda SIN pasar por una
+   * multiplicación de decimales en float. Los subtotales se ACUMULAN como
+   * enteros (suma de enteros, exacta) y recién al final cada acumulado se
+   * divide por 100 para volver a unidades normales. Sumar directamente en
+   * float (`monto * cantidad` repetido por ítem) es exactamente el caso que
+   * rompe: `0.1 + 0.1 + 0.1 === 0.30000000000000004 !== 0.3` en IEEE-754
+   * (verificado empíricamente, ver `compra.entity.spec.ts`).
+   */
+  get totalesPorMoneda(): Record<string, number> {
+    const totalesCentPorMoneda = new Map<string, number>();
+
+    for (const item of this.itemsActivos()) {
+      const subtotalCent = Math.round(
+        (enCentesimas(item.monto) * enCentesimas(item.cantidad)) / 100,
+      );
+      const acumuladoCent = totalesCentPorMoneda.get(item.moneda) ?? 0;
+      totalesCentPorMoneda.set(item.moneda, acumuladoCent + subtotalCent);
+    }
+
+    const totales: Record<string, number> = {};
+    for (const [moneda, cent] of totalesCentPorMoneda) {
+      totales[moneda] = cent / 100;
+    }
+    return totales;
   }
 }
