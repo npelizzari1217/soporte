@@ -595,33 +595,53 @@ describe('Compras e2e — contrato HTTP real de las 13 rutas (cierra W-B/W-A del
     });
 
     /**
-     * 409 NumeradorCompraAgotadoError (S3, overflow guard de
-     * `NumeradorCompra.generarNumero`) — elegido en vez de SinCicloActivoError
-     * (también documentado como 409, spec §5, S2) por un BUG REAL descubierto
-     * al escribir este spec, reportado (NO corregido acá — fuera del
-     * mandato de esta tarea):
-     *
-     * `CrearCompraUseCase` resuelve el ciclo activo vía
-     * `ResolverCicloActivoParaCreacion` (REUTILIZADO tal cual de
-     * `tickets/application/services/resolver-ciclo-activo.service.ts`), que
-     * en `resolver()` retorna `Result.fail(new SinCicloActivoError())`
-     * importando `SinCicloActivoError` de `tickets/domain/errors/tickets.errors.ts`
-     * — NO de `compras/domain/errors/compras.errors.ts`. Son dos clases
-     * DISTINTAS con el mismo nombre/código (`SIN_CICLO_ACTIVO`) pero mensajes
-     * distintos ("...no se puede crear el ticket." vs "...no se puede crear
-     * la compra."). `ComprasController.toHttpException` sólo chequea
-     * `instanceof` contra la clase de COMPRAS, así que el error REAL
-     * (instancia de la clase de TICKETS) nunca matchea esa rama y cae al
-     * default → **422, no 409** — y con el mensaje de TICKETS filtrado a la
-     * API de compras. Verificado en vivo desactivando el ciclo activo real:
-     * `{"statusCode":422,"message":"No hay un ciclo activo en este tenant.
-     * No se puede crear el ticket."}`. `compras.controller.spec.ts` (unit)
-     * NO lo detecta porque construye `Result.fail(new
-     * ComprasErrors.SinCicloActivoError())` a mano, sin pasar por el
-     * resolver real — exactamente el tipo de hueco que este e2e existe para
-     * cerrar. Reportado en el resumen de retorno / apply-progress; NO se
-     * tocó `src/` para no exceder el mandato de esta tarea.
+     * 409 SinCicloActivoError (S2) — bug real descubierto al escribir este
+     * spec (histórico, YA CORREGIDO — ver `ResolverCicloActivoCompra`,
+     * `sdd/redisenio-modulo-compras/fix-ciclo-activo-cross-module`):
+     * `CrearCompraUseCase` resolvía el ciclo activo vía
+     * `ResolverCicloActivoParaCreacion` REUTILIZADO tal cual de
+     * `tickets/application/services/resolver-ciclo-activo.service.ts`, que
+     * fallaba con `SinCicloActivoError` de `tickets/domain/errors` — NO de
+     * `compras/domain/errors`. Dos clases DISTINTAS con el mismo
+     * nombre/código (`SIN_CICLO_ACTIVO`) pero mensajes distintos ("...no se
+     * puede crear el ticket." vs "...no se puede crear la compra."). Como
+     * `ComprasController.toHttpException` sólo chequea `instanceof` contra
+     * la clase de COMPRAS, el error real (instancia de la clase de TICKETS)
+     * nunca matcheaba esa rama y caía al default → 422, no 409 — filtrando
+     * además el mensaje de TICKETS a la API de compras.
+     * `compras.controller.spec.ts` (unit) no lo detectaba porque construye
+     * `Result.fail(new ComprasErrors.SinCicloActivoError())` a mano, sin
+     * pasar por el resolver real. Este test ejercita el camino REAL
+     * (resolver -> use case -> controller -> HTTP) para que un regreso del
+     * bug rompa acá.
      */
+    it('409 SinCicloActivoError: crear una compra sin ciclo activo devuelve 409 con el mensaje de COMPRAS', async () => {
+      await tenantClient.cicloCliente.update({
+        where: { id: cicloActivoId },
+        data: { activo: false },
+      });
+      try {
+        const actor = await crearActorConPermisos(['compra:gestionar']);
+
+        const { status, data } = await httpPost<{ message: string }>(
+          `${baseUrl}/compras`,
+          buildCrearCompraDto(),
+          bearer(actor.accessToken),
+        );
+
+        expect(status).toBe(409);
+        expect(data.message).toBe(
+          'No hay un ciclo activo en este tenant. No se puede crear la compra.',
+        );
+        expect(data.message).not.toMatch(/crear el ticket/);
+      } finally {
+        await tenantClient.cicloCliente.update({
+          where: { id: cicloActivoId },
+          data: { activo: true },
+        });
+      }
+    });
+
     it('409 NumeradorCompraAgotadoError: secuencia anual agotada (S3, overflow guard)', async () => {
       const anio = new Date().getFullYear();
       const numeroTope = `COM-${anio}-99999`;

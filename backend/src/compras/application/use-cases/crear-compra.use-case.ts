@@ -4,7 +4,7 @@ import { CompraEntity } from '../../domain/entities/compra.entity';
 import { ICompraRepository } from '../../domain/ports/i-compra.repository';
 import { NumeradorCompra } from '../../domain/services/numerador-compra';
 import { RegistrarOperacionCompra } from '../services/registrar-operacion-compra';
-import { ResolverCicloActivoParaCreacion } from '../../../tickets/application/services/resolver-ciclo-activo.service';
+import { ResolverCicloActivoCompra } from '../services/resolver-ciclo-activo-compra.service';
 
 /**
  * DTO de entrada de `CrearCompraUseCase`.
@@ -31,9 +31,12 @@ export interface CrearCompraDto {
  * CrearCompraUseCase — creación de una compra nueva (§4.1, S1, S2).
  *
  * Flujo:
- * 1. Resuelve el ciclo ACTIVO del tenant (`ResolverCicloActivoParaCreacion`,
- *    REUTILIZADO de `tickets/application/services/` — es la misma tabla
- *    `CicloCliente` compartida, no una copia). Corre ANTES de la
+ * 1. Resuelve el ciclo ACTIVO del tenant (`ResolverCicloActivoCompra`,
+ *    propio de `compras/` — reusa el puerto `ICicloClienteRepository` de
+ *    `tickets/` porque es la misma tabla `CicloCliente` compartida, pero
+ *    traduce "sin ciclo activo" al `SinCicloActivoError` de
+ *    `compras/domain/errors`, no al de `tickets/`; ver el JSDoc de
+ *    `ResolverCicloActivoCompra` para el porqué). Corre ANTES de la
  *    transacción y ANTES de tocar el numerador: si no hay ciclo activo,
  *    `SinCicloActivoError` (S2) se retorna sin abrir `txRunner.run` ni
  *    consumir la secuencia del numerador — mismo criterio que
@@ -54,7 +57,7 @@ export class CrearCompraUseCase {
   constructor(
     private readonly compraRepo: Pick<ICompraRepository, 'guardar'>,
     private readonly numerador: Pick<NumeradorCompra, 'generarNumero'>,
-    private readonly resolverCicloActivo: Pick<ResolverCicloActivoParaCreacion, 'resolver'>,
+    private readonly resolverCicloActivo: Pick<ResolverCicloActivoCompra, 'resolver'>,
     private readonly registrarOperacion: Pick<RegistrarOperacionCompra, 'registrar'>,
     private readonly txRunner: ITenantTransactionRunner,
   ) {}

@@ -39,7 +39,7 @@
  * riesgo declarado `sdd/redisenio-modulo-compras/riesgo-throws-planos`):
  * `numero` lo emite `NumeradorCompra` DENTRO de la transacción de
  * `CrearCompraUseCase`; `solicitanteId` es SIEMPRE `JWT.sub`; `cicloId` lo
- * resuelve `ResolverCicloActivoParaCreacion` DENTRO del propio use case — este
+ * resuelve `ResolverCicloActivoCompra` DENTRO del propio use case — este
  * controller nunca lo recibe ni lo pasa. Aceptar cualquiera de los tres desde
  * el body los volvería alcanzables desde HTTP y reabriría un 500 latente.
  *
@@ -216,7 +216,7 @@ export class ComprasController {
    * POST /compras
    * Crea una compra nueva (§4.1, S1, S2). `solicitanteId` = `JWT.sub`; `anio`
    * lo resuelve el servidor (año en curso) para el numerador — nunca el
-   * cliente HTTP. `cicloId` lo resuelve `ResolverCicloActivoParaCreacion`
+   * cliente HTTP. `cicloId` lo resuelve `ResolverCicloActivoCompra`
    * DENTRO del use case, este controller no lo toca.
    * @throws 409 sin ciclo activo (S2), o numerador agotado
    */

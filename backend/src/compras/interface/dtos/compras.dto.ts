@@ -71,7 +71,7 @@ const MONEDAS_ADMITIDAS: readonly string[] = ['ARS', 'USD', 'EUR'];
  * NUNCA del body HTTP:
  * - `numero`: lo genera `NumeradorCompra` dentro de la transacción.
  * - `solicitanteId`: `JWT.sub` del actor autenticado.
- * - `cicloId`: el ciclo ACTIVO resuelto por `ResolverCicloActivoParaCreacion`.
+ * - `cicloId`: el ciclo ACTIVO resuelto por `ResolverCicloActivoCompra`.
  *
  * Consecuencia (declarada en el reporte de PR-20, no un descuido): los 3
  * `throw` planos de `CompraEntity.validarCamposBase` que validan esos tres
@@ -82,7 +82,7 @@ const MONEDAS_ADMITIDAS: readonly string[] = ['ARS', 'USD', 'EUR'];
  * nunca produce otra cosa); `solicitanteId` es SIEMPRE el `sub` de un JWT ya
  * autenticado por los guards (una request sin JWT válido nunca llega al
  * controller); `cicloId` es SIEMPRE el `id` de una fila real de
- * `CicloCliente` devuelta por `ResolverCicloActivoParaCreacion` (si no hay
+ * `CicloCliente` devuelta por `ResolverCicloActivoCompra` (si no hay
  * ciclo activo, la resolución falla ANTES con `SinCicloActivoError`, un
  * `DomainError` -> 409, no el `throw` plano).
  */

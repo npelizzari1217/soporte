@@ -10,7 +10,6 @@ import {
   CICLO_CLIENTE_REPOSITORY,
   ICicloClienteRepository,
 } from '../tickets/domain/ports/i-ciclo-cliente.repository';
-import { ResolverCicloActivoParaCreacion } from '../tickets/application/services/resolver-ciclo-activo.service';
 
 import { COMPRA_REPOSITORY, ICompraRepository } from './domain/ports/i-compra.repository';
 import { PrismaCompraRepository } from './infrastructure/persistence/prisma/prisma-compra.repository';
@@ -22,6 +21,7 @@ import { PrismaOperacionCompraRepository } from './infrastructure/persistence/pr
 
 import { NumeradorCompra } from './domain/services/numerador-compra';
 import { RegistrarOperacionCompra } from './application/services/registrar-operacion-compra';
+import { ResolverCicloActivoCompra } from './application/services/resolver-ciclo-activo-compra.service';
 
 import { CrearCompraUseCase } from './application/use-cases/crear-compra.use-case';
 import { AgregarItemCompraUseCase } from './application/use-cases/agregar-item-compra.use-case';
@@ -60,8 +60,10 @@ import { ComprasController } from './interface/controllers/compras.controller';
  *
  * Wiring (mismo patrón que `equipos.module.ts:130-135`, verificado):
  * - Importa `TicketsModule` para reusar `CICLO_CLIENTE_REPOSITORY` (la MISMA
- *   tabla `CicloCliente` compartida, no una copia) — `ResolverCicloActivoParaCreacion`
- *   se resuelve acá vía `useFactory`, igual que en `EquiposModule`.
+ *   tabla `CicloCliente` compartida, no una copia) — `ResolverCicloActivoCompra`
+ *   (propio de `compras/`, NO el de `tickets/`: ver su JSDoc para el
+ *   porqué) se resuelve acá vía `useFactory`, mismo patrón de
+ *   `useFactory` que usa `EquiposModule` para `ResolverCicloActivoParaCreacion`.
  * - `AuthModule`: `ComprasController` usa `JwtAuthGuard`/`TenantGuard`/
  *   `PermissionsGuard`/`ModulosGuard` (PR-21) — `TicketsModule` no re-exporta
  *   `AuthModule`, así que se importa acá explícitamente (mismo gap que
@@ -91,9 +93,8 @@ import { ComprasController } from './interface/controllers/compras.controller';
       inject: [COMPRA_REPOSITORY],
     },
     {
-      provide: ResolverCicloActivoParaCreacion,
-      useFactory: (cicloRepo: ICicloClienteRepository) =>
-        new ResolverCicloActivoParaCreacion(cicloRepo),
+      provide: ResolverCicloActivoCompra,
+      useFactory: (cicloRepo: ICicloClienteRepository) => new ResolverCicloActivoCompra(cicloRepo),
       inject: [CICLO_CLIENTE_REPOSITORY],
     },
     {
@@ -109,7 +110,7 @@ import { ComprasController } from './interface/controllers/compras.controller';
       useFactory: (
         compraRepo: ICompraRepository,
         numerador: NumeradorCompra,
-        resolverCicloActivo: ResolverCicloActivoParaCreacion,
+        resolverCicloActivo: ResolverCicloActivoCompra,
         registrarOperacion: RegistrarOperacionCompra,
         txRunner: ITenantTransactionRunner,
       ) =>
@@ -123,7 +124,7 @@ import { ComprasController } from './interface/controllers/compras.controller';
       inject: [
         COMPRA_REPOSITORY,
         NumeradorCompra,
-        ResolverCicloActivoParaCreacion,
+        ResolverCicloActivoCompra,
         RegistrarOperacionCompra,
         TENANT_TX_RUNNER,
       ],

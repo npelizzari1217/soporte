@@ -41,9 +41,11 @@ import {
 } from './domain/ports/i-operacion-compra.repository';
 import { NumeradorCompra } from './domain/services/numerador-compra';
 import { RegistrarOperacionCompra } from './application/services/registrar-operacion-compra';
-import { ResolverCicloActivoParaCreacion } from '../tickets/application/services/resolver-ciclo-activo.service';
+import { ResolverCicloActivoCompra } from './application/services/resolver-ciclo-activo-compra.service';
 import { CicloClienteEntity } from '../tickets/domain/entities/ciclo-cliente.entity';
+import { ICicloClienteRepository } from '../tickets/domain/ports/i-ciclo-cliente.repository';
 import { Result } from '../shared/domain/result';
+import { SinCicloActivoError as ComprasSinCicloActivoError } from './domain/errors/compras.errors';
 
 import { CompraEntity, CompraProps } from './domain/entities/compra.entity';
 import { ItemCompraEntity, ItemCompraProps } from './domain/entities/item-compra.entity';
@@ -246,7 +248,7 @@ describe('ComprasModule wiring (PR-22, sdd/redisenio-modulo-compras)', () => {
         },
         'ciclo-1',
       );
-      const resolverCicloActivo: Pick<ResolverCicloActivoParaCreacion, 'resolver'> = {
+      const resolverCicloActivo: Pick<ResolverCicloActivoCompra, 'resolver'> = {
         resolver: vi.fn().mockResolvedValue(Result.ok(cicloFixture)),
       };
 
@@ -272,6 +274,30 @@ describe('ComprasModule wiring (PR-22, sdd/redisenio-modulo-compras)', () => {
       expect(operacionRepo.crear).toHaveBeenCalledWith(
         expect.objectContaining({ tipo: 'CREACION' }),
       );
+    });
+
+    it('resolución de ciclo activo (wiring real): sin ciclo activo, falla con SinCicloActivoError de COMPRAS (no de tickets)', async () => {
+      // Regresión: el resolver de ciclo activo WIREADO por ComprasModule
+      // debe fallar con la clase de `compras/domain/errors`, nunca con la
+      // de `tickets/domain/errors` — aunque ambas comparten `code =
+      // 'SIN_CICLO_ACTIVO'` y mensaje similar, son clases DISTINTAS y
+      // `ComprasController.toHttpException` hace `instanceof` contra la de
+      // compras (409). Antes del fix, `ComprasModule` cableaba el
+      // `ResolverCicloActivoParaCreacion` de `tickets/` sin más, que
+      // devuelve la clase de tickets -> el `instanceof` de la capa HTTP
+      // nunca daba `true` y el caller recibía 422 + el mensaje de tickets.
+      // Confirmado en RED antes de este fix (ver apply-progress).
+      const cicloRepo: Pick<ICicloClienteRepository, 'findActive'> = {
+        findActive: vi.fn().mockResolvedValue(null),
+      };
+
+      const provider = getFactoryProvider(ResolverCicloActivoCompra);
+      const instance = provider.useFactory(cicloRepo) as ResolverCicloActivoCompra;
+
+      const result = await instance.resolver();
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(ComprasSinCicloActivoError);
     });
 
     it('AgregarItemCompraUseCase (wiring real): execute() exitoso llama a la bitácora 1 vez con tipo ITEM_AGREGADO', async () => {
