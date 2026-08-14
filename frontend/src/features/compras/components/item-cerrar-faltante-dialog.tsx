@@ -41,7 +41,14 @@ const EMPTY: CerrarItemConFaltanteFormValues = { motivo: "" };
 export function ItemCerrarFaltanteDialog({ compraId, item }: ItemCerrarFaltanteDialogProps) {
   const [open, setOpen] = useState(false);
   const cerrarMutation = useCerrarItemConFaltante(compraId);
-  const yaCerrado = item.cerradoConFaltante;
+  /**
+   * Espeja las dos precondiciones que el dominio exige, en el mismo orden:
+   * terminalidad (S25) y aprobación. La segunda entró con el fix de C1, que
+   * cerró el hueco por el que un ítem no aprobado llegaba al INSERT y volvía
+   * como 500. Sin este gate el botón queda habilitado sobre un PENDIENTE o
+   * RECHAZADO y la operación falla SIEMPRE con 422.
+   */
+  const puedeCerrar = !item.cerradoConFaltante && item.estadoAprobacion === "APROBADO";
 
   const {
     register,
@@ -73,8 +80,14 @@ export function ItemCerrarFaltanteDialog({ compraId, item }: ItemCerrarFaltanteD
           type="button"
           variant="outline"
           size="sm"
-          disabled={yaCerrado}
-          title={yaCerrado ? "El ítem ya fue cerrado con faltante — es TERMINAL (S25)" : undefined}
+          disabled={!puedeCerrar}
+          title={
+            puedeCerrar
+              ? undefined
+              : item.cerradoConFaltante
+                ? "El ítem ya fue cerrado con faltante — es TERMINAL (S25)"
+                : "El ítem debe estar aprobado para cerrarse con faltante"
+          }
         >
           Cerrar con faltante
         </Button>

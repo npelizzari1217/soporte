@@ -62,6 +62,18 @@ describe("ItemCerrarFaltanteDialog", () => {
     expect(screen.getByRole("button", { name: /cerrar con faltante/i })).toBeDisabled();
   });
 
+  it.each(["PENDIENTE", "RECHAZADO"] as const)(
+    "C1: con el ítem %s (no aprobado) el botón queda deshabilitado — el dominio exige APROBADO desde el fix de C1",
+    (estadoAprobacion) => {
+      renderWithProviders(
+        <ItemCerrarFaltanteDialog compraId={COMPRA_ID} item={buildItem({ estadoAprobacion })} />,
+        { user: buildUser({ permisos: ["compra:gestionar"] }) },
+      );
+
+      expect(screen.getByRole("button", { name: /cerrar con faltante/i })).toBeDisabled();
+    },
+  );
+
   it("envía el POST a cerrar-con-faltante con el motivo", async () => {
     let capturedBody: Record<string, unknown> = {};
     server.use(
