@@ -1,8 +1,7 @@
 /**
- * ComprasController — entry point HTTP de los 10 comandos del módulo
- * `compras/` (sdd/redisenio-modulo-compras, PR-21). Las 3 consultas
- * (`GET /compras`, `GET /compras/:id`, `GET /compras/:id/operaciones`) y el
- * wiring de `ComprasModule` son PR-22 — este PR NO las agrega.
+ * ComprasController — entry point HTTP de los 13 casos de uso del módulo
+ * `compras/` (10 comandos, PR-21; 3 consultas, PR-22, que también cierra el
+ * wiring de `ComprasModule`).
  *
  * Rutas:
  *   POST   /compras                                          → CrearCompraUseCase                [compra:gestionar]
@@ -15,6 +14,9 @@
  *   POST   /compras/:id/items/:itemId/registrar-entrega        → RegistrarEntregaDeItemUseCase      [compra:gestionar]
  *   POST   /compras/:id/items/:itemId/cerrar-con-faltante      → CerrarItemConFaltanteUseCase       [compra:gestionar]
  *   POST   /compras/:id/cancelar                                → CancelarCompraUseCase              [compra:gestionar]
+ *   GET    /compras                                             → ListarComprasUseCase               (sin permiso extra, PR-22)
+ *   GET    /compras/:id                                         → ObtenerCompraUseCase               (sin permiso extra, PR-22)
+ *   GET    /compras/:id/operaciones                             → ListarOperacionesCompraUseCase     (sin permiso extra, PR-22)
  *
  * Rutas de acción (`POST`, no `PATCH`) para aprobar/rechazar/registrar avance/
  * cerrar-con-faltante/cancelar: sigue el contrato ya fijado por el JSDoc de
@@ -47,21 +49,33 @@
  * errores de `domain/errors/compras.errors.ts` (spec §5) — 422 por defecto,
  * nunca 500 silencioso para un `DomainError`.
  *
- * Ref spec: sdd/redisenio-modulo-compras/spec §4.1-§4.8 (S1-S31), §4.11
- * (S38-S41), §5 (catálogo error → HTTP). Ref design: sección CASOS DE USO.
- * Tarea: PR-21.
+ * **Las 3 rutas de CONSULTA (PR-22) NO declaran `@RequirePermissions`**
+ * (mismo criterio que `EquiposController.listar()`/`.obtener()`): sin esa
+ * metadata, `PermissionsGuard` deja pasar a cualquier usuario autenticado
+ * que ya superó `TenantGuard`/`ModulosGuard` — la spec (§4.9-§4.11) no
+ * reserva un permiso específico para LEER compras, sólo para mutar
+ * (`compra:gestionar`) o decidir (`compra:aprobar`). El aislamiento de
+ * tenant (S41) lo garantiza `TenantContext`/`PrismaCompraRepository`, no un
+ * permiso de aplicación.
+ *
+ * Ref spec: sdd/redisenio-modulo-compras/spec §4.1-§4.8 (S1-S31), §4.9
+ * (S32-S34), §4.10 (S35-S37), §4.11 (S38-S41), §5 (catálogo error → HTTP).
+ * Ref design: sección CASOS DE USO. Tareas: PR-21 (comandos), PR-22
+ * (consultas + wiring del módulo).
  */
 import {
   Body,
   ConflictException,
   Controller,
   Delete,
+  Get,
   HttpCode,
   HttpStatus,
   NotFoundException,
   Param,
   Patch,
   Post,
+  Query,
   UnprocessableEntityException,
   UseGuards,
 } from '@nestjs/common';
@@ -88,6 +102,9 @@ import { RegistrarCompraDeItemUseCase } from '../../application/use-cases/regist
 import { RegistrarEntregaDeItemUseCase } from '../../application/use-cases/registrar-entrega-de-item.use-case';
 import { CerrarItemConFaltanteUseCase } from '../../application/use-cases/cerrar-item-con-faltante.use-case';
 import { CancelarCompraUseCase } from '../../application/use-cases/cancelar-compra.use-case';
+import { ListarComprasUseCase } from '../../application/use-cases/listar-compras.use-case';
+import { ObtenerCompraUseCase } from '../../application/use-cases/obtener-compra.use-case';
+import { ListarOperacionesCompraUseCase } from '../../application/use-cases/listar-operaciones-compra.use-case';
 
 import {
   CantidadCompradaExcedeSolicitadaError,
@@ -119,10 +136,15 @@ import {
   CrearCompraHttpDto,
   EditarItemCompraHttpDto,
   ItemCompraResponseDto,
+  ListarComprasQueryDto,
+  ListarComprasResponseDto,
+  OperacionCompraResponseDto,
   RegistrarCompraDeItemHttpDto,
   RegistrarEntregaDeItemHttpDto,
   toCompraDetalleResponseDto,
   toItemCompraResponseDto,
+  toListarComprasResponseDto,
+  toOperacionCompraResponseDto,
 } from '../dtos/compras.dto';
 
 const PERMISO_GESTIONAR = 'compra:gestionar';
@@ -185,6 +207,9 @@ export class ComprasController {
     private readonly registrarEntregaDeItemUseCase: RegistrarEntregaDeItemUseCase,
     private readonly cerrarItemConFaltanteUseCase: CerrarItemConFaltanteUseCase,
     private readonly cancelarCompraUseCase: CancelarCompraUseCase,
+    private readonly listarComprasUseCase: ListarComprasUseCase,
+    private readonly obtenerCompraUseCase: ObtenerCompraUseCase,
+    private readonly listarOperacionesCompraUseCase: ListarOperacionesCompraUseCase,
   ) {}
 
   /**
@@ -481,5 +506,51 @@ export class ComprasController {
       throw toHttpException(result.getError());
     }
     return toCompraDetalleResponseDto(result.getValue());
+  }
+
+  /**
+   * GET /compras
+   * Lista compras del tenant activo, paginado (§4.9, S32-S34). El listado
+   * NUNCA incluye `items` (S33): sólo derivados de cabecera + `total` de
+   * paginación (universo filtrado completo, no el tamaño de la página).
+   * `ListarComprasUseCase` siempre retorna `Result.ok` — no hay camino de
+   * error (mismo criterio que `EquiposController.listar()`).
+   */
+  @Get()
+  async listar(@Query() query: ListarComprasQueryDto): Promise<ListarComprasResponseDto> {
+    const result = await this.listarComprasUseCase.execute({
+      pagina: query.pagina,
+      porPagina: query.porPagina,
+    });
+    return toListarComprasResponseDto(result.getValue());
+  }
+
+  /**
+   * GET /compras/:id
+   * Detalle de una compra CON sus ítems (§4.9, H3 del design).
+   * @throws 404 compra inexistente, soft-deleted, u otro tenant
+   */
+  @Get(':id')
+  async obtener(@Param('id') id: string): Promise<CompraDetalleResponseDto> {
+    const result = await this.obtenerCompraUseCase.execute({ compraId: id });
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+    return toCompraDetalleResponseDto(result.getValue());
+  }
+
+  /**
+   * GET /compras/:id/operaciones
+   * Bitácora completa de una compra, ordenada `created_at ASC` (§4.10,
+   * S35-S37, H3 del design).
+   * @throws 404 compra inexistente, soft-deleted, u otro tenant
+   */
+  @Get(':id/operaciones')
+  async listarOperaciones(@Param('id') id: string): Promise<OperacionCompraResponseDto[]> {
+    const result = await this.listarOperacionesCompraUseCase.execute({ compraId: id });
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+    return result.getValue().map(toOperacionCompraResponseDto);
   }
 }

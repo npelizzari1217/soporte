@@ -95,6 +95,9 @@ function buildController() {
   const registrarEntregaDeItemUseCase = { execute: vi.fn() };
   const cerrarItemConFaltanteUseCase = { execute: vi.fn() };
   const cancelarCompraUseCase = { execute: vi.fn() };
+  const listarComprasUseCase = { execute: vi.fn() };
+  const obtenerCompraUseCase = { execute: vi.fn() };
+  const listarOperacionesCompraUseCase = { execute: vi.fn() };
 
   const controller = new ComprasController(
     crearCompraUseCase as unknown as Ctor[0],
@@ -107,6 +110,9 @@ function buildController() {
     registrarEntregaDeItemUseCase as unknown as Ctor[7],
     cerrarItemConFaltanteUseCase as unknown as Ctor[8],
     cancelarCompraUseCase as unknown as Ctor[9],
+    listarComprasUseCase as unknown as Ctor[10],
+    obtenerCompraUseCase as unknown as Ctor[11],
+    listarOperacionesCompraUseCase as unknown as Ctor[12],
   );
 
   return {
@@ -121,6 +127,9 @@ function buildController() {
     registrarEntregaDeItemUseCase,
     cerrarItemConFaltanteUseCase,
     cancelarCompraUseCase,
+    listarComprasUseCase,
+    obtenerCompraUseCase,
+    listarOperacionesCompraUseCase,
   };
 }
 
@@ -387,6 +396,107 @@ describe('ComprasController — traducción HTTP ↔ use case (PR-21)', () => {
       expect(res.motivoCancelacion).toBe('Presupuesto recortado');
     });
   });
+
+  describe('GET /compras (PR-22)', () => {
+    it('lista paginado: pasa pagina/porPagina de la query al use case, mapea al response DTO CON total, SIN items por compra (S33)', async () => {
+      const { controller, listarComprasUseCase } = buildController();
+      listarComprasUseCase.execute.mockResolvedValue(
+        Result.ok({
+          items: [
+            {
+              id: 'compra-1',
+              numero: 'COM-2026-00001',
+              fechaSolicitud: new Date('2026-08-13'),
+              motivo: 'Reposición de notebooks',
+              estado: 'PENDIENTE',
+              comprado: false,
+              cerrado: false,
+              totalesPorMoneda: { ARS: 2000 },
+            },
+          ],
+          total: 1,
+          pagina: 1,
+          porPagina: 20,
+        }),
+      );
+
+      const res = await controller.listar({ pagina: 1, porPagina: 20 });
+
+      expect(listarComprasUseCase.execute).toHaveBeenCalledWith({ pagina: 1, porPagina: 20 });
+      expect(res.total).toBe(1);
+      expect(res.items).toHaveLength(1);
+      expect(res.items[0]).not.toHaveProperty('items');
+    });
+  });
+
+  describe('GET /compras/:id (PR-22)', () => {
+    it('detalle: retorna la compra CON ítems (a diferencia del listado, S33)', async () => {
+      const { controller, obtenerCompraUseCase } = buildController();
+      const compra = buildCompra();
+      compra.agregarItem({
+        descripcion: 'Notebook Dell',
+        cantidad: 2,
+        proveedor: 'Proveedor SA',
+        monto: 1000,
+        moneda: 'ARS',
+        fechaCotizacion: new Date('2026-08-13'),
+        observaciones: null,
+      });
+      obtenerCompraUseCase.execute.mockResolvedValue(Result.ok(compra));
+
+      const res = await controller.obtener('compra-1');
+
+      expect(obtenerCompraUseCase.execute).toHaveBeenCalledWith({ compraId: 'compra-1' });
+      expect(res.id).toBe('compra-1');
+      expect(res.items).toHaveLength(1);
+    });
+
+    it('404 si la compra no existe/no es visible', async () => {
+      const { controller, obtenerCompraUseCase } = buildController();
+      obtenerCompraUseCase.execute.mockResolvedValue(
+        Result.fail(new CompraNoEncontradaError('compra-1')),
+      );
+
+      await expect(controller.obtener('compra-1')).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  describe('GET /compras/:id/operaciones (PR-22)', () => {
+    it('lista la bitácora completa de la compra (§4.10)', async () => {
+      const { controller, listarOperacionesCompraUseCase } = buildController();
+      listarOperacionesCompraUseCase.execute.mockResolvedValue(
+        Result.ok([
+          {
+            id: 'op-1',
+            compraId: 'compra-1',
+            itemCompraId: null,
+            tipo: 'CREACION',
+            usuarioId: 'usuario-1',
+            detalle: 'Compra "COM-2026-00001" creada.',
+            datos: null,
+            createdAt: new Date('2026-08-13'),
+          },
+        ]),
+      );
+
+      const res = await controller.listarOperaciones('compra-1');
+
+      expect(listarOperacionesCompraUseCase.execute).toHaveBeenCalledWith({ compraId: 'compra-1' });
+      expect(res).toHaveLength(1);
+      expect(res[0].tipo).toBe('CREACION');
+    });
+
+    it('404 si la compra no existe/no es visible', async () => {
+      const { controller, listarOperacionesCompraUseCase } = buildController();
+      listarOperacionesCompraUseCase.execute.mockResolvedValue(
+        Result.fail(new CompraNoEncontradaError('compra-1')),
+      );
+
+      await expect(controller.listarOperaciones('compra-1')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+  });
 });
 
 describe('ComprasController — propagación de errores (nunca 500 silencioso)', () => {
@@ -456,6 +566,16 @@ describe('ComprasController — propagación de errores (nunca 500 silencioso)',
       nombre: 'cancelar',
       useCase: 'cancelarCompraUseCase',
       invocar: (c) => c.cancelar(USUARIO, 'compra-1', { motivo: 'x' }),
+    },
+    {
+      nombre: 'obtener',
+      useCase: 'obtenerCompraUseCase',
+      invocar: (c) => c.obtener('compra-1'),
+    },
+    {
+      nombre: 'listarOperaciones',
+      useCase: 'listarOperacionesCompraUseCase',
+      invocar: (c) => c.listarOperaciones('compra-1'),
     },
   ];
 
@@ -571,6 +691,17 @@ describe('RBAC — metadata (§4.11)', () => {
     const meta = Reflect.getMetadata(PERMISSIONS_KEY, handler);
     expect(meta).toEqual([permiso]);
   });
+
+  it.each(['listar', 'obtener', 'listarOperaciones'] as const)(
+    '%s (consulta, PR-22) NO declara @RequirePermissions — cualquier usuario autenticado con acceso al módulo puede leer',
+    (metodo) => {
+      const handler = ComprasController.prototype[
+        metodo as keyof typeof ComprasController.prototype
+      ] as unknown as (...args: unknown[]) => unknown;
+      const meta = Reflect.getMetadata(PERMISSIONS_KEY, handler);
+      expect(meta).toBeUndefined();
+    },
+  );
 });
 
 describe('RBAC — guard real: S38/S39/S11/S40 (§4.11, PermissionsGuard + Reflector reales sobre metadata real)', () => {
