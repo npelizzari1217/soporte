@@ -40,18 +40,28 @@
  * mutadores (PR-14..PR-18) — un `tipo` fuera de este catálogo es rechazado
  * por el CHECK de DB, aunque el dominio ya lo tipa acá para atraparlo en
  * compilación, antes de llegar a la DB.
+ *
+ * **Es un array y no solo una unión, y es la ÚNICA fuente de verdad**: el tipo
+ * se deriva de acá, no al revés. Una unión de TypeScript se borra al compilar,
+ * así que sin esta constante no hay nada que un test pueda comparar contra la
+ * base. Agregar un tipo acá SIN su migración hace que el INSERT lo rechace el
+ * CHECK y, como no hay filtro global de excepciones, salga como 500. Esa
+ * deriva la ataja `prisma_tenant/compras-checks.integration.spec.ts`.
  */
-export type TipoOperacionCompra =
-  | 'CREACION'
-  | 'ITEM_AGREGADO'
-  | 'ITEM_EDITADO'
-  | 'ITEM_ELIMINADO'
-  | 'ITEM_APROBADO'
-  | 'ITEM_RECHAZADO'
-  | 'COMPRA_REGISTRADA'
-  | 'ENTREGA_REGISTRADA'
-  | 'ITEM_CERRADO_CON_FALTANTE'
-  | 'CANCELACION';
+export const TIPOS_OPERACION_COMPRA = [
+  'CREACION',
+  'ITEM_AGREGADO',
+  'ITEM_EDITADO',
+  'ITEM_ELIMINADO',
+  'ITEM_APROBADO',
+  'ITEM_RECHAZADO',
+  'COMPRA_REGISTRADA',
+  'ENTREGA_REGISTRADA',
+  'ITEM_CERRADO_CON_FALTANTE',
+  'CANCELACION',
+] as const;
+
+export type TipoOperacionCompra = (typeof TIPOS_OPERACION_COMPRA)[number];
 
 /**
  * Vista de dominio de una operación ya persistida — retornada por
