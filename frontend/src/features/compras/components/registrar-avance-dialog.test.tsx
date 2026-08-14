@@ -47,6 +47,52 @@ async function abrirDialog(nombreBoton: RegExp) {
 describe("RegistrarCompraDialog", () => {
   beforeEach(() => vi.mocked(toast.error).mockClear());
 
+  it("W-D: abrir y guardar SIN cambiar el acumulado no pega a la API (no ensucia la bitácora)", async () => {
+    let pegoALaApi = false;
+    server.use(
+      http.post(`/api/compras/${COMPRA_ID}/items/item-1/registrar-compra`, () => {
+        pegoALaApi = true;
+        return HttpResponse.json(buildItem({ cantidadComprada: 4 }));
+      }),
+    );
+
+    renderWithProviders(
+      <RegistrarCompraDialog compraId={COMPRA_ID} item={buildItem({ cantidadComprada: 4 })} />,
+      { user: buildUser({ permisos: ["compra:gestionar"] }) },
+    );
+
+    const user = await abrirDialog(/registrar compra/i);
+    // El campo viene precargado con el acumulado actual: guardar sin tocarlo seria
+    // un no-op que el dominio acepta y el caso de uso igual registra en bitacora.
+    await user.click(await screen.findByRole("button", { name: /^guardar$/i }));
+
+    await new Promise((r) => setTimeout(r, 50));
+    expect(pegoALaApi).toBe(false);
+  });
+
+  it("W-D: al cambiar el acumulado, guardar SI pega a la API", async () => {
+    let capturado: Record<string, unknown> = {};
+    server.use(
+      http.post(`/api/compras/${COMPRA_ID}/items/item-1/registrar-compra`, async ({ request }) => {
+        capturado = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(buildItem({ cantidadComprada: 7 }));
+      }),
+    );
+
+    renderWithProviders(
+      <RegistrarCompraDialog compraId={COMPRA_ID} item={buildItem({ cantidadComprada: 4 })} />,
+      { user: buildUser({ permisos: ["compra:gestionar"] }) },
+    );
+
+    const user = await abrirDialog(/registrar compra/i);
+    const campo = await screen.findByLabelText(/cantidad comprada/i);
+    await user.clear(campo);
+    await user.type(campo, "7");
+    await user.click(screen.getByRole("button", { name: /^guardar$/i }));
+
+    await waitFor(() => expect(capturado.cantidadComprada).toBe(7));
+  });
+
   it("con ítem APROBADO, el botón está habilitado y precarga cantidadComprada actual", async () => {
     renderWithProviders(
       <RegistrarCompraDialog compraId={COMPRA_ID} item={buildItem({ cantidadComprada: 4 })} />,
@@ -102,6 +148,11 @@ describe("RegistrarCompraDialog", () => {
     });
 
     const user = await abrirDialog(/registrar compra/i);
+    // Hay que CAMBIAR el acumulado: guardar sin tocarlo ya no pega a la API (W-D).
+    // 99 excede lo solicitado (10), que es justo el 422 que este test verifica.
+    const campo = await screen.findByLabelText(/cantidad comprada/i);
+    await user.clear(campo);
+    await user.type(campo, "99");
     await user.click(screen.getByRole("button", { name: /^guardar$/i }));
 
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith(MENSAJE_BACKEND));
@@ -110,6 +161,30 @@ describe("RegistrarCompraDialog", () => {
 
 describe("RegistrarEntregaDialog", () => {
   beforeEach(() => vi.mocked(toast.error).mockClear());
+
+  it("W-D: abrir y guardar SIN cambiar el acumulado no pega a la API (no ensucia la bitácora)", async () => {
+    let pegoALaApi = false;
+    server.use(
+      http.post(`/api/compras/${COMPRA_ID}/items/item-1/registrar-entrega`, () => {
+        pegoALaApi = true;
+        return HttpResponse.json(buildItem({ cantidadEntregada: 2 }));
+      }),
+    );
+
+    renderWithProviders(
+      <RegistrarEntregaDialog
+        compraId={COMPRA_ID}
+        item={buildItem({ cantidadComprada: 5, cantidadEntregada: 2 })}
+      />,
+      { user: buildUser({ permisos: ["compra:gestionar"] }) },
+    );
+
+    const user = await abrirDialog(/registrar entrega/i);
+    await user.click(await screen.findByRole("button", { name: /^guardar$/i }));
+
+    await new Promise((r) => setTimeout(r, 50));
+    expect(pegoALaApi).toBe(false);
+  });
 
   it("con cantidadComprada > 0, el botón está habilitado y precarga cantidadEntregada actual", async () => {
     renderWithProviders(

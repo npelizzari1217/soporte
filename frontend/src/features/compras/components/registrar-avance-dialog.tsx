@@ -55,11 +55,22 @@ export function RegistrarCompraDialog({ compraId, item }: RegistrarAvanceDialogP
     register,
     handleSubmit,
     reset,
+    watch,
     formState: { errors },
   } = useForm<RegistrarCompraDeItemFormValues>({
     resolver: zodResolver(registrarCompraDeItemSchema),
     defaultValues: { cantidadComprada: item.cantidadComprada },
   });
+
+  /**
+   * El campo viene precargado con el acumulado actual, así que "abrir y guardar"
+   * sin tocar nada manda el mismo valor: el dominio lo acepta como idempotente
+   * (no excede ni retrocede) y el caso de uso registra igual una `OperacionCompra`
+   * que no refleja ningún cambio. El gate va acá, en el origen del ruido, y no en
+   * el dominio: mandar el acumulado por API es legítimo, y hacer condicional la
+   * escritura de bitácora debilitaría la defensa de ADR-C4.
+   */
+  const sinCambio = Number(watch("cantidadComprada")) === item.cantidadComprada;
 
   function submit(values: RegistrarCompraDeItemFormValues) {
     registrarMutation.mutate(
@@ -113,7 +124,12 @@ export function RegistrarCompraDialog({ compraId, item }: RegistrarAvanceDialogP
             )}
           </div>
           <div className="flex justify-end gap-2 pt-2">
-            <Button type="submit" isLoading={registrarMutation.isPending}>
+            <Button
+              type="submit"
+              isLoading={registrarMutation.isPending}
+              disabled={sinCambio}
+              title={sinCambio ? "No cambiaste el acumulado comprado" : undefined}
+            >
               Guardar
             </Button>
           </div>
@@ -133,11 +149,15 @@ export function RegistrarEntregaDialog({ compraId, item }: RegistrarAvanceDialog
     register,
     handleSubmit,
     reset,
+    watch,
     formState: { errors },
   } = useForm<RegistrarEntregaDeItemFormValues>({
     resolver: zodResolver(registrarEntregaDeItemSchema),
     defaultValues: { cantidadEntregada: item.cantidadEntregada },
   });
+
+  /** Mismo criterio que `RegistrarCompraDialog`: ver el JSDoc de `sinCambio` allá. */
+  const sinCambio = Number(watch("cantidadEntregada")) === item.cantidadEntregada;
 
   function submit(values: RegistrarEntregaDeItemFormValues) {
     registrarMutation.mutate(
@@ -191,7 +211,12 @@ export function RegistrarEntregaDialog({ compraId, item }: RegistrarAvanceDialog
             )}
           </div>
           <div className="flex justify-end gap-2 pt-2">
-            <Button type="submit" isLoading={registrarMutation.isPending}>
+            <Button
+              type="submit"
+              isLoading={registrarMutation.isPending}
+              disabled={sinCambio}
+              title={sinCambio ? "No cambiaste el acumulado entregado" : undefined}
+            >
               Guardar
             </Button>
           </div>
