@@ -421,6 +421,23 @@ describe('ItemCompraEntity', () => {
       expect(item.entregado).toBe(true);
     });
 
+    it.each(['PENDIENTE', 'RECHAZADO'] as const)(
+      'C1 (verify-report): cerrar con faltante un ítem %s (no aprobado) falla con ItemCompraNoAprobadoError, sin mutar',
+      (estado) => {
+        const item = ItemCompraEntity.create(crearPropsValidas({ cantidad: 6 }));
+        if (estado === 'RECHAZADO') {
+          item.rechazar('usuario-1');
+        }
+
+        const result = item.cerrarConFaltante('sin stock');
+
+        expect(result.isFail()).toBe(true);
+        expect(result.getError()).toBeInstanceOf(ItemCompraNoAprobadoError);
+        expect(item.cerradoConFaltante).toBe(false);
+        expect(item.motivoCierreFaltante).toBeNull();
+      },
+    );
+
     it('S23: cerrar sin faltante real (cantidadComprada >= cantidad) falla con ItemSinFaltanteError', () => {
       const item = crearItemAprobado({ cantidad: 5 });
       item.registrarCompra(5);
@@ -475,6 +492,41 @@ describe('ItemCompraEntity', () => {
         // Mismo valor ya registrado (5): no excede, no retrocede — sólo el
         // cierre terminal debe bloquear esta llamada.
         const result = item.registrarEntrega(5);
+
+        expect(result.isFail()).toBe(true);
+        expect(result.getError()).toBeInstanceOf(ItemCompraYaCerradoError);
+      });
+
+      it('C1 (verify-report): terminalidad sigue ganando sobre el guard de aprobación — un ítem ya cerrado y no aprobado (registro heredado vía reconstitute) da ItemCompraYaCerradoError, no ItemCompraNoAprobadoError', () => {
+        // No hay forma de llegar a este estado por la API pública después del
+        // fix (S25 lo impide justamente en un ítem NO cerrado): se reconstruye
+        // directo para probar el ORDEN de los guards frente a un registro ya
+        // persistido (p.ej. datos heredados de antes del fix).
+        const item = ItemCompraEntity.reconstitute(
+          {
+            compraId: 'compra-1',
+            descripcion: 'Notebook Dell Latitude',
+            cantidad: 6,
+            proveedor: 'Proveedor SA',
+            monto: 150000,
+            moneda: 'ARS',
+            fechaCotizacion: new Date('2026-01-15'),
+            observaciones: null,
+            estadoAprobacion: 'PENDIENTE',
+            decididoPorId: null,
+            decididoEn: null,
+            cantidadComprada: 5,
+            cantidadEntregada: 0,
+            cerradoConFaltante: true,
+            motivoCierreFaltante: 'motivo previo',
+          },
+          'item-1',
+          new Date(),
+          new Date(),
+          null,
+        );
+
+        const result = item.cerrarConFaltante('motivo nuevo');
 
         expect(result.isFail()).toBe(true);
         expect(result.getError()).toBeInstanceOf(ItemCompraYaCerradoError);

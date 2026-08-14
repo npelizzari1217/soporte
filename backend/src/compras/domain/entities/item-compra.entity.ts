@@ -459,15 +459,28 @@ export class ItemCompraEntity extends BaseEntity<ItemCompraProps> {
    * los que pasan a `true` por el flag `cerradoConFaltante`, no por haber
    * alcanzado la cantidad.
    *
-   * Orden de guards: terminalidad primero (S25 — cerrar dos veces también
-   * debe dar `ItemCompraYaCerradoError`, no un error distinto), motivo
-   * requerido (S24), y por último faltante real (S23): sin faltante real
-   * no hay nada que cerrar.
+   * Orden de guards (actualizado, verify-report C1): terminalidad primero
+   * (S25 — cerrar dos veces también debe dar `ItemCompraYaCerradoError`, no
+   * un error distinto), después `estadoAprobacion === 'APROBADO'` (sin
+   * spec propio: es el espejo en dominio del CHECK de DB
+   * `items_compra_faltante_solo_aprobado_check`, ADR-C7 — la autoridad es
+   * el dominio, el CHECK es backstop, y antes de este fix el dominio era
+   * MÁS PERMISIVO que su propio backstop). Va SEGUNDO, no tercero ni
+   * cuarto, siguiendo el mismo precedente que `registrarCompra()` (línea
+   * arriba en esta clase): un ítem no aprobado es un estado que invalida la
+   * operación completa, así que se descarta ANTES de evaluar el contenido
+   * del pedido (motivo, S24) o sus cantidades (faltante real, S23) — no
+   * tiene sentido validar el "cómo" de un cierre que ni siquiera puede
+   * ocurrir por el "quién". Por último motivo requerido (S24) y faltante
+   * real (S23): sin faltante real no hay nada que cerrar.
    */
   cerrarConFaltante(motivo: string): Result<void, DomainError> {
     const guardCierre = this.asegurarNoCerrado();
     if (guardCierre.isFail()) {
       return guardCierre;
+    }
+    if (this.props.estadoAprobacion !== 'APROBADO') {
+      return Result.fail(new ItemCompraNoAprobadoError(this.id));
     }
     if (!motivo || motivo.trim().length === 0) {
       return Result.fail(new MotivoCierreFaltanteRequeridoError(this.id));
