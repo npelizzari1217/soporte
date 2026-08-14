@@ -1,34 +1,110 @@
 "use client";
 
 /**
- * CompraDetailView — placeholder tras la demolición del módulo legacy
- * (sdd/redisenio-modulo-compras, PR-1). El detalle real se reconstruye en
- * PR-25 sobre el nuevo dominio `Compra`/`ItemCompra`/`OperacionCompra`.
+ * CompraDetailView — CONTAINER montado por `/compras/[id]` (PR-25,
+ * sdd/redisenio-modulo-compras). Reemplaza el placeholder "Módulo en
+ * reconstrucción" de PR-1 con el detalle real: cabecera + tabla de ítems +
+ * bitácora, sobre el dominio nuevo `Compra`/`ItemCompra`/`OperacionCompra`.
  *
- * La prop nace directamente como `compraId` (NO `ticketId`, como en el
- * módulo legacy): el nuevo dominio identifica la compra por su propio id
- * agregado, no por el id del `Ticket` base.
+ * RBAC (decisión del maintainer, `sdd/redisenio-modulo-compras/
+ * rbac-consultas`, 2026-08-14): la lectura se gatea SOLO por módulo
+ * (COMPRAS, resuelto aguas arriba por el guard de navegación/layout) — SIN
+ * `<Can permiso=...>` envolviendo esta vista, mismo criterio que
+ * `ComprasListView` (PR-24). `ComprasController.obtener()`/
+ * `.listarOperaciones()` no declaran `@RequirePermissions`.
+ *
+ * Alcance duro de PR-25 ("todo de LECTURA"): SIN botones de acción, SIN
+ * diálogos y SIN hook de mutaciones — `use-compra-mutations.ts` NO existe
+ * todavía (es PR-26/PR-27, agrupados). La estructura queda preparada para
+ * recibir esas acciones (p.ej. un slot de `actions` en `PageHeader`), pero
+ * ninguna se agrega acá.
+ *
+ * CERO lógica condicional sobre ítems para derivar estado: `estado`/
+ * `comprado`/`cerrado`/`totalesPorMoneda` llegan YA DERIVADOS del backend
+ * (ADR-C1, `derivarEstadoCompra`) — este archivo solo los muestra.
  */
-import { Construction } from "lucide-react";
-import { EmptyState } from "@/components/shared/empty-state";
+import { DetailSkeleton } from "@/components/shared/skeletons";
+import { ErrorState } from "@/components/shared/error-state";
 import { PageHeader } from "@/components/shared/page-header";
+import { Badge } from "@/components/ui/badge";
+import { useCompra } from "../hooks/use-compras";
+import { formatearTotalesPorMoneda } from "../lib/formatear-totales";
+import { EstadoCompraBadge } from "./estado-compra-badge";
+import { CompraItemsSection } from "./compra-items-section";
+import { CompraBitacoraSection } from "./compra-bitacora-section";
 
 export interface CompraDetailViewProps {
   compraId: string;
 }
 
 export function CompraDetailView({ compraId }: CompraDetailViewProps) {
+  const compraQuery = useCompra(compraId);
+
+  if (compraQuery.isLoading) return <DetailSkeleton />;
+
+  // Cubre tanto el error de red/HTTP (incluida la compra no encontrada, 404)
+  // como la respuesta vacía — mismo criterio que `EquipoDetailView`.
+  if (compraQuery.isError || !compraQuery.data) {
+    return (
+      <ErrorState
+        message="No se pudo cargar la compra."
+        onRetry={() => {
+          compraQuery.refetch().catch(() => {});
+        }}
+      />
+    );
+  }
+
+  const compra = compraQuery.data;
+
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Detalle de compra"
-        description={`Gestión de la solicitud de compra ${compraId}`}
-      />
-      <EmptyState
-        icon={Construction}
-        title="Módulo en reconstrucción"
-        description="El módulo de Compras está siendo rediseñado. Va a estar disponible próximamente."
-      />
+    <div className="flex flex-col gap-6">
+      <PageHeader title={compra.numero} description={compra.motivo} />
+
+      <section className="grid grid-cols-1 gap-4 rounded-lg border border-border p-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="flex flex-col gap-1">
+          <span className="text-xs text-muted-foreground">Estado</span>
+          <EstadoCompraBadge estado={compra.estado} />
+        </div>
+        <div className="flex flex-col gap-1">
+          <span className="text-xs text-muted-foreground">Fecha de solicitud</span>
+          {/* Fecha cruda ("YYYY-MM-DD"), mismo criterio que `compras-list-view.tsx`
+              (`ciclo-row.tsx`): reformatear con `new Date()` puede mostrar el día
+              anterior por timezone. */}
+          <span className="text-sm text-foreground">{compra.fechaSolicitud}</span>
+        </div>
+        <div className="flex flex-col gap-1">
+          <span className="text-xs text-muted-foreground">Progreso</span>
+          <div className="flex gap-1">
+            <Badge variant={compra.comprado ? "success" : "outline"}>Comprado</Badge>
+            <Badge variant={compra.cerrado ? "success" : "outline"}>Cerrado</Badge>
+          </div>
+        </div>
+        <div className="flex flex-col gap-1">
+          <span className="text-xs text-muted-foreground">Totales por moneda</span>
+          <span className="text-sm text-foreground">
+            {formatearTotalesPorMoneda(compra.totalesPorMoneda)}
+          </span>
+        </div>
+      </section>
+
+      {compra.descripcion && <p className="text-sm text-muted-foreground">{compra.descripcion}</p>}
+
+      {/* Regla 0 de la tabla de verdad (spec §2): `canceladaEn != null` prima sobre
+          todo lo demás. El backend YA resolvió `estado: "CANCELADO"` — este bloque
+          es SOLO el detalle informativo del motivo, no una re-derivación. */}
+      {compra.canceladaEn && (
+        <div
+          role="status"
+          className="rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground"
+        >
+          Compra cancelada el {compra.canceladaEn}
+          {compra.motivoCancelacion ? `: ${compra.motivoCancelacion}` : ""}
+        </div>
+      )}
+
+      <CompraItemsSection items={compra.items} />
+      <CompraBitacoraSection compraId={compra.id} />
     </div>
   );
 }
