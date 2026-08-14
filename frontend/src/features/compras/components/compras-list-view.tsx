@@ -15,12 +15,13 @@
  * `@RequirePermissions`, así que un `<Can>` acá sería una restricción de UI
  * sin respaldo del backend.
  *
- * Alcance duro de PR-24 ("el LISTADO. Nada más"): esta vista es SOLO
- * LECTURA. No expone ningún botón de escritura (crear compra) — las
- * mutaciones quedan para PR-26/PR-27 (`sdd/redisenio-modulo-compras/
- * apply-progress-pr23` ya declaró explícitamente ese corte). Por eso la
- * regla "gatear por `compra:gestionar` las acciones de escritura que se
- * expongan desde el listado" no tiene, todavía, ningún botón que gatear.
+ * Alta de compra: `CompraCreateDialog` (cierra el hueco del checklist
+ * documentado en `sdd/redisenio-modulo-compras/hueco-compra-create-dialog`
+ * — ningún PR de la Fase F lo había asignado), gateada por `compra:gestionar`
+ * vía `<Can>` (mismo criterio que el resto de los triggers de escritura del
+ * repo — `TicketsListView`, `EquipoDetailView`). Esta SÍ es una acción de
+ * escritura (a diferencia de la lectura del resto de la vista), por eso es
+ * la única parte de este archivo detrás de un gate de permiso.
  *
  * Paginación: SIEMPRE server-side vía `total` real de `ListarComprasResponse`
  * (S32/S33 — `PrismaCompraRepository` cuenta con un `count()` dedicado,
@@ -40,9 +41,11 @@ import { useCompras } from "../hooks/use-compras";
 import { DataTable, type Column } from "@/components/shared/data-table";
 import { Pagination } from "@/components/shared/pagination";
 import { PageHeader } from "@/components/shared/page-header";
+import { Can } from "@/components/shared/can";
 import { Badge } from "@/components/ui/badge";
 import { notifyError } from "@/shared/lib/toast";
 import { EstadoCompraBadge } from "./estado-compra-badge";
+import { CompraCreateDialog } from "./compra-create-dialog";
 import { formatearTotalesPorMoneda } from "../lib/formatear-totales";
 import type { CompraListItem, ComprasFiltros } from "../types";
 
@@ -100,7 +103,15 @@ export function ComprasListView() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Compras" description="Solicitudes de compra del ciclo activo" />
+      <PageHeader
+        title="Compras"
+        description="Solicitudes de compra del ciclo activo"
+        actions={
+          <Can permiso="compra:gestionar">
+            <CompraCreateDialog />
+          </Can>
+        }
+      />
 
       <DataTable
         columns={columns}

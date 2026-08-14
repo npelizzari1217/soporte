@@ -94,4 +94,25 @@ describe("ComprasListView", () => {
 
     expect(pushMock).toHaveBeenCalledWith("/compras/c1");
   });
+
+  it.each([
+    { permisos: ["compra:gestionar"], visible: true },
+    { permisos: [], visible: false },
+  ])(
+    "gate de permiso del alta: permisos=$permisos → trigger 'Nueva compra' visible=$visible",
+    ({ permisos, visible }) => {
+      server.use(
+        http.get("/api/compras", () =>
+          HttpResponse.json({ items: [], total: 0, pagina: 1, porPagina: 10 }),
+        ),
+      );
+      renderWithProviders(<ComprasListView />, { user: buildUser({ modulos: ["COMPRAS"], permisos }) });
+
+      if (visible) {
+        expect(screen.getByRole("button", { name: /nueva compra/i })).toBeInTheDocument();
+      } else {
+        expect(screen.queryByRole("button", { name: /nueva compra/i })).not.toBeInTheDocument();
+      }
+    },
+  );
 });

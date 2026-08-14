@@ -7,17 +7,18 @@
  * bitácora, sobre el dominio nuevo `Compra`/`ItemCompra`/`OperacionCompra`.
  *
  * RBAC (decisión del maintainer, `sdd/redisenio-modulo-compras/
- * rbac-consultas`, 2026-08-14): la lectura se gatea SOLO por módulo
- * (COMPRAS, resuelto aguas arriba por el guard de navegación/layout) — SIN
- * `<Can permiso=...>` envolviendo esta vista, mismo criterio que
+ * rbac-consultas`, 2026-08-14): la LECTURA se gatea SOLO por módulo
+ * (COMPRAS, resuelto aguas arriba por el guard de navegación/layout) — la
+ * vista en sí NO está envuelta en `<Can permiso=...>`, mismo criterio que
  * `ComprasListView` (PR-24). `ComprasController.obtener()`/
  * `.listarOperaciones()` no declaran `@RequirePermissions`.
  *
- * Alcance duro de PR-25 ("todo de LECTURA"): SIN botones de acción, SIN
- * diálogos y SIN hook de mutaciones — `use-compra-mutations.ts` NO existe
- * todavía (es PR-26/PR-27, agrupados). La estructura queda preparada para
- * recibir esas acciones (p.ej. un slot de `actions` en `PageHeader`), pero
- * ninguna se agrega acá.
+ * Las ACCIONES DE ESCRITURA sí van gateadas (cierre del wiring pendiente de
+ * PR-26/PR-27, `sdd/redisenio-modulo-compras/hueco-compra-create-dialog`):
+ * `ItemCreateDialog`/`CompraCancelarDialog` en el toolbar del header
+ * (`compra:gestionar`); la columna de acciones por ítem vive en
+ * `CompraItemsSection` (`compra:gestionar`/`compra:aprobar`, un `<Can>` por
+ * permiso).
  *
  * CERO lógica condicional sobre ítems para derivar estado: `estado`/
  * `comprado`/`cerrado`/`totalesPorMoneda` llegan YA DERIVADOS del backend
@@ -26,12 +27,15 @@
 import { DetailSkeleton } from "@/components/shared/skeletons";
 import { ErrorState } from "@/components/shared/error-state";
 import { PageHeader } from "@/components/shared/page-header";
+import { Can } from "@/components/shared/can";
 import { Badge } from "@/components/ui/badge";
 import { useCompra } from "../hooks/use-compras";
 import { formatearTotalesPorMoneda } from "../lib/formatear-totales";
 import { EstadoCompraBadge } from "./estado-compra-badge";
 import { CompraItemsSection } from "./compra-items-section";
 import { CompraBitacoraSection } from "./compra-bitacora-section";
+import { ItemCreateDialog } from "./item-create-dialog";
+import { CompraCancelarDialog } from "./compra-cancelar-dialog";
 
 export interface CompraDetailViewProps {
   compraId: string;
@@ -59,7 +63,18 @@ export function CompraDetailView({ compraId }: CompraDetailViewProps) {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title={compra.numero} description={compra.motivo} />
+      <PageHeader
+        title={compra.numero}
+        description={compra.motivo}
+        actions={
+          <Can permiso="compra:gestionar">
+            <div className="flex items-center gap-2">
+              <ItemCreateDialog compraId={compra.id} />
+              <CompraCancelarDialog compra={compra} />
+            </div>
+          </Can>
+        }
+      />
 
       <section className="grid grid-cols-1 gap-4 rounded-lg border border-border p-4 sm:grid-cols-2 lg:grid-cols-4">
         <div className="flex flex-col gap-1">
@@ -103,7 +118,7 @@ export function CompraDetailView({ compraId }: CompraDetailViewProps) {
         </div>
       )}
 
-      <CompraItemsSection items={compra.items} />
+      <CompraItemsSection compraId={compra.id} items={compra.items} />
       <CompraBitacoraSection compraId={compra.id} />
     </div>
   );

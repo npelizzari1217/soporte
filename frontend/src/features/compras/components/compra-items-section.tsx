@@ -1,8 +1,6 @@
 /**
  * CompraItemsSection — tabla de ítems de una compra (`CompraDetalle.items`,
- * spec §1). SOLO LECTURA en PR-25: sin editar/eliminar/aprobar/rechazar —
- * esas mutaciones son PR-26/PR-27 (`use-compra-mutations.ts` NO existe
- * todavía, fuera de alcance declarado).
+ * spec §1).
  *
  * El backend YA filtra los ítems soft-deleted en `CompraDetalleResponseDto`
  * (`toCompraDetalleResponseDto`, `compras.dto.ts`: `.filter((item) =>
@@ -14,11 +12,27 @@
  * (`ItemCompraResponseDto.comprado/.entregado`, `itemComprado`/
  * `itemEntregado` de `estado-compra.ts` del dominio) — se muestran tal
  * cual, nunca se recalculan acá.
+ *
+ * Columna "Acciones" (cierre del hueco de wiring, PR-26/PR-27 dejaron las 7
+ * piezas AUTÓNOMAS): cablea `ItemEditDialog`/`ItemEliminarControl`/
+ * `RegistrarCompraDialog`/`RegistrarEntregaDialog`/`ItemCerrarFaltanteDialog`
+ * detrás de `<Can permiso="compra:gestionar">` y `ItemDecisionActions`
+ * (aprobar/rechazar) detrás de `<Can permiso="compra:aprobar">` — mismo
+ * patrón de MÚLTIPLES `<Can>` en una sola celda que `usuarios-admin-view.tsx`
+ * (permisos independientes, un `<Can>` por acción). Cada pieza es
+ * PRESENTACIONAL y ya trae su propio gate de estado (S7/S10/S16/S20/S25),
+ * este archivo solo decide QUIÉN la ve.
  */
 import { Inbox } from "lucide-react";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { EmptyState } from "@/components/shared/empty-state";
+import { Can } from "@/components/shared/can";
+import { ItemEditDialog } from "./item-edit-dialog";
+import { ItemEliminarControl } from "./item-eliminar-control";
+import { ItemDecisionActions } from "./item-decision-actions";
+import { RegistrarCompraDialog, RegistrarEntregaDialog } from "./registrar-avance-dialog";
+import { ItemCerrarFaltanteDialog } from "./item-cerrar-faltante-dialog";
 import type { EstadoAprobacionItem, ItemCompra } from "../types";
 
 /**
@@ -39,10 +53,11 @@ function formatMonto(moneda: string, monto: number): string {
 }
 
 export interface CompraItemsSectionProps {
+  compraId: string;
   items: ItemCompra[];
 }
 
-export function CompraItemsSection({ items }: CompraItemsSectionProps) {
+export function CompraItemsSection({ compraId, items }: CompraItemsSectionProps) {
   return (
     <section className="flex flex-col gap-3">
       <h2 className="text-sm font-semibold text-foreground">Ítems</h2>
@@ -63,6 +78,9 @@ export function CompraItemsSection({ items }: CompraItemsSectionProps) {
               <TableHead>Estado</TableHead>
               <TableHead>Comprado</TableHead>
               <TableHead>Entregado</TableHead>
+              <TableHead>
+                <span className="sr-only">Acciones</span>
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -86,6 +104,22 @@ export function CompraItemsSection({ items }: CompraItemsSectionProps) {
                     <Badge variant={item.entregado ? "success" : "outline"}>
                       {item.entregado ? "Sí" : "No"}
                     </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex flex-wrap items-center gap-1">
+                      <Can permiso="compra:aprobar">
+                        <ItemDecisionActions compraId={compraId} item={item} />
+                      </Can>
+                      <Can permiso="compra:gestionar">
+                        <>
+                          <RegistrarCompraDialog compraId={compraId} item={item} />
+                          <RegistrarEntregaDialog compraId={compraId} item={item} />
+                          <ItemCerrarFaltanteDialog compraId={compraId} item={item} />
+                          <ItemEditDialog compraId={compraId} item={item} />
+                          <ItemEliminarControl compraId={compraId} item={item} />
+                        </>
+                      </Can>
+                    </div>
                   </TableCell>
                 </TableRow>
               );

@@ -150,4 +150,39 @@ describe("CompraDetailView", () => {
     await screen.findByText("Resmas de papel A4");
     expect(await screen.findByText("No se pudo cargar la bitácora.")).toBeInTheDocument();
   });
+
+  describe("gate de permisos en las acciones", () => {
+    it.each([
+      { boton: /^agregar ítem$/i, permiso: "compra:gestionar" as const },
+      { boton: /^cancelar compra$/i, permiso: "compra:gestionar" as const },
+      { boton: /^editar ítem$/i, permiso: "compra:gestionar" as const },
+      { boton: /^eliminar$/i, permiso: "compra:gestionar" as const },
+      { boton: /registrar compra/i, permiso: "compra:gestionar" as const },
+      { boton: /registrar entrega/i, permiso: "compra:gestionar" as const },
+      { boton: /cerrar con faltante/i, permiso: "compra:gestionar" as const },
+      { boton: /^aprobar$/i, permiso: "compra:aprobar" as const },
+      { boton: /^rechazar$/i, permiso: "compra:aprobar" as const },
+    ])(
+      "trigger $boton requiere $permiso: presente con el permiso, ausente sin él",
+      async ({ boton, permiso }) => {
+        server.use(
+          http.get("/api/compras/c1", () => HttpResponse.json(COMPRA_DETALLE)),
+          http.get("/api/compras/c1/operaciones", () => HttpResponse.json(OPERACIONES)),
+        );
+
+        const { unmount } = renderWithProviders(<CompraDetailView compraId="c1" />, {
+          user: buildUser({ modulos: ["COMPRAS"], permisos: [permiso] }),
+        });
+        await screen.findByText("Resmas de papel A4");
+        expect(screen.queryAllByRole("button", { name: boton }).length).toBeGreaterThan(0);
+        unmount();
+
+        renderWithProviders(<CompraDetailView compraId="c1" />, {
+          user: buildUser({ modulos: ["COMPRAS"], permisos: [] }),
+        });
+        await screen.findByText("Resmas de papel A4");
+        expect(screen.queryAllByRole("button", { name: boton }).length).toBe(0);
+      },
+    );
+  });
 });
