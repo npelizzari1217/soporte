@@ -16,10 +16,13 @@
  *    `ActivarCicloUseCase`. Idempotente (reusa el ciclo master por nombre;
  *    no vuelve a adoptar si el tenant ya tiene un ciclo activo).
  * 4. Datos de ejemplo en el tenant (~8 tickets variados, 2 compras con
- *    items/presupuestos, 1 ticket edilicio con subtareas, 2 equipos con
- *    componentes + 1 ticket de soporte, 2 artículos KB). Gateado por un
- *    único check (`ticket.count() === 0`) — si el tenant YA tiene tickets,
- *    se asume ya sembrado y se omite todo este bloque (idempotente).
+ *    ítems (`CrearCompraUseCase`/`AgregarItemCompraUseCase`, PR-14 de
+ *    sdd/redisenio-modulo-compras — el modelo `presupuesto` fue reemplazado
+ *    por `ItemCompra`/`OperacionCompra`), 1 ticket edilicio con subtareas,
+ *    2 equipos con componentes + 1 ticket de soporte, 2 artículos KB).
+ *    Gateado por un único check (`ticket.count() === 0`) — si el tenant YA
+ *    tiene tickets, se asume ya sembrado y se omite todo este bloque
+ *    (idempotente).
  *
  * Diseño testable (mismo criterio que `root-bootstrap.seed.ts`): la lógica
  * vive en `runDemoSeed(app, config)`, que recibe un `INestApplicationContext`
@@ -88,10 +91,28 @@ import {
 import { CrearTicketUseCase, type CrearTicketDto } from '../../src/tickets/application/use-cases/crear-ticket.use-case';
 import { TransicionarEstadoUseCase } from '../../src/tickets/application/use-cases/transicionar-estado.use-case';
 import { AsignarTicketUseCase } from '../../src/tickets/application/use-cases/asignar-ticket.use-case';
+import { ResolverCicloActivoParaCreacion } from '../../src/tickets/application/services/resolver-ciclo-activo.service';
+import {
+  CICLO_CLIENTE_REPOSITORY,
+  type ICicloClienteRepository,
+} from '../../src/tickets/domain/ports/i-ciclo-cliente.repository';
 
-import { CrearTicketCompraUseCase } from '../../src/compras/application/use-cases/crear-ticket-compra.use-case';
-import { AgregarItemCompraUseCase } from '../../src/compras/application/use-cases/agregar-item-compra.use-case';
-import { AgregarPresupuestoUseCase } from '../../src/compras/application/use-cases/agregar-presupuesto.use-case';
+import {
+  CrearCompraUseCase,
+  type CrearCompraDto,
+} from '../../src/compras/application/use-cases/crear-compra.use-case';
+import {
+  AgregarItemCompraUseCase,
+  type AgregarItemCompraDto,
+} from '../../src/compras/application/use-cases/agregar-item-compra.use-case';
+import { RegistrarOperacionCompra } from '../../src/compras/application/services/registrar-operacion-compra';
+import { NumeradorCompra } from '../../src/compras/domain/services/numerador-compra';
+import { PrismaCompraRepository } from '../../src/compras/infrastructure/persistence/prisma/prisma-compra.repository';
+import { PrismaOperacionCompraRepository } from '../../src/compras/infrastructure/persistence/prisma/prisma-operacion-compra.repository';
+import {
+  TENANT_TX_RUNNER,
+  type ITenantTransactionRunner,
+} from '../../src/shared/infrastructure/persistence/tenant-transaction-runner';
 
 import { CrearTicketEdilicioUseCase } from '../../src/reparaciones/application/use-cases/crear-ticket-edilicio.use-case';
 import { CrearSubtareaUseCase } from '../../src/reparaciones/application/use-cases/crear-subtarea.use-case';
@@ -405,75 +426,6 @@ async function crearTicketDemo(
   }
 }
 
-/** Crea 1-2 tickets de compra con items + presupuestos de ejemplo. */
-async function crearComprasDemo(
-  app: INestApplicationContext,
-  clienteId: string,
-  anio: number,
-  catalogos: Awaited<ReturnType<typeof cargarCatalogos>>,
-  usuarios: UsuariosDemo,
-): Promise<void> {
-  const crearCompra = app.get(CrearTicketCompraUseCase);
-  const agregarItem = app.get(AgregarItemCompraUseCase);
-  const agregarPresupuesto = app.get(AgregarPresupuestoUseCase);
-
-  const specs = [
-    {
-      titulo: 'Compra de notebooks para el equipo de soporte',
-      solicitanteId: usuarios.colaborador,
-      prioridadCodigo: 'ALTA',
-      items: [{ descripcion: 'Notebook 15" 16GB RAM', cantidad: 3, unidad: 'u' }],
-      presupuestos: [
-        { proveedor: 'TecnoDistribuidora SA', montoTotal: 2_850_000, moneda: 'ARS' },
-        { proveedor: 'ImportCompu SRL', montoTotal: 2_990_000, moneda: 'ARS' },
-      ],
-    },
-    {
-      titulo: 'Compra de licencias de antivirus corporativo',
-      solicitanteId: usuarios.administrador,
-      prioridadCodigo: 'MEDIA',
-      items: [{ descripcion: 'Licencia antivirus (paquete 50 puestos)', cantidad: 1, unidad: 'u' }],
-      presupuestos: [{ proveedor: 'SecureSoft', montoTotal: 450_000, moneda: 'ARS' }],
-    },
-  ];
-
-  for (const spec of specs) {
-    const result = await crearCompra.execute({
-      titulo: spec.titulo,
-      descripcion: null,
-      tipoId: catalogos.tipoIdPorCodigo.get('COMPRAS')!,
-      prioridadId: catalogos.prioridadIdPorCodigo.get(spec.prioridadCodigo)!,
-      solicitanteId: spec.solicitanteId,
-      clienteId,
-      autorId: spec.solicitanteId,
-      anio,
-    });
-    if (result.isFail()) {
-      throw new Error(`[demo-seed] No se pudo crear la compra demo "${spec.titulo}": ${result.getError().message}`);
-    }
-    const ticketCompraId = result.getValue().ticketCompra.id;
-
-    for (const item of spec.items) {
-      const r = await agregarItem.execute({ ticketCompraId, ...item });
-      if (r.isFail()) {
-        throw new Error(`[demo-seed] No se pudo agregar el ítem a la compra demo: ${r.getError().message}`);
-      }
-    }
-    for (const presupuesto of spec.presupuestos) {
-      const r = await agregarPresupuesto.execute({
-        ticketCompraId,
-        proveedor: presupuesto.proveedor,
-        montoTotal: presupuesto.montoTotal,
-        moneda: presupuesto.moneda,
-        fechaCotizacion: new Date(),
-      });
-      if (r.isFail()) {
-        throw new Error(`[demo-seed] No se pudo agregar el presupuesto a la compra demo: ${r.getError().message}`);
-      }
-    }
-  }
-}
-
 /** Crea 1 ticket edilicio (ubicación como texto libre) con 2 subtareas de ejemplo. */
 async function crearEdiliciaDemo(
   app: INestApplicationContext,
@@ -570,6 +522,157 @@ async function crearEquiposDemo(
   if (soporte.isFail()) {
     throw new Error(`[demo-seed] No se pudo crear el ticket de soporte demo: ${soporte.getError().message}`);
   }
+}
+
+// ─── Compras demo (sdd/redisenio-modulo-compras, PR-14) ────────────────────
+
+/**
+ * `ComprasModule` todavía es un placeholder (`@Module({})`, PR-1 —
+ * `ComprasModule` real llega en PR-22) — sus casos de uso NO están
+ * registrados como providers de Nest. Mismo criterio que
+ * `buildCrearClienteUseCase` (arriba): se instancian a mano, resolviendo
+ * cada colaborador desde el `app` ya construido (`TenantContext`,
+ * `TENANT_TX_RUNNER`, `CICLO_CLIENTE_REPOSITORY` — todos providers
+ * EXPORTADOS de `SharedModule`/`TicketsModule`, ya registrados en el árbol
+ * de `AppModule`).
+ */
+function buildCrearCompraUseCase(app: INestApplicationContext): CrearCompraUseCase {
+  const tenantContext = app.get(TenantContext);
+  const compraRepo = new PrismaCompraRepository(tenantContext);
+  const numerador = new NumeradorCompra(compraRepo);
+  const cicloRepo = app.get<ICicloClienteRepository>(CICLO_CLIENTE_REPOSITORY);
+  const resolverCicloActivo = new ResolverCicloActivoParaCreacion(cicloRepo);
+  const operacionRepo = new PrismaOperacionCompraRepository(tenantContext);
+  const registrarOperacion = new RegistrarOperacionCompra(operacionRepo);
+  const txRunner = app.get<ITenantTransactionRunner>(TENANT_TX_RUNNER);
+  return new CrearCompraUseCase(compraRepo, numerador, resolverCicloActivo, registrarOperacion, txRunner);
+}
+
+/** Ver JSDoc de `buildCrearCompraUseCase` — mismo criterio de instanciación manual. */
+function buildAgregarItemCompraUseCase(app: INestApplicationContext): AgregarItemCompraUseCase {
+  const tenantContext = app.get(TenantContext);
+  const compraRepo = new PrismaCompraRepository(tenantContext);
+  const operacionRepo = new PrismaOperacionCompraRepository(tenantContext);
+  const registrarOperacion = new RegistrarOperacionCompra(operacionRepo);
+  const txRunner = app.get<ITenantTransactionRunner>(TENANT_TX_RUNNER);
+  return new AgregarItemCompraUseCase(compraRepo, registrarOperacion, txRunner);
+}
+
+interface ItemCompraDemoSpec {
+  descripcion: string;
+  cantidad: number;
+  proveedor: string;
+  monto: number;
+  moneda: string;
+}
+
+interface CompraDemoSpec {
+  motivo: string;
+  descripcion: string;
+  solicitanteId: string;
+  items: ItemCompraDemoSpec[];
+}
+
+/** Crea 1 compra demo con sus ítems, vía `CrearCompraUseCase` + `AgregarItemCompraUseCase` (mismos use cases reales de producción). */
+async function crearCompraDemo(
+  app: INestApplicationContext,
+  anio: number,
+  spec: CompraDemoSpec,
+): Promise<void> {
+  const crearCompra = buildCrearCompraUseCase(app);
+  const dto: CrearCompraDto = {
+    motivo: spec.motivo,
+    descripcion: spec.descripcion,
+    fechaSolicitud: new Date(),
+    solicitanteId: spec.solicitanteId,
+    anio,
+  };
+  const result = await crearCompra.execute(dto);
+  if (result.isFail()) {
+    throw new Error(
+      `[demo-seed] No se pudo crear la compra demo "${spec.motivo}": ${result.getError().message}`,
+    );
+  }
+  const compraId = result.getValue().id;
+
+  const agregarItem = buildAgregarItemCompraUseCase(app);
+  for (const item of spec.items) {
+    const dtoItem: AgregarItemCompraDto = {
+      compraId,
+      usuarioId: spec.solicitanteId,
+      descripcion: item.descripcion,
+      cantidad: item.cantidad,
+      proveedor: item.proveedor,
+      monto: item.monto,
+      moneda: item.moneda,
+      fechaCotizacion: new Date(),
+      observaciones: null,
+    };
+    const r = await agregarItem.execute(dtoItem);
+    if (r.isFail()) {
+      throw new Error(
+        `[demo-seed] No se pudo agregar el ítem demo "${item.descripcion}" a la compra "${spec.motivo}": ${r.getError().message}`,
+      );
+    }
+  }
+}
+
+/** Crea 2 compras demo (5 ítems en total) — una por COLABORADOR, otra por ADMINISTRADOR. */
+async function crearComprasDemo(
+  app: INestApplicationContext,
+  anio: number,
+  usuarios: UsuariosDemo,
+): Promise<void> {
+  await crearCompraDemo(app, anio, {
+    motivo: 'Reposición de insumos de oficina',
+    descripcion: 'Papel, tóner y artículos varios para el trimestre',
+    solicitanteId: usuarios.colaborador,
+    items: [
+      {
+        descripcion: 'Resma de papel A4 (x10)',
+        cantidad: 20,
+        proveedor: 'Papelera del Centro',
+        monto: 4500,
+        moneda: 'ARS',
+      },
+      {
+        descripcion: 'Tóner HP LaserJet Pro',
+        cantidad: 3,
+        proveedor: 'Insumos SRL',
+        monto: 18000,
+        moneda: 'ARS',
+      },
+    ],
+  });
+
+  await crearCompraDemo(app, anio, {
+    motivo: 'Licencias de software anuales',
+    descripcion: 'Renovación de licencias Microsoft 365 y antivirus corporativo',
+    solicitanteId: usuarios.administrador,
+    items: [
+      {
+        descripcion: 'Licencia Microsoft 365 Business',
+        cantidad: 10,
+        proveedor: 'Microsoft Argentina',
+        monto: 45,
+        moneda: 'USD',
+      },
+      {
+        descripcion: 'Renovación antivirus corporativo',
+        cantidad: 25,
+        proveedor: 'NOD32 Argentina',
+        monto: 12,
+        moneda: 'USD',
+      },
+      {
+        descripcion: 'Backup en la nube (plan anual)',
+        cantidad: 1,
+        proveedor: 'CloudBackup SA',
+        monto: 890,
+        moneda: 'USD',
+      },
+    ],
+  });
 }
 
 /** Crea 2 artículos de KB (1 público, 1 interno). */
@@ -703,9 +806,9 @@ async function seedDemoTenantData(
       await crearTicketDemo(app, clienteId, anio, spec, catalogos);
     }
 
-    await crearComprasDemo(app, clienteId, anio, catalogos, usuarios);
     await crearEdiliciaDemo(app, clienteId, anio, catalogos, usuarios);
     await crearEquiposDemo(app, clienteId, anio, catalogos, usuarios);
+    await crearComprasDemo(app, anio, usuarios);
     await crearKbDemo(app, usuarios.administrador);
 
     return true;

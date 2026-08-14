@@ -37,11 +37,19 @@ describe('NumeradorTicket', () => {
   });
 
   describe('derivarPrefijo() (función pura)', () => {
-    it('resuelve el mapa base: SOPORTE→SOP, COMPRAS→COM, EDILICIA→EDI, MANTENIMIENTO→MAN', () => {
+    it('resuelve el mapa base: SOPORTE→SOP, EDILICIA→EDI, MANTENIMIENTO→MAN', () => {
       expect(NumeradorTicket.derivarPrefijo('SOPORTE')).toBe('SOP');
-      expect(NumeradorTicket.derivarPrefijo('COMPRAS')).toBe('COM');
       expect(NumeradorTicket.derivarPrefijo('EDILICIA')).toBe('EDI');
       expect(NumeradorTicket.derivarPrefijo('MANTENIMIENTO')).toBe('MAN');
+    });
+
+    // COMPRAS salió del mapa base al demoler el módulo legacy
+    // (sdd/redisenio-modulo-compras, PR-1). Sigue dando 'COM', pero ahora por
+    // el fallback de tipos custom, no por el mapa. Este test fija ESA rama:
+    // sin él, un cambio en el fallback pasaría inadvertido.
+    it('COMPRAS ya no está en el mapa base: deriva COM por el fallback custom', () => {
+      expect(NumeradorTicket.derivarPrefijo('COMPRAS')).toBe('COM');
+      expect(NumeradorTicket.derivarPrefijo('COMPRAS')).toBe('COMPRAS'.slice(0, 3));
     });
 
     it('deriva las primeras 3 letras alfanuméricas en mayúscula para tipos custom', () => {
@@ -79,9 +87,9 @@ describe('NumeradorTicket', () => {
       const repo = mockRepo(0);
       const numerador = new NumeradorTicket(repo);
 
-      const result = await numerador.generarNumero('tipo-compras-uuid', 'COMPRAS', 2026);
+      const result = await numerador.generarNumero('tipo-edilicia-uuid', 'EDILICIA', 2026);
 
-      expect(result.getValue()).toBe('COM-2026-00001');
+      expect(result.getValue()).toBe('EDI-2026-00001');
     });
 
     it('deriva prefijo custom para tipos fuera del mapa base', async () => {

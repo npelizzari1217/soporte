@@ -1,219 +1,188 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { screen, waitFor, fireEvent } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { describe, it, expect, vi } from "vitest";
+import { screen } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
-import { toast } from "sonner";
 import { server } from "../../../../test/msw/server";
 import { renderWithProviders, buildUser } from "../../../../test/render-with-providers";
 import { CompraDetailView } from "./compra-detail-view";
 
-vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+}));
 
-const COMPRA_PENDIENTE = {
-  id: "tc1",
-  ticketId: "t1",
-  numero: "COM-0001",
-  titulo: "Compra de notebooks",
-  estadoId: "e1",
-  aprobadoPorId: null,
-  aprobadoEn: null,
-  motivoRechazo: null,
-  createdAt: "2026-01-01T00:00:00.000Z",
-  updatedAt: "2026-01-01T00:00:00.000Z",
+const COMPRA_DETALLE = {
+  id: "c1",
+  numero: "COM-2026-00001",
+  fechaSolicitud: "2026-01-15",
+  motivo: "Reposición de insumos",
+  descripcion: "Compra trimestral de librería",
+  solicitanteId: "u1",
+  cicloId: "ciclo1",
+  estado: "APROBADO_PARCIALMENTE",
+  comprado: false,
+  cerrado: false,
+  totalesPorMoneda: { ARS: 1500.5 },
+  canceladaEn: null,
+  canceladoPorId: null,
+  motivoCancelacion: null,
+  items: [
+    {
+      id: "i1",
+      compraId: "c1",
+      descripcion: "Resmas de papel A4",
+      cantidad: 10,
+      proveedor: "Papelera SA",
+      monto: 1500.5,
+      moneda: "ARS",
+      fechaCotizacion: "2026-01-10",
+      observaciones: null,
+      estadoAprobacion: "APROBADO",
+      decididoPorId: "u2",
+      decididoEn: "2026-01-11T00:00:00.000Z",
+      cantidadComprada: 5,
+      cantidadEntregada: 0,
+      cerradoConFaltante: false,
+      motivoCierreFaltante: null,
+      comprado: false,
+      entregado: false,
+      createdAt: "2026-01-10T00:00:00.000Z",
+      updatedAt: "2026-01-11T00:00:00.000Z",
+    },
+    {
+      id: "i2",
+      compraId: "c1",
+      descripcion: "Tóner láser",
+      cantidad: 2,
+      proveedor: "Insumos SRL",
+      monto: 300,
+      moneda: "ARS",
+      fechaCotizacion: "2026-01-10",
+      observaciones: null,
+      estadoAprobacion: "RECHAZADO",
+      decididoPorId: "u2",
+      decididoEn: "2026-01-11T00:00:00.000Z",
+      cantidadComprada: 0,
+      cantidadEntregada: 0,
+      cerradoConFaltante: false,
+      motivoCierreFaltante: null,
+      comprado: false,
+      entregado: false,
+      createdAt: "2026-01-10T00:00:00.000Z",
+      updatedAt: "2026-01-11T00:00:00.000Z",
+    },
+  ],
+  createdAt: "2026-01-10T00:00:00.000Z",
+  updatedAt: "2026-01-11T00:00:00.000Z",
 };
 
-function mockBackend(detalle: Record<string, unknown> = {}) {
-  server.use(
-    http.get("/api/compras", () => HttpResponse.json([COMPRA_PENDIENTE])),
-    http.get("/api/compras/t1", () =>
-      HttpResponse.json({ ...COMPRA_PENDIENTE, items: [], presupuestos: [], ...detalle }),
-    ),
-  );
-}
+const OPERACIONES = [
+  {
+    id: "op1",
+    compraId: "c1",
+    itemCompraId: null,
+    tipo: "CREACION",
+    usuarioId: "u1",
+    detalle: "Compra creada",
+    datos: null,
+    createdAt: "2026-01-10T00:00:00.000Z",
+  },
+];
 
-describe("CompraDetailView — decisión (aprobar/rechazar) y su gating (80/20)", () => {
-  beforeEach(() => {
-    mockBackend();
-    vi.mocked(toast.success).mockClear();
-  });
-
-  it.each([
-    ["con compra:aprobar", ["compra:gestionar", "compra:aprobar"], true],
-    ["sin compra:aprobar", ["compra:gestionar"], false],
-  ])("botón «Aprobar» — %s", async (_label, permisos, shouldShow) => {
-    renderWithProviders(<CompraDetailView ticketId="t1" />, { user: buildUser({ permisos }) });
-    await screen.findByText("COM-0001 — Compra de notebooks");
-
-    if (shouldShow) {
-      expect(screen.getByRole("button", { name: "Aprobar" })).toBeInTheDocument();
-    } else {
-      expect(screen.queryByRole("button", { name: "Aprobar" })).not.toBeInTheDocument();
-    }
-  });
-
-  it.each([
-    ["con ticket:rechazar", ["compra:gestionar", "ticket:rechazar"], true],
-    ["sin ticket:rechazar", ["compra:gestionar"], false],
-  ])("botón «Rechazar» — %s", async (_label, permisos, shouldShow) => {
-    renderWithProviders(<CompraDetailView ticketId="t1" />, { user: buildUser({ permisos }) });
-    await screen.findByText("COM-0001 — Compra de notebooks");
-
-    if (shouldShow) {
-      expect(screen.getByRole("button", { name: "Rechazar" })).toBeInTheDocument();
-    } else {
-      expect(screen.queryByRole("button", { name: "Rechazar" })).not.toBeInTheDocument();
-    }
-  });
-
-  it("aprobar SOLO dispara POST /compras/:ticketId/aprobar tras confirmar — nunca transiciona el estado del ticket", async () => {
-    const user = userEvent.setup();
-    let aprobarLlamado = false;
-    let estadoLlamado = false;
+describe("CompraDetailView", () => {
+  it("compra no encontrada (404) → ErrorState en vez de romper", async () => {
     server.use(
-      http.post("/api/compras/t1/aprobar", () => {
-        aprobarLlamado = true;
-        return HttpResponse.json({ ...COMPRA_PENDIENTE, aprobadoPorId: "u1", aprobadoEn: "2026-01-02T00:00:00.000Z" });
-      }),
-      http.patch("/api/tickets/t1/estado", () => {
-        estadoLlamado = true;
-        return HttpResponse.json({});
-      }),
-    );
-
-    renderWithProviders(<CompraDetailView ticketId="t1" />, {
-      user: buildUser({ permisos: ["compra:gestionar", "compra:aprobar"] }),
-    });
-    await screen.findByText("COM-0001 — Compra de notebooks");
-
-    await user.click(screen.getByRole("button", { name: "Aprobar" }));
-    expect(aprobarLlamado).toBe(false); // el click en el trigger NO alcanza — falta confirmar
-
-    const confirmButtons = await screen.findAllByRole("button", { name: "Aprobar" });
-    await user.click(confirmButtons[confirmButtons.length - 1]);
-
-    await waitFor(() => expect(aprobarLlamado).toBe(true));
-    expect(estadoLlamado).toBe(false);
-  });
-
-  it("rechazar sin motivo NO dispara el POST — motivo requerido (espejo de MotivoRechazoRequeridoError)", async () => {
-    const user = userEvent.setup();
-    let rechazarLlamado = false;
-    server.use(
-      http.post("/api/compras/t1/rechazar", () => {
-        rechazarLlamado = true;
-        return HttpResponse.json({ ...COMPRA_PENDIENTE, motivoRechazo: "no aprobado" });
-      }),
-    );
-
-    renderWithProviders(<CompraDetailView ticketId="t1" />, {
-      user: buildUser({ permisos: ["compra:gestionar", "ticket:rechazar"] }),
-    });
-    await screen.findByText("COM-0001 — Compra de notebooks");
-
-    await user.click(screen.getByRole("button", { name: "Rechazar" }));
-    await user.click(screen.getByRole("button", { name: /confirmar rechazo/i }));
-
-    expect(rechazarLlamado).toBe(false);
-    expect(await screen.findByText(/motivo de rechazo es requerido/i)).toBeInTheDocument();
-  });
-});
-
-describe("CompraDetailView — consume items/presupuestos embebidos de GET /compras/:id (item 1 backend-gaps)", () => {
-  it("renderiza ítems y presupuestos ya existentes SIN necesidad de agregarlos vía mutación", async () => {
-    mockBackend({
-      items: [
-        {
-          id: "i1",
-          ticketCompraId: "tc1",
-          descripcion: "Notebook Dell",
-          cantidad: 3,
-          unidad: "u",
-          precioUnitarioRef: null,
-          observaciones: null,
-          createdAt: "2026-01-01T00:00:00.000Z",
-          updatedAt: "2026-01-01T00:00:00.000Z",
-        },
-      ],
-      presupuestos: [
-        {
-          id: "p1",
-          ticketCompraId: "tc1",
-          proveedor: "Proveedor Existente",
-          montoTotal: 500,
-          moneda: "ARS",
-          fechaCotizacion: "2026-01-01",
-          seleccionado: true,
-          observaciones: null,
-          createdAt: "2026-01-01T00:00:00.000Z",
-          updatedAt: "2026-01-01T00:00:00.000Z",
-        },
-      ],
-    });
-
-    renderWithProviders(<CompraDetailView ticketId="t1" />, { user: buildUser({ permisos: ["compra:gestionar"] }) });
-
-    expect(await screen.findByText(/notebook dell/i)).toBeInTheDocument();
-    expect(await screen.findByText(/proveedor existente/i)).toBeInTheDocument();
-    expect(screen.getByText(/^seleccionado$/i)).toBeInTheDocument();
-  });
-});
-
-describe("CompraPresupuestosSection — invariante «un solo presupuesto seleccionado»", () => {
-  beforeEach(() => {
-    mockBackend();
-  });
-
-  it("seleccionar un nuevo presupuesto desmarca el anteriormente seleccionado (swap atómico, espejo ADR-7 backend)", async () => {
-    const user = userEvent.setup();
-    const build = (id: string, proveedor: string) => ({
-      id,
-      ticketCompraId: "tc1",
-      proveedor,
-      montoTotal: 100,
-      moneda: "ARS",
-      fechaCotizacion: "2026-01-01",
-      seleccionado: false,
-      observaciones: null,
-      createdAt: "2026-01-01T00:00:00.000Z",
-      updatedAt: "2026-01-01T00:00:00.000Z",
-    });
-    const P1 = build("p1", "Proveedor A");
-    const P2 = build("p2", "Proveedor B");
-
-    server.use(
-      http.post("/api/compras/tc1/presupuestos", () => HttpResponse.json(P1), { once: true }),
-      http.post("/api/compras/tc1/presupuestos", () => HttpResponse.json(P2), { once: true }),
-      http.post("/api/compras/tc1/presupuestos/p1/seleccionar", () =>
-        HttpResponse.json({ ...P1, seleccionado: true }),
-      ),
-      http.post("/api/compras/tc1/presupuestos/p2/seleccionar", () =>
-        HttpResponse.json({ ...P2, seleccionado: true }),
+      http.get("/api/compras/inexistente", () =>
+        HttpResponse.json({ message: "No encontrada" }, { status: 404 }),
       ),
     );
+    renderWithProviders(<CompraDetailView compraId="inexistente" />, {
+      user: buildUser({ modulos: ["COMPRAS"] }),
+    });
 
-    renderWithProviders(<CompraDetailView ticketId="t1" />, { user: buildUser({ permisos: ["compra:gestionar"] }) });
-    await screen.findByText("COM-0001 — Compra de notebooks");
+    expect(await screen.findByRole("alert")).toHaveTextContent("No se pudo cargar la compra.");
+  });
 
-    async function agregarPresupuesto(proveedor: string, fecha: string) {
-      await user.type(screen.getByLabelText(/proveedor/i), proveedor);
-      await user.type(screen.getByLabelText(/monto/i), "100");
-      await user.selectOptions(screen.getByLabelText(/moneda/i), "ARS");
-      fireEvent.change(screen.getByLabelText(/fecha cotización/i), { target: { value: fecha } });
-      await user.click(screen.getByRole("button", { name: /agregar presupuesto/i }));
-    }
+  it("render de la tabla de ítems con el shape real del backend — sin re-derivar estado", async () => {
+    server.use(
+      http.get("/api/compras/c1", () => HttpResponse.json(COMPRA_DETALLE)),
+      http.get("/api/compras/c1/operaciones", () => HttpResponse.json(OPERACIONES)),
+    );
+    renderWithProviders(<CompraDetailView compraId="c1" />, {
+      user: buildUser({ modulos: ["COMPRAS"] }),
+    });
 
-    await agregarPresupuesto("Proveedor A", "2026-01-01");
-    await screen.findByText(/proveedor a/i);
-    await agregarPresupuesto("Proveedor B", "2026-01-02");
-    await screen.findByText(/proveedor b/i);
+    await screen.findByText("Resmas de papel A4");
+    expect(screen.getByText("Tóner láser")).toBeInTheDocument();
+    // El ítem aprobado muestra "Aprobado"; el rechazado "Rechazado" — sin
+    // recalcular nada, son `estadoAprobacion` tal cual llega del DTO.
+    expect(screen.getByText("Aprobado")).toBeInTheDocument();
+    expect(screen.getByText("Rechazado")).toBeInTheDocument();
+  });
 
-    await user.click(screen.getAllByRole("button", { name: /^seleccionar$/i })[0]);
-    await waitFor(() => expect(screen.getAllByText(/^seleccionado$/i)).toHaveLength(1));
+  it("bitácora: arma la request a /compras/:id/operaciones y renderiza las operaciones reales", async () => {
+    let bitacoraRequestUrl: string | undefined;
+    server.use(
+      http.get("/api/compras/c1", () => HttpResponse.json(COMPRA_DETALLE)),
+      http.get("/api/compras/c1/operaciones", ({ request }) => {
+        bitacoraRequestUrl = request.url;
+        return HttpResponse.json(OPERACIONES);
+      }),
+    );
+    renderWithProviders(<CompraDetailView compraId="c1" />, {
+      user: buildUser({ modulos: ["COMPRAS"] }),
+    });
 
-    // Único botón "Seleccionar" restante es el de Proveedor B — seleccionarlo debe desmarcar A.
-    await user.click(screen.getAllByRole("button", { name: /^seleccionar$/i })[0]);
-    await waitFor(() => expect(screen.getAllByText(/^seleccionado$/i)).toHaveLength(1));
-    expect(screen.getByText(/proveedor b —/i).closest("li")).toHaveTextContent(/seleccionado/i);
-    expect(screen.getByText(/proveedor a —/i).closest("li")).not.toHaveTextContent(/seleccionado/i);
+    expect(await screen.findByText("Compra creada")).toBeInTheDocument();
+    expect(bitacoraRequestUrl).toContain("/api/compras/c1/operaciones");
+  });
+
+  it("bitácora: si la API de operaciones falla, muestra su propio ErrorState sin romper el resto del detalle", async () => {
+    server.use(
+      http.get("/api/compras/c1", () => HttpResponse.json(COMPRA_DETALLE)),
+      http.get("/api/compras/c1/operaciones", () =>
+        HttpResponse.json({ message: "boom" }, { status: 500 }),
+      ),
+    );
+    renderWithProviders(<CompraDetailView compraId="c1" />, {
+      user: buildUser({ modulos: ["COMPRAS"] }),
+    });
+
+    // La cabecera y los ítems se renderizan igual — el fallo de bitácora es aislado.
+    await screen.findByText("Resmas de papel A4");
+    expect(await screen.findByText("No se pudo cargar la bitácora.")).toBeInTheDocument();
+  });
+
+  describe("gate de permisos en las acciones", () => {
+    it.each([
+      { boton: /^agregar ítem$/i, permiso: "compra:gestionar" as const },
+      { boton: /^cancelar compra$/i, permiso: "compra:gestionar" as const },
+      { boton: /^editar ítem$/i, permiso: "compra:gestionar" as const },
+      { boton: /^eliminar$/i, permiso: "compra:gestionar" as const },
+      { boton: /registrar compra/i, permiso: "compra:gestionar" as const },
+      { boton: /registrar entrega/i, permiso: "compra:gestionar" as const },
+      { boton: /cerrar con faltante/i, permiso: "compra:gestionar" as const },
+      { boton: /^aprobar$/i, permiso: "compra:aprobar" as const },
+      { boton: /^rechazar$/i, permiso: "compra:aprobar" as const },
+    ])(
+      "trigger $boton requiere $permiso: presente con el permiso, ausente sin él",
+      async ({ boton, permiso }) => {
+        server.use(
+          http.get("/api/compras/c1", () => HttpResponse.json(COMPRA_DETALLE)),
+          http.get("/api/compras/c1/operaciones", () => HttpResponse.json(OPERACIONES)),
+        );
+
+        const { unmount } = renderWithProviders(<CompraDetailView compraId="c1" />, {
+          user: buildUser({ modulos: ["COMPRAS"], permisos: [permiso] }),
+        });
+        await screen.findByText("Resmas de papel A4");
+        expect(screen.queryAllByRole("button", { name: boton }).length).toBeGreaterThan(0);
+        unmount();
+
+        renderWithProviders(<CompraDetailView compraId="c1" />, {
+          user: buildUser({ modulos: ["COMPRAS"], permisos: [] }),
+        });
+        await screen.findByText("Resmas de papel A4");
+        expect(screen.queryAllByRole("button", { name: boton }).length).toBe(0);
+      },
+    );
   });
 });

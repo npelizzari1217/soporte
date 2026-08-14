@@ -1,61 +1,48 @@
 import { DomainError, Result } from '../../../shared/domain/result';
-import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
-import { ITicketRepository } from '../../../tickets/domain/ports/i-ticket.repository';
-import { ItemCompraEntity } from '../../domain/entities/item-compra.entity';
-import { PresupuestoEntity } from '../../domain/entities/presupuesto.entity';
-import { TicketCompraEntity } from '../../domain/entities/ticket-compra.entity';
+import { CompraEntity } from '../../domain/entities/compra.entity';
 import { CompraNoEncontradaError } from '../../domain/errors/compras.errors';
-import { ITicketCompraRepository } from '../../domain/ports/i-ticket-compra.repository';
-import { IItemCompraRepository } from '../../domain/ports/i-item-compra.repository';
-import { IPresupuestoRepository } from '../../domain/ports/i-presupuesto.repository';
+import { ICompraRepository } from '../../domain/ports/i-compra.repository';
 
-/** Detalle completo de un ticket de compra: ticket base + satélite + hijos (sdd/beta-frontend item 1 — G7). */
-export interface CompraDetalle {
-  ticket: TicketEntity;
-  ticketCompra: TicketCompraEntity;
-  items: ItemCompraEntity[];
-  presupuestos: PresupuestoEntity[];
+/** DTO de entrada de `ObtenerCompraUseCase`. */
+export interface ObtenerCompraDto {
+  compraId: string;
 }
 
 /**
- * ObtenerCompraUseCase — `GET /compras/:id` (sdd/beta-frontend item 1,
- * cierra el gap G7: hasta ahora NO existía forma de recargar
- * items/presupuestos de una compra tras un refresh de página — el frontend
- * los mantenía solo en cache de sesión, poblado por cada mutación exitosa).
+ * ObtenerCompraUseCase — detalle de una compra CON sus ítems (§4.9, H3).
  *
- * `:id` = id del `Ticket` BASE (mismo criterio que `aprobar`/`rechazar` en
- * `ComprasController`, y consistente con la ruta `/compras/[id]` ya
- * implementada en el frontend — NO el id del satélite `ticket_compra` como
- * en las rutas anidadas de ítems/presupuestos).
+ * A diferencia de `ListarComprasUseCase` (S33: solo derivados, sin `items`),
+ * este caso de uso es el de DETALLE: retorna la `CompraEntity` completa —
+ * `items`/`estado`/`comprado`/`cerrado`/`totalesPorMoneda` los expone la
+ * propia entidad, no hace falta proyectar un DTO nuevo (mismo criterio que
+ * `ObtenerTicketUseCase`, que retorna la entidad directamente).
  *
- * Embebe items + presupuestos en la respuesta (decisión: embeber es más
- * simple que 2 GETs dedicados adicionales para una vista de detalle que
- * siempre los necesita juntos).
+ * `findByIdConItems` incluye compras soft-deleted por contrato de puerto
+ * (ver JSDoc de `ICompraRepository`) — el filtro de "no visible" vive acá,
+ * mismo patrón que `ObtenerTicketUseCase`: `CompraNoEncontradaError` tanto
+ * si no existe como si está soft-deleted, sin distinguir el motivo (evita
+ * revelar que existió una compra borrada a quien adivine el id).
+ *
+ * **Sin transacción, sin bitácora, deliberadamente** — es una consulta pura
+ * (spec §4.10 reserva bitácora solo para mutaciones, S35). Ver el mismo
+ * razonamiento en el JSDoc de `ListarComprasUseCase` sobre la regla
+ * estructural "tx ⇒ bitácora" de ADR-C4.
+ *
+ * Alcance de tenant (S41): `findByIdConItems` ya está scopeado por
+ * `TenantContext` en la implementación concreta — este caso de uso NO
+ * recibe ni aplica un parámetro `clienteId`.
+ *
+ * Ref spec: sdd/redisenio-modulo-compras/spec §4.9. Ref design: ADR-C1,
+ * ADR-C2, ADR-C4. Ref tasks: PR-19, H3.
  */
 export class ObtenerCompraUseCase {
-  constructor(
-    private readonly ticketRepo: Pick<ITicketRepository, 'findById'>,
-    private readonly ticketCompraRepo: Pick<ITicketCompraRepository, 'findByTicketId'>,
-    private readonly itemCompraRepo: Pick<IItemCompraRepository, 'findActiveByTicketCompraId'>,
-    private readonly presupuestoRepo: Pick<IPresupuestoRepository, 'findByTicketCompraId'>,
-  ) {}
+  constructor(private readonly compraRepo: Pick<ICompraRepository, 'findByIdConItems'>) {}
 
-  async execute(ticketId: string): Promise<Result<CompraDetalle, DomainError>> {
-    const ticket = await this.ticketRepo.findById(ticketId);
-    if (!ticket || ticket.isDeleted()) {
-      return Result.fail(new CompraNoEncontradaError(ticketId));
+  async execute(dto: ObtenerCompraDto): Promise<Result<CompraEntity, DomainError>> {
+    const compra = await this.compraRepo.findByIdConItems(dto.compraId);
+    if (!compra || compra.isDeleted()) {
+      return Result.fail(new CompraNoEncontradaError(dto.compraId));
     }
-
-    const ticketCompra = await this.ticketCompraRepo.findByTicketId(ticketId);
-    if (!ticketCompra || ticketCompra.isDeleted()) {
-      return Result.fail(new CompraNoEncontradaError(ticketId));
-    }
-
-    const [items, presupuestos] = await Promise.all([
-      this.itemCompraRepo.findActiveByTicketCompraId(ticketCompra.id),
-      this.presupuestoRepo.findByTicketCompraId(ticketCompra.id),
-    ]);
-
-    return Result.ok({ ticket, ticketCompra, items, presupuestos });
+    return Result.ok(compra);
   }
 }

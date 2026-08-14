@@ -1,58 +1,138 @@
 "use client";
 
 /**
- * ComprasListView — CONTAINER montado por `/compras` (T5.2). Vista de
- * gestión completa gateada por `compra:gestionar` (defensa en profundidad,
- * mismo criterio que `CatalogosAdminView` B4 y consistente con el predicado
- * ya definido en `nav-config.ts` para el ítem "Compras" — el `GET /compras`
- * backend no exige permiso, pero esta VISTA es exclusivamente de gestión).
+ * ComprasListView — CONTAINER montado por `/compras` (PR-24,
+ * sdd/redisenio-modulo-compras). Reemplaza el placeholder "Módulo en
+ * reconstrucción" de PR-1 con el listado real sobre el dominio nuevo
+ * (`Compra`/`ItemCompra`/`OperacionCompra`).
+ *
+ * RBAC (decisión del maintainer, `sdd/redisenio-modulo-compras/rbac-consultas`,
+ * 2026-08-14): la lectura del listado se gatea SOLO por módulo (`COMPRAS`,
+ * resuelto aguas arriba por el guard de navegación/layout) — CUALQUIER rol
+ * con el módulo habilitado ve todas las compras del tenant. A diferencia de
+ * `EquiposListView` (`<Can permiso="equipo:gestionar">`), acá NO hay gate de
+ * permiso envolviendo la tabla: `ComprasController.listar()` no declara
+ * `@RequirePermissions`, así que un `<Can>` acá sería una restricción de UI
+ * sin respaldo del backend.
+ *
+ * Alta de compra: `CompraCreateDialog` (cierra el hueco del checklist
+ * documentado en `sdd/redisenio-modulo-compras/hueco-compra-create-dialog`
+ * — ningún PR de la Fase F lo había asignado), gateada por `compra:gestionar`
+ * vía `<Can>` (mismo criterio que el resto de los triggers de escritura del
+ * repo — `TicketsListView`, `EquipoDetailView`). Esta SÍ es una acción de
+ * escritura (a diferencia de la lectura del resto de la vista), por eso es
+ * la única parte de este archivo detrás de un gate de permiso.
+ *
+ * Paginación: SIEMPRE server-side vía `total` real de `ListarComprasResponse`
+ * (S32/S33 — `PrismaCompraRepository` cuenta con un `count()` dedicado,
+ * commit `b6c3552`). NUNCA se deriva de `items.length` (requisito duro).
+ * `GET /compras` sólo acepta `pagina`/`porPagina` (`ComprasFiltros`) — no
+ * hay más filtros en el backend, por eso no hay `FilterBar` acá.
+ *
+ * S33 — el listado NUNCA trae `items`: las columnas SOLO muestran
+ * derivados de cabecera ya resueltos por el backend (`estado`/`comprado`/
+ * `cerrado`/`totalesPorMoneda`, ADR-C1). CERO `if`/`.every()`/`.filter()`
+ * sobre ítems en este archivo — si hiciera falta, la regla pertenece al
+ * backend.
  */
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { useMemo } from "react";
 import { useCompras } from "../hooks/use-compras";
 import { DataTable, type Column } from "@/components/shared/data-table";
+import { Pagination } from "@/components/shared/pagination";
 import { PageHeader } from "@/components/shared/page-header";
 import { Can } from "@/components/shared/can";
-import { ErrorState } from "@/components/shared/error-state";
 import { Badge } from "@/components/ui/badge";
 import { notifyError } from "@/shared/lib/toast";
+import { EstadoCompraBadge } from "./estado-compra-badge";
 import { CompraCreateDialog } from "./compra-create-dialog";
-import type { TicketCompra } from "../types";
+import { formatearTotalesPorMoneda } from "../lib/formatear-totales";
+import type { CompraListItem, ComprasFiltros } from "../types";
 
-function DecisionBadge({ compra }: { compra: TicketCompra }) {
-  if (!compra.aprobadoEn) return <Badge variant="secondary">Pendiente</Badge>;
-  return compra.motivoRechazo ? (
-    <Badge variant="destructive">Rechazada</Badge>
-  ) : (
-    <Badge variant="success">Aprobada</Badge>
-  );
-}
+const PAGE_SIZE = 10;
 
 export function ComprasListView() {
   const router = useRouter();
-  const comprasQuery = useCompras();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
 
-  const columns: Column<TicketCompra>[] = [
+  const filtros: ComprasFiltros = useMemo(
+    () => ({
+      pagina: Number(searchParams.get("pagina") ?? "1"),
+      porPagina: PAGE_SIZE,
+    }),
+    [searchParams],
+  );
+
+  function irAPagina(pagina: number) {
+    const next = new URLSearchParams(searchParams.toString());
+    next.set("pagina", String(pagina));
+    router.replace(`${pathname}?${next.toString()}`);
+  }
+
+  const comprasQuery = useCompras(filtros);
+
+  const columns: Column<CompraListItem>[] = [
     { key: "numero", header: "Número" },
-    { key: "titulo", header: "Título" },
-    { key: "id", header: "Decisión", render: (row) => <DecisionBadge compra={row} /> },
+    // Fecha sin parsear ("YYYY-MM-DD" del backend): parsearla con `new Date()`
+    // y reformatear corre el riesgo de mostrar el día anterior por timezone
+    // (mismo criterio que `ciclo-row.tsx`, que muestra `fechaInicio`/`fechaFin` crudas).
+    { key: "fechaSolicitud", header: "Fecha" },
+    { key: "motivo", header: "Motivo" },
+    {
+      key: "estado",
+      header: "Estado",
+      render: (row) => <EstadoCompraBadge estado={row.estado} />,
+    },
+    {
+      key: "totalesPorMoneda",
+      header: "Totales por moneda",
+      render: (row) => formatearTotalesPorMoneda(row.totalesPorMoneda),
+    },
+    {
+      key: "comprado",
+      header: "Progreso",
+      render: (row) => (
+        <div className="flex gap-1">
+          <Badge variant={row.comprado ? "success" : "outline"}>Comprado</Badge>
+          <Badge variant={row.cerrado ? "success" : "outline"}>Cerrado</Badge>
+        </div>
+      ),
+    },
   ];
 
   return (
-    <Can permiso="compra:gestionar" fallback={<ErrorState message="No tenés permiso para gestionar compras." />}>
-      <div>
-        <PageHeader title="Compras" actions={<CompraCreateDialog />} />
-        <DataTable
-          columns={columns}
-          data={comprasQuery.data ?? []}
-          getRowKey={(row) => row.id}
-          isLoading={comprasQuery.isLoading}
-          error={comprasQuery.isError ? "No se pudieron cargar las compras." : undefined}
-          onRetry={() => comprasQuery.refetch().catch(notifyError)}
-          onRowClick={(row) => router.push(`/compras/${row.ticketId}`)}
-          emptyTitle="Sin tickets de compra"
-          emptyDescription="Creá el primero con «Nuevo ticket de compra»."
+    <div className="space-y-6">
+      <PageHeader
+        title="Compras"
+        description="Solicitudes de compra del ciclo activo"
+        actions={
+          <Can permiso="compra:gestionar">
+            <CompraCreateDialog />
+          </Can>
+        }
+      />
+
+      <DataTable
+        columns={columns}
+        data={comprasQuery.data?.items ?? []}
+        getRowKey={(row) => row.id}
+        isLoading={comprasQuery.isLoading}
+        error={comprasQuery.isError ? "No se pudieron cargar las compras." : undefined}
+        onRetry={() => comprasQuery.refetch().catch(notifyError)}
+        onRowClick={(row) => router.push(`/compras/${row.id}`)}
+        emptyTitle="Sin compras"
+        emptyDescription="Todavía no hay solicitudes de compra registradas."
+      />
+
+      {comprasQuery.data && (
+        <Pagination
+          page={comprasQuery.data.pagina}
+          pageSize={comprasQuery.data.porPagina}
+          total={comprasQuery.data.total}
+          onPageChange={irAPagina}
         />
-      </div>
-    </Can>
+      )}
+    </div>
   );
 }

@@ -9,12 +9,10 @@
  * - `estados` (6, FIJO — NO editable por el admin del tenant): NUEVO,
  *   ASIGNADO, EN_PROCESO, RESUELTO, CERRADO, CANCELADO.
  * - `prioridades` (4, FIJO): BAJA, MEDIA, ALTA, CRITICA.
- * - `tipo_operacion` (7, FIJO): CAMBIO_ESTADO, COMENTARIO, ASIGNACION,
- *   ADJUNTO, AVANCE_EDILICIO (Fase 1/2) + APROBACION, RECHAZO (Fase 3,
- *   timeline de compras F3-C4/F3-C5).
- * - `tipos_ticket` (4, base EDITABLE por el admin del tenant — este seed
- *   solo garantiza el piso): SOPORTE, COMPRAS, EDILICIA, MANTENIMIENTO
- *   (no-IT).
+ * - `tipo_operacion` (5, FIJO): CAMBIO_ESTADO, COMENTARIO, ASIGNACION,
+ *   ADJUNTO, AVANCE_EDILICIO.
+ * - `tipos_ticket` (3, base EDITABLE por el admin del tenant — este seed
+ *   solo garantiza el piso): SOPORTE, EDILICIA, MANTENIMIENTO (no-IT).
  *
  * `tipos_componente` (Fase 3 F3-Q3) se sembraba acá como catálogo tenant
  * FIJO — ELIMINADO en PR4b (sdd/tipos-componente-master): el catálogo pasó a
@@ -82,10 +80,17 @@ const PRIORIDADES = [
 ];
 
 /**
- * Catálogo FIJO de tipo_operacion (R19 + Fase 3 ADR-5/F3-S1) — eventos del
- * timeline de un ticket. APROBACION/RECHAZO se usan en el timeline de
- * compras (F3-C4/F3-C5); el estado de la decisión vive en el satélite
- * `ticket_compra`, no en el timeline (ADR-1 Fase 3).
+ * Catálogo FIJO de tipo_operacion (R19) — eventos del timeline de un ticket.
+ *
+ * APROBACION/RECHAZO salieron del seed en `sdd/redisenio-modulo-compras`
+ * PR-1: los sembraba la Fase 3 para el timeline de compras y quedaron sin
+ * ningún productor al demoler el módulo. El módulo nuevo NO los repone —
+ * lleva su propia bitácora en `operaciones_compra`, tabla aparte.
+ *
+ * Sale del SEED, no de los tenants ya provisionados: sus filas de
+ * `operaciones` históricas referencian estos códigos por FK, así que
+ * borrarlos de una DB existente rompería integridad referencial. Un tenant
+ * nuevo nace sin ellos; uno viejo los conserva como catálogo inerte.
  */
 const TIPO_OPERACION = [
   { codigo: 'CAMBIO_ESTADO', nombre: 'Cambio de estado' },
@@ -93,8 +98,6 @@ const TIPO_OPERACION = [
   { codigo: 'ASIGNACION', nombre: 'Asignación' },
   { codigo: 'ADJUNTO', nombre: 'Adjunto' },
   { codigo: 'AVANCE_EDILICIO', nombre: 'Avance edilicio' },
-  { codigo: 'APROBACION', nombre: 'Aprobación' },
-  { codigo: 'RECHAZO', nombre: 'Rechazo' },
 ];
 
 /**
@@ -107,7 +110,6 @@ const TIPO_OPERACION = [
  */
 const TIPOS_TICKET = [
   { codigo: 'SOPORTE', nombre: 'Soporte', modulo: 'SOPORTE' },
-  { codigo: 'COMPRAS', nombre: 'Compras', modulo: 'COMPRAS' },
   { codigo: 'EDILICIA', nombre: 'Edilicia', modulo: 'EDILICIA' },
   { codigo: 'MANTENIMIENTO', nombre: 'Mantenimiento', modulo: 'EDILICIA' },
 ];

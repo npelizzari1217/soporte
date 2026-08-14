@@ -7,9 +7,9 @@
  * Contrato verificado (R19, decisión #2025 — reemplaza la lista original de
  * `estados` de R19: 6 códigos finales, no 8; ampliado por Fase 3 ADR-5):
  * - Siembra `estados` (6: NUEVO, ASIGNADO, EN_PROCESO, RESUELTO, CERRADO,
- *   CANCELADO), `prioridades` (4), `tipo_operacion` (7: los 5 de R19 +
- *   APROBACION/RECHAZO de Fase 3 F3-S1), `tipos_ticket` base incl.
- *   MANTENIMIENTO (4) — cada catálogo vía `createMany` con
+ *   CANCELADO), `prioridades` (4), `tipo_operacion` (5 de R19 —
+ *   APROBACION/RECHAZO removidos en PR-1 de sdd/redisenio-modulo-compras),
+ *   `tipos_ticket` base incl. MANTENIMIENTO (3) — cada catálogo vía `createMany` con
  *   `skipDuplicates: true` (equivalente a `ON CONFLICT (codigo) DO NOTHING`,
  *   por eso correr el seed dos veces no duplica ni falla).
  * - `tipos_componente` (Fase 3 F3-Q3) YA NO se siembra acá — PR4b
@@ -104,7 +104,7 @@ describe('TenantSeederAdapter (T7.4, unit — createClient mockeado)', () => {
     ]);
   });
 
-  it('siembra los 7 tipo_operacion (5 de R19 + APROBACION/RECHAZO de Fase 3 F3-S1)', async () => {
+  it('siembra los 5 tipo_operacion de R19, sin APROBACION/RECHAZO (PR-1 compras)', async () => {
     const client = makeFakeClient();
     const createClient = vi.fn().mockReturnValue({ client, pool: makeFakePool() });
     const adapter = new TenantSeederAdapter(MASTER_URL, createClient);
@@ -118,8 +118,6 @@ describe('TenantSeederAdapter (T7.4, unit — createClient mockeado)', () => {
       'ASIGNACION',
       'ADJUNTO',
       'AVANCE_EDILICIO',
-      'APROBACION',
-      'RECHAZO',
     ]);
   });
 
@@ -133,7 +131,6 @@ describe('TenantSeederAdapter (T7.4, unit — createClient mockeado)', () => {
     const [[{ data }]] = client.tipoTicket.createMany.mock.calls;
     expect(data.map((t: { codigo: string }) => t.codigo)).toEqual([
       'SOPORTE',
-      'COMPRAS',
       'EDILICIA',
       'MANTENIMIENTO',
     ]);

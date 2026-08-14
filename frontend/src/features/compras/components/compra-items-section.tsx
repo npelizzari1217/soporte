@@ -1,22 +1,56 @@
-"use client";
+/**
+ * CompraItemsSection — tabla de ítems de una compra (`CompraDetalle.items`,
+ * spec §1).
+ *
+ * El backend YA filtra los ítems soft-deleted en `CompraDetalleResponseDto`
+ * (`toCompraDetalleResponseDto`, `compras.dto.ts`: `.filter((item) =>
+ * !item.isDeleted())`) — este componente NO re-filtra ni asume filas
+ * adicionales.
+ *
+ * CERO lógica condicional sobre ítems para derivar estado de cabecera:
+ * `comprado`/`entregado` por FILA son campos YA calculados por el backend
+ * (`ItemCompraResponseDto.comprado/.entregado`, `itemComprado`/
+ * `itemEntregado` de `estado-compra.ts` del dominio) — se muestran tal
+ * cual, nunca se recalculan acá.
+ *
+ * Columna "Acciones" (cierre del hueco de wiring, PR-26/PR-27 dejaron las 7
+ * piezas AUTÓNOMAS): cablea `ItemEditDialog`/`ItemEliminarControl`/
+ * `RegistrarCompraDialog`/`RegistrarEntregaDialog`/`ItemCerrarFaltanteDialog`
+ * detrás de `<Can permiso="compra:gestionar">` y `ItemDecisionActions`
+ * (aprobar/rechazar) detrás de `<Can permiso="compra:aprobar">` — mismo
+ * patrón de MÚLTIPLES `<Can>` en una sola celda que `usuarios-admin-view.tsx`
+ * (permisos independientes, un `<Can>` por acción). Cada pieza es
+ * PRESENTACIONAL y ya trae su propio gate de estado (S7/S10/S16/S20/S25),
+ * este archivo solo decide QUIÉN la ve.
+ */
+import { Inbox } from "lucide-react";
+import { Badge, type BadgeProps } from "@/components/ui/badge";
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
+import { EmptyState } from "@/components/shared/empty-state";
+import { Can } from "@/components/shared/can";
+import { ItemEditDialog } from "./item-edit-dialog";
+import { ItemEliminarControl } from "./item-eliminar-control";
+import { ItemDecisionActions } from "./item-decision-actions";
+import { RegistrarCompraDialog, RegistrarEntregaDialog } from "./registrar-avance-dialog";
+import { ItemCerrarFaltanteDialog } from "./item-cerrar-faltante-dialog";
+import type { EstadoAprobacionItem, ItemCompra } from "../types";
 
 /**
- * CompraItemsSection — agregar/eliminar ítems de una compra (T5.3). Gate
- * `compra:gestionar`. `items` inicial viene del `GET /compras/:id`
- * (`CompraDetailView`, item 1 backend-gaps — cierra G7); las mutaciones
- * siguen reflejándose optimistamente en el cache local
- * `["compra-items", compraId]`, sembrado con esos datos reales.
+ * Presentación de `EstadoAprobacionItem` (decisión sobre UN ítem) — mapeo
+ * DISTINTO de `ESTADO_COMPRA_CONFIG` (`../estado-compra.ts`, cabecera de la
+ * compra). CERO relación entre ambos: un ítem RECHAZADO no implica que la
+ * compra esté RECHAZADO (tabla de verdad T1-T5 vive en el backend).
  */
-import { useQuery } from "@tanstack/react-query";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { Trash2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Can } from "@/components/shared/can";
-import { useAgregarItemCompra, useEliminarItemCompra } from "../hooks/use-compra-mutations";
-import { itemCompraSchema, type ItemCompraFormValues } from "../schemas";
-import type { ItemCompra } from "../types";
+const ESTADO_ITEM_CONFIG: Record<EstadoAprobacionItem, { label: string; variant: BadgeProps["variant"] }> = {
+  PENDIENTE: { label: "Pendiente", variant: "secondary" },
+  APROBADO: { label: "Aprobado", variant: "success" },
+  RECHAZADO: { label: "Rechazado", variant: "destructive" },
+};
+
+/** Formato es-AR de moneda + monto, mismo criterio que `formatearTotalesPorMoneda`. */
+function formatMonto(moneda: string, monto: number): string {
+  return `${moneda} ${monto.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
 
 export interface CompraItemsSectionProps {
   compraId: string;
@@ -24,84 +58,75 @@ export interface CompraItemsSectionProps {
 }
 
 export function CompraItemsSection({ compraId, items }: CompraItemsSectionProps) {
-  const itemsQuery = useQuery<ItemCompra[]>({
-    queryKey: ["compra-items", compraId],
-    queryFn: () => Promise.resolve(items),
-    initialData: items,
-    staleTime: Infinity,
-  });
-  const agregarMutation = useAgregarItemCompra(compraId);
-  const eliminarMutation = useEliminarItemCompra(compraId);
-
-  const {
-    register,
-    handleSubmit,
-    reset,
-    formState: { errors },
-  } = useForm<ItemCompraFormValues>({ resolver: zodResolver(itemCompraSchema) });
-
-  function submit(values: ItemCompraFormValues) {
-    agregarMutation.mutate(
-      {
-        descripcion: values.descripcion,
-        cantidad: values.cantidad,
-        unidad: values.unidad || undefined,
-        precioUnitarioRef: values.precioUnitarioRef,
-        observaciones: values.observaciones || undefined,
-      },
-      { onSuccess: () => reset() },
-    );
-  }
-
   return (
     <section className="flex flex-col gap-3">
       <h2 className="text-sm font-semibold text-foreground">Ítems</h2>
-      <ul className="flex flex-col gap-2">
-        {(itemsQuery.data ?? []).map((item) => (
-          <li key={item.id} className="flex items-center justify-between gap-2 rounded-lg border border-border p-2">
-            <span className="text-sm text-foreground">
-              {item.cantidad} {item.unidad ?? ""} — {item.descripcion}
-            </span>
-            <Can permiso="compra:gestionar">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                aria-label={`Eliminar ítem ${item.descripcion}`}
-                onClick={() => eliminarMutation.mutate(item.id)}
-              >
-                <Trash2 className="h-4 w-4" aria-hidden="true" />
-              </Button>
-            </Can>
-          </li>
-        ))}
-      </ul>
-
-      <Can permiso="compra:gestionar">
-        <form onSubmit={handleSubmit(submit)} className="flex flex-wrap items-end gap-2" noValidate>
-          <div className="flex flex-col gap-1">
-            <label htmlFor="item-descripcion" className="text-xs font-medium text-foreground">
-              Descripción
-            </label>
-            <Input id="item-descripcion" error={!!errors.descripcion} {...register("descripcion")} />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label htmlFor="item-cantidad" className="text-xs font-medium text-foreground">
-              Cantidad
-            </label>
-            <Input id="item-cantidad" type="number" error={!!errors.cantidad} {...register("cantidad")} />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label htmlFor="item-unidad" className="text-xs font-medium text-foreground">
-              Unidad
-            </label>
-            <Input id="item-unidad" {...register("unidad")} />
-          </div>
-          <Button type="submit" size="sm" isLoading={agregarMutation.isPending}>
-            Agregar ítem
-          </Button>
-        </form>
-      </Can>
+      {items.length === 0 ? (
+        <EmptyState
+          icon={Inbox}
+          title="Sin ítems"
+          description="Todavía no se agregaron ítems a esta compra."
+        />
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Descripción</TableHead>
+              <TableHead>Cantidad</TableHead>
+              <TableHead>Proveedor</TableHead>
+              <TableHead>Monto</TableHead>
+              <TableHead>Estado</TableHead>
+              <TableHead>Comprado</TableHead>
+              <TableHead>Entregado</TableHead>
+              <TableHead>
+                <span className="sr-only">Acciones</span>
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {items.map((item) => {
+              const estadoConfig = ESTADO_ITEM_CONFIG[item.estadoAprobacion];
+              return (
+                <TableRow key={item.id} data-testid={`item-compra-${item.id}`}>
+                  <TableCell>{item.descripcion}</TableCell>
+                  <TableCell>{item.cantidad}</TableCell>
+                  <TableCell>{item.proveedor}</TableCell>
+                  <TableCell>{formatMonto(item.moneda, item.monto)}</TableCell>
+                  <TableCell>
+                    <Badge variant={estadoConfig.variant}>{estadoConfig.label}</Badge>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={item.comprado ? "success" : "outline"}>
+                      {item.comprado ? "Sí" : "No"}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={item.entregado ? "success" : "outline"}>
+                      {item.entregado ? "Sí" : "No"}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex flex-wrap items-center gap-1">
+                      <Can permiso="compra:aprobar">
+                        <ItemDecisionActions compraId={compraId} item={item} />
+                      </Can>
+                      <Can permiso="compra:gestionar">
+                        <>
+                          <RegistrarCompraDialog compraId={compraId} item={item} />
+                          <RegistrarEntregaDialog compraId={compraId} item={item} />
+                          <ItemCerrarFaltanteDialog compraId={compraId} item={item} />
+                          <ItemEditDialog compraId={compraId} item={item} />
+                          <ItemEliminarControl compraId={compraId} item={item} />
+                        </>
+                      </Can>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      )}
     </section>
   );
 }

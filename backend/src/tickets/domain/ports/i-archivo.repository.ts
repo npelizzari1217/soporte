@@ -6,23 +6,22 @@ import { ArchivoEntity } from '../entities/archivo.entity';
  * (ADR-7).
  *
  * A diferencia de la referencia probada (soporte1, solo `archivos_ticket`),
- * el schema real de este tenant tiene TRES tablas de join
- * (`archivos_ticket` / `archivos_operacion` / `archivos_presupuesto`, spec
- * T22 + Fase 3 F3-C3: "adjuntar a ticket, a operación y a presupuesto") —
- * de ahí `linkToTicket`, `linkToOperacion` Y `linkToPresupuesto`.
+ * el schema real de este tenant tiene dos tablas de join
+ * (`archivos_ticket` / `archivos_operacion`, spec T22: "adjuntar a ticket y
+ * a operación") — de ahí `linkToTicket` y `linkToOperacion`.
  *
  * `linkTo*` DEBE llamarse DESPUÉS de `save()` y dentro de la MISMA
- * transacción (ADR-7/ADR-8). Las tablas de join no tienen soft delete
- * propio: la baja lógica del archivo (`deleted_at` en `archivos`) es
- * suficiente.
+ * transacción (ADR-7). Las tablas de join no tienen soft delete propio: la
+ * baja lógica del archivo (`deleted_at` en `archivos`) es suficiente.
  *
- * Extensión de Fase 3 (ADR-8): `linkToPresupuesto` se agregó de forma
- * RETROCOMPATIBLE — no toca `save`/`linkToTicket`/`linkToOperacion` ni
- * ningún caller existente de Fase 2.
+ * NOTA (sdd/redisenio-modulo-compras, PR-1): `linkToPresupuesto` (Fase 3,
+ * ADR-8) fue removido junto con la tabla `archivos_presupuesto` y el módulo
+ * `compras/` que era su único consumidor (`AdjuntarPresupuestoUseCase`). Si
+ * el dominio nuevo necesita adjuntar archivos a una compra, se agrega un
+ * método nuevo cuando llegue ese caso de uso (fuera del alcance de PR-1).
  *
  * Ref spec: sdd/tickets-core/spec T20, T22. Ref design (Fase 2): ADR-7,
- * "Archivos afectados" (PR10). Ref design (Fase 3): ADR-8. Tarea: T3.7
- * (Fase 2), T3.3 (Fase 3, extensión `linkToPresupuesto`).
+ * "Archivos afectados" (PR10). Tarea: T3.7 (Fase 2).
  */
 export interface IArchivoRepository {
   /**
@@ -41,13 +40,6 @@ export interface IArchivoRepository {
    * operación del timeline.
    */
   linkToOperacion(archivoId: string, operacionId: string): Promise<void>;
-
-  /**
-   * Crea la fila en `archivos_presupuesto` que asocia el archivo con un
-   * presupuesto de compra (Fase 3, ADR-8). Usado por
-   * `AdjuntarPresupuestoUseCase` (`compras/`).
-   */
-  linkToPresupuesto(archivoId: string, presupuestoId: string): Promise<void>;
 }
 
 /** Token de inyección de dependencias para IArchivoRepository en NestJS. */

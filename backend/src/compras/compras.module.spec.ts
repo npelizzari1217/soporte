@@ -1,37 +1,594 @@
 /**
- * compras.module.spec.ts — T5.8: wiring de `ComprasModule`.
+ * compras.module.spec.ts — wiring de `ComprasModule` (PR-22, cierra la
+ * FASE E de sdd/redisenio-modulo-compras).
  *
- * Inspecciona la metadata del decorador `@Module()` directamente (sin
- * compilar el árbol de módulos ni requerir DB) — mismo patrón que
- * `auth.module.spec.ts`. Verifica que `ComprasController` esté registrado
- * y que `TicketsModule` esté importado (reuso de providers, ADR-3).
+ * Dos capas de la defensa de 3 capas contra el olvido de bitácora (ADR-C4):
  *
- * Tarea: T5.8.
+ * - **Capa 2 (wiring, estructural)**: lee `Reflect.getMetadata('providers',
+ *   ComprasModule)` directamente — sin compilar el árbol de módulos ni
+ *   requerir DB, mismo patrón que `equipos.module.spec.ts`/
+ *   `reparaciones.module.spec.ts`. La regla "tx ⇒ bitácora" es un PREDICADO
+ *   sobre `inject[]`, no una lista de nombres tipeada a mano: cualquier
+ *   provider NUEVO cuyo `inject[]` contenga `TENANT_TX_RUNNER` cae bajo el
+ *   mismo chequeo automáticamente — si un PR futuro agrega un mutador sin
+ *   cablear `RegistrarOperacionCompra`, este test lo atrapa SOLO, sin que
+ *   nadie lo edite.
+ * - **Capa 3 (comportamiento, wiring real)**: invoca el `useFactory` REAL
+ *   registrado en el módulo (no una re-implementación de mano) para
+ *   construir cada uno de los 10 casos de uso mutadores con dependencias
+ *   fake, ejecuta `execute()` con un DTO mínimo válido, y verifica con un
+ *   spy que la bitácora se llamó exactamente 1 vez con el `tipo` correcto —
+ *   cierra el hueco entre "la metadata declara la dependencia" (capa 2) y
+ *   "el caso de uso wireado de verdad la usa" (capa 3), distinto de los
+ *   specs unitarios de PR-14..PR-18 (que instancian a mano, no vía DI).
+ *
+ * Ref design: ADR-C2, ADR-C4, ADR-C5. Ref tasks: PR-22.
  */
 import 'reflect-metadata';
+import { vi, type Mock } from 'vitest';
 import { ComprasModule } from './compras.module';
 import { ComprasController } from './interface/controllers/compras.controller';
 import { TicketsModule } from '../tickets/tickets.module';
-import { TICKET_COMPRA_REPOSITORY } from './domain/ports/i-ticket-compra.repository';
-import { ITEM_COMPRA_REPOSITORY } from './domain/ports/i-item-compra.repository';
-import { PRESUPUESTO_REPOSITORY } from './domain/ports/i-presupuesto.repository';
+import { AuthModule } from '../auth/auth.module';
+import {
+  TENANT_TX_RUNNER,
+  ITenantTransactionRunner,
+} from '../shared/infrastructure/persistence/tenant-transaction-runner';
+import { COMPRA_REPOSITORY, ICompraRepository } from './domain/ports/i-compra.repository';
+import {
+  OPERACION_COMPRA_REPOSITORY,
+  IOperacionCompraRepository,
+} from './domain/ports/i-operacion-compra.repository';
+import { NumeradorCompra } from './domain/services/numerador-compra';
+import { RegistrarOperacionCompra } from './application/services/registrar-operacion-compra';
+import { ResolverCicloActivoCompra } from './application/services/resolver-ciclo-activo-compra.service';
+import { CicloClienteEntity } from '../tickets/domain/entities/ciclo-cliente.entity';
+import { ICicloClienteRepository } from '../tickets/domain/ports/i-ciclo-cliente.repository';
+import { Result } from '../shared/domain/result';
+import { SinCicloActivoError as ComprasSinCicloActivoError } from './domain/errors/compras.errors';
 
-describe('ComprasModule wiring (T5.8)', () => {
+import { CompraEntity, CompraProps } from './domain/entities/compra.entity';
+import { ItemCompraEntity, ItemCompraProps } from './domain/entities/item-compra.entity';
+
+import { CrearCompraUseCase } from './application/use-cases/crear-compra.use-case';
+import { AgregarItemCompraUseCase } from './application/use-cases/agregar-item-compra.use-case';
+import { EditarItemCompraUseCase } from './application/use-cases/editar-item-compra.use-case';
+import { EliminarItemCompraUseCase } from './application/use-cases/eliminar-item-compra.use-case';
+import { AprobarItemCompraUseCase } from './application/use-cases/aprobar-item-compra.use-case';
+import { RechazarItemCompraUseCase } from './application/use-cases/rechazar-item-compra.use-case';
+import { RegistrarCompraDeItemUseCase } from './application/use-cases/registrar-compra-de-item.use-case';
+import { RegistrarEntregaDeItemUseCase } from './application/use-cases/registrar-entrega-de-item.use-case';
+import { CerrarItemConFaltanteUseCase } from './application/use-cases/cerrar-item-con-faltante.use-case';
+import { CancelarCompraUseCase } from './application/use-cases/cancelar-compra.use-case';
+
+// ─── Helpers de metadata (capa 2 y capa 3 comparten esta lectura) ─────────
+
+interface FactoryProvider {
+  provide: unknown;
+  useFactory: (...args: unknown[]) => unknown;
+  inject?: unknown[];
+}
+
+function isFactoryProvider(p: unknown): p is FactoryProvider {
+  return (
+    typeof p === 'object' &&
+    p !== null &&
+    'useFactory' in p &&
+    typeof (p as { useFactory?: unknown }).useFactory === 'function' &&
+    'inject' in p
+  );
+}
+
+function providersMetadata(): unknown[] {
+  return (Reflect.getMetadata('providers', ComprasModule) ?? []) as unknown[];
+}
+
+function factoryProviders(): FactoryProvider[] {
+  return providersMetadata().filter(isFactoryProvider);
+}
+
+function getFactoryProvider(token: unknown): FactoryProvider {
+  const found = factoryProviders().find((p) => p.provide === token);
+  if (!found) {
+    throw new Error(
+      'ComprasModule no registra un provider con useFactory para el token dado (wiring incompleto).',
+    );
+  }
+  return found;
+}
+
+// ─── Fixtures de dominio (capa 3) ──────────────────────────────────────────
+
+const COMPRA_ID = 'compra-fixture-1';
+const ITEM_ID = 'item-fixture-1';
+const FECHA_BASE = new Date('2026-01-01');
+
+function compraProps(overrides: Partial<CompraProps> = {}): CompraProps {
+  return {
+    numero: 'COM-2026-00001',
+    fechaSolicitud: FECHA_BASE,
+    motivo: 'Compra de prueba (wiring)',
+    descripcion: null,
+    solicitanteId: 'solicitante-1',
+    cicloId: 'ciclo-1',
+    canceladaEn: null,
+    canceladoPorId: null,
+    motivoCancelacion: null,
+    ...overrides,
+  };
+}
+
+function itemProps(overrides: Partial<ItemCompraProps> = {}): ItemCompraProps {
+  return {
+    compraId: COMPRA_ID,
+    descripcion: 'Notebook Dell Latitude',
+    cantidad: 2,
+    proveedor: 'Proveedor SA',
+    monto: 150000,
+    moneda: 'ARS',
+    fechaCotizacion: FECHA_BASE,
+    observaciones: null,
+    estadoAprobacion: 'PENDIENTE',
+    decididoPorId: null,
+    decididoEn: null,
+    cantidadComprada: 0,
+    cantidadEntregada: 0,
+    cerradoConFaltante: false,
+    motivoCierreFaltante: null,
+    ...overrides,
+  };
+}
+
+function itemFixture(overrides: Partial<ItemCompraProps> = {}): ItemCompraEntity {
+  return ItemCompraEntity.reconstitute(itemProps(overrides), ITEM_ID, FECHA_BASE, FECHA_BASE, null);
+}
+
+function compraFixture(
+  items: ItemCompraEntity[] = [],
+  overrides: Partial<CompraProps> = {},
+): CompraEntity {
+  return CompraEntity.reconstitute(
+    compraProps(overrides),
+    items,
+    COMPRA_ID,
+    FECHA_BASE,
+    FECHA_BASE,
+    null,
+  );
+}
+
+// ─── Fakes de infraestructura (capa 3) ─────────────────────────────────────
+
+function fakeTxRunner(): ITenantTransactionRunner {
+  return { run: async (fn) => fn() };
+}
+
+function fakeOperacionRepo(): Pick<IOperacionCompraRepository, 'crear'> & { crear: Mock } {
+  return { crear: vi.fn().mockResolvedValue(undefined) };
+}
+
+describe('ComprasModule wiring (PR-22, sdd/redisenio-modulo-compras)', () => {
   it('registra ComprasController', () => {
     const controllers = (Reflect.getMetadata('controllers', ComprasModule) ?? []) as unknown[];
     expect(controllers).toContain(ComprasController);
   });
 
-  it('importa TicketsModule (reusa providers exportados, ADR-3)', () => {
+  it('importa TicketsModule y AuthModule', () => {
     const imports = (Reflect.getMetadata('imports', ComprasModule) ?? []) as unknown[];
     expect(imports).toContain(TicketsModule);
+    expect(imports).toContain(AuthModule);
   });
 
-  it.each([TICKET_COMPRA_REPOSITORY, ITEM_COMPRA_REPOSITORY, PRESUPUESTO_REPOSITORY])(
-    '%s está exportado',
-    (token) => {
-      const exportsList = (Reflect.getMetadata('exports', ComprasModule) ?? []) as unknown[];
-      expect(exportsList).toContain(token);
-    },
-  );
+  it.each([COMPRA_REPOSITORY, OPERACION_COMPRA_REPOSITORY])('%s está exportado', (token) => {
+    const exportsList = (Reflect.getMetadata('exports', ComprasModule) ?? []) as unknown[];
+    expect(exportsList).toContain(token);
+  });
+
+  describe('Capa 2 (ADR-C4) — regla estructural "tx ⇒ bitácora"', () => {
+    /**
+     * Predicado estructural, NO una lista tipeada a mano: cualquier
+     * provider cuyo `inject[]` contenga `TENANT_TX_RUNNER` (es decir,
+     * cualquier caso de uso que abre transacción, exista hoy o se agregue
+     * en un PR futuro) DEBE también inyectar `RegistrarOperacionCompra`.
+     */
+    const providersConTx = (): FactoryProvider[] =>
+      factoryProviders().filter((p) => (p.inject ?? []).includes(TENANT_TX_RUNNER));
+
+    it('registra al menos los 10 casos de uso mutadores con TENANT_TX_RUNNER', () => {
+      expect(providersConTx().length).toBeGreaterThanOrEqual(10);
+    });
+
+    it.each(
+      providersConTx().map((p) => {
+        const token = p.provide as { name?: string } | symbol;
+        const nombre = typeof token === 'symbol' ? token.toString() : (token.name ?? String(token));
+        return [nombre, p] as const;
+      }),
+    )(
+      '%s: si abre transacción (TENANT_TX_RUNNER), también registra bitácora (RegistrarOperacionCompra)',
+      (_nombre, p) => {
+        expect(p.inject).toContain(RegistrarOperacionCompra);
+      },
+    );
+
+    it('las 3 consultas NO inyectan TENANT_TX_RUNNER (son lecturas puras, §4.9/§4.10)', () => {
+      const consultas = [
+        'ListarComprasUseCase',
+        'ObtenerCompraUseCase',
+        'ListarOperacionesCompraUseCase',
+      ];
+      const providersConsulta = factoryProviders().filter((p) => {
+        const token = p.provide as { name?: string };
+        return typeof token === 'function' && consultas.includes(token.name);
+      });
+      expect(providersConsulta.length).toBe(3);
+      for (const p of providersConsulta) {
+        expect(p.inject ?? []).not.toContain(TENANT_TX_RUNNER);
+      }
+    });
+  });
+
+  describe('Capa 3 (ADR-C4) — comportamiento: wiring REAL + spy sobre la bitácora', () => {
+    it('CrearCompraUseCase (wiring real): execute() exitoso llama a la bitácora 1 vez con tipo CREACION', async () => {
+      const operacionRepo = fakeOperacionRepo();
+      const registrarOperacion = new RegistrarOperacionCompra(operacionRepo);
+      const compraRepo: Pick<ICompraRepository, 'guardar'> = {
+        guardar: vi.fn().mockResolvedValue(undefined),
+      };
+      const numerador: Pick<NumeradorCompra, 'generarNumero'> = {
+        generarNumero: vi.fn().mockResolvedValue(Result.ok('COM-2026-00001')),
+      };
+      const cicloFixture = CicloClienteEntity.create(
+        {
+          cicloVigenteId: 'ciclo-vigente-1',
+          nombre: 'Ciclo 2026',
+          fechaInicio: FECHA_BASE,
+          fechaFin: new Date('2026-12-31'),
+          activo: true,
+        },
+        'ciclo-1',
+      );
+      const resolverCicloActivo: Pick<ResolverCicloActivoCompra, 'resolver'> = {
+        resolver: vi.fn().mockResolvedValue(Result.ok(cicloFixture)),
+      };
+
+      const provider = getFactoryProvider(CrearCompraUseCase);
+      const instance = provider.useFactory(
+        compraRepo,
+        numerador,
+        resolverCicloActivo,
+        registrarOperacion,
+        fakeTxRunner(),
+      ) as CrearCompraUseCase;
+
+      const result = await instance.execute({
+        motivo: 'Compra de prueba',
+        descripcion: null,
+        fechaSolicitud: FECHA_BASE,
+        solicitanteId: 'user-1',
+        anio: 2026,
+      });
+
+      expect(result.isFail()).toBe(false);
+      expect(operacionRepo.crear).toHaveBeenCalledTimes(1);
+      expect(operacionRepo.crear).toHaveBeenCalledWith(
+        expect.objectContaining({ tipo: 'CREACION' }),
+      );
+    });
+
+    it('resolución de ciclo activo (wiring real): sin ciclo activo, falla con SinCicloActivoError de COMPRAS (no de tickets)', async () => {
+      // Regresión: el resolver de ciclo activo WIREADO por ComprasModule
+      // debe fallar con la clase de `compras/domain/errors`, nunca con la
+      // de `tickets/domain/errors` — aunque ambas comparten `code =
+      // 'SIN_CICLO_ACTIVO'` y mensaje similar, son clases DISTINTAS y
+      // `ComprasController.toHttpException` hace `instanceof` contra la de
+      // compras (409). Antes del fix, `ComprasModule` cableaba el
+      // `ResolverCicloActivoParaCreacion` de `tickets/` sin más, que
+      // devuelve la clase de tickets -> el `instanceof` de la capa HTTP
+      // nunca daba `true` y el caller recibía 422 + el mensaje de tickets.
+      // Confirmado en RED antes de este fix (ver apply-progress).
+      const cicloRepo: Pick<ICicloClienteRepository, 'findActive'> = {
+        findActive: vi.fn().mockResolvedValue(null),
+      };
+
+      const provider = getFactoryProvider(ResolverCicloActivoCompra);
+      const instance = provider.useFactory(cicloRepo) as ResolverCicloActivoCompra;
+
+      const result = await instance.resolver();
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(ComprasSinCicloActivoError);
+    });
+
+    it('AgregarItemCompraUseCase (wiring real): execute() exitoso llama a la bitácora 1 vez con tipo ITEM_AGREGADO', async () => {
+      const operacionRepo = fakeOperacionRepo();
+      const registrarOperacion = new RegistrarOperacionCompra(operacionRepo);
+      const compra = compraFixture([]);
+      const compraRepo: Pick<ICompraRepository, 'findByIdConItems' | 'guardar' | 'guardarItem'> = {
+        findByIdConItems: vi.fn().mockResolvedValue(compra),
+        guardar: vi.fn().mockResolvedValue(undefined),
+        guardarItem: vi.fn().mockResolvedValue(undefined),
+      };
+
+      const provider = getFactoryProvider(AgregarItemCompraUseCase);
+      const instance = provider.useFactory(
+        compraRepo,
+        registrarOperacion,
+        fakeTxRunner(),
+      ) as AgregarItemCompraUseCase;
+
+      const result = await instance.execute({
+        compraId: COMPRA_ID,
+        usuarioId: 'user-1',
+        descripcion: 'Mouse',
+        cantidad: 1,
+        proveedor: 'Proveedor SA',
+        monto: 5000,
+        moneda: 'ARS',
+        fechaCotizacion: FECHA_BASE,
+        observaciones: null,
+      });
+
+      expect(result.isFail()).toBe(false);
+      expect(operacionRepo.crear).toHaveBeenCalledTimes(1);
+      expect(operacionRepo.crear).toHaveBeenCalledWith(
+        expect.objectContaining({ tipo: 'ITEM_AGREGADO' }),
+      );
+    });
+
+    it('EditarItemCompraUseCase (wiring real): execute() exitoso llama a la bitácora 1 vez con tipo ITEM_EDITADO', async () => {
+      const operacionRepo = fakeOperacionRepo();
+      const registrarOperacion = new RegistrarOperacionCompra(operacionRepo);
+      const compra = compraFixture([itemFixture()]);
+      const compraRepo: Pick<ICompraRepository, 'findByIdConItems' | 'guardar' | 'guardarItem'> = {
+        findByIdConItems: vi.fn().mockResolvedValue(compra),
+        guardar: vi.fn().mockResolvedValue(undefined),
+        guardarItem: vi.fn().mockResolvedValue(undefined),
+      };
+
+      const provider = getFactoryProvider(EditarItemCompraUseCase);
+      const instance = provider.useFactory(
+        compraRepo,
+        registrarOperacion,
+        fakeTxRunner(),
+      ) as EditarItemCompraUseCase;
+
+      const result = await instance.execute({
+        compraId: COMPRA_ID,
+        itemId: ITEM_ID,
+        usuarioId: 'user-1',
+        descripcion: 'Notebook Dell Latitude (editado)',
+      });
+
+      expect(result.isFail()).toBe(false);
+      expect(operacionRepo.crear).toHaveBeenCalledTimes(1);
+      expect(operacionRepo.crear).toHaveBeenCalledWith(
+        expect.objectContaining({ tipo: 'ITEM_EDITADO' }),
+      );
+    });
+
+    it('EliminarItemCompraUseCase (wiring real): execute() exitoso llama a la bitácora 1 vez con tipo ITEM_ELIMINADO', async () => {
+      const operacionRepo = fakeOperacionRepo();
+      const registrarOperacion = new RegistrarOperacionCompra(operacionRepo);
+      const compra = compraFixture([itemFixture()]);
+      const compraRepo: Pick<ICompraRepository, 'findByIdConItems' | 'guardar' | 'guardarItem'> = {
+        findByIdConItems: vi.fn().mockResolvedValue(compra),
+        guardar: vi.fn().mockResolvedValue(undefined),
+        guardarItem: vi.fn().mockResolvedValue(undefined),
+      };
+
+      const provider = getFactoryProvider(EliminarItemCompraUseCase);
+      const instance = provider.useFactory(
+        compraRepo,
+        registrarOperacion,
+        fakeTxRunner(),
+      ) as EliminarItemCompraUseCase;
+
+      const result = await instance.execute({
+        compraId: COMPRA_ID,
+        itemId: ITEM_ID,
+        usuarioId: 'user-1',
+      });
+
+      expect(result.isFail()).toBe(false);
+      expect(operacionRepo.crear).toHaveBeenCalledTimes(1);
+      expect(operacionRepo.crear).toHaveBeenCalledWith(
+        expect.objectContaining({ tipo: 'ITEM_ELIMINADO' }),
+      );
+    });
+
+    it('AprobarItemCompraUseCase (wiring real): execute() exitoso llama a la bitácora 1 vez con tipo ITEM_APROBADO', async () => {
+      const operacionRepo = fakeOperacionRepo();
+      const registrarOperacionCompra = new RegistrarOperacionCompra(operacionRepo);
+      const compra = compraFixture([itemFixture()]);
+      const compraRepo: Pick<ICompraRepository, 'findByIdConItems' | 'guardarItem'> = {
+        findByIdConItems: vi.fn().mockResolvedValue(compra),
+        guardarItem: vi.fn().mockResolvedValue(undefined),
+      };
+
+      const provider = getFactoryProvider(AprobarItemCompraUseCase);
+      const instance = provider.useFactory(
+        compraRepo,
+        registrarOperacionCompra,
+        fakeTxRunner(),
+      ) as AprobarItemCompraUseCase;
+
+      const result = await instance.execute({
+        compraId: COMPRA_ID,
+        itemId: ITEM_ID,
+        usuarioId: 'user-1',
+      });
+
+      expect(result.isFail()).toBe(false);
+      expect(operacionRepo.crear).toHaveBeenCalledTimes(1);
+      expect(operacionRepo.crear).toHaveBeenCalledWith(
+        expect.objectContaining({ tipo: 'ITEM_APROBADO' }),
+      );
+    });
+
+    it('RechazarItemCompraUseCase (wiring real): execute() exitoso llama a la bitácora 1 vez con tipo ITEM_RECHAZADO', async () => {
+      const operacionRepo = fakeOperacionRepo();
+      const registrarOperacionCompra = new RegistrarOperacionCompra(operacionRepo);
+      const compra = compraFixture([itemFixture()]);
+      const compraRepo: Pick<ICompraRepository, 'findByIdConItems' | 'guardarItem'> = {
+        findByIdConItems: vi.fn().mockResolvedValue(compra),
+        guardarItem: vi.fn().mockResolvedValue(undefined),
+      };
+
+      const provider = getFactoryProvider(RechazarItemCompraUseCase);
+      const instance = provider.useFactory(
+        compraRepo,
+        registrarOperacionCompra,
+        fakeTxRunner(),
+      ) as RechazarItemCompraUseCase;
+
+      const result = await instance.execute({
+        compraId: COMPRA_ID,
+        itemId: ITEM_ID,
+        usuarioId: 'user-1',
+      });
+
+      expect(result.isFail()).toBe(false);
+      expect(operacionRepo.crear).toHaveBeenCalledTimes(1);
+      expect(operacionRepo.crear).toHaveBeenCalledWith(
+        expect.objectContaining({ tipo: 'ITEM_RECHAZADO' }),
+      );
+    });
+
+    it('RegistrarCompraDeItemUseCase (wiring real): execute() exitoso llama a la bitácora 1 vez con tipo COMPRA_REGISTRADA', async () => {
+      const operacionRepo = fakeOperacionRepo();
+      const registrarOperacion = new RegistrarOperacionCompra(operacionRepo);
+      const itemAprobado = itemFixture({
+        estadoAprobacion: 'APROBADO',
+        decididoPorId: 'aprobador-1',
+        decididoEn: FECHA_BASE,
+      });
+      const compra = compraFixture([itemAprobado]);
+      const compraRepo: Pick<ICompraRepository, 'findByIdConItems' | 'guardarItem'> = {
+        findByIdConItems: vi.fn().mockResolvedValue(compra),
+        guardarItem: vi.fn().mockResolvedValue(undefined),
+      };
+
+      const provider = getFactoryProvider(RegistrarCompraDeItemUseCase);
+      const instance = provider.useFactory(
+        compraRepo,
+        registrarOperacion,
+        fakeTxRunner(),
+      ) as RegistrarCompraDeItemUseCase;
+
+      const result = await instance.execute({
+        compraId: COMPRA_ID,
+        itemId: ITEM_ID,
+        usuarioId: 'user-1',
+        cantidadComprada: 1,
+      });
+
+      expect(result.isFail()).toBe(false);
+      expect(operacionRepo.crear).toHaveBeenCalledTimes(1);
+      expect(operacionRepo.crear).toHaveBeenCalledWith(
+        expect.objectContaining({ tipo: 'COMPRA_REGISTRADA' }),
+      );
+    });
+
+    it('RegistrarEntregaDeItemUseCase (wiring real): execute() exitoso llama a la bitácora 1 vez con tipo ENTREGA_REGISTRADA', async () => {
+      const operacionRepo = fakeOperacionRepo();
+      const registrarOperacion = new RegistrarOperacionCompra(operacionRepo);
+      const itemComprado = itemFixture({
+        estadoAprobacion: 'APROBADO',
+        decididoPorId: 'aprobador-1',
+        decididoEn: FECHA_BASE,
+        cantidadComprada: 2,
+      });
+      const compra = compraFixture([itemComprado]);
+      const compraRepo: Pick<ICompraRepository, 'findByIdConItems' | 'guardarItem'> = {
+        findByIdConItems: vi.fn().mockResolvedValue(compra),
+        guardarItem: vi.fn().mockResolvedValue(undefined),
+      };
+
+      const provider = getFactoryProvider(RegistrarEntregaDeItemUseCase);
+      const instance = provider.useFactory(
+        compraRepo,
+        registrarOperacion,
+        fakeTxRunner(),
+      ) as RegistrarEntregaDeItemUseCase;
+
+      const result = await instance.execute({
+        compraId: COMPRA_ID,
+        itemId: ITEM_ID,
+        usuarioId: 'user-1',
+        cantidadEntregada: 1,
+      });
+
+      expect(result.isFail()).toBe(false);
+      expect(operacionRepo.crear).toHaveBeenCalledTimes(1);
+      expect(operacionRepo.crear).toHaveBeenCalledWith(
+        expect.objectContaining({ tipo: 'ENTREGA_REGISTRADA' }),
+      );
+    });
+
+    it('CerrarItemConFaltanteUseCase (wiring real): execute() exitoso llama a la bitácora 1 vez con tipo ITEM_CERRADO_CON_FALTANTE', async () => {
+      const operacionRepo = fakeOperacionRepo();
+      const registrarOperacionCompra = new RegistrarOperacionCompra(operacionRepo);
+      const itemConFaltante = itemFixture({
+        estadoAprobacion: 'APROBADO',
+        decididoPorId: 'aprobador-1',
+        decididoEn: FECHA_BASE,
+        cantidadComprada: 1, // < cantidad (2) — faltante real, S23
+      });
+      const compra = compraFixture([itemConFaltante]);
+      const compraRepo: Pick<ICompraRepository, 'findByIdConItems' | 'guardarItem'> = {
+        findByIdConItems: vi.fn().mockResolvedValue(compra),
+        guardarItem: vi.fn().mockResolvedValue(undefined),
+      };
+
+      const provider = getFactoryProvider(CerrarItemConFaltanteUseCase);
+      const instance = provider.useFactory(
+        compraRepo,
+        registrarOperacionCompra,
+        fakeTxRunner(),
+      ) as CerrarItemConFaltanteUseCase;
+
+      const result = await instance.execute({
+        compraId: COMPRA_ID,
+        itemId: ITEM_ID,
+        usuarioId: 'user-1',
+        motivo: 'Proveedor sin stock',
+      });
+
+      expect(result.isFail()).toBe(false);
+      expect(operacionRepo.crear).toHaveBeenCalledTimes(1);
+      expect(operacionRepo.crear).toHaveBeenCalledWith(
+        expect.objectContaining({ tipo: 'ITEM_CERRADO_CON_FALTANTE' }),
+      );
+    });
+
+    it('CancelarCompraUseCase (wiring real): execute() exitoso llama a la bitácora 1 vez con tipo CANCELACION', async () => {
+      const operacionRepo = fakeOperacionRepo();
+      const registrarOperacionCompra = new RegistrarOperacionCompra(operacionRepo);
+      const compra = compraFixture([]); // S31: cancelar sin ítems está PERMITIDO
+      const compraRepo: Pick<ICompraRepository, 'findByIdConItems' | 'guardar'> = {
+        findByIdConItems: vi.fn().mockResolvedValue(compra),
+        guardar: vi.fn().mockResolvedValue(undefined),
+      };
+
+      const provider = getFactoryProvider(CancelarCompraUseCase);
+      const instance = provider.useFactory(
+        compraRepo,
+        registrarOperacionCompra,
+        fakeTxRunner(),
+      ) as CancelarCompraUseCase;
+
+      const result = await instance.execute({
+        compraId: COMPRA_ID,
+        usuarioId: 'user-1',
+        motivo: 'Ya no se necesita',
+      });
+
+      expect(result.isFail()).toBe(false);
+      expect(operacionRepo.crear).toHaveBeenCalledTimes(1);
+      expect(operacionRepo.crear).toHaveBeenCalledWith(
+        expect.objectContaining({ tipo: 'CANCELACION' }),
+      );
+    });
+  });
 });

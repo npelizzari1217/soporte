@@ -1,31 +1,67 @@
 /**
- * ComprasController — entry point HTTP del módulo `compras/` (F3-C1..C6).
+ * ComprasController — entry point HTTP de los 13 casos de uso del módulo
+ * `compras/` (10 comandos, PR-21; 3 consultas, PR-22, que también cierra el
+ * wiring de `ComprasModule`).
  *
  * Rutas:
- *   POST   /compras                                              → CrearTicketCompraUseCase       [ticket:crear]
- *   GET    /compras                                               → ListarComprasUseCase           (autenticado)
- *   POST   /compras/:compraId/items                                → AgregarItemCompraUseCase       [compra:gestionar]
- *   DELETE /compras/:compraId/items/:itemId                        → EliminarItemCompraUseCase      [compra:gestionar]
- *   POST   /compras/:compraId/presupuestos                         → AgregarPresupuestoUseCase      [compra:gestionar]
- *   POST   /compras/:compraId/presupuestos/:presupuestoId/seleccionar → SeleccionarPresupuestoUseCase [compra:gestionar]
- *   POST   /compras/:compraId/presupuestos/:presupuestoId/adjuntos → AdjuntarPresupuestoUseCase     [compra:gestionar]
- *   POST   /compras/:id/aprobar                                    → AprobarCompraUseCase           [compra:aprobar]
- *   POST   /compras/:id/rechazar                                   → RechazarCompraUseCase          [ticket:rechazar]
+ *   POST   /compras                                          → CrearCompraUseCase                [compra:gestionar]
+ *   POST   /compras/:id/items                                 → AgregarItemCompraUseCase           [compra:gestionar]
+ *   PATCH  /compras/:id/items/:itemId                          → EditarItemCompraUseCase            [compra:gestionar]
+ *   DELETE /compras/:id/items/:itemId                          → EliminarItemCompraUseCase          [compra:gestionar]
+ *   POST   /compras/:id/items/:itemId/aprobar                  → AprobarItemCompraUseCase           [compra:aprobar]
+ *   POST   /compras/:id/items/:itemId/rechazar                 → RechazarItemCompraUseCase          [compra:aprobar]
+ *   POST   /compras/:id/items/:itemId/registrar-compra         → RegistrarCompraDeItemUseCase       [compra:gestionar]
+ *   POST   /compras/:id/items/:itemId/registrar-entrega        → RegistrarEntregaDeItemUseCase      [compra:gestionar]
+ *   POST   /compras/:id/items/:itemId/cerrar-con-faltante      → CerrarItemConFaltanteUseCase       [compra:gestionar]
+ *   POST   /compras/:id/cancelar                                → CancelarCompraUseCase              [compra:gestionar]
+ *   GET    /compras                                             → ListarComprasUseCase               (sin permiso extra, PR-22)
+ *   GET    /compras/:id                                         → ObtenerCompraUseCase               (sin permiso extra, PR-22)
+ *   GET    /compras/:id/operaciones                             → ListarOperacionesCompraUseCase     (sin permiso extra, PR-22)
  *
- * Convención de identificadores (F3-C6, ver JSDoc de `compras.dto.ts`):
- * `:compraId` = id del satélite `ticket_compra`; `:id` (aprobar/rechazar)
- * = id del `Ticket` base (los use cases de decisión reciben `ticketId`).
+ * Rutas de acción (`POST`, no `PATCH`) para aprobar/rechazar/registrar avance/
+ * cerrar-con-faltante/cancelar: sigue el contrato ya fijado por el JSDoc de
+ * `CerrarItemConFaltanteHttpDto`/`CancelarCompraHttpDto` (PR-20, ambas
+ * documentadas como `POST`) — este controller extiende ese mismo criterio a
+ * los otros verbos de acción (aprobar/rechazar/registrar-compra/
+ * registrar-entrega) para que las 8 rutas de acción del módulo sean
+ * consistentes entre sí. `PATCH` queda reservado para la única edición
+ * semántica de campos (`EditarItemCompraUseCase`).
  *
  * Guards a nivel de controller: `JwtAuthGuard` + `TenantGuard` +
- * `PermissionsGuard` (mismo patrón que `TicketsController`). `GET /compras`
- * NO declara `@RequirePermissions` — cualquier usuario autenticado del
- * tenant puede listar (mismo criterio que `GET /tickets`).
+ * `PermissionsGuard` + `ModulosGuard` (mismo patrón que
+ * `EquiposController`/`ReparacionesController`) + `@RequireModulo('COMPRAS')`
+ * a nivel de CLASE (spec §4.11). `compra:gestionar` gatea las 8 rutas de
+ * gestión; `compra:aprobar` gatea SOLO aprobar/rechazar (S11, S38, S39). El
+ * `PermissionsGuard` ya bypassea a ROOT (`is_global_admin`, S40); `ModulosGuard`
+ * también.
  *
- * `FileInterceptor('archivo')` en el endpoint de adjuntos usa
- * `memoryStorage` por default (binario en `file.buffer`) + `validarAdjunto`
- * (reusa el pipe de `tickets/`, Fase 2 T10.1) ANTES de invocar el use case.
+ * `numero`/`solicitanteId`/`cicloId` NUNCA se toman del body HTTP (PR-20,
+ * riesgo declarado `sdd/redisenio-modulo-compras/riesgo-throws-planos`):
+ * `numero` lo emite `NumeradorCompra` DENTRO de la transacción de
+ * `CrearCompraUseCase`; `solicitanteId` es SIEMPRE `JWT.sub`; `cicloId` lo
+ * resuelve `ResolverCicloActivoCompra` DENTRO del propio use case — este
+ * controller nunca lo recibe ni lo pasa. Aceptar cualquiera de los tres desde
+ * el body los volvería alcanzables desde HTTP y reabriría un 500 latente.
  *
- * Tarea: T4.6, T5.7.
+ * El controller no tiene lógica de negocio: solo traduce HTTP ↔ use case y
+ * mapea `DomainError` → `HttpException` (presentación) vía `toHttpException`,
+ * que consume el contrato HTTP declarado en el JSDoc de cada uno de los 19
+ * errores de `domain/errors/compras.errors.ts` (spec §5) — 422 por defecto,
+ * nunca 500 silencioso para un `DomainError`.
+ *
+ * **Las 3 rutas de CONSULTA (PR-22) NO declaran `@RequirePermissions`**
+ * (mismo criterio que `EquiposController.listar()`/`.obtener()`): sin esa
+ * metadata, `PermissionsGuard` deja pasar a cualquier usuario autenticado
+ * que ya superó `TenantGuard`/`ModulosGuard` — la spec (§4.9-§4.11) no
+ * reserva un permiso específico para LEER compras, sólo para mutar
+ * (`compra:gestionar`) o decidir (`compra:aprobar`). El aislamiento de
+ * tenant (S41) lo garantiza `TenantContext`/`PrismaCompraRepository`, no un
+ * permiso de aplicación.
+ *
+ * Ref spec: sdd/redisenio-modulo-compras/spec §4.1-§4.8 (S1-S31), §4.9
+ * (S32-S34), §4.10 (S35-S37), §4.11 (S38-S41), §5 (catálogo error → HTTP).
+ * Ref design: sección CASOS DE USO. Tareas: PR-21 (comandos), PR-22
+ * (consultas + wiring del módulo).
  */
 import {
   Body,
@@ -37,13 +73,12 @@ import {
   HttpStatus,
   NotFoundException,
   Param,
+  Patch,
   Post,
+  Query,
   UnprocessableEntityException,
-  UploadedFile,
   UseGuards,
-  UseInterceptors,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
 
 import { JwtAuthGuard } from '../../../auth/infrastructure/guards/jwt-auth.guard';
 import { TenantGuard } from '../../../auth/infrastructure/guards/tenant.guard';
@@ -56,88 +91,104 @@ import {
 } from '../../../auth/infrastructure/guards/decorators';
 import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
 import { DomainError } from '../../../shared/domain/result';
-import { validarAdjunto } from '../../../tickets/interface/pipes/validar-archivo-adjunto';
-import {
-  toArchivoResponseDto,
-  ArchivoResponseDto,
-} from '../../../tickets/interface/dtos/ticket.dto';
-import {
-  TicketNoEncontradoError,
-  TipoTicketNoEncontradoError,
-  PrioridadNoEncontradaError,
-  SolicitanteInvalidoError,
-  SinCicloActivoError,
-  SecuenciaAgotadaError,
-  TransicionInvalidaError,
-} from '../../../tickets/domain/errors/tickets.errors';
 
-import { CrearTicketCompraUseCase } from '../../application/use-cases/crear-ticket-compra.use-case';
+import { CrearCompraUseCase } from '../../application/use-cases/crear-compra.use-case';
+import { AgregarItemCompraUseCase } from '../../application/use-cases/agregar-item-compra.use-case';
+import { EditarItemCompraUseCase } from '../../application/use-cases/editar-item-compra.use-case';
+import { EliminarItemCompraUseCase } from '../../application/use-cases/eliminar-item-compra.use-case';
+import { AprobarItemCompraUseCase } from '../../application/use-cases/aprobar-item-compra.use-case';
+import { RechazarItemCompraUseCase } from '../../application/use-cases/rechazar-item-compra.use-case';
+import { RegistrarCompraDeItemUseCase } from '../../application/use-cases/registrar-compra-de-item.use-case';
+import { RegistrarEntregaDeItemUseCase } from '../../application/use-cases/registrar-entrega-de-item.use-case';
+import { CerrarItemConFaltanteUseCase } from '../../application/use-cases/cerrar-item-con-faltante.use-case';
+import { CancelarCompraUseCase } from '../../application/use-cases/cancelar-compra.use-case';
 import { ListarComprasUseCase } from '../../application/use-cases/listar-compras.use-case';
 import { ObtenerCompraUseCase } from '../../application/use-cases/obtener-compra.use-case';
-import { AgregarItemCompraUseCase } from '../../application/use-cases/agregar-item-compra.use-case';
-import { EliminarItemCompraUseCase } from '../../application/use-cases/eliminar-item-compra.use-case';
-import { AgregarPresupuestoUseCase } from '../../application/use-cases/agregar-presupuesto.use-case';
-import { SeleccionarPresupuestoUseCase } from '../../application/use-cases/seleccionar-presupuesto.use-case';
-import { AdjuntarPresupuestoUseCase } from '../../application/use-cases/adjuntar-presupuesto.use-case';
-import { AprobarCompraUseCase } from '../../application/use-cases/aprobar-compra.use-case';
-import { RechazarCompraUseCase } from '../../application/use-cases/rechazar-compra.use-case';
+import { ListarOperacionesCompraUseCase } from '../../application/use-cases/listar-operaciones-compra.use-case';
 
 import {
+  CantidadCompradaExcedeSolicitadaError,
+  CantidadCompradaRetrocedeError,
+  CantidadEntregadaExcedeCompradaError,
+  CantidadEntregadaRetrocedeError,
+  CompraCanceladaError,
+  CompraConComprasRegistradasError,
   CompraNoEncontradaError,
-  CompraYaDecididaError,
-  MotivoRechazoRequeridoError,
-  MonedaInvalidaError,
-  MontoInvalidoError,
-  CantidadInvalidaError,
-  PresupuestoNoEncontradoError,
-  ItemNoEncontradoError,
+  CompraYaCanceladaError,
+  CompraYaCerradaError,
+  ItemCompraAprobadoNoEliminableError,
+  ItemCompraCongeladoError,
+  ItemCompraNoAprobadoError,
+  ItemCompraNoEncontradoError,
+  ItemCompraYaCerradoError,
+  ItemCompraYaDecididoError,
+  ItemSinFaltanteError,
+  MotivoCierreFaltanteRequeridoError,
+  NumeradorCompraAgotadoError,
+  SinCicloActivoError,
 } from '../../domain/errors/compras.errors';
 
 import {
+  AgregarItemCompraHttpDto,
+  CancelarCompraHttpDto,
+  CerrarItemConFaltanteHttpDto,
   CompraDetalleResponseDto,
-  CreateItemCompraHttpDto,
-  CreatePresupuestoHttpDto,
-  CreateTicketCompraHttpDto,
+  CrearCompraHttpDto,
+  EditarItemCompraHttpDto,
   ItemCompraResponseDto,
-  PresupuestoResponseDto,
-  RechazarCompraHttpDto,
-  TicketCompraConTicketResponseDto,
+  ListarComprasQueryDto,
+  ListarComprasResponseDto,
+  OperacionCompraResponseDto,
+  RegistrarCompraDeItemHttpDto,
+  RegistrarEntregaDeItemHttpDto,
   toCompraDetalleResponseDto,
   toItemCompraResponseDto,
-  toPresupuestoResponseDto,
-  toTicketCompraResponseDto,
+  toListarComprasResponseDto,
+  toOperacionCompraResponseDto,
 } from '../dtos/compras.dto';
 
-/** Mapea un `DomainError` de los use cases de compras a la `HttpException` correspondiente. */
-function toHttpException(
+const PERMISO_GESTIONAR = 'compra:gestionar';
+const PERMISO_APROBAR = 'compra:aprobar';
+
+/**
+ * Mapea un `DomainError` de los use cases de compras a la `HttpException`
+ * correspondiente, según el contrato declarado en el JSDoc de cada error de
+ * `compras.errors.ts` (spec §5: 2×409, 2×404, 15×422 — 19 en total). 403 NO
+ * aparece acá: es RBAC resuelto por guard (`PermissionsGuard`/`ModulosGuard`),
+ * nunca un `DomainError`.
+ */
+export function toHttpException(
   error: DomainError,
 ): NotFoundException | UnprocessableEntityException | ConflictException {
-  if (
-    error instanceof TicketNoEncontradoError ||
-    error instanceof CompraNoEncontradaError ||
-    error instanceof PresupuestoNoEncontradoError ||
-    error instanceof ItemNoEncontradoError
-  ) {
+  if (error instanceof CompraNoEncontradaError || error instanceof ItemCompraNoEncontradoError) {
     return new NotFoundException(error.message);
   }
-  if (error instanceof SinCicloActivoError || error instanceof SecuenciaAgotadaError) {
+  if (error instanceof SinCicloActivoError || error instanceof NumeradorCompraAgotadoError) {
     return new ConflictException(error.message);
   }
   if (
-    error instanceof TipoTicketNoEncontradoError ||
-    error instanceof PrioridadNoEncontradaError ||
-    error instanceof SolicitanteInvalidoError ||
-    error instanceof TransicionInvalidaError ||
-    error instanceof CompraYaDecididaError ||
-    error instanceof MotivoRechazoRequeridoError ||
-    error instanceof MonedaInvalidaError ||
-    error instanceof MontoInvalidoError ||
-    error instanceof CantidadInvalidaError
+    error instanceof CompraCanceladaError ||
+    error instanceof CompraYaCanceladaError ||
+    error instanceof CompraYaCerradaError ||
+    error instanceof CompraConComprasRegistradasError ||
+    error instanceof ItemCompraAprobadoNoEliminableError ||
+    error instanceof ItemCompraYaDecididoError ||
+    error instanceof ItemCompraCongeladoError ||
+    error instanceof ItemCompraNoAprobadoError ||
+    error instanceof CantidadCompradaExcedeSolicitadaError ||
+    error instanceof CantidadCompradaRetrocedeError ||
+    error instanceof CantidadEntregadaExcedeCompradaError ||
+    error instanceof CantidadEntregadaRetrocedeError ||
+    error instanceof ItemCompraYaCerradoError ||
+    error instanceof ItemSinFaltanteError ||
+    error instanceof MotivoCierreFaltanteRequeridoError
   ) {
     return new UnprocessableEntityException(error.message);
   }
   // Deviación de diseño no mapeada explícitamente: 422 por defecto (nunca
-  // 500 silencioso para un DomainError, que por definición es un fallo esperado).
+  // 500 silencioso para un DomainError, que por definición es un fallo
+  // esperado). Mismo criterio que TicketsController/EquiposController/
+  // ReparacionesController.
   return new UnprocessableEntityException(error.message);
 }
 
@@ -146,72 +197,44 @@ function toHttpException(
 @Controller('compras')
 export class ComprasController {
   constructor(
-    private readonly crearTicketCompraUseCase: CrearTicketCompraUseCase,
+    private readonly crearCompraUseCase: CrearCompraUseCase,
+    private readonly agregarItemCompraUseCase: AgregarItemCompraUseCase,
+    private readonly editarItemCompraUseCase: EditarItemCompraUseCase,
+    private readonly eliminarItemCompraUseCase: EliminarItemCompraUseCase,
+    private readonly aprobarItemCompraUseCase: AprobarItemCompraUseCase,
+    private readonly rechazarItemCompraUseCase: RechazarItemCompraUseCase,
+    private readonly registrarCompraDeItemUseCase: RegistrarCompraDeItemUseCase,
+    private readonly registrarEntregaDeItemUseCase: RegistrarEntregaDeItemUseCase,
+    private readonly cerrarItemConFaltanteUseCase: CerrarItemConFaltanteUseCase,
+    private readonly cancelarCompraUseCase: CancelarCompraUseCase,
     private readonly listarComprasUseCase: ListarComprasUseCase,
     private readonly obtenerCompraUseCase: ObtenerCompraUseCase,
-    private readonly agregarItemCompraUseCase: AgregarItemCompraUseCase,
-    private readonly eliminarItemCompraUseCase: EliminarItemCompraUseCase,
-    private readonly agregarPresupuestoUseCase: AgregarPresupuestoUseCase,
-    private readonly seleccionarPresupuestoUseCase: SeleccionarPresupuestoUseCase,
-    private readonly adjuntarPresupuestoUseCase: AdjuntarPresupuestoUseCase,
-    private readonly aprobarCompraUseCase: AprobarCompraUseCase,
-    private readonly rechazarCompraUseCase: RechazarCompraUseCase,
+    private readonly listarOperacionesCompraUseCase: ListarOperacionesCompraUseCase,
   ) {}
 
   /**
    * POST /compras
-   * Crea un ticket de compra (ticket base + satélite `ticket_compra`, ADR-3).
-   * `solicitanteId`/`autorId` = JWT.sub; `anio` lo resuelve el servidor.
-   * @throws 409 sin ciclo activo
-   * @throws 422 solicitante inválido
+   * Crea una compra nueva (§4.1, S1, S2). `solicitanteId` = `JWT.sub`; `anio`
+   * lo resuelve el servidor (año en curso) para el numerador — nunca el
+   * cliente HTTP. `cicloId` lo resuelve `ResolverCicloActivoCompra`
+   * DENTRO del use case, este controller no lo toca.
+   * @throws 409 sin ciclo activo (S2), o numerador agotado
    */
   @Post()
-  @RequirePermissions('ticket:crear')
+  @RequirePermissions(PERMISO_GESTIONAR)
   @HttpCode(HttpStatus.CREATED)
   async crear(
-    @Body() dto: CreateTicketCompraHttpDto,
     @CurrentUser() user: JwtPayload,
-  ): Promise<TicketCompraConTicketResponseDto> {
-    const result = await this.crearTicketCompraUseCase.execute({
-      titulo: dto.titulo,
+    @Body() dto: CrearCompraHttpDto,
+  ): Promise<CompraDetalleResponseDto> {
+    const result = await this.crearCompraUseCase.execute({
+      motivo: dto.motivo,
       descripcion: dto.descripcion ?? null,
-      tipoId: dto.tipoId,
-      prioridadId: dto.prioridadId,
+      fechaSolicitud: new Date(dto.fechaSolicitud),
       solicitanteId: user.sub,
-      clienteId: user.cliente_id as string,
-      autorId: user.sub,
       anio: new Date().getFullYear(),
     });
 
-    if (result.isFail()) {
-      throw toHttpException(result.getError());
-    }
-    const { ticket, ticketCompra } = result.getValue();
-    return toTicketCompraResponseDto(ticket, ticketCompra);
-  }
-
-  /**
-   * GET /compras
-   * Lista los tickets de compra del tenant (ticket base + satélite).
-   */
-  @Get()
-  async listar(): Promise<TicketCompraConTicketResponseDto[]> {
-    const result = await this.listarComprasUseCase.execute();
-    return result
-      .getValue()
-      .map(({ ticket, ticketCompra }) => toTicketCompraResponseDto(ticket, ticketCompra));
-  }
-
-  /**
-   * GET /compras/:id
-   * Detalle de un ticket de compra — `:id` = id del `Ticket` BASE (mismo
-   * criterio que aprobar/rechazar). Embebe items + presupuestos activos
-   * (sdd/beta-frontend item 1 — cierra G7).
-   * @throws 404 ticket inexistente, o no es de tipo COMPRAS (sin satélite)
-   */
-  @Get(':id')
-  async obtener(@Param('id') id: string): Promise<CompraDetalleResponseDto> {
-    const result = await this.obtenerCompraUseCase.execute(id);
     if (result.isFail()) {
       throw toHttpException(result.getError());
     }
@@ -219,25 +242,67 @@ export class ComprasController {
   }
 
   /**
-   * POST /compras/:compraId/items
-   * Agrega un ítem al ticket de compra.
-   * @throws 404 ticket_compra inexistente
-   * @throws 422 cantidad <= 0
+   * POST /compras/:id/items
+   * Agrega un ítem a una compra existente (§4.2, S4, S5). El ítem nace
+   * `PENDIENTE`; si la cabecera estaba `APROBADO`/`RECHAZADO` vuelve a
+   * `PENDIENTE` por T2 (consecuencia intencional del estado derivado).
+   * @throws 404 compra inexistente/otro tenant
+   * @throws 422 compra cancelada (S5)
    */
-  @Post(':compraId/items')
-  @RequirePermissions('compra:gestionar')
+  @Post(':id/items')
+  @RequirePermissions(PERMISO_GESTIONAR)
   @HttpCode(HttpStatus.CREATED)
   async agregarItem(
-    @Param('compraId') compraId: string,
-    @Body() dto: CreateItemCompraHttpDto,
-  ): Promise<ItemCompraResponseDto> {
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Body() dto: AgregarItemCompraHttpDto,
+  ): Promise<CompraDetalleResponseDto> {
     const result = await this.agregarItemCompraUseCase.execute({
-      ticketCompraId: compraId,
+      compraId: id,
+      usuarioId: user.sub,
       descripcion: dto.descripcion,
       cantidad: dto.cantidad,
-      unidad: dto.unidad ?? null,
-      precioUnitarioRef: dto.precioUnitarioRef ?? null,
+      proveedor: dto.proveedor,
+      monto: dto.monto,
+      moneda: dto.moneda,
+      fechaCotizacion: new Date(dto.fechaCotizacion),
       observaciones: dto.observaciones ?? null,
+    });
+
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+    return toCompraDetalleResponseDto(result.getValue());
+  }
+
+  /**
+   * PATCH /compras/:id/items/:itemId
+   * Edita los campos de solicitud de un ítem (§4.2/§4.4, PATCH semántico —
+   * `undefined` no toca el campo). El congelamiento (S13) y los campos libres
+   * (S14) los resuelve la entidad, no este controller.
+   * @throws 404 compra o ítem inexistente
+   * @throws 422 compra cancelada (S5), o ítem congelado (S13)
+   */
+  @Patch(':id/items/:itemId')
+  @RequirePermissions(PERMISO_GESTIONAR)
+  @HttpCode(HttpStatus.OK)
+  async editarItem(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Param('itemId') itemId: string,
+    @Body() dto: EditarItemCompraHttpDto,
+  ): Promise<ItemCompraResponseDto> {
+    const result = await this.editarItemCompraUseCase.execute({
+      compraId: id,
+      itemId,
+      usuarioId: user.sub,
+      descripcion: dto.descripcion,
+      cantidad: dto.cantidad,
+      proveedor: dto.proveedor,
+      monto: dto.monto,
+      moneda: dto.moneda,
+      fechaCotizacion: dto.fechaCotizacion ? new Date(dto.fechaCotizacion) : undefined,
+      observaciones: dto.observaciones,
     });
 
     if (result.isFail()) {
@@ -247,157 +312,245 @@ export class ComprasController {
   }
 
   /**
-   * DELETE /compras/:compraId/items/:itemId
-   * Baja lógica (soft delete) de un ítem de compra.
-   * @throws 404 ítem inexistente
+   * DELETE /compras/:id/items/:itemId
+   * Baja lógica (soft delete) de un ítem PENDIENTE o RECHAZADO (§4.2, S6).
+   * @throws 404 compra o ítem inexistente
+   * @throws 422 compra cancelada (S5), o ítem APROBADO no eliminable (S7)
    */
-  @Delete(':compraId/items/:itemId')
-  @RequirePermissions('compra:gestionar')
+  @Delete(':id/items/:itemId')
+  @RequirePermissions(PERMISO_GESTIONAR)
   @HttpCode(HttpStatus.NO_CONTENT)
   async eliminarItem(
-    @Param('compraId') _compraId: string,
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
     @Param('itemId') itemId: string,
   ): Promise<void> {
-    const result = await this.eliminarItemCompraUseCase.execute({ itemId });
-    if (result.isFail()) {
-      throw toHttpException(result.getError());
-    }
-  }
-
-  /**
-   * POST /compras/:compraId/presupuestos
-   * Agrega una cotización de proveedor.
-   * @throws 404 ticket_compra inexistente
-   * @throws 422 moneda/monto inválidos
-   */
-  @Post(':compraId/presupuestos')
-  @RequirePermissions('compra:gestionar')
-  @HttpCode(HttpStatus.CREATED)
-  async agregarPresupuesto(
-    @Param('compraId') compraId: string,
-    @Body() dto: CreatePresupuestoHttpDto,
-  ): Promise<PresupuestoResponseDto> {
-    const result = await this.agregarPresupuestoUseCase.execute({
-      ticketCompraId: compraId,
-      proveedor: dto.proveedor,
-      montoTotal: dto.montoTotal,
-      moneda: dto.moneda,
-      fechaCotizacion: new Date(dto.fechaCotizacion),
-      observaciones: dto.observaciones ?? null,
+    const result = await this.eliminarItemCompraUseCase.execute({
+      compraId: id,
+      itemId,
+      usuarioId: user.sub,
     });
 
     if (result.isFail()) {
       throw toHttpException(result.getError());
     }
-    return toPresupuestoResponseDto(result.getValue());
   }
 
   /**
-   * POST /compras/:compraId/presupuestos/:presupuestoId/seleccionar
-   * Marca un presupuesto como el ganador (swap atómico, ADR-7).
-   * @throws 404 presupuesto inexistente o de otro ticket_compra
+   * POST /compras/:id/items/:itemId/aprobar
+   * Aprueba un ítem de compra (§4.3, S8). Requiere `compra:aprobar` —
+   * `compra:gestionar` SOLO no alcanza (S11: 403, RBAC de guard). TECNICO
+   * recibe 403 (S38, PR-3 le quitó ambos permisos de compra).
+   * @throws 404 compra o ítem inexistente
+   * @throws 422 ítem ya decidido (S10)
    */
-  @Post(':compraId/presupuestos/:presupuestoId/seleccionar')
-  @RequirePermissions('compra:gestionar')
+  @Post(':id/items/:itemId/aprobar')
+  @RequirePermissions(PERMISO_APROBAR)
   @HttpCode(HttpStatus.OK)
-  async seleccionarPresupuesto(
-    @Param('compraId') compraId: string,
-    @Param('presupuestoId') presupuestoId: string,
-  ): Promise<PresupuestoResponseDto> {
-    const result = await this.seleccionarPresupuestoUseCase.execute({
-      presupuestoId,
-      ticketCompraId: compraId,
-    });
-
-    if (result.isFail()) {
-      throw toHttpException(result.getError());
-    }
-    return toPresupuestoResponseDto(result.getValue());
-  }
-
-  /**
-   * POST /compras/:compraId/presupuestos/:presupuestoId/adjuntos
-   * Sube un adjunto de cotización (ADR-8).
-   * @throws 404 presupuesto inexistente
-   * @throws 422 archivo ausente, tamaño/mime inválido
-   */
-  @Post(':compraId/presupuestos/:presupuestoId/adjuntos')
-  @RequirePermissions('compra:gestionar')
-  @UseInterceptors(FileInterceptor('archivo'))
-  async adjuntarPresupuesto(
-    @Param('presupuestoId') presupuestoId: string,
+  async aprobarItem(
     @CurrentUser() user: JwtPayload,
-    @UploadedFile() file?: Express.Multer.File,
-  ): Promise<ArchivoResponseDto> {
-    validarAdjunto(file);
-    const archivo = file as Express.Multer.File;
-
-    const result = await this.adjuntarPresupuestoUseCase.execute({
-      presupuestoId,
-      nombreOriginal: archivo.originalname,
-      mimeType: archivo.mimetype,
-      tamanoBytes: BigInt(archivo.size),
-      buffer: archivo.buffer,
-      subidoPorId: user.sub,
-    });
-
-    if (result.isFail()) {
-      throw toHttpException(result.getError());
-    }
-    return toArchivoResponseDto(result.getValue());
-  }
-
-  /**
-   * POST /compras/:id/aprobar
-   * Aprueba la compra en un solo paso (ADR-1) — `:id` = id del `Ticket` base.
-   * NUNCA cambia el estado del ticket. `aprobadoPorId` viene del JWT.
-   * @throws 404 ticket o ticket_compra inexistente
-   * @throws 422 ya decidida (doble aprobación)
-   */
-  @Post(':id/aprobar')
-  @RequirePermissions('compra:aprobar')
-  @HttpCode(HttpStatus.OK)
-  async aprobar(
     @Param('id') id: string,
-    @CurrentUser() user: JwtPayload,
-  ): Promise<TicketCompraConTicketResponseDto> {
-    const result = await this.aprobarCompraUseCase.execute({
-      ticketId: id,
-      aprobadoPorId: user.sub,
+    @Param('itemId') itemId: string,
+  ): Promise<ItemCompraResponseDto> {
+    const result = await this.aprobarItemCompraUseCase.execute({
+      compraId: id,
+      itemId,
+      usuarioId: user.sub,
     });
 
     if (result.isFail()) {
       throw toHttpException(result.getError());
     }
-    const { ticket, ticketCompra } = result.getValue();
-    return toTicketCompraResponseDto(ticket, ticketCompra);
+    return toItemCompraResponseDto(result.getValue());
   }
 
   /**
-   * POST /compras/:id/rechazar
-   * Rechaza la compra: satélite + ticket→CANCELADO (ADR-2) — `:id` = id
-   * del `Ticket` base. `aprobadoPorId` viene del JWT.
-   * @throws 404 ticket o ticket_compra inexistente
-   * @throws 422 motivo vacío, ya decidida, o transición inválida
+   * POST /compras/:id/items/:itemId/rechazar
+   * Rechaza un ítem de compra (§4.3, S9). Requiere `compra:aprobar` — mismo
+   * criterio que `aprobarItem` (S11, S39: TECNICO recibe 403).
+   * @throws 404 compra o ítem inexistente
+   * @throws 422 ítem ya decidido (S10)
    */
-  @Post(':id/rechazar')
-  @RequirePermissions('ticket:rechazar')
+  @Post(':id/items/:itemId/rechazar')
+  @RequirePermissions(PERMISO_APROBAR)
   @HttpCode(HttpStatus.OK)
-  async rechazar(
-    @Param('id') id: string,
-    @Body() dto: RechazarCompraHttpDto,
+  async rechazarItem(
     @CurrentUser() user: JwtPayload,
-  ): Promise<TicketCompraConTicketResponseDto> {
-    const result = await this.rechazarCompraUseCase.execute({
-      ticketId: id,
-      aprobadoPorId: user.sub,
-      motivoRechazo: dto.motivoRechazo,
+    @Param('id') id: string,
+    @Param('itemId') itemId: string,
+  ): Promise<ItemCompraResponseDto> {
+    const result = await this.rechazarItemCompraUseCase.execute({
+      compraId: id,
+      itemId,
+      usuarioId: user.sub,
     });
 
     if (result.isFail()) {
       throw toHttpException(result.getError());
     }
-    const { ticket, ticketCompra } = result.getValue();
-    return toTicketCompraResponseDto(ticket, ticketCompra);
+    return toItemCompraResponseDto(result.getValue());
+  }
+
+  /**
+   * POST /compras/:id/items/:itemId/registrar-compra
+   * Registra el ACUMULADO de cantidad comprada de un ítem aprobado (§4.5,
+   * S15-S18). `cantidadComprada` es el total acumulado, no un delta.
+   * @throws 404 compra o ítem inexistente
+   * @throws 422 compra cancelada, ítem no aprobado (S16), exceso (S17),
+   *             retroceso (S18), o ítem ya cerrado con faltante (S25)
+   */
+  @Post(':id/items/:itemId/registrar-compra')
+  @RequirePermissions(PERMISO_GESTIONAR)
+  @HttpCode(HttpStatus.OK)
+  async registrarCompraDeItem(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Param('itemId') itemId: string,
+    @Body() dto: RegistrarCompraDeItemHttpDto,
+  ): Promise<ItemCompraResponseDto> {
+    const result = await this.registrarCompraDeItemUseCase.execute({
+      compraId: id,
+      itemId,
+      usuarioId: user.sub,
+      cantidadComprada: dto.cantidadComprada,
+    });
+
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+    return toItemCompraResponseDto(result.getValue());
+  }
+
+  /**
+   * POST /compras/:id/items/:itemId/registrar-entrega
+   * Registra el ACUMULADO de cantidad entregada de un ítem (§4.6, S19-S21).
+   * `cantidadEntregada` es el total acumulado, no un delta.
+   * @throws 404 compra o ítem inexistente
+   * @throws 422 compra cancelada, exceso sobre lo comprado (S20), retroceso
+   *             (S21), o ítem ya cerrado con faltante (S25)
+   */
+  @Post(':id/items/:itemId/registrar-entrega')
+  @RequirePermissions(PERMISO_GESTIONAR)
+  @HttpCode(HttpStatus.OK)
+  async registrarEntregaDeItem(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Param('itemId') itemId: string,
+    @Body() dto: RegistrarEntregaDeItemHttpDto,
+  ): Promise<ItemCompraResponseDto> {
+    const result = await this.registrarEntregaDeItemUseCase.execute({
+      compraId: id,
+      itemId,
+      usuarioId: user.sub,
+      cantidadEntregada: dto.cantidadEntregada,
+    });
+
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+    return toItemCompraResponseDto(result.getValue());
+  }
+
+  /**
+   * POST /compras/:id/items/:itemId/cerrar-con-faltante
+   * Cierra un ítem con faltante — estado TERMINAL (§4.7, req 9, S22-S25).
+   * @throws 404 compra o ítem inexistente
+   * @throws 422 compra cancelada, ítem ya cerrado (S25), sin faltante real
+   *             (S23), o motivo vacío (S24)
+   */
+  @Post(':id/items/:itemId/cerrar-con-faltante')
+  @RequirePermissions(PERMISO_GESTIONAR)
+  @HttpCode(HttpStatus.OK)
+  async cerrarItemConFaltante(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Param('itemId') itemId: string,
+    @Body() dto: CerrarItemConFaltanteHttpDto,
+  ): Promise<ItemCompraResponseDto> {
+    const result = await this.cerrarItemConFaltanteUseCase.execute({
+      compraId: id,
+      itemId,
+      usuarioId: user.sub,
+      motivo: dto.motivo,
+    });
+
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+    return toItemCompraResponseDto(result.getValue());
+  }
+
+  /**
+   * POST /compras/:id/cancelar
+   * Cancela una compra (§4.8, S27-S31). Cancelar SIN ítems está PERMITIDO
+   * (S31, guarda existencial sobre conjunto vacío).
+   * @throws 404 compra inexistente
+   * @throws 422 ya cancelada (S30), ya cerrada (S28), o con compras
+   *             registradas (S29)
+   */
+  @Post(':id/cancelar')
+  @RequirePermissions(PERMISO_GESTIONAR)
+  @HttpCode(HttpStatus.OK)
+  async cancelar(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Body() dto: CancelarCompraHttpDto,
+  ): Promise<CompraDetalleResponseDto> {
+    const result = await this.cancelarCompraUseCase.execute({
+      compraId: id,
+      usuarioId: user.sub,
+      motivo: dto.motivo,
+    });
+
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+    return toCompraDetalleResponseDto(result.getValue());
+  }
+
+  /**
+   * GET /compras
+   * Lista compras del tenant activo, paginado (§4.9, S32-S34). El listado
+   * NUNCA incluye `items` (S33): sólo derivados de cabecera + `total` de
+   * paginación (universo filtrado completo, no el tamaño de la página).
+   * `ListarComprasUseCase` siempre retorna `Result.ok` — no hay camino de
+   * error (mismo criterio que `EquiposController.listar()`).
+   */
+  @Get()
+  async listar(@Query() query: ListarComprasQueryDto): Promise<ListarComprasResponseDto> {
+    const result = await this.listarComprasUseCase.execute({
+      pagina: query.pagina,
+      porPagina: query.porPagina,
+    });
+    return toListarComprasResponseDto(result.getValue());
+  }
+
+  /**
+   * GET /compras/:id
+   * Detalle de una compra CON sus ítems (§4.9, H3 del design).
+   * @throws 404 compra inexistente, soft-deleted, u otro tenant
+   */
+  @Get(':id')
+  async obtener(@Param('id') id: string): Promise<CompraDetalleResponseDto> {
+    const result = await this.obtenerCompraUseCase.execute({ compraId: id });
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+    return toCompraDetalleResponseDto(result.getValue());
+  }
+
+  /**
+   * GET /compras/:id/operaciones
+   * Bitácora completa de una compra, ordenada `created_at ASC` (§4.10,
+   * S35-S37, H3 del design).
+   * @throws 404 compra inexistente, soft-deleted, u otro tenant
+   */
+  @Get(':id/operaciones')
+  async listarOperaciones(@Param('id') id: string): Promise<OperacionCompraResponseDto[]> {
+    const result = await this.listarOperacionesCompraUseCase.execute({ compraId: id });
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+    return result.getValue().map(toOperacionCompraResponseDto);
   }
 }
