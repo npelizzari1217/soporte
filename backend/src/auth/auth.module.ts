@@ -37,10 +37,12 @@ import { MEMBRESIA_REPOSITORY } from './domain/ports/i-membresia.repository';
 import { REFRESH_TOKEN_REPOSITORY } from './domain/ports/i-refresh-token.repository';
 import { ROLE_REPOSITORY } from './domain/ports/i-role.repository';
 import { USUARIO_CLIENTE_MODULO_REPOSITORY } from './domain/ports/i-usuario-cliente-modulo.repository';
+import { MATRIZ_PERMISOS_REPOSITORY } from './domain/ports/i-matriz-permisos.repository';
 import { CLIENTE_REPOSITORY } from '../clientes/domain/ports/i-cliente.repository';
 import { PrismaUsuarioRepository } from './infrastructure/persistence/prisma/prisma-usuario.repository';
 import { PrismaMembresiaRepository } from './infrastructure/persistence/prisma/prisma-membresia.repository';
 import { PrismaUsuarioClienteModuloRepository } from './infrastructure/persistence/prisma/prisma-usuario-cliente-modulo.repository';
+import { PrismaMatrizPermisosRepository } from './infrastructure/persistence/prisma/prisma-matriz-permisos.repository';
 import { PrismaRefreshTokenRepository } from './infrastructure/persistence/prisma/prisma-refresh-token.repository';
 import { PrismaRoleRepository } from './infrastructure/persistence/prisma/prisma-role.repository';
 import { PrismaClienteRepository } from '../clientes/infrastructure/persistence/prisma/prisma-cliente.repository';
@@ -103,6 +105,12 @@ import { RolesController } from './interface/controllers/roles.controller';
       provide: USUARIO_CLIENTE_MODULO_REPOSITORY,
       useClass: PrismaUsuarioClienteModuloRepository,
     },
+    // MATRIZ_PERMISOS_REPOSITORY (WU-3, sdd/matriz-permisos-por-usuario):
+    // registrado para que el módulo compile y quede disponible para DI, pero
+    // TODAVÍA sin inyectarse en resolverScope — eso es WU-7.1, deploy
+    // atómico. Este WU es cero efecto de runtime (ADR-P8, mapa de
+    // reversibilidad de tasks).
+    { provide: MATRIZ_PERMISOS_REPOSITORY, useClass: PrismaMatrizPermisosRepository },
     // CLIENTE_REPOSITORY: cross-feature. resolverScope/TenantGuard verifican
     // cliente activo. ClientesModule NO exporta este token todavía.
     { provide: CLIENTE_REPOSITORY, useClass: PrismaClienteRepository },
