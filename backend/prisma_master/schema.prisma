@@ -329,3 +329,32 @@ model UsuarioClienteModulo {
   @@index([usuarioId, clienteId])
   @@map("usuario_cliente_modulos")
 }
+
+// ─── USUARIO_CLIENTE_PERMISOS (matriz de permisos por usuario, celda por celda) ──
+//
+// Reemplaza el eje doble roles_permisos + usuario_cliente_modulos (RBAC +
+// módulos) por una única fila por celda `(usuario_id, cliente_id, modulo,
+// accion)`. `modulo`/`accion` son literales del catálogo `as const` de
+// `src/shared/domain/acciones.ts` — el CHECK de esta tabla (migración
+// add_usuario_cliente_permisos) enumera exactamente los 28 pares válidos,
+// atado a ese catálogo por un test de deriva contra `pg_get_constraintdef`
+// (patrón dcc867f). Sin columna `id` sintética: ninguna otra entidad
+// referencia una celda, y la PK compuesta ya da la unicidad (mismo criterio
+// que `roles_permisos`).
+//
+// ROOT y ADMINISTRADOR NO tienen filas acá — su acceso se materializa en el
+// payload del JWT sin consultar esta tabla (`resolverScope`, ADR-P6).
+//
+// Ref spec: sdd/matriz-permisos-por-usuario/spec R1, R2. Ref design: ADR-P2, ADR-P3.
+
+model UsuarioClientePermiso {
+  usuarioId String   @map("usuario_id") @db.Uuid
+  clienteId String   @map("cliente_id") @db.Uuid
+  modulo    String   @db.VarChar(30)
+  accion    String   @db.VarChar(30)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@id([usuarioId, clienteId, modulo, accion])
+  @@index([usuarioId, clienteId])
+  @@map("usuario_cliente_permisos")
+}
