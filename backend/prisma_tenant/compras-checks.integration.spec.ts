@@ -16,6 +16,8 @@
  * de aplicación.
  */
 import { Client } from 'pg';
+import { ESTADOS_APROBACION_ITEM } from '../src/compras/domain/services/estado-compra';
+import { TIPOS_OPERACION_COMPRA } from '../src/compras/domain/ports/i-operacion-compra.repository';
 
 /** URL de la DB tenant de test (mismo default usado en otras integration specs del repo). */
 const TENANT_TEST_URL =
@@ -456,6 +458,41 @@ describe('CHECKs de compras/items_compra/operaciones_compra — migración 20260
       const columnas = result.rows.map((r: { column_name: string }) => r.column_name);
       expect(columnas).not.toContain('updated_at');
       expect(columnas).not.toContain('deleted_at');
+    });
+  });
+
+  /**
+   * Estos dos CHECKs enumeran valores que TypeScript también enumera. El riesgo
+   * NO es que un usuario mande un valor inválido — hoy salen de literales del
+   * código, no del body HTTP. El riesgo es la DERIVA: agregar un tipo de
+   * operación a la unión de TS y olvidar la migración. El INSERT lo rechaza el
+   * CHECK, no hay filtro global de excepciones, y sale como 500 — la misma forma
+   * que el bug C1, pero al revés.
+   *
+   * Un guard en runtime convertiría ese 500 en un 422, que sigue siendo mentira:
+   * no es un error del usuario, es un error del desarrollador. Se ataja acá, en
+   * el test, antes de que llegue a producción.
+   */
+  describe('Las listas del CHECK y las de TypeScript no derivan', () => {
+    /** Extrae los literales de un CHECK leyendo su definición real de Postgres. */
+    async function valoresDelCheck(nombre: string): Promise<string[]> {
+      const result = await client.query(
+        'SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conname = $1',
+        [nombre],
+      );
+      expect(result.rows).toHaveLength(1);
+      const definicion: string = result.rows[0].def;
+      return [...definicion.matchAll(/'([^']+)'/g)].map((m) => m[1]).sort();
+    }
+
+    it('items_compra_estado_aprobacion_check enumera exactamente ESTADOS_APROBACION_ITEM', async () => {
+      const enLaDb = await valoresDelCheck('items_compra_estado_aprobacion_check');
+      expect(enLaDb).toEqual([...ESTADOS_APROBACION_ITEM].sort());
+    });
+
+    it('operaciones_compra_tipo_check enumera exactamente TIPOS_OPERACION_COMPRA', async () => {
+      const enLaDb = await valoresDelCheck('operaciones_compra_tipo_check');
+      expect(enLaDb).toEqual([...TIPOS_OPERACION_COMPRA].sort());
     });
   });
 });

@@ -12,8 +12,20 @@
  * Tarea: PR-4.
  */
 
+/**
+ * Estados de aprobación de un ítem, en runtime — ÚNICA fuente de verdad: el
+ * tipo se deriva de acá, no al revés.
+ *
+ * Existe como array y no solo como unión porque el CHECK
+ * `items_compra_estado_aprobacion_check` enumera los mismos valores en la DB, y
+ * una unión de TypeScript se borra al compilar: sin esta constante no hay nada
+ * que un test pueda comparar contra la base. La deriva entre ambas listas se
+ * verifica en `prisma_tenant/compras-checks.integration.spec.ts`.
+ */
+export const ESTADOS_APROBACION_ITEM = ['PENDIENTE', 'APROBADO', 'RECHAZADO'] as const;
+
 /** Estado de aprobación de un ítem — máquina de un paso, sin retorno (spec §6.2). */
-export type EstadoAprobacionItem = 'PENDIENTE' | 'APROBADO' | 'RECHAZADO';
+export type EstadoAprobacionItem = (typeof ESTADOS_APROBACION_ITEM)[number];
 
 /** Estado derivado de la cabecera de una compra (spec §2, tabla de verdad T1-T5 + Regla 0). */
 export type EstadoCompra =
