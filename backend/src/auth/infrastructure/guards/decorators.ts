@@ -10,12 +10,32 @@
  */
 import { createParamDecorator, ExecutionContext, SetMetadata } from '@nestjs/common';
 import { JwtPayload } from '../../domain/ports/i-token.service';
+import { CodigoAccion } from '../../../shared/domain/acciones';
 
 /** Clave de metadatos para PermissionsGuard. */
 export const PERMISSIONS_KEY = 'permissions';
 
 /** Clave de metadatos para ModulosGuard. */
 export const REQUIRE_MODULO_KEY = 'require_modulo';
+
+/**
+ * Clave de metadatos para AccionesGuard (WU-6, sdd/matriz-permisos-por-usuario).
+ * Reemplaza a PERMISSIONS_KEY + REQUIRE_MODULO_KEY — todavía no aplicado a
+ * ningún controller (eso es WU-7.3, deploy atómico).
+ */
+export const ACCIONES_KEY = 'acciones';
+
+/**
+ * @RequiereAcciones(...codigos) — declara las celdas `MODULO:ACCION`
+ * requeridas para el endpoint. `AccionesGuard` evalúa AND: el usuario debe
+ * poder ejecutar TODAS (R3). Un código fuera del catálogo `CodigoAccion` no
+ * compila — la ganancia concreta de ADR-P1.
+ *
+ * @example
+ * @RequiereAcciones('TICKETS:ALTAS')
+ * @Post('tickets')
+ */
+export const RequiereAcciones = (...codigos: CodigoAccion[]) => SetMetadata(ACCIONES_KEY, codigos);
 
 /**
  * @RequirePermissions(...permissions) — declara los permisos requeridos para
