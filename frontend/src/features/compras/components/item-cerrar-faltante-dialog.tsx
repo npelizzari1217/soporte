@@ -42,13 +42,20 @@ export function ItemCerrarFaltanteDialog({ compraId, item }: ItemCerrarFaltanteD
   const [open, setOpen] = useState(false);
   const cerrarMutation = useCerrarItemConFaltante(compraId);
   /**
-   * Espeja las dos precondiciones que el dominio exige, en el mismo orden:
-   * terminalidad (S25) y aprobación. La segunda entró con el fix de C1, que
-   * cerró el hueco por el que un ítem no aprobado llegaba al INSERT y volvía
-   * como 500. Sin este gate el botón queda habilitado sobre un PENDIENTE o
-   * RECHAZADO y la operación falla SIEMPRE con 422.
+   * Espeja las TRES precondiciones de estado que el dominio exige, en el
+   * mismo orden que sus guards (`ItemCompraEntity.cerrarConFaltante`):
+   * terminalidad (S25), aprobación y faltante real (S23). La segunda entró
+   * con el fix de C1, que cerró el hueco por el que un ítem no aprobado
+   * llegaba al INSERT y volvía como 500.
+   *
+   * La tercera faltaba: sin ella el botón queda habilitado sobre un ítem que
+   * ya recibió todo lo pedido, y la operación falla SIEMPRE con 422
+   * (`ItemSinFaltanteError`) por algo que se veía en pantalla. El motivo
+   * (S24) NO entra acá: lo valida el formulario, no el estado del ítem.
    */
-  const puedeCerrar = !item.cerradoConFaltante && item.estadoAprobacion === "APROBADO";
+  const hayFaltanteReal = item.cantidadComprada < item.cantidad;
+  const puedeCerrar =
+    !item.cerradoConFaltante && item.estadoAprobacion === "APROBADO" && hayFaltanteReal;
 
   const {
     register,
@@ -86,7 +93,9 @@ export function ItemCerrarFaltanteDialog({ compraId, item }: ItemCerrarFaltanteD
               ? undefined
               : item.cerradoConFaltante
                 ? "El ítem ya fue cerrado con faltante — es TERMINAL (S25)"
-                : "El ítem debe estar aprobado para cerrarse con faltante"
+                : item.estadoAprobacion !== "APROBADO"
+                  ? "El ítem debe estar aprobado para cerrarse con faltante"
+                  : "No hay faltante: ya se compró todo lo pedido"
           }
         >
           Cerrar con faltante

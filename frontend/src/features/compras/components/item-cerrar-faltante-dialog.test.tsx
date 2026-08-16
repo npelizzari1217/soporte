@@ -74,6 +74,18 @@ describe("ItemCerrarFaltanteDialog", () => {
     },
   );
 
+  it("S23: sin faltante real (comprada alcanza la pedida) el botón queda deshabilitado", () => {
+    renderWithProviders(
+      <ItemCerrarFaltanteDialog
+        compraId={COMPRA_ID}
+        item={buildItem({ cantidad: 10, cantidadComprada: 10 })}
+      />,
+      { user: buildUser({ permisos: ["compra:gestionar"] }) },
+    );
+
+    expect(screen.getByRole("button", { name: /cerrar con faltante/i })).toBeDisabled();
+  });
+
   it("envía el POST a cerrar-con-faltante con el motivo", async () => {
     let capturedBody: Record<string, unknown> = {};
     server.use(
