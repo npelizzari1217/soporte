@@ -167,3 +167,26 @@ export class ModuloInvalidoError extends DomainError {
     super(`Módulo(s) inválido(s): ${modulos.join(', ')}.`);
   }
 }
+
+/**
+ * PresetRolNoDefinidoError — el `rolCodigo` recibido en
+ * `AplicarPresetPermisosUseCase` (`POST /usuarios/:id/permisos/aplicar-preset`,
+ * WU-7.4) SÍ existe como `Role` en el catálogo RBAC pero NO tiene entrada en
+ * `PRESETS_ROL` (`auth/domain/presets-rol.ts`). A diferencia de
+ * `RolNoEncontradoError` (rol inexistente en `master.roles`, error de INPUT),
+ * esto es un GAP DE CONFIGURACIÓN del código: alguien sembró un rol nuevo por
+ * migración sin agregar su preset. Nunca debe resolverse en silencio con un
+ * preset vacío — eso borraría en silencio la matriz de cualquiera al que se
+ * le aplique.
+ * → HTTP 422 en la capa de presentación.
+ */
+export class PresetRolNoDefinidoError extends DomainError {
+  readonly code = 'AUTH_PRESET_ROL_NO_DEFINIDO';
+
+  constructor(rolCodigo: string) {
+    super(
+      `No hay preset de permisos definido para el rol "${rolCodigo}". ` +
+        `Agregalo a PRESETS_ROL antes de aplicarlo.`,
+    );
+  }
+}
