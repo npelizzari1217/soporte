@@ -16,7 +16,10 @@ function buildCompra(overrides: Partial<CompraDetalle> = {}): CompraDetalle {
   return {
     id: COMPRA_ID,
     numero: "COM-2026-00001",
-    fechaSolicitud: "2026-01-10",
+    // Formato REAL del backend: datetime ISO completo, no "YYYY-MM-DD". El
+    // fixture anterior usaba la forma ya normalizada y por eso no atrapaba el
+    // bug de precarga del `<input type="date">`.
+    fechaSolicitud: "2026-01-10T00:00:00.000Z",
     motivo: "Motivo original",
     descripcion: null,
     solicitanteId: "usuario-1",
@@ -54,8 +57,17 @@ describe("CompraEditDialog", () => {
     await abrirDialog();
 
     expect(await screen.findByLabelText(/motivo/i)).toHaveValue("Motivo original");
-    expect(screen.getByLabelText(/fecha de solicitud/i)).toHaveValue("2026-01-10");
     expect(screen.getByLabelText(/descripción/i)).toHaveValue("Detalle previo");
+  });
+
+  it("regresión: precarga la fecha aunque el backend la mande como datetime ISO — sin normalizar, el input queda VACÍO", async () => {
+    renderWithProviders(<CompraEditDialog compra={buildCompra()} />, {
+      user: buildUser({ permisos: ["COMPRAS:MODIFICACION"] }),
+    });
+
+    await abrirDialog();
+
+    expect(await screen.findByLabelText(/fecha de solicitud/i)).toHaveValue("2026-01-10");
   });
 
   it("envía el PATCH con la cabecera editada", async () => {

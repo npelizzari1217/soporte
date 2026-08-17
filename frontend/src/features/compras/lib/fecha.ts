@@ -25,3 +25,28 @@ export function hoyISO(): string {
   const dia = String(desplazada.getUTCDate()).padStart(2, "0");
   return `${anio}-${mes}-${dia}`;
 }
+
+/**
+ * Normaliza una fecha del backend al formato que acepta `<input type="date">`
+ * ("YYYY-MM-DD").
+ *
+ * **Por qué existe**: el backend serializa las fechas de calendario como
+ * datetime ISO completo (`"2026-08-17T00:00:00.000Z"`), y un
+ * `<input type="date">` con un valor que no sea exactamente "YYYY-MM-DD" lo
+ * descarta y se muestra VACÍO — sin warning en consola. Un form de edición
+ * precargado con ese valor crudo aparece con la fecha en blanco y obliga al
+ * usuario a re-tipear un dato que ya existía.
+ *
+ * **Corta la cadena, no la parsea**: `new Date(iso)` + componentes locales
+ * devuelve el día ANTERIOR para cualquier usuario al oeste de UTC (la fecha
+ * viaja a medianoche UTC), que es la misma trampa que ya documenta
+ * `compra-detail-view.tsx` al mostrar la fecha cruda. Los primeros 10
+ * caracteres del ISO son exactamente la fecha de calendario que el backend
+ * quiso decir.
+ *
+ * Es idempotente: una cadena que ya viene como "YYYY-MM-DD" vuelve igual.
+ */
+export function aFechaInput(fecha: string | null | undefined): string {
+  if (!fecha) return "";
+  return fecha.slice(0, 10);
+}
