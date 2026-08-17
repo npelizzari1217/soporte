@@ -19,6 +19,7 @@ import {
   MembresiaNoEncontradaError,
   MembresiaYaActivaError,
   ModuloInvalidoError,
+  PresetRolNoDefinidoError,
   RolNoEncontradoError,
 } from '../../domain/errors/auth.errors';
 import { JwtPayload } from '../../domain/ports/i-token.service';
@@ -32,6 +33,9 @@ function buildController() {
   const obtenerModulosUsuarioTenantUseCase = { execute: vi.fn() };
   const asignarModulosUsuarioTenantUseCase = { execute: vi.fn() };
   const editarUsuarioTenantUseCase = { execute: vi.fn() };
+  const obtenerPermisosUsuarioTenantUseCase = { execute: vi.fn() };
+  const asignarPermisosUsuarioTenantUseCase = { execute: vi.fn() };
+  const aplicarPresetPermisosUseCase = { execute: vi.fn() };
   const controller = new UsuariosController(
     listarUsuariosTenantUseCase as any,
     crearUsuarioTenantUseCase as any,
@@ -40,6 +44,9 @@ function buildController() {
     obtenerModulosUsuarioTenantUseCase as any,
     asignarModulosUsuarioTenantUseCase as any,
     editarUsuarioTenantUseCase as any,
+    obtenerPermisosUsuarioTenantUseCase as any,
+    asignarPermisosUsuarioTenantUseCase as any,
+    aplicarPresetPermisosUseCase as any,
   );
   return {
     controller,
@@ -50,6 +57,9 @@ function buildController() {
     obtenerModulosUsuarioTenantUseCase,
     asignarModulosUsuarioTenantUseCase,
     editarUsuarioTenantUseCase,
+    obtenerPermisosUsuarioTenantUseCase,
+    asignarPermisosUsuarioTenantUseCase,
+    aplicarPresetPermisosUseCase,
   };
 }
 
@@ -237,6 +247,32 @@ describe('UsuariosController (gestión mínima de usuarios, sdd/beta-frontend §
         clienteId: 'cliente-token',
         usuarioId: 'usuario-1',
         rolCodigo: 'ADMINISTRADOR',
+        reaplicarPreset: undefined,
+      });
+    });
+
+    it('R6 — reenvía reaplicarPreset: true al use case', async () => {
+      const { controller, cambiarRolUsuarioTenantUseCase } = buildController();
+      const membresia = MembresiaEntity.reconstitute(
+        { usuarioId: 'usuario-1', clienteId: 'cliente-token', rolId: 'rol-2', activo: true },
+        'membresia-1',
+        new Date(),
+        new Date(),
+        null,
+      );
+      cambiarRolUsuarioTenantUseCase.execute.mockResolvedValue(Result.ok(membresia));
+      const actor = buildActor({ permisos: ['usuario:gestionar', 'rol:asignar'] });
+
+      await controller.cambiarRol(actor, 'usuario-1', {
+        rolCodigo: 'TECNICO',
+        reaplicarPreset: true,
+      } as any);
+
+      expect(cambiarRolUsuarioTenantUseCase.execute).toHaveBeenCalledWith({
+        clienteId: 'cliente-token',
+        usuarioId: 'usuario-1',
+        rolCodigo: 'TECNICO',
+        reaplicarPreset: true,
       });
     });
 
@@ -392,6 +428,110 @@ describe('UsuariosController (gestión mínima de usuarios, sdd/beta-frontend §
 
       await expect(
         controller.asignarModulos(actor, 'usuario-1', { modulos: ['INEXISTENTE'] } as any),
+      ).rejects.toBeInstanceOf(UnprocessableEntityException);
+    });
+  });
+
+  // ─── ABM de la matriz de permisos (WU-7.4, sdd/matriz-permisos-por-usuario) ─
+
+  describe('GET /usuarios/:id/permisos', () => {
+    it('retorna celdas + esAdministrador + catalogo', async () => {
+      const { controller, obtenerPermisosUsuarioTenantUseCase } = buildController();
+      obtenerPermisosUsuarioTenantUseCase.execute.mockResolvedValue(
+        Result.ok({ celdas: ['TICKETS:LECTURA'], esAdministrador: false }),
+      );
+      const actor = buildActor({ permisos: ['usuario:gestionar'] });
+
+      const result = await controller.obtenerPermisos(actor, 'usuario-1');
+
+      expect(obtenerPermisosUsuarioTenantUseCase.execute).toHaveBeenCalledWith({
+        clienteId: 'cliente-token',
+        usuarioId: 'usuario-1',
+      });
+      expect(result.celdas).toEqual(['TICKETS:LECTURA']);
+      expect(result.esAdministrador).toBe(false);
+      expect(result.catalogo).toBeDefined();
+      expect(result.catalogo.DASHBOARD).toBeDefined();
+    });
+
+    it('propaga 404 NotFoundException cuando no hay membresía activa en este cliente', async () => {
+      const { controller, obtenerPermisosUsuarioTenantUseCase } = buildController();
+      obtenerPermisosUsuarioTenantUseCase.execute.mockResolvedValue(
+        Result.fail(new MembresiaNoEncontradaError()),
+      );
+      const actor = buildActor({ permisos: ['usuario:gestionar'] });
+
+      await expect(controller.obtenerPermisos(actor, 'usuario-ajeno')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+  });
+
+  describe('PATCH /usuarios/:id/permisos', () => {
+    it('reemplaza las celdas y retorna { usuarioId, celdas }, clienteId SIEMPRE del actor', async () => {
+      const { controller, asignarPermisosUsuarioTenantUseCase } = buildController();
+      asignarPermisosUsuarioTenantUseCase.execute.mockResolvedValue(
+        Result.ok(['TICKETS:LECTURA', 'TICKETS:ALTAS']),
+      );
+      const actor = buildActor({ permisos: ['usuario:gestionar', 'rol:asignar'] });
+
+      const result = await controller.asignarPermisos(actor, 'usuario-1', {
+        celdas: ['TICKETS:LECTURA', 'TICKETS:ALTAS'],
+      } as any);
+
+      expect(asignarPermisosUsuarioTenantUseCase.execute).toHaveBeenCalledWith({
+        clienteId: 'cliente-token',
+        usuarioId: 'usuario-1',
+        celdas: ['TICKETS:LECTURA', 'TICKETS:ALTAS'],
+      });
+      expect(result).toEqual({
+        usuarioId: 'usuario-1',
+        celdas: ['TICKETS:LECTURA', 'TICKETS:ALTAS'],
+      });
+    });
+
+    it('propaga 404 NotFoundException cuando la membresía no existe en este cliente', async () => {
+      const { controller, asignarPermisosUsuarioTenantUseCase } = buildController();
+      asignarPermisosUsuarioTenantUseCase.execute.mockResolvedValue(
+        Result.fail(new MembresiaNoEncontradaError()),
+      );
+      const actor = buildActor({ permisos: ['usuario:gestionar', 'rol:asignar'] });
+
+      await expect(
+        controller.asignarPermisos(actor, 'usuario-ajeno', { celdas: ['TICKETS:LECTURA'] } as any),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  describe('POST /usuarios/:id/permisos/aplicar-preset', () => {
+    it('aplica el preset y retorna { usuarioId, rolCodigo }', async () => {
+      const { controller, aplicarPresetPermisosUseCase } = buildController();
+      aplicarPresetPermisosUseCase.execute.mockResolvedValue(Result.ok(undefined));
+      const actor = buildActor({ permisos: ['usuario:gestionar', 'rol:asignar'] });
+
+      const result = await controller.aplicarPresetPermisos(actor, 'usuario-1', {
+        rolCodigo: 'TECNICO',
+      } as any);
+
+      expect(aplicarPresetPermisosUseCase.execute).toHaveBeenCalledWith({
+        clienteId: 'cliente-token',
+        usuarioId: 'usuario-1',
+        rolCodigo: 'TECNICO',
+      });
+      expect(result).toEqual({ usuarioId: 'usuario-1', rolCodigo: 'TECNICO' });
+    });
+
+    it('propaga 422 UnprocessableEntityException cuando el rol no tiene preset definido', async () => {
+      const { controller, aplicarPresetPermisosUseCase } = buildController();
+      aplicarPresetPermisosUseCase.execute.mockResolvedValue(
+        Result.fail(new PresetRolNoDefinidoError('ROL_SIN_PRESET')),
+      );
+      const actor = buildActor({ permisos: ['usuario:gestionar', 'rol:asignar'] });
+
+      await expect(
+        controller.aplicarPresetPermisos(actor, 'usuario-1', {
+          rolCodigo: 'ROL_SIN_PRESET',
+        } as any),
       ).rejects.toBeInstanceOf(UnprocessableEntityException);
     });
   });

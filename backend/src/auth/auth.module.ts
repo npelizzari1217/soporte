@@ -68,6 +68,9 @@ import { EditarUsuarioTenantUseCase } from './application/use-cases/editar-usuar
 import { DesactivarMembresiaUsuarioTenantUseCase } from './application/use-cases/desactivar-membresia-usuario-tenant.use-case';
 import { AsignarModulosUsuarioTenantUseCase } from './application/use-cases/asignar-modulos-usuario-tenant.use-case';
 import { ObtenerModulosUsuarioTenantUseCase } from './application/use-cases/obtener-modulos-usuario-tenant.use-case';
+import { ObtenerPermisosUsuarioTenantUseCase } from './application/use-cases/obtener-permisos-usuario-tenant.use-case';
+import { AsignarPermisosUsuarioTenantUseCase } from './application/use-cases/asignar-permisos-usuario-tenant.use-case';
+import { AplicarPresetPermisosUseCase } from './application/use-cases/aplicar-preset-permisos.use-case';
 import { ListarRolesUseCase } from './application/use-cases/listar-roles.use-case';
 import { IUsuarioRepository } from './domain/ports/i-usuario.repository';
 import { IMembresiaRepository } from './domain/ports/i-membresia.repository';
@@ -111,9 +114,12 @@ import { RolesController } from './interface/controllers/roles.controller';
     // MATRIZ_PERMISOS_REPOSITORY (WU-7.1, sdd/matriz-permisos-por-usuario):
     // ahora inyectado en LoginUseCase/RefreshTokenUseCase/SwitchTenantUseCase
     // vía resolverScope, en reemplazo de USUARIO_CLIENTE_MODULO_REPOSITORY
-    // (ADR-P6). USUARIO_CLIENTE_MODULO_REPOSITORY sigue registrado abajo: lo
-    // siguen consumiendo el ABM viejo de módulos (Obtener/Asignar) hasta que
-    // se borre en WU-7.4.5.
+    // (ADR-P6), y desde WU-7.4 también en el ABM nuevo de permisos (Obtener/
+    // Asignar/AplicarPreset). USUARIO_CLIENTE_MODULO_REPOSITORY sigue
+    // registrado abajo: lo siguen consumiendo el ABM VIEJO de módulos
+    // (Obtener/AsignarModulos) — DELIBERADAMENTE vigente, ver JSDoc de
+    // `UsuariosController` (deviation declarada: el retiro del ABM viejo
+    // queda para el mismo commit que WU-7.6, no antes).
     { provide: MATRIZ_PERMISOS_REPOSITORY, useClass: PrismaMatrizPermisosRepository },
     // CLIENTE_REPOSITORY: cross-feature. resolverScope/TenantGuard verifican
     // cliente activo. ClientesModule NO exporta este token todavía.
@@ -231,9 +237,13 @@ import { RolesController } from './interface/controllers/roles.controller';
     },
     {
       provide: CambiarRolUsuarioTenantUseCase,
-      useFactory: (membresiaRepo: IMembresiaRepository, roleRepo: IRoleRepository) =>
-        new CambiarRolUsuarioTenantUseCase(membresiaRepo, roleRepo),
-      inject: [MEMBRESIA_REPOSITORY, ROLE_REPOSITORY],
+      useFactory: (
+        membresiaRepo: IMembresiaRepository,
+        roleRepo: IRoleRepository,
+        aplicarPresetPermisosUseCase: AplicarPresetPermisosUseCase,
+      ) =>
+        new CambiarRolUsuarioTenantUseCase(membresiaRepo, roleRepo, aplicarPresetPermisosUseCase),
+      inject: [MEMBRESIA_REPOSITORY, ROLE_REPOSITORY, AplicarPresetPermisosUseCase],
     },
     {
       provide: EditarUsuarioTenantUseCase,
@@ -266,6 +276,25 @@ import { RolesController } from './interface/controllers/roles.controller';
       provide: ListarRolesUseCase,
       useFactory: (roleRepo: IRoleRepository) => new ListarRolesUseCase(roleRepo),
       inject: [ROLE_REPOSITORY],
+    },
+    // ─── ABM de la matriz de permisos (WU-7.4, sdd/matriz-permisos-por-usuario, ADR-P9/ADR-P10) ─
+    {
+      provide: AplicarPresetPermisosUseCase,
+      useFactory: (permisosRepo: IMatrizPermisosRepository) =>
+        new AplicarPresetPermisosUseCase(permisosRepo),
+      inject: [MATRIZ_PERMISOS_REPOSITORY],
+    },
+    {
+      provide: ObtenerPermisosUsuarioTenantUseCase,
+      useFactory: (membresiaRepo: IMembresiaRepository, permisosRepo: IMatrizPermisosRepository) =>
+        new ObtenerPermisosUsuarioTenantUseCase(membresiaRepo, permisosRepo),
+      inject: [MEMBRESIA_REPOSITORY, MATRIZ_PERMISOS_REPOSITORY],
+    },
+    {
+      provide: AsignarPermisosUsuarioTenantUseCase,
+      useFactory: (permisosRepo: IMatrizPermisosRepository, membresiaRepo: IMembresiaRepository) =>
+        new AsignarPermisosUsuarioTenantUseCase(permisosRepo, membresiaRepo),
+      inject: [MATRIZ_PERMISOS_REPOSITORY, MEMBRESIA_REPOSITORY],
     },
 
     // ─── Guards (Injectable — providers para inyección de clase vía UseGuards) ─

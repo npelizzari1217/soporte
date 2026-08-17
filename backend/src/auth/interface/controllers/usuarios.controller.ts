@@ -2,13 +2,16 @@
  * UsuariosController — entry point HTTP de la gestión mínima de usuarios del
  * tenant (sdd/beta-frontend/spec §5, desbloquea Fase 5 Beta frontend).
  *
- * Rutas (WU-7.3, sdd/matriz-permisos-por-usuario — R4/R4-excepción/R10):
- *   GET    /usuarios               → ListarUsuariosTenantUseCase   (TICKETS:ASIGNAR | TICKETS:VER_TODOS | ADMINISTRADOR-o-ROOT, regla OR — R4-excepción)
- *   POST   /usuarios               → CrearUsuarioTenantUseCase     [AdminClienteGuard]
- *   PATCH  /usuarios/:id/rol       → CambiarRolUsuarioTenantUseCase [AdminClienteGuard]
- *   PATCH  /usuarios/:id           → EditarUsuarioTenantUseCase      [AdminClienteGuard]
- *   DELETE /usuarios/:id/membresia → DesactivarMembresiaUsuarioTenantUseCase [AdminClienteGuard]
- *   GET/PATCH /usuarios/:id/modulos → ABM viejo (WU-7.4 lo reemplaza) [AdminClienteGuard]
+ * Rutas (WU-7.3/7.4, sdd/matriz-permisos-por-usuario — R4/R4-excepción/R6/R10):
+ *   GET    /usuarios                          → ListarUsuariosTenantUseCase   (TICKETS:ASIGNAR | TICKETS:VER_TODOS | ADMINISTRADOR-o-ROOT, regla OR — R4-excepción)
+ *   POST   /usuarios                          → CrearUsuarioTenantUseCase     [AdminClienteGuard]
+ *   PATCH  /usuarios/:id/rol                  → CambiarRolUsuarioTenantUseCase [AdminClienteGuard] (R6: `reaplicarPreset` opcional)
+ *   PATCH  /usuarios/:id                      → EditarUsuarioTenantUseCase      [AdminClienteGuard]
+ *   DELETE /usuarios/:id/membresia            → DesactivarMembresiaUsuarioTenantUseCase [AdminClienteGuard]
+ *   GET    /usuarios/:id/permisos             → ObtenerPermisosUsuarioTenantUseCase [AdminClienteGuard] (ADR-P10)
+ *   PATCH  /usuarios/:id/permisos             → AsignarPermisosUsuarioTenantUseCase [AdminClienteGuard] (ADR-P10, reemplazo total)
+ *   POST   /usuarios/:id/permisos/aplicar-preset → AplicarPresetPermisosUseCase [AdminClienteGuard] (ADR-P9)
+ *   GET/PATCH /usuarios/:id/modulos           → ABM viejo — VIGENTE, ver nota de deviation abajo
  *
  * Guards: `JwtAuthGuard` + `TenantGuard` a nivel de controller (requieren JWT
  * válido y `cliente_id` resuelto). `AdminClienteGuard` POR MÉTODO (ADR-P5) en
@@ -23,6 +26,21 @@
  * — se omite salvo que el actor sea ADMINISTRADOR o ROOT, INDEPENDIENTE de la
  * regla OR de acceso (`esAdminDeCliente`, no `puedeEjecutarAlguna`).
  *
+ * DESVIACIÓN DECLARADA vs. diseño (ADR-P10, Paso 4 del plan de migración):
+ * el diseño dice que `GET/PATCH /usuarios/:id/modulos` (+ sus use cases y
+ * `asignar-modulos-control.tsx`) SE ELIMINAN en el mismo deploy que la
+ * grilla nueva del frontend (WU-7.6). Esta tanda de apply está ACOTADA a
+ * WU-7.4 (backend) y WU-7.5 — WU-7.6 (swap del frontend) queda
+ * explícitamente fuera de alcance. Eliminar el ABM viejo ACÁ, antes de que
+ * el frontend migre a la grilla nueva, rompería `asignar-modulos-control.tsx`
+ * en producción (sigue llamando a estas dos rutas). Se optó por lo
+ * CONSERVADOR: los endpoints viejos siguen VIVOS, sin tocar su lógica de
+ * negocio, y el ABM nuevo se agrega EN PARALELO. Recomendado para
+ * `sdd-verify`/próxima tanda: remover `GET/PATCH /usuarios/:id/modulos`,
+ * `ObtenerModulosUsuarioTenantUseCase` y `AsignarModulosUsuarioTenantUseCase`
+ * en el MISMO commit que WU-7.6 (mismo criterio atómico que ADR-P8 aplicó al
+ * rename SOPORTE→TICKETS).
+ *
  * Aislamiento estricto (spec §5): `clienteId` SIEMPRE es `actor.cliente_id`
  * (JWT, resuelto por `TenantGuard`) — NUNCA un valor de la request. Los DTOs
  * de entrada (`usuario-tenant.dto.ts`) ni siquiera declaran un campo
@@ -33,6 +51,7 @@
  * mapea `DomainError` → `HttpException`.
  *
  * Ref spec: sdd/beta-frontend/spec §3 G2/G3 (GET), §5 (POST/PATCH/DELETE).
+ * Ref: sdd/matriz-permisos-por-usuario/spec R6, R10. Ref design: ADR-P9, ADR-P10.
  */
 import {
   Body,
@@ -57,11 +76,17 @@ import { EditarUsuarioTenantUseCase } from '../../application/use-cases/editar-u
 import { DesactivarMembresiaUsuarioTenantUseCase } from '../../application/use-cases/desactivar-membresia-usuario-tenant.use-case';
 import { AsignarModulosUsuarioTenantUseCase } from '../../application/use-cases/asignar-modulos-usuario-tenant.use-case';
 import { ObtenerModulosUsuarioTenantUseCase } from '../../application/use-cases/obtener-modulos-usuario-tenant.use-case';
+import { ObtenerPermisosUsuarioTenantUseCase } from '../../application/use-cases/obtener-permisos-usuario-tenant.use-case';
+import { AsignarPermisosUsuarioTenantUseCase } from '../../application/use-cases/asignar-permisos-usuario-tenant.use-case';
+import { AplicarPresetPermisosUseCase } from '../../application/use-cases/aplicar-preset-permisos.use-case';
 import {
+  AplicarPresetPermisosDto,
   AsignarModulosDto,
+  AsignarPermisosDto,
   CambiarRolUsuarioDto,
   CreateUsuarioTenantDto,
   EditarUsuarioDto,
+  PermisosUsuarioTenantResponseDto,
   UsuarioTenantMembresiaResponseDto,
   UsuarioTenantResponseDto,
 } from '../dtos/usuario-tenant.dto';
@@ -79,6 +104,7 @@ import { AdminClienteGuard } from '../../infrastructure/guards/admin-cliente.gua
 import { CurrentUser } from '../../infrastructure/guards/decorators';
 import { JwtPayload } from '../../domain/ports/i-token.service';
 import { puedeEjecutarAlguna, esAdminDeCliente } from '../../domain/permisos.util';
+import { CATALOGO_MODULOS, CodigoAccion } from '../../../shared/domain/acciones';
 import { DomainError } from '../../../shared/domain/result';
 
 /**
@@ -130,7 +156,8 @@ function toHttpException(
   if (error instanceof ModuloInvalidoError) {
     return new UnprocessableEntityException(error.message);
   }
-  // RolNoEncontradoError: input inválido del actor (rolCodigo inexistente) → 422.
+  // RolNoEncontradoError, CeldaPermisoInvalidaError, PresetRolNoDefinidoError:
+  // input inválido del actor o gap de configuración del código → 422.
   return new UnprocessableEntityException(error.message);
 }
 
@@ -145,6 +172,9 @@ export class UsuariosController {
     private readonly obtenerModulosUsuarioTenantUseCase: ObtenerModulosUsuarioTenantUseCase,
     private readonly asignarModulosUsuarioTenantUseCase: AsignarModulosUsuarioTenantUseCase,
     private readonly editarUsuarioTenantUseCase: EditarUsuarioTenantUseCase,
+    private readonly obtenerPermisosUsuarioTenantUseCase: ObtenerPermisosUsuarioTenantUseCase,
+    private readonly asignarPermisosUsuarioTenantUseCase: AsignarPermisosUsuarioTenantUseCase,
+    private readonly aplicarPresetPermisosUseCase: AplicarPresetPermisosUseCase,
   ) {}
 
   /**
@@ -205,8 +235,13 @@ export class UsuariosController {
   /**
    * PATCH /usuarios/:id/rol
    * Cambia el rol de la membresía del usuario `:id` EN EL CLIENTE DEL TOKEN.
+   * `reaplicarPreset` (R6, opcional): con `true`, SOBRESCRIBE la matriz del
+   * usuario con el preset del rol destino — SIN el flag (default), la matriz
+   * queda intacta (S13/S14).
    * @throws 404 si no existe membresía de ese usuario en este cliente
-   * @throws 422 si `rolCodigo` no existe en el catálogo
+   * @throws 422 si `rolCodigo` no existe en el catálogo, o (con
+   *             `reaplicarPreset: true`) si el rol destino no tiene preset
+   *             definido en `PRESETS_ROL`
    */
   @Patch(':id/rol')
   @UseGuards(AdminClienteGuard)
@@ -219,6 +254,7 @@ export class UsuariosController {
       clienteId: actor.cliente_id as string,
       usuarioId,
       rolCodigo: dto.rolCodigo,
+      reaplicarPreset: dto.reaplicarPreset,
     });
 
     if (result.isFail()) {
@@ -328,5 +364,98 @@ export class UsuariosController {
       throw toHttpException(result.getError());
     }
     return { usuarioId, modulos: result.getValue() };
+  }
+
+  // ─── ABM de la matriz de permisos (WU-7.4, ADR-P9/ADR-P10) ────────────────
+
+  /**
+   * GET /usuarios/:id/permisos
+   * Celdas de la matriz del usuario `:id` EN EL CLIENTE DEL TOKEN, más
+   * `esAdministrador` (grilla toda tildada y deshabilitada, R2) y el
+   * `catalogo` completo para que el frontend arme la grilla sin otra llamada.
+   * @throws 404 si no existe membresía ACTIVA de ese usuario en este cliente
+   */
+  @Get(':id/permisos')
+  @UseGuards(AdminClienteGuard)
+  async obtenerPermisos(
+    @CurrentUser() actor: JwtPayload,
+    @Param('id') usuarioId: string,
+  ): Promise<PermisosUsuarioTenantResponseDto> {
+    const result = await this.obtenerPermisosUsuarioTenantUseCase.execute({
+      clienteId: actor.cliente_id as string,
+      usuarioId,
+    });
+
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+    const { celdas, esAdministrador } = result.getValue();
+    // El puerto tipa `string[]` a propósito (ADR-P10: el dominio de auth no
+    // importa el catálogo para tipar persistencia) — las celdas ya vienen
+    // validadas contra PARES_VALIDOS (DTO + CHECK), el cast es seguro acá,
+    // en la capa de presentación (mismo criterio que `derivarModulos` en
+    // resolver-scope.ts).
+    return {
+      celdas: celdas as CodigoAccion[],
+      esAdministrador,
+      catalogo: CATALOGO_MODULOS,
+    };
+  }
+
+  /**
+   * PATCH /usuarios/:id/permisos
+   * Reemplaza el set COMPLETO de celdas del usuario `:id` EN EL CLIENTE DEL
+   * TOKEN (ADR-P10, semántica de reemplazo total — no fusiona).
+   * @throws 404 si no existe membresía ACTIVA de ese usuario en este cliente
+   * @throws 422 si algún código de `celdas` no pertenece al catálogo
+   *             (defensa en profundidad, detrás del `@IsIn` del DTO)
+   */
+  @Patch(':id/permisos')
+  @UseGuards(AdminClienteGuard)
+  async asignarPermisos(
+    @CurrentUser() actor: JwtPayload,
+    @Param('id') usuarioId: string,
+    @Body() dto: AsignarPermisosDto,
+  ): Promise<{ usuarioId: string; celdas: string[] }> {
+    const result = await this.asignarPermisosUsuarioTenantUseCase.execute({
+      clienteId: actor.cliente_id as string,
+      usuarioId,
+      celdas: dto.celdas,
+    });
+
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+    return { usuarioId, celdas: result.getValue() };
+  }
+
+  /**
+   * POST /usuarios/:id/permisos/aplicar-preset
+   * Copia la plantilla de permisos del rol `rolCodigo` sobre la matriz del
+   * usuario `:id` EN EL CLIENTE DEL TOKEN (ADR-P9) — acción explícita de UI
+   * ("copiar plantilla"), independiente de `PATCH /usuarios/:id/rol`.
+   * SOBRESCRIBE, no fusiona.
+   * @throws 422 si `rolCodigo` no tiene preset definido en `PRESETS_ROL`
+   *             (gap de configuración del código, nunca aplica un set vacío
+   *             en silencio)
+   */
+  @Post(':id/permisos/aplicar-preset')
+  @UseGuards(AdminClienteGuard)
+  @HttpCode(HttpStatus.OK)
+  async aplicarPresetPermisos(
+    @CurrentUser() actor: JwtPayload,
+    @Param('id') usuarioId: string,
+    @Body() dto: AplicarPresetPermisosDto,
+  ): Promise<{ usuarioId: string; rolCodigo: string }> {
+    const result = await this.aplicarPresetPermisosUseCase.execute({
+      clienteId: actor.cliente_id as string,
+      usuarioId,
+      rolCodigo: dto.rolCodigo,
+    });
+
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+    return { usuarioId, rolCodigo: dto.rolCodigo };
   }
 }

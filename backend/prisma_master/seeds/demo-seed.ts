@@ -74,6 +74,7 @@ import {
 
 import { CrearUsuarioTenantUseCase } from '../../src/auth/application/use-cases/crear-usuario-tenant.use-case';
 import { AsignarModulosUsuarioTenantUseCase } from '../../src/auth/application/use-cases/asignar-modulos-usuario-tenant.use-case';
+import { AplicarPresetPermisosUseCase } from '../../src/auth/application/use-cases/aplicar-preset-permisos.use-case';
 import { TODOS_LOS_MODULOS } from '../../src/shared/domain/modulos';
 import { MembresiaYaActivaError } from '../../src/auth/domain/errors/auth.errors';
 import { USUARIO_REPOSITORY, type IUsuarioRepository } from '../../src/auth/domain/ports/i-usuario.repository';
@@ -267,12 +268,19 @@ async function provisionUsuarioTenant(
 }
 
 /**
- * Asigna al TÉCNICO demo TODOS los módulos funcionales (usuario_cliente_modulos)
- * para que sea ELEGIBLE como asignado de cualquier tipo de ticket (B2). Sin esto
- * la elegibilidad por módulo (`esAsignadoElegiblePorModulo`) rechaza la asignación
- * de los tickets demo: el TECNICO no es admin-total, así que su elegibilidad
- * depende de la tabla `usuario_cliente_modulos` (que `CrearUsuarioTenantUseCase`
- * NO puebla). Idempotente: `setModulos` reemplaza el set, un re-run no duplica.
+ * Asigna al TÉCNICO demo TODOS los módulos funcionales (usuario_cliente_modulos,
+ * ABM VIEJO) para que sea ELEGIBLE como asignado de cualquier tipo de ticket (B2).
+ * Sin esto la elegibilidad por módulo (`esAsignadoElegiblePorModulo`) rechaza la
+ * asignación de los tickets demo. Idempotente: `setModulos` reemplaza el set, un
+ * re-run no duplica.
+ *
+ * WU-7.5 (sdd/matriz-permisos-por-usuario, R9): `esAsignadoElegiblePorModulo` YA
+ * NO lee `usuario_cliente_modulos` — lee la matriz `usuario_cliente_permisos` vía
+ * `UsuarioMasterChecker.getAutorizacionModulos`/`listarTecnicosAsignables`. Esta
+ * función sigue poblando la tabla vieja (barato, sin efecto de runtime, y el ABM
+ * viejo sigue vigente — ver deviation declarada en `UsuariosController`), pero
+ * el TECNICO demo SOLO queda elegible por el `AplicarPresetPermisosUseCase` de
+ * abajo, que sí escribe en la matriz nueva.
  */
 async function asignarModulosTecnico(
   app: INestApplicationContext,
@@ -288,6 +296,33 @@ async function asignarModulosTecnico(
   if (result.isFail()) {
     throw new Error(
       `[demo-seed] No se pudieron asignar los módulos al técnico demo: ${result.getError().message}`,
+    );
+  }
+}
+
+/**
+ * Aplica el preset de permisos de TECNICO sobre la matriz nueva
+ * (`usuario_cliente_permisos`) del técnico demo (WU-7.5, R9). `CrearUsuarioTenantUseCase`
+ * NO puebla la matriz — sin esto, `esAsignadoElegiblePorModulo` (que desde WU-7.5
+ * lee la matriz, no `usuario_cliente_modulos`) rechaza CUALQUIER asignación de
+ * ticket al técnico demo, silenciosamente hasta que se corre el seed y explota acá.
+ * `AplicarPresetPermisosUseCase.setPermisos` es reemplazo atómico e idempotente
+ * (ADR-P3): un re-run no duplica ni acumula.
+ */
+async function aplicarPresetPermisosTecnico(
+  app: INestApplicationContext,
+  clienteId: string,
+  tecnicoId: string,
+): Promise<void> {
+  const aplicarPreset = app.get(AplicarPresetPermisosUseCase);
+  const result = await aplicarPreset.execute({
+    clienteId,
+    usuarioId: tecnicoId,
+    rolCodigo: 'TECNICO',
+  });
+  if (result.isFail()) {
+    throw new Error(
+      `[demo-seed] No se pudo aplicar el preset de permisos al técnico demo: ${result.getError().message}`,
     );
   }
 }
@@ -873,7 +908,9 @@ export async function runDemoSeed(
 
   // El técnico debe tener módulos ANTES de sembrar los datos (seedDemoTenantData
   // asigna tickets al técnico y la elegibilidad por módulo se evalúa ahí).
+  // WU-7.5: la elegibilidad real ahora la da la matriz nueva, no el ABM viejo.
   await asignarModulosTecnico(app, clienteId, tecnicoId);
+  await aplicarPresetPermisosTecnico(app, clienteId, tecnicoId);
 
   const sembrado = await seedDemoTenantData(app, { clienteId, dbName, prismaService, tenantContext, usuarios });
 

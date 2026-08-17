@@ -169,6 +169,22 @@ export class ModuloInvalidoError extends DomainError {
 }
 
 /**
+ * CeldaPermisoInvalidaError — uno o más códigos `MODULO:ACCION` recibidos al
+ * reemplazar la matriz de un usuario (`PATCH /usuarios/:id/permisos`, WU-7.4)
+ * no pertenecen al catálogo `PARES_VALIDOS` (`shared/domain/acciones`).
+ * Defensa en profundidad detrás del `@IsIn` del DTO — mismo criterio que
+ * `ModuloInvalidoError` para el ABM viejo de módulos.
+ * → HTTP 422 en la capa de presentación.
+ */
+export class CeldaPermisoInvalidaError extends DomainError {
+  readonly code = 'AUTH_CELDA_PERMISO_INVALIDA';
+
+  constructor(celdas: string[]) {
+    super(`Celda(s) de permiso inválida(s): ${celdas.join(', ')}.`);
+  }
+}
+
+/**
  * PresetRolNoDefinidoError — el `rolCodigo` recibido en
  * `AplicarPresetPermisosUseCase` (`POST /usuarios/:id/permisos/aplicar-preset`,
  * WU-7.4) SÍ existe como `Role` en el catálogo RBAC pero NO tiene entrada en

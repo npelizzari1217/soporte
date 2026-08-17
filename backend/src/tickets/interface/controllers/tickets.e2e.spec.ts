@@ -713,9 +713,22 @@ describe('Tickets e2e (T4-T8, PR6)', () => {
       await createMembresia(agente.id, cliente.id, roleAgente.id);
       const loginUsuario = await login(usuario.email);
       const loginTecnico = await login(tecnico.email);
-      // Tipo SOPORTE (seedeado): mapea al módulo SOPORTE — la elegibilidad de
-      // asignación es por MÓDULO del catálogo asignado al usuario.
-      const tipoId = tipoSoporteId;
+      // Tipo de módulo EQUIPOS, NO tipoSoporteId (WU-7.5, R9): TICKETS/KB
+      // reciben `LECTURA` universal para TODA membresía activa (R7) — el
+      // agente ya sería elegible por TICKETS apenas se crea su membresía
+      // (`createMembresia` siembra `TICKETS:LECTURA` para cualquier rol),
+      // así que ese módulo ya no sirve para probar el gate de elegibilidad.
+      // EQUIPOS SÍ exige una acción propia en la matriz (R9: "al menos una
+      // acción otorgada"), preservando la intención original del test.
+      const tipoEquipos = await tenantClient.tipoTicket.create({
+        data: {
+          codigo: `EQP${randomBytes(3).toString('hex').toUpperCase()}`,
+          nombre: 'Tipo Equipos (asignación)',
+          activo: true,
+          modulo: 'EQUIPOS',
+        },
+      });
+      const tipoId = tipoEquipos.id;
 
       const created = await httpPost<TicketResponseDto>(
         `${baseUrl}/tickets`,
@@ -731,7 +744,8 @@ describe('Tickets e2e (T4-T8, PR6)', () => {
       );
       expect(denegado.status).toBe(403);
 
-      // TECNICO con ticket:asignar, pero el agente aún NO tiene el módulo SOPORTE → 422.
+      // TECNICO con ticket:asignar, pero el agente aún NO tiene ninguna
+      // acción de EQUIPOS en la matriz → 422.
       const noElegible = await httpPatch(
         `${baseUrl}/tickets/${created.data.id}/asignar`,
         { asignadoId: agente.id },
@@ -739,10 +753,10 @@ describe('Tickets e2e (T4-T8, PR6)', () => {
       );
       expect(noElegible.status).toBe(422);
 
-      // Habilita al agente asignándole el módulo SOPORTE en el cliente (master).
-      await masterClient.usuarioClienteModulo.create({
-        data: { usuarioId: agente.id, clienteId: cliente.id, modulo: 'TICKETS' },
-      });
+      // Habilita al agente otorgándole una celda de EQUIPOS en la matriz
+      // nueva (WU-7.5: el checker de elegibilidad ya lee
+      // `usuario_cliente_permisos`, no la tabla vieja `usuario_cliente_modulos`).
+      await permisosRepo.setPermisos(agente.id, cliente.id, ['EQUIPOS:LECTURA']);
 
       // TECNICO con ticket:asignar + agente con el módulo → asignación válida.
       const permitido = await httpPatch<TicketResponseDto>(
