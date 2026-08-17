@@ -9,7 +9,7 @@ import { ItemCompraEntity, ItemCompraProps } from './item-compra.entity';
 import { derivarEstadoCompra, CompraParaDerivacion } from '../services/estado-compra';
 import {
   CompraCanceladaError,
-  CompraConComprasRegistradasError,
+  CompraConOrdenEmitidaError,
   CompraYaCanceladaError,
   CompraYaCerradaError,
   ItemCompraAprobadoNoEliminableError,
@@ -87,8 +87,12 @@ function crearItemFixture(overrides: Partial<ItemCompraProps> = {}): ItemCompraE
     estadoAprobacion: 'PENDIENTE',
     decididoPorId: null,
     decididoEn: null,
-    cantidadComprada: 0,
+    cantidadOrdenada: 0,
+    cantidadRecibida: 0,
     cantidadEntregada: 0,
+    fechaOrden: null,
+    fechaRecepcion: null,
+    fechaEntrega: null,
     cerradoConFaltante: false,
     motivoCierreFaltante: null,
     ...overrides,
@@ -123,6 +127,18 @@ describe('CompraEntity', () => {
       ['cicloId vacío', { cicloId: '' }],
     ])('rechaza campos inválidos: %s', (_desc, overrides) => {
       expect(() => CompraEntity.create(crearPropsValidas(overrides))).toThrow();
+    });
+
+    // ─── WU-09 (sdd/compras-tres-etapas-y-sectores, R11/S66/S67) ────────────
+
+    it('S66: crear sin sectorId queda sectorId=null (campo opcional)', () => {
+      const compra = CompraEntity.create(crearPropsValidas());
+      expect(compra.sectorId).toBeNull();
+    });
+
+    it('S66: crear con sectorId válido lo deja asociado a la cabecera', () => {
+      const compra = CompraEntity.create(crearPropsValidas({ sectorId: 'sector-1' }));
+      expect(compra.sectorId).toBe('sector-1');
     });
   });
 
@@ -331,8 +347,9 @@ describe('CompraEntity', () => {
       compra.agregarItem(datosItemValido({ descripcion: 'Rechazado', cantidad: 1 }));
       const [itemA, itemB, itemC] = compra.items;
       itemA.aprobar('usuario-1');
-      itemA.registrarCompra(itemA.cantidad);
-      itemA.registrarEntrega(itemA.cantidad);
+      itemA.registrarOrden(itemA.cantidad, new Date('2026-01-16'));
+      itemA.registrarRecepcion(itemA.cantidad, new Date('2026-01-17'));
+      itemA.registrarEntrega(itemA.cantidad, new Date('2026-01-18'));
       itemB.aprobar('usuario-1');
       itemC.rechazar('usuario-1');
 
@@ -364,7 +381,8 @@ describe('CompraEntity', () => {
     it('Regla 0: compra cancelada => CANCELADO, comprado y cerrado false, sin importar los ítems', () => {
       const item = crearItemFixture({
         estadoAprobacion: 'APROBADO',
-        cantidadComprada: 1,
+        cantidadOrdenada: 1,
+        cantidadRecibida: 1,
         cantidadEntregada: 1,
       });
       const compra = crearCompraCancelada([item]);
@@ -400,17 +418,17 @@ describe('CompraEntity', () => {
       expect(compra.estado).toBe('CANCELADO');
     });
 
-    it('S29: cancelar con algún ítem con cantidadComprada > 0 -> CompraConComprasRegistradasError (el camino correcto es cerrar con faltante)', () => {
+    it('S29 (WU-21, R13): cancelar con algún ítem con cantidadOrdenada > 0 -> CompraConOrdenEmitidaError (el camino correcto es cerrar con faltante)', () => {
       const compra = CompraEntity.create(crearPropsValidas());
       compra.agregarItem(datosItemValido({ cantidad: 5 }));
       const item = compra.items[0];
       item.aprobar('usuario-1');
-      item.registrarCompra(2);
+      item.registrarOrden(2, new Date('2026-01-16'));
 
       const result = compra.cancelar('usuario-2', 'Motivo cualquiera', new Date());
 
       expect(result.isFail()).toBe(true);
-      expect(result.getError()).toBeInstanceOf(CompraConComprasRegistradasError);
+      expect(result.getError()).toBeInstanceOf(CompraConOrdenEmitidaError);
       expect(compra.canceladaEn).toBeNull();
     });
 
@@ -419,8 +437,9 @@ describe('CompraEntity', () => {
       compra.agregarItem(datosItemValido({ cantidad: 3 }));
       const item = compra.items[0];
       item.aprobar('usuario-1');
-      item.registrarCompra(3);
-      item.registrarEntrega(3);
+      item.registrarOrden(3, new Date('2026-01-16'));
+      item.registrarRecepcion(3, new Date('2026-01-17'));
+      item.registrarEntrega(3, new Date('2026-01-18'));
       expect(compra.cerrado).toBe(true); // precondición del test
 
       const result = compra.cancelar('usuario-2', 'Motivo cualquiera', new Date());

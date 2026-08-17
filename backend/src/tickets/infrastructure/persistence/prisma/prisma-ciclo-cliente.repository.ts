@@ -46,8 +46,15 @@ export class PrismaCicloClienteRepository implements ICicloClienteRepository {
   }
 
   async findActive(): Promise<CicloClienteEntity | null> {
+    // `orderBy` total (WU-02, ADR-T8): el índice único parcial
+    // `ciclos_cliente_unico_activo_idx` (migración 20260817140000) vuelve
+    // esto un match de a lo sumo 1 fila en el camino normal, pero el
+    // `orderBy` es defensa en profundidad — determinístico incluso si el
+    // índice se relajara. `fechaInicio` no es única entre ciclos, así que el
+    // desempate por `id` no es opcional: sin él el orden sigue siendo parcial.
     const row = await this.client.cicloCliente.findFirst({
       where: { activo: true, deletedAt: null },
+      orderBy: [{ fechaInicio: 'desc' }, { id: 'desc' }],
     });
     return row ? PrismaCicloClienteRepository.toDomain(row) : null;
   }

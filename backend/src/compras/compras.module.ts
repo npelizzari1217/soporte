@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { TicketsModule } from '../tickets/tickets.module';
+import { SectoresModule } from '../sectores/sectores.module';
 
 import {
   ITenantTransactionRunner,
@@ -10,6 +11,7 @@ import {
   CICLO_CLIENTE_REPOSITORY,
   ICicloClienteRepository,
 } from '../tickets/domain/ports/i-ciclo-cliente.repository';
+import { SECTOR_REPOSITORY, ISectorRepository } from '../sectores/domain/ports/i-sector.repository';
 
 import { COMPRA_REPOSITORY, ICompraRepository } from './domain/ports/i-compra.repository';
 import { PrismaCompraRepository } from './infrastructure/persistence/prisma/prisma-compra.repository';
@@ -29,8 +31,10 @@ import { EditarItemCompraUseCase } from './application/use-cases/editar-item-com
 import { EliminarItemCompraUseCase } from './application/use-cases/eliminar-item-compra.use-case';
 import { AprobarItemCompraUseCase } from './application/use-cases/aprobar-item-compra.use-case';
 import { RechazarItemCompraUseCase } from './application/use-cases/rechazar-item-compra.use-case';
-import { RegistrarCompraDeItemUseCase } from './application/use-cases/registrar-compra-de-item.use-case';
+import { RegistrarOrdenDeItemUseCase } from './application/use-cases/registrar-orden-de-item.use-case';
+import { RegistrarRecepcionDeItemUseCase } from './application/use-cases/registrar-recepcion-de-item.use-case';
 import { RegistrarEntregaDeItemUseCase } from './application/use-cases/registrar-entrega-de-item.use-case';
+import { EditarFechaEtapaDeItemUseCase } from './application/use-cases/editar-fecha-etapa-de-item.use-case';
 import { CerrarItemConFaltanteUseCase } from './application/use-cases/cerrar-item-con-faltante.use-case';
 import { CancelarCompraUseCase } from './application/use-cases/cancelar-compra.use-case';
 import { ListarComprasUseCase } from './application/use-cases/listar-compras.use-case';
@@ -81,7 +85,7 @@ import { ComprasController } from './interface/controllers/compras.controller';
  * USO, ADR-C2, ADR-C4, ADR-C5. Ref tasks: PR-22 (cierra la FASE E).
  */
 @Module({
-  imports: [AuthModule, TicketsModule],
+  imports: [AuthModule, TicketsModule, SectoresModule],
   controllers: [ComprasController],
   providers: [
     { provide: COMPRA_REPOSITORY, useClass: PrismaCompraRepository },
@@ -111,6 +115,7 @@ import { ComprasController } from './interface/controllers/compras.controller';
         compraRepo: ICompraRepository,
         numerador: NumeradorCompra,
         resolverCicloActivo: ResolverCicloActivoCompra,
+        sectorRepo: ISectorRepository,
         registrarOperacion: RegistrarOperacionCompra,
         txRunner: ITenantTransactionRunner,
       ) =>
@@ -118,13 +123,17 @@ import { ComprasController } from './interface/controllers/compras.controller';
           compraRepo,
           numerador,
           resolverCicloActivo,
+          sectorRepo,
           registrarOperacion,
           txRunner,
         ),
+      // Fix post-verify W6: agrega SECTOR_REPOSITORY (importado de
+      // SectoresModule, WU-09) para validar `sectorId` ANTES del INSERT.
       inject: [
         COMPRA_REPOSITORY,
         NumeradorCompra,
         ResolverCicloActivoCompra,
+        SECTOR_REPOSITORY,
         RegistrarOperacionCompra,
         TENANT_TX_RUNNER,
       ],
@@ -175,12 +184,21 @@ import { ComprasController } from './interface/controllers/compras.controller';
       inject: [COMPRA_REPOSITORY, RegistrarOperacionCompra, TENANT_TX_RUNNER],
     },
     {
-      provide: RegistrarCompraDeItemUseCase,
+      provide: RegistrarOrdenDeItemUseCase,
       useFactory: (
         compraRepo: ICompraRepository,
         registrarOperacion: RegistrarOperacionCompra,
         txRunner: ITenantTransactionRunner,
-      ) => new RegistrarCompraDeItemUseCase(compraRepo, registrarOperacion, txRunner),
+      ) => new RegistrarOrdenDeItemUseCase(compraRepo, registrarOperacion, txRunner),
+      inject: [COMPRA_REPOSITORY, RegistrarOperacionCompra, TENANT_TX_RUNNER],
+    },
+    {
+      provide: RegistrarRecepcionDeItemUseCase,
+      useFactory: (
+        compraRepo: ICompraRepository,
+        registrarOperacion: RegistrarOperacionCompra,
+        txRunner: ITenantTransactionRunner,
+      ) => new RegistrarRecepcionDeItemUseCase(compraRepo, registrarOperacion, txRunner),
       inject: [COMPRA_REPOSITORY, RegistrarOperacionCompra, TENANT_TX_RUNNER],
     },
     {
@@ -190,6 +208,15 @@ import { ComprasController } from './interface/controllers/compras.controller';
         registrarOperacion: RegistrarOperacionCompra,
         txRunner: ITenantTransactionRunner,
       ) => new RegistrarEntregaDeItemUseCase(compraRepo, registrarOperacion, txRunner),
+      inject: [COMPRA_REPOSITORY, RegistrarOperacionCompra, TENANT_TX_RUNNER],
+    },
+    {
+      provide: EditarFechaEtapaDeItemUseCase,
+      useFactory: (
+        compraRepo: ICompraRepository,
+        registrarOperacion: RegistrarOperacionCompra,
+        txRunner: ITenantTransactionRunner,
+      ) => new EditarFechaEtapaDeItemUseCase(compraRepo, registrarOperacion, txRunner),
       inject: [COMPRA_REPOSITORY, RegistrarOperacionCompra, TENANT_TX_RUNNER],
     },
     {

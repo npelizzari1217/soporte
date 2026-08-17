@@ -29,6 +29,7 @@ function makeFakeCompraRow(overrides: Partial<PrismaCompra> = {}): PrismaCompra 
     canceladaEn: null,
     canceladoPorId: null,
     motivoCancelacion: null,
+    sectorId: null,
     createdAt: new Date('2026-01-10T10:00:00.000Z'),
     updatedAt: new Date('2026-01-10T10:00:00.000Z'),
     deletedAt: null,
@@ -50,8 +51,12 @@ function makeFakeItemRow(overrides: Partial<PrismaItemCompra> = {}): PrismaItemC
     estadoAprobacion: 'PENDIENTE',
     decididoPorId: null,
     decididoEn: null,
-    cantidadComprada: new Prisma.Decimal('0.00'),
+    cantidadOrdenada: new Prisma.Decimal('0.00'),
+    cantidadRecibida: new Prisma.Decimal('0.00'),
     cantidadEntregada: new Prisma.Decimal('0.00'),
+    fechaOrden: null,
+    fechaRecepcion: null,
+    fechaEntrega: null,
     cerradoConFaltante: false,
     motivoCierreFaltante: null,
     createdAt: new Date('2026-01-10T10:00:00.000Z'),
@@ -117,6 +122,20 @@ describe('CompraMapper', () => {
       // El ítem soft-deleted no cuenta para la derivación de estado (n=0 activos).
       expect(entity.estado).toBe('PENDIENTE');
     });
+
+    // ─── WU-09 (sdd/compras-tres-etapas-y-sectores, R11/S66/S67) ────────────
+
+    it('S67: una compra preexistente sin sectorId mapea a sectorId=null', () => {
+      const row = { ...makeFakeCompraRow({ sectorId: null }), items: [] };
+      const entity = CompraMapper.toDomain(row);
+      expect(entity.sectorId).toBeNull();
+    });
+
+    it('S66: mapea sectorId cuando la fila lo trae', () => {
+      const row = { ...makeFakeCompraRow({ sectorId: 'sector-1' }), items: [] };
+      const entity = CompraMapper.toDomain(row);
+      expect(entity.sectorId).toBe('sector-1');
+    });
   });
 
   describe('toPersistence()', () => {
@@ -148,6 +167,22 @@ describe('CompraMapper', () => {
       expect(data.cicloId).toBe('ciclo-1');
       expect(data.deletedAt).toBeNull();
       expect(data).not.toHaveProperty('items');
+    });
+
+    it('S66: incluye sectorId cuando la entidad lo tiene asignado', () => {
+      const entity = CompraEntity.create({
+        numero: 'COM-2026-00003',
+        fechaSolicitud: new Date('2026-01-15'),
+        motivo: 'Compra con sector',
+        descripcion: null,
+        solicitanteId: 'usuario-1',
+        cicloId: 'ciclo-1',
+        sectorId: 'sector-1',
+      });
+
+      const data = CompraMapper.toPersistence(entity);
+
+      expect(data.sectorId).toBe('sector-1');
     });
   });
 });

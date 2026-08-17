@@ -15,23 +15,34 @@ import { PageHeader } from "@/components/shared/page-header";
 import { AdminNav } from "@/components/shell/admin-nav";
 import { TipoTicketList } from "./tipo-ticket-list";
 import { PrioridadList } from "./prioridad-list";
+import { SectorList } from "@/features/sectores/components/sector-list";
 
+/**
+ * WU-31 (`compras-tres-etapas-y-sectores` R10): agrega el tab "Sectores" al
+ * ABM existente de catálogos. El gate del backend (`AdminClienteGuard` por
+ * método, S64) es el mismo que ya protege tipos/prioridades — no requiere
+ * ninguna acción `MODULO:ACCION` nueva.
+ */
 export function CatalogosAdminView() {
   return (
     <div>
       <AdminNav />
       <SoloAdminCliente fallback={<ErrorState message="No tenés permiso para gestionar catálogos." />}>
-        <PageHeader title="Catálogos" description="Tipos de ticket y prioridades del tenant." />
+        <PageHeader title="Catálogos" description="Tipos de ticket, prioridades y sectores del tenant." />
         <Tabs defaultValue="tipos">
           <TabsList>
             <TabsTrigger value="tipos">Tipos de ticket</TabsTrigger>
             <TabsTrigger value="prioridades">Prioridades</TabsTrigger>
+            <TabsTrigger value="sectores">Sectores</TabsTrigger>
           </TabsList>
           <TabsContent value="tipos">
             <TipoTicketList />
           </TabsContent>
           <TabsContent value="prioridades">
             <PrioridadList />
+          </TabsContent>
+          <TabsContent value="sectores">
+            <SectorList />
           </TabsContent>
         </Tabs>
       </SoloAdminCliente>

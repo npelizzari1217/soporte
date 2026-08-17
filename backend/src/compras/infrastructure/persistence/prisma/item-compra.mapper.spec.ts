@@ -33,8 +33,12 @@ function makeFakeRow(overrides: Partial<PrismaItemCompra> = {}): PrismaItemCompr
     estadoAprobacion: 'PENDIENTE',
     decididoPorId: null,
     decididoEn: null,
-    cantidadComprada: new Prisma.Decimal('0.00'),
+    cantidadOrdenada: new Prisma.Decimal('0.00'),
+    cantidadRecibida: new Prisma.Decimal('0.00'),
     cantidadEntregada: new Prisma.Decimal('0.00'),
+    fechaOrden: null,
+    fechaRecepcion: null,
+    fechaEntrega: null,
     cerradoConFaltante: false,
     motivoCierreFaltante: null,
     createdAt: new Date('2026-01-10T10:00:00.000Z'),
@@ -62,8 +66,12 @@ describe('ItemCompraMapper', () => {
       expect(entity.estadoAprobacion).toBe('PENDIENTE');
       expect(entity.decididoPorId).toBeNull();
       expect(entity.decididoEn).toBeNull();
-      expect(entity.cantidadComprada).toBe(0);
+      expect(entity.cantidadOrdenada).toBe(0);
+      expect(entity.cantidadRecibida).toBe(0);
       expect(entity.cantidadEntregada).toBe(0);
+      expect(entity.fechaOrden).toBeNull();
+      expect(entity.fechaRecepcion).toBeNull();
+      expect(entity.fechaEntrega).toBeNull();
       expect(entity.cerradoConFaltante).toBe(false);
       expect(entity.motivoCierreFaltante).toBeNull();
     });
@@ -86,13 +94,26 @@ describe('ItemCompraMapper', () => {
       const row = makeFakeRow({
         cerradoConFaltante: true,
         motivoCierreFaltante: 'Proveedor sin stock',
-        cantidadComprada: new Prisma.Decimal('1.00'),
+        cantidadRecibida: new Prisma.Decimal('1.00'),
       });
       const entity = ItemCompraMapper.toDomain(row);
 
       expect(entity.cerradoConFaltante).toBe(true);
       expect(entity.motivoCierreFaltante).toBe('Proveedor sin stock');
-      expect(entity.cantidadComprada).toBe(1);
+      expect(entity.cantidadRecibida).toBe(1);
+    });
+
+    it('mapea las tres fechas de etapa cuando están presentes', () => {
+      const row = makeFakeRow({
+        fechaOrden: new Date('2026-08-10'),
+        fechaRecepcion: new Date('2026-08-12'),
+        fechaEntrega: new Date('2026-08-15'),
+      });
+      const entity = ItemCompraMapper.toDomain(row);
+
+      expect(entity.fechaOrden).toEqual(new Date('2026-08-10'));
+      expect(entity.fechaRecepcion).toEqual(new Date('2026-08-12'));
+      expect(entity.fechaEntrega).toEqual(new Date('2026-08-15'));
     });
   });
 
@@ -111,8 +132,12 @@ describe('ItemCompraMapper', () => {
           estadoAprobacion: 'PENDIENTE',
           decididoPorId: null,
           decididoEn: null,
-          cantidadComprada: 0,
+          cantidadOrdenada: 0,
+          cantidadRecibida: 0,
           cantidadEntregada: 0,
+          fechaOrden: null,
+          fechaRecepcion: null,
+          fechaEntrega: null,
           cerradoConFaltante: false,
           motivoCierreFaltante: null,
         },

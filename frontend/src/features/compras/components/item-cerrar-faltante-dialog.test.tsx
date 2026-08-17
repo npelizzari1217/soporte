@@ -26,8 +26,13 @@ function buildItem(overrides: Partial<ItemCompra> = {}): ItemCompra {
     estadoAprobacion: "APROBADO",
     decididoPorId: "u1",
     decididoEn: "2026-01-02T00:00:00.000Z",
-    cantidadComprada: 5,
+    cantidadOrdenada: 5,
+    cantidadRecibida: 5,
     cantidadEntregada: 5,
+    fechaOrden: null,
+    fechaRecepcion: null,
+    fechaEntrega: null,
+    totalItem: 1000,
     cerradoConFaltante: false,
     motivoCierreFaltante: null,
     comprado: false,
@@ -74,11 +79,11 @@ describe("ItemCerrarFaltanteDialog", () => {
     },
   );
 
-  it("S23: sin faltante real (comprada alcanza la pedida) el botón queda deshabilitado", () => {
+  it("S23: sin faltante real (recibida alcanza la pedida) el botón queda deshabilitado", () => {
     renderWithProviders(
       <ItemCerrarFaltanteDialog
         compraId={COMPRA_ID}
-        item={buildItem({ cantidad: 10, cantidadComprada: 10 })}
+        item={buildItem({ cantidad: 10, cantidadRecibida: 10 })}
       />,
       { user: buildUser({ permisos: ["COMPRAS:MODIFICACION"] }) },
     );

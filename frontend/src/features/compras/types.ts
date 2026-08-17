@@ -28,7 +28,13 @@ export type EstadoCompra =
 /** Set CERRADO de monedas admitidas (ADR-C7, `CHECK moneda IN (...)`), espejo de `MONEDAS_ADMITIDAS` del backend. */
 export type Moneda = "ARS" | "USD" | "EUR";
 
-/** Catálogo CERRADO de tipos de operación de bitácora (espejo de `TipoOperacionCompra`). */
+/**
+ * Catálogo CERRADO de tipos de operación de bitácora (espejo de
+ * `TipoOperacionCompra`). WU-26 (`compras-tres-etapas-y-sectores`
+ * ADR-T11): `COMPRA_REGISTRADA` es LEGACY (solo aparece en filas
+ * históricas); `ORDEN_REGISTRADA`/`RECEPCION_REGISTRADA` son los tipos
+ * vigentes de las dos primeras etapas.
+ */
 export type TipoOperacionCompra =
   | "CREACION"
   | "ITEM_AGREGADO"
@@ -36,14 +42,24 @@ export type TipoOperacionCompra =
   | "ITEM_ELIMINADO"
   | "ITEM_APROBADO"
   | "ITEM_RECHAZADO"
-  | "COMPRA_REGISTRADA"
+  | "ORDEN_REGISTRADA"
+  | "RECEPCION_REGISTRADA"
   | "ENTREGA_REGISTRADA"
   | "ITEM_CERRADO_CON_FALTANTE"
-  | "CANCELACION";
+  | "CANCELACION"
+  | "COMPRA_REGISTRADA";
+
+/** Las tres etapas de ejecución de un ítem (espejo de `EtapaEjecucion`, ADR-T1). */
+export type EtapaEjecucion = "ORDEN" | "RECEPCION" | "ENTREGA";
 
 /**
  * Espejo de `ItemCompraResponseDto`. Sólo aparece en el detalle
  * (`CompraDetalle.items`) — el listado NUNCA lo incluye (S33).
+ *
+ * WU-26 (`compras-tres-etapas-y-sectores`): `cantidadComprada` se partió en
+ * `cantidadOrdenada`/`cantidadRecibida` (la etapa nueva de ORDEN se
+ * intercala antes de lo que antes era "comprada"); se agregan las tres
+ * fechas de etapa y `totalItem` (derivado, R6).
  */
 export interface ItemCompra {
   id: string;
@@ -59,8 +75,14 @@ export interface ItemCompra {
   /** ADR-C6: nombres neutros — también se escriben en el RECHAZO. */
   decididoPorId: string | null;
   decididoEn: string | null;
-  cantidadComprada: number;
+  cantidadOrdenada: number;
+  cantidadRecibida: number;
   cantidadEntregada: number;
+  fechaOrden: string | null;
+  fechaRecepcion: string | null;
+  fechaEntrega: string | null;
+  /** Total de este ítem (`monto × cantidad`) — derivado, no persistido (R6). */
+  totalItem: number;
   cerradoConFaltante: boolean;
   motivoCierreFaltante: string | null;
   comprado: boolean;
@@ -105,6 +127,8 @@ export interface CompraDetalle {
   descripcion: string | null;
   solicitanteId: string;
   cicloId: string;
+  /** Sector de destino de la cabecera (R11). `null` si no se asignó. */
+  sectorId: string | null;
   estado: EstadoCompra;
   comprado: boolean;
   cerrado: boolean;
@@ -139,6 +163,8 @@ export interface CrearCompraDto {
   motivo: string;
   descripcion?: string | null;
   fechaSolicitud: string;
+  /** Sector de destino (R11) — opcional, sin backfill (S66). */
+  sectorId?: string;
 }
 
 /** Body de `POST /compras/:id/items` (`AgregarItemCompraHttpDto`). */
@@ -166,14 +192,35 @@ export interface EditarItemCompraDto {
   observaciones?: string | null;
 }
 
-/** Body de registrar avance de compra (`RegistrarCompraDeItemHttpDto`) — `cantidadComprada` es ACUMULADO, no delta. */
-export interface RegistrarCompraDeItemDto {
-  cantidadComprada: number;
+/**
+ * Body de registrar orden (`RegistrarOrdenDeItemHttpDto`, WU-26) —
+ * `cantidadOrdenada` es ACUMULADO, no delta. `fecha` opcional: sin ella, el
+ * backend prellena con hoy (Argentina).
+ */
+export interface RegistrarOrdenDeItemDto {
+  cantidadOrdenada: number;
+  fecha?: string;
+}
+
+/**
+ * Body de registrar recepción (`RegistrarRecepcionDeItemHttpDto`, WU-26) —
+ * reemplaza a `RegistrarCompraDeItemDto`. `cantidadRecibida` ACUMULADO.
+ */
+export interface RegistrarRecepcionDeItemDto {
+  cantidadRecibida: number;
+  fecha?: string;
 }
 
 /** Body de registrar avance de entrega (`RegistrarEntregaDeItemHttpDto`) — `cantidadEntregada` es ACUMULADO, no delta. */
 export interface RegistrarEntregaDeItemDto {
   cantidadEntregada: number;
+  fecha?: string;
+}
+
+/** Body de `PATCH .../fecha-etapa` (`EditarFechaEtapaHttpDto`, WU-26 R4/S55). */
+export interface EditarFechaEtapaDto {
+  etapa: EtapaEjecucion;
+  fecha: string;
 }
 
 /** Body de `POST .../cerrar-con-faltante` (`CerrarItemConFaltanteHttpDto`). */
@@ -186,8 +233,16 @@ export interface CancelarCompraDto {
   motivo: string;
 }
 
-/** Query params de `GET /compras` (`ListarComprasQueryDto`) — sólo paginación. */
+/**
+ * Query params de `GET /compras` (`ListarComprasQueryDto`). WU-30 agrega los
+ * 5 filtros de negocio (R7/R11) a la paginación existente.
+ */
 export interface ComprasFiltros {
   pagina?: number;
   porPagina?: number;
+  cicloId?: string;
+  soloEnCurso?: boolean;
+  sectorId?: string;
+  fechaDesde?: string;
+  fechaHasta?: string;
 }

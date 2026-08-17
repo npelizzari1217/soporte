@@ -19,6 +19,14 @@ import { Client } from 'pg';
 import { ESTADOS_APROBACION_ITEM } from '../src/compras/domain/services/estado-compra';
 import { TIPOS_OPERACION_COMPRA } from '../src/compras/domain/ports/i-operacion-compra.repository';
 
+/**
+ * WU-17 (`compras-tres-etapas-y-sectores`, M2) reescribe los `it.each` de
+ * cantidades contra los CHECK nuevos (`cantidad_ordenada`/`cantidad_recibida`/
+ * `cantidad_entregada`, en vez de los 2 viejos sobre `cantidad_comprada`) y
+ * agrega el CHECK de orden cronológico de fechas — ver bloques más abajo.
+ * El test de deriva de listas (líneas finales del archivo) NO se toca.
+ */
+
 /** URL de la DB tenant de test (mismo default usado en otras integration specs del repo). */
 const TENANT_TEST_URL =
   process.env.DATABASE_URL_TENANT ??
@@ -200,66 +208,135 @@ describe('CHECKs de compras/items_compra/operaciones_compra — migración 20260
     });
   });
 
-  // ─── items_compra_cantidad_comprada_check ────────────────────────────────
+  // ─── items_compra_cantidad_ordenada_check (WU-17, M2) ────────────────────
 
-  describe('CHECK items_compra_cantidad_comprada_check', () => {
-    it('rechaza cantidad_comprada negativa', async () => {
+  describe('CHECK items_compra_cantidad_ordenada_check', () => {
+    it('rechaza cantidad_ordenada negativa', async () => {
       const compraId = await insertCompraValida();
       const itemId = await insertItemPendiente(compraId, { cantidad: 10 });
       await expect(
-        client.query(`UPDATE items_compra SET cantidad_comprada = -1 WHERE id = $1`, [itemId]),
-      ).rejects.toThrow(/items_compra_cantidad_comprada_check|check constraint/i);
+        client.query(`UPDATE items_compra SET cantidad_ordenada = -1 WHERE id = $1`, [itemId]),
+      ).rejects.toThrow(/items_compra_cantidad_ordenada_check|check constraint/i);
     });
 
-    it('rechaza cantidad_comprada > cantidad', async () => {
+    it('rechaza cantidad_ordenada > cantidad', async () => {
       const compraId = await insertCompraValida();
       const itemId = await insertItemPendiente(compraId, { cantidad: 10 });
       await expect(
-        client.query(`UPDATE items_compra SET cantidad_comprada = 10.01 WHERE id = $1`, [itemId]),
-      ).rejects.toThrow(/items_compra_cantidad_comprada_check|check constraint/i);
+        client.query(`UPDATE items_compra SET cantidad_ordenada = 10.01 WHERE id = $1`, [itemId]),
+      ).rejects.toThrow(/items_compra_cantidad_ordenada_check|check constraint/i);
     });
 
-    it('acepta cantidad_comprada === cantidad (borde superior)', async () => {
+    it('acepta cantidad_ordenada === cantidad (borde superior)', async () => {
       const compraId = await insertCompraValida();
       const itemId = await insertItemPendiente(compraId, { cantidad: 10 });
       const result = await client.query(
-        `UPDATE items_compra SET cantidad_comprada = 10 WHERE id = $1`,
+        `UPDATE items_compra SET cantidad_ordenada = 10 WHERE id = $1`,
         [itemId],
       );
       expect(result.rowCount).toBe(1);
     });
   });
 
-  // ─── items_compra_cantidad_entregada_check ───────────────────────────────
+  // ─── items_compra_cantidad_recibida_check (WU-17, M2 — antes "cantidad_comprada") ──
+
+  describe('CHECK items_compra_cantidad_recibida_check', () => {
+    it('rechaza cantidad_recibida negativa', async () => {
+      const compraId = await insertCompraValida();
+      const itemId = await insertItemPendiente(compraId, { cantidad: 10 });
+      await client.query(`UPDATE items_compra SET cantidad_ordenada = 10 WHERE id = $1`, [itemId]);
+      await expect(
+        client.query(`UPDATE items_compra SET cantidad_recibida = -1 WHERE id = $1`, [itemId]),
+      ).rejects.toThrow(/items_compra_cantidad_recibida_check|check constraint/i);
+    });
+
+    it('rechaza cantidad_recibida > cantidad_ordenada', async () => {
+      const compraId = await insertCompraValida();
+      const itemId = await insertItemPendiente(compraId, { cantidad: 10 });
+      await client.query(`UPDATE items_compra SET cantidad_ordenada = 5 WHERE id = $1`, [itemId]);
+      await expect(
+        client.query(`UPDATE items_compra SET cantidad_recibida = 5.01 WHERE id = $1`, [itemId]),
+      ).rejects.toThrow(/items_compra_cantidad_recibida_check|check constraint/i);
+    });
+
+    it('acepta cantidad_recibida === cantidad_ordenada (borde superior)', async () => {
+      const compraId = await insertCompraValida();
+      const itemId = await insertItemPendiente(compraId, { cantidad: 10 });
+      await client.query(`UPDATE items_compra SET cantidad_ordenada = 5 WHERE id = $1`, [itemId]);
+      const result = await client.query(
+        `UPDATE items_compra SET cantidad_recibida = 5 WHERE id = $1`,
+        [itemId],
+      );
+      expect(result.rowCount).toBe(1);
+    });
+  });
+
+  // ─── items_compra_cantidad_entregada_check (WU-17, M2 — techo pasó a cantidad_recibida) ──
 
   describe('CHECK items_compra_cantidad_entregada_check', () => {
     it('rechaza cantidad_entregada negativa', async () => {
       const compraId = await insertCompraValida();
       const itemId = await insertItemPendiente(compraId, { cantidad: 10 });
-      await client.query(`UPDATE items_compra SET cantidad_comprada = 10 WHERE id = $1`, [itemId]);
+      await client.query(`UPDATE items_compra SET cantidad_ordenada = 10 WHERE id = $1`, [itemId]);
+      await client.query(`UPDATE items_compra SET cantidad_recibida = 10 WHERE id = $1`, [itemId]);
       await expect(
         client.query(`UPDATE items_compra SET cantidad_entregada = -1 WHERE id = $1`, [itemId]),
       ).rejects.toThrow(/items_compra_cantidad_entregada_check|check constraint/i);
     });
 
-    it('rechaza cantidad_entregada > cantidad_comprada', async () => {
+    it('rechaza cantidad_entregada > cantidad_recibida', async () => {
       const compraId = await insertCompraValida();
       const itemId = await insertItemPendiente(compraId, { cantidad: 10 });
-      await client.query(`UPDATE items_compra SET cantidad_comprada = 5 WHERE id = $1`, [itemId]);
+      await client.query(`UPDATE items_compra SET cantidad_ordenada = 5 WHERE id = $1`, [itemId]);
+      await client.query(`UPDATE items_compra SET cantidad_recibida = 5 WHERE id = $1`, [itemId]);
       await expect(
         client.query(`UPDATE items_compra SET cantidad_entregada = 5.01 WHERE id = $1`, [itemId]),
       ).rejects.toThrow(/items_compra_cantidad_entregada_check|check constraint/i);
     });
 
-    it('acepta cantidad_entregada === cantidad_comprada (borde superior)', async () => {
+    it('acepta cantidad_entregada === cantidad_recibida (borde superior)', async () => {
       const compraId = await insertCompraValida();
       const itemId = await insertItemPendiente(compraId, { cantidad: 10 });
-      await client.query(`UPDATE items_compra SET cantidad_comprada = 5 WHERE id = $1`, [itemId]);
+      await client.query(`UPDATE items_compra SET cantidad_ordenada = 5 WHERE id = $1`, [itemId]);
+      await client.query(`UPDATE items_compra SET cantidad_recibida = 5 WHERE id = $1`, [itemId]);
       const result = await client.query(
         `UPDATE items_compra SET cantidad_entregada = 5 WHERE id = $1`,
         [itemId],
       );
       expect(result.rowCount).toBe(1);
+    });
+  });
+
+  // ─── items_compra_fechas_orden_check (WU-17, M2, ADR-T3) ─────────────────
+  //
+  // Tabla de verdad del design (ADR-T3): con NULL el CHECK pasa (el término
+  // da NULL, no FALSE); solo rechaza cuando un par de fechas NO-nulas queda
+  // fuera de orden. Los TRES pares explícitos evitan el agujero transitivo
+  // de la fecha del medio en NULL.
+
+  describe('CHECK items_compra_fechas_orden_check', () => {
+    it.each([
+      ['todas NULL (fila migrada, S52)', null, null, null, true],
+      ['solo fecha_orden', '2026-08-10', null, null, true],
+      ['orden <= recepcion, sin entrega', '2026-08-10', '2026-08-12', null, true],
+      ['orden > recepcion (rechaza, término 1)', '2026-08-12', '2026-08-10', null, false],
+      ['recepcion > entrega (rechaza, término 2)', '2026-08-10', '2026-08-12', '2026-08-09', false],
+      ['orden > entrega con recepcion NULL (rechaza, término 3, agujero transitivo)', '2026-08-10', null, '2026-08-05', false],
+    ] as const)('%s', async (_desc, fechaOrden, fechaRecepcion, fechaEntrega, aceptado) => {
+      const compraId = await insertCompraValida();
+      const itemId = await insertItemPendiente(compraId, { cantidad: 10 });
+
+      const query = client.query(
+        `UPDATE items_compra SET fecha_orden = $1, fecha_recepcion = $2, fecha_entrega = $3 WHERE id = $4`,
+        [fechaOrden, fechaRecepcion, fechaEntrega, itemId],
+      );
+
+      if (aceptado) {
+        const result = await query;
+        expect(result.rowCount).toBe(1);
+      } else {
+        await expect(query).rejects.toThrow(/items_compra_fechas_orden_check|check constraint/i);
+      }
     });
   });
 
@@ -407,7 +484,7 @@ describe('CHECKs de compras/items_compra/operaciones_compra — migración 20260
   // ─── operaciones_compra_tipo_check ───────────────────────────────────────
 
   describe('CHECK operaciones_compra_tipo_check', () => {
-    it('rechaza un tipo fuera del catálogo cerrado de 10 valores', async () => {
+    it('rechaza un tipo fuera del catálogo cerrado de 12 valores', async () => {
       const compraId = await insertCompraValida();
       await expect(
         client.query(
@@ -425,11 +502,13 @@ describe('CHECKs de compras/items_compra/operaciones_compra — migración 20260
       'ITEM_ELIMINADO',
       'ITEM_APROBADO',
       'ITEM_RECHAZADO',
-      'COMPRA_REGISTRADA',
+      'ORDEN_REGISTRADA',
+      'RECEPCION_REGISTRADA',
       'ENTREGA_REGISTRADA',
       'ITEM_CERRADO_CON_FALTANTE',
       'CANCELACION',
-    ])('acepta el tipo %s (uno de los 10 comandos mutadores de ADR-C4)', async (tipo) => {
+      'COMPRA_REGISTRADA', // legacy (WU-16, ADR-T11) — el CHECK sigue aceptando filas históricas
+    ])('acepta el tipo %s (11 vigentes + 1 legacy, ADR-T11)', async (tipo) => {
       const compraId = await insertCompraValida();
       const result = await client.query(
         `INSERT INTO operaciones_compra (id, compra_id, tipo, usuario_id, detalle)

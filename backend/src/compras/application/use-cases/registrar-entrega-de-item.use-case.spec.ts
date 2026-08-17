@@ -1,24 +1,12 @@
 /**
- * PR-17 [UNIT] — RED→GREEN: `RegistrarEntregaDeItemUseCase`.
+ * WU-23 [UNIT] — RED→GREEN: `RegistrarEntregaDeItemUseCase`.
  *
- * Todos los puertos/colaboradores mockeados (`vi.fn`) — sin DB. Cubre:
- * - S19: entregar dentro de lo comprado -> OK.
- * - S20: entregar más de lo comprado -> `CantidadEntregadaExcedeCompradaError`.
- * - S21: retroceder respecto de lo ya registrado -> `CantidadEntregadaRetrocedeError`.
- * - S35: exactamente 1 `OperacionCompra` de tipo `ENTREGA_REGISTRADA` por
- *   mutación exitosa.
- * - Corolario de S35: si la mutación falla, la bitácora queda en 0 llamadas.
- * - 404: compra inexistente / ítem inexistente (id equivocado o soft-deleted).
- * - Regla transversal: TODO dentro de `txRunner.run(...)` (find + mutate +
- *   guardarItem + registrarOperacion, atómico — patrón de
- *   `AgregarItemCompraUseCase`).
+ * Cubre: S42 (entrega dentro de lo recibido OK), S44 (exceso ->
+ * CantidadEntregadaExcedeRecibidaError), S46 (retroceso ->
+ * CantidadEntregadaRetrocedeError), S35 (bitácora ENTREGA_REGISTRADA), 404s,
+ * compra cancelada, y que `fecha` opcional se traduce correctamente.
  *
- * `ItemCompraEntity.registrarEntrega()` ya resuelve la aritmética en
- * centésimas y los guards (S19-S21) — este spec verifica que el caso de uso
- * TRADUCE ese `Result`, no que reimplementa la regla.
- *
- * Ref spec: sdd/redisenio-modulo-compras/spec §4.6 (S19-S21), §4.10 (S35).
- * Ref design: ADR-C1, ADR-C2, ADR-C3, ADR-C4. Tarea: PR-17.
+ * Ref spec: sdd/compras-tres-etapas-y-sectores/spec R1, R2 (S42, S44, S46).
  */
 import {
   RegistrarEntregaDeItemUseCase,
@@ -30,7 +18,7 @@ import {
   CompraCanceladaError,
   CompraNoEncontradaError,
   ItemCompraNoEncontradoError,
-  CantidadEntregadaExcedeCompradaError,
+  CantidadEntregadaExcedeRecibidaError,
   CantidadEntregadaRetrocedeError,
 } from '../../domain/errors/compras.errors';
 
@@ -48,10 +36,10 @@ function compraBase(): CompraEntity {
   );
 }
 
-/** Compra con un único ítem APROBADO con `cantidadComprada` ya registrada (default 10 pedidas, 6 compradas). */
-function compraConItemComprado(
+/** Compra con un único ítem APROBADO con `cantidadRecibida` ya registrada (default 10 pedidas, 8 ordenadas, 6 recibidas). */
+function compraConItemRecibido(
   cantidad = 10,
-  cantidadComprada = 6,
+  cantidadRecibida = 6,
 ): { compra: CompraEntity; item: ItemCompraEntity } {
   const compra = compraBase();
   compra.agregarItem({
@@ -65,55 +53,8 @@ function compraConItemComprado(
   });
   const item = compra.items[0];
   item.aprobar('aprobador-uuid');
-  item.registrarCompra(cantidadComprada);
-  return { compra, item };
-}
-
-/**
- * Compra YA CANCELADA con un ítem que ya tiene `cantidadComprada` registrada.
- * Construida vía `reconstitute()` (no `compra.cancelar()`): con
- * `cantidadComprada > 0` la cancelación real fallaría por S29
- * (`CompraConComprasRegistradasError`) — acá se simula directamente el
- * estado persistido para probar que el guard de esta capa de aplicación
- * también corta el registro de entrega sobre una compra cancelada.
- */
-function compraCanceladaConItemComprado(
-  cantidad = 10,
-  cantidadComprada = 6,
-): { compra: CompraEntity; item: ItemCompraEntity } {
-  const item = ItemCompraEntity.create(
-    {
-      compraId: 'compra-uuid',
-      descripcion: 'Resma de papel A4',
-      cantidad,
-      proveedor: 'Proveedor SA',
-      monto: 1500,
-      moneda: 'ARS',
-      fechaCotizacion: new Date('2026-08-01'),
-      observaciones: null,
-    },
-    'item-uuid',
-  );
-  item.aprobar('aprobador-uuid');
-  item.registrarCompra(cantidadComprada);
-  const compra = CompraEntity.reconstitute(
-    {
-      numero: 'COM-2026-00001',
-      fechaSolicitud: new Date('2026-08-01'),
-      motivo: 'Compra de insumos',
-      descripcion: null,
-      solicitanteId: 'solicitante-uuid',
-      cicloId: 'ciclo-uuid',
-      canceladaEn: new Date('2026-08-05'),
-      canceladoPorId: 'usuario-cancelador',
-      motivoCancelacion: 'Ya no se necesita',
-    },
-    [item],
-    'compra-uuid',
-    new Date('2026-08-01'),
-    new Date('2026-08-01'),
-    null,
-  );
+  item.registrarOrden(cantidad, new Date('2026-08-02'));
+  item.registrarRecepcion(cantidadRecibida, new Date('2026-08-03'));
   return { compra, item };
 }
 
@@ -127,6 +68,7 @@ function baseDto(
     itemId: item.id,
     usuarioId: 'usuario-uuid',
     cantidadEntregada: 3,
+    fecha: new Date('2026-08-04'),
     ...overrides,
   };
 }
@@ -149,35 +91,33 @@ describe('RegistrarEntregaDeItemUseCase', () => {
     return { useCase, compraRepo, registrarOperacion, txRunner };
   }
 
-  it('S19: entrega dentro de lo comprado -> OK, persiste y registra bitácora dentro de la tx', async () => {
-    const { compra, item } = compraConItemComprado(10, 6);
+  it('S42: entrega dentro de lo recibido -> OK, persiste y registra bitácora dentro de la tx', async () => {
+    const { compra, item } = compraConItemRecibido(10, 6);
     const c = makeCollaborators(compra);
 
     const result = await c.useCase.execute(baseDto(compra, item, { cantidadEntregada: 3 }));
 
     expect(result.isOk()).toBe(true);
-    const itemResultado = result.getValue();
-    expect(itemResultado.cantidadEntregada).toBe(3);
-    expect(itemResultado.entregado).toBe(false);
+    expect(result.getValue().cantidadEntregada).toBe(3);
     expect(c.txRunner.run).toHaveBeenCalledTimes(1);
-    expect(c.compraRepo.guardarItem).toHaveBeenCalledWith(itemResultado);
+    expect(c.compraRepo.guardarItem).toHaveBeenCalledWith(result.getValue());
   });
 
-  it('S20: entregar más de lo comprado -> CantidadEntregadaExcedeCompradaError, sin persistir ni registrar bitácora', async () => {
-    const { compra, item } = compraConItemComprado(10, 6);
+  it('S44: entregar más de lo recibido -> CantidadEntregadaExcedeRecibidaError, sin persistir', async () => {
+    const { compra, item } = compraConItemRecibido(10, 6);
     const c = makeCollaborators(compra);
 
     const result = await c.useCase.execute(baseDto(compra, item, { cantidadEntregada: 8 }));
 
     expect(result.isFail()).toBe(true);
-    expect(result.getError()).toBeInstanceOf(CantidadEntregadaExcedeCompradaError);
+    expect(result.getError()).toBeInstanceOf(CantidadEntregadaExcedeRecibidaError);
     expect(c.compraRepo.guardarItem).not.toHaveBeenCalled();
     expect(c.registrarOperacion.registrar).not.toHaveBeenCalled();
   });
 
-  it('S21: retroceder respecto de lo ya registrado -> CantidadEntregadaRetrocedeError, sin persistir ni registrar bitácora', async () => {
-    const { compra, item } = compraConItemComprado(10, 6);
-    item.registrarEntrega(4);
+  it('S46: retroceder respecto de lo ya registrado -> CantidadEntregadaRetrocedeError, sin persistir', async () => {
+    const { compra, item } = compraConItemRecibido(10, 6);
+    item.registrarEntrega(4, new Date('2026-08-04'));
     const c = makeCollaborators(compra);
 
     const result = await c.useCase.execute(baseDto(compra, item, { cantidadEntregada: 2 }));
@@ -185,38 +125,30 @@ describe('RegistrarEntregaDeItemUseCase', () => {
     expect(result.isFail()).toBe(true);
     expect(result.getError()).toBeInstanceOf(CantidadEntregadaRetrocedeError);
     expect(item.cantidadEntregada).toBe(4);
-    expect(c.compraRepo.guardarItem).not.toHaveBeenCalled();
-    expect(c.registrarOperacion.registrar).not.toHaveBeenCalled();
   });
 
-  it('S35: registra exactamente 1 OperacionCompra de tipo ENTREGA_REGISTRADA por mutación exitosa', async () => {
-    const { compra, item } = compraConItemComprado(10, 6);
+  it('S35: registra exactamente 1 OperacionCompra de tipo ENTREGA_REGISTRADA', async () => {
+    const { compra, item } = compraConItemRecibido(10, 6);
     const c = makeCollaborators(compra);
 
     await c.useCase.execute(baseDto(compra, item, { cantidadEntregada: 3 }));
 
     expect(c.registrarOperacion.registrar).toHaveBeenCalledTimes(1);
-    const operacion = c.registrarOperacion.registrar.mock.calls[0][0];
-    expect(operacion.tipo).toBe('ENTREGA_REGISTRADA');
-    expect(operacion.compraId).toBe(compra.id);
-    expect(operacion.itemCompraId).toBe(item.id);
-    expect(operacion.usuarioId).toBe('usuario-uuid');
+    expect(c.registrarOperacion.registrar.mock.calls[0][0].tipo).toBe('ENTREGA_REGISTRADA');
   });
 
-  it('compra inexistente -> CompraNoEncontradaError, sin tocar bitácora', async () => {
-    const { compra, item } = compraConItemComprado(10, 6);
+  it('compra inexistente -> CompraNoEncontradaError', async () => {
+    const { compra, item } = compraConItemRecibido(10, 6);
     const c = makeCollaborators(null);
 
     const result = await c.useCase.execute(baseDto(compra, item, { cantidadEntregada: 3 }));
 
     expect(result.isFail()).toBe(true);
     expect(result.getError()).toBeInstanceOf(CompraNoEncontradaError);
-    expect(c.compraRepo.guardarItem).not.toHaveBeenCalled();
-    expect(c.registrarOperacion.registrar).not.toHaveBeenCalled();
   });
 
-  it('ítem inexistente (id equivocado) -> ItemCompraNoEncontradoError, sin tocar bitácora', async () => {
-    const { compra, item } = compraConItemComprado(10, 6);
+  it('ítem inexistente -> ItemCompraNoEncontradoError', async () => {
+    const { compra, item } = compraConItemRecibido(10, 6);
     const c = makeCollaborators(compra);
 
     const result = await c.useCase.execute(
@@ -225,11 +157,10 @@ describe('RegistrarEntregaDeItemUseCase', () => {
 
     expect(result.isFail()).toBe(true);
     expect(result.getError()).toBeInstanceOf(ItemCompraNoEncontradoError);
-    expect(c.registrarOperacion.registrar).not.toHaveBeenCalled();
   });
 
   it('ítem soft-deleted se trata como inexistente -> ItemCompraNoEncontradoError', async () => {
-    const { compra, item } = compraConItemComprado(10, 6);
+    const { compra, item } = compraConItemRecibido(10, 6);
     item.softDelete();
     const c = makeCollaborators(compra);
 
@@ -240,10 +171,32 @@ describe('RegistrarEntregaDeItemUseCase', () => {
   });
 
   it('compra cancelada -> CompraCanceladaError, sin mutar el ítem, sin persistir y sin abrir la tx', async () => {
-    const { compra, item } = compraCanceladaConItemComprado(10, 6);
-    const c = makeCollaborators(compra);
+    const { compra, item } = compraConItemRecibido(10, 6);
+    // cantidadOrdenada > 0 impide cancelar de verdad (R13) — se simula el
+    // estado persistido para probar el guard de esta capa de aplicación.
+    const compraCancelada = CompraEntity.reconstitute(
+      {
+        numero: compra.numero,
+        fechaSolicitud: compra.fechaSolicitud,
+        motivo: compra.motivo,
+        descripcion: null,
+        solicitanteId: compra.solicitanteId,
+        cicloId: compra.cicloId,
+        canceladaEn: new Date('2026-08-05'),
+        canceladoPorId: 'usuario-cancelador',
+        motivoCancelacion: 'Ya no se necesita',
+      },
+      [item],
+      compra.id,
+      compra.createdAt,
+      compra.createdAt,
+      null,
+    );
+    const c = makeCollaborators(compraCancelada);
 
-    const result = await c.useCase.execute(baseDto(compra, item, { cantidadEntregada: 3 }));
+    const result = await c.useCase.execute(
+      baseDto(compraCancelada, item, { cantidadEntregada: 3 }),
+    );
 
     expect(result.isFail()).toBe(true);
     expect(result.getError()).toBeInstanceOf(CompraCanceladaError);

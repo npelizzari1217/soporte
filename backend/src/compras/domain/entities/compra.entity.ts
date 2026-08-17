@@ -2,13 +2,17 @@ import { BaseEntity } from '../../../shared/domain/base-entity';
 import { DomainError, Result } from '../../../shared/domain/result';
 import {
   CompraCanceladaError,
-  CompraConComprasRegistradasError,
+  CompraConOrdenEmitidaError,
   CompraYaCanceladaError,
   CompraYaCerradaError,
   ItemCompraAprobadoNoEliminableError,
   ItemCompraNoEncontradoError,
 } from '../errors/compras.errors';
-import { derivarEstadoCompra, enCentesimas, EstadoCompra } from '../services/estado-compra';
+import {
+  derivarEstadoCompra,
+  EstadoCompra,
+  subtotalItemEnCentesimas,
+} from '../services/estado-compra';
 import {
   ItemCompraActualizarProps,
   ItemCompraCreateProps,
@@ -55,6 +59,14 @@ export interface CompraProps {
   canceladaEn: Date | null;
   canceladoPorId: string | null;
   motivoCancelacion: string | null;
+  /**
+   * Sector de destino (WU-09, sdd/compras-tres-etapas-y-sectores/spec R11).
+   * Nullable, sin backfill (S67) — uno por compra, en cabecera. Opcional en
+   * el tipo (no requerido en el objeto) para no forzar a los ~17 call-sites
+   * existentes de `reconstitute()` a declararlo explícitamente; el getter
+   * normaliza `undefined` a `null`.
+   */
+  sectorId?: string | null;
 }
 
 /** Datos de entrada de `create()` — los campos de cancelación NO se aceptan: una compra siempre nace sin cancelar. */
@@ -65,6 +77,8 @@ export interface CompraCreateProps {
   descripcion: string | null;
   solicitanteId: string;
   cicloId: string;
+  /** Opcional (WU-09, R11) — compra nueva puede o no llevar sector (S66). */
+  sectorId?: string | null;
 }
 
 /** Datos de entrada de `agregarItem()` — igual a `ItemCompraCreateProps` sin `compraId` (lo resuelve la raíz con su propio `id`). */
@@ -103,6 +117,7 @@ export class CompraEntity extends BaseEntity<CompraProps> {
 
     const fullProps: CompraProps = {
       ...props,
+      sectorId: props.sectorId ?? null,
       canceladaEn: null,
       canceladoPorId: null,
       motivoCancelacion: null,
@@ -184,6 +199,11 @@ export class CompraEntity extends BaseEntity<CompraProps> {
 
   get cicloId(): string {
     return this.props.cicloId;
+  }
+
+  /** Sector de destino de la cabecera (WU-09, R11). `null` si no se asignó (S66/S67). */
+  get sectorId(): string | null {
+    return this.props.sectorId ?? null;
   }
 
   get canceladaEn(): Date | null {
@@ -351,7 +371,7 @@ export class CompraEntity extends BaseEntity<CompraProps> {
    * Orden de guards (cada uno corta antes de mutar nada):
    * 1. `motivoCancelacion` no vacío — precondición de dominio modelada con
    *    `throw`, mismo criterio que `validarCamposBase`/`ItemCompraEntity`:
-   *    NINGUNO de los 19 errores del catálogo (`compras.errors.ts`) está
+   *    NINGUNO de los 25 errores del catálogo (`compras.errors.ts`) está
    *    reservado para "cancelar sin motivo" — §4.8 y §5 no listan ese
    *    escenario como error de negocio. Es una violación de contrato del
    *    caller (equivalente a un bug si el DTO/`class-validator` de la capa
@@ -362,12 +382,20 @@ export class CompraEntity extends BaseEntity<CompraProps> {
    * 3. S28 ya cerrada -> `CompraYaCerradaError` (todos los ítems aprobados
    *    ya fueron entregados o cerrados con faltante: la ejecución de la
    *    compra ya terminó, cancelar no tiene sentido de negocio).
-   * 4. S29 — guarda EXISTENCIAL "¿algún ítem activo tiene
-   *    `cantidadComprada > 0`?" -> `CompraConComprasRegistradasError`: el
-   *    camino correcto para esa situación es cerrar ese ítem con faltante,
-   *    no cancelar la compra entera. Sobre `itemsActivos()` VACÍO (`n=0`,
-   *    S31) esta guarda NO se dispara: `[].some(...)` es `false`, y esa
-   *    `false` es la respuesta CORRECTA, no un caso límite a parchear.
+   * 4. **WU-21** (`compras-tres-etapas-y-sectores` R13, `decision-cancelacion`)
+   *    — guarda EXISTENCIAL "¿algún ítem activo tiene `cantidadOrdenada >
+   *    0`?" -> `CompraConOrdenEmitidaError`: una orden emitida es un
+   *    compromiso tomado FUERA del sistema, y no se libera cancelando
+   *    puertas adentro. El camino correcto para remediar es cerrar ese ítem
+   *    con faltante, no cancelar la compra entera. La condición es ÚNICA
+   *    (no compuesta con `cantidadRecibida > 0`): por el invariante
+   *    `cantidadRecibida ≤ cantidadOrdenada` (R1), `cantidadOrdenada > 0`
+   *    SUBSUME estructuralmente el caso de haber recibido algo — evaluar
+   *    ambas por separado sería redundante (resuelto explícitamente en
+   *    `resoluciones-pre-apply`, la condición NO queda compuesta). Sobre
+   *    `itemsActivos()` VACÍO (`n=0`, S31) esta guarda NO se dispara:
+   *    `[].some(...)` es `false`, y esa `false` es la respuesta CORRECTA,
+   *    no un caso límite a parchear.
    *    **Asimetría deliberada respecto de §3**: acá el cuantificador es
    *    EXISTENCIAL y la vacuidad `false` es la lectura correcta del spec;
    *    en `derivarEstadoCompra` el cuantificador es UNIVERSAL sobre el
@@ -389,11 +417,9 @@ export class CompraEntity extends BaseEntity<CompraProps> {
     if (this.cerrado) {
       return Result.fail(new CompraYaCerradaError(this.id));
     }
-    const algunItemConCompraRegistrada = this.itemsActivos().some(
-      (item) => item.cantidadComprada > 0,
-    );
-    if (algunItemConCompraRegistrada) {
-      return Result.fail(new CompraConComprasRegistradasError(this.id));
+    const algunItemConOrdenEmitida = this.itemsActivos().some((item) => item.cantidadOrdenada > 0);
+    if (algunItemConOrdenEmitida) {
+      return Result.fail(new CompraConOrdenEmitidaError(this.id));
     }
 
     this.props.canceladaEn = canceladaEn;
@@ -413,13 +439,12 @@ export class CompraEntity extends BaseEntity<CompraProps> {
    * se está PIDIENDO en total, el número que se mira para decidir si
    * aprobar — no cuánto se aprobó ni cuánto se ejecutó.
    *
-   * Aritmética en centésimas ENTERAS de punta a punta (ADR-C3,
-   * `enCentesimas`): `monto` y `cantidad` tienen precisión `Decimal(x,2)`,
-   * así que `enCentesimas(monto) * enCentesimas(cantidad)` es SIEMPRE una
-   * multiplicación de dos enteros (exacta en float64 para montos/cantidades
-   * de magnitud razonable) — dividir ese producto por 100 y redondear da el
-   * subtotal del ítem en centésimas de moneda SIN pasar por una
-   * multiplicación de decimales en float. Los subtotales se ACUMULAN como
+   * Aritmética en centésimas ENTERAS de punta a punta (ADR-C3): cada
+   * subtotal de ítem lo calcula `subtotalItemEnCentesimas` — WU-21
+   * (`compras-tres-etapas-y-sectores` R6, ADR-T12) extrajo esta fórmula a
+   * `domain/services/estado-compra.ts`, la MISMA que usa
+   * `ItemCompraEntity.totalItem` (S57: garantiza por construcción que
+   * ambos coinciden, no por coincidencia). Los subtotales se ACUMULAN como
    * enteros (suma de enteros, exacta) y recién al final cada acumulado se
    * divide por 100 para volver a unidades normales. Sumar directamente en
    * float (`monto * cantidad` repetido por ítem) es exactamente el caso que
@@ -430,9 +455,7 @@ export class CompraEntity extends BaseEntity<CompraProps> {
     const totalesCentPorMoneda = new Map<string, number>();
 
     for (const item of this.itemsActivos()) {
-      const subtotalCent = Math.round(
-        (enCentesimas(item.monto) * enCentesimas(item.cantidad)) / 100,
-      );
+      const subtotalCent = subtotalItemEnCentesimas(item.monto, item.cantidad);
       const acumuladoCent = totalesCentPorMoneda.get(item.moneda) ?? 0;
       totalesCentPorMoneda.set(item.moneda, acumuladoCent + subtotalCent);
     }

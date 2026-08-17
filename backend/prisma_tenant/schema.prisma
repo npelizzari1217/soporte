@@ -133,6 +133,27 @@ model TipoTicket {
   @@map("tipos_ticket")
 }
 
+// ─── SECTORES (catálogo — WU-03, sdd/compras-tres-etapas-y-sectores) ────────
+//
+// Sector de destino de una compra (Computación, Librería, Mantenimiento
+// edilicio, ...). Catálogo editable por tenant, calcado de TipoTicket.
+// codigo UNIQUE sin índice parcial por deleted_at (ADR-T10): un código dado
+// de baja NO se reutiliza. Sin seed: nace vacío.
+
+model Sector {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  codigo    String    @unique @db.VarChar(50)
+  nombre    String    @db.VarChar(100)
+  activo    Boolean   @default(true)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz
+
+  compras Compra[]
+
+  @@map("sectores")
+}
+
 // ─── TIPO_OPERACION (catálogo — sembrado en provisioning) ────────────────────
 //
 // Tipos de evento registrables en el timeline de un ticket.
@@ -175,7 +196,10 @@ model CicloCliente {
   compras Compra[]
 
   @@index([cicloVigenteId])
-  @@index([activo]) // índice regular sobre activo (el spec no pide parcial)
+  @@index([activo]) // índice regular sobre activo (uso general de filtrado)
+  // Único parcial WHERE activo=true AND deleted_at IS NULL — migración
+  // 20260817140000_ciclo_unico_activo (WU-02, ADR-T8). Prisma no expresa
+  // índices únicos parciales en el DSL: vive como raw SQL en la migración.
   @@map("ciclos_cliente")
 }
 
@@ -598,12 +622,15 @@ model Compra {
   /// Soft ref → master.usuarios.id. Sin FK cross-DB.
   canceladoPorId    String?   @map("cancelado_por_id") @db.Uuid
   motivoCancelacion String?   @map("motivo_cancelacion") @db.Text
+  /// Sector de destino (WU-03). Nullable, sin backfill (S67) — uno por compra, en cabecera.
+  sectorId          String?   @map("sector_id") @db.Uuid
 
   createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt DateTime? @map("deleted_at") @db.Timestamptz
 
-  ciclo CicloCliente @relation(fields: [cicloId], references: [id])
+  ciclo  CicloCliente @relation(fields: [cicloId], references: [id])
+  sector Sector?      @relation(fields: [sectorId], references: [id])
 
   items       ItemCompra[]
   operaciones OperacionCompra[]
@@ -612,6 +639,7 @@ model Compra {
   @@index([solicitanteId])
   @@index([createdAt])
   @@index([canceladaEn]) // partial WHERE cancelada_en IS NOT NULL — ver migration SQL
+  @@index([sectorId]) // partial WHERE sector_id IS NOT NULL — ver migration SQL
   @@map("compras")
 }
 
@@ -633,10 +661,20 @@ model ItemCompra {
   /// Soft ref → master.usuarios.id. NULL mientras PENDIENTE — CHECK decisión atómica.
   decididoPorId        String?   @map("decidido_por_id") @db.Uuid
   decididoEn           DateTime? @map("decidido_en") @db.Timestamptz
-  /// NUNCA retrocede (regla de aplicación). CHECK (0 <= cantidad_comprada <= cantidad).
-  cantidadComprada     Decimal   @default(0) @map("cantidad_comprada") @db.Decimal(10, 2)
-  /// NUNCA retrocede (regla de aplicación). CHECK (0 <= cantidad_entregada <= cantidad_comprada).
+  /// Las tres etapas de ejecución (compras-tres-etapas-y-sectores, M2, ADR-T1).
+  /// Encadenadas: cantidad_entregada <= cantidad_recibida <= cantidad_ordenada <= cantidad.
+  /// NUNCA retroceden (regla de aplicación). CHECK (0 <= cantidad_ordenada <= cantidad).
+  cantidadOrdenada     Decimal   @default(0) @map("cantidad_ordenada") @db.Decimal(10, 2)
+  /// Antes "cantidad_comprada" — renombrada por M2 (RENAME COLUMN, punto de no retorno del deploy).
+  /// CHECK (0 <= cantidad_recibida <= cantidad_ordenada).
+  cantidadRecibida     Decimal   @default(0) @map("cantidad_recibida") @db.Decimal(10, 2)
+  /// CHECK (0 <= cantidad_entregada <= cantidad_recibida).
   cantidadEntregada    Decimal   @default(0) @map("cantidad_entregada") @db.Decimal(10, 2)
+  /// Fecha de cada etapa (compras-tres-etapas-y-sectores R4/R5). Nullable, prellenada con
+  /// hoy (Argentina) si no se provee. CHECK de orden cronológico + rechazo de futuro en dominio.
+  fechaOrden           DateTime? @map("fecha_orden") @db.Date
+  fechaRecepcion       DateTime? @map("fecha_recepcion") @db.Date
+  fechaEntrega         DateTime? @map("fecha_entrega") @db.Date
   /// TERMINAL. Solo posible sobre ítem APROBADO — CHECK.
   cerradoConFaltante   Boolean   @default(false) @map("cerrado_con_faltante")
   motivoCierreFaltante String?   @map("motivo_cierre_faltante") @db.Text

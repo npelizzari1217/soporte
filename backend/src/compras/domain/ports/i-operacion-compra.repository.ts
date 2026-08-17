@@ -48,20 +48,47 @@
  * CHECK y, como no hay filtro global de excepciones, salga como 500. Esa
  * deriva la ataja `prisma_tenant/compras-checks.integration.spec.ts`.
  */
-export const TIPOS_OPERACION_COMPRA = [
+/**
+ * Tipos VIGENTES (WU-16, `compras-tres-etapas-y-sectores` ADR-T11): lo que
+ * el código NUEVO puede escribir. `COMPRA_REGISTRADA` queda AFUERA — la
+ * etapa de recepción escribe `RECEPCION_REGISTRADA` ahora. La bitácora es
+ * append-only (ADR-C4): las filas históricas con `COMPRA_REGISTRADA` NO se
+ * reinterpretan ni se migran — reinterpretarlas mentiría sobre su propio
+ * dato.
+ */
+export const TIPOS_OPERACION_COMPRA_VIGENTES = [
   'CREACION',
   'ITEM_AGREGADO',
   'ITEM_EDITADO',
   'ITEM_ELIMINADO',
   'ITEM_APROBADO',
   'ITEM_RECHAZADO',
-  'COMPRA_REGISTRADA',
+  'ORDEN_REGISTRADA',
+  'RECEPCION_REGISTRADA',
   'ENTREGA_REGISTRADA',
   'ITEM_CERRADO_CON_FALTANTE',
   'CANCELACION',
 ] as const;
 
+/** Tipos LEGACY (WU-16, ADR-T11): solo aparecen en filas escritas antes de este cambio. El código nuevo NO puede escribirlos — lo impide el tipo de `CrearOperacionCompraProps.tipo`. */
+export const TIPOS_OPERACION_COMPRA_LEGACY = ['COMPRA_REGISTRADA'] as const;
+
+/**
+ * Unión VIGENTES + LEGACY — lo que el CHECK de DB acepta y lo que
+ * `listarPorCompra()` puede devolver (una fila histórica con
+ * `COMPRA_REGISTRADA` sigue siendo un dato de lectura válido). Es la ÚNICA
+ * fuente de verdad que consume el test de deriva de
+ * `compras-checks.integration.spec.ts` — sigue comparando contra esta
+ * constante, sin tocarse.
+ */
+export const TIPOS_OPERACION_COMPRA = [
+  ...TIPOS_OPERACION_COMPRA_VIGENTES,
+  ...TIPOS_OPERACION_COMPRA_LEGACY,
+] as const;
+
 export type TipoOperacionCompra = (typeof TIPOS_OPERACION_COMPRA)[number];
+/** Tipo que el código nuevo puede ESCRIBIR (WU-16) — subconjunto de `TipoOperacionCompra` sin los legacy. */
+export type TipoOperacionCompraVigente = (typeof TIPOS_OPERACION_COMPRA_VIGENTES)[number];
 
 /**
  * Vista de dominio de una operación ya persistida — retornada por
@@ -90,7 +117,8 @@ export interface OperacionCompra {
 export interface CrearOperacionCompraProps {
   compraId: string;
   itemCompraId: string | null;
-  tipo: TipoOperacionCompra;
+  /** WU-16: tipado contra VIGENTES — el compilador impide escribir un tipo legacy (`COMPRA_REGISTRADA`). */
+  tipo: TipoOperacionCompraVigente;
   usuarioId: string;
   detalle: string;
   datos: Record<string, unknown> | null;

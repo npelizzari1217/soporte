@@ -5,6 +5,8 @@ import { ICompraRepository } from '../../domain/ports/i-compra.repository';
 import { NumeradorCompra } from '../../domain/services/numerador-compra';
 import { RegistrarOperacionCompra } from '../services/registrar-operacion-compra';
 import { ResolverCicloActivoCompra } from '../services/resolver-ciclo-activo-compra.service';
+import { ISectorRepository } from '../../../sectores/domain/ports/i-sector.repository';
+import { SectorInexistenteError } from '../../domain/errors/compras.errors';
 
 /**
  * DTO de entrada de `CrearCompraUseCase`.
@@ -25,6 +27,8 @@ export interface CrearCompraDto {
   fechaSolicitud: Date;
   solicitanteId: string;
   anio: number;
+  /** Sector de destino (WU-09, R11) — opcional, sin backfill (S66). */
+  sectorId?: string | null;
 }
 
 /**
@@ -58,6 +62,7 @@ export class CrearCompraUseCase {
     private readonly compraRepo: Pick<ICompraRepository, 'guardar'>,
     private readonly numerador: Pick<NumeradorCompra, 'generarNumero'>,
     private readonly resolverCicloActivo: Pick<ResolverCicloActivoCompra, 'resolver'>,
+    private readonly sectorRepo: Pick<ISectorRepository, 'findById'>,
     private readonly registrarOperacion: Pick<RegistrarOperacionCompra, 'registrar'>,
     private readonly txRunner: ITenantTransactionRunner,
   ) {}
@@ -71,6 +76,17 @@ export class CrearCompraUseCase {
       return Result.fail(cicloResult.getError());
     }
     const cicloActivo = cicloResult.getValue();
+
+    // 1b. Fix post-verify W6: `sectorId` (si viene) tiene que existir de
+    // verdad — mismo criterio fail-fast que el ciclo activo, ANTES de la tx
+    // y del numerador. Sin esto, un `sectorId` inexistente llegaba intacto
+    // hasta el `INSERT` y el FK lo rechazaba como 500 sin mapear.
+    if (dto.sectorId) {
+      const sector = await this.sectorRepo.findById(dto.sectorId);
+      if (!sector) {
+        return Result.fail(new SectorInexistenteError(dto.sectorId));
+      }
+    }
 
     // 2. Sección crítica: numeración (advisory lock, ADR-C5) + persistencia
     //    + bitácora, atómica en la MISMA transacción.
@@ -87,6 +103,7 @@ export class CrearCompraUseCase {
         descripcion: dto.descripcion ?? null,
         solicitanteId: dto.solicitanteId,
         cicloId: cicloActivo.id,
+        sectorId: dto.sectorId ?? null,
       });
 
       await this.compraRepo.guardar(compra);

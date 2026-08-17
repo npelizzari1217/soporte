@@ -53,12 +53,13 @@ const fecha = (mensajeVacio: string) =>
  */
 const motivo = (mensaje: string) => z.string().trim().min(1, mensaje);
 
-/** Espejo de `CrearCompraHttpDto` (§4.1, S1). */
+/** Espejo de `CrearCompraHttpDto` (§4.1, S1). `sectorId` opcional (R11, S66). */
 export const crearCompraSchema = z.object({
   motivo: motivo("El motivo es requerido"),
   descripcion: z.string().optional(),
   /** `<input type="date">` → "YYYY-MM-DD". El backend valida `@IsDateString`. */
   fechaSolicitud: fecha("La fecha de solicitud es requerida"),
+  sectorId: z.string().optional(),
 });
 export type CrearCompraFormValues = z.infer<typeof crearCompraSchema>;
 
@@ -103,14 +104,28 @@ export const editarItemCompraSchema = z.object({
 });
 export type EditarItemCompraFormValues = z.infer<typeof editarItemCompraSchema>;
 
-/** Espejo de `RegistrarCompraDeItemHttpDto` (§4.5) — acumulado, no delta. */
-export const registrarCompraDeItemSchema = z.object({
-  cantidadComprada: z.coerce
+/** Espejo de `RegistrarOrdenDeItemHttpDto` (R1) — acumulado, no delta. `fecha` opcional. */
+export const registrarOrdenDeItemSchema = z.object({
+  cantidadOrdenada: z.coerce
     .number()
-    .min(0, "La cantidad comprada no puede ser negativa")
+    .min(0, "La cantidad ordenada no puede ser negativa")
     .refine(conDosDecimales, MENSAJE_DECIMALES),
+  fecha: z.string().optional(),
 });
-export type RegistrarCompraDeItemFormValues = z.infer<typeof registrarCompraDeItemSchema>;
+export type RegistrarOrdenDeItemFormValues = z.infer<typeof registrarOrdenDeItemSchema>;
+
+/**
+ * Espejo de `RegistrarRecepcionDeItemHttpDto` (R1) — acumulado, no delta.
+ * Reemplaza a `registrarCompraDeItemSchema` (WU-26).
+ */
+export const registrarRecepcionDeItemSchema = z.object({
+  cantidadRecibida: z.coerce
+    .number()
+    .min(0, "La cantidad recibida no puede ser negativa")
+    .refine(conDosDecimales, MENSAJE_DECIMALES),
+  fecha: z.string().optional(),
+});
+export type RegistrarRecepcionDeItemFormValues = z.infer<typeof registrarRecepcionDeItemSchema>;
 
 /** Espejo de `RegistrarEntregaDeItemHttpDto` (§4.6) — acumulado, no delta. */
 export const registrarEntregaDeItemSchema = z.object({
@@ -118,8 +133,16 @@ export const registrarEntregaDeItemSchema = z.object({
     .number()
     .min(0, "La cantidad entregada no puede ser negativa")
     .refine(conDosDecimales, MENSAJE_DECIMALES),
+  fecha: z.string().optional(),
 });
 export type RegistrarEntregaDeItemFormValues = z.infer<typeof registrarEntregaDeItemSchema>;
+
+/** Espejo de `EditarFechaEtapaHttpDto` (R4/S55). */
+export const editarFechaEtapaSchema = z.object({
+  etapa: z.enum(["ORDEN", "RECEPCION", "ENTREGA"]),
+  fecha: fecha("La fecha es requerida"),
+});
+export type EditarFechaEtapaFormValues = z.infer<typeof editarFechaEtapaSchema>;
 
 /** Espejo de `CerrarItemConFaltanteHttpDto` (§4.7, S24). */
 export const cerrarItemConFaltanteSchema = z.object({

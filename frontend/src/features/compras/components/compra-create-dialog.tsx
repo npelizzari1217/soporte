@@ -25,16 +25,19 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useCrearCompra } from "../hooks/use-compra-mutations";
+import { useSectores } from "@/features/sectores/hooks/use-sectores";
 import { crearCompraSchema, type CrearCompraFormValues } from "../schemas";
 
-const EMPTY: CrearCompraFormValues = { motivo: "", descripcion: "", fechaSolicitud: "" };
+const EMPTY: CrearCompraFormValues = { motivo: "", descripcion: "", fechaSolicitud: "", sectorId: "" };
 
 export function CompraCreateDialog() {
   const [open, setOpen] = useState(false);
   const router = useRouter();
   const crearMutation = useCrearCompra();
+  const sectoresQuery = useSectores();
 
   const {
     register,
@@ -52,6 +55,7 @@ export function CompraCreateDialog() {
         motivo: values.motivo,
         descripcion: values.descripcion || undefined,
         fechaSolicitud: values.fechaSolicitud,
+        sectorId: values.sectorId || undefined,
       },
       {
         onSuccess: (compra) => {
@@ -114,6 +118,19 @@ export function CompraCreateDialog() {
               Descripción
             </label>
             <Textarea id="compra-crear-descripcion" rows={3} {...register("descripcion")} />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label htmlFor="compra-crear-sector" className="text-sm font-medium text-foreground">
+              Sector de destino (opcional)
+            </label>
+            <Select id="compra-crear-sector" {...register("sectorId")}>
+              <option value="">Sin sector</option>
+              {(sectoresQuery.data ?? []).map((sector) => (
+                <option key={sector.id} value={sector.id}>
+                  {sector.nombre}
+                </option>
+              ))}
+            </Select>
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button type="submit" isLoading={crearMutation.isPending}>

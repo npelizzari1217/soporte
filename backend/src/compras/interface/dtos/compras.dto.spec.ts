@@ -6,8 +6,10 @@ import {
   CrearCompraHttpDto,
   AgregarItemCompraHttpDto,
   EditarItemCompraHttpDto,
-  RegistrarCompraDeItemHttpDto,
+  RegistrarOrdenDeItemHttpDto,
+  RegistrarRecepcionDeItemHttpDto,
   RegistrarEntregaDeItemHttpDto,
+  EditarFechaEtapaHttpDto,
   CerrarItemConFaltanteHttpDto,
   CancelarCompraHttpDto,
   ListarComprasQueryDto,
@@ -66,6 +68,16 @@ describe('CrearCompraHttpDto', () => {
     const dto = plainToInstance(CrearCompraHttpDto, payload);
     const errores = await validate(dto);
     expect(errores.some((e) => e.property === propiedadEsperada)).toBe(true);
+  });
+
+  it('S66 (WU-09): acepta sectorId opcional', async () => {
+    const dto = plainToInstance(CrearCompraHttpDto, {
+      motivo: 'Reposición de notebooks',
+      fechaSolicitud: '2026-08-13',
+      sectorId: '00000000-0000-4000-8000-000000000001',
+    });
+    const errores = await validate(dto);
+    expect(errores).toHaveLength(0);
   });
 });
 
@@ -142,17 +154,36 @@ describe('EditarItemCompraHttpDto', () => {
   });
 });
 
-describe('RegistrarCompraDeItemHttpDto', () => {
-  it('acepta cantidadComprada válida', async () => {
-    const dto = plainToInstance(RegistrarCompraDeItemHttpDto, { cantidadComprada: 1 });
+describe('RegistrarOrdenDeItemHttpDto', () => {
+  it('acepta cantidadOrdenada válida, con y sin fecha', async () => {
+    const sinFecha = plainToInstance(RegistrarOrdenDeItemHttpDto, { cantidadOrdenada: 1 });
+    expect(await validate(sinFecha)).toHaveLength(0);
+
+    const conFecha = plainToInstance(RegistrarOrdenDeItemHttpDto, {
+      cantidadOrdenada: 1,
+      fecha: '2026-08-17',
+    });
+    expect(await validate(conFecha)).toHaveLength(0);
+  });
+
+  it('rechaza cantidadOrdenada negativa', async () => {
+    const dto = plainToInstance(RegistrarOrdenDeItemHttpDto, { cantidadOrdenada: -1 });
+    const errores = await validate(dto);
+    expect(errores.some((e) => e.property === 'cantidadOrdenada')).toBe(true);
+  });
+});
+
+describe('RegistrarRecepcionDeItemHttpDto', () => {
+  it('acepta cantidadRecibida válida', async () => {
+    const dto = plainToInstance(RegistrarRecepcionDeItemHttpDto, { cantidadRecibida: 1 });
     const errores = await validate(dto);
     expect(errores).toHaveLength(0);
   });
 
-  it('rechaza cantidadComprada negativa', async () => {
-    const dto = plainToInstance(RegistrarCompraDeItemHttpDto, { cantidadComprada: -1 });
+  it('rechaza cantidadRecibida negativa', async () => {
+    const dto = plainToInstance(RegistrarRecepcionDeItemHttpDto, { cantidadRecibida: -1 });
     const errores = await validate(dto);
-    expect(errores.some((e) => e.property === 'cantidadComprada')).toBe(true);
+    expect(errores.some((e) => e.property === 'cantidadRecibida')).toBe(true);
   });
 });
 
@@ -167,6 +198,19 @@ describe('RegistrarEntregaDeItemHttpDto', () => {
     const dto = plainToInstance(RegistrarEntregaDeItemHttpDto, { cantidadEntregada: -1 });
     const errores = await validate(dto);
     expect(errores.some((e) => e.property === 'cantidadEntregada')).toBe(true);
+  });
+});
+
+describe('EditarFechaEtapaHttpDto', () => {
+  it('acepta etapa del catálogo cerrado + fecha válida', async () => {
+    const dto = plainToInstance(EditarFechaEtapaHttpDto, { etapa: 'ORDEN', fecha: '2026-08-17' });
+    expect(await validate(dto)).toHaveLength(0);
+  });
+
+  it('rechaza una etapa fuera del catálogo cerrado', async () => {
+    const dto = plainToInstance(EditarFechaEtapaHttpDto, { etapa: 'FOO', fecha: '2026-08-17' });
+    const errores = await validate(dto);
+    expect(errores.some((e) => e.property === 'etapa')).toBe(true);
   });
 });
 
@@ -228,6 +272,39 @@ describe('ListarComprasQueryDto', () => {
     const errores = await validate(dto);
     expect(errores.some((e) => e.property === 'pagina')).toBe(true);
   });
+
+  // ─── WU-14 (sdd/compras-tres-etapas-y-sectores) — los 5 filtros de negocio ──
+
+  it("WU-14: 'soloEnCurso=false' en la querystring (string) se transforma al boolean false, no truthy", async () => {
+    const dto = plainToInstance(ListarComprasQueryDto, { soloEnCurso: 'false' });
+    const errores = await validate(dto);
+    expect(errores).toHaveLength(0);
+    expect(dto.soloEnCurso).toBe(false);
+  });
+
+  it("WU-14: 'soloEnCurso=true' en la querystring se transforma al boolean true", async () => {
+    const dto = plainToInstance(ListarComprasQueryDto, { soloEnCurso: 'true' });
+    const errores = await validate(dto);
+    expect(errores).toHaveLength(0);
+    expect(dto.soloEnCurso).toBe(true);
+  });
+
+  it('WU-14: acepta cicloId/sectorId UUID y fechaDesde/fechaHasta ISO', async () => {
+    const dto = plainToInstance(ListarComprasQueryDto, {
+      cicloId: '00000000-0000-4000-8000-000000000001',
+      sectorId: '00000000-0000-4000-8000-000000000002',
+      fechaDesde: '2026-01-01',
+      fechaHasta: '2026-12-31',
+    });
+    const errores = await validate(dto);
+    expect(errores).toHaveLength(0);
+  });
+
+  it('WU-14: rechaza cicloId que no es UUID', async () => {
+    const dto = plainToInstance(ListarComprasQueryDto, { cicloId: 'no-es-uuid' });
+    const errores = await validate(dto);
+    expect(errores.some((e) => e.property === 'cicloId')).toBe(true);
+  });
 });
 
 describe('toCompraDetalleResponseDto', () => {
@@ -247,8 +324,12 @@ describe('toCompraDetalleResponseDto', () => {
         estadoAprobacion: 'PENDIENTE',
         decididoPorId: null,
         decididoEn: null,
-        cantidadComprada: 0,
+        cantidadOrdenada: 0,
+        cantidadRecibida: 0,
         cantidadEntregada: 0,
+        fechaOrden: null,
+        fechaRecepcion: null,
+        fechaEntrega: null,
         cerradoConFaltante: false,
         motivoCierreFaltante: null,
       },
@@ -270,8 +351,12 @@ describe('toCompraDetalleResponseDto', () => {
         estadoAprobacion: 'PENDIENTE',
         decididoPorId: null,
         decididoEn: null,
-        cantidadComprada: 0,
+        cantidadOrdenada: 0,
+        cantidadRecibida: 0,
         cantidadEntregada: 0,
+        fechaOrden: null,
+        fechaRecepcion: null,
+        fechaEntrega: null,
         cerradoConFaltante: false,
         motivoCierreFaltante: null,
       },
@@ -306,5 +391,10 @@ describe('toCompraDetalleResponseDto', () => {
 
     expect(dto.items).toHaveLength(1);
     expect(dto.items[0].id).toBe('item-activo');
+  });
+
+  it('S67 (WU-09): expone sectorId=null cuando la compra no tiene sector asignado', () => {
+    const dto = toCompraDetalleResponseDto(makeCompraConItems());
+    expect(dto.sectorId).toBeNull();
   });
 });

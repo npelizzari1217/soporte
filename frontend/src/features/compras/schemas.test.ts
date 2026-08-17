@@ -5,7 +5,7 @@ import {
   cerrarItemConFaltanteSchema,
   crearCompraSchema,
   editarItemCompraSchema,
-  registrarCompraDeItemSchema,
+  registrarRecepcionDeItemSchema,
   registrarEntregaDeItemSchema,
 } from "./schemas";
 
@@ -45,8 +45,8 @@ describe("schemas de compras — espejo de las reglas del backend", () => {
       expect(editarItemCompraSchema.safeParse(input).success).toBe(false);
     });
 
-    it("registrarCompraDeItem rechaza más de 2 decimales", () => {
-      expect(registrarCompraDeItemSchema.safeParse({ cantidadComprada: 3.001 }).success).toBe(false);
+    it("registrarRecepcionDeItem rechaza más de 2 decimales", () => {
+      expect(registrarRecepcionDeItemSchema.safeParse({ cantidadRecibida: 3.001 }).success).toBe(false);
     });
 
     it("registrarEntregaDeItem rechaza más de 2 decimales", () => {

@@ -73,6 +73,26 @@ describe("ComprasListView", () => {
     expect(params.get("pagina")).toBe("2");
   });
 
+  it("WU-30: destildar 'Solo en curso' actualiza la URL con soloEnCurso=false", async () => {
+    server.use(
+      http.get("/api/compras", () =>
+        HttpResponse.json({ items: [COMPRA], total: 1, pagina: 1, porPagina: 10 }),
+      ),
+      http.get("/api/sectores", () => HttpResponse.json([])),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<ComprasListView />, { user: buildUser({ modulos: ["COMPRAS"] }) });
+    await screen.findByText(COMPRA.numero);
+
+    await user.click(screen.getByRole("checkbox", { name: /solo en curso/i }));
+
+    await waitFor(() => expect(replaceMock).toHaveBeenCalled());
+    const calledWith = replaceMock.mock.calls.at(-1)?.[0] as string;
+    const params = new URLSearchParams(calledWith.split("?")[1]);
+    expect(params.get("soloEnCurso")).toBe("false");
+    expect(params.get("pagina")).toBe("1");
+  });
+
   it("la API falla -> ErrorState con retry, sin romper la vista", async () => {
     server.use(http.get("/api/compras", () => HttpResponse.json({ message: "boom" }, { status: 500 })));
     renderWithProviders(<ComprasListView />, { user: buildUser({ modulos: ["COMPRAS"] }) });

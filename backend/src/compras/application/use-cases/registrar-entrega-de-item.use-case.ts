@@ -22,6 +22,8 @@ export interface RegistrarEntregaDeItemDto {
   /** Actor que registra el avance (`JWT.sub`) — autor de la operación de bitácora. */
   usuarioId: string;
   cantidadEntregada: number;
+  /** WU-23 (`compras-tres-etapas-y-sectores` R4/S51) — opcional: sin ella, la entidad prellena con hoy (Argentina). */
+  fecha?: Date;
 }
 
 /**
@@ -90,7 +92,10 @@ export class RegistrarEntregaDeItemUseCase {
       return Result.fail(new ItemCompraNoEncontradoError(dto.itemId));
     }
 
-    const registrarResult = item.registrarEntrega(dto.cantidadEntregada);
+    const registrarResult =
+      dto.fecha !== undefined
+        ? item.registrarEntrega(dto.cantidadEntregada, dto.fecha)
+        : item.registrarEntrega(dto.cantidadEntregada);
     if (registrarResult.isFail()) {
       return Result.fail(registrarResult.getError());
     }

@@ -95,6 +95,10 @@ import {
   CICLO_CLIENTE_REPOSITORY,
   type ICicloClienteRepository,
 } from '../../src/tickets/domain/ports/i-ciclo-cliente.repository';
+import {
+  SECTOR_REPOSITORY,
+  type ISectorRepository,
+} from '../../src/sectores/domain/ports/i-sector.repository';
 
 import {
   CrearCompraUseCase,
@@ -551,7 +555,18 @@ function buildCrearCompraUseCase(app: INestApplicationContext): CrearCompraUseCa
   const operacionRepo = new PrismaOperacionCompraRepository(tenantContext);
   const registrarOperacion = new RegistrarOperacionCompra(operacionRepo);
   const txRunner = app.get<ITenantTransactionRunner>(TENANT_TX_RUNNER);
-  return new CrearCompraUseCase(compraRepo, numerador, resolverCicloActivo, registrarOperacion, txRunner);
+  // Fix post-verify W6: SECTOR_REPOSITORY (SectoresModule, ya registrado en
+  // AppModule) valida `sectorId` antes del INSERT — mismo criterio que
+  // `cicloRepo` arriba.
+  const sectorRepo = app.get<ISectorRepository>(SECTOR_REPOSITORY);
+  return new CrearCompraUseCase(
+    compraRepo,
+    numerador,
+    resolverCicloActivo,
+    sectorRepo,
+    registrarOperacion,
+    txRunner,
+  );
 }
 
 /** Ver JSDoc de `buildCrearCompraUseCase` — mismo criterio de instanciación manual. */

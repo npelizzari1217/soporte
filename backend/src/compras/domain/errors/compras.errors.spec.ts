@@ -2,12 +2,20 @@
  * PR-5 [UNIT] — RED→GREEN: errores de dominio de `compras/` (`compras.errors.ts`).
  *
  * Verifica `code` estable + herencia de `DomainError`/`Error` para cada uno
- * de los 19 errores enumerados en el spec §5 ("Errores -> HTTP"), y que los
- * 19 `code` sean únicos entre sí (sin colisiones).
+ * de los 25 errores del catálogo, y que los 25 `code` sean únicos entre sí
+ * (sin colisiones).
  *
- * Nota de conteo (discrepancia declarada): `tasks` (PR-5) dice "16 errores",
- * pero el spec §5 enumera 19 por nombre (2×409 + 2×404 + 15×422). El spec
- * gana — ver `sdd/redisenio-modulo-compras/apply-progress-pr5` para el detalle.
+ * Nota de conteo: arrancó en 19 (2×409 + 2×404 + 15×422) con
+ * `sdd/redisenio-modulo-compras`. `compras-tres-etapas-y-sectores` lo llevó a
+ * 23 (renombres de cantidades + fechas de etapa) y el fix post-verify a 25
+ * (`EtapaNoRegistradaError`, `SectorInexistenteError`).
+ *
+ * Este archivo ya se comió una vez el defecto que testea: el JSDoc pasó a
+ * decir 25 mientras `CASES` seguía en 23. Un comentario que declara MÁS
+ * cobertura de la que hay es peor que uno que declara de menos. Si agregás un
+ * error al catálogo, agregá su caso acá: `compras.controller.spec.ts` arma la
+ * lista por reflexión sobre el módulo y te va a marcar el que falte mapear,
+ * pero esta lista es a mano y no avisa sola.
  *
  * Mensajes específicos solo se testean cuando el constructor recibe un
  * identificador de negocio (id de compra/ítem, o año) que el mensaje debe
@@ -25,18 +33,24 @@ import {
   CompraCanceladaError,
   CompraYaCanceladaError,
   CompraYaCerradaError,
-  CompraConComprasRegistradasError,
+  CompraConOrdenEmitidaError,
   ItemCompraAprobadoNoEliminableError,
   ItemCompraYaDecididoError,
   ItemCompraCongeladoError,
   ItemCompraNoAprobadoError,
-  CantidadCompradaExcedeSolicitadaError,
-  CantidadCompradaRetrocedeError,
-  CantidadEntregadaExcedeCompradaError,
+  CantidadOrdenadaExcedeSolicitadaError,
+  CantidadOrdenadaRetrocedeError,
+  CantidadRecibidaExcedeOrdenadaError,
+  CantidadRecibidaRetrocedeError,
+  CantidadEntregadaExcedeRecibidaError,
   CantidadEntregadaRetrocedeError,
   ItemCompraYaCerradoError,
   ItemSinFaltanteError,
   MotivoCierreFaltanteRequeridoError,
+  FechaEtapaFuturaError,
+  FechaEtapasFueraDeOrdenError,
+  EtapaNoRegistradaError,
+  SectorInexistenteError,
 } from './compras.errors';
 
 interface ErrorCase {
@@ -102,10 +116,10 @@ const CASES: readonly ErrorCase[] = [
     messageContains: ['compra-1'],
   },
   {
-    name: 'CompraConComprasRegistradasError',
-    code: 'COMPRA_CON_COMPRAS_REGISTRADAS',
+    name: 'CompraConOrdenEmitidaError',
+    code: 'COMPRA_CON_ORDEN_EMITIDA',
     httpStatus: 422,
-    build: () => new CompraConComprasRegistradasError('compra-1'),
+    build: () => new CompraConOrdenEmitidaError('compra-1'),
     messageContains: ['compra-1'],
   },
   {
@@ -137,24 +151,38 @@ const CASES: readonly ErrorCase[] = [
     messageContains: ['item-1'],
   },
   {
-    name: 'CantidadCompradaExcedeSolicitadaError',
-    code: 'CANTIDAD_COMPRADA_EXCEDE_SOLICITADA',
+    name: 'CantidadOrdenadaExcedeSolicitadaError',
+    code: 'CANTIDAD_ORDENADA_EXCEDE_SOLICITADA',
     httpStatus: 422,
-    build: () => new CantidadCompradaExcedeSolicitadaError('item-1'),
+    build: () => new CantidadOrdenadaExcedeSolicitadaError('item-1'),
     messageContains: ['item-1'],
   },
   {
-    name: 'CantidadCompradaRetrocedeError',
-    code: 'CANTIDAD_COMPRADA_RETROCEDE',
+    name: 'CantidadOrdenadaRetrocedeError',
+    code: 'CANTIDAD_ORDENADA_RETROCEDE',
     httpStatus: 422,
-    build: () => new CantidadCompradaRetrocedeError('item-1'),
+    build: () => new CantidadOrdenadaRetrocedeError('item-1'),
     messageContains: ['item-1'],
   },
   {
-    name: 'CantidadEntregadaExcedeCompradaError',
-    code: 'CANTIDAD_ENTREGADA_EXCEDE_COMPRADA',
+    name: 'CantidadRecibidaExcedeOrdenadaError',
+    code: 'CANTIDAD_RECIBIDA_EXCEDE_ORDENADA',
     httpStatus: 422,
-    build: () => new CantidadEntregadaExcedeCompradaError('item-1'),
+    build: () => new CantidadRecibidaExcedeOrdenadaError('item-1'),
+    messageContains: ['item-1'],
+  },
+  {
+    name: 'CantidadRecibidaRetrocedeError',
+    code: 'CANTIDAD_RECIBIDA_RETROCEDE',
+    httpStatus: 422,
+    build: () => new CantidadRecibidaRetrocedeError('item-1'),
+    messageContains: ['item-1'],
+  },
+  {
+    name: 'CantidadEntregadaExcedeRecibidaError',
+    code: 'CANTIDAD_ENTREGADA_EXCEDE_RECIBIDA',
+    httpStatus: 422,
+    build: () => new CantidadEntregadaExcedeRecibidaError('item-1'),
     messageContains: ['item-1'],
   },
   {
@@ -185,9 +213,37 @@ const CASES: readonly ErrorCase[] = [
     build: () => new MotivoCierreFaltanteRequeridoError('item-1'),
     messageContains: ['item-1'],
   },
+  {
+    name: 'FechaEtapaFuturaError',
+    code: 'FECHA_ETAPA_FUTURA',
+    httpStatus: 422,
+    build: () => new FechaEtapaFuturaError('item-1'),
+    messageContains: ['item-1'],
+  },
+  {
+    name: 'FechaEtapasFueraDeOrdenError',
+    code: 'FECHA_ETAPAS_FUERA_DE_ORDEN',
+    httpStatus: 422,
+    build: () => new FechaEtapasFueraDeOrdenError('item-1'),
+    messageContains: ['item-1'],
+  },
+  {
+    name: 'EtapaNoRegistradaError',
+    code: 'ETAPA_NO_REGISTRADA',
+    httpStatus: 422,
+    build: () => new EtapaNoRegistradaError('item-1', 'ENTREGA'),
+    messageContains: ['item-1', 'ENTREGA'],
+  },
+  {
+    name: 'SectorInexistenteError',
+    code: 'SECTOR_INEXISTENTE',
+    httpStatus: 422,
+    build: () => new SectorInexistenteError('sector-1'),
+    messageContains: ['sector-1'],
+  },
 ];
 
-describe('compras.errors — catálogo de errores de dominio (19, spec §5)', () => {
+describe('compras.errors — catálogo de errores de dominio (25, WU-15 ADR-T2 + fix post-verify)', () => {
   it.each(CASES.map((testCase) => [testCase.name, testCase] as const))(
     '%s expone code estable, extiende DomainError, y el mensaje conserva el identificador',
     (_name, testCase) => {
@@ -201,19 +257,19 @@ describe('compras.errors — catálogo de errores de dominio (19, spec §5)', ()
     },
   );
 
-  it('los 19 codes del catálogo son únicos entre sí (sin colisiones)', () => {
+  it('los 25 codes del catálogo son únicos entre sí (sin colisiones)', () => {
     const codes = CASES.map((testCase) => testCase.code);
     expect(new Set(codes).size).toBe(codes.length);
-    expect(codes.length).toBe(19);
+    expect(codes.length).toBe(25);
   });
 
-  it('el catálogo mapea cada code a exactamente el HTTP status de spec §5 (2×409, 2×404, 15×422)', () => {
+  it('el catálogo mapea cada code a exactamente el HTTP status esperado (2×409, 2×404, 21×422)', () => {
     const porStatus = { 404: 0, 409: 0, 422: 0 } as Record<404 | 409 | 422, number>;
     for (const testCase of CASES) {
       porStatus[testCase.httpStatus] += 1;
     }
     expect(porStatus[409]).toBe(2);
     expect(porStatus[404]).toBe(2);
-    expect(porStatus[422]).toBe(15);
+    expect(porStatus[422]).toBe(21);
   });
 });

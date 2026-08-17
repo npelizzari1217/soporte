@@ -177,15 +177,22 @@ export function enCentesimas(n: number): number {
   return Math.round(n * 100);
 }
 
-/** Vista mínima de un ítem para derivar si está "comprado" (ADR-C3, §3). */
+/**
+ * Vista mínima de un ítem para derivar si está "comprado" (ADR-C3, §3).
+ *
+ * `cantidadRecibida` — WU-20 (`compras-tres-etapas-y-sectores`, R1/R3):
+ * renombrado desde `cantidadComprada` (mismo campo físico tras el `RENAME
+ * COLUMN` de M2, el criterio de "comprado" no cambió — sigue siendo lo que
+ * LLEGÓ, ahora nombrado sin ambigüedad frente a la etapa de ORDEN nueva).
+ */
 export interface ItemParaComprado {
   readonly cantidad: number;
-  readonly cantidadComprada: number;
+  readonly cantidadRecibida: number;
   readonly cerradoConFaltante: boolean;
 }
 
 /**
- * `true` si `cantidadComprada` alcanza o supera `cantidad`, o si el ítem fue
+ * `true` si `cantidadRecibida` alcanza o supera `cantidad`, o si el ítem fue
  * cerrado con faltante — la cláusula OR deliberada de S22: el cierre con
  * faltante marca `comprado=true` PESE a no haber alcanzado la cantidad
  * pedida, porque a partir de ese momento no hay más compra posible sobre
@@ -193,7 +200,7 @@ export interface ItemParaComprado {
  */
 export function itemComprado(item: ItemParaComprado): boolean {
   return (
-    enCentesimas(item.cantidadComprada) >= enCentesimas(item.cantidad) || item.cerradoConFaltante
+    enCentesimas(item.cantidadRecibida) >= enCentesimas(item.cantidad) || item.cerradoConFaltante
   );
 }
 
@@ -213,4 +220,28 @@ export function itemEntregado(item: ItemParaEntregado): boolean {
   return (
     enCentesimas(item.cantidadEntregada) >= enCentesimas(item.cantidad) || item.cerradoConFaltante
   );
+}
+
+/**
+ * Subtotal de un ítem (`monto × cantidad`) en CENTÉSIMAS enteras — WU-20
+ * (`compras-tres-etapas-y-sectores` R6, ADR-T12). ÚNICA implementación de
+ * esta fórmula: `ItemCompraEntity.totalItem` y
+ * `CompraEntity.totalesPorMoneda` la comparten, en vez de cada uno tener su
+ * propia multiplicación en centésimas (que es exactamente como una
+ * divergía silenciosa se cuela — S57 lo exige por construcción, no por
+ * coincidencia).
+ *
+ * Misma aritmética que ya usaba `totalesPorMoneda` antes de esta extracción
+ * (`compra.entity.ts`, ADR-C3): `monto`/`cantidad` tienen precisión
+ * `Decimal(x,2)`, así que `enCentesimas(monto) * enCentesimas(cantidad)` es
+ * siempre una multiplicación de enteros — dividir por 100 y redondear da el
+ * subtotal en centésimas SIN pasar por una multiplicación de decimales en
+ * float.
+ *
+ * @param monto Precio unitario del ítem (congelado tras decisión, ADR-C3).
+ * @param cantidad Cantidad solicitada del ítem (congelada tras decisión).
+ * @returns Subtotal en CENTÉSIMAS enteras — el caller divide por 100 para volver a unidades normales.
+ */
+export function subtotalItemEnCentesimas(monto: number, cantidad: number): number {
+  return Math.round((enCentesimas(monto) * enCentesimas(cantidad)) / 100);
 }
