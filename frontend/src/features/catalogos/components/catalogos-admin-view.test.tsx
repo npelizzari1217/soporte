@@ -19,10 +19,20 @@ const TIPO_INCIDENTE = {
   updatedAt: "2026-01-01T00:00:00.000Z",
 };
 
+const SECTOR_COMPUTACION = {
+  id: "s1",
+  codigo: "COMPUTACION",
+  nombre: "Computación",
+  activo: true,
+  createdAt: "2026-01-01T00:00:00.000Z",
+  updatedAt: "2026-01-01T00:00:00.000Z",
+};
+
 function mockBackend() {
   server.use(
     http.get("/api/catalogos/tipos-ticket", () => HttpResponse.json([TIPO_INCIDENTE])),
     http.get("/api/catalogos/prioridades", () => HttpResponse.json([])),
+    http.get("/api/sectores", () => HttpResponse.json([SECTOR_COMPUTACION])),
   );
 }
 
@@ -68,5 +78,30 @@ describe("CatalogosAdminView", () => {
     await user.click(screen.getByRole("button", { name: /crear/i }));
 
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith(MENSAJE_BACKEND));
+  });
+
+  it("WU-31: tab Sectores lista el catálogo y permite crear uno nuevo", async () => {
+    const user = userEvent.setup();
+    let creado: Record<string, unknown> = {};
+    server.use(
+      http.post("/api/sectores", async ({ request }) => {
+        creado = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(
+          { ...SECTOR_COMPUTACION, id: "s2", codigo: creado.codigo, nombre: creado.nombre },
+          { status: 201 },
+        );
+      }),
+    );
+
+    renderWithProviders(<CatalogosAdminView />, { user: buildUser({ rol: "ADMINISTRADOR" }) });
+    await user.click(screen.getByRole("tab", { name: /sectores/i }));
+    await screen.findByText("COMPUTACION");
+
+    await user.click(screen.getByRole("button", { name: /nuevo sector/i }));
+    await user.type(screen.getByLabelText(/código/i), "LIBRERIA");
+    await user.type(screen.getByLabelText(/nombre/i), "Librería");
+    await user.click(screen.getByRole("button", { name: /^crear$/i }));
+
+    await waitFor(() => expect(creado).toEqual({ codigo: "LIBRERIA", nombre: "Librería" }));
   });
 });
