@@ -124,6 +124,18 @@ describe('CompraEntity', () => {
     ])('rechaza campos inválidos: %s', (_desc, overrides) => {
       expect(() => CompraEntity.create(crearPropsValidas(overrides))).toThrow();
     });
+
+    // ─── WU-09 (sdd/compras-tres-etapas-y-sectores, R11/S66/S67) ────────────
+
+    it('S66: crear sin sectorId queda sectorId=null (campo opcional)', () => {
+      const compra = CompraEntity.create(crearPropsValidas());
+      expect(compra.sectorId).toBeNull();
+    });
+
+    it('S66: crear con sectorId válido lo deja asociado a la cabecera', () => {
+      const compra = CompraEntity.create(crearPropsValidas({ sectorId: 'sector-1' }));
+      expect(compra.sectorId).toBe('sector-1');
+    });
   });
 
   describe('reconstitute()', () => {

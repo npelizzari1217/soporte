@@ -12,6 +12,7 @@ import { SlaModule } from './sla/sla.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { KbModule } from './kb/kb.module';
 import { NotificacionesModule } from './notificaciones/notificaciones.module';
+import { SectoresModule } from './sectores/sectores.module';
 import { TenantScopeMiddleware } from './shared/tenancy/tenant-scope.middleware';
 
 /**
@@ -48,6 +49,7 @@ import { TenantScopeMiddleware } from './shared/tenancy/tenant-scope.middleware'
     DashboardModule,
     KbModule,
     NotificacionesModule,
+    SectoresModule,
   ],
   controllers: [],
   providers: [

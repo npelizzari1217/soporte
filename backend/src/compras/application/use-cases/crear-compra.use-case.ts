@@ -25,6 +25,8 @@ export interface CrearCompraDto {
   fechaSolicitud: Date;
   solicitanteId: string;
   anio: number;
+  /** Sector de destino (WU-09, R11) — opcional, sin backfill (S66). */
+  sectorId?: string | null;
 }
 
 /**
@@ -87,6 +89,7 @@ export class CrearCompraUseCase {
         descripcion: dto.descripcion ?? null,
         solicitanteId: dto.solicitanteId,
         cicloId: cicloActivo.id,
+        sectorId: dto.sectorId ?? null,
       });
 
       await this.compraRepo.guardar(compra);

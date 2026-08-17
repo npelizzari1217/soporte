@@ -55,6 +55,14 @@ export interface CompraProps {
   canceladaEn: Date | null;
   canceladoPorId: string | null;
   motivoCancelacion: string | null;
+  /**
+   * Sector de destino (WU-09, sdd/compras-tres-etapas-y-sectores/spec R11).
+   * Nullable, sin backfill (S67) — uno por compra, en cabecera. Opcional en
+   * el tipo (no requerido en el objeto) para no forzar a los ~17 call-sites
+   * existentes de `reconstitute()` a declararlo explícitamente; el getter
+   * normaliza `undefined` a `null`.
+   */
+  sectorId?: string | null;
 }
 
 /** Datos de entrada de `create()` — los campos de cancelación NO se aceptan: una compra siempre nace sin cancelar. */
@@ -65,6 +73,8 @@ export interface CompraCreateProps {
   descripcion: string | null;
   solicitanteId: string;
   cicloId: string;
+  /** Opcional (WU-09, R11) — compra nueva puede o no llevar sector (S66). */
+  sectorId?: string | null;
 }
 
 /** Datos de entrada de `agregarItem()` — igual a `ItemCompraCreateProps` sin `compraId` (lo resuelve la raíz con su propio `id`). */
@@ -103,6 +113,7 @@ export class CompraEntity extends BaseEntity<CompraProps> {
 
     const fullProps: CompraProps = {
       ...props,
+      sectorId: props.sectorId ?? null,
       canceladaEn: null,
       canceladoPorId: null,
       motivoCancelacion: null,
@@ -184,6 +195,11 @@ export class CompraEntity extends BaseEntity<CompraProps> {
 
   get cicloId(): string {
     return this.props.cicloId;
+  }
+
+  /** Sector de destino de la cabecera (WU-09, R11). `null` si no se asignó (S66/S67). */
+  get sectorId(): string | null {
+    return this.props.sectorId ?? null;
   }
 
   get canceladaEn(): Date | null {

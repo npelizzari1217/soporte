@@ -87,6 +87,18 @@ describe('CrearCompraUseCase', () => {
     expect(c.compraRepo.guardar).toHaveBeenCalledWith(compra);
   });
 
+  it('S66 (WU-09): sin sectorId en el dto, la compra creada queda con sectorId=null', async () => {
+    const c = makeCollaborators();
+    const result = await c.useCase.execute(baseDto());
+    expect(result.getValue().sectorId).toBeNull();
+  });
+
+  it('S66 (WU-09): con sectorId en el dto, la compra creada lo asocia a la cabecera', async () => {
+    const c = makeCollaborators();
+    const result = await c.useCase.execute(baseDto({ sectorId: 'sector-1' }));
+    expect(result.getValue().sectorId).toBe('sector-1');
+  });
+
   it('S35: registra exactamente 1 OperacionCompra de tipo CREACION en la creación exitosa', async () => {
     const c = makeCollaborators();
 
