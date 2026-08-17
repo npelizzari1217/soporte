@@ -27,6 +27,17 @@
  *   - NUNCA apunta a soporte_master (DB de desarrollo).
  *   - Migraciones idempotentes (ON CONFLICT DO NOTHING) — seguras de re-aplicar.
  *
+ * DB EFÍMERA (fix schema-drift, sdd/converger-schema-master-con-produccion):
+ * `roles_permisos`/`permisos` ya NO existen en `soporte_master_test` una vez
+ * aplicada la migración `20260817180000_drop_legacy_rbac_tablas_muertas`
+ * (converge el schema con el DROP que WU-9 ya había corrido en producción vía
+ * script standalone). Este archivo prueba una migración HISTÓRICA que crea
+ * esas tablas — no puede correr contra la DB compartida (que ya las dropeó
+ * si corrió el `migrate deploy` completo). Se crea una DB efímera propia y se
+ * reproduce el schema SOLO hasta justo antes del DROP (`init_master`), mismo
+ * patrón que `rollback-compras-tres-etapas.integration.spec.ts` en el lado
+ * tenant.
+ *
  * Ref spec: sdd/auth-multitenancy/spec §R1. Ref sdd/tickets-core/spec T2.
  * Ref sdd/premium/spec K4.
  * Ref design: sdd/auth-multitenancy/design ADR-1. Ref sdd/tickets-core/design ADR-2.
@@ -36,11 +47,34 @@
  */
 import * as fs from 'fs';
 import * as path from 'path';
+import { randomBytes } from 'node:crypto';
 import { Pool } from 'pg';
+import { PostgresAdminService } from '../../../../clientes/infrastructure/postgres-admin.service';
 
 const TEST_URL =
   process.env.DATABASE_URL_MASTER ??
   'postgresql://soporte:soporte@localhost:5432/soporte_master_test';
+
+const MASTER_MIGRATIONS_DIR = path.resolve(__dirname, '../../../../../prisma_master/migrations');
+// Última carpeta que este spec necesita reproducir ANTES de las 4 migraciones
+// bajo test — cualquier carpeta posterior (incl. el DROP) queda AFUERA.
+const ULTIMA_CARPETA_PREVIA = '20260805105221_init_master';
+const EPHEMERAL_DB_NAME = `soporte_seed_rbac_${randomBytes(4).toString('hex')}_test`;
+
+/** Corre, en orden, los `migration.sql` con carpeta <= `ULTIMA_CARPETA_PREVIA`. */
+async function reproducirSchemaPrevio(pool: InstanceType<typeof Pool>): Promise<void> {
+  const carpetas = fs
+    .readdirSync(MASTER_MIGRATIONS_DIR, { withFileTypes: true })
+    .filter((entrada) => entrada.isDirectory())
+    .map((entrada) => entrada.name)
+    .filter((nombre) => nombre <= ULTIMA_CARPETA_PREVIA)
+    .sort();
+
+  for (const carpeta of carpetas) {
+    const sql = fs.readFileSync(path.join(MASTER_MIGRATIONS_DIR, carpeta, 'migration.sql'), 'utf8');
+    await pool.query(sql);
+  }
+}
 
 // El archivo que este test pone en RED/GREEN.
 const MIGRATION_FILE = path.resolve(
@@ -146,21 +180,22 @@ const ADMINISTRADOR_PERMISOS = [
 
 describe('Migration: seed_rbac_4_roles_permisos (integration — PR1)', () => {
   let pool: Pool;
+  const admin = new PostgresAdminService(TEST_URL);
 
   beforeAll(async () => {
-    pool = new Pool({ connectionString: TEST_URL });
-    // RED si el archivo no existe (ENOENT), ANTES de tocar la DB. GREEN cuando exista.
+    await admin.createDatabase(EPHEMERAL_DB_NAME);
+    const ephemeralUrl = new URL(TEST_URL);
+    ephemeralUrl.pathname = `/${EPHEMERAL_DB_NAME}`;
+    pool = new Pool({ connectionString: ephemeralUrl.toString() });
+
+    // Reproduce el schema justo antes de las 4 migraciones bajo test — DB
+    // efímera y recién creada, así que no hace falta TRUNCATE previo (a
+    // diferencia de la versión vieja de este spec, que compartía
+    // `soporte_master_test` con otros specs de integración).
+    await reproducirSchemaPrevio(pool);
+
+    // RED si el archivo no existe (ENOENT), GREEN cuando exista.
     const sql = fs.readFileSync(MIGRATION_FILE, 'utf8');
-    // Limpia roles/permisos/roles_permisos/membresias — esta suite corre en
-    // `soporte_master_test` junto a otros specs de integración (PR5/PR6) que
-    // insertan roles de fixture ad-hoc (mismos codigos, UUID random vía
-    // gen_random_uuid()) sin dejar la tabla limpia al terminar. Sin este
-    // TRUNCATE, `ON CONFLICT (codigo) DO NOTHING` de la migración deja
-    // intactas esas filas de fixture y las aserciones de UUID determinista
-    // fallan por datos ajenos a este test, no por un bug de la migración.
-    await pool.query(
-      'TRUNCATE TABLE membresias, roles_permisos, roles, permisos RESTART IDENTITY CASCADE',
-    );
     await pool.query(sql);
 
     // PR2: aplica la migración aditiva de catalogo:gestionar sobre la misma
@@ -178,11 +213,12 @@ describe('Migration: seed_rbac_4_roles_permisos (integration — PR1)', () => {
     // GREEN cuando exista.
     const sqlCompraTecnico = fs.readFileSync(MIGRATION_FILE_COMPRA_TECNICO, 'utf8');
     await pool.query(sqlCompraTecnico);
-  });
+  }, 60_000);
 
   afterAll(async () => {
-    await pool.end();
-  });
+    await pool.end().catch(() => undefined);
+    await admin.dropDatabase(EPHEMERAL_DB_NAME);
+  }, 30_000);
 
   // ─── Helper ─────────────────────────────────────────────────────────────
 

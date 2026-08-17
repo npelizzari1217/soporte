@@ -288,8 +288,10 @@ describe('Tickets e2e (T4-T8, PR6)', () => {
     // tiene FK declarada — el TRUNCATE CASCADE de las tablas viejas no la
     // alcanza, hay que listarla explícitamente (mismo gotcha documentado en
     // auth.e2e.spec.ts, tanda 2).
+    // roles_permisos/permisos ya NO existen (migración
+    // drop_legacy_rbac_tablas_muertas, converge con WU-9 en producción).
     await masterClient.$executeRawUnsafe(
-      'TRUNCATE TABLE membresias, refresh_tokens, roles_permisos, usuario_cliente_permisos, usuarios, clientes, roles, permisos RESTART IDENTITY CASCADE',
+      'TRUNCATE TABLE membresias, refresh_tokens, usuario_cliente_permisos, usuarios, clientes, roles RESTART IDENTITY CASCADE',
     );
     permisosPorRolId.clear();
   });
@@ -308,6 +310,11 @@ describe('Tickets e2e (T4-T8, PR6)', () => {
     return cliente;
   }
 
+  // `permisoCodigos` ya NO siembra `roles_permisos`/`permisos` (RBAC viejo,
+  // tablas eliminadas — migración drop_legacy_rbac_tablas_muertas): ese JOIN
+  // dejó de alimentar `payload.permisos` desde WU-7.1. Lo que SÍ sigue vivo
+  // es `permisosPorRolId`: `createMembresia` (abajo) lo usa para traducir
+  // estos permisos viejos a celdas nuevas y sembrar `usuario_cliente_permisos`.
   async function createRoleConPermisos(
     codigo: string,
     permisoCodigos: string[],
@@ -320,19 +327,6 @@ describe('Tickets e2e (T4-T8, PR6)', () => {
     await masterClient.role.create({
       data: { id: role.id, codigo: role.codigo, nombre: role.nombre },
     });
-    for (const permiso of permisos) {
-      await masterClient.permiso.upsert({
-        where: { codigo: permiso.codigo },
-        create: { id: permiso.id, codigo: permiso.codigo },
-        update: {},
-      });
-      const permisoRow = await masterClient.permiso.findUniqueOrThrow({
-        where: { codigo: permiso.codigo },
-      });
-      await masterClient.rolesPermisos.create({
-        data: { rolId: role.id, permisoId: permisoRow.id },
-      });
-    }
     permisosPorRolId.set(role.id, permisoCodigos);
     return role;
   }

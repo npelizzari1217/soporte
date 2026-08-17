@@ -264,71 +264,25 @@ model Role {
   updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt   DateTime? @map("deleted_at") @db.Timestamptz
 
-  rolesPermisos RolesPermisos[]
   membresias    Membresia[]
 
   @@map("roles")
 }
 
-// ─── PERMISOS (catálogo de permisos atómicos) ─────────────────────────────────
+// ─── PERMISOS / ROLES_PERMISOS / USUARIO_CLIENTE_MODULOS — RETIRADOS ─────────
 //
-// Convención: recurso:accion en minúsculas (ej. ticket:crear, compra:aprobar).
-// El permiso efectivo de un usuario en un cliente = unión de permisos de los
-// roles de sus membresías ACTIVAS para ese cliente. Resolución en login →
-// embebida en JWT → guards no consultan DB en cada request.
-
-model Permiso {
-  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  codigo      String    @unique @db.VarChar(100)
-  descripcion String?   @db.Text
-  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz
-  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz
-
-  rolesPermisos RolesPermisos[]
-
-  @@map("permisos")
-}
-
-// ─── ROLES_PERMISOS (N:M join) ────────────────────────────────────────────────
-//
-// Define qué permisos otorga cada rol.
-// Sin soft delete: la baja es eliminación física de la fila de asociación.
-// PK compuesta (rol_id, permiso_id) garantiza unicidad del par.
-
-model RolesPermisos {
-  rolId     String   @map("rol_id") @db.Uuid
-  permisoId String   @map("permiso_id") @db.Uuid
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
-
-  rol     Role    @relation(fields: [rolId], references: [id])
-  permiso Permiso @relation(fields: [permisoId], references: [id])
-
-  @@id([rolId, permisoId])
-  @@index([permisoId])
-  @@map("roles_permisos")
-}
-
-// ─── USUARIO_CLIENTE_MODULOS (asignación de módulos por usuario y cliente) ─────
-//
-// Eje de autorización "módulos funcionales" (SOPORTE/COMPRAS/EDILICIA/EQUIPOS),
-// ortogonal al RBAC (roles/permisos). Un usuario normal solo opera los módulos
-// asignados en el cliente activo; ROOT/ADMINISTRADOR ven TODOS sin fila acá.
-// Soft ref cross-DB (usuario_id/cliente_id) sin @relation — mismo patrón que el
-// resto del schema. `modulo` es el código del catálogo fijo (ver
-// src/shared/domain/modulos.ts), guardado como VarChar para altas sin migración.
-
-model UsuarioClienteModulo {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  usuarioId String   @map("usuario_id") @db.Uuid
-  clienteId String   @map("cliente_id") @db.Uuid
-  modulo    String   @db.VarChar(50)
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
-
-  @@unique([usuarioId, clienteId, modulo])
-  @@index([usuarioId, clienteId])
-  @@map("usuario_cliente_modulos")
-}
+// Los 3 modelos que vivían acá (Permiso, RolesPermisos, UsuarioClienteModulo)
+// fueron el RBAC viejo (roles→permisos) y el eje de módulos por usuario,
+// reemplazados por la matriz `UsuarioClientePermiso` (celda por celda,
+// sdd/matriz-permisos-por-usuario). WU-9 de ese cambio ya los eliminó de
+// PRODUCCIÓN mediante `scripts/drop-legacy-rbac-matriz-vieja.mjs --confirmar`
+// (un script standalone, no una migración Prisma — ver ese script para el
+// porqué). Este schema había quedado desincronizado: seguía declarando los 3
+// modelos, así que dev/test seguían creando esas tablas mientras producción
+// ya no las tenía. La migración `drop_legacy_rbac_tablas_muertas` (idempotente,
+// `DROP TABLE IF EXISTS`) converge el schema con la realidad de producción.
+// `roles` y `membresias.rolId` NO se tocan: el rol sigue existiendo como
+// identidad de membresía.
 
 // ─── USUARIO_CLIENTE_PERMISOS (matriz de permisos por usuario, celda por celda) ──
 //

@@ -66,9 +66,11 @@ describe('Auth Prisma Repositories — Integration (T5.3 + T5.4)', () => {
 
   beforeEach(async () => {
     // TRUNCATE respeta FKs: membresias/refresh_tokens dependen de
-    // usuarios/clientes/roles; roles_permisos depende de roles/permisos.
+    // usuarios/clientes/roles. roles_permisos/permisos ya NO existen
+    // (migración drop_legacy_rbac_tablas_muertas, converge con WU-9 en
+    // producción).
     await masterClient.$executeRawUnsafe(
-      'TRUNCATE TABLE membresias, refresh_tokens, roles_permisos, usuarios, clientes, roles, permisos RESTART IDENTITY CASCADE',
+      'TRUNCATE TABLE membresias, refresh_tokens, usuarios, clientes, roles RESTART IDENTITY CASCADE',
     );
   });
 
@@ -86,6 +88,12 @@ describe('Auth Prisma Repositories — Integration (T5.3 + T5.4)', () => {
     return cliente;
   }
 
+  // `permisoCodigos` ya NO siembra `roles_permisos`/`permisos` (RBAC viejo,
+  // tablas eliminadas — migración drop_legacy_rbac_tablas_muertas): ningún
+  // test de este archivo lee permisos vía `PrismaRoleRepository`
+  // (`findByCodigo` ya retorna el rol "sin permisos hidratados" per su
+  // propio nombre de test). El parámetro se conserva para no tocar los call
+  // sites existentes.
   async function createTestRoleConPermisos(codigo: string, permisoCodigos: string[]) {
     const permisos = permisoCodigos.map((codigo) =>
       PermisoEntity.create({ codigo, descripcion: null }),
@@ -96,19 +104,6 @@ describe('Auth Prisma Repositories — Integration (T5.3 + T5.4)', () => {
     await masterClient.role.create({
       data: { id: role.id, codigo: role.codigo, nombre: role.nombre },
     });
-    for (const permiso of permisos) {
-      await masterClient.permiso.upsert({
-        where: { codigo: permiso.codigo },
-        create: { id: permiso.id, codigo: permiso.codigo },
-        update: {},
-      });
-      const permisoRow = await masterClient.permiso.findUniqueOrThrow({
-        where: { codigo: permiso.codigo },
-      });
-      await masterClient.rolesPermisos.create({
-        data: { rolId: role.id, permisoId: permisoRow.id },
-      });
-    }
     return role;
   }
 

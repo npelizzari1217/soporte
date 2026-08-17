@@ -197,8 +197,10 @@ describe('Auth e2e (R3–R14, PR6)', () => {
   beforeEach(async () => {
     // usuario_cliente_permisos (WU-7.1) no tiene FK declarada — el TRUNCATE
     // ... CASCADE de las otras tablas no la alcanza, hay que nombrarla.
+    // roles_permisos/permisos ya NO existen (migración
+    // drop_legacy_rbac_tablas_muertas, converge con WU-9 en producción).
     await masterClient.$executeRawUnsafe(
-      'TRUNCATE TABLE membresias, refresh_tokens, roles_permisos, usuarios, clientes, roles, permisos, usuario_cliente_permisos RESTART IDENTITY CASCADE',
+      'TRUNCATE TABLE membresias, refresh_tokens, usuarios, clientes, roles, usuario_cliente_permisos RESTART IDENTITY CASCADE',
     );
   });
 
@@ -216,6 +218,12 @@ describe('Auth e2e (R3–R14, PR6)', () => {
     return cliente;
   }
 
+  // `permisoCodigos` ya NO siembra `roles_permisos`/`permisos` (RBAC viejo,
+  // tablas eliminadas — migración drop_legacy_rbac_tablas_muertas): "el role
+  // RBAC de arriba ya no alimenta `payload.permisos`" (ver call sites abajo).
+  // Los permisos reales se siembran vía `permisosRepo.setPermisos` (matriz
+  // `usuario_cliente_permisos`). El parámetro se conserva para no tocar los
+  // call sites existentes.
   async function createRoleConPermisos(
     codigo: string,
     permisoCodigos: string[],
@@ -228,19 +236,6 @@ describe('Auth e2e (R3–R14, PR6)', () => {
     await masterClient.role.create({
       data: { id: role.id, codigo: role.codigo, nombre: role.nombre },
     });
-    for (const permiso of permisos) {
-      await masterClient.permiso.upsert({
-        where: { codigo: permiso.codigo },
-        create: { id: permiso.id, codigo: permiso.codigo },
-        update: {},
-      });
-      const permisoRow = await masterClient.permiso.findUniqueOrThrow({
-        where: { codigo: permiso.codigo },
-      });
-      await masterClient.rolesPermisos.create({
-        data: { rolId: role.id, permisoId: permisoRow.id },
-      });
-    }
     return role;
   }
 

@@ -330,9 +330,10 @@ describe('Autorización e2e — TABLA_RUTAS (G2, WU-7.7) + scope de filas/campos
   beforeEach(async () => {
     // usuario_cliente_permisos NO tiene FK declarada — el TRUNCATE CASCADE de
     // las tablas viejas no la alcanza (mismo gotcha de auth.e2e.spec.ts/
-    // compras.e2e.spec.ts).
+    // compras.e2e.spec.ts). roles_permisos/permisos ya NO existen (migración
+    // drop_legacy_rbac_tablas_muertas, converge con WU-9 en producción).
     await masterClient.$executeRawUnsafe(
-      'TRUNCATE TABLE membresias, refresh_tokens, roles_permisos, usuario_cliente_permisos, usuarios, clientes, roles, permisos RESTART IDENTITY CASCADE',
+      'TRUNCATE TABLE membresias, refresh_tokens, usuario_cliente_permisos, usuarios, clientes, roles RESTART IDENTITY CASCADE',
     );
   });
 

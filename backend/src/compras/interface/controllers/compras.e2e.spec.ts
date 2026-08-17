@@ -330,8 +330,11 @@ describe('Compras e2e — contrato HTTP real de las 13 rutas (cierra W-B/W-A del
     // tiene FK declarada hacia usuarios/clientes — el TRUNCATE CASCADE de
     // las tablas viejas no la alcanza, hay que listarla explícitamente
     // (mismo gotcha documentado en auth.e2e.spec.ts, tanda 2).
+    // roles_permisos/permisos/usuario_cliente_modulos ya NO existen
+    // (migración drop_legacy_rbac_tablas_muertas, converge con WU-9 en
+    // producción).
     await masterClient.$executeRawUnsafe(
-      'TRUNCATE TABLE membresias, refresh_tokens, roles_permisos, usuario_cliente_permisos, usuario_cliente_modulos, usuarios, clientes, roles, permisos RESTART IDENTITY CASCADE',
+      'TRUNCATE TABLE membresias, refresh_tokens, usuario_cliente_permisos, usuarios, clientes, roles RESTART IDENTITY CASCADE',
     );
   });
 
@@ -349,6 +352,12 @@ describe('Compras e2e — contrato HTTP real de las 13 rutas (cierra W-B/W-A del
     return cliente;
   }
 
+  // `permisoCodigos` ya NO siembra `roles_permisos`/`permisos` (RBAC viejo,
+  // tablas eliminadas — migración drop_legacy_rbac_tablas_muertas):
+  // `crearActorConPermisos` (abajo) siempre llama esta función con `[]` y
+  // siembra los permisos reales vía `permisosRepo.setPermisos` (matriz
+  // `usuario_cliente_permisos`). El parámetro se conserva para no tocar los
+  // call sites existentes.
   async function createRoleConPermisos(
     codigo: string,
     permisoCodigos: string[],
@@ -361,19 +370,6 @@ describe('Compras e2e — contrato HTTP real de las 13 rutas (cierra W-B/W-A del
     await masterClient.role.create({
       data: { id: role.id, codigo: role.codigo, nombre: role.nombre },
     });
-    for (const permiso of permisos) {
-      await masterClient.permiso.upsert({
-        where: { codigo: permiso.codigo },
-        create: { id: permiso.id, codigo: permiso.codigo },
-        update: {},
-      });
-      const permisoRow = await masterClient.permiso.findUniqueOrThrow({
-        where: { codigo: permiso.codigo },
-      });
-      await masterClient.rolesPermisos.create({
-        data: { rolId: role.id, permisoId: permisoRow.id },
-      });
-    }
     return role;
   }
 

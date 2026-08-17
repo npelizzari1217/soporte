@@ -34,16 +34,50 @@
  * queda señalado acá y en `apply-progress` para que `sdd-verify` lo confirme
  * o corrija la spec.
  *
+ * DB EFÍMERA (fix schema-drift, sdd/converger-schema-master-con-produccion):
+ * `roles_permisos`/`permisos`/`usuario_cliente_modulos` ya NO existen en
+ * `soporte_master_test` una vez aplicada la migración
+ * `20260817180000_drop_legacy_rbac_tablas_muertas` (converge el schema con
+ * el DROP que WU-9 ya había corrido en producción vía script standalone).
+ * Este fixture necesita esas 3 tablas como INPUT del backfill bajo test —
+ * no puede correr contra la DB compartida post-DROP. Se crea una DB efímera
+ * propia y se reproduce el schema SOLO hasta justo antes del backfill (que a
+ * su vez es anterior al DROP), mismo patrón que
+ * `rollback-compras-tres-etapas.integration.spec.ts` en el lado tenant.
+ *
  * Ref spec: sdd/matriz-permisos-por-usuario/spec R7, S15.
  * Ref design: ADR (Paso 2, Bloques A/B/C).
  */
 import * as fs from 'fs';
 import * as path from 'path';
+import { randomBytes } from 'node:crypto';
 import { Pool } from 'pg';
+import { PostgresAdminService } from '../../../../clientes/infrastructure/postgres-admin.service';
 
 const TEST_URL =
   process.env.DATABASE_URL_MASTER ??
   'postgresql://soporte:soporte@localhost:5432/soporte_master_test';
+
+const MASTER_MIGRATIONS_DIR = path.resolve(__dirname, '../../../../../prisma_master/migrations');
+// Última carpeta que este spec necesita reproducir ANTES del backfill bajo
+// test — cualquier carpeta posterior (incl. el DROP) queda AFUERA.
+const ULTIMA_CARPETA_PREVIA = '20260816210000_add_usuario_cliente_permisos';
+const EPHEMERAL_DB_NAME = `soporte_backfill_matriz_${randomBytes(4).toString('hex')}_test`;
+
+/** Corre, en orden, los `migration.sql` con carpeta <= `ULTIMA_CARPETA_PREVIA`. */
+async function reproducirSchemaPrevio(pool: InstanceType<typeof Pool>): Promise<void> {
+  const carpetas = fs
+    .readdirSync(MASTER_MIGRATIONS_DIR, { withFileTypes: true })
+    .filter((entrada) => entrada.isDirectory())
+    .map((entrada) => entrada.name)
+    .filter((nombre) => nombre <= ULTIMA_CARPETA_PREVIA)
+    .sort();
+
+  for (const carpeta of carpetas) {
+    const sql = fs.readFileSync(path.join(MASTER_MIGRATIONS_DIR, carpeta, 'migration.sql'), 'utf8');
+    await pool.query(sql);
+  }
+}
 
 const MIGRATION_FILE = path.resolve(
   __dirname,
@@ -125,16 +159,25 @@ const CELDAS_TECNICO_ESPERADAS = [
 
 describe('Backfill matriz de permisos (WU-4) — fixture #2217', () => {
   let pool: Pool;
+  const admin = new PostgresAdminService(TEST_URL);
   const rolIds: Record<string, string> = {};
   const usuarioIds: Record<string, string> = {};
   let clienteId: string;
 
   beforeAll(async () => {
-    pool = new Pool({ connectionString: TEST_URL });
+    await admin.createDatabase(EPHEMERAL_DB_NAME);
+    const ephemeralUrl = new URL(TEST_URL);
+    ephemeralUrl.pathname = `/${EPHEMERAL_DB_NAME}`;
+    pool = new Pool({ connectionString: ephemeralUrl.toString() });
 
-    // Limpieza: esta suite corre en soporte_master_test, compartida con otras
-    // integration specs. TRUNCATE acota el blast radius a las tablas que
-    // este fixture puebla.
+    // Reproduce el schema justo antes del backfill bajo test.
+    await reproducirSchemaPrevio(pool);
+
+    // La migración de seed (`seed_rbac_4_roles_permisos`, parte del replay
+    // de arriba) ya deja roles/permisos/roles_permisos poblados con la
+    // matriz REAL — este fixture siembra su propia matriz controlada
+    // (#2217) desde cero, así que hay que vaciar antes de sembrar (DB
+    // efímera: sin riesgo, a diferencia de un TRUNCATE contra la compartida).
     await pool.query(
       'TRUNCATE TABLE usuario_cliente_permisos, usuario_cliente_modulos, membresias, roles_permisos, permisos, roles, usuarios, clientes RESTART IDENTITY CASCADE',
     );
@@ -204,11 +247,12 @@ describe('Backfill matriz de permisos (WU-4) — fixture #2217', () => {
     // RED si el archivo no existe (ENOENT), GREEN cuando exista.
     const sql = fs.readFileSync(MIGRATION_FILE, 'utf8');
     await pool.query(sql);
-  });
+  }, 60_000);
 
   afterAll(async () => {
-    await pool.end();
-  });
+    await pool.end().catch(() => undefined);
+    await admin.dropDatabase(EPHEMERAL_DB_NAME);
+  }, 30_000);
 
   async function celdasDe(suffix: string): Promise<string[]> {
     const { rows } = await pool.query<{ modulo: string; accion: string }>(

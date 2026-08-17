@@ -249,8 +249,10 @@ describe('Crear Cliente e2e — provisioning real (T8.5, R16-R19)', () => {
 
   beforeEach(async () => {
     toggleableMembresiaRepo.shouldFail = false;
+    // roles_permisos/permisos ya NO existen (migración
+    // drop_legacy_rbac_tablas_muertas, converge con WU-9 en producción).
     await masterClient.$executeRawUnsafe(
-      'TRUNCATE TABLE membresias, refresh_tokens, roles_permisos, usuarios, clientes, roles, permisos RESTART IDENTITY CASCADE',
+      'TRUNCATE TABLE membresias, refresh_tokens, usuarios, clientes, roles RESTART IDENTITY CASCADE',
     );
     await masterClient.role.create({
       data: { codigo: 'ADMINISTRADOR', nombre: 'Administrador' },

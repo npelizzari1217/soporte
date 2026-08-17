@@ -42,8 +42,10 @@ describe('PrismaMatrizPermisosRepository — Integration (WU-3)', () => {
   });
 
   beforeEach(async () => {
+    // roles_permisos/permisos ya NO existen (migración
+    // drop_legacy_rbac_tablas_muertas, converge con WU-9 en producción).
     await masterClient.$executeRawUnsafe(
-      'TRUNCATE TABLE usuario_cliente_permisos, membresias, refresh_tokens, roles_permisos, usuarios, clientes, roles, permisos RESTART IDENTITY CASCADE',
+      'TRUNCATE TABLE usuario_cliente_permisos, membresias, refresh_tokens, usuarios, clientes, roles RESTART IDENTITY CASCADE',
     );
   });
 

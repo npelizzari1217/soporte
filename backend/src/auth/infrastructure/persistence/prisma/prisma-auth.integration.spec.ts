@@ -121,8 +121,10 @@ describe('Auth Use Cases — Integration end-to-end (T5.5)', () => {
     // usuario_cliente_permisos (WU-7.1) no tiene FK declarada hacia
     // usuarios/clientes (ADR-P2/P3, ver migración) — el TRUNCATE ... CASCADE
     // de las otras tablas NO la vacía sola, hay que nombrarla explícito.
+    // roles_permisos/permisos ya NO existen (migración
+    // drop_legacy_rbac_tablas_muertas, converge con WU-9 en producción).
     await masterClient.$executeRawUnsafe(
-      'TRUNCATE TABLE membresias, refresh_tokens, roles_permisos, usuarios, clientes, roles, permisos, usuario_cliente_permisos RESTART IDENTITY CASCADE',
+      'TRUNCATE TABLE membresias, refresh_tokens, usuarios, clientes, roles, usuario_cliente_permisos RESTART IDENTITY CASCADE',
     );
   });
 
@@ -140,6 +142,13 @@ describe('Auth Use Cases — Integration end-to-end (T5.5)', () => {
     return cliente;
   }
 
+  // `permisoCodigos` ya NO siembra `roles_permisos`/`permisos` (RBAC viejo,
+  // tablas eliminadas — migración drop_legacy_rbac_tablas_muertas): ese JOIN
+  // dejó de alimentar `payload.permisos` desde WU-7.1 (fix post-verify C2),
+  // así que sembrarlo no tenía efecto en el comportamiento bajo test. Los
+  // permisos reales de cada test se siembran vía `permisosRepo.setPermisos`
+  // (matriz `usuario_cliente_permisos`). El parámetro se conserva solo para
+  // no tocar los ~30 call sites existentes.
   async function createRoleConPermisos(
     codigo: string,
     permisoCodigos: string[],
@@ -152,19 +161,6 @@ describe('Auth Use Cases — Integration end-to-end (T5.5)', () => {
     await masterClient.role.create({
       data: { id: role.id, codigo: role.codigo, nombre: role.nombre },
     });
-    for (const permiso of permisos) {
-      await masterClient.permiso.upsert({
-        where: { codigo: permiso.codigo },
-        create: { id: permiso.id, codigo: permiso.codigo },
-        update: {},
-      });
-      const permisoRow = await masterClient.permiso.findUniqueOrThrow({
-        where: { codigo: permiso.codigo },
-      });
-      await masterClient.rolesPermisos.create({
-        data: { rolId: role.id, permisoId: permisoRow.id },
-      });
-    }
     return role;
   }
 
