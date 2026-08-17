@@ -3,7 +3,7 @@ import { renderHook, waitFor, act } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { server } from "../../../../test/msw/server";
-import { useLogin } from "./use-login";
+import { mensajeDeErrorDeLogin, useLogin } from "./use-login";
 import { writeLastActivity } from "@/shared/auth/idle-storage";
 
 // Spec: [R23] BFF login route — flujo de 1 vs varias membresías.
@@ -28,7 +28,13 @@ function wrapper({ children }: { children: React.ReactNode }) {
 }
 
 describe("useLogin", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    // El mock de `toast.error` vive a nivel módulo: sin limpiarlo, las llamadas
+    // se ACUMULAN entre tests y cualquier assert sobre `mock.calls[0]` lee el
+    // toast de un test anterior. Costó un rojo falso al agregar los casos de
+    // 500/red.
+    const { toast } = await import("sonner");
+    vi.mocked(toast.error).mockClear();
     assignMock.mockClear();
     Object.defineProperty(window, "location", {
       configurable: true,
@@ -161,8 +167,89 @@ describe("useLogin", () => {
       result.current.login("wrong@example.com", "bad");
     });
 
-    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(expect.stringMatching(/credenciales/i)),
+    );
     expect(assignMock).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Anti-enumeración de usuarios: un email que NO existe y una contraseña
+   * equivocada tienen que producir el MISMO texto, carácter por carácter. Si
+   * difieren, el formulario se vuelve un oráculo para averiguar qué cuentas
+   * existen. El assert compara los dos mensajes ENTRE SÍ, no contra un literal
+   * — así sigue protegiendo la propiedad aunque se reescriba la redacción.
+   */
+  it("401 y 404 devuelven el MISMO mensaje: el login no revela si la cuenta existe", async () => {
+    const { toast } = await import("sonner");
+    const mensajes: string[] = [];
+
+    for (const status of [401, 404]) {
+      vi.mocked(toast.error).mockClear();
+      server.use(
+        http.post("/api/auth/login", () =>
+          HttpResponse.json({ statusCode: status, message: `detalle ${status}` }, { status }),
+        ),
+      );
+
+      const { result } = renderHook(() => useLogin(), { wrapper });
+      act(() => {
+        result.current.login("quien@example.com", "loquesea");
+      });
+
+      await waitFor(() => expect(toast.error).toHaveBeenCalled());
+      mensajes.push(vi.mocked(toast.error).mock.calls[0][0] as string);
+    }
+
+    expect(mensajes[0]).toBe(mensajes[1]);
+  });
+
+  /**
+   * Regresión: un 500 se reportaba como "Credenciales incorrectas". El usuario
+   * quedaba re-tipeando una contraseña correcta mientras el problema era el
+   * backend caído — pasó de verdad durante la verificación en el navegador.
+   * Ocultar un error de servidor detrás de un mensaje de credenciales no suma
+   * nada a la anti-enumeración: "el servidor explotó" no dice si la cuenta
+   * existe.
+   */
+  it("500 del backend → NO dice credenciales incorrectas; avisa que el problema es del servidor", async () => {
+    const { toast } = await import("sonner");
+    server.use(
+      http.post("/api/auth/login", () =>
+        HttpResponse.json({ statusCode: 500, message: "Internal Server Error" }, { status: 500 }),
+      ),
+    );
+
+    const { result } = renderHook(() => useLogin(), { wrapper });
+
+    act(() => {
+      result.current.login("user@example.com", "secret123");
+    });
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    const mensaje = vi.mocked(toast.error).mock.calls[0][0] as string;
+    // La propiedad es "no se reporta IGUAL que credenciales inválidas", no
+    // "no contiene la palabra credenciales" — el mensaje bueno justamente
+    // aclara que NO son las credenciales.
+    expect(mensaje).not.toBe(mensajeDeErrorDeLogin(401));
+    expect(mensaje).toMatch(/servidor/i);
+    expect(assignMock).not.toHaveBeenCalled();
+  });
+
+  it("caída de red (ApiError statusCode 0) → tampoco culpa a las credenciales", async () => {
+    const { toast } = await import("sonner");
+    server.use(http.post("/api/auth/login", () => HttpResponse.error()));
+
+    const { result } = renderHook(() => useLogin(), { wrapper });
+
+    act(() => {
+      result.current.login("user@example.com", "secret123");
+    });
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    const mensaje = vi.mocked(toast.error).mock.calls[0][0] as string;
+    expect(mensaje).not.toBe(mensajeDeErrorDeLogin(401));
+    expect(mensaje).toMatch(/conex|conectar/i);
   });
 
   it("403 tenant suspendido → shows the specific suspended-tenant toast message", async () => {
