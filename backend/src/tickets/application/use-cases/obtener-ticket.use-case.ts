@@ -6,9 +6,10 @@ import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
 /**
  * DTO de entrada de `ObtenerTicketUseCase`.
  *
- * `tienePermisoVerTodos` lo calcula el controller a partir de
- * `user.permisos.includes('ticket:ver_todos')` — la capa de aplicación no
- * conoce el JWT, solo el resultado booleano de la política (T6).
+ * `tienePermisoVerTodos` lo calcula el controller con
+ * `puedeEjecutar(user, 'TICKETS:VER_TODOS')` (sdd/matriz-permisos-por-usuario,
+ * R11) — la capa de aplicación no conoce el JWT, solo el resultado booleano
+ * de la política (T6).
  */
 export interface ObtenerTicketDto {
   ticketId: string;

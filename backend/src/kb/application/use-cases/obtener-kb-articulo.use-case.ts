@@ -5,8 +5,9 @@ import { KbArticuloNoEncontradoError } from '../../domain/errors/kb.errors';
 
 /**
  * DTO de entrada de `ObtenerKbArticuloUseCase`. `tienePermisoVerTodos` lo
- * calcula el controller a partir de `user.permisos.includes('ticket:ver_todos')`
- * (K3) — la capa de aplicación no conoce el JWT.
+ * calcula el controller con `puedeEjecutar(user, 'KB:VER_TODOS')`
+ * (sdd/matriz-permisos-por-usuario, R11; antes K3) — la capa de aplicación
+ * no conoce el JWT.
  */
 export interface ObtenerKbArticuloDto {
   id: string;

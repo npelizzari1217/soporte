@@ -7,8 +7,8 @@ const POR_PAGINA_MAX = 100;
 
 /**
  * DTO de entrada de `ListarKbArticulosUseCase`. `tienePermisoVerTodos` lo
- * calcula el controller a partir de `user.permisos.includes('ticket:ver_todos')`
- * (K3).
+ * calcula el controller con `puedeEjecutar(user, 'KB:VER_TODOS')`
+ * (sdd/matriz-permisos-por-usuario, R11; antes K3).
  */
 export interface ListarKbArticulosDto {
   tienePermisoVerTodos: boolean;
