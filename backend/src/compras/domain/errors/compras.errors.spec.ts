@@ -2,12 +2,20 @@
  * PR-5 [UNIT] — RED→GREEN: errores de dominio de `compras/` (`compras.errors.ts`).
  *
  * Verifica `code` estable + herencia de `DomainError`/`Error` para cada uno
- * de los 25 errores enumerados en el spec §5 ("Errores -> HTTP"), y que los
- * 19 `code` sean únicos entre sí (sin colisiones).
+ * de los 25 errores del catálogo, y que los 25 `code` sean únicos entre sí
+ * (sin colisiones).
  *
- * Nota de conteo (discrepancia declarada): `tasks` (PR-5) dice "16 errores",
- * pero el spec §5 enumera 19 por nombre (2×409 + 2×404 + 15×422). El spec
- * gana — ver `sdd/redisenio-modulo-compras/apply-progress-pr5` para el detalle.
+ * Nota de conteo: arrancó en 19 (2×409 + 2×404 + 15×422) con
+ * `sdd/redisenio-modulo-compras`. `compras-tres-etapas-y-sectores` lo llevó a
+ * 23 (renombres de cantidades + fechas de etapa) y el fix post-verify a 25
+ * (`EtapaNoRegistradaError`, `SectorInexistenteError`).
+ *
+ * Este archivo ya se comió una vez el defecto que testea: el JSDoc pasó a
+ * decir 25 mientras `CASES` seguía en 23. Un comentario que declara MÁS
+ * cobertura de la que hay es peor que uno que declara de menos. Si agregás un
+ * error al catálogo, agregá su caso acá: `compras.controller.spec.ts` arma la
+ * lista por reflexión sobre el módulo y te va a marcar el que falte mapear,
+ * pero esta lista es a mano y no avisa sola.
  *
  * Mensajes específicos solo se testean cuando el constructor recibe un
  * identificador de negocio (id de compra/ítem, o año) que el mensaje debe
@@ -41,6 +49,8 @@ import {
   MotivoCierreFaltanteRequeridoError,
   FechaEtapaFuturaError,
   FechaEtapasFueraDeOrdenError,
+  EtapaNoRegistradaError,
+  SectorInexistenteError,
 } from './compras.errors';
 
 interface ErrorCase {
@@ -217,9 +227,23 @@ const CASES: readonly ErrorCase[] = [
     build: () => new FechaEtapasFueraDeOrdenError('item-1'),
     messageContains: ['item-1'],
   },
+  {
+    name: 'EtapaNoRegistradaError',
+    code: 'ETAPA_NO_REGISTRADA',
+    httpStatus: 422,
+    build: () => new EtapaNoRegistradaError('item-1', 'ENTREGA'),
+    messageContains: ['item-1', 'ENTREGA'],
+  },
+  {
+    name: 'SectorInexistenteError',
+    code: 'SECTOR_INEXISTENTE',
+    httpStatus: 422,
+    build: () => new SectorInexistenteError('sector-1'),
+    messageContains: ['sector-1'],
+  },
 ];
 
-describe('compras.errors — catálogo de errores de dominio (23, WU-15 ADR-T2)', () => {
+describe('compras.errors — catálogo de errores de dominio (25, WU-15 ADR-T2 + fix post-verify)', () => {
   it.each(CASES.map((testCase) => [testCase.name, testCase] as const))(
     '%s expone code estable, extiende DomainError, y el mensaje conserva el identificador',
     (_name, testCase) => {
@@ -233,19 +257,19 @@ describe('compras.errors — catálogo de errores de dominio (23, WU-15 ADR-T2)'
     },
   );
 
-  it('los 23 codes del catálogo son únicos entre sí (sin colisiones)', () => {
+  it('los 25 codes del catálogo son únicos entre sí (sin colisiones)', () => {
     const codes = CASES.map((testCase) => testCase.code);
     expect(new Set(codes).size).toBe(codes.length);
-    expect(codes.length).toBe(23);
+    expect(codes.length).toBe(25);
   });
 
-  it('el catálogo mapea cada code a exactamente el HTTP status esperado (2×409, 2×404, 19×422)', () => {
+  it('el catálogo mapea cada code a exactamente el HTTP status esperado (2×409, 2×404, 21×422)', () => {
     const porStatus = { 404: 0, 409: 0, 422: 0 } as Record<404 | 409 | 422, number>;
     for (const testCase of CASES) {
       porStatus[testCase.httpStatus] += 1;
     }
     expect(porStatus[409]).toBe(2);
     expect(porStatus[404]).toBe(2);
-    expect(porStatus[422]).toBe(19);
+    expect(porStatus[422]).toBe(21);
   });
 });
