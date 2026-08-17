@@ -128,10 +128,15 @@ export class CrearUsuarioTenantUseCase {
     });
     await this.membresiaRepo.create(membresia);
 
+    // `sobrescribir: false` (fix W11): este mismo camino cubre el alta de
+    // alguien que nunca existió y el RE-alta de alguien dado de baja, cuya
+    // matriz la baja conservó a propósito. Pisarla acá sería el efecto
+    // sorpresa que R6 prohibió, entrando por la puerta del re-alta.
     const presetResult = await this.aplicarPresetPermisosUseCase.execute({
       clienteId: input.clienteId,
       usuarioId: usuario.id,
       rolCodigo: rol.codigo,
+      sobrescribir: false,
     });
     if (presetResult.isFail()) {
       return Result.fail(presetResult.getError());

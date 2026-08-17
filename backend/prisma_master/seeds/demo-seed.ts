@@ -294,6 +294,10 @@ async function aplicarPresetPermisosTecnico(
     clienteId,
     usuarioId: tecnicoId,
     rolCodigo: 'TECNICO',
+    // `sobrescribir: true` (W11): el seed quiere un estado CONOCIDO y
+    // determinístico, no respetar lo que hubiera quedado de una corrida
+    // anterior. Es idempotente a propósito.
+    sobrescribir: true,
   });
   if (result.isFail()) {
     throw new Error(

@@ -99,7 +99,34 @@ describe('CrearUsuarioTenantUseCase (gestión mínima de usuarios, sdd/beta-fron
       clienteId: DTO.clienteId,
       usuarioId: membresiaCreada.usuarioId,
       rolCodigo: DTO.rolCodigo,
+      sobrescribir: false,
     });
+  });
+
+  /**
+   * Fix W11. El alta pide el preset con `sobrescribir: false` porque el mismo
+   * caso de uso cubre DOS situaciones que parecen una: el alta de alguien que
+   * nunca existió (matriz vacía, el preset la siembra) y el RE-alta de alguien
+   * dado de baja, cuya matriz la baja conservó intacta a propósito
+   * (`desactivar-membresia` solo desactiva la membresía, no borra celdas).
+   *
+   * Sin el flag, el re-alta pisaba con el preset del rol los recortes que un
+   * ADMINISTRADOR hubiera hecho a mano. Es el mismo efecto sorpresa que R6
+   * prohibió para el cambio de rol, entrando por la puerta del re-alta.
+   *
+   * La puerta explícita para pisar sigue existiendo y es una sola:
+   * `PATCH /usuarios/:id/rol` con `reaplicarPreset: true`, que pide
+   * confirmación en el frontend.
+   */
+  it('[CRITICAL] W11: el alta NO pide sobrescribir, para no pisar la matriz de un re-alta', async () => {
+    const { useCase, aplicarPresetPermisosUseCase } = buildDeps();
+
+    await useCase.execute(DTO);
+
+    const argumentos = aplicarPresetPermisosUseCase.execute.mock.calls[0][0] as {
+      sobrescribir: boolean;
+    };
+    expect(argumentos.sobrescribir).toBe(false);
   });
 
   it('[CRITICAL] falla con PresetRolNoDefinidoError si el rol no tiene preset — la membresía YA quedó creada (mismo criterio que CambiarRolUsuarioTenantUseCase)', async () => {
@@ -152,12 +179,19 @@ describe('CrearUsuarioTenantUseCase (gestión mínima de usuarios, sdd/beta-fron
     expect(usuarioRepo.create).not.toHaveBeenCalled();
     const membresiaCreada = membresiaRepo.create.mock.calls[0][0];
     expect(membresiaCreada.usuarioId).toBe('usuario-existente');
-    // W4: la membresía NUEVA en este cliente también necesita su preset —
-    // aplica igual para un usuario global reutilizado (0 celdas es 0 celdas).
+    // W4: la membresía NUEVA en este cliente también necesita su preset, y
+    // aplica igual para un usuario global reutilizado.
+    //
+    // Va con `sobrescribir: false` (W11). El apply-progress original decía
+    // "0 celdas es 0 celdas" para justificar sobrescribir siempre, y esa
+    // premisa era FALSA: un usuario reutilizado puede tener celdas de una
+    // membresía anterior en ESTE mismo cliente, dada de baja pero con su
+    // matriz conservada. Ahí no son 0.
     expect(aplicarPresetPermisosUseCase.execute).toHaveBeenCalledWith({
       clienteId: DTO.clienteId,
       usuarioId: 'usuario-existente',
       rolCodigo: DTO.rolCodigo,
+      sobrescribir: false,
     });
   });
 

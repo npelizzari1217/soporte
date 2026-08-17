@@ -386,10 +386,15 @@ export class UsuariosController {
     @Param('id') usuarioId: string,
     @Body() dto: AplicarPresetPermisosDto,
   ): Promise<{ usuarioId: string; rolCodigo: string }> {
+    // `sobrescribir: true` (W11): este endpoint EXISTE para aplicar el preset,
+    // así que pedirlo ya es la intención explícita. Es una de las dos puertas
+    // por las que una matriz ajustada a mano se reemplaza; la otra es
+    // `PATCH /usuarios/:id/rol` con `reaplicarPreset`.
     const result = await this.aplicarPresetPermisosUseCase.execute({
       clienteId: actor.cliente_id as string,
       usuarioId,
       rolCodigo: dto.rolCodigo,
+      sobrescribir: true,
     });
 
     if (result.isFail()) {

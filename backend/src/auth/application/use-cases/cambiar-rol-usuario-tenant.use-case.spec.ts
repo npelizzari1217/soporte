@@ -163,6 +163,7 @@ describe('CambiarRolUsuarioTenantUseCase (gestión mínima de usuarios, sdd/beta
       clienteId: 'cliente-token',
       usuarioId: 'usuario-1',
       rolCodigo: 'TECNICO',
+      sobrescribir: true,
     });
   });
 

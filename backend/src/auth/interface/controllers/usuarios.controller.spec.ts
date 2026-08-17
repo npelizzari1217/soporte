@@ -447,6 +447,7 @@ describe('UsuariosController (gestión mínima de usuarios, sdd/beta-frontend §
         clienteId: 'cliente-token',
         usuarioId: 'usuario-1',
         rolCodigo: 'TECNICO',
+        sobrescribir: true,
       });
       expect(result).toEqual({ usuarioId: 'usuario-1', rolCodigo: 'TECNICO' });
     });

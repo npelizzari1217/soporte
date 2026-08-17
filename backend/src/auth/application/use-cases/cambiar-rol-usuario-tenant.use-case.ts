@@ -84,10 +84,14 @@ export class CambiarRolUsuarioTenantUseCase {
     await this.membresiaRepo.save(membresia);
 
     if (input.reaplicarPreset === true) {
+      // `sobrescribir: true`: acá pisar ES lo pedido. Es la ÚNICA puerta por
+      // la que una matriz ajustada a mano se reemplaza, y el frontend pide
+      // confirmación antes de mandarlo (R6).
       const presetResult = await this.aplicarPresetPermisosUseCase.execute({
         clienteId: input.clienteId,
         usuarioId: input.usuarioId,
         rolCodigo: input.rolCodigo,
+        sobrescribir: true,
       });
       if (presetResult.isFail()) {
         return Result.fail(presetResult.getError());

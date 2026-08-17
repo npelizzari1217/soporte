@@ -12,6 +12,26 @@ export interface AplicarPresetPermisosInput {
   clienteId: string;
   usuarioId: string;
   rolCodigo: string;
+  /**
+   * `true` PISA la matriz existente con el preset del rol. `false` la aplica
+   * SOLO si el usuario no tiene ninguna celda en ese cliente.
+   *
+   * La distinción es el fix de W11. Hay dos llamadores y quieren cosas
+   * opuestas, aunque el nombre del caso de uso sugiera una sola:
+   *
+   * - **El alta** (`CrearUsuarioTenantUseCase`) pasa `false`. Cubre dos
+   *   situaciones que parecen una: alguien que nunca existió (matriz vacía,
+   *   el preset la siembra) y el RE-alta de alguien dado de baja, cuya matriz
+   *   la baja conservó a propósito (`desactivar-membresia` desactiva la
+   *   membresía, no borra celdas). Con `true` el re-alta pisaba los recortes
+   *   que un ADMINISTRADOR hubiera hecho a mano.
+   * - **`PATCH /usuarios/:id/rol` con `reaplicarPreset`** pasa `true`: ahí
+   *   pisar ES lo pedido, y el frontend lo confirma antes de mandarlo.
+   *
+   * Es la misma regla de R6 llevada al caso que se le había escapado: nada
+   * pisa una matriz ajustada a mano sin que alguien lo pida explícitamente.
+   */
+  sobrescribir: boolean;
 }
 
 export type AplicarPresetPermisosError = PresetRolNoDefinidoError;
@@ -36,7 +56,12 @@ export type AplicarPresetPermisosError = PresetRolNoDefinidoError;
  * Ref spec: sdd/matriz-permisos-por-usuario/spec R6, R7. Ref design: ADR-P9.
  */
 export class AplicarPresetPermisosUseCase {
-  constructor(private readonly permisosRepo: Pick<IMatrizPermisosRepository, 'setPermisos'>) {}
+  constructor(
+    private readonly permisosRepo: Pick<
+      IMatrizPermisosRepository,
+      'setPermisos' | 'findByUsuarioYCliente'
+    >,
+  ) {}
 
   async execute(
     input: AplicarPresetPermisosInput,
@@ -44,6 +69,19 @@ export class AplicarPresetPermisosUseCase {
     const presetResult = obtenerPresetDeRol(input.rolCodigo);
     if (presetResult.isFail()) {
       return Result.fail(presetResult.getError());
+    }
+
+    // El preset se resuelve ANTES de decidir si se aplica: un rol sin preset
+    // tiene que fallar igual, aunque después no fuéramos a escribir nada. Si
+    // no, un rol mal configurado pasaría inadvertido en todos los re-altas.
+    if (!input.sobrescribir) {
+      const celdasActuales = await this.permisosRepo.findByUsuarioYCliente(
+        input.usuarioId,
+        input.clienteId,
+      );
+      if (celdasActuales.length > 0) {
+        return Result.ok(undefined);
+      }
     }
 
     await this.permisosRepo.setPermisos(input.usuarioId, input.clienteId, presetResult.getValue());
