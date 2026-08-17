@@ -8,6 +8,7 @@
  * existe — las 3 etapas lo reemplazaron):
  *   POST   /compras                                             → CrearCompraUseCase                 [COMPRAS:ALTAS]
  *   POST   /compras/:id/items                                   → AgregarItemCompraUseCase            [COMPRAS:ALTAS]
+ *   PATCH  /compras/:id                                          → EditarCompraUseCase                 [COMPRAS:MODIFICACION]
  *   PATCH  /compras/:id/items/:itemId                            → EditarItemCompraUseCase             [COMPRAS:MODIFICACION]
  *   DELETE /compras/:id/items/:itemId                            → EliminarItemCompraUseCase           [COMPRAS:BORRADO]
  *   POST   /compras/:id/items/:itemId/aprobar                    → AprobarItemCompraUseCase            [COMPRAS:APROBACION]
@@ -28,8 +29,9 @@
  * documentadas como `POST`) — este controller extiende ese mismo criterio a
  * los otros verbos de acción (aprobar/rechazar/registrar-compra/
  * registrar-entrega) para que las 8 rutas de acción del módulo sean
- * consistentes entre sí. `PATCH` queda reservado para la única edición
- * semántica de campos (`EditarItemCompraUseCase`).
+ * consistentes entre sí. `PATCH` queda reservado para las ediciones
+ * semánticas de campos (`EditarCompraUseCase` sobre la cabecera,
+ * `EditarItemCompraUseCase` sobre un ítem).
  *
  * Guards a nivel de controller: `JwtAuthGuard` + `TenantGuard` +
  * `AccionesGuard` (WU-7.3, sdd/matriz-permisos-por-usuario — reemplaza a
@@ -92,6 +94,7 @@ import { DomainError } from '../../../shared/domain/result';
 
 import { CrearCompraUseCase } from '../../application/use-cases/crear-compra.use-case';
 import { AgregarItemCompraUseCase } from '../../application/use-cases/agregar-item-compra.use-case';
+import { EditarCompraUseCase } from '../../application/use-cases/editar-compra.use-case';
 import { EditarItemCompraUseCase } from '../../application/use-cases/editar-item-compra.use-case';
 import { EliminarItemCompraUseCase } from '../../application/use-cases/eliminar-item-compra.use-case';
 import { AprobarItemCompraUseCase } from '../../application/use-cases/aprobar-item-compra.use-case';
@@ -141,6 +144,7 @@ import {
   CerrarItemConFaltanteHttpDto,
   CompraDetalleResponseDto,
   CrearCompraHttpDto,
+  EditarCompraHttpDto,
   EditarFechaEtapaHttpDto,
   EditarItemCompraHttpDto,
   ItemCompraResponseDto,
@@ -159,9 +163,12 @@ import {
 /**
  * Mapea un `DomainError` de los use cases de compras a la `HttpException`
  * correspondiente, según el contrato declarado en el JSDoc de cada error de
- * `compras.errors.ts` (spec §5: 2×409, 2×404, 15×422 — 19 en total). 403 NO
- * aparece acá: es RBAC resuelto por guard (`AccionesGuard`), nunca un
- * `DomainError`.
+ * `compras.errors.ts` (spec §5). Hoy el catálogo son 26 clases: 2×409, 2×404
+ * y 22×422 — el conteo exacto lo fija (y lo rompe si alguien agrega un error
+ * sin mapearlo) el test "el catálogo tiene EXACTAMENTE 26 clases" de
+ * `compras.controller.spec.ts`, que lo deriva por reflexión del módulo de
+ * errores en vez de confiar en este comentario. 403 NO aparece acá: es RBAC
+ * resuelto por guard (`AccionesGuard`), nunca un `DomainError`.
  */
 export function toHttpException(
   error: DomainError,
@@ -216,6 +223,7 @@ export class ComprasController {
   constructor(
     private readonly crearCompraUseCase: CrearCompraUseCase,
     private readonly agregarItemCompraUseCase: AgregarItemCompraUseCase,
+    private readonly editarCompraUseCase: EditarCompraUseCase,
     private readonly editarItemCompraUseCase: EditarItemCompraUseCase,
     private readonly eliminarItemCompraUseCase: EliminarItemCompraUseCase,
     private readonly aprobarItemCompraUseCase: AprobarItemCompraUseCase,
@@ -287,6 +295,40 @@ export class ComprasController {
       moneda: dto.moneda,
       fechaCotizacion: new Date(dto.fechaCotizacion),
       observaciones: dto.observaciones ?? null,
+    });
+
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+    return toCompraDetalleResponseDto(result.getValue());
+  }
+
+  /**
+   * PATCH /compras/:id
+   * Edita los campos de solicitud de la CABECERA (`motivo`/`descripcion`/
+   * `fechaSolicitud`/`sectorId`), PATCH semántico — `undefined` no toca el
+   * campo, `null` limpia `descripcion`/`sectorId`. La ventana de edición
+   * (sólo mientras la compra deriva `PENDIENTE`) la resuelve
+   * `CompraEntity.actualizar()`, no este controller.
+   * @throws 404 compra inexistente/otro tenant
+   * @throws 422 la compra ya no está PENDIENTE — algún ítem fue decidido, o
+   *         está cancelada (mismo guard), o el `sectorId` no existe
+   */
+  @Patch(':id')
+  @RequiereAcciones('COMPRAS:MODIFICACION')
+  @HttpCode(HttpStatus.OK)
+  async editar(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Body() dto: EditarCompraHttpDto,
+  ): Promise<CompraDetalleResponseDto> {
+    const result = await this.editarCompraUseCase.execute({
+      compraId: id,
+      usuarioId: user.sub,
+      motivo: dto.motivo,
+      descripcion: dto.descripcion,
+      fechaSolicitud: dto.fechaSolicitud ? new Date(dto.fechaSolicitud) : undefined,
+      sectorId: dto.sectorId,
     });
 
     if (result.isFail()) {

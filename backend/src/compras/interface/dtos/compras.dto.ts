@@ -190,6 +190,44 @@ export class EditarItemCompraHttpDto {
 }
 
 /**
+ * Body de `PATCH /compras/:id` — edición de la CABECERA. PATCH semántico:
+ * `undefined` no toca el campo, `null` limpia `descripcion`/`sectorId` (mismo
+ * criterio que `CompraActualizarProps`).
+ *
+ * **`numero`/`solicitanteId`/`cicloId` NO son campos de este DTO, por la misma
+ * razón que no lo son de `CrearCompraHttpDto`** — con un agravante: en el alta
+ * los resuelve el servidor, pero acá ya están escritos, así que aceptarlos
+ * desde el body permitiría reescribir la identidad de una compra existente
+ * (renumerarla, cambiarle el solicitante, moverla de ciclo). `CompraActualizarProps`
+ * tampoco los incluye: la garantía es doble, de borde y de dominio.
+ *
+ * `motivo` y `fechaSolicitud` mantienen las mismas restricciones que en el alta
+ * — son los dos campos que `CompraEntity.validarCamposBase` valida con `throw`
+ * plano, y `actualizar()` los revalida cuando viajan. Sin `@MinLength(1)` /
+ * `@IsDateString()` acá, un body con `motivo: ''` alcanzaría ese throw y saldría
+ * como HTTP 500 en vez de 400.
+ */
+export class EditarCompraHttpDto {
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  motivo?: string;
+
+  @IsOptional()
+  @IsString()
+  descripcion?: string | null;
+
+  @IsOptional()
+  @IsDateString()
+  fechaSolicitud?: string;
+
+  /** `null` explícito = desasignar el sector. Si viaja un UUID, el use case verifica que exista (fix W6). */
+  @IsOptional()
+  @IsUUID()
+  sectorId?: string | null;
+}
+
+/**
  * Body de registro de avance de las TRES etapas (R1/R4,
  * `compras-tres-etapas-y-sectores`) — las tres cantidades son ACUMULADOS,
  * no deltas. El exceso/retroceso (S43/S45/S46) NO son throws planos — ya

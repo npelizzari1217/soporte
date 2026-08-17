@@ -27,6 +27,7 @@ import { ResolverCicloActivoCompra } from './application/services/resolver-ciclo
 
 import { CrearCompraUseCase } from './application/use-cases/crear-compra.use-case';
 import { AgregarItemCompraUseCase } from './application/use-cases/agregar-item-compra.use-case';
+import { EditarCompraUseCase } from './application/use-cases/editar-compra.use-case';
 import { EditarItemCompraUseCase } from './application/use-cases/editar-item-compra.use-case';
 import { EliminarItemCompraUseCase } from './application/use-cases/eliminar-item-compra.use-case';
 import { AprobarItemCompraUseCase } from './application/use-cases/aprobar-item-compra.use-case';
@@ -146,6 +147,20 @@ import { ComprasController } from './interface/controllers/compras.controller';
         txRunner: ITenantTransactionRunner,
       ) => new AgregarItemCompraUseCase(compraRepo, registrarOperacion, txRunner),
       inject: [COMPRA_REPOSITORY, RegistrarOperacionCompra, TENANT_TX_RUNNER],
+    },
+    {
+      // Inyecta SECTOR_REPOSITORY por la misma razón que `CrearCompraUseCase`
+      // (fix post-verify W6): valida que el `sectorId` exista ANTES del
+      // UPDATE. Sin esto, el PATCH de cabecera reabriría el agujero que W6
+      // cerró en el alta.
+      provide: EditarCompraUseCase,
+      useFactory: (
+        compraRepo: ICompraRepository,
+        sectorRepo: ISectorRepository,
+        registrarOperacion: RegistrarOperacionCompra,
+        txRunner: ITenantTransactionRunner,
+      ) => new EditarCompraUseCase(compraRepo, sectorRepo, registrarOperacion, txRunner),
+      inject: [COMPRA_REPOSITORY, SECTOR_REPOSITORY, RegistrarOperacionCompra, TENANT_TX_RUNNER],
     },
     {
       provide: EditarItemCompraUseCase,
