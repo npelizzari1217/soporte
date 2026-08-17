@@ -30,6 +30,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useEditarItemCompra } from "../hooks/use-compra-mutations";
+import { aFechaInput } from "../lib/fecha";
 import { editarItemCompraSchema, type EditarItemCompraFormValues } from "../schemas";
 import type { EditarItemCompraDto, ItemCompra } from "../types";
 
@@ -49,7 +50,9 @@ export function ItemEditDialog({ compraId, item }: ItemEditDialogProps) {
     proveedor: item.proveedor,
     monto: item.monto,
     moneda: item.moneda as EditarItemCompraFormValues["moneda"],
-    fechaCotizacion: item.fechaCotizacion,
+    // El backend serializa la fecha con `.toISOString()`; sin normalizar,
+    // `<input type="date">` descarta el valor y el campo aparece vacío.
+    fechaCotizacion: aFechaInput(item.fechaCotizacion),
     observaciones: item.observaciones ?? "",
   };
 
