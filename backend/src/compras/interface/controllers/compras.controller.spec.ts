@@ -11,7 +11,7 @@
  *
  * Cubre:
  * 1. Traducción HTTP ↔ use case de los 10 comandos (DTO → execute(), Result → response DTO).
- * 2. `toHttpException`: los 19 errores del catálogo (`compras.errors.ts`, spec
+ * 2. `toHttpException`: los 25 errores del catálogo (`compras.errors.ts`, spec
  *    §5) → la `HttpException` que su propio JSDoc declara. El número (19, no
  *    16 — ver `sdd/redisenio-modulo-compras/tasks`) se deriva CONTANDO las
  *    clases exportadas de `compras.errors.ts`, no se tipea a mano.
@@ -57,8 +57,10 @@ import {
   CompraNoEncontradaError,
   CompraYaCanceladaError,
   CompraYaCerradaError,
+  EtapaNoRegistradaError,
   FechaEtapaFuturaError,
   FechaEtapasFueraDeOrdenError,
+  SectorInexistenteError,
   ItemCompraAprobadoNoEliminableError,
   ItemCompraCongeladoError,
   ItemCompraNoAprobadoError,
@@ -724,8 +726,8 @@ describe('toHttpException — catálogo de errores → HTTP (spec §5)', () => {
       typeof valor === 'function' && valor.prototype instanceof DomainError,
   );
 
-  it('el catálogo tiene EXACTAMENTE 23 clases de error (2×409 + 2×404 + 19×422, WU-24)', () => {
-    expect(CLASES_DE_ERROR).toHaveLength(23);
+  it('el catálogo tiene EXACTAMENTE 25 clases de error (2×409 + 2×404 + 21×422, fix W3+W6)', () => {
+    expect(CLASES_DE_ERROR).toHaveLength(25);
   });
 
   const TABLA: Array<[string, () => DomainError, 404 | 409 | 422]> = [
@@ -772,9 +774,11 @@ describe('toHttpException — catálogo de errores → HTTP (spec §5)', () => {
     ],
     ['FechaEtapaFuturaError', () => new FechaEtapaFuturaError('item-1'), 422],
     ['FechaEtapasFueraDeOrdenError', () => new FechaEtapasFueraDeOrdenError('item-1'), 422],
+    ['EtapaNoRegistradaError', () => new EtapaNoRegistradaError('item-1', 'ENTREGA'), 422],
+    ['SectorInexistenteError', () => new SectorInexistenteError('sector-1'), 422],
   ];
 
-  it('TABLA cubre EXACTAMENTE las 23 clases exportadas (ninguna falta, ninguna sobra)', () => {
+  it('TABLA cubre EXACTAMENTE las clases exportadas (ninguna falta, ninguna sobra)', () => {
     expect(TABLA).toHaveLength(CLASES_DE_ERROR.length);
     const nombresEnTabla = new Set(TABLA.map(([nombre]) => nombre));
     for (const clase of CLASES_DE_ERROR) {

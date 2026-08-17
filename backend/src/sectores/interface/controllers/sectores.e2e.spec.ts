@@ -202,15 +202,25 @@ describe('Sectores e2e — gate por método + grafo DI real (WU-08)', () => {
     return data;
   }
 
-  /** Actor con el rol dado (`'ADMINISTRADOR'` bypassea `AdminClienteGuard`; cualquier otro NO). */
-  async function crearActorConRol(rolCodigo: string): Promise<{ accessToken: string }> {
-    const cliente = await crearClienteTenant();
+  /**
+   * Actor con el rol dado (`'ADMINISTRADOR'` bypassea `AdminClienteGuard`;
+   * cualquier otro NO). `clienteIdExistente` (fix C3) permite compartir el
+   * MISMO cliente/tenant entre dos actores de un mismo test — `crearClienteTenant()`
+   * usa `TENANT_DB_NAME` fijo por archivo, así que una 2ª llamada sin
+   * reusar el cliente choca contra el `db_name` UNIQUE.
+   */
+  async function crearActorConRol(
+    rolCodigo: string,
+    clienteIdExistente?: string,
+  ): Promise<{ accessToken: string; clienteId: string }> {
+    const clienteId = clienteIdExistente ?? (await crearClienteTenant()).id;
     const role = await createRole(
       rolCodigo === 'ADMINISTRADOR' ? 'ADMINISTRADOR' : `ROL_E2E_${randomBytes(3).toString('hex')}`,
     );
     const usuario = await createUsuario(randomBytes(3).toString('hex'));
-    await createMembresia(usuario.id, cliente.id, role.id);
-    return login(usuario.email);
+    await createMembresia(usuario.id, clienteId, role.id);
+    const { accessToken } = await login(usuario.email);
+    return { accessToken, clienteId };
   }
 
   describe('Gating de acceso', () => {
@@ -254,6 +264,49 @@ describe('Sectores e2e — gate por método + grafo DI real (WU-08)', () => {
 
       expect(status).toBe(201);
       expect(data.codigo).toBe('COMPUTACION');
+    });
+
+    // Fix post-verify C3: `sectores.controller.spec.ts:234` (pre-fix) SOLO
+    // cubría el 403 de POST — PATCH /sectores/:id y PATCH
+    // /sectores/:id/estado nunca se pidieron sin rol ADMINISTRADOR contra la
+    // app real. Un unit test mockea el guard fuera de la ecuación (JSDoc del
+    // header de este archivo) — solo un request HTTP real lo detecta.
+    it('PATCH /sectores/:id: actor autenticado SIN rol ADMINISTRADOR → 403 (S64)', async () => {
+      const admin = await crearActorConRol('ADMINISTRADOR');
+      const crear = await httpPost<SectorResponseDto>(
+        `${baseUrl}/sectores`,
+        { codigo: 'DEPORTES', nombre: 'Deportes' },
+        bearer(admin.accessToken),
+      );
+      const id = crear.data.id;
+
+      const actor = await crearActorConRol('USUARIO', admin.clienteId);
+      const editar = await fetch(`${baseUrl}/sectores/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...bearer(actor.accessToken) },
+        body: JSON.stringify({ nombre: 'Deportes y Recreación' }),
+      });
+
+      expect(editar.status).toBe(403);
+    });
+
+    it('PATCH /sectores/:id/estado: actor autenticado SIN rol ADMINISTRADOR → 403 (S64)', async () => {
+      const admin = await crearActorConRol('ADMINISTRADOR');
+      const crear = await httpPost<SectorResponseDto>(
+        `${baseUrl}/sectores`,
+        { codigo: 'JARDINERIA', nombre: 'Jardinería' },
+        bearer(admin.accessToken),
+      );
+      const id = crear.data.id;
+
+      const actor = await crearActorConRol('USUARIO', admin.clienteId);
+      const cambiarEstado = await fetch(`${baseUrl}/sectores/${id}/estado`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...bearer(actor.accessToken) },
+        body: JSON.stringify({ activo: false }),
+      });
+
+      expect(cambiarEstado.status).toBe(403);
     });
   });
 

@@ -41,7 +41,24 @@
  * `activo: false`, `afterAll` que borra EXACTAMENTE lo creado por esta
  * suite.
  *
+ * ── FIX post-verify C2 (sdd/compras-tres-etapas-y-sectores) ──
+ *
+ * Las dos mediciones de abajo llamaban `findAllConItems`/`count` SIN
+ * `soloEnCurso`, así que medían la forma VIEJA del `where` — la que arma
+ * `buildWhere()` cuando `filtros?.soloEnCurso` es falsy (sin el `OR` de tres
+ * `some`/`none`). El camino de PRODUCCIÓN nunca se midió: `listar-compras.
+ * use-case.ts:107` fuerza `soloEnCurso: dto.soloEnCurso ?? true` SIEMPRE
+ * (default `true`) y agrega filtros de fecha/sector cuando el caller los
+ * manda (R7/R11). `resoluciones-pre-apply` §3 pidió medir el camino real; el
+ * apply-progress previo reportó "MEDIDO" sin haberlo hecho.
+ *
+ * Los dos `it` de abajo ahora llaman con `soloEnCurso: true` MÁS
+ * `fechaDesde`/`fechaHasta`/`sectorId` (el trío completo de filtros de R7/R11
+ * que agrega `buildWhere()` a la sentencia base) — es el `where` real que
+ * arma `ListarComprasUseCase.execute()` con esos 3 filtros presentes.
+ *
  * Ref spec: sdd/redisenio-modulo-compras/spec §4.9 (S32). Ref design: ADR-C2.
+ * Ref verify: sdd/compras-tres-etapas-y-sectores/verify-report C2.
  * Tarea: PR-12.
  */
 import { randomBytes } from 'node:crypto';
@@ -75,6 +92,7 @@ describe('PrismaCompraRepository.findAllConItems — Presupuesto de sentencias S
   let tenantContext: TenantContext;
   let compraRepo: PrismaCompraRepository;
   let cicloId: string;
+  let sectorId: string;
   const comprasIdsCreadas: string[] = [];
   let sentenciasEmitidas: string[] = [];
 
@@ -100,8 +118,13 @@ describe('PrismaCompraRepository.findAllConItems — Presupuesto de sentencias S
       descripcion: null,
       solicitanteId: DUMMY_USUARIO_ID,
       cicloId,
+      sectorId,
     });
     comprasIdsCreadas.push(compra.id);
+    // Ítem PENDIENTE (default de `agregarItem`, sin `estadoAprobacion`
+    // explícito) — satisface el 1er término del OR de `soloEnCurso` (fix C2:
+    // la compra tiene que quedar "en curso" para que el `where` real de
+    // producción la devuelva).
     compra
       .agregarItem({
         descripcion: 'Item de presupuesto SQL',
@@ -153,6 +176,13 @@ describe('PrismaCompraRepository.findAllConItems — Presupuesto de sentencias S
     });
     cicloId = ciclo.id;
 
+    // Sector fixture (fix C2): el camino real de `ListarComprasUseCase`
+    // acepta `sectorId` (R11) — sin esto, medir con ese filtro no era posible.
+    const sector = await tenantClient.sector.create({
+      data: { codigo: `PR12TESTSQL_SECTOR_${suffix}`, nombre: 'Sector presupuesto SQL' },
+    });
+    sectorId = sector.id;
+
     await crearCompraConItemFixture();
   }, 30_000);
 
@@ -164,6 +194,7 @@ describe('PrismaCompraRepository.findAllConItems — Presupuesto de sentencias S
       await tenantClient.compra.deleteMany({ where: { id: { in: comprasIdsCreadas } } });
     }
     await tenantClient.cicloCliente.delete({ where: { id: cicloId } });
+    await tenantClient.sector.delete({ where: { id: sectorId } });
     await tenantClient.$disconnect();
     await pool.end().catch(() => undefined);
     await prismaServiceParaUrl.onModuleDestroy();
@@ -175,33 +206,61 @@ describe('PrismaCompraRepository.findAllConItems — Presupuesto de sentencias S
     sentenciasEmitidas = [];
   });
 
-  it(`[CRITICAL] resuelve una página con ítems incluidos en máximo ${PRESUPUESTO_MAXIMO_SENTENCIAS} sentencias SQL (medido con $on('query'))`, async () => {
-    const pagina = await withTenant(() => compraRepo.findAllConItems({ limit: 10, offset: 0 }));
+  /**
+   * Filtros REALES de `ListarComprasUseCase.execute()` con `soloEnCurso`
+   * default (`true`) y fecha/sector presentes (fix C2) — NO el `where`
+   * desnudo. `fechaDesde`/`fechaHasta` encierran el `fechaSolicitud` del
+   * fixture ('2026-03-01'); `sectorId` es el sector real creado en
+   * `beforeAll`.
+   */
+  function filtrosCaminoReal(): {
+    soloEnCurso: true;
+    fechaDesde: Date;
+    fechaHasta: Date;
+    sectorId: string;
+  } {
+    return {
+      soloEnCurso: true,
+      fechaDesde: new Date('2026-01-01'),
+      fechaHasta: new Date('2026-12-31'),
+      sectorId,
+    };
+  }
+
+  it(`[CRITICAL] resuelve una página con ítems incluidos en máximo ${PRESUPUESTO_MAXIMO_SENTENCIAS} sentencias SQL (camino real: soloEnCurso+fechas+sector, medido con $on('query'))`, async () => {
+    const pagina = await withTenant(() =>
+      compraRepo.findAllConItems({ limit: 10, offset: 0, ...filtrosCaminoReal() }),
+    );
 
     expect(pagina.length).toBeGreaterThan(0);
     expect(pagina[0].items.length).toBeGreaterThan(0);
 
     console.info(
-      `[S32] Sentencias SQL emitidas por findAllConItems: ${sentenciasEmitidas.length}` +
+      `[S32][camino real] Sentencias SQL emitidas por findAllConItems: ${sentenciasEmitidas.length}` +
         ` -> ${JSON.stringify(sentenciasEmitidas)}`,
     );
     expect(sentenciasEmitidas.length).toBeLessThanOrEqual(2);
   }, 15_000);
 
-  it(`[CRITICAL] una página completa (findAllConItems + count) resuelve en EXACTAMENTE ${PRESUPUESTO_MAXIMO_SENTENCIAS} sentencias SQL — excepción documentada a S32 (O(1), no crece con la página)`, async () => {
+  it(`[CRITICAL] una página completa (findAllConItems + count) resuelve en EXACTAMENTE ${PRESUPUESTO_MAXIMO_SENTENCIAS} sentencias SQL — camino real de producción (soloEnCurso+fechas+sector, excepción documentada a S32)`, async () => {
     const [pagina, total] = await withTenant(() =>
-      Promise.all([compraRepo.findAllConItems({ limit: 10, offset: 0 }), compraRepo.count()]),
+      Promise.all([
+        compraRepo.findAllConItems({ limit: 10, offset: 0, ...filtrosCaminoReal() }),
+        compraRepo.count(filtrosCaminoReal()),
+      ]),
     );
 
     expect(pagina.length).toBeGreaterThan(0);
     expect(total).toBeGreaterThanOrEqual(pagina.length);
 
     console.info(
-      `[S32+count] Sentencias SQL emitidas por findAllConItems+count: ${sentenciasEmitidas.length}` +
+      `[S32+count][camino real] Sentencias SQL emitidas por findAllConItems+count: ${sentenciasEmitidas.length}` +
         ` -> ${JSON.stringify(sentenciasEmitidas)}`,
     );
-    // Exactamente 3, no "a lo sumo": el punto del test es demostrar que la
-    // excepción documentada agrega UNA sola sentencia fija, ni más ni menos.
+    // Medido con el `where` REAL que arma producción (soloEnCurso+fechas+
+    // sector) — si esto no da exactamente 3, el presupuesto de S32 NO se
+    // toca: se reporta el número real como "needs human review" (fix C2, ver
+    // verify-report).
     expect(sentenciasEmitidas.length).toBe(PRESUPUESTO_MAXIMO_SENTENCIAS);
   }, 15_000);
 });

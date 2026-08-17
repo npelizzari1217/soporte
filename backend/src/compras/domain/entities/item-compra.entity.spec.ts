@@ -15,6 +15,7 @@ import {
   MotivoCierreFaltanteRequeridoError,
   FechaEtapaFuturaError,
   FechaEtapasFueraDeOrdenError,
+  EtapaNoRegistradaError,
 } from '../errors/compras.errors';
 import { hoyArgentina } from '../services/fecha-argentina';
 
@@ -352,6 +353,56 @@ describe('ItemCompraEntity', () => {
 
       expect(result.isFail()).toBe(true);
       expect(result.getError()).toBeInstanceOf(ItemCompraYaCerradoError);
+    });
+
+    // Fix post-verify W3: sin este guard, `editarFechaEtapa` le pone fecha a
+    // una etapa que nunca ocurrió (no se puede "fechar" una entrega que
+    // nunca se entregó). Las 3 etapas, cada una en su punto MÁS temprano
+    // posible de "no registrada todavía".
+    it.each([
+      ['ORDEN' as const, (item: ItemCompraEntity) => item],
+      [
+        'RECEPCION' as const,
+        (item: ItemCompraEntity) => {
+          item.registrarOrden(10, new Date('2026-08-10'));
+          return item;
+        },
+      ],
+      [
+        'ENTREGA' as const,
+        (item: ItemCompraEntity) => {
+          item.registrarOrden(10, new Date('2026-08-10'));
+          item.registrarRecepcion(8, new Date('2026-08-12'));
+          return item;
+        },
+      ],
+    ])(
+      'W3: editarFechaEtapa(%s) sobre una etapa NUNCA registrada falla con EtapaNoRegistradaError, sin mutar',
+      (etapa, preparar) => {
+        const item = preparar(crearItemAprobado({ cantidad: 10 }));
+
+        const result = item.editarFechaEtapa(etapa, new Date('2026-08-13'));
+
+        expect(result.isFail()).toBe(true);
+        expect(result.getError()).toBeInstanceOf(EtapaNoRegistradaError);
+        expect(item.fechaOrden).toEqual(etapa === 'ORDEN' ? null : new Date('2026-08-10'));
+        expect(item.fechaRecepcion).toEqual(
+          etapa === 'ORDEN' || etapa === 'RECEPCION' ? null : new Date('2026-08-12'),
+        );
+        expect(item.fechaEntrega).toBeNull();
+      },
+    );
+
+    it('W3 (hermano positivo): editarFechaEtapa acepta ENTREGA cuando SÍ fue registrada', () => {
+      const item = crearItemAprobado({ cantidad: 10 });
+      item.registrarOrden(10, new Date('2026-08-10'));
+      item.registrarRecepcion(8, new Date('2026-08-12'));
+      item.registrarEntrega(5, new Date('2026-08-14'));
+
+      const result = item.editarFechaEtapa('ENTREGA', new Date('2026-08-13'));
+
+      expect(result.isOk()).toBe(true);
+      expect(item.fechaEntrega).toEqual(new Date('2026-08-13'));
     });
   });
 

@@ -655,6 +655,32 @@ describe('Compras e2e — contrato HTTP real de las 13 rutas (cierra W-B/W-A del
     });
 
     /**
+     * Fix post-verify W6: `sectorId` con formato UUID válido pero
+     * inexistente. ANTES del fix, esto pasaba sin validar hasta el
+     * `INSERT` — el FK `compras_sector_id_fkey` lo rechazaba como un
+     * `PrismaClientKnownRequestError` sin mapear, un 500 alcanzable por
+     * HTTP. Solo un request real (no un unit test, que mockea el
+     * repositorio de sectores fuera de la ecuación) prueba que el guard
+     * está WIREADO de punta a punta.
+     */
+    it('422 SectorInexistenteError (W6): crear una compra con sectorId inexistente, NUNCA 500', async () => {
+      const actor = await crearActorConPermisos([
+        'COMPRAS:ALTAS',
+        'COMPRAS:MODIFICACION',
+        'COMPRAS:BORRADO',
+        'COMPRAS:LECTURA',
+      ]);
+
+      const { status } = await httpPost<{ message: string }>(
+        `${baseUrl}/compras`,
+        buildCrearCompraDto({ sectorId: '00000000-0000-4000-8000-000000000fff' }),
+        bearer(actor.accessToken),
+      );
+
+      expect(status).toBe(422);
+    });
+
+    /**
      * 409 SinCicloActivoError (S2) — bug real descubierto al escribir este
      * spec (histórico, YA CORREGIDO — ver `ResolverCicloActivoCompra`,
      * `sdd/redisenio-modulo-compras/fix-ciclo-activo-cross-module`):

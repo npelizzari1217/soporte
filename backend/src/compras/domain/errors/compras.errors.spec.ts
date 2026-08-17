@@ -2,7 +2,7 @@
  * PR-5 [UNIT] — RED→GREEN: errores de dominio de `compras/` (`compras.errors.ts`).
  *
  * Verifica `code` estable + herencia de `DomainError`/`Error` para cada uno
- * de los 19 errores enumerados en el spec §5 ("Errores -> HTTP"), y que los
+ * de los 25 errores enumerados en el spec §5 ("Errores -> HTTP"), y que los
  * 19 `code` sean únicos entre sí (sin colisiones).
  *
  * Nota de conteo (discrepancia declarada): `tasks` (PR-5) dice "16 errores",

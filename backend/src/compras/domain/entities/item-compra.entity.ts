@@ -7,6 +7,7 @@ import {
   CantidadOrdenadaRetrocedeError,
   CantidadRecibidaExcedeOrdenadaError,
   CantidadRecibidaRetrocedeError,
+  EtapaNoRegistradaError,
   FechaEtapaFuturaError,
   FechaEtapasFueraDeOrdenError,
   ItemCompraCongeladoError,
@@ -569,6 +570,14 @@ export class ItemCompraEntity extends BaseEntity<ItemCompraProps> {
       return guardCierre;
     }
 
+    // Fix post-verify W3: no se puede "fechar" una etapa que nunca ocurrió.
+    // La fecha de la etapa es `null` hasta que `registrarOrden`/
+    // `registrarRecepcion`/`registrarEntrega` la registran por primera vez —
+    // ese es el ÚNICO indicador de "registrada" (editar no registra).
+    if (this.fechaEtapaActual(etapa) === null) {
+      return Result.fail(new EtapaNoRegistradaError(this.id, etapa));
+    }
+
     const fechaValidada = this.validarFechaEtapa(etapa, fecha);
     if (fechaValidada.isFail()) {
       return fechaValidada;
@@ -583,6 +592,17 @@ export class ItemCompraEntity extends BaseEntity<ItemCompraProps> {
     }
     this.touch();
     return Result.ok(undefined);
+  }
+
+  /** La fecha actualmente registrada para `etapa` (`null` = todavía no registrada, ver `EtapaNoRegistradaError`). */
+  private fechaEtapaActual(etapa: EtapaEjecucion): Date | null {
+    if (etapa === 'ORDEN') {
+      return this.props.fechaOrden;
+    }
+    if (etapa === 'RECEPCION') {
+      return this.props.fechaRecepcion;
+    }
+    return this.props.fechaEntrega;
   }
 
   /**

@@ -14,7 +14,7 @@
  * (`validarCamposBase` × 2, y el guard de motivo de `CompraEntity.cancelar`).
  * Un `throw` plano NO es un `DomainError`, así que `toHttpException`
  * (PR-21) NO lo mapea — si lo alcanza input de usuario sale HTTP 500. El
- * catálogo cerrado de 19 errores (spec §5) no tiene un error reservado para
+ * catálogo cerrado de 25 errores (spec §5) no tiene un error reservado para
  * "campo inválido" y los agentes de la Fase B tenían prohibido crear
  * errores nuevos, así que el maintainer cerró el hueco acá, en el BORDE: la
  * validación de estos DTOs es la que mantiene esos 10 `throw` INALCANZABLES

@@ -15,7 +15,7 @@ import { DomainError } from '../../../shared/domain/result';
  * esperado a partir de este contrato, no lo inventa de nuevo.
  *
  * Ref spec: sdd/redisenio-modulo-compras/spec §4 (escenarios) y §5 (catálogo
- * Errores -> HTTP, 19 errores base: 2×409 + 2×404 + 15×422). Ref tasks: PR-5.
+ * Errores -> HTTP, 25 errores: 2×409 + 2×404 + 21×422). Ref tasks: PR-5.
  *
  * **WU-15 (`sdd/compras-tres-etapas-y-sectores`, ADR-T2)**: catálogo
  * ampliado a 23 — 2 errores de cantidad nuevos (`CantidadOrdenadaExcede...`/
@@ -394,6 +394,54 @@ export class FechaEtapasFueraDeOrdenError extends DomainError {
       `Las fechas de etapa del ítem "${itemId}" quedarían fuera de orden ` +
         `(fechaOrden ≤ fechaRecepcion ≤ fechaEntrega).`,
     );
+  }
+}
+
+/**
+ * EtapaNoRegistradaError — se intentó `editarFechaEtapa()` sobre una etapa
+ * (ORDEN/RECEPCION/ENTREGA) que TODAVÍA no fue registrada (su `fechaX`
+ * correspondiente sigue `null`, ver `ItemCompraEntity.editarFechaEtapa`).
+ *
+ * **Fix post-verify W3** (`compras-tres-etapas-y-sectores`): sin este guard,
+ * `editarFechaEtapa('ENTREGA', ...)` sobre un ítem que solo pasó por ORDEN
+ * le ponía fecha a una etapa que nunca ocurrió — "fechar una entrega que
+ * nunca se entregó". `registrarOrden`/`registrarRecepcion`/`registrarEntrega`
+ * son las ÚNICAS operaciones que pueden pasar una etapa de "no registrada" a
+ * "registrada"; `editarFechaEtapa` edita, no registra.
+ *
+ * → HTTP 422 en la capa de presentación.
+ *
+ * Ref verify: sdd/compras-tres-etapas-y-sectores/verify-report W3.
+ */
+export class EtapaNoRegistradaError extends DomainError {
+  readonly code = 'ETAPA_NO_REGISTRADA';
+
+  constructor(itemId: string, etapa: string) {
+    super(
+      `La etapa ${etapa} del ítem "${itemId}" todavía no fue registrada — no se puede editar su fecha.`,
+    );
+  }
+}
+
+/**
+ * SectorInexistenteError — se intentó crear una compra con un `sectorId`
+ * que no corresponde a ningún sector del catálogo del tenant (WU-09, R11).
+ *
+ * **Fix post-verify W6** (`compras-tres-etapas-y-sectores`): antes de este
+ * guard, un `sectorId` con formato UUID válido pero inexistente pasaba sin
+ * validar hasta el `INSERT`, donde el FK `compras_sector_id_fkey` lo
+ * rechazaba como un `PrismaClientKnownRequestError` SIN MAPEAR — 500
+ * alcanzable por HTTP, no un 422 de dominio como el resto del módulo.
+ *
+ * → HTTP 422 en la capa de presentación.
+ *
+ * Ref verify: sdd/compras-tres-etapas-y-sectores/verify-report W6.
+ */
+export class SectorInexistenteError extends DomainError {
+  readonly code = 'SECTOR_INEXISTENTE';
+
+  constructor(sectorId: string) {
+    super(`El sector "${sectorId}" no existe en el catálogo del tenant.`);
   }
 }
 

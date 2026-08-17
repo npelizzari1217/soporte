@@ -1,22 +1,26 @@
 /**
- * ComprasController — entry point HTTP de los 13 casos de uso del módulo
- * `compras/` (10 comandos, PR-21; 3 consultas, PR-22, que también cierra el
- * wiring de `ComprasModule`).
+ * ComprasController — entry point HTTP de los 15 casos de uso del módulo
+ * `compras/` (12 comandos, 3 consultas — PR-21/PR-22 más las 3 etapas y
+ * `editarFechaEtapaDeItem` de WU-24, sdd/compras-tres-etapas-y-sectores).
  *
- * Rutas:
- *   POST   /compras                                          → CrearCompraUseCase                [compra:gestionar]
- *   POST   /compras/:id/items                                 → AgregarItemCompraUseCase           [compra:gestionar]
- *   PATCH  /compras/:id/items/:itemId                          → EditarItemCompraUseCase            [compra:gestionar]
- *   DELETE /compras/:id/items/:itemId                          → EliminarItemCompraUseCase          [compra:gestionar]
- *   POST   /compras/:id/items/:itemId/aprobar                  → AprobarItemCompraUseCase           [compra:aprobar]
- *   POST   /compras/:id/items/:itemId/rechazar                 → RechazarItemCompraUseCase          [compra:aprobar]
- *   POST   /compras/:id/items/:itemId/registrar-compra         → RegistrarCompraDeItemUseCase       [compra:gestionar]
- *   POST   /compras/:id/items/:itemId/registrar-entrega        → RegistrarEntregaDeItemUseCase      [compra:gestionar]
- *   POST   /compras/:id/items/:itemId/cerrar-con-faltante      → CerrarItemConFaltanteUseCase       [compra:gestionar]
- *   POST   /compras/:id/cancelar                                → CancelarCompraUseCase              [compra:gestionar]
- *   GET    /compras                                             → ListarComprasUseCase               (sin permiso extra, PR-22)
- *   GET    /compras/:id                                         → ObtenerCompraUseCase               (sin permiso extra, PR-22)
- *   GET    /compras/:id/operaciones                             → ListarOperacionesCompraUseCase     (sin permiso extra, PR-22)
+ * Rutas (fix W1 post-verify: la tabla vieja decía 13 y listaba
+ * `registrar-compra → RegistrarCompraDeItemUseCase`, un endpoint que ya no
+ * existe — las 3 etapas lo reemplazaron):
+ *   POST   /compras                                             → CrearCompraUseCase                 [COMPRAS:ALTAS]
+ *   POST   /compras/:id/items                                   → AgregarItemCompraUseCase            [COMPRAS:ALTAS]
+ *   PATCH  /compras/:id/items/:itemId                            → EditarItemCompraUseCase             [COMPRAS:MODIFICACION]
+ *   DELETE /compras/:id/items/:itemId                            → EliminarItemCompraUseCase           [COMPRAS:BORRADO]
+ *   POST   /compras/:id/items/:itemId/aprobar                    → AprobarItemCompraUseCase            [COMPRAS:APROBACION]
+ *   POST   /compras/:id/items/:itemId/rechazar                   → RechazarItemCompraUseCase           [COMPRAS:APROBACION]
+ *   POST   /compras/:id/items/:itemId/registrar-orden             → RegistrarOrdenDeItemUseCase         [COMPRAS:MODIFICACION]
+ *   POST   /compras/:id/items/:itemId/registrar-recepcion         → RegistrarRecepcionDeItemUseCase     [COMPRAS:MODIFICACION]
+ *   POST   /compras/:id/items/:itemId/registrar-entrega           → RegistrarEntregaDeItemUseCase       [COMPRAS:MODIFICACION]
+ *   PATCH  /compras/:id/items/:itemId/fecha-etapa                 → EditarFechaEtapaDeItemUseCase       [COMPRAS:MODIFICACION]
+ *   POST   /compras/:id/items/:itemId/cerrar-con-faltante         → CerrarItemConFaltanteUseCase        [COMPRAS:MODIFICACION]
+ *   POST   /compras/:id/cancelar                                  → CancelarCompraUseCase               [COMPRAS:BORRADO]
+ *   GET    /compras                                               → ListarComprasUseCase                [COMPRAS:LECTURA]
+ *   GET    /compras/:id                                           → ObtenerCompraUseCase                [COMPRAS:LECTURA]
+ *   GET    /compras/:id/operaciones                               → ListarOperacionesCompraUseCase      [COMPRAS:LECTURA]
  *
  * Rutas de acción (`POST`, no `PATCH`) para aprobar/rechazar/registrar avance/
  * cerrar-con-faltante/cancelar: sigue el contrato ya fijado por el JSDoc de
@@ -46,7 +50,7 @@
  *
  * El controller no tiene lógica de negocio: solo traduce HTTP ↔ use case y
  * mapea `DomainError` → `HttpException` (presentación) vía `toHttpException`,
- * que consume el contrato HTTP declarado en el JSDoc de cada uno de los 19
+ * que consume el contrato HTTP declarado en el JSDoc de cada uno de los 25
  * errores de `domain/errors/compras.errors.ts` (spec §5) — 422 por defecto,
  * nunca 500 silencioso para un `DomainError`.
  *
@@ -114,6 +118,7 @@ import {
   CompraNoEncontradaError,
   CompraYaCanceladaError,
   CompraYaCerradaError,
+  EtapaNoRegistradaError,
   FechaEtapaFuturaError,
   FechaEtapasFueraDeOrdenError,
   ItemCompraAprobadoNoEliminableError,
@@ -125,6 +130,7 @@ import {
   ItemSinFaltanteError,
   MotivoCierreFaltanteRequeridoError,
   NumeradorCompraAgotadoError,
+  SectorInexistenteError,
   SinCicloActivoError,
 } from '../../domain/errors/compras.errors';
 
@@ -187,7 +193,11 @@ export function toHttpException(
     // nuevo que nadie mapea sale como 500, no como 422 — precedente idéntico
     // ya ocurrido en este módulo (ver `resolver-ciclo-activo-compra.service.ts`).
     error instanceof FechaEtapaFuturaError ||
-    error instanceof FechaEtapasFueraDeOrdenError
+    error instanceof FechaEtapasFueraDeOrdenError ||
+    // Fix post-verify W3.
+    error instanceof EtapaNoRegistradaError ||
+    // Fix post-verify W6.
+    error instanceof SectorInexistenteError
   ) {
     return new UnprocessableEntityException(error.message);
   }

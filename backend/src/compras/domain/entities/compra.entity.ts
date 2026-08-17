@@ -371,7 +371,7 @@ export class CompraEntity extends BaseEntity<CompraProps> {
    * Orden de guards (cada uno corta antes de mutar nada):
    * 1. `motivoCancelacion` no vacío — precondición de dominio modelada con
    *    `throw`, mismo criterio que `validarCamposBase`/`ItemCompraEntity`:
-   *    NINGUNO de los 19 errores del catálogo (`compras.errors.ts`) está
+   *    NINGUNO de los 25 errores del catálogo (`compras.errors.ts`) está
    *    reservado para "cancelar sin motivo" — §4.8 y §5 no listan ese
    *    escenario como error de negocio. Es una violación de contrato del
    *    caller (equivalente a un bug si el DTO/`class-validator` de la capa

@@ -30,6 +30,8 @@ import { ComprasModule } from './compras.module';
 import { ComprasController } from './interface/controllers/compras.controller';
 import { TicketsModule } from '../tickets/tickets.module';
 import { AuthModule } from '../auth/auth.module';
+import { SectoresModule } from '../sectores/sectores.module';
+import { ISectorRepository } from '../sectores/domain/ports/i-sector.repository';
 import {
   TENANT_TX_RUNNER,
   ITenantTransactionRunner,
@@ -179,10 +181,11 @@ describe('ComprasModule wiring (PR-22, sdd/redisenio-modulo-compras)', () => {
     expect(controllers).toContain(ComprasController);
   });
 
-  it('importa TicketsModule y AuthModule', () => {
+  it('importa TicketsModule, AuthModule y SectoresModule (fix post-verify W6)', () => {
     const imports = (Reflect.getMetadata('imports', ComprasModule) ?? []) as unknown[];
     expect(imports).toContain(TicketsModule);
     expect(imports).toContain(AuthModule);
+    expect(imports).toContain(SectoresModule);
   });
 
   it.each([COMPRA_REPOSITORY, OPERACION_COMPRA_REPOSITORY])('%s está exportado', (token) => {
@@ -257,12 +260,19 @@ describe('ComprasModule wiring (PR-22, sdd/redisenio-modulo-compras)', () => {
       const resolverCicloActivo: Pick<ResolverCicloActivoCompra, 'resolver'> = {
         resolver: vi.fn().mockResolvedValue(Result.ok(cicloFixture)),
       };
+      // Fix post-verify W6: sin `sectorId` en el DTO de este test, el
+      // caso de uso NUNCA consulta `sectorRepo` — el mock no necesita
+      // devolver nada útil, solo estar presente en la firma del factory.
+      const sectorRepo: Pick<ISectorRepository, 'findById'> = {
+        findById: vi.fn().mockResolvedValue(null),
+      };
 
       const provider = getFactoryProvider(CrearCompraUseCase);
       const instance = provider.useFactory(
         compraRepo,
         numerador,
         resolverCicloActivo,
+        sectorRepo,
         registrarOperacion,
         fakeTxRunner(),
       ) as CrearCompraUseCase;

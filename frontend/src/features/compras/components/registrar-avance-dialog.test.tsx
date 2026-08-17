@@ -6,10 +6,19 @@ import { toast } from "sonner";
 import { server } from "../../../../test/msw/server";
 import { renderWithProviders, buildUser } from "../../../../test/render-with-providers";
 import { RegistrarOrdenDialog, RegistrarRecepcionDialog, RegistrarEntregaDialog } from "./registrar-avance-dialog";
-import { hoyISO } from "../lib/fecha";
 import type { ItemCompra } from "../types";
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+
+// Fix post-verify W4/W5: `hoyISO()` real depende del reloj del sistema — un
+// assert que importa `hoyISO` de la implementación y compara contra
+// `hoyISO()` pasa por construcción, sin importar el comportamiento real
+// (el patrón "el test consagra el síntoma"). Se mockea con un valor FIJO:
+// el componente bajo test sigue llamando a `hoyISO()` (dependencia real
+// ejercitada), pero el assert compara contra el literal `HOY_FIJO`, nunca
+// contra la función.
+const HOY_FIJO = "2026-02-10";
+vi.mock("../lib/fecha", () => ({ hoyISO: () => HOY_FIJO }));
 
 const COMPRA_ID = "compra-1";
 
@@ -61,7 +70,7 @@ describe("RegistrarOrdenDialog", () => {
     expect(screen.getByRole("button", { name: /registrar orden/i })).not.toBeDisabled();
     await abrirDialog(/registrar orden/i);
     expect(await screen.findByLabelText(/cantidad ordenada/i)).toHaveValue(10);
-    expect(screen.getByLabelText(/^fecha$/i)).toHaveValue(hoyISO());
+    expect(screen.getByLabelText(/^fecha$/i)).toHaveValue(HOY_FIJO);
   });
 
   it("S47: con ítem PENDIENTE (no aprobado), el botón queda deshabilitado", async () => {
@@ -93,11 +102,16 @@ describe("RegistrarOrdenDialog", () => {
     await user.click(screen.getByRole("button", { name: /^guardar$/i }));
 
     await waitFor(() => expect(capturedBody.cantidadOrdenada).toBe(6));
-    expect(capturedBody.fecha).toBe(hoyISO());
+    expect(capturedBody.fecha).toBe(HOY_FIJO);
   });
 
-  it("muestra el error de dominio del backend (422, S45 exceso) al usuario", async () => {
-    const MENSAJE_BACKEND = "La cantidad ordenada excede la solicitada.";
+  // Fix post-verify W12: el nombre decía "S45 exceso" pero el mock devolvía
+  // un mensaje 422 ARBITRARIO — no ejercitaba la regla de dominio S45
+  // (`CantidadOrdenadaExcedeSolicitadaError`), solo que "un 422 cualquiera
+  // muestra un toast". Ese comportamiento genérico SIGUE siendo válido de
+  // probar, pero el nombre ahora dice lo que hace de verdad.
+  it("muestra en un toast CUALQUIER mensaje 422 devuelto por el backend (genérico, no específico de S45)", async () => {
+    const MENSAJE_BACKEND = "Mensaje de error genérico del backend.";
     server.use(
       http.post(`/api/compras/${COMPRA_ID}/items/item-1/registrar-orden`, () =>
         HttpResponse.json({ statusCode: 422, message: MENSAJE_BACKEND }, { status: 422 }),
@@ -111,10 +125,38 @@ describe("RegistrarOrdenDialog", () => {
     const user = await abrirDialog(/registrar orden/i);
     const campo = await screen.findByLabelText(/cantidad ordenada/i);
     await user.clear(campo);
-    await user.type(campo, "99");
+    await user.type(campo, "1");
     await user.click(screen.getByRole("button", { name: /^guardar$/i }));
 
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith(MENSAJE_BACKEND));
+  });
+
+  // Fix post-verify W12: el test que SÍ cubre S45 — sin bound de `max` en el
+  // schema de `cantidadOrdenada` (ver `schemas.ts`), el ÚNICO enforcement de
+  // "no ordenar más de lo pedido" es el backend
+  // (`CantidadOrdenadaExcedeSolicitadaError`). Mensaje REAL de esa clase
+  // (`compras.errors.ts`), valor enviado (99) genuinamente en exceso sobre
+  // `item.cantidad` (10, `buildItem()` default).
+  it("S45: cantidadOrdenada > item.cantidad -> el 422 de CantidadOrdenadaExcedeSolicitadaError llega al usuario en un toast", async () => {
+    const MENSAJE_S45 =
+      'La cantidad ordenada registrada para el ítem "item-1" excede la cantidad solicitada.';
+    server.use(
+      http.post(`/api/compras/${COMPRA_ID}/items/item-1/registrar-orden`, () =>
+        HttpResponse.json({ statusCode: 422, message: MENSAJE_S45 }, { status: 422 }),
+      ),
+    );
+
+    renderWithProviders(<RegistrarOrdenDialog compraId={COMPRA_ID} item={buildItem({ cantidad: 10 })} />, {
+      user: buildUser({ permisos: ["COMPRAS:MODIFICACION"] }),
+    });
+
+    const user = await abrirDialog(/registrar orden/i);
+    const campo = await screen.findByLabelText(/cantidad ordenada/i);
+    await user.clear(campo);
+    await user.type(campo, "99");
+    await user.click(screen.getByRole("button", { name: /^guardar$/i }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(MENSAJE_S45));
   });
 });
 
@@ -133,7 +175,7 @@ describe("RegistrarRecepcionDialog", () => {
     renderWithProviders(
       <RegistrarRecepcionDialog
         compraId={COMPRA_ID}
-        item={buildItem({ cantidadOrdenada: 4, cantidadRecibida: 4, fechaRecepcion: `${hoyISO()}T00:00:00.000Z` })}
+        item={buildItem({ cantidadOrdenada: 4, cantidadRecibida: 4, fechaRecepcion: `${HOY_FIJO}T00:00:00.000Z` })}
       />,
       { user: buildUser({ permisos: ["COMPRAS:MODIFICACION"] }) },
     );

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { TicketsModule } from '../tickets/tickets.module';
+import { SectoresModule } from '../sectores/sectores.module';
 
 import {
   ITenantTransactionRunner,
@@ -10,6 +11,7 @@ import {
   CICLO_CLIENTE_REPOSITORY,
   ICicloClienteRepository,
 } from '../tickets/domain/ports/i-ciclo-cliente.repository';
+import { SECTOR_REPOSITORY, ISectorRepository } from '../sectores/domain/ports/i-sector.repository';
 
 import { COMPRA_REPOSITORY, ICompraRepository } from './domain/ports/i-compra.repository';
 import { PrismaCompraRepository } from './infrastructure/persistence/prisma/prisma-compra.repository';
@@ -83,7 +85,7 @@ import { ComprasController } from './interface/controllers/compras.controller';
  * USO, ADR-C2, ADR-C4, ADR-C5. Ref tasks: PR-22 (cierra la FASE E).
  */
 @Module({
-  imports: [AuthModule, TicketsModule],
+  imports: [AuthModule, TicketsModule, SectoresModule],
   controllers: [ComprasController],
   providers: [
     { provide: COMPRA_REPOSITORY, useClass: PrismaCompraRepository },
@@ -113,6 +115,7 @@ import { ComprasController } from './interface/controllers/compras.controller';
         compraRepo: ICompraRepository,
         numerador: NumeradorCompra,
         resolverCicloActivo: ResolverCicloActivoCompra,
+        sectorRepo: ISectorRepository,
         registrarOperacion: RegistrarOperacionCompra,
         txRunner: ITenantTransactionRunner,
       ) =>
@@ -120,13 +123,17 @@ import { ComprasController } from './interface/controllers/compras.controller';
           compraRepo,
           numerador,
           resolverCicloActivo,
+          sectorRepo,
           registrarOperacion,
           txRunner,
         ),
+      // Fix post-verify W6: agrega SECTOR_REPOSITORY (importado de
+      // SectoresModule, WU-09) para validar `sectorId` ANTES del INSERT.
       inject: [
         COMPRA_REPOSITORY,
         NumeradorCompra,
         ResolverCicloActivoCompra,
+        SECTOR_REPOSITORY,
         RegistrarOperacionCompra,
         TENANT_TX_RUNNER,
       ],

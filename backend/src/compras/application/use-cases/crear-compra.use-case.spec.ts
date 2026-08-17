@@ -16,9 +16,11 @@ import { CrearCompraUseCase, CrearCompraDto } from './crear-compra.use-case';
 import { Result } from '../../../shared/domain/result';
 import { CompraEntity } from '../../domain/entities/compra.entity';
 import { CicloClienteEntity } from '../../../tickets/domain/entities/ciclo-cliente.entity';
+import { SectorEntity } from '../../../sectores/domain/entities/sector.entity';
 import {
   SinCicloActivoError,
   NumeradorCompraAgotadoError,
+  SectorInexistenteError,
 } from '../../domain/errors/compras.errors';
 
 function baseDto(overrides: Partial<CrearCompraDto> = {}): CrearCompraDto {
@@ -56,16 +58,33 @@ describe('CrearCompraUseCase', () => {
     // txRunner.run ejecuta el callback DIRECTAMENTE (sin Prisma real) — pero
     // preserva la semántica "corre dentro de la tx" para los tests.
     const txRunner = { run: vi.fn((fn: () => Promise<unknown>) => fn()) };
+    // Fix post-verify W6: por default resuelve CUALQUIER sectorId a un
+    // sector real — los tests que quieren "sector inexistente" pisan el
+    // mock a `null` explícitamente.
+    const sectorRepo = {
+      findById: vi
+        .fn()
+        .mockResolvedValue(SectorEntity.create({ codigo: 'A', nombre: 'A' }, 'sector-1')),
+    };
 
     const useCase = new CrearCompraUseCase(
       compraRepo as never,
       numerador as never,
       resolverCicloActivo as never,
+      sectorRepo as never,
       registrarOperacion as never,
       txRunner as never,
     );
 
-    return { useCase, compraRepo, numerador, resolverCicloActivo, registrarOperacion, txRunner };
+    return {
+      useCase,
+      compraRepo,
+      numerador,
+      resolverCicloActivo,
+      sectorRepo,
+      registrarOperacion,
+      txRunner,
+    };
   }
 
   it('S1: crea la compra con el numerador, solicitanteId=JWT.sub y cicloId del ciclo activo, dentro de la tx', async () => {
@@ -97,6 +116,34 @@ describe('CrearCompraUseCase', () => {
     const c = makeCollaborators();
     const result = await c.useCase.execute(baseDto({ sectorId: 'sector-1' }));
     expect(result.getValue().sectorId).toBe('sector-1');
+    expect(c.sectorRepo.findById).toHaveBeenCalledWith('sector-1');
+  });
+
+  // Fix post-verify W6: sin este guard, un `sectorId` con formato válido
+  // pero inexistente pasaba de largo hasta el `INSERT`, donde el FK
+  // (`compras_sector_id_fkey`) lo rechazaba como un `PrismaClientKnownRequestError`
+  // sin mapear -> 500 alcanzable por HTTP. Ahora se valida ANTES de la tx,
+  // mismo criterio fail-fast que S2 (ciclo activo).
+  it('W6: sectorId que NO existe -> SectorInexistenteError, SIN abrir la tx ni consumir el numerador', async () => {
+    const c = makeCollaborators();
+    c.sectorRepo.findById.mockResolvedValue(null);
+
+    const result = await c.useCase.execute(baseDto({ sectorId: 'sector-inexistente' }));
+
+    expect(result.isFail()).toBe(true);
+    expect(result.getError()).toBeInstanceOf(SectorInexistenteError);
+    expect(c.numerador.generarNumero).not.toHaveBeenCalled();
+    expect(c.txRunner.run).not.toHaveBeenCalled();
+    expect(c.compraRepo.guardar).not.toHaveBeenCalled();
+    expect(c.registrarOperacion.registrar).not.toHaveBeenCalled();
+  });
+
+  it('W6 (hermano): sin sectorId en el dto, NUNCA consulta sectorRepo (nada que validar)', async () => {
+    const c = makeCollaborators();
+
+    await c.useCase.execute(baseDto());
+
+    expect(c.sectorRepo.findById).not.toHaveBeenCalled();
   });
 
   it('S35: registra exactamente 1 OperacionCompra de tipo CREACION en la creación exitosa', async () => {
