@@ -2,12 +2,12 @@
  * PR-18 [UNIT] — RED→GREEN: `CancelarCompraUseCase`.
  *
  * Todos los puertos/colaboradores mockeados (`vi.fn`) — sin DB. Cubre:
- * - S27: cancelar una compra CON ítems pero SIN compras registradas (todos
- *   `cantidadComprada=0`) -> OK.
+ * - S27: cancelar una compra CON ítems pero SIN orden emitida (todos
+ *   `cantidadOrdenada=0`) -> OK.
  * - S28: compra ya cerrada (todos los aprobados entregados o cerrados con
  *   faltante) -> `CompraYaCerradaError`, sin tocar la tx.
- * - S29: algún ítem activo con `cantidadComprada > 0` ->
- *   `CompraConComprasRegistradasError`, sin tocar la tx.
+ * - S29 (WU-21, R13): algún ítem activo con `cantidadOrdenada > 0` ->
+ *   `CompraConOrdenEmitidaError`, sin tocar la tx.
  * - S30: compra ya cancelada -> `CompraYaCanceladaError`, sin tocar la tx.
  * - S31 — el borde que NO debe bloquearse: cancelar una compra SIN ÍTEMS
  *   (`items=[]`) está PERMITIDO. La guarda de S29 es EXISTENCIAL
@@ -31,7 +31,7 @@ import { CancelarCompraUseCase, CancelarCompraDto } from './cancelar-compra.use-
 import { CompraEntity, CompraProps } from '../../domain/entities/compra.entity';
 import { ItemCompraEntity, ItemCompraCreateProps } from '../../domain/entities/item-compra.entity';
 import {
-  CompraConComprasRegistradasError,
+  CompraConOrdenEmitidaError,
   CompraNoEncontradaError,
   CompraYaCanceladaError,
   CompraYaCerradaError,
@@ -132,7 +132,7 @@ describe('CancelarCompraUseCase', () => {
   it('Regla 0: tras cancelar, el estado es CANCELADO aunque TODOS los ítems activos estén APROBADOS', async () => {
     const c = makeCollaborators();
     const item = ItemCompraEntity.create(crearItemPropsValidas());
-    item.aprobar('aprobador-1'); // APROBADO, sin cantidadComprada -> no dispara S29
+    item.aprobar('aprobador-1'); // APROBADO, sin orden emitida -> no dispara S29
     const compra = crearCompra([item]);
     c.compraRepo.findByIdConItems.mockResolvedValue(compra);
 
@@ -187,8 +187,9 @@ describe('CancelarCompraUseCase', () => {
     const c = makeCollaborators();
     const item = ItemCompraEntity.create(crearItemPropsValidas());
     item.aprobar('aprobador-1');
-    item.registrarCompra(10);
-    item.registrarEntrega(10); // comprado=true, entregado=true -> compra.cerrado=true
+    item.registrarOrden(10, new Date('2026-01-16'));
+    item.registrarRecepcion(10, new Date('2026-01-17'));
+    item.registrarEntrega(10, new Date('2026-01-18')); // comprado=true, entregado=true -> compra.cerrado=true
     const compra = crearCompra([item]);
     c.compraRepo.findByIdConItems.mockResolvedValue(compra);
 
@@ -200,18 +201,18 @@ describe('CancelarCompraUseCase', () => {
     expect(c.registrarOperacionCompra.registrar).not.toHaveBeenCalled();
   });
 
-  it('S29: algún ítem activo con cantidadComprada > 0 -> CompraConComprasRegistradasError, sin tocar la tx', async () => {
+  it('S29 (WU-21, R13): algún ítem activo con cantidadOrdenada > 0 -> CompraConOrdenEmitidaError, sin tocar la tx', async () => {
     const c = makeCollaborators();
     const item = ItemCompraEntity.create(crearItemPropsValidas());
     item.aprobar('aprobador-1');
-    item.registrarCompra(4); // parcial, cerrado=false, pero cantidadComprada>0
+    item.registrarOrden(4, new Date('2026-01-16')); // orden emitida, pero nada recibido todavía
     const compra = crearCompra([item]);
     c.compraRepo.findByIdConItems.mockResolvedValue(compra);
 
     const result = await c.useCase.execute(baseDto());
 
     expect(result.isFail()).toBe(true);
-    expect(result.getError()).toBeInstanceOf(CompraConComprasRegistradasError);
+    expect(result.getError()).toBeInstanceOf(CompraConOrdenEmitidaError);
     expect(c.txRunner.run).not.toHaveBeenCalled();
     expect(c.registrarOperacionCompra.registrar).not.toHaveBeenCalled();
   });

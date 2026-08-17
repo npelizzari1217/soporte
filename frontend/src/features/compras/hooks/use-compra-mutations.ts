@@ -38,9 +38,11 @@ import type {
   CerrarItemConFaltanteDto,
   CompraDetalle,
   CrearCompraDto,
+  EditarFechaEtapaDto,
   EditarItemCompraDto,
   ItemCompra,
-  RegistrarCompraDeItemDto,
+  RegistrarOrdenDeItemDto,
+  RegistrarRecepcionDeItemDto,
   RegistrarEntregaDeItemDto,
 } from "../types";
 
@@ -133,24 +135,45 @@ export function useRechazarItemCompra(compraId: string) {
   });
 }
 
-/** `POST .../registrar-compra` (§4.5, S15-S18). `cantidadComprada` es ACUMULADO, no delta. */
-export function useRegistrarCompraDeItem(compraId: string) {
+/** `POST .../registrar-orden` (R1, S42/S45-S47) — PRIMERA de las tres etapas. `cantidadOrdenada` es ACUMULADO, no delta. */
+export function useRegistrarOrdenDeItem(compraId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ itemId, dto }: { itemId: string; dto: RegistrarCompraDeItemDto }) =>
-      apiFetch<ItemCompra>(`compras/${compraId}/items/${itemId}/registrar-compra`, {
+    mutationFn: ({ itemId, dto }: { itemId: string; dto: RegistrarOrdenDeItemDto }) =>
+      apiFetch<ItemCompra>(`compras/${compraId}/items/${itemId}/registrar-orden`, {
         method: "POST",
         json: dto,
       }),
     onSuccess: () => {
       invalidateCompraQueries(queryClient, compraId);
-      notifySuccess("Compra registrada.");
+      notifySuccess("Orden registrada.");
     },
     onError: notifyError,
   });
 }
 
-/** `POST .../registrar-entrega` (§4.6, S19-S21). `cantidadEntregada` es ACUMULADO, no delta. */
+/**
+ * `POST .../registrar-recepcion` (R1, S42-S43/S46) — SEGUNDA de las tres
+ * etapas. **Rename de ruta** (WU-26): reemplaza a `useRegistrarCompraDeItem`
+ * / `registrar-compra`. `cantidadRecibida` es ACUMULADO, no delta.
+ */
+export function useRegistrarRecepcionDeItem(compraId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ itemId, dto }: { itemId: string; dto: RegistrarRecepcionDeItemDto }) =>
+      apiFetch<ItemCompra>(`compras/${compraId}/items/${itemId}/registrar-recepcion`, {
+        method: "POST",
+        json: dto,
+      }),
+    onSuccess: () => {
+      invalidateCompraQueries(queryClient, compraId);
+      notifySuccess("Recepción registrada.");
+    },
+    onError: notifyError,
+  });
+}
+
+/** `POST .../registrar-entrega` (R1, S42/S44/S46) — TERCERA etapa. `cantidadEntregada` es ACUMULADO, no delta. */
 export function useRegistrarEntregaDeItem(compraId: string) {
   const queryClient = useQueryClient();
   return useMutation({
@@ -162,6 +185,23 @@ export function useRegistrarEntregaDeItem(compraId: string) {
     onSuccess: () => {
       invalidateCompraQueries(queryClient, compraId);
       notifySuccess("Entrega registrada.");
+    },
+    onError: notifyError,
+  });
+}
+
+/** `PATCH .../fecha-etapa` (R4/S55) — edita la fecha de una etapa ya registrada, independiente de su cantidad. */
+export function useEditarFechaEtapaDeItem(compraId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ itemId, dto }: { itemId: string; dto: EditarFechaEtapaDto }) =>
+      apiFetch<ItemCompra>(`compras/${compraId}/items/${itemId}/fecha-etapa`, {
+        method: "PATCH",
+        json: dto,
+      }),
+    onSuccess: () => {
+      invalidateCompraQueries(queryClient, compraId);
+      notifySuccess("Fecha actualizada.");
     },
     onError: notifyError,
   });

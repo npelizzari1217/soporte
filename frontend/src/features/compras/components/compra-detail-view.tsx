@@ -30,6 +30,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { Can } from "@/components/shared/can";
 import { Badge } from "@/components/ui/badge";
 import { useCompra } from "../hooks/use-compras";
+import { useSectores } from "@/features/sectores/hooks/use-sectores";
 import { formatearTotalesPorMoneda } from "../lib/formatear-totales";
 import { EstadoCompraBadge } from "./estado-compra-badge";
 import { CompraItemsSection } from "./compra-items-section";
@@ -43,6 +44,7 @@ export interface CompraDetailViewProps {
 
 export function CompraDetailView({ compraId }: CompraDetailViewProps) {
   const compraQuery = useCompra(compraId);
+  const sectoresQuery = useSectores();
 
   if (compraQuery.isLoading) return <DetailSkeleton />;
 
@@ -101,6 +103,15 @@ export function CompraDetailView({ compraId }: CompraDetailViewProps) {
           <span className="text-xs text-muted-foreground">Totales por moneda</span>
           <span className="text-sm text-foreground">
             {formatearTotalesPorMoneda(compra.totalesPorMoneda)}
+          </span>
+        </div>
+        {/* WU-27 (R11): sector de destino, si se asignó al crear la compra (S66/S67). */}
+        <div className="flex flex-col gap-1">
+          <span className="text-xs text-muted-foreground">Sector</span>
+          <span className="text-sm text-foreground">
+            {compra.sectorId
+              ? (sectoresQuery.data?.find((s) => s.id === compra.sectorId)?.nombre ?? "—")
+              : "Sin asignar"}
           </span>
         </div>
       </section>

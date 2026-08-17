@@ -190,25 +190,63 @@ export class EditarItemCompraHttpDto {
 }
 
 /**
- * Body de registro de avance (§4.5/§4.6 — `cantidadComprada`/
- * `cantidadEntregada` son ACUMULADOS, no deltas). El exceso/retroceso (S17,
- * S18, S20, S21) NO son throws planos — ya son `Result.fail()` con
- * `DomainError`s del catálogo (`CantidadCompradaExcedeSolicitadaError`, etc.),
- * mapeados por `toHttpException` (PR-21). Este DTO sólo garantiza la FORMA
- * del dato (número, no negativo, 2 decimales como `Decimal(10,2)`) —
- * hardening adicional, no cobertura de uno de los 10 throws planos.
+ * Body de registro de avance de las TRES etapas (R1/R4,
+ * `compras-tres-etapas-y-sectores`) — las tres cantidades son ACUMULADOS,
+ * no deltas. El exceso/retroceso (S43/S45/S46) NO son throws planos — ya
+ * son `Result.fail()` con `DomainError`s del catálogo, mapeados por
+ * `toHttpException`. Este DTO sólo garantiza la FORMA del dato (número, no
+ * negativo, 2 decimales como `Decimal(10,2)`) — hardening adicional.
+ * `fecha` es opcional (R4/S51): sin ella, el dominio prellena con hoy
+ * (Argentina).
  */
-export class RegistrarCompraDeItemHttpDto {
+export class RegistrarOrdenDeItemHttpDto {
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
-  cantidadComprada!: number;
+  cantidadOrdenada!: number;
+
+  @IsOptional()
+  @IsDateString()
+  fecha?: string;
 }
 
-/** Ver `RegistrarCompraDeItemHttpDto` — mismo criterio para `cantidadEntregada`. */
+/**
+ * **Renombrado** (WU-24, `compras-tres-etapas-y-sectores`): reemplaza a
+ * `RegistrarCompraDeItemHttpDto` — "recibida" es la segunda de las tres
+ * etapas. Ver `RegistrarOrdenDeItemHttpDto` para el criterio de `fecha`.
+ */
+export class RegistrarRecepcionDeItemHttpDto {
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  cantidadRecibida!: number;
+
+  @IsOptional()
+  @IsDateString()
+  fecha?: string;
+}
+
+/** Ver `RegistrarOrdenDeItemHttpDto` — mismo criterio para `cantidadEntregada`. */
 export class RegistrarEntregaDeItemHttpDto {
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   cantidadEntregada!: number;
+
+  @IsOptional()
+  @IsDateString()
+  fecha?: string;
+}
+
+/**
+ * Body de `PATCH /compras/:id/items/:itemId/fecha-etapa` (R4/S55) — edita
+ * la fecha de una etapa YA registrada, de forma independiente de su
+ * cantidad. `etapa` restringido al catálogo cerrado de `ETAPAS_EJECUCION`
+ * (ADR-T1).
+ */
+export class EditarFechaEtapaHttpDto {
+  @IsIn(['ORDEN', 'RECEPCION', 'ENTREGA'])
+  etapa!: 'ORDEN' | 'RECEPCION' | 'ENTREGA';
+
+  @IsDateString()
+  fecha!: string;
 }
 
 /**
@@ -300,8 +338,14 @@ export interface ItemCompraResponseDto {
   /** ADR-C6: nombres neutros — también se escriben en el RECHAZO. */
   decididoPorId: string | null;
   decididoEn: string | null;
-  cantidadComprada: number;
+  cantidadOrdenada: number;
+  cantidadRecibida: number;
   cantidadEntregada: number;
+  fechaOrden: string | null;
+  fechaRecepcion: string | null;
+  fechaEntrega: string | null;
+  /** Total de este ítem (`monto × cantidad`, WU-24 R6/ADR-T12) — derivado, no persistido. */
+  totalItem: number;
   cerradoConFaltante: boolean;
   motivoCierreFaltante: string | null;
   comprado: boolean;
@@ -325,8 +369,13 @@ export function toItemCompraResponseDto(item: ItemCompraEntity): ItemCompraRespo
     estadoAprobacion: item.estadoAprobacion,
     decididoPorId: item.decididoPorId,
     decididoEn: item.decididoEn ? item.decididoEn.toISOString() : null,
-    cantidadComprada: item.cantidadComprada,
+    cantidadOrdenada: item.cantidadOrdenada,
+    cantidadRecibida: item.cantidadRecibida,
     cantidadEntregada: item.cantidadEntregada,
+    fechaOrden: item.fechaOrden ? item.fechaOrden.toISOString() : null,
+    fechaRecepcion: item.fechaRecepcion ? item.fechaRecepcion.toISOString() : null,
+    fechaEntrega: item.fechaEntrega ? item.fechaEntrega.toISOString() : null,
+    totalItem: item.totalItem,
     cerradoConFaltante: item.cerradoConFaltante,
     motivoCierreFaltante: item.motivoCierreFaltante,
     comprado: item.comprado,

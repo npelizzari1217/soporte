@@ -76,7 +76,8 @@ describe('AgregarItemCompraUseCase', () => {
     expect(compra.items).toHaveLength(1);
     const item = compra.items[0];
     expect(item.estadoAprobacion).toBe('PENDIENTE');
-    expect(item.cantidadComprada).toBe(0);
+    expect(item.cantidadOrdenada).toBe(0);
+    expect(item.cantidadRecibida).toBe(0);
     expect(item.cantidadEntregada).toBe(0);
     expect(item.descripcion).toBe('Resma de papel A4');
 

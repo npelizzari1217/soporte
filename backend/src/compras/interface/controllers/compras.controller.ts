@@ -92,8 +92,10 @@ import { EditarItemCompraUseCase } from '../../application/use-cases/editar-item
 import { EliminarItemCompraUseCase } from '../../application/use-cases/eliminar-item-compra.use-case';
 import { AprobarItemCompraUseCase } from '../../application/use-cases/aprobar-item-compra.use-case';
 import { RechazarItemCompraUseCase } from '../../application/use-cases/rechazar-item-compra.use-case';
-import { RegistrarCompraDeItemUseCase } from '../../application/use-cases/registrar-compra-de-item.use-case';
+import { RegistrarOrdenDeItemUseCase } from '../../application/use-cases/registrar-orden-de-item.use-case';
+import { RegistrarRecepcionDeItemUseCase } from '../../application/use-cases/registrar-recepcion-de-item.use-case';
 import { RegistrarEntregaDeItemUseCase } from '../../application/use-cases/registrar-entrega-de-item.use-case';
+import { EditarFechaEtapaDeItemUseCase } from '../../application/use-cases/editar-fecha-etapa-de-item.use-case';
 import { CerrarItemConFaltanteUseCase } from '../../application/use-cases/cerrar-item-con-faltante.use-case';
 import { CancelarCompraUseCase } from '../../application/use-cases/cancelar-compra.use-case';
 import { ListarComprasUseCase } from '../../application/use-cases/listar-compras.use-case';
@@ -101,15 +103,19 @@ import { ObtenerCompraUseCase } from '../../application/use-cases/obtener-compra
 import { ListarOperacionesCompraUseCase } from '../../application/use-cases/listar-operaciones-compra.use-case';
 
 import {
-  CantidadCompradaExcedeSolicitadaError,
-  CantidadCompradaRetrocedeError,
-  CantidadEntregadaExcedeCompradaError,
+  CantidadOrdenadaExcedeSolicitadaError,
+  CantidadOrdenadaRetrocedeError,
+  CantidadRecibidaExcedeOrdenadaError,
+  CantidadRecibidaRetrocedeError,
+  CantidadEntregadaExcedeRecibidaError,
   CantidadEntregadaRetrocedeError,
   CompraCanceladaError,
-  CompraConComprasRegistradasError,
+  CompraConOrdenEmitidaError,
   CompraNoEncontradaError,
   CompraYaCanceladaError,
   CompraYaCerradaError,
+  FechaEtapaFuturaError,
+  FechaEtapasFueraDeOrdenError,
   ItemCompraAprobadoNoEliminableError,
   ItemCompraCongeladoError,
   ItemCompraNoAprobadoError,
@@ -128,12 +134,14 @@ import {
   CerrarItemConFaltanteHttpDto,
   CompraDetalleResponseDto,
   CrearCompraHttpDto,
+  EditarFechaEtapaHttpDto,
   EditarItemCompraHttpDto,
   ItemCompraResponseDto,
   ListarComprasQueryDto,
   ListarComprasResponseDto,
   OperacionCompraResponseDto,
-  RegistrarCompraDeItemHttpDto,
+  RegistrarOrdenDeItemHttpDto,
+  RegistrarRecepcionDeItemHttpDto,
   RegistrarEntregaDeItemHttpDto,
   toCompraDetalleResponseDto,
   toItemCompraResponseDto,
@@ -161,18 +169,25 @@ export function toHttpException(
     error instanceof CompraCanceladaError ||
     error instanceof CompraYaCanceladaError ||
     error instanceof CompraYaCerradaError ||
-    error instanceof CompraConComprasRegistradasError ||
+    error instanceof CompraConOrdenEmitidaError ||
     error instanceof ItemCompraAprobadoNoEliminableError ||
     error instanceof ItemCompraYaDecididoError ||
     error instanceof ItemCompraCongeladoError ||
     error instanceof ItemCompraNoAprobadoError ||
-    error instanceof CantidadCompradaExcedeSolicitadaError ||
-    error instanceof CantidadCompradaRetrocedeError ||
-    error instanceof CantidadEntregadaExcedeCompradaError ||
+    error instanceof CantidadOrdenadaExcedeSolicitadaError ||
+    error instanceof CantidadOrdenadaRetrocedeError ||
+    error instanceof CantidadRecibidaExcedeOrdenadaError ||
+    error instanceof CantidadRecibidaRetrocedeError ||
+    error instanceof CantidadEntregadaExcedeRecibidaError ||
     error instanceof CantidadEntregadaRetrocedeError ||
     error instanceof ItemCompraYaCerradoError ||
     error instanceof ItemSinFaltanteError ||
-    error instanceof MotivoCierreFaltanteRequeridoError
+    error instanceof MotivoCierreFaltanteRequeridoError ||
+    // WU-24 (compras-tres-etapas-y-sectores, R-4 del design): un error
+    // nuevo que nadie mapea sale como 500, no como 422 — precedente idéntico
+    // ya ocurrido en este módulo (ver `resolver-ciclo-activo-compra.service.ts`).
+    error instanceof FechaEtapaFuturaError ||
+    error instanceof FechaEtapasFueraDeOrdenError
   ) {
     return new UnprocessableEntityException(error.message);
   }
@@ -193,8 +208,10 @@ export class ComprasController {
     private readonly eliminarItemCompraUseCase: EliminarItemCompraUseCase,
     private readonly aprobarItemCompraUseCase: AprobarItemCompraUseCase,
     private readonly rechazarItemCompraUseCase: RechazarItemCompraUseCase,
-    private readonly registrarCompraDeItemUseCase: RegistrarCompraDeItemUseCase,
+    private readonly registrarOrdenDeItemUseCase: RegistrarOrdenDeItemUseCase,
+    private readonly registrarRecepcionDeItemUseCase: RegistrarRecepcionDeItemUseCase,
     private readonly registrarEntregaDeItemUseCase: RegistrarEntregaDeItemUseCase,
+    private readonly editarFechaEtapaDeItemUseCase: EditarFechaEtapaDeItemUseCase,
     private readonly cerrarItemConFaltanteUseCase: CerrarItemConFaltanteUseCase,
     private readonly cancelarCompraUseCase: CancelarCompraUseCase,
     private readonly listarComprasUseCase: ListarComprasUseCase,
@@ -383,27 +400,62 @@ export class ComprasController {
   }
 
   /**
-   * POST /compras/:id/items/:itemId/registrar-compra
-   * Registra el ACUMULADO de cantidad comprada de un ítem aprobado (§4.5,
-   * S15-S18). `cantidadComprada` es el total acumulado, no un delta.
+   * POST /compras/:id/items/:itemId/registrar-orden
+   * Registra el ACUMULADO de cantidad ordenada de un ítem aprobado — PRIMERA
+   * de las tres etapas (`compras-tres-etapas-y-sectores` R1, S42, S45-S47).
    * @throws 404 compra o ítem inexistente
-   * @throws 422 compra cancelada, ítem no aprobado (S16), exceso (S17),
-   *             retroceso (S18), o ítem ya cerrado con faltante (S25)
+   * @throws 422 compra cancelada, ítem no aprobado (S47), exceso (S45),
+   *             retroceso (S46), fecha futura/fuera de orden (S53-S55), o
+   *             ítem ya cerrado con faltante (S48)
    */
-  @Post(':id/items/:itemId/registrar-compra')
+  @Post(':id/items/:itemId/registrar-orden')
   @RequiereAcciones('COMPRAS:MODIFICACION')
   @HttpCode(HttpStatus.OK)
-  async registrarCompraDeItem(
+  async registrarOrdenDeItem(
     @CurrentUser() user: JwtPayload,
     @Param('id') id: string,
     @Param('itemId') itemId: string,
-    @Body() dto: RegistrarCompraDeItemHttpDto,
+    @Body() dto: RegistrarOrdenDeItemHttpDto,
   ): Promise<ItemCompraResponseDto> {
-    const result = await this.registrarCompraDeItemUseCase.execute({
+    const result = await this.registrarOrdenDeItemUseCase.execute({
       compraId: id,
       itemId,
       usuarioId: user.sub,
-      cantidadComprada: dto.cantidadComprada,
+      cantidadOrdenada: dto.cantidadOrdenada,
+      ...(dto.fecha !== undefined && { fecha: new Date(dto.fecha) }),
+    });
+
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+    return toItemCompraResponseDto(result.getValue());
+  }
+
+  /**
+   * POST /compras/:id/items/:itemId/registrar-recepcion
+   * Registra el ACUMULADO de cantidad recibida de un ítem con orden emitida
+   * — SEGUNDA de las tres etapas (R1, S42-S43, S46). **Rename de ruta**
+   * (WU-24): reemplaza a `registrar-compra`.
+   * @throws 404 compra o ítem inexistente
+   * @throws 422 compra cancelada, ítem no aprobado, exceso (S43), retroceso
+   *             (S46), fecha futura/fuera de orden, o ítem ya cerrado con
+   *             faltante
+   */
+  @Post(':id/items/:itemId/registrar-recepcion')
+  @RequiereAcciones('COMPRAS:MODIFICACION')
+  @HttpCode(HttpStatus.OK)
+  async registrarRecepcionDeItem(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Param('itemId') itemId: string,
+    @Body() dto: RegistrarRecepcionDeItemHttpDto,
+  ): Promise<ItemCompraResponseDto> {
+    const result = await this.registrarRecepcionDeItemUseCase.execute({
+      compraId: id,
+      itemId,
+      usuarioId: user.sub,
+      cantidadRecibida: dto.cantidadRecibida,
+      ...(dto.fecha !== undefined && { fecha: new Date(dto.fecha) }),
     });
 
     if (result.isFail()) {
@@ -414,11 +466,13 @@ export class ComprasController {
 
   /**
    * POST /compras/:id/items/:itemId/registrar-entrega
-   * Registra el ACUMULADO de cantidad entregada de un ítem (§4.6, S19-S21).
-   * `cantidadEntregada` es el total acumulado, no un delta.
+   * Registra el ACUMULADO de cantidad entregada de un ítem — TERCERA de las
+   * tres etapas (R1, S42, S44, S46-S47). `cantidadEntregada` es el total
+   * acumulado, no un delta.
    * @throws 404 compra o ítem inexistente
-   * @throws 422 compra cancelada, exceso sobre lo comprado (S20), retroceso
-   *             (S21), o ítem ya cerrado con faltante (S25)
+   * @throws 422 compra cancelada, ítem no aprobado (S47, endurecimiento
+   *             real), exceso sobre lo recibido (S44), retroceso (S46),
+   *             fecha futura/fuera de orden, o ítem ya cerrado con faltante
    */
   @Post(':id/items/:itemId/registrar-entrega')
   @RequiereAcciones('COMPRAS:MODIFICACION')
@@ -434,6 +488,38 @@ export class ComprasController {
       itemId,
       usuarioId: user.sub,
       cantidadEntregada: dto.cantidadEntregada,
+      ...(dto.fecha !== undefined && { fecha: new Date(dto.fecha) }),
+    });
+
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+    return toItemCompraResponseDto(result.getValue());
+  }
+
+  /**
+   * PATCH /compras/:id/items/:itemId/fecha-etapa
+   * Edita la fecha de una etapa YA registrada, de forma independiente de su
+   * cantidad (R4/S55).
+   * @throws 404 compra o ítem inexistente
+   * @throws 422 compra cancelada, fecha futura/fuera de orden, o ítem ya
+   *             cerrado con faltante
+   */
+  @Patch(':id/items/:itemId/fecha-etapa')
+  @RequiereAcciones('COMPRAS:MODIFICACION')
+  @HttpCode(HttpStatus.OK)
+  async editarFechaEtapaDeItem(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Param('itemId') itemId: string,
+    @Body() dto: EditarFechaEtapaHttpDto,
+  ): Promise<ItemCompraResponseDto> {
+    const result = await this.editarFechaEtapaDeItemUseCase.execute({
+      compraId: id,
+      itemId,
+      usuarioId: user.sub,
+      etapa: dto.etapa,
+      fecha: new Date(dto.fecha),
     });
 
     if (result.isFail()) {

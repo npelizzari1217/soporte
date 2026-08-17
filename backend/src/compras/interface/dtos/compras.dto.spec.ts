@@ -6,8 +6,10 @@ import {
   CrearCompraHttpDto,
   AgregarItemCompraHttpDto,
   EditarItemCompraHttpDto,
-  RegistrarCompraDeItemHttpDto,
+  RegistrarOrdenDeItemHttpDto,
+  RegistrarRecepcionDeItemHttpDto,
   RegistrarEntregaDeItemHttpDto,
+  EditarFechaEtapaHttpDto,
   CerrarItemConFaltanteHttpDto,
   CancelarCompraHttpDto,
   ListarComprasQueryDto,
@@ -152,17 +154,36 @@ describe('EditarItemCompraHttpDto', () => {
   });
 });
 
-describe('RegistrarCompraDeItemHttpDto', () => {
-  it('acepta cantidadComprada válida', async () => {
-    const dto = plainToInstance(RegistrarCompraDeItemHttpDto, { cantidadComprada: 1 });
+describe('RegistrarOrdenDeItemHttpDto', () => {
+  it('acepta cantidadOrdenada válida, con y sin fecha', async () => {
+    const sinFecha = plainToInstance(RegistrarOrdenDeItemHttpDto, { cantidadOrdenada: 1 });
+    expect(await validate(sinFecha)).toHaveLength(0);
+
+    const conFecha = plainToInstance(RegistrarOrdenDeItemHttpDto, {
+      cantidadOrdenada: 1,
+      fecha: '2026-08-17',
+    });
+    expect(await validate(conFecha)).toHaveLength(0);
+  });
+
+  it('rechaza cantidadOrdenada negativa', async () => {
+    const dto = plainToInstance(RegistrarOrdenDeItemHttpDto, { cantidadOrdenada: -1 });
+    const errores = await validate(dto);
+    expect(errores.some((e) => e.property === 'cantidadOrdenada')).toBe(true);
+  });
+});
+
+describe('RegistrarRecepcionDeItemHttpDto', () => {
+  it('acepta cantidadRecibida válida', async () => {
+    const dto = plainToInstance(RegistrarRecepcionDeItemHttpDto, { cantidadRecibida: 1 });
     const errores = await validate(dto);
     expect(errores).toHaveLength(0);
   });
 
-  it('rechaza cantidadComprada negativa', async () => {
-    const dto = plainToInstance(RegistrarCompraDeItemHttpDto, { cantidadComprada: -1 });
+  it('rechaza cantidadRecibida negativa', async () => {
+    const dto = plainToInstance(RegistrarRecepcionDeItemHttpDto, { cantidadRecibida: -1 });
     const errores = await validate(dto);
-    expect(errores.some((e) => e.property === 'cantidadComprada')).toBe(true);
+    expect(errores.some((e) => e.property === 'cantidadRecibida')).toBe(true);
   });
 });
 
@@ -177,6 +198,19 @@ describe('RegistrarEntregaDeItemHttpDto', () => {
     const dto = plainToInstance(RegistrarEntregaDeItemHttpDto, { cantidadEntregada: -1 });
     const errores = await validate(dto);
     expect(errores.some((e) => e.property === 'cantidadEntregada')).toBe(true);
+  });
+});
+
+describe('EditarFechaEtapaHttpDto', () => {
+  it('acepta etapa del catálogo cerrado + fecha válida', async () => {
+    const dto = plainToInstance(EditarFechaEtapaHttpDto, { etapa: 'ORDEN', fecha: '2026-08-17' });
+    expect(await validate(dto)).toHaveLength(0);
+  });
+
+  it('rechaza una etapa fuera del catálogo cerrado', async () => {
+    const dto = plainToInstance(EditarFechaEtapaHttpDto, { etapa: 'FOO', fecha: '2026-08-17' });
+    const errores = await validate(dto);
+    expect(errores.some((e) => e.property === 'etapa')).toBe(true);
   });
 });
 
@@ -290,8 +324,12 @@ describe('toCompraDetalleResponseDto', () => {
         estadoAprobacion: 'PENDIENTE',
         decididoPorId: null,
         decididoEn: null,
-        cantidadComprada: 0,
+        cantidadOrdenada: 0,
+        cantidadRecibida: 0,
         cantidadEntregada: 0,
+        fechaOrden: null,
+        fechaRecepcion: null,
+        fechaEntrega: null,
         cerradoConFaltante: false,
         motivoCierreFaltante: null,
       },
@@ -313,8 +351,12 @@ describe('toCompraDetalleResponseDto', () => {
         estadoAprobacion: 'PENDIENTE',
         decididoPorId: null,
         decididoEn: null,
-        cantidadComprada: 0,
+        cantidadOrdenada: 0,
+        cantidadRecibida: 0,
         cantidadEntregada: 0,
+        fechaOrden: null,
+        fechaRecepcion: null,
+        fechaEntrega: null,
         cerradoConFaltante: false,
         motivoCierreFaltante: null,
       },

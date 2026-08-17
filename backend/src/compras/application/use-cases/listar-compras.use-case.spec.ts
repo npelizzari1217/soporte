@@ -89,8 +89,9 @@ describe('ListarComprasUseCase', () => {
     const c = makeCollaborators();
     const item = ItemCompraEntity.create(crearItemPropsValidas(), 'item-1');
     item.aprobar('aprobador-1');
-    item.registrarCompra(2);
-    item.registrarEntrega(2);
+    item.registrarOrden(2, new Date('2026-01-16'));
+    item.registrarRecepcion(2, new Date('2026-01-17'));
+    item.registrarEntrega(2, new Date('2026-01-18'));
     const compra = crearCompra(COMPRA_ID, [item]);
     c.compraRepo.findAllConItems.mockResolvedValue([compra]);
 

@@ -187,6 +187,12 @@ interface RutaEsperada {
     | 'COMPRAS:LECTURA';
 }
 
+/**
+ * WU-25 (`compras-tres-etapas-y-sectores`): 13 -> 15 rutas. `registrar-compra`
+ * se renombra a `registrar-recepcion` (mismo verbo HTTP, mismo gate);
+ * `registrar-orden` es la etapa nueva; `PATCH .../fecha-etapa` es la edición
+ * de fecha independiente (R4/S55).
+ */
 const TABLA_RUTAS: RutaEsperada[] = [
   { metodo: 'POST', path: '/compras', accion: 'COMPRAS:ALTAS' },
   { metodo: 'POST', path: `/compras/${ID}/items`, accion: 'COMPRAS:ALTAS' },
@@ -204,12 +210,22 @@ const TABLA_RUTAS: RutaEsperada[] = [
   },
   {
     metodo: 'POST',
-    path: `/compras/${ID}/items/${ITEM_ID}/registrar-compra`,
+    path: `/compras/${ID}/items/${ITEM_ID}/registrar-orden`,
+    accion: 'COMPRAS:MODIFICACION',
+  },
+  {
+    metodo: 'POST',
+    path: `/compras/${ID}/items/${ITEM_ID}/registrar-recepcion`,
     accion: 'COMPRAS:MODIFICACION',
   },
   {
     metodo: 'POST',
     path: `/compras/${ID}/items/${ITEM_ID}/registrar-entrega`,
+    accion: 'COMPRAS:MODIFICACION',
+  },
+  {
+    metodo: 'PATCH',
+    path: `/compras/${ID}/items/${ITEM_ID}/fecha-etapa`,
     accion: 'COMPRAS:MODIFICACION',
   },
   {
@@ -554,14 +570,22 @@ describe('Compras e2e — contrato HTTP real de las 13 rutas (cierra W-B/W-A del
       expect(aprobar.data.estadoAprobacion).toBe('APROBADO');
       expect(aprobar.data.decididoPorId).toBe(actor.usuarioId);
 
-      const registrarCompra = await httpPost<ItemCompraResponseDto>(
-        `${baseUrl}/compras/${compraId}/items/${itemId}/registrar-compra`,
-        { cantidadComprada: 10 },
+      const registrarOrden = await httpPost<ItemCompraResponseDto>(
+        `${baseUrl}/compras/${compraId}/items/${itemId}/registrar-orden`,
+        { cantidadOrdenada: 10 },
         bearer(actor.accessToken),
       );
-      expect(registrarCompra.status).toBe(200);
-      expect(registrarCompra.data.cantidadComprada).toBe(10);
-      expect(registrarCompra.data.comprado).toBe(true);
+      expect(registrarOrden.status).toBe(200);
+      expect(registrarOrden.data.cantidadOrdenada).toBe(10);
+
+      const registrarRecepcion = await httpPost<ItemCompraResponseDto>(
+        `${baseUrl}/compras/${compraId}/items/${itemId}/registrar-recepcion`,
+        { cantidadRecibida: 10 },
+        bearer(actor.accessToken),
+      );
+      expect(registrarRecepcion.status).toBe(200);
+      expect(registrarRecepcion.data.cantidadRecibida).toBe(10);
+      expect(registrarRecepcion.data.comprado).toBe(true);
 
       const registrarEntrega = await httpPost<ItemCompraResponseDto>(
         `${baseUrl}/compras/${compraId}/items/${itemId}/registrar-entrega`,
@@ -602,7 +626,7 @@ describe('Compras e2e — contrato HTTP real de las 13 rutas (cierra W-B/W-A del
       expect(status).toBe(404);
     });
 
-    it('422 ItemCompraNoAprobadoError: registrar-compra sobre un ítem todavía PENDIENTE (S16)', async () => {
+    it('422 ItemCompraNoAprobadoError: registrar-orden sobre un ítem todavía PENDIENTE (S47)', async () => {
       const actor = await crearActorConPermisos([
         'COMPRAS:ALTAS',
         'COMPRAS:MODIFICACION',
@@ -622,8 +646,8 @@ describe('Compras e2e — contrato HTTP real de las 13 rutas (cierra W-B/W-A del
       const itemId = agregar.data.items[0].id;
 
       const { status } = await httpPost(
-        `${baseUrl}/compras/${crear.data.id}/items/${itemId}/registrar-compra`,
-        { cantidadComprada: 5 },
+        `${baseUrl}/compras/${crear.data.id}/items/${itemId}/registrar-orden`,
+        { cantidadOrdenada: 5 },
         bearer(actor.accessToken),
       );
 

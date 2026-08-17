@@ -54,8 +54,8 @@ describe('WU-10 — SPIKE aislado: field reference de Prisma en un filtro anidad
     // Ítem APROBADO con cantidad_entregada < cantidad (el caso que el
     // predicado de ADR-T5 debe encontrar).
     await client.query(
-      `INSERT INTO items_compra (id, compra_id, descripcion, cantidad, proveedor, monto, moneda, fecha_cotizacion, estado_aprobacion, decidido_por_id, decidido_en, cantidad_comprada, cantidad_entregada, updated_at)
-       VALUES (gen_random_uuid(), $1, 'Item spike', 10, 'Proveedor', 100, 'ARS', '2026-01-01', 'APROBADO', gen_random_uuid(), now(), 10, 4, now())`,
+      `INSERT INTO items_compra (id, compra_id, descripcion, cantidad, proveedor, monto, moneda, fecha_cotizacion, estado_aprobacion, decidido_por_id, decidido_en, cantidad_ordenada, cantidad_recibida, cantidad_entregada, updated_at)
+       VALUES (gen_random_uuid(), $1, 'Item spike', 10, 'Proveedor', 100, 'ARS', '2026-01-01', 'APROBADO', gen_random_uuid(), now(), 10, 10, 4, now())`,
       [compraId],
     );
   });
@@ -215,7 +215,7 @@ describe('WU-11/WU-12 — buildWhere(filtros): predicado "en curso" de 3 términ
 
   interface ItemFixture {
     cantidad?: number;
-    cantidadComprada?: number;
+    cantidadRecibida?: number;
     cantidadEntregada?: number;
     estadoAprobacion?: 'PENDIENTE' | 'APROBADO' | 'RECHAZADO';
     cerradoConFaltante?: boolean;
@@ -224,24 +224,29 @@ describe('WU-11/WU-12 — buildWhere(filtros): predicado "en curso" de 3 términ
 
   async function insertItem(compraId: string, overrides: ItemFixture = {}): Promise<void> {
     const cantidad = overrides.cantidad ?? 10;
-    const cantidadComprada = overrides.cantidadComprada ?? 0;
+    const cantidadRecibida = overrides.cantidadRecibida ?? 0;
     const cantidadEntregada = overrides.cantidadEntregada ?? 0;
     const estadoAprobacion = overrides.estadoAprobacion ?? 'PENDIENTE';
     const cerradoConFaltante = overrides.cerradoConFaltante ?? false;
     const deletedAt = overrides.deletedAt ?? null;
     const decidido = estadoAprobacion !== 'PENDIENTE';
 
+    // cantidad_ordenada (M2, CHECK cantidad_recibida <= cantidad_ordenada):
+    // el filtro "en curso" no distingue por esta columna (solo mira
+    // estadoAprobacion/cantidadEntregada/cerradoConFaltante), así que estos
+    // fixtures la fijan igual a `cantidad` — suficiente holgura para
+    // cualquier `cantidadRecibida` que la matriz use.
     await client.query(
       `INSERT INTO items_compra (
          id, compra_id, descripcion, cantidad, proveedor, monto, moneda, fecha_cotizacion,
          estado_aprobacion, decidido_por_id, decidido_en,
-         cantidad_comprada, cantidad_entregada, cerrado_con_faltante, motivo_cierre_faltante,
+         cantidad_ordenada, cantidad_recibida, cantidad_entregada, cerrado_con_faltante, motivo_cierre_faltante,
          updated_at, deleted_at
        )
        VALUES (
          gen_random_uuid(), $1, 'Item WU-12', $2, 'Proveedor', 100, 'ARS', '2026-01-01',
          $3, $4, $5,
-         $6, $7, $8, $9,
+         $2, $6, $7, $8, $9,
          now(), $10
        )`,
       [
@@ -250,7 +255,7 @@ describe('WU-11/WU-12 — buildWhere(filtros): predicado "en curso" de 3 términ
         estadoAprobacion,
         decidido ? '00000000-0000-4000-8000-000000000ddd' : null,
         decidido ? new Date() : null,
-        cantidadComprada,
+        cantidadRecibida,
         cantidadEntregada,
         cerradoConFaltante,
         cerradoConFaltante ? 'Faltante fixture WU-12' : null,
@@ -273,7 +278,7 @@ describe('WU-11/WU-12 — buildWhere(filtros): predicado "en curso" de 3 términ
     ids.F1 = await insertCompra(cicloId, { cancelada: true });
     await insertItem(ids.F1, {
       estadoAprobacion: 'APROBADO',
-      cantidadComprada: 10,
+      cantidadRecibida: 10,
       cantidadEntregada: 10,
     });
 
@@ -285,7 +290,7 @@ describe('WU-11/WU-12 — buildWhere(filtros): predicado "en curso" de 3 términ
     await insertItem(ids.F3, { estadoAprobacion: 'PENDIENTE' });
     await insertItem(ids.F3, {
       estadoAprobacion: 'APROBADO',
-      cantidadComprada: 10,
+      cantidadRecibida: 10,
       cantidadEntregada: 10,
     });
 
@@ -300,7 +305,7 @@ describe('WU-11/WU-12 — buildWhere(filtros): predicado "en curso" de 3 términ
     ids.F6 = await insertCompra(cicloId);
     await insertItem(ids.F6, {
       estadoAprobacion: 'APROBADO',
-      cantidadComprada: 10,
+      cantidadRecibida: 10,
       cantidadEntregada: 10,
       deletedAt: new Date('2026-01-05'),
     });
@@ -310,7 +315,7 @@ describe('WU-11/WU-12 — buildWhere(filtros): predicado "en curso" de 3 términ
     await insertItem(ids.F7, {
       estadoAprobacion: 'APROBADO',
       cantidad: 10,
-      cantidadComprada: 10,
+      cantidadRecibida: 10,
       cantidadEntregada: 6,
     });
 
@@ -319,7 +324,7 @@ describe('WU-11/WU-12 — buildWhere(filtros): predicado "en curso" de 3 términ
     await insertItem(ids.F8, {
       estadoAprobacion: 'APROBADO',
       cantidad: 10,
-      cantidadComprada: 10,
+      cantidadRecibida: 10,
       cantidadEntregada: 10,
     });
 
@@ -328,7 +333,7 @@ describe('WU-11/WU-12 — buildWhere(filtros): predicado "en curso" de 3 términ
     await insertItem(ids.F9, {
       estadoAprobacion: 'APROBADO',
       cantidad: 10,
-      cantidadComprada: 10,
+      cantidadRecibida: 10,
       cantidadEntregada: 0,
       cerradoConFaltante: true,
     });
@@ -338,7 +343,7 @@ describe('WU-11/WU-12 — buildWhere(filtros): predicado "en curso" de 3 términ
     await insertItem(ids.F10, {
       estadoAprobacion: 'APROBADO',
       cantidad: 10,
-      cantidadComprada: 10,
+      cantidadRecibida: 10,
       cantidadEntregada: 10,
     });
     await insertItem(ids.F10, { estadoAprobacion: 'RECHAZADO' });
@@ -348,7 +353,7 @@ describe('WU-11/WU-12 — buildWhere(filtros): predicado "en curso" de 3 términ
     await insertItem(ids.F11, {
       estadoAprobacion: 'APROBADO',
       cantidad: 0.3,
-      cantidadComprada: 0.3,
+      cantidadRecibida: 0.3,
       cantidadEntregada: 0.3,
     });
 
@@ -357,7 +362,7 @@ describe('WU-11/WU-12 — buildWhere(filtros): predicado "en curso" de 3 términ
     await insertItem(ids.F12, {
       estadoAprobacion: 'APROBADO',
       cantidad: 99999999.99,
-      cantidadComprada: 99999999.99,
+      cantidadRecibida: 99999999.99,
       cantidadEntregada: 99999999.99,
     });
 
@@ -366,13 +371,13 @@ describe('WU-11/WU-12 — buildWhere(filtros): predicado "en curso" de 3 términ
     await insertItem(ids.F13, {
       estadoAprobacion: 'APROBADO',
       cantidad: 10,
-      cantidadComprada: 10,
+      cantidadRecibida: 10,
       cantidadEntregada: 10,
     });
     await insertItem(ids.F13, {
       estadoAprobacion: 'APROBADO',
       cantidad: 10,
-      cantidadComprada: 10,
+      cantidadRecibida: 10,
       cantidadEntregada: 4,
     });
 

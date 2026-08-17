@@ -18,7 +18,12 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { useOperacionesCompra } from "../hooks/use-operaciones-compra";
 import type { TipoOperacionCompra } from "../types";
 
-/** Etiquetas legibles del catálogo CERRADO de 10 tipos (espejo de `TIPOS_OPERACION_VALIDOS`). */
+/**
+ * Etiquetas legibles del catálogo de 12 tipos (11 vigentes + 1 legacy,
+ * ADR-T11). `COMPRA_REGISTRADA` solo aparece en filas históricas — el
+ * código nuevo escribe `ORDEN_REGISTRADA`/`RECEPCION_REGISTRADA` en su
+ * lugar (WU-26).
+ */
 const TIPO_OPERACION_LABELS: Record<TipoOperacionCompra, string> = {
   CREACION: "Creación",
   ITEM_AGREGADO: "Ítem agregado",
@@ -26,7 +31,9 @@ const TIPO_OPERACION_LABELS: Record<TipoOperacionCompra, string> = {
   ITEM_ELIMINADO: "Ítem eliminado",
   ITEM_APROBADO: "Ítem aprobado",
   ITEM_RECHAZADO: "Ítem rechazado",
-  COMPRA_REGISTRADA: "Compra registrada",
+  ORDEN_REGISTRADA: "Orden registrada",
+  RECEPCION_REGISTRADA: "Recepción registrada",
+  COMPRA_REGISTRADA: "Compra registrada (legacy)",
   ENTREGA_REGISTRADA: "Entrega registrada",
   ITEM_CERRADO_CON_FALTANTE: "Cerrado con faltante",
   CANCELACION: "Cancelación",

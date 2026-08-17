@@ -20,6 +20,7 @@ import {
   itemComprado,
   itemEntregado,
   ItemParaDerivacion,
+  subtotalItemEnCentesimas,
 } from './estado-compra';
 
 // ---------------------------------------------------------------------------
@@ -325,28 +326,28 @@ describe('enCentesimas — ADR-C3', () => {
 describe('itemComprado / itemEntregado — ADR-C3', () => {
   it.each([
     [
-      'cantidadComprada < cantidad, sin cierre',
-      { cantidad: 10, cantidadComprada: 5, cerradoConFaltante: false },
+      'cantidadRecibida < cantidad, sin cierre',
+      { cantidad: 10, cantidadRecibida: 5, cerradoConFaltante: false },
       false,
     ],
     [
-      'cantidadComprada === cantidad',
-      { cantidad: 10, cantidadComprada: 10, cerradoConFaltante: false },
+      'cantidadRecibida === cantidad',
+      { cantidad: 10, cantidadRecibida: 10, cerradoConFaltante: false },
       true,
     ],
     [
-      'cantidadComprada > cantidad',
-      { cantidad: 10, cantidadComprada: 12, cerradoConFaltante: false },
+      'cantidadRecibida > cantidad',
+      { cantidad: 10, cantidadRecibida: 12, cerradoConFaltante: false },
       true,
     ],
     [
-      'cerradoConFaltante=true con cantidadComprada < cantidad (S22, la cláusula OR)',
-      { cantidad: 10, cantidadComprada: 5, cerradoConFaltante: true },
+      'cerradoConFaltante=true con cantidadRecibida < cantidad (S22, la cláusula OR)',
+      { cantidad: 10, cantidadRecibida: 5, cerradoConFaltante: true },
       true,
     ],
     [
-      'LA TRAMPA DEL FLOAT: cantidad=0.1, cantidadComprada=0.7-0.6 (undershoot en float directo)',
-      { cantidad: 0.1, cantidadComprada: 0.7 - 0.6, cerradoConFaltante: false },
+      'LA TRAMPA DEL FLOAT: cantidad=0.1, cantidadRecibida=0.7-0.6 (undershoot en float directo)',
+      { cantidad: 0.1, cantidadRecibida: 0.7 - 0.6, cerradoConFaltante: false },
       true,
     ],
   ])('itemComprado: %s => %s', (_desc, item, esperado) => {
@@ -371,5 +372,26 @@ describe('itemComprado / itemEntregado — ADR-C3', () => {
     ],
   ])('itemEntregado: %s => %s', (_desc, item, esperado) => {
     expect(itemEntregado(item)).toBe(esperado);
+  });
+});
+
+describe('subtotalItemEnCentesimas — WU-20 (compras-tres-etapas-y-sectores R6, ADR-T12)', () => {
+  it('monto=150000.50, cantidad=3 => 45000150 centésimas (450001.50 / 100)', () => {
+    expect(subtotalItemEnCentesimas(150000.5, 3)).toBe(45000150);
+  });
+
+  it('aritmética en centésimas evita el error de sumar en float directo (0.1+0.1+0.1 !== 0.3)', () => {
+    // Documenta la trampa que la función existe para evitar en el caller
+    // (CompraEntity.totalesPorMoneda acumula subtotales en centésimas).
+    expect(0.1 + 0.1 + 0.1).not.toBe(0.3);
+    expect(
+      subtotalItemEnCentesimas(0.1, 1) +
+        subtotalItemEnCentesimas(0.1, 1) +
+        subtotalItemEnCentesimas(0.1, 1),
+    ).toBe(30);
+  });
+
+  it('monto=0 (borde válido, CHECK monto >= 0) => subtotal 0', () => {
+    expect(subtotalItemEnCentesimas(0, 5)).toBe(0);
   });
 });

@@ -7,9 +7,9 @@
  * **Gate DELIBERADAMENTE PARCIAL — sin re-implementar S29**: `compra.
  * canceladaEn`/`compra.cerrado` YA son campos de CABECERA calculados por el
  * backend (S30/S28) — se leen directamente para deshabilitar el trigger.
- * S29 (`CompraConComprasRegistradasError`, "con ALGÚN ítem con
- * cantidadComprada > 0") NO se replica acá: exigiría un `.some(item =>
- * item.cantidadComprada > 0)` sobre `compra.items`, exactamente la trampa
+ * S29 (WU-29, `CompraConOrdenEmitidaError`, "con ALGÚN ítem con
+ * cantidadOrdenada > 0") NO se replica acá: exigiría un `.some(item =>
+ * item.cantidadOrdenada > 0)` sobre `compra.items`, exactamente la trampa
  * que el prompt prohíbe ("cero lógica condicional sobre ítems para derivar
  * estado" / "si te encontrás escribiendo un .every()/.some() sobre ítems,
  * PARÁ"). El botón queda habilitado en ese caso y el backend responde 422

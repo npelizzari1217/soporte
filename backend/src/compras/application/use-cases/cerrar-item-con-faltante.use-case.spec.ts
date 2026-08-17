@@ -4,14 +4,14 @@
  * Todos los puertos/colaboradores mockeados (`vi.fn`) — sin DB. Cubre:
  * - S22: cierre con faltante real -> `cerradoConFaltante=true`,
  *   `comprado`/`entregado` pasan a `true` por la cláusula OR pese a
- *   `cantidadComprada < cantidad`; persiste el ítem y registra
+ *   `cantidadRecibida < cantidad`; persiste el ítem y registra
  *   `OperacionCompra{ITEM_CERRADO_CON_FALTANTE}` DENTRO de la tx.
- * - S23: sin faltante real (`cantidadComprada >= cantidad`) ->
+ * - S23 (R3): sin faltante real (`cantidadRecibida >= cantidad`) ->
  *   `ItemSinFaltanteError`, sin tocar la tx.
  * - S24: sin motivo -> `MotivoCierreFaltanteRequeridoError`, sin tocar la tx.
  * - S25 TERMINALIDAD (las tres partes):
  *   1. cerrar dos veces -> `ItemCompraYaCerradoError` en el segundo intento.
- *   2. `registrarCompra` sobre un ítem ya cerrado con faltante ->
+ *   2. `registrarRecepcion` sobre un ítem ya cerrado con faltante ->
  *      `ItemCompraYaCerradoError` (verificado directo sobre la entidad).
  *   3. `registrarEntrega` sobre un ítem ya cerrado con faltante ->
  *      `ItemCompraYaCerradoError` (verificado directo sobre la entidad).
@@ -56,12 +56,13 @@ function crearItemPropsValidas(
   };
 }
 
-/** Crea un ítem APROBADO con `cantidadComprada` registrada (faltante real si < cantidad). */
-function crearItemAprobadoConCompra(cantidadComprada: number): ItemCompraEntity {
+/** Crea un ítem APROBADO con `cantidadRecibida` registrada (faltante real si < cantidad). */
+function crearItemAprobadoConCompra(cantidadRecibida: number): ItemCompraEntity {
   const item = ItemCompraEntity.create(crearItemPropsValidas(), ITEM_ID);
   item.aprobar('aprobador-1');
-  if (cantidadComprada > 0) {
-    item.registrarCompra(cantidadComprada);
+  item.registrarOrden(item.cantidad, new Date('2026-01-16'));
+  if (cantidadRecibida > 0) {
+    item.registrarRecepcion(cantidadRecibida, new Date('2026-01-17'));
   }
   return item;
 }
@@ -197,7 +198,7 @@ describe('CerrarItemConFaltanteUseCase', () => {
     expect(c.txRunner.run).not.toHaveBeenCalled();
   });
 
-  it('S23: sin faltante real (cantidadComprada >= cantidad) -> ItemSinFaltanteError, sin tocar la tx', async () => {
+  it('S23: sin faltante real (cantidadRecibida >= cantidad) -> ItemSinFaltanteError, sin tocar la tx', async () => {
     const c = makeCollaborators();
     const item = crearItemAprobadoConCompra(10); // cantidad=10, comprada=10 -> sin faltante
     const compra = crearCompraConItem(item);
@@ -241,11 +242,11 @@ describe('CerrarItemConFaltanteUseCase', () => {
       expect(c.registrarOperacionCompra.registrar).not.toHaveBeenCalled();
     });
 
-    it('registrarCompra posterior sobre un ítem cerrado con faltante -> ItemCompraYaCerradoError (verificado directo sobre la entidad, no solo el cierre repetido)', () => {
+    it('registrarRecepcion posterior sobre un ítem cerrado con faltante -> ItemCompraYaCerradoError (verificado directo sobre la entidad, no solo el cierre repetido)', () => {
       const item = crearItemAprobadoConCompra(6);
       item.cerrarConFaltante('Motivo de cierre.');
 
-      const result = item.registrarCompra(8);
+      const result = item.registrarRecepcion(8, new Date('2026-01-18'));
 
       expect(result.isFail()).toBe(true);
       expect(result.getError()).toBeInstanceOf(ItemCompraYaCerradoError);
@@ -255,7 +256,7 @@ describe('CerrarItemConFaltanteUseCase', () => {
       const item = crearItemAprobadoConCompra(6);
       item.cerrarConFaltante('Motivo de cierre.');
 
-      const result = item.registrarEntrega(4);
+      const result = item.registrarEntrega(4, new Date('2026-01-18'));
 
       expect(result.isFail()).toBe(true);
       expect(result.getError()).toBeInstanceOf(ItemCompraYaCerradoError);

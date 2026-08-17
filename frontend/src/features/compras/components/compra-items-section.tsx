@@ -32,7 +32,11 @@ import { Can } from "@/components/shared/can";
 import { ItemEditDialog } from "./item-edit-dialog";
 import { ItemEliminarControl } from "./item-eliminar-control";
 import { ItemDecisionActions } from "./item-decision-actions";
-import { RegistrarCompraDialog, RegistrarEntregaDialog } from "./registrar-avance-dialog";
+import {
+  RegistrarOrdenDialog,
+  RegistrarRecepcionDialog,
+  RegistrarEntregaDialog,
+} from "./registrar-avance-dialog";
 import { ItemCerrarFaltanteDialog } from "./item-cerrar-faltante-dialog";
 import type { EstadoAprobacionItem, ItemCompra } from "../types";
 
@@ -51,6 +55,11 @@ const ESTADO_ITEM_CONFIG: Record<EstadoAprobacionItem, { label: string; variant:
 /** Formato es-AR de moneda + monto, mismo criterio que `formatearTotalesPorMoneda`. */
 function formatMonto(moneda: string, monto: number): string {
   return `${moneda} ${monto.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+/** "YYYY-MM-DD" desde un ISO string del backend, sin parsear con `Date` (evita el corrimiento por timezone). */
+function formatFecha(fechaISO: string | null): string {
+  return fechaISO ? fechaISO.slice(0, 10) : "—";
 }
 
 export interface CompraItemsSectionProps {
@@ -76,7 +85,9 @@ export function CompraItemsSection({ compraId, items }: CompraItemsSectionProps)
               <TableHead>Cantidad</TableHead>
               <TableHead>Proveedor</TableHead>
               <TableHead>Monto</TableHead>
+              <TableHead>Total</TableHead>
               <TableHead>Estado</TableHead>
+              <TableHead>Fechas (orden / recepción / entrega)</TableHead>
               <TableHead>Comprado</TableHead>
               <TableHead>Entregado</TableHead>
               <TableHead>
@@ -93,8 +104,14 @@ export function CompraItemsSection({ compraId, items }: CompraItemsSectionProps)
                   <TableCell>{item.cantidad}</TableCell>
                   <TableCell>{item.proveedor}</TableCell>
                   <TableCell>{formatMonto(item.moneda, item.monto)}</TableCell>
+                  <TableCell>{formatMonto(item.moneda, item.totalItem)}</TableCell>
                   <TableCell>
                     <Badge variant={estadoConfig.variant}>{estadoConfig.label}</Badge>
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    <div>Orden: {formatFecha(item.fechaOrden)}</div>
+                    <div>Recepción: {formatFecha(item.fechaRecepcion)}</div>
+                    <div>Entrega: {formatFecha(item.fechaEntrega)}</div>
                   </TableCell>
                   <TableCell>
                     <Badge variant={item.comprado ? "success" : "outline"}>
@@ -113,7 +130,8 @@ export function CompraItemsSection({ compraId, items }: CompraItemsSectionProps)
                       </Can>
                       <Can permiso="COMPRAS:MODIFICACION">
                         <>
-                          <RegistrarCompraDialog compraId={compraId} item={item} />
+                          <RegistrarOrdenDialog compraId={compraId} item={item} />
+                          <RegistrarRecepcionDialog compraId={compraId} item={item} />
                           <RegistrarEntregaDialog compraId={compraId} item={item} />
                           <ItemCerrarFaltanteDialog compraId={compraId} item={item} />
                           <ItemEditDialog compraId={compraId} item={item} />

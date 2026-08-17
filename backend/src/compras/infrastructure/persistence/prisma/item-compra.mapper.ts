@@ -43,8 +43,12 @@ export class ItemCompraMapper {
         estadoAprobacion: row.estadoAprobacion as EstadoAprobacionItem,
         decididoPorId: row.decididoPorId ?? null,
         decididoEn: row.decididoEn ?? null,
-        cantidadComprada: Number(row.cantidadComprada),
+        cantidadOrdenada: Number(row.cantidadOrdenada),
+        cantidadRecibida: Number(row.cantidadRecibida),
         cantidadEntregada: Number(row.cantidadEntregada),
+        fechaOrden: row.fechaOrden ?? null,
+        fechaRecepcion: row.fechaRecepcion ?? null,
+        fechaEntrega: row.fechaEntrega ?? null,
         cerradoConFaltante: row.cerradoConFaltante,
         motivoCierreFaltante: row.motivoCierreFaltante ?? null,
       },
@@ -64,11 +68,17 @@ export class ItemCompraMapper {
    */
   static toPersistence(entity: ItemCompraEntity): Omit<
     PrismaItemCompra,
-    'updatedAt' | 'cantidad' | 'monto' | 'cantidadComprada' | 'cantidadEntregada'
+    | 'updatedAt'
+    | 'cantidad'
+    | 'monto'
+    | 'cantidadOrdenada'
+    | 'cantidadRecibida'
+    | 'cantidadEntregada'
   > & {
     cantidad: Prisma.Decimal | number | string;
     monto: Prisma.Decimal | number | string;
-    cantidadComprada: Prisma.Decimal | number | string;
+    cantidadOrdenada: Prisma.Decimal | number | string;
+    cantidadRecibida: Prisma.Decimal | number | string;
     cantidadEntregada: Prisma.Decimal | number | string;
   } {
     return {
@@ -84,8 +94,12 @@ export class ItemCompraMapper {
       estadoAprobacion: entity.estadoAprobacion,
       decididoPorId: entity.decididoPorId,
       decididoEn: entity.decididoEn,
-      cantidadComprada: entity.cantidadComprada,
+      cantidadOrdenada: entity.cantidadOrdenada,
+      cantidadRecibida: entity.cantidadRecibida,
       cantidadEntregada: entity.cantidadEntregada,
+      fechaOrden: entity.fechaOrden,
+      fechaRecepcion: entity.fechaRecepcion,
+      fechaEntrega: entity.fechaEntrega,
       cerradoConFaltante: entity.cerradoConFaltante,
       motivoCierreFaltante: entity.motivoCierreFaltante,
       deletedAt: entity.deletedAt,

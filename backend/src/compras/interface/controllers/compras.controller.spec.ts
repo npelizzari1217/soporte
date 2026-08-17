@@ -46,15 +46,19 @@ import { CompraEntity } from '../../domain/entities/compra.entity';
 import { ItemCompraEntity } from '../../domain/entities/item-compra.entity';
 import * as ComprasErrors from '../../domain/errors/compras.errors';
 import {
-  CantidadCompradaExcedeSolicitadaError,
-  CantidadCompradaRetrocedeError,
-  CantidadEntregadaExcedeCompradaError,
+  CantidadOrdenadaExcedeSolicitadaError,
+  CantidadOrdenadaRetrocedeError,
+  CantidadRecibidaExcedeOrdenadaError,
+  CantidadRecibidaRetrocedeError,
+  CantidadEntregadaExcedeRecibidaError,
   CantidadEntregadaRetrocedeError,
   CompraCanceladaError,
-  CompraConComprasRegistradasError,
+  CompraConOrdenEmitidaError,
   CompraNoEncontradaError,
   CompraYaCanceladaError,
   CompraYaCerradaError,
+  FechaEtapaFuturaError,
+  FechaEtapasFueraDeOrdenError,
   ItemCompraAprobadoNoEliminableError,
   ItemCompraCongeladoError,
   ItemCompraNoAprobadoError,
@@ -87,8 +91,10 @@ function buildController() {
   const eliminarItemCompraUseCase = { execute: vi.fn() };
   const aprobarItemCompraUseCase = { execute: vi.fn() };
   const rechazarItemCompraUseCase = { execute: vi.fn() };
-  const registrarCompraDeItemUseCase = { execute: vi.fn() };
+  const registrarOrdenDeItemUseCase = { execute: vi.fn() };
+  const registrarRecepcionDeItemUseCase = { execute: vi.fn() };
   const registrarEntregaDeItemUseCase = { execute: vi.fn() };
+  const editarFechaEtapaDeItemUseCase = { execute: vi.fn() };
   const cerrarItemConFaltanteUseCase = { execute: vi.fn() };
   const cancelarCompraUseCase = { execute: vi.fn() };
   const listarComprasUseCase = { execute: vi.fn() };
@@ -102,13 +108,15 @@ function buildController() {
     eliminarItemCompraUseCase as unknown as Ctor[3],
     aprobarItemCompraUseCase as unknown as Ctor[4],
     rechazarItemCompraUseCase as unknown as Ctor[5],
-    registrarCompraDeItemUseCase as unknown as Ctor[6],
-    registrarEntregaDeItemUseCase as unknown as Ctor[7],
-    cerrarItemConFaltanteUseCase as unknown as Ctor[8],
-    cancelarCompraUseCase as unknown as Ctor[9],
-    listarComprasUseCase as unknown as Ctor[10],
-    obtenerCompraUseCase as unknown as Ctor[11],
-    listarOperacionesCompraUseCase as unknown as Ctor[12],
+    registrarOrdenDeItemUseCase as unknown as Ctor[6],
+    registrarRecepcionDeItemUseCase as unknown as Ctor[7],
+    registrarEntregaDeItemUseCase as unknown as Ctor[8],
+    editarFechaEtapaDeItemUseCase as unknown as Ctor[9],
+    cerrarItemConFaltanteUseCase as unknown as Ctor[10],
+    cancelarCompraUseCase as unknown as Ctor[11],
+    listarComprasUseCase as unknown as Ctor[12],
+    obtenerCompraUseCase as unknown as Ctor[13],
+    listarOperacionesCompraUseCase as unknown as Ctor[14],
   );
 
   return {
@@ -119,8 +127,10 @@ function buildController() {
     eliminarItemCompraUseCase,
     aprobarItemCompraUseCase,
     rechazarItemCompraUseCase,
-    registrarCompraDeItemUseCase,
+    registrarOrdenDeItemUseCase,
+    registrarRecepcionDeItemUseCase,
     registrarEntregaDeItemUseCase,
+    editarFechaEtapaDeItemUseCase,
     cerrarItemConFaltanteUseCase,
     cancelarCompraUseCase,
     listarComprasUseCase,
@@ -317,25 +327,71 @@ describe('ComprasController — traducción HTTP ↔ use case (PR-21)', () => {
     });
   });
 
-  describe('POST /compras/:id/items/:itemId/registrar-compra', () => {
-    it('registra el acumulado de cantidad comprada (no un delta)', async () => {
-      const { controller, registrarCompraDeItemUseCase } = buildController();
+  describe('POST /compras/:id/items/:itemId/registrar-orden', () => {
+    it('registra el acumulado de cantidad ordenada (no un delta), con fecha opcional', async () => {
+      const { controller, registrarOrdenDeItemUseCase } = buildController();
       const item = buildItem();
       item.aprobar('aprobador-1');
-      item.registrarCompra(1);
-      registrarCompraDeItemUseCase.execute.mockResolvedValue(Result.ok(item));
+      item.registrarOrden(1, new Date('2026-08-14'));
+      registrarOrdenDeItemUseCase.execute.mockResolvedValue(Result.ok(item));
 
-      const res = await controller.registrarCompraDeItem(USUARIO, 'compra-1', 'item-1', {
-        cantidadComprada: 1,
+      const res = await controller.registrarOrdenDeItem(USUARIO, 'compra-1', 'item-1', {
+        cantidadOrdenada: 1,
+        fecha: '2026-08-14',
       });
 
-      expect(registrarCompraDeItemUseCase.execute).toHaveBeenCalledWith({
+      expect(registrarOrdenDeItemUseCase.execute).toHaveBeenCalledWith({
         compraId: 'compra-1',
         itemId: 'item-1',
         usuarioId: 'usuario-1',
-        cantidadComprada: 1,
+        cantidadOrdenada: 1,
+        fecha: new Date('2026-08-14'),
       });
-      expect(res.cantidadComprada).toBe(1);
+      expect(res.cantidadOrdenada).toBe(1);
+    });
+
+    it('sin fecha en el body, no pasa fecha al use case (la entidad prellena con hoy)', async () => {
+      const { controller, registrarOrdenDeItemUseCase } = buildController();
+      const item = buildItem();
+      item.aprobar('aprobador-1');
+      item.registrarOrden(1);
+      registrarOrdenDeItemUseCase.execute.mockResolvedValue(Result.ok(item));
+
+      await controller.registrarOrdenDeItem(USUARIO, 'compra-1', 'item-1', {
+        cantidadOrdenada: 1,
+      });
+
+      expect(registrarOrdenDeItemUseCase.execute).toHaveBeenCalledWith({
+        compraId: 'compra-1',
+        itemId: 'item-1',
+        usuarioId: 'usuario-1',
+        cantidadOrdenada: 1,
+      });
+    });
+  });
+
+  describe('POST /compras/:id/items/:itemId/registrar-recepcion', () => {
+    it('registra el acumulado de cantidad recibida (no un delta) — rename de ruta WU-24', async () => {
+      const { controller, registrarRecepcionDeItemUseCase } = buildController();
+      const item = buildItem();
+      item.aprobar('aprobador-1');
+      item.registrarOrden(2, new Date('2026-08-14'));
+      item.registrarRecepcion(1, new Date('2026-08-15'));
+      registrarRecepcionDeItemUseCase.execute.mockResolvedValue(Result.ok(item));
+
+      const res = await controller.registrarRecepcionDeItem(USUARIO, 'compra-1', 'item-1', {
+        cantidadRecibida: 1,
+        fecha: '2026-08-15',
+      });
+
+      expect(registrarRecepcionDeItemUseCase.execute).toHaveBeenCalledWith({
+        compraId: 'compra-1',
+        itemId: 'item-1',
+        usuarioId: 'usuario-1',
+        cantidadRecibida: 1,
+        fecha: new Date('2026-08-15'),
+      });
+      expect(res.cantidadRecibida).toBe(1);
     });
   });
 
@@ -344,8 +400,9 @@ describe('ComprasController — traducción HTTP ↔ use case (PR-21)', () => {
       const { controller, registrarEntregaDeItemUseCase } = buildController();
       const item = buildItem();
       item.aprobar('aprobador-1');
-      item.registrarCompra(2);
-      item.registrarEntrega(1);
+      item.registrarOrden(2, new Date('2026-08-14'));
+      item.registrarRecepcion(2, new Date('2026-08-15'));
+      item.registrarEntrega(1, new Date('2026-08-16'));
       registrarEntregaDeItemUseCase.execute.mockResolvedValue(Result.ok(item));
 
       const res = await controller.registrarEntregaDeItem(USUARIO, 'compra-1', 'item-1', {
@@ -362,12 +419,37 @@ describe('ComprasController — traducción HTTP ↔ use case (PR-21)', () => {
     });
   });
 
+  describe('PATCH /compras/:id/items/:itemId/fecha-etapa', () => {
+    it('edita la fecha de una etapa ya registrada', async () => {
+      const { controller, editarFechaEtapaDeItemUseCase } = buildController();
+      const item = buildItem();
+      item.aprobar('aprobador-1');
+      item.registrarOrden(1, new Date('2026-08-14'));
+      editarFechaEtapaDeItemUseCase.execute.mockResolvedValue(Result.ok(item));
+
+      const res = await controller.editarFechaEtapaDeItem(USUARIO, 'compra-1', 'item-1', {
+        etapa: 'ORDEN',
+        fecha: '2026-08-13',
+      });
+
+      expect(editarFechaEtapaDeItemUseCase.execute).toHaveBeenCalledWith({
+        compraId: 'compra-1',
+        itemId: 'item-1',
+        usuarioId: 'usuario-1',
+        etapa: 'ORDEN',
+        fecha: new Date('2026-08-13'),
+      });
+      expect(res.id).toBe('item-1');
+    });
+  });
+
   describe('POST /compras/:id/items/:itemId/cerrar-con-faltante', () => {
     it('cierra el ítem con faltante: motivo obligatorio viaja al use case', async () => {
       const { controller, cerrarItemConFaltanteUseCase } = buildController();
       const item = buildItem();
       item.aprobar('aprobador-1');
-      item.registrarCompra(1); // 1 < cantidad (2) → faltante real
+      item.registrarOrden(2, new Date('2026-08-14'));
+      item.registrarRecepcion(1, new Date('2026-08-15')); // 1 < cantidad (2) → faltante real
       item.cerrarConFaltante('Proveedor sin stock');
       cerrarItemConFaltanteUseCase.execute.mockResolvedValue(Result.ok(item));
 
@@ -583,10 +665,16 @@ describe('ComprasController — propagación de errores (nunca 500 silencioso)',
       invocar: (c) => c.rechazarItem(USUARIO, 'compra-1', 'item-1'),
     },
     {
-      nombre: 'registrarCompraDeItem',
-      useCase: 'registrarCompraDeItemUseCase',
+      nombre: 'registrarOrdenDeItem',
+      useCase: 'registrarOrdenDeItemUseCase',
       invocar: (c) =>
-        c.registrarCompraDeItem(USUARIO, 'compra-1', 'item-1', { cantidadComprada: 1 }),
+        c.registrarOrdenDeItem(USUARIO, 'compra-1', 'item-1', { cantidadOrdenada: 1 }),
+    },
+    {
+      nombre: 'registrarRecepcionDeItem',
+      useCase: 'registrarRecepcionDeItemUseCase',
+      invocar: (c) =>
+        c.registrarRecepcionDeItem(USUARIO, 'compra-1', 'item-1', { cantidadRecibida: 1 }),
     },
     {
       nombre: 'registrarEntregaDeItem',
@@ -636,8 +724,8 @@ describe('toHttpException — catálogo de errores → HTTP (spec §5)', () => {
       typeof valor === 'function' && valor.prototype instanceof DomainError,
   );
 
-  it('el catálogo tiene EXACTAMENTE 19 clases de error (2×409 + 2×404 + 15×422, spec §5)', () => {
-    expect(CLASES_DE_ERROR).toHaveLength(19);
+  it('el catálogo tiene EXACTAMENTE 23 clases de error (2×409 + 2×404 + 19×422, WU-24)', () => {
+    expect(CLASES_DE_ERROR).toHaveLength(23);
   });
 
   const TABLA: Array<[string, () => DomainError, 404 | 409 | 422]> = [
@@ -648,11 +736,7 @@ describe('toHttpException — catálogo de errores → HTTP (spec §5)', () => {
     ['CompraCanceladaError', () => new CompraCanceladaError('compra-1'), 422],
     ['CompraYaCanceladaError', () => new CompraYaCanceladaError('compra-1'), 422],
     ['CompraYaCerradaError', () => new CompraYaCerradaError('compra-1'), 422],
-    [
-      'CompraConComprasRegistradasError',
-      () => new CompraConComprasRegistradasError('compra-1'),
-      422,
-    ],
+    ['CompraConOrdenEmitidaError', () => new CompraConOrdenEmitidaError('compra-1'), 422],
     [
       'ItemCompraAprobadoNoEliminableError',
       () => new ItemCompraAprobadoNoEliminableError('item-1'),
@@ -662,14 +746,20 @@ describe('toHttpException — catálogo de errores → HTTP (spec §5)', () => {
     ['ItemCompraCongeladoError', () => new ItemCompraCongeladoError('item-1'), 422],
     ['ItemCompraNoAprobadoError', () => new ItemCompraNoAprobadoError('item-1'), 422],
     [
-      'CantidadCompradaExcedeSolicitadaError',
-      () => new CantidadCompradaExcedeSolicitadaError('item-1'),
+      'CantidadOrdenadaExcedeSolicitadaError',
+      () => new CantidadOrdenadaExcedeSolicitadaError('item-1'),
       422,
     ],
-    ['CantidadCompradaRetrocedeError', () => new CantidadCompradaRetrocedeError('item-1'), 422],
+    ['CantidadOrdenadaRetrocedeError', () => new CantidadOrdenadaRetrocedeError('item-1'), 422],
     [
-      'CantidadEntregadaExcedeCompradaError',
-      () => new CantidadEntregadaExcedeCompradaError('item-1'),
+      'CantidadRecibidaExcedeOrdenadaError',
+      () => new CantidadRecibidaExcedeOrdenadaError('item-1'),
+      422,
+    ],
+    ['CantidadRecibidaRetrocedeError', () => new CantidadRecibidaRetrocedeError('item-1'), 422],
+    [
+      'CantidadEntregadaExcedeRecibidaError',
+      () => new CantidadEntregadaExcedeRecibidaError('item-1'),
       422,
     ],
     ['CantidadEntregadaRetrocedeError', () => new CantidadEntregadaRetrocedeError('item-1'), 422],
@@ -680,9 +770,11 @@ describe('toHttpException — catálogo de errores → HTTP (spec §5)', () => {
       () => new MotivoCierreFaltanteRequeridoError('item-1'),
       422,
     ],
+    ['FechaEtapaFuturaError', () => new FechaEtapaFuturaError('item-1'), 422],
+    ['FechaEtapasFueraDeOrdenError', () => new FechaEtapasFueraDeOrdenError('item-1'), 422],
   ];
 
-  it('TABLA cubre EXACTAMENTE las 19 clases exportadas (ninguna falta, ninguna sobra)', () => {
+  it('TABLA cubre EXACTAMENTE las 23 clases exportadas (ninguna falta, ninguna sobra)', () => {
     expect(TABLA).toHaveLength(CLASES_DE_ERROR.length);
     const nombresEnTabla = new Set(TABLA.map(([nombre]) => nombre));
     for (const clase of CLASES_DE_ERROR) {
@@ -710,8 +802,10 @@ describe('RBAC — metadata (§4.11, WU-7.3 sdd/matriz-permisos-por-usuario)', (
     ['agregarItem', ['COMPRAS:ALTAS']],
     ['editarItem', ['COMPRAS:MODIFICACION']],
     ['eliminarItem', ['COMPRAS:BORRADO']],
-    ['registrarCompraDeItem', ['COMPRAS:MODIFICACION']],
+    ['registrarOrdenDeItem', ['COMPRAS:MODIFICACION']],
+    ['registrarRecepcionDeItem', ['COMPRAS:MODIFICACION']],
     ['registrarEntregaDeItem', ['COMPRAS:MODIFICACION']],
+    ['editarFechaEtapaDeItem', ['COMPRAS:MODIFICACION']],
     ['cerrarItemConFaltante', ['COMPRAS:MODIFICACION']],
     ['cancelar', ['COMPRAS:BORRADO']],
     ['aprobarItem', ['COMPRAS:APROBACION']],
@@ -780,8 +874,10 @@ describe('RBAC — guard real: S38/S39/S11/S40 (§4.11, AccionesGuard + Reflecto
     'agregarItem',
     'editarItem',
     'eliminarItem',
-    'registrarCompraDeItem',
+    'registrarOrdenDeItem',
+    'registrarRecepcionDeItem',
     'registrarEntregaDeItem',
+    'editarFechaEtapaDeItem',
     'cerrarItemConFaltante',
     'cancelar',
   ] as const;

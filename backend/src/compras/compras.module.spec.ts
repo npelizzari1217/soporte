@@ -56,8 +56,10 @@ import { EditarItemCompraUseCase } from './application/use-cases/editar-item-com
 import { EliminarItemCompraUseCase } from './application/use-cases/eliminar-item-compra.use-case';
 import { AprobarItemCompraUseCase } from './application/use-cases/aprobar-item-compra.use-case';
 import { RechazarItemCompraUseCase } from './application/use-cases/rechazar-item-compra.use-case';
-import { RegistrarCompraDeItemUseCase } from './application/use-cases/registrar-compra-de-item.use-case';
+import { RegistrarOrdenDeItemUseCase } from './application/use-cases/registrar-orden-de-item.use-case';
+import { RegistrarRecepcionDeItemUseCase } from './application/use-cases/registrar-recepcion-de-item.use-case';
 import { RegistrarEntregaDeItemUseCase } from './application/use-cases/registrar-entrega-de-item.use-case';
+import { EditarFechaEtapaDeItemUseCase } from './application/use-cases/editar-fecha-etapa-de-item.use-case';
 import { CerrarItemConFaltanteUseCase } from './application/use-cases/cerrar-item-con-faltante.use-case';
 import { CancelarCompraUseCase } from './application/use-cases/cancelar-compra.use-case';
 
@@ -131,8 +133,12 @@ function itemProps(overrides: Partial<ItemCompraProps> = {}): ItemCompraProps {
     estadoAprobacion: 'PENDIENTE',
     decididoPorId: null,
     decididoEn: null,
-    cantidadComprada: 0,
+    cantidadOrdenada: 0,
+    cantidadRecibida: 0,
     cantidadEntregada: 0,
+    fechaOrden: null,
+    fechaRecepcion: null,
+    fechaEntrega: null,
     cerradoConFaltante: false,
     motivoCierreFaltante: null,
     ...overrides,
@@ -194,8 +200,8 @@ describe('ComprasModule wiring (PR-22, sdd/redisenio-modulo-compras)', () => {
     const providersConTx = (): FactoryProvider[] =>
       factoryProviders().filter((p) => (p.inject ?? []).includes(TENANT_TX_RUNNER));
 
-    it('registra al menos los 10 casos de uso mutadores con TENANT_TX_RUNNER', () => {
-      expect(providersConTx().length).toBeGreaterThanOrEqual(10);
+    it('registra al menos los 12 casos de uso mutadores con TENANT_TX_RUNNER (WU-25: +RegistrarOrdenDeItemUseCase, +EditarFechaEtapaDeItemUseCase)', () => {
+      expect(providersConTx().length).toBeGreaterThanOrEqual(12);
     });
 
     it.each(
@@ -455,7 +461,7 @@ describe('ComprasModule wiring (PR-22, sdd/redisenio-modulo-compras)', () => {
       );
     });
 
-    it('RegistrarCompraDeItemUseCase (wiring real): execute() exitoso llama a la bitácora 1 vez con tipo COMPRA_REGISTRADA', async () => {
+    it('RegistrarOrdenDeItemUseCase (wiring real): execute() exitoso llama a la bitácora 1 vez con tipo ORDEN_REGISTRADA', async () => {
       const operacionRepo = fakeOperacionRepo();
       const registrarOperacion = new RegistrarOperacionCompra(operacionRepo);
       const itemAprobado = itemFixture({
@@ -469,24 +475,62 @@ describe('ComprasModule wiring (PR-22, sdd/redisenio-modulo-compras)', () => {
         guardarItem: vi.fn().mockResolvedValue(undefined),
       };
 
-      const provider = getFactoryProvider(RegistrarCompraDeItemUseCase);
+      const provider = getFactoryProvider(RegistrarOrdenDeItemUseCase);
       const instance = provider.useFactory(
         compraRepo,
         registrarOperacion,
         fakeTxRunner(),
-      ) as RegistrarCompraDeItemUseCase;
+      ) as RegistrarOrdenDeItemUseCase;
 
       const result = await instance.execute({
         compraId: COMPRA_ID,
         itemId: ITEM_ID,
         usuarioId: 'user-1',
-        cantidadComprada: 1,
+        cantidadOrdenada: 1,
+        fecha: FECHA_BASE,
       });
 
       expect(result.isFail()).toBe(false);
       expect(operacionRepo.crear).toHaveBeenCalledTimes(1);
       expect(operacionRepo.crear).toHaveBeenCalledWith(
-        expect.objectContaining({ tipo: 'COMPRA_REGISTRADA' }),
+        expect.objectContaining({ tipo: 'ORDEN_REGISTRADA' }),
+      );
+    });
+
+    it('RegistrarRecepcionDeItemUseCase (wiring real): execute() exitoso llama a la bitácora 1 vez con tipo RECEPCION_REGISTRADA', async () => {
+      const operacionRepo = fakeOperacionRepo();
+      const registrarOperacion = new RegistrarOperacionCompra(operacionRepo);
+      const itemAprobado = itemFixture({
+        estadoAprobacion: 'APROBADO',
+        decididoPorId: 'aprobador-1',
+        decididoEn: FECHA_BASE,
+        cantidadOrdenada: 2,
+      });
+      const compra = compraFixture([itemAprobado]);
+      const compraRepo: Pick<ICompraRepository, 'findByIdConItems' | 'guardarItem'> = {
+        findByIdConItems: vi.fn().mockResolvedValue(compra),
+        guardarItem: vi.fn().mockResolvedValue(undefined),
+      };
+
+      const provider = getFactoryProvider(RegistrarRecepcionDeItemUseCase);
+      const instance = provider.useFactory(
+        compraRepo,
+        registrarOperacion,
+        fakeTxRunner(),
+      ) as RegistrarRecepcionDeItemUseCase;
+
+      const result = await instance.execute({
+        compraId: COMPRA_ID,
+        itemId: ITEM_ID,
+        usuarioId: 'user-1',
+        cantidadRecibida: 1,
+        fecha: FECHA_BASE,
+      });
+
+      expect(result.isFail()).toBe(false);
+      expect(operacionRepo.crear).toHaveBeenCalledTimes(1);
+      expect(operacionRepo.crear).toHaveBeenCalledWith(
+        expect.objectContaining({ tipo: 'RECEPCION_REGISTRADA' }),
       );
     });
 
@@ -497,7 +541,8 @@ describe('ComprasModule wiring (PR-22, sdd/redisenio-modulo-compras)', () => {
         estadoAprobacion: 'APROBADO',
         decididoPorId: 'aprobador-1',
         decididoEn: FECHA_BASE,
-        cantidadComprada: 2,
+        cantidadOrdenada: 2,
+        cantidadRecibida: 2,
       });
       const compra = compraFixture([itemComprado]);
       const compraRepo: Pick<ICompraRepository, 'findByIdConItems' | 'guardarItem'> = {
@@ -517,12 +562,51 @@ describe('ComprasModule wiring (PR-22, sdd/redisenio-modulo-compras)', () => {
         itemId: ITEM_ID,
         usuarioId: 'user-1',
         cantidadEntregada: 1,
+        fecha: FECHA_BASE,
       });
 
       expect(result.isFail()).toBe(false);
       expect(operacionRepo.crear).toHaveBeenCalledTimes(1);
       expect(operacionRepo.crear).toHaveBeenCalledWith(
         expect.objectContaining({ tipo: 'ENTREGA_REGISTRADA' }),
+      );
+    });
+
+    it('EditarFechaEtapaDeItemUseCase (wiring real): execute() exitoso llama a la bitácora 1 vez con tipo ITEM_EDITADO', async () => {
+      const operacionRepo = fakeOperacionRepo();
+      const registrarOperacion = new RegistrarOperacionCompra(operacionRepo);
+      const itemConOrden = itemFixture({
+        estadoAprobacion: 'APROBADO',
+        decididoPorId: 'aprobador-1',
+        decididoEn: FECHA_BASE,
+        cantidadOrdenada: 2,
+        fechaOrden: FECHA_BASE,
+      });
+      const compra = compraFixture([itemConOrden]);
+      const compraRepo: Pick<ICompraRepository, 'findByIdConItems' | 'guardarItem'> = {
+        findByIdConItems: vi.fn().mockResolvedValue(compra),
+        guardarItem: vi.fn().mockResolvedValue(undefined),
+      };
+
+      const provider = getFactoryProvider(EditarFechaEtapaDeItemUseCase);
+      const instance = provider.useFactory(
+        compraRepo,
+        registrarOperacion,
+        fakeTxRunner(),
+      ) as EditarFechaEtapaDeItemUseCase;
+
+      const result = await instance.execute({
+        compraId: COMPRA_ID,
+        itemId: ITEM_ID,
+        usuarioId: 'user-1',
+        etapa: 'ORDEN',
+        fecha: FECHA_BASE,
+      });
+
+      expect(result.isFail()).toBe(false);
+      expect(operacionRepo.crear).toHaveBeenCalledTimes(1);
+      expect(operacionRepo.crear).toHaveBeenCalledWith(
+        expect.objectContaining({ tipo: 'ITEM_EDITADO' }),
       );
     });
 
@@ -533,7 +617,8 @@ describe('ComprasModule wiring (PR-22, sdd/redisenio-modulo-compras)', () => {
         estadoAprobacion: 'APROBADO',
         decididoPorId: 'aprobador-1',
         decididoEn: FECHA_BASE,
-        cantidadComprada: 1, // < cantidad (2) — faltante real, S23
+        cantidadOrdenada: 2,
+        cantidadRecibida: 1, // < cantidad (2) — faltante real, S23
       });
       const compra = compraFixture([itemConFaltante]);
       const compraRepo: Pick<ICompraRepository, 'findByIdConItems' | 'guardarItem'> = {

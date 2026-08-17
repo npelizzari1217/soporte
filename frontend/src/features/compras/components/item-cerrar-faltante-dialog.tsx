@@ -52,8 +52,12 @@ export function ItemCerrarFaltanteDialog({ compraId, item }: ItemCerrarFaltanteD
    * ya recibió todo lo pedido, y la operación falla SIEMPRE con 422
    * (`ItemSinFaltanteError`) por algo que se veía en pantalla. El motivo
    * (S24) NO entra acá: lo valida el formulario, no el estado del ítem.
+   *
+   * WU-29 (`compras-tres-etapas-y-sectores` R3): `cantidadComprada` se
+   * renombró a `cantidadRecibida` (mismo campo, misma regla — "faltante" es
+   * lo que no LLEGÓ, no lo que no se entregó puertas adentro).
    */
-  const hayFaltanteReal = item.cantidadComprada < item.cantidad;
+  const hayFaltanteReal = item.cantidadRecibida < item.cantidad;
   const puedeCerrar =
     !item.cerradoConFaltante && item.estadoAprobacion === "APROBADO" && hayFaltanteReal;
 

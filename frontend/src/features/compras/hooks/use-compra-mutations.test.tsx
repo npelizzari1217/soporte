@@ -13,8 +13,10 @@ import {
   useEditarItemCompra,
   useEliminarItemCompra,
   useRechazarItemCompra,
-  useRegistrarCompraDeItem,
+  useRegistrarOrdenDeItem,
+  useRegistrarRecepcionDeItem,
   useRegistrarEntregaDeItem,
+  useEditarFechaEtapaDeItem,
 } from "./use-compra-mutations";
 
 const COMPRA_ID = "compra-1";
@@ -38,6 +40,7 @@ const compraDetalleFixture = {
   descripcion: null,
   solicitanteId: "u1",
   cicloId: "ciclo-1",
+  sectorId: null,
   estado: "PENDIENTE",
   comprado: false,
   cerrado: false,
@@ -63,8 +66,13 @@ const itemFixture = {
   estadoAprobacion: "PENDIENTE",
   decididoPorId: null,
   decididoEn: null,
-  cantidadComprada: 0,
+  cantidadOrdenada: 0,
+  cantidadRecibida: 0,
   cantidadEntregada: 0,
+  fechaOrden: null,
+  fechaRecepcion: null,
+  fechaEntrega: null,
+  totalItem: 100,
   cerradoConFaltante: false,
   motivoCierreFaltante: null,
   comprado: false,
@@ -149,14 +157,28 @@ const COMANDOS = [
     },
   },
   {
-    nombre: "registrar compra de ítem",
+    nombre: "registrar orden de ítem",
     method: "post" as const,
-    ruta: `/api/compras/${COMPRA_ID}/items/${ITEM_ID}/registrar-compra`,
-    payload: { cantidadComprada: 5 },
+    ruta: `/api/compras/${COMPRA_ID}/items/${ITEM_ID}/registrar-orden`,
+    payload: { cantidadOrdenada: 5 },
     respuesta: itemFixture,
     ejecutar: () => {
-      const { result } = renderHook(() => useRegistrarCompraDeItem(COMPRA_ID), { wrapper: wrapper(buildClient()) });
-      result.current.mutate({ itemId: ITEM_ID, dto: { cantidadComprada: 5 } });
+      const { result } = renderHook(() => useRegistrarOrdenDeItem(COMPRA_ID), { wrapper: wrapper(buildClient()) });
+      result.current.mutate({ itemId: ITEM_ID, dto: { cantidadOrdenada: 5 } });
+      return result;
+    },
+  },
+  {
+    nombre: "registrar recepción de ítem",
+    method: "post" as const,
+    ruta: `/api/compras/${COMPRA_ID}/items/${ITEM_ID}/registrar-recepcion`,
+    payload: { cantidadRecibida: 5 },
+    respuesta: itemFixture,
+    ejecutar: () => {
+      const { result } = renderHook(() => useRegistrarRecepcionDeItem(COMPRA_ID), {
+        wrapper: wrapper(buildClient()),
+      });
+      result.current.mutate({ itemId: ITEM_ID, dto: { cantidadRecibida: 5 } });
       return result;
     },
   },
@@ -169,6 +191,20 @@ const COMANDOS = [
     ejecutar: () => {
       const { result } = renderHook(() => useRegistrarEntregaDeItem(COMPRA_ID), { wrapper: wrapper(buildClient()) });
       result.current.mutate({ itemId: ITEM_ID, dto: { cantidadEntregada: 3 } });
+      return result;
+    },
+  },
+  {
+    nombre: "editar fecha de etapa de ítem",
+    method: "patch" as const,
+    ruta: `/api/compras/${COMPRA_ID}/items/${ITEM_ID}/fecha-etapa`,
+    payload: { etapa: "ORDEN", fecha: "2026-01-05" },
+    respuesta: itemFixture,
+    ejecutar: () => {
+      const { result } = renderHook(() => useEditarFechaEtapaDeItem(COMPRA_ID), {
+        wrapper: wrapper(buildClient()),
+      });
+      result.current.mutate({ itemId: ITEM_ID, dto: { etapa: "ORDEN", fecha: "2026-01-05" } });
       return result;
     },
   },
