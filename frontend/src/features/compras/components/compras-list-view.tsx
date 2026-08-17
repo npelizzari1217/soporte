@@ -58,6 +58,7 @@ import { notifyError } from "@/shared/lib/toast";
 import { EstadoCompraBadge } from "./estado-compra-badge";
 import { CompraCreateDialog } from "./compra-create-dialog";
 import { formatearTotalesPorMoneda } from "../lib/formatear-totales";
+import { aFechaInput } from "../lib/fecha";
 import type { CompraListItem, ComprasFiltros } from "../types";
 
 const PAGE_SIZE = 10;
@@ -102,10 +103,12 @@ export function ComprasListView() {
 
   const columns: Column<CompraListItem>[] = [
     { key: "numero", header: "Número" },
-    // Fecha sin parsear ("YYYY-MM-DD" del backend): parsearla con `new Date()`
-    // y reformatear corre el riesgo de mostrar el día anterior por timezone
-    // (mismo criterio que `ciclo-row.tsx`, que muestra `fechaInicio`/`fechaFin` crudas).
-    { key: "fechaSolicitud", header: "Fecha" },
+    // Fecha RECORTADA del ISO, no reparseada: `new Date()` + reformateo corre
+    // el riesgo de mostrar el día anterior por timezone. El comentario anterior
+    // daba por hecho que el backend mandaba "YYYY-MM-DD" y pintaba el valor
+    // crudo, pero `compras.dto.ts` serializa con `.toISOString()` — en la
+    // columna se leía "2026-08-17T00:00:00.000Z".
+    { key: "fechaSolicitud", header: "Fecha", render: (row) => aFechaInput(row.fechaSolicitud) },
     { key: "motivo", header: "Motivo" },
     {
       key: "estado",

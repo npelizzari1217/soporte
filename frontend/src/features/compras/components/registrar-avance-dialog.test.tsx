@@ -18,7 +18,13 @@ vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 // ejercitada), pero el assert compara contra el literal `HOY_FIJO`, nunca
 // contra la función.
 const HOY_FIJO = "2026-02-10";
-vi.mock("../lib/fecha", () => ({ hoyISO: () => HOY_FIJO }));
+// Sólo `hoyISO` se falsea (depende del reloj). `aFechaInput` se deja con su
+// implementación REAL: es pura y determinística, y falsearla escondería el
+// recorte del ISO que el componente necesita para precargar las fechas.
+vi.mock("../lib/fecha", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/fecha")>()),
+  hoyISO: () => HOY_FIJO,
+}));
 
 const COMPRA_ID = "compra-1";
 

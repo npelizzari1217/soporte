@@ -21,7 +21,10 @@ function buildItem(overrides: Partial<ItemCompra> = {}): ItemCompra {
     proveedor: "ACME",
     monto: 100,
     moneda: "ARS",
-    fechaCotizacion: "2026-01-01",
+    // Formato REAL del backend (`compras.dto.ts` serializa con `.toISOString()`),
+    // no la forma ya normalizada: un fixture cómodo esconde el bug de precarga
+    // del `<input type="date">`.
+    fechaCotizacion: "2026-01-01T00:00:00.000Z",
     observaciones: null,
     estadoAprobacion: "PENDIENTE",
     decididoPorId: null,
@@ -63,6 +66,16 @@ describe("ItemEditDialog", () => {
     expect(screen.getByLabelText(/cantidad/i)).toHaveValue(2);
     expect(screen.getByLabelText(/proveedor/i)).toHaveValue("ACME");
     expect(screen.getByLabelText(/monto/i)).toHaveValue(100);
+  });
+
+  it("regresión: precarga la fecha de cotización aunque el backend la mande como datetime ISO — sin normalizar, el input queda VACÍO", async () => {
+    renderWithProviders(<ItemEditDialog compraId={COMPRA_ID} item={buildItem()} />, {
+      user: buildUser({ permisos: ["COMPRAS:MODIFICACION"] }),
+    });
+
+    await abrirDialog();
+
+    expect(await screen.findByLabelText(/fecha de cotización/i)).toHaveValue("2026-01-01");
   });
 
   it("envía el PATCH con TODOS los campos cuando el ítem sigue PENDIENTE (sin congelamiento)", async () => {

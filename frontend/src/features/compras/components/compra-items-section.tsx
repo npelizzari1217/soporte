@@ -39,6 +39,7 @@ import {
 } from "./registrar-avance-dialog";
 import { ItemCerrarFaltanteDialog } from "./item-cerrar-faltante-dialog";
 import type { EstadoAprobacionItem, ItemCompra } from "../types";
+import { aFechaInput } from "../lib/fecha";
 
 /**
  * Presentación de `EstadoAprobacionItem` (decisión sobre UN ítem) — mapeo
@@ -57,9 +58,9 @@ function formatMonto(moneda: string, monto: number): string {
   return `${moneda} ${monto.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-/** "YYYY-MM-DD" desde un ISO string del backend, sin parsear con `Date` (evita el corrimiento por timezone). */
+/** "YYYY-MM-DD" desde un ISO string del backend, con guion cuando la etapa todavía no se registró. */
 function formatFecha(fechaISO: string | null): string {
-  return fechaISO ? fechaISO.slice(0, 10) : "—";
+  return fechaISO ? aFechaInput(fechaISO) : "—";
 }
 
 export interface CompraItemsSectionProps {

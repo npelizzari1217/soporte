@@ -50,7 +50,7 @@ import {
   type RegistrarRecepcionDeItemFormValues,
   type RegistrarEntregaDeItemFormValues,
 } from "../schemas";
-import { hoyISO } from "../lib/fecha";
+import { aFechaInput, hoyISO } from "../lib/fecha";
 import type { ItemCompra } from "../types";
 
 export interface RegistrarAvanceDialogProps {
@@ -60,7 +60,7 @@ export interface RegistrarAvanceDialogProps {
 
 /** "YYYY-MM-DD" desde un ISO string del backend, o `hoyISO()` si es null (prellenado, R4/S51). */
 function fechaODefault(fechaISO: string | null): string {
-  return fechaISO ? fechaISO.slice(0, 10) : hoyISO();
+  return fechaISO ? aFechaInput(fechaISO) : hoyISO();
 }
 
 /** S47: solo un ítem APROBADO puede registrar orden; TERMINAL si ya cerró con faltante (S48). */
