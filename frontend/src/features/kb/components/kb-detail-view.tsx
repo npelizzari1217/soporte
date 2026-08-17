@@ -2,7 +2,9 @@
 
 /**
  * KbDetailView — CONTAINER client component montado por `/kb/:id` (ADR-1).
- * Lectura de un artículo (R-M3 / T3.3) + acciones gateadas por `kb:gestionar`
+ * Lectura de un artículo (R-M3 / T3.3) + acciones gateadas por acción
+ * (WU-7.6): `KB:MODIFICACION` (editar), `KB:PUBLICAR` (visibilidad),
+ * `KB:BORRADO` (eliminar)
  * (editar/publicar-despublicar/eliminar, T3.4-T3.6). Contenido renderizado
  * como texto plano con saltos de línea preservados (`whitespace-pre-wrap`) —
  * ADR-6: "sin lib WYSIWYG", esta es la opción "texto plano" explícitamente
@@ -49,20 +51,24 @@ export function KbDetailView({ articuloId }: KbDetailViewProps) {
       <PageHeader
         title={articulo.titulo}
         actions={
-          <Can permiso="kb:gestionar">
-            <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2">
+            <Can permiso="KB:MODIFICACION">
               <KbArticleEditDialog articulo={articulo} />
+            </Can>
+            <Can permiso="KB:PUBLICAR">
               <KbVisibilityToggle
                 visible={articulo.visibleParaSolicitante}
                 onConfirm={() => visibilidadMutation.mutate({ visible: !articulo.visibleParaSolicitante })}
                 isSubmitting={visibilidadMutation.isPending}
               />
+            </Can>
+            <Can permiso="KB:BORRADO">
               <KbDeleteControl
                 onConfirm={() => eliminarMutation.mutate(undefined, { onSuccess: () => router.push("/kb") })}
                 isSubmitting={eliminarMutation.isPending}
               />
-            </div>
-          </Can>
+            </Can>
+          </div>
         }
       />
 

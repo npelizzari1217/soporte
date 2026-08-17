@@ -2,7 +2,7 @@
  * UsuariosController — entry point HTTP de la gestión mínima de usuarios del
  * tenant (sdd/beta-frontend/spec §5, desbloquea Fase 5 Beta frontend).
  *
- * Rutas (WU-7.3/7.4, sdd/matriz-permisos-por-usuario — R4/R4-excepción/R6/R10):
+ * Rutas (WU-7.3/7.4/7.6, sdd/matriz-permisos-por-usuario — R4/R4-excepción/R6/R10):
  *   GET    /usuarios                          → ListarUsuariosTenantUseCase   (TICKETS:ASIGNAR | TICKETS:VER_TODOS | ADMINISTRADOR-o-ROOT, regla OR — R4-excepción)
  *   POST   /usuarios                          → CrearUsuarioTenantUseCase     [AdminClienteGuard]
  *   PATCH  /usuarios/:id/rol                  → CambiarRolUsuarioTenantUseCase [AdminClienteGuard] (R6: `reaplicarPreset` opcional)
@@ -11,7 +11,6 @@
  *   GET    /usuarios/:id/permisos             → ObtenerPermisosUsuarioTenantUseCase [AdminClienteGuard] (ADR-P10)
  *   PATCH  /usuarios/:id/permisos             → AsignarPermisosUsuarioTenantUseCase [AdminClienteGuard] (ADR-P10, reemplazo total)
  *   POST   /usuarios/:id/permisos/aplicar-preset → AplicarPresetPermisosUseCase [AdminClienteGuard] (ADR-P9)
- *   GET/PATCH /usuarios/:id/modulos           → ABM viejo — VIGENTE, ver nota de deviation abajo
  *
  * Guards: `JwtAuthGuard` + `TenantGuard` a nivel de controller (requieren JWT
  * válido y `cliente_id` resuelto). `AdminClienteGuard` POR MÉTODO (ADR-P5) en
@@ -26,20 +25,14 @@
  * — se omite salvo que el actor sea ADMINISTRADOR o ROOT, INDEPENDIENTE de la
  * regla OR de acceso (`esAdminDeCliente`, no `puedeEjecutarAlguna`).
  *
- * DESVIACIÓN DECLARADA vs. diseño (ADR-P10, Paso 4 del plan de migración):
- * el diseño dice que `GET/PATCH /usuarios/:id/modulos` (+ sus use cases y
- * `asignar-modulos-control.tsx`) SE ELIMINAN en el mismo deploy que la
- * grilla nueva del frontend (WU-7.6). Esta tanda de apply está ACOTADA a
- * WU-7.4 (backend) y WU-7.5 — WU-7.6 (swap del frontend) queda
- * explícitamente fuera de alcance. Eliminar el ABM viejo ACÁ, antes de que
- * el frontend migre a la grilla nueva, rompería `asignar-modulos-control.tsx`
- * en producción (sigue llamando a estas dos rutas). Se optó por lo
- * CONSERVADOR: los endpoints viejos siguen VIVOS, sin tocar su lógica de
- * negocio, y el ABM nuevo se agrega EN PARALELO. Recomendado para
- * `sdd-verify`/próxima tanda: remover `GET/PATCH /usuarios/:id/modulos`,
- * `ObtenerModulosUsuarioTenantUseCase` y `AsignarModulosUsuarioTenantUseCase`
- * en el MISMO commit que WU-7.6 (mismo criterio atómico que ADR-P8 aplicó al
- * rename SOPORTE→TICKETS).
+ * ABM viejo RETIRADO (WU-7.6, cierre de la deviation declarada en la tanda
+ * anterior): `GET/PATCH /usuarios/:id/modulos`, `ObtenerModulosUsuarioTenantUseCase`,
+ * `AsignarModulosUsuarioTenantUseCase`, `IUsuarioClienteModuloRepository` y su
+ * impl Prisma se eliminaron en el MISMO commit que la grilla nueva del
+ * frontend (`asignar-permisos-control.tsx`) — mismo criterio atómico que
+ * ADR-P8 aplicó al rename SOPORTE→TICKETS: dos ABMs escribiendo dos tablas,
+ * una de ellas ya sin lectores de runtime, es una trampa activa, no una red
+ * de rollback útil.
  *
  * Aislamiento estricto (spec §5): `clienteId` SIEMPRE es `actor.cliente_id`
  * (JWT, resuelto por `TenantGuard`) — NUNCA un valor de la request. Los DTOs
@@ -74,14 +67,11 @@ import { CrearUsuarioTenantUseCase } from '../../application/use-cases/crear-usu
 import { CambiarRolUsuarioTenantUseCase } from '../../application/use-cases/cambiar-rol-usuario-tenant.use-case';
 import { EditarUsuarioTenantUseCase } from '../../application/use-cases/editar-usuario-tenant.use-case';
 import { DesactivarMembresiaUsuarioTenantUseCase } from '../../application/use-cases/desactivar-membresia-usuario-tenant.use-case';
-import { AsignarModulosUsuarioTenantUseCase } from '../../application/use-cases/asignar-modulos-usuario-tenant.use-case';
-import { ObtenerModulosUsuarioTenantUseCase } from '../../application/use-cases/obtener-modulos-usuario-tenant.use-case';
 import { ObtenerPermisosUsuarioTenantUseCase } from '../../application/use-cases/obtener-permisos-usuario-tenant.use-case';
 import { AsignarPermisosUsuarioTenantUseCase } from '../../application/use-cases/asignar-permisos-usuario-tenant.use-case';
 import { AplicarPresetPermisosUseCase } from '../../application/use-cases/aplicar-preset-permisos.use-case';
 import {
   AplicarPresetPermisosDto,
-  AsignarModulosDto,
   AsignarPermisosDto,
   CambiarRolUsuarioDto,
   CreateUsuarioTenantDto,
@@ -96,7 +86,6 @@ import { UsuarioEntity } from '../../domain/entities/usuario.entity';
 import {
   MembresiaNoEncontradaError,
   MembresiaYaActivaError,
-  ModuloInvalidoError,
 } from '../../domain/errors/auth.errors';
 import { JwtAuthGuard } from '../../infrastructure/guards/jwt-auth.guard';
 import { TenantGuard } from '../../infrastructure/guards/tenant.guard';
@@ -153,9 +142,6 @@ function toHttpException(
   if (error instanceof MembresiaYaActivaError) {
     return new ConflictException(error.message);
   }
-  if (error instanceof ModuloInvalidoError) {
-    return new UnprocessableEntityException(error.message);
-  }
   // RolNoEncontradoError, CeldaPermisoInvalidaError, PresetRolNoDefinidoError:
   // input inválido del actor o gap de configuración del código → 422.
   return new UnprocessableEntityException(error.message);
@@ -169,8 +155,6 @@ export class UsuariosController {
     private readonly crearUsuarioTenantUseCase: CrearUsuarioTenantUseCase,
     private readonly cambiarRolUsuarioTenantUseCase: CambiarRolUsuarioTenantUseCase,
     private readonly desactivarMembresiaUsuarioTenantUseCase: DesactivarMembresiaUsuarioTenantUseCase,
-    private readonly obtenerModulosUsuarioTenantUseCase: ObtenerModulosUsuarioTenantUseCase,
-    private readonly asignarModulosUsuarioTenantUseCase: AsignarModulosUsuarioTenantUseCase,
     private readonly editarUsuarioTenantUseCase: EditarUsuarioTenantUseCase,
     private readonly obtenerPermisosUsuarioTenantUseCase: ObtenerPermisosUsuarioTenantUseCase,
     private readonly asignarPermisosUsuarioTenantUseCase: AsignarPermisosUsuarioTenantUseCase,
@@ -319,51 +303,6 @@ export class UsuariosController {
     if (result.isFail()) {
       throw toHttpException(result.getError());
     }
-  }
-
-  /**
-   * GET /usuarios/:id/modulos
-   * Módulos funcionales actualmente asignados al usuario `:id` EN EL CLIENTE
-   * DEL TOKEN (feature 5.2 CAPA 4). Prellena el control de asignación del
-   * front. Un usuario sin módulos asignados devuelve `{ modulos: [] }`.
-   */
-  @Get(':id/modulos')
-  @UseGuards(AdminClienteGuard)
-  async obtenerModulos(
-    @CurrentUser() actor: JwtPayload,
-    @Param('id') usuarioId: string,
-  ): Promise<{ modulos: string[] }> {
-    const result = await this.obtenerModulosUsuarioTenantUseCase.execute({
-      clienteId: actor.cliente_id as string,
-      usuarioId,
-    });
-    return { modulos: result.getValue() };
-  }
-
-  /**
-   * PATCH /usuarios/:id/modulos
-   * Reemplaza el set completo de módulos del usuario `:id` EN EL CLIENTE DEL
-   * TOKEN (feature 5.2 CAPA 4). `clienteId` SIEMPRE es `actor.cliente_id`.
-   * @throws 404 si no existe membresía activa de ese usuario en este cliente
-   * @throws 422 si algún módulo no pertenece al catálogo `MODULOS`
-   */
-  @Patch(':id/modulos')
-  @UseGuards(AdminClienteGuard)
-  async asignarModulos(
-    @CurrentUser() actor: JwtPayload,
-    @Param('id') usuarioId: string,
-    @Body() dto: AsignarModulosDto,
-  ): Promise<{ usuarioId: string; modulos: string[] }> {
-    const result = await this.asignarModulosUsuarioTenantUseCase.execute({
-      clienteId: actor.cliente_id as string,
-      usuarioId,
-      modulos: dto.modulos,
-    });
-
-    if (result.isFail()) {
-      throw toHttpException(result.getError());
-    }
-    return { usuarioId, modulos: result.getValue() };
   }
 
   // ─── ABM de la matriz de permisos (WU-7.4, ADR-P9/ADR-P10) ────────────────

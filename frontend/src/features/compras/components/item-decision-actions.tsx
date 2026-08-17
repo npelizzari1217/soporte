@@ -2,7 +2,7 @@
 
 /**
  * ItemDecisionActions — aprobar/rechazar un ítem de compra (§4.3, S8-S11).
- * PRESENTACIONAL, gate `compra:aprobar` aplicado por el CALLER (mismo
+ * PRESENTACIONAL, gate `COMPRAS:APROBACION` aplicado por el CALLER (mismo
  * criterio que el resto de `item-*.tsx` de PR-26) — PIEZA AUTÓNOMA, sin
  * cablear a `compra-detail-view.tsx`.
  *

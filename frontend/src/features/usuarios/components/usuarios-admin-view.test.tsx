@@ -7,6 +7,7 @@ import { renderWithProviders, buildUser } from "../../../../test/render-with-pro
 import { UsuariosAdminView } from "./usuarios-admin-view";
 
 const USUARIO_JUANA = { id: "u1", nombre: "Juana", apellido: "Pérez", rol: "TECNICO", email: "juana@tenant.com" };
+const USUARIO_TECNICO_SIN_EMAIL = { id: "u2", nombre: "Beto", apellido: "Gómez", rol: "TECNICO" };
 
 const ROLES = [
   { id: "r1", codigo: "USUARIO", nombre: "Usuario", descripcion: null },
@@ -15,21 +16,24 @@ const ROLES = [
   { id: "r4", codigo: "ADMINISTRADOR", nombre: "Administrador", descripcion: null },
 ];
 
-function mockBackend() {
+function mockBackend(usuarios: unknown[] = [USUARIO_JUANA]) {
   server.use(
-    http.get("/api/usuarios", () => HttpResponse.json([USUARIO_JUANA])),
+    http.get("/api/usuarios", () => HttpResponse.json(usuarios)),
     http.get("/api/roles", () => HttpResponse.json(ROLES)),
   );
 }
 
+// ADR-P5 (sdd/matriz-permisos-por-usuario): el ABM de usuarios es
+// ADMINISTRADOR-o-ROOT exclusivo — un solo gate (`esAdminCliente`), sin el
+// AND de dos permisos viejos (`usuario:gestionar`+`rol:asignar`).
 describe("UsuariosAdminView", () => {
   beforeEach(() => mockBackend());
 
   it.each([
-    ["con usuario:gestionar", ["usuario:gestionar"], true],
-    ["sin usuario:gestionar", [], false],
-  ])("gate de acceso a Admin > Usuarios — %s", async (_label, permisos, shouldShowContent) => {
-    renderWithProviders(<UsuariosAdminView />, { user: buildUser({ permisos }) });
+    ["ADMINISTRADOR", "ADMINISTRADOR", true],
+    ["TECNICO (no admin, no root)", "TECNICO", false],
+  ])("gate de acceso a Admin > Usuarios — %s", async (_label, rol, shouldShowContent) => {
+    renderWithProviders(<UsuariosAdminView />, { user: buildUser({ rol }) });
 
     if (shouldShowContent) {
       await screen.findByText("Juana Pérez");
@@ -39,10 +43,18 @@ describe("UsuariosAdminView", () => {
     }
   });
 
-  it("con usuario:gestionar PERO SIN rol:asignar — ve la lista, NO ve «Nuevo usuario» (AND, no OR)", async () => {
-    renderWithProviders(<UsuariosAdminView />, { user: buildUser({ permisos: ["usuario:gestionar"] }) });
+  it("ADMINISTRADOR ve la lista Y las acciones de mutación (Nuevo usuario, cambiar rol, permisos)", async () => {
+    renderWithProviders(<UsuariosAdminView />, { user: buildUser({ rol: "ADMINISTRADOR" }) });
     await screen.findByText("Juana Pérez");
-    expect(screen.queryByRole("button", { name: /nuevo usuario/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /nuevo usuario/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /permisos/i })).toBeInTheDocument();
+  });
+
+  it("R10: un usuario SIN email en la respuesta (TECNICO viendo GET /usuarios) se muestra sin romper", async () => {
+    mockBackend([USUARIO_TECNICO_SIN_EMAIL]);
+    renderWithProviders(<UsuariosAdminView />, { user: buildUser({ rol: "ADMINISTRADOR" }) });
+    await screen.findByText("Beto Gómez");
+    expect(screen.getByText("—")).toBeInTheDocument();
   });
 
   it("crear usuario NUNCA envía clienteId — aislamiento tenant estricto (spec §5)", async () => {
@@ -58,9 +70,7 @@ describe("UsuariosAdminView", () => {
       }),
     );
 
-    renderWithProviders(<UsuariosAdminView />, {
-      user: buildUser({ permisos: ["usuario:gestionar", "rol:asignar"] }),
-    });
+    renderWithProviders(<UsuariosAdminView />, { user: buildUser({ rol: "ADMINISTRADOR" }) });
     await screen.findByText("Juana Pérez");
 
     await user.click(screen.getByRole("button", { name: /nuevo usuario/i }));
@@ -81,9 +91,7 @@ describe("UsuariosAdminView", () => {
 
   it("selector de rol se puebla desde GET /roles (nombre legible, no el código crudo hardcodeado)", async () => {
     const user = userEvent.setup();
-    renderWithProviders(<UsuariosAdminView />, {
-      user: buildUser({ permisos: ["usuario:gestionar", "rol:asignar"] }),
-    });
+    renderWithProviders(<UsuariosAdminView />, { user: buildUser({ rol: "ADMINISTRADOR" }) });
     await screen.findByText("Juana Pérez");
 
     await user.click(screen.getByRole("button", { name: /nuevo usuario/i }));

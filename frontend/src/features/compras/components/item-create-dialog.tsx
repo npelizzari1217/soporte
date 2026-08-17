@@ -6,8 +6,8 @@
  * (PR-23), pero NO se cablea a `compra-detail-view.tsx` — eso lo hace el
  * orquestador cuando aterrice el detalle (reparto declarado del batch).
  *
- * RBAC: `POST /compras/:id/items` requiere `compra:gestionar` — el gateo de
- * UI (mostrar/ocultar el trigger con `<Can permiso="compra:gestionar">`) es
+ * RBAC: `POST /compras/:id/items` requiere `COMPRAS:ALTAS` — el gateo de
+ * UI (mostrar/ocultar el trigger con `<Can permiso="COMPRAS:ALTAS">`) es
  * responsabilidad del CALLER, mismo criterio que `KbDeleteControl`/
  * `KbVisibilityToggle` (`kb-delete-control.tsx`, `kb-visibility-toggle.tsx`)
  * — este componente es PRESENTACIONAL y no se auto-gatea. El backend igual

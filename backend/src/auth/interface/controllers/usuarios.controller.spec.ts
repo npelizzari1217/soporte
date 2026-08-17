@@ -18,7 +18,6 @@ import { MembresiaEntity } from '../../domain/entities/membresia.entity';
 import {
   MembresiaNoEncontradaError,
   MembresiaYaActivaError,
-  ModuloInvalidoError,
   PresetRolNoDefinidoError,
   RolNoEncontradoError,
 } from '../../domain/errors/auth.errors';
@@ -30,8 +29,6 @@ function buildController() {
   const crearUsuarioTenantUseCase = { execute: vi.fn() };
   const cambiarRolUsuarioTenantUseCase = { execute: vi.fn() };
   const desactivarMembresiaUsuarioTenantUseCase = { execute: vi.fn() };
-  const obtenerModulosUsuarioTenantUseCase = { execute: vi.fn() };
-  const asignarModulosUsuarioTenantUseCase = { execute: vi.fn() };
   const editarUsuarioTenantUseCase = { execute: vi.fn() };
   const obtenerPermisosUsuarioTenantUseCase = { execute: vi.fn() };
   const asignarPermisosUsuarioTenantUseCase = { execute: vi.fn() };
@@ -41,8 +38,6 @@ function buildController() {
     crearUsuarioTenantUseCase as any,
     cambiarRolUsuarioTenantUseCase as any,
     desactivarMembresiaUsuarioTenantUseCase as any,
-    obtenerModulosUsuarioTenantUseCase as any,
-    asignarModulosUsuarioTenantUseCase as any,
     editarUsuarioTenantUseCase as any,
     obtenerPermisosUsuarioTenantUseCase as any,
     asignarPermisosUsuarioTenantUseCase as any,
@@ -54,8 +49,6 @@ function buildController() {
     crearUsuarioTenantUseCase,
     cambiarRolUsuarioTenantUseCase,
     desactivarMembresiaUsuarioTenantUseCase,
-    obtenerModulosUsuarioTenantUseCase,
-    asignarModulosUsuarioTenantUseCase,
     editarUsuarioTenantUseCase,
     obtenerPermisosUsuarioTenantUseCase,
     asignarPermisosUsuarioTenantUseCase,
@@ -366,69 +359,6 @@ describe('UsuariosController (gestión mínima de usuarios, sdd/beta-frontend §
       await expect(controller.desactivarMembresia(actor, 'usuario-ajeno')).rejects.toBeInstanceOf(
         NotFoundException,
       );
-    });
-  });
-
-  describe('GET /usuarios/:id/modulos', () => {
-    it('retorna { modulos } del cliente del token', async () => {
-      const { controller, obtenerModulosUsuarioTenantUseCase } = buildController();
-      obtenerModulosUsuarioTenantUseCase.execute.mockResolvedValue(
-        Result.ok(['SOPORTE', 'COMPRAS']),
-      );
-      const actor = buildActor({ permisos: ['usuario:gestionar'] });
-
-      const result = await controller.obtenerModulos(actor, 'usuario-1');
-
-      expect(obtenerModulosUsuarioTenantUseCase.execute).toHaveBeenCalledWith({
-        clienteId: 'cliente-token',
-        usuarioId: 'usuario-1',
-      });
-      expect(result).toEqual({ modulos: ['SOPORTE', 'COMPRAS'] });
-    });
-  });
-
-  describe('PATCH /usuarios/:id/modulos', () => {
-    it('asigna los módulos y retorna { usuarioId, modulos }, clienteId SIEMPRE del actor', async () => {
-      const { controller, asignarModulosUsuarioTenantUseCase } = buildController();
-      asignarModulosUsuarioTenantUseCase.execute.mockResolvedValue(
-        Result.ok(['SOPORTE', 'EQUIPOS']),
-      );
-      const actor = buildActor({ permisos: ['usuario:gestionar', 'rol:asignar'] });
-
-      const result = await controller.asignarModulos(actor, 'usuario-1', {
-        modulos: ['SOPORTE', 'EQUIPOS'],
-      } as any);
-
-      expect(asignarModulosUsuarioTenantUseCase.execute).toHaveBeenCalledWith({
-        clienteId: 'cliente-token',
-        usuarioId: 'usuario-1',
-        modulos: ['SOPORTE', 'EQUIPOS'],
-      });
-      expect(result).toEqual({ usuarioId: 'usuario-1', modulos: ['SOPORTE', 'EQUIPOS'] });
-    });
-
-    it('propaga 404 NotFoundException cuando la membresía no existe en este cliente', async () => {
-      const { controller, asignarModulosUsuarioTenantUseCase } = buildController();
-      asignarModulosUsuarioTenantUseCase.execute.mockResolvedValue(
-        Result.fail(new MembresiaNoEncontradaError()),
-      );
-      const actor = buildActor({ permisos: ['usuario:gestionar', 'rol:asignar'] });
-
-      await expect(
-        controller.asignarModulos(actor, 'usuario-ajeno', { modulos: ['SOPORTE'] } as any),
-      ).rejects.toBeInstanceOf(NotFoundException);
-    });
-
-    it('propaga 422 UnprocessableEntityException cuando algún módulo es inválido', async () => {
-      const { controller, asignarModulosUsuarioTenantUseCase } = buildController();
-      asignarModulosUsuarioTenantUseCase.execute.mockResolvedValue(
-        Result.fail(new ModuloInvalidoError(['INEXISTENTE'])),
-      );
-      const actor = buildActor({ permisos: ['usuario:gestionar', 'rol:asignar'] });
-
-      await expect(
-        controller.asignarModulos(actor, 'usuario-1', { modulos: ['INEXISTENTE'] } as any),
-      ).rejects.toBeInstanceOf(UnprocessableEntityException);
     });
   });
 

@@ -10,7 +10,15 @@
  * antes de una mutación (tickets no la necesitaba).
  *
  * `trigger` se monta vía `AlertDialog.Trigger asChild` — el caller controla
- * el look del disparador (ej. `<Button variant="destructive">`).
+ * el look del disparador (ej. `<Button variant="destructive">`). Modo
+ * UNCONTROLLED por default (sin `open`/`onOpenChange`, Radix maneja el
+ * estado internamente vía el trigger).
+ *
+ * Modo CONTROLLED (`open`+`onOpenChange`, `trigger` omitido): para el caso
+ * donde el diálogo se abre por una condición externa en vez de un click
+ * directo sobre el trigger (ej. `CambiarRolControl` — R6: el mismo botón
+ * "Guardar" hace commit directo o abre confirmación según un checkbox
+ * aparte, no hay un trigger propio para el diálogo).
  */
 import * as AlertDialog from "@radix-ui/react-alert-dialog";
 import type { ReactNode } from "react";
@@ -18,7 +26,9 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
 export interface ConfirmDialogProps {
-  trigger: ReactNode;
+  trigger?: ReactNode;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
   title: string;
   description: string;
   confirmLabel?: string;
@@ -30,6 +40,8 @@ export interface ConfirmDialogProps {
 
 export function ConfirmDialog({
   trigger,
+  open,
+  onOpenChange,
   title,
   description,
   confirmLabel = "Confirmar",
@@ -39,8 +51,8 @@ export function ConfirmDialog({
   isConfirming = false,
 }: ConfirmDialogProps) {
   return (
-    <AlertDialog.Root>
-      <AlertDialog.Trigger asChild>{trigger}</AlertDialog.Trigger>
+    <AlertDialog.Root open={open} onOpenChange={onOpenChange}>
+      {trigger ? <AlertDialog.Trigger asChild>{trigger}</AlertDialog.Trigger> : null}
       <AlertDialog.Portal>
         <AlertDialog.Overlay
           className={cn(

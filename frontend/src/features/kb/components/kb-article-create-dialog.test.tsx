@@ -19,7 +19,7 @@ describe("KbArticleCreateDialog", () => {
   it("abre el modal, crea el artículo, cierra el modal y navega al detalle", async () => {
     const user = userEvent.setup();
     server.use(http.post("/api/kb", () => HttpResponse.json({ id: "nuevo-a1" }, { status: 201 })));
-    renderWithProviders(<KbArticleCreateDialog />, { user: buildUser({ permisos: ["kb:gestionar"] }) });
+    renderWithProviders(<KbArticleCreateDialog />, { user: buildUser({ permisos: ["KB:ALTAS"] }) });
 
     expect(screen.queryByLabelText(/título/i)).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /^nuevo artículo$/i }));

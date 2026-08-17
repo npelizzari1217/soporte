@@ -154,26 +154,12 @@ export class MembresiaNoEncontradaError extends DomainError {
 }
 
 /**
- * ModuloInvalidoError — uno o más códigos de módulo recibidos al asignar
- * módulos a un usuario (`PATCH /usuarios/:id/modulos`) no pertenecen al
- * catálogo `MODULOS` (`shared/domain/modulos`). Validación de INPUT del actor
- * (ADMINISTRADOR), defensa en profundidad detrás del `@IsIn` del DTO.
- * → HTTP 422 en la capa de presentación.
- */
-export class ModuloInvalidoError extends DomainError {
-  readonly code = 'AUTH_MODULO_INVALIDO';
-
-  constructor(modulos: string[]) {
-    super(`Módulo(s) inválido(s): ${modulos.join(', ')}.`);
-  }
-}
-
-/**
  * CeldaPermisoInvalidaError — uno o más códigos `MODULO:ACCION` recibidos al
  * reemplazar la matriz de un usuario (`PATCH /usuarios/:id/permisos`, WU-7.4)
  * no pertenecen al catálogo `PARES_VALIDOS` (`shared/domain/acciones`).
- * Defensa en profundidad detrás del `@IsIn` del DTO — mismo criterio que
- * `ModuloInvalidoError` para el ABM viejo de módulos.
+ * Defensa en profundidad detrás del `@IsIn` del DTO. `ModuloInvalidoError`
+ * (equivalente para el ABM viejo de módulos) se retiró en WU-7.6 junto con
+ * ese ABM.
  * → HTTP 422 en la capa de presentación.
  */
 export class CeldaPermisoInvalidaError extends DomainError {

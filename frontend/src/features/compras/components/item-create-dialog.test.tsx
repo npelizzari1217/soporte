@@ -42,7 +42,7 @@ describe("ItemCreateDialog", () => {
 
   it("al abrir muestra los campos de alta de ítem", async () => {
     renderWithProviders(<ItemCreateDialog compraId={COMPRA_ID} />, {
-      user: buildUser({ permisos: ["compra:gestionar"] }),
+      user: buildUser({ permisos: ["COMPRAS:ALTAS"] }),
     });
 
     await abrirDialog();
@@ -58,7 +58,7 @@ describe("ItemCreateDialog", () => {
 
   it("valida cantidad > 0 y monto >= 0 antes de pegarle a la API (feedback inmediato)", async () => {
     renderWithProviders(<ItemCreateDialog compraId={COMPRA_ID} />, {
-      user: buildUser({ permisos: ["compra:gestionar"] }),
+      user: buildUser({ permisos: ["COMPRAS:ALTAS"] }),
     });
 
     const user = await abrirDialog();
@@ -83,7 +83,7 @@ describe("ItemCreateDialog", () => {
     );
 
     renderWithProviders(<ItemCreateDialog compraId={COMPRA_ID} />, {
-      user: buildUser({ permisos: ["compra:gestionar"] }),
+      user: buildUser({ permisos: ["COMPRAS:ALTAS"] }),
     });
 
     const user = await abrirDialog();
@@ -116,7 +116,7 @@ describe("ItemCreateDialog", () => {
     );
 
     renderWithProviders(<ItemCreateDialog compraId={COMPRA_ID} />, {
-      user: buildUser({ permisos: ["compra:gestionar"] }),
+      user: buildUser({ permisos: ["COMPRAS:ALTAS"] }),
     });
 
     const user = await abrirDialog();

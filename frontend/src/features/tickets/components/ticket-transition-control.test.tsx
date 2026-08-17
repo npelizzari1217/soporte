@@ -5,7 +5,7 @@ import { renderWithProviders, buildUser } from "../../../../test/render-with-pro
 import { TicketTransitionControl } from "./ticket-transition-control";
 
 describe("TicketTransitionControl", () => {
-  it("sin ticket:transicionar → no renderiza el control (USUARIO/COLABORADOR no pueden ni intentarlo)", () => {
+  it("sin TICKETS:TRANSICIONAR → no renderiza el control (USUARIO/COLABORADOR no pueden ni intentarlo)", () => {
     renderWithProviders(
       <TicketTransitionControl estadoActualCodigo="NUEVO" onTransicionar={vi.fn()} isSubmitting={false} />,
       { user: buildUser({ rol: "USUARIO", permisos: [] }) },
@@ -16,7 +16,7 @@ describe("TicketTransitionControl", () => {
   it("TECNICO, estado NUEVO → el arco de arranque (ASIGNADO) lo cubre el control unificado; manual ofrece SOLO [CANCELADO]", () => {
     renderWithProviders(
       <TicketTransitionControl estadoActualCodigo="NUEVO" onTransicionar={vi.fn()} isSubmitting={false} />,
-      { user: buildUser({ rol: "TECNICO", permisos: ["ticket:transicionar"] }) },
+      { user: buildUser({ rol: "TECNICO", permisos: ["TICKETS:TRANSICIONAR"] }) },
     );
     const options = screen.getAllByRole("option").map((o) => o.textContent);
     expect(options).toEqual(["Cancelado"]);
@@ -25,7 +25,7 @@ describe("TicketTransitionControl", () => {
   it("TECNICO, estado ASIGNADO → el arco EN_PROCESO lo cubre el control unificado; manual ofrece SOLO [CANCELADO]", () => {
     renderWithProviders(
       <TicketTransitionControl estadoActualCodigo="ASIGNADO" onTransicionar={vi.fn()} isSubmitting={false} />,
-      { user: buildUser({ rol: "TECNICO", permisos: ["ticket:transicionar"] }) },
+      { user: buildUser({ rol: "TECNICO", permisos: ["TICKETS:TRANSICIONAR"] }) },
     );
     const options = screen.getAllByRole("option").map((o) => o.textContent);
     expect(options).toEqual(["Cancelado"]);
@@ -34,7 +34,7 @@ describe("TicketTransitionControl", () => {
   it("TECNICO, estado EN_PROCESO → ofrece EXACTAMENTE [RESUELTO, CANCELADO] (flujo posterior, sin cambios)", () => {
     renderWithProviders(
       <TicketTransitionControl estadoActualCodigo="EN_PROCESO" onTransicionar={vi.fn()} isSubmitting={false} />,
-      { user: buildUser({ rol: "TECNICO", permisos: ["ticket:transicionar"] }) },
+      { user: buildUser({ rol: "TECNICO", permisos: ["TICKETS:TRANSICIONAR"] }) },
     );
     const options = screen.getAllByRole("option").map((o) => o.textContent);
     expect(options).toEqual(["Resuelto", "Cancelado"]);
@@ -43,7 +43,7 @@ describe("TicketTransitionControl", () => {
   it("TECNICO, estado terminal (CERRADO, sin reapertura) → NO ofrece ningún select, muestra mensaje de estado final", () => {
     renderWithProviders(
       <TicketTransitionControl estadoActualCodigo="CERRADO" onTransicionar={vi.fn()} isSubmitting={false} />,
-      { user: buildUser({ rol: "TECNICO", permisos: ["ticket:transicionar"] }) },
+      { user: buildUser({ rol: "TECNICO", permisos: ["TICKETS:TRANSICIONAR"] }) },
     );
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
     expect(screen.getByText(/sin transiciones disponibles/i)).toBeInTheDocument();
@@ -54,7 +54,7 @@ describe("TicketTransitionControl", () => {
     const onTransicionar = vi.fn();
     renderWithProviders(
       <TicketTransitionControl estadoActualCodigo="EN_PROCESO" onTransicionar={onTransicionar} isSubmitting={false} />,
-      { user: buildUser({ rol: "TECNICO", permisos: ["ticket:transicionar"] }) },
+      { user: buildUser({ rol: "TECNICO", permisos: ["TICKETS:TRANSICIONAR"] }) },
     );
 
     await user.selectOptions(screen.getByRole("combobox"), "RESUELTO");
@@ -68,7 +68,7 @@ describe("TicketTransitionControl — salto correctivo (ROOT/ADMINISTRADOR)", ()
   it("ADMINISTRADOR, estado EN_PROCESO → ofrece la sección 'Corregir estado' con los no terminales (menos el actual)", () => {
     renderWithProviders(
       <TicketTransitionControl estadoActualCodigo="EN_PROCESO" onTransicionar={vi.fn()} isSubmitting={false} />,
-      { user: buildUser({ rol: "ADMINISTRADOR", permisos: ["ticket:transicionar"] }) },
+      { user: buildUser({ rol: "ADMINISTRADOR", permisos: ["TICKETS:TRANSICIONAR"] }) },
     );
     const correctivo = screen.getByRole("combobox", { name: /corregir estado/i });
     const opciones = within(correctivo)
@@ -94,7 +94,7 @@ describe("TicketTransitionControl — salto correctivo (ROOT/ADMINISTRADOR)", ()
     const onTransicionar = vi.fn();
     renderWithProviders(
       <TicketTransitionControl estadoActualCodigo="EN_PROCESO" onTransicionar={onTransicionar} isSubmitting={false} />,
-      { user: buildUser({ rol: "ADMINISTRADOR", permisos: ["ticket:transicionar"] }) },
+      { user: buildUser({ rol: "ADMINISTRADOR", permisos: ["TICKETS:TRANSICIONAR"] }) },
     );
 
     const correctivo = screen.getByRole("combobox", { name: /corregir estado/i });
@@ -107,7 +107,7 @@ describe("TicketTransitionControl — salto correctivo (ROOT/ADMINISTRADOR)", ()
   it("no-corrector (TECNICO) NO ve la sección 'Corregir estado'", () => {
     renderWithProviders(
       <TicketTransitionControl estadoActualCodigo="EN_PROCESO" onTransicionar={vi.fn()} isSubmitting={false} />,
-      { user: buildUser({ rol: "TECNICO", permisos: ["ticket:transicionar"] }) },
+      { user: buildUser({ rol: "TECNICO", permisos: ["TICKETS:TRANSICIONAR"] }) },
     );
     expect(screen.queryByRole("combobox", { name: /corregir estado/i })).not.toBeInTheDocument();
   });

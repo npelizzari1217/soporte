@@ -37,12 +37,10 @@ import { USUARIO_REPOSITORY } from './domain/ports/i-usuario.repository';
 import { MEMBRESIA_REPOSITORY } from './domain/ports/i-membresia.repository';
 import { REFRESH_TOKEN_REPOSITORY } from './domain/ports/i-refresh-token.repository';
 import { ROLE_REPOSITORY } from './domain/ports/i-role.repository';
-import { USUARIO_CLIENTE_MODULO_REPOSITORY } from './domain/ports/i-usuario-cliente-modulo.repository';
 import { MATRIZ_PERMISOS_REPOSITORY } from './domain/ports/i-matriz-permisos.repository';
 import { CLIENTE_REPOSITORY } from '../clientes/domain/ports/i-cliente.repository';
 import { PrismaUsuarioRepository } from './infrastructure/persistence/prisma/prisma-usuario.repository';
 import { PrismaMembresiaRepository } from './infrastructure/persistence/prisma/prisma-membresia.repository';
-import { PrismaUsuarioClienteModuloRepository } from './infrastructure/persistence/prisma/prisma-usuario-cliente-modulo.repository';
 import { PrismaMatrizPermisosRepository } from './infrastructure/persistence/prisma/prisma-matriz-permisos.repository';
 import { PrismaRefreshTokenRepository } from './infrastructure/persistence/prisma/prisma-refresh-token.repository';
 import { PrismaRoleRepository } from './infrastructure/persistence/prisma/prisma-role.repository';
@@ -66,15 +64,12 @@ import { CrearUsuarioTenantUseCase } from './application/use-cases/crear-usuario
 import { CambiarRolUsuarioTenantUseCase } from './application/use-cases/cambiar-rol-usuario-tenant.use-case';
 import { EditarUsuarioTenantUseCase } from './application/use-cases/editar-usuario-tenant.use-case';
 import { DesactivarMembresiaUsuarioTenantUseCase } from './application/use-cases/desactivar-membresia-usuario-tenant.use-case';
-import { AsignarModulosUsuarioTenantUseCase } from './application/use-cases/asignar-modulos-usuario-tenant.use-case';
-import { ObtenerModulosUsuarioTenantUseCase } from './application/use-cases/obtener-modulos-usuario-tenant.use-case';
 import { ObtenerPermisosUsuarioTenantUseCase } from './application/use-cases/obtener-permisos-usuario-tenant.use-case';
 import { AsignarPermisosUsuarioTenantUseCase } from './application/use-cases/asignar-permisos-usuario-tenant.use-case';
 import { AplicarPresetPermisosUseCase } from './application/use-cases/aplicar-preset-permisos.use-case';
 import { ListarRolesUseCase } from './application/use-cases/listar-roles.use-case';
 import { IUsuarioRepository } from './domain/ports/i-usuario.repository';
 import { IMembresiaRepository } from './domain/ports/i-membresia.repository';
-import { IUsuarioClienteModuloRepository } from './domain/ports/i-usuario-cliente-modulo.repository';
 import { IMatrizPermisosRepository } from './domain/ports/i-matriz-permisos.repository';
 import { IRefreshTokenRepository } from './domain/ports/i-refresh-token.repository';
 import { IClienteRepository } from '../clientes/domain/ports/i-cliente.repository';
@@ -107,19 +102,11 @@ import { RolesController } from './interface/controllers/roles.controller';
     { provide: MEMBRESIA_REPOSITORY, useClass: PrismaMembresiaRepository },
     { provide: REFRESH_TOKEN_REPOSITORY, useClass: PrismaRefreshTokenRepository },
     { provide: ROLE_REPOSITORY, useClass: PrismaRoleRepository },
-    {
-      provide: USUARIO_CLIENTE_MODULO_REPOSITORY,
-      useClass: PrismaUsuarioClienteModuloRepository,
-    },
     // MATRIZ_PERMISOS_REPOSITORY (WU-7.1, sdd/matriz-permisos-por-usuario):
-    // ahora inyectado en LoginUseCase/RefreshTokenUseCase/SwitchTenantUseCase
-    // vía resolverScope, en reemplazo de USUARIO_CLIENTE_MODULO_REPOSITORY
-    // (ADR-P6), y desde WU-7.4 también en el ABM nuevo de permisos (Obtener/
-    // Asignar/AplicarPreset). USUARIO_CLIENTE_MODULO_REPOSITORY sigue
-    // registrado abajo: lo siguen consumiendo el ABM VIEJO de módulos
-    // (Obtener/AsignarModulos) — DELIBERADAMENTE vigente, ver JSDoc de
-    // `UsuariosController` (deviation declarada: el retiro del ABM viejo
-    // queda para el mismo commit que WU-7.6, no antes).
+    // inyectado en LoginUseCase/RefreshTokenUseCase/SwitchTenantUseCase vía
+    // resolverScope (ADR-P6) y en el ABM de permisos (Obtener/Asignar/
+    // AplicarPreset). USUARIO_CLIENTE_MODULO_REPOSITORY (ABM viejo de
+    // módulos) se retiró en WU-7.6 junto con `GET/PATCH /usuarios/:id/modulos`.
     { provide: MATRIZ_PERMISOS_REPOSITORY, useClass: PrismaMatrizPermisosRepository },
     // CLIENTE_REPOSITORY: cross-feature. resolverScope/TenantGuard verifican
     // cliente activo. ClientesModule NO exporta este token todavía.
@@ -256,21 +243,6 @@ import { RolesController } from './interface/controllers/roles.controller';
       useFactory: (membresiaRepo: IMembresiaRepository) =>
         new DesactivarMembresiaUsuarioTenantUseCase(membresiaRepo),
       inject: [MEMBRESIA_REPOSITORY],
-    },
-    // ─── Asignación de módulos (feature 5.2 CAPA 4) ─────────────────────────
-    {
-      provide: ObtenerModulosUsuarioTenantUseCase,
-      useFactory: (modulosRepo: IUsuarioClienteModuloRepository) =>
-        new ObtenerModulosUsuarioTenantUseCase(modulosRepo),
-      inject: [USUARIO_CLIENTE_MODULO_REPOSITORY],
-    },
-    {
-      provide: AsignarModulosUsuarioTenantUseCase,
-      useFactory: (
-        modulosRepo: IUsuarioClienteModuloRepository,
-        membresiaRepo: IMembresiaRepository,
-      ) => new AsignarModulosUsuarioTenantUseCase(modulosRepo, membresiaRepo),
-      inject: [USUARIO_CLIENTE_MODULO_REPOSITORY, MEMBRESIA_REPOSITORY],
     },
     {
       provide: ListarRolesUseCase,

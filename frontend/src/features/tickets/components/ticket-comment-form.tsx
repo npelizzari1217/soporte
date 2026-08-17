@@ -2,7 +2,7 @@
 
 /**
  * TicketCommentForm — PRESENTATIONAL. El toggle "comentario interno" solo
- * se RENDERIZA con `ticket:observar` (ADR-4: gate en cliente, el backend
+ * se RENDERIZA con `TICKETS:OBSERVAR` (ADR-4: gate en cliente, el backend
  * además lo re-valida — `TicketsController.comentar` devuelve 403 si
  * `esInterno=true` sin el permiso). Sin el permiso, `esInterno` siempre
  * viaja `false` — nunca puede enviarse `true` por accidente porque el
@@ -22,7 +22,7 @@ export interface TicketCommentFormProps {
 }
 
 export function TicketCommentForm({ onSubmit, isSubmitting }: TicketCommentFormProps) {
-  const puedeObservar = useCan("ticket:observar");
+  const puedeObservar = useCan("TICKETS:OBSERVAR");
   const {
     register,
     handleSubmit,

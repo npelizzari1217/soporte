@@ -12,15 +12,16 @@ import {
   Tag,
 } from "lucide-react";
 import type { JwtPayload } from "@/shared/api/types";
-import { PERMISOS_ADMIN } from "@/shared/auth/admin-access";
 
 /**
  * nav-config — single source of truth for the sidebar navigation (ADR-4).
  *
- * Each item declares WHO can see it via `visible(can, isGlobalAdmin)`, driven
- * by the RBAC matrix (spec §1). The sidebar (and any other consumer) filters
- * `NAV_ITEMS` through this predicate — no duplicated gating logic elsewhere.
- * Gating here is UI-only; the backend remains the real authority (ADR-4).
+ * Each item declares WHO can see it via `visible(can, isGlobalAdmin,
+ * canModulo, esAdminCliente)`, driven by la matriz de permisos
+ * (`sdd/matriz-permisos-por-usuario`). The sidebar (and any other consumer)
+ * filters `NAV_ITEMS` through this predicate — no duplicated gating logic
+ * elsewhere. Gating here is UI-only; the backend remains the real authority
+ * (ADR-4).
  */
 export interface NavItem {
   href: string;
@@ -30,6 +31,7 @@ export interface NavItem {
     can: (permiso: string) => boolean,
     isGlobalAdmin: boolean,
     canModulo: (modulo: string) => boolean,
+    esAdminCliente: boolean,
   ) => boolean;
 }
 
@@ -57,7 +59,7 @@ const DEFAULT_SECTION_ITEMS: NavItem[] = [
     href: "/dashboard",
     label: "Dashboard",
     icon: LayoutDashboard,
-    visible: (can) => can("ticket:ver_todos"),
+    visible: (can) => can("DASHBOARD:LECTURA"),
   },
   {
     href: "/kb",
@@ -69,29 +71,31 @@ const DEFAULT_SECTION_ITEMS: NavItem[] = [
     href: "/admin/catalogos",
     label: "Admin",
     icon: Settings,
-    // Misma lista que el gate server-side de `/admin` (admin-access.ts) — una
-    // sola fuente de verdad para "quién ve/entra al área admin".
-    visible: (can) => PERMISOS_ADMIN.some((p) => can(p)),
+    // ADR-P5 (sdd/matriz-permisos-por-usuario): la configuración (usuarios/
+    // ciclos/catálogos) dejó de tener permiso RBAC propio — es un chequeo de
+    // identidad, mismo criterio que `AdminClienteGuard`/`esAdminDeCliente`.
+    visible: (_can, _iga, _canModulo, esAdminCliente) => esAdminCliente,
   },
   {
     href: "/compras",
     label: "Compras",
     icon: ShoppingCart,
-    // Gating por MÓDULO (5.2 CAPA 3) AND permiso: además de tener el permiso,
-    // el módulo COMPRAS debe estar habilitado para el usuario.
-    visible: (can, _iga, canModulo) => canModulo("COMPRAS") && can("compra:gestionar"),
+    // El eje de módulos deja de ser independiente: tener COMPRAS:LECTURA ya
+    // implica tener el módulo (R2, `modulos` derivado de `permisos`) — los
+    // dos AND de antes colapsan a un solo `can(...)`.
+    visible: (can) => can("COMPRAS:LECTURA"),
   },
   {
     href: "/edilicia",
     label: "Edilicia",
     icon: Wrench,
-    visible: (can, _iga, canModulo) => canModulo("EDILICIA") && can("subtarea:actualizar"),
+    visible: (can) => can("EDILICIA:LECTURA"),
   },
   {
     href: "/equipos",
     label: "Equipos",
     icon: Monitor,
-    visible: (can, _iga, canModulo) => canModulo("EQUIPOS") && can("equipo:gestionar"),
+    visible: (can) => can("EQUIPOS:LECTURA"),
   },
 ];
 
@@ -155,11 +159,14 @@ export function visibleNavSections(user: JwtPayload | null): NavSection[] {
   const can = (permiso: string): boolean => isGlobalAdmin || (user?.permisos.includes(permiso) ?? false);
   const canModulo = (modulo: string): boolean =>
     isGlobalAdmin || (user?.modulos?.includes(modulo) ?? false);
+  // ADR-P5: mismo criterio que `useSession().esAdminCliente`, derivado acá
+  // porque esta función no es un hook (consume el payload directo).
+  const esAdminCliente = isGlobalAdmin || user?.rol === "ADMINISTRADOR";
 
   return NAV_SECTIONS.filter((section) => section.visible?.(isGlobalAdmin) ?? true)
     .map((section) => ({
       ...section,
-      items: section.items.filter((item) => item.visible(can, isGlobalAdmin, canModulo)),
+      items: section.items.filter((item) => item.visible(can, isGlobalAdmin, canModulo, esAdminCliente)),
     }))
     .filter((section) => section.items.length > 0);
 }

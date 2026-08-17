@@ -58,7 +58,7 @@ describe("RegistrarCompraDialog", () => {
 
     renderWithProviders(
       <RegistrarCompraDialog compraId={COMPRA_ID} item={buildItem({ cantidadComprada: 4 })} />,
-      { user: buildUser({ permisos: ["compra:gestionar"] }) },
+      { user: buildUser({ permisos: ["COMPRAS:MODIFICACION"] }) },
     );
 
     const user = await abrirDialog(/registrar compra/i);
@@ -81,7 +81,7 @@ describe("RegistrarCompraDialog", () => {
 
     renderWithProviders(
       <RegistrarCompraDialog compraId={COMPRA_ID} item={buildItem({ cantidadComprada: 4 })} />,
-      { user: buildUser({ permisos: ["compra:gestionar"] }) },
+      { user: buildUser({ permisos: ["COMPRAS:MODIFICACION"] }) },
     );
 
     const user = await abrirDialog(/registrar compra/i);
@@ -96,7 +96,7 @@ describe("RegistrarCompraDialog", () => {
   it("con ítem APROBADO, el botón está habilitado y precarga cantidadComprada actual", async () => {
     renderWithProviders(
       <RegistrarCompraDialog compraId={COMPRA_ID} item={buildItem({ cantidadComprada: 4 })} />,
-      { user: buildUser({ permisos: ["compra:gestionar"] }) },
+      { user: buildUser({ permisos: ["COMPRAS:MODIFICACION"] }) },
     );
 
     expect(screen.getByRole("button", { name: /registrar compra/i })).not.toBeDisabled();
@@ -107,7 +107,7 @@ describe("RegistrarCompraDialog", () => {
   it("S16: con ítem PENDIENTE (no aprobado), el botón queda deshabilitado", async () => {
     renderWithProviders(
       <RegistrarCompraDialog compraId={COMPRA_ID} item={buildItem({ estadoAprobacion: "PENDIENTE" })} />,
-      { user: buildUser({ permisos: ["compra:gestionar"] }) },
+      { user: buildUser({ permisos: ["COMPRAS:MODIFICACION"] }) },
     );
 
     expect(screen.getByRole("button", { name: /registrar compra/i })).toBeDisabled();
@@ -123,7 +123,7 @@ describe("RegistrarCompraDialog", () => {
     );
 
     renderWithProviders(<RegistrarCompraDialog compraId={COMPRA_ID} item={buildItem()} />, {
-      user: buildUser({ permisos: ["compra:gestionar"] }),
+      user: buildUser({ permisos: ["COMPRAS:MODIFICACION"] }),
     });
 
     const user = await abrirDialog(/registrar compra/i);
@@ -144,7 +144,7 @@ describe("RegistrarCompraDialog", () => {
     );
 
     renderWithProviders(<RegistrarCompraDialog compraId={COMPRA_ID} item={buildItem()} />, {
-      user: buildUser({ permisos: ["compra:gestionar"] }),
+      user: buildUser({ permisos: ["COMPRAS:MODIFICACION"] }),
     });
 
     const user = await abrirDialog(/registrar compra/i);
@@ -176,7 +176,7 @@ describe("RegistrarEntregaDialog", () => {
         compraId={COMPRA_ID}
         item={buildItem({ cantidadComprada: 5, cantidadEntregada: 2 })}
       />,
-      { user: buildUser({ permisos: ["compra:gestionar"] }) },
+      { user: buildUser({ permisos: ["COMPRAS:MODIFICACION"] }) },
     );
 
     const user = await abrirDialog(/registrar entrega/i);
@@ -192,7 +192,7 @@ describe("RegistrarEntregaDialog", () => {
         compraId={COMPRA_ID}
         item={buildItem({ cantidadComprada: 5, cantidadEntregada: 2 })}
       />,
-      { user: buildUser({ permisos: ["compra:gestionar"] }) },
+      { user: buildUser({ permisos: ["COMPRAS:MODIFICACION"] }) },
     );
 
     expect(screen.getByRole("button", { name: /registrar entrega/i })).not.toBeDisabled();
@@ -203,7 +203,7 @@ describe("RegistrarEntregaDialog", () => {
   it("sin nada comprado todavía (cantidadComprada=0), el botón queda deshabilitado", async () => {
     renderWithProviders(
       <RegistrarEntregaDialog compraId={COMPRA_ID} item={buildItem({ cantidadComprada: 0 })} />,
-      { user: buildUser({ permisos: ["compra:gestionar"] }) },
+      { user: buildUser({ permisos: ["COMPRAS:MODIFICACION"] }) },
     );
 
     expect(screen.getByRole("button", { name: /registrar entrega/i })).toBeDisabled();
@@ -220,7 +220,7 @@ describe("RegistrarEntregaDialog", () => {
 
     renderWithProviders(
       <RegistrarEntregaDialog compraId={COMPRA_ID} item={buildItem({ cantidadComprada: 5 })} />,
-      { user: buildUser({ permisos: ["compra:gestionar"] }) },
+      { user: buildUser({ permisos: ["COMPRAS:MODIFICACION"] }) },
     );
 
     const user = await abrirDialog(/registrar entrega/i);

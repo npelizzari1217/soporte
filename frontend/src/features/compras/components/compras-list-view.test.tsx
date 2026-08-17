@@ -96,7 +96,7 @@ describe("ComprasListView", () => {
   });
 
   it.each([
-    { permisos: ["compra:gestionar"], visible: true },
+    { permisos: ["COMPRAS:ALTAS"], visible: true },
     { permisos: [], visible: false },
   ])(
     "gate de permiso del alta: permisos=$permisos → trigger 'Nueva compra' visible=$visible",

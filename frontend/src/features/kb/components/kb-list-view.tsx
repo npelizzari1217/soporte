@@ -67,7 +67,7 @@ export function KbListView() {
       <PageHeader
         title="Base de conocimiento"
         actions={
-          <Can permiso="kb:gestionar">
+          <Can permiso="KB:ALTAS">
             <KbArticleCreateDialog />
           </Can>
         }

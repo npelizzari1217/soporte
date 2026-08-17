@@ -21,7 +21,7 @@ const usuario: JwtPayload = {
   sub: "1",
   cliente_id: "c1",
   rol: "USUARIO",
-  permisos: ["ticket:crear", "ticket:comentar"],
+  permisos: ["TICKETS:ALTAS", "TICKETS:COMENTAR"],
   is_global_admin: false,
   cliente_nombre: "Cliente Uno",
   membresias: [],
@@ -34,7 +34,7 @@ const administrador: JwtPayload = {
   sub: "2",
   cliente_id: "c1",
   rol: "ADMINISTRADOR",
-  permisos: ["ticket:ver_todos", "catalogo:gestionar", "usuario:gestionar"],
+  permisos: ["DASHBOARD:LECTURA"],
   is_global_admin: false,
   cliente_nombre: "Cliente Uno",
   membresias: [],
@@ -57,13 +57,13 @@ const root: JwtPayload = {
 };
 
 describe("AppSidebar", () => {
-  it("USUARIO (sin ticket:ver_todos) → ve el link Tickets pero NO el link Dashboard", () => {
+  it("USUARIO (sin DASHBOARD:LECTURA) → ve el link Tickets pero NO el link Dashboard", () => {
     renderWithUser(usuario);
     expect(screen.getByRole("link", { name: /tickets/i })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /dashboard/i })).not.toBeInTheDocument();
   });
 
-  it("ADMINISTRADOR (con ticket:ver_todos + catalogo:gestionar) → ve Dashboard y Admin", () => {
+  it("ADMINISTRADOR (con DASHBOARD:LECTURA, esAdminCliente por rol) → ve Dashboard y Admin", () => {
     renderWithUser(administrador);
     expect(screen.getByRole("link", { name: /dashboard/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /admin/i })).toBeInTheDocument();

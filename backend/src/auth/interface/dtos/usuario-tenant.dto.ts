@@ -23,7 +23,6 @@ import {
   MaxLength,
   MinLength,
 } from 'class-validator';
-import { MODULOS } from '../../../shared/domain/modulos';
 import { CATALOGO_MODULOS, CodigoAccion, PARES_VALIDOS } from '../../../shared/domain/acciones';
 
 /** `rolCodigo`: mayúsculas/guion bajo, sin espacios (consistente con el seed RBAC real). */
@@ -94,27 +93,13 @@ export class EditarUsuarioDto {
   apellido?: string;
 }
 
-/**
- * Body de `PATCH /usuarios/:id/modulos` (feature 5.2 CAPA 4). Permisos
- * `usuario:gestionar` + `rol:asignar`. Reemplaza el set completo de módulos
- * del usuario en el cliente del token. `@IsIn([...MODULOS])` valida contra el
- * catálogo real de módulos (única fuente de verdad, `shared/domain/modulos`);
- * `@ArrayUnique` evita duplicados en el body (el repo igual deduplica).
- */
-export class AsignarModulosDto {
-  @IsArray()
-  @IsString({ each: true })
-  @ArrayUnique()
-  @IsIn([...MODULOS], { each: true })
-  modulos!: string[];
-}
-
 // ─── ABM de la matriz de permisos (WU-7.4, sdd/matriz-permisos-por-usuario, ADR-P10) ───
 
 /**
  * Body de `PATCH /usuarios/:id/permisos`. `AdminClienteGuard`. Reemplaza el
  * set COMPLETO de celdas del usuario en el cliente del token (semántica de
- * reemplazo total, no de fusión — mismo criterio que `AsignarModulosDto`).
+ * reemplazo total, no de fusión — mismo criterio que tenía el ABM viejo de
+ * módulos, retirado en WU-7.6).
  * `@IsIn([...PARES_VALIDOS])` valida contra el catálogo real de la matriz
  * (única fuente de verdad, `shared/domain/acciones`) — un código inválido da
  * 422 acá, antes de llegar al CHECK de la DB (última red, ADR-P10).
@@ -156,10 +141,9 @@ export interface PermisosUsuarioTenantResponseDto {
 
 /**
  * Item de `GET /usuarios` — usuarios con membresía activa en el cliente del
- * token. `email` es OMITIDO salvo que el actor tenga `usuario:gestionar`
- * ("datos sensibles solo con usuario:gestionar", spec §5) — la lista básica
- * para el selector de asignación (`ticket:asignar`/`ticket:ver_todos`) no lo
- * necesita.
+ * token. `email` es OMITIDO salvo que el actor sea ADMINISTRADOR o ROOT (R10,
+ * `esAdminDeCliente`) — la lista básica para el selector de asignación
+ * (`TICKETS:ASIGNAR`/`TICKETS:VER_TODOS`) no lo necesita.
  */
 export interface UsuarioTenantResponseDto {
   id: string;

@@ -20,7 +20,7 @@
  * botón, el backend igual responde 422 (S16/S17/S18/S20/S21) y el mensaje
  * real llega vía `notifyError` — el gate es UX, no la autoridad.
  *
- * RBAC: gate `compra:gestionar` aplicado por el CALLER.
+ * RBAC: gate `COMPRAS:MODIFICACION` aplicado por el CALLER.
  */
 import { useState } from "react";
 import { useForm } from "react-hook-form";

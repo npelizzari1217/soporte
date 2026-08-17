@@ -105,7 +105,7 @@ export function TicketsListView() {
       <PageHeader
         title="Tickets"
         actions={
-          <Can permiso="ticket:crear">
+          <Can permiso="TICKETS:ALTAS">
             <TicketCreateDialog />
           </Can>
         }
@@ -169,7 +169,7 @@ export function TicketsListView() {
           </Select>
         </div>
 
-        <Can permiso="ticket:ver_todos">
+        <Can permiso="TICKETS:VER_TODOS">
           <div className="flex flex-col gap-1">
             <label htmlFor="filtro-asignado" className="sr-only">
               Asignado

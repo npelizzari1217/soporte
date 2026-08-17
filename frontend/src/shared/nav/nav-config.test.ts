@@ -18,41 +18,44 @@ function makeUser(overrides: Partial<JwtPayload> = {}): JwtPayload {
   };
 }
 
+// ADR-P1/ADR-P5 (sdd/matriz-permisos-por-usuario): vocabulario MODULO:ACCION
+// en vez de los permisos RBAC viejos; Admin gatea por identidad
+// (esAdminCliente), no por permiso de la matriz.
 describe("nav-config", () => {
-  it("USUARIO (sin ticket:ver_todos) → ve Tickets pero NO ve Dashboard", () => {
-    const user = makeUser({ permisos: ["ticket:crear", "ticket:comentar"] });
+  it("USUARIO (sin TICKETS:VER_TODOS) → ve Tickets pero NO ve Dashboard", () => {
+    const user = makeUser({ permisos: ["TICKETS:ALTAS", "TICKETS:COMENTAR"] });
     const items = visibleNavItems(user);
     const hrefs = items.map((i) => i.href);
     expect(hrefs).toContain("/tickets");
     expect(hrefs).not.toContain("/dashboard");
   });
 
-  it("COLABORADOR (con ticket:ver_todos) → SÍ ve Dashboard", () => {
-    const user = makeUser({ permisos: ["ticket:ver_todos"] });
+  it("con DASHBOARD:LECTURA → SÍ ve Dashboard", () => {
+    const user = makeUser({ permisos: ["DASHBOARD:LECTURA"] });
     const items = visibleNavItems(user);
     expect(items.map((i) => i.href)).toContain("/dashboard");
   });
 
-  it("usuario sin cliente:gestionar/catalogo:gestionar → NO ve Admin", () => {
-    const user = makeUser({ permisos: [] });
+  it("TECNICO (no ADMINISTRADOR, no ROOT) → NO ve Admin", () => {
+    const user = makeUser({ rol: "TECNICO", permisos: [] });
     const items = visibleNavItems(user);
     expect(items.map((i) => i.href)).not.toContain("/admin/catalogos");
   });
 
-  it("ADMINISTRADOR (con catalogo:gestionar) → SÍ ve Admin", () => {
-    const user = makeUser({ permisos: ["catalogo:gestionar"] });
+  it("ADMINISTRADOR → SÍ ve Admin (esAdminCliente, ADR-P5)", () => {
+    const user = makeUser({ rol: "ADMINISTRADOR" });
     const items = visibleNavItems(user);
     expect(items.map((i) => i.href)).toContain("/admin/catalogos");
   });
 
-  it("is_global_admin=true → ve Clientes (ROOT) aunque no tenga permisos de rol", () => {
-    const user = makeUser({ permisos: [], is_global_admin: true });
+  it("is_global_admin=true → ve Clientes (ROOT) aunque el rol no sea ADMINISTRADOR", () => {
+    const user = makeUser({ rol: "TECNICO", is_global_admin: true });
     const items = visibleNavItems(user);
     expect(items.map((i) => i.href)).toContain("/admin/clientes");
   });
 
-  it("is_global_admin=false → NO ve Clientes (ROOT) aunque tenga otros permisos", () => {
-    const user = makeUser({ permisos: ["catalogo:gestionar"], is_global_admin: false });
+  it("is_global_admin=false → NO ve Clientes (ROOT) aunque sea ADMINISTRADOR de su cliente", () => {
+    const user = makeUser({ rol: "ADMINISTRADOR", is_global_admin: false });
     const items = visibleNavItems(user);
     expect(items.map((i) => i.href)).not.toContain("/admin/clientes");
   });
@@ -63,8 +66,8 @@ describe("nav-config", () => {
     expect(items.map((i) => i.href)).toContain("/ciclos");
   });
 
-  it("is_global_admin=false → NO ve Ciclos (catálogo master ROOT) aunque tenga otros permisos", () => {
-    const user = makeUser({ permisos: ["ciclo:gestionar"], is_global_admin: false });
+  it("is_global_admin=false → NO ve Ciclos (catálogo master ROOT) aunque sea ADMINISTRADOR", () => {
+    const user = makeUser({ rol: "ADMINISTRADOR", is_global_admin: false });
     const items = visibleNavItems(user);
     expect(items.map((i) => i.href)).not.toContain("/ciclos");
   });
@@ -76,26 +79,20 @@ describe("nav-config", () => {
     expect(hrefs).toEqual(expect.arrayContaining(NAV_ITEMS.map((i) => i.href)));
   });
 
-  it("con permiso compra:gestionar pero SIN módulo COMPRAS → NO ve /compras (5.2 CAPA 3)", () => {
-    const user = makeUser({ permisos: ["compra:gestionar"], modulos: [] });
-    const items = visibleNavItems(user);
-    expect(items.map((i) => i.href)).not.toContain("/compras");
-  });
-
-  it("con permiso compra:gestionar Y módulo COMPRAS → SÍ ve /compras", () => {
-    const user = makeUser({ permisos: ["compra:gestionar"], modulos: ["COMPRAS"] });
+  it("con COMPRAS:LECTURA → ve /compras (R2: tener la celda ya implica tener el módulo, sin AND aparte)", () => {
+    const user = makeUser({ permisos: ["COMPRAS:LECTURA"] });
     const items = visibleNavItems(user);
     expect(items.map((i) => i.href)).toContain("/compras");
   });
 
-  it("con módulo COMPRAS pero SIN permiso compra:gestionar → NO ve /compras (AND, no OR)", () => {
-    const user = makeUser({ permisos: [], modulos: ["COMPRAS"] });
+  it("sin COMPRAS:LECTURA → NO ve /compras", () => {
+    const user = makeUser({ permisos: [] });
     const items = visibleNavItems(user);
     expect(items.map((i) => i.href)).not.toContain("/compras");
   });
 
-  it("ROOT (is_global_admin) → ve /compras aunque modulos=[] (ve todos los módulos)", () => {
-    const user = makeUser({ permisos: [], modulos: [], is_global_admin: true });
+  it("ROOT (is_global_admin) → ve /compras aunque permisos=[] (bypass total)", () => {
+    const user = makeUser({ permisos: [], is_global_admin: true });
     const items = visibleNavItems(user);
     expect(items.map((i) => i.href)).toContain("/compras");
   });
@@ -121,16 +118,16 @@ describe("nav-config", () => {
       );
     });
 
-    it("ADMINISTRADOR no-root (con catalogo:gestionar) → ve Admin pero NO la sección 'ROOT'", () => {
-      const user = makeUser({ permisos: ["catalogo:gestionar"], is_global_admin: false });
+    it("ADMINISTRADOR no-root → ve Admin pero NO la sección 'ROOT'", () => {
+      const user = makeUser({ rol: "ADMINISTRADOR", is_global_admin: false });
       const sections = visibleNavSections(user);
       expect(sections.find((s) => s.title === "ROOT")).toBeUndefined();
       const defaultSection = sections.find((s) => s.title === null);
       expect(defaultSection?.items.map((i) => i.href)).toContain("/admin/catalogos");
     });
 
-    it("usuario plano (sin permisos) → no ve la sección 'ROOT' ni Admin", () => {
-      const user = makeUser({ permisos: [], is_global_admin: false });
+    it("usuario plano (TECNICO, sin permisos) → no ve la sección 'ROOT' ni Admin", () => {
+      const user = makeUser({ rol: "TECNICO", permisos: [], is_global_admin: false });
       const sections = visibleNavSections(user);
       expect(sections.find((s) => s.title === "ROOT")).toBeUndefined();
       const allHrefs = sections.flatMap((s) => s.items.map((i) => i.href));

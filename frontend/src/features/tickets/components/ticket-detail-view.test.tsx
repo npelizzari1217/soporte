@@ -68,12 +68,12 @@ describe("TicketDetailView — gating de acciones por permiso", () => {
   it.each([
     {
       rol: "ADMINISTRADOR",
-      permisos: ["ticket:editar", "ticket:transicionar", "ticket:asignar", "ticket:comentar"],
+      permisos: ["TICKETS:MODIFICACION", "TICKETS:TRANSICIONAR", "TICKETS:ASIGNAR", "TICKETS:COMENTAR"],
       esperados: { transicionar: true, asignar: true, editar: true },
     },
     {
       rol: "USUARIO",
-      permisos: ["ticket:comentar"],
+      permisos: ["TICKETS:COMENTAR"],
       esperados: { transicionar: false, asignar: false, editar: false },
     },
   ])("$rol → controles visibles según permisos reales", async ({ permisos, esperados }) => {
@@ -121,7 +121,7 @@ describe("TicketDetailView — gating de acciones por permiso", () => {
 
     const user = userEvent.setup();
     renderWithProviders(<TicketDetailView ticketId={TICKET_ID} />, {
-      user: buildUser({ permisos: ["ticket:editar"] }),
+      user: buildUser({ permisos: ["TICKETS:MODIFICACION"] }),
     });
 
     await screen.findByText("Impresora rota");
@@ -152,7 +152,7 @@ describe("TicketDetailView — gating de acciones por permiso", () => {
     renderWithProviders(<TicketDetailView ticketId={TICKET_ID} />, {
       // El control "Asignar y poner en proceso" exige AMBOS permisos (asigna Y
       // transiciona a EN_PROCESO en una acción) — espeja el endpoint.
-      user: buildUser({ permisos: ["ticket:asignar", "ticket:transicionar"] }),
+      user: buildUser({ permisos: ["TICKETS:ASIGNAR", "TICKETS:TRANSICIONAR"] }),
     });
 
     await screen.findByText("Impresora rota");
@@ -174,7 +174,7 @@ describe("TicketDetailView — gating de acciones por permiso", () => {
 
     const user = userEvent.setup();
     renderWithProviders(<TicketDetailView ticketId={TICKET_ID} />, {
-      user: buildUser({ permisos: ["ticket:transicionar"] }),
+      user: buildUser({ permisos: ["TICKETS:TRANSICIONAR"] }),
     });
 
     await screen.findByText("Impresora rota");
@@ -186,7 +186,7 @@ describe("TicketDetailView — gating de acciones por permiso", () => {
 
   it("cabecera muestra nombres de solicitante/asignado (no IDs crudos) y el estado de SLA vencido", async () => {
     renderWithProviders(<TicketDetailView ticketId={TICKET_ID} />, {
-      user: buildUser({ permisos: ["ticket:comentar"] }),
+      user: buildUser({ permisos: ["TICKETS:COMENTAR"] }),
     });
 
     await screen.findByText("Impresora rota");
@@ -208,7 +208,7 @@ describe("TicketDetailView — bloqueo de edición una vez EN_PROCESO", () => {
     );
 
     renderWithProviders(<TicketDetailView ticketId={TICKET_ID} />, {
-      user: buildUser({ rol: "ADMINISTRADOR", permisos: ["ticket:editar"] }),
+      user: buildUser({ rol: "ADMINISTRADOR", permisos: ["TICKETS:MODIFICACION"] }),
     });
 
     await screen.findByText("Impresora rota");

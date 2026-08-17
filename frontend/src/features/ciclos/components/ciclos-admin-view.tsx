@@ -2,13 +2,16 @@
 
 /**
  * CiclosAdminView — CONTAINER client component montado por `/admin/ciclos`
- * (T4.5). Gate `ciclo:gestionar`. Lista los ciclos adoptados por el tenant
- * (`GET /ciclos`, G4 — reusa `useCiclos` de `features/dashboard/hooks`,
- * cross-feature) + adoptar uno nuevo + activar.
+ * (T4.5, migrado en WU-7.6 — `sdd/matriz-permisos-por-usuario` ADR-P5). Gate
+ * `esAdminCliente` (ADMINISTRADOR-o-ROOT) — la gestión de ciclos dejó de
+ * tener permiso RBAC propio (`ciclo:gestionar`, retirado con
+ * `roles_permisos`), es un chequeo de identidad (R4). Lista los ciclos
+ * adoptados por el tenant (`GET /ciclos`, G4 — reusa `useCiclos` de
+ * `features/dashboard/hooks`, cross-feature) + adoptar uno nuevo + activar.
  */
 import { CalendarRange } from "lucide-react";
 import { useCiclos } from "@/features/dashboard/hooks/use-ciclos";
-import { Can } from "@/components/shared/can";
+import { SoloAdminCliente } from "@/components/shared/solo-admin-cliente";
 import { ErrorState } from "@/components/shared/error-state";
 import { EmptyState } from "@/components/shared/empty-state";
 import { PageHeader } from "@/components/shared/page-header";
@@ -21,9 +24,9 @@ export function CiclosAdminView() {
   return (
     <div>
       <AdminNav />
-      <Can permiso="ciclo:gestionar" fallback={<ErrorState message="No tenés permiso para gestionar ciclos." />}>
+      <SoloAdminCliente fallback={<ErrorState message="No tenés permiso para gestionar ciclos." />}>
         <CiclosAdminContent />
-      </Can>
+      </SoloAdminCliente>
     </div>
   );
 }

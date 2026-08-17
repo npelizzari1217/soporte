@@ -1,15 +1,23 @@
 "use client";
 
 /**
- * EquiposListView — CONTAINER montado por `/equipos` (T5.12). "Nuevo
- * ticket de soporte" se muestra a quien tenga `ticket:crear` Y el módulo
- * TICKETS (renombrado desde SOPORTE, WU-7.2; el endpoint POST /soporte exige
- * `@RequiereAcciones('TICKETS:ALTAS')`, WU-7.3): sin el módulo, el botón daba
- * 403 al enviar. Independiente
- * del inventario de equipos, que queda gateado por `equipo:gestionar` — mismo
- * criterio "vista de gestión" que `CatalogosAdminView` (B4), pero SIN ocultar
- * la creación de tickets de soporte a quien no gestiona equipos (deviación
- * deliberada vs. B4, documentada en apply-progress).
+ * EquiposListView — CONTAINER montado por `/equipos` (T5.12, migrado en
+ * WU-7.6 — `sdd/matriz-permisos-por-usuario`). "Nuevo ticket de soporte" se
+ * muestra a quien tenga `TICKETS:ALTAS` Y el módulo TICKETS (el endpoint
+ * POST /soporte exige `@RequiereAcciones('TICKETS:ALTAS')`, WU-7.3): sin el
+ * módulo, el botón daba 403 al enviar. Independiente del inventario de
+ * equipos.
+ *
+ * DEVIACIÓN vs. el mapeo mecánico del design (`equipos-list-view.tsx:55 →
+ * EQUIPOS:ALTAS`): el gate de ACCESO a la vista pasa a `EQUIPOS:LECTURA`,
+ * no `EQUIPOS:ALTAS` — verificado contra el backend real (R5:
+ * `GET /equipos*` exige `EQUIPOS:LECTURA`, R7: todo usuario con el módulo
+ * EQUIPOS ya recibía esa celda en el backfill). Gatear la vista completa
+ * por `ALTAS` le escondería el inventario a un lector sin permiso de
+ * creación, aunque el backend SÍ le devolvería 200 — regresión frontend más
+ * estricto que backend, contraria al criterio "expandir, no interpretar"
+ * (#2212). El botón "Nuevo equipo" (`EquipoCreateDialog`) SÍ gatea aparte
+ * por `EQUIPOS:ALTAS`, que es la acción real que ejecuta.
  */
 import { useRouter } from "next/navigation";
 import { useEquipos } from "../hooks/use-equipos";
@@ -46,19 +54,21 @@ export function EquiposListView() {
         title="Equipos IT"
         actions={
           canModulo("TICKETS") ? (
-            <Can permiso="ticket:crear">
+            <Can permiso="TICKETS:ALTAS">
               <TicketSoporteCreateDialog />
             </Can>
           ) : undefined
         }
       />
       <Can
-        permiso="equipo:gestionar"
+        permiso="EQUIPOS:LECTURA"
         fallback={<ErrorState message="No tenés permiso para ver el inventario de equipos." />}
       >
         <div>
           <div className="mb-3 flex justify-end">
-            <EquipoCreateDialog />
+            <Can permiso="EQUIPOS:ALTAS">
+              <EquipoCreateDialog />
+            </Can>
           </div>
           <DataTable
             columns={columns}

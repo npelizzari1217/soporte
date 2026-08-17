@@ -57,7 +57,7 @@ export function ReparacionesList() {
       <PageHeader
         title="Reparaciones"
         actions={
-          <Can permiso="ticket:crear">
+          <Can permiso="EDILICIA:ALTAS">
             <ReparacionCreateDialog />
           </Can>
         }

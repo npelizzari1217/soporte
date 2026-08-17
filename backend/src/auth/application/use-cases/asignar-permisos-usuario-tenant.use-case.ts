@@ -28,7 +28,8 @@ export type AsignarPermisosUsuarioTenantError =
  * `AdminClienteGuard` en el controller. Semántica de REEMPLAZO TOTAL, no de
  * fusión (mismo criterio que `setModulos` del ABM viejo).
  *
- * Flujo (mismo orden fail-fast que `AsignarModulosUsuarioTenantUseCase`):
+ * Flujo (mismo orden fail-fast que tenía el ABM viejo de módulos, retirado en
+ * WU-7.6):
  * 1. Valida que TODAS las celdas ∈ `PARES_VALIDOS` — `CeldaPermisoInvalidaError`
  *    (422) si alguna no existe. Defensa en profundidad detrás del `@IsIn`
  *    del DTO — el CHECK de la DB es la última red (ADR-P10).

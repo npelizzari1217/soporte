@@ -135,10 +135,12 @@ export function EquipoComponentesSection({ equipoId, componentes }: EquipoCompon
                   {componente.capacidad ?? <span aria-hidden="true">—</span>}
                 </TableCell>
                 <TableCell rowSpan={2}>
-                  <Can permiso="equipo:gestionar">
-                    {componente.activo ? (
-                      <div className="flex items-center gap-1">
+                  {componente.activo ? (
+                    <div className="flex items-center gap-1">
+                      <Can permiso="EQUIPOS:MODIFICACION">
                         <ComponenteEditDialog equipoId={equipoId} componente={componente} />
+                      </Can>
+                      <Can permiso="EQUIPOS:BORRADO">
                         <Button
                           type="button"
                           variant="ghost"
@@ -148,8 +150,13 @@ export function EquipoComponentesSection({ equipoId, componentes }: EquipoCompon
                         >
                           <Trash2 className="h-4 w-4" aria-hidden="true" />
                         </Button>
-                      </div>
-                    ) : (
+                      </Can>
+                    </div>
+                  ) : (
+                    // Reactivar es una MODIFICACIÓN de estado (no hay acción
+                    // "REACTIVAR" propia en el catálogo, R1) — mismo permiso
+                    // que editar.
+                    <Can permiso="EQUIPOS:MODIFICACION">
                       <Button
                         type="button"
                         variant="outline"
@@ -161,8 +168,8 @@ export function EquipoComponentesSection({ equipoId, componentes }: EquipoCompon
                       >
                         Reactivar
                       </Button>
-                    )}
-                  </Can>
+                    </Can>
+                  )}
                 </TableCell>
               </TableRow>
               <TableRow>

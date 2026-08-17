@@ -6,18 +6,18 @@ import { TicketCommentForm } from "./ticket-comment-form";
 
 /**
  * Gate real del CLIENTE (no solo servidor): `esInterno=true` sin
- * `ticket:observar` devuelve 403 del backend
+ * `TICKETS:OBSERVAR` devuelve 403 del backend
  * (`TicketsController.comentar`). Si el form permitiera marcar "interno" sin
  * el permiso, el usuario vería un error confuso en vez de nunca poder
  * intentarlo — por eso el toggle debe estar condicionado en el cliente,
  * no solo protegido por el backend.
  */
 describe("TicketCommentForm", () => {
-  it("CON ticket:observar → muestra el toggle 'interno' y permite enviar esInterno=true", async () => {
+  it("CON TICKETS:OBSERVAR → muestra el toggle 'interno' y permite enviar esInterno=true", async () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn();
     renderWithProviders(<TicketCommentForm onSubmit={onSubmit} isSubmitting={false} />, {
-      user: buildUser({ permisos: ["ticket:observar", "ticket:comentar"] }),
+      user: buildUser({ permisos: ["TICKETS:OBSERVAR", "TICKETS:COMENTAR"] }),
     });
 
     await user.type(screen.getByRole("textbox", { name: "Comentario" }), "nota interna");
@@ -27,11 +27,11 @@ describe("TicketCommentForm", () => {
     expect(onSubmit).toHaveBeenCalledWith({ texto: "nota interna", esInterno: true });
   });
 
-  it("SIN ticket:observar → el toggle 'interno' NO existe (nunca puede enviarse esInterno=true por error)", async () => {
+  it("SIN TICKETS:OBSERVAR → el toggle 'interno' NO existe (nunca puede enviarse esInterno=true por error)", async () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn();
     renderWithProviders(<TicketCommentForm onSubmit={onSubmit} isSubmitting={false} />, {
-      user: buildUser({ permisos: ["ticket:comentar"] }),
+      user: buildUser({ permisos: ["TICKETS:COMENTAR"] }),
     });
 
     expect(screen.queryByRole("checkbox", { name: /interno/i })).not.toBeInTheDocument();

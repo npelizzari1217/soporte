@@ -51,7 +51,7 @@ describe("ItemEliminarControl", () => {
     );
 
     renderWithProviders(<ItemEliminarControl compraId={COMPRA_ID} item={buildItem()} />, {
-      user: buildUser({ permisos: ["compra:gestionar"] }),
+      user: buildUser({ permisos: ["COMPRAS:BORRADO"] }),
     });
 
     const user = userEvent.setup();
@@ -64,7 +64,7 @@ describe("ItemEliminarControl", () => {
   it("S7: con ítem APROBADO, el botón queda deshabilitado (no eliminable)", async () => {
     renderWithProviders(
       <ItemEliminarControl compraId={COMPRA_ID} item={buildItem({ estadoAprobacion: "APROBADO" })} />,
-      { user: buildUser({ permisos: ["compra:gestionar"] }) },
+      { user: buildUser({ permisos: ["COMPRAS:BORRADO"] }) },
     );
 
     expect(screen.getByRole("button", { name: "Eliminar" })).toBeDisabled();
@@ -79,7 +79,7 @@ describe("ItemEliminarControl", () => {
     );
 
     renderWithProviders(<ItemEliminarControl compraId={COMPRA_ID} item={buildItem()} />, {
-      user: buildUser({ permisos: ["compra:gestionar"] }),
+      user: buildUser({ permisos: ["COMPRAS:BORRADO"] }),
     });
 
     const user = userEvent.setup();

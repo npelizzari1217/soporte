@@ -147,7 +147,7 @@ export interface TipoOperacion {
   activo: boolean;
 }
 
-/** Usuario asignable del tenant (G2, `GET /usuarios`). `email` solo si el actor tiene `usuario:gestionar`. */
+/** Usuario asignable del tenant (G2, `GET /usuarios`). `email` solo si el actor es ADMINISTRADOR o ROOT (R10). */
 export interface UsuarioAsignable {
   id: string;
   nombre: string;

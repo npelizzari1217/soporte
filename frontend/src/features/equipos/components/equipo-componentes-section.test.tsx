@@ -51,7 +51,7 @@ describe("EquipoComponentesSection", () => {
     ];
 
     renderWithProviders(<EquipoComponentesSection equipoId={EQUIPO_ID} componentes={componentes} />, {
-      user: buildUser({ permisos: ["equipo:gestionar"] }),
+      user: buildUser({ permisos: ["EQUIPOS:ALTAS", "EQUIPOS:MODIFICACION", "EQUIPOS:BORRADO"] }),
     });
 
     expect(await screen.findByText(/teclado mecánico/i)).toBeInTheDocument();
@@ -77,7 +77,7 @@ describe("EquipoComponentesSection", () => {
     ];
 
     renderWithProviders(<EquipoComponentesSection equipoId={EQUIPO_ID} componentes={componentes} />, {
-      user: buildUser({ permisos: ["equipo:gestionar"] }),
+      user: buildUser({ permisos: ["EQUIPOS:ALTAS", "EQUIPOS:MODIFICACION", "EQUIPOS:BORRADO"] }),
     });
 
     const fila = within(await screen.findByTestId("componente-c2"));
@@ -92,7 +92,7 @@ describe("EquipoComponentesSection", () => {
     const wrapper = ({ children }: { children: ReactNode }) => (
       <QueryClientProvider client={queryClient}>
         <SessionContext.Provider
-          value={{ user: buildUser({ permisos: ["equipo:gestionar"] }), isLoading: false, setUser: () => {} }}
+          value={{ user: buildUser({ permisos: ["EQUIPOS:ALTAS", "EQUIPOS:MODIFICACION", "EQUIPOS:BORRADO"] }), isLoading: false, setUser: () => {} }}
         >
           {children}
         </SessionContext.Provider>
@@ -127,7 +127,7 @@ describe("EquipoComponentesSection", () => {
 
   it("N3: ya no expone un form de alta inline (retirado, alta vive en el toolbar vía ComponenteCreateDialog)", async () => {
     renderWithProviders(<EquipoComponentesSection equipoId={EQUIPO_ID} componentes={[]} />, {
-      user: buildUser({ permisos: ["equipo:gestionar"] }),
+      user: buildUser({ permisos: ["EQUIPOS:ALTAS", "EQUIPOS:MODIFICACION", "EQUIPOS:BORRADO"] }),
     });
 
     expect(screen.queryByRole("button", { name: /agregar componente/i })).not.toBeInTheDocument();
@@ -153,7 +153,7 @@ describe("EquipoComponentesSection", () => {
     ];
 
     renderWithProviders(<EquipoComponentesSection equipoId={EQUIPO_ID} componentes={componentes} />, {
-      user: buildUser({ permisos: ["equipo:gestionar"] }),
+      user: buildUser({ permisos: ["EQUIPOS:ALTAS", "EQUIPOS:MODIFICACION", "EQUIPOS:BORRADO"] }),
     });
 
     const headers = await screen.findAllByRole("columnheader");
@@ -179,7 +179,7 @@ describe("EquipoComponentesSection", () => {
     ];
 
     renderWithProviders(<EquipoComponentesSection equipoId={EQUIPO_ID} componentes={componentes} />, {
-      user: buildUser({ permisos: ["equipo:gestionar"] }),
+      user: buildUser({ permisos: ["EQUIPOS:ALTAS", "EQUIPOS:MODIFICACION", "EQUIPOS:BORRADO"] }),
     });
 
     const fila = within(await screen.findByTestId("componente-c-vacio"));
@@ -195,7 +195,7 @@ describe("EquipoComponentesSection", () => {
 
   it("N4: sin componentes no renderiza la tabla, muestra 'Sin componentes.'", async () => {
     renderWithProviders(<EquipoComponentesSection equipoId={EQUIPO_ID} componentes={[]} />, {
-      user: buildUser({ permisos: ["equipo:gestionar"] }),
+      user: buildUser({ permisos: ["EQUIPOS:ALTAS", "EQUIPOS:MODIFICACION", "EQUIPOS:BORRADO"] }),
     });
 
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
@@ -235,7 +235,7 @@ describe("EquipoComponentesSection", () => {
     ];
 
     renderWithProviders(<EquipoComponentesSection equipoId={EQUIPO_ID} componentes={componentes} />, {
-      user: buildUser({ permisos: ["equipo:gestionar"] }),
+      user: buildUser({ permisos: ["EQUIPOS:ALTAS", "EQUIPOS:MODIFICACION", "EQUIPOS:BORRADO"] }),
     });
 
     const filaActiva = within(await screen.findByTestId("componente-activo-1"));
@@ -295,7 +295,7 @@ describe("EquipoComponentesSection", () => {
     ];
 
     renderWithProviders(<EquipoComponentesSection equipoId={EQUIPO_ID} componentes={componentes} />, {
-      user: buildUser({ permisos: ["equipo:gestionar"] }),
+      user: buildUser({ permisos: ["EQUIPOS:ALTAS", "EQUIPOS:MODIFICACION", "EQUIPOS:BORRADO"] }),
     });
 
     await user.click(await screen.findByRole("button", { name: /reactivar/i }));

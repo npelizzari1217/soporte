@@ -42,7 +42,7 @@ describe("TicketCreateDialog", () => {
     );
 
     const user = userEvent.setup();
-    renderWithProviders(<TicketCreateDialog />, { user: buildUser({ permisos: ["ticket:crear"] }) });
+    renderWithProviders(<TicketCreateDialog />, { user: buildUser({ permisos: ["TICKETS:ALTAS"] }) });
 
     expect(screen.queryByLabelText("Título")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /^nuevo ticket$/i }));

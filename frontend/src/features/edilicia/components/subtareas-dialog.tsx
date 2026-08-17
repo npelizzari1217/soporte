@@ -4,10 +4,10 @@
  * SubtareasDialog — checklist de subtareas de una reparación (T5.9/T5.10).
  * Sin ruta de detalle (ADR-1: `/edilicia` sin `[id]`) — el checklist se
  * gestiona inline vía este modal, disparado por fila en `ReparacionesList`.
- * Completar/agregar gateado por `subtarea:actualizar` (TECNICO+, espejo
- * exacto de `@RequirePermissions('subtarea:actualizar')` en AMBOS
- * endpoints del backend — el checklist es de solo lectura para quien no
- * tiene el permiso).
+ * Gates por acción (WU-7.6, `sdd/matriz-permisos-por-usuario`): agregar
+ * subtarea = `EDILICIA:ALTAS`, completar = `EDILICIA:MODIFICACION`,
+ * eliminar = `EDILICIA:BORRADO` — el checklist es de solo lectura para
+ * quien no tiene ninguna de las tres.
  *
  * `subtareas` (prop opcional, default `[]`) viene EMBEBIDO de
  * `GET /reparaciones` (item 1 backend-gaps — cierra G7), pasado por
@@ -87,9 +87,9 @@ export function SubtareasDialog({ reparacionId, trigger, numero, subtareas: subt
                   {subtarea.descripcion}
                 </span>
               </div>
-              <Can permiso="subtarea:actualizar">
-                <div className="flex items-center gap-1">
-                  {!subtarea.completada && (
+              <div className="flex items-center gap-1">
+                {!subtarea.completada && (
+                  <Can permiso="EDILICIA:MODIFICACION">
                     <Button
                       type="button"
                       variant="outline"
@@ -99,7 +99,9 @@ export function SubtareasDialog({ reparacionId, trigger, numero, subtareas: subt
                     >
                       Completar
                     </Button>
-                  )}
+                  </Can>
+                )}
+                <Can permiso="EDILICIA:BORRADO">
                   <Button
                     type="button"
                     variant="ghost"
@@ -109,13 +111,13 @@ export function SubtareasDialog({ reparacionId, trigger, numero, subtareas: subt
                   >
                     <Trash2 className="h-4 w-4" aria-hidden="true" />
                   </Button>
-                </div>
-              </Can>
+                </Can>
+              </div>
             </li>
           ))}
         </ul>
 
-        <Can permiso="subtarea:actualizar">
+        <Can permiso="EDILICIA:ALTAS">
           <form onSubmit={handleSubmit(submit)} className="flex items-end gap-2" noValidate>
             <div className="flex flex-1 flex-col gap-1">
               <label htmlFor="subtarea-descripcion" className="text-xs font-medium text-foreground">

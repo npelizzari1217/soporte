@@ -5,9 +5,10 @@
  * (ADR-1). KPIs del tenant (o del propio scope si TECNICO — resuelto
  * server-side, D2) con filtro por ciclo (R-M2 / T2.2-T2.6).
  *
- * El backend gatea la ruta completa con `ticket:ver_todos` (D3) — USUARIO
- * queda fuera. El sidebar ya oculta el ítem (nav-config, B0); esta vista
- * además maneja el 403 real por si se navega directo a la URL.
+ * El backend gatea la ruta completa con `DASHBOARD:LECTURA` (D3, WU-7.6) —
+ * USUARIO queda fuera salvo que la matriz se la otorgue explícitamente. El
+ * sidebar ya oculta el ítem (nav-config, B0); esta vista además maneja el
+ * 403 real por si se navega directo a la URL.
  */
 import { useMemo, useState } from "react";
 import { BarChart3 } from "lucide-react";

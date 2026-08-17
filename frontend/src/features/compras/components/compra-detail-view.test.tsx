@@ -153,15 +153,15 @@ describe("CompraDetailView", () => {
 
   describe("gate de permisos en las acciones", () => {
     it.each([
-      { boton: /^agregar ítem$/i, permiso: "compra:gestionar" as const },
-      { boton: /^cancelar compra$/i, permiso: "compra:gestionar" as const },
-      { boton: /^editar ítem$/i, permiso: "compra:gestionar" as const },
-      { boton: /^eliminar$/i, permiso: "compra:gestionar" as const },
-      { boton: /registrar compra/i, permiso: "compra:gestionar" as const },
-      { boton: /registrar entrega/i, permiso: "compra:gestionar" as const },
-      { boton: /cerrar con faltante/i, permiso: "compra:gestionar" as const },
-      { boton: /^aprobar$/i, permiso: "compra:aprobar" as const },
-      { boton: /^rechazar$/i, permiso: "compra:aprobar" as const },
+      { boton: /^agregar ítem$/i, permiso: "COMPRAS:ALTAS" as const },
+      { boton: /^cancelar compra$/i, permiso: "COMPRAS:BORRADO" as const },
+      { boton: /^editar ítem$/i, permiso: "COMPRAS:MODIFICACION" as const },
+      { boton: /^eliminar$/i, permiso: "COMPRAS:BORRADO" as const },
+      { boton: /registrar compra/i, permiso: "COMPRAS:MODIFICACION" as const },
+      { boton: /registrar entrega/i, permiso: "COMPRAS:MODIFICACION" as const },
+      { boton: /cerrar con faltante/i, permiso: "COMPRAS:MODIFICACION" as const },
+      { boton: /^aprobar$/i, permiso: "COMPRAS:APROBACION" as const },
+      { boton: /^rechazar$/i, permiso: "COMPRAS:APROBACION" as const },
     ])(
       "trigger $boton requiere $permiso: presente con el permiso, ausente sin él",
       async ({ boton, permiso }) => {

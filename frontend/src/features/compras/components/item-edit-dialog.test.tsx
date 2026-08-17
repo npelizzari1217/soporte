@@ -49,7 +49,7 @@ describe("ItemEditDialog", () => {
 
   it("precarga los valores actuales del ítem", async () => {
     renderWithProviders(<ItemEditDialog compraId={COMPRA_ID} item={buildItem()} />, {
-      user: buildUser({ permisos: ["compra:gestionar"] }),
+      user: buildUser({ permisos: ["COMPRAS:MODIFICACION"] }),
     });
 
     await abrirDialog();
@@ -70,7 +70,7 @@ describe("ItemEditDialog", () => {
     );
 
     renderWithProviders(<ItemEditDialog compraId={COMPRA_ID} item={buildItem()} />, {
-      user: buildUser({ permisos: ["compra:gestionar"] }),
+      user: buildUser({ permisos: ["COMPRAS:MODIFICACION"] }),
     });
 
     const user = await abrirDialog();
@@ -96,7 +96,7 @@ describe("ItemEditDialog", () => {
 
     renderWithProviders(
       <ItemEditDialog compraId={COMPRA_ID} item={buildItem({ estadoAprobacion: "APROBADO" })} />,
-      { user: buildUser({ permisos: ["compra:gestionar"] }) },
+      { user: buildUser({ permisos: ["COMPRAS:MODIFICACION"] }) },
     );
 
     const user = await abrirDialog();
@@ -123,7 +123,7 @@ describe("ItemEditDialog", () => {
     );
 
     renderWithProviders(<ItemEditDialog compraId={COMPRA_ID} item={buildItem()} />, {
-      user: buildUser({ permisos: ["compra:gestionar"] }),
+      user: buildUser({ permisos: ["COMPRAS:MODIFICACION"] }),
     });
 
     await abrirDialog();

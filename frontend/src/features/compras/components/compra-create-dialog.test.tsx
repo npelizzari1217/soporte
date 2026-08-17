@@ -33,7 +33,7 @@ describe("CompraCreateDialog", () => {
       }),
     );
 
-    renderWithProviders(<CompraCreateDialog />, { user: buildUser({ permisos: ["compra:gestionar"] }) });
+    renderWithProviders(<CompraCreateDialog />, { user: buildUser({ permisos: ["COMPRAS:ALTAS"] }) });
 
     const user = await abrirDialog();
     await user.type(await screen.findByLabelText(/motivo/i), "Reposición de insumos");
@@ -58,7 +58,7 @@ describe("CompraCreateDialog", () => {
       ),
     );
 
-    renderWithProviders(<CompraCreateDialog />, { user: buildUser({ permisos: ["compra:gestionar"] }) });
+    renderWithProviders(<CompraCreateDialog />, { user: buildUser({ permisos: ["COMPRAS:ALTAS"] }) });
 
     const user = await abrirDialog();
     await user.type(await screen.findByLabelText(/motivo/i), "Reposición de insumos");

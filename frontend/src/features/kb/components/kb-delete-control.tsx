@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * KbDeleteControl — PRESENTATIONAL, gate `kb:gestionar` aplicado por el
+ * KbDeleteControl — PRESENTATIONAL, gate `KB:BORRADO` aplicado por el
  * caller (`KbDetailView`, `<Can>`). T3.6: baja lógica (soft delete), siempre
  * detrás de confirmación explícita (`ConfirmDialog`).
  */

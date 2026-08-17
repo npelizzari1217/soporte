@@ -4,7 +4,7 @@
  * KbArticleEditDialog — modal para editar un artículo de KB (R-M3 / T3.4),
  * abierto desde el botón "Editar" de `KbDetailView` (conversión a modal,
  * feat/ui-premium-educandow — antes ruta dedicada `/kb/:id/editar`, revisión
- * de ADR-1). Gate `kb:gestionar` lo aplica el caller. NO edita visibilidad
+ * de ADR-1). Gate `KB:MODIFICACION` lo aplica el caller. NO edita visibilidad
  * (endpoint dedicado, `KbVisibilityToggle` en el detalle, T3.5). Recibe el
  * artículo ya cargado por `KbDetailView` — evita un segundo `GET /kb/:id`.
  */

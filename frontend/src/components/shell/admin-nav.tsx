@@ -7,10 +7,18 @@
  * Prioridades — sin sección propia.
  * `NAV_ITEMS` (shared/nav/nav-config.ts) solo tiene UN ítem "Admin" en el
  * sidebar principal (apunta a `/admin/catalogos`) — este componente es el
- * que permite moverse entre las secciones DENTRO del área admin, cada una
- * gateada por su propio permiso (ADR-4: gating por `can()`, nunca por rol
- * directo). Reusado por las páginas `/admin/*` (decisión de esta sesión,
- * no listada en tasks.md — evita duplicar la barra de navegación en cada una).
+ * que permite moverse entre las secciones DENTRO del área admin. Las 3
+ * secciones (Catálogos/Ciclos/Usuarios) son configuración de tenant (R4,
+ * `sdd/matriz-permisos-por-usuario` ADR-P5) — gateadas por
+ * `esAdminCliente` (ADMINISTRADOR-o-ROOT), no por un permiso de la matriz:
+ * la escritura de catálogos/ciclos/usuarios dejó de tener celda propia. Las
+ * lecturas de catálogos siguen abiertas a cualquier autenticado (R4), pero
+ * esa sección del nav es para GESTIONAR, no para leer sueltas — mismo
+ * criterio que las páginas destino (`catalogos-admin-view.tsx`,
+ * `ciclos-admin-view.tsx`, `usuarios-admin-view.tsx`, todas gateadas por
+ * `<SoloAdminCliente>`). Reusado por las páginas `/admin/*` (decisión de
+ * esta sesión, no listada en tasks.md — evita duplicar la barra de
+ * navegación en cada una).
  */
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -20,13 +28,12 @@ import { useSession } from "@/shared/hooks/use-session";
 interface AdminNavItem {
   href: string;
   label: string;
-  visible: (can: (permiso: string) => boolean, isGlobalAdmin: boolean) => boolean;
 }
 
 const ADMIN_NAV_ITEMS: AdminNavItem[] = [
-  { href: "/admin/catalogos", label: "Catálogos", visible: (can) => can("catalogo:gestionar") },
-  { href: "/admin/ciclos", label: "Ciclos", visible: (can) => can("ciclo:gestionar") },
-  { href: "/admin/usuarios", label: "Usuarios", visible: (can) => can("usuario:gestionar") },
+  { href: "/admin/catalogos", label: "Catálogos" },
+  { href: "/admin/ciclos", label: "Ciclos" },
+  { href: "/admin/usuarios", label: "Usuarios" },
   // "Clientes" NO vive en el área Admin: es exclusivo de ROOT (plataforma),
   // no una sección administrable por el ADMINISTRADOR del tenant. Se accede
   // por su ítem top-level propio del sidebar (nav-config.ts), gateado por
@@ -34,9 +41,9 @@ const ADMIN_NAV_ITEMS: AdminNavItem[] = [
 ];
 
 export function AdminNav() {
-  const { can, isGlobalAdmin } = useSession();
+  const { esAdminCliente } = useSession();
   const pathname = usePathname();
-  const items = ADMIN_NAV_ITEMS.filter((item) => item.visible(can, isGlobalAdmin));
+  const items = esAdminCliente ? ADMIN_NAV_ITEMS : [];
 
   return (
     <nav aria-label="Navegación de administración" className="mb-6 flex flex-wrap gap-1 border-b border-border pb-2">
