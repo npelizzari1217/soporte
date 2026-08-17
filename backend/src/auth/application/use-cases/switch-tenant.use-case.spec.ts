@@ -29,15 +29,15 @@ const makeCliente = (nombre = 'Acme SA', activo = true): ClienteEntity =>
   ClienteEntity.create({ nombre, razonSocial: null, cuit: null, dbName: 'acme_sa', activo });
 
 /**
- * `permisos` de `MembresiaResuelta` (RBAC viejo) ya NO alimenta
- * `resolverScope` (WU-7.1) — se conserva en el fixture porque el campo
- * sigue en la interfaz, pero ningún assert de este spec depende de él.
+ * `MembresiaResuelta` ya NO expone `permisos`: el fix de C2 retiró el campo
+ * junto con el JOIN a `roles_permisos` que lo poblaba, porque corría en cada
+ * login y habría hecho estallar el login cuando WU-9 dropee esas tablas. Los
+ * permisos salen de la matriz, no de la membresía.
  */
 const makeMembresiaResuelta = (overrides: Partial<MembresiaResuelta> = {}): MembresiaResuelta => ({
   clienteId: 'cliente-2',
   clienteNombre: 'Beta SA',
   rolCodigo: 'ADMINISTRADOR',
-  permisos: ['cliente:gestionar'],
   ...overrides,
 });
 

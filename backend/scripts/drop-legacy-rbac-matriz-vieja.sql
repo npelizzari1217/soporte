@@ -17,7 +17,12 @@
 -- que incluir el fix C2 (commit que retira esos dos JOINs). Si en algún
 -- momento se reintrodujera una lectura de `roles_permisos`/`permisos` fuera
 -- de este SQL, este DROP volvería a romper el login — grep rápido antes de
--- correr `--confirmar`: `rolesPermisos` no debe aparecer en `src/auth`.
+-- correr `--confirmar`: `rolesPermisos` no debe aparecer en NINGÚN lado de
+-- `src/`, no solo en `src/auth`. Acotarlo a `src/auth` deja pasar los specs
+-- de otros módulos: hoy `tickets/interface/controllers/tickets.e2e.spec.ts`
+-- todavía siembra esas tablas, y post-DROP esa suite muere. No es el login
+-- (ese riesgo lo cerró el fix de C2), pero es una suite en rojo sin causa
+-- aparente para quien corra este script sin leer esta línea.
 --
 -- NO se aplica sola: ver drop-legacy-rbac-matriz-vieja.mjs, que exige el
 -- flag --confirmar.

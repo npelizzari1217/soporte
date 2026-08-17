@@ -169,6 +169,14 @@ interface RutaEsperada {
 }
 
 const TABLA_RUTAS: RutaEsperada[] = [
+  // C5 (fix post-verify 2da pasada) — las 3 rutas GET que C1 gateó no tenían
+  // NI UN test que las atara: borrar los decoradores dejaba la suite entera en
+  // verde y el sistema volvía al estado que la 1ra pasada marcó CRITICAL (celda
+  // sembrada y dibujada en la grilla que no gobierna nada). El unit del guard
+  // prueba que el guard funciona, NO que el decorador esté puesto.
+  { metodo: 'GET', path: '/tickets', acciones: ['TICKETS:LECTURA'] },
+  { metodo: 'GET', path: `/tickets/${ID}`, acciones: ['TICKETS:LECTURA'] },
+  { metodo: 'GET', path: `/tickets/${ID}/timeline`, acciones: ['TICKETS:LECTURA'] },
   { metodo: 'POST', path: '/tickets', acciones: ['TICKETS:ALTAS'] },
   { metodo: 'PATCH', path: `/tickets/${ID}`, acciones: ['TICKETS:MODIFICACION'] },
   { metodo: 'PATCH', path: `/tickets/${ID}/estado`, acciones: ['TICKETS:TRANSICIONAR'] },
@@ -181,6 +189,8 @@ const TABLA_RUTAS: RutaEsperada[] = [
   { metodo: 'POST', path: `/tickets/${ID}/comentarios`, acciones: ['TICKETS:COMENTAR'] },
   { metodo: 'POST', path: `/tickets/${ID}/adjuntos`, acciones: ['TICKETS:ALTAS'] },
   { metodo: 'POST', path: `/operaciones/${ID}/adjuntos`, acciones: ['TICKETS:ALTAS'] },
+  { metodo: 'GET', path: '/kb', acciones: ['KB:LECTURA'] },
+  { metodo: 'GET', path: `/kb/${ID}`, acciones: ['KB:LECTURA'] },
   { metodo: 'POST', path: '/kb', acciones: ['KB:ALTAS'] },
   { metodo: 'PATCH', path: `/kb/${ID}`, acciones: ['KB:MODIFICACION'] },
   { metodo: 'PATCH', path: `/kb/${ID}/visibilidad`, acciones: ['KB:PUBLICAR'] },

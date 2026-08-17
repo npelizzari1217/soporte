@@ -54,7 +54,6 @@ const makeMembresiaResuelta = (overrides: Partial<MembresiaResuelta> = {}): Memb
   clienteId: 'cliente-1',
   clienteNombre: 'Acme SA',
   rolCodigo: 'TECNICO',
-  permisos: ['ticket:editar', 'ticket:crear'],
   ...overrides,
 });
 
