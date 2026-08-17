@@ -175,8 +175,19 @@ export class EquiposController {
   /**
    * GET /equipos/tipos-componente
    * Lista el catálogo READ-ONLY de tipos de componente activos (F3-Q3).
+   *
+   * Fix W5 (post-verify): al reemplazar `ModulosGuard` por `AccionesGuard`
+   * esta ruta se quedó SIN gate, porque el guard nuevo sin metadata deja
+   * pasar (R3) y el `@RequireModulo('EQUIPOS')` que la cubría vivía a nivel
+   * de clase. Quedaba abierta a cualquier autenticado del tenant: un
+   * ensanchamiento de acceso dentro de un cambio cuyo objetivo era el
+   * contrario. `EQUIPOS:LECTURA` restaura exactamente la población anterior,
+   * porque el backfill sembró esa celda a quien tenía el módulo asignado.
+   * Sigue SIN exigir permiso de escritura: el catálogo es read-only y hace
+   * falta para poblar el selector al agregar componentes.
    */
   @Get('tipos-componente')
+  @RequiereAcciones('EQUIPOS:LECTURA')
   async listarTiposComponente(): Promise<TipoComponenteResponseDto[]> {
     const result = await this.listarTiposComponenteUseCase.execute();
     return result.getValue().map(toTipoComponenteResponseDto);
