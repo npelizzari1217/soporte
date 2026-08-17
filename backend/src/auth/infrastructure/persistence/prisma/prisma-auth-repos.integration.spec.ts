@@ -5,10 +5,14 @@
  * Prisma que implementan los puertos de dominio consumidos por PR3/PR4:
  * - PrismaClienteRepository (findById + CRUD básico — soporte de fixtures y
  *   de `resolverScope`, R5/R10).
- * - PrismaRoleRepository (findByCodigo, findWithPermisos — R1 catálogo RBAC).
+ * - PrismaRoleRepository (findByCodigo — R1 catálogo RBAC. `findWithPermisos`
+ *   se retiró, fix post-verify C2 sdd/matriz-permisos-por-usuario: RBAC
+ *   viejo, cero consumidores de producción, mismo criterio que el punto
+ *   siguiente).
  * - PrismaUsuarioRepository (findByEmail, findById, save — R3 identidad global).
  * - PrismaMembresiaRepository (findActivasByUsuario, findActivaByUsuarioYCliente
- *   — join rol+permisos+cliente, R4/R5/R10). [T5.3]
+ *   — join rol+cliente, R4/R5/R10. Fix post-verify C2: el JOIN YA NO carga
+ *   `rol.rolesPermisos` — ver `PrismaMembresiaRepository`). [T5.3]
  * - PrismaRefreshTokenRepository (findByHash, revokeAllByUsuarioId, save,
  *   incl. columna `cliente_id` nueva — Opción B decisión #2025). [T5.4]
  *
@@ -204,27 +208,6 @@ describe('Auth Prisma Repositories — Integration (T5.3 + T5.4)', () => {
       const role = await roleRepo.findByCodigo('ROL_INEXISTENTE');
       expect(role).toBeNull();
     });
-
-    it('findWithPermisos carga los permisos del rol (JOIN roles_permisos + permisos)', async () => {
-      const created = await createTestRoleConPermisos('ADMINISTRADOR', [
-        'ticket:crear',
-        'usuario:gestionar',
-        'cliente:gestionar',
-      ]);
-
-      const role = await roleRepo.findWithPermisos(created.id);
-      expect(role).not.toBeNull();
-      expect(role!.permisos).toHaveLength(3);
-      const codigos = role!.permisos.map((p) => p.codigo);
-      expect(codigos).toContain('ticket:crear');
-      expect(codigos).toContain('usuario:gestionar');
-      expect(codigos).toContain('cliente:gestionar');
-    });
-
-    it('findWithPermisos retorna null para un id inexistente', async () => {
-      const role = await roleRepo.findWithPermisos('01966a6a-0000-7000-8000-000000000001');
-      expect(role).toBeNull();
-    });
   });
 
   // ─── PrismaUsuarioRepository ────────────────────────────────────────────
@@ -284,7 +267,7 @@ describe('Auth Prisma Repositories — Integration (T5.3 + T5.4)', () => {
       expect(activas).toEqual([]);
     });
 
-    it('findActivasByUsuario resuelve rol+permisos+cliente de una membresía activa', async () => {
+    it('findActivasByUsuario resuelve rol+cliente de una membresía activa (fix post-verify C2: ya NO resuelve permisos, esos salen de la matriz)', async () => {
       const usuario = await createTestUsuario('con-membresia');
       const cliente = await createTestCliente('membresia-cliente');
       const role = await createTestRoleConPermisos('COLABORADOR', [
@@ -299,8 +282,7 @@ describe('Auth Prisma Repositories — Integration (T5.3 + T5.4)', () => {
       expect(activas[0].clienteId).toBe(cliente.id);
       expect(activas[0].clienteNombre).toBe(cliente.nombre);
       expect(activas[0].rolCodigo).toBe('COLABORADOR');
-      expect(activas[0].permisos).toHaveLength(3);
-      expect(activas[0].permisos).toContain('ticket:crear');
+      expect(activas[0]).not.toHaveProperty('permisos');
     });
 
     it('findActivasByUsuario excluye membresías inactivas (activo=false)', async () => {
@@ -358,7 +340,7 @@ describe('Auth Prisma Repositories — Integration (T5.3 + T5.4)', () => {
       const found = await membresiaRepo.findActivaByUsuarioYCliente(usuario.id, clienteA.id);
       expect(found).not.toBeNull();
       expect(found!.rolCodigo).toBe('ADMINISTRADOR');
-      expect(found!.permisos).toEqual(['cliente:gestionar']);
+      expect(found).not.toHaveProperty('permisos');
     });
 
     it('findActivaByUsuarioYCliente retorna null si la membresía está inactiva', async () => {

@@ -50,6 +50,7 @@ import { AuthModule } from '../../auth.module';
 import { TicketsModule } from '../../../tickets/tickets.module';
 import { KbModule } from '../../../kb/kb.module';
 import { DashboardModule } from '../../../dashboard/dashboard.module';
+import { ClientesModule } from '../../../clientes/clientes.module';
 import { TenantScopeMiddleware } from '../../../shared/tenancy/tenant-scope.middleware';
 
 import { PrismaService } from '../../../shared/infrastructure/persistence/prisma.service';
@@ -141,7 +142,9 @@ function bearer(token: string): Headers {
   return { Authorization: `Bearer ${token}` };
 }
 
-@Module({ imports: [SharedModule, AuthModule, TicketsModule, KbModule, DashboardModule] })
+@Module({
+  imports: [SharedModule, AuthModule, TicketsModule, KbModule, DashboardModule, ClientesModule],
+})
 class TestHarnessModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {
     consumer.apply(TenantScopeMiddleware).forRoutes('*');
@@ -183,6 +186,45 @@ const TABLA_RUTAS: RutaEsperada[] = [
   { metodo: 'PATCH', path: `/kb/${ID}/visibilidad`, acciones: ['KB:PUBLICAR'] },
   { metodo: 'DELETE', path: `/kb/${ID}`, acciones: ['KB:BORRADO'] },
   { metodo: 'GET', path: '/dashboard/metricas', acciones: ['DASHBOARD:LECTURA'] },
+];
+
+/**
+ * C4 (fix post-verify) — las 16 rutas gateadas por `AdminClienteGuard` (S9:
+ * catálogos, S10: ciclos-vigentes) que NINGÚN test probaba a nivel de
+ * APLICACIÓN: un unit test del guard prueba que el guard funciona, NO que el
+ * decorador esté puesto en la ruta correcta (design-parte2 §5, mismo criterio
+ * que `TABLA_RUTAS`). Antes de este fix, borrar cualquiera de los 16
+ * `@UseGuards(AdminClienteGuard)` dejaba la suite entera en verde.
+ *
+ * `POST /usuarios` queda afuera: ya tiene cobertura dedicada más arriba
+ * (`'POST /usuarios con el mismo token de TECNICO → 403'`).
+ */
+interface RutaAdminEsperada {
+  metodo: Metodo;
+  path: string;
+}
+
+const TABLA_RUTAS_ADMIN: RutaAdminEsperada[] = [
+  // catálogos (S9) — 6
+  { metodo: 'POST', path: '/catalogos/tipos-ticket' },
+  { metodo: 'PATCH', path: `/catalogos/tipos-ticket/${ID}` },
+  { metodo: 'PATCH', path: `/catalogos/tipos-ticket/${ID}/estado` },
+  { metodo: 'POST', path: '/catalogos/prioridades' },
+  { metodo: 'PATCH', path: `/catalogos/prioridades/${ID}` },
+  { metodo: 'PATCH', path: `/catalogos/prioridades/${ID}/estado` },
+  // ciclos — 3
+  { metodo: 'POST', path: '/ciclos' },
+  { metodo: 'PATCH', path: `/ciclos/${ID}/activar` },
+  { metodo: 'PATCH', path: `/ciclos/${ID}/desactivar` },
+  // ciclos-vigentes (S10) — 1
+  { metodo: 'GET', path: '/ciclos-vigentes' },
+  // usuarios — 6 (POST /usuarios ya cubierto arriba)
+  { metodo: 'PATCH', path: `/usuarios/${ID}/rol` },
+  { metodo: 'PATCH', path: `/usuarios/${ID}` },
+  { metodo: 'DELETE', path: `/usuarios/${ID}/membresia` },
+  { metodo: 'GET', path: `/usuarios/${ID}/permisos` },
+  { metodo: 'PATCH', path: `/usuarios/${ID}/permisos` },
+  { metodo: 'POST', path: `/usuarios/${ID}/permisos/aplicar-preset` },
 ];
 
 /** Rutas donde vale la pena ejercitar "actor CON la acción → NO 403" (sin multipart). */
@@ -298,9 +340,10 @@ describe('Autorización e2e — TABLA_RUTAS (G2, WU-7.7) + scope de filas/campos
     return cliente;
   }
 
-  async function crearRoleVacio(): Promise<RoleEntity> {
+  /** `codigo` fijo permite armar un actor ADMINISTRADOR (`esAdminDeCliente` lee `rol === 'ADMINISTRADOR'` del JWT, que sale de `role.codigo`, C4). */
+  async function crearRoleVacio(codigo?: string): Promise<RoleEntity> {
     const role = RoleEntity.create({
-      codigo: `ROL_E2E_${randomBytes(3).toString('hex')}`,
+      codigo: codigo ?? `ROL_E2E_${randomBytes(3).toString('hex')}`,
       nombre: 'Rol E2E',
       descripcion: null,
       permisos: [],
@@ -347,6 +390,27 @@ describe('Autorización e2e — TABLA_RUTAS (G2, WU-7.7) + scope de filas/campos
       data: { usuarioId: usuario.id, clienteId: cliente.id, rolId: role.id, activo: true },
     });
     await permisosRepo.setPermisos(usuario.id, cliente.id, permisos);
+    const { accessToken } = await login(usuario.email);
+    return { accessToken, clienteId: cliente.id, usuarioId: usuario.id };
+  }
+
+  /**
+   * Actor NUEVO, en un cliente NUEVO, con rol `codigo='ADMINISTRADOR'` — es lo
+   * que `AdminClienteGuard`/`esAdminDeCliente` lee (C4, S9/S10). Sin celdas en
+   * la matriz a propósito: `AdminClienteGuard` no consulta la matriz, solo el
+   * JWT.
+   */
+  async function crearActorAdministrador(): Promise<{
+    accessToken: string;
+    clienteId: string;
+    usuarioId: string;
+  }> {
+    const cliente = await crearClienteTenant();
+    const role = await crearRoleVacio('ADMINISTRADOR');
+    const usuario = await crearUsuario();
+    await masterClient.membresia.create({
+      data: { usuarioId: usuario.id, clienteId: cliente.id, rolId: role.id, activo: true },
+    });
     const { accessToken } = await login(usuario.email);
     return { accessToken, clienteId: cliente.id, usuarioId: usuario.id };
   }
@@ -446,6 +510,41 @@ describe('Autorización e2e — TABLA_RUTAS (G2, WU-7.7) + scope de filas/campos
     );
   });
 
+  // ─── C4 (fix post-verify) — AdminClienteGuard aplicado por RUTA, no solo el guard en aislamiento ───
+
+  describe('Existencia de las rutas admin (S9/S10, C4): sin Bearer → 401', () => {
+    it.each(TABLA_RUTAS_ADMIN)(
+      '$metodo $path existe: sin Bearer → 401 (NUNCA 404 de routing)',
+      async ({ metodo, path }) => {
+        const { status } = await callMethod(metodo, path);
+        expect(status).toBe(401);
+      },
+    );
+  });
+
+  describe('AdminClienteGuard real por ruta: actor SIN ser ADMINISTRADOR/ROOT → 403 (S9/S10, C4)', () => {
+    it.each(TABLA_RUTAS_ADMIN)(
+      '$metodo $path exige ADMINISTRADOR: actor con rol cualquiera → 403',
+      async ({ metodo, path }) => {
+        const actor = await crearActorConPermisos([]);
+        const { status } = await callMethod(metodo, path, actor.accessToken);
+        expect(status).toBe(403);
+      },
+    );
+  });
+
+  describe('AdminClienteGuard real por ruta: actor ADMINISTRADOR → NO 403 (S9/S10, C4)', () => {
+    it.each(TABLA_RUTAS_ADMIN)(
+      '$metodo $path con rol ADMINISTRADOR → status distinto de 401/403 (el gate se abrió)',
+      async ({ metodo, path }) => {
+        const actor = await crearActorAdministrador();
+        const { status } = await callMethod(metodo, path, actor.accessToken);
+        expect(status).not.toBe(401);
+        expect(status).not.toBe(403);
+      },
+    );
+  });
+
   // ─── Regresiones puntuales del design (3 asserts) ────────────────────────
 
   describe('Regresiones puntuales (design §5)', () => {
@@ -491,7 +590,7 @@ describe('Autorización e2e — TABLA_RUTAS (G2, WU-7.7) + scope de filas/campos
 
   describe('R11 — scope de filas/campos (S28-S33)', () => {
     it('S28: GET /tickets sin TICKETS:VER_TODOS → 200 con EXACTAMENTE los propios (2 propios, 3 ajenos en el fixture)', async () => {
-      const propio = await crearActorConPermisos(['TICKETS:ALTAS']);
+      const propio = await crearActorConPermisos(['TICKETS:LECTURA', 'TICKETS:ALTAS']);
       const ajeno = await agregarActorAlCliente(propio.clienteId, ['TICKETS:ALTAS']);
 
       const t1 = await crearTicket(propio.accessToken, { titulo: 'Propio 1' });
@@ -512,7 +611,7 @@ describe('Autorización e2e — TABLA_RUTAS (G2, WU-7.7) + scope de filas/campos
     });
 
     it('S29: GET /tickets/:id de un ticket AJENO sin TICKETS:VER_TODOS → 404 (nunca 403, no revela existencia)', async () => {
-      const propio = await crearActorConPermisos(['TICKETS:ALTAS']);
+      const propio = await crearActorConPermisos(['TICKETS:LECTURA', 'TICKETS:ALTAS']);
       const ajeno = await agregarActorAlCliente(propio.clienteId, ['TICKETS:ALTAS']);
       const ticketAjeno = await crearTicket(ajeno.accessToken);
 
@@ -526,7 +625,7 @@ describe('Autorización e2e — TABLA_RUTAS (G2, WU-7.7) + scope de filas/campos
 
     it('S30: GET /kb sin KB:VER_TODOS → 200 con EXACTAMENTE los publicados+activos (3 publicados, 2 sin publicar en el fixture)', async () => {
       const editor = await crearActorConPermisos(['KB:ALTAS', 'KB:PUBLICAR']);
-      const lector = await agregarActorAlCliente(editor.clienteId, []);
+      const lector = await agregarActorAlCliente(editor.clienteId, ['KB:LECTURA']);
 
       const p1 = await crearArticuloKb(editor.accessToken, { titulo: 'Publicado 1' });
       const p2 = await crearArticuloKb(editor.accessToken, { titulo: 'Publicado 2' });
@@ -550,7 +649,7 @@ describe('Autorización e2e — TABLA_RUTAS (G2, WU-7.7) + scope de filas/campos
 
     it('S31: GET /kb/:id de un artículo SIN publicar, sin KB:VER_TODOS → 404 (no revela existencia)', async () => {
       const editor = await crearActorConPermisos(['KB:ALTAS']);
-      const lector = await agregarActorAlCliente(editor.clienteId, []);
+      const lector = await agregarActorAlCliente(editor.clienteId, ['KB:LECTURA']);
       const sinPublicar = await crearArticuloKb(editor.accessToken);
 
       const { status } = await httpGet(
@@ -562,7 +661,11 @@ describe('Autorización e2e — TABLA_RUTAS (G2, WU-7.7) + scope de filas/campos
     });
 
     it('S32: GET /tickets/:id/timeline sin TICKETS:OBSERVAR → 200 SIN operaciones internas (mezcla de internas/públicas en el fixture)', async () => {
-      const solicitante = await crearActorConPermisos(['TICKETS:ALTAS', 'TICKETS:COMENTAR']);
+      const solicitante = await crearActorConPermisos([
+        'TICKETS:LECTURA',
+        'TICKETS:ALTAS',
+        'TICKETS:COMENTAR',
+      ]);
       const observador = await agregarActorAlCliente(solicitante.clienteId, [
         'TICKETS:VER_TODOS',
         'TICKETS:OBSERVAR',
@@ -592,7 +695,7 @@ describe('Autorización e2e — TABLA_RUTAS (G2, WU-7.7) + scope de filas/campos
     });
 
     it('S33: GET /tickets/:id/timeline de un ticket AJENO sin TICKETS:VER_TODOS → 404 (capa de fila, evaluada ANTES que la de campo)', async () => {
-      const propio = await crearActorConPermisos(['TICKETS:ALTAS']);
+      const propio = await crearActorConPermisos(['TICKETS:LECTURA', 'TICKETS:ALTAS']);
       const ajeno = await agregarActorAlCliente(propio.clienteId, ['TICKETS:ALTAS']);
       const ticketAjeno = await crearTicket(ajeno.accessToken);
 

@@ -3,10 +3,11 @@
  *
  * Unit test: instancia el controller directamente con use cases mockeados,
  * mismo patrón que `TicketsController`/`SlaConfigController` — verifica
- * gateo por `KB:ALTAS`/`MODIFICACION`/`PUBLICAR`/`BORRADO` SOLO en rutas de
- * escritura (POST/PATCH/DELETE, metadata `@RequiereAcciones` por método,
- * WU-7.3); las rutas de lectura (GET) NO declaran acción dedicada (scope se
- * resuelve dentro del use case por `KB:VER_TODOS`, K3/R11).
+ * gateo por `KB:ALTAS`/`MODIFICACION`/`PUBLICAR`/`BORRADO` en rutas de
+ * escritura (POST/PATCH/DELETE) y por `KB:LECTURA` en las de lectura
+ * (GET), metadata `@RequiereAcciones` por método, WU-7.3 + fix post-verify
+ * C1. El scope de FILA (publicados vs. todos) se sigue resolviendo dentro
+ * del use case por `KB:VER_TODOS` (K3/R11) — eso no cambió.
  *
  * Ref spec: sdd/premium/spec K1-K4, K7. Tarea: K7/K8.
  */
@@ -83,14 +84,14 @@ describe('KbController (K7)', () => {
     expect(permisos).toEqual(['KB:BORRADO']);
   });
 
-  it('[CRITICAL] GET /kb NO declara @RequiereAcciones (lectura sin gate dedicado, scope inline vía KB:VER_TODOS)', () => {
+  it('[CRITICAL] GET /kb declara @RequiereAcciones("KB:LECTURA") (fix post-verify C1, scope de fila sigue inline vía KB:VER_TODOS)', () => {
     const permisos = Reflect.getMetadata(ACCIONES_KEY, KbController.prototype.findAll);
-    expect(permisos).toBeUndefined();
+    expect(permisos).toEqual(['KB:LECTURA']);
   });
 
-  it('[CRITICAL] GET /kb/:id NO declara @RequiereAcciones (lectura sin gate dedicado, scope inline vía KB:VER_TODOS)', () => {
+  it('[CRITICAL] GET /kb/:id declara @RequiereAcciones("KB:LECTURA") (fix post-verify C1, scope de fila sigue inline vía KB:VER_TODOS)', () => {
     const permisos = Reflect.getMetadata(ACCIONES_KEY, KbController.prototype.findOne);
-    expect(permisos).toBeUndefined();
+    expect(permisos).toEqual(['KB:LECTURA']);
   });
 
   // ─── POST /kb ───────────────────────────────────────────────────────────

@@ -2,16 +2,24 @@ import { MembresiaEntity } from '../entities/membresia.entity';
 
 /**
  * MembresiaResuelta — proyección de una membresía activa con su rol y
- * permisos ya resueltos (JOIN membresia→rol→permisos→cliente).
+ * cliente ya resueltos (JOIN membresia→rol→cliente).
  *
  * Usada por LoginUseCase/SwitchTenantUseCase/RefreshTokenUseCase (PR3/PR4)
  * para construir el JWT sin round-trips adicionales a la DB.
+ *
+ * Fix post-verify C2 (sdd/matriz-permisos-por-usuario): hasta acá venía con
+ * un campo `permisos: string[]` resuelto vía JOIN `rol→rolesPermisos→permiso`
+ * (RBAC viejo). Ese campo NO tenía consumidores — `resolverScope`
+ * (WU-7.1) ya resuelve los permisos desde la matriz nueva
+ * (`IMatrizPermisosRepository`), no desde acá. Se retiró junto con el JOIN
+ * porque `roles_permisos`/`permisos` son las tablas que WU-9 dropea; dejar el
+ * JOIN vivo acá hubiera roto login/switch/refresh (que llaman a
+ * `findActivaByUsuarioYCliente` en cada request) el día que corra el DROP.
  */
 export interface MembresiaResuelta {
   clienteId: string;
   clienteNombre: string;
   rolCodigo: string;
-  permisos: string[];
 }
 
 /**
@@ -42,8 +50,8 @@ export interface MembresiaConUsuario {
  */
 export interface IMembresiaRepository {
   /**
-   * Retorna las membresías ACTIVAS de un usuario, con rol+permisos+cliente
-   * resueltos. Filtra `membresia.activo && !deleted`, `cliente.activo && !deleted`.
+   * Retorna las membresías ACTIVAS de un usuario, con rol+cliente resueltos.
+   * Filtra `membresia.activo && !deleted`, `cliente.activo && !deleted`.
    * Usado por R4 (resolución 0/1/many membresías) y para poblar `membresias[]`
    * en el JWT.
    */

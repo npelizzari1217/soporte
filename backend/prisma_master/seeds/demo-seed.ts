@@ -267,12 +267,18 @@ async function provisionUsuarioTenant(
 
 /**
  * Aplica el preset de permisos de TECNICO sobre la matriz nueva
- * (`usuario_cliente_permisos`) del técnico demo (WU-7.5, R9). `CrearUsuarioTenantUseCase`
- * NO puebla la matriz — sin esto, `esAsignadoElegiblePorModulo` (que desde WU-7.5
- * lee la matriz, no `usuario_cliente_modulos`) rechaza CUALQUIER asignación de
- * ticket al técnico demo, silenciosamente hasta que se corre el seed y explota acá.
- * `AplicarPresetPermisosUseCase.setPermisos` es reemplazo atómico e idempotente
- * (ADR-P3): un re-run no duplica ni acumula.
+ * (`usuario_cliente_permisos`) del técnico demo (WU-7.5, R9).
+ *
+ * Fix post-verify W4 (sdd/matriz-permisos-por-usuario): desde ese fix,
+ * `CrearUsuarioTenantUseCase` YA siembra el preset como parte del alta
+ * inicial — este call site queda como el paso EXPLÍCITO que garantiza
+ * idempotencia en un RE-RUN del seed: en un re-run, `provisionUsuarioTenant`
+ * encuentra la membresía YA activa (`MembresiaYaActivaError`) y retorna
+ * ANTES de llegar al paso de sembrado del alta — sin este call site
+ * adicional, un re-run no re-aplicaría el preset si alguien lo hubiera
+ * tocado a mano entre corridas. `AplicarPresetPermisosUseCase.setPermisos`
+ * es reemplazo atómico e idempotente (ADR-P3): un re-run no duplica ni
+ * acumula.
  */
 async function aplicarPresetPermisosTecnico(
   app: INestApplicationContext,

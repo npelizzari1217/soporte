@@ -16,10 +16,14 @@
  * `PermissionsGuard`+`ModulosGuard`) — los dos primeros SIEMPRE aplican
  * (requieren JWT válido + tenant resuelto); `AccionesGuard` solo actúa
  * cuando el endpoint tiene `@RequiereAcciones(...)` (sin metadata →
- * pass-through). Los endpoints GET NO declaran `@RequiereAcciones` — CUALQUIER
- * usuario autenticado del tenant puede listar/ver, el scope (propios vs.
- * todos) se resuelve DENTRO del use case según si el actor tiene
- * `TICKETS:VER_TODOS` (T6/T7, R11) — NO es un 403 binario.
+ * pass-through). Los endpoints GET declaran `@RequiereAcciones('TICKETS:LECTURA')`
+ * (corrección post-verify, sdd/matriz-permisos-por-usuario R5): el backfill
+ * le da esa celda a TODA membresía activa (regla universal, R7), así que
+ * nadie pierde acceso hoy, pero a partir de ahora la casilla de la grilla del
+ * ABM gobierna algo real. El scope de FILAS (propios vs. todos) sigue
+ * resolviéndose DENTRO del use case según si el actor tiene
+ * `TICKETS:VER_TODOS` (T6/T7, R11) — eso NO cambió, sigue sin ser un 403
+ * binario.
  *
  * El controller no tiene lógica de negocio: solo traduce HTTP ↔ use case y
  * mapea `DomainError` → `HttpException` (presentación).
@@ -219,11 +223,13 @@ export class TicketsController {
   /**
    * GET /tickets
    * Lista tickets del tenant con filtros combinables + paginación (T7). El
-   * scope (propios vs. todos) se deriva del permiso `ticket:ver_todos` del
-   * actor — NO requiere el permiso para poder listar (lista sus propios
-   * tickets si no lo tiene).
+   * scope (propios vs. todos) se deriva del permiso `TICKETS:VER_TODOS` del
+   * actor — esa celda NO se requiere para poder listar (lista sus propios
+   * tickets si no la tiene). `TICKETS:LECTURA` sí se requiere para poder
+   * entrar al listado (corrección post-verify, R5).
    */
   @Get()
+  @RequiereAcciones('TICKETS:LECTURA')
   async findAll(
     @CurrentUser() user: JwtPayload,
     @Query() query: ListTicketsQueryDto,
@@ -266,10 +272,11 @@ export class TicketsController {
 
   /**
    * GET /tickets/:id
-   * Consulta un ticket. Sin `ticket:ver_todos`, solo si el actor es el
+   * Consulta un ticket. Sin `TICKETS:VER_TODOS`, solo si el actor es el
    * solicitante — caso contrario 404 (no revela existencia, T6).
    */
   @Get(':id')
+  @RequiereAcciones('TICKETS:LECTURA')
   async findOne(
     @CurrentUser() user: JwtPayload,
     @Param('id') id: string,
@@ -517,6 +524,7 @@ export class TicketsController {
    * `es_interno=true` del resultado — NUNCA visibles al solicitante/USUARIO.
    */
   @Get(':id/timeline')
+  @RequiereAcciones('TICKETS:LECTURA')
   async timeline(
     @CurrentUser() user: JwtPayload,
     @Param('id') id: string,

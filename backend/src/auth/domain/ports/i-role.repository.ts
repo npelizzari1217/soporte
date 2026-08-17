@@ -6,6 +6,10 @@ import { RoleEntity } from '../entities/role.entity';
  * Definido en la capa de dominio: sin imports de Prisma ni NestJS.
  * La implementación concreta vive en auth/infrastructure/persistence/prisma/ (PR5).
  *
+ * Fix post-verify C2 (sdd/matriz-permisos-por-usuario): `findWithPermisos`
+ * se retiró — RBAC viejo, cero consumidores de producción, ver
+ * `PrismaRoleRepository`.
+ *
  * Tarea: T2.2 (PR2 — Auth domain + ports + hashing + token service)
  */
 export interface IRoleRepository {
@@ -17,14 +21,6 @@ export interface IRoleRepository {
    * @returns       Entidad del rol si existe, null en caso contrario.
    */
   findByCodigo(codigo: string): Promise<RoleEntity | null>;
-
-  /**
-   * Busca un rol por id y carga sus permisos (JOIN con roles_permisos + permisos).
-   *
-   * @param id  UUIDv7 del rol.
-   * @returns   Entidad con permisos cargados, null si no existe.
-   */
-  findWithPermisos(id: string): Promise<RoleEntity | null>;
 
   /**
    * Retorna TODOS los roles del catálogo global (no soft-deleted), sin

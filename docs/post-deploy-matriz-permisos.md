@@ -76,10 +76,32 @@ secreto, y son solo 2 verificaciones puntuales.
   `cliente:gestionar` — revisar que `admin-access.ts` esté en el mismo
   build que el backend desplegado.
 
+## Reactivación de un tenant (S19, fix post-verify C3)
+
+`ReactivarClienteUseCase` (`PATCH /clientes/:id/reactivar`, exclusivo ROOT)
+corre `prisma migrate deploy` contra la DB del tenant reactivado ANTES de
+persistir el flip a `activo=true` (mismo mecanismo — `ITenantMigrationRunner`
+— que usa el alta de cliente, PR7). Esto cierra el hueco de un tenant que
+estaba INACTIVO durante ESTE deploy: `scripts/migrate-tenants.js` solo
+fan-outea a tenants `activo=true`, así que un tenant inactivo se queda con
+`tipos_ticket.modulo='SOPORTE'` (sin la migración `rename_modulo_soporte_a_tickets`)
+hasta que algo corra sus migraciones pendientes — antes de este fix, nada lo
+hacía, y el filtrado por módulo devolvía 0 resultados EN SILENCIO.
+
+Si `migrate deploy` falla durante la reactivación, la operación entera falla
+(el cliente NO queda marcado `activo=true` con un schema desactualizado) — es
+el comportamiento esperado: mejor un error visible acá que el hueco
+silencioso de antes. Test de regresión:
+`backend/src/clientes/application/use-cases/reactivar-cliente.use-case.spec.ts`.
+
 ## Qué NO cubre este documento
 
 WU-9 (`DROP TABLE roles_permisos/permisos/usuario_cliente_modulos`, el
 "Paso 5 · Contract" del design) es un deploy POSTERIOR, después de un
 período de observación con estos 6 checks en verde. Ver
 `backend/scripts/drop-legacy-rbac-matriz-vieja.sql` y `.mjs` — preparados,
-NO aplicados, requieren invocación manual explícita.
+NO aplicados, requieren invocación manual explícita, y ahora (fix post-verify
+C2) requieren además que el deploy incluya el retiro del JOIN
+`rol.rolesPermisos` en `PrismaMembresiaRepository`/`PrismaRoleRepository` —
+sin eso, el DROP tumba el login (500 en cada login/switch/refresh). Ver el
+header de `drop-legacy-rbac-matriz-vieja.sql` para el detalle.

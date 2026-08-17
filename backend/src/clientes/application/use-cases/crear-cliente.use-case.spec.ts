@@ -81,7 +81,6 @@ function makeMembresiaRepo(): IMembresiaRepository {
 function makeRoleRepo(): IRoleRepository {
   return {
     findByCodigo: vi.fn().mockResolvedValue(ADMIN_ROLE),
-    findWithPermisos: vi.fn(),
   };
 }
 

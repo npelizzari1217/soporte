@@ -13,10 +13,13 @@
  * `AccionesGuard` (WU-7.3, sdd/matriz-permisos-por-usuario) — los dos
  * primeros SIEMPRE aplican; `AccionesGuard` solo actúa cuando el endpoint
  * declara `@RequiereAcciones(...)` (sin metadata → pass-through). Los
- * endpoints GET NO declaran `@RequiereAcciones` — CUALQUIER usuario
- * autenticado del tenant puede listar/ver, el scope (publicados vs. todos)
- * se resuelve DENTRO del use case según si el actor tiene `KB:VER_TODOS`
- * (K3, R11) — mismo criterio que `TicketsController.findAll`/`findOne`.
+ * endpoints GET declaran `@RequiereAcciones('KB:LECTURA')` (corrección
+ * post-verify, R5): el backfill le da esa celda a TODA membresía activa
+ * (regla universal, R7), nadie pierde acceso hoy, pero la casilla de la
+ * grilla del ABM pasa a gobernar algo real. El scope de FILAS (publicados
+ * vs. todos) sigue resolviéndose DENTRO del use case según si el actor
+ * tiene `KB:VER_TODOS` (K3, R11) — mismo criterio que
+ * `TicketsController.findAll`/`findOne`, eso NO cambió.
  *
  * El controller no tiene lógica de negocio: solo traduce HTTP ↔ use case y
  * mapea `DomainError` → `HttpException`.
@@ -115,10 +118,12 @@ export class KbController {
   /**
    * GET /kb
    * Lista artículos con filtros combinables + paginación. El scope
-   * (publicados vs. todos) se deriva del permiso `ticket:ver_todos` del
-   * actor (K3) — NO requiere permiso dedicado para listar.
+   * (publicados vs. todos) se deriva del permiso `KB:VER_TODOS` del
+   * actor (K3) — esa celda NO se requiere para listar. `KB:LECTURA` sí se
+   * requiere para poder entrar al listado (corrección post-verify, R5).
    */
   @Get()
+  @RequiereAcciones('KB:LECTURA')
   async findAll(
     @CurrentUser() user: JwtPayload,
     @Query() query: ListKbArticulosQueryDto,
@@ -141,11 +146,12 @@ export class KbController {
 
   /**
    * GET /kb/:id
-   * Consulta un artículo. Sin `ticket:ver_todos`, solo si está publicado
+   * Consulta un artículo. Sin `KB:VER_TODOS`, solo si está publicado
    * (`visibleParaSolicitante=true`) y activo — caso contrario 404 (no
    * revela existencia, K3).
    */
   @Get(':id')
+  @RequiereAcciones('KB:LECTURA')
   async findOne(
     @CurrentUser() user: JwtPayload,
     @Param('id') id: string,

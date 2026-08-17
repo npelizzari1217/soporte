@@ -23,9 +23,16 @@
 //   node scripts/drop-legacy-rbac-matriz-vieja.mjs            → solo REPORTA conteos, no toca nada
 //   node scripts/drop-legacy-rbac-matriz-vieja.mjs --confirmar → ejecuta el DROP
 //
-// Antes de correr con --confirmar: confirmar en producción real, durante un
-// período de observación posterior al deploy que introduce la matriz nueva,
-// los 6 checks de docs/post-deploy-matriz-permisos.md (WU-8).
+// Antes de correr con --confirmar:
+//   1. Confirmar que el deploy en producción YA incluye el fix post-verify C2
+//      (sdd/matriz-permisos-por-usuario): PrismaMembresiaRepository ya NO
+//      incluye `rol.rolesPermisos` en el JOIN de login/switch/refresh, y
+//      PrismaRoleRepository.findWithPermisos fue retirado. Sin ese fix, este
+//      DROP tumba el login entero (`relation "roles_permisos" does not
+//      exist`, 500) — antes de C2 esa lectura corría en CADA request de auth.
+//   2. Confirmar en producción real, durante un período de observación
+//      posterior al deploy que introduce la matriz nueva, los 6 checks de
+//      docs/post-deploy-matriz-permisos.md (WU-8).
 import { readFileSync } from 'node:fs';
 import pg from 'pg';
 
@@ -60,9 +67,12 @@ try {
   if (!confirmar) {
     console.log('');
     console.log('[drop-legacy-rbac] Modo REPORTE (sin --confirmar): no se tocó ninguna tabla.');
-    console.log('[drop-legacy-rbac] Antes de correr con --confirmar, confirmar en producción real los 6');
-    console.log('  checks de docs/post-deploy-matriz-permisos.md durante un período de observación');
-    console.log('  posterior al deploy que introduce la matriz nueva (WU-9 es un deploy POSTERIOR).');
+    console.log('[drop-legacy-rbac] Antes de correr con --confirmar:');
+    console.log('  1. Confirmar que el deploy YA incluye el fix C2 (PrismaMembresiaRepository/');
+    console.log('     PrismaRoleRepository sin JOIN a roles_permisos/permisos) — sin eso, este DROP');
+    console.log('     rompe el login (500 en cada request de auth).');
+    console.log('  2. Confirmar en producción real los 6 checks de docs/post-deploy-matriz-permisos.md');
+    console.log('     durante un período de observación posterior al deploy (WU-9 es un deploy POSTERIOR).');
     process.exit(0);
   }
 

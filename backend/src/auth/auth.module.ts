@@ -219,8 +219,22 @@ import { RolesController } from './interface/controllers/roles.controller';
         membresiaRepo: IMembresiaRepository,
         roleRepo: IRoleRepository,
         hashProvider: IHashProvider,
-      ) => new CrearUsuarioTenantUseCase(usuarioRepo, membresiaRepo, roleRepo, hashProvider),
-      inject: [USUARIO_REPOSITORY, MEMBRESIA_REPOSITORY, ROLE_REPOSITORY, HASH_PROVIDER],
+        aplicarPresetPermisosUseCase: AplicarPresetPermisosUseCase,
+      ) =>
+        new CrearUsuarioTenantUseCase(
+          usuarioRepo,
+          membresiaRepo,
+          roleRepo,
+          hashProvider,
+          aplicarPresetPermisosUseCase,
+        ),
+      inject: [
+        USUARIO_REPOSITORY,
+        MEMBRESIA_REPOSITORY,
+        ROLE_REPOSITORY,
+        HASH_PROVIDER,
+        AplicarPresetPermisosUseCase,
+      ],
     },
     {
       provide: CambiarRolUsuarioTenantUseCase,
