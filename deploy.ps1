@@ -53,15 +53,11 @@ Get-Content $envFile | ForEach-Object {
 }
 if (-not $env:DATABASE_URL_MASTER) { throw "backend/.env sin DATABASE_URL_MASTER" }
 
-# 6. Backend: generate + migrate master + fan-out tenants + build
+# 6. Backend: generate + build (ANTES de migrar, ver nota de orden abajo)
 Set-Location $BackendDir
 Step 'Backend: prisma generate'
 corepack pnpm run generate:master
 corepack pnpm run generate:tenant
-Step 'Backend: migrate master'
-corepack pnpm run migrate:master
-Step 'Backend: migrate fan-out a tenants'
-corepack pnpm run migrate:tenants
 Step 'Backend: build'
 corepack pnpm run build
 
@@ -70,10 +66,30 @@ Set-Location $FrontDir
 Step 'Frontend: build'
 corepack pnpm run build
 
-# 8. Restart servicios NSSM + verificar Running
+# 8. Migraciones + restart, en UNA sola ventana con los servicios DETENIDOS.
+#
+# ORDEN DELIBERADO, no lo muevas: los builds NO dependen de la base, asi que
+# van antes. Migrar primero (como estaba hasta el deploy de compras-tres-etapas)
+# dejaba al codigo VIEJO corriendo contra el schema NUEVO durante los dos builds,
+# varios minutos. Con una migracion aditiva no se nota; con una que RENOMBRA una
+# columna que el codigo viejo consulta, cada request falla mientras la app parece
+# estar arriba, que es peor que una caida franca.
+#
+# Deteniendo los servicios antes de migrar, esa ventana desaparece: queda una
+# caida controlada de segundos en vez de minutos de errores silenciosos.
 Set-Location $RepoRoot
-Step 'Restart servicios'
-foreach ($s in $Services) { Restart-Service $s -Force }
+Step 'Detener servicios (ventana de migracion)'
+foreach ($s in $Services) { Stop-Service $s -Force }
+
+Set-Location $BackendDir
+Step 'Backend: migrate master'
+corepack pnpm run migrate:master
+Step 'Backend: migrate fan-out a tenants'
+corepack pnpm run migrate:tenants
+
+Set-Location $RepoRoot
+Step 'Arrancar servicios'
+foreach ($s in $Services) { Start-Service $s }
 Start-Sleep -Seconds 10
 foreach ($s in $Services) {
   $st = (Get-Service $s).Status
