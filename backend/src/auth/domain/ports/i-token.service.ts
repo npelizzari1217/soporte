@@ -1,7 +1,24 @@
 /**
+ * Versión actual del payload del JWT (ADR-P7, WU-7.1). Se incrementa cada
+ * vez que la FORMA del payload cambia de manera incompatible (ej. R2: el
+ * eje de `permisos` pasa de códigos `ticket:crear` a `MODULO:ACCION`).
+ * `JwtAuthGuard` rechaza con 401 cualquier token cuya `v` no coincida —
+ * dispara el flujo de refresh existente en vez de un 403 sin recuperación
+ * (riesgo #2218: el interceptor del frontend solo refresca ante 401).
+ */
+export const VERSION_PAYLOAD_JWT = 2;
+
+/**
  * JwtPayload — payload del access token JWT.
  *
  * ADR-3 (forma nueva del payload, difiere de soporte1):
+ * - v: versión del payload (ADR-P7). Se declara `number`, NO el literal de
+ *   `VERSION_PAYLOAD_JWT`: los tokens emitidos ANTES de este campo no lo
+ *   traen, así que en runtime puede ser `undefined` pese al tipo. Declararlo
+ *   como literal haría que TypeScript "narrowee" la comparación
+ *   `payload.v !== VERSION_PAYLOAD_JWT` y el chequeo pareciera vacuo al
+ *   lector — la mentira de tipos ya existe hoy (`verifyJwt` castea sin
+ *   validar), el chequeo `!==` en runtime es lo que la ataja.
  * - sub: id del usuario (UUIDv7)
  * - cliente_id: cliente al que está scopeado el token; `null` = token MASTER
  *   (root sin tenant seleccionado — R4)
@@ -31,6 +48,7 @@
  * query a DB (R11, R13, R14).
  */
 export interface JwtPayload {
+  v: number;
   sub: string;
   cliente_id: string | null;
   rol: string | null;

@@ -23,6 +23,7 @@ import {
   OnlyRootCanCreateClienteError,
 } from '../../domain/errors/clientes.errors';
 import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
+import { payloadDeTest } from '../../../auth/test-helpers/payload-de-test';
 
 function buildController() {
   const crearClienteUseCase = { execute: vi.fn() };
@@ -47,15 +48,14 @@ function buildController() {
   };
 }
 
-const ROOT_USER: JwtPayload = {
+const ROOT_USER: JwtPayload = payloadDeTest({
   sub: 'root-id',
   cliente_id: null,
   rol: null,
   permisos: [],
   is_global_admin: true,
   cliente_nombre: null,
-  membresias: [],
-};
+});
 
 const CREATE_DTO = {
   nombre: 'ACME S.A.',

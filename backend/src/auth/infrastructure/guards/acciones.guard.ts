@@ -3,10 +3,10 @@
  * las celdas `MODULO:ACCION` requeridas (WU-6, sdd/matriz-permisos-por-usuario).
  *
  * Reemplaza a `PermissionsGuard` + `ModulosGuard` fusionando los dos ejes
- * (RBAC + módulos) en uno solo. Todavía SIN aplicar a ningún controller —
- * eso es WU-7.3, deploy atómico (ADR-P8): con `modulos[]` derivado de la
- * matriz, aplicar este guard antes de que `resolverScope` lea la matriz
- * dejaría todo en 403.
+ * (RBAC + módulos) en uno solo. Aplicado a todos los controllers de negocio
+ * en WU-7.3 (deploy atómico, ADR-P8) — junto con WU-7.1 (resolverScope ya
+ * lee la matriz), así que ningún endpoint queda con `modulos[]` nuevo pero
+ * guard viejo (la ventana de 403 que ADR-P8 advertía).
  *
  * Usa `Reflector.getAllAndOverride` para leer `@RequiereAcciones(...)` del
  * handler/controller — sin metadata en NINGUNO de los dos → pass-through

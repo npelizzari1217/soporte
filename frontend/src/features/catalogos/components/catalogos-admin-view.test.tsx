@@ -13,7 +13,7 @@ const TIPO_INCIDENTE = {
   id: "t1",
   codigo: "INCIDENTE",
   nombre: "Incidente",
-  modulo: "SOPORTE",
+  modulo: "TICKETS",
   activo: true,
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",
@@ -64,7 +64,7 @@ describe("CatalogosAdminView", () => {
     await user.type(screen.getByLabelText(/código/i), "INCIDENCIA");
     await user.type(screen.getByLabelText(/nombre/i), "Incidencia");
     // B2: el módulo es requerido — sin elegirlo el form no dispara el POST.
-    await user.selectOptions(screen.getByLabelText(/módulo/i), "SOPORTE");
+    await user.selectOptions(screen.getByLabelText(/módulo/i), "TICKETS");
     await user.click(screen.getByRole("button", { name: /crear/i }));
 
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith(MENSAJE_BACKEND));

@@ -3,8 +3,8 @@
  *
  * Unit test: instancia el controller directamente con el use case
  * mockeado, mismo patrón que `SlaConfigController`/`KbController` —
- * verifica gateo por `ticket:ver_todos` (D3, excluye USUARIO) vía metadata
- * `@RequirePermissions`, y que el scope self/global (D2) se resuelve
+ * verifica gateo por `DASHBOARD:LECTURA` (D3, excluye USUARIO, WU-7.3) vía
+ * metadata `@RequiereAcciones`, y que el scope self/global (D2) se resuelve
  * pasando `actorRol` del JWT tal cual al use case (la divergencia de rol
  * vive en `ObtenerMetricasUseCase`, no en el controller).
  *
@@ -12,8 +12,9 @@
  */
 import 'reflect-metadata';
 import { DashboardController } from './dashboard.controller';
-import { PERMISSIONS_KEY } from '../../../auth/infrastructure/guards/decorators';
+import { ACCIONES_KEY } from '../../../auth/infrastructure/guards/decorators';
 import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
+import { payloadDeTest } from '../../../auth/test-helpers/payload-de-test';
 import { MetricasResult } from '../../application/use-cases/obtener-metricas.use-case';
 
 describe('DashboardController (D5)', () => {
@@ -24,16 +25,14 @@ describe('DashboardController (D5)', () => {
   }
 
   function makeUser(overrides: Partial<JwtPayload> = {}): JwtPayload {
-    return {
+    return payloadDeTest({
       sub: 'actor-uuid',
       cliente_id: 'cliente-uuid',
       rol: 'ADMINISTRADOR',
-      permisos: ['ticket:ver_todos'],
-      is_global_admin: false,
+      permisos: ['DASHBOARD:LECTURA'],
       cliente_nombre: 'Cliente Test',
-      membresias: [],
       ...overrides,
-    } as JwtPayload;
+    });
   }
 
   const METRICAS: MetricasResult = {
@@ -46,9 +45,9 @@ describe('DashboardController (D5)', () => {
     distribucionPorPrioridad: [{ prioridadId: 'prio-1', total: 8 }],
   };
 
-  it('[CRITICAL] declara @RequirePermissions("ticket:ver_todos") a nivel de controller (D3, excluye USUARIO)', () => {
-    const permisos = Reflect.getMetadata(PERMISSIONS_KEY, DashboardController);
-    expect(permisos).toEqual(['ticket:ver_todos']);
+  it('[CRITICAL] declara @RequiereAcciones("DASHBOARD:LECTURA") a nivel de controller (D3, excluye USUARIO)', () => {
+    const permisos = Reflect.getMetadata(ACCIONES_KEY, DashboardController);
+    expect(permisos).toEqual(['DASHBOARD:LECTURA']);
   });
 
   describe('GET /dashboard/metricas', () => {

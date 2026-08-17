@@ -36,10 +36,10 @@ export function actorTieneAlgunPermiso(actor: ActorPermisos, permisos: readonly 
 //
 // `puedeEjecutar` es el ÚNICO predicado de autorización sobre la matriz
 // nueva — lo consumen `AccionesGuard` (WU-6) y todos los chequeos inline que
-// migran en WU-7.3 (mismo criterio que ADR-P11: una fuente, dos
-// consumidores). Reemplaza en ese rol a `actorTienePermiso`/
-// `actorTieneAlgunPermiso` de arriba, que siguen vivos SOLO para lo que
-// todavía no migró (se retiran junto con `roles_permisos`, WU-9).
+// WU-7.3 migró (mismo criterio que ADR-P11: una fuente, dos consumidores).
+// Reemplaza en ese rol a `actorTienePermiso`/`actorTieneAlgunPermiso` de
+// arriba — esos dos helpers YA NO tienen consumidores de producción tras
+// WU-7.3 (candidatos a retirar en WU-9 junto con `roles_permisos`).
 
 /** Tipo mínimo para los chequeos sobre la matriz: agrega `rol` a `ActorPermisos`. */
 export type ActorAcciones = Pick<JwtPayload, 'is_global_admin' | 'rol' | 'permisos'> & {

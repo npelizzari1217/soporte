@@ -4,9 +4,9 @@ import { DomainError } from '../../../shared/domain/result';
 import { IRefreshTokenRepository } from '../../domain/ports/i-refresh-token.repository';
 import { IUsuarioRepository } from '../../domain/ports/i-usuario.repository';
 import { IMembresiaRepository } from '../../domain/ports/i-membresia.repository';
-import { IUsuarioClienteModuloRepository } from '../../domain/ports/i-usuario-cliente-modulo.repository';
+import { IMatrizPermisosRepository } from '../../domain/ports/i-matriz-permisos.repository';
 import { IClienteRepository } from '../../../clientes/domain/ports/i-cliente.repository';
-import { ITokenService, JwtPayload } from '../../domain/ports/i-token.service';
+import { ITokenService, JwtPayload, VERSION_PAYLOAD_JWT } from '../../domain/ports/i-token.service';
 import { RefreshTokenEntity } from '../../domain/entities/refresh-token.entity';
 import {
   TokenExpiradoError,
@@ -69,7 +69,7 @@ export class RefreshTokenUseCase {
     private readonly membresiaRepo: IMembresiaRepository,
     private readonly clienteRepo: IClienteRepository,
     private readonly tokenService: ITokenService,
-    private readonly modulosRepo: IUsuarioClienteModuloRepository,
+    private readonly permisosRepo: IMatrizPermisosRepository,
   ) {}
 
   async execute(dto: RefreshTokenDto): Promise<Result<RefreshResult, DomainError>> {
@@ -112,7 +112,7 @@ export class RefreshTokenUseCase {
       refreshToken.clienteId,
       this.membresiaRepo,
       this.clienteRepo,
-      this.modulosRepo,
+      this.permisosRepo,
     );
     if (scopeResult.isFail()) {
       return Result.fail(scopeResult.getError());
@@ -123,6 +123,7 @@ export class RefreshTokenUseCase {
     const membresiasActivas = await this.membresiaRepo.findActivasByUsuario(usuario.id);
 
     const payload: JwtPayload = {
+      v: VERSION_PAYLOAD_JWT,
       sub: usuario.id,
       cliente_id: scope.clienteId,
       rol: scope.rol,

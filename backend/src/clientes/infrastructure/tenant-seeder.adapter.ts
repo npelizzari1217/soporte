@@ -109,7 +109,11 @@ const TIPO_OPERACION = [
  * correctiva `20260811130000_reclasificar_mantenimiento_a_edilicia`.
  */
 const TIPOS_TICKET = [
-  { codigo: 'SOPORTE', nombre: 'Soporte', modulo: 'SOPORTE' },
+  // WU-7.2 (sdd/matriz-permisos-por-usuario, R8): `codigo` sigue 'SOPORTE'
+  // (numeración `SOP-...`, catálogo de tipos intacto). `modulo` es el eje de
+  // autorización renombrado a 'TICKETS' — un tenant nuevo nace ya alineado
+  // con el rename, sin esperar al backfill de un tenant migrado.
+  { codigo: 'SOPORTE', nombre: 'Soporte', modulo: 'TICKETS' },
   { codigo: 'EDILICIA', nombre: 'Edilicia', modulo: 'EDILICIA' },
   { codigo: 'MANTENIMIENTO', nombre: 'Mantenimiento', modulo: 'EDILICIA' },
 ];

@@ -10,20 +10,21 @@
  */
 import { JwtService } from '@nestjs/jwt';
 import { JwtTokenService } from './jwt-token.service';
-import { JwtPayload } from '../domain/ports/i-token.service';
+import { JwtPayload, VERSION_PAYLOAD_JWT } from '../domain/ports/i-token.service';
+import { payloadDeTest } from '../test-helpers/payload-de-test';
 
 const SECRET = 'test-secret-for-unit-tests';
 
-const makePayload = (overrides: Partial<JwtPayload> = {}): JwtPayload => ({
-  sub: 'usuario-uuid',
-  cliente_id: 'cliente-uuid',
-  rol: 'TECNICO',
-  permisos: ['ticket:crear', 'ticket:editar'],
-  is_global_admin: false,
-  cliente_nombre: 'Acme SA',
-  membresias: [{ cliente_id: 'cliente-uuid', nombre: 'Acme SA', rol: 'TECNICO' }],
-  ...overrides,
-});
+const makePayload = (overrides: Partial<JwtPayload> = {}): JwtPayload =>
+  payloadDeTest({
+    sub: 'usuario-uuid',
+    cliente_id: 'cliente-uuid',
+    rol: 'TECNICO',
+    permisos: ['ticket:crear', 'ticket:editar'],
+    cliente_nombre: 'Acme SA',
+    membresias: [{ cliente_id: 'cliente-uuid', nombre: 'Acme SA', rol: 'TECNICO' }],
+    ...overrides,
+  });
 
 describe('JwtTokenService', () => {
   const makeService = (signOptions?: Record<string, unknown>) => {
@@ -49,6 +50,7 @@ describe('JwtTokenService', () => {
       expect(verified!.permisos).toEqual(['ticket:crear', 'ticket:editar']);
       expect(verified!.is_global_admin).toBe(false);
       expect(verified!.membresias).toHaveLength(1);
+      expect(verified!.v).toBe(VERSION_PAYLOAD_JWT);
     });
 
     it('preserva cliente_id/rol null (token master de root)', () => {

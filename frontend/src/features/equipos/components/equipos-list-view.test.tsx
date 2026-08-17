@@ -18,9 +18,9 @@ function mockEquipos() {
 describe("EquiposListView — gate del botón «Nuevo ticket de soporte»", () => {
   const BOTON = /nuevo ticket de soporte/i;
 
-  it("con ticket:crear pero SIN módulo SOPORTE → el botón NO se muestra", async () => {
-    // El endpoint POST /soporte exige @RequireModulo('SOPORTE'); sin el módulo,
-    // el botón daba 403 al enviar. Debe ocultarse (regresión del LEAK).
+  it("con ticket:crear pero SIN módulo TICKETS → el botón NO se muestra", async () => {
+    // El endpoint POST /soporte exige @RequiereAcciones('TICKETS:ALTAS') (WU-7.3);
+    // sin el módulo, el botón daba 403 al enviar. Debe ocultarse (regresión del LEAK).
     mockEquipos();
     renderWithProviders(<EquiposListView />, {
       user: buildUser({ permisos: ["ticket:crear"], modulos: ["EQUIPOS"] }),
@@ -30,10 +30,10 @@ describe("EquiposListView — gate del botón «Nuevo ticket de soporte»", () =
     );
   });
 
-  it("con ticket:crear Y módulo SOPORTE → el botón se muestra", async () => {
+  it("con ticket:crear Y módulo TICKETS → el botón se muestra", async () => {
     mockEquipos();
     renderWithProviders(<EquiposListView />, {
-      user: buildUser({ permisos: ["ticket:crear"], modulos: ["EQUIPOS", "SOPORTE"] }),
+      user: buildUser({ permisos: ["ticket:crear"], modulos: ["EQUIPOS", "TICKETS"] }),
     });
     expect(await screen.findByRole("button", { name: BOTON })).toBeInTheDocument();
   });

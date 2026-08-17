@@ -11,7 +11,7 @@
  *
  * Nota de diseño — `TestProtectedController`: al momento de este PR ningún
  * módulo de negocio (tickets/clientes/etc.) tiene endpoints reales que usen
- * `TenantGuard`/`PermissionsGuard`/`GlobalAdminGuard` (siguen scaffoldeados
+ * `TenantGuard`/`AccionesGuard`/`GlobalAdminGuard` (siguen scaffoldeados
  * vacíos — esos guards recién se consumirán en PRs de features futuras). Sin
  * un endpoint real no hay forma de probar el guard vía HTTP genuino (las
  * specs unitarias de cada guard, en `infrastructure/guards/*.spec.ts`, ya
@@ -43,15 +43,16 @@ import { AuthModule } from '../../auth.module';
 import { TenantScopeMiddleware } from '../../../shared/tenancy/tenant-scope.middleware';
 import { JwtAuthGuard } from '../../infrastructure/guards/jwt-auth.guard';
 import { TenantGuard } from '../../infrastructure/guards/tenant.guard';
-import { PermissionsGuard } from '../../infrastructure/guards/permissions.guard';
+import { AccionesGuard } from '../../infrastructure/guards/acciones.guard';
 import { GlobalAdminGuard } from '../../infrastructure/guards/global-admin.guard';
-import { CurrentUser, RequirePermissions } from '../../infrastructure/guards/decorators';
+import { CurrentUser, RequiereAcciones } from '../../infrastructure/guards/decorators';
 import { JwtPayload } from '../../domain/ports/i-token.service';
 
 import { PrismaService } from '../../../shared/infrastructure/persistence/prisma.service';
 import { MasterPrismaClient } from '../../../shared/infrastructure/persistence/prisma-clients';
 import { PrismaClienteRepository } from '../../../clientes/infrastructure/persistence/prisma/prisma-cliente.repository';
 import { PrismaUsuarioRepository } from '../../infrastructure/persistence/prisma/prisma-usuario.repository';
+import { PrismaMatrizPermisosRepository } from '../../infrastructure/persistence/prisma/prisma-matriz-permisos.repository';
 import { ClienteEntity } from '../../../clientes/domain/entities/cliente.entity';
 import { UsuarioEntity } from '../../domain/entities/usuario.entity';
 import { RoleEntity } from '../../domain/entities/role.entity';
@@ -75,8 +76,11 @@ class TestProtectedController {
   }
 
   @Get('permission-gated')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('ticket:crear')
+  @UseGuards(JwtAuthGuard, AccionesGuard)
+  // WU-7.3: harness migrado de PermissionsGuard/@RequirePermissions a
+  // AccionesGuard/@RequiereAcciones — mismo criterio (AND, bypass ROOT,
+  // mensaje de faltantes), ahora sobre la matriz nueva.
+  @RequiereAcciones('TICKETS:ALTAS')
   permissionGated(): { ok: true } {
     return { ok: true };
   }
@@ -141,6 +145,7 @@ describe('Auth e2e (R3–R14, PR6)', () => {
   let masterClient: InstanceType<typeof MasterPrismaClient>;
   let clienteRepo: PrismaClienteRepository;
   let usuarioRepo: PrismaUsuarioRepository;
+  let permisosRepo: PrismaMatrizPermisosRepository;
   let hashProvider: Argon2HashProvider;
 
   beforeAll(async () => {
@@ -164,6 +169,7 @@ describe('Auth e2e (R3–R14, PR6)', () => {
     masterClient = prismaService.getMasterClient();
     clienteRepo = new PrismaClienteRepository(prismaService);
     usuarioRepo = new PrismaUsuarioRepository(prismaService);
+    permisosRepo = new PrismaMatrizPermisosRepository(prismaService);
     hashProvider = new Argon2HashProvider();
   }, 60_000);
 
@@ -181,8 +187,10 @@ describe('Auth e2e (R3–R14, PR6)', () => {
   }, 30_000);
 
   beforeEach(async () => {
+    // usuario_cliente_permisos (WU-7.1) no tiene FK declarada — el TRUNCATE
+    // ... CASCADE de las otras tablas no la alcanza, hay que nombrarla.
     await masterClient.$executeRawUnsafe(
-      'TRUNCATE TABLE membresias, refresh_tokens, roles_permisos, usuarios, clientes, roles, permisos RESTART IDENTITY CASCADE',
+      'TRUNCATE TABLE membresias, refresh_tokens, roles_permisos, usuarios, clientes, roles, permisos, usuario_cliente_permisos RESTART IDENTITY CASCADE',
     );
   });
 
@@ -477,7 +485,7 @@ describe('Auth e2e (R3–R14, PR6)', () => {
       expect(denied.status).toBe(403);
     });
 
-    it('PermissionsGuard (R13): usuario CON el permiso → 200; usuario SIN el permiso → 403', async () => {
+    it('AccionesGuard (R3): usuario CON la acción → 200; usuario SIN la acción → 403', async () => {
       const cliente = await createCliente('guard-permisos');
       const roleConPermiso = await createRoleConPermisos('COLABORADOR', ['ticket:crear']);
       const roleSinPermiso = await createRoleConPermisos('TECNICO_SIN_CREAR', ['ticket:editar']);
@@ -485,6 +493,10 @@ describe('Auth e2e (R3–R14, PR6)', () => {
       const usuarioSin = await createUsuario('guard-permiso-sin');
       await createMembresia(usuarioCon.id, cliente.id, roleConPermiso.id);
       await createMembresia(usuarioSin.id, cliente.id, roleSinPermiso.id);
+      // WU-7.1: el gate del harness usa 'TICKETS:ALTAS' (matriz nueva), no
+      // 'ticket:crear' (RBAC viejo) — hay que sembrar la matriz directamente,
+      // el role RBAC de arriba ya no alimenta `payload.permisos`.
+      await permisosRepo.setPermisos(usuarioCon.id, cliente.id, ['TICKETS:ALTAS']);
 
       const loginCon = await login(usuarioCon.email);
       const okRes = await httpGet(

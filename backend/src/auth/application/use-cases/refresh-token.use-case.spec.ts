@@ -32,7 +32,7 @@ import { ClienteEntity } from '../../../clientes/domain/entities/cliente.entity'
 import { IRefreshTokenRepository } from '../../domain/ports/i-refresh-token.repository';
 import { IUsuarioRepository } from '../../domain/ports/i-usuario.repository';
 import { IMembresiaRepository, MembresiaResuelta } from '../../domain/ports/i-membresia.repository';
-import { IUsuarioClienteModuloRepository } from '../../domain/ports/i-usuario-cliente-modulo.repository';
+import { IMatrizPermisosRepository } from '../../domain/ports/i-matriz-permisos.repository';
 import { IClienteRepository } from '../../../clientes/domain/ports/i-cliente.repository';
 import { ITokenService, JwtPayload } from '../../domain/ports/i-token.service';
 import {
@@ -41,6 +41,7 @@ import {
   TokenInvalidoError,
   ClienteNoAutorizadoError,
 } from '../../domain/errors/auth.errors';
+import { PARES_VALIDOS } from '../../../shared/domain/acciones';
 
 // ─── Factories ────────────────────────────────────────────────────────────────
 
@@ -134,8 +135,9 @@ const makeTokenService = (): vi.Mocked<ITokenService> => ({
   verifyJwt: vi.fn().mockReturnValue(null),
 });
 
-const makeModulosRepo = (): vi.Mocked<IUsuarioClienteModuloRepository> => ({
-  findModulosByUsuarioYCliente: vi.fn().mockResolvedValue([]),
+const makePermisosRepo = (): vi.Mocked<IMatrizPermisosRepository> => ({
+  findByUsuarioYCliente: vi.fn().mockResolvedValue([]),
+  setPermisos: vi.fn().mockResolvedValue(undefined),
 });
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
@@ -146,7 +148,7 @@ describe('RefreshTokenUseCase', () => {
   let membresiaRepo: vi.Mocked<IMembresiaRepository>;
   let clienteRepo: vi.Mocked<IClienteRepository>;
   let tokenService: vi.Mocked<ITokenService>;
-  let modulosRepo: vi.Mocked<IUsuarioClienteModuloRepository>;
+  let permisosRepo: vi.Mocked<IMatrizPermisosRepository>;
   let useCase: RefreshTokenUseCase;
 
   const rawToken = 'a'.repeat(64);
@@ -158,14 +160,14 @@ describe('RefreshTokenUseCase', () => {
     membresiaRepo = makeMembresiaRepo();
     clienteRepo = makeClienteRepo();
     tokenService = makeTokenService();
-    modulosRepo = makeModulosRepo();
+    permisosRepo = makePermisosRepo();
     useCase = new RefreshTokenUseCase(
       refreshTokenRepo,
       usuarioRepo,
       membresiaRepo,
       clienteRepo,
       tokenService,
-      modulosRepo,
+      permisosRepo,
     );
   });
 
@@ -311,7 +313,7 @@ describe('RefreshTokenUseCase', () => {
   });
 
   describe('Refresh feliz (root, clienteId embebido null → token master)', () => {
-    it('emite token master (cliente_id/rol null, permisos [])', async () => {
+    it('emite token master (cliente_id/rol null, permisos = bypass total — WU-7.1)', async () => {
       const oldToken = makeToken({ tokenHash, usuarioId: 'root-1', clienteId: null });
       refreshTokenRepo.findByHash.mockResolvedValue(oldToken);
       usuarioRepo.findById.mockResolvedValue(makeUsuario({ id: 'root-1', isGlobalAdmin: true }));
@@ -328,7 +330,7 @@ describe('RefreshTokenUseCase', () => {
       expect(result.isOk()).toBe(true);
       expect(captured!.cliente_id).toBeNull();
       expect(captured!.rol).toBeNull();
-      expect(captured!.permisos).toEqual([]);
+      expect(captured!.permisos).toEqual([...PARES_VALIDOS]);
       expect(clienteRepo.findById).not.toHaveBeenCalled();
     });
   });

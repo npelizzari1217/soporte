@@ -2,23 +2,26 @@
  * UsuariosController — entry point HTTP de la gestión mínima de usuarios del
  * tenant (sdd/beta-frontend/spec §5, desbloquea Fase 5 Beta frontend).
  *
- * Rutas:
- *   GET    /usuarios               → ListarUsuariosTenantUseCase   (ticket:asignar | ticket:ver_todos | usuario:gestionar)
- *   POST   /usuarios               → CrearUsuarioTenantUseCase     [usuario:gestionar + rol:asignar]
- *   PATCH  /usuarios/:id/rol       → CambiarRolUsuarioTenantUseCase [usuario:gestionar + rol:asignar]
- *   PATCH  /usuarios/:id           → EditarUsuarioTenantUseCase      [usuario:gestionar]
- *   DELETE /usuarios/:id/membresia → DesactivarMembresiaUsuarioTenantUseCase [usuario:gestionar + rol:asignar]
+ * Rutas (WU-7.3, sdd/matriz-permisos-por-usuario — R4/R4-excepción/R10):
+ *   GET    /usuarios               → ListarUsuariosTenantUseCase   (TICKETS:ASIGNAR | TICKETS:VER_TODOS | ADMINISTRADOR-o-ROOT, regla OR — R4-excepción)
+ *   POST   /usuarios               → CrearUsuarioTenantUseCase     [AdminClienteGuard]
+ *   PATCH  /usuarios/:id/rol       → CambiarRolUsuarioTenantUseCase [AdminClienteGuard]
+ *   PATCH  /usuarios/:id           → EditarUsuarioTenantUseCase      [AdminClienteGuard]
+ *   DELETE /usuarios/:id/membresia → DesactivarMembresiaUsuarioTenantUseCase [AdminClienteGuard]
+ *   GET/PATCH /usuarios/:id/modulos → ABM viejo (WU-7.4 lo reemplaza) [AdminClienteGuard]
  *
  * Guards: `JwtAuthGuard` + `TenantGuard` a nivel de controller (requieren JWT
- * válido y `cliente_id` resuelto). `PermissionsGuard` + `@RequirePermissions`
- * en los 3 endpoints de gestión (AND — ambos permisos requeridos).
+ * válido y `cliente_id` resuelto). `AdminClienteGuard` POR MÉTODO (ADR-P5) en
+ * los endpoints de gestión — reemplaza `PermissionsGuard`+`@RequirePermissions`.
  *
- * `GET /usuarios` NO usa `@RequirePermissions` porque su regla es OR, no AND
- * (`PermissionsGuard` solo soporta AND — R13): `ticket:asignar` O
- * `ticket:ver_todos` habilitan la lista básica (selector de asignación /
- * vista admin), evaluado manualmente contra `actor.permisos`. El `email` es
- * el "dato sensible" (spec §5) — se omite salvo que el actor tenga además
- * `usuario:gestionar`.
+ * `GET /usuarios` NO usa `AdminClienteGuard` a nivel de clase porque su regla
+ * es OR, no un simple admin-o-root (R4-excepción, S25): `TICKETS:ASIGNAR` O
+ * `TICKETS:VER_TODOS` O ser ADMINISTRADOR/ROOT habilitan la lista básica
+ * (selector de asignación / vista admin) — evaluado con `puedeEjecutarAlguna`,
+ * que YA embebe el bypass de ROOT/ADMINISTRADOR (ADR-P11: `puedeEjecutar`
+ * bypassea antes de mirar `permisos`). El `email` es el dato sensible (R10)
+ * — se omite salvo que el actor sea ADMINISTRADOR o ROOT, INDEPENDIENTE de la
+ * regla OR de acceso (`esAdminDeCliente`, no `puedeEjecutarAlguna`).
  *
  * Aislamiento estricto (spec §5): `clienteId` SIEMPRE es `actor.cliente_id`
  * (JWT, resuelto por `TenantGuard`) — NUNCA un valor de la request. Los DTOs
@@ -72,16 +75,18 @@ import {
 } from '../../domain/errors/auth.errors';
 import { JwtAuthGuard } from '../../infrastructure/guards/jwt-auth.guard';
 import { TenantGuard } from '../../infrastructure/guards/tenant.guard';
-import { PermissionsGuard } from '../../infrastructure/guards/permissions.guard';
-import { CurrentUser, RequirePermissions } from '../../infrastructure/guards/decorators';
+import { AdminClienteGuard } from '../../infrastructure/guards/admin-cliente.guard';
+import { CurrentUser } from '../../infrastructure/guards/decorators';
 import { JwtPayload } from '../../domain/ports/i-token.service';
-import { actorTienePermiso, actorTieneAlgunPermiso } from '../../domain/permisos.util';
+import { puedeEjecutarAlguna, esAdminDeCliente } from '../../domain/permisos.util';
 import { DomainError } from '../../../shared/domain/result';
 
-/** Permisos que habilitan la lista BÁSICA de `GET /usuarios` (OR, no AND). */
-const PERMISOS_LISTA_BASICA = ['ticket:asignar', 'ticket:ver_todos', 'usuario:gestionar'];
-/** Permiso que habilita ver el `email` (dato sensible) en `GET /usuarios`. */
-const PERMISO_DATOS_SENSIBLES = 'usuario:gestionar';
+/**
+ * Acciones que habilitan la lista BÁSICA de `GET /usuarios` (OR, no AND —
+ * R4-excepción, S25). `puedeEjecutarAlguna` ya bypassea ROOT/ADMINISTRADOR
+ * por construcción (ADR-P11): no hace falta un chequeo admin separado acá.
+ */
+const ACCIONES_LISTA_BASICA = ['TICKETS:ASIGNAR', 'TICKETS:VER_TODOS'];
 
 function toListaResponseDto(
   item: MembresiaConUsuario,
@@ -129,7 +134,7 @@ function toHttpException(
   return new UnprocessableEntityException(error.message);
 }
 
-@UseGuards(JwtAuthGuard, TenantGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, TenantGuard)
 @Controller('usuarios')
 export class UsuariosController {
   constructor(
@@ -145,17 +150,21 @@ export class UsuariosController {
   /**
    * GET /usuarios
    * Lista los usuarios con membresía ACTIVA en el cliente del token.
-   * @throws 403 si el actor no tiene `ticket:asignar`, `ticket:ver_todos` NI `usuario:gestionar`
+   * @throws 403 si el actor no tiene `TICKETS:ASIGNAR`, `TICKETS:VER_TODOS`
+   *             NI es ADMINISTRADOR/ROOT (R4-excepción, S25)
    */
   @Get()
   async listar(@CurrentUser() actor: JwtPayload): Promise<UsuarioTenantResponseDto[]> {
-    const tieneAccesoBasico = actorTieneAlgunPermiso(actor, PERMISOS_LISTA_BASICA);
+    const tieneAccesoBasico = puedeEjecutarAlguna(actor, ACCIONES_LISTA_BASICA);
     if (!tieneAccesoBasico) {
       throw new ForbiddenException(
-        `Acceso denegado: se requiere alguno de [${PERMISOS_LISTA_BASICA.join(', ')}]`,
+        `Acceso denegado: se requiere alguno de [${ACCIONES_LISTA_BASICA.join(', ')}]`,
       );
     }
-    const incluirEmail = actorTienePermiso(actor, PERMISO_DATOS_SENSIBLES);
+    // R10: el email es INDEPENDIENTE de la regla OR de arriba. Un TECNICO con
+    // TICKETS:ASIGNAR entra a la lista pero NUNCA recibe email — solo
+    // ADMINISTRADOR/ROOT lo ven.
+    const incluirEmail = esAdminDeCliente(actor);
 
     const result = await this.listarUsuariosTenantUseCase.execute({
       clienteId: actor.cliente_id as string,
@@ -171,7 +180,7 @@ export class UsuariosController {
    * @throws 409 si el usuario ya tiene una membresía activa en este cliente
    */
   @Post()
-  @RequirePermissions('usuario:gestionar', 'rol:asignar')
+  @UseGuards(AdminClienteGuard)
   @HttpCode(HttpStatus.CREATED)
   async crear(
     @CurrentUser() actor: JwtPayload,
@@ -200,7 +209,7 @@ export class UsuariosController {
    * @throws 422 si `rolCodigo` no existe en el catálogo
    */
   @Patch(':id/rol')
-  @RequirePermissions('usuario:gestionar', 'rol:asignar')
+  @UseGuards(AdminClienteGuard)
   async cambiarRol(
     @CurrentUser() actor: JwtPayload,
     @Param('id') usuarioId: string,
@@ -233,7 +242,7 @@ export class UsuariosController {
    * @throws 404 si no existe membresía activa de ese usuario en este cliente
    */
   @Patch(':id')
-  @RequirePermissions('usuario:gestionar')
+  @UseGuards(AdminClienteGuard)
   async editar(
     @CurrentUser() actor: JwtPayload,
     @Param('id') usuarioId: string,
@@ -260,7 +269,7 @@ export class UsuariosController {
    * @throws 404 si no existe membresía de ese usuario en este cliente
    */
   @Delete(':id/membresia')
-  @RequirePermissions('usuario:gestionar', 'rol:asignar')
+  @UseGuards(AdminClienteGuard)
   @HttpCode(HttpStatus.NO_CONTENT)
   async desactivarMembresia(
     @CurrentUser() actor: JwtPayload,
@@ -283,7 +292,7 @@ export class UsuariosController {
    * front. Un usuario sin módulos asignados devuelve `{ modulos: [] }`.
    */
   @Get(':id/modulos')
-  @RequirePermissions('usuario:gestionar')
+  @UseGuards(AdminClienteGuard)
   async obtenerModulos(
     @CurrentUser() actor: JwtPayload,
     @Param('id') usuarioId: string,
@@ -303,7 +312,7 @@ export class UsuariosController {
    * @throws 422 si algún módulo no pertenece al catálogo `MODULOS`
    */
   @Patch(':id/modulos')
-  @RequirePermissions('usuario:gestionar', 'rol:asignar')
+  @UseGuards(AdminClienteGuard)
   async asignarModulos(
     @CurrentUser() actor: JwtPayload,
     @Param('id') usuarioId: string,

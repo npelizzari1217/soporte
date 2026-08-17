@@ -23,8 +23,8 @@
  * componentes).
  *
  * Guards a nivel de controller: `JwtAuthGuard` + `TenantGuard` +
- * `PermissionsGuard` (mismo patrón que `ComprasController`/
- * `ReparacionesController`).
+ * `AccionesGuard` (WU-7.3, sdd/matriz-permisos-por-usuario — reemplaza a
+ * `PermissionsGuard`+`ModulosGuard`+`@RequireModulo('EQUIPOS')` de clase).
  *
  * Tarea: T12.6.
  */
@@ -45,9 +45,8 @@ import {
 
 import { JwtAuthGuard } from '../../../auth/infrastructure/guards/jwt-auth.guard';
 import { TenantGuard } from '../../../auth/infrastructure/guards/tenant.guard';
-import { PermissionsGuard } from '../../../auth/infrastructure/guards/permissions.guard';
-import { ModulosGuard } from '../../../auth/infrastructure/guards/modulos.guard';
-import { RequireModulo, RequirePermissions } from '../../../auth/infrastructure/guards/decorators';
+import { AccionesGuard } from '../../../auth/infrastructure/guards/acciones.guard';
+import { RequiereAcciones } from '../../../auth/infrastructure/guards/decorators';
 import { DomainError } from '../../../shared/domain/result';
 
 import { CrearEquipoUseCase } from '../../application/use-cases/crear-equipo.use-case';
@@ -117,8 +116,7 @@ function fechaPatch(valor: string | null | undefined): Date | null | undefined {
   return new Date(valor);
 }
 
-@UseGuards(JwtAuthGuard, TenantGuard, PermissionsGuard, ModulosGuard)
-@RequireModulo('EQUIPOS')
+@UseGuards(JwtAuthGuard, TenantGuard, AccionesGuard)
 @Controller('equipos')
 export class EquiposController {
   constructor(
@@ -140,7 +138,7 @@ export class EquiposController {
    * @throws 422 numeroSerie duplicado
    */
   @Post()
-  @RequirePermissions('equipo:gestionar')
+  @RequiereAcciones('EQUIPOS:ALTAS')
   @HttpCode(HttpStatus.CREATED)
   async crear(@Body() dto: CreateEquipoHttpDto): Promise<EquipoResponseDto> {
     const result = await this.crearEquipoUseCase.execute({
@@ -168,6 +166,7 @@ export class EquiposController {
    * Lista los equipos activos del inventario.
    */
   @Get()
+  @RequiereAcciones('EQUIPOS:LECTURA')
   async listar(): Promise<EquipoResponseDto[]> {
     const result = await this.listarEquiposUseCase.execute();
     return result.getValue().map(toEquipoResponseDto);
@@ -190,6 +189,7 @@ export class EquiposController {
    * @throws 404 equipo inexistente
    */
   @Get(':id')
+  @RequiereAcciones('EQUIPOS:LECTURA')
   async obtener(@Param('id') id: string): Promise<EquipoDetalleResponseDto> {
     const result = await this.obtenerEquipoUseCase.execute({ equipoId: id });
     if (result.isFail()) {
@@ -205,7 +205,7 @@ export class EquiposController {
    * @throws 422 numeroSerie duplicado
    */
   @Patch(':id')
-  @RequirePermissions('equipo:gestionar')
+  @RequiereAcciones('EQUIPOS:MODIFICACION')
   @HttpCode(HttpStatus.OK)
   async editar(
     @Param('id') id: string,
@@ -238,7 +238,7 @@ export class EquiposController {
    * @throws 404 equipo inexistente
    */
   @Delete(':id')
-  @RequirePermissions('equipo:gestionar')
+  @RequiereAcciones('EQUIPOS:BORRADO')
   @HttpCode(HttpStatus.NO_CONTENT)
   async eliminar(@Param('id') id: string): Promise<void> {
     const result = await this.eliminarEquipoUseCase.execute({ equipoId: id });
@@ -254,7 +254,7 @@ export class EquiposController {
    * @throws 422 tipo de componente inexistente/inactivo
    */
   @Post(':id/componentes')
-  @RequirePermissions('equipo:gestionar')
+  @RequiereAcciones('EQUIPOS:ALTAS')
   @HttpCode(HttpStatus.CREATED)
   async agregarComponente(
     @Param('id') id: string,
@@ -280,7 +280,7 @@ export class EquiposController {
    * @throws 404 componente inexistente
    */
   @Delete(':id/componentes/:componenteId')
-  @RequirePermissions('equipo:gestionar')
+  @RequiereAcciones('EQUIPOS:BORRADO')
   @HttpCode(HttpStatus.NO_CONTENT)
   async eliminarComponente(
     @Param('id') equipoId: string,
@@ -299,7 +299,7 @@ export class EquiposController {
    * @throws 422 componente dado de baja, o tipo de componente inexistente/inactivo
    */
   @Patch(':id/componentes/:componenteId')
-  @RequirePermissions('equipo:gestionar')
+  @RequiereAcciones('EQUIPOS:MODIFICACION')
   @HttpCode(HttpStatus.OK)
   async editarComponente(
     @Param('id') equipoId: string,
@@ -328,7 +328,7 @@ export class EquiposController {
    * @throws 422 componente ya activo
    */
   @Patch(':id/componentes/:componenteId/reactivar')
-  @RequirePermissions('equipo:gestionar')
+  @RequiereAcciones('EQUIPOS:MODIFICACION')
   @HttpCode(HttpStatus.OK)
   async reactivarComponente(
     @Param('id') equipoId: string,

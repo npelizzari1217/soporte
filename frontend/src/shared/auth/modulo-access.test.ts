@@ -35,7 +35,7 @@ describe("tieneModulo (gate por módulo, 5.2 CAPA 3)", () => {
     expect(tieneModulo(user({ modulos: ["EDILICIA"] }), "COMPRAS")).toBe(false);
   });
 
-  it("MODULOS declara SOPORTE/COMPRAS/EDILICIA/EQUIPOS", () => {
-    expect([...MODULOS]).toEqual(["SOPORTE", "COMPRAS", "EDILICIA", "EQUIPOS"]);
+  it("MODULOS declara TICKETS/COMPRAS/EDILICIA/EQUIPOS (WU-7.2: renombrado desde SOPORTE)", () => {
+    expect([...MODULOS]).toEqual(["TICKETS", "COMPRAS", "EDILICIA", "EQUIPOS"]);
   });
 });

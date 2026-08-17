@@ -1,0 +1,17 @@
+-- WU-7.2 (sdd/matriz-permisos-por-usuario). Ref spec R8 (S17). Ref design
+-- ADR-P8 (paso 3a del deploy atómico) y ADR-P1 (rename de MODULOS).
+--
+-- Renombra el módulo `SOPORTE` a `TICKETS` en `usuario_cliente_modulos`
+-- (master), por COLUMNA explícita — nunca `sed` de texto. Esta tabla es la
+-- fuente vieja de módulos (eje que WU-7.1 ya dejó de leer en resolverScope,
+-- pero que `usuario-master.checker.ts` todavía consulta hasta WU-7.5).
+--
+-- NO toca `roles`, `permisos`, `roles_permisos` ni ninguna otra tabla: el
+-- string 'SOPORTE' sobrevive intacto como `tipos_ticket.codigo` (prisma_tenant,
+-- migración hermana en el mismo timestamp) y como prefijo `SOP` de
+-- numeración — ninguno de los dos vive en esta tabla.
+--
+-- Reversible: `UPDATE usuario_cliente_modulos SET modulo='SOPORTE' WHERE modulo='TICKETS'`
+-- (mapa de reversibilidad, tasks WU-7 — ventana corta, escribir el UPDATE
+-- inverso ANTES del deploy real, no improvisarlo).
+UPDATE "usuario_cliente_modulos" SET "modulo" = 'TICKETS' WHERE "modulo" = 'SOPORTE';

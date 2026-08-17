@@ -19,16 +19,16 @@ import {
   TokenRevocadoError,
 } from '../../domain/errors/auth.errors';
 import { JwtPayload } from '../../domain/ports/i-token.service';
+import { payloadDeTest } from '../../test-helpers/payload-de-test';
 
-const ROOT_PAYLOAD: JwtPayload = {
+const ROOT_PAYLOAD: JwtPayload = payloadDeTest({
   sub: 'usuario-1',
   cliente_id: null,
   rol: null,
   permisos: [],
   is_global_admin: true,
   cliente_nombre: null,
-  membresias: [],
-};
+});
 
 describe('AuthController (T6.5)', () => {
   function buildController() {

@@ -23,17 +23,17 @@ describe('AsignarModulosUsuarioTenantUseCase (feature 5.2 CAPA 4)', () => {
     const result = await useCase.execute({
       clienteId: 'cliente-token',
       usuarioId: 'usuario-1',
-      modulos: ['SOPORTE', 'COMPRAS'],
+      modulos: ['TICKETS', 'COMPRAS'],
     });
 
     expect(result.isOk()).toBe(true);
-    expect(result.getValue()).toEqual(['SOPORTE', 'COMPRAS']);
+    expect(result.getValue()).toEqual(['TICKETS', 'COMPRAS']);
     expect(membresiaRepo.findActivaByUsuarioYCliente).toHaveBeenCalledWith(
       'usuario-1',
       'cliente-token',
     );
     expect(modulosRepo.setModulos).toHaveBeenCalledWith('usuario-1', 'cliente-token', [
-      'SOPORTE',
+      'TICKETS',
       'COMPRAS',
     ]);
   });
@@ -51,7 +51,7 @@ describe('AsignarModulosUsuarioTenantUseCase (feature 5.2 CAPA 4)', () => {
     const result = await useCase.execute({
       clienteId: 'cliente-token',
       usuarioId: 'usuario-ajeno',
-      modulos: ['SOPORTE'],
+      modulos: ['TICKETS'],
     });
 
     expect(result.isFail()).toBe(true);
@@ -70,7 +70,7 @@ describe('AsignarModulosUsuarioTenantUseCase (feature 5.2 CAPA 4)', () => {
     const result = await useCase.execute({
       clienteId: 'cliente-token',
       usuarioId: 'usuario-1',
-      modulos: ['SOPORTE', 'INEXISTENTE'],
+      modulos: ['TICKETS', 'INEXISTENTE'],
     });
 
     expect(result.isFail()).toBe(true);

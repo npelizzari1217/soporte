@@ -70,6 +70,7 @@ import { PostgresAdminService } from '../../../clientes/infrastructure/postgres-
 import { TenantMigrationRunnerAdapter } from '../../../clientes/infrastructure/tenant-migration-runner.adapter';
 import { PrismaClienteRepository } from '../../../clientes/infrastructure/persistence/prisma/prisma-cliente.repository';
 import { PrismaUsuarioRepository } from '../../../auth/infrastructure/persistence/prisma/prisma-usuario.repository';
+import { PrismaMatrizPermisosRepository } from '../../../auth/infrastructure/persistence/prisma/prisma-matriz-permisos.repository';
 import { ClienteEntity } from '../../../clientes/domain/entities/cliente.entity';
 import { UsuarioEntity } from '../../../auth/domain/entities/usuario.entity';
 import { RoleEntity } from '../../../auth/domain/entities/role.entity';
@@ -163,43 +164,67 @@ const ITEM_ID = '00000000-0000-4000-8000-000000000002';
 
 type Metodo = 'GET' | 'POST' | 'PATCH' | 'DELETE';
 
+/**
+ * WU-7.3 (sdd/matriz-permisos-por-usuario): las celdas reemplazan a los
+ * permisos RBAC `compra:gestionar`/`compra:aprobar` — con el mapeo EXACTO
+ * que aplica `ComprasController` (ver design-parte2, mapa de gates):
+ * ALTAS (alta de compra/ítem), MODIFICACION (editar/registrar avance/cerrar
+ * con faltante), BORRADO (eliminar ítem/cancelar compra), APROBACION
+ * (aprobar/rechazar), LECTURA (las 3 consultas — R7, ya no "sin gate").
+ */
 interface RutaEsperada {
   metodo: Metodo;
   path: string;
-  permiso: 'compra:gestionar' | 'compra:aprobar' | null;
+  accion:
+    | 'COMPRAS:ALTAS'
+    | 'COMPRAS:MODIFICACION'
+    | 'COMPRAS:BORRADO'
+    | 'COMPRAS:APROBACION'
+    | 'COMPRAS:LECTURA';
 }
 
 const TABLA_RUTAS: RutaEsperada[] = [
-  { metodo: 'POST', path: '/compras', permiso: 'compra:gestionar' },
-  { metodo: 'POST', path: `/compras/${ID}/items`, permiso: 'compra:gestionar' },
-  { metodo: 'PATCH', path: `/compras/${ID}/items/${ITEM_ID}`, permiso: 'compra:gestionar' },
-  { metodo: 'DELETE', path: `/compras/${ID}/items/${ITEM_ID}`, permiso: 'compra:gestionar' },
-  { metodo: 'POST', path: `/compras/${ID}/items/${ITEM_ID}/aprobar`, permiso: 'compra:aprobar' },
-  { metodo: 'POST', path: `/compras/${ID}/items/${ITEM_ID}/rechazar`, permiso: 'compra:aprobar' },
+  { metodo: 'POST', path: '/compras', accion: 'COMPRAS:ALTAS' },
+  { metodo: 'POST', path: `/compras/${ID}/items`, accion: 'COMPRAS:ALTAS' },
+  { metodo: 'PATCH', path: `/compras/${ID}/items/${ITEM_ID}`, accion: 'COMPRAS:MODIFICACION' },
+  { metodo: 'DELETE', path: `/compras/${ID}/items/${ITEM_ID}`, accion: 'COMPRAS:BORRADO' },
+  {
+    metodo: 'POST',
+    path: `/compras/${ID}/items/${ITEM_ID}/aprobar`,
+    accion: 'COMPRAS:APROBACION',
+  },
+  {
+    metodo: 'POST',
+    path: `/compras/${ID}/items/${ITEM_ID}/rechazar`,
+    accion: 'COMPRAS:APROBACION',
+  },
   {
     metodo: 'POST',
     path: `/compras/${ID}/items/${ITEM_ID}/registrar-compra`,
-    permiso: 'compra:gestionar',
+    accion: 'COMPRAS:MODIFICACION',
   },
   {
     metodo: 'POST',
     path: `/compras/${ID}/items/${ITEM_ID}/registrar-entrega`,
-    permiso: 'compra:gestionar',
+    accion: 'COMPRAS:MODIFICACION',
   },
   {
     metodo: 'POST',
     path: `/compras/${ID}/items/${ITEM_ID}/cerrar-con-faltante`,
-    permiso: 'compra:gestionar',
+    accion: 'COMPRAS:MODIFICACION',
   },
-  { metodo: 'POST', path: `/compras/${ID}/cancelar`, permiso: 'compra:gestionar' },
-  { metodo: 'GET', path: '/compras', permiso: null },
-  { metodo: 'GET', path: `/compras/${ID}`, permiso: null },
-  { metodo: 'GET', path: `/compras/${ID}/operaciones`, permiso: null },
+  { metodo: 'POST', path: `/compras/${ID}/cancelar`, accion: 'COMPRAS:BORRADO' },
+  { metodo: 'GET', path: '/compras', accion: 'COMPRAS:LECTURA' },
+  { metodo: 'GET', path: `/compras/${ID}`, accion: 'COMPRAS:LECTURA' },
+  { metodo: 'GET', path: `/compras/${ID}/operaciones`, accion: 'COMPRAS:LECTURA' },
 ];
 
-const RUTAS_GESTION = TABLA_RUTAS.filter((r) => r.permiso === 'compra:gestionar');
-const RUTAS_APROBAR = TABLA_RUTAS.filter((r) => r.permiso === 'compra:aprobar');
-const RUTAS_CONSULTA = TABLA_RUTAS.filter((r) => r.permiso === null);
+/** Rutas de escritura NO-APROBACION (ALTAS/MODIFICACION/BORRADO) — reemplaza a "RUTAS_GESTION". */
+const RUTAS_ESCRITURA = TABLA_RUTAS.filter(
+  (r) => r.accion !== 'COMPRAS:APROBACION' && r.accion !== 'COMPRAS:LECTURA',
+);
+const RUTAS_APROBAR = TABLA_RUTAS.filter((r) => r.accion === 'COMPRAS:APROBACION');
+const RUTAS_CONSULTA = TABLA_RUTAS.filter((r) => r.accion === 'COMPRAS:LECTURA');
 
 describe('Compras e2e — contrato HTTP real de las 13 rutas (cierra W-B/W-A del verify final)', () => {
   let app: INestApplication;
@@ -210,6 +235,7 @@ describe('Compras e2e — contrato HTTP real de las 13 rutas (cierra W-B/W-A del
   let tenantClient: InstanceType<typeof TenantPrismaClient>;
   let clienteRepo: PrismaClienteRepository;
   let usuarioRepo: PrismaUsuarioRepository;
+  let permisosRepo: PrismaMatrizPermisosRepository;
   let hashProvider: Argon2HashProvider;
 
   const admin = new PostgresAdminService(MASTER_TEST_URL);
@@ -230,6 +256,7 @@ describe('Compras e2e — contrato HTTP real de las 13 rutas (cierra W-B/W-A del
     tenantClient = prismaService.getTenantClient(TENANT_DB_NAME);
     clienteRepo = new PrismaClienteRepository(prismaService);
     usuarioRepo = new PrismaUsuarioRepository(prismaService);
+    permisosRepo = new PrismaMatrizPermisosRepository(prismaService);
     hashProvider = new Argon2HashProvider();
 
     const cicloActivo = await tenantClient.cicloCliente.create({
@@ -279,8 +306,12 @@ describe('Compras e2e — contrato HTTP real de las 13 rutas (cierra W-B/W-A del
   }, 60_000);
 
   beforeEach(async () => {
+    // usuario_cliente_permisos (WU-2, sdd/matriz-permisos-por-usuario) NO
+    // tiene FK declarada hacia usuarios/clientes — el TRUNCATE CASCADE de
+    // las tablas viejas no la alcanza, hay que listarla explícitamente
+    // (mismo gotcha documentado en auth.e2e.spec.ts, tanda 2).
     await masterClient.$executeRawUnsafe(
-      'TRUNCATE TABLE membresias, refresh_tokens, roles_permisos, usuarios, clientes, roles, permisos RESTART IDENTITY CASCADE',
+      'TRUNCATE TABLE membresias, refresh_tokens, roles_permisos, usuario_cliente_permisos, usuario_cliente_modulos, usuarios, clientes, roles, permisos RESTART IDENTITY CASCADE',
     );
   });
 
@@ -356,46 +387,27 @@ describe('Compras e2e — contrato HTTP real de las 13 rutas (cierra W-B/W-A del
   }
 
   /**
-   * Actor con módulo COMPRAS (rol `ADMINISTRADOR` — `resolverScope` le da
-   * TODOS los módulos automáticamente sin tocar `usuario_cliente_modulos`,
-   * mismo criterio que `crearActorAdministrador()` de `tickets.e2e.spec.ts`)
-   * y exactamente los `permisos` pedidos (el código de rol NO determina los
-   * permisos — esos vienen de la relación rol↔permisos, ver `resolverScope`).
+   * Actor con exactamente las celdas `CodigoAccion` pedidas, sembradas
+   * directo en la matriz nueva (`usuario_cliente_permisos`, WU-7.1/7.3).
+   *
+   * El rol se crea con un código DISTINTO de 'ADMINISTRADOR' A PROPÓSITO:
+   * `resolverScope` (WU-7.1, R2) bypassea TODAS las acciones para
+   * `rol === 'ADMINISTRADOR'` — si el fixture usara ese código, el actor
+   * recibiría el catálogo completo sin importar qué celdas se le sembraron,
+   * y las aserciones de "SOLO tiene X" de esta suite (RBAC real por ruta)
+   * quedarían mudas. `roles_permisos` (RBAC viejo) ya NO alimenta
+   * `payload.permisos` — sembrar un rol con permisos ahí no tiene efecto.
    */
   async function crearActorConPermisos(
     permisos: string[],
   ): Promise<{ accessToken: string; clienteId: string; usuarioId: string }> {
     const cliente = await crearClienteTenant();
-    const role = await createRoleConPermisos('ADMINISTRADOR', permisos);
+    const role = await createRoleConPermisos(`ROL_E2E_${randomBytes(3).toString('hex')}`, []);
     const usuario = await createUsuario(randomBytes(3).toString('hex'));
     await createMembresia(usuario.id, cliente.id, role.id);
+    await permisosRepo.setPermisos(usuario.id, cliente.id, permisos);
     const { accessToken } = await login(usuario.email);
     return { accessToken, clienteId: cliente.id, usuarioId: usuario.id };
-  }
-
-  /** Actor autenticado, CON `compra:gestionar`, pero SIN el módulo COMPRAS asignado (rol no-ADMINISTRADOR, sin fila en `usuario_cliente_modulos`). */
-  async function crearActorSinModulo(): Promise<{ accessToken: string }> {
-    const cliente = await crearClienteTenant();
-    const role = await createRoleConPermisos(`ROL_SIN_MOD_${randomBytes(2).toString('hex')}`, [
-      'compra:gestionar',
-    ]);
-    const usuario = await createUsuario(randomBytes(3).toString('hex'));
-    await createMembresia(usuario.id, cliente.id, role.id);
-    const { accessToken } = await login(usuario.email);
-    return { accessToken };
-  }
-
-  /** Actor con el módulo COMPRAS asignado explícitamente, pero CERO permisos de compra (rol no-ADMINISTRADOR) — usado para probar que las 3 consultas NO exigen permiso fino (decisión del maintainer, rbac-consultas). */
-  async function crearActorConModuloSinPermisos(): Promise<{ accessToken: string }> {
-    const cliente = await crearClienteTenant();
-    const role = await createRoleConPermisos(`ROL_CONSULTOR_${randomBytes(2).toString('hex')}`, []);
-    const usuario = await createUsuario(randomBytes(3).toString('hex'));
-    await createMembresia(usuario.id, cliente.id, role.id);
-    await masterClient.usuarioClienteModulo.create({
-      data: { usuarioId: usuario.id, clienteId: cliente.id, modulo: 'COMPRAS' },
-    });
-    const { accessToken } = await login(usuario.email);
-    return { accessToken };
   }
 
   async function callMethod(
@@ -447,8 +459,8 @@ describe('Compras e2e — contrato HTTP real de las 13 rutas (cierra W-B/W-A del
       expect(status).toBe(401);
     });
 
-    it('autenticado pero SIN el módulo COMPRAS asignado → 403, en un comando Y en una consulta', async () => {
-      const actor = await crearActorSinModulo();
+    it('autenticado pero SIN ninguna celda de COMPRAS en la matriz → 403, en un comando Y en una consulta', async () => {
+      const actor = await crearActorConPermisos([]);
 
       const comando = await httpPost(
         `${baseUrl}/compras`,
@@ -464,29 +476,33 @@ describe('Compras e2e — contrato HTTP real de las 13 rutas (cierra W-B/W-A del
 
   // ─── Requisito 3 — RBAC real por ruta ────────────────────────────────────
 
-  describe('RBAC real por ruta (§4.11)', () => {
-    it.each(RUTAS_GESTION)(
-      '$metodo $path exige compra:gestionar: actor con SOLO compra:aprobar (con módulo) → 403',
+  describe('RBAC real por ruta (§4.11, WU-7.3 sdd/matriz-permisos-por-usuario)', () => {
+    it.each(RUTAS_ESCRITURA)(
+      '$metodo $path exige $accion: actor con SOLO COMPRAS:APROBACION → 403',
       async ({ metodo, path }) => {
-        const actor = await crearActorConPermisos(['compra:aprobar']);
+        const actor = await crearActorConPermisos(['COMPRAS:APROBACION']);
         const { status } = await callMethod(metodo, path, actor.accessToken);
         expect(status).toBe(403);
       },
     );
 
     it.each(RUTAS_APROBAR)(
-      '$metodo $path exige compra:aprobar: actor con SOLO compra:gestionar (con módulo) → 403',
+      '$metodo $path exige COMPRAS:APROBACION: actor con SOLO COMPRAS:ALTAS/MODIFICACION/BORRADO → 403',
       async ({ metodo, path }) => {
-        const actor = await crearActorConPermisos(['compra:gestionar']);
+        const actor = await crearActorConPermisos([
+          'COMPRAS:ALTAS',
+          'COMPRAS:MODIFICACION',
+          'COMPRAS:BORRADO',
+        ]);
         const { status } = await callMethod(metodo, path, actor.accessToken);
         expect(status).toBe(403);
       },
     );
 
     it.each(RUTAS_CONSULTA)(
-      '$metodo $path NO exige permiso fino: actor con módulo COMPRAS y CERO permisos → nunca 403 (rbac-consultas, decisión intencional)',
+      '$metodo $path exige SOLO COMPRAS:LECTURA: actor sin ningún permiso de escritura → nunca 403 (rbac-consultas, decisión intencional traducida a la celda LECTURA)',
       async ({ metodo, path }) => {
-        const actor = await crearActorConModuloSinPermisos();
+        const actor = await crearActorConPermisos(['COMPRAS:LECTURA']);
         const { status } = await callMethod(metodo, path, actor.accessToken);
         expect(status).not.toBe(403);
       },
@@ -497,7 +513,13 @@ describe('Compras e2e — contrato HTTP real de las 13 rutas (cierra W-B/W-A del
 
   describe('Flujo feliz end-to-end', () => {
     it('crear compra → agregar ítem → aprobar → registrar-compra → registrar-entrega, atravesando la app real', async () => {
-      const actor = await crearActorConPermisos(['compra:gestionar', 'compra:aprobar']);
+      const actor = await crearActorConPermisos([
+        'COMPRAS:ALTAS',
+        'COMPRAS:MODIFICACION',
+        'COMPRAS:BORRADO',
+        'COMPRAS:APROBACION',
+        'COMPRAS:LECTURA',
+      ]);
 
       const crear = await httpPost<CompraDetalleResponseDto>(
         `${baseUrl}/compras`,
@@ -561,7 +583,12 @@ describe('Compras e2e — contrato HTTP real de las 13 rutas (cierra W-B/W-A del
 
   describe('Errores de dominio por HTTP (spec §5)', () => {
     it('404 CompraNoEncontradaError: GET /compras/:id con id inexistente', async () => {
-      const actor = await crearActorConPermisos(['compra:gestionar']);
+      const actor = await crearActorConPermisos([
+        'COMPRAS:ALTAS',
+        'COMPRAS:MODIFICACION',
+        'COMPRAS:BORRADO',
+        'COMPRAS:LECTURA',
+      ]);
 
       const { status } = await httpGet(
         `${baseUrl}/compras/00000000-0000-4000-8000-000000000099`,
@@ -572,7 +599,12 @@ describe('Compras e2e — contrato HTTP real de las 13 rutas (cierra W-B/W-A del
     });
 
     it('422 ItemCompraNoAprobadoError: registrar-compra sobre un ítem todavía PENDIENTE (S16)', async () => {
-      const actor = await crearActorConPermisos(['compra:gestionar']);
+      const actor = await crearActorConPermisos([
+        'COMPRAS:ALTAS',
+        'COMPRAS:MODIFICACION',
+        'COMPRAS:BORRADO',
+        'COMPRAS:LECTURA',
+      ]);
       const crear = await httpPost<CompraDetalleResponseDto>(
         `${baseUrl}/compras`,
         buildCrearCompraDto(),
@@ -621,7 +653,12 @@ describe('Compras e2e — contrato HTTP real de las 13 rutas (cierra W-B/W-A del
         data: { activo: false },
       });
       try {
-        const actor = await crearActorConPermisos(['compra:gestionar']);
+        const actor = await crearActorConPermisos([
+          'COMPRAS:ALTAS',
+          'COMPRAS:MODIFICACION',
+          'COMPRAS:BORRADO',
+          'COMPRAS:LECTURA',
+        ]);
 
         const { status, data } = await httpPost<{ message: string }>(
           `${baseUrl}/compras`,
@@ -655,7 +692,12 @@ describe('Compras e2e — contrato HTTP real de las 13 rutas (cierra W-B/W-A del
         },
       });
       try {
-        const actor = await crearActorConPermisos(['compra:gestionar']);
+        const actor = await crearActorConPermisos([
+          'COMPRAS:ALTAS',
+          'COMPRAS:MODIFICACION',
+          'COMPRAS:BORRADO',
+          'COMPRAS:LECTURA',
+        ]);
 
         const { status } = await httpPost(
           `${baseUrl}/compras`,
@@ -674,7 +716,12 @@ describe('Compras e2e — contrato HTTP real de las 13 rutas (cierra W-B/W-A del
 
   describe('Invariante: numero/solicitanteId/cicloId NUNCA vienen del body HTTP', () => {
     it('enviar numero/solicitanteId/cicloId en el body de POST /compras no tiene efecto — los 3 valores resueltos por el servidor ganan', async () => {
-      const actor = await crearActorConPermisos(['compra:gestionar']);
+      const actor = await crearActorConPermisos([
+        'COMPRAS:ALTAS',
+        'COMPRAS:MODIFICACION',
+        'COMPRAS:BORRADO',
+        'COMPRAS:LECTURA',
+      ]);
       const solicitanteFalso = '00000000-0000-4000-8000-0000000000ee';
       const cicloFalso = '00000000-0000-4000-8000-0000000000ff';
 

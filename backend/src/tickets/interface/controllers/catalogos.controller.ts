@@ -22,7 +22,10 @@
  *
  * Las rutas de escritura desvían la alternativa original de design ADR-2
  * (reusar `cliente:gestionar`) por decisión explícita de esta sesión — ver
- * apply-progress PR2/PR11.
+ * apply-progress PR2/PR11. WU-7.3 (sdd/matriz-permisos-por-usuario, R4/ADR-P5)
+ * reemplaza `catalogo:gestionar` por `AdminClienteGuard` POR MÉTODO en cada
+ * escritura — nunca a nivel de clase, porque un guard sin metadata no se
+ * puede anular desde el handler y rompería las 4 lecturas abiertas de abajo.
  *
  * El controller no tiene lógica de negocio: solo traduce HTTP ↔ use case y
  * mapea `DomainError` → `HttpException`.
@@ -75,11 +78,8 @@ import {
 } from '../../domain/errors/tickets.errors';
 import { JwtAuthGuard } from '../../../auth/infrastructure/guards/jwt-auth.guard';
 import { TenantGuard } from '../../../auth/infrastructure/guards/tenant.guard';
-import { PermissionsGuard } from '../../../auth/infrastructure/guards/permissions.guard';
-import { RequirePermissions } from '../../../auth/infrastructure/guards/decorators';
+import { AdminClienteGuard } from '../../../auth/infrastructure/guards/admin-cliente.guard';
 import { DomainError } from '../../../shared/domain/result';
-
-const PERMISO_CATALOGO_GESTIONAR = 'catalogo:gestionar';
 
 /** Mapea un `DomainError` de los use cases de catálogos a la `HttpException` correspondiente. */
 function toHttpException(error: DomainError): NotFoundException | UnprocessableEntityException {
@@ -91,8 +91,7 @@ function toHttpException(error: DomainError): NotFoundException | UnprocessableE
   return new UnprocessableEntityException(error.message);
 }
 
-@UseGuards(JwtAuthGuard, TenantGuard, PermissionsGuard)
-@RequirePermissions(PERMISO_CATALOGO_GESTIONAR)
+@UseGuards(JwtAuthGuard, TenantGuard)
 @Controller('catalogos')
 export class CatalogosController {
   constructor(
@@ -114,17 +113,14 @@ export class CatalogosController {
   // igual (mismo criterio que EquiposController con `/equipos/tipos-componente`).
 
   /**
-   * GET /catalogos/tipos-ticket — catálogo activo, SIN gate de permiso.
-   * `@RequirePermissions()` vacío ANULA el requisito `catalogo:gestionar`
-   * del controller (`Reflector.getAllAndOverride` prioriza metadata de
-   * handler sobre metadata de clase) — necesario porque las rutas de
-   * escritura de ESTE mismo controller sí lo exigen a nivel de clase.
+   * GET /catalogos/tipos-ticket — catálogo activo, SIN gate (WU-7.3: sin
+   * `AdminClienteGuard` en el método, y el controller ya no tiene gate de
+   * clase — abierto a cualquier autenticado por construcción).
    *
    * `?modulo=COMPRAS` (opcional, B2) filtra por módulo: el alta de cada
    * módulo pide solo sus tipos (separación estricta). Un módulo inválido → 422.
    */
   @Get('tipos-ticket')
-  @RequirePermissions()
   async listarTiposTicket(@Query('modulo') modulo?: string): Promise<TipoTicketResponseDto[]> {
     const result = await this.listarTiposTicketUseCase.execute({ modulo });
     if (result.isFail()) {
@@ -133,25 +129,22 @@ export class CatalogosController {
     return result.getValue().map(toTipoTicketResponseDto);
   }
 
-  /** GET /catalogos/prioridades — catálogo activo, SIN gate de permiso (ver nota arriba). */
+  /** GET /catalogos/prioridades — catálogo activo, SIN gate (ver nota arriba). */
   @Get('prioridades')
-  @RequirePermissions()
   async listarPrioridades(): Promise<PrioridadResponseDto[]> {
     const result = await this.listarPrioridadesUseCase.execute();
     return result.getValue().map(toPrioridadResponseDto);
   }
 
-  /** GET /catalogos/estados — catálogo FIJO activo, SIN gate de permiso (ver nota arriba). */
+  /** GET /catalogos/estados — catálogo FIJO activo, SIN gate (ver nota arriba). */
   @Get('estados')
-  @RequirePermissions()
   async listarEstados(): Promise<EstadoResponseDto[]> {
     const result = await this.listarEstadosUseCase.execute();
     return result.getValue().map(toEstadoResponseDto);
   }
 
-  /** GET /catalogos/tipo-operacion — catálogo FIJO activo, SIN gate de permiso (ver nota arriba). */
+  /** GET /catalogos/tipo-operacion — catálogo FIJO activo, SIN gate (ver nota arriba). */
   @Get('tipo-operacion')
-  @RequirePermissions()
   async listarTiposOperacion(): Promise<TipoOperacionResponseDto[]> {
     const result = await this.listarTiposOperacionUseCase.execute();
     return result.getValue().map(toTipoOperacionResponseDto);
@@ -165,6 +158,7 @@ export class CatalogosController {
    * @throws 422 codigo duplicado, codigo degenerado, o prefijo derivado (ADR-4) en colisión
    */
   @Post('tipos-ticket')
+  @UseGuards(AdminClienteGuard)
   @HttpCode(HttpStatus.CREATED)
   async crearTipoTicket(@Body() dto: CreateTipoTicketDto): Promise<TipoTicketResponseDto> {
     const result = await this.crearTipoTicketUseCase.execute(dto);
@@ -181,6 +175,7 @@ export class CatalogosController {
    * @throws 422 codigo duplicado o colisión de prefijo (si `codigo` cambia)
    */
   @Patch('tipos-ticket/:id')
+  @UseGuards(AdminClienteGuard)
   async editarTipoTicket(
     @Param('id') id: string,
     @Body() dto: EditTipoTicketDto,
@@ -200,6 +195,7 @@ export class CatalogosController {
    * @throws 404 tipo inexistente
    */
   @Patch('tipos-ticket/:id/estado')
+  @UseGuards(AdminClienteGuard)
   async cambiarEstadoActivoTipoTicket(
     @Param('id') id: string,
     @Body() dto: CambiarEstadoActivoDto,
@@ -222,6 +218,7 @@ export class CatalogosController {
    * @throws 422 codigo duplicado
    */
   @Post('prioridades')
+  @UseGuards(AdminClienteGuard)
   @HttpCode(HttpStatus.CREATED)
   async crearPrioridad(@Body() dto: CreatePrioridadDto): Promise<PrioridadResponseDto> {
     const result = await this.crearPrioridadUseCase.execute(dto);
@@ -238,6 +235,7 @@ export class CatalogosController {
    * @throws 422 codigo duplicado (si `codigo` cambia)
    */
   @Patch('prioridades/:id')
+  @UseGuards(AdminClienteGuard)
   async editarPrioridad(
     @Param('id') id: string,
     @Body() dto: EditPrioridadDto,
@@ -255,6 +253,7 @@ export class CatalogosController {
    * @throws 404 prioridad inexistente
    */
   @Patch('prioridades/:id/estado')
+  @UseGuards(AdminClienteGuard)
   async cambiarEstadoActivoPrioridad(
     @Param('id') id: string,
     @Body() dto: CambiarEstadoActivoDto,

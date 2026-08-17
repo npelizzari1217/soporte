@@ -13,7 +13,11 @@
  * `ticketId`, no el id del satélite).
  *
  * Guards a nivel de controller: `JwtAuthGuard` + `TenantGuard` +
- * `PermissionsGuard` (mismo patrón que `EquiposController`).
+ * `AccionesGuard` (WU-7.3, sdd/matriz-permisos-por-usuario — reemplaza a
+ * `PermissionsGuard`+`ModulosGuard`+`@RequireModulo('SOPORTE')` de clase).
+ * `@Controller('soporte')` y el `codigo='SOPORTE'` del catálogo de tipos
+ * quedan INTACTOS (WU-7.2, R8) — solo el EJE de módulo se renombra a
+ * TICKETS (R5-a: `GET /:ticketId` gatea por TICKETS:LECTURA, no EQUIPOS).
  *
  * Tarea: T13.4.
  */
@@ -33,13 +37,8 @@ import {
 
 import { JwtAuthGuard } from '../../../auth/infrastructure/guards/jwt-auth.guard';
 import { TenantGuard } from '../../../auth/infrastructure/guards/tenant.guard';
-import { PermissionsGuard } from '../../../auth/infrastructure/guards/permissions.guard';
-import { ModulosGuard } from '../../../auth/infrastructure/guards/modulos.guard';
-import {
-  CurrentUser,
-  RequireModulo,
-  RequirePermissions,
-} from '../../../auth/infrastructure/guards/decorators';
+import { AccionesGuard } from '../../../auth/infrastructure/guards/acciones.guard';
+import { CurrentUser, RequiereAcciones } from '../../../auth/infrastructure/guards/decorators';
 import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
 import { DomainError } from '../../../shared/domain/result';
 import {
@@ -94,8 +93,7 @@ function toHttpException(
   return new UnprocessableEntityException(error.message);
 }
 
-@UseGuards(JwtAuthGuard, TenantGuard, PermissionsGuard, ModulosGuard)
-@RequireModulo('SOPORTE')
+@UseGuards(JwtAuthGuard, TenantGuard, AccionesGuard)
 @Controller('soporte')
 export class SoporteController {
   constructor(
@@ -113,7 +111,7 @@ export class SoporteController {
    * @throws 422 solicitante/equipo inválido
    */
   @Post()
-  @RequirePermissions('ticket:crear')
+  @RequiereAcciones('TICKETS:ALTAS')
   @HttpCode(HttpStatus.CREATED)
   async crear(
     @Body() dto: CreateTicketSoporteHttpDto,
@@ -144,7 +142,7 @@ export class SoporteController {
    * @throws 404 ticket_soporte inexistente
    */
   @Post(':id/solucion')
-  @RequirePermissions('ticket:editar')
+  @RequiereAcciones('TICKETS:MODIFICACION')
   @HttpCode(HttpStatus.OK)
   async registrarSolucion(
     @Param('id') id: string,
@@ -169,6 +167,7 @@ export class SoporteController {
    * detalle del ticket.
    */
   @Get(':ticketId')
+  @RequiereAcciones('TICKETS:LECTURA')
   async obtenerEquipoDeTicket(
     @Param('ticketId') ticketId: string,
   ): Promise<EquipoDeTicketResponseDto> {

@@ -18,7 +18,7 @@ describe('ListarTicketsUseCase', () => {
     // mapea cada módulo a sus tipoIds del tenant (COMPRAS incluye un tipo CUSTOM;
     // EQUIPOS no tiene ningún tipo en este tenant).
     const TIPOS_POR_MODULO: Record<string, string[]> = {
-      SOPORTE: ['tipo-SOPORTE-id'],
+      TICKETS: ['tipo-TICKETS-id'],
       COMPRAS: ['tipo-COMPRAS-id', 'tipo-COMPRAS_GENERALES-id'],
       EDILICIA: ['tipo-EDILICIA-id'],
       EQUIPOS: [],
@@ -207,18 +207,18 @@ describe('ListarTicketsUseCase', () => {
       expect(filtrosRecibidos.tiposIds).toBeUndefined();
     });
 
-    it("modulosPermitidos=['SOPORTE'] → filtra a los tipoIds del módulo SOPORTE", async () => {
+    it("modulosPermitidos=['TICKETS'] → filtra a los tipoIds del módulo TICKETS", async () => {
       const c = makeCollaborators(CICLO);
 
       await c.useCase.execute({
         actorId: 'actor-uuid',
         tienePermisoVerTodos: true,
-        modulosPermitidos: ['SOPORTE'],
+        modulosPermitidos: ['TICKETS'],
       });
 
-      expect(c.tipoTicketRepo.findIdsByModulos).toHaveBeenCalledWith(['SOPORTE']);
+      expect(c.tipoTicketRepo.findIdsByModulos).toHaveBeenCalledWith(['TICKETS']);
       expect(c.ticketRepo.findAll).toHaveBeenCalledWith(
-        expect.objectContaining({ tiposIds: ['tipo-SOPORTE-id'] }),
+        expect.objectContaining({ tiposIds: ['tipo-TICKETS-id'] }),
       );
     });
 
@@ -257,12 +257,12 @@ describe('ListarTicketsUseCase', () => {
     it('intersecta el tipo pedido por el caller con los tipos del módulo (nunca amplía el scope)', async () => {
       const c = makeCollaborators(CICLO);
 
-      // Usuario con SOPORTE (→ tipo-SOPORTE-id) pide explícitamente un tipo
+      // Usuario con TICKETS (→ tipo-TICKETS-id) pide explícitamente un tipo
       // fuera de su módulo → intersección vacía → items vacío.
       const result = await c.useCase.execute({
         actorId: 'actor-uuid',
         tienePermisoVerTodos: true,
-        modulosPermitidos: ['SOPORTE'],
+        modulosPermitidos: ['TICKETS'],
         filtros: { tiposIds: ['tipo-COMPRAS-id'] },
       });
 

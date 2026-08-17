@@ -22,6 +22,7 @@ import {
   RolNoEncontradoError,
 } from '../../domain/errors/auth.errors';
 import { JwtPayload } from '../../domain/ports/i-token.service';
+import { payloadDeTest } from '../../test-helpers/payload-de-test';
 
 function buildController() {
   const listarUsuariosTenantUseCase = { execute: vi.fn() };
@@ -53,16 +54,14 @@ function buildController() {
 }
 
 function buildActor(overrides: Partial<JwtPayload> = {}): JwtPayload {
-  return {
+  return payloadDeTest({
     sub: 'actor-id',
     cliente_id: 'cliente-token',
     rol: 'TECNICO',
     permisos: [],
-    is_global_admin: false,
     cliente_nombre: 'Cliente Token',
-    membresias: [],
     ...overrides,
-  };
+  });
 }
 
 const MEMBRESIA_ITEM = {
@@ -76,10 +75,10 @@ const MEMBRESIA_ITEM = {
 
 describe('UsuariosController (gestión mínima de usuarios, sdd/beta-frontend §5)', () => {
   describe('GET /usuarios', () => {
-    it('con ticket:asignar retorna la lista SIN email (dato sensible)', async () => {
+    it('con TICKETS:ASIGNAR retorna la lista SIN email (dato sensible, R10)', async () => {
       const { controller, listarUsuariosTenantUseCase } = buildController();
       listarUsuariosTenantUseCase.execute.mockResolvedValue(Result.ok([MEMBRESIA_ITEM]));
-      const actor = buildActor({ permisos: ['ticket:asignar'] });
+      const actor = buildActor({ permisos: ['TICKETS:ASIGNAR'] });
 
       const result = await controller.listar(actor);
 
@@ -87,22 +86,23 @@ describe('UsuariosController (gestión mínima de usuarios, sdd/beta-frontend §
         clienteId: 'cliente-token',
       });
       expect(result).toEqual([{ id: 'u1', nombre: 'Ada', apellido: 'Tec', rol: 'TECNICO' }]);
+      expect(result[0]).not.toHaveProperty('email');
     });
 
-    it('con ticket:ver_todos retorna la lista SIN email', async () => {
+    it('con TICKETS:VER_TODOS retorna la lista SIN email', async () => {
       const { controller, listarUsuariosTenantUseCase } = buildController();
       listarUsuariosTenantUseCase.execute.mockResolvedValue(Result.ok([MEMBRESIA_ITEM]));
-      const actor = buildActor({ permisos: ['ticket:ver_todos'] });
+      const actor = buildActor({ permisos: ['TICKETS:VER_TODOS'] });
 
       const result = await controller.listar(actor);
 
       expect(result[0]).not.toHaveProperty('email');
     });
 
-    it('con usuario:gestionar retorna la lista CON email', async () => {
+    it('ADMINISTRADOR retorna la lista CON email (R10 — independiente de la regla OR de acceso)', async () => {
       const { controller, listarUsuariosTenantUseCase } = buildController();
       listarUsuariosTenantUseCase.execute.mockResolvedValue(Result.ok([MEMBRESIA_ITEM]));
-      const actor = buildActor({ permisos: ['usuario:gestionar'] });
+      const actor = buildActor({ rol: 'ADMINISTRADOR', permisos: [] });
 
       const result = await controller.listar(actor);
 
@@ -111,9 +111,19 @@ describe('UsuariosController (gestión mínima de usuarios, sdd/beta-frontend §
       ]);
     });
 
-    it('sin ninguno de los 3 permisos → 403 ForbiddenException', async () => {
+    it('TECNICO con TICKETS:ASIGNAR (no ADMINISTRADOR, no ROOT) NUNCA recibe email aunque entre a la lista (R10)', async () => {
       const { controller, listarUsuariosTenantUseCase } = buildController();
-      const actor = buildActor({ permisos: ['ticket:crear'] });
+      listarUsuariosTenantUseCase.execute.mockResolvedValue(Result.ok([MEMBRESIA_ITEM]));
+      const actor = buildActor({ rol: 'TECNICO', permisos: ['TICKETS:ASIGNAR'] });
+
+      const result = await controller.listar(actor);
+
+      expect('email' in result[0]).toBe(false);
+    });
+
+    it('sin TICKETS:ASIGNAR, TICKETS:VER_TODOS ni ser admin → 403 ForbiddenException (R4-excepción, S25)', async () => {
+      const { controller, listarUsuariosTenantUseCase } = buildController();
+      const actor = buildActor({ permisos: ['TICKETS:ALTAS'] });
 
       await expect(controller.listar(actor)).rejects.toBeInstanceOf(ForbiddenException);
       expect(listarUsuariosTenantUseCase.execute).not.toHaveBeenCalled();

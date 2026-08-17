@@ -14,8 +14,10 @@
  * - `cliente_nombre`: nombre del cliente scopeado; `null` si `cliente_id` es null.
  * - `membresias`: TODAS las membresías activas del usuario (alimenta el
  *   switcher del front, R28).
- * - `modulos`: módulos habilitados para el usuario (SOPORTE/COMPRAS/EDILICIA/
- *   EQUIPOS). ROOT y ADMINISTRADOR reciben todos. Alimenta el gating por
+ * - `modulos`: módulos habilitados para el usuario (TICKETS/COMPRAS/EDILICIA/
+ *   EQUIPOS, renombrado desde SOPORTE en WU-7.2 — ahora DERIVADO de
+ *   `permisos`, no un eje independiente). ROOT y ADMINISTRADOR reciben
+ *   todos. Alimenta el gating por
  *   módulo del front (5.2 CAPA 3). `[]` cuando el usuario no tiene ninguno.
  * - `nombre`/`apellido`: identidad del usuario (constante entre tenants).
  *   Alimenta el bloque de usuario del sidebar. Tokens emitidos antes de

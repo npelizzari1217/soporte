@@ -80,6 +80,7 @@ import {
   ITokenService,
   JwtPayload,
 } from '../../../auth/domain/ports/i-token.service';
+import { payloadDeTest } from '../../../auth/test-helpers/payload-de-test';
 import { MembresiaEntity } from '../../../auth/domain/entities/membresia.entity';
 import { PrismaMembresiaRepository } from '../../../auth/infrastructure/persistence/prisma/prisma-membresia.repository';
 
@@ -259,28 +260,26 @@ describe('Crear Cliente e2e — provisioning real (T8.5, R16-R19)', () => {
   // ─── Helpers ──────────────────────────────────────────────────────────
 
   function signRootToken(): string {
-    const payload: JwtPayload = {
+    const payload: JwtPayload = payloadDeTest({
       sub: `e2e-root-${randomBytes(4).toString('hex')}`,
       cliente_id: null,
       rol: null,
       permisos: [],
       is_global_admin: true,
       cliente_nombre: null,
-      membresias: [],
-    };
+    });
     return tokenService.signJwt(payload);
   }
 
   function signNormalToken(): string {
-    const payload: JwtPayload = {
+    const payload: JwtPayload = payloadDeTest({
       sub: `e2e-normal-${randomBytes(4).toString('hex')}`,
       cliente_id: null,
       rol: null,
       permisos: [],
       is_global_admin: false,
       cliente_nombre: null,
-      membresias: [],
-    };
+    });
     return tokenService.signJwt(payload);
   }
 

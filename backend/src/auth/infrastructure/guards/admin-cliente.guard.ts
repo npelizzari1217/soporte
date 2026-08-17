@@ -12,8 +12,9 @@
  * por ruta. Por eso mismo va SIEMPRE por MÉTODO, nunca a nivel de clase
  * (ADR-P5): un guard sin metadata no se puede anular desde el handler, y
  * aplicarlo a la clase rompería las lecturas abiertas de `CatalogosController`
- * y la regla OR de `GET /usuarios` (R4-excepción). Todavía sin uso en ningún
- * controller — eso es WU-7.3.
+ * y la regla OR de `GET /usuarios` (R4-excepción). Aplicado en WU-7.3 a
+ * `UsuariosController`, `CatalogosController` (escrituras), `CiclosController`
+ * y `CicloVigenteController.listar()`.
  *
  * NUNCA consulta DB — evalúa `payload.is_global_admin`/`payload.rol` del JWT
  * vía `esAdminDeCliente` (mismo predicado que el chequeo inline de

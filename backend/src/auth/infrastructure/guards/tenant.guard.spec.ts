@@ -12,6 +12,7 @@
 import { ExecutionContext, ForbiddenException } from '@nestjs/common';
 import { TenantGuard } from './tenant.guard';
 import { JwtPayload } from '../../domain/ports/i-token.service';
+import { payloadDeTest } from '../../test-helpers/payload-de-test';
 import { IClienteRepository } from '../../../clientes/domain/ports/i-cliente.repository';
 import { ClienteEntity } from '../../../clientes/domain/entities/cliente.entity';
 import { PrismaService } from '../../../shared/infrastructure/persistence/prisma.service';
@@ -24,16 +25,14 @@ function buildContext(user: JwtPayload | null): ExecutionContext {
 }
 
 function buildPayload(overrides: Partial<JwtPayload> = {}): JwtPayload {
-  return {
+  return payloadDeTest({
     sub: 'usuario-1',
     cliente_id: 'cliente-1',
     rol: 'TECNICO',
     permisos: [],
-    is_global_admin: false,
     cliente_nombre: 'Cliente 1',
-    membresias: [],
     ...overrides,
-  };
+  });
 }
 
 describe('TenantGuard (R12)', () => {

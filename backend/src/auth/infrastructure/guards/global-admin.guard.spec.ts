@@ -7,6 +7,7 @@
 import { ExecutionContext, ForbiddenException } from '@nestjs/common';
 import { GlobalAdminGuard } from './global-admin.guard';
 import { JwtPayload } from '../../domain/ports/i-token.service';
+import { payloadDeTest } from '../../test-helpers/payload-de-test';
 
 function buildContext(user: JwtPayload | null): ExecutionContext {
   return {
@@ -15,16 +16,14 @@ function buildContext(user: JwtPayload | null): ExecutionContext {
 }
 
 function buildPayload(overrides: Partial<JwtPayload> = {}): JwtPayload {
-  return {
+  return payloadDeTest({
     sub: 'usuario-1',
     cliente_id: null,
     rol: null,
     permisos: [],
-    is_global_admin: false,
     cliente_nombre: null,
-    membresias: [],
     ...overrides,
-  };
+  });
 }
 
 describe('GlobalAdminGuard (R14)', () => {

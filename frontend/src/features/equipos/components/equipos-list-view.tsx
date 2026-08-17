@@ -3,8 +3,9 @@
 /**
  * EquiposListView — CONTAINER montado por `/equipos` (T5.12). "Nuevo
  * ticket de soporte" se muestra a quien tenga `ticket:crear` Y el módulo
- * SOPORTE (el endpoint POST /soporte exige `@RequireModulo('SOPORTE')` +
- * `ticket:crear`): sin el módulo, el botón daba 403 al enviar. Independiente
+ * TICKETS (renombrado desde SOPORTE, WU-7.2; el endpoint POST /soporte exige
+ * `@RequiereAcciones('TICKETS:ALTAS')`, WU-7.3): sin el módulo, el botón daba
+ * 403 al enviar. Independiente
  * del inventario de equipos, que queda gateado por `equipo:gestionar` — mismo
  * criterio "vista de gestión" que `CatalogosAdminView` (B4), pero SIN ocultar
  * la creación de tickets de soporte a quien no gestiona equipos (deviación
@@ -44,7 +45,7 @@ export function EquiposListView() {
       <PageHeader
         title="Equipos IT"
         actions={
-          canModulo("SOPORTE") ? (
+          canModulo("TICKETS") ? (
             <Can permiso="ticket:crear">
               <TicketSoporteCreateDialog />
             </Can>

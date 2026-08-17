@@ -9,12 +9,13 @@
  * `/tickets`): acá el segundo endpoint cuelga de `/operaciones`, una base de
  * ruta distinta a `/tickets`, así que ambos métodos declaran su path completo.
  *
- * Guards: `JwtAuthGuard` + `TenantGuard` + `PermissionsGuard` (mismo patrón
- * que `TicketsController`) — pero SIN
- * `@RequirePermissions`: ADR-2 no define un permiso RBAC dedicado para
- * adjuntar. El acceso (solicitante, o `ticket:ver_todos`/`ticket:editar`)
- * se resuelve DENTRO de `AdjuntarArchivoUseCase` (mismo criterio que el
- * scope de `ticket:ver_todos` en `TicketsController.findAll`/`findOne`).
+ * Guards: `JwtAuthGuard` + `TenantGuard` + `AccionesGuard` (WU-7.3,
+ * sdd/matriz-permisos-por-usuario — mismo patrón que `TicketsController`),
+ * con `@RequiereAcciones('TICKETS:ALTAS')` en las dos rutas (R5): subir un
+ * adjunto es un alta. El acceso al ticket/operación DUEÑO (solicitante, o
+ * `TICKETS:VER_TODOS`/`TICKETS:MODIFICACION`) se resuelve DENTRO de
+ * `AdjuntarArchivoUseCase` (mismo criterio que el scope de
+ * `TICKETS:VER_TODOS` en `TicketsController.findAll`/`findOne`, R11).
  *
  * `FileInterceptor('archivo')` sin `storage` explícito → multer usa
  * `memoryStorage` por default (el binario llega en `file.buffer`, NUNCA se
@@ -40,15 +41,15 @@ import { ArchivoResponseDto, toArchivoResponseDto } from '../dtos/ticket.dto';
 import { toHttpException } from './tickets.controller';
 import { JwtAuthGuard } from '../../../auth/infrastructure/guards/jwt-auth.guard';
 import { TenantGuard } from '../../../auth/infrastructure/guards/tenant.guard';
-import { PermissionsGuard } from '../../../auth/infrastructure/guards/permissions.guard';
-import { CurrentUser } from '../../../auth/infrastructure/guards/decorators';
+import { AccionesGuard } from '../../../auth/infrastructure/guards/acciones.guard';
+import { CurrentUser, RequiereAcciones } from '../../../auth/infrastructure/guards/decorators';
 import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
-import { actorTienePermiso } from '../../../auth/domain/permisos.util';
+import { puedeEjecutar } from '../../../auth/domain/permisos.util';
 
-const PERMISO_VER_TODOS = 'ticket:ver_todos';
-const PERMISO_EDITAR = 'ticket:editar';
+const ACCION_VER_TODOS = 'TICKETS:VER_TODOS';
+const ACCION_MODIFICACION = 'TICKETS:MODIFICACION';
 
-@UseGuards(JwtAuthGuard, TenantGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, TenantGuard, AccionesGuard)
 @Controller()
 export class AdjuntosController {
   constructor(private readonly adjuntarArchivoUseCase: AdjuntarArchivoUseCase) {}
@@ -60,6 +61,7 @@ export class AdjuntosController {
    * @throws 422 archivo ausente, tamaño/mime inválido (T21, pipe), o `tamanoBytes<=0` (revalidación defensiva)
    */
   @Post('tickets/:id/adjuntos')
+  @RequiereAcciones('TICKETS:ALTAS')
   @UseInterceptors(FileInterceptor('archivo'))
   async adjuntarATicket(
     @CurrentUser() user: JwtPayload,
@@ -77,8 +79,8 @@ export class AdjuntosController {
       buffer: archivo.buffer,
       subidoPorId: user.sub,
       actorId: user.sub,
-      tienePermisoVerTodos: actorTienePermiso(user, PERMISO_VER_TODOS),
-      tienePermisoEditar: actorTienePermiso(user, PERMISO_EDITAR),
+      tienePermisoVerTodos: puedeEjecutar(user, ACCION_VER_TODOS),
+      tienePermisoEditar: puedeEjecutar(user, ACCION_MODIFICACION),
     });
 
     if (result.isFail()) {
@@ -96,6 +98,7 @@ export class AdjuntosController {
    * @throws 422 archivo ausente, tamaño/mime inválido (T21, pipe), o `tamanoBytes<=0` (revalidación defensiva)
    */
   @Post('operaciones/:id/adjuntos')
+  @RequiereAcciones('TICKETS:ALTAS')
   @UseInterceptors(FileInterceptor('archivo'))
   async adjuntarAOperacion(
     @CurrentUser() user: JwtPayload,
@@ -113,8 +116,8 @@ export class AdjuntosController {
       buffer: archivo.buffer,
       subidoPorId: user.sub,
       actorId: user.sub,
-      tienePermisoVerTodos: actorTienePermiso(user, PERMISO_VER_TODOS),
-      tienePermisoEditar: actorTienePermiso(user, PERMISO_EDITAR),
+      tienePermisoVerTodos: puedeEjecutar(user, ACCION_VER_TODOS),
+      tienePermisoEditar: puedeEjecutar(user, ACCION_MODIFICACION),
     });
 
     if (result.isFail()) {

@@ -28,7 +28,7 @@ describe("AsignarModulosControl (feature 5.2 CAPA 4)", () => {
     const user = userEvent.setup();
     let capturedBody: Record<string, unknown> = {};
     server.use(
-      http.get("/api/usuarios/u1/modulos", () => HttpResponse.json({ modulos: ["SOPORTE"] })),
+      http.get("/api/usuarios/u1/modulos", () => HttpResponse.json({ modulos: ["TICKETS"] })),
       http.patch("/api/usuarios/u1/modulos", async ({ request }) => {
         capturedBody = (await request.json()) as Record<string, unknown>;
         return HttpResponse.json({ usuarioId: "u1", modulos: capturedBody.modulos });
@@ -41,16 +41,16 @@ describe("AsignarModulosControl (feature 5.2 CAPA 4)", () => {
 
     await user.click(screen.getByRole("button", { name: /módulos/i }));
 
-    // Refleja el estado actual: SOPORTE tildado, COMPRAS no.
-    const soporte = await screen.findByRole("checkbox", { name: "SOPORTE" });
-    await waitFor(() => expect(soporte).toBeChecked());
+    // Refleja el estado actual: TICKETS tildado (renombrado desde SOPORTE, WU-7.2), COMPRAS no.
+    const tickets = await screen.findByRole("checkbox", { name: "TICKETS" });
+    await waitFor(() => expect(tickets).toBeChecked());
     expect(screen.getByRole("checkbox", { name: "COMPRAS" })).not.toBeChecked();
 
     // Edita el set: agrega COMPRAS y guarda.
     await user.click(screen.getByRole("checkbox", { name: "COMPRAS" }));
     await user.click(screen.getByRole("button", { name: /guardar/i }));
 
-    await waitFor(() => expect(capturedBody.modulos).toEqual(["SOPORTE", "COMPRAS"]));
+    await waitFor(() => expect(capturedBody.modulos).toEqual(["TICKETS", "COMPRAS"]));
   });
 
   it("para un ADMINISTRADOR deshabilita la edición y muestra la nota", async () => {

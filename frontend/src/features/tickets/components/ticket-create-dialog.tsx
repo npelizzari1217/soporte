@@ -25,9 +25,10 @@ export function TicketCreateDialog() {
   // alta dedicada (COMPRAS: CompraCreateDialog; EDILICIA: ReparacionCreateDialog;
   // EQUIPOS: TicketSoporteCreateDialog, todas sin selector de tipo). El único
   // alta con selector de tipo libre es esta, y corresponde al soporte técnico
-  // general → se filtra a SOPORTE para respetar la separación estricta por
-  // módulo (no permitir elegir un tipo de COMPRAS/EDILICIA/EQUIPOS acá).
-  const tiposQuery = useTiposTicket("SOPORTE");
+  // general → se filtra a TICKETS (renombrado desde SOPORTE, WU-7.2) para
+  // respetar la separación estricta por módulo (no permitir elegir un tipo
+  // de COMPRAS/EDILICIA/EQUIPOS acá).
+  const tiposQuery = useTiposTicket("TICKETS");
   const prioridadesQuery = usePrioridades();
   const crearMutation = useCrearTicket();
 

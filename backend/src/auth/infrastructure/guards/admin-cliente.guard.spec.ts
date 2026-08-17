@@ -9,6 +9,7 @@
 import { ExecutionContext, ForbiddenException } from '@nestjs/common';
 import { AdminClienteGuard } from './admin-cliente.guard';
 import { JwtPayload } from '../../domain/ports/i-token.service';
+import { payloadDeTest } from '../../test-helpers/payload-de-test';
 
 function buildContext(user: JwtPayload | null): ExecutionContext {
   return {
@@ -17,19 +18,14 @@ function buildContext(user: JwtPayload | null): ExecutionContext {
 }
 
 function buildPayload(overrides: Partial<JwtPayload> = {}): JwtPayload {
-  return {
+  return payloadDeTest({
     sub: 'usuario-1',
     cliente_id: 'cliente-1',
     rol: 'TECNICO',
     permisos: [],
-    is_global_admin: false,
     cliente_nombre: 'Cliente 1',
-    membresias: [],
-    modulos: [],
-    nombre: 'Test',
-    apellido: 'Usuario',
     ...overrides,
-  };
+  });
 }
 
 describe('AdminClienteGuard (R4)', () => {

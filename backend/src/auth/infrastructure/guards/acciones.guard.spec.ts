@@ -11,6 +11,7 @@ import { ExecutionContext, ForbiddenException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { AccionesGuard } from './acciones.guard';
 import { JwtPayload } from '../../domain/ports/i-token.service';
+import { payloadDeTest } from '../../test-helpers/payload-de-test';
 
 function buildContext(user: JwtPayload | null): ExecutionContext {
   return {
@@ -20,18 +21,14 @@ function buildContext(user: JwtPayload | null): ExecutionContext {
   } as unknown as ExecutionContext;
 }
 
-const BASE_PAYLOAD: JwtPayload = {
+const BASE_PAYLOAD: JwtPayload = payloadDeTest({
   sub: 'usuario-1',
   cliente_id: 'cliente-1',
   rol: 'TECNICO',
   permisos: ['TICKETS:ASIGNAR'],
-  is_global_admin: false,
   cliente_nombre: 'Cliente 1',
-  membresias: [],
   modulos: ['TICKETS'],
-  nombre: 'Test',
-  apellido: 'Usuario',
-};
+});
 
 function buildGuard(requiredCodigos: string[] | null): AccionesGuard {
   const reflector = { getAllAndOverride: () => requiredCodigos } as unknown as Reflector;

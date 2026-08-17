@@ -1,9 +1,9 @@
 import { Result } from '../../../shared/domain/result';
 import { DomainError } from '../../../shared/domain/result';
 import { IMembresiaRepository } from '../../domain/ports/i-membresia.repository';
-import { IUsuarioClienteModuloRepository } from '../../domain/ports/i-usuario-cliente-modulo.repository';
+import { IMatrizPermisosRepository } from '../../domain/ports/i-matriz-permisos.repository';
 import { IClienteRepository } from '../../../clientes/domain/ports/i-cliente.repository';
-import { ITokenService, JwtPayload } from '../../domain/ports/i-token.service';
+import { ITokenService, JwtPayload, VERSION_PAYLOAD_JWT } from '../../domain/ports/i-token.service';
 import { ILogger } from '../../../shared/domain/ports/i-logger.port';
 import { resolverScope } from './resolver-scope';
 
@@ -50,7 +50,7 @@ export class SwitchTenantUseCase {
     private readonly clienteRepo: IClienteRepository,
     private readonly tokenService: ITokenService,
     private readonly logger: ILogger,
-    private readonly modulosRepo: IUsuarioClienteModuloRepository,
+    private readonly permisosRepo: IMatrizPermisosRepository,
   ) {}
 
   async execute(dto: SwitchTenantDto): Promise<Result<SwitchTenantResult, DomainError>> {
@@ -59,7 +59,7 @@ export class SwitchTenantUseCase {
       dto.clienteId,
       this.membresiaRepo,
       this.clienteRepo,
-      this.modulosRepo,
+      this.permisosRepo,
     );
 
     if (scopeResult.isFail()) {
@@ -70,6 +70,7 @@ export class SwitchTenantUseCase {
     const membresiasActivas = await this.membresiaRepo.findActivasByUsuario(dto.actor.sub);
 
     const payload: JwtPayload = {
+      v: VERSION_PAYLOAD_JWT,
       sub: dto.actor.sub,
       cliente_id: scope.clienteId,
       rol: scope.rol,

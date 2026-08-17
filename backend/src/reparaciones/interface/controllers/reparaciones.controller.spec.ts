@@ -15,7 +15,7 @@
 import 'reflect-metadata';
 import { NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { ReparacionesController } from './reparaciones.controller';
-import { PERMISSIONS_KEY } from '../../../auth/infrastructure/guards/decorators';
+import { ACCIONES_KEY } from '../../../auth/infrastructure/guards/decorators';
 import { Result } from '../../../shared/domain/result';
 import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
 import { TicketEdiliciaEntity } from '../../domain/entities/ticket-edilicia.entity';
@@ -28,17 +28,15 @@ import {
   TicketEdiliciaNoEncontradoError,
   SubtareaNoEncontradaError,
 } from '../../domain/errors/reparaciones.errors';
-import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
+import { payloadDeTest } from '../../../auth/test-helpers/payload-de-test';
 
-const USER: JwtPayload = {
+const USER = payloadDeTest({
   sub: 'usuario-uuid',
   cliente_id: 'cliente-uuid',
   rol: 'TECNICO',
   permisos: ['ticket:crear', 'subtarea:actualizar'],
-  is_global_admin: false,
   cliente_nombre: 'Cliente Test',
-  membresias: [],
-};
+});
 
 function makeTicket(): TicketEntity {
   return TicketEntity.create(
@@ -142,9 +140,9 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
       ).rejects.toMatchObject({ status: 409 });
     });
 
-    it('declara @RequirePermissions("ticket:crear")', () => {
-      const permisos = Reflect.getMetadata(PERMISSIONS_KEY, ReparacionesController.prototype.crear);
-      expect(permisos).toEqual(['ticket:crear']);
+    it('declara @RequiereAcciones("EDILICIA:ALTAS")', () => {
+      const permisos = Reflect.getMetadata(ACCIONES_KEY, ReparacionesController.prototype.crear);
+      expect(permisos).toEqual(['EDILICIA:ALTAS']);
     });
   });
 
@@ -189,12 +187,9 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
       expect(result[0].subtareas[0].descripcion).toBe('Cambiar cañería');
     });
 
-    it('NO declara @RequirePermissions (cualquier usuario autenticado puede listar)', () => {
-      const permisos = Reflect.getMetadata(
-        PERMISSIONS_KEY,
-        ReparacionesController.prototype.listar,
-      );
-      expect(permisos).toBeUndefined();
+    it('declara @RequiereAcciones("EDILICIA:LECTURA") (WU-7.3: reemplaza el gate de módulo puro)', () => {
+      const permisos = Reflect.getMetadata(ACCIONES_KEY, ReparacionesController.prototype.listar);
+      expect(permisos).toEqual(['EDILICIA:LECTURA']);
     });
   });
 
@@ -233,12 +228,12 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
       ).rejects.toBeInstanceOf(NotFoundException);
     });
 
-    it('declara @RequirePermissions("subtarea:actualizar")', () => {
+    it('declara @RequiereAcciones("EDILICIA:ALTAS")', () => {
       const permisos = Reflect.getMetadata(
-        PERMISSIONS_KEY,
+        ACCIONES_KEY,
         ReparacionesController.prototype.crearSubtarea,
       );
-      expect(permisos).toEqual(['subtarea:actualizar']);
+      expect(permisos).toEqual(['EDILICIA:ALTAS']);
     });
   });
 
@@ -272,12 +267,12 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
       );
     });
 
-    it('declara @RequirePermissions("subtarea:actualizar")', () => {
+    it('declara @RequiereAcciones("EDILICIA:MODIFICACION")', () => {
       const permisos = Reflect.getMetadata(
-        PERMISSIONS_KEY,
+        ACCIONES_KEY,
         ReparacionesController.prototype.completarSubtarea,
       );
-      expect(permisos).toEqual(['subtarea:actualizar']);
+      expect(permisos).toEqual(['EDILICIA:MODIFICACION']);
     });
   });
 
@@ -294,12 +289,12 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
       });
     });
 
-    it('declara @RequirePermissions("subtarea:actualizar")', () => {
+    it('declara @RequiereAcciones("EDILICIA:BORRADO")', () => {
       const permisos = Reflect.getMetadata(
-        PERMISSIONS_KEY,
+        ACCIONES_KEY,
         ReparacionesController.prototype.eliminarSubtarea,
       );
-      expect(permisos).toEqual(['subtarea:actualizar']);
+      expect(permisos).toEqual(['EDILICIA:BORRADO']);
     });
   });
 });

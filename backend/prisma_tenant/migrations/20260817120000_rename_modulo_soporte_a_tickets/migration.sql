@@ -1,0 +1,16 @@
+-- WU-7.2 (sdd/matriz-permisos-por-usuario). Ref spec R8 (S18). Ref design
+-- ADR-P8 (paso 3b del deploy atómico).
+--
+-- Renombra el módulo `SOPORTE` a `TICKETS` en `tipos_ticket.modulo`, por
+-- COLUMNA explícita. Corre por `pnpm run migrate:tenants` (fan-out sobre
+-- CADA tenant activo) — NUNCA por `migrate:master`, que no toca esta tabla.
+--
+-- `tipos_ticket.codigo` NO se toca: el tipo de ticket `codigo='SOPORTE'`
+-- sigue existiendo con ese código exacto, y `numerador-ticket.service.ts`
+-- sigue emitiendo el prefijo `SOP-...` para ese tipo. `modulo` y `codigo`
+-- comparten el string 'SOPORTE' pero son columnas independientes — un
+-- find-replace de texto ciego habría roto `codigo` y el prefijo; este UPDATE
+-- filtra por la columna `modulo` exclusivamente.
+--
+-- Reversible: `UPDATE tipos_ticket SET modulo='SOPORTE' WHERE modulo='TICKETS'`.
+UPDATE "tipos_ticket" SET "modulo" = 'TICKETS' WHERE "modulo" = 'SOPORTE';

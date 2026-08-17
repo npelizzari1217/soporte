@@ -12,13 +12,14 @@
  *   PATCH  /tickets/:id/asignar → AsignarTicketUseCase (`ticket:asignar`, TECNICO+)
  *
  * Guards a nivel de controller: `JwtAuthGuard` + `TenantGuard` +
- * `PermissionsGuard` — los dos primeros SIEMPRE aplican (requieren JWT
- * válido + tenant resuelto); `PermissionsGuard` solo actúa cuando el
- * endpoint tiene `@RequirePermissions(...)` (sin metadata → pass-through,
- * ver `PermissionsGuard`). Los endpoints GET NO declaran
- * `@RequirePermissions` — CUALQUIER usuario autenticado del tenant puede
- * listar/ver, el scope (propios vs. todos) se resuelve DENTRO del use case
- * según si el actor tiene `ticket:ver_todos` (T6/T7) — NO es un 403 binario.
+ * `AccionesGuard` (WU-7.3, sdd/matriz-permisos-por-usuario — reemplaza a
+ * `PermissionsGuard`+`ModulosGuard`) — los dos primeros SIEMPRE aplican
+ * (requieren JWT válido + tenant resuelto); `AccionesGuard` solo actúa
+ * cuando el endpoint tiene `@RequiereAcciones(...)` (sin metadata →
+ * pass-through). Los endpoints GET NO declaran `@RequiereAcciones` — CUALQUIER
+ * usuario autenticado del tenant puede listar/ver, el scope (propios vs.
+ * todos) se resuelve DENTRO del use case según si el actor tiene
+ * `TICKETS:VER_TODOS` (T6/T7, R11) — NO es un 403 binario.
  *
  * El controller no tiene lógica de negocio: solo traduce HTTP ↔ use case y
  * mapea `DomainError` → `HttpException` (presentación).
@@ -89,18 +90,18 @@ import {
 } from '../../domain/errors/tickets.errors';
 import { JwtAuthGuard } from '../../../auth/infrastructure/guards/jwt-auth.guard';
 import { TenantGuard } from '../../../auth/infrastructure/guards/tenant.guard';
-import { PermissionsGuard } from '../../../auth/infrastructure/guards/permissions.guard';
-import { CurrentUser, RequirePermissions } from '../../../auth/infrastructure/guards/decorators';
+import { AccionesGuard } from '../../../auth/infrastructure/guards/acciones.guard';
+import { CurrentUser, RequiereAcciones } from '../../../auth/infrastructure/guards/decorators';
 import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
-import { actorTienePermiso } from '../../../auth/domain/permisos.util';
+import { puedeEjecutar } from '../../../auth/domain/permisos.util';
 import { DomainError } from '../../../shared/domain/result';
 import {
   IUsuarioMasterChecker,
   USUARIO_MASTER_CHECKER,
 } from '../../domain/ports/i-usuario-master.checker';
 
-const PERMISO_VER_TODOS = 'ticket:ver_todos';
-const PERMISO_OBSERVAR = 'ticket:observar';
+const ACCION_VER_TODOS = 'TICKETS:VER_TODOS';
+const ACCION_OBSERVAR = 'TICKETS:OBSERVAR';
 
 /** Mapea un `DomainError` de los use cases de tickets a la `HttpException` correspondiente. */
 export function toHttpException(
@@ -136,7 +137,7 @@ export function toHttpException(
   return new UnprocessableEntityException(error.message);
 }
 
-@UseGuards(JwtAuthGuard, TenantGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, TenantGuard, AccionesGuard)
 @Controller('tickets')
 export class TicketsController {
   constructor(
@@ -189,7 +190,7 @@ export class TicketsController {
    * @throws 409 sin ciclo activo, o secuencia agotada
    */
   @Post()
-  @RequirePermissions('ticket:crear')
+  @RequiereAcciones('TICKETS:ALTAS')
   @HttpCode(HttpStatus.CREATED)
   async create(
     @CurrentUser() user: JwtPayload,
@@ -234,7 +235,7 @@ export class TicketsController {
 
     const result = await this.listarTicketsUseCase.execute({
       actorId: user.sub,
-      tienePermisoVerTodos: actorTienePermiso(user, PERMISO_VER_TODOS),
+      tienePermisoVerTodos: puedeEjecutar(user, ACCION_VER_TODOS),
       modulosPermitidos,
       pagina: query.pagina,
       porPagina: query.porPagina,
@@ -276,7 +277,7 @@ export class TicketsController {
     const result = await this.obtenerTicketUseCase.execute({
       ticketId: id,
       actorId: user.sub,
-      tienePermisoVerTodos: actorTienePermiso(user, PERMISO_VER_TODOS),
+      tienePermisoVerTodos: puedeEjecutar(user, ACCION_VER_TODOS),
     });
 
     if (result.isFail()) {
@@ -293,14 +294,14 @@ export class TicketsController {
    * esta vía (T9, endpoint dedicado en PR7). Regla de bloqueo por estado: una
    * vez que el ticket entra EN_PROCESO (o posterior), SOLO ROOT
    * (`is_global_admin`) puede editar; en NUEVO/ASIGNADO edita cualquier
-   * TECNICO+ (`ticket:editar`).
-   * @throws 403 sin `ticket:editar` (PermissionsGuard), o ticket EN_PROCESO+
+   * TECNICO+ (`TICKETS:MODIFICACION`).
+   * @throws 403 sin `TICKETS:MODIFICACION` (AccionesGuard), o ticket EN_PROCESO+
    *             editado por un no-ROOT (`TicketBloqueadoParaEdicionError`)
    * @throws 404 ticket inexistente/otro tenant
    * @throws 422 prioridadId inexistente en el catálogo
    */
   @Patch(':id')
-  @RequirePermissions('ticket:editar')
+  @RequiereAcciones('TICKETS:MODIFICACION')
   async update(
     @CurrentUser() user: JwtPayload,
     @Param('id') id: string,
@@ -328,8 +329,8 @@ export class TicketsController {
   /**
    * PATCH /tickets/:id/estado
    * Transiciona el estado del ticket (T9, T10, T12, T13). SOLO TECNICO+
-   * (`ticket:transicionar`) — USUARIO/COLABORADOR reciben 403
-   * (`PermissionsGuard`). El evento `TicketEstadoCambiado` se emite
+   * (`TICKETS:TRANSICIONAR`) — USUARIO/COLABORADOR reciben 403
+   * (`AccionesGuard`). El evento `TicketEstadoCambiado` se emite
    * internamente en el use case cuando el destino es notificable.
    *
    * Salto correctivo: ROOT (`is_global_admin`) y ADMINISTRADOR del cliente
@@ -342,7 +343,7 @@ export class TicketsController {
    *             inválida (arco no válido y sin salto correctivo aplicable)
    */
   @Patch(':id/estado')
-  @RequirePermissions('ticket:transicionar')
+  @RequiereAcciones('TICKETS:TRANSICIONAR')
   async transicionarEstado(
     @CurrentUser() user: JwtPayload,
     @Param('id') id: string,
@@ -381,7 +382,7 @@ export class TicketsController {
    * @throws 422 asignado inválido (`AsignadoInvalidoError`) o no elegible (`AsignadoNoElegibleError`)
    */
   @Patch(':id/asignar')
-  @RequirePermissions('ticket:asignar')
+  @RequiereAcciones('TICKETS:ASIGNAR')
   async asignar(
     @CurrentUser() user: JwtPayload,
     @Param('id') id: string,
@@ -415,7 +416,7 @@ export class TicketsController {
    * @throws 404 ticket inexistente/otro tenant
    */
   @Get(':id/asignables')
-  @RequirePermissions('ticket:asignar')
+  @RequiereAcciones('TICKETS:ASIGNAR')
   async asignables(
     @CurrentUser() user: JwtPayload,
     @Param('id') id: string,
@@ -444,7 +445,7 @@ export class TicketsController {
    *             llegar a EN_PROCESO (RESUELTO/CERRADO/CANCELADO)
    */
   @Patch(':id/asignar-en-proceso')
-  @RequirePermissions('ticket:asignar', 'ticket:transicionar')
+  @RequiereAcciones('TICKETS:ASIGNAR', 'TICKETS:TRANSICIONAR')
   async asignarEnProceso(
     @CurrentUser() user: JwtPayload,
     @Param('id') id: string,
@@ -470,17 +471,17 @@ export class TicketsController {
   /**
    * POST /tickets/:id/comentarios
    * Crea un comentario público o interno en el timeline del ticket (T16,
-   * T17). Requiere `ticket:comentar` (base, USUARIO+). `esInterno=true`
-   * (T17) exige ADEMÁS `ticket:observar` (TECNICO+) — chequeo condicional
-   * al `body`, no expresable con el `@RequirePermissions` estático de
-   * `PermissionsGuard` (metadata fija por ruta) — mismo criterio que el
-   * scope de `ticket:ver_todos` resuelto inline en `findAll`/`findOne`.
-   * @throws 403 sin `ticket:comentar`, o `esInterno=true` sin `ticket:observar`
+   * T17). Requiere `TICKETS:COMENTAR` (base, USUARIO+). `esInterno=true`
+   * (T17) exige ADEMÁS `TICKETS:OBSERVAR` (TECNICO+) — chequeo condicional
+   * al `body`, no expresable con el `@RequiereAcciones` estático de
+   * `AccionesGuard` (metadata fija por ruta) — mismo criterio que el
+   * scope de `TICKETS:VER_TODOS` resuelto inline en `findAll`/`findOne`.
+   * @throws 403 sin `TICKETS:COMENTAR`, o `esInterno=true` sin `TICKETS:OBSERVAR`
    * @throws 404 ticket inexistente/otro tenant
    * @throws 422 ticket en estado terminal (solo comentarios públicos, T16)
    */
   @Post(':id/comentarios')
-  @RequirePermissions('ticket:comentar')
+  @RequiereAcciones('TICKETS:COMENTAR')
   @HttpCode(HttpStatus.CREATED)
   async comentar(
     @CurrentUser() user: JwtPayload,
@@ -488,9 +489,9 @@ export class TicketsController {
     @Body() dto: CreateComentarioDto,
   ): Promise<OperacionResponseDto> {
     const esInterno = dto.esInterno ?? false;
-    if (esInterno && !actorTienePermiso(user, PERMISO_OBSERVAR)) {
+    if (esInterno && !puedeEjecutar(user, ACCION_OBSERVAR)) {
       throw new ForbiddenException(
-        `Acceso denegado: se requiere el permiso "${PERMISO_OBSERVAR}" para crear un comentario interno.`,
+        `Acceso denegado: se requiere la acción "${ACCION_OBSERVAR}" para crear un comentario interno.`,
       );
     }
 
@@ -523,8 +524,8 @@ export class TicketsController {
     const result = await this.listarTimelineUseCase.execute({
       ticketId: id,
       actorId: user.sub,
-      tienePermisoVerTodos: actorTienePermiso(user, PERMISO_VER_TODOS),
-      tienePermisoObservar: actorTienePermiso(user, PERMISO_OBSERVAR),
+      tienePermisoVerTodos: puedeEjecutar(user, ACCION_VER_TODOS),
+      tienePermisoObservar: puedeEjecutar(user, ACCION_OBSERVAR),
     });
 
     if (result.isFail()) {
