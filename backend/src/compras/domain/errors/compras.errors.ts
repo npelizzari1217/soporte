@@ -109,6 +109,30 @@ export class CompraCanceladaError extends DomainError {
 }
 
 /**
+ * CompraNoPendienteError — se intentó editar la cabecera de una compra
+ * (`motivo`/`descripcion`/`fechaSolicitud`/`sectorId`, `CompraEntity.actualizar()`)
+ * cuyo estado derivado ya no es `PENDIENTE` — al menos un ítem fue decidido
+ * (aprobado o rechazado), y el pedido que se evaluó no puede cambiar abajo
+ * de los pies de quien lo evaluó.
+ *
+ * **Verificado, no asumido**: una compra CANCELADA deriva `CANCELADO`
+ * (Regla 0 de la tabla de verdad, `estado-compra.ts`), nunca `PENDIENTE` —
+ * así que este ÚNICO guard (`estado !== 'PENDIENTE'`) también cubre el caso
+ * cancelado, sin necesitar un `asegurarNoCancelada()` aparte como el que sí
+ * usan `agregarItem`/`editarItem`/`eliminarItem` (S5).
+ * → HTTP 422 en la capa de presentación.
+ */
+export class CompraNoPendienteError extends DomainError {
+  readonly code = 'COMPRA_NO_PENDIENTE';
+
+  constructor(compraId: string) {
+    super(
+      `La compra "${compraId}" ya no está PENDIENTE. Su cabecera sólo se puede editar mientras ningún ítem fue decidido.`,
+    );
+  }
+}
+
+/**
  * CompraYaCanceladaError — se intentó cancelar una compra que ya está
  * cancelada.
  * → HTTP 422 en la capa de presentación.

@@ -116,6 +116,7 @@ import {
   CompraCanceladaError,
   CompraConOrdenEmitidaError,
   CompraNoEncontradaError,
+  CompraNoPendienteError,
   CompraYaCanceladaError,
   CompraYaCerradaError,
   EtapaNoRegistradaError,
@@ -173,6 +174,7 @@ export function toHttpException(
   }
   if (
     error instanceof CompraCanceladaError ||
+    error instanceof CompraNoPendienteError ||
     error instanceof CompraYaCanceladaError ||
     error instanceof CompraYaCerradaError ||
     error instanceof CompraConOrdenEmitidaError ||

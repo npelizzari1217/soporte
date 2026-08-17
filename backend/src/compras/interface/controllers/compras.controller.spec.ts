@@ -55,6 +55,7 @@ import {
   CompraCanceladaError,
   CompraConOrdenEmitidaError,
   CompraNoEncontradaError,
+  CompraNoPendienteError,
   CompraYaCanceladaError,
   CompraYaCerradaError,
   EtapaNoRegistradaError,
@@ -726,8 +727,8 @@ describe('toHttpException — catálogo de errores → HTTP (spec §5)', () => {
       typeof valor === 'function' && valor.prototype instanceof DomainError,
   );
 
-  it('el catálogo tiene EXACTAMENTE 25 clases de error (2×409 + 2×404 + 21×422, fix W3+W6)', () => {
-    expect(CLASES_DE_ERROR).toHaveLength(25);
+  it('el catálogo tiene EXACTAMENTE 26 clases de error (2×409 + 2×404 + 22×422, fix W3+W6 + editar cabecera)', () => {
+    expect(CLASES_DE_ERROR).toHaveLength(26);
   });
 
   const TABLA: Array<[string, () => DomainError, 404 | 409 | 422]> = [
@@ -736,6 +737,7 @@ describe('toHttpException — catálogo de errores → HTTP (spec §5)', () => {
     ['CompraNoEncontradaError', () => new CompraNoEncontradaError('compra-1'), 404],
     ['ItemCompraNoEncontradoError', () => new ItemCompraNoEncontradoError('item-1'), 404],
     ['CompraCanceladaError', () => new CompraCanceladaError('compra-1'), 422],
+    ['CompraNoPendienteError', () => new CompraNoPendienteError('compra-1'), 422],
     ['CompraYaCanceladaError', () => new CompraYaCanceladaError('compra-1'), 422],
     ['CompraYaCerradaError', () => new CompraYaCerradaError('compra-1'), 422],
     ['CompraConOrdenEmitidaError', () => new CompraConOrdenEmitidaError('compra-1'), 422],

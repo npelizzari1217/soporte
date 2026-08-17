@@ -8,7 +8,8 @@
  * Nota de conteo: arrancó en 19 (2×409 + 2×404 + 15×422) con
  * `sdd/redisenio-modulo-compras`. `compras-tres-etapas-y-sectores` lo llevó a
  * 23 (renombres de cantidades + fechas de etapa) y el fix post-verify a 25
- * (`EtapaNoRegistradaError`, `SectorInexistenteError`).
+ * (`EtapaNoRegistradaError`, `SectorInexistenteError`). Editar cabecera de
+ * compra lo lleva a 26 (`CompraNoPendienteError`).
  *
  * Este archivo ya se comió una vez el defecto que testea: el JSDoc pasó a
  * decir 25 mientras `CASES` seguía en 23. Un comentario que declara MÁS
@@ -31,6 +32,7 @@ import {
   CompraNoEncontradaError,
   ItemCompraNoEncontradoError,
   CompraCanceladaError,
+  CompraNoPendienteError,
   CompraYaCanceladaError,
   CompraYaCerradaError,
   CompraConOrdenEmitidaError,
@@ -99,6 +101,13 @@ const CASES: readonly ErrorCase[] = [
     code: 'COMPRA_CANCELADA',
     httpStatus: 422,
     build: () => new CompraCanceladaError('compra-1'),
+    messageContains: ['compra-1'],
+  },
+  {
+    name: 'CompraNoPendienteError',
+    code: 'COMPRA_NO_PENDIENTE',
+    httpStatus: 422,
+    build: () => new CompraNoPendienteError('compra-1'),
     messageContains: ['compra-1'],
   },
   {
@@ -243,7 +252,7 @@ const CASES: readonly ErrorCase[] = [
   },
 ];
 
-describe('compras.errors — catálogo de errores de dominio (25, WU-15 ADR-T2 + fix post-verify)', () => {
+describe('compras.errors — catálogo de errores de dominio (26, WU-15 ADR-T2 + fix post-verify + editar cabecera)', () => {
   it.each(CASES.map((testCase) => [testCase.name, testCase] as const))(
     '%s expone code estable, extiende DomainError, y el mensaje conserva el identificador',
     (_name, testCase) => {
@@ -257,19 +266,19 @@ describe('compras.errors — catálogo de errores de dominio (25, WU-15 ADR-T2 +
     },
   );
 
-  it('los 25 codes del catálogo son únicos entre sí (sin colisiones)', () => {
+  it('los 26 codes del catálogo son únicos entre sí (sin colisiones)', () => {
     const codes = CASES.map((testCase) => testCase.code);
     expect(new Set(codes).size).toBe(codes.length);
-    expect(codes.length).toBe(25);
+    expect(codes.length).toBe(26);
   });
 
-  it('el catálogo mapea cada code a exactamente el HTTP status esperado (2×409, 2×404, 21×422)', () => {
+  it('el catálogo mapea cada code a exactamente el HTTP status esperado (2×409, 2×404, 22×422)', () => {
     const porStatus = { 404: 0, 409: 0, 422: 0 } as Record<404 | 409 | 422, number>;
     for (const testCase of CASES) {
       porStatus[testCase.httpStatus] += 1;
     }
     expect(porStatus[409]).toBe(2);
     expect(porStatus[404]).toBe(2);
-    expect(porStatus[422]).toBe(21);
+    expect(porStatus[422]).toBe(22);
   });
 });

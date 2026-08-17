@@ -3,6 +3,7 @@ import { DomainError, Result } from '../../../shared/domain/result';
 import {
   CompraCanceladaError,
   CompraConOrdenEmitidaError,
+  CompraNoPendienteError,
   CompraYaCanceladaError,
   CompraYaCerradaError,
   ItemCompraAprobadoNoEliminableError,
@@ -83,6 +84,21 @@ export interface CompraCreateProps {
 
 /** Datos de entrada de `agregarItem()` — igual a `ItemCompraCreateProps` sin `compraId` (lo resuelve la raíz con su propio `id`). */
 export type CompraAgregarItemProps = Omit<ItemCompraCreateProps, 'compraId'>;
+
+/**
+ * Campos editables de la cabecera por `actualizar()`. `numero`/
+ * `solicitanteId`/`cicloId` NO están acá — son `readonly` en `CompraProps`
+ * (cambiarlos convertiría la compra en otra); los campos de cancelación
+ * tampoco — esos los maneja `cancelar()`. PATCH semántico (mismo criterio
+ * que `ItemCompraActualizarProps`/`ComponenteEquipoEntity.actualizar`):
+ * `undefined` no toca el campo, `null` limpia `descripcion`/`sectorId`.
+ */
+export interface CompraActualizarProps {
+  motivo?: string;
+  descripcion?: string | null;
+  fechaSolicitud?: Date;
+  sectorId?: string | null;
+}
 
 export class CompraEntity extends BaseEntity<CompraProps> {
   /**
@@ -357,6 +373,62 @@ export class CompraEntity extends BaseEntity<CompraProps> {
     if (this.props.canceladaEn !== null) {
       return Result.fail(new CompraCanceladaError(this.id));
     }
+    return Result.ok(undefined);
+  }
+
+  // ─── Edición de cabecera ────────────────────────────────────────────────
+
+  /**
+   * Edita los campos de solicitud de la CABECERA (`motivo`/`descripcion`/
+   * `fechaSolicitud`/`sectorId`) — editable ÚNICAMENTE mientras el estado
+   * DERIVADO de la compra sea `PENDIENTE` (ningún ítem fue aprobado ni
+   * rechazado todavía). Una vez que alguien empezó a decidir, el pedido que
+   * evaluó no cambia abajo de sus pies.
+   *
+   * Guard ÚNICO — `estado !== 'PENDIENTE'` — falla con
+   * `CompraNoPendienteError`, ANTES de tocar cualquier campo. A diferencia
+   * de `agregarItem`/`editarItem`/`eliminarItem` (que usan
+   * `asegurarNoCancelada()` sobre `canceladaEn`), acá NO hace falta un guard
+   * de cancelación aparte: una compra cancelada deriva `CANCELADO` (Regla 0
+   * de `derivarEstadoCompra`), nunca `PENDIENTE`, así que el mismo guard de
+   * estado la cubre por construcción (ver JSDoc de `CompraNoPendienteError`).
+   *
+   * `numero`/`solicitanteId`/`cicloId` NO son parte de `CompraActualizarProps`
+   * — no hay forma de tocarlos desde acá, ni siquiera por error.
+   *
+   * PATCH semántico (mismo criterio que `ItemCompraEntity.actualizar`):
+   * `undefined` no toca el campo; `descripcion: null`/`sectorId: null` lo
+   * limpian explícitamente.
+   */
+  actualizar(datos: CompraActualizarProps): Result<void, DomainError> {
+    if (this.estado !== 'PENDIENTE') {
+      return Result.fail(new CompraNoPendienteError(this.id));
+    }
+
+    if (datos.motivo !== undefined || datos.fechaSolicitud !== undefined) {
+      CompraEntity.validarCamposBase(
+        this.props.numero,
+        datos.motivo ?? this.props.motivo,
+        datos.fechaSolicitud ?? this.props.fechaSolicitud,
+        this.props.solicitanteId,
+        this.props.cicloId,
+      );
+    }
+
+    if (datos.motivo !== undefined) {
+      this.props.motivo = datos.motivo;
+    }
+    if (datos.descripcion !== undefined) {
+      this.props.descripcion = datos.descripcion;
+    }
+    if (datos.fechaSolicitud !== undefined) {
+      this.props.fechaSolicitud = datos.fechaSolicitud;
+    }
+    if (datos.sectorId !== undefined) {
+      this.props.sectorId = datos.sectorId;
+    }
+
+    this.touch();
     return Result.ok(undefined);
   }
 
