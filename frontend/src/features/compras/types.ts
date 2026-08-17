@@ -37,6 +37,7 @@ export type Moneda = "ARS" | "USD" | "EUR";
  */
 export type TipoOperacionCompra =
   | "CREACION"
+  | "COMPRA_EDITADA"
   | "ITEM_AGREGADO"
   | "ITEM_EDITADO"
   | "ITEM_ELIMINADO"
@@ -165,6 +166,23 @@ export interface CrearCompraDto {
   fechaSolicitud: string;
   /** Sector de destino (R11) — opcional, sin backfill (S66). */
   sectorId?: string;
+}
+
+/**
+ * Body de `PATCH /compras/:id` (`EditarCompraHttpDto`) — edición de la
+ * CABECERA. PATCH semántico: campo ausente no se toca, `null` limpia
+ * `descripcion`/`sectorId`.
+ *
+ * `numero`/`solicitanteId`/`cicloId` NO están acá, igual que en
+ * `CrearCompraDto` — con un agravante: en el alta los resuelve el servidor,
+ * pero en la edición ya están escritos, así que mandarlos permitiría
+ * reescribir la identidad de una compra existente.
+ */
+export interface EditarCompraDto {
+  motivo?: string;
+  descripcion?: string | null;
+  fechaSolicitud?: string;
+  sectorId?: string | null;
 }
 
 /** Body de `POST /compras/:id/items` (`AgregarItemCompraHttpDto`). */

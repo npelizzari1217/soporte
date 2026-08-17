@@ -55,6 +55,7 @@ import {
   CompraCanceladaError,
   CompraConOrdenEmitidaError,
   CompraNoEncontradaError,
+  CompraNoPendienteError,
   CompraYaCanceladaError,
   CompraYaCerradaError,
   EtapaNoRegistradaError,
@@ -89,6 +90,7 @@ const USUARIO: JwtPayload = payloadDeTest({
 function buildController() {
   const crearCompraUseCase = { execute: vi.fn() };
   const agregarItemCompraUseCase = { execute: vi.fn() };
+  const editarCompraUseCase = { execute: vi.fn() };
   const editarItemCompraUseCase = { execute: vi.fn() };
   const eliminarItemCompraUseCase = { execute: vi.fn() };
   const aprobarItemCompraUseCase = { execute: vi.fn() };
@@ -106,25 +108,27 @@ function buildController() {
   const controller = new ComprasController(
     crearCompraUseCase as unknown as Ctor[0],
     agregarItemCompraUseCase as unknown as Ctor[1],
-    editarItemCompraUseCase as unknown as Ctor[2],
-    eliminarItemCompraUseCase as unknown as Ctor[3],
-    aprobarItemCompraUseCase as unknown as Ctor[4],
-    rechazarItemCompraUseCase as unknown as Ctor[5],
-    registrarOrdenDeItemUseCase as unknown as Ctor[6],
-    registrarRecepcionDeItemUseCase as unknown as Ctor[7],
-    registrarEntregaDeItemUseCase as unknown as Ctor[8],
-    editarFechaEtapaDeItemUseCase as unknown as Ctor[9],
-    cerrarItemConFaltanteUseCase as unknown as Ctor[10],
-    cancelarCompraUseCase as unknown as Ctor[11],
-    listarComprasUseCase as unknown as Ctor[12],
-    obtenerCompraUseCase as unknown as Ctor[13],
-    listarOperacionesCompraUseCase as unknown as Ctor[14],
+    editarCompraUseCase as unknown as Ctor[2],
+    editarItemCompraUseCase as unknown as Ctor[3],
+    eliminarItemCompraUseCase as unknown as Ctor[4],
+    aprobarItemCompraUseCase as unknown as Ctor[5],
+    rechazarItemCompraUseCase as unknown as Ctor[6],
+    registrarOrdenDeItemUseCase as unknown as Ctor[7],
+    registrarRecepcionDeItemUseCase as unknown as Ctor[8],
+    registrarEntregaDeItemUseCase as unknown as Ctor[9],
+    editarFechaEtapaDeItemUseCase as unknown as Ctor[10],
+    cerrarItemConFaltanteUseCase as unknown as Ctor[11],
+    cancelarCompraUseCase as unknown as Ctor[12],
+    listarComprasUseCase as unknown as Ctor[13],
+    obtenerCompraUseCase as unknown as Ctor[14],
+    listarOperacionesCompraUseCase as unknown as Ctor[15],
   );
 
   return {
     controller,
     crearCompraUseCase,
     agregarItemCompraUseCase,
+    editarCompraUseCase,
     editarItemCompraUseCase,
     eliminarItemCompraUseCase,
     aprobarItemCompraUseCase,
@@ -248,6 +252,45 @@ describe('ComprasController — traducción HTTP ↔ use case (PR-21)', () => {
         observaciones: null,
       });
       expect(res.items).toHaveLength(1);
+    });
+  });
+
+  describe('PATCH /compras/:id', () => {
+    it('PATCH parcial de cabecera: campos ausentes viajan como undefined, no como Invalid Date', async () => {
+      const { controller, editarCompraUseCase } = buildController();
+      editarCompraUseCase.execute.mockResolvedValue(Result.ok(buildCompra()));
+
+      const res = await controller.editar(USUARIO, 'compra-1', { motivo: 'Motivo nuevo' });
+
+      expect(editarCompraUseCase.execute).toHaveBeenCalledWith({
+        compraId: 'compra-1',
+        usuarioId: 'usuario-1',
+        motivo: 'Motivo nuevo',
+        descripcion: undefined,
+        fechaSolicitud: undefined,
+        sectorId: undefined,
+      });
+      expect(res.id).toBe('compra-1');
+    });
+
+    it('fechaSolicitud viaja como Date; descripcion/sectorId en null se preservan como null (limpiar ≠ ausente)', async () => {
+      const { controller, editarCompraUseCase } = buildController();
+      editarCompraUseCase.execute.mockResolvedValue(Result.ok(buildCompra()));
+
+      await controller.editar(USUARIO, 'compra-1', {
+        fechaSolicitud: '2026-09-01',
+        descripcion: null,
+        sectorId: null,
+      });
+
+      expect(editarCompraUseCase.execute).toHaveBeenCalledWith({
+        compraId: 'compra-1',
+        usuarioId: 'usuario-1',
+        motivo: undefined,
+        descripcion: null,
+        fechaSolicitud: new Date('2026-09-01'),
+        sectorId: null,
+      });
     });
   });
 
@@ -652,6 +695,11 @@ describe('ComprasController — propagación de errores (nunca 500 silencioso)',
       invocar: (c) => c.editarItem(USUARIO, 'compra-1', 'item-1', {}),
     },
     {
+      nombre: 'editar',
+      useCase: 'editarCompraUseCase',
+      invocar: (c) => c.editar(USUARIO, 'compra-1', {}),
+    },
+    {
       nombre: 'eliminarItem',
       useCase: 'eliminarItemCompraUseCase',
       invocar: (c) => c.eliminarItem(USUARIO, 'compra-1', 'item-1'),
@@ -726,8 +774,8 @@ describe('toHttpException — catálogo de errores → HTTP (spec §5)', () => {
       typeof valor === 'function' && valor.prototype instanceof DomainError,
   );
 
-  it('el catálogo tiene EXACTAMENTE 25 clases de error (2×409 + 2×404 + 21×422, fix W3+W6)', () => {
-    expect(CLASES_DE_ERROR).toHaveLength(25);
+  it('el catálogo tiene EXACTAMENTE 26 clases de error (2×409 + 2×404 + 22×422, fix W3+W6 + editar cabecera)', () => {
+    expect(CLASES_DE_ERROR).toHaveLength(26);
   });
 
   const TABLA: Array<[string, () => DomainError, 404 | 409 | 422]> = [
@@ -736,6 +784,7 @@ describe('toHttpException — catálogo de errores → HTTP (spec §5)', () => {
     ['CompraNoEncontradaError', () => new CompraNoEncontradaError('compra-1'), 404],
     ['ItemCompraNoEncontradoError', () => new ItemCompraNoEncontradoError('item-1'), 404],
     ['CompraCanceladaError', () => new CompraCanceladaError('compra-1'), 422],
+    ['CompraNoPendienteError', () => new CompraNoPendienteError('compra-1'), 422],
     ['CompraYaCanceladaError', () => new CompraYaCanceladaError('compra-1'), 422],
     ['CompraYaCerradaError', () => new CompraYaCerradaError('compra-1'), 422],
     ['CompraConOrdenEmitidaError', () => new CompraConOrdenEmitidaError('compra-1'), 422],

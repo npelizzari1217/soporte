@@ -10,6 +10,7 @@ import { derivarEstadoCompra, CompraParaDerivacion } from '../services/estado-co
 import {
   CompraCanceladaError,
   CompraConOrdenEmitidaError,
+  CompraNoPendienteError,
   CompraYaCanceladaError,
   CompraYaCerradaError,
   ItemCompraAprobadoNoEliminableError,
@@ -522,6 +523,104 @@ describe('CompraEntity', () => {
 
       expect(0.1 + 0.1 + 0.1).not.toBe(0.3); // documenta la trampa que este test evita
       expect(compra.totalesPorMoneda.ARS).toBe(0.3);
+    });
+  });
+
+  describe('actualizar() — editar cabecera (editable únicamente mientras PENDIENTE)', () => {
+    it('con la compra PENDIENTE (n=0), edita motivo/descripcion/fechaSolicitud/sectorId — OK', () => {
+      const compra = CompraEntity.create(crearPropsValidas());
+      const nuevaFecha = new Date('2026-02-01');
+
+      const result = compra.actualizar({
+        motivo: 'Motivo actualizado',
+        descripcion: 'Descripción nueva',
+        fechaSolicitud: nuevaFecha,
+        sectorId: 'sector-1',
+      });
+
+      expect(result.isOk()).toBe(true);
+      expect(compra.motivo).toBe('Motivo actualizado');
+      expect(compra.descripcion).toBe('Descripción nueva');
+      expect(compra.fechaSolicitud).toBe(nuevaFecha);
+      expect(compra.sectorId).toBe('sector-1');
+    });
+
+    it('PATCH semántico: campos ausentes (undefined) no tocan el valor existente', () => {
+      const compra = CompraEntity.create(crearPropsValidas({ descripcion: 'Original' }));
+
+      const result = compra.actualizar({ motivo: 'Solo el motivo cambia' });
+
+      expect(result.isOk()).toBe(true);
+      expect(compra.motivo).toBe('Solo el motivo cambia');
+      expect(compra.descripcion).toBe('Original');
+      expect(compra.fechaSolicitud).toEqual(crearPropsValidas().fechaSolicitud);
+      expect(compra.sectorId).toBeNull();
+    });
+
+    it('PATCH semántico: descripcion=null limpia el campo (a diferencia de undefined)', () => {
+      const compra = CompraEntity.create(crearPropsValidas({ descripcion: 'Algo' }));
+
+      const result = compra.actualizar({ descripcion: null });
+
+      expect(result.isOk()).toBe(true);
+      expect(compra.descripcion).toBeNull();
+    });
+
+    it('PATCH semántico: sectorId=null limpia el campo (a diferencia de undefined)', () => {
+      const compra = CompraEntity.create(crearPropsValidas({ sectorId: 'sector-1' }));
+
+      const result = compra.actualizar({ sectorId: null });
+
+      expect(result.isOk()).toBe(true);
+      expect(compra.sectorId).toBeNull();
+    });
+
+    it('numero/solicitanteId/cicloId NUNCA se tocan — no forman parte de CompraActualizarProps (garantía de compilación)', () => {
+      const compra = CompraEntity.create(crearPropsValidas());
+
+      compra.actualizar({ motivo: 'x' });
+
+      expect(compra.numero).toBe('COM-2026-00001');
+      expect(compra.solicitanteId).toBe('usuario-1');
+      expect(compra.cicloId).toBe('ciclo-1');
+    });
+
+    it('con algún ítem ya decidido (estado APROBADO, ya no PENDIENTE) → CompraNoPendienteError, sin mutar ningún campo', () => {
+      const compra = CompraEntity.create(crearPropsValidas({ motivo: 'Motivo original' }));
+      compra.agregarItem(datosItemValido());
+      compra.items[0].aprobar('aprobador-1');
+      expect(compra.estado).toBe('APROBADO');
+
+      const result = compra.actualizar({ motivo: 'Intento de edición' });
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(CompraNoPendienteError);
+      expect(compra.motivo).toBe('Motivo original');
+    });
+
+    it('con la compra CANCELADA (deriva CANCELADO, Regla 0) → el MISMO CompraNoPendienteError, sin guard aparte', () => {
+      const compra = crearCompraCancelada();
+      expect(compra.estado).toBe('CANCELADO');
+
+      const result = compra.actualizar({ motivo: 'Intento de edición' });
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(CompraNoPendienteError);
+      expect(result.getError()).not.toBeInstanceOf(CompraCanceladaError);
+    });
+
+    it('motivo vacío es precondición de dominio (throw), mismo criterio que validarCamposBase de create()', () => {
+      const compra = CompraEntity.create(crearPropsValidas());
+
+      expect(() => compra.actualizar({ motivo: '   ' })).toThrow(/motivo/i);
+    });
+
+    it('fechaSolicitud inválida es precondición de dominio (throw), mismo criterio que create()', () => {
+      const compra = CompraEntity.create(crearPropsValidas());
+
+      expect(() => compra.actualizar({ fechaSolicitud: new Date('no-es-una-fecha') })).toThrow(
+        /fechaSolicitud/i,
+      );
     });
   });
 });

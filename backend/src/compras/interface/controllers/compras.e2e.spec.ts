@@ -192,10 +192,15 @@ interface RutaEsperada {
  * se renombra a `registrar-recepcion` (mismo verbo HTTP, mismo gate);
  * `registrar-orden` es la etapa nueva; `PATCH .../fecha-etapa` es la edición
  * de fecha independiente (R4/S55).
+ *
+ * Editar cabecera: 15 -> 16 rutas. `PATCH /compras/:id` va ANTES de
+ * `PATCH /compras/:id/items/:itemId` en esta tabla sólo por legibilidad — no
+ * hay ambigüedad de routing entre las dos: distinta profundidad de path.
  */
 const TABLA_RUTAS: RutaEsperada[] = [
   { metodo: 'POST', path: '/compras', accion: 'COMPRAS:ALTAS' },
   { metodo: 'POST', path: `/compras/${ID}/items`, accion: 'COMPRAS:ALTAS' },
+  { metodo: 'PATCH', path: `/compras/${ID}`, accion: 'COMPRAS:MODIFICACION' },
   { metodo: 'PATCH', path: `/compras/${ID}/items/${ITEM_ID}`, accion: 'COMPRAS:MODIFICACION' },
   { metodo: 'DELETE', path: `/compras/${ID}/items/${ITEM_ID}`, accion: 'COMPRAS:BORRADO' },
   {
@@ -246,7 +251,7 @@ const RUTAS_ESCRITURA = TABLA_RUTAS.filter(
 const RUTAS_APROBAR = TABLA_RUTAS.filter((r) => r.accion === 'COMPRAS:APROBACION');
 const RUTAS_CONSULTA = TABLA_RUTAS.filter((r) => r.accion === 'COMPRAS:LECTURA');
 
-describe('Compras e2e — contrato HTTP real de las 13 rutas (cierra W-B/W-A del verify final)', () => {
+describe('Compras e2e — contrato HTTP real de las 16 rutas (cierra W-B/W-A del verify final)', () => {
   let app: INestApplication;
   let baseUrl: string;
 
@@ -457,7 +462,7 @@ describe('Compras e2e — contrato HTTP real de las 13 rutas (cierra W-B/W-A del
 
   // ─── Requisito 1 — Existencia y forma de las 13 rutas (paths LITERALES) ──
 
-  describe('Existencia + forma de las 13 rutas (paths LITERALES → atrapa un rename de ruta)', () => {
+  describe('Existencia + forma de las 16 rutas (paths LITERALES → atrapa un rename de ruta)', () => {
     it.each(TABLA_RUTAS)(
       '$metodo $path existe: sin Bearer → 401 (NUNCA 404 de routing — si el path fue renombrado, este assert falla)',
       async ({ metodo, path }) => {
@@ -600,6 +605,75 @@ describe('Compras e2e — contrato HTTP real de las 13 rutas (cierra W-B/W-A del
       expect(detalleFinal.data.estado).toBe('APROBADO');
       expect(detalleFinal.data.comprado).toBe(true);
       expect(detalleFinal.data.cerrado).toBe(true);
+    });
+
+    it('editar cabecera: PATCH /compras/:id sobre una compra PENDIENTE persiste los campos y deja UNA operación COMPRA_EDITADA en la bitácora; tras aprobar un ítem, el mismo PATCH da 422', async () => {
+      const actor = await crearActorConPermisos([
+        'COMPRAS:ALTAS',
+        'COMPRAS:MODIFICACION',
+        'COMPRAS:APROBACION',
+        'COMPRAS:LECTURA',
+      ]);
+
+      const crear = await httpPost<CompraDetalleResponseDto>(
+        `${baseUrl}/compras`,
+        buildCrearCompraDto(),
+        bearer(actor.accessToken),
+      );
+      expect(crear.status).toBe(201);
+      const compraId = crear.data.id;
+
+      const editar = await httpPatch<CompraDetalleResponseDto>(
+        `${baseUrl}/compras/${compraId}`,
+        { motivo: 'Motivo corregido antes de aprobar', descripcion: 'Detalle agregado' },
+        bearer(actor.accessToken),
+      );
+      expect(editar.status).toBe(200);
+      expect(editar.data.motivo).toBe('Motivo corregido antes de aprobar');
+      expect(editar.data.descripcion).toBe('Detalle agregado');
+
+      // Releído desde la DB, no del cuerpo de la respuesta: prueba que el
+      // UPDATE realmente se escribió, no sólo que la entidad mutó en memoria.
+      const releido = await httpGet<CompraDetalleResponseDto>(
+        `${baseUrl}/compras/${compraId}`,
+        bearer(actor.accessToken),
+      );
+      expect(releido.data.motivo).toBe('Motivo corregido antes de aprobar');
+
+      const bitacora = await httpGet<Array<{ tipo: string; itemCompraId: string | null }>>(
+        `${baseUrl}/compras/${compraId}/operaciones`,
+        bearer(actor.accessToken),
+      );
+      expect(bitacora.status).toBe(200);
+      const ediciones = bitacora.data.filter((op) => op.tipo === 'COMPRA_EDITADA');
+      expect(ediciones).toHaveLength(1);
+      expect(ediciones[0].itemCompraId).toBeNull();
+
+      // A partir de acá la compra ya no es PENDIENTE: se cierra la ventana.
+      const agregar = await httpPost<CompraDetalleResponseDto>(
+        `${baseUrl}/compras/${compraId}/items`,
+        buildAgregarItemDto(1),
+        bearer(actor.accessToken),
+      );
+      const itemId = agregar.data.items[0].id;
+      await httpPost(
+        `${baseUrl}/compras/${compraId}/items/${itemId}/aprobar`,
+        {},
+        bearer(actor.accessToken),
+      );
+
+      const editarTarde = await httpPatch(
+        `${baseUrl}/compras/${compraId}`,
+        { motivo: 'Ya no deberia poder' },
+        bearer(actor.accessToken),
+      );
+      expect(editarTarde.status).toBe(422);
+
+      const sinPisar = await httpGet<CompraDetalleResponseDto>(
+        `${baseUrl}/compras/${compraId}`,
+        bearer(actor.accessToken),
+      );
+      expect(sinPisar.data.motivo).toBe('Motivo corregido antes de aprobar');
     });
   });
 

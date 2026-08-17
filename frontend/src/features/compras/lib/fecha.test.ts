@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { hoyISO } from "./fecha";
+import { aFechaInput, hoyISO } from "./fecha";
 
 /**
  * fecha.test.ts — fix post-verify W4/W5 (sdd/compras-tres-etapas-y-sectores).
@@ -48,5 +48,27 @@ describe("hoyISO", () => {
     vi.setSystemTime(new Date("2026-03-16T03:00:01.000Z"));
 
     expect(hoyISO()).toBe("2026-03-16");
+  });
+});
+
+describe("aFechaInput", () => {
+  it("recorta el datetime ISO del backend a la fecha de calendario que espera <input type=\"date\">", () => {
+    expect(aFechaInput("2026-08-17T00:00:00.000Z")).toBe("2026-08-17");
+  });
+
+  it("NO desplaza el día: la fecha sale igual corra donde corra el navegador (no parsea con new Date)", () => {
+    // Medianoche UTC es el caso que rompe `new Date(iso).getDate()` en todo
+    // huso al oeste de UTC — devolvería el día anterior.
+    expect(aFechaInput("2026-01-01T00:00:00.000Z")).toBe("2026-01-01");
+  });
+
+  it("es idempotente: una fecha ya en formato de input vuelve igual", () => {
+    expect(aFechaInput("2026-08-17")).toBe("2026-08-17");
+  });
+
+  it("null/undefined/vacío devuelven cadena vacía (input sin precargar, no 'Invalid Date')", () => {
+    expect(aFechaInput(null)).toBe("");
+    expect(aFechaInput(undefined)).toBe("");
+    expect(aFechaInput("")).toBe("");
   });
 });

@@ -484,7 +484,7 @@ describe('CHECKs de compras/items_compra/operaciones_compra — migración 20260
   // ─── operaciones_compra_tipo_check ───────────────────────────────────────
 
   describe('CHECK operaciones_compra_tipo_check', () => {
-    it('rechaza un tipo fuera del catálogo cerrado de 12 valores', async () => {
+    it('rechaza un tipo fuera del catálogo cerrado de 13 valores', async () => {
       const compraId = await insertCompraValida();
       await expect(
         client.query(
@@ -497,6 +497,7 @@ describe('CHECKs de compras/items_compra/operaciones_compra — migración 20260
 
     it.each([
       'CREACION',
+      'COMPRA_EDITADA',
       'ITEM_AGREGADO',
       'ITEM_EDITADO',
       'ITEM_ELIMINADO',
@@ -508,7 +509,7 @@ describe('CHECKs de compras/items_compra/operaciones_compra — migración 20260
       'ITEM_CERRADO_CON_FALTANTE',
       'CANCELACION',
       'COMPRA_REGISTRADA', // legacy (WU-16, ADR-T11) — el CHECK sigue aceptando filas históricas
-    ])('acepta el tipo %s (11 vigentes + 1 legacy, ADR-T11)', async (tipo) => {
+    ])('acepta el tipo %s (12 vigentes + 1 legacy, ADR-T11 + editar cabecera)', async (tipo) => {
       const compraId = await insertCompraValida();
       const result = await client.query(
         `INSERT INTO operaciones_compra (id, compra_id, tipo, usuario_id, detalle)

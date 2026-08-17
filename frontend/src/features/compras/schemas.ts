@@ -63,6 +63,24 @@ export const crearCompraSchema = z.object({
 });
 export type CrearCompraFormValues = z.infer<typeof crearCompraSchema>;
 
+/**
+ * Espejo de `EditarCompraHttpDto` — edición de la CABECERA. PATCH semántico:
+ * todos los campos son opcionales.
+ *
+ * La ventana de edición (sólo mientras la compra deriva `PENDIENTE`) NO se
+ * valida acá: es una regla de negocio del backend, y el estado que la decide
+ * ya viene derivado en `CompraDetalle.estado`. Este schema sólo cuida la
+ * forma del dato — mismo criterio que `editarItemCompraSchema`, que tampoco
+ * re-implementa el congelamiento.
+ */
+export const editarCompraSchema = z.object({
+  motivo: motivo("El motivo es requerido"),
+  descripcion: z.string().optional(),
+  fechaSolicitud: fecha("La fecha de solicitud es requerida"),
+  sectorId: z.string().optional(),
+});
+export type EditarCompraFormValues = z.infer<typeof editarCompraSchema>;
+
 /** Espejo de `AgregarItemCompraHttpDto` (§4.2, S4). */
 export const agregarItemCompraSchema = z.object({
   descripcion: z.string().min(1, "La descripción es requerida"),
