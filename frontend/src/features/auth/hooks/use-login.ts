@@ -20,8 +20,9 @@
  * limpia TODA la caché cliente (Router Cache, React Query, SessionProvider).
  * El (dashboard) route group mapea a `/`, NO `/dashboard`.
  *
- * Errores como toasts (403 → tenant suspendido; otro → mensaje genérico, sin
- * enumeración de usuarios).
+ * Errores como toasts, ver `mensajeDeErrorDeLogin`: 403 → tenant suspendido;
+ * 5xx/red → problema de infraestructura, dicho como tal; el resto → mensaje
+ * genérico e idéntico entre sí, sin enumeración de usuarios.
  *
  * Spec: [R23] BFF login route. Design: Container/Presentational pattern.
  */
@@ -49,6 +50,34 @@ function isNeedsClienteSelection(
   result: LoginResponse,
 ): result is { needsClienteSelection: true; membresias: Membresia[] } {
   return "needsClienteSelection" in result && result.needsClienteSelection === true;
+}
+
+/**
+ * Elige el toast de error del login según el `statusCode` de `ApiError`.
+ *
+ * **La anti-enumeración aplica al RESULTADO DE AUTENTICAR, no a todo fallo.**
+ * Un 401 (contraseña equivocada) y un 404 (la cuenta no existe) tienen que
+ * decir exactamente lo mismo: si difieren, el formulario se vuelve un oráculo
+ * para averiguar qué cuentas existen. Por eso el mensaje genérico es el
+ * DEFAULT y cubre todo el rango 4xx que no sea 403.
+ *
+ * Pero un 5xx o una caída de red NO son un resultado de autenticar — son
+ * infraestructura, y no revelan absolutamente nada sobre la cuenta. Meterlos
+ * en la misma bolsa no agregaba seguridad y sí mandaba al usuario a arreglar
+ * lo que no estaba roto: re-tipear una contraseña correcta una y otra vez
+ * mientras el backend estaba caído. Pasó de verdad durante la verificación en
+ * el navegador de esta misma app.
+ *
+ * `statusCode: 0` es la normalización de un fallo de red de `apiFetch`
+ * (`ApiError(0, "Error de red")`), no un status HTTP real.
+ */
+export function mensajeDeErrorDeLogin(statusCode: number): string {
+  if (statusCode === 403) return "El acceso de tu organización está suspendido";
+  if (statusCode === 0) return "No pudimos conectar con el servidor. Revisá tu conexión e intentá de nuevo.";
+  if (statusCode >= 500) {
+    return "Hubo un problema en el servidor. No son tus credenciales — probá de nuevo en unos minutos.";
+  }
+  return "Credenciales incorrectas. Intentá de nuevo.";
 }
 
 export function useLogin() {
@@ -79,11 +108,7 @@ export function useLogin() {
     },
 
     onError: (err) => {
-      if (err.statusCode === 403) {
-        toast.error("El acceso de tu organización está suspendido");
-      } else {
-        toast.error("Credenciales incorrectas. Intentá de nuevo.");
-      }
+      toast.error(mensajeDeErrorDeLogin(err.statusCode));
     },
   });
 
