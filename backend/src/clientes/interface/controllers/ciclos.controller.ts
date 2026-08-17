@@ -9,10 +9,11 @@
  *
  * Guards: `JwtAuthGuard` + `TenantGuard` a nivel de controlador (requieren
  * JWT válido y `cliente_id` resuelto — ADR-4: el switch es el ÚNICO
- * mecanismo de salto de tenant, root incluido). `PermissionsGuard` +
- * `@RequirePermissions('ciclo:gestionar')` en los endpoints de escritura
- * (T9.7). `GET /ciclos` NO declara `@RequirePermissions` — el filtro por
- * ciclo (tickets/dashboard) lo necesitan todos los roles, no solo el
+ * mecanismo de salto de tenant, root incluido). `AdminClienteGuard` (WU-7.3,
+ * sdd/matriz-permisos-por-usuario — reemplaza `PermissionsGuard`+
+ * `@RequirePermissions('ciclo:gestionar')`) POR MÉTODO en los endpoints de
+ * escritura (T9.7). `GET /ciclos` sin guard extra — el filtro por ciclo
+ * (tickets/dashboard) lo necesitan todos los roles, no solo el
  * ADMINISTRADOR que gestiona ciclos (mismo criterio que `GET /catalogos/*`).
  *
  * Tarea: T9.7 (PR9 — Ciclos: catálogo master + adopción/activación);
@@ -44,8 +45,7 @@ import {
 } from '../../domain/errors/clientes.errors';
 import { JwtAuthGuard } from '../../../auth/infrastructure/guards/jwt-auth.guard';
 import { TenantGuard } from '../../../auth/infrastructure/guards/tenant.guard';
-import { PermissionsGuard } from '../../../auth/infrastructure/guards/permissions.guard';
-import { RequirePermissions } from '../../../auth/infrastructure/guards/decorators';
+import { AdminClienteGuard } from '../../../auth/infrastructure/guards/admin-cliente.guard';
 
 /** Formatea un `Date` (columna `@db.Date`) como `YYYY-MM-DD`. */
 function toDateOnly(date: Date): string {
@@ -63,7 +63,7 @@ function toResponseDto(ciclo: CicloClienteEntity): CicloResponseDto {
   };
 }
 
-@UseGuards(JwtAuthGuard, TenantGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, TenantGuard)
 @Controller('ciclos')
 export class CiclosController {
   constructor(
@@ -94,7 +94,7 @@ export class CiclosController {
    * @throws 409 CicloOverlap si las fechas solapan con el ciclo activo del tenant (R21)
    */
   @Post()
-  @RequirePermissions('ciclo:gestionar')
+  @UseGuards(AdminClienteGuard)
   @HttpCode(HttpStatus.CREATED)
   async create(@Body() dto: ElegirCicloDto): Promise<CicloResponseDto> {
     const result = await this.elegirCicloTenantUseCase.execute({
@@ -123,7 +123,7 @@ export class CiclosController {
    * @throws 404 si el ciclo no existe en el tenant
    */
   @Patch(':id/activar')
-  @RequirePermissions('ciclo:gestionar')
+  @UseGuards(AdminClienteGuard)
   @HttpCode(HttpStatus.OK)
   async activar(@Param('id') id: string): Promise<CicloResponseDto> {
     const result = await this.activarCicloUseCase.execute(id);
@@ -147,7 +147,7 @@ export class CiclosController {
    * @throws 404 si el ciclo no existe en el tenant
    */
   @Patch(':id/desactivar')
-  @RequirePermissions('ciclo:gestionar')
+  @UseGuards(AdminClienteGuard)
   @HttpCode(HttpStatus.OK)
   async desactivar(@Param('id') id: string): Promise<CicloResponseDto> {
     const result = await this.desactivarCicloUseCase.execute(id);

@@ -14,7 +14,13 @@ import { IUsuarioMasterChecker } from '../../../domain/ports/i-usuario-master.ch
  * resuelve con un JOIN a `membresias` filtrado por `clienteId` (ver JSDoc del
  * puerto para el detalle de la adaptación al schema real).
  *
- * Ref design: ADR-8. Ref spec: T14, T15.
+ * `getAutorizacionModulos`/`listarTecnicosAsignables` (elegibilidad del
+ * ASIGNADO) leen la matriz `usuario_cliente_permisos`, no
+ * `usuario_cliente_modulos` (R9, WU-7.5, sdd/matriz-permisos-por-usuario) —
+ * resuelven los módulos de OTRO usuario (el destinatario de una asignación),
+ * fuera del alcance de `resolverScope` (que solo cubre el eje del ACTOR).
+ *
+ * Ref design: ADR-8. Ref spec: T14, T15; sdd/matriz-permisos-por-usuario/spec R9.
  */
 @Injectable()
 export class UsuarioMasterChecker implements IUsuarioMasterChecker {
@@ -86,8 +92,14 @@ export class UsuarioMasterChecker implements IUsuarioMasterChecker {
 
   /**
    * ROOT o ADMINISTRADOR (membresía activa con rol `ADMINISTRADOR` en el
-   * cliente) → `esAdminTotal = true`. El resto → `modulos` asignados en
-   * `usuario_cliente_modulos`. Mismo criterio de "ve todo" que `resolverScope`.
+   * cliente) → `esAdminTotal = true`. El resto → `modulos` con AL MENOS UNA
+   * acción otorgada en la matriz `usuario_cliente_permisos` (R9, WU-7.5 —
+   * migrado de `usuario_cliente_modulos`; mismo umbral que `resolverScope`
+   * usa para derivar `modulos` del actor: no se exige una acción específica,
+   * `LECTURA` sola ya alcanza, porque todo módulo la declara).
+   *
+   * `esAdminTotal` NO cambió: sigue sin leer ninguna tabla de módulos, solo
+   * `usuario.isGlobalAdmin` y la membresía con rol `ADMINISTRADOR`.
    */
   async getAutorizacionModulos(
     usuarioId: string,
@@ -114,20 +126,24 @@ export class UsuarioMasterChecker implements IUsuarioMasterChecker {
       return { esAdminTotal: true, modulos: [] };
     }
 
-    const rows = await this.masterClient.usuarioClienteModulo.findMany({
+    const rows = await this.masterClient.usuarioClientePermiso.findMany({
       where: { usuarioId, clienteId },
       select: { modulo: true },
+      distinct: ['modulo'],
     });
     return { esAdminTotal: false, modulos: rows.map((r) => r.modulo) };
   }
 
   /**
    * Técnicos elegibles por módulo en un cliente. Dos consultas (no N+1):
-   * `usuario_cliente_modulos` NO tiene `@relation` a `Usuario` (soft ref
+   * `usuario_cliente_permisos` NO tiene `@relation` a `Usuario` (soft ref
    * cross-DB), así que no se puede filtrar el módulo con un `some` anidado en
-   * `usuario.findMany`. Se resuelven primero los `usuarioId` con el módulo
-   * asignado en el cliente y luego se intersecan con los técnicos activos que
-   * tienen membresía ACTIVA con rol TECNICO en ese cliente.
+   * `usuario.findMany`. Se resuelven primero los `usuarioId` con AL MENOS UNA
+   * acción otorgada en el módulo pedido (R9, WU-7.5 — migrado de
+   * `usuario_cliente_modulos`, `distinct` evita duplicados cuando el usuario
+   * tiene varias acciones del mismo módulo) y luego se intersecan con los
+   * técnicos activos que tienen membresía ACTIVA con rol TECNICO en ese
+   * cliente.
    *
    * Con `modulo === null` (tipo custom sin módulo) no hay elegibles por
    * catálogo → se retorna `[]` sin golpear la DB.
@@ -140,9 +156,10 @@ export class UsuarioMasterChecker implements IUsuarioMasterChecker {
       return [];
     }
 
-    const conModulo = await this.masterClient.usuarioClienteModulo.findMany({
+    const conModulo = await this.masterClient.usuarioClientePermiso.findMany({
       where: { clienteId, modulo },
       select: { usuarioId: true },
+      distinct: ['usuarioId'],
     });
     const idsConModulo = conModulo.map((r) => r.usuarioId);
     if (idsConModulo.length === 0) {

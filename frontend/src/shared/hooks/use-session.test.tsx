@@ -35,11 +35,25 @@ const TENANT_PAYLOAD: JwtPayload = {
   apellido: "Pérez",
 };
 
+const ADMINISTRADOR_PAYLOAD: JwtPayload = {
+  sub: "3",
+  cliente_id: "c1",
+  rol: "ADMINISTRADOR",
+  permisos: [],
+  is_global_admin: false,
+  cliente_nombre: "Cliente Uno",
+  membresias: [{ cliente_id: "c1", nombre: "Cliente Uno", rol: "ADMINISTRADOR" }],
+  modulos: [],
+  nombre: "Ana",
+  apellido: "Admin",
+};
+
 function Probe() {
-  const { isGlobalAdmin, can } = useSession();
+  const { isGlobalAdmin, esAdminCliente, can } = useSession();
   return (
     <div>
       <span data-testid="admin">{String(isGlobalAdmin)}</span>
+      <span data-testid="admin-cliente">{String(esAdminCliente)}</span>
       <span data-testid="can-crear">{String(can("ticket:crear"))}</span>
       <span data-testid="can-borrar">{String(can("ticket:borrar"))}</span>
     </div>
@@ -85,5 +99,34 @@ describe("useSession", () => {
     );
     expect(screen.getByTestId("admin")).toHaveTextContent("false");
     expect(screen.getByTestId("can-crear")).toHaveTextContent("false");
+  });
+
+  // ADR-P5 (sdd/matriz-permisos-por-usuario): esAdminCliente = rol
+  // ADMINISTRADOR O is_global_admin — gate de identidad, no de la matriz.
+  it("esAdminCliente: true para ADMINISTRADOR", () => {
+    render(
+      <SessionProvider initialUser={ADMINISTRADOR_PAYLOAD}>
+        <Probe />
+      </SessionProvider>,
+    );
+    expect(screen.getByTestId("admin-cliente")).toHaveTextContent("true");
+  });
+
+  it("esAdminCliente: true para ROOT", () => {
+    render(
+      <SessionProvider initialUser={ROOT_PAYLOAD}>
+        <Probe />
+      </SessionProvider>,
+    );
+    expect(screen.getByTestId("admin-cliente")).toHaveTextContent("true");
+  });
+
+  it("esAdminCliente: false para un rol que no es ADMINISTRADOR ni ROOT", () => {
+    render(
+      <SessionProvider initialUser={TENANT_PAYLOAD}>
+        <Probe />
+      </SessionProvider>,
+    );
+    expect(screen.getByTestId("admin-cliente")).toHaveTextContent("false");
   });
 });

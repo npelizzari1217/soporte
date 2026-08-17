@@ -3,22 +3,21 @@
  *
  * Unit test: instancia el controller directamente con use cases mockeados,
  * mismo patrón que `TicketsController`/`SlaConfigController` — verifica
- * gateo por `kb:gestionar` SOLO en rutas de escritura (POST/PATCH/DELETE,
- * metadata `@RequirePermissions` por método); las rutas de lectura
- * (GET) NO declaran permiso dedicado (scope se resuelve dentro del use
- * case por `ticket:ver_todos`, K3).
+ * gateo por `KB:ALTAS`/`MODIFICACION`/`PUBLICAR`/`BORRADO` en rutas de
+ * escritura (POST/PATCH/DELETE) y por `KB:LECTURA` en las de lectura
+ * (GET), metadata `@RequiereAcciones` por método, WU-7.3 + fix post-verify
+ * C1. El scope de FILA (publicados vs. todos) se sigue resolviendo dentro
+ * del use case por `KB:VER_TODOS` (K3/R11) — eso no cambió.
  *
  * Ref spec: sdd/premium/spec K1-K4, K7. Tarea: K7/K8.
  */
 import 'reflect-metadata';
 import { NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { KbController } from './kb.controller';
-import { PERMISSIONS_KEY } from '../../../auth/infrastructure/guards/decorators';
+import { ACCIONES_KEY } from '../../../auth/infrastructure/guards/decorators';
 import { Result } from '../../../shared/domain/result';
 import { KbArticuloEntity } from '../../domain/entities/kb-articulo.entity';
 import { KbArticuloNoEncontradoError, TituloVacioError } from '../../domain/errors/kb.errors';
-
-const PERMISO_KB_GESTIONAR = 'kb:gestionar';
 
 describe('KbController (K7)', () => {
   function buildController() {
@@ -65,37 +64,34 @@ describe('KbController (K7)', () => {
 
   // ─── Gateo por permiso — solo escritura ────────────────────────────────
 
-  it('[CRITICAL] POST /kb declara @RequirePermissions("kb:gestionar")', () => {
-    const permisos = Reflect.getMetadata(PERMISSIONS_KEY, KbController.prototype.create);
-    expect(permisos).toEqual([PERMISO_KB_GESTIONAR]);
+  it('[CRITICAL] POST /kb declara @RequiereAcciones("KB:ALTAS")', () => {
+    const permisos = Reflect.getMetadata(ACCIONES_KEY, KbController.prototype.create);
+    expect(permisos).toEqual(['KB:ALTAS']);
   });
 
-  it('[CRITICAL] PATCH /kb/:id declara @RequirePermissions("kb:gestionar")', () => {
-    const permisos = Reflect.getMetadata(PERMISSIONS_KEY, KbController.prototype.update);
-    expect(permisos).toEqual([PERMISO_KB_GESTIONAR]);
+  it('[CRITICAL] PATCH /kb/:id declara @RequiereAcciones("KB:MODIFICACION")', () => {
+    const permisos = Reflect.getMetadata(ACCIONES_KEY, KbController.prototype.update);
+    expect(permisos).toEqual(['KB:MODIFICACION']);
   });
 
-  it('[CRITICAL] PATCH /kb/:id/visibilidad declara @RequirePermissions("kb:gestionar")', () => {
-    const permisos = Reflect.getMetadata(
-      PERMISSIONS_KEY,
-      KbController.prototype.cambiarVisibilidad,
-    );
-    expect(permisos).toEqual([PERMISO_KB_GESTIONAR]);
+  it('[CRITICAL] PATCH /kb/:id/visibilidad declara @RequiereAcciones("KB:PUBLICAR")', () => {
+    const permisos = Reflect.getMetadata(ACCIONES_KEY, KbController.prototype.cambiarVisibilidad);
+    expect(permisos).toEqual(['KB:PUBLICAR']);
   });
 
-  it('[CRITICAL] DELETE /kb/:id declara @RequirePermissions("kb:gestionar")', () => {
-    const permisos = Reflect.getMetadata(PERMISSIONS_KEY, KbController.prototype.remove);
-    expect(permisos).toEqual([PERMISO_KB_GESTIONAR]);
+  it('[CRITICAL] DELETE /kb/:id declara @RequiereAcciones("KB:BORRADO")', () => {
+    const permisos = Reflect.getMetadata(ACCIONES_KEY, KbController.prototype.remove);
+    expect(permisos).toEqual(['KB:BORRADO']);
   });
 
-  it('[CRITICAL] GET /kb NO declara @RequirePermissions (lectura sin permiso dedicado)', () => {
-    const permisos = Reflect.getMetadata(PERMISSIONS_KEY, KbController.prototype.findAll);
-    expect(permisos).toBeUndefined();
+  it('[CRITICAL] GET /kb declara @RequiereAcciones("KB:LECTURA") (fix post-verify C1, scope de fila sigue inline vía KB:VER_TODOS)', () => {
+    const permisos = Reflect.getMetadata(ACCIONES_KEY, KbController.prototype.findAll);
+    expect(permisos).toEqual(['KB:LECTURA']);
   });
 
-  it('[CRITICAL] GET /kb/:id NO declara @RequirePermissions (lectura sin permiso dedicado)', () => {
-    const permisos = Reflect.getMetadata(PERMISSIONS_KEY, KbController.prototype.findOne);
-    expect(permisos).toBeUndefined();
+  it('[CRITICAL] GET /kb/:id declara @RequiereAcciones("KB:LECTURA") (fix post-verify C1, scope de fila sigue inline vía KB:VER_TODOS)', () => {
+    const permisos = Reflect.getMetadata(ACCIONES_KEY, KbController.prototype.findOne);
+    expect(permisos).toEqual(['KB:LECTURA']);
   });
 
   // ─── POST /kb ───────────────────────────────────────────────────────────
@@ -202,7 +198,7 @@ describe('KbController (K7)', () => {
   // ─── GET /kb/:id ────────────────────────────────────────────────────────
 
   describe('GET /kb/:id', () => {
-    it('[CRITICAL] USUARIO (sin ticket:ver_todos): use case recibe tienePermisoVerTodos=false', async () => {
+    it('[CRITICAL] USUARIO (sin KB:VER_TODOS): use case recibe tienePermisoVerTodos=false', async () => {
       const { controller, obtenerUseCase } = buildController();
       const articulo = buildArticulo({ visibleParaSolicitante: true });
       obtenerUseCase.execute.mockResolvedValue(Result.ok(articulo));
@@ -215,15 +211,12 @@ describe('KbController (K7)', () => {
       });
     });
 
-    it('[CRITICAL] TECNICO (con ticket:ver_todos): use case recibe tienePermisoVerTodos=true', async () => {
+    it('[CRITICAL] TECNICO (con KB:VER_TODOS): use case recibe tienePermisoVerTodos=true', async () => {
       const { controller, obtenerUseCase } = buildController();
       const articulo = buildArticulo();
       obtenerUseCase.execute.mockResolvedValue(Result.ok(articulo));
 
-      await controller.findOne(
-        { sub: 't', permisos: ['ticket:ver_todos'] } as never,
-        'articulo-uuid',
-      );
+      await controller.findOne({ sub: 't', permisos: ['KB:VER_TODOS'] } as never, 'articulo-uuid');
 
       expect(obtenerUseCase.execute).toHaveBeenCalledWith({
         id: 'articulo-uuid',
@@ -263,7 +256,7 @@ describe('KbController (K7)', () => {
       listarUseCase.execute.mockResolvedValue({ items: [articulo], total: 1 });
 
       const result = await controller.findAll(
-        { sub: 't', permisos: ['ticket:ver_todos'] } as never,
+        { sub: 't', permisos: ['KB:VER_TODOS'] } as never,
         {},
       );
 

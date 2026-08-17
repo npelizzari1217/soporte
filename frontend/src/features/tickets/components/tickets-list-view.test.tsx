@@ -63,7 +63,7 @@ describe("TicketsListView", () => {
   });
 
   it("resuelve estadoId/prioridadId a códigos vía catálogos y los renderiza como badges (G1)", async () => {
-    renderWithProviders(<TicketsListView />, { user: buildUser({ permisos: ["ticket:ver_todos"] }) });
+    renderWithProviders(<TicketsListView />, { user: buildUser({ permisos: ["TICKETS:VER_TODOS"] }) });
     expect(await screen.findByText("Impresora rota")).toBeInTheDocument();
     expect(screen.getByTestId("status-badge")).toHaveTextContent("Nuevo");
     expect(screen.getByTestId("priority-badge")).toHaveTextContent("Alta");
@@ -83,14 +83,14 @@ describe("TicketsListView", () => {
         }),
       ),
     );
-    renderWithProviders(<TicketsListView />, { user: buildUser({ permisos: ["ticket:ver_todos"] }) });
+    renderWithProviders(<TicketsListView />, { user: buildUser({ permisos: ["TICKETS:VER_TODOS"] }) });
     expect(await screen.findByText("Ana Pérez")).toBeInTheDocument();
     expect(screen.getByText("Sin asignar")).toBeInTheDocument();
   });
 
   it("click en una fila navega al detalle del ticket", async () => {
     const user = userEvent.setup();
-    renderWithProviders(<TicketsListView />, { user: buildUser({ permisos: ["ticket:ver_todos"] }) });
+    renderWithProviders(<TicketsListView />, { user: buildUser({ permisos: ["TICKETS:VER_TODOS"] }) });
     const row = await screen.findByText("Impresora rota");
     await user.click(row);
     expect(pushMock).toHaveBeenCalledWith("/tickets/t1");
@@ -98,7 +98,7 @@ describe("TicketsListView", () => {
 
   it("elegir un filtro de estado actualiza la URL (searchParams) con el estado elegido y resetea a página 1", async () => {
     const user = userEvent.setup();
-    renderWithProviders(<TicketsListView />, { user: buildUser({ permisos: ["ticket:ver_todos"] }) });
+    renderWithProviders(<TicketsListView />, { user: buildUser({ permisos: ["TICKETS:VER_TODOS"] }) });
     await screen.findByText("Impresora rota");
 
     await user.selectOptions(screen.getByLabelText(/estado/i), "e-nuevo");
@@ -111,8 +111,8 @@ describe("TicketsListView", () => {
   });
 
   it.each([
-    ["con ticket:crear", ["ticket:crear"], true],
-    ["sin ticket:crear", [], false],
+    ["con TICKETS:ALTAS", ["TICKETS:ALTAS"], true],
+    ["sin TICKETS:ALTAS", [], false],
   ])("botón «Nuevo ticket» — %s", async (_label, permisos, shouldShow) => {
     renderWithProviders(<TicketsListView />, { user: buildUser({ permisos }) });
     await screen.findByText("Impresora rota");

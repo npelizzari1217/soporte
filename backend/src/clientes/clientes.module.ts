@@ -175,8 +175,9 @@ import { ClientesController } from './interface/controllers/clientes.controller'
     },
     {
       provide: ReactivarClienteUseCase,
-      useFactory: (repo: IClienteRepository) => new ReactivarClienteUseCase(repo),
-      inject: [CLIENTE_REPOSITORY],
+      useFactory: (repo: IClienteRepository, migrationRunner: ITenantMigrationRunner) =>
+        new ReactivarClienteUseCase(repo, migrationRunner),
+      inject: [CLIENTE_REPOSITORY, TENANT_MIGRATION_RUNNER],
     },
     {
       provide: CrearClienteUseCase,

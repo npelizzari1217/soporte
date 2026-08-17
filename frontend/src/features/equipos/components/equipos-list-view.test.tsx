@@ -18,23 +18,52 @@ function mockEquipos() {
 describe("EquiposListView — gate del botón «Nuevo ticket de soporte»", () => {
   const BOTON = /nuevo ticket de soporte/i;
 
-  it("con ticket:crear pero SIN módulo SOPORTE → el botón NO se muestra", async () => {
-    // El endpoint POST /soporte exige @RequireModulo('SOPORTE'); sin el módulo,
-    // el botón daba 403 al enviar. Debe ocultarse (regresión del LEAK).
+  it("con TICKETS:ALTAS pero SIN módulo TICKETS → el botón NO se muestra", async () => {
+    // El endpoint POST /soporte exige @RequiereAcciones('TICKETS:ALTAS') (WU-7.3);
+    // sin el módulo, el botón daba 403 al enviar. Debe ocultarse (regresión del LEAK).
     mockEquipos();
     renderWithProviders(<EquiposListView />, {
-      user: buildUser({ permisos: ["ticket:crear"], modulos: ["EQUIPOS"] }),
+      user: buildUser({ permisos: ["TICKETS:ALTAS"], modulos: ["EQUIPOS"] }),
     });
     await waitFor(() =>
       expect(screen.queryByRole("button", { name: BOTON })).not.toBeInTheDocument(),
     );
   });
 
-  it("con ticket:crear Y módulo SOPORTE → el botón se muestra", async () => {
+  it("con TICKETS:ALTAS Y módulo TICKETS → el botón se muestra", async () => {
     mockEquipos();
     renderWithProviders(<EquiposListView />, {
-      user: buildUser({ permisos: ["ticket:crear"], modulos: ["EQUIPOS", "SOPORTE"] }),
+      user: buildUser({ permisos: ["TICKETS:ALTAS"], modulos: ["EQUIPOS", "TICKETS"] }),
     });
     expect(await screen.findByRole("button", { name: BOTON })).toBeInTheDocument();
+  });
+});
+
+// WU-7.6: el gate de ACCESO al inventario pasa a EQUIPOS:LECTURA (no
+// EQUIPOS:ALTAS, deviación declarada vs. el mapeo mecánico del design) — un
+// lector sin permiso de alta debe VER la tabla igual, solo sin el botón
+// "Nuevo equipo".
+describe("EquiposListView — gate del inventario (EQUIPOS:LECTURA/ALTAS)", () => {
+  it("sin EQUIPOS:LECTURA → no ve el inventario", async () => {
+    mockEquipos();
+    renderWithProviders(<EquiposListView />, { user: buildUser({ permisos: [] }) });
+    expect(await screen.findByText(/no tenés permiso/i)).toBeInTheDocument();
+  });
+
+  it("con EQUIPOS:LECTURA pero SIN EQUIPOS:ALTAS → ve la tabla, NO ve «Nuevo equipo»", async () => {
+    mockEquipos();
+    renderWithProviders(<EquiposListView />, {
+      user: buildUser({ permisos: ["EQUIPOS:LECTURA"] }),
+    });
+    await waitFor(() => expect(screen.queryByText(/no tenés permiso/i)).not.toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: /nuevo equipo/i })).not.toBeInTheDocument();
+  });
+
+  it("con EQUIPOS:LECTURA Y EQUIPOS:ALTAS → ve «Nuevo equipo»", async () => {
+    mockEquipos();
+    renderWithProviders(<EquiposListView />, {
+      user: buildUser({ permisos: ["EQUIPOS:LECTURA", "EQUIPOS:ALTAS"] }),
+    });
+    expect(await screen.findByRole("button", { name: /nuevo equipo/i })).toBeInTheDocument();
   });
 });

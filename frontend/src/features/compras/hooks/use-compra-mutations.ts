@@ -105,7 +105,7 @@ export function useEliminarItemCompra(compraId: string) {
   });
 }
 
-/** `POST .../aprobar` (§4.3, S8/S10/S11). Requiere `compra:aprobar` (gateo en el caller, ver componentes). */
+/** `POST .../aprobar` (§4.3, S8/S10/S11). Requiere `COMPRAS:APROBACION` (gateo en el caller, ver componentes). */
 export function useAprobarItemCompra(compraId: string) {
   const queryClient = useQueryClient();
   return useMutation({

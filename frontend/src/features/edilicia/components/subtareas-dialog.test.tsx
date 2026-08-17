@@ -15,8 +15,8 @@ describe("SubtareasDialog — completar subtarea gateado (80/20)", () => {
   });
 
   it.each([
-    ["con subtarea:actualizar", ["subtarea:actualizar"], true],
-    ["sin subtarea:actualizar (solo lectura)", [], false],
+    ["con EDILICIA:ALTAS+MODIFICACION", ["EDILICIA:ALTAS", "EDILICIA:MODIFICACION"], true],
+    ["sin ninguna celda EDILICIA (solo lectura)", [], false],
   ])("acciones del checklist — %s", async (_label, permisos, shouldShowActions) => {
     const user = userEvent.setup();
     server.use(
@@ -91,7 +91,7 @@ describe("SubtareasDialog — completar subtarea gateado (80/20)", () => {
 
     renderWithProviders(
       <SubtareasDialog reparacionId="rep1" numero="EDI-0001" trigger={<button>Ver subtareas</button>} />,
-      { user: buildUser({ permisos: ["subtarea:actualizar"] }) },
+      { user: buildUser({ permisos: ["EDILICIA:ALTAS", "EDILICIA:MODIFICACION"] }) },
     );
 
     await user.click(screen.getByRole("button", { name: /ver subtareas/i }));

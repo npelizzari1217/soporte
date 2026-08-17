@@ -13,6 +13,7 @@
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { TicketsController } from './tickets.controller';
 import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
+import { payloadDeTest } from '../../../auth/test-helpers/payload-de-test';
 import { Result } from '../../../shared/domain/result';
 import { OperacionTicketEntity } from '../../domain/entities/operacion-ticket.entity';
 import { TicketEntity } from '../../domain/entities/ticket.entity';
@@ -39,49 +40,42 @@ function fakeOperacion(esInterno: boolean): OperacionTicketEntity {
   } as unknown as OperacionTicketEntity;
 }
 
-const ROOT: JwtPayload = {
+const ROOT: JwtPayload = payloadDeTest({
   sub: 'root-1',
   cliente_id: 'cliente-1',
   rol: null,
   permisos: [], // ROOT scopeado a un tenant sin membresía → sin permisos de rol
   is_global_admin: true,
   cliente_nombre: 'Cliente 1',
-  membresias: [],
   modulos: [], // ROOT no necesita módulos: bypassa por is_global_admin
-};
+});
 
-const USUARIO_SIN_OBSERVAR: JwtPayload = {
+const USUARIO_SIN_OBSERVAR: JwtPayload = payloadDeTest({
   sub: 'usr-1',
   cliente_id: 'cliente-1',
   rol: 'USUARIO',
   permisos: ['ticket:comentar'], // tiene comentar, NO observar
-  is_global_admin: false,
   cliente_nombre: 'Cliente 1',
-  membresias: [],
   modulos: ['SOPORTE'],
-};
+});
 
-const ADMINISTRADOR: JwtPayload = {
+const ADMINISTRADOR: JwtPayload = payloadDeTest({
   sub: 'admin-1',
   cliente_id: 'cliente-1',
   rol: 'ADMINISTRADOR',
   permisos: ['ticket:ver_todos'],
-  is_global_admin: false,
   cliente_nombre: 'Cliente 1',
-  membresias: [],
   modulos: ['SOPORTE', 'COMPRAS', 'EDILICIA', 'EQUIPOS'],
-};
+});
 
-const USUARIO_SOPORTE: JwtPayload = {
+const USUARIO_SOPORTE: JwtPayload = payloadDeTest({
   sub: 'usr-2',
   cliente_id: 'cliente-1',
   rol: 'USUARIO',
   permisos: [],
-  is_global_admin: false,
   cliente_nombre: 'Cliente 1',
-  membresias: [],
   modulos: ['SOPORTE'],
-};
+});
 
 describe('TicketsController — bypass ROOT en chequeos inline (sdd/root-access-fix)', () => {
   function buildController(overrides: {

@@ -14,14 +14,15 @@
  * cual, nunca se recalculan acá.
  *
  * Columna "Acciones" (cierre del hueco de wiring, PR-26/PR-27 dejaron las 7
- * piezas AUTÓNOMAS): cablea `ItemEditDialog`/`ItemEliminarControl`/
- * `RegistrarCompraDialog`/`RegistrarEntregaDialog`/`ItemCerrarFaltanteDialog`
- * detrás de `<Can permiso="compra:gestionar">` y `ItemDecisionActions`
- * (aprobar/rechazar) detrás de `<Can permiso="compra:aprobar">` — mismo
- * patrón de MÚLTIPLES `<Can>` en una sola celda que `usuarios-admin-view.tsx`
- * (permisos independientes, un `<Can>` por acción). Cada pieza es
- * PRESENTACIONAL y ya trae su propio gate de estado (S7/S10/S16/S20/S25),
- * este archivo solo decide QUIÉN la ve.
+ * piezas AUTÓNOMAS; gates migrados a la matriz en WU-7.6): cablea
+ * `ItemEditDialog`/`RegistrarCompraDialog`/`RegistrarEntregaDialog`/
+ * `ItemCerrarFaltanteDialog` detrás de `<Can permiso="COMPRAS:MODIFICACION">`,
+ * `ItemEliminarControl` detrás de `<Can permiso="COMPRAS:BORRADO">`, y
+ * `ItemDecisionActions` (aprobar/rechazar) detrás de
+ * `<Can permiso="COMPRAS:APROBACION">` — mismo patrón de MÚLTIPLES `<Can>`
+ * en una sola celda que `usuarios-admin-view.tsx` (permisos independientes,
+ * un `<Can>` por acción). Cada pieza es PRESENTACIONAL y ya trae su propio
+ * gate de estado (S7/S10/S16/S20/S25), este archivo solo decide QUIÉN la ve.
  */
 import { Inbox } from "lucide-react";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
@@ -107,17 +108,19 @@ export function CompraItemsSection({ compraId, items }: CompraItemsSectionProps)
                   </TableCell>
                   <TableCell>
                     <div className="flex flex-wrap items-center gap-1">
-                      <Can permiso="compra:aprobar">
+                      <Can permiso="COMPRAS:APROBACION">
                         <ItemDecisionActions compraId={compraId} item={item} />
                       </Can>
-                      <Can permiso="compra:gestionar">
+                      <Can permiso="COMPRAS:MODIFICACION">
                         <>
                           <RegistrarCompraDialog compraId={compraId} item={item} />
                           <RegistrarEntregaDialog compraId={compraId} item={item} />
                           <ItemCerrarFaltanteDialog compraId={compraId} item={item} />
                           <ItemEditDialog compraId={compraId} item={item} />
-                          <ItemEliminarControl compraId={compraId} item={item} />
                         </>
+                      </Can>
+                      <Can permiso="COMPRAS:BORRADO">
+                        <ItemEliminarControl compraId={compraId} item={item} />
                       </Can>
                     </div>
                   </TableCell>

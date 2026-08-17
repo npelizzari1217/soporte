@@ -35,10 +35,10 @@ describe("CiclosAdminView", () => {
   beforeEach(() => mockBackend());
 
   it.each([
-    ["con ciclo:gestionar", ["ciclo:gestionar"], true],
-    ["sin ciclo:gestionar", [], false],
-  ])("gate de acceso a Admin > Ciclos — %s", async (_label, permisos, shouldShowContent) => {
-    renderWithProviders(<CiclosAdminView />, { user: buildUser({ permisos }) });
+    ["ADMINISTRADOR", "ADMINISTRADOR", true],
+    ["TECNICO (no admin, no root)", "TECNICO", false],
+  ])("gate de acceso a Admin > Ciclos — %s", async (_label, rol, shouldShowContent) => {
+    renderWithProviders(<CiclosAdminView />, { user: buildUser({ rol }) });
 
     if (shouldShowContent) {
       await screen.findByText("2026-S1");
@@ -57,7 +57,7 @@ describe("CiclosAdminView", () => {
       )),
     );
 
-    renderWithProviders(<CiclosAdminView />, { user: buildUser({ permisos: ["ciclo:gestionar"] }) });
+    renderWithProviders(<CiclosAdminView />, { user: buildUser({ rol: "ADMINISTRADOR" }) });
     await screen.findByText("2026-S1");
 
     await user.click(screen.getByRole("button", { name: /activar/i }));
@@ -77,7 +77,7 @@ describe("CiclosAdminView", () => {
       }),
     );
 
-    renderWithProviders(<CiclosAdminView />, { user: buildUser({ permisos: ["ciclo:gestionar"] }) });
+    renderWithProviders(<CiclosAdminView />, { user: buildUser({ rol: "ADMINISTRADOR" }) });
     await screen.findByText("2026-S1");
 
     await user.click(screen.getByRole("button", { name: /^adoptar ciclo$/i }));

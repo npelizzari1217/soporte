@@ -53,6 +53,8 @@ import { TenantMigrationRunnerAdapter } from '../../../clientes/infrastructure/t
 import { TenantSeederAdapter } from '../../../clientes/infrastructure/tenant-seeder.adapter';
 import { PrismaClienteRepository } from '../../../clientes/infrastructure/persistence/prisma/prisma-cliente.repository';
 import { PrismaUsuarioRepository } from '../../../auth/infrastructure/persistence/prisma/prisma-usuario.repository';
+import { PrismaMatrizPermisosRepository } from '../../../auth/infrastructure/persistence/prisma/prisma-matriz-permisos.repository';
+import { CodigoAccion } from '../../../shared/domain/acciones';
 import { ClienteEntity } from '../../../clientes/domain/entities/cliente.entity';
 import { UsuarioEntity } from '../../../auth/domain/entities/usuario.entity';
 import { RoleEntity } from '../../../auth/domain/entities/role.entity';
@@ -151,6 +153,7 @@ describe('Tickets e2e (T4-T8, PR6)', () => {
   let tenantClient: InstanceType<typeof TenantPrismaClient>;
   let clienteRepo: PrismaClienteRepository;
   let usuarioRepo: PrismaUsuarioRepository;
+  let permisosRepo: PrismaMatrizPermisosRepository;
   let hashProvider: Argon2HashProvider;
 
   const admin = new PostgresAdminService(MASTER_TEST_URL);
@@ -160,6 +163,41 @@ describe('Tickets e2e (T4-T8, PR6)', () => {
   let prioridadMediaId: string;
   let cicloActivoId: string;
   let storageDir: string;
+
+  /**
+   * WU-7.3 (sdd/matriz-permisos-por-usuario): `roles_permisos` (RBAC viejo)
+   * YA NO alimenta `payload.permisos` — `resolverScope` lee la matriz nueva
+   * (WU-7.1). Este spec sigue escribiendo con el vocabulario viejo
+   * (`createRoleConPermisos('TECNICO', ['ticket:editar'])`, decenas de
+   * call sites) a propósito, para minimizar el diff: `createRoleConPermisos`
+   * recuerda qué permisos viejos se pidieron por `rolId`, y `createMembresia`
+   * los traduce y siembra en `usuario_cliente_permisos` automáticamente —
+   * cero cambios en los `it()` individuales.
+   */
+  const permisosPorRolId = new Map<string, string[]>();
+
+  /** Mapeo permiso viejo → celdas nuevas (R7, mismo mapeo que el backfill SQL). */
+  function mapearPermisosViejos(permisosViejos: string[]): CodigoAccion[] {
+    const mapa: Record<string, CodigoAccion[]> = {
+      'ticket:crear': ['TICKETS:ALTAS'],
+      'ticket:comentar': ['TICKETS:COMENTAR'],
+      'ticket:ver_todos': ['TICKETS:VER_TODOS'],
+      'ticket:editar': ['TICKETS:MODIFICACION'],
+      'ticket:transicionar': ['TICKETS:TRANSICIONAR'],
+      'ticket:asignar': ['TICKETS:ASIGNAR'],
+      'ticket:observar': ['TICKETS:OBSERVAR'],
+      'catalogo:gestionar': [], // WU-7.3: pasa a AdminClienteGuard (rol ADMINISTRADOR), no es una celda.
+    };
+    // Regla universal R7: TODA membresía activa recibe TICKETS:LECTURA,
+    // exista o no un permiso viejo equivalente (no había gate de lectura hoy).
+    const celdas = new Set<CodigoAccion>(['TICKETS:LECTURA']);
+    for (const permiso of permisosViejos) {
+      for (const celda of mapa[permiso] ?? []) {
+        celdas.add(celda);
+      }
+    }
+    return [...celdas];
+  }
 
   beforeAll(async () => {
     if (!process.env.DATABASE_URL_MASTER) {
@@ -183,6 +221,7 @@ describe('Tickets e2e (T4-T8, PR6)', () => {
     tenantClient = prismaService.getTenantClient(TENANT_DB_NAME);
     clienteRepo = new PrismaClienteRepository(prismaService);
     usuarioRepo = new PrismaUsuarioRepository(prismaService);
+    permisosRepo = new PrismaMatrizPermisosRepository(prismaService);
     hashProvider = new Argon2HashProvider();
 
     const estadoNuevo = await tenantClient.estado.findUniqueOrThrow({ where: { codigo: 'NUEVO' } });
@@ -245,9 +284,14 @@ describe('Tickets e2e (T4-T8, PR6)', () => {
   }, 60_000);
 
   beforeEach(async () => {
+    // usuario_cliente_permisos (WU-2, sdd/matriz-permisos-por-usuario) NO
+    // tiene FK declarada — el TRUNCATE CASCADE de las tablas viejas no la
+    // alcanza, hay que listarla explícitamente (mismo gotcha documentado en
+    // auth.e2e.spec.ts, tanda 2).
     await masterClient.$executeRawUnsafe(
-      'TRUNCATE TABLE membresias, refresh_tokens, roles_permisos, usuarios, clientes, roles, permisos RESTART IDENTITY CASCADE',
+      'TRUNCATE TABLE membresias, refresh_tokens, roles_permisos, usuario_cliente_permisos, usuarios, clientes, roles, permisos RESTART IDENTITY CASCADE',
     );
+    permisosPorRolId.clear();
   });
 
   // ─── Fixtures (master) ────────────────────────────────────────────────
@@ -289,6 +333,7 @@ describe('Tickets e2e (T4-T8, PR6)', () => {
         data: { rolId: role.id, permisoId: permisoRow.id },
       });
     }
+    permisosPorRolId.set(role.id, permisoCodigos);
     return role;
   }
 
@@ -311,6 +356,12 @@ describe('Tickets e2e (T4-T8, PR6)', () => {
     rolId: string,
   ): Promise<void> {
     await masterClient.membresia.create({ data: { usuarioId, clienteId, rolId, activo: true } });
+    // WU-7.3: siembra la matriz nueva a partir de los permisos viejos con los
+    // que se creó el rol (ver `permisosPorRolId` arriba). Si el rol es
+    // 'ADMINISTRADOR', resolverScope bypassea TODO igual (R2) — sembrar acá
+    // es inofensivo (no se lee) pero se hace igual por uniformidad.
+    const permisosViejos = permisosPorRolId.get(rolId) ?? [];
+    await permisosRepo.setPermisos(usuarioId, clienteId, mapearPermisosViejos(permisosViejos));
   }
 
   async function login(email: string): Promise<{ accessToken: string }> {
@@ -328,7 +379,7 @@ describe('Tickets e2e (T4-T8, PR6)', () => {
         codigo: `${prefijo}${randomBytes(3).toString('hex').toUpperCase()}`,
         nombre: prefijo,
         activo: true,
-        modulo: 'SOPORTE',
+        modulo: 'TICKETS',
       },
     });
     return tipo.id;
@@ -662,9 +713,22 @@ describe('Tickets e2e (T4-T8, PR6)', () => {
       await createMembresia(agente.id, cliente.id, roleAgente.id);
       const loginUsuario = await login(usuario.email);
       const loginTecnico = await login(tecnico.email);
-      // Tipo SOPORTE (seedeado): mapea al módulo SOPORTE — la elegibilidad de
-      // asignación es por MÓDULO del catálogo asignado al usuario.
-      const tipoId = tipoSoporteId;
+      // Tipo de módulo EQUIPOS, NO tipoSoporteId (WU-7.5, R9): TICKETS/KB
+      // reciben `LECTURA` universal para TODA membresía activa (R7) — el
+      // agente ya sería elegible por TICKETS apenas se crea su membresía
+      // (`createMembresia` siembra `TICKETS:LECTURA` para cualquier rol),
+      // así que ese módulo ya no sirve para probar el gate de elegibilidad.
+      // EQUIPOS SÍ exige una acción propia en la matriz (R9: "al menos una
+      // acción otorgada"), preservando la intención original del test.
+      const tipoEquipos = await tenantClient.tipoTicket.create({
+        data: {
+          codigo: `EQP${randomBytes(3).toString('hex').toUpperCase()}`,
+          nombre: 'Tipo Equipos (asignación)',
+          activo: true,
+          modulo: 'EQUIPOS',
+        },
+      });
+      const tipoId = tipoEquipos.id;
 
       const created = await httpPost<TicketResponseDto>(
         `${baseUrl}/tickets`,
@@ -680,7 +744,8 @@ describe('Tickets e2e (T4-T8, PR6)', () => {
       );
       expect(denegado.status).toBe(403);
 
-      // TECNICO con ticket:asignar, pero el agente aún NO tiene el módulo SOPORTE → 422.
+      // TECNICO con ticket:asignar, pero el agente aún NO tiene ninguna
+      // acción de EQUIPOS en la matriz → 422.
       const noElegible = await httpPatch(
         `${baseUrl}/tickets/${created.data.id}/asignar`,
         { asignadoId: agente.id },
@@ -688,10 +753,10 @@ describe('Tickets e2e (T4-T8, PR6)', () => {
       );
       expect(noElegible.status).toBe(422);
 
-      // Habilita al agente asignándole el módulo SOPORTE en el cliente (master).
-      await masterClient.usuarioClienteModulo.create({
-        data: { usuarioId: agente.id, clienteId: cliente.id, modulo: 'SOPORTE' },
-      });
+      // Habilita al agente otorgándole una celda de EQUIPOS en la matriz
+      // nueva (WU-7.5: el checker de elegibilidad ya lee
+      // `usuario_cliente_permisos`, no la tabla vieja `usuario_cliente_modulos`).
+      await permisosRepo.setPermisos(agente.id, cliente.id, ['EQUIPOS:LECTURA']);
 
       // TECNICO con ticket:asignar + agente con el módulo → asignación válida.
       const permitido = await httpPatch<TicketResponseDto>(
@@ -1104,7 +1169,7 @@ describe('Tickets e2e (T4-T8, PR6)', () => {
         activo: boolean;
       }>(
         `${baseUrl}/catalogos/tipos-ticket`,
-        { codigo, nombre: 'Categoría E2E', modulo: 'SOPORTE' },
+        { codigo, nombre: 'Categoría E2E', modulo: 'TICKETS' },
         bearer(admin.accessToken),
       );
       expect(creado.status).toBe(201);
@@ -1156,7 +1221,7 @@ describe('Tickets e2e (T4-T8, PR6)', () => {
         {
           codigo: `NOPERM${randomBytes(2).toString('hex').toUpperCase()}`,
           nombre: 'Sin permiso',
-          modulo: 'SOPORTE',
+          modulo: 'TICKETS',
         },
         bearer(actor.accessToken),
       );
@@ -1174,7 +1239,7 @@ describe('Tickets e2e (T4-T8, PR6)', () => {
 
       const { status, data } = await httpPost<{ message: string }>(
         `${baseUrl}/catalogos/tipos-ticket`,
-        { codigo: codigoColisionante, nombre: 'Colisión de prefijo', modulo: 'SOPORTE' },
+        { codigo: codigoColisionante, nombre: 'Colisión de prefijo', modulo: 'TICKETS' },
         bearer(admin.accessToken),
       );
 

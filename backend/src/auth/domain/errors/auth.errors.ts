@@ -154,16 +154,41 @@ export class MembresiaNoEncontradaError extends DomainError {
 }
 
 /**
- * ModuloInvalidoError — uno o más códigos de módulo recibidos al asignar
- * módulos a un usuario (`PATCH /usuarios/:id/modulos`) no pertenecen al
- * catálogo `MODULOS` (`shared/domain/modulos`). Validación de INPUT del actor
- * (ADMINISTRADOR), defensa en profundidad detrás del `@IsIn` del DTO.
+ * CeldaPermisoInvalidaError — uno o más códigos `MODULO:ACCION` recibidos al
+ * reemplazar la matriz de un usuario (`PATCH /usuarios/:id/permisos`, WU-7.4)
+ * no pertenecen al catálogo `PARES_VALIDOS` (`shared/domain/acciones`).
+ * Defensa en profundidad detrás del `@IsIn` del DTO. `ModuloInvalidoError`
+ * (equivalente para el ABM viejo de módulos) se retiró en WU-7.6 junto con
+ * ese ABM.
  * → HTTP 422 en la capa de presentación.
  */
-export class ModuloInvalidoError extends DomainError {
-  readonly code = 'AUTH_MODULO_INVALIDO';
+export class CeldaPermisoInvalidaError extends DomainError {
+  readonly code = 'AUTH_CELDA_PERMISO_INVALIDA';
 
-  constructor(modulos: string[]) {
-    super(`Módulo(s) inválido(s): ${modulos.join(', ')}.`);
+  constructor(celdas: string[]) {
+    super(`Celda(s) de permiso inválida(s): ${celdas.join(', ')}.`);
+  }
+}
+
+/**
+ * PresetRolNoDefinidoError — el `rolCodigo` recibido en
+ * `AplicarPresetPermisosUseCase` (`POST /usuarios/:id/permisos/aplicar-preset`,
+ * WU-7.4) SÍ existe como `Role` en el catálogo RBAC pero NO tiene entrada en
+ * `PRESETS_ROL` (`auth/domain/presets-rol.ts`). A diferencia de
+ * `RolNoEncontradoError` (rol inexistente en `master.roles`, error de INPUT),
+ * esto es un GAP DE CONFIGURACIÓN del código: alguien sembró un rol nuevo por
+ * migración sin agregar su preset. Nunca debe resolverse en silencio con un
+ * preset vacío — eso borraría en silencio la matriz de cualquiera al que se
+ * le aplique.
+ * → HTTP 422 en la capa de presentación.
+ */
+export class PresetRolNoDefinidoError extends DomainError {
+  readonly code = 'AUTH_PRESET_ROL_NO_DEFINIDO';
+
+  constructor(rolCodigo: string) {
+    super(
+      `No hay preset de permisos definido para el rol "${rolCodigo}". ` +
+        `Agregalo a PRESETS_ROL antes de aplicarlo.`,
+    );
   }
 }

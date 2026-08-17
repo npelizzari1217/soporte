@@ -13,7 +13,7 @@ const TIPO_INCIDENTE = {
   id: "t1",
   codigo: "INCIDENTE",
   nombre: "Incidente",
-  modulo: "SOPORTE",
+  modulo: "TICKETS",
   activo: true,
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",
@@ -33,10 +33,10 @@ describe("CatalogosAdminView", () => {
   });
 
   it.each([
-    ["con catalogo:gestionar", ["catalogo:gestionar"], true],
-    ["sin catalogo:gestionar", [], false],
-  ])("gate de acceso a Admin > Catálogos — %s", async (_label, permisos, shouldShowContent) => {
-    renderWithProviders(<CatalogosAdminView />, { user: buildUser({ permisos }) });
+    ["ADMINISTRADOR", "ADMINISTRADOR", true],
+    ["TECNICO (no admin, no root)", "TECNICO", false],
+  ])("gate de acceso a Admin > Catálogos — %s", async (_label, rol, shouldShowContent) => {
+    renderWithProviders(<CatalogosAdminView />, { user: buildUser({ rol }) });
 
     if (shouldShowContent) {
       await screen.findByText("INCIDENTE");
@@ -57,14 +57,14 @@ describe("CatalogosAdminView", () => {
       ),
     );
 
-    renderWithProviders(<CatalogosAdminView />, { user: buildUser({ permisos: ["catalogo:gestionar"] }) });
+    renderWithProviders(<CatalogosAdminView />, { user: buildUser({ rol: "ADMINISTRADOR" }) });
     await screen.findByText("INCIDENTE");
 
     await user.click(screen.getByRole("button", { name: /nuevo tipo/i }));
     await user.type(screen.getByLabelText(/código/i), "INCIDENCIA");
     await user.type(screen.getByLabelText(/nombre/i), "Incidencia");
     // B2: el módulo es requerido — sin elegirlo el form no dispara el POST.
-    await user.selectOptions(screen.getByLabelText(/módulo/i), "SOPORTE");
+    await user.selectOptions(screen.getByLabelText(/módulo/i), "TICKETS");
     await user.click(screen.getByRole("button", { name: /crear/i }));
 
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith(MENSAJE_BACKEND));

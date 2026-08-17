@@ -17,36 +17,42 @@
 import { SwitchTenantUseCase, SwitchTenantDto } from './switch-tenant.use-case';
 import { ClienteEntity } from '../../../clientes/domain/entities/cliente.entity';
 import { IMembresiaRepository, MembresiaResuelta } from '../../domain/ports/i-membresia.repository';
-import { IUsuarioClienteModuloRepository } from '../../domain/ports/i-usuario-cliente-modulo.repository';
+import { IMatrizPermisosRepository } from '../../domain/ports/i-matriz-permisos.repository';
 import { IClienteRepository } from '../../../clientes/domain/ports/i-cliente.repository';
 import { ITokenService, JwtPayload } from '../../domain/ports/i-token.service';
 import { ILogger } from '../../../shared/domain/ports/i-logger.port';
 import { ClienteNoAutorizadoError } from '../../domain/errors/auth.errors';
+import { payloadDeTest } from '../../test-helpers/payload-de-test';
+import { PARES_VALIDOS } from '../../../shared/domain/acciones';
 
 const makeCliente = (nombre = 'Acme SA', activo = true): ClienteEntity =>
   ClienteEntity.create({ nombre, razonSocial: null, cuit: null, dbName: 'acme_sa', activo });
 
+/**
+ * `MembresiaResuelta` ya NO expone `permisos`: el fix de C2 retiró el campo
+ * junto con el JOIN a `roles_permisos` que lo poblaba, porque corría en cada
+ * login y habría hecho estallar el login cuando WU-9 dropee esas tablas. Los
+ * permisos salen de la matriz, no de la membresía.
+ */
 const makeMembresiaResuelta = (overrides: Partial<MembresiaResuelta> = {}): MembresiaResuelta => ({
   clienteId: 'cliente-2',
   clienteNombre: 'Beta SA',
   rolCodigo: 'ADMINISTRADOR',
-  permisos: ['cliente:gestionar'],
   ...overrides,
 });
 
-const makeActorPayload = (overrides: Partial<JwtPayload> = {}): JwtPayload => ({
-  sub: 'usuario-1',
-  cliente_id: 'cliente-1',
-  rol: 'TECNICO',
-  permisos: ['ticket:crear'],
-  is_global_admin: false,
-  cliente_nombre: 'Acme SA',
-  membresias: [],
-  modulos: [],
-  nombre: 'Juan',
-  apellido: 'Perez',
-  ...overrides,
-});
+const makeActorPayload = (overrides: Partial<JwtPayload> = {}): JwtPayload =>
+  payloadDeTest({
+    sub: 'usuario-1',
+    cliente_id: 'cliente-1',
+    rol: 'TECNICO',
+    permisos: ['ticket:crear'],
+    is_global_admin: false,
+    cliente_nombre: 'Acme SA',
+    nombre: 'Juan',
+    apellido: 'Perez',
+    ...overrides,
+  });
 
 const makeMembresiaRepo = (): vi.Mocked<IMembresiaRepository> => ({
   findActivasByUsuario: vi.fn().mockResolvedValue([]),
@@ -71,8 +77,9 @@ const makeLogger = (): vi.Mocked<ILogger> => ({
   log: vi.fn(),
 });
 
-const makeModulosRepo = (): vi.Mocked<IUsuarioClienteModuloRepository> => ({
-  findModulosByUsuarioYCliente: vi.fn().mockResolvedValue([]),
+const makePermisosRepo = (): vi.Mocked<IMatrizPermisosRepository> => ({
+  findByUsuarioYCliente: vi.fn().mockResolvedValue([]),
+  setPermisos: vi.fn().mockResolvedValue(undefined),
 });
 
 describe('SwitchTenantUseCase', () => {
@@ -80,7 +87,7 @@ describe('SwitchTenantUseCase', () => {
   let clienteRepo: vi.Mocked<IClienteRepository>;
   let tokenService: vi.Mocked<ITokenService>;
   let logger: vi.Mocked<ILogger>;
-  let modulosRepo: vi.Mocked<IUsuarioClienteModuloRepository>;
+  let permisosRepo: vi.Mocked<IMatrizPermisosRepository>;
   let useCase: SwitchTenantUseCase;
 
   beforeEach(() => {
@@ -88,18 +95,18 @@ describe('SwitchTenantUseCase', () => {
     clienteRepo = makeClienteRepo();
     tokenService = makeTokenService();
     logger = makeLogger();
-    modulosRepo = makeModulosRepo();
+    permisosRepo = makePermisosRepo();
     useCase = new SwitchTenantUseCase(
       membresiaRepo,
       clienteRepo,
       tokenService,
       logger,
-      modulosRepo,
+      permisosRepo,
     );
   });
 
-  describe('Root → cualquier cliente activo no borrado', () => {
-    it('CON membresía en el cliente destino → rol/permisos de la membresía', async () => {
+  describe('Root → cualquier cliente activo no borrado (bypass total, WU-7.1)', () => {
+    it('CON membresía en el cliente destino → rol de la membresía, permisos = bypass total', async () => {
       const actor = makeActorPayload({ is_global_admin: true, cliente_id: null, rol: null });
       clienteRepo.findById.mockResolvedValue(makeCliente('Beta SA'));
       membresiaRepo.findActivaByUsuarioYCliente.mockResolvedValue(makeMembresiaResuelta());
@@ -117,11 +124,12 @@ describe('SwitchTenantUseCase', () => {
       expect(result.getValue()).toEqual({ accessToken: 'new.access.token' });
       expect(captured!.cliente_id).toBe('cliente-2');
       expect(captured!.rol).toBe('ADMINISTRADOR');
-      expect(captured!.permisos).toEqual(['cliente:gestionar']);
+      expect(captured!.permisos).toEqual([...PARES_VALIDOS]);
       expect(captured!.is_global_admin).toBe(true);
+      expect(permisosRepo.findByUsuarioYCliente).not.toHaveBeenCalled();
     });
 
-    it('SIN membresía en el cliente destino → rol=null/permisos=[], igual autorizado', async () => {
+    it('SIN membresía en el cliente destino → rol=null, permisos = bypass total igual, autorizado', async () => {
       const actor = makeActorPayload({ is_global_admin: true });
       clienteRepo.findById.mockResolvedValue(makeCliente('Beta SA'));
       membresiaRepo.findActivaByUsuarioYCliente.mockResolvedValue(null);
@@ -136,7 +144,7 @@ describe('SwitchTenantUseCase', () => {
 
       expect(result.isOk()).toBe(true);
       expect(captured!.rol).toBeNull();
-      expect(captured!.permisos).toEqual([]);
+      expect(captured!.permisos).toEqual([...PARES_VALIDOS]);
       expect(captured!.cliente_nombre).toBe('Beta SA');
     });
 

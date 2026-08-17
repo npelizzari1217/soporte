@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * KbVisibilityToggle — PRESENTATIONAL, gate `kb:gestionar` aplicado por el
+ * KbVisibilityToggle — PRESENTATIONAL, gate `KB:PUBLICAR` aplicado por el
  * caller (`KbDetailView`, `<Can>`). T3.5: publicar/despublicar requiere
  * confirmación explícita (`ConfirmDialog`) — nunca dispara el PATCH directo
  * desde el botón, evita publicar contenido interno por error de un click.

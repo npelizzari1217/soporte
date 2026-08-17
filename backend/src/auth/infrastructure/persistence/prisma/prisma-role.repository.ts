@@ -7,7 +7,12 @@
  * findByCodigo: excluye roles soft-deleted (deletedAt: null) — evita
  * resolver un rol legacy dado de baja lógica. Retorna RoleEntity básico
  * (sin permisos).
- * findWithPermisos: retorna RoleEntity con permisos hidratados via JOIN.
+ *
+ * Fix post-verify C2 (sdd/matriz-permisos-por-usuario): `findWithPermisos`
+ * (JOIN `role → rolesPermisos → permiso`, RBAC viejo) se retiró — CERO
+ * consumidores de producción (los permisos salen de la matriz nueva desde
+ * WU-7.1) y tocaba las mismas tablas que `drop-legacy-rbac-matriz-vieja.sql`
+ * (WU-9) dropea. Mismo criterio que `PrismaMembresiaRepository`.
  *
  * Tarea: T5.4 (PR5 — Persistencia + Prisma repos + TenantContext)
  */
@@ -30,20 +35,6 @@ export class PrismaRoleRepository implements IRoleRepository {
       where: { codigo, deletedAt: null },
     });
     return row ? RoleMapper.toDomain(row) : null;
-  }
-
-  async findWithPermisos(id: string): Promise<RoleEntity | null> {
-    const row = await this.client.role.findUnique({
-      where: { id },
-      include: {
-        rolesPermisos: {
-          include: {
-            permiso: true,
-          },
-        },
-      },
-    });
-    return row ? RoleMapper.toDomainWithPermisos(row) : null;
   }
 
   async findAll(): Promise<RoleEntity[]> {

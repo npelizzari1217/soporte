@@ -18,7 +18,7 @@ import { PrismaClienteRepository } from '../../../../clientes/infrastructure/per
 import { PrismaUsuarioRepository } from './prisma-usuario.repository';
 import { PrismaMembresiaRepository } from './prisma-membresia.repository';
 import { PrismaRefreshTokenRepository } from './prisma-refresh-token.repository';
-import { PrismaUsuarioClienteModuloRepository } from './prisma-usuario-cliente-modulo.repository';
+import { PrismaMatrizPermisosRepository } from './prisma-matriz-permisos.repository';
 import { ClienteEntity } from '../../../../clientes/domain/entities/cliente.entity';
 import { UsuarioEntity } from '../../../domain/entities/usuario.entity';
 import { RoleEntity } from '../../../domain/entities/role.entity';
@@ -33,6 +33,7 @@ import { LogoutUseCase } from '../../../application/use-cases/logout.use-case';
 import { LogoutAllUseCase } from '../../../application/use-cases/logout-all.use-case';
 import { SwitchTenantUseCase } from '../../../application/use-cases/switch-tenant.use-case';
 import { JwtPayload } from '../../../domain/ports/i-token.service';
+import { PARES_VALIDOS } from '../../../../shared/domain/acciones';
 
 const TEST_DB_URL =
   process.env.DATABASE_URL_MASTER ??
@@ -56,7 +57,7 @@ describe('Auth Use Cases — Integration end-to-end (T5.5)', () => {
   let usuarioRepo: PrismaUsuarioRepository;
   let membresiaRepo: PrismaMembresiaRepository;
   let refreshTokenRepo: PrismaRefreshTokenRepository;
-  let modulosRepo: PrismaUsuarioClienteModuloRepository;
+  let permisosRepo: PrismaMatrizPermisosRepository;
   let hashProvider: Argon2HashProvider;
   let tokenService: JwtTokenService;
   let logger: TestLogger;
@@ -74,7 +75,7 @@ describe('Auth Use Cases — Integration end-to-end (T5.5)', () => {
     usuarioRepo = new PrismaUsuarioRepository(prismaService);
     membresiaRepo = new PrismaMembresiaRepository(prismaService);
     refreshTokenRepo = new PrismaRefreshTokenRepository(prismaService);
-    modulosRepo = new PrismaUsuarioClienteModuloRepository(prismaService);
+    permisosRepo = new PrismaMatrizPermisosRepository(prismaService);
     hashProvider = new Argon2HashProvider();
     tokenService = new JwtTokenService(
       new JwtService({ secret: JWT_SECRET, signOptions: { expiresIn: '15m', algorithm: 'HS256' } }),
@@ -87,7 +88,7 @@ describe('Auth Use Cases — Integration end-to-end (T5.5)', () => {
       hashProvider,
       tokenService,
       refreshTokenRepo,
-      modulosRepo,
+      permisosRepo,
     );
     refreshTokenUseCase = new RefreshTokenUseCase(
       refreshTokenRepo,
@@ -95,7 +96,7 @@ describe('Auth Use Cases — Integration end-to-end (T5.5)', () => {
       membresiaRepo,
       clienteRepo,
       tokenService,
-      modulosRepo,
+      permisosRepo,
     );
     logoutUseCase = new LogoutUseCase(refreshTokenRepo);
     logoutAllUseCase = new LogoutAllUseCase(refreshTokenRepo);
@@ -108,7 +109,7 @@ describe('Auth Use Cases — Integration end-to-end (T5.5)', () => {
       clienteRepo,
       tokenService,
       logger,
-      modulosRepo,
+      permisosRepo,
     );
   });
 
@@ -117,8 +118,11 @@ describe('Auth Use Cases — Integration end-to-end (T5.5)', () => {
   });
 
   beforeEach(async () => {
+    // usuario_cliente_permisos (WU-7.1) no tiene FK declarada hacia
+    // usuarios/clientes (ADR-P2/P3, ver migración) — el TRUNCATE ... CASCADE
+    // de las otras tablas NO la vacía sola, hay que nombrarla explícito.
     await masterClient.$executeRawUnsafe(
-      'TRUNCATE TABLE membresias, refresh_tokens, roles_permisos, usuarios, clientes, roles, permisos RESTART IDENTITY CASCADE',
+      'TRUNCATE TABLE membresias, refresh_tokens, roles_permisos, usuarios, clientes, roles, permisos, usuario_cliente_permisos RESTART IDENTITY CASCADE',
     );
   });
 
@@ -192,11 +196,18 @@ describe('Auth Use Cases — Integration end-to-end (T5.5)', () => {
   // ─── R3, R4, R6, R7 — Login ─────────────────────────────────────────────
 
   describe('LoginUseCase (R3, R4, R5, R6, R7)', () => {
-    it('usuario con 1 membresía activa → auto-selecciona y emite tokens scopeados', async () => {
+    it('usuario con 1 membresía activa → auto-selecciona y emite tokens scopeados (permisos = matriz, WU-7.1)', async () => {
       const cliente = await createCliente('login-1m');
       const role = await createRoleConPermisos('TECNICO', ['ticket:editar', 'ticket:crear']);
       const usuario = await createUsuario('login-1m');
       await createMembresia(usuario.id, cliente.id, role.id);
+      // WU-7.1: `permisos` ya NO viene de `roles_permisos` — viene de la
+      // matriz nueva (`usuario_cliente_permisos`). El role RBAC de arriba
+      // solo importa para `rol` (identifica al TECNICO).
+      await permisosRepo.setPermisos(usuario.id, cliente.id, [
+        'TICKETS:LECTURA',
+        'TICKETS:MODIFICACION',
+      ]);
 
       const result = await loginUseCase.execute({
         email: usuario.email,
@@ -213,7 +224,8 @@ describe('Auth Use Cases — Integration end-to-end (T5.5)', () => {
       expect(payload.sub).toBe(usuario.id);
       expect(payload.cliente_id).toBe(cliente.id);
       expect(payload.rol).toBe('TECNICO');
-      expect(payload.permisos.sort()).toEqual(['ticket:crear', 'ticket:editar']);
+      expect(payload.permisos.sort()).toEqual(['TICKETS:LECTURA', 'TICKETS:MODIFICACION']);
+      expect(payload.modulos).toEqual(['TICKETS']);
       expect(payload.is_global_admin).toBe(false);
       expect(payload.cliente_nombre).toBe(cliente.nombre);
       expect(payload.membresias).toHaveLength(1);
@@ -292,7 +304,7 @@ describe('Auth Use Cases — Integration end-to-end (T5.5)', () => {
       expect(chosenValue.kind).toBe('tokens');
     });
 
-    it('root sin clienteId → token MASTER (cliente_id/rol null, permisos [])', async () => {
+    it('root sin clienteId → token MASTER (cliente_id/rol null, permisos = bypass total, WU-7.1)', async () => {
       const root = await createUsuario('login-root', { isGlobalAdmin: true });
 
       const result = await loginUseCase.execute({
@@ -307,7 +319,7 @@ describe('Auth Use Cases — Integration end-to-end (T5.5)', () => {
       const payload = tokenService.verifyJwt(value.accessToken) as JwtPayload;
       expect(payload.cliente_id).toBeNull();
       expect(payload.rol).toBeNull();
-      expect(payload.permisos).toEqual([]);
+      expect(payload.permisos.sort()).toEqual([...PARES_VALIDOS].sort());
       expect(payload.is_global_admin).toBe(true);
     });
 
@@ -325,7 +337,7 @@ describe('Auth Use Cases — Integration end-to-end (T5.5)', () => {
       expect(result.getError().code).toBe('AUTH_CLIENTE_NO_AUTORIZADO');
     });
 
-    it('root con clienteId de cualquier cliente activo → token scopeado (R5)', async () => {
+    it('root con clienteId de cualquier cliente activo → token scopeado, permisos = bypass total (R5, WU-7.1)', async () => {
       const cliente = await createCliente('login-root-scoped');
       const root = await createUsuario('login-root-scoped', { isGlobalAdmin: true });
 
@@ -341,7 +353,7 @@ describe('Auth Use Cases — Integration end-to-end (T5.5)', () => {
       const payload = tokenService.verifyJwt(value.accessToken) as JwtPayload;
       expect(payload.cliente_id).toBe(cliente.id);
       expect(payload.rol).toBeNull();
-      expect(payload.permisos).toEqual([]);
+      expect(payload.permisos.sort()).toEqual([...PARES_VALIDOS].sort());
       expect(payload.is_global_admin).toBe(true);
     });
   });

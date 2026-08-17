@@ -19,7 +19,7 @@
  * `cancelarCompraSchema` de PR-23) — `Dialog` con formulario, no
  * `ConfirmDialog` sin campos (mismo criterio que `ItemCerrarFaltanteDialog`).
  *
- * RBAC: gate `compra:gestionar` aplicado por el CALLER.
+ * RBAC: gate `COMPRAS:BORRADO` aplicado por el CALLER.
  */
 import { useState } from "react";
 import { useForm } from "react-hook-form";

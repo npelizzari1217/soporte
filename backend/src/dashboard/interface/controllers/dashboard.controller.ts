@@ -5,11 +5,12 @@
  * Ruta:
  *   GET /dashboard/metricas → ObtenerMetricasUseCase
  *
- * Gateo (D3): TODA la ruta exige `ticket:ver_todos` — lo comparten
- * COLABORADOR/TECNICO/ADMINISTRADOR, USUARIO queda excluido (403). El scope
- * self (TECNICO, D2) vs. global (ADMINISTRADOR/COLABORADOR) se resuelve
- * DENTRO del use case a partir de `actorRol` — el controller solo traduce
- * HTTP ↔ use case, sin lógica de negocio.
+ * Gateo (D3): TODA la ruta exige `DASHBOARD:LECTURA` (WU-7.3, renombrado
+ * desde `ticket:ver_todos`) — lo comparten COLABORADOR/TECNICO/ADMINISTRADOR,
+ * USUARIO queda excluido (403). El scope self (TECNICO, D2) vs. global
+ * (ADMINISTRADOR/COLABORADOR) se resuelve DENTRO del use case a partir de
+ * `actorRol` — el controller solo traduce HTTP ↔ use case, sin lógica de
+ * negocio.
  *
  * Ref spec: sdd/premium/spec D1, D2, D3. Tarea: D5/D6.
  */
@@ -22,14 +23,12 @@ import {
 } from '../dtos/metricas.dto';
 import { JwtAuthGuard } from '../../../auth/infrastructure/guards/jwt-auth.guard';
 import { TenantGuard } from '../../../auth/infrastructure/guards/tenant.guard';
-import { PermissionsGuard } from '../../../auth/infrastructure/guards/permissions.guard';
-import { CurrentUser, RequirePermissions } from '../../../auth/infrastructure/guards/decorators';
+import { AccionesGuard } from '../../../auth/infrastructure/guards/acciones.guard';
+import { CurrentUser, RequiereAcciones } from '../../../auth/infrastructure/guards/decorators';
 import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
 
-const PERMISO_VER_TODOS = 'ticket:ver_todos';
-
-@UseGuards(JwtAuthGuard, TenantGuard, PermissionsGuard)
-@RequirePermissions(PERMISO_VER_TODOS)
+@UseGuards(JwtAuthGuard, TenantGuard, AccionesGuard)
+@RequiereAcciones('DASHBOARD:LECTURA')
 @Controller('dashboard')
 export class DashboardController {
   constructor(private readonly obtenerMetricasUseCase: ObtenerMetricasUseCase) {}
@@ -38,7 +37,7 @@ export class DashboardController {
    * GET /dashboard/metricas
    * Snapshot de KPIs del tenant filtrable por ciclo (D1). TECNICO ve solo
    * su propio scope (D2, resuelto en el use case a partir de `user.rol`).
-   * @throws 403 sin `ticket:ver_todos` (USUARIO)
+   * @throws 403 sin `DASHBOARD:LECTURA` (USUARIO)
    */
   @Get('metricas')
   async obtenerMetricas(

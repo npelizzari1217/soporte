@@ -19,7 +19,7 @@
  * lee directamente para deshabilitar el trigger (irreversible, TERMINAL),
  * sin reimplementar la regla.
  *
- * RBAC: gate `compra:gestionar` aplicado por el CALLER.
+ * RBAC: gate `COMPRAS:MODIFICACION` aplicado por el CALLER.
  */
 import { useState } from "react";
 import { useForm } from "react-hook-form";

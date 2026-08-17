@@ -16,9 +16,10 @@
  * `ticket_edilicia` internamente a partir de la subtarea.
  *
  * Guards a nivel de controller: `JwtAuthGuard` + `TenantGuard` +
- * `PermissionsGuard` (mismo patrón que `ComprasController`). `GET
- * /reparaciones` NO declara `@RequirePermissions` — cualquier usuario
- * autenticado del tenant puede listar (mismo criterio que `GET /compras`).
+ * `AccionesGuard` (WU-7.3, sdd/matriz-permisos-por-usuario — reemplaza a
+ * `PermissionsGuard`+`ModulosGuard`+`@RequireModulo('EDILICIA')` de clase).
+ * `GET /reparaciones` declara `@RequiereAcciones('EDILICIA:LECTURA')`
+ * (reemplaza el gate de módulo puro de hoy, R7).
  *
  * Tarea: T8.6, T9.6.
  */
@@ -39,13 +40,8 @@ import {
 
 import { JwtAuthGuard } from '../../../auth/infrastructure/guards/jwt-auth.guard';
 import { TenantGuard } from '../../../auth/infrastructure/guards/tenant.guard';
-import { PermissionsGuard } from '../../../auth/infrastructure/guards/permissions.guard';
-import { ModulosGuard } from '../../../auth/infrastructure/guards/modulos.guard';
-import {
-  CurrentUser,
-  RequireModulo,
-  RequirePermissions,
-} from '../../../auth/infrastructure/guards/decorators';
+import { AccionesGuard } from '../../../auth/infrastructure/guards/acciones.guard';
+import { CurrentUser, RequiereAcciones } from '../../../auth/infrastructure/guards/decorators';
 import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
 import { DomainError } from '../../../shared/domain/result';
 import {
@@ -99,8 +95,7 @@ function toHttpException(
   return new UnprocessableEntityException(error.message);
 }
 
-@UseGuards(JwtAuthGuard, TenantGuard, PermissionsGuard, ModulosGuard)
-@RequireModulo('EDILICIA')
+@UseGuards(JwtAuthGuard, TenantGuard, AccionesGuard)
 @Controller('reparaciones')
 export class ReparacionesController {
   constructor(
@@ -119,7 +114,7 @@ export class ReparacionesController {
    * @throws 422 solicitante inválido
    */
   @Post()
-  @RequirePermissions('ticket:crear')
+  @RequiereAcciones('EDILICIA:ALTAS')
   @HttpCode(HttpStatus.CREATED)
   async crear(
     @Body() dto: CreateTicketEdilicioHttpDto,
@@ -148,6 +143,7 @@ export class ReparacionesController {
    * Lista los tickets edilicios del tenant (ticket base + satélite + ubicación).
    */
   @Get()
+  @RequiereAcciones('EDILICIA:LECTURA')
   async listar(): Promise<ReparacionListItemResponseDto[]> {
     const result = await this.listarReparacionesUseCase.execute();
     return result.getValue().map(toReparacionListItemResponseDto);
@@ -159,7 +155,7 @@ export class ReparacionesController {
    * @throws 404 ticket_edilicia inexistente
    */
   @Post(':reparacionId/subtareas')
-  @RequirePermissions('subtarea:actualizar')
+  @RequiereAcciones('EDILICIA:ALTAS')
   @HttpCode(HttpStatus.CREATED)
   async crearSubtarea(
     @Param('reparacionId') reparacionId: string,
@@ -185,7 +181,7 @@ export class ReparacionesController {
    * @throws 404 subtarea inexistente
    */
   @Post('subtareas/:subtareaId/completar')
-  @RequirePermissions('subtarea:actualizar')
+  @RequiereAcciones('EDILICIA:MODIFICACION')
   @HttpCode(HttpStatus.OK)
   async completarSubtarea(
     @Param('subtareaId') subtareaId: string,
@@ -208,7 +204,7 @@ export class ReparacionesController {
    * @throws 404 subtarea inexistente
    */
   @Delete('subtareas/:subtareaId')
-  @RequirePermissions('subtarea:actualizar')
+  @RequiereAcciones('EDILICIA:BORRADO')
   @HttpCode(HttpStatus.NO_CONTENT)
   async eliminarSubtarea(
     @Param('subtareaId') subtareaId: string,

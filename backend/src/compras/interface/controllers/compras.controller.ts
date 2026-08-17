@@ -28,12 +28,13 @@
  * semántica de campos (`EditarItemCompraUseCase`).
  *
  * Guards a nivel de controller: `JwtAuthGuard` + `TenantGuard` +
- * `PermissionsGuard` + `ModulosGuard` (mismo patrón que
- * `EquiposController`/`ReparacionesController`) + `@RequireModulo('COMPRAS')`
- * a nivel de CLASE (spec §4.11). `compra:gestionar` gatea las 8 rutas de
- * gestión; `compra:aprobar` gatea SOLO aprobar/rechazar (S11, S38, S39). El
- * `PermissionsGuard` ya bypassea a ROOT (`is_global_admin`, S40); `ModulosGuard`
- * también.
+ * `AccionesGuard` (WU-7.3, sdd/matriz-permisos-por-usuario — reemplaza a
+ * `PermissionsGuard`+`ModulosGuard`+`@RequireModulo('COMPRAS')` de clase).
+ * `COMPRAS:ALTAS`/`MODIFICACION`/`BORRADO` gatean las 8 rutas de gestión
+ * (mapeo exacto por ruta, ver cada JSDoc); `COMPRAS:APROBACION` gatea SOLO
+ * aprobar/rechazar (S11, S38, S39); `COMPRAS:LECTURA` gatea las 3 rutas de
+ * consulta (reemplaza el gate de módulo puro de hoy — R7). `AccionesGuard`
+ * bypassea a ROOT (`is_global_admin`, S40) y a ADMINISTRADOR del cliente.
  *
  * `numero`/`solicitanteId`/`cicloId` NUNCA se toman del body HTTP (PR-20,
  * riesgo declarado `sdd/redisenio-modulo-compras/riesgo-throws-planos`):
@@ -49,14 +50,12 @@
  * errores de `domain/errors/compras.errors.ts` (spec §5) — 422 por defecto,
  * nunca 500 silencioso para un `DomainError`.
  *
- * **Las 3 rutas de CONSULTA (PR-22) NO declaran `@RequirePermissions`**
- * (mismo criterio que `EquiposController.listar()`/`.obtener()`): sin esa
- * metadata, `PermissionsGuard` deja pasar a cualquier usuario autenticado
- * que ya superó `TenantGuard`/`ModulosGuard` — la spec (§4.9-§4.11) no
- * reserva un permiso específico para LEER compras, sólo para mutar
- * (`compra:gestionar`) o decidir (`compra:aprobar`). El aislamiento de
- * tenant (S41) lo garantiza `TenantContext`/`PrismaCompraRepository`, no un
- * permiso de aplicación.
+ * **Las 3 rutas de CONSULTA (PR-22) declaran `@RequiereAcciones('COMPRAS:LECTURA')`**
+ * (WU-7.3): reemplaza el gate de módulo puro de hoy (`ModulosGuard` sin
+ * `@RequirePermissions`) por la celda equivalente del catálogo nuevo (R7,
+ * regla universal de LECTURA para los 3 módulos que ya tenían `ModulosGuard`).
+ * El aislamiento de tenant (S41) lo garantiza
+ * `TenantContext`/`PrismaCompraRepository`, no la acción de aplicación.
  *
  * Ref spec: sdd/redisenio-modulo-compras/spec §4.1-§4.8 (S1-S31), §4.9
  * (S32-S34), §4.10 (S35-S37), §4.11 (S38-S41), §5 (catálogo error → HTTP).
@@ -82,13 +81,8 @@ import {
 
 import { JwtAuthGuard } from '../../../auth/infrastructure/guards/jwt-auth.guard';
 import { TenantGuard } from '../../../auth/infrastructure/guards/tenant.guard';
-import { PermissionsGuard } from '../../../auth/infrastructure/guards/permissions.guard';
-import { ModulosGuard } from '../../../auth/infrastructure/guards/modulos.guard';
-import {
-  CurrentUser,
-  RequireModulo,
-  RequirePermissions,
-} from '../../../auth/infrastructure/guards/decorators';
+import { AccionesGuard } from '../../../auth/infrastructure/guards/acciones.guard';
+import { CurrentUser, RequiereAcciones } from '../../../auth/infrastructure/guards/decorators';
 import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
 import { DomainError } from '../../../shared/domain/result';
 
@@ -147,15 +141,12 @@ import {
   toOperacionCompraResponseDto,
 } from '../dtos/compras.dto';
 
-const PERMISO_GESTIONAR = 'compra:gestionar';
-const PERMISO_APROBAR = 'compra:aprobar';
-
 /**
  * Mapea un `DomainError` de los use cases de compras a la `HttpException`
  * correspondiente, según el contrato declarado en el JSDoc de cada error de
  * `compras.errors.ts` (spec §5: 2×409, 2×404, 15×422 — 19 en total). 403 NO
- * aparece acá: es RBAC resuelto por guard (`PermissionsGuard`/`ModulosGuard`),
- * nunca un `DomainError`.
+ * aparece acá: es RBAC resuelto por guard (`AccionesGuard`), nunca un
+ * `DomainError`.
  */
 export function toHttpException(
   error: DomainError,
@@ -192,8 +183,7 @@ export function toHttpException(
   return new UnprocessableEntityException(error.message);
 }
 
-@UseGuards(JwtAuthGuard, TenantGuard, PermissionsGuard, ModulosGuard)
-@RequireModulo('COMPRAS')
+@UseGuards(JwtAuthGuard, TenantGuard, AccionesGuard)
 @Controller('compras')
 export class ComprasController {
   constructor(
@@ -221,7 +211,7 @@ export class ComprasController {
    * @throws 409 sin ciclo activo (S2), o numerador agotado
    */
   @Post()
-  @RequirePermissions(PERMISO_GESTIONAR)
+  @RequiereAcciones('COMPRAS:ALTAS')
   @HttpCode(HttpStatus.CREATED)
   async crear(
     @CurrentUser() user: JwtPayload,
@@ -250,7 +240,7 @@ export class ComprasController {
    * @throws 422 compra cancelada (S5)
    */
   @Post(':id/items')
-  @RequirePermissions(PERMISO_GESTIONAR)
+  @RequiereAcciones('COMPRAS:ALTAS')
   @HttpCode(HttpStatus.CREATED)
   async agregarItem(
     @CurrentUser() user: JwtPayload,
@@ -284,7 +274,7 @@ export class ComprasController {
    * @throws 422 compra cancelada (S5), o ítem congelado (S13)
    */
   @Patch(':id/items/:itemId')
-  @RequirePermissions(PERMISO_GESTIONAR)
+  @RequiereAcciones('COMPRAS:MODIFICACION')
   @HttpCode(HttpStatus.OK)
   async editarItem(
     @CurrentUser() user: JwtPayload,
@@ -318,7 +308,7 @@ export class ComprasController {
    * @throws 422 compra cancelada (S5), o ítem APROBADO no eliminable (S7)
    */
   @Delete(':id/items/:itemId')
-  @RequirePermissions(PERMISO_GESTIONAR)
+  @RequiereAcciones('COMPRAS:BORRADO')
   @HttpCode(HttpStatus.NO_CONTENT)
   async eliminarItem(
     @CurrentUser() user: JwtPayload,
@@ -345,7 +335,7 @@ export class ComprasController {
    * @throws 422 ítem ya decidido (S10)
    */
   @Post(':id/items/:itemId/aprobar')
-  @RequirePermissions(PERMISO_APROBAR)
+  @RequiereAcciones('COMPRAS:APROBACION')
   @HttpCode(HttpStatus.OK)
   async aprobarItem(
     @CurrentUser() user: JwtPayload,
@@ -372,7 +362,7 @@ export class ComprasController {
    * @throws 422 ítem ya decidido (S10)
    */
   @Post(':id/items/:itemId/rechazar')
-  @RequirePermissions(PERMISO_APROBAR)
+  @RequiereAcciones('COMPRAS:APROBACION')
   @HttpCode(HttpStatus.OK)
   async rechazarItem(
     @CurrentUser() user: JwtPayload,
@@ -400,7 +390,7 @@ export class ComprasController {
    *             retroceso (S18), o ítem ya cerrado con faltante (S25)
    */
   @Post(':id/items/:itemId/registrar-compra')
-  @RequirePermissions(PERMISO_GESTIONAR)
+  @RequiereAcciones('COMPRAS:MODIFICACION')
   @HttpCode(HttpStatus.OK)
   async registrarCompraDeItem(
     @CurrentUser() user: JwtPayload,
@@ -430,7 +420,7 @@ export class ComprasController {
    *             (S21), o ítem ya cerrado con faltante (S25)
    */
   @Post(':id/items/:itemId/registrar-entrega')
-  @RequirePermissions(PERMISO_GESTIONAR)
+  @RequiereAcciones('COMPRAS:MODIFICACION')
   @HttpCode(HttpStatus.OK)
   async registrarEntregaDeItem(
     @CurrentUser() user: JwtPayload,
@@ -459,7 +449,7 @@ export class ComprasController {
    *             (S23), o motivo vacío (S24)
    */
   @Post(':id/items/:itemId/cerrar-con-faltante')
-  @RequirePermissions(PERMISO_GESTIONAR)
+  @RequiereAcciones('COMPRAS:MODIFICACION')
   @HttpCode(HttpStatus.OK)
   async cerrarItemConFaltante(
     @CurrentUser() user: JwtPayload,
@@ -489,7 +479,7 @@ export class ComprasController {
    *             registradas (S29)
    */
   @Post(':id/cancelar')
-  @RequirePermissions(PERMISO_GESTIONAR)
+  @RequiereAcciones('COMPRAS:BORRADO')
   @HttpCode(HttpStatus.OK)
   async cancelar(
     @CurrentUser() user: JwtPayload,
@@ -517,6 +507,7 @@ export class ComprasController {
    * error (mismo criterio que `EquiposController.listar()`).
    */
   @Get()
+  @RequiereAcciones('COMPRAS:LECTURA')
   async listar(@Query() query: ListarComprasQueryDto): Promise<ListarComprasResponseDto> {
     const result = await this.listarComprasUseCase.execute({
       pagina: query.pagina,
@@ -531,6 +522,7 @@ export class ComprasController {
    * @throws 404 compra inexistente, soft-deleted, u otro tenant
    */
   @Get(':id')
+  @RequiereAcciones('COMPRAS:LECTURA')
   async obtener(@Param('id') id: string): Promise<CompraDetalleResponseDto> {
     const result = await this.obtenerCompraUseCase.execute({ compraId: id });
     if (result.isFail()) {
@@ -546,6 +538,7 @@ export class ComprasController {
    * @throws 404 compra inexistente, soft-deleted, u otro tenant
    */
   @Get(':id/operaciones')
+  @RequiereAcciones('COMPRAS:LECTURA')
   async listarOperaciones(@Param('id') id: string): Promise<OperacionCompraResponseDto[]> {
     const result = await this.listarOperacionesCompraUseCase.execute({ compraId: id });
     if (result.isFail()) {

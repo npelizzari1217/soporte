@@ -3,10 +3,10 @@ import { Result } from '../../../shared/domain/result';
 import { DomainError } from '../../../shared/domain/result';
 import { IUsuarioRepository } from '../../domain/ports/i-usuario.repository';
 import { IMembresiaRepository } from '../../domain/ports/i-membresia.repository';
-import { IUsuarioClienteModuloRepository } from '../../domain/ports/i-usuario-cliente-modulo.repository';
+import { IMatrizPermisosRepository } from '../../domain/ports/i-matriz-permisos.repository';
 import { IRefreshTokenRepository } from '../../domain/ports/i-refresh-token.repository';
 import { IHashProvider } from '../../domain/ports/i-hash.provider';
-import { ITokenService, JwtPayload } from '../../domain/ports/i-token.service';
+import { ITokenService, JwtPayload, VERSION_PAYLOAD_JWT } from '../../domain/ports/i-token.service';
 import { IClienteRepository } from '../../../clientes/domain/ports/i-cliente.repository';
 import { RefreshTokenEntity } from '../../domain/entities/refresh-token.entity';
 import {
@@ -98,7 +98,7 @@ export class LoginUseCase {
     private readonly hashProvider: IHashProvider,
     private readonly tokenService: ITokenService,
     private readonly refreshTokenRepo: IRefreshTokenRepository,
-    private readonly modulosRepo: IUsuarioClienteModuloRepository,
+    private readonly permisosRepo: IMatrizPermisosRepository,
   ) {}
 
   async execute(dto: LoginDto): Promise<Result<LoginResult, DomainError>> {
@@ -156,7 +156,7 @@ export class LoginUseCase {
       clienteIdObjetivo,
       this.membresiaRepo,
       this.clienteRepo,
-      this.modulosRepo,
+      this.permisosRepo,
     );
 
     if (scopeResult.isFail()) {
@@ -164,8 +164,9 @@ export class LoginUseCase {
     }
     const scope = scopeResult.getValue();
 
-    // 6. Firmar JWT con el payload nuevo (ADR-3)
+    // 6. Firmar JWT con el payload nuevo (ADR-3, `v` — ADR-P7/WU-7.1)
     const payload: JwtPayload = {
+      v: VERSION_PAYLOAD_JWT,
       sub: usuario.id,
       cliente_id: scope.clienteId,
       rol: scope.rol,

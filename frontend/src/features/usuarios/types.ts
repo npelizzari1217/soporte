@@ -29,8 +29,18 @@ export interface CreateUsuarioTenantDto {
   rolCodigo: string;
 }
 
+/**
+ * Body de `PATCH usuarios/:id/rol`. `reaplicarPreset` (R6, confirmado por el
+ * usuario — `sdd/matriz-permisos-por-usuario/confirmacion-r6`): OPCIONAL,
+ * default ausente/`false` — el rol cambia y la matriz de permisos queda
+ * INTACTA. Con `true`, SOBRESCRIBE (no fusiona) la matriz del usuario con el
+ * preset del rol DESTINO — pisa cualquier ajuste fino hecho a mano en la
+ * grilla, por eso el caller SIEMPRE debe confirmar explícitamente antes de
+ * enviarlo (`CambiarRolControl`).
+ */
 export interface CambiarRolUsuarioDto {
   rolCodigo: string;
+  reaplicarPreset?: boolean;
 }
 
 /**

@@ -4,11 +4,20 @@
  * Unit test: instancia el controller directamente con el use case
  * mockeado (sin bootstrapear NestJS ni pasar por guards), mismo patrón que
  * `sla-config.controller.spec.ts`. Alto valor (política 80/20): NO declara
- * `@RequirePermissions` (catálogo de lectura abierta) + mapeo correcto al DTO.
+ * `@RequiereAcciones` (catálogo de lectura abierta) + mapeo correcto al DTO.
+ *
+ * Fix post-verify W3 (sdd/matriz-permisos-por-usuario): este test importaba
+ * `PERMISSIONS_KEY`, un símbolo que WU-7.3 retiró de `decorators.ts`. El
+ * import resolvía a `undefined` en runtime (Vite/esbuild no valida named
+ * exports inexistentes en su transform de dev), `Reflect.getMetadata(undefined,
+ * ...)` también devolvía `undefined`, y el assert pasaba POR CONSTRUCCIÓN —
+ * un test vacuo que no protegía nada: si alguien le pusiera `@RequiereAcciones`
+ * a `GET /roles` mañana (rompiendo el selector de presets del ABM), seguía
+ * en verde. Ahora usa `ACCIONES_KEY`, la clave real que lee `AccionesGuard`.
  */
 import 'reflect-metadata';
 import { RolesController } from './roles.controller';
-import { PERMISSIONS_KEY } from '../../infrastructure/guards/decorators';
+import { ACCIONES_KEY } from '../../infrastructure/guards/decorators';
 import { RoleEntity } from '../../domain/entities/role.entity';
 
 describe('RolesController (item 3)', () => {
@@ -18,8 +27,8 @@ describe('RolesController (item 3)', () => {
     return { controller, listarRolesUseCase };
   }
 
-  it('NO declara @RequirePermissions (catálogo global, cualquier usuario autenticado)', () => {
-    const permisos = Reflect.getMetadata(PERMISSIONS_KEY, RolesController.prototype.listar);
+  it('[CRITICAL] NO declara @RequiereAcciones (catálogo global, cualquier usuario autenticado) — fix post-verify W3', () => {
+    const permisos = Reflect.getMetadata(ACCIONES_KEY, RolesController.prototype.listar);
     expect(permisos).toBeUndefined();
   });
 

@@ -1,50 +1,35 @@
 /**
  * Decoradores para guards de autenticación/autorización.
  *
- * @RequirePermissions('ticket:crear') — requiere que el JWT tenga TODOS los
- * permisos listados (AND). Ver `PermissionsGuard` (R13).
+ * @RequiereAcciones('TICKETS:ALTAS') — requiere que el JWT tenga TODAS las
+ * celdas `MODULO:ACCION` listadas (AND). Ver `AccionesGuard` (R3).
  * @CurrentUser() — inyecta el `JwtPayload` de `request.user` en el parámetro
  * del handler.
+ *
+ * WU-7.3 (sdd/matriz-permisos-por-usuario): `RequirePermissions`/
+ * `RequireModulo` y sus claves de metadata se RETIRARON — `AccionesGuard`/
+ * `AdminClienteGuard` los reemplazan en todos los controllers.
  *
  * Tarea: T6.3 (PR6 — Guards + AuthController + AuthModule)
  */
 import { createParamDecorator, ExecutionContext, SetMetadata } from '@nestjs/common';
 import { JwtPayload } from '../../domain/ports/i-token.service';
+import { CodigoAccion } from '../../../shared/domain/acciones';
 
-/** Clave de metadatos para PermissionsGuard. */
-export const PERMISSIONS_KEY = 'permissions';
-
-/** Clave de metadatos para ModulosGuard. */
-export const REQUIRE_MODULO_KEY = 'require_modulo';
+/** Clave de metadatos para AccionesGuard. */
+export const ACCIONES_KEY = 'acciones';
 
 /**
- * @RequirePermissions(...permissions) — declara los permisos requeridos para
- * el endpoint. `PermissionsGuard` evalúa si el usuario tiene TODOS los
- * permisos (AND) — R13.
+ * @RequiereAcciones(...codigos) — declara las celdas `MODULO:ACCION`
+ * requeridas para el endpoint. `AccionesGuard` evalúa AND: el usuario debe
+ * poder ejecutar TODAS (R3). Un código fuera del catálogo `CodigoAccion` no
+ * compila — la ganancia concreta de ADR-P1.
  *
  * @example
- * @RequirePermissions('ticket:crear', 'ticket:asignar')
+ * @RequiereAcciones('TICKETS:ALTAS')
  * @Post('tickets')
  */
-export const RequirePermissions = (...permissions: string[]) =>
-  SetMetadata(PERMISSIONS_KEY, permissions);
-
-/**
- * @RequireModulo(modulo) — declara el módulo funcional requerido para operar
- * el endpoint (SOPORTE/COMPRAS/EDILICIA/EQUIPOS). `ModulosGuard` evalúa si el
- * usuario tiene el módulo asignado en su JWT (`payload.modulos`) — eje de
- * autorización ORTOGONAL al RBAC (feature 5.2 CAPA 2).
- *
- * Va a nivel de CLASE en los controllers de módulo: gatea TODOS los endpoints
- * (incl. lecturas) — si no tenés el módulo, no ves NADA de ese módulo. NO se
- * anula con un `@RequirePermissions()` vacío por método (son metadatas
- * distintas).
- *
- * @example
- * @RequireModulo('COMPRAS')
- * @Controller('compras')
- */
-export const RequireModulo = (modulo: string) => SetMetadata(REQUIRE_MODULO_KEY, modulo);
+export const RequiereAcciones = (...codigos: CodigoAccion[]) => SetMetadata(ACCIONES_KEY, codigos);
 
 /**
  * @CurrentUser() — inyecta el `JwtPayload` del usuario autenticado

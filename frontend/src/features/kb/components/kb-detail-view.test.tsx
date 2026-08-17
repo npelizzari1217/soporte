@@ -29,8 +29,8 @@ describe("KbDetailView", () => {
   });
 
   it.each([
-    ["con kb:gestionar", ["kb:gestionar"], true],
-    ["sin kb:gestionar", [], false],
+    ["con KB:MODIFICACION+PUBLICAR+BORRADO", ["KB:MODIFICACION", "KB:PUBLICAR", "KB:BORRADO"], true],
+    ["sin ninguna celda KB de gestión", [], false],
   ])("acciones de gestión (editar/publicar/eliminar) — %s", async (_label, permisos, shouldShow) => {
     server.use(http.get("/api/kb/a1", () => HttpResponse.json(ARTICULO)));
     renderWithProviders(<KbDetailView articuloId="a1" />, { user: buildUser({ permisos }) });
@@ -65,7 +65,7 @@ describe("KbDetailView", () => {
         return HttpResponse.json({ ...ARTICULO, visibleParaSolicitante: body.visible });
       }),
     );
-    renderWithProviders(<KbDetailView articuloId="a1" />, { user: buildUser({ permisos: ["kb:gestionar"] }) });
+    renderWithProviders(<KbDetailView articuloId="a1" />, { user: buildUser({ permisos: ["KB:MODIFICACION", "KB:PUBLICAR", "KB:BORRADO"] }) });
     await screen.findByText("Cómo resetear tu contraseña");
 
     await user.click(screen.getByRole("button", { name: "Despublicar" }));
@@ -86,7 +86,7 @@ describe("KbDetailView", () => {
         return new HttpResponse(null, { status: 204 });
       }),
     );
-    renderWithProviders(<KbDetailView articuloId="a1" />, { user: buildUser({ permisos: ["kb:gestionar"] }) });
+    renderWithProviders(<KbDetailView articuloId="a1" />, { user: buildUser({ permisos: ["KB:MODIFICACION", "KB:PUBLICAR", "KB:BORRADO"] }) });
     await screen.findByText("Cómo resetear tu contraseña");
 
     await user.click(screen.getByRole("button", { name: "Eliminar" }));

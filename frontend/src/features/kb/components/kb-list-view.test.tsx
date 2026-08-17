@@ -69,8 +69,8 @@ describe("KbListView", () => {
   });
 
   it.each([
-    ["con kb:gestionar", ["kb:gestionar"], true],
-    ["sin kb:gestionar", [], false],
+    ["con KB:ALTAS", ["KB:ALTAS"], true],
+    ["sin KB:ALTAS", [], false],
   ])("botón «Nuevo artículo» — %s", async (_label, permisos, shouldShow) => {
     renderWithProviders(<KbListView />, { user: buildUser({ permisos }) });
     await screen.findByText("Cómo resetear tu contraseña");

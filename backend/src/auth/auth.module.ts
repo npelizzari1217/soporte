@@ -15,9 +15,10 @@
  * - Use Cases: LoginUseCase, RefreshTokenUseCase, LogoutUseCase,
  *   LogoutAllUseCase, SwitchTenantUseCase (plain classes, instanciadas vía
  *   useFactory).
- * - Guards: JwtAuthGuard, TenantGuard, PermissionsGuard, GlobalAdminGuard
- *   (providers para que `@UseGuards` pueda inyectarlos por clase en otros
- *   módulos, ej. TicketsModule).
+ * - Guards: JwtAuthGuard, TenantGuard, AccionesGuard, AdminClienteGuard,
+ *   GlobalAdminGuard (WU-7.3, sdd/matriz-permisos-por-usuario — reemplazan
+ *   a PermissionsGuard/ModulosGuard) (providers para que `@UseGuards` pueda
+ *   inyectarlos por clase en otros módulos, ej. TicketsModule).
  * - Controllers: AuthController.
  *
  * NestJS DI notas:
@@ -36,11 +37,11 @@ import { USUARIO_REPOSITORY } from './domain/ports/i-usuario.repository';
 import { MEMBRESIA_REPOSITORY } from './domain/ports/i-membresia.repository';
 import { REFRESH_TOKEN_REPOSITORY } from './domain/ports/i-refresh-token.repository';
 import { ROLE_REPOSITORY } from './domain/ports/i-role.repository';
-import { USUARIO_CLIENTE_MODULO_REPOSITORY } from './domain/ports/i-usuario-cliente-modulo.repository';
+import { MATRIZ_PERMISOS_REPOSITORY } from './domain/ports/i-matriz-permisos.repository';
 import { CLIENTE_REPOSITORY } from '../clientes/domain/ports/i-cliente.repository';
 import { PrismaUsuarioRepository } from './infrastructure/persistence/prisma/prisma-usuario.repository';
 import { PrismaMembresiaRepository } from './infrastructure/persistence/prisma/prisma-membresia.repository';
-import { PrismaUsuarioClienteModuloRepository } from './infrastructure/persistence/prisma/prisma-usuario-cliente-modulo.repository';
+import { PrismaMatrizPermisosRepository } from './infrastructure/persistence/prisma/prisma-matriz-permisos.repository';
 import { PrismaRefreshTokenRepository } from './infrastructure/persistence/prisma/prisma-refresh-token.repository';
 import { PrismaRoleRepository } from './infrastructure/persistence/prisma/prisma-role.repository';
 import { PrismaClienteRepository } from '../clientes/infrastructure/persistence/prisma/prisma-cliente.repository';
@@ -63,12 +64,13 @@ import { CrearUsuarioTenantUseCase } from './application/use-cases/crear-usuario
 import { CambiarRolUsuarioTenantUseCase } from './application/use-cases/cambiar-rol-usuario-tenant.use-case';
 import { EditarUsuarioTenantUseCase } from './application/use-cases/editar-usuario-tenant.use-case';
 import { DesactivarMembresiaUsuarioTenantUseCase } from './application/use-cases/desactivar-membresia-usuario-tenant.use-case';
-import { AsignarModulosUsuarioTenantUseCase } from './application/use-cases/asignar-modulos-usuario-tenant.use-case';
-import { ObtenerModulosUsuarioTenantUseCase } from './application/use-cases/obtener-modulos-usuario-tenant.use-case';
+import { ObtenerPermisosUsuarioTenantUseCase } from './application/use-cases/obtener-permisos-usuario-tenant.use-case';
+import { AsignarPermisosUsuarioTenantUseCase } from './application/use-cases/asignar-permisos-usuario-tenant.use-case';
+import { AplicarPresetPermisosUseCase } from './application/use-cases/aplicar-preset-permisos.use-case';
 import { ListarRolesUseCase } from './application/use-cases/listar-roles.use-case';
 import { IUsuarioRepository } from './domain/ports/i-usuario.repository';
 import { IMembresiaRepository } from './domain/ports/i-membresia.repository';
-import { IUsuarioClienteModuloRepository } from './domain/ports/i-usuario-cliente-modulo.repository';
+import { IMatrizPermisosRepository } from './domain/ports/i-matriz-permisos.repository';
 import { IRefreshTokenRepository } from './domain/ports/i-refresh-token.repository';
 import { IClienteRepository } from '../clientes/domain/ports/i-cliente.repository';
 import { IHashProvider } from './domain/ports/i-hash.provider';
@@ -77,7 +79,8 @@ import { IRoleRepository } from './domain/ports/i-role.repository';
 // ─── Guards ──────────────────────────────────────────────────────────────────
 import { JwtAuthGuard } from './infrastructure/guards/jwt-auth.guard';
 import { TenantGuard } from './infrastructure/guards/tenant.guard';
-import { PermissionsGuard } from './infrastructure/guards/permissions.guard';
+import { AccionesGuard } from './infrastructure/guards/acciones.guard';
+import { AdminClienteGuard } from './infrastructure/guards/admin-cliente.guard';
 import { GlobalAdminGuard } from './infrastructure/guards/global-admin.guard';
 
 // ─── Controllers ─────────────────────────────────────────────────────────────
@@ -99,10 +102,12 @@ import { RolesController } from './interface/controllers/roles.controller';
     { provide: MEMBRESIA_REPOSITORY, useClass: PrismaMembresiaRepository },
     { provide: REFRESH_TOKEN_REPOSITORY, useClass: PrismaRefreshTokenRepository },
     { provide: ROLE_REPOSITORY, useClass: PrismaRoleRepository },
-    {
-      provide: USUARIO_CLIENTE_MODULO_REPOSITORY,
-      useClass: PrismaUsuarioClienteModuloRepository,
-    },
+    // MATRIZ_PERMISOS_REPOSITORY (WU-7.1, sdd/matriz-permisos-por-usuario):
+    // inyectado en LoginUseCase/RefreshTokenUseCase/SwitchTenantUseCase vía
+    // resolverScope (ADR-P6) y en el ABM de permisos (Obtener/Asignar/
+    // AplicarPreset). USUARIO_CLIENTE_MODULO_REPOSITORY (ABM viejo de
+    // módulos) se retiró en WU-7.6 junto con `GET/PATCH /usuarios/:id/modulos`.
+    { provide: MATRIZ_PERMISOS_REPOSITORY, useClass: PrismaMatrizPermisosRepository },
     // CLIENTE_REPOSITORY: cross-feature. resolverScope/TenantGuard verifican
     // cliente activo. ClientesModule NO exporta este token todavía.
     { provide: CLIENTE_REPOSITORY, useClass: PrismaClienteRepository },
@@ -123,7 +128,7 @@ import { RolesController } from './interface/controllers/roles.controller';
         hashProvider: IHashProvider,
         tokenService: ITokenService,
         refreshTokenRepo: IRefreshTokenRepository,
-        modulosRepo: IUsuarioClienteModuloRepository,
+        permisosRepo: IMatrizPermisosRepository,
       ) =>
         new LoginUseCase(
           usuarioRepo,
@@ -132,7 +137,7 @@ import { RolesController } from './interface/controllers/roles.controller';
           hashProvider,
           tokenService,
           refreshTokenRepo,
-          modulosRepo,
+          permisosRepo,
         ),
       inject: [
         USUARIO_REPOSITORY,
@@ -141,7 +146,7 @@ import { RolesController } from './interface/controllers/roles.controller';
         HASH_PROVIDER,
         TOKEN_SERVICE,
         REFRESH_TOKEN_REPOSITORY,
-        USUARIO_CLIENTE_MODULO_REPOSITORY,
+        MATRIZ_PERMISOS_REPOSITORY,
       ],
     },
     {
@@ -152,7 +157,7 @@ import { RolesController } from './interface/controllers/roles.controller';
         membresiaRepo: IMembresiaRepository,
         clienteRepo: IClienteRepository,
         tokenService: ITokenService,
-        modulosRepo: IUsuarioClienteModuloRepository,
+        permisosRepo: IMatrizPermisosRepository,
       ) =>
         new RefreshTokenUseCase(
           refreshTokenRepo,
@@ -160,7 +165,7 @@ import { RolesController } from './interface/controllers/roles.controller';
           membresiaRepo,
           clienteRepo,
           tokenService,
-          modulosRepo,
+          permisosRepo,
         ),
       inject: [
         REFRESH_TOKEN_REPOSITORY,
@@ -168,7 +173,7 @@ import { RolesController } from './interface/controllers/roles.controller';
         MEMBRESIA_REPOSITORY,
         CLIENTE_REPOSITORY,
         TOKEN_SERVICE,
-        USUARIO_CLIENTE_MODULO_REPOSITORY,
+        MATRIZ_PERMISOS_REPOSITORY,
       ],
     },
     {
@@ -190,14 +195,14 @@ import { RolesController } from './interface/controllers/roles.controller';
         clienteRepo: IClienteRepository,
         tokenService: ITokenService,
         logger: ILogger,
-        modulosRepo: IUsuarioClienteModuloRepository,
-      ) => new SwitchTenantUseCase(membresiaRepo, clienteRepo, tokenService, logger, modulosRepo),
+        permisosRepo: IMatrizPermisosRepository,
+      ) => new SwitchTenantUseCase(membresiaRepo, clienteRepo, tokenService, logger, permisosRepo),
       inject: [
         MEMBRESIA_REPOSITORY,
         CLIENTE_REPOSITORY,
         TOKEN_SERVICE,
         LOGGER,
-        USUARIO_CLIENTE_MODULO_REPOSITORY,
+        MATRIZ_PERMISOS_REPOSITORY,
       ],
     },
     // ─── Gestión mínima de usuarios (sdd/beta-frontend/spec §5) ──────────────
@@ -214,14 +219,32 @@ import { RolesController } from './interface/controllers/roles.controller';
         membresiaRepo: IMembresiaRepository,
         roleRepo: IRoleRepository,
         hashProvider: IHashProvider,
-      ) => new CrearUsuarioTenantUseCase(usuarioRepo, membresiaRepo, roleRepo, hashProvider),
-      inject: [USUARIO_REPOSITORY, MEMBRESIA_REPOSITORY, ROLE_REPOSITORY, HASH_PROVIDER],
+        aplicarPresetPermisosUseCase: AplicarPresetPermisosUseCase,
+      ) =>
+        new CrearUsuarioTenantUseCase(
+          usuarioRepo,
+          membresiaRepo,
+          roleRepo,
+          hashProvider,
+          aplicarPresetPermisosUseCase,
+        ),
+      inject: [
+        USUARIO_REPOSITORY,
+        MEMBRESIA_REPOSITORY,
+        ROLE_REPOSITORY,
+        HASH_PROVIDER,
+        AplicarPresetPermisosUseCase,
+      ],
     },
     {
       provide: CambiarRolUsuarioTenantUseCase,
-      useFactory: (membresiaRepo: IMembresiaRepository, roleRepo: IRoleRepository) =>
-        new CambiarRolUsuarioTenantUseCase(membresiaRepo, roleRepo),
-      inject: [MEMBRESIA_REPOSITORY, ROLE_REPOSITORY],
+      useFactory: (
+        membresiaRepo: IMembresiaRepository,
+        roleRepo: IRoleRepository,
+        aplicarPresetPermisosUseCase: AplicarPresetPermisosUseCase,
+      ) =>
+        new CambiarRolUsuarioTenantUseCase(membresiaRepo, roleRepo, aplicarPresetPermisosUseCase),
+      inject: [MEMBRESIA_REPOSITORY, ROLE_REPOSITORY, AplicarPresetPermisosUseCase],
     },
     {
       provide: EditarUsuarioTenantUseCase,
@@ -235,31 +258,39 @@ import { RolesController } from './interface/controllers/roles.controller';
         new DesactivarMembresiaUsuarioTenantUseCase(membresiaRepo),
       inject: [MEMBRESIA_REPOSITORY],
     },
-    // ─── Asignación de módulos (feature 5.2 CAPA 4) ─────────────────────────
-    {
-      provide: ObtenerModulosUsuarioTenantUseCase,
-      useFactory: (modulosRepo: IUsuarioClienteModuloRepository) =>
-        new ObtenerModulosUsuarioTenantUseCase(modulosRepo),
-      inject: [USUARIO_CLIENTE_MODULO_REPOSITORY],
-    },
-    {
-      provide: AsignarModulosUsuarioTenantUseCase,
-      useFactory: (
-        modulosRepo: IUsuarioClienteModuloRepository,
-        membresiaRepo: IMembresiaRepository,
-      ) => new AsignarModulosUsuarioTenantUseCase(modulosRepo, membresiaRepo),
-      inject: [USUARIO_CLIENTE_MODULO_REPOSITORY, MEMBRESIA_REPOSITORY],
-    },
     {
       provide: ListarRolesUseCase,
       useFactory: (roleRepo: IRoleRepository) => new ListarRolesUseCase(roleRepo),
       inject: [ROLE_REPOSITORY],
     },
+    // ─── ABM de la matriz de permisos (WU-7.4, sdd/matriz-permisos-por-usuario, ADR-P9/ADR-P10) ─
+    {
+      provide: AplicarPresetPermisosUseCase,
+      useFactory: (permisosRepo: IMatrizPermisosRepository) =>
+        new AplicarPresetPermisosUseCase(permisosRepo),
+      inject: [MATRIZ_PERMISOS_REPOSITORY],
+    },
+    {
+      provide: ObtenerPermisosUsuarioTenantUseCase,
+      useFactory: (membresiaRepo: IMembresiaRepository, permisosRepo: IMatrizPermisosRepository) =>
+        new ObtenerPermisosUsuarioTenantUseCase(membresiaRepo, permisosRepo),
+      inject: [MEMBRESIA_REPOSITORY, MATRIZ_PERMISOS_REPOSITORY],
+    },
+    {
+      provide: AsignarPermisosUsuarioTenantUseCase,
+      useFactory: (permisosRepo: IMatrizPermisosRepository, membresiaRepo: IMembresiaRepository) =>
+        new AsignarPermisosUsuarioTenantUseCase(permisosRepo, membresiaRepo),
+      inject: [MATRIZ_PERMISOS_REPOSITORY, MEMBRESIA_REPOSITORY],
+    },
 
     // ─── Guards (Injectable — providers para inyección de clase vía UseGuards) ─
+    // WU-7.3 (sdd/matriz-permisos-por-usuario): PermissionsGuard/ModulosGuard
+    // se retiran — AccionesGuard/AdminClienteGuard los reemplazan en TODOS
+    // los controllers que los consumían.
     JwtAuthGuard,
     TenantGuard,
-    PermissionsGuard,
+    AccionesGuard,
+    AdminClienteGuard,
     GlobalAdminGuard,
   ],
   exports: [
@@ -268,7 +299,8 @@ import { RolesController } from './interface/controllers/roles.controller';
     TOKEN_SERVICE,
     JwtAuthGuard,
     TenantGuard,
-    PermissionsGuard,
+    AccionesGuard,
+    AdminClienteGuard,
     GlobalAdminGuard,
     // CLIENTE_REPOSITORY: dependencia de TenantGuard (exportado arriba). Nest
     // resuelve las dependencias de un provider exportado usando el

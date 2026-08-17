@@ -75,13 +75,15 @@ export interface IUsuarioMasterChecker {
    * elegibilidad de asignación (feature: elegibilidad por catálogo). Espeja el
    * criterio de `resolverScope`: ROOT (`is_global_admin`) y ADMINISTRADOR
    * (membresía activa con rol `ADMINISTRADOR` en el cliente) ven TODOS los
-   * módulos (`esAdminTotal = true`); el resto, solo los asignados en
-   * `usuario_cliente_modulos`.
+   * módulos (`esAdminTotal = true`); el resto, solo los módulos con AL MENOS
+   * UNA acción otorgada en la matriz `usuario_cliente_permisos` (R9,
+   * sdd/matriz-permisos-por-usuario — migrado de `usuario_cliente_modulos`,
+   * mismo umbral que la derivación de `modulos` en el JWT del actor).
    *
    * @param usuarioId UUID del usuario (asignado).
    * @param clienteId UUID del cliente activo.
-   * @returns `esAdminTotal` (ve todo) y `modulos` (códigos asignados; ignorado
-   *          por el caller si `esAdminTotal`).
+   * @returns `esAdminTotal` (ve todo) y `modulos` (códigos con al menos una
+   *          acción otorgada; ignorado por el caller si `esAdminTotal`).
    */
   getAutorizacionModulos(
     usuarioId: string,
@@ -94,8 +96,9 @@ export interface IUsuarioMasterChecker {
    * - usuario `activo=true` y no soft-deleted en `master.usuarios`;
    * - tiene una membresía ACTIVA (`activo=true`, `deletedAt IS NULL`) con rol
    *   `codigo='TECNICO'` en el cliente indicado;
-   * - tiene asignado el `modulo` en `usuario_cliente_modulos`
-   *   (usuarioId + clienteId + modulo).
+   * - tiene AL MENOS UNA acción otorgada en el `modulo` pedido, en la matriz
+   *   `usuario_cliente_permisos` (usuarioId + clienteId + modulo, R9,
+   *   sdd/matriz-permisos-por-usuario — migrado de `usuario_cliente_modulos`).
    *
    * Alimenta el combo del control unificado "Asignar y poner en proceso": a
    * diferencia de `getAutorizacionModulos` (que resuelve la elegibilidad de UN

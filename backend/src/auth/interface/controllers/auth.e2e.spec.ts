@@ -11,7 +11,7 @@
  *
  * Nota de diseño — `TestProtectedController`: al momento de este PR ningún
  * módulo de negocio (tickets/clientes/etc.) tiene endpoints reales que usen
- * `TenantGuard`/`PermissionsGuard`/`GlobalAdminGuard` (siguen scaffoldeados
+ * `TenantGuard`/`AccionesGuard`/`GlobalAdminGuard` (siguen scaffoldeados
  * vacíos — esos guards recién se consumirán en PRs de features futuras). Sin
  * un endpoint real no hay forma de probar el guard vía HTTP genuino (las
  * specs unitarias de cada guard, en `infrastructure/guards/*.spec.ts`, ya
@@ -37,21 +37,23 @@ import {
   ValidationPipe,
 } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
+import { JwtService } from '@nestjs/jwt';
 
 import { SharedModule } from '../../../shared/shared.module';
 import { AuthModule } from '../../auth.module';
 import { TenantScopeMiddleware } from '../../../shared/tenancy/tenant-scope.middleware';
 import { JwtAuthGuard } from '../../infrastructure/guards/jwt-auth.guard';
 import { TenantGuard } from '../../infrastructure/guards/tenant.guard';
-import { PermissionsGuard } from '../../infrastructure/guards/permissions.guard';
+import { AccionesGuard } from '../../infrastructure/guards/acciones.guard';
 import { GlobalAdminGuard } from '../../infrastructure/guards/global-admin.guard';
-import { CurrentUser, RequirePermissions } from '../../infrastructure/guards/decorators';
-import { JwtPayload } from '../../domain/ports/i-token.service';
+import { CurrentUser, RequiereAcciones } from '../../infrastructure/guards/decorators';
+import { JwtPayload, VERSION_PAYLOAD_JWT } from '../../domain/ports/i-token.service';
 
 import { PrismaService } from '../../../shared/infrastructure/persistence/prisma.service';
 import { MasterPrismaClient } from '../../../shared/infrastructure/persistence/prisma-clients';
 import { PrismaClienteRepository } from '../../../clientes/infrastructure/persistence/prisma/prisma-cliente.repository';
 import { PrismaUsuarioRepository } from '../../infrastructure/persistence/prisma/prisma-usuario.repository';
+import { PrismaMatrizPermisosRepository } from '../../infrastructure/persistence/prisma/prisma-matriz-permisos.repository';
 import { ClienteEntity } from '../../../clientes/domain/entities/cliente.entity';
 import { UsuarioEntity } from '../../domain/entities/usuario.entity';
 import { RoleEntity } from '../../domain/entities/role.entity';
@@ -75,8 +77,11 @@ class TestProtectedController {
   }
 
   @Get('permission-gated')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('ticket:crear')
+  @UseGuards(JwtAuthGuard, AccionesGuard)
+  // WU-7.3: harness migrado de PermissionsGuard/@RequirePermissions a
+  // AccionesGuard/@RequiereAcciones — mismo criterio (AND, bypass ROOT,
+  // mensaje de faltantes), ahora sobre la matriz nueva.
+  @RequiereAcciones('TICKETS:ALTAS')
   permissionGated(): { ok: true } {
     return { ok: true };
   }
@@ -141,7 +146,9 @@ describe('Auth e2e (R3–R14, PR6)', () => {
   let masterClient: InstanceType<typeof MasterPrismaClient>;
   let clienteRepo: PrismaClienteRepository;
   let usuarioRepo: PrismaUsuarioRepository;
+  let permisosRepo: PrismaMatrizPermisosRepository;
   let hashProvider: Argon2HashProvider;
+  let jwtService: JwtService;
 
   beforeAll(async () => {
     if (!process.env.DATABASE_URL_MASTER) {
@@ -159,11 +166,18 @@ describe('Auth e2e (R3–R14, PR6)', () => {
 
     const port = (app.getHttpServer() as { address: () => { port: number } }).address().port;
     baseUrl = `http://localhost:${port}`;
+    // WU-7.7 (S3): JwtService de AuthModule, resuelto sin exportar — Nest
+    // busca en TODO el árbol salvo `strict: true` (mismo criterio ya usado
+    // para otros use cases inyectados vía `app.get()` en este repo). Sirve
+    // para firmar tokens SINTÉTICOS con `v` vieja/ausente, algo que
+    // `JwtTokenService.signJwt` no permite (siempre firma con `v: 2`).
+    jwtService = app.get(JwtService);
 
     prismaService = new PrismaService(TEST_DB_URL);
     masterClient = prismaService.getMasterClient();
     clienteRepo = new PrismaClienteRepository(prismaService);
     usuarioRepo = new PrismaUsuarioRepository(prismaService);
+    permisosRepo = new PrismaMatrizPermisosRepository(prismaService);
     hashProvider = new Argon2HashProvider();
   }, 60_000);
 
@@ -181,8 +195,10 @@ describe('Auth e2e (R3–R14, PR6)', () => {
   }, 30_000);
 
   beforeEach(async () => {
+    // usuario_cliente_permisos (WU-7.1) no tiene FK declarada — el TRUNCATE
+    // ... CASCADE de las otras tablas no la alcanza, hay que nombrarla.
     await masterClient.$executeRawUnsafe(
-      'TRUNCATE TABLE membresias, refresh_tokens, roles_permisos, usuarios, clientes, roles, permisos RESTART IDENTITY CASCADE',
+      'TRUNCATE TABLE membresias, refresh_tokens, roles_permisos, usuarios, clientes, roles, permisos, usuario_cliente_permisos RESTART IDENTITY CASCADE',
     );
   });
 
@@ -477,7 +493,7 @@ describe('Auth e2e (R3–R14, PR6)', () => {
       expect(denied.status).toBe(403);
     });
 
-    it('PermissionsGuard (R13): usuario CON el permiso → 200; usuario SIN el permiso → 403', async () => {
+    it('AccionesGuard (R3): usuario CON la acción → 200; usuario SIN la acción → 403', async () => {
       const cliente = await createCliente('guard-permisos');
       const roleConPermiso = await createRoleConPermisos('COLABORADOR', ['ticket:crear']);
       const roleSinPermiso = await createRoleConPermisos('TECNICO_SIN_CREAR', ['ticket:editar']);
@@ -485,6 +501,10 @@ describe('Auth e2e (R3–R14, PR6)', () => {
       const usuarioSin = await createUsuario('guard-permiso-sin');
       await createMembresia(usuarioCon.id, cliente.id, roleConPermiso.id);
       await createMembresia(usuarioSin.id, cliente.id, roleSinPermiso.id);
+      // WU-7.1: el gate del harness usa 'TICKETS:ALTAS' (matriz nueva), no
+      // 'ticket:crear' (RBAC viejo) — hay que sembrar la matriz directamente,
+      // el role RBAC de arriba ya no alimenta `payload.permisos`.
+      await permisosRepo.setPermisos(usuarioCon.id, cliente.id, ['TICKETS:ALTAS']);
 
       const loginCon = await login(usuarioCon.email);
       const okRes = await httpGet(
@@ -547,6 +567,78 @@ describe('Auth e2e (R3–R14, PR6)', () => {
       );
       expect(scopedOnTenant.status).toBe(200);
       expect((scopedOnTenant.data as { clienteId: string }).clienteId).toBe(cliente.id);
+    });
+  });
+
+  // ─── S3 (WU-7.7, ADR-P7) — Claim de versión del payload ─────────────────
+  //
+  // Solo el e2e prueba el PAR completo: el guard unitario (`jwt-auth.guard.
+  // spec.ts`) ya afirma el 401 aislado — lo que NINGÚN otro nivel puede ver
+  // es que `POST /auth/refresh` NO se auto-bloquee. Si `/auth/refresh`
+  // quedara detrás de `JwtAuthGuard` por accidente, el 401 se volvería un
+  // loop y el sistema quedaría inaccesible hasta que expire el refresh
+  // token (riesgo #2218, mitigación citada en design-parte2 §5).
+
+  describe('Claim de versión `v` del payload (S3, ADR-P7)', () => {
+    it('access token SIN `v` (pre-deploy) → 401, nunca 403', async () => {
+      const root = await createUsuario('v-ausente', { isGlobalAdmin: true });
+      const loginRes = await login(root.email);
+      const payload = jwtService.decode(loginRes.data.accessToken!) as Record<string, unknown>;
+      delete payload.v;
+      delete payload.iat;
+      delete payload.exp;
+      const tokenSinVersion = jwtService.sign(payload);
+
+      const { status } = await httpGet(
+        `${baseUrl}/test-protected/root-only`,
+        bearer(tokenSinVersion),
+      );
+
+      expect(status).toBe(401);
+    });
+
+    it('access token con `v: 1` → 401, nunca 403', async () => {
+      const root = await createUsuario('v1', { isGlobalAdmin: true });
+      const loginRes = await login(root.email);
+      const payload = jwtService.decode(loginRes.data.accessToken!) as Record<string, unknown>;
+      payload.v = 1;
+      delete payload.iat;
+      delete payload.exp;
+      const tokenV1 = jwtService.sign(payload);
+
+      const { status } = await httpGet(`${baseUrl}/test-protected/root-only`, bearer(tokenV1));
+
+      expect(status).toBe(401);
+    });
+
+    it('el 401 por versión NO auto-bloquea el refresh: `POST /auth/refresh` inmediatamente después devuelve un token `v: 2` con `permisos` en formato MODULO:ACCION', async () => {
+      const cliente = await createCliente('v3-refresh');
+      const role = await createRoleConPermisos('TECNICO', []);
+      const usuario = await createUsuario('v3-refresh');
+      await createMembresia(usuario.id, cliente.id, role.id);
+      // `roles_permisos` (RBAC viejo) ya NO alimenta `payload.permisos` desde
+      // WU-7.1 — la matriz nueva es la única fuente (R2), sembrada directo.
+      await permisosRepo.setPermisos(usuario.id, cliente.id, ['TICKETS:ALTAS']);
+
+      const loginRes = await login(usuario.email, PLAINTEXT_PASSWORD, cliente.id);
+
+      // El 401 disparado por un `v` desactualizado (verificado arriba) NO
+      // debe dejar el refresh inalcanzable: se pega directo a `/auth/refresh`
+      // con el refresh token real, sin pasar por `JwtAuthGuard` (público).
+      const refreshRes = await httpPost<{ accessToken: string; refreshToken: string }>(
+        `${baseUrl}/auth/refresh`,
+        { refreshToken: loginRes.data.refreshToken },
+      );
+
+      expect(refreshRes.status).toBe(200);
+      const nuevoPayload = jwtService.decode(refreshRes.data.accessToken) as {
+        v: number;
+        permisos: string[];
+      };
+      expect(nuevoPayload.v).toBe(VERSION_PAYLOAD_JWT);
+      // Formato nuevo MODULO:ACCION (R2/R7) — nunca el vocabulario viejo
+      // `modulo:accion` en minúsculas (ej. `ticket:crear`).
+      expect(nuevoPayload.permisos.some((p) => /^[A-Z]+:[A-Z_]+$/.test(p))).toBe(true);
     });
   });
 

@@ -1,24 +1,38 @@
 /**
- * T3.9 TEST — Unit tests de resolverScope (RED → GREEN)
+ * resolver-scope.spec.ts — reescrito para WU-7.1 (sdd/matriz-permisos-por-usuario).
  *
- * resolverScope es la ÚNICA fuente de verdad de autorización de tenant,
- * reusada por login (PR3), switch (PR4) y refresh (PR4). Cubre (R4, R5):
- * - clienteId null: solo válido si isGlobalAdmin → token master (cliente_id/
- *   rol/permisos/nombre = null/null/[]/null). Normal → ClienteNoAutorizado.
- * - clienteId provisto inexistente/inactivo/soft-deleted → ClienteNoAutorizado
- *   (para root Y para normal).
- * - root con clienteId válido: rol/permisos de la membresía si existe, si no
- *   null/[] (root puede no tener membresía en ese cliente).
- * - normal con clienteId válido: exige membresía activa en ESE cliente; sin
- *   ella → ClienteNoAutorizado; con ella → rol/permisos de la membresía.
+ * resolverScope sigue siendo la ÚNICA fuente de verdad de autorización de
+ * tenant, reusada por login/switch/refresh. Lo que cambia respecto de la
+ * versión anterior (feature 5.2): el eje de módulos (`IUsuarioClienteModuloRepository`)
+ * se reemplaza por la matriz de permisos (`IMatrizPermisosRepository`,
+ * `usuario_cliente_permisos`) — R2, ADR-P6:
+ *
+ * - `permisos: string[]` ahora son códigos `MODULO:ACCION` (no `ticket:crear`).
+ * - `modulos: string[]` pasa a ser DERIVADO de `permisos` vía `moduloDe`, sin
+ *   duplicados — ya no es una lectura independiente.
+ * - ROOT (`is_global_admin`) y ADMINISTRADOR de la membresía activa en el
+ *   cliente objetivo bypassean TODAS las celdas: `permisos = [...PARES_VALIDOS]`.
+ *   El bypass se MATERIALIZA en el payload (ADR-P6) — no alcanza con que el
+ *   guard lo evalúe, porque `use-session.ts` del frontend solo tiene rama
+ *   ROOT, no ADMINISTRADOR.
+ * - Usuario común: lee `permisosRepo.findByUsuarioYCliente` directo.
+ * - 0 filas en la matriz → `permisos: []`, `modulos: []`, sin crash (S5,
+ *   fail-closed).
+ * - ADMINISTRADOR de cliente A que hace switch a B NO bypassea en B a menos
+ *   que su membresía en B también sea ADMINISTRADOR (S4) — por construcción,
+ *   cada llamada a `resolverScope` resuelve la membresía del `clienteId`
+ *   pedido.
  */
 import { resolverScope } from './resolver-scope';
 import { ClienteEntity } from '../../../clientes/domain/entities/cliente.entity';
 import { IClienteRepository } from '../../../clientes/domain/ports/i-cliente.repository';
 import { IMembresiaRepository, MembresiaResuelta } from '../../domain/ports/i-membresia.repository';
-import { IUsuarioClienteModuloRepository } from '../../domain/ports/i-usuario-cliente-modulo.repository';
+import { IMatrizPermisosRepository } from '../../domain/ports/i-matriz-permisos.repository';
 import { ClienteNoAutorizadoError } from '../../domain/errors/auth.errors';
-import { TODOS_LOS_MODULOS } from '../../../shared/domain/modulos';
+import { PARES_VALIDOS, moduloDe, CodigoAccion } from '../../../shared/domain/acciones';
+
+/** Módulos esperados de un bypass total, en el mismo orden que `CATALOGO_MODULOS`. */
+const MODULOS_DE_BYPASS = [...new Set(PARES_VALIDOS.map((codigo) => moduloDe(codigo)))];
 
 const makeCliente = (
   overrides: Partial<{ activo: boolean; deleted: boolean; nombre: string }> = {},
@@ -40,7 +54,6 @@ const makeMembresiaResuelta = (overrides: Partial<MembresiaResuelta> = {}): Memb
   clienteId: 'cliente-1',
   clienteNombre: 'Acme SA',
   rolCodigo: 'TECNICO',
-  permisos: ['ticket:editar', 'ticket:crear'],
   ...overrides,
 });
 
@@ -55,32 +68,36 @@ const makeClienteRepo = (): vi.Mocked<IClienteRepository> => ({
 const makeMembresiaRepo = (): vi.Mocked<IMembresiaRepository> => ({
   findActivasByUsuario: vi.fn(),
   findActivaByUsuarioYCliente: vi.fn(),
+  findActivasByCliente: vi.fn(),
+  findByUsuarioYCliente: vi.fn(),
   create: vi.fn().mockResolvedValue(undefined),
+  save: vi.fn().mockResolvedValue(undefined),
 });
 
-const makeModulosRepo = (): vi.Mocked<IUsuarioClienteModuloRepository> => ({
-  findModulosByUsuarioYCliente: vi.fn().mockResolvedValue([]),
+const makePermisosRepo = (): vi.Mocked<IMatrizPermisosRepository> => ({
+  findByUsuarioYCliente: vi.fn().mockResolvedValue([]),
+  setPermisos: vi.fn().mockResolvedValue(undefined),
 });
 
-describe('resolverScope', () => {
+describe('resolverScope (WU-7.1 — matriz de permisos)', () => {
   let clienteRepo: ReturnType<typeof makeClienteRepo>;
   let membresiaRepo: ReturnType<typeof makeMembresiaRepo>;
-  let modulosRepo: ReturnType<typeof makeModulosRepo>;
+  let permisosRepo: ReturnType<typeof makePermisosRepo>;
 
   beforeEach(() => {
     clienteRepo = makeClienteRepo();
     membresiaRepo = makeMembresiaRepo();
-    modulosRepo = makeModulosRepo();
+    permisosRepo = makePermisosRepo();
   });
 
   describe('clienteId === null (token master)', () => {
-    it('root sin clienteId → token master (todo null/[])', async () => {
+    it('root sin clienteId → token master, permisos = TODOS los pares válidos, sin leer la matriz', async () => {
       const result = await resolverScope(
         { usuarioId: 'root-1', isGlobalAdmin: true },
         null,
         membresiaRepo,
         clienteRepo,
-        modulosRepo,
+        permisosRepo,
       );
 
       expect(result.isOk()).toBe(true);
@@ -88,10 +105,11 @@ describe('resolverScope', () => {
         clienteId: null,
         clienteNombre: null,
         rol: null,
-        permisos: [],
-        modulos: TODOS_LOS_MODULOS(),
+        permisos: [...PARES_VALIDOS],
+        modulos: MODULOS_DE_BYPASS,
       });
       expect(clienteRepo.findById).not.toHaveBeenCalled();
+      expect(permisosRepo.findByUsuarioYCliente).not.toHaveBeenCalled();
     });
 
     it('normal sin clienteId → ClienteNoAutorizado (normal no puede pedir token master)', async () => {
@@ -100,7 +118,7 @@ describe('resolverScope', () => {
         null,
         membresiaRepo,
         clienteRepo,
-        modulosRepo,
+        permisosRepo,
       );
 
       expect(result.isFail()).toBe(true);
@@ -117,7 +135,7 @@ describe('resolverScope', () => {
         'cliente-x',
         membresiaRepo,
         clienteRepo,
-        modulosRepo,
+        permisosRepo,
       );
 
       expect(result.isFail()).toBe(true);
@@ -132,7 +150,7 @@ describe('resolverScope', () => {
         'cliente-1',
         membresiaRepo,
         clienteRepo,
-        modulosRepo,
+        permisosRepo,
       );
 
       expect(result.isFail()).toBe(true);
@@ -147,7 +165,7 @@ describe('resolverScope', () => {
         'cliente-1',
         membresiaRepo,
         clienteRepo,
-        modulosRepo,
+        permisosRepo,
       );
 
       expect(result.isFail()).toBe(true);
@@ -163,7 +181,7 @@ describe('resolverScope', () => {
         'cliente-1',
         membresiaRepo,
         clienteRepo,
-        modulosRepo,
+        permisosRepo,
       );
 
       expect(result.isFail()).toBe(true);
@@ -171,11 +189,11 @@ describe('resolverScope', () => {
     });
   });
 
-  describe('root con clienteId válido', () => {
-    it('root CON membresía en ese cliente → rol/permisos de la membresía', async () => {
+  describe('root con clienteId válido — bypass total, independiente de la membresía', () => {
+    it('root CON membresía ADMINISTRADOR en ese cliente → bypass total, sin leer la matriz', async () => {
       clienteRepo.findById.mockResolvedValue(makeCliente({ nombre: 'Acme SA' }));
       membresiaRepo.findActivaByUsuarioYCliente.mockResolvedValue(
-        makeMembresiaResuelta({ rolCodigo: 'ADMINISTRADOR', permisos: ['cliente:gestionar'] }),
+        makeMembresiaResuelta({ rolCodigo: 'ADMINISTRADOR' }),
       );
 
       const result = await resolverScope(
@@ -183,7 +201,7 @@ describe('resolverScope', () => {
         'cliente-1',
         membresiaRepo,
         clienteRepo,
-        modulosRepo,
+        permisosRepo,
       );
 
       expect(result.isOk()).toBe(true);
@@ -191,12 +209,38 @@ describe('resolverScope', () => {
         clienteId: 'cliente-1',
         clienteNombre: 'Acme SA',
         rol: 'ADMINISTRADOR',
-        permisos: ['cliente:gestionar'],
-        modulos: TODOS_LOS_MODULOS(),
+        permisos: [...PARES_VALIDOS],
+        modulos: MODULOS_DE_BYPASS,
       });
+      expect(permisosRepo.findByUsuarioYCliente).not.toHaveBeenCalled();
     });
 
-    it('root SIN membresía en ese cliente → rol=null, permisos=[]', async () => {
+    it('root CON membresía NO-ADMINISTRADOR (TECNICO) → sigue bypasseando por is_global_admin', async () => {
+      clienteRepo.findById.mockResolvedValue(makeCliente({ nombre: 'Acme SA' }));
+      membresiaRepo.findActivaByUsuarioYCliente.mockResolvedValue(
+        makeMembresiaResuelta({ rolCodigo: 'TECNICO' }),
+      );
+
+      const result = await resolverScope(
+        { usuarioId: 'root-1', isGlobalAdmin: true },
+        'cliente-1',
+        membresiaRepo,
+        clienteRepo,
+        permisosRepo,
+      );
+
+      expect(result.isOk()).toBe(true);
+      expect(result.getValue()).toEqual({
+        clienteId: 'cliente-1',
+        clienteNombre: 'Acme SA',
+        rol: 'TECNICO',
+        permisos: [...PARES_VALIDOS],
+        modulos: MODULOS_DE_BYPASS,
+      });
+      expect(permisosRepo.findByUsuarioYCliente).not.toHaveBeenCalled();
+    });
+
+    it('root SIN membresía en ese cliente → rol=null, igual bypass total (root no necesita membresía)', async () => {
       clienteRepo.findById.mockResolvedValue(makeCliente({ nombre: 'Acme SA' }));
       membresiaRepo.findActivaByUsuarioYCliente.mockResolvedValue(null);
 
@@ -205,7 +249,7 @@ describe('resolverScope', () => {
         'cliente-1',
         membresiaRepo,
         clienteRepo,
-        modulosRepo,
+        permisosRepo,
       );
 
       expect(result.isOk()).toBe(true);
@@ -213,25 +257,31 @@ describe('resolverScope', () => {
         clienteId: 'cliente-1',
         clienteNombre: 'Acme SA',
         rol: null,
-        permisos: [],
-        modulos: TODOS_LOS_MODULOS(),
+        permisos: [...PARES_VALIDOS],
+        modulos: MODULOS_DE_BYPASS,
       });
+      expect(permisosRepo.findByUsuarioYCliente).not.toHaveBeenCalled();
     });
   });
 
-  describe('usuario normal con clienteId válido', () => {
-    it('CON membresía activa en ese cliente → scope con su rol/permisos', async () => {
+  describe('usuario normal con clienteId válido — lee la matriz', () => {
+    it('CON membresía activa → lee permisosRepo, modulos derivados sin duplicados', async () => {
       clienteRepo.findById.mockResolvedValue(makeCliente({ nombre: 'Acme SA' }));
       membresiaRepo.findActivaByUsuarioYCliente.mockResolvedValue(
         makeMembresiaResuelta({ clienteNombre: 'Acme SA', rolCodigo: 'TECNICO' }),
       );
+      permisosRepo.findByUsuarioYCliente.mockResolvedValue([
+        'TICKETS:ALTAS',
+        'TICKETS:LECTURA',
+        'EQUIPOS:LECTURA',
+      ]);
 
       const result = await resolverScope(
         { usuarioId: 'user-1', isGlobalAdmin: false },
         'cliente-1',
         membresiaRepo,
         clienteRepo,
-        modulosRepo,
+        permisosRepo,
       );
 
       expect(result.isOk()).toBe(true);
@@ -239,9 +289,30 @@ describe('resolverScope', () => {
         clienteId: 'cliente-1',
         clienteNombre: 'Acme SA',
         rol: 'TECNICO',
-        permisos: ['ticket:editar', 'ticket:crear'],
-        modulos: [],
+        permisos: ['TICKETS:ALTAS', 'TICKETS:LECTURA', 'EQUIPOS:LECTURA'],
+        modulos: ['TICKETS', 'EQUIPOS'],
       });
+      expect(permisosRepo.findByUsuarioYCliente).toHaveBeenCalledWith('user-1', 'cliente-1');
+    });
+
+    it('usuario con 0 filas en la matriz → permisos=[], modulos=[], sin crash (S5)', async () => {
+      clienteRepo.findById.mockResolvedValue(makeCliente());
+      membresiaRepo.findActivaByUsuarioYCliente.mockResolvedValue(
+        makeMembresiaResuelta({ rolCodigo: 'TECNICO' }),
+      );
+      permisosRepo.findByUsuarioYCliente.mockResolvedValue([]);
+
+      const result = await resolverScope(
+        { usuarioId: 'user-1', isGlobalAdmin: false },
+        'cliente-1',
+        membresiaRepo,
+        clienteRepo,
+        permisosRepo,
+      );
+
+      expect(result.isOk()).toBe(true);
+      expect(result.getValue().permisos).toEqual([]);
+      expect(result.getValue().modulos).toEqual([]);
     });
 
     it('SIN membresía activa en ese cliente → ClienteNoAutorizado', async () => {
@@ -253,7 +324,7 @@ describe('resolverScope', () => {
         'cliente-1',
         membresiaRepo,
         clienteRepo,
-        modulosRepo,
+        permisosRepo,
       );
 
       expect(result.isFail()).toBe(true);
@@ -269,7 +340,7 @@ describe('resolverScope', () => {
         'cliente-1',
         membresiaRepo,
         clienteRepo,
-        modulosRepo,
+        permisosRepo,
       );
 
       expect(membresiaRepo.findActivaByUsuarioYCliente).toHaveBeenCalledWith(
@@ -279,72 +350,86 @@ describe('resolverScope', () => {
     });
   });
 
-  // ─── Eje de módulos (feature 5.2 CAPA 1) ────────────────────────────────────
-  describe('modulos', () => {
-    it('ROOT (isGlobalAdmin) con cliente → TODOS los módulos, sin consultar modulosRepo', async () => {
-      clienteRepo.findById.mockResolvedValue(makeCliente());
-      membresiaRepo.findActivaByUsuarioYCliente.mockResolvedValue(null);
-
-      const result = await resolverScope(
-        { usuarioId: 'root-1', isGlobalAdmin: true },
-        'cliente-1',
-        membresiaRepo,
-        clienteRepo,
-        modulosRepo,
+  // ─── S4: ADMINISTRADOR no cruza tenant ──────────────────────────────────
+  describe('ADMINISTRADOR — bypass acotado al cliente activo (S4)', () => {
+    it('ADMINISTRADOR de cliente A que hace switch a B, sin membresía ADMINISTRADOR en B → NO bypassea en B, lee la matriz de B', async () => {
+      // Primer resolverScope: cliente A, membresía ADMINISTRADOR → bypass.
+      clienteRepo.findById.mockResolvedValueOnce(makeCliente({ nombre: 'Cliente A' }));
+      membresiaRepo.findActivaByUsuarioYCliente.mockResolvedValueOnce(
+        makeMembresiaResuelta({ clienteId: 'cliente-A', rolCodigo: 'ADMINISTRADOR' }),
       );
 
-      expect(result.getValue().modulos).toEqual(TODOS_LOS_MODULOS());
-      expect(modulosRepo.findModulosByUsuarioYCliente).not.toHaveBeenCalled();
-    });
-
-    it('ADMINISTRADOR (membresía rolCodigo ADMINISTRADOR) → TODOS los módulos, sin consultar modulosRepo', async () => {
-      clienteRepo.findById.mockResolvedValue(makeCliente());
-      membresiaRepo.findActivaByUsuarioYCliente.mockResolvedValue(
-        makeMembresiaResuelta({ rolCodigo: 'ADMINISTRADOR' }),
-      );
-
-      const result = await resolverScope(
+      const resultadoA = await resolverScope(
         { usuarioId: 'user-1', isGlobalAdmin: false },
-        'cliente-1',
+        'cliente-A',
         membresiaRepo,
         clienteRepo,
-        modulosRepo,
+        permisosRepo,
       );
 
-      expect(result.getValue().modulos).toEqual(TODOS_LOS_MODULOS());
-      expect(modulosRepo.findModulosByUsuarioYCliente).not.toHaveBeenCalled();
-    });
+      expect(resultadoA.getValue().permisos).toEqual([...PARES_VALIDOS]);
 
-    it('usuario normal → exactamente los módulos asignados que devuelve modulosRepo', async () => {
+      // Segundo resolverScope (switch): cliente B, membresía TECNICO (no
+      // ADMINISTRADOR) → NO bypass, lee la matriz de B (0 filas: sin
+      // permisos otorgados ahí todavía).
+      clienteRepo.findById.mockResolvedValueOnce(makeCliente({ nombre: 'Cliente B' }));
+      membresiaRepo.findActivaByUsuarioYCliente.mockResolvedValueOnce(
+        makeMembresiaResuelta({ clienteId: 'cliente-B', rolCodigo: 'TECNICO' }),
+      );
+      permisosRepo.findByUsuarioYCliente.mockResolvedValueOnce([]);
+
+      const resultadoB = await resolverScope(
+        { usuarioId: 'user-1', isGlobalAdmin: false },
+        'cliente-B',
+        membresiaRepo,
+        clienteRepo,
+        permisosRepo,
+      );
+
+      expect(resultadoB.isOk()).toBe(true);
+      expect(resultadoB.getValue().permisos).toEqual([]);
+      expect(resultadoB.getValue().rol).toBe('TECNICO');
+      expect(permisosRepo.findByUsuarioYCliente).toHaveBeenCalledWith('user-1', 'cliente-B');
+    });
+  });
+
+  // ─── modulos derivados de permisos (R2, reemplaza el eje independiente) ──
+  describe('modulos', () => {
+    it('se derivan de permisos SIN duplicados, vía moduloDe', async () => {
       clienteRepo.findById.mockResolvedValue(makeCliente());
       membresiaRepo.findActivaByUsuarioYCliente.mockResolvedValue(
         makeMembresiaResuelta({ rolCodigo: 'TECNICO' }),
       );
-      modulosRepo.findModulosByUsuarioYCliente.mockResolvedValue(['SOPORTE']);
+      permisosRepo.findByUsuarioYCliente.mockResolvedValue([
+        'TICKETS:ALTAS',
+        'TICKETS:MODIFICACION',
+        'TICKETS:LECTURA',
+        'KB:LECTURA',
+      ] as CodigoAccion[]);
 
       const result = await resolverScope(
         { usuarioId: 'user-1', isGlobalAdmin: false },
         'cliente-1',
         membresiaRepo,
         clienteRepo,
-        modulosRepo,
+        permisosRepo,
       );
 
-      expect(result.getValue().modulos).toEqual(['SOPORTE']);
-      expect(modulosRepo.findModulosByUsuarioYCliente).toHaveBeenCalledWith('user-1', 'cliente-1');
+      // TICKETS aparece 3 veces en permisos, una sola en modulos.
+      expect(result.getValue().modulos).toEqual(['TICKETS', 'KB']);
     });
 
-    it('token master (clienteId null, root) → TODOS los módulos', async () => {
+    it('token master (clienteId null, root) → los 6 módulos del catálogo, sin duplicados', async () => {
       const result = await resolverScope(
         { usuarioId: 'root-1', isGlobalAdmin: true },
         null,
         membresiaRepo,
         clienteRepo,
-        modulosRepo,
+        permisosRepo,
       );
 
-      expect(result.getValue().modulos).toEqual(TODOS_LOS_MODULOS());
-      expect(modulosRepo.findModulosByUsuarioYCliente).not.toHaveBeenCalled();
+      expect(result.getValue().modulos).toEqual(MODULOS_DE_BYPASS);
+      expect(result.getValue().modulos).toHaveLength(6);
     });
   });
 });

@@ -16,8 +16,9 @@
  * `TenantGuard` (ver su JSDoc: "los endpoints master/root NO aplican este
  * guard"). `GET` (sin sufijo) en cambio lo necesita el ADMINISTRADOR del
  * TENANT para poblar el selector de adopción (`AdoptarCicloForm`, G6) —
- * por eso usa `TenantGuard` + `ciclo:gestionar` (mismo permiso que
- * `POST /ciclos` en `CiclosController`), NO `GlobalAdminGuard`, y solo
+ * por eso usa `TenantGuard` + `AdminClienteGuard` (WU-7.3, reemplaza
+ * `ciclo:gestionar` — mismo gate que `POST /ciclos` en `CiclosController`),
+ * NO `GlobalAdminGuard`, y solo
  * retorna ciclos ACTIVOS (`findAllActivos`). `GET /admin` retorna el
  * catálogo COMPLETO (incluye soft-deleted, DTO distinto con `eliminado`)
  * porque la pantalla ABM de ROOT necesita poder editar/dar de baja
@@ -59,8 +60,7 @@ import { DomainError } from '../../../shared/domain/result';
 import { CicloVigenteNotFoundError } from '../../domain/errors/clientes.errors';
 import { JwtAuthGuard } from '../../../auth/infrastructure/guards/jwt-auth.guard';
 import { TenantGuard } from '../../../auth/infrastructure/guards/tenant.guard';
-import { PermissionsGuard } from '../../../auth/infrastructure/guards/permissions.guard';
-import { RequirePermissions } from '../../../auth/infrastructure/guards/decorators';
+import { AdminClienteGuard } from '../../../auth/infrastructure/guards/admin-cliente.guard';
 import { GlobalAdminGuard } from '../../../auth/infrastructure/guards/global-admin.guard';
 
 /** Formatea un `Date` (columna `@db.Date`) como `YYYY-MM-DD`. */
@@ -139,11 +139,10 @@ export class CicloVigenteController {
    * Lista los ciclos ACTIVOS del catálogo global — item 4/G6. El
    * ADMINISTRADOR del tenant lo usa para poblar el selector de
    * `AdoptarCicloForm` (antes texto libre de UUID sin catálogo).
-   * @throws 403 sin `ciclo:gestionar`
+   * @throws 403 si no es ADMINISTRADOR del cliente ni ROOT (`AdminClienteGuard`)
    */
   @Get()
-  @UseGuards(TenantGuard, PermissionsGuard)
-  @RequirePermissions('ciclo:gestionar')
+  @UseGuards(TenantGuard, AdminClienteGuard)
   async listar(): Promise<CicloVigenteResponseDto[]> {
     const ciclos = await this.listarCiclosVigentesUseCase.execute();
     return ciclos.map(toResponseDto);

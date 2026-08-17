@@ -43,7 +43,7 @@ describe("ItemCerrarFaltanteDialog", () => {
 
   it("S24: exige motivo no vacío antes de pegarle a la API", async () => {
     renderWithProviders(<ItemCerrarFaltanteDialog compraId={COMPRA_ID} item={buildItem()} />, {
-      user: buildUser({ permisos: ["compra:gestionar"] }),
+      user: buildUser({ permisos: ["COMPRAS:MODIFICACION"] }),
     });
 
     const user = userEvent.setup();
@@ -56,7 +56,7 @@ describe("ItemCerrarFaltanteDialog", () => {
   it("S25: con el ítem ya cerrado con faltante, el botón queda deshabilitado (TERMINAL)", async () => {
     renderWithProviders(
       <ItemCerrarFaltanteDialog compraId={COMPRA_ID} item={buildItem({ cerradoConFaltante: true })} />,
-      { user: buildUser({ permisos: ["compra:gestionar"] }) },
+      { user: buildUser({ permisos: ["COMPRAS:MODIFICACION"] }) },
     );
 
     expect(screen.getByRole("button", { name: /cerrar con faltante/i })).toBeDisabled();
@@ -67,7 +67,7 @@ describe("ItemCerrarFaltanteDialog", () => {
     (estadoAprobacion) => {
       renderWithProviders(
         <ItemCerrarFaltanteDialog compraId={COMPRA_ID} item={buildItem({ estadoAprobacion })} />,
-        { user: buildUser({ permisos: ["compra:gestionar"] }) },
+        { user: buildUser({ permisos: ["COMPRAS:MODIFICACION"] }) },
       );
 
       expect(screen.getByRole("button", { name: /cerrar con faltante/i })).toBeDisabled();
@@ -80,7 +80,7 @@ describe("ItemCerrarFaltanteDialog", () => {
         compraId={COMPRA_ID}
         item={buildItem({ cantidad: 10, cantidadComprada: 10 })}
       />,
-      { user: buildUser({ permisos: ["compra:gestionar"] }) },
+      { user: buildUser({ permisos: ["COMPRAS:MODIFICACION"] }) },
     );
 
     expect(screen.getByRole("button", { name: /cerrar con faltante/i })).toBeDisabled();
@@ -96,7 +96,7 @@ describe("ItemCerrarFaltanteDialog", () => {
     );
 
     renderWithProviders(<ItemCerrarFaltanteDialog compraId={COMPRA_ID} item={buildItem()} />, {
-      user: buildUser({ permisos: ["compra:gestionar"] }),
+      user: buildUser({ permisos: ["COMPRAS:MODIFICACION"] }),
     });
 
     const user = userEvent.setup();
@@ -116,7 +116,7 @@ describe("ItemCerrarFaltanteDialog", () => {
     );
 
     renderWithProviders(<ItemCerrarFaltanteDialog compraId={COMPRA_ID} item={buildItem()} />, {
-      user: buildUser({ permisos: ["compra:gestionar"] }),
+      user: buildUser({ permisos: ["COMPRAS:MODIFICACION"] }),
     });
 
     const user = userEvent.setup();

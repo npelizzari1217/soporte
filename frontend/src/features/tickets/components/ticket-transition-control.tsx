@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * TicketTransitionControl — PRESENTATIONAL, gated por `ticket:transicionar`
+ * TicketTransitionControl — PRESENTATIONAL, gated por `TICKETS:TRANSICIONAR`
  * (TECNICO+). Ofrece los destinos MANUALES desde el estado actual
  * (`getManualNextStates`): el grafo válido MENOS los arcos de arranque
  * (NUEVO→ASIGNADO, ASIGNADO→EN_PROCESO) que ahora cubre el control unificado
@@ -40,7 +40,7 @@ export function TicketTransitionControl({
   onTransicionar,
   isSubmitting,
 }: TicketTransitionControlProps) {
-  const puedeTransicionar = useCan("ticket:transicionar");
+  const puedeTransicionar = useCan("TICKETS:TRANSICIONAR");
   const { user, isGlobalAdmin } = useSession();
   const esCorrector = isGlobalAdmin || user?.rol === "ADMINISTRADOR";
 

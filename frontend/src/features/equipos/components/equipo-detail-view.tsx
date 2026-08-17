@@ -3,7 +3,10 @@
 /**
  * EquipoDetailView — CONTAINER montado por `/equipos/[id]` (T5.13). Edición en
  * MODAL (`EquipoEditDialog`) + baja lógica detrás de `ConfirmDialog` +
- * componentes. Gate `equipo:gestionar` (todas las mutaciones), consistente con
+ * componentes. Gates por acción (WU-7.6, `sdd/matriz-permisos-por-usuario`):
+ * `EQUIPOS:ALTAS` (agregar componente), `EQUIPOS:MODIFICACION` (editar
+ * equipo), `EQUIPOS:BORRADO` (dar de baja) — separados, ya no un único
+ * `equipo:gestionar` para las tres mutaciones. Consistente con
  * `EquiposController`. La asignación a personas se eliminó del dominio Equipos
  * — vive solo en `Ticket`.
  *
@@ -54,10 +57,14 @@ export function EquipoDetailView({ equipoId }: EquipoDetailViewProps) {
         title={equipo.nombre}
         description={equipo.numeroSerie ?? undefined}
         actions={
-          <Can permiso="equipo:gestionar">
-            <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2">
+            <Can permiso="EQUIPOS:ALTAS">
               <ComponenteCreateDialog equipoId={equipo.id} />
+            </Can>
+            <Can permiso="EQUIPOS:MODIFICACION">
               <EquipoEditDialog equipo={equipo} />
+            </Can>
+            <Can permiso="EQUIPOS:BORRADO">
               <ConfirmDialog
                 trigger={
                   <Button variant="destructive" size="sm">
@@ -71,8 +78,8 @@ export function EquipoDetailView({ equipoId }: EquipoDetailViewProps) {
                 isConfirming={eliminarMutation.isPending}
                 onConfirm={() => eliminarMutation.mutate(equipo.id, { onSuccess: () => router.push("/equipos") })}
               />
-            </div>
-          </Can>
+            </Can>
+          </div>
         }
       />
 

@@ -6,7 +6,7 @@ import type { JwtPayload } from "@/shared/api/types";
  * (`/compras`, `/edilicia`, `/equipos`). El JWT trae `modulos: string[]` con el
  * subconjunto habilitado; ROOT y ADMINISTRADOR reciben todos.
  */
-export const MODULOS = ["SOPORTE", "COMPRAS", "EDILICIA", "EQUIPOS"] as const;
+export const MODULOS = ["TICKETS", "COMPRAS", "EDILICIA", "EQUIPOS"] as const;
 export type Modulo = (typeof MODULOS)[number];
 
 /**

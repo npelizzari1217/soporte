@@ -14,17 +14,17 @@
  * (alimenta un select, no es una vista de gestión).
  *
  * Guards: `JwtAuthGuard` + `TenantGuard` (requieren JWT válido + tenant
- * resuelto) — `PermissionsGuard` se agrega por consistencia con el resto
- * de controllers aunque no haya metadata `@RequirePermissions` (pass-through).
+ * resuelto) — sin gate de acciones (WU-7.3: `AccionesGuard`/`AdminClienteGuard`
+ * no se agregan, mismo criterio pass-through que tenía `PermissionsGuard`
+ * sin metadata).
  */
 import { Controller, Get, UseGuards } from '@nestjs/common';
 import { ListarRolesUseCase } from '../../application/use-cases/listar-roles.use-case';
 import { RoleResponseDto, toRoleResponseDto } from '../dtos/role.dto';
 import { JwtAuthGuard } from '../../infrastructure/guards/jwt-auth.guard';
 import { TenantGuard } from '../../infrastructure/guards/tenant.guard';
-import { PermissionsGuard } from '../../infrastructure/guards/permissions.guard';
 
-@UseGuards(JwtAuthGuard, TenantGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, TenantGuard)
 @Controller('roles')
 export class RolesController {
   constructor(private readonly listarRolesUseCase: ListarRolesUseCase) {}

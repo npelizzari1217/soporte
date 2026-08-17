@@ -2,20 +2,19 @@
 
 /**
  * UsuariosAdminView — CONTAINER client component montado por
- * `/admin/usuarios` (T4.7 — reemplaza el placeholder original: G3
- * `usuario:gestionar`/`rol:asignar` YA tiene backend real, ver
- * apply-progress previo).
+ * `/admin/usuarios` (T4.7, migrado en WU-7.6 —
+ * `sdd/matriz-permisos-por-usuario` ADR-P5).
  *
- * Gating en DOS niveles (AND, no OR — mismo criterio que el backend
- * `@RequirePermissions('usuario:gestionar','rol:asignar')`):
- * - Página completa: `usuario:gestionar` (ver la lista).
- * - Mutar (crear/cambiar rol/desactivar): `usuario:gestionar` AND
- *   `rol:asignar` (nested `<Can>`) — con solo `usuario:gestionar` se VE la
- *   lista pero ninguna acción de escritura.
+ * Gating: UN SOLO gate (`<SoloAdminCliente>`, `esAdminCliente` =
+ * ADMINISTRADOR-o-ROOT), mismo criterio que el backend
+ * `AdminClienteGuard`/`esAdminDeCliente`. Reemplaza el AND anidado de dos
+ * permisos RBAC viejos (`usuario:gestionar` + `rol:asignar`, retirados con
+ * `roles_permisos`) — la configuración de usuarios ya no tiene celda propia
+ * en la matriz, es un chequeo de identidad (R4).
  */
 import { Users } from "lucide-react";
 import { useUsuariosTenant } from "../hooks/use-usuarios-tenant";
-import { Can } from "@/components/shared/can";
+import { SoloAdminCliente } from "@/components/shared/solo-admin-cliente";
 import { ErrorState } from "@/components/shared/error-state";
 import { EmptyState } from "@/components/shared/empty-state";
 import { PageHeader } from "@/components/shared/page-header";
@@ -26,16 +25,16 @@ import { CrearUsuarioDialog } from "./crear-usuario-dialog";
 import { EditarUsuarioDialog } from "./editar-usuario-dialog";
 import { CambiarRolControl } from "./cambiar-rol-control";
 import { DesactivarMembresiaControl } from "./desactivar-membresia-control";
-import { AsignarModulosControl } from "./asignar-modulos-control";
+import { AsignarPermisosControl } from "./asignar-permisos-control";
 import type { UsuarioTenant } from "../types";
 
 export function UsuariosAdminView() {
   return (
     <div>
       <AdminNav />
-      <Can permiso="usuario:gestionar" fallback={<ErrorState message="No tenés permiso para gestionar usuarios." />}>
+      <SoloAdminCliente fallback={<ErrorState message="No tenés permiso para gestionar usuarios." />}>
         <UsuariosAdminContent />
-      </Can>
+      </SoloAdminCliente>
     </div>
   );
 }
@@ -52,16 +51,10 @@ function UsuariosAdminContent() {
       header: "Acciones",
       render: (row) => (
         <div className="flex items-center gap-2">
-          <Can permiso="usuario:gestionar">
-            <EditarUsuarioDialog usuario={row} />
-          </Can>
-          <Can permiso="rol:asignar">
-            <div className="flex items-center gap-2">
-              <CambiarRolControl usuario={row} />
-              <AsignarModulosControl usuario={row} />
-              <DesactivarMembresiaControl usuario={row} />
-            </div>
-          </Can>
+          <EditarUsuarioDialog usuario={row} />
+          <CambiarRolControl usuario={row} />
+          <AsignarPermisosControl usuario={row} />
+          <DesactivarMembresiaControl usuario={row} />
         </div>
       ),
     },
@@ -72,11 +65,7 @@ function UsuariosAdminContent() {
       <PageHeader
         title="Usuarios y membresías"
         description="Usuarios con membresía activa en este tenant."
-        actions={
-          <Can permiso="rol:asignar">
-            <CrearUsuarioDialog />
-          </Can>
-        }
+        actions={<CrearUsuarioDialog />}
       />
 
       {usuariosQuery.isLoading || usuariosQuery.isError ? (

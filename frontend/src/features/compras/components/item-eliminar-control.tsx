@@ -2,7 +2,7 @@
 
 /**
  * ItemEliminarControl — baja lógica de un ítem PENDIENTE/RECHAZADO (§4.2,
- * S6/S7). PRESENTACIONAL, gate `compra:gestionar` aplicado por el CALLER
+ * S6/S7). PRESENTACIONAL, gate `COMPRAS:BORRADO` aplicado por el CALLER
  * (mismo criterio que `KbDeleteControl`) — PIEZA AUTÓNOMA de PR-26, sin
  * cablear a `compra-detail-view.tsx`.
  *

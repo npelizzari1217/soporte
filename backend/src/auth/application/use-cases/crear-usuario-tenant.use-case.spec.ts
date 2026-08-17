@@ -2,7 +2,12 @@ import { describe, it, expect, vi } from 'vitest';
 import { CrearUsuarioTenantUseCase } from './crear-usuario-tenant.use-case';
 import { UsuarioEntity } from '../../domain/entities/usuario.entity';
 import { RoleEntity } from '../../domain/entities/role.entity';
-import { RolNoEncontradoError, MembresiaYaActivaError } from '../../domain/errors/auth.errors';
+import { Result } from '../../../shared/domain/result';
+import {
+  RolNoEncontradoError,
+  MembresiaYaActivaError,
+  PresetRolNoDefinidoError,
+} from '../../domain/errors/auth.errors';
 
 const DTO = {
   clienteId: 'cliente-token',
@@ -41,13 +46,25 @@ function buildDeps(overrides: Partial<Record<string, unknown>> = {}) {
     hash: vi.fn().mockResolvedValue('hashed-password'),
     ...(overrides.hashProvider as object),
   };
+  const aplicarPresetPermisosUseCase = {
+    execute: vi.fn().mockResolvedValue(Result.ok(undefined)),
+    ...(overrides.aplicarPresetPermisosUseCase as object),
+  };
   const useCase = new CrearUsuarioTenantUseCase(
     usuarioRepo as never,
     membresiaRepo as never,
     roleRepo as never,
     hashProvider as never,
+    aplicarPresetPermisosUseCase as never,
   );
-  return { useCase, usuarioRepo, membresiaRepo, roleRepo, hashProvider };
+  return {
+    useCase,
+    usuarioRepo,
+    membresiaRepo,
+    roleRepo,
+    hashProvider,
+    aplicarPresetPermisosUseCase,
+  };
 }
 
 describe('CrearUsuarioTenantUseCase (gestión mínima de usuarios, sdd/beta-frontend)', () => {
@@ -65,6 +82,38 @@ describe('CrearUsuarioTenantUseCase (gestión mínima de usuarios, sdd/beta-fron
     expect(membresiaCreada.clienteId).toBe(DTO.clienteId);
     expect(membresiaCreada.rolId).toBe(rol.id);
     expect(membresiaCreada.activo).toBe(true);
+  });
+
+  // ─── Fix post-verify W4 (sdd/matriz-permisos-por-usuario): el alta NO
+  // ─── sembraba la matriz — el usuario nacía con 0 celdas, invisible como
+  // ─── asignable, sin error (documentado como workaround en demo-seed.ts).
+
+  it('[CRITICAL] siembra el preset de la matriz del rol para la membresía recién creada (W4)', async () => {
+    const { useCase, membresiaRepo, aplicarPresetPermisosUseCase } = buildDeps();
+
+    const result = await useCase.execute(DTO);
+
+    expect(result.isOk()).toBe(true);
+    const membresiaCreada = membresiaRepo.create.mock.calls[0][0];
+    expect(aplicarPresetPermisosUseCase.execute).toHaveBeenCalledWith({
+      clienteId: DTO.clienteId,
+      usuarioId: membresiaCreada.usuarioId,
+      rolCodigo: DTO.rolCodigo,
+    });
+  });
+
+  it('[CRITICAL] falla con PresetRolNoDefinidoError si el rol no tiene preset — la membresía YA quedó creada (mismo criterio que CambiarRolUsuarioTenantUseCase)', async () => {
+    const { useCase, membresiaRepo } = buildDeps({
+      aplicarPresetPermisosUseCase: {
+        execute: vi.fn().mockResolvedValue(Result.fail(new PresetRolNoDefinidoError('TECNICO'))),
+      },
+    });
+
+    const result = await useCase.execute(DTO);
+
+    expect(result.isFail()).toBe(true);
+    expect(result.getError()).toBeInstanceOf(PresetRolNoDefinidoError);
+    expect(membresiaRepo.create).toHaveBeenCalledOnce();
   });
 
   it('AISLAMIENTO: la membresía SIEMPRE se crea con el clienteId recibido, nunca otro', async () => {
@@ -91,9 +140,10 @@ describe('CrearUsuarioTenantUseCase (gestión mínima de usuarios, sdd/beta-fron
       new Date(),
       null,
     );
-    const { useCase, usuarioRepo, membresiaRepo, hashProvider } = buildDeps({
-      usuarioRepo: { findByEmail: vi.fn().mockResolvedValue(existente) },
-    });
+    const { useCase, usuarioRepo, membresiaRepo, hashProvider, aplicarPresetPermisosUseCase } =
+      buildDeps({
+        usuarioRepo: { findByEmail: vi.fn().mockResolvedValue(existente) },
+      });
 
     const result = await useCase.execute(DTO);
 
@@ -102,6 +152,13 @@ describe('CrearUsuarioTenantUseCase (gestión mínima de usuarios, sdd/beta-fron
     expect(usuarioRepo.create).not.toHaveBeenCalled();
     const membresiaCreada = membresiaRepo.create.mock.calls[0][0];
     expect(membresiaCreada.usuarioId).toBe('usuario-existente');
+    // W4: la membresía NUEVA en este cliente también necesita su preset —
+    // aplica igual para un usuario global reutilizado (0 celdas es 0 celdas).
+    expect(aplicarPresetPermisosUseCase.execute).toHaveBeenCalledWith({
+      clienteId: DTO.clienteId,
+      usuarioId: 'usuario-existente',
+      rolCodigo: DTO.rolCodigo,
+    });
   });
 
   it('falla con RolNoEncontradoError si el rolCodigo no existe en el catálogo', async () => {

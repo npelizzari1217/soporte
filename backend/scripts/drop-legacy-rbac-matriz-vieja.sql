@@ -1,0 +1,38 @@
+-- WU-9 · Contract (sdd/matriz-permisos-por-usuario). PUNTO DE NO RETORNO.
+-- Ref design: sdd/matriz-permisos-por-usuario/design §3, "Paso 5 · Contract
+-- (deploy posterior, después de confirmar paridad)". Ref tasks: WU-9.
+--
+-- Elimina la red de rollback del RBAC viejo. `usuario_cliente_modulos` SÍ
+-- está sin lectores de runtime desde WU-7 (guards nuevos,
+-- AccionesGuard/AdminClienteGuard) y desde R9/WU-7.5 (usuario-master.checker
+-- migrado a leer la matriz).
+--
+-- `roles_permisos`/`permisos` (fix post-verify C2): el include
+-- `rol.rolesPermisos` que `PrismaMembresiaRepository` corría en CADA login/
+-- switch/refresh, y el JOIN de `PrismaRoleRepository.findWithPermisos`, se
+-- retiraron recién en este cambio — ANTES de este fix este DROP rompía la
+-- autenticación entera (`relation "roles_permisos" does not exist`, 500 en
+-- login). Precondición real, no solo "los 6 checks de WU-8 en verde": la
+-- rama que corre en producción al momento de ejecutar `--confirmar` tiene
+-- que incluir el fix C2 (commit que retira esos dos JOINs). Si en algún
+-- momento se reintrodujera una lectura de `roles_permisos`/`permisos` fuera
+-- de este SQL, este DROP volvería a romper el login — grep rápido antes de
+-- correr `--confirmar`: `rolesPermisos` no debe aparecer en NINGÚN lado de
+-- `src/`, no solo en `src/auth`. Acotarlo a `src/auth` deja pasar los specs
+-- de otros módulos: hoy `tickets/interface/controllers/tickets.e2e.spec.ts`
+-- todavía siembra esas tablas, y post-DROP esa suite muere. No es el login
+-- (ese riesgo lo cerró el fix de C2), pero es una suite en rojo sin causa
+-- aparente para quien corra este script sin leer esta línea.
+--
+-- NO se aplica sola: ver drop-legacy-rbac-matriz-vieja.mjs, que exige el
+-- flag --confirmar.
+--
+-- `roles` y `membresias.rol_id` NO se tocan (decisión #2210): el rol sigue
+-- existiendo como identidad de membresía y como llave de PRESETS_ROL, solo
+-- se retira el mapeo rol→permiso viejo.
+--
+-- Orden obligatorio: roles_permisos ANTES que permisos (roles_permisos
+-- tiene FK a permisos; al revés, Postgres rechaza el DROP).
+DROP TABLE IF EXISTS roles_permisos;
+DROP TABLE IF EXISTS permisos;
+DROP TABLE IF EXISTS usuario_cliente_modulos;

@@ -5,9 +5,9 @@
  * de comando mockeados (sin bootstrapear NestJS ni pasar por guards reales de
  * infraestructura HTTP — mismo patrón que `equipos.controller.spec.ts`/
  * `reparaciones.controller.spec.ts`), salvo en el bloque "RBAC — guard real"
- * donde `PermissionsGuard` se instancia REAL (con un `Reflector` REAL) para
+ * donde `AccionesGuard` se instancia REAL (con un `Reflector` REAL) para
  * probar S38/S39/S11/S40 contra la metadata REAL de la clase — no un mock de
- * lo que el guard "debería" hacer.
+ * lo que el guard "debería" hacer (WU-7.3, sdd/matriz-permisos-por-usuario).
  *
  * Cubre:
  * 1. Traducción HTTP ↔ use case de los 10 comandos (DTO → execute(), Result → response DTO).
@@ -15,9 +15,9 @@
  *    §5) → la `HttpException` que su propio JSDoc declara. El número (19, no
  *    16 — ver `sdd/redisenio-modulo-compras/tasks`) se deriva CONTANDO las
  *    clases exportadas de `compras.errors.ts`, no se tipea a mano.
- * 3. RBAC (§4.11): metadata `@RequirePermissions`/`@RequireModulo`, y guard
- *    REAL para S38/S39 (TECNICO → 403 en gestionar/aprobar), S11 (gestionar
- *    sin aprobar → 403 al aprobar/rechazar), S40 (ROOT bypassea).
+ * 3. RBAC (§4.11): metadata `@RequiereAcciones` (WU-7.3), y guard REAL para
+ *    S38/S39 (TECNICO → 403 en gestionar/aprobar), S11 (gestionar sin
+ *    aprobar → 403 al aprobar/rechazar), S40 (ROOT bypassea).
  *
  * `numero`/`solicitanteId`/`cicloId` NUNCA se leen del `body` — verificado
  * indirectamente: el `execute()` de `CrearCompraUseCase` NUNCA recibe
@@ -37,12 +37,10 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { ComprasController, toHttpException } from './compras.controller';
-import {
-  PERMISSIONS_KEY,
-  REQUIRE_MODULO_KEY,
-} from '../../../auth/infrastructure/guards/decorators';
-import { PermissionsGuard } from '../../../auth/infrastructure/guards/permissions.guard';
+import { ACCIONES_KEY } from '../../../auth/infrastructure/guards/decorators';
+import { AccionesGuard } from '../../../auth/infrastructure/guards/acciones.guard';
 import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
+import { payloadDeTest } from '../../../auth/test-helpers/payload-de-test';
 import { DomainError, Result } from '../../../shared/domain/result';
 import { CompraEntity } from '../../domain/entities/compra.entity';
 import { ItemCompraEntity } from '../../domain/entities/item-compra.entity';
@@ -71,18 +69,16 @@ import {
 
 type Ctor = ConstructorParameters<typeof ComprasController>;
 
-const USUARIO: JwtPayload = {
+const USUARIO: JwtPayload = payloadDeTest({
   sub: 'usuario-1',
   cliente_id: 'cliente-1',
   rol: 'ADMINISTRADOR',
   permisos: ['compra:gestionar', 'compra:aprobar'],
-  is_global_admin: false,
   cliente_nombre: 'Cliente 1',
-  membresias: [],
   modulos: ['COMPRAS'],
   nombre: 'Ana',
   apellido: 'Gómez',
-};
+});
 
 function buildController() {
   const crearCompraUseCase = { execute: vi.fn() };
@@ -667,46 +663,33 @@ describe('toHttpException — catálogo de errores → HTTP (spec §5)', () => {
   });
 });
 
-describe('RBAC — metadata (§4.11)', () => {
-  it('@RequireModulo("COMPRAS") a nivel de clase', () => {
-    const modulo = Reflect.getMetadata(REQUIRE_MODULO_KEY, ComprasController);
-    expect(modulo).toBe('COMPRAS');
-  });
-
+describe('RBAC — metadata (§4.11, WU-7.3 sdd/matriz-permisos-por-usuario)', () => {
   it.each([
-    ['crear', 'compra:gestionar'],
-    ['agregarItem', 'compra:gestionar'],
-    ['editarItem', 'compra:gestionar'],
-    ['eliminarItem', 'compra:gestionar'],
-    ['registrarCompraDeItem', 'compra:gestionar'],
-    ['registrarEntregaDeItem', 'compra:gestionar'],
-    ['cerrarItemConFaltante', 'compra:gestionar'],
-    ['cancelar', 'compra:gestionar'],
-    ['aprobarItem', 'compra:aprobar'],
-    ['rechazarItem', 'compra:aprobar'],
-  ] as const)('%s requiere @RequirePermissions(%s)', (metodo, permiso) => {
+    ['crear', ['COMPRAS:ALTAS']],
+    ['agregarItem', ['COMPRAS:ALTAS']],
+    ['editarItem', ['COMPRAS:MODIFICACION']],
+    ['eliminarItem', ['COMPRAS:BORRADO']],
+    ['registrarCompraDeItem', ['COMPRAS:MODIFICACION']],
+    ['registrarEntregaDeItem', ['COMPRAS:MODIFICACION']],
+    ['cerrarItemConFaltante', ['COMPRAS:MODIFICACION']],
+    ['cancelar', ['COMPRAS:BORRADO']],
+    ['aprobarItem', ['COMPRAS:APROBACION']],
+    ['rechazarItem', ['COMPRAS:APROBACION']],
+    ['listar', ['COMPRAS:LECTURA']],
+    ['obtener', ['COMPRAS:LECTURA']],
+    ['listarOperaciones', ['COMPRAS:LECTURA']],
+  ] as const)('%s requiere @RequiereAcciones(%s)', (metodo, codigos) => {
     const handler = ComprasController.prototype[
       metodo as keyof typeof ComprasController.prototype
     ] as unknown as (...args: unknown[]) => unknown;
-    const meta = Reflect.getMetadata(PERMISSIONS_KEY, handler);
-    expect(meta).toEqual([permiso]);
+    const meta = Reflect.getMetadata(ACCIONES_KEY, handler);
+    expect(meta).toEqual(codigos);
   });
-
-  it.each(['listar', 'obtener', 'listarOperaciones'] as const)(
-    '%s (consulta, PR-22) NO declara @RequirePermissions — cualquier usuario autenticado con acceso al módulo puede leer',
-    (metodo) => {
-      const handler = ComprasController.prototype[
-        metodo as keyof typeof ComprasController.prototype
-      ] as unknown as (...args: unknown[]) => unknown;
-      const meta = Reflect.getMetadata(PERMISSIONS_KEY, handler);
-      expect(meta).toBeUndefined();
-    },
-  );
 });
 
-describe('RBAC — guard real: S38/S39/S11/S40 (§4.11, PermissionsGuard + Reflector reales sobre metadata real)', () => {
+describe('RBAC — guard real: S38/S39/S11/S40 (§4.11, AccionesGuard + Reflector reales sobre metadata real)', () => {
   const reflector = new Reflector();
-  const guard = new PermissionsGuard(reflector);
+  const guard = new AccionesGuard(reflector);
 
   function buildContext(
     handler: (...args: unknown[]) => unknown,
@@ -720,33 +703,36 @@ describe('RBAC — guard real: S38/S39/S11/S40 (§4.11, PermissionsGuard + Refle
   }
 
   /**
-   * Permisos representativos de TECNICO TRAS PR-3 (sdd/redisenio-modulo-compras):
-   * la migración de master le quitó `compra:gestionar`/`compra:aprobar`
-   * (pasó de 15 a 13 permisos, ver `sdd/redisenio-modulo-compras/apply-progress-pr3`).
-   * Esta lista NO pretende ser la lista real completa de 13 — alcanza con que
-   * NO contenga los dos códigos de compra, que es lo que S38/S39 verifican.
+   * Celdas representativas de TECNICO tras el backfill de WU-4 (mismo
+   * criterio que S15/decision-modulos-mandan): tiene TICKETS/EDILICIA/EQUIPOS
+   * completos y SOLO `COMPRAS:LECTURA` (viene del eje de módulos, no de
+   * `roles_permisos`) — sin ningún `COMPRAS:ALTAS/MODIFICACION/BORRADO/
+   * APROBACION`, que es exactamente lo que S38/S39 verifican.
    */
-  const TECNICO: JwtPayload = {
+  const TECNICO: JwtPayload = payloadDeTest({
     sub: 'tecnico-1',
     cliente_id: 'cliente-1',
     rol: 'TECNICO',
     permisos: [
-      'ticket:crear',
-      'ticket:editar',
-      'ticket:transicionar',
-      'ticket:asignar',
-      'ticket:comentar',
-      'ticket:observar',
-      'subtarea:actualizar',
-      'equipo:gestionar',
+      'TICKETS:ALTAS',
+      'TICKETS:MODIFICACION',
+      'TICKETS:TRANSICIONAR',
+      'TICKETS:ASIGNAR',
+      'TICKETS:COMENTAR',
+      'TICKETS:OBSERVAR',
+      'EDILICIA:ALTAS',
+      'EDILICIA:MODIFICACION',
+      'EDILICIA:BORRADO',
+      'EQUIPOS:ALTAS',
+      'EQUIPOS:MODIFICACION',
+      'EQUIPOS:BORRADO',
+      'COMPRAS:LECTURA',
     ],
-    is_global_admin: false,
     cliente_nombre: 'Cliente 1',
-    membresias: [],
-    modulos: ['SOPORTE', 'COMPRAS', 'EDILICIA', 'EQUIPOS'],
+    modulos: ['TICKETS', 'COMPRAS', 'EDILICIA', 'EQUIPOS'],
     nombre: 'Técnico',
     apellido: 'Uno',
-  };
+  });
 
   const METODOS_GESTIONAR = [
     'crear',
@@ -760,16 +746,19 @@ describe('RBAC — guard real: S38/S39/S11/S40 (§4.11, PermissionsGuard + Refle
   ] as const;
   const METODOS_APROBAR = ['aprobarItem', 'rechazarItem'] as const;
 
-  it.each(METODOS_GESTIONAR)('S38: TECNICO (sin compra:gestionar) recibe 403 en %s', (metodo) => {
-    const handler = ComprasController.prototype[metodo] as unknown as (
-      ...args: unknown[]
-    ) => unknown;
-    const context = buildContext(handler, TECNICO);
+  it.each(METODOS_GESTIONAR)(
+    'S38: TECNICO (sin COMPRAS:ALTAS/MODIFICACION/BORRADO) recibe 403 en %s',
+    (metodo) => {
+      const handler = ComprasController.prototype[metodo] as unknown as (
+        ...args: unknown[]
+      ) => unknown;
+      const context = buildContext(handler, TECNICO);
 
-    expect(() => guard.canActivate(context)).toThrow(ForbiddenException);
-  });
+      expect(() => guard.canActivate(context)).toThrow(ForbiddenException);
+    },
+  );
 
-  it.each(METODOS_APROBAR)('S39: TECNICO (sin compra:aprobar) recibe 403 en %s', (metodo) => {
+  it.each(METODOS_APROBAR)('S39: TECNICO (sin COMPRAS:APROBACION) recibe 403 en %s', (metodo) => {
     const handler = ComprasController.prototype[metodo] as unknown as (
       ...args: unknown[]
     ) => unknown;
@@ -779,11 +768,11 @@ describe('RBAC — guard real: S38/S39/S11/S40 (§4.11, PermissionsGuard + Refle
   });
 
   it.each(METODOS_APROBAR)(
-    'S11: usuario con compra:gestionar pero SIN compra:aprobar recibe 403 en %s',
+    'S11: usuario con COMPRAS:MODIFICACION pero SIN COMPRAS:APROBACION recibe 403 en %s',
     (metodo) => {
       const gestorSinAprobar: JwtPayload = {
         ...TECNICO,
-        permisos: [...TECNICO.permisos, 'compra:gestionar'],
+        permisos: [...TECNICO.permisos, 'COMPRAS:MODIFICACION'],
       };
       const handler = ComprasController.prototype[metodo] as unknown as (
         ...args: unknown[]
@@ -794,7 +783,7 @@ describe('RBAC — guard real: S38/S39/S11/S40 (§4.11, PermissionsGuard + Refle
     },
   );
 
-  it('S40: ROOT (is_global_admin) bypassea compra:gestionar (sin el permiso, igual pasa)', () => {
+  it('S40: ROOT (is_global_admin) bypassea COMPRAS:ALTAS (sin la acción, igual pasa)', () => {
     const root: JwtPayload = {
       ...TECNICO,
       is_global_admin: true,
@@ -807,7 +796,7 @@ describe('RBAC — guard real: S38/S39/S11/S40 (§4.11, PermissionsGuard + Refle
     expect(guard.canActivate(context)).toBe(true);
   });
 
-  it('S40: ROOT (is_global_admin) bypassea compra:aprobar (sin el permiso, igual pasa)', () => {
+  it('S40: ROOT (is_global_admin) bypassea COMPRAS:APROBACION (sin la acción, igual pasa)', () => {
     const root: JwtPayload = {
       ...TECNICO,
       is_global_admin: true,
@@ -820,11 +809,11 @@ describe('RBAC — guard real: S38/S39/S11/S40 (§4.11, PermissionsGuard + Refle
     expect(guard.canActivate(context)).toBe(true);
   });
 
-  it('control: usuario con AMBOS permisos pasa gestionar Y aprobar', () => {
+  it('control: ADMINISTRADOR bypassea ALTAS Y APROBACION sin filas propias en la matriz (R2)', () => {
     const admin: JwtPayload = {
       ...TECNICO,
       rol: 'ADMINISTRADOR',
-      permisos: [...TECNICO.permisos, 'compra:gestionar', 'compra:aprobar'],
+      permisos: [],
     };
 
     expect(guard.canActivate(buildContext(ComprasController.prototype.crear, admin))).toBe(true);

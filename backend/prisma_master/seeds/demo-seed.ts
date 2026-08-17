@@ -73,8 +73,7 @@ import {
 } from '../../src/clientes/domain/ports/i-postgres-admin.port';
 
 import { CrearUsuarioTenantUseCase } from '../../src/auth/application/use-cases/crear-usuario-tenant.use-case';
-import { AsignarModulosUsuarioTenantUseCase } from '../../src/auth/application/use-cases/asignar-modulos-usuario-tenant.use-case';
-import { TODOS_LOS_MODULOS } from '../../src/shared/domain/modulos';
+import { AplicarPresetPermisosUseCase } from '../../src/auth/application/use-cases/aplicar-preset-permisos.use-case';
 import { MembresiaYaActivaError } from '../../src/auth/domain/errors/auth.errors';
 import { USUARIO_REPOSITORY, type IUsuarioRepository } from '../../src/auth/domain/ports/i-usuario.repository';
 import {
@@ -267,27 +266,34 @@ async function provisionUsuarioTenant(
 }
 
 /**
- * Asigna al TÉCNICO demo TODOS los módulos funcionales (usuario_cliente_modulos)
- * para que sea ELEGIBLE como asignado de cualquier tipo de ticket (B2). Sin esto
- * la elegibilidad por módulo (`esAsignadoElegiblePorModulo`) rechaza la asignación
- * de los tickets demo: el TECNICO no es admin-total, así que su elegibilidad
- * depende de la tabla `usuario_cliente_modulos` (que `CrearUsuarioTenantUseCase`
- * NO puebla). Idempotente: `setModulos` reemplaza el set, un re-run no duplica.
+ * Aplica el preset de permisos de TECNICO sobre la matriz nueva
+ * (`usuario_cliente_permisos`) del técnico demo (WU-7.5, R9).
+ *
+ * Fix post-verify W4 (sdd/matriz-permisos-por-usuario): desde ese fix,
+ * `CrearUsuarioTenantUseCase` YA siembra el preset como parte del alta
+ * inicial — este call site queda como el paso EXPLÍCITO que garantiza
+ * idempotencia en un RE-RUN del seed: en un re-run, `provisionUsuarioTenant`
+ * encuentra la membresía YA activa (`MembresiaYaActivaError`) y retorna
+ * ANTES de llegar al paso de sembrado del alta — sin este call site
+ * adicional, un re-run no re-aplicaría el preset si alguien lo hubiera
+ * tocado a mano entre corridas. `AplicarPresetPermisosUseCase.setPermisos`
+ * es reemplazo atómico e idempotente (ADR-P3): un re-run no duplica ni
+ * acumula.
  */
-async function asignarModulosTecnico(
+async function aplicarPresetPermisosTecnico(
   app: INestApplicationContext,
   clienteId: string,
   tecnicoId: string,
 ): Promise<void> {
-  const asignarModulos = app.get(AsignarModulosUsuarioTenantUseCase);
-  const result = await asignarModulos.execute({
+  const aplicarPreset = app.get(AplicarPresetPermisosUseCase);
+  const result = await aplicarPreset.execute({
     clienteId,
     usuarioId: tecnicoId,
-    modulos: TODOS_LOS_MODULOS(),
+    rolCodigo: 'TECNICO',
   });
   if (result.isFail()) {
     throw new Error(
-      `[demo-seed] No se pudieron asignar los módulos al técnico demo: ${result.getError().message}`,
+      `[demo-seed] No se pudo aplicar el preset de permisos al técnico demo: ${result.getError().message}`,
     );
   }
 }
@@ -871,9 +877,11 @@ export async function runDemoSeed(
     usuario: usuarioId,
   };
 
-  // El técnico debe tener módulos ANTES de sembrar los datos (seedDemoTenantData
-  // asigna tickets al técnico y la elegibilidad por módulo se evalúa ahí).
-  await asignarModulosTecnico(app, clienteId, tecnicoId);
+  // El técnico debe tener sus permisos ANTES de sembrar los datos
+  // (seedDemoTenantData asigna tickets al técnico y la elegibilidad de
+  // asignado se evalúa ahí). WU-7.6: el ABM viejo de módulos se retiró —
+  // la elegibilidad la da EXCLUSIVAMENTE la matriz nueva (R9).
+  await aplicarPresetPermisosTecnico(app, clienteId, tecnicoId);
 
   const sembrado = await seedDemoTenantData(app, { clienteId, dbName, prismaService, tenantContext, usuarios });
 

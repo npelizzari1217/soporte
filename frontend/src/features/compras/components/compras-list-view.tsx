@@ -10,14 +10,14 @@
  * 2026-08-14): la lectura del listado se gatea SOLO por módulo (`COMPRAS`,
  * resuelto aguas arriba por el guard de navegación/layout) — CUALQUIER rol
  * con el módulo habilitado ve todas las compras del tenant. A diferencia de
- * `EquiposListView` (`<Can permiso="equipo:gestionar">`), acá NO hay gate de
- * permiso envolviendo la tabla: `ComprasController.listar()` no declara
- * `@RequirePermissions`, así que un `<Can>` acá sería una restricción de UI
+ * `EquiposListView` (`<Can permiso="EQUIPOS:LECTURA">`, WU-7.6), acá NO hay
+ * gate de permiso envolviendo la tabla: `ComprasController.listar()` no
+ * declara `@RequiereAcciones`, así que un `<Can>` acá sería una restricción de UI
  * sin respaldo del backend.
  *
  * Alta de compra: `CompraCreateDialog` (cierra el hueco del checklist
  * documentado en `sdd/redisenio-modulo-compras/hueco-compra-create-dialog`
- * — ningún PR de la Fase F lo había asignado), gateada por `compra:gestionar`
+ * — ningún PR de la Fase F lo había asignado), gateada por `COMPRAS:ALTAS`
  * vía `<Can>` (mismo criterio que el resto de los triggers de escritura del
  * repo — `TicketsListView`, `EquipoDetailView`). Esta SÍ es una acción de
  * escritura (a diferencia de la lectura del resto de la vista), por eso es
@@ -107,7 +107,7 @@ export function ComprasListView() {
         title="Compras"
         description="Solicitudes de compra del ciclo activo"
         actions={
-          <Can permiso="compra:gestionar">
+          <Can permiso="COMPRAS:ALTAS">
             <CompraCreateDialog />
           </Can>
         }

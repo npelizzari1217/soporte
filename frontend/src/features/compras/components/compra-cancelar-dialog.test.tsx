@@ -40,7 +40,7 @@ describe("CompraCancelarDialog", () => {
 
   it("S24-símil: exige motivo no vacío antes de pegarle a la API", async () => {
     renderWithProviders(<CompraCancelarDialog compra={buildCompra()} />, {
-      user: buildUser({ permisos: ["compra:gestionar"] }),
+      user: buildUser({ permisos: ["COMPRAS:BORRADO"] }),
     });
 
     const user = userEvent.setup();
@@ -53,7 +53,7 @@ describe("CompraCancelarDialog", () => {
   it("S30: con la compra YA CANCELADA, el botón queda deshabilitado", async () => {
     renderWithProviders(
       <CompraCancelarDialog compra={buildCompra({ canceladaEn: "2026-01-05T00:00:00.000Z" })} />,
-      { user: buildUser({ permisos: ["compra:gestionar"] }) },
+      { user: buildUser({ permisos: ["COMPRAS:BORRADO"] }) },
     );
 
     expect(screen.getByRole("button", { name: /cancelar compra/i })).toBeDisabled();
@@ -61,7 +61,7 @@ describe("CompraCancelarDialog", () => {
 
   it("S28: con la compra YA CERRADA, el botón queda deshabilitado", async () => {
     renderWithProviders(<CompraCancelarDialog compra={buildCompra({ cerrado: true })} />, {
-      user: buildUser({ permisos: ["compra:gestionar"] }),
+      user: buildUser({ permisos: ["COMPRAS:BORRADO"] }),
     });
 
     expect(screen.getByRole("button", { name: /cancelar compra/i })).toBeDisabled();
@@ -77,7 +77,7 @@ describe("CompraCancelarDialog", () => {
     );
 
     renderWithProviders(<CompraCancelarDialog compra={buildCompra()} />, {
-      user: buildUser({ permisos: ["compra:gestionar"] }),
+      user: buildUser({ permisos: ["COMPRAS:BORRADO"] }),
     });
 
     const user = userEvent.setup();
@@ -97,7 +97,7 @@ describe("CompraCancelarDialog", () => {
     );
 
     renderWithProviders(<CompraCancelarDialog compra={buildCompra()} />, {
-      user: buildUser({ permisos: ["compra:gestionar"] }),
+      user: buildUser({ permisos: ["COMPRAS:BORRADO"] }),
     });
 
     const user = userEvent.setup();

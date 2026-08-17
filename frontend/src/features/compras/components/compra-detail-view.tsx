@@ -13,12 +13,12 @@
  * `ComprasListView` (PR-24). `ComprasController.obtener()`/
  * `.listarOperaciones()` no declaran `@RequirePermissions`.
  *
- * Las ACCIONES DE ESCRITURA sí van gateadas (cierre del wiring pendiente de
- * PR-26/PR-27, `sdd/redisenio-modulo-compras/hueco-compra-create-dialog`):
- * `ItemCreateDialog`/`CompraCancelarDialog` en el toolbar del header
- * (`compra:gestionar`); la columna de acciones por ítem vive en
- * `CompraItemsSection` (`compra:gestionar`/`compra:aprobar`, un `<Can>` por
- * permiso).
+ * Las ACCIONES DE ESCRITURA sí van gateadas por acción (WU-7.6,
+ * `sdd/matriz-permisos-por-usuario`): `ItemCreateDialog` (`COMPRAS:ALTAS`)/
+ * `CompraCancelarDialog` (`COMPRAS:BORRADO`) en el toolbar del header; la
+ * columna de acciones por ítem vive en `CompraItemsSection`
+ * (`COMPRAS:MODIFICACION`/`COMPRAS:BORRADO`/`COMPRAS:APROBACION`, un `<Can>`
+ * por acción).
  *
  * CERO lógica condicional sobre ítems para derivar estado: `estado`/
  * `comprado`/`cerrado`/`totalesPorMoneda` llegan YA DERIVADOS del backend
@@ -67,12 +67,14 @@ export function CompraDetailView({ compraId }: CompraDetailViewProps) {
         title={compra.numero}
         description={compra.motivo}
         actions={
-          <Can permiso="compra:gestionar">
-            <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2">
+            <Can permiso="COMPRAS:ALTAS">
               <ItemCreateDialog compraId={compra.id} />
+            </Can>
+            <Can permiso="COMPRAS:BORRADO">
               <CompraCancelarDialog compra={compra} />
-            </div>
-          </Can>
+            </Can>
+          </div>
         }
       />
 

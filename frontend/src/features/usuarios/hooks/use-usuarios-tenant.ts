@@ -6,7 +6,7 @@
  * `features/tickets/hooks/use-usuarios-asignables.ts` (selector de "Asignar
  * ticket") pero un query key DISTINTO (`["usuarios", "gestion"]` vs.
  * `["usuarios", "asignables"]`) — el shape de la respuesta puede diferir
- * (`email` solo si el actor tiene `usuario:gestionar`, backend §5) y mezclar
+ * (`email` solo si el actor es ADMINISTRADOR o ROOT, R10) y mezclar
  * caches de ambos consumidores sería incorrecto.
  */
 import { useQuery } from "@tanstack/react-query";

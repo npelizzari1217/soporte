@@ -17,7 +17,7 @@
  * `proveedor`/`fechaCotizacion`/`observaciones` siguen editables (S14) y
  * SIEMPRE se envían.
  *
- * RBAC: gate `compra:gestionar` aplicado por el CALLER (mismo criterio que
+ * RBAC: gate `COMPRAS:MODIFICACION` aplicado por el CALLER (mismo criterio que
  * `item-create-dialog.tsx`).
  */
 import { useState } from "react";

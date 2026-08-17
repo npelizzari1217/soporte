@@ -23,7 +23,7 @@ describe("KbArticleEditDialog", () => {
     const user = userEvent.setup();
     server.use(http.patch("/api/kb/a1", () => HttpResponse.json({ ...ARTICULO, titulo: "Editado" })));
     renderWithProviders(<KbArticleEditDialog articulo={ARTICULO} />, {
-      user: buildUser({ permisos: ["kb:gestionar"] }),
+      user: buildUser({ permisos: ["KB:MODIFICACION"] }),
     });
 
     expect(screen.queryByLabelText(/título/i)).not.toBeInTheDocument();

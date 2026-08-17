@@ -12,7 +12,8 @@ import { AuthModule } from './auth.module';
 import { AuthController } from './interface/controllers/auth.controller';
 import { JwtAuthGuard } from './infrastructure/guards/jwt-auth.guard';
 import { TenantGuard } from './infrastructure/guards/tenant.guard';
-import { PermissionsGuard } from './infrastructure/guards/permissions.guard';
+import { AccionesGuard } from './infrastructure/guards/acciones.guard';
+import { AdminClienteGuard } from './infrastructure/guards/admin-cliente.guard';
 import { GlobalAdminGuard } from './infrastructure/guards/global-admin.guard';
 import { TOKEN_SERVICE } from './domain/ports/i-token.service';
 
@@ -22,7 +23,9 @@ describe('AuthModule wiring (T6.6)', () => {
     expect(controllers).toContain(AuthController);
   });
 
-  it.each([JwtAuthGuard, TenantGuard, PermissionsGuard, GlobalAdminGuard])(
+  // WU-7.3 (sdd/matriz-permisos-por-usuario): PermissionsGuard/ModulosGuard
+  // se retiran del wiring — AccionesGuard/AdminClienteGuard los reemplazan.
+  it.each([JwtAuthGuard, TenantGuard, AccionesGuard, AdminClienteGuard, GlobalAdminGuard])(
     '%s está en providers[]',
     (guard) => {
       const providers = (Reflect.getMetadata('providers', AuthModule) ?? []) as unknown[];
@@ -30,7 +33,7 @@ describe('AuthModule wiring (T6.6)', () => {
     },
   );
 
-  it.each([JwtAuthGuard, TenantGuard, PermissionsGuard, GlobalAdminGuard])(
+  it.each([JwtAuthGuard, TenantGuard, AccionesGuard, AdminClienteGuard, GlobalAdminGuard])(
     '%s está en exports[] (consumido por otros módulos vía UseGuards)',
     (guard) => {
       const exportsList = (Reflect.getMetadata('exports', AuthModule) ?? []) as unknown[];

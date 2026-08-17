@@ -12,7 +12,7 @@
 import 'reflect-metadata';
 import { NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { EquiposController } from './equipos.controller';
-import { PERMISSIONS_KEY } from '../../../auth/infrastructure/guards/decorators';
+import { ACCIONES_KEY } from '../../../auth/infrastructure/guards/decorators';
 import { Result } from '../../../shared/domain/result';
 import { EquipoInformaticoEntity } from '../../domain/entities/equipo-informatico.entity';
 import { ComponenteEquipoEntity } from '../../domain/entities/componente-equipo.entity';
@@ -108,9 +108,9 @@ describe('EquiposController (T12.6)', () => {
       await expect(controller.crear({} as any)).rejects.toThrow(UnprocessableEntityException);
     });
 
-    it('declara @RequirePermissions("equipo:gestionar")', () => {
-      const meta = Reflect.getMetadata(PERMISSIONS_KEY, EquiposController.prototype.crear);
-      expect(meta).toEqual(['equipo:gestionar']);
+    it('declara @RequiereAcciones("EQUIPOS:ALTAS")', () => {
+      const meta = Reflect.getMetadata(ACCIONES_KEY, EquiposController.prototype.crear);
+      expect(meta).toEqual(['EQUIPOS:ALTAS']);
     });
   });
 
@@ -178,9 +178,9 @@ describe('EquiposController (T12.6)', () => {
       expect(result.id).toBe('equipo-uuid');
     });
 
-    it('declara @RequirePermissions("equipo:gestionar")', () => {
-      const meta = Reflect.getMetadata(PERMISSIONS_KEY, EquiposController.prototype.editar);
-      expect(meta).toEqual(['equipo:gestionar']);
+    it('declara @RequiereAcciones("EQUIPOS:MODIFICACION")', () => {
+      const meta = Reflect.getMetadata(ACCIONES_KEY, EquiposController.prototype.editar);
+      expect(meta).toEqual(['EQUIPOS:MODIFICACION']);
     });
   });
 
@@ -192,9 +192,9 @@ describe('EquiposController (T12.6)', () => {
       await expect(controller.eliminar('equipo-uuid')).resolves.toBeUndefined();
     });
 
-    it('declara @RequirePermissions("equipo:gestionar")', () => {
-      const meta = Reflect.getMetadata(PERMISSIONS_KEY, EquiposController.prototype.eliminar);
-      expect(meta).toEqual(['equipo:gestionar']);
+    it('declara @RequiereAcciones("EQUIPOS:BORRADO")', () => {
+      const meta = Reflect.getMetadata(ACCIONES_KEY, EquiposController.prototype.eliminar);
+      expect(meta).toEqual(['EQUIPOS:BORRADO']);
     });
   });
 
@@ -227,12 +227,9 @@ describe('EquiposController (T12.6)', () => {
       ).rejects.toThrow(UnprocessableEntityException);
     });
 
-    it('declara @RequirePermissions("equipo:gestionar")', () => {
-      const meta = Reflect.getMetadata(
-        PERMISSIONS_KEY,
-        EquiposController.prototype.agregarComponente,
-      );
-      expect(meta).toEqual(['equipo:gestionar']);
+    it('declara @RequiereAcciones("EQUIPOS:ALTAS")', () => {
+      const meta = Reflect.getMetadata(ACCIONES_KEY, EquiposController.prototype.agregarComponente);
+      expect(meta).toEqual(['EQUIPOS:ALTAS']);
     });
   });
 
@@ -298,12 +295,9 @@ describe('EquiposController (T12.6)', () => {
       ).rejects.toThrow(NotFoundException);
     });
 
-    it('declara @RequirePermissions("equipo:gestionar")', () => {
-      const meta = Reflect.getMetadata(
-        PERMISSIONS_KEY,
-        EquiposController.prototype.editarComponente,
-      );
-      expect(meta).toEqual(['equipo:gestionar']);
+    it('declara @RequiereAcciones("EQUIPOS:MODIFICACION")', () => {
+      const meta = Reflect.getMetadata(ACCIONES_KEY, EquiposController.prototype.editarComponente);
+      expect(meta).toEqual(['EQUIPOS:MODIFICACION']);
     });
   });
 
@@ -334,12 +328,12 @@ describe('EquiposController (T12.6)', () => {
       );
     });
 
-    it('declara @RequirePermissions("equipo:gestionar")', () => {
+    it('declara @RequiereAcciones("EQUIPOS:MODIFICACION")', () => {
       const meta = Reflect.getMetadata(
-        PERMISSIONS_KEY,
+        ACCIONES_KEY,
         EquiposController.prototype.reactivarComponente,
       );
-      expect(meta).toEqual(['equipo:gestionar']);
+      expect(meta).toEqual(['EQUIPOS:MODIFICACION']);
     });
   });
 
@@ -354,7 +348,7 @@ describe('EquiposController (T12.6)', () => {
       expect(result[0].codigo).toBe('RAM');
 
       const meta = Reflect.getMetadata(
-        PERMISSIONS_KEY,
+        ACCIONES_KEY,
         EquiposController.prototype.listarTiposComponente,
       );
       expect(meta).toBeUndefined();

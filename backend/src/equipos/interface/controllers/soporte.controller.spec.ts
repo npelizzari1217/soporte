@@ -11,7 +11,7 @@
 import 'reflect-metadata';
 import { NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { SoporteController } from './soporte.controller';
-import { PERMISSIONS_KEY } from '../../../auth/infrastructure/guards/decorators';
+import { ACCIONES_KEY } from '../../../auth/infrastructure/guards/decorators';
 import { Result } from '../../../shared/domain/result';
 import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
 import { TicketSoporteEntity } from '../../domain/entities/ticket-soporte.entity';
@@ -23,17 +23,15 @@ import {
   SolicitanteInvalidoError,
   SinCicloActivoError,
 } from '../../../tickets/domain/errors/tickets.errors';
-import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
+import { payloadDeTest } from '../../../auth/test-helpers/payload-de-test';
 
-const USER: JwtPayload = {
+const USER = payloadDeTest({
   sub: 'usuario-uuid',
   cliente_id: 'cliente-uuid',
   rol: 'USUARIO',
   permisos: ['ticket:crear', 'ticket:editar'],
-  is_global_admin: false,
   cliente_nombre: 'Cliente Test',
-  membresias: [],
-};
+});
 
 function makeTicket(): TicketEntity {
   return TicketEntity.create(
@@ -121,9 +119,9 @@ describe('SoporteController (T13.4)', () => {
       await expect(controller.crear({} as any, USER)).rejects.toThrow(ConflictException);
     });
 
-    it('declara @RequirePermissions("ticket:crear")', () => {
-      const meta = Reflect.getMetadata(PERMISSIONS_KEY, SoporteController.prototype.crear);
-      expect(meta).toEqual(['ticket:crear']);
+    it('declara @RequiereAcciones("TICKETS:ALTAS")', () => {
+      const meta = Reflect.getMetadata(ACCIONES_KEY, SoporteController.prototype.crear);
+      expect(meta).toEqual(['TICKETS:ALTAS']);
     });
   });
 
@@ -156,12 +154,9 @@ describe('SoporteController (T13.4)', () => {
       ).rejects.toThrow(NotFoundException);
     });
 
-    it('declara @RequirePermissions("ticket:editar")', () => {
-      const meta = Reflect.getMetadata(
-        PERMISSIONS_KEY,
-        SoporteController.prototype.registrarSolucion,
-      );
-      expect(meta).toEqual(['ticket:editar']);
+    it('declara @RequiereAcciones("TICKETS:MODIFICACION")', () => {
+      const meta = Reflect.getMetadata(ACCIONES_KEY, SoporteController.prototype.registrarSolucion);
+      expect(meta).toEqual(['TICKETS:MODIFICACION']);
     });
   });
 
@@ -187,6 +182,14 @@ describe('SoporteController (T13.4)', () => {
       const result = await controller.obtenerEquipoDeTicket('ticket-1');
 
       expect(result).toEqual({ equipo: null });
+    });
+
+    it('declara @RequiereAcciones("TICKETS:LECTURA") (R5-a: gatea por TICKETS, no EQUIPOS)', () => {
+      const meta = Reflect.getMetadata(
+        ACCIONES_KEY,
+        SoporteController.prototype.obtenerEquipoDeTicket,
+      );
+      expect(meta).toEqual(['TICKETS:LECTURA']);
     });
   });
 });

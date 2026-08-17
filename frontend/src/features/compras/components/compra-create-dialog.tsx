@@ -11,7 +11,7 @@
  * `types.ts`/`schemas.ts`) — `crearCompraSchema` (PR-23) ya los excluye por
  * diseño, no se agregan acá.
  *
- * Trigger montado en `ComprasListView`, gate `compra:gestionar` aplicado por
+ * Trigger montado en `ComprasListView`, gate `COMPRAS:ALTAS` aplicado por
  * el CALLER (mismo criterio que el resto de los diálogos del módulo — este
  * componente es PRESENTACIONAL y no se auto-gatea).
  *

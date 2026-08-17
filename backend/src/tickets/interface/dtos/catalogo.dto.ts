@@ -42,7 +42,7 @@ export class CreateTipoTicketDto {
   nombre!: string;
 
   /** Módulo funcional dueño del tipo (B2, requerido — separación estricta). */
-  @IsIn(MODULOS_VALIDOS, { message: 'modulo debe ser uno de: SOPORTE, COMPRAS, EDILICIA, EQUIPOS' })
+  @IsIn(MODULOS_VALIDOS, { message: 'modulo debe ser uno de: TICKETS, COMPRAS, EDILICIA, EQUIPOS' })
   modulo!: string;
 }
 
@@ -63,7 +63,7 @@ export class EditTipoTicketDto {
 
   /** Reasignar el módulo dueño del tipo (B2). */
   @IsOptional()
-  @IsIn(MODULOS_VALIDOS, { message: 'modulo debe ser uno de: SOPORTE, COMPRAS, EDILICIA, EQUIPOS' })
+  @IsIn(MODULOS_VALIDOS, { message: 'modulo debe ser uno de: TICKETS, COMPRAS, EDILICIA, EQUIPOS' })
   modulo?: string;
 }
 

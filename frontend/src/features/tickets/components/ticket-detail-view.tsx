@@ -47,7 +47,7 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
   const prioridadesQuery = usePrioridades();
   const estadosQuery = useEstados();
   const tiposOperacionQuery = useTiposOperacion();
-  const puedeAsignar = useCan("ticket:asignar");
+  const puedeAsignar = useCan("TICKETS:ASIGNAR");
   const { isGlobalAdmin } = useSession();
   const tecnicosQuery = useTecnicosAsignables(ticketId, puedeAsignar);
 
@@ -124,7 +124,7 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
             isSubmitting={transicionarMutation.isPending}
           />
         )}
-        <Can permiso="ticket:editar">
+        <Can permiso="TICKETS:MODIFICACION">
           {edicionPermitida ? (
             <TicketEditDialog
               defaultValues={{
@@ -153,7 +153,7 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
         )}
       </section>
 
-      <Can permiso="ticket:comentar">
+      <Can permiso="TICKETS:COMENTAR">
         <TicketCommentForm
           onSubmit={(values) => comentarMutation.mutate(values)}
           isSubmitting={comentarMutation.isPending}

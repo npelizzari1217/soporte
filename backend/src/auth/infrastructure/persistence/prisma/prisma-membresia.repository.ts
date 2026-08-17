@@ -1,9 +1,18 @@
 /**
  * PrismaMembresiaRepository — implementación del puerto IMembresiaRepository.
  *
- * Único repo de auth con JOIN de 3 niveles (membresia → cliente, membresia →
- * rol → rolesPermisos → permiso) — resuelve rol+permisos+cliente en una sola
- * query para no golpear la DB por cada claim del JWT (R4, R5, R6, R10).
+ * `findActivasByUsuario`/`findActivaByUsuarioYCliente` corren en CADA login,
+ * switch y refresh — resuelven rol+cliente en una sola query para no golpear
+ * la DB por cada claim del JWT (R4, R5, R6, R10).
+ *
+ * Fix post-verify C2 (sdd/matriz-permisos-por-usuario): el include YA NO
+ * carga `rol → rolesPermisos → permiso` (RBAC viejo). Ese JOIN quedó muerto
+ * desde WU-7.1 (`resolverScope` resuelve permisos desde la matriz nueva,
+ * `IMatrizPermisosRepository`, no desde acá) pero seguía ejecutándose en
+ * cada request de auth. `roles_permisos`/`permisos` son justamente las
+ * tablas que `drop-legacy-rbac-matriz-vieja.sql` (WU-9) dropea — con el JOIN
+ * vivo, ese DROP tumbaba el login entero (`relation "roles_permisos" does
+ * not exist`, 500). Ver `MembresiaResuelta` para el detalle completo.
  *
  * Filtra SIEMPRE `membresia.activo && !membresia.deletedAt` y
  * `cliente.activo && !cliente.deletedAt` (R4): una membresía "viva" pero
@@ -23,18 +32,10 @@ import {
 import { MembresiaEntity } from '../../../domain/entities/membresia.entity';
 import { MembresiaMapper, PrismaMembresiaResuelta } from './membresia.mapper';
 
-/** Include clause que resuelve el JOIN completo cliente + rol + permisos. */
-const MEMBRESIA_RESUELTA_INCLUDE = {
+/** Include clause que resuelve el JOIN cliente + rol (SIN permisos, C2). */
+export const MEMBRESIA_RESUELTA_INCLUDE = {
   cliente: true,
-  rol: {
-    include: {
-      rolesPermisos: {
-        include: {
-          permiso: true,
-        },
-      },
-    },
-  },
+  rol: true,
 } as const;
 
 @Injectable()

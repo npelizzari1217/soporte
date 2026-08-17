@@ -11,13 +11,22 @@
  * - Normal 1 membresía (sin clienteId) → auto-selecciona, {kind:'tokens'}.
  * - Normal >1 membresías (sin clienteId) → {kind:'selection', membresias[]}
  *   SIN emitir tokens.
- * - Root sin clienteId → token master (cliente_id/rol null, permisos [],
- *   is_global_admin true).
+ * - Root sin clienteId → token master (cliente_id/rol null, permisos =
+ *   TODOS los pares válidos — bypass total, WU-7.1/ADR-P6 — is_global_admin
+ *   true).
  * - clienteId provisto no seleccionable (normal sin membresía en ese
  *   cliente / cliente inactivo) → 403 ClienteNoAutorizado.
- * - Root con clienteId de cualquier cliente activo → token scopeado.
+ * - Root con clienteId de cualquier cliente activo → token scopeado
+ *   (bypass total, con o sin membresía — WU-7.1).
  * - Payload incluye membresias[] completo (R6) y refresh sha256 persistido
  *   (R7).
+ *
+ * WU-7.1 (sdd/matriz-permisos-por-usuario): `permisos` deja de venir de
+ * `MembresiaResuelta.permisos` (RBAC viejo) — ahora resolverScope los lee
+ * de `IMatrizPermisosRepository` (o bypassea con `PARES_VALIDOS` para
+ * ROOT/ADMINISTRADOR). El mock de la membresía sigue exponiendo `permisos`
+ * porque el campo sigue en la interfaz (otros consumidores lo usan), pero
+ * este spec ya NO depende de él para las aserciones de `captured.permisos`.
  */
 import * as crypto from 'crypto';
 import { LoginUseCase, DUMMY_HASH } from './login.use-case';
@@ -30,12 +39,13 @@ import {
 } from '../../domain/errors/auth.errors';
 import { IUsuarioRepository } from '../../domain/ports/i-usuario.repository';
 import { IMembresiaRepository, MembresiaResuelta } from '../../domain/ports/i-membresia.repository';
-import { IUsuarioClienteModuloRepository } from '../../domain/ports/i-usuario-cliente-modulo.repository';
+import { IMatrizPermisosRepository } from '../../domain/ports/i-matriz-permisos.repository';
 import { IRefreshTokenRepository } from '../../domain/ports/i-refresh-token.repository';
 import { IHashProvider } from '../../domain/ports/i-hash.provider';
 import { ITokenService, JwtPayload } from '../../domain/ports/i-token.service';
 import { IClienteRepository } from '../../../clientes/domain/ports/i-cliente.repository';
 import { ClienteEntity } from '../../../clientes/domain/entities/cliente.entity';
+import { PARES_VALIDOS } from '../../../shared/domain/acciones';
 
 // ─── Factories de entidades/mocks de test ────────────────────────────────────
 
@@ -115,8 +125,9 @@ const makeRefreshTokenRepo = (): vi.Mocked<IRefreshTokenRepository> => ({
   save: vi.fn().mockResolvedValue(undefined),
 });
 
-const makeModulosRepo = (): vi.Mocked<IUsuarioClienteModuloRepository> => ({
-  findModulosByUsuarioYCliente: vi.fn().mockResolvedValue([]),
+const makePermisosRepo = (): vi.Mocked<IMatrizPermisosRepository> => ({
+  findByUsuarioYCliente: vi.fn().mockResolvedValue([]),
+  setPermisos: vi.fn().mockResolvedValue(undefined),
 });
 
 describe('LoginUseCase', () => {
@@ -126,7 +137,7 @@ describe('LoginUseCase', () => {
   let hashProvider: ReturnType<typeof makeHashProvider>;
   let tokenService: ReturnType<typeof makeTokenService>;
   let refreshTokenRepo: ReturnType<typeof makeRefreshTokenRepo>;
-  let modulosRepo: ReturnType<typeof makeModulosRepo>;
+  let permisosRepo: ReturnType<typeof makePermisosRepo>;
   let useCase: LoginUseCase;
 
   beforeEach(() => {
@@ -136,7 +147,7 @@ describe('LoginUseCase', () => {
     hashProvider = makeHashProvider();
     tokenService = makeTokenService();
     refreshTokenRepo = makeRefreshTokenRepo();
-    modulosRepo = makeModulosRepo();
+    permisosRepo = makePermisosRepo();
     useCase = new LoginUseCase(
       usuarioRepo,
       membresiaRepo,
@@ -144,7 +155,7 @@ describe('LoginUseCase', () => {
       hashProvider,
       tokenService,
       refreshTokenRepo,
-      modulosRepo,
+      permisosRepo,
     );
   });
 
@@ -269,6 +280,7 @@ describe('LoginUseCase', () => {
       membresiaRepo.findActivasByUsuario.mockResolvedValue([membresia]);
       clienteRepo.findById.mockResolvedValue(makeCliente({ nombre: 'Acme SA' }));
       membresiaRepo.findActivaByUsuarioYCliente.mockResolvedValue(membresia);
+      permisosRepo.findByUsuarioYCliente.mockResolvedValue(['TICKETS:LECTURA', 'TICKETS:ALTAS']);
 
       let captured: JwtPayload | undefined;
       tokenService.signJwt.mockImplementation((p) => {
@@ -280,7 +292,11 @@ describe('LoginUseCase', () => {
 
       expect(captured!.cliente_id).toBe('cliente-1');
       expect(captured!.rol).toBe('TECNICO');
-      expect(captured!.permisos).toEqual(['ticket:crear', 'ticket:editar']);
+      expect(captured!.permisos).toEqual(['TICKETS:LECTURA', 'TICKETS:ALTAS']);
+      expect(permisosRepo.findByUsuarioYCliente).toHaveBeenCalledWith(
+        expect.any(String),
+        'cliente-1',
+      );
     });
   });
 
@@ -320,7 +336,7 @@ describe('LoginUseCase', () => {
   // ─── T3.6 — root sin clienteId (R4) ────────────────────────────────────────
 
   describe('Root sin clienteId → token master', () => {
-    it('emite token con cliente_id/rol null, permisos [], is_global_admin true', async () => {
+    it('emite token con cliente_id/rol null, permisos = bypass total (WU-7.1), is_global_admin true', async () => {
       usuarioRepo.findByEmail.mockResolvedValue(makeUsuario({ isGlobalAdmin: true }));
       membresiaRepo.findActivasByUsuario.mockResolvedValue([]);
 
@@ -336,7 +352,7 @@ describe('LoginUseCase', () => {
       expect(result.getValue().kind).toBe('tokens');
       expect(captured!.cliente_id).toBeNull();
       expect(captured!.rol).toBeNull();
-      expect(captured!.permisos).toEqual([]);
+      expect(captured!.permisos).toEqual([...PARES_VALIDOS]);
       expect(captured!.is_global_admin).toBe(true);
       expect(captured!.cliente_nombre).toBeNull();
       expect(clienteRepo.findById).not.toHaveBeenCalled();
@@ -397,12 +413,12 @@ describe('LoginUseCase', () => {
 
   // ─── T3.8 — root con clienteId válido (R5) ─────────────────────────────────
 
-  describe('Root con clienteId de cualquier cliente activo → token scopeado', () => {
-    it('CON membresía en ese cliente → rol/permisos de la membresía', async () => {
+  describe('Root con clienteId de cualquier cliente activo → token scopeado (bypass total, WU-7.1)', () => {
+    it('CON membresía en ese cliente → rol de la membresía, permisos = bypass total, sin leer la matriz', async () => {
       usuarioRepo.findByEmail.mockResolvedValue(makeUsuario({ isGlobalAdmin: true }));
       clienteRepo.findById.mockResolvedValue(makeCliente({ nombre: 'Acme SA' }));
       membresiaRepo.findActivaByUsuarioYCliente.mockResolvedValue(
-        makeMembresiaResuelta({ rolCodigo: 'ADMINISTRADOR', permisos: ['cliente:gestionar'] }),
+        makeMembresiaResuelta({ rolCodigo: 'ADMINISTRADOR' }),
       );
 
       let captured: JwtPayload | undefined;
@@ -420,11 +436,12 @@ describe('LoginUseCase', () => {
       expect(result.isOk()).toBe(true);
       expect(captured!.cliente_id).toBe('cliente-1');
       expect(captured!.rol).toBe('ADMINISTRADOR');
-      expect(captured!.permisos).toEqual(['cliente:gestionar']);
+      expect(captured!.permisos).toEqual([...PARES_VALIDOS]);
       expect(captured!.is_global_admin).toBe(true);
+      expect(permisosRepo.findByUsuarioYCliente).not.toHaveBeenCalled();
     });
 
-    it('SIN membresía en ese cliente → rol=null, permisos=[], igual autorizado', async () => {
+    it('SIN membresía en ese cliente → rol=null, permisos = bypass total igual (root no necesita membresía)', async () => {
       usuarioRepo.findByEmail.mockResolvedValue(makeUsuario({ isGlobalAdmin: true }));
       clienteRepo.findById.mockResolvedValue(makeCliente({ nombre: 'Acme SA' }));
       membresiaRepo.findActivaByUsuarioYCliente.mockResolvedValue(null);
@@ -443,7 +460,7 @@ describe('LoginUseCase', () => {
 
       expect(result.isOk()).toBe(true);
       expect(captured!.rol).toBeNull();
-      expect(captured!.permisos).toEqual([]);
+      expect(captured!.permisos).toEqual([...PARES_VALIDOS]);
       expect(captured!.cliente_nombre).toBe('Acme SA');
     });
   });

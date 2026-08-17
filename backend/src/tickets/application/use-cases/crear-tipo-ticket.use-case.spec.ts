@@ -35,14 +35,14 @@ describe('CrearTipoTicketUseCase', () => {
     const result = await c.useCase.execute({
       codigo: 'RRHH',
       nombre: 'Recursos Humanos',
-      modulo: 'SOPORTE',
+      modulo: 'TICKETS',
     });
 
     expect(result.isOk()).toBe(true);
     const tipo = result.getValue();
     expect(tipo.codigo).toBe('RRHH');
     expect(tipo.nombre).toBe('Recursos Humanos');
-    expect(tipo.modulo).toBe('SOPORTE');
+    expect(tipo.modulo).toBe('TICKETS');
     expect(tipo.activo).toBe(true);
     expect(c.tipoTicketRepo.save).toHaveBeenCalledWith(tipo);
   });
@@ -66,7 +66,7 @@ describe('CrearTipoTicketUseCase', () => {
     const existente = TipoTicketEntity.create({
       codigo: 'SOPORTE',
       nombre: 'Soporte',
-      modulo: 'SOPORTE',
+      modulo: 'TICKETS',
       activo: true,
     });
     const c = makeCollaborators([existente]);
@@ -74,7 +74,7 @@ describe('CrearTipoTicketUseCase', () => {
     const result = await c.useCase.execute({
       codigo: 'SOPORTE',
       nombre: 'Duplicado',
-      modulo: 'SOPORTE',
+      modulo: 'TICKETS',
     });
 
     expect(result.isFail()).toBe(true);
@@ -95,7 +95,7 @@ describe('CrearTipoTicketUseCase', () => {
     const result = await c.useCase.execute({
       codigo: 'COMISION',
       nombre: 'Comisiones',
-      modulo: 'SOPORTE',
+      modulo: 'TICKETS',
     });
 
     expect(result.isFail()).toBe(true);
@@ -117,7 +117,7 @@ describe('CrearTipoTicketUseCase', () => {
     const result = await c.useCase.execute({
       codigo: 'COMISION',
       nombre: 'Comisiones',
-      modulo: 'SOPORTE',
+      modulo: 'TICKETS',
     });
 
     expect(result.isOk()).toBe(true);
@@ -129,7 +129,7 @@ describe('CrearTipoTicketUseCase', () => {
     const result = await c.useCase.execute({
       codigo: '###',
       nombre: 'Inválido',
-      modulo: 'SOPORTE',
+      modulo: 'TICKETS',
     });
 
     expect(result.isFail()).toBe(true);

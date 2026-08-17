@@ -51,7 +51,7 @@ describe("ItemDecisionActions", () => {
     );
 
     renderWithProviders(<ItemDecisionActions compraId={COMPRA_ID} item={buildItem()} />, {
-      user: buildUser({ permisos: ["compra:aprobar"] }),
+      user: buildUser({ permisos: ["COMPRAS:APROBACION"] }),
     });
 
     const user = userEvent.setup();
@@ -71,7 +71,7 @@ describe("ItemDecisionActions", () => {
     );
 
     renderWithProviders(<ItemDecisionActions compraId={COMPRA_ID} item={buildItem()} />, {
-      user: buildUser({ permisos: ["compra:aprobar"] }),
+      user: buildUser({ permisos: ["COMPRAS:APROBACION"] }),
     });
 
     const user = userEvent.setup();
@@ -84,7 +84,7 @@ describe("ItemDecisionActions", () => {
   it("S10: con ítem YA DECIDIDO, ambos botones quedan deshabilitados", async () => {
     renderWithProviders(
       <ItemDecisionActions compraId={COMPRA_ID} item={buildItem({ estadoAprobacion: "APROBADO" })} />,
-      { user: buildUser({ permisos: ["compra:aprobar"] }) },
+      { user: buildUser({ permisos: ["COMPRAS:APROBACION"] }) },
     );
 
     expect(screen.getByRole("button", { name: "Aprobar" })).toBeDisabled();
@@ -100,7 +100,7 @@ describe("ItemDecisionActions", () => {
     );
 
     renderWithProviders(<ItemDecisionActions compraId={COMPRA_ID} item={buildItem()} />, {
-      user: buildUser({ permisos: ["compra:aprobar"] }),
+      user: buildUser({ permisos: ["COMPRAS:APROBACION"] }),
     });
 
     const user = userEvent.setup();

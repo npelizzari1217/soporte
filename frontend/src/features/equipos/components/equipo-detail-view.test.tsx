@@ -53,7 +53,7 @@ describe("EquipoDetailView — consume componentes embebidos de GET /equipos/:id
 
   it("renderiza componentes ya existentes SIN necesidad de agregarlos vía mutación", async () => {
     renderWithProviders(<EquipoDetailView equipoId={EQUIPO_ID} />, {
-      user: buildUser({ permisos: ["equipo:gestionar"] }),
+      user: buildUser({ permisos: ["EQUIPOS:ALTAS", "EQUIPOS:MODIFICACION", "EQUIPOS:BORRADO"] }),
     });
 
     expect(await screen.findByText("Memoria RAM")).toBeInTheDocument();
@@ -62,7 +62,7 @@ describe("EquipoDetailView — consume componentes embebidos de GET /equipos/:id
 
   it("muestra el botón «Agregar componente» del toolbar (único, WU3 retiró el form inline), con permiso equipo:gestionar", async () => {
     renderWithProviders(<EquipoDetailView equipoId={EQUIPO_ID} />, {
-      user: buildUser({ permisos: ["equipo:gestionar"] }),
+      user: buildUser({ permisos: ["EQUIPOS:ALTAS", "EQUIPOS:MODIFICACION", "EQUIPOS:BORRADO"] }),
     });
 
     // Un solo botón "Agregar componente": el trigger del toolbar. El form
