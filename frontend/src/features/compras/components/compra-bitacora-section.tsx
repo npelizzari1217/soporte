@@ -19,13 +19,18 @@ import { useOperacionesCompra } from "../hooks/use-operaciones-compra";
 import type { TipoOperacionCompra } from "../types";
 
 /**
- * Etiquetas legibles del catálogo de 12 tipos (11 vigentes + 1 legacy,
+ * Etiquetas legibles del catálogo de 13 tipos (12 vigentes + 1 legacy,
  * ADR-T11). `COMPRA_REGISTRADA` solo aparece en filas históricas — el
  * código nuevo escribe `ORDEN_REGISTRADA`/`RECEPCION_REGISTRADA` en su
  * lugar (WU-26).
+ *
+ * El `Record<TipoOperacionCompra, string>` es exhaustivo a propósito: agregar
+ * un tipo al catálogo sin etiquetarlo acá no compila. Sin eso, un tipo nuevo
+ * aparecería en la bitácora como `undefined` sin que nada avise.
  */
 const TIPO_OPERACION_LABELS: Record<TipoOperacionCompra, string> = {
   CREACION: "Creación",
+  COMPRA_EDITADA: "Cabecera editada",
   ITEM_AGREGADO: "Ítem agregado",
   ITEM_EDITADO: "Ítem editado",
   ITEM_ELIMINADO: "Ítem eliminado",

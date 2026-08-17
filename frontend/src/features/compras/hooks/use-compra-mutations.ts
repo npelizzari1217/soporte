@@ -38,6 +38,7 @@ import type {
   CerrarItemConFaltanteDto,
   CompraDetalle,
   CrearCompraDto,
+  EditarCompraDto,
   EditarFechaEtapaDto,
   EditarItemCompraDto,
   ItemCompra,
@@ -61,6 +62,27 @@ export function useCrearCompra() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["compras"] });
       notifySuccess("Compra creada.");
+    },
+    onError: notifyError,
+  });
+}
+
+/**
+ * `PATCH /compras/:id` — edita la CABECERA. PATCH semántico: campo ausente no
+ * se toca, `null` limpia `descripcion`/`sectorId`.
+ *
+ * Invalida las tres queries como el resto: además del detalle y la bitácora
+ * (S35 agrega la operación `COMPRA_EDITADA`), `motivo`/`fechaSolicitud`/
+ * `sectorId` son columnas visibles de la fila del listado.
+ */
+export function useEditarCompra(compraId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (dto: EditarCompraDto) =>
+      apiFetch<CompraDetalle>(`compras/${compraId}`, { method: "PATCH", json: dto }),
+    onSuccess: () => {
+      invalidateCompraQueries(queryClient, compraId);
+      notifySuccess("Compra actualizada.");
     },
     onError: notifyError,
   });
