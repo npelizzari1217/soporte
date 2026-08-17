@@ -346,12 +346,29 @@ describe('EquiposController (T12.6)', () => {
       const result = await controller.listarTiposComponente();
       expect(result).toHaveLength(1);
       expect(result[0].codigo).toBe('RAM');
+    });
 
+    /**
+     * Fix W5 (post-verify). Este assert estaba INVERTIDO: exigía que la ruta
+     * NO declarara acciones, fijando en verde un hueco de autorización. Al
+     * reemplazar `ModulosGuard` por `AccionesGuard`, la ruta quedó sin gate
+     * (el guard nuevo sin metadata deja pasar, R3) y el `@RequireModulo`
+     * que la cubría vivía a nivel de clase: quedó abierta a cualquier
+     * autenticado del tenant, un ensanchamiento de acceso dentro de un
+     * cambio cuyo objetivo era el contrario.
+     *
+     * `EQUIPOS:LECTURA` restaura exactamente la población anterior: el
+     * backfill sembró esa celda a quien tenía el módulo EQUIPOS asignado.
+     * Sigue sin exigir permiso de ESCRITURA, que es lo que el test de arriba
+     * protege y lo que el catálogo read-only necesita para poblar el
+     * selector al agregar componentes.
+     */
+    it('[CRITICAL] declara @RequiereAcciones("EQUIPOS:LECTURA")', () => {
       const meta = Reflect.getMetadata(
         ACCIONES_KEY,
         EquiposController.prototype.listarTiposComponente,
       );
-      expect(meta).toBeUndefined();
+      expect(meta).toEqual(['EQUIPOS:LECTURA']);
     });
   });
 });
