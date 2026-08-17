@@ -1,5 +1,5 @@
 /**
- * rollback-compras-tres-etapas.integration.spec.ts — S71
+ * rollback-compras-tres-etapas.integration.spec.ts — reversibilidad de la migracion M2 (NO es S71)
  * (sdd/compras-tres-etapas-y-sectores).
  *
  * `rollback.sql` de M2 (`20260817160000_compras_tres_etapas`) existe desde
@@ -40,13 +40,20 @@
  *          se lo ejercita y se lo deja en verde a propósito, como prueba
  *          de que la advertencia es precisa.
  *
- * Nota de alcance (S71): el comentario de `migration.sql` invoca S71 en el
- * contexto de que Prisma envuelve la migración en UNA transacción — si
- * `VALIDATE CONSTRAINT` falla, hace rollback automático COMPLETO de esa
- * transacción (garantía transaccional de Postgres, no algo que este spec
- * deba re-probar). Lo que este spec cubre es la reversibilidad MANUAL vía
- * `rollback.sql` una vez que M2 ya se aplicó con éxito — el artefacto que
- * pide el resto de la cabecera y que nunca se había ejercitado.
+ * Nota de alcance: este spec NO cubre S71, aunque el comentario de
+ * `migration.sql` invoque ese ID en la línea de los CHECKs. S71 de la spec
+ * dice otra cosa: que una fila corrupta (`cantidadEntregada >
+ * cantidadComprada`) haga fallar la migración de forma explícita y detenida,
+ * sin aplicarla a medias. Eso lo cubre
+ * `migracion-m2-fila-corrupta.integration.spec.ts`.
+ *
+ * Lo que cubre ESTE spec es la reversibilidad MANUAL vía `rollback.sql` una
+ * vez que M2 se aplicó con éxito: un artefacto que existía desde WU-17 y que
+ * nunca se había ejercitado. Un archivo de rollback que nadie corrió es una
+ * promesa, no una red.
+ *
+ * Se separan a propósito: dejar los dos bajo el mismo ID hacía que alguien
+ * leyera "S71 cubierto" y diera por probado un escenario que no lo estaba.
  *
  * Ref migración: prisma_tenant/migrations/20260817160000_compras_tres_etapas/migration.sql
  * Ref rollback:  prisma_tenant/migrations/20260817160000_compras_tres_etapas/rollback.sql
@@ -88,7 +95,7 @@ async function aplicarMigracionesHastaM2Inclusive(pool: InstanceType<typeof Pool
   }
 }
 
-describe('Rollback de M2 (compras-tres-etapas-y-sectores) — reversibilidad y guardia documentada (S71)', () => {
+describe('Rollback de M2 (compras-tres-etapas-y-sectores) — reversibilidad y guardia documentada', () => {
   let pool: InstanceType<typeof Pool>;
   const admin = new PostgresAdminService(MASTER_TEST_URL);
   let compraId: string;
