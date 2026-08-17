@@ -67,6 +67,16 @@ describe('CrearCompraHttpDto', () => {
     const errores = await validate(dto);
     expect(errores.some((e) => e.property === propiedadEsperada)).toBe(true);
   });
+
+  it('S66 (WU-09): acepta sectorId opcional', async () => {
+    const dto = plainToInstance(CrearCompraHttpDto, {
+      motivo: 'Reposición de notebooks',
+      fechaSolicitud: '2026-08-13',
+      sectorId: '00000000-0000-4000-8000-000000000001',
+    });
+    const errores = await validate(dto);
+    expect(errores).toHaveLength(0);
+  });
 });
 
 describe('AgregarItemCompraHttpDto', () => {
@@ -228,6 +238,39 @@ describe('ListarComprasQueryDto', () => {
     const errores = await validate(dto);
     expect(errores.some((e) => e.property === 'pagina')).toBe(true);
   });
+
+  // ─── WU-14 (sdd/compras-tres-etapas-y-sectores) — los 5 filtros de negocio ──
+
+  it("WU-14: 'soloEnCurso=false' en la querystring (string) se transforma al boolean false, no truthy", async () => {
+    const dto = plainToInstance(ListarComprasQueryDto, { soloEnCurso: 'false' });
+    const errores = await validate(dto);
+    expect(errores).toHaveLength(0);
+    expect(dto.soloEnCurso).toBe(false);
+  });
+
+  it("WU-14: 'soloEnCurso=true' en la querystring se transforma al boolean true", async () => {
+    const dto = plainToInstance(ListarComprasQueryDto, { soloEnCurso: 'true' });
+    const errores = await validate(dto);
+    expect(errores).toHaveLength(0);
+    expect(dto.soloEnCurso).toBe(true);
+  });
+
+  it('WU-14: acepta cicloId/sectorId UUID y fechaDesde/fechaHasta ISO', async () => {
+    const dto = plainToInstance(ListarComprasQueryDto, {
+      cicloId: '00000000-0000-4000-8000-000000000001',
+      sectorId: '00000000-0000-4000-8000-000000000002',
+      fechaDesde: '2026-01-01',
+      fechaHasta: '2026-12-31',
+    });
+    const errores = await validate(dto);
+    expect(errores).toHaveLength(0);
+  });
+
+  it('WU-14: rechaza cicloId que no es UUID', async () => {
+    const dto = plainToInstance(ListarComprasQueryDto, { cicloId: 'no-es-uuid' });
+    const errores = await validate(dto);
+    expect(errores.some((e) => e.property === 'cicloId')).toBe(true);
+  });
 });
 
 describe('toCompraDetalleResponseDto', () => {
@@ -306,5 +349,10 @@ describe('toCompraDetalleResponseDto', () => {
 
     expect(dto.items).toHaveLength(1);
     expect(dto.items[0].id).toBe('item-activo');
+  });
+
+  it('S67 (WU-09): expone sectorId=null cuando la compra no tiene sector asignado', () => {
+    const dto = toCompraDetalleResponseDto(makeCompraConItems());
+    expect(dto.sectorId).toBeNull();
   });
 });

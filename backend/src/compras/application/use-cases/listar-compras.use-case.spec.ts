@@ -128,13 +128,15 @@ describe('ListarComprasUseCase', () => {
     expect(fila.cerrado).toBe(false);
   });
 
-  it('traduce pagina/porPagina a limit/offset de findAllConItems (S32) — count() no recibe paginación', async () => {
+  it('traduce pagina/porPagina a limit/offset de findAllConItems (S32)', async () => {
     const c = makeCollaborators();
 
     await c.useCase.execute({ pagina: 3, porPagina: 10 });
 
     expect(c.compraRepo.findAllConItems).toHaveBeenCalledTimes(1);
-    expect(c.compraRepo.findAllConItems).toHaveBeenCalledWith({ limit: 10, offset: 20 });
+    expect(c.compraRepo.findAllConItems).toHaveBeenCalledWith(
+      expect.objectContaining({ limit: 10, offset: 20 }),
+    );
   });
 
   it('sin pagina/porPagina explícitos, aplica los defaults (página 1, 20 por página)', async () => {
@@ -142,7 +144,9 @@ describe('ListarComprasUseCase', () => {
 
     const result = await c.useCase.execute();
 
-    expect(c.compraRepo.findAllConItems).toHaveBeenCalledWith({ limit: 20, offset: 0 });
+    expect(c.compraRepo.findAllConItems).toHaveBeenCalledWith(
+      expect.objectContaining({ limit: 20, offset: 0 }),
+    );
     expect(result.getValue().pagina).toBe(1);
     expect(result.getValue().porPagina).toBe(20);
   });
@@ -184,12 +188,68 @@ describe('ListarComprasUseCase', () => {
     expect(result.getValue().total).toBe(5);
   });
 
-  it('count() se llama SIN limit/offset (mide el universo completo, no la página) y en paralelo con findAllConItems', async () => {
+  it('count() se llama SIN limit/offset (mide el universo completo, no la página)', async () => {
     const c = makeCollaborators();
 
     await c.useCase.execute({ pagina: 3, porPagina: 10 });
 
     expect(c.compraRepo.count).toHaveBeenCalledTimes(1);
-    expect(c.compraRepo.count).toHaveBeenCalledWith();
+    const [filtrosDeCount] = c.compraRepo.count.mock.calls[0]!;
+    expect(filtrosDeCount).not.toHaveProperty('limit');
+    expect(filtrosDeCount).not.toHaveProperty('offset');
+  });
+
+  // ─── WU-13 (sdd/compras-tres-etapas-y-sectores, R9/S62) — el bug real ────
+  //
+  // count() se llamaba SIN argumentos mientras findAllConItems SÍ recibía
+  // filtros de negocio: el total de paginación medía el universo SIN
+  // filtrar, no el filtrado. Estos tests fallan contra la implementación
+  // vieja (count() con cero argumentos) y pasan solo si count() recibe el
+  // MISMO objeto de filtros de negocio que findAllConItems (menos limit/offset).
+
+  it('S62: count() recibe el MISMO filtro de negocio (cicloId/soloEnCurso/sectorId/fechas) que findAllConItems, sin limit/offset', async () => {
+    const c = makeCollaborators();
+
+    await c.useCase.execute({
+      pagina: 1,
+      porPagina: 2,
+      cicloId: 'ciclo-1',
+      soloEnCurso: true,
+      sectorId: 'sector-1',
+    });
+
+    const [filtrosFindAll] = c.compraRepo.findAllConItems.mock.calls[0]!;
+    const [filtrosCount] = c.compraRepo.count.mock.calls[0]!;
+
+    expect(filtrosCount).toEqual({
+      cicloId: 'ciclo-1',
+      soloEnCurso: true,
+      sectorId: 'sector-1',
+    });
+    expect(filtrosFindAll).toEqual({
+      cicloId: 'ciclo-1',
+      soloEnCurso: true,
+      sectorId: 'sector-1',
+      limit: 2,
+      offset: 0,
+    });
+  });
+
+  it('S62: soloEnCurso default es true cuando el caller no lo especifica', async () => {
+    const c = makeCollaborators();
+
+    await c.useCase.execute();
+
+    expect(c.compraRepo.count).toHaveBeenCalledWith(expect.objectContaining({ soloEnCurso: true }));
+  });
+
+  it('S62: soloEnCurso: false desactiva el filtro por defecto (universo completo, incluidas cerradas/canceladas)', async () => {
+    const c = makeCollaborators();
+
+    await c.useCase.execute({ soloEnCurso: false });
+
+    expect(c.compraRepo.count).toHaveBeenCalledWith(
+      expect.objectContaining({ soloEnCurso: false }),
+    );
   });
 });

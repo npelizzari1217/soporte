@@ -40,6 +40,24 @@ export interface CompraListFiltros {
   limit?: number;
   /** Cantidad de compras a saltear. `undefined` = 0. */
   offset?: number;
+  /**
+   * Filtro por ciclo (WU-11, sdd/compras-tres-etapas-y-sectores/spec R7).
+   * `undefined` = sin restricción de ciclo.
+   */
+  cicloId?: string;
+  /**
+   * "En curso" (R7): `ciclo` AND `canceladaEn IS NULL` AND `NOT cerrado`.
+   * Default `true` cuando el caller no especifica nada — lo resuelve
+   * `ListarComprasUseCase`, no este puerto. `false` desactiva el filtro por
+   * defecto (trae TODO el universo, incluidas cerradas/canceladas).
+   */
+  soloEnCurso?: boolean;
+  /** Filtro por sector de cabecera (R11). `undefined` = sin restricción. */
+  sectorId?: string;
+  /** Filtra por `fechaSolicitud >= fechaDesde` (R7). Fecha de CABECERA, no de etapa. */
+  fechaDesde?: Date;
+  /** Filtra por `fechaSolicitud <= fechaHasta` (R7). Fecha de CABECERA, no de etapa. */
+  fechaHasta?: Date;
 }
 
 export interface ICompraRepository {

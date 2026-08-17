@@ -223,6 +223,7 @@ export class ComprasController {
       fechaSolicitud: new Date(dto.fechaSolicitud),
       solicitanteId: user.sub,
       anio: new Date().getFullYear(),
+      sectorId: dto.sectorId ?? null,
     });
 
     if (result.isFail()) {
@@ -512,6 +513,11 @@ export class ComprasController {
     const result = await this.listarComprasUseCase.execute({
       pagina: query.pagina,
       porPagina: query.porPagina,
+      cicloId: query.cicloId,
+      soloEnCurso: query.soloEnCurso,
+      sectorId: query.sectorId,
+      fechaDesde: query.fechaDesde !== undefined ? new Date(query.fechaDesde) : undefined,
+      fechaHasta: query.fechaHasta !== undefined ? new Date(query.fechaHasta) : undefined,
     });
     return toListarComprasResponseDto(result.getValue());
   }

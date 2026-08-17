@@ -51,13 +51,64 @@ export class PrismaCompraRepository implements ICompraRepository {
   }
 
   /**
-   * `where` compartido por `findAllConItems` y `count` — la MISMA condición
-   * de filtro para ambas sentencias, sin duplicar la lógica (hoy es
-   * constante porque `CompraListFiltros` solo tiene paginación; si en el
-   * futuro se agregan filtros de negocio, se construyen ACÁ una sola vez).
+   * `where` compartido por `findAllConItems` y `count` (WU-11, ADR-T5, R7) —
+   * la MISMA condición de filtro para ambas sentencias, sin duplicar la
+   * lógica.
+   *
+   * `soloEnCurso` (default `true` en `ListarComprasUseCase`, no acá) agrega
+   * el predicado de TRES términos derivado de `derivarEstadoCompra`
+   * (`estado-compra.ts`): con `¬cancelada` ya asumido por `canceladaEn:
+   * null`, `¬cerrado` se reduce al OR de:
+   *   1. `∃ ítem PENDIENTE` (activo)
+   *   2. `∄ ítem APROBADO` (activo) — NO se deduce del término 1: con
+   *      `nP=0 ∧ nA=0` la excepción de vacuidad de `estado-compra.ts:124-126`
+   *      igual fuerza `cerrado=false`.
+   *   3. `∃ ítem (APROBADO ∧ ¬entregado)` activo, donde `¬entregado` es
+   *      `cantidadEntregada < cantidad ∧ ¬cerradoConFaltante` (misma
+   *      cláusula OR de `itemEntregado`, S22).
+   * `deletedAt: null` en cada filtro anidado sobre ítems: un ítem
+   * soft-deleted no cuenta para ningún término (F6 de la matriz WU-12).
+   *
+   * NO usa cuantificadores universales de JS sobre arrays — es 100%
+   * declarativo Prisma (guard estructural en `higiene-every.spec.ts`, que
+   * confina esos cuantificadores a `estado-compra.ts` en toda la
+   * implementación de `compras/`).
    */
-  private buildWhere(): Prisma.CompraWhereInput {
-    return { deletedAt: null };
+  private buildWhere(filtros?: CompraListFiltros): Prisma.CompraWhereInput {
+    const where: Prisma.CompraWhereInput = { deletedAt: null };
+
+    if (filtros?.cicloId !== undefined) {
+      where.cicloId = filtros.cicloId;
+    }
+    if (filtros?.sectorId !== undefined) {
+      where.sectorId = filtros.sectorId;
+    }
+    if (filtros?.fechaDesde !== undefined || filtros?.fechaHasta !== undefined) {
+      where.fechaSolicitud = {
+        ...(filtros?.fechaDesde !== undefined && { gte: filtros.fechaDesde }),
+        ...(filtros?.fechaHasta !== undefined && { lte: filtros.fechaHasta }),
+      };
+    }
+
+    if (filtros?.soloEnCurso) {
+      where.canceladaEn = null;
+      where.OR = [
+        { items: { some: { deletedAt: null, estadoAprobacion: 'PENDIENTE' } } },
+        { items: { none: { deletedAt: null, estadoAprobacion: 'APROBADO' } } },
+        {
+          items: {
+            some: {
+              deletedAt: null,
+              estadoAprobacion: 'APROBADO',
+              cerradoConFaltante: false,
+              cantidadEntregada: { lt: this.client.itemCompra.fields.cantidad },
+            },
+          },
+        },
+      ];
+    }
+
+    return where;
   }
 
   /**
@@ -70,7 +121,7 @@ export class PrismaCompraRepository implements ICompraRepository {
    */
   async findAllConItems(filtros?: CompraListFiltros): Promise<CompraEntity[]> {
     const rows = await this.client.compra.findMany({
-      where: this.buildWhere(),
+      where: this.buildWhere(filtros),
       include: { items: true },
       orderBy: { createdAt: 'desc' },
       ...(filtros?.limit !== undefined && { take: filtros.limit }),
@@ -88,8 +139,8 @@ export class PrismaCompraRepository implements ICompraRepository {
    * `bigint` — ver JSDoc de `ICompraRepository.count` para el resto de la
    * comparación). EXCEPCIÓN DOCUMENTADA a S32: ver JSDoc del puerto.
    */
-  async count(): Promise<number> {
-    return this.client.compra.count({ where: this.buildWhere() });
+  async count(filtros?: CompraListFiltros): Promise<number> {
+    return this.client.compra.count({ where: this.buildWhere(filtros) });
   }
 
   /**

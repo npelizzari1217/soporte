@@ -178,9 +178,25 @@ describe('ComprasController — traducción HTTP ↔ use case (PR-21)', () => {
         fechaSolicitud: new Date('2026-08-13'),
         solicitanteId: 'usuario-1',
         anio: new Date().getFullYear(),
+        sectorId: null,
       });
       expect(res.id).toBe('compra-1');
       expect(res.items).toEqual([]);
+    });
+
+    it('S66 (WU-09): sectorId del body se pasa al use case', async () => {
+      const { controller, crearCompraUseCase } = buildController();
+      crearCompraUseCase.execute.mockResolvedValue(Result.ok(buildCompra()));
+
+      await controller.crear(USUARIO, {
+        motivo: 'Reposición de notebooks',
+        fechaSolicitud: '2026-08-13',
+        sectorId: 'sector-1',
+      });
+
+      expect(crearCompraUseCase.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ sectorId: 'sector-1' }),
+      );
     });
   });
 
@@ -422,6 +438,31 @@ describe('ComprasController — traducción HTTP ↔ use case (PR-21)', () => {
       expect(res.total).toBe(1);
       expect(res.items).toHaveLength(1);
       expect(res.items[0]).not.toHaveProperty('items');
+    });
+
+    it('WU-14: los 5 filtros de negocio de la query se pasan al use case', async () => {
+      const { controller, listarComprasUseCase } = buildController();
+      listarComprasUseCase.execute.mockResolvedValue(
+        Result.ok({ items: [], total: 0, pagina: 1, porPagina: 20 }),
+      );
+
+      await controller.listar({
+        cicloId: 'ciclo-1',
+        soloEnCurso: false,
+        sectorId: 'sector-1',
+        fechaDesde: '2026-01-01',
+        fechaHasta: '2026-12-31',
+      });
+
+      expect(listarComprasUseCase.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          cicloId: 'ciclo-1',
+          soloEnCurso: false,
+          sectorId: 'sector-1',
+          fechaDesde: new Date('2026-01-01'),
+          fechaHasta: new Date('2026-12-31'),
+        }),
+      );
     });
   });
 

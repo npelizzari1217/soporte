@@ -76,7 +76,11 @@ import { UsuarioEntity } from '../../../auth/domain/entities/usuario.entity';
 import { RoleEntity } from '../../../auth/domain/entities/role.entity';
 import { PermisoEntity } from '../../../auth/domain/entities/permiso.entity';
 import { Argon2HashProvider } from '../../../auth/infrastructure/argon2-hash.provider';
-import { CompraDetalleResponseDto, ItemCompraResponseDto } from '../dtos/compras.dto';
+import {
+  CompraDetalleResponseDto,
+  ItemCompraResponseDto,
+  ListarComprasResponseDto,
+} from '../dtos/compras.dto';
 
 const MASTER_TEST_URL =
   process.env.DATABASE_URL_MASTER ??
@@ -746,6 +750,61 @@ describe('Compras e2e — contrato HTTP real de las 13 rutas (cierra W-B/W-A del
       // cicloId: SIEMPRE el ciclo activo resuelto server-side.
       expect(data.cicloId).toBe(cicloActivoId);
       expect(data.cicloId).not.toBe(cicloFalso);
+    });
+  });
+
+  // ─── Requisito 7 — Querystring de filtros (WU-14) ────────────────────────
+  //
+  // Un solo `it` de E2E confirma que el querystring llega y se parsea. Las
+  // 14 filas de la matriz "en curso" viven en integración
+  // (prisma-compra.repository.filtros.integration.spec.ts, WU-12) — es
+  // donde está el riesgo real y el ciclo de feedback más corto; no se
+  // duplica esa matriz por HTTP.
+
+  describe('Querystring de filtros (WU-14)', () => {
+    it('GET /compras?cicloId&soloEnCurso&sectorId&fechaDesde&fechaHasta parsea sin 400 y filtra por cicloId', async () => {
+      const actor = await crearActorConPermisos([
+        'COMPRAS:ALTAS',
+        'COMPRAS:MODIFICACION',
+        'COMPRAS:BORRADO',
+        'COMPRAS:LECTURA',
+      ]);
+      const crear = await httpPost<CompraDetalleResponseDto>(
+        `${baseUrl}/compras`,
+        buildCrearCompraDto(),
+        bearer(actor.accessToken),
+      );
+
+      // sectorId se omite a propósito: la compra recién creada no tiene
+      // sector asignado, y filtrar por un sectorId inventado la excluiría
+      // legítimamente — este test valida PARSEO del querystring (los 5
+      // params juntos, sin 400), no la semántica de cada filtro (eso vive
+      // en la matriz de integración de WU-12).
+      const query = new URLSearchParams({
+        cicloId: crear.data.cicloId,
+        soloEnCurso: 'false',
+        fechaDesde: '2020-01-01',
+        fechaHasta: '2030-01-01',
+      });
+      const { status, data } = await httpGet<ListarComprasResponseDto>(
+        `${baseUrl}/compras?${query.toString()}`,
+        bearer(actor.accessToken),
+      );
+
+      expect(status).toBe(200);
+      expect(data.items.some((i) => i.id === crear.data.id)).toBe(true);
+
+      // Con `sectorId` sumado al querystring (los 5 juntos): sigue
+      // parseando sin 400 — sanity de que class-validator no lo rechaza.
+      const queryConSector = new URLSearchParams({
+        ...Object.fromEntries(query),
+        sectorId: '00000000-0000-4000-8000-000000000abc',
+      });
+      const conSector = await httpGet<ListarComprasResponseDto>(
+        `${baseUrl}/compras?${queryConSector.toString()}`,
+        bearer(actor.accessToken),
+      );
+      expect(conSector.status).toBe(200);
     });
   });
 

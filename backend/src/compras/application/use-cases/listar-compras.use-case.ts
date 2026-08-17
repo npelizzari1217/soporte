@@ -6,12 +6,27 @@ import { CompraListFiltros, ICompraRepository } from '../../domain/ports/i-compr
 const PAGINA_DEFAULT = 1;
 const POR_PAGINA_DEFAULT = 20;
 
-/** DTO de entrada de `ListarComprasUseCase`. Sin filtros de negocio (spec §4.9 no los pide) — solo paginación. */
+/**
+ * DTO de entrada de `ListarComprasUseCase`. WU-11/WU-13 (R7, R9) agregan los
+ * filtros de negocio; `soloEnCurso` default `true` se resuelve ACÁ, no en el
+ * puerto (`CompraListFiltros.soloEnCurso` queda `undefined` si el caller no
+ * lo especifica).
+ */
 export interface ListarComprasDto {
   /** Página 1-indexed. Default 1. */
   pagina?: number;
   /** Tamaño de página. Default 20. */
   porPagina?: number;
+  /** Filtro por ciclo (R7). `undefined` = sin restricción. */
+  cicloId?: string;
+  /** "En curso" (R7). Default `true` cuando el caller no lo especifica. */
+  soloEnCurso?: boolean;
+  /** Filtro por sector de cabecera (R11). */
+  sectorId?: string;
+  /** Filtra por `fechaSolicitud >= fechaDesde` (R7, fecha de CABECERA). */
+  fechaDesde?: Date;
+  /** Filtra por `fechaSolicitud <= fechaHasta` (R7, fecha de CABECERA). */
+  fechaHasta?: Date;
 }
 
 /**
@@ -80,16 +95,28 @@ export class ListarComprasUseCase {
     const pagina = dto.pagina ?? PAGINA_DEFAULT;
     const porPagina = dto.porPagina ?? POR_PAGINA_DEFAULT;
 
+    // WU-13 (R9/S62): `filtrosNegocio` es el MISMO objeto para `count()` y
+    // `findAllConItems` (menos limit/offset) — antes `count()` se llamaba
+    // SIN argumentos mientras `findAllConItems` sí recibía filtros, así que
+    // el total de paginación medía el universo SIN filtrar. `count()` sigue
+    // ignorando `limit`/`offset` por contrato (mide el universo completo,
+    // no la página — el total sigue siendo correcto aunque la página pedida
+    // devuelva cero filas, offset más allá del total).
+    const filtrosNegocio: CompraListFiltros = {
+      ...(dto.cicloId !== undefined && { cicloId: dto.cicloId }),
+      soloEnCurso: dto.soloEnCurso ?? true,
+      ...(dto.sectorId !== undefined && { sectorId: dto.sectorId }),
+      ...(dto.fechaDesde !== undefined && { fechaDesde: dto.fechaDesde }),
+      ...(dto.fechaHasta !== undefined && { fechaHasta: dto.fechaHasta }),
+    };
     const filtrosPagina: CompraListFiltros = {
+      ...filtrosNegocio,
       limit: porPagina,
       offset: (pagina - 1) * porPagina,
     };
-    // `count()` SIN limit/offset: mide el universo filtrado completo, no la
-    // página — así el total sigue siendo correcto incluso cuando la página
-    // pedida devuelve cero filas (offset más allá del total).
     const [compras, total] = await Promise.all([
       this.compraRepo.findAllConItems(filtrosPagina),
-      this.compraRepo.count(),
+      this.compraRepo.count(filtrosNegocio),
     ]);
 
     return Result.ok({

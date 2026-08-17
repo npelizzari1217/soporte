@@ -27,14 +27,16 @@
  *
  * Tarea: PR-20 (abre la Fase E).
  */
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
+  IsBoolean,
   IsDateString,
   IsIn,
   IsInt,
   IsNumber,
   IsOptional,
   IsString,
+  IsUUID,
   Max,
   Min,
   MinLength,
@@ -97,6 +99,11 @@ export class CrearCompraHttpDto {
 
   @IsDateString()
   fechaSolicitud!: string;
+
+  /** Sector de destino (WU-09, R11) — opcional, sin backfill (S66). */
+  @IsOptional()
+  @IsUUID()
+  sectorId?: string;
 }
 
 /** Body de `POST /compras/:id/items` (§4.2, S4). */
@@ -231,7 +238,13 @@ export class CancelarCompraHttpDto {
   motivo!: string;
 }
 
-/** Query params de `GET /compras` (§4.9) — sólo paginación, la spec no pide filtros de negocio. */
+/**
+ * Query params de `GET /compras` (§4.9 + WU-11/WU-14, R7/R11). Los 5
+ * filtros de negocio son opcionales y combinables con la paginación.
+ * `soloEnCurso` viaja como string en la querystring (`?soloEnCurso=false`);
+ * `@Type(() => Boolean)` de `class-transformer` NO interpreta `'false'`
+ * como `false` (cualquier string no vacío es truthy) — se parsea a mano.
+ */
 export class ListarComprasQueryDto {
   @IsOptional()
   @Type(() => Number)
@@ -245,6 +258,29 @@ export class ListarComprasQueryDto {
   @Min(1)
   @Max(100)
   porPagina?: number;
+
+  @IsOptional()
+  @IsUUID()
+  cicloId?: string;
+
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    value === 'false' ? false : value === 'true' ? true : (value as boolean | undefined),
+  )
+  @IsBoolean()
+  soloEnCurso?: boolean;
+
+  @IsOptional()
+  @IsUUID()
+  sectorId?: string;
+
+  @IsOptional()
+  @IsDateString()
+  fechaDesde?: string;
+
+  @IsOptional()
+  @IsDateString()
+  fechaHasta?: string;
 }
 
 // ─── Response DTOs ────────────────────────────────────────────────────────
@@ -361,6 +397,8 @@ export interface CompraDetalleResponseDto {
   descripcion: string | null;
   solicitanteId: string;
   cicloId: string;
+  /** Sector de destino (WU-09, R11). `null` si no se asignó (S66/S67). */
+  sectorId: string | null;
   estado: EstadoCompra;
   comprado: boolean;
   cerrado: boolean;
@@ -391,6 +429,7 @@ export function toCompraDetalleResponseDto(compra: CompraEntity): CompraDetalleR
     descripcion: compra.descripcion,
     solicitanteId: compra.solicitanteId,
     cicloId: compra.cicloId,
+    sectorId: compra.sectorId,
     estado: compra.estado,
     comprado: compra.comprado,
     cerrado: compra.cerrado,
