@@ -279,6 +279,37 @@ describe('Tickets Persistence Repos — Integration (PR5)', () => {
       });
     });
 
+    describe('findByIds() — búsqueda por lote', () => {
+      it('devuelve un Map con los encontrados, omite los ids inexistentes e incluye soft-deleted', async () => {
+        const vivo = TicketEntity.create(makeTicketProps());
+        const borrado = TicketEntity.create(makeTicketProps());
+        const inexistenteId = '01900000-0000-7000-8000-0000000000f1';
+
+        await withTenant(async () => {
+          await ticketRepo.save(vivo);
+          await ticketRepo.save(borrado);
+          await ticketRepo.delete(borrado.id);
+
+          const porId = await ticketRepo.findByIds([vivo.id, borrado.id, inexistenteId]);
+
+          expect(porId.get(vivo.id)?.numero).toBe(vivo.numero);
+          // Mismo criterio que `findById`, que también los devuelve: si el
+          // lote excluyera soft-deleted, cambiar `findById` por `findByIds`
+          // en un consumidor le alteraría el resultado en silencio.
+          expect(porId.get(borrado.id)?.deletedAt).not.toBeNull();
+          // Los ids sin fila no entran al Map: la ausencia es el `null` que
+          // devolvía `findById`.
+          expect(porId.has(inexistenteId)).toBe(false);
+        });
+      });
+
+      it('con lista vacía devuelve un Map vacío sin consultar', async () => {
+        await withTenant(async () => {
+          expect(await ticketRepo.findByIds([])).toEqual(new Map());
+        });
+      });
+    });
+
     describe('findLastSecuencia() — comportamiento secuencial (sin concurrencia, ver spec dedicado T5.2)', () => {
       it('retorna 0 cuando no hay tickets para ese tipo y año', async () => {
         await withTenant(async () => {
