@@ -13,7 +13,9 @@
  *
  * Grilla: filas = módulos (`CATALOGO_MODULOS`), columnas = las 6 acciones
  * "piso" (deshabilitadas cuando el módulo no las declara soportar, R1) +
- * las acciones "extra" propias de cada módulo, listadas aparte.
+ * las acciones "extra" propias de cada módulo, listadas aparte. Cada fila se
+ * encabeza con el nombre legible del módulo (`ETIQUETAS_MODULOS`, el mismo
+ * que muestra el menú lateral); las acciones sí van con su código.
  *
  * La query de permisos actuales (`useUsuarioPermisos`) se activa recién
  * cuando el diálogo se abre, mismo criterio que el ABM viejo (evita un
@@ -40,6 +42,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { ACCIONES_PISO, CATALOGO_MODULOS, type CodigoAccion, type Modulo } from "@/shared/auth/acciones";
+import { etiquetaDeModulo } from "@/shared/auth/etiquetas-modulos";
 import { useAsignarPermisos, useUsuarioPermisos } from "../hooks/use-usuario-permisos";
 import type { UsuarioTenant } from "../types";
 
@@ -107,7 +110,14 @@ export function AsignarPermisosControl({ usuario }: AsignarPermisosControlProps)
                 const def = CATALOGO_MODULOS[modulo];
                 return (
                   <div key={modulo} className="flex flex-col gap-1.5">
-                    <p className="text-xs font-semibold uppercase text-muted-foreground">{modulo}</p>
+                    {/*
+                      Nombre legible, el mismo que el menú lateral: el código
+                      crudo ("KB") no se entiende. El código sigue viajando en
+                      el `aria-label` de cada checkbox.
+                    */}
+                    <p className="text-xs font-semibold text-muted-foreground">
+                      {etiquetaDeModulo(modulo)}
+                    </p>
                     <div className="flex flex-wrap gap-x-3 gap-y-1">
                       {[...ACCIONES_PISO, ...def.extras].map((accion) => {
                         const celda = `${modulo}:${accion}` as CodigoAccion;

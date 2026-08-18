@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../../test/msw/server";
@@ -93,6 +93,32 @@ describe("AsignarPermisosControl (ADR-P10, sdd/matriz-permisos-por-usuario)", ()
     expect(zonaModulos).toContainElement(screen.getByRole("checkbox", { name: "DASHBOARD:LECTURA" }));
     expect(zonaModulos).not.toContainElement(guardar);
     expect(dialogo).toContainElement(guardar);
+  });
+
+  it("encabeza cada grupo con el nombre legible del módulo, no con el código crudo", async () => {
+    const user = userEvent.setup();
+    server.use(
+      http.get("/api/usuarios/u1/permisos", () =>
+        HttpResponse.json({ celdas: [], esAdministrador: false }),
+      ),
+    );
+
+    renderWithProviders(<AsignarPermisosControl usuario={USUARIO_TECNICO} />, {
+      user: buildUser({ rol: "ADMINISTRADOR" }),
+    });
+    await user.click(screen.getByRole("button", { name: /permisos/i }));
+    await screen.findByRole("checkbox", { name: "TICKETS:LECTURA" });
+
+    const zonaModulos = within(screen.getByTestId("permisos-modulos"));
+    // Mismo nombre que en el menú lateral: "KB" no le dice nada a nadie.
+    expect(zonaModulos.getByText("Base de conocimiento")).toBeInTheDocument();
+    expect(zonaModulos.getByText("Tickets")).toBeInTheDocument();
+    // Los códigos crudos ya no se muestran como encabezado (siguen viajando en
+    // el `aria-label` de cada checkbox, que no es texto del DOM).
+    expect(zonaModulos.queryByText("KB")).not.toBeInTheDocument();
+    expect(zonaModulos.queryByText("TICKETS")).not.toBeInTheDocument();
+    // Las ACCIONES no cambian: se siguen mostrando con su código.
+    expect(zonaModulos.getAllByText("LECTURA").length).toBeGreaterThan(0);
   });
 
   it("tildar celdas NO persiste: la mutación sale recién al apretar Guardar", async () => {
