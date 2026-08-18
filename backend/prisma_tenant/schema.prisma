@@ -389,6 +389,12 @@ model ArchivoOperacion {
 //   porcentaje_avance: NUMERIC(5,2), CHECK 0-100. Recalculado por la app.
 // subtareas_edilicia: pasos de la reparación.
 //   completada_por_id: soft ref → master.usuarios.id.
+// comentarios_reparacion: notas del operador sobre la reparación (ej. "falta
+//   el repuesto X"), a nivel de la REPARACIÓN y no de cada subtarea.
+//   APPEND-ONLY: sin updated_at ni deleted_at (mismo criterio estructural que
+//   operaciones_compra, ADR-C4) — un comentario no se edita ni se borra.
+//   autor_id: soft ref → master.usuarios.id.
+//   CHECK (char_length(btrim(texto)) BETWEEN 1 AND 2000) — migration SQL.
 
 model TicketEdilicia {
   id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
@@ -405,10 +411,26 @@ model TicketEdilicia {
 
   ticket Ticket @relation(fields: [ticketId], references: [id])
 
-  subtareas SubtareaEdilicia[]
+  subtareas   SubtareaEdilicia[]
+  comentarios ComentarioReparacion[]
 
   @@index([porcentajeAvance])
   @@map("ticket_edilicia")
+}
+
+model ComentarioReparacion {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ticketEdiliciaId String   @map("ticket_edilicia_id") @db.Uuid
+  /// CHECK (char_length(btrim(texto)) BETWEEN 1 AND 2000) — migration SQL.
+  texto            String   @db.Text
+  /// Soft ref → master.usuarios.id. Sin FK cross-DB.
+  autorId          String   @map("autor_id") @db.Uuid
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  ticketEdilicia TicketEdilicia @relation(fields: [ticketEdiliciaId], references: [id])
+
+  @@index([ticketEdiliciaId, createdAt], map: "comentarios_reparacion_ticket_created_at_idx")
+  @@map("comentarios_reparacion")
 }
 
 model SubtareaEdilicia {
