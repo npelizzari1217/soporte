@@ -29,7 +29,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { MontoInput } from "./monto-input";
+import { MontoInput } from "@/components/shared/monto-input";
 import { useEditarItemCompra } from "../hooks/use-compra-mutations";
 import { aFechaInput } from "../lib/fecha";
 import { editarItemCompraSchema, type EditarItemCompraFormValues } from "../schemas";

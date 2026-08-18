@@ -8,8 +8,10 @@
  * **Invariante**: el valor que sale por `onChange` es SIEMPRE el número
  * crudo. El formato es una proyección de sólo lectura que se calcula al
  * vuelo mientras el campo NO tiene foco — nunca se escribe en el valor. Si
- * la cadena formateada llegara al schema, `z.coerce.number()` devolvería
- * `NaN` y el usuario perdería la carga.
+ * la cadena formateada llegara al schema, el número se perdería: en Compras
+ * `z.coerce.number()` devolvería `NaN`, y en Equipos —donde el campo viaja
+ * como `string`— el parseo previo al submit devolvería `null`. En los dos
+ * casos el usuario pierde la carga.
  *
  * Al salir del campo se normaliza lo tipeado a su forma canónica cruda
  * (`parsearNumeroEsAr`), así un valor pegado ya formateado también queda
@@ -23,7 +25,7 @@
  */
 import { Input } from "@/components/ui/input";
 import { useState } from "react";
-import { formatearNumeroEsAr, parsearNumeroEsAr } from "../lib/formato-numero";
+import { formatearNumeroEsAr, parsearNumeroEsAr } from "@/shared/lib/formato-numero";
 
 export interface MontoInputProps {
   id: string;

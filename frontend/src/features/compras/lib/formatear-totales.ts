@@ -8,10 +8,10 @@
  * inspecciona ítems (esa regla vive en el backend, ADR-C1) — solo formatea
  * números que ya llegaron resueltos en el DTO.
  *
- * El formato es-AR en sí vive en `./formato-numero.ts`, compartido con el
- * detalle de ítems y con el input de monto.
+ * El formato es-AR en sí vive en `@/shared/lib/formato-numero`, compartido con
+ * el detalle de ítems y con el input de monto.
  */
-import { formatearMontoConMoneda } from "./formato-numero";
+import { formatearMontoConMoneda } from "@/shared/lib/formato-numero";
 
 export function formatearTotalesPorMoneda(totales: Record<string, number>): string {
   const entradas = Object.entries(totales);

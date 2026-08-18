@@ -1,12 +1,14 @@
 /**
- * Formato numérico es-AR compartido por el módulo de Compras: miles con
- * punto, decimales con coma, SIEMPRE 2 decimales (`1.234.567,89`).
+ * Formato numérico es-AR de TODA la app: miles con punto, decimales con coma,
+ * SIEMPRE 2 decimales (`1.234.567,89`).
  *
- * Existía duplicado — `formatearTotalesPorMoneda` (`./formatear-totales.ts`)
- * y `formatMonto` (`../components/compra-items-section.tsx`) repetían el
- * mismo `toLocaleString`. Acá vive una sola vez, más su inversa, que el
- * input de monto necesita para volver de la cadena formateada al número
- * crudo que consume `z.coerce.number()`.
+ * Nació en Compras, donde `formatearTotalesPorMoneda` y el detalle de ítems
+ * repetían el mismo `toLocaleString`. Vive acá —y no en `features/compras`—
+ * porque Equipos también muestra y edita importes: un único formato de plata
+ * en la app es lo que evita que cada módulo reinvente su variante.
+ *
+ * Incluye la inversa (`parsearNumeroEsAr`), que `MontoInput` necesita para
+ * volver de la cadena formateada al número crudo que consume el schema.
  */
 
 const OPCIONES_ES_AR: Intl.NumberFormatOptions = {
