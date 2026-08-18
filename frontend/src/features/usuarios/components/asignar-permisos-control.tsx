@@ -16,12 +16,26 @@
  * las acciones "extra" propias de cada módulo, listadas aparte.
  *
  * La query de permisos actuales (`useUsuarioPermisos`) se activa recién
- * cuando el popover se abre, mismo criterio que el ABM viejo (evita un
+ * cuando el diálogo se abre, mismo criterio que el ABM viejo (evita un
  * request por fila de la tabla).
+ *
+ * Se edita en un DIÁLOGO MODAL centrado, no en un popover anclado a la fila:
+ * el catálogo completo es más alto que el popover y el botón `Guardar` —
+ * único control que persiste — quedaba fuera del viewport, sin scroll para
+ * alcanzarlo. Acá el alto se acota con `max-h-[85vh]` y lo que scrollea es
+ * SOLO la zona de módulos, así el título y el pie con `Guardar` quedan
+ * siempre a la vista por más módulos o acciones que sume el catálogo.
  */
 import { useEffect, useState } from "react";
 import { SlidersHorizontal } from "lucide-react";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -43,7 +57,7 @@ export function AsignarPermisosControl({ usuario }: AsignarPermisosControlProps)
   const mutation = useAsignarPermisos(usuario.id);
 
   // Sincroniza la selección local con las celdas actuales cuando llegan del
-  // backend (al abrir el popover). El usuario edita sobre esa base.
+  // backend (al abrir el diálogo). El usuario edita sobre esa base.
   useEffect(() => {
     if (permisosQuery.data) {
       setSeleccion(permisosQuery.data.celdas);
@@ -59,25 +73,36 @@ export function AsignarPermisosControl({ usuario }: AsignarPermisosControlProps)
   const esAdministrador = permisosQuery.data?.esAdministrador ?? false;
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
         <Button type="button" size="sm" variant="outline">
           <SlidersHorizontal className="mr-1 h-4 w-4" aria-hidden="true" />
           Permisos
         </Button>
-      </PopoverTrigger>
-      <PopoverContent align="end" className="w-[28rem]">
-        <p className="mb-3 text-sm font-medium">Permisos de {usuario.nombre}</p>
+      </DialogTrigger>
+      {/* `max-h-[85vh]` acota el modal a la pantalla; el scroll va adentro. */}
+      <DialogContent className="max-h-[85vh] sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Permisos de {usuario.nombre}</DialogTitle>
+        </DialogHeader>
 
         {permisosQuery.isLoading ? (
           <p className="text-sm text-muted-foreground">Cargando…</p>
         ) : esAdministrador ? (
           <p className="text-sm text-muted-foreground">
-            Los administradores ve toda la matriz habilitada. La asignación no tiene efecto.
+            Los administradores ven toda la matriz habilitada. La asignación no tiene efecto.
           </p>
         ) : (
           <>
-            <div className="flex flex-col gap-4">
+            {/*
+              Única zona scrolleable del modal: `min-h-0` habilita que el flex
+              padre la achique (sin él, el contenido la infla y vuelve a empujar
+              el pie fuera de la pantalla) y `flex-1` le da el alto sobrante.
+            */}
+            <div
+              data-testid="permisos-modulos"
+              className="-mr-2 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-2"
+            >
               {MODULOS.map((modulo) => {
                 const def = CATALOGO_MODULOS[modulo];
                 return (
@@ -111,7 +136,8 @@ export function AsignarPermisosControl({ usuario }: AsignarPermisosControlProps)
                 );
               })}
             </div>
-            <div className="mt-4 flex justify-end">
+            {/* Pie fijo: fuera de la zona scrolleable, siempre visible. */}
+            <DialogFooter>
               <Button
                 type="button"
                 size="sm"
@@ -121,10 +147,10 @@ export function AsignarPermisosControl({ usuario }: AsignarPermisosControlProps)
               >
                 Guardar
               </Button>
-            </div>
+            </DialogFooter>
           </>
         )}
-      </PopoverContent>
-    </Popover>
+      </DialogContent>
+    </Dialog>
   );
 }
