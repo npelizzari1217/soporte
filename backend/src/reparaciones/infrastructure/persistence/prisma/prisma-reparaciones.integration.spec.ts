@@ -57,7 +57,55 @@ describe('Reparaciones Persistence Repos — Integration (PR7)', () => {
     return `T7${RUN_PREFIX}${String(numeroCounter).padStart(4, '0')}`;
   }
 
-  const ticketIdsCreados: string[] = [];
+  // Códigos FIJOS de los fixtures de catálogo. Al ser fijos y `unique`, una
+  // corrida anterior que muriera entre el alta y el cleanup dejaba las filas
+  // vivas y hacía fallar el `create` de TODAS las corridas siguientes con
+  // "Unique constraint failed on the fields: (`codigo`)". De ahí que la
+  // limpieza corra también AL ENTRAR, no sólo al salir.
+  const CODIGO_TIPO = 'T7_TEST_EDILICIA';
+  const CODIGO_ESTADO = 'T7_TEST_NUEVO';
+  const CODIGO_PRIORIDAD = 'T7_TEST_MEDIA';
+
+  /**
+   * Borra los fixtures de esta suite, acotado por sus códigos fijos. Idempotente
+   * a propósito: sirve tanto para dejar la base limpia al terminar como para
+   * recuperarla al empezar si una corrida anterior quedó a medias.
+   *
+   * Nunca un TRUNCATE global: `soporte_tenant_test` la comparten otras suites.
+   */
+  async function limpiarFixtures(): Promise<void> {
+    const tipo = await tenantClient.tipoTicket.findUnique({
+      where: { codigo: CODIGO_TIPO },
+      select: { id: true },
+    });
+
+    if (tipo !== null) {
+      const tickets = await tenantClient.ticket.findMany({
+        where: { tipoId: tipo.id },
+        select: { id: true },
+      });
+      const ids = tickets.map((t) => t.id);
+
+      if (ids.length > 0) {
+        // Los comentarios van PRIMERO: su FK a ticket_edilicia es ON DELETE
+        // RESTRICT, así que borrar el satélite antes falla.
+        await tenantClient.comentarioReparacion.deleteMany({
+          where: { ticketEdilicia: { ticketId: { in: ids } } },
+        });
+        await tenantClient.subtareaEdilicia.deleteMany({
+          where: { ticketEdilicia: { ticketId: { in: ids } } },
+        });
+        await tenantClient.ticketEdilicia.deleteMany({ where: { ticketId: { in: ids } } });
+        await tenantClient.ticket.deleteMany({ where: { id: { in: ids } } });
+      }
+    }
+
+    // `deleteMany` y no `delete`: con un id `undefined` (beforeAll caído antes
+    // de sembrar) `delete` tira un error de validación que TAPA la causa real.
+    await tenantClient.prioridad.deleteMany({ where: { codigo: CODIGO_PRIORIDAD } });
+    await tenantClient.estado.deleteMany({ where: { codigo: CODIGO_ESTADO } });
+    await tenantClient.tipoTicket.deleteMany({ where: { codigo: CODIGO_TIPO } });
+  }
 
   function makeTicketProps(overrides: Partial<TicketProps> = {}): TicketProps {
     return {
@@ -94,7 +142,6 @@ describe('Reparaciones Persistence Repos — Integration (PR7)', () => {
       await ticketRepo.save(ticket);
       await ediliciaRepo.save(edilicia);
     });
-    ticketIdsCreados.push(ticket.id);
     return { ticket, edilicia };
   }
 
@@ -108,9 +155,13 @@ describe('Reparaciones Persistence Repos — Integration (PR7)', () => {
     subtareaRepo = new PrismaSubtareaEdiliciaRepository(tenantContext);
     comentarioRepo = new PrismaComentarioReparacionRepository(tenantContext);
 
+    // Arrancar en limpio: si una corrida anterior quedó a medias, sus filas
+    // siguen vivas y el alta de acá abajo choca contra el UNIQUE de `codigo`.
+    await limpiarFixtures();
+
     const tipoEdilicia = await tenantClient.tipoTicket.create({
       data: {
-        codigo: 'T7_TEST_EDILICIA',
+        codigo: CODIGO_TIPO,
         nombre: 'Edilicia Test PR7',
         activo: true,
         modulo: 'EDILICIA',
@@ -119,36 +170,20 @@ describe('Reparaciones Persistence Repos — Integration (PR7)', () => {
     tipoEdiliciaId = tipoEdilicia.id;
 
     const estadoNuevo = await tenantClient.estado.create({
-      data: { codigo: 'T7_TEST_NUEVO', nombre: 'Nuevo Test PR7', orden: 1, activo: true },
+      data: { codigo: CODIGO_ESTADO, nombre: 'Nuevo Test PR7', orden: 1, activo: true },
     });
     estadoNuevoId = estadoNuevo.id;
 
     const prioridadMedia = await tenantClient.prioridad.create({
-      data: { codigo: 'T7_TEST_MEDIA', nombre: 'Media Test PR7', orden: 1, activo: true },
+      data: { codigo: CODIGO_PRIORIDAD, nombre: 'Media Test PR7', orden: 1, activo: true },
     });
     prioridadMediaId = prioridadMedia.id;
   }, 30_000);
 
   afterAll(async () => {
-    // Cleanup acotado por los ids de fixture de ESTA suite (nunca TRUNCATE
-    // global — soporte_tenant_test es compartida por otras suites).
-    if (ticketIdsCreados.length > 0) {
-      // Los comentarios van PRIMERO: su FK a ticket_edilicia es ON DELETE
-      // RESTRICT, así que borrar el satélite antes falla.
-      await tenantClient.comentarioReparacion.deleteMany({
-        where: { ticketEdilicia: { ticketId: { in: ticketIdsCreados } } },
-      });
-      await tenantClient.subtareaEdilicia.deleteMany({
-        where: { ticketEdilicia: { ticketId: { in: ticketIdsCreados } } },
-      });
-      await tenantClient.ticketEdilicia.deleteMany({
-        where: { ticketId: { in: ticketIdsCreados } },
-      });
-      await tenantClient.ticket.deleteMany({ where: { id: { in: ticketIdsCreados } } });
-    }
-    await tenantClient.prioridad.delete({ where: { id: prioridadMediaId } });
-    await tenantClient.estado.delete({ where: { id: estadoNuevoId } });
-    await tenantClient.tipoTicket.delete({ where: { id: tipoEdiliciaId } });
+    // Limpiar las filas ANTES de cerrar el cliente: con el pool ya cerrado los
+    // borrados no llegan a ejecutarse y la base compartida queda sucia.
+    await limpiarFixtures();
     await prismaService.onModuleDestroy();
   }, 30_000);
 
