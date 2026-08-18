@@ -30,19 +30,21 @@ export interface ReparacionConTicket {
  * recargar la página. Satélites sin ticket base asociado (registros
  * huérfanos, no debería pasar en producción) se omiten silenciosamente.
  *
- * COSTO EN CONSULTAS: el join en memoria de ticket base y subtareas es un N+1
- * (`1 + 2N`). El conteo de comentarios NO lo agrava: se resuelve por LOTE, una
- * única consulta agregada para toda la página, ANTES de entrar al loop.
+ * COSTO EN CONSULTAS: CONSTANTE — 4 consultas para toda la página, sin
+ * importar cuántas reparaciones haya (`findAll` + tickets base + subtareas +
+ * conteo de comentarios). Las tres resoluciones por id se piden POR LOTE y
+ * ANTES del loop; el loop sólo lee de los `Map` que devuelven. Antes esto era
+ * un N+1 de `1 + 2N` consultas (ticket base y subtareas fila por fila).
  *
  * Tarea: T8.5.
  */
 export class ListarReparacionesUseCase {
   constructor(
     private readonly ediliciaRepo: Pick<ITicketEdiliciaRepository, 'findAll'>,
-    private readonly ticketRepo: Pick<ITicketRepository, 'findById'>,
+    private readonly ticketRepo: Pick<ITicketRepository, 'findByIds'>,
     private readonly subtareaRepo: Pick<
       ISubtareaEdiliciaRepository,
-      'findActiveByTicketEdiliciaId'
+      'findActiveByTicketEdiliciaIds'
     >,
     private readonly comentarioRepo: Pick<
       IComentarioReparacionRepository,
@@ -56,24 +58,35 @@ export class ListarReparacionesUseCase {
       return Result.ok([]);
     }
 
-    // Una sola vez y FUERA del loop: mover esto adentro devolvería el listado
-    // a una consulta por fila, que es justo lo que la firma por lote evita.
-    const comentariosPorReparacion = await this.comentarioRepo.contarPorTicketEdilicia(
-      satelites.map((satelite) => satelite.id),
-    );
+    const ediliciaIds = satelites.map((satelite) => satelite.id);
+
+    // Las tres, una sola vez y FUERA del loop: mover cualquiera adentro
+    // devolvería el listado a una consulta por fila, que es justo lo que las
+    // firmas por lote evitan. Van en paralelo porque son independientes entre
+    // sí — ninguna necesita el resultado de las otras.
+    const [ticketsPorId, subtareasPorReparacion, comentariosPorReparacion] = await Promise.all([
+      this.ticketRepo.findByIds(satelites.map((satelite) => satelite.ticketId)),
+      this.subtareaRepo.findActiveByTicketEdiliciaIds(ediliciaIds),
+      this.comentarioRepo.contarPorTicketEdilicia(ediliciaIds),
+    ]);
 
     const items: ReparacionConTicket[] = [];
 
+    // El orden del resultado es el de `findAll`: se recorren los satélites,
+    // no las claves de los Map.
     for (const ticketEdilicia of satelites) {
-      const ticket = await this.ticketRepo.findById(ticketEdilicia.ticketId);
+      const ticket = ticketsPorId.get(ticketEdilicia.ticketId);
+      // Satélite huérfano: sin ticket base no hay item, igual que cuando esto
+      // se resolvía con un `findById` que volvía `null`.
       if (!ticket) {
         continue;
       }
-      const subtareas = await this.subtareaRepo.findActiveByTicketEdiliciaId(ticketEdilicia.id);
       items.push({
         ticket,
         ticketEdilicia,
-        subtareas,
+        // Sin subtareas activas el lote no trae entrada: la ausencia es `[]`,
+        // nunca `undefined` — el consumidor itera esta lista sin chequear.
+        subtareas: subtareasPorReparacion.get(ticketEdilicia.id) ?? [],
         // Sin comentarios el `GROUP BY` no emite fila: la ausencia es `0`.
         cantidadComentarios: comentariosPorReparacion.get(ticketEdilicia.id) ?? 0,
       });

@@ -32,11 +32,12 @@ export interface IComentarioReparacionRepository {
    * `Map<ticketEdiliciaId, cantidad>`.
    *
    * POR LOTE A PROPÓSITO, no por conveniencia: su único consumidor es
-   * `ListarReparacionesUseCase`, que ya es un N+1 conocido (resuelve ticket
-   * base y subtareas fila por fila, `1 + 2N` consultas). Una firma de un solo
-   * id invitaría a llamarla dentro de ese loop y dejaría el listado en `1 + 3N`.
-   * Con esta firma el indicador de comentarios cuesta UNA consulta agregada
-   * para toda la página, sin importar cuántas reparaciones haya.
+   * `ListarReparacionesUseCase`, cuyo costo en consultas es CONSTANTE (ticket
+   * base y subtareas también se resuelven por lote). Una firma de un solo id
+   * invitaría a llamarla dentro del loop y devolvería el listado a una
+   * consulta por fila. Con esta firma el indicador de comentarios cuesta UNA
+   * consulta agregada para toda la página, sin importar cuántas reparaciones
+   * haya.
    *
    * Las reparaciones sin comentarios NO aparecen en el Map (un `GROUP BY` no
    * emite filas vacías): quien lo consuma resuelve la ausencia como `0`.
