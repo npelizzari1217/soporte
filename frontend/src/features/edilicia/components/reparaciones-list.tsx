@@ -5,6 +5,7 @@
  * vía `porcentajeAvance` (persistido server-side, sobrevive al refresh —
  * a diferencia del checklist detallado de subtareas, ver `SubtareasDialog`).
  */
+import { forwardRef, type ComponentPropsWithoutRef } from "react";
 import { useReparaciones } from "../hooks/use-reparaciones";
 import { DataTable, type Column } from "@/components/shared/data-table";
 import { Badge } from "@/components/ui/badge";
@@ -29,7 +30,16 @@ function AvanceCell({ porcentaje }: { porcentaje: number }) {
 }
 
 /**
- * Botón de la columna «Comentarios» con el conteo colgado como badge.
+ * Botón de la columna «Comentarios»: dispara el modal y lleva el conteo
+ * colgado como badge.
+ *
+ * `forwardRef` + spread de props NO son decorativos. `DialogTrigger asChild`
+ * CLONA este elemento e inyecta en él su `onClick`, su `ref` y los `aria-*`
+ * de estado. Si el componente se quedara sólo con `cantidad` y descartara el
+ * resto, el click nunca llegaría al `<button>` y el modal no abriría jamás
+ * (así se rompió: el de subtareas usa un `Button` pelado y por eso no sufría
+ * el problema). Los tests de etiqueta no ven esto — hace falta uno que
+ * CLIQUEE.
  *
  * Accesibilidad: el badge va `aria-hidden` y el conteo se anuncia por el
  * `aria-label` del botón — un lector de pantalla leería si no un «3» suelto,
@@ -37,14 +47,17 @@ function AvanceCell({ porcentaje }: { porcentaje: number }) {
  * renderiza badge (la fila queda limpia) y el botón vuelve a su nombre
  * simple, sin un «(0 comentarios)» que no aporta nada.
  */
-function ComentariosTrigger({ cantidad }: { cantidad: number }) {
+const ComentariosTrigger = forwardRef<
+  HTMLButtonElement,
+  ComponentPropsWithoutRef<typeof Button> & { cantidad: number }
+>(({ cantidad, ...props }, ref) => {
   const etiqueta =
     cantidad === 0
       ? "Ver comentarios"
       : `Ver comentarios (${cantidad} ${cantidad === 1 ? "comentario" : "comentarios"})`;
 
   return (
-    <Button variant="outline" size="sm" aria-label={etiqueta}>
+    <Button ref={ref} variant="outline" size="sm" aria-label={etiqueta} {...props}>
       Ver comentarios
       {cantidad > 0 && (
         <Badge variant="secondary" aria-hidden="true">
@@ -53,7 +66,8 @@ function ComentariosTrigger({ cantidad }: { cantidad: number }) {
       )}
     </Button>
   );
-}
+});
+ComentariosTrigger.displayName = "ComentariosTrigger";
 
 export function ReparacionesList() {
   const reparacionesQuery = useReparaciones();
