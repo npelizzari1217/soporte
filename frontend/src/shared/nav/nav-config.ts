@@ -12,6 +12,7 @@ import {
   Tag,
 } from "lucide-react";
 import type { JwtPayload } from "@/shared/api/types";
+import { ETIQUETAS_MODULOS } from "@/shared/auth/etiquetas-modulos";
 
 /**
  * nav-config — single source of truth for the sidebar navigation (ADR-4).
@@ -48,22 +49,27 @@ export interface NavSection {
   items: NavItem[];
 }
 
+// Los ítems que representan un módulo de la matriz de permisos toman su
+// etiqueta de `ETIQUETAS_MODULOS` (fuente única): así el módulo se llama igual
+// acá que en la grilla del ABM de usuarios, sin repetir el string en dos
+// archivos. Los ítems que NO son módulos (Admin, Clientes, …) llevan su label
+// literal.
 const DEFAULT_SECTION_ITEMS: NavItem[] = [
   {
     href: "/tickets",
-    label: "Tickets",
+    label: ETIQUETAS_MODULOS.TICKETS,
     icon: Ticket,
     visible: () => true,
   },
   {
     href: "/dashboard",
-    label: "Dashboard",
+    label: ETIQUETAS_MODULOS.DASHBOARD,
     icon: LayoutDashboard,
     visible: (can) => can("DASHBOARD:LECTURA"),
   },
   {
     href: "/kb",
-    label: "Base de conocimiento",
+    label: ETIQUETAS_MODULOS.KB,
     icon: BookOpen,
     visible: () => true,
   },
@@ -78,7 +84,7 @@ const DEFAULT_SECTION_ITEMS: NavItem[] = [
   },
   {
     href: "/compras",
-    label: "Compras",
+    label: ETIQUETAS_MODULOS.COMPRAS,
     icon: ShoppingCart,
     // El eje de módulos deja de ser independiente: tener COMPRAS:LECTURA ya
     // implica tener el módulo (R2, `modulos` derivado de `permisos`) — los
@@ -87,13 +93,13 @@ const DEFAULT_SECTION_ITEMS: NavItem[] = [
   },
   {
     href: "/edilicia",
-    label: "Edilicia",
+    label: ETIQUETAS_MODULOS.EDILICIA,
     icon: Wrench,
     visible: (can) => can("EDILICIA:LECTURA"),
   },
   {
     href: "/equipos",
-    label: "Equipos",
+    label: ETIQUETAS_MODULOS.EQUIPOS,
     icon: Monitor,
     visible: (can) => can("EQUIPOS:LECTURA"),
   },
