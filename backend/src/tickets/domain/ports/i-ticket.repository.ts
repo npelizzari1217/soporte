@@ -67,6 +67,27 @@ export interface ITicketRepository {
   findById(id: string): Promise<TicketEntity | null>;
 
   /**
+   * Versión POR LOTE de `findById`: resuelve VARIOS tickets de una sola vez y
+   * devuelve `Map<id, ticket>`. Igual que `findById`, incluye soft-deleted.
+   *
+   * POR LOTE A PROPÓSITO: la usan los listados que resuelven el ticket base de
+   * un satélite (hoy `ListarReparacionesUseCase`). Con `findById` dentro del
+   * loop, esa resolución costaba una consulta por fila; con esta cuesta UNA,
+   * sin importar el tamaño de la página.
+   *
+   * `Map` y no `TicketEntity[]`: el consumidor siempre necesita el acceso por
+   * id (es un join en memoria contra el satélite dueño del `ticketId`), y una
+   * lista lo obligaría a recorrerla por cada fila — un O(n²) que sólo cambia
+   * consultas por CPU. El Map además hace explícita la ausencia sin pedir un
+   * hueco `null` en la lista.
+   *
+   * Los ids sin ticket NO aparecen en el Map: la ausencia es el `null` que
+   * devolvía `findById`. Con `ids` vacío no consulta nada y devuelve un Map
+   * vacío.
+   */
+  findByIds(ids: string[]): Promise<Map<string, TicketEntity>>;
+
+  /**
    * Busca un ticket por su número legible (ej. "SOP-2026-00042").
    * Retorna null si no existe.
    */

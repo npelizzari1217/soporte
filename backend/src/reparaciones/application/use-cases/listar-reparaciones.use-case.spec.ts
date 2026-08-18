@@ -9,6 +9,7 @@
  * Ref spec: sdd/flujos-especializados/spec F3-E1. Tarea: T8.5.
  */
 import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
+import { SubtareaEdiliciaEntity } from '../../domain/entities/subtarea-edilicia.entity';
 import { TicketEdiliciaEntity } from '../../domain/entities/ticket-edilicia.entity';
 import { ListarReparacionesUseCase } from './listar-reparaciones.use-case';
 
@@ -29,11 +30,19 @@ function makeTicket(id: string): TicketEntity {
   );
 }
 
+function makeSubtarea(ticketEdiliciaId: string, descripcion: string): SubtareaEdiliciaEntity {
+  return SubtareaEdiliciaEntity.create({ ticketEdiliciaId, descripcion });
+}
+
 describe('ListarReparacionesUseCase', () => {
   function buildDeps() {
     const ediliciaRepo = { findAll: vi.fn() };
-    const ticketRepo = { findById: vi.fn() };
-    const subtareaRepo = { findActiveByTicketEdiliciaId: vi.fn().mockResolvedValue([]) };
+    const ticketRepo = { findByIds: vi.fn().mockResolvedValue(new Map<string, TicketEntity>()) };
+    const subtareaRepo = {
+      findActiveByTicketEdiliciaIds: vi
+        .fn()
+        .mockResolvedValue(new Map<string, SubtareaEdiliciaEntity[]>()),
+    };
     const comentarioRepo = {
       contarPorTicketEdilicia: vi.fn().mockResolvedValue(new Map<string, number>()),
     };
@@ -46,6 +55,25 @@ describe('ListarReparacionesUseCase', () => {
     return { useCase, ediliciaRepo, ticketRepo, subtareaRepo, comentarioRepo };
   }
 
+  /**
+   * Arma N satélites con su ticket base ya resuelto, en el orden que devuelve
+   * `findAll`.
+   */
+  function conNSatelites(cantidad: number) {
+    const deps = buildDeps();
+    const satelites = Array.from({ length: cantidad }, (_, i) =>
+      TicketEdiliciaEntity.create(
+        { ticketId: `ticket-uuid-${i}`, ubicacion: 'Edificio Central' },
+        `edilicia-uuid-${i}`,
+      ),
+    );
+    deps.ediliciaRepo.findAll.mockResolvedValue(satelites);
+    deps.ticketRepo.findByIds.mockResolvedValue(
+      new Map(satelites.map((satelite) => [satelite.ticketId, makeTicket(satelite.ticketId)])),
+    );
+    return { ...deps, satelites };
+  }
+
   it('resuelve ticket + subtareas para cada ticket_edilicia', async () => {
     const { useCase, ediliciaRepo, ticketRepo, subtareaRepo } = buildDeps();
     const edilicia = TicketEdiliciaEntity.create(
@@ -53,9 +81,12 @@ describe('ListarReparacionesUseCase', () => {
       'edilicia-uuid',
     );
     const ticket = makeTicket('ticket-uuid');
+    const subtarea = makeSubtarea('edilicia-uuid', 'Cambiar la junta');
     ediliciaRepo.findAll.mockResolvedValue([edilicia]);
-    ticketRepo.findById.mockResolvedValue(ticket);
-    subtareaRepo.findActiveByTicketEdiliciaId.mockResolvedValue(['subtarea-a']);
+    ticketRepo.findByIds.mockResolvedValue(new Map([['ticket-uuid', ticket]]));
+    subtareaRepo.findActiveByTicketEdiliciaIds.mockResolvedValue(
+      new Map([['edilicia-uuid', [subtarea]]]),
+    );
 
     const result = await useCase.execute();
 
@@ -64,81 +95,124 @@ describe('ListarReparacionesUseCase', () => {
     expect(items).toHaveLength(1);
     expect(items[0].ticket).toBe(ticket);
     expect(items[0].ticketEdilicia).toBe(edilicia);
-    expect(items[0].subtareas).toEqual(['subtarea-a']);
-    expect(subtareaRepo.findActiveByTicketEdiliciaId).toHaveBeenCalledWith('edilicia-uuid');
+    expect(items[0].subtareas).toEqual([subtarea]);
   });
 
-  describe('conteo de comentarios (indicador del listado)', () => {
+  describe('resolución por lote (el listado NO puede volver a ser un N+1)', () => {
     /**
-     * Arma N satélites con su ticket base ya resuelto. El listado es un N+1
-     * conocido (ticket + subtareas por fila): estos tests existen para que el
-     * conteo de comentarios NO se sume a esa cuenta.
+     * Cada entrada describe UNA de las tres consultas del listado: cuál es el
+     * doble que la atiende y con qué ids tiene que recibirla, con N=3
+     * reparaciones.
      */
-    function conNSatelites(cantidad: number) {
-      const deps = buildDeps();
-      const satelites = Array.from({ length: cantidad }, (_, i) =>
-        TicketEdiliciaEntity.create(
-          { ticketId: `ticket-uuid-${i}`, ubicacion: 'Edificio Central' },
-          `edilicia-uuid-${i}`,
-        ),
-      );
-      deps.ediliciaRepo.findAll.mockResolvedValue(satelites);
-      deps.ticketRepo.findById.mockImplementation((ticketId: string) =>
-        Promise.resolve(makeTicket(ticketId)),
-      );
-      return { ...deps, satelites };
-    }
+    const consultasPorLote = [
+      {
+        nombre: 'los tickets base',
+        doble: (deps: ReturnType<typeof conNSatelites>) => deps.ticketRepo.findByIds,
+        idsEsperados: ['ticket-uuid-0', 'ticket-uuid-1', 'ticket-uuid-2'],
+      },
+      {
+        nombre: 'las subtareas',
+        doble: (deps: ReturnType<typeof conNSatelites>) =>
+          deps.subtareaRepo.findActiveByTicketEdiliciaIds,
+        idsEsperados: ['edilicia-uuid-0', 'edilicia-uuid-1', 'edilicia-uuid-2'],
+      },
+      {
+        nombre: 'el conteo de comentarios',
+        doble: (deps: ReturnType<typeof conNSatelites>) =>
+          deps.comentarioRepo.contarPorTicketEdilicia,
+        idsEsperados: ['edilicia-uuid-0', 'edilicia-uuid-1', 'edilicia-uuid-2'],
+      },
+    ];
 
-    it('resuelve el conteo en UNA sola consulta por lote, no una por reparación', async () => {
-      const { useCase, comentarioRepo } = conNSatelites(3);
+    /**
+     * El test guardián del costo: con 3 reparaciones cada repositorio se
+     * consulta UNA sola vez, con los ids juntos. Si alguien devuelve una de
+     * estas resoluciones adentro del loop, la cuenta de llamadas pasa a 3 y
+     * este test lo frena.
+     */
+    it.each(consultasPorLote)(
+      'resuelve $nombre en UNA sola consulta por lote, no una por reparación',
+      async ({ doble, idsEsperados }) => {
+        const deps = conNSatelites(3);
 
-      await useCase.execute();
+        await deps.useCase.execute();
 
-      expect(comentarioRepo.contarPorTicketEdilicia).toHaveBeenCalledTimes(1);
-      expect(comentarioRepo.contarPorTicketEdilicia).toHaveBeenCalledWith([
-        'edilicia-uuid-0',
-        'edilicia-uuid-1',
-        'edilicia-uuid-2',
-      ]);
-    });
+        expect(doble(deps)).toHaveBeenCalledTimes(1);
+        expect(doble(deps)).toHaveBeenCalledWith(idsEsperados);
+      },
+    );
 
-    it('mapea el conteo de cada reparación y usa 0 para las que no tienen comentarios', async () => {
-      const { useCase, comentarioRepo } = conNSatelites(3);
-      comentarioRepo.contarPorTicketEdilicia.mockResolvedValue(
-        new Map([
-          ['edilicia-uuid-0', 3],
-          ['edilicia-uuid-2', 1],
-        ]),
-      );
-
-      const items = (await useCase.execute()).getValue();
-
-      expect(items.map((item) => item.cantidadComentarios)).toEqual([3, 0, 1]);
-    });
-
-    it('con lista vacía no consulta comentarios y devuelve vacío', async () => {
-      const { useCase, ediliciaRepo, comentarioRepo } = buildDeps();
+    it('con lista vacía no dispara NINGUNA consulta y devuelve vacío', async () => {
+      const { useCase, ediliciaRepo, ticketRepo, subtareaRepo, comentarioRepo } = buildDeps();
       ediliciaRepo.findAll.mockResolvedValue([]);
 
       const result = await useCase.execute();
 
       expect(result.getValue()).toEqual([]);
+      expect(ticketRepo.findByIds).not.toHaveBeenCalled();
+      expect(subtareaRepo.findActiveByTicketEdiliciaIds).not.toHaveBeenCalled();
       expect(comentarioRepo.contarPorTicketEdilicia).not.toHaveBeenCalled();
     });
   });
 
-  it('omite satélites huérfanos (sin ticket base)', async () => {
-    const { useCase, ediliciaRepo, ticketRepo } = buildDeps();
-    const edilicia = TicketEdiliciaEntity.create(
-      { ticketId: 'ticket-huerfano-uuid', ubicacion: 'Edificio Central' },
-      'edilicia-uuid',
-    );
-    ediliciaRepo.findAll.mockResolvedValue([edilicia]);
-    ticketRepo.findById.mockResolvedValue(null);
+  describe('preservación del comportamiento del join', () => {
+    it('arma cada item con su ticket, subtareas y conteo, en el orden de findAll y salteando huérfanos', async () => {
+      const deps = conNSatelites(3);
+      // El del medio queda huérfano: su ticket base no vuelve del lote, igual
+      // que antes no volvía de `findById`.
+      deps.ticketRepo.findByIds.mockResolvedValue(
+        new Map([
+          ['ticket-uuid-0', makeTicket('ticket-uuid-0')],
+          ['ticket-uuid-2', makeTicket('ticket-uuid-2')],
+        ]),
+      );
+      const subtareaDeLaPrimera = makeSubtarea('edilicia-uuid-0', 'Cambiar la junta');
+      deps.subtareaRepo.findActiveByTicketEdiliciaIds.mockResolvedValue(
+        new Map([['edilicia-uuid-0', [subtareaDeLaPrimera]]]),
+      );
+      deps.comentarioRepo.contarPorTicketEdilicia.mockResolvedValue(
+        new Map([['edilicia-uuid-2', 4]]),
+      );
 
-    const result = await useCase.execute();
+      const items = (await deps.useCase.execute()).getValue();
 
-    expect(result.isOk()).toBe(true);
-    expect(result.getValue()).toEqual([]);
+      expect(
+        items.map((item) => ({
+          ediliciaId: item.ticketEdilicia.id,
+          ticketId: item.ticket.id,
+          subtareas: item.subtareas,
+          cantidadComentarios: item.cantidadComentarios,
+        })),
+      ).toEqual([
+        {
+          ediliciaId: 'edilicia-uuid-0',
+          ticketId: 'ticket-uuid-0',
+          subtareas: [subtareaDeLaPrimera],
+          cantidadComentarios: 0,
+        },
+        {
+          ediliciaId: 'edilicia-uuid-2',
+          ticketId: 'ticket-uuid-2',
+          // Sin subtareas el Map no trae entrada: el item lleva `[]`, nunca
+          // `undefined` (el frontend itera esta lista sin chequear).
+          subtareas: [],
+          cantidadComentarios: 4,
+        },
+      ]);
+    });
+
+    it('omite satélites huérfanos (sin ticket base)', async () => {
+      const { useCase, ediliciaRepo } = buildDeps();
+      const edilicia = TicketEdiliciaEntity.create(
+        { ticketId: 'ticket-huerfano-uuid', ubicacion: 'Edificio Central' },
+        'edilicia-uuid',
+      );
+      ediliciaRepo.findAll.mockResolvedValue([edilicia]);
+
+      const result = await useCase.execute();
+
+      expect(result.isOk()).toBe(true);
+      expect(result.getValue()).toEqual([]);
+    });
   });
 });

@@ -27,6 +27,28 @@ export interface ISubtareaEdiliciaRepository {
   findActiveByTicketEdiliciaId(ticketEdiliciaId: string): Promise<SubtareaEdiliciaEntity[]>;
 
   /**
+   * Versión POR LOTE de `findActiveByTicketEdiliciaId`: resuelve las subtareas
+   * ACTIVAS (`deleted_at IS NULL`) de VARIAS reparaciones de una sola vez y
+   * devuelve `Map<ticketEdiliciaId, subtareas>`.
+   *
+   * POR LOTE A PROPÓSITO, no por conveniencia: su consumidor es
+   * `ListarReparacionesUseCase`, que arma la página entera. Con la firma de un
+   * solo id el listado costaba una consulta de subtareas por fila; con esta
+   * cuesta UNA, sin importar cuántas reparaciones haya (mismo criterio que
+   * `IComentarioReparacionRepository.contarPorTicketEdilicia`).
+   *
+   * Conserva las DOS garantías de la versión singular: el filtro de activas y
+   * el orden `orden ASC, created_at ASC` DENTRO de cada reparación.
+   *
+   * Las reparaciones sin subtareas activas NO aparecen en el Map: quien lo
+   * consuma resuelve la ausencia como `[]`. Con `ticketEdiliciaIds` vacío no
+   * consulta nada y devuelve un Map vacío.
+   */
+  findActiveByTicketEdiliciaIds(
+    ticketEdiliciaIds: string[],
+  ): Promise<Map<string, SubtareaEdiliciaEntity[]>>;
+
+  /**
    * Persiste la subtarea (upsert: crea si no existe, actualiza si existe).
    */
   save(subtarea: SubtareaEdiliciaEntity): Promise<void>;

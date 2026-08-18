@@ -39,6 +39,24 @@ export class PrismaTicketRepository implements ITicketRepository {
     return row ? TicketMapper.toDomain(row) : null;
   }
 
+  /**
+   * UN solo `findMany` acotado por los ids del lote + armado del Map.
+   *
+   * Sin `deletedAt: null` a propósito: `findById` también devuelve los
+   * soft-deleted, y la versión por lote no puede filtrar distinto o cambiar
+   * una por otra alteraría el resultado del consumidor en silencio.
+   */
+  async findByIds(ids: string[]): Promise<Map<string, TicketEntity>> {
+    // Cortar acá y no delegar en Prisma: un `IN ()` vacío es una ida a la base
+    // cuyo resultado ya conocemos.
+    if (ids.length === 0) {
+      return new Map();
+    }
+
+    const rows = await this.client.ticket.findMany({ where: { id: { in: ids } } });
+    return new Map(rows.map((row) => [row.id, TicketMapper.toDomain(row)]));
+  }
+
   async findByNumero(numero: string): Promise<TicketEntity | null> {
     const row = await this.client.ticket.findUnique({ where: { numero } });
     return row ? TicketMapper.toDomain(row) : null;

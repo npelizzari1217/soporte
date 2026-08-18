@@ -251,6 +251,79 @@ describe('Reparaciones Persistence Repos — Integration (PR7)', () => {
       });
     });
 
+    it('findActiveByTicketEdiliciaIds() agrupa por reparación preservando el orden y el filtro de activas', async () => {
+      const primera = await crearTicketConSatelite('T7 Ubicacion Subtareas Lote A');
+      const segunda = await crearTicketConSatelite('T7 Ubicacion Subtareas Lote B');
+      const sinSubtareas = await crearTicketConSatelite('T7 Ubicacion Subtareas Lote C');
+
+      // Mismo `orden` a propósito en las dos primeras: así el desempate por
+      // `created_at ASC` queda verificado y no tapado por el `orden`.
+      const segundaEnOrden = SubtareaEdiliciaEntity.create({
+        ticketEdiliciaId: primera.edilicia.id,
+        descripcion: 'Empate de orden, creada después',
+        orden: 1,
+      });
+      Object.assign(segundaEnOrden, { _createdAt: new Date('2026-08-18T12:00:00.000Z') });
+      const primeraEnOrden = SubtareaEdiliciaEntity.create({
+        ticketEdiliciaId: primera.edilicia.id,
+        descripcion: 'Empate de orden, creada antes',
+        orden: 1,
+      });
+      Object.assign(primeraEnOrden, { _createdAt: new Date('2026-08-18T09:00:00.000Z') });
+      const terceraEnOrden = SubtareaEdiliciaEntity.create({
+        ticketEdiliciaId: primera.edilicia.id,
+        descripcion: 'Orden mayor, va última',
+        orden: 5,
+      });
+      const borrada = SubtareaEdiliciaEntity.create({
+        ticketEdiliciaId: primera.edilicia.id,
+        descripcion: 'Soft-deleted, no debe volver',
+        orden: 0,
+      });
+      const deLaSegunda = SubtareaEdiliciaEntity.create({
+        ticketEdiliciaId: segunda.edilicia.id,
+        descripcion: 'Subtarea de otra reparación',
+        orden: 1,
+      });
+
+      await withTenant(async () => {
+        // Insertadas fuera de orden: el orden lo tiene que poner la consulta,
+        // no la secuencia de inserts.
+        for (const subtarea of [
+          terceraEnOrden,
+          segundaEnOrden,
+          borrada,
+          primeraEnOrden,
+          deLaSegunda,
+        ]) {
+          await subtareaRepo.save(subtarea);
+        }
+        await subtareaRepo.delete(borrada.id);
+
+        const porReparacion = await subtareaRepo.findActiveByTicketEdiliciaIds([
+          primera.edilicia.id,
+          segunda.edilicia.id,
+          sinSubtareas.edilicia.id,
+        ]);
+
+        expect(porReparacion.get(primera.edilicia.id)?.map((s) => s.id)).toEqual([
+          primeraEnOrden.id,
+          segundaEnOrden.id,
+          terceraEnOrden.id,
+        ]);
+        expect(porReparacion.get(segunda.edilicia.id)?.map((s) => s.id)).toEqual([deLaSegunda.id]);
+        // Sin subtareas activas no hay entrada en el Map: el `[]` lo resuelve
+        // el consumidor, igual que el `0` del conteo de comentarios.
+        expect(porReparacion.has(sinSubtareas.edilicia.id)).toBe(false);
+      });
+    });
+
+    it('findActiveByTicketEdiliciaIds() con lista vacía devuelve un Map vacío sin consultar', async () => {
+      await withTenant(async () => {
+        expect(await subtareaRepo.findActiveByTicketEdiliciaIds([])).toEqual(new Map());
+      });
+    });
+
     it('save() upsert — persiste completar()', async () => {
       const { edilicia } = await crearTicketConSatelite('T7 Ubicacion Subtareas 2');
       const sub = SubtareaEdiliciaEntity.create({
