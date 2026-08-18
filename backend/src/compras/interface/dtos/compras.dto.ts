@@ -43,7 +43,12 @@ import {
 } from 'class-validator';
 import { CompraEntity } from '../../domain/entities/compra.entity';
 import { ItemCompraEntity } from '../../domain/entities/item-compra.entity';
-import { EstadoAprobacionItem, EstadoCompra } from '../../domain/services/estado-compra';
+import {
+  EstadoAprobacionItem,
+  EstadoCompra,
+  FILTROS_GRUPO_ESTADO_COMPRA,
+  FiltroGrupoEstadoCompra,
+} from '../../domain/services/estado-compra';
 import {
   CompraListItemDto,
   ListarComprasResult,
@@ -315,11 +320,23 @@ export class CancelarCompraHttpDto {
 }
 
 /**
- * Query params de `GET /compras` (§4.9 + WU-11/WU-14, R7/R11). Los 5
- * filtros de negocio son opcionales y combinables con la paginación.
- * `soloEnCurso` viaja como string en la querystring (`?soloEnCurso=false`);
- * `@Type(() => Boolean)` de `class-transformer` NO interpreta `'false'`
- * como `false` (cualquier string no vacío es truthy) — se parsea a mano.
+ * Query params de `GET /compras` (§4.9 + WU-11/WU-14, R7/R11; WU-25 suma
+ * `estado`). Los filtros de negocio son opcionales y combinables con la
+ * paginación. `soloEnCurso` viaja como string en la querystring
+ * (`?soloEnCurso=false`); `@Type(() => Boolean)` de `class-transformer` NO
+ * interpreta `'false'` como `false` (cualquier string no vacío es truthy) —
+ * se parsea a mano.
+ *
+ * **Precedencia `estado` vs `soloEnCurso` (WU-25)** — la resuelve
+ * `ListarComprasUseCase.resolverGrupoEstado`, no este DTO (mismo criterio
+ * con el que el default de paginación tampoco vive acá):
+ *
+ * | `estado`  | `soloEnCurso` | grupo aplicado |
+ * |-----------|---------------|----------------|
+ * | presente  | cualquiera    | el de `estado` (gana; `soloEnCurso` se ignora) |
+ * | ausente   | `true`        | `ACTIVAS` |
+ * | ausente   | `false`       | `TODAS` |
+ * | ausente   | ausente       | `ACTIVAS` (default) |
  */
 export class ListarComprasQueryDto {
   @IsOptional()
@@ -339,6 +356,20 @@ export class ListarComprasQueryDto {
   @IsUUID()
   cicloId?: string;
 
+  /**
+   * Grupo de estado a listar (WU-25). Sin este parámetro el listado muestra
+   * sólo `ACTIVAS` — el default lo resuelve el caso de uso.
+   */
+  @IsOptional()
+  @IsIn(FILTROS_GRUPO_ESTADO_COMPRA)
+  estado?: FiltroGrupoEstadoCompra;
+
+  /**
+   * @deprecated WU-25 — usar `estado`. Se sigue aceptando por
+   * retrocompatibilidad (`false` ≡ `TODAS`, `true` ≡ `ACTIVAS`) y se IGNORA
+   * cuando `estado` viene presente. Ver la tabla de precedencia en el JSDoc
+   * de esta clase.
+   */
   @IsOptional()
   @Transform(({ value }: { value: unknown }) =>
     value === 'false' ? false : value === 'true' ? true : (value as boolean | undefined),

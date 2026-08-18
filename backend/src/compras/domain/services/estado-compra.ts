@@ -177,13 +177,12 @@ export type GrupoEstadoCompra = (typeof GRUPOS_ESTADO_COMPRA)[number];
  * Ordinal de cada grupo para el `ORDER BY grupo ASC` del listado. Derivado
  * del índice en `GRUPOS_ESTADO_COMPRA` — no se escribe a mano.
  */
-export const ORDEN_GRUPO_ESTADO_COMPRA: Readonly<Record<GrupoEstadoCompra, number>> =
-  Object.freeze(
-    Object.fromEntries(GRUPOS_ESTADO_COMPRA.map((grupo, indice) => [grupo, indice])) as Record<
-      GrupoEstadoCompra,
-      number
-    >,
-  );
+export const ORDEN_GRUPO_ESTADO_COMPRA: Readonly<Record<GrupoEstadoCompra, number>> = Object.freeze(
+  Object.fromEntries(GRUPOS_ESTADO_COMPRA.map((grupo, indice) => [grupo, indice])) as Record<
+    GrupoEstadoCompra,
+    number
+  >,
+);
 
 /**
  * Valores admitidos por el filtro `estado` del listado: los tres grupos más

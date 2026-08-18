@@ -144,8 +144,7 @@ export class PrismaCompraRepository implements ICompraRepository {
   ): Promise<{ ids: string[]; total: number }> {
     const condicionesCabecera = this.condicionesDeCabecera(filtros);
     const condicionGrupo = this.condicionDeGrupo(filtros);
-    const limite =
-      filtros?.limit !== undefined ? Prisma.sql`LIMIT ${filtros.limit}` : Prisma.empty;
+    const limite = filtros?.limit !== undefined ? Prisma.sql`LIMIT ${filtros.limit}` : Prisma.empty;
     const desplazamiento =
       filtros?.offset !== undefined ? Prisma.sql`OFFSET ${filtros.offset}` : Prisma.empty;
 

@@ -194,12 +194,12 @@ describe('WU-25 — orden del listado: grupo ASC, fechaSolicitud DESC, createdAt
       cantidadEntregada: 4,
     });
 
-    const activaVieja = await insertCompra({
+    // Sin ítems: activa por `n = 0`.
+    await insertCompra({
       etiqueta: 'activa-01-01',
       fechaSolicitud: '2026-01-01',
       createdAt: '2026-01-01T10:00:00Z',
     });
-    // Sin ítems: activa por `n = 0`.
 
     // ── COMPLETADAS (grupo 1) ──
     const completadaNueva = await insertCompra({

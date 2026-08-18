@@ -289,6 +289,42 @@ describe('ListarComprasQueryDto', () => {
     expect(dto.soloEnCurso).toBe(true);
   });
 
+  // ─── WU-25 (sdd/compras-orden-filtro-estado) — el filtro `estado` ────────
+
+  it.each(['ACTIVAS', 'COMPLETADAS', 'CANCELADAS', 'TODAS'])(
+    "WU-25: acepta estado='%s'",
+    async (estado) => {
+      const dto = plainToInstance(ListarComprasQueryDto, { estado });
+      const errores = await validate(dto);
+      expect(errores).toHaveLength(0);
+      expect(dto.estado).toBe(estado);
+    },
+  );
+
+  it('WU-25: rechaza un estado fuera del catálogo (no llega al caso de uso: 400 en el borde)', async () => {
+    const dto = plainToInstance(ListarComprasQueryDto, { estado: 'EN_CURSO' });
+    const errores = await validate(dto);
+    expect(errores.some((e) => e.property === 'estado')).toBe(true);
+  });
+
+  it('WU-25: `estado` es opcional — su ausencia no es un error de validación (el default lo pone el caso de uso)', async () => {
+    const dto = plainToInstance(ListarComprasQueryDto, {});
+    const errores = await validate(dto);
+    expect(errores).toHaveLength(0);
+    expect(dto.estado).toBeUndefined();
+  });
+
+  it('WU-25: `estado` y el `soloEnCurso` deprecado conviven en la misma query sin 400 (retrocompatibilidad)', async () => {
+    const dto = plainToInstance(ListarComprasQueryDto, {
+      estado: 'CANCELADAS',
+      soloEnCurso: 'true',
+    });
+    const errores = await validate(dto);
+    expect(errores).toHaveLength(0);
+    expect(dto.estado).toBe('CANCELADAS');
+    expect(dto.soloEnCurso).toBe(true);
+  });
+
   it('WU-14: acepta cicloId/sectorId UUID y fechaDesde/fechaHasta ISO', async () => {
     const dto = plainToInstance(ListarComprasQueryDto, {
       cicloId: '00000000-0000-4000-8000-000000000001',

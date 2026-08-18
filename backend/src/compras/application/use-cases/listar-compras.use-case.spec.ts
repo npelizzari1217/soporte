@@ -242,7 +242,11 @@ describe('ListarComprasUseCase', () => {
 
     const casos: readonly CasoPrecedencia[] = [
       { nombre: 'ninguno de los dos -> default ACTIVAS', dto: {}, esperado: 'ACTIVAS' },
-      { nombre: 'sólo soloEnCurso=true -> ACTIVAS', dto: { soloEnCurso: true }, esperado: 'ACTIVAS' },
+      {
+        nombre: 'sólo soloEnCurso=true -> ACTIVAS',
+        dto: { soloEnCurso: true },
+        esperado: 'ACTIVAS',
+      },
       { nombre: 'sólo soloEnCurso=false -> TODAS', dto: { soloEnCurso: false }, esperado: 'TODAS' },
       {
         nombre: 'sólo estado=COMPLETADAS -> COMPLETADAS',

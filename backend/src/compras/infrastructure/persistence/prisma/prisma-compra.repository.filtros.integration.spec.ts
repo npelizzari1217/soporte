@@ -21,10 +21,7 @@ import { Prisma } from '.prisma/tenant';
 import { PrismaService } from '../../../../shared/infrastructure/persistence/prisma.service';
 import { TenantContext } from '../../../../shared/tenancy/tenant-context';
 import { TenantPrismaClient } from '../../../../shared/infrastructure/persistence/prisma-clients';
-import {
-  GRUPOS_ESTADO_COMPRA,
-  GrupoEstadoCompra,
-} from '../../../domain/services/estado-compra';
+import { GRUPOS_ESTADO_COMPRA, GrupoEstadoCompra } from '../../../domain/services/estado-compra';
 import { PrismaCompraRepository } from './prisma-compra.repository';
 
 const TENANT_TEST_URL =
