@@ -84,7 +84,13 @@ export function AsignarPermisosControl({ usuario }: AsignarPermisosControlProps)
         </Button>
       </DialogTrigger>
       {/* `max-h-[85vh]` acota el modal a la pantalla; el scroll va adentro. */}
-      <DialogContent className="max-h-[85vh] sm:max-w-2xl">
+      {/*
+        `overflow-hidden` PISA el `overflow-y-auto` que el átomo trae por
+        defecto: acá el scroll es INTERNO (sólo la zona de módulos), para que
+        el pie con `Guardar` nunca se vaya de la vista. Si scrolleara también
+        el contenedor, volveríamos al bug que este modal vino a arreglar.
+      */}
+      <DialogContent className="max-h-[85vh] overflow-hidden sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Permisos de {usuario.nombre}</DialogTitle>
         </DialogHeader>
