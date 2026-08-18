@@ -252,14 +252,24 @@ export interface CancelarCompraDto {
 }
 
 /**
+ * Grupo de estado por el que filtra el listado (`FiltroGrupoEstadoCompra` del
+ * backend). Son los MISMOS tres conjuntos —mutuamente excluyentes y
+ * exhaustivos— por los que el servidor ordena la página, más `TODAS` para no
+ * filtrar. Unión literal a propósito: un `string` dejaría pasar valores que el
+ * backend rechaza.
+ */
+export type FiltroEstadoCompra = "ACTIVAS" | "COMPLETADAS" | "CANCELADAS" | "TODAS";
+
+/**
  * Query params de `GET /compras` (`ListarComprasQueryDto`). WU-30 agrega los
- * 5 filtros de negocio (R7/R11) a la paginación existente.
+ * 5 filtros de negocio (R7/R11) a la paginación existente; WU-25 reemplaza el
+ * booleano `soloEnCurso` (`@deprecated` en el backend) por `estado`.
  */
 export interface ComprasFiltros {
   pagina?: number;
   porPagina?: number;
   cicloId?: string;
-  soloEnCurso?: boolean;
+  estado?: FiltroEstadoCompra;
   sectorId?: string;
   fechaDesde?: string;
   fechaHasta?: string;
