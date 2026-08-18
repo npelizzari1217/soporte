@@ -591,6 +591,19 @@ describe('ComprasController — traducción HTTP ↔ use case (PR-21)', () => {
         }),
       );
     });
+
+    it('WU-25: `estado` y `soloEnCurso` se pasan CRUDOS — el controller no resuelve la precedencia', async () => {
+      const { controller, listarComprasUseCase } = buildController();
+      listarComprasUseCase.execute.mockResolvedValue(
+        Result.ok({ items: [], total: 0, pagina: 1, porPagina: 20 }),
+      );
+
+      await controller.listar({ estado: 'CANCELADAS', soloEnCurso: true });
+
+      expect(listarComprasUseCase.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ estado: 'CANCELADAS', soloEnCurso: true }),
+      );
+    });
   });
 
   describe('GET /compras/:id (PR-22)', () => {

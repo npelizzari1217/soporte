@@ -926,6 +926,53 @@ describe('Compras e2e — contrato HTTP real de las 16 rutas (cierra W-B/W-A del
       );
       expect(conSector.status).toBe(200);
     });
+
+    // ─── WU-25 (sdd/compras-orden-filtro-estado) ──────────────────────────
+    //
+    // Un solo `it` por HTTP: que `estado` viaje, se valide y se APLIQUE.
+    // La semántica de cada grupo y el orden viven en integración
+    // (prisma-compra.repository.orden/filtros.integration.spec.ts) — no se
+    // duplican por HTTP.
+
+    it('GET /compras?estado=... filtra por grupo, gana sobre soloEnCurso y rechaza un valor fuera del catálogo', async () => {
+      const actor = await crearActorConPermisos(['COMPRAS:ALTAS', 'COMPRAS:LECTURA']);
+      const crear = await httpPost<CompraDetalleResponseDto>(
+        `${baseUrl}/compras`,
+        buildCrearCompraDto(),
+        bearer(actor.accessToken),
+      );
+      // Recién creada, sin ítems -> grupo ACTIVAS.
+      const compraId = crear.data.id;
+
+      const activas = await httpGet<ListarComprasResponseDto>(
+        `${baseUrl}/compras?estado=ACTIVAS&porPagina=100`,
+        bearer(actor.accessToken),
+      );
+      expect(activas.status).toBe(200);
+      expect(activas.data.items.some((i) => i.id === compraId)).toBe(true);
+
+      // `estado` GANA sobre `soloEnCurso=true`: pedir CANCELADAS deja fuera
+      // a la compra activa, aunque `soloEnCurso` diga lo contrario.
+      const canceladas = await httpGet<ListarComprasResponseDto>(
+        `${baseUrl}/compras?estado=CANCELADAS&soloEnCurso=true&porPagina=100`,
+        bearer(actor.accessToken),
+      );
+      expect(canceladas.status).toBe(200);
+      expect(canceladas.data.items.some((i) => i.id === compraId)).toBe(false);
+
+      // Sin `estado`, el default sigue siendo ACTIVAS (retrocompatibilidad).
+      const porDefecto = await httpGet<ListarComprasResponseDto>(
+        `${baseUrl}/compras?porPagina=100`,
+        bearer(actor.accessToken),
+      );
+      expect(porDefecto.data.items.some((i) => i.id === compraId)).toBe(true);
+
+      const invalido = await httpGet<ListarComprasResponseDto>(
+        `${baseUrl}/compras?estado=EN_CURSO`,
+        bearer(actor.accessToken),
+      );
+      expect(invalido.status).toBe(400);
+    });
   });
 
   // ─── Sanity ───────────────────────────────────────────────────────────────

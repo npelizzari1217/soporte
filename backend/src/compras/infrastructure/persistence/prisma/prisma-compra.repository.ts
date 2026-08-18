@@ -9,7 +9,7 @@
  *   existe); nunca pisan `createdAt` en el UPDATE.
  * - `findByIdConItems()` incluye compras soft-deleted (la entidad exige
  *   `items` siempre cargados — ver `CompraEntity.reconstitute`);
- *   `findAllConItems()` las excluye.
+ *   `findPaginaConItems()` las excluye.
  * - `findLastSecuencia()` (ADR-C5): bajo un advisory lock transaccional de
  *   Postgres, ver JSDoc del método.
  *
@@ -20,7 +20,12 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '.prisma/tenant';
 import { TenantContext } from '../../../../shared/tenancy/tenant-context';
 import { TenantPrismaClient } from '../../../../shared/infrastructure/persistence/prisma-clients';
-import { ICompraRepository, CompraListFiltros } from '../../../domain/ports/i-compra.repository';
+import {
+  ICompraRepository,
+  CompraListFiltros,
+  CompraPaginaConItems,
+} from '../../../domain/ports/i-compra.repository';
+import { ORDEN_GRUPO_ESTADO_COMPRA } from '../../../domain/services/estado-compra';
 import { CompraEntity } from '../../../domain/entities/compra.entity';
 import { ItemCompraEntity } from '../../../domain/entities/item-compra.entity';
 import { CompraMapper } from './compra.mapper';
@@ -38,7 +43,7 @@ export class PrismaCompraRepository implements ICompraRepository {
   /**
    * Busca una compra por id, con TODOS sus ítems cargados (activos y
    * soft-deleted). Incluye compras soft-deleted — `findByIdConItems` no
-   * filtra por `deletedAt` (a diferencia de `findAllConItems`): el caller
+   * filtra por `deletedAt` (a diferencia de `findPaginaConItems`): el caller
    * (casos de uso de detalle) necesita poder mostrar/auditar una compra
    * eliminada por id explícito.
    */
@@ -51,96 +56,185 @@ export class PrismaCompraRepository implements ICompraRepository {
   }
 
   /**
-   * `where` compartido por `findAllConItems` y `count` (WU-11, ADR-T5, R7) —
-   * la MISMA condición de filtro para ambas sentencias, sin duplicar la
-   * lógica.
+   * Condiciones de filtro sobre la CABECERA (`compras c`), las que no
+   * dependen del grupo derivado: soft-delete, ciclo, sector y rango de
+   * `fecha_solicitud`. Devuelve un fragmento `Prisma.Sql` con TODOS los
+   * valores como parámetros ligados — nunca interpolación de strings (es
+   * multi-tenant: una concatenación acá es una inyección).
    *
-   * `soloEnCurso` (default `true` en `ListarComprasUseCase`, no acá) agrega
-   * el predicado de TRES términos derivado de `derivarEstadoCompra`
-   * (`estado-compra.ts`): con `¬cancelada` ya asumido por `canceladaEn:
-   * null`, `¬cerrado` se reduce al OR de:
-   *   1. `∃ ítem PENDIENTE` (activo)
-   *   2. `∄ ítem APROBADO` (activo) — NO se deduce del término 1: con
-   *      `nP=0 ∧ nA=0` la excepción de vacuidad de `estado-compra.ts:124-126`
-   *      igual fuerza `cerrado=false`.
-   *   3. `∃ ítem (APROBADO ∧ ¬entregado)` activo, donde `¬entregado` es
-   *      `cantidadEntregada < cantidad ∧ ¬cerradoConFaltante` (misma
-   *      cláusula OR de `itemEntregado`, S22).
-   * `deletedAt: null` en cada filtro anidado sobre ítems: un ítem
-   * soft-deleted no cuenta para ningún término (F6 de la matriz WU-12).
-   *
-   * NO usa cuantificadores universales de JS sobre arrays — es 100%
-   * declarativo Prisma (guard estructural en `higiene-every.spec.ts`, que
-   * confina esos cuantificadores a `estado-compra.ts` en toda la
-   * implementación de `compras/`).
+   * `::uuid` explícito en ciclo/sector: el parámetro viaja como texto y
+   * Postgres no compara `uuid = text` sin un cast. `::date` en las fechas:
+   * `fecha_solicitud` es `DATE` puro, así que el filtro se expresa como
+   * fecha calendaria (misma semántica UTC con la que Prisma escribe y lee
+   * un `@db.Date`), sin arrastrar la hora ni el offset del `Date` de JS.
    */
-  private buildWhere(filtros?: CompraListFiltros): Prisma.CompraWhereInput {
-    const where: Prisma.CompraWhereInput = { deletedAt: null };
+  private condicionesDeCabecera(filtros?: CompraListFiltros): Prisma.Sql {
+    const condiciones: Prisma.Sql[] = [Prisma.sql`c.deleted_at IS NULL`];
 
     if (filtros?.cicloId !== undefined) {
-      where.cicloId = filtros.cicloId;
+      condiciones.push(Prisma.sql`c.ciclo_id = ${filtros.cicloId}::uuid`);
     }
     if (filtros?.sectorId !== undefined) {
-      where.sectorId = filtros.sectorId;
+      condiciones.push(Prisma.sql`c.sector_id = ${filtros.sectorId}::uuid`);
     }
-    if (filtros?.fechaDesde !== undefined || filtros?.fechaHasta !== undefined) {
-      where.fechaSolicitud = {
-        ...(filtros?.fechaDesde !== undefined && { gte: filtros.fechaDesde }),
-        ...(filtros?.fechaHasta !== undefined && { lte: filtros.fechaHasta }),
-      };
+    if (filtros?.fechaDesde !== undefined) {
+      condiciones.push(
+        Prisma.sql`c.fecha_solicitud >= ${PrismaCompraRepository.aFechaCalendaria(filtros.fechaDesde)}::date`,
+      );
     }
-
-    if (filtros?.soloEnCurso) {
-      where.canceladaEn = null;
-      where.OR = [
-        { items: { some: { deletedAt: null, estadoAprobacion: 'PENDIENTE' } } },
-        { items: { none: { deletedAt: null, estadoAprobacion: 'APROBADO' } } },
-        {
-          items: {
-            some: {
-              deletedAt: null,
-              estadoAprobacion: 'APROBADO',
-              cerradoConFaltante: false,
-              cantidadEntregada: { lt: this.client.itemCompra.fields.cantidad },
-            },
-          },
-        },
-      ];
+    if (filtros?.fechaHasta !== undefined) {
+      condiciones.push(
+        Prisma.sql`c.fecha_solicitud <= ${PrismaCompraRepository.aFechaCalendaria(filtros.fechaHasta)}::date`,
+      );
     }
 
-    return where;
+    return Prisma.join(condiciones, ' AND ');
+  }
+
+  /** `Date` de JS a `YYYY-MM-DD` en UTC — el mismo componente de fecha que Prisma persiste en un `@db.Date`. */
+  private static aFechaCalendaria(fecha: Date): string {
+    return fecha.toISOString().slice(0, 10);
   }
 
   /**
-   * Retorna las compras del tenant activo con sus ítems cargados, excluye
-   * soft-deleted, ordenadas por `created_at DESC`. `filtros.limit`/
-   * `filtros.offset` aplican paginación vía `take`/`skip`. El `include` de
-   * ítems son 2 sentencias SQL FIJAS medidas empíricamente (R17, PR-12) —
-   * ver JSDoc de `count()` para la 3ª sentencia (excepción documentada a
-   * S32) y por qué NO se usa `COUNT(*) OVER()` para evitarla.
+   * Condición sobre el grupo derivado (WU-25). `TODAS`/`undefined` no
+   * restringe; el resto compara contra el ordinal de
+   * `ORDEN_GRUPO_ESTADO_COMPRA` — la MISMA constante que arma el `CASE` del
+   * SQL, así que filtro y orden no pueden desalinearse.
    */
-  async findAllConItems(filtros?: CompraListFiltros): Promise<CompraEntity[]> {
+  private condicionDeGrupo(filtros?: CompraListFiltros): Prisma.Sql {
+    const grupo = filtros?.grupoEstado;
+    if (grupo === undefined || grupo === 'TODAS') {
+      return Prisma.sql`TRUE`;
+    }
+    return Prisma.sql`grupo = ${ORDEN_GRUPO_ESTADO_COMPRA[grupo]}::int`;
+  }
+
+  /**
+   * Resuelve, en UNA sentencia, los ids de la página YA ORDENADOS más el
+   * `total` del universo filtrado completo (WU-25).
+   *
+   * El `LEFT JOIN LATERAL` calcula de un solo barrido de `items_compra` los
+   * MISMOS conteos que recibe `derivarEstadoDesdeConteos`
+   * (`estado-compra.ts`): `n`, `n_pendientes`, `n_aprobados`,
+   * `n_rechazados`; más `n_aprobados_no_entregados`, que es la negación
+   * SQL de `itemEntregado` (`cantidad_entregada >= cantidad ∨
+   * cerrado_con_faltante`, S22). `i.deleted_at IS NULL` deja los ítems
+   * soft-deleted fuera de TODOS los conteos (F6 de la matriz WU-12).
+   *
+   * La comparación `cantidad_entregada < cantidad` es exacta sin pasar por
+   * centésimas: ambas columnas son `DECIMAL(10,2)` y Postgres compara
+   * `numeric` en decimal exacto, así que equivale a la comparación en
+   * centésimas de `enCentesimas` (ADR-C3) — no hay float de por medio. Los
+   * fixtures F11/F12 de la matriz WU-12 ejercitan justamente ese borde.
+   *
+   * El `CASE` transcribe la definición de los tres grupos EN EL MISMO ORDEN
+   * de evaluación que `derivarGrupoEstadoCompra`: primero `CANCELADAS`
+   * (Regla 0 ∪ T5), después `ACTIVAS` (¬cerrado), y `COMPLETADAS` como
+   * `ELSE`. Al ser un `CASE` encadenado, la exclusividad y la exhaustividad
+   * son estructurales, igual que en el dominio.
+   *
+   * Devuelve SIEMPRE exactamente una fila: los ids viajan agregados en un
+   * `array_agg` (`ARRAY[]` cuando la página quedó vacía), así que el
+   * `total` llega incluso con `offset` más allá del universo — el borde que
+   * en su momento descartó `COUNT(*) OVER()`.
+   */
+  private async idsDePaginaOrdenados(
+    filtros?: CompraListFiltros,
+  ): Promise<{ ids: string[]; total: number }> {
+    const condicionesCabecera = this.condicionesDeCabecera(filtros);
+    const condicionGrupo = this.condicionDeGrupo(filtros);
+    const limite = filtros?.limit !== undefined ? Prisma.sql`LIMIT ${filtros.limit}` : Prisma.empty;
+    const desplazamiento =
+      filtros?.offset !== undefined ? Prisma.sql`OFFSET ${filtros.offset}` : Prisma.empty;
+
+    const filas = await this.client.$queryRaw<Array<{ ids: string[]; total: number }>>`
+      WITH agrupadas AS (
+        SELECT
+          c.id,
+          c.fecha_solicitud,
+          c.created_at,
+          CASE
+            WHEN c.cancelada_en IS NOT NULL
+              OR (k.n > 0 AND k.n_pendientes = 0 AND k.n_aprobados = 0 AND k.n_rechazados >= 1)
+              THEN ${ORDEN_GRUPO_ESTADO_COMPRA.CANCELADAS}::int
+            WHEN k.n_pendientes >= 1 OR k.n = 0 OR k.n_aprobados_no_entregados >= 1
+              THEN ${ORDEN_GRUPO_ESTADO_COMPRA.ACTIVAS}::int
+            ELSE ${ORDEN_GRUPO_ESTADO_COMPRA.COMPLETADAS}::int
+          END AS grupo
+        FROM compras c
+        LEFT JOIN LATERAL (
+          SELECT
+            count(*)::int AS n,
+            count(*) FILTER (WHERE i.estado_aprobacion = 'PENDIENTE')::int AS n_pendientes,
+            count(*) FILTER (WHERE i.estado_aprobacion = 'APROBADO')::int AS n_aprobados,
+            count(*) FILTER (WHERE i.estado_aprobacion = 'RECHAZADO')::int AS n_rechazados,
+            count(*) FILTER (
+              WHERE i.estado_aprobacion = 'APROBADO'
+                AND i.cerrado_con_faltante = false
+                AND i.cantidad_entregada < i.cantidad
+            )::int AS n_aprobados_no_entregados
+          FROM items_compra i
+          WHERE i.compra_id = c.id AND i.deleted_at IS NULL
+        ) k ON TRUE
+        WHERE ${condicionesCabecera}
+      ),
+      filtradas AS (
+        SELECT * FROM agrupadas WHERE ${condicionGrupo}
+      ),
+      pagina AS (
+        SELECT
+          id,
+          row_number() OVER (ORDER BY grupo ASC, fecha_solicitud DESC, created_at DESC) AS orden
+        FROM filtradas
+        ORDER BY grupo ASC, fecha_solicitud DESC, created_at DESC
+        ${limite} ${desplazamiento}
+      )
+      SELECT
+        (SELECT count(*) FROM filtradas)::int AS total,
+        COALESCE(
+          (SELECT array_agg(p.id::text ORDER BY p.orden) FROM pagina p),
+          ARRAY[]::text[]
+        ) AS ids
+    `;
+
+    const fila = filas[0];
+    return { ids: fila?.ids ?? [], total: fila?.total ?? 0 };
+  }
+
+  /**
+   * Retorna una página del listado YA ORDENADA (grupo ASC, fechaSolicitud
+   * DESC, createdAt DESC) más el `total` del universo filtrado — ver el
+   * JSDoc del puerto para el contrato y el presupuesto de sentencias.
+   *
+   * Dos pasos: (1) `idsDePaginaOrdenados` resuelve filtro + orden +
+   * paginación + total en SQL; (2) la hidratación reusa el `findMany` con
+   * `include` de siempre (`CompraMapper.toDomain` sigue recibiendo la MISMA
+   * forma camelCase de Prisma — el SQL crudo nunca alimenta al mapper). El
+   * `IN` no preserva el orden pedido, así que la página se re-arma
+   * siguiendo la secuencia de ids, no la que devolvió Postgres.
+   */
+  async findPaginaConItems(filtros?: CompraListFiltros): Promise<CompraPaginaConItems> {
+    const { ids, total } = await this.idsDePaginaOrdenados(filtros);
+    if (ids.length === 0) {
+      return { compras: [], total };
+    }
+
     const rows = await this.client.compra.findMany({
-      where: this.buildWhere(filtros),
+      where: { id: { in: ids } },
       include: { items: true },
-      orderBy: { createdAt: 'desc' },
-      ...(filtros?.limit !== undefined && { take: filtros.limit }),
-      ...(filtros?.offset !== undefined && { skip: filtros.offset }),
     });
-    return rows.map((row) => CompraMapper.toDomain(row));
-  }
+    const porId = new Map(rows.map((row) => [row.id, row]));
 
-  /**
-   * Cuenta el total de compras que cumplen el MISMO `where` que
-   * `findAllConItems` (`buildWhere()`), IGNORANDO `limit`/`offset` — usado
-   * por `ListarComprasUseCase` para `total` de paginación. Tipado: el SDK
-   * de Prisma tipa `count()` como `Promise<number>` de forma nativa (a
-   * diferencia de `$queryRaw` con `COUNT(*) OVER()`, que deserializa
-   * `bigint` — ver JSDoc de `ICompraRepository.count` para el resto de la
-   * comparación). EXCEPCIÓN DOCUMENTADA a S32: ver JSDoc del puerto.
-   */
-  async count(filtros?: CompraListFiltros): Promise<number> {
-    return this.client.compra.count({ where: this.buildWhere(filtros) });
+    const compras: CompraEntity[] = [];
+    for (const id of ids) {
+      const row = porId.get(id);
+      if (row !== undefined) {
+        compras.push(CompraMapper.toDomain(row));
+      }
+    }
+
+    return { compras, total };
   }
 
   /**

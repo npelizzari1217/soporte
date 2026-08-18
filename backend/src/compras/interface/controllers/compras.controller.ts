@@ -646,6 +646,11 @@ export class ComprasController {
    * paginación (universo filtrado completo, no el tamaño de la página).
    * `ListarComprasUseCase` siempre retorna `Result.ok` — no hay camino de
    * error (mismo criterio que `EquiposController.listar()`).
+   *
+   * Orden y filtro por grupo de estado: WU-25. `estado` y el `soloEnCurso`
+   * deprecado se pasan CRUDOS al caso de uso — la precedencia entre ambos se
+   * resuelve ahí (ver la tabla en `ListarComprasQueryDto`), no acá: el
+   * controller no decide reglas, sólo traduce el borde HTTP.
    */
   @Get()
   @RequiereAcciones('COMPRAS:LECTURA')
@@ -654,6 +659,7 @@ export class ComprasController {
       pagina: query.pagina,
       porPagina: query.porPagina,
       cicloId: query.cicloId,
+      estado: query.estado,
       soloEnCurso: query.soloEnCurso,
       sectorId: query.sectorId,
       fechaDesde: query.fechaDesde !== undefined ? new Date(query.fechaDesde) : undefined,

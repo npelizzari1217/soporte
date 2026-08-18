@@ -35,6 +35,12 @@
  * FUERA de este `FilterBar` a propósito: no hay selector de ciclo en el
  * frontend hoy (siempre filtra sobre el vigente, resuelto server-side).
  *
+ * WU-25: el checkbox binario "Solo en curso" (`soloEnCurso`, ya `@deprecated`
+ * en el backend) pasa a ser un `<select>` de los cuatro grupos de `estado`.
+ * El ORDEN de las filas lo resuelve el servidor (grupo, después
+ * `fechaSolicitud DESC`) y la paginación es server-side: este archivo NUNCA
+ * reordena la página recibida — hacerlo rompería el orden global.
+ *
  * S33 — el listado NUNCA trae `items`: las columnas SOLO muestran
  * derivados de cabecera ya resueltos por el backend (`estado`/`comprado`/
  * `cerrado`/`totalesPorMoneda`, ADR-C1). CERO `if`/`.every()`/`.filter()`
@@ -51,7 +57,6 @@ import { Pagination } from "@/components/shared/pagination";
 import { PageHeader } from "@/components/shared/page-header";
 import { Can } from "@/components/shared/can";
 import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { notifyError } from "@/shared/lib/toast";
@@ -59,9 +64,32 @@ import { EstadoCompraBadge } from "./estado-compra-badge";
 import { CompraCreateDialog } from "./compra-create-dialog";
 import { formatearTotalesPorMoneda } from "../lib/formatear-totales";
 import { aFechaInput } from "../lib/fecha";
-import type { CompraListItem, ComprasFiltros } from "../types";
+import type { CompraListItem, ComprasFiltros, FiltroEstadoCompra } from "../types";
 
 const PAGE_SIZE = 10;
+
+/** Etiquetas del filtro de estado, en el mismo orden en que el servidor agrupa las filas. */
+const OPCIONES_ESTADO: ReadonlyArray<{ valor: FiltroEstadoCompra; etiqueta: string }> = [
+  { valor: "ACTIVAS", etiqueta: "Activas" },
+  { valor: "COMPLETADAS", etiqueta: "Completadas o cerradas" },
+  { valor: "CANCELADAS", etiqueta: "Canceladas o rechazadas" },
+  { valor: "TODAS", etiqueta: "Todas" },
+];
+
+const ESTADO_POR_DEFECTO: FiltroEstadoCompra = "ACTIVAS";
+
+/**
+ * Traduce el `estado` crudo de la URL al valor del filtro.
+ *
+ * Un único punto de normalización para el select Y para la request: cualquier
+ * cosa que no sea una de las cuatro opciones (ausente, vacía o basura de un
+ * deep-link viejo) cae en `ACTIVAS`, que es además el default del servidor.
+ * Así lo que se ve y lo que se aplica no pueden contradecirse.
+ */
+function normalizarEstado(crudo: string | null): FiltroEstadoCompra {
+  const conocida = OPCIONES_ESTADO.find((opcion) => opcion.valor === crudo);
+  return conocida?.valor ?? ESTADO_POR_DEFECTO;
+}
 
 export function ComprasListView() {
   const router = useRouter();
@@ -72,7 +100,10 @@ export function ComprasListView() {
     () => ({
       pagina: Number(searchParams.get("pagina") ?? "1"),
       porPagina: PAGE_SIZE,
-      soloEnCurso: searchParams.has("soloEnCurso") ? searchParams.get("soloEnCurso") === "true" : undefined,
+      // SIEMPRE explícito, incluso en el default: la request no depende del
+      // default implícito del servidor, así que el select no puede quedar
+      // mostrando un grupo distinto del que se pidió.
+      estado: normalizarEstado(searchParams.get("estado")),
       sectorId: searchParams.get("sectorId") ?? undefined,
       fechaDesde: searchParams.get("fechaDesde") ?? undefined,
       fechaHasta: searchParams.get("fechaHasta") ?? undefined,
@@ -98,8 +129,6 @@ export function ComprasListView() {
 
   const comprasQuery = useCompras(filtros);
   const sectoresQuery = useSectores();
-  /** Default del backend cuando no se pasa nada: `true` (R7). El checkbox refleja ese default visualmente. */
-  const soloEnCursoVisible = filtros.soloEnCurso ?? true;
 
   const columns: Column<CompraListItem>[] = [
     { key: "numero", header: "Número" },
@@ -145,17 +174,21 @@ export function ComprasListView() {
       />
 
       <FilterBar>
-        <div className="flex items-center gap-2">
-          <Checkbox
-            id="filtro-solo-en-curso"
-            checked={soloEnCursoVisible}
-            onCheckedChange={(checked) =>
-              updateFiltros({ soloEnCurso: checked === true ? undefined : false })
-            }
-          />
-          <label htmlFor="filtro-solo-en-curso" className="text-sm text-foreground">
-            Solo en curso
+        <div className="flex flex-col gap-1">
+          <label htmlFor="filtro-estado" className="sr-only">
+            Estado
           </label>
+          <Select
+            id="filtro-estado"
+            value={filtros.estado}
+            onChange={(e) => updateFiltros({ estado: normalizarEstado(e.target.value) })}
+          >
+            {OPCIONES_ESTADO.map((opcion) => (
+              <option key={opcion.valor} value={opcion.valor}>
+                {opcion.etiqueta}
+              </option>
+            ))}
+          </Select>
         </div>
 
         <div className="flex flex-col gap-1">

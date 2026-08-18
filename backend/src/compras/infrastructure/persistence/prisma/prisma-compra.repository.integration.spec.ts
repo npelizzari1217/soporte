@@ -230,13 +230,13 @@ describe('PrismaCompraRepository — Integration (PR-11, secuencial)', () => {
     });
   });
 
-  describe('findAllConItems(filtros?)', () => {
+  describe('findPaginaConItems(filtros?)', () => {
     it('excluye compras soft-deleted (deletedAt no expuesto por CompraEntity: se verifica indirectamente por ausencia)', async () => {
       const visible = makeCompra();
       await withTenant(async () => {
         await compraRepo.guardar(visible);
-        const all = await compraRepo.findAllConItems();
-        const ids = all.map((c) => c.id);
+        const { compras } = await compraRepo.findPaginaConItems();
+        const ids = compras.map((c) => c.id);
         expect(ids).toContain(visible.id);
       });
     });
@@ -248,10 +248,10 @@ describe('PrismaCompraRepository — Integration (PR-11, secuencial)', () => {
         await compraRepo.guardar(compra);
 
         const total = await tenantClient.compra.count({ where: { deletedAt: null } });
-        const pagina = await compraRepo.findAllConItems({ limit: 1, offset: 0 });
+        const { compras } = await compraRepo.findPaginaConItems({ limit: 1, offset: 0 });
 
-        expect(pagina.length).toBe(Math.min(1, total));
-        expect(pagina[0].deletedAt).toBeNull();
+        expect(compras.length).toBe(Math.min(1, total));
+        expect(compras[0].deletedAt).toBeNull();
       });
     });
 
@@ -289,11 +289,11 @@ describe('PrismaCompraRepository — Integration (PR-11, secuencial)', () => {
             await compraRepo.guardar(makeCompra({ cicloId: cicloPaginacion.id }));
           }
 
-          const pagina1 = await compraRepo.findAllConItems({ limit: 2, offset: 0 });
-          const pagina2 = await compraRepo.findAllConItems({ limit: 2, offset: 2 });
+          const pagina1 = await compraRepo.findPaginaConItems({ limit: 2, offset: 0 });
+          const pagina2 = await compraRepo.findPaginaConItems({ limit: 2, offset: 2 });
 
-          const ids1 = pagina1.map((c) => c.id);
-          const ids2 = pagina2.map((c) => c.id);
+          const ids1 = pagina1.compras.map((c) => c.id);
+          const ids2 = pagina2.compras.map((c) => c.id);
           expect(ids1.some((id) => ids2.includes(id))).toBe(false);
         });
       } finally {
@@ -303,7 +303,7 @@ describe('PrismaCompraRepository — Integration (PR-11, secuencial)', () => {
     });
   });
 
-  describe('count(filtros?) — PR-20, total de paginación (excepción documentada a S32)', () => {
+  describe('total de paginación — PR-20 / WU-25 (sale de la misma consulta que la página)', () => {
     it('el total es el del filtro completo, NO el tamaño de la página (más filas que el limit pedido)', async () => {
       const suffix = randomBytes(2).toString('hex');
       const cicloCount = await tenantClient.cicloCliente.create({
@@ -324,10 +324,9 @@ describe('PrismaCompraRepository — Integration (PR-11, secuencial)', () => {
             await compraRepo.guardar(makeCompra({ cicloId: cicloCount.id }));
           }
 
-          const pagina = await compraRepo.findAllConItems({ limit: 2, offset: 0 });
-          const total = await compraRepo.count();
+          const { compras, total } = await compraRepo.findPaginaConItems({ limit: 2, offset: 0 });
 
-          expect(pagina.length).toBe(2);
+          expect(compras.length).toBe(2);
           expect(total).toBeGreaterThanOrEqual(5);
         });
       } finally {
@@ -353,18 +352,21 @@ describe('PrismaCompraRepository — Integration (PR-11, secuencial)', () => {
           const compra = makeCompra({ cicloId: cicloVacio.id });
           await compraRepo.guardar(compra);
 
-          const totalReal = await compraRepo.count();
+          const { total: totalReal } = await compraRepo.findPaginaConItems({
+            limit: 10,
+            offset: 0,
+          });
           // offset muy por encima del universo total del tenant -> página vacía.
-          const paginaVacia = await compraRepo.findAllConItems({ limit: 10, offset: 100_000 });
-          const totalTrasPaginaVacia = await compraRepo.count();
+          const paginaVacia = await compraRepo.findPaginaConItems({ limit: 10, offset: 100_000 });
 
-          expect(paginaVacia).toEqual([]);
-          // `count()` es una consulta INDEPENDIENTE de `findAllConItems`: no
-          // depende de que la página tenga filas para devolver el total
-          // correcto (a diferencia de `COUNT(*) OVER()`, que SÍ dependía de
-          // eso — ver sdd/redisenio-modulo-compras/count-en-consulta).
-          expect(totalTrasPaginaVacia).toBe(totalReal);
-          expect(totalTrasPaginaVacia).toBeGreaterThan(0);
+          expect(paginaVacia.compras).toEqual([]);
+          // WU-25: el total viaja en la MISMA sentencia que los ids, pero
+          // agregado con `array_agg` — la consulta devuelve siempre una fila,
+          // así que el total llega incluso con la página vacía. Es
+          // exactamente el borde que había descartado `COUNT(*) OVER()`
+          // (ver sdd/redisenio-modulo-compras/count-en-consulta).
+          expect(paginaVacia.total).toBe(totalReal);
+          expect(paginaVacia.total).toBeGreaterThan(0);
         });
       } finally {
         await tenantClient.compra.deleteMany({ where: { cicloId: cicloVacio.id } });

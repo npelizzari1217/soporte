@@ -14,13 +14,14 @@
  * responde 403 si se intenta sin permiso.
  */
 import { useState } from "react";
-import { useForm } from "react-hook-form";
+import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { MontoInput } from "./monto-input";
 import { useAgregarItemCompra } from "../hooks/use-compra-mutations";
 import { agregarItemCompraSchema, type AgregarItemCompraFormValues } from "../schemas";
 
@@ -44,6 +45,7 @@ export function ItemCreateDialog({ compraId }: ItemCreateDialogProps) {
 
   const {
     register,
+    control,
     handleSubmit,
     reset,
     formState: { errors },
@@ -132,13 +134,19 @@ export function ItemCreateDialog({ compraId }: ItemCreateDialogProps) {
             <label htmlFor="item-crear-monto" className="text-sm font-medium text-foreground">
               Monto
             </label>
-            <Input
-              id="item-crear-monto"
-              type="number"
-              step="0.01"
-              min="0"
-              error={!!errors.monto}
-              {...register("monto")}
+            <Controller
+              name="monto"
+              control={control}
+              render={({ field }) => (
+                <MontoInput
+                  id="item-crear-monto"
+                  name={field.name}
+                  value={field.value}
+                  onChange={field.onChange}
+                  onBlur={field.onBlur}
+                  error={!!errors.monto}
+                />
+              )}
             />
             {errors.monto && (
               <p role="alert" className="text-sm text-destructive">

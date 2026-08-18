@@ -1,16 +1,17 @@
 import { DomainError, Result } from '../../../shared/domain/result';
 import { CompraEntity } from '../../domain/entities/compra.entity';
-import { EstadoCompra } from '../../domain/services/estado-compra';
+import { EstadoCompra, FiltroGrupoEstadoCompra } from '../../domain/services/estado-compra';
 import { CompraListFiltros, ICompraRepository } from '../../domain/ports/i-compra.repository';
 
 const PAGINA_DEFAULT = 1;
 const POR_PAGINA_DEFAULT = 20;
+const GRUPO_ESTADO_DEFAULT: FiltroGrupoEstadoCompra = 'ACTIVAS';
 
 /**
  * DTO de entrada de `ListarComprasUseCase`. WU-11/WU-13 (R7, R9) agregan los
- * filtros de negocio; `soloEnCurso` default `true` se resuelve ACÁ, no en el
- * puerto (`CompraListFiltros.soloEnCurso` queda `undefined` si el caller no
- * lo especifica).
+ * filtros de negocio; el default del filtro de estado se resuelve ACÁ, no en
+ * el puerto (`CompraListFiltros.grupoEstado` queda `undefined` si el caller
+ * no lo especifica).
  */
 export interface ListarComprasDto {
   /** Página 1-indexed. Default 1. */
@@ -19,7 +20,16 @@ export interface ListarComprasDto {
   porPagina?: number;
   /** Filtro por ciclo (R7). `undefined` = sin restricción. */
   cicloId?: string;
-  /** "En curso" (R7). Default `true` cuando el caller no lo especifica. */
+  /**
+   * Grupo de estado a listar (WU-25). Default `ACTIVAS`. Tiene PRECEDENCIA
+   * sobre `soloEnCurso` — ver `resolverGrupoEstado`.
+   */
+  estado?: FiltroGrupoEstadoCompra;
+  /**
+   * @deprecated WU-25 — usar `estado`. Se sigue aceptando por
+   * retrocompatibilidad: `false` equivale a `TODAS` y `true` a `ACTIVAS`.
+   * Se IGNORA cuando `estado` viene presente.
+   */
   soloEnCurso?: boolean;
   /** Filtro por sector de cabecera (R11). */
   sectorId?: string;
@@ -49,9 +59,10 @@ export interface CompraListItemDto {
 
 /**
  * Resultado paginado de `ListarComprasUseCase`. `total` es el universo
- * filtrado completo (vía `ICompraRepository.count()`), NO el tamaño de la
- * página actual — sigue siendo correcto incluso cuando `items` viene vacío
- * (offset más allá del total).
+ * filtrado completo (viene de la misma consulta que `items`, ver
+ * `ICompraRepository.findPaginaConItems`), NO el tamaño de la página actual
+ * — sigue siendo correcto incluso cuando `items` viene vacío (offset más
+ * allá del total).
  */
 export interface ListarComprasResult {
   items: CompraListItemDto[];
@@ -71,53 +82,63 @@ export interface ListarComprasResult {
  * estructural "tx ⇒ bitácora" de ADR-C4/PR-22 — degradaría el predicado que
  * hace detectable en compilación el olvido de bitácora en un mutador nuevo.
  *
- * Dos métodos de lectura del puerto, en paralelo (`Promise.all`):
- * `findAllConItems` (la página) y `count` (el total del filtro completo,
- * IGNORANDO `limit`/`offset`) — mismo patrón que `ListarTicketsUseCase`
- * (T7). `count()` es una 3ª sentencia SQL fija y aislada, EXCEPCIÓN
- * DOCUMENTADA a S32 (ver JSDoc de `ICompraRepository.count`): el límite de
- * 2 se fijó contra el N+1 (consulta POR FILA), y un `count()` es O(1) — no
- * crece con la página ni con los ítems. La prohibición del N+1 sigue
- * vigente sin excepciones; solo se admite este tercer round-trip fijo.
+ * Un solo método de lectura del puerto: `findPaginaConItems` devuelve la
+ * página YA ORDENADA y el `total` del universo filtrado en la MISMA
+ * consulta (WU-25). Antes eran dos (`findAllConItems` + `count`) y S62
+ * existía para vigilar que ambas recibieran el mismo filtro; ahora esa
+ * desincronización es imposible por construcción. El presupuesto de
+ * sentencias SQL sigue siendo 3 (ver JSDoc del puerto).
  *
- * Alcance de tenant (S41): tanto `findAllConItems` como `count` ya están
- * scopeados por `TenantContext` en la implementación concreta (PR-11/PR-12)
- * — este caso de uso NO recibe ni aplica un parámetro `clienteId`.
+ * Alcance de tenant (S41): `findPaginaConItems` ya está scopeado por
+ * `TenantContext` en la implementación concreta (PR-11/PR-12) — este caso
+ * de uso NO recibe ni aplica un parámetro `clienteId`.
  *
  * Ref spec: sdd/redisenio-modulo-compras/spec §4.9 (S32, S33, S34). Ref
- * design: ADR-C1, ADR-C2, ADR-C4. Ref tasks: PR-19, H3, R17; excepción de
- * `total` cerrada en `sdd/redisenio-modulo-compras/count-en-consulta`.
+ * design: ADR-C1, ADR-C2, ADR-C4. Ref tasks: PR-19, H3, R17; WU-25
+ * (sdd/compras-orden-filtro-estado).
  */
 export class ListarComprasUseCase {
-  constructor(private readonly compraRepo: Pick<ICompraRepository, 'findAllConItems' | 'count'>) {}
+  constructor(private readonly compraRepo: Pick<ICompraRepository, 'findPaginaConItems'>) {}
+
+  /**
+   * Resuelve el grupo de estado a filtrar a partir de los dos parámetros
+   * aceptados. Tabla de precedencia (WU-25):
+   *
+   * | `estado`   | `soloEnCurso` | resultado |
+   * |------------|---------------|-----------|
+   * | presente   | cualquiera    | `estado` (gana; `soloEnCurso` se ignora) |
+   * | ausente    | `true`        | `ACTIVAS` |
+   * | ausente    | `false`       | `TODAS`   |
+   * | ausente    | ausente       | `ACTIVAS` (default) |
+   *
+   * `estado` gana porque es el parámetro expresivo: `soloEnCurso` es un
+   * booleano que sólo puede expresar dos de los cuatro valores, así que
+   * dejarlo pisar a `estado` degradaría una petición explícita.
+   */
+  private static resolverGrupoEstado(dto: ListarComprasDto): FiltroGrupoEstadoCompra {
+    if (dto.estado !== undefined) {
+      return dto.estado;
+    }
+    if (dto.soloEnCurso !== undefined) {
+      return dto.soloEnCurso ? 'ACTIVAS' : 'TODAS';
+    }
+    return GRUPO_ESTADO_DEFAULT;
+  }
 
   async execute(dto: ListarComprasDto = {}): Promise<Result<ListarComprasResult, DomainError>> {
     const pagina = dto.pagina ?? PAGINA_DEFAULT;
     const porPagina = dto.porPagina ?? POR_PAGINA_DEFAULT;
 
-    // WU-13 (R9/S62): `filtrosNegocio` es el MISMO objeto para `count()` y
-    // `findAllConItems` (menos limit/offset) — antes `count()` se llamaba
-    // SIN argumentos mientras `findAllConItems` sí recibía filtros, así que
-    // el total de paginación medía el universo SIN filtrar. `count()` sigue
-    // ignorando `limit`/`offset` por contrato (mide el universo completo,
-    // no la página — el total sigue siendo correcto aunque la página pedida
-    // devuelva cero filas, offset más allá del total).
-    const filtrosNegocio: CompraListFiltros = {
+    const filtros: CompraListFiltros = {
       ...(dto.cicloId !== undefined && { cicloId: dto.cicloId }),
-      soloEnCurso: dto.soloEnCurso ?? true,
+      grupoEstado: ListarComprasUseCase.resolverGrupoEstado(dto),
       ...(dto.sectorId !== undefined && { sectorId: dto.sectorId }),
       ...(dto.fechaDesde !== undefined && { fechaDesde: dto.fechaDesde }),
       ...(dto.fechaHasta !== undefined && { fechaHasta: dto.fechaHasta }),
-    };
-    const filtrosPagina: CompraListFiltros = {
-      ...filtrosNegocio,
       limit: porPagina,
       offset: (pagina - 1) * porPagina,
     };
-    const [compras, total] = await Promise.all([
-      this.compraRepo.findAllConItems(filtrosPagina),
-      this.compraRepo.count(filtrosNegocio),
-    ]);
+    const { compras, total } = await this.compraRepo.findPaginaConItems(filtros);
 
     return Result.ok({
       items: compras.map(ListarComprasUseCase.aFilaListado),

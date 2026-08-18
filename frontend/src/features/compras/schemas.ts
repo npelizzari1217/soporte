@@ -53,6 +53,21 @@ const fecha = (mensajeVacio: string) =>
  */
 const motivo = (mensaje: string) => z.string().trim().min(1, mensaje);
 
+/**
+ * Monto de un ítem: espejo de `@IsNumber({maxDecimalPlaces:2}) @Min(0)`.
+ *
+ * `invalid_type_error` NO es cosmético. El campo dejó de ser
+ * `<input type="number">` (incompatible con mostrar `1.234.567,89` al salir
+ * del foco), así que ahora puede llegar texto libre: `z.coerce.number()` lo
+ * convierte en `NaN` y, sin este mensaje, zod devuelve su default en inglés
+ * ("Expected number, received nan").
+ */
+const monto = () =>
+  z.coerce
+    .number({ invalid_type_error: "Ingresá un monto válido" })
+    .min(0, "El monto no puede ser negativo")
+    .refine(conDosDecimales, MENSAJE_DECIMALES);
+
 /** Espejo de `CrearCompraHttpDto` (§4.1, S1). `sectorId` opcional (R11, S66). */
 export const crearCompraSchema = z.object({
   motivo: motivo("El motivo es requerido"),
@@ -91,7 +106,7 @@ export const agregarItemCompraSchema = z.object({
     .refine(conDosDecimales, MENSAJE_DECIMALES),
   proveedor: z.string().min(1, "El proveedor es requerido"),
   /** Espejo de `@IsNumber({maxDecimalPlaces:2}) @Min(0)` — el monto no puede ser negativo. */
-  monto: z.coerce.number().min(0, "El monto no puede ser negativo").refine(conDosDecimales, MENSAJE_DECIMALES),
+  monto: monto(),
   moneda: z.enum(MONEDAS_ADMITIDAS, { errorMap: () => ({ message: "Elegí una moneda" }) }),
   fechaCotizacion: fecha("La fecha de cotización es requerida"),
   observaciones: z.string().optional(),
@@ -111,11 +126,7 @@ export const editarItemCompraSchema = z.object({
     .refine(conDosDecimales, MENSAJE_DECIMALES)
     .optional(),
   proveedor: z.string().min(1, "El proveedor es requerido").optional(),
-  monto: z.coerce
-    .number()
-    .min(0, "El monto no puede ser negativo")
-    .refine(conDosDecimales, MENSAJE_DECIMALES)
-    .optional(),
+  monto: monto().optional(),
   moneda: z.enum(MONEDAS_ADMITIDAS, { errorMap: () => ({ message: "Elegí una moneda" }) }).optional(),
   fechaCotizacion: fecha("La fecha de cotización es requerida").optional(),
   observaciones: z.string().optional(),

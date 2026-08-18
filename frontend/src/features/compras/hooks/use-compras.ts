@@ -19,7 +19,14 @@ import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/shared/api/client";
 import type { CompraDetalle, ComprasFiltros, ListarComprasResponse } from "../types";
 
-/** Mapea `ComprasFiltros` a query string real de `GET /compras` — omite claves undefined (nunca "clave=undefined"). */
+/**
+ * Mapea `ComprasFiltros` a query string real de `GET /compras` — omite claves
+ * undefined (nunca "clave=undefined").
+ *
+ * Recorre las claves de forma genérica, así que `estado` (WU-25) viaja como
+ * `?estado=ACTIVAS` sin caso especial: el contrato del backend usa exactamente
+ * los mismos nombres que `ComprasFiltros`.
+ */
 export function buildComprasQueryString(filtros: ComprasFiltros): string {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(filtros)) {

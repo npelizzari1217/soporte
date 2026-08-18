@@ -127,11 +127,11 @@ describe('PrismaCompraRepository — Aislamiento cross-tenant real (PR-12, [H1])
     expect(found).toBeNull();
   });
 
-  it('[CRITICAL] findAllConItems() en el tenant B (vacío) no incluye compras del tenant A', async () => {
+  it('[CRITICAL] findPaginaConItems() en el tenant B (vacío) no incluye compras del tenant A', async () => {
     const resultB = await tenantContext.run(
       { prismaClient: tenantBClient, dbName: TENANT_B_DB_NAME, clienteId: 'tenant-b-cliente' },
-      () => compraRepo.findAllConItems(),
+      () => compraRepo.findPaginaConItems(),
     );
-    expect(resultB.map((c) => c.id)).not.toContain(compraAId);
+    expect(resultB.compras.map((c) => c.id)).not.toContain(compraAId);
   });
 });

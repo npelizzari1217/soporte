@@ -9,12 +9,19 @@
  * construcción está DISEÑADA pero NUNCA se corrió contra Prisma 7.8. Si
  * falla, el fallback (`$queryRaw` acotado a ids) está documentado en
  * ADR-T5 y el resto de este archivo (test de deriva) no cambia una línea.
+ *
+ * NOTA WU-25: la producción ya NO usa esa field reference — el filtro y el
+ * orden por grupo derivado se resuelven con el `$queryRaw` acotado a ids
+ * que ADR-T5 dejaba como fallback. Este `describe` se conserva igual porque
+ * sigue afirmando algo vivo a nivel base: la semántica exacta del borde de
+ * igualdad `cantidadEntregada == cantidad` (S60) contra Postgres real.
  */
 import { Client } from 'pg';
 import { Prisma } from '.prisma/tenant';
 import { PrismaService } from '../../../../shared/infrastructure/persistence/prisma.service';
 import { TenantContext } from '../../../../shared/tenancy/tenant-context';
 import { TenantPrismaClient } from '../../../../shared/infrastructure/persistence/prisma-clients';
+import { GRUPOS_ESTADO_COMPRA, GrupoEstadoCompra } from '../../../domain/services/estado-compra';
 import { PrismaCompraRepository } from './prisma-compra.repository';
 
 const TENANT_TEST_URL =
@@ -122,15 +129,15 @@ describe('WU-10 — SPIKE aislado: field reference de Prisma en un filtro anidad
 });
 
 /**
- * WU-11/WU-12 — `buildWhere(filtros)` y el test de deriva SQL vs dominio
- * (ADR-T5, ADR-T6, R7, R8, S59-S61). El predicado SQL de "en curso" NO se
- * reimplementa acá: se compara el conjunto de ids que devuelve
- * `findAllConItems({ soloEnCurso: true })` contra el mismo conjunto
- * calculado en memoria con el getter `cerrado`/`canceladaEn` de
- * `CompraEntity` (que delega en `derivarEstadoCompra`, ADR-C1) — mismo
+ * WU-11/WU-12/WU-25 — filtro por grupo de estado y test de deriva SQL vs
+ * dominio (ADR-T5, ADR-T6, R7, R8, S59-S61). El `CASE` SQL que asigna el
+ * grupo NO se reimplementa acá: se compara el conjunto de ids que devuelve
+ * `findPaginaConItems({ grupoEstado })` contra el mismo conjunto calculado
+ * en memoria con el getter `grupoEstado` de `CompraEntity` (que delega en
+ * `derivarGrupoEstadoCompra` → `derivarEstadoCompra`, ADR-C1) — mismo
  * mecanismo que `compras-checks.integration.spec.ts:476-497`.
  */
-describe('WU-11/WU-12 — buildWhere(filtros): predicado "en curso" de 3 términos + test de deriva', () => {
+describe('WU-11/WU-12/WU-25 — filtro por grupo de estado + test de deriva', () => {
   let client: Client;
   let prismaService: PrismaService;
   let tenantClient: InstanceType<typeof TenantPrismaClient>;
@@ -294,11 +301,17 @@ describe('WU-11/WU-12 — buildWhere(filtros): predicado "en curso" de 3 términ
       cantidadEntregada: 10,
     });
 
-    // F4 — todos RECHAZADOS. EN CURSO (término 2, ∄ APROBADO).
+    // F4 — todos RECHAZADOS (T5). CANCELADAS.
+    //
+    // CAMBIO DE COMPORTAMIENTO DELIBERADO (WU-25): con el predicado
+    // `soloEnCurso` anterior esta compra caía en "en curso" por el término
+    // `∄ ítem APROBADO`. Con los grupos nuevos es un cierre negativo — no
+    // queda nada por comprar ni por entregar — así que acompaña a las
+    // canceladas y NO aparece en el listado por defecto.
     ids.F4 = await insertCompra(cicloId);
     await insertItem(ids.F4, { estadoAprobacion: 'RECHAZADO' });
 
-    // F5 — sin ítems. EN CURSO (término 2 por vacuidad).
+    // F5 — sin ítems (T1). ACTIVAS.
     ids.F5 = await insertCompra(cicloId);
 
     // F6 — solo ítems soft-deleted. EN CURSO (deletedAt:null del filtro anidado).
@@ -388,16 +401,9 @@ describe('WU-11/WU-12 — buildWhere(filtros): predicado "en curso" de 3 términ
     return ids;
   }
 
-  it('R8/S61: el conjunto de ids que devuelve el SQL de "en curso" es IDÉNTICO al que deriva el dominio en memoria', async () => {
-    const ids = await construirMatriz();
-
-    const enCursoSQL = await repo.findAllConItems({ soloEnCurso: true, cicloId });
-    const idsSQL = new Set(enCursoSQL.map((c) => c.id));
-
-    // Conjunto de dominio: cargar CADA compra del ciclo con findByIdConItems
-    // y evaluar el MISMO getter que usa el resto de la app (CompraEntity.cerrado),
-    // sin reimplementar la regla acá.
-    const todasDelCiclo = [
+  /** Los 13 fixtures del ciclo bajo test (F14 vive en otro ciclo a propósito). */
+  function idsDelCiclo(ids: Record<string, string>): string[] {
+    return [
       ids.F1,
       ids.F2,
       ids.F3,
@@ -412,31 +418,102 @@ describe('WU-11/WU-12 — buildWhere(filtros): predicado "en curso" de 3 términ
       ids.F12,
       ids.F13,
     ];
-    const idsDominio = new Set<string>();
-    for (const id of todasDelCiclo) {
+  }
+
+  /**
+   * Conjunto de dominio: carga CADA compra del ciclo con `findByIdConItems`
+   * y evalúa el MISMO getter que usa el resto de la app
+   * (`CompraEntity.grupoEstado`), sin reimplementar la regla acá.
+   */
+  async function idsDeDominioDelGrupo(
+    ids: Record<string, string>,
+    grupo: GrupoEstadoCompra,
+  ): Promise<Set<string>> {
+    const encontrados = new Set<string>();
+    for (const id of idsDelCiclo(ids)) {
       const compra = await repo.findByIdConItems(id);
-      if (compra && compra.canceladaEn === null && !compra.cerrado) {
-        idsDominio.add(id);
+      if (compra && compra.grupoEstado === grupo) {
+        encontrados.add(id);
       }
     }
+    return encontrados;
+  }
 
-    expect(idsSQL).toEqual(idsDominio);
-    // F14 (otro ciclo) NUNCA debe aparecer — el término de ciclo no se come ni agrega nada.
-    expect(idsSQL.has(ids.F14)).toBe(false);
-    // Sanity explícito de los casos más sutiles (anti verde vacuo: hermanos presentes).
+  it.each(GRUPOS_ESTADO_COMPRA)(
+    'R8/S61: el conjunto de ids que devuelve el SQL para el grupo %s es IDÉNTICO al que deriva el dominio en memoria',
+    async (grupo) => {
+      const ids = await construirMatriz();
+
+      const { compras } = await repo.findPaginaConItems({ grupoEstado: grupo, cicloId });
+      const idsSQL = new Set(compras.map((c) => c.id));
+
+      expect(idsSQL).toEqual(await idsDeDominioDelGrupo(ids, grupo));
+      // F14 (otro ciclo) NUNCA debe aparecer — el término de ciclo no se come ni agrega nada.
+      expect(idsSQL.has(ids.F14)).toBe(false);
+    },
+  );
+
+  it('R8/S61: sanity explícito de los bordes más sutiles del grupo ACTIVAS (anti verde vacuo)', async () => {
+    const ids = await construirMatriz();
+
+    const { compras } = await repo.findPaginaConItems({ grupoEstado: 'ACTIVAS', cicloId });
+    const idsSQL = new Set(compras.map((c) => c.id));
+
     expect(idsSQL.has(ids.F1)).toBe(false); // cancelada con entregado completo
+    expect(idsSQL.has(ids.F4)).toBe(false); // WU-25: todos rechazados YA NO es activa
+    expect(idsSQL.has(ids.F5)).toBe(true); // sin ítems: falta cargarlos
     expect(idsSQL.has(ids.F7)).toBe(true); // hermano de F8: mismo estado, no entregado
     expect(idsSQL.has(ids.F8)).toBe(false); // borde de igualdad
     expect(idsSQL.has(ids.F13)).toBe(true); // cuantificador universal: uno a medias basta
   });
 
-  it('R9/S62: count(filtros) refleja el MISMO universo filtrado que findAllConItems', async () => {
+  it('WU-25: los tres grupos particionan el universo — sin solapamiento y sin sobrantes', async () => {
     const ids = await construirMatriz();
 
-    const enCursoSQL = await repo.findAllConItems({ soloEnCurso: true, cicloId });
-    const total = await repo.count({ soloEnCurso: true, cicloId });
+    const porGrupo = new Map<GrupoEstadoCompra, string[]>();
+    for (const grupo of GRUPOS_ESTADO_COMPRA) {
+      const { compras } = await repo.findPaginaConItems({ grupoEstado: grupo, cicloId });
+      porGrupo.set(
+        grupo,
+        compras.map((c) => c.id),
+      );
+    }
+    const { compras: todas } = await repo.findPaginaConItems({ grupoEstado: 'TODAS', cicloId });
 
-    expect(total).toBe(enCursoSQL.length);
+    const concatenados = [...porGrupo.values()].flat();
+    // Sin solapamiento: la concatenación no repite ningún id.
+    expect(new Set(concatenados).size).toBe(concatenados.length);
+    // Sin sobrantes: cubre exactamente el universo del ciclo.
+    expect(new Set(concatenados)).toEqual(new Set(todas.map((c) => c.id)));
+    expect(new Set(concatenados)).toEqual(new Set(idsDelCiclo(ids)));
+  });
+
+  it('R9/S62: el total viene de la MISMA consulta que las filas, para cada grupo', async () => {
+    const ids = await construirMatriz();
+
+    for (const grupo of [...GRUPOS_ESTADO_COMPRA, 'TODAS' as const]) {
+      const { compras, total } = await repo.findPaginaConItems({ grupoEstado: grupo, cicloId });
+      expect(total).toBe(compras.length);
+    }
     expect(ids.F14).toBeDefined(); // fixture existe pero no cuenta (otro ciclo)
+  });
+
+  it('R9/S62: con paginación, el total mide el universo filtrado y NO el tamaño de la página', async () => {
+    await construirMatriz();
+
+    const { compras: todas, total: totalCompleto } = await repo.findPaginaConItems({
+      grupoEstado: 'TODAS',
+      cicloId,
+    });
+    const { compras: recortadas, total: totalConLimite } = await repo.findPaginaConItems({
+      grupoEstado: 'TODAS',
+      cicloId,
+      limit: 2,
+      offset: 0,
+    });
+
+    expect(todas.length).toBeGreaterThan(2);
+    expect(recortadas).toHaveLength(2);
+    expect(totalConLimite).toBe(totalCompleto);
   });
 });

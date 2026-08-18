@@ -73,24 +73,45 @@ describe("ComprasListView", () => {
     expect(params.get("pagina")).toBe("2");
   });
 
-  it("WU-30: destildar 'Solo en curso' actualiza la URL con soloEnCurso=false", async () => {
+  // Migrado de WU-30 ("destildar 'Solo en curso' -> soloEnCurso=false"): el
+  // checkbox binario pasó a ser un select de cuatro grupos (WU-25), pero el
+  // comportamiento protegido es el mismo — el filtro viaja en la URL, no en
+  // estado local, y resetea la paginación.
+  it("WU-25: elegir un grupo de estado viaja en la URL y resetea la paginación a 1", async () => {
     server.use(
       http.get("/api/compras", () =>
         HttpResponse.json({ items: [COMPRA], total: 1, pagina: 1, porPagina: 10 }),
       ),
       http.get("/api/sectores", () => HttpResponse.json([])),
     );
+    currentSearch = "pagina=3";
     const user = userEvent.setup();
     renderWithProviders(<ComprasListView />, { user: buildUser({ modulos: ["COMPRAS"] }) });
     await screen.findByText(COMPRA.numero);
 
-    await user.click(screen.getByRole("checkbox", { name: /solo en curso/i }));
+    await user.selectOptions(screen.getByLabelText(/estado/i), "COMPLETADAS");
 
     await waitFor(() => expect(replaceMock).toHaveBeenCalled());
     const calledWith = replaceMock.mock.calls.at(-1)?.[0] as string;
     const params = new URLSearchParams(calledWith.split("?")[1]);
-    expect(params.get("soloEnCurso")).toBe("false");
+    expect(params.get("estado")).toBe("COMPLETADAS");
     expect(params.get("pagina")).toBe("1");
+  });
+
+  it("sin `estado` en la URL el select muestra 'Activas' y ESO es lo que se le pide al servidor", async () => {
+    let urlPedida = "";
+    server.use(
+      http.get("/api/compras", ({ request }) => {
+        urlPedida = request.url;
+        return HttpResponse.json({ items: [COMPRA], total: 1, pagina: 1, porPagina: 10 });
+      }),
+      http.get("/api/sectores", () => HttpResponse.json([])),
+    );
+    renderWithProviders(<ComprasListView />, { user: buildUser({ modulos: ["COMPRAS"] }) });
+    await screen.findByText(COMPRA.numero);
+
+    expect(screen.getByLabelText(/estado/i)).toHaveValue("ACTIVAS");
+    expect(new URL(urlPedida).searchParams.get("estado")).toBe("ACTIVAS");
   });
 
   it("la API falla -> ErrorState con retry, sin romper la vista", async () => {

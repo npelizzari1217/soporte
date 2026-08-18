@@ -65,7 +65,9 @@ describe("ItemEditDialog", () => {
     expect(await screen.findByLabelText(/descripción/i)).toHaveValue("Insumo original");
     expect(screen.getByLabelText(/cantidad/i)).toHaveValue(2);
     expect(screen.getByLabelText(/proveedor/i)).toHaveValue("ACME");
-    expect(screen.getByLabelText(/monto/i)).toHaveValue(100);
+    // El monto se precarga FORMATEADO (el campo arranca sin foco); vuelve a
+    // crudo al enfocarlo, y lo que viaja en el PATCH sigue siendo el número.
+    expect(screen.getByLabelText(/monto/i)).toHaveValue("100,00");
   });
 
   it("regresión: precarga la fecha de cotización aunque el backend la mande como datetime ISO — sin normalizar, el input queda VACÍO", async () => {
@@ -119,7 +121,9 @@ describe("ItemEditDialog", () => {
 
     const user = await abrirDialog();
     expect(await screen.findByLabelText(/cantidad/i)).toBeDisabled();
+    // Congelado no se puede editar, así que se muestra siempre formateado.
     expect(screen.getByLabelText(/monto/i)).toBeDisabled();
+    expect(screen.getByLabelText(/monto/i)).toHaveValue("100,00");
     expect(screen.getByLabelText(/moneda/i)).toBeDisabled();
     // S14: los campos libres siguen editables en APROBADO.
     expect(screen.getByLabelText(/proveedor/i)).not.toBeDisabled();

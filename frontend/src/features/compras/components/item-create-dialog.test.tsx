@@ -107,6 +107,74 @@ describe("ItemCreateDialog", () => {
     await waitFor(() => expect(screen.queryByLabelText(/descripción/i)).not.toBeInTheDocument());
   });
 
+  /**
+   * El monto se MUESTRA formateado al salir del campo (`1.234.567,89`) pero
+   * lo que viaja tiene que seguir siendo el número crudo: el schema usa
+   * `z.coerce.number()` y la cadena formateada se convertiría en `NaN`,
+   * perdiendo la carga del usuario.
+   */
+  describe("monto formateado al salir del campo", () => {
+    it("tras el blur el payload lleva el número CRUDO, no la cadena formateada", async () => {
+      let capturedBody: Record<string, unknown> = {};
+      server.use(
+        http.post(`/api/compras/${COMPRA_ID}/items`, async ({ request }) => {
+          capturedBody = (await request.json()) as Record<string, unknown>;
+          return HttpResponse.json(compraDetalleFixture, { status: 201 });
+        }),
+      );
+
+      renderWithProviders(<ItemCreateDialog compraId={COMPRA_ID} />, {
+        user: buildUser({ permisos: ["COMPRAS:ALTAS"] }),
+      });
+
+      const user = await abrirDialog();
+      await user.type(screen.getByLabelText(/descripción/i), "Insumo");
+      await user.clear(screen.getByLabelText(/cantidad/i));
+      await user.type(screen.getByLabelText(/cantidad/i), "1");
+      await user.type(screen.getByLabelText(/proveedor/i), "ACME");
+      const monto = screen.getByLabelText(/monto/i);
+      await user.clear(monto);
+      await user.type(monto, "1234567.89");
+      await user.tab();
+
+      expect(monto).toHaveValue("1.234.567,89");
+
+      await user.selectOptions(screen.getByLabelText(/moneda/i), "ARS");
+      await user.type(screen.getByLabelText(/fecha de cotización/i), "2026-01-01");
+      await user.click(screen.getByRole("button", { name: /agregar$/i }));
+
+      await waitFor(() => expect(capturedBody.monto).toBe(1234567.89));
+    });
+
+    it("volver a enfocar devuelve el valor editable, sin puntos de miles que borrar a mano", async () => {
+      renderWithProviders(<ItemCreateDialog compraId={COMPRA_ID} />, {
+        user: buildUser({ permisos: ["COMPRAS:ALTAS"] }),
+      });
+
+      const user = await abrirDialog();
+      const monto = screen.getByLabelText(/monto/i);
+      await user.clear(monto);
+      await user.type(monto, "1234567.89");
+      await user.tab();
+      await user.click(monto);
+
+      expect(monto).toHaveValue("1234567.89");
+    });
+
+    it("blur con el campo vacío deja el campo vacío, sin NaN ni un 0 fantasma", async () => {
+      renderWithProviders(<ItemCreateDialog compraId={COMPRA_ID} />, {
+        user: buildUser({ permisos: ["COMPRAS:ALTAS"] }),
+      });
+
+      const user = await abrirDialog();
+      const monto = screen.getByLabelText(/monto/i);
+      await user.clear(monto);
+      await user.tab();
+
+      expect(monto).toHaveValue("");
+    });
+  });
+
   it("muestra el error de dominio del backend (422) al usuario, sin cerrar el dialog", async () => {
     const MENSAJE_BACKEND = "La compra está cancelada.";
     server.use(

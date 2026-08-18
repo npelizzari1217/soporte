@@ -156,6 +156,75 @@ function derivarEstadoDesdeConteos(n: number, nP: number, nA: number, nR: number
 }
 
 /**
+ * Grupos de negocio del listado de compras, en el ORDEN en que se muestran
+ * (WU-25, `compras-orden-filtro-estado`). Son mutuamente excluyentes y
+ * exhaustivos: toda compra no eliminada cae en exactamente uno.
+ *
+ * - `ACTIVAS`: la compra todavía requiere trabajo (va primera).
+ * - `COMPLETADAS`: se cerró el circuito de entrega (va en el medio).
+ * - `CANCELADAS`: cancelada o con todos sus ítems rechazados (va última).
+ *
+ * El array es la ÚNICA fuente de verdad del orden: `ORDEN_GRUPO_ESTADO_COMPRA`
+ * deriva el ordinal de acá, y el SQL del repositorio lo replica con los
+ * mismos números — no hay una segunda lista que pueda quedar desalineada.
+ */
+export const GRUPOS_ESTADO_COMPRA = ['ACTIVAS', 'COMPLETADAS', 'CANCELADAS'] as const;
+
+/** Grupo de negocio de una compra en el listado (WU-25). */
+export type GrupoEstadoCompra = (typeof GRUPOS_ESTADO_COMPRA)[number];
+
+/**
+ * Ordinal de cada grupo para el `ORDER BY grupo ASC` del listado. Derivado
+ * del índice en `GRUPOS_ESTADO_COMPRA` — no se escribe a mano.
+ */
+export const ORDEN_GRUPO_ESTADO_COMPRA: Readonly<Record<GrupoEstadoCompra, number>> = Object.freeze(
+  Object.fromEntries(GRUPOS_ESTADO_COMPRA.map((grupo, indice) => [grupo, indice])) as Record<
+    GrupoEstadoCompra,
+    number
+  >,
+);
+
+/**
+ * Valores admitidos por el filtro `estado` del listado: los tres grupos más
+ * `TODAS` (sin restricción). `TODAS` NO es un grupo — es la ausencia de
+ * filtro, por eso vive en esta lista y no en `GRUPOS_ESTADO_COMPRA`.
+ */
+export const FILTROS_GRUPO_ESTADO_COMPRA = [...GRUPOS_ESTADO_COMPRA, 'TODAS'] as const;
+
+/** Valor del filtro `estado` de `GET /compras` (WU-25). */
+export type FiltroGrupoEstadoCompra = (typeof FILTROS_GRUPO_ESTADO_COMPRA)[number];
+
+/**
+ * Deriva el grupo de negocio de una compra (WU-25). Función TOTAL: para
+ * cualquier `(cancelada, items[])` devuelve exactamente uno de los tres
+ * grupos — la exclusividad y la exhaustividad salen de la estructura del
+ * `if/else`, no de una tabla paralela que haya que mantener sincronizada.
+ *
+ * NO re-deriva la tabla de verdad: delega en `derivarEstadoCompra` (ADR-C1),
+ * que sigue siendo el único lugar donde vive la regla. La traducción es:
+ *
+ * - `CANCELADAS` ⟺ `estado ∈ {CANCELADO, RECHAZADO}`. `CANCELADO` es la
+ *   Regla 0; `RECHAZADO` es T5 (`n>=1 ∧ nP=0 ∧ nA=0 ∧ nR=n`), o sea una
+ *   compra cuyos ítems fueron TODOS rechazados: no queda nada por comprar
+ *   ni por entregar, así que operativamente es un cierre negativo y
+ *   acompaña a las canceladas.
+ * - `COMPLETADAS` ⟺ no es `CANCELADAS` y `cerrado` es `true` (todos los
+ *   ítems aprobados fueron entregados, con la excepción de vacuidad de §3
+ *   ya aplicada aguas arriba).
+ * - `ACTIVAS` ⟺ el resto: no es `CANCELADAS` y `cerrado` es `false`.
+ *
+ * @param compra Vista estructural de la compra (mismos ítems que `derivarEstadoCompra`).
+ */
+export function derivarGrupoEstadoCompra(compra: CompraParaDerivacion): GrupoEstadoCompra {
+  const { estado, cerrado } = derivarEstadoCompra(compra);
+
+  if (estado === 'CANCELADO' || estado === 'RECHAZADO') {
+    return 'CANCELADAS';
+  }
+  return cerrado ? 'COMPLETADAS' : 'ACTIVAS';
+}
+
+/**
  * Convierte una cantidad/monto a centésimas ENTERAS y redondeadas —
  * ADR-C3. Toda comparación y suma de cantidades/montos del módulo de
  * compras pasa por acá, sin excepción.

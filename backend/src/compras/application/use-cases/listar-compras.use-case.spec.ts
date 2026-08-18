@@ -9,26 +9,24 @@
  *   delegan en `derivarEstadoCompra`, ADR-C1): NO hay una segunda
  *   implementación de la tabla de verdad en este caso de uso.
  * - Paginación: `pagina`/`porPagina` se traducen a `limit`/`offset` sobre
- *   `ICompraRepository.findAllConItems`.
+ *   `ICompraRepository.findPaginaConItems`.
  * - Defaults de paginación cuando el DTO no los provee.
  * - Sin compras -> `{ items: [], total }`, sin error.
- * - `total` (PR-20, cierra el gap declarado en PR-19/H3): sale de
- *   `ICompraRepository.count()`, EN PARALELO con `findAllConItems`
- *   (`Promise.all`), SIN `limit`/`offset` — refleja el universo filtrado
- *   completo, no el tamaño de la página. Incluye el borde que descartó la
- *   alternativa de `COUNT(*) OVER()` (ver
- *   `sdd/redisenio-modulo-compras/count-en-consulta`): página vacía
- *   (`findAllConItems` devuelve `[]`) pero `total` sigue siendo el real,
- *   porque `count()` es una consulta INDEPENDIENTE, no depende de que la
- *   página tenga filas.
+ * - `total`: sale de la MISMA lectura que la página (WU-25), y sigue siendo
+ *   el del universo filtrado completo incluso con la página vacía (offset
+ *   más allá del total) — el borde que en su momento descartó
+ *   `COUNT(*) OVER()` (`sdd/redisenio-modulo-compras/count-en-consulta`).
+ * - WU-25: tabla de precedencia entre el filtro nuevo `estado` y el
+ *   `soloEnCurso` deprecado.
  *
  * Ref spec: sdd/redisenio-modulo-compras/spec §4.9 (S32, S33, S34). Ref
- * design: ADR-C1, ADR-C2. Ref tasks: PR-19, H3; excepción `total` cerrada en
- * `sdd/redisenio-modulo-compras/count-en-consulta`.
+ * design: ADR-C1, ADR-C2. Ref tasks: PR-19, H3; WU-25
+ * (sdd/compras-orden-filtro-estado).
  */
 import { ListarComprasUseCase } from './listar-compras.use-case';
 import { CompraEntity, CompraProps } from '../../domain/entities/compra.entity';
 import { ItemCompraEntity, ItemCompraCreateProps } from '../../domain/entities/item-compra.entity';
+import { FiltroGrupoEstadoCompra } from '../../domain/services/estado-compra';
 
 const COMPRA_ID = 'compra-1';
 
@@ -78,8 +76,7 @@ function crearCompra(
 describe('ListarComprasUseCase', () => {
   function makeCollaborators() {
     const compraRepo = {
-      findAllConItems: vi.fn().mockResolvedValue([]),
-      count: vi.fn().mockResolvedValue(0),
+      findPaginaConItems: vi.fn().mockResolvedValue({ compras: [], total: 0 }),
     };
     const useCase = new ListarComprasUseCase(compraRepo as never);
     return { useCase, compraRepo };
@@ -93,7 +90,7 @@ describe('ListarComprasUseCase', () => {
     item.registrarRecepcion(2, new Date('2026-01-17'));
     item.registrarEntrega(2, new Date('2026-01-18'));
     const compra = crearCompra(COMPRA_ID, [item]);
-    c.compraRepo.findAllConItems.mockResolvedValue([compra]);
+    c.compraRepo.findPaginaConItems.mockResolvedValue({ compras: [compra], total: 1 });
 
     const result = await c.useCase.execute();
 
@@ -116,7 +113,7 @@ describe('ListarComprasUseCase', () => {
     const c = makeCollaborators();
     // Sin ítems -> T1 PENDIENTE, comprado/cerrado false (nA=0, excepción de vacuidad).
     const compra = crearCompra(COMPRA_ID, []);
-    c.compraRepo.findAllConItems.mockResolvedValue([compra]);
+    c.compraRepo.findPaginaConItems.mockResolvedValue({ compras: [compra], total: 1 });
 
     const result = await c.useCase.execute();
 
@@ -129,13 +126,13 @@ describe('ListarComprasUseCase', () => {
     expect(fila.cerrado).toBe(false);
   });
 
-  it('traduce pagina/porPagina a limit/offset de findAllConItems (S32)', async () => {
+  it('traduce pagina/porPagina a limit/offset de findPaginaConItems (S32)', async () => {
     const c = makeCollaborators();
 
     await c.useCase.execute({ pagina: 3, porPagina: 10 });
 
-    expect(c.compraRepo.findAllConItems).toHaveBeenCalledTimes(1);
-    expect(c.compraRepo.findAllConItems).toHaveBeenCalledWith(
+    expect(c.compraRepo.findPaginaConItems).toHaveBeenCalledTimes(1);
+    expect(c.compraRepo.findPaginaConItems).toHaveBeenCalledWith(
       expect.objectContaining({ limit: 10, offset: 20 }),
     );
   });
@@ -145,7 +142,7 @@ describe('ListarComprasUseCase', () => {
 
     const result = await c.useCase.execute();
 
-    expect(c.compraRepo.findAllConItems).toHaveBeenCalledWith(
+    expect(c.compraRepo.findPaginaConItems).toHaveBeenCalledWith(
       expect.objectContaining({ limit: 20, offset: 0 }),
     );
     expect(result.getValue().pagina).toBe(1);
@@ -154,7 +151,7 @@ describe('ListarComprasUseCase', () => {
 
   it('sin compras -> items vacío, sin error', async () => {
     const c = makeCollaborators();
-    c.compraRepo.findAllConItems.mockResolvedValue([]);
+    c.compraRepo.findPaginaConItems.mockResolvedValue({ compras: [], total: 0 });
 
     const result = await c.useCase.execute();
 
@@ -167,8 +164,7 @@ describe('ListarComprasUseCase', () => {
     const compraA = crearCompra('compra-a');
     const compraB = crearCompra('compra-b');
     // Página de 2 pero el filtro completo tiene 5 compras -> total debe ser 5, no 2.
-    c.compraRepo.findAllConItems.mockResolvedValue([compraA, compraB]);
-    c.compraRepo.count.mockResolvedValue(5);
+    c.compraRepo.findPaginaConItems.mockResolvedValue({ compras: [compraA, compraB], total: 5 });
 
     const result = await c.useCase.execute({ pagina: 1, porPagina: 2 });
 
@@ -178,10 +174,7 @@ describe('ListarComprasUseCase', () => {
 
   it('el borde que descartó COUNT(*) OVER(): página vacía (offset más allá del total) pero total sigue siendo correcto', async () => {
     const c = makeCollaborators();
-    // findAllConItems no tiene fila para "llevar" un total embebido en la
-    // misma sentencia -- por eso count() es una consulta INDEPENDIENTE.
-    c.compraRepo.findAllConItems.mockResolvedValue([]);
-    c.compraRepo.count.mockResolvedValue(5);
+    c.compraRepo.findPaginaConItems.mockResolvedValue({ compras: [], total: 5 });
 
     const result = await c.useCase.execute({ pagina: 100, porPagina: 2 });
 
@@ -189,68 +182,97 @@ describe('ListarComprasUseCase', () => {
     expect(result.getValue().total).toBe(5);
   });
 
-  it('count() se llama SIN limit/offset (mide el universo completo, no la página)', async () => {
+  it('el orden de la página se respeta tal cual lo devuelve el repositorio (el ORDER BY vive en SQL, no acá)', async () => {
     const c = makeCollaborators();
+    const primera = crearCompra('compra-activa');
+    const segunda = crearCompra('compra-cancelada');
+    c.compraRepo.findPaginaConItems.mockResolvedValue({ compras: [primera, segunda], total: 2 });
 
-    await c.useCase.execute({ pagina: 3, porPagina: 10 });
+    const result = await c.useCase.execute();
 
-    expect(c.compraRepo.count).toHaveBeenCalledTimes(1);
-    const [filtrosDeCount] = c.compraRepo.count.mock.calls[0]!;
-    expect(filtrosDeCount).not.toHaveProperty('limit');
-    expect(filtrosDeCount).not.toHaveProperty('offset');
+    expect(result.getValue().items.map((fila) => fila.id)).toEqual([
+      'compra-activa',
+      'compra-cancelada',
+    ]);
   });
 
-  // ─── WU-13 (sdd/compras-tres-etapas-y-sectores, R9/S62) — el bug real ────
+  // ─── WU-13 (sdd/compras-tres-etapas-y-sectores, R9/S62) ─────────────────
   //
-  // count() se llamaba SIN argumentos mientras findAllConItems SÍ recibía
-  // filtros de negocio: el total de paginación medía el universo SIN
-  // filtrar, no el filtrado. Estos tests fallan contra la implementación
-  // vieja (count() con cero argumentos) y pasan solo si count() recibe el
-  // MISMO objeto de filtros de negocio que findAllConItems (menos limit/offset).
+  // El bug original: `count()` se llamaba SIN argumentos mientras
+  // `findAllConItems` SÍ recibía filtros, así que el total de paginación
+  // medía el universo SIN filtrar. WU-25 cerró esa clase entera de bug por
+  // construcción — hay UNA sola lectura, así que `items` y `total` no pueden
+  // salir de filtros distintos. Lo que queda por verificar es que el filtro
+  // de negocio llegue completo a esa única lectura.
 
-  it('S62: count() recibe el MISMO filtro de negocio (cicloId/soloEnCurso/sectorId/fechas) que findAllConItems, sin limit/offset', async () => {
+  it('S62: los filtros de negocio llegan completos a findPaginaConItems, junto con limit/offset', async () => {
     const c = makeCollaborators();
 
     await c.useCase.execute({
       pagina: 1,
       porPagina: 2,
       cicloId: 'ciclo-1',
-      soloEnCurso: true,
+      estado: 'ACTIVAS',
       sectorId: 'sector-1',
+      fechaDesde: new Date('2026-01-01'),
+      fechaHasta: new Date('2026-12-31'),
     });
 
-    const [filtrosFindAll] = c.compraRepo.findAllConItems.mock.calls[0]!;
-    const [filtrosCount] = c.compraRepo.count.mock.calls[0]!;
-
-    expect(filtrosCount).toEqual({
+    expect(c.compraRepo.findPaginaConItems).toHaveBeenCalledTimes(1);
+    const [filtros] = c.compraRepo.findPaginaConItems.mock.calls[0]!;
+    expect(filtros).toEqual({
       cicloId: 'ciclo-1',
-      soloEnCurso: true,
+      grupoEstado: 'ACTIVAS',
       sectorId: 'sector-1',
-    });
-    expect(filtrosFindAll).toEqual({
-      cicloId: 'ciclo-1',
-      soloEnCurso: true,
-      sectorId: 'sector-1',
+      fechaDesde: new Date('2026-01-01'),
+      fechaHasta: new Date('2026-12-31'),
       limit: 2,
       offset: 0,
     });
   });
 
-  it('S62: soloEnCurso default es true cuando el caller no lo especifica', async () => {
-    const c = makeCollaborators();
+  // ─── WU-25 (sdd/compras-orden-filtro-estado) — precedencia estado/soloEnCurso ──
 
-    await c.useCase.execute();
+  describe('WU-25: precedencia entre `estado` y el `soloEnCurso` deprecado', () => {
+    interface CasoPrecedencia {
+      readonly nombre: string;
+      readonly dto: { estado?: FiltroGrupoEstadoCompra; soloEnCurso?: boolean };
+      readonly esperado: FiltroGrupoEstadoCompra;
+    }
 
-    expect(c.compraRepo.count).toHaveBeenCalledWith(expect.objectContaining({ soloEnCurso: true }));
-  });
+    const casos: readonly CasoPrecedencia[] = [
+      { nombre: 'ninguno de los dos -> default ACTIVAS', dto: {}, esperado: 'ACTIVAS' },
+      {
+        nombre: 'sólo soloEnCurso=true -> ACTIVAS',
+        dto: { soloEnCurso: true },
+        esperado: 'ACTIVAS',
+      },
+      { nombre: 'sólo soloEnCurso=false -> TODAS', dto: { soloEnCurso: false }, esperado: 'TODAS' },
+      {
+        nombre: 'sólo estado=COMPLETADAS -> COMPLETADAS',
+        dto: { estado: 'COMPLETADAS' },
+        esperado: 'COMPLETADAS',
+      },
+      {
+        nombre: 'estado gana sobre soloEnCurso=false',
+        dto: { estado: 'CANCELADAS', soloEnCurso: false },
+        esperado: 'CANCELADAS',
+      },
+      {
+        nombre: 'estado gana sobre soloEnCurso=true',
+        dto: { estado: 'TODAS', soloEnCurso: true },
+        esperado: 'TODAS',
+      },
+    ];
 
-  it('S62: soloEnCurso: false desactiva el filtro por defecto (universo completo, incluidas cerradas/canceladas)', async () => {
-    const c = makeCollaborators();
+    it.each(casos)('$nombre', async ({ dto, esperado }) => {
+      const c = makeCollaborators();
 
-    await c.useCase.execute({ soloEnCurso: false });
+      await c.useCase.execute(dto);
 
-    expect(c.compraRepo.count).toHaveBeenCalledWith(
-      expect.objectContaining({ soloEnCurso: false }),
-    );
+      expect(c.compraRepo.findPaginaConItems).toHaveBeenCalledWith(
+        expect.objectContaining({ grupoEstado: esperado }),
+      );
+    });
   });
 });
