@@ -21,7 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { MontoInput } from "./monto-input";
+import { MontoInput } from "@/components/shared/monto-input";
 import { useAgregarItemCompra } from "../hooks/use-compra-mutations";
 import { agregarItemCompraSchema, type AgregarItemCompraFormValues } from "../schemas";
 

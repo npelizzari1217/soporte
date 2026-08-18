@@ -40,7 +40,7 @@ import {
 import { ItemCerrarFaltanteDialog } from "./item-cerrar-faltante-dialog";
 import type { EstadoAprobacionItem, ItemCompra } from "../types";
 import { aFechaInput } from "../lib/fecha";
-import { formatearMontoConMoneda } from "../lib/formato-numero";
+import { formatearMontoConMoneda } from "@/shared/lib/formato-numero";
 
 /**
  * Presentación de `EstadoAprobacionItem` (decisión sobre UN ítem) — mapeo

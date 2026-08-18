@@ -23,7 +23,7 @@
  */
 import { Input } from "@/components/ui/input";
 import { useState } from "react";
-import { formatearNumeroEsAr, parsearNumeroEsAr } from "../lib/formato-numero";
+import { formatearNumeroEsAr, parsearNumeroEsAr } from "@/shared/lib/formato-numero";
 
 export interface MontoInputProps {
   id: string;
