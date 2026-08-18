@@ -54,3 +54,29 @@ export interface CreateSubtareaDto {
   descripcion: string;
   orden?: number;
 }
+
+/**
+ * Comentario a nivel de REPARACIÓN (`ComentarioReparacionResponseDto`).
+ *
+ * A diferencia de las subtareas, los comentarios SÍ tienen `GET` propio
+ * (`GET /reparaciones/:id/comentarios`, más nuevo primero) — no viajan
+ * embebidos en `GET /reparaciones`.
+ *
+ * Sin `updatedAt`/`deletedAt`: la tabla es append-only, los comentarios no se
+ * editan ni se borran. `autorNombre`/`autorApellido` los resuelve el backend
+ * contra la base MASTER y viajan `null` si el usuario fue dado de baja — en
+ * ese caso la UI cae al `autorId`.
+ */
+export interface ComentarioReparacion {
+  id: string;
+  ticketEdiliciaId: string;
+  texto: string;
+  autorId: string;
+  autorNombre: string | null;
+  autorApellido: string | null;
+  createdAt: string;
+}
+
+export interface CrearComentarioReparacionDto {
+  texto: string;
+}

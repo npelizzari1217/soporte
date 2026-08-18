@@ -13,6 +13,7 @@ import { Can } from "@/components/shared/can";
 import { notifyError } from "@/shared/lib/toast";
 import { ReparacionCreateDialog } from "./reparacion-create-dialog";
 import { SubtareasDialog } from "./subtareas-dialog";
+import { ComentariosDialog } from "./comentarios-dialog";
 import type { ReparacionListItem } from "../types";
 
 function AvanceCell({ porcentaje }: { porcentaje: number }) {
@@ -35,7 +36,10 @@ export function ReparacionesList() {
     { key: "ubicacion", header: "Ubicación", render: (row) => row.ubicacion ?? "—" },
     { key: "porcentajeAvance", header: "Avance", render: (row) => <AvanceCell porcentaje={row.porcentajeAvance} /> },
     {
-      key: "id",
+      // `key` es el slot de la columna (React key + fallback de render), no
+      // necesariamente el campo a mostrar: `Column<T>.key` está tipado como
+      // `keyof T`, así que las columnas de acción reusan un campo existente.
+      key: "subtareas",
       header: "Subtareas",
       render: (row) => (
         <SubtareasDialog
@@ -45,6 +49,24 @@ export function ReparacionesList() {
           trigger={
             <Button variant="outline" size="sm">
               Ver subtareas
+            </Button>
+          }
+        />
+      ),
+    },
+    {
+      // Segundo modal hermano del de subtareas (ADR-1: `/edilicia` sin ruta
+      // de detalle). Los comentarios son de la REPARACIÓN, no de cada
+      // subtarea — por eso van en su propia columna y su propio diálogo.
+      key: "id",
+      header: "Comentarios",
+      render: (row) => (
+        <ComentariosDialog
+          reparacionId={row.id}
+          numero={row.numero}
+          trigger={
+            <Button variant="outline" size="sm">
+              Ver comentarios
             </Button>
           }
         />
