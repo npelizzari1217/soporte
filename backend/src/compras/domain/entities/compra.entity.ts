@@ -10,8 +10,11 @@ import {
   ItemCompraNoEncontradoError,
 } from '../errors/compras.errors';
 import {
+  CompraParaDerivacion,
   derivarEstadoCompra,
+  derivarGrupoEstadoCompra,
   EstadoCompra,
+  GrupoEstadoCompra,
   subtotalItemEnCentesimas,
 } from '../services/estado-compra';
 import {
@@ -258,20 +261,40 @@ export class CompraEntity extends BaseEntity<CompraProps> {
   }
 
   /**
+   * Grupo de negocio del listado (WU-25) — DELEGA en
+   * `derivarGrupoEstadoCompra`, que a su vez delega en `derivarEstadoCompra`.
+   * Existe para que los tests de deriva SQL-vs-dominio tengan un oráculo que
+   * no reimplemente la regla.
+   */
+  get grupoEstado(): GrupoEstadoCompra {
+    return derivarGrupoEstadoCompra(this.vistaParaDerivacion());
+  }
+
+  /**
    * Arma la entrada ESTRUCTURAL (`CompraParaDerivacion`) que espera
    * `derivarEstadoCompra` y la invoca. Único punto del archivo que construye
    * esa vista — `itemsActivos()` filtra los soft-deleted (spec §2: "n =
    * ítems no eliminados") ANTES de pasarlos a la función pura.
    */
   private derivarEstado(): ReturnType<typeof derivarEstadoCompra> {
-    return derivarEstadoCompra({
+    return derivarEstadoCompra(this.vistaParaDerivacion());
+  }
+
+  /**
+   * Vista ESTRUCTURAL (`CompraParaDerivacion`) del agregado: `itemsActivos()`
+   * filtra los soft-deleted (spec §2: "n = ítems no eliminados") ANTES de
+   * llegar a las funciones puras. Único punto del archivo que la construye —
+   * la comparten `derivarEstado()` y el getter `grupoEstado`.
+   */
+  private vistaParaDerivacion(): CompraParaDerivacion {
+    return {
       cancelada: this.props.canceladaEn !== null,
       items: this.itemsActivos().map((item) => ({
         estadoAprobacion: item.estadoAprobacion,
         comprado: item.comprado,
         entregado: item.entregado,
       })),
-    });
+    };
   }
 
   /** Ítems no soft-deleted del agregado — la vista que cuenta para la tabla de verdad (spec §2). */
