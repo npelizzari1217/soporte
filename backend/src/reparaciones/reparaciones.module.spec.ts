@@ -14,6 +14,9 @@ import { ReparacionesController } from './interface/controllers/reparaciones.con
 import { TicketsModule } from '../tickets/tickets.module';
 import { TICKET_EDILICIA_REPOSITORY } from './domain/ports/i-ticket-edilicia.repository';
 import { SUBTAREA_EDILICIA_REPOSITORY } from './domain/ports/i-subtarea-edilicia.repository';
+import { COMENTARIO_REPARACION_REPOSITORY } from './domain/ports/i-comentario-reparacion.repository';
+import { CrearComentarioReparacionUseCase } from './application/use-cases/crear-comentario-reparacion.use-case';
+import { ListarComentariosReparacionUseCase } from './application/use-cases/listar-comentarios-reparacion.use-case';
 
 describe('ReparacionesModule wiring (T9.7)', () => {
   it('registra ReparacionesController', () => {
@@ -26,11 +29,22 @@ describe('ReparacionesModule wiring (T9.7)', () => {
     expect(imports).toContain(TicketsModule);
   });
 
-  it.each([TICKET_EDILICIA_REPOSITORY, SUBTAREA_EDILICIA_REPOSITORY])(
-    '%s está exportado',
-    (token) => {
-      const exportsList = (Reflect.getMetadata('exports', ReparacionesModule) ?? []) as unknown[];
-      expect(exportsList).toContain(token);
+  it.each([
+    TICKET_EDILICIA_REPOSITORY,
+    SUBTAREA_EDILICIA_REPOSITORY,
+    COMENTARIO_REPARACION_REPOSITORY,
+  ])('%s está exportado', (token) => {
+    const exportsList = (Reflect.getMetadata('exports', ReparacionesModule) ?? []) as unknown[];
+    expect(exportsList).toContain(token);
+  });
+
+  it.each([CrearComentarioReparacionUseCase, ListarComentariosReparacionUseCase])(
+    '%p está provisto (los use cases se cablean a mano, sin @Injectable)',
+    (useCase) => {
+      const providers = (Reflect.getMetadata('providers', ReparacionesModule) ?? []) as {
+        provide?: unknown;
+      }[];
+      expect(providers.some((p) => p.provide === useCase)).toBe(true);
     },
   );
 });
