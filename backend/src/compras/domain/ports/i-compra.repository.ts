@@ -1,5 +1,6 @@
 import { CompraEntity } from '../entities/compra.entity';
 import { ItemCompraEntity } from '../entities/item-compra.entity';
+import { FiltroGrupoEstadoCompra } from '../services/estado-compra';
 
 /**
  * ICompraRepository — puerto ÚNICO de persistencia del agregado `Compra`
@@ -30,10 +31,9 @@ import { ItemCompraEntity } from '../entities/item-compra.entity';
  */
 
 /**
- * Filtros de paginación para `findAllConItems`/`count` (S32: máximo 2
- * sentencias SQL para los DATOS de una página — `count()` de metadata es
- * una 3ª sentencia aislada y documentada como excepción explícita, ver
- * JSDoc de `count()`).
+ * Filtros de paginación para `findPaginaConItems` (S32: máximo 3 sentencias
+ * SQL para resolver una página COMPLETA — datos + `total`; ver el JSDoc de
+ * `findPaginaConItems`).
  */
 export interface CompraListFiltros {
   /** Cantidad máxima de compras a retornar. `undefined` = sin límite. */
@@ -46,18 +46,32 @@ export interface CompraListFiltros {
    */
   cicloId?: string;
   /**
-   * "En curso" (R7): `ciclo` AND `canceladaEn IS NULL` AND `NOT cerrado`.
-   * Default `true` cuando el caller no especifica nada — lo resuelve
-   * `ListarComprasUseCase`, no este puerto. `false` desactiva el filtro por
-   * defecto (trae TODO el universo, incluidas cerradas/canceladas).
+   * Grupo de negocio a listar (WU-25). `TODAS` (o `undefined`) no restringe;
+   * los otros tres valores dejan pasar SÓLO las compras de ese grupo, tal
+   * como lo deriva `derivarGrupoEstadoCompra` (`estado-compra.ts`).
+   *
+   * REEMPLAZA al `soloEnCurso: boolean` anterior. El default (`ACTIVAS`) lo
+   * resuelve `ListarComprasUseCase`, no este puerto.
    */
-  soloEnCurso?: boolean;
+  grupoEstado?: FiltroGrupoEstadoCompra;
   /** Filtro por sector de cabecera (R11). `undefined` = sin restricción. */
   sectorId?: string;
   /** Filtra por `fechaSolicitud >= fechaDesde` (R7). Fecha de CABECERA, no de etapa. */
   fechaDesde?: Date;
   /** Filtra por `fechaSolicitud <= fechaHasta` (R7). Fecha de CABECERA, no de etapa. */
   fechaHasta?: Date;
+}
+
+/**
+ * Página del listado de compras: las filas pedidas MÁS el total del universo
+ * filtrado completo (ignorando `limit`/`offset`). Los dos valores salen de
+ * la MISMA consulta SQL — ver `findPaginaConItems`.
+ */
+export interface CompraPaginaConItems {
+  /** Compras de la página, YA ordenadas (grupo ASC, fechaSolicitud DESC, createdAt DESC). */
+  compras: CompraEntity[];
+  /** Total de compras que cumplen el filtro, sin `limit`/`offset`. */
+  total: number;
 }
 
 export interface ICompraRepository {
@@ -70,51 +84,36 @@ export interface ICompraRepository {
   findByIdConItems(id: string): Promise<CompraEntity | null>;
 
   /**
-   * Retorna las compras del tenant activo con sus ítems cargados, excluye
-   * soft-deleted, ordenadas por `created_at DESC`. El `include` de ítems
-   * son 2 sentencias SQL FIJAS, medidas empíricamente (R17, PR-12: TODA
-   * relación 1:N resuelta vía `include` de Prisma emite el SELECT base más
-   * un SELECT adicional para la relación, sin importar la cantidad de
-   * filas) — NO 1 sentencia con margen para un `count()` adicional, como
-   * afirmaba una versión anterior de este JSDoc (el margen ya estaba
-   * consumido antes de este método existir). El total de paginación NO
-   * sale de acá: lo expone `count()` (ver su JSDoc) como una 3ª sentencia
-   * aislada y documentada.
-   */
-  findAllConItems(filtros?: CompraListFiltros): Promise<CompraEntity[]>;
-
-  /**
-   * Retorna la cantidad total de compras del tenant activo que cumplen el
-   * MISMO filtro que `findAllConItems` (excluye soft-deleted), IGNORANDO
-   * `limit`/`offset` — usado por `ListarComprasUseCase` para `total` de
-   * paginación (metadata del universo filtrado, no de la página). Mismo
-   * patrón que `ITicketRepository.count` (T7).
+   * Retorna UNA página del listado de compras del tenant activo (excluye
+   * soft-deleted), con sus ítems cargados, YA ORDENADA y con el `total` del
+   * universo filtrado completo.
    *
-   * **EXCEPCIÓN DOCUMENTADA a S32** (máximo 2 sentencias SQL por página):
-   * el límite de 2 se fijó CONTRA el patrón N+1 — la patología es la
-   * consulta POR FILA (o por ítem), que crece linealmente con el tamaño de
-   * la página. Un `count()` es O(1): ejecuta UNA sola sentencia agregada
-   * sin importar cuántas filas devuelva `findAllConItems` ni cuántos ítems
-   * tenga cada compra. Tres sentencias FIJAS (compras+items vía `include`,
-   * más este `count()`) siguen respetando el espíritu de S32 — la
-   * prohibición del N+1 sigue vigente sin excepciones; solo se admite un
-   * tercer round-trip fijo y aislado para la metadata de paginación.
+   * **Orden (WU-25)**: `grupo ASC, fechaSolicitud DESC, createdAt DESC`,
+   * donde `grupo` es el ordinal de `derivarGrupoEstadoCompra`
+   * (`ACTIVAS`=0, `COMPLETADAS`=1, `CANCELADAS`=2). El orden se resuelve EN
+   * LA BASE, no en memoria: la paginación es server-side, así que ordenar
+   * después de traer la página daría un orden correcto dentro de la página
+   * y ROTO a través de las páginas.
    *
-   * Se descartó meter el total en la MISMA sentencia con `COUNT(*) OVER()`
-   * (window function) tras verificación empírica contra Postgres real (ver
-   * `sdd/redisenio-modulo-compras/count-en-consulta`): (a) rompe el
-   * contrato del mapper — `$queryRaw` devuelve columnas snake_case crudas,
-   * no los nombres camelCase que espera `CompraMapper.toDomain`, sin
-   * ninguna señal de compilación ante un olvido; (b) el total deserializa
-   * como `bigint` nativo, no `number`; y (c) si la página pedida devuelve
-   * CERO filas (offset más allá del total, o filtro sin resultados), la
-   * window function NO tiene ninguna fila donde llevar el total —
-   * exactamente el caso en que un paginador MÁS necesita saberlo. La
-   * implementación concreta (`PrismaCompraRepository.count`) reusa la
-   * MISMA construcción de `where` que `findAllConItems`, sin duplicar la
-   * lógica del filtro.
+   * **Por qué `total` y `compras` salen juntos** (reemplaza al par
+   * `findAllConItems`/`count` anterior): el grupo es una expresión DERIVADA
+   * de `(canceladaEn, items[])`, no una columna, así que la selección de
+   * ids se resuelve con SQL crudo. Devolver el total desde esa MISMA
+   * sentencia elimina por construcción la desincronización que S62 vigila
+   * (dos consultas con filtros distintos) en vez de vigilarla con un test.
+   *
+   * **Presupuesto de sentencias SQL (S32)**: 1 (ids ordenados + total) + 2
+   * (hidratación `findMany` con `include` de ítems, R17) = 3 FIJAS, el
+   * mismo número que el par anterior. Sigue sin haber N+1: ninguna
+   * sentencia se emite POR FILA. Con la página vacía son 1 sola (la
+   * hidratación se saltea).
+   *
+   * La objeción histórica a `COUNT(*) OVER()` (si la página no tiene filas,
+   * la window function no tiene dónde llevar el total) NO aplica acá: la
+   * sentencia agrega los ids en un `array_agg` y devuelve SIEMPRE
+   * exactamente una fila, con `total` incluso cuando el array viene vacío.
    */
-  count(filtros?: CompraListFiltros): Promise<number>;
+  findPaginaConItems(filtros?: CompraListFiltros): Promise<CompraPaginaConItems>;
 
   /**
    * Retorna la última secuencia LOCAL (tenant+año) usada en `numero`

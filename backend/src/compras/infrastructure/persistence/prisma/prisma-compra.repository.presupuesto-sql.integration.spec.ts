@@ -1,7 +1,7 @@
 /**
  * PR-12/PR-20 [INTEGRATION] — RED→GREEN: S32, presupuesto de sentencias SQL.
  *
- * Una página completa (`findAllConItems` + `count()` para el `total` de
+ * Una página completa (`findPaginaConItems`: las filas MÁS el `total` de
  * paginación) debe resolverse en MÁXIMO 3 sentencias SQL. Medido de VERDAD
  * contando las sentencias emitidas por Prisma vía `$on('query', ...)` — no
  * por inspección del código fuente.
@@ -9,24 +9,30 @@
  * **EXCEPCIÓN DOCUMENTADA a S32 (el "2" original) — por qué 3 y no 2**:
  * S32 fijó "máximo 2 sentencias SQL por página" y esa regla fue escrita
  * CONTRA el patrón N+1 — la patología es la consulta POR FILA (o por
- * ítem), que crece linealmente con el tamaño de la página. `findAllConItems`
- * ya mide 2 sentencias fijas (`include` de una relación 1:N = SELECT base +
- * SELECT de la relación, R17, medido en este mismo spec). `count()` agrega
- * una 3ª sentencia, pero es **O(1)**: una única sentencia agregada que NO
- * crece con la cantidad de filas de la página ni con la cantidad de ítems
- * por compra. Tres sentencias FIJAS siguen respetando el espíritu de S32 —
- * la prohibición del N+1 sigue vigente sin excepciones; lo que cambia es
- * que se admite un tercer round-trip fijo y aislado para la metadata de
- * paginación (`total`), en vez de forzarlo dentro de las primeras dos.
+ * ítem), que crece linealmente con el tamaño de la página. Ninguna de las 3
+ * sentencias de acá lo es: (1) el `$queryRaw` que resuelve filtro, grupo
+ * derivado, orden, paginación y `total` devolviendo SÓLO ids; (2)+(3) la
+ * hidratación con `findMany` + `include` de ítems (una relación 1:N de
+ * Prisma siempre emite el SELECT base más un SELECT de la relación, R17).
+ * Tres sentencias FIJAS: no crecen con el tamaño de la página ni con la
+ * cantidad de ítems por compra.
  *
- * Se descartó `COUNT(*) OVER()` (window function) para mantener el "2"
- * literal — ver `sdd/redisenio-modulo-compras/count-en-consulta`: rompe el
- * contrato del mapper (columnas snake_case crudas vía `$queryRaw`), el
- * total deserializa `bigint`, y si la página pedida devuelve CERO filas la
- * window function no tiene fila donde llevar el total (el caso exacto en
- * que más se necesita). `count()` aislado y tipado evita las tres
- * fragilidades a cambio de UNA sentencia SQL adicional — el patrón estándar
- * de la industria (`findMany` + `count()` con el mismo `where`).
+ * **WU-25 (sdd/compras-orden-filtro-estado) — cambió QUÉ son las 3, no
+ * cuántas.** Antes eran `findAllConItems` (2) + `count()` (1). Ahora el
+ * grupo de estado es una expresión derivada de `(canceladaEn, items[])`,
+ * que Prisma no puede ordenar ni filtrar declarativamente, así que la
+ * selección de ids se resolvió en SQL crudo — y devolver el `total` desde
+ * esa MISMA sentencia elimina por construcción la desincronización que S62
+ * vigilaba.
+ *
+ * La objeción histórica a `COUNT(*) OVER()`
+ * (`sdd/redisenio-modulo-compras/count-en-consulta`) NO aplica a esta
+ * forma: (a) el SQL crudo devuelve ids, nunca filas que alimenten a
+ * `CompraMapper.toDomain` (el mapper sigue recibiendo la forma camelCase de
+ * `findMany`); (b) los enteros van casteados a `::int`, no llegan como
+ * `bigint`; y (c) los ids viajan agregados con `array_agg`, así que la
+ * consulta devuelve SIEMPRE exactamente una fila y el `total` llega incluso
+ * con la página vacía.
  *
  * `PrismaService.getTenantClient()`/`TenantContext` NO exponen el evento
  * `query` (el cliente se construye sin `log` configurado) — este spec
@@ -43,19 +49,18 @@
  *
  * ── FIX post-verify C2 (sdd/compras-tres-etapas-y-sectores) ──
  *
- * Las dos mediciones de abajo llamaban `findAllConItems`/`count` SIN
- * `soloEnCurso`, así que medían la forma VIEJA del `where` — la que arma
- * `buildWhere()` cuando `filtros?.soloEnCurso` es falsy (sin el `OR` de tres
- * `some`/`none`). El camino de PRODUCCIÓN nunca se midió: `listar-compras.
- * use-case.ts:107` fuerza `soloEnCurso: dto.soloEnCurso ?? true` SIEMPRE
- * (default `true`) y agrega filtros de fecha/sector cuando el caller los
- * manda (R7/R11). `resoluciones-pre-apply` §3 pidió medir el camino real; el
- * apply-progress previo reportó "MEDIDO" sin haberlo hecho.
+ * Las mediciones de abajo llamaban al repositorio SIN el filtro de estado,
+ * así que medían la forma VIEJA del `where` (sin el predicado derivado). El
+ * camino de PRODUCCIÓN nunca se midió: `ListarComprasUseCase` fuerza
+ * SIEMPRE un `grupoEstado` (default `ACTIVAS`) y agrega filtros de
+ * fecha/sector cuando el caller los manda (R7/R11).
+ * `resoluciones-pre-apply` §3 pidió medir el camino real; el apply-progress
+ * previo reportó "MEDIDO" sin haberlo hecho.
  *
- * Los dos `it` de abajo ahora llaman con `soloEnCurso: true` MÁS
- * `fechaDesde`/`fechaHasta`/`sectorId` (el trío completo de filtros de R7/R11
- * que agrega `buildWhere()` a la sentencia base) — es el `where` real que
- * arma `ListarComprasUseCase.execute()` con esos 3 filtros presentes.
+ * Los `it` de abajo llaman con `grupoEstado: 'ACTIVAS'` MÁS
+ * `fechaDesde`/`fechaHasta`/`sectorId` (el trío completo de filtros de
+ * R7/R11) — es el filtro real que arma `ListarComprasUseCase.execute()` con
+ * esos 3 presentes.
  *
  * Ref spec: sdd/redisenio-modulo-compras/spec §4.9 (S32). Ref design: ADR-C2.
  * Ref verify: sdd/compras-tres-etapas-y-sectores/verify-report C2.
@@ -68,6 +73,7 @@ import { PrismaService } from '../../../../shared/infrastructure/persistence/pri
 import { TenantContext } from '../../../../shared/tenancy/tenant-context';
 import { TenantPrismaClient } from '../../../../shared/infrastructure/persistence/prisma-clients';
 import { PrismaCompraRepository } from './prisma-compra.repository';
+import { CompraListFiltros } from '../../../domain/ports/i-compra.repository';
 import { CompraEntity } from '../../../domain/entities/compra.entity';
 
 const MASTER_TEST_URL =
@@ -79,13 +85,13 @@ const CLIENTE_ID = 'test-cliente-pr12-sql-budget';
 const DUMMY_USUARIO_ID = '01900000-0000-7000-8000-000000000001';
 
 /**
- * Presupuesto duro de una página completa: `findAllConItems` (2 sentencias
- * fijas, R17) + `count()` (1 sentencia fija, O(1) — excepción documentada a
- * S32, ver JSDoc del archivo). Total: 3, NO 2.
+ * Presupuesto duro de una página completa: 1 sentencia de ids+total +
+ * 2 de hidratación (`findMany` con `include`, R17). Total: 3, NO 2 —
+ * excepción documentada a S32, ver JSDoc del archivo.
  */
 const PRESUPUESTO_MAXIMO_SENTENCIAS = 3;
 
-describe('PrismaCompraRepository.findAllConItems — Presupuesto de sentencias SQL (S32)', () => {
+describe('PrismaCompraRepository.findPaginaConItems — Presupuesto de sentencias SQL (S32)', () => {
   let prismaServiceParaUrl: PrismaService;
   let pool: Pool;
   let tenantClient: InstanceType<typeof TenantPrismaClient>;
@@ -122,9 +128,8 @@ describe('PrismaCompraRepository.findAllConItems — Presupuesto de sentencias S
     });
     comprasIdsCreadas.push(compra.id);
     // Ítem PENDIENTE (default de `agregarItem`, sin `estadoAprobacion`
-    // explícito) — satisface el 1er término del OR de `soloEnCurso` (fix C2:
-    // la compra tiene que quedar "en curso" para que el `where` real de
-    // producción la devuelva).
+    // explícito) — la compra queda en el grupo ACTIVAS (`nP >= 1`), que es
+    // lo que pide el filtro real de producción (fix C2).
     compra
       .agregarItem({
         descripcion: 'Item de presupuesto SQL',
@@ -207,60 +212,56 @@ describe('PrismaCompraRepository.findAllConItems — Presupuesto de sentencias S
   });
 
   /**
-   * Filtros REALES de `ListarComprasUseCase.execute()` con `soloEnCurso`
-   * default (`true`) y fecha/sector presentes (fix C2) — NO el `where`
+   * Filtros REALES de `ListarComprasUseCase.execute()`: `grupoEstado` con su
+   * default (`ACTIVAS`) más fecha/sector presentes (fix C2) — NO el filtro
    * desnudo. `fechaDesde`/`fechaHasta` encierran el `fechaSolicitud` del
    * fixture ('2026-03-01'); `sectorId` es el sector real creado en
    * `beforeAll`.
    */
-  function filtrosCaminoReal(): {
-    soloEnCurso: true;
-    fechaDesde: Date;
-    fechaHasta: Date;
-    sectorId: string;
-  } {
+  function filtrosCaminoReal(): CompraListFiltros {
     return {
-      soloEnCurso: true,
+      grupoEstado: 'ACTIVAS',
       fechaDesde: new Date('2026-01-01'),
       fechaHasta: new Date('2026-12-31'),
       sectorId,
     };
   }
 
-  it(`[CRITICAL] resuelve una página con ítems incluidos en máximo ${PRESUPUESTO_MAXIMO_SENTENCIAS} sentencias SQL (camino real: soloEnCurso+fechas+sector, medido con $on('query'))`, async () => {
-    const pagina = await withTenant(() =>
-      compraRepo.findAllConItems({ limit: 10, offset: 0, ...filtrosCaminoReal() }),
+  it(`[CRITICAL] una página completa (filas + total) resuelve en EXACTAMENTE ${PRESUPUESTO_MAXIMO_SENTENCIAS} sentencias SQL — camino real de producción (grupoEstado+fechas+sector, medido con $on('query'))`, async () => {
+    const { compras, total } = await withTenant(() =>
+      compraRepo.findPaginaConItems({ limit: 10, offset: 0, ...filtrosCaminoReal() }),
     );
 
-    expect(pagina.length).toBeGreaterThan(0);
-    expect(pagina[0].items.length).toBeGreaterThan(0);
+    expect(compras.length).toBeGreaterThan(0);
+    expect(compras[0].items.length).toBeGreaterThan(0);
+    expect(total).toBeGreaterThanOrEqual(compras.length);
 
     console.info(
-      `[S32][camino real] Sentencias SQL emitidas por findAllConItems: ${sentenciasEmitidas.length}` +
+      `[S32][camino real] Sentencias SQL emitidas por findPaginaConItems: ${sentenciasEmitidas.length}` +
         ` -> ${JSON.stringify(sentenciasEmitidas)}`,
     );
-    expect(sentenciasEmitidas.length).toBeLessThanOrEqual(2);
-  }, 15_000);
-
-  it(`[CRITICAL] una página completa (findAllConItems + count) resuelve en EXACTAMENTE ${PRESUPUESTO_MAXIMO_SENTENCIAS} sentencias SQL — camino real de producción (soloEnCurso+fechas+sector, excepción documentada a S32)`, async () => {
-    const [pagina, total] = await withTenant(() =>
-      Promise.all([
-        compraRepo.findAllConItems({ limit: 10, offset: 0, ...filtrosCaminoReal() }),
-        compraRepo.count(filtrosCaminoReal()),
-      ]),
-    );
-
-    expect(pagina.length).toBeGreaterThan(0);
-    expect(total).toBeGreaterThanOrEqual(pagina.length);
-
-    console.info(
-      `[S32+count][camino real] Sentencias SQL emitidas por findAllConItems+count: ${sentenciasEmitidas.length}` +
-        ` -> ${JSON.stringify(sentenciasEmitidas)}`,
-    );
-    // Medido con el `where` REAL que arma producción (soloEnCurso+fechas+
+    // Medido con el filtro REAL que arma producción (grupoEstado+fechas+
     // sector) — si esto no da exactamente 3, el presupuesto de S32 NO se
     // toca: se reporta el número real como "needs human review" (fix C2, ver
     // verify-report).
     expect(sentenciasEmitidas.length).toBe(PRESUPUESTO_MAXIMO_SENTENCIAS);
+  }, 15_000);
+
+  it('[CRITICAL] una página VACÍA (offset más allá del total) resuelve en 1 sola sentencia y aun así trae el total', async () => {
+    const { compras, total } = await withTenant(() =>
+      compraRepo.findPaginaConItems({ limit: 10, offset: 100_000, ...filtrosCaminoReal() }),
+    );
+
+    expect(compras).toEqual([]);
+    // El total NO depende de que la página tenga filas — `array_agg` deja la
+    // sentencia devolviendo siempre exactamente una fila.
+    expect(total).toBeGreaterThan(0);
+
+    console.info(
+      `[S32][página vacía] Sentencias SQL emitidas: ${sentenciasEmitidas.length}` +
+        ` -> ${JSON.stringify(sentenciasEmitidas)}`,
+    );
+    // Sin ids que hidratar, el `findMany` se saltea entero.
+    expect(sentenciasEmitidas.length).toBe(1);
   }, 15_000);
 });
