@@ -112,9 +112,14 @@ export function toTicketEdiliciaResponseDto(
  * las `subtareas` EMBEBIDAS (sdd/beta-frontend item 1 — G7: antes no había
  * forma de recargarlas tras un refresh de página; el frontend dependía solo
  * del cache de sesión de las mutaciones).
+ *
+ * Los comentarios NO viajan embebidos (tienen su propio `GET`): del listado
+ * sale sólo `cantidadComentarios`, lo justo para el indicador de la fila.
  */
 export interface ReparacionListItemResponseDto extends TicketEdiliciaConTicketResponseDto {
   subtareas: SubtareaEdiliciaResponseDto[];
+  /** Cantidad de comentarios de la reparación; `0` cuando no tiene ninguno. */
+  cantidadComentarios: number;
 }
 
 /** Convierte un `ReparacionConTicket` (join en memoria) al shape de respuesta HTTP. */
@@ -124,6 +129,7 @@ export function toReparacionListItemResponseDto(
   return {
     ...toTicketEdiliciaResponseDto(item.ticket, item.ticketEdilicia),
     subtareas: item.subtareas.map(toSubtareaEdiliciaResponseDto),
+    cantidadComentarios: item.cantidadComentarios,
   };
 }
 

@@ -34,12 +34,16 @@ describe('ListarReparacionesUseCase', () => {
     const ediliciaRepo = { findAll: vi.fn() };
     const ticketRepo = { findById: vi.fn() };
     const subtareaRepo = { findActiveByTicketEdiliciaId: vi.fn().mockResolvedValue([]) };
+    const comentarioRepo = {
+      contarPorTicketEdilicia: vi.fn().mockResolvedValue(new Map<string, number>()),
+    };
     const useCase = new ListarReparacionesUseCase(
       ediliciaRepo as any,
       ticketRepo as any,
       subtareaRepo as any,
+      comentarioRepo as any,
     );
-    return { useCase, ediliciaRepo, ticketRepo, subtareaRepo };
+    return { useCase, ediliciaRepo, ticketRepo, subtareaRepo, comentarioRepo };
   }
 
   it('resuelve ticket + subtareas para cada ticket_edilicia', async () => {
@@ -62,6 +66,65 @@ describe('ListarReparacionesUseCase', () => {
     expect(items[0].ticketEdilicia).toBe(edilicia);
     expect(items[0].subtareas).toEqual(['subtarea-a']);
     expect(subtareaRepo.findActiveByTicketEdiliciaId).toHaveBeenCalledWith('edilicia-uuid');
+  });
+
+  describe('conteo de comentarios (indicador del listado)', () => {
+    /**
+     * Arma N satélites con su ticket base ya resuelto. El listado es un N+1
+     * conocido (ticket + subtareas por fila): estos tests existen para que el
+     * conteo de comentarios NO se sume a esa cuenta.
+     */
+    function conNSatelites(cantidad: number) {
+      const deps = buildDeps();
+      const satelites = Array.from({ length: cantidad }, (_, i) =>
+        TicketEdiliciaEntity.create(
+          { ticketId: `ticket-uuid-${i}`, ubicacion: 'Edificio Central' },
+          `edilicia-uuid-${i}`,
+        ),
+      );
+      deps.ediliciaRepo.findAll.mockResolvedValue(satelites);
+      deps.ticketRepo.findById.mockImplementation((ticketId: string) =>
+        Promise.resolve(makeTicket(ticketId)),
+      );
+      return { ...deps, satelites };
+    }
+
+    it('resuelve el conteo en UNA sola consulta por lote, no una por reparación', async () => {
+      const { useCase, comentarioRepo } = conNSatelites(3);
+
+      await useCase.execute();
+
+      expect(comentarioRepo.contarPorTicketEdilicia).toHaveBeenCalledTimes(1);
+      expect(comentarioRepo.contarPorTicketEdilicia).toHaveBeenCalledWith([
+        'edilicia-uuid-0',
+        'edilicia-uuid-1',
+        'edilicia-uuid-2',
+      ]);
+    });
+
+    it('mapea el conteo de cada reparación y usa 0 para las que no tienen comentarios', async () => {
+      const { useCase, comentarioRepo } = conNSatelites(3);
+      comentarioRepo.contarPorTicketEdilicia.mockResolvedValue(
+        new Map([
+          ['edilicia-uuid-0', 3],
+          ['edilicia-uuid-2', 1],
+        ]),
+      );
+
+      const items = (await useCase.execute()).getValue();
+
+      expect(items.map((item) => item.cantidadComentarios)).toEqual([3, 0, 1]);
+    });
+
+    it('con lista vacía no consulta comentarios y devuelve vacío', async () => {
+      const { useCase, ediliciaRepo, comentarioRepo } = buildDeps();
+      ediliciaRepo.findAll.mockResolvedValue([]);
+
+      const result = await useCase.execute();
+
+      expect(result.getValue()).toEqual([]);
+      expect(comentarioRepo.contarPorTicketEdilicia).not.toHaveBeenCalled();
+    });
   });
 
   it('omite satélites huérfanos (sin ticket base)', async () => {

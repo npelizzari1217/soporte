@@ -150,8 +150,14 @@ import { ReparacionesController } from './interface/controllers/reparaciones.con
         ediliciaRepo: ITicketEdiliciaRepository,
         ticketRepo: ITicketRepository,
         subtareaRepo: ISubtareaEdiliciaRepository,
-      ) => new ListarReparacionesUseCase(ediliciaRepo, ticketRepo, subtareaRepo),
-      inject: [TICKET_EDILICIA_REPOSITORY, TICKET_REPOSITORY, SUBTAREA_EDILICIA_REPOSITORY],
+        comentarioRepo: IComentarioReparacionRepository,
+      ) => new ListarReparacionesUseCase(ediliciaRepo, ticketRepo, subtareaRepo, comentarioRepo),
+      inject: [
+        TICKET_EDILICIA_REPOSITORY,
+        TICKET_REPOSITORY,
+        SUBTAREA_EDILICIA_REPOSITORY,
+        COMENTARIO_REPARACION_REPOSITORY,
+      ],
     },
     {
       provide: CrearSubtareaUseCase,

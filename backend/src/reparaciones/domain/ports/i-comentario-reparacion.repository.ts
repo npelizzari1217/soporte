@@ -4,8 +4,8 @@ import { ComentarioReparacionEntity } from '../entities/comentario-reparacion.en
  * IComentarioReparacionRepository — puerto de persistencia de los comentarios
  * de una reparación edilicia.
  *
- * APPEND-ONLY GARANTIZADO POR LA FIRMA: expone únicamente `crear()` y
- * `listarPorTicketEdilicia()`. No hay `update`/`delete` — no es una
+ * APPEND-ONLY GARANTIZADO POR LA FIRMA: expone un solo método de escritura
+ * (`crear()`); el resto son lecturas. No hay `update`/`delete` — no es una
  * convención a respetar, el método no existe (mismo criterio que
  * `IOperacionCompraRepository`, S37). La tabla lo acompaña estructuralmente:
  * `comentarios_reparacion` no tiene `updated_at` ni `deleted_at`.
@@ -26,6 +26,23 @@ export interface IComentarioReparacionRepository {
    * mantiene determinístico aun con dos inserts en el mismo milisegundo.
    */
   listarPorTicketEdilicia(ticketEdiliciaId: string): Promise<ComentarioReparacionEntity[]>;
+
+  /**
+   * Cuenta los comentarios de VARIAS reparaciones de una sola vez y devuelve
+   * `Map<ticketEdiliciaId, cantidad>`.
+   *
+   * POR LOTE A PROPÓSITO, no por conveniencia: su único consumidor es
+   * `ListarReparacionesUseCase`, que ya es un N+1 conocido (resuelve ticket
+   * base y subtareas fila por fila, `1 + 2N` consultas). Una firma de un solo
+   * id invitaría a llamarla dentro de ese loop y dejaría el listado en `1 + 3N`.
+   * Con esta firma el indicador de comentarios cuesta UNA consulta agregada
+   * para toda la página, sin importar cuántas reparaciones haya.
+   *
+   * Las reparaciones sin comentarios NO aparecen en el Map (un `GROUP BY` no
+   * emite filas vacías): quien lo consuma resuelve la ausencia como `0`.
+   * Con `ticketEdiliciaIds` vacío no consulta nada y devuelve un Map vacío.
+   */
+  contarPorTicketEdilicia(ticketEdiliciaIds: string[]): Promise<Map<string, number>>;
 }
 
 /** Token de inyección de dependencias para IComentarioReparacionRepository en NestJS. */
