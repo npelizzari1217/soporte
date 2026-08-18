@@ -40,6 +40,7 @@ import {
 import { ItemCerrarFaltanteDialog } from "./item-cerrar-faltante-dialog";
 import type { EstadoAprobacionItem, ItemCompra } from "../types";
 import { aFechaInput } from "../lib/fecha";
+import { formatearMontoConMoneda } from "../lib/formato-numero";
 
 /**
  * Presentación de `EstadoAprobacionItem` (decisión sobre UN ítem) — mapeo
@@ -52,11 +53,6 @@ const ESTADO_ITEM_CONFIG: Record<EstadoAprobacionItem, { label: string; variant:
   APROBADO: { label: "Aprobado", variant: "success" },
   RECHAZADO: { label: "Rechazado", variant: "destructive" },
 };
-
-/** Formato es-AR de moneda + monto, mismo criterio que `formatearTotalesPorMoneda`. */
-function formatMonto(moneda: string, monto: number): string {
-  return `${moneda} ${monto.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
 
 /** "YYYY-MM-DD" desde un ISO string del backend, con guion cuando la etapa todavía no se registró. */
 function formatFecha(fechaISO: string | null): string {
@@ -104,8 +100,8 @@ export function CompraItemsSection({ compraId, items }: CompraItemsSectionProps)
                   <TableCell>{item.descripcion}</TableCell>
                   <TableCell>{item.cantidad}</TableCell>
                   <TableCell>{item.proveedor}</TableCell>
-                  <TableCell>{formatMonto(item.moneda, item.monto)}</TableCell>
-                  <TableCell>{formatMonto(item.moneda, item.totalItem)}</TableCell>
+                  <TableCell>{formatearMontoConMoneda(item.moneda, item.monto)}</TableCell>
+                  <TableCell>{formatearMontoConMoneda(item.moneda, item.totalItem)}</TableCell>
                   <TableCell>
                     <Badge variant={estadoConfig.variant}>{estadoConfig.label}</Badge>
                   </TableCell>

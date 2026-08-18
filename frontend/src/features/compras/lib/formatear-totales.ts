@@ -7,14 +7,14 @@
  * Presentación pura: no decide NADA sobre el estado de la compra ni
  * inspecciona ítems (esa regla vive en el backend, ADR-C1) — solo formatea
  * números que ya llegaron resueltos en el DTO.
+ *
+ * El formato es-AR en sí vive en `./formato-numero.ts`, compartido con el
+ * detalle de ítems y con el input de monto.
  */
+import { formatearMontoConMoneda } from "./formato-numero";
+
 export function formatearTotalesPorMoneda(totales: Record<string, number>): string {
   const entradas = Object.entries(totales);
   if (entradas.length === 0) return "—";
-  return entradas
-    .map(
-      ([moneda, monto]) =>
-        `${moneda} ${monto.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-    )
-    .join(" · ");
+  return entradas.map(([moneda, monto]) => formatearMontoConMoneda(moneda, monto)).join(" · ");
 }
