@@ -20,6 +20,7 @@ import { Result } from '../../../shared/domain/result';
 import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
 import { TicketEdiliciaEntity } from '../../domain/entities/ticket-edilicia.entity';
 import { SubtareaEdiliciaEntity } from '../../domain/entities/subtarea-edilicia.entity';
+import { ComentarioReparacionEntity } from '../../domain/entities/comentario-reparacion.entity';
 import {
   SolicitanteInvalidoError,
   SinCicloActivoError,
@@ -62,6 +63,11 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
     const crearSubtareaUseCase = { execute: vi.fn() };
     const completarSubtareaUseCase = { execute: vi.fn() };
     const eliminarSubtareaUseCase = { execute: vi.fn() };
+    const crearComentarioUseCase = { execute: vi.fn() };
+    const listarComentariosUseCase = { execute: vi.fn() };
+    // Default: master no resuelve ningún nombre (usuario dado de baja) — los
+    // tests que verifican el enriquecimiento lo sobrescriben.
+    const usuarioMasterChecker = { resolverNombres: vi.fn().mockResolvedValue(new Map()) };
 
     const controller = new ReparacionesController(
       crearTicketEdilicioUseCase as any,
@@ -69,6 +75,9 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
       crearSubtareaUseCase as any,
       completarSubtareaUseCase as any,
       eliminarSubtareaUseCase as any,
+      crearComentarioUseCase as any,
+      listarComentariosUseCase as any,
+      usuarioMasterChecker as any,
     );
 
     return {
@@ -78,6 +87,9 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
       crearSubtareaUseCase,
       completarSubtareaUseCase,
       eliminarSubtareaUseCase,
+      crearComentarioUseCase,
+      listarComentariosUseCase,
+      usuarioMasterChecker,
     };
   }
 
@@ -295,6 +307,118 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
         ReparacionesController.prototype.eliminarSubtarea,
       );
       expect(permisos).toEqual(['EDILICIA:BORRADO']);
+    });
+  });
+
+  describe('POST /reparaciones/:reparacionId/comentarios', () => {
+    it('crea el comentario con el autorId del JWT y resuelve el nombre del autor', async () => {
+      const { controller, crearComentarioUseCase, usuarioMasterChecker } = buildController();
+      const comentario = ComentarioReparacionEntity.create(
+        {
+          ticketEdiliciaId: 'edilicia-uuid',
+          texto: 'Falta el repuesto X',
+          autorId: 'usuario-uuid',
+        },
+        'comentario-uuid',
+      );
+      crearComentarioUseCase.execute.mockResolvedValue(Result.ok(comentario));
+      usuarioMasterChecker.resolverNombres.mockResolvedValue(
+        new Map([['usuario-uuid', { nombre: 'Ana', apellido: 'Gómez' }]]),
+      );
+
+      const result = await controller.crearComentario(
+        'edilicia-uuid',
+        { texto: 'Falta el repuesto X' } as any,
+        USER,
+      );
+
+      expect(result.id).toBe('comentario-uuid');
+      expect(result.autorNombre).toBe('Ana');
+      expect(result.autorApellido).toBe('Gómez');
+      expect(crearComentarioUseCase.execute).toHaveBeenCalledWith({
+        ticketEdiliciaId: 'edilicia-uuid',
+        texto: 'Falta el repuesto X',
+        autorId: 'usuario-uuid',
+      });
+    });
+
+    it('mapea TicketEdiliciaNoEncontradoError → 404', async () => {
+      const { controller, crearComentarioUseCase } = buildController();
+      crearComentarioUseCase.execute.mockResolvedValue(
+        Result.fail(new TicketEdiliciaNoEncontradoError('edilicia-uuid')),
+      );
+
+      await expect(
+        controller.crearComentario('edilicia-uuid', { texto: 'X' } as any, USER),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('declara @RequiereAcciones("EDILICIA:ALTAS")', () => {
+      const permisos = Reflect.getMetadata(
+        ACCIONES_KEY,
+        ReparacionesController.prototype.crearComentario,
+      );
+      expect(permisos).toEqual(['EDILICIA:ALTAS']);
+    });
+  });
+
+  describe('GET /reparaciones/:reparacionId/comentarios', () => {
+    it('resuelve los nombres en UN solo batch sin ids repetidos (sin N+1)', async () => {
+      const { controller, listarComentariosUseCase, usuarioMasterChecker } = buildController();
+      const props = { ticketEdiliciaId: 'edilicia-uuid', autorId: 'usuario-uuid' };
+      listarComentariosUseCase.execute.mockResolvedValue(
+        Result.ok([
+          ComentarioReparacionEntity.create({ ...props, texto: 'Sigue sin llegar' }, 'c2'),
+          ComentarioReparacionEntity.create({ ...props, texto: 'Se pidió el repuesto' }, 'c1'),
+        ]),
+      );
+      usuarioMasterChecker.resolverNombres.mockResolvedValue(
+        new Map([['usuario-uuid', { nombre: 'Ana', apellido: 'Gómez' }]]),
+      );
+
+      const result = await controller.listarComentarios('edilicia-uuid');
+
+      expect(result.map((c) => c.id)).toEqual(['c2', 'c1']);
+      expect(result.every((c) => c.autorNombre === 'Ana')).toBe(true);
+      expect(usuarioMasterChecker.resolverNombres).toHaveBeenCalledTimes(1);
+      expect(usuarioMasterChecker.resolverNombres).toHaveBeenCalledWith(['usuario-uuid']);
+    });
+
+    it('deja autorNombre/autorApellido en null cuando master no resuelve al autor (usuario dado de baja)', async () => {
+      const { controller, listarComentariosUseCase } = buildController();
+      listarComentariosUseCase.execute.mockResolvedValue(
+        Result.ok([
+          ComentarioReparacionEntity.create(
+            { ticketEdiliciaId: 'edilicia-uuid', texto: 'Demorado', autorId: 'baja-uuid' },
+            'c1',
+          ),
+        ]),
+      );
+
+      const result = await controller.listarComentarios('edilicia-uuid');
+
+      expect(result[0].autorId).toBe('baja-uuid');
+      expect(result[0].autorNombre).toBeNull();
+      expect(result[0].autorApellido).toBeNull();
+    });
+
+    it('mapea TicketEdiliciaNoEncontradoError → 404', async () => {
+      const { controller, listarComentariosUseCase } = buildController();
+      listarComentariosUseCase.execute.mockResolvedValue(
+        Result.fail(new TicketEdiliciaNoEncontradoError('edilicia-uuid')),
+      );
+
+      await expect(controller.listarComentarios('edilicia-uuid')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+
+    it('declara @RequiereAcciones("EDILICIA:LECTURA")', () => {
+      const permisos = Reflect.getMetadata(
+        ACCIONES_KEY,
+        ReparacionesController.prototype.listarComentarios,
+      );
+      expect(permisos).toEqual(['EDILICIA:LECTURA']);
     });
   });
 });

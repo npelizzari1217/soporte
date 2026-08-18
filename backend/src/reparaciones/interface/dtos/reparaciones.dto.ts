@@ -8,10 +8,15 @@
  *
  * Tarea: T8.6, T9.6.
  */
-import { IsInt, IsOptional, IsString, IsUUID, Min, MinLength } from 'class-validator';
+import { Transform } from 'class-transformer';
+import { IsInt, IsOptional, IsString, IsUUID, MaxLength, Min, MinLength } from 'class-validator';
 import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
 import { TicketEdiliciaEntity } from '../../domain/entities/ticket-edilicia.entity';
 import { SubtareaEdiliciaEntity } from '../../domain/entities/subtarea-edilicia.entity';
+import {
+  COMENTARIO_TEXTO_MAX_LENGTH,
+  ComentarioReparacionEntity,
+} from '../../domain/entities/comentario-reparacion.entity';
 import { ReparacionConTicket } from '../../application/use-cases/listar-reparaciones.use-case';
 
 // ─── Input DTOs ───────────────────────────────────────────────────────────────
@@ -45,6 +50,23 @@ export class CreateSubtareaHttpDto {
   @IsInt()
   @Min(0)
   orden?: number;
+}
+
+/**
+ * Body de `POST /reparaciones/:reparacionId/comentarios`. `autorId` viene del
+ * JWT, nunca del cliente HTTP.
+ *
+ * El `@Transform` que recorta corre ANTES de los validadores, así que un
+ * texto de puro whitespace queda en `''` y lo rechaza `@MinLength(1)` con un
+ * 400 — sin él, `'   '` pasaría el `MinLength` y moriría como 500 en el
+ * `throw` de precondición de la entidad. `@MaxLength` espeja el CHECK de DB.
+ */
+export class CreateComentarioReparacionHttpDto {
+  @IsString()
+  @Transform(({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value))
+  @MinLength(1)
+  @MaxLength(COMENTARIO_TEXTO_MAX_LENGTH)
+  texto!: string;
 }
 
 // ─── Response DTOs ────────────────────────────────────────────────────────────
@@ -132,5 +154,47 @@ export function toSubtareaEdiliciaResponseDto(
     orden: subtarea.orden,
     createdAt: subtarea.createdAt.toISOString(),
     updatedAt: subtarea.updatedAt.toISOString(),
+  };
+}
+
+/**
+ * Shape de respuesta de un comentario de reparación.
+ *
+ * Sin `updatedAt` ni `deletedAt`: la tabla es append-only y no los guarda —
+ * exponerlos sería inventar un dato. `autorNombre`/`autorApellido` viajan
+ * `null` cuando el usuario no pudo resolverse (dado de baja de master, o
+ * batch no solicitado), mismo contrato que `TicketResponseDto`.
+ */
+export interface ComentarioReparacionResponseDto {
+  id: string;
+  ticketEdiliciaId: string;
+  texto: string;
+  autorId: string;
+  autorNombre: string | null;
+  autorApellido: string | null;
+  createdAt: string;
+}
+
+/**
+ * Convierte `ComentarioReparacionEntity` al shape de respuesta HTTP.
+ *
+ * `autor` es OPCIONAL y se resuelve cross-DB en el controller vía
+ * `IUsuarioMasterChecker.resolverNombres` (master y tenant son bases
+ * distintas: no hay JOIN posible, `autorId` es una soft ref). Mismo criterio
+ * que `toTicketResponseDto(ticket, nombres?)` — el mapper no se acopla a un
+ * puerto de infraestructura, solo recibe la proyección ya resuelta.
+ */
+export function toComentarioReparacionResponseDto(
+  comentario: ComentarioReparacionEntity,
+  autor?: { nombre: string; apellido: string },
+): ComentarioReparacionResponseDto {
+  return {
+    id: comentario.id,
+    ticketEdiliciaId: comentario.ticketEdiliciaId,
+    texto: comentario.texto,
+    autorId: comentario.autorId,
+    autorNombre: autor?.nombre ?? null,
+    autorApellido: autor?.apellido ?? null,
+    createdAt: comentario.createdAt.toISOString(),
   };
 }

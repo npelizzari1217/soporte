@@ -13,3 +13,14 @@ export const crearSubtareaSchema = z.object({
   descripcion: z.string().min(1, "La descripción es requerida"),
 });
 export type CrearSubtareaFormValues = z.infer<typeof crearSubtareaSchema>;
+
+/** Espeja `CreateComentarioReparacionHttpDto`: recorta primero, después valida (un texto de puros espacios no es un comentario). */
+export const COMENTARIO_TEXTO_MAX_LENGTH = 2000;
+export const crearComentarioSchema = z.object({
+  texto: z
+    .string()
+    .trim()
+    .min(1, "El comentario es requerido")
+    .max(COMENTARIO_TEXTO_MAX_LENGTH, `El comentario no puede superar los ${COMENTARIO_TEXTO_MAX_LENGTH} caracteres`),
+});
+export type CrearComentarioFormValues = z.infer<typeof crearComentarioSchema>;

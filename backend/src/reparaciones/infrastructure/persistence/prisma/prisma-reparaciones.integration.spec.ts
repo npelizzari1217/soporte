@@ -22,10 +22,12 @@ import { TenantPrismaClient } from '../../../../shared/infrastructure/persistenc
 import { PrismaTicketRepository } from '../../../../tickets/infrastructure/persistence/prisma/prisma-ticket.repository';
 import { PrismaTicketEdiliciaRepository } from './prisma-ticket-edilicia.repository';
 import { PrismaSubtareaEdiliciaRepository } from './prisma-subtarea-edilicia.repository';
+import { PrismaComentarioReparacionRepository } from './prisma-comentario-reparacion.repository';
 
 import { TicketEntity, TicketProps } from '../../../../tickets/domain/entities/ticket.entity';
 import { TicketEdiliciaEntity } from '../../../domain/entities/ticket-edilicia.entity';
 import { SubtareaEdiliciaEntity } from '../../../domain/entities/subtarea-edilicia.entity';
+import { ComentarioReparacionEntity } from '../../../domain/entities/comentario-reparacion.entity';
 
 const MASTER_TEST_URL =
   process.env.DATABASE_URL_MASTER ??
@@ -42,6 +44,7 @@ describe('Reparaciones Persistence Repos — Integration (PR7)', () => {
   let ticketRepo: PrismaTicketRepository;
   let ediliciaRepo: PrismaTicketEdiliciaRepository;
   let subtareaRepo: PrismaSubtareaEdiliciaRepository;
+  let comentarioRepo: PrismaComentarioReparacionRepository;
 
   let tipoEdiliciaId: string;
   let estadoNuevoId: string;
@@ -103,6 +106,7 @@ describe('Reparaciones Persistence Repos — Integration (PR7)', () => {
     ticketRepo = new PrismaTicketRepository(tenantContext);
     ediliciaRepo = new PrismaTicketEdiliciaRepository(tenantContext);
     subtareaRepo = new PrismaSubtareaEdiliciaRepository(tenantContext);
+    comentarioRepo = new PrismaComentarioReparacionRepository(tenantContext);
 
     const tipoEdilicia = await tenantClient.tipoTicket.create({
       data: {
@@ -129,6 +133,11 @@ describe('Reparaciones Persistence Repos — Integration (PR7)', () => {
     // Cleanup acotado por los ids de fixture de ESTA suite (nunca TRUNCATE
     // global — soporte_tenant_test es compartida por otras suites).
     if (ticketIdsCreados.length > 0) {
+      // Los comentarios van PRIMERO: su FK a ticket_edilicia es ON DELETE
+      // RESTRICT, así que borrar el satélite antes falla.
+      await tenantClient.comentarioReparacion.deleteMany({
+        where: { ticketEdilicia: { ticketId: { in: ticketIdsCreados } } },
+      });
       await tenantClient.subtareaEdilicia.deleteMany({
         where: { ticketEdilicia: { ticketId: { in: ticketIdsCreados } } },
       });
@@ -222,6 +231,57 @@ describe('Reparaciones Persistence Repos — Integration (PR7)', () => {
         const found = await subtareaRepo.findById(sub.id);
         expect(found!.completada).toBe(true);
         expect(found!.completadaPorId).toBe(DUMMY_USUARIO_ID);
+      });
+    });
+  });
+
+  describe('PrismaComentarioReparacionRepository', () => {
+    it('crear() + listarPorTicketEdilicia() hace round-trip del mapper y devuelve el MÁS NUEVO PRIMERO', async () => {
+      const { edilicia } = await crearTicketConSatelite('T7 Ubicacion Comentarios');
+      // `createdAt` explícito y separado: el orden del listado se verifica
+      // contra fechas reales, no contra la velocidad del insert.
+      const viejo = ComentarioReparacionEntity.create({
+        ticketEdiliciaId: edilicia.id,
+        texto: 'Se pidió el repuesto X al proveedor',
+        autorId: DUMMY_USUARIO_ID,
+      });
+      Object.assign(viejo, { _createdAt: new Date('2026-08-18T10:00:00.000Z') });
+      const nuevo = ComentarioReparacionEntity.create({
+        ticketEdiliciaId: edilicia.id,
+        texto: 'Sigue sin llegar el repuesto X',
+        autorId: DUMMY_USUARIO_ID,
+      });
+      Object.assign(nuevo, { _createdAt: new Date('2026-08-18T15:00:00.000Z') });
+
+      await withTenant(async () => {
+        await comentarioRepo.crear(viejo);
+        await comentarioRepo.crear(nuevo);
+
+        const comentarios = await comentarioRepo.listarPorTicketEdilicia(edilicia.id);
+
+        expect(comentarios.map((c) => c.id)).toEqual([nuevo.id, viejo.id]);
+        // Round-trip completo del mapper sobre el más nuevo.
+        expect(comentarios[0].ticketEdiliciaId).toBe(edilicia.id);
+        expect(comentarios[0].texto).toBe('Sigue sin llegar el repuesto X');
+        expect(comentarios[0].autorId).toBe(DUMMY_USUARIO_ID);
+        expect(comentarios[0].createdAt).toEqual(new Date('2026-08-18T15:00:00.000Z'));
+        expect(comentarios[0].deletedAt).toBeNull();
+      });
+    });
+
+    it('el CHECK de DB rechaza un texto de puro whitespace aunque el dominio se saltee', async () => {
+      const { edilicia } = await crearTicketConSatelite('T7 Ubicacion Comentarios CHECK');
+
+      await withTenant(async () => {
+        await expect(
+          tenantClient.comentarioReparacion.create({
+            data: {
+              ticketEdiliciaId: edilicia.id,
+              texto: '   ',
+              autorId: DUMMY_USUARIO_ID,
+            },
+          }),
+        ).rejects.toThrow();
       });
     });
   });

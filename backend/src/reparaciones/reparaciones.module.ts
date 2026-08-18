@@ -41,12 +41,19 @@ import {
   ISubtareaEdiliciaRepository,
 } from './domain/ports/i-subtarea-edilicia.repository';
 import { PrismaSubtareaEdiliciaRepository } from './infrastructure/persistence/prisma/prisma-subtarea-edilicia.repository';
+import {
+  COMENTARIO_REPARACION_REPOSITORY,
+  IComentarioReparacionRepository,
+} from './domain/ports/i-comentario-reparacion.repository';
+import { PrismaComentarioReparacionRepository } from './infrastructure/persistence/prisma/prisma-comentario-reparacion.repository';
 
 import { CrearTicketEdilicioUseCase } from './application/use-cases/crear-ticket-edilicio.use-case';
 import { ListarReparacionesUseCase } from './application/use-cases/listar-reparaciones.use-case';
 import { CrearSubtareaUseCase } from './application/use-cases/crear-subtarea.use-case';
 import { CompletarSubtareaUseCase } from './application/use-cases/completar-subtarea.use-case';
 import { EliminarSubtareaUseCase } from './application/use-cases/eliminar-subtarea.use-case';
+import { CrearComentarioReparacionUseCase } from './application/use-cases/crear-comentario-reparacion.use-case';
+import { ListarComentariosReparacionUseCase } from './application/use-cases/listar-comentarios-reparacion.use-case';
 
 import { ReparacionesController } from './interface/controllers/reparaciones.controller';
 
@@ -85,6 +92,7 @@ import { ReparacionesController } from './interface/controllers/reparaciones.con
   providers: [
     { provide: TICKET_EDILICIA_REPOSITORY, useClass: PrismaTicketEdiliciaRepository },
     { provide: SUBTAREA_EDILICIA_REPOSITORY, useClass: PrismaSubtareaEdiliciaRepository },
+    { provide: COMENTARIO_REPARACION_REPOSITORY, useClass: PrismaComentarioReparacionRepository },
 
     {
       provide: NumeradorTicket,
@@ -217,7 +225,27 @@ import { ReparacionesController } from './interface/controllers/reparaciones.con
         TENANT_TX_RUNNER,
       ],
     },
+    {
+      provide: CrearComentarioReparacionUseCase,
+      useFactory: (
+        ticketEdiliciaRepo: ITicketEdiliciaRepository,
+        comentarioRepo: IComentarioReparacionRepository,
+      ) => new CrearComentarioReparacionUseCase(ticketEdiliciaRepo, comentarioRepo),
+      inject: [TICKET_EDILICIA_REPOSITORY, COMENTARIO_REPARACION_REPOSITORY],
+    },
+    {
+      provide: ListarComentariosReparacionUseCase,
+      useFactory: (
+        ticketEdiliciaRepo: ITicketEdiliciaRepository,
+        comentarioRepo: IComentarioReparacionRepository,
+      ) => new ListarComentariosReparacionUseCase(ticketEdiliciaRepo, comentarioRepo),
+      inject: [TICKET_EDILICIA_REPOSITORY, COMENTARIO_REPARACION_REPOSITORY],
+    },
   ],
-  exports: [TICKET_EDILICIA_REPOSITORY, SUBTAREA_EDILICIA_REPOSITORY],
+  exports: [
+    TICKET_EDILICIA_REPOSITORY,
+    SUBTAREA_EDILICIA_REPOSITORY,
+    COMENTARIO_REPARACION_REPOSITORY,
+  ],
 })
 export class ReparacionesModule {}

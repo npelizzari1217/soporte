@@ -8,6 +8,8 @@
  *   POST   /reparaciones/:reparacionId/subtareas             → CrearSubtareaUseCase       [subtarea:actualizar]
  *   POST   /reparaciones/subtareas/:subtareaId/completar     → CompletarSubtareaUseCase   [subtarea:actualizar]
  *   DELETE /reparaciones/subtareas/:subtareaId               → EliminarSubtareaUseCase    [subtarea:actualizar]
+ *   POST   /reparaciones/:reparacionId/comentarios           → CrearComentarioReparacionUseCase    [EDILICIA:ALTAS]
+ *   GET    /reparaciones/:reparacionId/comentarios           → ListarComentariosReparacionUseCase  [EDILICIA:LECTURA]
  *
  * `:reparacionId` = id del satélite `ticket_edilicia` (mismo criterio que
  * `:compraId` en `ComprasController`). Las rutas de subtareas usan
@@ -31,6 +33,7 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Inject,
   NotFoundException,
   Param,
   Post,
@@ -51,11 +54,18 @@ import {
   TicketNoEncontradoError,
 } from '../../../tickets/domain/errors/tickets.errors';
 
+import {
+  USUARIO_MASTER_CHECKER,
+  IUsuarioMasterChecker,
+} from '../../../tickets/domain/ports/i-usuario-master.checker';
+
 import { CrearTicketEdilicioUseCase } from '../../application/use-cases/crear-ticket-edilicio.use-case';
 import { ListarReparacionesUseCase } from '../../application/use-cases/listar-reparaciones.use-case';
 import { CrearSubtareaUseCase } from '../../application/use-cases/crear-subtarea.use-case';
 import { CompletarSubtareaUseCase } from '../../application/use-cases/completar-subtarea.use-case';
 import { EliminarSubtareaUseCase } from '../../application/use-cases/eliminar-subtarea.use-case';
+import { CrearComentarioReparacionUseCase } from '../../application/use-cases/crear-comentario-reparacion.use-case';
+import { ListarComentariosReparacionUseCase } from '../../application/use-cases/listar-comentarios-reparacion.use-case';
 
 import {
   TicketEdiliciaNoEncontradoError,
@@ -63,11 +73,14 @@ import {
 } from '../../domain/errors/reparaciones.errors';
 
 import {
+  ComentarioReparacionResponseDto,
+  CreateComentarioReparacionHttpDto,
   CreateSubtareaHttpDto,
   CreateTicketEdilicioHttpDto,
   ReparacionListItemResponseDto,
   SubtareaEdiliciaResponseDto,
   TicketEdiliciaConTicketResponseDto,
+  toComentarioReparacionResponseDto,
   toReparacionListItemResponseDto,
   toSubtareaEdiliciaResponseDto,
   toTicketEdiliciaResponseDto,
@@ -104,6 +117,9 @@ export class ReparacionesController {
     private readonly crearSubtareaUseCase: CrearSubtareaUseCase,
     private readonly completarSubtareaUseCase: CompletarSubtareaUseCase,
     private readonly eliminarSubtareaUseCase: EliminarSubtareaUseCase,
+    private readonly crearComentarioUseCase: CrearComentarioReparacionUseCase,
+    private readonly listarComentariosUseCase: ListarComentariosReparacionUseCase,
+    @Inject(USUARIO_MASTER_CHECKER) private readonly usuarioMasterChecker: IUsuarioMasterChecker,
   ) {}
 
   /**
@@ -214,5 +230,67 @@ export class ReparacionesController {
     if (result.isFail()) {
       throw toHttpException(result.getError());
     }
+  }
+
+  /**
+   * POST /reparaciones/:reparacionId/comentarios
+   * Asienta una nota sobre la reparación (ej. por qué se está demorando).
+   * `autorId` viene del JWT. Reusa `EDILICIA:ALTAS` — es el mismo permiso que
+   * agregar una subtarea: sumar información al expediente de la reparación.
+   * @throws 404 ticket_edilicia inexistente
+   */
+  @Post(':reparacionId/comentarios')
+  @RequiereAcciones('EDILICIA:ALTAS')
+  @HttpCode(HttpStatus.CREATED)
+  async crearComentario(
+    @Param('reparacionId') reparacionId: string,
+    @Body() dto: CreateComentarioReparacionHttpDto,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<ComentarioReparacionResponseDto> {
+    const result = await this.crearComentarioUseCase.execute({
+      ticketEdiliciaId: reparacionId,
+      texto: dto.texto,
+      autorId: user.sub,
+    });
+
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+
+    const comentario = result.getValue();
+    const nombres = await this.usuarioMasterChecker.resolverNombres([comentario.autorId]);
+    return toComentarioReparacionResponseDto(comentario, nombres.get(comentario.autorId));
+  }
+
+  /**
+   * GET /reparaciones/:reparacionId/comentarios
+   * Lista los comentarios de la reparación, MÁS NUEVO PRIMERO.
+   *
+   * `EDILICIA:LECTURA` y no `EDILICIA:ALTAS`: leer es leer — es el mismo gate
+   * que `GET /reparaciones`, que ya expone la reparación entera. Los
+   * comentarios no tienen flag de visibilidad (a diferencia de
+   * `operaciones_ticket.es_interno`): quien puede ver la reparación, los ve.
+   *
+   * Los nombres de los autores se resuelven en UN batch cross-DB
+   * (`resolverNombres`, sin N+1) — `autor_id` es soft ref a `master.usuarios`
+   * y no hay JOIN posible entre las dos bases.
+   * @throws 404 ticket_edilicia inexistente
+   */
+  @Get(':reparacionId/comentarios')
+  @RequiereAcciones('EDILICIA:LECTURA')
+  async listarComentarios(
+    @Param('reparacionId') reparacionId: string,
+  ): Promise<ComentarioReparacionResponseDto[]> {
+    const result = await this.listarComentariosUseCase.execute(reparacionId);
+
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+
+    const comentarios = result.getValue();
+    const nombres = await this.usuarioMasterChecker.resolverNombres([
+      ...new Set(comentarios.map((c) => c.autorId)),
+    ]);
+    return comentarios.map((c) => toComentarioReparacionResponseDto(c, nombres.get(c.autorId)));
   }
 }
