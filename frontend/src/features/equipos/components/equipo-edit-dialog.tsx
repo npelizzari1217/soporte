@@ -11,7 +11,7 @@
  * caller (`EquipoDetailView`) vía `<Can>`.
  */
 import { useState } from "react";
-import { useForm } from "react-hook-form";
+import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
   Dialog,
@@ -25,6 +25,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { MontoInput } from "@/components/shared/monto-input";
+import { formatearNumeroEsAr } from "@/shared/lib/formato-numero";
 import { useEditarEquipo } from "../hooks/use-equipo-mutations";
 import { crearEquipoSchema, type CrearEquipoFormValues } from "../schemas";
 import { baseDepreciacion, calcularValorResidual, hoyISO, parseImporte } from "../depreciacion";
@@ -61,6 +63,7 @@ export function EquipoEditDialog({ equipo }: EquipoEditDialogProps) {
 
   const {
     register,
+    control,
     handleSubmit,
     reset,
     watch,
@@ -186,7 +189,19 @@ export function EquipoEditDialog({ equipo }: EquipoEditDialogProps) {
             <label htmlFor="editar-equipo-importe" className="text-sm font-medium text-foreground">
               Importe (valor del equipo)
             </label>
-            <Input id="editar-equipo-importe" type="number" step="0.01" min="0" {...register("importe")} />
+            <Controller
+              name="importe"
+              control={control}
+              render={({ field }) => (
+                <MontoInput
+                  id="editar-equipo-importe"
+                  name={field.name}
+                  value={field.value}
+                  onChange={field.onChange}
+                  onBlur={field.onBlur}
+                />
+              )}
+            />
           </div>
           <div className="flex flex-col gap-1">
             <label htmlFor="editar-equipo-fecha-valoracion" className="text-sm font-medium text-foreground">
@@ -230,19 +245,26 @@ export function EquipoEditDialog({ equipo }: EquipoEditDialogProps) {
             )}
             {base !== null && (
               <p className="text-xs text-muted-foreground">
-                Se deprecia sobre {baseEsResidual ? "el valor residual actual" : "el importe"}: ${base}
+                Se deprecia sobre {baseEsResidual ? "el valor residual actual" : "el importe"}: $
+                {formatearNumeroEsAr(base)}
               </p>
             )}
             <div className="flex flex-col gap-1">
               <label htmlFor="editar-equipo-valor-residual" className="text-sm font-medium text-foreground">
                 Valor residual
               </label>
-              <Input
-                id="editar-equipo-valor-residual"
-                type="number"
-                step="0.01"
-                min="0"
-                {...register("valorResidual")}
+              <Controller
+                name="valorResidual"
+                control={control}
+                render={({ field }) => (
+                  <MontoInput
+                    id="editar-equipo-valor-residual"
+                    name={field.name}
+                    value={field.value}
+                    onChange={field.onChange}
+                    onBlur={field.onBlur}
+                  />
+                )}
               />
             </div>
             <div className="flex flex-col gap-1">
