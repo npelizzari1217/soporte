@@ -21,7 +21,7 @@
  * `item-create-dialog.tsx`).
  */
 import { useState } from "react";
-import { useForm } from "react-hook-form";
+import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Pencil } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -29,6 +29,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { MontoInput } from "./monto-input";
 import { useEditarItemCompra } from "../hooks/use-compra-mutations";
 import { aFechaInput } from "../lib/fecha";
 import { editarItemCompraSchema, type EditarItemCompraFormValues } from "../schemas";
@@ -58,6 +59,7 @@ export function ItemEditDialog({ compraId, item }: ItemEditDialogProps) {
 
   const {
     register,
+    control,
     handleSubmit,
     reset,
     formState: { errors },
@@ -143,14 +145,20 @@ export function ItemEditDialog({ compraId, item }: ItemEditDialogProps) {
             <label htmlFor="item-editar-monto" className="text-sm font-medium text-foreground">
               Monto
             </label>
-            <Input
-              id="item-editar-monto"
-              type="number"
-              step="0.01"
-              min="0"
-              disabled={decidido}
-              error={!!errors.monto}
-              {...register("monto")}
+            <Controller
+              name="monto"
+              control={control}
+              render={({ field }) => (
+                <MontoInput
+                  id="item-editar-monto"
+                  name={field.name}
+                  value={field.value}
+                  onChange={field.onChange}
+                  onBlur={field.onBlur}
+                  disabled={decidido}
+                  error={!!errors.monto}
+                />
+              )}
             />
             {errors.monto && (
               <p role="alert" className="text-sm text-destructive">
