@@ -94,7 +94,9 @@ export function EquipoCreateDialog() {
       <DialogTrigger asChild>
         <Button>Nuevo equipo</Button>
       </DialogTrigger>
-      <DialogContent>
+      {/* Mismo ancho que `EquipoEditDialog`: son el mismo formulario y quedaban
+          de dos tamaños distintos según entraras por alta o por edición. */}
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Nuevo equipo</DialogTitle>
         </DialogHeader>
