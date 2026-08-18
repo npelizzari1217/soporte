@@ -304,6 +304,47 @@ describe('Reparaciones Persistence Repos — Integration (PR7)', () => {
       });
     });
 
+    it('contarPorTicketEdilicia() cuenta por lote contra la base y omite las reparaciones sin comentarios', async () => {
+      const conDos = await crearTicketConSatelite('T7 Ubicacion Conteo A');
+      const conUno = await crearTicketConSatelite('T7 Ubicacion Conteo B');
+      const sinComentarios = await crearTicketConSatelite('T7 Ubicacion Conteo C');
+
+      await withTenant(async () => {
+        for (const [edilicia, cantidad] of [
+          [conDos.edilicia, 2],
+          [conUno.edilicia, 1],
+        ] as const) {
+          for (let i = 0; i < cantidad; i += 1) {
+            await comentarioRepo.crear(
+              ComentarioReparacionEntity.create({
+                ticketEdiliciaId: edilicia.id,
+                texto: `Comentario ${i + 1} de conteo`,
+                autorId: DUMMY_USUARIO_ID,
+              }),
+            );
+          }
+        }
+
+        const conteos = await comentarioRepo.contarPorTicketEdilicia([
+          conDos.edilicia.id,
+          conUno.edilicia.id,
+          sinComentarios.edilicia.id,
+        ]);
+
+        expect(conteos.get(conDos.edilicia.id)).toBe(2);
+        expect(conteos.get(conUno.edilicia.id)).toBe(1);
+        // El GROUP BY no emite fila para la reparación sin comentarios: el
+        // `0` lo resuelve el consumidor, no el repositorio.
+        expect(conteos.has(sinComentarios.edilicia.id)).toBe(false);
+      });
+    });
+
+    it('contarPorTicketEdilicia() con lista vacía devuelve un Map vacío sin consultar', async () => {
+      await withTenant(async () => {
+        expect(await comentarioRepo.contarPorTicketEdilicia([])).toEqual(new Map());
+      });
+    });
+
     it('el CHECK de DB rechaza un texto de puro whitespace aunque el dominio se saltee', async () => {
       const { edilicia } = await crearTicketConSatelite('T7 Ubicacion Comentarios CHECK');
 

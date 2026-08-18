@@ -28,6 +28,14 @@ export interface TicketEdilicia {
 /** Ítem del listado de `GET /reparaciones` (extiende `TicketEdilicia` + subtareas embebidas). */
 export interface ReparacionListItem extends TicketEdilicia {
   subtareas: SubtareaEdilicia[];
+  /**
+   * Cantidad de comentarios de la reparación; `0` cuando no tiene ninguno.
+   *
+   * Los comentarios NO viajan embebidos (a diferencia de las subtareas): el
+   * listado trae sólo el conteo, que el backend resuelve en una consulta
+   * agregada por página. El contenido se pide aparte al abrir el diálogo.
+   */
+  cantidadComentarios: number;
 }
 
 export interface SubtareaEdilicia {

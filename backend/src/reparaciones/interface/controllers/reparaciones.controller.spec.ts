@@ -167,7 +167,7 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
         'edilicia-uuid',
       );
       listarReparacionesUseCase.execute.mockResolvedValue(
-        Result.ok([{ ticket, ticketEdilicia, subtareas: [] }]),
+        Result.ok([{ ticket, ticketEdilicia, subtareas: [], cantidadComentarios: 2 }]),
       );
 
       const result = await controller.listar();
@@ -175,6 +175,8 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
       expect(result).toHaveLength(1);
       expect(result[0].id).toBe('edilicia-uuid');
       expect(result[0].subtareas).toEqual([]);
+      // El listado expone SÓLO el conteo — los comentarios tienen su GET propio.
+      expect(result[0].cantidadComentarios).toBe(2);
     });
 
     it('embebe las subtareas activas del ticket_edilicia (item 1 — G7)', async () => {
@@ -189,7 +191,7 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
         'subtarea-uuid',
       );
       listarReparacionesUseCase.execute.mockResolvedValue(
-        Result.ok([{ ticket, ticketEdilicia, subtareas: [subtarea] }]),
+        Result.ok([{ ticket, ticketEdilicia, subtareas: [subtarea], cantidadComentarios: 0 }]),
       );
 
       const result = await controller.listar();

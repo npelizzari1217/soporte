@@ -35,4 +35,26 @@ export class PrismaComentarioReparacionRepository implements IComentarioReparaci
     });
     return rows.map(ComentarioReparacionMapper.toDomain);
   }
+
+  /**
+   * `GROUP BY ticket_edilicia_id` + `COUNT(*)` acotado por los ids del lote:
+   * una sola consulta agregada para toda la página del listado. Los
+   * `ticketEdiliciaId` sin comentarios no vuelven como fila (el `GROUP BY` no
+   * los emite) y quedan fuera del Map.
+   */
+  async contarPorTicketEdilicia(ticketEdiliciaIds: string[]): Promise<Map<string, number>> {
+    // Cortar acá y no delegar en Prisma: un `IN ()` vacío es una ida a la base
+    // cuyo resultado ya conocemos.
+    if (ticketEdiliciaIds.length === 0) {
+      return new Map();
+    }
+
+    const grupos = await this.client.comentarioReparacion.groupBy({
+      by: ['ticketEdiliciaId'],
+      where: { ticketEdiliciaId: { in: ticketEdiliciaIds } },
+      _count: { _all: true },
+    });
+
+    return new Map(grupos.map((grupo) => [grupo.ticketEdiliciaId, grupo._count._all]));
+  }
 }
