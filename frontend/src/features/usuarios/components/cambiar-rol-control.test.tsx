@@ -31,12 +31,11 @@ function mockRolesYCambiarRol(capture: (body: Record<string, unknown>) => void) 
   );
 }
 
-// R6 (sdd/matriz-permisos-por-usuario, confirmacion-r6): sin el checkbox de
-// "reaplicar preset", el rol cambia y la matriz queda INTACTA — con el
-// checkbox, SOBRESCRIBE, y por eso exige confirmación explícita antes de
-// enviarlo (pisa ajustes finos hechos a mano en la grilla).
-describe("CambiarRolControl — reaplicarPreset (R6)", () => {
-  it("Guardar sin tildar 'reaplicar preset' → PATCH sin el flag, sin pedir confirmación", async () => {
+// El cambio de rol NO toca la matriz de permisos: reaplicar la plantilla es una
+// operación aparte y vive en `AsignarPermisosControl`. El campo `reaplicarPreset`
+// sigue existiendo en el contrato del backend, pero este control ya no lo manda.
+describe("CambiarRolControl", () => {
+  it("Guardar envía el PATCH con el rol destino, sin flag de preset ni confirmación", async () => {
     const user = userEvent.setup();
     let captured: Record<string, unknown> = {};
     mockRolesYCambiarRol((body) => (captured = body));
@@ -54,44 +53,14 @@ describe("CambiarRolControl — reaplicarPreset (R6)", () => {
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
   });
 
-  it("Guardar CON 'reaplicar preset' tildado → pide confirmación; confirmar envía { reaplicarPreset: true }", async () => {
-    const user = userEvent.setup();
-    let captured: Record<string, unknown> = {};
-    mockRolesYCambiarRol((body) => (captured = body));
+  it("ya no ofrece el checkbox de reaplicar preset", async () => {
+    mockRolesYCambiarRol(() => {});
 
     renderWithProviders(<CambiarRolControl usuario={USUARIO} />, {
       user: buildUser({ rol: "ADMINISTRADOR" }),
     });
 
     await screen.findByText("Colaborador");
-    await user.selectOptions(screen.getByLabelText(/rol de ada/i), "COLABORADOR");
-    await user.click(screen.getByRole("checkbox", { name: /reaplicar preset/i }));
-    await user.click(screen.getByRole("button", { name: /guardar/i }));
-
-    expect(await screen.findByRole("alertdialog")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: /confirmar/i }));
-
-    await waitFor(() => expect(captured.reaplicarPreset).toBe(true));
-    expect(captured.rolCodigo).toBe("COLABORADOR");
-  });
-
-  it("cancelar la confirmación NO envía el PATCH", async () => {
-    const user = userEvent.setup();
-    let called = false;
-    mockRolesYCambiarRol(() => (called = true));
-
-    renderWithProviders(<CambiarRolControl usuario={USUARIO} />, {
-      user: buildUser({ rol: "ADMINISTRADOR" }),
-    });
-
-    await screen.findByText("Colaborador");
-    await user.selectOptions(screen.getByLabelText(/rol de ada/i), "COLABORADOR");
-    await user.click(screen.getByRole("checkbox", { name: /reaplicar preset/i }));
-    await user.click(screen.getByRole("button", { name: /guardar/i }));
-    await screen.findByRole("alertdialog");
-    await user.click(screen.getByRole("button", { name: /cancelar/i }));
-
-    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
-    expect(called).toBe(false);
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
   });
 });

@@ -67,7 +67,7 @@ export function useAplicarPresetPermisos(usuarioId: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["usuarios"] });
       queryClient.invalidateQueries({ queryKey: ["usuario-permisos", usuarioId] });
-      notifySuccess("Preset aplicado.");
+      notifySuccess("Plantilla aplicada.");
     },
     onError: notifyError,
   });
