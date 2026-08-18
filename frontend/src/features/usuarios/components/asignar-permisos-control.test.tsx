@@ -184,5 +184,138 @@ describe("AsignarPermisosControl (ADR-P10, sdd/matriz-permisos-por-usuario)", ()
     expect(await screen.findByText(/ven toda la matriz/i)).toBeInTheDocument();
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /guardar/i })).not.toBeInTheDocument();
+    // Reaplicar la plantilla tampoco tiene efecto para un administrador (bypass
+    // R2): si no se ofrece Guardar, tampoco se ofrece esta acción.
+    expect(
+      screen.queryByRole("button", { name: /reaplicar plantilla/i }),
+    ).not.toBeInTheDocument();
+  });
+});
+
+// Reaplicar la plantilla del rol es una operación de PERMISOS, no de cambio de
+// rol: antes SOLO existía como checkbox dentro de `CambiarRolControl`, cuyo
+// Guardar está deshabilitado mientras el rol no cambie — o sea, era inalcanzable
+// justo en el caso más natural ("reseteá a esta persona a su rol limpio").
+describe("AsignarPermisosControl — reaplicar la plantilla del rol", () => {
+  function mockPermisos(opciones: {
+    celdasIniciales: string[];
+    celdasTrasPreset: string[];
+    onPreset?: (body: Record<string, unknown>) => void;
+    onPatch?: (body: Record<string, unknown>) => void;
+  }) {
+    let presetAplicado = false;
+    server.use(
+      http.get("/api/usuarios/u1/permisos", () =>
+        HttpResponse.json({
+          celdas: presetAplicado ? opciones.celdasTrasPreset : opciones.celdasIniciales,
+          esAdministrador: false,
+        }),
+      ),
+      http.post("/api/usuarios/u1/permisos/aplicar-preset", async ({ request }) => {
+        presetAplicado = true;
+        const body = (await request.json()) as Record<string, unknown>;
+        opciones.onPreset?.(body);
+        return HttpResponse.json({ usuarioId: "u1", rolCodigo: body.rolCodigo });
+      }),
+      http.patch("/api/usuarios/u1/permisos", async ({ request }) => {
+        const body = (await request.json()) as Record<string, unknown>;
+        opciones.onPatch?.(body);
+        return HttpResponse.json({ usuarioId: "u1", celdas: body.celdas });
+      }),
+    );
+  }
+
+  it("confirmar en el diálogo anidado dispara el POST con el rol del usuario", async () => {
+    // El ConfirmDialog se abre ENCIMA del modal de permisos, que ya está
+    // abierto: este test fija que la confirmación anidada realmente se puede
+    // operar y que la llamada sale.
+    const user = userEvent.setup();
+    let presetBody: Record<string, unknown> | null = null;
+    mockPermisos({
+      celdasIniciales: ["TICKETS:LECTURA"],
+      celdasTrasPreset: ["COMPRAS:LECTURA"],
+      onPreset: (body) => (presetBody = body),
+    });
+
+    renderWithProviders(<AsignarPermisosControl usuario={USUARIO_TECNICO} />, {
+      user: buildUser({ rol: "ADMINISTRADOR" }),
+    });
+
+    await user.click(screen.getByRole("button", { name: /permisos/i }));
+    await screen.findByRole("checkbox", { name: "TICKETS:LECTURA" });
+
+    await user.click(screen.getByRole("button", { name: /reaplicar plantilla/i }));
+
+    const confirmacion = await screen.findByRole("alertdialog");
+    // El texto tiene que decir que SOBRESCRIBE y que lo manual se pierde.
+    expect(within(confirmacion).getByText(/sobrescrib/i)).toBeInTheDocument();
+    await user.click(within(confirmacion).getByRole("button", { name: /confirmar/i }));
+
+    await waitFor(() => expect(presetBody).toEqual({ rolCodigo: USUARIO_TECNICO.rol }));
+  });
+
+  it("cancelar la confirmación NO llama al endpoint", async () => {
+    const user = userEvent.setup();
+    let posts = 0;
+    mockPermisos({
+      celdasIniciales: ["TICKETS:LECTURA"],
+      celdasTrasPreset: ["COMPRAS:LECTURA"],
+      onPreset: () => (posts += 1),
+    });
+
+    renderWithProviders(<AsignarPermisosControl usuario={USUARIO_TECNICO} />, {
+      user: buildUser({ rol: "ADMINISTRADOR" }),
+    });
+
+    await user.click(screen.getByRole("button", { name: /permisos/i }));
+    await screen.findByRole("checkbox", { name: "TICKETS:LECTURA" });
+
+    await user.click(screen.getByRole("button", { name: /reaplicar plantilla/i }));
+    const confirmacion = await screen.findByRole("alertdialog");
+    await user.click(within(confirmacion).getByRole("button", { name: /cancelar/i }));
+
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    expect(posts).toBe(0);
+  });
+
+  it("tras aplicar la plantilla la grilla se resincroniza y Guardar manda el set NUEVO", async () => {
+    // El peligro real: la selección vive en estado local sembrado por la query.
+    // Si no se resincroniza tras el refetch, apretar Guardar por costumbre pisa
+    // la plantilla recién aplicada con el set viejo.
+    const user = userEvent.setup();
+    let patchBody: Record<string, unknown> | null = null;
+    mockPermisos({
+      celdasIniciales: ["TICKETS:LECTURA"],
+      celdasTrasPreset: ["COMPRAS:LECTURA", "COMPRAS:ALTAS"],
+      onPatch: (body) => (patchBody = body),
+    });
+
+    renderWithProviders(<AsignarPermisosControl usuario={USUARIO_TECNICO} />, {
+      user: buildUser({ rol: "ADMINISTRADOR" }),
+    });
+
+    await user.click(screen.getByRole("button", { name: /permisos/i }));
+    await waitFor(() =>
+      expect(screen.getByRole("checkbox", { name: "TICKETS:LECTURA" })).toBeChecked(),
+    );
+
+    await user.click(screen.getByRole("button", { name: /reaplicar plantilla/i }));
+    const confirmacion = await screen.findByRole("alertdialog");
+    await user.click(within(confirmacion).getByRole("button", { name: /confirmar/i }));
+
+    // La grilla muestra las celdas NUEVAS, no las de antes.
+    await waitFor(() =>
+      expect(screen.getByRole("checkbox", { name: "COMPRAS:LECTURA" })).toBeChecked(),
+    );
+    expect(screen.getByRole("checkbox", { name: "COMPRAS:ALTAS" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "TICKETS:LECTURA" })).not.toBeChecked();
+
+    await user.click(screen.getByRole("button", { name: /guardar/i }));
+
+    await waitFor(() => expect(patchBody).not.toBeNull());
+    expect(patchBody!.celdas).toEqual(
+      expect.arrayContaining(["COMPRAS:LECTURA", "COMPRAS:ALTAS"]),
+    );
+    expect(patchBody!.celdas).not.toContain("TICKETS:LECTURA");
   });
 });

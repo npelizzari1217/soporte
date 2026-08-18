@@ -21,6 +21,14 @@
  * cuando el diálogo se abre, mismo criterio que el ABM viejo (evita un
  * request por fila de la tabla).
  *
+ * "Reaplicar plantilla del rol" (`POST /permisos/aplicar-preset`) vive ACÁ y no
+ * en `CambiarRolControl` porque reaplicar una plantilla es una operación de
+ * PERMISOS, no de cambio de rol. Antes era un checkbox de aquel control, cuyo
+ * `Guardar` está deshabilitado mientras el rol no cambie: quedaba INALCANZABLE
+ * justo en el caso más pedido — dejar a alguien con la matriz limpia de su rol
+ * actual, sin moverlo de rol. Como SOBRESCRIBE la matriz (pisa los ajustes
+ * finos hechos a mano en la grilla), pide confirmación explícita.
+ *
  * Se edita en un DIÁLOGO MODAL centrado, no en un popover anclado a la fila:
  * el catálogo completo es más alto que el popover y el botón `Guardar` —
  * único control que persiste — quedaba fuera del viewport, sin scroll para
@@ -41,9 +49,14 @@ import {
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { ACCIONES_PISO, CATALOGO_MODULOS, type CodigoAccion, type Modulo } from "@/shared/auth/acciones";
 import { etiquetaDeModulo } from "@/shared/auth/etiquetas-modulos";
-import { useAsignarPermisos, useUsuarioPermisos } from "../hooks/use-usuario-permisos";
+import {
+  useAplicarPresetPermisos,
+  useAsignarPermisos,
+  useUsuarioPermisos,
+} from "../hooks/use-usuario-permisos";
 import type { UsuarioTenant } from "../types";
 
 export interface AsignarPermisosControlProps {
@@ -55,9 +68,11 @@ const MODULOS = Object.keys(CATALOGO_MODULOS) as Modulo[];
 export function AsignarPermisosControl({ usuario }: AsignarPermisosControlProps) {
   const [open, setOpen] = useState(false);
   const [seleccion, setSeleccion] = useState<CodigoAccion[]>([]);
+  const [confirmandoPlantilla, setConfirmandoPlantilla] = useState(false);
 
   const permisosQuery = useUsuarioPermisos(usuario.id, open);
   const mutation = useAsignarPermisos(usuario.id);
+  const plantillaMutation = useAplicarPresetPermisos(usuario.id);
 
   // Sincroniza la selección local con las celdas actuales cuando llegan del
   // backend (al abrir el diálogo). El usuario edita sobre esa base.
@@ -73,7 +88,19 @@ export function AsignarPermisosControl({ usuario }: AsignarPermisosControlProps)
     );
   };
 
+  /**
+   * Reaplica la plantilla del rol ACTUAL del usuario. La respuesta invalida
+   * `["usuario-permisos", id]`, el refetch devuelve las celdas nuevas y el
+   * `useEffect` de arriba resiembra `seleccion` — así un `Guardar` posterior
+   * manda el set nuevo y no pisa la plantilla con lo que había antes.
+   */
+  function confirmarReaplicarPlantilla() {
+    plantillaMutation.mutate(usuario.rol);
+    setConfirmandoPlantilla(false);
+  }
+
   const esAdministrador = permisosQuery.data?.esAdministrador ?? false;
+  const ocupado = mutation.isPending || plantillaMutation.isPending;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -140,7 +167,7 @@ export function AsignarPermisosControl({ usuario }: AsignarPermisosControlProps)
                               id={`permiso-${usuario.id}-${celda}`}
                               aria-label={celda}
                               checked={seleccion.includes(celda)}
-                              disabled={!soportada || mutation.isPending}
+                              disabled={!soportada || ocupado}
                               onCheckedChange={(checked) => toggleCelda(celda, checked === true)}
                             />
                             {accion}
@@ -154,16 +181,45 @@ export function AsignarPermisosControl({ usuario }: AsignarPermisosControlProps)
             </div>
             {/* Pie fijo: fuera de la zona scrolleable, siempre visible. */}
             <DialogFooter>
+              {/*
+                Acción secundaria (`outline`): `Guardar` sigue siendo la
+                primaria. Reaplicar la plantilla no persiste la grilla editada
+                — la reemplaza en el backend y la grilla se resiembra sola.
+              */}
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                isLoading={plantillaMutation.isPending}
+                disabled={permisosQuery.isLoading || mutation.isPending}
+                onClick={() => setConfirmandoPlantilla(true)}
+              >
+                Reaplicar plantilla del rol
+              </Button>
               <Button
                 type="button"
                 size="sm"
                 isLoading={mutation.isPending}
-                disabled={permisosQuery.isLoading}
+                disabled={permisosQuery.isLoading || plantillaMutation.isPending}
                 onClick={() => mutation.mutate(seleccion)}
               >
                 Guardar
               </Button>
             </DialogFooter>
+            {/*
+              Se monta ENCIMA del modal de permisos (Radix apila el foco: el
+              scope del `AlertDialog` pausa al del `Dialog` mientras está
+              abierto).
+            */}
+            <ConfirmDialog
+              open={confirmandoPlantilla}
+              onOpenChange={setConfirmandoPlantilla}
+              title="Reaplicar plantilla del rol"
+              description={`Vas a SOBRESCRIBIR la matriz de permisos de "${usuario.nombre} ${usuario.apellido}" con la plantilla del rol ${usuario.rol}. Los ajustes manuales hechos en la grilla se pierden. ¿Confirmás?`}
+              confirmLabel="Confirmar"
+              onConfirm={confirmarReaplicarPlantilla}
+              isConfirming={plantillaMutation.isPending}
+            />
           </>
         )}
       </DialogContent>
