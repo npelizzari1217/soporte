@@ -7,6 +7,7 @@
  */
 import { useReparaciones } from "../hooks/use-reparaciones";
 import { DataTable, type Column } from "@/components/shared/data-table";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/shared/page-header";
 import { Can } from "@/components/shared/can";
@@ -24,6 +25,33 @@ function AvanceCell({ porcentaje }: { porcentaje: number }) {
       </div>
       <span className="text-xs text-muted-foreground">{porcentaje}%</span>
     </div>
+  );
+}
+
+/**
+ * Botón de la columna «Comentarios» con el conteo colgado como badge.
+ *
+ * Accesibilidad: el badge va `aria-hidden` y el conteo se anuncia por el
+ * `aria-label` del botón — un lector de pantalla leería si no un «3» suelto,
+ * sin forma de saber que cuenta comentarios. Con cero comentarios no se
+ * renderiza badge (la fila queda limpia) y el botón vuelve a su nombre
+ * simple, sin un «(0 comentarios)» que no aporta nada.
+ */
+function ComentariosTrigger({ cantidad }: { cantidad: number }) {
+  const etiqueta =
+    cantidad === 0
+      ? "Ver comentarios"
+      : `Ver comentarios (${cantidad} ${cantidad === 1 ? "comentario" : "comentarios"})`;
+
+  return (
+    <Button variant="outline" size="sm" aria-label={etiqueta}>
+      Ver comentarios
+      {cantidad > 0 && (
+        <Badge variant="secondary" aria-hidden="true">
+          {cantidad}
+        </Badge>
+      )}
+    </Button>
   );
 }
 
@@ -64,11 +92,7 @@ export function ReparacionesList() {
         <ComentariosDialog
           reparacionId={row.id}
           numero={row.numero}
-          trigger={
-            <Button variant="outline" size="sm">
-              Ver comentarios
-            </Button>
-          }
+          trigger={<ComentariosTrigger cantidad={row.cantidadComentarios} />}
         />
       ),
     },
