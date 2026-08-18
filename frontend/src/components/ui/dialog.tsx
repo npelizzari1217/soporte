@@ -41,6 +41,15 @@ const DialogContent = React.forwardRef<
       ref={ref}
       className={cn(
         "fixed left-[50%] top-[50%] z-50 w-full max-w-lg translate-x-[-50%] translate-y-[-50%]",
+        // Alto acotado + scroll POR DEFECTO. Sin esto, un diálogo con un
+        // formulario largo (o una pantalla baja) se desborda por arriba Y por
+        // abajo: al estar centrado con `translate-y-[-50%]`, el excedente de
+        // arriba queda inalcanzable y ni siquiera se puede scrollear hasta él.
+        // Va en el átomo y no en cada consumidor porque el defecto lo heredaban
+        // los 28 diálogos del sistema, no uno. `cn` usa tailwind-merge, así que
+        // el que necesite otra cosa (p. ej. scroll interno propio) lo declara y
+        // le gana a este default.
+        "max-h-[85vh] overflow-y-auto",
         "rounded-xl border border-white/10",
         "bg-card/95 backdrop-blur shadow-xl",
         "p-6 flex flex-col gap-4",
