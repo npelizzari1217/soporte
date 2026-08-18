@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../../test/msw/server";
 import { renderWithProviders, buildUser } from "../../../../test/render-with-providers";
@@ -67,5 +68,36 @@ describe("ReparacionesList — indicador de comentarios por fila", () => {
     const fila = within(filaDe("EDI-0003"));
     expect(fila.queryByText("0")).not.toBeInTheDocument();
     expect(fila.getByRole("button", { name: "Ver comentarios" })).toBeInTheDocument();
+  });
+
+  // El disparador de comentarios es un componente propio (lleva el badge del
+  // conteo), a diferencia del de subtareas que es un `Button` pelado.
+  // `DialogTrigger asChild` CLONA el hijo e inyecta `onClick` y el `ref`: si el
+  // componente no hace spread de props ni reenvía el ref, el click se pierde y
+  // el modal no abre nunca. Los tests de etiqueta no lo ven — pasaban en verde
+  // con el botón muerto.
+  it.each([
+    ["con badge", 3, "Ver comentarios (3 comentarios)"],
+    ["sin badge", 0, "Ver comentarios"],
+  ])("el boton abre el modal (%s)", async (_caso, cantidadComentarios, nombreAccesible) => {
+    server.use(
+      http.get("/api/reparaciones", () =>
+        HttpResponse.json([buildReparacion({ id: "rep9", numero: "EDI-0009", cantidadComentarios })]),
+      ),
+      http.get("/api/reparaciones/rep9/comentarios", () => HttpResponse.json([])),
+    );
+
+    const user = userEvent.setup();
+    renderWithProviders(<ReparacionesList />, {
+      user: buildUser({ permisos: ["EDILICIA:LECTURA"] }),
+    });
+
+    await screen.findByText("EDI-0009");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    await user.click(within(filaDe("EDI-0009")).getByRole("button", { name: nombreAccesible }));
+
+    const dialogo = await screen.findByRole("dialog");
+    expect(within(dialogo).getByText("Comentarios — EDI-0009")).toBeInTheDocument();
   });
 });
