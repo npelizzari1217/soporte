@@ -22,7 +22,11 @@ export const ETIQUETAS_MODULOS = {
   COMPRAS: "Compras",
   EDILICIA: "Edilicia",
   EQUIPOS: "Equipos",
-  KB: "Base de conocimiento",
+  // El módulo se llama `KB` en el código, el CHECK de permisos y el JWT, pero
+  // para el usuario es "Ayuda": hoy contiene cómo se usa el sistema. La base
+  // de conocimiento tal como se pensó — casos resueltos y su recurrencia —
+  // quedó para más adelante, cuando haya historial que la alimente.
+  KB: "Ayuda",
   DASHBOARD: "Dashboard",
 } as const satisfies Record<Modulo, string>;
 

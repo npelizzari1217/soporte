@@ -5,10 +5,11 @@
  * Lectura de un artículo (R-M3 / T3.3) + acciones gateadas por acción
  * (WU-7.6): `KB:MODIFICACION` (editar), `KB:PUBLICAR` (visibilidad),
  * `KB:BORRADO` (eliminar)
- * (editar/publicar-despublicar/eliminar, T3.4-T3.6). Contenido renderizado
- * como texto plano con saltos de línea preservados (`whitespace-pre-wrap`) —
- * ADR-6: "sin lib WYSIWYG", esta es la opción "texto plano" explícitamente
- * permitida (sin `dangerouslySetInnerHTML`, cero riesgo XSS).
+ * (editar/publicar-despublicar/eliminar, T3.4-T3.6). El contenido se renderiza
+ * como markdown vía `KbMarkdown` — ADR-6 ("sin lib WYSIWYG") se mantiene: el
+ * autor escribe markdown plano en un textarea, no hay editor visual. El
+ * renderer NO habilita HTML crudo ni usa `dangerouslySetInnerHTML`; el porqué
+ * está documentado en `kb-markdown.tsx` y no debe revertirse.
  */
 import { useRouter } from "next/navigation";
 import { useKbArticulo } from "../hooks/use-kb-articulo";
@@ -21,6 +22,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { KbArticleEditDialog } from "./kb-article-edit-dialog";
 import { KbVisibilityToggle } from "./kb-visibility-toggle";
 import { KbDeleteControl } from "./kb-delete-control";
+import { KbMarkdown } from "./kb-markdown";
 
 export interface KbDetailViewProps {
   articuloId: string;
@@ -78,7 +80,9 @@ export function KbDetailView({ articuloId }: KbDetailViewProps) {
         </Badge>
       </div>
 
-      <div className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">{articulo.contenido}</div>
+      <article aria-label="Contenido del artículo">
+        <KbMarkdown contenido={articulo.contenido} />
+      </article>
     </div>
   );
 }

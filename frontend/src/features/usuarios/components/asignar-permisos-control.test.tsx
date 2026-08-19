@@ -111,7 +111,7 @@ describe("AsignarPermisosControl (ADR-P10, sdd/matriz-permisos-por-usuario)", ()
 
     const zonaModulos = within(screen.getByTestId("permisos-modulos"));
     // Mismo nombre que en el menú lateral: "KB" no le dice nada a nadie.
-    expect(zonaModulos.getByText("Base de conocimiento")).toBeInTheDocument();
+    expect(zonaModulos.getByText("Ayuda")).toBeInTheDocument();
     expect(zonaModulos.getByText("Tickets")).toBeInTheDocument();
     // Los códigos crudos ya no se muestran como encabezado (siguen viajando en
     // el `aria-label` de cada checkbox, que no es texto del DOM).
