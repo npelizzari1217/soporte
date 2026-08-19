@@ -40,6 +40,42 @@ aplican acá** y no deben inyectarse en los prompts de los sub-agentes.
 - Todo el resto de las reglas globales (tipado estricto, testing obligatorio, TDD,
   documentación, reporte honesto) sigue igual.
 
+## Delegar a subagentes (OBLIGATORIO)
+
+**Siempre que una tarea se pueda delegar, se delega.** El hilo principal coordina y
+sintetiza; no es el que lee medio repositorio ni el que escribe cada archivo.
+
+La razón no es de estilo: el contexto del orquestador es finito y es el recurso más
+caro de la sesión. Cada archivo que el hilo principal lee "de paso" es contexto que
+después le falta para decidir bien. Un subagente lee cincuenta archivos, devuelve
+diez líneas de conclusión, y se lleva el costo con él.
+
+Delegar SIEMPRE que aplique:
+
+- Explorar o mapear algo que requiere abrir **4 o más archivos**.
+- Escribir **2 o más archivos** no triviales.
+- Cualquier lectura cuyo único fin sea preparar una escritura.
+- Investigación amplia (comparar enfoques, rastrear un patrón por todo el repo).
+- Tareas **independientes entre sí**: van en paralelo, un subagente cada una.
+
+Se resuelve en el hilo principal, sin delegar:
+
+- Leer 1 a 3 archivos para decidir o verificar algo puntual.
+- Un cambio mecánico de un solo archivo, ya entendido, sin diseño pendiente.
+- Comandos de estado (`git`, `docker`, `curl`, correr la suite).
+
+Reglas de la delegación:
+
+- **Un solo escritor por archivo.** Dos subagentes que tocan el mismo archivo se
+  pisan. Si van en paralelo, repartir archivos disjuntos o usar worktrees aislados.
+- **El subagente no commitea ni cambia de rama.** Deja el trabajo en el working tree
+  y el orquestador integra.
+- El prompt del subagente viaja **autocontenido**: rutas, convenciones, criterio de
+  terminado y formato del reporte. Un subagente no ve esta conversación.
+- **El reporte de un subagente no es prueba.** Antes de dar algo por verde, el
+  orquestador verifica por su cuenta (correr los tests, leer el diff). Ya pasó en
+  este proyecto que un reporte en verde tapaba un test que no mordía.
+
 ## Contexto operativo
 
 - **Postgres corre en el contenedor Docker `soporte-postgres-master`** (puerto 5432), con
