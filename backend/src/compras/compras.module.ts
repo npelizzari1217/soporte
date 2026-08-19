@@ -39,6 +39,7 @@ import { EditarFechaEtapaDeItemUseCase } from './application/use-cases/editar-fe
 import { CerrarItemConFaltanteUseCase } from './application/use-cases/cerrar-item-con-faltante.use-case';
 import { CancelarCompraUseCase } from './application/use-cases/cancelar-compra.use-case';
 import { ListarComprasUseCase } from './application/use-cases/listar-compras.use-case';
+import { ExportarComprasUseCase } from './application/use-cases/exportar-compras.use-case';
 import { ObtenerCompraUseCase } from './application/use-cases/obtener-compra.use-case';
 import { ListarOperacionesCompraUseCase } from './application/use-cases/listar-operaciones-compra.use-case';
 
@@ -48,8 +49,10 @@ import { ComprasController } from './interface/controllers/compras.controller';
  * ComprasModule — wiring real del dominio `compras/` (sdd/redisenio-modulo-compras,
  * PR-22, reemplaza el placeholder `@Module({})` de PR-1).
  *
- * Registra los 13 casos de uso (10 mutadores + 3 consultas), los 2 repos
+ * Registra los casos de uso del módulo (mutadores + consultas), los 2 repos
  * Prisma, `NumeradorCompra` (ADR-C5) y `RegistrarOperacionCompra` (ADR-C4).
+ * Sin conteos escritos a mano: los de este header quedaron desactualizados
+ * dos veces, y la lista de `provide:` de abajo ya es la fuente de verdad.
  *
  * **Regla estructural "tx ⇒ bitácora" (ADR-C4, capa 2 de la defensa contra
  * el olvido)**: TODO provider de este módulo cuyo `inject[]` contenga
@@ -109,7 +112,7 @@ import { ComprasController } from './interface/controllers/compras.controller';
       inject: [OPERACION_COMPRA_REPOSITORY],
     },
 
-    // ─── Mutadores (10) — TODOS inyectan TENANT_TX_RUNNER + RegistrarOperacionCompra ───
+    // ─── Mutadores — TODOS inyectan TENANT_TX_RUNNER + RegistrarOperacionCompra ───
     {
       provide: CrearCompraUseCase,
       useFactory: (
@@ -253,7 +256,7 @@ import { ComprasController } from './interface/controllers/compras.controller';
       inject: [COMPRA_REPOSITORY, RegistrarOperacionCompra, TENANT_TX_RUNNER],
     },
 
-    // ─── Consultas (3) — SIN TENANT_TX_RUNNER, SIN bitácora (§4.9/§4.10, deliberado) ───
+    // ─── Consultas — SIN TENANT_TX_RUNNER, SIN bitácora (§4.9/§4.10, deliberado) ───
     {
       provide: ListarComprasUseCase,
       useFactory: (compraRepo: ICompraRepository) => new ListarComprasUseCase(compraRepo),
@@ -269,6 +272,11 @@ import { ComprasController } from './interface/controllers/compras.controller';
       useFactory: (compraRepo: ICompraRepository, operacionRepo: IOperacionCompraRepository) =>
         new ListarOperacionesCompraUseCase(compraRepo, operacionRepo),
       inject: [COMPRA_REPOSITORY, OPERACION_COMPRA_REPOSITORY],
+    },
+    {
+      provide: ExportarComprasUseCase,
+      useFactory: (compraRepo: ICompraRepository) => new ExportarComprasUseCase(compraRepo),
+      inject: [COMPRA_REPOSITORY],
     },
   ],
   exports: [COMPRA_REPOSITORY, OPERACION_COMPRA_REPOSITORY],

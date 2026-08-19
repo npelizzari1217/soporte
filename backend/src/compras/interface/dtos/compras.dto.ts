@@ -390,6 +390,39 @@ export class ListarComprasQueryDto {
   fechaHasta?: string;
 }
 
+/**
+ * Query params de `GET /compras/export`.
+ *
+ * Son los mismos filtros de negocio de `ListarComprasQueryDto` SIN
+ * `pagina`/`porPagina`, y sin el `soloEnCurso` deprecado. La exportación
+ * cubre el universo filtrado completo: aceptar paginación acá sólo podría
+ * servir para producir un archivo incompleto, y un parámetro que se ignora
+ * en silencio es peor que uno que no existe.
+ *
+ * Ref: docs/roadmap-comercial.md punto 1.
+ */
+export class ExportarComprasQueryDto {
+  @IsOptional()
+  @IsUUID()
+  cicloId?: string;
+
+  @IsOptional()
+  @IsIn(FILTROS_GRUPO_ESTADO_COMPRA)
+  estado?: FiltroGrupoEstadoCompra;
+
+  @IsOptional()
+  @IsUUID()
+  sectorId?: string;
+
+  @IsOptional()
+  @IsDateString()
+  fechaDesde?: string;
+
+  @IsOptional()
+  @IsDateString()
+  fechaHasta?: string;
+}
+
 // ─── Response DTOs ────────────────────────────────────────────────────────
 
 /** Shape de respuesta de un ítem de compra (usado sólo en el detalle — S33 lo excluye del listado). */

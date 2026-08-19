@@ -71,7 +71,11 @@ describe('serializarCsv', () => {
   // porque la regla es una sola: si el valor contiene el separador, una
   // comilla doble o un salto de línea, va entre comillas.
   it.each([
-    { caso: 'el separador', crudo: `Caño${SEPARADOR_CSV}codo`, esperado: `"Caño${SEPARADOR_CSV}codo"` },
+    {
+      caso: 'el separador',
+      crudo: `Caño${SEPARADOR_CSV}codo`,
+      esperado: `"Caño${SEPARADOR_CSV}codo"`,
+    },
     { caso: 'comillas dobles', crudo: 'Caño de 2"', esperado: '"Caño de 2"""' },
     { caso: 'un salto de línea', crudo: 'Primera\nSegunda', esperado: '"Primera\nSegunda"' },
   ])('entrecomilla cuando el valor contiene $caso', ({ crudo, esperado }) => {

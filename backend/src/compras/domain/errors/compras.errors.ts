@@ -15,14 +15,18 @@ import { DomainError } from '../../../shared/domain/result';
  * esperado a partir de este contrato, no lo inventa de nuevo.
  *
  * Ref spec: sdd/redisenio-modulo-compras/spec §4 (escenarios) y §5 (catálogo
- * Errores -> HTTP, 25 errores: 2×409 + 2×404 + 21×422). Ref tasks: PR-5.
+ * Errores -> HTTP). Ref tasks: PR-5.
  *
- * **WU-15 (`sdd/compras-tres-etapas-y-sectores`, ADR-T2)**: catálogo
- * ampliado a 23 — 2 errores de cantidad nuevos (`CantidadOrdenadaExcede...`/
- * `...Retrocede`), 2 errores de fecha nuevos (`FechaEtapaFuturaError`/
- * `FechaEtapasFueraDeOrdenError`), y 5 renombres (3 de cantidad +
- * `CompraConOrdenEmitidaError`) que NO cambian la cuenta — todos siguen
- * 422 salvo los 2×409/2×404 heredados.
+ * **El conteo de clases NO se escribe acá.** Este header lo llevó a mano
+ * dos veces (25 en PR-5, 23 en WU-15) y las dos veces quedó mintiendo al
+ * cambio siguiente. La cuenta y el mapeo a HTTP los fija
+ * `compras.controller.spec.ts`, que los DERIVA por reflexión de este módulo:
+ * agregar un error sin mapearlo rompe ese test, que es exactamente la
+ * garantía que un número en un comentario nunca dio.
+ *
+ * Todos los errores mapean a 422 salvo los 2×409 (`SinCicloActivoError`,
+ * `NumeradorCompraAgotadoError`) y los 2×404 (`CompraNoEncontradaError`,
+ * `ItemCompraNoEncontradoError`).
  */
 
 // ─── 409 — precondición de infraestructura de negocio ──────────────────────
@@ -521,5 +525,28 @@ export class MotivoCierreFaltanteRequeridoError extends DomainError {
 
   constructor(itemId: string) {
     super(`motivoCierreFaltante es obligatorio para cerrar con faltante el ítem "${itemId}".`);
+  }
+}
+
+/**
+ * ExportacionDemasiadoGrandeError — la exportación a CSV del listado
+ * excedería el tope de filas.
+ * → HTTP 422 en la capa de presentación.
+ *
+ * Existe para no entregar un archivo TRUNCADO: un CSV con las primeras N
+ * filas y sin ninguna señal de que falta el resto se lee como completo, y
+ * cualquier total que el usuario saque de ahí es falso. Preferimos negar la
+ * exportación y pedir que se filtre.
+ *
+ * Ref: docs/roadmap-comercial.md punto 1.
+ */
+export class ExportacionDemasiadoGrandeError extends DomainError {
+  readonly code = 'EXPORTACION_DEMASIADO_GRANDE';
+
+  constructor(total: number, tope: number) {
+    super(
+      `La exportación alcanzaría ${total} compras y el máximo es ${tope}. ` +
+        `Acotá el rango de fechas, el sector o el estado y volvé a exportar.`,
+    );
   }
 }

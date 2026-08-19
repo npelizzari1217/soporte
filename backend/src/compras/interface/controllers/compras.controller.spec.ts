@@ -69,6 +69,7 @@ import {
   ItemCompraYaCerradoError,
   ItemCompraYaDecididoError,
   ItemSinFaltanteError,
+  ExportacionDemasiadoGrandeError,
   MotivoCierreFaltanteRequeridoError,
   NumeradorCompraAgotadoError,
   SinCicloActivoError,
@@ -104,6 +105,7 @@ function buildController() {
   const listarComprasUseCase = { execute: vi.fn() };
   const obtenerCompraUseCase = { execute: vi.fn() };
   const listarOperacionesCompraUseCase = { execute: vi.fn() };
+  const exportarComprasUseCase = { execute: vi.fn() };
 
   const controller = new ComprasController(
     crearCompraUseCase as unknown as Ctor[0],
@@ -122,6 +124,7 @@ function buildController() {
     listarComprasUseCase as unknown as Ctor[13],
     obtenerCompraUseCase as unknown as Ctor[14],
     listarOperacionesCompraUseCase as unknown as Ctor[15],
+    exportarComprasUseCase as unknown as Ctor[16],
   );
 
   return {
@@ -142,6 +145,7 @@ function buildController() {
     listarComprasUseCase,
     obtenerCompraUseCase,
     listarOperacionesCompraUseCase,
+    exportarComprasUseCase,
   };
 }
 
@@ -606,6 +610,63 @@ describe('ComprasController — traducción HTTP ↔ use case (PR-21)', () => {
     });
   });
 
+  describe('GET /compras/export (exportación a CSV)', () => {
+    /** Doble mínimo de la respuesta HTTP: sólo hace falta poder escribir headers. */
+    function respuestaFalsa() {
+      const headers = new Map<string, string>();
+      return {
+        res: { setHeader: (nombre: string, valor: string) => void headers.set(nombre, valor) },
+        headers,
+      };
+    }
+
+    it('entrega el CSV como descarga, con el nombre que resolvió el use case', async () => {
+      const { controller, exportarComprasUseCase } = buildController();
+      exportarComprasUseCase.execute.mockResolvedValue(
+        Result.ok({ contenido: 'Número;Motivo', nombreArchivo: 'compras-2026-08-19.csv' }),
+      );
+      const { res, headers } = respuestaFalsa();
+
+      const salida = await controller.exportar({}, res);
+
+      expect(salida).toBe('Número;Motivo');
+      expect(headers.get('Content-Type')).toBe('text/csv; charset=utf-8');
+      expect(headers.get('Content-Disposition')).toBe(
+        'attachment; filename="compras-2026-08-19.csv"',
+      );
+      // Sin exponerlo, el navegador no puede leer el header y el frontend se
+      // queda sin el nombre del archivo.
+      expect(headers.get('Access-Control-Expose-Headers')).toBe('Content-Disposition');
+    });
+
+    it('NO le pasa paginación al use case: exporta el universo filtrado, no la página', async () => {
+      const { controller, exportarComprasUseCase } = buildController();
+      exportarComprasUseCase.execute.mockResolvedValue(
+        Result.ok({ contenido: '', nombreArchivo: 'compras-2026-08-19.csv' }),
+      );
+
+      await controller.exportar({ estado: 'TODAS', sectorId: 'sector-1' }, respuestaFalsa().res);
+
+      const dto = exportarComprasUseCase.execute.mock.calls[0][0] as Record<string, unknown>;
+      expect(dto).toMatchObject({ estado: 'TODAS', sectorId: 'sector-1' });
+      expect(dto).not.toHaveProperty('pagina');
+      expect(dto).not.toHaveProperty('porPagina');
+    });
+
+    it('traduce el tope excedido a 422 y no escribe headers de descarga', async () => {
+      const { controller, exportarComprasUseCase } = buildController();
+      exportarComprasUseCase.execute.mockResolvedValue(
+        Result.fail(new ExportacionDemasiadoGrandeError(6000, 5000)),
+      );
+      const { res, headers } = respuestaFalsa();
+
+      await expect(controller.exportar({}, res)).rejects.toBeInstanceOf(
+        UnprocessableEntityException,
+      );
+      expect(headers.size).toBe(0);
+    });
+  });
+
   describe('GET /compras/:id (PR-22)', () => {
     it('detalle: retorna la compra CON ítems (a diferencia del listado, S33)', async () => {
       const { controller, obtenerCompraUseCase } = buildController();
@@ -787,8 +848,8 @@ describe('toHttpException — catálogo de errores → HTTP (spec §5)', () => {
       typeof valor === 'function' && valor.prototype instanceof DomainError,
   );
 
-  it('el catálogo tiene EXACTAMENTE 26 clases de error (2×409 + 2×404 + 22×422, fix W3+W6 + editar cabecera)', () => {
-    expect(CLASES_DE_ERROR).toHaveLength(26);
+  it('el catálogo tiene EXACTAMENTE 27 clases de error (2×409 + 2×404 + 23×422, + exportación a CSV)', () => {
+    expect(CLASES_DE_ERROR).toHaveLength(27);
   });
 
   const TABLA: Array<[string, () => DomainError, 404 | 409 | 422]> = [
@@ -838,6 +899,7 @@ describe('toHttpException — catálogo de errores → HTTP (spec §5)', () => {
     ['FechaEtapasFueraDeOrdenError', () => new FechaEtapasFueraDeOrdenError('item-1'), 422],
     ['EtapaNoRegistradaError', () => new EtapaNoRegistradaError('item-1', 'ENTREGA'), 422],
     ['SectorInexistenteError', () => new SectorInexistenteError('sector-1'), 422],
+    ['ExportacionDemasiadoGrandeError', () => new ExportacionDemasiadoGrandeError(6000, 5000), 422],
   ];
 
   it('TABLA cubre EXACTAMENTE las clases exportadas (ninguna falta, ninguna sobra)', () => {

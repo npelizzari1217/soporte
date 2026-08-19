@@ -1,11 +1,14 @@
 /**
- * ComprasController — entry point HTTP de los 15 casos de uso del módulo
- * `compras/` (12 comandos, 3 consultas — PR-21/PR-22 más las 3 etapas y
- * `editarFechaEtapaDeItem` de WU-24, sdd/compras-tres-etapas-y-sectores).
+ * ComprasController — entry point HTTP de los casos de uso del módulo
+ * `compras/` (PR-21/PR-22, más las 3 etapas y `editarFechaEtapaDeItem` de
+ * WU-24, sdd/compras-tres-etapas-y-sectores).
  *
- * Rutas (fix W1 post-verify: la tabla vieja decía 13 y listaba
- * `registrar-compra → RegistrarCompraDeItemUseCase`, un endpoint que ya no
- * existe — las 3 etapas lo reemplazaron):
+ * Sin conteo de casos de uso en este header: el que había quedó
+ * desactualizado dos veces. La tabla de abajo SÍ se mantiene, porque no
+ * duplica un número sino el mapeo ruta → acción RBAC, que no se lee de
+ * ningún otro lado de un vistazo.
+ *
+ * Rutas:
  *   POST   /compras                                             → CrearCompraUseCase                 [COMPRAS:ALTAS]
  *   POST   /compras/:id/items                                   → AgregarItemCompraUseCase            [COMPRAS:ALTAS]
  *   PATCH  /compras/:id                                          → EditarCompraUseCase                 [COMPRAS:MODIFICACION]
@@ -20,6 +23,7 @@
  *   POST   /compras/:id/items/:itemId/cerrar-con-faltante         → CerrarItemConFaltanteUseCase        [COMPRAS:MODIFICACION]
  *   POST   /compras/:id/cancelar                                  → CancelarCompraUseCase               [COMPRAS:BORRADO]
  *   GET    /compras                                               → ListarComprasUseCase                [COMPRAS:LECTURA]
+ *   GET    /compras/export                                        → ExportarComprasUseCase              [COMPRAS:LECTURA]
  *   GET    /compras/:id                                           → ObtenerCompraUseCase                [COMPRAS:LECTURA]
  *   GET    /compras/:id/operaciones                               → ListarOperacionesCompraUseCase      [COMPRAS:LECTURA]
  *
@@ -52,7 +56,7 @@
  *
  * El controller no tiene lógica de negocio: solo traduce HTTP ↔ use case y
  * mapea `DomainError` → `HttpException` (presentación) vía `toHttpException`,
- * que consume el contrato HTTP declarado en el JSDoc de cada uno de los 25
+ * que consume el contrato HTTP declarado en el JSDoc de cada uno de los
  * errores de `domain/errors/compras.errors.ts` (spec §5) — 422 por defecto,
  * nunca 500 silencioso para un `DomainError`.
  *
@@ -81,6 +85,7 @@ import {
   Patch,
   Post,
   Query,
+  Res,
   UnprocessableEntityException,
   UseGuards,
 } from '@nestjs/common';
@@ -108,6 +113,7 @@ import { CancelarCompraUseCase } from '../../application/use-cases/cancelar-comp
 import { ListarComprasUseCase } from '../../application/use-cases/listar-compras.use-case';
 import { ObtenerCompraUseCase } from '../../application/use-cases/obtener-compra.use-case';
 import { ListarOperacionesCompraUseCase } from '../../application/use-cases/listar-operaciones-compra.use-case';
+import { ExportarComprasUseCase } from '../../application/use-cases/exportar-compras.use-case';
 
 import {
   CantidadOrdenadaExcedeSolicitadaError,
@@ -123,6 +129,7 @@ import {
   CompraYaCanceladaError,
   CompraYaCerradaError,
   EtapaNoRegistradaError,
+  ExportacionDemasiadoGrandeError,
   FechaEtapaFuturaError,
   FechaEtapasFueraDeOrdenError,
   ItemCompraAprobadoNoEliminableError,
@@ -147,6 +154,7 @@ import {
   EditarCompraHttpDto,
   EditarFechaEtapaHttpDto,
   EditarItemCompraHttpDto,
+  ExportarComprasQueryDto,
   ItemCompraResponseDto,
   ListarComprasQueryDto,
   ListarComprasResponseDto,
@@ -163,12 +171,12 @@ import {
 /**
  * Mapea un `DomainError` de los use cases de compras a la `HttpException`
  * correspondiente, según el contrato declarado en el JSDoc de cada error de
- * `compras.errors.ts` (spec §5). Hoy el catálogo son 26 clases: 2×409, 2×404
- * y 22×422 — el conteo exacto lo fija (y lo rompe si alguien agrega un error
- * sin mapearlo) el test "el catálogo tiene EXACTAMENTE 26 clases" de
- * `compras.controller.spec.ts`, que lo deriva por reflexión del módulo de
- * errores en vez de confiar en este comentario. 403 NO aparece acá: es RBAC
- * resuelto por guard (`AccionesGuard`), nunca un `DomainError`.
+ * `compras.errors.ts` (spec §5). El conteo de clases NO se escribe acá: lo
+ * fija `compras.controller.spec.ts`, que lo deriva por reflexión del módulo
+ * de errores y se rompe solo si alguien agrega un error sin mapearlo — un
+ * número en este comentario ya quedó desactualizado antes y nunca dio esa
+ * garantía. 403 NO aparece acá: es RBAC resuelto por guard
+ * (`AccionesGuard`), nunca un `DomainError`.
  */
 export function toHttpException(
   error: DomainError,
@@ -206,7 +214,11 @@ export function toHttpException(
     // Fix post-verify W3.
     error instanceof EtapaNoRegistradaError ||
     // Fix post-verify W6.
-    error instanceof SectorInexistenteError
+    error instanceof SectorInexistenteError ||
+    // Exportación a CSV: cae igual en 422 por el default, pero se lista
+    // explícito como los otros 22 — el default existe para el error que
+    // NADIE mapeó, no para ahorrarse una línea en uno conocido.
+    error instanceof ExportacionDemasiadoGrandeError
   ) {
     return new UnprocessableEntityException(error.message);
   }
@@ -215,6 +227,21 @@ export function toHttpException(
   // esperado). Mismo criterio que TicketsController/EquiposController/
   // ReparacionesController.
   return new UnprocessableEntityException(error.message);
+}
+
+/**
+ * Lo único que este controller necesita de la respuesta HTTP para entregar
+ * una descarga: poder escribir headers.
+ *
+ * Se declara acá en vez de importar `Response` de `express` a propósito. El
+ * tipo completo traería `@types/express` como dependencia nueva — y este
+ * proyecto tiene un motivo concreto para no tocar el lockfile sin
+ * necesidad: el deploy aborta cuando cambia (`argon2` no recompila en
+ * Windows). Tipar exactamente lo que se usa deja el mismo chequeo estricto
+ * sin arrastrar nada.
+ */
+interface RespuestaConHeaders {
+  setHeader(nombre: string, valor: string): void;
 }
 
 @UseGuards(JwtAuthGuard, TenantGuard, AccionesGuard)
@@ -237,6 +264,7 @@ export class ComprasController {
     private readonly listarComprasUseCase: ListarComprasUseCase,
     private readonly obtenerCompraUseCase: ObtenerCompraUseCase,
     private readonly listarOperacionesCompraUseCase: ListarOperacionesCompraUseCase,
+    private readonly exportarComprasUseCase: ExportarComprasUseCase,
   ) {}
 
   /**
@@ -666,6 +694,52 @@ export class ComprasController {
       fechaHasta: query.fechaHasta !== undefined ? new Date(query.fechaHasta) : undefined,
     });
     return toListarComprasResponseDto(result.getValue());
+  }
+
+  /**
+   * GET /compras/export
+   * Exporta a CSV el listado completo que producen los filtros recibidos
+   * (docs/roadmap-comercial.md punto 1) — NO la página visible.
+   *
+   * **Va declarada ANTES de `GET /compras/:id`, y el orden es funcional, no
+   * de estilo**: Nest resuelve las rutas en el orden en que se registran, y
+   * `:id` es un comodín que también matchea la palabra `export`. Declarada
+   * después, esta ruta sería inalcanzable y el pedido caería en
+   * `ObtenerCompraUseCase` con `id="export"`, devolviendo un 404
+   * desconcertante.
+   *
+   * Gateada por `COMPRAS:LECTURA`, la misma acción que el listado: quien ya
+   * ve estas compras en pantalla no accede a ningún dato nuevo por
+   * descargarlas.
+   *
+   * @throws 422 la exportación supera el tope de filas (hay que filtrar más)
+   */
+  @Get('export')
+  @RequiereAcciones('COMPRAS:LECTURA')
+  async exportar(
+    @Query() query: ExportarComprasQueryDto,
+    @Res({ passthrough: true }) res: RespuestaConHeaders,
+  ): Promise<string> {
+    const result = await this.exportarComprasUseCase.execute({
+      cicloId: query.cicloId,
+      estado: query.estado,
+      sectorId: query.sectorId,
+      fechaDesde: query.fechaDesde !== undefined ? new Date(query.fechaDesde) : undefined,
+      fechaHasta: query.fechaHasta !== undefined ? new Date(query.fechaHasta) : undefined,
+    });
+
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+    const { contenido, nombreArchivo } = result.getValue();
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${nombreArchivo}"`);
+    // El navegador no puede leer un header que no esté expuesto por CORS, y
+    // sin esto el frontend no tiene de dónde sacar el nombre del archivo.
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
+
+    return contenido;
   }
 
   /**

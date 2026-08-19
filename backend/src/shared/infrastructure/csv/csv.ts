@@ -70,10 +70,7 @@ export interface ColumnaCsv<T> {
  * @param columnas Columnas del archivo, en el orden en que deben aparecer.
  * @returns El CSV con BOM, encabezado y una línea por fila.
  */
-export function serializarCsv<T>(
-  filas: readonly T[],
-  columnas: readonly ColumnaCsv<T>[],
-): string {
+export function serializarCsv<T>(filas: readonly T[], columnas: readonly ColumnaCsv<T>[]): string {
   const encabezado = columnas.map((columna) => escaparCelda(columna.encabezado));
   const cuerpo = filas.map((fila) =>
     columnas.map((columna) => escaparCelda(aTexto(columna.valor(fila)))).join(SEPARADOR_CSV),
