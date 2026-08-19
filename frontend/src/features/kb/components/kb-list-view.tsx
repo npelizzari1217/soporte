@@ -7,9 +7,10 @@
  * `ticket:ver_todos` del actor) — este componente solo renderiza lo que
  * `GET /kb` devuelve, nunca re-filtra artículos internos client-side.
  */
-import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo } from "react";
 import { useKbList } from "../hooks/use-kb-list";
+import { useUrlFilters } from "@/shared/hooks/use-url-filters";
 import { DataTable, type Column } from "@/components/shared/data-table";
 import { FilterBar } from "@/components/shared/filter-bar";
 import { Pagination } from "@/components/shared/pagination";
@@ -27,8 +28,10 @@ const PAGE_SIZE = 10;
 
 export function KbListView() {
   const router = useRouter();
-  const pathname = usePathname();
   const searchParams = useSearchParams();
+  // KB pagina con `page` (tickets y compras usan `pagina`): el nombre es
+  // parámetro del hook justamente para que esa diferencia no se pierda.
+  const { updateFiltros, irAPagina, limpiarFiltros } = useUrlFilters<KbFiltros>("page");
 
   const filtros: KbFiltros = useMemo(
     () => ({
@@ -39,16 +42,6 @@ export function KbListView() {
     [searchParams],
   );
 
-  function updateFiltros(patch: Partial<KbFiltros>, opts: { resetPage?: boolean } = { resetPage: true }) {
-    const next = new URLSearchParams(searchParams.toString());
-    for (const [key, value] of Object.entries(patch)) {
-      if (value === undefined || value === "") next.delete(key);
-      else next.set(key, String(value));
-    }
-    if (opts.resetPage) next.set("page", "1");
-    router.replace(`${pathname}?${next.toString()}`);
-  }
-
   /**
    * La PÁGINA cuenta como filtro. Con 5 artículos y 10 por página, un `page=2`
    * pegado en la URL de una sesión anterior deja el listado vacío para
@@ -56,11 +49,6 @@ export function KbListView() {
    * "los datos no cargaron" y mandó a revisar la base de producción.
    */
   const hayFiltrosActivos = Boolean(filtros.busqueda) || (filtros.page ?? 1) > 1;
-
-  /** Deja la URL como recién entrado a la pantalla: se van TODOS los filtros, la página incluida. */
-  function limpiarFiltros() {
-    router.replace(pathname);
-  }
 
   const kbQuery = useKbList(filtros);
 
@@ -116,7 +104,7 @@ export function KbListView() {
           page={kbQuery.data.page}
           pageSize={kbQuery.data.pageSize}
           total={kbQuery.data.total}
-          onPageChange={(page) => updateFiltros({ page }, { resetPage: false })}
+          onPageChange={irAPagina}
         />
       )}
     </div>

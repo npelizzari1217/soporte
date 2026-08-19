@@ -12,9 +12,10 @@
  * posterior (el tipo `TicketsFiltros`/hook `useTickets` ya soportan
  * `fechaDesde`/`fechaHasta`, falta solo el control de UI).
  */
-import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo } from "react";
 import { useTickets } from "../hooks/use-tickets";
+import { useUrlFilters } from "@/shared/hooks/use-url-filters";
 import { useTiposTicket, usePrioridades, useEstados } from "../hooks/use-catalogos";
 import { useUsuariosAsignables } from "../hooks/use-usuarios-asignables";
 import { buildIdToCodigoMap } from "../lib/catalog-map";
@@ -34,8 +35,8 @@ const PAGE_SIZE = 10;
 
 export function TicketsListView() {
   const router = useRouter();
-  const pathname = usePathname();
   const searchParams = useSearchParams();
+  const { updateFiltros, irAPagina, limpiarFiltros } = useUrlFilters<TicketsFiltros>("pagina");
 
   const filtros: TicketsFiltros = useMemo(
     () => ({
@@ -50,16 +51,6 @@ export function TicketsListView() {
     [searchParams],
   );
 
-  function updateFiltros(patch: Partial<TicketsFiltros>, opts: { resetPage?: boolean } = { resetPage: true }) {
-    const next = new URLSearchParams(searchParams.toString());
-    for (const [key, value] of Object.entries(patch)) {
-      if (value === undefined || value === "") next.delete(key);
-      else next.set(key, String(value));
-    }
-    if (opts.resetPage) next.set("pagina", "1");
-    router.replace(`${pathname}?${next.toString()}`);
-  }
-
   /**
    * La PÁGINA cuenta como filtro cuando es mayor a 1: con pocas filas, una
    * `pagina` vieja pegada en la URL deja el listado vacío para siempre, y ese
@@ -72,11 +63,6 @@ export function TicketsListView() {
     Boolean(filtros.asignado) ||
     Boolean(filtros.busqueda) ||
     (filtros.pagina ?? 1) > 1;
-
-  /** Deja la URL como recién entrado a la pantalla: se van TODOS los filtros, la página incluida. */
-  function limpiarFiltros() {
-    router.replace(pathname);
-  }
 
   const ticketsQuery = useTickets(filtros);
   const tiposQuery = useTiposTicket();
@@ -230,7 +216,7 @@ export function TicketsListView() {
           page={ticketsQuery.data.pagina}
           pageSize={ticketsQuery.data.porPagina}
           total={ticketsQuery.data.total}
-          onPageChange={(page) => updateFiltros({ pagina: page }, { resetPage: false })}
+          onPageChange={irAPagina}
         />
       )}
     </div>

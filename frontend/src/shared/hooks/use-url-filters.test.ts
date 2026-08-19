@@ -80,6 +80,17 @@ describe.each(["page", "pagina"] as const)("useUrlFilters — parámetro de pág
     expect(params.get("estado")).toBe("ABIERTO");
   });
 
+  it("una clave ajena al tipo de filtros no compila", () => {
+    const { result } = renderHook(() => useUrlFilters<FiltrosDePrueba>(paramPagina));
+
+    // @ts-expect-error `inexistente` no es una clave de FiltrosDePrueba.
+    result.current.updateFiltros({ inexistente: "x" });
+
+    // El chequeo real lo hace `pnpm type-check`; en runtime la clave se
+    // aplicaría igual, así que acá solo se documenta el contrato.
+    expect(ultimosParams().get("inexistente")).toBe("x");
+  });
+
   it("limpiarFiltros deja la URL sin ningún parámetro, la página incluida", () => {
     currentSearch = `estado=ABIERTO&busqueda=algo&${paramPagina}=2`;
     const { result } = renderHook(() => useUrlFilters<FiltrosDePrueba>(paramPagina));
