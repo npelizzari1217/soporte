@@ -38,8 +38,9 @@ Un punto importante: **llegar al 100% no cierra la reparación**. El avance y el
 estado del ticket son dos cosas separadas; el cambio de estado sigue siendo una
 decisión de la persona.
 
-Al completar una subtarea el porcentaje se recalcula solo. Si en cambio agrega o
-elimina subtareas, actualice la página para ver la columna *Avance* al día.
+El porcentaje se recalcula solo: al completar una subtarea, y también al agregar
+o eliminar una. Tenga en cuenta que agregar una subtarea *baja* el avance, porque
+cambia el total sobre el que se calcula.
 
 ## Comentarios: por qué se está demorando
 
@@ -65,8 +66,8 @@ número con la cantidad de comentarios que tiene esa reparación. Si no tiene
 ninguno, no aparece número.
 
 Sirve para barrer el listado de un vistazo: las reparaciones con varios
-comentarios suelen ser las que vienen complicadas. Después de publicar un
-comentario, actualice la página para ver el contador al día.
+comentarios suelen ser las que vienen complicadas. El contador se actualiza solo
+al publicar un comentario.
 
 ## Quién puede hacer cada cosa
 
