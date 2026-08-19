@@ -17,6 +17,9 @@ import { PageHeader } from "@/components/shared/page-header";
 import { Can } from "@/components/shared/can";
 import { Badge } from "@/components/ui/badge";
 import { notifyError } from "@/shared/lib/toast";
+// Una sola fuente para el nombre visible del módulo: el menú lateral, la
+// grilla de permisos y este título tienen que decir lo mismo siempre.
+import { ETIQUETAS_MODULOS } from "@/shared/auth/etiquetas-modulos";
 import { KbArticleCreateDialog } from "./kb-article-create-dialog";
 import type { KbArticulo, KbFiltros } from "../types";
 
@@ -65,7 +68,7 @@ export function KbListView() {
   return (
     <div>
       <PageHeader
-        title="Base de conocimiento"
+        title={ETIQUETAS_MODULOS.KB}
         actions={
           <Can permiso="KB:ALTAS">
             <KbArticleCreateDialog />
