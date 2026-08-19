@@ -76,6 +76,57 @@ Reglas de la delegación:
   orquestador verifica por su cuenta (correr los tests, leer el diff). Ya pasó en
   este proyecto que un reporte en verde tapaba un test que no mordía.
 
+## SDD es el camino por defecto (OBLIGATORIO)
+
+**Todo trabajo sustantivo pasa por un ciclo SDD, ejecutado por sus subagentes de fase.**
+No se implementa "directo" salvo que sea un arreglo mecánico de un archivo ya entendido.
+
+Esto ANULA la regla global de que SDD se elige solo por pedido explícito o propuesta
+aceptada: en este proyecto es el default, decidido por el usuario el 2026-08-19.
+
+Cada fase la ejecuta su subagente dedicado vía la herramienta Agent, **nunca invocando la
+skill** (las `sdd-*/SKILL.md` traen `delegate_only: true`: si las cargás como skill, sos el
+orquestador y tenés que delegar). El `model` es obligatorio en cada llamada:
+
+| Fase | Agente | Modelo |
+|---|---|---|
+| explore | `sdd-explore` | sonnet |
+| propose | `sdd-propose` | **opus** |
+| spec | `sdd-spec` | sonnet |
+| design | `sdd-design` | **opus** |
+| tasks | `sdd-tasks` | sonnet |
+| apply | `sdd-apply` | sonnet |
+| verify | `sdd-verify` | sonnet |
+| archive | `sdd-archive` | haiku |
+
+`spec` y `design` son el ÚNICO paralelismo declarado: las dos leen el proposal y no dependen
+entre sí. Todo lo demás va en serie — y `apply` en particular **no admite instancias
+paralelas**: `apply-progress` es un registro único con merge secuencial y el ledger de
+intentos bloquea con `active_attempt`.
+
+### Lo que este proyecto anula del flujo SDD
+
+- **Artifact store: `engram`.** No existe `openspec/` y no debe crearse. Por lo tanto **no se
+  invoca el dispatcher nativo** (`gentle-ai sdd-status` / `sdd-continue`): solo lee artefactos
+  OpenSpec y siempre reporta `artifactStore: openspec`, así que no vería nada. El estado se
+  resuelve por topic keys con `mem_search` → `mem_get_observation`.
+- **`sdd-tasks` NO emite `Review Workload Forecast`** (ni presupuesto de 400 líneas, ni chain
+  strategy, ni `size:exception`).
+- **`sdd-apply` NO ejecuta su gate de "Review Workload Decision"**. Ojo: si el prompt de
+  lanzamiento no se lo dice, el agente puede auto-bloquearse leyendo el forecast del artefacto.
+  Hay que desactivárselo explícitamente.
+- La Ayuda va DENTRO del work unit del módulo, nunca en una tarea final de documentación.
+
+### Antes de cada `sdd-apply`
+
+Reclamar el turno en el ledger: `gentle-ai sdd-attempt acquire` con `--change`, `--request-id`,
+`--work-unit` y `--evidence-goal`; lanzar solo con `state: proceed` y pasarle el `token` al
+subagente para que no colisione consigo mismo. Cerrar con `settle` después.
+
+**Si `acquire` devuelve `settle_obligation`, se le relaya al usuario TEXTUAL antes de lanzar el
+work unit.** No es un aviso a sopesar: un intento es un recurso gastable y descubrir la demanda
+recién en el `settle` lo quema sin forma de recuperarlo.
+
 ## Contexto operativo
 
 - **Postgres corre en el contenedor Docker `soporte-postgres-master`** (puerto 5432), con
