@@ -85,34 +85,86 @@ const USUARIO_SOPORTE: JwtPayload = payloadDeTest({
   modulos: ['SOPORTE'],
 });
 
+/** Doble de un use case: al controller sólo le interesa `execute`. */
+type MockUseCase = { execute: ReturnType<typeof vi.fn> };
+
+/** Las once dependencias-use-case del controller, con el nombre corto que usan los tests. */
+type DependenciasControlador = {
+  crearTicket: MockUseCase;
+  obtenerTicket: MockUseCase;
+  listarTickets: MockUseCase;
+  editarTicket: MockUseCase;
+  transicionar: MockUseCase;
+  asignarTicket: MockUseCase;
+  crearComentario: MockUseCase;
+  listarTimeline: MockUseCase;
+  listarTecnicos: MockUseCase;
+  asignarEnProceso: MockUseCase;
+  exportarTickets: MockUseCase;
+};
+
+type ControladorDeTest = DependenciasControlador & {
+  controller: TicketsController;
+  usuarioMasterChecker: { resolverNombres: ReturnType<typeof vi.fn> };
+};
+
+/**
+ * Construye el controller con las DOCE dependencias del constructor siempre
+ * completas, dejando pisar sólo las que el test necesita observar.
+ *
+ * El porqué de que haya un único constructor y no uno por `describe`: antes
+ * cada bloque armaba su propia lista de argumentos y cuatro de ellas habían
+ * quedado cortas (9 u 11 de 12). Nadie se enteró porque `tsconfig.json` excluye
+ * los `*.spec.ts` del typecheck, y los tests pasaban sólo de casualidad — la
+ * dependencia faltante llegaba `undefined` y ningún caso la tocaba. Es
+ * confianza falsa: el primer test que ejercitara esa ruta reventaba en runtime
+ * en vez de fallar al compilar. Con un solo punto de construcción, agregar una
+ * dependencia al controller se arregla en un único lugar y no puede volver a
+ * desincronizarse por partes.
+ */
+function buildController(overrides: Partial<DependenciasControlador> = {}): ControladorDeTest {
+  const stub = (): MockUseCase => ({ execute: vi.fn() });
+  const deps: DependenciasControlador = {
+    crearTicket: overrides.crearTicket ?? stub(),
+    obtenerTicket: overrides.obtenerTicket ?? stub(),
+    // Default con página vacía válida: `findAll` es el único método que los
+    // tests ejercitan SIN pisar su use case, y necesita un `Result` real.
+    listarTickets: overrides.listarTickets ?? {
+      execute: vi
+        .fn()
+        .mockResolvedValue(Result.ok({ items: [], total: 0, pagina: 1, porPagina: 20 })),
+    },
+    editarTicket: overrides.editarTicket ?? stub(),
+    transicionar: overrides.transicionar ?? stub(),
+    asignarTicket: overrides.asignarTicket ?? stub(),
+    crearComentario: overrides.crearComentario ?? stub(),
+    listarTimeline: overrides.listarTimeline ?? stub(),
+    listarTecnicos: overrides.listarTecnicos ?? stub(),
+    asignarEnProceso: overrides.asignarEnProceso ?? stub(),
+    exportarTickets: overrides.exportarTickets ?? stub(),
+  };
+  // `findAll`/`exportar` resuelven nombres batch de los items — con lista vacía
+  // devuelve un Map vacío sin N+1.
+  const usuarioMasterChecker = { resolverNombres: vi.fn().mockResolvedValue(new Map()) };
+
+  const controller = new TicketsController(
+    deps.crearTicket as unknown as Ctor[0], // crearTicketUseCase
+    deps.obtenerTicket as unknown as Ctor[1], // obtenerTicketUseCase
+    deps.listarTickets as unknown as Ctor[2], // listarTicketsUseCase
+    deps.editarTicket as unknown as Ctor[3], // editarTicketUseCase
+    deps.transicionar as unknown as Ctor[4], // transicionarEstadoUseCase
+    deps.asignarTicket as unknown as Ctor[5], // asignarTicketUseCase
+    deps.crearComentario as unknown as Ctor[6], // crearComentarioUseCase
+    deps.listarTimeline as unknown as Ctor[7], // listarTimelineUseCase
+    usuarioMasterChecker as unknown as Ctor[8], // usuarioMasterChecker
+    deps.listarTecnicos as unknown as Ctor[9], // listarTecnicosAsignablesUseCase
+    deps.asignarEnProceso as unknown as Ctor[10], // asignarYPonerEnProcesoUseCase
+    deps.exportarTickets as unknown as Ctor[11], // exportarTicketsUseCase
+  );
+  return { controller, ...deps, usuarioMasterChecker };
+}
+
 describe('TicketsController — bypass ROOT en chequeos inline (sdd/root-access-fix)', () => {
-  function buildController(overrides: {
-    crearComentario?: { execute: ReturnType<typeof vi.fn> };
-    listarTimeline?: { execute: ReturnType<typeof vi.fn> };
-    listarTickets?: { execute: ReturnType<typeof vi.fn> };
-  }) {
-    const stub = () => ({ execute: vi.fn() });
-    const crearComentario = overrides.crearComentario ?? stub();
-    const listarTimeline = overrides.listarTimeline ?? stub();
-    const listarTickets = overrides.listarTickets ?? stub();
-    // `findAll` resuelve nombres batch de los items — con lista vacía devuelve
-    // un Map vacío sin N+1.
-    const usuarioMasterChecker = { resolverNombres: vi.fn().mockResolvedValue(new Map()) };
-
-    const controller = new TicketsController(
-      stub() as Ctor[0], // crearTicketUseCase
-      stub() as Ctor[1], // obtenerTicketUseCase
-      listarTickets as unknown as Ctor[2], // listarTicketsUseCase
-      stub() as Ctor[3], // editarTicketUseCase
-      stub() as Ctor[4], // transicionarEstadoUseCase
-      stub() as Ctor[5], // asignarTicketUseCase
-      crearComentario as unknown as Ctor[6], // crearComentarioUseCase
-      listarTimeline as unknown as Ctor[7], // listarTimelineUseCase
-      usuarioMasterChecker as unknown as Ctor[8], // usuarioMasterChecker
-    );
-    return { controller, crearComentario, listarTimeline, listarTickets };
-  }
-
   it('ROOT con permisos=[] PUEDE crear un comentario interno (no 403) y lo delega con esInterno=true', async () => {
     const crearComentario = { execute: vi.fn().mockResolvedValue(Result.ok(fakeOperacion(true))) };
     const { controller } = buildController({ crearComentario });
@@ -154,29 +206,6 @@ describe('TicketsController — bypass ROOT en chequeos inline (sdd/root-access-
 });
 
 describe('TicketsController.findAll — gate de módulo (5.2 CAPA 2)', () => {
-  function buildController() {
-    const stub = () => ({ execute: vi.fn() });
-    const listarTickets = {
-      execute: vi
-        .fn()
-        .mockResolvedValue(Result.ok({ items: [], total: 0, pagina: 1, porPagina: 20 })),
-    };
-    const usuarioMasterChecker = { resolverNombres: vi.fn().mockResolvedValue(new Map()) };
-
-    const controller = new TicketsController(
-      stub() as Ctor[0],
-      stub() as Ctor[1],
-      listarTickets as unknown as Ctor[2],
-      stub() as Ctor[3],
-      stub() as Ctor[4],
-      stub() as Ctor[5],
-      stub() as Ctor[6],
-      stub() as Ctor[7],
-      usuarioMasterChecker as unknown as Ctor[8],
-    );
-    return { controller, listarTickets };
-  }
-
   it('ADMINISTRADOR → pasa modulosPermitidos=null (sin restricción de módulo)', async () => {
     const { controller, listarTickets } = buildController();
 
@@ -209,31 +238,6 @@ describe('TicketsController.findAll — gate de módulo (5.2 CAPA 2)', () => {
 });
 
 describe('TicketsController — asignación unificada (asignables + asignar-en-proceso)', () => {
-  function buildController(overrides: {
-    listarTecnicos?: { execute: ReturnType<typeof vi.fn> };
-    asignarEnProceso?: { execute: ReturnType<typeof vi.fn> };
-  }) {
-    const stub = () => ({ execute: vi.fn() });
-    const listarTecnicos = overrides.listarTecnicos ?? stub();
-    const asignarEnProceso = overrides.asignarEnProceso ?? stub();
-    const usuarioMasterChecker = { resolverNombres: vi.fn().mockResolvedValue(new Map()) };
-
-    const controller = new TicketsController(
-      stub() as Ctor[0],
-      stub() as Ctor[1],
-      stub() as Ctor[2],
-      stub() as Ctor[3],
-      stub() as Ctor[4],
-      stub() as Ctor[5],
-      stub() as Ctor[6],
-      stub() as Ctor[7],
-      usuarioMasterChecker as unknown as Ctor[8],
-      listarTecnicos as unknown as Ctor[9], // listarTecnicosAsignablesUseCase
-      asignarEnProceso as unknown as Ctor[10], // asignarYPonerEnProcesoUseCase
-    );
-    return { controller, listarTecnicos, asignarEnProceso };
-  }
-
   it('GET :id/asignables → delega con el clienteId del JWT y devuelve la lista de técnicos', async () => {
     const tecnicos = [{ id: 'tec-1', nombre: 'Ana', apellido: 'García' }];
     const listarTecnicos = { execute: vi.fn().mockResolvedValue(Result.ok(tecnicos)) };
@@ -305,29 +309,6 @@ describe('TicketsController — bloqueo de edición y salto correctivo (actor fl
       },
       'ticket-1',
     );
-  }
-
-  function buildController(overrides: {
-    editarTicket?: { execute: ReturnType<typeof vi.fn> };
-    transicionar?: { execute: ReturnType<typeof vi.fn> };
-  }) {
-    const stub = () => ({ execute: vi.fn() });
-    const editarTicket = overrides.editarTicket ?? stub();
-    const transicionar = overrides.transicionar ?? stub();
-    const usuarioMasterChecker = { resolverNombres: vi.fn().mockResolvedValue(new Map()) };
-
-    const controller = new TicketsController(
-      stub() as Ctor[0],
-      stub() as Ctor[1],
-      stub() as Ctor[2],
-      editarTicket as unknown as Ctor[3], // editarTicketUseCase
-      transicionar as unknown as Ctor[4], // transicionarEstadoUseCase
-      stub() as Ctor[5],
-      stub() as Ctor[6],
-      stub() as Ctor[7],
-      usuarioMasterChecker as unknown as Ctor[8],
-    );
-    return { controller, editarTicket, transicionar };
   }
 
   it('update: ROOT → delega con actorEsRoot=true', async () => {
@@ -404,28 +385,6 @@ describe('TicketsController — bloqueo de edición y salto correctivo (actor fl
 });
 
 describe('TicketsController.exportar — GET /tickets/export (sdd/exportar-listados-csv)', () => {
-  function buildController(overrides: { exportarTickets?: { execute: ReturnType<typeof vi.fn> } }) {
-    const stub = () => ({ execute: vi.fn() });
-    const exportarTickets = overrides.exportarTickets ?? stub();
-    const usuarioMasterChecker = { resolverNombres: vi.fn().mockResolvedValue(new Map()) };
-
-    const controller = new TicketsController(
-      stub() as Ctor[0], // crearTicketUseCase
-      stub() as Ctor[1], // obtenerTicketUseCase
-      stub() as Ctor[2], // listarTicketsUseCase
-      stub() as Ctor[3], // editarTicketUseCase
-      stub() as Ctor[4], // transicionarEstadoUseCase
-      stub() as Ctor[5], // asignarTicketUseCase
-      stub() as Ctor[6], // crearComentarioUseCase
-      stub() as Ctor[7], // listarTimelineUseCase
-      usuarioMasterChecker as unknown as Ctor[8], // usuarioMasterChecker
-      stub() as Ctor[9], // listarTecnicosAsignablesUseCase
-      stub() as Ctor[10], // asignarYPonerEnProcesoUseCase
-      exportarTickets as unknown as Ctor[11], // exportarTicketsUseCase
-    );
-    return { controller, exportarTickets };
-  }
-
   /** Doble mínimo de la respuesta HTTP: sólo hace falta poder escribir headers. */
   function respuestaFalsa() {
     const headers = new Map<string, string>();
