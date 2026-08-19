@@ -63,6 +63,7 @@ import { Select } from "@/components/ui/select";
 import { notifyError } from "@/shared/lib/toast";
 import { EstadoCompraBadge } from "./estado-compra-badge";
 import { CompraCreateDialog } from "./compra-create-dialog";
+import { ExportarComprasButton } from "./exportar-compras-button";
 import { formatearTotalesPorMoneda } from "../lib/formatear-totales";
 import { aFechaInput } from "../lib/fecha";
 import type { CompraListItem, ComprasFiltros, FiltroEstadoCompra } from "../types";
@@ -168,9 +169,16 @@ export function ComprasListView() {
         title="Compras"
         description="Solicitudes de compra del ciclo activo"
         actions={
-          <Can permiso="COMPRAS:ALTAS">
-            <CompraCreateDialog />
-          </Can>
+          <>
+            {/*
+              Recibe el MISMO objeto `filtros` que alimenta `useCompras`: es lo
+              que garantiza que el CSV y la pantalla cuenten lo mismo.
+            */}
+            <ExportarComprasButton filtros={filtros} />
+            <Can permiso="COMPRAS:ALTAS">
+              <CompraCreateDialog />
+            </Can>
+          </>
         }
       />
 

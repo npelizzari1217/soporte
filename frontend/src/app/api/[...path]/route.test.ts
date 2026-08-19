@@ -116,4 +116,31 @@ describe("/api/[...path] generic BFF proxy", () => {
 
     expect(res.status).toBe(204);
   });
+
+  it("GET: descarga CSV → propaga el cuerpo Y el Content-Disposition (el front saca el nombre de ahí)", async () => {
+    server.use(
+      http.get(
+        `${BACKEND}/compras/export`,
+        () =>
+          new HttpResponse("numero,motivo\nCOM-1,Insumos\n", {
+            headers: {
+              "content-type": "text/csv; charset=utf-8",
+              "content-disposition": 'attachment; filename="compras-2026-08-19.csv"',
+            },
+          }),
+      ),
+    );
+
+    const req = new NextRequest("http://localhost/api/compras/export?estado=TODAS", {
+      headers: { cookie: "at=token123" },
+    });
+    const res = await GET(req, { params: Promise.resolve({ path: ["compras", "export"] }) });
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/csv");
+    expect(res.headers.get("content-disposition")).toBe(
+      'attachment; filename="compras-2026-08-19.csv"',
+    );
+    expect(await res.text()).toContain("COM-1,Insumos");
+  });
 });

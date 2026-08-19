@@ -24,7 +24,8 @@ import { cookieName, COOKIE_AT } from "@/shared/auth/cookies";
  * - Response passthrough: 204 short-circuits (no JSON parse attempt, mirrors
  *   `shared/api/normalize.ts`); JSON bodies pass through as-is so `ApiError`
  *   normalization on the client sees the exact NestJS `{statusCode,message}`
- *   shape; anything else falls back to text.
+ *   shape; anything else falls back to text, conservando `Content-Disposition`
+ *   cuando el backend lo manda (descargas: `GET /compras/export`).
  *
  * 401 handling is intentionally NOT special-cased here — `apiFetch`'s
  * single-flight refresh (PR11) reacts to a plain proxied 401 exactly like it
@@ -69,10 +70,16 @@ async function proxy(request: NextRequest, params: Promise<{ path: string[] }>):
   }
 
   const text = await backendRes.text();
-  return new NextResponse(text, {
-    status: backendRes.status,
-    headers: resContentType ? { "content-type": resContentType } : undefined,
-  });
+  const resHeaders = new Headers();
+  if (resContentType) resHeaders.set("content-type", resContentType);
+  // `Content-Disposition` se reenvía porque es el ÚNICO lugar donde viaja el
+  // nombre del archivo de una descarga (`GET /compras/export`). Si el proxy lo
+  // come, el navegador baja el CSV con el nombre de la ruta ("export") y sin
+  // extensión — falla silenciosa: el archivo baja igual, solo que inservible.
+  const resDisposition = backendRes.headers.get("content-disposition");
+  if (resDisposition) resHeaders.set("content-disposition", resDisposition);
+
+  return new NextResponse(text, { status: backendRes.status, headers: resHeaders });
 }
 
 export async function GET(request: NextRequest, { params }: RouteParams): Promise<NextResponse> {

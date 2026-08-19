@@ -52,19 +52,17 @@ async function rawFetch(path: string, init?: ApiFetchInit): Promise<Response> {
 }
 
 /**
- * Typed, authenticated fetch for client components.
+ * Authenticated fetch + single-flight 401 refresh, devolviendo la `Response`
+ * CRUDA. Es el tronco común de `apiFetch` (JSON) y `apiFetchBlob` (archivos):
+ * la política de sesión es una sola, y lo único que cambia entre los dos es
+ * cómo se lee el cuerpo.
  *
- * - Returns `T` on success (200-299); 204 returns `undefined`.
  * - On 401: triggers a single-flight refresh, then retries the original request ONCE.
  * - If the refresh fails, or the retry still returns 401: throws `SessionExpiredError`.
  * - If `path === 'auth/refresh'`: skips the refresh loop entirely (prevents infinite recursion).
  * - Network `TypeError`s are normalized to `ApiError(0, "Error de red")`.
- *
- * Usage with TanStack Query:
- *   queryFn: () => apiFetch<Ticket[]>('tickets')
- *   mutationFn: (dto) => apiFetch<Ticket>('tickets', { method: 'POST', json: dto })
  */
-export async function apiFetch<T>(path: string, init?: ApiFetchInit): Promise<T> {
+async function fetchConRefresh(path: string, init?: ApiFetchInit): Promise<Response> {
   let res: Response;
   try {
     res = await rawFetch(path, init);
@@ -92,5 +90,50 @@ export async function apiFetch<T>(path: string, init?: ApiFetchInit): Promise<T>
     }
   }
 
-  return normalize<T>(res);
+  return res;
+}
+
+/**
+ * Typed, authenticated fetch for client components.
+ *
+ * - Returns `T` on success (200-299); 204 returns `undefined`.
+ * - Errores HTTP y de red se normalizan a `ApiError`/`SessionExpiredError`.
+ *
+ * Usage with TanStack Query:
+ *   queryFn: () => apiFetch<Ticket[]>('tickets')
+ *   mutationFn: (dto) => apiFetch<Ticket>('tickets', { method: 'POST', json: dto })
+ */
+export async function apiFetch<T>(path: string, init?: ApiFetchInit): Promise<T> {
+  return normalize<T>(await fetchConRefresh(path, init));
+}
+
+/** Archivo binario/textual devuelto por una ruta de descarga autenticada. */
+export interface ArchivoDescargado {
+  blob: Blob;
+  /** Header crudo `Content-Disposition`, o `null` si el servidor no lo mandó. Parsearlo es tarea de `shared/lib/descarga.ts`. */
+  contentDisposition: string | null;
+}
+
+/**
+ * Variante de `apiFetch` para rutas que devuelven un ARCHIVO en vez de JSON
+ * (`GET /compras/export`).
+ *
+ * Existe porque `normalize()` decide qué hacer por `content-type` y colapsa
+ * todo lo que no sea JSON a `string`: eso pierde el `Content-Disposition` —
+ * único portador del nombre del archivo— y obligaría a reconstruir el Blob.
+ * El refresh single-flight ante 401 se comparte con `apiFetch` vía
+ * `fetchConRefresh`, así que una sesión que expira en medio de una descarga se
+ * recupera igual que en cualquier otro pedido.
+ *
+ * Los errores siguen siendo JSON (`{statusCode, message}` de NestJS), así que
+ * se delegan a `normalize`, que tira el `ApiError` con el mensaje de dominio
+ * real (p. ej. el 422 de "demasiadas filas") — el caller no distingue este
+ * error de los del resto de la app.
+ */
+export async function apiFetchBlob(path: string, init?: ApiFetchInit): Promise<ArchivoDescargado> {
+  const res = await fetchConRefresh(path, init);
+  // `normalize` SIEMPRE tira cuando la respuesta no es ok: `Promise<never>`.
+  if (!res.ok) return normalize<never>(res);
+
+  return { blob: await res.blob(), contentDisposition: res.headers.get("content-disposition") };
 }

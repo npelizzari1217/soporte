@@ -1,10 +1,10 @@
 ---
 slug: compras-estados
-titulo: Estados de una compra y cómo se ordena el listado
+titulo: El listado de compras: estados, orden y exportación a Excel
 visibleParaSolicitante: false
 ---
 
-# Estados de una compra y cómo se ordena el listado
+# El listado de compras: estados, orden y exportación a Excel
 
 Una compra **no tiene un estado propio que alguien fije a mano**. El estado se
 deduce de los ítems que la compra contiene. Entender eso explica casi todo lo
@@ -72,3 +72,38 @@ Arriba del listado hay un filtro por estado con cuatro opciones:
 Como el filtro arranca en *Activas*, **una compra cancelada, rechazada o cerrada
 no se ve al entrar**. No desapareció: hay que cambiar el filtro. Es la causa más
 frecuente del reporte "no encuentro una compra que sé que existe".
+
+## Exportar a Excel
+
+Arriba a la derecha del listado hay un botón **Exportar a Excel**. Baja un
+archivo con las compras del listado, que se abre con Excel (o con cualquier
+planilla de cálculo) haciéndole doble clic.
+
+Lo importante es **qué** baja: el archivo trae **exactamente lo que los filtros
+de la pantalla están mostrando, pero completo**, no solo las filas que se ven.
+Si el listado tiene 400 compras repartidas en páginas de a 10, el archivo trae
+las 400. Y al revés: si el filtro está en *Activas*, en el archivo **no** hay ni
+una compra cancelada.
+
+Eso hace que valga la pena mirar los filtros antes de exportar. El caso típico
+es querer todo el año y bajar solo lo activo, porque el filtro seguía en el
+valor con el que arranca la pantalla. Si querés absolutamente todas las compras,
+poné el filtro de estado en **Todas** y limpiá las fechas y el sector.
+
+Mientras el archivo se prepara, el botón queda deshabilitado. En listados
+grandes puede tardar unos segundos.
+
+### "Hay demasiadas filas"
+
+Si el listado filtrado es muy grande, la exportación no se hace y aparece un
+aviso pidiendo que acotes los filtros. No es un error ni se perdió nada: el
+archivo sería tan pesado que no habría con qué abrirlo cómodamente.
+
+La salida es achicar el pedido y, si hace falta, bajar varios archivos:
+
+- **Acotá las fechas** — es lo que más recorta. Un mes o un trimestre por vez.
+- **Elegí un sector** — y repetí la exportación sector por sector.
+- **Elegí un estado** — por ejemplo, exportá primero las activas y después las
+  completadas.
+
+Combinando dos de esos tres el problema desaparece prácticamente siempre.
