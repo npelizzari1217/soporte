@@ -1,7 +1,6 @@
 ---
 slug: ayuda-y-articulos
 titulo: El módulo de Ayuda y quién ve cada artículo
-tipoTicket: null
 visibleParaSolicitante: true
 ---
 

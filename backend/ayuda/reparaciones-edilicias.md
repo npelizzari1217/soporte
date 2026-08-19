@@ -1,7 +1,6 @@
 ---
 slug: reparaciones-edilicias
 titulo: Subtareas y comentarios de una reparación edilicia
-tipoTicket: EDILICIA
 visibleParaSolicitante: false
 ---
 

@@ -126,8 +126,7 @@ model TipoTicket {
   updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt DateTime? @map("deleted_at") @db.Timestamptz
 
-  tickets     Ticket[]
-  kbArticulos KbArticulo[]
+  tickets Ticket[]
 
   @@index([modulo, activo])
   @@map("tipos_ticket")
@@ -558,42 +557,19 @@ model TicketSoporte {
   @@map("ticket_soporte")
 }
 
-// ─── KB_ARTICULOS (base de conocimiento) ───────────────────────────────────────
+// ─── KB_ARTICULOS — RETIRADA DEL TENANT ──────────────────────────────────────
 //
-// Artículos de ayuda del tenant. tipo_ticket_id es opcional: permite tipar el
-// artículo por flujo (SOPORTE/COMPRAS/EDILICIA/custom) para sugerirlo en el
-// contexto correspondiente, pero un artículo general puede no tener tipo.
-// autor_id: soft ref → master.usuarios.id (sin FK cross-DB). Nullable porque
-// un artículo puede haberse migrado/importado sin autor identificado.
-// visible_para_solicitante: default FALSE — por defecto un artículo es interno
-// (solo staff); el admin lo publica explícitamente para que lo vea también
-// el solicitante (portal de autoservicio).
-// slug: identidad estable de los artículos que se mantienen como markdown en
-// el repositorio y se sincronizan a cada tenant. NULLABLE porque un artículo
-// cargado a mano por el cliente no tiene slug — y en Postgres varios NULL
-// conviven bajo un UNIQUE. Sincronizar por `titulo` duplicaría el artículo
-// cada vez que se corrige su redacción; el slug no cambia nunca.
-
-model KbArticulo {
-  id                     String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  slug                   String?   @unique @db.VarChar(120)
-  titulo                 String    @db.VarChar(255)
-  contenido              String    @db.Text
-  tipoTicketId           String?   @map("tipo_ticket_id") @db.Uuid
-  /// Soft ref → master.usuarios.id. Sin FK cross-DB. Nullable.
-  autorId                String?   @map("autor_id") @db.Uuid
-  visibleParaSolicitante Boolean   @default(false) @map("visible_para_solicitante")
-  activo                 Boolean   @default(true)
-  createdAt              DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt              DateTime  @updatedAt @map("updated_at") @db.Timestamptz
-  deletedAt              DateTime? @map("deleted_at") @db.Timestamptz
-
-  tipoTicket TipoTicket? @relation(fields: [tipoTicketId], references: [id])
-
-  @@index([tipoTicketId])
-  @@index([visibleParaSolicitante])
-  @@map("kb_articulos")
-}
+// La Ayuda dejó de vivir en cada cliente: pasó a ser ÚNICA y GLOBAL, en la DB
+// master (`prisma_master/schema.prisma`, modelo `KbArticulo`). El mismo texto
+// estaba duplicado tantas veces como tenants había y había que publicarlo
+// cliente por cliente, sin que esa duplicación representara ninguna diferencia
+// real: la Ayuda documenta cómo se usa el sistema, y el sistema es el mismo
+// para todos.
+//
+// La tabla se elimina de cada tenant en la migración
+// `20260819130000_drop_kb_articulos`. `tipos_ticket` pierde de paso su
+// back-relation `kbArticulos`: la FK `tipo_ticket_id` no sobrevivió al cruce a
+// master (un artículo global no puede apuntar al catálogo de UN cliente).
 
 // ─── COMPRAS (reconstrucción desde cero — PR-2, sdd/redisenio-modulo-compras) ─
 //

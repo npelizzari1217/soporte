@@ -3,8 +3,8 @@
  * directorio real (`backend/ayuda/`).
  *
  * Un frontmatter inválido no puede pasar en silencio: el artículo terminaría sin
- * sincronizarse a ningún tenant sin que nadie se entere, o peor, sincronizado
- * con una identidad equivocada.
+ * sincronizarse sin que nadie se entere, o peor, sincronizado con una identidad
+ * equivocada.
  *
  * El test de deriva es el que importa a futuro: cada `.md` que se agregue al
  * repositorio pasa por acá, así que un frontmatter roto o un slug repetido se
@@ -16,7 +16,6 @@ import { existsSync } from 'node:fs';
 type Articulo = {
   slug: string;
   titulo: string;
-  tipoTicket: string | null;
   visibleParaSolicitante: boolean;
   contenido: string;
   origen: string;
@@ -33,7 +32,6 @@ describe('parsearArticulo()', () => {
     '---',
     'slug: permisos-y-roles',
     'titulo: Cómo funcionan los permisos',
-    'tipoTicket: null',
     'visibleParaSolicitante: false',
     '---',
     '',
@@ -47,15 +45,17 @@ describe('parsearArticulo()', () => {
 
     expect(articulo.slug).toBe('permisos-y-roles');
     expect(articulo.titulo).toBe('Cómo funcionan los permisos');
-    expect(articulo.tipoTicket).toBeNull();
     expect(articulo.visibleParaSolicitante).toBe(false);
     expect(articulo.contenido).toBe('# Título\n\nCuerpo del artículo.');
   });
 
   it('acepta comentarios al final de una línea del frontmatter', () => {
-    const texto = VALIDO.replace('tipoTicket: null', 'tipoTicket: null        # o un código');
+    const texto = VALIDO.replace(
+      'visibleParaSolicitante: false',
+      'visibleParaSolicitante: false   # arranca interno',
+    );
 
-    expect(parsearArticulo(texto, 'ejemplo.md').tipoTicket).toBeNull();
+    expect(parsearArticulo(texto, 'ejemplo.md').visibleParaSolicitante).toBe(false);
   });
 
   // Un frontmatter inválido NO puede pasar en silencio: el artículo terminaría
@@ -81,8 +81,16 @@ describe('parsearArticulo()', () => {
     ['cuerpo vacío', '---\nslug: x\ntitulo: X\n---\n\n', /no tiene cuerpo/],
     [
       'clave desconocida',
-      VALIDO.replace('tipoTicket: null', 'tipoTiket: null'),
-      /clave desconocida "tipoTiket"/,
+      VALIDO.replace('visibleParaSolicitante:', 'visibleParaSolicitant:'),
+      /clave desconocida "visibleParaSolicitant"/,
+    ],
+    // `tipoTicket` era una clave válida hasta que la Ayuda pasó a master: la FK
+    // apuntaba al catálogo del TENANT y no sobrevivió al cruce. Un .md viejo que
+    // la traiga tiene que fallar fuerte, no ignorarse en silencio.
+    [
+      'con el tipoTicket retirado',
+      VALIDO.replace('slug: permisos-y-roles', 'slug: permisos-y-roles\ntipoTicket: null'),
+      /clave desconocida "tipoTicket"/,
     ],
   ])('rechaza un archivo %s con un mensaje que nombra el archivo', (_caso, texto, patron) => {
     expect(() => parsearArticulo(texto as string, 'roto.md')).toThrow(patron as RegExp);

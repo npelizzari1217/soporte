@@ -1,7 +1,6 @@
 ---
 slug: permisos-y-roles
 titulo: Cómo funcionan los permisos y los roles
-tipoTicket: null
 visibleParaSolicitante: false
 ---
 

@@ -1,7 +1,6 @@
 ---
 slug: compras-estados
 titulo: Estados de una compra y cómo se ordena el listado
-tipoTicket: null
 visibleParaSolicitante: false
 ---
 
