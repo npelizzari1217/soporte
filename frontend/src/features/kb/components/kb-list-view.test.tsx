@@ -82,6 +82,41 @@ describe("KbListView", () => {
     }
   });
 
+  // El incidente que originó esto: 5 artículos, 10 por página y un `page=2`
+  // pegado en la URL de una sesión anterior. La Ayuda aparecía vacía, se leyó
+  // como "los datos no cargaron" y mandó a revisar la base de producción.
+  it.each([
+    ["`page=2` fuera de rango", "page=2"],
+    ["búsqueda sin resultados", "busqueda=zzz"],
+  ])("vacío con %s → se reporta como vacío POR FILTRO, no como falta de datos", async (_label, search) => {
+    mockBackend([]);
+    currentSearch = search;
+    renderWithProviders(<KbListView />, { user: buildUser({ permisos: [] }) });
+
+    expect(await screen.findByText(/sin resultados para los filtros aplicados/i)).toBeInTheDocument();
+    expect(screen.queryByText(/todavía no hay artículos cargados/i)).not.toBeInTheDocument();
+  });
+
+  it("sin filtros y sin artículos → sigue mostrando el vacío de siempre, sin botón de limpiar", async () => {
+    mockBackend([]);
+    renderWithProviders(<KbListView />, { user: buildUser({ permisos: [] }) });
+
+    expect(await screen.findByText("Sin artículos")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /limpiar filtros/i })).not.toBeInTheDocument();
+  });
+
+  it("«Limpiar filtros» deja la URL como recién entrado, incluida la página", async () => {
+    mockBackend([]);
+    currentSearch = "busqueda=zzz&page=2";
+    const user = userEvent.setup();
+    renderWithProviders(<KbListView />, { user: buildUser({ permisos: [] }) });
+
+    await user.click(await screen.findByRole("button", { name: /limpiar filtros/i }));
+
+    const calledWith = replaceMock.mock.calls.at(-1)?.[0] as string;
+    expect(calledWith).toBe("/kb");
+  });
+
   it("buscar por título commitea en Enter y actualiza la URL (searchParams)", async () => {
     const user = userEvent.setup();
     renderWithProviders(<KbListView />, { user: buildUser({ permisos: [] }) });

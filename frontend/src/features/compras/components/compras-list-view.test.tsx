@@ -114,6 +114,53 @@ describe("ComprasListView", () => {
     expect(new URL(urlPedida).searchParams.get("estado")).toBe("ACTIVAS");
   });
 
+  describe("vacío por filtro vs. vacío por falta de datos", () => {
+    function mockVacio() {
+      server.use(
+        http.get("/api/compras", () =>
+          HttpResponse.json({ items: [], total: 0, pagina: 1, porPagina: 10 }),
+        ),
+        http.get("/api/sectores", () => HttpResponse.json([])),
+      );
+    }
+
+    it.each([
+      // `pagina > 1` cuenta como filtro: es el caso que mordió en producción
+      // — pocas filas, una página vieja pegada en la URL, vacío para siempre.
+      ["`pagina=3` fuera de rango", "pagina=3"],
+      ["un grupo de estado distinto del default", "estado=CANCELADAS"],
+      ["un sector elegido", "sectorId=s1"],
+      ["un rango de fechas", "fechaDesde=2026-01-01"],
+    ])("vacío con %s → se reporta como vacío POR FILTRO", async (_label, search) => {
+      mockVacio();
+      currentSearch = search;
+      renderWithProviders(<ComprasListView />, { user: buildUser({ modulos: ["COMPRAS"] }) });
+
+      expect(await screen.findByText(/sin resultados para los filtros aplicados/i)).toBeInTheDocument();
+      expect(screen.queryByText(/todavía no hay solicitudes de compra/i)).not.toBeInTheDocument();
+    });
+
+    it("sin filtros (el estado por defecto NO cuenta) → vacío de siempre, sin botón de limpiar", async () => {
+      mockVacio();
+      currentSearch = "estado=ACTIVAS";
+      renderWithProviders(<ComprasListView />, { user: buildUser({ modulos: ["COMPRAS"] }) });
+
+      expect(await screen.findByText("Sin compras")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /limpiar filtros/i })).not.toBeInTheDocument();
+    });
+
+    it("«Limpiar filtros» deja la URL como recién entrado, incluida la página", async () => {
+      mockVacio();
+      currentSearch = "estado=TODAS&sectorId=s1&fechaDesde=2026-01-01&pagina=3";
+      const user = userEvent.setup();
+      renderWithProviders(<ComprasListView />, { user: buildUser({ modulos: ["COMPRAS"] }) });
+
+      await user.click(await screen.findByRole("button", { name: /limpiar filtros/i }));
+
+      expect(replaceMock.mock.calls.at(-1)?.[0]).toBe("/compras");
+    });
+  });
+
   it("la API falla -> ErrorState con retry, sin romper la vista", async () => {
     server.use(http.get("/api/compras", () => HttpResponse.json({ message: "boom" }, { status: 500 })));
     renderWithProviders(<ComprasListView />, { user: buildUser({ modulos: ["COMPRAS"] }) });

@@ -60,6 +60,24 @@ export function TicketsListView() {
     router.replace(`${pathname}?${next.toString()}`);
   }
 
+  /**
+   * La PÁGINA cuenta como filtro cuando es mayor a 1: con pocas filas, una
+   * `pagina` vieja pegada en la URL deja el listado vacío para siempre, y ese
+   * vacío se leía como "los datos no cargaron" (ver `DataTable.hayFiltrosActivos`).
+   */
+  const hayFiltrosActivos =
+    Boolean(filtros.estado) ||
+    Boolean(filtros.tipo) ||
+    Boolean(filtros.prioridad) ||
+    Boolean(filtros.asignado) ||
+    Boolean(filtros.busqueda) ||
+    (filtros.pagina ?? 1) > 1;
+
+  /** Deja la URL como recién entrado a la pantalla: se van TODOS los filtros, la página incluida. */
+  function limpiarFiltros() {
+    router.replace(pathname);
+  }
+
   const ticketsQuery = useTickets(filtros);
   const tiposQuery = useTiposTicket();
   const prioridadesQuery = usePrioridades();
@@ -200,7 +218,9 @@ export function TicketsListView() {
           onRetry={() => ticketsQuery.refetch().catch(notifyError)}
           onRowClick={(row) => router.push(`/tickets/${row.id}`)}
           emptyTitle="Sin tickets"
-          emptyDescription="No hay tickets que coincidan con los filtros aplicados."
+          emptyDescription="Todavía no hay tickets registrados."
+          hayFiltrosActivos={hayFiltrosActivos}
+          onLimpiarFiltros={limpiarFiltros}
         />
       </div>
 
