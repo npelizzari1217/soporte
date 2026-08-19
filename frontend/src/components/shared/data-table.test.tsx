@@ -76,4 +76,68 @@ describe("DataTable", () => {
     await user.click(screen.getByText("VPN caída"));
     expect(onRowClick).toHaveBeenCalledExactlyOnceWith(rows[1]);
   });
+
+  describe("vacío por filtro vs. vacío por falta de datos", () => {
+    it.each([
+      ["sin `hayFiltrosActivos` (retrocompatible)", {}],
+      ["con `hayFiltrosActivos={false}`", { hayFiltrosActivos: false }],
+    ])("vacío %s → copy de siempre y NINGÚN botón de limpiar", (_label, extraProps) => {
+      render(
+        <DataTable
+          columns={columns}
+          data={[]}
+          getRowKey={(r) => r.id}
+          emptyTitle="Sin tickets"
+          emptyDescription="Todavía no hay tickets registrados."
+          onLimpiarFiltros={vi.fn()}
+          {...extraProps}
+        />,
+      );
+
+      expect(screen.getByText("Sin tickets")).toBeInTheDocument();
+      expect(screen.getByText("Todavía no hay tickets registrados.")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /limpiar filtros/i })).not.toBeInTheDocument();
+    });
+
+    it("vacío con filtros activos → el texto atribuye el vacío a los filtros, no a la falta de datos", () => {
+      render(
+        <DataTable
+          columns={columns}
+          data={[]}
+          getRowKey={(r) => r.id}
+          emptyTitle="Sin tickets"
+          emptyDescription="Todavía no hay tickets registrados."
+          hayFiltrosActivos
+          onLimpiarFiltros={vi.fn()}
+        />,
+      );
+
+      expect(screen.queryByText("Todavía no hay tickets registrados.")).not.toBeInTheDocument();
+      expect(screen.getAllByText(/filtros aplicados/i).length).toBeGreaterThan(0);
+    });
+
+    it("vacío con filtros activos → el botón limpia los filtros al apretarlo", async () => {
+      const user = userEvent.setup();
+      const onLimpiarFiltros = vi.fn();
+      render(
+        <DataTable
+          columns={columns}
+          data={[]}
+          getRowKey={(r) => r.id}
+          hayFiltrosActivos
+          onLimpiarFiltros={onLimpiarFiltros}
+        />,
+      );
+
+      await user.click(screen.getByRole("button", { name: /limpiar filtros/i }));
+      expect(onLimpiarFiltros).toHaveBeenCalledOnce();
+    });
+
+    it("filtros activos SIN callback → avisa igual que es por filtros, pero no ofrece un botón muerto", () => {
+      render(<DataTable columns={columns} data={[]} getRowKey={(r) => r.id} hayFiltrosActivos />);
+
+      expect(screen.getAllByText(/filtros aplicados/i).length).toBeGreaterThan(0);
+      expect(screen.queryByRole("button", { name: /limpiar filtros/i })).not.toBeInTheDocument();
+    });
+  });
 });
