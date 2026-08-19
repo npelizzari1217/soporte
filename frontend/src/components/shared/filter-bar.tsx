@@ -13,12 +13,43 @@ import { Input } from "@/components/ui/input";
 
 export interface FilterBarProps {
   searchPlaceholder?: string;
+  /**
+   * Búsqueda REALMENTE aplicada hoy (la que el consumidor tiene en sus filtros,
+   * o sea en la URL). Opcional: omitirlo deja la caja arrancando vacía, como
+   * antes de existir el prop.
+   */
+  searchValue?: string;
   onSearchChange?: (value: string) => void;
   children?: ReactNode;
 }
 
-export function FilterBar({ searchPlaceholder = "Buscar…", onSearchChange, children }: FilterBarProps) {
-  const [value, setValue] = useState("");
+export function FilterBar({
+  searchPlaceholder = "Buscar…",
+  searchValue = "",
+  onSearchChange,
+  children,
+}: FilterBarProps) {
+  const [value, setValue] = useState(searchValue);
+  const [searchValuePrevio, setSearchValuePrevio] = useState(searchValue);
+
+  /**
+   * El borrador se resincroniza cuando el filtro CAMBIA desde afuera, no en
+   * cada render. El porqué es lo que se veía en pantalla: entrando por
+   * `/kb?busqueda=foo` el listado llegaba recortado con la caja en blanco, y
+   * nadie podía saber por qué faltaban filas; y al apretar «Limpiar filtros»
+   * la URL quedaba limpia pero el texto viejo seguía escrito, como si el
+   * botón no hubiera hecho nada.
+   *
+   * Se compara contra el valor externo anterior a propósito: mientras el
+   * usuario tipea, `searchValue` no se mueve (la búsqueda se confirma con
+   * Enter, no hay debounce), así que el borrador local nunca se pisa. Ajustar
+   * el estado durante el render —y no en un efecto— evita el repintado
+   * intermedio con el texto viejo.
+   */
+  if (searchValue !== searchValuePrevio) {
+    setSearchValuePrevio(searchValue);
+    setValue(searchValue);
+  }
 
   function handleKeyDown(e: KeyboardEvent<HTMLInputElement>) {
     if (e.key === "Enter") {

@@ -131,6 +131,7 @@ export function TicketsListView() {
 
       <FilterBar
         searchPlaceholder="Buscar por título o descripción…"
+        searchValue={filtros.busqueda ?? ""}
         onSearchChange={(value) => updateFiltros({ busqueda: value })}
       >
         <div className="flex flex-col gap-1">
