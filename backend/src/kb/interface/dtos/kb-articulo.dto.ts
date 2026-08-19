@@ -3,7 +3,7 @@
  *
  * Tarea: K8.
  */
-import { IsBoolean, IsInt, IsOptional, IsString, IsUUID, Max, Min } from 'class-validator';
+import { IsBoolean, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 import { KbArticuloEntity } from '../../domain/entities/kb-articulo.entity';
 
@@ -14,10 +14,6 @@ export class CreateKbArticuloDto {
 
   @IsString()
   contenido!: string;
-
-  @IsOptional()
-  @IsUUID()
-  tipoTicketId?: string | null;
 }
 
 /** Body de `PATCH /kb/:id` (K1) — PATCH parcial. */
@@ -29,10 +25,6 @@ export class EditKbArticuloDto {
   @IsOptional()
   @IsString()
   contenido?: string;
-
-  @IsOptional()
-  @IsUUID()
-  tipoTicketId?: string | null;
 }
 
 /** Body de `PATCH /kb/:id/visibilidad` (K2). */
@@ -43,10 +35,6 @@ export class CambiarVisibilidadKbArticuloDto {
 
 /** Query params de `GET /kb` (K3). */
 export class ListKbArticulosQueryDto {
-  @IsOptional()
-  @IsUUID()
-  tipoTicketId?: string;
-
   @IsOptional()
   @IsString()
   busqueda?: string;
@@ -70,7 +58,6 @@ export interface KbArticuloResponseDto {
   id: string;
   titulo: string;
   contenido: string;
-  tipoTicketId: string | null;
   autorId: string | null;
   visibleParaSolicitante: boolean;
   activo: boolean;
@@ -92,7 +79,6 @@ export function toKbArticuloResponseDto(articulo: KbArticuloEntity): KbArticuloR
     id: articulo.id,
     titulo: articulo.titulo,
     contenido: articulo.contenido,
-    tipoTicketId: articulo.tipoTicketId,
     autorId: articulo.autorId,
     visibleParaSolicitante: articulo.visibleParaSolicitante,
     activo: articulo.activo,

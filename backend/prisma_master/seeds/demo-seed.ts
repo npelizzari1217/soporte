@@ -19,7 +19,8 @@
  *    ítems (`CrearCompraUseCase`/`AgregarItemCompraUseCase`, PR-14 de
  *    sdd/redisenio-modulo-compras — el modelo `presupuesto` fue reemplazado
  *    por `ItemCompra`/`OperacionCompra`), 1 ticket edilicio con subtareas,
- *    2 equipos con componentes + 1 ticket de soporte, 2 artículos KB).
+ *    2 equipos con componentes + 1 ticket de soporte). La Ayuda NO se
+ *    siembra: es única y global, y la mantiene el repositorio (`pnpm sync:ayuda`).
  *    Gateado por un único check (`ticket.count() === 0`) — si el tenant YA
  *    tiene tickets, se asume ya sembrado y se omite todo este bloque
  *    (idempotente).
@@ -124,8 +125,6 @@ import { CrearEquipoUseCase } from '../../src/equipos/application/use-cases/crea
 import { AgregarComponenteUseCase } from '../../src/equipos/application/use-cases/agregar-componente.use-case';
 import { CrearTicketSoporteUseCase } from '../../src/equipos/application/use-cases/crear-ticket-soporte.use-case';
 
-import { CrearKbArticuloUseCase } from '../../src/kb/application/use-cases/crear-kb-articulo.use-case';
-import { CambiarVisibilidadKbArticuloUseCase } from '../../src/kb/application/use-cases/cambiar-visibilidad-kb-articulo.use-case';
 
 /** Password demo por defecto — parametrizable por env `DEMO_SEED_PASSWORD`. */
 export const DEFAULT_DEMO_SEED_PASSWORD = 'Demo1234$';
@@ -700,36 +699,10 @@ async function crearComprasDemo(
   });
 }
 
-/** Crea 2 artículos de KB (1 público, 1 interno). */
-async function crearKbDemo(app: INestApplicationContext, autorId: string): Promise<void> {
-  const crearKb = app.get(CrearKbArticuloUseCase);
-  const cambiarVisibilidad = app.get(CambiarVisibilidadKbArticuloUseCase);
-
-  const publico = await crearKb.execute({
-    titulo: 'Cómo restablecer tu contraseña',
-    contenido: 'Paso 1: ir a "Olvidé mi contraseña" en el login.\nPaso 2: seguir el link enviado por email.',
-    tipoTicketId: null,
-    autorId,
-  });
-  if (publico.isFail()) {
-    throw new Error(`[demo-seed] No se pudo crear el artículo KB demo (público): ${publico.getError().message}`);
-  }
-  const visibilidad = await cambiarVisibilidad.execute({ id: publico.getValue().id, visible: true });
-  if (visibilidad.isFail()) {
-    throw new Error(`[demo-seed] No se pudo publicar el artículo KB demo: ${visibilidad.getError().message}`);
-  }
-
-  const interno = await crearKb.execute({
-    titulo: 'Procedimiento interno de escalamiento a nivel 2',
-    contenido: 'Si un incidente crítico no se resuelve en 2 horas, escalar al equipo de infraestructura.',
-    tipoTicketId: null,
-    autorId,
-  });
-  if (interno.isFail()) {
-    throw new Error(`[demo-seed] No se pudo crear el artículo KB demo (interno): ${interno.getError().message}`);
-  }
-  // Nace visibleParaSolicitante=false (interno) — no se toca, queda así a propósito.
-}
+// La Ayuda YA NO se siembra acá. Los artículos dejaron de vivir en el tenant:
+// son únicos y globales, en master, y los mantiene el repositorio
+// (`backend/ayuda/*.md` + `pnpm sync:ayuda`). Sembrar dos artículos de demo
+// contaminaría la Ayuda REAL que ven todos los clientes, no la de este tenant.
 
 /**
  * Siembra los datos de ejemplo del tenant. Gateado por un único check
@@ -834,7 +807,6 @@ async function seedDemoTenantData(
     await crearEdiliciaDemo(app, clienteId, anio, catalogos, usuarios);
     await crearEquiposDemo(app, clienteId, anio, catalogos, usuarios);
     await crearComprasDemo(app, anio, usuarios);
-    await crearKbDemo(app, usuarios.administrador);
 
     return true;
   });

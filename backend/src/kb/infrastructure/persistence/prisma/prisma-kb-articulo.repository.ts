@@ -1,8 +1,13 @@
 /**
  * PrismaKbArticuloRepository — implementación del puerto IKbArticuloRepository.
  *
+ * Opera SIEMPRE contra la DB MASTER (`PrismaService.getMasterClient()`), NUNCA
+ * contra el tenant: la Ayuda es única para todo el sistema. Antes tomaba el
+ * cliente del `TenantContext`, y por eso el mismo artículo se duplicaba en cada
+ * cliente. Mismo criterio que `UsuarioMasterChecker`: un adaptador de una
+ * entidad global no consulta `TenantContext`.
+ *
  * Reglas:
- * - Obtiene el cliente vía TenantContext (nunca PrismaService directo).
  * - `save()` es upsert por id: INSERT si es nuevo, UPDATE si ya existe.
  * - `findAll()` combina filtros (AND): `soloVisibles` → `visibleParaSolicitante:true`;
  *   `incluirInactivos=false` → excluye soft-deleted Y `activo=false`;
@@ -13,19 +18,18 @@
  * Tarea: K6.
  */
 import { Injectable } from '@nestjs/common';
-import type { Prisma } from '.prisma/tenant';
-import { TenantContext } from '../../../../shared/tenancy/tenant-context';
-import { TenantPrismaClient } from '../../../../shared/infrastructure/persistence/prisma-clients';
+import type { Prisma } from '.prisma/master';
+import { PrismaService } from '../../../../shared/infrastructure/persistence/prisma.service';
 import { IKbArticuloRepository, KbFiltros } from '../../../domain/ports/i-kb-articulo.repository';
 import { KbArticuloEntity } from '../../../domain/entities/kb-articulo.entity';
 import { KbArticuloMapper } from './kb-articulo.mapper';
 
 @Injectable()
 export class PrismaKbArticuloRepository implements IKbArticuloRepository {
-  constructor(private readonly tenantContext: TenantContext) {}
+  constructor(private readonly prismaService: PrismaService) {}
 
-  private get client(): InstanceType<typeof TenantPrismaClient> {
-    return this.tenantContext.getClient() as InstanceType<typeof TenantPrismaClient>;
+  private get client() {
+    return this.prismaService.getMasterClient();
   }
 
   async findById(id: string): Promise<KbArticuloEntity | null> {
@@ -37,7 +41,6 @@ export class PrismaKbArticuloRepository implements IKbArticuloRepository {
     const where: Prisma.KbArticuloWhereInput = {
       ...(filtros.soloVisibles ? { visibleParaSolicitante: true } : {}),
       ...(filtros.incluirInactivos ? {} : { deletedAt: null, activo: true }),
-      ...(filtros.tipoTicketId ? { tipoTicketId: filtros.tipoTicketId } : {}),
       ...(filtros.busqueda
         ? { titulo: { contains: filtros.busqueda, mode: 'insensitive' as const } }
         : {}),

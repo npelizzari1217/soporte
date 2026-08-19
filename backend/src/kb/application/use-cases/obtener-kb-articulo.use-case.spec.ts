@@ -1,6 +1,6 @@
 /**
  * K3 [UNIT][RED→GREEN] — ObtenerKbArticuloUseCase: scope de lectura por rol
- * (K3) — USUARIO (sin `ticket:ver_todos`) solo ve artículos
+ * (K3) — USUARIO (sin `KB:VER_TODOS`) solo ve artículos
  * `visibleParaSolicitante=true` + `activo=true`; staff ve todos (incluye
  * internos e inactivos, para gestión).
  *
@@ -15,7 +15,6 @@ function buildArticulo(overrides: Partial<{ visibleParaSolicitante: boolean }> =
     {
       titulo: 'Original',
       contenido: 'Contenido',
-      tipoTicketId: null,
       autorId: 'autor-uuid',
       visibleParaSolicitante: overrides.visibleParaSolicitante ?? false,
       activo: true,

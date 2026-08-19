@@ -182,9 +182,8 @@ describe('runDemoSeed — integración real (T6.1, sdd/beta-frontend)', () => {
           expect(await tenantClient.compra.count()).toBe(2);
           expect(await tenantClient.itemCompra.count()).toBe(5);
           expect(await tenantClient.operacionCompra.count()).toBe(7);
-          expect(await tenantClient.kbArticulo.count()).toBe(2);
-          const kbVisibles = await tenantClient.kbArticulo.count({ where: { visibleParaSolicitante: true } });
-          expect(kbVisibles).toBe(1);
+          // La Ayuda ya no se siembra en el tenant: es única y global (master) y
+          // la mantiene el repositorio vía `pnpm sync:ayuda`.
 
           const cicloActivo = await tenantClient.cicloCliente.findFirst({ where: { activo: true } });
           expect(cicloActivo).not.toBeNull();

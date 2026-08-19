@@ -18,7 +18,7 @@ export interface ObtenerKbArticuloDto {
  * ObtenerKbArticuloUseCase — consulta un artículo de KB con scope por rol
  * (K3).
  *
- * - staff (`ticket:ver_todos`) → puede ver cualquier artículo (interno o
+ * - staff (`KB:VER_TODOS`) → puede ver cualquier artículo (interno o
  *   publicado) del tenant activo, incluso inactivo (gestión).
  * - USUARIO (sin el permiso) → solo si `visibleParaSolicitante=true` Y
  *   `activo=true`; caso contrario `KbArticuloNoEncontradoError` (404) — NO

@@ -12,12 +12,11 @@ export interface EditarKbArticuloDto {
   id: string;
   titulo?: string;
   contenido?: string;
-  tipoTicketId?: string | null;
 }
 
 /**
- * EditarKbArticuloUseCase — edita `titulo`/`contenido`/`tipoTicketId` de un
- * artículo existente (K1). NO cambia visibilidad (ver
+ * EditarKbArticuloUseCase — edita `titulo`/`contenido` de un artículo
+ * existente (K1). NO cambia visibilidad (ver
  * `CambiarVisibilidadKbArticuloUseCase`, K2).
  *
  * Ref spec: sdd/premium/spec K1. Tarea: K3/K4.
@@ -35,7 +34,6 @@ export class EditarKbArticuloUseCase {
       articulo.editar({
         titulo: dto.titulo,
         contenido: dto.contenido,
-        tipoTicketId: dto.tipoTicketId,
       });
     } catch (error) {
       if (error instanceof TituloVacioError || error instanceof ContenidoVacioError) {

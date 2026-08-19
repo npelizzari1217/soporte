@@ -13,7 +13,6 @@ function buildArticulo() {
     {
       titulo: 'Original',
       contenido: 'Contenido',
-      tipoTicketId: null,
       autorId: 'autor-uuid',
       visibleParaSolicitante: false,
       activo: true,
@@ -45,7 +44,6 @@ describe('CambiarVisibilidadKbArticuloUseCase', () => {
       {
         titulo: 'Original',
         contenido: 'Contenido',
-        tipoTicketId: null,
         autorId: 'autor-uuid',
         visibleParaSolicitante: true,
         activo: true,

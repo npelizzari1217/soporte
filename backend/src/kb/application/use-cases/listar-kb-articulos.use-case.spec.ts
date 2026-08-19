@@ -1,6 +1,6 @@
 /**
  * K3 [UNIT][RED→GREEN] — ListarKbArticulosUseCase: scope de lectura por rol
- * (K3) — sin `ticket:ver_todos` ⇒ soloVisibles=true, incluirInactivos=false;
+ * (K3) — sin `KB:VER_TODOS` ⇒ soloVisibles=true, incluirInactivos=false;
  * staff ⇒ soloVisibles=false, incluirInactivos=true (ve todos).
  *
  * Ref spec: sdd/premium/spec K3. Ref design: ADR-P6. Tarea: K3/K4.
@@ -34,12 +34,11 @@ describe('ListarKbArticulosUseCase', () => {
     );
   });
 
-  it('aplica defaults de paginación (page=1, pageSize=20) y pasa tipoTicketId/busqueda', async () => {
+  it('aplica defaults de paginación (page=1, pageSize=20) y pasa busqueda', async () => {
     const { useCase, repo } = buildUseCase();
 
     await useCase.execute({
       tienePermisoVerTodos: true,
-      tipoTicketId: 'tipo-uuid',
       busqueda: 'password',
     });
 
@@ -47,7 +46,6 @@ describe('ListarKbArticulosUseCase', () => {
       expect.objectContaining({
         page: 1,
         pageSize: 20,
-        tipoTicketId: 'tipo-uuid',
         busqueda: 'password',
       }),
     );

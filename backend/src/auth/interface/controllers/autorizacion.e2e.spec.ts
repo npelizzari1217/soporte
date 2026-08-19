@@ -9,6 +9,12 @@
  * cualquier autenticado y todos los unit tests siguen en verde, porque nadie
  * los está mirando desde afuera.
  *
+ * Las 4 escrituras de la Ayuda salieron de `TABLA_RUTAS` y viven en
+ * `TABLA_RUTAS_ROOT`: al pasar los artículos a ser únicos y globales (master),
+ * escribirlos quedó reservado a ROOT (`GlobalAdminGuard`) y la celda `KB:*` de
+ * escritura dejó de abrir nada. El criterio de prueba cambia con eso — el test
+ * que lo demuestra siembra esa celda y espera 403 IGUAL.
+ *
  * Paths LITERALES hardcodeados en `TABLA_RUTAS`, NUNCA importados de los
  * controllers (mismo criterio que `compras.e2e.spec.ts`: si se importaran del
  * mismo lugar que los define, un rename movería el test junto con el código y
@@ -189,12 +195,10 @@ const TABLA_RUTAS: RutaEsperada[] = [
   { metodo: 'POST', path: `/tickets/${ID}/comentarios`, acciones: ['TICKETS:COMENTAR'] },
   { metodo: 'POST', path: `/tickets/${ID}/adjuntos`, acciones: ['TICKETS:ALTAS'] },
   { metodo: 'POST', path: `/operaciones/${ID}/adjuntos`, acciones: ['TICKETS:ALTAS'] },
+  // Las 4 escrituras de KB ya NO están acá: la Ayuda es única y global, y
+  // escribirla pasó a ser exclusivo de ROOT. Viven en `TABLA_RUTAS_ROOT`.
   { metodo: 'GET', path: '/kb', acciones: ['KB:LECTURA'] },
   { metodo: 'GET', path: `/kb/${ID}`, acciones: ['KB:LECTURA'] },
-  { metodo: 'POST', path: '/kb', acciones: ['KB:ALTAS'] },
-  { metodo: 'PATCH', path: `/kb/${ID}`, acciones: ['KB:MODIFICACION'] },
-  { metodo: 'PATCH', path: `/kb/${ID}/visibilidad`, acciones: ['KB:PUBLICAR'] },
-  { metodo: 'DELETE', path: `/kb/${ID}`, acciones: ['KB:BORRADO'] },
   { metodo: 'GET', path: '/dashboard/metricas', acciones: ['DASHBOARD:LECTURA'] },
 ];
 
@@ -213,6 +217,23 @@ interface RutaAdminEsperada {
   metodo: Metodo;
   path: string;
 }
+
+/**
+ * Las 4 escrituras de la Ayuda, reservadas a ROOT (`GlobalAdminGuard` por
+ * método en `KbController`). Los artículos son únicos y globales: un
+ * administrador de cliente que los editara estaría cambiando lo que leen los
+ * demás clientes.
+ *
+ * Se prueban aparte de `TABLA_RUTAS` porque el criterio de apertura es otro:
+ * acá la celda `KB:*` de escritura NO abre nada, y el test que lo demuestra
+ * siembra justamente esa celda y espera 403 igual.
+ */
+const TABLA_RUTAS_ROOT: RutaEsperada[] = [
+  { metodo: 'POST', path: '/kb', acciones: ['KB:ALTAS'] },
+  { metodo: 'PATCH', path: `/kb/${ID}`, acciones: ['KB:MODIFICACION'] },
+  { metodo: 'PATCH', path: `/kb/${ID}/visibilidad`, acciones: ['KB:PUBLICAR'] },
+  { metodo: 'DELETE', path: `/kb/${ID}`, acciones: ['KB:BORRADO'] },
+];
 
 const TABLA_RUTAS_ADMIN: RutaAdminEsperada[] = [
   // catálogos (S9) — 6
@@ -332,8 +353,12 @@ describe('Autorización e2e — TABLA_RUTAS (G2, WU-7.7) + scope de filas/campos
     // las tablas viejas no la alcanza (mismo gotcha de auth.e2e.spec.ts/
     // compras.e2e.spec.ts). roles_permisos/permisos ya NO existen (migración
     // drop_legacy_rbac_tablas_muertas, converge con WU-9 en producción).
+    // `kb_articulos` entra a la lista porque la Ayuda pasó a vivir en master:
+    // es una tabla GLOBAL, compartida por toda la suite. Sin este truncate, los
+    // artículos de un test se cuelan en el conteo del siguiente y los asserts
+    // de subconjunto de S30 dejan de ser deterministas.
     await masterClient.$executeRawUnsafe(
-      'TRUNCATE TABLE membresias, refresh_tokens, usuario_cliente_permisos, usuarios, clientes, roles RESTART IDENTITY CASCADE',
+      'TRUNCATE TABLE membresias, refresh_tokens, usuario_cliente_permisos, usuarios, clientes, roles, kb_articulos RESTART IDENTITY CASCADE',
     );
   });
 
@@ -365,14 +390,14 @@ describe('Autorización e2e — TABLA_RUTAS (G2, WU-7.7) + scope de filas/campos
     return role;
   }
 
-  async function crearUsuario(): Promise<UsuarioEntity> {
+  async function crearUsuario(isGlobalAdmin = false): Promise<UsuarioEntity> {
     const usuario = UsuarioEntity.create({
       email: `e2e_autoriz_${randomBytes(4).toString('hex')}@test.local`,
       nombre: 'E2E',
       apellido: 'Autoriz',
       passwordHash: await hashProvider.hash(PLAINTEXT_PASSWORD),
       activo: true,
-      isGlobalAdmin: false,
+      isGlobalAdmin,
     });
     await usuarioRepo.save(usuario);
     return usuario;
@@ -419,6 +444,27 @@ describe('Autorización e2e — TABLA_RUTAS (G2, WU-7.7) + scope de filas/campos
     const cliente = await crearClienteTenant();
     const role = await crearRoleVacio('ADMINISTRADOR');
     const usuario = await crearUsuario();
+    await masterClient.membresia.create({
+      data: { usuarioId: usuario.id, clienteId: cliente.id, rolId: role.id, activo: true },
+    });
+    const { accessToken } = await login(usuario.email);
+    return { accessToken, clienteId: cliente.id, usuarioId: usuario.id };
+  }
+
+  /**
+   * Actor ROOT (`usuarios.is_global_admin = true`), en un cliente NUEVO y sin
+   * ninguna celda en la matriz: `GlobalAdminGuard` solo mira el flag del JWT.
+   * La membresía existe únicamente para que el login pueda emitir un token con
+   * `cliente_id` — la Ayuda es global y no depende de ese cliente.
+   */
+  async function crearActorRoot(): Promise<{
+    accessToken: string;
+    clienteId: string;
+    usuarioId: string;
+  }> {
+    const cliente = await crearClienteTenant();
+    const role = await crearRoleVacio();
+    const usuario = await crearUsuario(true);
     await masterClient.membresia.create({
       data: { usuarioId: usuario.id, clienteId: cliente.id, rolId: role.id, activo: true },
     });
@@ -519,6 +565,56 @@ describe('Autorización e2e — TABLA_RUTAS (G2, WU-7.7) + scope de filas/campos
         expect(status).not.toBe(403);
       },
     );
+  });
+
+  // ─── Escritura de la Ayuda: exclusiva de ROOT (GlobalAdminGuard por ruta) ──
+
+  describe('Existencia de las rutas de escritura de la Ayuda: sin Bearer → 401', () => {
+    it.each(TABLA_RUTAS_ROOT)(
+      '$metodo $path existe: sin Bearer → 401 (NUNCA 404 de routing)',
+      async ({ metodo, path }) => {
+        const { status } = await callMethod(metodo, path);
+        expect(status).toBe(401);
+      },
+    );
+  });
+
+  // El assert que sostiene la decisión: la celda de escritura sigue existiendo
+  // en el catálogo y se sigue dibujando en la grilla, pero ya NO abre nada. Un
+  // actor con la celda sembrada y sin ROOT tiene que seguir chocando contra 403;
+  // si alguien reintrodujera `@RequiereAcciones` en el endpoint, este test se
+  // pondría rojo.
+  describe('GlobalAdminGuard real por ruta: actor con la celda KB:* pero SIN ROOT → 403', () => {
+    it.each(TABLA_RUTAS_ROOT)(
+      '$metodo $path con $acciones sembradas pero sin is_global_admin → 403',
+      async ({ metodo, path, acciones }) => {
+        const actor = await crearActorConPermisos(acciones);
+        const { status } = await callMethod(metodo, path, actor.accessToken);
+        expect(status).toBe(403);
+      },
+    );
+  });
+
+  describe('GlobalAdminGuard real por ruta: actor ROOT → NO 403 (el gate se abrió)', () => {
+    it.each(TABLA_RUTAS_ROOT)(
+      '$metodo $path con is_global_admin → status distinto de 401/403',
+      async ({ metodo, path }) => {
+        const actor = await crearActorRoot();
+        const { status } = await callMethod(metodo, path, actor.accessToken);
+        expect(status).not.toBe(401);
+        expect(status).not.toBe(403);
+      },
+    );
+  });
+
+  describe('Lectura de la Ayuda: NO exige ROOT (solo la celda KB:LECTURA)', () => {
+    it('GET /kb con KB:LECTURA y sin is_global_admin → 200', async () => {
+      const actor = await crearActorConPermisos(['KB:LECTURA']);
+
+      const { status } = await httpGet(`${baseUrl}/kb`, bearer(actor.accessToken));
+
+      expect(status).toBe(200);
+    });
   });
 
   // ─── C4 (fix post-verify) — AdminClienteGuard aplicado por RUTA, no solo el guard en aislamiento ───
@@ -634,8 +730,11 @@ describe('Autorización e2e — TABLA_RUTAS (G2, WU-7.7) + scope de filas/campos
       expect(status).toBe(404);
     });
 
+    // El editor es ROOT: escribir la Ayuda dejó de estar al alcance de una
+    // celda de la matriz. El LECTOR, en cambio, sigue siendo un actor común con
+    // `KB:LECTURA` — que es lo que este test mide.
     it('S30: GET /kb sin KB:VER_TODOS → 200 con EXACTAMENTE los publicados+activos (3 publicados, 2 sin publicar en el fixture)', async () => {
-      const editor = await crearActorConPermisos(['KB:ALTAS', 'KB:PUBLICAR']);
+      const editor = await crearActorRoot();
       const lector = await agregarActorAlCliente(editor.clienteId, ['KB:LECTURA']);
 
       const p1 = await crearArticuloKb(editor.accessToken, { titulo: 'Publicado 1' });
@@ -659,7 +758,7 @@ describe('Autorización e2e — TABLA_RUTAS (G2, WU-7.7) + scope de filas/campos
     });
 
     it('S31: GET /kb/:id de un artículo SIN publicar, sin KB:VER_TODOS → 404 (no revela existencia)', async () => {
-      const editor = await crearActorConPermisos(['KB:ALTAS']);
+      const editor = await crearActorRoot();
       const lector = await agregarActorAlCliente(editor.clienteId, ['KB:LECTURA']);
       const sinPublicar = await crearArticuloKb(editor.accessToken);
 
