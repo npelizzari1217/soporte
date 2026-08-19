@@ -47,9 +47,10 @@
  * sobre ítems en este archivo — si hiciera falta, la regla pertenece al
  * backend.
  */
-import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo } from "react";
 import { useCompras } from "../hooks/use-compras";
+import { useUrlFilters } from "@/shared/hooks/use-url-filters";
 import { useSectores } from "@/features/sectores/hooks/use-sectores";
 import { DataTable, type Column } from "@/components/shared/data-table";
 import { FilterBar } from "@/components/shared/filter-bar";
@@ -93,8 +94,8 @@ function normalizarEstado(crudo: string | null): FiltroEstadoCompra {
 
 export function ComprasListView() {
   const router = useRouter();
-  const pathname = usePathname();
   const searchParams = useSearchParams();
+  const { updateFiltros, irAPagina, limpiarFiltros } = useUrlFilters<ComprasFiltros>("pagina");
 
   const filtros: ComprasFiltros = useMemo(
     () => ({
@@ -111,22 +112,6 @@ export function ComprasListView() {
     [searchParams],
   );
 
-  function updateFiltros(patch: Partial<ComprasFiltros>) {
-    const next = new URLSearchParams(searchParams.toString());
-    for (const [key, value] of Object.entries(patch)) {
-      if (value === undefined || value === "") next.delete(key);
-      else next.set(key, String(value));
-    }
-    next.set("pagina", "1");
-    router.replace(`${pathname}?${next.toString()}`);
-  }
-
-  function irAPagina(pagina: number) {
-    const next = new URLSearchParams(searchParams.toString());
-    next.set("pagina", String(pagina));
-    router.replace(`${pathname}?${next.toString()}`);
-  }
-
   /**
    * ¿La vista está recortada por filtros? El `estado` por defecto NO cuenta:
    * es lo que se ve al entrar sin nada en la URL, así que reportarlo como
@@ -142,11 +127,6 @@ export function ComprasListView() {
     Boolean(filtros.fechaDesde) ||
     Boolean(filtros.fechaHasta) ||
     (filtros.pagina ?? 1) > 1;
-
-  /** Deja la URL como recién entrado a la pantalla: se van TODOS los filtros, la página incluida. */
-  function limpiarFiltros() {
-    router.replace(pathname);
-  }
 
   const comprasQuery = useCompras(filtros);
   const sectoresQuery = useSectores();
