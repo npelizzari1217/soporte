@@ -71,3 +71,34 @@ Runner: **Vitest** (no Jest). Package manager: **pnpm**.
 > `backend`: `pnpm lint` arrastra **5 errores prettier preexistentes** en
 > `src/equipos/application/use-cases/editar-componente.use-case.spec.ts`, no relacionados con
 > ningún cambio en curso. Cero errores nuevos es el criterio, no cero errores.
+
+## La Ayuda se mantiene con el código (OBLIGATORIO)
+
+El módulo `KB` se llama **Ayuda** para el usuario y contiene **cómo se usa el sistema**.
+(La base de conocimiento tal como se pensó originalmente —casos resueltos y su
+recurrencia— quedó para más adelante, cuando exista historial que la alimente.)
+
+Los artículos **NO viven solo en la base**: viven como archivos markdown en el repo y
+un script idempotente los sincroniza a cada tenant. Esa es justamente la razón de que
+estén ahí — un artículo que solo existe en una tabla de producción no se puede mantener
+desde un cambio de código, y queda desactualizado el día uno.
+
+**Regla: un cambio que altera lo que el usuario ve o hace NO está terminado hasta que
+la Ayuda lo refleja.** En el MISMO commit, igual que los tests.
+
+Aplica cuando el cambio:
+
+- agrega, saca o renombra una pantalla, un botón o un campo que el usuario usa;
+- cambia un flujo (qué pasos hay que dar para lograr algo);
+- cambia el significado de un estado, un permiso o una etiqueta visible;
+- corrige un comportamiento que la Ayuda describía de otra forma.
+
+NO aplica a refactors internos, performance, tests o cambios de infraestructura que el
+usuario no percibe.
+
+Ante la duda, la pregunta es una sola: **¿alguien que leyó la Ayuda ayer haría algo mal
+hoy por culpa de este cambio?** Si la respuesta es sí, actualizala.
+
+Si un cambio deja un artículo obsoleto y no se puede arreglar en el mismo commit, decilo
+explícitamente en el reporte. Nunca lo dejes pasar en silencio: una Ayuda que miente es
+peor que una Ayuda que falta, porque la primera se sigue con confianza.
