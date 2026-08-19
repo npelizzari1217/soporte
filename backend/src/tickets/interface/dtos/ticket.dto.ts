@@ -137,6 +137,46 @@ export class ListTicketsQueryDto {
   porPagina?: number;
 }
 
+/**
+ * Query params de `GET /tickets/export` (sdd/exportar-listados-csv) — los
+ * MISMOS filtros de `ListTicketsQueryDto`, SIN `pagina`/`porPagina`: la
+ * exportación siempre trae el universo filtrado completo, nunca una página.
+ */
+export class ExportarTicketsQueryDto {
+  @IsOptional()
+  @IsUUID()
+  estado?: string;
+
+  @IsOptional()
+  @IsUUID()
+  tipo?: string;
+
+  @IsOptional()
+  @IsUUID()
+  prioridad?: string;
+
+  @IsOptional()
+  @IsUUID()
+  asignado?: string;
+
+  @IsOptional()
+  @IsUUID()
+  ciclo?: string;
+
+  @IsOptional()
+  @IsDateString()
+  fechaDesde?: string;
+
+  @IsOptional()
+  @IsDateString()
+  fechaHasta?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  busqueda?: string;
+}
+
 /** Response shape unificado de un ticket (T4-T8). */
 export interface TicketResponseDto {
   id: string;

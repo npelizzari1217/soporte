@@ -10,17 +10,23 @@
  * list/detalle/timeline. `PermissionsGuard` ya bypassea al ROOT; estos chequeos
  * inline deben honrar el MISMO criterio.
  */
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
-import { TicketsController } from './tickets.controller';
+import {
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
+import { TicketsController, toHttpException } from './tickets.controller';
 import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
 import { payloadDeTest } from '../../../auth/test-helpers/payload-de-test';
-import { Result } from '../../../shared/domain/result';
+import { DomainError, Result } from '../../../shared/domain/result';
 import { OperacionTicketEntity } from '../../domain/entities/operacion-ticket.entity';
 import { TicketEntity } from '../../domain/entities/ticket.entity';
 import {
   TicketNoEncontradoError,
   TicketBloqueadoParaEdicionError,
 } from '../../domain/errors/tickets.errors';
+import * as TicketsErrors from '../../domain/errors/tickets.errors';
 
 type Ctor = ConstructorParameters<typeof TicketsController>;
 
@@ -392,5 +398,242 @@ describe('TicketsController — bloqueo de edición y salto correctivo (actor fl
     expect(transicionar.execute).toHaveBeenCalledWith(
       expect.objectContaining({ actorEsCorrector: false }),
     );
+  });
+});
+
+describe('TicketsController.exportar — GET /tickets/export (sdd/exportar-listados-csv)', () => {
+  function buildController(overrides: { exportarTickets?: { execute: ReturnType<typeof vi.fn> } }) {
+    const stub = () => ({ execute: vi.fn() });
+    const exportarTickets = overrides.exportarTickets ?? stub();
+    const usuarioMasterChecker = { resolverNombres: vi.fn().mockResolvedValue(new Map()) };
+
+    const controller = new TicketsController(
+      stub() as Ctor[0], // crearTicketUseCase
+      stub() as Ctor[1], // obtenerTicketUseCase
+      stub() as Ctor[2], // listarTicketsUseCase
+      stub() as Ctor[3], // editarTicketUseCase
+      stub() as Ctor[4], // transicionarEstadoUseCase
+      stub() as Ctor[5], // asignarTicketUseCase
+      stub() as Ctor[6], // crearComentarioUseCase
+      stub() as Ctor[7], // listarTimelineUseCase
+      usuarioMasterChecker as unknown as Ctor[8], // usuarioMasterChecker
+      stub() as Ctor[9], // listarTecnicosAsignablesUseCase
+      stub() as Ctor[10], // asignarYPonerEnProcesoUseCase
+      exportarTickets as unknown as Ctor[11], // exportarTicketsUseCase
+    );
+    return { controller, exportarTickets };
+  }
+
+  /** Doble mínimo de la respuesta HTTP: sólo hace falta poder escribir headers. */
+  function respuestaFalsa() {
+    const headers = new Map<string, string>();
+    return {
+      res: { setHeader: (nombre: string, valor: string) => void headers.set(nombre, valor) },
+      headers,
+    };
+  }
+
+  it('entrega el CSV como descarga, con el nombre que resolvió el use case', async () => {
+    const exportarTickets = { execute: vi.fn() };
+    exportarTickets.execute.mockResolvedValue(
+      Result.ok({ contenido: 'Número;Título', nombreArchivo: 'tickets-2026-08-19.csv' }),
+    );
+    const { controller } = buildController({ exportarTickets });
+    const { res, headers } = respuestaFalsa();
+
+    const salida = await controller.exportar(USUARIO_SOPORTE, {}, res);
+
+    expect(salida).toBe('Número;Título');
+    expect(headers.get('Content-Type')).toBe('text/csv; charset=utf-8');
+    expect(headers.get('Content-Disposition')).toBe(
+      'attachment; filename="tickets-2026-08-19.csv"',
+    );
+    expect(headers.get('Access-Control-Expose-Headers')).toBe('Content-Disposition');
+  });
+
+  it('deriva el scope de filas del actor (TICKETS:VER_TODOS), NUNCA del query — sin el permiso, exporta acotado al actor', async () => {
+    const exportarTickets = { execute: vi.fn() };
+    exportarTickets.execute.mockResolvedValue(
+      Result.ok({ contenido: '', nombreArchivo: 'tickets-2026-08-19.csv' }),
+    );
+    const { controller } = buildController({ exportarTickets });
+
+    await controller.exportar(USUARIO_SOPORTE, {}, respuestaFalsa().res);
+
+    expect(exportarTickets.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ actorId: 'usr-2', tienePermisoVerTodos: false }),
+    );
+  });
+
+  it('ADMINISTRADOR → pasa modulosPermitidos=null (mismo gate de módulo que findAll)', async () => {
+    const exportarTickets = { execute: vi.fn() };
+    exportarTickets.execute.mockResolvedValue(
+      Result.ok({ contenido: '', nombreArchivo: 'tickets-2026-08-19.csv' }),
+    );
+    const { controller } = buildController({ exportarTickets });
+
+    await controller.exportar(ADMINISTRADOR, {}, respuestaFalsa().res);
+
+    expect(exportarTickets.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ modulosPermitidos: null }),
+    );
+  });
+
+  it('traduce los filtros de query a filtros del DTO, sin paginación', async () => {
+    const exportarTickets = { execute: vi.fn() };
+    exportarTickets.execute.mockResolvedValue(
+      Result.ok({ contenido: '', nombreArchivo: 'tickets-2026-08-19.csv' }),
+    );
+    const { controller } = buildController({ exportarTickets });
+
+    await controller.exportar(
+      USUARIO_SOPORTE,
+      { estado: 'estado-1', tipo: 'tipo-1', prioridad: 'prioridad-1' },
+      respuestaFalsa().res,
+    );
+
+    const dto = exportarTickets.execute.mock.calls[0][0] as { filtros: Record<string, unknown> };
+    expect(dto.filtros).toMatchObject({
+      estadoId: 'estado-1',
+      tiposIds: ['tipo-1'],
+      prioridadId: 'prioridad-1',
+    });
+    expect(dto.filtros).not.toHaveProperty('pagina');
+    expect(dto.filtros).not.toHaveProperty('porPagina');
+  });
+
+  it('traduce el tope excedido a 422 y no escribe headers de descarga', async () => {
+    const exportarTickets = { execute: vi.fn() };
+    exportarTickets.execute.mockResolvedValue(
+      Result.fail(new TicketsErrors.ExportacionDemasiadoGrandeError(6000, 5000)),
+    );
+    const { controller } = buildController({ exportarTickets });
+    const { res, headers } = respuestaFalsa();
+
+    await expect(controller.exportar(USUARIO_SOPORTE, {}, res)).rejects.toBeInstanceOf(
+      UnprocessableEntityException,
+    );
+    expect(headers.size).toBe(0);
+  });
+});
+
+describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listados-csv, decisión D2)', () => {
+  /** Clases de error exportadas por `tickets.errors.ts` — el número de la verdad, no un literal a mano. */
+  const CLASES_DE_ERROR = Object.values(TicketsErrors).filter(
+    (valor): valor is new (...args: never[]) => DomainError =>
+      typeof valor === 'function' && valor.prototype instanceof DomainError,
+  );
+
+  it('el catálogo tiene EXACTAMENTE 23 clases de error (22 previas + ExportacionDemasiadoGrandeError)', () => {
+    expect(CLASES_DE_ERROR).toHaveLength(23);
+  });
+
+  const TABLA: Array<[string, () => DomainError, 403 | 404 | 409 | 422]> = [
+    ['TicketNoEncontradoError', () => new TicketsErrors.TicketNoEncontradoError('ticket-1'), 404],
+    [
+      'TicketBloqueadoParaEdicionError',
+      () => new TicketsErrors.TicketBloqueadoParaEdicionError('EN_PROCESO'),
+      403,
+    ],
+    [
+      'TipoTicketNoEncontradoError',
+      () => new TicketsErrors.TipoTicketNoEncontradoError('tipo-1'),
+      422,
+    ],
+    [
+      'EstadoDestinoInvalidoError',
+      () => new TicketsErrors.EstadoDestinoInvalidoError('NO_EXISTE'),
+      422,
+    ],
+    [
+      'TransicionInvalidaError',
+      () => new TicketsErrors.TransicionInvalidaError('CERRADO', 'NUEVO'),
+      422,
+    ],
+    ['FechaCierreRequeridaError', () => new TicketsErrors.FechaCierreRequeridaError(), 422],
+    ['AsignadoInvalidoError', () => new TicketsErrors.AsignadoInvalidoError('user-1'), 422],
+    [
+      'AsignadoNoElegibleError',
+      () => new TicketsErrors.AsignadoNoElegibleError('user-1', 'tipo-1'),
+      422,
+    ],
+    ['SolicitanteInvalidoError', () => new TicketsErrors.SolicitanteInvalidoError('user-1'), 422],
+    [
+      'ComentarioNoPermitidoError',
+      () => new TicketsErrors.ComentarioNoPermitidoError('CERRADO'),
+      422,
+    ],
+    ['ArchivoTamanoCeroError', () => new TicketsErrors.ArchivoTamanoCeroError(BigInt(0)), 422],
+    [
+      'TipoArchivoNoPermitidoError',
+      () => new TicketsErrors.TipoArchivoNoPermitidoError('application/x-msdownload'),
+      422,
+    ],
+    ['SecuenciaAgotadaError', () => new TicketsErrors.SecuenciaAgotadaError('SOPORTE', 2026), 409],
+    ['TipoTicketDesconocidoError', () => new TicketsErrors.TipoTicketDesconocidoError(''), 422],
+    ['SinCicloActivoError', () => new TicketsErrors.SinCicloActivoError(), 409],
+    [
+      'PrioridadNoEncontradaError',
+      () => new TicketsErrors.PrioridadNoEncontradaError('prioridad-1'),
+      422,
+    ],
+    [
+      'TicketReferenciaInvalidaError',
+      () => new TicketsErrors.TicketReferenciaInvalidaError('ticket-x'),
+      422,
+    ],
+    [
+      'TipoTicketCodigoDuplicadoError',
+      () => new TicketsErrors.TipoTicketCodigoDuplicadoError('SOPORTE'),
+      422,
+    ],
+    [
+      'PrefijoTipoTicketColisionError',
+      () => new TicketsErrors.PrefijoTipoTicketColisionError('COMPRAS', 'COMISION', 'COM'),
+      422,
+    ],
+    [
+      'PrioridadCodigoDuplicadaError',
+      () => new TicketsErrors.PrioridadCodigoDuplicadaError('ALTA'),
+      422,
+    ],
+    [
+      'ModuloTipoTicketInvalidoError',
+      () => new TicketsErrors.ModuloTipoTicketInvalidoError('DESCONOCIDO'),
+      422,
+    ],
+    [
+      'TipoTicketModuloNoCorrespondeError',
+      () => new TicketsErrors.TipoTicketModuloNoCorrespondeError('tipo-1', 'COMPRAS', 'SOPORTE'),
+      422,
+    ],
+    [
+      'ExportacionDemasiadoGrandeError',
+      () => new TicketsErrors.ExportacionDemasiadoGrandeError(6000, 5000),
+      422,
+    ],
+  ];
+
+  it('TABLA cubre EXACTAMENTE las clases exportadas (ninguna falta, ninguna sobra)', () => {
+    expect(TABLA).toHaveLength(CLASES_DE_ERROR.length);
+    const nombresEnTabla = new Set(TABLA.map(([nombre]) => nombre));
+    for (const clase of CLASES_DE_ERROR) {
+      expect(nombresEnTabla.has(clase.name)).toBe(true);
+    }
+  });
+
+  it.each(TABLA)('%s → HTTP %i', (_nombre, factory, httpEsperado) => {
+    const excepcion = toHttpException(factory());
+
+    expect(excepcion.getStatus()).toBe(httpEsperado);
+    if (httpEsperado === 403) {
+      expect(excepcion).toBeInstanceOf(ForbiddenException);
+    } else if (httpEsperado === 404) {
+      expect(excepcion).toBeInstanceOf(NotFoundException);
+    } else if (httpEsperado === 409) {
+      expect(excepcion).toBeInstanceOf(ConflictException);
+    } else {
+      expect(excepcion).toBeInstanceOf(UnprocessableEntityException);
+    }
   });
 });

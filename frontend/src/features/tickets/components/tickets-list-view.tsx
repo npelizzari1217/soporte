@@ -26,6 +26,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { Can } from "@/components/shared/can";
 import { Select } from "@/components/ui/select";
 import { TicketCreateDialog } from "./ticket-create-dialog";
+import { ExportarTicketsButton } from "./exportar-tickets-button";
 import { StatusBadge, type TicketEstado } from "@/components/ui/status-badge";
 import { PriorityBadge } from "@/components/ui/priority-badge";
 import { notifyError } from "@/shared/lib/toast";
@@ -109,9 +110,16 @@ export function TicketsListView() {
       <PageHeader
         title="Tickets"
         actions={
-          <Can permiso="TICKETS:ALTAS">
-            <TicketCreateDialog />
-          </Can>
+          <>
+            {/*
+              Recibe el MISMO objeto `filtros` que alimenta `useTickets`: es lo
+              que garantiza que el CSV y la pantalla cuenten lo mismo.
+            */}
+            <ExportarTicketsButton filtros={filtros} />
+            <Can permiso="TICKETS:ALTAS">
+              <TicketCreateDialog />
+            </Can>
+          </>
         }
       />
 

@@ -6,6 +6,7 @@
  * Rutas:
  *   POST   /tickets            → CrearTicketUseCase (`ticket:crear`, USUARIO+)
  *   GET    /tickets            → ListarTicketsUseCase (cualquier tenant autenticado; scope T6)
+ *   GET    /tickets/export     → ExportarTicketsUseCase (`TICKETS:LECTURA`, sdd/exportar-listados-csv)
  *   GET    /tickets/:id        → ObtenerTicketUseCase (cualquier tenant autenticado; scope T6)
  *   PATCH  /tickets/:id        → EditarTicketUseCase (`ticket:editar`, TECNICO+)
  *   PATCH  /tickets/:id/estado → TransicionarEstadoUseCase (`ticket:transicionar`, TECNICO+)
@@ -44,6 +45,7 @@ import {
   Patch,
   Post,
   Query,
+  Res,
   UnprocessableEntityException,
   UseGuards,
 } from '@nestjs/common';
@@ -60,11 +62,13 @@ import {
 } from '../../application/use-cases/listar-tecnicos-asignables.use-case';
 import { CrearComentarioUseCase } from '../../application/use-cases/crear-comentario.use-case';
 import { ListarTimelineUseCase } from '../../application/use-cases/listar-timeline.use-case';
+import { ExportarTicketsUseCase } from '../../application/use-cases/exportar-tickets.use-case';
 import {
   AsignarTicketDto,
   CreateComentarioDto,
   CreateTicketDto,
   EditTicketDto,
+  ExportarTicketsQueryDto,
   ListTicketsQueryDto,
   ListTicketsResponseDto,
   NombresResueltos,
@@ -91,6 +95,7 @@ import {
   ArchivoTamanoCeroError,
   TipoArchivoNoPermitidoError,
   TicketBloqueadoParaEdicionError,
+  ExportacionDemasiadoGrandeError,
 } from '../../domain/errors/tickets.errors';
 import { JwtAuthGuard } from '../../../auth/infrastructure/guards/jwt-auth.guard';
 import { TenantGuard } from '../../../auth/infrastructure/guards/tenant.guard';
@@ -129,7 +134,12 @@ export function toHttpException(
     error instanceof AsignadoNoElegibleError ||
     error instanceof ComentarioNoPermitidoError ||
     error instanceof ArchivoTamanoCeroError ||
-    error instanceof TipoArchivoNoPermitidoError
+    error instanceof TipoArchivoNoPermitidoError ||
+    // Exportación a CSV (sdd/exportar-listados-csv, decisión D2): cae igual
+    // en 422 por el default, pero se lista explícito como los demás — el
+    // default existe para el error que NADIE mapeó, no para ahorrarse una
+    // línea en uno conocido.
+    error instanceof ExportacionDemasiadoGrandeError
   ) {
     return new UnprocessableEntityException(error.message);
   }
@@ -139,6 +149,21 @@ export function toHttpException(
   // Deviación de diseño no mapeada explícitamente: 422 por defecto (nunca 500
   // silencioso para un DomainError, que por definición es un fallo esperado).
   return new UnprocessableEntityException(error.message);
+}
+
+/**
+ * Lo único que este controller necesita de la respuesta HTTP para entregar
+ * una descarga: poder escribir headers.
+ *
+ * Se declara acá en vez de importar `Response` de `express` a propósito
+ * (mismo criterio que `ComprasController`, sdd/exportar-listados-csv): el
+ * tipo completo traería `@types/express` como dependencia nueva, y este
+ * proyecto tiene un motivo concreto para no tocar el lockfile sin necesidad
+ * (el deploy aborta cuando cambia). Tipar exactamente lo que se usa deja el
+ * mismo chequeo estricto sin arrastrar nada.
+ */
+interface RespuestaConHeaders {
+  setHeader(nombre: string, valor: string): void;
 }
 
 @UseGuards(JwtAuthGuard, TenantGuard, AccionesGuard)
@@ -156,6 +181,7 @@ export class TicketsController {
     @Inject(USUARIO_MASTER_CHECKER) private readonly usuarioMasterChecker: IUsuarioMasterChecker,
     private readonly listarTecnicosAsignablesUseCase: ListarTecnicosAsignablesUseCase,
     private readonly asignarYPonerEnProcesoUseCase: AsignarYPonerEnProcesoUseCase,
+    private readonly exportarTicketsUseCase: ExportarTicketsUseCase,
   ) {}
 
   /**
@@ -268,6 +294,65 @@ export class TicketsController {
       pagina,
       porPagina,
     };
+  }
+
+  /**
+   * GET /tickets/export
+   * Exporta a CSV el listado completo que producen los filtros recibidos
+   * (sdd/exportar-listados-csv) — NO la página visible.
+   *
+   * **Va declarada ANTES de `GET /tickets/:id`, y el orden es funcional, no
+   * de estilo** (design D6): Nest resuelve las rutas en el orden en que se
+   * registran, y `:id` es un comodín que también matchea la palabra
+   * `export`. Declarada después, esta ruta sería inalcanzable y el pedido
+   * caería en `ObtenerTicketUseCase` con `id="export"`, devolviendo un 404
+   * desconcertante.
+   *
+   * Gateada por `TICKETS:LECTURA`, la misma acción que el listado. El scope
+   * de FILAS (propios vs. todos) se resuelve DENTRO de `ExportarTicketsUseCase`
+   * al componer `ListarTicketsUseCase` — igual que `findAll`, nunca se
+   * amplía por exportar en vez de listar.
+   *
+   * @throws 422 la exportación supera el tope de filas (hay que acotar filtros)
+   */
+  @Get('export')
+  @RequiereAcciones('TICKETS:LECTURA')
+  async exportar(
+    @CurrentUser() user: JwtPayload,
+    @Query() query: ExportarTicketsQueryDto,
+    @Res({ passthrough: true }) res: RespuestaConHeaders,
+  ): Promise<string> {
+    const sinRestriccionModulo = user.is_global_admin || user.rol === 'ADMINISTRADOR';
+    const modulosPermitidos = sinRestriccionModulo ? null : user.modulos;
+
+    const result = await this.exportarTicketsUseCase.execute({
+      actorId: user.sub,
+      tienePermisoVerTodos: puedeEjecutar(user, ACCION_VER_TODOS),
+      modulosPermitidos,
+      filtros: {
+        estadoId: query.estado,
+        tiposIds: query.tipo ? [query.tipo] : undefined,
+        prioridadId: query.prioridad,
+        asignadoId: query.asignado,
+        cicloId: query.ciclo,
+        fechaDesde: query.fechaDesde ? new Date(query.fechaDesde) : undefined,
+        fechaHasta: query.fechaHasta ? new Date(query.fechaHasta) : undefined,
+        busqueda: query.busqueda,
+      },
+    });
+
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+    const { contenido, nombreArchivo } = result.getValue();
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${nombreArchivo}"`);
+    // El navegador no puede leer un header que no esté expuesto por CORS, y
+    // sin esto el frontend no tiene de dónde sacar el nombre del archivo.
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
+
+    return contenido;
   }
 
   /**

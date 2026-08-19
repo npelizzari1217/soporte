@@ -391,3 +391,31 @@ export class TipoTicketModuloNoCorrespondeError extends DomainError {
     );
   }
 }
+
+/**
+ * ExportacionDemasiadoGrandeError — la exportación a CSV del listado de
+ * tickets excedería el tope de filas (`TOPE_FILAS_EXPORT`, 5000).
+ * → HTTP 422 en la capa de presentación.
+ *
+ * Mismo criterio que `compras/domain/errors/compras.errors.ts`
+ * (sdd/exportar-listados-csv, decisión D2): existe para NO entregar un CSV
+ * truncado en silencio — un archivo con las primeras N filas y ninguna señal
+ * de que falta el resto se lee como completo, y cualquier conteo que el
+ * usuario saque de ahí es falso.
+ *
+ * El mensaje es ACCIONABLE porque tickets SÍ tiene filtros (a diferencia de
+ * equipos/reparaciones): le dice al usuario que acote los filtros activos,
+ * no un genérico "el listado es muy grande".
+ *
+ * Ref: sdd/exportar-listados-csv/spec, capability exportacion-tickets.
+ */
+export class ExportacionDemasiadoGrandeError extends DomainError {
+  readonly code = 'EXPORTACION_DEMASIADO_GRANDE';
+
+  constructor(total: number, tope: number) {
+    super(
+      `La exportación alcanzaría ${total} tickets y el máximo es ${tope}. ` +
+        `Acotá los filtros activos (estado, tipo, prioridad, asignado, ciclo, fecha o búsqueda) y volvé a exportar.`,
+    );
+  }
+}

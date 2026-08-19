@@ -68,6 +68,7 @@ import { ListarTiposTicketUseCase } from './application/use-cases/listar-tipos-t
 import { ListarPrioridadesUseCase } from './application/use-cases/listar-prioridades.use-case';
 import { ListarEstadosUseCase } from './application/use-cases/listar-estados.use-case';
 import { ListarTiposOperacionUseCase } from './application/use-cases/listar-tipos-operacion.use-case';
+import { ExportarTicketsUseCase } from './application/use-cases/exportar-tickets.use-case';
 import { TicketsController } from './interface/controllers/tickets.controller';
 import { AdjuntosController } from './interface/controllers/adjuntos.controller';
 import { CatalogosController } from './interface/controllers/catalogos.controller';
@@ -443,6 +444,30 @@ import { CatalogosController } from './interface/controllers/catalogos.controlle
       useFactory: (tipoOperacionRepo: ITipoOperacionRepository) =>
         new ListarTiposOperacionUseCase(tipoOperacionRepo),
       inject: [TIPO_OPERACION_REPOSITORY],
+    },
+    {
+      // sdd/exportar-listados-csv (D4): compone `ListarTicketsUseCase` YA
+      // registrado arriba — nunca un `ITicketRepository` propio — para
+      // heredar el scope de filas (T6/T7) sin poder reimplementarlo mal.
+      provide: ExportarTicketsUseCase,
+      useFactory: (
+        listarTicketsUseCase: ListarTicketsUseCase,
+        estadoRepo: IEstadoRepository,
+        prioridadRepo: IPrioridadRepository,
+        usuarioMasterChecker: IUsuarioMasterChecker,
+      ) =>
+        new ExportarTicketsUseCase(
+          listarTicketsUseCase,
+          estadoRepo,
+          prioridadRepo,
+          usuarioMasterChecker,
+        ),
+      inject: [
+        ListarTicketsUseCase,
+        ESTADO_REPOSITORY,
+        PRIORIDAD_REPOSITORY,
+        USUARIO_MASTER_CHECKER,
+      ],
     },
   ],
   exports: [
