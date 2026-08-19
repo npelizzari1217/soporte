@@ -312,3 +312,54 @@ model UsuarioClientePermiso {
   @@index([usuarioId, clienteId])
   @@map("usuario_cliente_permisos")
 }
+
+// ─── KB_ARTICULOS (la Ayuda, única y global para todo el sistema) ────────────
+//
+// POR QUÉ está acá y no en el tenant: la Ayuda explica CÓMO SE USA EL SISTEMA,
+// y el sistema es el mismo para todos los clientes. Mientras vivió en cada
+// tenant, el mismo artículo se duplicaba tantas veces como clientes había y
+// había que publicarlo cliente por cliente; corregir una frase eran N ediciones
+// que se desincronizaban a la primera distracción. Una sola tabla en master
+// elimina esa clase entera de problema.
+//
+// ESCRITURA reservada a ROOT (`usuarios.is_global_admin`): crear, editar,
+// borrar y publicar. NO se expresa como constraint — se enforcea en la capa de
+// aplicación (`GlobalAdminGuard` en `KbController`), igual que la regla "solo
+// ROOT crea clientes". El motivo es de producto: un administrador de cliente
+// no puede editar la ayuda que leen los demás clientes.
+//
+// LECTURA sigue gateada por la celda `KB:LECTURA` de la matriz, y el scope de
+// filas por `KB:VER_TODOS` (sin esa celda solo se ven los publicados y
+// activos). Eso no cambió al mudar la tabla.
+//
+// SIN `tipo_ticket_id`: la columna era una FK a `tipos_ticket`, que es una
+// tabla del TENANT. Cruzando a master la relación es directamente imposible, y
+// conceptualmente tampoco tiene sentido — un artículo global no puede apuntar
+// al catálogo de UN cliente. La UI nunca la usó (no hay filtro por tipo en el
+// listado).
+//
+// `autor_id` es soft ref a `usuarios.id`, SIN FK a propósito: el autor puede
+// darse de baja sin arrastrar el artículo, y los artículos que mantiene el
+// repositorio no tienen persona detrás (quedan en NULL).
+//
+// `slug` es la identidad estable de los artículos que viven como markdown en
+// `backend/ayuda/*.md` y sincroniza `scripts/sync-ayuda.js`. Nullable: un
+// artículo nacido en la aplicación no tiene slug, y en Postgres un UNIQUE
+// tolera varios NULL.
+
+model KbArticulo {
+  id                     String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  slug                   String?   @unique @db.VarChar(120)
+  titulo                 String    @db.VarChar(255)
+  contenido              String    @db.Text
+  /// Soft ref → usuarios.id. Sin FK. Nullable (los artículos del repo no tienen autor).
+  autorId                String?   @map("autor_id") @db.Uuid
+  visibleParaSolicitante Boolean   @default(false) @map("visible_para_solicitante")
+  activo                 Boolean   @default(true)
+  createdAt              DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt              DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt              DateTime? @map("deleted_at") @db.Timestamptz
+
+  @@index([visibleParaSolicitante])
+  @@map("kb_articulos")
+}
