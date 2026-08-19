@@ -5,6 +5,7 @@
  * Rutas:
  *   POST   /reparaciones                                    → CrearTicketEdilicioUseCase [ticket:crear]
  *   GET    /reparaciones                                    → ListarReparacionesUseCase  (autenticado)
+ *   GET    /reparaciones/export                              → ExportarReparacionesUseCase (`EDILICIA:LECTURA`, sdd/exportar-listados-csv)
  *   POST   /reparaciones/:reparacionId/subtareas             → CrearSubtareaUseCase       [subtarea:actualizar]
  *   POST   /reparaciones/subtareas/:subtareaId/completar     → CompletarSubtareaUseCase   [subtarea:actualizar]
  *   DELETE /reparaciones/subtareas/:subtareaId               → EliminarSubtareaUseCase    [subtarea:actualizar]
@@ -37,6 +38,7 @@ import {
   NotFoundException,
   Param,
   Post,
+  Res,
   UnprocessableEntityException,
   UseGuards,
 } from '@nestjs/common';
@@ -66,10 +68,12 @@ import { CompletarSubtareaUseCase } from '../../application/use-cases/completar-
 import { EliminarSubtareaUseCase } from '../../application/use-cases/eliminar-subtarea.use-case';
 import { CrearComentarioReparacionUseCase } from '../../application/use-cases/crear-comentario-reparacion.use-case';
 import { ListarComentariosReparacionUseCase } from '../../application/use-cases/listar-comentarios-reparacion.use-case';
+import { ExportarReparacionesUseCase } from '../../application/use-cases/exportar-reparaciones.use-case';
 
 import {
   TicketEdiliciaNoEncontradoError,
   SubtareaNoEncontradaError,
+  ExportacionDemasiadoGrandeError,
 } from '../../domain/errors/reparaciones.errors';
 
 import {
@@ -86,8 +90,17 @@ import {
   toTicketEdiliciaResponseDto,
 } from '../dtos/reparaciones.dto';
 
-/** Mapea un `DomainError` de los use cases de reparaciones a la `HttpException` correspondiente. */
-function toHttpException(
+/**
+ * Mapea un `DomainError` de los use cases de reparaciones a la
+ * `HttpException` correspondiente.
+ *
+ * `export` (antes privada): el catálogo de errores de exportación
+ * (sdd/exportar-listados-csv, decisión D2) se prueba por reflexión sobre
+ * `reparaciones.errors.ts` en `reparaciones.controller.spec.ts`, igual que
+ * `equipos.controller.spec.ts`/`tickets.controller.spec.ts` — hace falta
+ * poder importar esta función desde el spec.
+ */
+export function toHttpException(
   error: DomainError,
 ): NotFoundException | UnprocessableEntityException | ConflictException {
   if (
@@ -100,12 +113,34 @@ function toHttpException(
   if (error instanceof SinCicloActivoError || error instanceof SecuenciaAgotadaError) {
     return new ConflictException(error.message);
   }
-  if (error instanceof SolicitanteInvalidoError) {
+  if (
+    error instanceof SolicitanteInvalidoError ||
+    // Exportación a CSV (sdd/exportar-listados-csv, decisión D2): cae igual
+    // en 422 por el default, pero se lista explícito como los demás — el
+    // default existe para el error que NADIE mapeó, no para ahorrarse una
+    // línea en uno conocido.
+    error instanceof ExportacionDemasiadoGrandeError
+  ) {
     return new UnprocessableEntityException(error.message);
   }
   // Deviación de diseño no mapeada explícitamente: 422 por defecto (nunca
   // 500 silencioso para un DomainError, que por definición es un fallo esperado).
   return new UnprocessableEntityException(error.message);
+}
+
+/**
+ * Lo único que este controller necesita de la respuesta HTTP para entregar
+ * una descarga: poder escribir headers.
+ *
+ * Se declara acá en vez de importar `Response` de `express` a propósito
+ * (mismo criterio que `EquiposController`/`TicketsController`,
+ * sdd/exportar-listados-csv): el tipo completo traería `@types/express`
+ * como dependencia nueva, y este proyecto tiene un motivo concreto para no
+ * tocar el lockfile sin necesidad (el deploy aborta cuando cambia). Tipar
+ * exactamente lo que se usa deja el mismo chequeo estricto sin arrastrar nada.
+ */
+interface RespuestaConHeaders {
+  setHeader(nombre: string, valor: string): void;
 }
 
 @UseGuards(JwtAuthGuard, TenantGuard, AccionesGuard)
@@ -120,6 +155,10 @@ export class ReparacionesController {
     private readonly crearComentarioUseCase: CrearComentarioReparacionUseCase,
     private readonly listarComentariosUseCase: ListarComentariosReparacionUseCase,
     @Inject(USUARIO_MASTER_CHECKER) private readonly usuarioMasterChecker: IUsuarioMasterChecker,
+    // Agregado al final (no reordena los anteriores) — mismo criterio que
+    // `EquiposController.exportarEquiposUseCase`: evita reindexar los tests
+    // existentes que instancian el controller con args posicionales.
+    private readonly exportarReparacionesUseCase: ExportarReparacionesUseCase,
   ) {}
 
   /**
@@ -163,6 +202,45 @@ export class ReparacionesController {
   async listar(): Promise<ReparacionListItemResponseDto[]> {
     const result = await this.listarReparacionesUseCase.execute();
     return result.getValue().map(toReparacionListItemResponseDto);
+  }
+
+  /**
+   * GET /reparaciones/export
+   * Exporta a CSV el listado COMPLETO de reparaciones edilicias del tenant
+   * (sdd/exportar-listados-csv) — sin filtros, por diseño (spec, capability
+   * exportacion-reparaciones): cualquier query string que llegue se ignora.
+   *
+   * **Reparaciones NO tiene hoy ninguna ruta `GET /reparaciones/:id`** (a
+   * diferencia de equipos/tickets), así que esta ruta podría declararse en
+   * cualquier posición sin ambigüedad de matching (design D6). Se declara
+   * de todos modos justo después de `GET /reparaciones`, mismo criterio de
+   * legibilidad que las demás — y para que si el día de mañana se agrega un
+   * `GET /reparaciones/:reparacionId` de detalle, quien lo escriba lo
+   * declare DESPUÉS de esta, nunca antes (Nest matchea rutas en el orden de
+   * declaración, y `:reparacionId` también matchearía la palabra literal
+   * `export`).
+   *
+   * Gateada por `EDILICIA:LECTURA`, la misma acción que el listado.
+   *
+   * @throws 422 la exportación supera el tope de filas (no hay filtros que acotar)
+   */
+  @Get('export')
+  @RequiereAcciones('EDILICIA:LECTURA')
+  async exportar(@Res({ passthrough: true }) res: RespuestaConHeaders): Promise<string> {
+    const result = await this.exportarReparacionesUseCase.execute();
+
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+    const { contenido, nombreArchivo } = result.getValue();
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${nombreArchivo}"`);
+    // El navegador no puede leer un header que no esté expuesto por CORS, y
+    // sin esto el frontend no tiene de dónde sacar el nombre del archivo.
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
+
+    return contenido;
   }
 
   /**

@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/shared/page-header";
 import { Can } from "@/components/shared/can";
 import { notifyError } from "@/shared/lib/toast";
+import { ExportarCsvButton } from "@/shared/components/exportar-csv-button";
 import { ReparacionCreateDialog } from "./reparacion-create-dialog";
 import { SubtareasDialog } from "./subtareas-dialog";
 import { ComentariosDialog } from "./comentarios-dialog";
@@ -117,9 +118,27 @@ export function ReparacionesList() {
       <PageHeader
         title="Reparaciones"
         actions={
-          <Can permiso="EDILICIA:ALTAS">
-            <ReparacionCreateDialog />
-          </Can>
+          <>
+            {/*
+              Sin `Can` propio a propósito (sdd/exportar-listados-csv,
+              capability exportacion-reparaciones): a diferencia de
+              `EquiposListView`, `EdiliciaView` gatea la vista ENTERA con
+              `<Can permiso="EDILICIA:LECTURA">` por afuera de este
+              componente — este `PageHeader` ya vive adentro de ese gate, así
+              que un `<Can>` acá adentro sería redundante y quedaría
+              desincronizado si el gate exterior cambia. Sin filtros que
+              pasar: el export siempre trae el listado completo, igual que
+              `useReparaciones()` de arriba.
+            */}
+            <ExportarCsvButton
+              recurso="reparaciones"
+              nombrePorDefecto="reparaciones.csv"
+              etiqueta="Exportar a Excel"
+            />
+            <Can permiso="EDILICIA:ALTAS">
+              <ReparacionCreateDialog />
+            </Can>
+          </>
         }
       />
       <DataTable

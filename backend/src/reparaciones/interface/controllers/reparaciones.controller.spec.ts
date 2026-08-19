@@ -14,9 +14,9 @@
  */
 import 'reflect-metadata';
 import { NotFoundException, UnprocessableEntityException } from '@nestjs/common';
-import { ReparacionesController } from './reparaciones.controller';
+import { ReparacionesController, toHttpException } from './reparaciones.controller';
 import { ACCIONES_KEY } from '../../../auth/infrastructure/guards/decorators';
-import { Result } from '../../../shared/domain/result';
+import { DomainError, Result } from '../../../shared/domain/result';
 import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
 import { TicketEdiliciaEntity } from '../../domain/entities/ticket-edilicia.entity';
 import { SubtareaEdiliciaEntity } from '../../domain/entities/subtarea-edilicia.entity';
@@ -29,6 +29,7 @@ import {
   TicketEdiliciaNoEncontradoError,
   SubtareaNoEncontradaError,
 } from '../../domain/errors/reparaciones.errors';
+import * as ReparacionesErrors from '../../domain/errors/reparaciones.errors';
 import { payloadDeTest } from '../../../auth/test-helpers/payload-de-test';
 
 const USER = payloadDeTest({
@@ -68,6 +69,7 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
     // Default: master no resuelve ningún nombre (usuario dado de baja) — los
     // tests que verifican el enriquecimiento lo sobrescriben.
     const usuarioMasterChecker = { resolverNombres: vi.fn().mockResolvedValue(new Map()) };
+    const exportarReparacionesUseCase = { execute: vi.fn() };
 
     const controller = new ReparacionesController(
       crearTicketEdilicioUseCase as any,
@@ -78,6 +80,7 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
       crearComentarioUseCase as any,
       listarComentariosUseCase as any,
       usuarioMasterChecker as any,
+      exportarReparacionesUseCase as any,
     );
 
     return {
@@ -90,6 +93,7 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
       crearComentarioUseCase,
       listarComentariosUseCase,
       usuarioMasterChecker,
+      exportarReparacionesUseCase,
     };
   }
 
@@ -422,5 +426,141 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
       );
       expect(permisos).toEqual(['EDILICIA:LECTURA']);
     });
+  });
+});
+
+describe('ReparacionesController.exportar — GET /reparaciones/export (sdd/exportar-listados-csv)', () => {
+  function buildController(overrides: {
+    exportarReparaciones?: { execute: ReturnType<typeof vi.fn> };
+  }) {
+    const stub = () => ({ execute: vi.fn() });
+    const exportarReparaciones = overrides.exportarReparaciones ?? stub();
+
+    const controller = new ReparacionesController(
+      stub() as any, // crearTicketEdilicioUseCase
+      stub() as any, // listarReparacionesUseCase
+      stub() as any, // crearSubtareaUseCase
+      stub() as any, // completarSubtareaUseCase
+      stub() as any, // eliminarSubtareaUseCase
+      stub() as any, // crearComentarioUseCase
+      stub() as any, // listarComentariosUseCase
+      { resolverNombres: vi.fn() } as any, // usuarioMasterChecker
+      exportarReparaciones as any, // exportarReparacionesUseCase
+    );
+    return { controller, exportarReparaciones };
+  }
+
+  /** Doble mínimo de la respuesta HTTP: sólo hace falta poder escribir headers. */
+  function respuestaFalsa() {
+    const headers = new Map<string, string>();
+    return {
+      res: { setHeader: (nombre: string, valor: string) => void headers.set(nombre, valor) },
+      headers,
+    };
+  }
+
+  it('declara @RequiereAcciones("EDILICIA:LECTURA")', () => {
+    const meta = Reflect.getMetadata(ACCIONES_KEY, ReparacionesController.prototype.exportar);
+    expect(meta).toEqual(['EDILICIA:LECTURA']);
+  });
+
+  it('entrega el CSV como descarga, con el nombre que resolvió el use case', async () => {
+    const exportarReparaciones = { execute: vi.fn() };
+    exportarReparaciones.execute.mockResolvedValue(
+      Result.ok({ contenido: 'Número;Título', nombreArchivo: 'reparaciones-2026-08-19.csv' }),
+    );
+    const { controller } = buildController({ exportarReparaciones });
+    const { res, headers } = respuestaFalsa();
+
+    const salida = await controller.exportar(res);
+
+    expect(salida).toBe('Número;Título');
+    expect(headers.get('Content-Type')).toBe('text/csv; charset=utf-8');
+    expect(headers.get('Content-Disposition')).toBe(
+      'attachment; filename="reparaciones-2026-08-19.csv"',
+    );
+    expect(headers.get('Access-Control-Expose-Headers')).toBe('Content-Disposition');
+  });
+
+  it('no recibe query ni filtros — llama a execute() sin argumentos', async () => {
+    const exportarReparaciones = { execute: vi.fn() };
+    exportarReparaciones.execute.mockResolvedValue(
+      Result.ok({ contenido: '', nombreArchivo: 'reparaciones-2026-08-19.csv' }),
+    );
+    const { controller } = buildController({ exportarReparaciones });
+
+    await controller.exportar(respuestaFalsa().res);
+
+    expect(exportarReparaciones.execute).toHaveBeenCalledWith();
+  });
+
+  it('traduce el tope excedido a 422 y no escribe headers de descarga', async () => {
+    const exportarReparaciones = { execute: vi.fn() };
+    exportarReparaciones.execute.mockResolvedValue(
+      Result.fail(new ReparacionesErrors.ExportacionDemasiadoGrandeError(6000, 5000)),
+    );
+    const { controller } = buildController({ exportarReparaciones });
+    const { res, headers } = respuestaFalsa();
+
+    await expect(controller.exportar(res)).rejects.toBeInstanceOf(UnprocessableEntityException);
+    expect(headers.size).toBe(0);
+  });
+});
+
+describe('toHttpException (reparaciones) — catálogo de errores propios → HTTP (sdd/exportar-listados-csv, decisión D2)', () => {
+  /**
+   * Clases de error exportadas por `reparaciones.errors.ts` — el número de
+   * la verdad, no un literal a mano. Deliberadamente NO incluye los errores
+   * de `tickets.errors.ts` que este MISMO `toHttpException` también mapea
+   * (`SolicitanteInvalidoError`, `SinCicloActivoError`,
+   * `SecuenciaAgotadaError`, `TicketNoEncontradoError`): ese catálogo vive en
+   * OTRO módulo y tiene su propia reflexión ahí — mismo criterio que
+   * `equipos.controller.spec.ts`, cuyo catálogo tampoco reflexiona sobre
+   * errores de `tickets`.
+   */
+  const CLASES_DE_ERROR = Object.values(ReparacionesErrors).filter(
+    (valor): valor is new (...args: never[]) => DomainError =>
+      typeof valor === 'function' && valor.prototype instanceof DomainError,
+  );
+
+  it('el catálogo tiene EXACTAMENTE 3 clases de error (2 previas + ExportacionDemasiadoGrandeError)', () => {
+    expect(CLASES_DE_ERROR).toHaveLength(3);
+  });
+
+  const TABLA: Array<[string, () => DomainError, 404 | 422]> = [
+    [
+      'TicketEdiliciaNoEncontradoError',
+      () => new ReparacionesErrors.TicketEdiliciaNoEncontradoError('edilicia-1'),
+      404,
+    ],
+    [
+      'SubtareaNoEncontradaError',
+      () => new ReparacionesErrors.SubtareaNoEncontradaError('subtarea-1'),
+      404,
+    ],
+    [
+      'ExportacionDemasiadoGrandeError',
+      () => new ReparacionesErrors.ExportacionDemasiadoGrandeError(6000, 5000),
+      422,
+    ],
+  ];
+
+  it('TABLA cubre EXACTAMENTE las clases exportadas (ninguna falta, ninguna sobra)', () => {
+    expect(TABLA).toHaveLength(CLASES_DE_ERROR.length);
+    const nombresEnTabla = new Set(TABLA.map(([nombre]) => nombre));
+    for (const clase of CLASES_DE_ERROR) {
+      expect(nombresEnTabla.has(clase.name)).toBe(true);
+    }
+  });
+
+  it.each(TABLA)('%s → HTTP %i', (_nombre, factory, httpEsperado) => {
+    const excepcion = toHttpException(factory());
+
+    expect(excepcion.getStatus()).toBe(httpEsperado);
+    if (httpEsperado === 404) {
+      expect(excepcion).toBeInstanceOf(NotFoundException);
+    } else {
+      expect(excepcion).toBeInstanceOf(UnprocessableEntityException);
+    }
   });
 });

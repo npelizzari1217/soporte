@@ -41,3 +41,32 @@ export class SubtareaNoEncontradaError extends DomainError {
     super(`Subtarea edilicia con id "${subtareaId}" no encontrada o fue eliminada.`);
   }
 }
+
+/**
+ * ExportacionDemasiadoGrandeError — la exportación a CSV del listado de
+ * reparaciones excedería el tope de filas (`TOPE_FILAS_EXPORT`, 5000).
+ * → HTTP 422 en la capa de presentación.
+ *
+ * Mismo criterio que `equipos/domain/errors/equipos.errors.ts` (sdd/exportar-listados-csv,
+ * decisión D2): existe para NO entregar un CSV truncado en silencio.
+ *
+ * El mensaje es el mismo criterio que equipos, no el de tickets: este export
+ * NO tiene filtros que acotar (spec, capability exportacion-reparaciones —
+ * "No filter parameters are accepted"), así que decirle al usuario "acotá
+ * los filtros" sería una instrucción imposible de seguir. El mensaje dice
+ * honestamente que la lista superó el volumen soportado y señala la
+ * exportación por partes como lo que hay que habilitar — un próximo paso
+ * real, no una acción que el usuario no puede tomar.
+ *
+ * Ref: sdd/exportar-listados-csv/spec, capability exportacion-reparaciones.
+ */
+export class ExportacionDemasiadoGrandeError extends DomainError {
+  readonly code = 'EXPORTACION_DEMASIADO_GRANDE';
+
+  constructor(total: number, tope: number) {
+    super(
+      `El listado de reparaciones tiene ${total} filas y el máximo soportado por la exportación es ${tope}. ` +
+        `Hace falta habilitar la exportación en partes para poder descargar este listado.`,
+    );
+  }
+}

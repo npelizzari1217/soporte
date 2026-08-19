@@ -54,6 +54,7 @@ import { CompletarSubtareaUseCase } from './application/use-cases/completar-subt
 import { EliminarSubtareaUseCase } from './application/use-cases/eliminar-subtarea.use-case';
 import { CrearComentarioReparacionUseCase } from './application/use-cases/crear-comentario-reparacion.use-case';
 import { ListarComentariosReparacionUseCase } from './application/use-cases/listar-comentarios-reparacion.use-case';
+import { ExportarReparacionesUseCase } from './application/use-cases/exportar-reparaciones.use-case';
 
 import { ReparacionesController } from './interface/controllers/reparaciones.controller';
 
@@ -246,6 +247,14 @@ import { ReparacionesController } from './interface/controllers/reparaciones.con
         comentarioRepo: IComentarioReparacionRepository,
       ) => new ListarComentariosReparacionUseCase(ticketEdiliciaRepo, comentarioRepo),
       inject: [TICKET_EDILICIA_REPOSITORY, COMENTARIO_REPARACION_REPOSITORY],
+    },
+    {
+      // Compone `ListarReparacionesUseCase` (design D4, sdd/exportar-listados-csv)
+      // — NO inyecta ninguno de sus 4 repositorios directamente.
+      provide: ExportarReparacionesUseCase,
+      useFactory: (listarReparacionesUseCase: ListarReparacionesUseCase) =>
+        new ExportarReparacionesUseCase(listarReparacionesUseCase),
+      inject: [ListarReparacionesUseCase],
     },
   ],
   exports: [
