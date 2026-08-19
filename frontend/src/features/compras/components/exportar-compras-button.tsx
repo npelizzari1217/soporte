@@ -17,10 +17,14 @@
  * Un `<Can>` acá no protegería nada y quedaría desincronizado el día que
  * cambie el gate del listado (mismo criterio que el docblock de
  * `ComprasListView` sobre el resto de la vista).
+ *
+ * **Delegación** (sdd/exportar-listados-csv, decisión D5): la descarga en sí
+ * la resuelve el botón/hook compartidos — este componente sólo aporta lo
+ * específico de compras: el recurso, el nombre por defecto y la query string
+ * armada a partir de los filtros de la pantalla.
  */
-import { Download } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { useExportarCompras } from "../hooks/use-exportar-compras";
+import { ExportarCsvButton } from "@/shared/components/exportar-csv-button";
+import { buildExportComprasQueryString } from "../hooks/use-exportar-compras";
 import type { ComprasFiltros } from "../types";
 
 export interface ExportarComprasButtonProps {
@@ -29,17 +33,12 @@ export interface ExportarComprasButtonProps {
 }
 
 export function ExportarComprasButton({ filtros }: ExportarComprasButtonProps) {
-  const exportacion = useExportarCompras(filtros);
-
   return (
-    <Button
-      type="button"
-      variant="outline"
-      isLoading={exportacion.isPending}
-      onClick={() => exportacion.mutate()}
-    >
-      {!exportacion.isPending && <Download className="mr-2 h-4 w-4" aria-hidden />}
-      Exportar a Excel
-    </Button>
+    <ExportarCsvButton
+      recurso="compras"
+      nombrePorDefecto="compras.csv"
+      queryString={buildExportComprasQueryString(filtros)}
+      etiqueta="Exportar a Excel"
+    />
   );
 }

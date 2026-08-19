@@ -19,6 +19,7 @@ import { ExportacionDemasiadoGrandeError } from '../../domain/errors/compras.err
 import { CompraEntity, CompraProps } from '../../domain/entities/compra.entity';
 import { ItemCompraEntity, ItemCompraCreateProps } from '../../domain/entities/item-compra.entity';
 import { CompraListFiltros } from '../../domain/ports/i-compra.repository';
+import { armarExportCsv } from '../../../shared/application/armar-export-csv';
 
 const BOM = '﻿';
 
@@ -206,5 +207,45 @@ describe('ExportarComprasUseCase', () => {
     const { nombreArchivo } = (await new ExportarComprasUseCase(repo).execute({})).getValue();
 
     expect(nombreArchivo).toMatch(/^compras-\d{4}-\d{2}-\d{2}\.csv$/);
+  });
+
+  describe('regresión: paridad del sufijo de fecha con armarExportCsv (shared/application)', () => {
+    // El use case histórico deriva el sufijo de `hoyArgentina()`
+    // (compras/domain/services/fecha-argentina.ts); el helper compartido lo
+    // deriva de `desplazarAArgentina()` (shared/domain). Son dos caminos de
+    // código a la misma respuesta — si alguna vez divergen, el nombre de
+    // archivo exportado corre un día en silencio y ningún test existente lo
+    // nota. Esta prueba fija que, HOY, ambos caminos concuerdan.
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('en el borde del día de Argentina, el nombreArchivo del use case coincide con el que produce armarExportCsv', async () => {
+      // 2026-03-02T01:30 UTC son las 22:30 del 2026-03-01 en Argentina
+      // (UTC-3): un instante de "mismo día" en ambos husos pasaría con
+      // cualquier implementación (correcta o con el bug de usar UTC crudo)
+      // y no probaría nada — mismo criterio que
+      // `armar-export-csv.spec.ts`.
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-03-02T01:30:00.000Z'));
+
+      const { repo } = crearRepo([]);
+      const { nombreArchivo } = (await new ExportarComprasUseCase(repo).execute({})).getValue();
+
+      const nombreEsperadoPorHelper = armarExportCsv({
+        filas: [] as never[],
+        total: 0,
+        tope: TOPE_FILAS_EXPORT,
+        columnas: [],
+        prefijo: 'compras',
+        alExceder: (total, tope) => new ExportacionDemasiadoGrandeError(total, tope),
+      }).getValue().nombreArchivo;
+
+      expect(nombreArchivo).toBe(nombreEsperadoPorHelper);
+      // Ancla también el valor concreto: si algún día las dos
+      // implementaciones derivaran MAL el mismo día de la misma forma, la
+      // comparación anterior seguiría en verde sin detectarlo.
+      expect(nombreArchivo).toBe('compras-2026-03-01.csv');
+    });
   });
 });

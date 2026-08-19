@@ -1,15 +1,11 @@
+import { armarExportCsv } from '../../../shared/application/armar-export-csv';
 import { DomainError, Result } from '../../../shared/domain/result';
-import {
-  ColumnaCsv,
-  fechaCsv,
-  montoCsv,
-  serializarCsv,
-} from '../../../shared/infrastructure/csv/csv';
+import { TOPE_FILAS_EXPORT } from '../../../shared/domain/tope-filas-export';
+import { ColumnaCsv, fechaCsv, montoCsv } from '../../../shared/infrastructure/csv/csv';
 import { CompraEntity } from '../../domain/entities/compra.entity';
 import { ExportacionDemasiadoGrandeError } from '../../domain/errors/compras.errors';
 import { CompraListFiltros, ICompraRepository } from '../../domain/ports/i-compra.repository';
 import { EstadoCompra, FiltroGrupoEstadoCompra } from '../../domain/services/estado-compra';
-import { hoyArgentina } from '../../domain/services/fecha-argentina';
 
 /**
  * Máximo de compras que una exportación puede contener.
@@ -20,8 +16,15 @@ import { hoyArgentina } from '../../domain/services/fecha-argentina';
  * el tope existe para que el día que alguien pida "todas las compras de
  * todos los años" el sistema responda con un error claro en vez de con una
  * pausa larga y un archivo a medias.
+ *
+ * **Re-exportado, no propio**: el valor canónico vive ahora en
+ * `shared/domain/tope-filas-export.ts` (sdd/exportar-listados-csv, D1),
+ * porque las cuatro exportaciones (compras, tickets, equipos, reparaciones)
+ * comparten el mismo criterio. Este re-export existe solo por
+ * retrocompatibilidad: nada fuera de este módulo tiene que cambiar su
+ * import para seguir leyendo `TOPE_FILAS_EXPORT` desde acá.
  */
-export const TOPE_FILAS_EXPORT = 5000;
+export { TOPE_FILAS_EXPORT };
 
 /** Mismo default que `ListarComprasUseCase`: sin filtro explícito se exportan las ACTIVAS. */
 const GRUPO_ESTADO_DEFAULT: FiltroGrupoEstadoCompra = 'ACTIVAS';
@@ -101,13 +104,13 @@ export class ExportarComprasUseCase {
 
     const { compras, total } = await this.compraRepo.findPaginaConItems(filtros);
 
-    if (total > TOPE_FILAS_EXPORT) {
-      return Result.fail(new ExportacionDemasiadoGrandeError(total, TOPE_FILAS_EXPORT));
-    }
-
-    return Result.ok({
-      contenido: serializarCsv(compras, ExportarComprasUseCase.columnas(compras)),
-      nombreArchivo: `compras-${ExportarComprasUseCase.sufijoFecha()}.csv`,
+    return armarExportCsv({
+      filas: compras,
+      total,
+      tope: TOPE_FILAS_EXPORT,
+      columnas: ExportarComprasUseCase.columnas(compras),
+      prefijo: 'compras',
+      alExceder: (total, tope) => new ExportacionDemasiadoGrandeError(total, tope),
     });
   }
 
@@ -162,15 +165,5 @@ export class ExportarComprasUseCase {
         return total === undefined ? '' : montoCsv(total);
       },
     }));
-  }
-
-  /**
-   * Sufijo `aaaa-mm-dd` del nombre de archivo, en fecha de Argentina.
-   *
-   * Ordena bien alfabéticamente en el explorador de archivos, que es donde
-   * el usuario va a tener varias exportaciones juntas.
-   */
-  private static sufijoFecha(): string {
-    return hoyArgentina().toISOString().slice(0, 10);
   }
 }
