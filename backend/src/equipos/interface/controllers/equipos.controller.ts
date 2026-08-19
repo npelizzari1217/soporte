@@ -6,6 +6,7 @@
  *   POST   /equipos                              → CrearEquipoUseCase              [equipo:gestionar]
  *   GET    /equipos                              → ListarEquiposUseCase            (autenticado)
  *   GET    /equipos/tipos-componente              → ListarTiposComponenteUseCase    (autenticado, SIN escritura)
+ *   GET    /equipos/export                        → ExportarEquiposUseCase          (`EQUIPOS:LECTURA`, sdd/exportar-listados-csv)
  *   GET    /equipos/:id                           → ObtenerEquipoUseCase            (autenticado)
  *   PATCH  /equipos/:id                           → EditarEquipoUseCase             [equipo:gestionar]
  *   DELETE /equipos/:id                           → EliminarEquipoUseCase           [equipo:gestionar]
@@ -39,6 +40,7 @@ import {
   Param,
   Patch,
   Post,
+  Res,
   UnprocessableEntityException,
   UseGuards,
 } from '@nestjs/common';
@@ -59,6 +61,7 @@ import { EliminarComponenteUseCase } from '../../application/use-cases/eliminar-
 import { EditarComponenteUseCase } from '../../application/use-cases/editar-componente.use-case';
 import { ReactivarComponenteUseCase } from '../../application/use-cases/reactivar-componente.use-case';
 import { ListarTiposComponenteUseCase } from '../../application/use-cases/listar-tipos-componente.use-case';
+import { ExportarEquiposUseCase } from '../../application/use-cases/exportar-equipos.use-case';
 
 import {
   EquipoNoEncontradoError,
@@ -69,6 +72,7 @@ import {
   ComponenteNoEncontradoError,
   ComponenteDadoDeBajaError,
   ComponenteYaActivoError,
+  ExportacionDemasiadoGrandeError,
 } from '../../domain/errors/equipos.errors';
 
 import {
@@ -87,7 +91,9 @@ import {
 } from '../dtos/equipos.dto';
 
 /** Mapea un `DomainError` de los use cases de equipos a la `HttpException` correspondiente. */
-function toHttpException(error: DomainError): NotFoundException | UnprocessableEntityException {
+export function toHttpException(
+  error: DomainError,
+): NotFoundException | UnprocessableEntityException {
   if (error instanceof EquipoNoEncontradoError || error instanceof ComponenteNoEncontradoError) {
     return new NotFoundException(error.message);
   }
@@ -97,13 +103,33 @@ function toHttpException(error: DomainError): NotFoundException | UnprocessableE
     error instanceof TipoComponenteCodigoRequeridoError ||
     error instanceof TipoComponenteInactivoError ||
     error instanceof ComponenteDadoDeBajaError ||
-    error instanceof ComponenteYaActivoError
+    error instanceof ComponenteYaActivoError ||
+    // Exportación a CSV (sdd/exportar-listados-csv, decisión D2): cae igual
+    // en 422 por el default, pero se lista explícito como los demás — el
+    // default existe para el error que NADIE mapeó, no para ahorrarse una
+    // línea en uno conocido.
+    error instanceof ExportacionDemasiadoGrandeError
   ) {
     return new UnprocessableEntityException(error.message);
   }
   // Deviación de diseño no mapeada explícitamente: 422 por defecto (nunca
   // 500 silencioso para un DomainError, que por definición es un fallo esperado).
   return new UnprocessableEntityException(error.message);
+}
+
+/**
+ * Lo único que este controller necesita de la respuesta HTTP para entregar
+ * una descarga: poder escribir headers.
+ *
+ * Se declara acá en vez de importar `Response` de `express` a propósito
+ * (mismo criterio que `TicketsController`, sdd/exportar-listados-csv): el
+ * tipo completo traería `@types/express` como dependencia nueva, y este
+ * proyecto tiene un motivo concreto para no tocar el lockfile sin necesidad
+ * (el deploy aborta cuando cambia). Tipar exactamente lo que se usa deja el
+ * mismo chequeo estricto sin arrastrar nada.
+ */
+interface RespuestaConHeaders {
+  setHeader(nombre: string, valor: string): void;
 }
 
 /**
@@ -130,6 +156,10 @@ export class EquiposController {
     private readonly editarComponenteUseCase: EditarComponenteUseCase,
     private readonly reactivarComponenteUseCase: ReactivarComponenteUseCase,
     private readonly listarTiposComponenteUseCase: ListarTiposComponenteUseCase,
+    // Agregado al final (no reordena los anteriores) — mismo criterio que
+    // `TicketsController.exportarTicketsUseCase`: evita reindexar los tests
+    // existentes que instancian el controller con args posicionales.
+    private readonly exportarEquiposUseCase: ExportarEquiposUseCase,
   ) {}
 
   /**
@@ -191,6 +221,40 @@ export class EquiposController {
   async listarTiposComponente(): Promise<TipoComponenteResponseDto[]> {
     const result = await this.listarTiposComponenteUseCase.execute();
     return result.getValue().map(toTipoComponenteResponseDto);
+  }
+
+  /**
+   * GET /equipos/export
+   * Exporta a CSV el inventario ACTIVO completo de equipos
+   * (sdd/exportar-listados-csv) — sin filtros, por diseño (spec, capability
+   * exportacion-equipos): cualquier query string que llegue se ignora.
+   *
+   * **Va declarada ANTES de `GET /equipos/:id`, mismo criterio funcional que
+   * `GET /equipos/tipos-componente`** (design D6): Nest resuelve las rutas
+   * en el orden en que se registran y `:id` también matchea la palabra
+   * literal `export`; declarada después, esta ruta sería inalcanzable.
+   *
+   * Gateada por `EQUIPOS:LECTURA`, la misma acción que el listado.
+   *
+   * @throws 422 la exportación supera el tope de filas (no hay filtros que acotar)
+   */
+  @Get('export')
+  @RequiereAcciones('EQUIPOS:LECTURA')
+  async exportar(@Res({ passthrough: true }) res: RespuestaConHeaders): Promise<string> {
+    const result = await this.exportarEquiposUseCase.execute();
+
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+    const { contenido, nombreArchivo } = result.getValue();
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${nombreArchivo}"`);
+    // El navegador no puede leer un header que no esté expuesto por CORS, y
+    // sin esto el frontend no tiene de dónde sacar el nombre del archivo.
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
+
+    return contenido;
   }
 
   /**

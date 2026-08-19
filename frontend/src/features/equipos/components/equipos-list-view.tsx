@@ -28,6 +28,7 @@ import { Can } from "@/components/shared/can";
 import { ErrorState } from "@/components/shared/error-state";
 import { Badge } from "@/components/ui/badge";
 import { notifyError } from "@/shared/lib/toast";
+import { ExportarCsvButton } from "@/shared/components/exportar-csv-button";
 import { EquipoCreateDialog } from "./equipo-create-dialog";
 import { TicketSoporteCreateDialog } from "./ticket-soporte-create-dialog";
 import type { Equipo } from "../types";
@@ -53,11 +54,25 @@ export function EquiposListView() {
       <PageHeader
         title="Equipos IT"
         actions={
-          canModulo("TICKETS") ? (
-            <Can permiso="TICKETS:ALTAS">
-              <TicketSoporteCreateDialog />
+          <>
+            {/*
+              Sin filtros que pasar (sdd/exportar-listados-csv, capability
+              exportacion-equipos): el export siempre trae el inventario
+              activo completo, igual que `useEquipos()` de arriba.
+            */}
+            <Can permiso="EQUIPOS:LECTURA">
+              <ExportarCsvButton
+                recurso="equipos"
+                nombrePorDefecto="equipos.csv"
+                etiqueta="Exportar a Excel"
+              />
             </Can>
-          ) : undefined
+            {canModulo("TICKETS") ? (
+              <Can permiso="TICKETS:ALTAS">
+                <TicketSoporteCreateDialog />
+              </Can>
+            ) : undefined}
+          </>
         }
       />
       <Can

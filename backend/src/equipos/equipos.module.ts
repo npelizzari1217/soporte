@@ -65,6 +65,7 @@ import { ListarTiposComponenteUseCase } from './application/use-cases/listar-tip
 import { CrearTicketSoporteUseCase } from './application/use-cases/crear-ticket-soporte.use-case';
 import { RegistrarSolucionUseCase } from './application/use-cases/registrar-solucion.use-case';
 import { ObtenerEquipoDeTicketUseCase } from './application/use-cases/obtener-equipo-de-ticket.use-case';
+import { ExportarEquiposUseCase } from './application/use-cases/exportar-equipos.use-case';
 
 import { EquiposController } from './interface/controllers/equipos.controller';
 import { SoporteController } from './interface/controllers/soporte.controller';
@@ -264,6 +265,14 @@ import { SoporteController } from './interface/controllers/soporte.controller';
         equipoRepo: IEquipoInformaticoRepository,
       ) => new ObtenerEquipoDeTicketUseCase(ticketSoporteRepo, equipoRepo),
       inject: [TICKET_SOPORTE_REPOSITORY, EQUIPO_INFORMATICO_REPOSITORY],
+    },
+    {
+      // Compone `ListarEquiposUseCase` (design D4, sdd/exportar-listados-csv)
+      // — NO inyecta EQUIPO_INFORMATICO_REPOSITORY directamente.
+      provide: ExportarEquiposUseCase,
+      useFactory: (listarEquiposUseCase: ListarEquiposUseCase) =>
+        new ExportarEquiposUseCase(listarEquiposUseCase),
+      inject: [ListarEquiposUseCase],
     },
   ],
   exports: [EQUIPO_INFORMATICO_REPOSITORY, COMPONENTE_EQUIPO_REPOSITORY, TICKET_SOPORTE_REPOSITORY],

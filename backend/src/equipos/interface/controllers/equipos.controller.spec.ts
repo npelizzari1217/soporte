@@ -11,11 +11,12 @@
  */
 import 'reflect-metadata';
 import { NotFoundException, UnprocessableEntityException } from '@nestjs/common';
-import { EquiposController } from './equipos.controller';
+import { EquiposController, toHttpException } from './equipos.controller';
 import { ACCIONES_KEY } from '../../../auth/infrastructure/guards/decorators';
-import { Result } from '../../../shared/domain/result';
+import { DomainError, Result } from '../../../shared/domain/result';
 import { EquipoInformaticoEntity } from '../../domain/entities/equipo-informatico.entity';
 import { ComponenteEquipoEntity } from '../../domain/entities/componente-equipo.entity';
+import * as EquiposErrors from '../../domain/errors/equipos.errors';
 import {
   EquipoNoEncontradoError,
   NumeroSerieDuplicadoError,
@@ -56,6 +57,7 @@ describe('EquiposController (T12.6)', () => {
     const editarComponenteUseCase = { execute: vi.fn() };
     const reactivarComponenteUseCase = { execute: vi.fn() };
     const listarTiposComponenteUseCase = { execute: vi.fn() };
+    const exportarEquiposUseCase = { execute: vi.fn() };
 
     const controller = new EquiposController(
       crearEquipoUseCase as any,
@@ -68,6 +70,7 @@ describe('EquiposController (T12.6)', () => {
       editarComponenteUseCase as any,
       reactivarComponenteUseCase as any,
       listarTiposComponenteUseCase as any,
+      exportarEquiposUseCase as any,
     );
 
     return {
@@ -82,6 +85,7 @@ describe('EquiposController (T12.6)', () => {
       editarComponenteUseCase,
       reactivarComponenteUseCase,
       listarTiposComponenteUseCase,
+      exportarEquiposUseCase,
     };
   }
 
@@ -370,5 +374,160 @@ describe('EquiposController (T12.6)', () => {
       );
       expect(meta).toEqual(['EQUIPOS:LECTURA']);
     });
+  });
+});
+
+describe('EquiposController.exportar — GET /equipos/export (sdd/exportar-listados-csv)', () => {
+  function buildController(overrides: { exportarEquipos?: { execute: ReturnType<typeof vi.fn> } }) {
+    const stub = () => ({ execute: vi.fn() });
+    const exportarEquipos = overrides.exportarEquipos ?? stub();
+
+    const controller = new EquiposController(
+      stub() as any, // crearEquipoUseCase
+      stub() as any, // editarEquipoUseCase
+      stub() as any, // obtenerEquipoUseCase
+      stub() as any, // listarEquiposUseCase
+      stub() as any, // eliminarEquipoUseCase
+      stub() as any, // agregarComponenteUseCase
+      stub() as any, // eliminarComponenteUseCase
+      stub() as any, // editarComponenteUseCase
+      stub() as any, // reactivarComponenteUseCase
+      stub() as any, // listarTiposComponenteUseCase
+      exportarEquipos as any, // exportarEquiposUseCase
+    );
+    return { controller, exportarEquipos };
+  }
+
+  /** Doble mínimo de la respuesta HTTP: sólo hace falta poder escribir headers. */
+  function respuestaFalsa() {
+    const headers = new Map<string, string>();
+    return {
+      res: { setHeader: (nombre: string, valor: string) => void headers.set(nombre, valor) },
+      headers,
+    };
+  }
+
+  it('declara @RequiereAcciones("EQUIPOS:LECTURA")', () => {
+    const meta = Reflect.getMetadata(ACCIONES_KEY, EquiposController.prototype.exportar);
+    expect(meta).toEqual(['EQUIPOS:LECTURA']);
+  });
+
+  it('entrega el CSV como descarga, con el nombre que resolvió el use case', async () => {
+    const exportarEquipos = { execute: vi.fn() };
+    exportarEquipos.execute.mockResolvedValue(
+      Result.ok({ contenido: 'Nombre;Marca', nombreArchivo: 'equipos-2026-08-19.csv' }),
+    );
+    const { controller } = buildController({ exportarEquipos });
+    const { res, headers } = respuestaFalsa();
+
+    const salida = await controller.exportar(res);
+
+    expect(salida).toBe('Nombre;Marca');
+    expect(headers.get('Content-Type')).toBe('text/csv; charset=utf-8');
+    expect(headers.get('Content-Disposition')).toBe(
+      'attachment; filename="equipos-2026-08-19.csv"',
+    );
+    expect(headers.get('Access-Control-Expose-Headers')).toBe('Content-Disposition');
+  });
+
+  it('no recibe query ni filtros — llama a execute() sin argumentos', async () => {
+    const exportarEquipos = { execute: vi.fn() };
+    exportarEquipos.execute.mockResolvedValue(
+      Result.ok({ contenido: '', nombreArchivo: 'equipos-2026-08-19.csv' }),
+    );
+    const { controller } = buildController({ exportarEquipos });
+
+    await controller.exportar(respuestaFalsa().res);
+
+    expect(exportarEquipos.execute).toHaveBeenCalledWith();
+  });
+
+  it('traduce el tope excedido a 422 y no escribe headers de descarga', async () => {
+    const exportarEquipos = { execute: vi.fn() };
+    exportarEquipos.execute.mockResolvedValue(
+      Result.fail(new EquiposErrors.ExportacionDemasiadoGrandeError(6000, 5000)),
+    );
+    const { controller } = buildController({ exportarEquipos });
+    const { res, headers } = respuestaFalsa();
+
+    await expect(controller.exportar(res)).rejects.toBeInstanceOf(UnprocessableEntityException);
+    expect(headers.size).toBe(0);
+  });
+});
+
+describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listados-csv, decisión D2)', () => {
+  /** Clases de error exportadas por `equipos.errors.ts` — el número de la verdad, no un literal a mano. */
+  const CLASES_DE_ERROR = Object.values(EquiposErrors).filter(
+    (valor): valor is new (...args: never[]) => DomainError =>
+      typeof valor === 'function' && valor.prototype instanceof DomainError,
+  );
+
+  it('el catálogo tiene EXACTAMENTE 10 clases de error (9 previas + ExportacionDemasiadoGrandeError)', () => {
+    expect(CLASES_DE_ERROR).toHaveLength(10);
+  });
+
+  const TABLA: Array<[string, () => DomainError, 404 | 422]> = [
+    ['EquipoNoEncontradoError', () => new EquiposErrors.EquipoNoEncontradoError('equipo-1'), 404],
+    ['EquipoInvalidoError', () => new EquiposErrors.EquipoInvalidoError('equipo-1'), 422],
+    ['NumeroSerieDuplicadoError', () => new EquiposErrors.NumeroSerieDuplicadoError('SN-001'), 422],
+    [
+      'TipoComponenteCodigoRequeridoError',
+      () => new EquiposErrors.TipoComponenteCodigoRequeridoError(),
+      422,
+    ],
+    [
+      'TipoComponenteInactivoError',
+      () => new EquiposErrors.TipoComponenteInactivoError('RAM'),
+      422,
+    ],
+    [
+      'ComponenteNoEncontradoError',
+      () => new EquiposErrors.ComponenteNoEncontradoError('componente-1'),
+      404,
+    ],
+    [
+      'ComponenteDadoDeBajaError',
+      () => new EquiposErrors.ComponenteDadoDeBajaError('componente-1'),
+      422,
+    ],
+    [
+      'ComponenteYaActivoError',
+      () => new EquiposErrors.ComponenteYaActivoError('componente-1'),
+      422,
+    ],
+    // `TicketSoporteNoEncontradoError` es 404 en `SoporteController` (que tiene
+    // su PROPIO `toHttpException`, con esa rama explícita) — nunca la produce
+    // ningún use case de `EquiposController`, así que ACÁ cae en el default
+    // 422 de este controller. La tabla documenta el comportamiento REAL de
+    // ESTA función, no el de `SoporteController`.
+    [
+      'TicketSoporteNoEncontradoError',
+      () => new EquiposErrors.TicketSoporteNoEncontradoError('ticket-1'),
+      422,
+    ],
+    [
+      'ExportacionDemasiadoGrandeError',
+      () => new EquiposErrors.ExportacionDemasiadoGrandeError(6000, 5000),
+      422,
+    ],
+  ];
+
+  it('TABLA cubre EXACTAMENTE las clases exportadas (ninguna falta, ninguna sobra)', () => {
+    expect(TABLA).toHaveLength(CLASES_DE_ERROR.length);
+    const nombresEnTabla = new Set(TABLA.map(([nombre]) => nombre));
+    for (const clase of CLASES_DE_ERROR) {
+      expect(nombresEnTabla.has(clase.name)).toBe(true);
+    }
+  });
+
+  it.each(TABLA)('%s → HTTP %i', (_nombre, factory, httpEsperado) => {
+    const excepcion = toHttpException(factory());
+
+    expect(excepcion.getStatus()).toBe(httpEsperado);
+    if (httpEsperado === 404) {
+      expect(excepcion).toBeInstanceOf(NotFoundException);
+    } else {
+      expect(excepcion).toBeInstanceOf(UnprocessableEntityException);
+    }
   });
 });

@@ -156,3 +156,32 @@ export class TicketSoporteNoEncontradoError extends DomainError {
     super(`Ticket de soporte con id "${id}" no encontrado.`);
   }
 }
+
+/**
+ * ExportacionDemasiadoGrandeError — la exportación a CSV del inventario de
+ * equipos excedería el tope de filas (`TOPE_FILAS_EXPORT`, 5000).
+ * → HTTP 422 en la capa de presentación.
+ *
+ * Mismo criterio que `tickets/domain/errors/tickets.errors.ts` (sdd/exportar-listados-csv,
+ * decisión D2): existe para NO entregar un CSV truncado en silencio.
+ *
+ * El mensaje es DISTINTO al de tickets a propósito: este export NO tiene
+ * filtros que acotar (spec, capability exportacion-equipos — "No filter
+ * parameters are accepted"), así que decirle al usuario "acotá los filtros"
+ * sería una instrucción imposible de seguir. El mensaje dice honestamente que
+ * la lista superó el volumen soportado y señala la exportación por partes
+ * como lo que hay que habilitar — un próximo paso real, no una acción que el
+ * usuario no puede tomar.
+ *
+ * Ref: sdd/exportar-listados-csv/spec, capability exportacion-equipos.
+ */
+export class ExportacionDemasiadoGrandeError extends DomainError {
+  readonly code = 'EXPORTACION_DEMASIADO_GRANDE';
+
+  constructor(total: number, tope: number) {
+    super(
+      `El listado de equipos tiene ${total} filas y el máximo soportado por la exportación es ${tope}. ` +
+        `Hace falta habilitar la exportación en partes para poder descargar este listado.`,
+    );
+  }
+}
