@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * KbDeleteControl — PRESENTATIONAL, gate `KB:BORRADO` aplicado por el
- * caller (`KbDetailView`, `<Can>`). T3.6: baja lógica (soft delete), siempre
+ * KbDeleteControl — PRESENTATIONAL, gate de ROOT aplicado por el
+ * caller (`KbDetailView`, `<SoloRoot>`). T3.6: baja lógica (soft delete), siempre
  * detrás de confirmación explícita (`ConfirmDialog`).
  */
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";

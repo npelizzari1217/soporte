@@ -9,35 +9,57 @@ visibleParaSolicitante: true
 El módulo de Ayuda guarda artículos que explican cómo se usa el sistema. Es el
 lugar donde vive esta misma página.
 
-## Los permisos del módulo
+## La Ayuda es una sola para todo el sistema
 
-Los permisos de Ayuda se identifican con el prefijo `KB`. Cinco de ellos son los
-esperables y hacen exactamente lo que su nombre indica:
+Los artículos **no son de cada cliente**: son únicos y globales. Todos los
+clientes leen exactamente los mismos textos, y una corrección se ve en todos
+lados a la vez.
+
+De ahí sale la regla de quién puede escribirla: **crear, editar, eliminar y
+publicar artículos es exclusivo del administrador global** de la plataforma. Un
+administrador de cliente, por más permisos que tenga dentro de su cliente, no ve
+los botones de gestión — editar la Ayuda sería cambiar lo que leen los demás
+clientes.
+
+Antes cada cliente tenía su propia copia de los artículos y había que publicarlos
+uno por uno. Eso se terminó.
+
+## Los permisos que sí gobiernan algo
+
+Quedan dos, y los dos son de LECTURA:
 
 | Permiso | Qué habilita |
 |---|---|
 | `KB:LECTURA` | Entrar al módulo y abrir un artículo |
-| `KB:ALTAS` | Crear un artículo nuevo |
-| `KB:MODIFICACION` | Editar el título, el contenido y el tipo de ticket |
-| `KB:BORRADO` | Eliminar un artículo |
-| `KB:PUBLICAR` | Publicar y despublicar |
+| `KB:VER_TODOS` | Ver además los artículos internos (sin publicar) |
 
-Sin `KB:LECTURA` no se entra al módulo, aunque se tengan los demás permisos.
+Sin `KB:LECTURA` la Ayuda no aparece en el menú y no se entra al módulo.
+
+## Las casillas de escritura ya no hacen nada
+
+En la grilla de permisos siguen apareciendo cuatro casillas en la fila **Ayuda**:
+`ALTAS`, `MODIFICACION`, `BORRADO` y `PUBLICAR`. **Marcarlas no tiene ningún
+efecto.** Quedaron dibujadas por una cuestión técnica, pero la escritura la
+decide el administrador global y nada más.
+
+Es la trampa de este módulo, y conviene tenerla presente: si alguien pide poder
+escribir en la Ayuda, marcarle `ALTAS` no va a cambiar nada. Hay que pedírselo al
+administrador global.
 
 ## Publicar cambia la visibilidad
 
 Un artículo tiene dos estados de visibilidad, que se ven como una etiqueta en el
 listado y en el detalle:
 
-- **Interno**: solo lo ve el personal.
-- **Publicado**: además lo ven los solicitantes.
-
-`KB:PUBLICAR` es el permiso que habilita los botones **Publicar** y
-**Despublicar**. Es lo único que ese permiso controla: quien puede editar un
-artículo no puede, por eso solo, cambiar quién lo ve.
+- **Interno**: solo lo ve quien tiene `KB:VER_TODOS`.
+- **Publicado**: lo ve cualquiera que tenga `KB:LECTURA`.
 
 **Todo artículo nuevo nace Interno.** Publicarlo es siempre un paso aparte y
-deliberado.
+deliberado, y el botón lo tiene únicamente el administrador global.
+
+Publicar es una decisión que **queda**: los artículos que se mantienen desde el
+código actualizan su texto cuando cambia el sistema, pero nunca vuelven a ocultar
+lo que alguien decidió publicar.
 
 ## `KB:VER_TODOS` no abre una pantalla: filtra filas
 
@@ -50,28 +72,18 @@ pantalla ni ningún botón. Lo que hace es **ampliar qué artículos se ven**.
   con el enlace directo, el sistema responde que no lo encuentra.
 - **Con `KB:VER_TODOS`** se ven además los internos.
 
-## La trampa: `KB:ALTAS` sin `KB:VER_TODOS`
+Como referencia, esto es lo que cada plantilla de rol trae en la fila Ayuda y que
+realmente tiene efecto:
 
-Como todo artículo nuevo nace Interno, dar de alta sin `KB:VER_TODOS` produce una
-situación absurda: la persona escribe el artículo, el sistema lo guarda bien, y
-acto seguido **no puede verlo**. No aparece en el listado, y al intentar abrirlo
-el sistema informa que no se pudo cargar. El artículo está, pero es invisible
-para su propio autor.
-
-Si alguien va a escribir en Ayuda, necesita `KB:ALTAS` **y** `KB:VER_TODOS`
-juntos. Ninguna de las plantillas de rol produce esa combinación rota por su
-cuenta: solo aparece cuando la grilla se ajustó a mano.
-
-Como referencia, esto trae cada plantilla:
-
-| Rol | Permisos de Ayuda en la plantilla |
+| Rol | Permisos de Ayuda con efecto |
 |---|---|
 | Usuario | `LECTURA` |
 | Colaborador | `LECTURA`, `VER_TODOS` |
-| Técnico | `LECTURA`, `VER_TODOS`, `ALTAS`, `MODIFICACION`, `BORRADO`, `PUBLICAR` |
-| Administrador | Plantilla vacía, pero puede todo |
+| Técnico | `LECTURA`, `VER_TODOS` |
+| Administrador | Plantilla vacía, pero lee todo |
 
-Un Colaborador, entonces, ve todos los artículos pero no puede crear ninguno.
+La plantilla de Técnico marca además las cuatro casillas de escritura; como se
+explicó arriba, no cambian nada.
 
 ## Un detalle sobre los artículos eliminados
 

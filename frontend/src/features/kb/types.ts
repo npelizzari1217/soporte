@@ -3,17 +3,21 @@
  * (T3.1). Prohibido `any` (regla base); estos tipos son la única fuente de
  * verdad de forma en el front, igual que `features/tickets/types.ts`.
  *
- * Nota (spec §2 / design ADR-5): el scope de lectura (artículos internos
- * visibles o no) lo resuelve el backend según `ticket:ver_todos` del actor —
- * el front NUNCA re-filtra lo que `GET /kb` devuelve, solo lo renderiza. El
- * gate de EDICIÓN (crear/editar/visibilidad/eliminar) es `kb:gestionar`.
+ * La Ayuda es única y global (vive en master), no una por cliente.
+ *
+ * Scope de lectura: lo resuelve el backend según `KB:VER_TODOS` del actor — el
+ * front NUNCA re-filtra lo que `GET /kb` devuelve, solo lo renderiza. El gate
+ * de EDICIÓN (crear/editar/visibilidad/eliminar) es ROOT (`<SoloRoot>`), no
+ * una celda de la matriz.
+ *
+ * Sin `tipoTicketId`: era una FK al catálogo del TENANT y no sobrevivió al
+ * cruce a master. La pantalla nunca lo usó.
  */
 
 export interface KbArticulo {
   id: string;
   titulo: string;
   contenido: string;
-  tipoTicketId: string | null;
   autorId: string | null;
   visibleParaSolicitante: boolean;
   activo: boolean;
@@ -30,7 +34,6 @@ export interface ListKbArticulosResponse {
 
 /** Filtros combinables de `GET /kb` (espejo de `ListKbArticulosQueryDto`). */
 export interface KbFiltros {
-  tipoTicketId?: string;
   busqueda?: string;
   page?: number;
   pageSize?: number;
@@ -39,13 +42,11 @@ export interface KbFiltros {
 export interface CrearKbArticuloDto {
   titulo: string;
   contenido: string;
-  tipoTicketId?: string | null;
 }
 
 export interface EditarKbArticuloDto {
   titulo?: string;
   contenido?: string;
-  tipoTicketId?: string | null;
 }
 
 export interface CambiarVisibilidadKbArticuloDto {

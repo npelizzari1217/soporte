@@ -25,6 +25,13 @@ La única excepción es el rol **Administrador**: un administrador pasa por enci
 de la matriz y puede hacer todo, tenga la grilla que tenga. De hecho, la grilla
 de un administrador se muestra completa y no se puede editar.
 
+Hay un caso donde la grilla **no** decide, y no es el rol: las casillas de
+escritura de la fila **Ayuda** (`ALTAS`, `MODIFICACION`, `BORRADO`, `PUBLICAR`)
+aparecen pero no gobiernan nada. La Ayuda es una sola para todo el sistema y la
+escribe únicamente el administrador global. Marcarle esas casillas a alguien no
+le habilita ningún botón. En la fila Ayuda solo tienen efecto `LECTURA` y
+`VER_TODOS`; está explicado en el artículo del módulo de Ayuda.
+
 ## Entonces, ¿para qué sirve el rol?
 
 El rol trae una **plantilla**: un conjunto de casillas sugeridas para ese perfil.

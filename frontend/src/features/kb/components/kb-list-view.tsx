@@ -4,8 +4,12 @@
  * KbListView — CONTAINER client component montado por `/kb` (ADR-1). Filtros
  * viven en la URL (searchParams, ADR-2) — mismo patrón que
  * `TicketsListView`. El backend YA filtra el scope de visibilidad (K3, según
- * `ticket:ver_todos` del actor) — este componente solo renderiza lo que
+ * `KB:VER_TODOS` del actor) — este componente solo renderiza lo que
  * `GET /kb` devuelve, nunca re-filtra artículos internos client-side.
+ *
+ * El alta se gatea por ROOT (`<SoloRoot>`) y no por la celda `KB:ALTAS`: la
+ * Ayuda es una sola para todo el sistema, así que escribirla no puede depender
+ * de una celda que se asigna cliente por cliente.
  */
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo } from "react";
@@ -15,7 +19,7 @@ import { DataTable, type Column } from "@/components/shared/data-table";
 import { FilterBar } from "@/components/shared/filter-bar";
 import { Pagination } from "@/components/shared/pagination";
 import { PageHeader } from "@/components/shared/page-header";
-import { Can } from "@/components/shared/can";
+import { SoloRoot } from "@/components/shared/solo-root";
 import { Badge } from "@/components/ui/badge";
 import { notifyError } from "@/shared/lib/toast";
 // Una sola fuente para el nombre visible del módulo: el menú lateral, la
@@ -71,9 +75,9 @@ export function KbListView() {
       <PageHeader
         title={ETIQUETAS_MODULOS.KB}
         actions={
-          <Can permiso="KB:ALTAS">
+          <SoloRoot>
             <KbArticleCreateDialog />
-          </Can>
+          </SoloRoot>
         }
       />
 

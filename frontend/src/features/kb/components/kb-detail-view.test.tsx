@@ -15,7 +15,6 @@ const ARTICULO = {
   id: "a1",
   titulo: "Cómo resetear tu contraseña",
   contenido: "Paso 1: ir a configuración.\nPaso 2: elegir «Restablecer».",
-  tipoTicketId: null,
   autorId: "u1",
   visibleParaSolicitante: true,
   activo: true,
@@ -28,12 +27,20 @@ describe("KbDetailView", () => {
     pushMock.mockClear();
   });
 
+  // Gate de ROOT, no de celda: la Ayuda es una sola para todo el sistema. El
+  // caso del medio es el que sostiene el cambio — las celdas de escritura
+  // siguen existiendo en la grilla y ya no abren nada.
   it.each([
-    ["con KB:MODIFICACION+PUBLICAR+BORRADO", ["KB:MODIFICACION", "KB:PUBLICAR", "KB:BORRADO"], true],
-    ["sin ninguna celda KB de gestión", [], false],
-  ])("acciones de gestión (editar/publicar/eliminar) — %s", async (_label, permisos, shouldShow) => {
+    ["ROOT", buildUser({ is_global_admin: true }), true],
+    [
+      "con las celdas KB de escritura pero sin ROOT",
+      buildUser({ permisos: ["KB:MODIFICACION", "KB:PUBLICAR", "KB:BORRADO"] }),
+      false,
+    ],
+    ["ADMINISTRADOR del cliente sin ROOT", buildUser({ rol: "ADMINISTRADOR" }), false],
+  ])("acciones de gestión (editar/publicar/eliminar) — %s", async (_label, user, shouldShow) => {
     server.use(http.get("/api/kb/a1", () => HttpResponse.json(ARTICULO)));
-    renderWithProviders(<KbDetailView articuloId="a1" />, { user: buildUser({ permisos }) });
+    renderWithProviders(<KbDetailView articuloId="a1" />, { user });
     await screen.findByText("Cómo resetear tu contraseña");
 
     const editButton = screen.queryByRole("link", { name: /editar/i }) ?? screen.queryByRole("button", { name: /editar/i });
@@ -93,7 +100,7 @@ describe("KbDetailView", () => {
         return HttpResponse.json({ ...ARTICULO, visibleParaSolicitante: body.visible });
       }),
     );
-    renderWithProviders(<KbDetailView articuloId="a1" />, { user: buildUser({ permisos: ["KB:MODIFICACION", "KB:PUBLICAR", "KB:BORRADO"] }) });
+    renderWithProviders(<KbDetailView articuloId="a1" />, { user: buildUser({ is_global_admin: true }) });
     await screen.findByText("Cómo resetear tu contraseña");
 
     await user.click(screen.getByRole("button", { name: "Despublicar" }));
@@ -114,7 +121,7 @@ describe("KbDetailView", () => {
         return new HttpResponse(null, { status: 204 });
       }),
     );
-    renderWithProviders(<KbDetailView articuloId="a1" />, { user: buildUser({ permisos: ["KB:MODIFICACION", "KB:PUBLICAR", "KB:BORRADO"] }) });
+    renderWithProviders(<KbDetailView articuloId="a1" />, { user: buildUser({ is_global_admin: true }) });
     await screen.findByText("Cómo resetear tu contraseña");
 
     await user.click(screen.getByRole("button", { name: "Eliminar" }));

@@ -9,6 +9,5 @@ import { z } from "zod";
 export const kbArticuloSchema = z.object({
   titulo: z.string().min(1, "El título es requerido"),
   contenido: z.string().min(1, "El contenido es requerido"),
-  tipoTicketId: z.string().uuid().optional().or(z.literal("")),
 });
 export type KbArticuloFormValues = z.infer<typeof kbArticuloSchema>;

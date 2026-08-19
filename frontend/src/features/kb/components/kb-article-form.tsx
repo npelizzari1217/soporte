@@ -2,8 +2,8 @@
 
 /**
  * KbArticuloForm — PRESENTATIONAL. Form crear/editar (R-M3 / T3.4): título +
- * contenido (textarea markdown liviano, sin WYSIWYG pesado, ADR-6). Gate
- * `KB:ALTAS`/`KB:MODIFICACION` lo aplica el caller (`KbArticleCreateDialog`/`KbArticleEditDialog`).
+ * contenido (textarea markdown liviano, sin WYSIWYG pesado, ADR-6). El gate de
+ * ROOT lo aplica el caller (`KbArticleCreateDialog`/`KbArticleEditDialog`).
  *
  * El contenido se renderiza como markdown en la vista de detalle
  * (`KbMarkdown`), así que el textarea lleva una ayuda breve que lo anuncia.
@@ -47,7 +47,6 @@ export function KbArticuloForm({
     onSubmit({
       titulo: values.titulo,
       contenido: values.contenido,
-      tipoTicketId: values.tipoTicketId || undefined,
     });
   }
 

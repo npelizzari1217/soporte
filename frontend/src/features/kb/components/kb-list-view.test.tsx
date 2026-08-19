@@ -19,7 +19,6 @@ const ARTICULO_PUBLICO = {
   id: "a1",
   titulo: "Cómo resetear tu contraseña",
   contenido: "Pasos...",
-  tipoTicketId: null,
   autorId: "u1",
   visibleParaSolicitante: true,
   activo: true,
@@ -49,7 +48,7 @@ describe("KbListView", () => {
   });
 
   it("renderiza badge «Interno» solo en artículos no publicados", async () => {
-    renderWithProviders(<KbListView />, { user: buildUser({ permisos: ["ticket:ver_todos"] }) });
+    renderWithProviders(<KbListView />, { user: buildUser({ permisos: ["KB:VER_TODOS"] }) });
     await screen.findByText("Runbook interno de incidentes");
 
     const row = screen.getByText("Runbook interno de incidentes").closest("tr");
@@ -68,11 +67,16 @@ describe("KbListView", () => {
     expect(pushMock).toHaveBeenCalledWith("/kb/a1");
   });
 
+  // La Ayuda es una sola para todo el sistema: escribirla es de ROOT, no de
+  // una celda que se asigna cliente por cliente. El caso del medio es el que
+  // importa — la celda `KB:ALTAS` sigue existiendo en la grilla y ya no abre
+  // nada.
   it.each([
-    ["con KB:ALTAS", ["KB:ALTAS"], true],
-    ["sin KB:ALTAS", [], false],
-  ])("botón «Nuevo artículo» — %s", async (_label, permisos, shouldShow) => {
-    renderWithProviders(<KbListView />, { user: buildUser({ permisos }) });
+    ["ROOT", buildUser({ is_global_admin: true }), true],
+    ["con la celda KB:ALTAS pero sin ROOT", buildUser({ permisos: ["KB:ALTAS"] }), false],
+    ["ADMINISTRADOR del cliente sin ROOT", buildUser({ rol: "ADMINISTRADOR" }), false],
+  ])("botón «Nuevo artículo» — %s", async (_label, user, shouldShow) => {
+    renderWithProviders(<KbListView />, { user });
     await screen.findByText("Cómo resetear tu contraseña");
     const button = screen.queryByRole("button", { name: /nuevo artículo/i });
     if (shouldShow) {
