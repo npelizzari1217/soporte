@@ -37,6 +37,11 @@ export function useCrearComentarioReparacion(reparacionId: string) {
       apiFetch<ComentarioReparacion>(`reparaciones/${reparacionId}/comentarios`, { method: "POST", json: dto }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: comentariosQueryKey(reparacionId) });
+      // El contador de la fila NO vive en esta query: viaja como
+      // `cantidadComentarios` dentro del listado. Sin invalidar `["reparaciones"]`
+      // el modal se actualiza pero el badge se queda con el número viejo hasta
+      // que alguien recarga la página.
+      queryClient.invalidateQueries({ queryKey: ["reparaciones"] });
       notifySuccess("Comentario agregado.");
     },
     onError: notifyError,
