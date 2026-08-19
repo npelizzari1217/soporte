@@ -127,6 +127,27 @@ export function ComprasListView() {
     router.replace(`${pathname}?${next.toString()}`);
   }
 
+  /**
+   * ¿La vista está recortada por filtros? El `estado` por defecto NO cuenta:
+   * es lo que se ve al entrar sin nada en la URL, así que reportarlo como
+   * filtro activo convertiría todo listado vacío en "vacío por filtro".
+   *
+   * La PÁGINA sí cuenta cuando es mayor a 1: con pocas filas, una `pagina`
+   * vieja pegada en la URL deja el listado vacío para siempre — el caso real
+   * que hizo confundir un vacío por filtro con datos que no cargaron.
+   */
+  const hayFiltrosActivos =
+    filtros.estado !== ESTADO_POR_DEFECTO ||
+    Boolean(filtros.sectorId) ||
+    Boolean(filtros.fechaDesde) ||
+    Boolean(filtros.fechaHasta) ||
+    (filtros.pagina ?? 1) > 1;
+
+  /** Deja la URL como recién entrado a la pantalla: se van TODOS los filtros, la página incluida. */
+  function limpiarFiltros() {
+    router.replace(pathname);
+  }
+
   const comprasQuery = useCompras(filtros);
   const sectoresQuery = useSectores();
 
@@ -242,6 +263,8 @@ export function ComprasListView() {
         onRowClick={(row) => router.push(`/compras/${row.id}`)}
         emptyTitle="Sin compras"
         emptyDescription="Todavía no hay solicitudes de compra registradas."
+        hayFiltrosActivos={hayFiltrosActivos}
+        onLimpiarFiltros={limpiarFiltros}
       />
 
       {comprasQuery.data && (

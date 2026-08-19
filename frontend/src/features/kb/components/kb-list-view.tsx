@@ -49,6 +49,19 @@ export function KbListView() {
     router.replace(`${pathname}?${next.toString()}`);
   }
 
+  /**
+   * La PÁGINA cuenta como filtro. Con 5 artículos y 10 por página, un `page=2`
+   * pegado en la URL de una sesión anterior deja el listado vacío para
+   * siempre — es literalmente el caso que hizo leer un vacío por filtro como
+   * "los datos no cargaron" y mandó a revisar la base de producción.
+   */
+  const hayFiltrosActivos = Boolean(filtros.busqueda) || (filtros.page ?? 1) > 1;
+
+  /** Deja la URL como recién entrado a la pantalla: se van TODOS los filtros, la página incluida. */
+  function limpiarFiltros() {
+    router.replace(pathname);
+  }
+
   const kbQuery = useKbList(filtros);
 
   const columns: Column<KbArticulo>[] = [
@@ -91,7 +104,9 @@ export function KbListView() {
           onRetry={() => kbQuery.refetch().catch(notifyError)}
           onRowClick={(row) => router.push(`/kb/${row.id}`)}
           emptyTitle="Sin artículos"
-          emptyDescription="No hay artículos que coincidan con la búsqueda."
+          emptyDescription="Todavía no hay artículos cargados."
+          hayFiltrosActivos={hayFiltrosActivos}
+          onLimpiarFiltros={limpiarFiltros}
         />
       </div>
 
