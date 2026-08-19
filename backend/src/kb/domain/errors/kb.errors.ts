@@ -3,7 +3,7 @@ import { DomainError } from '../../../shared/domain/result';
 /**
  * KbArticuloNoEncontradoError — el artículo de KB con el id indicado no
  * existe en el tenant activo, está soft-deleted, o (para un actor sin
- * `ticket:ver_todos`) no es visible para el solicitante — en los tres casos
+ * `KB:VER_TODOS`) no es visible para el solicitante — en los tres casos
  * se responde 404 sin revelar cuál de las condiciones aplica (mismo criterio
  * que `TicketNoEncontradoError`, K3).
  * → HTTP 404 en la capa de presentación.

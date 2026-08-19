@@ -10,7 +10,6 @@ const ARTICULO = {
   id: "a1",
   titulo: "Título original",
   contenido: "Contenido original",
-  tipoTicketId: null,
   autorId: "u1",
   visibleParaSolicitante: false,
   activo: true,
@@ -23,7 +22,7 @@ describe("KbArticleEditDialog", () => {
     const user = userEvent.setup();
     server.use(http.patch("/api/kb/a1", () => HttpResponse.json({ ...ARTICULO, titulo: "Editado" })));
     renderWithProviders(<KbArticleEditDialog articulo={ARTICULO} />, {
-      user: buildUser({ permisos: ["KB:MODIFICACION"] }),
+      user: buildUser({ is_global_admin: true }),
     });
 
     expect(screen.queryByLabelText(/título/i)).not.toBeInTheDocument();

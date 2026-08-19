@@ -12,7 +12,6 @@ const POR_PAGINA_MAX = 100;
  */
 export interface ListarKbArticulosDto {
   tienePermisoVerTodos: boolean;
-  tipoTicketId?: string;
   busqueda?: string;
   /** Página 1-indexed. Default 1. */
   page?: number;
@@ -30,7 +29,7 @@ export interface ListarKbArticulosResult {
  * ListarKbArticulosUseCase — listado de artículos de KB con scope de
  * lectura por rol (K3).
  *
- * - staff (`ticket:ver_todos`) ve TODOS los artículos (internos + inactivos,
+ * - staff (`KB:VER_TODOS`) ve TODOS los artículos (internos + inactivos,
  *   para gestión): `soloVisibles=false`, `incluirInactivos=true`.
  * - USUARIO (sin el permiso) solo ve artículos publicados y activos:
  *   `soloVisibles=true`, `incluirInactivos=false`.
@@ -47,7 +46,6 @@ export class ListarKbArticulosUseCase {
     return this.repo.findAll({
       soloVisibles: !dto.tienePermisoVerTodos,
       incluirInactivos: dto.tienePermisoVerTodos,
-      tipoTicketId: dto.tipoTicketId,
       busqueda: dto.busqueda,
       page,
       pageSize,

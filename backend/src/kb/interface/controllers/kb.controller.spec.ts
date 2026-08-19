@@ -2,12 +2,18 @@
  * K7 [CONTROLLER][RED→GREEN] — `KbController` (K1-K4).
  *
  * Unit test: instancia el controller directamente con use cases mockeados,
- * mismo patrón que `TicketsController`/`SlaConfigController` — verifica
- * gateo por `KB:ALTAS`/`MODIFICACION`/`PUBLICAR`/`BORRADO` en rutas de
- * escritura (POST/PATCH/DELETE) y por `KB:LECTURA` en las de lectura
- * (GET), metadata `@RequiereAcciones` por método, WU-7.3 + fix post-verify
- * C1. El scope de FILA (publicados vs. todos) se sigue resolviendo dentro
- * del use case por `KB:VER_TODOS` (K3/R11) — eso no cambió.
+ * mismo patrón que `TicketsController`/`SlaConfigController`.
+ *
+ * La Ayuda es única y global (vive en master), así que la ESCRITURA pasó a
+ * ser exclusiva de ROOT: los cuatro endpoints de escritura declaran
+ * `GlobalAdminGuard` y ya NO declaran `@RequiereAcciones`. Las dos cosas se
+ * assertean: que el guard esté puesto, y que la celda `KB:*` de escritura ya
+ * no gobierne el endpoint — si alguien volviera a poner el decorador, esa
+ * celda mandaría de nuevo sin que nadie se entere.
+ *
+ * La LECTURA no cambió: sigue exigiendo la celda `KB:LECTURA`, y el scope de
+ * FILA (publicados vs. todos) se sigue resolviendo dentro del use case por
+ * `KB:VER_TODOS` (K3/R11).
  *
  * Ref spec: sdd/premium/spec K1-K4, K7. Tarea: K7/K8.
  */
@@ -15,6 +21,9 @@ import 'reflect-metadata';
 import { NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { KbController } from './kb.controller';
 import { ACCIONES_KEY } from '../../../auth/infrastructure/guards/decorators';
+import { JwtAuthGuard } from '../../../auth/infrastructure/guards/jwt-auth.guard';
+import { AccionesGuard } from '../../../auth/infrastructure/guards/acciones.guard';
+import { GlobalAdminGuard } from '../../../auth/infrastructure/guards/global-admin.guard';
 import { Result } from '../../../shared/domain/result';
 import { KbArticuloEntity } from '../../domain/entities/kb-articulo.entity';
 import { KbArticuloNoEncontradoError, TituloVacioError } from '../../domain/errors/kb.errors';
@@ -53,7 +62,6 @@ describe('KbController (K7)', () => {
       {
         titulo: 'Título',
         contenido: 'Contenido',
-        tipoTicketId: null,
         autorId: 'autor-uuid',
         visibleParaSolicitante: overrides.visibleParaSolicitante ?? false,
         activo: true,
@@ -62,36 +70,57 @@ describe('KbController (K7)', () => {
     );
   }
 
-  // ─── Gateo por permiso — solo escritura ────────────────────────────────
+  /** Clave con la que Nest guarda los guards de `@UseGuards` (constante interna, no exportada como tipo público). */
+  const GUARDS_KEY = '__guards__';
 
-  it('[CRITICAL] POST /kb declara @RequiereAcciones("KB:ALTAS")', () => {
-    const permisos = Reflect.getMetadata(ACCIONES_KEY, KbController.prototype.create);
-    expect(permisos).toEqual(['KB:ALTAS']);
-  });
+  type Handler = (...args: never[]) => unknown;
 
-  it('[CRITICAL] PATCH /kb/:id declara @RequiereAcciones("KB:MODIFICACION")', () => {
-    const permisos = Reflect.getMetadata(ACCIONES_KEY, KbController.prototype.update);
-    expect(permisos).toEqual(['KB:MODIFICACION']);
-  });
+  function guardsDe(handler: Handler): unknown[] {
+    return (Reflect.getMetadata(GUARDS_KEY, handler) as unknown[] | undefined) ?? [];
+  }
 
-  it('[CRITICAL] PATCH /kb/:id/visibilidad declara @RequiereAcciones("KB:PUBLICAR")', () => {
-    const permisos = Reflect.getMetadata(ACCIONES_KEY, KbController.prototype.cambiarVisibilidad);
-    expect(permisos).toEqual(['KB:PUBLICAR']);
-  });
+  // ─── Escritura: reservada a ROOT ────────────────────────────────────────
 
-  it('[CRITICAL] DELETE /kb/:id declara @RequiereAcciones("KB:BORRADO")', () => {
-    const permisos = Reflect.getMetadata(ACCIONES_KEY, KbController.prototype.remove);
-    expect(permisos).toEqual(['KB:BORRADO']);
-  });
+  const ENDPOINTS_DE_ESCRITURA: [string, Handler][] = [
+    ['POST /kb', KbController.prototype.create],
+    ['PATCH /kb/:id', KbController.prototype.update],
+    ['PATCH /kb/:id/visibilidad', KbController.prototype.cambiarVisibilidad],
+    ['DELETE /kb/:id', KbController.prototype.remove],
+  ];
 
-  it('[CRITICAL] GET /kb declara @RequiereAcciones("KB:LECTURA") (fix post-verify C1, scope de fila sigue inline vía KB:VER_TODOS)', () => {
+  it.each(ENDPOINTS_DE_ESCRITURA)(
+    '[CRITICAL] %s exige ROOT: declara GlobalAdminGuard',
+    (_ruta, handler) => {
+      expect(guardsDe(handler)).toContain(GlobalAdminGuard);
+    },
+  );
+
+  // Verde vacuo si faltara: el guard puesto NO impide que un @RequiereAcciones
+  // olvidado deje la celda vieja gobernando el endpoint en paralelo.
+  it.each(ENDPOINTS_DE_ESCRITURA)(
+    '[CRITICAL] %s ya NO se gatea por una celda KB:* de escritura',
+    (_ruta, handler) => {
+      expect(Reflect.getMetadata(ACCIONES_KEY, handler)).toBeUndefined();
+    },
+  );
+
+  // ─── Lectura: la celda KB:LECTURA sigue mandando ───────────────────────
+
+  it('[CRITICAL] GET /kb declara @RequiereAcciones("KB:LECTURA")', () => {
     const permisos = Reflect.getMetadata(ACCIONES_KEY, KbController.prototype.findAll);
     expect(permisos).toEqual(['KB:LECTURA']);
   });
 
-  it('[CRITICAL] GET /kb/:id declara @RequiereAcciones("KB:LECTURA") (fix post-verify C1, scope de fila sigue inline vía KB:VER_TODOS)', () => {
+  it('[CRITICAL] GET /kb/:id declara @RequiereAcciones("KB:LECTURA")', () => {
     const permisos = Reflect.getMetadata(ACCIONES_KEY, KbController.prototype.findOne);
     expect(permisos).toEqual(['KB:LECTURA']);
+  });
+
+  // La Ayuda ya no vive en la DB del cliente: pedir un tenant activo dejaría a
+  // un ROOT sin cliente seleccionado sin poder mantenerla. Que TenantGuard NO
+  // esté es una decisión, no un olvido — este assert la sostiene.
+  it('[CRITICAL] el controller NO aplica TenantGuard: solo JwtAuthGuard + AccionesGuard', () => {
+    expect(guardsDe(KbController as unknown as Handler)).toEqual([JwtAuthGuard, AccionesGuard]);
   });
 
   // ─── POST /kb ───────────────────────────────────────────────────────────
@@ -105,13 +134,11 @@ describe('KbController (K7)', () => {
       await controller.create({ sub: 'actor-uuid', permisos: [] } as never, {
         titulo: 'Título',
         contenido: 'Contenido',
-        tipoTicketId: null,
       });
 
       expect(crearUseCase.execute).toHaveBeenCalledWith({
         titulo: 'Título',
         contenido: 'Contenido',
-        tipoTicketId: null,
         autorId: 'actor-uuid',
       });
     });

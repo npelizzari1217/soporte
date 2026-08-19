@@ -12,7 +12,6 @@ function baseProps() {
   return {
     titulo: 'Cómo resetear tu contraseña',
     contenido: 'Pasos para resetear la contraseña desde el portal.',
-    tipoTicketId: null as string | null,
     autorId: 'autor-uuid',
     visibleParaSolicitante: false,
     activo: true,
@@ -26,7 +25,6 @@ describe('KbArticuloEntity', () => {
 
       expect(articulo.titulo).toBe('Cómo resetear tu contraseña');
       expect(articulo.contenido).toBe('Pasos para resetear la contraseña desde el portal.');
-      expect(articulo.tipoTicketId).toBeNull();
       expect(articulo.autorId).toBe('autor-uuid');
       expect(articulo.visibleParaSolicitante).toBe(false);
       expect(articulo.activo).toBe(true);
@@ -49,11 +47,6 @@ describe('KbArticuloEntity', () => {
       expect(() => KbArticuloEntity.create({ ...baseProps(), contenido: '   ' })).toThrow(
         ContenidoVacioError,
       );
-    });
-
-    it('acepta tipoTicketId no nulo', () => {
-      const articulo = KbArticuloEntity.create({ ...baseProps(), tipoTicketId: 'tipo-uuid' });
-      expect(articulo.tipoTicketId).toBe('tipo-uuid');
     });
   });
 
@@ -93,24 +86,23 @@ describe('KbArticuloEntity', () => {
   });
 
   describe('editar()', () => {
-    it('actualiza titulo/contenido/tipoTicketId provistos y actualiza updatedAt', () => {
+    it('actualiza titulo/contenido provistos y actualiza updatedAt', () => {
       const articulo = KbArticuloEntity.create(baseProps());
       const updatedAtOriginal = articulo.updatedAt;
 
-      articulo.editar({ titulo: 'Nuevo título', contenido: 'Nuevo contenido', tipoTicketId: 'x' });
+      articulo.editar({ titulo: 'Nuevo título', contenido: 'Nuevo contenido' });
 
       expect(articulo.titulo).toBe('Nuevo título');
       expect(articulo.contenido).toBe('Nuevo contenido');
-      expect(articulo.tipoTicketId).toBe('x');
       expect(articulo.updatedAt.getTime()).toBeGreaterThanOrEqual(updatedAtOriginal.getTime());
     });
 
-    it('campos undefined no se tocan (PATCH semántico); tipoTicketId:null limpia explícitamente', () => {
-      const articulo = KbArticuloEntity.create({ ...baseProps(), tipoTicketId: 'tipo-uuid' });
+    it('campos undefined no se tocan (PATCH semántico)', () => {
+      const articulo = KbArticuloEntity.create(baseProps());
 
-      articulo.editar({ tipoTicketId: null });
+      articulo.editar({ contenido: 'Solo el contenido' });
 
-      expect(articulo.tipoTicketId).toBeNull();
+      expect(articulo.contenido).toBe('Solo el contenido');
       expect(articulo.titulo).toBe(baseProps().titulo);
     });
 

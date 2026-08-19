@@ -1,12 +1,12 @@
 /**
- * KbArticuloMapper — convierte entre Prisma KbArticulo (fila de DB) y
- * KbArticuloEntity (dominio).
+ * KbArticuloMapper — convierte entre Prisma KbArticulo (fila de la DB MASTER)
+ * y KbArticuloEntity (dominio).
  *
- * IMPORTANTE: archivo en infrastructure/ — puede importar de '.prisma/tenant'.
+ * IMPORTANTE: archivo en infrastructure/ — puede importar de '.prisma/master'.
  *
  * Tarea: K6.
  */
-import type { KbArticulo as PrismaKbArticulo } from '.prisma/tenant';
+import type { KbArticulo as PrismaKbArticulo } from '.prisma/master';
 import { KbArticuloEntity } from '../../../domain/entities/kb-articulo.entity';
 
 export class KbArticuloMapper {
@@ -16,7 +16,6 @@ export class KbArticuloMapper {
       {
         titulo: row.titulo,
         contenido: row.contenido,
-        tipoTicketId: row.tipoTicketId,
         autorId: row.autorId,
         visibleParaSolicitante: row.visibleParaSolicitante,
         activo: row.activo,
@@ -47,7 +46,6 @@ export class KbArticuloMapper {
       id: entity.id,
       titulo: entity.titulo,
       contenido: entity.contenido,
-      tipoTicketId: entity.tipoTicketId,
       autorId: entity.autorId,
       visibleParaSolicitante: entity.visibleParaSolicitante,
       activo: entity.activo,

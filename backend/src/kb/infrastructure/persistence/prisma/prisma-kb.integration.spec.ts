@@ -1,21 +1,33 @@
 /**
  * K5 [INTEGRATION][RED→GREEN] — PrismaKbArticuloRepository contra Postgres
- * REAL (`soporte_tenant_test`), vía `TenantContext.bind()` (mismo patrón que
- * `prisma-sla-config.integration.spec.ts`).
+ * REAL.
  *
- * Verifica: filtro de visibilidad (`soloVisibles`) + `incluirInactivos` +
- * `tipoTicketId` + `busqueda` (ILIKE en `titulo`) + paginación (`page`,
- * `pageSize`, `total`); soft delete excluye de `activos`.
+ * MIGRADO DE TENANT A MASTER: este spec corría contra `soporte_tenant_test` a
+ * través de `TenantContext.bind()`. La Ayuda pasó a ser única y global, así que
+ * ahora corre contra `soporte_master_test` con el cliente que devuelve
+ * `PrismaService.getMasterClient()` — mismo patrón que
+ * `prisma-usuario-contacto-resolver.integration.spec.ts`.
  *
- * Este spec inserta sus PROPIAS filas de fixture (prefijo `K5_TEST_`) para
- * no depender del estado global de la DB compartida, y las limpia en
- * `afterAll`.
+ * El primer test es el que sostiene la mudanza: verifica que la fila aterrice
+ * en MASTER y no en el tenant. Sin él, un repositorio que volviera a tomar el
+ * cliente del `TenantContext` pasaría todos los demás asserts en verde.
+ *
+ * Verifica además: filtro de visibilidad (`soloVisibles`) + `incluirInactivos`
+ * + `busqueda` (ILIKE en `titulo`) + paginación (`page`, `pageSize`, `total`);
+ * soft delete excluye de los activos; y que `save()` no pise el `slug` de un
+ * artículo sincronizado.
+ *
+ * Se cayó el caso de `tipoTicketId`: la columna desapareció con la mudanza (era
+ * una FK a `tipos_ticket`, tabla del TENANT).
+ *
+ * Este spec inserta sus PROPIAS filas de fixture (prefijo `K5_TEST_`) para no
+ * depender del estado global de la DB compartida, y las limpia al entrar y al
+ * salir (idempotente: una corrida que muera a medias no rompe la siguiente).
  *
  * Ref spec: sdd/premium/spec K3, K5. Ref design: ADR-P6. Tarea: K5/K6.
  */
 import { PrismaService } from '../../../../shared/infrastructure/persistence/prisma.service';
-import { TenantContext } from '../../../../shared/tenancy/tenant-context';
-import { TenantPrismaClient } from '../../../../shared/infrastructure/persistence/prisma-clients';
+import { MasterPrismaClient } from '../../../../shared/infrastructure/persistence/prisma-clients';
 import { PrismaKbArticuloRepository } from './prisma-kb-articulo.repository';
 import { KbArticuloEntity } from '../../../domain/entities/kb-articulo.entity';
 
@@ -23,48 +35,33 @@ const MASTER_TEST_URL =
   process.env.DATABASE_URL_MASTER ??
   'postgresql://soporte:soporte@localhost:5432/soporte_master_test';
 
-const TENANT_TEST_DB_NAME = 'soporte_tenant_test';
 const AUTOR_ID = '019fd788-9acb-72a4-b004-6634da14ad34';
+const PREFIJO = 'K5_TEST';
 
-describe('PrismaKbArticuloRepository — Integration (K5)', () => {
+describe('PrismaKbArticuloRepository — Integration (K5, master)', () => {
   let prismaService: PrismaService;
-  let tenantClient: InstanceType<typeof TenantPrismaClient>;
-  let tenantContext: TenantContext;
+  let masterClient: InstanceType<typeof MasterPrismaClient>;
   let repo: PrismaKbArticuloRepository;
 
-  const TIPO_CODIGO = 'K5_TEST_TIPO';
-  let tipoTicketId: string;
   let publicoActivoId: string;
   let internoActivoId: string;
   let publicoInactivoId: string;
 
+  /** Idempotente a propósito: sirve para entrar limpio y para salir limpio. */
+  async function limpiarFixtures(): Promise<void> {
+    await masterClient.kbArticulo.deleteMany({ where: { titulo: { startsWith: PREFIJO } } });
+  }
+
   beforeAll(async () => {
     prismaService = new PrismaService(MASTER_TEST_URL);
-    tenantClient = prismaService.getTenantClient(TENANT_TEST_DB_NAME);
-    tenantContext = new TenantContext();
-    tenantContext.bind({
-      prismaClient: tenantClient,
-      dbName: TENANT_TEST_DB_NAME,
-      clienteId: 'test-cliente-kb',
-    });
+    masterClient = prismaService.getMasterClient();
+    repo = new PrismaKbArticuloRepository(prismaService);
 
-    repo = new PrismaKbArticuloRepository(tenantContext);
-
-    // Limpieza defensiva: si una corrida previa falló antes de su afterAll,
-    // deja fixtures huérfanas con el mismo código único — evita
-    // "Unique constraint failed" al re-correr la suite.
-    await tenantClient.kbArticulo.deleteMany({ where: { titulo: { startsWith: 'K5_TEST' } } });
-    await tenantClient.tipoTicket.deleteMany({ where: { codigo: TIPO_CODIGO } });
-
-    const tipo = await tenantClient.tipoTicket.create({
-      data: { codigo: TIPO_CODIGO, nombre: 'Test KB', activo: true, modulo: 'SOPORTE' },
-    });
-    tipoTicketId = tipo.id;
+    await limpiarFixtures();
 
     const publicoActivo = KbArticuloEntity.create({
       titulo: 'K5_TEST Cómo resetear tu contraseña',
       contenido: 'Pasos...',
-      tipoTicketId,
       autorId: AUTOR_ID,
       visibleParaSolicitante: true,
       activo: true,
@@ -75,7 +72,6 @@ describe('PrismaKbArticuloRepository — Integration (K5)', () => {
     const internoActivo = KbArticuloEntity.create({
       titulo: 'K5_TEST Runbook interno de incidentes',
       contenido: 'Solo staff...',
-      tipoTicketId: null,
       autorId: AUTOR_ID,
       visibleParaSolicitante: false,
       activo: true,
@@ -86,7 +82,6 @@ describe('PrismaKbArticuloRepository — Integration (K5)', () => {
     const publicoInactivo = KbArticuloEntity.create({
       titulo: 'K5_TEST Artículo dado de baja',
       contenido: 'Obsoleto...',
-      tipoTicketId: null,
       autorId: AUTOR_ID,
       visibleParaSolicitante: true,
       activo: true,
@@ -97,12 +92,21 @@ describe('PrismaKbArticuloRepository — Integration (K5)', () => {
   }, 30_000);
 
   afterAll(async () => {
-    await tenantClient.kbArticulo.deleteMany({
-      where: { id: { in: [publicoActivoId, internoActivoId, publicoInactivoId] } },
-    });
-    await tenantClient.tipoTicket.deleteMany({ where: { codigo: TIPO_CODIGO } });
+    // Limpiar ANTES de cerrar el cliente: al revés el pool sigue vivo y la
+    // limpieza no llega a correr.
+    await limpiarFixtures();
     await prismaService.onModuleDestroy();
   }, 30_000);
+
+  // Es EL test de la mudanza: si el repositorio volviera a tomar el cliente del
+  // tenant, todos los demás asserts seguirían en verde (leerían y escribirían
+  // en la otra base, coherentes entre sí) y solo este fallaría.
+  it('[CRITICAL] escribe en la DB MASTER, no en la del tenant', async () => {
+    const enMaster = await masterClient.kbArticulo.findUnique({ where: { id: publicoActivoId } });
+
+    expect(enMaster).not.toBeNull();
+    expect(enMaster!.titulo).toContain('resetear');
+  });
 
   it('[CRITICAL] save() INSERT + findById() persiste y recupera el artículo', async () => {
     const row = await repo.findById(publicoActivoId);
@@ -115,7 +119,7 @@ describe('PrismaKbArticuloRepository — Integration (K5)', () => {
     const { items } = await repo.findAll({
       soloVisibles: true,
       incluirInactivos: false,
-      busqueda: 'K5_TEST',
+      busqueda: PREFIJO,
       page: 1,
       pageSize: 50,
     });
@@ -128,7 +132,7 @@ describe('PrismaKbArticuloRepository — Integration (K5)', () => {
     const { items } = await repo.findAll({
       soloVisibles: false,
       incluirInactivos: true,
-      busqueda: 'K5_TEST',
+      busqueda: PREFIJO,
       page: 1,
       pageSize: 50,
     });
@@ -141,7 +145,7 @@ describe('PrismaKbArticuloRepository — Integration (K5)', () => {
     const { items } = await repo.findAll({
       soloVisibles: false,
       incluirInactivos: false,
-      busqueda: 'K5_TEST',
+      busqueda: PREFIJO,
       page: 1,
       pageSize: 50,
     });
@@ -153,26 +157,12 @@ describe('PrismaKbArticuloRepository — Integration (K5)', () => {
     const { items } = await repo.findAll({
       soloVisibles: false,
       incluirInactivos: true,
-      busqueda: 'K5_TEST',
+      busqueda: PREFIJO,
       page: 1,
       pageSize: 50,
     });
     const ids = items.map((i) => i.id);
     expect(ids).toContain(publicoInactivoId);
-  });
-
-  it('filtra por tipoTicketId', async () => {
-    const { items } = await repo.findAll({
-      soloVisibles: false,
-      incluirInactivos: true,
-      tipoTicketId,
-      busqueda: 'K5_TEST',
-      page: 1,
-      pageSize: 50,
-    });
-    const ids = items.map((i) => i.id);
-    expect(ids).toContain(publicoActivoId);
-    expect(ids).not.toContain(internoActivoId);
   });
 
   it('busqueda filtra por titulo (case-insensitive substring)', async () => {
@@ -192,7 +182,7 @@ describe('PrismaKbArticuloRepository — Integration (K5)', () => {
     const { items, total } = await repo.findAll({
       soloVisibles: false,
       incluirInactivos: true,
-      busqueda: 'K5_TEST',
+      busqueda: PREFIJO,
       page: 1,
       pageSize: 2,
     });
@@ -204,7 +194,6 @@ describe('PrismaKbArticuloRepository — Integration (K5)', () => {
     const articulo = KbArticuloEntity.create({
       titulo: 'K5_TEST temporal para softDelete',
       contenido: 'x',
-      tipoTicketId: null,
       autorId: AUTOR_ID,
       visibleParaSolicitante: false,
       activo: true,
@@ -213,11 +202,11 @@ describe('PrismaKbArticuloRepository — Integration (K5)', () => {
 
     await repo.softDelete(articulo.id);
 
-    const row = await tenantClient.kbArticulo.findUniqueOrThrow({ where: { id: articulo.id } });
+    const row = await masterClient.kbArticulo.findUniqueOrThrow({ where: { id: articulo.id } });
     expect(row.deletedAt).not.toBeNull();
     expect(row.activo).toBe(false);
 
-    await tenantClient.kbArticulo.deleteMany({ where: { id: articulo.id } });
+    await masterClient.kbArticulo.deleteMany({ where: { id: articulo.id } });
   });
 
   // REGRESIÓN: `slug` es la identidad de los artículos que mantiene el sync
@@ -229,13 +218,12 @@ describe('PrismaKbArticuloRepository — Integration (K5)', () => {
     const articulo = KbArticuloEntity.create({
       titulo: 'K5_TEST artículo sincronizado',
       contenido: 'Contenido original',
-      tipoTicketId: null,
       autorId: null,
       visibleParaSolicitante: false,
       activo: true,
     });
     await repo.save(articulo);
-    await tenantClient.kbArticulo.update({
+    await masterClient.kbArticulo.update({
       where: { id: articulo.id },
       data: { slug: 'k5-test-articulo-sincronizado' },
     });
@@ -243,18 +231,10 @@ describe('PrismaKbArticuloRepository — Integration (K5)', () => {
     articulo.editar({ titulo: 'K5_TEST artículo sincronizado (editado)' });
     await repo.save(articulo);
 
-    const row = await tenantClient.kbArticulo.findUniqueOrThrow({ where: { id: articulo.id } });
+    const row = await masterClient.kbArticulo.findUniqueOrThrow({ where: { id: articulo.id } });
     expect(row.slug).toBe('k5-test-articulo-sincronizado');
     expect(row.titulo).toBe('K5_TEST artículo sincronizado (editado)');
 
-    await tenantClient.kbArticulo.deleteMany({ where: { id: articulo.id } });
-  });
-
-  it('lanza un error descriptivo si no hay TenantContext activo', async () => {
-    const looseContext = new TenantContext();
-    const looseRepo = new PrismaKbArticuloRepository(looseContext);
-    await expect(looseRepo.findById(publicoActivoId)).rejects.toThrow(
-      /No hay TenantContext activo/,
-    );
+    await masterClient.kbArticulo.deleteMany({ where: { id: articulo.id } });
   });
 });

@@ -1,31 +1,42 @@
 /**
  * Sincroniza los artículos de Ayuda del repositorio (`backend/ayuda/*.md`) a la
- * tabla `kb_articulos` de TODAS las DBs tenant activas.
+ * tabla `kb_articulos` de la DB MASTER.
  *
  * POR QUÉ existe: la Ayuda documenta cómo se usa el sistema, así que tiene que
  * poder cambiar en el mismo commit que cambia el comportamiento. Un artículo que
  * solo vive en una tabla de producción no se puede actualizar desde el código y
  * queda obsoleto el día uno.
  *
+ * UNA SOLA BASE: los artículos son únicos y globales. Antes este script hacía
+ * fan-out a cada tenant y el mismo texto quedaba duplicado tantas veces como
+ * clientes había; ahora escribe una vez, en master, y todos los clientes leen
+ * exactamente lo mismo.
+ *
  * Uso:
  *   pnpm run sync:ayuda
  *
- * Requiere `DATABASE_URL_MASTER` (de `.env` o del entorno). Lee `master.clientes`
- * (activos, no borrados) y deriva la URL de cada tenant reemplazando el pathname,
- * igual que `scripts/migrate-tenants.js` y `PrismaService.buildTenantUrl`.
+ * Requiere `DATABASE_URL_MASTER` (de `.env` o del entorno).
  *
  * SEGURO DE CORRER VARIAS VECES: es idempotente por `slug`. Si el artículo ya
- * existe se actualizan título, contenido, visibilidad y tipo de ticket, y si nada
- * cambió no se escribe nada (ni siquiera `updated_at`). Dos corridas seguidas
- * dejan la base idéntica.
+ * existe se actualizan título y contenido, y si nada cambió no se escribe nada
+ * (ni siquiera `updated_at`). Dos corridas seguidas dejan la base idéntica.
  *
- * LO QUE NUNCA HACE: borrar. Un tenant puede tener artículos cargados a mano por
- * el cliente — esos no tienen `slug` y el sync no los mira. Si un `.md` se elimina
- * del repositorio, su artículo queda vivo en cada tenant y hay que darlo de baja a
- * mano; el script no borra nada por su cuenta.
+ * LA VISIBILIDAD NO LA GOBIERNA EL SYNC. Al INSERTAR un artículo nuevo se usa
+ * el `visibleParaSolicitante` del frontmatter, que vale como valor inicial. Al
+ * ACTUALIZAR uno existente la visibilidad NO se toca NUNCA. El motivo es que
+ * publicar y despublicar siguen siendo un botón de la pantalla: mientras el
+ * sync pisaba esa columna, cualquiera que publicara un artículo se lo veía
+ * ocultar solo en la corrida siguiente, sin explicación. La regla quedó
+ * repartida así: el TEXTO lo manda el repositorio, el PUBLICAR lo manda la
+ * persona.
  *
- * `autor_id` queda NULL a propósito: estos artículos no los escribió una persona
- * del tenant.
+ * LO QUE NUNCA HACE: borrar. Un artículo escrito desde la aplicación no tiene
+ * `slug` y el sync no lo mira. Si un `.md` se elimina del repositorio, su
+ * artículo queda vivo y hay que darlo de baja a mano; el script no borra nada
+ * por su cuenta.
+ *
+ * `autor_id` queda NULL a propósito: estos artículos no los escribió una
+ * persona, los mantiene el repositorio.
  */
 const fs = require('node:fs');
 const path = require('node:path');
@@ -36,7 +47,7 @@ const DIRECTORIO_ARTICULOS = path.join(__dirname, '..', 'ayuda');
 
 const DELIMITADOR = '---';
 const CLAVES_REQUERIDAS = ['slug', 'titulo'];
-const CLAVES_CONOCIDAS = ['slug', 'titulo', 'tipoTicket', 'visibleParaSolicitante'];
+const CLAVES_CONOCIDAS = ['slug', 'titulo', 'visibleParaSolicitante'];
 /** Mismo formato que exige el CHECK de la columna (kebab-case ASCII). */
 const FORMATO_SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
@@ -58,7 +69,7 @@ class ArticuloInvalidoError extends Error {
 /**
  * Convierte el valor crudo de una clave del frontmatter al tipo que corresponde.
  * Subconjunto deliberadamente mínimo de YAML — `null`, booleanos y texto — para
- * no arrastrar una dependencia de parseo por cuatro claves.
+ * no arrastrar una dependencia de parseo por tres claves.
  *
  * @param {string} crudo Texto a la derecha de los dos puntos, ya recortado.
  * @returns {string|boolean|null}
@@ -79,11 +90,11 @@ function interpretarValor(crudo) {
  *
  * Falla FUERTE y con mensaje explícito ante un frontmatter ausente, mal cerrado,
  * incompleto o con un slug de formato inválido. El silencio acá se traduciría en
- * un artículo que no aparece en ningún tenant sin que nadie se entere.
+ * un artículo que no aparece en la Ayuda sin que nadie se entere.
  *
  * @param {string} texto Contenido completo del archivo.
  * @param {string} origen Nombre del archivo, para los mensajes de error.
- * @returns {{slug: string, titulo: string, tipoTicket: string|null, visibleParaSolicitante: boolean, contenido: string}}
+ * @returns {{slug: string, titulo: string, visibleParaSolicitante: boolean, contenido: string}}
  * @throws {ArticuloInvalidoError}
  */
 function parsearArticulo(texto, origen) {
@@ -154,15 +165,6 @@ function parsearArticulo(texto, origen) {
     throw new ArticuloInvalidoError(origen, `el título excede los 255 caracteres`);
   }
 
-  if (campos.tipoTicket !== undefined && campos.tipoTicket !== null) {
-    if (typeof campos.tipoTicket !== 'string') {
-      throw new ArticuloInvalidoError(
-        origen,
-        `"tipoTicket" debe ser un código de tipo de ticket o null`,
-      );
-    }
-  }
-
   const visible = campos.visibleParaSolicitante;
   if (visible !== undefined && typeof visible !== 'boolean') {
     throw new ArticuloInvalidoError(
@@ -182,7 +184,6 @@ function parsearArticulo(texto, origen) {
   return {
     slug,
     titulo,
-    tipoTicket: campos.tipoTicket === undefined ? null : campos.tipoTicket,
     visibleParaSolicitante: visible === undefined ? false : visible,
     contenido,
   };
@@ -193,7 +194,7 @@ function parsearArticulo(texto, origen) {
  * archivo para que la corrida sea determinista.
  *
  * @param {string} directorio Ruta absoluta al directorio de artículos.
- * @returns {Array<{slug: string, titulo: string, tipoTicket: string|null, visibleParaSolicitante: boolean, contenido: string, origen: string}>}
+ * @returns {Array<{slug: string, titulo: string, visibleParaSolicitante: boolean, contenido: string, origen: string}>}
  * @throws {ArticuloInvalidoError} Si un archivo es inválido o dos comparten slug.
  */
 function cargarArticulos(directorio = DIRECTORIO_ARTICULOS) {
@@ -225,79 +226,44 @@ function cargarArticulos(directorio = DIRECTORIO_ARTICULOS) {
 }
 
 /**
- * Resuelve el id del tipo de ticket a partir de su código.
+ * Sincroniza los artículos contra la DB MASTER ya conectada.
  *
- * Devuelve `null` si el código no existe en ESTE tenant, sin reventar: los
- * tenants tienen catálogos distintos y un artículo sin tipo sigue siendo útil.
+ * Idempotente por `slug`: existe → actualiza sólo si el TEXTO cambió; no existe
+ * → inserta. Nunca borra ni desactiva nada, y nunca toca filas sin slug (las
+ * que se escribieron desde la aplicación).
  *
- * @param {import('pg').ClientBase} cliente Conexión a la DB del tenant.
- * @param {string} codigo Código del tipo de ticket.
- * @returns {Promise<string|null>}
+ * La visibilidad sólo viaja en el INSERT. En el UPDATE se deja exactamente como
+ * está: publicar y despublicar es una decisión de la persona, tomada desde la
+ * pantalla, y el sync no tiene por qué revertirla cada vez que corre.
+ *
+ * @param {import('pg').ClientBase} cliente Conexión a la DB master.
+ * @param {Array<{slug: string, titulo: string, visibleParaSolicitante: boolean, contenido: string}>} articulos
+ * @returns {Promise<{insertados: number, actualizados: number, sinCambios: number}>}
  */
-async function resolverTipoTicketId(cliente, codigo) {
-  const { rows } = await cliente.query('select id from tipos_ticket where codigo = $1', [codigo]);
-  return rows.length > 0 ? rows[0].id : null;
-}
-
-/**
- * Sincroniza los artículos contra UNA DB tenant ya conectada.
- *
- * Idempotente por `slug`: existe → actualiza sólo si algo cambió; no existe →
- * inserta. Nunca borra ni desactiva nada, y nunca toca filas sin slug (las que
- * cargó a mano el cliente).
- *
- * @param {import('pg').ClientBase} cliente Conexión a la DB del tenant.
- * @param {Array<{slug: string, titulo: string, tipoTicket: string|null, visibleParaSolicitante: boolean, contenido: string}>} articulos
- * @param {(mensaje: string) => void} [avisar] Canal para los avisos no fatales.
- * @returns {Promise<{insertados: number, actualizados: number, sinCambios: number, tiposNoEncontrados: string[]}>}
- */
-async function sincronizarTenant(cliente, articulos, avisar = () => {}) {
-  const resumen = { insertados: 0, actualizados: 0, sinCambios: 0, tiposNoEncontrados: [] };
+async function sincronizarAyuda(cliente, articulos) {
+  const resumen = { insertados: 0, actualizados: 0, sinCambios: 0 };
 
   for (const articulo of articulos) {
-    let tipoTicketId = null;
-    if (articulo.tipoTicket !== null) {
-      tipoTicketId = await resolverTipoTicketId(cliente, articulo.tipoTicket);
-      if (tipoTicketId === null) {
-        resumen.tiposNoEncontrados.push(articulo.tipoTicket);
-        avisar(
-          `tipo de ticket "${articulo.tipoTicket}" inexistente en este tenant; ` +
-            `"${articulo.slug}" queda sin tipo`,
-        );
-      }
-    }
-
     const { rows } = await cliente.query(
-      'select id, titulo, contenido, tipo_ticket_id, visible_para_solicitante ' +
-        'from kb_articulos where slug = $1',
+      'select id, titulo, contenido from kb_articulos where slug = $1',
       [articulo.slug],
     );
 
     if (rows.length === 0) {
       // autor_id se omite: la columna es nullable y estos artículos no tienen
-      // una persona del tenant detrás. `updated_at` sí va explícito: es NOT NULL
-      // y sin DEFAULT en la tabla (Prisma la mantiene desde la app, no la DB).
+      // una persona detrás. `updated_at` sí va explícito: es NOT NULL y sin
+      // DEFAULT en la tabla (Prisma la mantiene desde la app, no la DB).
       await cliente.query(
-        'insert into kb_articulos (slug, titulo, contenido, tipo_ticket_id, visible_para_solicitante, updated_at) ' +
-          'values ($1, $2, $3, $4, $5, now())',
-        [
-          articulo.slug,
-          articulo.titulo,
-          articulo.contenido,
-          tipoTicketId,
-          articulo.visibleParaSolicitante,
-        ],
+        'insert into kb_articulos (slug, titulo, contenido, visible_para_solicitante, updated_at) ' +
+          'values ($1, $2, $3, $4, now())',
+        [articulo.slug, articulo.titulo, articulo.contenido, articulo.visibleParaSolicitante],
       );
       resumen.insertados += 1;
       continue;
     }
 
     const actual = rows[0];
-    const iguales =
-      actual.titulo === articulo.titulo &&
-      actual.contenido === articulo.contenido &&
-      actual.tipo_ticket_id === tipoTicketId &&
-      actual.visible_para_solicitante === articulo.visibleParaSolicitante;
+    const iguales = actual.titulo === articulo.titulo && actual.contenido === articulo.contenido;
 
     if (iguales) {
       // No se escribe: un UPDATE inútil movería `updated_at` y haría que cada
@@ -306,18 +272,12 @@ async function sincronizarTenant(cliente, articulos, avisar = () => {}) {
       continue;
     }
 
-    // `activo` y `deleted_at` quedan intactos a propósito: si el cliente dio de
-    // baja el artículo, el sync no lo resucita.
+    // `visible_para_solicitante`, `activo` y `deleted_at` quedan intactos a
+    // propósito: si alguien publicó el artículo, o lo dio de baja, el sync no
+    // le revierte esa decisión.
     await cliente.query(
-      'update kb_articulos set titulo = $2, contenido = $3, tipo_ticket_id = $4, ' +
-        'visible_para_solicitante = $5, updated_at = now() where slug = $1',
-      [
-        articulo.slug,
-        articulo.titulo,
-        articulo.contenido,
-        tipoTicketId,
-        articulo.visibleParaSolicitante,
-      ],
+      'update kb_articulos set titulo = $2, contenido = $3, updated_at = now() where slug = $1',
+      [articulo.slug, articulo.titulo, articulo.contenido],
     );
     resumen.actualizados += 1;
   }
@@ -330,7 +290,7 @@ module.exports = {
   DIRECTORIO_ARTICULOS,
   cargarArticulos,
   parsearArticulo,
-  sincronizarTenant,
+  sincronizarAyuda,
 };
 
 /* c8 ignore start -- entrypoint del CLI, ejercitado a mano */
@@ -347,13 +307,6 @@ if (require.main === module) {
     process.exit(1);
   }
 
-  /** URL del tenant = master con el pathname reemplazado por /db_name. */
-  const tenantUrl = (dbName) => {
-    const u = new URL(masterUrl);
-    u.pathname = '/' + dbName;
-    return u.toString();
-  };
-
   (async () => {
     const articulos = cargarArticulos();
     if (articulos.length === 0) {
@@ -367,48 +320,21 @@ if (require.main === module) {
         articulos.map((a) => a.slug).join(', '),
     );
 
-    const masterPool = new Pool({ connectionString: masterUrl, connectionTimeoutMillis: 10000 });
-    let dbNames;
+    const pool = new Pool({ connectionString: masterUrl, connectionTimeoutMillis: 10000 });
     try {
-      const { rows } = await masterPool.query(
-        'select db_name from clientes where activo = true and deleted_at is null order by db_name',
+      const resumen = await sincronizarAyuda(pool, articulos);
+      console.log(
+        '[sync-ayuda] OK: ' +
+          resumen.insertados +
+          ' insertado(s), ' +
+          resumen.actualizados +
+          ' actualizado(s), ' +
+          resumen.sinCambios +
+          ' sin cambios',
       );
-      dbNames = rows.map((r) => r.db_name);
     } finally {
-      await masterPool.end();
+      await pool.end();
     }
-
-    if (dbNames.length === 0) {
-      console.log('[sync-ayuda] no hay tenants activos, nada que sincronizar');
-      return;
-    }
-    console.log('[sync-ayuda] ' + dbNames.length + ' tenant(s): ' + dbNames.join(', '));
-
-    for (const dbName of dbNames) {
-      const pool = new Pool({
-        connectionString: tenantUrl(dbName),
-        connectionTimeoutMillis: 10000,
-      });
-      try {
-        const resumen = await sincronizarTenant(pool, articulos, (aviso) =>
-          console.warn('[sync-ayuda]    aviso: ' + aviso),
-        );
-        console.log(
-          '[sync-ayuda] -> ' +
-            dbName +
-            ': ' +
-            resumen.insertados +
-            ' insertado(s), ' +
-            resumen.actualizados +
-            ' actualizado(s), ' +
-            resumen.sinCambios +
-            ' sin cambios',
-        );
-      } finally {
-        await pool.end();
-      }
-    }
-    console.log('[sync-ayuda] OK, ' + dbNames.length + ' tenant(s) sincronizada(s)');
   })().catch((e) => {
     console.error('[sync-ayuda] ERROR:', e.message);
     process.exit(1);

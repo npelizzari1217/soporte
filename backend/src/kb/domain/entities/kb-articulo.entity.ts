@@ -8,9 +8,7 @@ import { TituloVacioError, ContenidoVacioError } from '../errors/kb.errors';
 export interface KbArticuloProps {
   titulo: string;
   contenido: string;
-  /** FK opcional → tipos_ticket.id. Tipa el artículo por flujo (K1). */
-  tipoTicketId: string | null;
-  /** Soft ref → master.usuarios.id (autor). Nullable (K1). */
+  /** Soft ref → usuarios.id (autor). Nullable — los artículos del repositorio no tienen autor. */
   autorId: string | null;
   /** default false — interno (solo staff); true = visible también al solicitante (K2). */
   visibleParaSolicitante: boolean;
@@ -30,9 +28,15 @@ function assertContenidoValido(contenido: string): void {
 }
 
 /**
- * KbArticuloEntity — artículo de la base de conocimiento del tenant (K1).
- * CRUD gestionado por staff (`kb:gestionar`, K4); lectura filtrada por rol
- * (K3: USUARIO solo ve `visibleParaSolicitante=true` + `activo=true`).
+ * KbArticuloEntity — artículo de la Ayuda. ÚNICO y GLOBAL para todo el
+ * sistema: vive en la DB master, no en la del cliente.
+ *
+ * Escritura reservada a ROOT (`GlobalAdminGuard` en `KbController`); lectura
+ * filtrada por `KB:VER_TODOS` (sin esa celda solo se ven los publicados y
+ * activos).
+ *
+ * Sin `tipoTicketId`: la FK apuntaba al catálogo `tipos_ticket` del TENANT y
+ * no sobrevive al cruce a master.
  *
  * Ref spec: sdd/premium/spec K1, K2. Ref design: ADR-P6. Tarea: K1/K2.
  */
@@ -75,10 +79,6 @@ export class KbArticuloEntity extends BaseEntity<KbArticuloProps> {
     return this.props.contenido;
   }
 
-  get tipoTicketId(): string | null {
-    return this.props.tipoTicketId;
-  }
-
   get autorId(): string | null {
     return this.props.autorId;
   }
@@ -94,13 +94,12 @@ export class KbArticuloEntity extends BaseEntity<KbArticuloProps> {
   // ─── Comportamiento de dominio (K1/K2) ────────────────────────────────────
 
   /**
-   * Edita `titulo`/`contenido`/`tipoTicketId` (K1). Campos `undefined` NO
-   * se tocan (PATCH semántico); `tipoTicketId: null` limpia el valor
-   * explícitamente.
+   * Edita `titulo`/`contenido` (K1). Campos `undefined` NO se tocan (PATCH
+   * semántico).
    * @throws TituloVacioError si `titulo` editado es vacío/blank — NO muta en ese caso.
    * @throws ContenidoVacioError si `contenido` editado es vacío/blank — NO muta en ese caso.
    */
-  editar(datos: { titulo?: string; contenido?: string; tipoTicketId?: string | null }): void {
+  editar(datos: { titulo?: string; contenido?: string }): void {
     if (datos.titulo !== undefined) {
       assertTituloValido(datos.titulo);
     }
@@ -113,9 +112,6 @@ export class KbArticuloEntity extends BaseEntity<KbArticuloProps> {
     }
     if (datos.contenido !== undefined) {
       this.props.contenido = datos.contenido;
-    }
-    if (datos.tipoTicketId !== undefined) {
-      this.props.tipoTicketId = datos.tipoTicketId;
     }
     this.touch();
   }

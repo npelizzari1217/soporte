@@ -20,7 +20,6 @@ describe('CrearKbArticuloUseCase', () => {
     const result = await useCase.execute({
       titulo: 'Cómo resetear tu contraseña',
       contenido: 'Pasos...',
-      tipoTicketId: null,
       autorId: 'actor-uuid',
     });
 
@@ -38,7 +37,6 @@ describe('CrearKbArticuloUseCase', () => {
     const result = await useCase.execute({
       titulo: '   ',
       contenido: 'Pasos...',
-      tipoTicketId: null,
       autorId: 'actor-uuid',
     });
 
@@ -53,7 +51,6 @@ describe('CrearKbArticuloUseCase', () => {
     const result = await useCase.execute({
       titulo: 'Título',
       contenido: '',
-      tipoTicketId: null,
       autorId: 'actor-uuid',
     });
 

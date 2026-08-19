@@ -7,7 +7,6 @@ import { TituloVacioError, ContenidoVacioError } from '../../domain/errors/kb.er
 export interface CrearKbArticuloDto {
   titulo: string;
   contenido: string;
-  tipoTicketId: string | null;
   autorId: string;
 }
 
@@ -27,7 +26,6 @@ export class CrearKbArticuloUseCase {
       articulo = KbArticuloEntity.create({
         titulo: dto.titulo,
         contenido: dto.contenido,
-        tipoTicketId: dto.tipoTicketId,
         autorId: dto.autorId,
         visibleParaSolicitante: false,
         activo: true,

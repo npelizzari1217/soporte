@@ -1,0 +1,22 @@
+-- La Ayuda deja de vivir en el tenant: se elimina `kb_articulos`.
+--
+-- POR QUÉ: los artículos pasaron a ser ÚNICOS y GLOBALES, en la DB master
+-- (migración hermana `prisma_master/migrations/20260819130000_add_kb_articulos`).
+-- Mientras la tabla vivió acá, el mismo texto estaba duplicado tantas veces como
+-- clientes había y había que publicarlo cliente por cliente. La Ayuda documenta
+-- cómo se usa el sistema, y el sistema es el mismo para todos: la copia por
+-- tenant no representaba ninguna diferencia real, solo deriva.
+--
+-- ORDEN DE DEPLOY (importa): primero la migración de master, después
+-- `pnpm sync:ayuda` para poblar la tabla global, y RECIÉN AHÍ esta. Al revés se
+-- queda un rato sin ninguna ayuda visible.
+--
+-- QUÉ SE PIERDE: se verificó contra producción que los dos tenants contenían
+-- ÚNICAMENTE los 5 artículos sincronizados desde `backend/ayuda/*.md` —ninguno
+-- cargado a mano por un cliente—, y esos 5 se recrean en master con `pnpm
+-- sync:ayuda`. Aun así el DROP es destructivo: si una base tuviera filas
+-- propias (slug NULL), se van con la tabla. Respaldarlas antes:
+--   \copy (select * from kb_articulos where slug is null) to 'kb_manuales.csv' csv header
+
+-- DropTable
+DROP TABLE IF EXISTS "kb_articulos";

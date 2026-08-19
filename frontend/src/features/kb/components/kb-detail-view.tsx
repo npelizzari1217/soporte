@@ -2,10 +2,11 @@
 
 /**
  * KbDetailView — CONTAINER client component montado por `/kb/:id` (ADR-1).
- * Lectura de un artículo (R-M3 / T3.3) + acciones gateadas por acción
- * (WU-7.6): `KB:MODIFICACION` (editar), `KB:PUBLICAR` (visibilidad),
- * `KB:BORRADO` (eliminar)
- * (editar/publicar-despublicar/eliminar, T3.4-T3.6). El contenido se renderiza
+ * Lectura de un artículo (R-M3 / T3.3) + acciones de gestión
+ * (editar/publicar-despublicar/eliminar, T3.4-T3.6) gateadas por ROOT
+ * (`<SoloRoot>`): la Ayuda es una sola para todo el sistema, y un
+ * administrador de cliente que la editara estaría cambiando lo que leen los
+ * demás clientes. El contenido se renderiza
  * como markdown vía `KbMarkdown` — ADR-6 ("sin lib WYSIWYG") se mantiene: el
  * autor escribe markdown plano en un textarea, no hay editor visual. El
  * renderer NO habilita HTML crudo ni usa `dangerouslySetInnerHTML`; el porqué
@@ -16,7 +17,7 @@ import { useKbArticulo } from "../hooks/use-kb-articulo";
 import { useCambiarVisibilidadKbArticulo, useEliminarKbArticulo } from "../hooks/use-kb-mutations";
 import { DetailSkeleton } from "@/components/shared/skeletons";
 import { ErrorState } from "@/components/shared/error-state";
-import { Can } from "@/components/shared/can";
+import { SoloRoot } from "@/components/shared/solo-root";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/shared/page-header";
 import { KbArticleEditDialog } from "./kb-article-edit-dialog";
@@ -54,22 +55,18 @@ export function KbDetailView({ articuloId }: KbDetailViewProps) {
         title={articulo.titulo}
         actions={
           <div className="flex items-center gap-2">
-            <Can permiso="KB:MODIFICACION">
+            <SoloRoot>
               <KbArticleEditDialog articulo={articulo} />
-            </Can>
-            <Can permiso="KB:PUBLICAR">
               <KbVisibilityToggle
                 visible={articulo.visibleParaSolicitante}
                 onConfirm={() => visibilidadMutation.mutate({ visible: !articulo.visibleParaSolicitante })}
                 isSubmitting={visibilidadMutation.isPending}
               />
-            </Can>
-            <Can permiso="KB:BORRADO">
               <KbDeleteControl
                 onConfirm={() => eliminarMutation.mutate(undefined, { onSuccess: () => router.push("/kb") })}
                 isSubmitting={eliminarMutation.isPending}
               />
-            </Can>
+            </SoloRoot>
           </div>
         }
       />

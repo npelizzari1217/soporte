@@ -1,6 +1,6 @@
 /**
  * K3 [UNIT][RED→GREEN] — EditarKbArticuloUseCase: PATCH semántico de
- * titulo/contenido/tipoTicketId (K1).
+ * titulo/contenido (K1).
  *
  * Ref spec: sdd/premium/spec K1. Tarea: K3/K4.
  */
@@ -13,7 +13,6 @@ function buildArticulo() {
     {
       titulo: 'Original',
       contenido: 'Contenido original',
-      tipoTicketId: null,
       autorId: 'autor-uuid',
       visibleParaSolicitante: false,
       activo: true,

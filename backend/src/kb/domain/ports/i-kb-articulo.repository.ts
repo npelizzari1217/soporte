@@ -8,9 +8,7 @@ import { KbArticuloEntity } from '../entities/kb-articulo.entity';
  * Ref spec: sdd/premium/spec K3. Ref design: ADR-P6 (Firmas TS). Tarea: K4.
  */
 export interface KbFiltros {
-  /** FK opcional → tipos_ticket.id. */
-  tipoTicketId?: string;
-  /** true = solo `visibleParaSolicitante=true` (K3, actor sin `ticket:ver_todos`). */
+  /** true = solo `visibleParaSolicitante=true` (K3, actor sin `KB:VER_TODOS`). */
   soloVisibles: boolean;
   /** true = incluye soft-deleted/`activo=false` (K3, staff en gestión). */
   incluirInactivos: boolean;
@@ -23,7 +21,8 @@ export interface KbFiltros {
 }
 
 /**
- * IKbArticuloRepository — puerto de acceso a `kb_articulos` (K1-K4).
+ * IKbArticuloRepository — puerto de acceso a `kb_articulos` (K1-K4). La tabla
+ * vive en la DB MASTER: la Ayuda es única para todo el sistema.
  *
  * Ref spec: sdd/premium/spec K1-K4. Ref design: ADR-P6. Tarea: K4.
  */

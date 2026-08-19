@@ -1,25 +1,33 @@
 /**
- * KbController — entry point HTTP del CRUD de la base de conocimiento (K1-K4).
+ * KbController — entry point HTTP de la Ayuda (K1-K4). Los artículos son
+ * ÚNICOS y GLOBALES: viven en la DB master, iguales para todos los clientes.
  *
  * Rutas:
- *   POST   /kb                → CrearKbArticuloUseCase (`kb:gestionar`)
- *   GET    /kb                → ListarKbArticulosUseCase (cualquier tenant autenticado; scope K3)
- *   GET    /kb/:id             → ObtenerKbArticuloUseCase (cualquier tenant autenticado; scope K3)
- *   PATCH  /kb/:id             → EditarKbArticuloUseCase (`kb:gestionar`)
- *   PATCH  /kb/:id/visibilidad → CambiarVisibilidadKbArticuloUseCase (`kb:gestionar`) — publicar/despublicar (K2)
- *   DELETE /kb/:id             → EliminarKbArticuloUseCase (`kb:gestionar`) — soft delete (K1)
+ *   POST   /kb                 → CrearKbArticuloUseCase (ROOT)
+ *   GET    /kb                 → ListarKbArticulosUseCase (`KB:LECTURA`; scope K3)
+ *   GET    /kb/:id             → ObtenerKbArticuloUseCase (`KB:LECTURA`; scope K3)
+ *   PATCH  /kb/:id             → EditarKbArticuloUseCase (ROOT)
+ *   PATCH  /kb/:id/visibilidad → CambiarVisibilidadKbArticuloUseCase (ROOT) — publicar/despublicar (K2)
+ *   DELETE /kb/:id             → EliminarKbArticuloUseCase (ROOT) — soft delete (K1)
  *
- * Guards a nivel de controller: `JwtAuthGuard` + `TenantGuard` +
- * `AccionesGuard` (WU-7.3, sdd/matriz-permisos-por-usuario) — los dos
- * primeros SIEMPRE aplican; `AccionesGuard` solo actúa cuando el endpoint
- * declara `@RequiereAcciones(...)` (sin metadata → pass-through). Los
- * endpoints GET declaran `@RequiereAcciones('KB:LECTURA')` (corrección
- * post-verify, R5): el backfill le da esa celda a TODA membresía activa
- * (regla universal, R7), nadie pierde acceso hoy, pero la casilla de la
- * grilla del ABM pasa a gobernar algo real. El scope de FILAS (publicados
- * vs. todos) sigue resolviéndose DENTRO del use case según si el actor
- * tiene `KB:VER_TODOS` (K3, R11) — mismo criterio que
- * `TicketsController.findAll`/`findOne`, eso NO cambió.
+ * ESCRITURA reservada a ROOT (`GlobalAdminGuard`, aplicado por MÉTODO): al ser
+ * una sola Ayuda para todo el sistema, un administrador de cliente que la
+ * editara estaría cambiando lo que leen los demás clientes. Las celdas
+ * `KB:ALTAS`/`KB:MODIFICACION`/`KB:BORRADO`/`KB:PUBLICAR` siguen existiendo en
+ * el catálogo y se siguen dibujando en la grilla, pero ya no gobiernan nada:
+ * sacarlas obligaría a migrar el CHECK compuesto de `usuario_cliente_permisos`
+ * y a limpiar filas en producción, riesgo desproporcionado frente al beneficio.
+ *
+ * LECTURA sigue gateada por `KB:LECTURA` (`AccionesGuard`), y esa celda es
+ * además de la que el menú lateral deriva el ítem "Ayuda". El scope de FILAS
+ * (publicados vs. todos) se resuelve DENTRO del use case según si el actor
+ * tiene `KB:VER_TODOS` (K3, R11) — eso NO cambió.
+ *
+ * SIN `TenantGuard`, a diferencia del resto de los controllers de negocio: el
+ * módulo dejó de tocar la DB del cliente, y exigir un tenant activo dejaría a
+ * un ROOT sin cliente seleccionado sin poder mantener la Ayuda global. La
+ * lectura no queda abierta por eso: `KB:LECTURA` sale de la matriz del cliente
+ * activo y sin membresía viva el JWT no la trae.
  *
  * El controller no tiene lógica de negocio: solo traduce HTTP ↔ use case y
  * mapea `DomainError` → `HttpException`.
@@ -58,7 +66,7 @@ import {
 } from '../dtos/kb-articulo.dto';
 import { KbArticuloNoEncontradoError } from '../../domain/errors/kb.errors';
 import { JwtAuthGuard } from '../../../auth/infrastructure/guards/jwt-auth.guard';
-import { TenantGuard } from '../../../auth/infrastructure/guards/tenant.guard';
+import { GlobalAdminGuard } from '../../../auth/infrastructure/guards/global-admin.guard';
 import { AccionesGuard } from '../../../auth/infrastructure/guards/acciones.guard';
 import { CurrentUser, RequiereAcciones } from '../../../auth/infrastructure/guards/decorators';
 import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
@@ -76,7 +84,7 @@ function toHttpException(error: DomainError): NotFoundException | UnprocessableE
   return new UnprocessableEntityException(error.message);
 }
 
-@UseGuards(JwtAuthGuard, TenantGuard, AccionesGuard)
+@UseGuards(JwtAuthGuard, AccionesGuard)
 @Controller('kb')
 export class KbController {
   constructor(
@@ -92,11 +100,11 @@ export class KbController {
    * POST /kb
    * Crea un artículo. `autorId` = JWT.sub (K1). Nace interno
    * (`visibleParaSolicitante=false`) — se publica vía `PATCH /kb/:id/visibilidad`.
-   * @throws 403 sin `kb:gestionar`
+   * @throws 403 si el actor no es ROOT
    * @throws 422 titulo/contenido vacíos
    */
   @Post()
-  @RequiereAcciones('KB:ALTAS')
+  @UseGuards(GlobalAdminGuard)
   @HttpCode(HttpStatus.CREATED)
   async create(
     @CurrentUser() user: JwtPayload,
@@ -105,7 +113,6 @@ export class KbController {
     const result = await this.crearKbArticuloUseCase.execute({
       titulo: dto.titulo,
       contenido: dto.contenido,
-      tipoTicketId: dto.tipoTicketId ?? null,
       autorId: user.sub,
     });
 
@@ -130,7 +137,6 @@ export class KbController {
   ): Promise<ListKbArticulosResponseDto> {
     const result = await this.listarKbArticulosUseCase.execute({
       tienePermisoVerTodos: puedeEjecutar(user, ACCION_VER_TODOS),
-      tipoTicketId: query.tipoTicketId,
       busqueda: query.busqueda,
       page: query.page,
       pageSize: query.pageSize,
@@ -169,14 +175,13 @@ export class KbController {
 
   /**
    * PATCH /kb/:id
-   * Edita titulo/contenido/tipoTicketId. NO cambia visibilidad (endpoint
-   * dedicado, K2).
-   * @throws 403 sin `kb:gestionar`
-   * @throws 404 artículo inexistente/otro tenant
+   * Edita titulo/contenido. NO cambia visibilidad (endpoint dedicado, K2).
+   * @throws 403 si el actor no es ROOT
+   * @throws 404 artículo inexistente
    * @throws 422 titulo/contenido vacíos
    */
   @Patch(':id')
-  @RequiereAcciones('KB:MODIFICACION')
+  @UseGuards(GlobalAdminGuard)
   async update(
     @Param('id') id: string,
     @Body() dto: EditKbArticuloDto,
@@ -185,7 +190,6 @@ export class KbController {
       id,
       titulo: dto.titulo,
       contenido: dto.contenido,
-      tipoTicketId: dto.tipoTicketId,
     });
 
     if (result.isFail()) {
@@ -197,11 +201,11 @@ export class KbController {
   /**
    * PATCH /kb/:id/visibilidad
    * Publica (`visible=true`) o despublica (`visible=false`) un artículo (K2).
-   * @throws 403 sin `kb:gestionar`
-   * @throws 404 artículo inexistente/otro tenant
+   * @throws 403 si el actor no es ROOT
+   * @throws 404 artículo inexistente
    */
   @Patch(':id/visibilidad')
-  @RequiereAcciones('KB:PUBLICAR')
+  @UseGuards(GlobalAdminGuard)
   async cambiarVisibilidad(
     @Param('id') id: string,
     @Body() dto: CambiarVisibilidadKbArticuloDto,
@@ -220,11 +224,11 @@ export class KbController {
   /**
    * DELETE /kb/:id
    * Baja lógica (soft delete) de un artículo (K1).
-   * @throws 403 sin `kb:gestionar`
-   * @throws 404 artículo inexistente/otro tenant/ya eliminado
+   * @throws 403 si el actor no es ROOT
+   * @throws 404 artículo inexistente/ya eliminado
    */
   @Delete(':id')
-  @RequiereAcciones('KB:BORRADO')
+  @UseGuards(GlobalAdminGuard)
   @HttpCode(HttpStatus.NO_CONTENT)
   async remove(@Param('id') id: string): Promise<void> {
     const result = await this.eliminarKbArticuloUseCase.execute({ id });

@@ -4,8 +4,8 @@
  * KbArticleCreateDialog — modal para crear un artículo de KB (R-M3 / T3.4),
  * abierto desde el botón "Nuevo artículo" de `/kb` (conversión a modal,
  * feat/ui-premium-educandow — antes ruta dedicada `/kb/nuevo`, revisión de
- * ADR-1). Gate `KB:ALTAS` lo aplica el caller (`KbListView`, vía
- * `<Can>`). El artículo nace interno (`visibleParaSolicitante=false`) — se
+ * ADR-1). El gate de ROOT lo aplica el caller (`KbListView`, vía
+ * `<SoloRoot>`). El artículo nace interno (`visibleParaSolicitante=false`) — se
  * publica desde el detalle (T3.5).
  */
 import { useState } from "react";

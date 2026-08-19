@@ -17,21 +17,23 @@ import { ListarKbArticulosUseCase } from './application/use-cases/listar-kb-arti
 import { KbController } from './interface/controllers/kb.controller';
 
 /**
- * KbModule — módulo NestJS del dominio "kb" (Fase 4, PR-K).
+ * KbModule — módulo NestJS de la Ayuda (Fase 4, PR-K).
  *
- * Base de conocimiento (artículos) con CRUD gestionado por staff
- * (`kb:gestionar`, K4) y lectura filtrada por rol (K3: USUARIO solo ve
- * artículos publicados y activos; staff ve todos).
+ * Los artículos son ÚNICOS y GLOBALES: viven en la DB MASTER, no en la del
+ * cliente. Por eso este módulo NO depende del tenant — el repositorio recibe
+ * PrismaService (cliente master) en vez de TenantContext, y KbController no
+ * aplica TenantGuard.
+ *
+ * Autorización: escritura reservada a ROOT (GlobalAdminGuard por método),
+ * lectura gateada por la celda KB:LECTURA (AccionesGuard) con el scope de
+ * filas resuelto en el use case por KB:VER_TODOS.
  *
  * Wiring:
- * - Repo: KB_ARTICULO_REPOSITORY (tenant, vía TenantContext).
+ * - Repo: KB_ARTICULO_REPOSITORY → PrismaKbArticuloRepository (master).
  * - Use cases: Crear/Editar/CambiarVisibilidad/Eliminar/Obtener/ListarKb
  *   (K1-K4, todos Result).
- * - Importa `AuthModule` (guards de `KbController`: JwtAuthGuard,
- *   TenantGuard, PermissionsGuard, `kb:gestionar`). NO importa
- *   `TicketsModule` — KB no depende de TICKET_REPOSITORY (`tipoTicketId`
- *   es un FK opcional resuelto por Prisma, sin necesidad del puerto de
- *   tickets).
+ * - Importa AuthModule por los guards de KbController (JwtAuthGuard,
+ *   AccionesGuard, GlobalAdminGuard).
  *
  * FITNESS RULE: PrismaService y @prisma/client solo pueden importarse desde
  * infrastructure/ (ver backend/eslint.config.js).

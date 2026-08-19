@@ -12,7 +12,6 @@ function buildArticulo() {
     {
       titulo: 'Original',
       contenido: 'Contenido',
-      tipoTicketId: null,
       autorId: 'autor-uuid',
       visibleParaSolicitante: false,
       activo: true,
