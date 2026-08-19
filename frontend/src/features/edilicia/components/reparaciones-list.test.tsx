@@ -100,4 +100,65 @@ describe("ReparacionesList — indicador de comentarios por fila", () => {
     const dialogo = await screen.findByRole("dialog");
     expect(within(dialogo).getByText("Comentarios — EDI-0009")).toBeInTheDocument();
   });
+
+  // El contador de la fila viaja dentro del LISTADO (`cantidadComentarios`), no
+  // dentro de la query de comentarios. Si al comentar sólo se invalida esta
+  // última, el modal se actualiza y el badge se queda con el número viejo hasta
+  // que alguien recarga. Los tests de conteo no lo ven: verifican que el número
+  // sea correcto, no que se ACTUALICE cuando pasa lo único que lo cambia.
+  it("comentar actualiza el contador de la fila sin recargar", async () => {
+    let comentarios = 0;
+    const nuevo = {
+      id: "c1",
+      ticketEdiliciaId: "rep7",
+      texto: "Falta el repuesto",
+      autorId: "u1",
+      autorNombre: null,
+      autorApellido: null,
+      createdAt: "2026-08-19T10:00:00.000Z",
+    };
+    server.use(
+      http.get("/api/reparaciones", () =>
+        HttpResponse.json([
+          buildReparacion({ id: "rep7", numero: "EDI-0007", cantidadComentarios: comentarios }),
+        ]),
+      ),
+      http.get("/api/reparaciones/rep7/comentarios", () =>
+        HttpResponse.json(comentarios === 0 ? [] : [nuevo]),
+      ),
+      http.post("/api/reparaciones/rep7/comentarios", () => {
+        comentarios += 1;
+        return HttpResponse.json(nuevo, { status: 201 });
+      }),
+    );
+
+    const user = userEvent.setup();
+    renderWithProviders(<ReparacionesList />, {
+      user: buildUser({ permisos: ["EDILICIA:LECTURA", "EDILICIA:ALTAS"] }),
+    });
+
+    await screen.findByText("EDI-0007");
+    const fila = within(filaDe("EDI-0007"));
+    expect(fila.getByRole("button", { name: "Ver comentarios" })).toBeInTheDocument();
+
+    await user.click(fila.getByRole("button", { name: "Ver comentarios" }));
+    const dialogo = await screen.findByRole("dialog");
+    await screen.findByText(/sin comentarios/i);
+
+    await user.type(within(dialogo).getByLabelText(/nuevo comentario/i), "Falta el repuesto");
+    await user.click(within(dialogo).getByRole("button", { name: /^comentar$/i }));
+
+    // El comentario entró: el modal ya lo muestra.
+    expect(await within(dialogo).findByText("Falta el repuesto")).toBeInTheDocument();
+
+    // Con el modal abierto, Radix marca `aria-hidden` el resto del documento y
+    // la fila desaparece del árbol de accesibilidad. Hay que cerrarlo para ver
+    // el contador — que además es el recorrido real del usuario.
+    await user.keyboard("{Escape}");
+
+    // El badge de la fila refleja el comentario nuevo, sin recargar la página.
+    expect(
+      await screen.findByRole("button", { name: "Ver comentarios (1 comentario)" }),
+    ).toBeInTheDocument();
+  });
 });
