@@ -30,6 +30,11 @@ export function useCrearSubtarea(reparacionId: string) {
       apiFetch<SubtareaEdilicia>(`reparaciones/${reparacionId}/subtareas`, { method: "POST", json: dto }),
     onSuccess: (subtarea) => {
       queryClient.setQueryData<SubtareaEdilicia[]>(["subtareas", reparacionId], (old = []) => [...old, subtarea]);
+      // El porcentaje de avance NO vive en esta query: viaja en el listado, bajo
+      // `["reparaciones"]`. Y una subtarea nueva cambia el DENOMINADOR del
+      // cálculo (completadas sobre total), así que sin invalidar acá la fila
+      // sigue mostrando el avance viejo hasta que alguien recarga.
+      queryClient.invalidateQueries({ queryKey: ["reparaciones"] });
       notifySuccess("Subtarea agregada.");
     },
     onError: notifyError,
@@ -61,6 +66,9 @@ export function useEliminarSubtarea(reparacionId: string) {
       queryClient.setQueryData<SubtareaEdilicia[]>(["subtareas", reparacionId], (old = []) =>
         old.filter((s) => s.id !== subtareaId),
       );
+      // Misma razón que en el alta: eliminar cambia el denominador del avance,
+      // que vive en el listado y no en esta query.
+      queryClient.invalidateQueries({ queryKey: ["reparaciones"] });
       notifySuccess("Subtarea eliminada.");
     },
     onError: notifyError,
