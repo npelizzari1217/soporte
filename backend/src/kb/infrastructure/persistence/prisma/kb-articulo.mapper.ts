@@ -32,8 +32,17 @@ export class KbArticuloMapper {
    * Convierte KbArticuloEntity → objeto plano para Prisma upsert. Incluye
    * `createdAt` para que el repo lo use en el CREATE y lo excluya del
    * UPDATE (nunca pisar el timestamp de creación existente).
+   *
+   * `slug` queda AFUERA a propósito, y no es un olvido. El slug es la identidad
+   * de los artículos que se mantienen como markdown en el repositorio y los
+   * escribe únicamente el sync (`scripts/sync-ayuda.js`); el dominio no lo
+   * conoce. Si viajara acá valdría `null` y el UPDATE del upsert se lo borraría
+   * al primer artículo sincronizado que alguien editara desde la aplicación —
+   * y el sync siguiente lo insertaría de nuevo, duplicado. Al no estar en el
+   * objeto, Prisma no lo toca: el CREATE lo deja NULL (correcto para un
+   * artículo nacido en la aplicación) y el UPDATE lo respeta.
    */
-  static toPersistence(entity: KbArticuloEntity): Omit<PrismaKbArticulo, 'updatedAt'> {
+  static toPersistence(entity: KbArticuloEntity): Omit<PrismaKbArticulo, 'updatedAt' | 'slug'> {
     return {
       id: entity.id,
       titulo: entity.titulo,

@@ -220,6 +220,36 @@ describe('PrismaKbArticuloRepository — Integration (K5)', () => {
     await tenantClient.kbArticulo.deleteMany({ where: { id: articulo.id } });
   });
 
+  // REGRESIÓN: `slug` es la identidad de los artículos que mantiene el sync
+  // desde el repositorio, y el dominio no lo conoce. Si `toPersistence` lo
+  // incluyera, el UPDATE del upsert lo pisaría con NULL en cuanto alguien
+  // editara el artículo desde la aplicación, y la corrida siguiente del sync
+  // lo insertaría de nuevo, duplicado — exactamente lo que el slug evita.
+  it('[CRITICAL] save() sobre un artículo sincronizado NO borra su slug', async () => {
+    const articulo = KbArticuloEntity.create({
+      titulo: 'K5_TEST artículo sincronizado',
+      contenido: 'Contenido original',
+      tipoTicketId: null,
+      autorId: null,
+      visibleParaSolicitante: false,
+      activo: true,
+    });
+    await repo.save(articulo);
+    await tenantClient.kbArticulo.update({
+      where: { id: articulo.id },
+      data: { slug: 'k5-test-articulo-sincronizado' },
+    });
+
+    articulo.editar({ titulo: 'K5_TEST artículo sincronizado (editado)' });
+    await repo.save(articulo);
+
+    const row = await tenantClient.kbArticulo.findUniqueOrThrow({ where: { id: articulo.id } });
+    expect(row.slug).toBe('k5-test-articulo-sincronizado');
+    expect(row.titulo).toBe('K5_TEST artículo sincronizado (editado)');
+
+    await tenantClient.kbArticulo.deleteMany({ where: { id: articulo.id } });
+  });
+
   it('lanza un error descriptivo si no hay TenantContext activo', async () => {
     const looseContext = new TenantContext();
     const looseRepo = new PrismaKbArticuloRepository(looseContext);

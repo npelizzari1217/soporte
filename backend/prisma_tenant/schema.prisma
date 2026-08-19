@@ -568,9 +568,15 @@ model TicketSoporte {
 // visible_para_solicitante: default FALSE — por defecto un artículo es interno
 // (solo staff); el admin lo publica explícitamente para que lo vea también
 // el solicitante (portal de autoservicio).
+// slug: identidad estable de los artículos que se mantienen como markdown en
+// el repositorio y se sincronizan a cada tenant. NULLABLE porque un artículo
+// cargado a mano por el cliente no tiene slug — y en Postgres varios NULL
+// conviven bajo un UNIQUE. Sincronizar por `titulo` duplicaría el artículo
+// cada vez que se corrige su redacción; el slug no cambia nunca.
 
 model KbArticulo {
   id                     String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  slug                   String?   @unique @db.VarChar(120)
   titulo                 String    @db.VarChar(255)
   contenido              String    @db.Text
   tipoTicketId           String?   @map("tipo_ticket_id") @db.Uuid

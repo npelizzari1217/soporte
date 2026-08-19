@@ -22,6 +22,7 @@
     "migrate:master": "prisma migrate deploy --schema=prisma_master/schema.prisma",
     "migrate:tenant": "prisma migrate deploy --schema=prisma_tenant/schema.prisma --config prisma.tenant.config.ts",
     "migrate:tenants": "node scripts/migrate-tenants.js",
+    "sync:ayuda": "node scripts/sync-ayuda.js",
     "seed:root": "ts-node prisma_master/seeds/root-bootstrap.seed.ts",
     "seed:demo": "ts-node -r tsconfig-paths/register prisma_master/seeds/demo-seed.ts"
   },
