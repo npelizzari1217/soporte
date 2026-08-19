@@ -117,6 +117,29 @@ describe("KbListView", () => {
     expect(calledWith).toBe("/kb");
   });
 
+  it("deep-link con `busqueda` → el buscador muestra el texto filtrado, no una caja vacía", async () => {
+    currentSearch = "busqueda=contraseña";
+    renderWithProviders(<KbListView />, { user: buildUser({ permisos: [] }) });
+    await screen.findByText("Cómo resetear tu contraseña");
+
+    expect(screen.getByRole("searchbox")).toHaveValue("contraseña");
+  });
+
+  it("«Limpiar filtros» también vacía el buscador, no solo la URL", async () => {
+    mockBackend([]);
+    currentSearch = "busqueda=zzz&page=2";
+    const user = userEvent.setup();
+    const { rerender } = renderWithProviders(<KbListView />, { user: buildUser({ permisos: [] }) });
+
+    await user.click(await screen.findByRole("button", { name: /limpiar filtros/i }));
+
+    // El `router.replace` real repinta con la URL limpia; acá lo simulamos.
+    currentSearch = "";
+    rerender(<KbListView />);
+
+    expect(screen.getByRole("searchbox")).toHaveValue("");
+  });
+
   it("buscar por título commitea en Enter y actualiza la URL (searchParams)", async () => {
     const user = userEvent.setup();
     renderWithProviders(<KbListView />, { user: buildUser({ permisos: [] }) });

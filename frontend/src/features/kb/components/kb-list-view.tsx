@@ -91,6 +91,7 @@ export function KbListView() {
 
       <FilterBar
         searchPlaceholder="Buscar por título…"
+        searchValue={filtros.busqueda ?? ""}
         onSearchChange={(value) => updateFiltros({ busqueda: value })}
       />
 
