@@ -10,6 +10,7 @@
  * list/detalle/timeline. `PermissionsGuard` ya bypassea al ROOT; estos chequeos
  * inline deben honrar el MISMO criterio.
  */
+import 'reflect-metadata';
 import {
   ConflictException,
   ForbiddenException,
@@ -17,6 +18,7 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { TicketsController, toHttpException } from './tickets.controller';
+import { ACCIONES_KEY } from '../../../auth/infrastructure/guards/decorators';
 import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
 import { payloadDeTest } from '../../../auth/test-helpers/payload-de-test';
 import { DomainError, Result } from '../../../shared/domain/result';
@@ -514,6 +516,16 @@ describe('TicketsController.exportar — GET /tickets/export (sdd/exportar-lista
       UnprocessableEntityException,
     );
     expect(headers.size).toBe(0);
+  });
+
+  /**
+   * Regresión del gap CRITICAL de sdd-verify: el decorador ya estaba presente
+   * en la ruta, pero ningún test lo ejercía — borrarlo no rompía nada acá.
+   * Mismo patrón que equipos/reparaciones (`ACCIONES_KEY` vía `Reflect.getMetadata`).
+   */
+  it('declara @RequiereAcciones("TICKETS:LECTURA")', () => {
+    const meta = Reflect.getMetadata(ACCIONES_KEY, TicketsController.prototype.exportar);
+    expect(meta).toEqual(['TICKETS:LECTURA']);
   });
 });
 
