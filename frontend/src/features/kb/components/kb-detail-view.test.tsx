@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../../test/msw/server";
@@ -46,6 +46,34 @@ describe("KbDetailView", () => {
       expect(screen.queryByRole("button", { name: /despublicar|publicar/i })).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: /eliminar/i })).not.toBeInTheDocument();
     }
+  });
+
+  it("renderiza el contenido como markdown y NO ejecuta el HTML crudo del autor", async () => {
+    const articuloMalicioso = {
+      ...ARTICULO,
+      contenido: [
+        "## Restablecer la contraseña",
+        "",
+        "- Entrar a configuración",
+        "- Elegir «Restablecer»",
+        "",
+        "<script>alert(1)</script>",
+        '<img src=x onerror="alert(1)">',
+      ].join("\n"),
+    };
+    server.use(http.get("/api/kb/a1", () => HttpResponse.json(articuloMalicioso)));
+    renderWithProviders(<KbDetailView articuloId="a1" />, { user: buildUser({ permisos: [] }) });
+
+    const contenedor = await screen.findByRole("article", { name: /contenido del artículo/i });
+
+    // El markdown se renderiza de verdad.
+    expect(within(contenedor).getByRole("heading", { name: "Restablecer la contraseña" })).toBeInTheDocument();
+    expect(contenedor.querySelectorAll("li")).toHaveLength(2);
+
+    // El HTML crudo NO produce elementos dentro del contenedor del artículo.
+    expect(contenedor.querySelector("script")).toBeNull();
+    expect(contenedor.querySelector("img[onerror]")).toBeNull();
+    expect(contenedor.querySelector("img")).toBeNull();
   });
 
   it("artículo no accesible (404 del backend, K3) muestra ErrorState en vez de romper", async () => {
