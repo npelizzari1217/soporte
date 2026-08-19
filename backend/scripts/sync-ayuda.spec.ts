@@ -1,11 +1,17 @@
 /**
- * Parseo del frontmatter de los artículos de Ayuda.
+ * Parseo del frontmatter de los artículos de Ayuda, y test de deriva del
+ * directorio real (`backend/ayuda/`).
  *
  * Un frontmatter inválido no puede pasar en silencio: el artículo terminaría sin
  * sincronizarse a ningún tenant sin que nadie se entere, o peor, sincronizado
  * con una identidad equivocada.
+ *
+ * El test de deriva es el que importa a futuro: cada `.md` que se agregue al
+ * repositorio pasa por acá, así que un frontmatter roto o un slug repetido se
+ * detecta en la suite y no en la corrida contra producción.
  */
 /* eslint-disable @typescript-eslint/no-require-imports */
+import { existsSync } from 'node:fs';
 
 type Articulo = {
   slug: string;
@@ -13,10 +19,13 @@ type Articulo = {
   tipoTicket: string | null;
   visibleParaSolicitante: boolean;
   contenido: string;
+  origen: string;
 };
 
-const { parsearArticulo } = require('./sync-ayuda.js') as {
+const { parsearArticulo, cargarArticulos, DIRECTORIO_ARTICULOS } = require('./sync-ayuda.js') as {
   parsearArticulo: (texto: string, origen: string) => Articulo;
+  cargarArticulos: (directorio?: string) => Articulo[];
+  DIRECTORIO_ARTICULOS: string;
 };
 
 describe('parsearArticulo()', () => {
@@ -78,5 +87,17 @@ describe('parsearArticulo()', () => {
   ])('rechaza un archivo %s con un mensaje que nombra el archivo', (_caso, texto, patron) => {
     expect(() => parsearArticulo(texto as string, 'roto.md')).toThrow(patron as RegExp);
     expect(() => parsearArticulo(texto as string, 'roto.md')).toThrow(/\[roto\.md\]/);
+  });
+});
+
+describe('cargarArticulos() — deriva del directorio real', () => {
+  it('todos los .md de backend/ayuda tienen frontmatter válido y slugs únicos', () => {
+    expect(existsSync(DIRECTORIO_ARTICULOS)).toBe(true);
+
+    const articulos = cargarArticulos();
+
+    expect(articulos.length).toBeGreaterThan(0);
+    const slugs = articulos.map((a) => a.slug);
+    expect(new Set(slugs).size).toBe(slugs.length);
   });
 });
