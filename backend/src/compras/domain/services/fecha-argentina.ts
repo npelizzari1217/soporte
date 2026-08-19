@@ -10,14 +10,15 @@
  * UTC, no una decisión de producto: por eso acá se valida contra la fecha
  * LOCAL de Argentina, no contra UTC.
  *
- * Por qué alcanza una constante y no un modelo de zonas horarias: el
- * sistema ya asume Argentina en todo (CUIT, idioma, dominio). Argentina no
- * observa horario de verano desde 2009 — el offset es fijo, sin DST que
- * calcular.
+ * El offset ya no vive acá: es `OFFSET_ARGENTINA_MS` de
+ * `shared/domain/zona-horaria-argentina.ts`, compartido con el formateo de
+ * las exportaciones a CSV. Tener el número `-3` escrito en dos módulos era
+ * la forma segura de que un cambio de criterio quedara aplicado en la mitad
+ * del sistema. Este archivo conserva lo que SÍ es propio de compras: el
+ * truncado a día y la noción de "hoy" que valida las fechas de etapa.
  */
 
-/** Offset horario de Argentina respecto de UTC, en milisegundos (UTC-3, fijo, sin DST). */
-const OFFSET_ARGENTINA_MS = -3 * 60 * 60 * 1000;
+import { desplazarAArgentina } from '../../../shared/domain/zona-horaria-argentina';
 
 /**
  * Trunca una fecha a medianoche UTC, descartando la hora — mismo criterio
@@ -37,7 +38,7 @@ export function soloFecha(fecha: Date): Date {
  * este momento, sin importar en qué zona horaria corre el proceso Node.
  */
 export function hoyArgentina(): Date {
-  const desplazada = new Date(Date.now() + OFFSET_ARGENTINA_MS);
+  const desplazada = desplazarAArgentina(new Date());
   return new Date(
     Date.UTC(desplazada.getUTCFullYear(), desplazada.getUTCMonth(), desplazada.getUTCDate()),
   );
