@@ -28,11 +28,29 @@ foreach ($d in @($BackendDir, $FrontDir)) {
   if (Test-Path $lf) { $lockBefore[$d] = (Get-FileHash $lf -Algorithm SHA256).Hash }
 }
 
+# 2b. Hash de ESTE script ANTES del pull.
+#
+# PowerShell carga el .ps1 ENTERO en memoria al invocarlo. Si el pull trae una
+# version nueva de deploy.ps1, la instancia que esta corriendo SIGUE SIENDO LA
+# VIEJA y los pasos nuevos NO se ejecutan - el script se actualiza a si mismo y
+# se ignora. Paso de verdad el 2026-08-20: el deploy migro las columnas de
+# correo y arranco el codigo nuevo salteandose la provision de la clave y el
+# backfill, porque esos dos pasos solo existian en la version recien bajada.
+$selfPath   = $PSCommandPath
+$selfBefore = (Get-FileHash $selfPath -Algorithm SHA256).Hash
+
 # 3. Pull ff-only
 Step 'git pull --ff-only origin main'
 git pull --ff-only origin $Branch
 $newCommit = (git rev-parse --short HEAD).Trim()
 Write-Host ("Commit nuevo: " + $newCommit)
+
+# 3b. Si el pull cambio ESTE script, re-ejecutar la version nueva y salir.
+if ((Get-FileHash $selfPath -Algorithm SHA256).Hash -ne $selfBefore) {
+  Step 'deploy.ps1 cambio en el pull - re-ejecutando la version nueva'
+  & powershell -NoProfile -ExecutionPolicy Bypass -File $selfPath
+  exit $LASTEXITCODE
+}
 
 # 4. Si cambio algun lockfile: abortar (instalar manual con servicios detenidos)
 foreach ($d in @($BackendDir, $FrontDir)) {
@@ -68,7 +86,15 @@ if ($env:EMAIL_CRYPTO_KEY) {
 } else {
   $cryptoKey = & 'C:\nodejs22\node.exe' -e "process.stdout.write(require('crypto').randomBytes(32).toString('hex'))"
   if (-not $cryptoKey -or $cryptoKey.Length -ne 64) { throw "generacion de EMAIL_CRYPTO_KEY fallo" }
-  Add-Content -Path $envFile -Value ("EMAIL_CRYPTO_KEY=" + $cryptoKey) -Encoding ascii
+  # Reescribir el archivo entero en vez de Add-Content: si el .env NO termina en
+  # salto de linea, Add-Content pega el valor al final de la ULTIMA VARIABLE y
+  # corrompe DOS cosas de una - la clave queda ilegible y la variable anterior
+  # queda con basura pegada. Paso el 2026-08-20 contra ROOT_ADMIN_PASSWORD.
+  $lineasEnv = @(Get-Content $envFile) + ("EMAIL_CRYPTO_KEY=" + $cryptoKey)
+  Set-Content -Path $envFile -Value $lineasEnv -Encoding ascii
+  if ((Select-String -Path $envFile -Pattern '^EMAIL_CRYPTO_KEY=[0-9a-f]{64}$' | Measure-Object).Count -ne 1) {
+    throw "EMAIL_CRYPTO_KEY no quedo como una linea propia y valida en backend/.env"
+  }
   [System.Environment]::SetEnvironmentVariable('EMAIL_CRYPTO_KEY', $cryptoKey, 'Process')
   Write-Host ("EMAIL_CRYPTO_KEY generada y agregada a backend/.env (len=" + $cryptoKey.Length + ")")
   Write-Host "IMPORTANTE: respaldala junto con la base. Sin ella, las contrasenas SMTP guardadas no se pueden descifrar." -ForegroundColor Yellow
@@ -131,9 +157,22 @@ if ($LASTEXITCODE -ne 0) { throw "no se pudo consultar el estado de la config de
 if ([int]$yaHayConfig -gt 0) {
   Write-Host ("Ya hay " + $yaHayConfig + " cliente(s) con correo configurado - backfill OMITIDO (correcto: no debe auto-sembrar clientes nuevos)")
 } else {
-  Write-Host 'Ningun cliente tiene correo configurado todavia - corriendo el backfill'
-  & 'C:\nodejs22\node.exe' scripts/backfill-correo-clientes.mjs
-  if ($LASTEXITCODE -ne 0) { throw "el backfill de config de correo fallo" }
+  # Si no hay una config SMTP global completa de la cual sembrar, el backfill
+  # aborta a proposito (el CHECK de la base exige todo-o-nada). Eso NO es un
+  # fallo del deploy: es un estado legitimo - significa que nunca hubo envio
+  # global configurado, asi que no hay notificaciones que preservar. Tratarlo
+  # como error dejaba el deploy cortado CON LOS SERVICIOS DETENIDOS, que es
+  # muchisimo peor que no sembrar. Paso el 2026-08-20.
+  $faltantes = @('SMTP_HOST','SMTP_PORT','SMTP_USER','SMTP_PASSWORD','SMTP_FROM','SMTP_SECURE') |
+    Where-Object { -not [System.Environment]::GetEnvironmentVariable($_) }
+  if ($faltantes.Count -gt 0) {
+    Write-Host ("Backfill OMITIDO: faltan " + ($faltantes -join ', ') + " en backend/.env - no hay config global de la cual sembrar.") -ForegroundColor Yellow
+    Write-Host "Cada cliente debe cargar su propia cuenta SMTP desde la pantalla ROOT." -ForegroundColor Yellow
+  } else {
+    Write-Host 'Ningun cliente tiene correo configurado todavia - corriendo el backfill'
+    & 'C:\nodejs22\node.exe' scripts/backfill-correo-clientes.mjs
+    if ($LASTEXITCODE -ne 0) { throw "el backfill de config de correo fallo" }
+  }
 }
 
 Set-Location $RepoRoot
