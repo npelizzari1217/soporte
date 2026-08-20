@@ -131,6 +131,29 @@ como siempre.
 5. Punto 5.
 6. Punto 6 — al final en el calendario, pero **decidido al principio**.
 
+## Carencia detectada fuera de los seis puntos
+
+### Cambio de contraseña — Baja dificultad, prioridad alta
+
+**Hoy ningún usuario puede cambiar su propia contraseña.** No hay pantalla ni
+endpoint: buscado en `backend/src` y `frontend/src` (`cambiar-password`,
+`change-password`, `CambiarPassword`), cero resultados.
+
+Apareció el 2026-08-20 al intentar rotar la clave del admin de producción. La
+única herramienta que existía (`rotate-admin-pw.ps1`, sin versionar en el VPS)
+estaba rota: dependía de un script borrado y **reportaba éxito igual**.
+
+No es una comodidad, es un agujero de producto:
+
+- Una credencial expuesta no se puede rotar sin acceso al servidor.
+- Un usuario que sospecha que alguien vio su clave no tiene qué hacer.
+- Es de las primeras cosas que va a preguntar un cliente con área de sistemas, y
+  la respuesta "hay que pedírselo al proveedor" no sobrevive esa conversación.
+
+Alcance mínimo: que un usuario autenticado cambie su propia contraseña
+validando la actual. El reseteo por olvido (con email) es un problema distinto y
+más grande — necesita tokens de un solo uso con vencimiento — y puede ir después.
+
 ## Nota
 
 El multi-tenant ya está resuelto y funcionando con dos clientes. Eso es lo caro
