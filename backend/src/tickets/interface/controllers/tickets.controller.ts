@@ -499,10 +499,11 @@ export class TicketsController {
 
   /**
    * GET /tickets/:id/asignables
-   * Lista los TÉCNICOS elegibles para atender el ticket (combo del control
+   * Lista los AGENTES elegibles para atender el ticket (combo del control
    * unificado "Asignar y poner en proceso"). Elegibilidad por módulo del tipo
-   * del ticket: técnicos activos con membresía TECNICO en el tenant y el
-   * módulo asignado. Un tipo custom (sin módulo) devuelve `[]`.
+   * del ticket: usuarios activos con membresía TECNICO o COLABORADOR (ambos
+   * cumplen funciones de técnico) en el tenant y el módulo asignado. Un tipo
+   * custom (sin módulo) devuelve `[]`.
    * Requiere `ticket:asignar`. `clienteId` = `cliente_id` del JWT.
    * @throws 403 sin `ticket:asignar`
    * @throws 404 ticket inexistente/otro tenant

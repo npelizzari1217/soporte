@@ -135,15 +135,17 @@ export class UsuarioMasterChecker implements IUsuarioMasterChecker {
   }
 
   /**
-   * Técnicos elegibles por módulo en un cliente. Dos consultas (no N+1):
-   * `usuario_cliente_permisos` NO tiene `@relation` a `Usuario` (soft ref
-   * cross-DB), así que no se puede filtrar el módulo con un `some` anidado en
-   * `usuario.findMany`. Se resuelven primero los `usuarioId` con AL MENOS UNA
-   * acción otorgada en el módulo pedido (R9, WU-7.5 — migrado de
-   * `usuario_cliente_modulos`, `distinct` evita duplicados cuando el usuario
-   * tiene varias acciones del mismo módulo) y luego se intersecan con los
-   * técnicos activos que tienen membresía ACTIVA con rol TECNICO en ese
-   * cliente.
+   * Agentes elegibles por módulo en un cliente (rol `TECNICO` o
+   * `COLABORADOR`: ambos cumplen funciones de técnico y pueden atender
+   * tickets — decisión de negocio 2026-08-20, antes solo `TECNICO`). Dos
+   * consultas (no N+1): `usuario_cliente_permisos` NO tiene `@relation` a
+   * `Usuario` (soft ref cross-DB), así que no se puede filtrar el módulo con
+   * un `some` anidado en `usuario.findMany`. Se resuelven primero los
+   * `usuarioId` con AL MENOS UNA acción otorgada en el módulo pedido (R9,
+   * WU-7.5 — migrado de `usuario_cliente_modulos`, `distinct` evita
+   * duplicados cuando el usuario tiene varias acciones del mismo módulo) y
+   * luego se intersecan con los usuarios activos que tienen membresía ACTIVA
+   * con rol TECNICO o COLABORADOR en ese cliente.
    *
    * Con `modulo === null` (tipo custom sin módulo) no hay elegibles por
    * catálogo → se retorna `[]` sin golpear la DB.
@@ -172,7 +174,12 @@ export class UsuarioMasterChecker implements IUsuarioMasterChecker {
         activo: true,
         deletedAt: null,
         membresias: {
-          some: { clienteId, activo: true, deletedAt: null, rol: { codigo: 'TECNICO' } },
+          some: {
+            clienteId,
+            activo: true,
+            deletedAt: null,
+            rol: { codigo: { in: ['TECNICO', 'COLABORADOR'] } },
+          },
         },
       },
       select: { id: true, nombre: true, apellido: true },

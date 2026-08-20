@@ -10,7 +10,12 @@ export interface ListarTecnicosAsignablesDto {
   clienteId: string;
 }
 
-/** Técnico elegible para el combo de asignación (proyección mínima de presentación). */
+/**
+ * Agente (rol TECNICO o COLABORADOR) elegible para el combo de asignación
+ * (proyección mínima de presentación). El nombre `TecnicoAsignable` se
+ * mantiene sin renombrar aunque el universo ya incluye COLABORADOR — ver
+ * JSDoc de `listarTecnicosAsignables` en `IUsuarioMasterChecker`.
+ */
 export interface TecnicoAsignable {
   id: string;
   nombre: string;
@@ -18,9 +23,10 @@ export interface TecnicoAsignable {
 }
 
 /**
- * ListarTecnicosAsignablesUseCase — arma el universo de TÉCNICOS elegibles
- * para atender un ticket, para el combo del control unificado "Asignar y poner
- * en proceso".
+ * ListarTecnicosAsignablesUseCase — arma el universo de AGENTES (TÉCNICOS y
+ * COLABORADORES, ambos cumplen funciones de técnico) elegibles para atender
+ * un ticket, para el combo del control unificado "Asignar y poner en
+ * proceso".
  *
  * Flujo:
  * 1. Carga el ticket. Si no existe o está soft-deleted → `TicketNoEncontradoError` (404).

@@ -92,7 +92,7 @@ export function TicketsListView() {
     },
     {
       key: "asignadoId",
-      header: "Técnico asignado",
+      header: "Responsable",
       // El backend resuelve batch cross-DB `asignadoNombre`/`asignadoApellido`
       // (puede ser null si el ticket no tiene asignado o si el usuario fue
       // removido del tenant); en ambos casos mostramos "Sin asignar".
