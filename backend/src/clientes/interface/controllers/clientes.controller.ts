@@ -4,7 +4,10 @@
  *
  * Rutas:
  *   POST /clientes → CrearClienteUseCase (R16, R17, R18)
- *   GET  /clientes → ListarClientesUseCase (G3 parcial, sdd/beta-frontend/spec §3)
+ *   GET  /clientes → ListarClientesUseCase (G3 parcial, sdd/beta-frontend/spec §3;
+ *     incluye resumen de correo, D7/#2359)
+ *   GET/PATCH/DELETE /clientes/:id/correo, POST /clientes/:id/correo/probar →
+ *     configuración de correo por cliente (sdd/configuracion-correo-por-cliente D7)
  *
  * Guards: `JwtAuthGuard` + `GlobalAdminGuard` a nivel de controller — solo
  * `is_global_admin=true` puede provisionar un cliente nuevo (R16) O listar
@@ -20,9 +23,11 @@
  *        sdd/beta-frontend/spec §3 G3 (GET, parcial).
  */
 import {
+  BadRequestException,
   Body,
   ConflictException,
   Controller,
+  Delete,
   ForbiddenException,
   Get,
   HttpCode,
@@ -32,18 +37,37 @@ import {
   Param,
   Patch,
   Post,
+  ServiceUnavailableException,
   UseGuards,
 } from '@nestjs/common';
 import { CrearClienteUseCase } from '../../application/use-cases/crear-cliente.use-case';
-import { ListarClientesUseCase } from '../../application/use-cases/listar-clientes.use-case';
+import {
+  ClienteConCorreoResumen,
+  ListarClientesUseCase,
+} from '../../application/use-cases/listar-clientes.use-case';
 import { EditarClienteUseCase } from '../../application/use-cases/editar-cliente.use-case';
 import { DesactivarClienteUseCase } from '../../application/use-cases/desactivar-cliente.use-case';
 import { ReactivarClienteUseCase } from '../../application/use-cases/reactivar-cliente.use-case';
-import { CreateClienteDto, UpdateClienteDto, ClienteResponseDto } from '../dtos/cliente.dto';
+import { ConfigurarCorreoClienteUseCase } from '../../application/use-cases/configurar-correo-cliente.use-case';
+import { QuitarCorreoClienteUseCase } from '../../application/use-cases/quitar-correo-cliente.use-case';
+import { ProbarCorreoClienteUseCase } from '../../application/use-cases/probar-correo-cliente.use-case';
+import { VerCorreoClienteUseCase } from '../../application/use-cases/ver-correo-cliente.use-case';
+import {
+  ClienteCorreoResponseDto,
+  ClienteListItemResponseDto,
+  ConfigurarCorreoClienteDto,
+  CreateClienteDto,
+  UpdateClienteDto,
+  ClienteResponseDto,
+} from '../dtos/cliente.dto';
 import { ClienteEntity } from '../../domain/entities/cliente.entity';
+import { ClienteEmailConfigState } from '../../domain/ports/i-cliente-email-config.repository';
 import {
   AdminEmailYaRegistradoError,
   ClienteNoEncontradoError,
+  CorreoNoConfiguradoError,
+  CorreoPasswordFaltanteError,
+  EmailCryptoKeyAusenteError,
   OnlyRootCanCreateClienteError,
 } from '../../domain/errors/clientes.errors';
 import { JwtAuthGuard } from '../../../auth/infrastructure/guards/jwt-auth.guard';
@@ -64,12 +88,50 @@ function toResponseDto(cliente: ClienteEntity): ClienteResponseDto {
 }
 
 /**
- * Mapea un `DomainError` de `CrearClienteUseCase` a la `HttpException`
- * correspondiente.
+ * Mapea cliente + resumen de correo (ya calculado por `ListarClientesUseCase`)
+ * al item de `GET /clientes` (D7, decisión #2359 — visibilidad del estado
+ * "correo no configurado" en el listado). Espejo campo a campo, igual que
+ * `toCorreoResponseDto` — nunca un spread del resumen crudo.
+ */
+function toListItemResponseDto(item: ClienteConCorreoResumen): ClienteListItemResponseDto {
+  return {
+    ...toResponseDto(item.cliente),
+    correo: { configurado: item.correo.configurado, verificadoAt: item.correo.verificadoAt },
+  };
+}
+
+/**
+ * Mapea el estado de correo (dominio) a su DTO de respuesta (D7). Espejo
+ * campo a campo — existe como función separada para que ningún cambio
+ * futuro en `ClienteEmailConfigState` agregue un campo nuevo (p.ej. la
+ * contraseña) al DTO de forma silenciosa: hay que tocar ambos tipos.
+ */
+function toCorreoResponseDto(state: ClienteEmailConfigState): ClienteCorreoResponseDto {
+  return {
+    configurado: state.configurado,
+    host: state.host,
+    port: state.port,
+    user: state.user,
+    secure: state.secure,
+    from: state.from,
+    verificadoAt: state.verificadoAt,
+    verificacionError: state.verificacionError,
+  };
+}
+
+/**
+ * Mapea un `DomainError` de los use cases de `ClientesController` a la
+ * `HttpException` correspondiente.
  */
 function toHttpException(
   error: DomainError,
-): ForbiddenException | ConflictException | NotFoundException | InternalServerErrorException {
+):
+  | ForbiddenException
+  | ConflictException
+  | NotFoundException
+  | BadRequestException
+  | ServiceUnavailableException
+  | InternalServerErrorException {
   if (error instanceof OnlyRootCanCreateClienteError) {
     return new ForbiddenException(error.message);
   }
@@ -78,6 +140,12 @@ function toHttpException(
   }
   if (error instanceof AdminEmailYaRegistradoError) {
     return new ConflictException(error.message);
+  }
+  if (error instanceof CorreoPasswordFaltanteError || error instanceof CorreoNoConfiguradoError) {
+    return new BadRequestException(error.message);
+  }
+  if (error instanceof EmailCryptoKeyAusenteError) {
+    return new ServiceUnavailableException(error.message);
   }
   // AdministradorRoleNotFoundError (u otro no mapeado explícitamente): falla
   // de configuración/infra, no del caller.
@@ -93,18 +161,25 @@ export class ClientesController {
     private readonly editarClienteUseCase: EditarClienteUseCase,
     private readonly desactivarClienteUseCase: DesactivarClienteUseCase,
     private readonly reactivarClienteUseCase: ReactivarClienteUseCase,
+    private readonly configurarCorreoClienteUseCase: ConfigurarCorreoClienteUseCase,
+    private readonly quitarCorreoClienteUseCase: QuitarCorreoClienteUseCase,
+    private readonly probarCorreoClienteUseCase: ProbarCorreoClienteUseCase,
+    private readonly verCorreoClienteUseCase: VerCorreoClienteUseCase,
   ) {}
 
   /**
    * GET /clientes
-   * Lista TODOS los clientes de la plataforma. Exclusivo ROOT
-   * (`GlobalAdminGuard`, a nivel de controller — G3 parcial, sdd/beta-frontend).
-   * @returns 200 + ClienteResponseDto[]
+   * Lista TODOS los clientes de la plataforma, con un resumen MÍNIMO de
+   * correo por cliente (`configurado` + `verificadoAt`, decisión #2359 —
+   * visibilidad del estado "no configurado" sin abrir cada ficha). Exclusivo
+   * ROOT (`GlobalAdminGuard`, a nivel de controller — G3 parcial,
+   * sdd/beta-frontend).
+   * @returns 200 + ClienteListItemResponseDto[]
    */
   @Get()
-  async listar(): Promise<ClienteResponseDto[]> {
+  async listar(): Promise<ClienteListItemResponseDto[]> {
     const result = await this.listarClientesUseCase.execute();
-    return result.getValue().map(toResponseDto);
+    return result.getValue().map(toListItemResponseDto);
   }
 
   /**
@@ -205,5 +280,100 @@ export class ClientesController {
     }
 
     return toResponseDto(result.getValue());
+  }
+
+  /**
+   * GET /clientes/:id/correo
+   * Detalle de la configuración de correo de UN cliente (D7) — lo que el
+   * diálogo de edición necesita para prellenar host/puerto/usuario/remitente
+   * y mostrar el estado de verificación SIN tener que hacer un PATCH primero.
+   * SOLO LECTURA: `VerCorreoClienteUseCase` nunca toca
+   * `smtp_config_updated_at` (no invalida el caché de transporters de WU5).
+   * La contraseña NUNCA sale en la respuesta. Solo ROOT.
+   * @returns 200 + ClienteCorreoResponseDto
+   * @throws 404 NotFoundException si el cliente no existe
+   */
+  @Get(':id/correo')
+  async verCorreo(@Param('id') id: string): Promise<ClienteCorreoResponseDto> {
+    const result = await this.verCorreoClienteUseCase.execute(id);
+
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+
+    return toCorreoResponseDto(result.getValue());
+  }
+
+  /**
+   * PATCH /clientes/:id/correo
+   * Alta o edición de la configuración SMTP de un cliente (D7). La
+   * contraseña NUNCA sale en la respuesta — ver `toCorreoResponseDto`.
+   * `password` omitido preserva la ya guardada; `password: ""` lo rechaza el
+   * DTO (`@IsNotEmpty()`) antes de llegar acá. Solo ROOT.
+   * @returns 200 + ClienteCorreoResponseDto
+   * @throws 404 NotFoundException si el cliente no existe
+   * @throws 400 BadRequestException si falta la contraseña y no hay nada que preservar
+   * @throws 503 ServiceUnavailableException si falta EMAIL_CRYPTO_KEY (nada se guarda)
+   */
+  @Patch(':id/correo')
+  @HttpCode(HttpStatus.OK)
+  async configurarCorreo(
+    @Param('id') id: string,
+    @Body() dto: ConfigurarCorreoClienteDto,
+  ): Promise<ClienteCorreoResponseDto> {
+    const result = await this.configurarCorreoClienteUseCase.execute({
+      clienteId: id,
+      host: dto.host,
+      port: dto.port,
+      user: dto.user,
+      secure: dto.secure,
+      from: dto.from,
+      password: dto.password,
+    });
+
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+
+    return toCorreoResponseDto(result.getValue());
+  }
+
+  /**
+   * DELETE /clientes/:id/correo
+   * Remoción EXPLÍCITA de la configuración de correo (único camino de
+   * borrado, D7). Limpia las 9 columnas SMTP. Solo ROOT.
+   * @returns 200 + ClienteCorreoResponseDto (configurado=false)
+   * @throws 404 NotFoundException si el cliente no existe
+   */
+  @Delete(':id/correo')
+  @HttpCode(HttpStatus.OK)
+  async quitarCorreo(@Param('id') id: string): Promise<ClienteCorreoResponseDto> {
+    const result = await this.quitarCorreoClienteUseCase.execute(id);
+
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+
+    return toCorreoResponseDto(result.getValue());
+  }
+
+  /**
+   * POST /clientes/:id/correo/probar
+   * Handshake SMTP bajo demanda con la config YA guardada, sin modificarla
+   * (solo persiste el resultado saneado, D6). Solo ROOT.
+   * @returns 200 + ClienteCorreoResponseDto
+   * @throws 404 NotFoundException si el cliente no existe
+   * @throws 400 BadRequestException si el cliente no tiene config guardada
+   */
+  @Post(':id/correo/probar')
+  @HttpCode(HttpStatus.OK)
+  async probarCorreo(@Param('id') id: string): Promise<ClienteCorreoResponseDto> {
+    const result = await this.probarCorreoClienteUseCase.execute(id);
+
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+
+    return toCorreoResponseDto(result.getValue());
   }
 }

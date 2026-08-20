@@ -138,3 +138,51 @@ export class AdminEmailYaRegistradoError extends DomainError {
     super(`El email "${email}" ya está registrado en el sistema.`);
   }
 }
+
+/**
+ * CorreoPasswordFaltanteError — `ConfigurarCorreoClienteUseCase` recibió la
+ * config SMTP sin `password` para un cliente que TODAVÍA no tiene una config
+ * de correo guardada (nada que preservar). Distinto del caso "omitida +
+ * cliente ya configurado", que preserva el ciphertext existente en vez de
+ * fallar (D7, sdd/configuracion-correo-por-cliente).
+ * → HTTP 400 Bad Request en la capa de presentación.
+ */
+export class CorreoPasswordFaltanteError extends DomainError {
+  readonly code = 'CORREO_PASSWORD_FALTANTE';
+
+  constructor() {
+    super('Falta la contraseña: el cliente todavía no tiene una configuración de correo guardada.');
+  }
+}
+
+/**
+ * EmailCryptoKeyAusenteError — `EMAIL_CRYPTO_KEY` falta o es inválida en el
+ * momento de GUARDAR la config de correo (D2). El adaptador de persistencia
+ * cifra ANTES de escribir en la base (ver `PrismaClienteEmailConfigRepository.save`),
+ * así que si esto ocurre no se persistió nada — nunca se guarda un secreto
+ * sin cifrar.
+ * → HTTP 503 Service Unavailable en la capa de presentación.
+ */
+export class EmailCryptoKeyAusenteError extends DomainError {
+  readonly code = 'EMAIL_CRYPTO_KEY_AUSENTE';
+
+  constructor() {
+    super(
+      'No se puede guardar la configuración de correo: falta o es inválida la clave de ' +
+        'cifrado del servidor (EMAIL_CRYPTO_KEY). No se guardó ningún dato.',
+    );
+  }
+}
+
+/**
+ * CorreoNoConfiguradoError — se pidió "Probar conexión" (`ProbarCorreoClienteUseCase`)
+ * para un cliente que no tiene una configuración de correo guardada.
+ * → HTTP 400 Bad Request en la capa de presentación.
+ */
+export class CorreoNoConfiguradoError extends DomainError {
+  readonly code = 'CORREO_NO_CONFIGURADO';
+
+  constructor() {
+    super('El cliente no tiene una configuración de correo guardada para probar.');
+  }
+}

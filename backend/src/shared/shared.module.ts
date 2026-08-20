@@ -13,6 +13,8 @@ import { DOMAIN_EVENT_PUBLISHER } from './domain/ports/i-domain-event-publisher'
 import { EventEmitter2DomainEventPublisher } from './infrastructure/events/event-emitter2-domain-event-publisher';
 import { FILE_STORAGE } from './domain/ports/i-file-storage';
 import { LocalDiskFileStorage } from './infrastructure/storage/local-disk-file-storage';
+import { SECRET_CIPHER } from './domain/ports/i-secret-cipher.port';
+import { AesGcmSecretCipher } from './infrastructure/crypto/aes-gcm-secret-cipher';
 
 /**
  * SharedModule — módulo global de infraestructura transversal.
@@ -30,6 +32,12 @@ import { LocalDiskFileStorage } from './infrastructure/storage/local-disk-file-s
  *   - LOGGER               → ILogger (NestLoggerAdapter) — único punto donde
  *     `application/` toca (vía el puerto) el framework de logging.
  *     Primer consumidor real: `SwitchTenantUseCase` (R10, PR6).
+ *   - SECRET_CIPHER        → ISecretCipher (AesGcmSecretCipher) — cifrado
+ *     simétrico de secretos en reposo (AES-256-GCM). Registrado acá porque el
+ *     adaptador vive en `shared/infrastructure/crypto/` (WU1/WU4,
+ *     sdd/configuracion-correo-por-cliente). Único consumidor: el borde de
+ *     persistencia `PrismaClienteEmailConfigRepository` — ningún use case lo
+ *     inyecta directamente (ver mem #2366).
  *
  * Todos los providers transversales usan tokens Symbol (principio de
  * inversión de dependencias): los consumidores dependen del puerto, no de
@@ -58,6 +66,7 @@ import { LocalDiskFileStorage } from './infrastructure/storage/local-disk-file-s
     TenantContext,
     MasterContext,
     { provide: LOGGER, useClass: NestLoggerAdapter },
+    { provide: SECRET_CIPHER, useClass: AesGcmSecretCipher },
 
     // TENANT_TX_RUNNER: implementación del puerto ITenantTransactionRunner.
     { provide: TENANT_TX_RUNNER, useClass: PrismaTenantTransactionRunner },
@@ -85,6 +94,7 @@ import { LocalDiskFileStorage } from './infrastructure/storage/local-disk-file-s
     TENANT_TX_RUNNER,
     FILE_STORAGE,
     DOMAIN_EVENT_PUBLISHER,
+    SECRET_CIPHER,
   ],
 })
 export class SharedModule {}

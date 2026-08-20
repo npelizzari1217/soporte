@@ -35,6 +35,11 @@ import { PrismaCicloVigenteRepository } from './infrastructure/persistence/prism
 import { PrismaCicloClienteRepository } from './infrastructure/persistence/prisma/prisma-ciclo-cliente.repository';
 import { ICicloVigenteRepository } from './domain/ports/i-ciclo-vigente.repository';
 import { ICicloClienteRepository } from './domain/ports/i-ciclo-cliente.repository';
+import {
+  CLIENTE_EMAIL_CONFIG_REPOSITORY,
+  IClienteEmailConfigRepository,
+} from './domain/ports/i-cliente-email-config.repository';
+import { PrismaClienteEmailConfigRepository } from './infrastructure/persistence/prisma/prisma-cliente-email-config.repository';
 
 // ─── Repositories/Services (auth, cross-feature — exportados por AuthModule) ─
 import { USUARIO_REPOSITORY } from '../auth/domain/ports/i-usuario.repository';
@@ -57,6 +62,14 @@ import { PostgresAdminService } from './infrastructure/postgres-admin.service';
 import { TenantMigrationRunnerAdapter } from './infrastructure/tenant-migration-runner.adapter';
 import { TenantSeederAdapter } from './infrastructure/tenant-seeder.adapter';
 
+// ─── Verificación de conexión SMTP (adelantado de WU5, ver
+// i-email-connection-verifier.port.ts) ────────────────────────────────────
+import {
+  EMAIL_CONNECTION_VERIFIER,
+  IEmailConnectionVerifier,
+} from '../shared/domain/ports/i-email-connection-verifier.port';
+import { SmtpConnectionVerifier } from '../notificaciones/infrastructure/email/smtp-connection-verifier';
+
 // ─── Use Cases (plain classes — instanciadas vía useFactory) ─────────────────
 import { CrearCicloVigenteUseCase } from './application/use-cases/crear-ciclo-vigente.use-case';
 import { ListarCiclosVigentesUseCase } from './application/use-cases/listar-ciclos-vigentes.use-case';
@@ -73,6 +86,10 @@ import { ListarClientesUseCase } from './application/use-cases/listar-clientes.u
 import { EditarClienteUseCase } from './application/use-cases/editar-cliente.use-case';
 import { DesactivarClienteUseCase } from './application/use-cases/desactivar-cliente.use-case';
 import { ReactivarClienteUseCase } from './application/use-cases/reactivar-cliente.use-case';
+import { ConfigurarCorreoClienteUseCase } from './application/use-cases/configurar-correo-cliente.use-case';
+import { QuitarCorreoClienteUseCase } from './application/use-cases/quitar-correo-cliente.use-case';
+import { ProbarCorreoClienteUseCase } from './application/use-cases/probar-correo-cliente.use-case';
+import { VerCorreoClienteUseCase } from './application/use-cases/ver-correo-cliente.use-case';
 
 // ─── Controllers ─────────────────────────────────────────────────────────────
 import { CicloVigenteController } from './interface/controllers/ciclos-vigentes.controller';
@@ -85,6 +102,8 @@ import { ClientesController } from './interface/controllers/clientes.controller'
   providers: [
     { provide: CICLO_VIGENTE_REPOSITORY, useClass: PrismaCicloVigenteRepository },
     { provide: CICLO_CLIENTE_REPOSITORY, useClass: PrismaCicloClienteRepository },
+    { provide: CLIENTE_EMAIL_CONFIG_REPOSITORY, useClass: PrismaClienteEmailConfigRepository },
+    { provide: EMAIL_CONNECTION_VERIFIER, useClass: SmtpConnectionVerifier },
 
     // ─── Provisioning: ports + adapters (PR7) — masterUrl desde env, mismo
     // patrón que PrismaService (SharedModule). ─────────────────────────────
@@ -160,8 +179,9 @@ import { ClientesController } from './interface/controllers/clientes.controller'
     },
     {
       provide: ListarClientesUseCase,
-      useFactory: (repo: IClienteRepository) => new ListarClientesUseCase(repo),
-      inject: [CLIENTE_REPOSITORY],
+      useFactory: (repo: IClienteRepository, emailConfigRepo: IClienteEmailConfigRepository) =>
+        new ListarClientesUseCase(repo, emailConfigRepo),
+      inject: [CLIENTE_REPOSITORY, CLIENTE_EMAIL_CONFIG_REPOSITORY],
     },
     {
       provide: EditarClienteUseCase,
@@ -178,6 +198,40 @@ import { ClientesController } from './interface/controllers/clientes.controller'
       useFactory: (repo: IClienteRepository, migrationRunner: ITenantMigrationRunner) =>
         new ReactivarClienteUseCase(repo, migrationRunner),
       inject: [CLIENTE_REPOSITORY, TENANT_MIGRATION_RUNNER],
+    },
+    {
+      provide: ConfigurarCorreoClienteUseCase,
+      useFactory: (
+        clienteRepo: IClienteRepository,
+        emailConfigRepo: IClienteEmailConfigRepository,
+        connectionVerifier: IEmailConnectionVerifier,
+      ) => new ConfigurarCorreoClienteUseCase(clienteRepo, emailConfigRepo, connectionVerifier),
+      inject: [CLIENTE_REPOSITORY, CLIENTE_EMAIL_CONFIG_REPOSITORY, EMAIL_CONNECTION_VERIFIER],
+    },
+    {
+      provide: QuitarCorreoClienteUseCase,
+      useFactory: (
+        clienteRepo: IClienteRepository,
+        emailConfigRepo: IClienteEmailConfigRepository,
+      ) => new QuitarCorreoClienteUseCase(clienteRepo, emailConfigRepo),
+      inject: [CLIENTE_REPOSITORY, CLIENTE_EMAIL_CONFIG_REPOSITORY],
+    },
+    {
+      provide: ProbarCorreoClienteUseCase,
+      useFactory: (
+        clienteRepo: IClienteRepository,
+        emailConfigRepo: IClienteEmailConfigRepository,
+        connectionVerifier: IEmailConnectionVerifier,
+      ) => new ProbarCorreoClienteUseCase(clienteRepo, emailConfigRepo, connectionVerifier),
+      inject: [CLIENTE_REPOSITORY, CLIENTE_EMAIL_CONFIG_REPOSITORY, EMAIL_CONNECTION_VERIFIER],
+    },
+    {
+      provide: VerCorreoClienteUseCase,
+      useFactory: (
+        clienteRepo: IClienteRepository,
+        emailConfigRepo: IClienteEmailConfigRepository,
+      ) => new VerCorreoClienteUseCase(clienteRepo, emailConfigRepo),
+      inject: [CLIENTE_REPOSITORY, CLIENTE_EMAIL_CONFIG_REPOSITORY],
     },
     {
       provide: CrearClienteUseCase,
