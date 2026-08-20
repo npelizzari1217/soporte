@@ -1,7 +1,7 @@
 import { armarExportCsv } from '../../../shared/application/armar-export-csv';
 import { DomainError, Result } from '../../../shared/domain/result';
 import { TOPE_FILAS_EXPORT } from '../../../shared/domain/tope-filas-export';
-import { ColumnaCsv, fechaCsv, fechaHoraCsv } from '../../../shared/infrastructure/csv/csv';
+import { ColumnaCsv, diaArgentinoCsv, fechaHoraCsv } from '../../../shared/infrastructure/csv/csv';
 import { TicketEntity } from '../../domain/entities/ticket.entity';
 import { ExportacionDemasiadoGrandeError } from '../../domain/errors/tickets.errors';
 import { IEstadoRepository } from '../../domain/ports/i-estado.repository';
@@ -147,14 +147,15 @@ export class ExportarTicketsUseCase {
           return usuario ? `${usuario.nombre} ${usuario.apellido}`.trim() : '';
         },
       },
-      // `createdAt` es `@db.Timestamptz` (un instante real) → `fechaHoraCsv`
-      // desplaza a hora de Argentina. `fechaCierre` es `@db.Date` (un día
-      // calendario, sin componente horario) → `fechaCsv` NO desplaza. Son
-      // formateadores DISTINTOS a propósito (sdd/exportar-listados-csv/spec,
-      // "Closing date and creation date export without a day shift") —
-      // invertirlos es el bug de mayor riesgo de este caso de uso.
+      // `createdAt` y `fechaCierre` son ambas `@db.Timestamptz` (un instante
+      // real; `fechaCierre` lo pasó a ser en sdd/corregir-fecha-cierre-tickets,
+      // que además fijó por decisión de producto que esta columna sigue
+      // mostrando SOLO el día argentino, no fecha+hora). `fechaHoraCsv`
+      // desplaza y muestra fecha+hora; `diaArgentinoCsv` desplaza y trunca al
+      // día. Usar `fechaCsv` acá (que NO desplaza, pensado para columnas
+      // `@db.Date`) reintroduciría el bug de la ventana 21:00-23:59 ART.
       { encabezado: 'Fecha de creación', valor: (t) => fechaHoraCsv(t.createdAt) },
-      { encabezado: 'Fecha de cierre', valor: (t) => fechaCsv(t.fechaCierre) },
+      { encabezado: 'Fecha de cierre', valor: (t) => diaArgentinoCsv(t.fechaCierre) },
     ];
   }
 }

@@ -7,9 +7,10 @@
  *   `ITicketRepository` propio): el test de scope por fila usa la instancia
  *   REAL de `ListarTicketsUseCase` para probar que la restricción de rol
  *   (`soloSolicitante`, T7) se hereda estructuralmente, no por convención.
- * - `fechaCierre` (`@db.Date`) y `createdAt` (`@db.Timestamptz`) usan
- *   formateadores DISTINTOS — `fechaCsv` sin desplazar, `fechaHoraCsv`
- *   desplazando a hora de Argentina — verificados en la MISMA fila.
+ * - `fechaCierre` y `createdAt` son ambas `@db.Timestamptz` (instantes
+ *   reales, sdd/corregir-fecha-cierre-tickets) — `diaArgentinoCsv` desplaza
+ *   a hora de Argentina y trunca al día, `fechaHoraCsv` desplaza y muestra
+ *   además la hora — verificados en la MISMA fila.
  * - El tope de filas corta con un error de dominio, sin truncar en silencio.
  * - Inyección de fórmula CSV en una celda de texto libre (`titulo`).
  */
@@ -156,14 +157,14 @@ describe('ExportarTicketsUseCase', () => {
     );
   });
 
-  it('fecha de cierre (@db.Date) sin desplazar y fecha de creación (@db.Timestamptz) desplazada a Argentina, en la MISMA fila', async () => {
-    // 2026-03-01T00:00:00Z es medianoche UTC del día calendario que Prisma
-    // guarda para una columna @db.Date — desplazarla a Argentina la tiraría
-    // al 28/02. 2026-03-01T01:30:00Z en Argentina (UTC-3) son las 22:30 del
-    // 28/02 — el caso que prueba que SÍ se desplaza cuando corresponde.
+  it('fecha de cierre cercana a medianoche argentina: se desplaza a hora de Argentina ANTES de truncar (regresión sdd/corregir-fecha-cierre-tickets)', async () => {
+    // 2026-08-14T02:30:00Z son las 23:30 ART del 13/08 — leer los
+    // componentes UTC crudos (el bug histórico) mostraría 14/08. La fecha
+    // de creación se prueba en la MISMA fila para confirmar que el
+    // desplazamiento de `fechaHoraCsv` sigue intacto.
     const ticket = crearTicket({
       id: 't1',
-      fechaCierre: new Date('2026-03-01T00:00:00.000Z'),
+      fechaCierre: new Date('2026-08-14T02:30:00.000Z'),
       createdAt: new Date('2026-03-01T01:30:00.000Z'),
     });
     const useCase = new ExportarTicketsUseCase(
@@ -179,7 +180,27 @@ describe('ExportarTicketsUseCase', () => {
     const columnas = fila.split(';');
     // Fecha de creación (índice 5) y Fecha de cierre (índice 6) según el encabezado fijo.
     expect(columnas[5]).toBe('28/02/2026 22:30');
-    expect(columnas[6]).toBe('01/03/2026');
+    expect(columnas[6]).toBe('13/08/2026');
+  });
+
+  it('fecha de cierre al mediodía argentino: el desplazamiento no introduce una regresión inversa', async () => {
+    // 14:00 ART del 13/08 no cruza medianoche en ninguna dirección — sirve
+    // para probar que desplazar no corre el día donde antes no se corría.
+    const ticket = crearTicket({
+      id: 't1',
+      fechaCierre: new Date('2026-08-13T17:00:00.000Z'), // 14:00 ART del 13/08
+    });
+    const useCase = new ExportarTicketsUseCase(
+      crearListarTicketsFake([ticket]),
+      crearEstadoRepo(ESTADOS),
+      crearPrioridadRepo(PRIORIDADES),
+      crearUsuarioMasterChecker(),
+    );
+
+    const result = await useCase.execute({ actorId: 'actor-1', tienePermisoVerTodos: true });
+
+    const [, fila] = lineas(result.getValue().contenido);
+    expect(fila.split(';')[6]).toBe('13/08/2026');
   });
 
   it('ticket abierto (sin fechaCierre): la columna queda VACÍA, nunca una fecha default', async () => {

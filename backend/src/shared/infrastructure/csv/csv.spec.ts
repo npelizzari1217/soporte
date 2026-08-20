@@ -4,6 +4,7 @@ import {
   BOM_UTF8,
   ColumnaCsv,
   SEPARADOR_CSV,
+  diaArgentinoCsv,
   fechaCsv,
   fechaHoraCsv,
   montoCsv,
@@ -121,6 +122,30 @@ describe('fechaHoraCsv', () => {
     // 00:30 UTC del 20 son las 21:30 del 19 en Argentina. Formatear en UTC
     // mostraría el 20 y adelantaría el registro un día.
     expect(fechaHoraCsv(new Date('2026-08-20T00:30:00.000Z'))).toBe('19/08/2026 21:30');
+  });
+});
+
+describe('diaArgentinoCsv', () => {
+  // sdd/corregir-fecha-cierre-tickets D3: `fechaCierre` pasó a ser un
+  // instante real (`@db.Timestamptz`). Este helper desplaza a hora de
+  // Argentina ANTES de truncar al día — a diferencia de `fechaCsv`, que lee
+  // componentes UTC crudos y solo es correcto para columnas `@db.Date`.
+  it.each([
+    { entrada: '2026-08-14T02:59:59.000Z', esperado: '13/08/2026' },
+    { entrada: '2026-08-14T03:00:00.000Z', esperado: '14/08/2026' },
+  ])(
+    'desplaza el instante a Argentina antes de truncar: $entrada → $esperado',
+    ({ entrada, esperado }) => {
+      expect(diaArgentinoCsv(new Date(entrada))).toBe(esperado);
+    },
+  );
+
+  it('proyecta null como celda vacía', () => {
+    expect(diaArgentinoCsv(null)).toBe('');
+  });
+
+  it('proyecta undefined como celda vacía', () => {
+    expect(diaArgentinoCsv(undefined)).toBe('');
   });
 });
 
