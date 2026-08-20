@@ -17,7 +17,7 @@ export interface EmailMessage {
  * IEmailSender — puerto de envío de email (N1, ADR-P7).
  *
  * Fire-and-forget desde la perspectiva del caller: las implementaciones
- * concretas (`SmtpEmailSender`, `NoOpEmailSender`) NUNCA deben lanzar — un
+ * concretas (`TenantAwareEmailSender`, `SmtpEmailSender`) NUNCA deben lanzar — un
  * fallo de transporte se atrapa y loguea (enmascarado, N5) dentro del propio
  * adapter. `send()` retorna `Promise<void>` únicamente para permitir awaitear
  * la finalización del intento, no para propagar errores al caller.
