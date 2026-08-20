@@ -200,6 +200,15 @@ export interface TicketResponseDto {
   slaVenceAt: string | null;
   /** Desnormalizado, recalculado por el módulo SLA (sdd/beta-frontend item 2). */
   vencido: boolean;
+  /**
+   * Instante (no día) en que el ticket transicionó a un estado de cierre;
+   * `null` si está abierto o fue reabierto. Viaja como ISO-8601 completo
+   * (`.toISOString()`) — la columna es `@db.Timestamptz`, no `@db.Date`.
+   * Quien necesite mostrar el DÍA debe derivarlo con el offset argentino
+   * (ver `diaArgentinoCsv` en `shared/infrastructure/csv/csv.ts`); NUNCA
+   * `slice(0, 10)` sobre este ISO, que da el día UTC y reintroduce el bug
+   * de la ventana 21:00–23:59 ART (corregir-fecha-cierre-tickets).
+   */
   fechaCierre: string | null;
   createdAt: string;
   updatedAt: string;

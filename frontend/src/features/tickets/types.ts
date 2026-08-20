@@ -33,6 +33,15 @@ export interface Ticket {
   /** Calculado por el módulo SLA (Fase 4). `null` = sin SLA aplicable/calculado aún. */
   slaVenceAt: string | null;
   vencido: boolean;
+  /**
+   * Instante (no día) en que el ticket cerró — espejo de
+   * `TicketResponseDto.fechaCierre` del backend, que ahora es
+   * `@db.Timestamptz`, no `@db.Date`. `null` si está abierto o fue
+   * reabierto. Ningún componente lo renderiza hoy (verificado); si algún
+   * día se muestra el DÍA, hay que desplazar al horario argentino antes de
+   * truncar — NUNCA `slice(0, 10)` sobre este ISO, que da el día UTC
+   * (corregir-fecha-cierre-tickets).
+   */
   fechaCierre: string | null;
   createdAt: string;
   updatedAt: string;

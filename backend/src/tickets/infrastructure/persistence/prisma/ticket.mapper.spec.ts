@@ -58,17 +58,21 @@ describe('TicketMapper', () => {
     });
 
     it('mapea ticketReferenciaId, asignadoId y fechaCierre cuando no son null', () => {
+      // `fechaCierre` es un instante real (@db.Timestamptz, no @db.Date) —
+      // se usa una hora que NO es medianoche para probar que el mapper hace
+      // pass-through del instante completo y no trunca al día
+      // (corregir-fecha-cierre-tickets).
       const row = makeFakeRow({
         ticketReferenciaId: 'ticket-anterior-id',
         asignadoId: 'usuario-asignado-id',
-        fechaCierre: new Date('2026-02-01T00:00:00.000Z'),
+        fechaCierre: new Date('2026-02-01T23:30:00.000Z'),
         vencido: true,
       });
       const entity = TicketMapper.toDomain(row);
 
       expect(entity.ticketReferenciaId).toBe('ticket-anterior-id');
       expect(entity.asignadoId).toBe('usuario-asignado-id');
-      expect(entity.fechaCierre?.toISOString()).toBe('2026-02-01T00:00:00.000Z');
+      expect(entity.fechaCierre?.toISOString()).toBe('2026-02-01T23:30:00.000Z');
       expect(entity.vencido).toBe(true);
     });
   });
