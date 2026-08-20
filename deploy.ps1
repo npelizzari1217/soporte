@@ -12,6 +12,19 @@ $Branch     = 'main'
 
 function Step($msg) { Write-Host ("========== " + $msg + " ==========") -ForegroundColor Cyan }
 
+# Chequeo obligatorio despues de CADA comando nativo (git, corepack, node).
+#
+# $ErrorActionPreference = 'Stop' NO detiene ante el exit code de un nativo:
+# solo atrapa errores de PowerShell. Sin esto, un paso puede fallar y el deploy
+# sigue de largo hasta 'DEPLOY OK' con el sistema a medias - un build fallido
+# deja el dist viejo, un migrate fallido arranca codigo nuevo contra el schema
+# viejo. Paso tres veces el 2026-08-20 (git pull, ts-node, backfill).
+function AssertOk($que) {
+  if ($LASTEXITCODE -ne 0) {
+    throw ($que + " fallo (exit " + $LASTEXITCODE + "). El deploy se detiene: continuar dejaria el sistema a medias.")
+  }
+}
+
 Set-Location $RepoRoot
 
 # 1. Pre-flight: rama main + commit de rollback
@@ -40,8 +53,18 @@ $selfPath   = $PSCommandPath
 $selfBefore = (Get-FileHash $selfPath -Algorithm SHA256).Hash
 
 # 3. Pull ff-only
+#
+# EL CHEQUEO DE $LASTEXITCODE NO ES OPCIONAL. $ErrorActionPreference = 'Stop'
+# NO detiene ante el exit code de un comando NATIVO, y git lo es. Sin esto, un
+# pull fallido deja el deploy corriendo TODO el pipeline sobre el codigo VIEJO
+# y terminando en DEPLOY OK. Paso el 2026-08-20: un archivo sin versionar en el
+# VPS (rotate-admin-pw.ps1) bloqueo el merge con "untracked working tree files
+# would be overwritten", el pull fallo, y el deploy reporto exito igual.
 Step 'git pull --ff-only origin main'
 git pull --ff-only origin $Branch
+if ($LASTEXITCODE -ne 0) {
+  throw "git pull --ff-only fallo (exit $LASTEXITCODE). El deploy NO puede continuar: correria sobre el codigo viejo. Causa tipica: un archivo sin versionar en el VPS que el pull pisaria - moverlo o borrarlo y re-correr."
+}
 $newCommit = (git rev-parse --short HEAD).Trim()
 Write-Host ("Commit nuevo: " + $newCommit)
 
@@ -104,14 +127,18 @@ if ($env:EMAIL_CRYPTO_KEY) {
 Set-Location $BackendDir
 Step 'Backend: prisma generate'
 corepack pnpm run generate:master
+AssertOk 'generate:master'
 corepack pnpm run generate:tenant
+AssertOk 'generate:tenant'
 Step 'Backend: build'
 corepack pnpm run build
+AssertOk 'build del backend'
 
 # 7. Frontend: build (OJO: BACKEND_URL se hornea aca; debe valer .../api al buildear)
 Set-Location $FrontDir
 Step 'Frontend: build'
 corepack pnpm run build
+AssertOk 'build del frontend'
 
 # 8. Migraciones + restart, en UNA sola ventana con los servicios DETENIDOS.
 #
@@ -131,8 +158,10 @@ foreach ($s in $Services) { Stop-Service $s -Force }
 Set-Location $BackendDir
 Step 'Backend: migrate master'
 corepack pnpm run migrate:master
+AssertOk 'migrate:master'
 Step 'Backend: migrate fan-out a tenants'
 corepack pnpm run migrate:tenants
+AssertOk 'migrate:tenants'
 
 # 8b. Backfill de la config de correo - SOLO la primera vez.
 #
