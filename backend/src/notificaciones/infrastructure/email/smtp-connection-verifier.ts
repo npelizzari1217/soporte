@@ -10,8 +10,9 @@
  * Sanitización por ALLOWLIST cerrado, nunca un scrub del `error.message`
  * crudo: los servidores SMTP suelen devolver el usuario dentro de la propia
  * respuesta 535 de autenticación — un regex de scrub eventualmente se
- * olvida de un caso. Un código no mapeado loguea el mensaje crudo del lado
- * servidor (no llega al caller) y devuelve el motivo genérico.
+ * olvida de un caso. Un código no mapeado NO se loguea (esta clase no tiene
+ * logger): se descarta y se devuelve el motivo genérico al caller, que es
+ * quien persiste y muestra el motivo saneado.
  *
  * Ref design: sdd/configuracion-correo-por-cliente D6.
  */

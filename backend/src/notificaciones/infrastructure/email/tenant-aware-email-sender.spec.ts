@@ -112,6 +112,24 @@ describe('TenantAwareEmailSender', () => {
     expect(fakeSend).toHaveBeenCalledWith(MENSAJE);
   });
 
+  it('[CRITICAL] cliente con config completa: ninguna línea logueada contiene la contraseña en texto plano', async () => {
+    // Regresión del spec "Password absent from logs" (#2362): probar que las
+    // razones de degradación SON distinguibles (arriba) no prueba que la
+    // contraseña NO esté en algún log — son afirmaciones distintas. Este
+    // test captura TODO lo que pasó por `logger.log` durante un envío feliz
+    // y muerde si algún día alguien mete la contraseña en una línea de log
+    // (p.ej. un log de diagnóstico agregado al happy path).
+    const { sender, emailConfigRepo, logger, createSender } = makeHarness('cliente-uuid');
+    const PASSWORD = 'contraseña-super-secreta-M4gic!';
+    emailConfigRepo.findForSend.mockResolvedValue(makeConfig({ password: PASSWORD }));
+
+    await sender.send(MENSAJE);
+
+    expect(createSender).toHaveBeenCalledTimes(1); // confirma que se ejecutó el happy path
+    const lineasLogueadas = logger.log.mock.calls.flat().map((arg) => String(arg));
+    expect(lineasLogueadas.some((linea) => linea.includes(PASSWORD))).toBe(false);
+  });
+
   it('dos clientes distintos nunca comparten transporter cacheado', async () => {
     const { emailConfigRepo, createSender } = makeHarness();
     const tenantContext = {
