@@ -27,7 +27,30 @@ export class ClienteMapper {
     );
   }
 
-  static toPersistence(entity: ClienteEntity): Omit<PrismaCliente, 'createdAt' | 'updatedAt'> {
+  /**
+   * `Omit` ensancha además las 9 columnas SMTP (sdd/configuracion-correo-por-cliente,
+   * WU2): `PrismaClienteRepository.save()` hace `update: updateData` con lo
+   * que este método devuelve, así que omitirlas es lo que hace
+   * estructuralmente imposible que una edición comercial (nombre, cuit, etc.)
+   * borre la config de correo sin querer. La lectura/escritura de esas
+   * columnas va por `IClienteEmailConfigRepository` (WU3), no por acá.
+   */
+  static toPersistence(
+    entity: ClienteEntity,
+  ): Omit<
+    PrismaCliente,
+    | 'createdAt'
+    | 'updatedAt'
+    | 'smtpHost'
+    | 'smtpPort'
+    | 'smtpUser'
+    | 'smtpSecure'
+    | 'smtpFrom'
+    | 'smtpPasswordCifrada'
+    | 'smtpConfigUpdatedAt'
+    | 'smtpVerificadoAt'
+    | 'smtpVerificacionError'
+  > {
     return {
       id: entity.id,
       nombre: entity.nombre,
