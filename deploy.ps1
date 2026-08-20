@@ -53,6 +53,27 @@ Get-Content $envFile | ForEach-Object {
 }
 if (-not $env:DATABASE_URL_MASTER) { throw "backend/.env sin DATABASE_URL_MASTER" }
 
+# 5b. EMAIL_CRYPTO_KEY: cifra en reposo la contrasena SMTP de cada cliente.
+#
+# SE GENERA UNA SOLA VEZ. Si ya existe NO se toca, y eso NO es una
+# optimizacion: regenerarla convierte TODA credencial guardada en basura
+# indescifrable. No es como JWT_SECRET, donde rotar solo invalida sesiones.
+# Una rotacion real exige una migracion de re-cifrado (por eso el payload
+# lleva el prefijo de version v1:).
+#
+# Se genera en el server y NUNCA se imprime; se reporta solo la longitud.
+Step 'EMAIL_CRYPTO_KEY'
+if ($env:EMAIL_CRYPTO_KEY) {
+  Write-Host ("EMAIL_CRYPTO_KEY ya presente (len=" + $env:EMAIL_CRYPTO_KEY.Length + ") - no se toca")
+} else {
+  $cryptoKey = & 'C:\nodejs22\node.exe' -e "process.stdout.write(require('crypto').randomBytes(32).toString('hex'))"
+  if (-not $cryptoKey -or $cryptoKey.Length -ne 64) { throw "generacion de EMAIL_CRYPTO_KEY fallo" }
+  Add-Content -Path $envFile -Value ("EMAIL_CRYPTO_KEY=" + $cryptoKey) -Encoding ascii
+  [System.Environment]::SetEnvironmentVariable('EMAIL_CRYPTO_KEY', $cryptoKey, 'Process')
+  Write-Host ("EMAIL_CRYPTO_KEY generada y agregada a backend/.env (len=" + $cryptoKey.Length + ")")
+  Write-Host "IMPORTANTE: respaldala junto con la base. Sin ella, las contrasenas SMTP guardadas no se pueden descifrar." -ForegroundColor Yellow
+}
+
 # 6. Backend: generate + build (ANTES de migrar, ver nota de orden abajo)
 Set-Location $BackendDir
 Step 'Backend: prisma generate'
@@ -86,6 +107,34 @@ Step 'Backend: migrate master'
 corepack pnpm run migrate:master
 Step 'Backend: migrate fan-out a tenants'
 corepack pnpm run migrate:tenants
+
+# 8b. Backfill de la config de correo - SOLO la primera vez.
+#
+# El backfill siembra en cada cliente la config SMTP global, cifrada, para que
+# los clientes que YA existian no pierdan notificaciones al pasar el envio a
+# per-tenant. Corre ANTES de arrancar los servicios: si el codigo nuevo
+# levantara primero, habria una ventana con los clientes sin config.
+#
+# LA GUARDA IMPORTA: corre solo si NINGUN cliente tiene config todavia. Si
+# corriera en cada deploy, cada cliente NUEVO que no configuro su correo
+# quedaria auto-sembrado con el SMTP global - que es exactamente el respaldo
+# silencioso que se descarto por decision de producto (los mails saldrian de
+# una direccion generica sin que el cliente lo sepa).
+#
+# El script ademas es idempotente por su cuenta (WHERE smtp_password_cifrada
+# IS NULL) y nunca pisa una config cargada a mano por ROOT. Esta guarda es la
+# segunda linea, no la unica.
+Set-Location $BackendDir
+Step 'Backfill de config de correo (solo la primera vez)'
+$yaHayConfig = & 'C:\nodejs22\node.exe' -e "const{Client}=require('pg');const c=new Client({connectionString:process.env.DATABASE_URL_MASTER.replace(/\?.*$/,'')});c.connect().then(()=>c.query('SELECT COUNT(*)::int AS n FROM clientes WHERE smtp_password_cifrada IS NOT NULL')).then(r=>{process.stdout.write(String(r.rows[0].n));return c.end()}).catch(e=>{console.error(e.message);process.exit(1)})"
+if ($LASTEXITCODE -ne 0) { throw "no se pudo consultar el estado de la config de correo" }
+if ([int]$yaHayConfig -gt 0) {
+  Write-Host ("Ya hay " + $yaHayConfig + " cliente(s) con correo configurado - backfill OMITIDO (correcto: no debe auto-sembrar clientes nuevos)")
+} else {
+  Write-Host 'Ningun cliente tiene correo configurado todavia - corriendo el backfill'
+  & 'C:\nodejs22\node.exe' scripts/backfill-correo-clientes.mjs
+  if ($LASTEXITCODE -ne 0) { throw "el backfill de config de correo fallo" }
+}
 
 Set-Location $RepoRoot
 Step 'Arrancar servicios'
