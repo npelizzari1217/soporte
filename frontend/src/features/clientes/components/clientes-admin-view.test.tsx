@@ -13,6 +13,7 @@ const CLIENTE_UNO = {
   cuit: null,
   dbName: "tenant_c1",
   activo: true,
+  correo: { configurado: false, verificadoAt: null },
 };
 
 const CLIENTE_INACTIVO = {
@@ -22,6 +23,7 @@ const CLIENTE_INACTIVO = {
   cuit: null,
   dbName: "tenant_c9",
   activo: false,
+  correo: { configurado: false, verificadoAt: null },
 };
 
 function mockBackend(clientes: unknown[] = [CLIENTE_UNO]) {
@@ -115,6 +117,63 @@ describe("ClientesAdminView", () => {
     await user.click(within(dialog).getByRole("button", { name: /desactivar/i }));
 
     await waitFor(() => expect(called).toBe(true));
+  });
+
+  it("el listado muestra el estado de correo por cliente (D7, decisión #2359)", async () => {
+    mockBackend([
+      CLIENTE_UNO,
+      { ...CLIENTE_INACTIVO, correo: { configurado: true, verificadoAt: "2026-01-01T00:00:00.000Z" } },
+    ]);
+
+    renderWithProviders(<ClientesAdminView />, { user: buildUser({ is_global_admin: true }) });
+    await screen.findByText("Cliente Uno");
+
+    expect(screen.getByText("Correo no configurado")).toBeInTheDocument();
+    expect(screen.getByText("Correo configurado")).toBeInTheDocument();
+  });
+
+  it("guardar correo con la contraseña vacía en un cliente YA configurado NO manda password (PATCH /clientes/:id/correo)", async () => {
+    const user = userEvent.setup();
+    let capturedBody: Record<string, unknown> = {};
+    server.use(
+      http.get("/api/clientes/:id/correo", () =>
+        HttpResponse.json({
+          configurado: true,
+          host: "smtp.cliente-uno.com",
+          port: 587,
+          user: "user@cliente-uno.com",
+          secure: true,
+          from: "no-reply@cliente-uno.com",
+          verificadoAt: "2026-01-01T00:00:00.000Z",
+          verificacionError: null,
+        }),
+      ),
+      http.patch("/api/clientes/:id/correo", async ({ request }) => {
+        capturedBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({
+          configurado: true,
+          host: "smtp.cliente-uno.com",
+          port: 587,
+          user: "user@cliente-uno.com",
+          secure: true,
+          from: "no-reply@cliente-uno.com",
+          verificadoAt: "2026-01-01T00:00:00.000Z",
+          verificacionError: null,
+        });
+      }),
+    );
+
+    renderWithProviders(<ClientesAdminView />, { user: buildUser({ is_global_admin: true }) });
+    await screen.findByText("Cliente Uno");
+
+    await user.click(screen.getByRole("button", { name: /correo de cliente uno/i }));
+    // Espera a que `GET /clientes/:id/correo` prellene el form antes de guardar.
+    await screen.findByDisplayValue("smtp.cliente-uno.com");
+
+    await user.click(screen.getByRole("button", { name: /^guardar$/i }));
+
+    await waitFor(() => expect(capturedBody.host).toBe("smtp.cliente-uno.com"));
+    expect(capturedBody).not.toHaveProperty("password");
   });
 
   it("activar cliente inactivo hace PATCH /clientes/:id/activar (directo, sin confirm)", async () => {

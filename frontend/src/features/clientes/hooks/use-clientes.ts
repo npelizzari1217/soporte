@@ -8,13 +8,29 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/shared/api/client";
-import type { Cliente } from "../types";
+import type { ClienteCorreo, ClienteListItem } from "../types";
 
 export function useClientes(enabled = true) {
   return useQuery({
     queryKey: ["clientes"],
-    queryFn: () => apiFetch<Cliente[]>("clientes"),
+    queryFn: () => apiFetch<ClienteListItem[]>("clientes"),
     staleTime: 60_000,
+    enabled,
+  });
+}
+
+/**
+ * `GET /clientes/:id/correo` — detalle de correo de UN cliente (D7): lo que
+ * `ConfigurarCorreoDialog` necesita para prellenar host/puerto/usuario/
+ * remitente y mostrar el estado de verificación. Se pide SOLO cuando el
+ * diálogo está abierto (`enabled`) — no hay motivo para traer el detalle de
+ * correo de cada fila del listado (para eso ya está el resumen embebido en
+ * `GET /clientes`).
+ */
+export function useClienteCorreo(clienteId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["cliente-correo", clienteId],
+    queryFn: () => apiFetch<ClienteCorreo>(`clientes/${clienteId}/correo`),
     enabled,
   });
 }

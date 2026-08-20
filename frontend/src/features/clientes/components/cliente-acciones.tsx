@@ -7,11 +7,15 @@
  * Desactivar va detrás de `ConfirmDialog` (baja lógica con efecto no trivial
  * de comunicar: el tenant queda inactivo, aunque su DB NO se elimina y es
  * reversible). Activar es directo (revierte la baja, sin cascada).
+ *
+ * Correo (D7, sdd/configuracion-correo-por-cliente): diálogo SEPARADO de
+ * Editar — el backend separa `/correo` en rutas propias a propósito.
  */
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { VerClienteDialog } from "./ver-cliente-dialog";
 import { EditarClienteDialog } from "./editar-cliente-dialog";
+import { ConfigurarCorreoDialog } from "./configurar-correo-dialog";
 import { useActivarCliente, useDesactivarCliente } from "../hooks/use-clientes-mutations";
 import type { Cliente } from "../types";
 
@@ -27,6 +31,7 @@ export function ClienteAcciones({ cliente }: ClienteAccionesProps) {
     <div className="flex items-center gap-2">
       <VerClienteDialog cliente={cliente} />
       <EditarClienteDialog cliente={cliente} />
+      <ConfigurarCorreoDialog cliente={cliente} />
       {cliente.activo ? (
         <ConfirmDialog
           trigger={
