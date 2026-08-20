@@ -5,10 +5,14 @@
  * Y `TICKETS:TRANSICIONAR` (ambos, como el endpoint PATCH
  * /tickets/:id/asignar-en-proceso, que exige los dos permisos).
  *
- * Control UNIFICADO del arranque del ticket: un combo con SOLO los técnicos
+ * Control UNIFICADO del arranque del ticket: un combo con los responsables
  * elegibles (ya filtrados por el backend según el módulo del tipo) + un único
- * botón "Asignar y poner en proceso" que asigna al técnico elegido Y avanza el
- * ticket hasta EN_PROCESO en una sola acción.
+ * botón "Asignar y poner en proceso" que asigna al elegido Y avanza el ticket
+ * hasta EN_PROCESO en una sola acción.
+ *
+ * El copy dice "responsable" y no "técnico" a propósito: el universo elegible
+ * incluye TECNICO y COLABORADOR (los colaboradores también cumplen funciones
+ * de técnico). Decir "técnico" mentiría en cuanto aparezca un colaborador.
  *
  * Reemplaza el par separado "asignar" + "transicionar a ASIGNADO/EN_PROCESO":
  * el detalle solo lo monta cuando el ticket está en un estado desde el que se
@@ -40,12 +44,12 @@ export function TicketAsignarEnProcesoControl({
   return (
     <div className="flex items-center gap-2">
       <Select
-        aria-label="Asignar técnico"
+        aria-label="Asignar responsable"
         value={seleccionado}
         onChange={(e) => setSeleccionado(e.target.value)}
         disabled={isSubmitting}
       >
-        <option value="">Elegí un técnico</option>
+        <option value="">Elegí un responsable</option>
         {tecnicos.map((tecnico) => (
           <option key={tecnico.id} value={tecnico.id}>
             {tecnico.nombre} {tecnico.apellido}

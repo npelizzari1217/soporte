@@ -91,11 +91,13 @@ export interface IUsuarioMasterChecker {
   ): Promise<{ esAdminTotal: boolean; modulos: string[] }>;
 
   /**
-   * Lista los TÉCNICOS elegibles para atender un ticket de un módulo dado, en
-   * un cliente. Un técnico es elegible si cumple TODAS estas condiciones:
+   * Lista los AGENTES (rol `TECNICO` o `COLABORADOR` — ambos cumplen
+   * funciones de técnico, decisión de negocio 2026-08-20) elegibles para
+   * atender un ticket de un módulo dado, en un cliente. Un agente es elegible
+   * si cumple TODAS estas condiciones:
    * - usuario `activo=true` y no soft-deleted en `master.usuarios`;
    * - tiene una membresía ACTIVA (`activo=true`, `deletedAt IS NULL`) con rol
-   *   `codigo='TECNICO'` en el cliente indicado;
+   *   `codigo` `TECNICO` o `COLABORADOR` en el cliente indicado;
    * - tiene AL MENOS UNA acción otorgada en el `modulo` pedido, en la matriz
    *   `usuario_cliente_permisos` (usuarioId + clienteId + modulo, R9,
    *   sdd/matriz-permisos-por-usuario — migrado de `usuario_cliente_modulos`).
@@ -103,15 +105,20 @@ export interface IUsuarioMasterChecker {
    * Alimenta el combo del control unificado "Asignar y poner en proceso": a
    * diferencia de `getAutorizacionModulos` (que resuelve la elegibilidad de UN
    * asignado concreto y bypassa a ROOT/ADMINISTRADOR), este método devuelve
-   * exclusivamente el universo de TÉCNICOS por módulo — el criterio de armado
-   * de la lista, no el de validación de una asignación puntual.
+   * exclusivamente el universo de TÉCNICOS/COLABORADORES por módulo — el
+   * criterio de armado de la lista, no el de validación de una asignación
+   * puntual. Nombres de símbolos (`TecnicoAsignable`, `listarTecnicosAsignables`)
+   * se mantienen sin renombrar: el alcance de un rename cruza back+front (5+
+   * archivos, incluida una key de wire/hook), desproporcionado para una
+   * ampliación de filtro; este JSDoc es la fuente de verdad del universo real.
    *
    * @param clienteId UUID del cliente activo (TenantContext.clienteId).
    * @param modulo Código del módulo del tipo del ticket (ver `modulos.ts`), o
    *               `null` si el ticket es de un tipo custom sin módulo. Con
-   *               `null` NO hay técnicos elegibles por catálogo → `[]`.
-   * @returns Lista de técnicos `{ id, nombre, apellido }` (vacía si `modulo`
-   *          es `null` o no hay técnicos con ese módulo en el cliente).
+   *               `null` NO hay agentes elegibles por catálogo → `[]`.
+   * @returns Lista de agentes `{ id, nombre, apellido }` (vacía si `modulo`
+   *          es `null` o no hay técnicos/colaboradores con ese módulo en el
+   *          cliente).
    */
   listarTecnicosAsignables(
     clienteId: string,

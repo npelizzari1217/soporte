@@ -34,7 +34,7 @@ describe("TicketAsignarEnProcesoControl", () => {
       { user: buildUser({ permisos: ["TICKETS:ASIGNAR", "TICKETS:TRANSICIONAR"] }) },
     );
     const options = screen.getAllByRole("option").map((o) => o.textContent);
-    expect(options).toEqual(["Elegí un técnico", "Ana García", "Beto López"]);
+    expect(options).toEqual(["Elegí un responsable", "Ana García", "Beto López"]);
   });
 
   it("elegir un técnico y confirmar → llama onAsignar con el asignadoId elegido", async () => {
@@ -45,7 +45,7 @@ describe("TicketAsignarEnProcesoControl", () => {
       { user: buildUser({ permisos: ["TICKETS:ASIGNAR", "TICKETS:TRANSICIONAR"] }) },
     );
 
-    await user.selectOptions(screen.getByRole("combobox", { name: /asignar técnico/i }), "tec-2");
+    await user.selectOptions(screen.getByRole("combobox", { name: /asignar responsable/i }), "tec-2");
     await user.click(screen.getByRole("button", { name: /asignar y poner en proceso/i }));
 
     expect(onAsignar).toHaveBeenCalledWith("tec-2");

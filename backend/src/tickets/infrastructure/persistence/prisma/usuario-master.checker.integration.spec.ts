@@ -352,9 +352,9 @@ describe('UsuarioMasterChecker — integration (T14, T15)', () => {
       expect(result).toEqual([]);
     });
 
-    it('usuario con el módulo pero SIN rol TECNICO en ese cliente → excluido', async () => {
+    it('usuario con el módulo pero con rol USUARIO (ni TECNICO ni COLABORADOR) en ese cliente → excluido', async () => {
       const cliente = await createCliente('tecnicos-asignables-no-tecnico');
-      const roleNoTecnico = await createRole('COLABORADOR');
+      const roleNoAsignable = await createRole('USUARIO');
       const usuario = await masterClient.usuario.create({
         data: {
           email: 'no_tecnico@integration.test',
@@ -364,12 +364,32 @@ describe('UsuarioMasterChecker — integration (T14, T15)', () => {
           activo: true,
         },
       });
-      await createMembresia(usuario.id, cliente.id, roleNoTecnico.id);
+      await createMembresia(usuario.id, cliente.id, roleNoAsignable.id);
       await createPermiso(usuario.id, cliente.id, 'EQUIPOS', 'LECTURA');
 
       const result = await checker.listarTecnicosAsignables(cliente.id, 'EQUIPOS');
 
       expect(result).toEqual([]);
+    });
+
+    it('COLABORADOR con el módulo y membresía activa → incluido (los colaboradores cumplen funciones de técnico)', async () => {
+      const cliente = await createCliente('tecnicos-asignables-colaborador');
+      const roleColaborador = await createRole('COLABORADOR');
+      const colaborador = await masterClient.usuario.create({
+        data: {
+          email: 'colaborador_asignable@integration.test',
+          nombre: 'Cole',
+          apellido: 'Aborador',
+          passwordHash: 'hash-fake',
+          activo: true,
+        },
+      });
+      await createMembresia(colaborador.id, cliente.id, roleColaborador.id);
+      await createPermiso(colaborador.id, cliente.id, 'EQUIPOS', 'LECTURA');
+
+      const result = await checker.listarTecnicosAsignables(cliente.id, 'EQUIPOS');
+
+      expect(result.map((r) => r.id)).toEqual([colaborador.id]);
     });
   });
 
