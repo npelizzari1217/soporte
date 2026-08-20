@@ -192,6 +192,51 @@ describe('TransicionarEstadoUseCase', () => {
     expect(ticket.fechaCierre).not.toBeNull();
   });
 
+  it('regresión (sdd/corregir-fecha-cierre-tickets D1/D2): fecha_cierre persiste el INSTANTE exacto, no un día truncado', async () => {
+    // `fecha_cierre` pasó de `@db.Date` a `@db.Timestamptz` — el defecto vivía
+    // en el schema de la DB, no en este use case (`new Date()` ya escribía el
+    // instante correcto). Esta cobertura protege ese hecho: si alguna vez se
+    // reintrodujera un truncamiento acá (p.ej. `hoyArgentina()`), este test
+    // debe fallar.
+    vi.setSystemTime(new Date('2026-08-14T02:30:00.000Z')); // 23:30 ART del 13/08
+    try {
+      const c = makeCollaborators();
+      const ticketEnProceso = TicketEntity.create(
+        {
+          numero: 'SOP-2026-00005',
+          titulo: 'Ticket en proceso',
+          descripcion: null,
+          tipoId: 'tipo-soporte-uuid',
+          estadoId: 'estado-en-proceso-uuid',
+          prioridadId: 'prioridad-media-uuid',
+          cicloId: 'ciclo-uuid',
+          ticketReferenciaId: null,
+          solicitanteId: 'solicitante-uuid',
+        },
+        'ticket-uuid',
+      );
+      c.ticketRepo.findById.mockResolvedValue(ticketEnProceso);
+      c.estadoRepo.findById.mockImplementation((id: string) => {
+        if (id === 'estado-en-proceso-uuid') {
+          return Promise.resolve(
+            EstadoEntity.create(
+              { codigo: 'EN_PROCESO', nombre: 'En proceso', color: null, orden: 3, activo: true },
+              'estado-en-proceso-uuid',
+            ),
+          );
+        }
+        return Promise.resolve(Object.values(ESTADOS).find((e) => e.id === id) ?? null);
+      });
+
+      const result = await c.useCase.execute(baseDto({ nuevoEstadoCodigo: 'RESUELTO' }));
+
+      expect(result.isOk()).toBe(true);
+      expect(result.getValue().fechaCierre?.toISOString()).toBe('2026-08-14T02:30:00.000Z');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('T13: transición a RESUELTO (notificable) emite TicketEstadoCambiadoEvent POST-COMMIT', async () => {
     const c = makeCollaborators();
     const ticketEnProceso = TicketEntity.create(

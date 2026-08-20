@@ -157,6 +157,13 @@ export class TransicionarEstadoUseCase {
       // (RESUELTO/CERRADO). Al alcanzar un estado que cierra la seteamos; al
       // salir de él (salto correctivo que reabre un ticket terminal) la
       // limpiamos — de lo contrario quedaría pegada la fecha del cierre viejo.
+      //
+      // `new Date()` es el INSTANTE real de cierre — correcto tal cual está.
+      // `fecha_cierre` es `timestamptz` (sdd/corregir-fecha-cierre-tickets,
+      // D1/D2): ya no se trunca a un `date` en la escritura, así que este
+      // punto no necesita `hoyArgentina()` ni ningún otro ajuste de zona
+      // horaria. El día argentino se deriva recién en presentación (CSV,
+      // dashboard), nunca acá.
       if (ESTADOS_QUE_CIERRAN.has(estadoDestino.codigo)) {
         ticket.setFechaCierre(new Date());
       } else {
