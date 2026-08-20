@@ -18,7 +18,7 @@ import { AdminNav } from "@/components/shell/admin-nav";
 import { notifyError } from "@/shared/lib/toast";
 import { CrearClienteDialog } from "./crear-cliente-dialog";
 import { ClienteAcciones } from "./cliente-acciones";
-import type { Cliente } from "../types";
+import type { ClienteListItem } from "../types";
 
 export function ClientesAdminView() {
   const { isGlobalAdmin } = useSession();
@@ -38,7 +38,7 @@ export function ClientesAdminView() {
 function ClientesAdminContent() {
   const clientesQuery = useClientes();
 
-  const columns: Column<Cliente>[] = [
+  const columns: Column<ClienteListItem>[] = [
     { key: "nombre", header: "Nombre" },
     { key: "cuit", header: "CUIT", render: (row) => row.cuit ?? "—" },
     { key: "dbName", header: "Base de datos" },
@@ -46,6 +46,18 @@ function ClientesAdminContent() {
       key: "activo",
       header: "Estado",
       render: (row) => (row.activo ? <Badge variant="success">Activo</Badge> : <Badge variant="outline">Inactivo</Badge>),
+    },
+    {
+      // Resumen de correo embebido en `GET /clientes` (D7, decisión #2359):
+      // visible en el listado, sin abrir la ficha de cada cliente.
+      key: "correo",
+      header: "Correo",
+      render: (row) =>
+        row.correo.configurado ? (
+          <Badge variant="success">Correo configurado</Badge>
+        ) : (
+          <Badge variant="outline">Correo no configurado</Badge>
+        ),
     },
     {
       key: "id",

@@ -19,3 +19,30 @@ export const editarClienteSchema = z.object({
   cuit: z.string().optional().or(z.literal("")),
 });
 export type EditarClienteFormValues = z.infer<typeof editarClienteSchema>;
+
+/**
+ * Espejo de `ConfigurarCorreoClienteDto` (backend, D7). `password` es
+ * requerido SOLO al configurar por primera vez (`yaConfigurado=false`) — si
+ * el cliente ya tiene correo configurado, dejarlo vacío preserva el actual
+ * (nunca se valida ni se manda como `""`, ver `configurar-correo-dialog.tsx`).
+ */
+export function configurarCorreoSchema(yaConfigurado: boolean) {
+  return z
+    .object({
+      host: z.string().min(1, "El host es requerido"),
+      port: z.coerce
+        .number({ invalid_type_error: "El puerto es requerido" })
+        .int("El puerto debe ser un entero")
+        .min(1, "Puerto inválido")
+        .max(65535, "Puerto inválido"),
+      user: z.string().min(1, "El usuario es requerido"),
+      secure: z.boolean(),
+      from: z.string().min(1, "El remitente es requerido"),
+      password: z.string().optional(),
+    })
+    .refine((data) => yaConfigurado || !!data.password, {
+      message: "La contraseña es requerida para la primera configuración",
+      path: ["password"],
+    });
+}
+export type ConfigurarCorreoFormValues = z.infer<ReturnType<typeof configurarCorreoSchema>>;

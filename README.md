@@ -112,6 +112,33 @@ pnpm run seed:root        # crea el primer usuario ROOT (is_global_admin = true)
 pnpm run seed:demo        # opcional — tenant demo con datos de ejemplo, ver "Datos demo" abajo
 ```
 
+### Backfill de la configuración de correo por cliente
+
+Al pasar el envío a per-tenant, un cliente sin config deja de recibir notificaciones. Los
+clientes que YA existían no eligieron eso, así que el backfill les siembra la config SMTP
+global actual (las env vars `SMTP_*`), **cifrada**. Es de una sola vez y vuelve explícito lo
+que antes pasaba de forma implícita.
+
+```powershell
+node scripts/backfill-correo-clientes.mjs
+```
+
+Es **idempotente** (`WHERE smtp_password_cifrada IS NULL`): correrlo dos veces no cambia nada
+y **nunca pisa una config que ROOT ya cargó a mano**. Si falta alguna env var `SMTP_*` aborta
+en vez de escribir una config parcial.
+
+**EL ORDEN IMPORTA — no es el mismo que el orden de los commits:**
+
+1. Provisionar `EMAIL_CRYPTO_KEY` en el entorno (sin ella el backfill no puede cifrar).
+2. `pnpm run migrate:master` — crea las columnas.
+3. `pnpm run generate:master` — regenerar el cliente Prisma. **Sin esto el cliente generado
+   sigue con las columnas viejas** y las cosas fallan raro, no de frente.
+4. Correr el backfill.
+5. Recién ahí desplegar el código.
+
+Desplegar antes del paso 4 reproduce exactamente la ventana sin notificaciones que el
+backfill existe para evitar.
+
 ## Variables de entorno
 
 ### Backend (`backend/.env`, ver `backend/.env.example`)
@@ -122,7 +149,8 @@ pnpm run seed:demo        # opcional — tenant demo con datos de ejemplo, ver "
 | `DATABASE_URL_TENANT` | Conexión a UNA DB tenant (dev/test) — usada solo por `prisma.tenant.config.ts` para correr migraciones del schema tenant. |
 | `JWT_SECRET` | Secreto de firma de los JWT (access + refresh). |
 | `JWT_ACCESS_EXPIRES_IN` / `JWT_REFRESH_EXPIRES_IN` | TTL de los tokens. |
-| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASSWORD` / `SMTP_FROM` / `SMTP_SECURE` | Envío de notificaciones por email (módulo `notificaciones/`, PR-N). Si `SMTP_HOST`/`SMTP_USER`/`SMTP_PASSWORD` faltan o están incompletas, el binding degrada a un adapter no-op que solo loguea (enmascarado) — **nunca** falla el arranque de la app. `SMTP_SECURE="true"` usa SMTPS directo (típico puerto 465); default `false` (STARTTLS, puerto 587). |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASSWORD` / `SMTP_FROM` / `SMTP_SECURE` | **Solo para el backfill inicial** — desde `configuracion-correo-por-cliente`, el envío usa la config SMTP **de cada cliente**, no estas variables (ver abajo). `SMTP_SECURE="true"` usa SMTPS directo (típico puerto 465); default `false` (STARTTLS, puerto 587). |
+| `EMAIL_CRYPTO_KEY` | Clave maestra AES-256-GCM que cifra en reposo la contraseña SMTP de cada cliente. **64 caracteres hex** (32 bytes). Si falta, la app **no** falla al arrancar: el guardado de config responde 503 y el envío degrada explícito con razón `EMAIL_CRYPTO_KEY_AUSENTE`. Generarla con `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`. **NO se puede rotar reemplazando el valor**: cada credencial guardada quedaría indescifrable. Una rotación exige una migración de re-cifrado (por eso el payload lleva el prefijo de versión `v1:`). |
 | `ROOT_ADMIN_EMAIL` / `ROOT_ADMIN_PASSWORD` / `ROOT_ADMIN_NOMBRE` / `ROOT_ADMIN_APELLIDO` | Bootstrap idempotente del primer usuario **ROOT** (`is_global_admin = true`). |
 | `SLA_SWEEP_CRON` | Expresión cron del barrido periódico de vencimiento de SLA (`SlaSweepScheduler`, módulo `sla/`). Default: cada 5 min (`CronExpression.EVERY_5_MINUTES`) si no está seteada. |
 | `APP_BASE_URL` | URL base pública de la app, usada para armar links en emails de notificación (ej. `${APP_BASE_URL}/tickets/:id`). Usada por las plantillas de email del módulo `notificaciones/` (PR-N). |
@@ -141,10 +169,19 @@ Escucha eventos de dominio ya emitidos (`ticket.estado_cambiado`, `ticket.coment
 administradores del tenant en el caso de `sla.vencido`). Sin preferencias de usuario en beta
 (notificación fija por defecto). Plantillas en TS puro (sin Handlebars).
 
-- **Degradación sin config SMTP (crítico para beta local)**: si `SMTP_HOST`/`SMTP_USER`/
-  `SMTP_PASSWORD` no están completos, `EMAIL_SENDER` resuelve a `NoOpEmailSender` — loguea
-  (enmascarado, nunca el email en claro ni el cuerpo del mensaje) el envío que se habría hecho,
-  en vez de fallar el arranque de la app.
+- **El envío es POR CLIENTE, no global** (`configuracion-correo-por-cliente`): cada cliente
+  configura su propia cuenta SMTP desde la pantalla ROOT, y los mails salen con su identidad.
+  `EMAIL_SENDER` resuelve el transporter en tiempo de envío usando `TenantContext.clienteId`,
+  con caché keyeado por `${clienteId}:${configRevision}` — cambiar la config invalida la
+  entrada vieja de forma estructural, sin TTL ni invalidación explícita.
+- **Un cliente sin configurar NO recibe notificaciones**, y el estado se muestra como
+  "correo no configurado" en el listado de clientes y en su ficha. Es deliberado: un
+  respaldo silencioso al SMTP global haría que los mails salieran de una dirección genérica
+  sin que el cliente lo sepa.
+- **Tres razones de degradación distinguibles en logs**, que no colisionan a propósito:
+  `EMAIL_SIN_TENANT_CONTEXT` (**bug nuestro**, hay que investigarlo), `EMAIL_CRYPTO_KEY_AUSENTE`
+  (no se pudo descifrar la config) y `EMAIL_CLIENTE_SIN_CONFIG` (**esperado y benigno**).
+  Si el bug y el caso esperado compartieran línea, el bug sería invisible.
 - Resolución de contacto (email/nombre del destinatario) cross-DB contra `master.usuarios`/
   `master.membresias` — los eventos de dominio nunca llevan PII (ADR-6).
 - Un fallo de envío a un destinatario aísla ese envío (log-and-swallow); no afecta a los demás

@@ -34,3 +34,51 @@ export interface UpdateClienteDto {
   razonSocial?: string;
   cuit?: string;
 }
+
+/**
+ * Resumen mínimo de correo embebido en `GET /clientes` — espejo de
+ * `ClienteCorreoResumenDto` (backend, D7/#2359). Existe para que "correo no
+ * configurado" sea visible en el LISTADO, sin abrir la ficha de cada cliente.
+ */
+export interface ClienteCorreoResumen {
+  configurado: boolean;
+  verificadoAt: string | null;
+}
+
+/** Item de `GET /clientes` — `Cliente` + resumen de correo. Espejo de `ClienteListItemResponseDto`. */
+export interface ClienteListItem extends Cliente {
+  correo: ClienteCorreoResumen;
+}
+
+/**
+ * Detalle de correo de `GET/PATCH/DELETE /clientes/:id/correo` y
+ * `POST /clientes/:id/correo/probar` — espejo de `ClienteCorreoResponseDto`
+ * (backend, D7). La contraseña NO existe acá bajo NINGUNA forma (ni null, ni
+ * "***", ni su longitud): un campo que no existe no se puede filtrar por
+ * accidente.
+ */
+export interface ClienteCorreo {
+  configurado: boolean;
+  host: string | null;
+  port: number | null;
+  user: string | null;
+  secure: boolean | null;
+  from: string | null;
+  verificadoAt: string | null;
+  verificacionError: string | null;
+}
+
+/**
+ * Body de `PATCH /clientes/:id/correo` — espejo de
+ * `ConfigurarCorreoClienteDto` (backend, D7). `password` es el ÚNICO campo
+ * opcional: omitirlo preserva la contraseña ya guardada. NUNCA mandar `""`
+ * (el backend lo rechaza a propósito — vaciar el campo no borra nada).
+ */
+export interface ConfigurarCorreoDto {
+  host: string;
+  port: number;
+  user: string;
+  secure: boolean;
+  from: string;
+  password?: string;
+}

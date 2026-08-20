@@ -75,6 +75,32 @@ model Cliente {
   updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt   DateTime? @map("deleted_at") @db.Timestamptz
 
+  /// ─── Configuración SMTP por cliente (sdd/configuracion-correo-por-cliente) ──
+  ///
+  /// Todo-o-nada: host/port/user/from/passwordCifrada están juntos NULL o
+  /// juntos NOT NULL — enforced por un CHECK raw SQL en la migración (Prisma
+  /// no expresa CHECK en el schema declarativo), no solo en la capa de
+  /// aplicación. `smtpSecure` queda fuera de ese CHECK (es un booleano, no
+  /// participa del "todo" configurado/no configurado).
+  ///
+  /// `smtpPasswordCifrada` es UNA sola columna TEXT con el payload
+  /// autodescriptivo `v1:{iv}:{tag}:{ciphertext}` (ver `ISecretCipher`,
+  /// WU1) — no hay columnas hermanas para iv/tag/versión: así no pueden
+  /// desincronizarse en un UPDATE parcial.
+  ///
+  /// `smtpConfigUpdatedAt` es DELIBERADAMENTE distinta de `updatedAt`: es la
+  /// revisión que usa el caché de transporters (WU5). Si reusáramos
+  /// `updatedAt`, editar `nombre` invalidaría un transporter que seguía bien.
+  smtpHost               String?   @map("smtp_host") @db.VarChar(255)
+  smtpPort               Int?      @map("smtp_port")
+  smtpUser               String?   @map("smtp_user") @db.VarChar(255)
+  smtpSecure             Boolean?  @map("smtp_secure")
+  smtpFrom               String?   @map("smtp_from") @db.VarChar(255)
+  smtpPasswordCifrada    String?   @map("smtp_password_cifrada") @db.Text
+  smtpConfigUpdatedAt    DateTime? @map("smtp_config_updated_at") @db.Timestamptz
+  smtpVerificadoAt       DateTime? @map("smtp_verificado_at") @db.Timestamptz
+  smtpVerificacionError  String?   @map("smtp_verificacion_error") @db.Text
+
   membresias Membresia[]
 
   @@index([activo])

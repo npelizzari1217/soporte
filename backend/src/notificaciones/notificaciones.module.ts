@@ -12,9 +12,14 @@ import { TicketNotificacionListener } from './infrastructure/listeners/ticket-no
 import { SlaVencidoNotificacionListener } from './infrastructure/listeners/sla-vencido-notificacion.listener';
 
 import { EMAIL_SENDER, IEmailSender } from '../shared/domain/ports/i-email-sender';
-import { resolveEmailSender } from './infrastructure/email/email-sender.factory';
+import { TenantAwareEmailSender } from './infrastructure/email/tenant-aware-email-sender';
 import { LOGGER, ILogger } from '../shared/domain/ports/i-logger.port';
 import { TenantContext } from '../shared/tenancy/tenant-context';
+import {
+  CLIENTE_EMAIL_CONFIG_REPOSITORY,
+  IClienteEmailConfigRepository,
+} from '../clientes/domain/ports/i-cliente-email-config.repository';
+import { PrismaClienteEmailConfigRepository } from '../clientes/infrastructure/persistence/prisma/prisma-cliente-email-config.repository';
 
 /**
  * NotificacionesModule — módulo NestJS del dominio "notificaciones" (Fase 4,
@@ -25,9 +30,15 @@ import { TenantContext } from '../shared/tenancy/tenant-context';
  * y `sla.vencido` (Fase 4/SLA, S4 — asignado + administradores del tenant).
  *
  * Wiring:
- * - `EMAIL_SENDER` → `resolveEmailSender(process.env, logger)` (ADR-P7):
- *   degrada a `NoOpEmailSender` (log-only) si falta config SMTP completa —
- *   NUNCA fail-fast en el arranque (N2, crítico para beta local).
+ * - `EMAIL_SENDER` → `TenantAwareEmailSender` (D3,
+ *   sdd/configuracion-correo-por-cliente WU5): resuelve la identidad SMTP
+ *   del cliente ACTIVO en cada `send()` desde su config propia, en vez del
+ *   transporter único construido una vez al arrancar que existía antes de
+ *   este cambio (`resolveEmailSender`, hoy sin binding — se deja el archivo
+ *   por ser la fuente de las env vars `SMTP_*` que consume el backfill,
+ *   decisión #2361/3). Degrada explícito (no envía, no lanza) sin
+ *   `TenantContext`, sin config del cliente, o si falla el descifrado —
+ *   nunca fail-fast (D2).
  * - `USUARIO_CONTACTO_RESOLVER` → `PrismaUsuarioContactoResolver` (master).
  * - Listeners: `TicketNotificacionListener` (estado_cambiado/comentado,
  *   solicitante) + `SlaVencidoNotificacionListener` (sla.vencido, asignado
@@ -48,9 +59,17 @@ import { TenantContext } from '../shared/tenancy/tenant-context';
   controllers: [],
   providers: [
     {
+      provide: CLIENTE_EMAIL_CONFIG_REPOSITORY,
+      useClass: PrismaClienteEmailConfigRepository,
+    },
+    {
       provide: EMAIL_SENDER,
-      useFactory: (logger: ILogger) => resolveEmailSender(process.env, logger),
-      inject: [LOGGER],
+      useFactory: (
+        tenantContext: TenantContext,
+        emailConfigRepo: IClienteEmailConfigRepository,
+        logger: ILogger,
+      ) => new TenantAwareEmailSender(tenantContext, emailConfigRepo, logger),
+      inject: [TenantContext, CLIENTE_EMAIL_CONFIG_REPOSITORY, LOGGER],
     },
     { provide: USUARIO_CONTACTO_RESOLVER, useClass: PrismaUsuarioContactoResolver },
 

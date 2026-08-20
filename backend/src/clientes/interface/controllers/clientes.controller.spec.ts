@@ -8,18 +8,24 @@
  * `crear-cliente.e2e.spec.ts` (T8.5).
  */
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   InternalServerErrorException,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { ClientesController } from './clientes.controller';
 import { Result } from '../../../shared/domain/result';
 import { ClienteEntity } from '../../domain/entities/cliente.entity';
+import { ClienteEmailConfigState } from '../../domain/ports/i-cliente-email-config.repository';
 import {
   AdminEmailYaRegistradoError,
   AdministradorRoleNotFoundError,
   ClienteNoEncontradoError,
+  CorreoNoConfiguradoError,
+  CorreoPasswordFaltanteError,
+  EmailCryptoKeyAusenteError,
   OnlyRootCanCreateClienteError,
 } from '../../domain/errors/clientes.errors';
 import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
@@ -31,12 +37,20 @@ function buildController() {
   const editarClienteUseCase = { execute: vi.fn() };
   const desactivarClienteUseCase = { execute: vi.fn() };
   const reactivarClienteUseCase = { execute: vi.fn() };
+  const configurarCorreoClienteUseCase = { execute: vi.fn() };
+  const quitarCorreoClienteUseCase = { execute: vi.fn() };
+  const probarCorreoClienteUseCase = { execute: vi.fn() };
+  const verCorreoClienteUseCase = { execute: vi.fn() };
   const controller = new ClientesController(
     crearClienteUseCase as any,
     listarClientesUseCase as any,
     editarClienteUseCase as any,
     desactivarClienteUseCase as any,
     reactivarClienteUseCase as any,
+    configurarCorreoClienteUseCase as any,
+    quitarCorreoClienteUseCase as any,
+    probarCorreoClienteUseCase as any,
+    verCorreoClienteUseCase as any,
   );
   return {
     controller,
@@ -45,8 +59,23 @@ function buildController() {
     editarClienteUseCase,
     desactivarClienteUseCase,
     reactivarClienteUseCase,
+    configurarCorreoClienteUseCase,
+    quitarCorreoClienteUseCase,
+    probarCorreoClienteUseCase,
+    verCorreoClienteUseCase,
   };
 }
+
+const CORREO_STATE_CONFIGURADO: ClienteEmailConfigState = {
+  configurado: true,
+  host: 'smtp.acme.com',
+  port: 587,
+  user: 'u',
+  secure: false,
+  from: 'from@acme.com',
+  verificadoAt: new Date('2026-08-20T12:00:00Z'),
+  verificacionError: null,
+};
 
 const ROOT_USER: JwtPayload = payloadDeTest({
   sub: 'root-id',
@@ -137,7 +166,7 @@ describe('ClientesController (T8.4)', () => {
   });
 
   describe('GET /clientes (G3 parcial, sdd/beta-frontend — ROOT vía GlobalAdminGuard)', () => {
-    it('retorna la lista de clientes mapeada a DTO', async () => {
+    it('retorna la lista de clientes mapeada a DTO, con el resumen de correo (D7/#2359)', async () => {
       const { controller, listarClientesUseCase } = buildController();
       const cliente = ClienteEntity.create({
         nombre: CREATE_DTO.nombre,
@@ -146,7 +175,10 @@ describe('ClientesController (T8.4)', () => {
         dbName: 'soporte_deadbeef',
         activo: true,
       });
-      listarClientesUseCase.execute.mockResolvedValue(Result.ok([cliente]));
+      const verificadoAt = new Date('2026-08-20T12:00:00Z');
+      listarClientesUseCase.execute.mockResolvedValue(
+        Result.ok([{ cliente, correo: { configurado: true, verificadoAt } }]),
+      );
 
       const result = await controller.listar();
 
@@ -158,8 +190,28 @@ describe('ClientesController (T8.4)', () => {
           cuit: null,
           dbName: cliente.dbName,
           activo: true,
+          correo: { configurado: true, verificadoAt },
         },
       ]);
+    });
+
+    it('[CRITICAL] el resumen de correo del listado NUNCA incluye la contraseña bajo ninguna clave', async () => {
+      const { controller, listarClientesUseCase } = buildController();
+      const cliente = ClienteEntity.create({
+        nombre: CREATE_DTO.nombre,
+        razonSocial: null,
+        cuit: null,
+        dbName: 'soporte_deadbeef',
+        activo: true,
+      });
+      listarClientesUseCase.execute.mockResolvedValue(
+        Result.ok([{ cliente, correo: { configurado: true, verificadoAt: null } }]),
+      );
+
+      const [result] = await controller.listar();
+
+      expect(Object.keys(result.correo)).not.toContain('password');
+      expect(Object.keys(result.correo)).toEqual(['configurado', 'verificadoAt']);
     });
   });
 
@@ -249,6 +301,216 @@ describe('ClientesController (T8.4)', () => {
       );
 
       await expect(controller.activar('id-inexistente')).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  describe('GET /clientes/:id/correo (ver, D7)', () => {
+    it('retorna el detalle de correo del cliente', async () => {
+      const { controller, verCorreoClienteUseCase } = buildController();
+      verCorreoClienteUseCase.execute.mockResolvedValue(Result.ok(CORREO_STATE_CONFIGURADO));
+
+      const result = await controller.verCorreo('cliente-1');
+
+      expect(result).toEqual({
+        configurado: true,
+        host: 'smtp.acme.com',
+        port: 587,
+        user: 'u',
+        secure: false,
+        from: 'from@acme.com',
+        verificadoAt: CORREO_STATE_CONFIGURADO.verificadoAt,
+        verificacionError: null,
+      });
+      expect(verCorreoClienteUseCase.execute).toHaveBeenCalledWith('cliente-1');
+    });
+
+    it('propaga 404 NotFoundException cuando el cliente no existe', async () => {
+      const { controller, verCorreoClienteUseCase } = buildController();
+      verCorreoClienteUseCase.execute.mockResolvedValue(
+        Result.fail(new ClienteNoEncontradoError('inexistente')),
+      );
+
+      await expect(controller.verCorreo('inexistente')).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  describe('PATCH /clientes/:id/correo (configurar, D7)', () => {
+    it('[CRITICAL] la respuesta NUNCA incluye la contraseña bajo ninguna clave', async () => {
+      const { controller, configurarCorreoClienteUseCase } = buildController();
+      configurarCorreoClienteUseCase.execute.mockResolvedValue(Result.ok(CORREO_STATE_CONFIGURADO));
+
+      const result = await controller.configurarCorreo('cliente-1', {
+        host: 'smtp.acme.com',
+        port: 587,
+        user: 'u',
+        secure: false,
+        from: 'from@acme.com',
+        password: 'super-secreta',
+      } as any);
+
+      expect(Object.keys(result)).not.toContain('password');
+      expect(JSON.stringify(result)).not.toContain('super-secreta');
+      expect(result).toEqual({
+        configurado: true,
+        host: 'smtp.acme.com',
+        port: 587,
+        user: 'u',
+        secure: false,
+        from: 'from@acme.com',
+        verificadoAt: CORREO_STATE_CONFIGURADO.verificadoAt,
+        verificacionError: null,
+      });
+    });
+
+    it('traduce el command con `password: undefined` cuando el DTO lo omite (preserva la existente)', async () => {
+      const { controller, configurarCorreoClienteUseCase } = buildController();
+      configurarCorreoClienteUseCase.execute.mockResolvedValue(Result.ok(CORREO_STATE_CONFIGURADO));
+
+      await controller.configurarCorreo('cliente-1', {
+        host: 'smtp.acme.com',
+        port: 587,
+        user: 'u',
+        secure: false,
+        from: 'from@acme.com',
+      } as any);
+
+      expect(configurarCorreoClienteUseCase.execute).toHaveBeenCalledWith({
+        clienteId: 'cliente-1',
+        host: 'smtp.acme.com',
+        port: 587,
+        user: 'u',
+        secure: false,
+        from: 'from@acme.com',
+        password: undefined,
+      });
+    });
+
+    it('propaga 404 NotFoundException cuando el cliente no existe', async () => {
+      const { controller, configurarCorreoClienteUseCase } = buildController();
+      configurarCorreoClienteUseCase.execute.mockResolvedValue(
+        Result.fail(new ClienteNoEncontradoError('inexistente')),
+      );
+
+      await expect(
+        controller.configurarCorreo('inexistente', {
+          host: 'h',
+          port: 1,
+          user: 'u',
+          secure: false,
+          from: 'f',
+        } as any),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('propaga 400 BadRequestException cuando falta la contraseña y no hay nada que preservar', async () => {
+      const { controller, configurarCorreoClienteUseCase } = buildController();
+      configurarCorreoClienteUseCase.execute.mockResolvedValue(
+        Result.fail(new CorreoPasswordFaltanteError()),
+      );
+
+      await expect(
+        controller.configurarCorreo('cliente-1', {
+          host: 'h',
+          port: 1,
+          user: 'u',
+          secure: false,
+          from: 'f',
+        } as any),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('[CRITICAL] propaga 503 ServiceUnavailableException cuando falta EMAIL_CRYPTO_KEY', async () => {
+      const { controller, configurarCorreoClienteUseCase } = buildController();
+      configurarCorreoClienteUseCase.execute.mockResolvedValue(
+        Result.fail(new EmailCryptoKeyAusenteError()),
+      );
+
+      await expect(
+        controller.configurarCorreo('cliente-1', {
+          host: 'h',
+          port: 1,
+          user: 'u',
+          secure: false,
+          from: 'f',
+          password: 'x',
+        } as any),
+      ).rejects.toBeInstanceOf(ServiceUnavailableException);
+    });
+  });
+
+  describe('DELETE /clientes/:id/correo (quitar, D7)', () => {
+    it('quita la config y retorna el estado "no configurado"', async () => {
+      const { controller, quitarCorreoClienteUseCase } = buildController();
+      const estadoVacio: ClienteEmailConfigState = {
+        configurado: false,
+        host: null,
+        port: null,
+        user: null,
+        secure: null,
+        from: null,
+        verificadoAt: null,
+        verificacionError: null,
+      };
+      quitarCorreoClienteUseCase.execute.mockResolvedValue(Result.ok(estadoVacio));
+
+      const result = await controller.quitarCorreo('cliente-1');
+
+      expect(result.configurado).toBe(false);
+      expect(quitarCorreoClienteUseCase.execute).toHaveBeenCalledWith('cliente-1');
+    });
+
+    it('propaga 404 NotFoundException cuando el cliente no existe', async () => {
+      const { controller, quitarCorreoClienteUseCase } = buildController();
+      quitarCorreoClienteUseCase.execute.mockResolvedValue(
+        Result.fail(new ClienteNoEncontradoError('inexistente')),
+      );
+
+      await expect(controller.quitarCorreo('inexistente')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+  });
+
+  describe('POST /clientes/:id/correo/probar (D6)', () => {
+    it('prueba la conexión y retorna el estado actualizado', async () => {
+      const { controller, probarCorreoClienteUseCase } = buildController();
+      probarCorreoClienteUseCase.execute.mockResolvedValue(Result.ok(CORREO_STATE_CONFIGURADO));
+
+      const result = await controller.probarCorreo('cliente-1');
+
+      expect(result).toEqual({
+        configurado: true,
+        host: 'smtp.acme.com',
+        port: 587,
+        user: 'u',
+        secure: false,
+        from: 'from@acme.com',
+        verificadoAt: CORREO_STATE_CONFIGURADO.verificadoAt,
+        verificacionError: null,
+      });
+      expect(probarCorreoClienteUseCase.execute).toHaveBeenCalledWith('cliente-1');
+    });
+
+    it('propaga 400 BadRequestException cuando el cliente no tiene config guardada', async () => {
+      const { controller, probarCorreoClienteUseCase } = buildController();
+      probarCorreoClienteUseCase.execute.mockResolvedValue(
+        Result.fail(new CorreoNoConfiguradoError()),
+      );
+
+      await expect(controller.probarCorreo('cliente-1')).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+    });
+
+    it('propaga 404 NotFoundException cuando el cliente no existe', async () => {
+      const { controller, probarCorreoClienteUseCase } = buildController();
+      probarCorreoClienteUseCase.execute.mockResolvedValue(
+        Result.fail(new ClienteNoEncontradoError('inexistente')),
+      );
+
+      await expect(controller.probarCorreo('inexistente')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
     });
   });
 });
