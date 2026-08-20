@@ -182,7 +182,38 @@ describe('PrismaDashboardRepository — Integration (PR-D)', () => {
   });
 
   describe('tiempoPromedioResolucionHoras()', () => {
-    it('promedia fechaCierre - createdAt (horas) sobre los cerrados del scope', async () => {
+    it('cierre el mismo día da una duración positiva correcta (09:39 → 16:07 ≈ 6.5h)', async () => {
+      // Reproduce el caso real que exponía el bug: `fechaCierre` ahora es
+      // `@db.Timestamptz` (WU1) y guarda el instante real de cierre, no un
+      // día truncado a medianoche UTC — la resta contra `createdAt` es una
+      // duración instante-a-instante genuina, nunca negativa.
+      const cicloMismoDia = await tenantClient.cicloCliente.create({
+        data: {
+          cicloVigenteId: DUMMY_SOLICITANTE_ID,
+          nombre: `D_TEST_CICLO_MISMO_DIA_${RUN_PREFIX}`,
+          fechaInicio: new Date('2026-01-01'),
+          fechaFin: new Date('2026-12-31'),
+          activo: false,
+        },
+      });
+
+      await withTenant(async () => {
+        await crearTicket({
+          cicloId: cicloMismoDia.id,
+          createdAt: new Date('2026-08-07T09:39:55Z'),
+          fechaCierre: new Date('2026-08-07T16:07:00Z'),
+        });
+
+        const promedio = await repo.tiempoPromedioResolucionHoras({ cicloId: cicloMismoDia.id });
+        expect(promedio).toBeCloseTo(6.45, 1);
+        expect(promedio).toBeGreaterThanOrEqual(0);
+      });
+
+      await tenantClient.ticket.deleteMany({ where: { cicloId: cicloMismoDia.id } });
+      await tenantClient.cicloCliente.delete({ where: { id: cicloMismoDia.id } });
+    });
+
+    it('promedia fechaCierre - createdAt (horas) sobre los cerrados del scope, nunca negativo', async () => {
       const cicloAvg = await tenantClient.cicloCliente.create({
         data: {
           cicloVigenteId: DUMMY_SOLICITANTE_ID,
@@ -193,25 +224,25 @@ describe('PrismaDashboardRepository — Integration (PR-D)', () => {
         },
       });
 
-      // `fechaCierre` es `@db.Date` (sin hora) — Postgres trunca el
-      // time-of-day al persistir. Se usan fronteras de medianoche UTC para
-      // que el diff en horas sea determinístico independientemente de la
-      // zona horaria con la que Prisma materialice el `Date` de vuelta.
+      // Instantes con hora real (no medianoche) — `fechaCierre` ya no trunca
+      // el time-of-day, así que el promedio en horas es exacto, no solo
+      // aproximado por redondeo de día.
       await withTenant(async () => {
-        const createdAt = new Date('2026-01-01T00:00:00Z');
+        const createdAt = new Date('2026-01-01T08:00:00Z');
         await crearTicket({
           cicloId: cicloAvg.id,
           createdAt,
-          fechaCierre: new Date('2026-01-02T00:00:00Z'), // 24h
+          fechaCierre: new Date('2026-01-02T08:00:00Z'), // 24h
         });
         await crearTicket({
           cicloId: cicloAvg.id,
           createdAt,
-          fechaCierre: new Date('2026-01-03T00:00:00Z'), // 48h
+          fechaCierre: new Date('2026-01-03T08:00:00Z'), // 48h
         });
 
         const promedio = await repo.tiempoPromedioResolucionHoras({ cicloId: cicloAvg.id });
         expect(promedio).toBeCloseTo(36, 0);
+        expect(promedio).toBeGreaterThanOrEqual(0);
       });
 
       await tenantClient.ticket.deleteMany({ where: { cicloId: cicloAvg.id } });

@@ -240,7 +240,7 @@ model Ticket {
   slaVenceAt         DateTime? @map("sla_vence_at") @db.Timestamptz
   /// Desnormalizado — recalculado por el módulo SLA, no autocalculado en DB.
   vencido            Boolean   @default(false)
-  fechaCierre        DateTime? @map("fecha_cierre") @db.Date
+  fechaCierre        DateTime? @map("fecha_cierre") @db.Timestamptz
   createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt          DateTime? @map("deleted_at") @db.Timestamptz

@@ -146,8 +146,9 @@ function neutralizarFormula(texto: string): string {
  * Prisma devuelve las columnas `@db.Date` como medianoche UTC del día
  * calendario que guardan: no son un instante, son una fecha. Aplicarles el
  * offset de Argentina las tiraría a las 21:00 del día ANTERIOR y el listado
- * exportado mostraría todo corrido un día. Para timestamps reales está
- * `fechaHoraCsv`.
+ * exportado mostraría todo corrido un día. Para timestamps reales que además
+ * necesitan la hora está `fechaHoraCsv`; para timestamps reales de los que
+ * solo hace falta el día argentino está `diaArgentinoCsv`.
  *
  * @param fecha Columna `@db.Date` (o `null` si la columna es opcional).
  */
@@ -156,6 +157,25 @@ export function fechaCsv(fecha: Date | null | undefined): string {
     return '';
   }
   return formatearDia(fecha);
+}
+
+/**
+ * Formatea el DÍA ARGENTINO de un instante real como `dd/mm/aaaa`.
+ *
+ * A diferencia de `fechaCsv`, acá el desplazamiento SÍ corresponde: una
+ * columna `timestamptz` guarda un instante, y truncar sus componentes UTC
+ * sin desplazar antes adelanta un día todo lo que haya pasado después de las
+ * 21:00 locales (sdd/corregir-fecha-cierre-tickets — el bug de la ventana
+ * 21:00-23:59 ART). Para mostrar además la hora está `fechaHoraCsv`; para una
+ * columna `@db.Date` (sin componente horario) está `fechaCsv`.
+ *
+ * @param instante Columna de timestamp (o `null`/`undefined` si es opcional).
+ */
+export function diaArgentinoCsv(instante: Date | null | undefined): string {
+  if (instante === null || instante === undefined) {
+    return '';
+  }
+  return formatearDia(desplazarAArgentina(instante));
 }
 
 /**

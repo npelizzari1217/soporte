@@ -15,11 +15,12 @@
  *   perder tipado (`any` prohibido). El promedio de resolución (horas) se
  *   calcula en memoria sobre las dos columnas (`createdAt`/`fechaCierre`)
  *   porque Prisma no expone aritmética de fechas portable sin `$queryRaw`.
- * - CAVEAT de precisión: `tickets.fecha_cierre` es `@db.Date` (sin hora) —
- *   Postgres trunca el time-of-day al persistir. El promedio de resolución
- *   en horas es, por lo tanto, de granularidad DÍA en el extremo de cierre
- *   (el `createdAt` sí conserva hora/minuto/segundo vía `Timestamptz`) — no
- *   es un bug de este repo, es una limitación del schema heredado.
+ * - `tickets.fecha_cierre` es `@db.Timestamptz` (sdd/corregir-fecha-cierre-tickets,
+ *   WU1) — guarda el instante real de cierre, igual que `createdAt`. La resta
+ *   es una duración instante-a-instante genuina y NUNCA se clampea a cero: un
+ *   resultado negativo solo puede significar datos corruptos (mal backfill,
+ *   cierre anterior a la creación), y taparlo con `Math.max(0, ...)` lo
+ *   disfrazaría de promedio plausible (design D4).
  *
  * Tarea: D4.
  */
@@ -76,6 +77,7 @@ export class PrismaDashboardRepository implements IDashboardRepository {
 
     const totalHoras = rows.reduce((acumulado, row) => {
       // fechaCierre no es null acá (filtrado en el where), el `!` es seguro.
+      // Duración instante-a-instante real; sin clamp (ver comentario de clase).
       const horas = (row.fechaCierre!.getTime() - row.createdAt.getTime()) / MS_POR_HORA;
       return acumulado + horas;
     }, 0);
