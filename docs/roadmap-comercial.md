@@ -27,17 +27,34 @@ consultor.
 
 ## Los seis puntos
 
-| # | Qué | Dificultad | Estimado |
-|---|---|---|---|
-| 1 | Exportar a Excel/CSV | Baja | 1-2 días |
-| 2 | Reparación ↔ Compra | Media | 3-5 días |
-| 3 | Encuesta de satisfacción | Media | 4-6 días |
-| 4 | Mantenimiento preventivo recurrente | Media | 5-8 días |
-| 5 | Horario laboral en el SLA | Media-alta | 6-10 días |
-| 6 | Ticket por email entrante | Alta | 2-3 semanas |
+| # | Qué | Dificultad | Estimado | Estado |
+|---|---|---|---|---|
+| 1 | Exportar a Excel/CSV | Baja | 1-2 días | **HECHO** — en producción desde el 2026-08-20 (`a9bb3fa`) |
+| 2 | Reparación ↔ Compra | Media | 3-5 días | pendiente |
+| 3 | Encuesta de satisfacción | Media | 4-6 días | pendiente |
+| 4 | Mantenimiento preventivo recurrente | Media | 5-8 días | pendiente |
+| 5 | Horario laboral en el SLA | Media-alta | 6-10 días | pendiente |
+| 6 | Ticket por email entrante | Alta | 2-3 semanas | **DIFERIDO** por decisión del 2026-08-20 |
 
-Total aproximado: **40 días de trabajo concentrado** (3-4 meses reales para una
-persona que además atiende producción).
+Estimado restante: **~18-29 días** de trabajo concentrado sobre los puntos 2 a 5
+(el 40 original incluía el 1, ya entregado, y el 6, diferido).
+
+> **Mantené esta columna al día.** Un roadmap sin estado obliga a reconstruir de
+> memoria qué se entregó, y esa reconstrucción falla: el punto 1 estuvo en
+> producción varias semanas mientras el documento seguía diciendo "pendiente".
+
+## Entregado fuera de los seis puntos
+
+Trabajo que no estaba planificado y que salió de operar el sistema. Se anota acá
+para que el roadmap refleje el esfuerzo real, no solo el previsto.
+
+| Qué | Cuándo | Por qué apareció |
+|---|---|---|
+| Fecha de cierre de tickets: instante real en vez de día truncado | 2026-08-20 (`5a6be20`) | Perseguir una anomalía de zona horaria que resultó falsa; destapó dos defectos reales, uno de ellos con tiempos de resolución NEGATIVOS en el dashboard |
+| Configuración de correo SMTP **por cliente** | 2026-08-20 (`d2d90a4`) | Decisión de producto: cada cliente manda con su identidad, nada genérico. Reemplazó el envío global |
+| Asignar tickets también a COLABORADOR | 2026-08-20 (`d2d90a4`) | Los colaboradores cumplen funciones de técnico |
+| Rotación de la clave del admin, reparada y versionada | 2026-08-20 (`d2d90a4`) | La herramienta existente estaba rota y **reportaba éxito igual** |
+| `deploy.ps1`: auto-actualización, orden de correo y chequeo de exit codes | 2026-08-20 (`d2d90a4`) | Cuatro incidentes de deploy en un día, todos por la misma causa |
 
 ### 1 · Exportar a Excel/CSV — Baja
 
@@ -121,15 +138,29 @@ como siempre.
 
 ## Orden acordado
 
-1. **Arrancar en paralelo**: el punto 1 (victoria rápida, cierra objeciones en la
-   demo) y **la gestión de infraestructura de correo** del punto 6 — elegir
-   proveedor y dar de alta direcciones tiene tiempo de espera que no depende de
-   programar.
-2. Punto 2 — el diferencial.
+> Actualizado el 2026-08-20. Lo tachado ya no aplica; se deja visible para que se
+> entienda por qué el orden es el que es.
+
+1. ~~**Arrancar en paralelo**: el punto 1 y la gestión de infraestructura de
+   correo del punto 6~~ — **el punto 1 está entregado**. La infraestructura de
+   correo entrante quedó **diferida**: se decidió que cada cliente configure su
+   propia cuenta SMTP, lo que resuelve el ENVÍO. La RECEPCIÓN (que alguien abra
+   un ticket mandando un mail) sigue sin construirse y es lo que queda del
+   punto 6.
+2. **Punto 2 — el diferencial. Es el siguiente.**
 3. Punto 4 — reusa infraestructura probada.
 4. Punto 3.
 5. Punto 5.
-6. Punto 6 — al final en el calendario, pero **decidido al principio**.
+6. Punto 6 — diferido.
+
+**Antes del punto 2, dos cosas cortas:**
+
+- **Permisos en la matriz** (minutos, no es código): nadie tiene la acción
+  `TICKETS:ASIGNAR`, así que el combo de asignación aparece vacío aunque haya
+  técnicos y colaboradores elegibles. El ADMINISTRADOR de Cic Lanus además no
+  tiene ningún permiso de módulo.
+- **Cambio de contraseña** (ver la sección siguiente): es un agujero de producto,
+  no una comodidad.
 
 ## Carencia detectada fuera de los seis puntos
 
@@ -153,6 +184,24 @@ No es una comodidad, es un agujero de producto:
 Alcance mínimo: que un usuario autenticado cambie su propia contraseña
 validando la actual. El reseteo por olvido (con email) es un problema distinto y
 más grande — necesita tokens de un solo uso con vencimiento — y puede ir después.
+
+## Deuda técnica conocida
+
+Ninguna bloquea el roadmap. Se anota acá porque una deuda que solo vive en la
+cabeza de alguien deja de existir cuando esa persona no está.
+
+**Ordenada por lo que puede hacer más daño:**
+
+| Qué | Por qué importa |
+|---|---|
+| **123 errores de tipos** escondidos tras la exclusión `**/*.spec.ts` de `backend/tsconfig.json` | `pnpm typecheck` NO mira los tests. El mecanismo que los deja entrar sigue vivo y ya mordió dos veces: builders de controller con dependencias faltantes, y specs que no compilarían |
+| **Render de fechas del frontend**: 3 sitios muestran ISO crudo y hay **cero ocurrencias de `timeZone`** en todo `frontend/src` | Los 4 sitios que formatean con `Intl.DateTimeFormat("es-AR")` dependen de que el navegador esté en huso argentino. Además hay 4 copias del mismo `formatFecha` |
+| **Rotación de `EMAIL_CRYPTO_KEY`**: no existe herramienta | Rotarla sin re-cifrar convierte TODA contraseña SMTP guardada en basura indescifrable. El payload lleva prefijo `v1:` justamente para permitir una migración de re-cifrado, pero esa migración no está escrita |
+| Sin e2e dedicado para las 4 rutas de `/correo` | La cobertura del guard es estructural (a nivel clase). Es la superficie más sensible del módulo |
+| `SmtpEmailSender.send()` loguea el `error.message` crudo de nodemailer | Algunos servidores SMTP devuelven el usuario dentro de la respuesta 535 |
+| Postgres de producción con `TimeZone = America/Sao_Paulo` | Hoy coincide con Argentina solo porque Brasil abolió el horario de verano en 2019 |
+| `rotate-jwt.ps1` e `install-cert-soporte.ps1` sin versionar, solo en el VPS | Si el VPS se pierde, esos scripts se pierden con él. Ya pasó con `rotate-admin-pw.ps1`, que además estaba roto |
+| Corridas de tests **interrumpidas** dejan bases huérfanas en el Postgres local | No es un bug de los specs: cuando terminan, limpian bien. Hay que barrer cada tanto, cruzando siempre contra el registro de clientes antes de dropear |
 
 ## Nota
 
