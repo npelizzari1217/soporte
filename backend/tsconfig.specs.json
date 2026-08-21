@@ -1,5 +1,0 @@
-{
-  "//": "PROVISIONAL — created in WU1 of saneamiento-tipos-backend to measure typecheck errors across spec files ahead of the WU6 gate. Deleted, along with the typecheck:specs script, when WU6 lands the permanent gate in tsconfig.json.",
-  "extends": "./tsconfig.typecheck.json",
-  "exclude": ["node_modules", "dist"]
-}

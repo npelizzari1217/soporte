@@ -15,7 +15,6 @@
     "lint:fitness": "eslint \"src/**/*.ts\"",
     "format": "prettier --write \"src/**/*.ts\"",
     "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
-    "typecheck:specs": "tsc --noEmit -p tsconfig.specs.json",
     "generate:master": "prisma generate --schema=prisma_master/schema.prisma",
     "generate:tenant": "prisma generate --schema=prisma_tenant/schema.prisma",
     "validate:master": "prisma validate --schema=prisma_master/schema.prisma",
