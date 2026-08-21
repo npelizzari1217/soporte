@@ -24,9 +24,9 @@
  * WU-7.1 (sdd/matriz-permisos-por-usuario): `permisos` deja de venir de
  * `MembresiaResuelta.permisos` (RBAC viejo) — ahora resolverScope los lee
  * de `IMatrizPermisosRepository` (o bypassea con `PARES_VALIDOS` para
- * ROOT/ADMINISTRADOR). El mock de la membresía sigue exponiendo `permisos`
- * porque el campo sigue en la interfaz (otros consumidores lo usan), pero
- * este spec ya NO depende de él para las aserciones de `captured.permisos`.
+ * ROOT/ADMINISTRADOR). `MembresiaResuelta` ya NO expone `permisos` (retirado
+ * junto con el JOIN a `roles_permisos`, saneamiento-tipos-backend WU3); las
+ * aserciones de `captured.permisos` siguen leyendo del `JwtPayload`.
  */
 import * as crypto from 'crypto';
 import type { Mocked } from 'vitest';
@@ -85,7 +85,6 @@ const makeMembresiaResuelta = (overrides: Partial<MembresiaResuelta> = {}): Memb
   clienteId: 'cliente-1',
   clienteNombre: 'Acme SA',
   rolCodigo: 'TECNICO',
-  permisos: ['ticket:crear', 'ticket:editar'],
   ...overrides,
 });
 
@@ -514,8 +513,9 @@ describe('LoginUseCase', () => {
       const result = await useCase.execute({ email: 'user@test.com', password: 'secret' });
 
       expect(result.isOk()).toBe(true);
-      if (result.getValue().kind !== 'tokens') throw new Error('expected tokens');
-      const rawToken = result.getValue().refreshToken;
+      const value = result.getValue();
+      if (value.kind !== 'tokens') throw new Error('expected tokens');
+      const rawToken = value.refreshToken;
       const expectedHash = crypto.createHash('sha256').update(rawToken).digest('hex');
 
       expect(saved!.tokenHash).toBe(expectedHash);
@@ -533,8 +533,9 @@ describe('LoginUseCase', () => {
 
       const result = await useCase.execute({ email: 'user@test.com', password: 'secret' });
 
-      if (result.getValue().kind !== 'tokens') throw new Error('expected tokens');
-      expect(result.getValue().refreshToken.length).toBeGreaterThanOrEqual(32);
+      const value = result.getValue();
+      if (value.kind !== 'tokens') throw new Error('expected tokens');
+      expect(value.refreshToken.length).toBeGreaterThanOrEqual(32);
     });
 
     it('persiste el clienteId resuelto en el refresh token (Opción B, decisión #2025)', async () => {

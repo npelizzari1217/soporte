@@ -96,11 +96,15 @@ const makeUsuario = (
 const makeCliente = (nombre = 'Acme SA', activo = true): ClienteEntity =>
   ClienteEntity.create({ nombre, razonSocial: null, cuit: null, dbName: 'acme_sa', activo });
 
+/**
+ * `MembresiaResuelta` ya NO expone `permisos`: el fix de C2 retiró el campo
+ * junto con el JOIN a `roles_permisos` que lo poblaba (saneamiento-tipos-backend
+ * WU3). Los permisos del JWT salen de la matriz, no de la membresía.
+ */
 const makeMembresiaResuelta = (overrides: Partial<MembresiaResuelta> = {}): MembresiaResuelta => ({
   clienteId: 'cliente-1',
   clienteNombre: 'Acme SA',
   rolCodigo: 'TECNICO',
-  permisos: ['ticket:crear', 'ticket:editar'],
   ...overrides,
 });
 
