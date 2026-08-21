@@ -56,6 +56,7 @@ vi.mock('@prisma/adapter-pg', () => ({
 
 // ESM import — gets the mocked Pool from vi.mock('pg').
 // require('pg') dentro de los tests NO usa el interceptor de mocks de Vitest.
+import type { Mock } from 'vitest';
 import { Pool } from 'pg';
 import { PrismaService } from './prisma.service';
 
@@ -149,9 +150,9 @@ describe('PrismaService (factory multi-tenant)', () => {
       // Pool es el MockPool importado vía ESM (vi.mock intercepta los imports
       // ESM, no los require() CJS — usar siempre el import estático del top
       // del archivo).
-      const PoolMock = Pool as unknown as vi.Mock;
+      const PoolMock = Pool as unknown as Mock;
       // results[0] = masterPool (instanciado en el constructor de PrismaService)
-      const masterPoolInstance = PoolMock.mock.results[0].value as { end: vi.Mock };
+      const masterPoolInstance = PoolMock.mock.results[0].value as { end: Mock };
 
       await service.onModuleDestroy();
 
@@ -162,10 +163,10 @@ describe('PrismaService (factory multi-tenant)', () => {
       service.getTenantClient('tenant_a');
       service.getTenantClient('tenant_b');
 
-      const PoolMock = Pool as unknown as vi.Mock;
+      const PoolMock = Pool as unknown as Mock;
       // results[0] = masterPool, results[1] = tenant_a, results[2] = tenant_b
-      const tenantAPool = PoolMock.mock.results[1].value as { end: vi.Mock };
-      const tenantBPool = PoolMock.mock.results[2].value as { end: vi.Mock };
+      const tenantAPool = PoolMock.mock.results[1].value as { end: Mock };
+      const tenantBPool = PoolMock.mock.results[2].value as { end: Mock };
 
       await service.onModuleDestroy();
 

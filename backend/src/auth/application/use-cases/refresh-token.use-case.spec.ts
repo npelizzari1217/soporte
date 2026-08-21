@@ -25,6 +25,7 @@
  * - Payload del nuevo access token incluye membresias[] completo.
  */
 import * as crypto from 'crypto';
+import type { Mocked } from 'vitest';
 import { RefreshTokenUseCase, RefreshTokenDto } from './refresh-token.use-case';
 import { RefreshTokenEntity } from '../../domain/entities/refresh-token.entity';
 import { UsuarioEntity } from '../../domain/entities/usuario.entity';
@@ -103,26 +104,26 @@ const makeMembresiaResuelta = (overrides: Partial<MembresiaResuelta> = {}): Memb
   ...overrides,
 });
 
-const makeRefreshTokenRepo = (): vi.Mocked<IRefreshTokenRepository> => ({
+const makeRefreshTokenRepo = (): Mocked<IRefreshTokenRepository> => ({
   findByHash: vi.fn(),
   revokeAllByUsuarioId: vi.fn().mockResolvedValue(undefined),
   save: vi.fn().mockResolvedValue(undefined),
 });
 
-const makeUsuarioRepo = (): vi.Mocked<IUsuarioRepository> => ({
+const makeUsuarioRepo = (): Mocked<IUsuarioRepository> => ({
   findByEmail: vi.fn(),
   findById: vi.fn(),
   create: vi.fn(),
   save: vi.fn(),
 });
 
-const makeMembresiaRepo = (): vi.Mocked<IMembresiaRepository> => ({
+const makeMembresiaRepo = (): Mocked<IMembresiaRepository> => ({
   findActivasByUsuario: vi.fn().mockResolvedValue([]),
   findActivaByUsuarioYCliente: vi.fn(),
   create: vi.fn().mockResolvedValue(undefined),
 });
 
-const makeClienteRepo = (): vi.Mocked<IClienteRepository> => ({
+const makeClienteRepo = (): Mocked<IClienteRepository> => ({
   findById: vi.fn(),
   findByDbName: vi.fn(),
   findAll: vi.fn(),
@@ -130,12 +131,12 @@ const makeClienteRepo = (): vi.Mocked<IClienteRepository> => ({
   delete: vi.fn(),
 });
 
-const makeTokenService = (): vi.Mocked<ITokenService> => ({
+const makeTokenService = (): Mocked<ITokenService> => ({
   signJwt: vi.fn().mockReturnValue('new.jwt.token'),
   verifyJwt: vi.fn().mockReturnValue(null),
 });
 
-const makePermisosRepo = (): vi.Mocked<IMatrizPermisosRepository> => ({
+const makePermisosRepo = (): Mocked<IMatrizPermisosRepository> => ({
   findByUsuarioYCliente: vi.fn().mockResolvedValue([]),
   setPermisos: vi.fn().mockResolvedValue(undefined),
 });
@@ -143,12 +144,12 @@ const makePermisosRepo = (): vi.Mocked<IMatrizPermisosRepository> => ({
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
 describe('RefreshTokenUseCase', () => {
-  let refreshTokenRepo: vi.Mocked<IRefreshTokenRepository>;
-  let usuarioRepo: vi.Mocked<IUsuarioRepository>;
-  let membresiaRepo: vi.Mocked<IMembresiaRepository>;
-  let clienteRepo: vi.Mocked<IClienteRepository>;
-  let tokenService: vi.Mocked<ITokenService>;
-  let permisosRepo: vi.Mocked<IMatrizPermisosRepository>;
+  let refreshTokenRepo: Mocked<IRefreshTokenRepository>;
+  let usuarioRepo: Mocked<IUsuarioRepository>;
+  let membresiaRepo: Mocked<IMembresiaRepository>;
+  let clienteRepo: Mocked<IClienteRepository>;
+  let tokenService: Mocked<ITokenService>;
+  let permisosRepo: Mocked<IMatrizPermisosRepository>;
   let useCase: RefreshTokenUseCase;
 
   const rawToken = 'a'.repeat(64);

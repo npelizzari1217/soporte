@@ -29,6 +29,7 @@
  * este spec ya NO depende de él para las aserciones de `captured.permisos`.
  */
 import * as crypto from 'crypto';
+import type { Mocked } from 'vitest';
 import { LoginUseCase, DUMMY_HASH } from './login.use-case';
 import { UsuarioEntity } from '../../domain/entities/usuario.entity';
 import { RefreshTokenEntity } from '../../domain/entities/refresh-token.entity';
@@ -88,20 +89,20 @@ const makeMembresiaResuelta = (overrides: Partial<MembresiaResuelta> = {}): Memb
   ...overrides,
 });
 
-const makeUsuarioRepo = (): vi.Mocked<IUsuarioRepository> => ({
+const makeUsuarioRepo = (): Mocked<IUsuarioRepository> => ({
   findByEmail: vi.fn(),
   findById: vi.fn(),
   create: vi.fn(),
   save: vi.fn(),
 });
 
-const makeMembresiaRepo = (): vi.Mocked<IMembresiaRepository> => ({
+const makeMembresiaRepo = (): Mocked<IMembresiaRepository> => ({
   findActivasByUsuario: vi.fn().mockResolvedValue([]),
   findActivaByUsuarioYCliente: vi.fn(),
   create: vi.fn().mockResolvedValue(undefined),
 });
 
-const makeClienteRepo = (): vi.Mocked<IClienteRepository> => ({
+const makeClienteRepo = (): Mocked<IClienteRepository> => ({
   findById: vi.fn(),
   findByDbName: vi.fn(),
   findAll: vi.fn(),
@@ -109,23 +110,23 @@ const makeClienteRepo = (): vi.Mocked<IClienteRepository> => ({
   delete: vi.fn(),
 });
 
-const makeHashProvider = (): vi.Mocked<IHashProvider> => ({
+const makeHashProvider = (): Mocked<IHashProvider> => ({
   hash: vi.fn().mockResolvedValue('$argon2id$hashed'),
   verify: vi.fn().mockResolvedValue(true),
 });
 
-const makeTokenService = (): vi.Mocked<ITokenService> => ({
+const makeTokenService = (): Mocked<ITokenService> => ({
   signJwt: vi.fn().mockReturnValue('signed.jwt.token'),
   verifyJwt: vi.fn().mockReturnValue(null),
 });
 
-const makeRefreshTokenRepo = (): vi.Mocked<IRefreshTokenRepository> => ({
+const makeRefreshTokenRepo = (): Mocked<IRefreshTokenRepository> => ({
   findByHash: vi.fn(),
   revokeAllByUsuarioId: vi.fn().mockResolvedValue(undefined),
   save: vi.fn().mockResolvedValue(undefined),
 });
 
-const makePermisosRepo = (): vi.Mocked<IMatrizPermisosRepository> => ({
+const makePermisosRepo = (): Mocked<IMatrizPermisosRepository> => ({
   findByUsuarioYCliente: vi.fn().mockResolvedValue([]),
   setPermisos: vi.fn().mockResolvedValue(undefined),
 });

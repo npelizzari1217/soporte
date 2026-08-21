@@ -14,6 +14,7 @@
  * - El nuevo payload incluye membresias[] completo (consistencia con
  *   login/refresh — ADR-3).
  */
+import type { Mocked } from 'vitest';
 import { SwitchTenantUseCase, SwitchTenantDto } from './switch-tenant.use-case';
 import { ClienteEntity } from '../../../clientes/domain/entities/cliente.entity';
 import { IMembresiaRepository, MembresiaResuelta } from '../../domain/ports/i-membresia.repository';
@@ -54,13 +55,13 @@ const makeActorPayload = (overrides: Partial<JwtPayload> = {}): JwtPayload =>
     ...overrides,
   });
 
-const makeMembresiaRepo = (): vi.Mocked<IMembresiaRepository> => ({
+const makeMembresiaRepo = (): Mocked<IMembresiaRepository> => ({
   findActivasByUsuario: vi.fn().mockResolvedValue([]),
   findActivaByUsuarioYCliente: vi.fn(),
   create: vi.fn().mockResolvedValue(undefined),
 });
 
-const makeClienteRepo = (): vi.Mocked<IClienteRepository> => ({
+const makeClienteRepo = (): Mocked<IClienteRepository> => ({
   findById: vi.fn(),
   findByDbName: vi.fn(),
   findAll: vi.fn(),
@@ -68,26 +69,26 @@ const makeClienteRepo = (): vi.Mocked<IClienteRepository> => ({
   delete: vi.fn(),
 });
 
-const makeTokenService = (): vi.Mocked<ITokenService> => ({
+const makeTokenService = (): Mocked<ITokenService> => ({
   signJwt: vi.fn().mockReturnValue('new.access.token'),
   verifyJwt: vi.fn().mockReturnValue(null),
 });
 
-const makeLogger = (): vi.Mocked<ILogger> => ({
+const makeLogger = (): Mocked<ILogger> => ({
   log: vi.fn(),
 });
 
-const makePermisosRepo = (): vi.Mocked<IMatrizPermisosRepository> => ({
+const makePermisosRepo = (): Mocked<IMatrizPermisosRepository> => ({
   findByUsuarioYCliente: vi.fn().mockResolvedValue([]),
   setPermisos: vi.fn().mockResolvedValue(undefined),
 });
 
 describe('SwitchTenantUseCase', () => {
-  let membresiaRepo: vi.Mocked<IMembresiaRepository>;
-  let clienteRepo: vi.Mocked<IClienteRepository>;
-  let tokenService: vi.Mocked<ITokenService>;
-  let logger: vi.Mocked<ILogger>;
-  let permisosRepo: vi.Mocked<IMatrizPermisosRepository>;
+  let membresiaRepo: Mocked<IMembresiaRepository>;
+  let clienteRepo: Mocked<IClienteRepository>;
+  let tokenService: Mocked<ITokenService>;
+  let logger: Mocked<ILogger>;
+  let permisosRepo: Mocked<IMatrizPermisosRepository>;
   let useCase: SwitchTenantUseCase;
 
   beforeEach(() => {

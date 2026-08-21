@@ -11,6 +11,7 @@
  * - Idempotente si el usuario no tiene tokens activos.
  */
 import * as crypto from 'crypto';
+import type { Mocked } from 'vitest';
 import { LogoutUseCase } from './logout.use-case';
 import { LogoutAllUseCase } from './logout-all.use-case';
 import { RefreshTokenEntity } from '../../domain/entities/refresh-token.entity';
@@ -30,14 +31,14 @@ const makeToken = (
     clienteId: overrides.clienteId ?? 'cliente-1',
   });
 
-const makeRefreshTokenRepo = (): vi.Mocked<IRefreshTokenRepository> => ({
+const makeRefreshTokenRepo = (): Mocked<IRefreshTokenRepository> => ({
   findByHash: vi.fn(),
   revokeAllByUsuarioId: vi.fn().mockResolvedValue(undefined),
   save: vi.fn().mockResolvedValue(undefined),
 });
 
 describe('LogoutUseCase', () => {
-  let refreshTokenRepo: vi.Mocked<IRefreshTokenRepository>;
+  let refreshTokenRepo: Mocked<IRefreshTokenRepository>;
   let useCase: LogoutUseCase;
 
   const rawToken = 'b'.repeat(64);
@@ -109,7 +110,7 @@ describe('LogoutUseCase', () => {
 });
 
 describe('LogoutAllUseCase', () => {
-  let refreshTokenRepo: vi.Mocked<IRefreshTokenRepository>;
+  let refreshTokenRepo: Mocked<IRefreshTokenRepository>;
   let useCase: LogoutAllUseCase;
 
   beforeEach(() => {

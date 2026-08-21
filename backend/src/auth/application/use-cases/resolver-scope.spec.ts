@@ -23,6 +23,7 @@
  *   cada llamada a `resolverScope` resuelve la membresía del `clienteId`
  *   pedido.
  */
+import type { Mocked } from 'vitest';
 import { resolverScope } from './resolver-scope';
 import { ClienteEntity } from '../../../clientes/domain/entities/cliente.entity';
 import { IClienteRepository } from '../../../clientes/domain/ports/i-cliente.repository';
@@ -57,7 +58,7 @@ const makeMembresiaResuelta = (overrides: Partial<MembresiaResuelta> = {}): Memb
   ...overrides,
 });
 
-const makeClienteRepo = (): vi.Mocked<IClienteRepository> => ({
+const makeClienteRepo = (): Mocked<IClienteRepository> => ({
   findById: vi.fn(),
   findByDbName: vi.fn(),
   findAll: vi.fn(),
@@ -65,7 +66,7 @@ const makeClienteRepo = (): vi.Mocked<IClienteRepository> => ({
   delete: vi.fn(),
 });
 
-const makeMembresiaRepo = (): vi.Mocked<IMembresiaRepository> => ({
+const makeMembresiaRepo = (): Mocked<IMembresiaRepository> => ({
   findActivasByUsuario: vi.fn(),
   findActivaByUsuarioYCliente: vi.fn(),
   findActivasByCliente: vi.fn(),
@@ -74,7 +75,7 @@ const makeMembresiaRepo = (): vi.Mocked<IMembresiaRepository> => ({
   save: vi.fn().mockResolvedValue(undefined),
 });
 
-const makePermisosRepo = (): vi.Mocked<IMatrizPermisosRepository> => ({
+const makePermisosRepo = (): Mocked<IMatrizPermisosRepository> => ({
   findByUsuarioYCliente: vi.fn().mockResolvedValue([]),
   setPermisos: vi.fn().mockResolvedValue(undefined),
 });
