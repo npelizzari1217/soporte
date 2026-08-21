@@ -65,4 +65,13 @@ describe("DashboardHeader", () => {
     await waitFor(() => expect(logoutCalled).toBe(true));
     await waitFor(() => expect(pushMock).toHaveBeenCalledWith("/login"));
   });
+
+  it("muestra el botón 'Cambiar contraseña' y abre el diálogo al hacer clic", async () => {
+    const user = userEvent.setup();
+    renderHeader();
+
+    await user.click(screen.getByRole("button", { name: /cambiar contraseña/i }));
+
+    expect(await screen.findByRole("dialog", { name: /cambiar contraseña/i })).toBeInTheDocument();
+  });
 });

@@ -16,6 +16,12 @@ vi.mock("sonner", () => ({
   toast: { error: vi.fn() },
 }));
 
+// AvisoMotivo (WU4) usa useSearchParams(); sin este mock, fuera de un router
+// real de Next devuelve null y `.get()` explota.
+vi.mock("next/navigation", () => ({
+  useSearchParams: () => new URLSearchParams(),
+}));
+
 function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   return render(
