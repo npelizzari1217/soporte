@@ -21,6 +21,7 @@ import { ErrorState } from "@/components/shared/error-state";
 import { PageHeader } from "@/components/shared/page-header";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { notifyError } from "@/shared/lib/toast";
+import { formatearFechaCalendario } from "@/shared/lib/formato-fecha";
 import { CicloVigenteFormDialog } from "./ciclo-vigente-form-dialog";
 import type { CicloVigenteAdmin } from "../types";
 
@@ -63,8 +64,10 @@ function CiclosVigentesAdminContent() {
 
   const columns: Column<CicloVigenteAdmin>[] = [
     { key: "nombre", header: "Nombre" },
-    { key: "fechaInicio", header: "Inicio" },
-    { key: "fechaFin", header: "Fin" },
+    // CicloVigenteAdmin.fechaInicio es @db.Date — fecha de calendario.
+    { key: "fechaInicio", header: "Inicio", render: (row) => formatearFechaCalendario(row.fechaInicio) },
+    // CicloVigenteAdmin.fechaFin es @db.Date — fecha de calendario.
+    { key: "fechaFin", header: "Fin", render: (row) => formatearFechaCalendario(row.fechaFin) },
     {
       key: "eliminado",
       header: "Estado",

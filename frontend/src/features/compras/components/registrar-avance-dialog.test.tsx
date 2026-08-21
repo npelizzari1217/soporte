@@ -10,20 +10,21 @@ import type { ItemCompra } from "../types";
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
-// Fix post-verify W4/W5: `hoyISO()` real depende del reloj del sistema — un
-// assert que importa `hoyISO` de la implementación y compara contra
-// `hoyISO()` pasa por construcción, sin importar el comportamiento real
-// (el patrón "el test consagra el síntoma"). Se mockea con un valor FIJO:
-// el componente bajo test sigue llamando a `hoyISO()` (dependencia real
-// ejercitada), pero el assert compara contra el literal `HOY_FIJO`, nunca
-// contra la función.
+// Fix post-verify W4/W5: `hoyFechaCalendario()` real depende del reloj del
+// sistema — un assert que importa `hoyFechaCalendario` de la implementación
+// y compara contra `hoyFechaCalendario()` pasa por construcción, sin
+// importar el comportamiento real (el patrón "el test consagra el
+// síntoma"). Se mockea con un valor FIJO: el componente bajo test sigue
+// llamando a `hoyFechaCalendario()` (dependencia real ejercitada), pero el
+// assert compara contra el literal `HOY_FIJO`, nunca contra la función.
 const HOY_FIJO = "2026-02-10";
-// Sólo `hoyISO` se falsea (depende del reloj). `aFechaInput` se deja con su
-// implementación REAL: es pura y determinística, y falsearla escondería el
-// recorte del ISO que el componente necesita para precargar las fechas.
-vi.mock("../lib/fecha", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../lib/fecha")>()),
-  hoyISO: () => HOY_FIJO,
+// Sólo `hoyFechaCalendario` se falsea (depende del reloj). `aFechaInput` se
+// deja con su implementación REAL: es pura y determinística, y falsearla
+// escondería el recorte del ISO que el componente necesita para precargar
+// las fechas.
+vi.mock("@/shared/lib/formato-fecha", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/shared/lib/formato-fecha")>()),
+  hoyFechaCalendario: () => HOY_FIJO,
 }));
 
 const COMPRA_ID = "compra-1";

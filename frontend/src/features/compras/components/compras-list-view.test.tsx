@@ -168,6 +168,28 @@ describe("ComprasListView", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("No se pudieron cargar las compras.");
   });
 
+  // render-fechas-frontend: `Compra.fechaSolicitud` es @db.Date. La columna
+  // usaba `aFechaInput` (normalizador de INPUT) y mostraba el ISO crudo.
+  // Literal fijo, NO derivado de `Intl` — y un caso explícito de que el día
+  // no se corre (la trampa clásica de parsear con `Date` al oeste de UTC).
+  it("la columna Fecha muestra dd/mm/yyyy, nunca el ISO crudo ni corre el día", async () => {
+    server.use(
+      http.get("/api/compras", () =>
+        HttpResponse.json({
+          items: [{ ...COMPRA, fechaSolicitud: "2026-08-17" }],
+          total: 1,
+          pagina: 1,
+          porPagina: 10,
+        }),
+      ),
+    );
+    renderWithProviders(<ComprasListView />, { user: buildUser({ modulos: ["COMPRAS"] }) });
+
+    expect(await screen.findByText("17/08/2026")).toBeInTheDocument();
+    expect(screen.queryByText("2026-08-17")).not.toBeInTheDocument();
+    expect(screen.queryByText("16/08/2026")).not.toBeInTheDocument();
+  });
+
   it("click en una fila navega al detalle de la compra", async () => {
     server.use(
       http.get("/api/compras", () =>

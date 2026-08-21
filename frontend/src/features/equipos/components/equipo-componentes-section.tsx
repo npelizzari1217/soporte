@@ -47,6 +47,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Can } from "@/components/shared/can";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
+import { formatearInstante } from "@/shared/lib/formato-fecha";
 import { useEliminarComponente, useReactivarComponente } from "../hooks/use-equipo-mutations";
 import { ordenarComponentes } from "../ordenar-componentes";
 import type { ComponenteConTipo } from "../types";
@@ -58,11 +59,6 @@ const CELL_INACTIVO = "text-muted-foreground line-through";
 export interface EquipoComponentesSectionProps {
   equipoId: string;
   componentes: ComponenteConTipo[];
-}
-
-/** Fecha corta + hora, mismo formato que `TicketTimeline` (sin util compartido en el repo). */
-function formatFecha(iso: string): string {
-  return new Intl.DateTimeFormat("es-AR", { dateStyle: "short", timeStyle: "short" }).format(new Date(iso));
 }
 
 export function EquipoComponentesSection({ equipoId, componentes }: EquipoComponentesSectionProps) {
@@ -173,10 +169,12 @@ export function EquipoComponentesSection({ equipoId, componentes }: EquipoCompon
                 </TableCell>
               </TableRow>
               <TableRow>
+                {/* ComponenteEquipo.createdAt/updatedAt/deletedAt son @db.Timestamptz — instante. */}
                 <TableCell colSpan={4} className="pt-0 text-xs text-muted-foreground">
-                  Creado: {formatFecha(componente.createdAt)} · Actualizado: {formatFecha(componente.updatedAt)}
+                  Creado: {formatearInstante(componente.createdAt)} · Actualizado:{" "}
+                  {formatearInstante(componente.updatedAt)}
                   {!componente.activo && componente.deletedAt && (
-                    <> · Dado de baja: {formatFecha(componente.deletedAt)}</>
+                    <> · Dado de baja: {formatearInstante(componente.deletedAt)}</>
                   )}
                 </TableCell>
               </TableRow>

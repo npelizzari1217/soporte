@@ -33,7 +33,8 @@ import { Badge } from "@/components/ui/badge";
 import { useCompra } from "../hooks/use-compras";
 import { useSectores } from "@/features/sectores/hooks/use-sectores";
 import { formatearTotalesPorMoneda } from "../lib/formatear-totales";
-import { aFechaInput } from "../lib/fecha";
+import { formatearFechaCalendario } from "@/shared/lib/formato-fecha";
+import { notifyError } from "@/shared/lib/toast";
 import { EstadoCompraBadge } from "./estado-compra-badge";
 import { CompraItemsSection } from "./compra-items-section";
 import { CompraBitacoraSection } from "./compra-bitacora-section";
@@ -57,9 +58,7 @@ export function CompraDetailView({ compraId }: CompraDetailViewProps) {
     return (
       <ErrorState
         message="No se pudo cargar la compra."
-        onRetry={() => {
-          compraQuery.refetch().catch(() => {});
-        }}
+        onRetry={() => compraQuery.refetch().catch(notifyError)}
       />
     );
   }
@@ -93,13 +92,12 @@ export function CompraDetailView({ compraId }: CompraDetailViewProps) {
         </div>
         <div className="flex flex-col gap-1">
           <span className="text-xs text-muted-foreground">Fecha de solicitud</span>
-          {/* Fecha de calendario recortada del ISO, NO reparseada: `new Date()`
-              + componentes locales muestra el día anterior al oeste de UTC
-              (la fecha viaja a medianoche UTC). El comentario anterior asumía
-              que el backend mandaba "YYYY-MM-DD" y pintaba el valor crudo —
-              hoy manda datetime ISO completo, así que en pantalla se leía
-              "2026-08-17T00:00:00.000Z". */}
-          <span className="text-sm text-foreground">{aFechaInput(compra.fechaSolicitud)}</span>
+          {/* Compra.fechaSolicitud es @db.Date — fecha de calendario.
+              `aFechaInput` es un normalizador de INPUT ("YYYY-MM-DD" para
+              `<input type="date">`), no un formateador de pantalla: usarlo
+              acá mostraba "2026-08-17" en vez de "17/08/2026"
+              (render-fechas-frontend). */}
+          <span className="text-sm text-foreground">{formatearFechaCalendario(compra.fechaSolicitud)}</span>
         </div>
         <div className="flex flex-col gap-1">
           <span className="text-xs text-muted-foreground">Progreso</span>

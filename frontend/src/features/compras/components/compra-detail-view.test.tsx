@@ -129,6 +129,37 @@ describe("CompraDetailView", () => {
     expect(screen.getByText("Rechazado")).toBeInTheDocument();
   });
 
+  // render-fechas-frontend: `Compra.fechaSolicitud` e
+  // `ItemCompra.fechaOrden`/`fechaRecepcion`/`fechaEntrega` son @db.Date.
+  // Cabecera e ítems usaban `aFechaInput` (normalizador de INPUT) y
+  // mostraban el ISO crudo. Literales fijos, NO derivados de `Intl`.
+  it("fecha de solicitud y fechas de ítems se muestran dd/mm/yyyy, con guion cuando la etapa no se registró", async () => {
+    server.use(
+      http.get("/api/compras/c1", () => HttpResponse.json(COMPRA_DETALLE)),
+      http.get("/api/compras/c1/operaciones", () => HttpResponse.json(OPERACIONES)),
+    );
+    renderWithProviders(<CompraDetailView compraId="c1" />, {
+      user: buildUser({ modulos: ["COMPRAS"] }),
+    });
+
+    await screen.findByText("Resmas de papel A4");
+
+    // Cabecera: "2026-01-15" -> "15/01/2026", nunca el ISO crudo.
+    expect(screen.getByText("15/01/2026")).toBeInTheDocument();
+    expect(screen.queryByText(/2026-01-15/)).not.toBeInTheDocument();
+
+    // Ítem i1: orden/recepción registradas, entrega todavía no (guion).
+    expect(screen.getByText("Orden: 12/01/2026")).toBeInTheDocument();
+    expect(screen.getByText("Recepción: 13/01/2026")).toBeInTheDocument();
+
+    // Ítem i1 y i2 comparten "Entrega: —" (ninguno tiene la etapa registrada);
+    // i2 además no tiene orden ni recepción registradas — se conserva el
+    // comportamiento previo del helper local para `fecha === null`.
+    expect(screen.getAllByText("Entrega: —").length).toBe(2);
+    expect(screen.getAllByText("Orden: —").length).toBe(1);
+    expect(screen.getAllByText("Recepción: —").length).toBe(1);
+  });
+
   it("bitácora: arma la request a /compras/:id/operaciones y renderiza las operaciones reales", async () => {
     let bitacoraRequestUrl: string | undefined;
     server.use(

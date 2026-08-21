@@ -104,4 +104,39 @@ describe("EquipoCreateDialog", () => {
 
     expect(await screen.findByText(/se deprecia sobre el importe: \$1\.234\.567,89/i)).toBeInTheDocument();
   });
+
+  /**
+   * Regresión — mismo bug ya corregido una vez en `features/compras/lib/fecha.ts`
+   * (ver `shared/lib/formato-fecha.ts`, nota sobre `OFFSET_ARGENTINA_MS`): "Fecha
+   * del valor residual" tiene que precargar el día de calendario ARGENTINO (offset
+   * fijo -3, la misma regla que valida el backend), no el día local de la máquina
+   * del usuario. Con TZ = "Pacific/Kiritimati" (UTC+14) y el instante elegido, el
+   * día local de la máquina (15) y el día argentino (14) NO coinciden — el caso que
+   * expone el bug.
+   */
+  it("aplicar depreciación precarga el día de calendario ARGENTINO, no el día local de la máquina", async () => {
+    const tzOriginal = process.env.TZ;
+    process.env.TZ = "Pacific/Kiritimati";
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-03-15T01:00:00.000Z"));
+
+    try {
+      renderWithProviders(<EquipoCreateDialog />, { user: buildUser({ permisos: ["equipo:gestionar"] }) });
+
+      const user = await abrirDialog();
+      await user.type(screen.getByLabelText(/^nombre$/i), "Notebook Dell");
+      await user.type(screen.getByLabelText(/importe/i), "1000");
+      await user.type(screen.getByLabelText(/% de depreciación/i), "30");
+      await user.click(screen.getByRole("button", { name: /^aplicar$/i }));
+
+      expect(screen.getByLabelText(/fecha del valor residual/i)).toHaveValue("2026-03-14");
+    } finally {
+      vi.useRealTimers();
+      if (tzOriginal === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = tzOriginal;
+      }
+    }
+  });
 });

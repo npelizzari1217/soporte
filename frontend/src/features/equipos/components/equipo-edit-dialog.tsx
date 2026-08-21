@@ -27,9 +27,10 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { MontoInput } from "@/components/shared/monto-input";
 import { formatearNumeroEsAr } from "@/shared/lib/formato-numero";
+import { aFechaInput, hoyFechaCalendario } from "@/shared/lib/formato-fecha";
 import { useEditarEquipo } from "../hooks/use-equipo-mutations";
 import { crearEquipoSchema, type CrearEquipoFormValues } from "../schemas";
-import { baseDepreciacion, calcularValorResidual, hoyISO, parseImporte } from "../depreciacion";
+import { baseDepreciacion, calcularValorResidual, parseImporte } from "../depreciacion";
 import type { EquipoDetalle } from "../types";
 
 export interface EquipoEditDialogProps {
@@ -38,7 +39,12 @@ export interface EquipoEditDialogProps {
 
 /**
  * Mapea el equipo cargado a los valores del form: ISO (`2026-08-11T00:00:00Z`)
- * → `YYYY-MM-DD` que espera `<input type="date">`, y number/null → string vacío.
+ * → `YYYY-MM-DD` que espera `<input type="date">` vía `aFechaInput`
+ * (`Equipo.fechaAdquisicion` / `fechaValoracion` / `fechaValorResidual` son
+ * `@db.Date`; estos tres valores alimentan un input, nunca se muestran en
+ * pantalla — deduplica el `.slice(0, 10)` open-coded, no cambia el
+ * comportamiento, `aFechaInput` ya maneja `null`/`undefined`), y number/null
+ * → string vacío.
  */
 function equipoAFormValues(equipo: EquipoDetalle): CrearEquipoFormValues {
   return {
@@ -46,13 +52,13 @@ function equipoAFormValues(equipo: EquipoDetalle): CrearEquipoFormValues {
     numeroSerie: equipo.numeroSerie ?? "",
     marca: equipo.marca ?? "",
     modelo: equipo.modelo ?? "",
-    fechaAdquisicion: equipo.fechaAdquisicion ? equipo.fechaAdquisicion.slice(0, 10) : "",
+    fechaAdquisicion: aFechaInput(equipo.fechaAdquisicion),
     ubicacion: equipo.ubicacion ?? "",
     importe: equipo.importe != null ? String(equipo.importe) : "",
-    fechaValoracion: equipo.fechaValoracion ? equipo.fechaValoracion.slice(0, 10) : "",
+    fechaValoracion: aFechaInput(equipo.fechaValoracion),
     observaciones: equipo.observaciones ?? "",
     valorResidual: equipo.valorResidual != null ? String(equipo.valorResidual) : "",
-    fechaValorResidual: equipo.fechaValorResidual ? equipo.fechaValorResidual.slice(0, 10) : "",
+    fechaValorResidual: aFechaInput(equipo.fechaValorResidual),
     porcentajeDepreciacion: "",
   };
 }
@@ -95,7 +101,7 @@ export function EquipoEditDialog({ equipo }: EquipoEditDialogProps) {
     setValue("valorResidual", String(calcularValorResidual(baseActual, porcentaje)), {
       shouldValidate: true,
     });
-    setValue("fechaValorResidual", hoyISO(), { shouldValidate: true });
+    setValue("fechaValorResidual", hoyFechaCalendario(), { shouldValidate: true });
   }
 
   function handleOpenChange(next: boolean) {

@@ -65,7 +65,7 @@ import { EstadoCompraBadge } from "./estado-compra-badge";
 import { CompraCreateDialog } from "./compra-create-dialog";
 import { ExportarComprasButton } from "./exportar-compras-button";
 import { formatearTotalesPorMoneda } from "../lib/formatear-totales";
-import { aFechaInput } from "../lib/fecha";
+import { formatearFechaCalendario } from "@/shared/lib/formato-fecha";
 import type { CompraListItem, ComprasFiltros, FiltroEstadoCompra } from "../types";
 
 const PAGE_SIZE = 10;
@@ -134,12 +134,11 @@ export function ComprasListView() {
 
   const columns: Column<CompraListItem>[] = [
     { key: "numero", header: "Número" },
-    // Fecha RECORTADA del ISO, no reparseada: `new Date()` + reformateo corre
-    // el riesgo de mostrar el día anterior por timezone. El comentario anterior
-    // daba por hecho que el backend mandaba "YYYY-MM-DD" y pintaba el valor
-    // crudo, pero `compras.dto.ts` serializa con `.toISOString()` — en la
-    // columna se leía "2026-08-17T00:00:00.000Z".
-    { key: "fechaSolicitud", header: "Fecha", render: (row) => aFechaInput(row.fechaSolicitud) },
+    // Compra.fechaSolicitud es @db.Date — fecha de calendario. `aFechaInput`
+    // es un normalizador de INPUT ("YYYY-MM-DD" para `<input type="date">"),
+    // no un formateador de pantalla: usarlo acá mostraba "2026-08-17" en vez
+    // de "17/08/2026" (render-fechas-frontend).
+    { key: "fechaSolicitud", header: "Fecha", render: (row) => formatearFechaCalendario(row.fechaSolicitud) },
     { key: "motivo", header: "Motivo" },
     {
       key: "estado",

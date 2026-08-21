@@ -10,6 +10,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { formatearFechaCalendario } from "@/shared/lib/formato-fecha";
 import { useActivarCiclo, useDesactivarCiclo } from "../hooks/use-ciclos-mutations";
 import type { CicloTenant } from "@/features/dashboard/types";
 
@@ -24,8 +25,9 @@ export function CicloRow({ ciclo }: CicloRowProps) {
   return (
     <div className="flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-3">
       <span className="flex-1 text-sm font-medium text-foreground">{ciclo.nombre}</span>
+      {/* CicloTenant.fechaInicio / fechaFin son @db.Date — fecha de calendario. */}
       <span className="text-xs text-muted-foreground">
-        {ciclo.fechaInicio} → {ciclo.fechaFin}
+        {formatearFechaCalendario(ciclo.fechaInicio)} → {formatearFechaCalendario(ciclo.fechaFin)}
       </span>
       {ciclo.activo ? (
         <>

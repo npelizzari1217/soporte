@@ -28,6 +28,7 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { formatearInstante } from "@/shared/lib/formato-fecha";
 import { useClienteCorreo } from "../hooks/use-clientes";
 import {
   useConfigurarCorreoCliente,
@@ -39,11 +40,6 @@ import type { Cliente } from "../types";
 
 export interface ConfigurarCorreoDialogProps {
   cliente: Cliente;
-}
-
-/** Fecha corta + hora — mismo formato local que el resto del repo (sin util compartido, ver `compra-bitacora-section.tsx`). */
-function formatFecha(iso: string): string {
-  return new Intl.DateTimeFormat("es-AR", { dateStyle: "short", timeStyle: "short" }).format(new Date(iso));
 }
 
 const VALORES_VACIOS: ConfigurarCorreoFormValues = {
@@ -129,9 +125,10 @@ export function ConfigurarCorreoDialog({ cliente }: ConfigurarCorreoDialogProps)
           ) : (
             <Badge variant="outline">Correo no configurado</Badge>
           )}
+          {/* ClienteCorreo.verificadoAt es @db.Timestamptz — instante. */}
           {yaConfigurado && correoQuery.data?.verificadoAt && !correoQuery.data.verificacionError && (
             <span className="text-xs text-muted-foreground">
-              Verificado el {formatFecha(correoQuery.data.verificadoAt)}
+              Verificado el {formatearInstante(correoQuery.data.verificadoAt)}
             </span>
           )}
           {yaConfigurado && correoQuery.data?.verificacionError && (
