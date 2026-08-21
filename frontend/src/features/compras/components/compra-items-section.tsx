@@ -39,7 +39,7 @@ import {
 } from "./registrar-avance-dialog";
 import { ItemCerrarFaltanteDialog } from "./item-cerrar-faltante-dialog";
 import type { EstadoAprobacionItem, ItemCompra } from "../types";
-import { aFechaInput } from "../lib/fecha";
+import { aFechaInput } from "@/shared/lib/formato-fecha";
 import { formatearMontoConMoneda } from "@/shared/lib/formato-numero";
 
 /**

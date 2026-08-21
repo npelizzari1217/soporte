@@ -31,7 +31,7 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { MontoInput } from "@/components/shared/monto-input";
 import { useEditarItemCompra } from "../hooks/use-compra-mutations";
-import { aFechaInput } from "../lib/fecha";
+import { aFechaInput } from "@/shared/lib/formato-fecha";
 import { editarItemCompraSchema, type EditarItemCompraFormValues } from "../schemas";
 import type { EditarItemCompraDto, ItemCompra } from "../types";
 

@@ -37,7 +37,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useEditarCompra } from "../hooks/use-compra-mutations";
-import { aFechaInput } from "../lib/fecha";
+import { aFechaInput } from "@/shared/lib/formato-fecha";
 import { useSectores } from "@/features/sectores/hooks/use-sectores";
 import { editarCompraSchema, type EditarCompraFormValues } from "../schemas";
 import type { CompraDetalle, EditarCompraDto } from "../types";

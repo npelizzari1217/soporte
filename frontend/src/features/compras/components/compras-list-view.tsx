@@ -65,7 +65,7 @@ import { EstadoCompraBadge } from "./estado-compra-badge";
 import { CompraCreateDialog } from "./compra-create-dialog";
 import { ExportarComprasButton } from "./exportar-compras-button";
 import { formatearTotalesPorMoneda } from "../lib/formatear-totales";
-import { aFechaInput } from "../lib/fecha";
+import { aFechaInput } from "@/shared/lib/formato-fecha";
 import type { CompraListItem, ComprasFiltros, FiltroEstadoCompra } from "../types";
 
 const PAGE_SIZE = 10;

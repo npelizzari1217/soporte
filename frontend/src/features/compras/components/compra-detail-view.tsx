@@ -33,7 +33,8 @@ import { Badge } from "@/components/ui/badge";
 import { useCompra } from "../hooks/use-compras";
 import { useSectores } from "@/features/sectores/hooks/use-sectores";
 import { formatearTotalesPorMoneda } from "../lib/formatear-totales";
-import { aFechaInput } from "../lib/fecha";
+import { aFechaInput } from "@/shared/lib/formato-fecha";
+import { notifyError } from "@/shared/lib/toast";
 import { EstadoCompraBadge } from "./estado-compra-badge";
 import { CompraItemsSection } from "./compra-items-section";
 import { CompraBitacoraSection } from "./compra-bitacora-section";
@@ -57,9 +58,7 @@ export function CompraDetailView({ compraId }: CompraDetailViewProps) {
     return (
       <ErrorState
         message="No se pudo cargar la compra."
-        onRetry={() => {
-          compraQuery.refetch().catch(() => {});
-        }}
+        onRetry={() => compraQuery.refetch().catch(notifyError)}
       />
     );
   }
