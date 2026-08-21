@@ -59,6 +59,7 @@ import { RefreshTokenUseCase } from './application/use-cases/refresh-token.use-c
 import { LogoutUseCase } from './application/use-cases/logout.use-case';
 import { LogoutAllUseCase } from './application/use-cases/logout-all.use-case';
 import { SwitchTenantUseCase } from './application/use-cases/switch-tenant.use-case';
+import { CambiarPasswordUseCase } from './application/use-cases/cambiar-password.use-case';
 import { ListarUsuariosTenantUseCase } from './application/use-cases/listar-usuarios-tenant.use-case';
 import { CrearUsuarioTenantUseCase } from './application/use-cases/crear-usuario-tenant.use-case';
 import { CambiarRolUsuarioTenantUseCase } from './application/use-cases/cambiar-rol-usuario-tenant.use-case';
@@ -204,6 +205,19 @@ import { RolesController } from './interface/controllers/roles.controller';
         LOGGER,
         MATRIZ_PERMISOS_REPOSITORY,
       ],
+    },
+    // CambiarPasswordUseCase (sdd/cambio-de-contrasena, WU2): cambia la
+    // contraseña del propio usuario autenticado y revoca sus sesiones.
+    // `LOGGER`: degradación silenciosa si `revokeAllByUsuarioId` falla (D5).
+    {
+      provide: CambiarPasswordUseCase,
+      useFactory: (
+        usuarioRepo: IUsuarioRepository,
+        hashProvider: IHashProvider,
+        refreshTokenRepo: IRefreshTokenRepository,
+        logger: ILogger,
+      ) => new CambiarPasswordUseCase(usuarioRepo, hashProvider, refreshTokenRepo, logger),
+      inject: [USUARIO_REPOSITORY, HASH_PROVIDER, REFRESH_TOKEN_REPOSITORY, LOGGER],
     },
     // ─── Gestión mínima de usuarios (sdd/beta-frontend/spec §5) ──────────────
     {

@@ -637,6 +637,117 @@ describe('Auth e2e (R3–R14, PR6)', () => {
     });
   });
 
+  // ─── WU2 (sdd/cambio-de-contrasena) — POST /auth/change-password ────────
+
+  describe('POST /auth/change-password (sdd/cambio-de-contrasena, WU2)', () => {
+    async function passwordHashDe(usuarioId: string): Promise<string | undefined> {
+      const row = await masterClient.usuario.findUnique({ where: { id: usuarioId } });
+      return row?.passwordHash;
+    }
+
+    it('sin Bearer token → 401, no ejecuta el caso de uso', async () => {
+      const { status } = await httpPost(`${baseUrl}/auth/change-password`, {
+        passwordActual: PLAINTEXT_PASSWORD,
+        passwordNueva: 'NuevaClave123',
+      });
+
+      expect(status).toBe(401);
+    });
+
+    it('passwordNueva con menos de 8 caracteres → 400 (ValidationPipe), sin tocar password_hash', async () => {
+      const usuario = await createUsuario('cambio-corta', { isGlobalAdmin: true });
+      const loginRes = await login(usuario.email);
+      const hashAntes = await passwordHashDe(usuario.id);
+
+      const { status } = await httpPost(
+        `${baseUrl}/auth/change-password`,
+        { passwordActual: PLAINTEXT_PASSWORD, passwordNueva: 'corta' },
+        bearer(loginRes.data.accessToken!),
+      );
+
+      expect(status).toBe(400);
+      expect(await passwordHashDe(usuario.id)).toBe(hashAntes);
+    });
+
+    it('passwordActual incorrecta → 422, password_hash sin cambios (doble asserto)', async () => {
+      const usuario = await createUsuario('cambio-actual-mal', { isGlobalAdmin: true });
+      const loginRes = await login(usuario.email);
+      const hashAntes = await passwordHashDe(usuario.id);
+
+      const { status, data } = await httpPost<{ error: string }>(
+        `${baseUrl}/auth/change-password`,
+        { passwordActual: 'no-es-la-clave', passwordNueva: 'NuevaClave123' },
+        bearer(loginRes.data.accessToken!),
+      );
+
+      expect(status).toBe(422);
+      expect(data.error).toBe('AUTH_PASSWORD_ACTUAL_INCORRECTA');
+      expect(await passwordHashDe(usuario.id)).toBe(hashAntes);
+    });
+
+    it('passwordNueva === passwordActual → 422', async () => {
+      const usuario = await createUsuario('cambio-igual', { isGlobalAdmin: true });
+      const loginRes = await login(usuario.email);
+
+      const { status, data } = await httpPost<{ error: string }>(
+        `${baseUrl}/auth/change-password`,
+        { passwordActual: PLAINTEXT_PASSWORD, passwordNueva: PLAINTEXT_PASSWORD },
+        bearer(loginRes.data.accessToken!),
+      );
+
+      expect(status).toBe(422);
+      expect(data.error).toBe('AUTH_PASSWORD_NUEVA_IGUAL');
+    });
+
+    it('test del sujeto: un usuarioId ajeno en el body NO tiene ningún efecto — cambia la clave del JWT, no la del body', async () => {
+      const usuarioA = await createUsuario('sujeto-a', { isGlobalAdmin: true });
+      const usuarioB = await createUsuario('sujeto-b', { isGlobalAdmin: true });
+      const loginA = await login(usuarioA.email);
+      const hashBAntes = await passwordHashDe(usuarioB.id);
+
+      const { status } = await httpPost(
+        `${baseUrl}/auth/change-password`,
+        {
+          usuarioId: usuarioB.id,
+          passwordActual: PLAINTEXT_PASSWORD,
+          passwordNueva: 'NuevaClaveA123',
+        },
+        bearer(loginA.data.accessToken!),
+      );
+
+      expect(status).toBe(204);
+      // La clave de B queda intacta: `usuarioId` del body no tuvo ningún efecto.
+      expect(await passwordHashDe(usuarioB.id)).toBe(hashBAntes);
+      // La clave de A SÍ cambió: login con la vieja falla, con la nueva funciona.
+      expect((await login(usuarioA.email, PLAINTEXT_PASSWORD)).status).toBe(401);
+      expect((await login(usuarioA.email, 'NuevaClaveA123')).status).toBe(200);
+    });
+
+    it('éxito → 204; login con la clave vieja falla, con la nueva funciona; el refresh token previo queda inutilizable', async () => {
+      const usuario = await createUsuario('cambio-exito', { isGlobalAdmin: true });
+      const loginRes = await login(usuario.email);
+      const refreshPrevio = loginRes.data.refreshToken!;
+
+      const { status } = await httpPost(
+        `${baseUrl}/auth/change-password`,
+        { passwordActual: PLAINTEXT_PASSWORD, passwordNueva: 'NuevaClaveExito123' },
+        bearer(loginRes.data.accessToken!),
+      );
+
+      expect(status).toBe(204);
+
+      const loginConVieja = await login(usuario.email, PLAINTEXT_PASSWORD);
+      expect(loginConVieja.status).toBe(401);
+      const loginConNueva = await login(usuario.email, 'NuevaClaveExito123');
+      expect(loginConNueva.status).toBe(200);
+
+      const refreshTrasCambio = await httpPost(`${baseUrl}/auth/refresh`, {
+        refreshToken: refreshPrevio,
+      });
+      expect(refreshTrasCambio.status).toBe(401);
+    });
+  });
+
   // ─── Sanity: la instancia sigue siendo Pool-clean (ninguna otra DB tocada) ──
 
   it('sanity: DATABASE_URL_MASTER apunta a una DB *_test', () => {
