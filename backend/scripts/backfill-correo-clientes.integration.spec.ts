@@ -127,10 +127,9 @@ describe('backfill-correo-clientes — idempotencia y no-pisado de config manual
     expect(resultado.sin_config).toBe(0);
 
     // La config manual sigue exactamente igual después de una segunda corrida.
-    const { rows } = await pool.query(
-      `SELECT smtp_password_cifrada FROM clientes WHERE id = $1`,
-      [conConfigManualId],
-    );
+    const { rows } = await pool.query(`SELECT smtp_password_cifrada FROM clientes WHERE id = $1`, [
+      conConfigManualId,
+    ]);
     expect(rows[0].smtp_password_cifrada).toBe('v1:manual:manual:manual');
   });
 });

@@ -255,16 +255,57 @@ pnpm test        # unit/component (Vitest + Testing Library + MSW, sin backend r
 pnpm test:e2e     # Playwright — ver prerequisitos abajo
 ```
 
-### Backend: preparar el entorno de tests (una vez)
+### Backend: preparar el entorno (camino primario)
 
 **`pnpm test` a secas en `backend/` falla con cientos de tests en rojo.** No es el
 código: los specs de integración y los e2e necesitan **dos bases de test propias**
-y **dos variables de entorno** que no están en `.env`.
+que no están en `.env`. El camino primario, de punta a punta, es un solo comando:
 
-Los e2e tienen un guardarraíl deliberado — `expect(MASTER_URL).toMatch(/_test$/)` —
-que los hace fallar si `DATABASE_URL_MASTER` no apunta a una base `*_test`. Es lo
-único que impide que la suite arrase tu base de desarrollo. Si ves ese test en
-rojo, no está roto: te está avisando que falta esto.
+```powershell
+# 1. Contenedor Postgres (una sola vez — el comando de abajo NO lo crea, solo lo usa)
+docker run -d --name soporte-postgres-master -p 5432:5432 `
+  -e POSTGRES_USER=soporte -e POSTGRES_PASSWORD=soporte `
+  --restart unless-stopped postgres:16
+
+# 2. Completar backend/.env a partir de backend/.env.example (a mano, una sola vez)
+
+# 3. Diagnóstico opcional — reporta qué falta sin tocar nada
+cd backend
+pnpm entorno:verificar
+
+# 4. Crea las bases de test si faltan, migra las tres (master + master_test +
+#    tenant_test) y siembra (seed:root, seed:demo, sync:ayuda) — idempotente,
+#    correrlo dos veces seguidas no duplica ni falla
+pnpm entorno:regenerar --confirmar
+```
+
+`pnpm entorno:regenerar` **sin** `--confirmar` es dry-run: imprime el plan completo
+(host y origen de cada `DATABASE_URL_*`, contenedor, bases, migraciones pendientes,
+seeds, claves faltantes en `.env`) sin mutar nada. Correlo así primero si querés ver
+qué haría antes de aplicar.
+
+Si `soporte_master_test` o `soporte_tenant_test` quedaron en un estado inconsistente
+(migración a medias, datos corruptos de una corrida anterior), **`pnpm entorno:regenerar
+--recrear-test --confirmar`** las dropea y recrea vacías — es la única operación
+destructiva del comando y solo toca esas dos bases, nunca `soporte_master` ni un
+tenant real, y nunca fuera de `localhost`. Después de recrearlas hace falta correr
+`pnpm entorno:regenerar --confirmar` de nuevo para migrarlas y sembrarlas.
+
+Los e2e tienen además un guardarraíl deliberado — `expect(MASTER_URL).toMatch(/_test$/)` —
+que los hace fallar si `DATABASE_URL_MASTER` no apunta a una base `*_test`. Es una
+segunda capa, independiente del comando de arriba, que impide que la suite arrase
+tu base de desarrollo. Si ves ese test en rojo, no está roto: te está avisando que
+falta el paso 4.
+
+Las bases `soporte_prov_*_test` las provisiona y descarta cada spec: **no hay que
+crearlas**, y `entorno:regenerar` no las toca.
+
+#### Apéndice: preparar el entorno a mano (si el comando falla)
+
+Fallback y referencia de qué hace `entorno:regenerar --confirmar` por dentro —
+no es un segundo camino a elegir, es lo que corrés a mano si el comando de
+arriba no puede correr (por ejemplo, `node`/`pnpm` fuera de esta máquina, o un
+bug en el script).
 
 ```powershell
 # Las dos bases de test (una sola vez)
@@ -275,10 +316,12 @@ docker exec soporte-postgres-master psql -U soporte -d postgres -c "CREATE DATAB
 cd backend
 $env:DATABASE_URL_MASTER="postgresql://soporte:soporte@localhost:5432/soporte_master_test"; pnpm migrate:master
 $env:DATABASE_URL_TENANT="postgresql://soporte:soporte@localhost:5432/soporte_tenant_test"; pnpm migrate:tenant
-```
 
-Las bases `soporte_prov_*_test` las provisiona y descarta cada spec: **no hay que
-crearlas**.
+# Sembrar (mismo orden que el comando: root -> demo -> ayuda)
+pnpm run seed:root
+pnpm run seed:demo
+node scripts/sync-ayuda.js
+```
 
 ### Backend: correr la suite
 

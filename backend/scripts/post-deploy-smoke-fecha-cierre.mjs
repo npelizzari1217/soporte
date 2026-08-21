@@ -142,7 +142,9 @@ async function checkRoundTripEscritura(dbName) {
     }
 
     if (resultado?.sinTickets) {
-      warn(`[${dbName}] sin tickets para probar el round-trip de escritura (tenant vacío) — omitido`);
+      warn(
+        `[${dbName}] sin tickets para probar el round-trip de escritura (tenant vacío) — omitido`,
+      );
       return;
     }
     const sobrevivio = resultado.instanteLeido?.getTime() === INSTANTE_PRUEBA.getTime();
