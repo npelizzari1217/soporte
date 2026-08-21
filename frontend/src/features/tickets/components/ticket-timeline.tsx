@@ -9,6 +9,7 @@
  */
 import { MessageSquare, RefreshCw, UserCheck, Paperclip, HelpCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { formatearInstante } from "@/shared/lib/formato-fecha";
 import type { OperacionTicket } from "../types";
 
 const TIPO_OPERACION_CONFIG: Record<string, { label: string; icon: typeof MessageSquare }> = {
@@ -46,11 +47,8 @@ export function TicketTimeline({ operaciones, tipoOperacionCodigoMap }: TicketTi
                     Interno
                   </Badge>
                 )}
-                <span className="text-xs text-muted-foreground">
-                  {new Intl.DateTimeFormat("es-AR", { dateStyle: "short", timeStyle: "short" }).format(
-                    new Date(operacion.createdAt),
-                  )}
-                </span>
+                {/* OperacionTicket.createdAt es @db.Timestamptz — instante. */}
+                <span className="text-xs text-muted-foreground">{formatearInstante(operacion.createdAt)}</span>
               </div>
               {operacion.descripcion && <p className="text-sm text-foreground">{operacion.descripcion}</p>}
             </div>

@@ -15,6 +15,7 @@ import { History } from "lucide-react";
 import { TableSkeleton } from "@/components/shared/skeletons";
 import { ErrorState } from "@/components/shared/error-state";
 import { EmptyState } from "@/components/shared/empty-state";
+import { formatearInstante } from "@/shared/lib/formato-fecha";
 import { useOperacionesCompra } from "../hooks/use-operaciones-compra";
 import type { TipoOperacionCompra } from "../types";
 
@@ -43,11 +44,6 @@ const TIPO_OPERACION_LABELS: Record<TipoOperacionCompra, string> = {
   ITEM_CERRADO_CON_FALTANTE: "Cerrado con faltante",
   CANCELACION: "Cancelación",
 };
-
-/** Fecha corta + hora, mismo formato que `EquipoComponentesSection.formatFecha` (sin util compartido en el repo). */
-function formatFecha(iso: string): string {
-  return new Intl.DateTimeFormat("es-AR", { dateStyle: "short", timeStyle: "short" }).format(new Date(iso));
-}
 
 export interface CompraBitacoraSectionProps {
   compraId: string;
@@ -90,7 +86,8 @@ export function CompraBitacoraSection({ compraId }: CompraBitacoraSectionProps) 
                 {TIPO_OPERACION_LABELS[operacion.tipo]}
               </span>
               <span className="text-muted-foreground">{operacion.detalle}</span>
-              <span className="text-xs text-muted-foreground">{formatFecha(operacion.createdAt)}</span>
+              {/* OperacionCompra.createdAt es @db.Timestamptz — instante. */}
+              <span className="text-xs text-muted-foreground">{formatearInstante(operacion.createdAt)}</span>
             </li>
           ))}
         </ul>

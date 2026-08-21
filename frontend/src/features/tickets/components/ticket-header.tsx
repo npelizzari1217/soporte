@@ -16,6 +16,7 @@
 import { StatusBadge, type TicketEstado } from "@/components/ui/status-badge";
 import { PriorityBadge } from "@/components/ui/priority-badge";
 import { Badge } from "@/components/ui/badge";
+import { formatearInstante } from "@/shared/lib/formato-fecha";
 import type { Ticket } from "../types";
 
 export interface TicketHeaderProps {
@@ -75,8 +76,15 @@ export function TicketHeader({ ticket, estadoCodigo, prioridadCodigo, tipoNombre
           <dt className="text-muted-foreground">
             {ticket.slaVenceAt ? "SLA vence" : "Creado"}
           </dt>
+          {/*
+           * Ticket.slaVenceAt / createdAt son @db.Timestamptz — instante.
+           * `formatearInstante` (con hora) a propósito: antes se usaba
+           * `Intl.DateTimeFormat("es-AR")` sin opciones, que le comía la hora
+           * a un vencimiento — el usuario no podía saber si el SLA vence a
+           * las 09:00 o a las 23:00.
+           */}
           <dd className="text-foreground">
-            {new Intl.DateTimeFormat("es-AR").format(new Date(ticket.slaVenceAt ?? ticket.createdAt))}
+            {formatearInstante(ticket.slaVenceAt ?? ticket.createdAt)}
           </dd>
         </div>
       </dl>

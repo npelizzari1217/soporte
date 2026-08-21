@@ -27,6 +27,7 @@ import { Can } from "@/components/shared/can";
 import { TableSkeleton } from "@/components/shared/skeletons";
 import { ErrorState } from "@/components/shared/error-state";
 import { EmptyState } from "@/components/shared/empty-state";
+import { formatearInstante } from "@/shared/lib/formato-fecha";
 import { notifyError } from "@/shared/lib/toast";
 import { useComentariosReparacion, useCrearComentarioReparacion } from "../hooks/use-comentarios-reparacion";
 import { crearComentarioSchema, type CrearComentarioFormValues } from "../schemas";
@@ -36,11 +37,6 @@ export interface ComentariosDialogProps {
   reparacionId: string;
   trigger: ReactNode;
   numero: string;
-}
-
-/** Fecha corta + hora, mismo formato que `TicketTimeline`/`CompraBitacoraSection` (sin util compartido en el repo). */
-function formatFecha(iso: string): string {
-  return new Intl.DateTimeFormat("es-AR", { dateStyle: "short", timeStyle: "short" }).format(new Date(iso));
 }
 
 /**
@@ -103,7 +99,8 @@ export function ComentariosDialog({ reparacionId, trigger, numero }: Comentarios
               <li key={comentario.id} className="flex flex-col gap-1 rounded-lg border border-border p-2">
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-xs font-medium text-foreground">{nombreAutor(comentario)}</span>
-                  <span className="text-xs text-muted-foreground">{formatFecha(comentario.createdAt)}</span>
+                  {/* ComentarioReparacion.createdAt es @db.Timestamptz — instante. */}
+                  <span className="text-xs text-muted-foreground">{formatearInstante(comentario.createdAt)}</span>
                 </div>
                 <p className="whitespace-pre-wrap text-sm text-foreground">{comentario.texto}</p>
               </li>

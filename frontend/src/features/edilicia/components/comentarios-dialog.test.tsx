@@ -46,14 +46,12 @@ describe("ComentariosDialog", () => {
     expect(screen.getByText("Ana Gómez")).toBeInTheDocument();
     // Sin nombre resuelto (usuario dado de baja) cae al autorId, nunca en blanco.
     expect(screen.getByText("u1")).toBeInTheDocument();
-    // Fecha visible, formateada es-AR (dateStyle short + timeStyle short).
-    // Se compara contra el mismo `Intl` que usa el componente para no
-    // hardcodear un string que depende del locale/TZ del runner.
-    const fechaEsperada = new Intl.DateTimeFormat("es-AR", {
-      dateStyle: "short",
-      timeStyle: "short",
-    }).format(new Date("2026-08-18T10:00:00.000Z"));
-    expect(screen.getAllByText(fechaEsperada)).toHaveLength(2);
+    // Fecha visible, renderizada con `formatearInstante` (día/mes/año + hora,
+    // horario argentino). Literal fijo, NO derivado del mismo `Intl` que usa
+    // el componente — derivarlo del mismo formateador deja el test ciego a
+    // una regresión de zona horaria (ver `ticket-header` en este cambio).
+    // `2026-08-18T10:00:00.000Z` = 07:00 en America/Argentina/Buenos_Aires (UTC-3).
+    expect(screen.getAllByText("18/08/2026 07:00")).toHaveLength(2);
     // Solo lectura: sin EDILICIA:ALTAS no aparece el form.
     expect(screen.queryByLabelText(/nuevo comentario/i)).not.toBeInTheDocument();
   });
