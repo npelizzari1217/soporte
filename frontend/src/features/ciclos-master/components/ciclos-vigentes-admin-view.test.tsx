@@ -130,6 +130,31 @@ describe("CiclosVigentesAdminView (sdd/ciclos-abm-root)", () => {
     expect(screen.queryByText("31/12/2025")).not.toBeInTheDocument();
   });
 
+  /**
+   * Test de CARACTERIZACIÓN, no de regresión (render-fechas-frontend, WORK
+   * UNIT 5): el inventario original sospechaba que `CicloVigenteFormDialog`
+   * precargaba el `<input type="date">` con un ISO datetime completo, que
+   * HTML5 descarta en silencio dejando el campo vacío al editar. Se corrió
+   * este test contra el código tal como estaba (sin tocar
+   * `ciclo-vigente-form-dialog.tsx`) y dio VERDE: `CicloVigenteAdmin.fechaInicio`
+   * y `fechaFin` ya llegan como `"YYYY-MM-DD"` porque los controllers backend
+   * (`ciclos.controller.ts`, `ciclos-vigentes.controller.ts`) aplican
+   * `toDateOnly` antes de responder — un formato que `<input type="date">`
+   * acepta sin descartarlo. No hubo defecto que corregir; el diagnóstico
+   * original asumía ISO datetime completo, y `toDateOnly` lo desmiente.
+   */
+  it("al editar, fechaInicio/fechaFin aparecen precargadas en el formulario (caracterización render-fechas-frontend)", async () => {
+    const user = userEvent.setup();
+
+    renderWithProviders(<CiclosVigentesAdminView />, { user: buildUser({ is_global_admin: true }) });
+    await screen.findByText("Ciclo 2026");
+
+    await user.click(screen.getByRole("button", { name: "Editar" }));
+
+    expect(await screen.findByLabelText(/fecha de inicio/i)).toHaveValue("2026-01-01");
+    expect(screen.getByLabelText(/fecha de fin/i)).toHaveValue("2026-12-31");
+  });
+
   it("un ciclo ya eliminado deshabilita Editar y Eliminar", async () => {
     server.use(
       http.get("/api/ciclos-vigentes/admin", () =>
