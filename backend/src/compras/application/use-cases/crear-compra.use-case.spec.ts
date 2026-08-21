@@ -64,7 +64,9 @@ describe('CrearCompraUseCase', () => {
     const sectorRepo = {
       findById: vi
         .fn()
-        .mockResolvedValue(SectorEntity.create({ codigo: 'A', nombre: 'A' }, 'sector-1')),
+        .mockResolvedValue(
+          SectorEntity.create({ codigo: 'A', nombre: 'A', activo: true }, 'sector-1'),
+        ),
     };
 
     const useCase = new CrearCompraUseCase(

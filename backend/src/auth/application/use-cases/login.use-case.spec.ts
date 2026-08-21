@@ -47,6 +47,7 @@ import { ITokenService, JwtPayload } from '../../domain/ports/i-token.service';
 import { IClienteRepository } from '../../../clientes/domain/ports/i-cliente.repository';
 import { ClienteEntity } from '../../../clientes/domain/entities/cliente.entity';
 import { PARES_VALIDOS } from '../../../shared/domain/acciones';
+import { unstubbed } from '../../../testing/mocks';
 
 // ─── Factories de entidades/mocks de test ────────────────────────────────────
 
@@ -98,7 +99,12 @@ const makeUsuarioRepo = (): Mocked<IUsuarioRepository> => ({
 const makeMembresiaRepo = (): Mocked<IMembresiaRepository> => ({
   findActivasByUsuario: vi.fn().mockResolvedValue([]),
   findActivaByUsuarioYCliente: vi.fn(),
-  create: vi.fn().mockResolvedValue(undefined),
+  // LoginUseCase nunca llama a estos métodos (solo lee membresías, nunca
+  // crea/muta): un stub mudo taparía que producción empiece a llamarlos.
+  findActivasByCliente: unstubbed('findActivasByCliente'),
+  findByUsuarioYCliente: unstubbed('findByUsuarioYCliente'),
+  create: unstubbed('create'),
+  save: unstubbed('save'),
 });
 
 const makeClienteRepo = (): Mocked<IClienteRepository> => ({

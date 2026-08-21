@@ -43,6 +43,7 @@ import {
   ClienteNoAutorizadoError,
 } from '../../domain/errors/auth.errors';
 import { PARES_VALIDOS } from '../../../shared/domain/acciones';
+import { unstubbed } from '../../../testing/mocks';
 
 // ─── Factories ────────────────────────────────────────────────────────────────
 
@@ -124,7 +125,12 @@ const makeUsuarioRepo = (): Mocked<IUsuarioRepository> => ({
 const makeMembresiaRepo = (): Mocked<IMembresiaRepository> => ({
   findActivasByUsuario: vi.fn().mockResolvedValue([]),
   findActivaByUsuarioYCliente: vi.fn(),
-  create: vi.fn().mockResolvedValue(undefined),
+  // RefreshTokenUseCase nunca crea/muta membresías, solo las lee vía
+  // resolverScope: un stub mudo taparía que producción empiece a llamarlos.
+  findActivasByCliente: unstubbed('findActivasByCliente'),
+  findByUsuarioYCliente: unstubbed('findByUsuarioYCliente'),
+  create: unstubbed('create'),
+  save: unstubbed('save'),
 });
 
 const makeClienteRepo = (): Mocked<IClienteRepository> => ({

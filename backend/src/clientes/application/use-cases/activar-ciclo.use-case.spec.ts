@@ -10,13 +10,17 @@ import { ActivarCicloUseCase } from './activar-ciclo.use-case';
 import { ICicloClienteRepository } from '../../domain/ports/i-ciclo-cliente.repository';
 import { CicloClienteEntity } from '../../domain/entities/ciclo-cliente.entity';
 import { CicloClienteNotFoundError } from '../../domain/errors/clientes.errors';
+import { unstubbed } from '../../../testing/mocks';
 
 function buildRepoMock(overrides: Partial<ICicloClienteRepository> = {}): ICicloClienteRepository {
   return {
     findById: vi.fn(),
-    findActivos: vi.fn(),
-    save: vi.fn(),
     activarCiclo: vi.fn(),
+    // ActivarCicloUseCase solo llama a findById/activarCiclo: los demás
+    // métodos del puerto no se ejercitan acá.
+    findActivos: unstubbed('findActivos'),
+    findAll: unstubbed('findAll'),
+    save: unstubbed('save'),
     ...overrides,
   };
 }

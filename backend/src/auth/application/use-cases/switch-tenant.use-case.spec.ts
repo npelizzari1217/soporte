@@ -25,6 +25,7 @@ import { ILogger } from '../../../shared/domain/ports/i-logger.port';
 import { ClienteNoAutorizadoError } from '../../domain/errors/auth.errors';
 import { payloadDeTest } from '../../test-helpers/payload-de-test';
 import { PARES_VALIDOS } from '../../../shared/domain/acciones';
+import { unstubbed } from '../../../testing/mocks';
 
 const makeCliente = (nombre = 'Acme SA', activo = true): ClienteEntity =>
   ClienteEntity.create({ nombre, razonSocial: null, cuit: null, dbName: 'acme_sa', activo });
@@ -58,7 +59,12 @@ const makeActorPayload = (overrides: Partial<JwtPayload> = {}): JwtPayload =>
 const makeMembresiaRepo = (): Mocked<IMembresiaRepository> => ({
   findActivasByUsuario: vi.fn().mockResolvedValue([]),
   findActivaByUsuarioYCliente: vi.fn(),
-  create: vi.fn().mockResolvedValue(undefined),
+  // SwitchTenantUseCase nunca crea/muta membresías, solo las lee vía
+  // resolverScope: un stub mudo taparía que producción empiece a llamarlos.
+  findActivasByCliente: unstubbed('findActivasByCliente'),
+  findByUsuarioYCliente: unstubbed('findByUsuarioYCliente'),
+  create: unstubbed('create'),
+  save: unstubbed('save'),
 });
 
 const makeClienteRepo = (): Mocked<IClienteRepository> => ({

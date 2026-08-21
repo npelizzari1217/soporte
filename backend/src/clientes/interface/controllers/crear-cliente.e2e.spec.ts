@@ -72,6 +72,7 @@ import {
   MEMBRESIA_REPOSITORY,
   IMembresiaRepository,
   MembresiaResuelta,
+  MembresiaConUsuario,
 } from '../../../auth/domain/ports/i-membresia.repository';
 import { ROLE_REPOSITORY, IRoleRepository } from '../../../auth/domain/ports/i-role.repository';
 import { HASH_PROVIDER, IHashProvider } from '../../../auth/domain/ports/i-hash.provider';
@@ -133,6 +134,20 @@ class ToggleableMembresiaRepo implements IMembresiaRepository {
       throw new Error('[e2e-forced-failure] membresiaRepo.create() falló a propósito (T8.5)');
     }
     return this.real.create(membresia);
+  }
+
+  // El e2e solo fuerza la falla de create() (Seam 2, T8.5) — el resto
+  // delega tal cual al repositorio Prisma real, sin comportamiento propio.
+  findActivasByCliente(clienteId: string): Promise<MembresiaConUsuario[]> {
+    return this.real.findActivasByCliente(clienteId);
+  }
+
+  findByUsuarioYCliente(usuarioId: string, clienteId: string): Promise<MembresiaEntity | null> {
+    return this.real.findByUsuarioYCliente(usuarioId, clienteId);
+  }
+
+  save(membresia: MembresiaEntity): Promise<void> {
+    return this.real.save(membresia);
   }
 }
 

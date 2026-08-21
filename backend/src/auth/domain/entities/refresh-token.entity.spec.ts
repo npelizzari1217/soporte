@@ -142,7 +142,7 @@ describe('RefreshTokenEntity', () => {
       const exp = new Date(Date.now() + 3600000);
       const rev = new Date();
       const token = RefreshTokenEntity.reconstitute(
-        { usuarioId: 'u1', tokenHash: 'hash', expiresAt: exp, revokedAt: rev },
+        { usuarioId: 'u1', tokenHash: 'hash', expiresAt: exp, revokedAt: rev, clienteId: null },
         'token-id',
         new Date('2025-01-01T00:00:00Z'),
         new Date('2025-06-01T00:00:00Z'),
@@ -156,7 +156,7 @@ describe('RefreshTokenEntity', () => {
     it('preserva createdAt pasado como parámetro', () => {
       const createdAt = new Date('2025-01-15T10:00:00Z');
       const token = RefreshTokenEntity.reconstitute(
-        { usuarioId: 'u1', tokenHash: 'hash', expiresAt: future, revokedAt: null },
+        { usuarioId: 'u1', tokenHash: 'hash', expiresAt: future, revokedAt: null, clienteId: null },
         'token-id',
         createdAt,
         new Date('2025-06-01T00:00:00Z'),
@@ -168,7 +168,7 @@ describe('RefreshTokenEntity', () => {
     it('preserva updatedAt pasado como parámetro', () => {
       const updatedAt = new Date('2025-06-01T12:00:00Z');
       const token = RefreshTokenEntity.reconstitute(
-        { usuarioId: 'u1', tokenHash: 'hash', expiresAt: future, revokedAt: null },
+        { usuarioId: 'u1', tokenHash: 'hash', expiresAt: future, revokedAt: null, clienteId: null },
         'token-id',
         new Date('2025-01-01T00:00:00Z'),
         updatedAt,
@@ -180,7 +180,7 @@ describe('RefreshTokenEntity', () => {
     it('preserva deletedAt no-nulo → isDeleted() retorna true', () => {
       const deletedAt = new Date('2025-12-01T00:00:00Z');
       const token = RefreshTokenEntity.reconstitute(
-        { usuarioId: 'u1', tokenHash: 'hash', expiresAt: future, revokedAt: null },
+        { usuarioId: 'u1', tokenHash: 'hash', expiresAt: future, revokedAt: null, clienteId: null },
         'token-id',
         new Date('2025-01-01T00:00:00Z'),
         new Date('2025-12-01T00:00:00Z'),
@@ -192,7 +192,7 @@ describe('RefreshTokenEntity', () => {
 
     it('preserva deletedAt nulo → isDeleted() retorna false', () => {
       const token = RefreshTokenEntity.reconstitute(
-        { usuarioId: 'u1', tokenHash: 'hash', expiresAt: future, revokedAt: null },
+        { usuarioId: 'u1', tokenHash: 'hash', expiresAt: future, revokedAt: null, clienteId: null },
         'token-id',
         new Date('2025-01-01T00:00:00Z'),
         new Date('2025-01-01T00:00:00Z'),
