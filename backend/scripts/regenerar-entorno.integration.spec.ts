@@ -151,7 +151,15 @@ describe('ejecutarVerificar()', () => {
     });
 
     expect(resultado.exitCode).not.toBe(0);
-    expect(resultado.lineas.join('\n')).toContain('AUSENTE');
+    const salida = resultado.lineas.join('\n');
+    expect(salida).toContain('AUSENTE');
+    // El mensaje NO debe prometer que --confirmar crea el contenedor: no lo
+    // crea, corta con exit 1. Un mensaje que manda a correr un comando que no
+    // hace lo que dice deja al usuario girando en falso.
+    expect(salida).not.toContain('para crearlo');
+    expect(salida).toContain('NO lo crea');
+    // Y debe traer el remedio que SI funciona, listo para copiar y pegar.
+    expect(salida).toContain('docker run -d --name soporte-postgres-master');
     // Read-only de punta a punta: la única llamada a "Docker" fue el
     // `docker inspect` de solo lectura — nada de crear/arrancar/parar.
     expect(execFileSyncFn).toHaveBeenCalledTimes(1);

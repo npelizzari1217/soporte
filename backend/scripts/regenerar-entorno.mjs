@@ -72,7 +72,11 @@ export function ejecutarVerificar({ envEjemplo, envArchivo, envProceso, estadoCo
       // contenedor ausente -> reporta la falta y exit != 0.
       exitCode = 1;
       lineas.push(
-        '[entorno:verificar] Contenedor Docker: AUSENTE. Correr "pnpm entorno:regenerar --confirmar" para crearlo.',
+        '[entorno:verificar] Contenedor Docker: AUSENTE. Ojo: "entorno:regenerar --confirmar" NO lo crea, solo lo usa.',
+      );
+      lineas.push(
+        '[entorno:verificar] Crealo a mano (ver README, paso 1): docker run -d --name soporte-postgres-master ' +
+          '-p 5432:5432 -e POSTGRES_USER=soporte -e POSTGRES_PASSWORD=soporte --restart unless-stopped postgres:16',
       );
     } else if (estadoContenedor.estado === 'otra-imagen') {
       exitCode = 1;
