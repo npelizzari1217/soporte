@@ -147,40 +147,34 @@ describe('resetPassword (integración)', () => {
   // el Argon2HashProvider REAL (no el fake de arriba) en ambos lados —
   // setear y verificar — para probar la integración real, no un mock que
   // podría estar de acuerdo consigo mismo sin decir nada del sistema real.
-  it(
-    '[CRITICAL] la contraseña seteada valida contra Argon2HashProvider.verify() (mismo verificador del login)',
-    async () => {
-      await masterClient.usuario.create({
-        data: {
-          email: 'reset-password-argon2@integration.test',
-          nombre: 'Admin',
-          apellido: 'Real',
-          passwordHash: 'hash-viejo-invalido',
-          activo: true,
-          isGlobalAdmin: true,
-        },
-      });
-      const hashProvider = new Argon2HashProvider();
+  it('[CRITICAL] la contraseña seteada valida contra Argon2HashProvider.verify() (mismo verificador del login)', async () => {
+    await masterClient.usuario.create({
+      data: {
+        email: 'reset-password-argon2@integration.test',
+        nombre: 'Admin',
+        apellido: 'Real',
+        passwordHash: 'hash-viejo-invalido',
+        activo: true,
+        isGlobalAdmin: true,
+      },
+    });
+    const hashProvider = new Argon2HashProvider();
 
-      await resetPassword(
-        masterClient,
-        { email: 'reset-password-argon2@integration.test', password: 'clave-nueva-real-123' },
-        hashProvider,
-      );
+    await resetPassword(
+      masterClient,
+      { email: 'reset-password-argon2@integration.test', password: 'clave-nueva-real-123' },
+      hashProvider,
+    );
 
-      const row = await masterClient.usuario.findUnique({
-        where: { email: 'reset-password-argon2@integration.test' },
-      });
+    const row = await masterClient.usuario.findUnique({
+      where: { email: 'reset-password-argon2@integration.test' },
+    });
 
-      // La contraseña correcta valida...
-      await expect(hashProvider.verify('clave-nueva-real-123', row!.passwordHash)).resolves.toBe(
-        true,
-      );
-      // ...y una incorrecta NO valida (el hash no es un pasamuros universal).
-      await expect(hashProvider.verify('clave-incorrecta', row!.passwordHash)).resolves.toBe(
-        false,
-      );
-    },
-    15_000,
-  );
+    // La contraseña correcta valida...
+    await expect(hashProvider.verify('clave-nueva-real-123', row!.passwordHash)).resolves.toBe(
+      true,
+    );
+    // ...y una incorrecta NO valida (el hash no es un pasamuros universal).
+    await expect(hashProvider.verify('clave-incorrecta', row!.passwordHash)).resolves.toBe(false);
+  }, 15_000);
 });

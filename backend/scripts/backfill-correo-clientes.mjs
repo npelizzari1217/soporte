@@ -105,7 +105,14 @@ export function descifrarSecretoBackfill(payload, aad, keyHex) {
 
 // ── Config desde env ──
 
-const SMTP_REQUERIDAS = ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASSWORD', 'SMTP_FROM', 'SMTP_SECURE'];
+const SMTP_REQUERIDAS = [
+  'SMTP_HOST',
+  'SMTP_PORT',
+  'SMTP_USER',
+  'SMTP_PASSWORD',
+  'SMTP_FROM',
+  'SMTP_SECURE',
+];
 
 /**
  * Lee y valida la config SMTP global + `EMAIL_CRYPTO_KEY` desde `env`.
@@ -132,7 +139,9 @@ export function leerConfigDesdeEnv(env) {
   }
 
   if (leerClaveCifrado(env.EMAIL_CRYPTO_KEY) === null) {
-    throw new Error('EMAIL_CRYPTO_KEY presente pero inválida (se esperan 64 caracteres hexadecimales)');
+    throw new Error(
+      'EMAIL_CRYPTO_KEY presente pero inválida (se esperan 64 caracteres hexadecimales)',
+    );
   }
 
   return {

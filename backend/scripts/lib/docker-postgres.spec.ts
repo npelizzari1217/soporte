@@ -135,12 +135,21 @@ describe('validarNombreContenedor()', () => {
     },
   );
 
-  it.each(['; rm -rf', '`whoami`', '$(id)', 'a&&b', '--privileged', '', '-abc', '.abc', 'a b', null, undefined])(
-    'rechaza el nombre inválido: %j',
-    (nombre) => {
-      expect(validarNombreContenedor(nombre)).toBe(false);
-    },
-  );
+  it.each([
+    '; rm -rf',
+    '`whoami`',
+    '$(id)',
+    'a&&b',
+    '--privileged',
+    '',
+    '-abc',
+    '.abc',
+    'a b',
+    null,
+    undefined,
+  ])('rechaza el nombre inválido: %j', (nombre) => {
+    expect(validarNombreContenedor(nombre)).toBe(false);
+  });
 });
 
 describe('validarPuerto()', () => {
@@ -174,17 +183,27 @@ describe('clasificarErrorPostgres()', () => {
 });
 
 /** Cliente `pg` fake mínimo: connect/query/end como espías controlables. */
-function clienteFake({ connect = vi.fn(async () => undefined), query = vi.fn(async () => undefined) } = {}) {
+function clienteFake({
+  connect = vi.fn(async () => undefined),
+  query = vi.fn(async () => undefined),
+} = {}) {
   return { connect, query, end: vi.fn(async () => undefined) };
 }
 
 describe('esperarPostgresListo()', () => {
   it('reintenta ante ECONNREFUSED y da listo cuando el intento siguiente conecta', async () => {
-    const errorReintentable = Object.assign(new Error('conexión rechazada'), { code: 'ECONNREFUSED' });
+    const errorReintentable = Object.assign(new Error('conexión rechazada'), {
+      code: 'ECONNREFUSED',
+    });
     let intento = 0;
     const crearCliente = vi.fn(() => {
       intento += 1;
-      if (intento === 1) return clienteFake({ connect: vi.fn(async () => { throw errorReintentable; }) });
+      if (intento === 1)
+        return clienteFake({
+          connect: vi.fn(async () => {
+            throw errorReintentable;
+          }),
+        });
       return clienteFake();
     });
 
@@ -200,11 +219,18 @@ describe('esperarPostgresListo()', () => {
   });
 
   it('reintenta ante SQLSTATE 57P03 (the database system is starting up)', async () => {
-    const errorArrancando = Object.assign(new Error('the database system is starting up'), { code: '57P03' });
+    const errorArrancando = Object.assign(new Error('the database system is starting up'), {
+      code: '57P03',
+    });
     let intento = 0;
     const crearCliente = vi.fn(() => {
       intento += 1;
-      if (intento === 1) return clienteFake({ connect: vi.fn(async () => { throw errorArrancando; }) });
+      if (intento === 1)
+        return clienteFake({
+          connect: vi.fn(async () => {
+            throw errorArrancando;
+          }),
+        });
       return clienteFake();
     });
 
@@ -221,7 +247,11 @@ describe('esperarPostgresListo()', () => {
   it('[CRITICAL] 28P01 (autenticación fallida) corta en el PRIMER intento — nunca reintenta', async () => {
     const errorAuth = Object.assign(new Error('password authentication failed'), { code: '28P01' });
     const crearCliente = vi.fn(() =>
-      clienteFake({ connect: vi.fn(async () => { throw errorAuth; }) }),
+      clienteFake({
+        connect: vi.fn(async () => {
+          throw errorAuth;
+        }),
+      }),
     );
     const dormir = vi.fn(async () => undefined);
     // Reloj que AVANZA en cada llamada (nunca queda congelado en 0): si una
@@ -253,9 +283,15 @@ describe('esperarPostgresListo()', () => {
   });
 
   it('agota el deadline sin esperar de verdad (reloj inyectado) y lanza ErrorPostgresNoListo', async () => {
-    const errorReintentable = Object.assign(new Error('conexión rechazada'), { code: 'ECONNREFUSED' });
+    const errorReintentable = Object.assign(new Error('conexión rechazada'), {
+      code: 'ECONNREFUSED',
+    });
     const crearCliente = vi.fn(() =>
-      clienteFake({ connect: vi.fn(async () => { throw errorReintentable; }) }),
+      clienteFake({
+        connect: vi.fn(async () => {
+          throw errorReintentable;
+        }),
+      }),
     );
     // deadline = ahora() + timeoutMs = 0 + 1000 = 1000. Primer chequeo del
     // while (500) sigue adentro; segundo chequeo (1500) ya lo superó.

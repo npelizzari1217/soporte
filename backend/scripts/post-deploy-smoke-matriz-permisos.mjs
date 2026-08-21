@@ -95,7 +95,9 @@ async function checkTenant(dbName) {
     }
 
     // Check 3 — codigo='SOPORTE' sigue existiendo, no se tocó (R8).
-    const { rows: tipoSoporte } = await pool.query("SELECT id FROM tipos_ticket WHERE codigo = 'SOPORTE'");
+    const { rows: tipoSoporte } = await pool.query(
+      "SELECT id FROM tipos_ticket WHERE codigo = 'SOPORTE'",
+    );
     if (tipoSoporte.length === 0) {
       warn(
         `[${dbName}] no tiene un tipo de ticket con codigo='SOPORTE' (puede ser normal si el tenant lo borró/renombró a mano antes del deploy)`,
@@ -116,9 +118,13 @@ async function checkTenant(dbName) {
         LIMIT 1`,
     );
     if (ultimoTicket.length === 0) {
-      warn(`[${dbName}] sin tickets de tipo SOPORTE todavía, no se puede verificar el prefijo por lectura`);
+      warn(
+        `[${dbName}] sin tickets de tipo SOPORTE todavía, no se puede verificar el prefijo por lectura`,
+      );
     } else if (REGEX_NUMERO_SOPORTE.test(ultimoTicket[0].numero)) {
-      ok(`[${dbName}] último ticket SOPORTE numera '${ultimoTicket[0].numero}' (prefijo SOP- intacto)`);
+      ok(
+        `[${dbName}] último ticket SOPORTE numera '${ultimoTicket[0].numero}' (prefijo SOP- intacto)`,
+      );
     } else {
       fail(
         `[${dbName}] último ticket SOPORTE numera '${ultimoTicket[0].numero}', esperado formato SOP-AAAA-NNNNN`,

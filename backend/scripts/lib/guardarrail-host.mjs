@@ -146,10 +146,7 @@ export function auditarEntorno({ envProceso = {}, envArchivo = {} } = {}) {
   const urlsShell = recolectarUrlsDeBd(envProceso);
   const urlsArchivo = recolectarUrlsDeBd(envArchivo);
 
-  const claves = new Set([
-    ...urlsShell.map((u) => u.clave),
-    ...urlsArchivo.map((u) => u.clave),
-  ]);
+  const claves = new Set([...urlsShell.map((u) => u.clave), ...urlsArchivo.map((u) => u.clave)]);
 
   const hallazgos = [];
   const violaciones = [];

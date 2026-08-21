@@ -88,12 +88,17 @@ describe('leerConfigDesdeEnv() — el CHECK todo-o-nada exige abortar ante cualq
     });
   });
 
-  it.each(['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASSWORD', 'SMTP_FROM', 'SMTP_SECURE', 'EMAIL_CRYPTO_KEY'])(
-    'aborta si falta %s',
-    (clave) => {
-      const envIncompleto = { ...ENV_COMPLETO, [clave]: undefined };
+  it.each([
+    'SMTP_HOST',
+    'SMTP_PORT',
+    'SMTP_USER',
+    'SMTP_PASSWORD',
+    'SMTP_FROM',
+    'SMTP_SECURE',
+    'EMAIL_CRYPTO_KEY',
+  ])('aborta si falta %s', (clave) => {
+    const envIncompleto = { ...ENV_COMPLETO, [clave]: undefined };
 
-      expect(() => leerConfigDesdeEnv(envIncompleto)).toThrow(new RegExp(clave));
-    },
-  );
+    expect(() => leerConfigDesdeEnv(envIncompleto)).toThrow(new RegExp(clave));
+  });
 });

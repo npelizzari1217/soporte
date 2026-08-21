@@ -9,7 +9,10 @@ import { clasificarOrigenClaves, compararClaves } from './entorno-claves.mjs';
 describe('compararClaves()', () => {
   it('detecta las claves de .env.example ausentes en el entorno actual', () => {
     const resultado = compararClaves({
-      ejemplo: { DATABASE_URL_MASTER: 'postgresql://user:pass@localhost:5432/x', SMTP_HOST: 'ejemplo.com' },
+      ejemplo: {
+        DATABASE_URL_MASTER: 'postgresql://user:pass@localhost:5432/x',
+        SMTP_HOST: 'ejemplo.com',
+      },
       actual: { DATABASE_URL_MASTER: 'postgresql://real:real@localhost:5432/real' },
     });
 

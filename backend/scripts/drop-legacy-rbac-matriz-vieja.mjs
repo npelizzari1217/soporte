@@ -69,10 +69,16 @@ try {
     console.log('[drop-legacy-rbac] Modo REPORTE (sin --confirmar): no se tocó ninguna tabla.');
     console.log('[drop-legacy-rbac] Antes de correr con --confirmar:');
     console.log('  1. Confirmar que el deploy YA incluye el fix C2 (PrismaMembresiaRepository/');
-    console.log('     PrismaRoleRepository sin JOIN a roles_permisos/permisos) — sin eso, este DROP');
+    console.log(
+      '     PrismaRoleRepository sin JOIN a roles_permisos/permisos) — sin eso, este DROP',
+    );
     console.log('     rompe el login (500 en cada request de auth).');
-    console.log('  2. Confirmar en producción real los 6 checks de docs/post-deploy-matriz-permisos.md');
-    console.log('     durante un período de observación posterior al deploy (WU-9 es un deploy POSTERIOR).');
+    console.log(
+      '  2. Confirmar en producción real los 6 checks de docs/post-deploy-matriz-permisos.md',
+    );
+    console.log(
+      '     durante un período de observación posterior al deploy (WU-9 es un deploy POSTERIOR).',
+    );
     process.exit(0);
   }
 
@@ -80,7 +86,9 @@ try {
   console.log('[drop-legacy-rbac] --confirmar presente. Ejecutando DROP (IRREVERSIBLE)...');
   const sql = readFileSync(new URL('./drop-legacy-rbac-matriz-vieja.sql', import.meta.url), 'utf8');
   await pool.query(sql);
-  console.log('[drop-legacy-rbac] OK. roles_permisos, permisos y usuario_cliente_modulos eliminadas.');
+  console.log(
+    '[drop-legacy-rbac] OK. roles_permisos, permisos y usuario_cliente_modulos eliminadas.',
+  );
 } catch (e) {
   console.error('[drop-legacy-rbac] ERROR:', e.message);
   process.exit(1);
