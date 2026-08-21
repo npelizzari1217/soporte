@@ -3,8 +3,14 @@
 Análisis del 2026-08-19. Compara el sistema contra Zendesk, Freshservice, GLPI y
 Jira Service Management, y prioriza qué falta para competir.
 
-**Estado: aprobado, sin empezar.** Se arranca por el punto 1 y la gestión del
-punto 6 en paralelo.
+**Estado: en ejecución.** El punto 1 está en producción desde el 2026-08-20. El
+resto se reordenó el 2026-08-21 bajo una decisión nueva del usuario: **los datos
+de producción son descartables** en esta etapa. Es menos trabajo destruirlos y
+regenerarlos que convertirlos, así que se prioriza construir el software sólido
+sin cargar el peso de las migraciones.
+
+Eso agregó una **Fase 0 de fundación** antes de seguir con los seis puntos, y
+cambió las estimaciones — ver "Fase 0" y "El plan de carriles" más abajo.
 
 ## El marco
 
@@ -30,14 +36,24 @@ consultor.
 | # | Qué | Dificultad | Estimado | Estado |
 |---|---|---|---|---|
 | 1 | Exportar a Excel/CSV | Baja | 1-2 días | **HECHO** — en producción desde el 2026-08-20 (`a9bb3fa`) |
-| 2 | Reparación ↔ Compra | Media | 3-5 días | pendiente |
+| 2 | Reparación ↔ Compra | Media | 3-4 días | pendiente — decisiones de producto cerradas |
 | 3 | Encuesta de satisfacción | Media | 4-6 días | pendiente |
-| 4 | Mantenimiento preventivo recurrente | Media | 5-8 días | pendiente |
-| 5 | Horario laboral en el SLA | Media-alta | 6-10 días | pendiente |
+| 4 | Mantenimiento preventivo recurrente | Media | 5-8 días | pendiente — decisiones de producto cerradas |
+| 5 | Horario laboral en el SLA | Media | 4-6 días | pendiente — decisiones de producto cerradas |
 | 6 | Ticket por email entrante | Alta | 2-3 semanas | **DIFERIDO** por decisión del 2026-08-20 |
 
-Estimado restante: **~18-29 días** de trabajo concentrado sobre los puntos 2 a 5
-(el 40 original incluía el 1, ya entregado, y el 6, diferido).
+Estimado restante sobre los puntos 2 a 5: **~16-24 días en serie**. Los puntos 2
+y 5 bajaron respecto de la estimación original porque la política de datos
+descartables les saca el peso de la migración — al punto 5 le saca "el problema
+mayor", que era recalcular `slaVenceAt` histórico.
+
+Con **dos carriles en paralelo** (ver "El plan de carriles"): **~9-14 días de
+wall-clock**. Sumando la Fase 0, el total del proyecto queda en **~12,5-19 días**
+contra los ~21-30 que costaría en serie.
+
+> Ojo con leer eso como un ahorro. El total **no baja: se reasigna.** Lo que se
+> caía de migración volvió a entrar como fundación. Lo que se gana no es
+> velocidad, es que lo que quede parado no tenga grietas abajo.
 
 > **Mantené esta columna al día.** Un roadmap sin estado obliga a reconstruir de
 > memoria qué se entregó, y esa reconstrucción falla: el punto 1 estuvo en
@@ -55,6 +71,66 @@ para que el roadmap refleje el esfuerzo real, no solo el previsto.
 | Asignar tickets también a COLABORADOR | 2026-08-20 (`d2d90a4`) | Los colaboradores cumplen funciones de técnico |
 | Rotación de la clave del admin, reparada y versionada | 2026-08-20 (`d2d90a4`) | La herramienta existente estaba rota y **reportaba éxito igual** |
 | `deploy.ps1`: auto-actualización, orden de correo y chequeo de exit codes | 2026-08-20 (`d2d90a4`) | Cuatro incidentes de deploy en un día, todos por la misma causa |
+
+## Fase 0 — Fundación
+
+Apareció el 2026-08-21 con la decisión de datos descartables. La lógica es
+simple: si no vamos a migrar datos, todo el esfuerzo va a que el software quede
+bien parado. Pero eso **no sale gratis** — el total no baja, se reasigna: se caen
+~4 días de migración y entran ~5-6 de fundación.
+
+| Carril | Qué | Estado |
+|---|---|---|
+| A | **Saneamiento de tipos del backend** — 119 errores escondidos tras la exclusión `**/*.spec.ts` | 6 work units, **hecho**, pendiente merge |
+| B | **Render de fechas del frontend** — 6 copias de `Intl.DateTimeFormat` sin `timeZone` | 7 work units, **hecho**, pendiente merge |
+| — | **Cambio de contraseña** (ver más abajo) | sin empezar |
+
+**Lo que destapó el carril A**, y que justifica el ciclo entero: el renombre del
+enum `SOPORTE → TICKETS` nunca llegó a los tests; un campo retirado de una
+interfaz seguía vivo en fixtures, con un comentario que afirmaba lo contrario;
+una aserción que comparaba `undefined` contra ausente y por eso pasaba sin probar
+nada; cinco fixtures construyendo una entidad que no puede existir.
+
+**Lo que destapó el carril B**: un bug de huso horario ya diagnosticado y
+corregido en Compras seguía intacto en Equipos, y cinco sitios usaban el
+normalizador de `<input type="date">` como formateador de pantalla.
+
+Los dos carriles dejaron **un gate instalado y probado rompiéndolo a propósito**:
+`pnpm typecheck` ahora falla si un test tiene un error de tipo, y `pnpm lint`
+falla si aparece una séptima copia del formateador de fechas.
+
+### El plan de carriles
+
+`sdd-apply` no admite dos instancias sobre el mismo cambio, pero el ledger es
+**por cambio** y `sdd-attempt handoff` contempla worktrees enlazados. Así que dos
+carriles se ejecutan en paralelo, **cada uno en su propio worktree**.
+
+Esto último no es opcional y el motivo no es de git: `acquire` congela el árbol
+de referencia, y un commit hecho mientras otro carril tiene un intento abierto le
+corrompe la contabilidad de líneas y le bloquea el `settle`.
+
+**El techo son dos carriles, no cuatro** — cada uno exige verificación propia
+antes de integrar, y con cuatro el orquestador se vuelve el cuello de botella.
+
+Con dos carriles, los puntos 2 a 5 pasan de ~21-30 días en serie a **~12,5-19 de
+wall-clock**. Pero antes de abrir cada ola hay que **aterrizar las migraciones de
+Prisma en serie**: `schema.prisma` es un archivo solo y dos carriles
+escribiéndolo es conflicto garantizado.
+
+### Decisiones de producto ya cerradas (2026-08-21)
+
+Para no re-litigarlas al empezar cada punto:
+
+- **Punto 2** — "bloqueada" es un estado **derivado** (tiene ≥1 compra vinculada
+  sin recibir), **no** frena `porcentajeAvance`, y **sí** se ve en el listado con
+  chip y filtro. El tiempo bloqueado se descuenta del tiempo de reparación que se
+  le muestra al cliente.
+- **Punto 4** — el preventivo genera un **ticket** con `tipoTicket` propio
+  "Preventivo", **excluido de las métricas de SLA**. Solicitante: un usuario de
+  sistema por tenant, sembrado por el seed.
+- **Punto 5** — calendario **por cliente** con default 9-18 lun-vie; feriados
+  nacionales AR precargados en el seed más excepciones por cliente; un ticket
+  abierto fuera de horario arranca el reloj en la **próxima ventana hábil**.
 
 ### 1 · Exportar a Excel/CSV — Baja
 
@@ -153,14 +229,27 @@ como siempre.
 5. Punto 5.
 6. Punto 6 — diferido.
 
-**Antes del punto 2, dos cosas cortas:**
+**Antes del punto 2 va la Fase 0** (ver más abajo).
 
-- **Permisos en la matriz** (minutos, no es código): nadie tiene la acción
-  `TICKETS:ASIGNAR`, así que el combo de asignación aparece vacío aunque haya
-  técnicos y colaboradores elegibles. El ADMINISTRADOR de Cic Lanus además no
-  tiene ningún permiso de módulo.
-- **Cambio de contraseña** (ver la sección siguiente): es un agujero de producto,
-  no una comodidad.
+> **Corrección del 2026-08-21.** Acá decía que "el ADMINISTRADOR de Cic Lanus no
+> tiene ningún permiso de módulo". **No es un bug y se baja del roadmap.**
+> `PRESETS_ROL.ADMINISTRADOR: []` es deliberado y está documentado en
+> `backend/src/auth/domain/presets-rol.ts:87`: `resolverScope` materializa TODOS
+> los pares válidos en el payload del JWT (ADR-P6, `resolver-scope.ts:137`). Y el
+> endpoint que alimenta la grilla devuelve `celdas: []` junto a
+> `esAdministrador: true` a propósito, para que el frontend la pinte toda
+> tildada. Lo que se reportó fue, casi seguro, alguien mirando esa grilla vacía.
+>
+> Lo de `TICKETS:ASIGNAR` sí era real, pero **ya está en el preset TECNICO**
+> (`presets-rol.ts:62`): se resuelve regenerando el tenant, sin tocar código. Ojo
+> con un matiz: la política de datos descartables se acordó para el entorno
+> local. **Producción no se regenera** — sigue en el VPS con dos clientes reales,
+> así que ahí hay que cargarlo a mano o decidir explícitamente regenerar.
+>
+> Queda anotada una hipótesis SIN VERIFICAR: el bypass del ADMINISTRADOR vive
+> solo en el token, no en la tabla `usuario_cliente_permisos`. Cualquier consulta
+> del tipo "quiénes tienen el permiso X" excluye administradores en silencio. Hoy
+> no muerde porque las consultas que existen filtran por rol, pero es una costura.
 
 ## Carencia detectada fuera de los seis puntos
 
@@ -194,8 +283,10 @@ cabeza de alguien deja de existir cuando esa persona no está.
 
 | Qué | Por qué importa |
 |---|---|
-| **123 errores de tipos** escondidos tras la exclusión `**/*.spec.ts` de `backend/tsconfig.json` | `pnpm typecheck` NO mira los tests. El mecanismo que los deja entrar sigue vivo y ya mordió dos veces: builders de controller con dependencias faltantes, y specs que no compilarían |
-| **Render de fechas del frontend**: 3 sitios muestran ISO crudo y hay **cero ocurrencias de `timeZone`** en todo `frontend/src` | Los 4 sitios que formatean con `Intl.DateTimeFormat("es-AR")` dependen de que el navegador esté en huso argentino. Además hay 4 copias del mismo `formatFecha` |
+| **Regeneración reproducible del entorno**: `demo-seed.ts` solo aplica preset al rol TECNICO, y **la creación del contenedor de Postgres no está documentada en ninguna parte** | Es el cimiento del que cuelga toda la política de datos descartables. Destruir y regenerar sale más barato que migrar **solo si el generador está sano y regenerar es un comando**. Falló dos veces el 2026-08-21: el seed reproduciría el hueco de permisos, y al perderse la base local el README arranca en "cuando haya una instancia de Postgres disponible" — justo después del paso que faltaba |
+| **301 `as never`/`as any` en 83 specs**, diferidos a propósito | El gate de tipos nuevo **NO los frena**: `as never` compila igual. Sin una regla de lint que los prohíba en specs, la deuda se reconstruye sola |
+| ~~123 errores de tipos escondidos tras la exclusión `**/*.spec.ts`~~ | **RESUELTO** el 2026-08-21 (Fase 0, carril A). El gate quedó instalado y probado: un error de tipo en un spec ahora rompe `pnpm typecheck` |
+| ~~Render de fechas del frontend~~ | **RESUELTO** el 2026-08-21 (Fase 0, carril B). Un solo módulo formatea fechas, con regla de lint que impide una séptima copia |
 | **Rotación de `EMAIL_CRYPTO_KEY`**: no existe herramienta | Rotarla sin re-cifrar convierte TODA contraseña SMTP guardada en basura indescifrable. El payload lleva prefijo `v1:` justamente para permitir una migración de re-cifrado, pero esa migración no está escrita |
 | Sin e2e dedicado para las 4 rutas de `/correo` | La cobertura del guard es estructural (a nivel clase). Es la superficie más sensible del módulo |
 | `SmtpEmailSender.send()` loguea el `error.message` crudo de nodemailer | Algunos servidores SMTP devuelven el usuario dentro de la respuesta 535 |
