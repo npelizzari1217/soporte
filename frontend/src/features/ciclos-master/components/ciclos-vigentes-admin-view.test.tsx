@@ -106,6 +106,30 @@ describe("CiclosVigentesAdminView (sdd/ciclos-abm-root)", () => {
     await waitFor(() => expect(deleteCalled).toBe(true));
   });
 
+  it("muestra fechaInicio/fechaFin en formato dd/mm/yyyy, nunca el ISO crudo (regresión render-fechas-frontend)", async () => {
+    renderWithProviders(<CiclosVigentesAdminView />, { user: buildUser({ is_global_admin: true }) });
+
+    await screen.findByText("Ciclo 2026");
+    expect(screen.getByText("01/01/2026")).toBeInTheDocument();
+    expect(screen.getByText("31/12/2026")).toBeInTheDocument();
+    expect(screen.queryByText("2026-01-01")).not.toBeInTheDocument();
+    expect(screen.queryByText("2026-12-31")).not.toBeInTheDocument();
+  });
+
+  it("con fechaInicio en el primer día del año, el día no se corre a diciembre del año anterior", async () => {
+    server.use(
+      http.get("/api/ciclos-vigentes/admin", () =>
+        HttpResponse.json([{ ...CICLO_VIGENTE, id: "cv-anio-nuevo", nombre: "Ciclo año nuevo", fechaInicio: "2026-01-01" }]),
+      ),
+    );
+
+    renderWithProviders(<CiclosVigentesAdminView />, { user: buildUser({ is_global_admin: true }) });
+
+    await screen.findByText("Ciclo año nuevo");
+    expect(screen.getByText("01/01/2026")).toBeInTheDocument();
+    expect(screen.queryByText("31/12/2025")).not.toBeInTheDocument();
+  });
+
   it("un ciclo ya eliminado deshabilita Editar y Eliminar", async () => {
     server.use(
       http.get("/api/ciclos-vigentes/admin", () =>
