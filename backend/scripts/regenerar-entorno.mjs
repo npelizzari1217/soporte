@@ -3,24 +3,31 @@
 // Ref proposal/spec: sdd/regeneracion-reproducible.
 // Ref design: sdd/regeneracion-reproducible D1-D6.
 //
-// Esta entrega (W2) solo trae el subcomando `verificar`: read-only, NUNCA
-// abre una conexión ni toca el filesystem salvo para leer `.env`/`.env.example`
-// (dotenv.parse, sin mutar `process.env`). Los subcomandos de escritura
-// (`regenerar`, `--confirmar`, `--recrear-test`) llegan en W3-W5.
+// Esta entrega (W2+W3) trae el subcomando `verificar`: read-only, NUNCA
+// abre una conexión de base de datos ni toca el filesystem salvo para leer
+// `.env`/`.env.example` (dotenv.parse, sin mutar `process.env`). Desde W3
+// también inspecciona el contenedor Docker vía `docker inspect` — de solo
+// lectura, permitido acá. Los subcomandos de escritura (`regenerar`,
+// `--confirmar`, `--recrear-test`) llegan en W4-W5.
 //
 // Idiom (mismo que scripts/backfill-correo-clientes.mjs y scripts/reset-password.ts):
 // funciones puras exportadas + `main()` bajo el guard de invocación directa.
-// `ejecutarVerificar` recibe los mapas YA PARSEADOS — nunca lee `.env*` por su
-// cuenta — para que los tests la ejerciten con literales, sin tocar ningún
-// archivo real.
+// `ejecutarVerificar` recibe TODO ya resuelto (mapas de env, estado del
+// contenedor) — nunca lee `.env*` ni ejecuta Docker por su cuenta — para que
+// los tests la ejerciten con literales/fakes, sin tocar nada real.
+import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import dotenv from 'dotenv';
 import { auditarEntorno } from './lib/guardarrail-host.mjs';
 import { clasificarOrigenClaves, compararClaves } from './lib/entorno-claves.mjs';
+import { inspeccionarContenedor } from './lib/docker-postgres.mjs';
 
 const RUTA_BACKEND = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+/** Nombre del contenedor Postgres del entorno vivo (ver CLAUDE.md — contexto operativo). */
+const NOMBRE_CONTENEDOR_POR_DEFECTO = 'soporte-postgres-master';
 
 /**
  * Ejecuta el subcomando `verificar` de punta a punta: read-only, nunca abre
@@ -33,12 +40,42 @@ const RUTA_BACKEND = path.join(path.dirname(fileURLToPath(import.meta.url)), '..
  *   envEjemplo: Record<string, string>,
  *   envArchivo: Record<string, string>,
  *   envProceso: Record<string, string | undefined>,
+ *   estadoContenedor?: {estado: 'corriendo'|'parado'|'ausente'|'otra-imagen', imagen: string|null} | {errorInspeccion: string},
  * }} entrada
  * @returns {{exitCode: number, lineas: string[]}}
  */
-export function ejecutarVerificar({ envEjemplo, envArchivo, envProceso }) {
+export function ejecutarVerificar({ envEjemplo, envArchivo, envProceso, estadoContenedor }) {
   const lineas = [];
   let exitCode = 0;
+
+  // 0) Contenedor Docker — read-only. `estadoContenedor` ya viene resuelto
+  // por el llamador (`inspeccionarContenedor`, W3): esta función se
+  // mantiene pura y testeable con literales, igual que los mapas de env.
+  // Opcional para no romper a quien todavía no lo pasa (tests previos a W3).
+  if (estadoContenedor) {
+    if ('errorInspeccion' in estadoContenedor) {
+      exitCode = 1;
+      lineas.push(
+        `[entorno:verificar] Contenedor Docker: no se pudo inspeccionar (${estadoContenedor.errorInspeccion}).`,
+      );
+    } else if (estadoContenedor.estado === 'ausente') {
+      // Spec "regeneracion-entorno-local", scenario "Entorno incompleto":
+      // contenedor ausente -> reporta la falta y exit != 0.
+      exitCode = 1;
+      lineas.push(
+        '[entorno:verificar] Contenedor Docker: AUSENTE. Correr "pnpm entorno:regenerar --confirmar" para crearlo.',
+      );
+    } else if (estadoContenedor.estado === 'otra-imagen') {
+      exitCode = 1;
+      lineas.push(
+        `[entorno:verificar] Contenedor Docker: existe pero con otra imagen (${estadoContenedor.imagen}) — revisar antes de continuar.`,
+      );
+    } else {
+      lineas.push(
+        `[entorno:verificar] Contenedor Docker: ${estadoContenedor.estado} (imagen ${estadoContenedor.imagen}).`,
+      );
+    }
+  }
 
   // 1) Guardarraíl de host — cualquier URL de BD fuera de localhost aborta.
   const { hallazgos, violaciones } = auditarEntorno({ envProceso, envArchivo });
@@ -146,10 +183,25 @@ async function main() {
   }
   const envArchivo = leerEnvArchivo(path.join(RUTA_BACKEND, '.env')) ?? {};
 
+  // Inspección de Docker: read-only (`docker inspect`), nunca crea, arranca
+  // ni para nada. Si falla por completo (Docker Desktop apagado, binario
+  // ausente) no se cuelga el resto del diagnóstico: se reporta como
+  // "no se pudo inspeccionar" y sigue con claves/host.
+  let estadoContenedor;
+  try {
+    estadoContenedor = inspeccionarContenedor({
+      nombreContenedor: NOMBRE_CONTENEDOR_POR_DEFECTO,
+      execFileSyncFn: execFileSync,
+    });
+  } catch (error) {
+    estadoContenedor = { errorInspeccion: error.message };
+  }
+
   const { exitCode, lineas } = ejecutarVerificar({
     envEjemplo,
     envArchivo,
     envProceso: { ...process.env },
+    estadoContenedor,
   });
 
   for (const linea of lineas) console.log(linea);

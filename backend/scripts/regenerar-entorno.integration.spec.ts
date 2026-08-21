@@ -8,15 +8,18 @@
  * `lib/`). NUNCA toca un `.env*` real ni abre una conexión: `ejecutarVerificar`
  * recibe mapas literales, igual que sus dependencias.
  *
- * NOTA DE DESVIACIÓN (ver reporte de cierre de W2): la tarea original hablaba
- * de un escenario "contenedor ausente simulado". El subcomando `verificar`
- * de esta entrega es explícitamente read-only y no abre ninguna conexión ni
- * consulta Docker (eso es W3, con `docker-postgres.mjs`, que todavía no
- * existe). Por eso "entorno incompleto" se interpreta acá como lo único que
- * `verificar` puede detectar hoy: claves requeridas faltantes y/o un host no
- * local — no la ausencia de un contenedor.
+ * NOTA DE DESVIACIÓN, cerrada en W3 (ver reporte de cierre de W2 para el
+ * historial): la tarea 2.6 original hablaba de un escenario "contenedor
+ * ausente simulado", pero en W2 `docker-postgres.mjs` todavía no existía —
+ * `verificar` solo podía detectar claves faltantes y host remoto. Con
+ * `inspeccionarContenedor` ya disponible (W3) el escenario de abajo lo
+ * cierra: la spec "regeneracion-entorno-local", requirement "Verificación
+ * read-only", scenario "Entorno incompleto", dice textualmente "GIVEN
+ * contenedor Docker ausente ... THEN reporta la falta y termina exit≠0" —
+ * no hizo falta decidir nada, la spec ya lo define.
  */
 import { ejecutarVerificar } from './regenerar-entorno.mjs';
+import { inspeccionarContenedor } from './lib/docker-postgres.mjs';
 
 describe('ejecutarVerificar()', () => {
   it('detecta un entorno incompleto (claves faltantes) y sale con código distinto de cero, sin crear ni modificar nada', () => {
@@ -109,5 +112,44 @@ describe('ejecutarVerificar()', () => {
     expect(reporte).not.toContain('TEMP');
     expect(reporte).not.toContain('USERNAME');
     expect(reporte).not.toContain('npm_config_user_agent');
+  });
+
+  // Cierra la tarea 2.6 original ("contenedor ausente simulado"), pendiente
+  // desde W2 porque `docker-postgres.mjs` no existía todavía. INTEGRACIÓN
+  // real entre W1/W3: `inspeccionarContenedor` corre con un `execFileSyncFn`
+  // inyectado como fake que simula "docker inspect" saliendo con código ≠ 0
+  // y stdout "[]" (el contenedor no existe) — el mismo contrato de error que
+  // usa `docker-postgres.spec.ts` — y el resultado se alimenta a
+  // `ejecutarVerificar` tal como lo hace `main()` en el CLI real.
+  it('contenedor Docker ausente: ejecutarVerificar reporta la falta y sale con exit != 0', () => {
+    const execFileSyncFn = vi.fn(() => {
+      const error = new Error('Command failed: docker inspect (status 1)');
+      Object.assign(error, { status: 1, stdout: '[]\n', stderr: '' });
+      throw error;
+    });
+
+    const estadoContenedor = inspeccionarContenedor({
+      nombreContenedor: 'soporte-postgres-master',
+      execFileSyncFn,
+    });
+    expect(estadoContenedor).toEqual({ estado: 'ausente', imagen: null });
+
+    const resultado = ejecutarVerificar({
+      envEjemplo: {},
+      envArchivo: {},
+      envProceso: {},
+      estadoContenedor,
+    });
+
+    expect(resultado.exitCode).not.toBe(0);
+    expect(resultado.lineas.join('\n')).toContain('AUSENTE');
+    // Read-only de punta a punta: la única llamada a "Docker" fue el
+    // `docker inspect` de solo lectura — nada de crear/arrancar/parar.
+    expect(execFileSyncFn).toHaveBeenCalledTimes(1);
+    expect(execFileSyncFn).toHaveBeenCalledWith(
+      'docker',
+      ['inspect', 'soporte-postgres-master'],
+      expect.anything(),
+    );
   });
 });
