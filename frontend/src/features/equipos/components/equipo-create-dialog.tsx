@@ -16,7 +16,8 @@ import { MontoInput } from "@/components/shared/monto-input";
 import { formatearNumeroEsAr } from "@/shared/lib/formato-numero";
 import { useCrearEquipo } from "../hooks/use-equipo-mutations";
 import { crearEquipoSchema, type CrearEquipoFormValues } from "../schemas";
-import { baseDepreciacion, calcularValorResidual, hoyISO, parseImporte } from "../depreciacion";
+import { hoyFechaCalendario } from "@/shared/lib/formato-fecha";
+import { baseDepreciacion, calcularValorResidual, parseImporte } from "../depreciacion";
 
 export function EquipoCreateDialog() {
   const [open, setOpen] = useState(false);
@@ -56,7 +57,7 @@ export function EquipoCreateDialog() {
     setValue("valorResidual", String(calcularValorResidual(baseActual, porcentaje)), {
       shouldValidate: true,
     });
-    setValue("fechaValorResidual", hoyISO(), { shouldValidate: true });
+    setValue("fechaValorResidual", hoyFechaCalendario(), { shouldValidate: true });
   }
 
   function submit(values: CrearEquipoFormValues) {

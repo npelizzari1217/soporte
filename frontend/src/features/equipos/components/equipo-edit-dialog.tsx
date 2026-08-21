@@ -27,10 +27,10 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { MontoInput } from "@/components/shared/monto-input";
 import { formatearNumeroEsAr } from "@/shared/lib/formato-numero";
-import { aFechaInput } from "@/shared/lib/formato-fecha";
+import { aFechaInput, hoyFechaCalendario } from "@/shared/lib/formato-fecha";
 import { useEditarEquipo } from "../hooks/use-equipo-mutations";
 import { crearEquipoSchema, type CrearEquipoFormValues } from "../schemas";
-import { baseDepreciacion, calcularValorResidual, hoyISO, parseImporte } from "../depreciacion";
+import { baseDepreciacion, calcularValorResidual, parseImporte } from "../depreciacion";
 import type { EquipoDetalle } from "../types";
 
 export interface EquipoEditDialogProps {
@@ -101,7 +101,7 @@ export function EquipoEditDialog({ equipo }: EquipoEditDialogProps) {
     setValue("valorResidual", String(calcularValorResidual(baseActual, porcentaje)), {
       shouldValidate: true,
     });
-    setValue("fechaValorResidual", hoyISO(), { shouldValidate: true });
+    setValue("fechaValorResidual", hoyFechaCalendario(), { shouldValidate: true });
   }
 
   function handleOpenChange(next: boolean) {
