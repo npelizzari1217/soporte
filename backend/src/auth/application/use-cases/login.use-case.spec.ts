@@ -24,11 +24,12 @@
  * WU-7.1 (sdd/matriz-permisos-por-usuario): `permisos` deja de venir de
  * `MembresiaResuelta.permisos` (RBAC viejo) — ahora resolverScope los lee
  * de `IMatrizPermisosRepository` (o bypassea con `PARES_VALIDOS` para
- * ROOT/ADMINISTRADOR). El mock de la membresía sigue exponiendo `permisos`
- * porque el campo sigue en la interfaz (otros consumidores lo usan), pero
- * este spec ya NO depende de él para las aserciones de `captured.permisos`.
+ * ROOT/ADMINISTRADOR). `MembresiaResuelta` ya NO expone `permisos` (retirado
+ * junto con el JOIN a `roles_permisos`, saneamiento-tipos-backend WU3); las
+ * aserciones de `captured.permisos` siguen leyendo del `JwtPayload`.
  */
 import * as crypto from 'crypto';
+import type { Mocked } from 'vitest';
 import { LoginUseCase, DUMMY_HASH } from './login.use-case';
 import { UsuarioEntity } from '../../domain/entities/usuario.entity';
 import { RefreshTokenEntity } from '../../domain/entities/refresh-token.entity';
@@ -46,6 +47,7 @@ import { ITokenService, JwtPayload } from '../../domain/ports/i-token.service';
 import { IClienteRepository } from '../../../clientes/domain/ports/i-cliente.repository';
 import { ClienteEntity } from '../../../clientes/domain/entities/cliente.entity';
 import { PARES_VALIDOS } from '../../../shared/domain/acciones';
+import { unstubbed } from '../../../testing/mocks';
 
 // ─── Factories de entidades/mocks de test ────────────────────────────────────
 
@@ -84,24 +86,28 @@ const makeMembresiaResuelta = (overrides: Partial<MembresiaResuelta> = {}): Memb
   clienteId: 'cliente-1',
   clienteNombre: 'Acme SA',
   rolCodigo: 'TECNICO',
-  permisos: ['ticket:crear', 'ticket:editar'],
   ...overrides,
 });
 
-const makeUsuarioRepo = (): vi.Mocked<IUsuarioRepository> => ({
+const makeUsuarioRepo = (): Mocked<IUsuarioRepository> => ({
   findByEmail: vi.fn(),
   findById: vi.fn(),
   create: vi.fn(),
   save: vi.fn(),
 });
 
-const makeMembresiaRepo = (): vi.Mocked<IMembresiaRepository> => ({
+const makeMembresiaRepo = (): Mocked<IMembresiaRepository> => ({
   findActivasByUsuario: vi.fn().mockResolvedValue([]),
   findActivaByUsuarioYCliente: vi.fn(),
-  create: vi.fn().mockResolvedValue(undefined),
+  // LoginUseCase nunca llama a estos métodos (solo lee membresías, nunca
+  // crea/muta): un stub mudo taparía que producción empiece a llamarlos.
+  findActivasByCliente: unstubbed('findActivasByCliente'),
+  findByUsuarioYCliente: unstubbed('findByUsuarioYCliente'),
+  create: unstubbed('create'),
+  save: unstubbed('save'),
 });
 
-const makeClienteRepo = (): vi.Mocked<IClienteRepository> => ({
+const makeClienteRepo = (): Mocked<IClienteRepository> => ({
   findById: vi.fn(),
   findByDbName: vi.fn(),
   findAll: vi.fn(),
@@ -109,23 +115,23 @@ const makeClienteRepo = (): vi.Mocked<IClienteRepository> => ({
   delete: vi.fn(),
 });
 
-const makeHashProvider = (): vi.Mocked<IHashProvider> => ({
+const makeHashProvider = (): Mocked<IHashProvider> => ({
   hash: vi.fn().mockResolvedValue('$argon2id$hashed'),
   verify: vi.fn().mockResolvedValue(true),
 });
 
-const makeTokenService = (): vi.Mocked<ITokenService> => ({
+const makeTokenService = (): Mocked<ITokenService> => ({
   signJwt: vi.fn().mockReturnValue('signed.jwt.token'),
   verifyJwt: vi.fn().mockReturnValue(null),
 });
 
-const makeRefreshTokenRepo = (): vi.Mocked<IRefreshTokenRepository> => ({
+const makeRefreshTokenRepo = (): Mocked<IRefreshTokenRepository> => ({
   findByHash: vi.fn(),
   revokeAllByUsuarioId: vi.fn().mockResolvedValue(undefined),
   save: vi.fn().mockResolvedValue(undefined),
 });
 
-const makePermisosRepo = (): vi.Mocked<IMatrizPermisosRepository> => ({
+const makePermisosRepo = (): Mocked<IMatrizPermisosRepository> => ({
   findByUsuarioYCliente: vi.fn().mockResolvedValue([]),
   setPermisos: vi.fn().mockResolvedValue(undefined),
 });
@@ -513,8 +519,9 @@ describe('LoginUseCase', () => {
       const result = await useCase.execute({ email: 'user@test.com', password: 'secret' });
 
       expect(result.isOk()).toBe(true);
-      if (result.getValue().kind !== 'tokens') throw new Error('expected tokens');
-      const rawToken = result.getValue().refreshToken;
+      const value = result.getValue();
+      if (value.kind !== 'tokens') throw new Error('expected tokens');
+      const rawToken = value.refreshToken;
       const expectedHash = crypto.createHash('sha256').update(rawToken).digest('hex');
 
       expect(saved!.tokenHash).toBe(expectedHash);
@@ -532,8 +539,9 @@ describe('LoginUseCase', () => {
 
       const result = await useCase.execute({ email: 'user@test.com', password: 'secret' });
 
-      if (result.getValue().kind !== 'tokens') throw new Error('expected tokens');
-      expect(result.getValue().refreshToken.length).toBeGreaterThanOrEqual(32);
+      const value = result.getValue();
+      if (value.kind !== 'tokens') throw new Error('expected tokens');
+      expect(value.refreshToken.length).toBeGreaterThanOrEqual(32);
     });
 
     it('persiste el clienteId resuelto en el refresh token (Opción B, decisión #2025)', async () => {

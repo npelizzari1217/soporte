@@ -24,5 +24,13 @@
     }
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "**/*.spec.ts", "**/*.test.ts"]
+  // Los specs y tests NO se excluyen a propósito: es el gate central de
+  // saneamiento-tipos-backend (WU6). Antes de este cambio, `pnpm typecheck`
+  // ignoraba `**/*.spec.ts` y `**/*.test.ts`, y esa exclusión escondió 119
+  // errores de tipos — entre ellos un renombre de enum que nunca llegó a
+  // los tests y mocks que no cumplían la interfaz que decían implementar.
+  // `tsconfig.build.json` re-declara su propio `exclude` (extends NO
+  // mergea arrays) y sigue excluyendo specs y andamiaje de testing del
+  // build de producción; este `exclude` es solo para `tsc --noEmit`.
+  "exclude": ["node_modules", "dist"]
 }

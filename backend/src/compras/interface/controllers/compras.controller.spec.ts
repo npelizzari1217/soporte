@@ -843,9 +843,13 @@ describe('ComprasController — propagación de errores (nunca 500 silencioso)',
 
 describe('toHttpException — catálogo de errores → HTTP (spec §5)', () => {
   /** Clases de error exportadas por `compras.errors.ts` — el número de la verdad, no un literal a mano. */
+  // Sin type predicate a propósito: cada export de `compras.errors.ts` ya es
+  // `typeof AlgunErrorConcreto`, con sus estáticos heredados de `Error`
+  // (captureStackTrace, etc.) — una firma de constructor inventada acá los
+  // pierde y el chequeo TS2677 lo rechaza. El filtro es puro guardarraíl
+  // runtime si el módulo alguna vez exporta algo que no sea una clase.
   const CLASES_DE_ERROR = Object.values(ComprasErrors).filter(
-    (valor): valor is new (...args: never[]) => DomainError =>
-      typeof valor === 'function' && valor.prototype instanceof DomainError,
+    (valor) => typeof valor === 'function' && valor.prototype instanceof DomainError,
   );
 
   it('el catálogo tiene EXACTAMENTE 27 clases de error (2×409 + 2×404 + 23×422, + exportación a CSV)', () => {
@@ -1056,7 +1060,10 @@ describe('RBAC — guard real: S38/S39/S11/S40 (§4.11, AccionesGuard + Reflecto
       rol: null,
       cliente_id: null,
     };
-    const context = buildContext(ComprasController.prototype.crear, root);
+    const context = buildContext(
+      ComprasController.prototype.crear as unknown as (...args: unknown[]) => unknown,
+      root,
+    );
 
     expect(guard.canActivate(context)).toBe(true);
   });
@@ -1069,7 +1076,10 @@ describe('RBAC — guard real: S38/S39/S11/S40 (§4.11, AccionesGuard + Reflecto
       rol: null,
       cliente_id: null,
     };
-    const context = buildContext(ComprasController.prototype.aprobarItem, root);
+    const context = buildContext(
+      ComprasController.prototype.aprobarItem as unknown as (...args: unknown[]) => unknown,
+      root,
+    );
 
     expect(guard.canActivate(context)).toBe(true);
   });
@@ -1081,9 +1091,21 @@ describe('RBAC — guard real: S38/S39/S11/S40 (§4.11, AccionesGuard + Reflecto
       permisos: [],
     };
 
-    expect(guard.canActivate(buildContext(ComprasController.prototype.crear, admin))).toBe(true);
-    expect(guard.canActivate(buildContext(ComprasController.prototype.aprobarItem, admin))).toBe(
-      true,
-    );
+    expect(
+      guard.canActivate(
+        buildContext(
+          ComprasController.prototype.crear as unknown as (...args: unknown[]) => unknown,
+          admin,
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      guard.canActivate(
+        buildContext(
+          ComprasController.prototype.aprobarItem as unknown as (...args: unknown[]) => unknown,
+          admin,
+        ),
+      ),
+    ).toBe(true);
   });
 });

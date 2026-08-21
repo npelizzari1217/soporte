@@ -43,6 +43,7 @@ import {
   AdminEmailYaRegistradoError,
   OnlyRootCanCreateClienteError,
 } from '../../domain/errors/clientes.errors';
+import { unstubbed } from '../../../testing/mocks';
 
 const ADMIN_ROLE = RoleEntity.create({
   codigo: 'ADMINISTRADOR',
@@ -72,15 +73,22 @@ function makeUsuarioRepo(): IUsuarioRepository {
 
 function makeMembresiaRepo(): IMembresiaRepository {
   return {
-    findActivasByUsuario: vi.fn().mockResolvedValue([]),
-    findActivaByUsuarioYCliente: vi.fn(),
     create: vi.fn().mockResolvedValue(undefined),
+    // CrearClienteUseCase solo crea la membresía ADMINISTRADOR inicial:
+    // nunca lee ni muta membresías existentes.
+    findActivasByUsuario: unstubbed('findActivasByUsuario'),
+    findActivaByUsuarioYCliente: unstubbed('findActivaByUsuarioYCliente'),
+    findActivasByCliente: unstubbed('findActivasByCliente'),
+    findByUsuarioYCliente: unstubbed('findByUsuarioYCliente'),
+    save: unstubbed('save'),
   };
 }
 
 function makeRoleRepo(): IRoleRepository {
   return {
     findByCodigo: vi.fn().mockResolvedValue(ADMIN_ROLE),
+    // CrearClienteUseCase nunca lista el catálogo completo de roles.
+    findAll: unstubbed('findAll'),
   };
 }
 

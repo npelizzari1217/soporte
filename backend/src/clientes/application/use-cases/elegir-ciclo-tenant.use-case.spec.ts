@@ -13,20 +13,26 @@ import { ICicloClienteRepository } from '../../domain/ports/i-ciclo-cliente.repo
 import { CicloVigenteEntity } from '../../domain/entities/ciclo-vigente.entity';
 import { CicloClienteEntity } from '../../domain/entities/ciclo-cliente.entity';
 import { CicloOverlapError, CicloVigenteNotFoundError } from '../../domain/errors/clientes.errors';
+import { unstubbed } from '../../../testing/mocks';
 
 function buildCicloVigenteRepoMock(master: CicloVigenteEntity | null): ICicloVigenteRepository {
   return {
     findById: vi.fn().mockResolvedValue(master),
-    save: vi.fn(),
+    // ElegirCicloTenantUseCase nunca escribe ni lista el catálogo master.
+    save: unstubbed('save'),
+    findAllActivos: unstubbed('findAllActivos'),
+    findAll: unstubbed('findAll'),
   };
 }
 
 function buildCicloClienteRepoMock(activos: CicloClienteEntity[]): ICicloClienteRepository {
   return {
-    findById: vi.fn(),
     findActivos: vi.fn().mockResolvedValue(activos),
     save: vi.fn().mockResolvedValue(undefined),
-    activarCiclo: vi.fn(),
+    // ElegirCicloTenantUseCase nunca busca por id ni activa ciclos.
+    findById: unstubbed('findById'),
+    findAll: unstubbed('findAll'),
+    activarCiclo: unstubbed('activarCiclo'),
   };
 }
 

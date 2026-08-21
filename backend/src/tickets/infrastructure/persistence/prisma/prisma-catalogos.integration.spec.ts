@@ -95,13 +95,13 @@ describe('Catálogos Prisma Repositories — Integration (T2.3)', () => {
     });
 
     await tenantClient.tipoTicket.create({
-      data: { codigo: ACTIVE_TIPO_TICKET, nombre: 'Test Activo', modulo: 'SOPORTE', activo: true },
+      data: { codigo: ACTIVE_TIPO_TICKET, nombre: 'Test Activo', modulo: 'TICKETS', activo: true },
     });
     await tenantClient.tipoTicket.create({
       data: {
         codigo: DELETED_TIPO_TICKET,
         nombre: 'Test Baja',
-        modulo: 'SOPORTE',
+        modulo: 'TICKETS',
         activo: true,
         deletedAt: new Date(),
       },
@@ -235,7 +235,7 @@ describe('Catálogos Prisma Repositories — Integration (T2.3)', () => {
     it('findIdsByModulos() incluye tipos ACTIVOS y DADOS DE BAJA del módulo (gate 5.2, B2)', async () => {
       const activo = await tipoTicketRepo.findByCodigo(ACTIVE_TIPO_TICKET);
       const baja = await tipoTicketRepo.findByCodigo(DELETED_TIPO_TICKET);
-      const ids = await tipoTicketRepo.findIdsByModulos(['SOPORTE']);
+      const ids = await tipoTicketRepo.findIdsByModulos(['TICKETS']);
       // A diferencia de findAllActive, el gate de módulo DEBE incluir el
       // soft-deleted: un ticket con un tipo desactivado sigue visible para los
       // usuarios de ese módulo.
@@ -296,7 +296,7 @@ describe('Catálogos Prisma Repositories — Integration (T2.3)', () => {
       const tipo = TipoTicketEntity.create({
         codigo: NUEVO_CODIGO,
         nombre: 'Nuevo desde repo',
-        modulo: 'SOPORTE',
+        modulo: 'TICKETS',
         activo: true,
       });
 
@@ -312,7 +312,7 @@ describe('Catálogos Prisma Repositories — Integration (T2.3)', () => {
       const tipo = TipoTicketEntity.create({
         codigo: NUEVO_CODIGO,
         nombre: 'Original',
-        modulo: 'SOPORTE',
+        modulo: 'TICKETS',
         activo: true,
       });
       await tipoTicketRepo.save(tipo);

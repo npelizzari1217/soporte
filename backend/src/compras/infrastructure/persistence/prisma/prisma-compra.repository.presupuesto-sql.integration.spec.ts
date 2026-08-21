@@ -91,10 +91,26 @@ const DUMMY_USUARIO_ID = '01900000-0000-7000-8000-000000000001';
  */
 const PRESUPUESTO_MAXIMO_SENTENCIAS = 3;
 
+/**
+ * Construye el cliente instrumentado con `log: [{ level: 'query', emit: 'event' }] as const`.
+ * El `as const` es necesario para que Prisma infiera el tipo literal `'query'`
+ * en `$on()` — sin él, `ClientOptions['log']` se ensancha a `LogDefinition[]`
+ * genérico y `$on('query', ...)` tipa el evento como `LogEvent` (sin
+ * `.query`) en vez de `QueryEvent`. Encapsular la construcción en una función
+ * y capturar el tipo vía `ReturnType` (en vez de `InstanceType<typeof TenantPrismaClient>`
+ * a secas) preserva esa inferencia en la variable declarada más abajo.
+ */
+function crearClienteInstrumentado(adapter: PrismaPg) {
+  return new TenantPrismaClient({
+    adapter,
+    log: [{ level: 'query', emit: 'event' }] as const,
+  });
+}
+
 describe('PrismaCompraRepository.findPaginaConItems — Presupuesto de sentencias SQL (S32)', () => {
   let prismaServiceParaUrl: PrismaService;
   let pool: Pool;
-  let tenantClient: InstanceType<typeof TenantPrismaClient>;
+  let tenantClient: ReturnType<typeof crearClienteInstrumentado>;
   let tenantContext: TenantContext;
   let compraRepo: PrismaCompraRepository;
   let cicloId: string;
@@ -157,10 +173,7 @@ describe('PrismaCompraRepository.findPaginaConItems — Presupuesto de sentencia
 
     pool = new Pool({ connectionString: tenantUrl });
     const adapter = new PrismaPg(pool);
-    tenantClient = new TenantPrismaClient({
-      adapter,
-      log: [{ level: 'query', emit: 'event' }],
-    });
+    tenantClient = crearClienteInstrumentado(adapter);
     // El tipado de PrismaClient con `log` configurado expone `$on('query', ...)`.
     tenantClient.$on('query', (event) => {
       sentenciasEmitidas.push(event.query);

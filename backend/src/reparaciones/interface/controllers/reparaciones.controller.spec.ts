@@ -518,9 +518,14 @@ describe('toHttpException (reparaciones) — catálogo de errores propios → HT
    * `equipos.controller.spec.ts`, cuyo catálogo tampoco reflexiona sobre
    * errores de `tickets`.
    */
+  // Sin type predicate a propósito: cada export de `reparaciones.errors.ts`
+  // ya es `typeof AlgunErrorConcreto`, con sus estáticos heredados de
+  // `Error` (captureStackTrace, etc.) — una firma de constructor inventada
+  // acá los pierde y el chequeo TS2677 lo rechaza. El filtro es puro
+  // guardarraíl runtime si el módulo alguna vez exporta algo que no sea
+  // una clase.
   const CLASES_DE_ERROR = Object.values(ReparacionesErrors).filter(
-    (valor): valor is new (...args: never[]) => DomainError =>
-      typeof valor === 'function' && valor.prototype instanceof DomainError,
+    (valor) => typeof valor === 'function' && valor.prototype instanceof DomainError,
   );
 
   it('el catálogo tiene EXACTAMENTE 3 clases de error (2 previas + ExportacionDemasiadoGrandeError)', () => {

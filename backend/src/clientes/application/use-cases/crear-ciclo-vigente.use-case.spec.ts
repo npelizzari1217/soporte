@@ -9,11 +9,15 @@ import { describe, expect, it, vi } from 'vitest';
 import { CrearCicloVigenteUseCase } from './crear-ciclo-vigente.use-case';
 import { ICicloVigenteRepository } from '../../domain/ports/i-ciclo-vigente.repository';
 import { CicloVigenteInvalidDatesError } from '../../domain/errors/clientes.errors';
+import { unstubbed } from '../../../testing/mocks';
 
 function buildRepoMock(): ICicloVigenteRepository {
   return {
-    findById: vi.fn(),
     save: vi.fn().mockResolvedValue(undefined),
+    // CrearCicloVigenteUseCase solo llama a save: nunca lee el catálogo.
+    findById: unstubbed('findById'),
+    findAllActivos: unstubbed('findAllActivos'),
+    findAll: unstubbed('findAll'),
   };
 }
 

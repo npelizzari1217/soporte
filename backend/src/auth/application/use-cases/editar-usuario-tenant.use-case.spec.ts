@@ -24,7 +24,6 @@ const MEMBRESIA_ACTIVA: MembresiaResuelta = {
   clienteId: 'cliente-token',
   clienteNombre: 'Cliente Token',
   rolCodigo: 'TECNICO',
-  permisos: [],
 };
 
 describe('EditarUsuarioTenantUseCase (gestión mínima de usuarios, sdd/beta-frontend §5)', () => {

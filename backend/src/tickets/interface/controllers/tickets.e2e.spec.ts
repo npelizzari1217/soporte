@@ -127,7 +127,10 @@ async function httpPostMultipart<T = unknown>(
   headers: Headers = {},
 ): Promise<{ status: number; data: T }> {
   const form = new FormData();
-  form.append('archivo', new Blob([fileContent], { type: mimeType }), filename);
+  // Buffer<ArrayBufferLike> no es asignable a BlobPart en TS 5.9 + @types/node
+  // 26 (Buffer puede respaldarse en SharedArrayBuffer). Se copia a un
+  // Uint8Array respaldado en ArrayBuffer plano, que sí satisface BlobPart.
+  form.append('archivo', new Blob([Uint8Array.from(fileContent)], { type: mimeType }), filename);
   const res = await fetch(url, { method: 'POST', headers, body: form });
   const data = (await res.json().catch(() => null)) as T;
   return { status: res.status, data };

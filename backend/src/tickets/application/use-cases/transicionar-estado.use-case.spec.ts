@@ -94,7 +94,7 @@ describe('TransicionarEstadoUseCase', () => {
         .fn()
         .mockResolvedValue(
           TipoTicketEntity.create(
-            { codigo: 'SOPORTE', nombre: 'Soporte', modulo: 'SOPORTE', activo: true },
+            { codigo: 'SOPORTE', nombre: 'Soporte', modulo: 'TICKETS', activo: true },
             'tipo-soporte-uuid',
           ),
         ),
