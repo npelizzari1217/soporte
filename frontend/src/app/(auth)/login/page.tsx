@@ -12,8 +12,10 @@
  * Spec: [R23] BFF login route.
  */
 
+import { Suspense } from "react";
 import { LoginForm } from "@/features/auth/components/LoginForm";
 import { ClienteSelection } from "@/features/auth/components/ClienteSelection";
+import { AvisoMotivo } from "@/features/auth/components/AvisoMotivo";
 import { useLogin } from "@/features/auth/hooks/use-login";
 
 export default function LoginPage() {
@@ -22,6 +24,11 @@ export default function LoginPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-[linear-gradient(135deg,var(--background)_0%,var(--login-gradient-accent)_100%)] p-4">
       <div className="w-full max-w-sm rounded-lg border border-border bg-card/80 p-8 shadow-xl backdrop-blur">
+        {/* useSearchParams() requiere un boundary de Suspense o falla el prerender del build. */}
+        <Suspense fallback={null}>
+          <AvisoMotivo />
+        </Suspense>
+
         <div className="mb-6 text-center">
           <h1 className="text-xl font-semibold tracking-tight text-foreground">Iniciar sesión</h1>
           <p className="mt-1 text-sm text-muted-foreground">

@@ -82,6 +82,9 @@ const makeTokenService = (): Mocked<ITokenService> => ({
 
 const makeLogger = (): Mocked<ILogger> => ({
   log: vi.fn(),
+  // SwitchTenantUseCase nunca llama a error(): un stub mudo taparía que
+  // producción empiece a llamarlo sin que ningún test se entere.
+  error: unstubbed('ILogger.error'),
 });
 
 const makePermisosRepo = (): Mocked<IMatrizPermisosRepository> => ({

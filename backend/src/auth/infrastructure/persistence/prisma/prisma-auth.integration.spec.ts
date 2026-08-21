@@ -45,8 +45,12 @@ const PLAINTEXT_PASSWORD = 'Sup3rS3cret!';
 /** Stub de ILogger — no valida NestJS Logger real, solo captura la auditoría. */
 class TestLogger implements ILogger {
   readonly messages: string[] = [];
+  readonly errorMessages: string[] = [];
   log(message: string): void {
     this.messages.push(message);
+  }
+  error(message: string): void {
+    this.errorMessages.push(message);
   }
 }
 

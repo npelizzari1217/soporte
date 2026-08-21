@@ -16,6 +16,7 @@ import { useRouter } from "next/navigation";
 import { TenantSwitcher } from "./tenant-switcher";
 import { ThemeToggle } from "./theme-toggle";
 import { Button } from "@/components/ui/button";
+import { CambiarPasswordDialog } from "@/features/auth/components/CambiarPasswordDialog";
 
 export function DashboardHeader() {
   const router = useRouter();
@@ -35,6 +36,7 @@ export function DashboardHeader() {
       <TenantSwitcher />
       <div className="flex items-center gap-2">
         <ThemeToggle />
+        <CambiarPasswordDialog />
         <Button variant="ghost" size="sm" disabled={isLoggingOut} onClick={handleLogout}>
           {isLoggingOut ? "Cerrando sesión…" : "Cerrar sesión"}
         </Button>
