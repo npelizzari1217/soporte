@@ -62,6 +62,32 @@ describe("EquipoEditDialog", () => {
     expect(screen.getByLabelText(/importe/i)).toHaveValue("1.000,00");
   });
 
+  // render-fechas-frontend: `Equipo.fechaAdquisicion`/`fechaValoracion`/
+  // `fechaValorResidual` pre-pueblan `<input type="date">` vía `aFechaInput`
+  // (antes `.slice(0, 10)` open-coded en este mismo archivo) — deduplicación,
+  // no cambio de comportamiento: sigue aceptando el ISO completo del backend.
+  it("las tres fechas pre-pueblan el input date en YYYY-MM-DD a partir del ISO completo del backend", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(
+      <EquipoEditDialog
+        equipo={{
+          ...EQUIPO,
+          fechaAdquisicion: "2026-08-17T00:00:00.000Z",
+          fechaValoracion: "2026-08-18T00:00:00.000Z",
+          fechaValorResidual: "2026-08-19T00:00:00.000Z",
+        }}
+      />,
+      { user: buildUser({ permisos: ["equipo:gestionar"] }) },
+    );
+
+    await user.click(screen.getByRole("button", { name: /^editar$/i }));
+    await screen.findByText("Editar equipo");
+
+    expect(screen.getByLabelText(/fecha de adquisición/i)).toHaveValue("2026-08-17");
+    expect(screen.getByLabelText(/fecha de valoración/i)).toHaveValue("2026-08-18");
+    expect(screen.getByLabelText(/fecha del valor residual/i)).toHaveValue("2026-08-19");
+  });
+
   it("guardar dispara el PATCH y cierra el modal", async () => {
     const user = userEvent.setup();
     renderWithProviders(<EquipoEditDialog equipo={EQUIPO} />, {

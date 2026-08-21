@@ -39,7 +39,7 @@ import {
 } from "./registrar-avance-dialog";
 import { ItemCerrarFaltanteDialog } from "./item-cerrar-faltante-dialog";
 import type { EstadoAprobacionItem, ItemCompra } from "../types";
-import { aFechaInput } from "@/shared/lib/formato-fecha";
+import { formatearFechaCalendario } from "@/shared/lib/formato-fecha";
 import { formatearMontoConMoneda } from "@/shared/lib/formato-numero";
 
 /**
@@ -54,9 +54,12 @@ const ESTADO_ITEM_CONFIG: Record<EstadoAprobacionItem, { label: string; variant:
   RECHAZADO: { label: "Rechazado", variant: "destructive" },
 };
 
-/** "YYYY-MM-DD" desde un ISO string del backend, con guion cuando la etapa todavía no se registró. */
-function formatFecha(fechaISO: string | null): string {
-  return fechaISO ? aFechaInput(fechaISO) : "—";
+// ItemCompra.fechaOrden / fechaRecepcion / fechaEntrega son @db.Date — fecha
+// de calendario. Antes envolvía `aFechaInput` (normalizador de INPUT, no
+// formateador de pantalla) y mostraba "2026-08-17" en vez de "17/08/2026"
+// (render-fechas-frontend); el "—" se conserva para la etapa sin registrar.
+function formatFecha(fecha: string | null): string {
+  return fecha ? formatearFechaCalendario(fecha) : "—";
 }
 
 export interface CompraItemsSectionProps {
