@@ -20,7 +20,9 @@ function buildMembresia() {
 }
 
 /** Fixture: matriz custom recortada a mano (`TICKETS:ALTAS`, SIN `TICKETS:ASIGNAR`) — S13/S14. */
-function buildUseCaseConAplicarPreset(aplicarPresetResult = Result.ok<void, never>(undefined)) {
+function buildUseCaseConAplicarPreset(
+  aplicarPresetResult: Result<void, PresetRolNoDefinidoError> = Result.ok(undefined),
+) {
   const membresia = buildMembresia();
   const rolNuevo = RoleEntity.create({
     codigo: 'TECNICO',

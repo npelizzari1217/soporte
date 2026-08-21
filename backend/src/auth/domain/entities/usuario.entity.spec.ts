@@ -11,13 +11,12 @@
  * - verifyPassword(): delega al IHashProvider y retorna el resultado
  * - isRoot(): alias de isGlobalAdmin, NUNCA derivado de un rol
  */
+import type { Mocked } from 'vitest';
 import { UsuarioEntity } from './usuario.entity';
 import { IHashProvider } from '../ports/i-hash.provider';
 
 /** Mock del IHashProvider para aislar tests de infraestructura de hashing */
-const makeHashProvider = (
-  overrides: Partial<{ hash: ReturnType<typeof vi.fn>; verify: ReturnType<typeof vi.fn> }> = {},
-): IHashProvider => ({
+const makeHashProvider = (overrides: Partial<Mocked<IHashProvider>> = {}): IHashProvider => ({
   hash: vi.fn().mockResolvedValue('$argon2id$hashed_value'),
   verify: vi.fn().mockResolvedValue(true),
   ...overrides,

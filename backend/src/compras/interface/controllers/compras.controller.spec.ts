@@ -1056,7 +1056,10 @@ describe('RBAC — guard real: S38/S39/S11/S40 (§4.11, AccionesGuard + Reflecto
       rol: null,
       cliente_id: null,
     };
-    const context = buildContext(ComprasController.prototype.crear, root);
+    const context = buildContext(
+      ComprasController.prototype.crear as unknown as (...args: unknown[]) => unknown,
+      root,
+    );
 
     expect(guard.canActivate(context)).toBe(true);
   });
@@ -1069,7 +1072,10 @@ describe('RBAC — guard real: S38/S39/S11/S40 (§4.11, AccionesGuard + Reflecto
       rol: null,
       cliente_id: null,
     };
-    const context = buildContext(ComprasController.prototype.aprobarItem, root);
+    const context = buildContext(
+      ComprasController.prototype.aprobarItem as unknown as (...args: unknown[]) => unknown,
+      root,
+    );
 
     expect(guard.canActivate(context)).toBe(true);
   });
@@ -1081,9 +1087,21 @@ describe('RBAC — guard real: S38/S39/S11/S40 (§4.11, AccionesGuard + Reflecto
       permisos: [],
     };
 
-    expect(guard.canActivate(buildContext(ComprasController.prototype.crear, admin))).toBe(true);
-    expect(guard.canActivate(buildContext(ComprasController.prototype.aprobarItem, admin))).toBe(
-      true,
-    );
+    expect(
+      guard.canActivate(
+        buildContext(
+          ComprasController.prototype.crear as unknown as (...args: unknown[]) => unknown,
+          admin,
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      guard.canActivate(
+        buildContext(
+          ComprasController.prototype.aprobarItem as unknown as (...args: unknown[]) => unknown,
+          admin,
+        ),
+      ),
+    ).toBe(true);
   });
 });

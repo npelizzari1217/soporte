@@ -20,7 +20,7 @@ describe('CambiarEstadoActivoTipoTicketUseCase', () => {
 
   it('activo:false da de baja (soft delete) el tipo y persiste', async () => {
     const tipo = TipoTicketEntity.create(
-      { codigo: 'SOPORTE', nombre: 'Soporte', modulo: 'SOPORTE', activo: true },
+      { codigo: 'SOPORTE', nombre: 'Soporte', modulo: 'TICKETS', activo: true },
       'id-1',
     );
     const c = makeCollaborators(tipo);
@@ -35,7 +35,7 @@ describe('CambiarEstadoActivoTipoTicketUseCase', () => {
 
   it('activo:true reactiva un tipo dado de baja', async () => {
     const tipo = TipoTicketEntity.create(
-      { codigo: 'SOPORTE', nombre: 'Soporte', modulo: 'SOPORTE', activo: true },
+      { codigo: 'SOPORTE', nombre: 'Soporte', modulo: 'TICKETS', activo: true },
       'id-1',
     );
     tipo.desactivar();
