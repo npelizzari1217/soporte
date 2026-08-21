@@ -24,6 +24,7 @@ import { Pool } from 'pg';
 import {
   crearPuertoPgReal,
   derivarBasesObjetivo,
+  ejecutarRecrearTest,
   ejecutarRegenerar,
   ejecutarVerificar,
 } from './regenerar-entorno.mjs';
@@ -184,59 +185,65 @@ describe('ejecutarVerificar()', () => {
  * (columnas NOT NULL sin default incluidas, ver `sync-ayuda.js`) sin
  * levantar el árbol de dependencias completo de Nest.
  */
-describe('ejecutarRegenerar() (W4, integración — Postgres real)', () => {
-  const MASTER_URL =
-    process.env.DATABASE_URL_MASTER ??
-    'postgresql://soporte:soporte@localhost:5432/soporte_master_test';
+/**
+ * Compartido entre W4 y W5 (ambas describes de abajo trabajan contra
+ * Postgres real, con el mismo patrón `soporte_regen_<hex>_<etiqueta>_test`):
+ * levantado a nivel de módulo para no duplicarlo — DRY, mismo criterio que
+ * el resto del proyecto.
+ */
+const MASTER_URL =
+  process.env.DATABASE_URL_MASTER ??
+  'postgresql://soporte:soporte@localhost:5432/soporte_master_test';
 
+/** SIEMPRE `soporte_regen_<hex>_<etiqueta>_test` — nunca un nombre real. */
+function nombreEfimero(etiqueta: string): string {
+  return `soporte_regen_${randomBytes(4).toString('hex')}_${etiqueta}_test`;
+}
+
+const PATRON_EFIMERO_SEGURO = /^soporte_regen_[a-z0-9]+_[a-z]+_test$/;
+
+/** DROP solo si el nombre matchea el patrón efímero — rechaza cualquier otra cosa antes de tocar Postgres. */
+async function dropSiEsEfimera(nombreDb: string): Promise<void> {
+  if (!PATRON_EFIMERO_SEGURO.test(nombreDb)) {
+    throw new Error(
+      `[test] rechazo por seguridad: "${nombreDb}" no matchea el patrón de bases efímeras`,
+    );
+  }
+  const admin = new URL(MASTER_URL);
+  admin.pathname = '/postgres';
+  const pool = new Pool({ connectionString: admin.toString(), connectionTimeoutMillis: 5000 });
+  try {
+    await pool.query(`DROP DATABASE IF EXISTS "${nombreDb}"`);
+  } finally {
+    await pool.end();
+  }
+}
+
+function urlDe(nombreDb: string): string {
+  const u = new URL(MASTER_URL);
+  u.pathname = '/' + nombreDb;
+  return u.toString();
+}
+
+async function contarFilas(urlDb: string, tabla: string): Promise<number> {
+  const pool = new Pool({ connectionString: urlDb, connectionTimeoutMillis: 5000 });
+  try {
+    const { rows } = await pool.query(`SELECT count(*)::int AS n FROM ${tabla}`);
+    return rows[0].n as number;
+  } finally {
+    await pool.end();
+  }
+}
+
+async function existenBases(nombres: string[]): Promise<boolean[]> {
+  const puertoPg = crearPuertoPgReal();
+  const bases = derivarBasesObjetivo(MASTER_URL, nombres);
+  return Promise.all(bases.map((b) => puertoPg.baseExiste(b.url)));
+}
+
+describe('ejecutarRegenerar() (W4, integración — Postgres real)', () => {
   const ROOT_ADMIN_EMAIL = 'root-regen-w4@example.com';
   const NOMBRE_CLIENTE_DEMO = 'Demo Soporte W4 Test';
-
-  /** SIEMPRE `soporte_regen_<hex>_<etiqueta>_test` — nunca un nombre real. */
-  function nombreEfimero(etiqueta: string): string {
-    return `soporte_regen_${randomBytes(4).toString('hex')}_${etiqueta}_test`;
-  }
-
-  const PATRON_EFIMERO_SEGURO = /^soporte_regen_[a-z0-9]+_[a-z]+_test$/;
-
-  /** DROP solo si el nombre matchea el patrón efímero — rechaza cualquier otra cosa antes de tocar Postgres. */
-  async function dropSiEsEfimera(nombreDb: string): Promise<void> {
-    if (!PATRON_EFIMERO_SEGURO.test(nombreDb)) {
-      throw new Error(
-        `[W4 test] rechazo por seguridad: "${nombreDb}" no matchea el patrón de bases efímeras`,
-      );
-    }
-    const admin = new URL(MASTER_URL);
-    admin.pathname = '/postgres';
-    const pool = new Pool({ connectionString: admin.toString(), connectionTimeoutMillis: 5000 });
-    try {
-      await pool.query(`DROP DATABASE IF EXISTS "${nombreDb}"`);
-    } finally {
-      await pool.end();
-    }
-  }
-
-  function urlDe(nombreDb: string): string {
-    const u = new URL(MASTER_URL);
-    u.pathname = '/' + nombreDb;
-    return u.toString();
-  }
-
-  async function contarFilas(urlDb: string, tabla: string): Promise<number> {
-    const pool = new Pool({ connectionString: urlDb, connectionTimeoutMillis: 5000 });
-    try {
-      const { rows } = await pool.query(`SELECT count(*)::int AS n FROM ${tabla}`);
-      return rows[0].n as number;
-    } finally {
-      await pool.end();
-    }
-  }
-
-  async function existenBases(nombres: string[]): Promise<boolean[]> {
-    const puertoPg = crearPuertoPgReal();
-    const bases = derivarBasesObjetivo(MASTER_URL, nombres);
-    return Promise.all(bases.map((b) => puertoPg.baseExiste(b.url)));
-  }
 
   /**
    * Fake de `ejecutarSeed`: registra el ORDEN de invocación en `llamadas` y,
@@ -532,4 +539,123 @@ describe('ejecutarRegenerar() (W4, integración — Postgres real)', () => {
     // tocó ni se duplicó nada por el intento salteado.
     expect(await contarFilas(urlMaster, 'usuarios')).toBe(1);
   }, 90_000);
+});
+
+/**
+ * [INTEGRATION][W5] `ejecutarRecrearTest()` — SOLO contra bases físicas
+ * efímeras (`soporte_regen_<hex>_<etiqueta>_test`), nunca contra
+ * `soporte_master_test`/`soporte_tenant_test` reales: aunque el validador
+ * las acepta a propósito (son el objetivo declarado de `--recrear-test`,
+ * ver JSDoc de `validarNombreBaseDestructible`), este archivo nunca les
+ * pasa esos nombres — siempre `nombresBases` efímero, mismo mecanismo que
+ * el describe de W4 de arriba.
+ */
+describe('ejecutarRecrearTest() (W5, integración — Postgres real)', () => {
+  const nombresCreados: string[] = [];
+  let estadoContenedor: Awaited<ReturnType<typeof inspeccionarContenedor>>;
+
+  beforeAll(() => {
+    estadoContenedor = inspeccionarContenedor({
+      nombreContenedor: 'soporte-postgres-master',
+      execFileSyncFn: execFileSync,
+    });
+  });
+
+  afterEach(async () => {
+    while (nombresCreados.length > 0) {
+      const nombre = nombresCreados.pop()!;
+      await dropSiEsEfimera(nombre);
+    }
+  });
+
+  async function contarTablas(urlDb: string): Promise<number> {
+    const pool = new Pool({ connectionString: urlDb, connectionTimeoutMillis: 5000 });
+    try {
+      const { rows } = await pool.query(
+        "SELECT count(*)::int AS n FROM information_schema.tables WHERE table_schema = 'public'",
+      );
+      return rows[0].n as number;
+    } finally {
+      await pool.end();
+    }
+  }
+
+  it('[5.3][RED→GREEN] --confirmar: dropea y recrea SOLO las bases _test — el rastro previo desaparece de verdad', async () => {
+    const nombres = [nombreEfimero('recreara'), nombreEfimero('recrearb')];
+    nombresCreados.push(...nombres);
+    const puertoPg = crearPuertoPgReal();
+    const bases = derivarBasesObjetivo(MASTER_URL, nombres);
+    for (const base of bases) await puertoPg.crearBase(base.url);
+
+    // Rastro previo en la primera base: si `--recrear-test` no dropeara de
+    // verdad (fuera un no-op disfrazado de éxito), esta tabla seguiría ahí.
+    const poolMarca = new Pool({ connectionString: bases[0].url, connectionTimeoutMillis: 5000 });
+    try {
+      await poolMarca.query('CREATE TABLE marca_previa (id int)');
+    } finally {
+      await poolMarca.end();
+    }
+    expect(await contarTablas(bases[0].url)).toBe(1);
+
+    const resultado = await ejecutarRecrearTest({
+      envArchivo: {},
+      envProceso: { DATABASE_URL_MASTER: MASTER_URL },
+      estadoContenedor,
+      nombresBases: nombres,
+      confirmar: true,
+      puertoPg,
+    });
+
+    expect(resultado.exitCode).toBe(0);
+    expect(await existenBases(nombres)).toEqual([true, true]);
+    expect(await contarTablas(bases[0].url)).toBe(0);
+  }, 60_000);
+
+  it('[5.3][RED→GREEN] rechaza un nombre sin sufijo _test SIN tocar ninguna base — todo o nada', async () => {
+    const nombreValido = nombreEfimero('valido');
+    const nombreInvalido = `soporte_regen_${randomBytes(4).toString('hex')}_sinsufijo`;
+    nombresCreados.push(nombreValido);
+    const puertoPg = crearPuertoPgReal();
+    const baseValida = derivarBasesObjetivo(MASTER_URL, [nombreValido])[0];
+    await puertoPg.crearBase(baseValida.url);
+
+    const resultado = await ejecutarRecrearTest({
+      envArchivo: {},
+      envProceso: { DATABASE_URL_MASTER: MASTER_URL },
+      estadoContenedor,
+      nombresBases: [nombreValido, nombreInvalido],
+      confirmar: true,
+      puertoPg,
+    });
+
+    expect(resultado.exitCode).toBe(1);
+    expect(resultado.lineas.join('\n')).toContain(nombreInvalido);
+    // La base VÁLIDA tampoco se tocó — la validación es todo o nada, ANTES
+    // de dropear la primera de la lista.
+    expect(await existenBases([nombreValido])).toEqual([true]);
+  }, 30_000);
+
+  it('[5.3][RED→GREEN] rechaza host remoto ANTES de conectar (reusa asegurarHostLocal) — ninguna conexión real', async () => {
+    const puertoPgEspia = {
+      baseExiste: vi.fn(),
+      crearBase: vi.fn(),
+      dropBase: vi.fn(),
+      consultarUsuarioRoot: vi.fn(),
+      consultarClienteDemo: vi.fn(),
+    };
+
+    const resultado = await ejecutarRecrearTest({
+      envArchivo: {},
+      envProceso: { DATABASE_URL_MASTER: 'postgresql://u:p@10.0.0.5:5432/soporte_master_test' },
+      estadoContenedor,
+      nombresBases: ['soporte_master_test', 'soporte_tenant_test'],
+      confirmar: true,
+      puertoPg: puertoPgEspia,
+    });
+
+    expect(resultado.exitCode).toBe(1);
+    expect(resultado.lineas.join('\n')).toContain('10.0.0.5');
+    expect(puertoPgEspia.dropBase).not.toHaveBeenCalled();
+    expect(puertoPgEspia.crearBase).not.toHaveBeenCalled();
+  });
 });

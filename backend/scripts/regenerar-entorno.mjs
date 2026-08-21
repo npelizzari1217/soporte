@@ -6,8 +6,12 @@
 // Subcomandos:
 //   verificar   (W2+W3) read-only, NUNCA abre una conexión de escritura.
 //   regenerar   (W4) dry-run por defecto (lee, nunca muta); `--confirmar`
-//               crea bases faltantes, migra y siembra. `--recrear-test`
-//               (dropea bases `_test`) es W5, no está acá.
+//               crea bases faltantes, migra y siembra.
+//   regenerar --recrear-test --confirmar   (W5) ÚNICA operación destructiva:
+//               dropea y recrea SOLO las bases de test que gestiona la
+//               herramienta (nunca `soporte_master`, nunca un tenant real —
+//               ver `validarNombreBaseDestructible` y matriz de amenazas
+//               "DDL con identificadores" del design).
 //
 // Idiom (mismo que scripts/backfill-correo-clientes.mjs y scripts/reset-password.ts):
 // funciones puras/inyectadas exportadas + `main()` bajo el guard de invocación
@@ -196,6 +200,78 @@ export function validarNombreBaseDatos(nombre) {
   return typeof nombre === 'string' && PATRON_NOMBRE_BASE.test(nombre);
 }
 
+// ─── recrear-test (W5) — validador de "base destructible" ─────────────────
+
+/**
+ * Nombres explícitamente prohibidos para `--recrear-test`.
+ *
+ * OJO con lo que esta lista hace y lo que NO hace. Hoy ninguno de estos dos
+ * nombres depende de ella para quedar afuera: los excluye antes la regla del
+ * sufijo `_test`, porque ni la base de desarrollo ni una base de tenant real
+ * terminan así. La lista es la SEGUNDA capa, para el día que un nombre
+ * protegido sí termine en `_test` y el sufijo deje de alcanzar.
+ *
+ * El `db_name` del tenant sale de `soporte_master.clientes` y CAMBIA si el
+ * tenant se recrea, así que hardcodearlo acá envejece mal. Ya pasó: esta
+ * lista arrastró un nombre que hacía rato no existía en ningún Postgres,
+ * mientras el tenant real quedaba afuera de la lista y protegido solo por
+ * el sufijo. El chequeo durable es contra el registro de clientes, y NO
+ * puede vivir en este validador porque es puro a propósito: valida antes de
+ * abrir conexión. Va como barrera aparte dentro del flujo destructivo.
+ */
+const NOMBRES_PROHIBIDOS_DESTRUCCION = new Set([
+  'soporte_master',
+  'soporte_01a0253ef26f78b88b02d5161410d8fd',
+]);
+
+/** Nombre de base rechazado antes de ejecutar `DROP DATABASE` (amenaza DDL, igual criterio que `ErrorNombreBaseInvalido`). */
+export class ErrorBaseNoDestructible extends Error {
+  /** @param {unknown} nombre */
+  constructor(nombre) {
+    super(
+      `Base no destructible, se rechaza SIN conectar ni interpolar en SQL: ${JSON.stringify(nombre)}. ` +
+        `Debe matchear ${PATRON_NOMBRE_BASE}, terminar en "_test", y no estar en la lista de bases protegidas.`,
+    );
+    this.name = 'ErrorBaseNoDestructible';
+  }
+}
+
+/**
+ * ¿`nombre` es una base que `--recrear-test` puede dropear? Spec
+ * "regeneracion-entorno-local", requirement "Alcance destructivo acotado":
+ * MUST limitar a sufijo `_test`, MUST NOT destruir `soporte_master` ni un
+ * tenant real. Tres barreras independientes, TODAS antes de abrir una
+ * conexión o interpolar el nombre en SQL:
+ *
+ * 1. Identificador seguro (`/^[a-z0-9_]+$/`) — misma amenaza DDL que
+ *    `validarNombreBaseDatos`; rechaza cualquier intento de inyección
+ *    (`x"; DROP ...` no matchea: tiene `"`, `;` y espacios).
+ * 2. Termina en `_test` — sin esto, cualquier base pasaría.
+ * 3. NO está en `NOMBRES_PROHIBIDOS_DESTRUCCION` — la barrera que protege
+ *    `soporte_master` y el tenant real NO depende del sufijo (ver comentario
+ *    de la constante): aunque algún día un nombre protegido terminara en
+ *    `_test`, esta lista lo sigue rechazando.
+ *
+ * `soporte_master_test` y `soporte_tenant_test` SÍ pasan las tres barreras
+ * a propósito: son el objetivo declarado de `--recrear-test` (spec
+ * #2416, "Alcance destructivo acotado" las nombra explícitamente como
+ * destructibles). La protección de este work unit para esas dos bases NO es
+ * "el validador las rechaza" — es que `ejecutarRecrearTest` nunca les pasa
+ * un nombre real durante los tests de este archivo: los tests de integración
+ * SIEMPRE inyectan `nombresBases` efímeros (`soporte_regen_<hex>_test`,
+ * mismo mecanismo que W4), nunca las reales. Ver detalle en el reporte de
+ * cierre de W5.
+ * @param {unknown} nombre
+ * @returns {boolean}
+ */
+export function validarNombreBaseDestructible(nombre) {
+  if (typeof nombre !== 'string') return false;
+  if (!PATRON_NOMBRE_BASE.test(nombre)) return false;
+  if (!nombre.endsWith('_test')) return false;
+  if (NOMBRES_PROHIBIDOS_DESTRUCCION.has(nombre)) return false;
+  return true;
+}
+
 /** @param {string} url @returns {string} */
 function extraerNombreDb(url) {
   return new URL(url).pathname.replace(/^\//, '');
@@ -232,6 +308,7 @@ export function derivarBasesObjetivo(urlBase, nombres = NOMBRES_BASES_POR_DEFECT
  * @typedef {{
  *   baseExiste: (url: string) => Promise<boolean>,
  *   crearBase: (url: string) => Promise<void>,
+ *   dropBase: (url: string) => Promise<void>,
  *   consultarUsuarioRoot: (urlMaster: string, email: string) => Promise<{estado: 'activo'|'inactivo'|'ausente'}>,
  *   consultarClienteDemo: (urlMaster: string, nombreCliente: string) => Promise<boolean>,
  * }} PuertoPg
@@ -272,6 +349,22 @@ export function crearPuertoPgReal() {
         // validado arriba y se quotea (duplica comillas internas) — mismo
         // patrón que `PostgresAdminService.quoteIdentifier`.
         await pool.query(`CREATE DATABASE "${nombreDb.replace(/"/g, '""')}"`);
+      } finally {
+        await pool.end();
+      }
+    },
+    async dropBase(url) {
+      const nombreDb = extraerNombreDb(url);
+      // Re-valida acá también (defensa en profundidad, mismo criterio que
+      // `crearBase`): el llamador YA validó, pero `DROP DATABASE` es
+      // irreversible — esta función nunca confía únicamente en el llamador.
+      if (!validarNombreBaseDestructible(nombreDb)) throw new ErrorBaseNoDestructible(nombreDb);
+      const pool = new Pool({
+        connectionString: urlAdminDesde(url),
+        connectionTimeoutMillis: 5000,
+      });
+      try {
+        await pool.query(`DROP DATABASE IF EXISTS "${nombreDb.replace(/"/g, '""')}"`);
       } finally {
         await pool.end();
       }
@@ -652,6 +745,126 @@ export async function ejecutarRegenerar({
   return { exitCode, lineas };
 }
 
+// ─── recrear-test (W5) ──────────────────────────────────────────────────────
+
+/**
+ * Nombres que gestiona `--recrear-test` en modo real: SOLO las dos bases de
+ * test — nunca `soporte_master` (el "reset de dev" quedó fuera de alcance,
+ * proposal #2415). Overridable SOLO para tests contra bases efímeras
+ * `soporte_regen_<hex>_test`, mismo criterio que `NOMBRES_BASES_POR_DEFECTO`.
+ */
+export const NOMBRES_BASES_TEST_POR_DEFECTO = ['soporte_master_test', 'soporte_tenant_test'];
+
+/**
+ * Guardarraíles compartidos por `regenerar` y `recrear-test`, en el mismo
+ * orden que D1-D6: 1) host (`auditarEntorno`, ANTES de cualquier conexión),
+ * 2) contenedor. `prefijo` deja cada línea de log identificada por
+ * subcomando. Devuelve `corte: true` si hay que abortar YA, con las líneas
+ * ya armadas para que el llamador no repita el formateo.
+ * @param {{envProceso, envArchivo, estadoContenedor, prefijo: string}} entrada
+ * @returns {{lineas: string[], corte: boolean, exitCode: number}}
+ */
+function verificarPrerrequisitos({ envProceso, envArchivo, estadoContenedor, prefijo }) {
+  const lineas = [];
+  const { hallazgos, violaciones } = auditarEntorno({ envProceso, envArchivo });
+  for (const hallazgo of hallazgos) {
+    lineas.push(
+      `${prefijo} ${hallazgo.clave}: origen = ${hallazgo.origen}, ` +
+        `url = ${hallazgo.urlRedactada}, host local = ${hallazgo.ok ? 'sí' : 'NO'}`,
+    );
+  }
+  if (violaciones.length > 0) {
+    for (const violacion of violaciones) lineas.push(`${prefijo} VIOLACIÓN: ${violacion.mensaje}`);
+    return { lineas, corte: true, exitCode: 1 };
+  }
+  if (estadoContenedor) {
+    if ('errorInspeccion' in estadoContenedor) {
+      lineas.push(
+        `${prefijo} Contenedor Docker: no se pudo inspeccionar (${estadoContenedor.errorInspeccion}).`,
+      );
+      return { lineas, corte: true, exitCode: 1 };
+    }
+    if (estadoContenedor.estado === 'ausente' || estadoContenedor.estado === 'otra-imagen') {
+      lineas.push(
+        `${prefijo} Contenedor Docker: ${estadoContenedor.estado.toUpperCase()} — no se puede continuar.`,
+      );
+      return { lineas, corte: true, exitCode: 1 };
+    }
+    lineas.push(
+      `${prefijo} Contenedor Docker: ${estadoContenedor.estado} (imagen ${estadoContenedor.imagen}).`,
+    );
+  }
+  return { lineas, corte: false, exitCode: 0 };
+}
+
+/**
+ * Ejecuta `--recrear-test`: DROP + CREATE de cada base en `nombresBases`
+ * (spec "Alcance destructivo acotado"). Orden, todo ANTES de tocar
+ * Postgres: 1) `asegurarHostLocal` (vía `verificarPrerrequisitos`), 2)
+ * CADA nombre debe pasar `validarNombreBaseDestructible` — si uno solo
+ * falla, NINGUNA base se toca (fail-closed, todo o nada), 3) requiere
+ * `--confirmar` (misma exigencia que `regenerar`, D-decisiones cerradas #4).
+ * Deja las bases vacías: no migra ni siembra — ese es el trabajo de
+ * `entorno:regenerar --confirmar`, que el reporte le indica al usuario que
+ * corra después.
+ * @param {{
+ *   envArchivo: Record<string, string>,
+ *   envProceso: Record<string, string | undefined>,
+ *   estadoContenedor?: {estado: 'corriendo'|'parado'|'ausente'|'otra-imagen', imagen: string|null} | {errorInspeccion: string},
+ *   nombresBases?: string[],
+ *   confirmar: boolean,
+ *   puertoPg: PuertoPg,
+ * }} entrada
+ * @returns {Promise<{exitCode: number, lineas: string[]}>}
+ */
+export async function ejecutarRecrearTest({
+  envArchivo,
+  envProceso,
+  estadoContenedor,
+  nombresBases = NOMBRES_BASES_TEST_POR_DEFECTO,
+  confirmar,
+  puertoPg,
+}) {
+  const prefijo = '[entorno:regenerar --recrear-test]';
+  const pre = verificarPrerrequisitos({ envProceso, envArchivo, estadoContenedor, prefijo });
+  if (pre.corte) return { exitCode: pre.exitCode, lineas: pre.lineas };
+  const lineas = pre.lineas;
+
+  // Validación de nombres — SIN abrir conexión, ANTES de interpolar nada en
+  // SQL. Todo o nada: un solo nombre inválido corta la operación entera.
+  const invalidos = nombresBases.filter((nombre) => !validarNombreBaseDestructible(nombre));
+  if (invalidos.length > 0) {
+    lineas.push(
+      `${prefijo} Nombre(s) no destructible(s), rechazado(s) SIN tocar la base: ${invalidos.join(', ')}`,
+    );
+    return { exitCode: 1, lineas };
+  }
+
+  if (!confirmar) {
+    lineas.push(`${prefijo} Requiere --confirmar: no se dropeó nada.`);
+    return { exitCode: 1, lineas };
+  }
+
+  const urlBase = { ...envArchivo, ...envProceso }.DATABASE_URL_MASTER;
+  if (!urlBase) {
+    lineas.push(`${prefijo} No se pudo derivar la URL base: falta DATABASE_URL_MASTER.`);
+    return { exitCode: 1, lineas };
+  }
+
+  const basesObjetivo = derivarBasesObjetivo(urlBase, nombresBases);
+  for (const base of basesObjetivo) {
+    await puertoPg.dropBase(base.url);
+    lineas.push(`${prefijo} Base ${base.nombreDb}: dropeada.`);
+    await puertoPg.crearBase(base.url);
+    lineas.push(`${prefijo} Base ${base.nombreDb}: recreada (vacía).`);
+  }
+
+  lineas.push(
+    `${prefijo} OK — bases recreadas vacías. Correr "pnpm entorno:regenerar --confirmar" para migrar y sembrar.`,
+  );
+  return { exitCode: 0, lineas };
+}
+
 /**
  * Lee y parsea un archivo `.env*` con `dotenv.parse`, sin mutar `process.env`.
  * `null` si el archivo no existe o no se puede leer — el llamador decide qué
@@ -704,6 +917,19 @@ async function main() {
       envArchivo,
       envProceso,
       estadoContenedor: inspeccionarContenedorTolerante(),
+    });
+    for (const linea of lineas) console.log(linea);
+    process.exitCode = exitCode;
+    return;
+  }
+
+  if (subcomando === 'regenerar' && resto.includes('--recrear-test')) {
+    const { exitCode, lineas } = await ejecutarRecrearTest({
+      envArchivo,
+      envProceso,
+      estadoContenedor: inspeccionarContenedorTolerante(),
+      confirmar: resto.includes('--confirmar'),
+      puertoPg: crearPuertoPgReal(),
     });
     for (const linea of lineas) console.log(linea);
     process.exitCode = exitCode;
