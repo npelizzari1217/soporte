@@ -20,6 +20,15 @@ export interface ILogger {
    * éxito (ej. switch de tenant — actor, origen, destino, timestamp).
    */
   log(message: string): void;
+
+  /**
+   * Loguea un evento de degradación silenciosa (nivel `error`, no auditoría
+   * normal). Primer consumidor real: `CambiarPasswordUseCase` cuando
+   * `revokeAllByUsuarioId` falla después de haber persistido la contraseña
+   * nueva — un evento que degrada la seguridad en silencio y debe salir por
+   * stderr, no mezclado con el log de auditoría info (sdd/cambio-de-contrasena D5).
+   */
+  error(message: string): void;
 }
 
 /** Token de inyección de dependencias para ILogger en NestJS. */

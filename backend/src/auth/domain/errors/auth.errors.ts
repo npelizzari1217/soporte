@@ -192,3 +192,51 @@ export class PresetRolNoDefinidoError extends DomainError {
     );
   }
 }
+
+/**
+ * UsuarioNoDisponibleError — el usuario del token (`actor.sub`) no existe, está
+ * inactivo o fue soft-deleted (`CambiarPasswordUseCase`, sdd/cambio-de-contrasena
+ * D3). `JwtAuthGuard` nunca consulta la DB: una cuenta suspendida sigue llegando
+ * al handler hasta que expira su access token, así que este es un caso real, no
+ * teórico. NO se reusa `CredencialesInvalidasError`: acá el usuario YA está
+ * autenticado, así que el anti-enumeración de login no aplica, y un 401 en esta
+ * ruta dispararía el refresh single-flight del cliente por error.
+ * → HTTP 403 en la capa de presentación (reconciliación #2409, punto 2).
+ */
+export class UsuarioNoDisponibleError extends DomainError {
+  readonly code = 'AUTH_USUARIO_NO_DISPONIBLE';
+
+  constructor() {
+    super('El usuario no está disponible.');
+  }
+}
+
+/**
+ * PasswordActualIncorrectaError — la `passwordActual` recibida no coincide con
+ * el hash almacenado (`CambiarPasswordUseCase`). `password_hash` queda sin
+ * cambios.
+ * → HTTP 422 en la capa de presentación (reconciliación #2409, punto 1).
+ */
+export class PasswordActualIncorrectaError extends DomainError {
+  readonly code = 'AUTH_PASSWORD_ACTUAL_INCORRECTA';
+
+  constructor() {
+    super('La contraseña actual no es correcta.');
+  }
+}
+
+/**
+ * PasswordNuevaIgualAActualError — `passwordNueva` coincide con
+ * `passwordActual` en texto plano (`CambiarPasswordUseCase`). Se detecta
+ * ANTES de hashear, comparando plaintext: en ese punto `passwordActual` ya
+ * está probada como vigente, así que la comparación es equivalente a un
+ * segundo `verifyPassword` pero sin pagar otro KDF de ~100ms.
+ * → HTTP 422 en la capa de presentación (reconciliación #2409, punto 1).
+ */
+export class PasswordNuevaIgualAActualError extends DomainError {
+  readonly code = 'AUTH_PASSWORD_NUEVA_IGUAL';
+
+  constructor() {
+    super('La contraseña nueva tiene que ser distinta de la actual.');
+  }
+}
