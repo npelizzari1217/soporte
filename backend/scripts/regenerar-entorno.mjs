@@ -3,28 +3,33 @@
 // Ref proposal/spec: sdd/regeneracion-reproducible.
 // Ref design: sdd/regeneracion-reproducible D1-D6.
 //
-// Esta entrega (W2+W3) trae el subcomando `verificar`: read-only, NUNCA
-// abre una conexión de base de datos ni toca el filesystem salvo para leer
-// `.env`/`.env.example` (dotenv.parse, sin mutar `process.env`). Desde W3
-// también inspecciona el contenedor Docker vía `docker inspect` — de solo
-// lectura, permitido acá. Los subcomandos de escritura (`regenerar`,
-// `--confirmar`, `--recrear-test`) llegan en W4-W5.
+// Subcomandos:
+//   verificar   (W2+W3) read-only, NUNCA abre una conexión de escritura.
+//   regenerar   (W4) dry-run por defecto (lee, nunca muta); `--confirmar`
+//               crea bases faltantes, migra y siembra. `--recrear-test`
+//               (dropea bases `_test`) es W5, no está acá.
 //
 // Idiom (mismo que scripts/backfill-correo-clientes.mjs y scripts/reset-password.ts):
-// funciones puras exportadas + `main()` bajo el guard de invocación directa.
-// `ejecutarVerificar` recibe TODO ya resuelto (mapas de env, estado del
-// contenedor) — nunca lee `.env*` ni ejecuta Docker por su cuenta — para que
-// los tests la ejerciten con literales/fakes, sin tocar nada real.
+// funciones puras/inyectadas exportadas + `main()` bajo el guard de invocación
+// directa. Cada función de negocio recibe TODO lo que necesita ya resuelto
+// (mapas de env, estado del contenedor, un "puerto" de acceso a Postgres, un
+// ejecutor de subprocesos) — nunca lee `.env*`, abre una conexión ni lanza un
+// proceso por su cuenta. Eso es lo que permite testear la orquestación entera
+// con fakes, sin tocar nada real, y correr los tests de integración SOLO
+// contra bases efímeras inyectando el puerto real apuntado a esos nombres.
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import dotenv from 'dotenv';
+import { Pool } from 'pg';
 import { auditarEntorno } from './lib/guardarrail-host.mjs';
 import { clasificarOrigenClaves, compararClaves } from './lib/entorno-claves.mjs';
 import { inspeccionarContenedor } from './lib/docker-postgres.mjs';
 
 const RUTA_BACKEND = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+const require = createRequire(import.meta.url);
 
 /** Nombre del contenedor Postgres del entorno vivo (ver CLAUDE.md — contexto operativo). */
 const NOMBRE_CONTENEDOR_POR_DEFECTO = 'soporte-postgres-master';
@@ -115,7 +120,9 @@ export function ejecutarVerificar({ envEjemplo, envArchivo, envProceso, estadoCo
 
   if (comparacionRequeridas.faltantes.length > 0) {
     exitCode = 1;
-    lineas.push(`[entorno:verificar] Claves faltantes: ${comparacionRequeridas.faltantes.join(', ')}`);
+    lineas.push(
+      `[entorno:verificar] Claves faltantes: ${comparacionRequeridas.faltantes.join(', ')}`,
+    );
   }
   if (comparacionRequeridas.placeholders.length > 0) {
     exitCode = 1;
@@ -125,7 +132,9 @@ export function ejecutarVerificar({ envEjemplo, envArchivo, envProceso, estadoCo
   }
   if (extras.length > 0) {
     // Informativo, no bloquea: una clave extra en .env no impide que el sistema arranque.
-    lineas.push(`[entorno:verificar] Claves extra en .env (no están en .env.example): ${extras.join(', ')}`);
+    lineas.push(
+      `[entorno:verificar] Claves extra en .env (no están en .env.example): ${extras.join(', ')}`,
+    );
   }
 
   // 3) Origen de cada clave requerida (shell / archivo / "PISA a .env").
@@ -139,6 +148,506 @@ export function ejecutarVerificar({ envEjemplo, envArchivo, envProceso, estadoCo
   if (exitCode === 0) {
     lineas.push('[entorno:verificar] OK: el entorno local está completo.');
   }
+
+  return { exitCode, lineas };
+}
+
+// ─── regenerar (W4) ─────────────────────────────────────────────────────────
+
+/**
+ * Nombres FIJOS de las bases que gestiona `entorno:regenerar` en modo real
+ * (D5): la de desarrollo y las dos de test que exige la suite completa
+ * (`CLAUDE.md`, sección "Comandos"). Overridable SOLO para tests contra
+ * bases efímeras `soporte_regen_<hex>_test` — nunca se debe pasar un nombre
+ * real desde `main()`.
+ */
+export const NOMBRES_BASES_POR_DEFECTO = [
+  'soporte_master',
+  'soporte_master_test',
+  'soporte_tenant_test',
+];
+
+/** Mismo nombre que `DEFAULT_DEMO_CLIENTE_NOMBRE` en `prisma_master/seeds/demo-seed.ts` — duplicado a propósito: ese archivo es TypeScript y este `.mjs` corre con `node` plano, sin loader de TS. */
+const NOMBRE_CLIENTE_DEMO_POR_DEFECTO = 'Demo Soporte';
+
+const PATRON_NOMBRE_BASE = /^[a-z0-9_]+$/;
+
+/** Nombre de base rechazado antes de ejecutar `CREATE DATABASE` (amenaza "DDL con identificadores", D-matriz). */
+export class ErrorNombreBaseInvalido extends Error {
+  /** @param {unknown} nombre */
+  constructor(nombre) {
+    super(
+      `Nombre de base inválido, se rechaza SIN ejecutar CREATE DATABASE: ${JSON.stringify(nombre)}. ` +
+        `Debe matchear ${PATRON_NOMBRE_BASE}.`,
+    );
+    this.name = 'ErrorNombreBaseInvalido';
+  }
+}
+
+/**
+ * ¿`nombre` es un identificador seguro de base de datos? `CREATE DATABASE`
+ * no admite parámetros preparados — esta es la única defensa antes de
+ * interpolar el nombre en el SQL (junto con el quoting, defensa en
+ * profundidad). Mismo criterio que `validarNombreContenedor` (W3).
+ * @param {unknown} nombre
+ * @returns {boolean}
+ */
+export function validarNombreBaseDatos(nombre) {
+  return typeof nombre === 'string' && PATRON_NOMBRE_BASE.test(nombre);
+}
+
+/** @param {string} url @returns {string} */
+function extraerNombreDb(url) {
+  return new URL(url).pathname.replace(/^\//, '');
+}
+
+/** URL de mantenimiento (`/postgres`, mismo host/credenciales) para poder CREATE/SELECT sobre `pg_database` — la DB objetivo no puede administrarse a sí misma. */
+function urlAdminDesde(url) {
+  const admin = new URL(url);
+  admin.pathname = '/postgres';
+  return admin.toString();
+}
+
+/**
+ * Deriva las bases objetivo a partir de una URL "base" (host/puerto/
+ * credenciales de `DATABASE_URL_MASTER`), sustituyendo el nombre de la DB
+ * por cada uno de `nombres`. Puro: solo arma URLs, no conecta.
+ * @param {string} urlBase
+ * @param {string[]} [nombres]
+ * @returns {Array<{nombreDb: string, url: string}>}
+ */
+export function derivarBasesObjetivo(urlBase, nombres = NOMBRES_BASES_POR_DEFECTO) {
+  return nombres.map((nombreDb) => {
+    const u = new URL(urlBase);
+    u.pathname = '/' + nombreDb;
+    return { nombreDb, url: u.toString() };
+  });
+}
+
+/**
+ * "Puerto" de acceso a Postgres que necesita `ejecutarRegenerar` — SIEMPRE
+ * inyectado (nunca se abre un `Pool` real dentro de esa función), mismo
+ * criterio que `execFileSyncFn` en W3. La implementación real es
+ * `crearPuertoPgReal`, más abajo; los tests inyectan fakes.
+ * @typedef {{
+ *   baseExiste: (url: string) => Promise<boolean>,
+ *   crearBase: (url: string) => Promise<void>,
+ *   consultarUsuarioRoot: (urlMaster: string, email: string) => Promise<{estado: 'activo'|'inactivo'|'ausente'}>,
+ *   consultarClienteDemo: (urlMaster: string, nombreCliente: string) => Promise<boolean>,
+ * }} PuertoPg
+ */
+
+/**
+ * Implementación real del `PuertoPg`: un `pg.Pool` propio por operación,
+ * cerrado en `finally` (mismo criterio que `PostgresAdminService` — sin
+ * pools de larga vida en una herramienta de uso infrecuente).
+ * @returns {PuertoPg}
+ */
+export function crearPuertoPgReal() {
+  return {
+    async baseExiste(url) {
+      const nombreDb = extraerNombreDb(url);
+      const pool = new Pool({
+        connectionString: urlAdminDesde(url),
+        connectionTimeoutMillis: 5000,
+      });
+      try {
+        const { rowCount } = await pool.query('SELECT 1 FROM pg_database WHERE datname = $1', [
+          nombreDb,
+        ]);
+        return (rowCount ?? 0) > 0;
+      } finally {
+        await pool.end();
+      }
+    },
+    async crearBase(url) {
+      const nombreDb = extraerNombreDb(url);
+      if (!validarNombreBaseDatos(nombreDb)) throw new ErrorNombreBaseInvalido(nombreDb);
+      const pool = new Pool({
+        connectionString: urlAdminDesde(url),
+        connectionTimeoutMillis: 5000,
+      });
+      try {
+        // Sin parámetros preparados posibles (DDL): el nombre YA fue
+        // validado arriba y se quotea (duplica comillas internas) — mismo
+        // patrón que `PostgresAdminService.quoteIdentifier`.
+        await pool.query(`CREATE DATABASE "${nombreDb.replace(/"/g, '""')}"`);
+      } finally {
+        await pool.end();
+      }
+    },
+    async consultarUsuarioRoot(urlMaster, email) {
+      const pool = new Pool({ connectionString: urlMaster, connectionTimeoutMillis: 5000 });
+      try {
+        const { rows } = await pool.query(
+          'SELECT activo, deleted_at FROM usuarios WHERE email = $1',
+          [email],
+        );
+        if (rows.length === 0) return { estado: 'ausente' };
+        const fila = rows[0];
+        return { estado: fila.activo && fila.deleted_at === null ? 'activo' : 'inactivo' };
+      } finally {
+        await pool.end();
+      }
+    },
+    async consultarClienteDemo(urlMaster, nombreCliente) {
+      const pool = new Pool({ connectionString: urlMaster, connectionTimeoutMillis: 5000 });
+      try {
+        const { rowCount } = await pool.query(
+          'SELECT 1 FROM clientes WHERE nombre = $1 AND deleted_at IS NULL',
+          [nombreCliente],
+        );
+        return (rowCount ?? 0) > 0;
+      } finally {
+        await pool.end();
+      }
+    },
+  };
+}
+
+/** Resuelve el binario de un paquete con `bin`, igual que `scripts/migrate-tenants.js` (sin depender de `node_modules/.bin`, funciona en Windows). */
+function resolverBin(paquete, nombreBin = paquete) {
+  const pkgJson = require.resolve(`${paquete}/package.json`);
+  const bin = require(pkgJson).bin;
+  const rel = typeof bin === 'string' ? bin : bin[nombreBin];
+  return path.join(path.dirname(pkgJson), rel);
+}
+
+const PRISMA_BIN = resolverBin('prisma');
+
+const ARGS_MIGRATE = {
+  master: (accion) => [PRISMA_BIN, 'migrate', accion, '--schema=prisma_master/schema.prisma'],
+  tenant: (accion) => [
+    PRISMA_BIN,
+    'migrate',
+    accion,
+    '--schema=prisma_tenant/schema.prisma',
+    '--config',
+    'prisma.tenant.config.ts',
+  ],
+};
+const ENV_VAR_POR_SCHEMA = { master: 'DATABASE_URL_MASTER', tenant: 'DATABASE_URL_TENANT' };
+
+/**
+ * `prisma migrate status` (read-only) contra `url`, para el diagnóstico del
+ * dry-run. Nunca lanza: un error (ej. la base todavía no existe) se reporta
+ * como texto, no corta el resto del plan.
+ * @param {{url: string, schema: 'master'|'tenant', execFileSyncFn: Function}} entrada
+ * @returns {string}
+ */
+function estadoMigracionSchema({ url, schema, execFileSyncFn }) {
+  try {
+    const salida = execFileSyncFn(process.execPath, ARGS_MIGRATE[schema]('status'), {
+      cwd: RUTA_BACKEND,
+      env: { ...process.env, [ENV_VAR_POR_SCHEMA[schema]]: url },
+      encoding: 'utf8',
+    });
+    return salida.includes('Database schema is up to date') ? 'al día' : 'pendiente';
+  } catch (error) {
+    return `no se pudo determinar (${String(error.message).split('\n')[0]})`;
+  }
+}
+
+/**
+ * `prisma migrate deploy` (muta) contra `url`. Idempotente nativo de
+ * Prisma: no reaplica una migración ya aplicada.
+ * @param {{url: string, schema: 'master'|'tenant', execFileSyncFn: Function}} entrada
+ */
+function aplicarMigracionSchema({ url, schema, execFileSyncFn }) {
+  execFileSyncFn(process.execPath, ARGS_MIGRATE[schema]('deploy'), {
+    cwd: RUTA_BACKEND,
+    env: { ...process.env, [ENV_VAR_POR_SCHEMA[schema]]: url },
+    stdio: 'pipe',
+  });
+}
+
+/**
+ * Ejecución REAL de un paso de seed, como proceso externo — mismo criterio
+ * que `scripts/migrate-tenants.js`: resuelve el binario sin depender de
+ * `node_modules/.bin` y nunca usa `shell: true`. Es el default de `main()`;
+ * los tests SIEMPRE inyectan su propio `ejecutarSeed` (ver JSDoc de
+ * `ejecutarRegenerar`) — correr `seed:demo` de verdad crea una DB física de
+ * tenant con un nombre que NO termina en `_test` (`CrearClienteUseCase`, ver
+ * nota de desviación en el reporte de cierre de W4), así que jamás debe
+ * invocarse contra una base efímera de test.
+ * @param {'seed:root'|'seed:demo'|'sync:ayuda'} paso
+ * @param {{urlMaster: string, urlTenant: string, execFileSyncFn?: Function}} entrada
+ */
+export function ejecutarSeedPasoReal(
+  paso,
+  { urlMaster, urlTenant, execFileSyncFn = execFileSync },
+) {
+  const env = { ...process.env, DATABASE_URL_MASTER: urlMaster, DATABASE_URL_TENANT: urlTenant };
+  if (paso === 'seed:root') {
+    const bin = resolverBin('ts-node');
+    execFileSyncFn(process.execPath, [bin, 'prisma_master/seeds/root-bootstrap.seed.ts'], {
+      cwd: RUTA_BACKEND,
+      env,
+      stdio: 'pipe',
+    });
+    return;
+  }
+  if (paso === 'seed:demo') {
+    const bin = resolverBin('ts-node');
+    execFileSyncFn(
+      process.execPath,
+      [bin, '-r', 'tsconfig-paths/register', 'prisma_master/seeds/demo-seed.ts'],
+      { cwd: RUTA_BACKEND, env, stdio: 'pipe' },
+    );
+    return;
+  }
+  if (paso === 'sync:ayuda') {
+    execFileSyncFn(process.execPath, [path.join(RUTA_BACKEND, 'scripts', 'sync-ayuda.js')], {
+      cwd: RUTA_BACKEND,
+      env,
+      stdio: 'pipe',
+    });
+    return;
+  }
+  throw new Error(`[entorno:regenerar] paso de seed desconocido: ${paso}`);
+}
+
+/** Consulta el estado de `seed:root`, tolerando que `usuarios` todavía no exista (dry-run sobre una base recién creada). */
+async function consultarUsuarioRootSeguro(puertoPg, urlMaster, email) {
+  if (!email) return { estado: 'desconocido', motivo: 'falta ROOT_ADMIN_EMAIL' };
+  try {
+    return await puertoPg.consultarUsuarioRoot(urlMaster, email);
+  } catch {
+    return { estado: 'desconocido', motivo: 'no se pudo consultar (¿faltan migraciones?)' };
+  }
+}
+
+/** Formatea el estado de `seed:root` para una línea de reporte. */
+function describirEstadoRoot(estado, email) {
+  if (!email) return 'no se puede determinar — falta ROOT_ADMIN_EMAIL';
+  if (estado.estado === 'activo') return `"${email}" ya existe y está activo`;
+  if (estado.estado === 'inactivo')
+    return `"${email}" existe pero está inactivo/borrado — requiere acción manual`;
+  if (estado.estado === 'ausente') return 'pendiente (no existe todavía)';
+  return `no se pudo determinar (${estado.motivo ?? 'desconocido'})`;
+}
+
+/** Consulta si el cliente demo ya existe, tolerando que `clientes` todavía no exista. */
+async function consultarClienteDemoSeguro(puertoPg, urlMaster, nombreCliente) {
+  try {
+    return await puertoPg.consultarClienteDemo(urlMaster, nombreCliente);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Ejecuta el subcomando `regenerar`: dry-run por defecto (lee, nunca muta),
+ * `confirmar: true` crea/migra/siembra de verdad. Orden: guardarraíl de host
+ * → contenedor → claves (informativo) → bases → migraciones → seeds
+ * (`seed:root` → `seed:demo` → `sync:ayuda`, D5/D1-D6).
+ *
+ * Todo colaborador con efecto (`puertoPg`, `execFileSyncFn`, `ejecutarSeed`)
+ * se recibe por parámetro, SIN default: `main()` es quien decide instanciar
+ * las implementaciones reales. Así los tests de integración pueden apuntar
+ * `puertoPg`/`execFileSyncFn` reales a una base efímera (crear/migrar es
+ * seguro) e inyectar un `ejecutarSeed` propio para los pasos de seed (ver
+ * JSDoc de `ejecutarSeedPasoReal` — `seed:demo` real crea una DB de tenant
+ * fuera de la convención `_test`, así que nunca corre de verdad en un test).
+ *
+ * @param {{
+ *   confirmar?: boolean,
+ *   envEjemplo: Record<string, string>,
+ *   envArchivo: Record<string, string>,
+ *   envProceso: Record<string, string | undefined>,
+ *   estadoContenedor?: {estado: 'corriendo'|'parado'|'ausente'|'otra-imagen', imagen: string|null} | {errorInspeccion: string},
+ *   nombresBases?: string[],
+ *   nombreClienteDemo?: string,
+ *   rootAdminEmail?: string,
+ *   puertoPg: PuertoPg,
+ *   execFileSyncFn: Function,
+ *   ejecutarSeed: (paso: 'seed:root'|'seed:demo'|'sync:ayuda', ctx: {urlMaster: string, urlTenant: string}) => Promise<void> | void,
+ * }} entrada
+ * @returns {Promise<{exitCode: number, lineas: string[]}>}
+ */
+export async function ejecutarRegenerar({
+  confirmar = false,
+  envEjemplo,
+  envArchivo,
+  envProceso,
+  estadoContenedor,
+  nombresBases = NOMBRES_BASES_POR_DEFECTO,
+  nombreClienteDemo = NOMBRE_CLIENTE_DEMO_POR_DEFECTO,
+  rootAdminEmail,
+  puertoPg,
+  execFileSyncFn,
+  ejecutarSeed,
+}) {
+  const lineas = [];
+
+  // 1) Guardarraíl de host — SIEMPRE antes de abrir cualquier conexión
+  // (spec "La herramienta valida antes de conectar"). A diferencia de
+  // `ejecutarVerificar` (pura, nunca conecta), acá SÍ hay conexiones reales
+  // más abajo: una violación corta la función entera, sin tocar nada más.
+  const { hallazgos, violaciones } = auditarEntorno({ envProceso, envArchivo });
+  for (const hallazgo of hallazgos) {
+    lineas.push(
+      `[entorno:regenerar] ${hallazgo.clave}: origen = ${hallazgo.origen}, ` +
+        `url = ${hallazgo.urlRedactada}, host local = ${hallazgo.ok ? 'sí' : 'NO'}`,
+    );
+  }
+  if (violaciones.length > 0) {
+    for (const violacion of violaciones)
+      lineas.push(`[entorno:regenerar] VIOLACIÓN: ${violacion.mensaje}`);
+    return { exitCode: 1, lineas };
+  }
+
+  // 2) Contenedor — otro hard-blocker: sin Postgres corriendo no hay nada
+  // para diagnosticar ni mutar.
+  if (estadoContenedor) {
+    if ('errorInspeccion' in estadoContenedor) {
+      lineas.push(
+        `[entorno:regenerar] Contenedor Docker: no se pudo inspeccionar (${estadoContenedor.errorInspeccion}).`,
+      );
+      return { exitCode: 1, lineas };
+    }
+    if (estadoContenedor.estado === 'ausente' || estadoContenedor.estado === 'otra-imagen') {
+      lineas.push(
+        `[entorno:regenerar] Contenedor Docker: ${estadoContenedor.estado.toUpperCase()} — no se puede continuar.`,
+      );
+      return { exitCode: 1, lineas };
+    }
+    lineas.push(
+      `[entorno:regenerar] Contenedor Docker: ${estadoContenedor.estado} (imagen ${estadoContenedor.imagen}).`,
+    );
+  }
+
+  // 3) Claves — informativo, NUNCA aborta acá (para eso está `entorno:verificar`).
+  const envEfectivo = { ...envArchivo, ...envProceso };
+  const { faltantes, placeholders } = compararClaves({ ejemplo: envEjemplo, actual: envEfectivo });
+  if (faltantes.length > 0)
+    lineas.push(`[entorno:regenerar] Claves faltantes: ${faltantes.join(', ')}`);
+  if (placeholders.length > 0)
+    lineas.push(`[entorno:regenerar] Claves sin completar: ${placeholders.join(', ')}`);
+
+  const urlBase = envEfectivo.DATABASE_URL_MASTER;
+  if (!urlBase) {
+    lineas.push('[entorno:regenerar] No se pudo derivar la URL base: falta DATABASE_URL_MASTER.');
+    return { exitCode: 1, lineas };
+  }
+
+  // 4) Bases objetivo — SIEMPRE se inspeccionan (read-only), en dry-run y en --confirmar.
+  const basesObjetivo = derivarBasesObjetivo(urlBase, nombresBases);
+  const faltantesBases = [];
+  for (const base of basesObjetivo) {
+    const existe = await puertoPg.baseExiste(base.url);
+    lineas.push(`[entorno:regenerar] Base ${base.nombreDb}: ${existe ? 'presente' : 'FALTA'}`);
+    if (!existe) faltantesBases.push(base);
+  }
+  const [baseMaster, baseMasterTest, baseTenantTest] = basesObjetivo;
+
+  if (!confirmar) {
+    // DRY-RUN: reporta migraciones/seeds SIN mutar. Si una base todavía no
+    // existe, ni `prisma migrate status` ni las queries de seed pueden
+    // correr contra ella — se reporta como "no determinable", no falla.
+    for (const [base, schema] of [
+      [baseMaster, 'master'],
+      [baseMasterTest, 'master'],
+      [baseTenantTest, 'tenant'],
+    ]) {
+      const estado = faltantesBases.includes(base)
+        ? 'no se puede determinar (la base todavía no existe)'
+        : estadoMigracionSchema({ url: base.url, schema, execFileSyncFn });
+      lineas.push(`[entorno:regenerar] Migraciones (${schema}) sobre ${base.nombreDb}: ${estado}`);
+    }
+
+    if (!faltantesBases.includes(baseMaster)) {
+      const estadoRoot = await consultarUsuarioRootSeguro(puertoPg, baseMaster.url, rootAdminEmail);
+      lineas.push(
+        `[entorno:regenerar] seed:root: ${describirEstadoRoot(estadoRoot, rootAdminEmail)}`,
+      );
+      const demoExiste = await consultarClienteDemoSeguro(
+        puertoPg,
+        baseMaster.url,
+        nombreClienteDemo,
+      );
+      lineas.push(
+        `[entorno:regenerar] seed:demo: ${demoExiste ? 'el cliente demo ya existe' : 'pendiente'}`,
+      );
+    }
+
+    lineas.push(
+      faltantesBases.length > 0
+        ? `[entorno:regenerar] DRY-RUN: crearía ${faltantesBases.length} base(s): ${faltantesBases
+            .map((b) => b.nombreDb)
+            .join(', ')}.`
+        : '[entorno:regenerar] DRY-RUN: todas las bases objetivo ya existen.',
+    );
+    lineas.push(
+      '[entorno:regenerar] DRY-RUN: no se mutó nada. Correr con --confirmar para aplicar.',
+    );
+    return { exitCode: 0, lineas };
+  }
+
+  // --confirmar: mutación real, en el orden del design (D1-D6/D5).
+  for (const base of faltantesBases) {
+    await puertoPg.crearBase(base.url);
+    lineas.push(`[entorno:regenerar] Base ${base.nombreDb}: creada.`);
+  }
+
+  aplicarMigracionSchema({ url: baseMaster.url, schema: 'master', execFileSyncFn });
+  lineas.push(`[entorno:regenerar] Migración (master) aplicada sobre ${baseMaster.nombreDb}.`);
+  aplicarMigracionSchema({ url: baseMasterTest.url, schema: 'master', execFileSyncFn });
+  lineas.push(`[entorno:regenerar] Migración (master) aplicada sobre ${baseMasterTest.nombreDb}.`);
+  aplicarMigracionSchema({ url: baseTenantTest.url, schema: 'tenant', execFileSyncFn });
+  lineas.push(`[entorno:regenerar] Migración (tenant) aplicada sobre ${baseTenantTest.nombreDb}.`);
+
+  let exitCode = 0;
+  const ctxSeed = { urlMaster: baseMaster.url, urlTenant: baseTenantTest.url };
+
+  // seed:root — el ÚNICO paso que puede saltearse sin ser una falla dura.
+  if (!rootAdminEmail) {
+    lineas.push(
+      '[entorno:regenerar] seed:root: SALTEADO — falta ROOT_ADMIN_EMAIL en el entorno, no se puede chequear idempotencia.',
+    );
+    exitCode = 2;
+  } else {
+    const estadoRoot = await puertoPg.consultarUsuarioRoot(baseMaster.url, rootAdminEmail);
+    if (estadoRoot.estado === 'activo') {
+      lineas.push(
+        `[entorno:regenerar] seed:root: "${rootAdminEmail}" ya existe y está activo — nada que hacer.`,
+      );
+    } else if (estadoRoot.estado === 'inactivo') {
+      lineas.push(
+        `[entorno:regenerar] seed:root: SALTEADO — la cuenta "${rootAdminEmail}" existe pero está inactiva o ` +
+          'borrada. Remedio: reactivarla a mano (UPDATE usuarios SET activo=true, deleted_at=NULL WHERE email=...) ' +
+          'o usar otro ROOT_ADMIN_EMAIL, y volver a correr "pnpm entorno:regenerar --confirmar".',
+      );
+      exitCode = 2;
+    } else {
+      await ejecutarSeed('seed:root', ctxSeed);
+      lineas.push('[entorno:regenerar] seed:root: ejecutado.');
+    }
+  }
+
+  // seed:demo — el resto SIEMPRE continúa, incluso si seed:root se salteó.
+  const demoYaExiste = await puertoPg.consultarClienteDemo(baseMaster.url, nombreClienteDemo);
+  if (demoYaExiste) {
+    lineas.push('[entorno:regenerar] seed:demo: el cliente demo ya existe — nada que hacer.');
+  } else {
+    await ejecutarSeed('seed:demo', ctxSeed);
+    lineas.push('[entorno:regenerar] seed:demo: ejecutado.');
+  }
+
+  // sync:ayuda — idempotente internamente (upsert por slug), siempre corre.
+  await ejecutarSeed('sync:ayuda', ctxSeed);
+  lineas.push('[entorno:regenerar] sync:ayuda: ejecutado.');
+
+  if (exitCode === 0 && faltantesBases.length === 0) {
+    lineas.push(
+      '[entorno:regenerar] Nada que hacer: el entorno ya estaba regenerado (bases, migraciones y seeds al día).',
+    );
+  }
+  lineas.push(
+    exitCode === 0
+      ? '[entorno:regenerar] OK.'
+      : '[entorno:regenerar] Completado con salvedades — ver arriba (exit 2, no es una falla dura).',
+  );
 
   return { exitCode, lineas };
 }
@@ -158,58 +667,76 @@ function leerEnvArchivo(ruta) {
   }
 }
 
+/** Inspecciona el contenedor de forma tolerante — read-only, nunca cuelga el resto si Docker no está disponible. */
+function inspeccionarContenedorTolerante() {
+  try {
+    return inspeccionarContenedor({
+      nombreContenedor: NOMBRE_CONTENEDOR_POR_DEFECTO,
+      execFileSyncFn: execFileSync,
+    });
+  } catch (error) {
+    return { errorInspeccion: error.message };
+  }
+}
+
 /**
  * Punto de entrada del CLI. Único adaptador que lee el mundo (argv, `.env`,
- * `.env.example`, `process.env`) — toda la decisión vive en `ejecutarVerificar`.
+ * `.env.example`, `process.env`, Docker, Postgres) — toda la decisión vive
+ * en `ejecutarVerificar`/`ejecutarRegenerar`.
  */
 async function main() {
-  const [subcomando] = process.argv.slice(2);
-
-  if (subcomando !== 'verificar') {
-    console.error(
-      `[entorno] subcomando desconocido: "${subcomando ?? ''}". Uso: node regenerar-entorno.mjs verificar`,
-    );
-    process.exitCode = 1;
-    return;
-  }
+  const [subcomando, ...resto] = process.argv.slice(2);
 
   const envEjemplo = leerEnvArchivo(path.join(RUTA_BACKEND, '.env.example'));
   if (envEjemplo === null) {
     console.error(
-      '[entorno:verificar] no se pudo leer .env.example — no puedo derivar las claves requeridas.',
+      `[entorno:${subcomando ?? '?'}] no se pudo leer .env.example — no puedo derivar las claves requeridas.`,
     );
     process.exitCode = 1;
     return;
   }
   const envArchivo = leerEnvArchivo(path.join(RUTA_BACKEND, '.env')) ?? {};
+  const envProceso = { ...process.env };
 
-  // Inspección de Docker: read-only (`docker inspect`), nunca crea, arranca
-  // ni para nada. Si falla por completo (Docker Desktop apagado, binario
-  // ausente) no se cuelga el resto del diagnóstico: se reporta como
-  // "no se pudo inspeccionar" y sigue con claves/host.
-  let estadoContenedor;
-  try {
-    estadoContenedor = inspeccionarContenedor({
-      nombreContenedor: NOMBRE_CONTENEDOR_POR_DEFECTO,
-      execFileSyncFn: execFileSync,
+  if (subcomando === 'verificar') {
+    const { exitCode, lineas } = ejecutarVerificar({
+      envEjemplo,
+      envArchivo,
+      envProceso,
+      estadoContenedor: inspeccionarContenedorTolerante(),
     });
-  } catch (error) {
-    estadoContenedor = { errorInspeccion: error.message };
+    for (const linea of lineas) console.log(linea);
+    process.exitCode = exitCode;
+    return;
   }
 
-  const { exitCode, lineas } = ejecutarVerificar({
-    envEjemplo,
-    envArchivo,
-    envProceso: { ...process.env },
-    estadoContenedor,
-  });
+  if (subcomando === 'regenerar') {
+    const envEfectivo = { ...envArchivo, ...envProceso };
+    const { exitCode, lineas } = await ejecutarRegenerar({
+      confirmar: resto.includes('--confirmar'),
+      envEjemplo,
+      envArchivo,
+      envProceso,
+      estadoContenedor: inspeccionarContenedorTolerante(),
+      rootAdminEmail: envEfectivo.ROOT_ADMIN_EMAIL,
+      puertoPg: crearPuertoPgReal(),
+      execFileSyncFn: execFileSync,
+      ejecutarSeed: ejecutarSeedPasoReal,
+    });
+    for (const linea of lineas) console.log(linea);
+    process.exitCode = exitCode;
+    return;
+  }
 
-  for (const linea of lineas) console.log(linea);
-  process.exitCode = exitCode;
+  console.error(
+    `[entorno] subcomando desconocido: "${subcomando ?? ''}". Uso: node regenerar-entorno.mjs verificar|regenerar [--confirmar]`,
+  );
+  process.exitCode = 1;
 }
 
 // Solo corre el CLI real si el archivo se invoca directamente — así los
-// tests pueden importar `ejecutarVerificar` sin tocar ningún `.env*` real.
+// tests pueden importar `ejecutarVerificar`/`ejecutarRegenerar` sin tocar
+// ningún `.env*` real.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   await main();
 }
