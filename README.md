@@ -249,15 +249,62 @@ use cases, Fase 1) — el schema solo modela el flag que esa autorización neces
 ## Testing
 
 ```powershell
-# Backend
-cd backend
-pnpm test
-
-# Frontend
+# Frontend — no necesita nada, corre solo
 cd frontend
 pnpm test        # unit/component (Vitest + Testing Library + MSW, sin backend real)
 pnpm test:e2e     # Playwright — ver prerequisitos abajo
 ```
+
+### Backend: preparar el entorno de tests (una vez)
+
+**`pnpm test` a secas en `backend/` falla con cientos de tests en rojo.** No es el
+código: los specs de integración y los e2e necesitan **dos bases de test propias**
+y **dos variables de entorno** que no están en `.env`.
+
+Los e2e tienen un guardarraíl deliberado — `expect(MASTER_URL).toMatch(/_test$/)` —
+que los hace fallar si `DATABASE_URL_MASTER` no apunta a una base `*_test`. Es lo
+único que impide que la suite arrase tu base de desarrollo. Si ves ese test en
+rojo, no está roto: te está avisando que falta esto.
+
+```powershell
+# Las dos bases de test (una sola vez)
+docker exec soporte-postgres-master psql -U soporte -d postgres -c "CREATE DATABASE soporte_master_test OWNER soporte;"
+docker exec soporte-postgres-master psql -U soporte -d postgres -c "CREATE DATABASE soporte_tenant_test OWNER soporte;"
+
+# Migrarlas
+cd backend
+$env:DATABASE_URL_MASTER="postgresql://soporte:soporte@localhost:5432/soporte_master_test"; pnpm migrate:master
+$env:DATABASE_URL_TENANT="postgresql://soporte:soporte@localhost:5432/soporte_tenant_test"; pnpm migrate:tenant
+```
+
+Las bases `soporte_prov_*_test` las provisiona y descarta cada spec: **no hay que
+crearlas**.
+
+### Backend: correr la suite
+
+```powershell
+cd backend
+
+# Solo unitarios — no necesita base, es lo que conviene en el loop de desarrollo
+pnpm vitest run --exclude '**/node_modules/**' --exclude '**/*.integration.spec.ts' --exclude '**/*.e2e.spec.ts'
+
+# Suite COMPLETA (integración + e2e) — con las dos variables, siempre
+$env:DATABASE_URL_MASTER="postgresql://soporte:soporte@localhost:5432/soporte_master_test"
+$env:DATABASE_URL_TENANT="postgresql://soporte:soporte@localhost:5432/soporte_tenant_test"
+pnpm test
+```
+
+**Dos cosas que confunden al leer la salida y no son fallas:**
+
+- Un `249 skipped` (o cualquier número alto de saltados) **no** significa que haya
+  tests deshabilitados: varios specs de aislamiento se saltan solos cuando falta
+  `DATABASE_URL_TENANT`. Es señal de entorno incompleto.
+- `crear-cliente.e2e.spec.ts` imprime un error de Nest que parece grave y es a
+  propósito: `[e2e-forced-failure] membresiaRepo.create() falló a propósito (T8.5)`.
+
+> Si los `*.integration.spec.ts` fallan en masa con `PrismaClientKnownRequestError`,
+> primero revisá el entorno: `pnpm prisma migrate status --schema prisma_master/schema.prisma`.
+> Un `P1001` es la base caída y un `P1000` es la contraseña, no el código.
 
 ### Smoke e2e (Playwright, `frontend/e2e/caminos-criticos.spec.ts`)
 
