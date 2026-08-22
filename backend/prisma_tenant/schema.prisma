@@ -252,10 +252,11 @@ model Ticket {
   ticketReferencia Ticket?       @relation("TicketContinuacion", fields: [ticketReferenciaId], references: [id])
   ticketsDerivados Ticket[]      @relation("TicketContinuacion")
 
-  operaciones    OperacionTicket[]
-  archivosTicket ArchivoTicket[]
-  ticketEdilicia TicketEdilicia?
-  ticketSoporte  TicketSoporte?
+  operaciones           OperacionTicket[]
+  archivosTicket        ArchivoTicket[]
+  ticketEdilicia        TicketEdilicia?
+  ticketSoporte         TicketSoporte?
+  encuestasSatisfaccion EncuestaSatisfaccion[]
 
   @@index([tipoId])
   @@index([estadoId])
@@ -267,6 +268,40 @@ model Ticket {
   @@index([createdAt])
   @@index([vencido])
   @@map("tickets")
+}
+
+// ─── ENCUESTAS_SATISFACCION (respuestas CSAT, sdd/csat WU2) ───────────────────
+//
+// Respuesta de la encuesta de satisfacción (1-5 estrellas + comentario
+// opcional) que el destinatario deja al cerrarse el ticket. El token opaco
+// que habilita la respuesta vive en MASTER (`encuesta_tokens`, WU1) —
+// `ResolverEncuestaTokenService` necesita leer `cliente_id` ANTES de abrir
+// el `TenantContext` (ADR-C1, sdd/csat/design).
+//
+// tokenId: soft ref → master.encuesta_tokens.id. SIN FK cross-DB. El UNIQUE
+// es la mitad TENANT del mecanismo de uso único (ADR-C2) — la otra mitad es
+// el compare-and-swap sobre `used_at` en MASTER (WU5).
+//
+// Un ticket puede tener varias respuestas si se reabre y se vuelve a
+// cerrar (cada cierre emite un token nuevo); el promedio de dashboard
+// (ADR-C8) solo cuenta la más reciente por ticket vía DISTINCT ON, que este
+// índice sirve directo.
+model EncuestaSatisfaccion {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ticketId     String    @map("ticket_id") @db.Uuid
+  tokenId      String    @unique @map("token_id") @db.Uuid
+  /// CHECK (puntaje BETWEEN 1 AND 5) — migration SQL.
+  puntaje      Int       @db.SmallInt
+  comentario   String?   @db.Text
+  respondidaEn DateTime  @map("respondida_en") @db.Timestamptz
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt    DateTime? @map("deleted_at") @db.Timestamptz
+
+  ticket Ticket @relation(fields: [ticketId], references: [id])
+
+  @@index([ticketId, respondidaEn(sort: Desc)], map: "encuestas_satisfaccion_ticket_id_respondida_en_idx")
+  @@map("encuestas_satisfaccion")
 }
 
 // ─── OPERACIONES_TICKET (timeline inmutable de eventos) ───────────────────────
