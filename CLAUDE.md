@@ -146,6 +146,15 @@ recién en el `settle` lo quema sin forma de recuperarlo.
   Por eso cada uno de esos specs llama a `usarLockMasterTest()` (`src/testing/lock-master-test.ts`)
   antes de su `describe`: un advisory lock de Postgres que serializa el turno entre procesos.
   **Un spec nuevo que truncue esa base tiene que llamarlo también**, o vuelve a abrir el agujero.
+- **Las bases tenant efímeras se barren solas al arrancar la suite.** Un spec con tenant propio
+  crea su base en el `beforeAll` y la dropea en el `afterAll`; si el proceso muere antes (Ctrl+C,
+  crash, el guardarraíl cortando la corrida) la base queda huérfana y se acumulan. El
+  `globalSetup` de `test/barrido-huerfanas.global-setup.mjs` las limpia, con tres puertas
+  fail-closed: nombre que matchee `soporte_prov_[slug_]<8 hex>_test`, ausente del registro de
+  clientes, y sin conexiones vivas. Si el registro no se puede leer, **no barre nada**. Toma el
+  mismo advisory lock que los specs, y por eso es seguro con corridas concurrentes: mientras
+  tiene el turno, ninguna base efímera de una corrida viva existe. La decisión de qué se borra
+  vive en `scripts/lib/barrido-huerfanas.mjs`, puro y testeado aparte.
 - **La base de un tenant real no se toca — y su nombre NO se hardcodea.** El sufijo hex se
   genera al provisionar, así que **cambia si el tenant se recrea**: cualquier literal que
   escribas hoy miente mañana. La fuente de verdad es el registro de clientes, no este archivo.
