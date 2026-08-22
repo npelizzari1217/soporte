@@ -528,8 +528,8 @@ describe('toHttpException (reparaciones) — catálogo de errores propios → HT
     (valor) => typeof valor === 'function' && valor.prototype instanceof DomainError,
   );
 
-  it('el catálogo tiene EXACTAMENTE 3 clases de error (2 previas + ExportacionDemasiadoGrandeError)', () => {
-    expect(CLASES_DE_ERROR).toHaveLength(3);
+  it('el catálogo tiene EXACTAMENTE 5 clases de error (3 previas + CompraNoEncontradaError + VinculoNoEncontradoError)', () => {
+    expect(CLASES_DE_ERROR).toHaveLength(5);
   });
 
   const TABLA: Array<[string, () => DomainError, 404 | 422]> = [
@@ -547,6 +547,19 @@ describe('toHttpException (reparaciones) — catálogo de errores propios → HT
       'ExportacionDemasiadoGrandeError',
       () => new ReparacionesErrors.ExportacionDemasiadoGrandeError(6000, 5000),
       422,
+    ],
+    // Vínculo reparación-compra (sdd/reparacion-bloqueada-por-compra, WU1):
+    // errores de dominio ya definidos, aunque los casos de uso que los
+    // producen (vincular/desvincular) recién se crean en WU5.
+    [
+      'CompraNoEncontradaError',
+      () => new ReparacionesErrors.CompraNoEncontradaError('compra-1'),
+      404,
+    ],
+    [
+      'VinculoNoEncontradoError',
+      () => new ReparacionesErrors.VinculoNoEncontradoError('edilicia-1', 'compra-1'),
+      404,
     ],
   ];
 

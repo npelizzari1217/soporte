@@ -74,6 +74,8 @@ import {
   TicketEdiliciaNoEncontradoError,
   SubtareaNoEncontradaError,
   ExportacionDemasiadoGrandeError,
+  CompraNoEncontradaError,
+  VinculoNoEncontradoError,
 } from '../../domain/errors/reparaciones.errors';
 
 import {
@@ -106,7 +108,14 @@ export function toHttpException(
   if (
     error instanceof TicketNoEncontradoError ||
     error instanceof TicketEdiliciaNoEncontradoError ||
-    error instanceof SubtareaNoEncontradaError
+    error instanceof SubtareaNoEncontradaError ||
+    // Vínculo reparación-compra (sdd/reparacion-bloqueada-por-compra, WU1):
+    // los casos de uso de vincular/desvincular (WU5) todavía no existen, pero
+    // el catálogo cerrado de errores del módulo exige que TODO error
+    // exportado por `reparaciones.errors.ts` tenga mapeo acá — dejarlos sin
+    // mapear rompería el fitness test de este mismo archivo.
+    error instanceof CompraNoEncontradaError ||
+    error instanceof VinculoNoEncontradoError
   ) {
     return new NotFoundException(error.message);
   }

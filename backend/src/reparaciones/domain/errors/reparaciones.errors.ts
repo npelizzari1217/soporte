@@ -70,3 +70,37 @@ export class ExportacionDemasiadoGrandeError extends DomainError {
     );
   }
 }
+
+/**
+ * CompraNoEncontradaError — la compra con el id indicado no existe (o fue
+ * eliminada, soft delete) al intentar vincularla a una reparación.
+ * → HTTP 404 en la capa de presentación.
+ *
+ * Ref: sdd/reparacion-bloqueada-por-compra/design, D7 (validación de
+ * existencia vía `ICompraRepository.findByIdConItems`). Tarea: WU1.9.
+ */
+export class CompraNoEncontradaError extends DomainError {
+  readonly code = 'COMPRA_NO_ENCONTRADA';
+
+  constructor(compraId: string) {
+    super(`Compra con id "${compraId}" no encontrada.`);
+  }
+}
+
+/**
+ * VinculoNoEncontradoError — no existe un vínculo entre la reparación y la
+ * compra indicadas al intentar desvincularlas.
+ * → HTTP 404 en la capa de presentación.
+ *
+ * Ref: sdd/reparacion-bloqueada-por-compra/design, ruta DELETE
+ * `/reparaciones/:reparacionId/compras/:compraId`. Tarea: WU1.9.
+ */
+export class VinculoNoEncontradoError extends DomainError {
+  readonly code = 'VINCULO_NO_ENCONTRADO';
+
+  constructor(ticketEdiliciaId: string, compraId: string) {
+    super(
+      `No existe un vínculo entre la reparación "${ticketEdiliciaId}" y la compra "${compraId}".`,
+    );
+  }
+}
