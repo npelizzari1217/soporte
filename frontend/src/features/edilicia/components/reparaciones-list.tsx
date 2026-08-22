@@ -5,11 +5,13 @@
  * vía `porcentajeAvance` (persistido server-side, sobrevive al refresh —
  * a diferencia del checklist detallado de subtareas, ver `SubtareasDialog`).
  */
-import { forwardRef, type ComponentPropsWithoutRef } from "react";
+import { forwardRef, useMemo, useState, type ComponentPropsWithoutRef } from "react";
 import { useReparaciones } from "../hooks/use-reparaciones";
 import { DataTable, type Column } from "@/components/shared/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
 import { PageHeader } from "@/components/shared/page-header";
 import { Can } from "@/components/shared/can";
 import { notifyError } from "@/shared/lib/toast";
@@ -17,7 +19,34 @@ import { ExportarCsvButton } from "@/shared/components/exportar-csv-button";
 import { ReparacionCreateDialog } from "./reparacion-create-dialog";
 import { SubtareasDialog } from "./subtareas-dialog";
 import { ComentariosDialog } from "./comentarios-dialog";
+import { VincularCompraDialog } from "./vincular-compra-dialog";
 import type { ReparacionListItem } from "../types";
+
+/**
+ * Filtro de bloqueo del listado (sdd/reparacion-bloqueada-por-compra, WU4).
+ *
+ * CLIENT-SIDE, a propósito (D8 del design): el backend ya manda el tenant
+ * entero en `GET /reparaciones` (sin paginación), así que filtrar en el
+ * servidor no ahorraría una sola fila transferida — solo agregaría un
+ * parámetro que después "justificaría" paginar, algo que el proposal
+ * descartó. Por eso se resuelve con `useMemo` sobre `reparacionesQuery.data`
+ * y NUNCA se pasa a `useReparaciones()`.
+ */
+type FiltroBloqueo = "TODAS" | "BLOQUEADAS" | "NO_BLOQUEADAS";
+
+const OPCIONES_FILTRO_BLOQUEO: ReadonlyArray<{ valor: FiltroBloqueo; etiqueta: string }> = [
+  { valor: "TODAS", etiqueta: "Todas" },
+  { valor: "BLOQUEADAS", etiqueta: "Bloqueadas" },
+  { valor: "NO_BLOQUEADAS", etiqueta: "No bloqueadas" },
+];
+
+function filtrarPorBloqueo(
+  datos: ReparacionListItem[],
+  filtro: FiltroBloqueo,
+): ReparacionListItem[] {
+  if (filtro === "TODAS") return datos;
+  return datos.filter((row) => (filtro === "BLOQUEADAS" ? row.bloqueada : !row.bloqueada));
+}
 
 function AvanceCell({ porcentaje }: { porcentaje: number }) {
   return (
@@ -72,12 +101,42 @@ ComentariosTrigger.displayName = "ComentariosTrigger";
 
 export function ReparacionesList() {
   const reparacionesQuery = useReparaciones();
+  const [filtroBloqueo, setFiltroBloqueo] = useState<FiltroBloqueo>("TODAS");
+
+  const datosFiltrados = useMemo(
+    () => filtrarPorBloqueo(reparacionesQuery.data ?? [], filtroBloqueo),
+    [reparacionesQuery.data, filtroBloqueo],
+  );
 
   const columns: Column<ReparacionListItem>[] = [
     { key: "numero", header: "Número" },
     { key: "titulo", header: "Título" },
     { key: "ubicacion", header: "Ubicación", render: (row) => row.ubicacion ?? "—" },
     { key: "porcentajeAvance", header: "Avance", render: (row) => <AvanceCell porcentaje={row.porcentajeAvance} /> },
+    {
+      // Chip SIN número (decisión de producto #2440): responde "¿está
+      // trabado?" de un vistazo. El botón «Gestionar compras» abre el panel
+      // de vínculo/desvínculo (WU6) — gateado por `EDILICIA:ALTAS` DENTRO de
+      // `VincularCompraDialog`, no acá: verlo o no depende de ese permiso,
+      // no del `bloqueada` de la fila.
+      key: "bloqueada",
+      header: "Bloqueo",
+      render: (row) => (
+        <div className="flex items-center gap-2">
+          {row.bloqueada && <Badge variant="warning">Bloqueada</Badge>}
+          <VincularCompraDialog
+            reparacionId={row.id}
+            numero={row.numero}
+            comprasQueBloquean={row.comprasQueBloquean}
+            trigger={
+              <Button variant="outline" size="sm">
+                Gestionar compras
+              </Button>
+            }
+          />
+        </div>
+      ),
+    },
     {
       // `key` es el slot de la columna (React key + fallback de render), no
       // necesariamente el campo a mostrar: `Column<T>.key` está tipado como
@@ -119,6 +178,21 @@ export function ReparacionesList() {
         title="Reparaciones"
         actions={
           <>
+            <div className="flex items-center gap-2">
+              <Label htmlFor="filtro-bloqueo-reparaciones">Bloqueo</Label>
+              <Select
+                id="filtro-bloqueo-reparaciones"
+                className="w-40"
+                value={filtroBloqueo}
+                onChange={(e) => setFiltroBloqueo(e.target.value as FiltroBloqueo)}
+              >
+                {OPCIONES_FILTRO_BLOQUEO.map((opcion) => (
+                  <option key={opcion.valor} value={opcion.valor}>
+                    {opcion.etiqueta}
+                  </option>
+                ))}
+              </Select>
+            </div>
             {/*
               Sin `Can` propio a propósito (sdd/exportar-listados-csv,
               capability exportacion-reparaciones): a diferencia de
@@ -126,9 +200,11 @@ export function ReparacionesList() {
               `<Can permiso="EDILICIA:LECTURA">` por afuera de este
               componente — este `PageHeader` ya vive adentro de ese gate, así
               que un `<Can>` acá adentro sería redundante y quedaría
-              desincronizado si el gate exterior cambia. Sin filtros que
-              pasar: el export siempre trae el listado completo, igual que
-              `useReparaciones()` de arriba.
+              desincronizado si el gate exterior cambia. El filtro de bloqueo
+              NO se le pasa a este botón (D8/spec): la exportación siempre
+              trae TODAS las reparaciones del tenant, sin importar lo que se
+              vea filtrado en pantalla — mismo `useReparaciones()` sin
+              filtros de arriba, la exportación no sabe que el filtro existe.
             */}
             <ExportarCsvButton
               recurso="reparaciones"
@@ -143,13 +219,15 @@ export function ReparacionesList() {
       />
       <DataTable
         columns={columns}
-        data={reparacionesQuery.data ?? []}
+        data={datosFiltrados}
         getRowKey={(row) => row.id}
         isLoading={reparacionesQuery.isLoading}
         error={reparacionesQuery.isError ? "No se pudieron cargar las reparaciones." : undefined}
         onRetry={() => reparacionesQuery.refetch().catch(notifyError)}
         emptyTitle="Sin reparaciones"
         emptyDescription="Creá la primera con «Nueva reparación»."
+        hayFiltrosActivos={filtroBloqueo !== "TODAS"}
+        onLimpiarFiltros={filtroBloqueo !== "TODAS" ? () => setFiltroBloqueo("TODAS") : undefined}
       />
     </div>
   );

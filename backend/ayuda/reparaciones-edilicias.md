@@ -69,6 +69,54 @@ Sirve para barrer el listado de un vistazo: las reparaciones con varios
 comentarios suelen ser las que vienen complicadas. El contador se actualiza solo
 al publicar un comentario.
 
+## Bloqueada por una compra
+
+Una reparación puede quedar frenada mientras se espera un repuesto que se pidió
+por el módulo de Compras. Cuando eso pasa, el listado le muestra el chip
+**Bloqueada** en la fila correspondiente.
+
+Este chip **es automático**: no lo marca nadie a mano. Aparece solo cuando la
+reparación tiene una compra vinculada que todavía está en curso, y desaparece
+solo cuando deja de tenerla. No hay ningún botón para "marcar como bloqueada" ni
+para "desbloquear" — la única forma de que el chip cambie es actuando sobre la
+compra que lo causa.
+
+Un punto que conviene tener claro: **el bloqueo no toca el avance**. La columna
+**Avance** (`porcentajeAvance`) sigue calculándose exactamente igual que
+siempre, a partir del checklist de subtareas — vea "Subtareas: el checklist que
+mueve el avance" más arriba. Una reparación puede estar al 80% de avance y
+figurar bloqueada al mismo tiempo: son dos cosas independientes. El bloqueo no
+es un freno al progreso registrado, es una señal de que hace falta algo externo
+para poder seguir.
+
+### Cómo se gestiona
+
+En la misma fila donde aparece el chip hay un botón **Gestionar compras**. Ahí
+se ve:
+
+- La lista de compras que hoy están frenando la reparación (si hay alguna).
+- Un selector para **vincular** una compra nueva — solo muestra compras que
+  todavía están activas (no tiene sentido vincular una ya entregada o
+  cancelada, porque no bloquearía nada).
+- Un botón **Desvincular** al lado de cada compra ya vinculada, para el caso de
+  un vínculo cargado por error.
+
+### Cuándo deja de bloquear
+
+Una compra vinculada deja de frenar la reparación —y el chip se apaga solo— en
+alguno de estos tres casos:
+
+1. La compra pasa a **entregada**. Ojo con la palabra: no es "recibida". Que el
+   depósito reciba la mercadería no le sirve de nada al técnico si todavía no la
+   tiene en la mano — el bloqueo se sostiene hasta la entrega real.
+2. La compra se **cancela**.
+3. El ítem pendiente de la compra se **cierra con faltante** (se decide seguir
+   adelante sin ese repuesto).
+
+En cualquiera de los tres casos, si esa era la única compra que la frenaba, la
+reparación deja de estar bloqueada sin que nadie tenga que tocar nada en la
+pantalla de reparaciones — el cambio se hace del lado de la compra.
+
 ## Quién puede hacer cada cosa
 
 | Acción | Permiso |
@@ -77,6 +125,14 @@ al publicar un comentario.
 | Agregar una subtarea, o publicar un comentario | `EDILICIA:ALTAS` |
 | Completar una subtarea | `EDILICIA:MODIFICACION` |
 | Eliminar una subtarea | `EDILICIA:BORRADO` |
+| Vincular una compra a una reparación | `EDILICIA:ALTAS` **y** `COMPRAS:LECTURA` (las dos) |
+| Desvincular una compra de una reparación | `EDILICIA:BORRADO` |
 
 Los comentarios no tienen visibilidad propia: quien puede ver la reparación, los
 ve todos.
+
+Las dos filas de compras no son una aclaración de qué botones se ven en
+pantalla: es el permiso que el servidor exige de verdad. A alguien al que le
+falte `COMPRAS:LECTURA` el sistema le rechaza el vínculo aunque de alguna forma
+consiga disparar la acción — la interfaz simplemente no le muestra el botón
+para no ofrecerle algo que igual le va a fallar.

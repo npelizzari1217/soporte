@@ -11,6 +11,17 @@
  *   DELETE /reparaciones/subtareas/:subtareaId               → EliminarSubtareaUseCase    [subtarea:actualizar]
  *   POST   /reparaciones/:reparacionId/comentarios           → CrearComentarioReparacionUseCase    [EDILICIA:ALTAS]
  *   GET    /reparaciones/:reparacionId/comentarios           → ListarComentariosReparacionUseCase  [EDILICIA:LECTURA]
+ *   POST   /reparaciones/:reparacionId/compras                → VincularCompraAReparacionUseCase   [EDILICIA:ALTAS + COMPRAS:LECTURA]
+ *   DELETE /reparaciones/:reparacionId/compras/:compraId       → DesvincularCompraDeReparacionUseCase [EDILICIA:BORRADO]
+ *
+ * Vincular una compra exige DOS acciones (decisión de producto #2435,
+ * sdd/reparacion-bloqueada-por-compra WU5): el selector del diálogo del
+ * frontend consume `GET /compras` (`COMPRAS:LECTURA`), y esa exigencia se
+ * sostiene acá en el `AccionesGuard` — no solo en que la interfaz esconda el
+ * selector. Un cliente HTTP directo con `EDILICIA:ALTAS` y sin
+ * `COMPRAS:LECTURA` recibe 403. Desvincular NO repite el segundo permiso:
+ * el `numero` que ve quien desvincula sale de `comprasQueBloquean[]` en
+ * `GET /reparaciones` (`EDILICIA:LECTURA`), no de `GET /compras`.
  *
  * `:reparacionId` = id del satélite `ticket_edilicia` (mismo criterio que
  * `:compraId` en `ComprasController`). Las rutas de subtareas usan
@@ -69,11 +80,15 @@ import { EliminarSubtareaUseCase } from '../../application/use-cases/eliminar-su
 import { CrearComentarioReparacionUseCase } from '../../application/use-cases/crear-comentario-reparacion.use-case';
 import { ListarComentariosReparacionUseCase } from '../../application/use-cases/listar-comentarios-reparacion.use-case';
 import { ExportarReparacionesUseCase } from '../../application/use-cases/exportar-reparaciones.use-case';
+import { VincularCompraAReparacionUseCase } from '../../application/use-cases/vincular-compra-a-reparacion.use-case';
+import { DesvincularCompraDeReparacionUseCase } from '../../application/use-cases/desvincular-compra-de-reparacion.use-case';
 
 import {
   TicketEdiliciaNoEncontradoError,
   SubtareaNoEncontradaError,
   ExportacionDemasiadoGrandeError,
+  CompraNoEncontradaError,
+  VinculoNoEncontradoError,
 } from '../../domain/errors/reparaciones.errors';
 
 import {
@@ -84,6 +99,7 @@ import {
   ReparacionListItemResponseDto,
   SubtareaEdiliciaResponseDto,
   TicketEdiliciaConTicketResponseDto,
+  VincularCompraHttpDto,
   toComentarioReparacionResponseDto,
   toReparacionListItemResponseDto,
   toSubtareaEdiliciaResponseDto,
@@ -106,7 +122,14 @@ export function toHttpException(
   if (
     error instanceof TicketNoEncontradoError ||
     error instanceof TicketEdiliciaNoEncontradoError ||
-    error instanceof SubtareaNoEncontradaError
+    error instanceof SubtareaNoEncontradaError ||
+    // Vínculo reparación-compra (sdd/reparacion-bloqueada-por-compra, WU1):
+    // los casos de uso de vincular/desvincular (WU5) todavía no existen, pero
+    // el catálogo cerrado de errores del módulo exige que TODO error
+    // exportado por `reparaciones.errors.ts` tenga mapeo acá — dejarlos sin
+    // mapear rompería el fitness test de este mismo archivo.
+    error instanceof CompraNoEncontradaError ||
+    error instanceof VinculoNoEncontradoError
   ) {
     return new NotFoundException(error.message);
   }
@@ -159,6 +182,9 @@ export class ReparacionesController {
     // `EquiposController.exportarEquiposUseCase`: evita reindexar los tests
     // existentes que instancian el controller con args posicionales.
     private readonly exportarReparacionesUseCase: ExportarReparacionesUseCase,
+    // WU5 (sdd/reparacion-bloqueada-por-compra) — mismo criterio, al final.
+    private readonly vincularCompraUseCase: VincularCompraAReparacionUseCase,
+    private readonly desvincularCompraUseCase: DesvincularCompraDeReparacionUseCase,
   ) {}
 
   /**
@@ -370,5 +396,65 @@ export class ReparacionesController {
       ...new Set(comentarios.map((c) => c.autorId)),
     ]);
     return comentarios.map((c) => toComentarioReparacionResponseDto(c, nombres.get(c.autorId)));
+  }
+
+  /**
+   * POST /reparaciones/:reparacionId/compras
+   * Vincula una compra existente del tenant a la reparación (WU5,
+   * sdd/reparacion-bloqueada-por-compra).
+   *
+   * IDEMPOTENTE (D4): vincular el mismo par dos veces no crea una segunda
+   * fila ni falla.
+   *
+   * `@RequiereAcciones('EDILICIA:ALTAS', 'COMPRAS:LECTURA')` — AND (R3,
+   * decisión de producto #2435, WU5.9): el segundo argumento cierra el
+   * agujero que demostró el test de autorización real por HTTP de WU5.8
+   * (con un solo argumento, un actor con SOLO `EDILICIA:ALTAS` pasaba y
+   * recibía 201/404, nunca 403). El candado vive acá, en el `AccionesGuard`
+   * del backend, no en que el frontend esconda el selector de compras.
+   * @throws 404 reparación o compra inexistente
+   */
+  @Post(':reparacionId/compras')
+  @RequiereAcciones('EDILICIA:ALTAS', 'COMPRAS:LECTURA')
+  @HttpCode(HttpStatus.CREATED)
+  async vincularCompra(
+    @Param('reparacionId') reparacionId: string,
+    @Body() dto: VincularCompraHttpDto,
+  ): Promise<void> {
+    const result = await this.vincularCompraUseCase.execute({
+      ticketEdiliciaId: reparacionId,
+      compraId: dto.compraId,
+    });
+
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+  }
+
+  /**
+   * DELETE /reparaciones/:reparacionId/compras/:compraId
+   * Desvincula (HARD DELETE real, D5) una compra de la reparación.
+   *
+   * Solo `EDILICIA:BORRADO` — sin `COMPRAS:LECTURA`: el `numero` que ve
+   * quien desvincula sale de `comprasQueBloquean[]` en `GET /reparaciones`
+   * (`EDILICIA:LECTURA`), no de `GET /compras`. No navega el universo de
+   * compras, opera sobre un vínculo que ya es visible.
+   * @throws 404 vínculo inexistente
+   */
+  @Delete(':reparacionId/compras/:compraId')
+  @RequiereAcciones('EDILICIA:BORRADO')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async desvincularCompra(
+    @Param('reparacionId') reparacionId: string,
+    @Param('compraId') compraId: string,
+  ): Promise<void> {
+    const result = await this.desvincularCompraUseCase.execute({
+      ticketEdiliciaId: reparacionId,
+      compraId,
+    });
+
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
   }
 }

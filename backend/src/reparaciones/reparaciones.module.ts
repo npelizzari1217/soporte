@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { TicketsModule } from '../tickets/tickets.module';
+import { ComprasModule } from '../compras/compras.module';
 
 import { TICKET_REPOSITORY, ITicketRepository } from '../tickets/domain/ports/i-ticket.repository';
 import {
@@ -30,6 +31,7 @@ import {
   ITenantTransactionRunner,
   TENANT_TX_RUNNER,
 } from '../shared/infrastructure/persistence/tenant-transaction-runner';
+import { COMPRA_REPOSITORY, ICompraRepository } from '../compras/domain/ports/i-compra.repository';
 
 import {
   TICKET_EDILICIA_REPOSITORY,
@@ -46,6 +48,11 @@ import {
   IComentarioReparacionRepository,
 } from './domain/ports/i-comentario-reparacion.repository';
 import { PrismaComentarioReparacionRepository } from './infrastructure/persistence/prisma/prisma-comentario-reparacion.repository';
+import {
+  REPARACION_COMPRA_REPOSITORY,
+  IReparacionCompraRepository,
+} from './domain/ports/i-reparacion-compra.repository';
+import { PrismaReparacionCompraRepository } from './infrastructure/persistence/prisma/prisma-reparacion-compra.repository';
 
 import { CrearTicketEdilicioUseCase } from './application/use-cases/crear-ticket-edilicio.use-case';
 import { ListarReparacionesUseCase } from './application/use-cases/listar-reparaciones.use-case';
@@ -55,6 +62,8 @@ import { EliminarSubtareaUseCase } from './application/use-cases/eliminar-subtar
 import { CrearComentarioReparacionUseCase } from './application/use-cases/crear-comentario-reparacion.use-case';
 import { ListarComentariosReparacionUseCase } from './application/use-cases/listar-comentarios-reparacion.use-case';
 import { ExportarReparacionesUseCase } from './application/use-cases/exportar-reparaciones.use-case';
+import { VincularCompraAReparacionUseCase } from './application/use-cases/vincular-compra-a-reparacion.use-case';
+import { DesvincularCompraDeReparacionUseCase } from './application/use-cases/desvincular-compra-de-reparacion.use-case';
 
 import { ReparacionesController } from './interface/controllers/reparaciones.controller';
 
@@ -79,6 +88,11 @@ import { ReparacionesController } from './interface/controllers/reparaciones.con
  * - `TENANT_TX_RUNNER` se inyecta desde `SharedModule` (`@Global`, sin
  *   necesidad de reimportarlo).
  * - `ReparacionesController` expone `POST/GET /reparaciones` + subtareas.
+ * - `ComprasModule` (WU5, sdd/reparacion-bloqueada-por-compra, D7): se
+ *   importa SOLO para reusar `COMPRA_REPOSITORY` (ya exportado por
+ *   `ComprasModule`) en `VincularCompraAReparacionUseCase` — cero cambio de
+ *   firma en el puerto de compras, mismo patrón que `TicketsModule` de
+ *   arriba.
  *
  * FITNESS RULE: PrismaService y @prisma/client solo pueden importarse desde
  * infrastructure/ (ver backend/eslint.config.js).
@@ -88,12 +102,13 @@ import { ReparacionesController } from './interface/controllers/reparaciones.con
   // descubierto por sdd/beta-frontend B6, T6.2) — TicketsModule NO
   // re-exporta AuthModule, así que los guards de ReparacionesController lo
   // necesitan importado acá explícitamente.
-  imports: [AuthModule, TicketsModule],
+  imports: [AuthModule, TicketsModule, ComprasModule],
   controllers: [ReparacionesController],
   providers: [
     { provide: TICKET_EDILICIA_REPOSITORY, useClass: PrismaTicketEdiliciaRepository },
     { provide: SUBTAREA_EDILICIA_REPOSITORY, useClass: PrismaSubtareaEdiliciaRepository },
     { provide: COMENTARIO_REPARACION_REPOSITORY, useClass: PrismaComentarioReparacionRepository },
+    { provide: REPARACION_COMPRA_REPOSITORY, useClass: PrismaReparacionCompraRepository },
 
     {
       provide: NumeradorTicket,
@@ -152,12 +167,21 @@ import { ReparacionesController } from './interface/controllers/reparaciones.con
         ticketRepo: ITicketRepository,
         subtareaRepo: ISubtareaEdiliciaRepository,
         comentarioRepo: IComentarioReparacionRepository,
-      ) => new ListarReparacionesUseCase(ediliciaRepo, ticketRepo, subtareaRepo, comentarioRepo),
+        reparacionCompraRepo: IReparacionCompraRepository,
+      ) =>
+        new ListarReparacionesUseCase(
+          ediliciaRepo,
+          ticketRepo,
+          subtareaRepo,
+          comentarioRepo,
+          reparacionCompraRepo,
+        ),
       inject: [
         TICKET_EDILICIA_REPOSITORY,
         TICKET_REPOSITORY,
         SUBTAREA_EDILICIA_REPOSITORY,
         COMENTARIO_REPARACION_REPOSITORY,
+        REPARACION_COMPRA_REPOSITORY,
       ],
     },
     {
@@ -255,6 +279,24 @@ import { ReparacionesController } from './interface/controllers/reparaciones.con
       useFactory: (listarReparacionesUseCase: ListarReparacionesUseCase) =>
         new ExportarReparacionesUseCase(listarReparacionesUseCase),
       inject: [ListarReparacionesUseCase],
+    },
+    {
+      // WU5, sdd/reparacion-bloqueada-por-compra — D7: valida existencia de
+      // la compra vía COMPRA_REPOSITORY (de ComprasModule), sin tocar su firma.
+      provide: VincularCompraAReparacionUseCase,
+      useFactory: (
+        ticketEdiliciaRepo: ITicketEdiliciaRepository,
+        compraRepo: ICompraRepository,
+        reparacionCompraRepo: IReparacionCompraRepository,
+      ) =>
+        new VincularCompraAReparacionUseCase(ticketEdiliciaRepo, compraRepo, reparacionCompraRepo),
+      inject: [TICKET_EDILICIA_REPOSITORY, COMPRA_REPOSITORY, REPARACION_COMPRA_REPOSITORY],
+    },
+    {
+      provide: DesvincularCompraDeReparacionUseCase,
+      useFactory: (reparacionCompraRepo: IReparacionCompraRepository) =>
+        new DesvincularCompraDeReparacionUseCase(reparacionCompraRepo),
+      inject: [REPARACION_COMPRA_REPOSITORY],
     },
   ],
   exports: [

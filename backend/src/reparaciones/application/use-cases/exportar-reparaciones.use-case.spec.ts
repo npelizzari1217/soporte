@@ -86,7 +86,14 @@ function crearReparacion(
   if (overrides.porcentajeAvance !== undefined) {
     ticketEdilicia.actualizarAvance(overrides.porcentajeAvance);
   }
-  return { ticket, ticketEdilicia, subtareas: [], cantidadComentarios: 0 };
+  return {
+    ticket,
+    ticketEdilicia,
+    subtareas: [],
+    cantidadComentarios: 0,
+    bloqueada: false,
+    comprasQueBloquean: [],
+  };
 }
 
 /** `ListarReparacionesUseCase` FAKE — controla la lista sin pasar por el repositorio real. */
@@ -179,12 +186,13 @@ describe('ExportarReparacionesUseCase', () => {
 
 describe('ExportarReparacionesUseCase — constancia de consultas (task 5.1, design D4)', () => {
   /**
-   * Arma la implementación REAL de `ListarReparacionesUseCase` sobre 4
+   * Arma la implementación REAL de `ListarReparacionesUseCase` sobre 5
    * puertos fake que cuentan sus propias invocaciones en un contador
    * COMPARTIDO. `cantidadReparaciones` controla el volumen de filas
    * devueltas por `findAll` — el resto de los puertos (`findByIds`,
-   * `findActiveByTicketEdiliciaIds`, `contarPorTicketEdilicia`) siempre se
-   * llaman UNA vez cada uno, en lote, sin importar cuántos ids reciban.
+   * `findActiveByTicketEdiliciaIds`, `contarPorTicketEdilicia`,
+   * `findComprasVinculadasByTicketEdiliciaIds`) siempre se llaman UNA vez
+   * cada uno, en lote, sin importar cuántos ids reciban.
    */
   function crearListarReparacionesRealConContador(cantidadReparaciones: number) {
     let llamadas = 0;
@@ -224,18 +232,25 @@ describe('ExportarReparacionesUseCase — constancia de consultas (task 5.1, des
         return new Map();
       }),
     };
+    const reparacionCompraRepo = {
+      findComprasVinculadasByTicketEdiliciaIds: vi.fn(async () => {
+        llamadas++;
+        return new Map();
+      }),
+    };
 
     const listarReparaciones = new ListarReparacionesUseCase(
       ediliciaRepo as any,
       ticketRepo as any,
       subtareaRepo as any,
       comentarioRepo as any,
+      reparacionCompraRepo as any,
     );
 
     return { listarReparaciones, contadorDeLlamadas: () => llamadas };
   }
 
-  it('el conteo de consultas es IDÉNTICO con 1 fila y con 50 filas, y es 4 en ambos casos', async () => {
+  it('el conteo de consultas es IDÉNTICO con 1 fila y con 50 filas, y es 5 en ambos casos', async () => {
     const con1Fila = crearListarReparacionesRealConContador(1);
     const resultadoCon1Fila = await new ExportarReparacionesUseCase(
       con1Fila.listarReparaciones,
@@ -253,7 +268,7 @@ describe('ExportarReparacionesUseCase — constancia de consultas (task 5.1, des
     // La comparación ENTRE dos volúmenes distintos es lo que prueba
     // "constante" — no sólo que cada uno dé 4 por separado.
     expect(consultasCon1Fila).toBe(consultasCon50Filas);
-    expect(consultasCon1Fila).toBe(4);
-    expect(consultasCon50Filas).toBe(4);
+    expect(consultasCon1Fila).toBe(5);
+    expect(consultasCon50Filas).toBe(5);
   });
 });

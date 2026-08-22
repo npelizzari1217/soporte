@@ -21,6 +21,8 @@ function buildReparacion(overrides: Partial<ReparacionListItem> = {}): Reparacio
     updatedAt: "2026-01-01T00:00:00.000Z",
     subtareas: [],
     cantidadComentarios: 0,
+    bloqueada: false,
+    comprasQueBloquean: [],
     ...overrides,
   };
 }
@@ -243,5 +245,80 @@ describe("ReparacionesList — el avance de la fila sigue a las subtareas", () =
     // La fila refleja el avance nuevo sin recargar la página.
     const avanceEsperado = accion === "agregar" ? "50%" : "100%";
     expect(await within(filaDe("EDI-0005")).findByText(avanceEsperado)).toBeInTheDocument();
+  });
+});
+
+describe("ReparacionesList — chip y filtro de bloqueo por compra", () => {
+  it("muestra el chip «Bloqueada» sin número cuando bloqueada es true, y no lo muestra cuando es false", async () => {
+    server.use(
+      http.get("/api/reparaciones", () =>
+        HttpResponse.json([
+          buildReparacion({
+            id: "rep1",
+            numero: "EDI-0001",
+            bloqueada: true,
+            comprasQueBloquean: [
+              { id: "compra1", numero: "COM-0001" },
+              { id: "compra2", numero: "COM-0002" },
+            ],
+          }),
+          buildReparacion({ id: "rep2", numero: "EDI-0002", bloqueada: false, comprasQueBloquean: [] }),
+        ]),
+      ),
+    );
+
+    renderWithProviders(<ReparacionesList />, { user: buildUser({ permisos: ["EDILICIA:LECTURA"] }) });
+
+    await screen.findByText("EDI-0001");
+
+    const filaBloqueada = within(filaDe("EDI-0001"));
+    expect(filaBloqueada.getByText("Bloqueada")).toBeInTheDocument();
+    // Decisión de producto (#2440): el chip NO cuenta compras. "Bloqueada (2)" sería incorrecto.
+    expect(filaBloqueada.queryByText(/Bloqueada\s*\(/)).not.toBeInTheDocument();
+    expect(filaBloqueada.queryByText("2")).not.toBeInTheDocument();
+
+    const filaLibre = within(filaDe("EDI-0002"));
+    expect(filaLibre.queryByText("Bloqueada")).not.toBeInTheDocument();
+  });
+
+  it("el filtro Bloqueadas/No bloqueadas oculta filas en el cliente SIN volver a consultar al servidor", async () => {
+    let llamadasAlServidor = 0;
+    server.use(
+      http.get("/api/reparaciones", () => {
+        llamadasAlServidor += 1;
+        return HttpResponse.json([
+          buildReparacion({
+            id: "rep1",
+            numero: "EDI-0001",
+            bloqueada: true,
+            comprasQueBloquean: [{ id: "compra1", numero: "COM-0001" }],
+          }),
+          buildReparacion({ id: "rep2", numero: "EDI-0002", bloqueada: false, comprasQueBloquean: [] }),
+        ]);
+      }),
+    );
+
+    const user = userEvent.setup();
+    renderWithProviders(<ReparacionesList />, { user: buildUser({ permisos: ["EDILICIA:LECTURA"] }) });
+
+    await screen.findByText("EDI-0001");
+    await screen.findByText("EDI-0002");
+    expect(llamadasAlServidor).toBe(1);
+
+    await user.selectOptions(screen.getByLabelText(/bloqueo/i), "BLOQUEADAS");
+    await screen.findByText("EDI-0001");
+    expect(screen.queryByText("EDI-0002")).not.toBeInTheDocument();
+    // El filtro es client-side (D8): cambiar de opción no dispara un nuevo fetch.
+    expect(llamadasAlServidor).toBe(1);
+
+    await user.selectOptions(screen.getByLabelText(/bloqueo/i), "NO_BLOQUEADAS");
+    await screen.findByText("EDI-0002");
+    expect(screen.queryByText("EDI-0001")).not.toBeInTheDocument();
+    expect(llamadasAlServidor).toBe(1);
+
+    await user.selectOptions(screen.getByLabelText(/bloqueo/i), "TODAS");
+    await screen.findByText("EDI-0001");
+    await screen.findByText("EDI-0002");
+    expect(llamadasAlServidor).toBe(1);
   });
 });

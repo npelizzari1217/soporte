@@ -410,8 +410,9 @@ model TicketEdilicia {
 
   ticket Ticket @relation(fields: [ticketId], references: [id])
 
-  subtareas   SubtareaEdilicia[]
-  comentarios ComentarioReparacion[]
+  subtareas         SubtareaEdilicia[]
+  comentarios       ComentarioReparacion[]
+  comprasVinculadas ReparacionCompra[]
 
   @@index([porcentajeAvance])
   @@map("ticket_edilicia")
@@ -430,6 +431,38 @@ model ComentarioReparacion {
 
   @@index([ticketEdiliciaId, createdAt], map: "comentarios_reparacion_ticket_created_at_idx")
   @@map("comentarios_reparacion")
+}
+
+// Vínculo REPARACIÓN ↔ COMPRA (`reparacion_compra`), a nivel de CABECERA de
+// compra (no de ítem): el vínculo dice "esta reparación espera esta compra",
+// y el grupo de estado del que se deriva el bloqueo (`derivarGrupoEstadoCompra`,
+// compras/domain/services/estado-compra.ts) también es de cabecera.
+//
+// HARD DELETE, SIN deleted_at — se aparta a propósito de
+// `comentarios_reparacion`: un vínculo equivocado es un ERROR DE DATO, no el
+// dicho de una persona. Un soft delete obligaría a arrastrar `deleted_at IS
+// NULL` en toda lectura y a una UNIQUE parcial, por un historial que nadie
+// pidió. Si mañana hace falta, la migración es ADITIVA.
+//
+// SIN updated_at: el vínculo no se edita — se crea o se borra.
+//
+// UNIQUE(ticketEdiliciaId, compraId): vincular dos veces la misma compra a la
+// misma reparación no cambia el estado derivado, pero sí duplicaría la fila
+// en "qué compras la frenan". Además da idempotencia al endpoint de vincular
+// (ON CONFLICT DO NOTHING) sin check-then-insert (ventana de carrera).
+model ReparacionCompra {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ticketEdiliciaId String   @map("ticket_edilicia_id") @db.Uuid
+  compraId         String   @map("compra_id") @db.Uuid
+  /// Marca de INICIO del bloqueo. La métrica de tiempo bloqueado está fuera
+  /// de alcance, pero el dato queda disponible sin costo adicional.
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  ticketEdilicia TicketEdilicia @relation(fields: [ticketEdiliciaId], references: [id])
+  compra         Compra         @relation(fields: [compraId], references: [id])
+
+  @@unique([ticketEdiliciaId, compraId], map: "reparacion_compra_ticket_compra_key")
+  @@map("reparacion_compra")
 }
 
 model SubtareaEdilicia {
@@ -636,8 +669,9 @@ model Compra {
   ciclo  CicloCliente @relation(fields: [cicloId], references: [id])
   sector Sector?      @relation(fields: [sectorId], references: [id])
 
-  items       ItemCompra[]
-  operaciones OperacionCompra[]
+  items                  ItemCompra[]
+  operaciones            OperacionCompra[]
+  reparacionesVinculadas ReparacionCompra[]
 
   @@index([cicloId])
   @@index([solicitanteId])
