@@ -19,6 +19,7 @@ export class ClienteMapper {
         cuit: row.cuit ?? null,
         dbName: row.dbName,
         activo: row.activo,
+        csatHabilitado: row.csatHabilitado,
       },
       row.id,
       row.createdAt,
@@ -58,6 +59,7 @@ export class ClienteMapper {
       cuit: entity.cuit,
       dbName: entity.dbName,
       activo: entity.activo,
+      csatHabilitado: entity.csatHabilitado,
       deletedAt: entity.deletedAt,
     };
   }

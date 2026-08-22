@@ -101,7 +101,15 @@ model Cliente {
   smtpVerificadoAt       DateTime? @map("smtp_verificado_at") @db.Timestamptz
   smtpVerificacionError  String?   @map("smtp_verificacion_error") @db.Text
 
-  membresias Membresia[]
+  /// Habilita la emisión de encuestas CSAT al cerrar un ticket de este
+  /// cliente (sdd/csat, WU1/WU6). Default false: la feature queda inerte
+  /// hasta encenderse cliente por cliente (ver "Migración / rollout" en
+  /// sdd/csat/design). Booleano independiente, fuera del CHECK todo-o-nada
+  /// de `smtp_*` — mismo criterio que `smtpSecure`.
+  csatHabilitado Boolean @default(false) @map("csat_habilitado")
+
+  membresias     Membresia[]
+  encuestaTokens EncuestaToken[]
 
   @@index([activo])
   @@map("clientes")
@@ -272,6 +280,42 @@ model RefreshToken {
 
   @@index([usuarioId])
   @@map("refresh_tokens")
+}
+
+// ─── ENCUESTA_TOKENS (token opaco de encuesta CSAT) ───────────────────────────
+//
+// Hermana de `RefreshToken`: token opaco de 32 bytes generado en la
+// aplicación (WU6), del que solo se persiste su SHA-256 (`tokenHash`) — el
+// token crudo nunca se guarda. Vive en MASTER porque
+// `ResolverEncuestaTokenService` (ADR-C1, sdd/csat/design) necesita leer
+// `clienteId` ANTES de abrir el `TenantContext` del tenant correspondiente.
+//
+// `ticketId` es soft ref al tenant (`tickets.id`): SIN FK cross-DB.
+//
+// `usedAt` es el objetivo del CAS de uso único (ADR-C2, WU5): un
+// `UPDATE ... SET used_at = now() WHERE id = $1 AND used_at IS NULL` que
+// afecta 0 filas si el link ya se usó. `revokedAt` es la revocación
+// idempotente de tokens previos al reabrir un ticket y volver a cerrarlo
+// (WU6).
+
+model EncuestaToken {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clienteId String    @map("cliente_id") @db.Uuid
+  ticketId  String    @map("ticket_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash") @db.Text
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz
+  usedAt    DateTime? @map("used_at") @db.Timestamptz
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz
+
+  cliente Cliente @relation(fields: [clienteId], references: [id])
+
+  /// La revocación en la emisión (ADR-C2) busca todos los tokens vigentes de
+  /// un ticket por este par, antes de generar uno nuevo.
+  @@index([clienteId, ticketId])
+  @@map("encuesta_tokens")
 }
 
 // ─── ROLES (catálogo de roles del sistema) ────────────────────────────────────
