@@ -52,4 +52,35 @@ describe("TicketHeader", () => {
     expect(screen.getByText("Creado")).toBeInTheDocument();
     expect(screen.getByText("15/08/2026 09:00")).toBeInTheDocument();
   });
+
+  // WU9.3 (gateo de UI, ADR-C5 backend): `puedeVerCsat` lo resuelve el
+  // container con `useCan("CSAT:LECTURA")` — este componente NO decide el
+  // permiso, solo obedece la bandera.
+  describe("bloque de satisfacción (CSAT)", () => {
+    it("con puedeVerCsat y csatPuntaje presente, muestra puntaje y comentario", () => {
+      render(
+        <TicketHeader
+          ticket={buildTicket({ csatPuntaje: 4, csatComentario: "Buena atención" })}
+          puedeVerCsat
+        />,
+      );
+
+      expect(screen.getByText("Satisfacción: 4 / 5")).toBeInTheDocument();
+      expect(screen.getByText("\u201CBuena atención\u201D")).toBeInTheDocument();
+    });
+
+    it("sin puedeVerCsat NO muestra el bloque, aunque el ticket traiga csatPuntaje", () => {
+      render(
+        <TicketHeader ticket={buildTicket({ csatPuntaje: 4, csatComentario: "Buena atención" })} />,
+      );
+
+      expect(screen.queryByText(/Satisfacción:/)).not.toBeInTheDocument();
+    });
+
+    it("con puedeVerCsat pero SIN csatPuntaje (ticket sin encuesta respondida) no muestra el bloque", () => {
+      render(<TicketHeader ticket={buildTicket()} puedeVerCsat />);
+
+      expect(screen.queryByText(/Satisfacción:/)).not.toBeInTheDocument();
+    });
+  });
 });

@@ -5,6 +5,11 @@ import {
   CICLO_CLIENTE_REPOSITORY,
   ICicloClienteRepository,
 } from '../tickets/domain/ports/i-ciclo-cliente.repository';
+import { CsatLecturaModule } from '../csat/csat-lectura.module';
+import {
+  ENCUESTA_SATISFACCION_REPOSITORY,
+  IEncuestaSatisfaccionRepository,
+} from '../csat/domain/ports/i-encuesta-satisfaccion.repository';
 
 import { DASHBOARD_REPOSITORY, IDashboardRepository } from './domain/ports/i-dashboard.repository';
 import { PrismaDashboardRepository } from './infrastructure/persistence/prisma/prisma-dashboard.repository';
@@ -24,14 +29,18 @@ import { DashboardController } from './interface/controllers/dashboard.controlle
  * - Use case: ObtenerMetricasUseCase (resuelve ciclo efectivo reusando
  *   CICLO_CLIENTE_REPOSITORY de TicketsModule — mismo criterio que
  *   `ListarTicketsUseCase`, T7 — y el scope self/global por `actor.rol`).
- * - Importa `TicketsModule` (para CICLO_CLIENTE_REPOSITORY) y `AuthModule`
- *   (guards del controller).
+ *   WU9.1 (ADR-C5): también recibe ENCUESTA_SATISFACCION_REPOSITORY de
+ *   `CsatLecturaModule` para el KPI `csatPromedio`/`csatRespuestas`,
+ *   gateado POR CAMPO dentro del propio use case — no acá.
+ * - Importa `TicketsModule` (para CICLO_CLIENTE_REPOSITORY), `CsatLecturaModule`
+ *   (para ENCUESTA_SATISFACCION_REPOSITORY) y `AuthModule` (guards del
+ *   controller).
  *
  * FITNESS RULE: PrismaService y @prisma/client solo pueden importarse desde
  * infrastructure/ (ver backend/eslint.config.js).
  */
 @Module({
-  imports: [AuthModule, TicketsModule],
+  imports: [AuthModule, TicketsModule, CsatLecturaModule],
   controllers: [DashboardController],
   providers: [
     { provide: DASHBOARD_REPOSITORY, useClass: PrismaDashboardRepository },
@@ -40,8 +49,9 @@ import { DashboardController } from './interface/controllers/dashboard.controlle
       useFactory: (
         dashboardRepo: IDashboardRepository,
         cicloClienteRepo: ICicloClienteRepository,
-      ) => new ObtenerMetricasUseCase(dashboardRepo, cicloClienteRepo),
-      inject: [DASHBOARD_REPOSITORY, CICLO_CLIENTE_REPOSITORY],
+        csatRepo: IEncuestaSatisfaccionRepository,
+      ) => new ObtenerMetricasUseCase(dashboardRepo, cicloClienteRepo, csatRepo),
+      inject: [DASHBOARD_REPOSITORY, CICLO_CLIENTE_REPOSITORY, ENCUESTA_SATISFACCION_REPOSITORY],
     },
   ],
   exports: [DASHBOARD_REPOSITORY],

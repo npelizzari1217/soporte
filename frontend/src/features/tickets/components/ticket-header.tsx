@@ -24,6 +24,13 @@ export interface TicketHeaderProps {
   estadoCodigo?: string;
   prioridadCodigo?: string;
   tipoNombre?: string;
+  /**
+   * WU9.3 (gateo de UI, ADR-C5 backend): computado en el CONTAINER con
+   * `useCan("CSAT:LECTURA")` — este componente es PRESENTATIONAL, no
+   * resuelve permisos por su cuenta. Default `false`: sin el flag explícito
+   * no se muestra el bloque, aunque `ticket.csatPuntaje` venga presente.
+   */
+  puedeVerCsat?: boolean;
 }
 
 /** Nombre completo o fallback al ID crudo si el backend no pudo resolverlo. */
@@ -32,7 +39,14 @@ function nombreCompleto(nombre: string | null, apellido: string | null, idFallba
   return idFallback;
 }
 
-export function TicketHeader({ ticket, estadoCodigo, prioridadCodigo, tipoNombre }: TicketHeaderProps) {
+export function TicketHeader({
+  ticket,
+  estadoCodigo,
+  prioridadCodigo,
+  tipoNombre,
+  puedeVerCsat = false,
+}: TicketHeaderProps) {
+  const muestraCsat = puedeVerCsat && ticket.csatPuntaje !== undefined;
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-border bg-card p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -88,6 +102,17 @@ export function TicketHeader({ ticket, estadoCodigo, prioridadCodigo, tipoNombre
           </dd>
         </div>
       </dl>
+
+      {muestraCsat && (
+        <div className="rounded-md border border-border bg-muted/30 p-3 text-sm">
+          <p className="font-medium text-foreground">
+            Satisfacción: {ticket.csatPuntaje} / 5
+          </p>
+          {ticket.csatComentario && (
+            <p className="mt-1 text-muted-foreground">&ldquo;{ticket.csatComentario}&rdquo;</p>
+          )}
+        </div>
+      )}
     </div>
   );
 }

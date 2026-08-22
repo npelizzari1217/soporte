@@ -48,6 +48,9 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
   const estadosQuery = useEstados();
   const tiposOperacionQuery = useTiposOperacion();
   const puedeAsignar = useCan("TICKETS:ASIGNAR");
+  // WU9.3: el backend ya gatea csatPuntaje/csatComentario por payload
+  // (ADR-C5); esta bandera es defensa en profundidad del lado UI.
+  const puedeVerCsat = useCan("CSAT:LECTURA");
   const { isGlobalAdmin } = useSession();
   const tecnicosQuery = useTecnicosAsignables(ticketId, puedeAsignar);
 
@@ -103,6 +106,7 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
         estadoCodigo={estadoCodigo}
         prioridadCodigo={prioridadCodigoMap.get(ticket.prioridadId)}
         tipoNombre={tipoNombreMap.get(ticket.tipoId)}
+        puedeVerCsat={puedeVerCsat}
       />
 
       {esTicketSoporte && equipoDeTicketQuery.data?.equipo && (

@@ -45,6 +45,14 @@ export interface Ticket {
   fechaCierre: string | null;
   createdAt: string;
   updatedAt: string;
+  /**
+   * Puntaje (1-5) y comentario de la última respuesta CSAT (WU9.3, backend
+   * ADR-C5/ADR-C8). AUSENTES sin `CSAT:LECTURA`, o si el TECNICO no tuvo el
+   * ticket asignado — el gateo real ya lo hizo el backend; la UI ADEMÁS lo
+   * esconde tras `useCan("CSAT:LECTURA")` como defensa en profundidad.
+   */
+  csatPuntaje?: number;
+  csatComentario?: string | null;
 }
 
 export interface ListTicketsResponse {

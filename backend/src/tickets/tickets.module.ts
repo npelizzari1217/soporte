@@ -33,6 +33,7 @@ import {
   ICicloClienteRepository,
 } from './domain/ports/i-ciclo-cliente.repository';
 import { PrismaCicloClienteRepository } from './infrastructure/persistence/prisma/prisma-ciclo-cliente.repository';
+import { CsatLecturaModule } from '../csat/csat-lectura.module';
 
 import { NumeradorTicket } from './domain/services/numerador-ticket.service';
 import { ResolverCicloActivoParaCreacion } from './application/services/resolver-ciclo-activo.service';
@@ -134,7 +135,7 @@ import { CatalogosController } from './interface/controllers/catalogos.controlle
  * infrastructure/ (ver backend/eslint.config.js).
  */
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, CsatLecturaModule],
   controllers: [TicketsController, AdjuntosController, CatalogosController],
   providers: [
     { provide: USUARIO_MASTER_CHECKER, useClass: UsuarioMasterChecker },

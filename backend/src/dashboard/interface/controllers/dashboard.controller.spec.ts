@@ -63,6 +63,8 @@ describe('DashboardController (D5)', () => {
         actorId: 'admin-uuid',
         actorRol: 'ADMINISTRADOR',
         cicloId: 'ciclo-uuid',
+        // ADMINISTRADOR bypassea CUALQUIER código válido del catálogo (puedeEjecutar).
+        tieneCsatLectura: true,
       });
     });
 
@@ -76,7 +78,23 @@ describe('DashboardController (D5)', () => {
         actorId: 'tecnico-uuid',
         actorRol: 'TECNICO',
         cicloId: undefined,
+        // TECNICO sin la celda 'CSAT:LECTURA' en `permisos` (default de makeUser).
+        tieneCsatLectura: false,
       });
+    });
+
+    it('WU9.1 (ADR-C5): con CSAT:LECTURA en permisos, pasa tieneCsatLectura=true', async () => {
+      const { controller, obtenerMetricasUseCase } = buildController();
+      obtenerMetricasUseCase.execute.mockResolvedValue(METRICAS);
+
+      await controller.obtenerMetricas(
+        makeUser({ sub: 'tecnico-uuid', rol: 'TECNICO', permisos: ['CSAT:LECTURA'] }),
+        {},
+      );
+
+      expect(obtenerMetricasUseCase.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ tieneCsatLectura: true }),
+      );
     });
 
     it('retorna el DTO de métricas mapeado desde el use case', async () => {

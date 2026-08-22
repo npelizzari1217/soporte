@@ -28,6 +28,9 @@ export interface MetricasResponseDto {
   };
   distribucionPorTipo: { tipoId: string; total: number }[];
   distribucionPorPrioridad: { prioridadId: string; total: number }[];
+  /** KPI de satisfacción (WU9.1, ADR-C5). AUSENTE sin `CSAT:LECTURA`. */
+  csatPromedio?: number | null;
+  csatRespuestas?: number;
 }
 
 /** Convierte el `MetricasResult` de aplicación al shape de respuesta HTTP (identidad — mismo shape). */

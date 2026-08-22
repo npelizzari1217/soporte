@@ -20,8 +20,16 @@ describe('ObtenerMetricasUseCase', () => {
       distribucionPorPrioridad: vi.fn().mockResolvedValue([{ prioridadId: 'prio-1', total: 8 }]),
     };
     const cicloClienteRepo = { findActive: vi.fn().mockResolvedValue(cicloActivo) };
-    const useCase = new ObtenerMetricasUseCase(dashboardRepo as never, cicloClienteRepo as never);
-    return { useCase, dashboardRepo, cicloClienteRepo };
+    // Repo CSAT (WU9.1, ADR-C5): solo se consulta cuando el actor tiene CSAT:LECTURA.
+    const csatRepo = {
+      resumenPorScope: vi.fn().mockResolvedValue({ promedio: 4.5, respuestas: 10 }),
+    };
+    const useCase = new ObtenerMetricasUseCase(
+      dashboardRepo as never,
+      cicloClienteRepo as never,
+      csatRepo as never,
+    );
+    return { useCase, dashboardRepo, cicloClienteRepo, csatRepo };
   }
 
   const CICLO = CicloClienteEntity.create(
@@ -127,5 +135,54 @@ describe('ObtenerMetricasUseCase', () => {
     const result = await c.useCase.execute({ actorId: 'admin-uuid', actorRol: 'ADMINISTRADOR' });
 
     expect(result.cumplimientoSla.porcentaje).toBeNull();
+  });
+
+  // WU9.1 (ADR-C5): el gateo de csatPromedio/csatRespuestas va DENTRO del
+  // payload, no en el decorador del controller — el use case decide si los
+  // incluye según `tieneCsatLectura`.
+  describe('gateo de CSAT (ADR-C5)', () => {
+    it('CON CSAT:LECTURA incluye csatPromedio/csatRespuestas con un valor real', async () => {
+      const c = makeCollaborators(CICLO);
+
+      const result = await c.useCase.execute({
+        actorId: 'admin-uuid',
+        actorRol: 'ADMINISTRADOR',
+        tieneCsatLectura: true,
+      });
+
+      expect(result.csatPromedio).toBe(4.5);
+      expect(result.csatRespuestas).toBe(10);
+      expect(c.csatRepo.resumenPorScope).toHaveBeenCalledWith(
+        expect.objectContaining({ cicloId: 'ciclo-activo-uuid' }),
+      );
+    });
+
+    it('SIN CSAT:LECTURA omite csatPromedio/csatRespuestas del payload (no undefined: AUSENTES)', async () => {
+      const c = makeCollaborators(CICLO);
+
+      const result = await c.useCase.execute({
+        actorId: 'admin-uuid',
+        actorRol: 'ADMINISTRADOR',
+        tieneCsatLectura: false,
+      });
+
+      expect('csatPromedio' in result).toBe(false);
+      expect('csatRespuestas' in result).toBe(false);
+      expect(c.csatRepo.resumenPorScope).not.toHaveBeenCalled();
+    });
+
+    it('sin cicloId explícito y SIN ciclo activo, CON CSAT:LECTURA → csat también queda en su default vacío', async () => {
+      const c = makeCollaborators(null);
+
+      const result = await c.useCase.execute({
+        actorId: 'admin-uuid',
+        actorRol: 'ADMINISTRADOR',
+        tieneCsatLectura: true,
+      });
+
+      expect(result.csatPromedio).toBeNull();
+      expect(result.csatRespuestas).toBe(0);
+      expect(c.csatRepo.resumenPorScope).not.toHaveBeenCalled();
+    });
   });
 });

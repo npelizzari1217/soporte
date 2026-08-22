@@ -117,4 +117,29 @@ describe("DashboardView", () => {
     expect(await screen.findByText(/sin datos/i)).toBeInTheDocument();
     expect(screen.queryByRole("img", { name: "Tickets abiertos / cerrados" })).not.toBeInTheDocument();
   });
+
+  // WU9.3: el KPI de CSAT viaja gateado desde el backend (ADR-C5); el
+  // frontend ADEMÁS lo esconde tras useCan("CSAT:LECTURA") (defensa en
+  // profundidad).
+  describe("KPI de satisfacción (CSAT)", () => {
+    it("con CSAT:LECTURA muestra el promedio y la cantidad de respuestas", async () => {
+      mockBackend({ metricas: { ...METRICAS, csatPromedio: 4.2, csatRespuestas: 7 } });
+      renderWithProviders(<DashboardView />, {
+        user: buildUser({ permisos: ["ticket:ver_todos", "CSAT:LECTURA"] }),
+      });
+
+      await screen.findByRole("img", { name: "Tickets abiertos / cerrados" });
+      expect(screen.getByText("Satisfacción (CSAT)")).toBeInTheDocument();
+      expect(screen.getByText("4.2 / 5")).toBeInTheDocument();
+      expect(screen.getByText("(7 respuestas)")).toBeInTheDocument();
+    });
+
+    it("sin CSAT:LECTURA no muestra el KPI aunque el backend lo mande", async () => {
+      mockBackend({ metricas: { ...METRICAS, csatPromedio: 4.2, csatRespuestas: 7 } });
+      renderWithProviders(<DashboardView />, { user: buildUser({ permisos: ["ticket:ver_todos"] }) });
+
+      await screen.findByRole("img", { name: "Tickets abiertos / cerrados" });
+      expect(screen.queryByText("Satisfacción (CSAT)")).not.toBeInTheDocument();
+    });
+  });
 });
