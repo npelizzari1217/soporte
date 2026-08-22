@@ -137,9 +137,20 @@ recién en el `settle` lo quema sin forma de recuperarlo.
   `pnpm prisma migrate status --schema prisma_tenant/schema.prisma` → `P1001` = entorno.
 - Dentro del contenedor, `psql -U postgres` **falla** (ese rol no existe):
   usar `psql -U "$POSTGRES_USER" -d postgres`.
-- **`soporte_019fdb97da747aadafb40d3efcdb0cf7` es un tenant REAL** ("Demo Soporte"),
-  registrado en `soporte_master`. **Nunca borrarlo.** Antes de dropear cualquier base,
-  chequear contra el registro de clientes.
+- **La base de un tenant real no se toca — y su nombre NO se hardcodea.** El sufijo hex se
+  genera al provisionar, así que **cambia si el tenant se recrea**: cualquier literal que
+  escribas hoy miente mañana. La fuente de verdad es el registro de clientes, no este archivo.
+  Antes de dropear cualquier base, consultalo:
+
+  ```bash
+  docker exec soporte-postgres-master psql -U soporte -d soporte_master -c "SELECT nombre, db_name, activo FROM clientes;"
+  ```
+
+  Todo `db_name` que aparezca ahí es una base REAL. Al 2026-08-22 hay una sola, "Demo Soporte"
+  (`soporte_01a0253ef26f78b88b02d5161410d8fd`), pero ese valor es una foto del día, no la regla.
+  Nunca lo copies a un script ni al prompt de un subagente: ya pasó que un nombre viejo se
+  propagó a la lista negra de `backend/scripts/regenerar-entorno.mjs` porque venía copiado
+  textual de acá.
 - Higiene de DB en specs de integración con tenant efímero — este orden importa:
   limpiar filas → `app.close()` → `dropDatabase`. Al revés, el pool sigue vivo y Postgres
   rechaza el DROP **en silencio**, dejando la base huérfana.

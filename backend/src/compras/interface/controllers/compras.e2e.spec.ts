@@ -31,8 +31,9 @@
  * Postgres rechaza el DROP EN SILENCIO, bug real encontrado en PR-14).
  * `master.clientes`/`roles`/`permisos`/`usuarios`/`membresias` (DB
  * compartida `soporte_master_test`) se truncan en `beforeEach`. NUNCA toca
- * `soporte_master`, `soporte_tenant_test`, ni `soporte_019fdb97da747aadafb40d3efcdb0cf7`
- * (tenant real "Demo Soporte" de `soporte_master`) — aislamiento total.
+ * `soporte_master`, `soporte_tenant_test`, ni la base de ningún tenant real
+ * (su `db_name` vive en `soporte_master.clientes` y cambia si el tenant se
+ * recrea, por eso no se hardcodea acá) — aislamiento total.
  *
  * A diferencia de `tickets.e2e.spec.ts`, este spec NO llama
  * `TenantSeederAdapter.seed()`: los catálogos que siembra (estados/
