@@ -36,6 +36,20 @@ export interface ReparacionListItem extends TicketEdilicia {
    * agregada por página. El contenido se pide aparte al abrir el diálogo.
    */
   cantidadComentarios: number;
+  /**
+   * `true` si hay al menos una compra vinculada cuyo grupo de estado
+   * derivado es `ACTIVAS` (sdd/reparacion-bloqueada-por-compra). Se deriva
+   * en el backend a partir de `comprasQueBloquean`; nunca es una marca
+   * manual y NO afecta `porcentajeAvance`.
+   */
+  bloqueada: boolean;
+  /**
+   * Las compras que HOY frenan la reparación (subset mínimo: `id` + `numero`,
+   * sin montos ni ítems). `[]` cuando `bloqueada` es `false`. El chip del
+   * listado NO muestra la cantidad (decisión de producto): este campo existe
+   * para poder abrir/navegar hacia esas compras, no para contarlas.
+   */
+  comprasQueBloquean: { id: string; numero: string }[];
 }
 
 export interface SubtareaEdilicia {

@@ -19,11 +19,35 @@ sobre una reparación puntual, ver el artículo **"Subtareas y comentarios de
 una reparación edilicia"**. Este artículo es sobre el LISTADO de muchas
 reparaciones; el otro es sobre UNA reparación abierta.
 
-## Sin filtros
+## El chip "Bloqueada"
 
-Este listado **no tiene filtros**: siempre muestra todas las reparaciones del
-tenant. Si necesitás encontrar una reparación puntual, usá la búsqueda del
-navegador (Ctrl+F) sobre la tabla cargada.
+Una fila puede mostrar el chip **Bloqueada** junto al resto de sus datos.
+Aparece sola, sin que nadie la marque a mano: el sistema la calcula mirando
+si la reparación tiene alguna compra vinculada que todavía está en curso (sin
+entregar, sin cancelar, sin cerrar con faltante). En cuanto esa compra se
+resuelve, el chip desaparece solo, sin que haga falta tocar nada en la
+reparación.
+
+El chip **no muestra un número** — no dice "Bloqueada (2)" aunque haya más de
+una compra frenándola. Solo responde de un vistazo si la reparación está
+trabada o no; para ver el detalle de qué compra la frena hay que abrir la
+reparación.
+
+El chip **no afecta el avance**: una reparación bloqueada puede tener
+subtareas completadas igual, y el porcentaje de avance de la columna no
+cambia por estar bloqueada o no.
+
+## Filtro por bloqueo
+
+Arriba del listado hay un selector **Bloqueo** con tres opciones: **Todas**,
+**Bloqueadas** y **No bloqueadas**. Elegir una opción distinta de "Todas"
+oculta las filas que no corresponden — es instantáneo, porque filtra sobre
+los datos que ya están cargados en la pantalla, sin volver a pedirle nada al
+servidor.
+
+Si necesitás encontrar una reparación puntual por otro dato (número, título,
+ubicación), seguí usando la búsqueda del navegador (Ctrl+F) sobre la tabla
+cargada.
 
 ## Exportar a Excel
 
@@ -35,8 +59,10 @@ El valor de avance que trae el archivo es **el mismo que ves en la columna
 Avance de la pantalla** — no se recalcula aparte ni puede desincronizarse de
 lo que muestra el listado.
 
-Como el listado no tiene filtros, el archivo siempre trae **todas las
-reparaciones**, sin excepción — nunca solo una parte.
+**El archivo trae siempre todas las reparaciones del tenant**, aunque tengas
+el selector **Bloqueo** filtrado a "Bloqueadas" o "No bloqueadas" en pantalla:
+la exportación ignora ese filtro a propósito y nunca trae solo una parte. Si
+necesitás solo las bloqueadas, filtrá el archivo ya descargado.
 
 Mientras el archivo se prepara, el botón queda deshabilitado. En listados
 grandes puede tardar unos segundos.
@@ -47,7 +73,8 @@ Si el listado es muy grande, la exportación no se hace y aparece un aviso con
 este mensaje. No es un error ni se perdió nada: el archivo sería tan pesado
 que no habría con qué abrirlo cómodamente.
 
-Acá **no hay filtros que acotar** — el aviso no te va a pedir que los
-cambies, porque no existen. La salida en este caso es exportar el listado
-**en partes**, una capacidad que todavía hay que habilitar. Si te encontrás
-con este aviso, avisá para que se habilite esa exportación por partes.
+Acá el selector **Bloqueo** no ayuda — la exportación no lo respeta, así que
+filtrar en pantalla no reduce el archivo. La salida en este caso es exportar
+el listado **en partes**, una capacidad que todavía hay que habilitar. Si te
+encontrás con este aviso, avisá para que se habilite esa exportación por
+partes.
