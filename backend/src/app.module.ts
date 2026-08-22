@@ -13,6 +13,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { KbModule } from './kb/kb.module';
 import { NotificacionesModule } from './notificaciones/notificaciones.module';
 import { SectoresModule } from './sectores/sectores.module';
+import { CsatModule } from './csat/csat.module';
 import { TenantScopeMiddleware } from './shared/tenancy/tenant-scope.middleware';
 
 /**
@@ -50,6 +51,7 @@ import { TenantScopeMiddleware } from './shared/tenancy/tenant-scope.middleware'
     KbModule,
     NotificacionesModule,
     SectoresModule,
+    CsatModule,
   ],
   controllers: [],
   providers: [

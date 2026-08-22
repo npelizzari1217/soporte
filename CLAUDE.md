@@ -99,7 +99,9 @@ Antes de arrancar, tres preguntas de sí/no:
 
 1. ¿Cambia algo que otra capa espeja? (un guard de dominio, un enum, un contrato de error,
    un permiso, un schema del front)
-2. ¿Hay más de una forma razonable de hacerlo?
+2. ¿Las alternativas difieren en comportamiento observable o en el contrato? Que existan dos
+   formas de escribirlo NO cuenta: casi siempre las hay. Cuenta que las dos formas no hagan
+   lo mismo.
 3. ¿Cambia lo que el usuario ve o hace? (una pantalla, un flujo, el significado de un estado)
 
 **Un solo sí → ciclo SDD completo. Tres noes → lo hace el orquestador.**
