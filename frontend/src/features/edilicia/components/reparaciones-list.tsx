@@ -19,6 +19,7 @@ import { ExportarCsvButton } from "@/shared/components/exportar-csv-button";
 import { ReparacionCreateDialog } from "./reparacion-create-dialog";
 import { SubtareasDialog } from "./subtareas-dialog";
 import { ComentariosDialog } from "./comentarios-dialog";
+import { VincularCompraDialog } from "./vincular-compra-dialog";
 import type { ReparacionListItem } from "../types";
 
 /**
@@ -114,11 +115,27 @@ export function ReparacionesList() {
     { key: "porcentajeAvance", header: "Avance", render: (row) => <AvanceCell porcentaje={row.porcentajeAvance} /> },
     {
       // Chip SIN número (decisión de producto #2440): responde "¿está
-      // trabado?" de un vistazo. `comprasQueBloquean` sigue disponible en el
-      // dato para cuando WU6 agregue la acción de desvincular sobre esta fila.
+      // trabado?" de un vistazo. El botón «Gestionar compras» abre el panel
+      // de vínculo/desvínculo (WU6) — gateado por `EDILICIA:ALTAS` DENTRO de
+      // `VincularCompraDialog`, no acá: verlo o no depende de ese permiso,
+      // no del `bloqueada` de la fila.
       key: "bloqueada",
       header: "Bloqueo",
-      render: (row) => (row.bloqueada ? <Badge variant="warning">Bloqueada</Badge> : null),
+      render: (row) => (
+        <div className="flex items-center gap-2">
+          {row.bloqueada && <Badge variant="warning">Bloqueada</Badge>}
+          <VincularCompraDialog
+            reparacionId={row.id}
+            numero={row.numero}
+            comprasQueBloquean={row.comprasQueBloquean}
+            trigger={
+              <Button variant="outline" size="sm">
+                Gestionar compras
+              </Button>
+            }
+          />
+        </div>
+      ),
     },
     {
       // `key` es el slot de la columna (React key + fallback de render), no

@@ -78,6 +78,17 @@ export interface CreateSubtareaDto {
 }
 
 /**
+ * Body de `POST /reparaciones/:reparacionId/compras` (`VincularCompraHttpDto`,
+ * sdd/reparacion-bloqueada-por-compra WU6). El backend exige, ADEMÁS del
+ * permiso implícito en la ruta, `EDILICIA:ALTAS` **y** `COMPRAS:LECTURA`
+ * (`@RequiereAcciones` con los dos argumentos, WU5) — el diálogo del frontend
+ * gatea la EXPERIENCIA con `<Can>`, nunca la autorización real.
+ */
+export interface VincularCompraDto {
+  compraId: string;
+}
+
+/**
  * Comentario a nivel de REPARACIÓN (`ComentarioReparacionResponseDto`).
  *
  * A diferencia de las subtareas, los comentarios SÍ tienen `GET` propio
