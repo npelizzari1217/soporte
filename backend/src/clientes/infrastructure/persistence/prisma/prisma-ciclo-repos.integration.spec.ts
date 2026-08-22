@@ -23,6 +23,7 @@ import { PrismaCicloVigenteRepository } from './prisma-ciclo-vigente.repository'
 import { PrismaCicloClienteRepository } from './prisma-ciclo-cliente.repository';
 import { CicloVigenteEntity } from '../../../domain/entities/ciclo-vigente.entity';
 import { CicloClienteEntity } from '../../../domain/entities/ciclo-cliente.entity';
+import { usarLockMasterTest } from '../../../../testing/lock-master-test';
 
 const MASTER_TEST_URL =
   process.env.DATABASE_URL_MASTER ??
@@ -32,6 +33,9 @@ const MASTER_TEST_URL =
  * el pathname de MASTER_TEST_URL por este nombre (mismo host/credenciales en
  * dev/test, ver PrismaService.buildTenantUrl). */
 const TENANT_TEST_DB_NAME = 'soporte_tenant_test';
+
+// Turno exclusivo sobre la master de test compartida — ver src/testing/lock-master-test.ts.
+usarLockMasterTest();
 
 describe('Ciclos Prisma Repositories — Integration (T9.2 + T9.6)', () => {
   let prismaService: PrismaService;

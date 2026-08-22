@@ -66,6 +66,7 @@ import {
   OperacionResponseDto,
   TicketResponseDto,
 } from '../dtos/ticket.dto';
+import { usarLockMasterTest } from '../../../testing/lock-master-test';
 
 const MASTER_TEST_URL =
   process.env.DATABASE_URL_MASTER ??
@@ -146,6 +147,9 @@ class TestHarnessModule implements NestModule {
     consumer.apply(TenantScopeMiddleware).forRoutes('*');
   }
 }
+
+// Turno exclusivo sobre la master de test compartida — ver src/testing/lock-master-test.ts.
+usarLockMasterTest();
 
 describe('Tickets e2e (T4-T8, PR6)', () => {
   let app: INestApplication;

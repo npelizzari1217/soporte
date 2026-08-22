@@ -17,10 +17,14 @@ import { PrismaUsuarioRepository } from './prisma-usuario.repository';
 import { PrismaMatrizPermisosRepository } from './prisma-matriz-permisos.repository';
 import { ClienteEntity } from '../../../../clientes/domain/entities/cliente.entity';
 import { UsuarioEntity } from '../../../domain/entities/usuario.entity';
+import { usarLockMasterTest } from '../../../../testing/lock-master-test';
 
 const TEST_DB_URL =
   process.env.DATABASE_URL_MASTER ??
   'postgresql://soporte:soporte@localhost:5432/soporte_master_test';
+
+// Turno exclusivo sobre la master de test compartida — ver src/testing/lock-master-test.ts.
+usarLockMasterTest();
 
 describe('PrismaMatrizPermisosRepository — Integration (WU-3)', () => {
   let prismaService: PrismaService;

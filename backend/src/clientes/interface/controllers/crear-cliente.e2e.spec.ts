@@ -84,6 +84,7 @@ import {
 import { payloadDeTest } from '../../../auth/test-helpers/payload-de-test';
 import { MembresiaEntity } from '../../../auth/domain/entities/membresia.entity';
 import { PrismaMembresiaRepository } from '../../../auth/infrastructure/persistence/prisma/prisma-membresia.repository';
+import { usarLockMasterTest } from '../../../testing/lock-master-test';
 
 const MASTER_URL =
   process.env.DATABASE_URL_MASTER ??
@@ -170,6 +171,9 @@ async function httpPost<T = unknown>(
 function bearer(token: string): Headers {
   return { Authorization: `Bearer ${token}` };
 }
+
+// Turno exclusivo sobre la master de test compartida — ver src/testing/lock-master-test.ts.
+usarLockMasterTest();
 
 describe('Crear Cliente e2e — provisioning real (T8.5, R16-R19)', () => {
   let app: INestApplication;

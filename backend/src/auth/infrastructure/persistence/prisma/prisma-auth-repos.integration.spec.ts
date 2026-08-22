@@ -36,10 +36,14 @@ import { RoleEntity } from '../../../domain/entities/role.entity';
 import { PermisoEntity } from '../../../domain/entities/permiso.entity';
 import { RefreshTokenEntity } from '../../../domain/entities/refresh-token.entity';
 import { MembresiaEntity } from '../../../domain/entities/membresia.entity';
+import { usarLockMasterTest } from '../../../../testing/lock-master-test';
 
 const TEST_DB_URL =
   process.env.DATABASE_URL_MASTER ??
   'postgresql://soporte:soporte@localhost:5432/soporte_master_test';
+
+// Turno exclusivo sobre la master de test compartida — ver src/testing/lock-master-test.ts.
+usarLockMasterTest();
 
 describe('Auth Prisma Repositories — Integration (T5.3 + T5.4)', () => {
   let prismaService: PrismaService;

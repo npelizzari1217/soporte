@@ -80,6 +80,7 @@ import type {
   OperacionResponseDto,
 } from '../../../tickets/interface/dtos/ticket.dto';
 import type { KbArticuloResponseDto } from '../../../kb/interface/dtos/kb-articulo.dto';
+import { usarLockMasterTest } from '../../../testing/lock-master-test';
 
 const MASTER_TEST_URL =
   process.env.DATABASE_URL_MASTER ??
@@ -260,6 +261,9 @@ const TABLA_RUTAS_ADMIN: RutaAdminEsperada[] = [
 
 /** Rutas donde vale la pena ejercitar "actor CON la acción → NO 403" (sin multipart). */
 const RUTAS_SIN_MULTIPART = TABLA_RUTAS.filter((r) => !r.path.includes('/adjuntos'));
+
+// Turno exclusivo sobre la master de test compartida — ver src/testing/lock-master-test.ts.
+usarLockMasterTest();
 
 describe('Autorización e2e — TABLA_RUTAS (G2, WU-7.7) + scope de filas/campos (R11, S28-S33)', () => {
   let app: INestApplication;

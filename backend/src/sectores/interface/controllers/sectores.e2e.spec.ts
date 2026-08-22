@@ -47,6 +47,7 @@ import { UsuarioEntity } from '../../../auth/domain/entities/usuario.entity';
 import { RoleEntity } from '../../../auth/domain/entities/role.entity';
 import { Argon2HashProvider } from '../../../auth/infrastructure/argon2-hash.provider';
 import { SectorResponseDto } from '../dtos/sectores.dto';
+import { usarLockMasterTest } from '../../../testing/lock-master-test';
 
 const MASTER_TEST_URL =
   process.env.DATABASE_URL_MASTER ??
@@ -93,6 +94,9 @@ class TestHarnessModule implements NestModule {
     consumer.apply(TenantScopeMiddleware).forRoutes('*');
   }
 }
+
+// Turno exclusivo sobre la master de test compartida — ver src/testing/lock-master-test.ts.
+usarLockMasterTest();
 
 describe('Sectores e2e — gate por método + grafo DI real (WU-08)', () => {
   let app: INestApplication;

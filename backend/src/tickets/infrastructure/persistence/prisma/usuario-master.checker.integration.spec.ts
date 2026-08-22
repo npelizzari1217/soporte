@@ -12,10 +12,14 @@
 import { PrismaService } from '../../../../shared/infrastructure/persistence/prisma.service';
 import { MasterPrismaClient } from '../../../../shared/infrastructure/persistence/prisma-clients';
 import { UsuarioMasterChecker } from './usuario-master.checker';
+import { usarLockMasterTest } from '../../../../testing/lock-master-test';
 
 const TEST_DB_URL =
   process.env.DATABASE_URL_MASTER ??
   'postgresql://soporte:soporte@localhost:5432/soporte_master_test';
+
+// Turno exclusivo sobre la master de test compartida — ver src/testing/lock-master-test.ts.
+usarLockMasterTest();
 
 describe('UsuarioMasterChecker — integration (T14, T15)', () => {
   let prismaService: PrismaService;

@@ -53,6 +53,7 @@ import * as path from 'path';
 import { randomBytes } from 'node:crypto';
 import { Pool } from 'pg';
 import { PostgresAdminService } from '../../../../clientes/infrastructure/postgres-admin.service';
+import { usarLockMasterTest } from '../../../../testing/lock-master-test';
 
 const TEST_URL =
   process.env.DATABASE_URL_MASTER ??
@@ -156,6 +157,9 @@ const CELDAS_TECNICO_ESPERADAS = [
   // (Bloque B), aunque compra:gestionar/aprobar se le hayan retirado.
   'COMPRAS:LECTURA',
 ].sort();
+
+// Turno exclusivo sobre la master de test compartida — ver src/testing/lock-master-test.ts.
+usarLockMasterTest();
 
 describe('Backfill matriz de permisos (WU-4) — fixture #2217', () => {
   let pool: Pool;

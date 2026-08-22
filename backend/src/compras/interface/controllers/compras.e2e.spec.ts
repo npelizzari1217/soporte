@@ -82,6 +82,7 @@ import {
   ItemCompraResponseDto,
   ListarComprasResponseDto,
 } from '../dtos/compras.dto';
+import { usarLockMasterTest } from '../../../testing/lock-master-test';
 
 const MASTER_TEST_URL =
   process.env.DATABASE_URL_MASTER ??
@@ -251,6 +252,9 @@ const RUTAS_ESCRITURA = TABLA_RUTAS.filter(
 );
 const RUTAS_APROBAR = TABLA_RUTAS.filter((r) => r.accion === 'COMPRAS:APROBACION');
 const RUTAS_CONSULTA = TABLA_RUTAS.filter((r) => r.accion === 'COMPRAS:LECTURA');
+
+// Turno exclusivo sobre la master de test compartida — ver src/testing/lock-master-test.ts.
+usarLockMasterTest();
 
 describe('Compras e2e — contrato HTTP real de las 16 rutas (cierra W-B/W-A del verify final)', () => {
   let app: INestApplication;

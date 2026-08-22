@@ -34,6 +34,7 @@ import { LogoutAllUseCase } from '../../../application/use-cases/logout-all.use-
 import { SwitchTenantUseCase } from '../../../application/use-cases/switch-tenant.use-case';
 import { JwtPayload } from '../../../domain/ports/i-token.service';
 import { PARES_VALIDOS } from '../../../../shared/domain/acciones';
+import { usarLockMasterTest } from '../../../../testing/lock-master-test';
 
 const TEST_DB_URL =
   process.env.DATABASE_URL_MASTER ??
@@ -53,6 +54,9 @@ class TestLogger implements ILogger {
     this.errorMessages.push(message);
   }
 }
+
+// Turno exclusivo sobre la master de test compartida — ver src/testing/lock-master-test.ts.
+usarLockMasterTest();
 
 describe('Auth Use Cases — Integration end-to-end (T5.5)', () => {
   let prismaService: PrismaService;

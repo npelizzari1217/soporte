@@ -137,6 +137,15 @@ recién en el `settle` lo quema sin forma de recuperarlo.
   `pnpm prisma migrate status --schema prisma_tenant/schema.prisma` → `P1001` = entorno.
 - Dentro del contenedor, `psql -U postgres` **falla** (ese rol no existe):
   usar `psql -U "$POSTGRES_USER" -d postgres`.
+- **`soporte_master_test` es UNA SOLA base compartida** por los trece specs de integración y
+  e2e, y cada uno la arranca con un `TRUNCATE` de `usuarios`/`clientes`/`refresh_tokens`.
+  `fileParallelism: false` los ordena dentro de un proceso, pero entre procesos no protege
+  nada: dos corridas solapadas se borran las filas mutuamente. El síntoma engaña — el login
+  muere guardando el refresh token con `P2003` (FK a un usuario recién borrado), no se emite
+  token, y los tests reciben **401 donde esperaban 403**, que se lee como un bug de permisos.
+  Por eso cada uno de esos specs llama a `usarLockMasterTest()` (`src/testing/lock-master-test.ts`)
+  antes de su `describe`: un advisory lock de Postgres que serializa el turno entre procesos.
+  **Un spec nuevo que truncue esa base tiene que llamarlo también**, o vuelve a abrir el agujero.
 - **La base de un tenant real no se toca — y su nombre NO se hardcodea.** El sufijo hex se
   genera al provisionar, así que **cambia si el tenant se recrea**: cualquier literal que
   escribas hoy miente mañana. La fuente de verdad es el registro de clientes, no este archivo.

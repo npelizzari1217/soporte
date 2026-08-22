@@ -59,6 +59,7 @@ import { UsuarioEntity } from '../../domain/entities/usuario.entity';
 import { RoleEntity } from '../../domain/entities/role.entity';
 import { PermisoEntity } from '../../domain/entities/permiso.entity';
 import { Argon2HashProvider } from '../../infrastructure/argon2-hash.provider';
+import { usarLockMasterTest } from '../../../testing/lock-master-test';
 
 const TEST_DB_URL =
   process.env.DATABASE_URL_MASTER ??
@@ -138,6 +139,9 @@ function bearer(token: string): Headers {
 }
 
 // ─── Suite ────────────────────────────────────────────────────────────────
+
+// Turno exclusivo sobre la master de test compartida — ver src/testing/lock-master-test.ts.
+usarLockMasterTest();
 
 describe('Auth e2e (R3–R14, PR6)', () => {
   let app: INestApplication;
