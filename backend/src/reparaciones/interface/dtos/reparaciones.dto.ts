@@ -69,6 +69,16 @@ export class CreateComentarioReparacionHttpDto {
   texto!: string;
 }
 
+/**
+ * Body de `POST /reparaciones/:reparacionId/compras` (WU5,
+ * sdd/reparacion-bloqueada-por-compra). Vincula una compra existente del
+ * mismo tenant a la reparación de la ruta.
+ */
+export class VincularCompraHttpDto {
+  @IsUUID()
+  compraId!: string;
+}
+
 // ─── Response DTOs ────────────────────────────────────────────────────────────
 
 /**

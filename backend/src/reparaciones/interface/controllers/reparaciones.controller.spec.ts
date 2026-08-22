@@ -28,6 +28,8 @@ import {
 import {
   TicketEdiliciaNoEncontradoError,
   SubtareaNoEncontradaError,
+  CompraNoEncontradaError,
+  VinculoNoEncontradoError,
 } from '../../domain/errors/reparaciones.errors';
 import * as ReparacionesErrors from '../../domain/errors/reparaciones.errors';
 import { payloadDeTest } from '../../../auth/test-helpers/payload-de-test';
@@ -70,6 +72,10 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
     // tests que verifican el enriquecimiento lo sobrescriben.
     const usuarioMasterChecker = { resolverNombres: vi.fn().mockResolvedValue(new Map()) };
     const exportarReparacionesUseCase = { execute: vi.fn() };
+    // Agregados al final (WU5, mismo criterio que exportarReparacionesUseCase):
+    // no reindexan los args posicionales anteriores.
+    const vincularCompraUseCase = { execute: vi.fn() };
+    const desvincularCompraUseCase = { execute: vi.fn() };
 
     const controller = new ReparacionesController(
       crearTicketEdilicioUseCase as any,
@@ -81,6 +87,8 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
       listarComentariosUseCase as any,
       usuarioMasterChecker as any,
       exportarReparacionesUseCase as any,
+      vincularCompraUseCase as any,
+      desvincularCompraUseCase as any,
     );
 
     return {
@@ -94,6 +102,8 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
       listarComentariosUseCase,
       usuarioMasterChecker,
       exportarReparacionesUseCase,
+      vincularCompraUseCase,
+      desvincularCompraUseCase,
     };
   }
 
@@ -445,6 +455,91 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
       expect(permisos).toEqual(['EDILICIA:LECTURA']);
     });
   });
+
+  describe('POST /reparaciones/:reparacionId/compras', () => {
+    it('vincula la compra a la reparación', async () => {
+      const { controller, vincularCompraUseCase } = buildController();
+      vincularCompraUseCase.execute.mockResolvedValue(Result.ok(undefined));
+
+      await controller.vincularCompra('edilicia-uuid', { compraId: 'compra-uuid' } as any);
+
+      expect(vincularCompraUseCase.execute).toHaveBeenCalledWith({
+        ticketEdiliciaId: 'edilicia-uuid',
+        compraId: 'compra-uuid',
+      });
+    });
+
+    it('mapea TicketEdiliciaNoEncontradoError → 404', async () => {
+      const { controller, vincularCompraUseCase } = buildController();
+      vincularCompraUseCase.execute.mockResolvedValue(
+        Result.fail(new TicketEdiliciaNoEncontradoError('edilicia-uuid')),
+      );
+
+      await expect(
+        controller.vincularCompra('edilicia-uuid', { compraId: 'compra-uuid' } as any),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('mapea CompraNoEncontradaError → 404', async () => {
+      const { controller, vincularCompraUseCase } = buildController();
+      vincularCompraUseCase.execute.mockResolvedValue(
+        Result.fail(new CompraNoEncontradaError('compra-uuid')),
+      );
+
+      await expect(
+        controller.vincularCompra('edilicia-uuid', { compraId: 'compra-uuid' } as any),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    // WU5.9: decorador COMPLETO — decisión de producto #2435, R3 (AND). El
+    // test de autorización real por HTTP (`reparaciones.e2e.spec.ts`, WU5.8)
+    // demostró que con UN solo argumento un actor con SOLO EDILICIA:ALTAS
+    // pasaba y recibía 201/404, nunca 403.
+    it('declara @RequiereAcciones("EDILICIA:ALTAS", "COMPRAS:LECTURA")', () => {
+      const permisos = Reflect.getMetadata(
+        ACCIONES_KEY,
+        ReparacionesController.prototype.vincularCompra,
+      );
+      expect(permisos).toEqual(['EDILICIA:ALTAS', 'COMPRAS:LECTURA']);
+    });
+  });
+
+  describe('DELETE /reparaciones/:reparacionId/compras/:compraId', () => {
+    it('desvincula la compra de la reparación', async () => {
+      const { controller, desvincularCompraUseCase } = buildController();
+      desvincularCompraUseCase.execute.mockResolvedValue(Result.ok(undefined));
+
+      await controller.desvincularCompra('edilicia-uuid', 'compra-uuid');
+
+      expect(desvincularCompraUseCase.execute).toHaveBeenCalledWith({
+        ticketEdiliciaId: 'edilicia-uuid',
+        compraId: 'compra-uuid',
+      });
+    });
+
+    it('mapea VinculoNoEncontradoError → 404', async () => {
+      const { controller, desvincularCompraUseCase } = buildController();
+      desvincularCompraUseCase.execute.mockResolvedValue(
+        Result.fail(new VinculoNoEncontradoError('edilicia-uuid', 'compra-uuid')),
+      );
+
+      await expect(
+        controller.desvincularCompra('edilicia-uuid', 'compra-uuid'),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    // Desvincular NO exige COMPRAS:LECTURA (ver design + tasks, WU5, "Por qué
+    // desvincular NO tiene el mismo problema"): el `numero` que ve quien
+    // desvincula sale de `comprasQueBloquean[]` en `GET /reparaciones`
+    // (EDILICIA:LECTURA), no de `GET /compras`.
+    it('declara @RequiereAcciones("EDILICIA:BORRADO")', () => {
+      const permisos = Reflect.getMetadata(
+        ACCIONES_KEY,
+        ReparacionesController.prototype.desvincularCompra,
+      );
+      expect(permisos).toEqual(['EDILICIA:BORRADO']);
+    });
+  });
 });
 
 describe('ReparacionesController.exportar — GET /reparaciones/export (sdd/exportar-listados-csv)', () => {
@@ -464,6 +559,8 @@ describe('ReparacionesController.exportar — GET /reparaciones/export (sdd/expo
       stub() as any, // listarComentariosUseCase
       { resolverNombres: vi.fn() } as any, // usuarioMasterChecker
       exportarReparaciones as any, // exportarReparacionesUseCase
+      stub() as any, // vincularCompraUseCase
+      stub() as any, // desvincularCompraUseCase
     );
     return { controller, exportarReparaciones };
   }
