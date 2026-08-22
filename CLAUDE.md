@@ -84,6 +84,30 @@ No se implementa "directo" salvo que sea un arreglo mecánico de un archivo ya e
 Esto ANULA la regla global de que SDD se elige solo por pedido explícito o propuesta
 aceptada: en este proyecto es el default, decidido por el usuario el 2026-08-19.
 
+### Cuándo NO corresponde el ciclo completo
+
+Se implementa directo, sin ciclo SDD, **solo** si es un cambio mecánico de un archivo ya
+entendido, **sin diseño pendiente**. En ese caso lo hace el orquestador.
+
+Contar archivos NO es el criterio. El fix C1 de compras (`56e0483`) fue un archivo y un
+guard, y dejó el frontend roto: `ItemCerrarFaltanteDialog` seguía mirando solo
+`cerradoConFaltante`, así que sobre un ítem no aprobado el botón quedaba habilitado y la
+operación fallaba SIEMPRE con 422. Hubo que emitir `07e3013` para repararlo. Un archivo, dos
+capas rotas.
+
+Antes de arrancar, tres preguntas de sí/no:
+
+1. ¿Cambia algo que otra capa espeja? (un guard de dominio, un enum, un contrato de error,
+   un permiso, un schema del front)
+2. ¿Hay más de una forma razonable de hacerlo?
+3. ¿Cambia lo que el usuario ve o hace? (una pantalla, un flujo, el significado de un estado)
+
+**Un solo sí → ciclo SDD completo. Tres noes → lo hace el orquestador.**
+
+Ante la duda, SDD. El costo es asimétrico: equivocarse hacia "directo" cuando había una
+decisión escondida cuesta un ciclo de retrabajo; equivocarse hacia SDD en algo mecánico
+cuesta un rato.
+
 Cada fase la ejecuta su subagente dedicado vía la herramienta Agent, **nunca invocando la
 skill** (las `sdd-*/SKILL.md` traen `delegate_only: true`: si las cargás como skill, sos el
 orquestador y tenés que delegar). El `model` es obligatorio en cada llamada:
