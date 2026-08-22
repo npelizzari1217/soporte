@@ -166,9 +166,14 @@ recién en el `settle` lo quema sin forma de recuperarlo.
 
 Runner: **Vitest** (no Jest). Package manager: **pnpm**.
 
-> `backend`: `pnpm lint` arrastra **5 errores prettier preexistentes** en
-> `src/equipos/application/use-cases/editar-componente.use-case.spec.ts`, no relacionados con
-> ningún cambio en curso. Cero errores nuevos es el criterio, no cero errores.
+> `backend`: `pnpm lint` está en **cero errores**. Ese es el criterio ahora — no "cero
+> errores nuevos". Si tira algo, es tuyo. (Los 5 errores prettier preexistentes de
+> `editar-componente.use-case.spec.ts` que este archivo documentaba se limpiaron; un umbral
+> en cero no se puede leer mal con apuro, un umbral en cinco sí.)
+>
+> `backend`: el alcance del lint es `eslint .` y lo decide el `files` de `eslint.config.js`,
+> no un glob en `package.json`. Cubre `src/**/*.ts` y `scripts/**/*.{mjs,js,ts}` — un script
+> nuevo en `scripts/` o `scripts/lib/` se lintea solo, sin dar de alta nada.
 
 ## La Ayuda se mantiene con el código (OBLIGATORIO)
 

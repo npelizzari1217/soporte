@@ -66,7 +66,11 @@ describe('EditarComponenteUseCase', () => {
       tipoComponenteMasterChecker as never,
     );
 
-    const result = await useCase.execute({ equipoId: 'equipo-1', componenteId: componente.id, descripcion: 'X' });
+    const result = await useCase.execute({
+      equipoId: 'equipo-1',
+      componenteId: componente.id,
+      descripcion: 'X',
+    });
     expect(result.isFail()).toBe(true);
     expect(result.getError()).toBeInstanceOf(ComponenteDadoDeBajaError);
     expect(componenteRepo.save).not.toHaveBeenCalled();
@@ -81,7 +85,11 @@ describe('EditarComponenteUseCase', () => {
       tipoComponenteMasterChecker as never,
     );
 
-    const result = await useCase.execute({ equipoId: 'equipo-1', componenteId: componente.id, tipoComponenteCodigo: '' });
+    const result = await useCase.execute({
+      equipoId: 'equipo-1',
+      componenteId: componente.id,
+      tipoComponenteCodigo: '',
+    });
     expect(result.isFail()).toBe(true);
     expect(result.getError()).toBeInstanceOf(TipoComponenteCodigoRequeridoError);
   });
@@ -96,7 +104,8 @@ describe('EditarComponenteUseCase', () => {
     );
 
     const result = await useCase.execute({
-      equipoId: 'equipo-1', componenteId: componente.id,
+      equipoId: 'equipo-1',
+      componenteId: componente.id,
       tipoComponenteCodigo: 'CPU',
     });
     expect(result.isFail()).toBe(true);
@@ -115,7 +124,8 @@ describe('EditarComponenteUseCase', () => {
     );
 
     const result = await useCase.execute({
-      equipoId: 'equipo-1', componenteId: componente.id,
+      equipoId: 'equipo-1',
+      componenteId: componente.id,
       tipoComponenteCodigo: 'RAM',
     });
     expect(result.isOk()).toBe(true);
@@ -132,7 +142,8 @@ describe('EditarComponenteUseCase', () => {
     );
 
     const result = await useCase.execute({
-      equipoId: 'equipo-1', componenteId: componente.id,
+      equipoId: 'equipo-1',
+      componenteId: componente.id,
       tipoComponenteCodigo: 'CPU',
       descripcion: 'Nueva desc',
       numeroSerie: null,
