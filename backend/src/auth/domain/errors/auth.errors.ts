@@ -43,8 +43,14 @@ export class ClienteNoAutorizadoError extends DomainError {
 
 /**
  * ClienteInactivoError — el cliente asociado al usuario está inactivo o
- * borrado (R12: TenantGuard).
- * → HTTP 403 en la capa de presentación.
+ * borrado.
+ *
+ * SIN USO EN PRODUCCIÓN (verificado el 2026-08-22): nadie lo instancia.
+ * `TenantGuard` tira un `ForbiddenException` crudo en su lugar, así que el
+ * 403 que ve el cliente NO pasa por acá. Se conserva porque el spec guardián
+ * de `auth.controller.spec.ts` afirma el catálogo completo de errores; si
+ * algún día el guard lo usa de verdad, hay que mapearlo a 403 explícito —
+ * hoy caería en el fallback 401 (ruidoso, con `logger.error`).
  */
 export class ClienteInactivoError extends DomainError {
   readonly code = 'AUTH_CLIENTE_INACTIVO';
@@ -94,7 +100,10 @@ export class TokenRevocadoError extends DomainError {
 /**
  * PermisoCodigoInvalidoError — código de permiso no cumple el formato
  * "recurso:accion".
- * → HTTP 422 en la capa de presentación.
+ *
+ * SIN USO EN PRODUCCIÓN (verificado el 2026-08-22): su única fuente es
+ * `PermisoEntity.create`, que hoy solo se invoca desde fixtures de test.
+ * Si un caso de uso empieza a construir permisos, mapearlo a 422 explícito.
  */
 export class PermisoCodigoInvalidoError extends DomainError {
   readonly code = 'AUTH_PERMISO_CODIGO_INVALIDO';

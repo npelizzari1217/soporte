@@ -8,7 +8,10 @@
  *    aplican este guard — usan `GlobalAdminGuard` en su lugar).
  * 2. Resuelve `master.clientes WHERE id = cliente_id` vía `IClienteRepository`
  *    (único guard que consulta DB — 1 query por request, ADR-5).
- * 3. Verifica `activo = true && !isDeleted()`; si no → 403 `ClienteInactivo`.
+ * 3. Verifica `activo = true && !isDeleted()`; si no → 403 con un
+ *    `ForbiddenException` CRUDO. OJO: NO instancia `ClienteInactivoError`.
+ *    Ese error de dominio existe y nadie lo usa — ver su comentario en
+ *    `domain/errors/auth.errors.ts` antes de asumir que está cableado.
  * 4. Bindea `TenantContext` con `{ prismaClient: getTenantClient(dbName),
  *    dbName, clienteId }` para que los repositorios de infraestructura del
  *    tenant lo consuman sin conocer el ORM directamente (R15).
