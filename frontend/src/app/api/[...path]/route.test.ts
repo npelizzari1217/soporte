@@ -59,6 +59,44 @@ describe("/api/[...path] generic BFF proxy", () => {
     expect(res.status).toBe(401);
   });
 
+  it("GET: forwards x-forwarded-for for the publico/ prefix (CSAT throttler discriminator, ADR-C6)", async () => {
+    let capturedXff: string | null = null;
+    server.use(
+      http.get(`${BACKEND}/publico/encuesta/tok123`, ({ request }) => {
+        capturedXff = request.headers.get("x-forwarded-for");
+        return HttpResponse.json({ numero: "TCK-000123" });
+      }),
+    );
+
+    const req = new NextRequest("http://localhost/api/publico/encuesta/tok123", {
+      headers: { "x-forwarded-for": "203.0.113.5" },
+    });
+    const res = await GET(req, {
+      params: Promise.resolve({ path: ["publico", "encuesta", "tok123"] }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(capturedXff).toBe("203.0.113.5");
+  });
+
+  it("GET: does NOT forward x-forwarded-for outside the publico/ prefix (scope must stay narrow)", async () => {
+    let capturedXff: string | null | undefined;
+    server.use(
+      http.get(`${BACKEND}/tickets`, ({ request }) => {
+        capturedXff = request.headers.get("x-forwarded-for");
+        return HttpResponse.json({ items: [], total: 0, pagina: 1, porPagina: 10 });
+      }),
+    );
+
+    const req = new NextRequest("http://localhost/api/tickets", {
+      headers: { cookie: "at=token123", "x-forwarded-for": "203.0.113.5" },
+    });
+    const res = await GET(req, { params: Promise.resolve({ path: ["tickets"] }) });
+
+    expect(res.status).toBe(200);
+    expect(capturedXff).toBeNull();
+  });
+
   it("POST: forwards JSON body + joins multi-segment paths (nested resource routes)", async () => {
     let capturedBody: unknown = null;
     server.use(
