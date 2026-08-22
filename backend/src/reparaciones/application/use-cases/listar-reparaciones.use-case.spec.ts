@@ -9,6 +9,7 @@
  * Ref spec: sdd/flujos-especializados/spec F3-E1. Tarea: T8.5.
  */
 import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
+import { CompraVinculada } from '../../domain/services/bloqueo-reparacion';
 import { SubtareaEdiliciaEntity } from '../../domain/entities/subtarea-edilicia.entity';
 import { TicketEdiliciaEntity } from '../../domain/entities/ticket-edilicia.entity';
 import { ListarReparacionesUseCase } from './listar-reparaciones.use-case';
@@ -46,13 +47,29 @@ describe('ListarReparacionesUseCase', () => {
     const comentarioRepo = {
       contarPorTicketEdilicia: vi.fn().mockResolvedValue(new Map<string, number>()),
     };
+    // Quinto doble, WU3: por defecto ninguna reparación tiene compras
+    // vinculadas — el Map vacío es el mismo contrato de ausencia que ya usan
+    // subtareas/comentarios (ausencia = `[]`, nunca `undefined`).
+    const reparacionCompraRepo = {
+      findComprasVinculadasByTicketEdiliciaIds: vi
+        .fn()
+        .mockResolvedValue(new Map<string, CompraVinculada[]>()),
+    };
     const useCase = new ListarReparacionesUseCase(
       ediliciaRepo as any,
       ticketRepo as any,
       subtareaRepo as any,
       comentarioRepo as any,
+      reparacionCompraRepo as any,
     );
-    return { useCase, ediliciaRepo, ticketRepo, subtareaRepo, comentarioRepo };
+    return {
+      useCase,
+      ediliciaRepo,
+      ticketRepo,
+      subtareaRepo,
+      comentarioRepo,
+      reparacionCompraRepo,
+    };
   }
 
   /**
@@ -122,6 +139,12 @@ describe('ListarReparacionesUseCase', () => {
           deps.comentarioRepo.contarPorTicketEdilicia,
         idsEsperados: ['edilicia-uuid-0', 'edilicia-uuid-1', 'edilicia-uuid-2'],
       },
+      {
+        nombre: 'las compras vinculadas',
+        doble: (deps: ReturnType<typeof conNSatelites>) =>
+          deps.reparacionCompraRepo.findComprasVinculadasByTicketEdiliciaIds,
+        idsEsperados: ['edilicia-uuid-0', 'edilicia-uuid-1', 'edilicia-uuid-2'],
+      },
     ];
 
     /**
@@ -143,7 +166,14 @@ describe('ListarReparacionesUseCase', () => {
     );
 
     it('con lista vacía no dispara NINGUNA consulta y devuelve vacío', async () => {
-      const { useCase, ediliciaRepo, ticketRepo, subtareaRepo, comentarioRepo } = buildDeps();
+      const {
+        useCase,
+        ediliciaRepo,
+        ticketRepo,
+        subtareaRepo,
+        comentarioRepo,
+        reparacionCompraRepo,
+      } = buildDeps();
       ediliciaRepo.findAll.mockResolvedValue([]);
 
       const result = await useCase.execute();
@@ -152,6 +182,28 @@ describe('ListarReparacionesUseCase', () => {
       expect(ticketRepo.findByIds).not.toHaveBeenCalled();
       expect(subtareaRepo.findActiveByTicketEdiliciaIds).not.toHaveBeenCalled();
       expect(comentarioRepo.contarPorTicketEdilicia).not.toHaveBeenCalled();
+      expect(reparacionCompraRepo.findComprasVinculadasByTicketEdiliciaIds).not.toHaveBeenCalled();
+    });
+
+    it('usa las compras vinculadas por lote: presente y ACTIVAS bloquea; ausente en el Map (no undefined) no bloquea', async () => {
+      const deps = conNSatelites(2);
+      const compraActiva: CompraVinculada = {
+        compraId: 'compra-uuid-1',
+        numero: 'COMP-2026-00001',
+        cancelada: false,
+        items: [],
+      };
+      deps.reparacionCompraRepo.findComprasVinculadasByTicketEdiliciaIds.mockResolvedValue(
+        new Map([['edilicia-uuid-0', [compraActiva]]]),
+      );
+
+      const items = (await deps.useCase.execute()).getValue();
+
+      expect(items[0].bloqueada).toBe(true);
+      expect(items[0].comprasQueBloquean).toEqual([compraActiva]);
+      // edilicia-uuid-1 no tiene entrada en el Map: ausencia = `[]`, nunca `undefined`.
+      expect(items[1].bloqueada).toBe(false);
+      expect(items[1].comprasQueBloquean).toEqual([]);
     });
   });
 

@@ -46,6 +46,11 @@ import {
   IComentarioReparacionRepository,
 } from './domain/ports/i-comentario-reparacion.repository';
 import { PrismaComentarioReparacionRepository } from './infrastructure/persistence/prisma/prisma-comentario-reparacion.repository';
+import {
+  REPARACION_COMPRA_REPOSITORY,
+  IReparacionCompraRepository,
+} from './domain/ports/i-reparacion-compra.repository';
+import { PrismaReparacionCompraRepository } from './infrastructure/persistence/prisma/prisma-reparacion-compra.repository';
 
 import { CrearTicketEdilicioUseCase } from './application/use-cases/crear-ticket-edilicio.use-case';
 import { ListarReparacionesUseCase } from './application/use-cases/listar-reparaciones.use-case';
@@ -94,6 +99,7 @@ import { ReparacionesController } from './interface/controllers/reparaciones.con
     { provide: TICKET_EDILICIA_REPOSITORY, useClass: PrismaTicketEdiliciaRepository },
     { provide: SUBTAREA_EDILICIA_REPOSITORY, useClass: PrismaSubtareaEdiliciaRepository },
     { provide: COMENTARIO_REPARACION_REPOSITORY, useClass: PrismaComentarioReparacionRepository },
+    { provide: REPARACION_COMPRA_REPOSITORY, useClass: PrismaReparacionCompraRepository },
 
     {
       provide: NumeradorTicket,
@@ -152,12 +158,21 @@ import { ReparacionesController } from './interface/controllers/reparaciones.con
         ticketRepo: ITicketRepository,
         subtareaRepo: ISubtareaEdiliciaRepository,
         comentarioRepo: IComentarioReparacionRepository,
-      ) => new ListarReparacionesUseCase(ediliciaRepo, ticketRepo, subtareaRepo, comentarioRepo),
+        reparacionCompraRepo: IReparacionCompraRepository,
+      ) =>
+        new ListarReparacionesUseCase(
+          ediliciaRepo,
+          ticketRepo,
+          subtareaRepo,
+          comentarioRepo,
+          reparacionCompraRepo,
+        ),
       inject: [
         TICKET_EDILICIA_REPOSITORY,
         TICKET_REPOSITORY,
         SUBTAREA_EDILICIA_REPOSITORY,
         COMENTARIO_REPARACION_REPOSITORY,
+        REPARACION_COMPRA_REPOSITORY,
       ],
     },
     {

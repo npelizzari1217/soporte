@@ -115,11 +115,28 @@ export function toTicketEdiliciaResponseDto(
  *
  * Los comentarios NO viajan embebidos (tienen su propio `GET`): del listado
  * sale sólo `cantidadComentarios`, lo justo para el indicador de la fila.
+ *
+ * `bloqueada`/`comprasQueBloquean` (WU3, sdd/reparacion-bloqueada-por-compra):
+ * expone `id`+`numero` de las compras que frenan la reparación — el dato
+ * mínimo para el chip. No requiere `COMPRAS:LECTURA`: no es una consulta al
+ * universo de compras, es un identificador acotado ya resuelto por el propio
+ * listado de reparaciones (revisado a propósito en design/tasks, no una
+ * fuga).
  */
 export interface ReparacionListItemResponseDto extends TicketEdiliciaConTicketResponseDto {
   subtareas: SubtareaEdiliciaResponseDto[];
   /** Cantidad de comentarios de la reparación; `0` cuando no tiene ninguno. */
   cantidadComentarios: number;
+  /** `true` si tiene al menos una compra vinculada que la frena HOY. */
+  bloqueada: boolean;
+  /** Compras que frenan la reparación. `[]` cuando no está bloqueada. */
+  comprasQueBloquean: CompraQueBloqueaResponseDto[];
+}
+
+/** Identidad mínima de una compra que bloquea, para el chip del listado. */
+export interface CompraQueBloqueaResponseDto {
+  id: string;
+  numero: string;
 }
 
 /** Convierte un `ReparacionConTicket` (join en memoria) al shape de respuesta HTTP. */
@@ -130,6 +147,11 @@ export function toReparacionListItemResponseDto(
     ...toTicketEdiliciaResponseDto(item.ticket, item.ticketEdilicia),
     subtareas: item.subtareas.map(toSubtareaEdiliciaResponseDto),
     cantidadComentarios: item.cantidadComentarios,
+    bloqueada: item.bloqueada,
+    comprasQueBloquean: item.comprasQueBloquean.map((compra) => ({
+      id: compra.compraId,
+      numero: compra.numero,
+    })),
   };
 }
 

@@ -23,22 +23,24 @@ export interface ExportarReparacionesResult {
  * ningún argumento, y este caso de uso tampoco — no hay pantalla de filtros
  * que espejar (mismo criterio que `ExportarEquiposUseCase`).
  *
- * **Por qué compone `ListarReparacionesUseCase` en vez de sus 4
+ * **Por qué compone `ListarReparacionesUseCase` en vez de sus 5
  * repositorios propios** (design D4, la decisión clave de esta unidad):
  * `ListarReparacionesUseCase` YA resuelve el N+1 que este listado tenía
- * (`1 + 2N` consultas fila por fila → 4 consultas constantes, batched:
+ * (`1 + 2N` consultas fila por fila → 5 consultas constantes, batched:
  * `ediliciaRepo.findAll`, `ticketRepo.findByIds`,
  * `subtareaRepo.findActiveByTicketEdiliciaIds`,
- * `comentarioRepo.contarPorTicketEdilicia`). Escribir el export de la forma
- * "obvia" — traer las reparaciones y después, POR FILA, pedir su ticket
- * base/subtareas/comentarios — reintroduciría exactamente ese N+1 recién
- * arreglado. Componiendo con un ÚNICO argumento en el constructor no hay
- * NADA que consultar por fila: el tipo lo hace estructuralmente imposible,
- * no es una convención que se pueda romper sin querer. `exportar-reparaciones.use-case.spec.ts`
- * prueba esto con la implementación REAL de `ListarReparacionesUseCase` +
- * 4 fakes que cuentan sus llamadas: el conteo es IDÉNTICO corriendo el
- * export con 1 fila y con 50 (task 5.1) — no sólo `=== 4` en aislado, que
- * no probaría constancia.
+ * `comentarioRepo.contarPorTicketEdilicia`,
+ * `reparacionCompraRepo.findComprasVinculadasByTicketEdiliciaIds`). Escribir
+ * el export de la forma "obvia" — traer las reparaciones y después, POR
+ * FILA, pedir su ticket base/subtareas/comentarios/compras vinculadas —
+ * reintroduciría exactamente ese N+1 recién arreglado. Componiendo con un
+ * ÚNICO argumento en el constructor no hay NADA que consultar por fila: el
+ * tipo lo hace estructuralmente imposible, no es una convención que se
+ * pueda romper sin querer. `exportar-reparaciones.use-case.spec.ts` prueba
+ * esto con la implementación REAL de `ListarReparacionesUseCase` + 5 fakes
+ * que cuentan sus llamadas: el conteo es IDÉNTICO corriendo el export con 1
+ * fila y con 50 (task 5.1, WU3) — no sólo `=== 5` en aislado, que no
+ * probaría constancia.
  *
  * **Por qué el tope se chequea DESPUÉS de traer todo** (design D4, threat
  * "Unbounded memory", mismo residual aceptado que equipos): el puerto de

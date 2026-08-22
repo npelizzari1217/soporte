@@ -171,7 +171,16 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
         'edilicia-uuid',
       );
       listarReparacionesUseCase.execute.mockResolvedValue(
-        Result.ok([{ ticket, ticketEdilicia, subtareas: [], cantidadComentarios: 2 }]),
+        Result.ok([
+          {
+            ticket,
+            ticketEdilicia,
+            subtareas: [],
+            cantidadComentarios: 2,
+            bloqueada: false,
+            comprasQueBloquean: [],
+          },
+        ]),
       );
 
       const result = await controller.listar();
@@ -195,7 +204,16 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
         'subtarea-uuid',
       );
       listarReparacionesUseCase.execute.mockResolvedValue(
-        Result.ok([{ ticket, ticketEdilicia, subtareas: [subtarea], cantidadComentarios: 0 }]),
+        Result.ok([
+          {
+            ticket,
+            ticketEdilicia,
+            subtareas: [subtarea],
+            cantidadComentarios: 0,
+            bloqueada: false,
+            comprasQueBloquean: [],
+          },
+        ]),
       );
 
       const result = await controller.listar();
