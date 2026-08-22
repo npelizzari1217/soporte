@@ -13,8 +13,8 @@ import {
 } from './acciones';
 
 describe('PARES_VALIDOS — cardinalidad exacta por módulo (R1)', () => {
-  it('tiene exactamente 28 pares en total', () => {
-    expect(PARES_VALIDOS).toHaveLength(28);
+  it('tiene exactamente 29 pares en total', () => {
+    expect(PARES_VALIDOS).toHaveLength(29);
   });
 
   it.each([
@@ -24,6 +24,7 @@ describe('PARES_VALIDOS — cardinalidad exacta por módulo (R1)', () => {
     ['EQUIPOS', 4],
     ['KB', 6],
     ['DASHBOARD', 1],
+    ['CSAT', 1],
   ] as const)('%s declara exactamente %i pares', (modulo, cantidad) => {
     const propios = PARES_VALIDOS.filter((p) => p.startsWith(`${modulo}:`));
     expect(propios).toHaveLength(cantidad);
@@ -74,9 +75,9 @@ describe('moduloDe', () => {
 });
 
 describe('CATALOGO_MODULOS — claves esperadas', () => {
-  it('declara exactamente los 6 módulos de R1', () => {
+  it('declara exactamente los 7 módulos vigentes (R1 + CSAT sdd/csat WU-3)', () => {
     expect(Object.keys(CATALOGO_MODULOS).sort()).toEqual(
-      ['COMPRAS', 'DASHBOARD', 'EDILICIA', 'EQUIPOS', 'KB', 'TICKETS'].sort(),
+      ['COMPRAS', 'CSAT', 'DASHBOARD', 'EDILICIA', 'EQUIPOS', 'KB', 'TICKETS'].sort(),
     );
   });
 });

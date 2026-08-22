@@ -53,6 +53,7 @@ export const PRESETS_ROL: Readonly<Record<string, readonly CodigoAccion[]>> = {
     'KB:VER_TODOS',
     'KB:LECTURA',
     'DASHBOARD:LECTURA',
+    'CSAT:LECTURA',
   ],
   TECNICO: [
     'TICKETS:ALTAS',
@@ -78,6 +79,7 @@ export const PRESETS_ROL: Readonly<Record<string, readonly CodigoAccion[]>> = {
     'KB:VER_TODOS',
     'KB:LECTURA',
     'DASHBOARD:LECTURA',
+    'CSAT:LECTURA',
     // Desvío documentado (ver backfill-matriz-permisos.integration.spec.ts):
     // el TECNICO retiene el módulo COMPRAS aunque perdió compra:gestionar/
     // aprobar — hoy puede seguir LEYENDO compras (GET solo exige el módulo,

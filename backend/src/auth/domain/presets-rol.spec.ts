@@ -14,11 +14,17 @@ import { PRESETS_ROL, obtenerPresetDeRol } from './presets-rol';
 import { PresetRolNoDefinidoError } from './errors/auth.errors';
 
 /**
- * Copiado LITERAL de `CELDAS_TECNICO_ESPERADAS` en
+ * Base copiada LITERAL de `CELDAS_TECNICO_ESPERADAS` en
  * `backfill-matriz-permisos.integration.spec.ts` — mismo set, misma fuente
  * (#2217 + desvío documentado COMPRAS:LECTURA). Si un cambio futuro toca uno
  * de los dos archivos sin tocar el otro, este test y el de integración
  * divergen y uno de los dos queda en rojo (paridad G7, por diseño).
+ *
+ * `CSAT:LECTURA` (sdd/csat WU-3.4) es la ÚNICA excepción deliberada a esa
+ * paridad: el módulo CSAT no existía cuando corrió el backfill histórico de
+ * #2217, así que esa migración de una sola vez no puede conocerlo — no hay
+ * SQL que "actualizar" para igualarla. G7 sigue vigente para el resto del
+ * set: cualquier otra divergencia futura entre preset y backfill es un bug.
  */
 const CELDAS_TECNICO_ESPERADAS = [
   'TICKETS:ALTAS',
@@ -45,10 +51,11 @@ const CELDAS_TECNICO_ESPERADAS = [
   'KB:LECTURA',
   'DASHBOARD:LECTURA',
   'COMPRAS:LECTURA',
+  'CSAT:LECTURA',
 ].sort();
 
 describe('PRESETS_ROL', () => {
-  it('TECNICO coincide EXACTAMENTE con las celdas que produce el backfill (G7)', () => {
+  it('TECNICO coincide con las celdas del backfill histórico + CSAT:LECTURA (G7 + WU-3.4)', () => {
     expect([...PRESETS_ROL['TECNICO']].sort()).toEqual(CELDAS_TECNICO_ESPERADAS);
   });
 
@@ -56,7 +63,7 @@ describe('PRESETS_ROL', () => {
     expect(PRESETS_ROL['ADMINISTRADOR']).toEqual([]);
   });
 
-  it('ningún preset contiene un código fuera del catálogo de 28 pares', () => {
+  it('ningún preset contiene un código fuera del catálogo de 29 pares', () => {
     for (const celdas of Object.values(PRESETS_ROL)) {
       for (const codigo of celdas) {
         expect(codigo).toMatch(/^[A-Z]+:[A-Z_]+$/);

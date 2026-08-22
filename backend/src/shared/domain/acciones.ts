@@ -31,7 +31,7 @@ export type AccionPiso = (typeof ACCIONES_PISO)[number];
  * tabla de exclusiones aparte); `extras` son acciones propias del módulo,
  * fuera del piso (ej. `VER_TODOS`, `ASIGNAR`).
  *
- * `IMPRESION` queda deliberadamente fuera de `piso` en los 6 módulos: ningún
+ * `IMPRESION` queda deliberadamente fuera de `piso` en los 7 módulos: ningún
  * endpoint del inventario la consume (R1, ya aceptado). `APROBACION` solo
  * aparece en el piso de COMPRAS.
  */
@@ -60,6 +60,10 @@ export const CATALOGO_MODULOS = {
     piso: ['LECTURA'],
     extras: [],
   },
+  CSAT: {
+    piso: ['LECTURA'],
+    extras: [],
+  },
 } as const satisfies Record<string, { piso: readonly AccionPiso[]; extras: readonly string[] }>;
 
 /** Código de un módulo funcional de la matriz de permisos. */
@@ -76,7 +80,7 @@ type AccionesDe<M extends Modulo> =
 export type CodigoAccion = { [M in Modulo]: `${M}:${AccionesDe<M>}` }[Modulo];
 
 /**
- * Los 28 pares `(modulo, accion)` válidos, aplanados desde `CATALOGO_MODULOS`.
+ * Los 29 pares `(modulo, accion)` válidos, aplanados desde `CATALOGO_MODULOS`.
  * Única fuente que consumen el test de deriva (WU-2.1), el bypass de
  * ADMINISTRADOR (`resolverScope`, WU-7.1) y la validación de DTOs (WU-7.4).
  */

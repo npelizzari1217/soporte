@@ -55,6 +55,10 @@ export const CATALOGO_MODULOS = {
     piso: ["LECTURA"],
     extras: [],
   },
+  CSAT: {
+    piso: ["LECTURA"],
+    extras: [],
+  },
 } as const satisfies Record<string, { piso: readonly AccionPiso[]; extras: readonly string[] }>;
 
 /** Código de un módulo funcional de la matriz de permisos. */
@@ -70,7 +74,7 @@ type AccionesDe<M extends Modulo> =
  */
 export type CodigoAccion = { [M in Modulo]: `${M}:${AccionesDe<M>}` }[Modulo];
 
-/** Los 28 pares `(modulo, accion)` válidos, aplanados desde `CATALOGO_MODULOS`. */
+/** Los 29 pares `(modulo, accion)` válidos, aplanados desde `CATALOGO_MODULOS`. */
 export const PARES_VALIDOS: readonly CodigoAccion[] = (
   Object.entries(CATALOGO_MODULOS) as [
     Modulo,

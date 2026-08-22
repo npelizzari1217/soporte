@@ -14,8 +14,8 @@ una cosa distinta.
 
 Cada persona tiene, dentro de cada cliente, una **matriz de permisos**: una
 grilla donde cada fila es un módulo (Tickets, Compras, Edilicia, Equipos, Ayuda,
-Dashboard) y cada casilla es una acción sobre ese módulo. Lo que la persona puede
-hacer sale de esa grilla y de nada más.
+Dashboard, Satisfacción) y cada casilla es una acción sobre ese módulo. Lo que
+la persona puede hacer sale de esa grilla y de nada más.
 
 En este artículo los permisos se escriben como `MÓDULO:ACCIÓN` — por ejemplo
 `COMPRAS:APROBACION` — porque es como los identifica el sistema. En la pantalla
@@ -76,6 +76,29 @@ reaplica la plantilla, **pierde `COMPRAS:APROBACION`** y deja de poder aprobar.
 Hay un caso peor. Un usuario creado directamente como **Administrador** tiene la
 matriz vacía, porque no la necesita. Si más adelante se lo baja a otro rol sin
 reaplicar la plantilla, queda con una matriz vacía: **sin ningún permiso**.
+
+## El módulo Satisfacción (`CSAT:LECTURA`)
+
+La fila **Satisfacción** de la grilla tiene una sola casilla habilitada:
+`LECTURA`. No hay `ALTAS`, `MODIFICACION` ni `BORRADO` porque nadie carga una
+encuesta a mano — las respuestas las deja el propio cliente al contestar el
+mail que recibe cuando su ticket se cierra.
+
+`CSAT:LECTURA` es lo que decide si una persona ve el resultado de esas
+encuestas: el promedio y la cantidad de respuestas en el Dashboard, y el
+puntaje con su comentario en el detalle de cada ticket. Sin esa casilla, esos
+datos no aparecen — ni un error, directamente no se muestran.
+
+Quién ve qué, además de tener la casilla:
+
+- **Administrador** ve las respuestas de todo el cliente (bypasea la grilla,
+  como el resto de los módulos).
+- **Técnico** con `CSAT:LECTURA` ve solo las respuestas de los tickets que
+  tuvo asignados, nunca las de tickets ajenos.
+
+Por plantilla, `CSAT:LECTURA` viene marcada de entrada para **Técnico** y
+**Colaborador**. **Usuario** no la trae — es consistente con que Usuario
+tampoco ve el Dashboard.
 
 ## Dos detalles prácticos
 
