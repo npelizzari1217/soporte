@@ -3,7 +3,14 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/shared/api/client";
 import { notifyError, notifySuccess } from "@/shared/lib/toast";
-import type { Cliente, ClienteCorreo, ConfigurarCorreoDto, CreateClienteDto, UpdateClienteDto } from "../types";
+import type {
+  Cliente,
+  ClienteCorreo,
+  ConfigurarCorreoDto,
+  ConfigurarCsatDto,
+  CreateClienteDto,
+  UpdateClienteDto,
+} from "../types";
 
 export function useCrearCliente() {
   const queryClient = useQueryClient();
@@ -90,6 +97,24 @@ export function useQuitarCorreoCliente(clienteId: string) {
       queryClient.setQueryData(["cliente-correo", clienteId], data);
       queryClient.invalidateQueries({ queryKey: ["clientes"] });
       notifySuccess("Configuración de correo eliminada.");
+    },
+    onError: notifyError,
+  });
+}
+
+/**
+ * Prende/apaga la emisión de encuestas CSAT del cliente (`PATCH /clientes/:id/csat`,
+ * sdd/csat WU10.2). Solo ROOT. A diferencia de correo, `csatHabilitado` viaja
+ * en `Cliente` directo — no necesita invalidar un detalle aparte.
+ */
+export function useConfigurarCsatCliente(clienteId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (dto: ConfigurarCsatDto) =>
+      apiFetch<Cliente>(`clientes/${clienteId}/csat`, { method: "PATCH", json: dto }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["clientes"] });
+      notifySuccess("Configuración de encuesta de satisfacción guardada.");
     },
     onError: notifyError,
   });

@@ -41,6 +41,7 @@ function buildController() {
   const quitarCorreoClienteUseCase = { execute: vi.fn() };
   const probarCorreoClienteUseCase = { execute: vi.fn() };
   const verCorreoClienteUseCase = { execute: vi.fn() };
+  const configurarCsatClienteUseCase = { execute: vi.fn() };
   const controller = new ClientesController(
     crearClienteUseCase as any,
     listarClientesUseCase as any,
@@ -51,6 +52,7 @@ function buildController() {
     quitarCorreoClienteUseCase as any,
     probarCorreoClienteUseCase as any,
     verCorreoClienteUseCase as any,
+    configurarCsatClienteUseCase as any,
   );
   return {
     controller,
@@ -63,6 +65,7 @@ function buildController() {
     quitarCorreoClienteUseCase,
     probarCorreoClienteUseCase,
     verCorreoClienteUseCase,
+    configurarCsatClienteUseCase,
   };
 }
 
@@ -116,6 +119,7 @@ describe('ClientesController (T8.4)', () => {
         cuit: null,
         dbName: cliente.dbName,
         activo: true,
+        csatHabilitado: false,
       });
       expect(crearClienteUseCase.execute).toHaveBeenCalledWith(
         {
@@ -190,6 +194,7 @@ describe('ClientesController (T8.4)', () => {
           cuit: null,
           dbName: cliente.dbName,
           activo: true,
+          csatHabilitado: false,
           correo: { configurado: true, verificadoAt },
         },
       ]);
@@ -468,6 +473,34 @@ describe('ClientesController (T8.4)', () => {
       await expect(controller.quitarCorreo('inexistente')).rejects.toBeInstanceOf(
         NotFoundException,
       );
+    });
+  });
+
+  describe('PATCH /clientes/:id/csat (WU10.2)', () => {
+    it('prende el flag y retorna 200 con csatHabilitado=true', async () => {
+      const { controller, configurarCsatClienteUseCase } = buildController();
+      const cliente = buildCliente();
+      cliente.configurarCsat(true);
+      configurarCsatClienteUseCase.execute.mockResolvedValue(Result.ok(cliente));
+
+      const result = await controller.configurarCsat(cliente.id, { habilitado: true } as any);
+
+      expect(result.csatHabilitado).toBe(true);
+      expect(configurarCsatClienteUseCase.execute).toHaveBeenCalledWith({
+        clienteId: cliente.id,
+        habilitado: true,
+      });
+    });
+
+    it('propaga 404 NotFoundException cuando el cliente no existe', async () => {
+      const { controller, configurarCsatClienteUseCase } = buildController();
+      configurarCsatClienteUseCase.execute.mockResolvedValue(
+        Result.fail(new ClienteNoEncontradoError('id-inexistente')),
+      );
+
+      await expect(
+        controller.configurarCsat('id-inexistente', { habilitado: true } as any),
+      ).rejects.toBeInstanceOf(NotFoundException);
     });
   });
 

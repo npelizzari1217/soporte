@@ -97,8 +97,14 @@ Quién ve qué, además de tener la casilla:
   tuvo asignados, nunca las de tickets ajenos.
 
 Por plantilla, `CSAT:LECTURA` viene marcada de entrada para **Técnico** y
-**Colaborador**. **Usuario** no la trae — es consistente con que Usuario
-tampoco ve el Dashboard.
+**Colaborador** al crear el usuario. **Usuario** no la trae — es consistente
+con que Usuario tampoco ve el Dashboard.
+
+Si tu Técnico o Colaborador venía de antes de que este permiso existiera, no
+tenés que hacer nada: se le agregó una única vez a todos los que ya estaban
+activos con ese rol, con el mismo criterio que si se hubieran creado hoy. Si
+de todas formas alguien no ve los datos de la encuesta, revisá su casilla en
+la grilla — puede haberla desmarcado una edición manual posterior.
 
 ## Dos detalles prácticos
 

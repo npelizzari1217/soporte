@@ -13,6 +13,7 @@ const CLIENTE_UNO = {
   cuit: null,
   dbName: "tenant_c1",
   activo: true,
+  csatHabilitado: false,
   correo: { configurado: false, verificadoAt: null },
 };
 
@@ -23,6 +24,7 @@ const CLIENTE_INACTIVO = {
   cuit: null,
   dbName: "tenant_c9",
   activo: false,
+  csatHabilitado: false,
   correo: { configurado: false, verificadoAt: null },
 };
 

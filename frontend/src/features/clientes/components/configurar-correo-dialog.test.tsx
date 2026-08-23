@@ -22,6 +22,7 @@ const CLIENTE: Cliente = {
   cuit: null,
   dbName: "cliente_uno",
   activo: true,
+  csatHabilitado: false,
 };
 
 function buildCorreo(overrides: Partial<ClienteCorreo> = {}): ClienteCorreo {

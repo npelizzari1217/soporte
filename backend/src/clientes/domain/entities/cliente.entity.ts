@@ -127,4 +127,15 @@ export class ClienteEntity extends BaseEntity<ClienteProps> {
     this.props.activo = true;
     this._deletedAt = null;
   }
+
+  /**
+   * Prende/apaga la emisión de encuestas CSAT de este cliente (sdd/csat,
+   * WU10.2). Acción SEPARADA de `editar()` a propósito, mismo criterio que
+   * la configuración de correo (D7): un flag de configuración no comparte
+   * el patch parcial de los datos comerciales.
+   */
+  configurarCsat(habilitado: boolean): void {
+    this.props.csatHabilitado = habilitado;
+    this.touch();
+  }
 }

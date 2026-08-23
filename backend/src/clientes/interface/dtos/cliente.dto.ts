@@ -80,6 +80,24 @@ export interface ClienteResponseDto {
   cuit: string | null;
   dbName: string;
   activo: boolean;
+  /**
+   * Habilita la emisión de encuestas CSAT al cerrar un ticket de este
+   * cliente (sdd/csat). A diferencia de la contraseña de correo, no es un
+   * secreto — se incluye directo en el listado (`GET /clientes`) sin
+   * necesitar un detalle aparte, así el checkbox de
+   * `ConfigurarCsatDialog` arranca prellenado con el valor real.
+   */
+  csatHabilitado: boolean;
+}
+
+/**
+ * Body de `PATCH /clientes/:id/csat` (prender/apagar CSAT de un cliente,
+ * sdd/csat WU10.2). Ruta SEPARADA de `PATCH /clientes/:id` (edición
+ * comercial), mismo criterio que `/correo` (D7).
+ */
+export class ConfigurarCsatClienteDto {
+  @IsBoolean()
+  habilitado!: boolean;
 }
 
 /**

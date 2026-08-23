@@ -25,6 +25,16 @@ import { PresetRolNoDefinidoError } from './errors/auth.errors';
  * #2217, así que esa migración de una sola vez no puede conocerlo — no hay
  * SQL que "actualizar" para igualarla. G7 sigue vigente para el resto del
  * set: cualquier otra divergencia futura entre preset y backfill es un bug.
+ *
+ * ACTUALIZACIÓN (sdd/csat WU-10.1): el hueco de datos que dejaba esta
+ * excepción — ningún usuario preexistente tenía la celda — quedó cerrado por
+ * una migración de backfill APARTE (`20260824120000_backfill_csat_lectura_permiso`,
+ * ver `backfill-csat-lectura.integration.spec.ts`), no por editar el backfill
+ * histórico de #2217. La excepción documentada acá sigue siendo verdad al pie
+ * de la letra (ese backfill puntual nunca va a conocer CSAT), pero ya no deja
+ * a nadie sin el permiso: el nuevo backfill cubre exactamente los mismos
+ * TECNICO/COLABORADOR activos, solo que con una migración propia y con su
+ * propia paridad verificada contra este preset (mismos roles, misma celda).
  */
 const CELDAS_TECNICO_ESPERADAS = [
   'TICKETS:ALTAS',

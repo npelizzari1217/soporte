@@ -52,10 +52,12 @@ import { ConfigurarCorreoClienteUseCase } from '../../application/use-cases/conf
 import { QuitarCorreoClienteUseCase } from '../../application/use-cases/quitar-correo-cliente.use-case';
 import { ProbarCorreoClienteUseCase } from '../../application/use-cases/probar-correo-cliente.use-case';
 import { VerCorreoClienteUseCase } from '../../application/use-cases/ver-correo-cliente.use-case';
+import { ConfigurarCsatClienteUseCase } from '../../application/use-cases/configurar-csat-cliente.use-case';
 import {
   ClienteCorreoResponseDto,
   ClienteListItemResponseDto,
   ConfigurarCorreoClienteDto,
+  ConfigurarCsatClienteDto,
   CreateClienteDto,
   UpdateClienteDto,
   ClienteResponseDto,
@@ -84,6 +86,7 @@ function toResponseDto(cliente: ClienteEntity): ClienteResponseDto {
     cuit: cliente.cuit,
     dbName: cliente.dbName,
     activo: cliente.activo,
+    csatHabilitado: cliente.csatHabilitado,
   };
 }
 
@@ -165,6 +168,7 @@ export class ClientesController {
     private readonly quitarCorreoClienteUseCase: QuitarCorreoClienteUseCase,
     private readonly probarCorreoClienteUseCase: ProbarCorreoClienteUseCase,
     private readonly verCorreoClienteUseCase: VerCorreoClienteUseCase,
+    private readonly configurarCsatClienteUseCase: ConfigurarCsatClienteUseCase,
   ) {}
 
   /**
@@ -375,5 +379,31 @@ export class ClientesController {
     }
 
     return toCorreoResponseDto(result.getValue());
+  }
+
+  /**
+   * PATCH /clientes/:id/csat
+   * Prende o apaga la emisión de encuestas CSAT de un cliente (sdd/csat,
+   * WU10.2). Ruta SEPARADA de `PATCH /clientes/:id` (edición comercial),
+   * mismo criterio que `/correo` (D7). Solo ROOT.
+   * @returns 200 + ClienteResponseDto con el nuevo valor de `csatHabilitado`
+   * @throws 404 NotFoundException si el cliente no existe
+   */
+  @Patch(':id/csat')
+  @HttpCode(HttpStatus.OK)
+  async configurarCsat(
+    @Param('id') id: string,
+    @Body() dto: ConfigurarCsatClienteDto,
+  ): Promise<ClienteResponseDto> {
+    const result = await this.configurarCsatClienteUseCase.execute({
+      clienteId: id,
+      habilitado: dto.habilitado,
+    });
+
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+
+    return toResponseDto(result.getValue());
   }
 }

@@ -14,6 +14,15 @@ solicitó el ticket con un link para calificar la atención: un puntaje de 1 a
 5 estrellas y, opcionalmente, un comentario. No hace falta iniciar sesión
 para responder — el link alcanza por sí solo.
 
+## Cómo se habilita para un cliente
+
+La encuesta viene **apagada por defecto** para cada cliente nuevo — hay que
+prenderla explícitamente. Eso lo hace quien administra la plataforma (ROOT),
+no cada cliente por su cuenta: desde **Admin > Clientes**, con el botón
+**Encuesta** en la fila del cliente, tildando "Encuesta de satisfacción
+habilitada" y guardando. Mientras esté apagada, ningún ticket cerrado de ese
+cliente envía el mail — no es que falle, es que no está prendida.
+
 ### El link es de un solo uso y vence a los 30 días
 
 Una vez que se envía la respuesta, ese link deja de servir. Y aunque nunca
