@@ -101,6 +101,7 @@ type DependenciasControlador = {
   listarTecnicos: MockUseCase;
   asignarEnProceso: MockUseCase;
   exportarTickets: MockUseCase;
+  obtenerCsatTicket: MockUseCase;
 };
 
 type ControladorDeTest = DependenciasControlador & {
@@ -142,6 +143,8 @@ function buildController(overrides: Partial<DependenciasControlador> = {}): Cont
     listarTecnicos: overrides.listarTecnicos ?? stub(),
     asignarEnProceso: overrides.asignarEnProceso ?? stub(),
     exportarTickets: overrides.exportarTickets ?? stub(),
+    // WU9.2: default sin dato CSAT — la mayoría de los tests no ejercitan findOne.
+    obtenerCsatTicket: overrides.obtenerCsatTicket ?? { execute: vi.fn().mockResolvedValue(null) },
   };
   // `findAll`/`exportar` resuelven nombres batch de los items — con lista vacía
   // devuelve un Map vacío sin N+1.
@@ -160,6 +163,7 @@ function buildController(overrides: Partial<DependenciasControlador> = {}): Cont
     deps.listarTecnicos as unknown as Ctor[9], // listarTecnicosAsignablesUseCase
     deps.asignarEnProceso as unknown as Ctor[10], // asignarYPonerEnProcesoUseCase
     deps.exportarTickets as unknown as Ctor[11], // exportarTicketsUseCase
+    deps.obtenerCsatTicket as unknown as Ctor[12], // obtenerCsatTicketUseCase
   );
   return { controller, ...deps, usuarioMasterChecker };
 }
@@ -485,6 +489,97 @@ describe('TicketsController.exportar — GET /tickets/export (sdd/exportar-lista
   it('declara @RequiereAcciones("TICKETS:LECTURA")', () => {
     const meta = Reflect.getMetadata(ACCIONES_KEY, TicketsController.prototype.exportar);
     expect(meta).toEqual(['TICKETS:LECTURA']);
+  });
+});
+
+describe('TicketsController.findOne — CSAT en el detalle (WU9.2, ADR-C5)', () => {
+  function makeTicketAsignado(asignadoId: string | null): TicketEntity {
+    const ticket = TicketEntity.create(
+      {
+        numero: 'SOP-2026-0002',
+        titulo: 'Ticket con CSAT',
+        descripcion: null,
+        tipoId: 'ti1',
+        estadoId: 'e-cerrado',
+        prioridadId: 'p1',
+        cicloId: null,
+        ticketReferenciaId: null,
+        solicitanteId: 'u-sol',
+      },
+      'ticket-csat-1',
+    );
+    ticket.assignTo(asignadoId);
+    return ticket;
+  }
+
+  const TECNICO_ASIGNADO: JwtPayload = payloadDeTest({
+    sub: 'tecnico-1',
+    cliente_id: 'cliente-1',
+    rol: 'TECNICO',
+    permisos: ['TICKETS:LECTURA', 'TICKETS:VER_TODOS', 'CSAT:LECTURA'],
+    cliente_nombre: 'Cliente 1',
+    modulos: ['SOPORTE'],
+  });
+
+  it('con CSAT:LECTURA y el ticket asignado al actor, delega ticketId/asignadoId/actorRol y arma la respuesta con puntaje/comentario', async () => {
+    const ticket = makeTicketAsignado('tecnico-1');
+    const obtenerTicket = { execute: vi.fn().mockResolvedValue(Result.ok(ticket)) };
+    const obtenerCsatTicket = {
+      execute: vi.fn().mockResolvedValue({ puntaje: 5, comentario: 'Todo perfecto' }),
+    };
+    const { controller } = buildController({ obtenerTicket, obtenerCsatTicket });
+
+    const respuesta = await controller.findOne(TECNICO_ASIGNADO, 'ticket-csat-1');
+
+    expect(obtenerCsatTicket.execute).toHaveBeenCalledWith({
+      ticketId: 'ticket-csat-1',
+      asignadoId: 'tecnico-1',
+      actorId: 'tecnico-1',
+      actorRol: 'TECNICO',
+      tieneCsatLectura: true,
+    });
+    expect(respuesta.csatPuntaje).toBe(5);
+    expect(respuesta.csatComentario).toBe('Todo perfecto');
+  });
+
+  it('cuando el use case de CSAT devuelve null (sin permiso o TECNICO ajeno), la respuesta NO trae csatPuntaje/csatComentario', async () => {
+    const ticket = makeTicketAsignado('otro-tecnico');
+    const obtenerTicket = { execute: vi.fn().mockResolvedValue(Result.ok(ticket)) };
+    const obtenerCsatTicket = { execute: vi.fn().mockResolvedValue(null) };
+    const { controller } = buildController({ obtenerTicket, obtenerCsatTicket });
+
+    const respuesta = await controller.findOne(TECNICO_ASIGNADO, 'ticket-csat-1');
+
+    expect('csatPuntaje' in respuesta).toBe(false);
+    expect('csatComentario' in respuesta).toBe(false);
+  });
+
+  /**
+   * [CRITICAL][WU12.1] Regresión del gap del segundo verify: los dos tests de
+   * arriba prueban solo la dirección positiva (TECNICO_ASIGNADO CON
+   * CSAT:LECTURA) o stubean `obtenerCsatTicket` de forma que `puedeEjecutar`
+   * nunca corre. Ninguno distingue "lo calculó bien" de "está cableado a
+   * true". Espejo exacto de `dashboard.controller.spec.ts` D2.
+   */
+  it('sin CSAT:LECTURA en permisos, delega tieneCsatLectura=false', async () => {
+    const TECNICO_SIN_CSAT: JwtPayload = payloadDeTest({
+      sub: 'tecnico-1',
+      cliente_id: 'cliente-1',
+      rol: 'TECNICO',
+      permisos: ['TICKETS:LECTURA', 'TICKETS:VER_TODOS'],
+      cliente_nombre: 'Cliente 1',
+      modulos: ['SOPORTE'],
+    });
+    const ticket = makeTicketAsignado('tecnico-1');
+    const obtenerTicket = { execute: vi.fn().mockResolvedValue(Result.ok(ticket)) };
+    const obtenerCsatTicket = { execute: vi.fn().mockResolvedValue(null) };
+    const { controller } = buildController({ obtenerTicket, obtenerCsatTicket });
+
+    await controller.findOne(TECNICO_SIN_CSAT, 'ticket-csat-1');
+
+    expect(obtenerCsatTicket.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ tieneCsatLectura: false }),
+    );
   });
 });
 

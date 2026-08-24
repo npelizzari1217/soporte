@@ -10,12 +10,16 @@
  *
  * Correo (D7, sdd/configuracion-correo-por-cliente): diálogo SEPARADO de
  * Editar — el backend separa `/correo` en rutas propias a propósito.
+ *
+ * Encuesta (sdd/csat, WU10.2): mismo criterio, diálogo SEPARADO detrás de
+ * `/csat`.
  */
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { VerClienteDialog } from "./ver-cliente-dialog";
 import { EditarClienteDialog } from "./editar-cliente-dialog";
 import { ConfigurarCorreoDialog } from "./configurar-correo-dialog";
+import { ConfigurarCsatDialog } from "./configurar-csat-dialog";
 import { useActivarCliente, useDesactivarCliente } from "../hooks/use-clientes-mutations";
 import type { Cliente } from "../types";
 
@@ -32,6 +36,7 @@ export function ClienteAcciones({ cliente }: ClienteAccionesProps) {
       <VerClienteDialog cliente={cliente} />
       <EditarClienteDialog cliente={cliente} />
       <ConfigurarCorreoDialog cliente={cliente} />
+      <ConfigurarCsatDialog cliente={cliente} />
       {cliente.activo ? (
         <ConfirmDialog
           trigger={

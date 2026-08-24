@@ -28,6 +28,7 @@ export const ETIQUETAS_MODULOS = {
   // quedó para más adelante, cuando haya historial que la alimente.
   KB: "Ayuda",
   DASHBOARD: "Dashboard",
+  CSAT: "Satisfacción",
 } as const satisfies Record<Modulo, string>;
 
 /** Nombre legible de un módulo, el mismo que muestra el menú lateral. */

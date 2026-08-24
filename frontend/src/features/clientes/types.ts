@@ -12,6 +12,12 @@ export interface Cliente {
   cuit: string | null;
   dbName: string;
   activo: boolean;
+  /**
+   * Habilita la emisión de encuestas CSAT al cerrar un ticket de este
+   * cliente (sdd/csat). No es un secreto — viaja siempre en `Cliente`,
+   * a diferencia de la config de correo que necesita un endpoint aparte.
+   */
+  csatHabilitado: boolean;
 }
 
 export interface CreateClienteDto {
@@ -81,4 +87,9 @@ export interface ConfigurarCorreoDto {
   secure: boolean;
   from: string;
   password?: string;
+}
+
+/** Body de `PATCH /clientes/:id/csat` — espejo de `ConfigurarCsatClienteDto` (backend, sdd/csat WU10.2). */
+export interface ConfigurarCsatDto {
+  habilitado: boolean;
 }

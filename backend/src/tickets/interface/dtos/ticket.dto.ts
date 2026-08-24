@@ -212,6 +212,13 @@ export interface TicketResponseDto {
   fechaCierre: string | null;
   createdAt: string;
   updatedAt: string;
+  /**
+   * Puntaje (1-5) y comentario de la última respuesta CSAT (WU9.2,
+   * ADR-C5/ADR-C8). AUSENTES sin `CSAT:LECTURA`, o si el TECNICO no tuvo el
+   * ticket asignado, o si el ticket no tiene ninguna respuesta registrada.
+   */
+  csatPuntaje?: number;
+  csatComentario?: string | null;
 }
 
 /**
@@ -238,10 +245,15 @@ export interface ListTicketsResponseDto {
  * unificado. `nombres` es OPCIONAL (sdd/beta-frontend item 2) — si el
  * caller no resolvió el batch de nombres (o el usuario no se encontró), los
  * 4 campos de nombre viajan `null` (aditivo, retrocompatible).
+ *
+ * `csat` (WU9.2, ADR-C5) es OPCIONAL/`null` — cuando no viene, `csatPuntaje`/
+ * `csatComentario` quedan AUSENTES del objeto (no `undefined`: ausentes),
+ * mismo criterio de gateo por payload que `MetricasResult` (WU9.1).
  */
 export function toTicketResponseDto(
   ticket: TicketEntity,
   nombres?: NombresResueltos,
+  csat?: { puntaje: number; comentario: string | null } | null,
 ): TicketResponseDto {
   return {
     id: ticket.id,
@@ -264,6 +276,7 @@ export function toTicketResponseDto(
     fechaCierre: ticket.fechaCierre ? ticket.fechaCierre.toISOString() : null,
     createdAt: ticket.createdAt.toISOString(),
     updatedAt: ticket.updatedAt.toISOString(),
+    ...(csat ? { csatPuntaje: csat.puntaje, csatComentario: csat.comentario } : {}),
   };
 }
 

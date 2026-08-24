@@ -10,6 +10,13 @@ export interface ClienteProps {
   cuit: string | null;
   dbName: string;
   activo: boolean;
+  /**
+   * Habilita la emisión de encuestas CSAT al cerrar un ticket de este
+   * cliente (sdd/csat, WU1). `ResolverEncuestaTokenService` (ADR-C1) la lee
+   * del `findById` que ya hace, sin cambios en `IClienteRepository`.
+   * Defaults to false.
+   */
+  csatHabilitado?: boolean;
 }
 
 /**
@@ -36,7 +43,7 @@ export class ClienteEntity extends BaseEntity<ClienteProps> {
    * Genera UUIDv7 internamente (via BaseEntity) si no se provee id.
    */
   static create(props: ClienteProps, id?: string): ClienteEntity {
-    return new ClienteEntity(props, id);
+    return new ClienteEntity({ ...props, csatHabilitado: props.csatHabilitado ?? false }, id);
   }
 
   /**
@@ -51,7 +58,10 @@ export class ClienteEntity extends BaseEntity<ClienteProps> {
     updatedAt: Date,
     deletedAt: Date | null,
   ): ClienteEntity {
-    const entity = new ClienteEntity(props, id);
+    const entity = new ClienteEntity(
+      { ...props, csatHabilitado: props.csatHabilitado ?? false },
+      id,
+    );
     (entity as unknown as { _createdAt: Date })._createdAt = createdAt;
     (entity as unknown as { _updatedAt: Date })._updatedAt = updatedAt;
     entity._deletedAt = deletedAt;
@@ -78,6 +88,11 @@ export class ClienteEntity extends BaseEntity<ClienteProps> {
 
   get activo(): boolean {
     return this.props.activo;
+  }
+
+  /** Ver `ClienteProps.csatHabilitado`. Defaults to false. */
+  get csatHabilitado(): boolean {
+    return this.props.csatHabilitado ?? false;
   }
 
   // ─── Comportamiento de dominio ─────────────────────────────────────────
@@ -111,5 +126,16 @@ export class ClienteEntity extends BaseEntity<ClienteProps> {
   reactivate(): void {
     this.props.activo = true;
     this._deletedAt = null;
+  }
+
+  /**
+   * Prende/apaga la emisión de encuestas CSAT de este cliente (sdd/csat,
+   * WU10.2). Acción SEPARADA de `editar()` a propósito, mismo criterio que
+   * la configuración de correo (D7): un flag de configuración no comparte
+   * el patch parcial de los datos comerciales.
+   */
+  configurarCsat(habilitado: boolean): void {
+    this.props.csatHabilitado = habilitado;
+    this.touch();
   }
 }

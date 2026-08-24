@@ -79,3 +79,13 @@ nada: el archivo sería tan pesado que no habría con qué abrirlo cómodamente.
 La salida es acotar el pedido combinando filtros — por ejemplo, elegir un
 estado puntual, o buscar por una palabra del título — y repetir la
 exportación las veces que haga falta.
+
+## La encuesta de satisfacción al cerrar
+
+Cuando un ticket pasa a **Cerrado** (y si tu cliente tiene la función
+habilitada), quien lo solicitó recibe automáticamente un mail para calificar
+la atención con estrellas y un comentario opcional — no hace falta que nadie
+la cargue a mano. El puntaje y el comentario, si los hay, se ven en el
+detalle del ticket para quien tenga el permiso `CSAT:LECTURA`. Los detalles
+del link (uso único, vencimiento, qué pasa si se reabre el ticket) están en
+el artículo de [la encuesta de satisfacción](encuesta-satisfaccion).

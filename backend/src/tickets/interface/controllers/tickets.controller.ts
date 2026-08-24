@@ -63,6 +63,7 @@ import {
 import { CrearComentarioUseCase } from '../../application/use-cases/crear-comentario.use-case';
 import { ListarTimelineUseCase } from '../../application/use-cases/listar-timeline.use-case';
 import { ExportarTicketsUseCase } from '../../application/use-cases/exportar-tickets.use-case';
+import { ObtenerCsatTicketUseCase } from '../../../csat/application/use-cases/obtener-csat-ticket.use-case';
 import {
   AsignarTicketDto,
   CreateComentarioDto,
@@ -111,6 +112,8 @@ import {
 
 const ACCION_VER_TODOS = 'TICKETS:VER_TODOS';
 const ACCION_OBSERVAR = 'TICKETS:OBSERVAR';
+/** WU9.2 (ADR-C5): gateo del puntaje/comentario CSAT POR CAMPO, no por decorador. */
+const ACCION_CSAT_LECTURA = 'CSAT:LECTURA';
 
 /** Mapea un `DomainError` de los use cases de tickets a la `HttpException` correspondiente. */
 export function toHttpException(
@@ -182,6 +185,7 @@ export class TicketsController {
     private readonly listarTecnicosAsignablesUseCase: ListarTecnicosAsignablesUseCase,
     private readonly asignarYPonerEnProcesoUseCase: AsignarYPonerEnProcesoUseCase,
     private readonly exportarTicketsUseCase: ExportarTicketsUseCase,
+    private readonly obtenerCsatTicketUseCase: ObtenerCsatTicketUseCase,
   ) {}
 
   /**
@@ -359,6 +363,11 @@ export class TicketsController {
    * GET /tickets/:id
    * Consulta un ticket. Sin `TICKETS:VER_TODOS`, solo si el actor es el
    * solicitante — caso contrario 404 (no revela existencia, T6).
+   *
+   * `csatPuntaje`/`csatComentario` viajan SOLO si el actor tiene
+   * `CSAT:LECTURA` (WU9.2, ADR-C5) Y, si es TECNICO, el ticket le está
+   * asignado ACTUALMENTE (mismo límite conocido que el KPI del dashboard,
+   * ADR-C8) — gateo dentro del payload, sin tocar el decorador de la ruta.
    */
   @Get(':id')
   @RequiereAcciones('TICKETS:LECTURA')
@@ -376,8 +385,17 @@ export class TicketsController {
       throw toHttpException(result.getError());
     }
     const ticket = result.getValue();
-    const nombres = (await this.resolverNombresPorTicket([ticket])).get(ticket.id);
-    return toTicketResponseDto(ticket, nombres);
+    const [nombres, csat] = await Promise.all([
+      this.resolverNombresPorTicket([ticket]).then((porTicket) => porTicket.get(ticket.id)),
+      this.obtenerCsatTicketUseCase.execute({
+        ticketId: ticket.id,
+        asignadoId: ticket.asignadoId,
+        actorId: user.sub,
+        actorRol: user.rol,
+        tieneCsatLectura: puedeEjecutar(user, ACCION_CSAT_LECTURA),
+      }),
+    ]);
+    return toTicketResponseDto(ticket, nombres, csat);
   }
 
   /**

@@ -142,6 +142,45 @@ describe("middleware", () => {
     expect(res.headers.get("location")).not.toMatch(/\/login/);
   });
 
+  // ── Rutas públicas (ADR-C7): el route group (publico) NO alcanza solo ────
+  // El matcher intercepta todo salvo _next/api/archivos-con-extensión; la
+  // única forma de que /encuesta/:token sea accesible sin sesión es una
+  // allowlist explícita ANTES de la lógica de at/rt. Sin ella, un
+  // destinatario del mail cae en un 307 a /login y no puede responder nunca
+  // (bug del proposal original — ver sdd/csat/design ADR-C7).
+
+  it("passes through /encuesta/:token without any cookie (ADR-C7 regression)", async () => {
+    const req = makeRequest("/encuesta/abc123");
+    const res = await middleware(req);
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("location")).toBeNull();
+    expect(mockVerify).not.toHaveBeenCalled();
+  });
+
+  it("still redirects /tickets to /login without cookies (allowlist must stay narrow)", async () => {
+    const req = makeRequest("/tickets");
+    const res = await middleware(req);
+
+    expect(res.status).toBe(307);
+    expect(res.headers.get("location")).toContain("/login");
+  });
+
+  /**
+   * [WU12.4] Fijar el CONTENIDO de RUTAS_PUBLICAS (los dos tests de arriba)
+   * no fija la SEMÁNTICA del operador que lo evalúa. Con `.includes()` en
+   * vez de `.startsWith()`, cualquier ruta que CONTENGA "/encuesta/" en el
+   * medio (no solo al principio) quedaría pública — un agujero real el día
+   * que exista una ruta protegida así.
+   */
+  it("still redirects a protected route that CONTAINS /encuesta/ but doesn't start with it (match must be prefix, not substring)", async () => {
+    const req = makeRequest("/admin/encuesta/plantillas");
+    const res = await middleware(req);
+
+    expect(res.status).toBe(307);
+    expect(res.headers.get("location")).toContain("/login");
+  });
+
   // ── Matcher exclusions ────────────────────────────────────────────────────
 
   it("config.matcher is exported and excludes api/_next/favicon", () => {

@@ -84,6 +84,32 @@ No se implementa "directo" salvo que sea un arreglo mecánico de un archivo ya e
 Esto ANULA la regla global de que SDD se elige solo por pedido explícito o propuesta
 aceptada: en este proyecto es el default, decidido por el usuario el 2026-08-19.
 
+### Cuándo NO corresponde el ciclo completo
+
+Se implementa directo, sin ciclo SDD, **solo** si es un cambio mecánico de un archivo ya
+entendido, **sin diseño pendiente**. En ese caso lo hace el orquestador.
+
+Contar archivos NO es el criterio. El fix C1 de compras (`56e0483`) fue un archivo y un
+guard, y dejó el frontend roto: `ItemCerrarFaltanteDialog` seguía mirando solo
+`cerradoConFaltante`, así que sobre un ítem no aprobado el botón quedaba habilitado y la
+operación fallaba SIEMPRE con 422. Hubo que emitir `07e3013` para repararlo. Un archivo, dos
+capas rotas.
+
+Antes de arrancar, tres preguntas de sí/no:
+
+1. ¿Cambia algo que otra capa espeja? (un guard de dominio, un enum, un contrato de error,
+   un permiso, un schema del front)
+2. ¿Las alternativas difieren en comportamiento observable o en el contrato? Que existan dos
+   formas de escribirlo NO cuenta: casi siempre las hay. Cuenta que las dos formas no hagan
+   lo mismo.
+3. ¿Cambia lo que el usuario ve o hace? (una pantalla, un flujo, el significado de un estado)
+
+**Un solo sí → ciclo SDD completo. Tres noes → lo hace el orquestador.**
+
+Ante la duda, SDD. El costo es asimétrico: equivocarse hacia "directo" cuando había una
+decisión escondida cuesta un ciclo de retrabajo; equivocarse hacia SDD en algo mecánico
+cuesta un rato.
+
 Cada fase la ejecuta su subagente dedicado vía la herramienta Agent, **nunca invocando la
 skill** (las `sdd-*/SKILL.md` traen `delegate_only: true`: si las cargás como skill, sos el
 orquestador y tenés que delegar). El `model` es obligatorio en cada llamada:
@@ -94,10 +120,26 @@ orquestador y tenés que delegar). El `model` es obligatorio en cada llamada:
 | propose | `sdd-propose` | **opus** |
 | spec | `sdd-spec` | sonnet |
 | design | `sdd-design` | **opus** |
-| tasks | `sdd-tasks` | sonnet |
+| tasks | `sdd-tasks` | **opus** |
 | apply | `sdd-apply` | sonnet |
-| verify | `sdd-verify` | sonnet |
-| archive | `sdd-archive` | haiku |
+| verify | `sdd-verify` | **opus** |
+| archive | `sdd-archive` | sonnet |
+
+#### Por qué cada fase corre donde corre (revisión 2026-08-22)
+
+Tres fases cambiaron de modelo. El fundamento sale de revisar dónde aparecieron los
+defectos en los ciclos ya archivados, no de una preferencia.
+
+| Fase | Modelo | Cambio | Por qué |
+|---|---|---|---|
+| explore | sonnet | — | Define el mapa que heredan las fases siguientes. Sin fallos atribuidos. |
+| propose | opus | — | Fase supervisada por vos; se sostiene sola. Candidata a bajar si necesitás presupuesto. |
+| spec | sonnet | — | Sin fallos atribuidos todavía. Pendiente de confirmar si los huecos de `tasks` son de diseño o de requisito no escrito. |
+| design | opus | — | Razona bien. Lo que falla es la estimación (~3×) y la rotura colateral. Se arregla obligándolo a correr typecheck real, no subiendo modelo. |
+| tasks | sonnet → opus | ⬆ | Último punto donde un hueco de design cuesta minutos. El único pase que atrapó CRÍTICOS corrió en opus. Evidencia n=1: aplicar, pero no darlo por medido. |
+| apply | sonnet | — | Su falla (implementación antes del test en archivos grandes) es de disciplina, no de capacidad. Ya corregida en el prompt. |
+| verify | sonnet → opus | ⬆ | Los verify que sirvieron inyectaron mutación y borraron un guard para probar el RED. Eso es razonamiento adversarial, no checklist. |
+| archive | haiku → sonnet | ⬆ | Falla reproducible en dos ciclos. Fase corta: el ahorro no compensa un artefacto que miente. |
 
 `spec` y `design` son el ÚNICO paralelismo declarado: las dos leen el proposal y no dependen
 entre sí. Todo lo demás va en serie — y `apply` en particular **no admite instancias

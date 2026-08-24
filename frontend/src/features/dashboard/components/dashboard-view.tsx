@@ -36,11 +36,15 @@ import { DonutChart } from "@/shared/charts/donut-chart";
 import { GaugeChart } from "@/shared/charts/gauge-chart";
 import { ApiError } from "@/shared/api/types";
 import { notifyError } from "@/shared/lib/toast";
+import { useCan } from "@/shared/hooks/use-can";
 
 const KPI_CARD_COUNT = 6;
 
 export function DashboardView() {
   const [cicloId, setCicloId] = useState<string | undefined>(undefined);
+  // WU9.3: el backend ya gatea csatPromedio/csatRespuestas por payload
+  // (ADR-C5); esta bandera es defensa en profundidad del lado UI.
+  const puedeVerCsat = useCan("CSAT:LECTURA");
 
   const ciclosQuery = useCiclos();
   const metricasQuery = useMetricas(cicloId);
@@ -217,6 +221,26 @@ export function DashboardView() {
               )}
             </CardContent>
           </Card>
+
+          {puedeVerCsat && metricas.csatPromedio !== undefined && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Satisfacción (CSAT)</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {metricas.csatPromedio === null || metricas.csatRespuestas === 0 ? (
+                  <p className="text-sm text-muted-foreground">Sin respuestas todavía.</p>
+                ) : (
+                  <p className="text-2xl font-semibold text-foreground">
+                    {metricas.csatPromedio.toFixed(1)} / 5
+                    <span className="ml-2 text-sm font-normal text-muted-foreground">
+                      ({metricas.csatRespuestas} respuesta{metricas.csatRespuestas === 1 ? "" : "s"})
+                    </span>
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          )}
         </div>
       )}
     </div>

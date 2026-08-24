@@ -25,6 +25,14 @@ export interface MetricasDashboard {
   };
   distribucionPorTipo: { tipoId: string; total: number }[];
   distribucionPorPrioridad: { prioridadId: string; total: number }[];
+  /**
+   * KPI de satisfacción (WU9.2, backend ADR-C5). AUSENTE (no `undefined`
+   * explícito: la clave no viene) sin `CSAT:LECTURA` — el gateo real ya lo
+   * hizo el backend; la UI ADEMÁS lo esconde tras `useCan("CSAT:LECTURA")`
+   * como defensa en profundidad.
+   */
+  csatPromedio?: number | null;
+  csatRespuestas?: number;
 }
 
 /** Un ciclo de gestión del tenant (espejo de `CicloResponseDto`). */

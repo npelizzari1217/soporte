@@ -90,6 +90,7 @@ import { ConfigurarCorreoClienteUseCase } from './application/use-cases/configur
 import { QuitarCorreoClienteUseCase } from './application/use-cases/quitar-correo-cliente.use-case';
 import { ProbarCorreoClienteUseCase } from './application/use-cases/probar-correo-cliente.use-case';
 import { VerCorreoClienteUseCase } from './application/use-cases/ver-correo-cliente.use-case';
+import { ConfigurarCsatClienteUseCase } from './application/use-cases/configurar-csat-cliente.use-case';
 
 // ─── Controllers ─────────────────────────────────────────────────────────────
 import { CicloVigenteController } from './interface/controllers/ciclos-vigentes.controller';
@@ -232,6 +233,11 @@ import { ClientesController } from './interface/controllers/clientes.controller'
         emailConfigRepo: IClienteEmailConfigRepository,
       ) => new VerCorreoClienteUseCase(clienteRepo, emailConfigRepo),
       inject: [CLIENTE_REPOSITORY, CLIENTE_EMAIL_CONFIG_REPOSITORY],
+    },
+    {
+      provide: ConfigurarCsatClienteUseCase,
+      useFactory: (repo: IClienteRepository) => new ConfigurarCsatClienteUseCase(repo),
+      inject: [CLIENTE_REPOSITORY],
     },
     {
       provide: CrearClienteUseCase,

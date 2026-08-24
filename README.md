@@ -162,6 +162,17 @@ backfill existe para evitar.
   multi-tenant de vencimiento de SLA). Registrado vía `ScheduleModule.forRoot()` en
   `sla/sla.module.ts`.
 
+### Dependencias nuevas (módulo CSAT, sdd/csat WU7)
+
+- **`@nestjs/throttler`** — rate limiting del endpoint público de encuesta
+  (`GET`/`POST /publico/encuesta/:token`). `CsatThrottlerGuard` (`csat/infrastructure/guards/`)
+  sobreescribe `getTracker()` para que la clave sea `${x-forwarded-for}:${token}` — el TOKEN
+  es el componente primario, no la IP: todo el frontend habla con el backend a través del
+  proxy BFF (`fetch()` server-side), así que el backend ve una sola IP para todos los
+  usuarios. Registrado vía `ThrottlerModule.forRoot()` DENTRO de `csat.module.ts` (storage
+  en memoria de un solo proceso, deuda anotada para cuando se escale horizontal), y el guard
+  se aplica SOLO en `EncuestaPublicaController` — nunca global.
+
 ### Notificaciones por email (módulo `notificaciones/`, Fase 4 PR-N)
 
 Escucha eventos de dominio ya emitidos (`ticket.estado_cambiado`, `ticket.comentado` público,

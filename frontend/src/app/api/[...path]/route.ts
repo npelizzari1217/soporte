@@ -30,6 +30,16 @@ import { cookieName, COOKIE_AT } from "@/shared/auth/cookies";
  * 401 handling is intentionally NOT special-cased here — `apiFetch`'s
  * single-flight refresh (PR11) reacts to a plain proxied 401 exactly like it
  * would to a direct one.
+ *
+ * `x-forwarded-for` se reenvía SOLO para el prefijo `publico/` (CSAT, WU8,
+ * ADR-C6). Todo el resto de la app habla con el backend a través de este
+ * mismo proxy server-side, así que el backend ve la IP del BFF para TODOS
+ * los usuarios autenticados — un solo cupo compartido no discrimina nada
+ * ahí, y ensanchar el reenvío a rutas autenticadas no aporta nada (el actor
+ * ya está identificado por su sesión). El endpoint público de la encuesta es
+ * el único caso donde no hay sesión y el throttler necesita un discriminador
+ * por IP+token (`CsatThrottlerGuard`). Sin `trust proxy` en el backend: este
+ * header sigue siendo falsificable, no es control de seguridad.
  */
 interface RouteParams {
   params: Promise<{ path: string[] }>;
@@ -44,6 +54,11 @@ async function proxy(request: NextRequest, params: Promise<{ path: string[] }>):
 
   const headers = new Headers();
   if (at) headers.set("authorization", `Bearer ${at}`);
+
+  if (path[0] === "publico") {
+    const xff = request.headers.get("x-forwarded-for");
+    if (xff) headers.set("x-forwarded-for", xff);
+  }
 
   let body: BodyInit | undefined;
   const method = request.method;

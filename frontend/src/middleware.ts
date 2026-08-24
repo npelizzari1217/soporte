@@ -21,8 +21,29 @@ import { NextResponse, type NextRequest } from "next/server";
 import { verifyAccessToken } from "@/shared/auth/verify";
 import { COOKIE_AT, COOKIE_RT, cookieName } from "@/shared/auth/cookies";
 
+/**
+ * Prefijos de rutas públicas, sin sesión (match por prefijo, no exacto).
+ *
+ * ADR-C7 (sdd/csat/design): el route group `(publico)` de Next es
+ * TRANSPARENTE a la URL — no alcanza por sí solo para dejar pasar una ruta.
+ * Sin esta allowlist, `/encuesta/:token` cae en el mismo 307 a `/login` que
+ * cualquier ruta protegida y la encuesta de satisfacción no se puede
+ * responder nunca (el destinatario del mail NUNCA tiene sesión). Angosto a
+ * propósito: una allowlist ancha (p. ej. `/`) dejaría pasar rutas protegidas
+ * reales como `/tickets`.
+ */
+const RUTAS_PUBLICAS = ["/encuesta/"];
+
+function esRutaPublica(pathname: string): boolean {
+  return RUTAS_PUBLICAS.some((prefijo) => pathname.startsWith(prefijo));
+}
+
 export default async function middleware(request: NextRequest): Promise<NextResponse> {
   const { pathname } = request.nextUrl;
+
+  if (esRutaPublica(pathname)) {
+    return NextResponse.next();
+  }
 
   const at = request.cookies.get(cookieName(COOKIE_AT))?.value;
   const rt = request.cookies.get(cookieName(COOKIE_RT))?.value;

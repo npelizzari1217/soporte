@@ -26,6 +26,10 @@ import { TenantGuard } from '../../../auth/infrastructure/guards/tenant.guard';
 import { AccionesGuard } from '../../../auth/infrastructure/guards/acciones.guard';
 import { CurrentUser, RequiereAcciones } from '../../../auth/infrastructure/guards/decorators';
 import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
+import { puedeEjecutar } from '../../../auth/domain/permisos.util';
+
+/** WU9.1 (ADR-C5): gateo del KPI de satisfacción POR CAMPO, no por decorador. */
+const ACCION_CSAT_LECTURA = 'CSAT:LECTURA';
 
 @UseGuards(JwtAuthGuard, TenantGuard, AccionesGuard)
 @RequiereAcciones('DASHBOARD:LECTURA')
@@ -37,6 +41,9 @@ export class DashboardController {
    * GET /dashboard/metricas
    * Snapshot de KPIs del tenant filtrable por ciclo (D1). TECNICO ve solo
    * su propio scope (D2, resuelto en el use case a partir de `user.rol`).
+   * `csatPromedio`/`csatRespuestas` viajan SOLO si el actor tiene
+   * `CSAT:LECTURA` (WU9.1, ADR-C5) — gateo dentro del payload, la ruta
+   * sigue exigiendo únicamente `DASHBOARD:LECTURA`.
    * @throws 403 sin `DASHBOARD:LECTURA` (USUARIO)
    */
   @Get('metricas')
@@ -48,6 +55,7 @@ export class DashboardController {
       actorId: user.sub,
       actorRol: user.rol,
       cicloId: query.ciclo,
+      tieneCsatLectura: puedeEjecutar(user, ACCION_CSAT_LECTURA),
     });
     return toMetricasResponseDto(metricas);
   }
