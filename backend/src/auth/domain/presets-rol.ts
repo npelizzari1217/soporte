@@ -85,6 +85,12 @@ export const PRESETS_ROL: Readonly<Record<string, readonly CodigoAccion[]>> = {
     // aprobar — hoy puede seguir LEYENDO compras (GET solo exige el módulo,
     // no RBAC). "Expandir, no interpretar" preserva ese acceso.
     'COMPRAS:LECTURA',
+    // sdd/preventivo WU-1: el TECNICO es quien atiende el mantenimiento
+    // preventivo (crea y edita planes, ve el historial de generación).
+    'PREVENTIVO:LECTURA',
+    'PREVENTIVO:ALTAS',
+    'PREVENTIVO:MODIFICACION',
+    'PREVENTIVO:BORRADO',
   ],
   // ADMINISTRADOR bypassea vía resolverScope (R2) — no necesita celdas.
   ADMINISTRADOR: [],

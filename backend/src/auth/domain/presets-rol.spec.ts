@@ -35,6 +35,11 @@ import { PresetRolNoDefinidoError } from './errors/auth.errors';
  * a nadie sin el permiso: el nuevo backfill cubre exactamente los mismos
  * TECNICO/COLABORADOR activos, solo que con una migración propia y con su
  * propia paridad verificada contra este preset (mismos roles, misma celda).
+ *
+ * ACTUALIZACIÓN (sdd/preventivo WU-1): mismo criterio para `PREVENTIVO:*`
+ * (los 4 pares piso) — módulo nuevo, backfill propio
+ * (`20260825120100_backfill_preventivo_permisos`), y SOLO para TECNICO (a
+ * diferencia de CSAT, COLABORADOR no lleva este módulo — ver ADR-PV6).
  */
 const CELDAS_TECNICO_ESPERADAS = [
   'TICKETS:ALTAS',
@@ -62,6 +67,10 @@ const CELDAS_TECNICO_ESPERADAS = [
   'DASHBOARD:LECTURA',
   'COMPRAS:LECTURA',
   'CSAT:LECTURA',
+  'PREVENTIVO:LECTURA',
+  'PREVENTIVO:ALTAS',
+  'PREVENTIVO:MODIFICACION',
+  'PREVENTIVO:BORRADO',
 ].sort();
 
 describe('PRESETS_ROL', () => {

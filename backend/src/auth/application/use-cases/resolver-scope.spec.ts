@@ -420,7 +420,7 @@ describe('resolverScope (WU-7.1 — matriz de permisos)', () => {
       expect(result.getValue().modulos).toEqual(['TICKETS', 'KB']);
     });
 
-    it('token master (clienteId null, root) → los 7 módulos del catálogo, sin duplicados', async () => {
+    it('token master (clienteId null, root) → los 8 módulos del catálogo, sin duplicados', async () => {
       const result = await resolverScope(
         { usuarioId: 'root-1', isGlobalAdmin: true },
         null,
@@ -430,7 +430,7 @@ describe('resolverScope (WU-7.1 — matriz de permisos)', () => {
       );
 
       expect(result.getValue().modulos).toEqual(MODULOS_DE_BYPASS);
-      expect(result.getValue().modulos).toHaveLength(7);
+      expect(result.getValue().modulos).toHaveLength(8);
     });
   });
 });

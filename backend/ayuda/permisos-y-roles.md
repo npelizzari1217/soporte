@@ -14,8 +14,8 @@ una cosa distinta.
 
 Cada persona tiene, dentro de cada cliente, una **matriz de permisos**: una
 grilla donde cada fila es un módulo (Tickets, Compras, Edilicia, Equipos, Ayuda,
-Dashboard, Satisfacción) y cada casilla es una acción sobre ese módulo. Lo que
-la persona puede hacer sale de esa grilla y de nada más.
+Dashboard, Satisfacción, Preventivo) y cada casilla es una acción sobre ese
+módulo. Lo que la persona puede hacer sale de esa grilla y de nada más.
 
 En este artículo los permisos se escriben como `MÓDULO:ACCIÓN` — por ejemplo
 `COMPRAS:APROBACION` — porque es como los identifica el sistema. En la pantalla
@@ -107,6 +107,26 @@ tenés que hacer nada: se le agregó una única vez a todos los que ya estaban
 activos con ese rol, con el mismo criterio que si se hubieran creado hoy. Si
 de todas formas alguien no ve los datos de la encuesta, revisá su casilla en
 la grilla — puede haberla desmarcado una edición manual posterior.
+
+## El módulo Preventivo (`PREVENTIVO:*`)
+
+La fila **Preventivo** gobierna el mantenimiento preventivo programado: los
+planes de mantenimiento recurrente (por equipo o por ubicación) y los tickets
+que se generan solos cuando vence cada ciclo. Tiene las cuatro casillas
+estándar, sin extras:
+
+| Casilla | Habilita |
+|---|---|
+| `LECTURA` | Ver los planes y su historial de generación |
+| `ALTAS` | Crear planes nuevos |
+| `MODIFICACION` | Editar un plan existente (cadencia, objetivo, responsable) |
+| `BORRADO` | Dar de baja un plan (deja de generar, no borra lo ya generado) |
+
+Por plantilla, las cuatro casillas vienen marcadas de entrada para **Técnico**
+al crear el usuario. Ningún otro rol las trae — ni siquiera Colaborador, a
+diferencia de otros módulos como Satisfacción. Si tu Técnico venía de antes de
+que este módulo existiera, no tenés que hacer nada: se le agregaron las cuatro
+casillas una única vez a todos los que ya estaban activos con ese rol.
 
 ## Dos detalles prácticos
 
