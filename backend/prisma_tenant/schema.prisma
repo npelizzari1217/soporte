@@ -95,7 +95,8 @@ model Prioridad {
   updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt DateTime? @map("deleted_at") @db.Timestamptz
 
-  tickets Ticket[]
+  tickets          Ticket[]
+  planesPreventivo PlanPreventivo[]
 
   @@map("prioridades")
 }
@@ -257,6 +258,10 @@ model Ticket {
   ticketEdilicia        TicketEdilicia?
   ticketSoporte         TicketSoporte?
   encuestasSatisfaccion EncuestaSatisfaccion[]
+  /// Back-relation opcional: NO todo ticket nace de un plan preventivo — la
+  /// mayoría son altas manuales. Posible gracias al UNIQUE sobre
+  /// preventivo_generacion.ticket_id (sdd/preventivo, WU-2).
+  generacionPreventivo  PreventivoGeneracion?
 
   @@index([tipoId])
   @@index([estadoId])
@@ -565,9 +570,10 @@ model EquipoInformatico {
   updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt          DateTime? @map("deleted_at") @db.Timestamptz
 
-  componentes ComponenteEquipo[]
-  archivos    ArchivoEquipo[]
-  tickets     TicketSoporte[]
+  componentes      ComponenteEquipo[]
+  archivos         ArchivoEquipo[]
+  tickets          TicketSoporte[]
+  planesPreventivo PlanPreventivo[]
 
   @@map("equipos_informaticos")
 }
@@ -788,4 +794,95 @@ model OperacionCompra {
   @@index([compraId, createdAt])
   @@index([itemCompraId])
   @@map("operaciones_compra")
+}
+
+// ─── PREVENTIVO (sdd/preventivo, WU-2) ─────────────────────────────────────
+//
+// PlanPreventivo: cadencia declarada una vez, objetivo excluyente (equipo XOR
+// ubicación), responsable que oficia de solicitante del ticket MANTENIMIENTO
+// generado. La AUTORIDAD del objetivo excluyente es el dominio
+// (`PlanPreventivoEntity.create()`); el CHECK de abajo es backstop (ADR-PV1,
+// mismo criterio que el CSAT).
+//
+// intervalo_valor/intervalo_unidad + fecha_inicio: la cadencia se expresa
+// como un desplazamiento fijo desde un ancla INMUTABLE. proxima_ejecucion_en
+// es el puntero que el barrido consulta y avanza — SIEMPRE derivado de
+// fecha_inicio + k×cadencia, NUNCA de now() ni encadenado desde el ciclo
+// anterior (ADR-PV2: encadenar acumula deriva y rompe el fin de mes).
+//
+// responsable_id: soft ref → master.usuarios.id. Sin FK cross-DB (cada
+// tenant es una base física distinta) — igual criterio que solicitante_id de
+// Ticket.
+//
+// activo=false (o soft delete) frena la generación de ciclos futuros sin
+// borrar lo ya generado (tickets y filas de preventivo_generacion quedan
+// intactos).
+model PlanPreventivo {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  titulo             String    @db.VarChar(255)
+  instrucciones      String?   @db.Text
+  /// FK real. Excluyente con `ubicacion` — CHECK planes_preventivo_objetivo_check (ADR-PV1).
+  equipoId           String?   @map("equipo_id") @db.Uuid
+  /// Texto libre normalizado a MAYÚSCULA en la capa de aplicación — mismo
+  /// criterio que equipos_informaticos.ubicacion. Excluyente con `equipoId`.
+  ubicacion          String?   @db.VarChar(255)
+  prioridadId        String    @map("prioridad_id") @db.Uuid
+  /// Soft ref → master.usuarios.id. Solicitante/autor del ticket que genera el barrido.
+  responsableId      String    @map("responsable_id") @db.Uuid
+  /// CHECK (intervalo_valor > 0).
+  intervaloValor     Int       @map("intervalo_valor")
+  /// CHECK (intervalo_unidad IN ('DIAS','MESES')).
+  intervaloUnidad    String    @map("intervalo_unidad") @db.VarChar(10)
+  /// Ancla INMUTABLE del cálculo de ciclos. Nunca se recalcula a partir de now().
+  fechaInicio        DateTime  @map("fecha_inicio") @db.Date
+  /// Puntero que el barrido consulta (índice parcial) y avanza tras cada ciclo procesado.
+  proximaEjecucionEn DateTime  @map("proxima_ejecucion_en") @db.Date
+  activo             Boolean   @default(true)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt          DateTime? @map("deleted_at") @db.Timestamptz
+
+  equipo       EquipoInformatico?     @relation(fields: [equipoId], references: [id])
+  prioridad    Prioridad              @relation(fields: [prioridadId], references: [id])
+  generaciones PreventivoGeneracion[]
+
+  /// Parcial WHERE activo AND deleted_at IS NULL — exactamente la query del cron (ADR-PV2/PV3).
+  @@index([proximaEjecucionEn], map: "planes_preventivo_proxima_ejecucion_idx")
+  /// Parcial WHERE equipo_id IS NOT NULL — planes de un equipo (ficha + baja del equipo).
+  @@index([equipoId], map: "planes_preventivo_equipo_id_idx")
+  @@map("planes_preventivo")
+}
+
+// PreventivoGeneracion: fila de auditoría de UN ciclo de UN plan. HARD
+// DELETE, sin updated_at ni deleted_at — es un HECHO registrado (qué pasó
+// con este ciclo), no una opinión editable (mismo criterio que
+// reparacion_compra).
+//
+// `resultado` es un catálogo cerrado de 4 códigos. 'RESERVADO' es
+// TRANSITORIO: existe solo mientras la transacción del ciclo está en vuelo
+// (ADR-PV2) — nunca debe verse committeado; el INSERT ON CONFLICT DO NOTHING
+// que la crea es la primera sentencia de la transacción, cerrando la ventana
+// de carrera de dos corridas concurrentes del mismo ciclo.
+//
+// UNIQUE(plan_id, fecha_programada) es la clave de idempotencia real
+// (ADR-PV2) — el backstop de UNIQUE(ticket_id) evita que un mismo ticket
+// quede referenciado por dos filas.
+model PreventivoGeneracion {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  planId          String   @map("plan_id") @db.Uuid
+  /// Derivada SIEMPRE de fecha_inicio + k×cadencia del plan. Nunca de now().
+  fechaProgramada DateTime @map("fecha_programada") @db.Date
+  /// CHECK preventivo_generacion_resultado_check IN ('RESERVADO','GENERADO','SALTEADO_PENDIENTE','SALTEADO_ATRASO').
+  resultado       String   @db.VarChar(24)
+  /// NOT NULL ⟺ resultado='GENERADO' — CHECK preventivo_generacion_ticket_coherencia_check.
+  ticketId        String?  @unique @map("ticket_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  plan   PlanPreventivo @relation(fields: [planId], references: [id])
+  ticket Ticket?        @relation(fields: [ticketId], references: [id])
+
+  /// UNIQUE — clave de idempotencia (ADR-PV2). Su prefijo izquierdo (plan_id)
+  /// cubre el listado de generaciones por plan: NO se agrega índice suelto.
+  @@unique([planId, fechaProgramada], map: "preventivo_generacion_plan_fecha_key")
+  @@map("preventivo_generacion")
 }
