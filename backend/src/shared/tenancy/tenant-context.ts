@@ -14,6 +14,19 @@ export interface TenantContextData {
   dbName: string;
   /** UUID del cliente en la DB master (master.clientes.id). */
   clienteId: string;
+  /**
+   * `true` cuando `prismaClient` es un `Prisma.TransactionClient` (re-bindeado
+   * por `PrismaTenantTransactionRunner.run()` al abrir una transacción).
+   *
+   * Un `TransactionClient` NO expone `$transaction` (deny-list de Prisma):
+   * llamado con el cast que usaba `run()`, revienta en runtime con
+   * `TypeError`, no al compilar. Este flag es lo que hace a `run()`
+   * re-entrante — si ya está marcado, un `run()` anidado participa de la
+   * transacción en curso en vez de intentar abrir una nueva.
+   *
+   * Ref: sdd/preventivo/design ADR-PV5, sdd/preventivo/tasks WU-0 (0.1/0.2).
+   */
+  enTransaccion?: boolean;
 }
 
 /**
