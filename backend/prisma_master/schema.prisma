@@ -433,3 +433,63 @@ model KbArticulo {
   @@index([visibleParaSolicitante])
   @@map("kb_articulos")
 }
+
+// ─── CALENDARIO_LABORAL_DIAS (calendario laboral global, sdd/sla-habil) ──────
+//
+// UNA sola configuración compartida por todos los tenants: el SLA se cuenta
+// en horas hábiles y el horario laboral es el mismo sin importar el cliente
+// (ADR-1, sdd/sla-habil/design). Vive en MASTER por el mismo motivo que
+// `kb_articulos`: un dato genuinamente global no se duplica por tenant.
+//
+// Tabla de 7 FILAS FIJAS, sembradas por la migración `seed_calendario_laboral_default`
+// — el ABM (WU-6) solo hace UPDATE, nunca INSERT ni DELETE. Elimina de raíz el
+// caso "falta la fila del jueves".
+//
+// `diaSemana` 0..6 = domingo..sábado, mismo criterio que `Date.getUTCDay()`.
+// `aperturaMinuto`/`cierreMinuto` en minutos desde la medianoche local,
+// AMBOS NULL = día cerrado. La ventana es SEMIABIERTA `[apertura, cierre)`:
+// el instante de cierre ya es fuera de horario (REQ-6).
+//
+// El invariante (ambos NULL, o ambos no-NULL con apertura < cierre) se
+// enforcea con un CHECK raw SQL en la migración — Prisma no expresa CHECK en
+// el schema declarativo. Ver `calendario_laboral_dias_ventana_check`.
+//
+// ABM (edición) ROOT-only, fuera de la matriz de permisos por cliente
+// (ADR-5): se implementa en WU-6/WU-7 — acá solo el modelo.
+
+model CalendarioLaboralDia {
+  diaSemana      Int      @id @map("dia_semana") @db.SmallInt
+  aperturaMinuto Int?     @map("apertura_minuto") @db.SmallInt
+  cierreMinuto   Int?     @map("cierre_minuto") @db.SmallInt
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@map("calendario_laboral_dias")
+}
+
+// ─── FERIADOS (feriados de día completo, sdd/sla-habil) ──────────────────────
+//
+// Cada fila = un día completo cerrado para el cálculo de SLA (REQ-2), sin
+// importar el día de semana en que caiga. Global, igual que el calendario.
+//
+// TRAMPA DE `@db.Date`: Prisma devuelve esta columna como MEDIANOCHE UTC del
+// día calendario. Aplicarle `desplazarAArgentina` (shared/domain/zona-horaria-argentina.ts)
+// CORRE EL DÍA PARA ATRÁS (cae 21:00 del día anterior). El mapper que lea esta
+// columna (WU-4, `prisma-calendario-laboral.mapper.ts`) DEBE leer los
+// componentes UTC crudos (`getUTCFullYear/getUTCMonth/getUTCDate`) para armar
+// la clave `'YYYY-MM-DD'` — nunca aplicar el offset argentino acá. Ver
+// ADR-4 en sdd/sla-habil/design y el hallazgo #2542.
+//
+// El `@unique` en `fecha` ya sirve de índice de rango — sin índice adicional.
+
+model Feriado {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// @db.Date: Prisma la devuelve como medianoche UTC — ver nota arriba. NO
+  /// aplicar `desplazarAArgentina` a este campo.
+  fecha       DateTime @unique @db.Date
+  descripcion String   @db.VarChar(200)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@map("feriados")
+}
