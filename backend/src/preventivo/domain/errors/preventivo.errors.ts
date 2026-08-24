@@ -52,3 +52,19 @@ export class UnidadIntervaloInvalidaError extends DomainError {
     super(`La unidad de intervalo "${unidadRecibida}" no es válida: debe ser DIAS o MESES.`);
   }
 }
+
+/**
+ * PlanNoEncontradoError — el plan de mantenimiento preventivo con el id
+ * indicado no existe (o fue soft-deleted).
+ * → HTTP 404 en la capa de presentación.
+ *
+ * Ref spec: sdd/preventivo/spec, Requirement "Baja de plan frena generación
+ * sin borrar historial". Tarea: WU-4 (4.2).
+ */
+export class PlanNoEncontradoError extends DomainError {
+  readonly code = 'PREVENTIVO_PLAN_NO_ENCONTRADO';
+
+  constructor(id: string) {
+    super(`Plan de mantenimiento preventivo con id "${id}" no encontrado o fue eliminado.`);
+  }
+}

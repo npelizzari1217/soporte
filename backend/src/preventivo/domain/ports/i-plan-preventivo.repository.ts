@@ -26,6 +26,15 @@ export interface IPlanPreventivoRepository {
    * proxima_ejecucion_en <= hoy` (usa el índice parcial de WU-2).
    */
   findVencibles(hoy: Date): Promise<PlanPreventivoEntity[]>;
+
+  /**
+   * Escribe `proxima_ejecucion_en` DIRECTO en persistencia, fuera del
+   * alcance de la entidad (que deliberadamente no expone un setter de este
+   * campo — WU-3). Usado por `EditarPlanUseCase` [R2] cuando la cadencia
+   * cambia: el puntero se recalcula hacia adelante desde `hoy` y se
+   * persiste sin pasar por `guardar()`/`editar()`.
+   */
+  actualizarProximaEjecucion(planId: string, proximaEjecucionEn: Date): Promise<void>;
 }
 
 /** Token de inyección de dependencias para IPlanPreventivoRepository en NestJS. */
