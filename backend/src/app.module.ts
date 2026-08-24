@@ -15,6 +15,7 @@ import { KbModule } from './kb/kb.module';
 import { NotificacionesModule } from './notificaciones/notificaciones.module';
 import { SectoresModule } from './sectores/sectores.module';
 import { CsatModule } from './csat/csat.module';
+import { PreventivoModule } from './preventivo/preventivo.module';
 import { TenantScopeMiddleware } from './shared/tenancy/tenant-scope.middleware';
 
 /**
@@ -60,6 +61,7 @@ import { TenantScopeMiddleware } from './shared/tenancy/tenant-scope.middleware'
     NotificacionesModule,
     SectoresModule,
     CsatModule,
+    PreventivoModule,
   ],
   controllers: [],
   providers: [
