@@ -128,6 +128,47 @@ describe('PrismaEncuestaTokenRepository — Integration (5.2)', () => {
 
       expect(segundaVez).toBe(0);
     });
+
+    /**
+     * WU11.2 (verify #2507, CRITICAL-2): sacar `clienteId`/`ticketId` del
+     * WHERE de `revocarVigentesDeTicket` dejaba 85/85 en verde porque el
+     * único test de esta función usaba UN cliente y UN ticket — sin
+     * ninguna fila que el filtro debiera EXCLUIR, cualquier WHERE pasa. Este
+     * test siembra tokens vigentes de OTRO cliente y de OTRO ticket del
+     * MISMO cliente, y verifica que revocar uno no toca los ajenos.
+     */
+    it('[CRITICAL] filtra por cliente Y ticket — no revoca tokens de otro cliente ni de otro ticket del mismo cliente', async () => {
+      const clienteObjetivo = await createTestCliente('revocar-filtro-objetivo');
+      const clienteAjeno = await createTestCliente('revocar-filtro-ajeno');
+      const ticketObjetivoId = '01977a00-0000-7000-8000-0000000000b1';
+      const otroTicketMismoClienteId = '01977a00-0000-7000-8000-0000000000b2';
+
+      const tokenObjetivo = makeToken(clienteObjetivo.id, ticketObjetivoId, {
+        tokenHash: 'hash-objetivo',
+      });
+      const tokenOtroTicketMismoCliente = makeToken(clienteObjetivo.id, otroTicketMismoClienteId, {
+        tokenHash: 'hash-otro-ticket-mismo-cliente',
+      });
+      const tokenOtroCliente = makeToken(clienteAjeno.id, ticketObjetivoId, {
+        tokenHash: 'hash-otro-cliente',
+      });
+      await tokenRepo.save(tokenObjetivo);
+      await tokenRepo.save(tokenOtroTicketMismoCliente);
+      await tokenRepo.save(tokenOtroCliente);
+
+      const cantidad = await tokenRepo.revocarVigentesDeTicket(
+        clienteObjetivo.id,
+        ticketObjetivoId,
+      );
+
+      expect(cantidad).toBe(1);
+      const objetivoRevisado = await tokenRepo.findByHash('hash-objetivo');
+      const otroTicketRevisado = await tokenRepo.findByHash('hash-otro-ticket-mismo-cliente');
+      const otroClienteRevisado = await tokenRepo.findByHash('hash-otro-cliente');
+      expect(objetivoRevisado!.revokedAt).not.toBeNull();
+      expect(otroTicketRevisado!.revokedAt).toBeNull();
+      expect(otroClienteRevisado!.revokedAt).toBeNull();
+    });
   });
 
   describe('marcarUsadoSiNoUsado() — CAS de uso único (ADR-C2)', () => {

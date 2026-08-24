@@ -171,6 +171,26 @@ describe('ObtenerMetricasUseCase', () => {
       expect(c.csatRepo.resumenPorScope).not.toHaveBeenCalled();
     });
 
+    /**
+     * WU11.4 (verify #2507, WARNING-1): consultar `resumenPorScope` sin
+     * `asignadoId` dejaba 25/25 en verde — los tres tests de este describe
+     * usan `actorRol: 'ADMINISTRADOR'`, justo el rol donde `asignadoId`
+     * queda `undefined`, así que el scope del TÉCNICO nunca se ejercita acá.
+     */
+    it('[CRITICAL] TECNICO con CSAT:LECTURA recibe el promedio ACOTADO a sus tickets (asignadoId), no el global', async () => {
+      const c = makeCollaborators(CICLO);
+
+      await c.useCase.execute({
+        actorId: 'tecnico-uuid',
+        actorRol: 'TECNICO',
+        tieneCsatLectura: true,
+      });
+
+      expect(c.csatRepo.resumenPorScope).toHaveBeenCalledWith(
+        expect.objectContaining({ asignadoId: 'tecnico-uuid' }),
+      );
+    });
+
     it('sin cicloId explícito y SIN ciclo activo, CON CSAT:LECTURA → csat también queda en su default vacío', async () => {
       const c = makeCollaborators(null);
 

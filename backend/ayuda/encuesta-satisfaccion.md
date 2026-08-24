@@ -73,7 +73,10 @@ un error, es que tu usuario no tiene el permiso habilitado. Si te parece que
 deberías verlos, consultá con quien administra tu cliente.
 
 Un técnico con `CSAT:LECTURA` ve únicamente las respuestas de los tickets
-que **tuvo asignados**, nunca las de tickets ajenos. Un administrador con
+que tiene asignados **en este momento**, nunca las de tickets ajenos. Ese
+alcance sigue la asignación actual, no la histórica: si un ticket se
+reasigna, el técnico que lo atendió y sobre el que se respondió la encuesta
+deja de verla, y el técnico nuevo pasa a verla. Un administrador con
 `CSAT:LECTURA` ve las respuestas de todo el cliente.
 
 ## Si un ticket se reabre después de tener respuesta

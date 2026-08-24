@@ -56,6 +56,35 @@ function extraerTokenCrudoDelMail(emailSender: Pick<IEmailSender, 'send'>): stri
 }
 
 describe('EmitirEncuestaUseCase', () => {
+  /**
+   * WU11.3 (verify #2507, CRITICAL-3): cambiar `VIGENCIA_TOKEN_MS` de 30
+   * días a 30 segundos dejaba 85/85 en verde — los cuatro tests de este
+   * archivo miran orden, largo del token, hash y contenido del mail, pero
+   * ninguno mira `expiresAt`. Reloj falso y determinista (advertencia del
+   * WU: NO comparar contra `Date.now()` con tolerancia — así nació el test
+   * de idempotencia de `revoke()` que tampoco mordía).
+   */
+  it('[CRITICAL] expiresAt cae exactamente a 30 días de la emisión', async () => {
+    vi.useFakeTimers();
+    try {
+      const ahora = new Date('2026-01-15T10:00:00.000Z');
+      vi.setSystemTime(ahora);
+
+      const tokenRepo = makeFakeTokenRepo();
+      const emailSender = makeFakeEmailSender();
+      const useCase = new EmitirEncuestaUseCase(tokenRepo, emailSender);
+
+      await useCase.ejecutar(makeRequest());
+
+      const save = tokenRepo.save as ReturnType<typeof vi.fn>;
+      const tokenGuardado = save.mock.calls[0][0] as EncuestaTokenEntity;
+      const esperado = new Date(ahora.getTime() + 30 * 24 * 60 * 60 * 1000);
+      expect(tokenGuardado.expiresAt).toEqual(esperado);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('revoca los tokens vigentes del ticket ANTES de persistir el nuevo', async () => {
     const tokenRepo = makeFakeTokenRepo();
     const emailSender = makeFakeEmailSender();

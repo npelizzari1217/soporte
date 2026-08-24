@@ -94,7 +94,9 @@ Quién ve qué, además de tener la casilla:
 - **Administrador** ve las respuestas de todo el cliente (bypasea la grilla,
   como el resto de los módulos).
 - **Técnico** con `CSAT:LECTURA` ve solo las respuestas de los tickets que
-  tuvo asignados, nunca las de tickets ajenos.
+  tiene asignados **en este momento**, nunca las de tickets ajenos. Si un
+  ticket se reasigna, la vista se mueve con la asignación actual: quien lo
+  atendió deja de ver esa respuesta, y el técnico nuevo pasa a verla.
 
 Por plantilla, `CSAT:LECTURA` viene marcada de entrada para **Técnico** y
 **Colaborador** al crear el usuario. **Usuario** no la trae — es consistente

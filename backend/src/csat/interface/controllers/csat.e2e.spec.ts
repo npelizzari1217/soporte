@@ -31,6 +31,7 @@ import {
   ValidationPipe,
 } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 
 import { SharedModule } from '../../../shared/shared.module';
 import { AuthModule } from '../../../auth/auth.module';
@@ -108,6 +109,7 @@ describe('CSAT e2e — endpoint público (7.5)', () => {
   let tokenRepo: PrismaEncuestaTokenRepository;
   let ticketCsatListener: TicketCsatListener;
   let tenantContext: TenantContext;
+  let eventEmitter: EventEmitter2;
 
   const admin = new PostgresAdminService(MASTER_TEST_URL);
 
@@ -155,6 +157,7 @@ describe('CSAT e2e — endpoint público (7.5)', () => {
 
     ticketCsatListener = moduleRef.get(TicketCsatListener);
     tenantContext = moduleRef.get(TenantContext);
+    eventEmitter = moduleRef.get(EventEmitter2);
 
     const port = (app.getHttpServer() as { address: () => { port: number } }).address().port;
     baseUrl = `http://localhost:${port}`;
@@ -199,7 +202,9 @@ describe('CSAT e2e — endpoint público (7.5)', () => {
     return cliente;
   }
 
-  async function crearTicket(overrides: Partial<{ titulo: string; descripcion: string }> = {}) {
+  async function crearTicket(
+    overrides: Partial<{ titulo: string; descripcion: string; solicitanteId: string }> = {},
+  ) {
     return tenantClient.ticket.create({
       data: {
         numero: `CSAT-E2E-${randomBytes(4).toString('hex').toUpperCase()}`,
@@ -208,9 +213,31 @@ describe('CSAT e2e — endpoint público (7.5)', () => {
         tipoId: tipoSoporteId,
         estadoId: estadoNuevoId,
         prioridadId: prioridadMediaId,
-        solicitanteId: '01977a00-0000-7000-8000-000000000abc',
+        solicitanteId: overrides.solicitanteId ?? '01977a00-0000-7000-8000-000000000abc',
       },
     });
+  }
+
+  /**
+   * Usuario REAL en MASTER (WU11.1) — `IUsuarioContactoResolver.resolverContacto`
+   * hace un `findFirst` contra `usuario` y devuelve `null` si no existe, lo
+   * que corta el listener ANTES de emitir el token. El fixture original
+   * (`solicitanteId` fijo, sin fila) alcanza para los tests que no ejercitan
+   * el listener de punta a punta, pero no para este.
+   */
+  async function crearSolicitanteConEmail(): Promise<{ id: string; email: string }> {
+    const email = `csat-e2e-${randomBytes(4).toString('hex')}@integration.test`;
+    const usuario = await masterClient.usuario.create({
+      data: {
+        email,
+        nombre: 'Solicitante',
+        apellido: 'E2E',
+        passwordHash: 'hash-fake',
+        activo: true,
+        deletedAt: null,
+      },
+    });
+    return { id: usuario.id, email };
   }
 
   /** Genera y persiste un token VIGENTE (no usado, no revocado, no vencido). */
@@ -260,6 +287,46 @@ describe('CSAT e2e — endpoint público (7.5)', () => {
 
     const tokenFila = await masterClient.encuestaToken.findUnique({ where: { id: tokenId } });
     expect(tokenFila!.usedAt).not.toBeNull();
+  });
+
+  // ─── 1b. El listener está CABLEADO al EventEmitter2 real (WU11.1) ───────
+  //
+  // Tarea 11.1 (verify #2507, CRITICAL-1): romper el nombre del evento en
+  // `@OnEvent('ticket.estado_cambiado')` dejaba 86/86 en verde porque los
+  // tests existentes invocan `onTicketEstadoCambiado` A MANO (llamada
+  // directa) o usan `.compile()` (no ejecuta `onApplicationBootstrap`, que
+  // es donde `EventSubscribersLoader` registra los `@OnEvent`). Este test
+  // usa el `EventEmitter2` REAL del contenedor ya inicializado con
+  // `app.init()` — el único camino que puede ver ese bug.
+
+  it('[CRITICAL WU11.1] emitir ticket.estado_cambiado por el EventEmitter2 real dispara TicketCsatListener', async () => {
+    const cliente = await crearCliente();
+    const solicitante = await crearSolicitanteConEmail();
+    const ticket = await crearTicket({ solicitanteId: solicitante.id });
+
+    await tenantContext.run(
+      { prismaClient: tenantClient, dbName: TENANT_DB_NAME, clienteId: cliente.id },
+      () => {
+        eventEmitter.emit(
+          'ticket.estado_cambiado',
+          new TicketEstadoCambiadoEvent({
+            ticketId: ticket.id,
+            estadoAnteriorCodigo: 'EN_PROCESO',
+            estadoNuevoCodigo: 'CERRADO',
+            autorId: '01977a00-0000-7000-8000-000000000aaa',
+          }),
+        );
+        return Promise.resolve();
+      },
+    );
+
+    // `emit()` es SÍNCRONO y no espera a los handlers async — el listener
+    // sigue corriendo después de que `emit()` retorna (ADR-P8), por eso se
+    // espera el efecto observable (el token en MASTER) en vez del retorno.
+    await vi.waitFor(async () => {
+      const cantidad = await masterClient.encuestaToken.count({ where: { clienteId: cliente.id } });
+      expect(cantidad).toBe(1);
+    });
   });
 
   // ─── 2. Payload sin título ni descripción ───────────────────────────────
