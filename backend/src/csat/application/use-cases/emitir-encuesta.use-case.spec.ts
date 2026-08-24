@@ -44,10 +44,15 @@ function makeRequest(overrides: Partial<EmitirEncuestaRequest> = {}): EmitirEncu
   };
 }
 
-/** Extrae el token crudo del link embebido en el mail enviado (único punto donde viaja). */
-function extraerTokenCrudoDelMail(emailSender: Pick<IEmailSender, 'send'>): string {
+/**
+ * Extrae el token crudo del link embebido en el mail enviado (único punto
+ * donde viaja). Por defecto lee la primera emisión (`send.mock.calls[0]`);
+ * `llamada` permite leer una emisión posterior (p. ej. la segunda, para el
+ * test de entropía).
+ */
+function extraerTokenCrudoDelMail(emailSender: Pick<IEmailSender, 'send'>, llamada = 0): string {
   const send = emailSender.send as ReturnType<typeof vi.fn>;
-  const mensaje = send.mock.calls[0][0] as EmailMessage;
+  const mensaje = send.mock.calls[llamada][0] as EmailMessage;
   const match = /\/encuesta\/([a-f0-9]+)/.exec(mensaje.text);
   if (!match) {
     throw new Error('El mail enviado no contiene un link de encuesta con token.');
@@ -127,6 +132,29 @@ describe('EmitirEncuestaUseCase', () => {
     expect(tokenGuardado.tokenHash).not.toBe(tokenCrudo);
     expect(tokenGuardado.clienteId).toBe(CLIENTE_ID);
     expect(tokenGuardado.ticketId).toBe(TICKET_ID);
+  });
+
+  /**
+   * WU13.1 (verify #3, CRITICAL-1): reemplazar
+   * `crypto.randomBytes(32).toString('hex')` por una constante del mismo
+   * largo dejaba 3245/3245 en verde — el test de arriba mide el LARGO del
+   * token y el de hashing mide que se persista su hash, ambas ciertas para
+   * cualquier valor, incluido uno predecible. Esta es la propiedad mínima
+   * que una constante no puede satisfacer: dos emisiones, dos tokens
+   * distintos. NO es un test estadístico de aleatoriedad (sobreingeniería);
+   * es exactamente la propiedad que la mutación viola.
+   */
+  it('[CRITICAL] dos emisiones sucesivas generan tokens DISTINTOS entre sí', async () => {
+    const tokenRepo = makeFakeTokenRepo();
+    const emailSender = makeFakeEmailSender();
+    const useCase = new EmitirEncuestaUseCase(tokenRepo, emailSender);
+
+    await useCase.ejecutar(makeRequest());
+    await useCase.ejecutar(makeRequest());
+
+    const tokenA = extraerTokenCrudoDelMail(emailSender, 0);
+    const tokenB = extraerTokenCrudoDelMail(emailSender, 1);
+    expect(tokenA).not.toBe(tokenB);
   });
 
   it('envía el mail al destinatario con el link a la página pública de encuesta', async () => {
