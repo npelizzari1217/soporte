@@ -17,7 +17,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { TenantContext } from '../../../shared/tenancy/tenant-context';
 import { PrismaService } from '../../../shared/infrastructure/persistence/prisma.service';
 import { ILogger } from '../../../shared/domain/ports/i-logger.port';
-import { ITenantEnumerator } from '../../domain/ports/i-tenant-enumerator';
+import { ITenantEnumerator } from '../../../shared/domain/ports/i-tenant-enumerator';
 import { MarcarVencidosUseCase } from '../../application/use-cases/marcar-vencidos.use-case';
 
 @Injectable()

@@ -1,5 +1,6 @@
 import { MiddlewareConsumer, Module, NestModule, ValidationPipe } from '@nestjs/common';
 import { APP_PIPE } from '@nestjs/core';
+import { ScheduleModule } from '@nestjs/schedule';
 import { SharedModule } from './shared/shared.module';
 import { AuthModule } from './auth/auth.module';
 import { ClientesModule } from './clientes/clientes.module';
@@ -35,10 +36,17 @@ import { TenantScopeMiddleware } from './shared/tenancy/tenant-scope.middleware'
  * cadena de guards async + controller (ver doc de la propia middleware).
  * Rutas master/root (sin `TenantGuard`) simplemente no lo consumen — abrir
  * el scope igual es inocuo (`get()` retorna `undefined` hasta el primer `bind()`).
+ *
+ * `ScheduleModule.forRoot()` (ola-2 WU-0): habilita `@Cron` para toda la app.
+ * Vive ACÁ, no en un módulo de feature — `SlaModule` lo llamaba antes
+ * (GATE G2, dep `@nestjs/schedule`) y se movió acá porque un segundo módulo
+ * con `@Cron` (`preventivo`) que también lo llamara duplicaría `forRoot()` y
+ * fallaría al bootear, no al compilar.
  */
 @Module({
   imports: [
     SharedModule,
+    ScheduleModule.forRoot(),
     AuthModule,
     ClientesModule,
     TiposComponenteModule,

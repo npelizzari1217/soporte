@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { ScheduleModule } from '@nestjs/schedule';
 import { AuthModule } from '../auth/auth.module';
 import { TicketsModule } from '../tickets/tickets.module';
 import { TICKET_REPOSITORY, ITicketRepository } from '../tickets/domain/ports/i-ticket.repository';
@@ -19,8 +18,7 @@ import {
   ISlaTicketQueryRepository,
 } from './domain/ports/i-sla-ticket-query.repository';
 import { PrismaSlaTicketQueryRepository } from './infrastructure/persistence/prisma/prisma-sla-ticket-query.repository';
-import { TENANT_ENUMERATOR, ITenantEnumerator } from './domain/ports/i-tenant-enumerator';
-import { PrismaTenantEnumerator } from './infrastructure/persistence/prisma/prisma-tenant-enumerator';
+import { TENANT_ENUMERATOR, ITenantEnumerator } from '../shared/domain/ports/i-tenant-enumerator';
 
 import { CalcularSlaVenceService } from './domain/services/calcular-sla-vence.service';
 import { AplicarSlaUseCase } from './application/use-cases/aplicar-sla.use-case';
@@ -55,13 +53,16 @@ import {
  *
  * Wiring:
  * - Repos: SLA_TICKET_WRITE_REPOSITORY, SLA_TICKET_QUERY_REPOSITORY (tenant,
- *   vía TenantContext), TENANT_ENUMERATOR (master, vía PrismaService — S5).
+ *   vía TenantContext). TENANT_ENUMERATOR (master, vía PrismaService — S5) ya
+ *   NO se registra acá: se promovió a `SharedModule` (`@Global()`, ola-2
+ *   WU-0) para que no quede acoplado a `sla`. Este módulo solo lo INYECTA.
  * - Use cases: AplicarSla (S2/S3, escucha eventos vía AplicarSlaListener —
  *   lee `slaHoras`/`slaActivo` vía `PRIORIDAD_REPOSITORY`, exportado por
  *   `TicketsModule`), MarcarVencidos (S4, corrido por tenant desde
  *   SlaSweepScheduler).
- * - `ScheduleModule.forRoot()`: habilita `@Cron` para `SlaSweepScheduler`
- *   (GATE G2 — dep nueva `@nestjs/schedule`).
+ * - `ScheduleModule.forRoot()` ya NO se llama acá: se movió a `AppModule`
+ *   (ola-2 WU-0) porque dos `forRoot()` de `@nestjs/schedule` fallan al
+ *   bootear (no al compilar) si otro módulo (`preventivo`) también lo llama.
  * - Importa `TicketsModule` (para TICKET_REPOSITORY/ESTADO_REPOSITORY/
  *   PRIORIDAD_REPOSITORY, que `AplicarSlaUseCase` necesita — el módulo SLA
  *   NO reimplementa ese acceso) y `AuthModule`.
@@ -70,11 +71,10 @@ import {
  * infrastructure/ (ver backend/eslint.config.js).
  */
 @Module({
-  imports: [AuthModule, TicketsModule, ScheduleModule.forRoot()],
+  imports: [AuthModule, TicketsModule],
   providers: [
     { provide: SLA_TICKET_WRITE_REPOSITORY, useClass: PrismaSlaTicketWriteRepository },
     { provide: SLA_TICKET_QUERY_REPOSITORY, useClass: PrismaSlaTicketQueryRepository },
-    { provide: TENANT_ENUMERATOR, useClass: PrismaTenantEnumerator },
 
     { provide: CalcularSlaVenceService, useFactory: () => new CalcularSlaVenceService() },
 

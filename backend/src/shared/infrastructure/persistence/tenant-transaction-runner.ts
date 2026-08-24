@@ -2,6 +2,18 @@ import { Injectable } from '@nestjs/common';
 import { TenantContext } from '../../tenancy/tenant-context';
 
 /**
+ * Forma mínima que `run()` necesita del PrismaClient "normal" (fuera de
+ * transacción) para abrir una nueva transacción. Nombrado en vez de un `as`
+ * inline: el cast en sí es inevitable (`prismaClient` es `unknown` por
+ * diseño — el dominio no depende de `@prisma/client`), pero ahora solo se
+ * ejecuta en la rama donde el flag `enTransaccion` garantiza que el cliente
+ * activo es el normal, nunca un `Prisma.TransactionClient`.
+ */
+interface PrismaTransactionCapableClient<T> {
+  $transaction: (fn: (tx: unknown) => Promise<T>) => Promise<T>;
+}
+
+/**
  * ITenantTransactionRunner — puerto para transacciones atómicas multi-tenant.
  *
  * El dominio y la capa de aplicación dependen de este puerto (interface),
@@ -44,15 +56,22 @@ export class PrismaTenantTransactionRunner implements ITenantTransactionRunner {
       throw new Error('No hay TenantContext activo. ¿Falta TenantGuard o TenantMiddleware?');
     }
 
-    const client = ctx.prismaClient as {
-      $transaction: (fn: (tx: unknown) => Promise<T>) => Promise<T>;
-    };
+    // Re-entrancia: si ya estamos dentro de una transacción (run() anidado
+    // dentro de otro run()), `ctx.prismaClient` es un `Prisma.TransactionClient`,
+    // que NO expone `$transaction` (deny-list de Prisma). Participar de la
+    // transacción en curso — nunca intentar abrir una nueva sobre ese cliente.
+    if (ctx.enTransaccion) {
+      return fn();
+    }
+
+    const client = ctx.prismaClient as PrismaTransactionCapableClient<T>;
 
     return client.$transaction(async (tx: unknown) => {
-      // Re-bindea el TenantContext con el cliente transaccional.
-      // Así los repos que llamen getClient() dentro del callback
-      // obtienen el tx en lugar del client normal.
-      const txCtx = { ...ctx, prismaClient: tx };
+      // Re-bindea el TenantContext con el cliente transaccional, marcado con
+      // `enTransaccion: true` para que un run() anidado lo detecte. Así los
+      // repos que llamen getClient() dentro del callback obtienen el tx en
+      // lugar del client normal.
+      const txCtx = { ...ctx, prismaClient: tx, enTransaccion: true };
       return this.tenantContext.run(txCtx, fn);
     });
   }

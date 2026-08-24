@@ -6,7 +6,7 @@
  * Tarea: SB5/SB6.
  */
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../../../../shared/infrastructure/persistence/prisma.service';
+import { PrismaService } from '../prisma.service';
 import { ITenantEnumerator, TenantActivo } from '../../../domain/ports/i-tenant-enumerator';
 
 @Injectable()

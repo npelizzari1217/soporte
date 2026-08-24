@@ -15,6 +15,8 @@ import { FILE_STORAGE } from './domain/ports/i-file-storage';
 import { LocalDiskFileStorage } from './infrastructure/storage/local-disk-file-storage';
 import { SECRET_CIPHER } from './domain/ports/i-secret-cipher.port';
 import { AesGcmSecretCipher } from './infrastructure/crypto/aes-gcm-secret-cipher';
+import { TENANT_ENUMERATOR } from './domain/ports/i-tenant-enumerator';
+import { PrismaTenantEnumerator } from './infrastructure/persistence/prisma/prisma-tenant-enumerator';
 
 /**
  * SharedModule — módulo global de infraestructura transversal.
@@ -38,6 +40,12 @@ import { AesGcmSecretCipher } from './infrastructure/crypto/aes-gcm-secret-ciphe
  *     sdd/configuracion-correo-por-cliente). Único consumidor: el borde de
  *     persistencia `PrismaClienteEmailConfigRepository` — ningún use case lo
  *     inyecta directamente (ver mem #2366).
+ *   - TENANT_ENUMERATOR    → ITenantEnumerator (PrismaTenantEnumerator),
+ *     enumeración de tenants activos desde `master.clientes`. Promovido acá
+ *     desde `sla/` (ola-2 WU-0, ventana serial): infraestructura pura, sin
+ *     razón para acoplar otros módulos (`preventivo`) a `sla` para
+ *     consumirla. Único provider del token en toda la app — dos providers
+ *     del mismo `TENANT_ENUMERATOR` fallan al bootear, no al compilar.
  *
  * Todos los providers transversales usan tokens Symbol (principio de
  * inversión de dependencias): los consumidores dependen del puerto, no de
@@ -71,6 +79,9 @@ import { AesGcmSecretCipher } from './infrastructure/crypto/aes-gcm-secret-ciphe
     // TENANT_TX_RUNNER: implementación del puerto ITenantTransactionRunner.
     { provide: TENANT_TX_RUNNER, useClass: PrismaTenantTransactionRunner },
 
+    // TENANT_ENUMERATOR: implementación del puerto ITenantEnumerator.
+    { provide: TENANT_ENUMERATOR, useClass: PrismaTenantEnumerator },
+
     // FILE_STORAGE: IFileStorage → LocalDiskFileStorage. `STORAGE_DIR` es
     // configurable por entorno (default `./storage` — ver LocalDiskFileStorage).
     {
@@ -95,6 +106,7 @@ import { AesGcmSecretCipher } from './infrastructure/crypto/aes-gcm-secret-ciphe
     FILE_STORAGE,
     DOMAIN_EVENT_PUBLISHER,
     SECRET_CIPHER,
+    TENANT_ENUMERATOR,
   ],
 })
 export class SharedModule {}
