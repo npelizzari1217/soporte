@@ -166,6 +166,21 @@ describe("middleware", () => {
     expect(res.headers.get("location")).toContain("/login");
   });
 
+  /**
+   * [WU12.4] Fijar el CONTENIDO de RUTAS_PUBLICAS (los dos tests de arriba)
+   * no fija la SEMÁNTICA del operador que lo evalúa. Con `.includes()` en
+   * vez de `.startsWith()`, cualquier ruta que CONTENGA "/encuesta/" en el
+   * medio (no solo al principio) quedaría pública — un agujero real el día
+   * que exista una ruta protegida así.
+   */
+  it("still redirects a protected route that CONTAINS /encuesta/ but doesn't start with it (match must be prefix, not substring)", async () => {
+    const req = makeRequest("/admin/encuesta/plantillas");
+    const res = await middleware(req);
+
+    expect(res.status).toBe(307);
+    expect(res.headers.get("location")).toContain("/login");
+  });
+
   // ── Matcher exclusions ────────────────────────────────────────────────────
 
   it("config.matcher is exported and excludes api/_next/favicon", () => {

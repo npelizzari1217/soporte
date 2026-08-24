@@ -133,9 +133,18 @@ describe('ResolverEncuestaTokenService', () => {
       expect(resultado.getError()).toBeInstanceOf(EncuestaLinkInvalidoError);
     });
 
+    /**
+     * [WU12.2] Los tres tests de abajo usaban `makeFakeClienteRepo(null)`:
+     * eso hace que, si el chequeo de token que el nombre del test dice
+     * probar desapareciera, el guard SIGUIENTE (cliente inexistente) igual
+     * rechazara con el mismo error — pasando por el motivo equivocado. Con
+     * un cliente VÁLIDO, el único motivo posible de rechazo es el chequeo de
+     * token bajo prueba.
+     */
     it('token revocado', async () => {
       const token = makeToken({ revokedAt: new Date() });
-      const { service } = buildService(makeFakeTokenRepo(token), makeFakeClienteRepo(null));
+      const cliente = makeCliente(CLIENTE_ID_DE_LA_FILA);
+      const { service } = buildService(makeFakeTokenRepo(token), makeFakeClienteRepo(cliente));
 
       const resultado = await service.resolver(RAW_TOKEN);
 
@@ -145,7 +154,8 @@ describe('ResolverEncuestaTokenService', () => {
 
     it('token ya usado', async () => {
       const token = makeToken({ usedAt: new Date() });
-      const { service } = buildService(makeFakeTokenRepo(token), makeFakeClienteRepo(null));
+      const cliente = makeCliente(CLIENTE_ID_DE_LA_FILA);
+      const { service } = buildService(makeFakeTokenRepo(token), makeFakeClienteRepo(cliente));
 
       const resultado = await service.resolver(RAW_TOKEN);
 
@@ -155,7 +165,8 @@ describe('ResolverEncuestaTokenService', () => {
 
     it('token vencido', async () => {
       const token = makeToken({ expiresAt: new Date(Date.now() - 1000) });
-      const { service } = buildService(makeFakeTokenRepo(token), makeFakeClienteRepo(null));
+      const cliente = makeCliente(CLIENTE_ID_DE_LA_FILA);
+      const { service } = buildService(makeFakeTokenRepo(token), makeFakeClienteRepo(cliente));
 
       const resultado = await service.resolver(RAW_TOKEN);
 

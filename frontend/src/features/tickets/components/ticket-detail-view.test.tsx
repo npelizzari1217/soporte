@@ -234,6 +234,46 @@ describe("TicketDetailView — bloqueo de edición una vez EN_PROCESO", () => {
 });
 
 /**
+ * [WU12.3] El container es quien calcula `puedeVerCsat` (`useCan("CSAT:LECTURA")`,
+ * ticket-detail-view.tsx) y se lo pasa a `TicketHeader`. `ticket-header.test.tsx`
+ * ya cubre que el PRESENTACIONAL obedece la prop; acá se cubre que el
+ * CONTAINER la calcule a partir del permiso real y no la cablee a `true`.
+ */
+describe("TicketDetailView — gateo del bloque de satisfacción (CSAT:LECTURA)", () => {
+  beforeEach(() => mockBackend());
+
+  it("sin CSAT:LECTURA, no muestra el bloque de satisfacción aunque el backend mande csatPuntaje", async () => {
+    server.use(
+      http.get(`/api/tickets/${TICKET_ID}`, () =>
+        HttpResponse.json({ ...TICKET, csatPuntaje: 4, csatComentario: "Buena atención" }),
+      ),
+    );
+
+    renderWithProviders(<TicketDetailView ticketId={TICKET_ID} />, {
+      user: buildUser({ permisos: ["TICKETS:COMENTAR"] }),
+    });
+
+    await screen.findByText("Impresora rota");
+    expect(screen.queryByText(/satisfacción/i)).not.toBeInTheDocument();
+  });
+
+  it("con CSAT:LECTURA, muestra el bloque de satisfacción cuando el backend manda csatPuntaje", async () => {
+    server.use(
+      http.get(`/api/tickets/${TICKET_ID}`, () =>
+        HttpResponse.json({ ...TICKET, csatPuntaje: 4, csatComentario: "Buena atención" }),
+      ),
+    );
+
+    renderWithProviders(<TicketDetailView ticketId={TICKET_ID} />, {
+      user: buildUser({ permisos: ["TICKETS:COMENTAR", "CSAT:LECTURA"] }),
+    });
+
+    await screen.findByText("Impresora rota");
+    expect(screen.getByText(/satisfacción/i)).toBeInTheDocument();
+  });
+});
+
+/**
  * Tarjeta "Equipo en mantenimiento" — el detalle de un ticket SOPORTE
  * resalta el equipo vinculado (satélite `ticket_soporte.equipoId`, ya
  * persistido al crear el ticket desde Equipos). Solo se consulta/muestra

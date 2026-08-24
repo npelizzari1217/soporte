@@ -553,6 +553,34 @@ describe('TicketsController.findOne — CSAT en el detalle (WU9.2, ADR-C5)', () 
     expect('csatPuntaje' in respuesta).toBe(false);
     expect('csatComentario' in respuesta).toBe(false);
   });
+
+  /**
+   * [CRITICAL][WU12.1] Regresión del gap del segundo verify: los dos tests de
+   * arriba prueban solo la dirección positiva (TECNICO_ASIGNADO CON
+   * CSAT:LECTURA) o stubean `obtenerCsatTicket` de forma que `puedeEjecutar`
+   * nunca corre. Ninguno distingue "lo calculó bien" de "está cableado a
+   * true". Espejo exacto de `dashboard.controller.spec.ts` D2.
+   */
+  it('sin CSAT:LECTURA en permisos, delega tieneCsatLectura=false', async () => {
+    const TECNICO_SIN_CSAT: JwtPayload = payloadDeTest({
+      sub: 'tecnico-1',
+      cliente_id: 'cliente-1',
+      rol: 'TECNICO',
+      permisos: ['TICKETS:LECTURA', 'TICKETS:VER_TODOS'],
+      cliente_nombre: 'Cliente 1',
+      modulos: ['SOPORTE'],
+    });
+    const ticket = makeTicketAsignado('tecnico-1');
+    const obtenerTicket = { execute: vi.fn().mockResolvedValue(Result.ok(ticket)) };
+    const obtenerCsatTicket = { execute: vi.fn().mockResolvedValue(null) };
+    const { controller } = buildController({ obtenerTicket, obtenerCsatTicket });
+
+    await controller.findOne(TECNICO_SIN_CSAT, 'ticket-csat-1');
+
+    expect(obtenerCsatTicket.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ tieneCsatLectura: false }),
+    );
+  });
 });
 
 describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listados-csv, decisión D2)', () => {
