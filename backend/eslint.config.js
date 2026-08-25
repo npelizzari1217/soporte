@@ -78,6 +78,52 @@ const reglasBaseJs = {
   'valid-typeof': 'error',
 };
 
+// ─── FITNESS RULE: degradación silenciosa de env a string vacío ───────────
+// `process.env.X ?? ''` (o `|| ''`) convierte una variable de entorno
+// faltante en un string vacío que sigue viajando por el sistema como si
+// fuera un valor válido — ya pasó en producción con `APP_BASE_URL`: links
+// rotos en los mails, y nadie lo notó porque no hubo ningún error.
+// Ref spec: REQ-9. Ref design: ADR-E4 (mismo idiom que la fitness rule de
+// Prisma de más abajo — `no-restricted-syntax`, sin plugin propio).
+//
+// OJO: `no-restricted-syntax` es un CUPO DE UNO. El flat config REEMPLAZA las
+// opciones de una regla, no las fusiona: quien agregue otra fitness rule con
+// este mismo nombre borra estos cuatro selectores y el lint sigue en verde.
+// Si necesitás una nueva, sumala a `reglaEnvStringVacio`. Que no pase
+// inadvertido lo cubre `src/config/regla-env-vacio.lint.spec.ts`, que lintea
+// contra ESTE archivo y no contra una copia del selector.
+const MENSAJE_ENV_VACIO =
+  'FITNESS RULE: una variable de entorno que degrada a string vacío viaja rota ' +
+  'hasta el usuario final. Declarala en `src/config/validar-entorno.ts` y ' +
+  'consumila desde `entorno`, o dale un default legítimo y documentalo en el README.';
+
+// El ancla es `process.env` como DESCENDIENTE, no la posición exacta de `left`.
+// Anclarla en `left.object.object.name` dejaba pasar el fallback encadenado
+// `process.env.A || process.env.B || ''`: ahí el `left` del operador externo es
+// otro LogicalExpression y la ruta nunca resolvía.
+const ANCLA_PROCESS_ENV = ':has(MemberExpression[object.name="process"][property.name="env"])';
+
+// Dos operadores por dos formas de escribir el string vacío. Cerrar solo `??`
+// deja abierto `||`, y cerrar solo el Literal deja abierto el TemplateLiteral
+// vacío, que NO es un Literal en el AST y produce exactamente el mismo valor.
+// Cada bypass es un token de diferencia.
+const OPERADORES_DEGRADANTES = ['??', '||'];
+const FORMAS_DE_VACIO = [
+  '[right.type="Literal"][right.value=""]',
+  '[right.type="TemplateLiteral"][right.expressions.length=0][right.quasis.0.value.raw=""]',
+];
+const reglaEnvStringVacio = {
+  'no-restricted-syntax': [
+    'error',
+    ...OPERADORES_DEGRADANTES.flatMap((operador) =>
+      FORMAS_DE_VACIO.map((formaVacia) => ({
+        selector: `LogicalExpression[operator="${operador}"]${formaVacia}${ANCLA_PROCESS_ENV}`,
+        message: MENSAJE_ENV_VACIO,
+      })),
+    ),
+  ],
+};
+
 /** @type {import('eslint').Linter.Config[]} */
 module.exports = [
   // ─── Base: TypeScript + Prettier ───────────────────────────────────────────
@@ -111,6 +157,8 @@ module.exports = [
           caughtErrorsIgnorePattern: '^_',
         },
       ],
+
+      ...reglaEnvStringVacio,
 
       // ─── FITNESS RULE: PrismaService / @prisma/client fuera de infrastructure ───
       // Cualquier archivo fuera de infrastructure/ que importe prisma falla el lint.
@@ -153,6 +201,7 @@ module.exports = [
     plugins: { prettier: prettierPlugin },
     rules: {
       ...reglasBaseJs,
+      ...reglaEnvStringVacio,
       ...prettierConfig.rules,
       'prettier/prettier': 'error',
     },
@@ -169,6 +218,7 @@ module.exports = [
     plugins: { prettier: prettierPlugin },
     rules: {
       ...reglasBaseJs,
+      ...reglaEnvStringVacio,
       ...prettierConfig.rules,
       'prettier/prettier': 'error',
     },
@@ -197,6 +247,7 @@ module.exports = [
     },
     rules: {
       ...tsPlugin.configs['recommended'].rules,
+      ...reglaEnvStringVacio,
       ...prettierConfig.rules,
       'prettier/prettier': 'error',
       '@typescript-eslint/explicit-function-return-type': 'off',

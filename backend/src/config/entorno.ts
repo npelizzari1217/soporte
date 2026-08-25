@@ -16,18 +16,29 @@
  * `leerValidada` (`validar-entorno.ts`), así que todos esos consumidores ven
  * el mismo valor.
  *
- * DOS EXCEPCIONES, y están así a propósito. Que WU-4 las herede escritas en
- * vez de descubrirlas contando hits:
+ * DOS EXCEPCIONES, y están así a propósito. Escritas acá para que el alcance
+ * de la regla no haya que redescubrirlo contando hits:
  * - `src/testing/lock-master-test.ts` lee `DATABASE_URL_MASTER` crudo con un
  *   default, porque tiene que funcionar en la suite ANTES de que exista un
  *   contrato validado y sin arrastrar el guard a cada spec.
  * - Los `*.spec.ts` bajo `src/` (unos 48 archivos) la leen crudo por la misma
  *   razón.
  *
- * Sostener la invariante es trabajo de la regla de ESLint que llega en WU-4, y
- * TODAVÍA NO EXISTE: hoy nada impide escribir una lectura cruda nueva. Lo que
- * seguro no la sostiene es una lista de consumidores en este comentario, que
- * se desactualiza el día que alguien agregue el próximo.
+ * Sostener la invariante es trabajo de la regla de ESLint `no-restricted-syntax`
+ * en `eslint.config.js` (WU-4), probada en `regla-env-vacio.lint.spec.ts`.
+ * Rechaza, sobre `src/` y `scripts/`, que una lectura de `process.env` degrade
+ * a string vacío en sus cuatro formas: con `??` y con `||`, y con el vacío
+ * escrito como `''` o como template vacío. Ancla `process.env` como
+ * descendiente, así que también cubre el fallback encadenado
+ * (`process.env.A || process.env.B || ''`).
+ *
+ * Lo que la regla NO ve, para que nadie le atribuya más de lo que hace: es un
+ * selector léxico, así que se le escapa la indirección
+ * (`const u = process.env.X; u ?? ''`) y los otros defaults degradantes que no
+ * son el vacío (`?? ' '`, `?? '-'`). Y no alcanza `test/`, que está fuera del
+ * alcance de `pnpm lint`. Lo que seguro no sostiene la invariante es una lista
+ * de consumidores en este comentario, que se desactualiza el día que alguien
+ * agregue el próximo.
  *
  * El secreto de desarrollo que `auth.module.ts` traía publicado como default
  * se eliminó: ninguna instancia arranca sin un `JWT_SECRET` propio.
