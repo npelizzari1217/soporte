@@ -1,3 +1,6 @@
 # Local AI runtime state
 .atl/
 .claude/worktrees/
+
+# Local gga config (personal tooling, not project config)
+.gga
