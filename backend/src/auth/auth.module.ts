@@ -27,6 +27,14 @@
  *   están disponibles sin importar SharedModule acá.
  * - JwtModule.register provee JwtService para JwtTokenService (HS256, 15min — R7).
  *
+ * OJO al importar este módulo: el secreto sale de `config/entorno`, que valida
+ * al evaluarse. Importar `AuthModule` arrastra esa evaluación, así que sin
+ * `JWT_SECRET` en el entorno explota en el IMPORT, antes de cualquier
+ * `beforeAll`. En la app real no se nota porque `main.ts` ya importó el guard
+ * primero; un spec que arme `AuthModule` por su cuenta sí lo siente. Los tests
+ * están cubiertos por `test/entorno-test.setup.ts`, que corre como
+ * `setupFiles` y por eso llega a tiempo.
+ *
  * Tarea: T6.6 (PR6 — Guards + AuthController + AuthModule)
  */
 import { Module } from '@nestjs/common';
@@ -52,6 +60,7 @@ import { TOKEN_SERVICE, ITokenService } from './domain/ports/i-token.service';
 import { Argon2HashProvider } from './infrastructure/argon2-hash.provider';
 import { JwtTokenService } from './infrastructure/jwt-token.service';
 import { LOGGER, ILogger } from '../shared/domain/ports/i-logger.port';
+import { entorno } from '../config/entorno';
 
 // ─── Use Cases ───────────────────────────────────────────────────────────────
 import { LoginUseCase } from './application/use-cases/login.use-case';
@@ -92,7 +101,7 @@ import { RolesController } from './interface/controllers/roles.controller';
 @Module({
   imports: [
     JwtModule.register({
-      secret: process.env.JWT_SECRET ?? 'soporte-dev-secret-change-in-prod',
+      secret: entorno.JWT_SECRET,
       signOptions: { expiresIn: '15m', algorithm: 'HS256' },
     }),
   ],

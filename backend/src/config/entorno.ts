@@ -3,37 +3,43 @@
  *
  * Ref spec: REQ-1, REQ-3, REQ-6. Ref design: ADR-E1 (snapshot congelado al
  * importar, no getters perezosos).
- * Ref tasks: WU-1 1.5.
  *
- * Importar este módulo está pensado para SER el guard: se evalúa al
- * importarse, antes de que cualquier consumidor (DI factory, decorador,
- * listener) llegue a leer una variable de entorno requerida. Si falta alguna,
- * `construirEntorno` lanza y el import falla.
+ * Importar este módulo ES el guard: se evalúa al importarse, antes de que
+ * cualquier consumidor (DI factory, decorador, listener) llegue a leer una
+ * variable de entorno requerida. Si falta alguna, `construirEntorno` lanza,
+ * el import falla y el proceso no arranca. `main.ts` lo importa antes de
+ * `AppModule` justamente para que nada del grafo se le adelante.
  *
- * YA ESTÁ EN EL GRAFO DE ARRANQUE (desde WU-2): `main.ts` lo importa antes de
- * `AppModule`, y `DATABASE_URL_MASTER`/`APP_BASE_URL` se leen desde acá en los
- * 5 archivos que antes hacían `process.env.X ?? ''`: `SharedModule`,
- * `ClientesModule` (3 factories de provisioning) y los 3 listeners de
- * notificaciones/CSAT — 8 lecturas en total, porque
- * `TicketNotificacionListener` lo lee una vez por handler. Faltar cualquiera
- * de esas dos variables aborta el arranque nombrándola.
+ * La invariante que vale la pena sostener acá, con su borde exacto: en el
+ * código de PRODUCCIÓN de `src/` ya no queda ninguna lectura cruda de las 3
+ * variables requeridas — todas salen de `entorno`, validadas y trimeadas por
+ * `leerValidada` (`validar-entorno.ts`), así que todos esos consumidores ven
+ * el mismo valor.
  *
- * `JWT_SECRET` TAMBIÉN se exige ya, aunque nadie la consuma desde acá
- * todavía: `construirEntorno` valida las 3 claves de `VARIABLES_REQUERIDAS`,
- * así que desde WU-2 una instancia sin `JWT_SECRET` NO arranca. Cubierto por
- * `test/entorno-corte-arranque.spec.ts`.
+ * DOS EXCEPCIONES, y están así a propósito. Que WU-4 las herede escritas en
+ * vez de descubrirlas contando hits:
+ * - `src/testing/lock-master-test.ts` lee `DATABASE_URL_MASTER` crudo con un
+ *   default, porque tiene que funcionar en la suite ANTES de que exista un
+ *   contrato validado y sin arrastrar el guard a cada spec.
+ * - Los `*.spec.ts` bajo `src/` (unos 48 archivos) la leen crudo por la misma
+ *   razón.
  *
- * Lo que WU-3 todavía debe es el consumo: `auth.module.ts` sigue leyendo
- * `process.env.JWT_SECRET ?? 'soporte-dev-secret-change-in-prod'`. En el
- * proceso real ese default ya es inalcanzable —el guard aborta antes—, pero
- * el secreto sigue publicado en el repo y cualquier consumidor que arme
- * `AuthModule` sin pasar por `main.ts` (los specs) todavía cruza esa lectura
- * cruda.
+ * Sostener la invariante es trabajo de la regla de ESLint que llega en WU-4, y
+ * TODAVÍA NO EXISTE: hoy nada impide escribir una lectura cruda nueva. Lo que
+ * seguro no la sostiene es una lista de consumidores en este comentario, que
+ * se desactualiza el día que alguien agregue el próximo.
  *
- * Y hay una divergencia más fina mientras eso dure: `leerValidada` trimea, la
- * lectura cruda no. Con `JWT_SECRET=" abc "` este contrato expone `"abc"` y
- * `JwtModule` firma con `" abc "` — dos valores para el mismo secreto. Se
- * cierra sola cuando WU-3 mueva el consumo acá.
+ * El secreto de desarrollo que `auth.module.ts` traía publicado como default
+ * se eliminó: ninguna instancia arranca sin un `JWT_SECRET` propio.
+ *
+ * El frontend espeja este contrato desde `frontend/next.config.ts`. Las
+ * salvedades de ESE lado (sobre todo qué inlinea la clave `env`) están
+ * documentadas ahí, no acá: dos copias de la misma prosa divergen igual que
+ * dos copias de la misma constante.
+ *
+ * Cubierto por `test/entorno-corte-arranque.spec.ts` (corte de arranque) y
+ * `src/auth/auth.module.spec.ts` (que el secreto bakeado en
+ * `JwtModule.register` sale de `entorno`, no de una lectura cruda).
  */
 import { construirEntorno, type EntornoRequerido } from './validar-entorno';
 

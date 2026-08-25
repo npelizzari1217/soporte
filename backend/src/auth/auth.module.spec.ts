@@ -53,3 +53,65 @@ describe('AuthModule wiring (T6.6)', () => {
     expect(hasJwtModule).toBe(true);
   });
 });
+
+/**
+ * WU-3 (sdd/fail-fast-env): el secreto de `JwtModule.register` tiene que
+ * salir del contrato `entorno` (trimeado), no de una lectura cruda de
+ * `process.env.JWT_SECRET`. Con un valor con espacios al borde, las dos
+ * lecturas divergen — es exactamente la deriva de trim documentada en
+ * `entorno.ts` y en el cierre de WU-2 (sdd/fail-fast-env/wu2-cierre-y-hook).
+ *
+ * `@nestjs/jwt` bakea las options síncronamente en `JwtModule.register`:
+ * el DynamicModule resultante trae un provider `{ provide: 'JWT_MODULE_OPTIONS',
+ * useValue: options }` (ver `node_modules/@nestjs/jwt/dist/jwt.providers.js`).
+ * Inspeccionar ese `useValue.secret` deja verificar el valor congelado en el
+ * decorador sin levantar un `TestingModule` completo (mismo criterio que el
+ * resto de este archivo).
+ */
+describe('AuthModule — JWT_SECRET viene del contrato de entorno, no de process.env crudo (WU-3)', () => {
+  const originalJwtSecret = process.env.JWT_SECRET;
+
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  afterEach(() => {
+    if (originalJwtSecret === undefined) {
+      delete process.env.JWT_SECRET;
+    } else {
+      process.env.JWT_SECRET = originalJwtSecret;
+    }
+    // También al SALIR: si no, el registro queda con un `entorno` construido a
+    // partir del secreto con padding y lo hereda cualquier `describe` que se
+    // agregue debajo. Que hoy no rompa nada es suerte posicional, no
+    // aislamiento.
+    vi.resetModules();
+  });
+
+  it('el secreto de JwtModule.register coincide con entorno.JWT_SECRET (trimeado), no con el valor crudo con espacios', async () => {
+    process.env.JWT_SECRET = '  jwt-secret-con-padding  ';
+
+    const { entorno } = await import('../config/entorno');
+    const { AuthModule: AuthModuleFresco } = await import('./auth.module');
+    const { JwtModule } = await import('@nestjs/jwt');
+
+    const imports = (Reflect.getMetadata('imports', AuthModuleFresco) ?? []) as Array<{
+      module?: unknown;
+      providers?: Array<{ provide: unknown; useValue?: { secret?: string } }>;
+    }>;
+    // Por `module`, no por "el primero que traiga providers": con un segundo
+    // import dinámico adelante, esa búsqueda inspeccionaría el módulo
+    // equivocado.
+    const jwtDynamicModule = imports.find((m) => m.module === JwtModule);
+    const optionsProvider = jwtDynamicModule?.providers?.find(
+      (p) => p.provide === 'JWT_MODULE_OPTIONS',
+    );
+
+    // Antes de comparar: si `@nestjs/jwt` cambiara la forma interna de su
+    // provider, `optionsProvider` sería `undefined` y el `not.toBe` de abajo
+    // pasaría por vacuidad en vez de avisar.
+    expect(optionsProvider?.useValue?.secret).toBeTypeOf('string');
+    expect(optionsProvider?.useValue?.secret).toBe(entorno.JWT_SECRET);
+    expect(optionsProvider?.useValue?.secret).not.toBe(process.env.JWT_SECRET);
+  });
+});

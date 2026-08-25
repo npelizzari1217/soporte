@@ -41,7 +41,7 @@ const VIGENCIA_TOKEN_MS = 30 * 24 * 60 * 60 * 1000;
  * EmitirEncuestaRequest — datos ya resueltos por el caller. `appBaseUrl`
  * viaja como parámetro (no se lee `process.env` en application/, mismo
  * criterio que `templateEncuestaSatisfaccion`) — el listener (infra) es
- * quien resuelve `process.env.APP_BASE_URL`.
+ * quien lo resuelve, desde `entorno.APP_BASE_URL` (`config/entorno.ts`).
  */
 export interface EmitirEncuestaRequest {
   readonly clienteId: string;
