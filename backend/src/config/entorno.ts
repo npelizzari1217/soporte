@@ -10,13 +10,31 @@
  * listener) llegue a leer una variable de entorno requerida. Si falta alguna,
  * `construirEntorno` lanza y el import falla.
  *
- * TODAVÍA NO ESTÁ EN EL GRAFO DE ARRANQUE. Al cerrar WU-1 el único importador
- * es su propio spec: `main.ts` no lo importa y los 8 sitios con `?? ''` siguen
- * intactos, así que hoy el proceso sigue arrancando sin `JWT_SECRET` y firmando
- * con el default de desarrollo. Lo conectan WU-2 (`DATABASE_URL_MASTER`,
- * `APP_BASE_URL` y el import en `main.ts`) y WU-3 (`JWT_SECRET`). Hasta
- * entonces este módulo no protege nada — no lo leas como si ya lo hiciera.
+ * YA ESTÁ EN EL GRAFO DE ARRANQUE (desde WU-2): `main.ts` lo importa antes de
+ * `AppModule`, y `DATABASE_URL_MASTER`/`APP_BASE_URL` se leen desde acá en los
+ * 5 archivos que antes hacían `process.env.X ?? ''`: `SharedModule`,
+ * `ClientesModule` (3 factories de provisioning) y los 3 listeners de
+ * notificaciones/CSAT — 8 lecturas en total, porque
+ * `TicketNotificacionListener` lo lee una vez por handler. Faltar cualquiera
+ * de esas dos variables aborta el arranque nombrándola.
+ *
+ * `JWT_SECRET` TAMBIÉN se exige ya, aunque nadie la consuma desde acá
+ * todavía: `construirEntorno` valida las 3 claves de `VARIABLES_REQUERIDAS`,
+ * así que desde WU-2 una instancia sin `JWT_SECRET` NO arranca. Cubierto por
+ * `test/entorno-corte-arranque.spec.ts`.
+ *
+ * Lo que WU-3 todavía debe es el consumo: `auth.module.ts` sigue leyendo
+ * `process.env.JWT_SECRET ?? 'soporte-dev-secret-change-in-prod'`. En el
+ * proceso real ese default ya es inalcanzable —el guard aborta antes—, pero
+ * el secreto sigue publicado en el repo y cualquier consumidor que arme
+ * `AuthModule` sin pasar por `main.ts` (los specs) todavía cruza esa lectura
+ * cruda.
+ *
+ * Y hay una divergencia más fina mientras eso dure: `leerValidada` trimea, la
+ * lectura cruda no. Con `JWT_SECRET=" abc "` este contrato expone `"abc"` y
+ * `JwtModule` firma con `" abc "` — dos valores para el mismo secreto. Se
+ * cierra sola cuando WU-3 mueva el consumo acá.
  */
-import { construirEntorno } from './validar-entorno';
+import { construirEntorno, type EntornoRequerido } from './validar-entorno';
 
-export const entorno = construirEntorno(process.env);
+export const entorno: Readonly<EntornoRequerido> = construirEntorno(process.env);

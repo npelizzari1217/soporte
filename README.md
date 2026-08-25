@@ -143,17 +143,19 @@ backfill existe para evitar.
 
 ### Backend (`backend/.env`, ver `backend/.env.example`)
 
+Las variables marcadas **Requerida** se validan al arrancar (`backend/src/config/entorno.ts`): si alguna falta o está vacía, el proceso **aborta nombrándola** y la app no levanta. Las demás tienen default y no bloquean el arranque.
+
 | Variable | Descripción |
 |---|---|
-| `DATABASE_URL_MASTER` | Conexión Postgres a la DB master (clientes/usuarios/membresías/RBAC/ciclos). Las URLs de cada tenant se derivan de esta en runtime. |
+| `DATABASE_URL_MASTER` | **Requerida — sin default.** Conexión Postgres a la DB master (clientes/usuarios/membresías/RBAC/ciclos). Las URLs de cada tenant se derivan de esta en runtime. |
 | `DATABASE_URL_TENANT` | Conexión a UNA DB tenant (dev/test) — usada solo por `prisma.tenant.config.ts` para correr migraciones del schema tenant. |
-| `JWT_SECRET` | Secreto de firma de los JWT (access + refresh). |
+| `JWT_SECRET` | **Requerida — sin default.** Secreto de firma de los JWT (access + refresh). Antes tenía un default de desarrollo publicado en el repo; se eliminó. |
 | `JWT_ACCESS_EXPIRES_IN` / `JWT_REFRESH_EXPIRES_IN` | TTL de los tokens. |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASSWORD` / `SMTP_FROM` / `SMTP_SECURE` | **Solo para el backfill inicial** — desde `configuracion-correo-por-cliente`, el envío usa la config SMTP **de cada cliente**, no estas variables (ver abajo). `SMTP_SECURE="true"` usa SMTPS directo (típico puerto 465); default `false` (STARTTLS, puerto 587). |
 | `EMAIL_CRYPTO_KEY` | Clave maestra AES-256-GCM que cifra en reposo la contraseña SMTP de cada cliente. **64 caracteres hex** (32 bytes). Si falta, la app **no** falla al arrancar: el guardado de config responde 503 y el envío degrada explícito con razón `EMAIL_CRYPTO_KEY_AUSENTE`. Generarla con `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`. **NO se puede rotar reemplazando el valor**: cada credencial guardada quedaría indescifrable. Una rotación exige una migración de re-cifrado (por eso el payload lleva el prefijo de versión `v1:`). |
 | `ROOT_ADMIN_EMAIL` / `ROOT_ADMIN_PASSWORD` / `ROOT_ADMIN_NOMBRE` / `ROOT_ADMIN_APELLIDO` | Bootstrap idempotente del primer usuario **ROOT** (`is_global_admin = true`). |
 | `SLA_SWEEP_CRON` | Expresión cron del barrido periódico de vencimiento de SLA (`SlaSweepScheduler`, módulo `sla/`). Default: cada 5 min (`CronExpression.EVERY_5_MINUTES`) si no está seteada. |
-| `APP_BASE_URL` | URL base pública de la app, usada para armar links en emails de notificación (ej. `${APP_BASE_URL}/tickets/:id`). Usada por las plantillas de email del módulo `notificaciones/` (PR-N). |
+| `APP_BASE_URL` | **Requerida — sin default.** URL base pública de la app, usada para armar links en emails de notificación (ej. `${APP_BASE_URL}/tickets/:id`). Usada por las plantillas de email del módulo `notificaciones/` (PR-N). |
 | `PORT` / `NODE_ENV` | Configuración de la app. |
 
 ### Dependencias nuevas (módulo SLA, Fase 4)

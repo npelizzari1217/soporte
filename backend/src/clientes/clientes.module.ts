@@ -26,15 +26,20 @@
  */
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
+import { entorno } from '../config/entorno';
 
 // ─── Repositories (clientes) ─────────────────────────────────────────────────
-import { CICLO_VIGENTE_REPOSITORY } from './domain/ports/i-ciclo-vigente.repository';
-import { CICLO_CLIENTE_REPOSITORY } from './domain/ports/i-ciclo-cliente.repository';
+import {
+  CICLO_VIGENTE_REPOSITORY,
+  ICicloVigenteRepository,
+} from './domain/ports/i-ciclo-vigente.repository';
+import {
+  CICLO_CLIENTE_REPOSITORY,
+  ICicloClienteRepository,
+} from './domain/ports/i-ciclo-cliente.repository';
 import { CLIENTE_REPOSITORY, IClienteRepository } from './domain/ports/i-cliente.repository';
 import { PrismaCicloVigenteRepository } from './infrastructure/persistence/prisma/prisma-ciclo-vigente.repository';
 import { PrismaCicloClienteRepository } from './infrastructure/persistence/prisma/prisma-ciclo-cliente.repository';
-import { ICicloVigenteRepository } from './domain/ports/i-ciclo-vigente.repository';
-import { ICicloClienteRepository } from './domain/ports/i-ciclo-cliente.repository';
 import {
   CLIENTE_EMAIL_CONFIG_REPOSITORY,
   IClienteEmailConfigRepository,
@@ -42,22 +47,21 @@ import {
 import { PrismaClienteEmailConfigRepository } from './infrastructure/persistence/prisma/prisma-cliente-email-config.repository';
 
 // ─── Repositories/Services (auth, cross-feature — exportados por AuthModule) ─
-import { USUARIO_REPOSITORY } from '../auth/domain/ports/i-usuario.repository';
-import { IUsuarioRepository } from '../auth/domain/ports/i-usuario.repository';
-import { MEMBRESIA_REPOSITORY } from '../auth/domain/ports/i-membresia.repository';
-import { IMembresiaRepository } from '../auth/domain/ports/i-membresia.repository';
-import { ROLE_REPOSITORY } from '../auth/domain/ports/i-role.repository';
-import { IRoleRepository } from '../auth/domain/ports/i-role.repository';
-import { HASH_PROVIDER } from '../auth/domain/ports/i-hash.provider';
-import { IHashProvider } from '../auth/domain/ports/i-hash.provider';
+import { USUARIO_REPOSITORY, IUsuarioRepository } from '../auth/domain/ports/i-usuario.repository';
+import {
+  MEMBRESIA_REPOSITORY,
+  IMembresiaRepository,
+} from '../auth/domain/ports/i-membresia.repository';
+import { ROLE_REPOSITORY, IRoleRepository } from '../auth/domain/ports/i-role.repository';
+import { HASH_PROVIDER, IHashProvider } from '../auth/domain/ports/i-hash.provider';
 
 // ─── Provisioning: ports + adapters (PR7) ────────────────────────────────────
-import { POSTGRES_ADMIN_PORT } from './domain/ports/i-postgres-admin.port';
-import { IPostgresAdminPort } from './domain/ports/i-postgres-admin.port';
-import { TENANT_MIGRATION_RUNNER } from './domain/ports/i-tenant-migration-runner.port';
-import { ITenantMigrationRunner } from './domain/ports/i-tenant-migration-runner.port';
-import { TENANT_SEEDER } from './domain/ports/i-tenant-seeder.port';
-import { ITenantSeeder } from './domain/ports/i-tenant-seeder.port';
+import { POSTGRES_ADMIN_PORT, IPostgresAdminPort } from './domain/ports/i-postgres-admin.port';
+import {
+  TENANT_MIGRATION_RUNNER,
+  ITenantMigrationRunner,
+} from './domain/ports/i-tenant-migration-runner.port';
+import { TENANT_SEEDER, ITenantSeeder } from './domain/ports/i-tenant-seeder.port';
 import { PostgresAdminService } from './infrastructure/postgres-admin.service';
 import { TenantMigrationRunnerAdapter } from './infrastructure/tenant-migration-runner.adapter';
 import { TenantSeederAdapter } from './infrastructure/tenant-seeder.adapter';
@@ -106,19 +110,20 @@ import { ClientesController } from './interface/controllers/clientes.controller'
     { provide: CLIENTE_EMAIL_CONFIG_REPOSITORY, useClass: PrismaClienteEmailConfigRepository },
     { provide: EMAIL_CONNECTION_VERIFIER, useClass: SmtpConnectionVerifier },
 
-    // ─── Provisioning: ports + adapters (PR7) — masterUrl desde env, mismo
-    // patrón que PrismaService (SharedModule). ─────────────────────────────
+    // ─── Provisioning: ports + adapters (PR7) — masterUrl desde `entorno`
+    // (ya validada al arranque, ver sdd/fail-fast-env), mismo patrón que
+    // PrismaService (SharedModule). ──────────────────────────────────────
     {
       provide: POSTGRES_ADMIN_PORT,
-      useFactory: () => new PostgresAdminService(process.env.DATABASE_URL_MASTER ?? ''),
+      useFactory: () => new PostgresAdminService(entorno.DATABASE_URL_MASTER),
     },
     {
       provide: TENANT_MIGRATION_RUNNER,
-      useFactory: () => new TenantMigrationRunnerAdapter(process.env.DATABASE_URL_MASTER ?? ''),
+      useFactory: () => new TenantMigrationRunnerAdapter(entorno.DATABASE_URL_MASTER),
     },
     {
       provide: TENANT_SEEDER,
-      useFactory: () => new TenantSeederAdapter(process.env.DATABASE_URL_MASTER ?? ''),
+      useFactory: () => new TenantSeederAdapter(entorno.DATABASE_URL_MASTER),
     },
     {
       provide: ProvisionarTenantDatabaseUseCase,

@@ -30,6 +30,8 @@ import {
 import { EmailMessage, IEmailSender } from '../../../shared/domain/ports/i-email-sender';
 import { templateSlaVencido } from '../../domain/templates/email-templates';
 import { TenantContext } from '../../../shared/tenancy/tenant-context';
+import { entorno } from '../../../config/entorno';
+import { ILogger } from '../../../shared/domain/ports/i-logger.port';
 
 @Injectable()
 export class SlaVencidoNotificacionListener {
@@ -41,8 +43,20 @@ export class SlaVencidoNotificacionListener {
     >,
     private readonly emailSender: Pick<IEmailSender, 'send'>,
     private readonly tenantContext: Pick<TenantContext, 'get'>,
+    private readonly logger: Pick<ILogger, 'error'>,
   ) {}
 
+  /**
+   * Maneja `sla.vencido`: notifica por email al asignado del ticket (si
+   * tiene) y a los administradores del tenant activo sobre el vencimiento
+   * del SLA (ver JSDoc de la clase para ALS/TenantContext y aislamiento
+   * por-destinatario).
+   *
+   * @param event Evento de vencimiento de SLA (sin PII — solo IDs).
+   * @returns No devuelve nada; el envío a cada destinatario se aísla en
+   *   `enviarSeguro` (N4), y cualquier fallo inesperado del handler completo
+   *   se loguea y se traga (ADR-6), nunca se propaga hacia el job SLA.
+   */
   @OnEvent('sla.vencido')
   async onSlaVencido(event: SlaVencidoEvent): Promise<void> {
     try {
@@ -55,7 +69,7 @@ export class SlaVencidoNotificacionListener {
         numero: ticket.numero,
         titulo: ticket.titulo,
         ticketId: ticket.id,
-        appBaseUrl: process.env.APP_BASE_URL ?? '',
+        appBaseUrl: entorno.APP_BASE_URL,
       });
 
       const destinatarios: ContactoUsuario[] = [];
@@ -76,9 +90,14 @@ export class SlaVencidoNotificacionListener {
       await Promise.all(
         destinatarios.map((destinatario) => this.enviarSeguro(destinatario, plantilla)),
       );
-    } catch {
+    } catch (err) {
       // log-and-swallow (ADR-6): un fallo inesperado (ej. el ticket no
-      // carga) nunca se propaga hacia el job SLA que emitió el evento.
+      // carga) nunca se propaga hacia el job SLA que emitió el evento. Se
+      // loguea (no catch vacío) para que el fallo quede visible sin voltear
+      // el job.
+      this.logger.error(
+        `SlaVencidoNotificacionListener: fallo al notificar vencimiento de SLA (ticketId=${event.ticketId}): ${String(err)}`,
+      );
     }
   }
 
@@ -92,8 +111,13 @@ export class SlaVencidoNotificacionListener {
   ): Promise<void> {
     try {
       await this.emailSender.send({ to: destinatario.email, ...plantilla });
-    } catch {
+    } catch (err) {
       // log-and-swallow por-destinatario (N4): el resto de los envíos sigue.
+      // Se loguea (no catch vacío) para que el fallo de ESTE destinatario
+      // quede visible sin bloquear a los demás.
+      this.logger.error(
+        `SlaVencidoNotificacionListener: fallo al enviar email a destinatario (email=${destinatario.email}): ${String(err)}`,
+      );
     }
   }
 }
