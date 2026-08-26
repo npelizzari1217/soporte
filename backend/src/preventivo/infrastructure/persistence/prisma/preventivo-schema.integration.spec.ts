@@ -27,6 +27,7 @@ import { randomBytes } from 'node:crypto';
 import { Client } from 'pg';
 import { PostgresAdminService } from '../../../../clientes/infrastructure/postgres-admin.service';
 import { TenantMigrationRunnerAdapter } from '../../../../clientes/infrastructure/tenant-migration-runner.adapter';
+import { RESULTADOS_GENERACION } from '../../../domain/ports/i-preventivo-generacion.repository';
 
 const MASTER_TEST_URL =
   process.env.DATABASE_URL_MASTER ??
@@ -219,7 +220,7 @@ describe('Schema preventivo — CHECKs e idempotencia (WU-2, tenant efímero)', 
       ).rejects.toThrow(/preventivo_generacion_resultado_check|check constraint/i);
     });
 
-    it.each(['RESERVADO', 'SALTEADO_PENDIENTE', 'SALTEADO_ATRASO'])(
+    it.each(RESULTADOS_GENERACION.filter((resultado) => resultado !== 'GENERADO'))(
       'acepta el resultado %s (sin ticket)',
       async (resultado) => {
         const planId = await insertPlanValido();
@@ -307,6 +308,31 @@ describe('Schema preventivo — CHECKs e idempotencia (WU-2, tenant efímero)', 
         [planId],
       );
       expect(result.rowCount).toBe(0);
+    });
+  });
+
+  // ─── Deriva CHECK ↔ TypeScript (mismo criterio que compras-checks.integration.spec.ts) ──
+  //
+  // `RESULTADOS_GENERACION` vive en TRES lugares independientes: esta unión
+  // TS, el CHECK `preventivo_generacion_resultado_check` de la migración
+  // `20260825110000_preventivo_planes`, y (hasta esta corrección) los
+  // literales hardcodeados del `it.each` de arriba. El riesgo no es que un
+  // caller mande un valor inválido (los cuatro resultados salen siempre de
+  // literales del código, no del body HTTP): el riesgo es la DERIVA — agregar
+  // un resultado a la unión de TS y olvidar la migración (o al revés). Ese
+  // desalineamiento no lo atrapa `tsc` ni el CHECK por separado: solo un test
+  // que lea la definición REAL del CHECK y la compare contra la constante.
+
+  describe('La lista del CHECK y la de TypeScript no derivan', () => {
+    it('preventivo_generacion_resultado_check enumera exactamente RESULTADOS_GENERACION', async () => {
+      const result = await client.query(
+        'SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conname = $1',
+        ['preventivo_generacion_resultado_check'],
+      );
+      expect(result.rows).toHaveLength(1);
+      const definicion: string = result.rows[0].def;
+      const enLaDb = [...definicion.matchAll(/'([^']+)'/g)].map((m) => m[1]).sort();
+      expect(enLaDb).toEqual([...RESULTADOS_GENERACION].sort());
     });
   });
 });

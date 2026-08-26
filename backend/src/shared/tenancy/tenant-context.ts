@@ -27,6 +27,20 @@ export interface TenantContextData {
    * Ref: sdd/preventivo/design ADR-PV5, sdd/preventivo/tasks WU-0 (0.1/0.2).
    */
   enTransaccion?: boolean;
+  /**
+   * Cola de callbacks post-commit encolados vía `ITenantTransactionRunner.alCommitear()`.
+   *
+   * La crea `PrismaTenantTransactionRunner.run()` al abrir la transacción MÁS
+   * EXTERNA (mismo array durante toda su vida). Un `run()` anidado (re-entrante,
+   * `enTransaccion: true`) reutiliza el MISMO objeto `ctx` — nunca crea uno
+   * nuevo — así que comparte esta misma cola: un `alCommitear()` llamado
+   * desde dentro de un caller re-entrante (ej. `CrearTicketUseCase` invocado
+   * por `GenerarPreventivosUseCase`, ADR-PV5) queda diferido hasta que
+   * comitea la transacción de más afuera, no la interna.
+   *
+   * Ref: sdd/preventivo/apply-progress-wu5-postcommit.
+   */
+  postCommitCallbacks?: Array<() => void>;
 }
 
 /**

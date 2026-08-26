@@ -51,7 +51,7 @@ describe('PrismaTicketRepository.findLastSecuencia — Concurrencia real (T5.2, 
     prismaService = new PrismaService(MASTER_TEST_URL);
     tenantClient = prismaService.getTenantClient(TENANT_TEST_DB_NAME);
     tenantContext = new TenantContext();
-    txRunner = new PrismaTenantTransactionRunner(tenantContext);
+    txRunner = new PrismaTenantTransactionRunner(tenantContext, { error: () => {} });
     ticketRepo = new PrismaTicketRepository(tenantContext);
 
     const suffix = randomBytes(3).toString('hex');

@@ -1,5 +1,15 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
+import { TicketsModule } from '../tickets/tickets.module';
+import {
+  TIPO_TICKET_REPOSITORY,
+  ITipoTicketRepository,
+} from '../tickets/domain/ports/i-tipo-ticket.repository';
+import { CrearTicketUseCase } from '../tickets/application/use-cases/crear-ticket.use-case';
+import { TENANT_ENUMERATOR, ITenantEnumerator } from '../shared/domain/ports/i-tenant-enumerator';
+import { TenantContext } from '../shared/tenancy/tenant-context';
+import { PrismaService } from '../shared/infrastructure/persistence/prisma.service';
+import { LOGGER, ILogger } from '../shared/domain/ports/i-logger.port';
 
 import {
   ITenantTransactionRunner,
@@ -16,14 +26,17 @@ import {
   IPreventivoGeneracionRepository,
 } from './domain/ports/i-preventivo-generacion.repository';
 import { PrismaPreventivoGeneracionRepository } from './infrastructure/persistence/prisma/prisma-preventivo-generacion.repository';
+import { CalcularCicloService } from './domain/services/calcular-ciclo.service';
 
 import { CrearPlanUseCase } from './application/use-cases/crear-plan.use-case';
 import { EditarPlanUseCase } from './application/use-cases/editar-plan.use-case';
 import { ListarPlanesUseCase } from './application/use-cases/listar-planes.use-case';
 import { DarDeBajaPlanUseCase } from './application/use-cases/dar-de-baja-plan.use-case';
 import { ListarGeneracionesPlanUseCase } from './application/use-cases/listar-generaciones-plan.use-case';
+import { GenerarPreventivosUseCase } from './application/use-cases/generar-preventivos.use-case';
 
 import { PreventivoController } from './interface/controllers/preventivo.controller';
+import { PreventivoSweepScheduler } from './infrastructure/schedulers/preventivo-sweep.scheduler';
 
 /**
  * PreventivoModule — módulo NestJS del ABM de planes de mantenimiento
@@ -34,22 +47,27 @@ import { PreventivoController } from './interface/controllers/preventivo.control
  * - `AuthModule`: los guards de `PreventivoController` (`JwtAuthGuard`,
  *   `TenantGuard`, `AccionesGuard`) lo necesitan importado explícitamente
  *   (no re-exportado transitivamente por otro módulo de negocio).
- * - `TENANT_TX_RUNNER` se inyecta desde `SharedModule` (`@Global`).
+ * - `TENANT_TX_RUNNER`/`TENANT_ENUMERATOR`/`TenantContext`/`PrismaService`/
+ *   `LOGGER` se inyectan desde `SharedModule` (`@Global`).
+ * - `TicketsModule`: `GenerarPreventivosUseCase` (WU-5) reusa
+ *   `CrearTicketUseCase` (exportado por `TicketsModule` desde 5.1) y
+ *   `TIPO_TICKET_REPOSITORY` para resolver el tipo FIJO `MANTENIMIENTO`.
  *
- * ALCANCE DE WU-4: solo el ABM (crear/editar/listar/dar de baja + vista de
- * generaciones). NO registra `PreventivoSweepScheduler` ni llama
- * `ScheduleModule.forRoot()` (ya vive en `AppModule` por WU-0) — el barrido
- * y la transacción de generación son WU-5.
+ * WU-5 agrega la generación automática: `GenerarPreventivosUseCase`
+ * (orquestación transaccional del ciclo, ADR-PV2/PV3/PV5) y
+ * `PreventivoSweepScheduler` (`@Cron`, fan-out multi-tenant). NO llama
+ * `ScheduleModule.forRoot()` (ya vive en `AppModule` desde WU-0).
  *
  * FITNESS RULE: PrismaService y @prisma/client solo pueden importarse desde
  * infrastructure/ (ver backend/eslint.config.js).
  */
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, TicketsModule],
   controllers: [PreventivoController],
   providers: [
     { provide: PLAN_PREVENTIVO_REPOSITORY, useClass: PrismaPlanPreventivoRepository },
     { provide: PREVENTIVO_GENERACION_REPOSITORY, useClass: PrismaPreventivoGeneracionRepository },
+    { provide: CalcularCicloService, useFactory: () => new CalcularCicloService() },
     {
       provide: CrearPlanUseCase,
       useFactory: (planRepo: IPlanPreventivoRepository, txRunner: ITenantTransactionRunner) =>
@@ -79,6 +97,54 @@ import { PreventivoController } from './interface/controllers/preventivo.control
         generacionRepo: IPreventivoGeneracionRepository,
       ) => new ListarGeneracionesPlanUseCase(planRepo, generacionRepo),
       inject: [PLAN_PREVENTIVO_REPOSITORY, PREVENTIVO_GENERACION_REPOSITORY],
+    },
+    {
+      provide: GenerarPreventivosUseCase,
+      useFactory: (
+        planRepo: IPlanPreventivoRepository,
+        generacionRepo: IPreventivoGeneracionRepository,
+        tipoTicketRepo: ITipoTicketRepository,
+        crearTicketUseCase: CrearTicketUseCase,
+        txRunner: ITenantTransactionRunner,
+        calcularCiclo: CalcularCicloService,
+        logger: ILogger,
+      ) =>
+        new GenerarPreventivosUseCase(
+          planRepo,
+          generacionRepo,
+          tipoTicketRepo,
+          crearTicketUseCase,
+          txRunner,
+          calcularCiclo,
+          logger,
+        ),
+      inject: [
+        PLAN_PREVENTIVO_REPOSITORY,
+        PREVENTIVO_GENERACION_REPOSITORY,
+        TIPO_TICKET_REPOSITORY,
+        CrearTicketUseCase,
+        TENANT_TX_RUNNER,
+        CalcularCicloService,
+        LOGGER,
+      ],
+    },
+    {
+      provide: PreventivoSweepScheduler,
+      useFactory: (
+        tenantEnumerator: ITenantEnumerator,
+        tenantContext: TenantContext,
+        prismaService: PrismaService,
+        generarPreventivosUseCase: GenerarPreventivosUseCase,
+        logger: ILogger,
+      ) =>
+        new PreventivoSweepScheduler(
+          tenantEnumerator,
+          tenantContext,
+          prismaService,
+          generarPreventivosUseCase,
+          logger,
+        ),
+      inject: [TENANT_ENUMERATOR, TenantContext, PrismaService, GenerarPreventivosUseCase, LOGGER],
     },
   ],
   exports: [PLAN_PREVENTIVO_REPOSITORY, PREVENTIVO_GENERACION_REPOSITORY],

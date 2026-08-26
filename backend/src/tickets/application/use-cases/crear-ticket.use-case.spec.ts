@@ -12,6 +12,8 @@
  */
 import { CrearTicketUseCase, CrearTicketDto } from './crear-ticket.use-case';
 import { Result } from '../../../shared/domain/result';
+import { TenantContext } from '../../../shared/tenancy/tenant-context';
+import { PrismaTenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { TicketEntity } from '../../domain/entities/ticket.entity';
 import { CicloClienteEntity } from '../../domain/entities/ciclo-cliente.entity';
 import { TipoTicketEntity } from '../../domain/entities/tipo-ticket.entity';
@@ -91,8 +93,26 @@ describe('CrearTicketUseCase', () => {
       ),
     };
     // txRunner.run ejecuta el callback DIRECTAMENTE (sin Prisma real) — pero
-    // preserva la semántica "corre dentro de la tx" para los tests.
-    const txRunner = { run: vi.fn((fn: () => Promise<unknown>) => fn()) };
+    // preserva la semántica "corre dentro de la tx" para los tests. Igual
+    // alCommitear() acá: para estos tests unitarios (que no ejercitan la
+    // re-entrancia) alcanza con ejecutar el callback en el acto; el
+    // comportamiento diferido real está cubierto abajo, contra el runner
+    // REAL (`makeCollaboradoresConRunnerReal`). El try/catch de acá calca el
+    // log-and-swallow que hace `PrismaTenantTransactionRunner` en producción
+    // (sdd/preventivo WU-5 postcommit): desde esa corrección, el use case ya
+    // NO envuelve el callback en su propio try/catch, así que el mock que lo
+    // simula tiene que hacerlo para no romper el contrato con un fake ciego.
+    const txRunner = {
+      run: vi.fn((fn: () => Promise<unknown>) => fn()),
+      alCommitear: vi.fn((fn: () => void) => {
+        try {
+          fn();
+        } catch {
+          // Swallow — mismo criterio que el runner real: un callback que
+          // falla no debe propagar ni afectar al resto de la cola.
+        }
+      }),
+    };
     const eventPublisher = { publish: vi.fn() };
 
     const useCase = new CrearTicketUseCase(
@@ -287,5 +307,139 @@ describe('CrearTicketUseCase', () => {
     expect(result.getError()).toBeInstanceOf(SecuenciaAgotadaError);
     expect(c.ticketRepo.save).not.toHaveBeenCalled();
     expect(c.operacionRepo.save).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Defecto de re-entrancia (sdd/preventivo WU-5) — RED→GREEN.
+ *
+ * `CrearTicketUseCase` publica `TicketCreadoEvent` vía `txRunner.alCommitear()`
+ * en vez de directo. Estos tests usan el `PrismaTenantTransactionRunner` REAL
+ * (no un mock que "ejecuta directo") porque son justamente los que ejercitan
+ * su semántica de commit diferido y re-entrancia — un mock `run: fn => fn()`
+ * no puede reproducir el defecto: lo tapa igual que el
+ * `NoopDomainEventPublisher` de generar-preventivos.integration.spec.ts.
+ *
+ * Escenario: `CrearTicketUseCase` corriendo RE-ENTRANTE, anidado dentro de la
+ * transacción de OTRO caller (así es como lo usa `GenerarPreventivosUseCase`,
+ * ADR-PV5).
+ */
+describe('CrearTicketUseCase — publicación post-commit bajo re-entrancia (runner real)', () => {
+  function makeCollaboradoresConRunnerReal() {
+    const ticketRepo = {
+      findById: vi.fn(),
+      save: vi.fn().mockResolvedValue(undefined),
+    };
+    const operacionRepo = { save: vi.fn().mockResolvedValue(undefined) };
+    const estadoRepo = { findIdByCodigo: vi.fn().mockResolvedValue('estado-nuevo-uuid') };
+    const tipoTicketRepo = {
+      findById: vi
+        .fn()
+        .mockResolvedValue(
+          TipoTicketEntity.create(
+            { codigo: 'SOPORTE', nombre: 'Soporte', modulo: 'TICKETS', activo: true },
+            'tipo-soporte-uuid',
+          ),
+        ),
+    };
+    const prioridadRepo = {
+      findById: vi
+        .fn()
+        .mockResolvedValue(
+          PrioridadEntity.create(
+            { codigo: 'MEDIA', nombre: 'Media', color: null, orden: 2, activo: true },
+            'prioridad-media-uuid',
+          ),
+        ),
+    };
+    const tipoOperacionRepo = {
+      findIdByCodigo: vi.fn().mockResolvedValue('tipo-op-cambio-estado-uuid'),
+    };
+    const usuarioMasterChecker = { existeEnTenant: vi.fn().mockResolvedValue(true) };
+    const numerador = { generarNumero: vi.fn().mockResolvedValue(Result.ok('SOP-2026-00001')) };
+    const resolverCicloActivo = {
+      resolver: vi.fn().mockResolvedValue(
+        Result.ok(
+          CicloClienteEntity.create(
+            {
+              cicloVigenteId: 'ciclo-vigente-uuid',
+              nombre: 'Ciclo 2026',
+              fechaInicio: new Date('2026-01-01'),
+              fechaFin: new Date('2026-12-31'),
+              activo: true,
+            },
+            'ciclo-activo-uuid',
+          ),
+        ),
+      ),
+    };
+    const eventPublisher = { publish: vi.fn() };
+
+    const tenantContext = new TenantContext();
+    const txRunner = new PrismaTenantTransactionRunner(tenantContext, { error: () => {} });
+
+    const useCase = new CrearTicketUseCase(
+      ticketRepo as never,
+      operacionRepo as never,
+      estadoRepo as never,
+      tipoTicketRepo as never,
+      prioridadRepo as never,
+      tipoOperacionRepo as never,
+      usuarioMasterChecker as never,
+      numerador as never,
+      resolverCicloActivo as never,
+      eventPublisher as never,
+      txRunner,
+    );
+
+    return { useCase, txRunner, tenantContext, eventPublisher };
+  }
+
+  // Doble mínimo del PrismaClient "normal": $transaction ejecuta el callback
+  // pasándole un tx double cualquiera (no se usa su contenido en estos tests).
+  function makePrismaClientDouble() {
+    const txClient = { $transaction: vi.fn() };
+    return {
+      $transaction: vi
+        .fn()
+        .mockImplementation((fn: (tx: unknown) => Promise<unknown>) => fn(txClient)),
+    };
+  }
+
+  it('NO publica mientras la transacción MÁS EXTERNA sigue abierta; SÍ publica después de que comitea', async () => {
+    const { useCase, txRunner, tenantContext, eventPublisher } = makeCollaboradoresConRunnerReal();
+    const prismaClient = makePrismaClientDouble();
+
+    let publicadoDuranteLaTx: boolean | undefined;
+
+    await tenantContext.run({ prismaClient, dbName: 'test_db', clienteId: 'cliente-uuid' }, () =>
+      txRunner.run(async () => {
+        // Simula GenerarPreventivosUseCase: llama a CrearTicketUseCase DENTRO
+        // de una transacción ya abierta por otro caller (re-entrante).
+        const result = await useCase.execute(baseDto());
+        expect(result.isOk()).toBe(true);
+        publicadoDuranteLaTx = eventPublisher.publish.mock.calls.length > 0;
+      }),
+    );
+
+    expect(publicadoDuranteLaTx).toBe(false);
+    expect(eventPublisher.publish).toHaveBeenCalledTimes(1);
+  });
+
+  it('si la transacción MÁS EXTERNA hace ROLLBACK, el evento NUNCA se publica', async () => {
+    const { useCase, txRunner, tenantContext, eventPublisher } = makeCollaboradoresConRunnerReal();
+    const prismaClient = makePrismaClientDouble();
+
+    await expect(
+      tenantContext.run({ prismaClient, dbName: 'test_db', clienteId: 'cliente-uuid' }, () =>
+        txRunner.run(async () => {
+          const result = await useCase.execute(baseDto());
+          expect(result.isOk()).toBe(true);
+          throw new Error('rollback forzado por el caller externo');
+        }),
+      ),
+    ).rejects.toThrow('rollback forzado por el caller externo');
+
+    expect(eventPublisher.publish).not.toHaveBeenCalled();
   });
 });

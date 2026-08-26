@@ -481,6 +481,11 @@ import { CatalogosController } from './interface/controllers/catalogos.controlle
     OPERACION_TICKET_REPOSITORY,
     ARCHIVO_REPOSITORY,
     CICLO_CLIENTE_REPOSITORY,
+    // sdd/preventivo WU-5 (5.1): CrearTicketUseCase exportado para que
+    // GenerarPreventivosUseCase lo reuse en vez de reimplementar la sección
+    // crítica de numeración (ADR-PV5) — mismo criterio que los tokens de
+    // repositorio de arriba.
+    CrearTicketUseCase,
   ],
 })
 export class TicketsModule {}
