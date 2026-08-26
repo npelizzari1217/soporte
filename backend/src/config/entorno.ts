@@ -21,24 +21,39 @@
  * - `src/testing/lock-master-test.ts` lee `DATABASE_URL_MASTER` crudo con un
  *   default, porque tiene que funcionar en la suite ANTES de que exista un
  *   contrato validado y sin arrastrar el guard a cada spec.
- * - Los `*.spec.ts` bajo `src/` (unos 48 archivos) la leen crudo por la misma
- *   razón.
+ * - Los `*.spec.ts` bajo `src/` la leen crudo por la misma razón. No van
+ *   contados a propósito: un número acá se desactualiza igual que una lista.
  *
  * Sostener la invariante es trabajo de la regla de ESLint `no-restricted-syntax`
  * en `eslint.config.js` (WU-4), probada en `regla-env-vacio.lint.spec.ts`.
- * Rechaza, sobre `src/` y `scripts/`, que una lectura de `process.env` degrade
- * a string vacío en sus cuatro formas: con `??` y con `||`, y con el vacío
- * escrito como `''` o como template vacío. Ancla `process.env` como
- * descendiente, así que también cubre el fallback encadenado
- * (`process.env.A || process.env.B || ''`).
+ * Rechaza, sobre `src/` Y sobre `scripts/`, que una lectura de `process.env`
+ * degrade a string vacío. Cubre:
+ * - `??` y `||`, incluido el fallback encadenado
+ *   (`process.env.A || process.env.B || ''`), porque ahí ancla `process.env`
+ *   como descendiente y no en una ruta fija;
+ * - el ternario en sus DOS orientaciones, así que invertir la condición no lo
+ *   esquiva (`!process.env.X ? '' : process.env.X` y
+ *   `process.env.X === undefined ? '' : process.env.X`);
+ * - el vacío escrito como `''` o como template vacío;
+ * - el corchete sobre la variable (`process.env['X']`) o sobre `env` mismo
+ *   (`process["env"].X`).
  *
- * Lo que la regla NO ve, para que nadie le atribuya más de lo que hace: es un
- * selector léxico, así que se le escapa la indirección
- * (`const u = process.env.X; u ?? ''`) y los otros defaults degradantes que no
- * son el vacío (`?? ' '`, `?? '-'`). Y no alcanza `test/`, que está fuera del
- * alcance de `pnpm lint`. Lo que seguro no sostiene la invariante es una lista
- * de consumidores en este comentario, que se desactualiza el día que alguien
- * agregue el próximo.
+ * Lo que la regla NO ve, para que nadie le atribuya más de lo que hace. Es un
+ * selector léxico, así que se le escapan:
+ * - la indirección: `const u = process.env.X; u ?? ''`;
+ * - el destructuring con default: `const { X = '' } = process.env`;
+ * - los vacíos escritos de forma indirecta (`?? String()`, `?? ''.trim()`);
+ * - los defaults degradantes que no son el vacío exacto (`?? ' '`, `?? '-'`);
+ * - el ternario cuya rama NO es la lectura pelada de env, sino algo derivado
+ *   de ella: `process.env.A ? process.env.A.trim() : ''`, o el encadenado en
+ *   forma de ternario. A diferencia de `??`/`||`, acá el ancla SÍ es una ruta
+ *   fija, y es a propósito: exigir que una rama sea la lectura y la otra el
+ *   vacío es lo que evita marcar `process.env.FLAG ? 'si' : ''`, que arma una
+ *   etiqueta y no es esta enfermedad. Se eligió precisión sobre alcance.
+ *
+ * Y no alcanza `test/`, que está fuera del alcance de `pnpm lint`. Lo que
+ * seguro no sostiene la invariante es una lista de consumidores en este
+ * comentario, que se desactualiza el día que alguien agregue el próximo.
  *
  * El secreto de desarrollo que `auth.module.ts` traía publicado como default
  * se eliminó: ninguna instancia arranca sin un `JWT_SECRET` propio.
