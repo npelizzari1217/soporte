@@ -75,3 +75,24 @@ export function templateSlaVencido(datos: DatosTicketBase): PlantillaEmail {
 
   return { subject, text, html };
 }
+
+/**
+ * templatePreventivoGenerado — plantilla de `preventivo.generado` ([R11],
+ * WU-6). Se dispara solo cuando el barrido efectivamente creó un ticket
+ * `MANTENIMIENTO` desde un plan vencido — nunca en un salteo.
+ *
+ * Ref spec: sdd/preventivo/spec, Requirement "Notificación solo al generar".
+ * Ref design: ADR-PV2 (flujo de datos). Tarea: 6.2.
+ */
+export function templatePreventivoGenerado(datos: DatosTicketBase): PlantillaEmail {
+  const subject = `Mantenimiento preventivo generado — Ticket ${datos.numero}`;
+  const link = linkTicket(datos);
+  const text =
+    `Se generó el ticket de mantenimiento preventivo ${datos.numero} - ${datos.titulo}.\n\n` +
+    `Ver ticket: ${link}`;
+  const html =
+    `<p>Se generó el ticket de mantenimiento preventivo <strong>${datos.numero}</strong> - ${datos.titulo}.</p>` +
+    `<p><a href="${link}">Ver ticket</a></p>`;
+
+  return { subject, text, html };
+}

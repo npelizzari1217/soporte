@@ -1,11 +1,13 @@
 import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { ILogger } from '../../../shared/domain/ports/i-logger.port';
+import { IDomainEventPublisher } from '../../../shared/domain/ports/i-domain-event-publisher';
 import { ITipoTicketRepository } from '../../../tickets/domain/ports/i-tipo-ticket.repository';
 import { CrearTicketUseCase } from '../../../tickets/application/use-cases/crear-ticket.use-case';
 import { IPlanPreventivoRepository } from '../../domain/ports/i-plan-preventivo.repository';
 import { IPreventivoGeneracionRepository } from '../../domain/ports/i-preventivo-generacion.repository';
 import { PlanPreventivoEntity } from '../../domain/entities/plan-preventivo.entity';
 import { CalcularCicloService } from '../../domain/services/calcular-ciclo.service';
+import { PreventivoGeneradoEvent } from '../../domain/events/preventivo-generado.event';
 
 /** Código FIJO del tipo de ticket que genera este barrido (F3-M1, ya sembrado). */
 const TIPO_CODIGO_MANTENIMIENTO = 'MANTENIMIENTO';
@@ -36,14 +38,21 @@ const TIPO_CODIGO_MANTENIMIENTO = 'MANTENIMIENTO';
  * crudo). El aislamiento POR TENANT es responsabilidad del scheduler
  * (`PreventivoSweepScheduler`).
  *
- * WU-6 (fuera de este alcance): la publicación post-commit de
- * `preventivo.generado` NO vive acá todavía.
+ * WU-6 [R11]: solo cuando el ciclo terminó en GENERADO (paso 5, dentro de la
+ * MISMA transacción del plan) se encola `PreventivoGeneradoEvent` vía
+ * `txRunner.alCommitear()` — mismo patrón que `CrearTicketUseCase` paso 8
+ * (ADR-PV5/#2651): publicar la publicación en un `alCommitear()` en vez de
+ * directo evita que, corriendo re-entrante, el evento salga con la
+ * transacción externa todavía abierta. NUNCA se encola en `SALTEADO_PENDIENTE`,
+ * `SALTEADO_ATRASO` ni cuando `reservar()` pierde la carrera — en esos casos
+ * no hay ticket nuevo que notificar. El runner protege cada callback con su
+ * propio try/catch (log-and-swallow) — este use case no necesita el suyo.
  *
  * Ref spec: sdd/preventivo/spec, Requirements "Idempotencia por clave de
  * base...", "Recuperación de corrida perdida sin ráfaga", "No-solapamiento
  * con preventivo abierto sin atender", "Solicitante del ticket generado...",
- * "Aislamiento por tenant en el barrido". Ref design: ADR-PV2, ADR-PV3,
- * ADR-PV4, ADR-PV5. Tarea: 5.3, 5.4, 5.5.
+ * "Aislamiento por tenant en el barrido", "Notificación solo al generar".
+ * Ref design: ADR-PV2, ADR-PV3, ADR-PV4, ADR-PV5. Tarea: 5.3, 5.4, 5.5, 6.1.
  */
 export class GenerarPreventivosUseCase {
   constructor(
@@ -64,6 +73,7 @@ export class GenerarPreventivosUseCase {
     private readonly txRunner: ITenantTransactionRunner,
     private readonly calcularCiclo: Pick<CalcularCicloService, 'ciclosPendientes'>,
     private readonly logger: Pick<ILogger, 'error'>,
+    private readonly eventPublisher: Pick<IDomainEventPublisher, 'publish'>,
   ) {}
 
   /**
@@ -189,8 +199,23 @@ export class GenerarPreventivosUseCase {
 
       // 4-5. Éxito: cierra el ciclo GENERADO y avanza el puntero en el
       // mismo COMMIT.
-      await this.generacionRepo.marcarGenerado(generacionId, ticketResult.getValue().id);
+      const ticketId = ticketResult.getValue().id;
+      await this.generacionRepo.marcarGenerado(generacionId, ticketId);
       await this.planRepo.actualizarProximaEjecucion(plan.id, resultado.proximaEjecucionEn);
+
+      // [R11] Post-commit, log-and-swallow (ADR-PV2 último paso): encolada
+      // vía `alCommitear()`, nunca publicada directo acá — este punto del
+      // código corre con la transacción TODAVÍA abierta (ver JSDoc de la
+      // clase y ADR-PV5).
+      this.txRunner.alCommitear(() => {
+        this.eventPublisher.publish(
+          new PreventivoGeneradoEvent({
+            planId: plan.id,
+            ticketId,
+            responsableId: plan.responsableId,
+          }),
+        );
+      });
     });
   }
 }

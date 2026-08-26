@@ -1,6 +1,6 @@
 /**
- * generar-preventivos.integration.spec.ts — WU-5 (5.8-5.13), integración
- * contra Postgres REAL. Provisiona una DB tenant EFÍMERA
+ * generar-preventivos.integration.spec.ts — WU-5 (5.8-5.13) + WU-6 (6.1),
+ * integración contra Postgres REAL. Provisiona una DB tenant EFÍMERA
  * (`soporte_prov_prevGenE2E_<rand>_test`), la migra y la siembra con
  * `TenantSeederAdapter.seed()` real — mismo patrón que
  * `equipos/mantenimiento.integration.spec.ts`: `CrearTicketUseCase` resuelve
@@ -19,8 +19,9 @@
  *
  * Ref spec: sdd/preventivo/spec, Requirements "Idempotencia por clave de
  * base...", "Recuperación de corrida perdida sin ráfaga", "No-solapamiento
- * con preventivo abierto sin atender", "Solicitante del ticket generado...".
- * Ref design: ADR-PV2, ADR-PV3, ADR-PV4, ADR-PV5. Tarea: 5.8-5.13.
+ * con preventivo abierto sin atender", "Solicitante del ticket generado...",
+ * "Notificación solo al generar". Ref design: ADR-PV2, ADR-PV3, ADR-PV4,
+ * ADR-PV5. Tarea: 5.8-5.13, 6.1.
  */
 import { randomBytes } from 'node:crypto';
 import { PrismaService } from '../shared/infrastructure/persistence/prisma.service';
@@ -62,14 +63,27 @@ const TENANT_DB_NAME = `soporte_prov_prevGenE2E_${randomBytes(4).toString('hex')
 const CLIENTE_ID = 'prev-gen-e2e-cliente';
 const DUMMY_RESPONSABLE_ID = '01900000-0000-7000-8000-000000000101';
 
-/** Publisher no-op — WU-5 no publica `preventivo.generado` (WU-6). */
+/** Publisher no-op — usado para `TicketCreadoEvent` (SLA), fuera de alcance acá. */
 class NoopDomainEventPublisher implements IDomainEventPublisher {
   publish(_event: DomainEvent): void {
     // no-op
   }
 }
 
-describe('GenerarPreventivosUseCase — Integration (5.8-5.13)', () => {
+/**
+ * Publisher que graba los eventos publicados — WU-6 [R11]: prueba que
+ * `alCommitear()` corre de verdad DESPUÉS del commit real de Prisma (un
+ * mock `run: fn => fn()` no puede reproducir esto, mismo criterio que
+ * `apply-progress-wu5-postcommit`).
+ */
+class RecordingDomainEventPublisher implements IDomainEventPublisher {
+  readonly publicados: DomainEvent[] = [];
+  publish(event: DomainEvent): void {
+    this.publicados.push(event);
+  }
+}
+
+describe('GenerarPreventivosUseCase — Integration (5.8-5.13, 6.1)', () => {
   const admin = new PostgresAdminService(MASTER_TEST_URL);
 
   let prismaService: PrismaService;
@@ -80,6 +94,7 @@ describe('GenerarPreventivosUseCase — Integration (5.8-5.13)', () => {
   let generacionRepo: PrismaPreventivoGeneracionRepository;
   let crearTicketUseCase: CrearTicketUseCase;
   let generarPreventivosUseCase: GenerarPreventivosUseCase;
+  let eventPublisher: RecordingDomainEventPublisher;
   let usuarioMasterChecker: IUsuarioMasterChecker & {
     existeEnTenant: ReturnType<typeof vi.fn<(u: string, c: string) => Promise<boolean>>>;
   };
@@ -182,6 +197,7 @@ describe('GenerarPreventivosUseCase — Integration (5.8-5.13)', () => {
     generacionRepo = new PrismaPreventivoGeneracionRepository(tenantContext);
     logger = { error: vi.fn<(mensaje: string) => void>() };
 
+    eventPublisher = new RecordingDomainEventPublisher();
     generarPreventivosUseCase = new GenerarPreventivosUseCase(
       planRepo,
       generacionRepo,
@@ -190,6 +206,7 @@ describe('GenerarPreventivosUseCase — Integration (5.8-5.13)', () => {
       txRunner,
       new CalcularCicloService(),
       logger,
+      eventPublisher,
     );
 
     const prioridad = await tenantClient.prioridad.findUniqueOrThrow({
@@ -216,6 +233,7 @@ describe('GenerarPreventivosUseCase — Integration (5.8-5.13)', () => {
   afterEach(() => {
     usuarioMasterChecker.existeEnTenant.mockReset().mockResolvedValue(true);
     logger.error.mockReset();
+    eventPublisher.publicados.length = 0;
   });
 
   afterAll(async () => {
@@ -250,6 +268,26 @@ describe('GenerarPreventivosUseCase — Integration (5.8-5.13)', () => {
     expect(planActualizado!.proximaEjecucionEn.getTime()).toBeGreaterThan(
       plan.proximaEjecucionEn.getTime(),
     );
+  });
+
+  it('[CRITICAL][R11] publica preventivo.generado con el runner REAL de Prisma, DESPUÉS del commit — una sola vez pese a la segunda invocación idempotente', async () => {
+    const plan = await crearPlan();
+
+    await withTenant(() => generarPreventivosUseCase.execute(CLIENTE_ID));
+
+    const tickets = await ticketsDelPlan(plan);
+    expect(eventPublisher.publicados).toHaveLength(1);
+    expect(eventPublisher.publicados[0]).toMatchObject({
+      name: 'preventivo.generado',
+      planId: plan.id,
+      ticketId: tickets[0].id,
+      responsableId: plan.responsableId,
+    });
+
+    // Idempotencia [R6]: la segunda corrida no reserva de nuevo → tampoco
+    // publica de nuevo.
+    await withTenant(() => generarPreventivosUseCase.execute(CLIENTE_ID));
+    expect(eventPublisher.publicados).toHaveLength(1);
   });
 
   it('[CRITICAL][R6] dos invocaciones CONCURRENTES → mismo resultado: 1 ticket, 1 fila GENERADO', async () => {
@@ -307,6 +345,7 @@ describe('GenerarPreventivosUseCase — Integration (5.8-5.13)', () => {
     expect(tickets).toHaveLength(0);
     expect(generaciones).toHaveLength(1);
     expect(generaciones[0].resultado).toBe('SALTEADO_ATRASO');
+    expect(eventPublisher.publicados).toHaveLength(0);
 
     const planActualizado = await withTenant(() => planRepo.buscarPorId(plan.id));
     // Re-anclaje aritmético: el puntero saltó cerca de "hoy", NUNCA ciclo a
@@ -316,16 +355,17 @@ describe('GenerarPreventivosUseCase — Integration (5.8-5.13)', () => {
     );
   });
 
-  it('[R4] plan dado de baja (activo=false) con ciclo vencido → no genera nada', async () => {
+  it('[R4] plan dado de baja (activo=false) con ciclo vencido → no genera nada, NO publica preventivo.generado', async () => {
     const plan = await crearPlan({ activo: false });
 
     await withTenant(() => generarPreventivosUseCase.execute(CLIENTE_ID));
 
     expect(await ticketsDelPlan(plan)).toHaveLength(0);
     expect(await generacionesDelPlan(plan)).toHaveLength(0);
+    expect(eventPublisher.publicados).toHaveLength(0);
   });
 
-  it('[R8] preventivo abierto sin atender → SALTEADO_PENDIENTE, NO genera un segundo ticket', async () => {
+  it('[R8] preventivo abierto sin atender → SALTEADO_PENDIENTE, NO genera un segundo ticket, NO publica preventivo.generado', async () => {
     const mediaNoche = medianocheHoy();
     const plan = await crearPlan({ fechaInicio: mediaNoche, proximaEjecucionEn: mediaNoche });
 
@@ -363,12 +403,17 @@ describe('GenerarPreventivosUseCase — Integration (5.8-5.13)', () => {
     );
     expect(filaCicloActual!.resultado).toBe('SALTEADO_PENDIENTE');
     expect(filaCicloActual!.ticketId).toBeNull();
+    // El ticket histórico (creado a mano arriba, fuera del use case bajo
+    // prueba) SÍ dispara su propio TicketCreadoEvent vía NoopDomainEventPublisher
+    // — irrelevante acá. Lo que importa es que ESTA corrida, que solo generó
+    // un SALTEADO_PENDIENTE, no agregó ningún preventivo.generado.
+    expect(eventPublisher.publicados).toHaveLength(0);
 
     const planActualizado = await withTenant(() => planRepo.buscarPorId(plan.id));
     expect(planActualizado!.proximaEjecucionEn.getTime()).toBeGreaterThan(mediaNoche.getTime());
   });
 
-  it('[CRITICAL][R9] fallo al crear el ticket (responsable inválido) → CERO filas RESERVADO, puntero SIN mover — RESERVADO nunca queda committeado', async () => {
+  it('[CRITICAL][R9] fallo al crear el ticket (responsable inválido) → CERO filas RESERVADO, puntero SIN mover — RESERVADO nunca queda committeado, y NO publica preventivo.generado', async () => {
     const plan = await crearPlan();
     usuarioMasterChecker.existeEnTenant.mockResolvedValueOnce(false);
 
@@ -377,6 +422,7 @@ describe('GenerarPreventivosUseCase — Integration (5.8-5.13)', () => {
     expect(await ticketsDelPlan(plan)).toHaveLength(0);
     const generaciones = await generacionesDelPlan(plan);
     expect(generaciones).toHaveLength(0);
+    expect(eventPublisher.publicados).toHaveLength(0);
 
     const planActualizado = await withTenant(() => planRepo.buscarPorId(plan.id));
     expect(planActualizado!.proximaEjecucionEn.getTime()).toBe(plan.proximaEjecucionEn.getTime());

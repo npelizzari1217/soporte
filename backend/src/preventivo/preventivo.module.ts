@@ -10,6 +10,10 @@ import { TENANT_ENUMERATOR, ITenantEnumerator } from '../shared/domain/ports/i-t
 import { TenantContext } from '../shared/tenancy/tenant-context';
 import { PrismaService } from '../shared/infrastructure/persistence/prisma.service';
 import { LOGGER, ILogger } from '../shared/domain/ports/i-logger.port';
+import {
+  DOMAIN_EVENT_PUBLISHER,
+  IDomainEventPublisher,
+} from '../shared/domain/ports/i-domain-event-publisher';
 
 import {
   ITenantTransactionRunner,
@@ -48,7 +52,8 @@ import { PreventivoSweepScheduler } from './infrastructure/schedulers/preventivo
  *   `TenantGuard`, `AccionesGuard`) lo necesitan importado explícitamente
  *   (no re-exportado transitivamente por otro módulo de negocio).
  * - `TENANT_TX_RUNNER`/`TENANT_ENUMERATOR`/`TenantContext`/`PrismaService`/
- *   `LOGGER` se inyectan desde `SharedModule` (`@Global`).
+ *   `LOGGER`/`DOMAIN_EVENT_PUBLISHER` se inyectan desde `SharedModule`
+ *   (`@Global`).
  * - `TicketsModule`: `GenerarPreventivosUseCase` (WU-5) reusa
  *   `CrearTicketUseCase` (exportado por `TicketsModule` desde 5.1) y
  *   `TIPO_TICKET_REPOSITORY` para resolver el tipo FIJO `MANTENIMIENTO`.
@@ -56,7 +61,9 @@ import { PreventivoSweepScheduler } from './infrastructure/schedulers/preventivo
  * WU-5 agrega la generación automática: `GenerarPreventivosUseCase`
  * (orquestación transaccional del ciclo, ADR-PV2/PV3/PV5) y
  * `PreventivoSweepScheduler` (`@Cron`, fan-out multi-tenant). NO llama
- * `ScheduleModule.forRoot()` (ya vive en `AppModule` desde WU-0).
+ * `ScheduleModule.forRoot()` (ya vive en `AppModule` desde WU-0). WU-6 [R11]
+ * agrega la publicación post-commit de `preventivo.generado` (`DOMAIN_EVENT_PUBLISHER`,
+ * consumida por `NotificacionesModule` vía `PreventivoGeneradoNotificacionListener`).
  *
  * FITNESS RULE: PrismaService y @prisma/client solo pueden importarse desde
  * infrastructure/ (ver backend/eslint.config.js).
@@ -108,6 +115,7 @@ import { PreventivoSweepScheduler } from './infrastructure/schedulers/preventivo
         txRunner: ITenantTransactionRunner,
         calcularCiclo: CalcularCicloService,
         logger: ILogger,
+        eventPublisher: IDomainEventPublisher,
       ) =>
         new GenerarPreventivosUseCase(
           planRepo,
@@ -117,6 +125,7 @@ import { PreventivoSweepScheduler } from './infrastructure/schedulers/preventivo
           txRunner,
           calcularCiclo,
           logger,
+          eventPublisher,
         ),
       inject: [
         PLAN_PREVENTIVO_REPOSITORY,
@@ -126,6 +135,7 @@ import { PreventivoSweepScheduler } from './infrastructure/schedulers/preventivo
         TENANT_TX_RUNNER,
         CalcularCicloService,
         LOGGER,
+        DOMAIN_EVENT_PUBLISHER,
       ],
     },
     {

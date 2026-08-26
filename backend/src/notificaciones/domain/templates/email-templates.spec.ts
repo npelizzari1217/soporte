@@ -9,6 +9,7 @@ import {
   templateCambioEstado,
   templateComentarioPublico,
   templateSlaVencido,
+  templatePreventivoGenerado,
 } from './email-templates';
 
 const DATOS_BASE = {
@@ -63,5 +64,16 @@ describe('templateSlaVencido', () => {
     expect(msg.text).toContain('La impresora no imprime');
     expect(msg.text).toContain('https://soporte.miempresa.com/tickets/ticket-abc');
     expect(msg.subject.toLowerCase()).toContain('sla');
+  });
+});
+
+describe('templatePreventivoGenerado', () => {
+  it('[R11] incluye numero, titulo y el link del ticket generado por el barrido', () => {
+    const msg = templatePreventivoGenerado(DATOS_BASE);
+
+    expect(msg.subject).toContain('SOP-2026-00042');
+    expect(msg.text).toContain('La impresora no imprime');
+    expect(msg.text).toContain('https://soporte.miempresa.com/tickets/ticket-abc');
+    expect(msg.subject.toLowerCase()).toContain('preventivo');
   });
 });

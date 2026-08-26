@@ -1,15 +1,17 @@
 /**
- * generar-preventivos.use-case.spec.ts — WU-5 (5.3/5.4/5.5), unit con
- * dobles. `CalcularCicloService` y los repos se mockean: su comportamiento
- * REAL ya está probado en WU-3 (dominio puro) y en la integración de WU-2/
- * WU-4. Acá se prueba la ORQUESTACIÓN transaccional del ciclo (ADR-PV2/PV3):
- * el orden reservar → regla de pendiente → CrearTicketUseCase → marcar →
- * avance de puntero, y el aislamiento por plan.
+ * generar-preventivos.use-case.spec.ts — WU-5 (5.3/5.4/5.5) + WU-6 (6.1),
+ * unit con dobles. `CalcularCicloService` y los repos se mockean: su
+ * comportamiento REAL ya está probado en WU-3 (dominio puro) y en la
+ * integración de WU-2/WU-4. Acá se prueba la ORQUESTACIÓN transaccional del
+ * ciclo (ADR-PV2/PV3): el orden reservar → regla de pendiente →
+ * CrearTicketUseCase → marcar → avance de puntero → publicación post-commit
+ * de `preventivo.generado` vía `txRunner.alCommitear()` (WU-6, [R11]), y el
+ * aislamiento por plan.
  *
  * Ref spec: sdd/preventivo/spec, Requirements "Idempotencia...",
  * "Recuperación de corrida perdida...", "No-solapamiento...", "Solicitante
- * del ticket generado...", "Aislamiento por tenant...". Ref design: ADR-PV2,
- * ADR-PV3, ADR-PV4. Tarea: 5.3, 5.4, 5.5.
+ * del ticket generado...", "Aislamiento por tenant...", "Notificación solo al
+ * generar". Ref design: ADR-PV2, ADR-PV3, ADR-PV4. Tarea: 5.3, 5.4, 5.5, 6.1.
  */
 import { GenerarPreventivosUseCase } from './generar-preventivos.use-case';
 import { PlanPreventivoEntity } from '../../domain/entities/plan-preventivo.entity';
@@ -69,9 +71,18 @@ describe('GenerarPreventivosUseCase (5.3/5.4/5.5)', () => {
     const crearTicketUseCase = {
       execute: vi.fn().mockResolvedValue(Result.ok(fakeTicket('ticket-uuid'))),
     };
-    const txRunner = { run: vi.fn((fn: () => Promise<unknown>) => fn()) };
+    // `alCommitear` del doble ejecuta la callback DE INMEDIATO (a diferencia
+    // del runner real, que la encola hasta el commit) — acá no hay
+    // transacción real que esperar, y lo que se prueba es SI la orquestación
+    // la encola, no el timing del commit (ya cubierto en
+    // tenant-transaction-runner.spec.ts).
+    const txRunner = {
+      run: vi.fn((fn: () => Promise<unknown>) => fn()),
+      alCommitear: vi.fn((fn: () => void) => fn()),
+    };
     const calcularCiclo = { ciclosPendientes: vi.fn() };
     const logger = { error: vi.fn() };
+    const eventPublisher = { publish: vi.fn() };
 
     const useCase = new GenerarPreventivosUseCase(
       planRepo as never,
@@ -81,6 +92,7 @@ describe('GenerarPreventivosUseCase (5.3/5.4/5.5)', () => {
       txRunner as never,
       calcularCiclo as never,
       logger as never,
+      eventPublisher as never,
     );
 
     return {
@@ -92,6 +104,7 @@ describe('GenerarPreventivosUseCase (5.3/5.4/5.5)', () => {
       txRunner,
       calcularCiclo,
       logger,
+      eventPublisher,
     };
   }
 
@@ -147,9 +160,67 @@ describe('GenerarPreventivosUseCase (5.3/5.4/5.5)', () => {
     expect(ordenMarcar).toBeLessThan(ordenAvance);
   });
 
-  it('[R8] preventivo abierto sin atender → SALTEADO_PENDIENTE, avanza el puntero, NO crea ticket', async () => {
+  it('[R11] ciclo GENERADO → publica preventivo.generado vía txRunner.alCommitear(), DESPUÉS de marcar generado y avanzar el puntero', async () => {
     const plan = makePlan();
-    const { useCase, generacionRepo, crearTicketUseCase, planRepo, calcularCiclo } =
+    const { useCase, generacionRepo, planRepo, calcularCiclo, txRunner, eventPublisher } =
+      buildUseCase(plan);
+    calcularCiclo.ciclosPendientes.mockReturnValue(
+      resultadoConCandidato(new Date('2026-01-08'), new Date('2026-01-15')),
+    );
+
+    await useCase.execute('cliente-uuid');
+
+    expect(txRunner.alCommitear).toHaveBeenCalledTimes(1);
+    expect(eventPublisher.publish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'preventivo.generado',
+        planId: plan.id,
+        ticketId: 'ticket-uuid',
+        responsableId: plan.responsableId,
+      }),
+    );
+
+    const ordenMarcar = generacionRepo.marcarGenerado.mock.invocationCallOrder[0];
+    const ordenAvance = planRepo.actualizarProximaEjecucion.mock.invocationCallOrder[0];
+    const ordenAlCommitear = txRunner.alCommitear.mock.invocationCallOrder[0];
+    expect(ordenMarcar).toBeLessThan(ordenAlCommitear);
+    expect(ordenAvance).toBeLessThan(ordenAlCommitear);
+  });
+
+  it('[6.3] si el publisher/listener lanza al publicar preventivo.generado, el ciclo de generación NO aborta (el ticket y el puntero ya quedaron committeados)', async () => {
+    const plan = makePlan();
+    const { useCase, generacionRepo, planRepo, calcularCiclo, txRunner, eventPublisher } =
+      buildUseCase(plan);
+    calcularCiclo.ciclosPendientes.mockReturnValue(
+      resultadoConCandidato(new Date('2026-01-08'), new Date('2026-01-15')),
+    );
+    eventPublisher.publish.mockImplementation(() => {
+      throw new Error('listener boom');
+    });
+    // El runner real (`PrismaTenantTransactionRunner.ejecutarProtegida`)
+    // envuelve cada callback de `alCommitear()` en su propio try/catch — acá
+    // el doble reproduce esa misma red para probar que la orquestación NO
+    // depende de un try/catch propio alrededor de la publicación.
+    txRunner.alCommitear.mockImplementation((fn: () => void) => {
+      try {
+        fn();
+      } catch {
+        // log-and-swallow, igual que el runner real.
+      }
+    });
+
+    await expect(useCase.execute('cliente-uuid')).resolves.toBeUndefined();
+
+    expect(generacionRepo.marcarGenerado).toHaveBeenCalledWith('generacion-uuid', 'ticket-uuid');
+    expect(planRepo.actualizarProximaEjecucion).toHaveBeenCalledWith(
+      plan.id,
+      new Date('2026-01-15'),
+    );
+  });
+
+  it('[R8] preventivo abierto sin atender → SALTEADO_PENDIENTE, avanza el puntero, NO crea ticket, NO publica preventivo.generado', async () => {
+    const plan = makePlan();
+    const { useCase, generacionRepo, crearTicketUseCase, planRepo, calcularCiclo, eventPublisher } =
       buildUseCase(plan);
     calcularCiclo.ciclosPendientes.mockReturnValue(
       resultadoConCandidato(new Date('2026-01-08'), new Date('2026-01-15')),
@@ -164,11 +235,12 @@ describe('GenerarPreventivosUseCase (5.3/5.4/5.5)', () => {
       plan.id,
       new Date('2026-01-15'),
     );
+    expect(eventPublisher.publish).not.toHaveBeenCalled();
   });
 
-  it('[R6] reservar devuelve null (otra corrida ganó la carrera) → no hace NADA más', async () => {
+  it('[R6] reservar devuelve null (otra corrida ganó la carrera) → no hace NADA más, NO publica preventivo.generado', async () => {
     const plan = makePlan();
-    const { useCase, generacionRepo, crearTicketUseCase, planRepo, calcularCiclo } =
+    const { useCase, generacionRepo, crearTicketUseCase, planRepo, calcularCiclo, eventPublisher } =
       buildUseCase(plan);
     calcularCiclo.ciclosPendientes.mockReturnValue(
       resultadoConCandidato(new Date('2026-01-08'), new Date('2026-01-15')),
@@ -180,12 +252,20 @@ describe('GenerarPreventivosUseCase (5.3/5.4/5.5)', () => {
     expect(generacionRepo.existeTicketAbiertoDelPlan).not.toHaveBeenCalled();
     expect(crearTicketUseCase.execute).not.toHaveBeenCalled();
     expect(planRepo.actualizarProximaEjecucion).not.toHaveBeenCalled();
+    expect(eventPublisher.publish).not.toHaveBeenCalled();
   });
 
-  it('[R9] CrearTicketUseCase falla (responsable inválido) → throw dentro de la transacción, SIN marcar generado, SIN avanzar el puntero, y el fallo queda logueado', async () => {
+  it('[R9] CrearTicketUseCase falla (responsable inválido) → throw dentro de la transacción, SIN marcar generado, SIN avanzar el puntero, SIN publicar preventivo.generado, y el fallo queda logueado', async () => {
     const plan = makePlan();
-    const { useCase, generacionRepo, planRepo, crearTicketUseCase, calcularCiclo, logger } =
-      buildUseCase(plan);
+    const {
+      useCase,
+      generacionRepo,
+      planRepo,
+      crearTicketUseCase,
+      calcularCiclo,
+      logger,
+      eventPublisher,
+    } = buildUseCase(plan);
     calcularCiclo.ciclosPendientes.mockReturnValue(
       resultadoConCandidato(new Date('2026-01-08'), new Date('2026-01-15')),
     );
@@ -197,6 +277,7 @@ describe('GenerarPreventivosUseCase (5.3/5.4/5.5)', () => {
 
     expect(generacionRepo.marcarGenerado).not.toHaveBeenCalled();
     expect(planRepo.actualizarProximaEjecucion).not.toHaveBeenCalled();
+    expect(eventPublisher.publish).not.toHaveBeenCalled();
     expect(logger.error).toHaveBeenCalledWith(expect.stringContaining(plan.id));
     // Ancla al mensaje del `throw` INTENCIONAL. Sin esto el test NO muerde:
     // sacando ese throw, el código sigue hasta `ticketResult.getValue()`, que
@@ -207,9 +288,9 @@ describe('GenerarPreventivosUseCase (5.3/5.4/5.5)', () => {
     );
   });
 
-  it('[R7] recuperación con ciclos atrasados → registra un SALTEADO_ATRASO por cada uno ANTES de reservar el candidato', async () => {
+  it('[R7] recuperación con ciclos atrasados → registra un SALTEADO_ATRASO por cada uno ANTES de reservar el candidato, y publica preventivo.generado UNA SOLA VEZ (por el candidato, no por cada salteado)', async () => {
     const plan = makePlan();
-    const { useCase, generacionRepo, calcularCiclo } = buildUseCase(plan);
+    const { useCase, generacionRepo, calcularCiclo, eventPublisher } = buildUseCase(plan);
     calcularCiclo.ciclosPendientes.mockReturnValue({
       candidato: new Date('2026-01-29'),
       salteados: [new Date('2026-01-08'), new Date('2026-01-15'), new Date('2026-01-22')],
@@ -228,11 +309,12 @@ describe('GenerarPreventivosUseCase (5.3/5.4/5.5)', () => {
     const ordenUltimoSalteo = generacionRepo.registrarSalteadoAtraso.mock.invocationCallOrder[2];
     const ordenReserva = generacionRepo.reservar.mock.invocationCallOrder[0];
     expect(ordenUltimoSalteo).toBeLessThan(ordenReserva);
+    expect(eventPublisher.publish).toHaveBeenCalledTimes(1);
   });
 
-  it('[R7] TOPE agotado (caso patológico) → una única fila de salteo, re-ancla el puntero, NO reserva ni crea ticket', async () => {
+  it('[R7] TOPE agotado (caso patológico) → una única fila de salteo, re-ancla el puntero, NO reserva ni crea ticket, NO publica preventivo.generado', async () => {
     const plan = makePlan();
-    const { useCase, generacionRepo, crearTicketUseCase, planRepo, calcularCiclo } =
+    const { useCase, generacionRepo, crearTicketUseCase, planRepo, calcularCiclo, eventPublisher } =
       buildUseCase(plan);
     calcularCiclo.ciclosPendientes.mockReturnValue({
       candidato: null,
@@ -250,6 +332,7 @@ describe('GenerarPreventivosUseCase (5.3/5.4/5.5)', () => {
       plan.id,
       new Date('2027-01-01'),
     );
+    expect(eventPublisher.publish).not.toHaveBeenCalled();
   });
 
   it('un plan roto no aborta el resto del barrido (aislamiento por plan)', async () => {
@@ -289,13 +372,17 @@ describe('GenerarPreventivosUseCase (5.3/5.4/5.5)', () => {
     const crearTicketUseCase = {
       execute: vi.fn().mockResolvedValue(Result.ok(fakeTicket('ticket-2-uuid'))),
     };
-    const txRunner = { run: vi.fn((fn: () => Promise<unknown>) => fn()) };
+    const txRunner = {
+      run: vi.fn((fn: () => Promise<unknown>) => fn()),
+      alCommitear: vi.fn((fn: () => void) => fn()),
+    };
     const calcularCiclo = {
       ciclosPendientes: vi
         .fn()
         .mockReturnValue(resultadoConCandidato(new Date('2026-01-08'), new Date('2026-01-15'))),
     };
     const logger = { error: vi.fn() };
+    const eventPublisher = { publish: vi.fn() };
 
     const useCase = new GenerarPreventivosUseCase(
       planRepo as never,
@@ -305,6 +392,7 @@ describe('GenerarPreventivosUseCase (5.3/5.4/5.5)', () => {
       txRunner as never,
       calcularCiclo as never,
       logger as never,
+      eventPublisher as never,
     );
 
     await expect(useCase.execute('cliente-uuid')).resolves.toBeUndefined();
@@ -316,5 +404,10 @@ describe('GenerarPreventivosUseCase (5.3/5.4/5.5)', () => {
       'ticket-2-uuid',
     );
     expect(logger.error).toHaveBeenCalledWith(expect.stringContaining(planRoto.id));
+    // Solo el plan sano publica: el roto revienta ANTES de llegar a reservar.
+    expect(eventPublisher.publish).toHaveBeenCalledTimes(1);
+    expect(eventPublisher.publish).toHaveBeenCalledWith(
+      expect.objectContaining({ planId: planOk.id, ticketId: 'ticket-2-uuid' }),
+    );
   });
 });

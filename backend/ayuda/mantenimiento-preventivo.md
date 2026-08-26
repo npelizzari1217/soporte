@@ -48,6 +48,19 @@ registrados como salteados. El objetivo es que alguien salga a hacer el
 mantenimiento ahora, no que se encuentre con quince tickets atrasados que ya
 no tienen sentido.
 
+## Quién se entera cuando se genera un ticket
+
+Cuando el sistema crea el ticket, avisa por email al **responsable del plan** y a
+**todos los administradores** del tenant. El aviso llega en el momento en que el
+ticket queda creado — no antes.
+
+El aviso **solo llega si se creó un ticket nuevo**. En los dos casos donde el
+sistema NO genera (preventivo anterior sin cerrar, o un ciclo que quedó
+registrado como salteado por atraso) **no se manda ningún email**: no tiene
+sentido notificar algo que no pasó. Si un destinatario no recibe el aviso, no
+significa que el ticket no se haya creado — conviene revisar el listado de
+generaciones del plan antes de asumir un problema de notificación.
+
 ## Dar de baja un plan
 
 Un plan dado de baja **deja de generar** en el acto. Los tickets que ya generó
