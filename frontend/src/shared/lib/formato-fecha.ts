@@ -29,6 +29,8 @@
  * | `Equipo.fechaAdquisicion` / `fechaValoracion` / `fechaValorResidual` | `@db.Date` | fecha de calendario |
  * | `Compra.fechaSolicitud` | `@db.Date` | fecha de calendario |
  * | `ItemCompra.fechaCotizacion` / `fechaOrden` / `fechaRecepcion` / `fechaEntrega` | `@db.Date` | fecha de calendario |
+ * | `PlanPreventivo.fechaInicio` / `proximaEjecucionEn` | `@db.Date` | fecha de calendario |
+ * | `PreventivoGeneracion.fechaProgramada` | `@db.Date` | fecha de calendario |
  *
  * Cualquier otra columna `DateTime` que no esté en esta lista es
  * `@db.Timestamptz` (instante) — el conjunto de fechas de calendario es

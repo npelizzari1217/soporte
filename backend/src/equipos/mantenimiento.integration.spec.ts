@@ -108,7 +108,7 @@ describe('MANTENIMIENTO — flujo BASE sin código nuevo (F3-M1, ADR-10)', () =>
     const prioridadRepo = new PrismaPrioridadRepository(tenantContext);
     const tipoOperacionRepo = new PrismaTipoOperacionRepository(tenantContext);
     const cicloRepo = new PrismaCicloClienteRepository(tenantContext);
-    const txRunner = new PrismaTenantTransactionRunner(tenantContext);
+    const txRunner = new PrismaTenantTransactionRunner(tenantContext, { error: () => {} });
 
     const usuarioMasterChecker: Pick<IUsuarioMasterChecker, 'existeEnTenant'> = {
       existeEnTenant: async () => true,

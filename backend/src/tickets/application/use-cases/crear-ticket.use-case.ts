@@ -183,22 +183,34 @@ export class CrearTicketUseCase {
       return Result.ok<TicketEntity, DomainError>(ticket);
     });
 
-    // 8. POST-COMMIT (Fase 4, S2 — GATE G3, aditivo): publica TicketCreadoEvent
-    // para que el módulo SLA calcule sla_vence_at (AplicarSlaUseCase). Mismo
-    // criterio ADR-6 que TransicionarEstadoUseCase/CrearComentarioUseCase:
-    // log-and-swallow — un fallo del publisher NUNCA revierte la creación ya
-    // committeada.
+    // 8. DIFERIDO A POST-COMMIT vía `txRunner.alCommitear()` (Fase 4, S2 —
+    // GATE G3, aditivo; corregido en sdd/preventivo WU-5 por el defecto de
+    // re-entrancia): publica TicketCreadoEvent para que el módulo SLA calcule
+    // sla_vence_at (AplicarSlaUseCase). No se publica directo acá porque este
+    // punto del código NO es post-commit real cuando `this.txRunner` corre
+    // RE-ENTRANTE, anidado dentro de la transacción de OTRO caller (ej.
+    // GenerarPreventivosUseCase, ADR-PV5): `txRunner.run()` re-entrante
+    // participa de esa transacción externa en vez de comitear, así que
+    // publicar acá saldría con la transacción todavía abierta. `alCommitear()`
+    // encola en la transacción MÁS EXTERNA sin importar el nivel de
+    // anidamiento; bajo HTTP (sin anidamiento) el efecto observable es
+    // idéntico al de antes: corre apenas comitea. Mismo criterio ADR-6 que
+    // TransicionarEstadoUseCase/CrearComentarioUseCase: log-and-swallow — un
+    // fallo del publisher NUNCA revierte la creación ya committeada. El
+    // log-and-swallow ya no lo hace este use case: `PrismaTenantTransactionRunner`
+    // envuelve cada callback de `alCommitear()` en su propio try/catch y
+    // loguea (mensaje enmascarado) si el publisher falla, así que el
+    // callback publica directo, sin try/catch propio.
     if (resultado.isOk()) {
-      try {
+      const ticket = resultado.getValue();
+      this.txRunner.alCommitear(() => {
         this.eventPublisher.publish(
           new TicketCreadoEvent({
-            ticketId: resultado.getValue().id,
+            ticketId: ticket.id,
             prioridadId: dto.prioridadId,
           }),
         );
-      } catch {
-        // log-and-swallow (ADR-6).
-      }
+      });
     }
 
     return resultado;

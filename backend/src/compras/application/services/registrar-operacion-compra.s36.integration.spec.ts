@@ -135,7 +135,7 @@ describe('S36 — rollback real de la mutacion si falla la bitacora (PR-13)', ()
     tenantClient = prismaService.getTenantClient(TENANT_TEST_DB_NAME);
     tenantContext = new TenantContext();
     compraRepo = new PrismaCompraRepository(tenantContext);
-    txRunner = new PrismaTenantTransactionRunner(tenantContext);
+    txRunner = new PrismaTenantTransactionRunner(tenantContext, { error: () => {} });
 
     const suffix = randomBytes(3).toString('hex');
     const ciclo = await tenantClient.cicloCliente.create({

@@ -9,6 +9,7 @@ import {
   Wrench,
   Monitor,
   CalendarRange,
+  ClipboardCheck,
   Tag,
 } from "lucide-react";
 import type { JwtPayload } from "@/shared/api/types";
@@ -102,6 +103,12 @@ const DEFAULT_SECTION_ITEMS: NavItem[] = [
     label: ETIQUETAS_MODULOS.EQUIPOS,
     icon: Monitor,
     visible: (can) => can("EQUIPOS:LECTURA"),
+  },
+  {
+    href: "/preventivo",
+    label: ETIQUETAS_MODULOS.PREVENTIVO,
+    icon: ClipboardCheck,
+    visible: (can) => can("PREVENTIVO:LECTURA"),
   },
 ];
 

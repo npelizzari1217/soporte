@@ -168,7 +168,7 @@ function compraFixture(
 // ─── Fakes de infraestructura (capa 3) ─────────────────────────────────────
 
 function fakeTxRunner(): ITenantTransactionRunner {
-  return { run: async (fn) => fn() };
+  return { run: async (fn) => fn(), alCommitear: (fn) => fn() };
 }
 
 function fakeOperacionRepo(): Pick<IOperacionCompraRepository, 'crear'> & { crear: Mock } {

@@ -6,8 +6,8 @@ import { ACCIONES_PISO, CATALOGO_MODULOS, PARES_VALIDOS, accionesDeModulo, modul
 // solo confirma que la UI arma la grilla módulo × acción con el mismo
 // vocabulario, sin inventar un código nuevo.
 describe("acciones (espejo del catálogo de la matriz)", () => {
-  it("29 pares válidos, igual cardinalidad que el backend (R1 + CSAT sdd/csat WU-3)", () => {
-    expect(PARES_VALIDOS).toHaveLength(29);
+  it("33 pares válidos, igual cardinalidad que el backend (R1 + CSAT sdd/csat WU-3 + PREVENTIVO sdd/preventivo WU-1)", () => {
+    expect(PARES_VALIDOS).toHaveLength(33);
   });
 
   it("ningún código con ':' en el nombre de la acción", () => {
@@ -17,7 +17,7 @@ describe("acciones (espejo del catálogo de la matriz)", () => {
     }
   });
 
-  it("IMPRESION no aparece en ningún módulo (piso deshabilitado en los 7)", () => {
+  it("IMPRESION no aparece en ningún módulo (piso deshabilitado en los 8)", () => {
     expect(PARES_VALIDOS.some((par) => par.endsWith(":IMPRESION"))).toBe(false);
   });
 
@@ -47,9 +47,9 @@ describe("acciones (espejo del catálogo de la matriz)", () => {
     ]);
   });
 
-  it("CATALOGO_MODULOS declara los 7 módulos vigentes de la matriz", () => {
+  it("CATALOGO_MODULOS declara los 8 módulos vigentes de la matriz", () => {
     expect(Object.keys(CATALOGO_MODULOS).sort()).toEqual(
-      ["COMPRAS", "CSAT", "DASHBOARD", "EDILICIA", "EQUIPOS", "KB", "TICKETS"].sort(),
+      ["COMPRAS", "CSAT", "DASHBOARD", "EDILICIA", "EQUIPOS", "KB", "PREVENTIVO", "TICKETS"].sort(),
     );
   });
 });

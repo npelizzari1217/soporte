@@ -10,6 +10,7 @@ import { PrismaUsuarioContactoResolver } from './infrastructure/persistence/pris
 
 import { TicketNotificacionListener } from './infrastructure/listeners/ticket-notificacion.listener';
 import { SlaVencidoNotificacionListener } from './infrastructure/listeners/sla-vencido-notificacion.listener';
+import { PreventivoGeneradoNotificacionListener } from './infrastructure/listeners/preventivo-generado-notificacion.listener';
 
 import { EMAIL_SENDER, IEmailSender } from '../shared/domain/ports/i-email-sender';
 import { TenantAwareEmailSender } from './infrastructure/email/tenant-aware-email-sender';
@@ -43,7 +44,10 @@ import { PrismaClienteEmailConfigRepository } from '../clientes/infrastructure/p
  * - Listeners: `TicketNotificacionListener` (estado_cambiado/comentado,
  *   solicitante) + `SlaVencidoNotificacionListener` (sla.vencido, asignado
  *   + administradores — hereda el `TenantContext` del `tenantContext.run()`
- *   del job SLA, ADR-P8).
+ *   del job SLA, ADR-P8) + `PreventivoGeneradoNotificacionListener`
+ *   (preventivo.generado, WU-6/[R11]: responsable del plan + administradores
+ *   — mismo patrón ALS/TenantContext, hereda el scope abierto por el
+ *   barrido `PreventivoSweepScheduler`).
  * - Importa `TicketsModule` (TICKET_REPOSITORY — los listeners cargan el
  *   ticket para numero/titulo/solicitanteId/asignadoId, los eventos no
  *   llevan PII). No expone controllers (módulo sin endpoints HTTP en beta).
@@ -93,6 +97,24 @@ import { PrismaClienteEmailConfigRepository } from '../clientes/infrastructure/p
         logger: ILogger,
       ) =>
         new SlaVencidoNotificacionListener(
+          ticketRepo,
+          contactoResolver,
+          emailSender,
+          tenantContext,
+          logger,
+        ),
+      inject: [TICKET_REPOSITORY, USUARIO_CONTACTO_RESOLVER, EMAIL_SENDER, TenantContext, LOGGER],
+    },
+    {
+      provide: PreventivoGeneradoNotificacionListener,
+      useFactory: (
+        ticketRepo: ITicketRepository,
+        contactoResolver: IUsuarioContactoResolver,
+        emailSender: IEmailSender,
+        tenantContext: TenantContext,
+        logger: ILogger,
+      ) =>
+        new PreventivoGeneradoNotificacionListener(
           ticketRepo,
           contactoResolver,
           emailSender,

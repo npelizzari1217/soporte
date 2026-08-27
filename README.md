@@ -155,6 +155,7 @@ Las variables marcadas **Requerida** se validan al arrancar (`backend/src/config
 | `EMAIL_CRYPTO_KEY` | Clave maestra AES-256-GCM que cifra en reposo la contraseña SMTP de cada cliente. **64 caracteres hex** (32 bytes). Si falta, la app **no** falla al arrancar: el guardado de config responde 503 y el envío degrada explícito con razón `EMAIL_CRYPTO_KEY_AUSENTE`. Generarla con `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`. **NO se puede rotar reemplazando el valor**: cada credencial guardada quedaría indescifrable. Una rotación exige una migración de re-cifrado (por eso el payload lleva el prefijo de versión `v1:`). |
 | `ROOT_ADMIN_EMAIL` / `ROOT_ADMIN_PASSWORD` / `ROOT_ADMIN_NOMBRE` / `ROOT_ADMIN_APELLIDO` | Bootstrap idempotente del primer usuario **ROOT** (`is_global_admin = true`). |
 | `SLA_SWEEP_CRON` | Expresión cron del barrido periódico de vencimiento de SLA (`SlaSweepScheduler`, módulo `sla/`). Default: cada 5 min (`CronExpression.EVERY_5_MINUTES`) si no está seteada. |
+| `PREVENTIVO_SWEEP_CRON` | Expresión cron del barrido de generación de mantenimiento preventivo (`PreventivoSweepScheduler`, módulo `preventivo/`). Default: todos los días a la 1am (`CronExpression.EVERY_DAY_AT_1AM`) si no está seteada. |
 | `APP_BASE_URL` | **Requerida — sin default.** URL base pública de la app, usada para armar links en emails de notificación (ej. `${APP_BASE_URL}/tickets/:id`). Usada por las plantillas de email del módulo `notificaciones/` (PR-N). |
 | `PORT` / `NODE_ENV` | Configuración de la app. |
 

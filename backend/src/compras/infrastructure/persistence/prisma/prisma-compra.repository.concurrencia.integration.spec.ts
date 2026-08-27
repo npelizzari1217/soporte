@@ -147,7 +147,7 @@ describe('PrismaCompraRepository.findLastSecuencia — Concurrencia real (S3, AD
     tenantClient = new TenantPrismaClient({ adapter });
 
     tenantContext = new TenantContext();
-    txRunner = new PrismaTenantTransactionRunner(tenantContext);
+    txRunner = new PrismaTenantTransactionRunner(tenantContext, { error: () => {} });
     compraRepo = new PrismaCompraRepository(tenantContext);
 
     const suffix = randomBytes(3).toString('hex');
