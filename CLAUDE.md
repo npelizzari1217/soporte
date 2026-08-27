@@ -40,6 +40,50 @@ aplican acá** y no deben inyectarse en los prompts de los sub-agentes.
 - Todo el resto de las reglas globales (tipado estricto, testing obligatorio, TDD,
   documentación, reporte honesto) sigue igual.
 
+## Tamaño del commit: cinco archivos de código (OBLIGATORIO)
+
+**Un commit manda al hook de pre-commit como máximo ~5 archivos de código.** Se cuentan
+los que matchean el `FILE_PATTERNS` del `.gga` (`*.ts,*.tsx,*.js,*.jsx`) menos el
+`EXCLUDE_PATTERNS` (tests y `.d.ts`). Los tests, los `.md`, las migraciones `.sql` y el
+`schema.prisma` **no cuentan** — no le llegan al revisor.
+
+Esto NO reemplaza a `work-unit-commits`, lo afina: la unidad sigue siendo un
+comportamiento entregable con sus tests adentro. Si esa unidad no entra en cinco archivos
+de código, casi siempre es que eran dos o tres unidades disfrazadas de una.
+
+### Por qué cinco, medido en este repo (2026-08-27)
+
+`Gentleman Guardian Angel` revisa **archivos ENTEROS, no el diff**. Si cada archivo tiene
+probabilidad *p* de producir al menos un hallazgo, la chance de review limpio es (1−*p*)^n.
+Con *p*≈0.15: cinco archivos dan ~44% de pasar, catorce dan ~10%. Los intentos reales de la
+rama `preventivo` encajan:
+
+| Commit | Archivos al revisor | Intentos |
+|---|---|---|
+| `499c0c2` (WU-6) | 5 | **1** |
+| `fb7e854` (fail-fast WU-2) | 10 | **5** |
+| `4281a8c` (WU-5) | 9 | **8** |
+| `4e6491f` (WU-7) | 14 | **7** |
+
+Segundo efecto de la misma causa: el `TIMEOUT=300` del `.gga` se vuelve alcanzable con
+payloads grandes. Los dos timeouts del proveedor que hubo fueron los dos en el commit de
+catorce archivos; ningún commit chico se comió uno.
+
+**Verificado que NO es la causa**: no hubo cambio de configuración. `AGENTS.md` y el `.gga`
+nacieron el mismo día (2026-08-17) y el único cambio posterior de `AGENTS.md` agregó una
+línea, anterior tanto a WU-5 como a WU-6. Tampoco es que el revisor no conociera el
+frontend: 118 archivos de front no-test pasaron por el hook desde entonces.
+
+**No se afloja `AGENTS.md` para que pase.** Los rechazos encontraron defectos reales —un
+gate de permiso inexistente, otro inalcanzable, un 500 latente— con todas las suites en
+verde. El criterio no es el problema; el tamaño del bocado sí.
+
+Antes de commitear, contar:
+
+```bash
+git diff --cached --name-only | rg "\.(ts|tsx|js|jsx)$" | rg -v "\.test\.|\.spec\." | wc -l
+```
+
 ## Delegar a subagentes (OBLIGATORIO)
 
 **Siempre que una tarea se pueda delegar, se delega.** El hilo principal coordina y
