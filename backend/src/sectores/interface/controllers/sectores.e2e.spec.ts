@@ -21,8 +21,10 @@
  *
  * Ref spec: sdd/compras-tres-etapas-y-sectores/spec R10, S63-S65.
  */
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import {
+  Controller,
+  Get,
   INestApplication,
   MiddlewareConsumer,
   Module,
@@ -72,6 +74,26 @@ async function httpPost<T = unknown>(
   return { status: res.status, data };
 }
 
+/**
+ * Hermano de `httpPost` para PATCH. Existe para que las llamadas de edición
+ * hereden el `.json().catch(() => null)`: escritas a mano con `fetch`, un body
+ * vacío o no-JSON hacía explotar el test con un error de parseo en vez de
+ * mostrar el status que se estaba probando.
+ */
+async function httpPatch<T = unknown>(
+  url: string,
+  body: unknown,
+  headers: Headers = {},
+): Promise<{ status: number; data: T }> {
+  const res = await fetch(url, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...headers },
+    body: JSON.stringify(body),
+  });
+  const data = (await res.json().catch(() => null)) as T;
+  return { status: res.status, data };
+}
+
 async function httpGet<T = unknown>(
   url: string,
   headers: Headers = {},
@@ -88,7 +110,52 @@ function bearer(token: string): Headers {
   return { Authorization: `Bearer ${token}` };
 }
 
-@Module({ imports: [SharedModule, AuthModule, SectoresModule] })
+/**
+ * Controller de TEST, no de producción (sdd/filtro-prisma, tarea 3.3). Existe
+ * únicamente para probar el hermano invertido de R4: un error NO reconocido
+ * por `PrismaExceptionFilter` (un `Error` pelado, sin `name`/`code` de
+ * Prisma) tiene que seguir dando 500 después de registrar el filtro global.
+ * Vive DENTRO de este spec — no suma ruta real ni archivo de código.
+ */
+@Controller('__test-boom__')
+class TestBoomController {
+  @Get()
+  explotar(): never {
+    throw new Error('boom no reconocido por el filtro');
+  }
+}
+
+/**
+ * Controller de TEST, no de producción (sdd/filtro-prisma, fix post-review
+ * H5). Dispara un `P2003` REAL (violación de FK) contra la master de test:
+ * `Membresia.usuarioId/clienteId/rolId` son las tres `@relation` requeridas
+ * de `membresias` (`prisma_master/schema.prisma`), y ninguna de las tres
+ * existencias se pre-chequea en un `INSERT` directo — a diferencia de
+ * `codigo`/`nombre` (P2000), la existencia de un id referenciado NO es un
+ * límite de FORMA validable con `@MaxLength`/`@Matches`: exige una consulta a
+ * la base, que es justo lo que ninguna capa de arriba hace acá. Es el caso
+ * que ADR-1/ADR-7 describen como el único camino real a P2002/P2003: un
+ * conflicto de integridad que el dominio no pre-chequea.
+ */
+@Controller('__test-fk-violation__')
+class TestFkViolationController {
+  constructor(private readonly prisma: PrismaService) {}
+
+  @Get()
+  async violarForeignKey(): Promise<never> {
+    await this.prisma.getMasterClient().membresia.create({
+      data: { usuarioId: randomUUID(), clienteId: randomUUID(), rolId: randomUUID(), activo: true },
+    });
+    throw new Error(
+      'unreachable — el create de arriba tiene que rechazar por FK antes de llegar acá',
+    );
+  }
+}
+
+@Module({
+  imports: [SharedModule, AuthModule, SectoresModule],
+  controllers: [TestBoomController, TestFkViolationController],
+})
 class TestHarnessModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {
     consumer.apply(TenantScopeMiddleware).forRoutes('*');
@@ -137,16 +204,19 @@ describe('Sectores e2e — gate por método + grafo DI real (WU-08)', () => {
     baseUrl = `http://localhost:${port}`;
   }, 90_000);
 
+  // El cierre se traga el error a propósito para que `dropDatabase` corra
+  // igual — si no, un cierre fallido deja una base efímera huérfana. Pero se
+  // loguea: tragar en silencio convierte el próximo huérfano en un misterio.
   afterAll(async () => {
     try {
       await app?.close();
-    } catch {
-      /* no-op */
+    } catch (error) {
+      console.error('[teardown] app.close() falló, sigo al dropDatabase igual:', error);
     }
     try {
       await prismaService?.onModuleDestroy();
-    } catch {
-      /* no-op */
+    } catch (error) {
+      console.error('[teardown] onModuleDestroy() falló, sigo al dropDatabase igual:', error);
     }
     await admin.dropDatabase(TENANT_DB_NAME);
   }, 60_000);
@@ -237,12 +307,28 @@ describe('Sectores e2e — gate por método + grafo DI real (WU-08)', () => {
   });
 
   describe('Gate por MÉTODO (S64/S65) — nunca por clase', () => {
-    it('GET /sectores: actor autenticado SIN rol ADMINISTRADOR → 200 (lectura abierta, S65)', async () => {
-      const actor = await crearActorConRol('USUARIO');
+    // El assert es de CONTENIDO y no solo de status: un 200 no prueba lectura
+    // abierta si la ruta devuelve el subconjunto de filas equivocado. El actor
+    // se crea sobre el MISMO cliente que el admin, así que ver la fila sembrada
+    // distingue "leo lo que tengo que leer" de "no me rebotó".
+    it('GET /sectores: actor autenticado SIN rol ADMINISTRADOR → 200 y ve el catálogo (S65)', async () => {
+      const adminActor = await crearActorConRol('ADMINISTRADOR');
+      const sembrado = await httpPost<SectorResponseDto>(
+        `${baseUrl}/sectores`,
+        { codigo: 'LECTURA_ABIERTA', nombre: 'Lectura abierta' },
+        bearer(adminActor.accessToken),
+      );
+      expect(sembrado.status).toBe(201);
 
-      const { status } = await httpGet(`${baseUrl}/sectores`, bearer(actor.accessToken));
+      const actor = await crearActorConRol('USUARIO', adminActor.clienteId);
+
+      const { status, data } = await httpGet<SectorResponseDto[]>(
+        `${baseUrl}/sectores`,
+        bearer(actor.accessToken),
+      );
 
       expect(status).toBe(200);
+      expect(data.find((s) => s.id === sembrado.data.id)?.codigo).toBe('LECTURA_ABIERTA');
     });
 
     it('POST /sectores: actor autenticado SIN rol ADMINISTRADOR → 403 (S64)', async () => {
@@ -285,11 +371,11 @@ describe('Sectores e2e — gate por método + grafo DI real (WU-08)', () => {
       const id = crear.data.id;
 
       const actor = await crearActorConRol('USUARIO', admin.clienteId);
-      const editar = await fetch(`${baseUrl}/sectores/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...bearer(actor.accessToken) },
-        body: JSON.stringify({ nombre: 'Deportes y Recreación' }),
-      });
+      const editar = await httpPatch(
+        `${baseUrl}/sectores/${id}`,
+        { nombre: 'Deportes y Recreación' },
+        bearer(actor.accessToken),
+      );
 
       expect(editar.status).toBe(403);
     });
@@ -304,13 +390,58 @@ describe('Sectores e2e — gate por método + grafo DI real (WU-08)', () => {
       const id = crear.data.id;
 
       const actor = await crearActorConRol('USUARIO', admin.clienteId);
-      const cambiarEstado = await fetch(`${baseUrl}/sectores/${id}/estado`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...bearer(actor.accessToken) },
-        body: JSON.stringify({ activo: false }),
-      });
+      const cambiarEstado = await httpPatch(
+        `${baseUrl}/sectores/${id}/estado`,
+        { activo: false },
+        bearer(actor.accessToken),
+      );
 
       expect(cambiarEstado.status).toBe(403);
+    });
+  });
+
+  // sdd/filtro-prisma — backstop 4xx de PrismaExceptionFilter. Estos tests
+  // fueron RED por AUSENCIA DE WIRING hasta la tarea 3.4 (el filtro ya
+  // existía, pero `shared.module.ts` todavía no lo registraba como
+  // `APP_FILTER`): daban 500 antes de esa tarea. `shared.module.ts` SÍ lo
+  // registra hoy (ver ADR-5) y los dos tests de abajo están en GREEN.
+  //
+  // Fix post-review H5: el test original de este describe mandaba un
+  // `codigo` de 60 chars a `POST /sectores` para forzar un P2000 real. Con el
+  // `@MaxLength(50)` agregado a `CreateSectorDto` (mismo fix, ver
+  // `sectores.dto.ts`), ese caso lo frena `ValidationPipe` ANTES de llegar a
+  // Prisma — dejó de ejercitar el filtro y encima el mensaje de
+  // class-validator nombra el campo (`codigo must be shorter than...`),
+  // violando la propia aserción de no-fuga que el test hacía. Se reemplaza
+  // por `TestFkViolationController` (P2003): la existencia de un id
+  // referenciado no es un límite de FORMA validable en el DTO, así que sigue
+  // siendo un caso genuinamente no anticipable por esa capa.
+  describe('PrismaExceptionFilter — backstop 4xx (sdd/filtro-prisma)', () => {
+    it('GET /__test-fk-violation__ (FK inexistente) → 409 sin fuga de esquema (R1/R3, P2003)', async () => {
+      const { status, data } = await httpGet<Record<string, unknown>>(
+        `${baseUrl}/__test-fk-violation__`,
+      );
+
+      expect(status).toBe(409);
+
+      const cuerpoComoTexto = JSON.stringify(data);
+      // R3 — sin fuga de esquema: ni la tabla, ni la columna, ni el nombre del constraint.
+      expect(cuerpoComoTexto).not.toContain('membresias');
+      expect(cuerpoComoTexto).not.toContain('usuario_id');
+      expect(cuerpoComoTexto).not.toContain('cliente_id');
+      expect(cuerpoComoTexto).not.toContain('rol_id');
+      expect(cuerpoComoTexto.toLowerCase()).not.toContain('foreign key');
+      expect(cuerpoComoTexto.toLowerCase()).not.toContain('constraint');
+      // Hermano invertido de R3 — el mensaje fijo SÍ tiene que estar.
+      expect(cuerpoComoTexto).toContain(
+        'La operación afecta datos relacionados y no se puede completar.',
+      );
+    });
+
+    it('GET /__test-boom__ (Error no reconocido por el filtro) → sigue en 500 (R4, hermano invertido)', async () => {
+      const { status } = await httpGet(`${baseUrl}/__test-boom__`);
+
+      expect(status).toBe(500);
     });
   });
 
@@ -326,18 +457,30 @@ describe('Sectores e2e — gate por método + grafo DI real (WU-08)', () => {
       expect(crear.status).toBe(201);
       const id = crear.data.id;
 
-      const editar = await fetch(`${baseUrl}/sectores/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...bearer(admin.accessToken) },
-        body: JSON.stringify({ nombre: 'Librería y Papelería' }),
-      });
+      const editar = await httpPatch(
+        `${baseUrl}/sectores/${id}`,
+        { nombre: 'Librería y Papelería' },
+        bearer(admin.accessToken),
+      );
       expect(editar.status).toBe(200);
 
-      const desactivar = await fetch(`${baseUrl}/sectores/${id}/estado`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...bearer(admin.accessToken) },
-        body: JSON.stringify({ activo: false }),
-      });
+      // Hermano invertido del assert de ausencia de abajo. Sin este listado
+      // previo, el `toBeUndefined()` final pasa en verde aunque `GET /sectores`
+      // devuelva `[]` SIEMPRE — un tenant scope roto, un filtro mal armado o un
+      // middleware que no resuelve el tenant se ven los tres idénticos a "el
+      // desactivado quedó excluido". Además confirma que el PATCH persistió:
+      // hasta acá el `status === 200` era lo único que lo respaldaba.
+      const listadoActivo = await httpGet<SectorResponseDto[]>(
+        `${baseUrl}/sectores`,
+        bearer(admin.accessToken),
+      );
+      expect(listadoActivo.data.find((s) => s.id === id)?.nombre).toBe('Librería y Papelería');
+
+      const desactivar = await httpPatch(
+        `${baseUrl}/sectores/${id}/estado`,
+        { activo: false },
+        bearer(admin.accessToken),
+      );
       expect(desactivar.status).toBe(200);
 
       const listado = await httpGet<SectorResponseDto[]>(

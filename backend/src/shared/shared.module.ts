@@ -1,6 +1,8 @@
 import { Global, Module } from '@nestjs/common';
+import { APP_FILTER } from '@nestjs/core';
 import { EventEmitter2, EventEmitterModule } from '@nestjs/event-emitter';
 import { PrismaService } from './infrastructure/persistence/prisma.service';
+import { PrismaExceptionFilter } from './infrastructure/filters/prisma-exception.filter';
 import { TenantContext } from './tenancy/tenant-context';
 import { MasterContext } from './tenancy/master-context';
 import { LOGGER } from './domain/ports/i-logger.port';
@@ -102,6 +104,15 @@ import { entorno } from '../config/entorno';
       useFactory: (emitter: EventEmitter2) => new EventEmitter2DomainEventPublisher(emitter),
       inject: [EventEmitter2],
     },
+
+    // PrismaExceptionFilter: backstop global de errores de Prisma no
+    // atrapados por el dominio (sdd/filtro-prisma). Va acá y no en
+    // AppModule: SharedModule es @Global() y lo importan tanto producción
+    // (vía AppModule) como TODOS los harness de e2e — un APP_FILTER en
+    // AppModule sería invisible para estos últimos (mismo motivo por el que
+    // el ValidationPipe NO vive ahí). No se exporta: los enhancers
+    // (filtros/guards/interceptors/pipes) no son exportables en Nest.
+    { provide: APP_FILTER, useClass: PrismaExceptionFilter },
   ],
   exports: [
     PrismaService,
