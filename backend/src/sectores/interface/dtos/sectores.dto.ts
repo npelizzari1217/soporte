@@ -1,9 +1,22 @@
 /**
  * DTOs de entrada/salida de `SectoresController` (WU-07,
  * sdd/compras-tres-etapas-y-sectores).
+ *
+ * `@MaxLength` de `codigo`/`nombre` NO declara el límite: lo importa de
+ * `SectorEntity`, que es la autoridad. Acá el tope solo se adelanta al borde
+ * HTTP para devolver un 400 que nombra el campo, en vez del `throw` de
+ * precondición del dominio.
+ *
+ * El `VarChar(50)`/`VarChar(100)` de Postgres queda como último backstop, y
+ * `PrismaExceptionFilter` (sdd/filtro-prisma) lo traduce a 4xx si algún caller
+ * futuro esquivara las dos capas de arriba.
  */
-import { IsBoolean, IsOptional, IsString, Matches, MinLength } from 'class-validator';
-import { SectorEntity } from '../../domain/entities/sector.entity';
+import { IsBoolean, IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
+import {
+  SectorEntity,
+  SECTOR_CODIGO_MAX_LENGTH,
+  SECTOR_NOMBRE_MAX_LENGTH,
+} from '../../domain/entities/sector.entity';
 
 /** `codigo` de catálogo: mayúsculas/números/guion bajo, sin espacios (consistente con tipos_ticket/prioridades). */
 const CODIGO_PATTERN = /^[A-Z0-9_]+$/;
@@ -12,6 +25,7 @@ const CODIGO_PATTERN = /^[A-Z0-9_]+$/;
 export class CreateSectorDto {
   @IsString()
   @MinLength(1)
+  @MaxLength(SECTOR_CODIGO_MAX_LENGTH)
   @Matches(CODIGO_PATTERN, {
     message: 'codigo debe ser mayúsculas/números/guion bajo, sin espacios',
   })
@@ -19,6 +33,7 @@ export class CreateSectorDto {
 
   @IsString()
   @MinLength(1)
+  @MaxLength(SECTOR_NOMBRE_MAX_LENGTH)
   nombre!: string;
 }
 
@@ -27,6 +42,7 @@ export class EditSectorDto {
   @IsOptional()
   @IsString()
   @MinLength(1)
+  @MaxLength(SECTOR_CODIGO_MAX_LENGTH)
   @Matches(CODIGO_PATTERN, {
     message: 'codigo debe ser mayúsculas/números/guion bajo, sin espacios',
   })
@@ -35,6 +51,7 @@ export class EditSectorDto {
   @IsOptional()
   @IsString()
   @MinLength(1)
+  @MaxLength(SECTOR_NOMBRE_MAX_LENGTH)
   nombre?: string;
 }
 
