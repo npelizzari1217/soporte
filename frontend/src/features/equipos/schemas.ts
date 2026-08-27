@@ -1,6 +1,10 @@
-import { z } from "zod";
-
 /** Validación cliente-side de los forms de Equipos (RHF + zod), espejo de `equipos.dto.ts`. */
+import { z } from "zod";
+import {
+  TICKET_TITULO_MAX_LENGTH,
+  MENSAJE_TITULO_DEMASIADO_LARGO,
+} from "@/shared/lib/limites-ticket";
+
 export const crearEquipoSchema = z.object({
   nombre: z.string().min(1, "El nombre es requerido"),
   numeroSerie: z.string().optional(),
@@ -38,7 +42,10 @@ export type ComponenteFormValues = z.infer<typeof componenteSchema>;
 
 /** `equipoId` OPCIONAL (vínculo ticket↔equipo, espejo de `@IsOptional() @IsUUID() equipoId` backend). */
 export const crearTicketSoporteSchema = z.object({
-  titulo: z.string().min(1, "El título es requerido"),
+  titulo: z
+    .string()
+    .min(1, "El título es requerido")
+    .max(TICKET_TITULO_MAX_LENGTH, MENSAJE_TITULO_DEMASIADO_LARGO),
   descripcion: z.string().optional(),
   prioridadId: z.string().uuid("Elegí una prioridad"),
   equipoId: z.string().uuid().optional().or(z.literal("")),

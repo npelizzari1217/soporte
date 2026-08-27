@@ -7,8 +7,19 @@
  *
  * Tarea: T12.6.
  */
-import { IsDateString, IsNumber, IsOptional, IsString, MinLength, IsUUID } from 'class-validator';
-import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
+import {
+  IsDateString,
+  IsNumber,
+  IsOptional,
+  IsString,
+  MaxLength,
+  MinLength,
+  IsUUID,
+} from 'class-validator';
+import {
+  TICKET_TITULO_MAX_LENGTH,
+  TicketEntity,
+} from '../../../tickets/domain/entities/ticket.entity';
 import { EquipoInformaticoEntity } from '../../domain/entities/equipo-informatico.entity';
 import { ComponenteEquipoEntity } from '../../domain/entities/componente-equipo.entity';
 import { TicketSoporteEntity } from '../../domain/entities/ticket-soporte.entity';
@@ -116,10 +127,18 @@ export class EditarEquipoHttpDto {
   fechaValorResidual?: string | null;
 }
 
-/** Body de `POST /soporte` (F3-Q4). `solicitanteId`/`autorId` vienen del JWT. `equipoId` OPCIONAL. */
+/**
+ * Body de `POST /soporte` (F3-Q4). `solicitanteId`/`autorId` vienen del JWT.
+ * `equipoId` OPCIONAL.
+ *
+ * `titulo` crea un `Ticket` vía `TicketEntity.create()` — el `@MaxLength`
+ * importa `TICKET_TITULO_MAX_LENGTH` de esa entidad, que es la autoridad
+ * (fix defecto "límite de largo de titulo").
+ */
 export class CreateTicketSoporteHttpDto {
   @IsString()
   @MinLength(1)
+  @MaxLength(TICKET_TITULO_MAX_LENGTH)
   titulo!: string;
 
   @IsOptional()

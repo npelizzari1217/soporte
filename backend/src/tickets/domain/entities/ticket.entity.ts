@@ -10,6 +10,33 @@ import { ESTADOS_TERMINALES } from '../state-machine/estados.constants';
 const TERMINAL_STATES = ESTADOS_TERMINALES;
 
 /**
+ * Tope de largo de `titulo`, espejando `Ticket.titulo VarChar(255)`
+ * (`prisma_tenant/schema.prisma`).
+ *
+ * Vive ACÁ y no en los DTOs porque el dominio es la autoridad del límite: el
+ * `VARCHAR` de Postgres es backstop, nunca al revés. Los DTOs importan esta
+ * constante para que el 400 amable del borde y la precondición del dominio
+ * no puedan divergir (fix defecto "límite de largo de titulo").
+ */
+export const TICKET_TITULO_MAX_LENGTH = 255;
+
+/**
+ * Precondición de largo de `titulo`. Va como `throw` y no como `Result`
+ * porque un primitivo fuera de rango llegando a la entidad es una violación
+ * de contrato del caller, no una desviación de negocio que el usuario deba
+ * ver.
+ *
+ * NO se aplica en `reconstitute()`: ahí la fila ya existe en la base, y
+ * hacer explotar una lectura por un valor histórico convertiría un dato
+ * viejo en una caída de sistema.
+ */
+function validarTitulo(titulo?: string): void {
+  if (titulo !== undefined && titulo.length > TICKET_TITULO_MAX_LENGTH) {
+    throw new Error(`TicketEntity: titulo excede ${TICKET_TITULO_MAX_LENGTH} caracteres.`);
+  }
+}
+
+/**
  * TicketProps — shape completo de las propiedades de dominio del Ticket
  * (usado por getters y `reconstitute`). Sin imports de Prisma ni NestJS —
  * dominio puro.
@@ -82,8 +109,10 @@ export class TicketEntity extends BaseEntity<TicketProps> {
    *
    * @param props Propiedades de creación del ticket (sin asignadoId/slaVenceAt/vencido/fechaCierre).
    * @param id    ID opcional (UUIDv7 generado si no se provee).
+   * @throws Error si `titulo` excede `TICKET_TITULO_MAX_LENGTH`.
    */
   static create(props: CrearTicketProps, id?: string): TicketEntity {
+    validarTitulo(props.titulo);
     return new TicketEntity(
       { ...props, asignadoId: null, slaVenceAt: null, vencido: false, fechaCierre: null },
       id,
@@ -200,12 +229,14 @@ export class TicketEntity extends BaseEntity<TicketProps> {
    * limpia el valor explícitamente.
    *
    * Ref spec: sdd/tickets-core/spec T8. Tarea: T6.5.
+   * @throws Error si `titulo` excede `TICKET_TITULO_MAX_LENGTH`.
    */
   actualizarDatos(datos: {
     titulo?: string;
     descripcion?: string | null;
     prioridadId?: string;
   }): void {
+    validarTitulo(datos.titulo);
     if (datos.titulo !== undefined) {
       this.props.titulo = datos.titulo;
     }

@@ -10,7 +10,10 @@
  */
 import { Transform } from 'class-transformer';
 import { IsInt, IsOptional, IsString, IsUUID, MaxLength, Min, MinLength } from 'class-validator';
-import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
+import {
+  TICKET_TITULO_MAX_LENGTH,
+  TicketEntity,
+} from '../../../tickets/domain/entities/ticket.entity';
 import { TicketEdiliciaEntity } from '../../domain/entities/ticket-edilicia.entity';
 import { SubtareaEdiliciaEntity } from '../../domain/entities/subtarea-edilicia.entity';
 import {
@@ -21,10 +24,17 @@ import { ReparacionConTicket } from '../../application/use-cases/listar-reparaci
 
 // ─── Input DTOs ───────────────────────────────────────────────────────────────
 
-/** Body de `POST /reparaciones` (F3-E1). `solicitanteId`/`autorId` vienen del JWT. */
+/**
+ * Body de `POST /reparaciones` (F3-E1). `solicitanteId`/`autorId` vienen del JWT.
+ *
+ * `titulo` crea un `Ticket` vía `TicketEntity.create()` — el `@MaxLength`
+ * importa `TICKET_TITULO_MAX_LENGTH` de esa entidad, que es la autoridad
+ * (fix defecto "límite de largo de titulo").
+ */
 export class CreateTicketEdilicioHttpDto {
   @IsString()
   @MinLength(1)
+  @MaxLength(TICKET_TITULO_MAX_LENGTH)
   titulo!: string;
 
   @IsOptional()
