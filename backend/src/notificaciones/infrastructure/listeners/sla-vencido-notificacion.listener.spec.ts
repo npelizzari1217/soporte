@@ -42,13 +42,15 @@ describe('SlaVencidoNotificacionListener', () => {
     const tenantContext = {
       get: vi.fn().mockReturnValue(clienteId !== null ? { clienteId } : undefined),
     };
+    const logger = { error: vi.fn() };
     const listener = new SlaVencidoNotificacionListener(
       ticketRepo as never,
       contactoResolver as never,
       emailSender as never,
       tenantContext as never,
+      logger as never,
     );
-    return { listener, ticketRepo, contactoResolver, emailSender, tenantContext };
+    return { listener, ticketRepo, contactoResolver, emailSender, tenantContext, logger };
   }
 
   it('notifica al ASIGNADO y a cada ADMINISTRADOR del tenant', async () => {
@@ -148,6 +150,29 @@ describe('SlaVencidoNotificacionListener', () => {
     expect(emailSender.send).toHaveBeenCalledTimes(2);
   });
 
+  it('[CRITICAL] el fallo por-destinatario se loguea (no queda mudo, ADR-6)', async () => {
+    const { listener, ticketRepo, contactoResolver, emailSender, logger } = makeListener();
+    ticketRepo.findById.mockResolvedValue(makeTicket('asignado-uuid'));
+    contactoResolver.resolverContacto.mockResolvedValue({
+      email: 'asignado@dominio.com',
+      nombre: 'Asignado',
+    });
+    contactoResolver.resolverAdministradores.mockResolvedValue([
+      { email: 'admin1@dominio.com', nombre: 'Admin1' },
+    ]);
+    emailSender.send.mockRejectedValueOnce(new Error('SMTP caído'));
+
+    await listener.onSlaVencido(
+      new SlaVencidoEvent({
+        ticketId: 'ticket-uuid',
+        asignadoId: 'asignado-uuid',
+        solicitanteId: 'solicitante-uuid',
+      }),
+    );
+
+    expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('asignado@dominio.com'));
+  });
+
   it('si el ticket no existe → no envía ningún email', async () => {
     const { listener, ticketRepo, emailSender } = makeListener();
     ticketRepo.findById.mockResolvedValue(null);
@@ -196,5 +221,20 @@ describe('SlaVencidoNotificacionListener', () => {
         }),
       ),
     ).resolves.toBeUndefined();
+  });
+
+  it('[CRITICAL] un fallo inesperado se loguea (no queda mudo, ADR-6)', async () => {
+    const { listener, ticketRepo, logger } = makeListener();
+    ticketRepo.findById.mockRejectedValue(new Error('DB caída'));
+
+    await listener.onSlaVencido(
+      new SlaVencidoEvent({
+        ticketId: 'ticket-uuid',
+        asignadoId: 'asignado-uuid',
+        solicitanteId: 'solicitante-uuid',
+      }),
+    );
+
+    expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('ticket-uuid'));
   });
 });

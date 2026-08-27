@@ -34,12 +34,14 @@ describe('TicketNotificacionListener', () => {
     const ticketRepo = { findById: vi.fn() };
     const contactoResolver = { resolverContacto: vi.fn(), resolverAdministradores: vi.fn() };
     const emailSender = { send: vi.fn().mockResolvedValue(undefined) };
+    const logger = { error: vi.fn() };
     const listener = new TicketNotificacionListener(
       ticketRepo as never,
       contactoResolver as never,
       emailSender as never,
+      logger as never,
     );
-    return { listener, ticketRepo, contactoResolver, emailSender };
+    return { listener, ticketRepo, contactoResolver, emailSender, logger };
   }
 
   describe('onTicketEstadoCambiado', () => {
@@ -116,6 +118,22 @@ describe('TicketNotificacionListener', () => {
         ),
       ).resolves.toBeUndefined();
     });
+
+    it('[CRITICAL] un fallo inesperado se loguea (no queda mudo, ADR-6)', async () => {
+      const { listener, ticketRepo, logger } = makeListener();
+      ticketRepo.findById.mockRejectedValue(new Error('DB caída'));
+
+      await listener.onTicketEstadoCambiado(
+        new TicketEstadoCambiadoEvent({
+          ticketId: 'ticket-uuid',
+          estadoAnteriorCodigo: 'NUEVO',
+          estadoNuevoCodigo: 'RESUELTO',
+          autorId: 'autor-uuid',
+        }),
+      );
+
+      expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('ticket-uuid'));
+    });
   });
 
   describe('onTicketComentado', () => {
@@ -155,6 +173,21 @@ describe('TicketNotificacionListener', () => {
           }),
         ),
       ).resolves.toBeUndefined();
+    });
+
+    it('[CRITICAL] un fallo inesperado se loguea (no queda mudo, ADR-6)', async () => {
+      const { listener, ticketRepo, logger } = makeListener();
+      ticketRepo.findById.mockRejectedValue(new Error('DB caída'));
+
+      await listener.onTicketComentado(
+        new TicketComentadoEvent({
+          ticketId: 'ticket-uuid',
+          operacionId: 'operacion-uuid',
+          autorId: 'autor-uuid',
+        }),
+      );
+
+      expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('ticket-uuid'));
     });
   });
 });

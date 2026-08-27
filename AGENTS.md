@@ -26,6 +26,7 @@ Commits: conventional commits, en español, **sin atribución de IA ni `Co-Autho
 
 _(Procedencia: reglas globales del autor)_
 
+- Comentarios de código en español. Los identificadores, nombres de archivo, mensajes de error y copy de UI siguen en inglés. No reportes comentarios en inglés preexistentes: solo los nuevos.
 - TypeScript strict. **Prohibido `any`**, y prohibido `as any` para callar al compilador,
   también en tests.
 - Variables, parámetros y retornos tipados explícitamente.

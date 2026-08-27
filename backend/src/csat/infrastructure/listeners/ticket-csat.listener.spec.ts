@@ -96,6 +96,11 @@ describe('TicketCsatListener', () => {
         numeroTicket: 'SOP-2026-00042',
         tituloTicket: 'La impresora no imprime',
         destinatarioEmail: 'solicitante@dominio.com',
+        // Pincha la URL que el cliente clickea en el mail de encuesta: sale de
+        // `entorno.APP_BASE_URL` (contrato validado al arrancar), y hasta acá
+        // no la cubría ningún test. Con el `?? ''` de antes, una variable
+        // ausente llegaba como cadena vacía sin que nada se pusiera rojo.
+        appBaseUrl: 'http://localhost:5173',
       }),
     );
   });

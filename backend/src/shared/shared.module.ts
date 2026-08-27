@@ -17,6 +17,7 @@ import { SECRET_CIPHER } from './domain/ports/i-secret-cipher.port';
 import { AesGcmSecretCipher } from './infrastructure/crypto/aes-gcm-secret-cipher';
 import { TENANT_ENUMERATOR } from './domain/ports/i-tenant-enumerator';
 import { PrismaTenantEnumerator } from './infrastructure/persistence/prisma/prisma-tenant-enumerator';
+import { entorno } from '../config/entorno';
 
 /**
  * SharedModule — módulo global de infraestructura transversal.
@@ -44,8 +45,12 @@ import { PrismaTenantEnumerator } from './infrastructure/persistence/prisma/pris
  *     enumeración de tenants activos desde `master.clientes`. Promovido acá
  *     desde `sla/` (ola-2 WU-0, ventana serial): infraestructura pura, sin
  *     razón para acoplar otros módulos (`preventivo`) a `sla` para
- *     consumirla. Único provider del token en toda la app — dos providers
- *     del mismo `TENANT_ENUMERATOR` fallan al bootear, no al compilar.
+ *     consumirla. Tiene que ser el único provider del token en toda la app,
+ *     y eso NADIE lo verifica: los providers de Nest son de alcance módulo,
+ *     así que registrar `TENANT_ENUMERATOR` en otro módulo no falla al
+ *     compilar NI al bootear — crea una segunda instancia en silencio. En
+ *     este mismo repo pasa con `CLIENTE_EMAIL_CONFIG_REPOSITORY`, provisto
+ *     por `ClientesModule` y por `NotificacionesModule`. No lo repitas acá.
  *
  * Todos los providers transversales usan tokens Symbol (principio de
  * inversión de dependencias): los consumidores dependen del puerto, no de
@@ -65,11 +70,12 @@ import { PrismaTenantEnumerator } from './infrastructure/persistence/prisma/pris
   imports: [EventEmitterModule.forRoot()],
   providers: [
     // PrismaService: factory multi-tenant inyectada con la URL master desde
-    // la variable de entorno DATABASE_URL_MASTER. pg.Pool es lazy: construir
-    // el servicio NO abre conexiones (recién en la primera query).
+    // la variable de entorno DATABASE_URL_MASTER (ya validada al arranque por
+    // `entorno.ts` — ver sdd/fail-fast-env). pg.Pool es lazy: construir el
+    // servicio NO abre conexiones (recién en la primera query).
     {
       provide: PrismaService,
-      useFactory: () => new PrismaService(process.env.DATABASE_URL_MASTER ?? ''),
+      useFactory: () => new PrismaService(entorno.DATABASE_URL_MASTER),
     },
     TenantContext,
     MasterContext,

@@ -17,9 +17,14 @@ export default defineConfig({
       './test/guardarrail-host.global-setup.mjs',
       './test/barrido-huerfanas.global-setup.mjs',
     ],
-    // El fixture de `guardarrail-corte-corrida.spec.ts` es un proyecto
-    // Vitest propio que se lanza como proceso hijo: no debe contarse ni
-    // correr dos veces dentro de la suite padre.
+    // Defaults de las 3 variables de entorno requeridas por `src/config/entorno.ts`
+    // (ver sdd/fail-fast-env ADR-E2). `setupFiles` es el único hook que corre
+    // ANTES de importar el archivo de spec — un `beforeAll` llegaría tarde.
+    setupFiles: ['./test/entorno-test.setup.ts'],
+    // Los fixtures de `guardarrail-corte-corrida.spec.ts` y de
+    // `entorno-corte-arranque.spec.ts` son proyectos Vitest propios que se
+    // lanzan como proceso hijo: no deben contarse ni correr dos veces dentro
+    // de la suite padre.
     exclude: [...configDefaults.exclude, 'test/fixtures/**'],
     coverage: {
       provider: 'v8',

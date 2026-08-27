@@ -36,6 +36,7 @@ import { IUsuarioContactoResolver } from '../../../notificaciones/domain/ports/i
 import { EmitirEncuestaUseCase } from '../../application/use-cases/emitir-encuesta.use-case';
 import { TenantContext } from '../../../shared/tenancy/tenant-context';
 import { ILogger } from '../../../shared/domain/ports/i-logger.port';
+import { entorno } from '../../../config/entorno';
 
 /** Único estado que dispara la emisión (filtro propio — ver JSDoc de la clase). */
 const ESTADO_CERRADO = 'CERRADO';
@@ -51,6 +52,15 @@ export class TicketCsatListener {
     private readonly logger: Pick<ILogger, 'error'>,
   ) {}
 
+  /**
+   * Maneja `ticket.estado_cambiado`: si el nuevo estado es CERRADO y el
+   * cliente tiene CSAT habilitado, emite la encuesta de satisfacción al
+   * solicitante (ver JSDoc de la clase para el orden completo de lookups).
+   *
+   * @param event Evento de cambio de estado (sin PII — solo IDs y códigos).
+   * @returns No devuelve nada; cualquier fallo se loguea y se traga (ver
+   *   JSDoc de la clase), nunca se propaga hacia el emisor síncrono.
+   */
   @OnEvent('ticket.estado_cambiado')
   async onTicketEstadoCambiado(event: TicketEstadoCambiadoEvent): Promise<void> {
     if (event.estadoNuevoCodigo !== ESTADO_CERRADO) {
@@ -84,7 +94,7 @@ export class TicketCsatListener {
         numeroTicket: ticket.numero,
         tituloTicket: ticket.titulo,
         destinatarioEmail: contacto.email,
-        appBaseUrl: process.env.APP_BASE_URL ?? '',
+        appBaseUrl: entorno.APP_BASE_URL,
       });
     } catch (err) {
       // log-and-swallow: un fallo acá (incluido el envío del mail) nunca

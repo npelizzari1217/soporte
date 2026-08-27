@@ -31,6 +31,8 @@ import {
   templateCambioEstado,
   templateComentarioPublico,
 } from '../../domain/templates/email-templates';
+import { entorno } from '../../../config/entorno';
+import { ILogger } from '../../../shared/domain/ports/i-logger.port';
 
 @Injectable()
 export class TicketNotificacionListener {
@@ -38,8 +40,19 @@ export class TicketNotificacionListener {
     private readonly ticketRepo: Pick<ITicketRepository, 'findById'>,
     private readonly contactoResolver: Pick<IUsuarioContactoResolver, 'resolverContacto'>,
     private readonly emailSender: Pick<IEmailSender, 'send'>,
+    private readonly logger: Pick<ILogger, 'error'>,
   ) {}
 
+  /**
+   * Maneja `ticket.estado_cambiado`: notifica por email al solicitante del
+   * ticket sobre el cambio de estado (ver JSDoc de la clase para el flujo
+   * completo: carga de ticket, resolución de contacto y plantilla).
+   *
+   * @param event Evento de cambio de estado (sin PII — solo IDs y códigos).
+   * @returns No devuelve nada; si no hay ticket o no se resuelve el
+   *   contacto, se omite el envío sin fallar (N4). Cualquier otro fallo se
+   *   loguea y se traga (ADR-6), nunca se propaga hacia el emisor síncrono.
+   */
   @OnEvent('ticket.estado_cambiado')
   async onTicketEstadoCambiado(event: TicketEstadoCambiadoEvent): Promise<void> {
     try {
@@ -57,18 +70,32 @@ export class TicketNotificacionListener {
         numero: ticket.numero,
         titulo: ticket.titulo,
         ticketId: ticket.id,
-        appBaseUrl: process.env.APP_BASE_URL ?? '',
+        appBaseUrl: entorno.APP_BASE_URL,
         estadoAnteriorCodigo: event.estadoAnteriorCodigo,
         estadoNuevoCodigo: event.estadoNuevoCodigo,
       });
 
       await this.emailSender.send({ to: contacto.email, ...plantilla });
-    } catch {
+    } catch (err) {
       // log-and-swallow (ADR-6): un fallo acá nunca revierte ni afecta la
-      // transición de estado ya committeada.
+      // transición de estado ya committeada. Se loguea (no catch vacío) para
+      // que el fallo quede visible sin voltear la transición.
+      this.logger.error(
+        `TicketNotificacionListener: fallo al notificar cambio de estado (ticketId=${event.ticketId}): ${String(err)}`,
+      );
     }
   }
 
+  /**
+   * Maneja `ticket.comentado`: notifica por email al solicitante del ticket
+   * sobre un comentario público nuevo (ver JSDoc de la clase para el flujo
+   * completo: carga de ticket, resolución de contacto y plantilla).
+   *
+   * @param event Evento de comentario (sin PII — solo IDs).
+   * @returns No devuelve nada; si no hay ticket o no se resuelve el
+   *   contacto, se omite el envío sin fallar (N4). Cualquier otro fallo se
+   *   loguea y se traga (ADR-6), nunca se propaga hacia el emisor síncrono.
+   */
   @OnEvent('ticket.comentado')
   async onTicketComentado(event: TicketComentadoEvent): Promise<void> {
     try {
@@ -86,13 +113,17 @@ export class TicketNotificacionListener {
         numero: ticket.numero,
         titulo: ticket.titulo,
         ticketId: ticket.id,
-        appBaseUrl: process.env.APP_BASE_URL ?? '',
+        appBaseUrl: entorno.APP_BASE_URL,
       });
 
       await this.emailSender.send({ to: contacto.email, ...plantilla });
-    } catch {
+    } catch (err) {
       // log-and-swallow (ADR-6): un fallo acá nunca revierte ni afecta el
-      // comentario ya persistido.
+      // comentario ya persistido. Se loguea (no catch vacío) para que el
+      // fallo quede visible sin voltear el comentario.
+      this.logger.error(
+        `TicketNotificacionListener: fallo al notificar comentario (ticketId=${event.ticketId}): ${String(err)}`,
+      );
     }
   }
 }
