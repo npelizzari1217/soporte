@@ -2,33 +2,46 @@
 
 ## [Overrides / Modificaciones para este proyecto]
 
-Este proyecto lo desarrolla **una sola persona**. No hay revisor, no hay maintainer separado
-del autor, y no se usan pull requests: se trabaja en ramas de integración que se mergean
-directo a `main`. Las reglas globales que asumen un flujo de PR con revisión externa **no
-aplican acá** y no deben inyectarse en los prompts de los sub-agentes.
+Este proyecto lo desarrolla **una sola persona**: no hay revisor ni maintainer separado del
+autor. Pero eso **ya no exime del flujo de rama + PR** (ver abajo).
 
-### Anulaciones
+### Rama + PR: vigente desde el 2026-08-27
 
-- **Anulación — skill `branch-pr`**: NO aplica. No se crean pull requests, no hay issue-first,
-  no hay labels `type:*`, no hay gates de GitHub Actions que bloqueen merges. Sus reglas
-  provienen del repo *Gentle AI* (`Gentleman-Programming/agent-teams-lite`) y son ajenas a
-  este proyecto.
+**Este archivo anulaba `branch-pr` y `chained-pr`. Esas dos anulaciones se retiraron.**
 
-- **Anulación — skill `chained-pr`**: NO aplica. No se parten los cambios a las 400 líneas,
-  no existe `size:exception` y no hay tracker PR ni PRs hijos. El tamaño de una rama lo
-  decide el autor.
+El fundamento con que se habían escrito era "no hay revisor externo, así que el PR no aporta
+nada". La regla global del 2026-08-27 rechaza esa premisa de frente: el motivo del PR **nunca
+fue la revisión**, es el **aislamiento entre máquinas**. El mismo repo se trabaja desde varias
+PCs, y la rama principal es el único lugar donde dos chocan de verdad — sobre una rama, un
+push ajeno es un merge que resolvés cuando querés; sobre `main`, es un rebase forzado sobre
+trabajo ya publicado.
+
+O sea: la anulación no era incorrecta, estaba razonada desde una premisa equivocada. Con el
+motivo real a la vista, **acá aplica igual que en cualquier otro proyecto**.
+
+Vigente entonces, sin excepciones locales:
+
+- Toda tarea arranca en su propia rama (`feat/…`, `fix/…`, `chore/…`) y entra por pull
+  request. **Nunca commit directo a `main`.**
+- `git fetch origin` y partir de `origin/main` al día antes de abrir la rama.
+- **Pushear la rama al abrir el PR, no al final.** Una rama que solo vive en una PC no aísla
+  de nada — es exactamente el riesgo que la regla viene a cerrar.
+- Merge con `--no-ff`.
+- `--force` sobre `main`: PROHIBIDO. Sobre rama propia sin mergear: solo `--force-with-lease`.
+- Corte a **400 líneas revisables** por PR, con la banda de consulta de 401–450. No cuentan
+  lockfiles, generados, snapshots ni papelería SDD. Ver la regla global para el detalle.
+
+### Anulaciones que SIGUEN vigentes
 
 - **Anulación — skill `issue-creation`**: NO aplica. No hay plantillas obligatorias, ni
   `status:needs-review` / `status:approved`, ni un maintainer que apruebe antes de trabajar.
-  Mismo origen ajeno que las anteriores.
+  La regla global del 2026-08-27 la mantiene explícitamente opt-in, así que esta anulación
+  no cambia: es ceremonia de equipo con revisor externo, y acá no hay.
 
-- **Anulación — Review Workload Guard del orquestador SDD**: NO se ejecuta. No se consulta
-  el `Review Workload Forecast` de `sdd-tasks` para decidir chained PRs, y no se pide
-  autorización de tamaño antes de `sdd-apply`.
-
-- **Anulación — `delivery_strategy`**: no se pregunta ni se resuelve por caso. Es fijo:
-  **rama larga de integración, un solo merge a `main`**. Los work units van como commits
-  disciplinados dentro de esa rama.
+- **Anulación — Review Workload Guard del orquestador SDD**: NO se ejecuta. `sdd-tasks` no
+  emite `Review Workload Forecast` y no se pide autorización de tamaño antes de `sdd-apply`.
+  El corte por tamaño se decide con la regla de 400 líneas revisables al armar el PR, no con
+  un gate dentro del ciclo SDD.
 
 ### Lo que SÍ se mantiene
 
