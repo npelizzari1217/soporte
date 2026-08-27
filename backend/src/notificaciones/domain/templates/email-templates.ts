@@ -17,6 +17,33 @@ function linkTicket(datos: DatosTicketBase): string {
 }
 
 /**
+ * Escapa un valor para interpolarlo dentro del `html` de una plantilla.
+ *
+ * El `titulo` de un ticket lo escribe un usuario final: interpolado crudo, un
+ * `<script>` o un `&` suelto llegan al cliente de correo del destinatario.
+ *
+ * Se aplica a TODA interpolación del `html`, no solo a `titulo`. La alternativa
+ * —escapar únicamente lo que hoy sabemos que viene del usuario— obliga a que
+ * quien agregue un campo mañana recuerde clasificarlo, y esa es exactamente la
+ * clase de decisión que se olvida. Cubre también el contexto de atributo:
+ * `href="${link}"` se rompe con una comilla adentro.
+ *
+ * NO se usa en el `text`: ahí el escapado sería el bug — el usuario vería
+ * `&lt;` donde escribió `<`.
+ *
+ * @param valor Texto a interpolar en el `html`.
+ * @returns El mismo texto con `& < > " '` convertidos a entidades.
+ */
+function escaparHtml(valor: string): string {
+  return valor
+    .replace(/&/g, '&amp;') // primero, o re-escaparía las entidades de abajo
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/**
  * templateCambioEstado — plantilla de `ticket.estado_cambiado` (N3).
  * Función pura: sin I/O, sin acceso a `process.env` (el caller resuelve
  * `appBaseUrl` e inyecta el resto de los datos).
@@ -33,9 +60,10 @@ export function templateCambioEstado(
     `${datos.estadoAnteriorCodigo} → ${datos.estadoNuevoCodigo}.\n\n` +
     `Ver ticket: ${link}`;
   const html =
-    `<p>El ticket <strong>${datos.numero}</strong> - ${datos.titulo} cambió de estado: ` +
-    `${datos.estadoAnteriorCodigo} → ${datos.estadoNuevoCodigo}.</p>` +
-    `<p><a href="${link}">Ver ticket</a></p>`;
+    `<p>El ticket <strong>${escaparHtml(datos.numero)}</strong> - ${escaparHtml(datos.titulo)} ` +
+    `cambió de estado: ${escaparHtml(datos.estadoAnteriorCodigo)} → ` +
+    `${escaparHtml(datos.estadoNuevoCodigo)}.</p>` +
+    `<p><a href="${escaparHtml(link)}">Ver ticket</a></p>`;
 
   return { subject, text, html };
 }
@@ -53,8 +81,9 @@ export function templateComentarioPublico(datos: DatosTicketBase): PlantillaEmai
     `Hay un nuevo comentario en el ticket ${datos.numero} - ${datos.titulo}.\n\n` +
     `Ver ticket: ${link}`;
   const html =
-    `<p>Hay un nuevo comentario en el ticket <strong>${datos.numero}</strong> - ${datos.titulo}.</p>` +
-    `<p><a href="${link}">Ver ticket</a></p>`;
+    `<p>Hay un nuevo comentario en el ticket <strong>${escaparHtml(datos.numero)}</strong> - ` +
+    `${escaparHtml(datos.titulo)}.</p>` +
+    `<p><a href="${escaparHtml(link)}">Ver ticket</a></p>`;
 
   return { subject, text, html };
 }
@@ -70,8 +99,9 @@ export function templateSlaVencido(datos: DatosTicketBase): PlantillaEmail {
   const text =
     `El SLA del ticket ${datos.numero} - ${datos.titulo} venció.\n\n` + `Ver ticket: ${link}`;
   const html =
-    `<p>El SLA del ticket <strong>${datos.numero}</strong> - ${datos.titulo} venció.</p>` +
-    `<p><a href="${link}">Ver ticket</a></p>`;
+    `<p>El SLA del ticket <strong>${escaparHtml(datos.numero)}</strong> - ` +
+    `${escaparHtml(datos.titulo)} venció.</p>` +
+    `<p><a href="${escaparHtml(link)}">Ver ticket</a></p>`;
 
   return { subject, text, html };
 }
@@ -91,8 +121,9 @@ export function templatePreventivoGenerado(datos: DatosTicketBase): PlantillaEma
     `Se generó el ticket de mantenimiento preventivo ${datos.numero} - ${datos.titulo}.\n\n` +
     `Ver ticket: ${link}`;
   const html =
-    `<p>Se generó el ticket de mantenimiento preventivo <strong>${datos.numero}</strong> - ${datos.titulo}.</p>` +
-    `<p><a href="${link}">Ver ticket</a></p>`;
+    `<p>Se generó el ticket de mantenimiento preventivo <strong>${escaparHtml(datos.numero)}</strong> ` +
+    `- ${escaparHtml(datos.titulo)}.</p>` +
+    `<p><a href="${escaparHtml(link)}">Ver ticket</a></p>`;
 
   return { subject, text, html };
 }
