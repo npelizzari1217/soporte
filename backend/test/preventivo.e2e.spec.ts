@@ -324,6 +324,51 @@ describe('Preventivo e2e — ABM de planes, autorización REAL por HTTP (WU-4, c
 
       expect(status).toBe(422);
     });
+
+    // Hallazgo de revisión: "los límites de la base son más estrictos que el
+    // dominio" — sin los guards de WU-8, estos tres casos llegaban al INSERT y
+    // devolvían un 500 crudo (`PrismaClientKnownRequestError` sin mapear). Los
+    // tres los ataja el `@MaxLength`/`@Max` del DTO (`ValidationPipe` global) —
+    // igual que cualquier otro rechazo de `class-validator` en este repo
+    // (`reparaciones.dto.ts`: "@MinLength(1) con un 400"), el status es 400,
+    // NO 422 (422 es exclusivo de `Result.fail()` de dominio). El backstop de
+    // dominio (`plan-preventivo.entity.spec.ts`) sigue siendo la autoridad
+    // real — este test prueba el contrato HTTP end-to-end, nunca 500.
+    it('[CRITICAL] título de 256 caracteres → 400, NUNCA 500 (backstop VarChar(255))', async () => {
+      const actor = await crearActorConPermisos(['PREVENTIVO:ALTAS']);
+
+      const { status } = await httpPost(
+        `${baseUrl}/preventivo/planes`,
+        planValidoBody({ titulo: 'A'.repeat(256) }),
+        bearer(actor.accessToken),
+      );
+
+      expect(status).toBe(400);
+    });
+
+    it('ubicación de 256 caracteres → 400, NUNCA 500 (backstop VarChar(255))', async () => {
+      const actor = await crearActorConPermisos(['PREVENTIVO:ALTAS']);
+
+      const { status } = await httpPost(
+        `${baseUrl}/preventivo/planes`,
+        planValidoBody({ ubicacion: 'B'.repeat(256), equipoId: undefined }),
+        bearer(actor.accessToken),
+      );
+
+      expect(status).toBe(400);
+    });
+
+    it('[CRITICAL] intervaloValor desbordaría int4 (3_000_000_000) → 400, NUNCA 500', async () => {
+      const actor = await crearActorConPermisos(['PREVENTIVO:ALTAS']);
+
+      const { status } = await httpPost(
+        `${baseUrl}/preventivo/planes`,
+        planValidoBody({ intervaloValor: 3_000_000_000 }),
+        bearer(actor.accessToken),
+      );
+
+      expect(status).toBe(400);
+    });
   });
 
   // ─── GET /preventivo/planes — PREVENTIVO:LECTURA ────────────────────────

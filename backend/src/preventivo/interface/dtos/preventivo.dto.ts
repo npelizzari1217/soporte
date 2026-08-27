@@ -9,7 +9,18 @@
  * la AUTORIDAD es `PlanPreventivoEntity.create()`/`editar()` (ADR-PV1).
  * Duplicarla acá crearía dos fuentes de verdad que pueden desincronizarse.
  *
- * Tarea: 4.4.
+ * `@MaxLength`/`@Max` de `titulo`/`ubicacion`/`intervaloValor` SÍ espejan a
+ * los techos del dominio (`TITULO_MAX_LENGTH`/`UBICACION_MAX_LENGTH`/
+ * `INTERVALO_VALOR_MAXIMO` de `plan-preventivo.entity.ts`) — a diferencia
+ * del XOR, este es un límite estructural de un único campo, no una regla de
+ * negocio entre campos: espejarlo acá da un 422 con mensaje ANTES de tocar
+ * el use case, en vez de esperar a que el dominio lo rechace igual. Es la
+ * misma clase de incidente que documenta `SectorInexistenteError` en
+ * `compras/domain/errors/compras.errors.ts`: sin este guard, el `INSERT`
+ * revienta con un `PrismaClientKnownRequestError` sin mapear (500 crudo).
+ *
+ * Tarea: 4.4. Fix post-verify (WU-8, hallazgo "límites de la base más
+ * estrictos que el dominio").
  */
 import {
   IsBoolean,
@@ -20,13 +31,19 @@ import {
   IsPositive,
   IsString,
   IsUUID,
+  Max,
+  MaxLength,
   MinLength,
 } from 'class-validator';
-import { IntervaloUnidad } from '../../domain/entities/plan-preventivo.entity';
-import { PlanPreventivoEntity } from '../../domain/entities/plan-preventivo.entity';
+import {
+  INTERVALO_VALOR_MAXIMO,
+  IntervaloUnidad,
+  PlanPreventivoEntity,
+  TITULO_MAX_LENGTH,
+  UBICACION_MAX_LENGTH,
+  UNIDADES_INTERVALO,
+} from '../../domain/entities/plan-preventivo.entity';
 import { PreventivoGeneracionProps } from '../../domain/ports/i-preventivo-generacion.repository';
-
-const UNIDADES_VALIDAS: readonly IntervaloUnidad[] = ['DIAS', 'MESES'];
 
 // ─── Input DTOs ───────────────────────────────────────────────────────────
 
@@ -34,6 +51,7 @@ const UNIDADES_VALIDAS: readonly IntervaloUnidad[] = ['DIAS', 'MESES'];
 export class CreatePlanPreventivoHttpDto {
   @IsString()
   @MinLength(1)
+  @MaxLength(TITULO_MAX_LENGTH)
   titulo!: string;
 
   @IsOptional()
@@ -46,6 +64,7 @@ export class CreatePlanPreventivoHttpDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(UBICACION_MAX_LENGTH)
   ubicacion?: string | null;
 
   @IsUUID()
@@ -56,9 +75,10 @@ export class CreatePlanPreventivoHttpDto {
 
   @IsInt()
   @IsPositive()
+  @Max(INTERVALO_VALOR_MAXIMO)
   intervaloValor!: number;
 
-  @IsIn(UNIDADES_VALIDAS)
+  @IsIn(UNIDADES_INTERVALO)
   intervaloUnidad!: IntervaloUnidad;
 
   @IsDateString()
@@ -70,6 +90,7 @@ export class EditarPlanPreventivoHttpDto {
   @IsOptional()
   @IsString()
   @MinLength(1)
+  @MaxLength(TITULO_MAX_LENGTH)
   titulo?: string;
 
   @IsOptional()
@@ -82,6 +103,7 @@ export class EditarPlanPreventivoHttpDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(UBICACION_MAX_LENGTH)
   ubicacion?: string | null;
 
   @IsOptional()
@@ -95,10 +117,11 @@ export class EditarPlanPreventivoHttpDto {
   @IsOptional()
   @IsInt()
   @IsPositive()
+  @Max(INTERVALO_VALOR_MAXIMO)
   intervaloValor?: number;
 
   @IsOptional()
-  @IsIn(UNIDADES_VALIDAS)
+  @IsIn(UNIDADES_INTERVALO)
   intervaloUnidad?: IntervaloUnidad;
 
   @IsOptional()

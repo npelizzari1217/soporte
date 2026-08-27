@@ -28,6 +28,7 @@ import { Client } from 'pg';
 import { PostgresAdminService } from '../../../../clientes/infrastructure/postgres-admin.service';
 import { TenantMigrationRunnerAdapter } from '../../../../clientes/infrastructure/tenant-migration-runner.adapter';
 import { RESULTADOS_GENERACION } from '../../../domain/ports/i-preventivo-generacion.repository';
+import { UNIDADES_INTERVALO } from '../../../domain/entities/plan-preventivo.entity';
 
 const MASTER_TEST_URL =
   process.env.DATABASE_URL_MASTER ??
@@ -333,6 +334,17 @@ describe('Schema preventivo — CHECKs e idempotencia (WU-2, tenant efímero)', 
       const definicion: string = result.rows[0].def;
       const enLaDb = [...definicion.matchAll(/'([^']+)'/g)].map((m) => m[1]).sort();
       expect(enLaDb).toEqual([...RESULTADOS_GENERACION].sort());
+    });
+
+    it('planes_preventivo_intervalo_unidad_check enumera exactamente UNIDADES_INTERVALO', async () => {
+      const result = await client.query(
+        'SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conname = $1',
+        ['planes_preventivo_intervalo_unidad_check'],
+      );
+      expect(result.rows).toHaveLength(1);
+      const definicion: string = result.rows[0].def;
+      const enLaDb = [...definicion.matchAll(/'([^']+)'/g)].map((m) => m[1]).sort();
+      expect(enLaDb).toEqual([...UNIDADES_INTERVALO].sort());
     });
   });
 });

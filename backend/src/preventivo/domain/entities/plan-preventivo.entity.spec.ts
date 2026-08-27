@@ -9,10 +9,19 @@
  * plan" y "Recurrencia por tiempo, anclada a fecha inmutable". Ref design:
  * ADR-PV1. Tarea: 3.1/3.2.
  */
-import { PlanPreventivoEntity, PlanPreventivoCreateProps } from './plan-preventivo.entity';
 import {
+  PlanPreventivoEntity,
+  PlanPreventivoCreateProps,
+  TITULO_MAX_LENGTH,
+  UBICACION_MAX_LENGTH,
+  INTERVALO_VALOR_MAXIMO,
+} from './plan-preventivo.entity';
+import {
+  IntervaloExcedeMaximoError,
   IntervaloInvalidoError,
   ObjetivoInvalidoError,
+  TituloDemasiadoLargoError,
+  UbicacionDemasiadoLargaError,
   UnidadIntervaloInvalidaError,
 } from '../errors/preventivo.errors';
 
@@ -118,6 +127,61 @@ describe('PlanPreventivoEntity', () => {
       expect(result.isFail()).toBe(true);
       expect(result.getError()).toBeInstanceOf(UnidadIntervaloInvalidaError);
     });
+
+    it('rechaza con TituloDemasiadoLargoError cuando el título excede 255 caracteres', () => {
+      const result = PlanPreventivoEntity.create(
+        propsConEquipo({ titulo: 'A'.repeat(TITULO_MAX_LENGTH + 1) }),
+      );
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(TituloDemasiadoLargoError);
+      expect(result.getError().message).toMatch(/255 caracteres/);
+    });
+
+    it('acepta un título de exactamente 255 caracteres (límite inclusive)', () => {
+      const result = PlanPreventivoEntity.create(
+        propsConEquipo({ titulo: 'A'.repeat(TITULO_MAX_LENGTH) }),
+      );
+
+      expect(result.isOk()).toBe(true);
+    });
+
+    it('rechaza con UbicacionDemasiadoLargaError cuando la ubicación excede 255 caracteres', () => {
+      const result = PlanPreventivoEntity.create(
+        propsConEquipo({
+          equipoId: null,
+          ubicacion: 'B'.repeat(UBICACION_MAX_LENGTH + 1),
+        }),
+      );
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(UbicacionDemasiadoLargaError);
+      expect(result.getError().message).toMatch(/255 caracteres/);
+    });
+
+    it('rechaza con IntervaloExcedeMaximoError cuando intervaloValor supera el techo de negocio', () => {
+      const result = PlanPreventivoEntity.create(
+        propsConEquipo({ intervaloValor: INTERVALO_VALOR_MAXIMO + 1 }),
+      );
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(IntervaloExcedeMaximoError);
+    });
+
+    it('acepta intervaloValor exactamente en el techo de negocio (límite inclusive)', () => {
+      const result = PlanPreventivoEntity.create(
+        propsConEquipo({ intervaloValor: INTERVALO_VALOR_MAXIMO }),
+      );
+
+      expect(result.isOk()).toBe(true);
+    });
+
+    it('rechaza con IntervaloExcedeMaximoError un valor patológico que desbordaría int4 (3_000_000_000)', () => {
+      const result = PlanPreventivoEntity.create(propsConEquipo({ intervaloValor: 3_000_000_000 }));
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(IntervaloExcedeMaximoError);
+    });
   });
 
   describe('reconstitute()', () => {
@@ -179,6 +243,40 @@ describe('PlanPreventivoEntity', () => {
 
       expect(result.isFail()).toBe(true);
       expect(result.getError()).toBeInstanceOf(IntervaloInvalidoError);
+      expect(plan.intervaloValor).toBe(3);
+    });
+
+    it('rechaza con TituloDemasiadoLargoError si la edición deja el título en más de 255 caracteres, y NO muta', () => {
+      const plan = PlanPreventivoEntity.create(propsConEquipo()).getValue();
+
+      const result = plan.editar({ titulo: 'A'.repeat(TITULO_MAX_LENGTH + 1) });
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(TituloDemasiadoLargoError);
+      expect(plan.titulo).toBe('Limpieza de filtros A/A');
+    });
+
+    it('rechaza con UbicacionDemasiadoLargaError si la edición deja la ubicación en más de 255 caracteres, y NO muta', () => {
+      const plan = PlanPreventivoEntity.create(propsConEquipo()).getValue();
+
+      const result = plan.editar({
+        equipoId: null,
+        ubicacion: 'B'.repeat(UBICACION_MAX_LENGTH + 1),
+      });
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(UbicacionDemasiadoLargaError);
+      expect(plan.equipoId).toBe('equipo-uuid-1');
+      expect(plan.ubicacion).toBeNull();
+    });
+
+    it('rechaza con IntervaloExcedeMaximoError si la edición deja intervaloValor sobre el techo de negocio, y NO muta', () => {
+      const plan = PlanPreventivoEntity.create(propsConEquipo()).getValue();
+
+      const result = plan.editar({ intervaloValor: INTERVALO_VALOR_MAXIMO + 1 });
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(IntervaloExcedeMaximoError);
       expect(plan.intervaloValor).toBe(3);
     });
   });

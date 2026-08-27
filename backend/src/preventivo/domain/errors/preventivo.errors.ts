@@ -54,6 +54,60 @@ export class UnidadIntervaloInvalidaError extends DomainError {
 }
 
 /**
+ * TituloDemasiadoLargoError — `titulo` excede el `@db.VarChar(255)` de la
+ * columna (`plan-preventivo.entity.ts:TITULO_MAX_LENGTH`). Autoridad de
+ * dominio: sin este guard, un título de más de 255 caracteres pasaba el DTO
+ * (`@MinLength(1)` sin techo) y reventaba recién en el `INSERT` como un
+ * `PrismaClientKnownRequestError` (P2000) sin mapear — 500 crudo alcanzable
+ * por HTTP.
+ *
+ * Ref: hallazgo de revisión "los límites de la base son más estrictos que el
+ * dominio". Tarea: fix post-verify (WU-8).
+ */
+export class TituloDemasiadoLargoError extends DomainError {
+  readonly code = 'PREVENTIVO_TITULO_DEMASIADO_LARGO';
+
+  constructor(largoRecibido: number) {
+    super(`El título no puede superar los 255 caracteres, se recibieron ${largoRecibido}.`);
+  }
+}
+
+/**
+ * UbicacionDemasiadoLargaError — `ubicacion` (ya normalizada a mayúscula)
+ * excede el `@db.VarChar(255)` de la columna
+ * (`plan-preventivo.entity.ts:UBICACION_MAX_LENGTH`). Mismo incidente que
+ * `TituloDemasiadoLargoError`, mismo guard.
+ *
+ * Ref: hallazgo de revisión "los límites de la base son más estrictos que el
+ * dominio". Tarea: fix post-verify (WU-8).
+ */
+export class UbicacionDemasiadoLargaError extends DomainError {
+  readonly code = 'PREVENTIVO_UBICACION_DEMASIADO_LARGA';
+
+  constructor(largoRecibido: number) {
+    super(`La ubicación no puede superar los 255 caracteres, se recibieron ${largoRecibido}.`);
+  }
+}
+
+/**
+ * IntervaloExcedeMaximoError — `intervalo_valor` supera el techo de negocio
+ * (`plan-preventivo.entity.ts:INTERVALO_VALOR_MAXIMO`, 3650). Sin este
+ * guard, un valor como `3_000_000_000` pasaba `Number.isInteger()`/
+ * `@IsPositive()` sin problema y desbordaba el `int4` de la columna recién
+ * en Postgres, otra vez como un `PrismaClientKnownRequestError` sin mapear.
+ *
+ * Ref: hallazgo de revisión "los límites de la base son más estrictos que el
+ * dominio". Tarea: fix post-verify (WU-8).
+ */
+export class IntervaloExcedeMaximoError extends DomainError {
+  readonly code = 'PREVENTIVO_INTERVALO_EXCEDE_MAXIMO';
+
+  constructor(valorRecibido: number) {
+    super(`El intervalo de cadencia no puede superar 3650, se recibió: ${valorRecibido}.`);
+  }
+}
+
+/**
  * PlanNoEncontradoError — el plan de mantenimiento preventivo con el id
  * indicado no existe (o fue soft-deleted).
  * → HTTP 404 en la capa de presentación.

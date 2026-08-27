@@ -98,6 +98,15 @@ describe('PreventivoController (4.4)', () => {
   });
 
   describe('GET /preventivo/planes', () => {
+    it('use case falla → excepción HTTP mapeada, nunca 500 crudo', async () => {
+      const { controller, listarPlanesUseCase } = buildController();
+      listarPlanesUseCase.execute.mockResolvedValue(
+        Result.fail(new ObjetivoInvalidoError(true, true)),
+      );
+
+      await expect(controller.listar()).rejects.toThrow(UnprocessableEntityException);
+    });
+
     it('declara @RequiereAcciones("PREVENTIVO:LECTURA")', () => {
       const meta = Reflect.getMetadata(ACCIONES_KEY, PreventivoController.prototype.listar);
       expect(meta).toEqual(['PREVENTIVO:LECTURA']);

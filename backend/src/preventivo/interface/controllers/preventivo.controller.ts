@@ -49,7 +49,10 @@ import { ListarGeneracionesPlanUseCase } from '../../application/use-cases/lista
 import {
   ObjetivoInvalidoError,
   IntervaloInvalidoError,
+  IntervaloExcedeMaximoError,
   UnidadIntervaloInvalidaError,
+  TituloDemasiadoLargoError,
+  UbicacionDemasiadoLargaError,
   PlanNoEncontradoError,
 } from '../../domain/errors/preventivo.errors';
 
@@ -72,7 +75,10 @@ export function toHttpException(
   if (
     error instanceof ObjetivoInvalidoError ||
     error instanceof IntervaloInvalidoError ||
-    error instanceof UnidadIntervaloInvalidaError
+    error instanceof IntervaloExcedeMaximoError ||
+    error instanceof UnidadIntervaloInvalidaError ||
+    error instanceof TituloDemasiadoLargoError ||
+    error instanceof UbicacionDemasiadoLargaError
   ) {
     return new UnprocessableEntityException(error.message);
   }
@@ -127,6 +133,9 @@ export class PreventivoController {
   @RequiereAcciones('PREVENTIVO:LECTURA')
   async listar(): Promise<PlanPreventivoResponseDto[]> {
     const result = await this.listarPlanesUseCase.execute();
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
     return result.getValue().map(toPlanPreventivoResponseDto);
   }
 

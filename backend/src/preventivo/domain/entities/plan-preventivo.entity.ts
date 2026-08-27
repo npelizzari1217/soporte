@@ -1,17 +1,66 @@
 import { BaseEntity } from '../../../shared/domain/base-entity';
 import { Result } from '../../../shared/domain/result';
 import {
+  IntervaloExcedeMaximoError,
   IntervaloInvalidoError,
   ObjetivoInvalidoError,
+  TituloDemasiadoLargoError,
+  UbicacionDemasiadoLargaError,
   UnidadIntervaloInvalidaError,
 } from '../errors/preventivo.errors';
 
+/**
+ * Catálogo cerrado de unidades de cadencia, en runtime — ÚNICA fuente de
+ * verdad: el tipo se deriva de acá, no al revés (mismo idiom que
+ * `RESULTADOS_GENERACION` en `i-preventivo-generacion.repository.ts`).
+ *
+ * Existe como array y no solo como unión porque el CHECK
+ * `planes_preventivo_intervalo_unidad_check` (migración
+ * `20260825110000_preventivo_planes`) enumera los mismos dos valores en la
+ * DB, y una unión de TypeScript se borra al compilar: sin esta constante no
+ * hay nada que un test pueda comparar contra la base. La deriva entre ambas
+ * listas se verifica en `preventivo-schema.integration.spec.ts`.
+ */
+export const UNIDADES_INTERVALO = ['DIAS', 'MESES'] as const;
+
 /** Catálogo cerrado de unidades de cadencia (`planes_preventivo_intervalo_unidad_check`). */
-export type IntervaloUnidad = 'DIAS' | 'MESES';
+export type IntervaloUnidad = (typeof UNIDADES_INTERVALO)[number];
+
+/**
+ * Largo máximo de `titulo`/`ubicacion`. Espeja `@db.VarChar(255)`
+ * (`prisma_tenant/schema.prisma:822,828`) — el dominio es la AUTORIDAD de
+ * este límite, el `VARCHAR` de Postgres es backstop (mismo criterio que
+ * ADR-PV1). Sin este guard, un título de 300 caracteres pasaba dominio y DTO
+ * y reventaba en un `PrismaClientKnownRequestError` (P2000) SIN MAPEAR —
+ * 500 crudo alcanzable por HTTP (hallazgo de revisión).
+ */
+export const TITULO_MAX_LENGTH = 255;
+export const UBICACION_MAX_LENGTH = 255;
+
+/**
+ * Techo de `intervalo_valor`. Se aplica al NÚMERO, sea cual sea la unidad: con
+ * `DIAS` son ~10 años, con `MESES` bastante más. No es un techo temporal
+ * exacto y no pretende serlo — su trabajo es cortar el absurdo lejos del
+ * desborde. Sin techo,
+ * un valor como 3_000_000_000 pasaba `Number.isInteger()`/`@IsPositive()`
+ * sin problema y desbordaba el `int4` de la columna (`@db.Int`, rango
+ * ±2147483647) recién al llegar a Postgres, otra vez como un
+ * `PrismaClientKnownRequestError` sin mapear. 3650 queda muy por debajo del
+ * límite de `int4` (a años luz de un desborde real) y es el mismo criterio
+ * de "techo defendible de negocio, no el límite físico de la columna" que ya
+ * usa `compras/domain/errors/compras.errors.ts` (`NumeradorCompraAgotadoError`,
+ * techo 99999 sobre una columna que tampoco lo impone directamente).
+ */
+export const INTERVALO_VALOR_MAXIMO = 3650;
 
 /** Unión de errores que puede devolver `create()`/`editar()`. */
 export type PlanPreventivoDomainError =
-  ObjetivoInvalidoError | IntervaloInvalidoError | UnidadIntervaloInvalidaError;
+  | ObjetivoInvalidoError
+  | IntervaloInvalidoError
+  | UnidadIntervaloInvalidaError
+  | TituloDemasiadoLargoError
+  | UbicacionDemasiadoLargaError
+  | IntervaloExcedeMaximoError;
 
 /**
  * PlanPreventivoProps — shape de las propiedades de dominio de
@@ -57,13 +106,29 @@ export type PlanPreventivoEditarProps = Partial<
   >
 >;
 
-const UNIDADES_VALIDAS: readonly IntervaloUnidad[] = ['DIAS', 'MESES'];
-
 /** Normaliza `ubicacion` a mayúscula (mismo criterio que `equipos_informaticos.ubicacion`). */
 function normalizarUbicacion(ubicacion: string | null): string | null {
   if (ubicacion === null) return null;
   const recortada = ubicacion.trim();
   return recortada.length === 0 ? null : recortada.toUpperCase();
+}
+
+/** Valida el largo de `titulo` contra el `@db.VarChar(255)` de la columna. */
+function validarTitulo(titulo: string): TituloDemasiadoLargoError | null {
+  if (titulo.length > TITULO_MAX_LENGTH) {
+    return new TituloDemasiadoLargoError(titulo.length);
+  }
+  return null;
+}
+
+/** Valida el largo de `ubicacion` (ya normalizada) contra el `@db.VarChar(255)` de la columna. */
+function validarUbicacionLargo(
+  ubicacionNormalizada: string | null,
+): UbicacionDemasiadoLargaError | null {
+  if (ubicacionNormalizada !== null && ubicacionNormalizada.length > UBICACION_MAX_LENGTH) {
+    return new UbicacionDemasiadoLargaError(ubicacionNormalizada.length);
+  }
+  return null;
 }
 
 /**
@@ -83,16 +148,19 @@ function validarObjetivo(
   return null;
 }
 
-/** Valida cadencia estrictamente positiva y unidad dentro del catálogo cerrado. */
+/** Valida cadencia estrictamente positiva, dentro del techo de negocio, y unidad dentro del catálogo cerrado. */
 function validarIntervalo(
   valor: number,
   unidad: IntervaloUnidad,
-): IntervaloInvalidoError | UnidadIntervaloInvalidaError | null {
+): IntervaloInvalidoError | UnidadIntervaloInvalidaError | IntervaloExcedeMaximoError | null {
   if (!Number.isInteger(valor) || valor <= 0) {
     return new IntervaloInvalidoError(valor);
   }
-  if (!UNIDADES_VALIDAS.includes(unidad)) {
+  if (!UNIDADES_INTERVALO.includes(unidad)) {
     return new UnidadIntervaloInvalidaError(unidad);
+  }
+  if (valor > INTERVALO_VALOR_MAXIMO) {
+    return new IntervaloExcedeMaximoError(valor);
   }
   return null;
 }
@@ -124,6 +192,12 @@ export class PlanPreventivoEntity extends BaseEntity<PlanPreventivoProps> {
     id?: string,
   ): Result<PlanPreventivoEntity, PlanPreventivoDomainError> {
     const ubicacionNormalizada = normalizarUbicacion(props.ubicacion);
+
+    const errorTitulo = validarTitulo(props.titulo);
+    if (errorTitulo) return Result.fail(errorTitulo);
+
+    const errorUbicacionLargo = validarUbicacionLargo(ubicacionNormalizada);
+    if (errorUbicacionLargo) return Result.fail(errorUbicacionLargo);
 
     const errorObjetivo = validarObjetivo(props.equipoId, ubicacionNormalizada);
     if (errorObjetivo) return Result.fail(errorObjetivo);
@@ -219,6 +293,13 @@ export class PlanPreventivoEntity extends BaseEntity<PlanPreventivoProps> {
       datos.intervaloValor !== undefined ? datos.intervaloValor : this.props.intervaloValor;
     const intervaloUnidad =
       datos.intervaloUnidad !== undefined ? datos.intervaloUnidad : this.props.intervaloUnidad;
+    const titulo = datos.titulo !== undefined ? datos.titulo : this.props.titulo;
+
+    const errorTitulo = validarTitulo(titulo);
+    if (errorTitulo) return Result.fail(errorTitulo);
+
+    const errorUbicacionLargo = validarUbicacionLargo(ubicacionNormalizada);
+    if (errorUbicacionLargo) return Result.fail(errorUbicacionLargo);
 
     const errorObjetivo = validarObjetivo(equipoId, ubicacionNormalizada);
     if (errorObjetivo) return Result.fail(errorObjetivo);
