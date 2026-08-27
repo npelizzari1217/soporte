@@ -5,6 +5,10 @@
  * `GET /tickets` se validan/transforman vía `class-transformer` (ver
  * `ValidationPipe({ transform: true })` global en `AppModule`).
  *
+ * `@MaxLength` de `titulo` NO declara el límite: lo importa de
+ * `TicketEntity`, que es la autoridad (fix defecto "límite de largo de
+ * titulo"). El `VarChar(255)` de Postgres queda como último backstop.
+ *
  * Tarea: T6.6 (PR6 — TicketsController + DTOs)
  */
 import { Type } from 'class-transformer';
@@ -16,10 +20,11 @@ import {
   IsString,
   IsUUID,
   Max,
+  MaxLength,
   Min,
   MinLength,
 } from 'class-validator';
-import { TicketEntity } from '../../domain/entities/ticket.entity';
+import { TICKET_TITULO_MAX_LENGTH, TicketEntity } from '../../domain/entities/ticket.entity';
 import { OperacionTicketEntity } from '../../domain/entities/operacion-ticket.entity';
 import { ArchivoEntity } from '../../domain/entities/archivo.entity';
 
@@ -27,6 +32,7 @@ import { ArchivoEntity } from '../../domain/entities/archivo.entity';
 export class CreateTicketDto {
   @IsString()
   @MinLength(1)
+  @MaxLength(TICKET_TITULO_MAX_LENGTH)
   titulo!: string;
 
   @IsOptional()
@@ -50,6 +56,7 @@ export class EditTicketDto {
   @IsOptional()
   @IsString()
   @MinLength(1)
+  @MaxLength(TICKET_TITULO_MAX_LENGTH)
   titulo?: string;
 
   @IsOptional()

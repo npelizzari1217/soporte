@@ -99,6 +99,32 @@ describe('TicketEntity', () => {
       expect(ticket.updatedAt).toEqual(updatedAt);
       expect(ticket.deletedAt).toBeNull();
     });
+
+    /**
+     * Hermano invertido de la precondición de largo: `create()` rechaza un
+     * título largo, `reconstitute()` lo acepta. La exención está documentada
+     * en la entidad, pero sin este test es solo un comentario — mover el guard
+     * al constructor mañana, que parece un refactor razonable, haría explotar
+     * toda lectura de una fila histórica con la suite en verde.
+     */
+    it('NO valida el largo: una fila histórica larga se lee sin explotar', () => {
+      expect(() =>
+        TicketEntity.reconstitute(
+          {
+            ...baseCrearProps(),
+            titulo: 'A'.repeat(300),
+            asignadoId: null,
+            slaVenceAt: null,
+            vencido: false,
+            fechaCierre: null,
+          },
+          'db-uuid-legacy',
+          new Date(),
+          new Date(),
+          null,
+        ),
+      ).not.toThrow();
+    });
   });
 
   describe('assignTo()', () => {
@@ -169,6 +195,24 @@ describe('TicketEntity', () => {
     });
   });
 
+  /**
+   * `Ticket.titulo` es `VarChar(255)` (`prisma_tenant/schema.prisma`) — sin
+   * este guard un titulo más largo atraviesa la entidad intacto y lo frena
+   * recién Postgres, con un `PrismaClientKnownRequestError` sin mapear (fix
+   * defecto "límite de largo de titulo", análogo a `sectores`/`preventivo`).
+   */
+  describe('create() — tope de largo de titulo', () => {
+    it('rechaza titulo de más de 255 caracteres', () => {
+      expect(() => TicketEntity.create({ ...baseCrearProps(), titulo: 'A'.repeat(256) })).toThrow();
+    });
+
+    it('acepta titulo de exactamente 255 caracteres (límite inclusive)', () => {
+      expect(() =>
+        TicketEntity.create({ ...baseCrearProps(), titulo: 'A'.repeat(255) }),
+      ).not.toThrow();
+    });
+  });
+
   describe('actualizarDatos()', () => {
     it('actualiza titulo, descripcion y prioridadId cuando vienen definidos', () => {
       const ticket = TicketEntity.create(baseCrearProps());
@@ -211,6 +255,16 @@ describe('TicketEntity', () => {
       ticket.actualizarDatos({ titulo: 'Otro titulo' });
 
       expect(ticket.estadoId).toBe(estadoOriginal);
+    });
+
+    it('rechaza titulo de más de 255 caracteres', () => {
+      const ticket = TicketEntity.create(baseCrearProps());
+      expect(() => ticket.actualizarDatos({ titulo: 'A'.repeat(256) })).toThrow();
+    });
+
+    it('acepta titulo de exactamente 255 caracteres (límite inclusive)', () => {
+      const ticket = TicketEntity.create(baseCrearProps());
+      expect(() => ticket.actualizarDatos({ titulo: 'A'.repeat(255) })).not.toThrow();
     });
   });
 

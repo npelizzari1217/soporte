@@ -7,8 +7,10 @@
  * de forma retrocompatible (nunca `undefined` filtrándose al JSON).
  */
 import 'reflect-metadata';
+import { validate } from 'class-validator';
+import { plainToInstance } from 'class-transformer';
 import { TicketEntity } from '../../domain/entities/ticket.entity';
-import { toTicketResponseDto } from './ticket.dto';
+import { CreateTicketDto, EditTicketDto, toTicketResponseDto } from './ticket.dto';
 
 function makeTicket(overrides: Partial<Parameters<typeof TicketEntity.reconstitute>[0]> = {}) {
   const now = new Date('2026-01-01T00:00:00.000Z');
@@ -80,5 +82,42 @@ describe('toTicketResponseDto', () => {
 
     expect(dto.asignadoNombre).toBeNull();
     expect(dto.asignadoApellido).toBeNull();
+  });
+});
+
+/**
+ * `Ticket.titulo` es `VarChar(255)`. Sin este guard el valor atraviesa DTO
+ * y dominio intactos y lo frena recién Postgres, con un error de driver sin
+ * nombrar campo (fix defecto "límite de largo de titulo").
+ *
+ * Recorre los dos DTOs (alta y edición): con un solo caso, borrar el
+ * decorador de uno de los dos no pone nada en rojo (patrón medido en
+ * `sectores.dto.spec.ts`).
+ */
+describe.each([
+  [
+    'CreateTicketDto',
+    CreateTicketDto,
+    {
+      tipoId: '00000000-0000-4000-8000-000000000001',
+      prioridadId: '00000000-0000-4000-8000-000000000002',
+    },
+  ],
+  ['EditTicketDto', EditTicketDto, {}],
+])('%s — tope de largo de titulo espejando la columna', (_nombre, Dto, extraProps) => {
+  // Asserta el error DEL CAMPO y por SU restricción, no que "hubo algún
+  // error": un DTO que rechazara por otra propiedad daría verde igual con el
+  // tope de largo ausente.
+  it('rechaza titulo de más de 255 caracteres, por maxLength', async () => {
+    const dto = plainToInstance(Dto, { titulo: 'A'.repeat(256), ...extraProps });
+
+    const errorDeTitulo = (await validate(dto)).find((e) => e.property === 'titulo');
+
+    expect(errorDeTitulo?.constraints).toHaveProperty('maxLength');
+  });
+
+  it('acepta titulo de exactamente 255 caracteres (límite inclusive)', async () => {
+    const dto = plainToInstance(Dto, { titulo: 'A'.repeat(255), ...extraProps });
+    expect(await validate(dto)).toHaveLength(0);
   });
 });
