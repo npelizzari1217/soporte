@@ -19,6 +19,63 @@ const DATOS_BASE = {
   appBaseUrl: 'https://soporte.miempresa.com',
 };
 
+/**
+ * El `titulo` lo escribe un usuario final: es el único dato de estas plantillas
+ * que puede traer markup. Interpolado crudo en el `html`, un `<script>` o
+ * simplemente un `&` roto llega al cliente de correo del destinatario.
+ *
+ * El `text` NO se escapa: es texto plano, y escaparlo le mostraría al usuario
+ * `&lt;` donde escribió `<`.
+ */
+const TITULO_CON_MARKUP = '<script>alert(1)</script> Ficha & Cía "urgente"';
+
+describe.each([
+  [
+    'templateCambioEstado',
+    () =>
+      templateCambioEstado({
+        ...DATOS_BASE,
+        titulo: TITULO_CON_MARKUP,
+        estadoAnteriorCodigo: 'ABIERTO',
+        estadoNuevoCodigo: 'CERRADO',
+      }),
+  ],
+  [
+    'templateComentarioPublico',
+    () => templateComentarioPublico({ ...DATOS_BASE, titulo: TITULO_CON_MARKUP }),
+  ],
+  ['templateSlaVencido', () => templateSlaVencido({ ...DATOS_BASE, titulo: TITULO_CON_MARKUP })],
+  [
+    'templatePreventivoGenerado',
+    () => templatePreventivoGenerado({ ...DATOS_BASE, titulo: TITULO_CON_MARKUP }),
+  ],
+])('%s — escapado del titulo de origen usuario', (_nombre, render) => {
+  it('escapa el markup en el html, sin dejar la etiqueta viva', () => {
+    const { html } = render();
+
+    expect(html).not.toContain('<script>');
+    expect(html).toContain('&lt;script&gt;');
+    expect(html).toContain('&amp;');
+    expect(html).toContain('&quot;');
+  });
+
+  // Hermano invertido: el html SÍ conserva su propio markup estructural, así
+  // que el escapado no puede estar aplicándose al template entero.
+  it('no escapa el markup propio de la plantilla', () => {
+    const { html } = render();
+
+    expect(html).toContain('<p>');
+    expect(html).toContain('<strong>');
+  });
+
+  it('deja el text intacto: es texto plano, no HTML', () => {
+    const { text } = render();
+
+    expect(text).toContain('<script>alert(1)</script>');
+    expect(text).not.toContain('&lt;');
+  });
+});
+
 describe('templateCambioEstado', () => {
   it('incluye numero, titulo, estados y el link del ticket', () => {
     const msg = templateCambioEstado({
