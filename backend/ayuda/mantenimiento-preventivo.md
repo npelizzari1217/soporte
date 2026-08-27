@@ -68,7 +68,55 @@ no se tocan: siguen su curso como cualquier otro ticket.
 
 ## Quién puede ver y administrar los planes
 
-El acceso se controla con el módulo **Preventivo**, con sus cuatro permisos
-habituales (ver, crear, modificar y dar de baja). Sin el permiso de lectura,
-el módulo no aparece. El detalle de cómo se asignan los permisos está en el
-artículo de permisos y roles.
+El acceso se controla con el módulo **Preventivo**, que define cuatro
+permisos al asignar roles (ver, crear, modificar y dar de baja). Sin el
+permiso de lectura, el módulo no aparece. Desde la pantalla, hoy se puede
+**ver**, **crear** y **dar de baja** un plan — **modificar un plan ya creado
+todavía no tiene pantalla propia**, aunque el permiso exista para cuando se
+agregue. El detalle de cómo se asignan los permisos está en el artículo de
+permisos y roles.
+
+## Cómo se da de alta un plan
+
+Desde **Preventivo**, en el menú lateral, "Nuevo plan" abre un formulario con
+estos datos:
+
+- **Título** e **instrucciones**: lo que va a leer quien atienda el ticket
+  generado.
+- **Objetivo**: hay que elegir **uno solo**, nunca los dos ni ninguno —
+  - **Equipo**: se elige de la lista de equipos ya cargados en el inventario.
+  - **Ubicación**: texto libre (una zona, una sucursal, un sector) que el
+    sistema guarda siempre en mayúscula.
+  Si el formulario detecta que faltan los dos, o que están los dos a la vez,
+  no deja enviar la carga hasta que se corrija.
+- **Prioridad** y **responsable**: la prioridad que va a tener cada ticket
+  generado, y quién queda como responsable (ver "Quién se entera cuando se
+  genera un ticket", arriba).
+- **Cadencia**: un número y una unidad, **días** o **meses** (por ejemplo,
+  "cada 90 días" o "cada 3 meses"). El número no puede superar los 3650,
+  cualquiera sea la unidad elegida.
+- **Fecha de inicio**: la fecha desde la que se cuenta la cadencia. Como
+  explica la sección de arriba, todos los ciclos futuros se calculan desde
+  esta fecha, nunca desde el ticket anterior.
+
+**Título** y **ubicación** tienen un tope de 255 caracteres cada uno (el
+mismo límite que otros campos de texto del sistema). Si alguno se pasa, el
+formulario avisa antes de guardar.
+
+## El listado de planes
+
+La pantalla principal muestra todos los planes con su objetivo, su cadencia,
+la próxima ejecución y una columna **"Última generación"**. Esa columna es la
+forma más rápida de detectar un plan que quedó huérfano: si dice **"Nunca
+generó"**, es que todavía no se creó ningún ticket ni fila de auditoría para
+ese plan, algo que conviene revisar (por ejemplo, si la fecha de inicio quedó
+mal cargada). Cuando sí generó algo, se ve la fecha y el resultado del ciclo
+más reciente.
+
+## Ver las generaciones de un plan
+
+Al entrar al detalle de un plan (haciendo clic en la fila del listado) se ve
+el historial completo de generaciones: la fecha programada de cada ciclo, el
+resultado (**Generado**, **Salteado (pendiente)** o **Salteado (atraso)** —
+ver las secciones de arriba para lo que significa cada uno) y el ticket que
+generó, si lo hubo. Desde ahí también se puede dar de baja el plan.

@@ -97,6 +97,20 @@ describe("nav-config", () => {
     expect(items.map((i) => i.href)).toContain("/compras");
   });
 
+  // WU-7 (sdd/preventivo): ítem de nav gateado por PREVENTIVO:LECTURA, mismo
+  // criterio que COMPRAS/EDILICIA/EQUIPOS.
+  it("con PREVENTIVO:LECTURA → ve /preventivo", () => {
+    const user = makeUser({ permisos: ["PREVENTIVO:LECTURA"] });
+    const items = visibleNavItems(user);
+    expect(items.map((i) => i.href)).toContain("/preventivo");
+  });
+
+  it("sin el módulo PREVENTIVO → /preventivo queda oculto", () => {
+    const user = makeUser({ permisos: [] });
+    const items = visibleNavItems(user);
+    expect(items.map((i) => i.href)).not.toContain("/preventivo");
+  });
+
   it("null user (no logueado) → no revienta, devuelve solo ítems públicos (ninguno gated)", () => {
     const items = visibleNavItems(null);
     expect(items.every((i) => i.href !== "/dashboard" && i.href !== "/admin/clientes")).toBe(true);
