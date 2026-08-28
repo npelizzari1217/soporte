@@ -1,6 +1,90 @@
 import { BaseEntity } from '../../../shared/domain/base-entity';
 
 /**
+ * Topes de largo/rango, espejando `equipos_informaticos.*`
+ * (`prisma_tenant/schema.prisma`): `nombre` `VarChar(255)`,
+ * `numeroSerie` `VarChar(255)`, `marca`/`modelo` `VarChar(100)`,
+ * `importe`/`valorResidual` `Decimal(14,2)`.
+ *
+ * Viven ACÁ y no en el DTO porque el dominio es la autoridad del límite: el
+ * `VARCHAR`/`DECIMAL` de Postgres es backstop, nunca al revés. El DTO los
+ * importa de este módulo para que el 400 amable del borde y la precondición
+ * del dominio no puedan divergir (fix defecto "límites de equipos",
+ * sdd/limites-db).
+ *
+ * `EQUIPO_VALOR_MONETARIO_MAXIMO` es un TECHO DE NEGOCIO, no el límite físico
+ * de la columna (que soporta hasta 999.999.999.999,99): ningún equipo
+ * informático individual del inventario cuesta 100 millones — mismo criterio
+ * de "techo defendible, lejos del desborde" que
+ * `preventivo/domain/entities/plan-preventivo.entity.ts`
+ * (`INTERVALO_VALOR_MAXIMO`) y `compras/domain/errors/compras.errors.ts`
+ * (`NumeradorCompraAgotadoError`). Se eligió un entero (sin centavos) para no
+ * arrastrar imprecisión de punto flotante en el límite exacto.
+ * `EQUIPO_VALOR_MONETARIO_MINIMO=0`: un importe o valor residual negativo no
+ * tiene sentido de negocio (0 sí lo tiene: equipo donado, o totalmente
+ * depreciado).
+ */
+export const EQUIPO_NOMBRE_MAX_LENGTH = 255;
+export const EQUIPO_NUMERO_SERIE_MAX_LENGTH = 255;
+export const EQUIPO_MARCA_MAX_LENGTH = 100;
+export const EQUIPO_MODELO_MAX_LENGTH = 100;
+export const EQUIPO_VALOR_MONETARIO_MAXIMO = 99_999_999;
+export const EQUIPO_VALOR_MONETARIO_MINIMO = 0;
+
+/**
+ * Precondición de largo de los campos de texto. Va como `throw` y no como
+ * `Result` porque un primitivo fuera de rango llegando a la entidad es una
+ * violación de contrato del caller, no una desviación de negocio que el
+ * usuario deba ver (mismo criterio que `SectorEntity`/`TicketEntity`).
+ *
+ * NO se aplica en `reconstitute()`: ahí la fila ya existe en la base, y hacer
+ * explotar una lectura por un valor histórico convertiría un dato viejo en
+ * una caída de sistema.
+ */
+function validarLargos(datos: {
+  nombre?: string;
+  numeroSerie?: string | null;
+  marca?: string | null;
+  modelo?: string | null;
+}): void {
+  if (datos.nombre !== undefined && datos.nombre.length > EQUIPO_NOMBRE_MAX_LENGTH) {
+    throw new Error(
+      `EquipoInformaticoEntity: nombre excede ${EQUIPO_NOMBRE_MAX_LENGTH} caracteres.`,
+    );
+  }
+  if (datos.numeroSerie != null && datos.numeroSerie.length > EQUIPO_NUMERO_SERIE_MAX_LENGTH) {
+    throw new Error(
+      `EquipoInformaticoEntity: numeroSerie excede ${EQUIPO_NUMERO_SERIE_MAX_LENGTH} caracteres.`,
+    );
+  }
+  if (datos.marca != null && datos.marca.length > EQUIPO_MARCA_MAX_LENGTH) {
+    throw new Error(`EquipoInformaticoEntity: marca excede ${EQUIPO_MARCA_MAX_LENGTH} caracteres.`);
+  }
+  if (datos.modelo != null && datos.modelo.length > EQUIPO_MODELO_MAX_LENGTH) {
+    throw new Error(
+      `EquipoInformaticoEntity: modelo excede ${EQUIPO_MODELO_MAX_LENGTH} caracteres.`,
+    );
+  }
+}
+
+/**
+ * Precondición de rango de un campo monetario (`importe`/`valorResidual`):
+ * rechaza negativos y valores por encima del techo de negocio. Mismo criterio
+ * `throw` que `validarLargos` — contrato del caller, no decisión de negocio.
+ */
+function validarValorMonetario(campo: 'importe' | 'valorResidual', valor?: number | null): void {
+  if (valor == null) return;
+  if (valor < EQUIPO_VALOR_MONETARIO_MINIMO) {
+    throw new Error(`EquipoInformaticoEntity: ${campo} no puede ser negativo.`);
+  }
+  if (valor > EQUIPO_VALOR_MONETARIO_MAXIMO) {
+    throw new Error(
+      `EquipoInformaticoEntity: ${campo} excede el techo de negocio de ${EQUIPO_VALOR_MONETARIO_MAXIMO}.`,
+    );
+  }
+}
+
+/**
  * EquipoInformaticoProps — shape de las propiedades del inventario de
  * equipos IT del tenant. Sin imports de Prisma ni NestJS — dominio puro.
  *
@@ -57,12 +141,21 @@ export class EquipoInformaticoEntity extends BaseEntity<EquipoInformaticoProps> 
   /**
    * Factory method para un nuevo equipo. `activo` se inicializa siempre en
    * `true` — la baja se hace explícitamente vía `deactivate()`.
+   *
+   * @throws Error si algún campo de texto excede su tope de largo, o si
+   *   `importe`/`valorResidual` es negativo o excede el techo de negocio.
+   *   Backstop del contrato del caller: con el DTO midiendo con los mismos
+   *   topes (`equipos.dto.ts`), este `throw` solo es alcanzable si un caller
+   *   interno evita el DTO.
    */
   static create(
     props: Omit<EquipoInformaticoProps, 'activo'>,
     id?: string,
   ): EquipoInformaticoEntity {
     const ubicacion = props.ubicacion != null ? props.ubicacion.toUpperCase() : null;
+    validarLargos(props);
+    validarValorMonetario('importe', props.importe);
+    validarValorMonetario('valorResidual', props.valorResidual);
     return new EquipoInformaticoEntity({ ...props, ubicacion, activo: true }, id);
   }
 
@@ -156,6 +249,12 @@ export class EquipoInformaticoEntity extends BaseEntity<EquipoInformaticoProps> 
    *
    * `ubicacion` se normaliza SIEMPRE a mayúscula (texto libre, invariante de
    * dominio) cuando no es null.
+   *
+   * @throws Error si algún campo de texto provisto excede su tope de largo, o
+   *   si `importe`/`valorResidual` provisto es negativo o excede el techo de
+   *   negocio. Backstop del contrato del caller: con el DTO midiendo con los
+   *   mismos topes (`equipos.dto.ts`), este `throw` solo es alcanzable si un
+   *   caller interno evita el DTO.
    */
   actualizar(datos: {
     nombre?: string;
@@ -170,6 +269,11 @@ export class EquipoInformaticoEntity extends BaseEntity<EquipoInformaticoProps> 
     valorResidual?: number | null;
     fechaValorResidual?: Date | null;
   }): void {
+    const ubicacionNormalizada =
+      datos.ubicacion != null ? datos.ubicacion.toUpperCase() : datos.ubicacion;
+    validarLargos(datos);
+    validarValorMonetario('importe', datos.importe);
+    validarValorMonetario('valorResidual', datos.valorResidual);
     if (datos.nombre !== undefined) {
       this.props.nombre = datos.nombre;
     }
@@ -186,7 +290,9 @@ export class EquipoInformaticoEntity extends BaseEntity<EquipoInformaticoProps> 
       this.props.fechaAdquisicion = datos.fechaAdquisicion;
     }
     if (datos.ubicacion !== undefined) {
-      this.props.ubicacion = datos.ubicacion !== null ? datos.ubicacion.toUpperCase() : null;
+      // `ubicacionNormalizada` nunca es `undefined` acá (mismo `datos.ubicacion`
+      // definido que se acaba de chequear); el `?? null` solo lo prueba al tipo.
+      this.props.ubicacion = ubicacionNormalizada ?? null;
     }
     if (datos.importe !== undefined) {
       this.props.importe = datos.importe;

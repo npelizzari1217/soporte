@@ -5,6 +5,12 @@
  * valida el body en `POST`/`PATCH`; el `ValidationPipe({whitelist:true,transform:true})`
  * global (`AppModule`) lo aplica automáticamente.
  *
+ * `@MaxLength`/`@Min`/`@Max` de equipo NO declaran el límite: lo importan de
+ * `EquipoInformaticoEntity`, que es la autoridad (fix defecto "límites de
+ * equipos", sdd/limites-db). El `VarChar`/`Decimal` de Postgres queda como
+ * último backstop, y `PrismaExceptionFilter` (sdd/filtro-prisma) lo traduce
+ * a 4xx si algún caller futuro esquivara las dos capas de arriba.
+ *
  * Tarea: T12.6.
  */
 import {
@@ -12,7 +18,9 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  Max,
   MaxLength,
+  Min,
   MinLength,
   IsUUID,
 } from 'class-validator';
@@ -20,7 +28,15 @@ import {
   TICKET_TITULO_MAX_LENGTH,
   TicketEntity,
 } from '../../../tickets/domain/entities/ticket.entity';
-import { EquipoInformaticoEntity } from '../../domain/entities/equipo-informatico.entity';
+import {
+  EquipoInformaticoEntity,
+  EQUIPO_NOMBRE_MAX_LENGTH,
+  EQUIPO_NUMERO_SERIE_MAX_LENGTH,
+  EQUIPO_MARCA_MAX_LENGTH,
+  EQUIPO_MODELO_MAX_LENGTH,
+  EQUIPO_VALOR_MONETARIO_MAXIMO,
+  EQUIPO_VALOR_MONETARIO_MINIMO,
+} from '../../domain/entities/equipo-informatico.entity';
 import { ComponenteEquipoEntity } from '../../domain/entities/componente-equipo.entity';
 import { TicketSoporteEntity } from '../../domain/entities/ticket-soporte.entity';
 import { TipoComponenteCatalogoItem } from '../../application/use-cases/listar-tipos-componente.use-case';
@@ -33,32 +49,37 @@ import { EquipoDeTicketResultado } from '../../application/use-cases/obtener-equ
 export class CreateEquipoHttpDto {
   @IsString()
   @MinLength(1)
+  @MaxLength(EQUIPO_NOMBRE_MAX_LENGTH)
   nombre!: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(EQUIPO_NUMERO_SERIE_MAX_LENGTH)
   numeroSerie?: string | null;
 
   @IsOptional()
   @IsString()
+  @MaxLength(EQUIPO_MARCA_MAX_LENGTH)
   marca?: string | null;
 
   @IsOptional()
   @IsString()
+  @MaxLength(EQUIPO_MODELO_MAX_LENGTH)
   modelo?: string | null;
 
   @IsOptional()
   @IsDateString()
   fechaAdquisicion?: string | null;
 
-  /** Ubicación como texto libre (el backend la normaliza a mayúscula). */
   @IsOptional()
   @IsString()
   ubicacion?: string | null;
 
-  /** Importe/valor del equipo (2 decimales). */
+  /** Importe/valor del equipo (2 decimales, no negativo, techo de negocio). */
   @IsOptional()
   @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(EQUIPO_VALOR_MONETARIO_MINIMO)
+  @Max(EQUIPO_VALOR_MONETARIO_MAXIMO)
   importe?: number | null;
 
   @IsOptional()
@@ -69,9 +90,14 @@ export class CreateEquipoHttpDto {
   @IsString()
   observaciones?: string | null;
 
-  /** Valor residual (post-depreciación, 2 decimales). El % de depreciación NO se persiste. */
+  /**
+   * Valor residual (post-depreciación, 2 decimales, no negativo, techo de
+   * negocio). El % de depreciación NO se persiste.
+   */
   @IsOptional()
   @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(EQUIPO_VALOR_MONETARIO_MINIMO)
+  @Max(EQUIPO_VALOR_MONETARIO_MAXIMO)
   valorResidual?: number | null;
 
   @IsOptional()
@@ -84,18 +110,22 @@ export class EditarEquipoHttpDto {
   @IsOptional()
   @IsString()
   @MinLength(1)
+  @MaxLength(EQUIPO_NOMBRE_MAX_LENGTH)
   nombre?: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(EQUIPO_NUMERO_SERIE_MAX_LENGTH)
   numeroSerie?: string | null;
 
   @IsOptional()
   @IsString()
+  @MaxLength(EQUIPO_MARCA_MAX_LENGTH)
   marca?: string | null;
 
   @IsOptional()
   @IsString()
+  @MaxLength(EQUIPO_MODELO_MAX_LENGTH)
   modelo?: string | null;
 
   @IsOptional()
@@ -108,6 +138,8 @@ export class EditarEquipoHttpDto {
 
   @IsOptional()
   @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(EQUIPO_VALOR_MONETARIO_MINIMO)
+  @Max(EQUIPO_VALOR_MONETARIO_MAXIMO)
   importe?: number | null;
 
   @IsOptional()
@@ -120,6 +152,8 @@ export class EditarEquipoHttpDto {
 
   @IsOptional()
   @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(EQUIPO_VALOR_MONETARIO_MINIMO)
+  @Max(EQUIPO_VALOR_MONETARIO_MAXIMO)
   valorResidual?: number | null;
 
   @IsOptional()
