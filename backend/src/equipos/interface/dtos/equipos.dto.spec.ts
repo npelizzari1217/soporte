@@ -14,7 +14,14 @@ import {
   CreateTicketSoporteHttpDto,
   CreateEquipoHttpDto,
   EditarEquipoHttpDto,
+  CreateComponenteHttpDto,
+  EditarComponenteHttpDto,
 } from './equipos.dto';
+import {
+  EquipoInformaticoEntity,
+  EquipoInformaticoProps,
+  EQUIPO_UBICACION_MAX_LENGTH,
+} from '../../domain/entities/equipo-informatico.entity';
 
 describe('CreateTicketSoporteHttpDto — tope de largo de titulo espejando la columna', () => {
   const prioridadId = '00000000-0000-4000-8000-000000000002';
@@ -59,6 +66,12 @@ describe.each([
     ['numeroSerie', 'A'.repeat(256), 'maxLength'],
     ['marca', 'A'.repeat(101), 'maxLength'],
     ['modelo', 'A'.repeat(101), 'maxLength'],
+    ['ubicacion', 'A'.repeat(256), 'maxLength'],
+    // 'ß' se normaliza a 'SS' (1→2): 200 crudos → 400 normalizados, supera el
+    // tope de 255 recién DESPUÉS de normalizar. Prueba que el DTO mide el
+    // valor normalizado, no el crudo (regresión: antes pasaba con 200 crudos
+    // y explotaba en Postgres VarChar(255) como 500).
+    ['ubicacion', 'ß'.repeat(200), 'maxLength'],
     ['importe', -1, 'min'],
     ['importe', 100_000_000, 'max'],
     ['valorResidual', -1, 'min'],
@@ -77,10 +90,155 @@ describe.each([
     ['numeroSerie', 'A'.repeat(255)],
     ['marca', 'A'.repeat(100)],
     ['modelo', 'A'.repeat(100)],
+    ['ubicacion', 'A'.repeat(255)],
+    // Hermano invertido del caso de arriba: 127 crudos → 254 normalizados,
+    // dentro del tope. Sin este par, "rechaza siempre" y "rechaza lo
+    // correcto" se ven idénticos.
+    ['ubicacion', 'ß'.repeat(127)],
     ['importe', 0],
     ['importe', 99_999_999],
     ['valorResidual', 0],
     ['valorResidual', 99_999_999],
+  ])('acepta %s en el límite exacto', async (campo, valor) => {
+    const dto = plainToInstance(Dto, { ...base, [campo]: valor });
+    const errorDelCampo = (await validate(dto)).find((e) => e.property === campo);
+    expect(errorDelCampo).toBeUndefined();
+  });
+});
+
+/**
+ * R2 — `ubicacion` null/vacía atraviesa el DTO sin lanzar (el `@Transform`
+ * solo invoca `normalizarUbicacion` cuando `typeof value === 'string'`;
+ * `normalizarUbicacion` es TOTAL sobre `string` y NO acepta `null`).
+ *
+ * GUARD DE INVARIANTE — NO arranca en RED: la implementación de 1.4 ya
+ * incluye el ternario `typeof value === 'string' ? ... : value`, así que
+ * escribir el test ahora no lo pone rojo. Se declara así y se prueba la
+ * mordida mutando el ternario para que llame a `normalizarUbicacion` sin
+ * chequear el tipo — confirma rojo por la aserción de `dto.ubicacion`, no
+ * por `TypeError`. Restaurado por Edit tras verificar el rojo.
+ */
+describe.each([
+  ['CreateEquipoHttpDto', CreateEquipoHttpDto],
+  ['EditarEquipoHttpDto', EditarEquipoHttpDto],
+])('%s — ubicacion null/vacía y no vacía (R2)', (_nombreDto, Dto) => {
+  const base = { nombre: 'Notebook' };
+
+  it('ubicacion=null no lanza y no produce error de campo', async () => {
+    // Envuelto en función para que `.not.toThrow()` capture la mordida como
+    // AssertionError legible en vez de un TypeError sin capturar: sin el
+    // ternario de tipo, `normalizarUbicacion(null)` revienta con
+    // `Cannot read properties of null (reading 'toUpperCase')`.
+    let dto!: InstanceType<typeof Dto>;
+    expect(() => {
+      dto = plainToInstance(Dto, { ...base, ubicacion: null });
+    }).not.toThrow();
+    const errores = await validate(dto);
+    expect(errores.find((e) => e.property === 'ubicacion')).toBeUndefined();
+    expect(dto.ubicacion).toBeNull();
+  });
+
+  // Caso `''`: distinto de `null` — pasa `@IsOptional()` y SÍ entra al
+  // `@Transform` (`typeof '' === 'string'`), así que se normaliza a `''` y
+  // llega al dominio como string vacío, no como `null`.
+  it('ubicacion="" no lanza, no produce error de campo y llega como string vacío', async () => {
+    const dto = plainToInstance(Dto, { ...base, ubicacion: '' });
+    const errores = await validate(dto);
+    expect(errores.find((e) => e.property === 'ubicacion')).toBeUndefined();
+    expect(dto.ubicacion).toBe('');
+  });
+
+  // Hermano invertido: con contenido no vacío, el DTO SÍ normaliza (mide y
+  // guarda el valor ya normalizado) y valida el resultado.
+  it('ubicacion con contenido no vacío se normaliza y valida (hermano invertido)', async () => {
+    const dto = plainToInstance(Dto, { ...base, ubicacion: 'oficina 1' });
+    const errores = await validate(dto);
+    expect(errores.find((e) => e.property === 'ubicacion')).toBeUndefined();
+    expect(dto.ubicacion).toBe('OFICINA 1');
+  });
+});
+
+/**
+ * Costura DTO→dominio (ADR-1 del design, "Idempotencia: se prueba, no se
+ * asume"). Lo que importa: el DTO ya normalizó, así que la entidad NO debe
+ * volver a EXPANDIR el largo — debe quedar en 240, nunca en 480.
+ *
+ * GUARD DE INVARIANTE — NO arranca en RED: sin `@Transform`, `dto.ubicacion`
+ * sería el crudo de 120 y la costura daría 240 igual (120 'ß' → 240 'SS' en
+ * el dominio). La mordida (mutar `normalizarUbicacion` a
+ * `valor.toUpperCase() + 'X'`) es la prueba real de que esto muerde.
+ */
+// Copia de `baseProps()` en `equipo-informatico.entity.spec.ts:17` (mismo
+// shape base para tests de dominio) — se duplica acá en vez de importar
+// desde el otro spec para no crear un archivo de fixtures compartido.
+function baseEntityProps(): Omit<EquipoInformaticoProps, 'activo'> {
+  return {
+    nombre: 'Notebook',
+    numeroSerie: null,
+    marca: null,
+    modelo: null,
+    fechaAdquisicion: null,
+    ubicacion: null,
+    importe: null,
+    fechaValoracion: null,
+    observaciones: null,
+    valorResidual: null,
+    fechaValorResidual: null,
+  };
+}
+
+describe('Costura CreateEquipoHttpDto → EquipoInformaticoEntity (idempotencia de ubicacion)', () => {
+  it('el DTO normaliza y el dominio NO re-expande (120 crudo → 240, nunca 480)', async () => {
+    const crudo = 'ß'.repeat(120);
+    const dto = plainToInstance(CreateEquipoHttpDto, { nombre: 'X', ubicacion: crudo });
+    expect(await validate(dto)).toHaveLength(0);
+    // Guard que estrecha el tipo (en vez de `dto.ubicacion!`): un `crudo` no
+    // vacío nunca normaliza a `null`, así que este `throw` es inalcanzable en
+    // este test — solo le prueba el tipo al compilador.
+    if (dto.ubicacion == null) {
+      throw new Error('dto.ubicacion no debería ser null tras normalizar un valor no vacío');
+    }
+
+    const equipo = EquipoInformaticoEntity.create({
+      ...baseEntityProps(),
+      ubicacion: dto.ubicacion,
+    });
+    if (equipo.ubicacion == null) {
+      throw new Error('equipo.ubicacion no debería ser null tras create() con ubicacion definida');
+    }
+    expect(equipo.ubicacion.length).toBe(240);
+    expect(equipo.ubicacion.length).toBeLessThanOrEqual(EQUIPO_UBICACION_MAX_LENGTH);
+  });
+});
+
+/**
+ * Componente en el DTO (mismo fix defecto "límites de equipos"):
+ * `descripcion`/`numeroSerie`/`capacidad` espejan
+ * `COMPONENTE_*_MAX_LENGTH` de `componente-equipo.entity.ts`. Recorre LOS DOS
+ * DTOs (alta y edición) por el mismo motivo que el bloque de equipo de
+ * arriba. `tipoComponenteCodigo` queda fuera: sin `@MaxLength` a propósito
+ * (ver JSDoc del DTO).
+ */
+describe.each([
+  ['CreateComponenteHttpDto', CreateComponenteHttpDto],
+  ['EditarComponenteHttpDto', EditarComponenteHttpDto],
+])('%s — topes de largo espejando la columna', (_nombreDto, Dto) => {
+  const base = { tipoComponenteCodigo: 'RAM' };
+
+  it.each([
+    ['descripcion', 'A'.repeat(256)],
+    ['numeroSerie', 'A'.repeat(256)],
+    ['capacidad', 'A'.repeat(101)],
+  ])('rechaza %s fuera de rango, por maxLength', async (campo, valor) => {
+    const dto = plainToInstance(Dto, { ...base, [campo]: valor });
+    const errorDelCampo = (await validate(dto)).find((e) => e.property === campo);
+    expect(errorDelCampo?.constraints).toHaveProperty('maxLength');
+  });
+
+  it.each([
+    ['descripcion', 'A'.repeat(255)],
+    ['numeroSerie', 'A'.repeat(255)],
+    ['capacidad', 'A'.repeat(100)],
   ])('acepta %s en el límite exacto', async (campo, valor) => {
     const dto = plainToInstance(Dto, { ...base, [campo]: valor });
     const errorDelCampo = (await validate(dto)).find((e) => e.property === campo);

@@ -5,11 +5,12 @@
  * valida el body en `POST`/`PATCH`; el `ValidationPipe({whitelist:true,transform:true})`
  * global (`AppModule`) lo aplica automáticamente.
  *
- * `@MaxLength`/`@Min`/`@Max` de equipo NO declaran el límite: lo importan de
- * `EquipoInformaticoEntity`, que es la autoridad (fix defecto "límites de
- * equipos", sdd/limites-db). El `VarChar`/`Decimal` de Postgres queda como
- * último backstop, y `PrismaExceptionFilter` (sdd/filtro-prisma) lo traduce
- * a 4xx si algún caller futuro esquivara las dos capas de arriba.
+ * `@MaxLength`/`@Min`/`@Max` de equipo y componente NO declaran el límite: lo
+ * importan de `EquipoInformaticoEntity`/`ComponenteEquipoEntity`, que son la
+ * autoridad (fix defecto "límites de equipos", sdd/limites-db). El
+ * `VarChar`/`Decimal` de Postgres queda como último backstop, y
+ * `PrismaExceptionFilter` (sdd/filtro-prisma) lo traduce a 4xx si algún
+ * caller futuro esquivara las dos capas de arriba.
  *
  * Tarea: T12.6.
  */
@@ -24,6 +25,7 @@ import {
   MinLength,
   IsUUID,
 } from 'class-validator';
+import { Transform } from 'class-transformer';
 import {
   TICKET_TITULO_MAX_LENGTH,
   TicketEntity,
@@ -34,10 +36,17 @@ import {
   EQUIPO_NUMERO_SERIE_MAX_LENGTH,
   EQUIPO_MARCA_MAX_LENGTH,
   EQUIPO_MODELO_MAX_LENGTH,
+  EQUIPO_UBICACION_MAX_LENGTH,
   EQUIPO_VALOR_MONETARIO_MAXIMO,
   EQUIPO_VALOR_MONETARIO_MINIMO,
+  normalizarUbicacion,
 } from '../../domain/entities/equipo-informatico.entity';
-import { ComponenteEquipoEntity } from '../../domain/entities/componente-equipo.entity';
+import {
+  ComponenteEquipoEntity,
+  COMPONENTE_DESCRIPCION_MAX_LENGTH,
+  COMPONENTE_NUMERO_SERIE_MAX_LENGTH,
+  COMPONENTE_CAPACIDAD_MAX_LENGTH,
+} from '../../domain/entities/componente-equipo.entity';
 import { TicketSoporteEntity } from '../../domain/entities/ticket-soporte.entity';
 import { TipoComponenteCatalogoItem } from '../../application/use-cases/listar-tipos-componente.use-case';
 import { ComponenteEquipoConTipo } from '../../application/use-cases/obtener-equipo.use-case';
@@ -71,8 +80,20 @@ export class CreateEquipoHttpDto {
   @IsDateString()
   fechaAdquisicion?: string | null;
 
+  /**
+   * Ubicación como texto libre (el backend la normaliza a mayúscula). El
+   * `@Transform` mide el valor YA normalizado con `@MaxLength`: `ubicacion`
+   * se expande al normalizar (`toUpperCase()` no preserva longitud, ej. 'ß' →
+   * 'SS'), así que medir el crudo dejaba pasar valores que Postgres
+   * (VarChar(255)) rechazaba con un 500 sin nombrar el campo (fix
+   * "precondición de dominio alcanzable → 4xx"). Molde: `reparaciones.dto.ts`.
+   */
   @IsOptional()
   @IsString()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? normalizarUbicacion(value) : value,
+  )
+  @MaxLength(EQUIPO_UBICACION_MAX_LENGTH)
   ubicacion?: string | null;
 
   /** Importe/valor del equipo (2 decimales, no negativo, techo de negocio). */
@@ -132,8 +153,13 @@ export class EditarEquipoHttpDto {
   @IsDateString()
   fechaAdquisicion?: string | null;
 
+  /** Ver JSDoc de `CreateEquipoHttpDto.ubicacion` — mismo `@Transform`. */
   @IsOptional()
   @IsString()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? normalizarUbicacion(value) : value,
+  )
+  @MaxLength(EQUIPO_UBICACION_MAX_LENGTH)
   ubicacion?: string | null;
 
   @IsOptional()
@@ -200,20 +226,29 @@ export class RegistrarSolucionHttpDto {
 
 /** Body de `POST /equipos/:id/componentes` (F3-Q2). */
 export class CreateComponenteHttpDto {
+  /**
+   * Sin `@MaxLength`: el use case verifica este código contra el catálogo
+   * MASTER por igualdad exacta ANTES de llegar al dominio — un código
+   * demasiado largo ya vuelve 422 (`TipoComponenteInactivoError`) sin tocar
+   * nunca el INSERT (ver el JSDoc de `componente-equipo.entity.ts`).
+   */
   @IsString()
   @MinLength(1)
   tipoComponenteCodigo!: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(COMPONENTE_DESCRIPCION_MAX_LENGTH)
   descripcion?: string | null;
 
   @IsOptional()
   @IsString()
+  @MaxLength(COMPONENTE_NUMERO_SERIE_MAX_LENGTH)
   numeroSerie?: string | null;
 
   @IsOptional()
   @IsString()
+  @MaxLength(COMPONENTE_CAPACIDAD_MAX_LENGTH)
   capacidad?: string | null;
 }
 
@@ -224,6 +259,7 @@ export class CreateComponenteHttpDto {
  * dominio, mismo criterio que `EditarEquipoHttpDto.nombre`).
  */
 export class EditarComponenteHttpDto {
+  /** Sin `@MaxLength` — mismo motivo que `CreateComponenteHttpDto.tipoComponenteCodigo`. */
   @IsOptional()
   @IsString()
   @MinLength(1)
@@ -231,14 +267,17 @@ export class EditarComponenteHttpDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(COMPONENTE_DESCRIPCION_MAX_LENGTH)
   descripcion?: string | null;
 
   @IsOptional()
   @IsString()
+  @MaxLength(COMPONENTE_NUMERO_SERIE_MAX_LENGTH)
   numeroSerie?: string | null;
 
   @IsOptional()
   @IsString()
+  @MaxLength(COMPONENTE_CAPACIDAD_MAX_LENGTH)
   capacidad?: string | null;
 }
 
