@@ -2,7 +2,7 @@ import { BaseEntity } from '../../../shared/domain/base-entity';
 
 /**
  * Topes de largo/rango, espejando `equipos_informaticos.*`
- * (`prisma_tenant/schema.prisma`): `nombre` `VarChar(255)`,
+ * (`prisma_tenant/schema.prisma`): `nombre`/`ubicacion` `VarChar(255)`,
  * `numeroSerie` `VarChar(255)`, `marca`/`modelo` `VarChar(100)`,
  * `importe`/`valorResidual` `Decimal(14,2)`.
  *
@@ -28,8 +28,58 @@ export const EQUIPO_NOMBRE_MAX_LENGTH = 255;
 export const EQUIPO_NUMERO_SERIE_MAX_LENGTH = 255;
 export const EQUIPO_MARCA_MAX_LENGTH = 100;
 export const EQUIPO_MODELO_MAX_LENGTH = 100;
+export const EQUIPO_UBICACION_MAX_LENGTH = 255;
 export const EQUIPO_VALOR_MONETARIO_MAXIMO = 99_999_999;
 export const EQUIPO_VALOR_MONETARIO_MINIMO = 0;
+
+/**
+ * Regla de tres ramas para decidir el manejo de errores de un guard de largo
+ * en una entidad de dominio (sdd/precondicion-dominio-4xx). Antes de escribir
+ * el guard de un campo nuevo, respondé esto midiendo el string CRUDO que
+ * llega al borde:
+ *
+ * ¿Puede el borde garantizar que el string ya normalizado cumple el tope?
+ *
+ * 1. SÍ, porque el campo no se normaliza (ej. `nombre`, `numeroSerie`,
+ *    `marca`, `modelo`) → el borde mide lo mismo que mide el dominio, así que
+ *    un `throw` plano alcanza: es un contrato del caller, no una desviación
+ *    de negocio que el usuario deba ver.
+ * 2. SÍ, porque la normalización no puede AUMENTAR el largo (ej. un `trim()`)
+ *    → mismo caso: `throw` plano, el borde sigue midiendo una cota válida.
+ * 3. NO, porque la normalización puede aumentar el largo (`ubicacion` con
+ *    `toUpperCase()`: 'ß' → 'SS', 1→2 caracteres) → medir el crudo en el
+ *    borde deja pasar valores que se expanden por encima del tope recién al
+ *    persistir (el bug real que motivó esta regla: llegaba a Postgres como
+ *    22001 → 500 crudo). El borde DEBE normalizar ANTES de medir, con la
+ *    MISMA función que usa el dominio (ver `normalizarUbicacion` abajo).
+ *    Solo si restaurar esa premisa fuera imposible — la normalización
+ *    depende de un estado que el borde no tiene disponible — la precondición
+ *    pasa de `throw` a `Result<T, DomainError>` → 422: mejor un error de
+ *    negocio explícito que un 500 que el borde no puede prevenir.
+ */
+
+/**
+ * Normaliza `ubicacion` a mayúscula — invariante de dominio declarada en
+ * `EquipoInformaticoProps.ubicacion`.
+ *
+ * Firma TOTAL sobre `string` (no acepta `null`): a propósito, porque
+ * `actualizar()` necesita preservar `undefined` para su PATCH semántico
+ * (`entity.ts` más abajo) y una firma `string|null` forzaría la unión
+ * `string|null|undefined` en el retorno. El caller resuelve `null`/`undefined`
+ * ANTES de invocarla (ver `create()`/`actualizar()` y el `@Transform` de
+ * `equipos.dto.ts`, que solo llama a esta función cuando `typeof value ===
+ * 'string'`).
+ *
+ * Exportada para que el borde HTTP (DTO) mida el mismo string que el dominio
+ * termina persistiendo: `toUpperCase()` NO preserva longitud en JS (ej. 'ß' →
+ * 'SS', 1→2 caracteres), así que medir el valor crudo en el DTO dejaba pasar
+ * strings que se expandían por encima del tope al normalizar (bug real:
+ * llegaba a Postgres VarChar(255) como 22001 → 500 crudo). Ver
+ * `equipos.dto.ts` (`@Transform` sobre `ubicacion`) y ADR-1 del design.
+ */
+export function normalizarUbicacion(valor: string): string {
+  return valor.toUpperCase();
+}
 
 /**
  * Precondición de largo de los campos de texto. Va como `throw` y no como
@@ -46,6 +96,7 @@ function validarLargos(datos: {
   numeroSerie?: string | null;
   marca?: string | null;
   modelo?: string | null;
+  ubicacion?: string | null;
 }): void {
   if (datos.nombre !== undefined && datos.nombre.length > EQUIPO_NOMBRE_MAX_LENGTH) {
     throw new Error(
@@ -63,6 +114,11 @@ function validarLargos(datos: {
   if (datos.modelo != null && datos.modelo.length > EQUIPO_MODELO_MAX_LENGTH) {
     throw new Error(
       `EquipoInformaticoEntity: modelo excede ${EQUIPO_MODELO_MAX_LENGTH} caracteres.`,
+    );
+  }
+  if (datos.ubicacion != null && datos.ubicacion.length > EQUIPO_UBICACION_MAX_LENGTH) {
+    throw new Error(
+      `EquipoInformaticoEntity: ubicacion excede ${EQUIPO_UBICACION_MAX_LENGTH} caracteres.`,
     );
   }
 }
@@ -99,7 +155,12 @@ export interface EquipoInformaticoProps {
   marca: string | null;
   modelo: string | null;
   fechaAdquisicion: Date | null;
-  /** Ubicación física como TEXTO LIBRE, siempre en mayúscula (normalizado en la capa de aplicación). */
+  /**
+   * Ubicación física como TEXTO LIBRE, siempre en mayúscula. La normalización
+   * la hace esta misma entidad (`normalizarUbicacion`), no la capa de arriba:
+   * el borde la aplica también, pero para MEDIR el mismo string que se persiste,
+   * no para producirlo.
+   */
   ubicacion: string | null;
   /** Valoración del equipo: importe (valor). */
   importe: number | null;
@@ -142,18 +203,22 @@ export class EquipoInformaticoEntity extends BaseEntity<EquipoInformaticoProps> 
    * Factory method para un nuevo equipo. `activo` se inicializa siempre en
    * `true` — la baja se hace explícitamente vía `deactivate()`.
    *
-   * @throws Error si algún campo de texto excede su tope de largo, o si
-   *   `importe`/`valorResidual` es negativo o excede el techo de negocio.
-   *   Backstop del contrato del caller: con el DTO midiendo con los mismos
-   *   topes (`equipos.dto.ts`), este `throw` solo es alcanzable si un caller
-   *   interno evita el DTO.
+   * @throws Error si algún campo de texto excede su tope de largo DESPUÉS de
+   *   normalizar (ver `normalizarUbicacion`), o si `importe`/`valorResidual`
+   *   es negativo o excede el techo de negocio. Backstop del contrato del
+   *   caller: con el DTO midiendo ya normalizado (`equipos.dto.ts`), este
+   *   `throw` solo es alcanzable si un caller interno evita el DTO.
    */
   static create(
     props: Omit<EquipoInformaticoProps, 'activo'>,
     id?: string,
   ): EquipoInformaticoEntity {
-    const ubicacion = props.ubicacion != null ? props.ubicacion.toUpperCase() : null;
-    validarLargos(props);
+    // Normalizar ANTES de validar: `normalizarUbicacion` no preserva longitud
+    // en JS (ej. 'ß' → 'SS'), así que validar el valor crudo dejaría pasar un
+    // valor que se expande por encima del tope al normalizar (bug real:
+    // llegaba a Postgres VarChar(255) como 22001 → 500 crudo).
+    const ubicacion = props.ubicacion != null ? normalizarUbicacion(props.ubicacion) : null;
+    validarLargos({ ...props, ubicacion });
     validarValorMonetario('importe', props.importe);
     validarValorMonetario('valorResidual', props.valorResidual);
     return new EquipoInformaticoEntity({ ...props, ubicacion, activo: true }, id);
@@ -250,10 +315,11 @@ export class EquipoInformaticoEntity extends BaseEntity<EquipoInformaticoProps> 
    * `ubicacion` se normaliza SIEMPRE a mayúscula (texto libre, invariante de
    * dominio) cuando no es null.
    *
-   * @throws Error si algún campo de texto provisto excede su tope de largo, o
-   *   si `importe`/`valorResidual` provisto es negativo o excede el techo de
-   *   negocio. Backstop del contrato del caller: con el DTO midiendo con los
-   *   mismos topes (`equipos.dto.ts`), este `throw` solo es alcanzable si un
+   * @throws Error si algún campo de texto provisto excede su tope de largo
+   *   DESPUÉS de normalizar (ver `normalizarUbicacion`), o si
+   *   `importe`/`valorResidual` provisto es negativo o excede el techo de
+   *   negocio. Backstop del contrato del caller: con el DTO midiendo ya
+   *   normalizado (`equipos.dto.ts`), este `throw` solo es alcanzable si un
    *   caller interno evita el DTO.
    */
   actualizar(datos: {
@@ -269,9 +335,11 @@ export class EquipoInformaticoEntity extends BaseEntity<EquipoInformaticoProps> 
     valorResidual?: number | null;
     fechaValorResidual?: Date | null;
   }): void {
+    // Mismo criterio que create(): normalizar ANTES de validar (ver comentario
+    // en create() sobre la expansión de longitud de normalizarUbicacion()).
     const ubicacionNormalizada =
-      datos.ubicacion != null ? datos.ubicacion.toUpperCase() : datos.ubicacion;
-    validarLargos(datos);
+      datos.ubicacion != null ? normalizarUbicacion(datos.ubicacion) : datos.ubicacion;
+    validarLargos({ ...datos, ubicacion: ubicacionNormalizada });
     validarValorMonetario('importe', datos.importe);
     validarValorMonetario('valorResidual', datos.valorResidual);
     if (datos.nombre !== undefined) {

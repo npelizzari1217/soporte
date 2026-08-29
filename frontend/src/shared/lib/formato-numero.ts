@@ -21,9 +21,50 @@ export function formatearNumeroEsAr(valor: number): string {
   return valor.toLocaleString("es-AR", OPCIONES_ES_AR);
 }
 
-/** `("ARS", 1234.5)` → `"ARS 1.234,50"`. Único formato de monto del módulo. */
+/** `("ARS", 1234.5)` → `"ARS 1.234,50"`. Único formato de monto de la app. */
 export function formatearMontoConMoneda(moneda: string, monto: number): string {
   return `${moneda} ${formatearNumeroEsAr(monto)}`;
+}
+
+/**
+ * Adelanta el `@IsNumber({ maxDecimalPlaces: 2 })` del backend: sin esto el
+ * usuario se entera del problema recién al enviar, con un 400.
+ *
+ * NO es un espejo exacto, y la diferencia es deliberada. Para la escala de dos
+ * decimales el criterio coincide; para la notación exponencial esta función es
+ * MÁS ESTRICTA que el backend, en las dos direcciones y por buenas razones:
+ * `1e21` allá pasa (`1e21 % 1 === 0` → cero decimales) y acá se rechaza; y
+ * `1e-7` allá ni siquiera llega a validar — `"1e-7".split(".")[1]` es
+ * `undefined` y leerle `.length` tira un TypeError, o sea 500 en vez de 400.
+ * Rechazar exponenciales acá es protección, no espejo. Ningún monto ni
+ * cantidad real las usa.
+ *
+ * Recibe el número YA PARSEADO, no la cadena cruda: `"1000,50"` tiene una coma
+ * donde este chequeo espera un punto.
+ *
+ * Cuenta decimales sobre la representación en texto y NO con aritmética
+ * (`n * 100`): la app ya se tropezó una vez con el sesgo del punto flotante, y
+ * `0.1 * 100` no da exactamente `10`.
+ *
+ * Vive acá y no en el schema de una feature porque es un predicado puro sin
+ * acoplamiento a ninguna. CONSOLIDACIÓN A MEDIO CAMINO, y conviene decirlo en
+ * vez de sugerir lo contrario: hoy el único llamador es `features/equipos`.
+ * `features/compras/schemas.ts` mantiene su propia copia local, así que el
+ * estado real siguen siendo dos copias — antes (compras, equipos), ahora
+ * (compras, shared). Migrar Compras es una unidad de trabajo aparte, no un
+ * olvido.
+ *
+ * La duplicación es deuda vieja, anterior a este archivo: ambas copias ya
+ * convivían y la de Equipos había perdido el guard de `Number.isFinite` que
+ * la de Compras sí tiene. Era inofensivo ahí porque el llamador filtraba
+ * antes, pero es exactamente la deriva que justifica tener una sola versión.
+ */
+export function conDosDecimales(n: number): boolean {
+  if (!Number.isFinite(n)) return false;
+  const texto = String(n);
+  if (texto.includes("e") || texto.includes("E")) return false;
+  const punto = texto.indexOf(".");
+  return punto === -1 || texto.length - punto - 1 <= 2;
 }
 
 /**

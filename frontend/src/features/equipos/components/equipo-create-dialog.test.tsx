@@ -26,6 +26,7 @@ function capturarPost(): { body: Record<string, unknown> } {
   return capturado;
 }
 
+/** Abre el diálogo de alta y espera a que el form esté montado. */
 async function abrirDialog(): Promise<ReturnType<typeof userEvent.setup>> {
   const user = userEvent.setup();
   await user.click(screen.getByRole("button", { name: /nuevo equipo/i }));
@@ -42,7 +43,7 @@ describe("EquipoCreateDialog", () => {
    */
   it("tras el blur muestra el importe formateado pero el POST lleva el número CRUDO", async () => {
     const capturado = capturarPost();
-    renderWithProviders(<EquipoCreateDialog />, { user: buildUser({ permisos: ["equipo:gestionar"] }) });
+    renderWithProviders(<EquipoCreateDialog />, { user: buildUser({ permisos: ["EQUIPOS:ALTAS"] }) });
 
     const user = await abrirDialog();
     await user.type(screen.getByLabelText(/^nombre$/i), "Notebook Dell");
@@ -62,7 +63,7 @@ describe("EquipoCreateDialog", () => {
   });
 
   it("volver a enfocar devuelve el valor editable, sin puntos de miles que borrar a mano", async () => {
-    renderWithProviders(<EquipoCreateDialog />, { user: buildUser({ permisos: ["equipo:gestionar"] }) });
+    renderWithProviders(<EquipoCreateDialog />, { user: buildUser({ permisos: ["EQUIPOS:ALTAS"] }) });
 
     const user = await abrirDialog();
     const importe = screen.getByLabelText(/importe/i);
@@ -80,7 +81,7 @@ describe("EquipoCreateDialog", () => {
    */
   it("aplicar depreciación y enviar produce el mismo payload de siempre", async () => {
     const capturado = capturarPost();
-    renderWithProviders(<EquipoCreateDialog />, { user: buildUser({ permisos: ["equipo:gestionar"] }) });
+    renderWithProviders(<EquipoCreateDialog />, { user: buildUser({ permisos: ["EQUIPOS:ALTAS"] }) });
 
     const user = await abrirDialog();
     await user.type(screen.getByLabelText(/^nombre$/i), "Notebook Dell");
@@ -96,8 +97,27 @@ describe("EquipoCreateDialog", () => {
     expect(capturado.body.importe).toBe(1000);
   });
 
+  /**
+   * Regresión — `puedeAplicar` solo chequeaba "hay algo tipeado", no si el
+   * porcentaje era válido: con importe 1000 y porcentaje "-50", el botón
+   * quedaba habilitado y el clic escribía un valor residual (1.500,00)
+   * MAYOR que el importe, sin ningún error visible. Ahora reusa el mismo
+   * criterio que el schema (`esPorcentajeDepreciacionValido`), que rechaza
+   * el signo negativo.
+   */
+  it("con porcentaje negativo el botón Aplicar queda deshabilitado y no toca el valor residual", async () => {
+    renderWithProviders(<EquipoCreateDialog />, { user: buildUser({ permisos: ["EQUIPOS:ALTAS"] }) });
+
+    const user = await abrirDialog();
+    await user.type(screen.getByLabelText(/importe/i), "1000");
+    await user.type(screen.getByLabelText(/% de depreciación/i), "-50");
+
+    expect(screen.getByRole("button", { name: /^aplicar$/i })).toBeDisabled();
+    expect(screen.getByLabelText(/^valor residual$/i)).toHaveValue("");
+  });
+
   it("la base de depreciación se muestra formateada, igual que los campos de al lado", async () => {
-    renderWithProviders(<EquipoCreateDialog />, { user: buildUser({ permisos: ["equipo:gestionar"] }) });
+    renderWithProviders(<EquipoCreateDialog />, { user: buildUser({ permisos: ["EQUIPOS:ALTAS"] }) });
 
     const user = await abrirDialog();
     await user.type(screen.getByLabelText(/importe/i), "1234567.89");
@@ -121,7 +141,7 @@ describe("EquipoCreateDialog", () => {
     vi.setSystemTime(new Date("2026-03-15T01:00:00.000Z"));
 
     try {
-      renderWithProviders(<EquipoCreateDialog />, { user: buildUser({ permisos: ["equipo:gestionar"] }) });
+      renderWithProviders(<EquipoCreateDialog />, { user: buildUser({ permisos: ["EQUIPOS:ALTAS"] }) });
 
       const user = await abrirDialog();
       await user.type(screen.getByLabelText(/^nombre$/i), "Notebook Dell");
@@ -138,5 +158,58 @@ describe("EquipoCreateDialog", () => {
         process.env.TZ = tzOriginal;
       }
     }
+  });
+
+  /**
+   * CRITICAL-1 del verify report: antes de este fix, `errors.ubicacion` e
+   * `errors.importe` (y los demás campos con regla) NUNCA se renderizaban —
+   * el schema rechazaba, `handleSubmit` no llamaba a `submit`, y la pantalla
+   * no decía nada. Peor feedback que el 500 remoto que este change vino a
+   * arreglar. Monta el diálogo entero (no `safeParse` directo) para que el
+   * test cubra lo que realmente ve el usuario.
+   */
+  it.each([
+    ["número de serie", /número de serie/i, "x".repeat(256), /número de serie no puede superar/i],
+    ["ubicación", /^ubicación$/i, "ß".repeat(200), /ubicación no puede superar/i],
+    ["importe", /^importe/i, "abc", /debe ser un número/i],
+    // El valor inválido NO se interpola en el título: `'ß'.repeat(200)` produce
+    // un nombre de test de 200 caracteres repetidos, ilegible en el reporte.
+  ] as const)(
+    "campo %s con valor inválido muestra el mensaje y no envía el POST",
+    async (_campo, selectorLabel, valorInvalido, mensajeEsperado) => {
+      const capturado = capturarPost();
+      renderWithProviders(<EquipoCreateDialog />, { user: buildUser({ permisos: ["EQUIPOS:ALTAS"] }) });
+
+      const user = await abrirDialog();
+      await user.type(screen.getByLabelText(/^nombre$/i), "Notebook Dell");
+      const campo = screen.getByLabelText(selectorLabel);
+      await user.click(campo);
+      await user.paste(valorInvalido);
+      await user.tab();
+
+      await user.click(screen.getByRole("button", { name: /^crear$/i }));
+
+      expect(await screen.findByText(mensajeEsperado)).toBeInTheDocument();
+      expect(capturado.body).toEqual({});
+    },
+  );
+
+  /**
+   * Hermano invertido del caso `ß`.repeat(200) de arriba: un valor de
+   * ubicación válido NO debe marcar error y el submit SÍ debe viajar,
+   * normalizado a mayúscula (mismo criterio que mide el backend).
+   */
+  it("ubicación con valor válido no muestra error y el POST viaja normalizado", async () => {
+    const capturado = capturarPost();
+    renderWithProviders(<EquipoCreateDialog />, { user: buildUser({ permisos: ["EQUIPOS:ALTAS"] }) });
+
+    const user = await abrirDialog();
+    await user.type(screen.getByLabelText(/^nombre$/i), "Notebook Dell");
+    await user.type(screen.getByLabelText(/^ubicación$/i), "oficina 1");
+
+    await user.click(screen.getByRole("button", { name: /^crear$/i }));
+
+    await waitFor(() => expect(capturado.body.ubicacion).toBe("OFICINA 1"));
+    expect(screen.queryByText(/ubicación no puede superar/i)).not.toBeInTheDocument();
   });
 });
