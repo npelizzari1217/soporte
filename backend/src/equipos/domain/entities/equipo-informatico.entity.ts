@@ -33,6 +33,32 @@ export const EQUIPO_VALOR_MONETARIO_MAXIMO = 99_999_999;
 export const EQUIPO_VALOR_MONETARIO_MINIMO = 0;
 
 /**
+ * Regla de tres ramas para decidir el manejo de errores de un guard de largo
+ * en una entidad de dominio (sdd/precondicion-dominio-4xx). Antes de escribir
+ * el guard de un campo nuevo, respondé esto midiendo el string CRUDO que
+ * llega al borde:
+ *
+ * ¿Puede el borde garantizar que el string ya normalizado cumple el tope?
+ *
+ * 1. SÍ, porque el campo no se normaliza (ej. `nombre`, `numeroSerie`,
+ *    `marca`, `modelo`) → el borde mide lo mismo que mide el dominio, así que
+ *    un `throw` plano alcanza: es un contrato del caller, no una desviación
+ *    de negocio que el usuario deba ver.
+ * 2. SÍ, porque la normalización no puede AUMENTAR el largo (ej. un `trim()`)
+ *    → mismo caso: `throw` plano, el borde sigue midiendo una cota válida.
+ * 3. NO, porque la normalización puede aumentar el largo (`ubicacion` con
+ *    `toUpperCase()`: 'ß' → 'SS', 1→2 caracteres) → medir el crudo en el
+ *    borde deja pasar valores que se expanden por encima del tope recién al
+ *    persistir (el bug real que motivó esta regla: llegaba a Postgres como
+ *    22001 → 500 crudo). El borde DEBE normalizar ANTES de medir, con la
+ *    MISMA función que usa el dominio (ver `normalizarUbicacion` abajo).
+ *    Solo si restaurar esa premisa fuera imposible — la normalización
+ *    depende de un estado que el borde no tiene disponible — la precondición
+ *    pasa de `throw` a `Result<T, DomainError>` → 422: mejor un error de
+ *    negocio explícito que un 500 que el borde no puede prevenir.
+ */
+
+/**
  * Normaliza `ubicacion` a mayúscula — invariante de dominio declarada en
  * `EquipoInformaticoProps.ubicacion`.
  *
