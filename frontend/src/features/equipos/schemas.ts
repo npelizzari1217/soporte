@@ -5,6 +5,7 @@ import {
   MENSAJE_TITULO_DEMASIADO_LARGO,
 } from "@/shared/lib/limites-ticket";
 import { parseImporte } from "./depreciacion";
+import { conDosDecimales } from "@/shared/lib/formato-numero";
 
 /**
  * Topes de largo/rango de `equipos_informaticos`/`componentes_equipo`, espejo
@@ -28,19 +29,6 @@ const COMPONENTE_CAPACIDAD_MAX_LENGTH = 100;
 
 const MENSAJE_VALOR_MONETARIO = `Debe ser un número entre ${EQUIPO_VALOR_MONETARIO_MINIMO} y ${EQUIPO_VALOR_MONETARIO_MAXIMO}, con hasta 2 decimales`;
 
-/**
- * Cuenta decimales sobre la representación en texto del NÚMERO YA PARSEADO
- * (no de la cadena cruda: "1000,50" tiene una coma en esa posición, no un
- * punto). Mismo criterio que `features/compras/schemas.ts` (`conDosDecimales`):
- * contar sobre el string y no con aritmética (`n * 100`), para no arrastrar el
- * sesgo de punto flotante (`0.1 * 100` no da exactamente `10`).
- */
-function conDosDecimales(n: number): boolean {
-  const texto = String(n);
-  if (texto.includes("e") || texto.includes("E")) return false;
-  const punto = texto.indexOf(".");
-  return punto === -1 || texto.length - punto - 1 <= 2;
-}
 
 /**
  * Importe/valor: string del input, vacío es válido (campo opcional).
@@ -68,6 +56,50 @@ function validarValorMonetario(valor: string | undefined): boolean {
     numero <= EQUIPO_VALOR_MONETARIO_MAXIMO &&
     conDosDecimales(numero)
   );
+}
+
+/**
+ * Normaliza `ubicacion` a mayúscula. Espejo de `normalizarUbicacion` en
+ * `equipo-informatico.entity.ts` (backend, dominio): `toUpperCase()` no
+ * preserva longitud ('ß' → 'SS'), así que el `.refine()` de acá abajo y el
+ * `submit()` de los dos diálogos (create/edit) necesitan medir y enviar
+ * EXACTAMENTE el mismo string — de ahí que los tres compartan esta única
+ * función en vez de repetir `.toUpperCase()` suelto en cada lugar (el
+ * defecto que motivó extraerla: el equivalente backend existía; el front no
+ * tenía el suyo y los tres puntos podían divergir).
+ */
+export function normalizarUbicacion(valor: string): string {
+  return valor.toUpperCase();
+}
+
+/**
+ * Regex del % de depreciación: hasta 3 enteros y 2 decimales, SIN signo (por
+ * lo tanto nunca negativo). Extraído como constante para que el schema
+ * (abajo) y `esPorcentajeDepreciacionValido` (usado por los diálogos para
+ * habilitar el botón "Aplicar") apliquen el mismo criterio — no dos
+ * versiones que puedan desalinearse.
+ */
+const PORCENTAJE_DEPRECIACION_REGEX = /^\d{0,3}([.,]\d{1,2})?$/;
+
+/**
+ * Criterio de porcentaje de depreciación válido para habilitar el botón
+ * "Aplicar" de `EquipoCreateDialog`/`EquipoEditDialog`. Antes ese botón solo
+ * chequeaba "hay algo tipeado" (sin validar el valor), así que un porcentaje
+ * negativo como "-50" lo dejaba pasar y escribía un valor residual MAYOR
+ * que el importe (el regex del schema recién bloqueaba el submit del
+ * formulario completo, no el cálculo). Reusa el mismo regex que el campo
+ * `porcentajeDepreciacion` del schema, así el criterio es uno solo.
+ *
+ * Con una diferencia que conviene tener presente en vez de negarla: acá se
+ * mide `valor.trim()` y el schema mide la cadena cruda, así que un valor con
+ * espacios alrededor (`" 50 "`) pasaría este chequeo y no el del schema. El
+ * campo es un `<input type="number">`, que no puede producir esa cadena, así
+ * que hoy es inalcanzable — pero deja de serlo si algún día el campo pasa a
+ * ser texto libre. Si eso ocurre, hay que trimear en las dos puntas.
+ */
+export function esPorcentajeDepreciacionValido(valor: string | undefined): boolean {
+  if (!valor || !valor.trim()) return false;
+  return PORCENTAJE_DEPRECIACION_REGEX.test(valor.trim());
 }
 
 export const crearEquipoSchema = z.object({
@@ -113,7 +145,7 @@ export const crearEquipoSchema = z.object({
   ubicacion: z
     .string()
     .refine(
-      (valor) => valor.toUpperCase().length <= EQUIPO_UBICACION_MAX_LENGTH,
+      (valor) => normalizarUbicacion(valor).length <= EQUIPO_UBICACION_MAX_LENGTH,
       `La ubicación no puede superar los ${EQUIPO_UBICACION_MAX_LENGTH} caracteres`,
     )
     .optional(),
@@ -131,7 +163,7 @@ export const crearEquipoSchema = z.object({
    */
   porcentajeDepreciacion: z
     .string()
-    .regex(/^\d{0,3}([.,]\d{1,2})?$/, "Hasta 3 cifras enteras y 2 decimales")
+    .regex(PORCENTAJE_DEPRECIACION_REGEX, "Hasta 3 cifras enteras y 2 decimales")
     .optional(),
 });
 export type CrearEquipoFormValues = z.infer<typeof crearEquipoSchema>;

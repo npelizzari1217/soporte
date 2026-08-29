@@ -69,9 +69,13 @@ La única regla a recordar es que un punto se interpreta como separador de miles
 solo cuando en el mismo número hay también una coma; si no la hay, `1234.5` se
 lee como decimal.
 
-Una advertencia: si en un campo de monto queda texto que no es un número, **el
-sistema no muestra ningún aviso** y al guardar ese campo queda **vacío**. Antes
-de guardar conviene salir del campo y verificar que el monto se haya reformateado
-con separadores: si no se reformateó, no es un número válido.
+Una advertencia: si en un campo de monto queda texto que no es un número, el
+formulario **marca el campo con un error** y no deja guardar hasta que se
+corrija. Si de todas formas hay dudas, conviene salir del campo y verificar
+que el monto se haya reformateado con separadores: si no se reformateó, no es
+un número válido.
+
+Además, el importe y el valor residual tienen un tope: no pueden superar los
+**99.999.999**. Un monto mayor también se rechaza con un aviso en el campo.
 
 Por último, los montos **no tienen moneda asociada**: se guarda solo el número.
