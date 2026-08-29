@@ -43,6 +43,9 @@ const MENSAJE_VALOR_MONETARIO = `Debe ser un número entre ${EQUIPO_VALOR_MONETA
  *   la coma es el separador decimal válido en este producto rioplatense. Un
  *   `Number()` crudo rechazaba en el form algo que el propio front sabía
  *   parsear y enviar.
+ * - Desde que `parseImporte` delega en `parsearNumeroEsAr`, también acepta
+ *   separador de miles (`"1.234.567,89"`), siempre que `conDosDecimales` y el
+ *   tope de abajo sigan cumpliéndose.
  * - `"100.999"` pasaba un schema sin chequeo de decimales, y el DTO lo
  *   rebotaba con `@IsNumber({ maxDecimalPlaces: 2 })` → 400 remoto por algo
  *   que se veía aceptado en pantalla.

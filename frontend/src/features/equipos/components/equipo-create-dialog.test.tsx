@@ -195,6 +195,64 @@ describe("EquipoCreateDialog", () => {
   );
 
   /**
+   * D4 del design (sdd/equipos-parse-importe-miles): `Enter` dentro de un
+   * `<form>` dispara el click sobre el botón `type="submit"` sin mover el
+   * foco (a diferencia de un blur real), así que `MontoInput` no llega a
+   * canonizar el texto — el submit tiene que entender el crudo con miles
+   * igual que el canonizado. `toHaveFocus()` es la guarda: si algún día se
+   * introduce un blur antes del submit, este test dejaría de probar lo que
+   * dice probar.
+   *
+   * El POST se difiere con una promesa manual: si se resuelve de entrada
+   * (como `capturarPost()`), el `onSuccess` cierra el diálogo dentro del
+   * mismo `await user.keyboard("{Enter}")` y el foco vuelve al botón
+   * disparador ANTES de poder comprobarlo — falso negativo del guard, no un
+   * blur real.
+   */
+  it("Enter sin blur con importe en miles envía el número correcto (Esc. 3.1)", async () => {
+    let resolverRespuesta: () => void = () => {};
+    const respuestaPendiente = new Promise<void>((resolve) => {
+      resolverRespuesta = resolve;
+    });
+    const capturado: { body: Record<string, unknown> } = { body: {} };
+    server.use(
+      http.post("/api/equipos", async ({ request }) => {
+        capturado.body = (await request.json()) as Record<string, unknown>;
+        await respuestaPendiente;
+        return HttpResponse.json(EQUIPO_CREADO, { status: 201 });
+      }),
+    );
+    renderWithProviders(<EquipoCreateDialog />, { user: buildUser({ permisos: ["EQUIPOS:ALTAS"] }) });
+
+    const user = await abrirDialog();
+    await user.type(screen.getByLabelText(/^nombre$/i), "Notebook Dell");
+    const importe = screen.getByLabelText(/^importe/i);
+    await user.click(importe);
+    await user.paste("1.234.567,89");
+    await user.keyboard("{Enter}");
+
+    expect(importe).toHaveFocus();
+    resolverRespuesta();
+    await waitFor(() => expect(capturado.body.importe).toBe(1234567.89));
+  });
+
+  /** Hermano invertido de 3.1: un valor inválido sigue bloqueando el envío por Enter sin blur. */
+  it("Enter sin blur con importe inválido sigue bloqueando el envío (Esc. 3.2)", async () => {
+    const capturado = capturarPost();
+    renderWithProviders(<EquipoCreateDialog />, { user: buildUser({ permisos: ["EQUIPOS:ALTAS"] }) });
+
+    const user = await abrirDialog();
+    await user.type(screen.getByLabelText(/^nombre$/i), "Notebook Dell");
+    const importe = screen.getByLabelText(/^importe/i);
+    await user.click(importe);
+    await user.paste("abc");
+    await user.keyboard("{Enter}");
+
+    expect(await screen.findByText(/debe ser un número/i)).toBeInTheDocument();
+    expect(capturado.body).toEqual({});
+  });
+
+  /**
    * Hermano invertido del caso `ß`.repeat(200) de arriba: un valor de
    * ubicación válido NO debe marcar error y el submit SÍ debe viajar,
    * normalizado a mayúscula (mismo criterio que mide el backend).
