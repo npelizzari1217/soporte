@@ -249,6 +249,79 @@ describe("EquipoEditDialog", () => {
   );
 
   /**
+   * Regresión crítica (Esc. 3.3, sdd/equipos-parse-importe-miles): igual que
+   * en el alta (D4 del design), `Enter` dentro del `<form>` dispara el click
+   * sobre "Guardar" (`type="submit"`) sin mover el foco, así que `MontoInput`
+   * no llega a canonizar. Antes del fix, el schema roto frenaba el submit
+   * (protección indirecta); con el schema arreglado ese guard deja de actuar
+   * por accidente, así que este test prueba que `parseImporte` sigue
+   * mandando el número real y NUNCA `null` sobre un equipo que ya tenía
+   * importe cargado.
+   *
+   * El PATCH se difiere con una promesa manual: si se resuelve de entrada
+   * (como `capturarPatch()`), el `onSuccess` cierra el diálogo dentro del
+   * mismo `await user.keyboard("{Enter}")` y el foco vuelve al botón
+   * disparador ANTES de poder comprobarlo — falso negativo del guard, no un
+   * blur real.
+   */
+  it("Enter sin blur con importe reescrito en miles no pierde el dato (regresión crítica, Esc. 3.3)", async () => {
+    let resolverRespuesta: () => void = () => {};
+    const respuestaPendiente = new Promise<void>((resolve) => {
+      resolverRespuesta = resolve;
+    });
+    const capturado: { body: Record<string, unknown> } = { body: {} };
+    server.use(
+      http.patch(`/api/equipos/${EQUIPO_ID}`, async ({ request }) => {
+        capturado.body = (await request.json()) as Record<string, unknown>;
+        await respuestaPendiente;
+        return HttpResponse.json({ ...EQUIPO, nombre: "Editado" });
+      }),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<EquipoEditDialog equipo={EQUIPO} />, {
+      user: buildUser({ permisos: ["EQUIPOS:MODIFICACION"] }),
+    });
+
+    await user.click(screen.getByRole("button", { name: /^editar$/i }));
+    await screen.findByText("Editar equipo");
+
+    const importe = screen.getByLabelText(/^importe/i);
+    await user.clear(importe);
+    await user.click(importe);
+    await user.paste("1.234.567,89");
+    await user.keyboard("{Enter}");
+
+    expect(importe).toHaveFocus();
+    resolverRespuesta();
+    await waitFor(() => expect(capturado.body.importe).toBe(1234567.89));
+    expect(capturado.body.importe).not.toBeNull();
+  });
+
+  /**
+   * Hermano invertido de 3.3 (Esc. 3.4): borrar el campo intencionalmente
+   * sigue siendo la forma de limpiar el importe — el payload manda `null`
+   * (contrato ya vigente en `equipo-edit-dialog.tsx:139`, "null = limpiar").
+   * No se confunde con 3.3: ahí el dato viaja, acá se borra a propósito.
+   */
+  it("Enter sin blur con importe vaciado intencionalmente sigue borrando el valor (hermano invertido, Esc. 3.4)", async () => {
+    const capturado = capturarPatch();
+    const user = userEvent.setup();
+    renderWithProviders(<EquipoEditDialog equipo={EQUIPO} />, {
+      user: buildUser({ permisos: ["EQUIPOS:MODIFICACION"] }),
+    });
+
+    await user.click(screen.getByRole("button", { name: /^editar$/i }));
+    await screen.findByText("Editar equipo");
+
+    const importe = screen.getByLabelText(/^importe/i);
+    await user.clear(importe);
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => expect(capturado.body).toHaveProperty("importe"));
+    expect(capturado.body.importe).toBeNull();
+  });
+
+  /**
    * Hermano invertido del caso `ß`.repeat(200) de arriba: un valor de
    * ubicación válido NO debe marcar error y el PATCH SÍ debe viajar,
    * normalizado a mayúscula.

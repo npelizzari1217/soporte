@@ -93,6 +93,12 @@ describe("crearEquipoSchema — importe/valorResidual", () => {
     // decimales) y el DTO lo rebotaba con `@IsNumber({maxDecimalPlaces:2})`
     // → 400 remoto por algo que se veía aceptado en pantalla.
     ["importe", "100.999"],
+    // Esc. 2.2 (hermano invertido de "acepta miles" de abajo, verde desde el
+    // arranque): por encima del tope aunque venga con separador de miles.
+    ["importe", "100.000.000,00"],
+    // Esc. 2.3 (hermano invertido, verde desde el arranque): más de 2
+    // decimales sigue rechazando incluso con separador de miles delante.
+    ["importe", "1.234,567"],
     ["valorResidual", "-1"],
     ["valorResidual", "100000000"],
     ["valorResidual", "abc"],
@@ -115,6 +121,11 @@ describe("crearEquipoSchema — importe/valorResidual", () => {
     // el front terminaba enviándolo igual.
     ["importe", "1000,50"],
     ["importe", "1000.5"],
+    // Esc. 2.1 (RED — sdd/equipos-parse-importe-miles): antes del fix,
+    // `validarValorMonetario` rechazaba un monto con separador de miles
+    // porque `parseImporte` reemplazaba una sola coma y `Number(...)` daba
+    // `NaN` con varios puntos en la cadena.
+    ["importe", "1.234.567,89"],
     ["valorResidual", "0"],
     ["valorResidual", "99999999"],
     ["valorResidual", "1000,50"],

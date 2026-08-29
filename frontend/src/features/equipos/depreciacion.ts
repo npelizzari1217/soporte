@@ -9,6 +9,7 @@
  * depreciación se aplica SOBRE ese último valor residual (encadenada), no sobre
  * el importe original.
  */
+import { parsearNumeroEsAr } from "@/shared/lib/formato-numero";
 
 /** Redondea a 2 decimales y clampa a 0 (un % > 100 daría residual negativo). */
 export function calcularValorResidual(base: number, porcentaje: number): number {
@@ -29,11 +30,24 @@ export function baseDepreciacion(
 }
 
 /**
- * Parsea un valor de input numérico ("1000", "1000,50", "") a number, o null si
- * está vacío/ inválido. Acepta coma o punto decimal.
+ * Adaptador de firma sobre `parsearNumeroEsAr` (`shared/lib/formato-numero.ts`):
+ * lo único propio de esta función es el guard de `undefined` (los campos de
+ * RHF de Equipos son opcionales). El resto — trim, vacío → `null`, coma
+ * decimal y desambiguación del punto de miles — lo resuelve la función
+ * compartida. Delega, no reimplementa: `MontoInput` usa la MISMA función
+ * para canonizar al blur, así que el submit entiende exactamente lo mismo
+ * que el usuario ve en pantalla, incluso sin blur (Enter dentro del form).
+ *
+ * Regla de miles heredada de `parsearNumeroEsAr`: el punto sólo se lee como
+ * separador de miles cuando ADEMÁS hay una coma decimal en la cadena. Sin
+ * coma, `"1.234"` sigue siendo el número `1.234`, no `1234` — no hay forma
+ * de desambiguar un punto suelto sin esa señal.
+ *
+ * Esto NO consolida el parseo de montos de toda la app: `features/compras`
+ * mantiene su propio parser, y el momento en que `MontoInput` canoniza (al
+ * blur) no cambia.
  */
 export function parseImporte(valor: string | undefined): number | null {
-  if (valor === undefined || valor.trim() === "") return null;
-  const n = Number(valor.replace(",", "."));
-  return Number.isFinite(n) ? n : null;
+  if (valor === undefined) return null;
+  return parsearNumeroEsAr(valor);
 }

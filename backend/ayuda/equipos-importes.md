@@ -71,9 +71,12 @@ lee como decimal.
 
 Una advertencia: si en un campo de monto queda texto que no es un número, el
 formulario **marca el campo con un error** y no deja guardar hasta que se
-corrija. Si de todas formas hay dudas, conviene salir del campo y verificar
-que el monto se haya reformateado con separadores: si no se reformateó, no es
-un número válido.
+corrija. Esto vale aunque no se haya salido del campo: **pegar un monto y
+guardar directo con Enter funciona igual que salir del campo primero**, no
+hace falta el paso extra para que un monto con separador de miles se cargue
+bien. Si de todas formas hay dudas sobre lo que se tipeó, salir del campo y
+ver que se haya reformateado con separadores es una forma opcional de
+confirmarlo a simple vista: si no se reformateó, no es un número válido.
 
 Además, el importe y el valor residual tienen un tope: no pueden superar los
 **99.999.999**. Un monto mayor también se rechaza con un aviso en el campo.
