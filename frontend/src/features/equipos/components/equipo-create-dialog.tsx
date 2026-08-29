@@ -15,7 +15,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { MontoInput } from "@/components/shared/monto-input";
 import { formatearNumeroEsAr } from "@/shared/lib/formato-numero";
 import { useCrearEquipo } from "../hooks/use-equipo-mutations";
-import { crearEquipoSchema, type CrearEquipoFormValues } from "../schemas";
+import {
+  crearEquipoSchema,
+  esPorcentajeDepreciacionValido,
+  normalizarUbicacion,
+  type CrearEquipoFormValues,
+} from "../schemas";
 import { hoyFechaCalendario } from "@/shared/lib/formato-fecha";
 import { baseDepreciacion, calcularValorResidual, parseImporte } from "../depreciacion";
 
@@ -41,19 +46,24 @@ export function EquipoCreateDialog() {
   // cálculo previo) o, si no, el importe original.
   const base = baseDepreciacion(parseImporte(importeActual), parseImporte(valorResidualActual));
   const baseEsResidual = parseImporte(valorResidualActual) !== null;
-  const puedeAplicar = base !== null && !!(porcentajeActual && porcentajeActual.trim());
+  const puedeAplicar = base !== null && esPorcentajeDepreciacionValido(porcentajeActual);
 
   /**
    * Aplica el % de depreciación sobre la base (valor residual actual o importe):
    * setea el nuevo valor residual (derivado) + fecha = hoy (editable).
    */
   function aplicarDepreciacion() {
+    const porcentajeTexto = getValues("porcentajeDepreciacion");
     const baseActual = baseDepreciacion(
       parseImporte(getValues("importe")),
       parseImporte(getValues("valorResidual")),
     );
-    const porcentaje = parseImporte(getValues("porcentajeDepreciacion"));
-    if (baseActual === null || porcentaje === null) return;
+    // Guarda defensiva, no un camino silencioso alcanzable en uso normal: el
+    // botón "Aplicar" que dispara esta función solo se habilita cuando
+    // `puedeAplicar` (mismos dos criterios) ya dio true.
+    if (baseActual === null || !esPorcentajeDepreciacionValido(porcentajeTexto)) return;
+    const porcentaje = parseImporte(porcentajeTexto);
+    if (porcentaje === null) return;
     setValue("valorResidual", String(calcularValorResidual(baseActual, porcentaje)), {
       shouldValidate: true,
     });
@@ -68,7 +78,7 @@ export function EquipoCreateDialog() {
         marca: values.marca || undefined,
         modelo: values.modelo || undefined,
         fechaAdquisicion: values.fechaAdquisicion || undefined,
-        ubicacion: values.ubicacion ? values.ubicacion.toUpperCase() : undefined,
+        ubicacion: values.ubicacion ? normalizarUbicacion(values.ubicacion) : undefined,
         importe: parseImporte(values.importe) ?? undefined,
         fechaValoracion: values.fechaValoracion || undefined,
         observaciones: values.observaciones || undefined,
@@ -117,19 +127,34 @@ export function EquipoCreateDialog() {
             <label htmlFor="equipo-serie" className="text-sm font-medium text-foreground">
               Número de serie
             </label>
-            <Input id="equipo-serie" {...register("numeroSerie")} />
+            <Input id="equipo-serie" error={!!errors.numeroSerie} {...register("numeroSerie")} />
+            {errors.numeroSerie && (
+              <p role="alert" className="text-sm text-destructive">
+                {errors.numeroSerie.message}
+              </p>
+            )}
           </div>
           <div className="flex flex-col gap-1">
             <label htmlFor="equipo-marca" className="text-sm font-medium text-foreground">
               Marca
             </label>
-            <Input id="equipo-marca" {...register("marca")} />
+            <Input id="equipo-marca" error={!!errors.marca} {...register("marca")} />
+            {errors.marca && (
+              <p role="alert" className="text-sm text-destructive">
+                {errors.marca.message}
+              </p>
+            )}
           </div>
           <div className="flex flex-col gap-1">
             <label htmlFor="equipo-modelo" className="text-sm font-medium text-foreground">
               Modelo
             </label>
-            <Input id="equipo-modelo" {...register("modelo")} />
+            <Input id="equipo-modelo" error={!!errors.modelo} {...register("modelo")} />
+            {errors.modelo && (
+              <p role="alert" className="text-sm text-destructive">
+                {errors.modelo.message}
+              </p>
+            )}
           </div>
           <div className="flex flex-col gap-1">
             <label htmlFor="equipo-fecha" className="text-sm font-medium text-foreground">
@@ -145,8 +170,14 @@ export function EquipoCreateDialog() {
               id="equipo-ubicacion"
               className="uppercase placeholder:normal-case"
               placeholder="Texto libre (se guarda en mayúscula)"
+              error={!!errors.ubicacion}
               {...register("ubicacion")}
             />
+            {errors.ubicacion && (
+              <p role="alert" className="text-sm text-destructive">
+                {errors.ubicacion.message}
+              </p>
+            )}
           </div>
 
           <div className="flex flex-col gap-1">
@@ -163,9 +194,15 @@ export function EquipoCreateDialog() {
                   value={field.value}
                   onChange={field.onChange}
                   onBlur={field.onBlur}
+                  error={!!errors.importe}
                 />
               )}
             />
+            {errors.importe && (
+              <p role="alert" className="text-sm text-destructive">
+                {errors.importe.message}
+              </p>
+            )}
           </div>
           <div className="flex flex-col gap-1">
             <label htmlFor="equipo-fecha-valoracion" className="text-sm font-medium text-foreground">
@@ -227,9 +264,15 @@ export function EquipoCreateDialog() {
                     value={field.value}
                     onChange={field.onChange}
                     onBlur={field.onBlur}
+                    error={!!errors.valorResidual}
                   />
                 )}
               />
+              {errors.valorResidual && (
+                <p role="alert" className="text-sm text-destructive">
+                  {errors.valorResidual.message}
+                </p>
+              )}
             </div>
             <div className="flex flex-col gap-1">
               <label htmlFor="equipo-fecha-residual" className="text-sm font-medium text-foreground">

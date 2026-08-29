@@ -41,6 +41,11 @@ function capturarPatch(): { body: Record<string, unknown> } {
 }
 
 describe("EquipoEditDialog", () => {
+  // Handler PATCH por defecto: cubre los tests que NO llaman a `capturarPatch()`
+  // (no necesitan inspeccionar el body, solo que el PATCH resuelva 200). Para
+  // los que sí la llaman, `capturarPatch()` registra su propio handler DESPUÉS
+  // de este — msw prioriza el último registrado — así que este queda sin
+  // invocar en esos casos, no removido porque los demás tests SÍ lo necesitan.
   beforeEach(() => {
     server.use(http.patch(`/api/equipos/${EQUIPO_ID}`, () => HttpResponse.json({ ...EQUIPO, nombre: "Editado" })));
   });
@@ -48,7 +53,7 @@ describe("EquipoEditDialog", () => {
   it("el form abre en un MODAL (no inline) y pre-pobla los valores actuales", async () => {
     const user = userEvent.setup();
     renderWithProviders(<EquipoEditDialog equipo={EQUIPO} />, {
-      user: buildUser({ permisos: ["equipo:gestionar"] }),
+      user: buildUser({ permisos: ["EQUIPOS:MODIFICACION"] }),
     });
 
     // Sin abrir, el form no está en el DOM (es popup, no inline).
@@ -77,7 +82,7 @@ describe("EquipoEditDialog", () => {
           fechaValorResidual: "2026-08-19T00:00:00.000Z",
         }}
       />,
-      { user: buildUser({ permisos: ["equipo:gestionar"] }) },
+      { user: buildUser({ permisos: ["EQUIPOS:MODIFICACION"] }) },
     );
 
     await user.click(screen.getByRole("button", { name: /^editar$/i }));
@@ -91,7 +96,7 @@ describe("EquipoEditDialog", () => {
   it("guardar dispara el PATCH y cierra el modal", async () => {
     const user = userEvent.setup();
     renderWithProviders(<EquipoEditDialog equipo={EQUIPO} />, {
-      user: buildUser({ permisos: ["equipo:gestionar"] }),
+      user: buildUser({ permisos: ["EQUIPOS:MODIFICACION"] }),
     });
 
     await user.click(screen.getByRole("button", { name: /^editar$/i }));
@@ -111,7 +116,7 @@ describe("EquipoEditDialog", () => {
     const capturado = capturarPatch();
     const user = userEvent.setup();
     renderWithProviders(<EquipoEditDialog equipo={EQUIPO} />, {
-      user: buildUser({ permisos: ["equipo:gestionar"] }),
+      user: buildUser({ permisos: ["EQUIPOS:MODIFICACION"] }),
     });
 
     await user.click(screen.getByRole("button", { name: /^editar$/i }));
@@ -133,7 +138,7 @@ describe("EquipoEditDialog", () => {
   it("volver a enfocar devuelve el valor editable, sin puntos de miles que borrar a mano", async () => {
     const user = userEvent.setup();
     renderWithProviders(<EquipoEditDialog equipo={EQUIPO} />, {
-      user: buildUser({ permisos: ["equipo:gestionar"] }),
+      user: buildUser({ permisos: ["EQUIPOS:MODIFICACION"] }),
     });
 
     await user.click(screen.getByRole("button", { name: /^editar$/i }));
@@ -154,7 +159,7 @@ describe("EquipoEditDialog", () => {
     const capturado = capturarPatch();
     const user = userEvent.setup();
     renderWithProviders(<EquipoEditDialog equipo={EQUIPO} />, {
-      user: buildUser({ permisos: ["equipo:gestionar"] }),
+      user: buildUser({ permisos: ["EQUIPOS:MODIFICACION"] }),
     });
 
     await user.click(screen.getByRole("button", { name: /^editar$/i }));
@@ -171,14 +176,100 @@ describe("EquipoEditDialog", () => {
     expect(capturado.body.importe).toBe(1000);
   });
 
+  /**
+   * Regresión — `puedeAplicar` solo chequeaba "hay algo tipeado", no si el
+   * porcentaje era válido: con importe 1000 y porcentaje "-50", el botón
+   * quedaba habilitado y el clic escribía un valor residual (1.500,00)
+   * MAYOR que el importe, sin ningún error visible. Ahora reusa el mismo
+   * criterio que el schema (`esPorcentajeDepreciacionValido`), que rechaza
+   * el signo negativo.
+   */
+  it("con porcentaje negativo el botón Aplicar queda deshabilitado y no toca el valor residual", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<EquipoEditDialog equipo={EQUIPO} />, {
+      user: buildUser({ permisos: ["EQUIPOS:MODIFICACION"] }),
+    });
+
+    await user.click(screen.getByRole("button", { name: /^editar$/i }));
+    await screen.findByText("Editar equipo");
+
+    await user.type(screen.getByLabelText(/% de depreciación/i), "-50");
+
+    expect(screen.getByRole("button", { name: /^aplicar$/i })).toBeDisabled();
+    expect(screen.getByLabelText(/^valor residual$/i)).toHaveValue("");
+  });
+
   it("la base de depreciación se muestra formateada, igual que los campos de al lado", async () => {
     const user = userEvent.setup();
     renderWithProviders(<EquipoEditDialog equipo={EQUIPO} />, {
-      user: buildUser({ permisos: ["equipo:gestionar"] }),
+      user: buildUser({ permisos: ["EQUIPOS:MODIFICACION"] }),
     });
 
     await user.click(screen.getByRole("button", { name: /^editar$/i }));
 
     expect(await screen.findByText(/se deprecia sobre el importe: \$1\.000,00/i)).toBeInTheDocument();
+  });
+
+  /**
+   * CRITICAL-1 del verify report: antes de este fix, `errors.ubicacion` e
+   * `errors.importe` (y los demás campos con regla) NUNCA se renderizaban —
+   * el schema rechazaba, `handleSubmit` no llamaba a `submit`, y la pantalla
+   * no decía nada. Monta el diálogo entero (no `safeParse` directo) para que
+   * el test cubra lo que realmente ve el usuario.
+   */
+  it.each([
+    ["número de serie", /número de serie/i, "x".repeat(256), /número de serie no puede superar/i],
+    ["ubicación", /^ubicación$/i, "ß".repeat(200), /ubicación no puede superar/i],
+    ["importe", /^importe/i, "abc", /debe ser un número/i],
+    // El valor inválido NO se interpola en el título: `'ß'.repeat(200)` produce
+    // un nombre de test de 200 caracteres repetidos, ilegible en el reporte.
+  ] as const)(
+    "campo %s con valor inválido muestra el mensaje y no envía el PATCH",
+    async (_campo, selectorLabel, valorInvalido, mensajeEsperado) => {
+      const capturado = capturarPatch();
+      const user = userEvent.setup();
+      renderWithProviders(<EquipoEditDialog equipo={EQUIPO} />, {
+        user: buildUser({ permisos: ["EQUIPOS:MODIFICACION"] }),
+      });
+
+      await user.click(screen.getByRole("button", { name: /^editar$/i }));
+      await screen.findByText("Editar equipo");
+
+      const campo = screen.getByLabelText(selectorLabel);
+      await user.clear(campo);
+      await user.click(campo);
+      await user.paste(valorInvalido);
+      await user.tab();
+
+      await user.click(screen.getByRole("button", { name: /^guardar$/i }));
+
+      expect(await screen.findByText(mensajeEsperado)).toBeInTheDocument();
+      expect(capturado.body).toEqual({});
+    },
+  );
+
+  /**
+   * Hermano invertido del caso `ß`.repeat(200) de arriba: un valor de
+   * ubicación válido NO debe marcar error y el PATCH SÍ debe viajar,
+   * normalizado a mayúscula.
+   */
+  it("ubicación con valor válido no muestra error y el PATCH viaja normalizado", async () => {
+    const capturado = capturarPatch();
+    const user = userEvent.setup();
+    renderWithProviders(<EquipoEditDialog equipo={EQUIPO} />, {
+      user: buildUser({ permisos: ["EQUIPOS:MODIFICACION"] }),
+    });
+
+    await user.click(screen.getByRole("button", { name: /^editar$/i }));
+    await screen.findByText("Editar equipo");
+
+    const ubicacion = screen.getByLabelText(/^ubicación$/i);
+    await user.clear(ubicacion);
+    await user.type(ubicacion, "oficina 2");
+
+    await user.click(screen.getByRole("button", { name: /^guardar$/i }));
+
+    await waitFor(() => expect(capturado.body.ubicacion).toBe("OFICINA 2"));
+    expect(screen.queryByText(/ubicación no puede superar/i)).not.toBeInTheDocument();
   });
 });
