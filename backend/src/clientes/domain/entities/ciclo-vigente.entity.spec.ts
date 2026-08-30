@@ -115,7 +115,11 @@ describe('CicloVigenteEntity', () => {
  * plano — rama 1 de la "regla de tres ramas".
  */
 describe('CicloVigenteEntity — tope de largo de nombre', () => {
-  const fechas = { fechaInicio: new Date('2026-01-01'), fechaFin: new Date('2026-12-31') };
+  const fechas = {
+    fechaInicio: new Date('2026-01-01'),
+    fechaFin: new Date('2026-12-31'),
+    activo: true,
+  };
 
   it('acepta un nombre en el límite exacto', () => {
     const c = CicloVigenteEntity.create({

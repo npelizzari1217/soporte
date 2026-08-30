@@ -183,7 +183,7 @@ TODOS los casos que entran acá?".
 | Vacío que se vuelve valor | `Number("")` es `0` y sobrescribe un acumulado | helper `numeroRequerido` en `compras/schemas` |
 | Sincronización del formulario | Reabrir muestra el dato del primer render | `if (next) reset(valoresVigentes)` — 16 diálogos |
 | Select con valor fuera de catálogo | La pantalla dice una cosa y se guarda otra | `tipoActualFueraDeCatalogo` en `componente-edit-dialog` |
-| Topes de largo sin espejar | 500 crudo de Postgres, o 400 remoto por algo que se veía en pantalla | `shared/lib/limites-ticket` · `features/clientes/limites` |
+| Topes de largo sin espejar | 500 crudo de Postgres, o 400 remoto por algo que se veía en pantalla | la constante en la entidad, importada por el DTO |
 
 Las cuatro primeras están cerradas. El select fuera de catálogo cerró sus 2 instancias
 —el sector de la cabecera de compras y la prioridad del ticket— con la variante que distingue
@@ -191,36 +191,53 @@ Las cuatro primeras están cerradas. El select fuera de catálogo cerró sus 2 i
 lista traída solo vale cuando esa lista YA resolvió, porque con el catálogo cargando o caído
 la ausencia no prueba nada.
 
-**Sigue abierta una sola clase**, y ya no son 8 sino **1 campo** sin tope espejado — kb
-(título).
+**Las cinco clases están cerradas.** Los 8 campos sin tope espejado se cerraron en las tres
+capas —edilicia (ubicación, descripción de subtarea), usuarios (nombre, apellido), tipos-componente
+(código, nombre), ciclos-master (nombre) y kb (título)—, más los campos de admin de
+`CreateClienteDto`, que escriben las mismas columnas que el ABM de usuarios.
 
-`usuarios` salió de la lista: nombre y apellido quedaron cerrados en las tres capas, y con
-ellos las DOS puertas que escriben esas columnas —el ABM de usuarios y los campos
-`adminNombre`/`adminApellido` de `CreateClienteDto`, el alta de tenant—. Las constantes
-viven en `UsuarioEntity` y en `shared/lib/limites-usuario`, así que no pueden volver a
-divergir. **Queda un tercer escritor de esas columnas que NO pasa por la entidad**:
-`prisma_master/seeds/root-bootstrap.seed.ts` inserta los `ROOT_ADMIN_*` directo por Prisma.
-Es input de operador en deploy, no un 500 en pantalla, pero la columna no está cerrada por
-todos lados.
+El mecanismo que las mantiene cerradas: **el número vive en la entidad de dominio y el DTO lo
+importa**, así que borde y dominio no pueden divergir. El front lo copia a mano, con un
+centinela en su test que fija el valor — eso atrapa una edición accidental, NO un cambio de
+la columna: si una columna se ensancha, al front hay que venir a mano.
 
-Lección de `usuarios`, que vale para el que falta y para el próximo: **el validador del front y el del
-backend no acotan igual.** `@IsEmail()` corta en 254 caracteres; `z.string().email()` es
-solo un regex y acepta 309 (medido). Copiar del backend el argumento "ese validador ya acota"
-dejó el front más laxo que el servidor. Cada capa se verifica en su propia capa.
+**Lo que queda abierto**, y conviene no darlo por cerrado, son dos escrituras que no pasan
+por la entidad:
 
-Esa clase tiene DOS variantes que fallan distinto, y el que queda es de la primera:
+- `prisma_master/seeds/root-bootstrap.seed.ts` escribe `usuarios.nombre`/`apellido` directo
+  por Prisma.
+- `backend/scripts/sync-ayuda.js` valida el título contra un 255 escrito a mano (y el slug
+  contra 120). No deja agujero —aborta antes de escribir— pero es una copia más del número,
+  y al ser JS no puede importar la constante de TypeScript.
 
-1. **Sin tope en ninguna capa.** La columna es lo único que valida, así que el valor llega a
-   Postgres y muere ahí: 22001 → **500 crudo**. Es la variante del campo que queda.
+Los dos son input de operador en deploy, no un 500 en pantalla, pero esas columnas no están
+cerradas por todos lados.
+
+### Las tres formas en que un tope falla
+
+Vale para el próximo campo que se agregue, que es el motivo de dejarlas escritas:
+
+1. **Sin tope en ninguna capa.** La columna es lo único que valida: el valor llega a Postgres
+   y muere ahí, 22001 → **500 crudo**, sin nombrar el campo. Era el caso de los 8.
 2. **Con tope en el backend pero no en el front.** El servidor rechaza bien, pero el usuario
    se come un **400 remoto** por algo que se veía en pantalla, y pierde lo tipeado. Era el
-   caso de `clientes`, ya cerrado (`features/clientes/limites.ts`).
+   caso de `clientes`.
+3. **Tope en las dos capas que NO coincide con la columna.** La más silenciosa. `cuit`
+   declaraba `@MaxLength(20)` contra un `VARCHAR(13)`: 14 a 20 caracteres pasaban las dos
+   validaciones y reventaban igual al persistir.
 
-Y hay una tercera forma, más silenciosa, que apareció al cerrar `clientes`: **el tope existe
-en las dos capas pero NO coincide con la columna.** `cuit` declaraba `@MaxLength(20)` contra
-un `VARCHAR(13)`, así que 14 a 20 caracteres pasaban las dos validaciones y reventaban igual
-al persistir. Por eso el número vive en la entidad de dominio y el DTO lo importa: un tope
-escrito a mano en el borde puede divergir de la columna sin que nada avise.
+### Dos trampas que costaron encontrar
+
+- **El validador del front y el del backend no acotan igual.** `@IsEmail()` corta en 254
+  caracteres; `z.string().email()` es solo un regex y acepta 309 (medido). Copiar del backend
+  el argumento "ese validador ya acota" dejó el front más laxo que el servidor. Cada capa se
+  verifica en su propia capa.
+- **Si el borde normaliza, el tope se mide sobre el normalizado.** `toUpperCase()` puede
+  AGRANDAR el string (`'ß'` → `'SS'`), así que 50 caracteres tipeados pueden ser 100 al
+  guardarse. `tipos-componente` exporta su función de normalización y las tres capas la
+  aplican antes de medir. Y vale para el PISO igual que para el techo: si el `@Transform`
+  corre antes que `@IsNotEmpty`, entonces `"   "` es vacío para el backend y el front tiene
+  que medirlo igual.
 
 ### Qué preguntar frente a un formulario
 
