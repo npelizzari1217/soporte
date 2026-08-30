@@ -1,6 +1,81 @@
 import { BaseEntity } from '../../../shared/domain/base-entity';
 
 /**
+ * Tope de largo de `cuit`, espejando `clientes.cuit VARCHAR(13)`
+ * (`prisma_master/schema.prisma`, `init_master/migration.sql:6`). Son
+ * exactamente los caracteres de un CUIT formateado: `30-12345678-9`.
+ *
+ * Vive ACÁ y no en el DTO porque el dominio es la autoridad del límite: el
+ * `VARCHAR` de Postgres es backstop, nunca al revés. `cliente.dto.ts` lo
+ * importa de este módulo para que el 400 amable del borde y la precondición
+ * del dominio no puedan divergir — que es justo lo que había pasado: el DTO
+ * declaraba `@MaxLength(20)` contra una columna de 13, así que 14 a 20
+ * caracteres pasaban las dos capas de validación y reventaban recién al
+ * persistir (22001 → 500 crudo). Mismo criterio que
+ * `equipo-informatico.entity.ts` (fix "límites de equipos", sdd/limites-db).
+ */
+export const CLIENTE_CUIT_MAX_LENGTH = 13;
+
+/**
+ * Topes de largo de `nombre` y `razonSocial`.
+ *
+ * A diferencia de `cuit`, estos NO son el ancho de la columna: `clientes.nombre`
+ * y `clientes.razon_social` son `VarChar(255)`. El 200 es un tope de producto
+ * más estricto, que ya vivía en `UpdateClienteDto`; la columna queda de
+ * backstop.
+ *
+ * Suben al dominio por lo mismo que `cuit`: mientras el número estuvo escrito a
+ * mano en el borde, el alta se quedó sin él y la edición no, así que un nombre
+ * de 220 se podía CREAR pero después nunca EDITAR. Con la constante acá y los
+ * dos DTOs importándola, esa asimetría no se puede reintroducir en silencio.
+ */
+export const CLIENTE_NOMBRE_MAX_LENGTH = 200;
+export const CLIENTE_RAZON_SOCIAL_MAX_LENGTH = 200;
+
+/**
+ * Precondición de largo de los tres campos de texto. Va como `throw` y no como
+ * `Result` por la rama 1 de la "regla de tres ramas" documentada en
+ * `equipo-informatico.entity.ts`: ninguno de los tres se normaliza en ningún
+ * borde, así que el borde mide exactamente el mismo string que mide el
+ * dominio, y un valor fuera de rango llegando acá es una violación de contrato
+ * del caller, no una desviación de negocio que el usuario deba ver.
+ *
+ * NO se aplica en `reconstitute()`, por el mismo criterio que
+ * `EquipoInformaticoEntity`: una fila que ya existe en la base se lee, no se
+ * revalida — hacer explotar una lectura por un valor histórico convertiría un
+ * dato viejo en una caída de sistema.
+ *
+ * Esa exención pesa DISTINTO en cada campo, y conviene no confundirlos:
+ *
+ * - `cuit` espeja la columna exacta (13 = `VARCHAR(13)`), así que ninguna fila
+ *   guardada puede excederlo: lo que el DTO dejaba colar moría en Postgres y
+ *   nunca se persistió. Acá la exención es precaución, por si la columna se
+ *   ensancha y el tope no la sigue.
+ * - `nombre` y `razonSocial` son topes de PRODUCTO por debajo de la columna
+ *   (200 contra `VarChar(255)`), y hasta este cambio el alta no los aplicaba.
+ *   O sea que sí pueden existir filas de 201 a 255 caracteres, creadas por esa
+ *   puerta. Para ellas la exención no es precaución sino requisito: sin ella,
+ *   listar clientes reventaría al reconstituir una fila vieja.
+ */
+function validarLargos(datos: {
+  nombre?: string;
+  razonSocial?: string | null;
+  cuit?: string | null;
+}): void {
+  if (datos.nombre !== undefined && datos.nombre.length > CLIENTE_NOMBRE_MAX_LENGTH) {
+    throw new Error(`ClienteEntity: nombre excede ${CLIENTE_NOMBRE_MAX_LENGTH} caracteres.`);
+  }
+  if (datos.razonSocial != null && datos.razonSocial.length > CLIENTE_RAZON_SOCIAL_MAX_LENGTH) {
+    throw new Error(
+      `ClienteEntity: razonSocial excede ${CLIENTE_RAZON_SOCIAL_MAX_LENGTH} caracteres.`,
+    );
+  }
+  if (datos.cuit != null && datos.cuit.length > CLIENTE_CUIT_MAX_LENGTH) {
+    throw new Error(`ClienteEntity: cuit excede ${CLIENTE_CUIT_MAX_LENGTH} caracteres.`);
+  }
+}
+
+/**
  * ClienteProps — shape de las propiedades de dominio del Cliente.
  * Sin imports de Prisma ni NestJS — dominio puro.
  */
@@ -43,6 +118,7 @@ export class ClienteEntity extends BaseEntity<ClienteProps> {
    * Genera UUIDv7 internamente (via BaseEntity) si no se provee id.
    */
   static create(props: ClienteProps, id?: string): ClienteEntity {
+    validarLargos(props);
     return new ClienteEntity({ ...props, csatHabilitado: props.csatHabilitado ?? false }, id);
   }
 
@@ -103,6 +179,7 @@ export class ClienteEntity extends BaseEntity<ClienteProps> {
    * = "no tocar", `null` = "limpiar" para los nullables).
    */
   editar(cambios: { nombre?: string; razonSocial?: string | null; cuit?: string | null }): void {
+    validarLargos(cambios);
     if (cambios.nombre !== undefined) this.props.nombre = cambios.nombre;
     if (cambios.razonSocial !== undefined) this.props.razonSocial = cambios.razonSocial;
     if (cambios.cuit !== undefined) this.props.cuit = cambios.cuit;

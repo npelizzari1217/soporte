@@ -183,7 +183,7 @@ TODOS los casos que entran acá?".
 | Vacío que se vuelve valor | `Number("")` es `0` y sobrescribe un acumulado | helper `numeroRequerido` en `compras/schemas` |
 | Sincronización del formulario | Reabrir muestra el dato del primer render | `if (next) reset(valoresVigentes)` — 16 diálogos |
 | Select con valor fuera de catálogo | La pantalla dice una cosa y se guarda otra | `tipoActualFueraDeCatalogo` en `componente-edit-dialog` |
-| Topes de largo sin espejar | 400 genérico del backend en vez de validación local | `shared/lib/limites-ticket` |
+| Topes de largo sin espejar | 500 crudo de Postgres, o 400 remoto por algo que se veía en pantalla | `shared/lib/limites-ticket` · `features/clientes/limites` |
 
 Las cuatro primeras están cerradas. El select fuera de catálogo cerró sus 2 instancias
 —el sector de la cabecera de compras y la prioridad del ticket— con la variante que distingue
@@ -194,6 +194,27 @@ la ausencia no prueba nada.
 **Sigue abierta una sola clase**: 8 campos sin tope espejado — edilicia (ubicación,
 descripción de subtarea), usuarios (nombre y apellido, solo en el ALTA: la ruta de edición sí
 los tiene), tipos-componente (código, nombre), ciclos-master (nombre) y kb (título).
+
+Ojo con `usuarios`: el nombre y el apellido del admin entran por DOS puertas, y
+la cuenta de arriba las trata como un solo campo cada una. Además del alta de
+usuario está `CreateClienteDto` (`adminNombre`/`adminApellido`/`adminEmail`, el
+alta de tenant), que escribe las MISMAS columnas `usuarios.nombre`/`apellido`
+`VarChar(100)` y tampoco tiene tope. Cerrar una puerta y no la otra deja la
+clase abierta con apariencia de cerrada.
+
+Esa clase tiene DOS variantes que fallan distinto, y los 8 de arriba son todos la primera:
+
+1. **Sin tope en ninguna capa.** La columna es lo único que valida, así que el valor llega a
+   Postgres y muere ahí: 22001 → **500 crudo**. Son los 8.
+2. **Con tope en el backend pero no en el front.** El servidor rechaza bien, pero el usuario
+   se come un **400 remoto** por algo que se veía en pantalla, y pierde lo tipeado. Era el
+   caso de `clientes`, ya cerrado (`features/clientes/limites.ts`).
+
+Y hay una tercera forma, más silenciosa, que apareció al cerrar `clientes`: **el tope existe
+en las dos capas pero NO coincide con la columna.** `cuit` declaraba `@MaxLength(20)` contra
+un `VARCHAR(13)`, así que 14 a 20 caracteres pasaban las dos validaciones y reventaban igual
+al persistir. Por eso el número vive en la entidad de dominio y el DTO lo importa: un tope
+escrito a mano en el borde puede divergir de la columna sin que nada avise.
 
 ### Qué preguntar frente a un formulario
 

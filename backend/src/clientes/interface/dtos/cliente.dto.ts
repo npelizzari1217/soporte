@@ -17,19 +17,40 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
+import {
+  CLIENTE_CUIT_MAX_LENGTH,
+  CLIENTE_NOMBRE_MAX_LENGTH,
+  CLIENTE_RAZON_SOCIAL_MAX_LENGTH,
+} from '../../domain/entities/cliente.entity';
 
-/** Body de `POST /clientes`. Solo ROOT (`GlobalAdminGuard`, R16). */
+/**
+ * Body de `POST /clientes`. Solo ROOT (`GlobalAdminGuard`, R16).
+ *
+ * ALCANCE de los topes de largo: `nombre`, `razonSocial` y `cuit` los importan
+ * de `ClienteEntity`. Los tres campos de admin NO tienen tope todavía, en
+ * ninguna de las dos capas, y no escriben la misma columna:
+ * `adminNombre`/`adminApellido` van a `usuarios.nombre`/`apellido`
+ * `VarChar(100)`, y `adminEmail` a `usuarios.email VarChar(255)`.
+ *
+ * Los dos primeros figuran en `AGENTS.md` como instancia abierta, y esa columna
+ * se escribe desde dos altas distintas —esta y el ABM de usuarios—, así que
+ * cerrarla por una sola puerta dejaría la clase abierta con apariencia de
+ * cerrada: se cierra completa o no se cierra.
+ */
 export class CreateClienteDto {
   @IsString()
   @IsNotEmpty()
+  @MaxLength(CLIENTE_NOMBRE_MAX_LENGTH)
   nombre!: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(CLIENTE_RAZON_SOCIAL_MAX_LENGTH)
   razonSocial?: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(CLIENTE_CUIT_MAX_LENGTH)
   cuit?: string;
 
   @IsEmail()
@@ -58,17 +79,17 @@ export class UpdateClienteDto {
   @IsOptional()
   @IsString()
   @IsNotEmpty()
-  @MaxLength(200)
+  @MaxLength(CLIENTE_NOMBRE_MAX_LENGTH)
   nombre?: string;
 
   @IsOptional()
   @IsString()
-  @MaxLength(200)
+  @MaxLength(CLIENTE_RAZON_SOCIAL_MAX_LENGTH)
   razonSocial?: string;
 
   @IsOptional()
   @IsString()
-  @MaxLength(20)
+  @MaxLength(CLIENTE_CUIT_MAX_LENGTH)
   cuit?: string;
 }
 
