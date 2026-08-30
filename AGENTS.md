@@ -191,8 +191,8 @@ Las cuatro primeras están cerradas. El select fuera de catálogo cerró sus 2 i
 lista traída solo vale cuando esa lista YA resolvió, porque con el catálogo cargando o caído
 la ausencia no prueba nada.
 
-**Sigue abierta una sola clase**, y ya no son 8 sino **4 campos** sin tope espejado —
-tipos-componente (código, nombre), ciclos-master (nombre) y kb (título).
+**Sigue abierta una sola clase**, y ya no son 8 sino **2 campos** sin tope espejado —
+ciclos-master (nombre) y kb (título).
 
 `usuarios` salió de la lista: nombre y apellido quedaron cerrados en las tres capas, y con
 ellos las DOS puertas que escriben esas columnas —el ABM de usuarios y los campos
@@ -208,7 +208,7 @@ backend no acotan igual.** `@IsEmail()` corta en 254 caracteres; `z.string().ema
 solo un regex y acepta 309 (medido). Copiar del backend el argumento "ese validador ya acota"
 dejó el front más laxo que el servidor. Cada capa se verifica en su propia capa.
 
-Esa clase tiene DOS variantes que fallan distinto, y los 4 de arriba son todos la primera:
+Esa clase tiene DOS variantes que fallan distinto, y los 2 de arriba son todos la primera:
 
 1. **Sin tope en ninguna capa.** La columna es lo único que valida, así que el valor llega a
    Postgres y muere ahí: 22001 → **500 crudo**. Son los 8.
