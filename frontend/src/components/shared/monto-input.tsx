@@ -7,11 +7,17 @@
  *
  * **Invariante**: el valor que sale por `onChange` es SIEMPRE el número
  * crudo. El formato es una proyección de sólo lectura que se calcula al
- * vuelo mientras el campo NO tiene foco — nunca se escribe en el valor. Si
- * la cadena formateada llegara al schema, el número se perdería: en Compras
- * `z.coerce.number()` devolvería `NaN`, y en Equipos —donde el campo viaja
- * como `string`— el parseo previo al submit devolvería `null`. En los dos
- * casos el usuario pierde la carga.
+ * vuelo mientras el campo NO tiene foco — nunca se escribe en el valor.
+ *
+ * Esa invariante ya NO es la única defensa: desde el 2026-08-30 los schemas
+ * de Equipos y de Compras parsean con `parsearNumeroEsAr`, así que una
+ * cadena formateada que llegue al resolver se entiende igual en vez de morir
+ * como `NaN`. Hizo falta arreglarlo ahí porque este componente canoniza
+ * recién al PERDER EL FOCO, y enviar el formulario con Enter no dispara ese
+ * blur: el texto crudo llegaba tal cual y el monto se rechazaba. La
+ * invariante se mantiene igual, ahora como redundancia y no como único
+ * muro — si algún día un consumidor nuevo valida con `Number()` pelado,
+ * seguirá recibiendo el valor crudo y no romperá.
  *
  * Al salir del campo se normaliza lo tipeado a su forma canónica cruda
  * (`parsearNumeroEsAr`), así un valor pegado ya formateado también queda

@@ -144,6 +144,56 @@ describe("RegistrarOrdenDialog", () => {
   // (`CantidadOrdenadaExcedeSolicitadaError`). Mensaje REAL de esa clase
   // (`compras.errors.ts`), valor enviado (99) genuinamente en exceso sobre
   // `item.cantidad` (10, `buildItem()` default).
+  it("cero fantasma (R2): borrar cantidadOrdenada precargada en 50 y guardar NO pega a la API y muestra el error de requerido", async () => {
+    let pegoALaApi = false;
+    server.use(
+      http.post(`/api/compras/${COMPRA_ID}/items/item-1/registrar-orden`, () => {
+        pegoALaApi = true;
+        return HttpResponse.json(buildItem({ cantidadOrdenada: 0 }));
+      }),
+    );
+
+    renderWithProviders(
+      <RegistrarOrdenDialog compraId={COMPRA_ID} item={buildItem({ cantidad: 100, cantidadOrdenada: 50 })} />,
+      { user: buildUser({ permisos: ["COMPRAS:MODIFICACION"] }) },
+    );
+
+    const user = await abrirDialog(/registrar orden/i);
+    const input = await screen.findByLabelText(/cantidad ordenada/i);
+    expect(input).toHaveValue(50);
+    await user.clear(input);
+    const guardar = screen.getByRole("button", { name: /^guardar$/i });
+    expect(guardar).not.toBeDisabled();
+    await user.click(guardar);
+
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(pegoALaApi).toBe(false);
+  });
+
+  it("hermano invertido: tipear 75 sobre cantidadOrdenada precargada en 50 sí envía el request", async () => {
+    let capturedBody: Record<string, unknown> = {};
+    server.use(
+      http.post(`/api/compras/${COMPRA_ID}/items/item-1/registrar-orden`, async ({ request }) => {
+        capturedBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(buildItem({ cantidadOrdenada: 75 }));
+      }),
+    );
+
+    renderWithProviders(
+      <RegistrarOrdenDialog compraId={COMPRA_ID} item={buildItem({ cantidad: 100, cantidadOrdenada: 50 })} />,
+      { user: buildUser({ permisos: ["COMPRAS:MODIFICACION"] }) },
+    );
+
+    const user = await abrirDialog(/registrar orden/i);
+    const input = await screen.findByLabelText(/cantidad ordenada/i);
+    await user.clear(input);
+    await user.type(input, "75");
+    await user.click(screen.getByRole("button", { name: /^guardar$/i }));
+
+    await waitFor(() => expect(capturedBody.cantidadOrdenada).toBe(75));
+  });
+
   it("S45: cantidadOrdenada > item.cantidad -> el 422 de CantidadOrdenadaExcedeSolicitadaError llega al usuario en un toast", async () => {
     const MENSAJE_S45 =
       'La cantidad ordenada registrada para el ítem "item-1" excede la cantidad solicitada.';
@@ -239,6 +289,60 @@ describe("RegistrarRecepcionDialog", () => {
 
     await waitFor(() => expect(capturedBody.cantidadRecibida).toBe(5));
   });
+
+  it("cero fantasma (R2): borrar cantidadRecibida precargada en 50 y guardar NO pega a la API y muestra el error de requerido", async () => {
+    let pegoALaApi = false;
+    server.use(
+      http.post(`/api/compras/${COMPRA_ID}/items/item-1/registrar-recepcion`, () => {
+        pegoALaApi = true;
+        return HttpResponse.json(buildItem({ cantidadRecibida: 0 }));
+      }),
+    );
+
+    renderWithProviders(
+      <RegistrarRecepcionDialog
+        compraId={COMPRA_ID}
+        item={buildItem({ cantidadOrdenada: 100, cantidadRecibida: 50 })}
+      />,
+      { user: buildUser({ permisos: ["COMPRAS:MODIFICACION"] }) },
+    );
+
+    const user = await abrirDialog(/registrar recepción/i);
+    const input = await screen.findByLabelText(/cantidad recibida/i);
+    expect(input).toHaveValue(50);
+    await user.clear(input);
+    await user.click(screen.getByRole("button", { name: /^guardar$/i }));
+
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(pegoALaApi).toBe(false);
+  });
+
+  it("hermano invertido: tipear 75 sobre cantidadRecibida precargada en 50 sí envía el request", async () => {
+    let capturedBody: Record<string, unknown> = {};
+    server.use(
+      http.post(`/api/compras/${COMPRA_ID}/items/item-1/registrar-recepcion`, async ({ request }) => {
+        capturedBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(buildItem({ cantidadRecibida: 75 }));
+      }),
+    );
+
+    renderWithProviders(
+      <RegistrarRecepcionDialog
+        compraId={COMPRA_ID}
+        item={buildItem({ cantidadOrdenada: 100, cantidadRecibida: 50 })}
+      />,
+      { user: buildUser({ permisos: ["COMPRAS:MODIFICACION"] }) },
+    );
+
+    const user = await abrirDialog(/registrar recepción/i);
+    const input = await screen.findByLabelText(/cantidad recibida/i);
+    await user.clear(input);
+    await user.type(input, "75");
+    await user.click(screen.getByRole("button", { name: /^guardar$/i }));
+
+    await waitFor(() => expect(capturedBody.cantidadRecibida).toBe(75));
+  });
 });
 
 describe("RegistrarEntregaDialog", () => {
@@ -288,5 +392,59 @@ describe("RegistrarEntregaDialog", () => {
     await user.click(screen.getByRole("button", { name: /^guardar$/i }));
 
     await waitFor(() => expect(capturedBody.cantidadEntregada).toBe(5));
+  });
+
+  it("cero fantasma (R2): borrar cantidadEntregada precargada en 50 y guardar NO pega a la API y muestra el error de requerido", async () => {
+    let pegoALaApi = false;
+    server.use(
+      http.post(`/api/compras/${COMPRA_ID}/items/item-1/registrar-entrega`, () => {
+        pegoALaApi = true;
+        return HttpResponse.json(buildItem({ cantidadEntregada: 0 }));
+      }),
+    );
+
+    renderWithProviders(
+      <RegistrarEntregaDialog
+        compraId={COMPRA_ID}
+        item={buildItem({ cantidadOrdenada: 100, cantidadRecibida: 100, cantidadEntregada: 50 })}
+      />,
+      { user: buildUser({ permisos: ["COMPRAS:MODIFICACION"] }) },
+    );
+
+    const user = await abrirDialog(/registrar entrega/i);
+    const input = await screen.findByLabelText(/cantidad entregada/i);
+    expect(input).toHaveValue(50);
+    await user.clear(input);
+    await user.click(screen.getByRole("button", { name: /^guardar$/i }));
+
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(pegoALaApi).toBe(false);
+  });
+
+  it("hermano invertido: tipear 75 sobre cantidadEntregada precargada en 50 sí envía el request", async () => {
+    let capturedBody: Record<string, unknown> = {};
+    server.use(
+      http.post(`/api/compras/${COMPRA_ID}/items/item-1/registrar-entrega`, async ({ request }) => {
+        capturedBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(buildItem({ cantidadEntregada: 75 }));
+      }),
+    );
+
+    renderWithProviders(
+      <RegistrarEntregaDialog
+        compraId={COMPRA_ID}
+        item={buildItem({ cantidadOrdenada: 100, cantidadRecibida: 100, cantidadEntregada: 50 })}
+      />,
+      { user: buildUser({ permisos: ["COMPRAS:MODIFICACION"] }) },
+    );
+
+    const user = await abrirDialog(/registrar entrega/i);
+    const input = await screen.findByLabelText(/cantidad entregada/i);
+    await user.clear(input);
+    await user.type(input, "75");
+    await user.click(screen.getByRole("button", { name: /^guardar$/i }));
+
+    await waitFor(() => expect(capturedBody.cantidadEntregada).toBe(75));
   });
 });

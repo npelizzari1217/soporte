@@ -173,6 +173,142 @@ describe("ItemCreateDialog", () => {
 
       expect(monto).toHaveValue("");
     });
+
+    it("cero fantasma (R2/R3): tipear un monto y borrarlo antes de enviar NO pega a la API y muestra el error de requerido", async () => {
+      let pegoALaApi = false;
+      server.use(
+        http.post(`/api/compras/${COMPRA_ID}/items`, () => {
+          pegoALaApi = true;
+          return HttpResponse.json(compraDetalleFixture, { status: 201 });
+        }),
+      );
+
+      renderWithProviders(<ItemCreateDialog compraId={COMPRA_ID} />, {
+        user: buildUser({ permisos: ["COMPRAS:ALTAS"] }),
+      });
+
+      const user = await abrirDialog();
+      await user.type(screen.getByLabelText(/descripción/i), "Insumo");
+      await user.clear(screen.getByLabelText(/cantidad/i));
+      await user.type(screen.getByLabelText(/cantidad/i), "1");
+      await user.type(screen.getByLabelText(/proveedor/i), "ACME");
+      const monto = screen.getByLabelText(/monto/i);
+      await user.clear(monto);
+      await user.type(monto, "1500.50");
+      await user.clear(monto);
+      await user.selectOptions(screen.getByLabelText(/moneda/i), "ARS");
+      await user.type(screen.getByLabelText(/fecha de cotización/i), "2026-01-01");
+      await user.click(screen.getByRole("button", { name: /agregar$/i }));
+
+      expect(await screen.findByText(/el monto es requerido/i)).toBeInTheDocument();
+      await new Promise((r) => setTimeout(r, 50));
+      expect(pegoALaApi).toBe(false);
+    });
+
+    /**
+     * `MontoInput` deja el texto crudo en el form hasta el blur, y `Enter`
+     * dentro de un `<form>` dispara el submit sin pasar por ahí: el resolver
+     * tiene que aceptar el formato es-AR (`"1.000,50"`) igual que lo hace tras
+     * el blur. `toHaveFocus()` es la guarda: si algún día se introduce un
+     * blur antes del submit, este test dejaría de probar lo que dice.
+     *
+     * El POST se difiere con una promesa manual: si se resolviera de entrada,
+     * el cierre del diálogo en `onSuccess` movería el foco dentro del mismo
+     * `await user.keyboard("{Enter}")`, antes de poder comprobarlo.
+     */
+    it("Enter sin blur con monto en formato es-AR envía el número correcto", async () => {
+      let resolverRespuesta: () => void = () => {};
+      const respuestaPendiente = new Promise<void>((resolve) => {
+        resolverRespuesta = resolve;
+      });
+      let capturedBody: Record<string, unknown> = {};
+      server.use(
+        http.post(`/api/compras/${COMPRA_ID}/items`, async ({ request }) => {
+          capturedBody = (await request.json()) as Record<string, unknown>;
+          await respuestaPendiente;
+          return HttpResponse.json(compraDetalleFixture, { status: 201 });
+        }),
+      );
+
+      renderWithProviders(<ItemCreateDialog compraId={COMPRA_ID} />, {
+        user: buildUser({ permisos: ["COMPRAS:ALTAS"] }),
+      });
+
+      const user = await abrirDialog();
+      await user.type(screen.getByLabelText(/descripción/i), "Insumo");
+      await user.clear(screen.getByLabelText(/cantidad/i));
+      await user.type(screen.getByLabelText(/cantidad/i), "1");
+      await user.type(screen.getByLabelText(/proveedor/i), "ACME");
+      await user.selectOptions(screen.getByLabelText(/moneda/i), "ARS");
+      await user.type(screen.getByLabelText(/fecha de cotización/i), "2026-01-01");
+      const monto = screen.getByLabelText(/monto/i);
+      await user.click(monto);
+      await user.paste("1.234.567,89");
+      await user.keyboard("{Enter}");
+
+      expect(monto).toHaveFocus();
+      resolverRespuesta();
+      await waitFor(() => expect(capturedBody.monto).toBe(1234567.89));
+    });
+
+    /** Hermano invertido: un valor inválido sigue bloqueando el envío por Enter sin blur. */
+    it("Enter sin blur con monto inválido sigue bloqueando el envío", async () => {
+      let pegoALaApi = false;
+      server.use(
+        http.post(`/api/compras/${COMPRA_ID}/items`, () => {
+          pegoALaApi = true;
+          return HttpResponse.json(compraDetalleFixture, { status: 201 });
+        }),
+      );
+
+      renderWithProviders(<ItemCreateDialog compraId={COMPRA_ID} />, {
+        user: buildUser({ permisos: ["COMPRAS:ALTAS"] }),
+      });
+
+      const user = await abrirDialog();
+      await user.type(screen.getByLabelText(/descripción/i), "Insumo");
+      await user.clear(screen.getByLabelText(/cantidad/i));
+      await user.type(screen.getByLabelText(/cantidad/i), "1");
+      await user.type(screen.getByLabelText(/proveedor/i), "ACME");
+      await user.selectOptions(screen.getByLabelText(/moneda/i), "ARS");
+      await user.type(screen.getByLabelText(/fecha de cotización/i), "2026-01-01");
+      const monto = screen.getByLabelText(/monto/i);
+      await user.click(monto);
+      await user.paste("abc");
+      await user.keyboard("{Enter}");
+
+      expect(await screen.findByText(/ingresá un monto válido/i)).toBeInTheDocument();
+      await new Promise((r) => setTimeout(r, 50));
+      expect(pegoALaApi).toBe(false);
+    });
+
+    it("hermano invertido: reemplazar el monto por 2000 sí envía el request", async () => {
+      let capturedBody: Record<string, unknown> = {};
+      server.use(
+        http.post(`/api/compras/${COMPRA_ID}/items`, async ({ request }) => {
+          capturedBody = (await request.json()) as Record<string, unknown>;
+          return HttpResponse.json(compraDetalleFixture, { status: 201 });
+        }),
+      );
+
+      renderWithProviders(<ItemCreateDialog compraId={COMPRA_ID} />, {
+        user: buildUser({ permisos: ["COMPRAS:ALTAS"] }),
+      });
+
+      const user = await abrirDialog();
+      await user.type(screen.getByLabelText(/descripción/i), "Insumo");
+      await user.clear(screen.getByLabelText(/cantidad/i));
+      await user.type(screen.getByLabelText(/cantidad/i), "1");
+      await user.type(screen.getByLabelText(/proveedor/i), "ACME");
+      const monto = screen.getByLabelText(/monto/i);
+      await user.clear(monto);
+      await user.type(monto, "2000");
+      await user.selectOptions(screen.getByLabelText(/moneda/i), "ARS");
+      await user.type(screen.getByLabelText(/fecha de cotización/i), "2026-01-01");
+      await user.click(screen.getByRole("button", { name: /agregar$/i }));
+
+      await waitFor(() => expect(capturedBody.monto).toBe(2000));
+    });
   });
 
   it("muestra el error de dominio del backend (422) al usuario, sin cerrar el dialog", async () => {

@@ -43,9 +43,8 @@ export function baseDepreciacion(
  * coma, `"1.234"` sigue siendo el número `1.234`, no `1234` — no hay forma
  * de desambiguar un punto suelto sin esa señal.
  *
- * Esto NO consolida el parseo de montos de toda la app: `features/compras`
- * mantiene su propio parser, y el momento en que `MontoInput` canoniza (al
- * blur) no cambia.
+ * Esto no cambia el momento en que `MontoInput` canoniza (sigue siendo al
+ * blur); solo hace que el submit entienda lo mismo que la pantalla muestra.
  */
 export function parseImporte(valor: string | undefined): number | null {
   if (valor === undefined) return null;
