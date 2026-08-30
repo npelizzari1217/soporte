@@ -35,6 +35,11 @@
  */
 import { Argon2HashProvider } from '../../src/auth/infrastructure/argon2-hash.provider';
 import { IHashProvider } from '../../src/auth/domain/ports/i-hash.provider';
+import {
+  USUARIO_APELLIDO_MAX_LENGTH,
+  USUARIO_EMAIL_MAX_LENGTH,
+  USUARIO_NOMBRE_MAX_LENGTH,
+} from '../../src/auth/domain/entities/usuario.entity';
 import { PrismaService } from '../../src/shared/infrastructure/persistence/prisma.service';
 import { MasterPrismaClient } from '../../src/shared/infrastructure/persistence/prisma-clients';
 
@@ -43,6 +48,36 @@ export function requireEnv(name: string): string {
   const value = process.env[name];
   if (!value || value.trim() === '') {
     throw new Error(`[root-bootstrap] Falta la variable de entorno obligatoria: ${name}`);
+  }
+  return value;
+}
+
+/**
+ * Lee una env obligatoria y verifica que entre en su columna.
+ *
+ * POR QUÉ existe: este seed escribe `usuarios.*` DIRECTO por Prisma, sin pasar
+ * por `UsuarioEntity`, así que el guard de largo del dominio no lo cubre. Sin
+ * esto, un `ROOT_ADMIN_NOMBRE` de 150 caracteres llegaba a la columna
+ * `VarChar(100)` y el deploy moría con un 22001 del driver — un error que NO
+ * nombra la variable culpable, justo en el peor momento para adivinar.
+ *
+ * El tope se importa del dominio, no se escribe acá: es la misma autoridad que
+ * usan `CreateUsuarioTenantDto` y `CreateClienteDto`. Si la columna se ensancha,
+ * este seed la sigue solo.
+ *
+ * @param name - Nombre de la variable de entorno, tal cual aparece en `.env`. Se
+ *   usa en el mensaje de error, así que tiene que ser el nombre real y no un
+ *   alias: es lo único que le dice al operador cuál de las cuatro corregir.
+ * @param max - Tope de caracteres, importado del dominio.
+ * @returns El valor de la variable, ya verificado que entra en su columna.
+ * @throws Error si la variable falta, está vacía, o supera `max`.
+ */
+export function requireEnvConTope(name: string, max: number): string {
+  const value = requireEnv(name);
+  if (value.length > max) {
+    throw new Error(
+      `[root-bootstrap] ${name} tiene ${value.length} caracteres y el máximo es ${max}.`,
+    );
   }
   return value;
 }
@@ -58,10 +93,12 @@ export interface RootBootstrapEnv {
 /** Agrupa las 4 env `ROOT_ADMIN_*` — falta cualquiera → throw (R2). */
 export function readRootBootstrapEnv(): RootBootstrapEnv {
   return {
-    email: requireEnv('ROOT_ADMIN_EMAIL'),
+    email: requireEnvConTope('ROOT_ADMIN_EMAIL', USUARIO_EMAIL_MAX_LENGTH),
+    // `password` NO lleva tope: se persiste hasheada (argon2id), así que lo que
+    // llega a la columna tiene largo fijo y no depende de lo que se tipeó.
     password: requireEnv('ROOT_ADMIN_PASSWORD'),
-    nombre: requireEnv('ROOT_ADMIN_NOMBRE'),
-    apellido: requireEnv('ROOT_ADMIN_APELLIDO'),
+    nombre: requireEnvConTope('ROOT_ADMIN_NOMBRE', USUARIO_NOMBRE_MAX_LENGTH),
+    apellido: requireEnvConTope('ROOT_ADMIN_APELLIDO', USUARIO_APELLIDO_MAX_LENGTH),
   };
 }
 

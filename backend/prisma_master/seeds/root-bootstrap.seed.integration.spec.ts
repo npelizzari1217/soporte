@@ -30,6 +30,11 @@ import {
   RootBootstrapAccountInactiveError,
   type RootBootstrapEnv,
 } from './root-bootstrap.seed';
+import {
+  USUARIO_APELLIDO_MAX_LENGTH,
+  USUARIO_EMAIL_MAX_LENGTH,
+  USUARIO_NOMBRE_MAX_LENGTH,
+} from '../../src/auth/domain/entities/usuario.entity';
 import { PrismaService } from '../../src/shared/infrastructure/persistence/prisma.service';
 import { MasterPrismaClient } from '../../src/shared/infrastructure/persistence/prisma-clients';
 import type { IHashProvider } from '../../src/auth/domain/ports/i-hash.provider';
@@ -92,6 +97,33 @@ describe('readRootBootstrapEnv (R2)', () => {
   it.each(ALL_VARS)('[CRITICAL] falta %s → throw (cero literales hardcodeados)', (varName) => {
     delete process.env[varName];
     expect(() => readRootBootstrapEnv()).toThrow();
+  });
+
+  /**
+   * El seed escribe `usuarios.nombre`/`apellido`/`email` DIRECTO por Prisma, sin
+   * pasar por `UsuarioEntity`, así que el guard de largo del dominio no lo
+   * cubre. Sin esta validación un `ROOT_ADMIN_NOMBRE` de 150 caracteres llegaba
+   * a la columna `VarChar(100)` y el deploy moría con un 22001 del driver, que
+   * no nombra la variable culpable.
+   *
+   * Los topes se importan del dominio, no se escriben acá: es la misma
+   * autoridad que usan los DTOs.
+   */
+  it.each([
+    ['ROOT_ADMIN_NOMBRE', USUARIO_NOMBRE_MAX_LENGTH],
+    ['ROOT_ADMIN_APELLIDO', USUARIO_APELLIDO_MAX_LENGTH],
+    ['ROOT_ADMIN_EMAIL', USUARIO_EMAIL_MAX_LENGTH],
+  ])('[CRITICAL] %s más largo que su columna → throw que la nombra', (varName, max) => {
+    process.env[varName] = 'a'.repeat(max + 1);
+    expect(() => readRootBootstrapEnv()).toThrow(new RegExp(varName));
+  });
+
+  it.each([
+    ['ROOT_ADMIN_NOMBRE', USUARIO_NOMBRE_MAX_LENGTH],
+    ['ROOT_ADMIN_APELLIDO', USUARIO_APELLIDO_MAX_LENGTH],
+  ])('acepta %s en el límite exacto', (varName, max) => {
+    process.env[varName] = 'a'.repeat(max);
+    expect(() => readRootBootstrapEnv()).not.toThrow();
   });
 });
 

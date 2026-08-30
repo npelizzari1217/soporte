@@ -30,6 +30,22 @@ export interface KbArticuloProps {
 export const KB_TITULO_MAX_LENGTH = 255;
 
 /**
+ * Tope de largo de `slug`, espejando `kbArticulos.slug VarChar(120)`.
+ *
+ * `slug` NO es parte de `KbArticuloProps`: solo lo escribe el sincronizador de
+ * la Ayuda (`scripts/sync-ayuda.js`), que es la identidad estable de los
+ * artículos que viven como markdown en el repo. Pero la columna pertenece a
+ * este agregado, así que su tope vive acá igual — si no, el único lugar donde
+ * existiría el número sería un literal dentro de un script.
+ *
+ * Ese script es CommonJS y corre con `node` pelado, así que no puede importar
+ * esta constante. Lo que impide que diverjan es un test:
+ * `scripts/sync-ayuda.spec.ts` compara los topes que el script exporta contra
+ * estos.
+ */
+export const KB_SLUG_MAX_LENGTH = 120;
+
+/**
  * Valida `titulo`: no vacío y dentro del tope.
  *
  * Las dos condiciones van juntas a propósito. `create()` y `editar()` llaman

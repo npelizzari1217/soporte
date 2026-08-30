@@ -12,6 +12,10 @@
  */
 /* eslint-disable @typescript-eslint/no-require-imports */
 import { existsSync } from 'node:fs';
+import {
+  KB_SLUG_MAX_LENGTH,
+  KB_TITULO_MAX_LENGTH,
+} from '../src/kb/domain/entities/kb-articulo.entity';
 
 type Articulo = {
   slug: string;
@@ -107,5 +111,29 @@ describe('cargarArticulos() — deriva del directorio real', () => {
     expect(articulos.length).toBeGreaterThan(0);
     const slugs = articulos.map((a) => a.slug);
     expect(new Set(slugs).size).toBe(slugs.length);
+  });
+});
+
+/**
+ * `sync-ayuda.js` es CommonJS y corre con `node` pelado (`pnpm run sync:ayuda`),
+ * así que NO puede importar las constantes de TypeScript del dominio: sus topes
+ * son literales escritos a mano. Este bloque es lo que impide que diverjan.
+ *
+ * Es la tercera escritura a `kb_articulos` que no pasa por `KbArticuloEntity`
+ * —las otras dos son el alta y la edición por HTTP, que sí van por el DTO—, y
+ * sin este guard un cambio de columna dejaría el script validando contra el
+ * número viejo, abortando artículos válidos o dejando pasar los que no entran.
+ */
+describe('los topes del script no pueden divergir del dominio', () => {
+  const { LIMITES } = require('./sync-ayuda.js') as {
+    LIMITES: { titulo: number; slug: number };
+  };
+
+  it('el tope de titulo es el del dominio', () => {
+    expect(LIMITES.titulo).toBe(KB_TITULO_MAX_LENGTH);
+  });
+
+  it('el tope de slug es el del dominio', () => {
+    expect(LIMITES.slug).toBe(KB_SLUG_MAX_LENGTH);
   });
 });

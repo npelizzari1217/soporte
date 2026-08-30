@@ -42,6 +42,20 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { Pool } = require('pg');
 
+/**
+ * Topes de largo de las columnas que este script escribe.
+ *
+ * Son literales y no imports porque este archivo es CommonJS y corre con `node`
+ * pelado (`pnpm run sync:ayuda`), así que no puede leer las constantes de
+ * TypeScript del dominio. La autoridad real es `KbArticuloEntity`
+ * (`KB_TITULO_MAX_LENGTH`, `KB_SLUG_MAX_LENGTH`).
+ *
+ * Se exportan para que `sync-ayuda.spec.ts` los compare contra esas constantes:
+ * ese test es lo único que impide que este script quede validando contra un
+ * número viejo si la columna cambia.
+ */
+const LIMITES = { titulo: 255, slug: 120 };
+
 /** Directorio canónico de los artículos, relativo a este script. */
 const DIRECTORIO_ARTICULOS = path.join(__dirname, '..', 'ayuda');
 
@@ -156,13 +170,13 @@ function parsearArticulo(texto, origen) {
       `slug "${slug}" inválido: se esperan minúsculas, dígitos y guiones simples (ej. permisos-y-roles)`,
     );
   }
-  if (slug.length > 120) {
-    throw new ArticuloInvalidoError(origen, `slug "${slug}" excede los 120 caracteres`);
+  if (slug.length > LIMITES.slug) {
+    throw new ArticuloInvalidoError(origen, `slug "${slug}" excede los ${LIMITES.slug} caracteres`);
   }
 
   const titulo = String(campos.titulo).trim();
-  if (titulo.length > 255) {
-    throw new ArticuloInvalidoError(origen, `el título excede los 255 caracteres`);
+  if (titulo.length > LIMITES.titulo) {
+    throw new ArticuloInvalidoError(origen, `el título excede los ${LIMITES.titulo} caracteres`);
   }
 
   const visible = campos.visibleParaSolicitante;
@@ -287,6 +301,7 @@ async function sincronizarAyuda(cliente, articulos) {
 
 module.exports = {
   ArticuloInvalidoError,
+  LIMITES,
   DIRECTORIO_ARTICULOS,
   cargarArticulos,
   parsearArticulo,
