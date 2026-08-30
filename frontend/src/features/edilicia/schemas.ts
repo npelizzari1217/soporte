@@ -4,6 +4,8 @@ import {
   TICKET_TITULO_MAX_LENGTH,
   MENSAJE_TITULO_DEMASIADO_LARGO,
 } from "@/shared/lib/limites-ticket";
+import { mensajeDemasiadoLargo } from "@/shared/lib/mensaje-tope";
+import { SUBTAREA_DESCRIPCION_MAX_LENGTH, UBICACION_MAX_LENGTH } from "./limites";
 
 export const crearReparacionSchema = z.object({
   titulo: z
@@ -12,12 +14,21 @@ export const crearReparacionSchema = z.object({
     .max(TICKET_TITULO_MAX_LENGTH, MENSAJE_TITULO_DEMASIADO_LARGO),
   descripcion: z.string().optional(),
   prioridadId: z.string().uuid("Elegí una prioridad"),
-  ubicacion: z.string().optional(),
+  ubicacion: z
+    .string()
+    .max(UBICACION_MAX_LENGTH, mensajeDemasiadoLargo("La ubicación", UBICACION_MAX_LENGTH))
+    .optional(),
 });
 export type CrearReparacionFormValues = z.infer<typeof crearReparacionSchema>;
 
 export const crearSubtareaSchema = z.object({
-  descripcion: z.string().min(1, "La descripción es requerida"),
+  descripcion: z
+    .string()
+    .min(1, "La descripción es requerida")
+    .max(
+      SUBTAREA_DESCRIPCION_MAX_LENGTH,
+      mensajeDemasiadoLargo("La descripción", SUBTAREA_DESCRIPCION_MAX_LENGTH),
+    ),
 });
 export type CrearSubtareaFormValues = z.infer<typeof crearSubtareaSchema>;
 

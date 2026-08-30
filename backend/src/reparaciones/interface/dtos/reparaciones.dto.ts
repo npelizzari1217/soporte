@@ -14,8 +14,14 @@ import {
   TICKET_TITULO_MAX_LENGTH,
   TicketEntity,
 } from '../../../tickets/domain/entities/ticket.entity';
-import { TicketEdiliciaEntity } from '../../domain/entities/ticket-edilicia.entity';
-import { SubtareaEdiliciaEntity } from '../../domain/entities/subtarea-edilicia.entity';
+import {
+  TicketEdiliciaEntity,
+  TICKET_EDILICIA_UBICACION_MAX_LENGTH,
+} from '../../domain/entities/ticket-edilicia.entity';
+import {
+  SubtareaEdiliciaEntity,
+  SUBTAREA_DESCRIPCION_MAX_LENGTH,
+} from '../../domain/entities/subtarea-edilicia.entity';
 import {
   COMENTARIO_TEXTO_MAX_LENGTH,
   ComentarioReparacionEntity,
@@ -47,6 +53,7 @@ export class CreateTicketEdilicioHttpDto {
   /** Ubicación física de la reparación, texto libre (opcional). */
   @IsOptional()
   @IsString()
+  @MaxLength(TICKET_EDILICIA_UBICACION_MAX_LENGTH)
   ubicacion?: string | null;
 }
 
@@ -54,6 +61,7 @@ export class CreateTicketEdilicioHttpDto {
 export class CreateSubtareaHttpDto {
   @IsString()
   @MinLength(1)
+  @MaxLength(SUBTAREA_DESCRIPCION_MAX_LENGTH)
   descripcion!: string;
 
   @IsOptional()
