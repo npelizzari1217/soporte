@@ -1,370 +1,201 @@
 # CLAUDE.md — soporte
 
-## [Overrides / Modificaciones para este proyecto]
+> Las reglas generales (SDD, delegación, commits, rama+PR, TDD, estándares de código) viven
+> en el `CLAUDE.md` global de `C:\trabajos`. Este archivo define solo lo específico de este
+> proyecto. Ante discrepancia, gana este archivo.
 
-Este proyecto lo desarrolla **una sola persona**: no hay revisor ni maintainer separado del
-autor. Pero eso **ya no exime del flujo de rama + PR** (ver abajo).
+---
 
-### Rama + PR: vigente desde el 2026-08-27
+## Qué es
 
-**Este archivo anulaba `branch-pr` y `chained-pr`. Esas dos anulaciones se retiraron.**
+**Soporte**: SaaS de ticketing **multi-tenant**. Una base de control (`soporte_master`)
+registra los clientes en la tabla `clientes`; cada cliente tiene su propia base de
+inquilino con datos reales. El aislamiento entre inquilinos es la propiedad crítica.
 
-El fundamento con que se habían escrito era "no hay revisor externo, así que el PR no aporta
-nada". La regla global del 2026-08-27 rechaza esa premisa de frente: el motivo del PR **nunca
-fue la revisión**, es el **aislamiento entre máquinas**. El mismo repo se trabaja desde varias
-PCs, y la rama principal es el único lugar donde dos chocan de verdad — sobre una rama, un
-push ajeno es un merge que resolvés cuando querés; sobre `main`, es un rebase forzado sobre
-trabajo ya publicado.
+Dominio público: `soporte.sesitec.net`.
 
-O sea: la anulación no era incorrecta, estaba razonada desde una premisa equivocada. Con el
-motivo real a la vista, **acá aplica igual que en cualquier otro proyecto**.
+---
 
-Vigente entonces, sin excepciones locales:
+## Stack
 
-- Toda tarea arranca en su propia rama (`feat/…`, `fix/…`, `chore/…`) y entra por pull
-  request. **Nunca commit directo a `main`.**
-- `git fetch origin` y partir de `origin/main` al día antes de abrir la rama.
-- **Pushear la rama al abrir el PR, no al final.** Una rama que solo vive en una PC no aísla
-  de nada — es exactamente el riesgo que la regla viene a cerrar.
-- Merge con `--no-ff`.
-- `--force` sobre `main`: PROHIBIDO. Sobre rama propia sin mergear: solo `--force-with-lease`.
-- Corte a **400 líneas revisables** por PR, con la banda de consulta de 401–450. No cuentan
-  lockfiles, generados, snapshots ni papelería SDD. Ver la regla global para el detalle.
+Monorepo con `backend/` y `frontend/`.
 
-### Anulaciones que SIGUEN vigentes
+| Capa | Tecnología |
+|---|---|
+| Backend | NestJS + TypeScript strict, arquitectura **hexagonal** |
+| ORM | Prisma (solo `infrastructure/` puede importar `@prisma/client`) |
+| Base | PostgreSQL en Docker, puerto **5432** |
+| Errores de dominio | `Result<T, DomainError>` |
+| Frontend | React + Zod (los schemas espejan al backend) |
+| Tests | **Vitest** · package manager **pnpm** · no hay Jest |
+| Lint | ESLint — en **cero errores** (verificado 2026-08-30) |
+| Ayuda / KB | markdown en `backend/ayuda/*.md`, versionado con el código |
 
-- **Anulación — skill `issue-creation`**: NO aplica. No hay plantillas obligatorias, ni
-  `status:needs-review` / `status:approved`, ni un maintainer que apruebe antes de trabajar.
-  La regla global del 2026-08-27 la mantiene explícitamente opt-in, así que esta anulación
-  no cambia: es ceremonia de equipo con revisor externo, y acá no hay.
+---
 
-- **Anulación — Review Workload Guard del orquestador SDD**: NO se ejecuta. `sdd-tasks` no
-  emite `Review Workload Forecast` y no se pide autorización de tamaño antes de `sdd-apply`.
-  El corte por tamaño se decide con la regla de 400 líneas revisables al armar el PR, no con
-  un gate dentro del ciclo SDD.
+## [Overrides locales]
 
-### Lo que SÍ se mantiene
+Todo lo que define `C:\trabajos\CLAUDE.md` aplica, salvo estas anulaciones explícitas.
+Contexto: este proyecto lo desarrolla **una sola persona**, sin revisor ni maintainer
+separado del autor. Verificado el 2026-08-30.
 
-- **`work-unit-commits` SIGUE VIGENTE.** No es ceremonia de PR: es la disciplina de que un
-  commit represente un comportamiento entregable, con sus tests en el mismo commit. Su valor
-  no depende de que exista un revisor — sostiene el `git bisect`, permite revertir una unidad
-  sin arrastrar otras, y hace que la rama se pueda releer meses después.
+- **ANULA:** `issue-creation` — **Motivo:** no hay plantillas obligatorias ni maintainer
+  que apruebe antes de arrancar. Un issue acá no lo lee nadie más que el autor.
+  **REEMPLAZA POR:** nada. Se arranca directo por la rama.
 
-- Todo el resto de las reglas globales (tipado estricto, testing obligatorio, TDD,
-  documentación, reporte honesto) sigue igual.
+- **ANULA:** Review Workload Guard del orquestador SDD — **Motivo:** duplica un corte que
+  ya se decide en otro lado, y lo decide peor (dentro del ciclo, sin ver el PR final).
+  **REEMPLAZA POR:** la regla global de 400 líneas revisables, aplicada al armar el PR.
 
-## Tamaño del commit: cinco archivos de código (OBLIGATORIO)
+### Anulaciones RETIRADAS (no volver a agregarlas)
+
+- **`branch-pr` y `chained-pr` estuvieron anuladas hasta el 2026-08-27.** Se retiraron
+  porque la premisa era falsa: el motivo del PR nunca fue la revisión, es el **aislamiento
+  entre máquinas**. Hoy la regla global aplica acá sin excepciones.
+
+### Reglas globales que se mantienen, por si se dudara
+
+- **`work-unit-commits`**: vigente. Su valor no depende de que exista un revisor — sostiene
+  el `git bisect`, permite revertir una unidad sin arrastrar otras, y hace que la rama se
+  pueda releer meses después.
+- Tipado estricto, TDD, testing obligatorio, documentación y reporte honesto: sin cambios.
+
+---
+
+## Tamaño del commit al revisor: cinco archivos de código (OBLIGATORIO)
 
 **Un commit manda al hook de pre-commit como máximo ~5 archivos de código.** Se cuentan
 los que matchean el `FILE_PATTERNS` de GGA (`*.ts,*.tsx,*.js,*.jsx,*.py,*.go`) menos el
 `EXCLUDE_PATTERNS` (tests y `.d.ts`). Los tests, los `.md`, las migraciones `.sql` y el
-`schema.prisma` **no cuentan** — no le llegan al revisor.
+`schema.prisma` **no cuentan**.
 
-> **Dónde vive esa config: NO en este repo.** No existe ningún `.gga` acá, y no hace
-> falta crearlo. `.git/hooks/pre-commit` invoca `gga run` a secas y toda la configuración
-> sale del archivo GLOBAL. En Windows ese archivo es
-> `%APPDATA%\gga\config` — **no** `~/.config/gga/config`, que `gga` ignora cuando
-> `APPDATA` está seteado (`get_global_config_path()` lo prioriza). Editar el equivocado no
-> hace nada y cuesta media hora de confusión.
->
-> El único comando que dice la verdad sobre los valores efectivos es:
->
+> **Dónde vive esa config: NO en este repo.** `.git/hooks/pre-commit` invoca `gga run` a
+> secas y toda la configuración sale del archivo GLOBAL. En Windows ese archivo es
+> `%APPDATA%\gga\config`. El único comando que dice la verdad sobre los valores efectivos es:
 > ```bash
 > gga config
 > ```
->
-> Corolario: cualquier cambio de config acá impacta a los 8 repos de `C:\trabajos`, no solo
-> a este. Y como el archivo se declara "Generated by gentle-ai", un `gentle-ai sync` puede
-> pisarlo: si vuelven los timeouts, revisar `gga config` ANTES de buscar la causa en el código.
+> Cualquier cambio de config acá impacta a los 8 repos de `C:\trabajos`. Y como el archivo
+> se declara "Generated by gentle-ai", un `gentle-ai sync` puede pisarlo.
 
-Esto NO reemplaza a `work-unit-commits`, lo afina: la unidad sigue siendo un
-comportamiento entregable con sus tests adentro. Si esa unidad no entra en cinco archivos
-de código, casi siempre es que eran dos o tres unidades disfrazadas de una.
+### Por qué cinco (medido en este repo, 2026-08-27)
 
-### Por qué cinco, medido en este repo (2026-08-27)
+GGA revisa **archivos enteros, no el diff**. Con probabilidad *p*≈0.15 de hallazgo por
+archivo: cinco archivos dan ~44% de pasar, catorce dan ~10%. Los datos reales lo confirman:
 
-`Gentleman Guardian Angel` revisa **archivos ENTEROS, no el diff**. Si cada archivo tiene
-probabilidad *p* de producir al menos un hallazgo, la chance de review limpio es (1−*p*)^n.
-Con *p*≈0.15: cinco archivos dan ~44% de pasar, catorce dan ~10%. Los intentos reales de la
-rama `preventivo` encajan:
-
-| Commit | Archivos al revisor | Intentos |
-|---|---|---|
-| `499c0c2` (WU-6) | 5 | **1** |
-| `fb7e854` (fail-fast WU-2) | 10 | **5** |
-| `4281a8c` (WU-5) | 9 | **8** |
-| `4e6491f` (WU-7) | 14 | **7** |
-
-Segundo efecto de la misma causa: el `TIMEOUT=300` (definido en la config global, no acá)
-se vuelve alcanzable con payloads grandes. Los dos timeouts del proveedor que hubo fueron
-los dos en el commit de catorce archivos; ningún commit chico se comió uno.
+| Commit        | Archivos al revisor | Intentos |
+|---------------|---------------------|----------|
+| WU-6          | 5                   | **1**    |
+| WU-2 fail-fast| 10                  | **5**    |
+| WU-5          | 9                   | **8**    |
+| WU-7          | 14                  | **7**    |
 
 ### El exclude de tests estuvo ROTO hasta el 2026-08-29
 
-Este archivo afirmaba que los tests "no le llegan al revisor". **Era falso**, y la causa no
-era el tamaño del bocado sino un defecto de config que nadie había mirado.
-
-`EXCLUDE_PATTERNS` estaba en `*.test.*,*.spec.*,...`, y **`*.test.*` no excluye nada,
-nunca**. GGA no trata esos patrones como globs: los trata como **sufijos literales**. En
-`get_staged_files()` hace `suffix="${pattern#\*}"` y compara con
-`[[ "$file" == *"$suffix" ]]`, así que el `*` final queda como carácter literal dentro de
-la cadena `.test.*` — y ningún archivo termina en eso.
-
-Impacto medido en el commit `a286a3b`: el payload real fueron **1539 líneas en 7 archivos**,
-de las cuales 593 (39%) eran tests que no debían viajar. Con el fix bajó a 946 en 4, y el
-revisor respondió dentro del timeout confirmándolo él mismo.
-
-El fix enumera extensiones (`*.test.ts,*.test.tsx,*.spec.ts,...`) en la config global. **A
-partir de ahí, y recién a partir de ahí, la cuenta de cinco archivos de este documento
-describe lo que de verdad se le manda al revisor.** Si alguien "simplifica" esos patrones de
-vuelta a `*.test.*`, el problema vuelve en silencio.
-
-**Verificado que NO es la causa**: no hubo cambio de configuración entre esos commits.
-`AGENTS.md` nació el 2026-08-17 y su único cambio posterior agregó una línea, anterior tanto
-a WU-5 como a WU-6. (Este párrafo hablaba de un `.gga` del repo que nunca existió; la config
-siempre fue global — ver el recuadro de arriba.) Tampoco es que el revisor no conociera el
-frontend: 118 archivos de front no-test pasaron por el hook desde entonces.
-
-**No se afloja `AGENTS.md` para que pase.** Los rechazos encontraron defectos reales —un
-gate de permiso inexistente, otro inalcanzable, un 500 latente— con todas las suites en
-verde. El criterio no es el problema; el tamaño del bocado sí.
+`EXCLUDE_PATTERNS` con `*.test.*` **no excluye nada**: GGA trata esos patrones como sufijos
+literales, no globs. El fix enumera extensiones explícitas (`*.test.ts,*.test.tsx,...`) en
+la config global. Si alguien simplifica de vuelta a `*.test.*`, el problema vuelve en
+silencio.
 
 Antes de commitear, contar:
-
 ```bash
 git diff --cached --name-only | rg "\.(ts|tsx|js|jsx)$" | rg -v "\.test\.|\.spec\." | wc -l
 ```
 
-## Delegar a subagentes (OBLIGATORIO)
+---
 
-**Siempre que una tarea se pueda delegar, se delega.** El hilo principal coordina y
-sintetiza; no es el que lee medio repositorio ni el que escribe cada archivo.
+## SDD — overrides de este proyecto
 
-La razón no es de estilo: el contexto del orquestador es finito y es el recurso más
-caro de la sesión. Cada archivo que el hilo principal lee "de paso" es contexto que
-después le falta para decidir bien. Un subagente lee cincuenta archivos, devuelve
-diez líneas de conclusión, y se lleva el costo con él.
+Las reglas generales de SDD (ciclo, 3 preguntas, delegación, tabla de modelos) viven en el
+`CLAUDE.md` global. Lo que sigue son las diferencias de este proyecto:
 
-Delegar SIEMPRE que aplique:
-
-- Explorar o mapear algo que requiere abrir **4 o más archivos**.
-- Escribir **2 o más archivos** no triviales.
-- Cualquier lectura cuyo único fin sea preparar una escritura.
-- Investigación amplia (comparar enfoques, rastrear un patrón por todo el repo).
-- Tareas **independientes entre sí**: van en paralelo, un subagente cada una.
-
-Se resuelve en el hilo principal, sin delegar:
-
-- Leer 1 a 3 archivos para decidir o verificar algo puntual.
-- Un cambio mecánico de un solo archivo, ya entendido, sin diseño pendiente.
-- Comandos de estado (`git`, `docker`, `curl`, correr la suite).
-
-Reglas de la delegación:
-
-- **Un solo escritor por archivo.** Dos subagentes que tocan el mismo archivo se
-  pisan. Si van en paralelo, repartir archivos disjuntos o usar worktrees aislados.
-- **El subagente no commitea ni cambia de rama.** Deja el trabajo en el working tree
-  y el orquestador integra.
-- El prompt del subagente viaja **autocontenido**: rutas, convenciones, criterio de
-  terminado y formato del reporte. Un subagente no ve esta conversación.
-- **El reporte de un subagente no es prueba.** Antes de dar algo por verde, el
-  orquestador verifica por su cuenta (correr los tests, leer el diff). Ya pasó en
-  este proyecto que un reporte en verde tapaba un test que no mordía.
-
-## SDD es el camino por defecto (OBLIGATORIO)
-
-**Todo trabajo sustantivo pasa por un ciclo SDD, ejecutado por sus subagentes de fase.**
-No se implementa "directo" salvo que sea un arreglo mecánico de un archivo ya entendido.
-
-Esto ANULA la regla global de que SDD se elige solo por pedido explícito o propuesta
-aceptada: en este proyecto es el default, decidido por el usuario el 2026-08-19.
-
-### Cuándo NO corresponde el ciclo completo
-
-Se implementa directo, sin ciclo SDD, **solo** si es un cambio mecánico de un archivo ya
-entendido, **sin diseño pendiente**. En ese caso lo hace el orquestador.
-
-Contar archivos NO es el criterio. El fix C1 de compras (`56e0483`) fue un archivo y un
-guard, y dejó el frontend roto: `ItemCerrarFaltanteDialog` seguía mirando solo
-`cerradoConFaltante`, así que sobre un ítem no aprobado el botón quedaba habilitado y la
-operación fallaba SIEMPRE con 422. Hubo que emitir `07e3013` para repararlo. Un archivo, dos
-capas rotas.
-
-Antes de arrancar, tres preguntas de sí/no:
-
-1. ¿Cambia algo que otra capa espeja? (un guard de dominio, un enum, un contrato de error,
-   un permiso, un schema del front)
-2. ¿Las alternativas difieren en comportamiento observable o en el contrato? Que existan dos
-   formas de escribirlo NO cuenta: casi siempre las hay. Cuenta que las dos formas no hagan
-   lo mismo.
-3. ¿Cambia lo que el usuario ve o hace? (una pantalla, un flujo, el significado de un estado)
-
-**Un solo sí → ciclo SDD completo. Tres noes → lo hace el orquestador.**
-
-Ante la duda, SDD. El costo es asimétrico: equivocarse hacia "directo" cuando había una
-decisión escondida cuesta un ciclo de retrabajo; equivocarse hacia SDD en algo mecánico
-cuesta un rato.
-
-Cada fase la ejecuta su subagente dedicado vía la herramienta Agent, **nunca invocando la
-skill** (las `sdd-*/SKILL.md` traen `delegate_only: true`: si las cargás como skill, sos el
-orquestador y tenés que delegar). El `model` es obligatorio en cada llamada:
-
-| Fase | Agente | Modelo |
-|---|---|---|
-| explore | `sdd-explore` | sonnet |
-| propose | `sdd-propose` | **opus** |
-| spec | `sdd-spec` | sonnet |
-| design | `sdd-design` | **opus** |
-| tasks | `sdd-tasks` | **opus** |
-| apply | `sdd-apply` | sonnet |
-| verify | `sdd-verify` | **opus** |
-| archive | `sdd-archive` | sonnet |
-
-> **La tabla de modelos NO se aplica sola desde acá.** Los subagentes viven en
-> `~/.claude/agents/` y su `model` lo fija la tabla global (`$HOME/reapply-models.ps1`) o un
-> `./.claude/agents/` de este repo — nada más. Este documento decidió `archive: sonnet` el
-> 2026-08-22 y la decisión estuvo **sin aplicar hasta el 2026-08-29**: el agente siguió
-> corriendo en haiku siete días, porque la tabla global todavía lo listaba ahí. Ya está
-> corregido en las dos puntas. Se confirma con `rg '^model:' ~/.claude/agents/sdd-*.md`,
-> nunca con la salida del script, que imprime intención y no resultado.
-
-#### Por qué cada fase corre donde corre (revisión 2026-08-22)
-
-Tres fases cambiaron de modelo. El fundamento sale de revisar dónde aparecieron los
-defectos en los ciclos ya archivados, no de una preferencia.
-
-| Fase | Modelo | Cambio | Por qué |
-|---|---|---|---|
-| explore | sonnet | — | Define el mapa que heredan las fases siguientes. Sin fallos atribuidos. |
-| propose | opus | — | Fase supervisada por vos; se sostiene sola. Candidata a bajar si necesitás presupuesto. |
-| spec | sonnet | — | Sin fallos atribuidos todavía. Pendiente de confirmar si los huecos de `tasks` son de diseño o de requisito no escrito. |
-| design | opus | — | Razona bien. Lo que falla es la estimación (~3×) y la rotura colateral. Se arregla obligándolo a correr typecheck real, no subiendo modelo. |
-| tasks | sonnet → opus | ⬆ | Último punto donde un hueco de design cuesta minutos. El único pase que atrapó CRÍTICOS corrió en opus. Evidencia n=1: aplicar, pero no darlo por medido. |
-| apply | sonnet | — | Su falla (implementación antes del test en archivos grandes) es de disciplina, no de capacidad. Ya corregida en el prompt. |
-| verify | sonnet → opus | ⬆ | Los verify que sirvieron inyectaron mutación y borraron un guard para probar el RED. Eso es razonamiento adversarial, no checklist. |
-| archive | haiku → sonnet | ⬆ | Falla reproducible en dos ciclos. Fase corta: el ahorro no compensa un artefacto que miente. |
-
-`spec` y `design` son el ÚNICO paralelismo declarado: las dos leen el proposal y no dependen
-entre sí. Todo lo demás va en serie — y `apply` en particular **no admite instancias
-paralelas**: `apply-progress` es un registro único con merge secuencial y el ledger de
-intentos bloquea con `active_attempt`.
-
-### Lo que este proyecto anula del flujo SDD
-
-- **Artifact store: `engram`.** No existe `openspec/` y no debe crearse. Por lo tanto **no se
-  invoca el dispatcher nativo** (`gentle-ai sdd-status` / `sdd-continue`): solo lee artefactos
-  OpenSpec y siempre reporta `artifactStore: openspec`, así que no vería nada. El estado se
-  resuelve por topic keys con `mem_search` → `mem_get_observation`.
-- **`sdd-tasks` NO emite `Review Workload Forecast`** (ni presupuesto de 400 líneas, ni chain
-  strategy, ni `size:exception`).
-- **`sdd-apply` NO ejecuta su gate de "Review Workload Decision"**. Ojo: si el prompt de
-  lanzamiento no se lo dice, el agente puede auto-bloquearse leyendo el forecast del artefacto.
-  Hay que desactivárselo explícitamente.
+- **Persistencia: HÍBRIDA**, según el global — engram local **y** `openspec/` commiteado.
+  Esto **revierte** la decisión anterior de "no existe `openspec/` y no debe crearse"
+  (cambio del 2026-08-30). El motivo del cambio es la portabilidad: engram vive en una sola
+  máquina, y si el proyecto se muda o esa base se pierde, el historial de decisiones se va
+  con ella.
+  - **Migración pendiente:** `openspec/` todavía no existe acá. Hasta crearlo, el estado se
+    sigue resolviendo por topic keys (`mem_search` → `mem_get_observation`). Los ciclos
+    nuevos ya escriben en los dos lados.
+  - Pasar siempre `project: "soporte"` explícito en las llamadas a engram, para evitar
+    "ambiguous project".
+  - El dispatcher nativo (`gentle-ai sdd-status` / `sdd-continue`) solo lee artefactos
+    OpenSpec: recién será utilizable cuando `openspec/` esté poblado.
+- **`sdd-tasks` NO emite `Review Workload Forecast`** ni presupuesto de 400 líneas.
+- **`sdd-apply` NO ejecuta su gate de "Review Workload Decision"**. Si el prompt de
+  lanzamiento no se lo dice, el agente puede auto-bloquearse: desactivárselo explícitamente.
 - La Ayuda va DENTRO del work unit del módulo, nunca en una tarea final de documentación.
 
-### Antes de cada `sdd-apply`
+> **La tabla de modelos NO se aplica sola desde el CLAUDE.md global.** Los agentes viven en
+> `~/.claude/agents/` y su `model` lo fija ese archivo. Cada vez que se cambia un modelo en
+> la tabla global, verificar:
+> ```bash
+> rg '^model:' ~/.claude/agents/sdd-*.md
+> ```
+> Esta decisión estuvo sin aplicar 7 días en este proyecto (archive corrió en haiku hasta
+> el 2026-08-29). Ya está corregido en las dos puntas.
 
-Reclamar el turno en el ledger: `gentle-ai sdd-attempt acquire` con `--change`, `--request-id`,
-`--work-unit` y `--evidence-goal`; lanzar solo con `state: proceed` y pasarle el `token` al
-subagente para que no colisione consigo mismo. Cerrar con `settle` después.
-
-**Si `acquire` devuelve `settle_obligation`, se le relaya al usuario TEXTUAL antes de lanzar el
-work unit.** No es un aviso a sopesar: un intento es un recurso gastable y descubrir la demanda
-recién en el `settle` lo quema sin forma de recuperarlo.
+---
 
 ## Contexto operativo
 
 - **Postgres corre en el contenedor Docker `soporte-postgres-master`** (puerto 5432), con
-  restart policy: arranca solo al iniciar Docker Desktop. No hay `docker-compose` en el repo
-  ni servicio de Windows.
+  restart policy: arranca solo al iniciar Docker Desktop. No hay `docker-compose` en el repo.
 - Si la suite tira `PrismaClientKnownRequestError` masivo en los `*.integration.spec.ts`,
-  **es la base caída, no el código**. Diagnóstico en diez segundos:
+  **es la base caída, no el código**. Diagnóstico:
   `pnpm prisma migrate status --schema prisma_tenant/schema.prisma` → `P1001` = entorno.
 - Dentro del contenedor, `psql -U postgres` **falla** (ese rol no existe):
   usar `psql -U "$POSTGRES_USER" -d postgres`.
-- **`soporte_master_test` es UNA SOLA base compartida** por los trece specs de integración y
-  e2e, y cada uno la arranca con un `TRUNCATE` de `usuarios`/`clientes`/`refresh_tokens`.
-  `fileParallelism: false` los ordena dentro de un proceso, pero entre procesos no protege
-  nada: dos corridas solapadas se borran las filas mutuamente. El síntoma engaña — el login
-  muere guardando el refresh token con `P2003` (FK a un usuario recién borrado), no se emite
-  token, y los tests reciben **401 donde esperaban 403**, que se lee como un bug de permisos.
-  Por eso cada uno de esos specs llama a `usarLockMasterTest()` (`src/testing/lock-master-test.ts`)
-  antes de su `describe`: un advisory lock de Postgres que serializa el turno entre procesos.
-  **Un spec nuevo que truncue esa base tiene que llamarlo también**, o vuelve a abrir el agujero.
-- **Las bases tenant efímeras se barren solas al arrancar la suite.** Un spec con tenant propio
-  crea su base en el `beforeAll` y la dropea en el `afterAll`; si el proceso muere antes (Ctrl+C,
-  crash, el guardarraíl cortando la corrida) la base queda huérfana y se acumulan. El
-  `globalSetup` de `test/barrido-huerfanas.global-setup.mjs` las limpia, con tres puertas
-  fail-closed: nombre que matchee `soporte_prov_[slug_]<8 hex>_test`, ausente del registro de
-  clientes, y sin conexiones vivas. Si el registro no se puede leer, **no barre nada**. Toma el
-  mismo advisory lock que los specs, y por eso es seguro con corridas concurrentes: mientras
-  tiene el turno, ninguna base efímera de una corrida viva existe. La decisión de qué se borra
-  vive en `scripts/lib/barrido-huerfanas.mjs`, puro y testeado aparte.
-- **La base de un tenant real no se toca — y su nombre NO se hardcodea.** El sufijo hex se
-  genera al provisionar, así que **cambia si el tenant se recrea**: cualquier literal que
-  escribas hoy miente mañana. La fuente de verdad es el registro de clientes, no este archivo.
-  Antes de dropear cualquier base, consultalo:
-
+- **`soporte_master_test` es UNA SOLA base compartida** por los specs de integración y e2e.
+  Cada uno la arranca con un `TRUNCATE`. `fileParallelism: false` los ordena dentro de un
+  proceso, pero entre procesos no protege nada. Por eso cada spec que trunca esa base llama
+  a `usarLockMasterTest()` (`src/testing/lock-master-test.ts`) antes de su `describe`. **Un
+  spec nuevo que truncue esa base tiene que llamarlo también.**
+- **Las bases tenant efímeras se barren solas al arrancar la suite.** El `globalSetup` de
+  `test/barrido-huerfanas.global-setup.mjs` las limpia con tres puertas fail-closed. Si el
+  registro no se puede leer, **no barre nada**.
+- **La base de un tenant real no se toca — y su nombre NO se hardcodea.** El sufijo hex
+  cambia si el tenant se recrea. Antes de dropear cualquier base, consultar el registro:
   ```bash
   docker exec soporte-postgres-master psql -U soporte -d soporte_master -c "SELECT nombre, db_name, activo FROM clientes;"
   ```
+- Higiene en specs de integración con tenant efímero — este orden importa:
+  limpiar filas → `app.close()` → `dropDatabase`. Al revés, el DROP falla en silencio.
 
-  Todo `db_name` que aparezca ahí es una base REAL. Al 2026-08-22 hay una sola, "Demo Soporte"
-  (`soporte_01a0253ef26f78b88b02d5161410d8fd`), pero ese valor es una foto del día, no la regla.
-  Nunca lo copies a un script ni al prompt de un subagente: ya pasó que un nombre viejo se
-  propagó a la lista negra de `backend/scripts/regenerar-entorno.mjs` porque venía copiado
-  textual de acá.
-- Higiene de DB en specs de integración con tenant efímero — este orden importa:
-  limpiar filas → `app.close()` → `dropDatabase`. Al revés, el pool sigue vivo y Postgres
-  rechaza el DROP **en silencio**, dejando la base huérfana.
-
-## Comandos
-
-| | backend | frontend |
-|---|---|---|
-| Tests | `pnpm test` | `pnpm test` |
-| Un archivo | `pnpm vitest run <ruta>` | `pnpm vitest run <ruta>` |
-| Typecheck | `pnpm typecheck` | `pnpm type-check` |
-| Lint | `pnpm lint` | `pnpm lint` |
-
-Runner: **Vitest** (no Jest). Package manager: **pnpm**.
-
-> `backend`: `pnpm lint` está en **cero errores**. Ese es el criterio ahora — no "cero
-> errores nuevos". Si tira algo, es tuyo. (Los 5 errores prettier preexistentes de
-> `editar-componente.use-case.spec.ts` que este archivo documentaba se limpiaron; un umbral
-> en cero no se puede leer mal con apuro, un umbral en cinco sí.)
->
-> `backend`: el alcance del lint es `eslint .` y lo decide el `files` de `eslint.config.js`,
-> no un glob en `package.json`. Cubre `src/**/*.ts` y `scripts/**/*.{mjs,js,ts}` — un script
-> nuevo en `scripts/` o `scripts/lib/` se lintea solo, sin dar de alta nada.
+---
 
 ## La Ayuda se mantiene con el código (OBLIGATORIO)
 
-El módulo `KB` se llama **Ayuda** para el usuario y contiene **cómo se usa el sistema**.
-(La base de conocimiento tal como se pensó originalmente —casos resueltos y su
-recurrencia— quedó para más adelante, cuando exista historial que la alimente.)
+El módulo `KB` se llama **Ayuda** y contiene cómo se usa el sistema. Los artículos viven
+como markdown en el repo y un script idempotente los sincroniza a cada tenant.
 
-Los artículos **NO viven solo en la base**: viven como archivos markdown en el repo y
-un script idempotente los sincroniza a cada tenant. Esa es justamente la razón de que
-estén ahí — un artículo que solo existe en una tabla de producción no se puede mantener
-desde un cambio de código, y queda desactualizado el día uno.
-
-**Regla: un cambio que altera lo que el usuario ve o hace NO está terminado hasta que
-la Ayuda lo refleja.** En el MISMO commit, igual que los tests.
+**Un cambio que altera lo que el usuario ve o hace NO está terminado hasta que la Ayuda lo
+refleja, en el mismo commit, igual que los tests.**
 
 Aplica cuando el cambio:
+- agrega, saca o renombra una pantalla, un botón o un campo que el usuario usa
+- cambia un flujo
+- cambia el significado de un estado, un permiso o una etiqueta visible
+- corrige un comportamiento que la Ayuda describía de otra forma
 
-- agrega, saca o renombra una pantalla, un botón o un campo que el usuario usa;
-- cambia un flujo (qué pasos hay que dar para lograr algo);
-- cambia el significado de un estado, un permiso o una etiqueta visible;
-- corrige un comportamiento que la Ayuda describía de otra forma.
+NO aplica a refactors internos, performance, tests o infraestructura que el usuario no percibe.
 
-NO aplica a refactors internos, performance, tests o cambios de infraestructura que el
-usuario no percibe.
+La pregunta: **¿alguien que leyó la Ayuda ayer haría algo mal hoy por culpa de este
+cambio?** Si la respuesta es sí, actualizarla. Una Ayuda que miente es peor que una que
+falta.
 
-Ante la duda, la pregunta es una sola: **¿alguien que leyó la Ayuda ayer haría algo mal
-hoy por culpa de este cambio?** Si la respuesta es sí, actualizala.
+---
 
-Si un cambio deja un artículo obsoleto y no se puede arreglar en el mismo commit, decilo
-explícitamente en el reporte. Nunca lo dejes pasar en silencio: una Ayuda que miente es
-peor que una Ayuda que falta, porque la primera se sigue con confianza.
+## Comandos
+
+| Tarea        | backend                    | frontend                   |
+|--------------|----------------------------|----------------------------|
+| Tests        | `pnpm test`                | `pnpm test`                |
+| Un archivo   | `pnpm vitest run <ruta>`   | `pnpm vitest run <ruta>`   |
+| Typecheck    | `pnpm typecheck`           | `pnpm type-check`          |
+| Lint         | `pnpm lint`                | `pnpm lint`                |
+
+Runner: **Vitest**. Package manager: **pnpm**.
+
+`backend`: `pnpm lint` está en **cero errores**. Si tira algo, es del cambio en curso.
+El alcance del lint es `eslint .` y cubre `src/**/*.ts` y `scripts/**/*.{mjs,js,ts}`.
