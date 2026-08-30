@@ -9,12 +9,25 @@
 
 _(Procedencia: `CLAUDE.md` del proyecto, sección de anulaciones)_
 
-Este proyecto lo desarrolla una sola persona. **No usa pull requests**, no hay revisor
-externo, no hay issue-first ni labels ni gates de CI que bloqueen merges. Se trabaja en
-ramas de integración que se mergean a `main` con `--no-ff`.
+Este proyecto lo desarrolla una sola persona: no hay revisor externo, no hay issue-first,
+ni labels, ni gates de CI que bloqueen merges.
 
-**No señales como problema**: la ausencia de PRs, que una rama supere N líneas, que no
-haya issue asociado, o que falten etiquetas de tipo o tamaño.
+**Pero SÍ usa pull requests**, desde el 2026-08-27. El motivo no es la revisión —no hay a
+quién revisarle— sino el **aislamiento entre máquinas**: el mismo repo se trabaja desde
+varias PCs, y la rama principal es el único lugar donde dos chocan de verdad. Toda tarea
+arranca en su propia rama (`feat/…`, `fix/…`, `chore/…`), se pushea al abrir el PR, y entra
+a `main` con `--no-ff`. Nunca commit directo a `main`, nunca `--force` sobre ella.
+
+Hay un corte de tamaño: **400 líneas revisables por PR** (no cuentan lockfiles, generados,
+snapshots ni papelería SDD), con banda de consulta entre 401 y 450.
+
+**No señales como problema**: que no haya issue asociado, ni que falten etiquetas de tipo o
+tamaño — eso sigue sin aplicar acá.
+
+**Tampoco reportes nada sobre el PR ni sobre el tamaño de la rama.** No es que no importen:
+es que no los podés ver. Esta revisión corre en `pre-commit`, sobre un commit suelto, antes
+de que exista el PR y sin conocer el resto de la rama. Un comentario tuyo sobre eso sería
+una conjetura, no un hallazgo.
 
 **`work-unit-commits` SÍ está vigente.** No es ceremonia de PR: un commit representa un
 comportamiento entregable, **con sus tests en el mismo commit**, y tiene que poder
@@ -115,11 +128,39 @@ _(Procedencia: reglas globales del autor)_
 - Un comentario que describe la intención en vez del código es peor que no tener comentario:
   en este repo hubo uno que afirmaba medir el universo filtrado de una paginación cuando el
   código no recibía los filtros.
+- **Un comentario que describe un ESTADO caduca con ese estado, y es la forma más común de
+  comentario mentiroso acá.** El 2026-08-30 aparecieron cuatro en un solo commit: dos que
+  decían "todos los campos opcionales" cuando uno había dejado de serlo, uno que declaraba una
+  consolidación "a medio camino" que ese mismo commit terminaba, y otro que describía un modo
+  de falla ya cerrado. Los comentarios de mecanismo ("va sin `coerce` porque `ZodNumber._parse`
+  coerciona antes de mirar el tipo") sobreviven; los de estado ("compras todavía mantiene su
+  copia") vencen. Al revisar un cambio, chequeá si vuelve falso algún comentario **vecino**,
+  no sólo los del diff.
+
+## Ayuda de usuario
+
+_(Procedencia: `CLAUDE.md` del proyecto, sección "La Ayuda se mantiene con el código")_
+
+El módulo KB se llama **Ayuda** y sus artículos viven como markdown en `backend/ayuda/*.md`,
+no sólo en la base. Un cambio que altera **lo que el usuario ve o hace** no está terminado
+hasta que la Ayuda lo refleja, **en el mismo commit** — igual que los tests.
+
+Aplica cuando el cambio agrega, saca o renombra una pantalla, un botón o un campo; cambia un
+flujo; cambia el significado de un estado, un permiso o una etiqueta visible; o corrige un
+comportamiento que la Ayuda describía de otra forma. No aplica a refactors, performance,
+tests ni infraestructura que el usuario no percibe.
+
+La pregunta para decidir es una sola: **¿alguien que leyó la Ayuda ayer haría algo mal hoy por
+culpa de este cambio?** Si el cambio toca la interfaz y ningún `backend/ayuda/*.md` aparece en
+el commit, verificá si corresponde y decilo. Una Ayuda que miente es peor que una que falta,
+porque la primera se sigue con confianza.
 
 ## Ruido conocido, no lo reportes
 
-- `backend/src/equipos/application/use-cases/editar-componente.use-case.spec.ts` arrastra
-  **5 errores de prettier preexistentes**, ajenos a cualquier cambio en curso. El criterio es
-  **cero errores nuevos**, no cero errores.
+- (Vacío por ahora.) Este bloque listaba 5 errores de prettier preexistentes en
+  `editar-componente.use-case.spec.ts` y fijaba el criterio en "cero errores nuevos". **Ya no
+  aplica**: esos errores se limpiaron, y `pnpm lint` sale en cero tanto en `backend` como en
+  `frontend` (verificado el 2026-08-30, exit 0 en los dos). El criterio ahora es **cero
+  errores, punto**. Si el lint tira algo, es del cambio en curso.
 - `pnpm typecheck` **no mira los `*.spec.ts`** (el `tsconfig` los excluye). Incluirlos destapa
   ~150 errores preexistentes. Es una decisión pendiente del autor, no un defecto de un cambio.
