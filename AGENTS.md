@@ -191,8 +191,8 @@ Las cuatro primeras están cerradas. El select fuera de catálogo cerró sus 2 i
 lista traída solo vale cuando esa lista YA resolvió, porque con el catálogo cargando o caído
 la ausencia no prueba nada.
 
-**Sigue abierta una sola clase**, y ya no son 8 sino **2 campos** sin tope espejado —
-ciclos-master (nombre) y kb (título).
+**Sigue abierta una sola clase**, y ya no son 8 sino **1 campo** sin tope espejado — kb
+(título).
 
 `usuarios` salió de la lista: nombre y apellido quedaron cerrados en las tres capas, y con
 ellos las DOS puertas que escriben esas columnas —el ABM de usuarios y los campos
@@ -203,15 +203,15 @@ divergir. **Queda un tercer escritor de esas columnas que NO pasa por la entidad
 Es input de operador en deploy, no un 500 en pantalla, pero la columna no está cerrada por
 todos lados.
 
-Lección de `usuarios`, que vale para los 6 que faltan: **el validador del front y el del
+Lección de `usuarios`, que vale para el que falta y para el próximo: **el validador del front y el del
 backend no acotan igual.** `@IsEmail()` corta en 254 caracteres; `z.string().email()` es
 solo un regex y acepta 309 (medido). Copiar del backend el argumento "ese validador ya acota"
 dejó el front más laxo que el servidor. Cada capa se verifica en su propia capa.
 
-Esa clase tiene DOS variantes que fallan distinto, y los 2 de arriba son todos la primera:
+Esa clase tiene DOS variantes que fallan distinto, y el que queda es de la primera:
 
 1. **Sin tope en ninguna capa.** La columna es lo único que valida, así que el valor llega a
-   Postgres y muere ahí: 22001 → **500 crudo**. Son los 8.
+   Postgres y muere ahí: 22001 → **500 crudo**. Es la variante del campo que queda.
 2. **Con tope en el backend pero no en el front.** El servidor rechaza bien, pero el usuario
    se come un **400 remoto** por algo que se veía en pantalla, y pierde lo tipeado. Era el
    caso de `clientes`, ya cerrado (`features/clientes/limites.ts`).

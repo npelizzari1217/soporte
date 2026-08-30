@@ -4,8 +4,12 @@
  * Autoridad: `TICKET_EDILICIA_UBICACION_MAX_LENGTH` en `TicketEdiliciaEntity` y
  * `SUBTAREA_DESCRIPCION_MAX_LENGTH` en `SubtareaEdiliciaEntity`, que espejan
  * `ticketsEdilicia.ubicacion` y `subtareasEdilicia.descripcion`, las dos
- * `VarChar(255)`. `reparaciones.dto.ts` importa esas mismas constantes, así que
- * las tres capas no pueden divergir.
+ * `VarChar(255)`, y `reparaciones.dto.ts` importa esas mismas constantes.
+ *
+ * OJO con el alcance: entidad y DTO están unidas por un `import`, así que ESAS
+ * dos no pueden divergir. Estos números son copias a mano, fijadas por el
+ * centinela del test — que atrapa una edición accidental, no un cambio de la
+ * columna.
  *
  * Acá el tope solo ADELANTA el rechazo al formulario. Hasta este cambio no lo
  * tenía NINGUNA capa, así que el valor llegaba a Postgres y reventaba con 22001
