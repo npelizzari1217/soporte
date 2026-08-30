@@ -29,6 +29,19 @@ export function PrioridadFormDialog({ trigger, prioridad }: PrioridadFormDialogP
   const editarMutation = useEditarPrioridad(prioridad?.id ?? "");
   const mutation = isEdit ? editarMutation : crearMutation;
 
+  // Recalculado en CADA render: el reset de apertura inyecta el dato vigente
+  // aunque el diálogo lleve montado desde el primer pintado de la tabla.
+  const valoresVigentes: PrioridadFormValues = prioridad
+    ? {
+        codigo: prioridad.codigo,
+        nombre: prioridad.nombre,
+        color: prioridad.color ?? "",
+        orden: prioridad.orden,
+        slaHoras: prioridad.slaHoras !== null ? String(prioridad.slaHoras) : "",
+        slaActivo: prioridad.slaActivo,
+      }
+    : { codigo: "", nombre: "", color: "", orden: 0, slaHoras: "", slaActivo: true };
+
   const {
     register,
     handleSubmit,
@@ -38,16 +51,7 @@ export function PrioridadFormDialog({ trigger, prioridad }: PrioridadFormDialogP
     formState: { errors },
   } = useForm<PrioridadFormValues>({
     resolver: zodResolver(prioridadSchema),
-    defaultValues: prioridad
-      ? {
-          codigo: prioridad.codigo,
-          nombre: prioridad.nombre,
-          color: prioridad.color ?? "",
-          orden: prioridad.orden,
-          slaHoras: prioridad.slaHoras !== null ? String(prioridad.slaHoras) : "",
-          slaActivo: prioridad.slaActivo,
-        }
-      : { codigo: "", nombre: "", color: "", orden: 0, slaHoras: "", slaActivo: true },
+    defaultValues: valoresVigentes,
   });
 
   function submit(values: PrioridadFormValues) {
@@ -63,7 +67,6 @@ export function PrioridadFormDialog({ trigger, prioridad }: PrioridadFormDialogP
       {
         onSuccess: () => {
           setOpen(false);
-          reset();
         },
       },
     );
@@ -74,7 +77,7 @@ export function PrioridadFormDialog({ trigger, prioridad }: PrioridadFormDialogP
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
-        if (!next) reset();
+        if (next) reset(valoresVigentes);
       }}
     >
       <DialogTrigger asChild>{trigger}</DialogTrigger>

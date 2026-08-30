@@ -28,6 +28,12 @@ export function SectorFormDialog({ trigger, sector }: SectorFormDialogProps) {
   const editarMutation = useEditarSector(sector?.id ?? "");
   const mutation = isEdit ? editarMutation : crearMutation;
 
+  // Recalculado en CADA render: el reset de apertura inyecta el dato vigente
+  // aunque el diálogo lleve montado desde el primer pintado de la tabla.
+  const valoresVigentes: SectorFormValues = sector
+    ? { codigo: sector.codigo, nombre: sector.nombre }
+    : { codigo: "", nombre: "" };
+
   const {
     register,
     handleSubmit,
@@ -35,14 +41,13 @@ export function SectorFormDialog({ trigger, sector }: SectorFormDialogProps) {
     formState: { errors },
   } = useForm<SectorFormValues>({
     resolver: zodResolver(sectorSchema),
-    defaultValues: sector ? { codigo: sector.codigo, nombre: sector.nombre } : { codigo: "", nombre: "" },
+    defaultValues: valoresVigentes,
   });
 
   function submit(values: SectorFormValues) {
     mutation.mutate(values, {
       onSuccess: () => {
         setOpen(false);
-        reset();
       },
     });
   }
@@ -52,7 +57,7 @@ export function SectorFormDialog({ trigger, sector }: SectorFormDialogProps) {
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
-        if (!next) reset();
+        if (next) reset(valoresVigentes);
       }}
     >
       <DialogTrigger asChild>{trigger}</DialogTrigger>

@@ -28,6 +28,12 @@ export function CicloVigenteFormDialog({ trigger, ciclo }: CicloVigenteFormDialo
   const editarMutation = useEditarCicloVigente(ciclo?.id ?? "");
   const mutation = isEdit ? editarMutation : crearMutation;
 
+  // Recalculado en CADA render: el reset de apertura inyecta el dato vigente
+  // aunque el diálogo lleve montado desde el primer pintado de la tabla.
+  const valoresVigentes: CicloVigenteFormValues = ciclo
+    ? { nombre: ciclo.nombre, fechaInicio: ciclo.fechaInicio, fechaFin: ciclo.fechaFin }
+    : { nombre: "", fechaInicio: "", fechaFin: "" };
+
   const {
     register,
     handleSubmit,
@@ -35,9 +41,7 @@ export function CicloVigenteFormDialog({ trigger, ciclo }: CicloVigenteFormDialo
     formState: { errors },
   } = useForm<CicloVigenteFormValues>({
     resolver: zodResolver(cicloVigenteSchema),
-    defaultValues: ciclo
-      ? { nombre: ciclo.nombre, fechaInicio: ciclo.fechaInicio, fechaFin: ciclo.fechaFin }
-      : { nombre: "", fechaInicio: "", fechaFin: "" },
+    defaultValues: valoresVigentes,
   });
 
   function submit(values: CicloVigenteFormValues) {
@@ -46,7 +50,6 @@ export function CicloVigenteFormDialog({ trigger, ciclo }: CicloVigenteFormDialo
       {
         onSuccess: () => {
           setOpen(false);
-          reset();
         },
       },
     );
@@ -57,7 +60,7 @@ export function CicloVigenteFormDialog({ trigger, ciclo }: CicloVigenteFormDialo
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
-        if (!next) reset();
+        if (next) reset(valoresVigentes);
       }}
     >
       <DialogTrigger asChild>{trigger}</DialogTrigger>
