@@ -6,12 +6,14 @@
  *
  * Tarea: T9.3 (PR9 — Ciclos)
  */
-import { IsDateString, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { MaxLength, IsDateString, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { CICLO_VIGENTE_NOMBRE_MAX_LENGTH } from '../../domain/entities/ciclo-vigente.entity';
 
 /** Body de `POST /ciclos-vigentes`. Fechas como ISO 8601 (YYYY-MM-DD). */
 export class CreateCicloVigenteDto {
   @IsString()
   @IsNotEmpty()
+  @MaxLength(CICLO_VIGENTE_NOMBRE_MAX_LENGTH)
   nombre!: string;
 
   @IsDateString()
@@ -31,6 +33,7 @@ export class UpdateCicloVigenteDto {
   @IsOptional()
   @IsString()
   @IsNotEmpty()
+  @MaxLength(CICLO_VIGENTE_NOMBRE_MAX_LENGTH)
   nombre?: string;
 
   @IsOptional()

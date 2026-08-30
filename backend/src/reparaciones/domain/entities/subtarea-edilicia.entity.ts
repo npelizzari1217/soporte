@@ -1,6 +1,30 @@
 import { BaseEntity } from '../../../shared/domain/base-entity';
 
 /**
+ * Tope de largo de `descripcion`, espejando
+ * `subtareasEdilicia.descripcion VarChar(255) NOT NULL`
+ * (`prisma_tenant/schema.prisma`).
+ *
+ * Misma autoridad y mismo criterio que `TICKET_EDILICIA_UBICACION_MAX_LENGTH`:
+ * el número vive en el dominio, el DTO lo importa y el front lo espeja, así que
+ * ninguna de las tres capas puede moverse sola.
+ */
+export const SUBTAREA_DESCRIPCION_MAX_LENGTH = 255;
+
+/**
+ * Precondición de largo de `descripcion`. `throw` plano (rama 1: el campo no se
+ * normaliza en el borde). NO se aplica en `reconstitute()`, que lee sin
+ * revalidar.
+ */
+function validarLargoDescripcion(descripcion: string): void {
+  if (descripcion.length > SUBTAREA_DESCRIPCION_MAX_LENGTH) {
+    throw new Error(
+      `SubtareaEdiliciaEntity: descripcion excede ${SUBTAREA_DESCRIPCION_MAX_LENGTH} caracteres.`,
+    );
+  }
+}
+
+/**
  * SubtareaEdiliciaProps — shape de las propiedades de una subtarea edilicia
  * (checklist de avance de la reparación). Sin imports de Prisma ni NestJS —
  * dominio puro.
@@ -52,6 +76,7 @@ export class SubtareaEdiliciaEntity extends BaseEntity<SubtareaEdiliciaProps> {
     params: { ticketEdiliciaId: string; descripcion: string; orden?: number },
     id?: string,
   ): SubtareaEdiliciaEntity {
+    validarLargoDescripcion(params.descripcion);
     return new SubtareaEdiliciaEntity(
       {
         ticketEdiliciaId: params.ticketEdiliciaId,

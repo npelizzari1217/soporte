@@ -1,6 +1,36 @@
 import { BaseEntity } from '../../../shared/domain/base-entity';
 
 /**
+ * Tope de largo de `ubicacion`, espejando `ticketsEdilicia.ubicacion`
+ * `VarChar(255)` (`prisma_tenant/schema.prisma`).
+ *
+ * Vive ACÁ y no en el DTO porque el dominio es la autoridad del límite: el
+ * `VARCHAR` de Postgres es backstop, nunca al revés. `reparaciones.dto.ts` lo
+ * importa de este módulo para que el 400 amable del borde y la precondición del
+ * dominio no puedan divergir. Mismo criterio que `equipo-informatico.entity.ts`.
+ *
+ * `ubicacion` es texto libre y NO se normaliza en ningún borde, así que estamos
+ * en la rama 1 de la "regla de tres ramas": el borde mide exactamente el mismo
+ * string que mide el dominio y alcanza un `throw` plano. Si alguna vez se le
+ * agrega una normalización que pueda AGRANDAR el largo, este guard pasa a rama
+ * 3 y el borde tiene que normalizar antes de medir.
+ */
+export const TICKET_EDILICIA_UBICACION_MAX_LENGTH = 255;
+
+/**
+ * Precondición de largo de `ubicacion`. NO se aplica en `reconstitute()`: una
+ * fila que ya existe se lee, no se revalida — hacer explotar una lectura por un
+ * valor histórico convertiría un dato viejo en una caída de sistema.
+ */
+function validarLargoUbicacion(ubicacion?: string | null): void {
+  if (ubicacion != null && ubicacion.length > TICKET_EDILICIA_UBICACION_MAX_LENGTH) {
+    throw new Error(
+      `TicketEdiliciaEntity: ubicacion excede ${TICKET_EDILICIA_UBICACION_MAX_LENGTH} caracteres.`,
+    );
+  }
+}
+
+/**
  * TicketEdiliciaProps — shape de las propiedades del satélite de reparaciones
  * edilicias. Satélite 1:0..1 de `Ticket` (Fase 2) para tickets de tipo
  * EDILICIA. El porcentaje de avance se recalcula (`AvanceCalculator`) en
@@ -54,6 +84,7 @@ export class TicketEdiliciaEntity extends BaseEntity<TicketEdiliciaProps> {
     props: { ticketId: string; ubicacion?: string | null },
     id?: string,
   ): TicketEdiliciaEntity {
+    validarLargoUbicacion(props.ubicacion);
     return new TicketEdiliciaEntity(
       {
         ticketId: props.ticketId,
