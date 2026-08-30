@@ -12,6 +12,10 @@ import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
 import { CreateClienteDto, UpdateClienteDto } from './cliente.dto';
 import {
+  USUARIO_APELLIDO_MAX_LENGTH,
+  USUARIO_NOMBRE_MAX_LENGTH,
+} from '../../../auth/domain/entities/usuario.entity';
+import {
   CLIENTE_CUIT_MAX_LENGTH,
   CLIENTE_NOMBRE_MAX_LENGTH,
   CLIENTE_RAZON_SOCIAL_MAX_LENGTH,
@@ -100,5 +104,33 @@ describe.each([
     });
     const errors = await validate(dto);
     expect(errors.some((e) => e.property === 'razonSocial')).toBe(true);
+  });
+});
+
+/**
+ * Los campos de admin del alta de tenant escriben las MISMAS columnas que el ABM
+ * de usuarios (`usuarios.nombre`/`apellido` `VarChar(100)`), así que importan la
+ * misma constante de `UsuarioEntity`. Cerrar una sola de las dos puertas dejaba
+ * la clase abierta con apariencia de cerrada.
+ *
+ * `adminEmail` no lleva tope: `@IsEmail` ya acota más fuerte que la columna.
+ */
+describe('CreateClienteDto — topes de los campos de admin', () => {
+  it('acepta los valores en el límite exacto', async () => {
+    const dto = plainToInstance(CreateClienteDto, {
+      ...ALTA_VALIDA,
+      adminNombre: 'A'.repeat(USUARIO_NOMBRE_MAX_LENGTH),
+      adminApellido: 'B'.repeat(USUARIO_APELLIDO_MAX_LENGTH),
+    });
+    expect(await validate(dto)).toHaveLength(0);
+  });
+
+  it.each([
+    ['adminNombre', USUARIO_NOMBRE_MAX_LENGTH],
+    ['adminApellido', USUARIO_APELLIDO_MAX_LENGTH],
+  ])('rechaza un %s que pasa el tope', async (campo, max) => {
+    const dto = plainToInstance(CreateClienteDto, { ...ALTA_VALIDA, [campo]: 'A'.repeat(max + 1) });
+    const errors = await validate(dto);
+    expect(errors.some((e) => e.property === campo)).toBe(true);
   });
 });

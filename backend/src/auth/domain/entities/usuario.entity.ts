@@ -2,6 +2,48 @@ import { BaseEntity } from '../../../shared/domain/base-entity';
 import { IHashProvider } from '../ports/i-hash.provider';
 
 /**
+ * Topes de largo de la identidad, espejando `usuarios.nombre`/`apellido`
+ * `VarChar(100)` y `usuarios.email` `VarChar(255)`
+ * (`prisma_master/schema.prisma`).
+ *
+ * Viven ACÁ y no en los DTOs porque el dominio es la autoridad del límite: el
+ * `VARCHAR` de Postgres es backstop, nunca al revés. Y sobre todo porque estas
+ * columnas se escriben desde DOS altas distintas —`CreateUsuarioTenantDto` (el
+ * ABM de usuarios) y `CreateClienteDto` (los campos de admin del alta de
+ * tenant)—, así que un número escrito a mano en un borde deja el otro abierto.
+ * Eso ya había pasado: la EDICIÓN acotaba a 100 y ninguna de las dos altas lo
+ * hacía, con lo cual un nombre de 120 se podía crear y después nunca editar; y
+ * por API llegaba a la columna y moría ahí (22001 → 500 crudo).
+ */
+export const USUARIO_NOMBRE_MAX_LENGTH = 100;
+export const USUARIO_APELLIDO_MAX_LENGTH = 100;
+export const USUARIO_EMAIL_MAX_LENGTH = 255;
+
+/**
+ * Precondición de largo de la identidad. Va como `throw` y no como `Result`
+ * por la rama 1 de la "regla de tres ramas" de `equipo-informatico.entity.ts`:
+ * ninguno de los tres campos se normaliza en el borde, así que el borde mide
+ * el mismo string que el dominio y un valor fuera de rango llegando acá es una
+ * violación de contrato del caller, no una desviación de negocio.
+ *
+ * NO se aplica en `reconstitute()`: una fila que ya existe se lee, no se
+ * revalida. Como estos topes son el ancho EXACTO de la columna, hoy no puede
+ * haber filas fuera de rango — la exención es precaución para el día que la
+ * columna se ensanche y el tope no la siga.
+ */
+function validarLargos(datos: { nombre?: string; apellido?: string; email?: string }): void {
+  if (datos.nombre !== undefined && datos.nombre.length > USUARIO_NOMBRE_MAX_LENGTH) {
+    throw new Error(`UsuarioEntity: nombre excede ${USUARIO_NOMBRE_MAX_LENGTH} caracteres.`);
+  }
+  if (datos.apellido !== undefined && datos.apellido.length > USUARIO_APELLIDO_MAX_LENGTH) {
+    throw new Error(`UsuarioEntity: apellido excede ${USUARIO_APELLIDO_MAX_LENGTH} caracteres.`);
+  }
+  if (datos.email !== undefined && datos.email.length > USUARIO_EMAIL_MAX_LENGTH) {
+    throw new Error(`UsuarioEntity: email excede ${USUARIO_EMAIL_MAX_LENGTH} caracteres.`);
+  }
+}
+
+/**
  * UsuarioProps — shape de las propiedades de dominio del Usuario.
  * Sin imports de Prisma ni NestJS — dominio puro.
  *
@@ -54,6 +96,7 @@ export class UsuarioEntity extends BaseEntity<UsuarioProps> {
    * El passwordHash DEBE estar ya hasheado al llegar aquí (usar hashPassword() después).
    */
   static create(props: UsuarioProps, id?: string): UsuarioEntity {
+    validarLargos(props);
     return new UsuarioEntity({ ...props, isGlobalAdmin: props.isGlobalAdmin ?? false }, id);
   }
 
@@ -112,6 +155,7 @@ export class UsuarioEntity extends BaseEntity<UsuarioProps> {
    * `undefined` = "no tocar" ese campo. Toca `updatedAt` vía `touch()`.
    */
   editar(cambios: { nombre?: string; apellido?: string }): void {
+    validarLargos(cambios);
     if (cambios.nombre !== undefined) this.props.nombre = cambios.nombre;
     if (cambios.apellido !== undefined) this.props.apellido = cambios.apellido;
     this.touch();

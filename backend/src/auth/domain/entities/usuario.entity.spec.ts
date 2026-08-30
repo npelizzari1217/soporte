@@ -12,7 +12,12 @@
  * - isRoot(): alias de isGlobalAdmin, NUNCA derivado de un rol
  */
 import type { Mocked } from 'vitest';
-import { UsuarioEntity } from './usuario.entity';
+import {
+  UsuarioEntity,
+  USUARIO_NOMBRE_MAX_LENGTH,
+  USUARIO_APELLIDO_MAX_LENGTH,
+  USUARIO_EMAIL_MAX_LENGTH,
+} from './usuario.entity';
 import { IHashProvider } from '../ports/i-hash.provider';
 
 /** Mock del IHashProvider para aislar tests de infraestructura de hashing */
@@ -258,5 +263,99 @@ describe('UsuarioEntity', () => {
       const usuario = makeUsuario({ isGlobalAdmin: false });
       expect(usuario.isRoot()).toBe(false);
     });
+  });
+});
+
+/**
+ * Topes de largo de la identidad del usuario.
+ *
+ * Espejan `usuarios.nombre`/`apellido` `VarChar(100)` y `usuarios.email`
+ * `VarChar(255)` (`prisma_master/schema.prisma`). Suben al dominio porque esas
+ * columnas se escriben desde DOS altas distintas —`CreateUsuarioTenantDto` y
+ * `CreateClienteDto` (los campos de admin del alta de tenant)— y ninguna las
+ * acotaba: el valor llegaba a Postgres y moría ahí (22001 → 500 crudo). La
+ * EDICIÓN sí tenía `@MaxLength(100)`, escrito a mano, así que un nombre de 120
+ * se podía crear y después nunca editar.
+ *
+ * `email` solo se valida en `create()`: `editar()` no lo toca (el email no se
+ * edita, ver `EditarUsuarioDto`).
+ */
+describe('UsuarioEntity — topes de largo de la identidad', () => {
+  it('acepta nombre y apellido en el límite exacto', () => {
+    const usuario = makeUsuario({
+      nombre: 'A'.repeat(USUARIO_NOMBRE_MAX_LENGTH),
+      apellido: 'B'.repeat(USUARIO_APELLIDO_MAX_LENGTH),
+    });
+    expect(usuario.nombre).toHaveLength(USUARIO_NOMBRE_MAX_LENGTH);
+    expect(usuario.apellido).toHaveLength(USUARIO_APELLIDO_MAX_LENGTH);
+  });
+
+  it('create() rechaza un nombre que pasa el tope', () => {
+    expect(() => makeUsuario({ nombre: 'A'.repeat(USUARIO_NOMBRE_MAX_LENGTH + 1) })).toThrow(
+      /nombre excede/,
+    );
+  });
+
+  it('create() rechaza un apellido que pasa el tope', () => {
+    expect(() => makeUsuario({ apellido: 'A'.repeat(USUARIO_APELLIDO_MAX_LENGTH + 1) })).toThrow(
+      /apellido excede/,
+    );
+  });
+
+  it('create() rechaza un email que pasa el tope', () => {
+    expect(() => makeUsuario({ email: 'a'.repeat(USUARIO_EMAIL_MAX_LENGTH + 1) })).toThrow(
+      /email excede/,
+    );
+  });
+
+  it('editar() rechaza un nombre que pasa el tope', () => {
+    const usuario = makeUsuario();
+    expect(() => usuario.editar({ nombre: 'A'.repeat(USUARIO_NOMBRE_MAX_LENGTH + 1) })).toThrow(
+      /nombre excede/,
+    );
+  });
+
+  it('editar() rechaza un apellido que pasa el tope', () => {
+    const usuario = makeUsuario();
+    expect(() => usuario.editar({ apellido: 'A'.repeat(USUARIO_APELLIDO_MAX_LENGTH + 1) })).toThrow(
+      /apellido excede/,
+    );
+  });
+
+  it('editar() sin tocar el nombre no lo valida ni lo cambia', () => {
+    const usuario = makeUsuario({ nombre: 'Juan' });
+    usuario.editar({ apellido: 'Gomez' });
+    expect(usuario.nombre).toBe('Juan');
+    expect(usuario.apellido).toBe('Gomez');
+  });
+
+  /**
+   * Hermano invertido: los topes son EXACTAMENTE el ancho de la columna, así
+   * que ninguna fila guardada puede excederlos — lo que se colaba moría al
+   * persistir. La exención de `reconstitute()` es precaución para el día que
+   * la columna se ensanche y el tope no la siga.
+   */
+  it('reconstitute() NO valida el tope (una lectura nunca revalida)', () => {
+    const usuario = UsuarioEntity.reconstitute(
+      {
+        email: 'viejo@example.com',
+        nombre: 'A'.repeat(USUARIO_NOMBRE_MAX_LENGTH + 50),
+        apellido: 'Perez',
+        passwordHash: 'h',
+        activo: true,
+      },
+      'id-1',
+      new Date(),
+      new Date(),
+      null,
+    );
+    expect(usuario.nombre).toHaveLength(USUARIO_NOMBRE_MAX_LENGTH + 50);
+  });
+
+  /** Centinela de valor: los topes son el ancho real de cada columna. */
+  it('los topes coinciden con el ancho de las columnas', () => {
+    expect(USUARIO_NOMBRE_MAX_LENGTH).toBe(100);
+    expect(USUARIO_APELLIDO_MAX_LENGTH).toBe(100);
+    expect(USUARIO_EMAIL_MAX_LENGTH).toBe(255);
   });
 });
