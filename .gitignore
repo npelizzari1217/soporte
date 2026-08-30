@@ -4,3 +4,10 @@
 
 # Local gga config (personal tooling, not project config)
 .gga
+
+# --- Memoria local de trabajo (regla global de C:\trabajos) ---
+# Engram es la CACHE local de la maquina; el registro que sobrevive es el
+# artifact store commiteado. La base nunca entra al repo: es binaria, cambia
+# en cada sesion, y es distinta en cada PC.
+.engram/
+*.engram.db
