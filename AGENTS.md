@@ -5,6 +5,50 @@
 > globales del autor, y las convenciones que el propio repo ya sostiene con tests.
 > La procedencia de cada bloque está anotada.
 
+## Formularios — la superficie donde este proyecto se rompe
+
+_(Procedencia: barrido completo del frontend del 2026-08-30 — 152 campos en 44 formularios
+de los 15 módulos. Reproducible: `rg -l "useForm" frontend/src --glob '*.tsx'` da los 35
+archivos de entrada.)_
+
+Este repo es el único de su familia que usa react-hook-form: 35 archivos con `useForm`,
+zod como resolver y react-query como origen del dato. **Casi todos sus defectos de usuario
+viven en las junturas de ese trío**, no dentro de ninguna de las tres piezas. El barrido
+encontró 18 defectos alcanzables en producción, y los 18 caen en cinco clases.
+
+**El patrón que las une no es lógica equivocada: es cobertura PARCIAL de una condición.**
+El código hace bien lo que mira; el defecto está en lo que no enumeró. Por eso se escapan a
+la lectura del diff — se ven mirando el archivo entero y preguntando "¿esto vale para
+TODOS los casos que entran acá?".
+
+| Clase | Qué le pasa al usuario | Referencia sana |
+|---|---|---|
+| Parseo del valor tipeado | Rechaza un monto que acepta un blur después | `parsearNumeroEsAr` en `shared/lib/formato-numero` |
+| Vacío que se vuelve valor | `Number("")` es `0` y sobrescribe un acumulado | helper `numeroRequerido` en `compras/schemas` |
+| Sincronización del formulario | Reabrir muestra el dato del primer render | `if (next) reset(valoresVigentes)` — 16 diálogos |
+| Select con valor fuera de catálogo | La pantalla dice una cosa y se guarda otra | `tipoActualFueraDeCatalogo` en `componente-edit-dialog` |
+| Topes de largo sin espejar | 400 genérico del backend en vez de validación local | `shared/lib/limites-ticket` |
+
+Las tres primeras están cerradas. **Siguen abiertas**: el select fuera de catálogo (2
+instancias, en el sector de la cabecera de compras y en la prioridad del ticket) y 8 campos
+sin tope espejado.
+
+### Qué preguntar frente a un formulario
+
+- **¿Todos los caminos de envío pasan por la misma validación?** Enter dentro de un `<form>`
+  no dispara el blur, así que un control que canoniza al perder el foco entrega el texto
+  crudo cuando se envía con Enter.
+- **¿El guard cubre todas las formas de producir su condición?** Un `setValue` sin
+  `{ shouldDirty: true }` no marca el formulario como sucio, y un guard `isDirty` deja
+  desprotegido justo ese campo — con apariencia de protegerlo.
+- **¿Un valor vacío significa "sin cambio" o "poné cero"?** Si el campo precarga un dato
+  existente, confundirlos es pérdida de datos, no un error de validación.
+- **¿El formulario se sincroniza al abrir, o solo al montar?** Un diálogo que vive en una
+  fila de tabla no se desmonta al cerrarse: su snapshot inicial sobrevive toda la sesión.
+- **¿El `<select>` puede recibir un valor que ya no está entre sus opciones?** Si el catálogo
+  filtra por activos y el registro apunta a uno dado de baja, el DOM cae a otra opción y el
+  submit guarda algo distinto de lo que se ve.
+
 ## Flujo de trabajo
 
 _(Procedencia: `CLAUDE.md` del proyecto, sección de anulaciones)_
