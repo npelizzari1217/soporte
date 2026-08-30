@@ -1,0 +1,83 @@
+import { describe, it, expect } from "vitest";
+import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
+import { server } from "../../../../test/msw/server";
+import { renderWithProviders } from "../../../../test/render-with-providers";
+import { PrioridadFormDialog } from "./prioridad-form-dialog";
+import type { Prioridad } from "@/features/tickets/types";
+
+/**
+ * PrioridadFormDialog — regresión de dialogos-reset-valores-vigentes: mismo
+ * molde que `SectorFormDialog` (D1). El diálogo queda montado
+ * permanentemente en la fila de la tabla, así que reabrirlo tiene que
+ * mostrar el dato VIGENTE, no el snapshot del primer render. `orden` es el
+ * campo con forma más delicada del grupo (`z.coerce.number()`).
+ */
+function buildPrioridad(overrides: Partial<Prioridad> = {}): Prioridad {
+  return {
+    id: "p1",
+    codigo: "ALTA",
+    nombre: "Prioridad Original",
+    color: null,
+    orden: 1,
+    activo: true,
+    slaHoras: null,
+    slaActivo: true,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+describe("PrioridadFormDialog", () => {
+  it("reabrir tras un cambio de la prop `prioridad` muestra el valor vigente, no el del primer render", async () => {
+    const user = userEvent.setup();
+    const prioridadV1 = buildPrioridad();
+    const prioridadV2 = buildPrioridad({ nombre: "Prioridad Actualizada", orden: 2 });
+
+    const { rerender } = renderWithProviders(
+      <PrioridadFormDialog prioridad={prioridadV1} trigger={<button>Editar</button>} />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Editar" }));
+    await user.click(screen.getByRole("button", { name: /cerrar/i }));
+
+    rerender(<PrioridadFormDialog prioridad={prioridadV2} trigger={<button>Editar</button>} />);
+
+    await user.click(screen.getByRole("button", { name: "Editar" }));
+
+    expect(screen.getByLabelText(/^nombre$/i)).toHaveValue("Prioridad Actualizada");
+    expect(screen.getByLabelText(/^orden$/i)).toHaveValue(2);
+  });
+
+  it("editar un solo campo tras la reapertura y guardar no pisa los demás con el snapshot del primer render", async () => {
+    const user = userEvent.setup();
+    const prioridadV1 = buildPrioridad();
+    const prioridadV2 = buildPrioridad({ orden: 2 });
+    let capturado: Record<string, unknown> = {};
+    server.use(
+      http.patch("/api/catalogos/prioridades/p1", async ({ request }) => {
+        capturado = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({ ...prioridadV2, ...capturado });
+      }),
+    );
+
+    const { rerender } = renderWithProviders(
+      <PrioridadFormDialog prioridad={prioridadV1} trigger={<button>Editar</button>} />,
+    );
+    await user.click(screen.getByRole("button", { name: "Editar" }));
+    await user.click(screen.getByRole("button", { name: /cerrar/i }));
+    rerender(<PrioridadFormDialog prioridad={prioridadV2} trigger={<button>Editar</button>} />);
+    await user.click(screen.getByRole("button", { name: "Editar" }));
+
+    // Solo se toca `nombre`; `orden` NO se edita en esta apertura.
+    const nombreInput = screen.getByLabelText(/^nombre$/i);
+    await user.clear(nombreInput);
+    await user.type(nombreInput, "Prioridad Renombrada");
+    await user.click(screen.getByRole("button", { name: /^guardar$/i }));
+
+    await waitFor(() => expect(capturado.nombre).toBe("Prioridad Renombrada"));
+    expect(capturado.orden).toBe(2);
+  });
+});

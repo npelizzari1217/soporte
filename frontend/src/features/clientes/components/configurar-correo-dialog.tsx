@@ -36,7 +36,7 @@ import {
   useQuitarCorreoCliente,
 } from "../hooks/use-clientes-mutations";
 import { configurarCorreoSchema, type ConfigurarCorreoFormValues } from "../schemas";
-import type { Cliente } from "../types";
+import type { Cliente, ClienteCorreo } from "../types";
 
 export interface ConfigurarCorreoDialogProps {
   cliente: Cliente;
@@ -50,6 +50,21 @@ const VALORES_VACIOS: ConfigurarCorreoFormValues = {
   from: "",
   password: "",
 };
+
+/**
+ * Detalle del servidor → valores del formulario. La contraseña NUNCA se
+ * prellena: no viaja en la respuesta (D7).
+ */
+function aValoresFormulario(correo: ClienteCorreo): ConfigurarCorreoFormValues {
+  return {
+    host: correo.host ?? "",
+    port: correo.port ?? 587,
+    user: correo.user ?? "",
+    secure: correo.secure ?? true,
+    from: correo.from ?? "",
+    password: "",
+  };
+}
 
 export function ConfigurarCorreoDialog({ cliente }: ConfigurarCorreoDialogProps) {
   const [open, setOpen] = useState(false);
@@ -66,38 +81,48 @@ export function ConfigurarCorreoDialog({ cliente }: ConfigurarCorreoDialogProps)
     reset,
     watch,
     setValue,
-    formState: { errors },
+    formState: { errors, isDirty },
   } = useForm<ConfigurarCorreoFormValues>({
     resolver: zodResolver(configurarCorreoSchema(yaConfigurado)),
     defaultValues: VALORES_VACIOS,
   });
 
-  // Al llegar el detalle, prellená host/puerto/usuario/remitente/secure — la
-  // contraseña NUNCA se prellena (no viaja en la respuesta, D7).
+  // Recalculado en CADA render: el reset de apertura inyecta el dato
+  // vigente aunque el diálogo lleve montado desde el primer pintado de la
+  // lista de clientes.
+  const valoresVigentes = correoQuery.data ? aValoresFormulario(correoQuery.data) : VALORES_VACIOS;
+
+  // Sincroniza el formulario con el dato del servidor cada vez que cambia
+  // (primera carga o refetch en segundo plano, p. ej. tras "Probar
+  // conexión") — pero SOLO si el usuario no está editando (`!isDirty`): un
+  // refetch con el form sucio no puede pisar lo que se está tipeando. Sin
+  // bucle: un reset acá deja `isDirty` en `false`, así que las dependencias
+  // no vuelven a disparar el efecto por sí solas.
   useEffect(() => {
-    if (correoQuery.data) {
-      reset({
-        host: correoQuery.data.host ?? "",
-        port: correoQuery.data.port ?? 587,
-        user: correoQuery.data.user ?? "",
-        secure: correoQuery.data.secure ?? true,
-        from: correoQuery.data.from ?? "",
-        password: "",
-      });
+    if (correoQuery.data && !isDirty) {
+      reset(aValoresFormulario(correoQuery.data));
     }
-  }, [correoQuery.data, reset]);
+  }, [correoQuery.data, isDirty, reset]);
 
   function submit(values: ConfigurarCorreoFormValues) {
-    configurarMutation.mutate({
-      host: values.host,
-      port: values.port,
-      user: values.user,
-      secure: values.secure,
-      from: values.from,
-      // Campo vacío ⇒ NO se manda `password`: preserva la contraseña ya
-      // guardada. Nunca `""` — el backend la rechaza a propósito (D7).
-      password: values.password || undefined,
-    });
+    configurarMutation.mutate(
+      {
+        host: values.host,
+        port: values.port,
+        user: values.user,
+        secure: values.secure,
+        from: values.from,
+        // Campo vacío ⇒ NO se manda `password`: preserva la contraseña ya
+        // guardada. Nunca `""` — el backend la rechaza a propósito (D7).
+        password: values.password || undefined,
+      },
+      {
+        // El hook hace `setQueryData` con la respuesta (D3): sin este reset
+        // el formulario queda `isDirty` para siempre, bloqueando el efecto
+        // de arriba, y la contraseña tipeada sigue en el DOM.
+        onSuccess: (correo) => reset(aValoresFormulario(correo)),
+      },
+    );
   }
 
   return (
@@ -105,7 +130,14 @@ export function ConfigurarCorreoDialog({ cliente }: ConfigurarCorreoDialogProps)
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
-        if (!next) reset(VALORES_VACIOS);
+        if (next) reset(valoresVigentes);
+        // Al cerrar con el formulario sucio esta limpieza dura poco: baja
+        // `isDirty`, el efecto se vuelve a disparar y reescribe los valores del
+        // servidor. Se mantiene igual porque NO es redundante cuando la consulta
+        // todavía no trajo nada: ahí el efecto no corre y esto es lo único que
+        // vacía el formulario. Lo que garantiza que la contraseña no sobreviva
+        // no es esta línea, sino el `password: ""` de `aValoresFormulario`.
+        else reset(VALORES_VACIOS);
       }}
     >
       <DialogTrigger asChild>
@@ -166,7 +198,7 @@ export function ConfigurarCorreoDialog({ cliente }: ConfigurarCorreoDialogProps)
             <label className="flex items-center gap-2 self-end pb-2 text-sm text-foreground">
               <Checkbox
                 checked={watch("secure")}
-                onCheckedChange={(checked) => setValue("secure", checked === true)}
+                onCheckedChange={(checked) => setValue("secure", checked === true, { shouldDirty: true })}
               />
               TLS/SSL
             </label>

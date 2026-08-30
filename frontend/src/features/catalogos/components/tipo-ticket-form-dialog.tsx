@@ -7,7 +7,7 @@
  * sola pantalla con acciones inline, no una ruta por tipo.
  */
 import { useState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, type DefaultValues } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import type { ReactNode } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -31,6 +31,18 @@ export function TipoTicketFormDialog({ trigger, tipo }: TipoTicketFormDialogProp
   const editarMutation = useEditarTipoTicket(tipo?.id ?? "");
   const mutation = isEdit ? editarMutation : crearMutation;
 
+  // Recalculado en CADA render: el reset de apertura inyecta el dato vigente
+  // aunque el diálogo lleve montado desde el primer pintado de la tabla.
+  // El placeholder "" de `modulo` en la rama de alta es un módulo INVÁLIDO A
+  // PROPÓSITO: el schema lo rechaza con "El módulo es requerido"
+  // (catalogos/schemas.ts). Va explícito, y no ausente, porque si la clave
+  // falta RHF adopta el valor actual del <select> en vez de limpiarlo — acá
+  // es el único de los cuatro diálogos con un <Select> de valor no
+  // controlado (D1b).
+  const valoresVigentes: DefaultValues<TipoTicketFormValues> = tipo
+    ? { codigo: tipo.codigo, nombre: tipo.nombre, modulo: tipo.modulo }
+    : { codigo: "", nombre: "", modulo: "" as TipoTicketFormValues["modulo"] };
+
   const {
     register,
     handleSubmit,
@@ -38,16 +50,13 @@ export function TipoTicketFormDialog({ trigger, tipo }: TipoTicketFormDialogProp
     formState: { errors },
   } = useForm<TipoTicketFormValues>({
     resolver: zodResolver(tipoTicketSchema),
-    defaultValues: tipo
-      ? { codigo: tipo.codigo, nombre: tipo.nombre, modulo: tipo.modulo }
-      : { codigo: "", nombre: "" },
+    defaultValues: valoresVigentes,
   });
 
   function submit(values: TipoTicketFormValues) {
     mutation.mutate(values, {
       onSuccess: () => {
         setOpen(false);
-        reset();
       },
     });
   }
@@ -57,7 +66,7 @@ export function TipoTicketFormDialog({ trigger, tipo }: TipoTicketFormDialogProp
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
-        if (!next) reset();
+        if (next) reset(valoresVigentes);
       }}
     >
       <DialogTrigger asChild>{trigger}</DialogTrigger>
@@ -97,7 +106,6 @@ export function TipoTicketFormDialog({ trigger, tipo }: TipoTicketFormDialogProp
             <Select
               id="tipo-modulo"
               error={!!errors.modulo}
-              defaultValue={tipo?.modulo ?? ""}
               {...register("modulo")}
             >
               <option value="" disabled>
