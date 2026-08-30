@@ -185,9 +185,15 @@ TODOS los casos que entran acá?".
 | Select con valor fuera de catálogo | La pantalla dice una cosa y se guarda otra | `tipoActualFueraDeCatalogo` en `componente-edit-dialog` |
 | Topes de largo sin espejar | 400 genérico del backend en vez de validación local | `shared/lib/limites-ticket` |
 
-Las tres primeras están cerradas. **Siguen abiertas**: el select fuera de catálogo (2
-instancias, en el sector de la cabecera de compras y en la prioridad del ticket) y 8 campos
-sin tope espejado.
+Las cuatro primeras están cerradas. El select fuera de catálogo cerró sus 2 instancias
+—el sector de la cabecera de compras y la prioridad del ticket— con la variante que distingue
+"catálogo todavía no resuelto" de "valor dado de baja": detectar la baja por AUSENCIA en la
+lista traída solo vale cuando esa lista YA resolvió, porque con el catálogo cargando o caído
+la ausencia no prueba nada.
+
+**Sigue abierta una sola clase**: 8 campos sin tope espejado — edilicia (ubicación,
+descripción de subtarea), usuarios (nombre y apellido, solo en el ALTA: la ruta de edición sí
+los tiene), tipos-componente (código, nombre), ciclos-master (nombre) y kb (título).
 
 ### Qué preguntar frente a un formulario
 

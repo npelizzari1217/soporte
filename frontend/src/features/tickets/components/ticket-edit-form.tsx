@@ -17,7 +17,16 @@ import type { Prioridad } from "../types";
 
 export interface TicketEditFormProps {
   defaultValues: EditarTicketFormValues;
-  prioridades: Prioridad[];
+  /**
+   * `undefined` = el catálogo de prioridades TODAVÍA NO RESOLVIÓ (cargando o
+   * con error) — mismo significado que `usePrioridades().data` en React
+   * Query, que el caller pasa tal cual. `[]` = resolvió con éxito y no hay
+   * ninguna prioridad activa. La distinción importa: ausencia en un catálogo
+   * que no resolvió NO es evidencia de que la prioridad esté dada de baja,
+   * es evidencia de que todavía no se sabe (AGENTS.md — un control tiene que
+   * espejar TODAS las precondiciones, no algunas).
+   */
+  prioridades: Prioridad[] | undefined;
   onSubmit: (values: EditarTicketFormValues) => void;
   onCancel: () => void;
   isSubmitting: boolean;
@@ -38,6 +47,24 @@ export function TicketEditForm({
     resolver: zodResolver(editarTicketSchema),
     defaultValues,
   });
+
+  // El catálogo excluye lo dado de baja, así que la `prioridadId` vigente
+  // puede no tener `<option>`: sin ella el `<select>` nativo no encuentra
+  // ningún valor que matchee y la pantalla muestra algo distinto de lo que
+  // `_formValues` guarda. Se detecta por AUSENCIA en la lista traída, pero
+  // SOLO cuando esa lista ya resolvió (`prioridades !== undefined`): con el
+  // catálogo cargando o caído, la ausencia no prueba nada, y agregar la
+  // etiqueta ahí sería mentirle al usuario sobre un valor que en realidad
+  // sigue activo (defecto encontrado en revisión — antes `?? []` colapsaba
+  // "cargando"/"error"/"vacío" en el mismo array vacío). Mientras no resolvió,
+  // el select simplemente no muestra ninguna opción; `_formValues` conserva
+  // el id igual (§4 del design), así que el payload no se corrompe.
+  const catalogoResuelto = prioridades !== undefined;
+  const listaPrioridades = prioridades ?? [];
+  const opcionesPrioridad: { id: string; nombre: string }[] =
+    catalogoResuelto && !listaPrioridades.some((prioridad) => prioridad.id === defaultValues.prioridadId)
+      ? [...listaPrioridades, { id: defaultValues.prioridadId, nombre: "Prioridad dada de baja" }]
+      : listaPrioridades;
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-3" noValidate>
@@ -60,9 +87,9 @@ export function TicketEditForm({
           Prioridad
         </label>
         <Select id="edit-prioridad" error={!!errors.prioridadId} {...register("prioridadId")}>
-          {prioridades.map((prioridad) => (
-            <option key={prioridad.id} value={prioridad.id}>
-              {prioridad.nombre}
+          {opcionesPrioridad.map((opcion) => (
+            <option key={opcion.id} value={opcion.id}>
+              {opcion.nombre}
             </option>
           ))}
         </Select>

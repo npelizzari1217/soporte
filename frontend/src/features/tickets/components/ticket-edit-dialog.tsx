@@ -16,7 +16,8 @@ import type { Prioridad } from "../types";
 
 export interface TicketEditDialogProps {
   defaultValues: EditarTicketFormValues;
-  prioridades: Prioridad[];
+  /** Pass-through directo hacia `TicketEditForm` — ver el JSDoc de esa prop: `undefined` = catálogo sin resolver. */
+  prioridades: Prioridad[] | undefined;
   onSubmit: (values: EditarTicketFormValues) => void;
   isSubmitting: boolean;
 }

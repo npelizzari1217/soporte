@@ -55,6 +55,26 @@ export function CompraEditDialog({ compra }: CompraEditDialogProps) {
   const sectoresQuery = useSectores();
   const bloqueada = compra.estado !== "PENDIENTE";
 
+  const sectores = sectoresQuery.data ?? [];
+  // El catálogo excluye lo dado de baja, así que un `sectorId` vigente puede
+  // no tener `<option>`: sin ella el `<select>` nativo no encuentra ningún
+  // valor que matchee y la pantalla muestra algo distinto de lo que se va a
+  // guardar. Se detecta por AUSENCIA en la lista traída y no por un flag
+  // `activo` porque `CompraDetalle` no lo expone. La condición va inline en
+  // el ternario y no en un `const` booleano aparte para que TS estreche
+  // `compra.sectorId` a `string` sin cast.
+  //
+  // `sectoresQuery.isSuccess` es OBLIGATORIO en la condición (defecto
+  // encontrado en revisión): sin él, `?? []` colapsa "cargando", "con error"
+  // y "catálogo vacío" en el mismo array vacío, y un sector ACTIVO se
+  // etiquetaba "Sector dado de baja" mientras la query no había resuelto —
+  // permanentemente si la request fallaba. Ausencia solo es evidencia de
+  // baja cuando el catálogo YA resolvió con éxito.
+  const opcionesSector: { id: string; nombre: string }[] =
+    sectoresQuery.isSuccess && compra.sectorId && !sectores.some((sector) => sector.id === compra.sectorId)
+      ? [...sectores, { id: compra.sectorId, nombre: "Sector dado de baja" }]
+      : sectores;
+
   const defaults: EditarCompraFormValues = {
     motivo: compra.motivo,
     descripcion: compra.descripcion ?? "",
@@ -150,9 +170,9 @@ export function CompraEditDialog({ compra }: CompraEditDialogProps) {
             </label>
             <Select id="compra-editar-sector" {...register("sectorId")}>
               <option value="">Sin sector</option>
-              {(sectoresQuery.data ?? []).map((sector) => (
-                <option key={sector.id} value={sector.id}>
-                  {sector.nombre}
+              {opcionesSector.map((opcion) => (
+                <option key={opcion.id} value={opcion.id}>
+                  {opcion.nombre}
                 </option>
               ))}
             </Select>
