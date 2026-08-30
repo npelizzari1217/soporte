@@ -7,7 +7,10 @@
  * Ref spec: sdd/flujos-especializados/spec F3-E1, F3-E3, F3-E4. Ref design:
  * "Firmas TS clave" (TicketEdiliciaEntity). Tarea: T6.3.
  */
-import { TicketEdiliciaEntity } from './ticket-edilicia.entity';
+import {
+  TicketEdiliciaEntity,
+  TICKET_EDILICIA_UBICACION_MAX_LENGTH,
+} from './ticket-edilicia.entity';
 
 describe('TicketEdiliciaEntity', () => {
   describe('create()', () => {
@@ -100,5 +103,42 @@ describe('TicketEdiliciaEntity', () => {
 
       expect(entity.personalAsignadoId).toBeNull();
     });
+  });
+});
+
+/**
+ * Tope de largo de `ubicacion`, espejando
+ * `ticketsEdilicia.ubicacion VarChar(255)` (`prisma_tenant/schema.prisma`).
+ *
+ * Hasta este cambio no lo acotaba NINGUNA capa: ni el schema zod, ni
+ * `CreateTicketEdilicioHttpDto`, ni el dominio. Un texto largo pegado en el
+ * campo pasaba las dos validaciones y moría en Postgres: 22001, o sea un 500
+ * crudo en vez de un 400 limpio.
+ */
+describe('TicketEdiliciaEntity — tope de largo de ubicacion', () => {
+  it('acepta una ubicacion en el límite exacto', () => {
+    const t = TicketEdiliciaEntity.create({
+      ticketId: 'tk-1',
+      ubicacion: 'A'.repeat(TICKET_EDILICIA_UBICACION_MAX_LENGTH),
+    });
+    expect(t.ubicacion).toHaveLength(TICKET_EDILICIA_UBICACION_MAX_LENGTH);
+  });
+
+  it('rechaza una ubicacion que pasa el tope', () => {
+    expect(() =>
+      TicketEdiliciaEntity.create({
+        ticketId: 'tk-1',
+        ubicacion: 'A'.repeat(TICKET_EDILICIA_UBICACION_MAX_LENGTH + 1),
+      }),
+    ).toThrow(/ubicacion excede/);
+  });
+
+  it('sigue aceptando ubicacion nula: el tope no la vuelve obligatoria', () => {
+    expect(TicketEdiliciaEntity.create({ ticketId: 'tk-1', ubicacion: null }).ubicacion).toBeNull();
+  });
+
+  /** Centinela de valor: el tope es el ancho real de la columna. */
+  it('el tope coincide con el ancho de la columna', () => {
+    expect(TICKET_EDILICIA_UBICACION_MAX_LENGTH).toBe(255);
   });
 });

@@ -3,13 +3,14 @@
  *
  * Tarea: K8.
  */
-import { IsBoolean, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import { MaxLength, IsBoolean, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import { KB_TITULO_MAX_LENGTH, KbArticuloEntity } from '../../domain/entities/kb-articulo.entity';
 import { Type } from 'class-transformer';
-import { KbArticuloEntity } from '../../domain/entities/kb-articulo.entity';
 
 /** Body de `POST /kb` (K1). */
 export class CreateKbArticuloDto {
   @IsString()
+  @MaxLength(KB_TITULO_MAX_LENGTH)
   titulo!: string;
 
   @IsString()
@@ -20,6 +21,7 @@ export class CreateKbArticuloDto {
 export class EditKbArticuloDto {
   @IsOptional()
   @IsString()
+  @MaxLength(KB_TITULO_MAX_LENGTH)
   titulo?: string;
 
   @IsOptional()

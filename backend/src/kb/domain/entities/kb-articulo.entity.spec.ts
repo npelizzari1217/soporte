@@ -5,7 +5,7 @@
  *
  * Ref spec: sdd/premium/spec K1, K2. Ref design: ADR-P6. Tarea: K1/K2.
  */
-import { KbArticuloEntity } from './kb-articulo.entity';
+import { KbArticuloEntity, KB_TITULO_MAX_LENGTH } from './kb-articulo.entity';
 import { TituloVacioError, ContenidoVacioError } from '../errors/kb.errors';
 
 function baseProps() {
@@ -145,5 +145,69 @@ describe('KbArticuloEntity', () => {
       expect(articulo.deletedAt).not.toBeNull();
       expect(articulo.activo).toBe(false);
     });
+  });
+});
+
+/**
+ * Tope de largo de `titulo`, espejando `kbArticulos.titulo VarChar(255)`
+ * (`prisma_master/schema.prisma`).
+ *
+ * No lo acotaba ninguna capa: el valor llegaba a Postgres y moría con 22001, un
+ * 500 crudo. `contenido` NO lleva tope y no es un olvido — su columna es
+ * `@db.Text`, sin límite.
+ *
+ * El guard se suma al de vacío que ya existía, en la MISMA función, para que no
+ * se pueda cubrir una puerta y olvidar la otra: `create()` y `editar()` llaman
+ * las dos a `assertTituloValido`.
+ */
+describe('KbArticuloEntity — tope de largo de titulo', () => {
+  const base = (titulo: string) => ({
+    titulo,
+    contenido: 'Contenido del artículo',
+    autorId: null,
+    visibleParaSolicitante: true,
+    activo: true,
+  });
+
+  it('acepta un titulo en el límite exacto', () => {
+    const a = KbArticuloEntity.create(base('A'.repeat(KB_TITULO_MAX_LENGTH)));
+    expect(a.titulo).toHaveLength(KB_TITULO_MAX_LENGTH);
+  });
+
+  it('create() rechaza un titulo que pasa el tope', () => {
+    expect(() => KbArticuloEntity.create(base('A'.repeat(KB_TITULO_MAX_LENGTH + 1)))).toThrow(
+      /titulo excede/,
+    );
+  });
+
+  it('editar() rechaza un titulo que pasa el tope', () => {
+    const a = KbArticuloEntity.create(base('Cómo cargar un ticket'));
+    expect(() => a.editar({ titulo: 'A'.repeat(KB_TITULO_MAX_LENGTH + 1) })).toThrow(
+      /titulo excede/,
+    );
+  });
+
+  it('editar() NO muta el titulo cuando el nuevo excede el tope', () => {
+    const a = KbArticuloEntity.create(base('Cómo cargar un ticket'));
+    expect(() => a.editar({ titulo: 'A'.repeat(KB_TITULO_MAX_LENGTH + 1) })).toThrow();
+    expect(a.titulo).toBe('Cómo cargar un ticket');
+  });
+
+  it('sigue rechazando el titulo vacío: el tope no reemplaza al mínimo', () => {
+    expect(() => KbArticuloEntity.create(base('   '))).toThrow();
+  });
+
+  /** `contenido` es Text: no tiene tope y no debe tenerlo. */
+  it('acepta un contenido larguísimo: su columna es Text, sin límite', () => {
+    const a = KbArticuloEntity.create({
+      ...base('Artículo largo'),
+      contenido: 'x'.repeat(KB_TITULO_MAX_LENGTH * 100),
+    });
+    expect(a.contenido.length).toBeGreaterThan(KB_TITULO_MAX_LENGTH);
+  });
+
+  /** Centinela de valor: el tope es el ancho real de la columna. */
+  it('el tope coincide con el ancho de la columna', () => {
+    expect(KB_TITULO_MAX_LENGTH).toBe(255);
   });
 });

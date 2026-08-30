@@ -2,6 +2,34 @@ import { BaseEntity } from '../../../shared/domain/base-entity';
 import { CicloVigenteInvalidDatesError } from '../errors/clientes.errors';
 
 /**
+ * Tope de largo de `nombre`, espejando `ciclosVigentes.nombre VarChar(100)`
+ * (`prisma_master/schema.prisma`).
+ *
+ * Vive ACÁ y no en el DTO porque el dominio es la autoridad del límite: el
+ * `VARCHAR` de Postgres es backstop, nunca al revés. `ciclo-vigente.dto.ts` lo
+ * importa para que el 400 amable del borde y la precondición del dominio no
+ * puedan divergir.
+ */
+export const CICLO_VIGENTE_NOMBRE_MAX_LENGTH = 100;
+
+/**
+ * Precondición de largo de `nombre`. `throw` plano y no `Result`: el campo no
+ * se normaliza en ningún borde, así que el borde mide exactamente el mismo
+ * string que el dominio y un valor fuera de rango llegando acá es violación de
+ * contrato del caller (rama 1 de la "regla de tres ramas").
+ *
+ * NO se aplica en `reconstitute()`, que ya omite la revalidación de fechas por
+ * el mismo criterio: una fila que existe se lee, no se revalida.
+ */
+function validarLargoNombre(nombre: string): void {
+  if (nombre.length > CICLO_VIGENTE_NOMBRE_MAX_LENGTH) {
+    throw new Error(
+      `CicloVigenteEntity: nombre excede ${CICLO_VIGENTE_NOMBRE_MAX_LENGTH} caracteres.`,
+    );
+  }
+}
+
+/**
  * CicloVigenteProps — shape de las propiedades de dominio del CicloVigente
  * (catálogo global de ciclos de gestión, master). Sin imports de Prisma ni
  * NestJS — dominio puro.
@@ -31,9 +59,11 @@ export interface CicloVigenteProps {
 export class CicloVigenteEntity extends BaseEntity<CicloVigenteProps> {
   /**
    * Factory method para nuevas instancias.
+   * @throws Error si `nombre` supera `CICLO_VIGENTE_NOMBRE_MAX_LENGTH`.
    * @throws CicloVigenteInvalidDatesError si `fechaFin <= fechaInicio`.
    */
   static create(props: CicloVigenteProps, id?: string): CicloVigenteEntity {
+    validarLargoNombre(props.nombre);
     if (props.fechaFin <= props.fechaInicio) {
       throw new CicloVigenteInvalidDatesError();
     }
@@ -82,7 +112,9 @@ export class CicloVigenteEntity extends BaseEntity<CicloVigenteProps> {
    * Renombra el ciclo. Sin validación de unicidad (R20 no la exige para el
    * catálogo global, igual que en `CrearCicloVigenteUseCase`).
    */
+  /** @throws Error si `nombre` supera `CICLO_VIGENTE_NOMBRE_MAX_LENGTH`. */
   rename(nombre: string): void {
+    validarLargoNombre(nombre);
     this.props.nombre = nombre;
     this.touch();
   }

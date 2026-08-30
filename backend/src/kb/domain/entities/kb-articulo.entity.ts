@@ -15,9 +15,40 @@ export interface KbArticuloProps {
   activo: boolean;
 }
 
+/**
+ * Tope de largo de `titulo`, espejando `kbArticulos.titulo VarChar(255)`
+ * (`prisma_master/schema.prisma`).
+ *
+ * Vive ACÁ y no en el DTO porque el dominio es la autoridad del límite: el
+ * `VARCHAR` de Postgres es backstop, nunca al revés. `kb-articulo.dto.ts` lo
+ * importa para que el 400 amable del borde y la precondición del dominio no
+ * puedan divergir.
+ *
+ * `contenido` NO tiene tope, y no es un olvido: su columna es `@db.Text`, sin
+ * límite. No hay nada que espejar.
+ */
+export const KB_TITULO_MAX_LENGTH = 255;
+
+/**
+ * Valida `titulo`: no vacío y dentro del tope.
+ *
+ * Las dos condiciones van juntas a propósito. `create()` y `editar()` llaman
+ * las dos a esta función, así que agregar un guard acá lo cubre en las dos
+ * puertas — que es justo el defecto de "cobertura parcial" que este repo
+ * arrastra: cerrar el alta y olvidar la edición.
+ *
+ * El vacío lanza un error de dominio tipado (`TituloVacioError`) porque es una
+ * desviación de NEGOCIO que el usuario corrige; el largo lanza un `Error` plano
+ * porque es violación de contrato del caller — el borde ya lo rechazó con un
+ * 400, y `titulo` no se normaliza en ningún borde (rama 1 de la "regla de tres
+ * ramas"). Mismo criterio que el resto de las entidades del repo.
+ */
 function assertTituloValido(titulo: string): void {
   if (titulo.trim().length === 0) {
     throw new TituloVacioError();
+  }
+  if (titulo.length > KB_TITULO_MAX_LENGTH) {
+    throw new Error(`KbArticuloEntity: titulo excede ${KB_TITULO_MAX_LENGTH} caracteres.`);
   }
 }
 
@@ -44,6 +75,7 @@ export class KbArticuloEntity extends BaseEntity<KbArticuloProps> {
   /**
    * Factory method para nuevas instancias de dominio.
    * @throws TituloVacioError si `props.titulo` es vacío/blank.
+   * @throws Error si `props.titulo` supera `KB_TITULO_MAX_LENGTH`.
    * @throws ContenidoVacioError si `props.contenido` es vacío/blank.
    */
   static create(props: KbArticuloProps, id?: string): KbArticuloEntity {
@@ -97,6 +129,7 @@ export class KbArticuloEntity extends BaseEntity<KbArticuloProps> {
    * Edita `titulo`/`contenido` (K1). Campos `undefined` NO se tocan (PATCH
    * semántico).
    * @throws TituloVacioError si `titulo` editado es vacío/blank — NO muta en ese caso.
+   * @throws Error si `titulo` editado supera `KB_TITULO_MAX_LENGTH` — NO muta en ese caso.
    * @throws ContenidoVacioError si `contenido` editado es vacío/blank — NO muta en ese caso.
    */
   editar(datos: { titulo?: string; contenido?: string }): void {

@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { mensajeDemasiadoLargo } from "@/shared/lib/mensaje-tope";
+import { CICLO_VIGENTE_NOMBRE_MAX_LENGTH } from "./limites";
 
 /**
  * Validación cliente-side del form de ciclo (RHF + zod), espejo del
@@ -8,7 +10,13 @@ import { z } from "zod";
  */
 export const cicloVigenteSchema = z
   .object({
-    nombre: z.string().min(1, "El nombre es requerido"),
+    nombre: z
+      .string()
+      .min(1, "El nombre es requerido")
+      .max(
+        CICLO_VIGENTE_NOMBRE_MAX_LENGTH,
+        mensajeDemasiadoLargo("El nombre", CICLO_VIGENTE_NOMBRE_MAX_LENGTH),
+      ),
     fechaInicio: z.string().min(1, "La fecha de inicio es requerida"),
     fechaFin: z.string().min(1, "La fecha de fin es requerida"),
   })
