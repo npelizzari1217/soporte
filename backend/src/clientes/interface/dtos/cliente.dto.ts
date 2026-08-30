@@ -22,20 +22,25 @@ import {
   CLIENTE_NOMBRE_MAX_LENGTH,
   CLIENTE_RAZON_SOCIAL_MAX_LENGTH,
 } from '../../domain/entities/cliente.entity';
+import {
+  USUARIO_APELLIDO_MAX_LENGTH,
+  USUARIO_NOMBRE_MAX_LENGTH,
+} from '../../../auth/domain/entities/usuario.entity';
 
 /**
  * Body de `POST /clientes`. Solo ROOT (`GlobalAdminGuard`, R16).
  *
- * ALCANCE de los topes de largo: `nombre`, `razonSocial` y `cuit` los importan
- * de `ClienteEntity`. Los tres campos de admin NO tienen tope todavía, en
- * ninguna de las dos capas, y no escriben la misma columna:
- * `adminNombre`/`adminApellido` van a `usuarios.nombre`/`apellido`
- * `VarChar(100)`, y `adminEmail` a `usuarios.email VarChar(255)`.
+ * Topes de largo, y de quién es la autoridad de cada uno: `nombre`,
+ * `razonSocial` y `cuit` los importan de `ClienteEntity`;
+ * `adminNombre`/`adminApellido` de `UsuarioEntity`, porque escriben
+ * `usuarios.nombre`/`apellido` — las MISMAS columnas que el ABM de usuarios.
+ * Esa columna se escribe desde dos altas distintas y hasta este cambio ninguna
+ * la acotaba; cerrar una sola habría dejado la clase abierta con apariencia de
+ * cerrada.
  *
- * Los dos primeros figuran en `AGENTS.md` como instancia abierta, y esa columna
- * se escribe desde dos altas distintas —esta y el ABM de usuarios—, así que
- * cerrarla por una sola puerta dejaría la clase abierta con apariencia de
- * cerrada: se cierra completa o no se cierra.
+ * `adminEmail` es el único sin tope propio, a propósito: `@IsEmail` ya acota
+ * más fuerte que su columna `VarChar(255)` — el RFC limita el total a 254, así
+ * que un `@MaxLength` ahí sería un guard que nunca podría dispararse.
  */
 export class CreateClienteDto {
   @IsString()
@@ -58,10 +63,12 @@ export class CreateClienteDto {
 
   @IsString()
   @IsNotEmpty()
+  @MaxLength(USUARIO_NOMBRE_MAX_LENGTH)
   adminNombre!: string;
 
   @IsString()
   @IsNotEmpty()
+  @MaxLength(USUARIO_APELLIDO_MAX_LENGTH)
   adminApellido!: string;
 
   @IsString()

@@ -9,15 +9,13 @@
  *
  * Vive en `features/clientes/` y no en `shared/lib/` (donde vive
  * `limites-ticket.ts`) porque estos campos los escribe un solo módulo: el ABM
- * de clientes, que es exclusivo de ROOT. `limites-ticket.ts` está compartido
- * porque tres features distintas crean tickets contra la misma columna.
+ * de clientes, que es exclusivo de ROOT. El criterio es ese y no otro: una
+ * constante sube a `shared/lib/` cuando MÁS DE UNA feature escribe su columna.
  *
- * ALCANCE: acá están los topes de los campos COMERCIALES del cliente y los de
- * la config SMTP. Los campos de admin del alta (`adminNombre`,
- * `adminApellido`, `adminEmail` en `crearClienteSchema`) siguen sin tope, igual
- * que en su DTO: escriben `usuarios.nombre`/`apellido` `VarChar(100)`, una
- * instancia todavía abierta en `AGENTS.md` que se escribe desde dos altas
- * distintas. El módulo NO quedó cerrado.
+ * Los campos de admin del alta (`adminNombre`, `adminApellido`, `adminEmail`)
+ * NO usan estos topes sino los de `shared/lib/limites-usuario`: crean el
+ * usuario administrador inicial, así que escriben `usuarios.*`, no `clientes.*`.
+ * Están en shared porque esas columnas las escriben dos features distintas.
  */
 
 /**
@@ -57,16 +55,3 @@ export const CLIENTE_CUIT_MAX_LENGTH = 13;
  * propia con constantes que exportar.
  */
 export const CLIENTE_SMTP_TEXTO_MAX_LENGTH = 255;
-
-/**
- * Arma el mensaje de "texto demasiado largo", para que todos los campos digan
- * lo mismo con el mismo formato.
- *
- * @param campo - Nombre del campo TAL COMO arranca la oración, con artículo y
- *   género ya resueltos: `"El nombre"`, `"La razón social"`, `"El CUIT"`. No se
- *   le antepone nada, así que un valor sin artículo produce un mensaje roto.
- * @param max - Tope de caracteres a nombrar en el mensaje.
- * @returns La oración completa, en español, lista para mostrar bajo el campo.
- */
-export const mensajeDemasiadoLargo = (campo: string, max: number): string =>
-  `${campo} no puede superar los ${max} caracteres`;

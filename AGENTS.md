@@ -191,18 +191,25 @@ Las cuatro primeras están cerradas. El select fuera de catálogo cerró sus 2 i
 lista traída solo vale cuando esa lista YA resolvió, porque con el catálogo cargando o caído
 la ausencia no prueba nada.
 
-**Sigue abierta una sola clase**: 8 campos sin tope espejado — edilicia (ubicación,
-descripción de subtarea), usuarios (nombre y apellido, solo en el ALTA: la ruta de edición sí
-los tiene), tipos-componente (código, nombre), ciclos-master (nombre) y kb (título).
+**Sigue abierta una sola clase**, y ya no son 8 sino **6 campos** sin tope espejado —
+edilicia (ubicación, descripción de subtarea), tipos-componente (código, nombre),
+ciclos-master (nombre) y kb (título).
 
-Ojo con `usuarios`: el nombre y el apellido del admin entran por DOS puertas, y
-la cuenta de arriba las trata como un solo campo cada una. Además del alta de
-usuario está `CreateClienteDto` (`adminNombre`/`adminApellido`/`adminEmail`, el
-alta de tenant), que escribe las MISMAS columnas `usuarios.nombre`/`apellido`
-`VarChar(100)` y tampoco tiene tope. Cerrar una puerta y no la otra deja la
-clase abierta con apariencia de cerrada.
+`usuarios` salió de la lista: nombre y apellido quedaron cerrados en las tres capas, y con
+ellos las DOS puertas que escriben esas columnas —el ABM de usuarios y los campos
+`adminNombre`/`adminApellido` de `CreateClienteDto`, el alta de tenant—. Las constantes
+viven en `UsuarioEntity` y en `shared/lib/limites-usuario`, así que no pueden volver a
+divergir. **Queda un tercer escritor de esas columnas que NO pasa por la entidad**:
+`prisma_master/seeds/root-bootstrap.seed.ts` inserta los `ROOT_ADMIN_*` directo por Prisma.
+Es input de operador en deploy, no un 500 en pantalla, pero la columna no está cerrada por
+todos lados.
 
-Esa clase tiene DOS variantes que fallan distinto, y los 8 de arriba son todos la primera:
+Lección de `usuarios`, que vale para los 6 que faltan: **el validador del front y el del
+backend no acotan igual.** `@IsEmail()` corta en 254 caracteres; `z.string().email()` es
+solo un regex y acepta 309 (medido). Copiar del backend el argumento "ese validador ya acota"
+dejó el front más laxo que el servidor. Cada capa se verifica en su propia capa.
+
+Esa clase tiene DOS variantes que fallan distinto, y los 6 de arriba son todos la primera:
 
 1. **Sin tope en ninguna capa.** La columna es lo único que valida, así que el valor llega a
    Postgres y muere ahí: 22001 → **500 crudo**. Son los 8.

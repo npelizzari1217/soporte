@@ -23,6 +23,10 @@ import {
   MaxLength,
   MinLength,
 } from 'class-validator';
+import {
+  USUARIO_APELLIDO_MAX_LENGTH,
+  USUARIO_NOMBRE_MAX_LENGTH,
+} from '../../domain/entities/usuario.entity';
 import { CATALOGO_MODULOS, CodigoAccion, PARES_VALIDOS } from '../../../shared/domain/acciones';
 
 /** `rolCodigo`: mayúsculas/guion bajo, sin espacios (consistente con el seed RBAC real). */
@@ -35,10 +39,12 @@ export class CreateUsuarioTenantDto {
 
   @IsString()
   @IsNotEmpty()
+  @MaxLength(USUARIO_NOMBRE_MAX_LENGTH)
   nombre!: string;
 
   @IsString()
   @IsNotEmpty()
+  @MaxLength(USUARIO_APELLIDO_MAX_LENGTH)
   apellido!: string;
 
   @IsString()
@@ -78,18 +84,20 @@ export class CambiarRolUsuarioDto {
  * Body de `PATCH /usuarios/:id`. Permiso `usuario:gestionar` (ADMINISTRADOR;
  * ROOT bypassa el guard). Edita SOLO nombre y/o apellido — el `email` NO es
  * editable (identidad de acceso global). Ambos campos son opcionales (patch
- * parcial): enviar solo los que se quieren cambiar. `@MaxLength(100)` acota la
- * longitud, mismo criterio que el resto de datos de identidad.
+ * parcial): enviar solo los que se quieren cambiar. El tope de largo sale de
+ * `USUARIO_NOMBRE_MAX_LENGTH`/`USUARIO_APELLIDO_MAX_LENGTH` en `UsuarioEntity`,
+ * la MISMA constante que usa el alta — antes estaba escrito a mano acá y el
+ * alta no lo tenía, así que un nombre de 120 se podía crear y nunca editar.
  */
 export class EditarUsuarioDto {
   @IsOptional()
   @IsString()
-  @MaxLength(100)
+  @MaxLength(USUARIO_NOMBRE_MAX_LENGTH)
   nombre?: string;
 
   @IsOptional()
   @IsString()
-  @MaxLength(100)
+  @MaxLength(USUARIO_APELLIDO_MAX_LENGTH)
   apellido?: string;
 }
 

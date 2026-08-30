@@ -4,8 +4,13 @@ import {
   CLIENTE_NOMBRE_MAX_LENGTH,
   CLIENTE_RAZON_SOCIAL_MAX_LENGTH,
   CLIENTE_SMTP_TEXTO_MAX_LENGTH,
-  mensajeDemasiadoLargo,
 } from "./limites";
+import {
+  USUARIO_APELLIDO_MAX_LENGTH,
+  USUARIO_EMAIL_MAX_LENGTH,
+  USUARIO_NOMBRE_MAX_LENGTH,
+} from "@/shared/lib/limites-usuario";
+import { mensajeDemasiadoLargo } from "@/shared/lib/mensaje-tope";
 
 /** Espejo de `CreateClienteDto` (backend). Provisiona DB física + admin inicial — solo ROOT. */
 export const crearClienteSchema = z.object({
@@ -24,9 +29,27 @@ export const crearClienteSchema = z.object({
     .string()
     .max(CLIENTE_CUIT_MAX_LENGTH, mensajeDemasiadoLargo("El CUIT", CLIENTE_CUIT_MAX_LENGTH))
     .optional(),
-  adminEmail: z.string().email("Email inválido"),
-  adminNombre: z.string().min(1, "Requerido"),
-  adminApellido: z.string().min(1, "Requerido"),
+  adminEmail: z
+    .string()
+    .email("Email inválido")
+    .max(
+      USUARIO_EMAIL_MAX_LENGTH,
+      mensajeDemasiadoLargo("El email del administrador", USUARIO_EMAIL_MAX_LENGTH),
+    ),
+  adminNombre: z
+    .string()
+    .min(1, "Requerido")
+    .max(
+      USUARIO_NOMBRE_MAX_LENGTH,
+      mensajeDemasiadoLargo("El nombre del administrador", USUARIO_NOMBRE_MAX_LENGTH),
+    ),
+  adminApellido: z
+    .string()
+    .min(1, "Requerido")
+    .max(
+      USUARIO_APELLIDO_MAX_LENGTH,
+      mensajeDemasiadoLargo("El apellido del administrador", USUARIO_APELLIDO_MAX_LENGTH),
+    ),
   adminPassword: z.string().min(8, "Mínimo 8 caracteres"),
 });
 export type CrearClienteFormValues = z.infer<typeof crearClienteSchema>;
@@ -87,6 +110,14 @@ export function configurarCorreoSchema(yaConfigurado: boolean) {
           CLIENTE_SMTP_TEXTO_MAX_LENGTH,
           mensajeDemasiadoLargo("El remitente", CLIENTE_SMTP_TEXTO_MAX_LENGTH),
         ),
+      /**
+       * SIN tope de largo, y no es un olvido: los otros tres campos de texto de
+       * este schema lo llevan porque sus columnas son `VarChar(255)`, pero la
+       * contraseña se persiste en `smtp_password_cifrada`, que es `@db.Text`
+       * —sin límite— y guarda el payload CIFRADO, no lo que el usuario tipeó.
+       * No hay nada que espejar: ni la columna puede desbordarse ni el DTO
+       * declara un tope que el front pudiera contradecir.
+       */
       password: z.string().optional(),
     })
     .refine((data) => yaConfigurado || !!data.password, {

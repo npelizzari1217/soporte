@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { configurarCorreoSchema, crearClienteSchema, editarClienteSchema } from "./schemas";
+import {
+  USUARIO_APELLIDO_MAX_LENGTH,
+  USUARIO_EMAIL_MAX_LENGTH,
+  USUARIO_NOMBRE_MAX_LENGTH,
+} from "@/shared/lib/limites-usuario";
 
 /**
  * Estos schemas son espejo de las reglas `class-validator` de `cliente.dto.ts`.
@@ -182,5 +187,53 @@ describe("el mensaje del tope llega al usuario, en español", () => {
     expect(
       mensajesDe(configurarCorreoSchema(false).safeParse({ ...CORREO_VALIDO, ...invalido })),
     ).toContain(esperado);
+  });
+});
+
+/**
+ * Los campos de admin del alta crean el usuario administrador inicial del
+ * tenant, o sea que escriben `usuarios.nombre`/`apellido` — las MISMAS columnas
+ * que el ABM de usuarios. Por eso importan la constante compartida de
+ * `shared/lib/limites-usuario` en vez de un número propio: hasta este cambio
+ * ninguna de las dos altas las acotaba mientras la edición sí, y cerrar una sola
+ * puerta dejaba la clase abierta con apariencia de cerrada.
+ *
+ * `adminEmail` no lleva tope: `z.string().email()` ya acota más fuerte que la
+ * columna.
+ */
+describe("crearClienteSchema — topes de los campos de admin", () => {
+  it("acepta los valores en el límite exacto", () => {
+    const resultado = crearClienteSchema.safeParse({
+      ...CLIENTE_VALIDO,
+      adminNombre: largo(USUARIO_NOMBRE_MAX_LENGTH),
+      adminApellido: largo(USUARIO_APELLIDO_MAX_LENGTH),
+    });
+    expect(resultado.success).toBe(true);
+  });
+
+  it.each([
+    ["adminNombre", USUARIO_NOMBRE_MAX_LENGTH],
+    ["adminApellido", USUARIO_APELLIDO_MAX_LENGTH],
+  ])("rechaza un %s que pasa el tope", (campo, max) => {
+    const resultado = crearClienteSchema.safeParse({ ...CLIENTE_VALIDO, [campo]: largo(max + 1) });
+    expect(resultado.success).toBe(false);
+  });
+
+  it("el mensaje del tope del admin llega en español", () => {
+    const resultado = crearClienteSchema.safeParse({
+      ...CLIENTE_VALIDO,
+      adminNombre: largo(USUARIO_NOMBRE_MAX_LENGTH + 1),
+    });
+    const mensajes = resultado.success ? [] : resultado.error.issues.map((i) => i.message);
+    expect(mensajes).toContain(`El nombre del administrador no puede superar los ${USUARIO_NOMBRE_MAX_LENGTH} caracteres`);
+  });
+});
+
+/** Mismo hueco que en el ABM de usuarios: zod no acota el largo del email. */
+describe("crearClienteSchema — tope del email del administrador", () => {
+  it("rechaza un adminEmail que pasa el tope que el backend aplica", () => {
+    const adminEmail = "a".repeat(USUARIO_EMAIL_MAX_LENGTH + 1 - "@acme.com".length) + "@acme.com";
+    expect(adminEmail.length).toBeGreaterThan(USUARIO_EMAIL_MAX_LENGTH);
+    expect(crearClienteSchema.safeParse({ ...CLIENTE_VALIDO, adminEmail }).success).toBe(false);
   });
 });
