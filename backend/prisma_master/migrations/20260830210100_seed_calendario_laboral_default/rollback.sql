@@ -1,0 +1,13 @@
+-- Rollback de 20260830210100_seed_calendario_laboral_default.
+--
+-- DESTRUCTIVO respecto de la configuración por defecto: borra las 7 filas
+-- fijas del calendario. Como `add_calendario_laboral` NO se revierte acá
+-- (ver su propio rollback.sql), la tabla queda vacía en vez de eliminada —
+-- cualquier cálculo de SLA posterior falla con `CalendarioSinDiasHabilesError`
+-- hasta volver a sembrar.
+--
+-- Si ROOT ya editó el calendario vía el ABM (WU-6), este rollback borra esa
+-- edición también: no hay forma de distinguir "fila por defecto" de "fila
+-- editada" una vez aplicado el seed. Respaldar antes si hace falta:
+--   \copy calendario_laboral_dias to 'calendario_laboral_dias_backup.csv' csv header
+DELETE FROM "calendario_laboral_dias" WHERE "dia_semana" BETWEEN 0 AND 6;
