@@ -47,12 +47,9 @@ export function formatearMontoConMoneda(moneda: string, monto: number): string {
  * `0.1 * 100` no da exactamente `10`.
  *
  * Vive acá y no en el schema de una feature porque es un predicado puro sin
- * acoplamiento a ninguna. CONSOLIDACIÓN A MEDIO CAMINO, y conviene decirlo en
- * vez de sugerir lo contrario: hoy el único llamador es `features/equipos`.
- * `features/compras/schemas.ts` mantiene su propia copia local, así que el
- * estado real siguen siendo dos copias — antes (compras, equipos), ahora
- * (compras, shared). Migrar Compras es una unidad de trabajo aparte, no un
- * olvido.
+ * acoplamiento a ninguna. Es la ÚNICA definición: la usan `features/equipos`
+ * y `features/compras`, que hasta el 2026-08-30 mantenían cada uno su copia
+ * local.
  *
  * La duplicación es deuda vieja, anterior a este archivo: ambas copias ya
  * convivían y la de Equipos había perdido el guard de `Number.isFinite` que

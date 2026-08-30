@@ -130,10 +130,127 @@ describe("ItemEditDialog", () => {
 
     await user.click(screen.getByRole("button", { name: /guardar/i }));
 
+    // Regresión cero fantasma (R4): `monto` pasó a requerido en el schema,
+    // pero el ítem DECIDIDO sigue guardando sin error — `disabled={decidido}`
+    // es una prop JSX, no `register(...,{disabled:true})`, así que RHF
+    // conserva el valor precargado y el resolver lo ve presente.
     await waitFor(() => expect(capturedBody.descripcion).toBe("Insumo original"));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(capturedBody).not.toHaveProperty("cantidad");
     expect(capturedBody).not.toHaveProperty("monto");
     expect(capturedBody).not.toHaveProperty("moneda");
+  });
+
+  it("cero fantasma (R2/R3): limpiar monto de un ítem NO decidido y guardar NO pega a la API y muestra el error de requerido", async () => {
+    let pegoALaApi = false;
+    server.use(
+      http.patch(`/api/compras/${COMPRA_ID}/items/item-1`, () => {
+        pegoALaApi = true;
+        return HttpResponse.json(buildItem({ monto: 0 }));
+      }),
+    );
+
+    renderWithProviders(<ItemEditDialog compraId={COMPRA_ID} item={buildItem()} />, {
+      user: buildUser({ permisos: ["COMPRAS:MODIFICACION"] }),
+    });
+
+    const user = await abrirDialog();
+    const monto = await screen.findByLabelText(/monto/i);
+    await user.clear(monto);
+    await user.click(screen.getByRole("button", { name: /guardar/i }));
+
+    expect(await screen.findByText(/el monto es requerido/i)).toBeInTheDocument();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(pegoALaApi).toBe(false);
+  });
+
+  it("hermano invertido: reemplazar el monto por 2000 en un ítem NO decidido sí envía el request con monto: 2000", async () => {
+    let capturedBody: Record<string, unknown> = {};
+    server.use(
+      http.patch(`/api/compras/${COMPRA_ID}/items/item-1`, async ({ request }) => {
+        capturedBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(buildItem({ monto: 2000 }));
+      }),
+    );
+
+    renderWithProviders(<ItemEditDialog compraId={COMPRA_ID} item={buildItem()} />, {
+      user: buildUser({ permisos: ["COMPRAS:MODIFICACION"] }),
+    });
+
+    const user = await abrirDialog();
+    const monto = await screen.findByLabelText(/monto/i);
+    await user.clear(monto);
+    await user.type(monto, "2000");
+    await user.click(screen.getByRole("button", { name: /guardar/i }));
+
+    await waitFor(() => expect(capturedBody.monto).toBe(2000));
+  });
+
+  /**
+   * `MontoInput` deja el texto crudo en el form hasta el blur, y `Enter`
+   * dentro de un `<form>` dispara el submit sin pasar por ahí: el resolver
+   * tiene que aceptar el formato es-AR (`"1.000,50"`) igual que tras el blur.
+   * `toHaveFocus()` es la guarda: si algún día se introduce un blur antes del
+   * submit, este test dejaría de probar lo que dice.
+   *
+   * El PATCH se difiere con una promesa manual: si se resolviera de entrada,
+   * el cierre del diálogo en `onSuccess` movería el foco dentro del mismo
+   * `await user.keyboard("{Enter}")`, antes de poder comprobarlo.
+   */
+  it("Enter sin blur con monto en formato es-AR envía el número correcto", async () => {
+    let resolverRespuesta: () => void = () => {};
+    const respuestaPendiente = new Promise<void>((resolve) => {
+      resolverRespuesta = resolve;
+    });
+    let capturedBody: Record<string, unknown> = {};
+    server.use(
+      http.patch(`/api/compras/${COMPRA_ID}/items/item-1`, async ({ request }) => {
+        capturedBody = (await request.json()) as Record<string, unknown>;
+        await respuestaPendiente;
+        return HttpResponse.json(buildItem({ monto: 1234567.89 }));
+      }),
+    );
+
+    renderWithProviders(<ItemEditDialog compraId={COMPRA_ID} item={buildItem()} />, {
+      user: buildUser({ permisos: ["COMPRAS:MODIFICACION"] }),
+    });
+
+    const user = await abrirDialog();
+    const monto = await screen.findByLabelText(/monto/i);
+    await user.click(monto);
+    await user.clear(monto);
+    await user.paste("1.234.567,89");
+    await user.keyboard("{Enter}");
+
+    expect(monto).toHaveFocus();
+    resolverRespuesta();
+    await waitFor(() => expect(capturedBody.monto).toBe(1234567.89));
+  });
+
+  /** Hermano invertido: un valor inválido sigue bloqueando el envío por Enter sin blur. */
+  it("Enter sin blur con monto inválido sigue bloqueando el envío", async () => {
+    let pegoALaApi = false;
+    server.use(
+      http.patch(`/api/compras/${COMPRA_ID}/items/item-1`, () => {
+        pegoALaApi = true;
+        return HttpResponse.json(buildItem());
+      }),
+    );
+
+    renderWithProviders(<ItemEditDialog compraId={COMPRA_ID} item={buildItem()} />, {
+      user: buildUser({ permisos: ["COMPRAS:MODIFICACION"] }),
+    });
+
+    const user = await abrirDialog();
+    const monto = await screen.findByLabelText(/monto/i);
+    await user.click(monto);
+    await user.clear(monto);
+    await user.paste("abc");
+    await user.keyboard("{Enter}");
+
+    expect(await screen.findByText(/ingresá un monto válido/i)).toBeInTheDocument();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(pegoALaApi).toBe(false);
   });
 
   it("muestra el error de dominio del backend (422) al usuario", async () => {
