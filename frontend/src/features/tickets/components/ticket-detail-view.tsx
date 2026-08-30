@@ -136,7 +136,10 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
                 descripcion: ticket.descripcion ?? "",
                 prioridadId: ticket.prioridadId,
               }}
-              prioridades={prioridadesQuery.data ?? []}
+              // `undefined` mientras la query no resolvió (cargando o error):
+              // `TicketEditForm` lo necesita para no etiquetar por error un
+              // valor activo como "dado de baja" (ver JSDoc de la prop).
+              prioridades={prioridadesQuery.data}
               onSubmit={(values) => editarMutation.mutate(values)}
               isSubmitting={editarMutation.isPending}
             />

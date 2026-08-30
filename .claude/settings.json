@@ -1,0 +1,21 @@
+{
+  "autoMode": {
+    "environment": [
+      "$defaults",
+      "### Este repositorio — Soporte",
+      "**Primary use of Claude Code**: development of Soporte, a multi-tenant ticketing SaaS",
+      "**Trusted repo**: C:\\trabajos\\soporte and its origin remote https://github.com/npelizzari1217/soporte.git — private repository. Private means confidential material may be committed here, but secrets and credentials are never cleared by visibility.",
+      "**Repository visibility**: private (npelizzari1217/soporte, via gh)",
+      "**Default / protected branches**: main is the default branch; gh lists no branch protection rules or rulesets, so the branch-and-PR policy is enforced by convention, not by the forge",
+      "**Source control**: npelizzari1217/soporte and its origin remote only — no additional orgs configured",
+      "**Trusted internal domains**: soporte.sesitec.net",
+      "**Key internal services**: soporte-postgres-master, the local Docker Postgres container for this project (port 5432), holding the soporte_master control database",
+      "**Sensitive data locations & audiences**: backend/.env and frontend/.env.local hold local secrets — never commit, push, or paste them. backend/.env.example and frontend/.env.example are safe templates. Every tenant database registered in the clientes table of soporte_master is real customer data.",
+      "**Secrets management**: local .env files only — no secrets manager is configured for this project"
+    ],
+    "soft_deny": [
+      "$defaults",
+      "Bash(dropdb:*), DROP DATABASE, DROP TABLE, and TRUNCATE against soporte_master or against any tenant database registered in its clientes table — these hold real customer data and must never be destroyed. Only throwaway local test databases are fair game."
+    ]
+  }
+}

@@ -114,9 +114,13 @@ Las reglas generales de SDD (ciclo, 3 preguntas, delegación, tabla de modelos) 
   (cambio del 2026-08-30). El motivo del cambio es la portabilidad: engram vive en una sola
   máquina, y si el proyecto se muda o esa base se pierde, el historial de decisiones se va
   con ella.
-  - **Migración pendiente:** `openspec/` todavía no existe acá. Hasta crearlo, el estado se
-    sigue resolviendo por topic keys (`mem_search` → `mem_get_observation`). Los ciclos
-    nuevos ya escriben en los dos lados.
+  - **`openspec/` ya existe** (creado el 2026-08-30). Los ciclos nuevos escriben en los
+    dos lados: el artefacto entra a `openspec/changes/<cambio>/` en el commit del ciclo, y
+    a engram con `topic_key: sdd/{change}/{artifact}`.
+  - **Los ciclos anteriores al 2026-08-30 viven solo en engram** y no están reflejados en
+    `openspec/`. Para recuperar una decisión vieja: `mem_search` → `mem_get_observation`,
+    en la máquina que tenga esa base. No se backfilleó: habría que reconstruir artefactos
+    a partir de observaciones, y un artefacto inventado miente peor que uno ausente.
   - Pasar siempre `project: "soporte"` explícito en las llamadas a engram, para evitar
     "ambiguous project".
   - El dispatcher nativo (`gentle-ai sdd-status` / `sdd-continue`) solo lee artefactos
