@@ -201,17 +201,17 @@ importa**, así que borde y dominio no pueden divergir. El front lo copia a mano
 centinela en su test que fija el valor — eso atrapa una edición accidental, NO un cambio de
 la columna: si una columna se ensancha, al front hay que venir a mano.
 
-**Lo que queda abierto**, y conviene no darlo por cerrado, son dos escrituras que no pasan
-por la entidad:
+**Las dos escrituras que no pasan por la entidad quedaron cubiertas**, cada una como podía:
 
-- `prisma_master/seeds/root-bootstrap.seed.ts` escribe `usuarios.nombre`/`apellido` directo
-  por Prisma.
-- `backend/scripts/sync-ayuda.js` valida el título contra un 255 escrito a mano (y el slug
-  contra 120). No deja agujero —aborta antes de escribir— pero es una copia más del número,
-  y al ser JS no puede importar la constante de TypeScript.
-
-Los dos son input de operador en deploy, no un 500 en pantalla, pero esas columnas no están
-cerradas por todos lados.
+- `prisma_master/seeds/root-bootstrap.seed.ts` es TypeScript, así que **importa** las
+  constantes del dominio y valida los `ROOT_ADMIN_*` antes de insertar. Antes, un nombre de
+  150 caracteres moría con un 22001 del driver que no nombraba la variable culpable, justo en
+  medio de un deploy.
+- `backend/scripts/sync-ayuda.js` es CommonJS y corre con `node` pelado, así que NO puede
+  importar de TypeScript: sus topes siguen siendo literales. Lo que impide que diverjan es un
+  test —`sync-ayuda.spec.ts` compara los topes que el script exporta contra los del dominio—.
+  Es un guard, no un import: si la columna cambia, el test se pone rojo y avisa, pero el
+  número hay que moverlo a mano.
 
 ### Las tres formas en que un tope falla
 

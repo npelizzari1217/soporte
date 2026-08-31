@@ -42,6 +42,20 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { Pool } = require('pg');
 
+/**
+ * Topes de largo de las columnas que este script escribe.
+ *
+ * Son literales y no imports porque este archivo es CommonJS y corre con `node`
+ * pelado (`pnpm run sync:ayuda`), así que no puede leer las constantes de
+ * TypeScript del dominio. La autoridad real es `KbArticuloEntity`
+ * (`KB_TITULO_MAX_LENGTH`, `KB_SLUG_MAX_LENGTH`).
+ *
+ * Se exportan para que `sync-ayuda.spec.ts` los compare contra esas constantes:
+ * ese test es lo único que impide que este script quede validando contra un
+ * número viejo si la columna cambia.
+ */
+const LIMITES = { titulo: 255, slug: 120 };
+
 /** Directorio canónico de los artículos, relativo a este script. */
 const DIRECTORIO_ARTICULOS = path.join(__dirname, '..', 'ayuda');
 
@@ -71,12 +85,36 @@ class ArticuloInvalidoError extends Error {
  * Subconjunto deliberadamente mínimo de YAML — `null`, booleanos y texto — para
  * no arrastrar una dependencia de parseo por tres claves.
  *
- * @param {string} crudo Texto a la derecha de los dos puntos, ya recortado.
+ * Soporta el comentario de YAML: en un valor SIN comillas, ` #` y todo lo que
+ * sigue se descarta. Para que un valor contenga `#`, hay que COMILLARLO — y ahí
+ * el texto entre comillas se toma tal cual, sin recortes.
+ *
+ * @param {string} crudo Texto crudo a la derecha de los dos puntos; se recorta acá.
  * @returns {string|boolean|null}
  */
 function interpretarValor(crudo) {
-  const sinComentario = crudo.replace(/\s+#.*$/, '').trim();
-  const sinComillas = sinComentario.replace(/^(['"])(.*)\1$/, '$2').trim();
+  const valor = crudo.trim();
+
+  // Las comillas se miran ANTES que el comentario, y el orden no es un detalle:
+  // ` #` abre un comentario en YAML, y la salida documentada para un valor que
+  // contiene `#` es comillarlo. Recortando primero, esa salida NO funcionaba:
+  // `"Cómo usar el # de ticket"` quedaba en `"Cómo usar el`, truncado y con la
+  // comilla de apertura pegada. El operador hacía lo correcto y el título se
+  // guardaba roto, en silencio, en la Ayuda que lee el usuario final.
+  //
+  // Dentro de las comillas el texto se toma TAL CUAL: para eso están. Lo que
+  // venga después del cierre (típicamente un comentario) se descarta.
+  //
+  // El grupo va PEREZOSO (`.*?`) y no goloso: con `.*` el motor cierra contra la
+  // ÚLTIMA comilla de la línea, así que un comentario que contiene comillas
+  // —`"Estados"   # no confundir con "prioridad"`— se colaba entero en el título.
+  //
+  // Y el recorte del comentario ancla en `(^|\s)` y no en `\s+`: sobre un valor
+  // ya trimmeado, uno que es SOLO comentario empieza con `#` sin espacio delante,
+  // así que `\s+#` no matcheaba y el comentario terminaba siendo el título. Con
+  // el ancla queda vacío, y una clave obligatoria vacía falla, que es lo correcto.
+  const comillado = valor.match(/^(['"])(.*?)\1\s*(?:#.*)?$/);
+  const sinComillas = comillado ? comillado[2] : valor.replace(/(^|\s)#.*$/, '').trim();
 
   if (sinComillas === '' || sinComillas === 'null' || sinComillas === '~') return null;
   if (sinComillas === 'true') return true;
@@ -156,13 +194,13 @@ function parsearArticulo(texto, origen) {
       `slug "${slug}" inválido: se esperan minúsculas, dígitos y guiones simples (ej. permisos-y-roles)`,
     );
   }
-  if (slug.length > 120) {
-    throw new ArticuloInvalidoError(origen, `slug "${slug}" excede los 120 caracteres`);
+  if (slug.length > LIMITES.slug) {
+    throw new ArticuloInvalidoError(origen, `slug "${slug}" excede los ${LIMITES.slug} caracteres`);
   }
 
   const titulo = String(campos.titulo).trim();
-  if (titulo.length > 255) {
-    throw new ArticuloInvalidoError(origen, `el título excede los 255 caracteres`);
+  if (titulo.length > LIMITES.titulo) {
+    throw new ArticuloInvalidoError(origen, `el título excede los ${LIMITES.titulo} caracteres`);
   }
 
   const visible = campos.visibleParaSolicitante;
@@ -287,6 +325,7 @@ async function sincronizarAyuda(cliente, articulos) {
 
 module.exports = {
   ArticuloInvalidoError,
+  LIMITES,
   DIRECTORIO_ARTICULOS,
   cargarArticulos,
   parsearArticulo,
