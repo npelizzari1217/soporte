@@ -1,17 +1,47 @@
 "use client";
 
 /**
- * use-planes-preventivo-mutations — CONTAINER hooks para el alta y la baja de
- * planes (WU-7.1). Gates `PREVENTIVO:ALTAS|BORRADO` en el backend (espejo
- * exacto de `PreventivoController`, WU-4). El backend también expone
- * `PATCH` bajo `PREVENTIVO:MODIFICACION`, pero este WU no construye la
- * pantalla de edición — ver hallazgo de revisión #10 (código muerto sacado:
- * el hook de editar no tenía consumidor en el frontend).
+ * use-planes-preventivo-mutations — CONTAINER hooks para el alta, la edición y
+ * la baja de planes (WU-7.1, WU-3). Gates `PREVENTIVO:ALTAS|MODIFICACION|BORRADO`
+ * en el backend (espejo exacto de `PreventivoController`, WU-4).
  */
 import { useMutation, useQueryClient, type UseMutationResult } from "@tanstack/react-query";
 import { apiFetch } from "@/shared/api/client";
 import { notifyError, notifySuccess } from "@/shared/lib/toast";
-import type { CreatePlanPreventivoDto, PlanPreventivo } from "../types";
+import type { CreatePlanPreventivoDto, EditarPlanPreventivoDto, PlanPreventivo } from "../types";
+
+/**
+ * `PATCH /preventivo/planes/:id` (gate `PREVENTIVO:MODIFICACION`). PATCH
+ * semántico: `undefined` = no tocar (`EditarPlanPreventivoDto`, ver `types.ts`).
+ * Invalida el listado en `onSuccess` — necesario incluso cuando la edición NO
+ * tocó la cadencia, porque cualquier otro campo editado (título, objetivo,
+ * responsable, activo) también vive del mismo listado cacheado
+ * (`usePlanPreventivo`, WU-4: no hay `GET /preventivo/planes/:id`).
+ *
+ * La respuesta del PATCH puede traer `proximaEjecucionEn` desactualizada
+ * cuando la edición cambió la cadencia (`EditarPlanUseCase` persiste el
+ * puntero por el repositorio y devuelve la MISMA entidad sin mutar,
+ * `editar-plan.use-case.ts:85-103`) — defecto real adyacente, fuera de
+ * alcance de este change (ver "Fuera de alcance" en `tasks.md`). Por eso la
+ * fecha autoritativa NUNCA sale de acá: el detalle la relee del listado
+ * invalidado (ADR-7), que es la única lectura confiable.
+ *
+ * @param id - Id del plan a editar.
+ * @returns La mutación; se invoca con el DTO de edición (`EditarPlanPreventivoDto`).
+ */
+export function useEditarPlanPreventivo(id: string): UseMutationResult<PlanPreventivo, Error, EditarPlanPreventivoDto> {
+  const queryClient = useQueryClient();
+  // Generics explícitos — mismo motivo que `useCrearPlanPreventivo`.
+  return useMutation<PlanPreventivo, Error, EditarPlanPreventivoDto>({
+    mutationFn: (dto: EditarPlanPreventivoDto) =>
+      apiFetch<PlanPreventivo>(`preventivo/planes/${id}`, { method: "PATCH", json: dto }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["preventivo", "planes"] });
+      notifySuccess("Plan de mantenimiento preventivo actualizado.");
+    },
+    onError: notifyError,
+  });
+}
 
 /**
  * `POST /preventivo/planes` (gate `PREVENTIVO:ALTAS`). Invalida el listado al crear.

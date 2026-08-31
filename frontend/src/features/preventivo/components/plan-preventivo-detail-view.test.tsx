@@ -166,3 +166,35 @@ describe("PlanPreventivoDetailView — dar de baja (hallazgo H2)", () => {
     expect(screen.queryByRole("button", { name: /dar de baja/i })).not.toBeInTheDocument();
   });
 });
+
+describe("PlanPreventivoDetailView — entrada a la edición (EP-R2, tarea 3.11)", () => {
+  function mockCatalogosEdicion() {
+    server.use(
+      http.get("/api/equipos", () => HttpResponse.json([])),
+      http.get("/api/catalogos/prioridades", () => HttpResponse.json([])),
+      http.get("/api/usuarios", () => HttpResponse.json([])),
+    );
+  }
+
+  it("con PREVENTIVO:MODIFICACION el disparador de edición se ve", async () => {
+    mockBackend();
+    mockCatalogosEdicion();
+    renderWithProviders(<PlanPreventivoDetailView planId={PLAN_ID} />, {
+      user: buildUser({ permisos: ["PREVENTIVO:LECTURA", "PREVENTIVO:MODIFICACION"] }),
+    });
+
+    await screen.findByText("Revisión mensual");
+    expect(screen.getByRole("button", { name: /^editar$/i })).toBeInTheDocument();
+  });
+
+  it("sin PREVENTIVO:MODIFICACION el disparador de edición NO se ve", async () => {
+    mockBackend();
+    mockCatalogosEdicion();
+    renderWithProviders(<PlanPreventivoDetailView planId={PLAN_ID} />, {
+      user: buildUser({ permisos: ["PREVENTIVO:LECTURA"] }),
+    });
+
+    await screen.findByText("Revisión mensual");
+    expect(screen.queryByRole("button", { name: /^editar$/i })).not.toBeInTheDocument();
+  });
+});

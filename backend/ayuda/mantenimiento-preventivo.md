@@ -104,11 +104,10 @@ administra el módulo completo por plantilla; **Técnico no tiene acceso**.
 **Administrador** ve y puede todo igual, porque bypasea la grilla como en
 el resto del sistema. Si tenías Técnicos usando el módulo, lo pierden
 apenas se aplique esta corrección: sus permisos se mueven a Colaborador (si
-además tienen ese rol), no se duplican. Desde la pantalla, hoy se puede
-**ver**, **crear** y **dar de baja** un plan — **modificar un plan ya creado
-todavía no tiene pantalla propia**, aunque el permiso exista para cuando se
-agregue. El detalle de cómo se asignan los permisos está en el artículo de
-permisos y roles.
+además tienen ese rol), no se duplican. Desde la pantalla se puede **ver**,
+**crear**, **editar** (ver "Editar un plan existente", abajo) y **dar de
+baja** un plan. El detalle de cómo se asignan los permisos está en el
+artículo de permisos y roles.
 
 ## Cómo se da de alta un plan
 
@@ -137,6 +136,40 @@ estos datos:
 mismo límite que otros campos de texto del sistema). Si alguno se pasa, el
 formulario avisa antes de guardar.
 
+## Editar un plan existente
+
+Desde el detalle de un plan, el botón **"Editar"** abre el mismo tipo de
+formulario que la carga inicial, ya completado con los datos actuales.
+Se puede cambiar todo lo del alta —título, instrucciones, objetivo (equipo
+u ubicación), prioridad, responsable y cadencia— **y además activar o
+desactivar el plan desde ahí mismo**, sin ir a una acción aparte: es el
+mismo botón "Guardar" el que aplica todos los cambios juntos.
+
+La **fecha de inicio no se edita**: no aparece en el formulario de edición
+bajo ningún concepto. Es un dato que solo se define al crear el plan.
+
+Si se cambia la cadencia (el número o la unidad), la próxima ejecución se
+recalcula **hacia adelante desde hoy** — nunca hacia atrás, y **sin generar
+los ciclos que quedaron entre medio**. Por ejemplo, un plan mensual que
+pasa a ser trimestral no dispara de golpe los tickets de los meses que ya
+pasaron: arranca a contar de nuevo desde el momento de la edición.
+
+Si el plan apunta a un equipo que fue dado de baja o eliminado del
+inventario después de crear el plan, el selector de equipo lo sigue
+mostrando (con la aclaración correspondiente) para no perder de vista cuál
+era el objetivo original, aunque ya no aparezca en la lista de equipos
+activos.
+
+Lo mismo pasa con la **prioridad** y el **responsable**: si alguno de los dos
+fue dado de baja después de crear el plan, el selector lo sigue mostrando como
+**"Prioridad dada de baja"** o **"Responsable dado de baja"**. La razón es que,
+sin esa opción, el selector no tendría cómo mostrar el valor guardado y pasaría
+a mostrar el primero de la lista: la pantalla diría una cosa y el plan seguiría
+teniendo otra. Lo guardado no se corrompe —el plan conserva su prioridad y su
+responsable originales—, pero uno estaría aprobando algo distinto de lo que ve.
+Si aparece una de esas etiquetas, conviene elegir un reemplazo vigente antes de
+guardar.
+
 ## El listado de planes
 
 La pantalla principal muestra todos los planes con su objetivo, su cadencia,
@@ -153,4 +186,5 @@ Al entrar al detalle de un plan (haciendo clic en la fila del listado) se ve
 el historial completo de generaciones: la fecha programada de cada ciclo, el
 resultado (**Generado**, **Salteado (pendiente)** o **Salteado (atraso)** —
 ver las secciones de arriba para lo que significa cada uno) y el ticket que
-generó, si lo hubo. Desde ahí también se puede dar de baja el plan.
+generó, si lo hubo. Desde ahí también se puede editar el plan (ver "Editar
+un plan existente", arriba) o darlo de baja.

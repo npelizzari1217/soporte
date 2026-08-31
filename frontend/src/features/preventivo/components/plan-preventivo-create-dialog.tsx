@@ -74,7 +74,10 @@ export function PlanPreventivoCreateDialog() {
         titulo: values.titulo,
         instrucciones: values.instrucciones || undefined,
         equipoId: values.equipoId || undefined,
-        ubicacion: values.ubicacion ? values.ubicacion.toUpperCase() : undefined,
+        // Ya viene normalizada (trim + mayúscula) del schema, que normaliza ANTES
+        // de medir el tope. Volver a normalizar acá reabriría el hueco que se
+        // acaba de cerrar: lo validado y lo enviado tienen que ser el mismo string.
+        ubicacion: values.ubicacion || undefined,
         prioridadId: values.prioridadId,
         responsableId: values.responsableId,
         intervaloValor: Number(values.intervaloValor),
@@ -231,7 +234,7 @@ export function PlanPreventivoCreateDialog() {
             {usuariosQuery.isError && (
               <p role="alert" className="text-sm text-destructive">
                 No se pudo cargar la lista de responsables. Puede deberse a que no tenés
-                permiso para ver usuarios (gate independiente de este formulario).
+                permiso para ver usuarios (depende de un permiso independiente de este formulario).
               </p>
             )}
           </div>

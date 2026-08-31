@@ -129,51 +129,57 @@ comentario de mecanismo en la tarea 3.4 y se propone como change propio.
 
 ## WU-3 — UI de edición de planes
 
-- [ ] 3.1 RED [EP-R1] En `frontend/src/features/preventivo/schemas.test.ts`: `editarPlanPreventivoSchema`
+- [x] 3.1 RED [EP-R1] En `frontend/src/features/preventivo/schemas.test.ts`: `editarPlanPreventivoSchema`
       sin `fechaInicio`, con `activo`, y centinela sobre `TITULO_MAX_LENGTH`, `UBICACION_MAX_LENGTH`
       e `INTERVALO_VALOR_MAXIMO`. Verlo fallar.
-- [ ] 3.2 GREEN [EP-R1] `types.ts`: `EditarPlanPreventivoDto` espejo del `EditarPlanPreventivoHttpDto`.
+- [x] 3.2 GREEN [EP-R1] `types.ts`: `EditarPlanPreventivoDto` espejo del `EditarPlanPreventivoHttpDto`.
       `schemas.ts`: `editarPlanPreventivoSchema` reusando `camposComunes` menos `fechaInicio`, más `activo`.
-- [ ] 3.3 RED [EP-R1] Test de `useEditarPlanPreventivo`: hace `PATCH /preventivo/planes/:id` e invalida
+- [x] 3.3 RED [EP-R1] Test de `useEditarPlanPreventivo`: hace `PATCH /preventivo/planes/:id` e invalida
       `["preventivo","planes"]` en `onSuccess`.
-- [ ] 3.4 GREEN [EP-R1] `use-planes-preventivo-mutations.ts`: `useEditarPlanPreventivo`, con comentario
+- [x] 3.4 GREEN [EP-R1] `use-planes-preventivo-mutations.ts`: `useEditarPlanPreventivo`, con comentario
       de mecanismo — la fecha autoritativa se relee del listado invalidado porque la respuesta del PATCH
       trae el puntero viejo (ADR-7 y sección "Fuera de alcance").
-- [ ] 3.5 RED [EP-R1] Crear el esqueleto de `components/plan-preventivo-edit-dialog.tsx` (solo trigger y
+- [x] 3.5 RED [EP-R1] Crear el esqueleto de `components/plan-preventivo-edit-dialog.tsx` (solo trigger y
       diálogo vacío) y `plan-preventivo-edit-dialog.test.tsx`: abrir, cerrar, mutar el prop `plan`,
       reabrir → el formulario muestra los valores vigentes, no el snapshot del primer render.
-- [ ] 3.6 RED [EP-R3] Pasar de ubicación a equipo manda `ubicacion: null` en el cuerpo, y el inverso
+- [x] 3.6 RED [EP-R3] Pasar de ubicación a equipo manda `ubicacion: null` en el cuerpo, y el inverso
       manda `equipoId: null`. Espiar el `mutate` y afirmar sobre el DTO, nunca sobre la pantalla.
-- [ ] 3.7 RED [EP-R1] `fechaInicio` no aparece en el formulario, ni habilitado ni deshabilitado;
+- [x] 3.7 RED [EP-R1] `fechaInicio` no aparece en el formulario, ni habilitado ni deshabilitado;
       hermano invertido: `titulo` sí aparece. Y `activo` se cambia en el mismo envío, sin segunda llamada.
-- [ ] 3.8 RED [EP-R1, ADR-6] Los cinco renglones de ADR-6, con `useEquipo` mockeado: (a) id presente en
+- [x] 3.8 RED [EP-R1, ADR-6] Los cinco renglones de ADR-6, con `useEquipo` mockeado: (a) id presente en
       la lista activa → comportamiento normal, sin opción extra; (b) ausente con `useEquipo` 200 → opción
       extra "(dado de baja)" preseleccionada; (c) ausente con `ApiError` 404 → "Equipo eliminado del
       inventario"; (d) ausente con otro error → mensaje "No se pudo verificar el equipo" y select
       deshabilitado; (e) `equiposQuery` en `isLoading`/`isError` → select deshabilitado y **nunca** se
       infiere una baja. La ausencia solo prueba algo cuando la lista ya resolvió.
-- [ ] 3.9 RED [EP-R5] Par invertido del aviso de cadencia: aparece al ensuciar `intervaloValor` o
+- [x] 3.9 RED [EP-R5] Par invertido del aviso de cadencia: aparece al ensuciar `intervaloValor` o
       `intervaloUnidad`, y **no** aparece al tocar solo `titulo`.
-- [ ] 3.10 GREEN Implementar `plan-preventivo-edit-dialog.tsx`: `onOpenChange` con `reset(valoresVigentes)`
+- [x] 3.10 GREEN Implementar `plan-preventivo-edit-dialog.tsx`: `onOpenChange` con `reset(valoresVigentes)`
       + `setObjetivo(...)` recalculados desde el prop en cada apertura (ADR-4);
       `setValue(otroLado, "", { shouldValidate: true, shouldDirty: true })` (ADR-5); submit con el par
       completo y `null` explícito en el lado descartado; opción fuera de catálogo (ADR-6); aviso
       cualitativo de cadencia sin fecha (ADR-7).
-- [ ] 3.11 RED [EP-R2] En `plan-preventivo-detail-view.test.tsx`: el disparador del diálogo se ve con
+- [x] 3.11 RED [EP-R2] En `plan-preventivo-detail-view.test.tsx`: el disparador del diálogo se ve con
       `PREVENTIVO:MODIFICACION` y no se ve sin él.
-- [ ] 3.12 GREEN [EP-R2] `plan-preventivo-detail-view.tsx`: entrada al diálogo bajo
+- [x] 3.12 GREEN [EP-R2] `plan-preventivo-detail-view.tsx`: entrada al diálogo bajo
       `<Can permiso="PREVENTIVO:MODIFICACION">`. Entrada **única** desde el detalle; no se agrega en la
       fila de la lista (ADR-6: evitaría un `GET /equipos/:id` por plan).
-- [ ] 3.13 [EP-R7] Ayuda, mismo commit: sección "Editar un plan existente" en `mantenimiento-preventivo.md`
+- [x] 3.13 [EP-R7] Ayuda, mismo commit: sección "Editar un plan existente" en `mantenimiento-preventivo.md`
       — campos editables, que `activo` se cambia ahí mismo, que `fechaInicio` no se edita, y que cambiar
       la cadencia mueve la próxima ejecución hacia adelante desde hoy sin generar los ciclos anteriores.
-- [ ] 3.14 Guard de tamaño: WU-3 cierra con exactamente **5** archivos de código (`types.ts`, `schemas.ts`,
+- [x] 3.14 Guard de tamaño: WU-3 cierra con exactamente **5** archivos de código (`types.ts`, `schemas.ts`,
       `use-planes-preventivo-mutations.ts`, `plan-preventivo-edit-dialog.tsx`, `plan-preventivo-detail-view.tsx`).
       Verificar con `git diff --cached --name-only | rg "\.(ts|tsx)$" | rg -v "\.test\."`. Si aparece un
       sexto, partir por este corte ya aprobado: **WU-3a** = 3.1–3.2 (contrato del formulario) ·
       **WU-3b** = 3.3–3.13 (UI), cada uno con sus tests adentro.
-- [ ] 3.15 Cierre: `pnpm vitest run src/features/preventivo`; suite frontend + `pnpm type-check` + `pnpm lint`.
+      Ejecutado: exactamente 5 archivos de código (`types.ts`, `schemas.ts`,
+      `use-planes-preventivo-mutations.ts`, `plan-preventivo-edit-dialog.tsx`,
+      `plan-preventivo-detail-view.tsx`) — sin necesidad de partir en WU-3a/WU-3b.
+- [x] 3.15 Cierre: `pnpm vitest run src/features/preventivo`; suite frontend + `pnpm type-check` + `pnpm lint`.
       Commit.
+      Ejecutado: focalizado 7 archivos/51 tests en verde; suite frontend completa 162/162 archivos,
+      1063/1063 tests; `pnpm type-check` y `pnpm lint` en verde (exit 0). Commit pendiente del
+      orquestador (no lo hace este executor).
 
 ---
 
