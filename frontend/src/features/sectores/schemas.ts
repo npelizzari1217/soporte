@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { mensajeDemasiadoLargo } from "@/shared/lib/mensaje-tope";
 
 /**
  * Validación cliente-side del form de sectores (WU-31). Espejo mínimo de
@@ -16,11 +17,11 @@ export const sectorSchema = z.object({
   codigo: z
     .string()
     .min(1, "El código es requerido")
-    .max(SECTOR_CODIGO_MAX_LENGTH, `El código no puede superar los ${SECTOR_CODIGO_MAX_LENGTH} caracteres`)
+    .max(SECTOR_CODIGO_MAX_LENGTH, mensajeDemasiadoLargo("El código", SECTOR_CODIGO_MAX_LENGTH))
     .regex(CODIGO_PATTERN, "Mayúsculas/números/guion bajo, sin espacios"),
   nombre: z
     .string()
     .min(1, "El nombre es requerido")
-    .max(SECTOR_NOMBRE_MAX_LENGTH, `El nombre no puede superar los ${SECTOR_NOMBRE_MAX_LENGTH} caracteres`),
+    .max(SECTOR_NOMBRE_MAX_LENGTH, mensajeDemasiadoLargo("El nombre", SECTOR_NOMBRE_MAX_LENGTH)),
 });
 export type SectorFormValues = z.infer<typeof sectorSchema>;

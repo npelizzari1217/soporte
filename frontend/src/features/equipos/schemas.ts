@@ -1,5 +1,6 @@
 /** Validación cliente-side de los forms de Equipos (RHF + zod), espejo de `equipos.dto.ts`. */
 import { z } from "zod";
+import { mensajeDemasiadoLargo } from "@/shared/lib/mensaje-tope";
 import {
   TICKET_TITULO_MAX_LENGTH,
   MENSAJE_TITULO_DEMASIADO_LARGO,
@@ -109,21 +110,21 @@ export const crearEquipoSchema = z.object({
   nombre: z
     .string()
     .min(1, "El nombre es requerido")
-    .max(EQUIPO_NOMBRE_MAX_LENGTH, `El nombre no puede superar los ${EQUIPO_NOMBRE_MAX_LENGTH} caracteres`),
+    .max(EQUIPO_NOMBRE_MAX_LENGTH, mensajeDemasiadoLargo("El nombre", EQUIPO_NOMBRE_MAX_LENGTH)),
   numeroSerie: z
     .string()
     .max(
       EQUIPO_NUMERO_SERIE_MAX_LENGTH,
-      `El número de serie no puede superar los ${EQUIPO_NUMERO_SERIE_MAX_LENGTH} caracteres`,
+      mensajeDemasiadoLargo("El número de serie", EQUIPO_NUMERO_SERIE_MAX_LENGTH),
     )
     .optional(),
   marca: z
     .string()
-    .max(EQUIPO_MARCA_MAX_LENGTH, `La marca no puede superar los ${EQUIPO_MARCA_MAX_LENGTH} caracteres`)
+    .max(EQUIPO_MARCA_MAX_LENGTH, mensajeDemasiadoLargo("La marca", EQUIPO_MARCA_MAX_LENGTH))
     .optional(),
   modelo: z
     .string()
-    .max(EQUIPO_MODELO_MAX_LENGTH, `El modelo no puede superar los ${EQUIPO_MODELO_MAX_LENGTH} caracteres`)
+    .max(EQUIPO_MODELO_MAX_LENGTH, mensajeDemasiadoLargo("El modelo", EQUIPO_MODELO_MAX_LENGTH))
     .optional(),
   /**
    * `<input type="date">` → "YYYY-MM-DD" (o "" sin fecha). El backend valida
@@ -149,7 +150,7 @@ export const crearEquipoSchema = z.object({
     .string()
     .refine(
       (valor) => normalizarUbicacion(valor).length <= EQUIPO_UBICACION_MAX_LENGTH,
-      `La ubicación no puede superar los ${EQUIPO_UBICACION_MAX_LENGTH} caracteres`,
+      mensajeDemasiadoLargo("La ubicación", EQUIPO_UBICACION_MAX_LENGTH),
     )
     .optional(),
   /** Importe/valor (string del input; se convierte a number al enviar con `parseImporte`). */
@@ -178,21 +179,21 @@ export const componenteSchema = z.object({
     .string()
     .max(
       COMPONENTE_DESCRIPCION_MAX_LENGTH,
-      `La descripción no puede superar los ${COMPONENTE_DESCRIPCION_MAX_LENGTH} caracteres`,
+      mensajeDemasiadoLargo("La descripción", COMPONENTE_DESCRIPCION_MAX_LENGTH),
     )
     .optional(),
   numeroSerie: z
     .string()
     .max(
       COMPONENTE_NUMERO_SERIE_MAX_LENGTH,
-      `El número de serie no puede superar los ${COMPONENTE_NUMERO_SERIE_MAX_LENGTH} caracteres`,
+      mensajeDemasiadoLargo("El número de serie", COMPONENTE_NUMERO_SERIE_MAX_LENGTH),
     )
     .optional(),
   capacidad: z
     .string()
     .max(
       COMPONENTE_CAPACIDAD_MAX_LENGTH,
-      `La capacidad no puede superar los ${COMPONENTE_CAPACIDAD_MAX_LENGTH} caracteres`,
+      mensajeDemasiadoLargo("La capacidad", COMPONENTE_CAPACIDAD_MAX_LENGTH),
     )
     .optional(),
 });

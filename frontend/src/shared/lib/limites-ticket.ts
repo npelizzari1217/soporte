@@ -1,3 +1,5 @@
+import { mensajeDemasiadoLargo } from "./mensaje-tope";
+
 /**
  * Tope de largo del título de un ticket, espejando la autoridad del backend.
  *
@@ -18,4 +20,7 @@
 export const TICKET_TITULO_MAX_LENGTH = 255;
 
 /** Mensaje de error del tope, para que las tres features digan lo mismo. */
-export const MENSAJE_TITULO_DEMASIADO_LARGO = `El título no puede superar los ${TICKET_TITULO_MAX_LENGTH} caracteres`;
+export const MENSAJE_TITULO_DEMASIADO_LARGO = mensajeDemasiadoLargo(
+  "El título",
+  TICKET_TITULO_MAX_LENGTH,
+);

@@ -1,9 +1,10 @@
 /**
  * Arma el mensaje de "texto demasiado largo" que muestran los formularios.
  *
- * Vive en `shared/lib/` porque lo consumen schemas de features distintas
- * —`features/usuarios/schemas.ts` y `features/clientes/schemas.ts`— y ahí el
- * usuario tiene que leer la misma frase sin importar por cuál formulario entró.
+ * Vive en `shared/lib/` porque lo consumen schemas de features distintas, y ahí
+ * el usuario tiene que leer la misma frase sin importar por cuál formulario
+ * entró. Quiénes lo importan se mide con un `rg`, no se enumera acá: una lista
+ * de consumidores envejece sola con cada módulo que se suma.
  *
  * Unifica el mensaje de los schemas que lo importan, no del repo entero: varios
  * módulos siguen armando la frase a mano. Migrarlos es su propia unidad de

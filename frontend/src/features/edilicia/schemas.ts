@@ -39,6 +39,6 @@ export const crearComentarioSchema = z.object({
     .string()
     .trim()
     .min(1, "El comentario es requerido")
-    .max(COMENTARIO_TEXTO_MAX_LENGTH, `El comentario no puede superar los ${COMENTARIO_TEXTO_MAX_LENGTH} caracteres`),
+    .max(COMENTARIO_TEXTO_MAX_LENGTH, mensajeDemasiadoLargo("El comentario", COMENTARIO_TEXTO_MAX_LENGTH)),
 });
 export type CrearComentarioFormValues = z.infer<typeof crearComentarioSchema>;
