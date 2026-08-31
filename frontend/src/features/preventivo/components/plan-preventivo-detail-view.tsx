@@ -40,6 +40,7 @@ import { useDarDeBajaPlanPreventivo } from "../hooks/use-planes-preventivo-mutat
 import { badgeVariantDeResultado, etiquetaResultado } from "../lib/resultado-generacion";
 import { objetivoLabel, unidadIntervaloLabel } from "../lib/plan-labels";
 import { formatearFechaCalendario } from "@/shared/lib/formato-fecha";
+import { PlanPreventivoEditDialog } from "./plan-preventivo-edit-dialog";
 import type { PreventivoGeneracion } from "../types";
 
 export interface PlanPreventivoDetailViewProps {
@@ -115,25 +116,34 @@ export function PlanPreventivoDetailView({ planId }: PlanPreventivoDetailViewPro
           // (`prisma_tenant/schema.prisma`) — fecha de calendario, no instante: `formatearFechaCalendario`.
           description={`${objetivo} · Cada ${plan.intervaloValor} ${unidad} · Próxima ejecución: ${formatearFechaCalendario(plan.proximaEjecucionEn)}`}
           actions={
-            plan.activo ? (
-              <Can permiso="PREVENTIVO:BORRADO">
-                <ConfirmDialog
-                  trigger={
-                    <Button variant="destructive" size="sm">
-                      Dar de baja
-                    </Button>
-                  }
-                  title="Dar de baja plan"
-                  description={`¿Confirmás dar de baja "${plan.titulo}"? Deja de generar ciclos futuros; lo ya generado no se toca.`}
-                  confirmLabel="Dar de baja"
-                  confirmVariant="destructive"
-                  isConfirming={darDeBajaMutation.isPending}
-                  onConfirm={() => darDeBajaMutation.mutate(plan.id, { onSuccess: () => router.push("/preventivo") })}
-                />
+            <div className="flex items-center gap-2">
+              {/* Entrada ÚNICA al diálogo de edición, desde el detalle — no se agrega
+                  en la fila de la lista (ADR-6: evitaría un `GET /equipos/:id` por
+                  plan sobre el listado, N+1). Gate propio: `activo=false` también
+                  se edita desde acá (activar/desactivar comparte el mismo `PATCH`). */}
+              <Can permiso="PREVENTIVO:MODIFICACION">
+                <PlanPreventivoEditDialog plan={plan} />
               </Can>
-            ) : (
-              <Badge variant="outline">Baja</Badge>
-            )
+              {plan.activo ? (
+                <Can permiso="PREVENTIVO:BORRADO">
+                  <ConfirmDialog
+                    trigger={
+                      <Button variant="destructive" size="sm">
+                        Dar de baja
+                      </Button>
+                    }
+                    title="Dar de baja plan"
+                    description={`¿Confirmás dar de baja "${plan.titulo}"? Deja de generar ciclos futuros; lo ya generado no se toca.`}
+                    confirmLabel="Dar de baja"
+                    confirmVariant="destructive"
+                    isConfirming={darDeBajaMutation.isPending}
+                    onConfirm={() => darDeBajaMutation.mutate(plan.id, { onSuccess: () => router.push("/preventivo") })}
+                  />
+                </Can>
+              ) : (
+                <Badge variant="outline">Baja</Badge>
+              )}
+            </div>
           }
         />
 

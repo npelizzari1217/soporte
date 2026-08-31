@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { crearPlanPreventivoSchema } from "./schemas";
+import { crearPlanPreventivoSchema, editarPlanPreventivoSchema } from "./schemas";
 
 /**
  * Validación cliente-side del objetivo excluyente (ADR-PV1). El dominio y el
@@ -98,5 +98,50 @@ describe("crearPlanPreventivoSchema — límites de largo/rango", () => {
       intervaloValor: "3650",
     });
     expect(result.success).toBe(true);
+  });
+});
+
+/**
+ * `editarPlanPreventivoSchema` (EP-R1, ADR-5) — reusa `camposComunes` menos
+ * `fechaInicio` (no se edita desde este form) y suma `activo` (se cambia en
+ * el mismo envío, sin endpoint aparte). Tarea 3.1.
+ */
+function baseValuesEdicion() {
+  return {
+    titulo: "Revisión mensual",
+    prioridadId: "11111111-1111-1111-1111-111111111111",
+    responsableId: "22222222-2222-2222-2222-222222222222",
+    intervaloValor: "1",
+    intervaloUnidad: "MESES" as const,
+    activo: true,
+    ubicacion: "DEPOSITO",
+  };
+}
+
+describe("editarPlanPreventivoSchema — sin fechaInicio, con activo", () => {
+  it("acepta un payload de edición completo sin fechaInicio", () => {
+    const result = editarPlanPreventivoSchema.safeParse(baseValuesEdicion());
+    expect(result.success).toBe(true);
+  });
+
+  it("rechaza cuando activo no es booleano", () => {
+    const result = editarPlanPreventivoSchema.safeParse({ ...baseValuesEdicion(), activo: "si" });
+    expect(result.success).toBe(false);
+  });
+});
+
+/**
+ * Centinela: `editarPlanPreventivoSchema` reusa los mismos techos que
+ * `crearPlanPreventivoSchema` — si alguien reconstruye los campos a mano en
+ * vez de reusar `camposComunes`, este test detecta la divergencia.
+ */
+describe("editarPlanPreventivoSchema — mismos topes que crearPlanPreventivoSchema (centinela)", () => {
+  it.each([
+    ["título (TITULO_MAX_LENGTH)", { titulo: "A".repeat(256) }],
+    ["ubicación (UBICACION_MAX_LENGTH)", { ubicacion: "B".repeat(256) }],
+    ["intervaloValor (INTERVALO_VALOR_MAXIMO)", { intervaloValor: "3651" }],
+  ])("rechaza %s por encima del tope", (_campo, overrides) => {
+    const result = editarPlanPreventivoSchema.safeParse({ ...baseValuesEdicion(), ...overrides });
+    expect(result.success).toBe(false);
   });
 });

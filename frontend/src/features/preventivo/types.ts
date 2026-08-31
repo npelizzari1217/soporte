@@ -64,3 +64,23 @@ export interface CreatePlanPreventivoDto {
   intervaloUnidad: IntervaloUnidad;
   fechaInicio: string;
 }
+
+/**
+ * Body de `PATCH /preventivo/planes/:id` — espejo de `EditarPlanPreventivoHttpDto`
+ * (backend). PATCH semántico: `undefined` = no tocar. Sin `fechaInicio`: no se
+ * edita desde este formulario (EP-R1). Activar/desactivar comparte este mismo
+ * body (`activo`), sin endpoint aparte.
+ *
+ * Tarea: 3.2.
+ */
+export interface EditarPlanPreventivoDto {
+  titulo?: string;
+  instrucciones?: string | null;
+  equipoId?: string | null;
+  ubicacion?: string | null;
+  prioridadId?: string;
+  responsableId?: string;
+  intervaloValor?: number;
+  intervaloUnidad?: IntervaloUnidad;
+  activo?: boolean;
+}

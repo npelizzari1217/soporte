@@ -66,3 +66,25 @@ export const crearPlanPreventivoSchema = z
   .object(camposComunes)
   .superRefine(validarObjetivoExcluyente);
 export type CrearPlanPreventivoFormValues = z.infer<typeof crearPlanPreventivoSchema>;
+
+/**
+ * Validación cliente-side del form de EDICIÓN (EP-R1, ADR-5). Reusa
+ * `camposComunes` menos `fechaInicio` (no se edita desde este form, ni
+ * habilitado ni deshabilitado) y suma `activo` (se cambia en el mismo envío,
+ * sin endpoint aparte). Mismo XOR de objetivo que el alta (`validarObjetivoExcluyente`).
+ */
+const camposEdicion = {
+  titulo: camposComunes.titulo,
+  instrucciones: camposComunes.instrucciones,
+  equipoId: camposComunes.equipoId,
+  ubicacion: camposComunes.ubicacion,
+  prioridadId: camposComunes.prioridadId,
+  responsableId: camposComunes.responsableId,
+  intervaloValor: camposComunes.intervaloValor,
+  intervaloUnidad: camposComunes.intervaloUnidad,
+};
+
+export const editarPlanPreventivoSchema = z
+  .object({ ...camposEdicion, activo: z.boolean() })
+  .superRefine(validarObjetivoExcluyente);
+export type EditarPlanPreventivoFormValues = z.infer<typeof editarPlanPreventivoSchema>;
