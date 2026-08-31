@@ -37,25 +37,41 @@ valor guardado tal cual (ya normalizado a mayúscula).
 
 Cuando `plan.equipoId` no resuelve a un equipo, el sistema DEBE generar el
 ticket igual, con la línea de objetivo degradada, y NUNCA DEBE dejar de
-generar el ticket por esta causa. El sistema DEBE distinguir textualmente el
-caso "equipo dado de baja" del caso "equipo inexistente" — no DEBE usar el
-mismo texto degradado para ambos.
+generar el ticket por esta causa. El sistema DEBE distinguir textualmente cada
+estado del equipo — eliminado del inventario, dado de baja, inexistente y no
+consultable — y NUNCA DEBE usar el mismo texto degradado para dos estados
+distintos: dos situaciones que se leen igual son indistinguibles para quien
+recibe el ticket.
 
-#### Scenario: Equipo dado de baja (deletedAt no nulo)
+Las etiquetas son parte del contrato, no ejemplos ilustrativos. El orden de
+evaluación también: `deletedAt` se evalúa ANTES que `activo`, así que un equipo
+borrado e inactivo a la vez se reporta como eliminado del inventario.
+
+#### Scenario: Equipo eliminado del inventario (deletedAt no nulo)
 
 - GIVEN un plan cuyo `equipoId` resuelve, vía `findById`, a un equipo con
-  `deletedAt` no nulo (dado de baja lógica)
+  `deletedAt` no nulo (borrado lógico)
 - WHEN el barrido genera el ticket del ciclo vencido
-- THEN la línea de objetivo identifica al equipo como dado de baja (ej.:
-  `Equipo: <nombre> (dado de baja)`) y el ticket se genera igual
+- THEN la línea de objetivo es `Equipo: <nombre> (eliminado del inventario)` y
+  el ticket se genera igual
+
+#### Scenario: Equipo dado de baja (activo = false, deletedAt nulo)
+
+- GIVEN un plan cuyo `equipoId` resuelve a un equipo con `activo = false` y
+  `deletedAt` nulo
+- WHEN el barrido genera el ticket del ciclo vencido
+- THEN la línea de objetivo es `Equipo: <nombre> (dado de baja)` y el ticket se
+  genera igual
+- AND ese texto es distinto del que produce el equipo eliminado del inventario
 
 #### Scenario: Equipo inexistente (findById devuelve null)
 
 - GIVEN un plan cuyo `equipoId` no resuelve a ningún equipo (`findById`
   devuelve `null`)
 - WHEN el barrido genera el ticket del ciclo vencido
-- THEN la línea de objetivo usa un texto degradado distinto al caso "dado de
-  baja" (ej.: `Equipo: (equipo no encontrado)`) y el ticket se genera igual
+- THEN la línea de objetivo es `Equipo: no encontrado (id <equipoId>)` — el id
+  viaja en el texto porque no hay nombre que mostrar — y el ticket se genera
+  igual
 
 #### Scenario: Falla de resolución del equipo no aborta el barrido de otros planes
 
