@@ -1,6 +1,9 @@
 # Local AI runtime state
 .atl/
 .claude/worktrees/
+# Capa LOCAL de Claude Code: preferencias y permisos de esta maquina, no del
+# proyecto. `.claude/settings.json` SI se versiona — es la config compartida.
+.claude/settings.local.json
 
 # Local gga config (personal tooling, not project config)
 .gga
