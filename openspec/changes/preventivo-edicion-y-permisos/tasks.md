@@ -81,7 +81,7 @@ comentario de mecanismo en la tarea 3.4 y se propone como change propio.
 - [x] 1.7 [PR-R1] Actualizar las tres citas de ADR-PV6 en código para que apunten a
       `openspec/changes/preventivo-edicion-y-permisos/design.md` (ADR-3): `presets-rol.ts`, el header
       de `20260825120100/migration.sql` y `backfill-preventivo-permisos.integration.spec.ts`.
-- [ ] 1.8 [PR-R1] **ADR-PV6 no tiene archivo que editar**: superseder la observación de Engram del
+- [x] 1.8 [PR-R1] **ADR-PV6 no tiene archivo que editar**: superseder la observación de Engram del
       design de `sdd/preventivo` guardando una observación nueva que declare ADR-PV6 revisado por
       ADR-3 de este change, y resolviendo el `judgment_required` con relación `supersedes`.
       No se crea ni se edita ningún `.md` por esta tarea.
