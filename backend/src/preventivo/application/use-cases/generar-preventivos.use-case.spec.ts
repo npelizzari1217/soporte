@@ -18,6 +18,44 @@ import { PlanPreventivoEntity } from '../../domain/entities/plan-preventivo.enti
 import { Result } from '../../../shared/domain/result';
 import { SolicitanteInvalidoError } from '../../../tickets/domain/errors/tickets.errors';
 import type { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
+import { EquipoInformaticoEntity } from '../../../equipos/domain/entities/equipo-informatico.entity';
+
+/** Props mínimas de `EquipoInformaticoEntity`, comunes a los tres constructores de fixture. */
+function propsEquipoMinimo(nombre: string) {
+  return {
+    nombre,
+    numeroSerie: null,
+    marca: null,
+    modelo: null,
+    fechaAdquisicion: null,
+    ubicacion: null,
+    importe: null,
+    fechaValoracion: null,
+    observaciones: null,
+    valorResidual: null,
+    fechaValorResidual: null,
+  };
+}
+
+function makeEquipoVigente(id: string, nombre: string): EquipoInformaticoEntity {
+  return EquipoInformaticoEntity.create(propsEquipoMinimo(nombre), id);
+}
+
+function makeEquipoDadoDeBaja(id: string, nombre: string): EquipoInformaticoEntity {
+  const equipo = makeEquipoVigente(id, nombre);
+  equipo.deactivate();
+  return equipo;
+}
+
+function makeEquipoEliminado(id: string, nombre: string): EquipoInformaticoEntity {
+  return EquipoInformaticoEntity.reconstitute(
+    { ...propsEquipoMinimo(nombre), activo: true },
+    id,
+    new Date('2026-01-01'),
+    new Date('2026-01-01'),
+    new Date('2026-01-02'), // deletedAt no nulo → soft delete (ADR-1).
+  );
+}
 
 /**
  * Doble mínimo del ticket creado. Se tipa como `Pick` y NO se castea a
@@ -55,7 +93,10 @@ function resultadoConCandidato(candidato: Date, proximaEjecucionEn: Date) {
 }
 
 describe('GenerarPreventivosUseCase (5.3/5.4/5.5)', () => {
-  function buildUseCase(plan: PlanPreventivoEntity | null) {
+  function buildUseCase(
+    plan: PlanPreventivoEntity | null,
+    equipoRepoOverride?: { findById: ReturnType<typeof vi.fn> },
+  ) {
     const planRepo = {
       findVencibles: vi.fn().mockResolvedValue(plan ? [plan] : []),
       actualizarProximaEjecucion: vi.fn().mockResolvedValue(undefined),
@@ -83,6 +124,16 @@ describe('GenerarPreventivosUseCase (5.3/5.4/5.5)', () => {
     const calcularCiclo = { ciclosPendientes: vi.fn() };
     const logger = { error: vi.fn() };
     const eventPublisher = { publish: vi.fn() };
+    // Por defecto resuelve al equipo del plan como vigente (WU-2): las
+    // pruebas de 5.x que no versan sobre el objetivo no necesitan mockear
+    // esto a mano.
+    const equipoRepo = equipoRepoOverride ?? {
+      findById: vi
+        .fn()
+        .mockResolvedValue(
+          plan?.equipoId ? makeEquipoVigente(plan.equipoId, 'Equipo Default') : null,
+        ),
+    };
 
     const useCase = new GenerarPreventivosUseCase(
       planRepo as never,
@@ -93,6 +144,7 @@ describe('GenerarPreventivosUseCase (5.3/5.4/5.5)', () => {
       calcularCiclo as never,
       logger as never,
       eventPublisher as never,
+      equipoRepo as never,
     );
 
     return {
@@ -105,6 +157,7 @@ describe('GenerarPreventivosUseCase (5.3/5.4/5.5)', () => {
       calcularCiclo,
       logger,
       eventPublisher,
+      equipoRepo,
     };
   }
 
@@ -383,6 +436,9 @@ describe('GenerarPreventivosUseCase (5.3/5.4/5.5)', () => {
     };
     const logger = { error: vi.fn() };
     const eventPublisher = { publish: vi.fn() };
+    const equipoRepo = {
+      findById: vi.fn().mockResolvedValue(makeEquipoVigente('equipo-2-uuid', 'Equipo Sano')),
+    };
 
     const useCase = new GenerarPreventivosUseCase(
       planRepo as never,
@@ -393,6 +449,7 @@ describe('GenerarPreventivosUseCase (5.3/5.4/5.5)', () => {
       calcularCiclo as never,
       logger as never,
       eventPublisher as never,
+      equipoRepo as never,
     );
 
     await expect(useCase.execute('cliente-uuid')).resolves.toBeUndefined();
@@ -409,5 +466,221 @@ describe('GenerarPreventivosUseCase (5.3/5.4/5.5)', () => {
     expect(eventPublisher.publish).toHaveBeenCalledWith(
       expect.objectContaining({ planId: planOk.id, ticketId: 'ticket-2-uuid' }),
     );
+  });
+
+  describe('WU-2 — objetivo del plan en la descripción del ticket (2.3/2.4)', () => {
+    it('[OT-R1] equipo vigente → descripción antepone "Equipo: <nombre>"', async () => {
+      const plan = makePlan({ equipoId: 'equipo-uuid', instrucciones: 'Limpiar ventiladores' });
+      const equipoRepo = {
+        findById: vi.fn().mockResolvedValue(makeEquipoVigente('equipo-uuid', 'Notebook Dell 5420')),
+      };
+      const { useCase, crearTicketUseCase, calcularCiclo } = buildUseCase(plan, equipoRepo);
+      calcularCiclo.ciclosPendientes.mockReturnValue(
+        resultadoConCandidato(new Date('2026-01-08'), new Date('2026-01-15')),
+      );
+
+      await useCase.execute('cliente-uuid');
+
+      expect(equipoRepo.findById).toHaveBeenCalledWith('equipo-uuid');
+      expect(crearTicketUseCase.execute).toHaveBeenCalledTimes(1);
+      expect(crearTicketUseCase.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          descripcion: 'Equipo: Notebook Dell 5420\n\nLimpiar ventiladores',
+          titulo: plan.titulo,
+          tipoId: 'tipo-mantenimiento-uuid',
+          prioridadId: plan.prioridadId,
+          solicitanteId: plan.responsableId,
+          clienteId: 'cliente-uuid',
+          autorId: plan.responsableId,
+        }),
+      );
+    });
+
+    it('[OT-R2] equipo con activo=false (dado de baja) → descripción lo identifica como dado de baja y genera igual', async () => {
+      const plan = makePlan({ equipoId: 'equipo-uuid', instrucciones: 'Limpiar ventiladores' });
+      const equipoRepo = {
+        findById: vi
+          .fn()
+          .mockResolvedValue(makeEquipoDadoDeBaja('equipo-uuid', 'Notebook Dell 5420')),
+      };
+      const { useCase, crearTicketUseCase, calcularCiclo } = buildUseCase(plan, equipoRepo);
+      calcularCiclo.ciclosPendientes.mockReturnValue(
+        resultadoConCandidato(new Date('2026-01-08'), new Date('2026-01-15')),
+      );
+
+      await useCase.execute('cliente-uuid');
+
+      expect(crearTicketUseCase.execute).toHaveBeenCalledTimes(1);
+      expect(crearTicketUseCase.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          descripcion: 'Equipo: Notebook Dell 5420 (dado de baja)\n\nLimpiar ventiladores',
+        }),
+      );
+    });
+
+    it('[OT-R2] equipo eliminado (isDeleted) → descripción lo identifica como eliminado del inventario y genera igual', async () => {
+      const plan = makePlan({ equipoId: 'equipo-uuid', instrucciones: 'Limpiar ventiladores' });
+      const equipoRepo = {
+        findById: vi
+          .fn()
+          .mockResolvedValue(makeEquipoEliminado('equipo-uuid', 'Notebook Dell 5420')),
+      };
+      const { useCase, crearTicketUseCase, calcularCiclo } = buildUseCase(plan, equipoRepo);
+      calcularCiclo.ciclosPendientes.mockReturnValue(
+        resultadoConCandidato(new Date('2026-01-08'), new Date('2026-01-15')),
+      );
+
+      await useCase.execute('cliente-uuid');
+
+      expect(crearTicketUseCase.execute).toHaveBeenCalledTimes(1);
+      expect(crearTicketUseCase.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          descripcion:
+            'Equipo: Notebook Dell 5420 (eliminado del inventario)\n\nLimpiar ventiladores',
+        }),
+      );
+    });
+
+    it('[OT-R2] findById devuelve null (equipo inexistente) → descripción degrada distinto del caso "dado de baja" y genera igual', async () => {
+      const plan = makePlan({ equipoId: 'equipo-uuid', instrucciones: 'Limpiar ventiladores' });
+      const equipoRepo = { findById: vi.fn().mockResolvedValue(null) };
+      const { useCase, crearTicketUseCase, calcularCiclo } = buildUseCase(plan, equipoRepo);
+      calcularCiclo.ciclosPendientes.mockReturnValue(
+        resultadoConCandidato(new Date('2026-01-08'), new Date('2026-01-15')),
+      );
+
+      await useCase.execute('cliente-uuid');
+
+      expect(crearTicketUseCase.execute).toHaveBeenCalledTimes(1);
+      expect(crearTicketUseCase.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          descripcion: 'Equipo: no encontrado (id equipo-uuid)\n\nLimpiar ventiladores',
+        }),
+      );
+    });
+
+    it('[OT-R2] findById lanza (equipo no consultable) → descripción degrada, loguea EQUIPO_NO_CONSULTABLE y NO aborta la generación', async () => {
+      const plan = makePlan({ equipoId: 'equipo-uuid', instrucciones: 'Limpiar ventiladores' });
+      const equipoRepo = {
+        findById: vi.fn().mockRejectedValue(new Error('timeout de conexión')),
+      };
+      const { useCase, crearTicketUseCase, calcularCiclo, logger, generacionRepo } = buildUseCase(
+        plan,
+        equipoRepo,
+      );
+      calcularCiclo.ciclosPendientes.mockReturnValue(
+        resultadoConCandidato(new Date('2026-01-08'), new Date('2026-01-15')),
+      );
+
+      await useCase.execute('cliente-uuid');
+
+      expect(crearTicketUseCase.execute).toHaveBeenCalledTimes(1);
+      expect(crearTicketUseCase.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          descripcion: 'Equipo: no se pudo consultar (id equipo-uuid)\n\nLimpiar ventiladores',
+        }),
+      );
+      expect(generacionRepo.marcarGenerado).toHaveBeenCalledTimes(1);
+      expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('EQUIPO_NO_CONSULTABLE'));
+    });
+
+    it('[OT-R2] dos planes vencidos, uno con equipo irresoluble y otro con objetivo válido → los dos generan su ticket, ninguno bloquea al otro', async () => {
+      const planIrresoluble = PlanPreventivoEntity.create(
+        {
+          titulo: 'Plan con equipo irresoluble',
+          instrucciones: 'Revisar cableado',
+          equipoId: 'equipo-irresoluble-uuid',
+          ubicacion: null,
+          prioridadId: 'prioridad-uuid',
+          responsableId: 'responsable-uuid',
+          intervaloValor: 7,
+          intervaloUnidad: 'DIAS',
+          fechaInicio: new Date('2026-01-01'),
+          proximaEjecucionEn: new Date('2026-01-08'),
+          activo: true,
+        },
+        'plan-irresoluble-uuid',
+      ).getValue();
+      const planValido = PlanPreventivoEntity.create(
+        {
+          titulo: 'Plan con objetivo válido',
+          instrucciones: 'Revisar UPS',
+          equipoId: null,
+          ubicacion: 'SALA DE SERVIDORES',
+          prioridadId: 'prioridad-uuid',
+          responsableId: 'responsable-uuid',
+          intervaloValor: 7,
+          intervaloUnidad: 'DIAS',
+          fechaInicio: new Date('2026-01-01'),
+          proximaEjecucionEn: new Date('2026-01-08'),
+          activo: true,
+        },
+        'plan-valido-uuid',
+      ).getValue();
+
+      const planRepo = {
+        findVencibles: vi.fn().mockResolvedValue([planIrresoluble, planValido]),
+        actualizarProximaEjecucion: vi.fn().mockResolvedValue(undefined),
+      };
+      const generacionRepo = {
+        reservar: vi
+          .fn()
+          .mockResolvedValueOnce('generacion-irresoluble-uuid')
+          .mockResolvedValueOnce('generacion-valida-uuid'),
+        marcarGenerado: vi.fn().mockResolvedValue(undefined),
+        marcarSalteadoPendiente: vi.fn().mockResolvedValue(undefined),
+        registrarSalteadoAtraso: vi.fn().mockResolvedValue(undefined),
+        existeTicketAbiertoDelPlan: vi.fn().mockResolvedValue(false),
+      };
+      const tipoTicketRepo = {
+        findIdByCodigo: vi.fn().mockResolvedValue('tipo-mantenimiento-uuid'),
+      };
+      const crearTicketUseCase = {
+        execute: vi
+          .fn()
+          .mockResolvedValueOnce(Result.ok(fakeTicket('ticket-irresoluble-uuid')))
+          .mockResolvedValueOnce(Result.ok(fakeTicket('ticket-valido-uuid'))),
+      };
+      const txRunner = {
+        run: vi.fn((fn: () => Promise<unknown>) => fn()),
+        alCommitear: vi.fn((fn: () => void) => fn()),
+      };
+      const calcularCiclo = {
+        ciclosPendientes: vi
+          .fn()
+          .mockReturnValue(resultadoConCandidato(new Date('2026-01-08'), new Date('2026-01-15'))),
+      };
+      const logger = { error: vi.fn() };
+      const eventPublisher = { publish: vi.fn() };
+      const equipoRepo = { findById: vi.fn().mockResolvedValue(null) };
+
+      const useCase = new GenerarPreventivosUseCase(
+        planRepo as never,
+        generacionRepo as never,
+        tipoTicketRepo as never,
+        crearTicketUseCase as never,
+        txRunner as never,
+        calcularCiclo as never,
+        logger as never,
+        eventPublisher as never,
+        equipoRepo as never,
+      );
+
+      await expect(useCase.execute('cliente-uuid')).resolves.toBeUndefined();
+
+      expect(generacionRepo.marcarGenerado).toHaveBeenCalledTimes(2);
+      expect(crearTicketUseCase.execute).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({
+          descripcion: 'Equipo: no encontrado (id equipo-irresoluble-uuid)\n\nRevisar cableado',
+        }),
+      );
+      expect(crearTicketUseCase.execute).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+          descripcion: 'Ubicación: SALA DE SERVIDORES\n\nRevisar UPS',
+        }),
+      );
+    });
   });
 });

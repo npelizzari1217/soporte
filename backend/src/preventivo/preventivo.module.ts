@@ -1,11 +1,16 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { TicketsModule } from '../tickets/tickets.module';
+import { EquiposModule } from '../equipos/equipos.module';
 import {
   TIPO_TICKET_REPOSITORY,
   ITipoTicketRepository,
 } from '../tickets/domain/ports/i-tipo-ticket.repository';
 import { CrearTicketUseCase } from '../tickets/application/use-cases/crear-ticket.use-case';
+import {
+  EQUIPO_INFORMATICO_REPOSITORY,
+  IEquipoInformaticoRepository,
+} from '../equipos/domain/ports/i-equipo-informatico.repository';
 import { TENANT_ENUMERATOR, ITenantEnumerator } from '../shared/domain/ports/i-tenant-enumerator';
 import { TenantContext } from '../shared/tenancy/tenant-context';
 import { PrismaService } from '../shared/infrastructure/persistence/prisma.service';
@@ -57,6 +62,11 @@ import { PreventivoSweepScheduler } from './infrastructure/schedulers/preventivo
  * - `TicketsModule`: `GenerarPreventivosUseCase` (WU-5) reusa
  *   `CrearTicketUseCase` (exportado por `TicketsModule` desde 5.1) y
  *   `TIPO_TICKET_REPOSITORY` para resolver el tipo FIJO `MANTENIMIENTO`.
+ * - `EquiposModule` (WU-2, ADR-2): `GenerarPreventivosUseCase` suma un
+ *   noveno parámetro `Pick<IEquipoInformaticoRepository, 'findById'>` para
+ *   resolver el objetivo del ticket. `EquiposModule` ya exporta
+ *   `EQUIPO_INFORMATICO_REPOSITORY` y no importa `PreventivoModule`: sin
+ *   ciclo. No se crea un puerto propio de preventivo para el mismo contrato.
  *
  * WU-5 agrega la generación automática: `GenerarPreventivosUseCase`
  * (orquestación transaccional del ciclo, ADR-PV2/PV3/PV5) y
@@ -69,7 +79,7 @@ import { PreventivoSweepScheduler } from './infrastructure/schedulers/preventivo
  * infrastructure/ (ver backend/eslint.config.js).
  */
 @Module({
-  imports: [AuthModule, TicketsModule],
+  imports: [AuthModule, TicketsModule, EquiposModule],
   controllers: [PreventivoController],
   providers: [
     { provide: PLAN_PREVENTIVO_REPOSITORY, useClass: PrismaPlanPreventivoRepository },
@@ -116,6 +126,7 @@ import { PreventivoSweepScheduler } from './infrastructure/schedulers/preventivo
         calcularCiclo: CalcularCicloService,
         logger: ILogger,
         eventPublisher: IDomainEventPublisher,
+        equipoRepo: IEquipoInformaticoRepository,
       ) =>
         new GenerarPreventivosUseCase(
           planRepo,
@@ -126,6 +137,7 @@ import { PreventivoSweepScheduler } from './infrastructure/schedulers/preventivo
           calcularCiclo,
           logger,
           eventPublisher,
+          equipoRepo,
         ),
       inject: [
         PLAN_PREVENTIVO_REPOSITORY,
@@ -136,6 +148,7 @@ import { PreventivoSweepScheduler } from './infrastructure/schedulers/preventivo
         CalcularCicloService,
         LOGGER,
         DOMAIN_EVENT_PUBLISHER,
+        EQUIPO_INFORMATICO_REPOSITORY,
       ],
     },
     {

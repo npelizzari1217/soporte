@@ -3,11 +3,17 @@ import { ILogger } from '../../../shared/domain/ports/i-logger.port';
 import { IDomainEventPublisher } from '../../../shared/domain/ports/i-domain-event-publisher';
 import { ITipoTicketRepository } from '../../../tickets/domain/ports/i-tipo-ticket.repository';
 import { CrearTicketUseCase } from '../../../tickets/application/use-cases/crear-ticket.use-case';
+import { IEquipoInformaticoRepository } from '../../../equipos/domain/ports/i-equipo-informatico.repository';
+import { EquipoInformaticoEntity } from '../../../equipos/domain/entities/equipo-informatico.entity';
 import { IPlanPreventivoRepository } from '../../domain/ports/i-plan-preventivo.repository';
 import { IPreventivoGeneracionRepository } from '../../domain/ports/i-preventivo-generacion.repository';
 import { PlanPreventivoEntity } from '../../domain/entities/plan-preventivo.entity';
 import { CalcularCicloService } from '../../domain/services/calcular-ciclo.service';
 import { PreventivoGeneradoEvent } from '../../domain/events/preventivo-generado.event';
+import {
+  ObjetivoResuelto,
+  componerDescripcionTicket,
+} from '../../domain/services/describir-objetivo.service';
 
 /** Código FIJO del tipo de ticket que genera este barrido (F3-M1, ya sembrado). */
 const TIPO_CODIGO_MANTENIMIENTO = 'MANTENIMIENTO';
@@ -48,11 +54,22 @@ const TIPO_CODIGO_MANTENIMIENTO = 'MANTENIMIENTO';
  * no hay ticket nuevo que notificar. El runner protege cada callback con su
  * propio try/catch (log-and-swallow) — este use case no necesita el suyo.
  *
+ * WU-2 [OT-R1/OT-R2]: justo antes de crear el ticket, `resolverObjetivo`
+ * mapea el plan (equipo o ubicación) a `ObjetivoResuelto` (dominio puro,
+ * `describir-objetivo.service.ts`) y `componerDescripcionTicket` antepone
+ * la línea de objetivo a `plan.instrucciones`. `equipoRepo.findById` que
+ * lanza NUNCA aborta la generación: degrada a `EQUIPO_NO_CONSULTABLE` y
+ * loguea — un dato descriptivo no frena un mantenimiento.
+ *
  * Ref spec: sdd/preventivo/spec, Requirements "Idempotencia por clave de
  * base...", "Recuperación de corrida perdida sin ráfaga", "No-solapamiento
  * con preventivo abierto sin atender", "Solicitante del ticket generado...",
  * "Aislamiento por tenant en el barrido", "Notificación solo al generar".
- * Ref design: ADR-PV2, ADR-PV3, ADR-PV4, ADR-PV5. Tarea: 5.3, 5.4, 5.5, 6.1.
+ * Ref spec (WU-2): preventivo-objetivo-en-ticket/spec, Requirements "La
+ * descripción del ticket antepone el objetivo del plan" y "Objetivo
+ * irresoluble degrada el texto sin fallar la generación".
+ * Ref design: ADR-PV2, ADR-PV3, ADR-PV4, ADR-PV5, ADR-1, ADR-2.
+ * Tarea: 5.3, 5.4, 5.5, 6.1, 2.5.
  */
 export class GenerarPreventivosUseCase {
   constructor(
@@ -74,6 +91,7 @@ export class GenerarPreventivosUseCase {
     private readonly calcularCiclo: Pick<CalcularCicloService, 'ciclosPendientes'>,
     private readonly logger: Pick<ILogger, 'error'>,
     private readonly eventPublisher: Pick<IDomainEventPublisher, 'publish'>,
+    private readonly equipoRepo: Pick<IEquipoInformaticoRepository, 'findById'>,
   ) {}
 
   /**
@@ -175,10 +193,16 @@ export class GenerarPreventivosUseCase {
 
       // 3. CrearTicketUseCase reusado (ADR-PV5): el runner re-entrante hace
       // que su propio `txRunner.run()` interno participe de ESTA misma
-      // transacción en vez de abrir una nueva.
+      // transacción en vez de abrir una nueva. El objetivo se resuelve
+      // recién acá (WU-2, OT-R1/OT-R2): ni antes de ganar la reserva ni en
+      // la rama SALTEADO_PENDIENTE, para no gastar una consulta a equipos
+      // sobre un ciclo que no va a generar ticket.
+      const objetivo = await this.resolverObjetivo(plan);
+      const descripcion = componerDescripcionTicket(objetivo, plan.instrucciones);
+
       const ticketResult = await this.crearTicketUseCase.execute({
         titulo: plan.titulo,
-        descripcion: plan.instrucciones,
+        descripcion,
         tipoId: tipoMantenimientoId,
         prioridadId: plan.prioridadId,
         solicitanteId: plan.responsableId,
@@ -217,5 +241,46 @@ export class GenerarPreventivosUseCase {
         );
       });
     });
+  }
+
+  /**
+   * Resuelve el objetivo del plan a la unión `ObjetivoResuelto` (ADR-1,
+   * dominio puro en `describir-objetivo.service.ts`). `plan.ubicacion` se
+   * usa tal cual (ya normalizada a mayúscula); `plan.equipoId` se consulta
+   * vía `equipoRepo.findById`, que NO filtra soft-delete — por eso se
+   * distinguen los cinco estados de equipo, ninguno colapsado. Un
+   * `findById` que lanza NUNCA propaga: se loguea `EQUIPO_NO_CONSULTABLE`
+   * y el texto degrada, para que un dato descriptivo no frene el
+   * mantenimiento (OT-R2).
+   */
+  private async resolverObjetivo(plan: PlanPreventivoEntity): Promise<ObjetivoResuelto> {
+    if (plan.ubicacion !== null) {
+      return { tipo: 'UBICACION', texto: plan.ubicacion };
+    }
+    if (plan.equipoId === null) {
+      return { tipo: 'SIN_OBJETIVO' };
+    }
+
+    let equipo: EquipoInformaticoEntity | null;
+    try {
+      equipo = await this.equipoRepo.findById(plan.equipoId);
+    } catch (error) {
+      const mensaje = error instanceof Error ? error.message : 'error desconocido';
+      this.logger.error(
+        `EQUIPO_NO_CONSULTABLE | planId=${plan.id} | equipoId=${plan.equipoId} | error=${mensaje}`,
+      );
+      return { tipo: 'EQUIPO_NO_CONSULTABLE', equipoId: plan.equipoId };
+    }
+
+    if (equipo === null) {
+      return { tipo: 'EQUIPO_INEXISTENTE', equipoId: plan.equipoId };
+    }
+    if (equipo.isDeleted()) {
+      return { tipo: 'EQUIPO_ELIMINADO', nombre: equipo.nombre };
+    }
+    if (!equipo.activo) {
+      return { tipo: 'EQUIPO_DADO_DE_BAJA', nombre: equipo.nombre };
+    }
+    return { tipo: 'EQUIPO_VIGENTE', nombre: equipo.nombre };
   }
 }

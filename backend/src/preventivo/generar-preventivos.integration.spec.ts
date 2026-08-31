@@ -54,6 +54,7 @@ import { PrismaPreventivoGeneracionRepository } from './infrastructure/persisten
 import { PlanPreventivoEntity } from './domain/entities/plan-preventivo.entity';
 import { CalcularCicloService } from './domain/services/calcular-ciclo.service';
 import { GenerarPreventivosUseCase } from './application/use-cases/generar-preventivos.use-case';
+import { IEquipoInformaticoRepository } from '../equipos/domain/ports/i-equipo-informatico.repository';
 
 const MASTER_TEST_URL =
   process.env.DATABASE_URL_MASTER ??
@@ -198,6 +199,14 @@ describe('GenerarPreventivosUseCase — Integration (5.8-5.13, 6.1)', () => {
     logger = { error: vi.fn<(mensaje: string) => void>() };
 
     eventPublisher = new RecordingDomainEventPublisher();
+    // Doble mínimo (WU-2): los planes de este spec fijan `ubicacion`, nunca
+    // `equipoId` (línea "DEPOSITO PREVENTIVO TEST" abajo), así que
+    // `findById` nunca se invoca — no vale montar un repo Prisma real de
+    // equipos para una dependencia que este spec no ejercita.
+    const equipoRepo: Pick<IEquipoInformaticoRepository, 'findById'> = {
+      findById: async () => null,
+    };
+
     generarPreventivosUseCase = new GenerarPreventivosUseCase(
       planRepo,
       generacionRepo,
@@ -207,6 +216,7 @@ describe('GenerarPreventivosUseCase — Integration (5.8-5.13, 6.1)', () => {
       new CalcularCicloService(),
       logger,
       eventPublisher,
+      equipoRepo,
     );
 
     const prioridad = await tenantClient.prioridad.findUniqueOrThrow({
