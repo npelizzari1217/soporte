@@ -7,8 +7,10 @@
  * sobre un fixture propio de `soporte_master_test`, y verifica el resultado
  * celda por celda:
  *
- * - TECNICO pierde las cuatro celdas `PREVENTIVO:*` — el DELETE no filtra
- *   `activo` (design ADR-3) — y conserva las celdas de otros módulos.
+ * - TECNICO pierde las cuatro celdas `PREVENTIVO:*` — el DELETE NO filtra
+ *   `activo` (design ADR-3: revocar es total) — y conserva las celdas de
+ *   otros módulos. Cubierto con un TECNICO de membresía activa Y uno de
+ *   membresía inactiva: los dos pierden las cuatro celdas por igual.
  * - COLABORADOR con membresía ACTIVA gana las cuatro.
  * - COLABORADOR con membresía INACTIVA no gana nada — el INSERT filtra
  *   `activo = true AND deleted_at IS NULL`.
@@ -140,6 +142,22 @@ describe('Swap de permisos PREVENTIVO:* a COLABORADOR (WU-1)', () => {
       data: { usuarioId: tecnicoId, clienteId: clienteAId, modulo: 'TICKETS', accion: 'LECTURA' },
     });
 
+    // TECNICO con membresía INACTIVA que YA tiene las cuatro celdas
+    // PREVENTIVO:* — otorgadas cuando la membresía todavía estaba activa
+    // (el backfill de esta corrida NO se las va a dar de nuevo: filtra
+    // `activo = true`, así que se insertan directo para simular ese estado
+    // previo real). Es el hermano que falta del lado del DELETE (W1 del
+    // verify): revocar es total (ADR-3), así que este usuario tiene que
+    // perder las cuatro igual que el TECNICO activo.
+    const tecnicoInactivoId = await crearUsuario('tecnico-inactivo');
+    await crearMembresia(tecnicoInactivoId, clienteAId, 'TECNICO', false);
+    for (const celda of CELDAS_PREVENTIVO) {
+      const [modulo, accion] = celda.split(':');
+      await masterClient.usuarioClientePermiso.create({
+        data: { usuarioId: tecnicoInactivoId, clienteId: clienteAId, modulo, accion },
+      });
+    }
+
     // COLABORADOR con membresía activa.
     const colaboradorActivoId = await crearUsuario('colaborador-activo');
     await crearMembresia(colaboradorActivoId, clienteAId, 'COLABORADOR', true);
@@ -186,6 +204,11 @@ describe('Swap de permisos PREVENTIVO:* a COLABORADOR (WU-1)', () => {
     expect(await celdasDe('tecnico', clienteAId)).toEqual(['TICKETS:LECTURA']);
   });
 
+  it('[hermano invertido, W1] TECNICO con membresía INACTIVA también pierde las cuatro celdas — el DELETE no filtra activo (design ADR-3)', async () => {
+    await correrBackfillYSwap();
+    expect(await celdasDe('tecnico-inactivo', clienteAId)).toEqual([]);
+  });
+
   it('[hermano invertido] COLABORADOR con membresía activa gana las cuatro celdas', async () => {
     await correrBackfillYSwap();
     expect(await celdasDe('colaborador-activo', clienteAId)).toEqual(CELDAS_PREVENTIVO);
@@ -217,6 +240,7 @@ describe('Swap de permisos PREVENTIVO:* a COLABORADOR (WU-1)', () => {
     await correr(SWAP_FILE);
 
     expect(await celdasDe('tecnico', clienteAId)).toEqual(['TICKETS:LECTURA']);
+    expect(await celdasDe('tecnico-inactivo', clienteAId)).toEqual([]);
     expect(await celdasDe('colaborador-activo', clienteAId)).toEqual(CELDAS_PREVENTIVO);
     expect(await celdasDe('colaborador-inactivo', clienteAId)).toEqual([]);
     expect(await celdasDe('mixto', clienteAId)).toEqual([]);
