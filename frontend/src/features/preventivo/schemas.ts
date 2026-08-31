@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { mensajeDemasiadoLargo } from "@/shared/lib/mensaje-tope";
 
 /**
  * Validación cliente-side del form de planes de Preventivo (RHF + zod), espejo
@@ -36,12 +37,12 @@ const camposComunes = {
   titulo: z
     .string()
     .min(1, "El título es requerido")
-    .max(TITULO_MAX_LENGTH, `El título no puede superar los ${TITULO_MAX_LENGTH} caracteres`),
+    .max(TITULO_MAX_LENGTH, mensajeDemasiadoLargo("El título", TITULO_MAX_LENGTH)),
   instrucciones: z.string().optional(),
   equipoId: z.string().optional(),
   ubicacion: z
     .string()
-    .max(UBICACION_MAX_LENGTH, `La ubicación no puede superar los ${UBICACION_MAX_LENGTH} caracteres`)
+    .max(UBICACION_MAX_LENGTH, mensajeDemasiadoLargo("La ubicación", UBICACION_MAX_LENGTH))
     .optional(),
   prioridadId: z.string().min(1, "Elegí una prioridad"),
   responsableId: z.string().min(1, "Elegí un responsable"),
