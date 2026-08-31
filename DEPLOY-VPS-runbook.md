@@ -265,21 +265,26 @@ Los dos smokes del repo:
 
 ```powershell
 cd C:\soporte\backend
-& 'C:\nodejs22\node.exe' scripts\post-deploy-smoke-fecha-cierre.mjs      # ANDA
-& 'C:\nodejs22\node.exe' scripts\post-deploy-smoke-matriz-permisos.mjs   # ROTO, ver abajo
+& 'C:\nodejs22\node.exe' scripts\post-deploy-smoke-fecha-cierre.mjs
+& 'C:\nodejs22\node.exe' scripts\post-deploy-smoke-matriz-permisos.mjs
 ```
 
-### ⚠️ `post-deploy-smoke-matriz-permisos.mjs` está roto
+Los dos andan. **`post-deploy-smoke-matriz-permisos.mjs` estuvo roto** entre
+`b08066c refactor(auth)!` y su arreglo en el PR #93: consultaba
+`usuario_cliente_modulos`, tabla que ese refactor eliminó a propósito, así que fallaba en **todo
+deploy** y su rojo se leyó como ruido durante meses. Un chequeo que falla siempre no chequea
+nada.
 
-Falla con `no existe la relación «usuario_cliente_modulos»` (verificado 2026-08-31 contra
-producción). **No es un problema de producción: el smoke quedó viejo.** Esa tabla se eliminó a
-propósito en `b08066c refactor(auth)!: saca del schema las tablas que WU-9 elimino de
-produccion`; el eje vigente es `usuario_cliente_permisos`.
+### El smoke de la matriz depende del build
 
-O sea que este smoke viene fallando desde ese refactor y **nadie se enteró**, porque solo corre
-post-deploy y su rojo se leyó como ruido. Un chequeo que falla siempre no chequea nada.
+Compara el `CHECK` de la base contra el catálogo de **`dist/`**, no de la fuente: lo que importa
+es el catálogo que quedó desplegado. **Corrélo después del build**, o va a reportar una deriva
+que no existe. Si sale deriva, lo primero es mirar la antigüedad del `dist` antes de sospechar
+de la base.
 
-Mientras no se arregle, la matriz se verifica a mano (solo lectura):
+### Verificación manual de la matriz (solo lectura)
+
+Complemento del smoke, útil cuando querés ver el estado y no solo el veredicto:
 
 ```sql
 SELECT r.codigo AS rol, ucp.modulo, count(*) AS celdas
