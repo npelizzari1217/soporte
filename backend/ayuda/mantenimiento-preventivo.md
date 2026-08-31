@@ -70,7 +70,12 @@ no se tocan: siguen su curso como cualquier otro ticket.
 
 El acceso se controla con el módulo **Preventivo**, que define cuatro
 permisos al asignar roles (ver, crear, modificar y dar de baja). Sin el
-permiso de lectura, el módulo no aparece. Desde la pantalla, hoy se puede
+permiso de lectura, el módulo no aparece. **Colaborador** es el rol que
+administra el módulo completo por plantilla; **Técnico no tiene acceso**.
+**Administrador** ve y puede todo igual, porque bypasea la grilla como en
+el resto del sistema. Si tenías Técnicos usando el módulo, lo pierden
+apenas se aplique esta corrección: sus permisos se mueven a Colaborador (si
+además tienen ese rol), no se duplican. Desde la pantalla, hoy se puede
 **ver**, **crear** y **dar de baja** un plan — **modificar un plan ya creado
 todavía no tiene pantalla propia**, aunque el permiso exista para cuando se
 agregue. El detalle de cómo se asignan los permisos está en el artículo de

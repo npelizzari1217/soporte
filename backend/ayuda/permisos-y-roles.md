@@ -122,11 +122,14 @@ estándar, sin extras:
 | `MODIFICACION` | Editar un plan existente (cadencia, objetivo, responsable) |
 | `BORRADO` | Dar de baja un plan (deja de generar, no borra lo ya generado) |
 
-Por plantilla, las cuatro casillas vienen marcadas de entrada para **Técnico**
-al crear el usuario. Ningún otro rol las trae — ni siquiera Colaborador, a
-diferencia de otros módulos como Satisfacción. Si tu Técnico venía de antes de
-que este módulo existiera, no tenés que hacer nada: se le agregaron las cuatro
-casillas una única vez a todos los que ya estaban activos con ese rol.
+Por plantilla, las cuatro casillas vienen marcadas de entrada para
+**Colaborador** al crear el usuario — es el rol que administra el
+mantenimiento preventivo. **Técnico no las trae**: no tiene acceso al
+módulo. **Administrador** ve y puede todo igual, porque bypasea la grilla
+como en el resto del sistema. Si tenías Técnicos usando el módulo, lo
+pierden apenas se aplique esta corrección: las casillas que ya tenían
+otorgadas se movieron a Colaborador (si además tienen ese rol), no se
+duplicaron ni se les agregó nada de más.
 
 ## Dos detalles prácticos
 

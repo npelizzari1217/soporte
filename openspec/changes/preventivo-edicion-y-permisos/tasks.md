@@ -59,38 +59,42 @@ comentario de mecanismo en la tarea 3.4 y se propone como change propio.
 
 ## WU-1 — Swap de permisos a COLABORADOR
 
-- [ ] 1.1 RED [PR-R2] Crear `backend/prisma_master/migrations/<ts>_swap_preventivo_permisos_colaborador/migration.sql`
+- [x] 1.1 RED [PR-R2] Crear `backend/prisma_master/migrations/<ts>_swap_preventivo_permisos_colaborador/migration.sql`
       **con solo su comentario de cabecera** (SQL vacío), para que el spec de 1.2 falle por la
       aserción y no por archivo ausente.
-- [ ] 1.2 RED [PR-R2] Crear `backend/src/auth/infrastructure/persistence/prisma/swap-preventivo-permisos.integration.spec.ts`
+- [x] 1.2 RED [PR-R2] Crear `backend/src/auth/infrastructure/persistence/prisma/swap-preventivo-permisos.integration.spec.ts`
       (patrón de `backfill-preventivo-permisos.integration.spec.ts`, con `usarLockMasterTest()`):
       fixture con TECNICO, COLABORADOR activo, COLABORADOR con membresía inactiva, ADMINISTRADOR y
       USUARIO en dos tenants; corre `20260825120100` y después el swap. Aserciones: TECNICO con cero
       celdas `PREVENTIVO`; COLABORADOR activo con las cuatro; ADMINISTRADOR y USUARIO intactos;
       celdas de otros módulos intactas. Verlo fallar.
-- [ ] 1.3 RED [PR-R2] Segundo caso en el mismo spec: la segunda corrida no cambia el estado final
+- [x] 1.3 RED [PR-R2] Segundo caso en el mismo spec: la segunda corrida no cambia el estado final
       ni duplica filas (idempotencia).
-- [ ] 1.4 GREEN [PR-R2] Escribir el SQL (ADR-3): `DELETE` de `modulo='PREVENTIVO'` para membresías
+- [x] 1.4 GREEN [PR-R2] Escribir el SQL (ADR-3): `DELETE` de `modulo='PREVENTIVO'` para membresías
       TECNICO **sin filtrar `activo`**, y después `INSERT ... SELECT` de los cuatro pares para
       membresías COLABORADOR con `activo = true AND deleted_at IS NULL`, `ON CONFLICT DO NOTHING`.
       `JOIN` por `(usuario_id, cliente_id)`. ADMINISTRADOR no aparece en ninguna sentencia.
-- [ ] 1.5 RED [PR-R1] En `backend/src/auth/domain/presets-rol.spec.ts`: sacar las cuatro
+- [x] 1.5 RED [PR-R1] En `backend/src/auth/domain/presets-rol.spec.ts`: sacar las cuatro
       `PREVENTIVO:*` de `CELDAS_TECNICO_ESPERADAS` y agregar la aserción espejo para COLABORADOR.
       Verlo fallar.
-- [ ] 1.6 GREEN [PR-R1] Mover las cuatro celdas en `backend/src/auth/domain/presets-rol.ts`.
-- [ ] 1.7 [PR-R1] Actualizar las tres citas de ADR-PV6 en código para que apunten a
+- [x] 1.6 GREEN [PR-R1] Mover las cuatro celdas en `backend/src/auth/domain/presets-rol.ts`.
+- [x] 1.7 [PR-R1] Actualizar las tres citas de ADR-PV6 en código para que apunten a
       `openspec/changes/preventivo-edicion-y-permisos/design.md` (ADR-3): `presets-rol.ts`, el header
       de `20260825120100/migration.sql` y `backfill-preventivo-permisos.integration.spec.ts`.
 - [ ] 1.8 [PR-R1] **ADR-PV6 no tiene archivo que editar**: superseder la observación de Engram del
       design de `sdd/preventivo` guardando una observación nueva que declare ADR-PV6 revisado por
       ADR-3 de este change, y resolviendo el `judgment_required` con relación `supersedes`.
       No se crea ni se edita ningún `.md` por esta tarea.
-- [ ] 1.9 [PR-R3] Ayuda, en el mismo commit: `backend/ayuda/permisos-y-roles.md` deja de afirmar
+      **DELEGADA AL ORQUESTADOR**: el executor de `sdd-apply` no tiene expuestas las herramientas
+      MCP de Engram en esta sesión (confirmado en las cuatro fases previas del ciclo).
+- [x] 1.9 [PR-R3] Ayuda, en el mismo commit: `backend/ayuda/permisos-y-roles.md` deja de afirmar
       "ni siquiera Colaborador" y describe a COLABORADOR como administrador del módulo, TECNICO sin
       acceso y ADMINISTRADOR por bypass; en `backend/ayuda/mantenimiento-preventivo.md`, la sección
       "Quién puede ver y administrar los planes", avisando que un TECNICO que hoy lo usa lo pierde.
-- [ ] 1.10 Cierre: correr el spec de integración nuevo + `presets-rol.spec.ts` + suite backend.
+- [x] 1.10 Cierre: correr el spec de integración nuevo + `presets-rol.spec.ts` + suite backend.
       Commit. Archivos de código al revisor: **1**.
+      Ejecutado: suite completa backend 349/349 archivos, 3736/3736 tests, `pnpm typecheck` y
+      `pnpm lint` en verde. Commit pendiente del orquestador (no lo hace este executor).
 
 ---
 
