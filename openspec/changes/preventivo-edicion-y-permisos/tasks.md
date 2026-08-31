@@ -100,28 +100,30 @@ comentario de mecanismo en la tarea 3.4 y se propone como change propio.
 
 ## WU-2 — Objetivo del plan en la descripción del ticket
 
-- [ ] 2.1 RED [OT-R1/OT-R2] Crear `backend/src/preventivo/domain/services/describir-objetivo.service.ts`
+- [x] 2.1 RED [OT-R1/OT-R2] Crear `backend/src/preventivo/domain/services/describir-objetivo.service.ts`
       con la unión `ObjetivoResuelto` y las dos funciones devolviendo valor neutro (`null` /
       `instrucciones ?? ''`), y `describir-objetivo.service.spec.ts` con un caso por cada una de las
       siete ramas más un test que afirme que los siete textos son **mutuamente distintos**. Verlo fallar.
-- [ ] 2.2 GREEN [OT-R1/OT-R2] Implementar `describirObjetivo` y `componerDescripcionTicket`:
+- [x] 2.2 GREEN [OT-R1/OT-R2] Implementar `describirObjetivo` y `componerDescripcionTicket`:
       `<objetivo>\n\n<instrucciones>`; `SIN_OBJETIVO` devuelve las instrucciones solas, sin línea en
       blanco colgada; `instrucciones = null` tampoco deja línea colgada. Dominio puro: sin imports
       de `equipos/` ni de infraestructura.
-- [ ] 2.3 RED [OT-R2] En `generar-preventivos.use-case.spec.ts`, cinco casos con doble de `findById`:
+- [x] 2.3 RED [OT-R2] En `generar-preventivos.use-case.spec.ts`, cinco casos con doble de `findById`:
       equipo vigente, `activo = false`, `isDeleted()`, `null` y `mockRejectedValue`. Afirmar sobre el
       `descripcion` del payload de `crearTicketUseCase.execute` y que **se llamó igual** en los cinco.
-- [ ] 2.4 RED [OT-R2] Caso de dos planes vencidos, uno con equipo irresoluble y otro con objetivo
+- [x] 2.4 RED [OT-R2] Caso de dos planes vencidos, uno con equipo irresoluble y otro con objetivo
       válido: los dos generan su ticket, ninguno bloquea al otro.
-- [ ] 2.5 GREEN [OT-R1/OT-R2] `generar-preventivos.use-case.ts`: noveno parámetro
+- [x] 2.5 GREEN [OT-R1/OT-R2] `generar-preventivos.use-case.ts`: noveno parámetro
       `Pick<IEquipoInformaticoRepository, 'findById'>`; `try/catch` que mapea entidad → `ObjetivoResuelto`,
       con `logger.error` en `EQUIPO_NO_CONSULTABLE`; `descripcion` compuesta.
-- [ ] 2.6 GREEN [OT-R1] `preventivo.module.ts`: `EquiposModule` en `imports` y
+- [x] 2.6 GREEN [OT-R1] `preventivo.module.ts`: `EquiposModule` en `imports` y
       `EQUIPO_INFORMATICO_REPOSITORY` en `inject`, en la posición del noveno parámetro.
-- [ ] 2.7 [OT-R1] Ayuda, mismo commit: sección nueva en `mantenimiento-preventivo.md` con qué dice
+- [x] 2.7 [OT-R1] Ayuda, mismo commit: sección nueva en `mantenimiento-preventivo.md` con qué dice
       el ticket generado y qué se lee cuando el equipo fue dado de baja o eliminado.
-- [ ] 2.8 Cierre: `pnpm vitest run` de los dos specs + `src/preventivo/generar-preventivos.integration.spec.ts`;
+- [x] 2.8 Cierre: `pnpm vitest run` de los dos specs + `src/preventivo/generar-preventivos.integration.spec.ts`;
       suite backend. Commit. Archivos de código al revisor: **3**.
+      Ejecutado: suite completa backend 350/350 archivos, 3753/3753 tests, `pnpm typecheck` y
+      `pnpm lint` en verde. Commit pendiente del orquestador (no lo hace este executor).
 
 ---
 

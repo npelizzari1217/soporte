@@ -16,13 +16,42 @@ corresponde.
 
 Una vez por día el sistema revisa todos los planes activos y, por cada uno que
 haya llegado a su fecha, crea un ticket de tipo **Mantenimiento**. El ticket
-queda a nombre del responsable del plan, con el título y las instrucciones que
-el plan tenga cargados.
+queda a nombre del responsable del plan, con el título que el plan tenga
+cargado y una descripción que arranca con el objetivo (ver "Qué dice la
+descripción del ticket generado", abajo).
 
 Las fechas se calculan **siempre desde la fecha de inicio del plan**, no desde
 el último ticket. Un plan mensual que arrancó un 31 de enero cae el 28 de
 febrero y vuelve al 31 de marzo: no se va corriendo hacia atrás con los meses
 cortos.
+
+## Qué dice la descripción del ticket generado
+
+La descripción de cada ticket generado arranca con una línea que identifica el
+objetivo del plan, seguida de una línea en blanco y después las
+instrucciones cargadas:
+
+- Si el plan apunta a un **equipo**, la línea dice **"Equipo: &lt;nombre del
+  equipo&gt;"**.
+- Si el plan apunta a una **ubicación**, la línea dice **"Ubicación:
+  &lt;texto&gt;"**, tal como está guardada (siempre en mayúscula).
+
+Cuando el plan apunta a un equipo que ya no está disponible tal cual, la línea
+lo dice explícitamente, distinguiendo dos situaciones que no son lo mismo:
+
+- **Equipo dado de baja** (sigue en el inventario, pero fuera de servicio): la
+  línea dice **"Equipo: &lt;nombre&gt; (dado de baja)"**.
+- **Equipo eliminado del inventario**: la línea dice **"Equipo: &lt;nombre&gt;
+  (eliminado del inventario)"**. El nombre se conserva porque el sistema lo
+  guarda igual aunque el equipo esté eliminado.
+- Si el equipo directamente **no existe** (por ejemplo, el registro se borró
+  de otra forma), la línea dice **"Equipo: no encontrado (id ...)"**.
+- Si el sistema **no pudo consultar** el equipo por un problema pasajero, la
+  línea dice **"Equipo: no se pudo consultar (id ...)"**.
+
+En los cuatro casos de arriba **el ticket se genera igual**: un dato
+descriptivo que no se pudo resolver nunca frena el mantenimiento. Lo único
+que cambia es cómo se identifica el objetivo en el texto.
 
 ## Por qué a veces NO aparece un ticket
 
