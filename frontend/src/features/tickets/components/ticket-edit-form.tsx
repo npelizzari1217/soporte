@@ -12,6 +12,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select } from "@/components/ui/select";
+import { conValorFueraDeCatalogo } from "@/shared/lib/opciones-catalogo";
+import { useReaplicarAlResolver } from "@/shared/hooks/use-reaplicar-al-resolver";
 import { editarTicketSchema, type EditarTicketFormValues } from "../schemas";
 import type { Prioridad } from "../types";
 
@@ -32,39 +34,46 @@ export interface TicketEditFormProps {
   isSubmitting: boolean;
 }
 
-export function TicketEditForm({
-  defaultValues,
-  prioridades,
-  onSubmit,
-  onCancel,
-  isSubmitting,
-}: TicketEditFormProps) {
+export function TicketEditForm({ defaultValues, prioridades, onSubmit, onCancel, isSubmitting }: TicketEditFormProps) {
   const {
     register,
     handleSubmit,
+    setValue,
     formState: { errors },
   } = useForm<EditarTicketFormValues>({
     resolver: zodResolver(editarTicketSchema),
     defaultValues,
   });
 
-  // El catálogo excluye lo dado de baja, así que la `prioridadId` vigente
-  // puede no tener `<option>`: sin ella el `<select>` nativo no encuentra
-  // ningún valor que matchee y la pantalla muestra algo distinto de lo que
-  // `_formValues` guarda. Se detecta por AUSENCIA en la lista traída, pero
-  // SOLO cuando esa lista ya resolvió (`prioridades !== undefined`): con el
-  // catálogo cargando o caído, la ausencia no prueba nada, y agregar la
-  // etiqueta ahí sería mentirle al usuario sobre un valor que en realidad
-  // sigue activo (defecto encontrado en revisión — antes `?? []` colapsaba
-  // "cargando"/"error"/"vacío" en el mismo array vacío). Mientras no resolvió,
-  // el select simplemente no muestra ninguna opción; `_formValues` conserva
-  // el id igual (§4 del design), así que el payload no se corrompe.
-  const catalogoResuelto = prioridades !== undefined;
-  const listaPrioridades = prioridades ?? [];
-  const opcionesPrioridad: { id: string; nombre: string }[] =
-    catalogoResuelto && !listaPrioridades.some((prioridad) => prioridad.id === defaultValues.prioridadId)
-      ? [...listaPrioridades, { id: defaultValues.prioridadId, nombre: "Prioridad dada de baja" }]
-      : listaPrioridades;
+  // El catálogo excluye lo dado de baja, así que la `prioridadId` vigente puede
+  // no tener `<option>`: sin ella el `<select>` nativo no encuentra ningún valor
+  // que matchee y la pantalla muestra algo distinto de lo que `_formValues`
+  // guarda. El criterio (incluido por qué la ausencia solo cuenta con el catálogo
+  // YA resuelto) vive en `shared/lib/opciones-catalogo`, compartido con el
+  // diálogo de edición de planes preventivos.
+  //
+  // `prioridades !== undefined` ES el "resolvió": el caller pasa
+  // `usePrioridades().data` tal cual, y React Query deja ese campo en `undefined`
+  // mientras carga o si falló. Mientras no resolvió, el select no muestra ninguna
+  // opción; `_formValues` conserva el id igual (§4 del design), así que el
+  // payload no se corrompe.
+  const opcionesPrioridad = conValorFueraDeCatalogo(
+    prioridades ?? [],
+    prioridades !== undefined,
+    defaultValues.prioridadId,
+    "Prioridad dada de baja",
+  );
+
+  // Segundo camino para el mismo síntoma, con el mismo hook compartido que usa
+  // el diálogo de planes preventivos: si el formulario monta con el catálogo
+  // todavía sin resolver, el `<select>` queda con la primera opción que llegue.
+  //
+  // `activo` va en `true` fijo: este componente es presentacional y monta y
+  // desmonta con su caller, así que no tiene el ciclo abrir/cerrar que sí tiene
+  // un diálogo. Lo que NO se puede omitir es el hook: hacer esto con un
+  // `useEffect` suelto sin `ref` haría que un refetch del catálogo pise la
+  // prioridad que el usuario acaba de elegir.
+  useReaplicarAlResolver(true, prioridades !== undefined, "prioridadId", defaultValues.prioridadId, setValue);
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-3" noValidate>

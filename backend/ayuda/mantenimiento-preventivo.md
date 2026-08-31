@@ -160,6 +160,16 @@ mostrando (con la aclaración correspondiente) para no perder de vista cuál
 era el objetivo original, aunque ya no aparezca en la lista de equipos
 activos.
 
+Lo mismo pasa con la **prioridad** y el **responsable**: si alguno de los dos
+fue dado de baja después de crear el plan, el selector lo sigue mostrando como
+**"Prioridad dada de baja"** o **"Responsable dado de baja"**. La razón es que,
+sin esa opción, el selector no tendría cómo mostrar el valor guardado y pasaría
+a mostrar el primero de la lista: la pantalla diría una cosa y el plan seguiría
+teniendo otra. Lo guardado no se corrompe —el plan conserva su prioridad y su
+responsable originales—, pero uno estaría aprobando algo distinto de lo que ve.
+Si aparece una de esas etiquetas, conviene elegir un reemplazo vigente antes de
+guardar.
+
 ## El listado de planes
 
 La pantalla principal muestra todos los planes con su objetivo, su cadencia,

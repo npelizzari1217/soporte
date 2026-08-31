@@ -33,8 +33,18 @@ function buildPrioridad(overrides: Partial<Prioridad> = {}): Prioridad {
 
 /** Catálogo ACTIVO real (2+), sin ninguna traza de la prioridad de baja. */
 const PRIORIDADES_ACTIVAS: Prioridad[] = [
-  buildPrioridad({ id: PRIORIDAD_ALTA_ID, codigo: "ALTA", nombre: "Alta", orden: 1 }),
-  buildPrioridad({ id: PRIORIDAD_MEDIA_ID, codigo: "MEDIA", nombre: "Media", orden: 2 }),
+  buildPrioridad({
+    id: PRIORIDAD_ALTA_ID,
+    codigo: "ALTA",
+    nombre: "Alta",
+    orden: 1,
+  }),
+  buildPrioridad({
+    id: PRIORIDAD_MEDIA_ID,
+    codigo: "MEDIA",
+    nombre: "Media",
+    orden: 2,
+  }),
 ];
 
 function buildDefaultValues(overrides: Partial<EditarTicketFormValues> = {}): EditarTicketFormValues {
@@ -56,7 +66,7 @@ function renderForm(
 ) {
   const onSubmit = vi.fn();
   const onCancel = vi.fn();
-  const prioridades = overrides.catalogoNoResuelto ? undefined : overrides.prioridades ?? PRIORIDADES_ACTIVAS;
+  const prioridades = overrides.catalogoNoResuelto ? undefined : (overrides.prioridades ?? PRIORIDADES_ACTIVAS);
   render(
     <TicketEditForm
       defaultValues={overrides.defaultValues ?? buildDefaultValues()}
@@ -68,6 +78,59 @@ function renderForm(
   );
   return { onSubmit, onCancel };
 }
+
+/**
+ * Segundo camino, distinto del "dado de baja": la `<option>` EXISTE, pero el
+ * catálogo resuelve DESPUÉS de que el formulario montó. El `<select>` no
+ * controlado de RHF fija su valor una sola vez; sin reaplicarlo, el navegador se
+ * queda con la primera opción que llegue.
+ */
+describe("TicketEditForm — el catálogo resuelve después del montaje", () => {
+  it("reaplica la prioridad del ticket cuando la lista llega tarde, en vez de quedarse con la primera", async () => {
+    const props = {
+      defaultValues: buildDefaultValues({ prioridadId: PRIORIDAD_MEDIA_ID }),
+      onSubmit: vi.fn(),
+      onCancel: vi.fn(),
+      isSubmitting: false,
+    };
+    // Monta SIN catálogo (cargando). MEDIA va segunda a propósito: si nadie
+    // reaplica el valor, el select se queda en ALTA y el test lo detecta.
+    const { rerender } = render(<TicketEditForm {...props} prioridades={undefined} />);
+
+    rerender(<TicketEditForm {...props} prioridades={PRIORIDADES_ACTIVAS} />);
+
+    await waitFor(() => expect(screen.getByLabelText(/prioridad/i)).toHaveValue(PRIORIDAD_MEDIA_ID));
+  });
+
+  // Hermano del anterior, y la razón por la que esto NO puede ser un `useEffect`
+  // suelto: reaplicar en CADA cambio de `prioridades` haría que un refetch pise
+  // lo que el usuario acaba de elegir. `refetchOnWindowFocus` viene en `true` por
+  // defecto y `QueryProvider` no lo desactiva, así que alcanza con cambiar de
+  // ventana y volver para reproducirlo.
+  it("un refetch del catálogo NO pisa la prioridad que el usuario acaba de elegir", async () => {
+    const user = userEvent.setup();
+    const props = {
+      defaultValues: buildDefaultValues({ prioridadId: PRIORIDAD_MEDIA_ID }),
+      onSubmit: vi.fn(),
+      onCancel: vi.fn(),
+      isSubmitting: false,
+    };
+    const { rerender } = render(<TicketEditForm {...props} prioridades={PRIORIDADES_ACTIVAS} />);
+
+    await user.selectOptions(screen.getByLabelText(/prioridad/i), PRIORIDAD_ALTA_ID);
+    expect(screen.getByLabelText(/prioridad/i)).toHaveValue(PRIORIDAD_ALTA_ID);
+
+    // Refetch: MISMO contenido útil, referencia NUEVA (lo que entrega React
+    // Query cuando el catálogo cambió de verdad).
+    rerender(<TicketEditForm {...props} prioridades={[...PRIORIDADES_ACTIVAS]} />);
+
+    // Aserción DIRECTA, no `waitFor`: `rerender` ya viene envuelto en `act`, así
+    // que los efectos del re-render terminaron. Con `waitFor` este test no servía
+    // — cortaba en el primer chequeo exitoso, viendo ALTA antes de que un efecto
+    // sin guard lo pisara (verificado: la mutación no lo hacía fallar).
+    expect(screen.getByLabelText(/prioridad/i)).toHaveValue(PRIORIDAD_ALTA_ID);
+  });
+});
 
 describe("TicketEditForm — prioridad dada de baja", () => {
   it("el select muestra seleccionada la prioridad de baja, no la primera del catálogo activo", () => {
@@ -87,7 +150,9 @@ describe("TicketEditForm — prioridad dada de baja", () => {
   });
 
   it("una prioridad ACTIVA no agrega la opción sintética 'dada de baja'", () => {
-    renderForm({ defaultValues: buildDefaultValues({ prioridadId: PRIORIDAD_ALTA_ID }) });
+    renderForm({
+      defaultValues: buildDefaultValues({ prioridadId: PRIORIDAD_ALTA_ID }),
+    });
 
     expect(screen.queryByRole("option", { name: /dada de baja/i })).not.toBeInTheDocument();
     expect(screen.getAllByRole("option")).toHaveLength(PRIORIDADES_ACTIVAS.length);
@@ -112,7 +177,10 @@ describe("TicketEditForm — prioridad dada de baja", () => {
     // todavía no se sabe (defecto real encontrado en revisión: antes `?? []`
     // colapsaba esto con "catálogo vacío" y etiquetaba una prioridad ACTIVA
     // como dada de baja mientras cargaba, o para siempre si la query fallaba).
-    renderForm({ catalogoNoResuelto: true, defaultValues: buildDefaultValues({ prioridadId: PRIORIDAD_ALTA_ID }) });
+    renderForm({
+      catalogoNoResuelto: true,
+      defaultValues: buildDefaultValues({ prioridadId: PRIORIDAD_ALTA_ID }),
+    });
 
     expect(screen.queryByRole("option", { name: /dada de baja/i })).not.toBeInTheDocument();
   });
@@ -124,6 +192,8 @@ describe("TicketEditForm — prioridad dada de baja", () => {
     await user.click(screen.getByRole("button", { name: /guardar/i }));
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalled());
-    expect(onSubmit.mock.calls[0][0]).toMatchObject({ prioridadId: PRIORIDAD_BAJA_ID });
+    expect(onSubmit.mock.calls[0][0]).toMatchObject({
+      prioridadId: PRIORIDAD_BAJA_ID,
+    });
   });
 });

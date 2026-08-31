@@ -24,6 +24,20 @@
  * por `equiposQuery.isSuccess` — la ausencia solo prueba algo cuando la
  * lista ya resolvió. `useEquipo` se invoca solo mientras hace falta
  * verificar (`enabled` interno evita el request de más una vez resuelto).
+ * El MISMO tratamiento aplica a `prioridadId` y `responsableId` (helper
+ * compartido `conValorFueraDeCatalogo`): sus catálogos también excluyen lo dado
+ * de baja, así que los tres selects pueden quedarse sin la `<option>` del valor
+ * vigente.
+ *
+ * Ojo que son DOS caminos distintos para el mismo síntoma, y hacen falta los dos
+ * arreglos:
+ *   (a) el catálogo resolvió y el valor está dado de baja → lo cubre
+ *       `conValorFueraDeCatalogo`, agregando la opción sintética.
+ *   (b) la opción existe, pero llega DESPUÉS de que el `<select>` montó (se
+ *       abrió el diálogo con los catálogos todavía cargando) → lo cubre
+ *       `useReaplicarAlResolver`, en los TRES selects.
+ * El (b) estuvo cubierto solo para el equipo hasta que una revisión lo encontró
+ * en prioridad y responsable; hay un test por select que lo fija.
  *
  * ADR-7: cambiar la cadencia dispara un aviso CUALITATIVO sin fecha
  * (calcularla en el front duplicaría `CalcularCicloService`, una segunda
@@ -32,7 +46,7 @@
  * de mecanismo en `use-planes-preventivo-mutations.ts` y "Fuera de alcance"
  * en `tasks.md`).
  */
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Pencil } from "lucide-react";
@@ -45,16 +59,13 @@ import { useEquipos, useEquipo } from "@/features/equipos/hooks/use-equipos";
 import { usePrioridades } from "@/features/tickets/hooks/use-catalogos";
 import { useUsuariosAsignables } from "@/features/tickets/hooks/use-usuarios-asignables";
 import { ApiError } from "@/shared/api/types";
+import { conValorFueraDeCatalogo, type OpcionCatalogo } from "@/shared/lib/opciones-catalogo";
+import { useReaplicarAlResolver } from "@/shared/hooks/use-reaplicar-al-resolver";
 import { useEditarPlanPreventivo } from "../hooks/use-planes-preventivo-mutations";
 import { editarPlanPreventivoSchema, type EditarPlanPreventivoFormValues } from "../schemas";
 import type { EditarPlanPreventivoDto, PlanPreventivo } from "../types";
 
 type Objetivo = "equipo" | "ubicacion";
-
-interface OpcionEquipo {
-  id: string;
-  nombre: string;
-}
 
 const AVISO_CADENCIA =
   "Al cambiar la cadencia, la próxima ejecución se recalcula hacia adelante desde hoy. Los ciclos anteriores no se generan.";
@@ -113,10 +124,29 @@ export function PlanPreventivoEditDialog({ plan }: PlanPreventivoEditDialogProps
   const necesitaVerificarEquipo = !!plan.equipoId && equiposQuery.isSuccess && !equipoEnListaActiva;
   const equipoQuery = useEquipo(necesitaVerificarEquipo ? equipoIdDelPlan : "");
 
-  let opcionesEquipo: OpcionEquipo[] = equiposActivos;
+  const opcionesPrioridad = conValorFueraDeCatalogo(
+    (prioridadesQuery.data ?? []).map((prioridad) => ({
+      id: prioridad.id,
+      nombre: prioridad.nombre,
+    })),
+    prioridadesQuery.isSuccess,
+    plan.prioridadId,
+    "Prioridad dada de baja",
+  );
+
+  const opcionesResponsable = conValorFueraDeCatalogo(
+    (usuariosQuery.data ?? []).map((usuario) => ({
+      id: usuario.id,
+      nombre: `${usuario.nombre} ${usuario.apellido}`,
+    })),
+    usuariosQuery.isSuccess,
+    plan.responsableId,
+    "Responsable dado de baja",
+  );
+
+  let opcionesEquipo: OpcionCatalogo[] = equiposActivos;
   let mensajeEquipoExtra: string | null = null;
   let selectEquipoDeshabilitado = equiposQuery.isLoading || equiposQuery.isError;
-  let opcionExtraAgregada = false;
 
   if (necesitaVerificarEquipo) {
     if (equipoQuery.isLoading) {
@@ -124,13 +154,14 @@ export function PlanPreventivoEditDialog({ plan }: PlanPreventivoEditDialogProps
     } else if (equipoQuery.isSuccess && equipoQuery.data) {
       opcionesEquipo = [
         ...opcionesEquipo,
-        { id: equipoQuery.data.id, nombre: `${equipoQuery.data.nombre} (dado de baja)` },
+        {
+          id: equipoQuery.data.id,
+          nombre: `${equipoQuery.data.nombre} (dado de baja)`,
+        },
       ];
-      opcionExtraAgregada = true;
     } else if (equipoQuery.isError) {
       if (equipoQuery.error instanceof ApiError && equipoQuery.error.statusCode === 404) {
         opcionesEquipo = [...opcionesEquipo, { id: equipoIdDelPlan, nombre: "Equipo eliminado del inventario" }];
-        opcionExtraAgregada = true;
       } else {
         mensajeEquipoExtra = "No se pudo verificar el equipo";
         selectEquipoDeshabilitado = true;
@@ -138,22 +169,21 @@ export function PlanPreventivoEditDialog({ plan }: PlanPreventivoEditDialogProps
     }
   }
 
-  // La opción del equipo fuera de catálogo llega DESPUÉS del primer render
-  // (depende de `useEquipo`, async) — el `<select>` no controlado de RHF fija
-  // su valor una sola vez, al montar. Sin este efecto, el navegador no
-  // encuentra ninguna `<option>` que matchee en ese primer intento y el
-  // equipo queda sin preseleccionar aunque la opción ya esté en el DOM.
-  // El ref mantiene la conducta de "una sola vez por apertura" con el arreglo
-  // de dependencias COMPLETO: sin él haría falta omitir `plan.equipoId`, y un
-  // cambio del prop mientras el diálogo está abierto pisaría el equipo que el
-  // usuario acaba de elegir. Se rearma en cada apertura (ver `handleOpenChange`).
-  const equipoExtraSincronizado = useRef(false);
+  // Las opciones del equipo quedan firmes recién cuando el catálogo resolvió Y,
+  // si hubo que verificar, también terminó `useEquipo` (con dato o con error).
+  // Antes de eso el `<select>` todavía puede recibir una `<option>` más.
+  const opcionesEquipoFirmes =
+    equiposQuery.isSuccess && (!necesitaVerificarEquipo || equipoQuery.isSuccess || equipoQuery.isError);
 
-  useEffect(() => {
-    if (!opcionExtraAgregada || equipoExtraSincronizado.current) return;
-    equipoExtraSincronizado.current = true;
-    setValue("equipoId", plan.equipoId ?? "", { shouldDirty: false });
-  }, [opcionExtraAgregada, plan.equipoId, setValue]);
+  // El equipo suma `objetivo === "equipo"` a su condición de activo, y NO es
+  // simetría de más: es el único de los tres que participa del XOR del objetivo
+  // (ADR-5). Si el catálogo resuelve tarde y se reaplica `equipoId` cuando el
+  // usuario ya se pasó a "Ubicación", el plan queda con los dos lados seteados y
+  // el submit muere en la validación. Prioridad y responsable no tienen lado
+  // opuesto que pisar, así que les alcanza con `open`.
+  useReaplicarAlResolver(open && objetivo === "equipo", opcionesEquipoFirmes, "equipoId", equipoIdDelPlan, setValue);
+  useReaplicarAlResolver(open, prioridadesQuery.isSuccess, "prioridadId", plan.prioridadId, setValue);
+  useReaplicarAlResolver(open, usuariosQuery.isSuccess, "responsableId", plan.responsableId, setValue);
 
   const avisaCadencia = !!(dirtyFields.intervaloValor || dirtyFields.intervaloUnidad);
 
@@ -170,7 +200,6 @@ export function PlanPreventivoEditDialog({ plan }: PlanPreventivoEditDialogProps
     if (next) {
       reset(valoresVigentes(plan));
       setObjetivo(objetivoDe(plan));
-      equipoExtraSincronizado.current = false;
     }
   }
 
@@ -182,7 +211,10 @@ export function PlanPreventivoEditDialog({ plan }: PlanPreventivoEditDialogProps
       // omitirlo dejaría el plan con los dos objetivos seteados y el dominio
       // respondería 422 `ObjetivoInvalidoError`.
       equipoId: objetivo === "equipo" ? values.equipoId || null : null,
-      ubicacion: objetivo === "ubicacion" ? (values.ubicacion ? values.ubicacion.toUpperCase() : null) : null,
+      // Ya viene normalizada (trim + mayúscula) del schema, que normaliza ANTES
+      // de medir el tope. Volver a normalizar acá reabriría el hueco: lo validado
+      // y lo enviado tienen que ser el mismo string.
+      ubicacion: objetivo === "ubicacion" ? values.ubicacion || null : null,
       prioridadId: values.prioridadId,
       responsableId: values.responsableId,
       intervaloValor: Number(values.intervaloValor),
@@ -302,7 +334,7 @@ export function PlanPreventivoEditDialog({ plan }: PlanPreventivoEditDialogProps
               Prioridad
             </label>
             <Select id="plan-editar-prioridad" error={!!errors.prioridadId} {...register("prioridadId")}>
-              {(prioridadesQuery.data ?? []).map((prioridad) => (
+              {opcionesPrioridad.map((prioridad) => (
                 <option key={prioridad.id} value={prioridad.id}>
                   {prioridad.nombre}
                 </option>
@@ -313,6 +345,11 @@ export function PlanPreventivoEditDialog({ plan }: PlanPreventivoEditDialogProps
                 {errors.prioridadId.message}
               </p>
             )}
+            {prioridadesQuery.isError && (
+              <p role="alert" className="text-sm text-destructive">
+                No se pudieron cargar las prioridades.
+              </p>
+            )}
           </div>
 
           <div className="flex flex-col gap-1">
@@ -320,15 +357,21 @@ export function PlanPreventivoEditDialog({ plan }: PlanPreventivoEditDialogProps
               Responsable
             </label>
             <Select id="plan-editar-responsable" error={!!errors.responsableId} {...register("responsableId")}>
-              {(usuariosQuery.data ?? []).map((usuario) => (
-                <option key={usuario.id} value={usuario.id}>
-                  {usuario.nombre} {usuario.apellido}
+              {opcionesResponsable.map((responsable) => (
+                <option key={responsable.id} value={responsable.id}>
+                  {responsable.nombre}
                 </option>
               ))}
             </Select>
             {errors.responsableId && (
               <p role="alert" className="text-sm text-destructive">
                 {errors.responsableId.message}
+              </p>
+            )}
+            {usuariosQuery.isError && (
+              <p role="alert" className="text-sm text-destructive">
+                No se pudo cargar la lista de responsables. Puede deberse a que no tenés permiso para ver usuarios
+                (depende de un permiso independiente de este formulario).
               </p>
             )}
           </div>

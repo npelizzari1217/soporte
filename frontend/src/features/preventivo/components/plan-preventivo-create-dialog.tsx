@@ -234,7 +234,7 @@ export function PlanPreventivoCreateDialog() {
             {usuariosQuery.isError && (
               <p role="alert" className="text-sm text-destructive">
                 No se pudo cargar la lista de responsables. Puede deberse a que no tenés
-                permiso para ver usuarios (gate independiente de este formulario).
+                permiso para ver usuarios (depende de un permiso independiente de este formulario).
               </p>
             )}
           </div>
