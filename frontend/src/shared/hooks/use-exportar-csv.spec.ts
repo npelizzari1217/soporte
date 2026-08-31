@@ -55,7 +55,17 @@ describe("useExportarCsv", () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     expect(dispararDescarga).toHaveBeenCalledTimes(1);
-    expect(dispararDescarga).toHaveBeenCalledWith(expect.any(Blob), "tickets.csv");
+
+    // Se afirma el CONTENIDO del blob, no su clase. Bajo jsdom conviven dos
+    // clases `Blob` distintas con el mismo nombre: la que construye Node al
+    // resolver `res.blob()` y la global del entorno. `instanceof` da false
+    // entre ellas aunque el objeto sea el correcto, asi que `expect.any(Blob)`
+    // fallaba por identidad de constructor, no por comportamiento.
+    // Mirar los bytes ademas prueba MAS: que bajo este archivo y no otro.
+    const [blobDescargado, nombreUsado] = vi.mocked(dispararDescarga).mock.calls[0];
+    expect(nombreUsado).toBe("tickets.csv");
+    expect(blobDescargado.type).toBe("text/csv");
+    await expect(blobDescargado.text()).resolves.toBe("numero,titulo\n");
   });
 
   it("fallo del backend → notifyError se llama y NO se dispara ninguna descarga", async () => {
