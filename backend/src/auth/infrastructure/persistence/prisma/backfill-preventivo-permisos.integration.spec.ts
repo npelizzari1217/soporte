@@ -7,18 +7,26 @@
  *
  * - Un TECNICO preexistente (activo, sin las celdas) suma los 4 pares
  *   `PREVENTIVO:*` tras correr la migración.
- * - Un COLABORADOR preexistente NO recibe nada — a diferencia del backfill de
- *   CSAT, este módulo es solo para TECNICO (ADR-PV6).
+ * - Un COLABORADOR preexistente NO recibe nada de ESTA migración — en el
+ *   momento en que corrió, el módulo era solo para TECNICO.
  * - Un ADMINISTRADOR sigue con matriz vacía (R2, bypasea la grilla) — la
  *   migración NUNCA le agrega una celda.
  * - Un USUARIO sigue sin celdas.
  * - Correr la migración dos veces deja el mismo resultado (idempotencia,
  *   `ON CONFLICT DO NOTHING` sobre la PK compuesta).
  *
+ * HISTÓRICO: esta migración y este spec verifican el backfill tal como
+ * corrió en producción — TECNICO como único receptor. La migración
+ * `20260831120000_swap_preventivo_permisos_colaborador` (design
+ * `openspec/changes/preventivo-edicion-y-permisos/design.md`, ADR-3) movió
+ * después el módulo de TECNICO a COLABORADOR; ver
+ * `swap-preventivo-permisos.integration.spec.ts` para ese estado final.
+ *
  * Precedente directo: `backfill-csat-lectura.integration.spec.ts` (mismo
  * patrón: fixture propio + ejecutar el `migration.sql` real vía SQL crudo).
  *
- * Ref tasks: sdd/preventivo/tasks WU-1.9. Ref design ADR-PV6.
+ * Ref tasks: sdd/preventivo/tasks WU-1.9. Ref design:
+ * openspec/changes/preventivo-edicion-y-permisos/design.md (ADR-3).
  */
 import * as fs from 'fs';
 import * as path from 'path';
@@ -134,7 +142,7 @@ describe('Backfill PREVENTIVO:* (WU-1)', () => {
     );
   });
 
-  it('COLABORADOR preexistente NO recibe nada — el módulo es solo para TECNICO (ADR-PV6)', async () => {
+  it('COLABORADOR preexistente NO recibe nada de ESTE backfill — histórico, solo TECNICO (ver swap-preventivo-permisos.integration.spec.ts)', async () => {
     await correrMigracion();
     expect(await celdasDe('colaborador')).toEqual([]);
   });

@@ -38,8 +38,13 @@ import { PresetRolNoDefinidoError } from './errors/auth.errors';
  *
  * ACTUALIZACIÓN (sdd/preventivo WU-1): mismo criterio para `PREVENTIVO:*`
  * (los 4 pares piso) — módulo nuevo, backfill propio
- * (`20260825120100_backfill_preventivo_permisos`), y SOLO para TECNICO (a
- * diferencia de CSAT, COLABORADOR no lleva este módulo — ver ADR-PV6).
+ * (`20260825120100_backfill_preventivo_permisos`), en ese momento SOLO para
+ * TECNICO.
+ *
+ * ACTUALIZACIÓN (preventivo-edicion-y-permisos WU-1, design ADR-3): el
+ * swap de permisos movió las cuatro celdas `PREVENTIVO:*` de TECNICO a
+ * COLABORADOR — ver `20260831120000_swap_preventivo_permisos_colaborador`.
+ * Hoy TECNICO no lleva ninguna celda `PREVENTIVO:*` y COLABORADOR sí.
  */
 const CELDAS_TECNICO_ESPERADAS = [
   'TICKETS:ALTAS',
@@ -67,15 +72,22 @@ const CELDAS_TECNICO_ESPERADAS = [
   'DASHBOARD:LECTURA',
   'COMPRAS:LECTURA',
   'CSAT:LECTURA',
-  'PREVENTIVO:LECTURA',
-  'PREVENTIVO:ALTAS',
-  'PREVENTIVO:MODIFICACION',
-  'PREVENTIVO:BORRADO',
 ].sort();
 
 describe('PRESETS_ROL', () => {
   it('TECNICO coincide con las celdas del backfill histórico + CSAT:LECTURA (G7 + WU-3.4)', () => {
     expect([...PRESETS_ROL['TECNICO']].sort()).toEqual(CELDAS_TECNICO_ESPERADAS);
+  });
+
+  it('[hermano invertido, preventivo-edicion-y-permisos WU-1] COLABORADOR incluye las cuatro celdas PREVENTIVO:*', () => {
+    expect([...PRESETS_ROL['COLABORADOR']].sort()).toEqual(
+      expect.arrayContaining([
+        'PREVENTIVO:ALTAS',
+        'PREVENTIVO:BORRADO',
+        'PREVENTIVO:LECTURA',
+        'PREVENTIVO:MODIFICACION',
+      ]),
+    );
   });
 
   it('ADMINISTRADOR tiene preset vacío — bypassea, no necesita celdas (R2)', () => {

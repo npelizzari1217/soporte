@@ -1,6 +1,10 @@
 import { EditarPlanUseCase } from './editar-plan.use-case';
 import { PlanPreventivoEntity } from '../../domain/entities/plan-preventivo.entity';
-import { PlanNoEncontradoError } from '../../domain/errors/preventivo.errors';
+import {
+  IntervaloInvalidoError,
+  ObjetivoInvalidoError,
+  PlanNoEncontradoError,
+} from '../../domain/errors/preventivo.errors';
 
 function makePlan(overrides: Partial<Parameters<typeof PlanPreventivoEntity.create>[0]> = {}) {
   const result = PlanPreventivoEntity.create(
@@ -46,7 +50,7 @@ describe('EditarPlanUseCase (4.2/4.3)', () => {
     vi.useRealTimers();
   });
 
-  it('plan inexistente → Result.fail(PlanNoEncontradoError)', async () => {
+  it('[EP-R6] plan inexistente → Result.fail(PlanNoEncontradoError)', async () => {
     const { useCase } = buildUseCase(null);
 
     const result = await useCase.execute({ planId: 'no-existe', titulo: 'Nuevo título' });
@@ -55,7 +59,24 @@ describe('EditarPlanUseCase (4.2/4.3)', () => {
     expect(result.getError()).toBeInstanceOf(PlanNoEncontradoError);
   });
 
-  it('edita título sin tocar la cadencia → NO recalcula proximaEjecucionEn', async () => {
+  // Hermano de "plan inexistente": un plan que existe pero está dado de baja
+  // lógicamente también es "no encontrado" a efectos de edición.
+  it('[EP-R6] plan dado de baja lógicamente → Result.fail(PlanNoEncontradoError), ningún campo cambia', async () => {
+    const plan = makePlan();
+    plan.softDelete();
+    const { useCase, planRepo } = buildUseCase(plan);
+
+    const result = await useCase.execute({ planId: plan.id, titulo: 'Nuevo título' });
+
+    expect(result.isFail()).toBe(true);
+    expect(result.getError()).toBeInstanceOf(PlanNoEncontradoError);
+    expect(planRepo.guardar).not.toHaveBeenCalled();
+    expect(plan.titulo).toBe('Cambio de filtros');
+  });
+
+  // [EP-R5] editar solo titulo, sin tocar la cadencia, es el hermano invertido
+  // de "cambia la cadencia → recalcula el puntero" (test más abajo).
+  it('[EP-R5] edita título sin tocar la cadencia → NO recalcula proximaEjecucionEn', async () => {
     const plan = makePlan();
     const { useCase, planRepo } = buildUseCase(plan);
 
@@ -65,6 +86,7 @@ describe('EditarPlanUseCase (4.2/4.3)', () => {
     expect(plan.titulo).toBe('Nuevo título');
     expect(planRepo.guardar).toHaveBeenCalledWith(plan);
     expect(planRepo.actualizarProximaEjecucion).not.toHaveBeenCalled();
+    expect(plan.proximaEjecucionEn).toEqual(new Date('2026-01-01'));
   });
 
   // [R2] — el pasado es inalcanzable al editar la cadencia.
@@ -100,13 +122,81 @@ describe('EditarPlanUseCase (4.2/4.3)', () => {
     expect(plan.fechaInicio).toEqual(new Date('2026-01-01'));
   });
 
-  it('objetivo excluyente violado tras editar → Result.fail, sin persistir', async () => {
+  // [EP-R3] XOR "ambos": el plan ya tiene equipoId (objetivo por equipo);
+  // mandar ubicacion sin limpiar equipoId deja los dos presentes a la vez.
+  it('[EP-R3] edición deja equipo Y ubicación simultáneos → ObjetivoInvalidoError, ningún campo cambia', async () => {
     const plan = makePlan();
     const { useCase, planRepo } = buildUseCase(plan);
 
     const result = await useCase.execute({ planId: plan.id, ubicacion: 'DEPOSITO' });
 
     expect(result.isFail()).toBe(true);
+    expect(result.getError()).toBeInstanceOf(ObjetivoInvalidoError);
     expect(planRepo.guardar).not.toHaveBeenCalled();
+    expect(plan.equipoId).toBe('equipo-uuid');
+    expect(plan.ubicacion).toBeNull();
+    expect(plan.titulo).toBe('Cambio de filtros');
+  });
+
+  // [EP-R3] XOR "ninguno": limpiar equipoId sin proveer ubicacion deja el
+  // plan sin objetivo.
+  it('[EP-R3] edición deja el plan sin equipo ni ubicación → ObjetivoInvalidoError, ningún campo cambia', async () => {
+    const plan = makePlan();
+    const { useCase, planRepo } = buildUseCase(plan);
+
+    const result = await useCase.execute({ planId: plan.id, equipoId: null });
+
+    expect(result.isFail()).toBe(true);
+    expect(result.getError()).toBeInstanceOf(ObjetivoInvalidoError);
+    expect(planRepo.guardar).not.toHaveBeenCalled();
+    expect(plan.equipoId).toBe('equipo-uuid');
+    expect(plan.ubicacion).toBeNull();
+  });
+
+  // Hermano invertido de los dos casos de arriba: la MISMA operación que
+  // limpia equipoId Y provee ubicacion en el mismo envío sí es un objetivo
+  // válido (XOR satisfecho) y sí persiste.
+  it('[EP-R3] hermano invertido: swap de equipo a ubicación en el mismo envío sí persiste', async () => {
+    const plan = makePlan();
+    const { useCase, planRepo } = buildUseCase(plan);
+
+    const result = await useCase.execute({
+      planId: plan.id,
+      equipoId: null,
+      ubicacion: 'DEPOSITO',
+    });
+
+    expect(result.isOk()).toBe(true);
+    expect(plan.equipoId).toBeNull();
+    expect(plan.ubicacion).toBe('DEPOSITO');
+    expect(planRepo.guardar).toHaveBeenCalledWith(plan);
+  });
+
+  // [EP-R4] cadencia inválida: intervaloValor no positivo.
+  it('[EP-R4] intervaloValor: 0 → IntervaloInvalidoError, ningún campo cambia', async () => {
+    const plan = makePlan();
+    const { useCase, planRepo } = buildUseCase(plan);
+
+    const result = await useCase.execute({ planId: plan.id, intervaloValor: 0 });
+
+    expect(result.isFail()).toBe(true);
+    expect(result.getError()).toBeInstanceOf(IntervaloInvalidoError);
+    expect(planRepo.guardar).not.toHaveBeenCalled();
+    expect(planRepo.actualizarProximaEjecucion).not.toHaveBeenCalled();
+    expect(plan.intervaloValor).toBe(3);
+    expect(plan.intervaloUnidad).toBe('MESES');
+  });
+
+  // Hermano invertido: la misma edición con un intervaloValor positivo
+  // válido sí persiste.
+  it('[EP-R4] hermano invertido: intervaloValor positivo válido sí persiste', async () => {
+    const plan = makePlan();
+    const { useCase, planRepo } = buildUseCase(plan);
+
+    const result = await useCase.execute({ planId: plan.id, intervaloValor: 5 });
+
+    expect(result.isOk()).toBe(true);
+    expect(plan.intervaloValor).toBe(5);
+    expect(planRepo.guardar).toHaveBeenCalledWith(plan);
   });
 });
