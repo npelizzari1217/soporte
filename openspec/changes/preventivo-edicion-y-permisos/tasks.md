@@ -207,6 +207,40 @@ comentario de mecanismo en la tarea 3.4 y se propone como change propio.
 
 ---
 
+## WU-5 — Cierre de hallazgos W1/W2 del verify (test-only)
+
+Unidad agregada tras el verify de `9579583` (`verify-report.md`), fuera del alcance
+original de WU-0..WU-3. Cierra los dos hallazgos WARNING que quedaron sin cobertura —
+C1 y W3/S1-S4 quedan explícitamente fuera de esta unidad.
+
+- [x] 5.1 [PR-R2, W1] `swap-preventivo-permisos.integration.spec.ts`: agregar el fixture
+      que faltaba del lado del DELETE — un TECNICO con membresía `activo: false` que YA
+      tiene las cuatro celdas `PREVENTIVO:*` (otorgadas cuando la membresía era activa,
+      insertadas directo porque el backfill de la corrida no se las va a dar de nuevo) — y
+      su aserción hermana: pierde las cuatro igual que el TECNICO activo. Corregido también
+      el comentario de cabecera (líneas 10-11), que afirmaba una cobertura que no existía.
+      Mutación de verificación: `AND m.activo = true` en el `DELETE` del
+      `20260831120000_swap_preventivo_permisos_colaborador/migration.sql` (restaurado
+      byte-idéntico después) → 2/8 rojo por la aserción
+      (`expected [...4 celdas...] to deeply equal []`). Sin la mutación: 8/8 verde.
+- [x] 5.2 [OT-R1, W2] Nuevo spec `generar-preventivos-wiring.integration.spec.ts`: resuelve
+      `GenerarPreventivosUseCase` DESDE EL CONTENEDOR DE NEST (`SharedModule` + `AuthModule`
+      + `PreventivoModule`, mismo harness que `test/preventivo.e2e.spec.ts`), con un plan
+      `equipoId` real, y afirma que el ticket generado trae `Equipo: <nombre>` — nunca
+      `EQUIPO_NO_CONSULTABLE`. DB tenant efímera propia (no comparte la del e2e existente,
+      para no reprocesar planes vencidos ajenos). Mutación de verificación: sacar
+      `EQUIPO_INFORMATICO_REPOSITORY` del `inject` de `preventivo.module.ts` (restaurado
+      byte-idéntico después) → 1/2 rojo por la aserción (`expected 'Equipo: no se pudo
+      consultar (id …)' to be 'Equipo: Notebook Dell 5420 (WU-5 DI)'`). Sin la mutación:
+      2/2 verde.
+- [x] 5.3 Cierre: suite backend completa 351/351 archivos, 3761/3761 tests (canario:
+      350/3758 — sube por los 3 tests nuevos); suite frontend sin cambios, 163/163,
+      1092/1092. `pnpm typecheck` y `pnpm lint` (back) en verde; `pnpm lint` del back
+      necesitó un fix de formato (prettier) en el spec nuevo, ya aplicado. Sin cambios de
+      producción: los dos archivos tocados son de test.
+
+---
+
 ## Trazabilidad requisito → tarea
 
 | Requisito | Tareas |
