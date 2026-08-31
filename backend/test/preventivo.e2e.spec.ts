@@ -487,6 +487,34 @@ describe('Preventivo e2e — ABM de planes, autorización REAL por HTTP (WU-4, c
       expect(status).toBe(200);
       expect(data.titulo).toBe('Nuevo título');
     });
+
+    // Hallazgo C1 del verify: `activo` viaja en el mismo PATCH (EP-R1), sin
+    // endpoint aparte para activar/desactivar. Esta capa solo tenía cobertura
+    // de `titulo`; sin este caso, un `activo: dto.activo` que se rompiera en
+    // el controller (por ejemplo mandando `undefined`) no lo atrapaba nada.
+    it('actor CON PREVENTIVO:MODIFICACION → 200, activo:false se persiste', async () => {
+      const actor = await crearActorConPermisos(['PREVENTIVO:ALTAS', 'PREVENTIVO:MODIFICACION']);
+      const creado = await httpPost<PlanPreventivoResponseDto>(
+        `${baseUrl}/preventivo/planes`,
+        planValidoBody(),
+        bearer(actor.accessToken),
+      );
+      expect(creado.data.activo).toBe(true);
+
+      const { status, data } = await httpPatch<PlanPreventivoResponseDto>(
+        `${baseUrl}/preventivo/planes/${creado.data.id}`,
+        { activo: false },
+        bearer(actor.accessToken),
+      );
+
+      expect(status).toBe(200);
+      expect(data.activo).toBe(false);
+
+      const filaCruda = await tenantClient.planPreventivo.findUnique({
+        where: { id: creado.data.id },
+      });
+      expect(filaCruda!.activo).toBe(false);
+    });
   });
 
   // ─── DELETE /preventivo/planes/:id — PREVENTIVO:BORRADO, [R4] ───────────

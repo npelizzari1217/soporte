@@ -78,9 +78,33 @@ comentario de mecanismo en la tarea 3.4 y se propone como change propio.
       `PREVENTIVO:*` de `CELDAS_TECNICO_ESPERADAS` y agregar la aserción espejo para COLABORADOR.
       Verlo fallar.
 - [x] 1.6 GREEN [PR-R1] Mover las cuatro celdas en `backend/src/auth/domain/presets-rol.ts`.
-- [x] 1.7 [PR-R1] Actualizar las tres citas de ADR-PV6 en código para que apunten a
-      `openspec/changes/preventivo-edicion-y-permisos/design.md` (ADR-3): `presets-rol.ts`, el header
-      de `20260825120100/migration.sql` y `backfill-preventivo-permisos.integration.spec.ts`.
+- [x] 1.7 [PR-R1] Actualizar las citas de ADR-PV6 en código para que apunten a
+      `openspec/changes/preventivo-edicion-y-permisos/design.md` (ADR-3): `presets-rol.ts` y
+      `backfill-preventivo-permisos.integration.spec.ts` quedaron actualizados.
+      **2 de 3 — no se tocó la tercera, adrede.** El header de
+      `20260825120100_backfill_preventivo_permisos/migration.sql` sigue citando ADR-PV6 y
+      "SOLO TECNICO": esa migración **ya está aplicada** (`_prisma_migrations`, checksum
+      `213f8985c78faa0d634435b5e4150070160cbdc88a1686984aec99f31ed772bc`, 2026-08-24) y editar
+      su comentario cambia el checksum de Prisma y rompe `migrate deploy`. Ninguna migración
+      aplicada se edita, ni en sus comentarios.
+
+      **Tampoco se corrige desde la migración del swap.** Se evaluó agregar el párrafo
+      aclaratorio al header de `20260831120000_swap_preventivo_permisos_colaborador`, que en
+      las bases locales figura sin aplicar. Se descartó: ese archivo entró a `main` en el
+      commit `4bc5d60` y viajó en el PR #84 (merge `4976a15`), así que **producción pudo
+      haberla corrido ya**. Que una migración esté sin aplicar en la base de desarrollo no
+      dice nada de producción, y el costo del error es asimétrico: romper `migrate deploy`
+      allá contra ganar un comentario más prolijo.
+
+      **Dónde queda la corrección, entonces:** en `backend/ayuda/permisos-y-roles.md`
+      (tarea 1.9), que ya documenta la matriz vigente — Colaborador administra el módulo,
+      Técnico no lo lleva — y en el ADR-3 de `design.md`. El comentario desactualizado de
+      `20260825120100` queda como registro histórico de lo que era cierto cuando esa
+      migración corrió.
+
+      **Regla general que deja este hallazgo:** una migración es historia, no documentación
+      viva. No se la corrige: se corrige la doc que la gente lee. Y "sin aplicar localmente"
+      NO es sinónimo de "editable" — lo editable es lo que todavía no salió del repo.
 - [x] 1.8 [PR-R1] **ADR-PV6 no tiene archivo que editar**: superseder la observación de Engram del
       design de `sdd/preventivo` guardando una observación nueva que declare ADR-PV6 revisado por
       ADR-3 de este change, y resolviendo el `judgment_required` con relación `supersedes`.
