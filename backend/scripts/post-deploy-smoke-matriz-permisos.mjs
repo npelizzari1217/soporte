@@ -1,8 +1,27 @@
 // WU-8 (sdd/matriz-permisos-por-usuario) — humo post-deploy, SOLO checks
 // read-only sin credenciales de usuario real. Cubre los checks 1-4 de la
-// "Verificación post-deploy" del design (§3): cero filas SOPORTE en
-// usuario_cliente_modulos y en tipos_ticket, codigo='SOPORTE' intacto, y
-// prefijo SOP- de la numeración sin romper. Los checks 5 y 6 (login real de
+// "Verificación post-deploy" del design (§3): el CHECK de la matriz sin
+// 'SOPORTE' y sin deriva contra el catálogo, cero filas SOPORTE en
+// tipos_ticket, codigo='SOPORTE' intacto, y prefijo SOP- de la numeración
+// sin romper.
+//
+// EL CHECK 1 CAMBIÓ DE SUJETO, y el motivo importa. Consultaba filas de
+// `usuario_cliente_modulos`, tabla que `b08066c refactor(auth)!` eliminó a
+// propósito: desde entonces este script fallaba con "no existe la relación",
+// en TODO deploy, y ese rojo se leyó como ruido. Un chequeo que falla siempre
+// no chequea nada.
+//
+// Y el reemplazo NO es cambiarle el nombre a la tabla. El eje vigente,
+// `usuario_cliente_permisos`, tiene un CHECK compuesto que enumera los pares
+// `modulo:accion` válidos: una fila 'SOPORTE' es IMPOSIBLE por construcción,
+// así que contar filas sería un chequeo que no puede fallar — cambiar un rojo
+// permanente por un verde permanente, que se nota menos y engaña más.
+//
+// Lo que sí puede fallar, y es lo que se verifica: que el CHECK de LA BASE DE
+// PRODUCCIÓN enumere exactamente el catálogo del código DESPLEGADO. Eso
+// atrapa una migración que no corrió, un CHECK editado a mano, y el regreso
+// de 'SOPORTE'. Mismo patrón que el test de deriva de WU-2.1, pero contra
+// producción, que es lo que un test de integración no puede mirar. Los checks 5 y 6 (login real de
 // un TECNICO y de un ADMINISTRADOR) NO se automatizan acá — requieren
 // credenciales de producción y sesión de navegador, ver el procedimiento
 // manual en docs/post-deploy-matriz-permisos.md.
@@ -14,6 +33,23 @@
 //   node scripts/post-deploy-smoke-matriz-permisos.mjs
 // Exit code 0 = los 4 checks automatizables pasaron. 1 = alguno falló.
 import pg from 'pg';
+import { createRequire } from 'node:module';
+
+// El catálogo vive en TypeScript; este script es .mjs y corre en el VPS, así
+// que se lee del BUILD, no de la fuente. Es a propósito: lo que interesa es el
+// catálogo que quedó DESPLEGADO, no el que está en el árbol de trabajo.
+// `createRequire` y no `import`: dist/ es CommonJS.
+const require = createRequire(import.meta.url);
+let PARES_VALIDOS;
+try {
+  ({ PARES_VALIDOS } = require('../dist/shared/domain/acciones.js'));
+} catch (e) {
+  console.error(
+    '[smoke] no se pudo leer dist/shared/domain/acciones.js — ¿corriste el build?\n         ' +
+      e.message,
+  );
+  process.exit(1);
+}
 
 try {
   process.loadEnvFile();
@@ -48,19 +84,68 @@ function fail(msg) {
   fallas += 1;
 }
 
-/** Check 1 — usuario_cliente_modulos (master) sin filas con modulo='SOPORTE' (S17). */
+const CHECK_MATRIZ = 'usuario_cliente_permisos_modulo_accion_check';
+
+/**
+ * Extrae los pares `MODULO:ACCION` de un `pg_get_constraintdef`.
+ *
+ * El patrón exige DOS grupos en mayúsculas separados por `:` dentro de las
+ * comillas. Un `/'([^']+)'/` a secas también captura el separador `':'` que la
+ * propia definición usa para concatenar (`modulo || ':' || accion`), y ese par
+ * fantasma desalinea el conteo: 34 donde hay 33.
+ *
+ * @param definicion Texto crudo devuelto por `pg_get_constraintdef`.
+ * @returns Los pares encontrados, ordenados.
+ */
+function paresDelCheck(definicion) {
+  return [...definicion.matchAll(/'([A-Z_]+:[A-Z_]+)'/g)].map((m) => m[1]).sort();
+}
+
+/**
+ * Check 1 — el CHECK de `usuario_cliente_permisos` en la base REAL enumera
+ * exactamente el catálogo del código desplegado, y no trae 'SOPORTE' (S17).
+ */
 async function checkMaster() {
-  console.log("[smoke] 1/4 — usuario_cliente_modulos (master): sin filas 'SOPORTE'");
+  console.log(`[smoke] 1/4 — ${CHECK_MATRIZ}: sin deriva contra el catálogo, y sin 'SOPORTE'`);
   const pool = new pg.Pool({ connectionString: masterUrl, connectionTimeoutMillis: 10000 });
   try {
     const { rows } = await pool.query(
-      'SELECT modulo, count(*)::int AS n FROM usuario_cliente_modulos GROUP BY 1 ORDER BY 1',
+      'SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conname = $1',
+      [CHECK_MATRIZ],
     );
-    const soporte = rows.find((r) => r.modulo === 'SOPORTE');
-    if (soporte) {
-      fail(`quedan ${soporte.n} fila(s) con modulo='SOPORTE' en usuario_cliente_modulos`);
+    if (rows.length === 0) {
+      fail(
+        `no existe el CHECK ${CHECK_MATRIZ}. Sin el, la base acepta cualquier par (modulo, accion)`,
+      );
+      return;
+    }
+
+    const enLaDb = paresDelCheck(rows[0].def);
+    const enElCodigo = [...PARES_VALIDOS].sort();
+
+    const soloDb = enLaDb.filter((p) => !enElCodigo.includes(p));
+    const soloCodigo = enElCodigo.filter((p) => !enLaDb.includes(p));
+
+    if (soloDb.length > 0 || soloCodigo.length > 0) {
+      fail(
+        `deriva entre el CHECK y el catalogo desplegado. ` +
+          `Solo en la DB: [${soloDb.join(', ') || '-'}]. ` +
+          `Solo en el codigo: [${soloCodigo.join(', ') || '-'}]. ` +
+          `Causa tipica: una migracion que no corrio.`,
+      );
     } else {
-      ok(`0 filas SOPORTE (${rows.length} módulo(s) distinto(s) presentes)`);
+      ok(`el CHECK enumera exactamente los ${enLaDb.length} pares del catalogo desplegado`);
+    }
+
+    // Explicito y no implicado por la deriva: si 'SOPORTE' volviera al
+    // catalogo Y a la base, la comparacion de arriba pasaria en verde. Este
+    // assert guarda la decision de WU-8, que es lo que este smoke existe para
+    // custodiar.
+    const soporte = enLaDb.filter((p) => p.startsWith('SOPORTE:'));
+    if (soporte.length > 0) {
+      fail(`el CHECK volvio a admitir SOPORTE: [${soporte.join(', ')}] (WU-8 lo elimino)`);
+    } else {
+      ok("el CHECK no admite ningun par 'SOPORTE:*'");
     }
   } finally {
     await pool.end();
