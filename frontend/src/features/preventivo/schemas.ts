@@ -40,9 +40,24 @@ const camposComunes = {
     .max(TITULO_MAX_LENGTH, mensajeDemasiadoLargo("El título", TITULO_MAX_LENGTH)),
   instrucciones: z.string().optional(),
   equipoId: z.string().optional(),
+  // Normaliza ANTES de medir, con `.pipe()` porque en Zod 3 `.max()` no encadena
+  // después de un `.transform()`. Espeja a `normalizarUbicacion` +
+  // `validarUbicacionLargo` del dominio (`plan-preventivo.entity.ts:110-132`),
+  // que también miden post-normalización.
+  //
+  // Medir el valor CRUDO y enviar el normalizado son dos strings distintos, y la
+  // diferencia no es teórica: `toUpperCase()` AGRANDA ('ß' → 'SS', 'ﬁ' → 'FI'),
+  // así que 255 caracteres que la pantalla daba por buenos llegaban al backend
+  // como 256 y volvían como un 400. En la otra dirección, medir sin `trim()`
+  // rechazaba en pantalla un valor que el backend habría aceptado. El front tiene
+  // que ser espejo del backend, ni más laxo ni más estricto.
+  //
+  // Al salir normalizado del parseo, el submit NO debe volver a normalizar: lo
+  // validado y lo enviado son el mismo string.
   ubicacion: z
     .string()
-    .max(UBICACION_MAX_LENGTH, mensajeDemasiadoLargo("La ubicación", UBICACION_MAX_LENGTH))
+    .transform((valor) => valor.trim().toUpperCase())
+    .pipe(z.string().max(UBICACION_MAX_LENGTH, mensajeDemasiadoLargo("La ubicación", UBICACION_MAX_LENGTH)))
     .optional(),
   prioridadId: z.string().min(1, "Elegí una prioridad"),
   responsableId: z.string().min(1, "Elegí un responsable"),
