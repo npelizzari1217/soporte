@@ -360,7 +360,7 @@ model Role {
 // módulos) por una única fila por celda `(usuario_id, cliente_id, modulo,
 // accion)`. `modulo`/`accion` son literales del catálogo `as const` de
 // `src/shared/domain/acciones.ts` — el CHECK de esta tabla (migración
-// add_usuario_cliente_permisos) enumera exactamente los 28 pares válidos,
+// add_usuario_cliente_permisos) enumera exactamente los 33 pares válidos,
 // atado a ese catálogo por un test de deriva contra `pg_get_constraintdef`
 // (patrón dcc867f). Sin columna `id` sintética: ninguna otra entidad
 // referencia una celda, y la PK compuesta ya da la unicidad (mismo criterio
