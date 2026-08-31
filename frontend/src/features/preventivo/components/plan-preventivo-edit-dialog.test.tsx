@@ -10,6 +10,13 @@ import type { PlanPreventivo } from "../types";
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
+// `vi.mock` de módulo crea los `vi.fn()` una sola vez para todo el archivo:
+// sin limpiarlos entre tests, un `toHaveBeenCalled()` puede pasar por una
+// llamada de un test ANTERIOR (hallazgo C1 del verify).
+beforeEach(() => {
+  vi.clearAllMocks();
+});
+
 const PLAN_ID = "88888888-8888-8888-8888-888888888888";
 const PRIORIDAD_ID = "11111111-1111-1111-1111-111111111111";
 const USUARIO_ID = "33333333-3333-3333-3333-333333333333";
@@ -168,11 +175,15 @@ describe("PlanPreventivoEditDialog — sin fechaInicio, con activo en el mismo e
 
   it("activo se cambia en el mismo envío, sin segunda llamada", async () => {
     let llamadas = 0;
+    // El body se captura acá y se afirma DESPUÉS, fuera del resolver de MSW:
+    // un `expect` que falla dentro del resolver lo atrapa MSW y lo convierte
+    // en una respuesta de error, así que la excepción nunca llega al runner
+    // y el test no se entera (hallazgo C1 del verify).
+    let bodyCapturado: Record<string, unknown> | undefined;
     server.use(
       http.patch(`/api/preventivo/planes/${PLAN_ID}`, async ({ request }) => {
         llamadas += 1;
-        const body = (await request.json()) as Record<string, unknown>;
-        expect(body.activo).toBe(false);
+        bodyCapturado = (await request.json()) as Record<string, unknown>;
         return HttpResponse.json({ ...PLAN_CON_UBICACION, activo: false });
       }),
     );
@@ -186,6 +197,7 @@ describe("PlanPreventivoEditDialog — sin fechaInicio, con activo en el mismo e
 
     await waitFor(() => expect(toast.success).toHaveBeenCalled());
     expect(llamadas).toBe(1);
+    expect(bodyCapturado?.activo).toBe(false);
   });
 });
 
