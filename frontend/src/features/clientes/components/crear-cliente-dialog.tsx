@@ -24,6 +24,7 @@ const FIELDS: { name: keyof CrearClienteFormValues; label: string; type?: string
   { name: "adminNombre", label: "Nombre del admin" },
   { name: "adminApellido", label: "Apellido del admin" },
   { name: "adminPassword", label: "Contraseña del admin", type: "password" },
+  { name: "zonaHoraria", label: "Zona horaria operativa" },
 ];
 
 export function CrearClienteDialog() {
@@ -44,6 +45,9 @@ export function CrearClienteDialog() {
       adminNombre: "",
       adminApellido: "",
       adminPassword: "",
+      // Sin valor preseleccionado: la decisión cerrada del ciclo es que la
+      // zona va explícita en el alta, nunca defaulteada a Buenos Aires.
+      zonaHoraria: "",
     },
   });
 
@@ -57,6 +61,7 @@ export function CrearClienteDialog() {
         adminNombre: values.adminNombre,
         adminApellido: values.adminApellido,
         adminPassword: values.adminPassword,
+        zonaHoraria: values.zonaHoraria,
       },
       {
         onSuccess: () => {

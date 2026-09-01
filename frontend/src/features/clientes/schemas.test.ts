@@ -39,6 +39,7 @@ const CLIENTE_VALIDO = {
   adminNombre: "Ada",
   adminApellido: "Lovelace",
   adminPassword: "unaClaveLarga",
+  zonaHoraria: "America/Argentina/Buenos_Aires",
 };
 
 const EDICION_VALIDA = {

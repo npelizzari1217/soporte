@@ -28,6 +28,14 @@ export interface CreateClienteDto {
   adminNombre: string;
   adminApellido: string;
   adminPassword: string;
+  /**
+   * Zona operativa del tenant nuevo (IANA), gobierna SLA, vencimientos, CSV
+   * y prefill de fecha/hora. Obligatoria y sin default preseleccionado: la
+   * decisión cerrada del ciclo `zona-horaria-por-tenant` es que va explícita
+   * en el alta, nunca defaulteada a Buenos Aires desde la UI (el backend
+   * también la exige — `CreateClienteDto.zonaHoraria`, sin `?`).
+   */
+  zonaHoraria: string;
 }
 
 /**

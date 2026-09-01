@@ -11,6 +11,7 @@ import {
   USUARIO_NOMBRE_MAX_LENGTH,
 } from "@/shared/lib/limites-usuario";
 import { mensajeDemasiadoLargo } from "@/shared/lib/mensaje-tope";
+import { esZonaValida } from "@/shared/lib/formato-fecha";
 
 /** Espejo de `CreateClienteDto` (backend). Provisiona DB física + admin inicial — solo ROOT. */
 export const crearClienteSchema = z.object({
@@ -51,6 +52,11 @@ export const crearClienteSchema = z.object({
       mensajeDemasiadoLargo("El apellido del administrador", USUARIO_APELLIDO_MAX_LENGTH),
     ),
   adminPassword: z.string().min(8, "Mínimo 8 caracteres"),
+  /**
+   * Obligatoria y sin default: un candidato vacío o inválido no pasa
+   * `esZonaValida` (ver arriba), así que no hace falta un `.min(1)` aparte.
+   */
+  zonaHoraria: z.string().refine(esZonaValida, "Zona horaria inválida"),
 });
 export type CrearClienteFormValues = z.infer<typeof crearClienteSchema>;
 

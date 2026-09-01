@@ -68,10 +68,11 @@ describe("ClientesAdminView", () => {
     await user.type(screen.getByLabelText(/nombre.*admin/i), "Ana");
     await user.type(screen.getByLabelText(/apellido.*admin/i), "Gómez");
     await user.type(screen.getByLabelText(/contraseña/i), "password123");
+    await user.type(screen.getByLabelText(/zona horaria/i), "America/Argentina/Buenos_Aires");
     await user.click(screen.getByRole("button", { name: /crear/i }));
 
     await waitFor(() => expect(Object.keys(capturedBody).sort()).toEqual(
-      ["adminApellido", "adminEmail", "adminNombre", "adminPassword", "nombre"].sort(),
+      ["adminApellido", "adminEmail", "adminNombre", "adminPassword", "nombre", "zonaHoraria"].sort(),
     ));
   });
 

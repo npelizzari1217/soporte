@@ -185,15 +185,41 @@ Depende de: WU-1. C2c puede ir en paralelo con WU-3.
 > **Ventana asumida**: entre el merge de C2a-back y el de C2a-front, el alta desde la UI
 > queda rota. La cadena todavía no está en `main` y el repo tiene un solo desarrollador.
 
-- [ ] 2.7a RED: test del diálogo de alta — sin zona elegida el submit no dispara, y con zona
+- [x] 2.7a RED: test del diálogo de alta — sin zona elegida el submit no dispara, y con zona
       elegida el payload la incluye. Recorre `zonasValidas`/`zonasInvalidas` del mismo fixture
       compartido, para que el veredicto del borde del frontend sea idéntico al del VO.
-- [ ] 2.7b GREEN: `crear-cliente-dialog.tsx` (campo de zona, obligatorio, sin default
+- [x] 2.7b GREEN: `crear-cliente-dialog.tsx` (campo de zona, obligatorio, sin default
       preseleccionado), más `schemas.ts` y `types.ts` de `features/clientes`. Sin `z.enum`:
       `z.string().refine(esZonaValida)`, igual que declara 2.13 para el diálogo de config.
 
+  > **Nota de cierre de C2a-front (2026-09-01, apply).** El campo es un `<Input>` de texto
+  > plano dentro del mismo `FIELDS` genérico del diálogo (no un `<select>`): la tarea dice
+  > "campo de zona", no "select", y esa distinción es intencional — el `<select>` con catálogo
+  > mezclado con el valor vigente del tenant es exactamente lo que 2.12/2.13 (C2c) resuelve
+  > para el diálogo de EDICIÓN, donde sí hace falta prellenar. Acá, un texto libre validado por
+  > `esZonaValida` evita por completo la trampa de `Intl.supportedValuesOf('timeZone')` (ese
+  > catálogo ni siquiera lista `America/Argentina/Buenos_Aires`), sin construir ningún catálogo.
+  > `esZonaValida` se escribió en `frontend/src/shared/lib/formato-fecha.ts`, NO en
+  > `schemas.ts` como se anticipaba: el lint del proyecto (`no-restricted-syntax`) prohíbe
+  > instanciar `Intl.DateTimeFormat` fuera de ese módulo, hallazgo real detectado corriendo
+  > `pnpm lint` (no en el diseño). `schemas.ts` la importa. Radio real: **4 archivos de
+  > código**, no los 3 declarados (`crear-cliente-dialog.tsx`, `schemas.ts`, `types.ts` +
+  > `shared/lib/formato-fecha.ts`), dentro del tope de 5 del proyecto. Además se corrigieron
+  > dos tests preexistentes que asumían `zonaHoraria` ausente y quedaron en rojo por el mismo
+  > motivo que el hallazgo original de C2a-back (un campo nuevo obligatorio con radio mayor al
+  > declarado): `clientes-admin-view.test.tsx` (agrega la selección de zona al flujo de alta) y
+  > `schemas.test.ts` (agrega `zonaHoraria` al fixture `CLIENTE_VALIDO`). **Líneas revisables
+  > reales: ~152** (50 de código en los 4 archivos no-test + 102 de test: 3 en
+  > `clientes-admin-view.test.tsx`, 1 en `schemas.test.ts`, 98 del `crear-cliente-dialog.test.tsx`
+  > nuevo) contra la estimación de ~100 — por encima, pero muy por debajo del corte de 400
+  > líneas del PR y dentro del tope de 5 archivos de código. `pnpm test` (165/165 archivos,
+  > 1107/1107 tests), `pnpm type-check` y `pnpm lint` en verde, verificados corriendo los tres
+  > explícitamente. La Ayuda (`backend/ayuda/zona-horaria.md`) queda para C2c (2.14) como ya
+  > estaba planeado: este commit no toca `backend/`.
+
 **Commit C2a-front** — `feat(clientes): exigir la zona operativa en el alta desde la UI`
-· ~100 líneas · 3 archivos de código · rollback: vuelve el alta sin zona y el backend la rechaza.
+· ~152 líneas reales (estimado ~100) · 4 archivos de código (declarados 3; ver nota de cierre)
+· rollback: vuelve el alta sin zona y el backend la rechaza.
 
 > Numeración `2.7a`/`2.7b` a propósito, para no volver a renumerar todo el WU: la
 > renumeración anterior es justamente lo que dejó pasar este consumidor.
