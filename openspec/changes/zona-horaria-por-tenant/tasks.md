@@ -27,26 +27,35 @@ Verificado contra el repositorio; no reabre ninguna de las 9 decisiones cerradas
 
 Depende de: nada. Habilita WU-1, WU-4 y WU-5.
 
-- [ ] 0.1 RED: crear `backend/src/shared/domain/fixture-paridad.spec.ts` y
+- [x] 0.1 RED: crear `backend/src/shared/domain/fixture-paridad.spec.ts` y
       `frontend/src/shared/lib/fixture-paridad.test.ts`, cada uno cargando
       `shared-fixtures/formato-fecha-paridad.json` y afirmando que trae los bloques
       `zonasValidas`, `zonasInvalidas` y `casos`, con `America/Argentina/Buenos_Aires` y
       `Europe/Madrid` presentes. Correr los dos: fallan porque el archivo no existe.
-- [ ] 0.2 GREEN: crear `shared-fixtures/formato-fecha-paridad.json` (directorio nuevo en la
+- [x] 0.2 GREEN: crear `shared-fixtures/formato-fecha-paridad.json` (directorio nuevo en la
       raíz del monorepo) con `zonasValidas` (`America/Argentina/Buenos_Aires`,
       `America/Buenos_Aires`, `Asia/Calcutta`, `Asia/Kolkata`, `Europe/Madrid`),
       `zonasInvalidas` (`America/Nunca_Existio`, `Europe/Madriz`, cadena vacía, cadena de 65
       caracteres) y `casos` con `{ instante, zona, esperadoInstante, esperadoDia,
       esperadoHoy }`, incluyendo los dos cruces de DST de `Europe/Madrid` de 2026 (último
-      domingo de marzo y de octubre) y el cruce de medianoche vigente.
-- [ ] 0.3 **Verificación explícita de alcance** (no es un supuesto): correr
+      domingo de marzo y de octubre) y el cruce de medianoche vigente. Ampliado en WU-1
+      (hallazgo de revisión) con offsets numéricos y alias (`"+05:00"`, `"UTC"`,
+      `"Etc/GMT+5"`) en `zonasValidas`.
+- [x] 0.3 **Verificación explícita de alcance** (no es un supuesto): correr
       `pnpm vitest run src/shared/domain/fixture-paridad.spec.ts` en `backend/` y
       `pnpm vitest run src/shared/lib/fixture-paridad.test.ts` en `frontend/`. Si el import
       estático no resuelve fuera del root del paquete, ajustar la config de Vitest
       (`resolve.alias` y/o `server.fs.allow`) o leer el archivo con `readFileSync` +
       `JSON.parse`. Dejar escrito en el spec cuál de las dos vías quedó y por qué.
-- [ ] 0.4 Verificar también que el fixture no rompe `pnpm typecheck` (backend) ni
+      **Resuelto**: un `import` estático de JSON SÍ resuelve en Vitest en las dos suites sin
+      tocar ninguna config (probado empíricamente con un archivo de sondeo, descartado antes
+      del commit), pero rompe `pnpm typecheck` del backend con `TS2732` porque
+      `resolveJsonModule` no está habilitado en `tsconfig.json`. Se optó por `readFileSync` +
+      `JSON.parse` en los dos specs — no depende de resolución de módulos de TypeScript y no
+      toca ninguna config existente por un solo fixture.
+- [x] 0.4 Verificar también que el fixture no rompe `pnpm typecheck` (backend) ni
       `pnpm type-check` (frontend): el archivo queda fuera del `rootDir` de los dos paquetes.
+      Confirmado: los dos typecheck en verde (exit 0) con `readFileSync` en vez de `import`.
 
 **Commit C0** — `test(shared-fixtures): fixture de paridad de zonas alcanzable desde las dos suites`
 · ~130 líneas revisables · rollback: borrar el directorio, nada más lo consume todavía.
@@ -57,19 +66,38 @@ Depende de: nada. Habilita WU-1, WU-4 y WU-5.
 
 Depende de: WU-0.
 
-- [ ] 1.1 RED: `backend/src/shared/domain/zona-horaria.spec.ts` recorriendo
+- [x] 1.1 RED: `backend/src/shared/domain/zona-horaria.spec.ts` recorriendo
       `zonasValidas`/`zonasInvalidas` del fixture. El caso
       `America/Argentina/Buenos_Aires` es el centinela anti-catálogo: si alguien valida por
       `Intl.supportedValuesOf`, este caso se pone rojo.
-- [ ] 1.2 RED: en el mismo spec, `hoyEnZona(zona, ahora)` a ambos lados del cambio de
+- [x] 1.2 RED: en el mismo spec, `hoyEnZona(zona, ahora)` a ambos lados del cambio de
       horario de `Europe/Madrid`, y el caso 00:30 en Madrid que en UTC todavía es D−1.
-- [ ] 1.3 RED: centinela de tope — un test que fije `ZONA_HORARIA_MAX_LENGTH === 64` contra
+- [x] 1.3 RED: centinela de tope — un test que fije `ZONA_HORARIA_MAX_LENGTH === 64` contra
       el ancho declarado de la columna, separado del test que usa `'x'.repeat(MAX + 1)`.
-- [ ] 1.4 GREEN: `backend/src/shared/domain/zona-horaria.ts` con `esZonaValida`
+      Ajustado en revisión: el segundo test asertaba `.toThrow()` sin matcher y no distinguía
+      "cae por largo" de "cae por invalidez" (cualquier string de 65 caracteres también es
+      una zona inexistente); ahora asertá el mensaje `/excede \d+ caracteres/` para probar
+      específicamente que fue el guard de largo el que disparó.
+- [x] 1.4 GREEN: `backend/src/shared/domain/zona-horaria.ts` con `esZonaValida`
       (try/catch sobre `new Intl.DateTimeFormat`), `ZonaHoraria.crear` /
       `.desdePersistencia` (valida y nombra el `clienteId` al fallar) / `.valor` /
       `.equals`, `hoyEnZona` y `partesEnZona` usando `formatToParts`, nunca `format()`.
-- [ ] 1.5 No tocar `zona-horaria-argentina.ts` acá: todavía tiene consumidores vivos.
+      `partesEnZona` devuelve `Record<ClavePartesEnZona, string>` (claves explícitas, no
+      `Record<string, string>`) y tiene su propia cobertura contra `esperadoInstante` del
+      fixture, agregada en revisión — antes solo `hoyEnZona` (año/mes/día) la ejercitaba, y
+      la mitad hora/minuto/segundo del formateador quedaba sin ningún assert.
+- [x] 1.5 No tocar `zona-horaria-argentina.ts` acá: todavía tiene consumidores vivos.
+
+**Hallazgo de diseño descubierto en WU-1, no en el design original**: `equals()` compara por
+string crudo, no por zona semánticamente equivalente (`crear('UTC').equals(crear('utc'))` da
+`false`). Medido que normalizar vía `Intl.DateTimeFormat(...).resolvedOptions().timeZone`
+resuelve la propia zona por defecto del proyecto a su alias
+(`America/Argentina/Buenos_Aires` → `America/Buenos_Aires`), así que normalizar o rechazar la
+forma no canónica en `validar()` reintroduciría la misma trampa que el centinela
+anti-catálogo existe para evitar, por otra puerta. Documentado y testeado como limitación
+conocida (comparación por string, no por equivalencia semántica); no hay ningún escritor de
+candidatos con case/alias distinto todavía, así que no es un bug con síntoma. Si un futuro
+work unit necesita comparar por equivalencia semántica, es una decisión de diseño nueva.
 
 **Commit C1** — `feat(shared): value object ZonaHoraria con validación IANA por construcción`
 · ~240 líneas · rollback: el VO no tiene consumidores todavía.
