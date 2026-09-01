@@ -58,5 +58,8 @@
     "msw": "^2.15.0",
     "typescript": "^5",
     "vitest": "^4.1.9"
+  },
+  "engines": {
+    "node": ">=24"
   }
 }
