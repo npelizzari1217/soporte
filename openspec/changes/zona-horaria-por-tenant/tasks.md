@@ -4,8 +4,10 @@ TDD estricto: dentro de cada work unit, el orden `RED → GREEN → REFACTOR` es
 el RED se corre y se ve fallar **por la razón correcta** antes de escribir implementación.
 
 Comandos: backend `pnpm test` / `pnpm typecheck` / `pnpm lint`; frontend `pnpm test` /
-`pnpm type-check` / `pnpm lint`. Recordatorio: `pnpm typecheck` del backend **no** cubre
-`*.spec.ts`, así que correr la suite no reemplaza al typecheck.
+`pnpm type-check` / `pnpm lint`. **Corregido 2026-09-01**: `pnpm typecheck` del backend **SÍ**
+cubre `*.spec.ts` (el `tsconfig` los incluye a propósito). Un campo obligatorio nuevo rompe el
+typecheck en cada fixture que construya la entidad. Igual hay que correr los dos: `pnpm test`
+transpila sin chequear tipos.
 
 > **RE-PLANIFICACIÓN (enmienda de dos capas).** WU-0 y WU-1 ya están entregados y el
 > `design.md` verificó que la enmienda no los toca: quedan `[x]` y no se re-planifican. Todo

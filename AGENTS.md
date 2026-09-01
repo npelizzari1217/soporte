@@ -139,8 +139,26 @@ No rechaces un cambio por estas razones:
 
 Runner: **Vitest**. Package manager: **pnpm**. No hay Jest.
 `pnpm lint` sale en **cero errores** (verificado 2026-08-30). Si tira algo, es del cambio.
-`pnpm typecheck` no mira los `*.spec.ts` (el tsconfig los excluye) — ~150 errores
-preexistentes quedarían expuestos. Es decisión pendiente del autor, no defecto de un cambio.
+`pnpm typecheck` **SÍ mira los `*.spec.ts`** (corregido 2026-09-01). `backend/tsconfig.json`
+los incluye a propósito: `include: ["src/**/*"]` y `exclude` solo `node_modules` y `dist`. Su
+propio comentario explica por qué son el gate central del ciclo `saneamiento-tipos-backend`
+(WU6): la exclusión anterior había escondido **119 errores de tipos**, entre ellos un renombre
+de enum que nunca llegó a los tests y mocks que no cumplían la interfaz que decían implementar.
+
+Consecuencias prácticas:
+
+- Un campo obligatorio nuevo en una entidad de dominio **rompe el typecheck en cada fixture de
+  spec que la construya**, guarde o no en base. Presupuestá ese fixup.
+- Correr la suite **no** reemplaza al typecheck, ni al revés: `pnpm test` transpila sin chequear
+  tipos. Corré los dos.
+- `tsconfig.build.json` re-declara su propio `exclude` y sí saca los specs, pero eso aplica solo
+  al build de producción, no a `tsc --noEmit`.
+
+> **Por qué estaba mal.** Hasta el 2026-09-01 este párrafo afirmaba lo contrario ("el tsconfig
+> los excluye", "~150 errores preexistentes", "decisión pendiente del autor"). Describía el
+> estado **anterior a WU6** y nunca se actualizó cuando ese ciclo entró. Costó un lanzamiento
+> completo de `sdd-apply` en el ciclo `zona-horaria-por-tenant`, que planificó sin contar el
+> fixup de ~24 fixtures. Verificalo vos mismo antes de confiar: `bat backend/tsconfig.json`.
 
 ---
 
