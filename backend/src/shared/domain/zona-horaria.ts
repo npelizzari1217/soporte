@@ -17,31 +17,32 @@
  * válido para ella. Un validador sobre el catálogo rechazaría la zona por
  * defecto de este sistema.
  *
- * El schema Zod que valide la zona en `frontend/src/features/clientes/schemas.ts`
- * DEBE aplicar exactamente esta misma regla (verificado 2026-09-01 con
- * `rg -i "zona|timeZone" frontend/src/features/clientes/schemas.ts`: sin
- * coincidencias — ese archivo existe pero ningún schema valida zona
- * horaria todavía; ver `openspec/changes/zona-horaria-por-tenant/tasks.md`
- * para qué work unit lo agrega). El mecanismo anti-divergencia entre las
- * dos puntas es el mismo fixture que usa este spec
- * (`shared-fixtures/formato-fecha-paridad.json`), leído también por
- * `frontend/src/shared/lib/fixture-paridad.test.ts` (verificado 2026-09-01
- * con `rg -i "esZonaValida|valida" frontend/src/shared/lib/fixture-paridad.test.ts`:
- * ese test hoy solo confirma que el fixture trae los bloques esperados, no
- * llama a ningún validador de zonas).
+ * El schema Zod que valida la zona en `frontend/src/features/clientes/schemas.ts`
+ * aplica exactamente esta misma regla: `zonaHoraria: z.string().refine(esZonaValida, ...)`,
+ * donde `esZonaValida` es el espejo de esta función en
+ * `frontend/src/shared/lib/formato-fecha.ts` (construcción de
+ * `Intl.DateTimeFormat`, nunca `Intl.supportedValuesOf('timeZone')` ni
+ * `z.enum`). El mecanismo anti-divergencia entre las dos puntas es el mismo
+ * fixture que usa este spec (`shared-fixtures/formato-fecha-paridad.json`),
+ * leído también por `frontend/src/shared/lib/fixture-paridad.test.ts`
+ * (verificado 2026-09-02: ese test solo confirma que el fixture trae los
+ * bloques esperados, no llama a ningún validador de zonas — el que ejercita
+ * `zonasValidas`/`zonasInvalidas` contra `esZonaValida` en las dos puntas es
+ * tarea 2.10, `openspec/changes/zona-horaria-por-tenant/tasks.md`).
  */
 
 /**
- * Tope de largo del VO. Está pensado para espejar una futura columna
- * `clientes.zona_horaria VARCHAR(64)` (ver `openspec/changes/zona-horaria-por-tenant/tasks.md`
- * para qué work unit la agrega) con margen sobre el ID IANA más largo
- * (`America/Argentina/ComodRivadavia`, 32 caracteres — contado con
- * `node -e 'console.log("America/Argentina/ComodRivadavia".length)'`). El
- * DTO de `clientes` y el frontend deberán importar esta constante en vez de
- * repetir el número — mismo criterio que `CLIENTE_CUIT_MAX_LENGTH`
- * (`clientes/domain/entities/cliente.entity.ts`; verificado 2026-09-01 con
- * `rg -rn "ZONA_HORARIA_MAX_LENGTH" backend/src frontend/src --glob '!*zona-horaria*'`:
- * sin resultados — ningún caller la importa todavía).
+ * Tope de largo del VO. Espeja la columna `clientes.zona_horaria VARCHAR(64)`
+ * (migración `20260901120000_add_cliente_zona_horaria`) con margen sobre el
+ * ID IANA más largo (`America/Argentina/ComodRivadavia`, 32 caracteres —
+ * contado con `node -e 'console.log("America/Argentina/ComodRivadavia".length)'`).
+ * Mismo criterio que `CLIENTE_CUIT_MAX_LENGTH`
+ * (`clientes/domain/entities/cliente.entity.ts`): el DTO de `clientes` la
+ * importa en vez de repetir el número (`CreateClienteDto` y
+ * `ConfigurarZonaHorariaClienteDto`, `cliente.dto.ts`). El frontend todavía
+ * no la copia — `frontend/src/features/clientes/limites.ts` es el lugar
+ * asignado para hacerlo con su propio centinela (D8,
+ * `openspec/changes/zona-horaria-por-tenant/tasks.md`, tarea 2.11).
  */
 export const ZONA_HORARIA_MAX_LENGTH = 64;
 
@@ -140,11 +141,15 @@ export class ZonaHoraria {
    * zona que el propio backfill de D8 escribe dejaría de pasar por su forma
    * tal cual está escrita.
    *
-   * Sin ningún escritor real de candidatos con case distinto o alias
-   * (verificado 2026-09-01 con `rg -rn "ZonaHoraria\.(crear|desdePersistencia)"
-   * backend/src --glob '!*zona-horaria*'`: sin resultados — el único caller
-   * hoy es este mismo spec), es una limitación documentada, no un bug con
-   * síntoma. Si un futuro work unit necesita comparar zonas por
+   * Hoy hay tres escritores de producción (`CrearClienteUseCase`,
+   * `ConfigurarZonaHorariaClienteUseCase` y `ClienteMapper.toDomain()` vía
+   * `desdePersistencia`), y ninguno normaliza ni reescribe la forma del
+   * candidato: los dos casos de uso reciben el string ya validado por
+   * `@IsZonaHorariaValida()` en el borde (mismo `esZonaValida`, no una
+   * segunda regla), y el mapper reconstruye la fila tal cual está persistida.
+   * Ninguno introduce hoy un case distinto o un alias para la misma zona —
+   * es una limitación documentada, no un bug con síntoma, mientras eso siga
+   * siendo cierto. Si un futuro work unit necesita comparar zonas por
    * equivalencia semántica en vez de por string, es una decisión de diseño
    * nueva — no algo para resolver acá sin abrir esa discusión.
    */

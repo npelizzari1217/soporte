@@ -165,6 +165,14 @@ export interface ClienteResponseDto {
    * `ConfigurarCsatDialog` arranca prellenado con el valor real.
    */
   csatHabilitado: boolean;
+  /**
+   * Zona horaria operativa del tenant (sdd/zona-horaria-por-tenant). Mismo
+   * criterio que `csatHabilitado`: no es un secreto, viaja directo en el
+   * listado (`GET /clientes`) y en las respuestas de alta/edición, así el
+   * select de `ConfigurarZonaHorariaDialog` (C2c) arranca prellenado con el
+   * valor real del tenant y no con un default.
+   */
+  zonaHoraria: string;
 }
 
 /**
@@ -175,6 +183,20 @@ export interface ClienteResponseDto {
 export class ConfigurarCsatClienteDto {
   @IsBoolean()
   habilitado!: boolean;
+}
+
+/**
+ * Body de `PATCH /clientes/:id/zona-horaria` (cambiar la zona operativa del
+ * tenant, sdd/zona-horaria-por-tenant C2b). Ruta SEPARADA de
+ * `PATCH /clientes/:id` (edición comercial), mismo criterio que `/csat` (D1).
+ * Reutiliza `IsZonaHorariaValida` — nunca reimplementa la regla de validez.
+ */
+export class ConfigurarZonaHorariaClienteDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(ZONA_HORARIA_MAX_LENGTH)
+  @IsZonaHorariaValida()
+  zonaHoraria!: string;
 }
 
 /**

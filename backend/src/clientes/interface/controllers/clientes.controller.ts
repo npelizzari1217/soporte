@@ -38,6 +38,7 @@ import {
   Patch,
   Post,
   ServiceUnavailableException,
+  UnprocessableEntityException,
   UseGuards,
 } from '@nestjs/common';
 import { CrearClienteUseCase } from '../../application/use-cases/crear-cliente.use-case';
@@ -53,11 +54,13 @@ import { QuitarCorreoClienteUseCase } from '../../application/use-cases/quitar-c
 import { ProbarCorreoClienteUseCase } from '../../application/use-cases/probar-correo-cliente.use-case';
 import { VerCorreoClienteUseCase } from '../../application/use-cases/ver-correo-cliente.use-case';
 import { ConfigurarCsatClienteUseCase } from '../../application/use-cases/configurar-csat-cliente.use-case';
+import { ConfigurarZonaHorariaClienteUseCase } from '../../application/use-cases/configurar-zona-horaria-cliente.use-case';
 import {
   ClienteCorreoResponseDto,
   ClienteListItemResponseDto,
   ConfigurarCorreoClienteDto,
   ConfigurarCsatClienteDto,
+  ConfigurarZonaHorariaClienteDto,
   CreateClienteDto,
   UpdateClienteDto,
   ClienteResponseDto,
@@ -71,6 +74,7 @@ import {
   CorreoPasswordFaltanteError,
   EmailCryptoKeyAusenteError,
   OnlyRootCanCreateClienteError,
+  ZonaHorariaInvalidaError,
 } from '../../domain/errors/clientes.errors';
 import { JwtAuthGuard } from '../../../auth/infrastructure/guards/jwt-auth.guard';
 import { GlobalAdminGuard } from '../../../auth/infrastructure/guards/global-admin.guard';
@@ -87,6 +91,7 @@ function toResponseDto(cliente: ClienteEntity): ClienteResponseDto {
     dbName: cliente.dbName,
     activo: cliente.activo,
     csatHabilitado: cliente.csatHabilitado,
+    zonaHoraria: cliente.zonaHoraria.valor,
   };
 }
 
@@ -134,6 +139,7 @@ function toHttpException(
   | NotFoundException
   | BadRequestException
   | ServiceUnavailableException
+  | UnprocessableEntityException
   | InternalServerErrorException {
   if (error instanceof OnlyRootCanCreateClienteError) {
     return new ForbiddenException(error.message);
@@ -149,6 +155,9 @@ function toHttpException(
   }
   if (error instanceof EmailCryptoKeyAusenteError) {
     return new ServiceUnavailableException(error.message);
+  }
+  if (error instanceof ZonaHorariaInvalidaError) {
+    return new UnprocessableEntityException(error.message);
   }
   // AdministradorRoleNotFoundError (u otro no mapeado explícitamente): falla
   // de configuración/infra, no del caller.
@@ -169,6 +178,7 @@ export class ClientesController {
     private readonly probarCorreoClienteUseCase: ProbarCorreoClienteUseCase,
     private readonly verCorreoClienteUseCase: VerCorreoClienteUseCase,
     private readonly configurarCsatClienteUseCase: ConfigurarCsatClienteUseCase,
+    private readonly configurarZonaHorariaClienteUseCase: ConfigurarZonaHorariaClienteUseCase,
   ) {}
 
   /**
@@ -399,6 +409,35 @@ export class ClientesController {
     const result = await this.configurarCsatClienteUseCase.execute({
       clienteId: id,
       habilitado: dto.habilitado,
+    });
+
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+
+    return toResponseDto(result.getValue());
+  }
+
+  /**
+   * PATCH /clientes/:id/zona-horaria
+   * Cambia la zona operativa (horaria) del tenant (sdd/zona-horaria-por-tenant,
+   * C2b). Ruta SEPARADA de `PATCH /clientes/:id` (edición comercial), mismo
+   * criterio que `/csat` (D1). Solo ROOT.
+   * @returns 200 + ClienteResponseDto con la nueva `zonaHoraria`
+   * @throws 404 NotFoundException si el cliente no existe
+   * @throws 422 UnprocessableEntityException si el candidato no es una zona
+   *   horaria válida — no debería ocurrir en producción (el DTO ya lo
+   *   rechaza con 400 en el borde), es defensa en profundidad del caso de uso
+   */
+  @Patch(':id/zona-horaria')
+  @HttpCode(HttpStatus.OK)
+  async configurarZonaHoraria(
+    @Param('id') id: string,
+    @Body() dto: ConfigurarZonaHorariaClienteDto,
+  ): Promise<ClienteResponseDto> {
+    const result = await this.configurarZonaHorariaClienteUseCase.execute({
+      clienteId: id,
+      zonaHoraria: dto.zonaHoraria,
     });
 
     if (result.isFail()) {

@@ -10,7 +10,7 @@
 import { describe, expect, it } from 'vitest';
 import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
-import { CreateClienteDto, UpdateClienteDto } from './cliente.dto';
+import { ConfigurarZonaHorariaClienteDto, CreateClienteDto, UpdateClienteDto } from './cliente.dto';
 import {
   USUARIO_APELLIDO_MAX_LENGTH,
   USUARIO_NOMBRE_MAX_LENGTH,
@@ -186,6 +186,53 @@ describe('CreateClienteDto — zonaHoraria', () => {
   it('rechaza una zona que pasa el tope de largo', async () => {
     const dto = plainToInstance(CreateClienteDto, {
       ...ALTA_VALIDA,
+      zonaHoraria: 'A'.repeat(ZONA_HORARIA_MAX_LENGTH + 1),
+    });
+    const errors = await validate(dto);
+    expect(errors.some((e) => e.property === 'zonaHoraria')).toBe(true);
+  });
+});
+
+/**
+ * `ConfigurarZonaHorariaClienteDto` — body de `PATCH /clientes/:id/zona-horaria`
+ * (sdd/zona-horaria-por-tenant, C2b). Reutiliza el MISMO decorator
+ * `@IsZonaHorariaValida()` que `CreateClienteDto.zonaHoraria` — este bloque es
+ * el gemelo de `describe('CreateClienteDto — zonaHoraria')` de arriba: sin él,
+ * un candidato de forma inválida (`'A'.repeat(64)`) podría dejar de rechazarse
+ * en el borde sin que ningún test lo note, y la única defensa pasaría a ser
+ * `ZonaHorariaInvalidaError` dentro del caso de uso (defensa en profundidad,
+ * nunca pensada como la única barrera).
+ */
+describe('ConfigurarZonaHorariaClienteDto', () => {
+  it('acepta un candidato válido', async () => {
+    const dto = plainToInstance(ConfigurarZonaHorariaClienteDto, {
+      zonaHoraria: 'America/Argentina/Buenos_Aires',
+    });
+    expect(await validate(dto)).toHaveLength(0);
+  });
+
+  it('[CRITICAL] rechaza cuando falta zonaHoraria', async () => {
+    const dto = plainToInstance(ConfigurarZonaHorariaClienteDto, {});
+    const errors = await validate(dto);
+    expect(errors.some((e) => e.property === 'zonaHoraria')).toBe(true);
+  });
+
+  it('rechaza zonaHoraria vacía', async () => {
+    const dto = plainToInstance(ConfigurarZonaHorariaClienteDto, { zonaHoraria: '' });
+    const errors = await validate(dto);
+    expect(errors.some((e) => e.property === 'zonaHoraria')).toBe(true);
+  });
+
+  it('[CRITICAL] rechaza una zona de largo válido pero forma inválida — nunca debe llegar al 500/422 vía ZonaHoraria.crear()', async () => {
+    const dto = plainToInstance(ConfigurarZonaHorariaClienteDto, {
+      zonaHoraria: 'A'.repeat(ZONA_HORARIA_MAX_LENGTH),
+    });
+    const errors = await validate(dto);
+    expect(errors.some((e) => e.property === 'zonaHoraria')).toBe(true);
+  });
+
+  it('rechaza una zona que pasa el tope de largo', async () => {
+    const dto = plainToInstance(ConfigurarZonaHorariaClienteDto, {
       zonaHoraria: 'A'.repeat(ZONA_HORARIA_MAX_LENGTH + 1),
     });
     const errors = await validate(dto);

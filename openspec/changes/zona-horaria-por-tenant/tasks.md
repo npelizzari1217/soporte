@@ -226,17 +226,17 @@ Depende de: WU-1. C2c puede ir en paralelo con WU-3.
 > Numeración `2.7a`/`2.7b` a propósito, para no volver a renumerar todo el WU: la
 > renumeración anterior es justamente lo que dejó pasar este consumidor.
 
-- [ ] 2.8 RED: spec del caso de uso — admin global cambia la zona y persiste; actor sin
+- [x] 2.8 RED: spec del caso de uso — admin global cambia la zona y persiste; actor sin
       `is_global_admin` se rechaza antes de llegar al caso de uso; candidato `Europe/Madriz`
       devuelve 422 y el tenant conserva su zona (spec de controller).
-- [ ] 2.9 GREEN: `configurar-zona-horaria-cliente.use-case.ts` espejando
+- [x] 2.9 GREEN: `configurar-zona-horaria-cliente.use-case.ts` espejando
       `configurar-csat-cliente.use-case.ts`; `ConfigurarZonaHorariaClienteDto`;
       `PATCH /clientes/:id/zona-horaria` espejando `PATCH /clientes/:id/csat`; wiring en
       `clientes.module.ts`.
 
-- [ ] 2.9a RED: spec del controller — `GET /clientes` y las respuestas de alta/edición
+- [x] 2.9a RED: spec del controller — `GET /clientes` y las respuestas de alta/edición
       incluyen `zonaHoraria` con el valor real del tenant, no un default.
-- [ ] 2.9b GREEN: `zonaHoraria` en `ClienteResponseDto` y en `toResponseDto()`
+- [x] 2.9b GREEN: `zonaHoraria` en `ClienteResponseDto` y en `toResponseDto()`
       (`clientes.controller.ts`), espejando cómo viaja `csatHabilitado`.
 
 > **CAMINO DE LECTURA — agujero detectado por el revisor en C2a (2026-09-01).** El campo se
@@ -246,8 +246,82 @@ Depende de: WU-1. C2c puede ir en paralelo con WU-3.
 > lado. Sin esto, C2c arranca roto. `csatHabilitado` ya sentó el precedente contrario: viaja en
 > el listado justamente para que su diálogo prellene con el valor real.
 
+> **Nota de cierre de C2b (2026-09-02, apply).** El "422" del enunciado de 2.8 chocaba con el
+> repo: `AppModule`'s `ValidationPipe` global (`whitelist+transform`, sin
+> `errorHttpStatusCode`) devuelve **400**, no 422, para cualquier rechazo de
+> `class-validator` — verificado leyendo `app.module.ts` y confirmado con el propio
+> `auth.e2e.spec.ts` (`'body inválido (email malformado) → 400 (ValidationPipe)'`). Como
+> `ConfigurarZonaHorariaClienteDto` SÍ reutiliza `@IsZonaHorariaValida()` (tal cual dejó
+> preparado el comentario de C2a-back en `cliente.dto.ts`), un HTTP real con
+> `Europe/Madriz` da 400 en el borde, nunca llega al caso de uso. La resolución: agregar
+> `ZonaHorariaInvalidaError` (nuevo, `clientes.errors.ts`) como defensa en profundidad DENTRO
+> del caso de uso — mismo criterio que `OnlyRootCanCreateClienteError` en
+> `CrearClienteUseCase` ("el guard ya bloquea, el caso de uso revalida por si se invoca
+> directo") — mapeado a 422 en `toHttpException` (mismo patrón ya usado por
+> `CicloVigenteInvalidDatesError`). El `[CRITICAL]` de la spec de controller ejercita
+> exactamente esa capa (mockea el caso de uso devolviendo `Result.fail`, sin pasar por el
+> `ValidationPipe` real — igual que el resto de `clientes.controller.spec.ts`), y el
+> `[CRITICAL]` de la spec del caso de uso confirma que `repo.save` NUNCA se llama y que
+> `cliente.zonaHoraria.valor` no cambia. El actor sin `is_global_admin` NO tiene código nuevo:
+> lo cubre `@UseGuards(JwtAuthGuard, GlobalAdminGuard)` ya declarado a nivel de clase en
+> `ClientesController` (herencia estructural, mismo criterio documentado en
+> `ConfigurarCsatClienteUseCase`, que tampoco revalida el actor).
+>
+> **Radio real: 6 archivos de código, no 3** (`configurar-zona-horaria-cliente.use-case.ts`
+> nuevo, `cliente.dto.ts`, `clientes.controller.ts`, `clientes.module.ts`,
+> `clientes.errors.ts` por el error nuevo, y `zona-horaria.ts` por el hallazgo de abajo) — por
+> encima del tope de ~5 del proyecto por 1, mismo margen que C2a-back. Se extendieron además 3
+> tests preexistentes de `clientes.controller.spec.ts` (POST /clientes, GET /clientes, PATCH
+> /clientes/:id editar) para exigir `zonaHoraria` con un valor DISTINTO del default
+> (`America/New_York`, `Europe/Madrid`) — centinela contra un `toResponseDto()` que
+> hardcodeara el default en vez de leer `cliente.zonaHoraria.valor`.
+>
+> **Dos hallazgos reales del hook de pre-commit (GGA), dos intentos fallidos antes del
+> verde.**
+>
+> 1. El commit inicial dejaba `ConfigurarZonaHorariaClienteDto` sin ningún test propio de
+>    `class-validator`, mientras tres JSDoc del mismo commit afirmaban "el borde ya rechaza
+>    esto con `@IsZonaHorariaValida()`" sin que nada lo probara — el gemelo exacto del hueco
+>    que `describe('CreateClienteDto — zonaHoraria')` ya había cerrado para el otro DTO que
+>    declara el mismo campo. Se agregó `describe('ConfigurarZonaHorariaClienteDto', ...)` en
+>    `cliente.dto.spec.ts` (5 tests, mismos 5 casos que el gemelo) y se verificó por mutación
+>    real — se sacaron los decorators, los 5 tests nuevos fallaron por la razón correcta
+>    (`expected false to be true`), se restauraron y volvieron a verde — antes de recommitear.
+> 2. El segundo intento encontró un comentario vecino ya caduco en `zona-horaria.ts:34-45`
+>    (JSDoc de `ZONA_HORARIA_MAX_LENGTH`, escrito en WU-1): decía "el DTO de `clientes` ...
+>    deberá importar esta constante ... sin resultados — ningún caller la importa todavía",
+>    falso desde C2a-back (`CreateClienteDto` ya la importaba) y doblemente falso con
+>    `ConfigurarZonaHorariaClienteDto` de este commit. Se reescribió como mecanismo en vez de
+>    estado, verificado antes de escribir: `rg` confirmó que el frontend (`limites.ts`,
+>    tarea 2.11) TODAVÍA no copia el número — el primer intento de redacción afirmaba lo
+>    contrario y se corrigió antes de commitear.
+> 3. El tercer intento encontró DOS comentarios vecinos más, caducos desde antes de este
+>    commit, en el mismo archivo: el JSDoc de `equals()` afirmaba "sin ningún escritor real
+>    de candidatos... el único caller hoy es este mismo spec" — falso desde C2a-back
+>    (`crear-cliente.use-case.ts` y `cliente.mapper.ts` ya llamaban a `ZonaHoraria.crear`/
+>    `desdePersistencia`) y triplemente falso con el caso de uso de este commit. Y el JSDoc a
+>    nivel de módulo afirmaba que `frontend/.../schemas.ts` "todavía" no validaba zona — falso
+>    desde `1305b05` (C2a-front). Los dos se reescribieron nombrando los escritores/el
+>    mecanismo real, verificados con `rg` antes de escribir (los tres callers de producción de
+>    `ZonaHoraria.crear`/`desdePersistencia`, y la línea exacta de `schemas.ts` con
+>    `esZonaValida`).
+>
+> Ninguno de los tres era falso positivo: los tres se verificaron con lectura directa antes de
+> aceptarlos, y cada redacción de fix se verificó a su vez antes de aceptarse a sí misma (el
+> primer intento de redacción del hallazgo #2 afirmaba algo falso sobre el frontend y se
+> corrigió antes de commitear).
+>
+> **Líneas revisables reales: ~382** (144 en los 5 archivos trackeados originales + 146 en los
+> 2 archivos nuevos del caso de uso + 53 del `describe` agregado a `cliente.dto.spec.ts` + 39
+> de los tres JSDoc reescritos en `zona-horaria.ts`) contra la estimación de ~250, y por debajo
+> del corte de 400 del PR. `pnpm test` (356/356 archivos, 3836/3836 tests), `pnpm typecheck` y
+> `pnpm lint` en verde, corridos explícitamente después de cada fix. GGA (pre-commit):
+> `STATUS: FAILED` (x3, hallazgos reales, 0 falsos positivos) → `STATUS: PASSED` en el cuarto
+> intento.
+
 **Commit C2b** — `feat(clientes): endpoint para configurar la zona operativa del tenant`
-· ~250 líneas · 3 archivos de código · rollback: quita el endpoint, la columna sobrevive.
+· ~382 líneas reales (estimado ~250) · 6 archivos de código (declarados 3; ver nota de cierre)
+· rollback: quita el endpoint, la columna sobrevive.
 
 - [ ] 2.10 RED: test del schema Zod recorriendo `zonasValidas`/`zonasInvalidas` del mismo
       fixture — veredicto idéntico al del VO para cada candidato.
