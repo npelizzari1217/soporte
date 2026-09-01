@@ -15,6 +15,16 @@ import {
   CLIENTE_NOMBRE_MAX_LENGTH,
   CLIENTE_RAZON_SOCIAL_MAX_LENGTH,
 } from './cliente.entity';
+import type { ClienteProps } from './cliente.entity';
+import { ZonaHoraria } from '../../../shared/domain/zona-horaria';
+
+/**
+ * Zona de relleno para los tests de este archivo que NO ejercitan
+ * `zonaHoraria` (csat, cuit, nombre/razonSocial) — ahora obligatoria en
+ * `ClienteProps` (sdd/zona-horaria-por-tenant, D1). Ver el describe
+ * `ClienteEntity — zonaHoraria` más abajo para los tests que sí la cubren.
+ */
+const ZONA_TEST_DEFAULT = ZonaHoraria.crear('America/Argentina/Buenos_Aires');
 
 const makeCliente = (csatHabilitado?: boolean) =>
   ClienteEntity.create({
@@ -23,6 +33,7 @@ const makeCliente = (csatHabilitado?: boolean) =>
     cuit: null,
     dbName: 'acme_sa',
     activo: true,
+    zonaHoraria: ZONA_TEST_DEFAULT,
     csatHabilitado,
   });
 
@@ -48,6 +59,7 @@ describe('ClienteEntity — csatHabilitado', () => {
           cuit: null,
           dbName: 'acme_sa',
           activo: true,
+          zonaHoraria: ZONA_TEST_DEFAULT,
           csatHabilitado: true,
         },
         'cliente-id',
@@ -66,6 +78,7 @@ describe('ClienteEntity — csatHabilitado', () => {
           cuit: null,
           dbName: 'acme_sa',
           activo: true,
+          zonaHoraria: ZONA_TEST_DEFAULT,
         },
         'cliente-id',
         new Date('2025-01-01T00:00:00Z'),
@@ -118,6 +131,7 @@ describe('ClienteEntity — tope de largo de cuit', () => {
       cuit,
       dbName: 'acme_sa',
       activo: true,
+      zonaHoraria: ZONA_TEST_DEFAULT,
     });
 
   describe('create()', () => {
@@ -176,6 +190,7 @@ describe('ClienteEntity — tope de largo de cuit', () => {
         cuit: 'A'.repeat(20),
         dbName: 'acme_sa',
         activo: true,
+        zonaHoraria: ZONA_TEST_DEFAULT,
       },
       'id-1',
       new Date(),
@@ -198,7 +213,14 @@ describe('ClienteEntity — tope de largo de cuit', () => {
  */
 describe('ClienteEntity — tope de largo de nombre y razonSocial', () => {
   const conNombre = (nombre: string, razonSocial: string | null = null) =>
-    ClienteEntity.create({ nombre, razonSocial, cuit: null, dbName: 'acme_sa', activo: true });
+    ClienteEntity.create({
+      nombre,
+      razonSocial,
+      cuit: null,
+      dbName: 'acme_sa',
+      activo: true,
+      zonaHoraria: ZONA_TEST_DEFAULT,
+    });
 
   it('acepta un nombre en el límite exacto', () => {
     expect(conNombre('A'.repeat(CLIENTE_NOMBRE_MAX_LENGTH)).nombre).toHaveLength(
@@ -238,5 +260,87 @@ describe('ClienteEntity — tope de largo de nombre y razonSocial', () => {
   it('los topes de producto son más estrictos que la columna VarChar(255)', () => {
     expect(CLIENTE_NOMBRE_MAX_LENGTH).toBeLessThan(255);
     expect(CLIENTE_RAZON_SOCIAL_MAX_LENGTH).toBeLessThan(255);
+  });
+});
+
+/**
+ * `zonaHoraria` — obligatoria desde el alta (sdd/zona-horaria-por-tenant, D1,
+ * WU-2 tarea 2.1). Rompe A PROPÓSITO el precedente de `csatHabilitado?` de
+ * este mismo archivo: `ClienteProps.zonaHoraria` no lleva `?` y el getter no
+ * lleva `??` de default, así que omitirla no defaultea en silencio.
+ */
+describe('ClienteEntity — zonaHoraria', () => {
+  const ZONA_ARG = ZonaHoraria.crear('America/Argentina/Buenos_Aires');
+  const ZONA_MADRID = ZonaHoraria.crear('Europe/Madrid');
+
+  const makeClienteConZona = (zonaHoraria: ZonaHoraria = ZONA_ARG) =>
+    ClienteEntity.create({
+      nombre: 'Acme SA',
+      razonSocial: null,
+      cuit: null,
+      dbName: 'acme_sa',
+      activo: true,
+      zonaHoraria,
+    });
+
+  describe('create()', () => {
+    it('expone la zona provista', () => {
+      expect(makeClienteConZona(ZONA_MADRID).zonaHoraria.valor).toBe('Europe/Madrid');
+    });
+
+    /**
+     * Centinela de obligatoriedad, no un RED de este commit: un caller que
+     * bypassea el tipo (`as unknown as ClienteProps`, igual que un consumidor
+     * que ignora el contrato) construye la entidad igual, pero leer
+     * `zonaHoraria` revienta porque NO hay `?? ZonaHoraria.crear(default)` en
+     * el getter. Si alguien reintrodujera ese default (mismo patrón que
+     * `csatHabilitado ?? false`), este test deja de tirar y el guard de D8
+     * (ninguna fila con zona ausente) quedaría sin cobertura de dominio.
+     */
+    it('[CENTINELA] sin `??` de default: omitir la zona revienta al leerla, no defaultea en silencio', () => {
+      const propsSinZona = {
+        nombre: 'Acme SA',
+        razonSocial: null,
+        cuit: null,
+        dbName: 'acme_sa',
+        activo: true,
+      } as unknown as ClienteProps;
+
+      const cliente = ClienteEntity.create(propsSinZona);
+
+      expect(() => cliente.zonaHoraria.valor).toThrow();
+    });
+  });
+
+  describe('reconstitute()', () => {
+    it('respeta la zona persistida', () => {
+      const cliente = ClienteEntity.reconstitute(
+        {
+          nombre: 'Acme SA',
+          razonSocial: null,
+          cuit: null,
+          dbName: 'acme_sa',
+          activo: true,
+          zonaHoraria: ZONA_MADRID,
+        },
+        'cliente-id',
+        new Date('2025-01-01T00:00:00Z'),
+        new Date('2025-01-01T00:00:00Z'),
+        null,
+      );
+      expect(cliente.zonaHoraria.valor).toBe('Europe/Madrid');
+    });
+  });
+
+  describe('configurarZonaHoraria()', () => {
+    it('cambia el valor y hace touch() (actualiza updatedAt)', () => {
+      const cliente = makeClienteConZona();
+      const updatedAtOriginal = cliente.updatedAt;
+
+      cliente.configurarZonaHoraria(ZONA_MADRID);
+
+      expect(cliente.zonaHoraria.valor).toBe('Europe/Madrid');
+      expect(cliente.updatedAt.getTime()).toBeGreaterThanOrEqual(updatedAtOriginal.getTime());
+    });
   });
 });

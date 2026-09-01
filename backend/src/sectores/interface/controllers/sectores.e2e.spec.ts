@@ -45,6 +45,7 @@ import { TenantMigrationRunnerAdapter } from '../../../clientes/infrastructure/t
 import { PrismaClienteRepository } from '../../../clientes/infrastructure/persistence/prisma/prisma-cliente.repository';
 import { PrismaUsuarioRepository } from '../../../auth/infrastructure/persistence/prisma/prisma-usuario.repository';
 import { ClienteEntity } from '../../../clientes/domain/entities/cliente.entity';
+import { ZonaHoraria } from '../../../shared/domain/zona-horaria';
 import { UsuarioEntity } from '../../../auth/domain/entities/usuario.entity';
 import { RoleEntity } from '../../../auth/domain/entities/role.entity';
 import { Argon2HashProvider } from '../../../auth/infrastructure/argon2-hash.provider';
@@ -234,6 +235,7 @@ describe('Sectores e2e — gate por método + grafo DI real (WU-08)', () => {
       cuit: null,
       dbName: TENANT_DB_NAME,
       activo: true,
+      zonaHoraria: ZonaHoraria.crear('America/Argentina/Buenos_Aires'),
     });
     await clienteRepo.save(cliente);
     return cliente;

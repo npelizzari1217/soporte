@@ -125,29 +125,78 @@ Depende de: WU-1. C2c puede ir en paralelo con WU-3.
 > `ClienteEntity.create`, y **0** de ellos llaman a `.save(` o `toPersistence`, así que ninguno
 > llega al mapper. El radio real era un solo archivo de producción.
 
-- [ ] 2.1 RED: spec de `ClienteEntity` — `configurarZonaHoraria()` cambia el valor y hace
+- [x] 2.1 RED: spec de `ClienteEntity` — `configurarZonaHoraria()` cambia el valor y hace
       `touch()`; `ClienteProps.zonaHoraria` es obligatoria (sin `?`, sin `??` de default).
       Rompe a propósito el precedente de `csatHabilitado?` del mismo archivo: es D1.
-- [ ] 2.2 RED: spec del mapper — `toPersistence()` incluye la columna (fuera del `Omit`) y
+- [x] 2.2 RED: spec del mapper — `toPersistence()` incluye la columna (fuera del `Omit`) y
       `toDomain()` la reconstruye vía `ZonaHoraria.desdePersistencia`.
-- [ ] 2.3 RED: spec de integración contra `soporte_master_test` — ninguna fila con
+- [x] 2.3 RED: spec de integración contra `soporte_master_test` — ninguna fila con
       `zona_horaria` NULL ni inválida después de migrar. Si trunca, `usarLockMasterTest()`
       antes del `describe`.
-- [ ] 2.4 RED: spec del alta — `CreateClienteDto` **exige** la zona; un alta sin zona es 422.
+- [x] 2.4 RED: spec del alta — `CreateClienteDto` **exige** la zona; un alta sin zona es 422.
       No se defaultea a Buenos Aires: la decisión cerrada es que la zona va explícita en el alta.
-- [ ] 2.5 GREEN: `backend/prisma_master/migrations/20260901120000_add_cliente_zona_horaria/migration.sql`
+- [x] 2.5 GREEN: `backend/prisma_master/migrations/20260901120000_add_cliente_zona_horaria/migration.sql`
       con el `ADD COLUMN VARCHAR(64) NOT NULL DEFAULT 'America/Argentina/Buenos_Aires'` en un
       solo statement; `schema.prisma` con la columna y la advertencia de `Feriado.fecha`
       reescrita nombrando el símbolo nuevo (D9), sin cambiar su sentido.
-- [ ] 2.6 GREEN: `cliente.entity.ts` (prop + getter + `configurarZonaHoraria()`) y
+- [x] 2.6 GREEN: `cliente.entity.ts` (prop + getter + `configurarZonaHoraria()`) y
       `cliente.mapper.ts`.
-- [ ] 2.7 GREEN: campo obligatorio en `CreateClienteDto` importando `ZONA_HORARIA_MAX_LENGTH`
+- [x] 2.7 GREEN: campo obligatorio en `CreateClienteDto` importando `ZONA_HORARIA_MAX_LENGTH`
       del VO, y `crear-cliente.use-case.ts` pasando la zona del DTO a `ClienteEntity.create()`.
       Sin esto el commit queda en rojo: es el único caller de producción de `create()`.
 
-**Commit C2a** — `feat(clientes): columna zona horaria del tenant, exigida en el alta`
-· ~420 líneas · 4 archivos de código · **`size:exception` (+20) aprobada el 2026-09-01**
+  > **Nota de cierre de C2a (2026-09-01, apply).** El radio real de la obligatoriedad fue
+  > mayor al declarado en el re-corte: además de `crear-cliente.use-case.ts` (el único
+  > caller de PRODUCCIÓN de `ClienteEntity.create()`, como estaba verificado), **16 sitios
+  > de fixtures de test en 16 archivos** construían `ClienteEntity.create()` sin zona y
+  > llamaban a `clienteRepo.save()` sobre un `PrismaClienteRepository` REAL — eso SÍ ejercita
+  > `ClienteMapper.toPersistence()` y rompía en runtime (`Cannot read properties of
+  > undefined (reading 'valor')`). Se verificó con `rg -P` de límite de palabra
+  > (`(?<![A-Za-z])ClienteEntity\.create\(`) + lectura directa de dos archivos antes de
+  > tocar nada. Además, `pnpm typecheck` **sí cubre `*.spec.ts`** en este repo (contradice
+  > una nota anterior de este documento) y exigió agregar `zonaHoraria` a otros ~24 sitios
+  > de fixtures que construyen `ClienteEntity`/`ClienteProps` sin ejercitar el mapper. Y dos
+  > callers de producción más aparte de `crear-cliente.use-case.ts`: `test/preventivo.e2e.spec.ts`
+  > (fixture de test) y `prisma_master/seeds/demo-seed.ts` (script de seed real, llama al
+  > use case completo). Todos corregidos con el mismo fix mecánico de una línea
+  > (`zonaHoraria: ZonaHoraria.crear('America/Argentina/Buenos_Aires')`), sin tocar ningún
+  > archivo de tareas 2.8+. **Líneas revisables reales: ~508** (322 inserciones + 4 borrados
+  > en archivos trackeados + 182 de 3 archivos nuevos), contra la estimación de ~420 con la
+  > excepción de +20 ya aprobada — **~88 líneas por encima de esa excepción**. Archivos de
+  > código no-test: 6 (`demo-seed.ts`, `crear-cliente.use-case.ts`, `cliente.entity.ts`,
+  > `cliente.mapper.ts`, `clientes.controller.ts`, `cliente.dto.ts`) contra los 4 declarados
+  > — dentro del tope de ~5 del proyecto por 1. `pnpm test` (355/355 archivos, 3825/3825
+  > tests), `pnpm typecheck` y `pnpm lint` en verde, verificados corriendo los tres
+  > explícitamente.
+
+**Commit C2a-back** — `feat(clientes): columna zona horaria del tenant, exigida en el alta`
+· **~555 líneas reales** (estimado ~420) · 6 archivos de código
+· **`size:exception` (+155) aprobada el 2026-09-01**
 · rollback: la columna y el campo obligatorio del alta se van juntos.
+
+> **AGUJERO DETECTADO EN APPLY (2026-09-01).** El re-corte anterior dejó un **tercer
+> consumidor** del campo sin asignar a ningún work unit: `crear-cliente-dialog.tsx` del
+> frontend, que se usa desde `clientes-admin-view.tsx` y no manda `zonaHoraria`
+> (`rg zonaHoraria frontend/src` → cero). Con el campo obligatorio en el borde, el 100% de
+> las altas desde la UI de ROOT devuelven 400. Lo detectó el hook de pre-commit, no el plan.
+>
+> Se cierra partiendo C2a en dos commits encadenados en vez de engordar uno solo a ~655
+> líneas y 9 archivos de código, que rompería el tope OBLIGATORIO de 5 archivos.
+> **Ventana asumida**: entre el merge de C2a-back y el de C2a-front, el alta desde la UI
+> queda rota. La cadena todavía no está en `main` y el repo tiene un solo desarrollador.
+
+- [ ] 2.7a RED: test del diálogo de alta — sin zona elegida el submit no dispara, y con zona
+      elegida el payload la incluye. Recorre `zonasValidas`/`zonasInvalidas` del mismo fixture
+      compartido, para que el veredicto del borde del frontend sea idéntico al del VO.
+- [ ] 2.7b GREEN: `crear-cliente-dialog.tsx` (campo de zona, obligatorio, sin default
+      preseleccionado), más `schemas.ts` y `types.ts` de `features/clientes`. Sin `z.enum`:
+      `z.string().refine(esZonaValida)`, igual que declara 2.13 para el diálogo de config.
+
+**Commit C2a-front** — `feat(clientes): exigir la zona operativa en el alta desde la UI`
+· ~100 líneas · 3 archivos de código · rollback: vuelve el alta sin zona y el backend la rechaza.
+
+> Numeración `2.7a`/`2.7b` a propósito, para no volver a renumerar todo el WU: la
+> renumeración anterior es justamente lo que dejó pasar este consumidor.
 
 - [ ] 2.8 RED: spec del caso de uso — admin global cambia la zona y persiste; actor sin
       `is_global_admin` se rechaza antes de llegar al caso de uso; candidato `Europe/Madriz`
@@ -156,6 +205,18 @@ Depende de: WU-1. C2c puede ir en paralelo con WU-3.
       `configurar-csat-cliente.use-case.ts`; `ConfigurarZonaHorariaClienteDto`;
       `PATCH /clientes/:id/zona-horaria` espejando `PATCH /clientes/:id/csat`; wiring en
       `clientes.module.ts`.
+
+- [ ] 2.9a RED: spec del controller — `GET /clientes` y las respuestas de alta/edición
+      incluyen `zonaHoraria` con el valor real del tenant, no un default.
+- [ ] 2.9b GREEN: `zonaHoraria` en `ClienteResponseDto` y en `toResponseDto()`
+      (`clientes.controller.ts`), espejando cómo viaja `csatHabilitado`.
+
+> **CAMINO DE LECTURA — agujero detectado por el revisor en C2a (2026-09-01).** El campo se
+> exigía al crear, se persistía y tenía getter en la entidad, pero **nunca salía por la API**:
+> ni `ClienteResponseDto` ni `toResponseDto()` lo declaraban. La tarea 2.12 pide que el select
+> del diálogo "siempre incluya el valor vigente del tenant" — ese valor tiene que venir de algún
+> lado. Sin esto, C2c arranca roto. `csatHabilitado` ya sentó el precedente contrario: viaja en
+> el listado justamente para que su diálogo prellene con el valor real.
 
 **Commit C2b** — `feat(clientes): endpoint para configurar la zona operativa del tenant`
 · ~250 líneas · 3 archivos de código · rollback: quita el endpoint, la columna sobrevive.
@@ -740,7 +801,8 @@ C0 → C1 → C2a → C3a ─┬─ C5a ─┬─ C5b ────────�
 |---|---|---|---|
 | C0 | 130 est. / **entregado en 572 junto a C1** | 0 | hecho, PR #94 |
 | C1 | ver arriba | 1 | hecho, PR #95 |
-| C2a | ~420 — **excepción +20** | 4 | pendiente |
+| C2a-back | **~555 real** — excepción +155 | 6 | **hecho** |
+| C2a-front | ~100 | 3 | pendiente |
 | C2b | ~250 | 3 | pendiente |
 | C2c | ~450 — **excepción +50** | 4 | pendiente |
 | C3a | ~220 | 3 | pendiente |

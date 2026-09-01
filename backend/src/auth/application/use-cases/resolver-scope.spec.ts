@@ -26,6 +26,7 @@
 import type { Mocked } from 'vitest';
 import { resolverScope } from './resolver-scope';
 import { ClienteEntity } from '../../../clientes/domain/entities/cliente.entity';
+import { ZonaHoraria } from '../../../shared/domain/zona-horaria';
 import { IClienteRepository } from '../../../clientes/domain/ports/i-cliente.repository';
 import { IMembresiaRepository, MembresiaResuelta } from '../../domain/ports/i-membresia.repository';
 import { IMatrizPermisosRepository } from '../../domain/ports/i-matriz-permisos.repository';
@@ -44,6 +45,7 @@ const makeCliente = (
     cuit: null,
     dbName: 'acme_sa',
     activo: overrides.activo ?? true,
+    zonaHoraria: ZonaHoraria.crear('America/Argentina/Buenos_Aires'),
   });
   if (overrides.deleted) {
     cliente.softDelete();

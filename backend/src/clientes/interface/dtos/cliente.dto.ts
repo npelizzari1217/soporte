@@ -16,6 +16,8 @@ import {
   Max,
   MaxLength,
   Min,
+  registerDecorator,
+  ValidationOptions,
 } from 'class-validator';
 import {
   CLIENTE_CUIT_MAX_LENGTH,
@@ -26,6 +28,40 @@ import {
   USUARIO_APELLIDO_MAX_LENGTH,
   USUARIO_NOMBRE_MAX_LENGTH,
 } from '../../../auth/domain/entities/usuario.entity';
+import { esZonaValida, ZONA_HORARIA_MAX_LENGTH } from '../../../shared/domain/zona-horaria';
+
+/**
+ * Decorator de `class-validator` que aplica la MISMA regla que `ZonaHoraria`
+ * (D2, `esZonaValida`) — nunca la reimplementa. Sin esto, un candidato con
+ * largo válido pero forma inválida (`'A'.repeat(64)`, por ejemplo) pasa el
+ * borde y llega a `ZonaHoraria.crear()` dentro del use case, que LANZA (no
+ * `Result`) fuera del único `try/catch` de `CrearClienteUseCase.execute()`:
+ * 500 crudo en vez de 400 limpio — la misma clase de defecto que
+ * `CLIENTE_CUIT_MAX_LENGTH` cerró para `cuit` (ver su JSDoc en
+ * `cliente.entity.ts`), un nivel más arriba: acá no es el LARGO lo que
+ * diverge entre el borde y el dominio, es la VALIDEZ.
+ *
+ * Exportado para que `ConfigurarZonaHorariaClienteDto` (C2b) lo reutilice
+ * sin reimplementarlo.
+ */
+export function IsZonaHorariaValida(validationOptions?: ValidationOptions): PropertyDecorator {
+  return function (target: object, propertyName: string | symbol): void {
+    registerDecorator({
+      name: 'isZonaHorariaValida',
+      target: target.constructor,
+      propertyName: propertyName as string,
+      options: validationOptions,
+      validator: {
+        validate(value: unknown): boolean {
+          return typeof value === 'string' && esZonaValida(value);
+        },
+        defaultMessage(): string {
+          return '$property no es una zona horaria válida';
+        },
+      },
+    });
+  };
+}
 
 /**
  * Body de `POST /clientes`. Solo ROOT (`GlobalAdminGuard`, R16).
@@ -41,6 +77,13 @@ import {
  * `adminEmail` es el único sin tope propio, a propósito: `@IsEmail` ya acota
  * más fuerte que su columna `VarChar(255)` — el RFC limita el total a 254, así
  * que un `@MaxLength` ahí sería un guard que nunca podría dispararse.
+ *
+ * `zonaHoraria` es OBLIGATORIA (sdd/zona-horaria-por-tenant, decisión "Zona de
+ * un cliente NUEVO: se exige explícita en el alta"): la columna `NOT NULL`
+ * tiene un `DEFAULT` de backfill (D8), pero el alta nunca confía en él — el
+ * próximo cliente puede ser el que motivó el cambio de zona, así que
+ * defaultear acá reabriría el mismo agujero que D8 cerró. El tope de largo se
+ * importa del VO (`ZONA_HORARIA_MAX_LENGTH`), no un número tipeado a mano.
  */
 export class CreateClienteDto {
   @IsString()
@@ -74,6 +117,12 @@ export class CreateClienteDto {
   @IsString()
   @IsNotEmpty()
   adminPassword!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(ZONA_HORARIA_MAX_LENGTH)
+  @IsZonaHorariaValida()
+  zonaHoraria!: string;
 }
 
 /**

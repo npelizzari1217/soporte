@@ -18,6 +18,7 @@ import {
 import { ClientesController } from './clientes.controller';
 import { Result } from '../../../shared/domain/result';
 import { ClienteEntity } from '../../domain/entities/cliente.entity';
+import { ZonaHoraria } from '../../../shared/domain/zona-horaria';
 import { ClienteEmailConfigState } from '../../domain/ports/i-cliente-email-config.repository';
 import {
   AdminEmailYaRegistradoError,
@@ -107,6 +108,7 @@ describe('ClientesController (T8.4)', () => {
         cuit: null,
         dbName: 'soporte_deadbeef',
         activo: true,
+        zonaHoraria: ZonaHoraria.crear('America/Argentina/Buenos_Aires'),
       });
       crearClienteUseCase.execute.mockResolvedValue(Result.ok(cliente));
 
@@ -178,6 +180,7 @@ describe('ClientesController (T8.4)', () => {
         cuit: null,
         dbName: 'soporte_deadbeef',
         activo: true,
+        zonaHoraria: ZonaHoraria.crear('America/Argentina/Buenos_Aires'),
       });
       const verificadoAt = new Date('2026-08-20T12:00:00Z');
       listarClientesUseCase.execute.mockResolvedValue(
@@ -208,6 +211,7 @@ describe('ClientesController (T8.4)', () => {
         cuit: null,
         dbName: 'soporte_deadbeef',
         activo: true,
+        zonaHoraria: ZonaHoraria.crear('America/Argentina/Buenos_Aires'),
       });
       listarClientesUseCase.execute.mockResolvedValue(
         Result.ok([{ cliente, correo: { configurado: true, verificadoAt: null } }]),
@@ -227,6 +231,7 @@ describe('ClientesController (T8.4)', () => {
       cuit: null,
       dbName: 'soporte_deadbeef',
       activo: true,
+      zonaHoraria: ZonaHoraria.crear('America/Argentina/Buenos_Aires'),
     });
   }
 

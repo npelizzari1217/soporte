@@ -211,6 +211,7 @@ export class ClientesController {
         adminNombre: dto.adminNombre,
         adminApellido: dto.adminApellido,
         adminPassword: dto.adminPassword,
+        zonaHoraria: dto.zonaHoraria,
       },
       { isGlobalAdmin: user.is_global_admin },
     );

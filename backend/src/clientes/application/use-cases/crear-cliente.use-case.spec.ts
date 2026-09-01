@@ -121,6 +121,7 @@ const VALID_DTO = {
   adminNombre: 'Ada',
   adminApellido: 'Admin',
   adminPassword: 'SuperSecret!123',
+  zonaHoraria: 'America/Argentina/Buenos_Aires',
 };
 
 const ROOT_ACTOR = { isGlobalAdmin: true };
@@ -251,6 +252,9 @@ describe('CrearClienteUseCase (T8.1, T8.2 — unit, mocks)', () => {
     expect(cliente.nombre).toBe(VALID_DTO.nombre);
     expect(cliente.dbName).toMatch(/^soporte_[0-9a-f]{32}$/);
     expect(cliente.dbName).toContain(cliente.id.replace(/-/g, ''));
+    // sdd/zona-horaria-por-tenant: la zona del DTO llega a ClienteEntity.create()
+    // vía ZonaHoraria.crear() — el use case NUNCA defaultea a Buenos Aires.
+    expect(cliente.zonaHoraria.valor).toBe(VALID_DTO.zonaHoraria);
 
     expect(callOrder).toEqual(['provision', 'save-cliente', 'create-usuario', 'create-membresia']);
     expect(provisionar.provision).toHaveBeenCalledWith(cliente.dbName);
