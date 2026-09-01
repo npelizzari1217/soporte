@@ -23,6 +23,11 @@ extra, comentarios con comando de verificación). Los números de abajo ya lleva
 sobrecosto aplicado (~1.5×), así que son estimaciones de *entrega revisada*, no de
 implementación inicial.
 
+**Excepciones de tamaño vigentes.** El techo de la sesión es 400 líneas revisables. Dos
+commits lo pasan y los dos tienen excepción aprobada por el usuario el 2026-09-01: **C2a
+(+20)**, porque separar el campo obligatorio de su único punto de asignación dejaba un commit
+en rojo; y **C2c (+50)**, porque partirlo rompía el rollback atómico de pantalla + Ayuda.
+
 **Archivos de código al revisor**: cuenta `*.ts`/`*.tsx` sin `.test.`/`.spec.`. No cuentan
 tests, `.md`, `.sql` ni `schema.prisma`. El tope del proyecto es ~5; **queda un solo commit
 por encima (C6b, con 6)** y está marcado y justificado. El otro que se pasaba, C4a con 20, se
@@ -108,47 +113,64 @@ decisión de diseño nueva.
 
 Depende de: WU-1. C2c puede ir en paralelo con WU-3.
 
+> **RE-CORTE DE C2a/C2b (2026-09-01).** El corte anterior dejaba `ClienteProps.zonaHoraria`
+> obligatoria en C2a y su único punto de asignación en C2b, o sea C2a con el `pnpm typecheck`
+> en rojo: `crear-cliente.use-case.ts:139` construye `ClienteEntity.create()` sin la zona y es
+> el **único** caller de producción. Es la misma familia de defecto que este documento ya había
+> corregido para C6a/C6b, no detectada acá. C2a absorbe el alta (la vieja 2.7 y la porción de
+> 2.8 que toca `CreateClienteDto`) para que el campo quede obligatorio de punta a punta en un
+> commit verde; C2b se queda con el endpoint de configuración.
+>
+> Verificado además que el fixup masivo de specs **no existe**: 32 specs construyen
+> `ClienteEntity.create`, y **0** de ellos llaman a `.save(` o `toPersistence`, así que ninguno
+> llega al mapper. El radio real era un solo archivo de producción.
+
 - [ ] 2.1 RED: spec de `ClienteEntity` — `configurarZonaHoraria()` cambia el valor y hace
       `touch()`; `ClienteProps.zonaHoraria` es obligatoria (sin `?`, sin `??` de default).
+      Rompe a propósito el precedente de `csatHabilitado?` del mismo archivo: es D1.
 - [ ] 2.2 RED: spec del mapper — `toPersistence()` incluye la columna (fuera del `Omit`) y
       `toDomain()` la reconstruye vía `ZonaHoraria.desdePersistencia`.
 - [ ] 2.3 RED: spec de integración contra `soporte_master_test` — ninguna fila con
       `zona_horaria` NULL ni inválida después de migrar. Si trunca, `usarLockMasterTest()`
       antes del `describe`.
-- [ ] 2.4 GREEN: `backend/prisma_master/migrations/20260901120000_add_cliente_zona_horaria/migration.sql`
+- [ ] 2.4 RED: spec del alta — `CreateClienteDto` **exige** la zona; un alta sin zona es 422.
+      No se defaultea a Buenos Aires: la decisión cerrada es que la zona va explícita en el alta.
+- [ ] 2.5 GREEN: `backend/prisma_master/migrations/20260901120000_add_cliente_zona_horaria/migration.sql`
       con el `ADD COLUMN VARCHAR(64) NOT NULL DEFAULT 'America/Argentina/Buenos_Aires'` en un
       solo statement; `schema.prisma` con la columna y la advertencia de `Feriado.fecha`
       reescrita nombrando el símbolo nuevo (D9), sin cambiar su sentido.
-- [ ] 2.5 GREEN: `cliente.entity.ts` (prop + getter + `configurarZonaHoraria()`) y
+- [ ] 2.6 GREEN: `cliente.entity.ts` (prop + getter + `configurarZonaHoraria()`) y
       `cliente.mapper.ts`.
+- [ ] 2.7 GREEN: campo obligatorio en `CreateClienteDto` importando `ZONA_HORARIA_MAX_LENGTH`
+      del VO, y `crear-cliente.use-case.ts` pasando la zona del DTO a `ClienteEntity.create()`.
+      Sin esto el commit queda en rojo: es el único caller de producción de `create()`.
 
-**Commit C2a** — `feat(clientes): columna zona horaria del tenant con backfill`
-· ~300 líneas · 2 archivos de código · rollback: la columna queda escrita y sin lector.
+**Commit C2a** — `feat(clientes): columna zona horaria del tenant, exigida en el alta`
+· ~420 líneas · 4 archivos de código · **`size:exception` (+20) aprobada el 2026-09-01**
+· rollback: la columna y el campo obligatorio del alta se van juntos.
 
-- [ ] 2.6 RED: spec del caso de uso — admin global cambia la zona y persiste; actor sin
+- [ ] 2.8 RED: spec del caso de uso — admin global cambia la zona y persiste; actor sin
       `is_global_admin` se rechaza antes de llegar al caso de uso; candidato `Europe/Madriz`
       devuelve 422 y el tenant conserva su zona (spec de controller).
-- [ ] 2.7 RED: spec del alta — `CreateClienteDto` **exige** la zona; un alta sin zona es 422.
-- [ ] 2.8 GREEN: `configurar-zona-horaria-cliente.use-case.ts` espejando
-      `configurar-csat-cliente.use-case.ts`; `ConfigurarZonaHorariaClienteDto` y campo
-      obligatorio en `CreateClienteDto` importando `ZONA_HORARIA_MAX_LENGTH` del VO;
+- [ ] 2.9 GREEN: `configurar-zona-horaria-cliente.use-case.ts` espejando
+      `configurar-csat-cliente.use-case.ts`; `ConfigurarZonaHorariaClienteDto`;
       `PATCH /clientes/:id/zona-horaria` espejando `PATCH /clientes/:id/csat`; wiring en
       `clientes.module.ts`.
 
 **Commit C2b** — `feat(clientes): endpoint para configurar la zona operativa del tenant`
-· ~340 líneas · 4 archivos de código · rollback: quita el endpoint, la columna sobrevive.
+· ~250 líneas · 3 archivos de código · rollback: quita el endpoint, la columna sobrevive.
 
-- [ ] 2.9 RED: test del schema Zod recorriendo `zonasValidas`/`zonasInvalidas` del mismo
+- [ ] 2.10 RED: test del schema Zod recorriendo `zonasValidas`/`zonasInvalidas` del mismo
       fixture — veredicto idéntico al del VO para cada candidato.
-- [ ] 2.10 RED: centinela de tope en `frontend/src/features/clientes/limites.ts` que fije el
+- [ ] 2.11 RED: centinela de tope en `frontend/src/features/clientes/limites.ts` que fije el
       64 contra un valor independiente, no derivado de la propia constante.
-- [ ] 2.11 RED: test del diálogo — el select siempre incluye el valor vigente del tenant
+- [ ] 2.12 RED: test del diálogo — el select siempre incluye el valor vigente del tenant
       aunque no esté en `Intl.supportedValuesOf('timeZone')`, y al reabrir sincroniza con
       `reset(valoresVigentes)`. El fixture debe contener el valor fuera de catálogo.
-- [ ] 2.12 GREEN: `limites.ts`, `schemas.ts` (`z.string().refine(esZonaValida)`, nunca
+- [ ] 2.13 GREEN: `limites.ts`, `schemas.ts` (`z.string().refine(esZonaValida)`, nunca
       `z.enum`), `types.ts` y `configurar-zona-horaria-dialog.tsx` espejando
       `configurar-csat-dialog.tsx`, con el aviso de re-lectura histórica antes de guardar.
-- [ ] 2.13 GREEN: `backend/ayuda/zona-horaria.md` (frontmatter `slug` + `titulo`).
+- [ ] 2.14 GREEN: `backend/ayuda/zona-horaria.md` (frontmatter `slug` + `titulo`).
       **Explica las DOS capas** (enmienda): el reloj de negocio, que es del tenant y gobierna
       SLA, vencimientos, CSV y prefill; y la vista personal, que es solo lectura de pantalla.
       Más: dónde se configura la operativa, la propagación de hasta 15 minutos por el refresh
@@ -156,7 +178,8 @@ Depende de: WU-1. C2c puede ir en paralelo con WU-3.
       describa una sola capa miente desde el día uno. **Va en este commit.**
 
 **Commit C2c** — `feat(clientes): configurar la zona operativa desde el ABM`
-· ~450 líneas · 4 archivos de código · rollback: quita la pantalla y el artículo juntos.
+· ~450 líneas · 4 archivos de código · **`size:exception` (+50) aprobada el 2026-09-01**
+· rollback: quita la pantalla y el artículo juntos.
 
 ---
 
@@ -717,9 +740,9 @@ C0 → C1 → C2a → C3a ─┬─ C5a ─┬─ C5b ────────�
 |---|---|---|---|
 | C0 | 130 est. / **entregado en 572 junto a C1** | 0 | hecho, PR #94 |
 | C1 | ver arriba | 1 | hecho, PR #95 |
-| C2a | ~300 | 2 | pendiente |
-| C2b | ~340 | 4 | pendiente |
-| C2c | ~450 | 4 | pendiente |
+| C2a | ~420 — **excepción +20** | 4 | pendiente |
+| C2b | ~250 | 3 | pendiente |
+| C2c | ~450 — **excepción +50** | 4 | pendiente |
 | C3a | ~220 | 3 | pendiente |
 | C3b | ~240 | 5 | pendiente |
 | C3c | ~60 | 1 | pendiente |
@@ -743,7 +766,7 @@ C0 → C1 → C2a → C3a ─┬─ C5a ─┬─ C5b ────────�
 | C8d | ~140 | 3 | pendiente |
 | C8e | ~140 | 3 | pendiente |
 
-Total pendiente: **~5670 líneas revisables** en 25 commits.
+Total pendiente: **~5700 líneas revisables** en 25 commits.
 
 **Por qué WU-4 sube de ~540 a ~1040.** Dos movimientos en direcciones opuestas, y el segundo
 pesa más. Baja: la superficie real es de 9 archivos, no de 18 — los otros 9 solo tocan
