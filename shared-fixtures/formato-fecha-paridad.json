@@ -4,7 +4,10 @@
     "America/Buenos_Aires",
     "Asia/Calcutta",
     "Asia/Kolkata",
-    "Europe/Madrid"
+    "Europe/Madrid",
+    "UTC",
+    "Etc/GMT+5",
+    "+05:00"
   ],
   "zonasInvalidas": [
     "America/Nunca_Existio",
