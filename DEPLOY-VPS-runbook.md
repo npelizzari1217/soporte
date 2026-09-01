@@ -85,7 +85,7 @@ scripts `_vps-*`, `backups/`, `iis/`). Ninguno colisionaba, pero el script docum
 | Repo en el VPS | `C:\soporte` |
 | Servicios (NSSM) | `soporte-backend`, `soporte-frontend` |
 | Puertos internos | backend **3101**, frontend **3100** |
-| Node | `C:\nodejs22\node.exe` |
+| Node | `C:\nodejs24\node.exe` |
 | Rama | `main` (el script aborta si estás en otra) |
 | Package manager | `corepack pnpm` — **pnpm 11.18.0**, fijado en `packageManager` de los dos `package.json` |
 
@@ -265,8 +265,8 @@ Los dos smokes del repo:
 
 ```powershell
 cd C:\soporte\backend
-& 'C:\nodejs22\node.exe' scripts\post-deploy-smoke-fecha-cierre.mjs
-& 'C:\nodejs22\node.exe' scripts\post-deploy-smoke-matriz-permisos.mjs
+& 'C:\nodejs24\node.exe' scripts\post-deploy-smoke-fecha-cierre.mjs
+& 'C:\nodejs24\node.exe' scripts\post-deploy-smoke-matriz-permisos.mjs
 ```
 
 Los dos andan. **`post-deploy-smoke-matriz-permisos.mjs` estuvo roto** entre

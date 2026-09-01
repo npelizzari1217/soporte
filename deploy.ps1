@@ -9,6 +9,7 @@ $BackendDir = Join-Path $RepoRoot 'backend'
 $FrontDir   = Join-Path $RepoRoot 'frontend'
 $Services   = @('soporte-backend', 'soporte-frontend')
 $Branch     = 'main'
+$NodeExe    = 'C:\nodejs24\node.exe'
 
 function Step($msg) { Write-Host ("========== " + $msg + " ==========") -ForegroundColor Cyan }
 
@@ -107,7 +108,7 @@ Step 'EMAIL_CRYPTO_KEY'
 if ($env:EMAIL_CRYPTO_KEY) {
   Write-Host ("EMAIL_CRYPTO_KEY ya presente (len=" + $env:EMAIL_CRYPTO_KEY.Length + ") - no se toca")
 } else {
-  $cryptoKey = & 'C:\nodejs22\node.exe' -e "process.stdout.write(require('crypto').randomBytes(32).toString('hex'))"
+  $cryptoKey = & $NodeExe -e "process.stdout.write(require('crypto').randomBytes(32).toString('hex'))"
   if (-not $cryptoKey -or $cryptoKey.Length -ne 64) { throw "generacion de EMAIL_CRYPTO_KEY fallo" }
   # Reescribir el archivo entero en vez de Add-Content: si el .env NO termina en
   # salto de linea, Add-Content pega el valor al final de la ULTIMA VARIABLE y
@@ -181,7 +182,7 @@ AssertOk 'migrate:tenants'
 # segunda linea, no la unica.
 Set-Location $BackendDir
 Step 'Backfill de config de correo (solo la primera vez)'
-$yaHayConfig = & 'C:\nodejs22\node.exe' -e "const{Client}=require('pg');const c=new Client({connectionString:process.env.DATABASE_URL_MASTER.replace(/\?.*$/,'')});c.connect().then(()=>c.query('SELECT COUNT(*)::int AS n FROM clientes WHERE smtp_password_cifrada IS NOT NULL')).then(r=>{process.stdout.write(String(r.rows[0].n));return c.end()}).catch(e=>{console.error(e.message);process.exit(1)})"
+$yaHayConfig = & $NodeExe -e "const{Client}=require('pg');const c=new Client({connectionString:process.env.DATABASE_URL_MASTER.replace(/\?.*$/,'')});c.connect().then(()=>c.query('SELECT COUNT(*)::int AS n FROM clientes WHERE smtp_password_cifrada IS NOT NULL')).then(r=>{process.stdout.write(String(r.rows[0].n));return c.end()}).catch(e=>{console.error(e.message);process.exit(1)})"
 if ($LASTEXITCODE -ne 0) { throw "no se pudo consultar el estado de la config de correo" }
 if ([int]$yaHayConfig -gt 0) {
   Write-Host ("Ya hay " + $yaHayConfig + " cliente(s) con correo configurado - backfill OMITIDO (correcto: no debe auto-sembrar clientes nuevos)")
@@ -199,7 +200,7 @@ if ([int]$yaHayConfig -gt 0) {
     Write-Host "Cada cliente debe cargar su propia cuenta SMTP desde la pantalla ROOT." -ForegroundColor Yellow
   } else {
     Write-Host 'Ningun cliente tiene correo configurado todavia - corriendo el backfill'
-    & 'C:\nodejs22\node.exe' scripts/backfill-correo-clientes.mjs
+    & $NodeExe scripts/backfill-correo-clientes.mjs
     if ($LASTEXITCODE -ne 0) { throw "el backfill de config de correo fallo" }
   }
 }

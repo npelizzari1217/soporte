@@ -24,6 +24,7 @@ $ErrorActionPreference = 'Stop'
 $RepoRoot   = 'C:\soporte'
 $BackendDir = Join-Path $RepoRoot 'backend'
 $OutFile    = Join-Path $RepoRoot 'NUEVA-CLAVE-ADMIN.txt'
+$NodeExe    = 'C:\nodejs24\node.exe'
 
 function Step($msg) { Write-Host ("========== " + $msg + " ==========") -ForegroundColor Cyan }
 
@@ -52,7 +53,7 @@ Write-Host ("Email objetivo: " + $Email)
 
 # 3. Generar la clave nueva EN EL SERVER (crypto.randomBytes). Nunca se imprime.
 Step 'Generar clave nueva'
-$newPassword = & 'C:\nodejs22\node.exe' -e "process.stdout.write(require('crypto').randomBytes(24).toString('base64'))"
+$newPassword = & $NodeExe -e "process.stdout.write(require('crypto').randomBytes(24).toString('base64'))"
 if ($LASTEXITCODE -ne 0) { throw "generacion de la clave nueva fallo (exit $LASTEXITCODE)" }
 if (-not $newPassword) { throw "generacion de la clave nueva fallo (salida vacia)" }
 
