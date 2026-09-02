@@ -74,6 +74,13 @@ const makeUsuario = (
   return u;
 };
 
+// DISTINTA del DEFAULT de la columna (`America/Argentina/Buenos_Aires`, migración
+// `20260901120000_add_cliente_zona_horaria`) a propósito: con la zona del fixture
+// igual al default, un emisor que devolviera ese default hardcodeado en vez de leer
+// el que resuelve `resolverScope` pasaría la aserción de `zona_horaria` sin ejercitar
+// el claim real (mismo mecanismo que `tenant-guard-zona-horaria.integration.spec.ts`).
+const ZONA_CLIENTE_FIXTURE = 'Europe/Madrid';
+
 const makeCliente = (overrides: Partial<{ nombre: string; activo: boolean }> = {}) =>
   ClienteEntity.create({
     nombre: overrides.nombre ?? 'Acme SA',
@@ -81,7 +88,7 @@ const makeCliente = (overrides: Partial<{ nombre: string; activo: boolean }> = {
     cuit: null,
     dbName: 'acme_sa',
     activo: overrides.activo ?? true,
-    zonaHoraria: ZonaHoraria.crear('America/Argentina/Buenos_Aires'),
+    zonaHoraria: ZonaHoraria.crear(ZONA_CLIENTE_FIXTURE),
   });
 
 const makeMembresiaResuelta = (overrides: Partial<MembresiaResuelta> = {}): MembresiaResuelta => ({
@@ -363,6 +370,9 @@ describe('LoginUseCase', () => {
       expect(captured!.permisos).toEqual([...PARES_VALIDOS]);
       expect(captured!.is_global_admin).toBe(true);
       expect(captured!.cliente_nombre).toBeNull();
+      // D3/D11: sin tenant no hay zona que propagar — mismo criterio que
+      // cliente_nombre, y sale del mismo branch null de resolverScope.
+      expect(captured!.zona_horaria).toBeNull();
       expect(clienteRepo.findById).not.toHaveBeenCalled();
     });
 
@@ -470,6 +480,9 @@ describe('LoginUseCase', () => {
       expect(captured!.rol).toBeNull();
       expect(captured!.permisos).toEqual([...PARES_VALIDOS]);
       expect(captured!.cliente_nombre).toBe('Acme SA');
+      // Sale del MISMO resolverScope que resuelve cliente_nombre, no de una
+      // consulta propia de LoginUseCase ni de un valor cableado en el payload.
+      expect(captured!.zona_horaria).toBe(ZONA_CLIENTE_FIXTURE);
     });
   });
 

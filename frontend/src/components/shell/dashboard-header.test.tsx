@@ -22,6 +22,7 @@ const PAYLOAD: JwtPayload = {
   permisos: [],
   is_global_admin: false,
   cliente_nombre: "Cliente Uno",
+  zona_horaria: "Europe/Madrid",
   membresias: [{ cliente_id: "c1", nombre: "Cliente Uno", rol: "ADMINISTRADOR" }],
   modulos: [],
   nombre: "Juan",

@@ -770,13 +770,55 @@ Depende de: C2a (la columna existe).
 **Commit C3a** — `feat(auth): zona del tenant en el contexto de request`
 · ~220 líneas · 3 archivos de código · rollback: campo sin lector.
 
-- [ ] 3.3 RED: spec de los tres emisores — `login`, `refresh-token` y `switch-tenant` emiten
+- [x] 3.3 RED: spec de los tres emisores — `login`, `refresh-token` y `switch-tenant` emiten
       `zona_horaria` desde el mismo `resolverScope`, y `null` cuando `cliente_id` es `null`
       (token master de root), igual que `cliente_nombre`.
-- [ ] 3.4 GREEN: claim en `i-token.service.ts` (`JwtPayload`), propagación en los tres casos
+      <!-- pack:skip -->
+      RED confirmado en `login.use-case.spec.ts`, `refresh-token.use-case.spec.ts` y
+      `switch-tenant.use-case.spec.ts` (6 `it()` tocados/agregados, sin nuevo archivo). Cada
+      spec captura el payload firmado (`tokenService.signJwt.mockImplementation`) y asegura
+      `zona_horaria` contra un tipo local `JwtPayloadConZonaHoraria = JwtPayload & { zona_horaria?:
+      string | null }` — evita castear sin chequear y NO toca `i-token.service.ts` (eso es 3.4).
+      Falla hoy con `expected undefined to be ...` en los 6 casos: el payload real no trae la
+      clave todavía, no un `TypeError` ni un import roto.
+      Fixtures `makeCliente` de los tres specs pasan de la zona DEFAULT de la columna
+      (`America/Argentina/Buenos_Aires`) a `Europe/Madrid` (y `Pacific/Auckland` como segundo
+      valor en `switch-tenant`, para descartar un literal cableado): con el default, un emisor
+      que devolviera el default hardcodeado en vez de leer `resolverScope` pasaría la aserción
+      sin ejercitar el claim real (mismo mecanismo medido en `tenant-guard-zona-horaria.integration.spec.ts`,
+      638 tests en verde con ese defecto). `switch-tenant.use-case.spec.ts` no tiene escenario
+      `cliente_id: null` alcanzable (`SwitchTenantDto.clienteId: string`, nunca `null`): la
+      triangulación ahí es dos zonas distintas por dos rutas de actor (root bypass / normal con
+      membresía), no null-vs-no-null.
+      Canario: `pnpm typecheck`/`pnpm lint`/`pnpm run lint:fitness` en verde. Suite completa:
+      358 archivos (355 verde + 3 con el RED nuevo), 3840 tests (3834 verde + 6 RED nuevo) — sin
+      ninguna regresión fuera de las 6 aserciones agregadas.
+      <!-- /pack:skip -->
+- [x] 3.4 GREEN: claim en `i-token.service.ts` (`JwtPayload`), propagación en los tres casos
       de uso, y `zona_horaria: string | null` en `frontend/src/shared/api/types.ts`. El JSDoc
       de `JwtPayload` declara explícitamente que ese claim es la zona **del tenant** y que la
       zona de **vista** del usuario NO viaja en el token (D11).
+      <!-- pack:skip -->
+      GREEN confirmado: los 6 RED de 3.3 pasan a verde (`login.use-case.spec.ts`,
+      `refresh-token.use-case.spec.ts`, `switch-tenant.use-case.spec.ts`, 55/55 en corrida
+      focalizada). `JwtPayload.zona_horaria: string | null` (campo real, no opcional) en
+      `i-token.service.ts` con JSDoc explícito D11: "la zona de vista del usuario NO viaja en
+      el token". Los tres casos de uso propagan `zona_horaria: scope.zonaHoraria` — DIRECTO de
+      `resolverScope`, mismo patrón que `cliente_nombre`, sin consulta propia. Colapsados los
+      3 alias `JwtPayloadConZonaHoraria` (andamio de 3.3) a `JwtPayload` directo, con sus JSDoc
+      de andamio removidos. `frontend/src/shared/api/types.ts`: campo agregado + JSDoc D11 +
+      normalización defensiva en `decodeJwtPayload` (`?? null`, mismo patrón que
+      `nombre`/`apellido`/`modulos` para tokens pre-rollout). Efecto colateral diagnosticado:
+      volver el campo obligatorio (no opcional) rompió el `type-check` de 17 fixtures de test
+      del frontend que construyen `JwtPayload` a mano (mismo mecanismo ya documentado en el
+      JSDoc de `payloadDeTest`, cuando `v` se agregó) — arreglado con el fix mínimo: una línea
+      `zona_horaria` por fixture. `payload-de-test.ts` (backend) también actualizado.
+      NO se tocó `VERSION_PAYLOAD_JWT` (eso es 3.6/C3c, costura de deploy propia).
+      Canario: `pnpm typecheck`/`pnpm lint`/`pnpm run lint:fitness` (backend) y
+      `pnpm run type-check`/`pnpm run lint` (frontend) en verde. Suite completa: backend
+      358/358 archivos, 3840/3840 tests (0 regresiones); frontend 169/169 archivos,
+      1142/1142 tests (sin cambios respecto al baseline).
+      <!-- /pack:skip -->
 
 **Commit C3b** — `feat(auth): claim zona_horaria en el JWT`
 · ~240 líneas · 5 archivos de código · rollback: el claim deja de emitirse, nadie lo lee.

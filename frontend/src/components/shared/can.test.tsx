@@ -17,6 +17,7 @@ const userWithAsignar: JwtPayload = {
   permisos: ["ticket:asignar"],
   is_global_admin: false,
   cliente_nombre: "Cliente Uno",
+  zona_horaria: "Europe/Madrid",
   membresias: [],
   modulos: [],
   nombre: "Juan",

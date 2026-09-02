@@ -77,6 +77,9 @@ export class SwitchTenantUseCase {
       permisos: scope.permisos,
       is_global_admin: dto.actor.is_global_admin,
       cliente_nombre: scope.clienteNombre,
+      // Zona operativa del tenant destino (D3/D11) — sale del MISMO
+      // resolverScope de este salto, nunca de una consulta propia.
+      zona_horaria: scope.zonaHoraria,
       membresias: membresiasActivas.map((m) => ({
         cliente_id: m.clienteId,
         nombre: m.clienteNombre,

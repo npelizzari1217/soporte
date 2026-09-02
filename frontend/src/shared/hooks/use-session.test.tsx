@@ -13,6 +13,7 @@ const ROOT_PAYLOAD: JwtPayload = {
   permisos: [],
   is_global_admin: true,
   cliente_nombre: null,
+  zona_horaria: null,
   membresias: [
     { cliente_id: "c1", nombre: "Cliente Uno", rol: "ADMINISTRADOR" },
     { cliente_id: "c2", nombre: "Cliente Dos", rol: "TECNICO" },
@@ -29,6 +30,7 @@ const TENANT_PAYLOAD: JwtPayload = {
   permisos: ["ticket:crear"],
   is_global_admin: false,
   cliente_nombre: "Cliente Uno",
+  zona_horaria: "Europe/Madrid",
   membresias: [{ cliente_id: "c1", nombre: "Cliente Uno", rol: "USUARIO" }],
   modulos: [],
   nombre: "Juan",
@@ -42,6 +44,7 @@ const ADMINISTRADOR_PAYLOAD: JwtPayload = {
   permisos: [],
   is_global_admin: false,
   cliente_nombre: "Cliente Uno",
+  zona_horaria: "Europe/Madrid",
   membresias: [{ cliente_id: "c1", nombre: "Cliente Uno", rol: "ADMINISTRADOR" }],
   modulos: [],
   nombre: "Ana",

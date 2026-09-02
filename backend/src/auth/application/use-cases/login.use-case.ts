@@ -173,6 +173,9 @@ export class LoginUseCase {
       permisos: scope.permisos,
       is_global_admin: usuario.isGlobalAdmin,
       cliente_nombre: scope.clienteNombre,
+      // Zona operativa del tenant (D3/D11) — sale del MISMO resolverScope
+      // que resuelve cliente_nombre, nunca de una consulta propia.
+      zona_horaria: scope.zonaHoraria,
       membresias: membresiasActivas.map((m) => ({
         cliente_id: m.clienteId,
         nombre: m.clienteNombre,

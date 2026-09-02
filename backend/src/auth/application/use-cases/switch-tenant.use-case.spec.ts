@@ -28,14 +28,29 @@ import { payloadDeTest } from '../../test-helpers/payload-de-test';
 import { PARES_VALIDOS } from '../../../shared/domain/acciones';
 import { unstubbed } from '../../../testing/mocks';
 
-const makeCliente = (nombre = 'Acme SA', activo = true): ClienteEntity =>
+// DISTINTAS del DEFAULT de la columna (`America/Argentina/Buenos_Aires`, migración
+// `20260901120000_add_cliente_zona_horaria`) a propósito: con la zona del fixture
+// igual al default, un emisor que devolviera ese default hardcodeado en vez de leer
+// el que resuelve `resolverScope` pasaría la aserción de `zona_horaria` sin ejercitar
+// el claim real (mismo mecanismo que `tenant-guard-zona-horaria.integration.spec.ts`).
+// Dos valores distintos (no solo distinto del default) para descartar además que el
+// emisor cablee un único literal fijo: `resolverScope` se re-evalúa en CADA switch
+// (S4), así que dos destinos con zonas distintas deben viajar con su propia zona.
+const ZONA_CLIENTE_FIXTURE = 'Europe/Madrid';
+const ZONA_CLIENTE_FIXTURE_ALTERNATIVA = 'Pacific/Auckland';
+
+const makeCliente = (
+  nombre = 'Acme SA',
+  activo = true,
+  zonaHoraria: string = ZONA_CLIENTE_FIXTURE,
+): ClienteEntity =>
   ClienteEntity.create({
     nombre,
     razonSocial: null,
     cuit: null,
     dbName: 'acme_sa',
     activo,
-    zonaHoraria: ZonaHoraria.crear('America/Argentina/Buenos_Aires'),
+    zonaHoraria: ZonaHoraria.crear(zonaHoraria),
   });
 
 /**
@@ -145,6 +160,9 @@ describe('SwitchTenantUseCase', () => {
       expect(captured!.permisos).toEqual([...PARES_VALIDOS]);
       expect(captured!.is_global_admin).toBe(true);
       expect(permisosRepo.findByUsuarioYCliente).not.toHaveBeenCalled();
+      // Sale del MISMO resolverScope que resuelve cliente_id/rol en este mismo
+      // salto, no de una consulta propia de SwitchTenantUseCase.
+      expect(captured!.zona_horaria).toBe(ZONA_CLIENTE_FIXTURE);
     });
 
     it('SIN membresía en el cliente destino → rol=null, permisos = bypass total igual, autorizado', async () => {
@@ -181,12 +199,25 @@ describe('SwitchTenantUseCase', () => {
   describe('Normal → clienteId DEBE tener membresía activa', () => {
     it('CON membresía → autorizado, rol/permisos de la membresía', async () => {
       const actor = makeActorPayload({ is_global_admin: false });
-      clienteRepo.findById.mockResolvedValue(makeCliente('Beta SA'));
+      // Zona ALTERNATIVA (distinta de la del test root de arriba) a propósito:
+      // dos valores distintos, sourceados del mismo resolverScope en dos rutas
+      // de actor diferentes (root bypass / normal con membresía), descartan que
+      // el emisor cablee un único literal fijo en vez de leer el del cliente.
+      clienteRepo.findById.mockResolvedValue(
+        makeCliente('Beta SA', true, ZONA_CLIENTE_FIXTURE_ALTERNATIVA),
+      );
       membresiaRepo.findActivaByUsuarioYCliente.mockResolvedValue(makeMembresiaResuelta());
+
+      let captured: JwtPayload | undefined;
+      tokenService.signJwt.mockImplementation((p) => {
+        captured = p;
+        return 'new.access.token';
+      });
 
       const result = await useCase.execute({ actor, clienteId: 'cliente-2' });
 
       expect(result.isOk()).toBe(true);
+      expect(captured!.zona_horaria).toBe(ZONA_CLIENTE_FIXTURE_ALTERNATIVA);
     });
 
     it('SIN membresía → 403 ClienteNoAutorizado', async () => {

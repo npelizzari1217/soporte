@@ -18,6 +18,7 @@ function payload(overrides: Partial<JwtPayload>): JwtPayload {
     permisos: [],
     is_global_admin: false,
     cliente_nombre: "Cliente Uno",
+    zona_horaria: "Europe/Madrid",
     membresias: [],
     modulos: [],
     nombre: "Juan",

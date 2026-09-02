@@ -31,6 +31,7 @@ const VALID_PAYLOAD: JwtPayload = {
   permisos: ["ticket:ver_todos"],
   is_global_admin: false,
   cliente_nombre: "Cliente Uno",
+  zona_horaria: "Europe/Madrid",
   membresias: [{ cliente_id: "c1", nombre: "Cliente Uno", rol: "TECNICO" }],
   modulos: [],
   nombre: "Juan",

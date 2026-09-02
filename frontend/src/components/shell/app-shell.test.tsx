@@ -17,6 +17,7 @@ const usuario: JwtPayload = {
   permisos: ["ticket:crear"],
   is_global_admin: false,
   cliente_nombre: "Cliente Uno",
+  zona_horaria: "Europe/Madrid",
   membresias: [],
   modulos: [],
   nombre: "Juan",

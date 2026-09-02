@@ -130,6 +130,9 @@ export class RefreshTokenUseCase {
       permisos: scope.permisos,
       is_global_admin: usuario.isGlobalAdmin,
       cliente_nombre: scope.clienteNombre,
+      // Zona operativa del tenant (D3/D11) — sale del MISMO resolverScope
+      // re-validado en el paso 6, nunca de una consulta propia.
+      zona_horaria: scope.zonaHoraria,
       membresias: membresiasActivas.map((m) => ({
         cliente_id: m.clienteId,
         nombre: m.clienteNombre,

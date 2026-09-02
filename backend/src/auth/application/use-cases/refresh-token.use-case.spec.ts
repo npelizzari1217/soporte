@@ -95,6 +95,13 @@ const makeUsuario = (
   return u;
 };
 
+// DISTINTA del DEFAULT de la columna (`America/Argentina/Buenos_Aires`, migración
+// `20260901120000_add_cliente_zona_horaria`) a propósito: con la zona del fixture
+// igual al default, un emisor que devolviera ese default hardcodeado en vez de leer
+// el que resuelve `resolverScope` pasaría la aserción de `zona_horaria` sin ejercitar
+// el claim real (mismo mecanismo que `tenant-guard-zona-horaria.integration.spec.ts`).
+const ZONA_CLIENTE_FIXTURE = 'Europe/Madrid';
+
 const makeCliente = (nombre = 'Acme SA', activo = true): ClienteEntity =>
   ClienteEntity.create({
     nombre,
@@ -102,7 +109,7 @@ const makeCliente = (nombre = 'Acme SA', activo = true): ClienteEntity =>
     cuit: null,
     dbName: 'acme_sa',
     activo,
-    zonaHoraria: ZonaHoraria.crear('America/Argentina/Buenos_Aires'),
+    zonaHoraria: ZonaHoraria.crear(ZONA_CLIENTE_FIXTURE),
   });
 
 /**
@@ -314,6 +321,9 @@ describe('RefreshTokenUseCase', () => {
       expect(captured!.membresias).toEqual([
         { cliente_id: 'cliente-1', nombre: 'Acme SA', rol: 'TECNICO' },
       ]);
+      // Sale del MISMO resolverScope re-validado en el paso 6 del re-scope, no
+      // de una consulta propia de RefreshTokenUseCase ni de un valor cableado.
+      expect(captured!.zona_horaria).toBe(ZONA_CLIENTE_FIXTURE);
     });
 
     it('el nuevo payload incluye nombre/apellido de la UsuarioEntity recargada', async () => {
@@ -350,6 +360,9 @@ describe('RefreshTokenUseCase', () => {
       expect(captured!.cliente_id).toBeNull();
       expect(captured!.rol).toBeNull();
       expect(captured!.permisos).toEqual([...PARES_VALIDOS]);
+      // D3/D11: sin tenant no hay zona que propagar — mismo branch null de
+      // resolverScope que deja cliente_id/rol en null.
+      expect(captured!.zona_horaria).toBeNull();
       expect(clienteRepo.findById).not.toHaveBeenCalled();
     });
   });

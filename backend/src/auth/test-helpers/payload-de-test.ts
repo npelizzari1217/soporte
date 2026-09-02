@@ -24,6 +24,7 @@ export function payloadDeTest(overrides: Partial<JwtPayload> = {}): JwtPayload {
     permisos: [],
     is_global_admin: false,
     cliente_nombre: null,
+    zona_horaria: null,
     membresias: [],
     modulos: [],
     nombre: 'Test',

@@ -29,6 +29,15 @@ export const VERSION_PAYLOAD_JWT = 2;
  * - is_global_admin: true si el usuario es ROOT (super-admin cross-tenant).
  *   NUNCA se deriva de `rol` — ortogonalidad (ver ADR de dominio).
  * - cliente_nombre: nombre del cliente scopeado; `null` si `cliente_id` es null.
+ * - zona_horaria: zona horaria OPERATIVA DEL TENANT (`cliente_id`), NUNCA la
+ *   zona de VISTA del usuario (sdd/zona-horaria-por-tenant, D3/D11). `null`
+ *   cuando `cliente_id` es null (token master), mismo criterio que
+ *   `cliente_nombre`. Sale del mismo `resolverScope` que resuelve ese campo
+ *   (`ScopeResuelto.zonaHoraria`) — nunca de una consulta propia de cada
+ *   caso de uso ni de un valor cableado. **La preferencia de vista del
+ *   usuario se resuelve enteramente en el cliente y NO viaja en el token**
+ *   (D11): mezclar ambas zonas acá sería la ambigüedad que D11 existe para
+ *   prevenir.
  * - membresias: TODAS las membresías activas del usuario (alimenta el
  *   switcher del front, R6).
  * - modulos: módulos funcionales que el usuario puede operar en `cliente_id`
@@ -55,6 +64,7 @@ export interface JwtPayload {
   permisos: string[];
   is_global_admin: boolean;
   cliente_nombre: string | null;
+  zona_horaria: string | null;
   membresias: { cliente_id: string; nombre: string; rol: string }[];
   modulos: string[];
   nombre: string;

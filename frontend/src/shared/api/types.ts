@@ -12,6 +12,11 @@
  * - `is_global_admin`: true si el usuario es ROOT (super-admin cross-tenant).
  *   NUNCA se deriva de `rol` — ortogonalidad.
  * - `cliente_nombre`: nombre del cliente scopeado; `null` si `cliente_id` es null.
+ * - `zona_horaria`: zona horaria OPERATIVA DEL TENANT (`cliente_id`), `null`
+ *   si `cliente_id` es null. **NO es la zona de vista del usuario**: esa
+ *   preferencia se resuelve enteramente en el cliente y nunca viaja en el
+ *   token (`sdd/zona-horaria-por-tenant`, D11) — mezclarlas acá sería
+ *   exactamente la ambigüedad que D11 existe para prevenir.
  * - `membresias`: TODAS las membresías activas del usuario (alimenta el
  *   switcher del front, R28).
  * - `modulos`: módulos habilitados para el usuario (TICKETS/COMPRAS/EDILICIA/
@@ -35,6 +40,7 @@ export interface JwtPayload {
   permisos: string[];
   is_global_admin: boolean;
   cliente_nombre: string | null;
+  zona_horaria: string | null;
   membresias: { cliente_id: string; nombre: string; rol: string }[];
   modulos: string[];
   nombre: string;
@@ -56,13 +62,15 @@ export function decodeJwtPayload(accessToken: string): JwtPayload {
     Buffer.from(accessToken.split(".")[1], "base64url").toString(),
   ) as JwtPayload;
   // Defensivo: tokens viejos (previos a 5.2) no traen `modulos`; tokens
-  // previos al agregado de identidad no traen `nombre`/`apellido`.
+  // previos al agregado de identidad no traen `nombre`/`apellido`; tokens
+  // previos a `sdd/zona-horaria-por-tenant` no traen `zona_horaria`.
   // Normalizamos para que los consumidores no dependan de un campo undefined.
   return {
     ...payload,
     modulos: payload.modulos ?? [],
     nombre: payload.nombre ?? "",
     apellido: payload.apellido ?? "",
+    zona_horaria: payload.zona_horaria ?? null,
   };
 }
 

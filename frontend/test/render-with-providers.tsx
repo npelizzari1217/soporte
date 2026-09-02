@@ -35,7 +35,9 @@ export function renderWithProviders(
   return render(ui, { wrapper: Providers });
 }
 
-/** Fixture base — ADMINISTRADOR (19 permisos, spec §1). Overridable por test. */
+/** Fixture base — rol ADMINISTRADOR SIN permisos: cada test agrega los que
+ *  necesita por `overrides`. Un fixture con permisos de arranque haría pasar
+ *  a los tests de autorización sin que ninguno los declare. */
 export function buildUser(overrides: Partial<JwtPayload> = {}): JwtPayload {
   return {
     sub: "u1",
@@ -44,6 +46,7 @@ export function buildUser(overrides: Partial<JwtPayload> = {}): JwtPayload {
     permisos: [],
     is_global_admin: false,
     cliente_nombre: "Cliente Uno",
+    zona_horaria: "Europe/Madrid",
     membresias: [],
     modulos: [],
     nombre: "Juan",
