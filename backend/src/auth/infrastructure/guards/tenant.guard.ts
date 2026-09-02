@@ -13,8 +13,11 @@
  *    Ese error de dominio existe y nadie lo usa — ver su comentario en
  *    `domain/errors/auth.errors.ts` antes de asumir que está cableado.
  * 4. Bindea `TenantContext` con `{ prismaClient: getTenantClient(dbName),
- *    dbName, clienteId }` para que los repositorios de infraestructura del
- *    tenant lo consuman sin conocer el ORM directamente (R15).
+ *    dbName, clienteId, zonaHoraria }` para que los repositorios de
+ *    infraestructura del tenant lo consuman sin conocer el ORM directamente
+ *    (R15). `zonaHoraria` sale del MISMO `cliente` que este guard ya resolvió
+ *    en el paso 2 — cero queries nuevas (D3,
+ *    sdd/zona-horaria-por-tenant/design.md).
  *
  * NOTA de diseño (ADR-4): en soporte el switch (re-emisión de token) es el
  * ÚNICO mecanismo de salto de tenant para TODOS (incl. root). NO se
@@ -67,6 +70,7 @@ export class TenantGuard implements CanActivate {
       prismaClient: tenantClient,
       dbName: cliente.dbName,
       clienteId: user.cliente_id,
+      zonaHoraria: cliente.zonaHoraria,
     };
 
     this.tenantContext.bind(ctx);

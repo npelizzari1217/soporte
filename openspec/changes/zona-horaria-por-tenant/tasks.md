@@ -735,11 +735,37 @@ de C2b, que sigue funcionando igual por HTTP.
 
 Depende de: C2a (la columna existe).
 
-- [ ] 3.1 RED: spec de integración de `TenantGuard` — bindea `zonaHoraria` en
+- [x] 3.1 RED: spec de integración de `TenantGuard` — bindea `zonaHoraria` en
       `TenantContextData` y ejecuta **exactamente un** `findById` por request (espiar el
       repositorio; el assert es sobre el conteo, no sobre el status).
-- [ ] 3.2 GREEN: campo en `tenant-context.ts`, bindeo en `tenant.guard.ts`,
+      <!-- pack:skip -->
+      RED confirmado: `backend/src/auth/infrastructure/guards/tenant-guard-zona-horaria.integration.spec.ts`.
+      Un solo `it()`, HTTP real a través de `JwtAuthGuard`→`TenantGuard` (NestJS `TestingModule`,
+      `CLIENTE_REPOSITORY` en memoria espiado con `vi.fn`, `PrismaService` real con URL que nunca
+      dispara query). Falla hoy en el assert de `bindSpy` (`TenantContext.bind()` sin `zonaHoraria`)
+      — `findById` cuenta 1 llamada, invariante D3 ya se cumple y queda protegida contra el 3.2.
+      `pnpm typecheck`/`pnpm lint`/`pnpm run lint:fitness` en verde; 12 tests vecinos
+      (`tenant.guard.spec.ts` + `jwt-auth.guard.spec.ts`) intactos. 3.2 (GREEN) queda pendiente.
+      <!-- /pack:skip -->
+- [x] 3.2 GREEN: campo en `tenant-context.ts`, bindeo en `tenant.guard.ts`,
       `ScopeResuelto.zonaHoraria` en `resolver-scope.ts`.
+      <!-- pack:skip -->
+      GREEN confirmado: `tenant-guard-zona-horaria.integration.spec.ts` (el RED de 3.1) pasa.
+      `zonaHoraria` sale del `cliente` que `TenantGuard` YA resuelve con su único `findById` —
+      cero queries nuevas (D3), invariante que el propio spec mide y verificó con mutante.
+      `TenantContextData.zonaHoraria` quedó OPCIONAL (`?:`), mismo criterio que
+      `enTransaccion`/`postCommitCallbacks`: hacerlo obligatorio rompía el typecheck de ~20
+      call sites fuera de alcance de C3a — los schedulers de barrido
+      (`preventivo-sweep.scheduler.ts`, `sla-sweep.scheduler.ts`) y varios specs de
+      infraestructura bindean `TenantContextData` a mano, fuera del pipeline de `TenantGuard`,
+      y no consumen la zona. `ScopeResuelto.zonaHoraria: string | null` se pobló en las dos
+      ramas de `resolverScope` (token master → `null`, cliente resuelto → `cliente.zonaHoraria.valor`,
+      MISMO `cliente` que ya consulta ese resolver, sin query aparte). Fixtures preexistentes
+      actualizadas por el cambio de forma del dato (no por defecto propio):
+      `resolver-scope.spec.ts` (5 `toEqual` literales) y `tenant.guard.spec.ts` (1 `toHaveBeenCalledWith`
+      literal). El spec de 3.1 NO se tocó. `pnpm typecheck`/`pnpm lint`/`pnpm run lint:fitness`
+      en verde. Suite completa del backend: 358/358 archivos, 3839/3839 tests (frontend sin cambios).
+      <!-- /pack:skip -->
 
 **Commit C3a** — `feat(auth): zona del tenant en el contexto de request`
 · ~220 líneas · 3 archivos de código · rollback: campo sin lector.
@@ -763,6 +789,26 @@ Depende de: C2a (la columna existe).
 **Commit C3c** — `feat(auth)!: sube VERSION_PAYLOAD_JWT a 3` · ~60 líneas · 1 archivo de
 código · **Costura propia a propósito**: al deployar, todos los tokens vivos reciben 401 y
 refrescan. No se mezcla con nada. Rollback: volver a 2.
+
+---
+
+### Deuda abierta de D3 — dos caminos bindean el contexto SIN la zona
+
+`TenantContextData.zonaHoraria` quedó **opcional** en 3.2: hacerlo obligatorio rompía el
+typecheck en ~15 archivos fuera del alcance de C3a. La consecuencia es que el compilador
+**no** avisa cuando un camino no la pasa, y hoy hay dos que no la pasan:
+
+| Camino | Estado | Qué hace falta |
+|---|---|---|
+| `auth/infrastructure/guards/tenant.guard.ts` | ✅ la lleva (3.2) | — |
+| `csat/application/services/resolver-encuesta-token.service.ts` | ✅ cerrado con C3a | tenía el `cliente` en la mano: una línea |
+| `preventivo/infrastructure/schedulers/preventivo-sweep.scheduler.ts` | ❌ **abierto** | bindea desde una proyección `{dbName, clienteId}`: hay que traer la zona en la enumeración de tenants |
+| `sla/infrastructure/schedulers/sla-sweep.scheduler.ts` | ❌ **abierto** | ídem |
+
+**Esto NO es una nota de cierre: rige para las tareas pendientes.** El work unit que
+primero lea la zona desde `TenantContext` dentro de un job de barrido tiene que cerrar los
+dos sweeps ANTES de consumirla, o va a recibir `undefined` en silencio. Verificado el
+2026-09-02 recorriendo todos los `tenantContext.bind(`/`.run(` de producción.
 
 ---
 

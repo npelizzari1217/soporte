@@ -239,6 +239,33 @@ describe('ResolverEncuestaTokenService', () => {
       });
       expect(tenantContext.bind).toHaveBeenCalledTimes(1);
     });
+
+    it('el contexto bindeado lleva la zonaHoraria del cliente resuelto (D3) — este camino no pasa por TenantGuard', async () => {
+      // Zona deliberadamente distinta del default del proyecto: si alguien
+      // cablea un valor fijo en vez de leerlo del cliente, esta aserción lo
+      // rompe en vez de pasar por casualidad.
+      const zonaDistintiva = 'Asia/Kolkata';
+      const token = makeToken();
+      const cliente = makeCliente(CLIENTE_ID_DE_LA_FILA, {
+        zonaHoraria: ZonaHoraria.crear(zonaDistintiva),
+      });
+      const { service, tenantContext } = buildService(
+        makeFakeTokenRepo(token),
+        makeFakeClienteRepo(cliente),
+      );
+
+      await service.resolver(RAW_TOKEN);
+
+      // El token público de encuesta entra por fuera de TenantGuard, asi que
+      // si este bind no lleva la zona, todo lo que la lea rio abajo (WU-5 en
+      // adelante) recibe undefined en silencio: el campo es opcional y el
+      // compilador no lo ve.
+      expect(tenantContext.bind).toHaveBeenCalledWith(
+        expect.objectContaining({
+          zonaHoraria: expect.objectContaining({ valor: zonaDistintiva }),
+        }),
+      );
+    });
   });
 
   describe('el clienteId bindeado SALE DE LA FILA DEL TOKEN, nunca de otra fuente', () => {

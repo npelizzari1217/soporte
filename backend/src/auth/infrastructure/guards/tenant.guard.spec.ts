@@ -77,7 +77,7 @@ describe('TenantGuard (R12)', () => {
         cuit: null,
         dbName: 'soporte_cliente1',
         activo: false,
-        zonaHoraria: ZonaHoraria.crear('America/Argentina/Buenos_Aires'),
+        zonaHoraria: ZonaHoraria.crear('Europe/Madrid'),
       },
       'cliente-1',
       new Date(),
@@ -98,7 +98,7 @@ describe('TenantGuard (R12)', () => {
         cuit: null,
         dbName: 'soporte_cliente1',
         activo: true,
-        zonaHoraria: ZonaHoraria.crear('America/Argentina/Buenos_Aires'),
+        zonaHoraria: ZonaHoraria.crear('Europe/Madrid'),
       },
       'cliente-1',
       new Date(),
@@ -119,7 +119,7 @@ describe('TenantGuard (R12)', () => {
         cuit: null,
         dbName: 'soporte_cliente1',
         activo: true,
-        zonaHoraria: ZonaHoraria.crear('America/Argentina/Buenos_Aires'),
+        zonaHoraria: ZonaHoraria.crear('Europe/Madrid'),
       },
       'cliente-1',
       new Date(),
@@ -143,6 +143,7 @@ describe('TenantGuard (R12)', () => {
       prismaClient: tenantClientStub,
       dbName: 'soporte_cliente1',
       clienteId: 'cliente-1',
+      zonaHoraria: clienteActivo.zonaHoraria,
     });
   });
 });

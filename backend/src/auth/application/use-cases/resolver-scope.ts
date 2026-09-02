@@ -32,6 +32,13 @@ export interface ResolverScopeActor {
 export interface ScopeResuelto {
   clienteId: string | null;
   clienteNombre: string | null;
+  /**
+   * Zona horaria operativa del tenant resuelto (sdd/zona-horaria-por-tenant,
+   * D3/D11), `null` para el token master (`clienteId === null`) — no hay
+   * tenant del cual sacarla. Sale del MISMO `cliente` que este resolver ya
+   * consulta más abajo (`clienteRepo.findById`), sin una query aparte.
+   */
+  zonaHoraria: string | null;
   rol: string | null;
   /** Códigos `MODULO:ACCION` de la matriz de permisos (R2, WU-7.1). */
   permisos: string[];
@@ -109,6 +116,7 @@ export async function resolverScope(
     return Result.ok({
       clienteId: null,
       clienteNombre: null,
+      zonaHoraria: null,
       rol: null,
       permisos,
       modulos: derivarModulos(permisos),
@@ -142,6 +150,7 @@ export async function resolverScope(
   return Result.ok({
     clienteId,
     clienteNombre: cliente.nombre,
+    zonaHoraria: cliente.zonaHoraria.valor,
     rol: membresia?.rolCodigo ?? null,
     permisos,
     modulos: derivarModulos(permisos),

@@ -45,7 +45,7 @@ const makeCliente = (
     cuit: null,
     dbName: 'acme_sa',
     activo: overrides.activo ?? true,
-    zonaHoraria: ZonaHoraria.crear('America/Argentina/Buenos_Aires'),
+    zonaHoraria: ZonaHoraria.crear('Europe/Madrid'),
   });
   if (overrides.deleted) {
     cliente.softDelete();
@@ -107,6 +107,7 @@ describe('resolverScope (WU-7.1 — matriz de permisos)', () => {
       expect(result.getValue()).toEqual({
         clienteId: null,
         clienteNombre: null,
+        zonaHoraria: null,
         rol: null,
         permisos: [...PARES_VALIDOS],
         modulos: MODULOS_DE_BYPASS,
@@ -211,6 +212,7 @@ describe('resolverScope (WU-7.1 — matriz de permisos)', () => {
       expect(result.getValue()).toEqual({
         clienteId: 'cliente-1',
         clienteNombre: 'Acme SA',
+        zonaHoraria: 'Europe/Madrid',
         rol: 'ADMINISTRADOR',
         permisos: [...PARES_VALIDOS],
         modulos: MODULOS_DE_BYPASS,
@@ -236,6 +238,7 @@ describe('resolverScope (WU-7.1 — matriz de permisos)', () => {
       expect(result.getValue()).toEqual({
         clienteId: 'cliente-1',
         clienteNombre: 'Acme SA',
+        zonaHoraria: 'Europe/Madrid',
         rol: 'TECNICO',
         permisos: [...PARES_VALIDOS],
         modulos: MODULOS_DE_BYPASS,
@@ -259,6 +262,7 @@ describe('resolverScope (WU-7.1 — matriz de permisos)', () => {
       expect(result.getValue()).toEqual({
         clienteId: 'cliente-1',
         clienteNombre: 'Acme SA',
+        zonaHoraria: 'Europe/Madrid',
         rol: null,
         permisos: [...PARES_VALIDOS],
         modulos: MODULOS_DE_BYPASS,
@@ -291,6 +295,7 @@ describe('resolverScope (WU-7.1 — matriz de permisos)', () => {
       expect(result.getValue()).toEqual({
         clienteId: 'cliente-1',
         clienteNombre: 'Acme SA',
+        zonaHoraria: 'Europe/Madrid',
         rol: 'TECNICO',
         permisos: ['TICKETS:ALTAS', 'TICKETS:LECTURA', 'EQUIPOS:LECTURA'],
         modulos: ['TICKETS', 'EQUIPOS'],

@@ -81,6 +81,10 @@ export class ResolverEncuestaTokenService {
       prismaClient: this.prismaService.getTenantClient(cliente.dbName),
       dbName: cliente.dbName,
       clienteId: token.clienteId,
+      // Sale del `cliente` que este servicio YA resolvió arriba: cero queries
+      // extra. Va acá porque este camino entra por token público y no pasa
+      // por `TenantGuard`, que es el que la bindea en el resto del sistema.
+      zonaHoraria: cliente.zonaHoraria,
     });
 
     return Result.ok({

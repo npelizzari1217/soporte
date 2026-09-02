@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { ZonaHoraria } from '../domain/zona-horaria';
 
 /**
  * TenantContextData — datos del tenant activo para el request actual.
@@ -14,6 +15,23 @@ export interface TenantContextData {
   dbName: string;
   /** UUID del cliente en la DB master (master.clientes.id). */
   clienteId: string;
+  /**
+   * Zona horaria operativa del tenant activo (sdd/zona-horaria-por-tenant,
+   * D3). La bindean los DOS caminos que resuelven el cliente contra master:
+   * `TenantGuard` (pipeline HTTP) y `ResolverEncuestaTokenService` (token
+   * público de encuesta, sin JWT). Los dos la sacan del mismo `findById` que
+   * ya ejecutan — cero queries nuevas. Los repositorios de infraestructura
+   * que necesiten la zona la leen de acá, nunca re-consultando
+   * `IClienteRepository`.
+   *
+   * OPCIONAL, igual criterio que `enTransaccion`/`postCommitCallbacks`: los
+   * schedulers de barrido (`preventivo-sweep.scheduler.ts`,
+   * `sla-sweep.scheduler.ts`) y los tests de infraestructura bindean un
+   * `TenantContextData` a mano y NO la llevan — quedan sin tocar (fuera de
+   * alcance de WU-3, C3a; ver la deuda abierta de D3 en `tasks.md`).
+   * `undefined` en ese caso, nunca un default silencioso.
+   */
+  zonaHoraria?: ZonaHoraria;
   /**
    * `true` cuando `prismaClient` es un `Prisma.TransactionClient` (re-bindeado
    * por `PrismaTenantTransactionRunner.run()` al abrir una transacción).
