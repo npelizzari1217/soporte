@@ -9,9 +9,11 @@ cubre `*.spec.ts` (el `tsconfig` los incluye a propósito). Un campo obligatorio
 typecheck en cada fixture que construya la entidad. Igual hay que correr los dos: `pnpm test`
 transpila sin chequear tipos.
 
+<!-- pack:skip -->
 > **RE-PLANIFICACIÓN (enmienda de dos capas).** WU-0 y WU-1 ya están entregados y el
 > `design.md` verificó que la enmienda no los toca: quedan `[x]` y no se re-planifican. Todo
 > lo demás se reordena para absorber D10–D15.
+<!-- /pack:skip -->
 
 ## Corte de PR
 
@@ -115,6 +117,7 @@ decisión de diseño nueva.
 
 Depende de: WU-1. C2c puede ir en paralelo con WU-3.
 
+<!-- pack:skip -->
 > **RE-CORTE DE C2a/C2b (2026-09-01).** El corte anterior dejaba `ClienteProps.zonaHoraria`
 > obligatoria en C2a y su único punto de asignación en C2b, o sea C2a con el `pnpm typecheck`
 > en rojo: `crear-cliente.use-case.ts:139` construye `ClienteEntity.create()` sin la zona y es
@@ -126,6 +129,7 @@ Depende de: WU-1. C2c puede ir en paralelo con WU-3.
 > Verificado además que el fixup masivo de specs **no existe**: 32 specs construyen
 > `ClienteEntity.create`, y **0** de ellos llaman a `.save(` o `toPersistence`, así que ninguno
 > llega al mapper. El radio real era un solo archivo de producción.
+<!-- /pack:skip -->
 
 - [x] 2.1 RED: spec de `ClienteEntity` — `configurarZonaHoraria()` cambia el valor y hace
       `touch()`; `ClienteProps.zonaHoraria` es obligatoria (sin `?`, sin `??` de default).
@@ -180,6 +184,7 @@ Depende de: WU-1. C2c puede ir en paralelo con WU-3.
 · **`size:exception` (+155) aprobada el 2026-09-01**
 · rollback: la columna y el campo obligatorio del alta se van juntos.
 
+<!-- pack:skip -->
 > **AGUJERO DETECTADO EN APPLY (2026-09-01).** El re-corte anterior dejó un **tercer
 > consumidor** del campo sin asignar a ningún work unit: `crear-cliente-dialog.tsx` del
 > frontend, que se usa desde `clientes-admin-view.tsx` y no manda `zonaHoraria`
@@ -190,6 +195,7 @@ Depende de: WU-1. C2c puede ir en paralelo con WU-3.
 > líneas y 9 archivos de código, que rompería el tope OBLIGATORIO de 5 archivos.
 > **Ventana asumida**: entre el merge de C2a-back y el de C2a-front, el alta desde la UI
 > queda rota. La cadena todavía no está en `main` y el repo tiene un solo desarrollador.
+<!-- /pack:skip -->
 
 - [x] 2.7a RED: test del diálogo de alta — sin zona elegida el submit no dispara, y con zona
       elegida el payload la incluye. Recorre `zonasValidas`/`zonasInvalidas` del mismo fixture
@@ -253,6 +259,7 @@ Depende de: WU-1. C2c puede ir en paralelo con WU-3.
 > lado. Sin esto, C2c arranca roto. `csatHabilitado` ya sentó el precedente contrario: viaja en
 > el listado justamente para que su diálogo prellene con el valor real.
 
+<!-- pack:skip -->
 > **Nota de cierre de C2b (2026-09-02, apply).** El "422" del enunciado de 2.8 chocaba con el
 > repo: `AppModule`'s `ValidationPipe` global (`whitelist+transform`, sin
 > `errorHttpStatusCode`) devuelve **400**, no 422, para cualquier rechazo de
@@ -325,6 +332,7 @@ Depende de: WU-1. C2c puede ir en paralelo con WU-3.
 > `pnpm lint` en verde, corridos explícitamente después de cada fix. GGA (pre-commit):
 > `STATUS: FAILED` (x3, hallazgos reales, 0 falsos positivos) → `STATUS: PASSED` en el cuarto
 > intento.
+<!-- /pack:skip -->
 
 > **Corrección posterior (2026-09-02, C2b-fix).** La nota de arriba describe la resolución
 > tal como se hizo en el momento, pero esa resolución quedó identificada como el defecto:
@@ -453,6 +461,7 @@ de C2b, que sigue funcionando igual por HTTP.
 > `clientes-admin-view.test.tsx` también tipeaba texto libre en el mismo campo y se
 > adaptó a la interacción del combobox (click + tipear + elegir la opción).
 >
+<!-- pack:skip -->
 > **Segunda ronda de GGA: 2 BLOCKING más, ambos reales.** (1) El filtro comparaba
 > `zona.toLowerCase().includes(texto)` sin normalizar guiones bajos: tipear "buenos aires"
 > (como escribe una persona) NO matcheaba `America/Argentina/Buenos_Aires` — la zona por
@@ -518,6 +527,7 @@ de C2b, que sigue funcionando igual por HTTP.
 > 5 MINOR en la 1ª ronda, 2 BLOCKING + 2 MINOR en la 2ª, 2 BLOCKING + 1 MINOR en la 3ª,
 > 1 BLOCKING en la 4ª, todos reales, verificados contra el código antes de aceptarlos, 0
 > falsos positivos) → corregidos antes de volver a intentar el commit.
+<!-- /pack:skip -->
 
 **Commit C2c-0** — `feat(clientes): combobox de zonas con catalogo propio, y el alta lo usa`
 · **~689 líneas reales** (estimado ~250) · 3 archivos de código
