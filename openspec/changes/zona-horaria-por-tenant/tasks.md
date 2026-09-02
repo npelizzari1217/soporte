@@ -372,6 +372,44 @@ Depende de: WU-1. C2c puede ir en paralelo con WU-3.
 vuelve la capa 422 inalcanzable y el `[CRITICAL]` que se saltaba el pipe — no rompe nada
 de C2b, que sigue funcionando igual por HTTP.
 
+> **DECISIÓN DEL USUARIO (2026-09-02): el campo de zona es un COMBOBOX CON BÚSQUEDA, en las
+> dos pantallas.** Motivo: evitar errores de tipeo. Eso obliga a un commit previo, porque
+> C2a-front dejó el alta como **texto libre** y no puede quedar una UI distinta por pantalla
+> para el mismo dato.
+>
+> **Trampa del catálogo, re-medida el 2026-09-02 en Node 24.20.0.** `Intl.supportedValuesOf('timeZone')`
+> devuelve 418 zonas y le faltan DOS que esta app necesita:
+>
+> | candidato | ¿está en Intl? |
+> |---|---|
+> | `America/Argentina/Buenos_Aires` | **NO** — la zona de los dos tenants de producción |
+> | `UTC` | **NO** |
+> | `America/Buenos_Aires` (alias viejo) | sí |
+>
+> Un select armado sólo desde `Intl` no ofrecería la zona que ambos tenants tienen hoy. El
+> catálogo es `Intl` **∪** un conjunto explícito de faltantes, y en el diálogo de configuración
+> además la zona vigente del tenant.
+>
+> **La validez NO la define el catálogo.** `esZonaValida` sigue siendo la única fuente de verdad
+> —`formato-fecha.ts:241` ya lo documenta—; el catálogo es sólo la ayuda visual. Nunca los mezcles.
+>
+> **Sin dependencias nuevas**: `@radix-ui/react-popover` ya está instalado y alcanza para el
+> combobox (popover + input + lista filtrada). El `select.tsx` existente es un select pelado, no sirve.
+
+- [ ] 2.9c RED: test del catálogo — incluye `America/Argentina/Buenos_Aires` y `UTC` aunque
+      `Intl.supportedValuesOf('timeZone')` no los traiga; sin duplicados; ordenado. El test fija
+      los dos faltantes por nombre, no derivándolos de `Intl`.
+- [ ] 2.9d RED: test del combobox — filtra por texto, no deja elegir un valor fuera del catálogo,
+      y admite un `valorVigente` que se muestra aunque no esté en el catálogo base.
+- [ ] 2.9e GREEN: catálogo de zonas y componente combobox, construido sobre
+      `@radix-ui/react-popover`, siguiendo los patrones de `src/components/ui/select.tsx`.
+- [ ] 2.9f GREEN: migrar `crear-cliente-dialog.tsx` de `<Input>` de texto libre al combobox.
+      Sin default preseleccionado: la zona sigue siendo explícita en el alta.
+
+**Commit C2c-0** — `feat(clientes): combobox de zonas con catalogo propio, y el alta lo usa`
+· ~250 líneas · 3 archivos de código · rollback: el alta vuelve al texto libre, que ya funcionaba.
+
+
 - [ ] 2.10 RED: test del schema Zod recorriendo `zonasValidas`/`zonasInvalidas` del mismo
       fixture — veredicto idéntico al del VO para cada candidato.
 - [ ] 2.11 RED: centinela de tope en `frontend/src/features/clientes/limites.ts` que fije el
@@ -955,6 +993,7 @@ C0 → C1 → C2a → C3a ─┬─ C5a ─┬─ C5b ────────�
 | C2a-back | **~555 real** — excepción +155 | 6 | **hecho** |
 | C2a-front | ~100 | 3 | pendiente |
 | C2b | ~250 | 3 | pendiente |
+| C2c-0 | ~250 | 3 | pendiente |
 | C2c | ~450 — **excepción +50** | 4 | pendiente |
 | C3a | ~220 | 3 | pendiente |
 | C3b | ~240 | 5 | pendiente |
