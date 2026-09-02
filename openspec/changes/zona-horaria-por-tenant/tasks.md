@@ -396,18 +396,132 @@ de C2b, que sigue funcionando igual por HTTP.
 > **Sin dependencias nuevas**: `@radix-ui/react-popover` ya está instalado y alcanza para el
 > combobox (popover + input + lista filtrada). El `select.tsx` existente es un select pelado, no sirve.
 
-- [ ] 2.9c RED: test del catálogo — incluye `America/Argentina/Buenos_Aires` y `UTC` aunque
+- [x] 2.9c RED: test del catálogo — incluye `America/Argentina/Buenos_Aires` y `UTC` aunque
       `Intl.supportedValuesOf('timeZone')` no los traiga; sin duplicados; ordenado. El test fija
       los dos faltantes por nombre, no derivándolos de `Intl`.
-- [ ] 2.9d RED: test del combobox — filtra por texto, no deja elegir un valor fuera del catálogo,
+- [x] 2.9d RED: test del combobox — filtra por texto, no deja elegir un valor fuera del catálogo,
       y admite un `valorVigente` que se muestra aunque no esté en el catálogo base.
-- [ ] 2.9e GREEN: catálogo de zonas y componente combobox, construido sobre
+- [x] 2.9e GREEN: catálogo de zonas y componente combobox, construido sobre
       `@radix-ui/react-popover`, siguiendo los patrones de `src/components/ui/select.tsx`.
-- [ ] 2.9f GREEN: migrar `crear-cliente-dialog.tsx` de `<Input>` de texto libre al combobox.
+- [x] 2.9f GREEN: migrar `crear-cliente-dialog.tsx` de `<Input>` de texto libre al combobox.
       Sin default preseleccionado: la zona sigue siendo explícita en el alta.
 
+> **Nota de cierre de C2c-0 (2026-09-02, apply).** `obtenerCatalogoZonasHorarias()`
+> (`frontend/src/shared/lib/zonas-horarias.ts`) y `ZonaHorariaCombobox`
+> (`frontend/src/components/ui/zona-horaria-combobox.tsx`) construidos sobre
+> `@radix-ui/react-popover`, con `role="combobox"`/`aria-expanded`/`aria-controls`/
+> `aria-autocomplete="list"`/`aria-activedescendant`, navegación por flechas (Arriba Y
+> Abajo reabren la lista si está cerrada), Enter para elegir y Escape para descartar sin
+> comitear — verificado con tests de teclado, no solo de mouse. `onChange` solo se
+> dispara al elegir una opción de la lista (click o Enter sobre la resaltada): tipear
+> nunca comitea texto libre, verificado con un test dedicado.
+>
+> **Hallazgo propio, verificado con `node -e`, ampliado por el hook de pre-commit
+> (GGA).** El fixture compartido (`shared-fixtures/formato-fecha-paridad.json`) tiene
+> candidatos de `zonasValidas` válidos para `esZonaValida` pero ausentes del catálogo
+> nativo de `Intl.supportedValuesOf('timeZone')`: además de `America/Argentina/Buenos_Aires`
+> y `UTC` (los dos que el orquestador ya había medido), el mismo mecanismo de
+> alias-canónico-vs-IANA afecta a `Asia/Kolkata` (Intl solo trae el alias viejo
+> `Asia/Calcutta`) y a `Etc/GMT+5`. GGA lo marcó BLOCKING citando AGENTS.md ("un frontend
+> más estricto rechaza datos que el servidor aceptaría") con un escenario concreto: un
+> ROOT creando un tenant en India tipea "Kolkata" y ve "Sin resultados" aunque el backend
+> lo aceptaría. Se agregaron los dos a `ZONAS_FALTANTES_EN_INTL`, verificado real (no solo
+> ausente de `Intl`, sino que además construye un `Intl.DateTimeFormat` válido) antes de
+> aceptar el hallazgo. Queda UN solo candidato del fixture fuera del catálogo, `+05:00`
+> (offset ISO, no un nombre de zona IANA — no es el mismo defecto de clase, es un formato
+> distinto que un catálogo de nombres no puede representar razonablemente), fijado con un
+> centinela independiente en `zonas-horarias.test.ts` Y en `crear-cliente-dialog.test.tsx`
+> (`EXCLUSION_ESPERADA`/`EXCLUSION_ESPERADA_DEL_FIXTURE`) — GGA también marcó BLOCKING que
+> el `it.each(zonasValidas.filter(...))` original podía reducirse en silencio (hasta
+> `it.each([])`, que Vitest 4 registra como cero tests y el archivo sigue en verde) sin que
+> nada lo notara; el centinela compara contra un array fijo, no derivado del catálogo bajo
+> prueba, así que una regresión futura del catálogo rompe ese assert antes de vaciar el
+> `it.each`. La paridad byte a byte del SCHEMA contra ese único offset restante queda para
+> la tarea 2.10 (no tocada en este commit).
+>
+> Otros tres hallazgos MINOR de la misma corrida de GGA, los tres reales y corregidos:
+> el JSDoc de `ZonaHoraria Combobox` colgaba de una constante interna en vez del export
+> (se movió arriba de `ZonaHoraria ComboboxProps`); dos citas de línea exacta a
+> `formato-fecha.ts:241` (misma familia de defecto que `app.module.ts:70` en C2b-fix — cita
+> el símbolo, nunca la línea, se corrigieron las dos); y `ArrowUp` con la lista cerrada no
+> la reabría (solo `ArrowDown` lo hacía) y dejaba `aria-activedescendant` apuntando a un id
+> que no existía en el DOM — se igualó el comportamiento al de `ArrowDown` y el `<ul
+> role="listbox">` ahora se renderiza siempre (con "Sin resultados" adentro cuando el
+> filtro no matchea nada), así `aria-controls` nunca referencia un id ausente; test de
+> regresión agregado.
+>
+> `clientes-admin-view.test.tsx` también tipeaba texto libre en el mismo campo y se
+> adaptó a la interacción del combobox (click + tipear + elegir la opción).
+>
+> **Segunda ronda de GGA: 2 BLOCKING más, ambos reales.** (1) El filtro comparaba
+> `zona.toLowerCase().includes(texto)` sin normalizar guiones bajos: tipear "buenos aires"
+> (como escribe una persona) NO matcheaba `America/Argentina/Buenos_Aires` — la zona por
+> DEFECTO del producto (D8) — porque el ID IANA usa `_`. Verificado con `node -e` antes de
+> aceptarlo. Fix: `normalizarParaBusqueda()` (NFD + strip de diacríticos + `_`→espacio +
+> minúsculas) aplicada a ambos lados de la comparación, así "méxico" también matchea
+> `America/Mexico_City`. (2) El tope de 50 resultados visibles no se comunicaba: con la
+> query vacía o una tan amplia como "america" (144+ matches reales, verificado), la lista
+> se veía completa pero mostraba solo 50 sin ningún indicio. Fix: fila de aviso
+> "Mostrando N de M — refiná la búsqueda" cuando el límite oculta resultados. **Causa raíz
+> señalada por el propio GGA y corregida en el mismo commit**: el test suite solo ejercitaba
+> un catálogo de 3 zonas inyectado por `catalogo` (sin guion bajo, sin superar el tope), así
+> que ningún test podía reproducir ninguno de los dos defectos — se agregaron dos tests
+> nuevos contra el catálogo REAL (`obtenerCatalogoZonasHorarias()`, sin la prop de test).
+>
+> 2 MINOR más de la misma ronda: `aria-controls` apuntaba al listbox incluso con el popover
+> cerrado (cuando `PopoverContent` está desmontado y ese id no existe en el DOM) — ahora es
+> `open ? listboxId : undefined`, con test dedicado; y `crear-cliente-dialog.tsx` hardcodeaba
+> `"cliente-zonaHoraria"` en paralelo a `` `cliente-${field.name}` ``  del resto de los
+> campos — se unificó con una constante `CAMPO_ZONA_HORARIA` tipada (`satisfies keyof
+> CrearClienteFormValues`) que arma el mismo id por template.
+>
+> **Tercera ronda de GGA: 2 BLOCKING más (foco/mouse) y 1 MINOR de ubicación de JSDoc,
+> todos reales.** (1) `onMouseDown` con `preventDefault()` solo estaba en cada `<li>` de
+> opción, no en `PopoverContent`: con hasta 50 resultados y `overflow-y-auto`, arrastrar el
+> propio scrollbar del popover (o clickear la fila "Mostrando N de M", que no tenía el
+> guard) dispara mousedown sobre el contenedor, no sobre una opción — sin `preventDefault`
+> ahí, el input pierde el foco, `onBlur` cierra la lista y revierte la búsqueda a mitad de
+> la interacción. Fix: el guard subió a `PopoverContent` completo (cubre scrollbar, padding
+> y la fila de aviso), y se sacó el de cada `<li>` por redundante. (2) `onFocus` es el único
+> disparador que reabre la lista, pero un input YA enfocado no vuelve a emitir `focus` —
+> exactamente el estado en que queda el campo después de elegir una opción (el mousedown
+> del popover está prevenido a propósito, así que el foco nunca se va). Sin un `onClick`
+> propio, "elegir una zona → notar que está mal → clickear el campo de nuevo" no hacía
+> nada; solo tipear o una flecha reabrían. Fix: `onClick={() => setOpen(true)}` en el input,
+> con test de regresión que reproduce exactamente esa secuencia (elegir → click → reabre).
+> MINOR: el JSDoc de `normalizarParaBusqueda` colgaba de la constante del regex de arriba
+> (`RANGO_DIACRITICOS_UNICODE`) en vez de la función que describe — se corrigió el orden.
+>
+> **Cuarta ronda de GGA: 1 BLOCKING más, real.** El `Enter` solo hacía `preventDefault()`
+> cuando había una opción resaltada (`activeIndex >= 0`); con la lista abierta pero sin
+> match — el estado "Sin resultados", o recién enfocado antes de tipear/navegar — Enter NO
+> se prevenía y burbujeaba al `<form>` que envuelve el campo, sometiéndolo. Secuencia real:
+> elegir `Europe/Madrid` (comitea el valor) → editar el texto a `Europe/Madriz` (la lista
+> pasa a "Sin resultados", pero `value` queda intacto por diseño) → Enter → el form somete
+> `Europe/Madrid` mientras la pantalla muestra `Europe/Madriz` sin confirmar — la pantalla
+> dice una cosa y se guarda otra. Fix: `preventDefault()` corre para CUALQUIER Enter con la
+> lista abierta, haya o no match; solo cuando hay uno se llama a `seleccionar()`. Test
+> agregado en `crear-cliente-dialog.test.tsx` (no en el combobox aislado, que no está
+> dentro de un `<form>` real): elegir una zona válida, editar a un candidato inválido,
+> Enter, assert que el POST nunca se dispara.
+>
+> **Radio real: 689 líneas (352 de código en 3 archivos + 337 de test), muy por encima
+> de la estimación de ~250** — verificado con `git diff HEAD --numstat` + `wc -l` de los
+> archivos nuevos, después de las CUATRO rondas de correcciones de GGA. Archivos de código:
+> exactamente los 3 declarados (`crear-cliente-dialog.tsx` modificado, `zona-horaria-combobox.tsx`
+> y `zonas-horarias.ts` nuevos). Se reporta la cifra real sin partir el commit por decisión
+> explícita del prompt de lanzamiento ("Uno solo" commit, mensaje ya fijado) — queda para
+> que el orquestador padre decida si amerita excepción, siguiendo el mismo patrón de
+> C2a-back/C2b en este WU. `pnpm test` (167/167 archivos, 1124/1124 tests), `pnpm type-check`
+> y `pnpm lint` en verde (cero warnings), los tres corridos explícitamente tras cada ronda
+> de correcciones. `backend/` no se tocó. GGA (pre-commit): `STATUS: FAILED` ×4 (2 BLOCKING +
+> 5 MINOR en la 1ª ronda, 2 BLOCKING + 2 MINOR en la 2ª, 2 BLOCKING + 1 MINOR en la 3ª,
+> 1 BLOCKING en la 4ª, todos reales, verificados contra el código antes de aceptarlos, 0
+> falsos positivos) → corregidos antes de volver a intentar el commit.
+
 **Commit C2c-0** — `feat(clientes): combobox de zonas con catalogo propio, y el alta lo usa`
-· ~250 líneas · 3 archivos de código · rollback: el alta vuelve al texto libre, que ya funcionaba.
+· **~689 líneas reales** (estimado ~250) · 3 archivos de código
+· rollback: el alta vuelve al texto libre, que ya funcionaba.
 
 
 - [ ] 2.10 RED: test del schema Zod recorriendo `zonasValidas`/`zonasInvalidas` del mismo

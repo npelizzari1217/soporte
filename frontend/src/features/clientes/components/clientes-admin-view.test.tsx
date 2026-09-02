@@ -68,7 +68,12 @@ describe("ClientesAdminView", () => {
     await user.type(screen.getByLabelText(/nombre.*admin/i), "Ana");
     await user.type(screen.getByLabelText(/apellido.*admin/i), "Gómez");
     await user.type(screen.getByLabelText(/contraseña/i), "password123");
-    await user.type(screen.getByLabelText(/zona horaria/i), "America/Argentina/Buenos_Aires");
+    // Zona horaria: combobox con búsqueda (C2c-0), nunca texto libre — se
+    // filtra por el nombre completo (único match) y se elige de la lista.
+    const zonaInput = screen.getByLabelText(/zona horaria/i);
+    await user.click(zonaInput);
+    await user.type(zonaInput, "America/Argentina/Buenos_Aires");
+    await user.click(await screen.findByRole("option", { name: "America/Argentina/Buenos_Aires" }));
     await user.click(screen.getByRole("button", { name: /crear/i }));
 
     await waitFor(() => expect(Object.keys(capturedBody).sort()).toEqual(
