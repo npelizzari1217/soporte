@@ -545,11 +545,21 @@ de C2b, que sigue funcionando igual por HTTP.
       `z.enum`), `types.ts` y `configurar-zona-horaria-dialog.tsx` espejando
       `configurar-csat-dialog.tsx`, con el aviso de re-lectura histórica antes de guardar.
 - [ ] 2.14 GREEN: `backend/ayuda/zona-horaria.md` (frontmatter `slug` + `titulo`).
-      **Explica las DOS capas** (enmienda): el reloj de negocio, que es del tenant y gobierna
-      SLA, vencimientos, CSV y prefill; y la vista personal, que es solo lectura de pantalla.
-      Más: dónde se configura la operativa, la propagación de hasta 15 minutos por el refresh
-      del token, y que los instantes históricos se re-leen en la zona nueva. Una Ayuda que
-      describa una sola capa miente desde el día uno. **Va en este commit.**
+      **Documenta SOLO lo que ya funciona al cerrar C2c** (decisión del usuario, 2026-09-02):
+      qué es la zona operativa del cliente, dónde se configura y quién puede, y que es
+      obligatoria al dar de alta. Tiene que decir **explícitamente que todavía NO cambia lo que
+      se ve en pantalla ni los cálculos de vencimientos**. **Va en este commit.**
+
+> **POR QUÉ LA AYUDA ARRANCA INCOMPLETA — Y CÓMO SE COMPLETA.** El enunciado original de 2.14
+> pedía describir las dos capas de reloj y que la zona gobierna SLA, vencimientos, CSV y
+> prefill. Verificado el 2026-09-02: **nada de eso existe al cerrar C2c.** WU-3 (propagación),
+> WU-4 (frontend), WU-5 (CSV), WU-6 (compras) y WU-8 (vista del usuario) están todos
+> pendientes. Publicar hoy ese artículo haría que alguien creyera que cambiar la zona ajusta
+> sus vencimientos, y no los ajusta: es justo el daño que la regla del proyecto describe
+> cuando dice que **una Ayuda que miente es peor que una que falta**.
+>
+> La deuda NO queda acá: cada work unit que le agrega una capa tiene su propia tarea de Ayuda
+> (4.17, 5.10, 6.12, 8.21). No las borres — sin ellas el artículo queda mintiendo por omisión.
 
 **Commit C2c** — `feat(clientes): configurar la zona operativa desde el ABM`
 · ~450 líneas · 4 archivos de código · **`size:exception` (+50) aprobada el 2026-09-01**
@@ -752,6 +762,10 @@ dejarlo contiguo a C8c minimiza el churn. Rollback: idem C4a-3.
       invariante universal "pantalla = CSV byte a byte": pasa a la forma condicionada de D15
       (`pantalla EN VISTA DE TENANT = CSV, byte a byte`). Un assert correcto con un
       comentario falso arriba es documentación caducada.
+- [ ] 4.17 AYUDA: extender `backend/ayuda/zona-horaria.md` — ahora la zona del tenant ya gobierna lo que se ve en pantalla.
+      El artículo se publicó incompleto a propósito en C2c (ver la nota de 2.14): esta
+      tarea es la que lo vuelve cierto para este work unit. No la muevas a un commit
+      final de documentación — va adentro de este work unit, con el código que la causa.
 
 **Commit C4a-7** — `refactor(frontend): elimina el formateo con offset fijo del frontend`
 · ~135 líneas · 1 archivo de código · **cierra la ventana de convivencia**. Rollback:
@@ -833,6 +847,10 @@ los otros tres exportadores.
 - [ ] 5.9 GREEN: los **cuatro** exportadores que consumen `armarExportCsv` —
       `exportar-compras`, `exportar-tickets`, `exportar-equipos`, `exportar-reparaciones` —
       inyectan el puerto y pasan la zona. Ajustar sus specs.
+- [ ] 5.10 AYUDA: extender `backend/ayuda/zona-horaria.md` — ahora la zona del tenant ya gobierna las fechas del CSV exportado.
+      El artículo se publicó incompleto a propósito en C2c (ver la nota de 2.14): esta
+      tarea es la que lo vuelve cierto para este work unit. No la muevas a un commit
+      final de documentación — va adentro de este work unit, con el código que la causa.
 
 **Commit C5c** — `refactor(shared): el sufijo de export usa la zona del tenant`
 · ~290 líneas · 5 archivos de código · rollback: vuelve al sufijo con offset fijo.
@@ -899,6 +917,10 @@ la columna sobreviven.
       lo pasa en `item-compra.entity.ts:619`. `validarFechaEtapa` no cambia de firma y el
       dominio no gana ninguna dependencia: D6 intacto. El error nombra el reloj
       genéricamente; el ID IANA lo agrega el frontend, que sí lo tiene (D14, decisión 5).
+- [ ] 6.12 AYUDA: extender `backend/ayuda/zona-horaria.md` — ahora la zona del tenant ya gobierna la validación de fechas de compras.
+      El artículo se publicó incompleto a propósito en C2c (ver la nota de 2.14): esta
+      tarea es la que lo vuelve cierto para este work unit. No la muevas a un commit
+      final de documentación — va adentro de este work unit, con el código que la causa.
 
 **Commit C6c** — `feat(compras): el rechazo de fecha futura nombra el día y el reloj del tenant`
 · ~110 líneas · 2 archivos de código · rollback: vuelve al mensaje genérico.
@@ -1028,6 +1050,10 @@ migrados) · rollback: esas pantallas vuelven a una sola lectura; el resto no se
 - [ ] 8.20 GREEN: mismo cambio en `equipos/components/equipo-componentes-section.tsx` (4 call
       sites), `edilicia/components/comentarios-dialog.tsx` (2) y
       `clientes/components/configurar-correo-dialog.tsx` (2), con sus tests.
+- [ ] 8.21 AYUDA: extender `backend/ayuda/zona-horaria.md` — ahora existe la vista personal: el usuario elige su zona de LECTURA, y el reloj de negocio sigue siendo el del tenant.
+      El artículo se publicó incompleto a propósito en C2c (ver la nota de 2.14): esta
+      tarea es la que lo vuelve cierto para este work unit. No la muevas a un commit
+      final de documentación — va adentro de este work unit, con el código que la causa.
 
 **Commit C8e** — `feat(equipos,edilicia,clientes): doble lectura en los instantes de la pantalla`
 · ~140 líneas · 3 archivos de código · **exige C4a-4 y C4a-5** · rollback: idem C8d.
