@@ -13,7 +13,7 @@
 > nada sobre el PR ni sobre el tamaño de la rama, porque no los podés ver.
 
 <!-- BEGIN:global -->
-<!-- Generado por sync-agents.py desde C:\trabajos\AGENTS.md (v96efe583).
+<!-- Generado por sync-agents.py desde ~/proyectos/AGENTS.md (v13e1a60d).
      NO EDITAR A MANO: el proximo sync pisa los cambios.
      Para cambiar una regla universal, edita el global y volve a correr el script.
      Para que este proyecto se aparte, usa la seccion [Anulaciones] de mas abajo. -->
@@ -24,6 +24,11 @@
   **mensajes de error**. Solo quedan en inglés los **identificadores y nombres de archivo**
   (variables, funciones, clases, tipos, claves, rutas). El corte: si lo lee una persona,
   español; si lo lee el compilador, inglés.
+- **Las descripciones de test (`describe`/`it`) son la EXCEPCIÓN: no tienen idioma fijo.**
+  Se sigue el idioma de los `it()` **del archivo que se toca**, no el de la regla de arriba.
+  **Un `it()` nuevo en inglés NO es un hallazgo** si sus vecinos del archivo están en
+  inglés, y viceversa. Los comentarios DENTRO del cuerpo del test sí van en español
+  siempre. Si el repo tiene un censo medido, vive en su sección propia, no acá.
 - **La regla NO es retroactiva.** No reportes copy, mensajes de error ni comentarios en
   inglés preexistentes: **solo los nuevos**, y solo en las líneas que el diff agrega o
   reescribe. Un archivo con copy viejo en inglés no es un hallazgo.
