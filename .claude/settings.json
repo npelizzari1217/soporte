@@ -2,9 +2,10 @@
   "autoMode": {
     "environment": [
       "$defaults",
+      "**Nota:** `autoMode` solo aplica cuando la sesion corre en auto mode. Con `defaultMode: bypassPermissions` (el de todos los dias) NO se evalua: la proteccion real vive en `permissions.deny` del settings global.",
       "### Este repositorio — Soporte",
       "**Primary use of Claude Code**: development of Soporte, a multi-tenant ticketing SaaS",
-      "**Trusted repo**: C:\\trabajos\\soporte and its origin remote https://github.com/npelizzari1217/soporte.git — private repository. Private means confidential material may be committed here, but secrets and credentials are never cleared by visibility.",
+      "**Trusted repo**: ~/proyectos/soporte and its origin remote https://github.com/npelizzari1217/soporte.git — private repository. Private means confidential material may be committed here, but secrets and credentials are never cleared by visibility.",
       "**Repository visibility**: private (npelizzari1217/soporte, via gh)",
       "**Default / protected branches**: main is the default branch; gh lists no branch protection rules or rulesets, so the branch-and-PR policy is enforced by convention, not by the forge",
       "**Source control**: npelizzari1217/soporte and its origin remote only — no additional orgs configured",
