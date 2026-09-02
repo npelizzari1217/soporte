@@ -26,6 +26,7 @@ const CLIENTE: Cliente = {
   dbName: "cliente_uno",
   activo: true,
   csatHabilitado: false,
+  zonaHoraria: "America/Argentina/Buenos_Aires",
 };
 
 function buildCorreo(overrides: Partial<ClienteCorreo> = {}): ClienteCorreo {

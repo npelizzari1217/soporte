@@ -1,5 +1,12 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { configurarCorreoSchema, crearClienteSchema, editarClienteSchema } from "./schemas";
+import {
+  configurarCorreoSchema,
+  configurarZonaHorariaSchema,
+  crearClienteSchema,
+  editarClienteSchema,
+} from "./schemas";
 import {
   USUARIO_APELLIDO_MAX_LENGTH,
   USUARIO_EMAIL_MAX_LENGTH,
@@ -237,4 +244,49 @@ describe("crearClienteSchema — tope del email del administrador", () => {
     expect(adminEmail.length).toBeGreaterThan(USUARIO_EMAIL_MAX_LENGTH);
     expect(crearClienteSchema.safeParse({ ...CLIENTE_VALIDO, adminEmail }).success).toBe(false);
   });
+});
+
+/**
+ * `configurarZonaHorariaSchema` — tarea 2.10 (RED,
+ * `openspec/changes/zona-horaria-por-tenant/tasks.md`, D2).
+ *
+ * Recorre el MISMO fixture compartido que usa el VO del backend
+ * (`backend/src/shared/domain/zona-horaria.spec.ts`) para que el veredicto
+ * de este schema sea idéntico al del VO para cada candidato: `zonasValidas`
+ * tiene que dar `success: true` y `zonasInvalidas` tiene que dar
+ * `success: false`, sin excepciones. NO se apunta a `crearClienteSchema`:
+ * ese schema ya aplica `esZonaValida` desde C2a-front y no dejaría ver que
+ * `configurarZonaHorariaSchema` (el schema del diálogo de EDICIÓN, tarea
+ * 2.13) tenía la falta que este test nació probando — ver el
+ * JSDoc de `configurarZonaHorariaSchema` en `schemas.ts`.
+ */
+interface FixtureParidadZonas {
+  zonasValidas: string[];
+  zonasInvalidas: string[];
+}
+
+const RUTA_FIXTURE_ZONAS = join(__dirname, "../../../../shared-fixtures/formato-fecha-paridad.json");
+
+function cargarFixtureZonas(): FixtureParidadZonas {
+  return JSON.parse(readFileSync(RUTA_FIXTURE_ZONAS, "utf-8")) as FixtureParidadZonas;
+}
+
+const { zonasValidas: zonasValidasDelFixture, zonasInvalidas: zonasInvalidasDelFixture } = cargarFixtureZonas();
+
+describe("configurarZonaHorariaSchema — zonaHoraria: recorre el fixture compartido (D2, tarea 2.10)", () => {
+  it.each(zonasValidasDelFixture)(
+    "acepta %s — mismo veredicto que esZonaValida en el VO del backend",
+    (candidata) => {
+      const resultado = configurarZonaHorariaSchema.safeParse({ zonaHoraria: candidata });
+      expect(resultado.success).toBe(true);
+    },
+  );
+
+  it.each(zonasInvalidasDelFixture)(
+    "rechaza %s — mismo veredicto que esZonaValida en el VO del backend",
+    (candidata) => {
+      const resultado = configurarZonaHorariaSchema.safeParse({ zonaHoraria: candidata });
+      expect(resultado.success).toBe(false);
+    },
+  );
 });

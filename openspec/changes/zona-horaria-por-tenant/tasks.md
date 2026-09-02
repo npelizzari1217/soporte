@@ -534,21 +534,120 @@ de C2b, que sigue funcionando igual por HTTP.
 · rollback: el alta vuelve al texto libre, que ya funcionaba.
 
 
-- [ ] 2.10 RED: test del schema Zod recorriendo `zonasValidas`/`zonasInvalidas` del mismo
+- [x] 2.10 RED: test del schema Zod recorriendo `zonasValidas`/`zonasInvalidas` del mismo
       fixture — veredicto idéntico al del VO para cada candidato.
-- [ ] 2.11 RED: centinela de tope en `frontend/src/features/clientes/limites.ts` que fije el
+- [x] 2.11 RED: centinela de tope en `frontend/src/features/clientes/limites.ts` que fije el
       64 contra un valor independiente, no derivado de la propia constante.
-- [ ] 2.12 RED: test del diálogo — el select siempre incluye el valor vigente del tenant
+- [x] 2.12 RED: test del diálogo — el select siempre incluye el valor vigente del tenant
       aunque no esté en `Intl.supportedValuesOf('timeZone')`, y al reabrir sincroniza con
       `reset(valoresVigentes)`. El fixture debe contener el valor fuera de catálogo.
-- [ ] 2.13 GREEN: `limites.ts`, `schemas.ts` (`z.string().refine(esZonaValida)`, nunca
+
+  > **Nota de cierre RED (2026-09-02, apply).** Las tres tareas quedan en rojo A
+  > PROPÓSITO — no se implementó 2.13 ni 2.14, tal como pide el corte de esta corrida.
+  > `crearClienteSchema.zonaHoraria` (C2a-front) ya aplica `esZonaValida` correctamente
+  > contra las 8 `zonasValidas`/4 `zonasInvalidas` del fixture compartido, así que 2.10
+  > NO podía apuntar ahí sin dar un falso verde (un test que pasa antes de escribir
+  > código no mide nada — regla del proyecto). Se agregó `configurarZonaHorariaSchema`
+  > (`schemas.ts`) como PLACEHOLDER deliberadamente incompleto (`z.object({ zonaHoraria:
+  > z.string() })`, sin `.refine(esZonaValida)`) — es el schema del diálogo de EDICIÓN
+  > que 2.13 tiene que completar, y el test que lo recorre contra el fixture
+  > (`schemas.test.ts`) falla en las 4 `zonasInvalidas` por la ASERCIÓN
+  > (`expected true to be false`), no por un import roto. Mismo mecanismo para 2.11:
+  > `CLIENTE_ZONA_HORARIA_MAX_LENGTH` se agregó a `limites.ts` con el placeholder `0`
+  > (no `64`, para no dar falso verde), y `limites.test.ts` (archivo nuevo) falla por
+  > `expected +0 to be 64`. Para 2.12 se creó el esqueleto
+  > `configurar-zona-horaria-dialog.tsx` (nuevo) espejando `ConfigurarCsatDialog`/
+  > `EditarClienteDialog`, deliberadamente SIN el prop `valorVigente` del combobox y SIN
+  > `reset()` al reabrir — el test nuevo (`configurar-zona-horaria-dialog.test.tsx`)
+  > falla por `findByRole("option", ...)` (la opción `+05:00`, el único candidato de
+  > `zonasValidas` fuera de `obtenerCatalogoZonasHorarias()`, no aparece) y por
+  > `toHaveValue("UTC")` recibiendo `"Europe/Madrid"` tras reabrir — las dos, aserciones
+  > reales, no `TypeError`. `pnpm type-check` y `pnpm lint` en verde (sin `any`, sin
+  > casts). Canario: `pnpm test` (169 archivos, 1139 tests: 166/1132 en verde
+  > preexistentes intactos + 7 rojos nuevos de estas tres tareas, contra la base de
+  > 167/1124 — ningún test que ya estaba en verde se rompió).
+- [x] 2.13 GREEN: `limites.ts`, `schemas.ts` (`z.string().refine(esZonaValida)`, nunca
       `z.enum`), `types.ts` y `configurar-zona-horaria-dialog.tsx` espejando
       `configurar-csat-dialog.tsx`, con el aviso de re-lectura histórica antes de guardar.
-- [ ] 2.14 GREEN: `backend/ayuda/zona-horaria.md` (frontmatter `slug` + `titulo`).
+- [x] 2.14 GREEN: `backend/ayuda/zona-horaria.md` (frontmatter `slug` + `titulo`).
       **Documenta SOLO lo que ya funciona al cerrar C2c** (decisión del usuario, 2026-09-02):
       qué es la zona operativa del cliente, dónde se configura y quién puede, y que es
       obligatoria al dar de alta. Tiene que decir **explícitamente que todavía NO cambia lo que
       se ve en pantalla ni los cálculos de vencimientos**. **Va en este commit.**
+
+  > **Nota de cierre de 2.13/2.14 (2026-09-02, apply).** `CLIENTE_ZONA_HORARIA_MAX_LENGTH`
+  > sube a 64; `configurarZonaHorariaSchema` queda `z.string().max(64,
+  > mensajeDemasiadoLargo(...)).refine(esZonaValida)`. **Hallazgo propio sobre el `.max()`**:
+  > es defensa en profundidad provablemente inalcanzable hoy — ningún candidato puede pasar
+  > `esZonaValida` (basado en `Intl.DateTimeFormat`) y superar 64 caracteres a la vez, porque
+  > todo identificador IANA real y todo offset ISO soportado quedan muy por debajo. Se agregó
+  > igual, por instrucción explícita y por consistencia con el resto de `limites.ts` (todos
+  > los demás topes de este archivo están cableados a un `.max()`), pero **sin fabricar un
+  > test que finja distinguirlo de `esZonaValida`** — el JSDoc de la constante documenta la
+  > redundancia en vez de esconderla, mismo criterio que la nota de C2a-back sobre
+  > `equals()` y otros comentarios corregidos en este documento.
+  >
+  > `types.ts` agrega `Cliente.zonaHoraria` (ya expuesta por el backend desde 2.9b) y
+  > `ConfigurarZonaHorariaDto`. Radio real: **2 fixtures de test tipadas `: Cliente`**
+  > (`configurar-csat-dialog.test.tsx`, `configurar-correo-dialog.test.tsx`) quedaban sin el
+  > campo nuevo y rompían `pnpm type-check` — se les agregó
+  > `zonaHoraria: "America/Argentina/Buenos_Aires"`. `clientes-admin-view.test.tsx` NO
+  > necesitó tocarse: sus fixtures `CLIENTE_UNO`/`CLIENTE_INACTIVO` no están anotados
+  > `: Cliente` (se usan solo como payload JSON de MSW), así que TypeScript no los exige.
+  >
+  > `configurar-zona-horaria-dialog.tsx`: además de los dos huecos declarados
+  > (`valorVigente` y `reset()`), completar el GREEN real exigió `useConfigurarZonaHorariaCliente`
+  > nuevo en `use-clientes-mutations.ts` (espejo exacto de `useConfigurarCsatCliente`) — un
+  > quinto archivo de código no declarado en la tabla de `design.md` (que solo lista los 4:
+  > `schemas`/`limites`/`types`.ts y el diálogo), mismo patrón de radio-mayor-al-declarado que
+  > C2a-back/C2b/C2c-0 en este documento. `clienteId` quedó **opcional** (`clienteId?: string`,
+  > con `?? ""` al hook, mismo patrón que `SectorFormDialog`/`sector?.id ?? ""`): el diseño no
+  > lista ningún consumidor que monte este diálogo todavía (a diferencia de
+  > `ConfigurarCsatDialog`, que `cliente-acciones.tsx` ya monta) — **cablearlo ahí queda
+  > pendiente, no es parte de esta tarea, y se señala como riesgo abierto.**
+  >
+  > **Hallazgo propio, verificado con un debug aislado antes de aceptarlo.** El primer intento
+  > del test RED #6 (`el select incluye el valor vigente...`) seguía en rojo tras pasarle
+  > `valorVigente`: el combobox es el ÚNICO campo del formulario, así que es el primer elemento
+  > tabulable y Radix Dialog lo autofocaliza al abrir — eso deja el popover YA abierto antes de
+  > que el test haga su propio click, y ese click (el input es un `PopoverAnchor`, no un
+  > `PopoverTrigger` registrado por el dismissable layer de Radix) se interpreta como un click
+  > AFUERA y lo cierra. Se confirmó con un test de debug descartable (`aria-expanded` ya en
+  > `"true"` ANTES del click del test) antes de tocar producción. Fix:
+  > `onOpenAutoFocus={(e) => e.preventDefault()}` en `DialogContent`, mismo guard que
+  > `PopoverContent` ya usa en `zona-horaria-combobox.tsx` por un motivo relacionado.
+  >
+  > **Mutation hook y aviso sin test propio en el RED heredado.** Ninguno de los 7 rojos de la
+  > corrida anterior ejercita el submit ni el texto del aviso — por TDD estricto se agregaron
+  > dos tests nuevos en `configurar-zona-horaria-dialog.test.tsx` (no se tocó ninguno de los 4
+  > existentes): uno que verifica el aviso visible, y uno que hace mutación real sobre la URL
+  > de `useConfigurarZonaHorariaCliente` (verificado en rojo por la razón correcta antes de
+  > restaurar) y confirma `PATCH /clientes/:id/zona-horaria` con `{ zonaHoraria }`.
+  >
+  > **`visibleParaSolicitante: false`** en `backend/ayuda/zona-horaria.md`: configurar la zona
+  > es exclusivo del administrador global (ROOT) desde **Admin > Clientes** — un solicitante
+  > (usuario final que abre tickets) no puede tocar este dato ni se ve afectado por él todavía
+  > (2.14 documenta explícitamente que hoy no cambia nada visible). Mismo criterio que
+  > `permisos-y-roles.md`, el análogo más cercano por ser también exclusivo de administración.
+  >
+  > `pnpm run sync:ayuda` **NO se corrió**: escribe contra `DATABASE_URL_MASTER` real y no es
+  > uno de los cuatro gates del proyecto (`pnpm test`/`typecheck`/`lint`/`lint:fitness`). El
+  > archivo nuevo SÍ se validó contra `scripts/sync-ayuda.spec.ts` (frontmatter, slug único,
+  > topes de `titulo`/`slug`): 21/21 en verde. Sincronizarlo a la DB queda para cuando se
+  > decida publicarlo.
+  >
+  > **Canario**: frontend 169/169 archivos, 1141/1141 tests (1139 previos + 2 tests nuevos de
+  > triangulación, los 7 rojos de la corrida anterior ahora en verde) — `pnpm type-check` y
+  > `pnpm lint` en verde. Backend 357/357 archivos, 3838/3838 tests (sin cambios de código
+  > backend en este batch) — `pnpm typecheck`, `pnpm lint` y `pnpm lint:fitness` en verde. GGA
+  > (pre-commit) **no corrió**: el usuario pidió no commitear en este batch.
+  >
+  > **Líneas revisables acumuladas de C2c (RED + GREEN, sin commitear todavía)**: ~465 (235 de
+  > código en 5 archivos + 188 de test + 42 del artículo de Ayuda), contra la excepción
+  > aprobada de 450 (+50 sobre el tope de 400) — **~15 líneas por encima de esa excepción**,
+  > medido con `git diff --numstat` para lo trackeado y `wc -l` para los archivos nuevos. Se
+  > reporta el número real sin recortar código para forzarlo por debajo: queda para que el
+  > usuario decida si amplía la excepción o lo evalúa al armar el PR.
 
 > **POR QUÉ LA AYUDA ARRANCA INCOMPLETA — Y CÓMO SE COMPLETA.** El enunciado original de 2.14
 > pedía describir las dos capas de reloj y que la zona gobierna SLA, vencimientos, CSV y
@@ -561,9 +660,74 @@ de C2b, que sigue funcionando igual por HTTP.
 > La deuda NO queda acá: cada work unit que le agrega una capa tiene su propia tarea de Ayuda
 > (4.17, 5.10, 6.12, 8.21). No las borres — sin ellas el artículo queda mintiendo por omisión.
 
+<!-- pack:skip -->
+> **Nota de cierre del defecto post-2.14 (2026-09-02, apply, hallado al verificar el cierre de
+> WU-2).** `ConfigurarZonaHorariaDialog` existía y estaba probado en aislamiento, pero NADA lo
+> montaba: `cliente-acciones.tsx` renderizaba `VerClienteDialog`, `EditarClienteDialog`,
+> `ConfigurarCorreoDialog` y `ConfigurarCsatDialog`, y no el de zona horaria — mientras el
+> artículo que 2.14 acababa de escribir (`backend/ayuda/zona-horaria.md`) afirmaba "el botón
+> Zona horaria en la fila del cliente correspondiente", que todavía no existía. **No es una
+> tarea nueva**: es el cierre de la contradicción entre 2.13 (el diálogo se construyó aislado,
+> con `clienteId` opcional a propósito, señalado como deuda abierta) y 2.14 (la Ayuda documentó
+> SOLO lo que ya funcionaba, y ese día el botón no funcionaba). Se arregló el código para que
+> el artículo sea verdad, no al revés — **el artículo no se tocó**.
+>
+> **RED.** Test nuevo en `clientes-admin-view.test.tsx` ("la fila del cliente expone el botón
+> para configurar su zona horaria y abre el diálogo correspondiente"): confirmado en rojo por
+> `getByRole("button", { name: /configurar zona horaria de cliente uno/i })` sin encontrar el
+> elemento — falla por la aserción, no por un import roto. Requirió agregar `zonaHoraria` a los
+> fixtures `CLIENTE_UNO`/`CLIENTE_INACTIVO` de ese archivo (sin eso, `ZonaHorariaCombobox`
+> explota al abrir: `query.trim()` sobre `undefined`, porque esos fixtures no están anotados
+> `: Cliente` y hasta hoy nadie ejercitaba el campo).
+>
+> **GREEN.** `ConfigurarZonaHorariaDialogProps` pasó de `{ clienteNombre, zonaHorariaActual,
+> clienteId? }` a `{ cliente: Cliente }`, espejando a `ConfigurarCsatDialogProps`. La razón de
+> la forma anterior (evitar tocar `types.ts` antes de que existiera `Cliente.zonaHoraria`)
+> caducó en el GREEN de 2.13, que ya agregó ese campo. `clienteId` deja de ser opcional: sale
+> de `cliente.id`. JSDoc reescrito: ya no explica por qué el diálogo NO está cableado, explica
+> por qué las props cambiaron de forma. `cliente-acciones.tsx` monta
+> `<ConfigurarZonaHorariaDialog cliente={cliente} />` en el mismo lugar y con el mismo criterio
+> que sus hermanos (correo, CSAT).
+>
+> **Regresión encontrada y corregida dentro del mismo archivo ya en alcance.** Montar el
+> diálogo en cada fila agrega un botón con `aria-label="Configurar zona horaria de {nombre}"`,
+> que matchea la regex `/zona horaria/i` que el test preexistente "crear cliente no envía
+> ningún campo fuera del DTO" ya usaba con `getByLabelText` para ubicar el combobox de alta —
+> `getByLabelText` no distingue por tipo de elemento, así que quedaron dos matches y ese test
+> (que **pasaba antes de este batch**) se puso en rojo por "Found multiple elements".
+> Diagnóstico confirmado con el volcado de los dos elementos matcheados antes de tocar nada.
+> Fix: `getByRole("combobox", { name: /zona horaria/i })` en vez de `getByLabelText` — el
+> combobox real es el único con `role="combobox"`, el botón de la fila es `role="button"`. No
+> se tocó ninguna aserción de expectativa, solo el selector que ubica el elemento.
+>
+> **Las dos aserciones de `configurar-zona-horaria-dialog.test.tsx` que valen (RED de 2.12)
+> quedaron INTACTAS**: `findByRole("option", { name: ZONA_FUERA_DE_CATALOGO })` y
+> `toHaveValue("UTC")`. Solo cambió el armado (`buildCliente()` en vez de props sueltas).
+>
+> **Canario**: frontend 169/169 archivos, **1142/1142 tests** (1141 previos + 1 test nuevo) —
+> `pnpm test`, `pnpm type-check` y `pnpm lint` en verde. Backend 357/357 archivos, 3838/3838
+> tests (sin cambios de código backend en este batch) — `pnpm typecheck`, `pnpm lint` y
+> `pnpm lint:fitness` en verde. La regresión de arriba se encontró y corrigió DENTRO de este
+> mismo batch, antes del canario final — ningún test que ya pasaba quedó roto al cerrarlo.
+>
+> **Líneas revisables acumuladas de C2c (RED + GREEN + este cierre, sin commitear todavía)**:
+> ~501 (6 archivos de código, declarados 4 en `design.md`; +36 sobre las ~465 reportadas al
+> cerrar 2.13/2.14) — medido el 2026-09-02 con `git diff --numstat` para lo trackeado + `wc -l`
+> para los archivos todavía nuevos. Sigue por encima de la excepción aprobada de 450 (~51
+> líneas), sin recortar código para forzarlo por debajo: queda para que el usuario decida al
+> armar el PR.
+>
+> NO se commiteó nada — mismo criterio que el resto de C2c: el usuario revisa el verde antes
+> del commit.
+<!-- /pack:skip -->
+
 **Commit C2c** — `feat(clientes): configurar la zona operativa desde el ABM`
-· ~450 líneas · 4 archivos de código · **`size:exception` (+50) aprobada el 2026-09-01**
+· ~501 líneas reales (estimado ~450) · 6 archivos de código (declarados 4; ver notas de cierre)
+· **`size:exception` (+50) aprobada el 2026-09-01 — ~51 líneas por encima tras el cierre del
+  defecto post-2.14, sin recommitear todavía**
 · rollback: quita la pantalla y el artículo juntos.
+· **NO commiteado**: el usuario revisa el verde antes del commit (instrucción explícita de esta
+  corrida de apply).
 
 ---
 
