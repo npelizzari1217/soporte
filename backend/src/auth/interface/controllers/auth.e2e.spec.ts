@@ -175,7 +175,8 @@ describe('Auth e2e (R3–R14, PR6)', () => {
     // busca en TODO el árbol salvo `strict: true` (mismo criterio ya usado
     // para otros use cases inyectados vía `app.get()` en este repo). Sirve
     // para firmar tokens SINTÉTICOS con `v` vieja/ausente, algo que
-    // `JwtTokenService.signJwt` no permite (siempre firma con `v: 2`).
+    // `JwtTokenService.signJwt` no permite (siempre firma con la version
+    // vigente, `VERSION_PAYLOAD_JWT`).
     jwtService = app.get(JwtService);
 
     prismaService = new PrismaService(TEST_DB_URL);
@@ -612,7 +613,7 @@ describe('Auth e2e (R3–R14, PR6)', () => {
       expect(status).toBe(401);
     });
 
-    it('el 401 por versión NO auto-bloquea el refresh: `POST /auth/refresh` inmediatamente después devuelve un token `v: 2` con `permisos` en formato MODULO:ACCION', async () => {
+    it(`el 401 por versión NO auto-bloquea el refresh: \`POST /auth/refresh\` inmediatamente después devuelve un token \`v: ${VERSION_PAYLOAD_JWT}\` con \`permisos\` en formato MODULO:ACCION`, async () => {
       const cliente = await createCliente('v3-refresh');
       const role = await createRoleConPermisos('TECNICO', []);
       const usuario = await createUsuario('v3-refresh');

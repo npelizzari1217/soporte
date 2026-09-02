@@ -6,7 +6,7 @@
  * dispara el flujo de refresh existente en vez de un 403 sin recuperación
  * (riesgo #2218: el interceptor del frontend solo refresca ante 401).
  */
-export const VERSION_PAYLOAD_JWT = 2;
+export const VERSION_PAYLOAD_JWT = 3;
 
 /**
  * JwtPayload — payload del access token JWT.

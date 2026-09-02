@@ -823,9 +823,24 @@ Depende de: C2a (la columna existe).
 **Commit C3b** — `feat(auth): claim zona_horaria en el JWT`
 · ~240 líneas · 5 archivos de código · rollback: el claim deja de emitirse, nadie lo lee.
 
-- [ ] 3.5 RED: spec que exija que un token con `v: 2` sea rechazado con 401 por
+- [x] 3.5 RED: spec que exija que un token con `v: 2` sea rechazado con 401 por
       `JwtAuthGuard`.
-- [ ] 3.6 GREEN: `VERSION_PAYLOAD_JWT` de 2 a 3. **Único bump del cambio** (D11): la capa de
+      <!-- pack:skip -->
+      RED confirmado por la aserción, no por un error de compilación/import:
+      `AssertionError: expected function to throw an error, but it didn't` en
+      `jwt-auth.guard.spec.ts` → `versión del payload (v)` → `payload con v:2 (versión
+      anterior al bump de C3c) → UnauthorizedException (401, NO 403)`. Nuevo `it()` con `v: 2`
+      literal (NO la constante `VERSION_PAYLOAD_JWT`, para que el assert siga siendo válido
+      después de 3.6) dentro del `describe` ya existente de WU-7.1/ADR-P7. Triangula contra los
+      dos `it()` vecinos que ya estaban en el archivo: `v:1` (rechazado hoy, sigue rechazado
+      después del bump) y `` v:${VERSION_PAYLOAD_JWT} `` (aceptado hoy con `v:2`, pasará a
+      aceptar `v:3` tras 3.6) — un guard que rechazara todo rompería ese segundo test, que hoy
+      sigue en verde. Corrida focalizada: 8 tests, 7 passed + 1 failed (el RED nuevo). Canario
+      backend intacto: `pnpm typecheck`/`pnpm lint`/`pnpm run lint:fitness` en verde; suite
+      completa 358 archivos / 3841 tests (3840 en verde + el RED nuevo, cero regresiones).
+      NO se tocó `VERSION_PAYLOAD_JWT` (sigue en 2) — eso es 3.6, en su propio commit C3c.
+      <!-- /pack:skip -->
+- [x] 3.6 GREEN: `VERSION_PAYLOAD_JWT` de 2 a 3. **Único bump del cambio** (D11): la capa de
       vista no agrega claims, así que no hay un segundo 401 global.
 
 **Commit C3c** — `feat(auth)!: sube VERSION_PAYLOAD_JWT a 3` · ~60 líneas · 1 archivo de
@@ -851,6 +866,26 @@ typecheck en ~15 archivos fuera del alcance de C3a. La consecuencia es que el co
 primero lea la zona desde `TenantContext` dentro de un job de barrido tiene que cerrar los
 dos sweeps ANTES de consumirla, o va a recibir `undefined` en silencio. Verificado el
 2026-09-02 recorriendo todos los `tenantContext.bind(`/`.run(` de producción.
+
+---
+
+### Deuda abierta de D11 — hay DOS puertas de entrada del token al frontend, y solo una normaliza
+
+| Camino | Archivo | Normaliza los claims ausentes |
+|---|---|---|
+| BFF (rutas `/api/auth/*`, gates de layout, sidebar) | `frontend/src/shared/api/types.ts` → `decodeJwtPayload` | ✅ sí — `zona_horaria ?? null`, cubierto por `types.test.ts` |
+| Middleware Edge | `frontend/src/shared/auth/verify.ts:33` → `verifyAccessToken` | ❌ **no** — `payload as unknown as JwtPayload`, sin normalizar |
+
+Un token emitido antes del claim que entre por el middleware llega con
+`zona_horaria: undefined` mientras el tipo promete `string | null`. El hueco es
+**preexistente**: `modulos`, `nombre` y `apellido` lo tienen desde antes, y por eso no se
+abrió como defecto de C3b.
+
+**Rige para las tareas pendientes.** El work unit que lea la zona en el frontend tiene que
+decidir primero por cuál de las dos puertas entra su consumidor. Si entra por el
+middleware, normalizar en `verify.ts` **antes** de leer el claim — o el `undefined` viaja
+en silencio, porque el tipo dice que no puede pasar. Detectado por la revisión automática
+al cerrar C3b (2026-09-02).
 
 ---
 

@@ -113,6 +113,21 @@ describe('JwtAuthGuard (R11)', () => {
       expect(() => guard.canActivate(context)).toThrow(UnauthorizedException);
     });
 
+    // C3c (sdd/zona-horaria-por-tenant, D11): costura de deploy propia — el
+    // literal `2` es intencional, NO `VERSION_PAYLOAD_JWT`. Protege que, en
+    // cuanto la versión vigente suba, todo token firmado con la anterior
+    // deje de servir y fuerce el refresh en la próxima llamada — el mismo
+    // mecanismo del caso `v:1` de arriba, aplicado a la versión que hoy es
+    // la vigente.
+    it('payload con v:2 (versión anterior al bump de C3c) → UnauthorizedException (401, NO 403)', () => {
+      const verifyJwt = vi.fn(() => ({ ...PAYLOAD, v: 2 }) as JwtPayload);
+      const tokenService = buildTokenService({ verifyJwt });
+      const guard = new JwtAuthGuard(tokenService);
+      const { context } = buildContext({ authorization: 'Bearer token-v2-previo' });
+
+      expect(() => guard.canActivate(context)).toThrow(UnauthorizedException);
+    });
+
     it(`payload con v:${VERSION_PAYLOAD_JWT} (versión correcta) → pasa, setea request.user`, () => {
       const verifyJwt = vi.fn(() => ({ ...PAYLOAD, v: VERSION_PAYLOAD_JWT }) as JwtPayload);
       const tokenService = buildTokenService({ verifyJwt });
