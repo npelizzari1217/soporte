@@ -93,7 +93,8 @@ export class OnlyRootCanCreateClienteError extends DomainError {
 
 /**
  * ClienteNoEncontradoError — el `clienteId` recibido por los use cases de ABM
- * de clientes (editar/desactivar/reactivar) no existe en `master.clientes`.
+ * de clientes (editar/desactivar/reactivar, correo, csat, zona horaria) no
+ * existe en `master.clientes`.
  * → HTTP 404 Not Found en la capa de presentación.
  */
 export class ClienteNoEncontradoError extends DomainError {
@@ -184,25 +185,5 @@ export class CorreoNoConfiguradoError extends DomainError {
 
   constructor() {
     super('El cliente no tiene una configuración de correo guardada para probar.');
-  }
-}
-
-/**
- * ZonaHorariaInvalidaError — el candidato de zona horaria recibido por
- * `ConfigurarZonaHorariaClienteUseCase` no pasa `esZonaValida` (VO
- * `ZonaHoraria`, sdd/zona-horaria-por-tenant). Defensa en profundidad: el
- * borde (`ConfigurarZonaHorariaClienteDto`) ya rechaza esto con 400 vía
- * `@IsZonaHorariaValida()` (mismo decorator que `CreateClienteDto`), así que
- * llegar acá inválido solo ocurre si el caso de uso se invoca directo —
- * mismo criterio que `OnlyRootCanCreateClienteError` en `CrearClienteUseCase`.
- * El caso de uso valida ANTES de mutar la entidad y de persistir: el cliente
- * conserva su zona anterior.
- * → HTTP 422 Unprocessable Entity en la capa de presentación.
- */
-export class ZonaHorariaInvalidaError extends DomainError {
-  readonly code = 'ZONA_HORARIA_INVALIDA';
-
-  constructor(candidata: string) {
-    super(`"${candidata}" no es una zona horaria válida.`);
   }
 }

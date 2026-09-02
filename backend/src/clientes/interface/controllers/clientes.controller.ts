@@ -6,8 +6,13 @@
  *   POST /clientes → CrearClienteUseCase (R16, R17, R18)
  *   GET  /clientes → ListarClientesUseCase (G3 parcial, sdd/beta-frontend/spec §3;
  *     incluye resumen de correo, D7/#2359)
+ *   PATCH /clientes/:id → EditarClienteUseCase (edición comercial)
+ *   PATCH /clientes/:id/desactivar, /:id/activar → baja/alta lógica
  *   GET/PATCH/DELETE /clientes/:id/correo, POST /clientes/:id/correo/probar →
  *     configuración de correo por cliente (sdd/configuracion-correo-por-cliente D7)
+ *   PATCH /clientes/:id/csat → ConfigurarCsatClienteUseCase (sdd/csat)
+ *   PATCH /clientes/:id/zona-horaria → ConfigurarZonaHorariaClienteUseCase
+ *     (sdd/zona-horaria-por-tenant)
  *
  * Guards: `JwtAuthGuard` + `GlobalAdminGuard` a nivel de controller — solo
  * `is_global_admin=true` puede provisionar un cliente nuevo (R16) O listar
@@ -38,7 +43,6 @@ import {
   Patch,
   Post,
   ServiceUnavailableException,
-  UnprocessableEntityException,
   UseGuards,
 } from '@nestjs/common';
 import { CrearClienteUseCase } from '../../application/use-cases/crear-cliente.use-case';
@@ -74,7 +78,6 @@ import {
   CorreoPasswordFaltanteError,
   EmailCryptoKeyAusenteError,
   OnlyRootCanCreateClienteError,
-  ZonaHorariaInvalidaError,
 } from '../../domain/errors/clientes.errors';
 import { JwtAuthGuard } from '../../../auth/infrastructure/guards/jwt-auth.guard';
 import { GlobalAdminGuard } from '../../../auth/infrastructure/guards/global-admin.guard';
@@ -139,7 +142,6 @@ function toHttpException(
   | NotFoundException
   | BadRequestException
   | ServiceUnavailableException
-  | UnprocessableEntityException
   | InternalServerErrorException {
   if (error instanceof OnlyRootCanCreateClienteError) {
     return new ForbiddenException(error.message);
@@ -155,9 +157,6 @@ function toHttpException(
   }
   if (error instanceof EmailCryptoKeyAusenteError) {
     return new ServiceUnavailableException(error.message);
-  }
-  if (error instanceof ZonaHorariaInvalidaError) {
-    return new UnprocessableEntityException(error.message);
   }
   // AdministradorRoleNotFoundError (u otro no mapeado explícitamente): falla
   // de configuración/infra, no del caller.
@@ -425,9 +424,13 @@ export class ClientesController {
    * criterio que `/csat` (D1). Solo ROOT.
    * @returns 200 + ClienteResponseDto con la nueva `zonaHoraria`
    * @throws 404 NotFoundException si el cliente no existe
-   * @throws 422 UnprocessableEntityException si el candidato no es una zona
-   *   horaria válida — no debería ocurrir en producción (el DTO ya lo
-   *   rechaza con 400 en el borde), es defensa en profundidad del caso de uso
+   *
+   * Un candidato que no es una zona horaria válida NUNCA llega acá: lo
+   * rechaza `ConfigurarZonaHorariaClienteDto` (`@IsZonaHorariaValida()`) con
+   * 400, en el `ValidationPipe` global (`app.module.ts`) — verificado con
+   * `configurar-zona-horaria-cliente.e2e.spec.ts` (HTTP real, sin mocks). El
+   * historial de por qué el caso de uso no tiene una segunda capa acá vive en
+   * `openspec/changes/zona-horaria-por-tenant/tasks.md` (C2b-fix).
    */
   @Patch(':id/zona-horaria')
   @HttpCode(HttpStatus.OK)

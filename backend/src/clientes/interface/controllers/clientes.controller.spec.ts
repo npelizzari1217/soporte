@@ -14,7 +14,6 @@ import {
   InternalServerErrorException,
   NotFoundException,
   ServiceUnavailableException,
-  UnprocessableEntityException,
 } from '@nestjs/common';
 import { ClientesController } from './clientes.controller';
 import { Result } from '../../../shared/domain/result';
@@ -29,7 +28,6 @@ import {
   CorreoPasswordFaltanteError,
   EmailCryptoKeyAusenteError,
   OnlyRootCanCreateClienteError,
-  ZonaHorariaInvalidaError,
 } from '../../domain/errors/clientes.errors';
 import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
 import { payloadDeTest } from '../../../auth/test-helpers/payload-de-test';
@@ -550,16 +548,12 @@ describe('ClientesController (T8.4)', () => {
       ).rejects.toBeInstanceOf(NotFoundException);
     });
 
-    it('[CRITICAL] propaga 422 UnprocessableEntityException cuando el candidato no es una zona horaria válida (ej. Europe/Madriz)', async () => {
-      const { controller, configurarZonaHorariaClienteUseCase } = buildController();
-      configurarZonaHorariaClienteUseCase.execute.mockResolvedValue(
-        Result.fail(new ZonaHorariaInvalidaError('Europe/Madriz')),
-      );
-
-      await expect(
-        controller.configurarZonaHoraria('cliente-1', { zonaHoraria: 'Europe/Madriz' } as any),
-      ).rejects.toBeInstanceOf(UnprocessableEntityException);
-    });
+    // El caso "candidato inválido" (ej. Europe/Madriz) se movió a
+    // `configurar-zona-horaria-cliente.e2e.spec.ts` (2026-09-02): este spec
+    // instancia el controller directo, saltándose el `ValidationPipe`, así
+    // que un `[CRITICAL]` acá probaba un camino que ningún request real toma
+    // (el borde real rechaza esto con 400, no con un Result.fail del caso de
+    // uso — ver `app.module.ts`).
   });
 
   describe('POST /clientes/:id/correo/probar (D6)', () => {

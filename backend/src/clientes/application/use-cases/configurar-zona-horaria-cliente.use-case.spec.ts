@@ -11,10 +11,7 @@ import { ConfigurarZonaHorariaClienteUseCase } from './configurar-zona-horaria-c
 import { IClienteRepository } from '../../domain/ports/i-cliente.repository';
 import { ClienteEntity } from '../../domain/entities/cliente.entity';
 import { ZonaHoraria } from '../../../shared/domain/zona-horaria';
-import {
-  ClienteNoEncontradoError,
-  ZonaHorariaInvalidaError,
-} from '../../domain/errors/clientes.errors';
+import { ClienteNoEncontradoError } from '../../domain/errors/clientes.errors';
 
 function buildRepoMock(overrides: Partial<IClienteRepository> = {}): IClienteRepository {
   return {
@@ -69,17 +66,24 @@ describe('ConfigurarZonaHorariaClienteUseCase', () => {
     expect(save).toHaveBeenCalledWith(cliente);
   });
 
-  it('[CRITICAL] rechaza un candidato que no es una zona horaria válida y NO persiste ni muta al cliente', async () => {
-    const cliente = buildCliente('America/Argentina/Buenos_Aires');
-    const save = vi.fn().mockResolvedValue(undefined);
-    const repo = buildRepoMock({ findById: vi.fn().mockResolvedValue(cliente), save });
-    const useCase = new ConfigurarZonaHorariaClienteUseCase(repo);
+  it(
+    '[CRITICAL] un candidato que no es una zona horaria válida lanza vía `ZonaHoraria.crear()` ' +
+      'y NO persiste ni muta al cliente — el borde real (ConfigurarZonaHorariaClienteDto, ' +
+      '@IsZonaHorariaValida()) ya lo rechaza con 400 antes de llegar acá (ver ' +
+      'configurar-zona-horaria-cliente.e2e.spec.ts para el HTTP real); esto documenta que el ' +
+      'caso de uso invocado DIRECTO con un candidato inválido no persiste nada silenciosamente',
+    async () => {
+      const cliente = buildCliente('America/Argentina/Buenos_Aires');
+      const save = vi.fn().mockResolvedValue(undefined);
+      const repo = buildRepoMock({ findById: vi.fn().mockResolvedValue(cliente), save });
+      const useCase = new ConfigurarZonaHorariaClienteUseCase(repo);
 
-    const result = await useCase.execute({ clienteId: cliente.id, zonaHoraria: 'Europe/Madriz' });
+      await expect(
+        useCase.execute({ clienteId: cliente.id, zonaHoraria: 'Europe/Madriz' }),
+      ).rejects.toThrow(/no es una zona horaria válida/);
 
-    expect(result.isFail()).toBe(true);
-    expect(result.getError()).toBeInstanceOf(ZonaHorariaInvalidaError);
-    expect(save).not.toHaveBeenCalled();
-    expect(cliente.zonaHoraria.valor).toBe('America/Argentina/Buenos_Aires');
-  });
+      expect(save).not.toHaveBeenCalled();
+      expect(cliente.zonaHoraria.valor).toBe('America/Argentina/Buenos_Aires');
+    },
+  );
 });

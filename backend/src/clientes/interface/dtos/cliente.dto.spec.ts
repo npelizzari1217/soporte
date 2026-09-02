@@ -199,9 +199,11 @@ describe('CreateClienteDto — zonaHoraria', () => {
  * `@IsZonaHorariaValida()` que `CreateClienteDto.zonaHoraria` — este bloque es
  * el gemelo de `describe('CreateClienteDto — zonaHoraria')` de arriba: sin él,
  * un candidato de forma inválida (`'A'.repeat(64)`) podría dejar de rechazarse
- * en el borde sin que ningún test lo note, y la única defensa pasaría a ser
- * `ZonaHorariaInvalidaError` dentro del caso de uso (defensa en profundidad,
- * nunca pensada como la única barrera).
+ * en el borde sin que ningún test lo note. Este DTO es la ÚNICA barrera contra
+ * un candidato inválido — el caso de uso (`ConfigurarZonaHorariaClienteUseCase`)
+ * no tiene una segunda capa (ver `openspec/changes/zona-horaria-por-tenant/tasks.md`,
+ * C2b-fix, para el historial de por qué) y
+ * `configurar-zona-horaria-cliente.e2e.spec.ts` prueba el HTTP real.
  */
 describe('ConfigurarZonaHorariaClienteDto', () => {
   it('acepta un candidato válido', async () => {

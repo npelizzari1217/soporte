@@ -87,8 +87,16 @@ regla, para el mismo candidato.
 Solo un actor con administración global de la plataforma (`is_global_admin = true`,
 mismo criterio que `csatHabilitado`) DEBE poder configurar la zona operativa de un
 tenant, como acción separada de la edición comercial del cliente. Un candidato
-inválido DEBE rechazarse en el borde (422) y NUNCA DEBE llegar a la entidad de
+inválido DEBE rechazarse en el borde (400) y NUNCA DEBE llegar a la entidad de
 dominio.
+
+> **Corrección (2026-09-02).** Este requisito decía 422. Es falso: el
+> `ValidationPipe` global de `backend/src/app.module.ts`
+> (`whitelist+transform`, SIN `errorHttpStatusCode`) devuelve **400** para
+> cualquier rechazo de `class-validator`, y `ConfigurarZonaHorariaClienteDto`
+> reutiliza `@IsZonaHorariaValida()` — el mismo decorator que ya rechaza esto
+> en el alta. Se corrige el contrato para que describa lo que la app
+> realmente hace, en vez de cambiar el `ValidationPipe` global por un campo.
 
 #### Scenario: Admin global configura una zona válida
 
@@ -107,7 +115,8 @@ dominio.
 
 - GIVEN el candidato `Europe/Madriz` (typo)
 - WHEN se envía como nueva zona operativa
-- THEN el borde devuelve 422 y el tenant conserva su zona anterior
+- THEN el borde devuelve 400 (corregido 2026-09-02, ver la nota del requisito
+  de arriba — `app.module.ts`) y el tenant conserva su zona anterior
 
 ### Requirement: Visualización en pantalla en la zona de vista, con default de tenant y zona visible `[MODIFICADO — enmienda]`
 

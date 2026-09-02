@@ -135,7 +135,11 @@ Depende de: WU-1. C2c puede ir en paralelo con WU-3.
 - [x] 2.3 RED: spec de integración contra `soporte_master_test` — ninguna fila con
       `zona_horaria` NULL ni inválida después de migrar. Si trunca, `usarLockMasterTest()`
       antes del `describe`.
-- [x] 2.4 RED: spec del alta — `CreateClienteDto` **exige** la zona; un alta sin zona es 422.
+- [x] 2.4 RED: spec del alta — `CreateClienteDto` **exige** la zona; un alta sin zona es 400
+      (corregido 2026-09-02: decía 422, es falso — el `ValidationPipe` global de
+      `app.module.ts` da 400 para cualquier rechazo de `class-validator`; el código de
+      C2a ya estaba bien, `cliente.dto.spec.ts:4` ya decía "un 400 amable", solo mentía
+      este texto del plan).
       No se defaultea a Buenos Aires: la decisión cerrada es que la zona va explícita en el alta.
 - [x] 2.5 GREEN: `backend/prisma_master/migrations/20260901120000_add_cliente_zona_horaria/migration.sql`
       con el `ADD COLUMN VARCHAR(64) NOT NULL DEFAULT 'America/Argentina/Buenos_Aires'` en un
@@ -228,7 +232,10 @@ Depende de: WU-1. C2c puede ir en paralelo con WU-3.
 
 - [x] 2.8 RED: spec del caso de uso — admin global cambia la zona y persiste; actor sin
       `is_global_admin` se rechaza antes de llegar al caso de uso; candidato `Europe/Madriz`
-      devuelve 422 y el tenant conserva su zona (spec de controller).
+      devuelve 400 (corregido 2026-09-02, ver la nota de cierre de más abajo — decía 422,
+      falso, `app.module.ts`) y el tenant conserva su zona (probado por HTTP real en
+      `configurar-zona-horaria-cliente.e2e.spec.ts`, no por el spec de controller que mockea
+      el caso de uso saltándose el `ValidationPipe`).
 - [x] 2.9 GREEN: `configurar-zona-horaria-cliente.use-case.ts` espejando
       `configurar-csat-cliente.use-case.ts`; `ConfigurarZonaHorariaClienteDto`;
       `PATCH /clientes/:id/zona-horaria` espejando `PATCH /clientes/:id/csat`; wiring en
@@ -319,9 +326,51 @@ Depende de: WU-1. C2c puede ir en paralelo con WU-3.
 > `STATUS: FAILED` (x3, hallazgos reales, 0 falsos positivos) → `STATUS: PASSED` en el cuarto
 > intento.
 
+> **Corrección posterior (2026-09-02, C2b-fix).** La nota de arriba describe la resolución
+> tal como se hizo en el momento, pero esa resolución quedó identificada como el defecto:
+> el "422" del enunciado de 2.8 (y del requisito de la spec) era falso, y agregar
+> `ZonaHorariaInvalidaError` como defensa en profundidad mapeada a 422 creó una capa
+> **inalcanzable por HTTP real** — el `ValidationPipe` global (`app.module.ts`) ya
+> rechaza `Europe/Madriz` con 400 antes de que la request llegue al caso de uso. El
+> `[CRITICAL]` que "probaba" el 422 llamaba a `controller.configurarZonaHoraria(...)`
+> directo, saltándose el pipe — no ejercitaba ningún camino que un request real tome, y no
+> existía ningún e2e real contra `PATCH /clientes/:id/zona-horaria`.
+>
+> **Decisión del usuario: se corrige el contrato, no la app.** 400 es lo que
+> `ValidationPipe` hace en toda la aplicación; cambiarlo por un campo (`errorHttpStatusCode`)
+> habría sido un cambio de contrato HTTP de toda la app metido dentro de un ciclo de zonas
+> horarias. Se sacó `ZonaHorariaInvalidaError` de `clientes.errors.ts`, del caso de uso (y su
+> tipo de error, que vuelve a ser solo `ClienteNoEncontradoError` — mismo patrón que
+> `ConfigurarCsatClienteUseCase`, sin unión de un solo elemento) y de `toHttpException` en el
+> controller. El caso de uso llama a `ZonaHoraria.crear()` sin `try/catch` — mismo patrón ya
+> establecido en `crear-cliente.use-case.ts:74` ("un candidato inválido revienta acá... porque
+> ya pasó por el borde"), y coherente con el JSDoc de `ZonaHoraria.crear()` en
+> `zona-horaria.ts:95-99` ("es precondición del caller, no un `Result`").
+>
+> Se agregó `configurar-zona-horaria-cliente.e2e.spec.ts` (HTTP real, `ValidationPipe`
+> global activo, Postgres real contra `soporte_master_test`) que reemplaza al `[CRITICAL]`
+> retirado: candidato inválido → 400 y el tenant conserva su zona anterior (verificado
+> también en DB); candidato válido → 200 y persiste; sin Bearer → 401. Se corrió ANTES de
+> tocar el código de producción: pasó en verde de entrada (3/3), porque el borde HTTP ya
+> hacía 400 — la corrección real es sacar el código muerto y la documentación falsa, no un
+> cambio de comportamiento observable por HTTP. `pnpm test` (357/357 archivos, 3838/3838
+> tests), `pnpm typecheck` y `pnpm lint` en verde. `app.module.ts` NO se tocó.
+>
+> Documentos corregidos en el mismo commit: este archivo (tareas 2.4 y 2.8) y
+> `specs/zona-horaria-tenant/spec.md` (líneas 90 y 110 de la versión previa a esta
+> corrección) — las tres correcciones citan `app.module.ts` como evidencia.
+
 **Commit C2b** — `feat(clientes): endpoint para configurar la zona operativa del tenant`
 · ~382 líneas reales (estimado ~250) · 6 archivos de código (declarados 3; ver nota de cierre)
 · rollback: quita el endpoint, la columna sobrevive.
+
+**Commit C2b-fix (2026-09-02)** —
+`fix(clientes): el borde rechaza la zona invalida con 400, y un e2e lo prueba por el pipe real`
+· corrige el contrato (422→400 en spec.md y tasks.md) y saca `ZonaHorariaInvalidaError`
+(código inalcanzable por HTTP, ver nota de cierre de arriba) · agrega
+`configurar-zona-horaria-cliente.e2e.spec.ts` · rollback: revierte el commit completo,
+vuelve la capa 422 inalcanzable y el `[CRITICAL]` que se saltaba el pipe — no rompe nada
+de C2b, que sigue funcionando igual por HTTP.
 
 - [ ] 2.10 RED: test del schema Zod recorriendo `zonasValidas`/`zonasInvalidas` del mismo
       fixture — veredicto idéntico al del VO para cada candidato.
