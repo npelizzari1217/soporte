@@ -16,6 +16,7 @@ import { PrismaClienteRepository } from '../../../../clientes/infrastructure/per
 import { PrismaUsuarioRepository } from './prisma-usuario.repository';
 import { PrismaMatrizPermisosRepository } from './prisma-matriz-permisos.repository';
 import { ClienteEntity } from '../../../../clientes/domain/entities/cliente.entity';
+import { ZonaHoraria } from '../../../../shared/domain/zona-horaria';
 import { UsuarioEntity } from '../../../domain/entities/usuario.entity';
 import { usarLockMasterTest } from '../../../../testing/lock-master-test';
 
@@ -60,6 +61,7 @@ describe('PrismaMatrizPermisosRepository — Integration (WU-3)', () => {
       cuit: null,
       dbName: `test_matriz_repo_${suffix}`,
       activo: true,
+      zonaHoraria: ZonaHoraria.crear('America/Argentina/Buenos_Aires'),
     });
     await clienteRepo.save(cliente);
     return cliente;

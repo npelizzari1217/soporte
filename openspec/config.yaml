@@ -1,0 +1,67 @@
+# openspec/config.yaml — soporte
+# Generado por sdd-init el 2026-09-01. Idioma de los artefactos SDD: español neutro
+# (ver ~/proyectos/CLAUDE.md, tabla de convenciones de código — anula el default en
+# inglés del contrato propio de gentle-ai para este repo).
+
+schema: spec-driven
+
+context: |
+  SaaS de ticketing multi-tenant. Monorepo backend/ (NestJS + TS strict,
+  hexagonal: domain/application/infrastructure/interface por módulo, Prisma
+  solo en infrastructure/) + frontend/ (Next.js 15 + React 19 + Zod, schemas
+  espejo del backend). pnpm + Vitest, sin Jest. Postgres en Docker
+  (soporte-postgres-master:5432), base de control soporte_master + una base
+  por inquilino. Result<T, DomainError> para fallos esperados del dominio.
+  strict_tdd: true — el RED se verifica, nunca se asume.
+
+strict_tdd: true
+
+testing:
+  backend:
+    runner: vitest
+    unit: true
+    integration: "*.integration.spec.ts (Postgres real, soporte_master_test compartida, usarLockMasterTest() antes de truncar)"
+    e2e: "*.e2e.spec.ts"
+    coverage: "vitest run --coverage (provider v8)"
+    lint: "pnpm lint (eslint ., cero errores verificado 2026-08-30)"
+    typecheck: "pnpm typecheck (tsc --noEmit -p tsconfig.typecheck.json — NO cubre *.spec.ts)"
+  frontend:
+    runner: vitest
+    unit: true
+    integration: "@testing-library/react"
+    e2e: "playwright test"
+    lint: "pnpm lint (next lint)"
+    typecheck: "pnpm type-check (tsc --noEmit)"
+
+rules:
+  proposal:
+    - Responder las tres preguntas de ~/proyectos/CLAUDE.md antes de abrir el ciclo (¿espeja otra capa?, ¿alternativas con comportamiento distinto?, ¿cambia lo que ve o hace el usuario?)
+    - Un cambio de UI o de flujo exige plan de actualización de backend/ayuda/*.md en el mismo work unit
+  specs:
+    - Given/When/Then para los escenarios, RFC 2119 (MUST/SHALL/SHOULD/MAY)
+    - Un guard de dominio, un enum o un contrato de error que otra capa espeje (frontend Zod, CHECK de Postgres) se declara como fuente única y las demás derivan de ella
+  design:
+    - Documentar en qué capa hexagonal cae cada pieza (domain/application/infrastructure/interface) y por qué
+    - Si el cambio toca autorización, señalar los dos lugares donde vive: decoradores del borde Y los chequeos inline dentro del cuerpo de los métodos
+  tasks:
+    - No emitir Review Workload Forecast ni presupuesto de 400 líneas (anulado por ~/proyectos/CLAUDE.md: lo decide el corte de PR, no el ciclo SDD)
+    - Agrupar por work unit entregable con sus tests adentro (work-unit-commits), no por capa
+    - Tests ANTES que la implementación en cada tarea (TDD estricto)
+  apply:
+    guidelines:
+      - RED verificado (correr y ver fallar por la razón correcta) antes de GREEN
+      - Máximo ~5 archivos de código por commit hacia el revisor (GGA lee AGENTS.md del repo)
+      - No ejecutar el gate de "Review Workload Decision" (anulado, ver tasks)
+      - Comentarios de código y mensajes de commit en español rioplatense; identificadores en inglés
+    tdd: true
+    test_command: "pnpm test"
+  verify:
+    test_command: "pnpm test"
+    build_command: "pnpm typecheck && pnpm lint"
+    coverage_threshold: 0
+    guidelines:
+      - Adversarial: mutar al menos un guard central y confirmar rojo, revertir y reconfirmar verde
+      - RDD está OFF (decidido por default, gentle-ai#3289) — delivery bajo política ordinaria del repo, nunca fabricar un receipt
+  archive:
+    - Advertir antes de fusionar deltas destructivos sobre specs/ vigentes
+    - review_budget_lines de referencia para el preflight de sdd-attempt: 7000 (diff crudo, no líneas revisables — ver ~/proyectos/CLAUDE.md)

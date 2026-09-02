@@ -35,6 +35,7 @@ import { MasterPrismaClient } from '../../../../shared/infrastructure/persistenc
 import { PrismaClienteRepository } from '../../../../clientes/infrastructure/persistence/prisma/prisma-cliente.repository';
 import { PrismaUsuarioRepository } from './prisma-usuario.repository';
 import { ClienteEntity } from '../../../../clientes/domain/entities/cliente.entity';
+import { ZonaHoraria } from '../../../../shared/domain/zona-horaria';
 import { UsuarioEntity } from '../../../domain/entities/usuario.entity';
 import { usarLockMasterTest } from '../../../../testing/lock-master-test';
 
@@ -81,6 +82,7 @@ describe('Backfill PREVENTIVO:* (WU-1)', () => {
       cuit: null,
       dbName: 'test_backfill_preventivo',
       activo: true,
+      zonaHoraria: ZonaHoraria.crear('America/Argentina/Buenos_Aires'),
     });
     await clienteRepo.save(cliente);
     clienteId = cliente.id;

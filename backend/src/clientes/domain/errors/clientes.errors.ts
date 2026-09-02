@@ -93,7 +93,8 @@ export class OnlyRootCanCreateClienteError extends DomainError {
 
 /**
  * ClienteNoEncontradoError — el `clienteId` recibido por los use cases de ABM
- * de clientes (editar/desactivar/reactivar) no existe en `master.clientes`.
+ * de clientes (editar/desactivar/reactivar, correo, csat, zona horaria) no
+ * existe en `master.clientes`.
  * → HTTP 404 Not Found en la capa de presentación.
  */
 export class ClienteNoEncontradoError extends DomainError {

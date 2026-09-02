@@ -42,6 +42,7 @@ import { TenantSeederAdapter } from '../clientes/infrastructure/tenant-seeder.ad
 import { PrismaClienteRepository } from '../clientes/infrastructure/persistence/prisma/prisma-cliente.repository';
 import { PrismaUsuarioRepository } from '../auth/infrastructure/persistence/prisma/prisma-usuario.repository';
 import { ClienteEntity } from '../clientes/domain/entities/cliente.entity';
+import { ZonaHoraria } from '../shared/domain/zona-horaria';
 import { UsuarioEntity } from '../auth/domain/entities/usuario.entity';
 import { usarLockMasterTest } from '../testing/lock-master-test';
 
@@ -128,6 +129,7 @@ describe('[W2] GenerarPreventivosUseCase resuelto desde el contenedor de Nest, c
       cuit: null,
       dbName: TENANT_DB_NAME,
       activo: true,
+      zonaHoraria: ZonaHoraria.crear('America/Argentina/Buenos_Aires'),
     });
     await clienteRepo.save(cliente);
     clienteId = cliente.id;

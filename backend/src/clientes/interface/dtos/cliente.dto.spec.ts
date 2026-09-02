@@ -10,7 +10,7 @@
 import { describe, expect, it } from 'vitest';
 import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
-import { CreateClienteDto, UpdateClienteDto } from './cliente.dto';
+import { ConfigurarZonaHorariaClienteDto, CreateClienteDto, UpdateClienteDto } from './cliente.dto';
 import {
   USUARIO_APELLIDO_MAX_LENGTH,
   USUARIO_NOMBRE_MAX_LENGTH,
@@ -20,6 +20,7 @@ import {
   CLIENTE_NOMBRE_MAX_LENGTH,
   CLIENTE_RAZON_SOCIAL_MAX_LENGTH,
 } from '../../domain/entities/cliente.entity';
+import { ZONA_HORARIA_MAX_LENGTH } from '../../../shared/domain/zona-horaria';
 
 const ALTA_VALIDA = {
   nombre: 'Acme SA',
@@ -27,6 +28,7 @@ const ALTA_VALIDA = {
   adminNombre: 'Ada',
   adminApellido: 'Lovelace',
   adminPassword: 'unaClaveLarga',
+  zonaHoraria: 'America/Argentina/Buenos_Aires',
 };
 
 const CUIT_EN_EL_LIMITE = '30-12345678-9';
@@ -132,5 +134,110 @@ describe('CreateClienteDto — topes de los campos de admin', () => {
     const dto = plainToInstance(CreateClienteDto, { ...ALTA_VALIDA, [campo]: 'A'.repeat(max + 1) });
     const errors = await validate(dto);
     expect(errors.some((e) => e.property === campo)).toBe(true);
+  });
+});
+
+/**
+ * `zonaHoraria` — OBLIGATORIA desde el alta (sdd/zona-horaria-por-tenant, WU-2
+ * tarea 2.4). No se defaultea a Buenos Aires (decisión "Zona de un cliente
+ * NUEVO: se exige explícita en el alta"): un alta sin zona DEBE rechazarse en
+ * el borde, igual que `nombre` o `adminEmail`. El tope de largo se importa del
+ * VO (`ZONA_HORARIA_MAX_LENGTH`), no un número tipeado a mano — mismo criterio
+ * que `CLIENTE_CUIT_MAX_LENGTH`.
+ */
+describe('CreateClienteDto — zonaHoraria', () => {
+  it('acepta el alta con zonaHoraria', async () => {
+    const dto = plainToInstance(CreateClienteDto, ALTA_VALIDA);
+    expect(await validate(dto)).toHaveLength(0);
+  });
+
+  it('[CRITICAL] rechaza el alta sin zonaHoraria — es obligatoria, no se defaultea', async () => {
+    const { zonaHoraria: _omitida, ...sinZona } = ALTA_VALIDA;
+    const dto = plainToInstance(CreateClienteDto, sinZona);
+    const errors = await validate(dto);
+    expect(errors.some((e) => e.property === 'zonaHoraria')).toBe(true);
+  });
+
+  it('rechaza zonaHoraria vacía', async () => {
+    const dto = plainToInstance(CreateClienteDto, { ...ALTA_VALIDA, zonaHoraria: '' });
+    const errors = await validate(dto);
+    expect(errors.some((e) => e.property === 'zonaHoraria')).toBe(true);
+  });
+
+  /**
+   * [CRITICAL] Centinela de forma, separado del de largo (mismo criterio que
+   * `zona-horaria.spec.ts` — "cae por largo" vs. "cae por invalidez" son dos
+   * fallas distintas). Un candidato de largo VÁLIDO pero forma inválida
+   * (`'A'.repeat(64)` no es una zona) pasaba antes por `@MaxLength` +
+   * `@IsNotEmpty` sin que nada validara su FORMA, y llegaba hasta
+   * `ZonaHoraria.crear()` dentro del use case — que lanza fuera del único
+   * `try/catch` de `CrearClienteUseCase.execute()`: 500 crudo, no 422/400
+   * limpio. `@IsZonaHorariaValida()` cierra ese hueco en el borde.
+   */
+  it('[CRITICAL] rechaza una zona de largo válido pero forma inválida — nunca debe llegar al 500 vía ZonaHoraria.crear()', async () => {
+    const dto = plainToInstance(CreateClienteDto, {
+      ...ALTA_VALIDA,
+      zonaHoraria: 'A'.repeat(ZONA_HORARIA_MAX_LENGTH),
+    });
+    const errors = await validate(dto);
+    expect(errors.some((e) => e.property === 'zonaHoraria')).toBe(true);
+  });
+
+  it('rechaza una zona que pasa el tope de largo', async () => {
+    const dto = plainToInstance(CreateClienteDto, {
+      ...ALTA_VALIDA,
+      zonaHoraria: 'A'.repeat(ZONA_HORARIA_MAX_LENGTH + 1),
+    });
+    const errors = await validate(dto);
+    expect(errors.some((e) => e.property === 'zonaHoraria')).toBe(true);
+  });
+});
+
+/**
+ * `ConfigurarZonaHorariaClienteDto` — body de `PATCH /clientes/:id/zona-horaria`
+ * (sdd/zona-horaria-por-tenant, C2b). Reutiliza el MISMO decorator
+ * `@IsZonaHorariaValida()` que `CreateClienteDto.zonaHoraria` — este bloque es
+ * el gemelo de `describe('CreateClienteDto — zonaHoraria')` de arriba: sin él,
+ * un candidato de forma inválida (`'A'.repeat(64)`) podría dejar de rechazarse
+ * en el borde sin que ningún test lo note. Este DTO es la ÚNICA barrera contra
+ * un candidato inválido — el caso de uso (`ConfigurarZonaHorariaClienteUseCase`)
+ * no tiene una segunda capa (ver `openspec/changes/zona-horaria-por-tenant/tasks.md`,
+ * C2b-fix, para el historial de por qué) y
+ * `configurar-zona-horaria-cliente.e2e.spec.ts` prueba el HTTP real.
+ */
+describe('ConfigurarZonaHorariaClienteDto', () => {
+  it('acepta un candidato válido', async () => {
+    const dto = plainToInstance(ConfigurarZonaHorariaClienteDto, {
+      zonaHoraria: 'America/Argentina/Buenos_Aires',
+    });
+    expect(await validate(dto)).toHaveLength(0);
+  });
+
+  it('[CRITICAL] rechaza cuando falta zonaHoraria', async () => {
+    const dto = plainToInstance(ConfigurarZonaHorariaClienteDto, {});
+    const errors = await validate(dto);
+    expect(errors.some((e) => e.property === 'zonaHoraria')).toBe(true);
+  });
+
+  it('rechaza zonaHoraria vacía', async () => {
+    const dto = plainToInstance(ConfigurarZonaHorariaClienteDto, { zonaHoraria: '' });
+    const errors = await validate(dto);
+    expect(errors.some((e) => e.property === 'zonaHoraria')).toBe(true);
+  });
+
+  it('[CRITICAL] rechaza una zona de largo válido pero forma inválida — nunca debe llegar al 500/422 vía ZonaHoraria.crear()', async () => {
+    const dto = plainToInstance(ConfigurarZonaHorariaClienteDto, {
+      zonaHoraria: 'A'.repeat(ZONA_HORARIA_MAX_LENGTH),
+    });
+    const errors = await validate(dto);
+    expect(errors.some((e) => e.property === 'zonaHoraria')).toBe(true);
+  });
+
+  it('rechaza una zona que pasa el tope de largo', async () => {
+    const dto = plainToInstance(ConfigurarZonaHorariaClienteDto, {
+      zonaHoraria: 'A'.repeat(ZONA_HORARIA_MAX_LENGTH + 1),
+    });
+    const errors = await validate(dto);
+    expect(errors.some((e) => e.property === 'zonaHoraria')).toBe(true);
   });
 });

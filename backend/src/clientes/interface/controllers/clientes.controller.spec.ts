@@ -18,6 +18,7 @@ import {
 import { ClientesController } from './clientes.controller';
 import { Result } from '../../../shared/domain/result';
 import { ClienteEntity } from '../../domain/entities/cliente.entity';
+import { ZonaHoraria } from '../../../shared/domain/zona-horaria';
 import { ClienteEmailConfigState } from '../../domain/ports/i-cliente-email-config.repository';
 import {
   AdminEmailYaRegistradoError,
@@ -42,6 +43,7 @@ function buildController() {
   const probarCorreoClienteUseCase = { execute: vi.fn() };
   const verCorreoClienteUseCase = { execute: vi.fn() };
   const configurarCsatClienteUseCase = { execute: vi.fn() };
+  const configurarZonaHorariaClienteUseCase = { execute: vi.fn() };
   const controller = new ClientesController(
     crearClienteUseCase as any,
     listarClientesUseCase as any,
@@ -53,6 +55,7 @@ function buildController() {
     probarCorreoClienteUseCase as any,
     verCorreoClienteUseCase as any,
     configurarCsatClienteUseCase as any,
+    configurarZonaHorariaClienteUseCase as any,
   );
   return {
     controller,
@@ -66,6 +69,7 @@ function buildController() {
     probarCorreoClienteUseCase,
     verCorreoClienteUseCase,
     configurarCsatClienteUseCase,
+    configurarZonaHorariaClienteUseCase,
   };
 }
 
@@ -99,7 +103,7 @@ const CREATE_DTO = {
 
 describe('ClientesController (T8.4)', () => {
   describe('POST /clientes', () => {
-    it('crea el cliente y retorna 201 con el DTO de respuesta', async () => {
+    it('crea el cliente y retorna 201 con el DTO de respuesta, con la zonaHoraria REAL (no un default, 2.9a)', async () => {
       const { controller, crearClienteUseCase } = buildController();
       const cliente = ClienteEntity.create({
         nombre: CREATE_DTO.nombre,
@@ -107,6 +111,7 @@ describe('ClientesController (T8.4)', () => {
         cuit: null,
         dbName: 'soporte_deadbeef',
         activo: true,
+        zonaHoraria: ZonaHoraria.crear('America/New_York'),
       });
       crearClienteUseCase.execute.mockResolvedValue(Result.ok(cliente));
 
@@ -120,6 +125,7 @@ describe('ClientesController (T8.4)', () => {
         dbName: cliente.dbName,
         activo: true,
         csatHabilitado: false,
+        zonaHoraria: 'America/New_York',
       });
       expect(crearClienteUseCase.execute).toHaveBeenCalledWith(
         {
@@ -170,7 +176,7 @@ describe('ClientesController (T8.4)', () => {
   });
 
   describe('GET /clientes (G3 parcial, sdd/beta-frontend — ROOT vía GlobalAdminGuard)', () => {
-    it('retorna la lista de clientes mapeada a DTO, con el resumen de correo (D7/#2359)', async () => {
+    it('retorna la lista de clientes mapeada a DTO, con el resumen de correo (D7/#2359) y la zonaHoraria REAL (no un default, 2.9a)', async () => {
       const { controller, listarClientesUseCase } = buildController();
       const cliente = ClienteEntity.create({
         nombre: CREATE_DTO.nombre,
@@ -178,6 +184,7 @@ describe('ClientesController (T8.4)', () => {
         cuit: null,
         dbName: 'soporte_deadbeef',
         activo: true,
+        zonaHoraria: ZonaHoraria.crear('Europe/Madrid'),
       });
       const verificadoAt = new Date('2026-08-20T12:00:00Z');
       listarClientesUseCase.execute.mockResolvedValue(
@@ -195,6 +202,7 @@ describe('ClientesController (T8.4)', () => {
           dbName: cliente.dbName,
           activo: true,
           csatHabilitado: false,
+          zonaHoraria: 'Europe/Madrid',
           correo: { configurado: true, verificadoAt },
         },
       ]);
@@ -208,6 +216,7 @@ describe('ClientesController (T8.4)', () => {
         cuit: null,
         dbName: 'soporte_deadbeef',
         activo: true,
+        zonaHoraria: ZonaHoraria.crear('America/Argentina/Buenos_Aires'),
       });
       listarClientesUseCase.execute.mockResolvedValue(
         Result.ok([{ cliente, correo: { configurado: true, verificadoAt: null } }]),
@@ -227,6 +236,7 @@ describe('ClientesController (T8.4)', () => {
       cuit: null,
       dbName: 'soporte_deadbeef',
       activo: true,
+      zonaHoraria: ZonaHoraria.crear('America/Argentina/Buenos_Aires'),
     });
   }
 
@@ -242,6 +252,9 @@ describe('ClientesController (T8.4)', () => {
       } as any);
 
       expect(result.id).toBe(cliente.id);
+      // 2.9a: la edición comercial no toca la zona, pero la respuesta la
+      // sigue exponiendo con el valor real del tenant (nunca ausente).
+      expect(result.zonaHoraria).toBe(cliente.zonaHoraria.valor);
       expect(editarClienteUseCase.execute).toHaveBeenCalledWith({
         clienteId: cliente.id,
         nombre: 'ACME Modificada',
@@ -502,6 +515,45 @@ describe('ClientesController (T8.4)', () => {
         controller.configurarCsat('id-inexistente', { habilitado: true } as any),
       ).rejects.toBeInstanceOf(NotFoundException);
     });
+  });
+
+  describe('PATCH /clientes/:id/zona-horaria (C2b)', () => {
+    it('cambia la zona y retorna 200 con la zonaHoraria nueva', async () => {
+      const { controller, configurarZonaHorariaClienteUseCase } = buildController();
+      const cliente = buildCliente();
+      cliente.configurarZonaHoraria(ZonaHoraria.crear('America/New_York'));
+      configurarZonaHorariaClienteUseCase.execute.mockResolvedValue(Result.ok(cliente));
+
+      const result = await controller.configurarZonaHoraria(cliente.id, {
+        zonaHoraria: 'America/New_York',
+      } as any);
+
+      expect(result.zonaHoraria).toBe('America/New_York');
+      expect(configurarZonaHorariaClienteUseCase.execute).toHaveBeenCalledWith({
+        clienteId: cliente.id,
+        zonaHoraria: 'America/New_York',
+      });
+    });
+
+    it('propaga 404 NotFoundException cuando el cliente no existe', async () => {
+      const { controller, configurarZonaHorariaClienteUseCase } = buildController();
+      configurarZonaHorariaClienteUseCase.execute.mockResolvedValue(
+        Result.fail(new ClienteNoEncontradoError('id-inexistente')),
+      );
+
+      await expect(
+        controller.configurarZonaHoraria('id-inexistente', {
+          zonaHoraria: 'America/New_York',
+        } as any),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    // El caso "candidato inválido" (ej. Europe/Madriz) se movió a
+    // `configurar-zona-horaria-cliente.e2e.spec.ts` (2026-09-02): este spec
+    // instancia el controller directo, saltándose el `ValidationPipe`, así
+    // que un `[CRITICAL]` acá probaba un camino que ningún request real toma
+    // (el borde real rechaza esto con 400, no con un Result.fail del caso de
+    // uso — ver `app.module.ts`).
   });
 
   describe('POST /clientes/:id/correo/probar (D6)', () => {

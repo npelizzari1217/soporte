@@ -8,6 +8,7 @@ import type {
   ClienteCorreo,
   ConfigurarCorreoDto,
   ConfigurarCsatDto,
+  ConfigurarZonaHorariaDto,
   CreateClienteDto,
   UpdateClienteDto,
 } from "../types";
@@ -115,6 +116,26 @@ export function useConfigurarCsatCliente(clienteId: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["clientes"] });
       notifySuccess("Configuración de encuesta de satisfacción guardada.");
+    },
+    onError: notifyError,
+  });
+}
+
+/**
+ * Cambia la zona operativa (horaria) del tenant
+ * (`PATCH /clientes/:id/zona-horaria`, D1/D2,
+ * `openspec/changes/zona-horaria-por-tenant`, tarea 2.13). Solo ROOT. Igual
+ * que CSAT, `zonaHoraria` viaja directo en `Cliente` — no hace falta
+ * invalidar un detalle aparte.
+ */
+export function useConfigurarZonaHorariaCliente(clienteId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (dto: ConfigurarZonaHorariaDto) =>
+      apiFetch<Cliente>(`clientes/${clienteId}/zona-horaria`, { method: "PATCH", json: dto }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["clientes"] });
+      notifySuccess("Zona horaria actualizada.");
     },
     onError: notifyError,
   });

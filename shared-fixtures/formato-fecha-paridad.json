@@ -1,0 +1,62 @@
+{
+  "zonasValidas": [
+    "America/Argentina/Buenos_Aires",
+    "America/Buenos_Aires",
+    "Asia/Calcutta",
+    "Asia/Kolkata",
+    "Europe/Madrid",
+    "UTC",
+    "Etc/GMT+5",
+    "+05:00"
+  ],
+  "zonasInvalidas": [
+    "America/Nunca_Existio",
+    "Europe/Madriz",
+    "",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  ],
+  "casos": [
+    {
+      "instante": "2026-03-29T00:30:00.000Z",
+      "zona": "Europe/Madrid",
+      "esperadoInstante": "29/03/2026 01:30",
+      "esperadoDia": "29/03/2026",
+      "esperadoHoy": "2026-03-29T00:00:00.000Z"
+    },
+    {
+      "instante": "2026-03-29T01:30:00.000Z",
+      "zona": "Europe/Madrid",
+      "esperadoInstante": "29/03/2026 03:30",
+      "esperadoDia": "29/03/2026",
+      "esperadoHoy": "2026-03-29T00:00:00.000Z"
+    },
+    {
+      "instante": "2026-10-25T00:30:00.000Z",
+      "zona": "Europe/Madrid",
+      "esperadoInstante": "25/10/2026 02:30",
+      "esperadoDia": "25/10/2026",
+      "esperadoHoy": "2026-10-25T00:00:00.000Z"
+    },
+    {
+      "instante": "2026-10-25T02:30:00.000Z",
+      "zona": "Europe/Madrid",
+      "esperadoInstante": "25/10/2026 03:30",
+      "esperadoDia": "25/10/2026",
+      "esperadoHoy": "2026-10-25T00:00:00.000Z"
+    },
+    {
+      "instante": "2026-01-15T23:30:00.000Z",
+      "zona": "Europe/Madrid",
+      "esperadoInstante": "16/01/2026 00:30",
+      "esperadoDia": "16/01/2026",
+      "esperadoHoy": "2026-01-16T00:00:00.000Z"
+    },
+    {
+      "instante": "2026-08-18T02:30:00.000Z",
+      "zona": "America/Argentina/Buenos_Aires",
+      "esperadoInstante": "17/08/2026 23:30",
+      "esperadoDia": "17/08/2026",
+      "esperadoHoy": "2026-08-17T00:00:00.000Z"
+    }
+  ]
+}

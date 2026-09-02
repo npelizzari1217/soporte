@@ -13,7 +13,7 @@
 > nada sobre el PR ni sobre el tamaño de la rama, porque no los podés ver.
 
 <!-- BEGIN:global -->
-<!-- Generado por sync-agents.py desde C:\trabajos\AGENTS.md (v96efe583).
+<!-- Generado por sync-agents.py desde ~/proyectos/AGENTS.md (v13e1a60d).
      NO EDITAR A MANO: el proximo sync pisa los cambios.
      Para cambiar una regla universal, edita el global y volve a correr el script.
      Para que este proyecto se aparte, usa la seccion [Anulaciones] de mas abajo. -->
@@ -24,6 +24,11 @@
   **mensajes de error**. Solo quedan en inglés los **identificadores y nombres de archivo**
   (variables, funciones, clases, tipos, claves, rutas). El corte: si lo lee una persona,
   español; si lo lee el compilador, inglés.
+- **Las descripciones de test (`describe`/`it`) son la EXCEPCIÓN: no tienen idioma fijo.**
+  Se sigue el idioma de los `it()` **del archivo que se toca**, no el de la regla de arriba.
+  **Un `it()` nuevo en inglés NO es un hallazgo** si sus vecinos del archivo están en
+  inglés, y viceversa. Los comentarios DENTRO del cuerpo del test sí van en español
+  siempre. Si el repo tiene un censo medido, vive en su sección propia, no acá.
 - **La regla NO es retroactiva.** No reportes copy, mensajes de error ni comentarios en
   inglés preexistentes: **solo los nuevos**, y solo en las líneas que el diff agrega o
   reescribe. Un archivo con copy viejo en inglés no es un hallazgo.
@@ -139,8 +144,26 @@ No rechaces un cambio por estas razones:
 
 Runner: **Vitest**. Package manager: **pnpm**. No hay Jest.
 `pnpm lint` sale en **cero errores** (verificado 2026-08-30). Si tira algo, es del cambio.
-`pnpm typecheck` no mira los `*.spec.ts` (el tsconfig los excluye) — ~150 errores
-preexistentes quedarían expuestos. Es decisión pendiente del autor, no defecto de un cambio.
+`pnpm typecheck` **SÍ mira los `*.spec.ts`** (corregido 2026-09-01). `backend/tsconfig.json`
+los incluye a propósito: `include: ["src/**/*"]` y `exclude` solo `node_modules` y `dist`. Su
+propio comentario explica por qué son el gate central del ciclo `saneamiento-tipos-backend`
+(WU6): la exclusión anterior había escondido **119 errores de tipos**, entre ellos un renombre
+de enum que nunca llegó a los tests y mocks que no cumplían la interfaz que decían implementar.
+
+Consecuencias prácticas:
+
+- Un campo obligatorio nuevo en una entidad de dominio **rompe el typecheck en cada fixture de
+  spec que la construya**, guarde o no en base. Presupuestá ese fixup.
+- Correr la suite **no** reemplaza al typecheck, ni al revés: `pnpm test` transpila sin chequear
+  tipos. Corré los dos.
+- `tsconfig.build.json` re-declara su propio `exclude` y sí saca los specs, pero eso aplica solo
+  al build de producción, no a `tsc --noEmit`.
+
+> **Por qué estaba mal.** Hasta el 2026-09-01 este párrafo afirmaba lo contrario ("el tsconfig
+> los excluye", "~150 errores preexistentes", "decisión pendiente del autor"). Describía el
+> estado **anterior a WU6** y nunca se actualizó cuando ese ciclo entró. Costó un lanzamiento
+> completo de `sdd-apply` en el ciclo `zona-horaria-por-tenant`, que planificó sin contar el
+> fixup de ~24 fixtures. Verificalo vos mismo antes de confiar: `bat backend/tsconfig.json`.
 
 ---
 

@@ -18,6 +18,7 @@ import {
 } from '../../domain/ports/i-cliente-email-config.repository';
 import { IEmailConnectionVerifier } from '../../../shared/domain/ports/i-email-connection-verifier.port';
 import { ClienteEntity } from '../../domain/entities/cliente.entity';
+import { ZonaHoraria } from '../../../shared/domain/zona-horaria';
 import {
   ClienteNoEncontradoError,
   CorreoPasswordFaltanteError,
@@ -31,6 +32,7 @@ function buildCliente(): ClienteEntity {
     cuit: null,
     dbName: 'soporte_deadbeef',
     activo: true,
+    zonaHoraria: ZonaHoraria.crear('America/Argentina/Buenos_Aires'),
   });
 }
 

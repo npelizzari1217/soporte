@@ -72,6 +72,7 @@ import { PrismaUsuarioRepository } from '../../infrastructure/persistence/prisma
 import { PrismaMatrizPermisosRepository } from '../../infrastructure/persistence/prisma/prisma-matriz-permisos.repository';
 import { CodigoAccion } from '../../../shared/domain/acciones';
 import { ClienteEntity } from '../../../clientes/domain/entities/cliente.entity';
+import { ZonaHoraria } from '../../../shared/domain/zona-horaria';
 import { UsuarioEntity } from '../../domain/entities/usuario.entity';
 import { RoleEntity } from '../../domain/entities/role.entity';
 import { Argon2HashProvider } from '../../infrastructure/argon2-hash.provider';
@@ -375,6 +376,7 @@ describe('Autorización e2e — TABLA_RUTAS (G2, WU-7.7) + scope de filas/campos
       cuit: null,
       dbName: TENANT_DB_NAME,
       activo: true,
+      zonaHoraria: ZonaHoraria.crear('America/Argentina/Buenos_Aires'),
     });
     await clienteRepo.save(cliente);
     return cliente;
