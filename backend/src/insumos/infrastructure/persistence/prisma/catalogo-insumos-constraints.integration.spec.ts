@@ -100,6 +100,9 @@ describe('Catálogo de insumos — constraints de la migración', () => {
   });
 
   describe('stock mínimo — CHECK >= 0', () => {
+    // Se asserta el NOMBRE del constraint, no un `toThrow()` pelado: con
+    // `toThrow()` un fixture roto —una familia inexistente, por ejemplo— haría
+    // pasar el test por el motivo equivocado.
     it('rechaza un stock mínimo negativo', async () => {
       await expect(
         tenantClient.insumo.create({
@@ -111,7 +114,7 @@ describe('Catálogo de insumos — constraints de la migración', () => {
             stockMinimo: -1,
           },
         }),
-      ).rejects.toThrow();
+      ).rejects.toThrow(/insumos_stock_minimo_check/);
     });
 
     it('acepta cero — el borde permitido, no un valor cualquiera', async () => {
