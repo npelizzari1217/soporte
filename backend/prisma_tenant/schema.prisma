@@ -555,6 +555,14 @@ model EquipoInformatico {
   /// Ubicación física como TEXTO LIBRE (siempre en mayúscula, normalizado en la
   /// capa de aplicación). Antes era FK a `ubicaciones` — se pasó a texto libre.
   ubicacion          String?   @db.VarChar(255)
+  /// Modelo del catálogo (sdd/insumos-catalogo). NULLABLE a propósito: un clon
+  /// armado en casa no tiene marca ni modelo y existe igual — simplemente no
+  /// participa de la compatibilidad con insumos. Convive con los campos de texto
+  /// `marca`/`modelo` de arriba, que siguen siendo la vía para un equipo sin
+  /// modelo de catálogo; cuando hay `modeloEquipoId`, la pantalla muestra el del
+  /// catálogo.
+  /// ÍNDICE PARCIAL WHERE NOT NULL — enforced via CREATE INDEX en migration SQL.
+  modeloEquipoId     String?   @map("modelo_equipo_id") @db.Uuid
   /// Valoración del equipo: importe (valor) + fecha en que se registró.
   importe            Decimal?  @db.Decimal(14, 2)
   fechaValoracion    DateTime? @map("fecha_valoracion") @db.Date
@@ -570,12 +578,137 @@ model EquipoInformatico {
   updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt          DateTime? @map("deleted_at") @db.Timestamptz
 
+  modeloEquipo ModeloEquipo? @relation(fields: [modeloEquipoId], references: [id])
+
   componentes      ComponenteEquipo[]
   archivos         ArchivoEquipo[]
   tickets          TicketSoporte[]
   planesPreventivo PlanPreventivo[]
 
   @@map("equipos_informaticos")
+}
+
+// ─── CATÁLOGO DE INSUMOS (sdd/insumos-catalogo, Entrega 1) ──────────────────
+//
+// Tres catálogos y una relación. La pieza central es `InsumoModeloEquipo`: la
+// compatibilidad pertenece al MODELO de equipo, no a la instancia. Un tóner
+// sirve a quince impresoras y una impresora usa cuatro tóners, uno por color;
+// colgada de la instancia habría que recargarla equipo por equipo.
+//
+// `ComponenteEquipo` e `Insumo` NO se pisan: el componente es lo que está
+// adentro de un equipo hoy, el insumo es lo que se compra y se consume. Un
+// disco rígido es las dos cosas en momentos distintos.
+//
+// Las existencias (`MovimientoInsumo`) son la Entrega 2 y no están acá.
+
+model ModeloEquipo {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// Normalizada en mayúscula en la capa de aplicación, igual que `EquipoInformatico.ubicacion`.
+  marca     String    @db.VarChar(100)
+  modelo    String    @db.VarChar(150)
+  activo    Boolean   @default(true)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz
+
+  equipos        EquipoInformatico[]
+  compatibilidad InsumoModeloEquipo[]
+
+  /// UNIQUE (marca, modelo) SIN índice parcial por `deleted_at` — mismo criterio
+  /// que `sectores`: un modelo dado de baja no se reutiliza.
+  @@unique([marca, modelo])
+  @@map("modelos_equipo")
+}
+
+model FamiliaInsumo {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  codigo    String    @unique @db.VarChar(30)
+  nombre    String    @db.VarChar(100)
+  activo    Boolean   @default(true)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz
+
+  insumos Insumo[]
+
+  @@map("familias_insumo")
+}
+
+model UnidadMedida {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  codigo    String    @unique @db.VarChar(20)
+  nombre    String    @db.VarChar(50)
+  activo    Boolean   @default(true)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz
+
+  insumos Insumo[]
+
+  @@map("unidades_medida")
+}
+
+model Insumo {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  codigo         String    @unique @db.VarChar(50)
+  nombre         String    @db.VarChar(255)
+  familiaId      String    @map("familia_id") @db.Uuid
+  unidadMedidaId String    @map("unidad_medida_id") @db.Uuid
+  /// Punto de reposición. Nullable: no todo insumo tiene uno. CHECK (>= 0).
+  stockMinimo    Decimal?  @map("stock_minimo") @db.Decimal(10, 2)
+  activo         Boolean   @default(true)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt      DateTime? @map("deleted_at") @db.Timestamptz
+
+  familia             FamiliaInsumo             @relation(fields: [familiaId], references: [id])
+  unidadMedida        UnidadMedida              @relation(fields: [unidadMedidaId], references: [id])
+  codigosAlternativos InsumoCodigoAlternativo[]
+  compatibilidad      InsumoModeloEquipo[]
+
+  @@index([familiaId])
+  @@index([unidadMedidaId])
+  @@map("insumos")
+}
+
+model InsumoCodigoAlternativo {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  insumoId   String    @map("insumo_id") @db.Uuid
+  codigo     String    @db.VarChar(50)
+  fabricante String?   @db.VarChar(100)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz
+
+  insumo Insumo @relation(fields: [insumoId], references: [id], onDelete: Cascade)
+
+  /// UNIQUE (codigo, fabricante) con `NULLS NOT DISTINCT` — raw SQL en la
+  /// migración, Prisma no lo expresa. Sin esa cláusula Postgres trata cada NULL
+  /// como distinto y dejaría cargar el mismo código genérico sin fabricante
+  /// tantas veces como se quiera, que es justo el duplicado que esta tabla existe
+  /// para evitar.
+  @@index([insumoId])
+  @@map("insumos_codigos_alternativos")
+}
+
+model InsumoModeloEquipo {
+  insumoId       String   @map("insumo_id") @db.Uuid
+  modeloEquipoId String   @map("modelo_equipo_id") @db.Uuid
+  /// Rol del insumo para ese modelo. NULL cuando no tiene: una lámpara no es de
+  /// ningún color. SIN `CHECK` de conjunto cerrado a propósito: los colores
+  /// (NEGRO/CIAN/MAGENTA/AMARILLO) son el caso frecuente, no el único — un modelo
+  /// puede llevar tambor, fusor o kit de mantenimiento. Es el mismo criterio por
+  /// el que `familias_insumo` es tabla y no `CHECK`. Se normaliza a mayúscula en
+  /// la capa de aplicación.
+  rol            String?  @db.VarChar(20)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  insumo       Insumo       @relation(fields: [insumoId], references: [id], onDelete: Cascade)
+  modeloEquipo ModeloEquipo @relation(fields: [modeloEquipoId], references: [id], onDelete: Cascade)
+
+  @@id([insumoId, modeloEquipoId])
+  @@index([modeloEquipoId])
+  @@map("insumos_modelos_equipo")
 }
 
 model ComponenteEquipo {

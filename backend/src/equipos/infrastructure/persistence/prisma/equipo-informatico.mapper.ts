@@ -43,10 +43,15 @@ export class EquipoInformaticoMapper {
    * Incluye `createdAt` para que el repo lo use en el CREATE y lo excluya
    * del UPDATE (nunca pisar el timestamp de creación existente en DB).
    * Los montos van como `number` (Prisma acepta number/string en columnas Decimal).
+   *
+   * `modeloEquipoId` queda EXCLUIDO a propósito: la columna ya existe en la base
+   * (catálogo de insumos) pero la entidad de dominio todavía no la conoce.
+   * Mandarla en `null` desde acá pisaría el modelo del equipo en cada guardado.
+   * Entra cuando la entidad la incorpore, no antes.
    */
   static toPersistence(entity: EquipoInformaticoEntity): Omit<
     PrismaEquipoInformatico,
-    'updatedAt' | 'importe' | 'valorResidual'
+    'updatedAt' | 'importe' | 'valorResidual' | 'modeloEquipoId'
   > & {
     importe: Prisma.Decimal | number | string | null;
     valorResidual: Prisma.Decimal | number | string | null;
