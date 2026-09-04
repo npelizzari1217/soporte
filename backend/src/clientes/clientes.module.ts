@@ -95,7 +95,6 @@ import { QuitarCorreoClienteUseCase } from './application/use-cases/quitar-corre
 import { ProbarCorreoClienteUseCase } from './application/use-cases/probar-correo-cliente.use-case';
 import { VerCorreoClienteUseCase } from './application/use-cases/ver-correo-cliente.use-case';
 import { ConfigurarCsatClienteUseCase } from './application/use-cases/configurar-csat-cliente.use-case';
-import { ConfigurarZonaHorariaClienteUseCase } from './application/use-cases/configurar-zona-horaria-cliente.use-case';
 
 // ─── Controllers ─────────────────────────────────────────────────────────────
 import { CicloVigenteController } from './interface/controllers/ciclos-vigentes.controller';
@@ -243,11 +242,6 @@ import { ClientesController } from './interface/controllers/clientes.controller'
     {
       provide: ConfigurarCsatClienteUseCase,
       useFactory: (repo: IClienteRepository) => new ConfigurarCsatClienteUseCase(repo),
-      inject: [CLIENTE_REPOSITORY],
-    },
-    {
-      provide: ConfigurarZonaHorariaClienteUseCase,
-      useFactory: (repo: IClienteRepository) => new ConfigurarZonaHorariaClienteUseCase(repo),
       inject: [CLIENTE_REPOSITORY],
     },
     {

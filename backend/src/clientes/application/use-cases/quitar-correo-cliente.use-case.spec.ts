@@ -8,7 +8,6 @@ import { QuitarCorreoClienteUseCase } from './quitar-correo-cliente.use-case';
 import { IClienteRepository } from '../../domain/ports/i-cliente.repository';
 import { IClienteEmailConfigRepository } from '../../domain/ports/i-cliente-email-config.repository';
 import { ClienteEntity } from '../../domain/entities/cliente.entity';
-import { ZonaHoraria } from '../../../shared/domain/zona-horaria';
 import { ClienteNoEncontradoError } from '../../domain/errors/clientes.errors';
 
 function buildCliente(): ClienteEntity {
@@ -18,7 +17,6 @@ function buildCliente(): ClienteEntity {
     cuit: null,
     dbName: 'soporte_deadbeef',
     activo: true,
-    zonaHoraria: ZonaHoraria.crear('America/Argentina/Buenos_Aires'),
   });
 }
 

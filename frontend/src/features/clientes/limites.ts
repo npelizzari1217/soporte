@@ -55,23 +55,3 @@ export const CLIENTE_CUIT_MAX_LENGTH = 13;
  * propia con constantes que exportar.
  */
 export const CLIENTE_SMTP_TEXTO_MAX_LENGTH = 255;
-
-/**
- * Tope de `zonaHoraria` (D8, `openspec/changes/zona-horaria-por-tenant/design.md`).
- *
- * Autoridad: `ZONA_HORARIA_MAX_LENGTH` en el VO `ZonaHoraria`
- * (`backend/src/shared/domain/zona-horaria.ts`), que espeja la columna
- * `clientes.zona_horaria VARCHAR(64)` (migración
- * `20260901120000_add_cliente_zona_horaria`) con margen sobre el ID IANA
- * más largo (`America/Argentina/ComodRivadavia`, 32 caracteres).
- *
- * Cableada en `schemas.ts` (`configurarZonaHorariaSchema`, tarea 2.13) con
- * `.max()`, mismo patrón que el resto de esta lista. Es defensa en
- * profundidad y NO tiene un caso de prueba propio que la distinga de
- * `esZonaValida` (D2): ningún candidato puede pasar esa validación de
- * `Intl.DateTimeFormat` y superar 64 caracteres a la vez — todo identificador
- * IANA real y todo offset ISO soportado quedan muy por debajo. Igual que el
- * VO backend no le agrega su propio test de "cae por largo" separado del de
- * `esZonaValida`.
- */
-export const CLIENTE_ZONA_HORARIA_MAX_LENGTH = 64;

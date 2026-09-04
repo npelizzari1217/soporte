@@ -1,5 +1,4 @@
 import { BaseEntity } from '../../../shared/domain/base-entity';
-import { ZonaHoraria } from '../../../shared/domain/zona-horaria';
 
 /**
  * Tope de largo de `cuit`, espejando `clientes.cuit VARCHAR(13)`
@@ -87,16 +86,6 @@ export interface ClienteProps {
   dbName: string;
   activo: boolean;
   /**
-   * Zona horaria operativa del tenant (sdd/zona-horaria-por-tenant, D1-D9).
-   * OBLIGATORIA — a propósito, a diferencia de `csatHabilitado?` de acá
-   * abajo: sin `?` y sin `??` de default en el getter. La columna es
-   * `NOT NULL` con backfill (D8) y el alta la exige explícita en el DTO
-   * (decisión "Zona de un cliente NUEVO: se exige explícita en el alta"),
-   * así que ninguna instancia de dominio puede existir sin ella. Omitirla
-   * es un error de contrato del caller, no una preferencia sin configurar.
-   */
-  zonaHoraria: ZonaHoraria;
-  /**
    * Habilita la emisión de encuestas CSAT al cerrar un ticket de este
    * cliente (sdd/csat, WU1). `ResolverEncuestaTokenService` (ADR-C1) la lee
    * del `findById` que ya hace, sin cambios en `IClienteRepository`.
@@ -182,16 +171,6 @@ export class ClienteEntity extends BaseEntity<ClienteProps> {
     return this.props.csatHabilitado ?? false;
   }
 
-  /**
-   * Zona horaria operativa del tenant. Ver `ClienteProps.zonaHoraria` — a
-   * diferencia de `csatHabilitado`, este getter NO tiene default: acceder a
-   * ella sobre una entidad construida sin el campo revienta acá, a
-   * propósito.
-   */
-  get zonaHoraria(): ZonaHoraria {
-    return this.props.zonaHoraria;
-  }
-
   // ─── Comportamiento de dominio ─────────────────────────────────────────
 
   /**
@@ -234,18 +213,6 @@ export class ClienteEntity extends BaseEntity<ClienteProps> {
    */
   configurarCsat(habilitado: boolean): void {
     this.props.csatHabilitado = habilitado;
-    this.touch();
-  }
-
-  /**
-   * Cambia la zona operativa del tenant (sdd/zona-horaria-por-tenant, C2b).
-   * Acción SEPARADA de `editar()`, mismo criterio que `configurarCsat()`: la
-   * configuración de zona no comparte el patch parcial de los datos
-   * comerciales. Recibe un `ZonaHoraria` ya validado — el candidato inválido
-   * se rechaza en el borde (DTO), nunca llega hasta acá.
-   */
-  configurarZonaHoraria(zona: ZonaHoraria): void {
-    this.props.zonaHoraria = zona;
     this.touch();
   }
 }

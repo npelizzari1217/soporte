@@ -15,7 +15,6 @@ import { TicketCsatListener } from './ticket-csat.listener';
 import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
 import { TicketEstadoCambiadoEvent } from '../../../tickets/domain/events/ticket-estado-cambiado.event';
 import { ClienteEntity } from '../../../clientes/domain/entities/cliente.entity';
-import { ZonaHoraria } from '../../../shared/domain/zona-horaria';
 
 const CLIENTE_ID = '01977a00-0000-7000-8000-0000000000c1';
 const TICKET_ID = 'ticket-uuid';
@@ -45,7 +44,6 @@ function makeCliente(csatHabilitado: boolean): ClienteEntity {
       cuit: null,
       dbName: 'test_csat_listener',
       activo: true,
-      zonaHoraria: ZonaHoraria.crear('America/Argentina/Buenos_Aires'),
       csatHabilitado,
     },
     CLIENTE_ID,

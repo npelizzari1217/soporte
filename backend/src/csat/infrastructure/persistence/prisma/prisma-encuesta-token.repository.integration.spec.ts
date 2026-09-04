@@ -13,7 +13,6 @@ import { MasterPrismaClient } from '../../../../shared/infrastructure/persistenc
 import { PrismaService } from '../../../../shared/infrastructure/persistence/prisma.service';
 import { PrismaEncuestaTokenRepository } from './prisma-encuesta-token.repository';
 import { ClienteEntity } from '../../../../clientes/domain/entities/cliente.entity';
-import { ZonaHoraria } from '../../../../shared/domain/zona-horaria';
 import { PrismaClienteRepository } from '../../../../clientes/infrastructure/persistence/prisma/prisma-cliente.repository';
 import { EncuestaTokenEntity } from '../../../domain/entities/encuesta-token.entity';
 import { usarLockMasterTest } from '../../../../testing/lock-master-test';
@@ -55,7 +54,6 @@ describe('PrismaEncuestaTokenRepository — Integration (5.2)', () => {
       cuit: null,
       dbName: `test_csat_${suffix}`,
       activo: true,
-      zonaHoraria: ZonaHoraria.crear('America/Argentina/Buenos_Aires'),
       csatHabilitado: true,
     });
     await clienteRepo.save(cliente);

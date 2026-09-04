@@ -20,7 +20,6 @@ import { PrismaMembresiaRepository } from './prisma-membresia.repository';
 import { PrismaRefreshTokenRepository } from './prisma-refresh-token.repository';
 import { PrismaMatrizPermisosRepository } from './prisma-matriz-permisos.repository';
 import { ClienteEntity } from '../../../../clientes/domain/entities/cliente.entity';
-import { ZonaHoraria } from '../../../../shared/domain/zona-horaria';
 import { UsuarioEntity } from '../../../domain/entities/usuario.entity';
 import { RoleEntity } from '../../../domain/entities/role.entity';
 import { PermisoEntity } from '../../../domain/entities/permiso.entity';
@@ -146,7 +145,6 @@ describe('Auth Use Cases — Integration end-to-end (T5.5)', () => {
       cuit: null,
       dbName: `test_e2e_${suffix}`,
       activo,
-      zonaHoraria: ZonaHoraria.crear('America/Argentina/Buenos_Aires'),
     });
     await clienteRepo.save(cliente);
     return cliente;

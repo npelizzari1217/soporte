@@ -22,7 +22,6 @@ const CLIENTE_SIN_CSAT: Cliente = {
   dbName: "cliente_uno",
   activo: true,
   csatHabilitado: false,
-  zonaHoraria: "America/Argentina/Buenos_Aires",
 };
 
 describe("ConfigurarCsatDialog", () => {

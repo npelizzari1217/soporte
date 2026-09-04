@@ -4,7 +4,6 @@ import {
   CLIENTE_NOMBRE_MAX_LENGTH,
   CLIENTE_RAZON_SOCIAL_MAX_LENGTH,
   CLIENTE_SMTP_TEXTO_MAX_LENGTH,
-  CLIENTE_ZONA_HORARIA_MAX_LENGTH,
 } from "./limites";
 import {
   USUARIO_APELLIDO_MAX_LENGTH,
@@ -12,7 +11,6 @@ import {
   USUARIO_NOMBRE_MAX_LENGTH,
 } from "@/shared/lib/limites-usuario";
 import { mensajeDemasiadoLargo } from "@/shared/lib/mensaje-tope";
-import { esZonaValida } from "@/shared/lib/formato-fecha";
 
 /** Espejo de `CreateClienteDto` (backend). Provisiona DB física + admin inicial — solo ROOT. */
 export const crearClienteSchema = z.object({
@@ -53,11 +51,6 @@ export const crearClienteSchema = z.object({
       mensajeDemasiadoLargo("El apellido del administrador", USUARIO_APELLIDO_MAX_LENGTH),
     ),
   adminPassword: z.string().min(8, "Mínimo 8 caracteres"),
-  /**
-   * Obligatoria y sin default: un candidato vacío o inválido no pasa
-   * `esZonaValida` (ver arriba), así que no hace falta un `.min(1)` aparte.
-   */
-  zonaHoraria: z.string().refine(esZonaValida, "Zona horaria inválida"),
 });
 export type CrearClienteFormValues = z.infer<typeof crearClienteSchema>;
 
@@ -133,33 +126,3 @@ export function configurarCorreoSchema(yaConfigurado: boolean) {
     });
 }
 export type ConfigurarCorreoFormValues = z.infer<ReturnType<typeof configurarCorreoSchema>>;
-
-/**
- * Espejo de `ConfigurarZonaHorariaClienteDto` (backend, D1/D2) para el
- * diálogo de EDICIÓN de la zona operativa del tenant
- * (`configurar-zona-horaria-dialog.tsx`, tarea 2.13).
- *
- * Mismo mecanismo que `crearClienteSchema.zonaHoraria` desde C2a-front:
- * `z.string().refine(esZonaValida)`, NUNCA `z.enum` — D2 prohíbe validar
- * contra un catálogo (`Intl.supportedValuesOf('timeZone')` ni siquiera trae
- * `America/Argentina/Buenos_Aires`, la zona por defecto del proyecto). El
- * `.max()` es defensa en profundidad que espeja la columna
- * `clientes.zona_horaria VARCHAR(64)` — ver el JSDoc de
- * `CLIENTE_ZONA_HORARIA_MAX_LENGTH` en `./limites` sobre por qué ese tope no
- * tiene un caso de prueba propio que lo distinga de `esZonaValida`.
- *
- * NO se apunta `schemas.test.ts` a `crearClienteSchema` para probar esto:
- * ese schema es del diálogo de ALTA y ya estaba completo desde C2a-front:
- * un test ahí no dejaría ver la falta que este schema (el de EDICIÓN) tenía
- * hasta la tarea 2.13.
- */
-export const configurarZonaHorariaSchema = z.object({
-  zonaHoraria: z
-    .string()
-    .max(
-      CLIENTE_ZONA_HORARIA_MAX_LENGTH,
-      mensajeDemasiadoLargo("La zona horaria", CLIENTE_ZONA_HORARIA_MAX_LENGTH),
-    )
-    .refine(esZonaValida, "Zona horaria inválida"),
-});
-export type ConfigurarZonaHorariaFormValues = z.infer<typeof configurarZonaHorariaSchema>;

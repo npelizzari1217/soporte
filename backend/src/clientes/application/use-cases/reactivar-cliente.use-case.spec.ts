@@ -20,7 +20,6 @@ import { ReactivarClienteUseCase } from './reactivar-cliente.use-case';
 import { IClienteRepository } from '../../domain/ports/i-cliente.repository';
 import { ITenantMigrationRunner } from '../../domain/ports/i-tenant-migration-runner.port';
 import { ClienteEntity } from '../../domain/entities/cliente.entity';
-import { ZonaHoraria } from '../../../shared/domain/zona-horaria';
 import { ClienteNoEncontradoError } from '../../domain/errors/clientes.errors';
 
 function buildRepoMock(overrides: Partial<IClienteRepository> = {}): IClienteRepository {
@@ -64,7 +63,6 @@ describe('ReactivarClienteUseCase', () => {
       cuit: null,
       dbName: 'soporte_deadbeef',
       activo: false,
-      zonaHoraria: ZonaHoraria.crear('America/Argentina/Buenos_Aires'),
     });
     cliente.suspend();
     const save = vi.fn().mockResolvedValue(undefined);
@@ -87,7 +85,6 @@ describe('ReactivarClienteUseCase', () => {
       cuit: null,
       dbName: 'soporte_deadbeef',
       activo: false,
-      zonaHoraria: ZonaHoraria.crear('America/Argentina/Buenos_Aires'),
     });
     cliente.suspend();
     const llamadas: string[] = [];
@@ -119,7 +116,6 @@ describe('ReactivarClienteUseCase', () => {
       cuit: null,
       dbName: 'soporte_deadbeef',
       activo: false,
-      zonaHoraria: ZonaHoraria.crear('America/Argentina/Buenos_Aires'),
     });
     cliente.suspend();
     const save = vi.fn().mockResolvedValue(undefined);

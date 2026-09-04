@@ -17,7 +17,6 @@
 import type { Mocked } from 'vitest';
 import { SwitchTenantUseCase, SwitchTenantDto } from './switch-tenant.use-case';
 import { ClienteEntity } from '../../../clientes/domain/entities/cliente.entity';
-import { ZonaHoraria } from '../../../shared/domain/zona-horaria';
 import { IMembresiaRepository, MembresiaResuelta } from '../../domain/ports/i-membresia.repository';
 import { IMatrizPermisosRepository } from '../../domain/ports/i-matriz-permisos.repository';
 import { IClienteRepository } from '../../../clientes/domain/ports/i-cliente.repository';
@@ -29,14 +28,7 @@ import { PARES_VALIDOS } from '../../../shared/domain/acciones';
 import { unstubbed } from '../../../testing/mocks';
 
 const makeCliente = (nombre = 'Acme SA', activo = true): ClienteEntity =>
-  ClienteEntity.create({
-    nombre,
-    razonSocial: null,
-    cuit: null,
-    dbName: 'acme_sa',
-    activo,
-    zonaHoraria: ZonaHoraria.crear('America/Argentina/Buenos_Aires'),
-  });
+  ClienteEntity.create({ nombre, razonSocial: null, cuit: null, dbName: 'acme_sa', activo });
 
 /**
  * `MembresiaResuelta` ya NO expone `permisos`: el fix de C2 retiró el campo

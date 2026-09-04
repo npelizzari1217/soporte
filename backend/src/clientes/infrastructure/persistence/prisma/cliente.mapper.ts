@@ -9,7 +9,6 @@
  */
 import type { Cliente as PrismaCliente } from '.prisma/master';
 import { ClienteEntity } from '../../../domain/entities/cliente.entity';
-import { ZonaHoraria } from '../../../../shared/domain/zona-horaria';
 
 export class ClienteMapper {
   static toDomain(row: PrismaCliente): ClienteEntity {
@@ -20,7 +19,6 @@ export class ClienteMapper {
         cuit: row.cuit ?? null,
         dbName: row.dbName,
         activo: row.activo,
-        zonaHoraria: ZonaHoraria.desdePersistencia(row.zonaHoraria, row.id),
         csatHabilitado: row.csatHabilitado,
       },
       row.id,
@@ -61,7 +59,6 @@ export class ClienteMapper {
       cuit: entity.cuit,
       dbName: entity.dbName,
       activo: entity.activo,
-      zonaHoraria: entity.zonaHoraria.valor,
       csatHabilitado: entity.csatHabilitado,
       deletedAt: entity.deletedAt,
     };

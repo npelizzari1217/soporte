@@ -30,7 +30,6 @@ import { RefreshTokenUseCase, RefreshTokenDto } from './refresh-token.use-case';
 import { RefreshTokenEntity } from '../../domain/entities/refresh-token.entity';
 import { UsuarioEntity } from '../../domain/entities/usuario.entity';
 import { ClienteEntity } from '../../../clientes/domain/entities/cliente.entity';
-import { ZonaHoraria } from '../../../shared/domain/zona-horaria';
 import { IRefreshTokenRepository } from '../../domain/ports/i-refresh-token.repository';
 import { IUsuarioRepository } from '../../domain/ports/i-usuario.repository';
 import { IMembresiaRepository, MembresiaResuelta } from '../../domain/ports/i-membresia.repository';
@@ -96,14 +95,7 @@ const makeUsuario = (
 };
 
 const makeCliente = (nombre = 'Acme SA', activo = true): ClienteEntity =>
-  ClienteEntity.create({
-    nombre,
-    razonSocial: null,
-    cuit: null,
-    dbName: 'acme_sa',
-    activo,
-    zonaHoraria: ZonaHoraria.crear('America/Argentina/Buenos_Aires'),
-  });
+  ClienteEntity.create({ nombre, razonSocial: null, cuit: null, dbName: 'acme_sa', activo });
 
 /**
  * `MembresiaResuelta` ya NO expone `permisos`: el fix de C2 retiró el campo

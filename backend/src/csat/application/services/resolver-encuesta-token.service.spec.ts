@@ -18,7 +18,6 @@ import {
 } from '../../domain/entities/encuesta-token.entity';
 import { EncuestaLinkInvalidoError } from '../../domain/errors/csat.errors';
 import { ClienteEntity, ClienteProps } from '../../../clientes/domain/entities/cliente.entity';
-import { ZonaHoraria } from '../../../shared/domain/zona-horaria';
 import { IEncuestaTokenRepository } from '../../domain/ports/i-encuesta-token.repository';
 import { IClienteRepository } from '../../../clientes/domain/ports/i-cliente.repository';
 
@@ -59,7 +58,6 @@ function clientePropsValido(overrides: Partial<ClienteProps> = {}): ClienteProps
     cuit: null,
     dbName: 'test_csat_cliente',
     activo: true,
-    zonaHoraria: ZonaHoraria.crear('America/Argentina/Buenos_Aires'),
     csatHabilitado: true,
     ...overrides,
   };

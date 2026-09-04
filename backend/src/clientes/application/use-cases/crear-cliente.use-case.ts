@@ -38,7 +38,6 @@
  */
 import { uuidv7 } from 'uuidv7';
 import { Result } from '../../../shared/domain/result';
-import { ZonaHoraria } from '../../../shared/domain/zona-horaria';
 import { ClienteEntity } from '../../domain/entities/cliente.entity';
 import { IClienteRepository } from '../../domain/ports/i-cliente.repository';
 import { IPostgresAdminPort } from '../../domain/ports/i-postgres-admin.port';
@@ -67,14 +66,6 @@ export interface CrearClienteDto {
   adminNombre: string;
   adminApellido: string;
   adminPassword: string;
-  /**
-   * Zona horaria operativa del tenant nuevo (sdd/zona-horaria-por-tenant).
-   * OBLIGATORIA — el use case NUNCA defaultea a Buenos Aires (decisión "Zona
-   * de un cliente NUEVO: se exige explícita en el alta"); un candidato
-   * inválido revienta acá vía `ZonaHoraria.crear()`, porque ya pasó por el
-   * borde (`CreateClienteDto`) antes de llegar a este DTO interno.
-   */
-  zonaHoraria: string;
 }
 
 /** Actor que invoca el alta — solo se consume `isGlobalAdmin` (R16). */
@@ -152,7 +143,6 @@ export class CrearClienteUseCase {
         cuit: dto.cuit ?? null,
         dbName,
         activo: true,
-        zonaHoraria: ZonaHoraria.crear(dto.zonaHoraria),
       },
       clienteId,
     );

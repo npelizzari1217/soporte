@@ -108,16 +108,6 @@ model Cliente {
   /// de `smtp_*` — mismo criterio que `smtpSecure`.
   csatHabilitado Boolean @default(false) @map("csat_habilitado")
 
-  /// Zona horaria operativa del tenant (IANA), gobierna SLA, vencimientos,
-  /// validación de fechas de dominio, CSV y prefill de calendario
-  /// (sdd/zona-horaria-por-tenant, D1-D9). `NOT NULL` con backfill en la
-  /// misma migración (D8): ningún tenant expone NULL, ni antes ni después.
-  /// El `@default` de acá es SOLO el backfill de las filas existentes al
-  /// migrar — el alta de un cliente NUEVO la exige explícita en
-  /// `CreateClienteDto`, nunca defaultea a Buenos Aires (decisión "Zona de
-  /// un cliente NUEVO: se exige explícita en el alta").
-  zonaHoraria String @default("America/Argentina/Buenos_Aires") @map("zona_horaria") @db.VarChar(64)
-
   membresias     Membresia[]
   encuestaTokens EncuestaToken[]
 
@@ -495,7 +485,7 @@ model CalendarioLaboralDia {
 model Feriado {
   id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   /// @db.Date: Prisma la devuelve como medianoche UTC — ver nota arriba. NO
-  /// aplicar la zona horaria del tenant (`ZonaHoraria`, D9) a este campo.
+  /// aplicar `desplazarAArgentina` a este campo.
   fecha       DateTime @unique @db.Date
   descripcion String   @db.VarChar(200)
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz

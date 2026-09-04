@@ -55,7 +55,6 @@ import { PrismaClienteRepository } from '../../../clientes/infrastructure/persis
 import { PrismaUsuarioRepository } from '../../infrastructure/persistence/prisma/prisma-usuario.repository';
 import { PrismaMatrizPermisosRepository } from '../../infrastructure/persistence/prisma/prisma-matriz-permisos.repository';
 import { ClienteEntity } from '../../../clientes/domain/entities/cliente.entity';
-import { ZonaHoraria } from '../../../shared/domain/zona-horaria';
 import { UsuarioEntity } from '../../domain/entities/usuario.entity';
 import { RoleEntity } from '../../domain/entities/role.entity';
 import { PermisoEntity } from '../../domain/entities/permiso.entity';
@@ -218,7 +217,6 @@ describe('Auth e2e (R3–R14, PR6)', () => {
       cuit: null,
       dbName: `test_auth_e2e_${suffix}`,
       activo,
-      zonaHoraria: ZonaHoraria.crear('America/Argentina/Buenos_Aires'),
     });
     await clienteRepo.save(cliente);
     return cliente;

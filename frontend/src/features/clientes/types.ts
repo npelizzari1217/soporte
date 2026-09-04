@@ -18,14 +18,6 @@ export interface Cliente {
    * a diferencia de la config de correo que necesita un endpoint aparte.
    */
   csatHabilitado: boolean;
-  /**
-   * Zona operativa del tenant (IANA), D8
-   * (`openspec/changes/zona-horaria-por-tenant`). Igual que
-   * `csatHabilitado`, no es un secreto y viaja siempre en `Cliente`
-   * (`GET /clientes`, tarea 2.9b — `toResponseDto()` la lee de
-   * `cliente.zonaHoraria.valor`, nunca de un default hardcodeado).
-   */
-  zonaHoraria: string;
 }
 
 export interface CreateClienteDto {
@@ -36,14 +28,6 @@ export interface CreateClienteDto {
   adminNombre: string;
   adminApellido: string;
   adminPassword: string;
-  /**
-   * Zona operativa del tenant nuevo (IANA), gobierna SLA, vencimientos, CSV
-   * y prefill de fecha/hora. Obligatoria y sin default preseleccionado: la
-   * decisión cerrada del ciclo `zona-horaria-por-tenant` es que va explícita
-   * en el alta, nunca defaulteada a Buenos Aires desde la UI (el backend
-   * también la exige — `CreateClienteDto.zonaHoraria`, sin `?`).
-   */
-  zonaHoraria: string;
 }
 
 /**
@@ -108,13 +92,4 @@ export interface ConfigurarCorreoDto {
 /** Body de `PATCH /clientes/:id/csat` — espejo de `ConfigurarCsatClienteDto` (backend, sdd/csat WU10.2). */
 export interface ConfigurarCsatDto {
   habilitado: boolean;
-}
-
-/**
- * Body de `PATCH /clientes/:id/zona-horaria` — espejo de
- * `ConfigurarZonaHorariaClienteDto` (backend, D1/D2,
- * `openspec/changes/zona-horaria-por-tenant`). Solo ROOT.
- */
-export interface ConfigurarZonaHorariaDto {
-  zonaHoraria: string;
 }

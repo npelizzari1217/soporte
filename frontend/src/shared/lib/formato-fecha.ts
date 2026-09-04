@@ -229,37 +229,6 @@ export function aFechaInput(fecha: string | null | undefined): string {
 }
 
 /**
- * Espejo de `esZonaValida` (`backend/src/shared/domain/zona-horaria.ts`, D2).
- * Valida un candidato de zona horaria intentando construir un
- * `Intl.DateTimeFormat` con ese valor — es la ÚNICA regla, idéntica en
- * backend y frontend.
- *
- * Vive ACÁ y no en `features/clientes/schemas.ts` porque el lint del
- * proyecto (`no-restricted-syntax`) prohíbe instanciar `Intl.DateTimeFormat`
- * fuera de este módulo — cualquier formateador nuevo va adentro.
- *
- * NUNCA se valida contra `Intl.supportedValuesOf('timeZone')`: ese catálogo
- * tiene 418 zonas en Node v24.20.0 y NO incluye
- * `America/Argentina/Buenos_Aires` (`ZONA_ARGENTINA`, la zona por defecto
- * del propio proyecto), aunque sí construye un formateador válido para
- * ella — un validador sobre el catálogo rechazaría la zona por defecto de
- * este sistema. Por eso el schema que la consume usa
- * `z.string().refine(esZonaValida)` y nunca `z.enum`.
- *
- * El mecanismo anti-divergencia entre las dos puntas es el fixture
- * compartido `shared-fixtures/formato-fecha-paridad.json`, recorrido por
- * `features/clientes/components/crear-cliente-dialog.test.tsx`.
- */
-export function esZonaValida(candidata: string): boolean {
-  try {
-    new Intl.DateTimeFormat("en-CA", { timeZone: candidata });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/**
  * Hoy, visto desde Argentina (offset fijo UTC-3 — MISMA regla que el
  * `hoyArgentina()` del backend), formateado `"YYYY-MM-DD"` para
  * `<input type="date">`.

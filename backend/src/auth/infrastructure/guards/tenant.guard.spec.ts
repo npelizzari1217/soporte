@@ -15,7 +15,6 @@ import { JwtPayload } from '../../domain/ports/i-token.service';
 import { payloadDeTest } from '../../test-helpers/payload-de-test';
 import { IClienteRepository } from '../../../clientes/domain/ports/i-cliente.repository';
 import { ClienteEntity } from '../../../clientes/domain/entities/cliente.entity';
-import { ZonaHoraria } from '../../../shared/domain/zona-horaria';
 import { PrismaService } from '../../../shared/infrastructure/persistence/prisma.service';
 import { TenantContext } from '../../../shared/tenancy/tenant-context';
 
@@ -77,7 +76,6 @@ describe('TenantGuard (R12)', () => {
         cuit: null,
         dbName: 'soporte_cliente1',
         activo: false,
-        zonaHoraria: ZonaHoraria.crear('America/Argentina/Buenos_Aires'),
       },
       'cliente-1',
       new Date(),
@@ -98,7 +96,6 @@ describe('TenantGuard (R12)', () => {
         cuit: null,
         dbName: 'soporte_cliente1',
         activo: true,
-        zonaHoraria: ZonaHoraria.crear('America/Argentina/Buenos_Aires'),
       },
       'cliente-1',
       new Date(),
@@ -119,7 +116,6 @@ describe('TenantGuard (R12)', () => {
         cuit: null,
         dbName: 'soporte_cliente1',
         activo: true,
-        zonaHoraria: ZonaHoraria.crear('America/Argentina/Buenos_Aires'),
       },
       'cliente-1',
       new Date(),

@@ -50,7 +50,6 @@ import { TenantMigrationRunnerAdapter } from '../../../clientes/infrastructure/t
 import { TenantSeederAdapter } from '../../../clientes/infrastructure/tenant-seeder.adapter';
 import { PrismaClienteRepository } from '../../../clientes/infrastructure/persistence/prisma/prisma-cliente.repository';
 import { ClienteEntity } from '../../../clientes/domain/entities/cliente.entity';
-import { ZonaHoraria } from '../../../shared/domain/zona-horaria';
 import { PrismaEncuestaTokenRepository } from '../../infrastructure/persistence/prisma/prisma-encuesta-token.repository';
 import { EncuestaTokenEntity } from '../../domain/entities/encuesta-token.entity';
 import { TicketCsatListener } from '../../infrastructure/listeners/ticket-csat.listener';
@@ -197,7 +196,6 @@ describe('CSAT e2e — endpoint público (7.5)', () => {
       cuit: null,
       dbName: TENANT_DB_NAME,
       activo: overrides.activo ?? true,
-      zonaHoraria: ZonaHoraria.crear('America/Argentina/Buenos_Aires'),
       csatHabilitado: overrides.csatHabilitado ?? true,
     });
     await clienteRepo.save(cliente);

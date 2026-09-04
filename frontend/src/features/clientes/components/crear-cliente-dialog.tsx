@@ -7,13 +7,12 @@
  * pero el backend revalida de todos modos (`GlobalAdminGuard`).
  */
 import { useState } from "react";
-import { useForm, useController, type Control } from "react-hook-form";
+import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Plus } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ZonaHorariaCombobox } from "@/components/ui/zona-horaria-combobox";
 import { useCrearCliente } from "../hooks/use-clientes-mutations";
 import { crearClienteSchema, type CrearClienteFormValues } from "../schemas";
 
@@ -27,54 +26,11 @@ const FIELDS: { name: keyof CrearClienteFormValues; label: string; type?: string
   { name: "adminPassword", label: "Contraseña del admin", type: "password" },
 ];
 
-/**
- * Nombre del campo de zona, tipado contra `CrearClienteFormValues`: el mismo
- * usado por `useController` y por el `id`/`htmlFor` de abajo, para que no
- * pueda desincronizarse del patrón `cliente-${field.name}` que arma `FIELDS`.
- */
-const CAMPO_ZONA_HORARIA = "zonaHoraria" satisfies keyof CrearClienteFormValues;
-
-/**
- * Campo de zona horaria — combobox con búsqueda (decisión del usuario,
- * 2026-09-02), NUNCA `<Input>` de texto libre: evita errores de tipeo. Va
- * como `useController` porque `ZonaHorariaCombobox` es un componente
- * controlado (no expone la forma `register()` de un input nativo).
- */
-function CampoZonaHoraria({ control }: { control: Control<CrearClienteFormValues> }) {
-  const {
-    field,
-    fieldState: { error },
-  } = useController({ control, name: CAMPO_ZONA_HORARIA });
-  const inputId = `cliente-${CAMPO_ZONA_HORARIA}`;
-
-  return (
-    <div className="flex flex-col gap-1">
-      <label htmlFor={inputId} className="text-sm font-medium text-foreground">
-        Zona horaria operativa
-      </label>
-      <ZonaHorariaCombobox
-        id={inputId}
-        name={field.name}
-        value={field.value}
-        onChange={field.onChange}
-        onBlur={field.onBlur}
-        error={!!error}
-      />
-      {error && (
-        <p role="alert" className="text-sm text-destructive">
-          {error.message}
-        </p>
-      )}
-    </div>
-  );
-}
-
 export function CrearClienteDialog() {
   const [open, setOpen] = useState(false);
   const mutation = useCrearCliente();
   const {
     register,
-    control,
     handleSubmit,
     reset,
     formState: { errors },
@@ -88,9 +44,6 @@ export function CrearClienteDialog() {
       adminNombre: "",
       adminApellido: "",
       adminPassword: "",
-      // Sin valor preseleccionado: la decisión cerrada del ciclo es que la
-      // zona va explícita en el alta, nunca defaulteada a Buenos Aires.
-      zonaHoraria: "",
     },
   });
 
@@ -104,7 +57,6 @@ export function CrearClienteDialog() {
         adminNombre: values.adminNombre,
         adminApellido: values.adminApellido,
         adminPassword: values.adminPassword,
-        zonaHoraria: values.zonaHoraria,
       },
       {
         onSuccess: () => {
@@ -152,8 +104,6 @@ export function CrearClienteDialog() {
               )}
             </div>
           ))}
-
-          <CampoZonaHoraria control={control} />
 
           <div className="flex justify-end gap-2 pt-2">
             <Button type="submit" isLoading={mutation.isPending}>

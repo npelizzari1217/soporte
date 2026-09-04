@@ -14,7 +14,6 @@ const CLIENTE_UNO = {
   dbName: "tenant_c1",
   activo: true,
   csatHabilitado: false,
-  zonaHoraria: "America/Argentina/Buenos_Aires",
   correo: { configurado: false, verificadoAt: null },
 };
 
@@ -26,7 +25,6 @@ const CLIENTE_INACTIVO = {
   dbName: "tenant_c9",
   activo: false,
   csatHabilitado: false,
-  zonaHoraria: "America/Argentina/Buenos_Aires",
   correo: { configurado: false, verificadoAt: null },
 };
 
@@ -70,21 +68,10 @@ describe("ClientesAdminView", () => {
     await user.type(screen.getByLabelText(/nombre.*admin/i), "Ana");
     await user.type(screen.getByLabelText(/apellido.*admin/i), "Gómez");
     await user.type(screen.getByLabelText(/contraseña/i), "password123");
-    // Zona horaria: combobox con búsqueda (C2c-0), nunca texto libre — se
-    // filtra por el nombre completo (único match) y se elige de la lista.
-    // `getByRole("combobox", ...)` en vez de `getByLabelText`: desde que la
-    // fila también expone el botón "Configurar zona horaria de {nombre}"
-    // (cierre de la contradicción entre 2.13 y 2.14), su aria-label matchea
-    // igual la regex y `getByLabelText` queda ambiguo entre el combobox real
-    // y ese botón — el combobox es el único con `role="combobox"`.
-    const zonaInput = screen.getByRole("combobox", { name: /zona horaria/i });
-    await user.click(zonaInput);
-    await user.type(zonaInput, "America/Argentina/Buenos_Aires");
-    await user.click(await screen.findByRole("option", { name: "America/Argentina/Buenos_Aires" }));
     await user.click(screen.getByRole("button", { name: /crear/i }));
 
     await waitFor(() => expect(Object.keys(capturedBody).sort()).toEqual(
-      ["adminApellido", "adminEmail", "adminNombre", "adminPassword", "nombre", "zonaHoraria"].sort(),
+      ["adminApellido", "adminEmail", "adminNombre", "adminPassword", "nombre"].sort(),
     ));
   });
 
@@ -111,16 +98,6 @@ describe("ClientesAdminView", () => {
 
     await waitFor(() => expect(capturedUrl).toBe("c1"));
     expect(capturedBody).toEqual({ nombre: "Cliente Editado" });
-  });
-
-  it("la fila del cliente expone el botón para configurar su zona horaria y abre el diálogo correspondiente", async () => {
-    const user = userEvent.setup();
-    renderWithProviders(<ClientesAdminView />, { user: buildUser({ is_global_admin: true }) });
-    await screen.findByText("Cliente Uno");
-
-    await user.click(screen.getByRole("button", { name: /configurar zona horaria de cliente uno/i }));
-
-    expect(screen.getByLabelText(/^zona horaria$/i)).toBeInTheDocument();
   });
 
   it("desactivar cliente activo confirma y hace PATCH /clientes/:id/desactivar", async () => {

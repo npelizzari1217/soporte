@@ -311,8 +311,6 @@ describe('Crear Cliente e2e — provisioning real (T8.5, R16-R19)', () => {
       adminNombre: 'Ada',
       adminApellido: 'Admin',
       adminPassword: 'SuperSecret!123',
-      // sdd/zona-horaria-por-tenant: obligatoria desde el alta (WU-2, C2a).
-      zonaHoraria: 'America/Argentina/Buenos_Aires',
     };
   }
 

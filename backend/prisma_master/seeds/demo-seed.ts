@@ -227,10 +227,6 @@ async function provisionCliente(
     adminNombre: 'Admin',
     adminApellido: 'Demo',
     adminPassword: cfg.password,
-    // sdd/zona-horaria-por-tenant: obligatoria en CrearClienteDto (WU-2, C2a).
-    // El cliente demo es un fixture de desarrollo, no un alta real — Buenos
-    // Aires es un valor fijo del script, no un default silencioso del DTO.
-    zonaHoraria: 'America/Argentina/Buenos_Aires',
   };
   const result = await crearCliente.execute(dto, { isGlobalAdmin: true });
   if (result.isFail()) {

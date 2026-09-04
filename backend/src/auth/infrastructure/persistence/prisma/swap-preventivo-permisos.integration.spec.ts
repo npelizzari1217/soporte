@@ -32,7 +32,6 @@ import { MasterPrismaClient } from '../../../../shared/infrastructure/persistenc
 import { PrismaClienteRepository } from '../../../../clientes/infrastructure/persistence/prisma/prisma-cliente.repository';
 import { PrismaUsuarioRepository } from './prisma-usuario.repository';
 import { ClienteEntity } from '../../../../clientes/domain/entities/cliente.entity';
-import { ZonaHoraria } from '../../../../shared/domain/zona-horaria';
 import { UsuarioEntity } from '../../../domain/entities/usuario.entity';
 import { usarLockMasterTest } from '../../../../testing/lock-master-test';
 
@@ -91,7 +90,6 @@ describe('Swap de permisos PREVENTIVO:* a COLABORADOR (WU-1)', () => {
       cuit: null,
       dbName: 'test_swap_preventivo_a',
       activo: true,
-      zonaHoraria: ZonaHoraria.crear('America/Argentina/Buenos_Aires'),
     });
     await clienteRepo.save(clienteA);
     clienteAId = clienteA.id;
@@ -102,7 +100,6 @@ describe('Swap de permisos PREVENTIVO:* a COLABORADOR (WU-1)', () => {
       cuit: null,
       dbName: 'test_swap_preventivo_b',
       activo: true,
-      zonaHoraria: ZonaHoraria.crear('America/Argentina/Buenos_Aires'),
     });
     await clienteRepo.save(clienteB);
     clienteBId = clienteB.id;

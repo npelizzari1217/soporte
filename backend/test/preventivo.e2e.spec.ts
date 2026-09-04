@@ -46,7 +46,6 @@ import { PrismaClienteRepository } from '../src/clientes/infrastructure/persiste
 import { PrismaUsuarioRepository } from '../src/auth/infrastructure/persistence/prisma/prisma-usuario.repository';
 import { PrismaMatrizPermisosRepository } from '../src/auth/infrastructure/persistence/prisma/prisma-matriz-permisos.repository';
 import { ClienteEntity } from '../src/clientes/domain/entities/cliente.entity';
-import { ZonaHoraria } from '../src/shared/domain/zona-horaria';
 import { UsuarioEntity } from '../src/auth/domain/entities/usuario.entity';
 import { RoleEntity } from '../src/auth/domain/entities/role.entity';
 import { Argon2HashProvider } from '../src/auth/infrastructure/argon2-hash.provider';
@@ -201,7 +200,6 @@ describe('Preventivo e2e — ABM de planes, autorización REAL por HTTP (WU-4, c
       cuit: null,
       dbName: TENANT_DB_NAME,
       activo: true,
-      zonaHoraria: ZonaHoraria.crear('America/Argentina/Buenos_Aires'),
     });
     await clienteRepo.save(cliente);
     return cliente;

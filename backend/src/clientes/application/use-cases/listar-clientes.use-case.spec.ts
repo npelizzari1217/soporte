@@ -1,7 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { ListarClientesUseCase } from './listar-clientes.use-case';
 import { ClienteEntity } from '../../domain/entities/cliente.entity';
-import { ZonaHoraria } from '../../../shared/domain/zona-horaria';
 
 function buildEmailConfigRepoMock(estado: { configurado: boolean; verificadoAt: Date | null }) {
   return {
@@ -26,7 +25,6 @@ describe('ListarClientesUseCase (G3, sdd/beta-frontend — ROOT)', () => {
       cuit: null,
       dbName: 'soporte_acme',
       activo: true,
-      zonaHoraria: ZonaHoraria.crear('America/Argentina/Buenos_Aires'),
     });
     const clienteRepo = { findAll: vi.fn().mockResolvedValue([clienteA]) };
     const verificadoAt = new Date('2026-08-20T12:00:00Z');
@@ -50,7 +48,6 @@ describe('ListarClientesUseCase (G3, sdd/beta-frontend — ROOT)', () => {
       cuit: null,
       dbName: 'soporte_acme',
       activo: true,
-      zonaHoraria: ZonaHoraria.crear('America/Argentina/Buenos_Aires'),
     });
     const clienteRepo = { findAll: vi.fn().mockResolvedValue([clienteA]) };
     const emailConfigRepo = buildEmailConfigRepoMock({ configurado: false, verificadoAt: null });

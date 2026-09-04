@@ -46,7 +46,6 @@ import { IHashProvider } from '../../domain/ports/i-hash.provider';
 import { ITokenService, JwtPayload } from '../../domain/ports/i-token.service';
 import { IClienteRepository } from '../../../clientes/domain/ports/i-cliente.repository';
 import { ClienteEntity } from '../../../clientes/domain/entities/cliente.entity';
-import { ZonaHoraria } from '../../../shared/domain/zona-horaria';
 import { PARES_VALIDOS } from '../../../shared/domain/acciones';
 import { unstubbed } from '../../../testing/mocks';
 
@@ -81,7 +80,6 @@ const makeCliente = (overrides: Partial<{ nombre: string; activo: boolean }> = {
     cuit: null,
     dbName: 'acme_sa',
     activo: overrides.activo ?? true,
-    zonaHoraria: ZonaHoraria.crear('America/Argentina/Buenos_Aires'),
   });
 
 const makeMembresiaResuelta = (overrides: Partial<MembresiaResuelta> = {}): MembresiaResuelta => ({
