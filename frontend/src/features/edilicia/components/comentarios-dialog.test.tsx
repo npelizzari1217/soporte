@@ -46,11 +46,13 @@ describe("ComentariosDialog", () => {
     expect(screen.getByText("Ana Gómez")).toBeInTheDocument();
     // Sin nombre resuelto (usuario dado de baja) cae al autorId, nunca en blanco.
     expect(screen.getByText("u1")).toBeInTheDocument();
-    // Fecha visible, renderizada con `formatearInstante` (día/mes/año + hora,
-    // horario argentino). Literal fijo, NO derivado del mismo `Intl` que usa
-    // el componente — derivarlo del mismo formateador deja el test ciego a
-    // una regresión de zona horaria (ver `ticket-header` en este cambio).
-    // `2026-08-18T10:00:00.000Z` = 07:00 en America/Argentina/Buenos_Aires (UTC-3).
+    // Fecha visible, renderizada con `formatearInstante` (día/mes/año + hora).
+    // La hora sale en el huso de quien mira; acá el literal es estable porque
+    // `vitest.config.ts` fija el TZ de la suite, no porque la función imponga
+    // una zona. Literal fijo, NO derivado del mismo `Intl` que usa el
+    // componente — derivarlo del mismo formateador deja el test ciego a una
+    // regresión de zona horaria (ver `ticket-header` en este cambio).
+    // `2026-08-18T10:00:00.000Z` = 07:00 con el TZ de la suite (UTC-3).
     expect(screen.getAllByText("18/08/2026 07:00")).toHaveLength(2);
     // Solo lectura: sin EDILICIA:ALTAS no aparece el form.
     expect(screen.queryByLabelText(/nuevo comentario/i)).not.toBeInTheDocument();

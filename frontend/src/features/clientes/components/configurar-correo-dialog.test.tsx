@@ -45,7 +45,7 @@ function buildCorreo(overrides: Partial<ClienteCorreo> = {}): ClienteCorreo {
 describe("ConfigurarCorreoDialog", () => {
   beforeEach(() => vi.mocked(toast.success).mockClear());
 
-  it("con correo verificado, muestra la fecha y hora de verificación (instante, horario argentino)", async () => {
+  it("con correo verificado, muestra la fecha y hora de verificación (instante, en el huso que fija la suite)", async () => {
     const user = userEvent.setup();
     server.use(http.get("/api/clientes/c1/correo", () => HttpResponse.json(buildCorreo())));
 

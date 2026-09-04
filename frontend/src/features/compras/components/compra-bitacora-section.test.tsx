@@ -28,7 +28,7 @@ function buildOperacion(overrides: Partial<OperacionCompra> = {}): OperacionComp
 }
 
 describe("CompraBitacoraSection", () => {
-  it("lista las operaciones con fecha y hora visibles (instante, horario argentino)", async () => {
+  it("lista las operaciones con fecha y hora visibles (instante, en el huso que fija la suite)", async () => {
     server.use(
       http.get("/api/compras/compra1/operaciones", () => HttpResponse.json([buildOperacion()])),
     );
