@@ -39,6 +39,25 @@ describe("reportarClasificacion — guardia cruzada entre clases (#2394 §1)", (
 });
 
 describe("formatearInstante / formatearInstanteComoDiaArgentino — salida literal", () => {
+  // Este bloque mide la FORMA de la salida (separadores, año de 4 dígitos, cero
+  // a la izquierda), no el huso. Como `formatearInstante` ahora usa el reloj de
+  // quien mira, la zona ambiente se fija acá para que los literales sean
+  // deterministas en cualquier máquina. Quien mide el huso es P2.
+  let tzOriginal: string | undefined;
+
+  beforeEach(() => {
+    tzOriginal = process.env.TZ;
+    process.env.TZ = "America/Argentina/Buenos_Aires";
+  });
+
+  afterEach(() => {
+    if (tzOriginal === undefined) {
+      delete process.env.TZ;
+    } else {
+      process.env.TZ = tzOriginal;
+    }
+  });
+
   it("renderiza el formato unificado, año de 4 dígitos, sin puntuación de dateStyle/timeStyle", () => {
     expect(formatearInstante("2026-08-17T17:30:00.000Z")).toBe("17/08/2026 14:30");
   });
@@ -114,7 +133,7 @@ describe("P1b — las opciones de Intl.DateTimeFormat siempre son explícitas", 
     return llamadas;
   }
 
-  it("formatearInstante nunca deja la zona implícita y nunca usa dateStyle/timeStyle", () => {
+  it("formatearInstante deja la zona al navegador y nunca usa dateStyle/timeStyle", () => {
     const llamadas = espiarConstructor();
 
     formatearInstante("2026-08-17T17:30:00.000Z");
@@ -122,7 +141,11 @@ describe("P1b — las opciones de Intl.DateTimeFormat siempre son explícitas", 
     expect(llamadas).toHaveLength(1);
     const [locale, opciones] = llamadas[0];
     expect(locale).toBe("es-AR");
-    expect(opciones).toMatchObject({ timeZone: "America/Argentina/Buenos_Aires", hour12: false });
+    // La ausencia de `timeZone` es la regla, no un olvido: un instante se lee
+    // en el reloj de quien mira. Fijarla acá volvería a mostrarle hora de
+    // Buenos Aires a alguien que trabaja desde otro huso.
+    expect(opciones).not.toHaveProperty("timeZone");
+    expect(opciones).toMatchObject({ hour12: false });
     expect(opciones).not.toHaveProperty("dateStyle");
     expect(opciones).not.toHaveProperty("timeStyle");
   });
@@ -209,15 +232,21 @@ describe("aFechaInput — normalizes to <input type=\"date\"> shape (moved from 
 // la zona ambiente SIN una opción `timeZone` explícita — observado en esta
 // máquina para "America/Argentina/Buenos_Aires" -> "America/Buenos_Aires"
 // (mismo offset, link de tzdata). Esto afecta solo la lectura de zona ambiente
-// del canario, nunca al módulo bajo prueba, que siempre pasa
-// `timeZone: ZONA_ARGENTINA` explícitamente (ver P1b).
+// del canario. `formatearInstanteComoDiaArgentino` sigue pasando
+// `timeZone: ZONA_ARGENTINA` explícitamente (ver P1b); `formatearInstante`
+// resuelve la zona ambiente a propósito, que es justo lo que P2 mide.
 const ALIAS_ZONA_ICU: Record<string, string> = {
   "America/Argentina/Buenos_Aires": "America/Buenos_Aires",
 };
 
-describe.each(["Pacific/Kiritimati", "Pacific/Midway", "UTC", "America/Argentina/Buenos_Aires"])(
-  "P2 — independencia de huso, TZ ambiente = %s",
-  (zonaAmbiente) => {
+describe.each([
+  ["Pacific/Kiritimati", "18/08/2026 07:30"],
+  ["Pacific/Midway", "17/08/2026 06:30"],
+  ["UTC", "17/08/2026 17:30"],
+  ["America/Argentina/Buenos_Aires", "17/08/2026 14:30"],
+])(
+  "P2 — el instante sigue el reloj de quien mira, la fecha de calendario no se mueve, TZ ambiente = %s",
+  (zonaAmbiente, instanteEsperado) => {
     let tzOriginal: string | undefined;
 
     beforeEach(() => {
@@ -238,8 +267,11 @@ describe.each(["Pacific/Kiritimati", "Pacific/Midway", "UTC", "America/Argentina
       expect(zonasAceptadas).toContain(new Intl.DateTimeFormat().resolvedOptions().timeZone);
     });
 
-    it("formatearInstante es idéntico byte a byte sin importar el TZ ambiente", () => {
-      expect(formatearInstante("2026-08-17T17:30:00.000Z")).toBe("17/08/2026 14:30");
+    // Un mismo instante, cuatro relojes: quien lo mira desde Kiritimati lo lee
+    // un día después que quien lo mira desde Midway. Es el mismo momento; lo
+    // que cambia es la pared donde cuelga el reloj.
+    it("formatearInstante lo muestra en el reloj ambiente", () => {
+      expect(formatearInstante("2026-08-17T17:30:00.000Z")).toBe(instanteEsperado);
     });
 
     it("formatearFechaCalendario nunca desplaza el día", () => {

@@ -8,8 +8,15 @@
  *
  * Refleja el mismo vocabulario de dos clases que el backend ya probó en
  * `shared/infrastructure/csv/csv.ts` (`fechaCsv` / `diaArgentinoCsv` /
- * `fechaHoraCsv`). Con el formato unificado de más abajo, lo que se ve en
- * pantalla queda byte a byte igual a la exportación CSV del mismo campo.
+ * `fechaHoraCsv`).
+ *
+ * **La paridad con el CSV vale para las fechas de calendario, no para los
+ * instantes.** El CSV los escribe en hora argentina (`fechaHoraCsv`, decisión
+ * del backend) y la pantalla los muestra en el reloj de quien mira: para
+ * alguien fuera de Argentina, la misma celda dice horas distintas en los dos
+ * lados. Es deliberado —el CSV es un documento del servidor, la pantalla es
+ * de quien la tiene adelante— y está anotado acá para que nadie lo "arregle"
+ * fijándole la zona a la pantalla otra vez.
  *
  * ## Instante vs. fecha de calendario — tabla de clasificación
  *
@@ -38,7 +45,14 @@
  * defecto.
  */
 
-/** Zona IANA usada para MOSTRAR instantes y fechas de calendario. */
+/**
+ * Zona IANA de Argentina. La usa SOLO `formatearInstanteComoDiaArgentino`,
+ * que es el espejo del `diaArgentinoCsv` del backend: ahí el día argentino no
+ * es una preferencia de presentación sino el dato que el CSV ya contiene.
+ *
+ * `formatearInstante` NO la usa: los instantes se leen en el reloj de quien
+ * mira.
+ */
 const ZONA_ARGENTINA = "America/Argentina/Buenos_Aires";
 
 /**
@@ -127,7 +141,11 @@ function formateadorInstante(): Intl.DateTimeFormat {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
-    timeZone: ZONA_ARGENTINA,
+    // Sin `timeZone` A PROPÓSITO: un instante se lee en el reloj de quien
+    // mira. El equipo trabaja repartido entre Argentina y España, y fijar la
+    // zona acá le mostraba "13:00" a quien cerró el ticket a las 18:00.
+    // El instante es uno solo — lo guarda el backend en UTC (`timestamptz`) y
+    // cada navegador lo proyecta en su pared.
   });
 }
 
@@ -143,8 +161,13 @@ function formateadorDiaArgentino(): Intl.DateTimeFormat {
 
 /**
  * Renderiza un instante real (`@db.Timestamptz`) como `"17/08/2026 14:30"` —
- * hora y minuto en horario argentino, año de 4 dígitos con cero a la
- * izquierda, nunca `dateStyle`/`timeStyle`.
+ * hora y minuto **en el reloj del navegador de quien mira**, año de 4 dígitos
+ * con cero a la izquierda, nunca `dateStyle`/`timeStyle`.
+ *
+ * Dos personas en husos distintos ven cadenas distintas para el mismo
+ * instante, y está bien: es el mismo momento leído en dos relojes. Lo que no
+ * puede pasar nunca es que una fecha de CALENDARIO se corra un día —
+ * `formatearFechaCalendario` es la que protege eso, y no pasa por acá.
  *
  * @param iso Cadena de fecha/hora ISO que manda el backend.
  */
