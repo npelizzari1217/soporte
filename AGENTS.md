@@ -13,17 +13,20 @@
 > nada sobre el PR ni sobre el tamaño de la rama, porque no los podés ver.
 
 <!-- BEGIN:global -->
-<!-- Generado por sync-agents.py desde ~/proyectos/AGENTS.md (v13e1a60d).
+<!-- Generado por sync-agents.py desde ~/proyectos/AGENTS.md (v05ed8761).
      NO EDITAR A MANO: el proximo sync pisa los cambios.
      Para cambiar una regla universal, edita el global y volve a correr el script.
      Para que este proyecto se aparte, usa la seccion [Anulaciones] de mas abajo. -->
 
 ## Lenguaje y tipos
 
-- **Todo lo que lee una persona va en español**: comentarios, prosa, copy de UI y
+- **Todo lo que lee una persona va en español neutro**: comentarios, prosa, copy de UI y
   **mensajes de error**. Solo quedan en inglés los **identificadores y nombres de archivo**
   (variables, funciones, clases, tipos, claves, rutas). El corte: si lo lee una persona,
   español; si lo lee el compilador, inglés.
+- **Neutro, no rioplatense.** El voseo y el modismo regional van en la conversación, no en
+  un artefacto. Un `// fijate que acá se rompe` es hallazgo; `// verificar el límite acá`
+  no. No es retroactivo: rige para las líneas que el diff agrega o reescribe.
 - **Las descripciones de test (`describe`/`it`) son la EXCEPCIÓN: no tienen idioma fijo.**
   Se sigue el idioma de los `it()` **del archivo que se toca**, no el de la regla de arriba.
   **Un `it()` nuevo en inglés NO es un hallazgo** si sus vecinos del archivo están en
