@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { CompatibilidadModelo, crearCompatibilidadModelo } from './compatibilidad-modelo';
 import {
   InsumoCodigoAlternativoEntity,
   InsumoCodigoAlternativoProps,
@@ -7,6 +8,7 @@ import {
   InsumoEntity,
   InsumoProps,
   INSUMO_CODIGOS_ALTERNATIVOS_MAX,
+  INSUMO_COMPATIBILIDAD_MAX,
   INSUMO_CODIGO_MAX_LENGTH,
   INSUMO_NOMBRE_MAX_LENGTH,
   INSUMO_STOCK_MINIMO_MAXIMO,
@@ -24,8 +26,19 @@ function propsBase(parciales: Partial<InsumoProps> = {}): InsumoProps {
     stockMinimo: null,
     activo: true,
     codigosAlternativos: [],
+    compatibilidad: [],
     ...parciales,
   };
+}
+
+function compatibilidadModelo(
+  props: { modeloEquipoId?: string; rol?: string | null } = {},
+): CompatibilidadModelo {
+  return crearCompatibilidadModelo({
+    modeloEquipoId: 'id-modelo',
+    rol: 'NEGRO',
+    ...props,
+  });
 }
 
 function codigoAlternativo(
@@ -428,6 +441,143 @@ describe('InsumoEntity', () => {
       expect(() =>
         InsumoEntity.reconstitute(
           propsBase({ codigosAlternativos: listaDe(INSUMO_CODIGOS_ALTERNATIVOS_MAX + 1) }),
+          'id-legado',
+          new Date(),
+          new Date(),
+          null,
+        ),
+      ).not.toThrow();
+    });
+  });
+
+  /**
+   * La compatibilidad viaja DENTRO del agregado, igual que los códigos
+   * alternativos: la fila de `insumos_modelos_equipo` no tiene identidad propia
+   * —su clave primaria es el par— ni endpoints propios, y el alta y la edición
+   * mandan siempre la lista completa.
+   */
+  describe('compatibilidad', () => {
+    it('expone la compatibilidad recibida', () => {
+      const insumo = InsumoEntity.create(propsBase({ compatibilidad: [compatibilidadModelo()] }));
+
+      expect(insumo.compatibilidad).toHaveLength(1);
+      expect(insumo.compatibilidad[0].modeloEquipoId).toBe('id-modelo');
+      expect(insumo.compatibilidad[0].rol).toBe('NEGRO');
+    });
+
+    /**
+     * Copia defensiva, mismo motivo que en los códigos alternativos: sin ella,
+     * quien lea la lista puede agregarle o sacarle elementos y la próxima
+     * escritura del agregado persistiría esa mutación que nadie pidió.
+     */
+    it('devuelve una copia — mutar lo devuelto no cambia la entidad', () => {
+      const insumo = InsumoEntity.create(propsBase({ compatibilidad: [compatibilidadModelo()] }));
+
+      mutarPorLaViaDinamica(insumo.compatibilidad);
+
+      expect(insumo.compatibilidad).toHaveLength(1);
+      expect(insumo.compatibilidad[0].modeloEquipoId).toBe('id-modelo');
+    });
+  });
+
+  describe('reemplazarCompatibilidad()', () => {
+    /**
+     * La lista que llega en el PATCH REEMPLAZA a la guardada: el borde manda
+     * siempre la lista completa, así que un modelo que no viene es un modelo
+     * que el usuario sacó. Si fusionara, quitar una compatibilidad sería
+     * imposible desde la API.
+     */
+    it('reemplaza la lista completa, no la fusiona', () => {
+      const insumo = InsumoEntity.create(
+        propsBase({ compatibilidad: [compatibilidadModelo({ modeloEquipoId: 'modelo-viejo' })] }),
+      );
+
+      insumo.reemplazarCompatibilidad([compatibilidadModelo({ modeloEquipoId: 'modelo-nuevo' })]);
+
+      expect(insumo.compatibilidad).toHaveLength(1);
+      expect(insumo.compatibilidad[0].modeloEquipoId).toBe('modelo-nuevo');
+    });
+
+    it('acepta la lista vacía — sacar todas las compatibilidades es válido', () => {
+      const insumo = InsumoEntity.create(propsBase({ compatibilidad: [compatibilidadModelo()] }));
+
+      insumo.reemplazarCompatibilidad([]);
+
+      expect(insumo.compatibilidad).toHaveLength(0);
+    });
+
+    it('copia el array recibido — mutarlo después no cambia la entidad', () => {
+      const insumo = InsumoEntity.create(propsBase());
+      const entrantes = [compatibilidadModelo()];
+
+      insumo.reemplazarCompatibilidad(entrantes);
+      entrantes.push(compatibilidadModelo({ modeloEquipoId: 'intruso' }));
+
+      expect(insumo.compatibilidad).toHaveLength(1);
+    });
+  });
+
+  /**
+   * Mismo motivo que el techo de códigos alternativos: no lo pide ninguna
+   * columna, lo pide el costo de guardar. El agregado se persiste con una
+   * escritura anidada por fila dentro de una sola transacción, así que una
+   * lista sin techo la sostiene abierta sobre la base del inquilino tantas idas
+   * y vueltas como modelos hayan entrado.
+   */
+  describe('techo de compatibilidad', () => {
+    /**
+     * El mensaje se arma desde la constante, no con el número escrito a mano:
+     * si el techo cambia, el test tiene que seguir midiendo la CONDUCTA
+     * —rechazar por encima del límite— y no ponerse rojo por el texto.
+     */
+    function mensajeDelTecho(): RegExp {
+      return new RegExp(`máximo ${INSUMO_COMPATIBILIDAD_MAX} modelos de equipo compatibles`);
+    }
+
+    function listaDe(cantidad: number): CompatibilidadModelo[] {
+      return Array.from({ length: cantidad }, (_valor, indice) =>
+        compatibilidadModelo({ modeloEquipoId: `modelo-${indice}` }),
+      );
+    }
+
+    it('create() rechaza por encima del techo, nombrando el límite', () => {
+      expect(() =>
+        InsumoEntity.create(propsBase({ compatibilidad: listaDe(INSUMO_COMPATIBILIDAD_MAX + 1) })),
+      ).toThrow(mensajeDelTecho());
+    });
+
+    it('create() acepta el techo exacto (límite inclusive)', () => {
+      expect(() =>
+        InsumoEntity.create(propsBase({ compatibilidad: listaDe(INSUMO_COMPATIBILIDAD_MAX) })),
+      ).not.toThrow();
+    });
+
+    /**
+     * El hermano de `create()`: sin este caso, el techo se podría poner solo en
+     * el alta y la edición quedaría abierta, que es el camino más probable — a
+     * un insumo genérico se le van sumando modelos con el tiempo.
+     */
+    it('reemplazarCompatibilidad() rechaza por encima del techo', () => {
+      const insumo = InsumoEntity.create(propsBase());
+
+      expect(() => insumo.reemplazarCompatibilidad(listaDe(INSUMO_COMPATIBILIDAD_MAX + 1))).toThrow(
+        mensajeDelTecho(),
+      );
+    });
+
+    it('reemplazarCompatibilidad() acepta el techo exacto', () => {
+      const insumo = InsumoEntity.create(propsBase());
+
+      expect(() =>
+        insumo.reemplazarCompatibilidad(listaDe(INSUMO_COMPATIBILIDAD_MAX)),
+      ).not.toThrow();
+      expect(insumo.compatibilidad).toHaveLength(INSUMO_COMPATIBILIDAD_MAX);
+    });
+
+    it('reconstitute() no aplica el techo — una fila histórica se lee, no explota', () => {
+      expect(() =>
+        InsumoEntity.reconstitute(
+          propsBase({ compatibilidad: listaDe(INSUMO_COMPATIBILIDAD_MAX + 1) }),
           'id-legado',
           new Date(),
           new Date(),

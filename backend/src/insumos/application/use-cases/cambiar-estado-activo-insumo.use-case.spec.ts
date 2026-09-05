@@ -13,6 +13,7 @@ describe('CambiarEstadoActivoInsumoUseCase', () => {
         stockMinimo: null,
         activo: true,
         codigosAlternativos: [],
+        compatibilidad: [],
       },
       'ins-1',
     );

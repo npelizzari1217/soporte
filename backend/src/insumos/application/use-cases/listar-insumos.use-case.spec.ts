@@ -12,6 +12,7 @@ describe('ListarInsumosUseCase', () => {
       stockMinimo: null,
       activo,
       codigosAlternativos: [],
+      compatibilidad: [],
     });
   }
 

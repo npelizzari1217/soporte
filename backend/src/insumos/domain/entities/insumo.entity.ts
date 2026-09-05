@@ -1,4 +1,5 @@
 import { BaseEntity } from '../../../shared/domain/base-entity';
+import { CompatibilidadModelo } from './compatibilidad-modelo';
 import { InsumoCodigoAlternativoEntity } from './insumo-codigo-alternativo.entity';
 
 /**
@@ -17,6 +18,12 @@ export interface InsumoProps {
   stockMinimo: number | null;
   activo: boolean;
   codigosAlternativos: InsumoCodigoAlternativoEntity[];
+  /**
+   * Modelos de equipo a los que le sirve este insumo. Es lo que permite
+   * responder "¿qué tóner le va a esta impresora?". La existencia y la
+   * elegibilidad de cada modelo las valida la capa de aplicación.
+   */
+  compatibilidad: CompatibilidadModelo[];
 }
 
 /**
@@ -66,6 +73,20 @@ export const INSUMO_STOCK_MINIMO_DECIMALES = 2;
  * de cincuenta es un error de carga, no un insumo con muchos nombres.
  */
 export const INSUMO_CODIGOS_ALTERNATIVOS_MAX = 50;
+
+/**
+ * Techo de modelos de equipo compatibles por insumo.
+ *
+ * Mismo motivo que `INSUMO_CODIGOS_ALTERNATIVOS_MAX`, no una columna: el
+ * agregado se persiste con una escritura anidada por fila dentro de una sola
+ * transacción, así que una lista sin techo la sostiene abierta sobre la base
+ * del inquilino tantas idas y vueltas como modelos hayan entrado.
+ *
+ * Doscientos porque un tóner genérico compatible con doscientos modelos de
+ * impresora es plausible; pasarse de ahí es un error de carga, no un insumo
+ * con mucha compatibilidad.
+ */
+export const INSUMO_COMPATIBILIDAD_MAX = 200;
 
 /**
  * Normalización del código de insumo, exportada para que la capa de aplicación
@@ -181,6 +202,27 @@ function validarCantidadDeCodigos(codigos?: readonly unknown[]): void {
 }
 
 /**
+ * Precondición de cantidad de modelos compatibles. Mismo criterio `throw` que
+ * `validarCantidadDeCodigos`, y por el mismo motivo: el borde ya lo rechaza
+ * con un 400 que nombra el campo, y este es el backstop para el caller que no
+ * pasa por el borde —un script de importación, una semilla— que si no abriría
+ * la transacción larga igual.
+ *
+ * NO se aplica en `reconstitute()`: una fila histórica con más modelos de los
+ * que hoy se admiten se lee, no explota.
+ *
+ * @param compatibilidad Lista a medir, o `undefined` si el caller no la toca.
+ * @returns Nada; lanza si la lista excede el techo.
+ */
+function validarCantidadDeCompatibilidad(compatibilidad?: readonly unknown[]): void {
+  if (compatibilidad !== undefined && compatibilidad.length > INSUMO_COMPATIBILIDAD_MAX) {
+    throw new Error(
+      `InsumoEntity: admite como máximo ${INSUMO_COMPATIBILIDAD_MAX} modelos de equipo compatibles.`,
+    );
+  }
+}
+
+/**
  * InsumoEntity — raíz del agregado del catálogo de insumos del tenant.
  *
  * Los códigos alternativos son parte del agregado y no entidades sueltas: no
@@ -195,18 +237,30 @@ function validarCantidadDeCodigos(codigos?: readonly unknown[]): void {
  */
 export class InsumoEntity extends BaseEntity<InsumoProps> {
   /**
-   * Crea un insumo nuevo, validando las precondiciones de largo y de rango.
+   * Crea un insumo nuevo, validando las cuatro precondiciones del agregado:
+   * largo de los textos, rango y escala del punto de reposición, y la CANTIDAD
+   * de cada una de sus dos listas.
    *
    * @param props Campos del insumo, con `codigo` y `nombre` YA normalizados por el caller.
    * @param id Id explícito; si se omite lo genera `BaseEntity`.
    * @returns La entidad creada.
-   * @throws Error si algún largo excede el tope de su columna o si `stockMinimo` está fuera de rango o de escala.
+   * @throws Error si algún largo excede el tope de su columna, si `stockMinimo`
+   *   está fuera de rango o de escala, o si `codigosAlternativos` o
+   *   `compatibilidad` superan su techo de cardinalidad.
    */
   static create(props: InsumoProps, id?: string): InsumoEntity {
     validarLargos(props.codigo, props.nombre);
     validarStockMinimo(props.stockMinimo);
     validarCantidadDeCodigos(props.codigosAlternativos);
-    return new InsumoEntity({ ...props, codigosAlternativos: [...props.codigosAlternativos] }, id);
+    validarCantidadDeCompatibilidad(props.compatibilidad);
+    return new InsumoEntity(
+      {
+        ...props,
+        codigosAlternativos: [...props.codigosAlternativos],
+        compatibilidad: [...props.compatibilidad],
+      },
+      id,
+    );
   }
 
   /**
@@ -217,7 +271,7 @@ export class InsumoEntity extends BaseEntity<InsumoProps> {
    * existiera el techo, por ejemplo— convertiría un valor legado en una caída
    * de sistema.
    *
-   * @param props Campos del insumo leídos de la base, con sus códigos alternativos.
+   * @param props Campos del insumo leídos de la base, con sus códigos alternativos y su compatibilidad.
    * @param id Id persistido.
    * @param createdAt Alta original.
    * @param updatedAt Última modificación.
@@ -232,7 +286,11 @@ export class InsumoEntity extends BaseEntity<InsumoProps> {
     deletedAt: Date | null,
   ): InsumoEntity {
     const entity = new InsumoEntity(
-      { ...props, codigosAlternativos: [...props.codigosAlternativos] },
+      {
+        ...props,
+        codigosAlternativos: [...props.codigosAlternativos],
+        compatibilidad: [...props.compatibilidad],
+      },
       id,
     );
     Object.assign(entity, { _createdAt: createdAt, _updatedAt: updatedAt });
@@ -278,6 +336,16 @@ export class InsumoEntity extends BaseEntity<InsumoProps> {
    */
   get codigosAlternativos(): readonly InsumoCodigoAlternativoEntity[] {
     return [...this.props.codigosAlternativos];
+  }
+
+  /**
+   * Copia de solo lectura de los modelos de equipo compatibles. Es una copia
+   * por el mismo motivo que `codigosAlternativos`: sin ella, quien lea puede
+   * agregar o sacar elementos y la próxima escritura del agregado persistiría
+   * una mutación que nadie pidió.
+   */
+  get compatibilidad(): readonly CompatibilidadModelo[] {
+    return [...this.props.compatibilidad];
   }
 
   /**
@@ -336,6 +404,24 @@ export class InsumoEntity extends BaseEntity<InsumoProps> {
   reemplazarCodigosAlternativos(codigos: InsumoCodigoAlternativoEntity[]): void {
     validarCantidadDeCodigos(codigos);
     this.props.codigosAlternativos = [...codigos];
+    this.touch();
+  }
+
+  /**
+   * Reemplaza la lista COMPLETA de modelos compatibles. No fusiona: el borde
+   * manda siempre la lista entera, así que un modelo que no viene es un modelo
+   * que el usuario sacó. Si fusionara, quitar una compatibilidad sería
+   * imposible desde la API.
+   *
+   * Guarda una copia del array recibido para que el caller no conserve una
+   * referencia viva a las tripas del agregado.
+   *
+   * @param compatibilidad Pares ya construidos y validados por la capa de aplicación.
+   * @returns Nada; lanza si la lista excede el techo de modelos por insumo.
+   */
+  reemplazarCompatibilidad(compatibilidad: CompatibilidadModelo[]): void {
+    validarCantidadDeCompatibilidad(compatibilidad);
+    this.props.compatibilidad = [...compatibilidad];
     this.touch();
   }
 

@@ -106,6 +106,7 @@ describe('InsumoMapper', () => {
         stockMinimo: 5,
         activo: true,
         codigosAlternativos: [],
+        compatibilidad: [],
       },
       'insumo-1',
     );
@@ -137,6 +138,7 @@ describe('InsumoMapper', () => {
       stockMinimo: null,
       activo: true,
       codigosAlternativos: [],
+      compatibilidad: [],
     });
 
     const row = InsumoMapper.toPersistence(entity);

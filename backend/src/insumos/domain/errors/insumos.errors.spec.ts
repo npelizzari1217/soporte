@@ -2,10 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { DomainError } from '../../../shared/domain/result';
 import {
   CodigoAlternativoDuplicadoError,
+  CompatibilidadDuplicadaError,
   FamiliaInsumoDeshabilitadaError,
   FamiliaInsumoInexistenteError,
   InsumoCodigoDuplicadoError,
   InsumoNoEncontradoError,
+  ModeloEquipoDeshabilitadoError,
+  ModeloEquipoInexistenteError,
   UnidadMedidaDeshabilitadaError,
   UnidadMedidaInexistenteError,
 } from './insumos.errors';
@@ -76,6 +79,51 @@ describe('Errores de dominio de insumos', () => {
     expect(deshabilitada.code).toBe('UNIDAD_MEDIDA_DESHABILITADA');
     expect(deshabilitada.code).not.toBe(inexistente.code);
     expect(deshabilitada.message).toContain('id-unidad');
+  });
+
+  /**
+   * `ModeloEquipoInexistenteError` y `ModeloEquipoDeshabilitadoError` comparten
+   * nombre y `code` con los de `src/equipos/domain/errors/equipos.errors.ts`.
+   * Es DELIBERADO: es la misma condición de negocio, y el código que ve el
+   * cliente tiene que ser el mismo lo reporte el alta de un equipo o el alta de
+   * un insumo. Los `code` se fijan como literales y NO se importan de
+   * `equipos`: el import inverso cerraría un ciclo entre los dos módulos,
+   * porque `equipos` ya importa el puerto del catálogo desde `insumos`.
+   */
+  it('ModeloEquipoInexistenteError expone code MODELO_EQUIPO_INEXISTENTE y nombra el id', () => {
+    const error = new ModeloEquipoInexistenteError('id-modelo');
+    expect(error).toBeInstanceOf(DomainError);
+    expect(error.code).toBe('MODELO_EQUIPO_INEXISTENTE');
+    expect(error.message).toContain('id-modelo');
+  });
+
+  /**
+   * Existir y ser elegible son dos cosas distintas: la FK no atrapa al modelo
+   * deshabilitado —la fila existe—, así que la base acepta el vínculo sin
+   * chistar y el insumo queda declarado compatible con un modelo que el
+   * administrador ya sacó de circulación.
+   */
+  it('ModeloEquipoDeshabilitadoError expone un code distinto del del modelo inexistente', () => {
+    const deshabilitado = new ModeloEquipoDeshabilitadoError('id-modelo');
+    const inexistente = new ModeloEquipoInexistenteError('id-modelo');
+
+    expect(deshabilitado).toBeInstanceOf(DomainError);
+    expect(deshabilitado.code).toBe('MODELO_EQUIPO_DESHABILITADO');
+    expect(deshabilitado.code).not.toBe(inexistente.code);
+    expect(deshabilitado.message).toContain('id-modelo');
+  });
+
+  /**
+   * El duplicado es SIEMPRE dentro del payload: la PK de
+   * `insumos_modelos_equipo` es el par `(insumo, modelo)`, así que dos insumos
+   * distintos SÍ pueden declarar el mismo modelo — eso es justo lo que la
+   * relación N:N significa. No hay choque "global" que reportar.
+   */
+  it('CompatibilidadDuplicadaError expone code COMPATIBILIDAD_DUPLICADA y nombra el modelo repetido', () => {
+    const error = new CompatibilidadDuplicadaError('id-modelo');
+    expect(error).toBeInstanceOf(DomainError);
+    expect(error.code).toBe('COMPATIBILIDAD_DUPLICADA');
+    expect(error.message).toContain('id-modelo');
   });
 
   describe('CodigoAlternativoDuplicadoError', () => {

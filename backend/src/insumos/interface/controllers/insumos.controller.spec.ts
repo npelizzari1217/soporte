@@ -30,6 +30,7 @@ function construirInsumo(
     codigosAlternativos: [
       InsumoCodigoAlternativoEntity.create({ codigo: 'CE285A', fabricante: 'HP' }),
     ],
+    compatibilidad: [],
   });
 }
 

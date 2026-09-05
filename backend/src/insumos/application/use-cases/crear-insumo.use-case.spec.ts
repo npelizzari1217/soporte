@@ -222,6 +222,7 @@ describe('CrearInsumoUseCase', () => {
       stockMinimo: null,
       activo: false,
       codigosAlternativos: [],
+      compatibilidad: [],
     });
     const insumoRepo = buildInsumoRepo({ findByCodigo: vi.fn().mockResolvedValue(ocupante) });
     const useCase = new CrearInsumoUseCase(insumoRepo, buildFamiliaRepo(), buildUnidadRepo());
@@ -248,6 +249,7 @@ describe('CrearInsumoUseCase', () => {
       stockMinimo: null,
       activo: true,
       codigosAlternativos: [],
+      compatibilidad: [],
     });
     const insumoRepo = buildInsumoRepo({ findByCodigo: vi.fn().mockResolvedValue(ocupante) });
     const useCase = new CrearInsumoUseCase(insumoRepo, buildFamiliaRepo(null), buildUnidadRepo());
@@ -267,6 +269,7 @@ describe('CrearInsumoUseCase', () => {
       stockMinimo: null,
       activo: true,
       codigosAlternativos: [],
+      compatibilidad: [],
     });
     const insumoRepo = buildInsumoRepo({ findByCodigo: vi.fn().mockResolvedValue(ocupante) });
     const useCase = new CrearInsumoUseCase(insumoRepo, buildFamiliaRepo(), buildUnidadRepo(null));

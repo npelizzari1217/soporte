@@ -25,6 +25,7 @@ describe('EditarInsumoUseCase', () => {
         stockMinimo: 5,
         activo: true,
         codigosAlternativos,
+        compatibilidad: [],
       },
       id,
     );

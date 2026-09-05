@@ -55,6 +55,7 @@ describe('PrismaInsumoRepository — Integration', () => {
       stockMinimo,
       activo: true,
       codigosAlternativos,
+      compatibilidad: [],
     });
   }
 

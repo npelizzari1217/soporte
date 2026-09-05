@@ -91,6 +91,14 @@ export class InsumoMapper {
         stockMinimo: row.stockMinimo !== null ? Number(row.stockMinimo) : null,
         activo: row.activo,
         codigosAlternativos: row.codigosAlternativos.map(InsumoCodigoAlternativoMapper.toDomain),
+        // El dominio ya modela la compatibilidad, pero este mapper todavía no
+        // la lee: la fila de `insumos_modelos_equipo` no viaja en el `include`
+        // del repositorio. La lista vacía no puede pisar nada guardado porque
+        // ningún camino la escribe —`toPersistence` no la emite— y por eso el
+        // puerto tampoco la promete. Quien enseñe a leer esa tabla tiene que
+        // cambiar las tres cosas juntas: el `include`, esta línea y el
+        // contrato del puerto.
+        compatibilidad: [],
       },
       row.id,
       row.createdAt,

@@ -393,6 +393,7 @@ describe('toInsumoResponseDto', () => {
       stockMinimo: 5.5,
       activo: true,
       codigosAlternativos: [codigo],
+      compatibilidad: [],
     });
 
     const dto = toInsumoResponseDto(insumo);
@@ -421,6 +422,7 @@ describe('toInsumoResponseDto', () => {
       stockMinimo: null,
       activo: true,
       codigosAlternativos: [],
+      compatibilidad: [],
     });
 
     expect(toInsumoResponseDto(insumo).stockMinimo).toBeNull();

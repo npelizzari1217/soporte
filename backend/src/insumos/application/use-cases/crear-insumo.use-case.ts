@@ -99,6 +99,7 @@ export class CrearInsumoUseCase {
       stockMinimo: dto.stockMinimo ?? null,
       activo: true,
       codigosAlternativos: codigosAlternativos.getValue(),
+      compatibilidad: [],
     });
 
     await this.insumoRepo.save(insumo);
