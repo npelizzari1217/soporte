@@ -2,26 +2,35 @@
  * EquiposController — entry point HTTP del inventario de equipos IT
  * (F3-Q1..Q3).
  *
- * Rutas:
- *   POST   /equipos                              → CrearEquipoUseCase              [equipo:gestionar]
- *   GET    /equipos                              → ListarEquiposUseCase            (autenticado)
- *   GET    /equipos/tipos-componente              → ListarTiposComponenteUseCase    (autenticado, SIN escritura)
- *   GET    /equipos/export                        → ExportarEquiposUseCase          (`EQUIPOS:LECTURA`, sdd/exportar-listados-csv)
- *   GET    /equipos/:id                           → ObtenerEquipoUseCase            (autenticado)
- *   PATCH  /equipos/:id                           → EditarEquipoUseCase             [equipo:gestionar]
- *   DELETE /equipos/:id                           → EliminarEquipoUseCase           [equipo:gestionar]
- *   POST   /equipos/:id/componentes                          → AgregarComponenteUseCase     [equipo:gestionar]
- *   DELETE /equipos/:id/componentes/:componenteId             → EliminarComponenteUseCase    [equipo:gestionar]
- *   PATCH  /equipos/:id/componentes/:componenteId             → EditarComponenteUseCase      [equipo:gestionar]
- *   PATCH  /equipos/:id/componentes/:componenteId/reactivar   → ReactivarComponenteUseCase   [equipo:gestionar]
+ * Rutas (la acción entre backticks es la que el handler declara con
+ * `@RequiereAcciones`; NINGUNA ruta de este controller queda sólo con
+ * autenticación):
+ *   POST   /equipos                                           → CrearEquipoUseCase           `EQUIPOS:ALTAS`
+ *   GET    /equipos                                           → ListarEquiposUseCase         `EQUIPOS:LECTURA`
+ *   GET    /equipos/tipos-componente                          → ListarTiposComponenteUseCase `EQUIPOS:LECTURA`
+ *   GET    /equipos/export                                    → ExportarEquiposUseCase       `EQUIPOS:LECTURA` (sdd/exportar-listados-csv)
+ *   GET    /equipos/:id                                       → ObtenerEquipoUseCase         `EQUIPOS:LECTURA`
+ *   PATCH  /equipos/:id                                       → EditarEquipoUseCase          `EQUIPOS:MODIFICACION`
+ *   DELETE /equipos/:id                                       → EliminarEquipoUseCase        `EQUIPOS:BORRADO`
+ *   POST   /equipos/:id/componentes                           → AgregarComponenteUseCase     `EQUIPOS:ALTAS`
+ *   DELETE /equipos/:id/componentes/:componenteId             → EliminarComponenteUseCase    `EQUIPOS:BORRADO`
+ *   PATCH  /equipos/:id/componentes/:componenteId             → EditarComponenteUseCase      `EQUIPOS:MODIFICACION`
+ *   PATCH  /equipos/:id/componentes/:componenteId/reactivar   → ReactivarComponenteUseCase   `EQUIPOS:MODIFICACION`
+ *
+ * `[equipo:gestionar]` y `(autenticado)` figuraban acá como gate de varias de
+ * estas rutas: ninguno de los dos existe ya en el código. Las acciones
+ * `EQUIPOS:*` de arriba las reemplazaron con `AccionesGuard` (WU-7.3), y esta
+ * tabla se había quedado describiendo el esquema anterior. Es documentación de
+ * AUTORIZACIÓN: mientras miente, miente sobre quién puede escribir el
+ * inventario.
  *
  * `GET /equipos/tipos-componente` se declara ANTES de `GET /equipos/:id` en
  * la clase para que Nest lo matchee como ruta estática y NO como
  * `id="tipos-componente"` (mismo criterio de orden que cualquier router
- * Express-like). El catálogo de tipos de componente es READ-ONLY en Fase 3
- * (F3-Q3): NO declara `@RequirePermissions` — cualquier usuario autenticado
- * del tenant puede listarlo (necesario para poblar el selector al agregar
- * componentes).
+ * Express-like). El catálogo de tipos de componente es READ-ONLY (F3-Q3), pero
+ * READ-ONLY no es lo mismo que ABIERTO: declara `EQUIPOS:LECTURA`, igual que
+ * el listado. Estuvo un tiempo sin gate alguno —`AccionesGuard` sin metadata
+ * deja pasar— y eso se cerró; el JSDoc del handler cuenta ese episodio.
  *
  * Guards a nivel de controller: `JwtAuthGuard` + `TenantGuard` +
  * `AccionesGuard` (WU-7.3, sdd/matriz-permisos-por-usuario — reemplaza a
@@ -67,6 +76,8 @@ import {
   EquipoNoEncontradoError,
   EquipoInvalidoError,
   NumeroSerieDuplicadoError,
+  ModeloEquipoInexistenteError,
+  ModeloEquipoDeshabilitadoError,
   TipoComponenteCodigoRequeridoError,
   TipoComponenteInactivoError,
   ComponenteNoEncontradoError,
@@ -102,6 +113,11 @@ export function toHttpException(
     error instanceof NumeroSerieDuplicadoError ||
     error instanceof TipoComponenteCodigoRequeridoError ||
     error instanceof TipoComponenteInactivoError ||
+    // `modeloEquipoId` es un valor del BODY que referencia un catálogo, igual
+    // que `tipoComponenteCodigo`: 422, no 404. Un 404 acá se leería como "el
+    // equipo no existe", que es otra cosa.
+    error instanceof ModeloEquipoInexistenteError ||
+    error instanceof ModeloEquipoDeshabilitadoError ||
     error instanceof ComponenteDadoDeBajaError ||
     error instanceof ComponenteYaActivoError ||
     // Exportación a CSV (sdd/exportar-listados-csv, decisión D2): cae igual
@@ -178,6 +194,7 @@ export class EquiposController {
       modelo: dto.modelo ?? null,
       fechaAdquisicion: dto.fechaAdquisicion ? new Date(dto.fechaAdquisicion) : null,
       ubicacion: dto.ubicacion ?? null,
+      modeloEquipoId: dto.modeloEquipoId ?? null,
       importe: dto.importe ?? null,
       fechaValoracion: dto.fechaValoracion ? new Date(dto.fechaValoracion) : null,
       observaciones: dto.observaciones ?? null,
@@ -294,6 +311,7 @@ export class EquiposController {
       modelo: dto.modelo,
       fechaAdquisicion: fechaPatch(dto.fechaAdquisicion),
       ubicacion: dto.ubicacion,
+      modeloEquipoId: dto.modeloEquipoId,
       importe: dto.importe,
       fechaValoracion: fechaPatch(dto.fechaValoracion),
       observaciones: dto.observaciones,

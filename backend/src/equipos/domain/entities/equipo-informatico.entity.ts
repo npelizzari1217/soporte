@@ -162,6 +162,17 @@ export interface EquipoInformaticoProps {
    * no para producirlo.
    */
   ubicacion: string | null;
+  /**
+   * FK al catálogo `modelos_equipo` (sdd/insumos-catalogo). NULLABLE a
+   * propósito: un clon armado en casa no tiene modelo de catálogo y existe
+   * igual — simplemente no participa de la compatibilidad con insumos.
+   *
+   * Convive con los campos de texto libre `marca`/`modelo` de arriba, que
+   * siguen siendo la vía para un equipo sin modelo de catálogo. El dominio no
+   * verifica que el id exista ni que el modelo esté habilitado: eso es trabajo
+   * de la capa de aplicación y, en última instancia, de la FK.
+   */
+  modeloEquipoId: string | null;
   /** Valoración del equipo: importe (valor). */
   importe: number | null;
   /** Fecha en que se registró el importe. */
@@ -180,6 +191,22 @@ export interface EquipoInformaticoProps {
    */
   activo: boolean;
 }
+
+/**
+ * CrearEquipoInformaticoProps — shape de entrada de
+ * `EquipoInformaticoEntity.create()`.
+ *
+ * `modeloEquipoId` es OPCIONAL acá (y por defecto `null`), a diferencia del
+ * resto de los campos nullable, que el caller declara explícitamente: la
+ * mayoría de los equipos del inventario existe sin modelo de catálogo, así que
+ * obligar a escribir `modeloEquipoId: null` en cada alta no compraría nada.
+ */
+export type CrearEquipoInformaticoProps = Omit<
+  EquipoInformaticoProps,
+  'activo' | 'modeloEquipoId'
+> & {
+  modeloEquipoId?: string | null;
+};
 
 /**
  * EquipoInformaticoEntity — entidad de dominio del inventario de equipos IT
@@ -209,10 +236,7 @@ export class EquipoInformaticoEntity extends BaseEntity<EquipoInformaticoProps> 
    *   caller: con el DTO midiendo ya normalizado (`equipos.dto.ts`), este
    *   `throw` solo es alcanzable si un caller interno evita el DTO.
    */
-  static create(
-    props: Omit<EquipoInformaticoProps, 'activo'>,
-    id?: string,
-  ): EquipoInformaticoEntity {
+  static create(props: CrearEquipoInformaticoProps, id?: string): EquipoInformaticoEntity {
     // Normalizar ANTES de validar: `normalizarUbicacion` no preserva longitud
     // en JS (ej. 'ß' → 'SS'), así que validar el valor crudo dejaría pasar un
     // valor que se expande por encima del tope al normalizar (bug real:
@@ -221,7 +245,10 @@ export class EquipoInformaticoEntity extends BaseEntity<EquipoInformaticoProps> 
     validarLargos({ ...props, ubicacion });
     validarValorMonetario('importe', props.importe);
     validarValorMonetario('valorResidual', props.valorResidual);
-    return new EquipoInformaticoEntity({ ...props, ubicacion, activo: true }, id);
+    return new EquipoInformaticoEntity(
+      { ...props, ubicacion, modeloEquipoId: props.modeloEquipoId ?? null, activo: true },
+      id,
+    );
   }
 
   /** Reconstitución desde persistencia (mappers de infraestructura). */
@@ -262,6 +289,11 @@ export class EquipoInformaticoEntity extends BaseEntity<EquipoInformaticoProps> 
 
   get ubicacion(): string | null {
     return this.props.ubicacion;
+  }
+
+  /** FK al catálogo `modelos_equipo`, o `null` si el equipo no tiene modelo de catálogo. */
+  get modeloEquipoId(): string | null {
+    return this.props.modeloEquipoId;
   }
 
   get importe(): number | null {
@@ -329,6 +361,7 @@ export class EquipoInformaticoEntity extends BaseEntity<EquipoInformaticoProps> 
     modelo?: string | null;
     fechaAdquisicion?: Date | null;
     ubicacion?: string | null;
+    modeloEquipoId?: string | null;
     importe?: number | null;
     fechaValoracion?: Date | null;
     observaciones?: string | null;
@@ -361,6 +394,9 @@ export class EquipoInformaticoEntity extends BaseEntity<EquipoInformaticoProps> 
       // `ubicacionNormalizada` nunca es `undefined` acá (mismo `datos.ubicacion`
       // definido que se acaba de chequear); el `?? null` solo lo prueba al tipo.
       this.props.ubicacion = ubicacionNormalizada ?? null;
+    }
+    if (datos.modeloEquipoId !== undefined) {
+      this.props.modeloEquipoId = datos.modeloEquipoId;
     }
     if (datos.importe !== undefined) {
       this.props.importe = datos.importe;

@@ -66,6 +66,8 @@ describe('Equipos Persistence Repos — Integration (PR11)', () => {
 
   const ticketIdsCreados: string[] = [];
   const equipoIdsCreados: string[] = [];
+  /** Fixture del catálogo `modelos_equipo` — destino de `equipos.modelo_equipo_id`. */
+  let modeloEquipoId: string;
 
   function makeTicketProps(overrides: Partial<TicketProps> = {}): TicketProps {
     return {
@@ -146,6 +148,11 @@ describe('Equipos Persistence Repos — Integration (PR11)', () => {
       data: { codigo: 'T11_TEST_MEDIA', nombre: 'Media Test PR11', orden: 1, activo: true },
     });
     prioridadMediaId = prioridadMedia.id;
+
+    const modeloEquipo = await tenantClient.modeloEquipo.create({
+      data: { marca: `T11_TEST_HP_${RUN_PREFIX}`, modelo: 'LaserJet Pro M404' },
+    });
+    modeloEquipoId = modeloEquipo.id;
   }, 30_000);
 
   afterAll(async () => {
@@ -163,6 +170,8 @@ describe('Equipos Persistence Repos — Integration (PR11)', () => {
       });
       await tenantClient.equipoInformatico.deleteMany({ where: { id: { in: equipoIdsCreados } } });
     }
+    // Después de los equipos: `equipos_informaticos.modelo_equipo_id` apunta acá.
+    await tenantClient.modeloEquipo.delete({ where: { id: modeloEquipoId } });
     await tenantClient.prioridad.delete({ where: { id: prioridadMediaId } });
     await tenantClient.estado.delete({ where: { id: estadoNuevoId } });
     await tenantClient.tipoTicket.delete({ where: { id: tipoSoporteId } });
@@ -233,6 +242,48 @@ describe('Equipos Persistence Repos — Integration (PR11)', () => {
         const found = await equipoRepo.findById(equipo.id);
         expect(found!.activo).toBe(false);
         expect(found!.isDeleted()).toBe(false);
+      });
+    });
+
+    /**
+     * `modelo_equipo_id` tiene que SOBREVIVIR al guardado, en el INSERT y en el
+     * UPDATE. El objeto que arma `toPersistence()` es el mismo que viaja al
+     * `update` del upsert: si alguien vuelve a excluir el campo del literal —o
+     * peor, lo fija en `null`— el modelo del equipo se borra solo en el
+     * siguiente guardado, y es pérdida de datos que ningún otro test de esta
+     * suite ve, porque todos los demás equipos de fixture lo dejan en null.
+     *
+     * Por eso el segundo `save()` es parte del caso y no un caso aparte: el
+     * INSERT solo probaría la mitad barata.
+     */
+    it('modeloEquipoId sobrevive al INSERT y al UPDATE de save()', async () => {
+      const equipo = await crearEquipo({ nombre: 'Impresora del catálogo', modeloEquipoId });
+
+      await withTenant(async () => {
+        const trasInsert = await equipoRepo.findById(equipo.id);
+        expect(trasInsert!.modeloEquipoId).toBe(modeloEquipoId);
+      });
+
+      equipo.actualizar({ nombre: 'Impresora renombrada' });
+      await withTenant(async () => {
+        await equipoRepo.save(equipo);
+        const trasUpdate = await equipoRepo.findById(equipo.id);
+        expect(trasUpdate!.nombre).toBe('Impresora renombrada');
+        expect(trasUpdate!.modeloEquipoId).toBe(modeloEquipoId);
+      });
+    });
+
+    /**
+     * Hermano del caso de arriba: el equipo SIN modelo de catálogo —el clon
+     * armado en casa— se guarda igual. Sin este caso, hacer obligatoria la
+     * columna no pondría nada en rojo.
+     */
+    it('un equipo sin modeloEquipoId se guarda y se relee con null', async () => {
+      const equipo = await crearEquipo({ nombre: 'Clon armado en casa' });
+
+      await withTenant(async () => {
+        const found = await equipoRepo.findById(equipo.id);
+        expect(found!.modeloEquipoId).toBeNull();
       });
     });
 

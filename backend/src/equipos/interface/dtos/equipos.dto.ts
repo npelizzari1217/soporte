@@ -96,6 +96,17 @@ export class CreateEquipoHttpDto {
   @MaxLength(EQUIPO_UBICACION_MAX_LENGTH)
   ubicacion?: string | null;
 
+  /**
+   * Modelo del catálogo (`modelos_equipo`). OPCIONAL a propósito: un clon
+   * armado en casa no tiene modelo y se da de alta igual — simplemente no
+   * participa de la compatibilidad con insumos. `ParseUUIDPipe` no aplica acá
+   * porque viaja en el body, así que lo valida `@IsUUID`: sin eso el id crudo
+   * llega a Prisma contra una columna `@db.Uuid` y devuelve 500 en vez de 400.
+   */
+  @IsOptional()
+  @IsUUID()
+  modeloEquipoId?: string | null;
+
   /** Importe/valor del equipo (2 decimales, no negativo, techo de negocio). */
   @IsOptional()
   @IsNumber({ maxDecimalPlaces: 2 })
@@ -161,6 +172,17 @@ export class EditarEquipoHttpDto {
   )
   @MaxLength(EQUIPO_UBICACION_MAX_LENGTH)
   ubicacion?: string | null;
+
+  /**
+   * Modelo del catálogo (`modelos_equipo`). OPCIONAL a propósito: un clon
+   * armado en casa no tiene modelo y se da de alta igual — simplemente no
+   * participa de la compatibilidad con insumos. `ParseUUIDPipe` no aplica acá
+   * porque viaja en el body, así que lo valida `@IsUUID`: sin eso el id crudo
+   * llega a Prisma contra una columna `@db.Uuid` y devuelve 500 en vez de 400.
+   */
+  @IsOptional()
+  @IsUUID()
+  modeloEquipoId?: string | null;
 
   @IsOptional()
   @IsNumber({ maxDecimalPlaces: 2 })
@@ -292,6 +314,7 @@ export interface EquipoResponseDto {
   modelo: string | null;
   fechaAdquisicion: string | null;
   ubicacion: string | null;
+  modeloEquipoId: string | null;
   importe: number | null;
   fechaValoracion: string | null;
   observaciones: string | null;
@@ -312,6 +335,7 @@ export function toEquipoResponseDto(equipo: EquipoInformaticoEntity): EquipoResp
     modelo: equipo.modelo,
     fechaAdquisicion: equipo.fechaAdquisicion ? equipo.fechaAdquisicion.toISOString() : null,
     ubicacion: equipo.ubicacion,
+    modeloEquipoId: equipo.modeloEquipoId,
     importe: equipo.importe,
     fechaValoracion: equipo.fechaValoracion ? equipo.fechaValoracion.toISOString() : null,
     observaciones: equipo.observaciones,

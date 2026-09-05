@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
+  CrearEquipoInformaticoProps,
   EquipoInformaticoEntity,
-  EquipoInformaticoProps,
   normalizarUbicacion,
 } from './equipo-informatico.entity';
 import { DomainError } from '../../../shared/domain/result';
@@ -14,7 +14,7 @@ import { DomainError } from '../../../shared/domain/result';
  * Ref spec: sdd/flujos-especializados/spec F3-Q1. Ref design: ADR-9.
  */
 /** Props base válidas, sin nada opcional seteado — usada por los tests de límites. */
-function baseProps(): Omit<EquipoInformaticoProps, 'activo'> {
+function baseProps(): CrearEquipoInformaticoProps {
   return {
     nombre: 'Notebook',
     numeroSerie: null,
@@ -206,7 +206,7 @@ describe('EquipoInformaticoEntity', () => {
   it('reconstitute() NO valida largos (permite un valor histórico que excede el tope actual)', () => {
     expect(() =>
       EquipoInformaticoEntity.reconstitute(
-        { ...baseProps(), nombre: 'A'.repeat(300), activo: true },
+        { ...baseProps(), nombre: 'A'.repeat(300), modeloEquipoId: null, activo: true },
         'id-historico',
         new Date('2020-01-01'),
         new Date('2020-01-01'),
@@ -271,6 +271,7 @@ describe('EquipoInformaticoEntity', () => {
         modelo: null,
         fechaAdquisicion: null,
         ubicacion: null,
+        modeloEquipoId: null,
         importe: null,
         fechaValoracion: null,
         observaciones: null,
@@ -286,5 +287,54 @@ describe('EquipoInformaticoEntity', () => {
     expect(equipo.id).toBe('id-reconstituido');
     expect(equipo.activo).toBe(false);
     expect(equipo.createdAt).toEqual(createdAt);
+  });
+});
+
+/**
+ * `modeloEquipoId` es la FK al catálogo `modelos_equipo` (sdd/insumos-catalogo).
+ * Es NULLABLE a propósito: un clon armado en casa no tiene modelo de catálogo y
+ * existe igual — simplemente no participa de la compatibilidad con insumos.
+ */
+describe('EquipoInformaticoEntity — modeloEquipoId', () => {
+  const MODELO_ID = '01900000-0000-7000-8000-0000000000aa';
+  const OTRO_MODELO_ID = '01900000-0000-7000-8000-0000000000bb';
+
+  it('create() sin modeloEquipoId lo deja en null — el equipo sin modelo de catálogo existe igual', () => {
+    const equipo = EquipoInformaticoEntity.create(baseProps());
+    expect(equipo.modeloEquipoId).toBeNull();
+  });
+
+  it('create() con modeloEquipoId lo conserva', () => {
+    const equipo = EquipoInformaticoEntity.create({ ...baseProps(), modeloEquipoId: MODELO_ID });
+    expect(equipo.modeloEquipoId).toBe(MODELO_ID);
+  });
+
+  it('actualizar() con undefined NO toca el modelo ya asignado (PATCH semántico)', () => {
+    const equipo = EquipoInformaticoEntity.create({ ...baseProps(), modeloEquipoId: MODELO_ID });
+
+    equipo.actualizar({ nombre: 'Renombrado' });
+
+    expect(equipo.modeloEquipoId).toBe(MODELO_ID);
+  });
+
+  it('actualizar() con otro id reasigna el modelo', () => {
+    const equipo = EquipoInformaticoEntity.create({ ...baseProps(), modeloEquipoId: MODELO_ID });
+
+    equipo.actualizar({ modeloEquipoId: OTRO_MODELO_ID });
+
+    expect(equipo.modeloEquipoId).toBe(OTRO_MODELO_ID);
+  });
+
+  /**
+   * Desvincular es un cambio LEGÍTIMO, no un descuido: un equipo mal
+   * clasificado tiene que poder quedarse sin modelo de catálogo. Por eso `null`
+   * limpia y `undefined` no toca — la distinción de siempre del PATCH.
+   */
+  it('actualizar() con null desvincula el modelo', () => {
+    const equipo = EquipoInformaticoEntity.create({ ...baseProps(), modeloEquipoId: MODELO_ID });
+
+    equipo.actualizar({ modeloEquipoId: null });
+
+    expect(equipo.modeloEquipoId).toBeNull();
   });
 });

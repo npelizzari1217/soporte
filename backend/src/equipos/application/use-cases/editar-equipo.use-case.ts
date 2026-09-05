@@ -6,6 +6,10 @@ import {
   EquipoNoEncontradoError,
   NumeroSerieDuplicadoError,
 } from '../../domain/errors/equipos.errors';
+import {
+  LectorCatalogoModelos,
+  validarModeloEquipoElegible,
+} from '../services/validar-modelo-equipo.service';
 
 /** Detecta el error P2002 de Prisma (UNIQUE constraint violation) sin importar tipos de infraestructura. */
 function isPrismaUniqueConstraintError(err: unknown): err is { code: string } {
@@ -27,6 +31,12 @@ export interface EditarEquipoDto {
   fechaAdquisicion?: Date | null;
   /** Ubicación como TEXTO LIBRE (la entidad la normaliza a mayúscula). */
   ubicacion?: string | null;
+  /**
+   * Modelo del catálogo (`modelos_equipo`). `null` desvincula el equipo de su
+   * modelo — es el caso del clon, que existe sin participar de la
+   * compatibilidad con insumos.
+   */
+  modeloEquipoId?: string | null;
   importe?: number | null;
   fechaValoracion?: Date | null;
   observaciones?: string | null;
@@ -42,7 +52,13 @@ export interface EditarEquipoDto {
  * 2. Si `numeroSerie` fue provisto y difiere del actual: verifica unicidad
  *    excluyendo el propio equipo → `NumeroSerieDuplicadoError` si
  *    pertenece a OTRO equipo.
- * 3. Aplica `actualizar()` (que normaliza `ubicacion` a mayúscula) y persiste
+ * 3. Si `modeloEquipoId` viene con un id: verifica contra el catálogo
+ *    `modelos_equipo` que el modelo EXISTA y esté HABILITADO →
+ *    `ModeloEquipoInexistenteError` / `ModeloEquipoDeshabilitadoError`.
+ *    `undefined` ("no lo toques") y `null` ("desvinculalo") son los dos casos
+ *    válidos que NO se validan. El modelo deshabilitado no lo puede atrapar la
+ *    FK: la fila existe.
+ * 4. Aplica `actualizar()` (que normaliza `ubicacion` a mayúscula) y persiste
  *    en transacción (con la misma defensa P2002 que `CrearEquipoUseCase`).
  *
  * La ubicación pasó de FK (catálogo) a TEXTO LIBRE — ya no se valida.
@@ -58,6 +74,9 @@ export class EditarEquipoUseCase {
       'findById' | 'findByNumeroSerie' | 'save'
     >,
     private readonly txRunner: ITenantTransactionRunner,
+    // Va al final para no reordenar los args de los callers existentes (mismo
+    // criterio que `EquiposController.exportarEquiposUseCase`).
+    private readonly modeloEquipoRepo: LectorCatalogoModelos,
   ) {}
 
   async execute(dto: EditarEquipoDto): Promise<Result<EquipoInformaticoEntity, DomainError>> {
@@ -77,6 +96,18 @@ export class EditarEquipoUseCase {
       }
     }
 
+    // `undefined` no toca el modelo asignado y `null` lo desvincula: los dos
+    // son válidos y no tienen nada que buscar en el catálogo.
+    if (dto.modeloEquipoId !== undefined && dto.modeloEquipoId !== null) {
+      const modeloValido = await validarModeloEquipoElegible(
+        this.modeloEquipoRepo,
+        dto.modeloEquipoId,
+      );
+      if (modeloValido.isFail()) {
+        return Result.fail(modeloValido.getError());
+      }
+    }
+
     equipo.actualizar({
       nombre: dto.nombre,
       numeroSerie: dto.numeroSerie,
@@ -84,6 +115,7 @@ export class EditarEquipoUseCase {
       modelo: dto.modelo,
       fechaAdquisicion: dto.fechaAdquisicion,
       ubicacion: dto.ubicacion,
+      modeloEquipoId: dto.modeloEquipoId,
       importe: dto.importe,
       fechaValoracion: dto.fechaValoracion,
       observaciones: dto.observaciones,
@@ -96,7 +128,18 @@ export class EditarEquipoUseCase {
         await this.equipoRepo.save(equipo);
       });
     } catch (err: unknown) {
-      if (dto.numeroSerie && isPrismaUniqueConstraintError(err)) {
+      // Comparación explícita contra las dos ausencias, no truthiness
+      // (alineado con el `!== null` de `CrearEquipoUseCase`): con truthiness,
+      // `numeroSerie: ''` —que el chequeo previo SÍ consulta— hacía re-lanzar
+      // un P2002 real y salía como 500 en vez del 422 de negocio. `undefined`
+      // es "no mandé el campo" y `null` es "borralo"; en ninguno de los dos el
+      // P2002 puede venir del índice único parcial de `numero_serie`, que es
+      // `WHERE numero_serie IS NOT NULL`.
+      if (
+        dto.numeroSerie !== undefined &&
+        dto.numeroSerie !== null &&
+        isPrismaUniqueConstraintError(err)
+      ) {
         return Result.fail(new NumeroSerieDuplicadoError(dto.numeroSerie));
       }
       throw err;

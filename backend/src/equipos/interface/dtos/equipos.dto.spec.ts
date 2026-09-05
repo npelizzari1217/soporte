@@ -179,6 +179,7 @@ function baseEntityProps(): Omit<EquipoInformaticoProps, 'activo'> {
     modelo: null,
     fechaAdquisicion: null,
     ubicacion: null,
+    modeloEquipoId: null,
     importe: null,
     fechaValoracion: null,
     observaciones: null,

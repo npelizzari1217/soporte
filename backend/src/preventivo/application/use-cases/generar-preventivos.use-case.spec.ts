@@ -49,7 +49,7 @@ function makeEquipoDadoDeBaja(id: string, nombre: string): EquipoInformaticoEnti
 
 function makeEquipoEliminado(id: string, nombre: string): EquipoInformaticoEntity {
   return EquipoInformaticoEntity.reconstitute(
-    { ...propsEquipoMinimo(nombre), activo: true },
+    { ...propsEquipoMinimo(nombre), modeloEquipoId: null, activo: true },
     id,
     new Date('2026-01-01'),
     new Date('2026-01-01'),
