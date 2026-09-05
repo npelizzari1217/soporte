@@ -47,6 +47,7 @@ import { Argon2HashProvider } from '../../../auth/infrastructure/argon2-hash.pro
 import { FamiliaInsumoResponseDto } from '../dtos/familias-insumo.dto';
 import { UnidadMedidaResponseDto } from '../dtos/unidades-medida.dto';
 import { InsumoResponseDto } from '../dtos/insumos.dto';
+import { ModeloEquipoResponseDto } from '../dtos/modelos-equipo.dto';
 import { usarLockMasterTest } from '../../../testing/lock-master-test';
 
 const MASTER_TEST_URL =
@@ -893,6 +894,236 @@ describe('Insumos e2e — gate por método + borde completo', () => {
         bearer(adminActor.accessToken),
       );
       expect(listadoTrasReactivar.data.find((insumo) => insumo.id === id)?.activo).toBe(true);
+    });
+
+    describe('Compatibilidad insumo ↔ modelo de equipo', () => {
+      /**
+       * Siembra un modelo de equipo por la API real: `insumos_modelos_equipo`
+       * tiene FK a `modelos_equipo`, así que sin la fila no entra ningún par.
+       *
+       * @param token Access token de un actor con rol ADMINISTRADOR.
+       * @param sufijoModelo Sufijo único, para que el par marca+modelo no choque
+       *   con el de otro caso (el tenant efímero es UNO SOLO para todo el archivo).
+       * @returns El id del modelo recién creado.
+       */
+      async function sembrarModelo(token: string, sufijoModelo: string): Promise<string> {
+        const modelo = await httpPost<ModeloEquipoResponseDto>(
+          `${baseUrl}/modelos-equipo`,
+          { marca: 'HP', modelo: `LaserJet ${sufijoModelo}` },
+          bearer(token),
+        );
+        expect(modelo.status).toBe(201);
+        return modelo.data.id;
+      }
+
+      /**
+       * La lectura por el lado del modelo es la que responde "¿qué tóner le va a
+       * esta impresora?". El assert es de CONTENIDO Y de AUSENCIA sobre un
+       * fixture CARGADO: el segundo insumo existe en el mismo tenant y es
+       * compatible con OTRO modelo, así que un handler que devolviera el
+       * catálogo entero —o que perdiera el id— se pone rojo acá.
+       */
+      it('GET /modelos-equipo/:id/insumos: actor SIN rol ADMINISTRADOR → 200 y ve solo los compatibles', async () => {
+        const suf = sufijo();
+        const adminActor = await crearActorConRol('ADMINISTRADOR');
+        const catalogos = await sembrarCatalogos(adminActor.accessToken, suf);
+        const modeloBuscado = await sembrarModelo(adminActor.accessToken, `A_${suf}`);
+        const otroModelo = await sembrarModelo(adminActor.accessToken, `B_${suf}`);
+
+        const compatible = await httpPost<InsumoResponseDto>(
+          `${baseUrl}/insumos`,
+          {
+            codigo: `INS_COMPAT_${suf}`,
+            nombre: 'Le sirve al modelo buscado',
+            ...catalogos,
+            compatibilidad: [{ modeloEquipoId: modeloBuscado, rol: ' negro ' }],
+          },
+          bearer(adminActor.accessToken),
+        );
+        const ajeno = await httpPost<InsumoResponseDto>(
+          `${baseUrl}/insumos`,
+          {
+            codigo: `INS_AJENO_${suf}`,
+            nombre: 'Le sirve a otro modelo',
+            ...catalogos,
+            compatibilidad: [{ modeloEquipoId: otroModelo }],
+          },
+          bearer(adminActor.accessToken),
+        );
+        expect(compatible.status).toBe(201);
+        expect(ajeno.status).toBe(201);
+
+        const actor = await crearActorConRol('USUARIO', adminActor.clienteId);
+
+        const { status, data } = await httpGet<InsumoResponseDto[]>(
+          `${baseUrl}/modelos-equipo/${modeloBuscado}/insumos`,
+          bearer(actor.accessToken),
+        );
+
+        expect(status).toBe(200);
+        expect(data.map((insumo) => insumo.id)).toContain(compatible.data.id);
+        expect(data.map((insumo) => insumo.id)).not.toContain(ajeno.data.id);
+        expect(data.find((insumo) => insumo.id === compatible.data.id)?.compatibilidad).toEqual([
+          { modeloEquipoId: modeloBuscado, rol: 'NEGRO' },
+        ]);
+      });
+
+      /**
+       * Un id mal formado no es un `@db.Uuid` válido: Postgres lo rechaza con
+       * `22P02`, que NO está en el mapa cerrado de `PrismaExceptionFilter`, así
+       * que sin el `ParseUUIDPipe` el usuario se come un 500.
+       */
+      it('GET /modelos-equipo/:id/insumos con id mal formado → 400, nunca 500', async () => {
+        const adminActor = await crearActorConRol('ADMINISTRADOR');
+
+        const { status } = await httpGet(
+          `${baseUrl}/modelos-equipo/no-es-un-uuid/insumos`,
+          bearer(adminActor.accessToken),
+        );
+
+        expect(status).toBe(400);
+      });
+
+      /** Un modelo sin insumos compatibles es una lista vacía, no un 404. */
+      it('GET /modelos-equipo/:id/insumos de un modelo sin compatibilidades → 200 y lista vacía', async () => {
+        const suf = sufijo();
+        const adminActor = await crearActorConRol('ADMINISTRADOR');
+        const modeloSolo = await sembrarModelo(adminActor.accessToken, `SOLO_${suf}`);
+
+        const { status, data } = await httpGet<InsumoResponseDto[]>(
+          `${baseUrl}/modelos-equipo/${modeloSolo}/insumos`,
+          bearer(adminActor.accessToken),
+        );
+
+        expect(status).toBe(200);
+        expect(data).toEqual([]);
+      });
+
+      /**
+       * Existir NO es ser elegible: la FK acepta el modelo deshabilitado porque
+       * su fila está. El hermano invertido —el mismo alta contra el modelo
+       * habilitado— prueba que el rechazo no viene de un guard que rechaza todo.
+       */
+      it('POST /insumos con modelo deshabilitado → 422, y con el habilitado → 201', async () => {
+        const suf = sufijo();
+        const adminActor = await crearActorConRol('ADMINISTRADOR');
+        const catalogos = await sembrarCatalogos(adminActor.accessToken, suf);
+        const vigente = await sembrarModelo(adminActor.accessToken, `ON_${suf}`);
+        const apagado = await sembrarModelo(adminActor.accessToken, `OFF_${suf}`);
+        const baja = await httpPatch(
+          `${baseUrl}/modelos-equipo/${apagado}/estado`,
+          { activo: false },
+          bearer(adminActor.accessToken),
+        );
+        expect(baja.status).toBe(200);
+
+        const conDeshabilitado = await httpPost(
+          `${baseUrl}/insumos`,
+          {
+            codigo: `INS_MOFF_${suf}`,
+            nombre: 'Con modelo deshabilitado',
+            ...catalogos,
+            compatibilidad: [{ modeloEquipoId: apagado }],
+          },
+          bearer(adminActor.accessToken),
+        );
+        const conHabilitado = await httpPost(
+          `${baseUrl}/insumos`,
+          {
+            codigo: `INS_MON_${suf}`,
+            nombre: 'Con modelo habilitado',
+            ...catalogos,
+            compatibilidad: [{ modeloEquipoId: vigente }],
+          },
+          bearer(adminActor.accessToken),
+        );
+
+        expect(conDeshabilitado.status).toBe(422);
+        expect(conHabilitado.status).toBe(201);
+      });
+
+      /**
+       * La PK de `insumos_modelos_equipo` es el par: sin el guard de la capa de
+       * aplicación, las dos filas llegan a la escritura anidada y el usuario ve
+       * un 500 crudo en lugar de un 422 que nombra el modelo repetido.
+       */
+      it('POST /insumos con el mismo modelo repetido en el payload → 422, nunca 500', async () => {
+        const suf = sufijo();
+        const adminActor = await crearActorConRol('ADMINISTRADOR');
+        const catalogos = await sembrarCatalogos(adminActor.accessToken, suf);
+        const modeloId = await sembrarModelo(adminActor.accessToken, `REP_${suf}`);
+
+        const { status } = await httpPost(
+          `${baseUrl}/insumos`,
+          {
+            codigo: `INS_MREP_${suf}`,
+            nombre: 'Modelo repetido',
+            ...catalogos,
+            compatibilidad: [
+              { modeloEquipoId: modeloId, rol: 'NEGRO' },
+              { modeloEquipoId: modeloId, rol: 'CIAN' },
+            ],
+          },
+          bearer(adminActor.accessToken),
+        );
+
+        expect(status).toBe(422);
+      });
+
+      /**
+       * La lista es PATCH y atraviesa las cuatro capas: `undefined` deja la
+       * guardada intacta —editar el nombre no puede desvincular un insumo de sus
+       * modelos— y `[]` la vacía. El listado por modelo es el que confirma que
+       * la fila realmente se borró de la base, no solo de la respuesta.
+       */
+      it('PATCH /insumos/:id: el nombre solo no toca la compatibilidad, y la lista vacía la borra', async () => {
+        const suf = sufijo();
+        const adminActor = await crearActorConRol('ADMINISTRADOR');
+        const catalogos = await sembrarCatalogos(adminActor.accessToken, suf);
+        const modeloId = await sembrarModelo(adminActor.accessToken, `PATCH_${suf}`);
+
+        const crear = await httpPost<InsumoResponseDto>(
+          `${baseUrl}/insumos`,
+          {
+            codigo: `INS_MPATCH_${suf}`,
+            nombre: 'Original',
+            ...catalogos,
+            compatibilidad: [{ modeloEquipoId: modeloId, rol: 'NEGRO' }],
+          },
+          bearer(adminActor.accessToken),
+        );
+        expect(crear.status).toBe(201);
+
+        const soloNombre = await httpPatch<InsumoResponseDto>(
+          `${baseUrl}/insumos/${crear.data.id}`,
+          { nombre: 'Renombrado' },
+          bearer(adminActor.accessToken),
+        );
+        expect(soloNombre.status).toBe(200);
+        expect(soloNombre.data.compatibilidad).toEqual([
+          { modeloEquipoId: modeloId, rol: 'NEGRO' },
+        ]);
+
+        const trasRenombrar = await httpGet<InsumoResponseDto[]>(
+          `${baseUrl}/modelos-equipo/${modeloId}/insumos`,
+          bearer(adminActor.accessToken),
+        );
+        expect(trasRenombrar.data.map((insumo) => insumo.id)).toContain(crear.data.id);
+
+        const vaciar = await httpPatch<InsumoResponseDto>(
+          `${baseUrl}/insumos/${crear.data.id}`,
+          { compatibilidad: [] },
+          bearer(adminActor.accessToken),
+        );
+        expect(vaciar.status).toBe(200);
+        expect(vaciar.data.compatibilidad).toEqual([]);
+
+        const trasVaciar = await httpGet<InsumoResponseDto[]>(
+          `${baseUrl}/modelos-equipo/${modeloId}/insumos`,
+          bearer(adminActor.accessToken),
+        );
+        expect(trasVaciar.data.map((insumo) => insumo.id)).not.toContain(crear.data.id);
+      });
     });
   });
 });

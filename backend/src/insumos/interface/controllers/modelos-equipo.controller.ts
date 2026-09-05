@@ -9,9 +9,10 @@
  *   PATCH /modelos-equipo/:id         → EditarModeloEquipoUseCase
  *   PATCH /modelos-equipo/:id/estado  → CambiarEstadoActivoModeloEquipoUseCase
  *
- * Ruta de lectura (SIN gate — cualquier autenticado del tenant, que necesita
+ * Rutas de lectura (SIN gate — cualquier autenticado del tenant, que necesita
  * el catálogo para elegir el modelo de un equipo y consultar compatibilidad):
  *   GET   /modelos-equipo             → ListarModelosEquipoUseCase
+ *   GET   /modelos-equipo/:id/insumos → ListarInsumosPorModeloEquipoUseCase
  *
  * Sin `@RequiereAcciones`: el ABM del catálogo se gatea 100% por rol
  * (`AdminClienteGuard`), no por el catálogo `MODULO:ACCION`.
@@ -34,6 +35,7 @@ import { CrearModeloEquipoUseCase } from '../../application/use-cases/crear-mode
 import { EditarModeloEquipoUseCase } from '../../application/use-cases/editar-modelo-equipo.use-case';
 import { CambiarEstadoActivoModeloEquipoUseCase } from '../../application/use-cases/cambiar-estado-activo-modelo-equipo.use-case';
 import { ListarModelosEquipoUseCase } from '../../application/use-cases/listar-modelos-equipo.use-case';
+import { ListarInsumosPorModeloEquipoUseCase } from '../../application/use-cases/listar-insumos-por-modelo-equipo.use-case';
 import { DomainError } from '../../../shared/domain/result';
 import { ModeloEquipoNoEncontradoError } from '../../domain/errors/modelos-equipo.errors';
 import { JwtAuthGuard } from '../../../auth/infrastructure/guards/jwt-auth.guard';
@@ -46,6 +48,7 @@ import {
   ModeloEquipoResponseDto,
   toModeloEquipoResponseDto,
 } from '../dtos/modelos-equipo.dto';
+import { InsumoResponseDto, toInsumoResponseDto } from '../dtos/insumos.dto';
 
 /**
  * Mapea un `DomainError` de modelos de equipo a la `HttpException` de
@@ -71,6 +74,7 @@ export class ModelosEquipoController {
     private readonly editarModeloEquipoUseCase: EditarModeloEquipoUseCase,
     private readonly cambiarEstadoActivoModeloEquipoUseCase: CambiarEstadoActivoModeloEquipoUseCase,
     private readonly listarModelosEquipoUseCase: ListarModelosEquipoUseCase,
+    private readonly listarInsumosPorModeloEquipoUseCase: ListarInsumosPorModeloEquipoUseCase,
   ) {}
 
   /**
@@ -82,6 +86,30 @@ export class ModelosEquipoController {
   async listar(): Promise<ModeloEquipoResponseDto[]> {
     const modelos = await this.listarModelosEquipoUseCase.execute();
     return modelos.map(toModeloEquipoResponseDto);
+  }
+
+  /**
+   * GET /modelos-equipo/:id/insumos — los insumos que le sirven a este modelo,
+   * SIN gate: es la misma lectura abierta que el catálogo de modelos, y
+   * responde "¿qué tóner le va a esta impresora?" en una sola llamada.
+   *
+   * Un modelo inexistente devuelve la lista vacía y no un 404: la consulta
+   * filtra por la relación, y no encontrar compatibilidades no es un fallo.
+   *
+   * @param id Id del modelo de equipo.
+   * @returns Los insumos vigentes compatibles —habilitados o NO—, con su
+   *   agregado completo. Excluye la baja lógica pero no filtra por `activo`: un
+   *   insumo deshabilitado sigue siendo el repuesto que ese modelo lleva, y
+   *   ocultarlo haría parecer que el modelo no tiene ninguno. Quien consuma
+   *   esto decide si lo muestra distinto, pero tiene que saber que baja.
+   * @throws 400 id mal formado
+   */
+  @Get(':id/insumos')
+  async listarInsumosCompatibles(
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ): Promise<InsumoResponseDto[]> {
+    const insumos = await this.listarInsumosPorModeloEquipoUseCase.execute(id);
+    return insumos.map(toInsumoResponseDto);
   }
 
   /**

@@ -7,6 +7,7 @@ import {
   InsumoEntity,
   INSUMO_CODIGOS_ALTERNATIVOS_MAX,
   INSUMO_CODIGO_MAX_LENGTH,
+  INSUMO_COMPATIBILIDAD_MAX,
   INSUMO_NOMBRE_MAX_LENGTH,
   INSUMO_STOCK_MINIMO_MAXIMO,
 } from '../../domain/entities/insumo.entity';
@@ -15,9 +16,12 @@ import {
   INSUMO_CODIGO_ALTERNATIVO_CODIGO_MAX_LENGTH,
   INSUMO_CODIGO_ALTERNATIVO_FABRICANTE_MAX_LENGTH,
 } from '../../domain/entities/insumo-codigo-alternativo.entity';
+import { COMPATIBILIDAD_ROL_MAX_LENGTH } from '../../domain/entities/compatibilidad-modelo';
 
 const FAMILIA_ID = '11111111-1111-4111-8111-111111111111';
 const UNIDAD_ID = '22222222-2222-4222-8222-222222222222';
+const MODELO_ID = '55555555-5555-4555-8555-555555555555';
+const OTRO_MODELO_ID = '66666666-6666-4666-8666-666666666666';
 
 /** Body mínimo válido del alta, para que cada caso sobrescriba solo lo suyo. */
 function bodyAlta(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -33,6 +37,18 @@ function bodyAlta(overrides: Record<string, unknown> = {}): Record<string, unkno
 /** Lista de códigos alternativos válidos y distintos entre sí, para medir el techo. */
 function codigosAlternativosDe(cantidad: number): Array<{ codigo: string }> {
   return Array.from({ length: cantidad }, (_valor, indice) => ({ codigo: `ALT-${indice}` }));
+}
+
+/**
+ * Lista de compatibilidades con UUIDs válidos y distintos entre sí, para medir
+ * el techo. Los ids se derivan del índice porque `@IsUUID` rechaza cualquier
+ * cosa que no lo sea, y un id inválido pondría el caso en rojo por la
+ * restricción equivocada.
+ */
+function compatibilidadDe(cantidad: number): Array<{ modeloEquipoId: string }> {
+  return Array.from({ length: cantidad }, (_valor, indice) => ({
+    modeloEquipoId: `44444444-4444-4444-8444-${String(indice).padStart(12, '0')}`,
+  }));
 }
 
 /**
@@ -341,6 +357,138 @@ describe.each([
 
     expect(await validate(dto)).toHaveLength(0);
   });
+
+  // ─── Compatibilidad con modelos de equipo ─────────────────────────────────
+
+  /**
+   * `modeloEquipoId` viaja en el BODY, así que `ParseUUIDPipe` no lo alcanza:
+   * sin `@IsUUID` el id crudo llega a Prisma contra una columna `@db.Uuid`,
+   * Postgres tira 22P02 —que no está en el mapa cerrado de
+   * `PrismaExceptionFilter`— y el usuario se come un 500.
+   */
+  it('rechaza un modeloEquipoId que no es un UUID', async () => {
+    const dto = plainToInstance(
+      Dto,
+      bodyAlta({ compatibilidad: [{ modeloEquipoId: 'no-es-un-uuid' }] }),
+    );
+
+    expect(await restriccionesDe(dto)).toContain('isUuid');
+  });
+
+  /**
+   * Sin `@ValidateNested`, `class-validator` mira el array como un valor opaco:
+   * los pares entrarían crudos y sin medir, y este caso quedaría verde con un
+   * array de cualquier cosa adentro.
+   */
+  it('rechaza un elemento de compatibilidad sin modeloEquipoId', async () => {
+    const dto = plainToInstance(Dto, bodyAlta({ compatibilidad: [{ rol: 'NEGRO' }] }));
+
+    expect(await restriccionesDe(dto)).toContain('isUuid');
+  });
+
+  it('normaliza el rol a mayúscula y colapsa a null el rol de solo espacios', async () => {
+    const dto = plainToInstance(
+      Dto,
+      bodyAlta({
+        compatibilidad: [
+          { modeloEquipoId: MODELO_ID, rol: '  negro  ' },
+          { modeloEquipoId: OTRO_MODELO_ID, rol: '   ' },
+        ],
+      }),
+    );
+
+    expect(await validate(dto)).toHaveLength(0);
+    expect(dto.compatibilidad![0]!.rol).toBe('NEGRO');
+    expect(dto.compatibilidad![1]!.rol).toBeNull();
+  });
+
+  it('acepta el rol ausente y el rol en null: no todo insumo cumple un rol', async () => {
+    const dto = plainToInstance(
+      Dto,
+      bodyAlta({
+        compatibilidad: [
+          { modeloEquipoId: MODELO_ID },
+          { modeloEquipoId: OTRO_MODELO_ID, rol: null },
+        ],
+      }),
+    );
+
+    expect(await validate(dto)).toHaveLength(0);
+  });
+
+  /**
+   * El tope del rol se mide DESPUÉS de normalizar: `'ß'.toUpperCase()` es
+   * `'SS'`, así que 20 `ß` crudas son 40 caracteres en una columna
+   * `VarChar(20)`. Midiendo el crudo, el valor atraviesa el borde y muere en
+   * Postgres con un 22001 que no nombra el campo.
+   */
+  it('rechaza un rol que entra crudo pero se pasa del tope al normalizarse', async () => {
+    const dto = plainToInstance(
+      Dto,
+      bodyAlta({
+        compatibilidad: [
+          { modeloEquipoId: MODELO_ID, rol: 'ß'.repeat(COMPATIBILIDAD_ROL_MAX_LENGTH) },
+        ],
+      }),
+    );
+
+    expect(await restriccionesDe(dto)).toContain('maxLength');
+  });
+
+  it('acepta un rol de exactamente 20 caracteres (límite inclusive)', async () => {
+    const dto = plainToInstance(
+      Dto,
+      bodyAlta({
+        compatibilidad: [
+          { modeloEquipoId: MODELO_ID, rol: 'A'.repeat(COMPATIBILIDAD_ROL_MAX_LENGTH) },
+        ],
+      }),
+    );
+
+    expect(await validate(dto)).toHaveLength(0);
+  });
+
+  /**
+   * `compatibilidad: null` NO es lo mismo que ausente: la capa de aplicación
+   * distingue `undefined` ("no tocar la lista") de una lista, y un `null` que
+   * se cuele llega como iterable inválido y sale por 500.
+   */
+  it('rechaza compatibilidad en null', async () => {
+    const dto = plainToInstance(Dto, bodyAlta({ compatibilidad: null }));
+
+    expect(await restriccionesDe(dto)).toContain('isArray');
+  });
+
+  it('acepta la lista vacía de compatibilidad, que es la orden de vaciarla', async () => {
+    const dto = plainToInstance(Dto, bodyAlta({ compatibilidad: [] }));
+
+    expect(await validate(dto)).toHaveLength(0);
+  });
+
+  /**
+   * El techo se assertea por SU restricción y no por "hubo algún error":
+   * `@IsArray`, `@ArrayMaxSize` y `@ValidateNested` conviven sobre el mismo
+   * campo. Sin él, el guardado del agregado emite una escritura anidada por
+   * modelo dentro de una sola transacción y la sostiene abierta sobre la base
+   * del inquilino tantas idas y vueltas como modelos hayan entrado.
+   */
+  it('rechaza más modelos compatibles que el techo del dominio', async () => {
+    const dto = plainToInstance(
+      Dto,
+      bodyAlta({ compatibilidad: compatibilidadDe(INSUMO_COMPATIBILIDAD_MAX + 1) }),
+    );
+
+    expect(await restriccionesDe(dto)).toContain('arrayMaxSize');
+  });
+
+  it('acepta el techo exacto de modelos compatibles (límite inclusive)', async () => {
+    const dto = plainToInstance(
+      Dto,
+      bodyAlta({ compatibilidad: compatibilidadDe(INSUMO_COMPATIBILIDAD_MAX) }),
+    );
+
+    expect(await validate(dto)).toHaveLength(0);
+  });
 });
 
 describe('EditInsumoDto — PATCH parcial', () => {
@@ -377,6 +525,28 @@ describe('EditInsumoDto — PATCH parcial', () => {
 
     expect(await validate(dto)).toHaveLength(0);
   });
+
+  /**
+   * La edición es el camino más probable para pasarse del techo —a un insumo
+   * se le agregan modelos compatibles con el tiempo—, así que un techo puesto
+   * solo en el alta no protege nada.
+   */
+  it('rechaza más modelos compatibles que el techo del dominio', async () => {
+    const dto = plainToInstance(EditInsumoDto, {
+      compatibilidad: compatibilidadDe(INSUMO_COMPATIBILIDAD_MAX + 1),
+    });
+
+    expect(await restriccionesDe(dto)).toContain('arrayMaxSize');
+  });
+
+  it('acepta un PATCH que solo trae la compatibilidad', async () => {
+    const dto = plainToInstance(EditInsumoDto, {
+      compatibilidad: [{ modeloEquipoId: MODELO_ID, rol: 'NEGRO' }],
+    });
+
+    expect(await validate(dto)).toHaveLength(0);
+    expect(dto.codigo).toBeUndefined();
+  });
 });
 
 describe('toInsumoResponseDto', () => {
@@ -410,6 +580,36 @@ describe('toInsumoResponseDto', () => {
     // recargarlos de memoria.
     expect(dto.codigosAlternativos).toEqual([
       { id: '33333333-3333-4333-8333-333333333333', codigo: 'CE285A', fabricante: 'HP' },
+    ]);
+  });
+
+  /**
+   * La compatibilidad viaja por el mismo motivo que los códigos alternativos:
+   * el PATCH lleva la lista COMPLETA, así que una respuesta sin ella obligaría
+   * al usuario a reconstruirla de memoria y cualquier edición le borraría los
+   * modelos que no recordó.
+   *
+   * El par NO lleva `id`: su identidad es `(insumo, modelo)`, que es la PK de
+   * la tabla.
+   */
+  it('mapea la compatibilidad del agregado, sin id, con su rol', () => {
+    const insumo = InsumoEntity.create({
+      codigo: 'TON-003',
+      nombre: 'Con compatibilidad',
+      familiaId: FAMILIA_ID,
+      unidadMedidaId: UNIDAD_ID,
+      stockMinimo: null,
+      activo: true,
+      codigosAlternativos: [],
+      compatibilidad: [
+        { modeloEquipoId: MODELO_ID, rol: 'NEGRO' },
+        { modeloEquipoId: OTRO_MODELO_ID, rol: null },
+      ],
+    });
+
+    expect(toInsumoResponseDto(insumo).compatibilidad).toEqual([
+      { modeloEquipoId: MODELO_ID, rol: 'NEGRO' },
+      { modeloEquipoId: OTRO_MODELO_ID, rol: null },
     ]);
   });
 

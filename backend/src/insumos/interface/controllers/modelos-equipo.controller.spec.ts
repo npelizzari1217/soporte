@@ -5,6 +5,7 @@ import { NotFoundException, UnprocessableEntityException } from '@nestjs/common'
 import { ModelosEquipoController } from './modelos-equipo.controller';
 import { AdminClienteGuard } from '../../../auth/infrastructure/guards/admin-cliente.guard';
 import { ModeloEquipoEntity } from '../../domain/entities/modelo-equipo.entity';
+import { InsumoEntity } from '../../domain/entities/insumo.entity';
 import { Result } from '../../../shared/domain/result';
 import {
   ModeloEquipoNoEncontradoError,
@@ -17,14 +18,36 @@ describe('ModelosEquipoController', () => {
     const editarUseCase = overrides.editar ?? { execute: vi.fn() };
     const cambiarEstadoUseCase = overrides.cambiarEstado ?? { execute: vi.fn() };
     const listarUseCase = overrides.listar ?? { execute: vi.fn() };
+    const listarInsumosUseCase = overrides.listarInsumos ?? { execute: vi.fn() };
 
     const controller = new ModelosEquipoController(
       crearUseCase as never,
       editarUseCase as never,
       cambiarEstadoUseCase as never,
       listarUseCase as never,
+      listarInsumosUseCase as never,
     );
-    return { controller, crearUseCase, editarUseCase, cambiarEstadoUseCase, listarUseCase };
+    return {
+      controller,
+      crearUseCase,
+      editarUseCase,
+      cambiarEstadoUseCase,
+      listarUseCase,
+      listarInsumosUseCase,
+    };
+  }
+
+  function buildInsumo(codigo: string, modeloEquipoId: string): InsumoEntity {
+    return InsumoEntity.create({
+      codigo,
+      nombre: `Insumo ${codigo}`,
+      familiaId: 'fam-1',
+      unidadMedidaId: 'uni-1',
+      stockMinimo: null,
+      activo: true,
+      codigosAlternativos: [],
+      compatibilidad: [{ modeloEquipoId, rol: 'NEGRO' }],
+    });
   }
 
   it('GET /modelos-equipo retorna el listado mapeado a DTO', async () => {
@@ -37,6 +60,36 @@ describe('ModelosEquipoController', () => {
 
     expect(result).toHaveLength(1);
     expect(result[0]!.marca).toBe('HP');
+  });
+
+  /**
+   * El assert es de CONTENIDO y no solo de forma: un handler que devolviera el
+   * catálogo entero también sería un array de insumos, y la pregunta que este
+   * endpoint responde —"¿qué insumo le va a ESTE modelo?"— quedaría sin
+   * respuesta con la lista completa.
+   */
+  it('GET /modelos-equipo/:id/insumos retorna los insumos compatibles mapeados a DTO', async () => {
+    const insumo = buildInsumo('TON-001', 'mod-1');
+    const { controller } = buildController({
+      listarInsumos: { execute: vi.fn().mockResolvedValue([insumo]) },
+    });
+
+    const result = await controller.listarInsumosCompatibles('mod-1');
+
+    expect(result).toHaveLength(1);
+    expect(result[0]!.codigo).toBe('TON-001');
+    expect(result[0]!.compatibilidad).toEqual([{ modeloEquipoId: 'mod-1', rol: 'NEGRO' }]);
+  });
+
+  /** Si el id se perdiera, la consulta devolvería el subconjunto equivocado. */
+  it('GET /modelos-equipo/:id/insumos delega el id del modelo al caso de uso', async () => {
+    const { controller, listarInsumosUseCase } = buildController({
+      listarInsumos: { execute: vi.fn().mockResolvedValue([]) },
+    });
+
+    await controller.listarInsumosCompatibles('mod-7');
+
+    expect(listarInsumosUseCase.execute).toHaveBeenCalledWith('mod-7');
   });
 
   it('POST /modelos-equipo crea y retorna el DTO', async () => {
@@ -101,6 +154,7 @@ describe('ModelosEquipoController', () => {
       ['editar', true],
       ['cambiarEstadoActivo', true],
       ['listar', false],
+      ['listarInsumosCompatibles', false],
     ] as const)('%s → AdminClienteGuard presente: %s', (metodo, debeEstarPresente) => {
       const handler = ModelosEquipoController.prototype[
         metodo as keyof typeof ModelosEquipoController.prototype

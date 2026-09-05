@@ -34,6 +34,7 @@ import {
   InsumoEntity,
   INSUMO_CODIGOS_ALTERNATIVOS_MAX,
   INSUMO_CODIGO_MAX_LENGTH,
+  INSUMO_COMPATIBILIDAD_MAX,
   INSUMO_NOMBRE_MAX_LENGTH,
   INSUMO_STOCK_MINIMO_DECIMALES,
   INSUMO_STOCK_MINIMO_MAXIMO,
@@ -48,6 +49,11 @@ import {
   normalizarCodigoAlternativo,
   normalizarFabricanteCodigoAlternativo,
 } from '../../domain/entities/insumo-codigo-alternativo.entity';
+import {
+  CompatibilidadModelo,
+  COMPATIBILIDAD_ROL_MAX_LENGTH,
+  normalizarRolCompatibilidad,
+} from '../../domain/entities/compatibilidad-modelo';
 
 /**
  * Normaliza el código del insumo con la función del dominio. Deja pasar
@@ -90,6 +96,15 @@ function transformarFabricante({ value }: { value: unknown }): unknown {
   return typeof value === 'string' ? normalizarFabricanteCodigoAlternativo(value) : value;
 }
 
+/**
+ * @param value Valor crudo del campo `rol` de una compatibilidad.
+ * @returns El rol recortado y en mayúscula, `null` si venía vacío o de solo
+ *   espacios, o el valor intacto si no es string.
+ */
+function transformarRol({ value }: { value: unknown }): unknown {
+  return typeof value === 'string' ? normalizarRolCompatibilidad(value) : value;
+}
+
 /** Un código alternativo dentro del body de alta o edición de un insumo. */
 export class CodigoAlternativoInputDto {
   @IsString()
@@ -108,6 +123,33 @@ export class CodigoAlternativoInputDto {
   @Transform(transformarFabricante)
   @MaxLength(INSUMO_CODIGO_ALTERNATIVO_FABRICANTE_MAX_LENGTH)
   fabricante?: string | null;
+}
+
+/** Un modelo de equipo compatible dentro del body de alta o edición de un insumo. */
+export class CompatibilidadInputDto {
+  /**
+   * Viaja en el BODY, así que `ParseUUIDPipe` no lo alcanza: mismo criterio
+   * que `familiaId`, y por el mismo motivo —sin `@IsUUID` el id crudo llega a
+   * Prisma contra una columna `@db.Uuid` y el 22P02 de Postgres sale como 500—.
+   */
+  @IsUUID()
+  modeloEquipoId!: string;
+
+  /**
+   * Ausente, vacío o `null` significan lo mismo: el insumo no cumple ningún rol
+   * distinguible en ese modelo. Por eso va con `@IsOptional`, que también deja
+   * pasar el `null` que produce el `@Transform` cuando el usuario manda
+   * espacios — mismo criterio que el `fabricante` del código alternativo.
+   *
+   * El `@MaxLength` importa su número del dominio y mide DESPUÉS del
+   * `@Transform`: `toUpperCase()` puede AGRANDAR el string, así que 20
+   * caracteres tipeados pueden ser 40 en una columna `VarChar(20)`.
+   */
+  @IsOptional()
+  @IsString()
+  @Transform(transformarRol)
+  @MaxLength(COMPATIBILIDAD_ROL_MAX_LENGTH)
+  rol?: string | null;
 }
 
 /** Body de `POST /insumos`. */
@@ -171,6 +213,25 @@ export class CreateInsumoDto {
   @ValidateNested({ each: true })
   @Type(() => CodigoAlternativoInputDto)
   codigosAlternativos?: CodigoAlternativoInputDto[];
+
+  /**
+   * Lista COMPLETA de modelos de equipo compatibles; ausente equivale a vacía.
+   *
+   * Va con `@ValidateIf` y no con `@IsOptional` por el mismo motivo que
+   * `codigosAlternativos`: `@IsOptional` saltea el `null`, que llegaría intacto
+   * a la capa de aplicación y reventaría al iterarse.
+   *
+   * El `@ArrayMaxSize` importa su número del dominio: el guardado del agregado
+   * emite una escritura anidada por modelo dentro de una sola transacción, y
+   * sin techo la sostiene abierta sobre la base del inquilino tantas idas y
+   * vueltas como modelos hayan entrado.
+   */
+  @ValidateIf((objeto: CreateInsumoDto) => objeto.compatibilidad !== undefined)
+  @IsArray()
+  @ArrayMaxSize(INSUMO_COMPATIBILIDAD_MAX)
+  @ValidateNested({ each: true })
+  @Type(() => CompatibilidadInputDto)
+  compatibilidad?: CompatibilidadInputDto[];
 }
 
 /**
@@ -224,6 +285,18 @@ export class EditInsumoDto {
   @ValidateNested({ each: true })
   @Type(() => CodigoAlternativoInputDto)
   codigosAlternativos?: CodigoAlternativoInputDto[];
+
+  /**
+   * Lista COMPLETA que REEMPLAZA a la guardada: `undefined` la deja intacta,
+   * `[]` la vacía. El techo es el mismo que en el alta, y por el mismo motivo:
+   * la edición reescribe el agregado entero.
+   */
+  @ValidateIf((objeto: EditInsumoDto) => objeto.compatibilidad !== undefined)
+  @IsArray()
+  @ArrayMaxSize(INSUMO_COMPATIBILIDAD_MAX)
+  @ValidateNested({ each: true })
+  @Type(() => CompatibilidadInputDto)
+  compatibilidad?: CompatibilidadInputDto[];
 }
 
 /** Body de `PATCH /insumos/:id/estado` — activar/desactivar. */
@@ -239,7 +312,16 @@ export interface InsumoCodigoAlternativoResponseDto {
   fabricante: string | null;
 }
 
-/** Response shape de un insumo, con su lista de códigos alternativos. */
+/**
+ * Response shape de un modelo compatible. NO lleva `id`: la identidad del par
+ * es `(insumo, modelo)`, que es la clave primaria de la tabla.
+ */
+export interface CompatibilidadResponseDto {
+  modeloEquipoId: string;
+  rol: string | null;
+}
+
+/** Response shape de un insumo, con sus códigos alternativos y su compatibilidad. */
 export interface InsumoResponseDto {
   id: string;
   codigo: string;
@@ -249,6 +331,7 @@ export interface InsumoResponseDto {
   stockMinimo: number | null;
   activo: boolean;
   codigosAlternativos: InsumoCodigoAlternativoResponseDto[];
+  compatibilidad: CompatibilidadResponseDto[];
   createdAt: string;
   updatedAt: string;
 }
@@ -268,11 +351,22 @@ function toCodigoAlternativoResponseDto(
 }
 
 /**
+ * Convierte un modelo compatible del dominio al shape de respuesta HTTP.
+ *
+ * @param par Value object del agregado.
+ * @returns El DTO de respuesta del par compatible.
+ */
+function toCompatibilidadResponseDto(par: CompatibilidadModelo): CompatibilidadResponseDto {
+  return { modeloEquipoId: par.modeloEquipoId, rol: par.rol };
+}
+
+/**
  * Convierte una `InsumoEntity` de dominio al shape de respuesta HTTP.
  *
- * Los códigos alternativos van INCLUIDOS: el agregado no se puede editar sin
- * verlos, porque el PATCH lleva la lista completa y una respuesta sin ellos
- * obligaría a reconstruirla de memoria.
+ * Las DOS listas del agregado van INCLUIDAS: no se puede editar sin verlas,
+ * porque el PATCH lleva la lista completa y una respuesta sin ellas obligaría a
+ * reconstruirlas de memoria — y lo que el usuario no recordara se borraría en
+ * la primera edición.
  *
  * @param entidad Entidad de dominio.
  * @returns El DTO de respuesta, con timestamps en ISO-8601.
@@ -287,6 +381,7 @@ export function toInsumoResponseDto(entidad: InsumoEntity): InsumoResponseDto {
     stockMinimo: entidad.stockMinimo,
     activo: entidad.activo,
     codigosAlternativos: entidad.codigosAlternativos.map(toCodigoAlternativoResponseDto),
+    compatibilidad: entidad.compatibilidad.map(toCompatibilidadResponseDto),
     createdAt: entidad.createdAt.toISOString(),
     updatedAt: entidad.updatedAt.toISOString(),
   };
