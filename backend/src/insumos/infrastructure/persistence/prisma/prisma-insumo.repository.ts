@@ -3,9 +3,10 @@
  * Obtiene el cliente vía `TenantContext` (nunca `PrismaService` directo).
  *
  * Todas las lecturas traen el AGREGADO completo (`include:
- * { codigosAlternativos }`): la raíz sin sus códigos es un agregado a medio
- * cargar, y el guardado siguiente persistiría esa lista incompleta como si
- * fuera la del usuario.
+ * { codigosAlternativos, compatibilidad }`): la raíz sin sus códigos o sin su
+ * compatibilidad es un agregado a medio cargar, y el guardado siguiente
+ * persistiría esa lista incompleta como si fuera la del usuario —un borrado
+ * silencioso, sin error ni log—.
  */
 import { Injectable } from '@nestjs/common';
 import { TenantContext } from '../../../../shared/tenancy/tenant-context';
@@ -15,15 +16,24 @@ import {
   IInsumoRepository,
 } from '../../../domain/ports/i-insumo.repository';
 import { InsumoEntity } from '../../../domain/entities/insumo.entity';
-import { InsumoCodigoAlternativoMapper, InsumoMapper } from './insumo.mapper';
+import {
+  CompatibilidadModeloMapper,
+  InsumoCodigoAlternativoMapper,
+  InsumoMapper,
+} from './insumo.mapper';
 
 /**
- * Los códigos alternativos se leen ordenados por código para que el agregado
- * llegue igual en cada lectura: sin `orderBy`, Postgres devuelve el orden
- * físico de la tabla, que cambia con cada UPDATE.
+ * Las dos listas del agregado se leen ORDENADAS —los códigos por su código, la
+ * compatibilidad por el modelo— para que el agregado llegue igual en cada
+ * lectura: sin `orderBy`, Postgres devuelve el orden físico de la tabla, que
+ * cambia con cada UPDATE.
+ *
+ * La compatibilidad no ordena por `rol`: es nullable, y un `NULL` primero o
+ * último es justo la clase de orden que cambia entre versiones del motor.
  */
-const INCLUIR_CODIGOS_ALTERNATIVOS = {
+const INCLUIR_AGREGADO = {
   codigosAlternativos: { orderBy: { codigo: 'asc' } },
+  compatibilidad: { orderBy: { modeloEquipoId: 'asc' } },
 } as const;
 
 @Injectable()
@@ -36,12 +46,12 @@ export class PrismaInsumoRepository implements IInsumoRepository {
 
   /**
    * @param id Id del insumo.
-   * @returns El insumo con sus códigos alternativos, o `null` si no existe.
+   * @returns El insumo con sus códigos alternativos y su compatibilidad, o `null` si no existe.
    */
   async findById(id: string): Promise<InsumoEntity | null> {
     const row = await this.client.insumo.findUnique({
       where: { id },
-      include: INCLUIR_CODIGOS_ALTERNATIVOS,
+      include: INCLUIR_AGREGADO,
     });
     return row ? InsumoMapper.toDomain(row) : null;
   }
@@ -54,12 +64,12 @@ export class PrismaInsumoRepository implements IInsumoRepository {
    * después rechaza con un 23505 crudo.
    *
    * @param codigo Código ya normalizado en mayúscula por la capa de aplicación.
-   * @returns El insumo con sus códigos alternativos, o `null` si no existe.
+   * @returns El insumo con sus códigos alternativos y su compatibilidad, o `null` si no existe.
    */
   async findByCodigo(codigo: string): Promise<InsumoEntity | null> {
     const row = await this.client.insumo.findUnique({
       where: { codigo },
-      include: INCLUIR_CODIGOS_ALTERNATIVOS,
+      include: INCLUIR_AGREGADO,
     });
     return row ? InsumoMapper.toDomain(row) : null;
   }
@@ -97,21 +107,45 @@ export class PrismaInsumoRepository implements IInsumoRepository {
    * tiene que seguir llegando al listado para que el administrador pueda
    * volver a habilitarlo.
    *
-   * @returns Los insumos vigentes del tenant —habilitados o no—, con sus
-   *   códigos alternativos, ordenados por código.
+   * @returns Los insumos vigentes del tenant —habilitados o no—, con su
+   *   agregado completo, ordenados por código.
    */
   async findAllActive(): Promise<InsumoEntity[]> {
     const rows = await this.client.insumo.findMany({
       where: { deletedAt: null },
       orderBy: { codigo: 'asc' },
-      include: INCLUIR_CODIGOS_ALTERNATIVOS,
+      include: INCLUIR_AGREGADO,
+    });
+    return rows.map(InsumoMapper.toDomain);
+  }
+
+  /**
+   * Responde "¿qué insumo le va a este modelo?" en UNA consulta, filtrando por
+   * la relación con `some` en vez de leer primero los pares y después los
+   * insumos por id: ese camino haría dos idas y vueltas y dejaría una ventana
+   * entre las dos.
+   *
+   * Filtra por `deletedAt: null` y NO por `activo`, mismo criterio que
+   * `findAllActive()`: un insumo deshabilitado sigue siendo el repuesto de ese
+   * modelo, y esconderlo dejaría al administrador sin saber que existe.
+   *
+   * @param modeloEquipoId Id del modelo de equipo por el que se filtra.
+   * @returns Los insumos compatibles vigentes —habilitados o no—, con su
+   *   agregado completo, ordenados por código. Vacío si no hay ninguno.
+   */
+  async findAllByModeloEquipo(modeloEquipoId: string): Promise<InsumoEntity[]> {
+    const rows = await this.client.insumo.findMany({
+      where: { deletedAt: null, compatibilidad: { some: { modeloEquipoId } } },
+      orderBy: { codigo: 'asc' },
+      include: INCLUIR_AGREGADO,
     });
     return rows.map(InsumoMapper.toDomain);
   }
 
   /**
    * Persiste el AGREGADO COMPLETO en UNA sola operación anidada: el insumo por
-   * `upsert` y su lista de códigos alternativos como escritura anidada.
+   * `upsert`, y sus códigos alternativos y su compatibilidad como escrituras
+   * anidadas.
    *
    * Prisma corre la operación anidada en su propia transacción implícita, así
    * que NO se abre un `$transaction` a mano: el cliente activo puede ser ya un
@@ -124,7 +158,12 @@ export class PrismaInsumoRepository implements IInsumoRepository {
    * y su `createdAt`, y un borrado ciego seguido de `create` tiraría ese
    * trabajo a la basura.
    *
-   * @param insumo Insumo de dominio a persistir, con su lista de códigos ya resuelta.
+   * La compatibilidad se reconcilia igual, pero contra la PK COMPUESTA
+   * `(insumoId, modeloEquipoId)`: la fila no tiene id propio ni `updatedAt`,
+   * así que su `createdAt` es el único rastro de cuándo se declaró y un
+   * borrar-y-recrear se lo llevaría puesto.
+   *
+   * @param insumo Insumo de dominio a persistir, con sus dos listas ya resueltas.
    */
   async save(insumo: InsumoEntity): Promise<void> {
     const data = InsumoMapper.toPersistence(insumo);
@@ -135,11 +174,17 @@ export class PrismaInsumoRepository implements IInsumoRepository {
     );
     const idsVigentes = codigos.map((codigo) => codigo.id);
 
+    const compatibilidad = insumo.compatibilidad.map((par) =>
+      CompatibilidadModeloMapper.toPersistence(par),
+    );
+    const modelosVigentes = compatibilidad.map((par) => par.modeloEquipoId);
+
     await this.client.insumo.upsert({
       where: { id: data.id },
       create: {
         ...data,
         codigosAlternativos: { create: codigos },
+        compatibilidad: { create: compatibilidad },
       },
       update: {
         ...updateData,
@@ -151,6 +196,24 @@ export class PrismaInsumoRepository implements IInsumoRepository {
             const { createdAt: _codigoCreatedAt, ...codigoUpdate } = codigo;
             return { where: { id: codigo.id }, create: codigo, update: codigoUpdate };
           }),
+        },
+        compatibilidad: {
+          // Mismo criterio que arriba: con la lista vacía el filtro es `{}` y
+          // se van todos. La identidad del par la da el modelo —el insumo ya
+          // lo fija el anidamiento—, así que el filtro va por `modeloEquipoId`
+          // y no por un id que la fila no tiene.
+          deleteMany:
+            modelosVigentes.length > 0 ? { modeloEquipoId: { notIn: modelosVigentes } } : {},
+          // El shape no lleva `createdAt` en NINGUNA de las dos ramas: en el
+          // create lo pone el `@default(now())` de la columna, y en el update
+          // emitirlo le movería la fecha de alta a un par que no cambió.
+          upsert: compatibilidad.map((par) => ({
+            where: {
+              insumoId_modeloEquipoId: { insumoId: data.id, modeloEquipoId: par.modeloEquipoId },
+            },
+            create: par,
+            update: par,
+          })),
         },
       },
     });

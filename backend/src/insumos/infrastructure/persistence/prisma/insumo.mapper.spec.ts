@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { Prisma } from '.prisma/tenant';
-import { InsumoCodigoAlternativoMapper, InsumoMapper } from './insumo.mapper';
+import {
+  CompatibilidadModeloMapper,
+  InsumoCodigoAlternativoMapper,
+  InsumoMapper,
+} from './insumo.mapper';
 import { InsumoEntity } from '../../../domain/entities/insumo.entity';
 import { InsumoCodigoAlternativoEntity } from '../../../domain/entities/insumo-codigo-alternativo.entity';
 
@@ -20,6 +24,7 @@ function filaInsumo(
     updatedAt: new Date('2026-01-02'),
     deletedAt: null,
     codigosAlternativos: [],
+    compatibilidad: [],
     ...overrides,
   };
 }
@@ -84,6 +89,55 @@ describe('InsumoMapper', () => {
     expect(entity.codigosAlternativos[0]!.id).toBe('cod-1');
     expect(entity.codigosAlternativos[0]!.codigo).toBe('CE285A');
     expect(entity.codigosAlternativos[0]!.fabricante).toBe('HP');
+  });
+
+  /**
+   * La compatibilidad tiene que VOLVER del mapeo. Si se leyera como lista
+   * vacía, el agregado llegaría a medio cargar y el `save()` siguiente
+   * persistiría esa lista vacía como si el usuario hubiera borrado todos los
+   * modelos: pérdida de datos sin un solo error ni log.
+   *
+   * Las dos filas del fixture cubren las dos formas del rol —cargado y
+   * `null`— porque son ramas distintas del mapeo: la columna admite las dos y
+   * `null` es "no cumple ningún rol distinguible", no "rol vacío".
+   */
+  it('toDomain() reconstituye la compatibilidad del agregado, con rol y sin rol', () => {
+    const entity = InsumoMapper.toDomain(
+      filaInsumo({
+        compatibilidad: [
+          {
+            insumoId: 'insumo-1',
+            modeloEquipoId: 'modelo-1',
+            rol: 'NEGRO',
+            createdAt: new Date('2026-01-05'),
+          },
+          {
+            insumoId: 'insumo-1',
+            modeloEquipoId: 'modelo-2',
+            rol: null,
+            createdAt: new Date('2026-01-06'),
+          },
+        ],
+      }),
+    );
+
+    expect(entity.compatibilidad).toHaveLength(2);
+    expect(entity.compatibilidad[0]!.modeloEquipoId).toBe('modelo-1');
+    expect(entity.compatibilidad[0]!.rol).toBe('NEGRO');
+    expect(entity.compatibilidad[1]!.modeloEquipoId).toBe('modelo-2');
+    expect(entity.compatibilidad[1]!.rol).toBeNull();
+  });
+
+  /**
+   * Hermano invertido del caso de arriba: sin filas en la tabla la lista SÍ
+   * viene vacía. Sin este caso, un mapeo que devolviera siempre la lista vacía
+   * quedaría a medias probado, y uno que inventara un elemento pasaría el otro
+   * assert igual.
+   */
+  it('toDomain() devuelve la compatibilidad vacía cuando el insumo no tiene modelos', () => {
+    const entity = InsumoMapper.toDomain(filaInsumo({ compatibilidad: [] }));
+
+    expect(entity.compatibilidad).toEqual([]);
   });
 
   // El soft delete tiene que sobrevivir al viaje de vuelta: si `deletedAt` se
@@ -204,5 +258,70 @@ describe('InsumoCodigoAlternativoMapper', () => {
     expect(row.deletedAt).toBeNull();
     expect(row.createdAt).toEqual(entity.createdAt);
     expect('insumoId' in row).toBe(false);
+  });
+});
+
+describe('CompatibilidadModeloMapper', () => {
+  it('toDomain() convierte una fila Prisma al value object', () => {
+    const vo = CompatibilidadModeloMapper.toDomain({
+      insumoId: 'insumo-1',
+      modeloEquipoId: 'modelo-1',
+      rol: 'NEGRO',
+      createdAt: new Date('2026-01-01'),
+    });
+
+    expect(vo.modeloEquipoId).toBe('modelo-1');
+    expect(vo.rol).toBe('NEGRO');
+  });
+
+  /**
+   * Hermano invertido: `null` es "no cumple ningún rol distinguible" —una
+   * lámpara no es de ningún color—. Mapearlo a `''` haría convivir dos formas
+   * de decir lo mismo, que es justo lo que la normalización del dominio
+   * existe para impedir.
+   */
+  it('toDomain() preserva el rol nulo', () => {
+    const vo = CompatibilidadModeloMapper.toDomain({
+      insumoId: 'insumo-1',
+      modeloEquipoId: 'modelo-2',
+      rol: null,
+      createdAt: new Date('2026-01-01'),
+    });
+
+    expect(vo.rol).toBeNull();
+  });
+
+  /**
+   * El shape va SIN `insumoId` —Prisma resuelve la FK desde el insumo padre—
+   * y SIN `createdAt`: la fila no tiene id ni `updatedAt`, así que su
+   * `createdAt` es el único rastro de cuándo se declaró la compatibilidad, y
+   * el `upsert` manda este mismo shape en la rama de UPDATE. Emitirlo le
+   * pisaría la fecha de alta a un par que no cambió. En el CREATE lo pone el
+   * `@default(now())` de la columna.
+   */
+  it('toPersistence() emite el shape anidado, sin insumoId y sin createdAt', () => {
+    const row = CompatibilidadModeloMapper.toPersistence({
+      modeloEquipoId: 'modelo-1',
+      rol: 'NEGRO',
+    });
+
+    expect(row).toEqual({ modeloEquipoId: 'modelo-1', rol: 'NEGRO' });
+    expect('insumoId' in row).toBe(false);
+    expect('createdAt' in row).toBe(false);
+  });
+
+  /**
+   * El `null` tiene que VIAJAR en el objeto, no desaparecer de él: el UPDATE
+   * del upsert manda este mismo shape, así que un `rol` ausente sería un rol
+   * imposible de borrar. Se assertea la PRESENCIA de la clave.
+   */
+  it('toPersistence() manda el rol nulo como clave presente en null', () => {
+    const row = CompatibilidadModeloMapper.toPersistence({
+      modeloEquipoId: 'modelo-1',
+      rol: null,
+    });
+
+    expect('rol' in row).toBe(true);
+    expect(row.rol).toBeNull();
   });
 });

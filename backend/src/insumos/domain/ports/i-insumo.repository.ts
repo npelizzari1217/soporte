@@ -15,10 +15,18 @@ export interface ConflictoCodigoAlternativo {
 /**
  * IInsumoRepository — puerto de acceso al catálogo de insumos del tenant.
  * `InsumoEntity` es la raíz del agregado: todos estos métodos lo devuelven o
- * lo persisten CON sus códigos alternativos, nunca por separado.
+ * lo persisten COMPLETO —con sus códigos alternativos Y con su
+ * compatibilidad—, nunca por separado.
+ *
+ * Que el agregado viaje entero no es prolijidad: una lectura que trajera una
+ * de esas listas vacía y un `save()` posterior la persistirían vacía, borrando
+ * lo guardado sin un solo error ni log.
  */
 export interface IInsumoRepository {
-  /** Busca un insumo por id, con sus códigos alternativos. Retorna `null` si no existe. */
+  /**
+   * Busca un insumo por id, con sus códigos alternativos y su compatibilidad.
+   * Retorna `null` si no existe.
+   */
   findById(id: string): Promise<InsumoEntity | null>;
 
   /**
@@ -31,6 +39,9 @@ export interface IInsumoRepository {
    * su insumo esté deshabilitado o dado de baja. Filtrar acá haría que la
    * capa de aplicación diera por libre un código que el INSERT después
    * rechaza con un 23505.
+   *
+   * Trae el agregado completo, con sus códigos alternativos y su
+   * compatibilidad.
    */
   findByCodigo(codigo: string): Promise<InsumoEntity | null>;
 
@@ -54,17 +65,34 @@ export interface IInsumoRepository {
 
   /**
    * Retorna los insumos vigentes del tenant (`deletedAt: null`) con sus
-   * códigos alternativos, ordenados por código. INCLUYE los deshabilitados
-   * (`activo: false`): son los que el administrador necesita ver para volver a
-   * habilitarlos.
+   * códigos alternativos y su compatibilidad, ordenados por código. INCLUYE
+   * los deshabilitados (`activo: false`): son los que el administrador
+   * necesita ver para volver a habilitarlos.
    */
   findAllActive(): Promise<InsumoEntity[]>;
 
   /**
-   * Upsert del agregado COMPLETO por id: el insumo y su lista de códigos
-   * alternativos, que reemplaza a la guardada. Va junto y no en dos llamadas
-   * porque una lista a medio escribir dejaría el catálogo con códigos que ya
-   * no pertenecen a nadie.
+   * Los insumos vigentes compatibles con un modelo de equipo, ordenados por
+   * código. Es la consulta que responde "¿qué insumo le va a este modelo?".
+   * Excluye la baja lógica; INCLUYE los deshabilitados, con el mismo criterio
+   * que `findAllActive`.
+   *
+   * @param modeloEquipoId Id del modelo de equipo por el que se filtra.
+   * @returns Los insumos compatibles, cada uno con el agregado completo. Vacío si no hay ninguno.
+   */
+  findAllByModeloEquipo(modeloEquipoId: string): Promise<InsumoEntity[]>;
+
+  /**
+   * Upsert del agregado COMPLETO por id: el insumo, su lista de códigos
+   * alternativos y su compatibilidad, que REEMPLAZAN a las guardadas. Va junto
+   * y no en tres llamadas porque una lista a medio escribir dejaría el
+   * catálogo con códigos que ya no pertenecen a nadie y con compatibilidades
+   * que el usuario ya había sacado.
+   *
+   * Las dos listas son reemplazo, no fusión: lo que no viene en el agregado se
+   * borra de la base. Por eso el insumo que se guarda tiene que venir de una
+   * lectura de este mismo puerto —que las trae completas— o de una
+   * construcción que las resuelva enteras.
    */
   save(insumo: InsumoEntity): Promise<void>;
 }

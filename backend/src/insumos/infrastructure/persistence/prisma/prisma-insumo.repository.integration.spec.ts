@@ -20,6 +20,10 @@ import { TenantPrismaClient } from '../../../../shared/infrastructure/persistenc
 import { PrismaInsumoRepository } from './prisma-insumo.repository';
 import { InsumoEntity } from '../../../domain/entities/insumo.entity';
 import { InsumoCodigoAlternativoEntity } from '../../../domain/entities/insumo-codigo-alternativo.entity';
+import {
+  CompatibilidadModelo,
+  crearCompatibilidadModelo,
+} from '../../../domain/entities/compatibilidad-modelo';
 
 const TENANT_TEST_URL =
   process.env.DATABASE_URL_TENANT ??
@@ -36,8 +40,14 @@ describe('PrismaInsumoRepository — Integration', () => {
 
   let familiaId: string;
   let unidadMedidaId: string;
+  /** Dos modelos, porque casi todo caso de compatibilidad necesita el que NO tiene que aparecer. */
+  let modeloAId: string;
+  let modeloBId: string;
 
-  /** Borra los insumos de esta corrida; sus códigos alternativos caen por `ON DELETE CASCADE`. */
+  /**
+   * Borra los insumos de esta corrida; sus códigos alternativos y sus filas de
+   * compatibilidad caen por `ON DELETE CASCADE`.
+   */
   async function limpiarInsumos(): Promise<void> {
     await tenantClient.insumo.deleteMany({ where: { codigo: { startsWith: PREFIJO } } });
   }
@@ -46,6 +56,7 @@ describe('PrismaInsumoRepository — Integration', () => {
     sufijo: string,
     codigosAlternativos: InsumoCodigoAlternativoEntity[] = [],
     stockMinimo: number | null = null,
+    compatibilidad: CompatibilidadModelo[] = [],
   ): InsumoEntity {
     return InsumoEntity.create({
       codigo: `${PREFIJO}${sufijo}`,
@@ -55,7 +66,22 @@ describe('PrismaInsumoRepository — Integration', () => {
       stockMinimo,
       activo: true,
       codigosAlternativos,
-      compatibilidad: [],
+      compatibilidad,
+    });
+  }
+
+  /**
+   * Lee la fila cruda de `insumos_modelos_equipo`. El value object de dominio
+   * NO tiene `createdAt` —su identidad es el par—, así que la única forma de
+   * comprobar que la fecha de alta sobrevive al reguardado es mirar la tabla.
+   */
+  async function leerFilaCompatibilidad(
+    insumoId: string,
+    modeloEquipoId: string,
+  ): Promise<{ rol: string | null; createdAt: Date } | null> {
+    return tenantClient.insumoModeloEquipo.findUnique({
+      where: { insumoId_modeloEquipoId: { insumoId, modeloEquipoId } },
+      select: { rol: true, createdAt: true },
     });
   }
 
@@ -80,6 +106,17 @@ describe('PrismaInsumoRepository — Integration', () => {
     });
     familiaId = familia.id;
     unidadMedidaId = unidad.id;
+
+    // Dos modelos de equipo: el segundo existe para que los casos de "NO trae
+    // los de otro modelo" tengan realmente un otro modelo con carga propia.
+    const modeloA = await tenantClient.modeloEquipo.create({
+      data: { marca: `${PREFIJO}HP`, modelo: 'LaserJet A' },
+    });
+    const modeloB = await tenantClient.modeloEquipo.create({
+      data: { marca: `${PREFIJO}HP`, modelo: 'LaserJet B' },
+    });
+    modeloAId = modeloA.id;
+    modeloBId = modeloB.id;
   });
 
   // Orden obligado: primero los insumos, después los catálogos a los que
@@ -88,6 +125,7 @@ describe('PrismaInsumoRepository — Integration', () => {
     await limpiarInsumos();
     await tenantClient.familiaInsumo.deleteMany({ where: { codigo: { startsWith: PREFIJO } } });
     await tenantClient.unidadMedida.deleteMany({ where: { codigo: { startsWith: PREFIJO } } });
+    await tenantClient.modeloEquipo.deleteMany({ where: { marca: { startsWith: PREFIJO } } });
     await prismaService.onModuleDestroy();
   });
 
@@ -334,6 +372,302 @@ describe('PrismaInsumoRepository — Integration', () => {
     expect(fila!.codigosAlternativos).toHaveLength(1);
     expect(fila!.codigosAlternativos[0]!.codigo).toBe(`${PREFIJO}LISTADO`);
     expect(fila!.codigosAlternativos[0]!.fabricante).toBe('CANON');
+  });
+
+  describe('compatibilidad con modelos de equipo', () => {
+    /**
+     * Las dos formas del rol viajan juntas porque son ramas distintas del
+     * mapeo y de la escritura: `null` es "no cumple ningún rol distinguible"
+     * —una lámpara no es de ningún color—, y colapsarlo a `''` o perderlo
+     * haría convivir dos formas de decir lo mismo.
+     */
+    it('save() + findById() hacen round-trip de la compatibilidad, con rol y sin rol', async () => {
+      const insumo = construirInsumo('COMPAT_RT', [], null, [
+        crearCompatibilidadModelo({ modeloEquipoId: modeloAId, rol: 'negro' }),
+        crearCompatibilidadModelo({ modeloEquipoId: modeloBId, rol: null }),
+      ]);
+
+      await repo.save(insumo);
+      const found = await repo.findById(insumo.id);
+
+      expect(found!.compatibilidad).toHaveLength(2);
+      const porModelo = new Map(found!.compatibilidad.map((c) => [c.modeloEquipoId, c.rol]));
+      expect(porModelo.get(modeloAId)).toBe('NEGRO');
+      expect(porModelo.has(modeloBId)).toBe(true);
+      expect(porModelo.get(modeloBId)).toBeNull();
+    });
+
+    /**
+     * ESTE es el caso que prueba que el agujero de pérdida silenciosa está
+     * cerrado. Con el agregado leyéndose sin su compatibilidad, este `save()`
+     * —que no toca la lista— la borraba entera de la base sin un solo error ni
+     * log: la lectura traía `[]` y la escritura persistía ese `[]`.
+     */
+    it('save() de un agregado leído, sin tocar la compatibilidad, NO la borra', async () => {
+      const insumo = construirInsumo('COMPAT_SOBREVIVE', [], null, [
+        crearCompatibilidadModelo({ modeloEquipoId: modeloAId, rol: 'NEGRO' }),
+      ]);
+      await repo.save(insumo);
+
+      const leido = await repo.findById(insumo.id);
+      expect(leido!.compatibilidad).toHaveLength(1);
+
+      // Se reguarda EL AGREGADO LEÍDO, editando solo un campo de la raíz.
+      leido!.actualizar({ nombre: 'Insumo COMPAT_SOBREVIVE renombrado' });
+      await repo.save(leido!);
+
+      const despues = await repo.findById(insumo.id);
+      expect(despues!.nombre).toBe('Insumo COMPAT_SOBREVIVE renombrado');
+      expect(despues!.compatibilidad).toHaveLength(1);
+      expect(despues!.compatibilidad[0]!.modeloEquipoId).toBe(modeloAId);
+      expect(despues!.compatibilidad[0]!.rol).toBe('NEGRO');
+    });
+
+    /**
+     * La fila no tiene `id` ni `updatedAt`: su `createdAt` es el único rastro
+     * de cuándo se declaró la compatibilidad. Si el `upsert` lo emitiera en la
+     * rama de UPDATE, cada reguardado del insumo le movería la fecha de alta a
+     * un par que nadie tocó.
+     */
+    it('save() reguardado conserva el createdAt del par que no cambió', async () => {
+      const insumo = construirInsumo('COMPAT_CREATEDAT', [], null, [
+        crearCompatibilidadModelo({ modeloEquipoId: modeloAId, rol: 'NEGRO' }),
+      ]);
+      await repo.save(insumo);
+
+      const filaOriginal = await leerFilaCompatibilidad(insumo.id, modeloAId);
+      expect(filaOriginal).not.toBeNull();
+
+      insumo.reemplazarCompatibilidad([
+        crearCompatibilidadModelo({ modeloEquipoId: modeloAId, rol: 'CIAN' }),
+        crearCompatibilidadModelo({ modeloEquipoId: modeloBId, rol: null }),
+      ]);
+      await repo.save(insumo);
+
+      const filaDespues = await leerFilaCompatibilidad(insumo.id, modeloAId);
+      // El rol SÍ se actualiza: el hermano invertido del createdAt, que prueba
+      // que el UPDATE corrió de verdad y no que la fila quedó intacta entera.
+      expect(filaDespues!.rol).toBe('CIAN');
+      expect(filaDespues!.createdAt).toEqual(filaOriginal!.createdAt);
+    });
+
+    /**
+     * La lista que llega REEMPLAZA a la guardada: un modelo que no viene es un
+     * modelo que el usuario sacó. Sin el `deleteMany`, quitar una
+     * compatibilidad sería imposible desde la API.
+     */
+    it('save() borra de la base el par que salió de la lista', async () => {
+      const insumo = construirInsumo('COMPAT_BORRADO', [], null, [
+        crearCompatibilidadModelo({ modeloEquipoId: modeloAId, rol: 'NEGRO' }),
+        crearCompatibilidadModelo({ modeloEquipoId: modeloBId, rol: 'CIAN' }),
+      ]);
+      await repo.save(insumo);
+
+      // Ancla del estado inicial: sin esto, un save() que nunca hubiera
+      // escrito el segundo par dejaría el assert de abajo verde por
+      // construcción.
+      expect(await leerFilaCompatibilidad(insumo.id, modeloBId)).not.toBeNull();
+
+      insumo.reemplazarCompatibilidad([
+        crearCompatibilidadModelo({ modeloEquipoId: modeloAId, rol: 'NEGRO' }),
+      ]);
+      await repo.save(insumo);
+
+      const despues = await repo.findById(insumo.id);
+      expect(despues!.compatibilidad).toHaveLength(1);
+      expect(despues!.compatibilidad[0]!.modeloEquipoId).toBe(modeloAId);
+      expect(await leerFilaCompatibilidad(insumo.id, modeloBId)).toBeNull();
+    });
+
+    /**
+     * Vaciar la lista entera es un caso propio: el filtro del `deleteMany` se
+     * queda sin pares que preservar, y un `notIn: []` depende de cómo Prisma
+     * traduzca el conjunto vacío.
+     */
+    it('save() con la lista vacía borra todos los pares del insumo', async () => {
+      const insumo = construirInsumo('COMPAT_VACIA', [], null, [
+        crearCompatibilidadModelo({ modeloEquipoId: modeloAId, rol: 'NEGRO' }),
+        crearCompatibilidadModelo({ modeloEquipoId: modeloBId, rol: null }),
+      ]);
+      await repo.save(insumo);
+      expect((await repo.findById(insumo.id))!.compatibilidad).toHaveLength(2);
+
+      insumo.reemplazarCompatibilidad([]);
+      await repo.save(insumo);
+
+      expect((await repo.findById(insumo.id))!.compatibilidad).toHaveLength(0);
+      expect(await leerFilaCompatibilidad(insumo.id, modeloAId)).toBeNull();
+      expect(await leerFilaCompatibilidad(insumo.id, modeloBId)).toBeNull();
+    });
+
+    /**
+     * El agregado tiene que llegar IGUAL en cada lectura. El UPDATE del rol
+     * previo no es decorativo: mueve la fila de lugar físico en la tabla, que
+     * es justo el orden que Postgres devuelve cuando la consulta no pide
+     * ninguno.
+     */
+    it('findById() devuelve la compatibilidad ordenada por modelo, aun después de un UPDATE', async () => {
+      const insumo = construirInsumo('COMPAT_ORDEN', [], null, [
+        crearCompatibilidadModelo({ modeloEquipoId: modeloAId, rol: 'NEGRO' }),
+        crearCompatibilidadModelo({ modeloEquipoId: modeloBId, rol: 'CIAN' }),
+      ]);
+      await repo.save(insumo);
+
+      const primeroPorModelo = [modeloAId, modeloBId].sort()[0]!;
+      await tenantClient.insumoModeloEquipo.update({
+        where: {
+          insumoId_modeloEquipoId: { insumoId: insumo.id, modeloEquipoId: primeroPorModelo },
+        },
+        data: { rol: 'MAGENTA' },
+      });
+
+      const found = await repo.findById(insumo.id);
+
+      expect(found!.compatibilidad.map((c) => c.modeloEquipoId)).toEqual(
+        [modeloAId, modeloBId].sort(),
+      );
+    });
+
+    it('findAllActive() trae la compatibilidad de cada insumo', async () => {
+      const insumo = construirInsumo('COMPAT_LISTADO', [], null, [
+        crearCompatibilidadModelo({ modeloEquipoId: modeloAId, rol: 'NEGRO' }),
+      ]);
+      await repo.save(insumo);
+
+      const vigentes = await repo.findAllActive();
+
+      const fila = vigentes.find((i) => i.id === insumo.id);
+      expect(fila!.compatibilidad).toHaveLength(1);
+      expect(fila!.compatibilidad[0]!.modeloEquipoId).toBe(modeloAId);
+      expect(fila!.compatibilidad[0]!.rol).toBe('NEGRO');
+    });
+
+    it('findByCodigo() trae la compatibilidad del insumo', async () => {
+      const insumo = construirInsumo('COMPAT_PORCODIGO', [], null, [
+        crearCompatibilidadModelo({ modeloEquipoId: modeloAId, rol: 'NEGRO' }),
+      ]);
+      await repo.save(insumo);
+
+      const found = await repo.findByCodigo(`${PREFIJO}COMPAT_PORCODIGO`);
+
+      expect(found!.compatibilidad).toHaveLength(1);
+      expect(found!.compatibilidad[0]!.modeloEquipoId).toBe(modeloAId);
+    });
+  });
+
+  describe('findAllByModeloEquipo()', () => {
+    /**
+     * El insumo del OTRO modelo está realmente cargado en el fixture: un
+     * assert de ausencia sobre una base sin ese insumo pasaría en verde
+     * aunque la consulta no filtrara nada.
+     */
+    it('trae los compatibles y NO trae el insumo compatible con otro modelo', async () => {
+      const delA = construirInsumo('PARA_A', [], null, [
+        crearCompatibilidadModelo({ modeloEquipoId: modeloAId, rol: 'NEGRO' }),
+      ]);
+      const delB = construirInsumo('PARA_B', [], null, [
+        crearCompatibilidadModelo({ modeloEquipoId: modeloBId, rol: 'NEGRO' }),
+      ]);
+      await repo.save(delA);
+      await repo.save(delB);
+
+      const compatibles = await repo.findAllByModeloEquipo(modeloAId);
+
+      expect(compatibles.map((i) => i.id)).toContain(delA.id);
+      expect(compatibles.map((i) => i.id)).not.toContain(delB.id);
+    });
+
+    /** Hermano invertido del caso de arriba: por el otro modelo vuelve el otro insumo. */
+    it('por el otro modelo trae el otro insumo', async () => {
+      const delA = construirInsumo('INV_A', [], null, [
+        crearCompatibilidadModelo({ modeloEquipoId: modeloAId, rol: 'NEGRO' }),
+      ]);
+      const delB = construirInsumo('INV_B', [], null, [
+        crearCompatibilidadModelo({ modeloEquipoId: modeloBId, rol: 'NEGRO' }),
+      ]);
+      await repo.save(delA);
+      await repo.save(delB);
+
+      const compatibles = await repo.findAllByModeloEquipo(modeloBId);
+
+      expect(compatibles.map((i) => i.id)).toContain(delB.id);
+      expect(compatibles.map((i) => i.id)).not.toContain(delA.id);
+    });
+
+    /**
+     * Mismo criterio que `findAllActive`: deshabilitar NO es eliminar. Un
+     * insumo con `activo=false` sigue siendo el repuesto de ese modelo, y
+     * esconderlo dejaría al administrador sin saber que existe.
+     */
+    it('SÍ incluye un insumo deshabilitado compatible', async () => {
+      const habilitado = construirInsumo('MOD_HAB', [], null, [
+        crearCompatibilidadModelo({ modeloEquipoId: modeloAId, rol: 'NEGRO' }),
+      ]);
+      const deshabilitado = construirInsumo('MOD_DESHAB', [], null, [
+        crearCompatibilidadModelo({ modeloEquipoId: modeloAId, rol: 'CIAN' }),
+      ]);
+      deshabilitado.desactivar();
+      await repo.save(habilitado);
+      await repo.save(deshabilitado);
+
+      const compatibles = await repo.findAllByModeloEquipo(modeloAId);
+
+      const fila = compatibles.find((i) => i.id === deshabilitado.id);
+      expect(fila).toBeDefined();
+      expect(fila!.activo).toBe(false);
+      // Hermano invertido: el habilitado también está, así que el caso de
+      // arriba no pasa por una consulta que devuelve todo ni por una que
+      // devuelve nada.
+      expect(compatibles.find((i) => i.id === habilitado.id)?.activo).toBe(true);
+    });
+
+    it('NO incluye un insumo compatible con baja lógica', async () => {
+      const vigente = construirInsumo('MOD_VIGENTE', [], null, [
+        crearCompatibilidadModelo({ modeloEquipoId: modeloAId, rol: 'NEGRO' }),
+      ]);
+      const borrado = construirInsumo('MOD_BAJA', [], null, [
+        crearCompatibilidadModelo({ modeloEquipoId: modeloAId, rol: 'CIAN' }),
+      ]);
+      borrado.softDelete();
+      await repo.save(vigente);
+      await repo.save(borrado);
+
+      const compatibles = await repo.findAllByModeloEquipo(modeloAId);
+
+      expect(compatibles.map((i) => i.id)).not.toContain(borrado.id);
+      expect(compatibles.map((i) => i.id)).toContain(vigente.id);
+    });
+
+    it('trae cada insumo con su agregado completo', async () => {
+      const insumo = construirInsumo(
+        'MOD_AGREGADO',
+        [InsumoCodigoAlternativoEntity.create({ codigo: `${PREFIJO}MODCOD`, fabricante: 'HP' })],
+        null,
+        [crearCompatibilidadModelo({ modeloEquipoId: modeloAId, rol: 'NEGRO' })],
+      );
+      await repo.save(insumo);
+
+      const compatibles = await repo.findAllByModeloEquipo(modeloAId);
+
+      const fila = compatibles.find((i) => i.id === insumo.id);
+      expect(fila!.codigosAlternativos).toHaveLength(1);
+      expect(fila!.codigosAlternativos[0]!.codigo).toBe(`${PREFIJO}MODCOD`);
+      expect(fila!.compatibilidad).toHaveLength(1);
+      expect(fila!.compatibilidad[0]!.rol).toBe('NEGRO');
+    });
+
+    it('devuelve vacío para un modelo sin insumos compatibles', async () => {
+      // El fixture NO está vacío: hay un insumo cargado contra el otro modelo,
+      // así que el vacío que se assertea es del filtro, no de la base.
+      const delA = construirInsumo('SOLO_A', [], null, [
+        crearCompatibilidadModelo({ modeloEquipoId: modeloAId, rol: 'NEGRO' }),
+      ]);
+      await repo.save(delA);
+
+      const compatibles = await repo.findAllByModeloEquipo(modeloBId);
+
+      expect(compatibles).toEqual([]);
+    });
   });
 
   describe('findConflictosDeCodigoAlternativo()', () => {
