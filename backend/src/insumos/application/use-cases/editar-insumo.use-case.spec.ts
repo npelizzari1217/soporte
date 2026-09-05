@@ -4,6 +4,8 @@ import { FamiliaInsumoEntity } from '../../domain/entities/familia-insumo.entity
 import { UnidadMedidaEntity } from '../../domain/entities/unidad-medida.entity';
 import { InsumoEntity } from '../../domain/entities/insumo.entity';
 import { InsumoCodigoAlternativoEntity } from '../../domain/entities/insumo-codigo-alternativo.entity';
+import { CompatibilidadModelo } from '../../domain/entities/compatibilidad-modelo';
+import { ModeloEquipoEntity } from '../../domain/entities/modelo-equipo.entity';
 import { IInsumoRepository } from '../../domain/ports/i-insumo.repository';
 
 describe('EditarInsumoUseCase', () => {
@@ -15,6 +17,7 @@ describe('EditarInsumoUseCase', () => {
   function buildInsumo(
     codigosAlternativos: InsumoCodigoAlternativoEntity[] = [],
     id = 'ins-1',
+    compatibilidad: CompatibilidadModelo[] = [],
   ): InsumoEntity {
     return InsumoEntity.create(
       {
@@ -25,7 +28,7 @@ describe('EditarInsumoUseCase', () => {
         stockMinimo: 5,
         activo: true,
         codigosAlternativos,
-        compatibilidad: [],
+        compatibilidad,
       },
       id,
     );
@@ -57,12 +60,36 @@ describe('EditarInsumoUseCase', () => {
     return { findById: vi.fn().mockResolvedValue(unidad) };
   }
 
+  function modeloHabilitado(id: string): ModeloEquipoEntity {
+    return ModeloEquipoEntity.create({ marca: 'HP', modelo: `M-${id}`, activo: true }, id);
+  }
+
+  /**
+   * Catálogo de modelos que responde un modelo HABILITADO para CUALQUIER id,
+   * salvo los que el caso declare en `porId`. Que el default sea elegible es lo
+   * que hace que cada rechazo de abajo se lea como efecto de su excepción y no
+   * de un catálogo que rechaza todo.
+   */
+  function buildModeloRepo(porId: Record<string, ModeloEquipoEntity | null> = {}) {
+    return {
+      findById: vi.fn((id: string): Promise<ModeloEquipoEntity | null> => {
+        const declarado = porId[id];
+        return Promise.resolve(declarado === undefined ? modeloHabilitado(id) : declarado);
+      }),
+    };
+  }
+
   // ─── Camino feliz y PATCH de campos simples ───────────────────────────────
 
   it('edita el nombre sin tocar los demás campos', async () => {
     const insumo = buildInsumo();
     const repo = buildInsumoRepo(insumo);
-    const useCase = new EditarInsumoUseCase(repo, buildFamiliaRepo(), buildUnidadRepo());
+    const useCase = new EditarInsumoUseCase(
+      repo,
+      buildFamiliaRepo(),
+      buildUnidadRepo(),
+      buildModeloRepo(),
+    );
 
     const result = await useCase.execute({ id: 'ins-1', nombre: '  Tóner negro XL  ' });
 
@@ -75,7 +102,12 @@ describe('EditarInsumoUseCase', () => {
 
   it('rechaza con INSUMO_NO_ENCONTRADO si el id no existe', async () => {
     const repo = buildInsumoRepo(null);
-    const useCase = new EditarInsumoUseCase(repo, buildFamiliaRepo(), buildUnidadRepo());
+    const useCase = new EditarInsumoUseCase(
+      repo,
+      buildFamiliaRepo(),
+      buildUnidadRepo(),
+      buildModeloRepo(),
+    );
 
     const result = await useCase.execute({ id: 'inexistente', nombre: 'X' });
 
@@ -91,7 +123,12 @@ describe('EditarInsumoUseCase', () => {
    */
   it('deja el stock mínimo intacto cuando el PATCH no lo trae', async () => {
     const repo = buildInsumoRepo(buildInsumo());
-    const useCase = new EditarInsumoUseCase(repo, buildFamiliaRepo(), buildUnidadRepo());
+    const useCase = new EditarInsumoUseCase(
+      repo,
+      buildFamiliaRepo(),
+      buildUnidadRepo(),
+      buildModeloRepo(),
+    );
 
     const result = await useCase.execute({ id: 'ins-1', nombre: 'Otro' });
 
@@ -100,7 +137,12 @@ describe('EditarInsumoUseCase', () => {
 
   it('borra el stock mínimo cuando el PATCH lo manda en null', async () => {
     const repo = buildInsumoRepo(buildInsumo());
-    const useCase = new EditarInsumoUseCase(repo, buildFamiliaRepo(), buildUnidadRepo());
+    const useCase = new EditarInsumoUseCase(
+      repo,
+      buildFamiliaRepo(),
+      buildUnidadRepo(),
+      buildModeloRepo(),
+    );
 
     const result = await useCase.execute({ id: 'ins-1', stockMinimo: null });
 
@@ -111,7 +153,12 @@ describe('EditarInsumoUseCase', () => {
 
   it('normaliza el código nuevo a mayúscula', async () => {
     const repo = buildInsumoRepo(buildInsumo());
-    const useCase = new EditarInsumoUseCase(repo, buildFamiliaRepo(), buildUnidadRepo());
+    const useCase = new EditarInsumoUseCase(
+      repo,
+      buildFamiliaRepo(),
+      buildUnidadRepo(),
+      buildModeloRepo(),
+    );
 
     const result = await useCase.execute({ id: 'ins-1', codigo: ' ton-002 ' });
 
@@ -121,7 +168,12 @@ describe('EditarInsumoUseCase', () => {
 
   it('re-enviar el código actual NO dispara la revalidación de unicidad', async () => {
     const repo = buildInsumoRepo(buildInsumo());
-    const useCase = new EditarInsumoUseCase(repo, buildFamiliaRepo(), buildUnidadRepo());
+    const useCase = new EditarInsumoUseCase(
+      repo,
+      buildFamiliaRepo(),
+      buildUnidadRepo(),
+      buildModeloRepo(),
+    );
 
     const result = await useCase.execute({ id: 'ins-1', codigo: 'TON-001' });
 
@@ -136,7 +188,12 @@ describe('EditarInsumoUseCase', () => {
    */
   it('re-enviar el código actual en minúscula tampoco la dispara', async () => {
     const repo = buildInsumoRepo(buildInsumo());
-    const useCase = new EditarInsumoUseCase(repo, buildFamiliaRepo(), buildUnidadRepo());
+    const useCase = new EditarInsumoUseCase(
+      repo,
+      buildFamiliaRepo(),
+      buildUnidadRepo(),
+      buildModeloRepo(),
+    );
 
     const result = await useCase.execute({ id: 'ins-1', codigo: '  ton-001  ' });
 
@@ -149,7 +206,12 @@ describe('EditarInsumoUseCase', () => {
     const repo = buildInsumoRepo(buildInsumo(), {
       findByCodigo: vi.fn().mockResolvedValue(otro),
     });
-    const useCase = new EditarInsumoUseCase(repo, buildFamiliaRepo(), buildUnidadRepo());
+    const useCase = new EditarInsumoUseCase(
+      repo,
+      buildFamiliaRepo(),
+      buildUnidadRepo(),
+      buildModeloRepo(),
+    );
 
     const result = await useCase.execute({ id: 'ins-1', codigo: 'TON-002' });
 
@@ -166,7 +228,12 @@ describe('EditarInsumoUseCase', () => {
   it('no es choque cuando findByCodigo devuelve el mismo insumo que se edita', async () => {
     const insumo = buildInsumo();
     const repo = buildInsumoRepo(insumo, { findByCodigo: vi.fn().mockResolvedValue(insumo) });
-    const useCase = new EditarInsumoUseCase(repo, buildFamiliaRepo(), buildUnidadRepo());
+    const useCase = new EditarInsumoUseCase(
+      repo,
+      buildFamiliaRepo(),
+      buildUnidadRepo(),
+      buildModeloRepo(),
+    );
 
     const result = await useCase.execute({ id: 'ins-1', codigo: 'TON-002' });
 
@@ -178,7 +245,12 @@ describe('EditarInsumoUseCase', () => {
 
   it('acepta la reasignación a una familia habilitada', async () => {
     const repo = buildInsumoRepo(buildInsumo());
-    const useCase = new EditarInsumoUseCase(repo, buildFamiliaRepo(), buildUnidadRepo());
+    const useCase = new EditarInsumoUseCase(
+      repo,
+      buildFamiliaRepo(),
+      buildUnidadRepo(),
+      buildModeloRepo(),
+    );
 
     const result = await useCase.execute({ id: 'ins-1', familiaId: 'fam-2' });
 
@@ -188,7 +260,12 @@ describe('EditarInsumoUseCase', () => {
 
   it('rechaza con FAMILIA_INSUMO_INEXISTENTE si la familia nueva no está en el catálogo', async () => {
     const repo = buildInsumoRepo(buildInsumo());
-    const useCase = new EditarInsumoUseCase(repo, buildFamiliaRepo(null), buildUnidadRepo());
+    const useCase = new EditarInsumoUseCase(
+      repo,
+      buildFamiliaRepo(null),
+      buildUnidadRepo(),
+      buildModeloRepo(),
+    );
 
     const result = await useCase.execute({ id: 'ins-1', familiaId: 'fam-9' });
 
@@ -201,7 +278,12 @@ describe('EditarInsumoUseCase', () => {
     const familia = familiaHabilitada();
     familia.desactivar();
     const repo = buildInsumoRepo(buildInsumo());
-    const useCase = new EditarInsumoUseCase(repo, buildFamiliaRepo(familia), buildUnidadRepo());
+    const useCase = new EditarInsumoUseCase(
+      repo,
+      buildFamiliaRepo(familia),
+      buildUnidadRepo(),
+      buildModeloRepo(),
+    );
 
     const result = await useCase.execute({ id: 'ins-1', familiaId: 'fam-2' });
 
@@ -222,6 +304,7 @@ describe('EditarInsumoUseCase', () => {
       buildInsumoRepo(buildInsumo()),
       familiaRepo,
       buildUnidadRepo(),
+      buildModeloRepo(),
     );
 
     const result = await useCase.execute({ id: 'ins-1', nombre: 'Otro' });
@@ -232,7 +315,12 @@ describe('EditarInsumoUseCase', () => {
 
   it('acepta la reasignación a una unidad habilitada', async () => {
     const repo = buildInsumoRepo(buildInsumo());
-    const useCase = new EditarInsumoUseCase(repo, buildFamiliaRepo(), buildUnidadRepo());
+    const useCase = new EditarInsumoUseCase(
+      repo,
+      buildFamiliaRepo(),
+      buildUnidadRepo(),
+      buildModeloRepo(),
+    );
 
     const result = await useCase.execute({ id: 'ins-1', unidadMedidaId: 'uni-2' });
 
@@ -242,7 +330,12 @@ describe('EditarInsumoUseCase', () => {
 
   it('rechaza con UNIDAD_MEDIDA_INEXISTENTE si la unidad nueva no está en el catálogo', async () => {
     const repo = buildInsumoRepo(buildInsumo());
-    const useCase = new EditarInsumoUseCase(repo, buildFamiliaRepo(), buildUnidadRepo(null));
+    const useCase = new EditarInsumoUseCase(
+      repo,
+      buildFamiliaRepo(),
+      buildUnidadRepo(null),
+      buildModeloRepo(),
+    );
 
     const result = await useCase.execute({ id: 'ins-1', unidadMedidaId: 'uni-9' });
 
@@ -254,7 +347,12 @@ describe('EditarInsumoUseCase', () => {
     const unidad = unidadHabilitada();
     unidad.desactivar();
     const repo = buildInsumoRepo(buildInsumo());
-    const useCase = new EditarInsumoUseCase(repo, buildFamiliaRepo(), buildUnidadRepo(unidad));
+    const useCase = new EditarInsumoUseCase(
+      repo,
+      buildFamiliaRepo(),
+      buildUnidadRepo(unidad),
+      buildModeloRepo(),
+    );
 
     const result = await useCase.execute({ id: 'ins-1', unidadMedidaId: 'uni-2' });
 
@@ -269,6 +367,7 @@ describe('EditarInsumoUseCase', () => {
       buildInsumoRepo(buildInsumo()),
       buildFamiliaRepo(),
       unidadRepo,
+      buildModeloRepo(),
     );
 
     const result = await useCase.execute({ id: 'ins-1', nombre: 'Otro' });
@@ -285,7 +384,12 @@ describe('EditarInsumoUseCase', () => {
     const repo = buildInsumoRepo(buildInsumo(), {
       findByCodigo: vi.fn().mockResolvedValue(buildInsumo([], 'ins-2')),
     });
-    const useCase = new EditarInsumoUseCase(repo, buildFamiliaRepo(familia), buildUnidadRepo());
+    const useCase = new EditarInsumoUseCase(
+      repo,
+      buildFamiliaRepo(familia),
+      buildUnidadRepo(),
+      buildModeloRepo(),
+    );
 
     const result = await useCase.execute({
       id: 'ins-1',
@@ -304,7 +408,12 @@ describe('EditarInsumoUseCase', () => {
         .fn()
         .mockResolvedValue([{ codigo: 'CE285A', fabricante: 'HP', insumoId: 'ins-3' }]),
     });
-    const useCase = new EditarInsumoUseCase(repo, buildFamiliaRepo(), buildUnidadRepo());
+    const useCase = new EditarInsumoUseCase(
+      repo,
+      buildFamiliaRepo(),
+      buildUnidadRepo(),
+      buildModeloRepo(),
+    );
 
     const result = await useCase.execute({
       id: 'ins-1',
@@ -334,7 +443,12 @@ describe('EditarInsumoUseCase', () => {
         .fn()
         .mockResolvedValue([{ codigo: 'CE285A', fabricante: 'HP', insumoId: 'ins-9' }]),
     });
-    const useCase = new EditarInsumoUseCase(repo, buildFamiliaRepo(), buildUnidadRepo());
+    const useCase = new EditarInsumoUseCase(
+      repo,
+      buildFamiliaRepo(),
+      buildUnidadRepo(),
+      buildModeloRepo(),
+    );
 
     const result = await useCase.execute({ id: 'ins-1', nombre: 'Otro' });
 
@@ -349,7 +463,12 @@ describe('EditarInsumoUseCase', () => {
       'cod-1',
     );
     const repo = buildInsumoRepo(buildInsumo([existente]));
-    const useCase = new EditarInsumoUseCase(repo, buildFamiliaRepo(), buildUnidadRepo());
+    const useCase = new EditarInsumoUseCase(
+      repo,
+      buildFamiliaRepo(),
+      buildUnidadRepo(),
+      buildModeloRepo(),
+    );
 
     const result = await useCase.execute({ id: 'ins-1', codigosAlternativos: [] });
 
@@ -368,7 +487,12 @@ describe('EditarInsumoUseCase', () => {
       'cod-1',
     );
     const repo = buildInsumoRepo(buildInsumo([existente]));
-    const useCase = new EditarInsumoUseCase(repo, buildFamiliaRepo(), buildUnidadRepo());
+    const useCase = new EditarInsumoUseCase(
+      repo,
+      buildFamiliaRepo(),
+      buildUnidadRepo(),
+      buildModeloRepo(),
+    );
 
     const result = await useCase.execute({
       id: 'ins-1',
@@ -394,7 +518,12 @@ describe('EditarInsumoUseCase', () => {
    */
   it('consulta el conflicto global excluyendo al insumo que se está editando', async () => {
     const repo = buildInsumoRepo(buildInsumo());
-    const useCase = new EditarInsumoUseCase(repo, buildFamiliaRepo(), buildUnidadRepo());
+    const useCase = new EditarInsumoUseCase(
+      repo,
+      buildFamiliaRepo(),
+      buildUnidadRepo(),
+      buildModeloRepo(),
+    );
 
     await useCase.execute({
       id: 'ins-1',
@@ -409,7 +538,12 @@ describe('EditarInsumoUseCase', () => {
 
   it('rechaza con CODIGO_ALTERNATIVO_DUPLICADO el par repetido dentro del payload', async () => {
     const repo = buildInsumoRepo(buildInsumo());
-    const useCase = new EditarInsumoUseCase(repo, buildFamiliaRepo(), buildUnidadRepo());
+    const useCase = new EditarInsumoUseCase(
+      repo,
+      buildFamiliaRepo(),
+      buildUnidadRepo(),
+      buildModeloRepo(),
+    );
 
     const result = await useCase.execute({
       id: 'ins-1',
@@ -428,7 +562,12 @@ describe('EditarInsumoUseCase', () => {
         .fn()
         .mockResolvedValue([{ codigo: 'CE285A', fabricante: 'HP', insumoId: 'ins-9' }]),
     });
-    const useCase = new EditarInsumoUseCase(repo, buildFamiliaRepo(), buildUnidadRepo());
+    const useCase = new EditarInsumoUseCase(
+      repo,
+      buildFamiliaRepo(),
+      buildUnidadRepo(),
+      buildModeloRepo(),
+    );
 
     const result = await useCase.execute({
       id: 'ins-1',
@@ -438,5 +577,261 @@ describe('EditarInsumoUseCase', () => {
     expect(result.isFail()).toBe(true);
     expect(result.getError().code).toBe('CODIGO_ALTERNATIVO_DUPLICADO');
     expect(repo.save).not.toHaveBeenCalled();
+  });
+
+  // ─── Compatibilidad con modelos de equipo ─────────────────────────────────
+
+  /**
+   * Camino feliz, y hermano invertido de los rechazos de modelo de abajo: sin
+   * él, un catálogo que rechazara cualquier id dejaría la sección en verde.
+   */
+  it('agrega la compatibilidad a un insumo que no la tenía', async () => {
+    const repo = buildInsumoRepo(buildInsumo());
+    const useCase = new EditarInsumoUseCase(
+      repo,
+      buildFamiliaRepo(),
+      buildUnidadRepo(),
+      buildModeloRepo(),
+    );
+
+    const result = await useCase.execute({
+      id: 'ins-1',
+      compatibilidad: [{ modeloEquipoId: 'mod-1', rol: ' negro ' }],
+    });
+
+    expect(result.isOk()).toBe(true);
+    expect(result.getValue().compatibilidad).toEqual([{ modeloEquipoId: 'mod-1', rol: 'NEGRO' }]);
+    expect(repo.save).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * `undefined` y `[]` no significan lo mismo. Confundirlos borra compatibilidad
+   * que nadie pidió borrar: bastaría editar el nombre para que el insumo dejara
+   * de servirle a todos sus modelos. El catálogo de este test tiene CARGADO el
+   * rechazo de `mod-1` —el mismo fixture que abajo devuelve
+   * `MODELO_EQUIPO_INEXISTENTE`—, así que el verde no puede venir de un mock inerte.
+   */
+  it('deja la compatibilidad guardada intacta cuando el PATCH no la trae', async () => {
+    const guardada: CompatibilidadModelo = { modeloEquipoId: 'mod-1', rol: 'NEGRO' };
+    const repo = buildInsumoRepo(buildInsumo([], 'ins-1', [guardada]));
+    const modeloRepo = buildModeloRepo({ 'mod-1': null });
+    const useCase = new EditarInsumoUseCase(
+      repo,
+      buildFamiliaRepo(),
+      buildUnidadRepo(),
+      modeloRepo,
+    );
+
+    const result = await useCase.execute({ id: 'ins-1', nombre: 'Otro' });
+
+    expect(result.isOk()).toBe(true);
+    expect(result.getValue().compatibilidad).toEqual([guardada]);
+    expect(modeloRepo.findById).not.toHaveBeenCalled();
+  });
+
+  /** Hermano del anterior: la lista vacía SÍ es la orden explícita de vaciarla. */
+  it('vacía la compatibilidad cuando el PATCH la trae vacía', async () => {
+    const repo = buildInsumoRepo(
+      buildInsumo([], 'ins-1', [{ modeloEquipoId: 'mod-1', rol: 'NEGRO' }]),
+    );
+    const useCase = new EditarInsumoUseCase(
+      repo,
+      buildFamiliaRepo(),
+      buildUnidadRepo(),
+      buildModeloRepo(),
+    );
+
+    const result = await useCase.execute({ id: 'ins-1', compatibilidad: [] });
+
+    expect(result.isOk()).toBe(true);
+    expect(result.getValue().compatibilidad).toEqual([]);
+  });
+
+  it('rechaza con MODELO_EQUIPO_INEXISTENTE si el modelo nuevo no está en el catálogo', async () => {
+    const repo = buildInsumoRepo(buildInsumo());
+    const useCase = new EditarInsumoUseCase(
+      repo,
+      buildFamiliaRepo(),
+      buildUnidadRepo(),
+      buildModeloRepo({ 'mod-9': null }),
+    );
+
+    const result = await useCase.execute({
+      id: 'ins-1',
+      compatibilidad: [{ modeloEquipoId: 'mod-9' }],
+    });
+
+    expect(result.isFail()).toBe(true);
+    expect(result.getError().code).toBe('MODELO_EQUIPO_INEXISTENTE');
+    expect(repo.save).not.toHaveBeenCalled();
+  });
+
+  it('rechaza con MODELO_EQUIPO_DESHABILITADO si el modelo nuevo está deshabilitado', async () => {
+    const modelo = modeloHabilitado('mod-1');
+    modelo.desactivar();
+    const repo = buildInsumoRepo(buildInsumo());
+    const useCase = new EditarInsumoUseCase(
+      repo,
+      buildFamiliaRepo(),
+      buildUnidadRepo(),
+      buildModeloRepo({ 'mod-1': modelo }),
+    );
+
+    const result = await useCase.execute({
+      id: 'ins-1',
+      compatibilidad: [{ modeloEquipoId: 'mod-1' }],
+    });
+
+    expect(result.isFail()).toBe(true);
+    expect(result.getError().code).toBe('MODELO_EQUIPO_DESHABILITADO');
+    expect(repo.save).not.toHaveBeenCalled();
+  });
+
+  it('trata el modelo con baja lógica como inexistente', async () => {
+    const modelo = modeloHabilitado('mod-1');
+    modelo.softDelete();
+    const repo = buildInsumoRepo(buildInsumo());
+    const useCase = new EditarInsumoUseCase(
+      repo,
+      buildFamiliaRepo(),
+      buildUnidadRepo(),
+      buildModeloRepo({ 'mod-1': modelo }),
+    );
+
+    const result = await useCase.execute({
+      id: 'ins-1',
+      compatibilidad: [{ modeloEquipoId: 'mod-1' }],
+    });
+
+    expect(result.getError().code).toBe('MODELO_EQUIPO_INEXISTENTE');
+  });
+
+  /**
+   * La lista se reemplaza entera, así que toda edición reenvía también los
+   * modelos viejos. Si se revalidaran, deshabilitar un modelo del catálogo
+   * dejaría sin poder editar —ni siquiera el nombre— a todos los insumos que ya
+   * eran compatibles con él, y la única salida sería borrar una compatibilidad
+   * que nadie pidió borrar.
+   */
+  it('deja reenviar un modelo que el insumo YA tenía aunque hoy esté deshabilitado', async () => {
+    const deshabilitado = modeloHabilitado('mod-1');
+    deshabilitado.desactivar();
+    const repo = buildInsumoRepo(
+      buildInsumo([], 'ins-1', [{ modeloEquipoId: 'mod-1', rol: null }]),
+    );
+    const useCase = new EditarInsumoUseCase(
+      repo,
+      buildFamiliaRepo(),
+      buildUnidadRepo(),
+      buildModeloRepo({ 'mod-1': deshabilitado }),
+    );
+
+    const result = await useCase.execute({
+      id: 'ins-1',
+      nombre: 'Tóner renombrado',
+      compatibilidad: [{ modeloEquipoId: 'mod-1' }],
+    });
+
+    expect(result.isOk()).toBe(true);
+    expect(result.getValue().nombre).toBe('Tóner renombrado');
+    expect(result.getValue().compatibilidad).toEqual([{ modeloEquipoId: 'mod-1', rol: null }]);
+  });
+
+  /**
+   * El hermano invertido del caso de arriba: la excepción vale SOLO para lo que
+   * el insumo ya tenía. Declarar un modelo deshabilitado por primera vez sigue
+   * siendo un rechazo, si no el guard no protegería nada.
+   */
+  it('sigue rechazando un modelo deshabilitado que el insumo NO tenía', async () => {
+    const deshabilitado = modeloHabilitado('mod-2');
+    deshabilitado.desactivar();
+    const repo = buildInsumoRepo(
+      buildInsumo([], 'ins-1', [{ modeloEquipoId: 'mod-1', rol: null }]),
+    );
+    const useCase = new EditarInsumoUseCase(
+      repo,
+      buildFamiliaRepo(),
+      buildUnidadRepo(),
+      buildModeloRepo({ 'mod-2': deshabilitado }),
+    );
+
+    const result = await useCase.execute({
+      id: 'ins-1',
+      compatibilidad: [{ modeloEquipoId: 'mod-1' }, { modeloEquipoId: 'mod-2' }],
+    });
+
+    expect(result.getError().code).toBe('MODELO_EQUIPO_DESHABILITADO');
+  });
+
+  it('no consulta el catálogo por un modelo que el insumo ya tenía declarado', async () => {
+    const repo = buildInsumoRepo(
+      buildInsumo([], 'ins-1', [{ modeloEquipoId: 'mod-1', rol: null }]),
+    );
+    const modeloRepo = buildModeloRepo();
+    const useCase = new EditarInsumoUseCase(
+      repo,
+      buildFamiliaRepo(),
+      buildUnidadRepo(),
+      modeloRepo,
+    );
+
+    await useCase.execute({
+      id: 'ins-1',
+      compatibilidad: [{ modeloEquipoId: 'mod-1' }, { modeloEquipoId: 'mod-2' }],
+    });
+
+    expect(modeloRepo.findById).not.toHaveBeenCalledWith('mod-1');
+    expect(modeloRepo.findById).toHaveBeenCalledWith('mod-2');
+  });
+
+  it('rechaza con COMPATIBILIDAD_DUPLICADA el mismo modelo repetido en el payload', async () => {
+    const repo = buildInsumoRepo(buildInsumo());
+    const modeloRepo = buildModeloRepo();
+    const useCase = new EditarInsumoUseCase(
+      repo,
+      buildFamiliaRepo(),
+      buildUnidadRepo(),
+      modeloRepo,
+    );
+
+    const result = await useCase.execute({
+      id: 'ins-1',
+      compatibilidad: [
+        { modeloEquipoId: 'mod-1', rol: 'NEGRO' },
+        { modeloEquipoId: 'mod-1', rol: 'CIAN' },
+      ],
+    });
+
+    expect(result.isFail()).toBe(true);
+    expect(result.getError().code).toBe('COMPATIBILIDAD_DUPLICADA');
+    expect(modeloRepo.findById).not.toHaveBeenCalled();
+    expect(repo.save).not.toHaveBeenCalled();
+  });
+
+  /**
+   * La compatibilidad va ÚLTIMA: el código propio del insumo se corrige antes,
+   * y pedirle al usuario que arregle la lista de modelos cuando lo que choca es
+   * el código lo manda a editar un campo que no tiene nada.
+   */
+  it('con el código duplicado Y la compatibilidad duplicada gana el error del código', async () => {
+    const repo = buildInsumoRepo(buildInsumo(), {
+      findByCodigo: vi.fn().mockResolvedValue(buildInsumo([], 'ins-2')),
+    });
+    const modeloRepo = buildModeloRepo();
+    const useCase = new EditarInsumoUseCase(
+      repo,
+      buildFamiliaRepo(),
+      buildUnidadRepo(),
+      modeloRepo,
+    );
+
+    const result = await useCase.execute({
+      id: 'ins-1',
+      codigo: 'TON-002',
+      compatibilidad: [{ modeloEquipoId: 'mod-1' }, { modeloEquipoId: 'mod-1' }],
+    });
+
+    expect(result.getError().code).toBe('INSUMO_CODIGO_DUPLICADO');
+    expect(modeloRepo.findById).not.toHaveBeenCalled();
   });
 });

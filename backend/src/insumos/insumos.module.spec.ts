@@ -19,6 +19,7 @@ import { CrearInsumoUseCase } from './application/use-cases/crear-insumo.use-cas
 import { EditarInsumoUseCase } from './application/use-cases/editar-insumo.use-case';
 import { CambiarEstadoActivoInsumoUseCase } from './application/use-cases/cambiar-estado-activo-insumo.use-case';
 import { ListarInsumosUseCase } from './application/use-cases/listar-insumos.use-case';
+import { ListarInsumosPorModeloEquipoUseCase } from './application/use-cases/listar-insumos-por-modelo-equipo.use-case';
 
 describe('InsumosModule wiring', () => {
   it('registra los controllers de los tres catálogos y el del insumo', () => {
@@ -53,7 +54,7 @@ describe('InsumosModule wiring', () => {
   });
 
   /**
-   * Los cuatro casos de uso del insumo se registran con `useFactory`, no como
+   * Los cinco casos de uso del insumo se registran con `useFactory`, no como
    * clases: sus constructores reciben PUERTOS —tokens de inyección— y NestJS
    * no puede resolverlos por metadata de tipo. Sin este assert, un caso de uso
    * que se quede afuera del módulo se descubre recién cuando el endpoint
@@ -64,6 +65,7 @@ describe('InsumosModule wiring', () => {
     ['EditarInsumoUseCase', EditarInsumoUseCase],
     ['CambiarEstadoActivoInsumoUseCase', CambiarEstadoActivoInsumoUseCase],
     ['ListarInsumosUseCase', ListarInsumosUseCase],
+    ['ListarInsumosPorModeloEquipoUseCase', ListarInsumosPorModeloEquipoUseCase],
   ])('provee %s', (_nombre, useCase) => {
     const providers = (Reflect.getMetadata('providers', InsumosModule) ?? []) as Array<{
       provide?: unknown;

@@ -62,6 +62,7 @@ import { CrearInsumoUseCase } from './application/use-cases/crear-insumo.use-cas
 import { EditarInsumoUseCase } from './application/use-cases/editar-insumo.use-case';
 import { CambiarEstadoActivoInsumoUseCase } from './application/use-cases/cambiar-estado-activo-insumo.use-case';
 import { ListarInsumosUseCase } from './application/use-cases/listar-insumos.use-case';
+import { ListarInsumosPorModeloEquipoUseCase } from './application/use-cases/listar-insumos-por-modelo-equipo.use-case';
 
 import { FamiliasInsumoController } from './interface/controllers/familias-insumo.controller';
 import { UnidadesMedidaController } from './interface/controllers/unidades-medida.controller';
@@ -148,16 +149,22 @@ import { InsumosController } from './interface/controllers/insumos.controller';
 
     { provide: INSUMO_REPOSITORY, useClass: PrismaInsumoRepository },
     {
-      // El alta y la edición reciben los TRES puertos: el insumo valida que su
-      // familia y su unidad sean elegibles, y "existe" no es "es elegible" —la
-      // FK deja pasar la fila deshabilitada—.
+      // El alta y la edición reciben los CUATRO puertos: el insumo valida que
+      // su familia, su unidad y cada modelo compatible sean elegibles, y
+      // "existe" no es "es elegible" —la FK deja pasar la fila deshabilitada—.
       provide: CrearInsumoUseCase,
       useFactory: (
         insumoRepo: IInsumoRepository,
         familiaRepo: IFamiliaInsumoRepository,
         unidadRepo: IUnidadMedidaRepository,
-      ) => new CrearInsumoUseCase(insumoRepo, familiaRepo, unidadRepo),
-      inject: [INSUMO_REPOSITORY, FAMILIA_INSUMO_REPOSITORY, UNIDAD_MEDIDA_REPOSITORY],
+        modeloRepo: IModeloEquipoRepository,
+      ) => new CrearInsumoUseCase(insumoRepo, familiaRepo, unidadRepo, modeloRepo),
+      inject: [
+        INSUMO_REPOSITORY,
+        FAMILIA_INSUMO_REPOSITORY,
+        UNIDAD_MEDIDA_REPOSITORY,
+        MODELO_EQUIPO_REPOSITORY,
+      ],
     },
     {
       provide: EditarInsumoUseCase,
@@ -165,8 +172,14 @@ import { InsumosController } from './interface/controllers/insumos.controller';
         insumoRepo: IInsumoRepository,
         familiaRepo: IFamiliaInsumoRepository,
         unidadRepo: IUnidadMedidaRepository,
-      ) => new EditarInsumoUseCase(insumoRepo, familiaRepo, unidadRepo),
-      inject: [INSUMO_REPOSITORY, FAMILIA_INSUMO_REPOSITORY, UNIDAD_MEDIDA_REPOSITORY],
+        modeloRepo: IModeloEquipoRepository,
+      ) => new EditarInsumoUseCase(insumoRepo, familiaRepo, unidadRepo, modeloRepo),
+      inject: [
+        INSUMO_REPOSITORY,
+        FAMILIA_INSUMO_REPOSITORY,
+        UNIDAD_MEDIDA_REPOSITORY,
+        MODELO_EQUIPO_REPOSITORY,
+      ],
     },
     {
       provide: CambiarEstadoActivoInsumoUseCase,
@@ -176,6 +189,14 @@ import { InsumosController } from './interface/controllers/insumos.controller';
     {
       provide: ListarInsumosUseCase,
       useFactory: (repo: IInsumoRepository) => new ListarInsumosUseCase(repo),
+      inject: [INSUMO_REPOSITORY],
+    },
+    {
+      // Lo consume `ModelosEquipoController`, que vive en este mismo módulo: la
+      // consulta mira la relación desde el lado del modelo, pero el dato que
+      // devuelve es el insumo.
+      provide: ListarInsumosPorModeloEquipoUseCase,
+      useFactory: (repo: IInsumoRepository) => new ListarInsumosPorModeloEquipoUseCase(repo),
       inject: [INSUMO_REPOSITORY],
     },
   ],

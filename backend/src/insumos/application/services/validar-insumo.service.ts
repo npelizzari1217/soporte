@@ -1,18 +1,26 @@
 import { DomainError, Result } from '../../../shared/domain/result';
 import {
+  CompatibilidadModelo,
+  crearCompatibilidadModelo,
+} from '../../domain/entities/compatibilidad-modelo';
+import {
   InsumoCodigoAlternativoEntity,
   normalizarCodigoAlternativo,
   normalizarFabricanteCodigoAlternativo,
 } from '../../domain/entities/insumo-codigo-alternativo.entity';
 import {
   CodigoAlternativoDuplicadoError,
+  CompatibilidadDuplicadaError,
   FamiliaInsumoDeshabilitadaError,
   FamiliaInsumoInexistenteError,
+  ModeloEquipoDeshabilitadoError,
+  ModeloEquipoInexistenteError,
   UnidadMedidaDeshabilitadaError,
   UnidadMedidaInexistenteError,
 } from '../../domain/errors/insumos.errors';
 import { IFamiliaInsumoRepository } from '../../domain/ports/i-familia-insumo.repository';
 import { IInsumoRepository } from '../../domain/ports/i-insumo.repository';
+import { IModeloEquipoRepository } from '../../domain/ports/i-modelo-equipo.repository';
 import { IUnidadMedidaRepository } from '../../domain/ports/i-unidad-medida.repository';
 
 /**
@@ -24,6 +32,9 @@ export type LectorCatalogoFamilias = Pick<IFamiliaInsumoRepository, 'findById'>;
 
 /** Mismo criterio que `LectorCatalogoFamilias`, para el catálogo de unidades. */
 export type LectorCatalogoUnidades = Pick<IUnidadMedidaRepository, 'findById'>;
+
+/** Mismo criterio, para el catálogo de modelos de equipo. */
+export type LectorCatalogoModelosEquipo = Pick<IModeloEquipoRepository, 'findById'>;
 
 /** Lo único que la resolución de códigos alternativos necesita del repositorio de insumos. */
 export type LectorConflictosCodigoAlternativo = Pick<
@@ -38,6 +49,32 @@ export type LectorConflictosCodigoAlternativo = Pick<
 export interface CodigoAlternativoInput {
   codigo: string;
   fabricante?: string | null;
+}
+
+/**
+ * Un modelo compatible tal como llega del borde: sin normalizar, y con el
+ * `rol` opcional porque no todo insumo cumple un rol distinguible dentro del
+ * equipo.
+ */
+export interface CompatibilidadInput {
+  modeloEquipoId: string;
+  rol?: string | null;
+}
+
+/**
+ * Clave de comparación de un `modeloEquipoId` dentro del payload.
+ *
+ * Va en minúscula porque la columna es `uuid`, no texto: Postgres normaliza el
+ * literal antes de compararlo, así que `9F1B…` y `9f1b…` son la MISMA fila
+ * para la clave primaria. Comparando los strings crudos, ese duplicado se
+ * escaparía del guard y volvería como la violación de PK que el guard existe
+ * para evitar.
+ *
+ * @param modeloEquipoId Id tal como llega del borde.
+ * @returns La clave con la que se comparan dos entradas entre sí.
+ */
+function claveDelModelo(modeloEquipoId: string): string {
+  return modeloEquipoId.toLowerCase();
 }
 
 /**
@@ -197,4 +234,112 @@ export async function resolverCodigosAlternativos(
         InsumoCodigoAlternativoEntity.create({ codigo, fabricante }),
     ),
   );
+}
+
+/**
+ * Verifica que un `modeloEquipoId` sea ELEGIBLE, con el mismo criterio que
+ * `validarFamiliaInsumoElegible`: existir no es ser elegible.
+ *
+ * Este chequeo vive en `insumos` y no se importa de `src/equipos/`, que tiene
+ * uno equivalente: `equipos` ya importa el puerto del catálogo de modelos desde
+ * `insumos`, así que el import inverso cerraría un ciclo entre los dos módulos.
+ * Los errores comparten `code` con los de allá justamente para que el cliente
+ * vea el mismo código lo reporte quien lo reporte.
+ *
+ * @param catalogo Lector del catálogo de modelos de equipo del tenant.
+ * @param modeloEquipoId Id a validar.
+ * @returns `Result.ok()` si es elegible; `Result.fail()` con
+ *   `ModeloEquipoInexistenteError` o `ModeloEquipoDeshabilitadoError` si no.
+ */
+export async function validarModeloEquipoElegible(
+  catalogo: LectorCatalogoModelosEquipo,
+  modeloEquipoId: string,
+): Promise<Result<void, DomainError>> {
+  const modelo = await catalogo.findById(modeloEquipoId);
+
+  if (!modelo || modelo.isDeleted()) {
+    return Result.fail(new ModeloEquipoInexistenteError(modeloEquipoId));
+  }
+
+  if (!modelo.activo) {
+    return Result.fail(new ModeloEquipoDeshabilitadoError(modeloEquipoId));
+  }
+
+  return Result.ok(undefined);
+}
+
+/**
+ * Valida la lista de modelos compatibles que llega del borde y construye los
+ * value objects que van a REEMPLAZAR a la lista guardada.
+ *
+ * Vive como función compartida —y no duplicada en el alta y en la edición—
+ * porque las dos aplican exactamente la misma regla: una sola regla no puede
+ * desincronizarse consigo misma.
+ *
+ * El orden de los dos rechazos importa, con el mismo criterio que
+ * `resolverCodigosAlternativos`. El duplicado DENTRO del payload se resuelve
+ * primero y sin tocar la base: es un error de carga que no necesita una
+ * consulta para diagnosticarse, y sin ese guard las dos filas llegan a la
+ * escritura anidada y mueren como violación de la PK `(insumo, modelo)` — un
+ * 500 crudo en lugar del 422 que nombra el modelo repetido.
+ *
+ * Con la lista vacía no se consulta nada: no hay ningún id que verificar, y la
+ * consulta sería una ida y vuelta garantizada a no encontrar nada.
+ *
+ * **La elegibilidad se verifica solo sobre los modelos que el insumo NO tenía
+ * ya.** La lista se reemplaza entera, así que toda edición reenvía también los
+ * modelos viejos; revalidarlos convertiría una baja en el catálogo en una
+ * trampa: deshabilitar un modelo dejaría sin poder editar —ni siquiera el
+ * nombre— a todos los insumos que ya eran compatibles con él, y la única
+ * salida sería borrar una compatibilidad que nadie pidió borrar. Es el mismo
+ * criterio con el que `EditarInsumoUseCase` no valida los campos ausentes del
+ * PATCH, y el equivalente del `excluyendoInsumoId` de los códigos
+ * alternativos. Declarar un modelo deshabilitado POR PRIMERA VEZ sigue siendo
+ * un 422.
+ *
+ * @param entradas Modelos compatibles crudos, tal como llegan del borde.
+ * @param catalogo Lector del catálogo de modelos de equipo del tenant.
+ * @param opciones `existentes` son los modelos que el insumo ya tenía
+ *   declarados; se dan por elegibles y no se vuelven a consultar. Se omite en
+ *   el alta, donde no hay nada previo.
+ * @returns Los pares listos para entrar al agregado, con el rol normalizado; o
+ *   `CompatibilidadDuplicadaError`, `ModeloEquipoInexistenteError` o
+ *   `ModeloEquipoDeshabilitadoError` si alguna entrada no pasa.
+ */
+export async function resolverCompatibilidad(
+  entradas: readonly CompatibilidadInput[],
+  catalogo: LectorCatalogoModelosEquipo,
+  opciones: { existentes?: readonly CompatibilidadModelo[] } = {},
+): Promise<Result<CompatibilidadModelo[], DomainError>> {
+  const vistos = new Set<string>();
+
+  for (const entrada of entradas) {
+    const clave = claveDelModelo(entrada.modeloEquipoId);
+    if (vistos.has(clave)) {
+      return Result.fail(new CompatibilidadDuplicadaError(entrada.modeloEquipoId));
+    }
+    vistos.add(clave);
+  }
+
+  const yaDeclarados = new Set(
+    (opciones.existentes ?? []).map((par) => claveDelModelo(par.modeloEquipoId)),
+  );
+
+  // Secuencial y no en paralelo: el primer modelo no elegible corta el resto,
+  // así que una lista larga con el primero deshabilitado hace una sola
+  // consulta en vez de una por modelo. El puerto expone `findById` y no una
+  // búsqueda por lote, así que el peor caso —un alta que declara el techo de
+  // modelos, todos elegibles— sigue siendo una consulta por modelo; se acepta
+  // porque es una operación de administración y porque el filtro de arriba
+  // deja fuera todo lo que el insumo ya tenía.
+  for (const entrada of entradas) {
+    if (yaDeclarados.has(claveDelModelo(entrada.modeloEquipoId))) continue;
+
+    const elegible = await validarModeloEquipoElegible(catalogo, entrada.modeloEquipoId);
+    if (elegible.isFail()) {
+      return Result.fail(elegible.getError());
+    }
+  }
+
+  return Result.ok(entradas.map((entrada) => crearCompatibilidadModelo(entrada)));
 }

@@ -4,6 +4,7 @@ import { FamiliaInsumoEntity } from '../../domain/entities/familia-insumo.entity
 import { UnidadMedidaEntity } from '../../domain/entities/unidad-medida.entity';
 import { InsumoEntity } from '../../domain/entities/insumo.entity';
 import { InsumoCodigoAlternativoEntity } from '../../domain/entities/insumo-codigo-alternativo.entity';
+import { ModeloEquipoEntity } from '../../domain/entities/modelo-equipo.entity';
 import { IInsumoRepository } from '../../domain/ports/i-insumo.repository';
 
 describe('CrearInsumoUseCase', () => {
@@ -37,6 +38,25 @@ describe('CrearInsumoUseCase', () => {
     return { findById: vi.fn().mockResolvedValue(unidad) };
   }
 
+  function modeloHabilitado(id: string): ModeloEquipoEntity {
+    return ModeloEquipoEntity.create({ marca: 'HP', modelo: `M-${id}`, activo: true }, id);
+  }
+
+  /**
+   * Catálogo de modelos que responde un modelo HABILITADO para CUALQUIER id,
+   * salvo los que el caso declare en `porId`. Que el default sea elegible es lo
+   * que hace que cada rechazo de abajo se lea como efecto de su excepción y no
+   * de un catálogo que rechaza todo.
+   */
+  function buildModeloRepo(porId: Record<string, ModeloEquipoEntity | null> = {}) {
+    return {
+      findById: vi.fn((id: string): Promise<ModeloEquipoEntity | null> => {
+        const declarado = porId[id];
+        return Promise.resolve(declarado === undefined ? modeloHabilitado(id) : declarado);
+      }),
+    };
+  }
+
   const dtoBase = {
     codigo: 'TON-001',
     nombre: 'Tóner negro',
@@ -48,7 +68,12 @@ describe('CrearInsumoUseCase', () => {
 
   it('crea el insumo cuando la familia y la unidad están habilitadas', async () => {
     const insumoRepo = buildInsumoRepo();
-    const useCase = new CrearInsumoUseCase(insumoRepo, buildFamiliaRepo(), buildUnidadRepo());
+    const useCase = new CrearInsumoUseCase(
+      insumoRepo,
+      buildFamiliaRepo(),
+      buildUnidadRepo(),
+      buildModeloRepo(),
+    );
 
     const result = await useCase.execute(dtoBase);
 
@@ -63,6 +88,7 @@ describe('CrearInsumoUseCase', () => {
       buildInsumoRepo(),
       buildFamiliaRepo(),
       buildUnidadRepo(),
+      buildModeloRepo(),
     );
 
     const result = await useCase.execute(dtoBase);
@@ -75,6 +101,7 @@ describe('CrearInsumoUseCase', () => {
       buildInsumoRepo(),
       buildFamiliaRepo(),
       buildUnidadRepo(),
+      buildModeloRepo(),
     );
 
     const result = await useCase.execute({ ...dtoBase, stockMinimo: 12.5 });
@@ -93,6 +120,7 @@ describe('CrearInsumoUseCase', () => {
       buildInsumoRepo(),
       buildFamiliaRepo(),
       buildUnidadRepo(),
+      buildModeloRepo(),
     );
 
     const result = await useCase.execute({
@@ -108,7 +136,12 @@ describe('CrearInsumoUseCase', () => {
   /** El índice es case-sensitive, así que la búsqueda tiene que ir normalizada. */
   it('busca el duplicado con el código YA normalizado', async () => {
     const insumoRepo = buildInsumoRepo();
-    const useCase = new CrearInsumoUseCase(insumoRepo, buildFamiliaRepo(), buildUnidadRepo());
+    const useCase = new CrearInsumoUseCase(
+      insumoRepo,
+      buildFamiliaRepo(),
+      buildUnidadRepo(),
+      buildModeloRepo(),
+    );
 
     await useCase.execute({ ...dtoBase, codigo: ' ton-001 ' });
 
@@ -119,7 +152,12 @@ describe('CrearInsumoUseCase', () => {
 
   it('rechaza con FAMILIA_INSUMO_INEXISTENTE si la familia no está en el catálogo', async () => {
     const insumoRepo = buildInsumoRepo();
-    const useCase = new CrearInsumoUseCase(insumoRepo, buildFamiliaRepo(null), buildUnidadRepo());
+    const useCase = new CrearInsumoUseCase(
+      insumoRepo,
+      buildFamiliaRepo(null),
+      buildUnidadRepo(),
+      buildModeloRepo(),
+    );
 
     const result = await useCase.execute(dtoBase);
 
@@ -140,6 +178,7 @@ describe('CrearInsumoUseCase', () => {
       buildInsumoRepo(),
       buildFamiliaRepo(familia),
       buildUnidadRepo(),
+      buildModeloRepo(),
     );
 
     const result = await useCase.execute(dtoBase);
@@ -160,6 +199,7 @@ describe('CrearInsumoUseCase', () => {
       buildInsumoRepo(),
       buildFamiliaRepo(familia),
       buildUnidadRepo(),
+      buildModeloRepo(),
     );
 
     const result = await useCase.execute(dtoBase);
@@ -169,7 +209,12 @@ describe('CrearInsumoUseCase', () => {
 
   it('rechaza con UNIDAD_MEDIDA_INEXISTENTE si la unidad no está en el catálogo', async () => {
     const insumoRepo = buildInsumoRepo();
-    const useCase = new CrearInsumoUseCase(insumoRepo, buildFamiliaRepo(), buildUnidadRepo(null));
+    const useCase = new CrearInsumoUseCase(
+      insumoRepo,
+      buildFamiliaRepo(),
+      buildUnidadRepo(null),
+      buildModeloRepo(),
+    );
 
     const result = await useCase.execute(dtoBase);
 
@@ -185,6 +230,7 @@ describe('CrearInsumoUseCase', () => {
       buildInsumoRepo(),
       buildFamiliaRepo(),
       buildUnidadRepo(unidad),
+      buildModeloRepo(),
     );
 
     const result = await useCase.execute(dtoBase);
@@ -200,6 +246,7 @@ describe('CrearInsumoUseCase', () => {
       buildInsumoRepo(),
       buildFamiliaRepo(),
       buildUnidadRepo(unidad),
+      buildModeloRepo(),
     );
 
     const result = await useCase.execute(dtoBase);
@@ -225,7 +272,12 @@ describe('CrearInsumoUseCase', () => {
       compatibilidad: [],
     });
     const insumoRepo = buildInsumoRepo({ findByCodigo: vi.fn().mockResolvedValue(ocupante) });
-    const useCase = new CrearInsumoUseCase(insumoRepo, buildFamiliaRepo(), buildUnidadRepo());
+    const useCase = new CrearInsumoUseCase(
+      insumoRepo,
+      buildFamiliaRepo(),
+      buildUnidadRepo(),
+      buildModeloRepo(),
+    );
 
     const result = await useCase.execute(dtoBase);
 
@@ -252,7 +304,12 @@ describe('CrearInsumoUseCase', () => {
       compatibilidad: [],
     });
     const insumoRepo = buildInsumoRepo({ findByCodigo: vi.fn().mockResolvedValue(ocupante) });
-    const useCase = new CrearInsumoUseCase(insumoRepo, buildFamiliaRepo(null), buildUnidadRepo());
+    const useCase = new CrearInsumoUseCase(
+      insumoRepo,
+      buildFamiliaRepo(null),
+      buildUnidadRepo(),
+      buildModeloRepo(),
+    );
 
     const result = await useCase.execute(dtoBase);
 
@@ -272,7 +329,12 @@ describe('CrearInsumoUseCase', () => {
       compatibilidad: [],
     });
     const insumoRepo = buildInsumoRepo({ findByCodigo: vi.fn().mockResolvedValue(ocupante) });
-    const useCase = new CrearInsumoUseCase(insumoRepo, buildFamiliaRepo(), buildUnidadRepo(null));
+    const useCase = new CrearInsumoUseCase(
+      insumoRepo,
+      buildFamiliaRepo(),
+      buildUnidadRepo(null),
+      buildModeloRepo(),
+    );
 
     const result = await useCase.execute(dtoBase);
 
@@ -288,6 +350,7 @@ describe('CrearInsumoUseCase', () => {
       insumoRepo,
       buildFamiliaRepo(familia),
       buildUnidadRepo(),
+      buildModeloRepo(),
     );
 
     const result = await useCase.execute({
@@ -306,6 +369,7 @@ describe('CrearInsumoUseCase', () => {
       buildInsumoRepo(),
       buildFamiliaRepo(),
       buildUnidadRepo(),
+      buildModeloRepo(),
     );
 
     const result = await useCase.execute({
@@ -329,6 +393,7 @@ describe('CrearInsumoUseCase', () => {
       buildInsumoRepo(),
       buildFamiliaRepo(),
       buildUnidadRepo(),
+      buildModeloRepo(),
     );
 
     const result = await useCase.execute({
@@ -351,7 +416,12 @@ describe('CrearInsumoUseCase', () => {
 
   it('consulta el conflicto global con los pares YA normalizados', async () => {
     const insumoRepo = buildInsumoRepo();
-    const useCase = new CrearInsumoUseCase(insumoRepo, buildFamiliaRepo(), buildUnidadRepo());
+    const useCase = new CrearInsumoUseCase(
+      insumoRepo,
+      buildFamiliaRepo(),
+      buildUnidadRepo(),
+      buildModeloRepo(),
+    );
 
     await useCase.execute({
       ...dtoBase,
@@ -371,7 +441,12 @@ describe('CrearInsumoUseCase', () => {
 
   it('rechaza con CODIGO_ALTERNATIVO_DUPLICADO el par repetido dentro del payload', async () => {
     const insumoRepo = buildInsumoRepo();
-    const useCase = new CrearInsumoUseCase(insumoRepo, buildFamiliaRepo(), buildUnidadRepo());
+    const useCase = new CrearInsumoUseCase(
+      insumoRepo,
+      buildFamiliaRepo(),
+      buildUnidadRepo(),
+      buildModeloRepo(),
+    );
 
     const result = await useCase.execute({
       ...dtoBase,
@@ -395,6 +470,7 @@ describe('CrearInsumoUseCase', () => {
       buildInsumoRepo(),
       buildFamiliaRepo(),
       buildUnidadRepo(),
+      buildModeloRepo(),
     );
 
     const result = await useCase.execute({
@@ -412,6 +488,7 @@ describe('CrearInsumoUseCase', () => {
       buildInsumoRepo(),
       buildFamiliaRepo(),
       buildUnidadRepo(),
+      buildModeloRepo(),
     );
 
     const result = await useCase.execute({
@@ -437,7 +514,12 @@ describe('CrearInsumoUseCase', () => {
         .fn()
         .mockResolvedValue([{ codigo: 'Z-9', fabricante: null, insumoId: 'otro' }]),
     });
-    const useCase = new CrearInsumoUseCase(insumoRepo, buildFamiliaRepo(), buildUnidadRepo());
+    const useCase = new CrearInsumoUseCase(
+      insumoRepo,
+      buildFamiliaRepo(),
+      buildUnidadRepo(),
+      buildModeloRepo(),
+    );
 
     const result = await useCase.execute({
       ...dtoBase,
@@ -456,7 +538,12 @@ describe('CrearInsumoUseCase', () => {
         .fn()
         .mockResolvedValue([{ codigo: 'CE285A', fabricante: 'HP', insumoId: 'otro-insumo' }]),
     });
-    const useCase = new CrearInsumoUseCase(insumoRepo, buildFamiliaRepo(), buildUnidadRepo());
+    const useCase = new CrearInsumoUseCase(
+      insumoRepo,
+      buildFamiliaRepo(),
+      buildUnidadRepo(),
+      buildModeloRepo(),
+    );
 
     const result = await useCase.execute({
       ...dtoBase,
@@ -480,7 +567,12 @@ describe('CrearInsumoUseCase', () => {
         .fn()
         .mockResolvedValue([{ codigo: 'CE285A', fabricante: 'HP', insumoId: 'otro-insumo' }]),
     });
-    const useCase = new CrearInsumoUseCase(insumoRepo, buildFamiliaRepo(), buildUnidadRepo());
+    const useCase = new CrearInsumoUseCase(
+      insumoRepo,
+      buildFamiliaRepo(),
+      buildUnidadRepo(),
+      buildModeloRepo(),
+    );
 
     const result = await useCase.execute(dtoBase);
 
@@ -495,7 +587,12 @@ describe('CrearInsumoUseCase', () => {
         .fn()
         .mockResolvedValue([{ codigo: 'CE285A', fabricante: 'HP', insumoId: 'otro-insumo' }]),
     });
-    const useCase = new CrearInsumoUseCase(insumoRepo, buildFamiliaRepo(), buildUnidadRepo());
+    const useCase = new CrearInsumoUseCase(
+      insumoRepo,
+      buildFamiliaRepo(),
+      buildUnidadRepo(),
+      buildModeloRepo(),
+    );
 
     const result = await useCase.execute({ ...dtoBase, codigosAlternativos: [] });
 
@@ -509,6 +606,7 @@ describe('CrearInsumoUseCase', () => {
       buildInsumoRepo({ save }),
       buildFamiliaRepo(),
       buildUnidadRepo(),
+      buildModeloRepo(),
     );
 
     await useCase.execute({
@@ -519,5 +617,323 @@ describe('CrearInsumoUseCase', () => {
     const guardado = save.mock.calls[0]![0] as InsumoEntity;
     expect(guardado.codigosAlternativos[0]).toBeInstanceOf(InsumoCodigoAlternativoEntity);
     expect(guardado.codigosAlternativos[0]!.codigo).toBe('CE285A');
+  });
+
+  // ─── Compatibilidad con modelos de equipo ─────────────────────────────────
+
+  /**
+   * Camino feliz de la compatibilidad, y hermano invertido de TODOS los
+   * rechazos de modelo de abajo: sin él, un catálogo que rechazara cualquier id
+   * dejaría toda esta sección en verde.
+   */
+  it('crea el insumo con la compatibilidad declarada cuando el modelo está habilitado', async () => {
+    const useCase = new CrearInsumoUseCase(
+      buildInsumoRepo(),
+      buildFamiliaRepo(),
+      buildUnidadRepo(),
+      buildModeloRepo(),
+    );
+
+    const result = await useCase.execute({
+      ...dtoBase,
+      compatibilidad: [{ modeloEquipoId: 'mod-1', rol: 'NEGRO' }],
+    });
+
+    expect(result.isOk()).toBe(true);
+    expect(result.getValue().compatibilidad).toEqual([{ modeloEquipoId: 'mod-1', rol: 'NEGRO' }]);
+  });
+
+  /**
+   * El rol se normaliza con la función del dominio: `''`, `'   '`, `null` y el
+   * campo ausente colapsan todos a `null`. Sin el colapso, la columna guardaría
+   * dos formas distintas de decir "sin rol".
+   */
+  it('normaliza el rol a mayúscula y colapsa a null el vacío, los espacios y el ausente', async () => {
+    const useCase = new CrearInsumoUseCase(
+      buildInsumoRepo(),
+      buildFamiliaRepo(),
+      buildUnidadRepo(),
+      buildModeloRepo(),
+    );
+
+    const result = await useCase.execute({
+      ...dtoBase,
+      compatibilidad: [
+        { modeloEquipoId: 'mod-1', rol: '  cian  ' },
+        { modeloEquipoId: 'mod-2', rol: '' },
+        { modeloEquipoId: 'mod-3', rol: '   ' },
+        { modeloEquipoId: 'mod-4', rol: null },
+        { modeloEquipoId: 'mod-5' },
+      ],
+    });
+
+    expect(result.getValue().compatibilidad.map((c) => c.rol)).toEqual([
+      'CIAN',
+      null,
+      null,
+      null,
+      null,
+    ]);
+  });
+
+  /** Hermano invertido del duplicado: dos modelos DISTINTOS conviven sin problema. */
+  it('acepta dos modelos distintos con roles distintos', async () => {
+    const useCase = new CrearInsumoUseCase(
+      buildInsumoRepo(),
+      buildFamiliaRepo(),
+      buildUnidadRepo(),
+      buildModeloRepo(),
+    );
+
+    const result = await useCase.execute({
+      ...dtoBase,
+      compatibilidad: [
+        { modeloEquipoId: 'mod-1', rol: 'NEGRO' },
+        { modeloEquipoId: 'mod-2', rol: 'CIAN' },
+      ],
+    });
+
+    expect(result.isOk()).toBe(true);
+    expect(result.getValue().compatibilidad.map((c) => c.modeloEquipoId)).toEqual([
+      'mod-1',
+      'mod-2',
+    ]);
+  });
+
+  it('rechaza con MODELO_EQUIPO_INEXISTENTE si el modelo no está en el catálogo', async () => {
+    const insumoRepo = buildInsumoRepo();
+    const useCase = new CrearInsumoUseCase(
+      insumoRepo,
+      buildFamiliaRepo(),
+      buildUnidadRepo(),
+      buildModeloRepo({ 'mod-9': null }),
+    );
+
+    const result = await useCase.execute({
+      ...dtoBase,
+      compatibilidad: [{ modeloEquipoId: 'mod-9' }],
+    });
+
+    expect(result.isFail()).toBe(true);
+    expect(result.getError().code).toBe('MODELO_EQUIPO_INEXISTENTE');
+    expect(insumoRepo.save).not.toHaveBeenCalled();
+  });
+
+  /**
+   * `findById` no filtra por `deletedAt`, así que la fila con baja lógica
+   * vuelve igual. Elegir un modelo dado de baja no es una opción distinta de
+   * elegir uno que nunca existió.
+   */
+  it('trata el modelo con baja lógica como inexistente', async () => {
+    const modelo = modeloHabilitado('mod-1');
+    modelo.softDelete();
+    const useCase = new CrearInsumoUseCase(
+      buildInsumoRepo(),
+      buildFamiliaRepo(),
+      buildUnidadRepo(),
+      buildModeloRepo({ 'mod-1': modelo }),
+    );
+
+    const result = await useCase.execute({
+      ...dtoBase,
+      compatibilidad: [{ modeloEquipoId: 'mod-1' }],
+    });
+
+    expect(result.getError().code).toBe('MODELO_EQUIPO_INEXISTENTE');
+  });
+
+  /**
+   * La FK no puede atrapar este caso: la fila EXISTE. Sin el chequeo, el insumo
+   * queda declarado compatible con un modelo que el administrador ya sacó de
+   * circulación, sin error ni log.
+   */
+  it('rechaza con MODELO_EQUIPO_DESHABILITADO si el modelo existe pero está deshabilitado', async () => {
+    const modelo = modeloHabilitado('mod-1');
+    modelo.desactivar();
+    const insumoRepo = buildInsumoRepo();
+    const useCase = new CrearInsumoUseCase(
+      insumoRepo,
+      buildFamiliaRepo(),
+      buildUnidadRepo(),
+      buildModeloRepo({ 'mod-1': modelo }),
+    );
+
+    const result = await useCase.execute({
+      ...dtoBase,
+      compatibilidad: [{ modeloEquipoId: 'mod-1' }],
+    });
+
+    expect(result.isFail()).toBe(true);
+    expect(result.getError().code).toBe('MODELO_EQUIPO_DESHABILITADO');
+    expect(insumoRepo.save).not.toHaveBeenCalled();
+  });
+
+  /**
+   * La PK de `insumos_modelos_equipo` es el par `(insumo, modelo)`: sin este
+   * guard las dos filas llegan al `create` anidado y mueren como violación de
+   * la PK, que sale como un 500 crudo en vez del 422 que nombra el modelo.
+   */
+  it('rechaza con COMPATIBILIDAD_DUPLICADA el mismo modelo repetido en el payload', async () => {
+    const insumoRepo = buildInsumoRepo();
+    const useCase = new CrearInsumoUseCase(
+      insumoRepo,
+      buildFamiliaRepo(),
+      buildUnidadRepo(),
+      buildModeloRepo(),
+    );
+
+    const result = await useCase.execute({
+      ...dtoBase,
+      compatibilidad: [
+        { modeloEquipoId: 'mod-1', rol: 'NEGRO' },
+        { modeloEquipoId: 'mod-1', rol: 'CIAN' },
+      ],
+    });
+
+    expect(result.isFail()).toBe(true);
+    expect(result.getError().code).toBe('COMPATIBILIDAD_DUPLICADA');
+    expect(result.getError().message).toContain('mod-1');
+    expect(insumoRepo.save).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Postgres normaliza el `uuid` a minúscula antes de comparar, así que estas
+   * dos entradas son la MISMA fila para la PK. Comparando los strings crudos el
+   * duplicado se escapa del guard y reaparece como el 500 que el guard existe
+   * para evitar.
+   */
+  it('detecta el duplicado aunque el id del modelo venga con otra capitalización', async () => {
+    const useCase = new CrearInsumoUseCase(
+      buildInsumoRepo(),
+      buildFamiliaRepo(),
+      buildUnidadRepo(),
+      buildModeloRepo(),
+    );
+
+    const result = await useCase.execute({
+      ...dtoBase,
+      compatibilidad: [
+        { modeloEquipoId: '9F1B0C2D-0000-4000-8000-000000000001' },
+        { modeloEquipoId: '9f1b0c2d-0000-4000-8000-000000000001' },
+      ],
+    });
+
+    expect(result.isFail()).toBe(true);
+    expect(result.getError().code).toBe('COMPATIBILIDAD_DUPLICADA');
+  });
+
+  /**
+   * El duplicado interno es un error de carga que no necesita una consulta para
+   * diagnosticarse. El catálogo de este test SÍ tiene cargado el rechazo de
+   * `mod-1` —es el mismo fixture que arriba devuelve `MODELO_EQUIPO_INEXISTENTE`—,
+   * así que el verde de acá viene de no haber consultado, no de un mock inerte.
+   */
+  it('resuelve el duplicado interno sin consultar el catálogo de modelos', async () => {
+    const modeloRepo = buildModeloRepo({ 'mod-1': null });
+    const useCase = new CrearInsumoUseCase(
+      buildInsumoRepo(),
+      buildFamiliaRepo(),
+      buildUnidadRepo(),
+      modeloRepo,
+    );
+
+    const result = await useCase.execute({
+      ...dtoBase,
+      compatibilidad: [{ modeloEquipoId: 'mod-1' }, { modeloEquipoId: 'mod-1' }],
+    });
+
+    expect(result.getError().code).toBe('COMPATIBILIDAD_DUPLICADA');
+    expect(modeloRepo.findById).not.toHaveBeenCalled();
+  });
+
+  it('no consulta el catálogo de modelos cuando el alta no trae compatibilidad', async () => {
+    const modeloRepo = buildModeloRepo({ 'mod-1': null });
+    const useCase = new CrearInsumoUseCase(
+      buildInsumoRepo(),
+      buildFamiliaRepo(),
+      buildUnidadRepo(),
+      modeloRepo,
+    );
+
+    const result = await useCase.execute(dtoBase);
+
+    expect(result.isOk()).toBe(true);
+    expect(result.getValue().compatibilidad).toEqual([]);
+    expect(modeloRepo.findById).not.toHaveBeenCalled();
+  });
+
+  it('tampoco lo consulta cuando la lista de compatibilidad viene vacía', async () => {
+    const modeloRepo = buildModeloRepo({ 'mod-1': null });
+    const useCase = new CrearInsumoUseCase(
+      buildInsumoRepo(),
+      buildFamiliaRepo(),
+      buildUnidadRepo(),
+      modeloRepo,
+    );
+
+    const result = await useCase.execute({ ...dtoBase, compatibilidad: [] });
+
+    expect(result.isOk()).toBe(true);
+    expect(result.getValue().compatibilidad).toEqual([]);
+    expect(modeloRepo.findById).not.toHaveBeenCalled();
+  });
+
+  /**
+   * La compatibilidad va ÚLTIMA en el orden de validación: un error de catálogo
+   * hace irrelevante todo lo que sigue.
+   */
+  it('con la familia inexistente Y la compatibilidad duplicada gana el error de la familia', async () => {
+    const modeloRepo = buildModeloRepo();
+    const useCase = new CrearInsumoUseCase(
+      buildInsumoRepo(),
+      buildFamiliaRepo(null),
+      buildUnidadRepo(),
+      modeloRepo,
+    );
+
+    const result = await useCase.execute({
+      ...dtoBase,
+      compatibilidad: [{ modeloEquipoId: 'mod-1' }, { modeloEquipoId: 'mod-1' }],
+    });
+
+    expect(result.getError().code).toBe('FAMILIA_INSUMO_INEXISTENTE');
+    expect(modeloRepo.findById).not.toHaveBeenCalled();
+  });
+
+  it('con un código alternativo repetido Y la compatibilidad duplicada gana el error del código', async () => {
+    const modeloRepo = buildModeloRepo();
+    const useCase = new CrearInsumoUseCase(
+      buildInsumoRepo(),
+      buildFamiliaRepo(),
+      buildUnidadRepo(),
+      modeloRepo,
+    );
+
+    const result = await useCase.execute({
+      ...dtoBase,
+      codigosAlternativos: [{ codigo: 'CE285A' }, { codigo: 'CE285A' }],
+      compatibilidad: [{ modeloEquipoId: 'mod-1' }, { modeloEquipoId: 'mod-1' }],
+    });
+
+    expect(result.getError().code).toBe('CODIGO_ALTERNATIVO_DUPLICADO');
+    expect(modeloRepo.findById).not.toHaveBeenCalled();
+  });
+
+  it('persiste el agregado con su compatibilidad ya normalizada', async () => {
+    const save = vi.fn().mockResolvedValue(undefined);
+    const useCase = new CrearInsumoUseCase(
+      buildInsumoRepo({ save }),
+      buildFamiliaRepo(),
+      buildUnidadRepo(),
+      buildModeloRepo(),
+    );
+
+    await useCase.execute({
+      ...dtoBase,
+      compatibilidad: [{ modeloEquipoId: 'mod-1', rol: ' negro ' }],
+    });
+
+    const guardado = save.mock.calls[0]![0] as InsumoEntity;
+    expect(guardado.compatibilidad).toEqual([{ modeloEquipoId: 'mod-1', rol: 'NEGRO' }]);
   });
 });

@@ -1,4 +1,5 @@
 import { DomainError, Result } from '../../../shared/domain/result';
+import { CompatibilidadModelo } from '../../domain/entities/compatibilidad-modelo';
 import { InsumoCodigoAlternativoEntity } from '../../domain/entities/insumo-codigo-alternativo.entity';
 import {
   InsumoEntity,
@@ -12,9 +13,12 @@ import {
 import { IInsumoRepository } from '../../domain/ports/i-insumo.repository';
 import {
   CodigoAlternativoInput,
+  CompatibilidadInput,
   LectorCatalogoFamilias,
+  LectorCatalogoModelosEquipo,
   LectorCatalogoUnidades,
   resolverCodigosAlternativos,
+  resolverCompatibilidad,
   validarFamiliaInsumoElegible,
   validarUnidadMedidaElegible,
 } from '../services/validar-insumo.service';
@@ -33,14 +37,19 @@ export interface EditarInsumoDto {
    * `undefined` deja la lista guardada intacta; `[]` la vacía.
    */
   codigosAlternativos?: CodigoAlternativoInput[];
+  /**
+   * Lista COMPLETA de modelos compatibles que REEMPLAZA a la guardada.
+   * `undefined` deja la lista guardada intacta; `[]` la vacía.
+   */
+  compatibilidad?: CompatibilidadInput[];
 }
 
 /**
  * EditarInsumoUseCase — edita un insumo del catálogo del tenant.
  *
  * Mantiene el mismo orden de validación que el alta —familia, unidad, código
- * único, códigos alternativos—, con dos diferencias que solo existen en la
- * edición:
+ * único, códigos alternativos, compatibilidad—, con tres diferencias que solo
+ * existen en la edición:
  *
  * - **La revalidación del código único corre solo si el código RESULTANTE
  *   cambió**, y se compara sobre los valores YA normalizados: reenviar
@@ -51,10 +60,17 @@ export interface EditarInsumoDto {
  * - **El conflicto global de códigos alternativos se consulta excluyendo al
  *   insumo que se edita**: sus propios códigos no chocan consigo mismo, y sin
  *   la exclusión reenviar la lista sin cambios se rechazaría a sí misma.
+ * - **La elegibilidad de los modelos se verifica solo sobre los que el insumo
+ *   NO tenía ya declarados.** Es el equivalente de la exclusión de arriba: la
+ *   lista se reemplaza entera, así que revalidar lo viejo convertiría una baja
+ *   del catálogo en una trampa —deshabilitar un modelo dejaría sin poder
+ *   editar, ni el nombre, a los insumos ya compatibles con él—.
  *
  * Los campos ausentes del PATCH no se validan ni se tocan: consultar el
  * catálogo por una familia que nadie reasignó haría fallar una edición de
  * nombre por una familia que el insumo ya tenía desde antes de deshabilitarse.
+ * Lo mismo vale para las DOS listas del agregado: `undefined` deja la guardada
+ * intacta y `[]` la vacía, y confundirlos borra datos que nadie pidió borrar.
  */
 export class EditarInsumoUseCase {
   constructor(
@@ -64,6 +80,7 @@ export class EditarInsumoUseCase {
     >,
     private readonly familiaRepo: LectorCatalogoFamilias,
     private readonly unidadMedidaRepo: LectorCatalogoUnidades,
+    private readonly modeloEquipoRepo: LectorCatalogoModelosEquipo,
   ) {}
 
   /**
@@ -71,8 +88,9 @@ export class EditarInsumoUseCase {
    * @returns El insumo editado, o el primer error de negocio que lo impide:
    *   `InsumoNoEncontradoError`, `FamiliaInsumoInexistenteError`,
    *   `FamiliaInsumoDeshabilitadaError`, `UnidadMedidaInexistenteError`,
-   *   `UnidadMedidaDeshabilitadaError`, `InsumoCodigoDuplicadoError` o
-   *   `CodigoAlternativoDuplicadoError`.
+   *   `UnidadMedidaDeshabilitadaError`, `InsumoCodigoDuplicadoError`,
+   *   `CodigoAlternativoDuplicadoError`, `CompatibilidadDuplicadaError`,
+   *   `ModeloEquipoInexistenteError` o `ModeloEquipoDeshabilitadoError`.
    */
   async execute(dto: EditarInsumoDto): Promise<Result<InsumoEntity, DomainError>> {
     const insumo = await this.insumoRepo.findById(dto.id);
@@ -118,6 +136,17 @@ export class EditarInsumoUseCase {
       codigosAlternativos = resueltos.getValue();
     }
 
+    let compatibilidad: CompatibilidadModelo[] | undefined;
+    if (dto.compatibilidad !== undefined) {
+      const resuelta = await resolverCompatibilidad(dto.compatibilidad, this.modeloEquipoRepo, {
+        existentes: insumo.compatibilidad,
+      });
+      if (resuelta.isFail()) {
+        return Result.fail(resuelta.getError());
+      }
+      compatibilidad = resuelta.getValue();
+    }
+
     insumo.actualizar({
       codigo,
       nombre,
@@ -128,6 +157,10 @@ export class EditarInsumoUseCase {
 
     if (codigosAlternativos !== undefined) {
       insumo.reemplazarCodigosAlternativos(codigosAlternativos);
+    }
+
+    if (compatibilidad !== undefined) {
+      insumo.reemplazarCompatibilidad(compatibilidad);
     }
 
     await this.insumoRepo.save(insumo);
