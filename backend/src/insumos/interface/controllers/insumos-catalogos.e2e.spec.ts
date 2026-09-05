@@ -1,7 +1,7 @@
 /**
  * insumos-catalogos.e2e.spec.ts — levanta la app REAL (Nest, sin mocks de
- * infraestructura) y pega por HTTP a `/familias-insumo` y `/unidades-medida`.
- * Cubre lo que ningún unit test puede:
+ * infraestructura) y pega por HTTP a `/familias-insumo`, `/unidades-medida` e
+ * `/insumos`. Cubre lo que ningún unit test puede:
  *
  * 1. El gate por MÉTODO de los dos controllers: los unit tests instancian el
  *    controller a mano y los guards nunca corren. Solo un request HTTP real
@@ -10,9 +10,11 @@
  *    capa de aplicación. Que `toner` en minúscula termine como `TONER` en la
  *    respuesta atraviesa las cuatro capas, y ninguna de ellas sola lo prueba.
  *
- * UN SOLO archivo para los dos catálogos, con UN SOLO tenant efímero: el
- * provisioning de una base efímera es lo caro de este spec, y los dos catálogos
- * comparten módulo, guards y forma.
+ * UN SOLO archivo para los tres recursos, con UN SOLO tenant efímero: el
+ * provisioning de una base efímera es lo caro de este spec, y los tres
+ * comparten módulo y guards. `/insumos` va acá y no en un archivo propio
+ * justamente porque necesita los otros dos: sin una familia y una unidad
+ * vigentes en el mismo tenant no se puede dar de alta ningún insumo.
  *
  * Mismo patrón que `sectores.e2e.spec.ts` (provisioning de tenant efímero,
  * fetch nativo, orden app.close() → onModuleDestroy() → dropDatabase).
@@ -44,6 +46,7 @@ import { RoleEntity } from '../../../auth/domain/entities/role.entity';
 import { Argon2HashProvider } from '../../../auth/infrastructure/argon2-hash.provider';
 import { FamiliaInsumoResponseDto } from '../dtos/familias-insumo.dto';
 import { UnidadMedidaResponseDto } from '../dtos/unidades-medida.dto';
+import { InsumoResponseDto } from '../dtos/insumos.dto';
 import { usarLockMasterTest } from '../../../testing/lock-master-test';
 
 const MASTER_TEST_URL =
@@ -114,7 +117,7 @@ class TestHarnessModule implements NestModule {
 // Turno exclusivo sobre la master de test compartida — ver src/testing/lock-master-test.ts.
 usarLockMasterTest();
 
-describe('Catálogos de insumos e2e — gate por método + borde completo', () => {
+describe('Insumos e2e — gate por método + borde completo', () => {
   let app: INestApplication;
   let baseUrl: string;
 
@@ -493,6 +496,403 @@ describe('Catálogos de insumos e2e — gate por método + borde completo', () =
         bearer(adminActor.accessToken),
       );
       expect(listadoTrasReactivar.data.find((fila) => fila.id === id)?.activo).toBe(true);
+    });
+  });
+
+  describe('Insumos — el agregado con sus códigos alternativos', () => {
+    /**
+     * Siembra la familia y la unidad que el alta de un insumo necesita, por la
+     * API real: son FK con `ON DELETE RESTRICT`, así que sin las dos filas no
+     * entra ningún insumo.
+     *
+     * @param token Access token de un actor con rol ADMINISTRADOR.
+     * @param sufijo Sufijo único, para que los códigos no choquen entre tests
+     *   (el tenant efímero es UNO SOLO para todo el archivo y las tablas de
+     *   catálogo no se truncan entre casos).
+     * @returns Los ids de la familia y la unidad recién creadas.
+     */
+    async function sembrarCatalogos(
+      token: string,
+      sufijo: string,
+    ): Promise<{ familiaId: string; unidadMedidaId: string }> {
+      const familia = await httpPost<FamiliaInsumoResponseDto>(
+        `${baseUrl}/familias-insumo`,
+        { codigo: `FAM_${sufijo}`, nombre: 'Familia de insumos' },
+        bearer(token),
+      );
+      const unidad = await httpPost<UnidadMedidaResponseDto>(
+        `${baseUrl}/unidades-medida`,
+        { codigo: `UM_${sufijo}`, nombre: 'Unidad de medida' },
+        bearer(token),
+      );
+      expect(familia.status).toBe(201);
+      expect(unidad.status).toBe(201);
+      return { familiaId: familia.data.id, unidadMedidaId: unidad.data.id };
+    }
+
+    /** Sufijo único por caso: el tenant efímero es compartido por todo el archivo. */
+    function sufijo(): string {
+      return randomBytes(3).toString('hex').toUpperCase();
+    }
+
+    it('sin JWT → 401 en GET /insumos y en POST /insumos', async () => {
+      const consulta = await httpGet(`${baseUrl}/insumos`);
+      const comando = await httpPost(`${baseUrl}/insumos`, { codigo: 'X', nombre: 'X' });
+
+      expect(consulta.status).toBe(401);
+      expect(comando.status).toBe(401);
+    });
+
+    it('POST y PATCH /insumos: actor SIN rol ADMINISTRADOR → 403', async () => {
+      const suf = sufijo();
+      const adminActor = await crearActorConRol('ADMINISTRADOR');
+      const catalogos = await sembrarCatalogos(adminActor.accessToken, suf);
+      const creado = await httpPost<InsumoResponseDto>(
+        `${baseUrl}/insumos`,
+        { codigo: `INS_${suf}`, nombre: 'Tóner negro', ...catalogos },
+        bearer(adminActor.accessToken),
+      );
+      expect(creado.status).toBe(201);
+
+      const actor = await crearActorConRol('USUARIO', adminActor.clienteId);
+
+      const alta = await httpPost(
+        `${baseUrl}/insumos`,
+        { codigo: `INS_OTRO_${suf}`, nombre: 'Otro', ...catalogos },
+        bearer(actor.accessToken),
+      );
+      const editar = await httpPatch(
+        `${baseUrl}/insumos/${creado.data.id}`,
+        { nombre: 'Renombrado' },
+        bearer(actor.accessToken),
+      );
+      const cambiarEstado = await httpPatch(
+        `${baseUrl}/insumos/${creado.data.id}/estado`,
+        { activo: false },
+        bearer(actor.accessToken),
+      );
+
+      expect(alta.status).toBe(403);
+      expect(editar.status).toBe(403);
+      expect(cambiarEstado.status).toBe(403);
+    });
+
+    // El assert es de CONTENIDO y no solo de status: un 200 no prueba lectura
+    // abierta si la ruta devuelve el subconjunto de filas equivocado.
+    it('GET /insumos: actor SIN rol ADMINISTRADOR → 200 y ve el catálogo con sus códigos alternativos', async () => {
+      const suf = sufijo();
+      const adminActor = await crearActorConRol('ADMINISTRADOR');
+      const catalogos = await sembrarCatalogos(adminActor.accessToken, suf);
+      const sembrado = await httpPost<InsumoResponseDto>(
+        `${baseUrl}/insumos`,
+        {
+          codigo: `INS_LECTURA_${suf}`,
+          nombre: 'Lectura abierta',
+          ...catalogos,
+          codigosAlternativos: [{ codigo: `ALT_${suf}`, fabricante: 'HP' }],
+        },
+        bearer(adminActor.accessToken),
+      );
+      expect(sembrado.status).toBe(201);
+
+      const actor = await crearActorConRol('USUARIO', adminActor.clienteId);
+
+      const { status, data } = await httpGet<InsumoResponseDto[]>(
+        `${baseUrl}/insumos`,
+        bearer(actor.accessToken),
+      );
+
+      expect(status).toBe(200);
+      const fila = data.find((insumo) => insumo.id === sembrado.data.id);
+      expect(fila?.codigo).toBe(`INS_LECTURA_${suf}`);
+      expect(fila?.codigosAlternativos).toEqual([
+        { id: sembrado.data.codigosAlternativos[0]!.id, codigo: `ALT_${suf}`, fabricante: 'HP' },
+      ]);
+    });
+
+    /**
+     * El código viaja en minúscula y el fabricante también; los dos tienen que
+     * llegar en mayúscula. Atraviesa el `@Transform` del DTO y la
+     * normalización de la capa de aplicación: si alguna de las dos se cae, acá
+     * se ve. El fabricante de solo espacios colapsa a `null`, que es lo que
+     * hace utilizable al índice `NULLS NOT DISTINCT`.
+     */
+    it('POST /insumos normaliza el código, el fabricante y colapsa el fabricante vacío a null', async () => {
+      const suf = sufijo();
+      const adminActor = await crearActorConRol('ADMINISTRADOR');
+      const catalogos = await sembrarCatalogos(adminActor.accessToken, suf);
+
+      const { status, data } = await httpPost<InsumoResponseDto>(
+        `${baseUrl}/insumos`,
+        {
+          codigo: `  ins_norm_${suf.toLowerCase()}  `,
+          nombre: '  Tóner negro  ',
+          ...catalogos,
+          codigosAlternativos: [
+            { codigo: `  alt_${suf.toLowerCase()}  `, fabricante: ' hp ' },
+            { codigo: `GEN_${suf}`, fabricante: '   ' },
+          ],
+        },
+        bearer(adminActor.accessToken),
+      );
+
+      expect(status).toBe(201);
+      expect(data.codigo).toBe(`INS_NORM_${suf}`);
+      expect(data.nombre).toBe('Tóner negro');
+      const porCodigo = new Map(data.codigosAlternativos.map((c) => [c.codigo, c.fabricante]));
+      expect(porCodigo.get(`ALT_${suf}`)).toBe('HP');
+      expect(porCodigo.get(`GEN_${suf}`)).toBeNull();
+    });
+
+    /**
+     * Existir NO es ser elegible: la FK acepta la familia deshabilitada porque
+     * su fila está. El hermano invertido —la misma alta contra una familia
+     * habilitada— prueba que el rechazo no viene de un guard que rechaza todo.
+     */
+    it('POST /insumos con familia deshabilitada → 422, y con la habilitada → 201', async () => {
+      const suf = sufijo();
+      const adminActor = await crearActorConRol('ADMINISTRADOR');
+      const vigente = await sembrarCatalogos(adminActor.accessToken, suf);
+      const deshabilitada = await httpPost<FamiliaInsumoResponseDto>(
+        `${baseUrl}/familias-insumo`,
+        { codigo: `FAM_OFF_${suf}`, nombre: 'Familia deshabilitada' },
+        bearer(adminActor.accessToken),
+      );
+      const baja = await httpPatch(
+        `${baseUrl}/familias-insumo/${deshabilitada.data.id}/estado`,
+        { activo: false },
+        bearer(adminActor.accessToken),
+      );
+      expect(baja.status).toBe(200);
+
+      const conDeshabilitada = await httpPost(
+        `${baseUrl}/insumos`,
+        {
+          codigo: `INS_OFF_${suf}`,
+          nombre: 'Con familia deshabilitada',
+          familiaId: deshabilitada.data.id,
+          unidadMedidaId: vigente.unidadMedidaId,
+        },
+        bearer(adminActor.accessToken),
+      );
+      const conHabilitada = await httpPost(
+        `${baseUrl}/insumos`,
+        { codigo: `INS_ON_${suf}`, nombre: 'Con familia habilitada', ...vigente },
+        bearer(adminActor.accessToken),
+      );
+
+      expect(conDeshabilitada.status).toBe(422);
+      expect(conHabilitada.status).toBe(201);
+    });
+
+    /**
+     * El UNIQUE `(codigo, fabricante)` es GLOBAL al tenant, así que el par ya
+     * tomado por OTRO insumo se rechaza en el borde con un 422 y no llega a la
+     * base como un 23505 crudo. El hermano invertido —el mismo código con otro
+     * fabricante— prueba que el rechazo es sobre el PAR y no sobre el código
+     * solo.
+     */
+    it('POST /insumos con un par (codigo, fabricante) ya tomado → 422; con otro fabricante → 201', async () => {
+      const suf = sufijo();
+      const adminActor = await crearActorConRol('ADMINISTRADOR');
+      const catalogos = await sembrarCatalogos(adminActor.accessToken, suf);
+      const primero = await httpPost(
+        `${baseUrl}/insumos`,
+        {
+          codigo: `INS_PAR_A_${suf}`,
+          nombre: 'Ocupante',
+          ...catalogos,
+          codigosAlternativos: [{ codigo: `PAR_${suf}`, fabricante: 'HP' }],
+        },
+        bearer(adminActor.accessToken),
+      );
+      expect(primero.status).toBe(201);
+
+      const choque = await httpPost(
+        `${baseUrl}/insumos`,
+        {
+          codigo: `INS_PAR_B_${suf}`,
+          nombre: 'Choca',
+          ...catalogos,
+          codigosAlternativos: [{ codigo: `PAR_${suf}`, fabricante: 'hp' }],
+        },
+        bearer(adminActor.accessToken),
+      );
+      const otroFabricante = await httpPost(
+        `${baseUrl}/insumos`,
+        {
+          codigo: `INS_PAR_C_${suf}`,
+          nombre: 'Otro fabricante',
+          ...catalogos,
+          codigosAlternativos: [{ codigo: `PAR_${suf}`, fabricante: 'CANON' }],
+        },
+        bearer(adminActor.accessToken),
+      );
+
+      expect(choque.status).toBe(422);
+      expect(otroFabricante.status).toBe(201);
+    });
+
+    /** El duplicado DENTRO del mismo payload se resuelve sin tocar la base. */
+    it('POST /insumos con el mismo par repetido en el payload → 422', async () => {
+      const suf = sufijo();
+      const adminActor = await crearActorConRol('ADMINISTRADOR');
+      const catalogos = await sembrarCatalogos(adminActor.accessToken, suf);
+
+      const { status } = await httpPost(
+        `${baseUrl}/insumos`,
+        {
+          codigo: `INS_REP_${suf}`,
+          nombre: 'Payload con repetido',
+          ...catalogos,
+          codigosAlternativos: [
+            { codigo: `REP_${suf}`, fabricante: 'HP' },
+            { codigo: `rep_${suf.toLowerCase()}`, fabricante: ' hp ' },
+          ],
+        },
+        bearer(adminActor.accessToken),
+      );
+
+      expect(status).toBe(422);
+    });
+
+    /**
+     * Postgres NO falla ante un tercer decimal en un `DECIMAL(10,2)`: lo
+     * REDONDEA en silencio. Sin el guard del borde y el del dominio, el usuario
+     * guarda `0.005` y le queda `0.01`, sin ningún error de por medio.
+     */
+    it('POST /insumos con stockMinimo de tres decimales → 400', async () => {
+      const suf = sufijo();
+      const adminActor = await crearActorConRol('ADMINISTRADOR');
+      const catalogos = await sembrarCatalogos(adminActor.accessToken, suf);
+
+      const { status } = await httpPost(
+        `${baseUrl}/insumos`,
+        { codigo: `INS_DEC_${suf}`, nombre: 'Tres decimales', ...catalogos, stockMinimo: 0.005 },
+        bearer(adminActor.accessToken),
+      );
+
+      expect(status).toBe(400);
+    });
+
+    it('PATCH /insumos/:id con un UUID bien formado que no existe → 404', async () => {
+      const adminActor = await crearActorConRol('ADMINISTRADOR');
+
+      const { status } = await httpPatch(
+        `${baseUrl}/insumos/00000000-0000-4000-8000-000000000000`,
+        { nombre: 'X' },
+        bearer(adminActor.accessToken),
+      );
+
+      expect(status).toBe(404);
+    });
+
+    /**
+     * Hermano del caso de arriba, y protege algo distinto: un id mal formado no
+     * es un `@db.Uuid` válido — Postgres lo rechaza con `22P02`, que NO está en
+     * el mapa cerrado de `PrismaExceptionFilter`, así que sin el
+     * `ParseUUIDPipe` el usuario se come un 500 en vez de un error de borde.
+     */
+    it('PATCH /insumos/:id con id mal formado → 400, nunca 500', async () => {
+      const adminActor = await crearActorConRol('ADMINISTRADOR');
+
+      const { status } = await httpPatch(
+        `${baseUrl}/insumos/no-es-un-uuid`,
+        { nombre: 'X' },
+        bearer(adminActor.accessToken),
+      );
+
+      expect(status).toBe(400);
+    });
+
+    it('flujo completo: crear → editar la lista de códigos → desactivar → sigue listado → reactivar', async () => {
+      const suf = sufijo();
+      const adminActor = await crearActorConRol('ADMINISTRADOR');
+      const catalogos = await sembrarCatalogos(adminActor.accessToken, suf);
+
+      const crear = await httpPost<InsumoResponseDto>(
+        `${baseUrl}/insumos`,
+        {
+          codigo: `INS_FLUJO_${suf}`,
+          nombre: 'Original',
+          ...catalogos,
+          stockMinimo: 10.5,
+          codigosAlternativos: [
+            { codigo: `QUEDA_${suf}`, fabricante: 'HP' },
+            { codigo: `SEVA_${suf}`, fabricante: 'HP' },
+          ],
+        },
+        bearer(adminActor.accessToken),
+      );
+      expect(crear.status).toBe(201);
+      expect(crear.data.stockMinimo).toBe(10.5);
+      const id = crear.data.id;
+      const idQueQueda = crear.data.codigosAlternativos.find(
+        (c) => c.codigo === `QUEDA_${suf}`,
+      )!.id;
+
+      // La lista que llega REEMPLAZA a la guardada: el código que no viene es
+      // uno que el usuario sacó. El que se queda conserva su id, que es el
+      // trabajo que hace la reutilización de la entidad existente.
+      const editar = await httpPatch<InsumoResponseDto>(
+        `${baseUrl}/insumos/${id}`,
+        {
+          nombre: 'Renombrado',
+          codigosAlternativos: [
+            { codigo: `QUEDA_${suf}`, fabricante: 'HP' },
+            { codigo: `NUEVO_${suf}`, fabricante: null },
+          ],
+        },
+        bearer(adminActor.accessToken),
+      );
+      expect(editar.status).toBe(200);
+      expect(editar.data.nombre).toBe('Renombrado');
+      expect(editar.data.codigosAlternativos.map((c) => c.codigo).sort()).toEqual(
+        [`NUEVO_${suf}`, `QUEDA_${suf}`].sort(),
+      );
+      expect(editar.data.codigosAlternativos.find((c) => c.codigo === `QUEDA_${suf}`)?.id).toBe(
+        idQueQueda,
+      );
+
+      // Listado previo: confirma que el PATCH persistió y ancla el estado
+      // inicial `activo: true` contra el que se compara la baja de abajo.
+      const listadoActivo = await httpGet<InsumoResponseDto[]>(
+        `${baseUrl}/insumos`,
+        bearer(adminActor.accessToken),
+      );
+      const filaActiva = listadoActivo.data.find((insumo) => insumo.id === id);
+      expect(filaActiva?.nombre).toBe('Renombrado');
+      expect(filaActiva?.activo).toBe(true);
+      expect(filaActiva?.codigosAlternativos).toHaveLength(2);
+
+      const desactivar = await httpPatch(
+        `${baseUrl}/insumos/${id}/estado`,
+        { activo: false },
+        bearer(adminActor.accessToken),
+      );
+      expect(desactivar.status).toBe(200);
+
+      // Deshabilitar NO elimina ni oculta: la fila sigue en el listado con
+      // `activo: false`, que es de donde el administrador saca el id para
+      // volver a habilitarla.
+      const listadoTrasBaja = await httpGet<InsumoResponseDto[]>(
+        `${baseUrl}/insumos`,
+        bearer(adminActor.accessToken),
+      );
+      expect(listadoTrasBaja.data.find((insumo) => insumo.id === id)?.activo).toBe(false);
+
+      const reactivar = await httpPatch(
+        `${baseUrl}/insumos/${id}/estado`,
+        { activo: true },
+        bearer(adminActor.accessToken),
+      );
+      expect(reactivar.status).toBe(200);
+
+      const listadoTrasReactivar = await httpGet<InsumoResponseDto[]>(
+        `${baseUrl}/insumos`,
+        bearer(adminActor.accessToken),
+      );
+      expect(listadoTrasReactivar.data.find((insumo) => insumo.id === id)?.activo).toBe(true);
     });
   });
 });
