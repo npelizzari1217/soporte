@@ -52,6 +52,22 @@ export const INSUMO_STOCK_MINIMO_MINIMO = 0;
 export const INSUMO_STOCK_MINIMO_DECIMALES = 2;
 
 /**
+ * Techo de códigos alternativos por insumo.
+ *
+ * No lo pide ninguna columna: lo pide el costo de guardar. El agregado se
+ * persiste con una escritura anidada por código dentro de una sola transacción
+ * implícita, así que una lista sin techo sostiene esa transacción abierta sobre
+ * la base del inquilino durante tantas idas y vueltas como códigos hayan
+ * entrado. Hoy el único freno es incidental —el límite de body de Express por
+ * defecto—, y un tope accidental no es un tope.
+ *
+ * Cincuenta es holgado para el caso real: un tóner se nombra de tres o cuatro
+ * maneras entre el fabricante, el genérico y el código del proveedor. Pasarse
+ * de cincuenta es un error de carga, no un insumo con muchos nombres.
+ */
+export const INSUMO_CODIGOS_ALTERNATIVOS_MAX = 50;
+
+/**
  * Normalización del código de insumo, exportada para que la capa de aplicación
  * y el BORDE apliquen exactamente la misma regla.
  *
@@ -145,6 +161,26 @@ function validarStockMinimo(valor?: number | null): void {
 }
 
 /**
+ * Precondición de cantidad de códigos alternativos. Mismo criterio `throw` que
+ * los otros guards: el borde ya lo rechaza con un 400 que nombra el campo, y
+ * este es el backstop para el caller que no pasa por el borde —un script de
+ * importación, una semilla— que si no abriría la transacción larga igual.
+ *
+ * NO se aplica en `reconstitute()`: una fila histórica con más códigos de los
+ * que hoy se admiten se lee, no explota.
+ *
+ * @param codigos Lista a medir, o `undefined` si el caller no la toca.
+ * @returns Nada; lanza si la lista excede el techo.
+ */
+function validarCantidadDeCodigos(codigos?: readonly unknown[]): void {
+  if (codigos !== undefined && codigos.length > INSUMO_CODIGOS_ALTERNATIVOS_MAX) {
+    throw new Error(
+      `InsumoEntity: admite como máximo ${INSUMO_CODIGOS_ALTERNATIVOS_MAX} códigos alternativos.`,
+    );
+  }
+}
+
+/**
  * InsumoEntity — raíz del agregado del catálogo de insumos del tenant.
  *
  * Los códigos alternativos son parte del agregado y no entidades sueltas: no
@@ -169,6 +205,7 @@ export class InsumoEntity extends BaseEntity<InsumoProps> {
   static create(props: InsumoProps, id?: string): InsumoEntity {
     validarLargos(props.codigo, props.nombre);
     validarStockMinimo(props.stockMinimo);
+    validarCantidadDeCodigos(props.codigosAlternativos);
     return new InsumoEntity({ ...props, codigosAlternativos: [...props.codigosAlternativos] }, id);
   }
 
@@ -294,9 +331,10 @@ export class InsumoEntity extends BaseEntity<InsumoProps> {
    * referencia viva a las tripas del agregado.
    *
    * @param codigos Códigos alternativos ya construidos y validados por la capa de aplicación.
-   * @returns Nada.
+   * @returns Nada; lanza si la lista excede el techo de códigos por insumo.
    */
   reemplazarCodigosAlternativos(codigos: InsumoCodigoAlternativoEntity[]): void {
+    validarCantidadDeCodigos(codigos);
     this.props.codigosAlternativos = [...codigos];
     this.touch();
   }

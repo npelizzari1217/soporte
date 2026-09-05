@@ -6,6 +6,7 @@ import {
 import {
   InsumoEntity,
   InsumoProps,
+  INSUMO_CODIGOS_ALTERNATIVOS_MAX,
   INSUMO_CODIGO_MAX_LENGTH,
   INSUMO_NOMBRE_MAX_LENGTH,
   INSUMO_STOCK_MINIMO_MAXIMO,
@@ -355,6 +356,84 @@ describe('InsumoEntity', () => {
       entrantes.push(codigoAlternativo({ codigo: 'INTRUSO' }));
 
       expect(insumo.codigosAlternativos).toHaveLength(1);
+    });
+  });
+
+  /**
+   * El techo no lo pide ninguna columna: lo pide el costo de guardar. El
+   * agregado se persiste con una escritura anidada por código dentro de una
+   * sola transacción, así que una lista sin techo la sostiene abierta sobre la
+   * base del inquilino tantas idas y vueltas como códigos hayan entrado.
+   *
+   * El guard vive acá además de en el DTO porque el borde no es el único
+   * camino: un script de importación o una semilla construyen la entidad
+   * directo.
+   */
+  describe('techo de códigos alternativos', () => {
+    /**
+     * El mensaje se arma desde la constante, no con el número escrito a mano:
+     * si el techo cambia, el test tiene que seguir midiendo la CONDUCTA
+     * —rechazar por encima del límite— y no ponerse rojo por el texto.
+     */
+    function mensajeDelTecho(): RegExp {
+      return new RegExp(`máximo ${INSUMO_CODIGOS_ALTERNATIVOS_MAX} códigos alternativos`);
+    }
+
+    function listaDe(cantidad: number): InsumoCodigoAlternativoEntity[] {
+      return Array.from({ length: cantidad }, (_valor, indice) =>
+        codigoAlternativo({ codigo: `ALT-${indice}` }),
+      );
+    }
+
+    it('create() rechaza por encima del techo, nombrando el límite', () => {
+      expect(() =>
+        InsumoEntity.create(
+          propsBase({ codigosAlternativos: listaDe(INSUMO_CODIGOS_ALTERNATIVOS_MAX + 1) }),
+        ),
+      ).toThrow(mensajeDelTecho());
+    });
+
+    it('create() acepta el techo exacto (límite inclusive)', () => {
+      expect(() =>
+        InsumoEntity.create(
+          propsBase({ codigosAlternativos: listaDe(INSUMO_CODIGOS_ALTERNATIVOS_MAX) }),
+        ),
+      ).not.toThrow();
+    });
+
+    /**
+     * El hermano de `create()`: sin este caso, el techo se podría poner solo
+     * en el alta y la edición seguiría abriendo la transacción larga, que es
+     * el camino más probable — a un insumo se le agregan códigos con el
+     * tiempo.
+     */
+    it('reemplazarCodigosAlternativos() rechaza por encima del techo', () => {
+      const insumo = InsumoEntity.create(propsBase());
+
+      expect(() =>
+        insumo.reemplazarCodigosAlternativos(listaDe(INSUMO_CODIGOS_ALTERNATIVOS_MAX + 1)),
+      ).toThrow(mensajeDelTecho());
+    });
+
+    it('reemplazarCodigosAlternativos() acepta el techo exacto', () => {
+      const insumo = InsumoEntity.create(propsBase());
+
+      expect(() =>
+        insumo.reemplazarCodigosAlternativos(listaDe(INSUMO_CODIGOS_ALTERNATIVOS_MAX)),
+      ).not.toThrow();
+      expect(insumo.codigosAlternativos).toHaveLength(INSUMO_CODIGOS_ALTERNATIVOS_MAX);
+    });
+
+    it('reconstitute() no aplica el techo — una fila histórica se lee, no explota', () => {
+      expect(() =>
+        InsumoEntity.reconstitute(
+          propsBase({ codigosAlternativos: listaDe(INSUMO_CODIGOS_ALTERNATIVOS_MAX + 1) }),
+          'id-legado',
+          new Date(),
+          new Date(),
+          null,
+        ),
+      ).not.toThrow();
     });
   });
 
