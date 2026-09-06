@@ -1,0 +1,214 @@
+import { DomainError } from '../../../shared/domain/result';
+
+/**
+ * InsumoNoEncontradoError — el `id` de insumo indicado no existe en el
+ * catálogo del tenant.
+ * → HTTP 404 en la capa de presentación.
+ */
+export class InsumoNoEncontradoError extends DomainError {
+  readonly code = 'INSUMO_NO_ENCONTRADO';
+
+  constructor(id: string) {
+    super(`Insumo con id "${id}" no encontrado en el catálogo del tenant.`);
+  }
+}
+
+/**
+ * InsumoCodigoDuplicadoError — el `codigo` provisto al crear/editar ya está
+ * tomado en el tenant.
+ *
+ * El mensaje aclara que sigue tomado aunque el insumo esté deshabilitado o
+ * dado de baja porque `insumos_codigo_key` NO es un índice parcial: no filtra
+ * por `activo` ni por `deleted_at`. Sin esa aclaración el administrador busca
+ * el código en el listado, no lo encuentra —el listado muestra solo lo
+ * vigente— y concluye que el sistema le miente.
+ * → HTTP 422 en la capa de presentación.
+ */
+export class InsumoCodigoDuplicadoError extends DomainError {
+  readonly code = 'INSUMO_CODIGO_DUPLICADO';
+
+  constructor(codigo: string) {
+    super(
+      `Ya existe un insumo con el código "${codigo}" en este tenant (activo o inactivo, incluso con baja lógica).`,
+    );
+  }
+}
+
+/**
+ * FamiliaInsumoInexistenteError — la `familiaId` provista no corresponde a
+ * ninguna familia del catálogo del tenant.
+ *
+ * Vive en este archivo y no en `familias-insumo.errors.ts` porque el dueño del
+ * error es el consumidor que lo produce: lo emite el alta/edición de insumo,
+ * no el ABM de familias. Mismo criterio que `ModeloEquipoInexistenteError` en
+ * `equipos.errors.ts`.
+ * → HTTP 422 en la capa de presentación.
+ */
+export class FamiliaInsumoInexistenteError extends DomainError {
+  readonly code = 'FAMILIA_INSUMO_INEXISTENTE';
+
+  constructor(id: string) {
+    super(`La familia de insumo con id "${id}" no existe en el catálogo del tenant.`);
+  }
+}
+
+/**
+ * FamiliaInsumoDeshabilitadaError — la familia existe pero está deshabilitada,
+ * así que no es elegible para un insumo nuevo ni para una reasignación.
+ *
+ * Es un error DISTINTO del de la familia inexistente y no un matiz del mismo:
+ * la FK no puede atrapar este caso —la fila existe— y decirle "no existe" al
+ * administrador sobre algo que ve en su propio listado lo manda a buscar un
+ * problema que no está.
+ * → HTTP 422 en la capa de presentación.
+ */
+export class FamiliaInsumoDeshabilitadaError extends DomainError {
+  readonly code = 'FAMILIA_INSUMO_DESHABILITADA';
+
+  constructor(id: string) {
+    super(
+      `La familia de insumo con id "${id}" está deshabilitada y no puede asignarse a un insumo.`,
+    );
+  }
+}
+
+/**
+ * UnidadMedidaInexistenteError — la `unidadMedidaId` provista no corresponde a
+ * ninguna unidad del catálogo del tenant. Vive acá por el mismo criterio de
+ * pertenencia que `FamiliaInsumoInexistenteError`.
+ * → HTTP 422 en la capa de presentación.
+ */
+export class UnidadMedidaInexistenteError extends DomainError {
+  readonly code = 'UNIDAD_MEDIDA_INEXISTENTE';
+
+  constructor(id: string) {
+    super(`La unidad de medida con id "${id}" no existe en el catálogo del tenant.`);
+  }
+}
+
+/**
+ * UnidadMedidaDeshabilitadaError — la unidad existe pero está deshabilitada, y
+ * por lo tanto no es elegible. Existir no es ser elegible: la FK deja pasar
+ * este caso porque la fila está.
+ * → HTTP 422 en la capa de presentación.
+ */
+export class UnidadMedidaDeshabilitadaError extends DomainError {
+  readonly code = 'UNIDAD_MEDIDA_DESHABILITADA';
+
+  constructor(id: string) {
+    super(
+      `La unidad de medida con id "${id}" está deshabilitada y no puede asignarse a un insumo.`,
+    );
+  }
+}
+
+/**
+ * CodigoAlternativoDuplicadoError — el par `(codigo, fabricante)` ya está
+ * tomado. Cubre los dos caminos por los que eso ocurre: el par repetido dentro
+ * del mismo payload y el par que ya pertenece a otro insumo del tenant. Son el
+ * mismo problema para quien carga —el par tiene que resolver a un solo
+ * insumo— y por eso comparten código de error.
+ *
+ * El mensaje nombra el PAR COMPLETO porque el UNIQUE es sobre las dos
+ * columnas: el mismo `CE285A` de dos fabricantes distintos convive sin
+ * problema, y decir solo el código haría parecer prohibido algo que no lo es.
+ *
+ * Con `fabricante` en `null` el par es el código genérico, y el mensaje lo
+ * dice con palabras: interpolar el `null` produciría `del fabricante "null"`,
+ * que manda al administrador a buscar un fabricante que no existe.
+ * → HTTP 422 en la capa de presentación.
+ */
+export class CodigoAlternativoDuplicadoError extends DomainError {
+  readonly code = 'CODIGO_ALTERNATIVO_DUPLICADO';
+
+  constructor(codigo: string, fabricante: string | null) {
+    super(
+      fabricante === null
+        ? `El código alternativo genérico "${codigo}", sin fabricante, ya está en uso en este tenant.`
+        : `El código alternativo "${codigo}" del fabricante "${fabricante}" ya está en uso en este tenant.`,
+    );
+  }
+}
+
+/**
+ * ModeloEquipoInexistenteError — un `modeloEquipoId` de la lista de
+ * compatibilidad no corresponde a ningún modelo del catálogo `modelos_equipo`
+ * del tenant.
+ *
+ * Comparte NOMBRE y `code` con el error homónimo de
+ * `src/equipos/domain/errors/equipos.errors.ts`, y eso es DELIBERADO: es la
+ * misma condición de negocio —un id que no está en el catálogo de modelos— y
+ * el código que ve el cliente tiene que ser el mismo lo reporte el alta de un
+ * equipo o el alta de un insumo. Un mismo problema con dos códigos obliga al
+ * frontend a mantener dos ramas para la misma corrección.
+ *
+ * Está DUPLICADO y no importado porque `equipos` ya importa el puerto del
+ * catálogo de modelos desde `insumos`: importar en sentido inverso cerraría un
+ * ciclo entre los dos módulos. Es el mismo criterio con el que la familia y la
+ * unidad de medida tienen su chequeo propio en cada consumidor. Ningún archivo
+ * importa los dos.
+ * → HTTP 422 en la capa de presentación (es un valor del BODY, no el recurso
+ *   de la URL).
+ */
+export class ModeloEquipoInexistenteError extends DomainError {
+  readonly code = 'MODELO_EQUIPO_INEXISTENTE';
+
+  constructor(modeloEquipoId: string) {
+    super(
+      `El modelo de equipo con id "${modeloEquipoId}" no existe en el catálogo del tenant y no puede ` +
+        `declararse compatible con un insumo.`,
+    );
+  }
+}
+
+/**
+ * ModeloEquipoDeshabilitadoError — el modelo existe en el catálogo pero está
+ * DESHABILITADO (`activo: false`), así que no es elegible.
+ *
+ * Este es el caso que la FK NO puede atrapar: la fila existe, la base acepta el
+ * vínculo sin chistar y el insumo queda declarado compatible con un modelo que
+ * el administrador ya sacó de circulación —una falla silenciosa, sin error ni
+ * log—. Deshabilitar un modelo significa que no se puede elegir más; si la API
+ * lo acepta igual, deshabilitar no sirve para nada.
+ *
+ * Comparte nombre y `code` con el homónimo de `equipos.errors.ts` por el mismo
+ * motivo que `ModeloEquipoInexistenteError`. Lo que NO comparte es la firma: el
+ * de `equipos` nombra el par `marca` + `modelo` porque valida UN modelo por
+ * equipo y ya lo tiene leído; acá la lista puede traer decenas, y arrastrar la
+ * marca y el modelo de cada uno solo para el mensaje obligaría a leerlos aunque
+ * la validación pase.
+ * → HTTP 422 en la capa de presentación.
+ */
+export class ModeloEquipoDeshabilitadoError extends DomainError {
+  readonly code = 'MODELO_EQUIPO_DESHABILITADO';
+
+  constructor(modeloEquipoId: string) {
+    super(
+      `El modelo de equipo con id "${modeloEquipoId}" está deshabilitado y no puede declararse ` +
+        `compatible con un insumo. Habilítelo en el catálogo de modelos de equipo o quítelo de la lista.`,
+    );
+  }
+}
+
+/**
+ * CompatibilidadDuplicadaError — el mismo modelo de equipo aparece más de una
+ * vez en la lista de compatibilidad que llega en el payload.
+ *
+ * El duplicado es SIEMPRE dentro del payload, nunca contra el catálogo: la PK
+ * de `insumos_modelos_equipo` es el par `(insumo_id, modelo_equipo_id)`, así
+ * que dos insumos distintos SÍ pueden declarar el mismo modelo — eso es justo
+ * lo que la relación N:N significa. Frenarlo acá y no en el `upsert` es lo que
+ * distingue "cargaste dos veces la misma fila" de "el segundo rol pisó al
+ * primero en silencio".
+ * → HTTP 422 en la capa de presentación.
+ */
+export class CompatibilidadDuplicadaError extends DomainError {
+  readonly code = 'COMPATIBILIDAD_DUPLICADA';
+
+  constructor(modeloEquipoId: string) {
+    super(
+      `El modelo de equipo con id "${modeloEquipoId}" aparece más de una vez en la lista de ` +
+        `compatibilidad. Cada modelo se declara una sola vez por insumo.`,
+    );
+  }
+}

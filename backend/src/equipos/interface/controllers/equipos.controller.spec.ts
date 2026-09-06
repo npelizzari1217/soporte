@@ -5,7 +5,10 @@
  * (sin bootstrapear NestJS ni pasar por guards/ValidationPipe — mismo
  * patrón que `compras.controller.spec.ts`). Verifica: traducción HTTP ↔ use
  * case, mapeo de errores de dominio → HttpException, y que cada endpoint
- * protegido declara el `@RequirePermissions('equipo:gestionar')` correcto.
+ * declara la acción `EQUIPOS:*` correcta con `@RequiereAcciones` (el
+ * `@RequirePermissions('equipo:gestionar')` que decía acá no existe más — lo
+ * reemplazó `AccionesGuard`, WU-7.3; los tests de abajo ya asertaban las
+ * acciones nuevas).
  *
  * Ref spec: sdd/flujos-especializados/spec F3-Q1..Q3. Tarea: T12.6.
  */
@@ -466,8 +469,8 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
     (valor) => typeof valor === 'function' && valor.prototype instanceof DomainError,
   );
 
-  it('el catálogo tiene EXACTAMENTE 10 clases de error (9 previas + ExportacionDemasiadoGrandeError)', () => {
-    expect(CLASES_DE_ERROR).toHaveLength(10);
+  it('el catálogo tiene EXACTAMENTE 12 clases de error (10 previas + las 2 de modeloEquipoId)', () => {
+    expect(CLASES_DE_ERROR).toHaveLength(12);
   });
 
   const TABLA: Array<[string, () => DomainError, 404 | 422]> = [
@@ -512,6 +515,21 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
     [
       'ExportacionDemasiadoGrandeError',
       () => new EquiposErrors.ExportacionDemasiadoGrandeError(6000, 5000),
+      422,
+    ],
+    // Los dos de `modeloEquipoId` van a 422 y no a 404: lo que no existe (o no
+    // se puede elegir) es un valor del BODY, no el recurso de la URL — mismo
+    // criterio que `TipoComponenteInactivoError`, que es el otro campo del
+    // payload que referencia un catálogo. Un 404 acá diría "el equipo no
+    // existe", que es otra cosa.
+    [
+      'ModeloEquipoInexistenteError',
+      () => new EquiposErrors.ModeloEquipoInexistenteError('modelo-1'),
+      422,
+    ],
+    [
+      'ModeloEquipoDeshabilitadoError',
+      () => new EquiposErrors.ModeloEquipoDeshabilitadoError('modelo-1', 'HP', 'LaserJet Pro M404'),
       422,
     ],
   ];

@@ -24,6 +24,7 @@ export class EquipoInformaticoMapper {
         modelo: row.modelo ?? null,
         fechaAdquisicion: row.fechaAdquisicion ?? null,
         ubicacion: row.ubicacion ?? null,
+        modeloEquipoId: row.modeloEquipoId ?? null,
         importe: row.importe !== null ? Number(row.importe) : null,
         fechaValoracion: row.fechaValoracion ?? null,
         observaciones: row.observaciones ?? null,
@@ -43,6 +44,13 @@ export class EquipoInformaticoMapper {
    * Incluye `createdAt` para que el repo lo use en el CREATE y lo excluya
    * del UPDATE (nunca pisar el timestamp de creación existente en DB).
    * Los montos van como `number` (Prisma acepta number/string en columnas Decimal).
+   *
+   * `modeloEquipoId` SÍ va en el objeto, leído de la entidad. No alcanza con
+   * omitirlo del literal: el UPDATE del upsert manda este mismo objeto, así que
+   * un campo que no viaja es un campo que no se puede desvincular, y un
+   * `modeloEquipoId: null` fijo pisaría el modelo del equipo en cada guardado.
+   * `prisma-equipos.integration.spec.ts` guarda dos veces y relee para probar
+   * que el valor sobrevive.
    */
   static toPersistence(entity: EquipoInformaticoEntity): Omit<
     PrismaEquipoInformatico,
@@ -59,6 +67,7 @@ export class EquipoInformaticoMapper {
       modelo: entity.modelo,
       fechaAdquisicion: entity.fechaAdquisicion,
       ubicacion: entity.ubicacion,
+      modeloEquipoId: entity.modeloEquipoId,
       importe: entity.importe,
       fechaValoracion: entity.fechaValoracion,
       observaciones: entity.observaciones,

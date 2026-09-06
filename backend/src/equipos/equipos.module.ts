@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { TicketsModule } from '../tickets/tickets.module';
+import { InsumosModule } from '../insumos/insumos.module';
 
 import { TICKET_REPOSITORY, ITicketRepository } from '../tickets/domain/ports/i-ticket.repository';
 import {
@@ -30,6 +31,11 @@ import {
   ITenantTransactionRunner,
   TENANT_TX_RUNNER,
 } from '../shared/infrastructure/persistence/tenant-transaction-runner';
+
+import {
+  MODELO_EQUIPO_REPOSITORY,
+  IModeloEquipoRepository,
+} from '../insumos/domain/ports/i-modelo-equipo.repository';
 
 import {
   EQUIPO_INFORMATICO_REPOSITORY,
@@ -89,6 +95,12 @@ import { SoporteController } from './interface/controllers/soporte.controller';
  * - `NumeradorTicket`/`ResolverCicloActivoParaCreacion` son clases planas
  *   (sin `@Injectable`) — se resuelven vía `useFactory`, igual que en
  *   `ComprasModule`/`ReparacionesModule`.
+ * - Importa `InsumosModule` para `MODELO_EQUIPO_REPOSITORY`:
+ *   `CrearEquipoUseCase`/`EditarEquipoUseCase` validan `modeloEquipoId` contra
+ *   el catálogo `modelos_equipo` (que existe, que está habilitado) antes de
+ *   asignarlo. La dirección es la correcta y NO hay ciclo: `InsumosModule`
+ *   sólo importa `AuthModule` — `equipos_informaticos.modelo_equipo_id` es
+ *   consumidor del catálogo, no su dueño.
  * - `TENANT_TX_RUNNER` se inyecta desde `SharedModule` (`@Global`).
  * - `EquiposController` expone el inventario + componentes + catálogo de
  *   tipos; `SoporteController` expone la creación de tickets de soporte y
@@ -115,7 +127,7 @@ import { SoporteController } from './interface/controllers/soporte.controller';
   // descubierto por sdd/beta-frontend B6, T6.2) — TicketsModule no re-exporta
   // AuthModule, así que los guards de EquiposController/SoporteController lo
   // necesitan importado acá explícitamente.
-  imports: [AuthModule, TicketsModule],
+  imports: [AuthModule, TicketsModule, InsumosModule],
   controllers: [EquiposController, SoporteController],
   providers: [
     { provide: EQUIPO_INFORMATICO_REPOSITORY, useClass: PrismaEquipoInformaticoRepository },
@@ -136,15 +148,21 @@ import { SoporteController } from './interface/controllers/soporte.controller';
     },
     {
       provide: CrearEquipoUseCase,
-      useFactory: (equipoRepo: IEquipoInformaticoRepository, txRunner: ITenantTransactionRunner) =>
-        new CrearEquipoUseCase(equipoRepo, txRunner),
-      inject: [EQUIPO_INFORMATICO_REPOSITORY, TENANT_TX_RUNNER],
+      useFactory: (
+        equipoRepo: IEquipoInformaticoRepository,
+        txRunner: ITenantTransactionRunner,
+        modeloEquipoRepo: IModeloEquipoRepository,
+      ) => new CrearEquipoUseCase(equipoRepo, txRunner, modeloEquipoRepo),
+      inject: [EQUIPO_INFORMATICO_REPOSITORY, TENANT_TX_RUNNER, MODELO_EQUIPO_REPOSITORY],
     },
     {
       provide: EditarEquipoUseCase,
-      useFactory: (equipoRepo: IEquipoInformaticoRepository, txRunner: ITenantTransactionRunner) =>
-        new EditarEquipoUseCase(equipoRepo, txRunner),
-      inject: [EQUIPO_INFORMATICO_REPOSITORY, TENANT_TX_RUNNER],
+      useFactory: (
+        equipoRepo: IEquipoInformaticoRepository,
+        txRunner: ITenantTransactionRunner,
+        modeloEquipoRepo: IModeloEquipoRepository,
+      ) => new EditarEquipoUseCase(equipoRepo, txRunner, modeloEquipoRepo),
+      inject: [EQUIPO_INFORMATICO_REPOSITORY, TENANT_TX_RUNNER, MODELO_EQUIPO_REPOSITORY],
     },
     {
       provide: ObtenerEquipoUseCase,

@@ -14,6 +14,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { KbModule } from './kb/kb.module';
 import { NotificacionesModule } from './notificaciones/notificaciones.module';
 import { SectoresModule } from './sectores/sectores.module';
+import { InsumosModule } from './insumos/insumos.module';
 import { CsatModule } from './csat/csat.module';
 import { PreventivoModule } from './preventivo/preventivo.module';
 import { TenantScopeMiddleware } from './shared/tenancy/tenant-scope.middleware';
@@ -21,11 +22,10 @@ import { TenantScopeMiddleware } from './shared/tenancy/tenant-scope.middleware'
 /**
  * AppModule — módulo raíz de la aplicación.
  *
- * Andamiaje (Fase 0): la mayoría de los módulos de negocio siguen vacíos
- * (sin providers/controllers todavía). Se completan a medida que se
- * implementan los use cases de cada dominio, en orden hexagonal (domain →
- * application → infrastructure → interface). AuthModule (PR6) es el primer
- * módulo con wiring completo.
+ * Cada módulo de negocio se arma en orden hexagonal (domain → application →
+ * infrastructure → interface) y se registra acá cuando tiene wiring completo.
+ * El andamiaje vacío de la Fase 0 ya no existe: los módulos listados abajo
+ * tienen providers y controllers de verdad.
  *
  * ValidationPipe global vía APP_PIPE (whitelist + transform) en lugar de
  * `app.useGlobalPipes()` en main.ts, para que también lo hereden los tests
@@ -60,6 +60,7 @@ import { TenantScopeMiddleware } from './shared/tenancy/tenant-scope.middleware'
     KbModule,
     NotificacionesModule,
     SectoresModule,
+    InsumosModule,
     CsatModule,
     PreventivoModule,
   ],

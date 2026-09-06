@@ -1,0 +1,179 @@
+/**
+ * InsumoMapper / InsumoCodigoAlternativoMapper / CompatibilidadModeloMapper —
+ * conversión entre las filas Prisma del agregado `Insumo` y sus entidades y
+ * value objects de dominio.
+ *
+ * IMPORTANTE: archivo en infrastructure/ — puede importar de '.prisma/tenant'.
+ *
+ * Los tres mappers viven juntos porque los tres lados son UN agregado: el
+ * insumo nunca se lee ni se escribe sin su lista de códigos alternativos ni
+ * sin su compatibilidad, y separarlos en tres archivos daría a entender que
+ * los hijos tienen un ciclo de vida propio que no tienen.
+ */
+import type {
+  Insumo as PrismaInsumo,
+  InsumoCodigoAlternativo as PrismaInsumoCodigoAlternativo,
+  InsumoModeloEquipo as PrismaInsumoModeloEquipo,
+  Prisma,
+} from '.prisma/tenant';
+import { InsumoEntity } from '../../../domain/entities/insumo.entity';
+import { InsumoCodigoAlternativoEntity } from '../../../domain/entities/insumo-codigo-alternativo.entity';
+import { CompatibilidadModelo } from '../../../domain/entities/compatibilidad-modelo';
+
+/**
+ * Fila de `insumos` tal como la devuelven las consultas del repositorio, que
+ * siempre traen el agregado completo (`include: { codigosAlternativos,
+ * compatibilidad }`).
+ */
+export type FilaInsumoConAgregado = PrismaInsumo & {
+  codigosAlternativos: PrismaInsumoCodigoAlternativo[];
+  compatibilidad: PrismaInsumoModeloEquipo[];
+};
+
+/**
+ * Shape de escritura ANIDADA de un código alternativo: va sin `insumoId`
+ * porque Prisma resuelve la FK desde el insumo padre, y sin `updatedAt`
+ * porque lo maneja el ORM.
+ */
+export type FilaCodigoAlternativoAnidada = Omit<
+  PrismaInsumoCodigoAlternativo,
+  'updatedAt' | 'insumoId'
+>;
+
+/**
+ * Shape de escritura ANIDADA de una compatibilidad: va sin `insumoId` porque
+ * Prisma resuelve la FK desde el insumo padre, y sin `createdAt` porque la
+ * fila NO tiene id ni `updatedAt` —su identidad es el par—, así que su
+ * `createdAt` es el único rastro de cuándo se declaró esa compatibilidad. El
+ * `upsert` manda este mismo shape en la rama de UPDATE: emitirlo le pisaría la
+ * fecha de alta a un par que no cambió. En el CREATE lo pone el
+ * `@default(now())` de la columna.
+ */
+export type FilaCompatibilidadAnidada = Omit<PrismaInsumoModeloEquipo, 'insumoId' | 'createdAt'>;
+
+export class InsumoCodigoAlternativoMapper {
+  /**
+   * @param row Fila de `insumos_codigos_alternativos` tal como la devuelve Prisma.
+   * @returns La entidad hija reconstituida, con id y timestamps preservados.
+   */
+  static toDomain(row: PrismaInsumoCodigoAlternativo): InsumoCodigoAlternativoEntity {
+    return InsumoCodigoAlternativoEntity.reconstitute(
+      { codigo: row.codigo, fabricante: row.fabricante ?? null },
+      row.id,
+      row.createdAt,
+      row.updatedAt,
+      row.deletedAt ?? null,
+    );
+  }
+
+  /**
+   * Incluye `createdAt` para el CREATE; el repo lo excluye del UPDATE, así el
+   * reguardado del agregado no le pisa la fecha de alta a un código que ya
+   * existía.
+   *
+   * @param entity Código alternativo de dominio a persistir.
+   * @returns El shape anidado que espera Prisma bajo el insumo padre.
+   */
+  static toPersistence(entity: InsumoCodigoAlternativoEntity): FilaCodigoAlternativoAnidada {
+    return {
+      id: entity.id,
+      codigo: entity.codigo,
+      fabricante: entity.fabricante,
+      deletedAt: entity.deletedAt,
+      createdAt: entity.createdAt,
+    };
+  }
+}
+
+export class CompatibilidadModeloMapper {
+  /**
+   * Construye el value object DIRECTO, sin pasar por
+   * `crearCompatibilidadModelo()`: esa función valida el largo del rol, y una
+   * lectura que explota por un dato histórico convierte un valor legado en una
+   * caída de sistema. Es el mismo criterio por el que `reconstitute()` no
+   * valida.
+   *
+   * @param row Fila de `insumos_modelos_equipo` tal como la devuelve Prisma.
+   * @returns El par de dominio, con el rol tal como está guardado.
+   */
+  static toDomain(row: PrismaInsumoModeloEquipo): CompatibilidadModelo {
+    return { modeloEquipoId: row.modeloEquipoId, rol: row.rol ?? null };
+  }
+
+  /**
+   * @param vo Compatibilidad de dominio a persistir.
+   * @returns El shape anidado que espera Prisma bajo el insumo padre, con el
+   *   `rol` SIEMPRE presente —el `null` viaja en el objeto, porque el UPDATE
+   *   del upsert manda este mismo shape y un `rol` ausente sería un rol
+   *   imposible de borrar—.
+   */
+  static toPersistence(vo: CompatibilidadModelo): FilaCompatibilidadAnidada {
+    return { modeloEquipoId: vo.modeloEquipoId, rol: vo.rol };
+  }
+}
+
+export class InsumoMapper {
+  /**
+   * Convierte la fila del agregado a `InsumoEntity`.
+   *
+   * `stockMinimo` es `Decimal` en Prisma (columna `DECIMAL(10,2)`) y se
+   * convierte a `number` — misma decisión que compras y equipos. El `null` se
+   * preserva como `null` y NO pasa por `Number()`: `Number(null)` es `0`, y
+   * "sin punto de reposición" no es "avisar al llegar a cero".
+   *
+   * @param row Fila de `insumos` con sus códigos alternativos y su compatibilidad incluidos.
+   * @returns La entidad raíz reconstituida, con timestamps y baja lógica.
+   */
+  static toDomain(row: FilaInsumoConAgregado): InsumoEntity {
+    return InsumoEntity.reconstitute(
+      {
+        codigo: row.codigo,
+        nombre: row.nombre,
+        familiaId: row.familiaId,
+        unidadMedidaId: row.unidadMedidaId,
+        stockMinimo: row.stockMinimo !== null ? Number(row.stockMinimo) : null,
+        activo: row.activo,
+        codigosAlternativos: row.codigosAlternativos.map(InsumoCodigoAlternativoMapper.toDomain),
+        compatibilidad: row.compatibilidad.map(CompatibilidadModeloMapper.toDomain),
+      },
+      row.id,
+      row.createdAt,
+      row.updatedAt,
+      row.deletedAt ?? null,
+    );
+  }
+
+  /**
+   * Convierte la raíz del agregado al shape plano de `insumos`: id, código,
+   * nombre, las dos FK de catálogo, el punto de reposición, el estado y la
+   * baja lógica. Ni los códigos alternativos ni la compatibilidad viajan acá:
+   * los arma el repositorio como escritura anidada, cada uno con su propio
+   * mapper.
+   *
+   * `stockMinimo` va como `number | null` (Prisma acepta number/string en
+   * columnas Decimal), con el tipo de retorno explícito que usa
+   * `equipo-informatico.mapper.ts` para sus decimales. El `null` SÍ viaja en
+   * el objeto: el UPDATE del upsert manda este mismo shape, así que un campo
+   * ausente sería un punto de reposición imposible de borrar.
+   *
+   * Incluye `createdAt` para el CREATE; el repo lo excluye del UPDATE.
+   *
+   * @param entity Insumo de dominio a persistir.
+   * @returns El shape de fila que espera Prisma, sin `updatedAt` (lo maneja el ORM).
+   */
+  static toPersistence(entity: InsumoEntity): Omit<PrismaInsumo, 'updatedAt' | 'stockMinimo'> & {
+    stockMinimo: Prisma.Decimal | number | string | null;
+  } {
+    return {
+      id: entity.id,
+      codigo: entity.codigo,
+      nombre: entity.nombre,
+      familiaId: entity.familiaId,
+      unidadMedidaId: entity.unidadMedidaId,
+      stockMinimo: entity.stockMinimo,
+      activo: entity.activo,
+      deletedAt: entity.deletedAt,
+      createdAt: entity.createdAt,
+    };
+  }
+}

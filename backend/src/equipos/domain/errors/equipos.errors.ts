@@ -61,6 +61,63 @@ export class NumeroSerieDuplicadoError extends DomainError {
 }
 
 /**
+ * ModeloEquipoInexistenteError — el `modeloEquipoId` recibido al crear/editar
+ * un equipo no corresponde a ningún modelo del catálogo `modelos_equipo` del
+ * tenant (o el modelo tiene baja lógica, que para elegirlo es lo mismo que no
+ * existir).
+ *
+ * Sin este error el id inexistente llegaba hasta la FK y volvía como el 409
+ * genérico de `PrismaExceptionFilter` ("La operación afecta datos
+ * relacionados"), que ni siquiera nombra el campo que hay que corregir.
+ *
+ * Va SEPARADO de `ModeloEquipoDeshabilitadoError` a propósito: son dos
+ * arreglos distintos —corregir el id vs. habilitar el modelo—, y un solo error
+ * para los dos casos deja al usuario adivinando cuál le tocó.
+ * → HTTP 422 en la capa de presentación (es un valor del BODY, no el recurso
+ *   de la URL).
+ *
+ * Ref spec: sdd/insumos-catalogo (catálogo `ModeloEquipo`).
+ */
+export class ModeloEquipoInexistenteError extends DomainError {
+  readonly code = 'MODELO_EQUIPO_INEXISTENTE';
+
+  constructor(modeloEquipoId: string) {
+    super(
+      `El campo "modeloEquipoId" apunta al modelo con id "${modeloEquipoId}", que no existe en el ` +
+        `catálogo de modelos de equipo de este tenant. Elegí un modelo del catálogo o dejá el equipo sin modelo.`,
+    );
+  }
+}
+
+/**
+ * ModeloEquipoDeshabilitadoError — el `modeloEquipoId` existe en el catálogo
+ * pero el modelo está DESHABILITADO (`activo: false`).
+ *
+ * Este es el caso que la FK NO puede atrapar: la fila existe, así que la base
+ * acepta el vínculo sin chistar y el equipo queda con un modelo que el
+ * administrador ya sacó de circulación — una falla silenciosa, sin error ni
+ * log. Deshabilitar un modelo significa que no se puede elegir más; si la API
+ * lo acepta igual, deshabilitar no sirve para nada.
+ *
+ * El mensaje nombra el PAR `marca` + `modelo` además del id: el par es lo que
+ * el administrador ve en el catálogo, el id no lo lee nadie.
+ * → HTTP 422 en la capa de presentación.
+ *
+ * Ref spec: sdd/insumos-catalogo (catálogo `ModeloEquipo`).
+ */
+export class ModeloEquipoDeshabilitadoError extends DomainError {
+  readonly code = 'MODELO_EQUIPO_DESHABILITADO';
+
+  constructor(modeloEquipoId: string, marca: string, modelo: string) {
+    super(
+      `El campo "modeloEquipoId" apunta al modelo "${marca} ${modelo}" (id "${modeloEquipoId}"), que está ` +
+        `deshabilitado. Un modelo deshabilitado no se puede elegir: habilitalo en el catálogo de modelos ` +
+        `de equipo o elegí otro.`,
+    );
+  }
+}
+
+/**
  * TipoComponenteCodigoRequeridoError — falta `tipoComponenteCodigo` al crear
  * un componente de equipo. NORMALIZADO a `Result.fail` (ADR-9): soporte1
  * lanzaba excepción; este proyecto usa el mismo criterio Result que el
