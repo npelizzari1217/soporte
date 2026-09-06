@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { TIPOS_AJUSTE_INSUMO } from '../entities/tipo-movimiento-insumo';
 import { DomainError } from '../../../shared/domain/result';
 import {
   CodigoAlternativoDuplicadoError,
@@ -7,6 +8,7 @@ import {
   FamiliaInsumoInexistenteError,
   InsumoCodigoDuplicadoError,
   InsumoNoEncontradoError,
+  MotivoAjusteRequeridoError,
   ModeloEquipoDeshabilitadoError,
   ModeloEquipoInexistenteError,
   UnidadMedidaDeshabilitadaError,
@@ -148,6 +150,45 @@ describe('Errores de dominio de insumos', () => {
       expect(error.message).toContain('CE285A');
       expect(error.message).toContain('sin fabricante');
       expect(error.message).not.toContain('null');
+    });
+  });
+
+  describe('MotivoAjusteRequeridoError', () => {
+    /**
+     * Un ajuste sin motivo es un faltante sin explicación. La base NO puede
+     * exigirlo —un `CHECK` condicional sería un segundo dueño de la regla, y
+     * además un espacio en blanco lo conformaría igual—, así que el error es
+     * la única señal que recibe quien carga.
+     */
+    it('expone code MOTIVO_AJUSTE_REQUERIDO y nombra el insumo', () => {
+      const error = new MotivoAjusteRequeridoError('id-insumo', 'AJUSTE_NEGATIVO');
+
+      expect(error).toBeInstanceOf(DomainError);
+      expect(error.code).toBe('MOTIVO_AJUSTE_REQUERIDO');
+      expect(error.message).toContain('id-insumo');
+    });
+
+    /**
+     * El mensaje nombra el tipo EXACTO, no la palabra genérica "ajuste": los
+     * dos ajustes son la misma operación con distinto signo, y quien acaba de
+     * asentar un faltante necesita ver en el error que el sistema entendió
+     * `AJUSTE_NEGATIVO` y no el positivo. El caso se recorre DESDE
+     * `TIPOS_AJUSTE_INSUMO`, así que un tercer ajuste quedaría cubierto solo.
+     *
+     * El motivo además es OPCIONAL en la entrada y en la salida: sin el tipo
+     * en el mensaje, quien registra una salida leería "el motivo es
+     * obligatorio", lo generalizaría y cargaría relleno en toda la bitácora.
+     */
+    it('nombra el tipo de ajuste exacto, y no el otro', () => {
+      for (const tipo of TIPOS_AJUSTE_INSUMO) {
+        const error = new MotivoAjusteRequeridoError('id-insumo', tipo);
+        const elOtro = TIPOS_AJUSTE_INSUMO.filter((candidato) => candidato !== tipo);
+
+        expect(error.message).toContain(tipo);
+        for (const ajeno of elOtro) {
+          expect(error.message).not.toContain(ajeno);
+        }
+      }
     });
   });
 });

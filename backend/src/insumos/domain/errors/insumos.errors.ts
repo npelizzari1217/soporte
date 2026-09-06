@@ -1,3 +1,4 @@
+import { TipoAjusteInsumo } from '../entities/tipo-movimiento-insumo';
 import { DomainError } from '../../../shared/domain/result';
 
 /**
@@ -209,6 +210,43 @@ export class CompatibilidadDuplicadaError extends DomainError {
     super(
       `El modelo de equipo con id "${modeloEquipoId}" aparece más de una vez en la lista de ` +
         `compatibilidad. Cada modelo se declara una sola vez por insumo.`,
+    );
+  }
+}
+
+/**
+ * MotivoAjusteRequeridoError — se intentó registrar un ajuste —en cualquiera
+ * de sus dos direcciones, `AJUSTE_POSITIVO` o `AJUSTE_NEGATIVO`— sin motivo, o
+ * con un motivo que después de recortar los espacios no tiene contenido.
+ *
+ * Es la regla que la base NO puede sostener, y por eso vive en el dominio: un
+ * `CHECK` condicional sería un segundo dueño de una regla que ya está en la
+ * entidad —dos dueños de la misma regla derivan—, y además Postgres no puede
+ * exigir que el motivo tenga CONTENIDO: un motivo de un solo espacio
+ * conformaría al `NOT NULL` igual.
+ *
+ * Va como `Result.fail` y no como `throw` porque es una desviación de negocio
+ * que el usuario tiene que ver y corregir, no una violación de contrato del
+ * caller: el borde no puede rechazarla con un decorador simple, porque la
+ * obligatoriedad depende del `tipo` que venga en el mismo body. Precedente
+ * exacto: `MotivoCierreFaltanteRequeridoError` (`compras.errors.ts`).
+ *
+ * El mensaje nombra el tipo EXACTO y no la palabra genérica "ajuste". Por dos
+ * razones: el motivo es OPCIONAL en la `ENTRADA` y en la `SALIDA` —sin el tipo,
+ * quien registra una salida lee "el motivo es obligatorio", lo generaliza y
+ * termina cargando relleno en toda la bitácora—, y los dos ajustes se
+ * confunden entre sí con facilidad, así que quien acaba de asentar un faltante
+ * necesita leer que el sistema entendió `AJUSTE_NEGATIVO`.
+ * → HTTP 422 en la capa de presentación.
+ */
+export class MotivoAjusteRequeridoError extends DomainError {
+  readonly code = 'MOTIVO_AJUSTE_REQUERIDO';
+
+  constructor(insumoId: string, tipo: TipoAjusteInsumo) {
+    super(
+      `El motivo es obligatorio para registrar un movimiento de tipo ${tipo} sobre el insumo con id ` +
+        `"${insumoId}": un ajuste sin explicación es un faltante sin explicación. La entrada y la ` +
+        `salida no lo exigen.`,
     );
   }
 }
