@@ -7,6 +7,7 @@ import {
   FamiliaInsumoDeshabilitadaError,
   FamiliaInsumoInexistenteError,
   InsumoCodigoDuplicadoError,
+  InsumoDeshabilitadoError,
   InsumoNoEncontradoError,
   MotivoAjusteRequeridoError,
   ModeloEquipoDeshabilitadoError,
@@ -41,6 +42,46 @@ describe('Errores de dominio de insumos', () => {
     const error = new InsumoCodigoDuplicadoError('TON-001');
     expect(error.message).toContain('activo o inactivo');
     expect(error.message).toContain('baja');
+  });
+
+  describe('InsumoDeshabilitadoError', () => {
+    /**
+     * Existir y ser elegible son dos cosas distintas también para el insumo
+     * mismo: la FK de `movimientos_insumo` no atrapa al insumo deshabilitado
+     * —la fila existe—, así que la entrada se asentaría en silencio contra
+     * algo que la organización sacó de circulación.
+     */
+    it('expone code INSUMO_DESHABILITADO y nombra el id', () => {
+      const error = new InsumoDeshabilitadoError('id-insumo');
+
+      expect(error).toBeInstanceOf(DomainError);
+      expect(error.code).toBe('INSUMO_DESHABILITADO');
+      expect(error.message).toContain('id-insumo');
+    });
+
+    it('expone un code distinto del del insumo inexistente', () => {
+      const deshabilitado = new InsumoDeshabilitadoError('id-insumo');
+      const inexistente = new InsumoNoEncontradoError('id-insumo');
+
+      expect(deshabilitado.code).not.toBe(inexistente.code);
+    });
+
+    /**
+     * El mensaje tiene que decir que la restricción es SOLO de la entrada.
+     * Sin esa aclaración, quien lee "el insumo está deshabilitado" al intentar
+     * cargar una recepción generaliza y da por perdido el stock que quedó en
+     * el depósito: creería que tampoco puede sacarlo ni corregirlo por conteo,
+     * cuando esas dos operaciones sí se registran. Mismo criterio que
+     * `MotivoAjusteRequeridoError`, que nombra el tipo exacto para que nadie
+     * generalice la obligación del motivo a toda la bitácora.
+     */
+    it('aclara que la salida y el ajuste sí se pueden registrar', () => {
+      const error = new InsumoDeshabilitadoError('id-insumo');
+
+      expect(error.message).toContain('entrada');
+      expect(error.message).toContain('salida');
+      expect(error.message).toContain('ajuste');
+    });
   });
 
   it('FamiliaInsumoInexistenteError expone code FAMILIA_INSUMO_INEXISTENTE y nombra el id', () => {

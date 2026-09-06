@@ -36,6 +36,38 @@ export class InsumoCodigoDuplicadoError extends DomainError {
 }
 
 /**
+ * InsumoDeshabilitadoError — el insumo existe y está vigente, pero fue
+ * DESHABILITADO (`activo: false`), así que no admite una ENTRADA de stock.
+ *
+ * Es el caso que la FK de `movimientos_insumo` NO puede atrapar: la fila del
+ * insumo existe, la base acepta el movimiento sin chistar y el depósito recibe
+ * más de algo que la organización ya sacó de circulación — una falla
+ * silenciosa, sin error ni log. Deshabilitar significa "no se compra más de
+ * esto"; si la API acepta la recepción igual, deshabilitar no sirve para nada.
+ *
+ * **La restricción es SOLO de la entrada, y por eso el mensaje lo dice.** Una
+ * SALIDA sobre un insumo deshabilitado es consumir lo que quedó en el depósito
+ * —justo lo que se espera después de retirarlo—, y un AJUSTE es corregir su
+ * conteo físico; rechazarlas dejaría ese stock atrapado, sin forma de llegar a
+ * cero salvo volviendo a habilitar el insumo o asentando un ajuste que
+ * mentiría sobre lo que pasó. Sin la aclaración en el mensaje, quien lee "está
+ * deshabilitado" generaliza la prohibición a toda la bitácora — el mismo
+ * riesgo que `MotivoAjusteRequeridoError` evita nombrando el tipo exacto.
+ * → HTTP 422 en la capa de presentación.
+ */
+export class InsumoDeshabilitadoError extends DomainError {
+  readonly code = 'INSUMO_DESHABILITADO';
+
+  constructor(id: string) {
+    super(
+      `El insumo con id "${id}" está deshabilitado: no se puede registrar una entrada de stock ` +
+        `sobre él. Habilítelo en el catálogo si vuelve a comprarse. La salida y el ajuste sí se ` +
+        `registran, para poder consumir y corregir lo que quedó en el depósito.`,
+    );
+  }
+}
+
+/**
  * FamiliaInsumoInexistenteError — la `familiaId` provista no corresponde a
  * ninguna familia del catálogo del tenant.
  *
