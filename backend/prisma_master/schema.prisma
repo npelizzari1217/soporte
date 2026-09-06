@@ -360,9 +360,12 @@ model Role {
 // módulos) por una única fila por celda `(usuario_id, cliente_id, modulo,
 // accion)`. `modulo`/`accion` son literales del catálogo `as const` de
 // `src/shared/domain/acciones.ts` — el CHECK de esta tabla (migración
-// add_usuario_cliente_permisos) enumera exactamente los 33 pares válidos,
-// atado a ese catálogo por un test de deriva contra `pg_get_constraintdef`
-// (patrón dcc867f). Sin columna `id` sintética: ninguna otra entidad
+// add_usuario_cliente_permisos, ensanchada después por cada módulo nuevo)
+// enumera exactamente los pares válidos, atado a ese catálogo por un test de
+// deriva contra `pg_get_constraintdef` (patrón dcc867f). No se dice acá cuántos
+// son a propósito: el número ya caducó una vez —decía 33 después de que el
+// módulo INSUMOS lo llevara a 36— y el test de deriva es el único lugar donde
+// esa cuenta puede estar sin envejecer, porque la calcula. Sin columna `id` sintética: ninguna otra entidad
 // referencia una celda, y la PK compuesta ya da la unicidad (mismo criterio
 // que `roles_permisos`).
 //

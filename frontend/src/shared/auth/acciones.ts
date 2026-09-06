@@ -63,6 +63,33 @@ export const CATALOGO_MODULOS = {
     piso: ["LECTURA", "ALTAS", "MODIFICACION", "BORRADO"],
     extras: [],
   },
+  /**
+   * INSUMOS gobierna la bitácora de movimientos de stock, no el catálogo: el
+   * ABM de insumos, familias, unidades y modelos sigue detrás del gate de
+   * administrador del cliente (Entrega 1).
+   *
+   * Tres pares, y lo que NO está es tan deliberado como lo que sí:
+   * - `LECTURA`: consultar el stock y la bitácora de un insumo.
+   * - `ALTAS`: registrar un movimiento — ENTRADA y SALIDA, la operación
+   *   cotidiana.
+   * - `AJUSTAR`: firmar un AJUSTE, la única operación que puede tapar un
+   *   faltante. Va como extra y NO reusa `APROBACION`, que sería el par
+   *   aparente: en COMPRAS hay un registro pendiente que un segundo actor
+   *   aprueba después, y acá no hay nada pendiente sino una atribución para
+   *   escribir. Además `APROBACION` solo existe en el piso de COMPRAS y
+   *   reusarla rompería esa invariante.
+   * - Sin `MODIFICACION` ni `BORRADO`: la bitácora es append-only. Un
+   *   movimiento se corrige con otro movimiento, así que declararlas
+   *   prometería en la grilla una operación que ningún endpoint ofrece.
+   * - Sin `IMPRESION`: queda fuera del piso en TODOS los módulos, no solo en
+   *   este — ningún endpoint del sistema la consume.
+   *
+   * Ref design: openspec/changes/insumos-entrega-2/design.md, decisión 2.
+   */
+  INSUMOS: {
+    piso: ["LECTURA", "ALTAS"],
+    extras: ["AJUSTAR"],
+  },
 } as const satisfies Record<string, { piso: readonly AccionPiso[]; extras: readonly string[] }>;
 
 /** Código de un módulo funcional de la matriz de permisos. */
@@ -78,7 +105,11 @@ type AccionesDe<M extends Modulo> =
  */
 export type CodigoAccion = { [M in Modulo]: `${M}:${AccionesDe<M>}` }[Modulo];
 
-/** Los 33 pares `(modulo, accion)` válidos, aplanados desde `CATALOGO_MODULOS`. */
+/**
+ * Los pares `(modulo, accion)` válidos, aplanados desde `CATALOGO_MODULOS`.
+ * La cantidad no se escribe acá a propósito: caduca con cada módulo nuevo y
+ * el que la verifica es `acciones.test.ts`, que enumera los pares uno por uno.
+ */
 export const PARES_VALIDOS: readonly CodigoAccion[] = (
   Object.entries(CATALOGO_MODULOS) as [
     Modulo,

@@ -30,6 +30,7 @@ export const ETIQUETAS_MODULOS = {
   DASHBOARD: "Dashboard",
   CSAT: "Satisfacción",
   PREVENTIVO: "Preventivo",
+  INSUMOS: "Insumos",
 } as const satisfies Record<Modulo, string>;
 
 /** Nombre legible de un módulo, el mismo que muestra el menú lateral. */

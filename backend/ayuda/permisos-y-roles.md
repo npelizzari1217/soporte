@@ -14,16 +14,18 @@ una cosa distinta.
 
 Cada persona tiene, dentro de cada cliente, una **matriz de permisos**: una
 grilla donde cada fila es un módulo (Tickets, Compras, Edilicia, Equipos, Ayuda,
-Dashboard, Satisfacción, Preventivo) y cada casilla es una acción sobre ese
-módulo. Lo que la persona puede hacer sale de esa grilla y de nada más.
+Dashboard, Satisfacción, Preventivo, Insumos) y cada casilla es una acción sobre
+ese módulo. Lo que la persona puede hacer sale de esa grilla y de nada más.
 
 En este artículo los permisos se escriben como `MÓDULO:ACCIÓN` — por ejemplo
 `COMPRAS:APROBACION` — porque es como los identifica el sistema. En la pantalla
 se ven como la casilla `APROBACION` dentro de la fila **Compras**.
 
 La única excepción es el rol **Administrador**: un administrador pasa por encima
-de la matriz y puede hacer todo, tenga la grilla que tenga. De hecho, la grilla
-de un administrador se muestra completa y no se puede editar.
+de la matriz y puede hacer todo, tenga la grilla que tenga. Por eso, al abrir los
+permisos de un administrador, la grilla **no aparece**: en su lugar se lee un
+aviso de que la asignación no tendría efecto. No es que esté vacía ni bloqueada
+— directamente no se muestra, porque no habría nada que decidir en ella.
 
 Hay un caso donde la grilla **no** decide, y no es el rol: las casillas de
 escritura de la fila **Ayuda** (`ALTAS`, `MODIFICACION`, `BORRADO`, `PUBLICAR`)
@@ -131,6 +133,51 @@ pierden apenas se aplique esta corrección: las casillas que ya tenían
 otorgadas se movieron a Colaborador (si además tienen ese rol), no se
 duplicaron ni se les agregó nada de más.
 
+## El módulo Insumos (`INSUMOS:*`)
+
+La fila **Insumos** gobierna el registro de movimientos de stock: cuánto hay de
+cada insumo, y quién lo movió y por qué. No gobierna el catálogo de insumos,
+familias, unidades de medida ni modelos de equipo — esa parte la sigue
+administrando el administrador del cliente desde la sección de administración,
+sin pasar por esta grilla.
+
+| Casilla | Habilita |
+|---|---|
+| `LECTURA` | Consultar la existencia actual de un insumo y su historial de movimientos |
+| `ALTAS` | Registrar entradas y salidas de depósito |
+| `AJUSTAR` | Corregir la existencia registrada contra un conteo físico |
+
+**`ALTAS` es el permiso del trabajo de todos los días.** Es el que necesita
+quien saca un tóner del depósito para instalarlo, o quien asienta la mercadería
+que acaba de llegar. Sin esa casilla la persona no puede registrar ningún
+movimiento, y la existencia que muestra el sistema deja de reflejar lo que hay
+en el depósito.
+
+**`AJUSTAR` es otra cosa, y conviene darla con más cuidado.** No existe en
+ninguna otra fila de la grilla, así que la casilla no se entiende sola mirándola:
+es el permiso para asentar "conté físicamente y hay tres menos de lo que el
+sistema dice". Es la única operación que puede hacer desaparecer un faltante de
+los números sin que nada haya salido del depósito, y por eso se separa del
+registro cotidiano — quien mueve insumos todos los días no es necesariamente
+quien está autorizado a explicar una diferencia. Todo ajuste exige un motivo
+escrito, que queda guardado junto con el nombre de quien lo hizo. Es el mismo
+criterio por el que en Compras `APROBACION` va aparte de `MODIFICACION`.
+
+**En la fila Insumos no hay `MODIFICACION` ni `BORRADO`, y no es un olvido.** El
+historial de movimientos no se edita ni se borra: nada de lo que ya se registró
+se puede tocar después. Un movimiento cargado por error se corrige registrando
+otro movimiento que lo compense, y los dos quedan a la vista con su fecha y su
+responsable. Así el historial siempre explica cómo se llegó a la existencia
+actual. Las dos casillas aparecen en la fila, como en todas, pero están
+deshabilitadas.
+
+**Ninguna plantilla de rol trae permisos de Insumos.** Ni Usuario, ni
+Colaborador, ni Técnico: una persona recién creada llega sin acceso al módulo, y
+reaplicar la plantilla de su rol se los saca si los tenía. Las casillas de
+Insumos se marcan a mano en la grilla de cada persona. **Administrador** ve y
+puede todo igual, porque pasa por encima de la grilla como en el resto del
+sistema.
+
 ## Dos detalles prácticos
 
 1. **Los cambios no son instantáneos para la persona afectada.** Los permisos
@@ -140,5 +187,5 @@ duplicaron ni se les agregó nada de más.
    absolutamente nada en otro.
 
 Sobre la grilla: la casilla `IMPRESION` aparece en todas las filas pero está
-siempre deshabilitada, y `APROBACION` solo se puede marcar en la fila de
-Compras.
+siempre deshabilitada; `APROBACION` solo se puede marcar en la fila de Compras y
+`AJUSTAR` solo en la de Insumos.
