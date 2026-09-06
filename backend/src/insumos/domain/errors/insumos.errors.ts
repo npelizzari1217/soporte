@@ -282,3 +282,38 @@ export class MotivoAjusteRequeridoError extends DomainError {
     );
   }
 }
+
+/**
+ * StockInsuficienteError — se intentó registrar una SALIDA (o un
+ * `AJUSTE_NEGATIVO`) por más unidades de las que el insumo tiene en el
+ * depósito. El stock resultante habría quedado negativo, que es la única
+ * invariante que la bitácora existe para proteger.
+ *
+ * **Es la regla que la base NO puede sostener, y por eso el dominio es su
+ * único dueño.** Postgres no puede expresar `SUM(cantidad) >= 0` sobre varias
+ * filas: no hay `CHECK` ni FK que ataje esto, así que no hay backstop. La
+ * invariante depende de que toda escritura pase por el único punto que toma el
+ * advisory lock (`IMovimientoInsumoRepository.lockAndSumByTipo`) y compara el
+ * saldo ANTES de insertar, dentro de la misma transacción.
+ *
+ * Va como `Result.fail` y no como `throw`: es una desviación de negocio que
+ * quien registra el movimiento tiene que ver y corregir —contando el depósito
+ * o corrigiendo lo que escribió—, no una violación de contrato del caller. El
+ * borde no puede rechazarla con un decorador, porque el disponible depende del
+ * estado de la bitácora en el instante de la escritura.
+ *
+ * El mensaje dice los DOS números. Con uno solo, quien carga no sabe si el
+ * error está en lo que escribió o en el depósito, y "no hay stock suficiente"
+ * a secas lo obliga a abrir otra pantalla para averiguar cuánto hay.
+ * → HTTP 422 en la capa de presentación.
+ */
+export class StockInsuficienteError extends DomainError {
+  readonly code = 'STOCK_INSUFICIENTE';
+
+  constructor(insumoId: string, solicitada: number, disponible: number) {
+    super(
+      `El insumo con id "${insumoId}" no tiene stock suficiente: se pidieron ${solicitada} unidades ` +
+        `y hay ${disponible} disponibles. Registre primero la entrada que falta, o corrija la cantidad.`,
+    );
+  }
+}

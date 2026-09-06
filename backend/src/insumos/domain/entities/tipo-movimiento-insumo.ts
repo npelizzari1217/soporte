@@ -1,3 +1,5 @@
+import { enCentesimas } from '../../../shared/domain/centesimas';
+
 /**
  * Catálogo CERRADO de tipos de movimiento de stock de un insumo.
  *
@@ -59,3 +61,70 @@ export function esAjuste(tipo: TipoMovimientoInsumo): tipo is TipoAjusteInsumo {
 
 /** Tipo de un movimiento de stock, derivado de `TIPOS_MOVIMIENTO_INSUMO`. */
 export type TipoMovimientoInsumo = (typeof TIPOS_MOVIMIENTO_INSUMO)[number];
+
+/**
+ * En qué DIRECCIÓN pesa cada tipo sobre la existencia: `1` suma al depósito,
+ * `-1` resta.
+ *
+ * Vive en el dominio y no en el repositorio a propósito. El puerto devuelve el
+ * desglose crudo —`SUM(cantidad) GROUP BY tipo`, sin interpretar ningún
+ * tipo— justamente porque la dirección es una regla de NEGOCIO: la persistencia
+ * no puede fijarla sin volverse dueña de algo que después habría que cambiar
+ * tocando SQL. Y vive en ESTE archivo, junto al catálogo que indexa, por dos
+ * motivos concretos:
+ *
+ * 1. **La garantía del compilador solo funciona acá.** Es un
+ *    `Record<TipoMovimientoInsumo, …>`, así que agregar un valor a
+ *    `TIPOS_MOVIMIENTO_INSUMO` sin darle dirección NO compila. Esa red sirve
+ *    únicamente si quien agrega el tipo abre el archivo donde está: en un
+ *    archivo aparte, el error aparecería lejos de la edición que lo causó.
+ *    Es lo que hace innecesario —y prohibido— un `if` que enumere los cuatro
+ *    tipos a mano, que es la forma exacta en que un quinto tipo entra sin
+ *    signo y desaparece del saldo en silencio.
+ * 2. Es el mismo corte que ya usa `TIPOS_AJUSTE_INSUMO` con `esAjuste()`: el
+ *    dato derivado del catálogo y la función que lo lee viven con el catálogo.
+ *
+ * `AJUSTE_POSITIVO` suma y `AJUSTE_NEGATIVO` resta porque `cantidad` es
+ * siempre positiva y la dirección la da el tipo (decisión 4 del diseño).
+ */
+export const DIRECCION_POR_TIPO_MOVIMIENTO: Readonly<Record<TipoMovimientoInsumo, 1 | -1>> = {
+  ENTRADA: 1,
+  SALIDA: -1,
+  AJUSTE_POSITIVO: 1,
+  AJUSTE_NEGATIVO: -1,
+};
+
+/**
+ * Deriva el STOCK de un insumo a partir del desglose de su bitácora por tipo:
+ * `ENTRADA + AJUSTE_POSITIVO − SALIDA − AJUSTE_NEGATIVO`.
+ *
+ * Es la ÚNICA fórmula del saldo del sistema, y por eso es una función
+ * exportada y no tres líneas dentro de un caso de uso. La usan el registro de
+ * una salida —que decide bajo el advisory lock si hay con qué— y la consulta
+ * de stock que se muestra en la ficha del insumo: dos copias de la misma
+ * fórmula discreparían el día que entre un tipo nuevo, y el sistema mostraría
+ * un número distinto del que autoriza.
+ *
+ * La fórmula NO enumera los tipos: recorre el catálogo y le pregunta la
+ * dirección a `DIRECCION_POR_TIPO_MOVIMIENTO`, así que un tipo nuevo entra al
+ * saldo por construcción —o no compila, si nadie le asignó dirección—.
+ *
+ * @param sumasPorTipo Desglose crudo de la bitácora, con los cuatro tipos
+ *   presentes y `0` en los que no tienen movimientos: exactamente lo que
+ *   devuelve `IMovimientoInsumoRepository.lockAndSumByTipo`.
+ * @returns El stock resultante, con los dos decimales de la columna. Puede ser
+ *   negativo si la bitácora ya quedó en negativo por una escritura que no pasó
+ *   por la sección crítica; se devuelve tal cual en vez de recortarlo a cero,
+ *   porque esconder el negativo dejaría el desvío sin nadie que lo note.
+ */
+export function calcularStock(
+  sumasPorTipo: Readonly<Record<TipoMovimientoInsumo, number>>,
+): number {
+  const saldoEnCentesimas = TIPOS_MOVIMIENTO_INSUMO.reduce(
+    (acumulado, tipo) =>
+      acumulado + DIRECCION_POR_TIPO_MOVIMIENTO[tipo] * enCentesimas(sumasPorTipo[tipo]),
+    0,
+  );
+
+  return saldoEnCentesimas / 100;
+}

@@ -1,11 +1,8 @@
 import { DomainError, Result } from '../../../shared/domain/result';
 import { MovimientoInsumoEntity } from '../../domain/entities/movimiento-insumo.entity';
-import {
-  InsumoDeshabilitadoError,
-  InsumoNoEncontradoError,
-} from '../../domain/errors/insumos.errors';
 import { IInsumoRepository } from '../../domain/ports/i-insumo.repository';
 import { IMovimientoInsumoRepository } from '../../domain/ports/i-movimiento-insumo.repository';
+import { validarInsumoElegible } from '../services/validar-insumo.service';
 
 /**
  * DTO de entrada de `RegistrarEntradaInsumoUseCase`.
@@ -52,25 +49,20 @@ export interface RegistrarEntradaInsumoDto {
  * salida vea MENOS stock del que hay, así que a lo sumo rechaza una salida que
  * habría entrado. Nunca al revés.
  *
- * **Al copiar este archivo para escribir la SALIDA o el AJUSTE_NEGATIVO, el
- * lock NO es opcional**: esos sí restan, tienen que leer las sumas y decidir
- * DENTRO de la misma transacción que después inserta (ver
- * `IMovimientoInsumoRepository.lockAndSumByTipo`). Que la entrada reciba un
- * `Pick` sin `lockAndSumByTipo` no es prolijidad: es lo que hace que este caso
- * de uso NO PUEDA tomar el lock por descuido ni saltearlo el que sí lo
- * necesita — el método directamente no está en su tipo.
+ * **Para los movimientos que RESTAN el lock NO es opcional**: tienen que leer
+ * las sumas y decidir DENTRO de la misma transacción que después inserta (ver
+ * `IMovimientoInsumoRepository.lockAndSumByTipo`). `RegistrarSalidaInsumoUseCase`
+ * ya lo hace así y es el modelo a seguir para el `AJUSTE_NEGATIVO`. Que la
+ * entrada reciba un `Pick` sin `lockAndSumByTipo` no es prolijidad: es lo que
+ * hace que este caso de uso NO PUEDA tomar el lock por descuido ni saltearlo
+ * el que sí lo necesita — el método directamente no está en su tipo.
  *
- * Dos reglas de elegibilidad, en este orden:
- *
- * 1. El insumo tiene que existir y estar VIGENTE. `findById()` no filtra por
- *    `deletedAt`, así que la fila dada de baja vuelve igual y hay que
- *    descartarla acá — mismo criterio que `validarFamiliaInsumoElegible`.
- * 2. El insumo tiene que estar HABILITADO. Ver `InsumoDeshabilitadoError`: la
- *    restricción vale SOLO para la entrada, no para la salida ni el ajuste.
- *
- * El orden importa: la baja lógica gana sobre el deshabilitado, porque
- * pedirle a quien carga que habilite un insumo dado de baja lo manda a
- * arreglar un estado que no alcanza.
+ * Dos reglas de elegibilidad, las dos delegadas en `validarInsumoElegible`:
+ * el insumo tiene que existir y estar VIGENTE, y además HABILITADO. La segunda
+ * se pide con `exigirHabilitado` porque vale SOLO para la entrada: la salida y
+ * el ajuste operan sobre lo que ya está en el depósito (ver
+ * `InsumoDeshabilitadoError`). Este caso de uso es el ÚNICO de los tres que
+ * pasa esa opción.
  */
 export class RegistrarEntradaInsumoUseCase {
   constructor(
@@ -91,15 +83,15 @@ export class RegistrarEntradaInsumoUseCase {
   async execute(
     dto: RegistrarEntradaInsumoDto,
   ): Promise<Result<MovimientoInsumoEntity, DomainError>> {
-    const insumo = await this.insumoRepo.findById(dto.insumoId);
+    const elegible = await validarInsumoElegible(this.insumoRepo, dto.insumoId, {
+      exigirHabilitado: true,
+    });
 
-    if (!insumo || insumo.isDeleted()) {
-      return Result.fail(new InsumoNoEncontradoError(dto.insumoId));
+    if (elegible.isFail()) {
+      return Result.fail(elegible.getError());
     }
 
-    if (!insumo.activo) {
-      return Result.fail(new InsumoDeshabilitadoError(dto.insumoId));
-    }
+    const insumo = elegible.getValue();
 
     // El id sale de la entidad recién leída y no del DTO: es el valor
     // canónico que la base ya reconoció como fila existente.
