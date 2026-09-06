@@ -72,10 +72,27 @@ motivo es un faltante sin explicación.
 
 ### 4. La tabla es append-only
 
-Sin `updatedAt`, sin `deletedAt`, con `usuarioId` y catálogo de `tipo` cerrado por `CHECK`
-—`ENTRADA`, `SALIDA`, `AJUSTE`—, calcado de `OperacionCompra`. Un movimiento no se edita ni
-se borra: se corrige con otro movimiento. `CHECK (cantidad > 0)`: el signo lo da el tipo, no
-el número, para que no haya dos formas de representar lo mismo.
+Sin `updatedAt`, sin `deletedAt`, con `usuarioId` y catálogo de `tipo` cerrado por `CHECK`,
+calcado de `OperacionCompra`. Un movimiento no se edita ni se borra: se corrige con otro
+movimiento. `CHECK (cantidad > 0)`: el signo lo da el tipo, no el número, para que no haya
+dos formas de representar lo mismo.
+
+**El catálogo tiene CUATRO tipos, no tres**: `ENTRADA`, `SALIDA`, `AJUSTE_POSITIVO` y
+`AJUSTE_NEGATIVO`.
+
+> **Corrección del 2026-09-06, encontrada al implementar la unidad 2.** La primera versión
+> de este documento declaraba un único `AJUSTE`. Con `cantidad > 0`, sin columna de signo y
+> con la dirección derivada del tipo, ese ajuste **solo podía aumentar el stock**: no había
+> forma de asentar "el conteo físico dio tres menos", que es la mitad de su propósito y lo
+> que la decisión 2 describe como "la operación que puede tapar un faltante".
+>
+> Se descartaron las alternativas: permitir `cantidad` negativa solo para el ajuste
+> reintroduce las dos formas de escribir lo mismo que el `CHECK` existe para evitar; y
+> asentar el faltante como `SALIDA` confunde "se lo puse a un equipo" con "falta y no sé
+> dónde está", que es justo la distinción que hace auditable al ajuste.
+>
+> Las dos direcciones comparten el gate `INSUMOS:AJUSTAR` y las dos exigen motivo: son la
+> misma operación de negocio con distinto signo, no dos operaciones.
 
 ## Las ocho unidades entregables
 

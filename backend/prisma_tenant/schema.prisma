@@ -149,7 +149,8 @@ model Sector {
   updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt DateTime? @map("deleted_at") @db.Timestamptz
 
-  compras Compra[]
+  compras     Compra[]
+  movimientos MovimientoInsumo[]
 
   @@map("sectores")
 }
@@ -584,6 +585,7 @@ model EquipoInformatico {
   archivos         ArchivoEquipo[]
   tickets          TicketSoporte[]
   planesPreventivo PlanPreventivo[]
+  movimientos      MovimientoInsumo[]
 
   @@map("equipos_informaticos")
 }
@@ -665,6 +667,7 @@ model Insumo {
   unidadMedida        UnidadMedida              @relation(fields: [unidadMedidaId], references: [id])
   codigosAlternativos InsumoCodigoAlternativo[]
   compatibilidad      InsumoModeloEquipo[]
+  movimientos         MovimientoInsumo[]
 
   @@index([familiaId])
   @@index([unidadMedidaId])
@@ -709,6 +712,76 @@ model InsumoModeloEquipo {
   @@id([insumoId, modeloEquipoId])
   @@index([modeloEquipoId])
   @@map("insumos_modelos_equipo")
+}
+
+// ─── MOVIMIENTOS DE INSUMO (insumos-entrega-2, unidad 1) ────────────────────
+//
+// Bitácora append-only de existencias, calcada de `OperacionCompra` (ADR-C4).
+// El stock de un insumo es la SUMA de sus movimientos, nunca una columna
+// mutable: una columna mutable admite dos verdades —el saldo y el historial— y
+// el día que discrepan no hay forma de saber cuál miente.
+//
+// Postgres no puede expresar `SUM(cantidad) >= 0` sobre varias filas, así que
+// NO hay backstop de base contra el stock negativo: la invariante depende de
+// que toda escritura pase por el único punto que toma el advisory lock
+// (`pg_advisory_xact_lock`, unidad 3). Un segundo repositorio, o un script que
+// inserte acá directo, la rompe sin que la base lo note. Está dicho, no
+// escondido.
+
+model MovimientoInsumo {
+  id       String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  insumoId String @map("insumo_id") @db.Uuid
+  /// CHECK (tipo IN ('ENTRADA', 'SALIDA', 'AJUSTE')) — catálogo CERRADO, ver
+  /// migración. Fuente única de verdad: `TIPOS_MOVIMIENTO_INSUMO`
+  /// (`src/insumos/domain/entities/tipo-movimiento-insumo.ts`), comparada
+  /// contra el CHECK real por el spec de constraints.
+  tipo     String @db.VarChar(20)
+  /// CHECK (cantidad > 0). El SIGNO lo da el `tipo`, no el número: admitir
+  /// negativos daría dos formas de escribir la misma salida —SALIDA de 5 o
+  /// ENTRADA de -5— y ninguna suma sabría cuál es la buena.
+  cantidad Decimal @db.Decimal(10, 2)
+  /// Soft ref → master.usuarios.id. Sin FK cross-DB: cada inquilino es una
+  /// base física distinta — mismo criterio que `OperacionCompra.usuarioId`.
+  usuarioId String  @map("usuario_id") @db.Uuid
+  /// Obligatorio SOLO para el AJUSTE, y esa regla la hace cumplir el DOMINIO,
+  /// no la base. Un CHECK condicional sería un segundo dueño de una regla que
+  /// ya vive en la entidad, y dos dueños de la misma regla derivan; además la
+  /// base no puede exigir un motivo con CONTENIDO, que es lo que interesa —
+  /// un espacio en blanco la conformaría igual.
+  motivo    String? @db.Text
+
+  /// A dónde fue lo que salió. Los dos son NULLABLE y existen SOLO como
+  /// trazabilidad: HAY UN SOLO STOCK, no uno por sector ni por equipo. Ninguna
+  /// de las dos columnas participa de la suma — filtrar por ellas responde
+  /// "qué se le puso a este equipo", nunca "cuánto hay en este sector".
+  /// Las dos llevan ÍNDICE PARCIAL WHERE NOT NULL — enforced via CREATE INDEX
+  /// en migration SQL.
+  equipoId String? @map("equipo_id") @db.Uuid
+  sectorId String? @map("sector_id") @db.Uuid
+
+  // SIN updatedAt NI deletedAt — bitácora append-only (ver comentario de
+  // cabecera de esta sección). Un movimiento no se edita ni se borra: se
+  // corrige con otro movimiento, que deja rastro de la corrección. NO agregar
+  // por "simetría" con el resto del catálogo de insumos.
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  /// `onDelete` EXPLÍCITO en las tres, y en las dos opcionales no es
+  /// redundante: el default de Prisma para una relación OPCIONAL es
+  /// `SetNull`, que contradice el `ON DELETE RESTRICT` que escribió la
+  /// migración. Sin declararlo, el próximo `migrate dev` regeneraría la FK
+  /// vaciando la trazabilidad en vez de frenar el borrado — justo lo que los
+  /// comentarios de la migración existen para evitar.
+  insumo Insumo             @relation(fields: [insumoId], references: [id], onDelete: Restrict)
+  equipo EquipoInformatico? @relation(fields: [equipoId], references: [id], onDelete: Restrict)
+  sector Sector?            @relation(fields: [sectorId], references: [id], onDelete: Restrict)
+
+  /// Índice compuesto que sirve a las dos consultas del módulo: el stock
+  /// (`SUM(cantidad) WHERE insumo_id = ?`, cubierto por el prefijo) y la
+  /// bitácora de la ficha, ordenada por fecha. Uno solo alcanza — un
+  /// `@@index([insumoId])` aparte sería su prefijo, redundante y pagado en
+  /// cada escritura.
+  @@index([insumoId, createdAt])
+  @@map("movimientos_insumo")
 }
 
 model ComponenteEquipo {

@@ -31,7 +31,7 @@ export type AccionPiso = (typeof ACCIONES_PISO)[number];
  * tabla de exclusiones aparte); `extras` son acciones propias del módulo,
  * fuera del piso (ej. `VER_TODOS`, `ASIGNAR`).
  *
- * `IMPRESION` queda deliberadamente fuera de `piso` en los 8 módulos: ningún
+ * `IMPRESION` queda deliberadamente fuera de `piso` en los 9 módulos: ningún
  * endpoint del inventario la consume (R1, ya aceptado). `APROBACION` solo
  * aparece en el piso de COMPRAS.
  */
@@ -68,6 +68,34 @@ export const CATALOGO_MODULOS = {
     piso: ['LECTURA', 'ALTAS', 'MODIFICACION', 'BORRADO'],
     extras: [],
   },
+  /**
+   * INSUMOS gobierna la bitácora de movimientos de stock, no el catálogo:
+   * el ABM de insumos, familias, unidades y modelos sigue detrás de
+   * `AdminClienteGuard` (Entrega 1). Las salidas las registra un técnico
+   * todos los días, así que heredar el gate del catálogo dejaría el módulo
+   * sin uso real.
+   *
+   * Tres pares, y la ausencia de los otros tres es tan deliberada como la
+   * presencia de estos:
+   * - `LECTURA`: consultar el stock y la bitácora de un insumo.
+   * - `ALTAS`: registrar un movimiento — ENTRADA y SALIDA, la operación
+   *   cotidiana.
+   * - `AJUSTAR`: firmar un AJUSTE, la única operación que puede tapar un
+   *   faltante. Se separa de `ALTAS` con el mismo criterio por el que
+   *   COMPRAS separa `MODIFICACION` de `APROBACION`, pero NO reusa
+   *   `APROBACION`: no hay un registro pendiente que un segundo actor
+   *   apruebe después, hay una atribución para escribirlo.
+   * - Sin `MODIFICACION` ni `BORRADO`: `movimientos_insumo` es append-only.
+   *   Un movimiento se corrige con otro movimiento, así que declararlas
+   *   prometería en la grilla de permisos una operación que ningún endpoint
+   *   puede ofrecer.
+   *
+   * Ref design: openspec/changes/insumos-entrega-2/design.md, decisión 2.
+   */
+  INSUMOS: {
+    piso: ['LECTURA', 'ALTAS'],
+    extras: ['AJUSTAR'],
+  },
 } as const satisfies Record<string, { piso: readonly AccionPiso[]; extras: readonly string[] }>;
 
 /** Código de un módulo funcional de la matriz de permisos. */
@@ -84,7 +112,7 @@ type AccionesDe<M extends Modulo> =
 export type CodigoAccion = { [M in Modulo]: `${M}:${AccionesDe<M>}` }[Modulo];
 
 /**
- * Los 33 pares `(modulo, accion)` válidos, aplanados desde `CATALOGO_MODULOS`.
+ * Los 36 pares `(modulo, accion)` válidos, aplanados desde `CATALOGO_MODULOS`.
  * Única fuente que consumen el test de deriva (WU-2.1), el bypass de
  * ADMINISTRADOR (`resolverScope`, WU-7.1) y la validación de DTOs (WU-7.4).
  */
