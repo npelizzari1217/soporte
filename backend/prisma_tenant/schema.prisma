@@ -731,10 +731,15 @@ model InsumoModeloEquipo {
 model MovimientoInsumo {
   id       String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   insumoId String @map("insumo_id") @db.Uuid
-  /// CHECK (tipo IN ('ENTRADA', 'SALIDA', 'AJUSTE')) — catálogo CERRADO, ver
-  /// migración. Fuente única de verdad: `TIPOS_MOVIMIENTO_INSUMO`
+  /// CHECK (tipo IN (4 valores)) — catálogo CERRADO, ver migración. Fuente
+  /// única de verdad: `TIPOS_MOVIMIENTO_INSUMO`
   /// (`src/insumos/domain/entities/tipo-movimiento-insumo.ts`), comparada
   /// contra el CHECK real por el spec de constraints.
+  ///
+  /// No se enumeran acá a propósito, con el mismo criterio que
+  /// `OperacionCompra.tipo`: una tercera copia de la lista es una tercera cosa
+  /// que se desactualiza sola. Esta ya lo hizo — decía tres valores después de
+  /// que el ajuste se partiera en sus dos direcciones.
   tipo     String @db.VarChar(20)
   /// CHECK (cantidad > 0). El SIGNO lo da el `tipo`, no el número: admitir
   /// negativos daría dos formas de escribir la misma salida —SALIDA de 5 o
