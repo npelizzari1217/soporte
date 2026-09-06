@@ -8,11 +8,14 @@ import {
   normalizarCodigoAlternativo,
   normalizarFabricanteCodigoAlternativo,
 } from '../../domain/entities/insumo-codigo-alternativo.entity';
+import { InsumoEntity } from '../../domain/entities/insumo.entity';
 import {
   CodigoAlternativoDuplicadoError,
   CompatibilidadDuplicadaError,
   FamiliaInsumoDeshabilitadaError,
   FamiliaInsumoInexistenteError,
+  InsumoDeshabilitadoError,
+  InsumoNoEncontradoError,
   ModeloEquipoDeshabilitadoError,
   ModeloEquipoInexistenteError,
   UnidadMedidaDeshabilitadaError,
@@ -32,6 +35,9 @@ export type LectorCatalogoFamilias = Pick<IFamiliaInsumoRepository, 'findById'>;
 
 /** Mismo criterio que `LectorCatalogoFamilias`, para el catálogo de unidades. */
 export type LectorCatalogoUnidades = Pick<IUnidadMedidaRepository, 'findById'>;
+
+/** Mismo criterio, para el catálogo de insumos. */
+export type LectorCatalogoInsumos = Pick<IInsumoRepository, 'findById'>;
 
 /** Mismo criterio, para el catálogo de modelos de equipo. */
 export type LectorCatalogoModelosEquipo = Pick<IModeloEquipoRepository, 'findById'>;
@@ -157,6 +163,60 @@ export async function validarUnidadMedidaElegible(
   }
 
   return Result.ok(undefined);
+}
+
+/**
+ * Verifica que un `insumoId` sea ELEGIBLE y DEVUELVE el insumo, con el mismo
+ * criterio de "existir no es ser elegible" que `validarFamiliaInsumoElegible`.
+ *
+ * Devuelve la ENTIDAD y no `Result<void>` —a diferencia de los tres
+ * validadores de catálogo de arriba— porque sus consumidores la necesitan: un
+ * movimiento de stock se asienta contra el `id` de la fila recién leída, que
+ * es el valor canónico que la base ya reconoció, y no contra el que vino en el
+ * payload. Devolver `void` obligaría a cada caso de uso a repetir el
+ * `findById()`, que es exactamente la duplicación que esta función existe para
+ * borrar.
+ *
+ * **Los dos guards NO tienen el mismo alcance, y ese es el motivo de la
+ * opción.** La baja lógica cuenta como inexistencia SIEMPRE: `findById()` no
+ * filtra por `deletedAt`, así que la fila dada de baja vuelve igual y ningún
+ * consumidor debe escribir contra ella. El guard de `activo`, en cambio, es
+ * exclusivo de la ENTRADA: deshabilitar un insumo significa "no se compra más
+ * de esto", pero la SALIDA y el AJUSTE operan sobre lo que YA está en el
+ * depósito, y rechazarlos dejaría ese stock atrapado sin forma de llegar a
+ * cero. Ver `InsumoDeshabilitadoError`, cuyo mensaje lo dice con palabras.
+ *
+ * Por eso el guard de `activo` es opt-in y no la regla por defecto: un
+ * consumidor nuevo que se olvide de la opción rechaza de MENOS, que es el lado
+ * seguro —una salida de más se corrige con un ajuste—, y no de más, que sería
+ * dejar mercadería inmovilizada sin recurso.
+ *
+ * @param catalogo Lector del catálogo de insumos del tenant.
+ * @param insumoId Id a validar.
+ * @param opciones `exigirHabilitado` agrega el guard de `activo`; solo la
+ *   ENTRADA lo pide.
+ * @returns El insumo vigente; o `InsumoNoEncontradoError` si no existe o tiene
+ *   baja lógica, o `InsumoDeshabilitadoError` si se exigió habilitado y no lo está.
+ */
+export async function validarInsumoElegible(
+  catalogo: LectorCatalogoInsumos,
+  insumoId: string,
+  opciones: { exigirHabilitado?: boolean } = {},
+): Promise<Result<InsumoEntity, DomainError>> {
+  const insumo = await catalogo.findById(insumoId);
+
+  // El orden importa: la baja lógica gana sobre el deshabilitado. Pedirle a
+  // quien carga que habilite un insumo dado de baja lo manda a arreglar un
+  // estado que no alcanza — el insumo seguiría sin aparecer en el catálogo.
+  if (!insumo || insumo.isDeleted()) {
+    return Result.fail(new InsumoNoEncontradoError(insumoId));
+  }
+
+  if (opciones.exigirHabilitado === true && !insumo.activo) {
+    return Result.fail(new InsumoDeshabilitadoError(insumoId));
+  }
+
+  return Result.ok(insumo);
 }
 
 /**

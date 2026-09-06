@@ -13,8 +13,8 @@ import {
 } from './acciones';
 
 describe('PARES_VALIDOS — cardinalidad exacta por módulo (R1)', () => {
-  it('tiene exactamente 33 pares en total', () => {
-    expect(PARES_VALIDOS).toHaveLength(33);
+  it('tiene exactamente 36 pares en total', () => {
+    expect(PARES_VALIDOS).toHaveLength(36);
   });
 
   it.each([
@@ -26,6 +26,7 @@ describe('PARES_VALIDOS — cardinalidad exacta por módulo (R1)', () => {
     ['DASHBOARD', 1],
     ['CSAT', 1],
     ['PREVENTIVO', 4],
+    ['INSUMOS', 3],
   ] as const)('%s declara exactamente %i pares', (modulo, cantidad) => {
     const propios = PARES_VALIDOS.filter((p) => p.startsWith(`${modulo}:`));
     expect(propios).toHaveLength(cantidad);
@@ -50,6 +51,29 @@ describe('APROBACION solo en COMPRAS', () => {
   it('el único módulo con :APROBACION es COMPRAS', () => {
     const conAprobacion = PARES_VALIDOS.filter((p) => p.endsWith(':APROBACION'));
     expect(conAprobacion).toEqual(['COMPRAS:APROBACION']);
+  });
+
+  // Hermano invertido de la regla de arriba. INSUMOS también separa la
+  // operación privilegiada de la cotidiana, pero NO reusa APROBACION: un
+  // AJUSTE no lo aprueba un segundo actor sobre un registro pendiente, lo
+  // firma quien tiene la atribución. Sin este caso, cambiar `AJUSTAR` por
+  // `APROBACION` en el catálogo rompería el test de arriba sin que nada
+  // explicara por qué está mal.
+  it('INSUMOS separa el AJUSTE con una acción propia, no con APROBACION', () => {
+    expect(accionesDeModulo('INSUMOS')).toEqual([
+      'INSUMOS:LECTURA',
+      'INSUMOS:ALTAS',
+      'INSUMOS:AJUSTAR',
+    ]);
+  });
+});
+
+describe('INSUMOS no declara acciones que la tabla append-only no soporta', () => {
+  // `movimientos_insumo` no tiene UPDATE ni DELETE: un movimiento se corrige
+  // con otro movimiento. Declarar MODIFICACION o BORRADO prometería en la
+  // grilla de permisos una operación que ningún endpoint puede ofrecer.
+  it.each(['MODIFICACION', 'BORRADO'] as const)('INSUMOS no declara %s', (accion) => {
+    expect(PARES_VALIDOS).not.toContain(`INSUMOS:${accion}`);
   });
 });
 
@@ -76,9 +100,19 @@ describe('moduloDe', () => {
 });
 
 describe('CATALOGO_MODULOS — claves esperadas', () => {
-  it('declara exactamente los 8 módulos vigentes (R1 + CSAT sdd/csat WU-3 + PREVENTIVO sdd/preventivo WU-1)', () => {
+  it('declara exactamente los 9 módulos vigentes (R1 + CSAT sdd/csat WU-3 + PREVENTIVO sdd/preventivo WU-1 + INSUMOS insumos-entrega-2 U1)', () => {
     expect(Object.keys(CATALOGO_MODULOS).sort()).toEqual(
-      ['COMPRAS', 'CSAT', 'DASHBOARD', 'EDILICIA', 'EQUIPOS', 'KB', 'PREVENTIVO', 'TICKETS'].sort(),
+      [
+        'COMPRAS',
+        'CSAT',
+        'DASHBOARD',
+        'EDILICIA',
+        'EQUIPOS',
+        'INSUMOS',
+        'KB',
+        'PREVENTIVO',
+        'TICKETS',
+      ].sort(),
     );
   });
 });

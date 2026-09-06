@@ -1,3 +1,4 @@
+import { TipoAjusteInsumo } from '../entities/tipo-movimiento-insumo';
 import { DomainError } from '../../../shared/domain/result';
 
 /**
@@ -30,6 +31,38 @@ export class InsumoCodigoDuplicadoError extends DomainError {
   constructor(codigo: string) {
     super(
       `Ya existe un insumo con el código "${codigo}" en este tenant (activo o inactivo, incluso con baja lógica).`,
+    );
+  }
+}
+
+/**
+ * InsumoDeshabilitadoError — el insumo existe y está vigente, pero fue
+ * DESHABILITADO (`activo: false`), así que no admite una ENTRADA de stock.
+ *
+ * Es el caso que la FK de `movimientos_insumo` NO puede atrapar: la fila del
+ * insumo existe, la base acepta el movimiento sin chistar y el depósito recibe
+ * más de algo que la organización ya sacó de circulación — una falla
+ * silenciosa, sin error ni log. Deshabilitar significa "no se compra más de
+ * esto"; si la API acepta la recepción igual, deshabilitar no sirve para nada.
+ *
+ * **La restricción es SOLO de la entrada, y por eso el mensaje lo dice.** Una
+ * SALIDA sobre un insumo deshabilitado es consumir lo que quedó en el depósito
+ * —justo lo que se espera después de retirarlo—, y un AJUSTE es corregir su
+ * conteo físico; rechazarlas dejaría ese stock atrapado, sin forma de llegar a
+ * cero salvo volviendo a habilitar el insumo o asentando un ajuste que
+ * mentiría sobre lo que pasó. Sin la aclaración en el mensaje, quien lee "está
+ * deshabilitado" generaliza la prohibición a toda la bitácora — el mismo
+ * riesgo que `MotivoAjusteRequeridoError` evita nombrando el tipo exacto.
+ * → HTTP 422 en la capa de presentación.
+ */
+export class InsumoDeshabilitadoError extends DomainError {
+  readonly code = 'INSUMO_DESHABILITADO';
+
+  constructor(id: string) {
+    super(
+      `El insumo con id "${id}" está deshabilitado: no se puede registrar una entrada de stock ` +
+        `sobre él. Habilítelo en el catálogo si vuelve a comprarse. La salida y el ajuste sí se ` +
+        `registran, para poder consumir y corregir lo que quedó en el depósito.`,
     );
   }
 }
@@ -209,6 +242,78 @@ export class CompatibilidadDuplicadaError extends DomainError {
     super(
       `El modelo de equipo con id "${modeloEquipoId}" aparece más de una vez en la lista de ` +
         `compatibilidad. Cada modelo se declara una sola vez por insumo.`,
+    );
+  }
+}
+
+/**
+ * MotivoAjusteRequeridoError — se intentó registrar un ajuste —en cualquiera
+ * de sus dos direcciones, `AJUSTE_POSITIVO` o `AJUSTE_NEGATIVO`— sin motivo, o
+ * con un motivo que después de recortar los espacios no tiene contenido.
+ *
+ * Es la regla que la base NO puede sostener, y por eso vive en el dominio: un
+ * `CHECK` condicional sería un segundo dueño de una regla que ya está en la
+ * entidad —dos dueños de la misma regla derivan—, y además Postgres no puede
+ * exigir que el motivo tenga CONTENIDO: un motivo de un solo espacio
+ * conformaría al `NOT NULL` igual.
+ *
+ * Va como `Result.fail` y no como `throw` porque es una desviación de negocio
+ * que el usuario tiene que ver y corregir, no una violación de contrato del
+ * caller: el borde no puede rechazarla con un decorador simple, porque la
+ * obligatoriedad depende del `tipo` que venga en el mismo body. Precedente
+ * exacto: `MotivoCierreFaltanteRequeridoError` (`compras.errors.ts`).
+ *
+ * El mensaje nombra el tipo EXACTO y no la palabra genérica "ajuste". Por dos
+ * razones: el motivo es OPCIONAL en la `ENTRADA` y en la `SALIDA` —sin el tipo,
+ * quien registra una salida lee "el motivo es obligatorio", lo generaliza y
+ * termina cargando relleno en toda la bitácora—, y los dos ajustes se
+ * confunden entre sí con facilidad, así que quien acaba de asentar un faltante
+ * necesita leer que el sistema entendió `AJUSTE_NEGATIVO`.
+ * → HTTP 422 en la capa de presentación.
+ */
+export class MotivoAjusteRequeridoError extends DomainError {
+  readonly code = 'MOTIVO_AJUSTE_REQUERIDO';
+
+  constructor(insumoId: string, tipo: TipoAjusteInsumo) {
+    super(
+      `El motivo es obligatorio para registrar un movimiento de tipo ${tipo} sobre el insumo con id ` +
+        `"${insumoId}": un ajuste sin explicación es un faltante sin explicación. La entrada y la ` +
+        `salida no lo exigen.`,
+    );
+  }
+}
+
+/**
+ * StockInsuficienteError — se intentó registrar una SALIDA (o un
+ * `AJUSTE_NEGATIVO`) por más unidades de las que el insumo tiene en el
+ * depósito. El stock resultante habría quedado negativo, que es la única
+ * invariante que la bitácora existe para proteger.
+ *
+ * **Es la regla que la base NO puede sostener, y por eso el dominio es su
+ * único dueño.** Postgres no puede expresar `SUM(cantidad) >= 0` sobre varias
+ * filas: no hay `CHECK` ni FK que ataje esto, así que no hay backstop. La
+ * invariante depende de que toda escritura pase por el único punto que toma el
+ * advisory lock (`IMovimientoInsumoRepository.lockAndSumByTipo`) y compara el
+ * saldo ANTES de insertar, dentro de la misma transacción.
+ *
+ * Va como `Result.fail` y no como `throw`: es una desviación de negocio que
+ * quien registra el movimiento tiene que ver y corregir —contando el depósito
+ * o corrigiendo lo que escribió—, no una violación de contrato del caller. El
+ * borde no puede rechazarla con un decorador, porque el disponible depende del
+ * estado de la bitácora en el instante de la escritura.
+ *
+ * El mensaje dice los DOS números. Con uno solo, quien carga no sabe si el
+ * error está en lo que escribió o en el depósito, y "no hay stock suficiente"
+ * a secas lo obliga a abrir otra pantalla para averiguar cuánto hay.
+ * → HTTP 422 en la capa de presentación.
+ */
+export class StockInsuficienteError extends DomainError {
+  readonly code = 'STOCK_INSUFICIENTE';
+
+  constructor(insumoId: string, solicitada: number, disponible: number) {
+    super(
+      `El insumo con id "${insumoId}" no tiene stock suficiente: se pidieron ${solicitada} unidades ` +
+        `y hay ${disponible} disponibles. Registre primero la entrada que falta, o corrija la cantidad.`,
     );
   }
 }

@@ -11,6 +11,7 @@
  * Ref spec: sdd/redisenio-modulo-compras/spec §2, §3. Ref design: ADR-C1.
  * Tarea: PR-4.
  */
+import { enCentesimas } from '../../../shared/domain/centesimas';
 
 /**
  * Estados de aprobación de un ítem, en runtime — ÚNICA fuente de verdad: el
@@ -222,28 +223,6 @@ export function derivarGrupoEstadoCompra(compra: CompraParaDerivacion): GrupoEst
     return 'CANCELADAS';
   }
   return cerrado ? 'COMPLETADAS' : 'ACTIVAS';
-}
-
-/**
- * Convierte una cantidad/monto a centésimas ENTERAS y redondeadas —
- * ADR-C3. Toda comparación y suma de cantidades/montos del módulo de
- * compras pasa por acá, sin excepción.
- *
- * Por qué: JS representa fracciones decimales en binario IEEE-754, así que
- * operaciones tan simples como `0.7 - 0.6` dan `0.09999999999999998` en vez
- * de `0.1` (undershoot) — comparar ese resultado con `>=` contra `0.1` en
- * float directo da un falso negativo. `0.1 + 0.2` da el error simétrico
- * (`0.30000000000000004`, overshoot) que en una comparación `>=` puede
- * pasar desapercibido por casualidad, pero NO es confiable: la única forma
- * de comparar y sumar cantidades/montos sin depender de en qué dirección
- * redondeó el float es hacerlo en una escala entera. `Math.round` (no
- * `Math.floor`/truncado) evita que el propio redondeo a centésimas
- * introduzca un nuevo sesgo sistemático hacia abajo.
- *
- * @param n Valor en unidades "normales" (ej. `cantidad=0.3`, `monto=150000.5`).
- */
-export function enCentesimas(n: number): number {
-  return Math.round(n * 100);
 }
 
 /**

@@ -15,7 +15,6 @@
 import {
   CompraParaDerivacion,
   derivarEstadoCompra,
-  enCentesimas,
   EstadoCompra,
   itemComprado,
   itemEntregado,
@@ -299,29 +298,9 @@ it('Regla 0 gana sobre cualquier combinación', () => {
 });
 
 // ---------------------------------------------------------------------------
-// PR-7 — `enCentesimas` / `itemComprado` / `itemEntregado` (ADR-C3).
+// PR-7 — `itemComprado` / `itemEntregado` (ADR-C3). El redondeo en centésimas
+// tiene su propio spec en `shared/domain/centesimas.spec.ts`, donde vive la regla.
 // ---------------------------------------------------------------------------
-
-describe('enCentesimas — ADR-C3', () => {
-  it.each([
-    [0.3, 30],
-    [0.1, 10],
-    [150000, 15000000],
-    [0, 0],
-  ])('redondea %s a %s centésimas', (n, esperado) => {
-    expect(enCentesimas(n)).toBe(esperado);
-  });
-
-  it('LA TRAMPA DEL FLOAT: enCentesimas(0.1+0.2) === enCentesimas(0.3) (30 === 30), a diferencia de la comparación directa', () => {
-    expect(0.1 + 0.2 === 0.3).toBe(false); // el problema que motiva ADR-C3
-    expect(enCentesimas(0.1 + 0.2)).toBe(enCentesimas(0.3));
-  });
-
-  it('caso de UNDERSHOOT: enCentesimas(0.7-0.6) === enCentesimas(0.1) (10 === 10), pese a que 0.7-0.6 < 0.1 en float directo', () => {
-    expect(0.7 - 0.6 < 0.1).toBe(true); // el float directo se queda corto
-    expect(enCentesimas(0.7 - 0.6)).toBe(enCentesimas(0.1));
-  });
-});
 
 describe('itemComprado / itemEntregado — ADR-C3', () => {
   it.each([

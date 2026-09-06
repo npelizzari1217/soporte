@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { TIPOS_AJUSTE_INSUMO } from '../entities/tipo-movimiento-insumo';
 import { DomainError } from '../../../shared/domain/result';
 import {
   CodigoAlternativoDuplicadoError,
@@ -6,8 +7,11 @@ import {
   FamiliaInsumoDeshabilitadaError,
   FamiliaInsumoInexistenteError,
   InsumoCodigoDuplicadoError,
+  InsumoDeshabilitadoError,
   InsumoNoEncontradoError,
+  MotivoAjusteRequeridoError,
   ModeloEquipoDeshabilitadoError,
+  StockInsuficienteError,
   ModeloEquipoInexistenteError,
   UnidadMedidaDeshabilitadaError,
   UnidadMedidaInexistenteError,
@@ -39,6 +43,46 @@ describe('Errores de dominio de insumos', () => {
     const error = new InsumoCodigoDuplicadoError('TON-001');
     expect(error.message).toContain('activo o inactivo');
     expect(error.message).toContain('baja');
+  });
+
+  describe('InsumoDeshabilitadoError', () => {
+    /**
+     * Existir y ser elegible son dos cosas distintas también para el insumo
+     * mismo: la FK de `movimientos_insumo` no atrapa al insumo deshabilitado
+     * —la fila existe—, así que la entrada se asentaría en silencio contra
+     * algo que la organización sacó de circulación.
+     */
+    it('expone code INSUMO_DESHABILITADO y nombra el id', () => {
+      const error = new InsumoDeshabilitadoError('id-insumo');
+
+      expect(error).toBeInstanceOf(DomainError);
+      expect(error.code).toBe('INSUMO_DESHABILITADO');
+      expect(error.message).toContain('id-insumo');
+    });
+
+    it('expone un code distinto del del insumo inexistente', () => {
+      const deshabilitado = new InsumoDeshabilitadoError('id-insumo');
+      const inexistente = new InsumoNoEncontradoError('id-insumo');
+
+      expect(deshabilitado.code).not.toBe(inexistente.code);
+    });
+
+    /**
+     * El mensaje tiene que decir que la restricción es SOLO de la entrada.
+     * Sin esa aclaración, quien lee "el insumo está deshabilitado" al intentar
+     * cargar una recepción generaliza y da por perdido el stock que quedó en
+     * el depósito: creería que tampoco puede sacarlo ni corregirlo por conteo,
+     * cuando esas dos operaciones sí se registran. Mismo criterio que
+     * `MotivoAjusteRequeridoError`, que nombra el tipo exacto para que nadie
+     * generalice la obligación del motivo a toda la bitácora.
+     */
+    it('aclara que la salida y el ajuste sí se pueden registrar', () => {
+      const error = new InsumoDeshabilitadoError('id-insumo');
+
+      expect(error.message).toContain('entrada');
+      expect(error.message).toContain('salida');
+      expect(error.message).toContain('ajuste');
+    });
   });
 
   it('FamiliaInsumoInexistenteError expone code FAMILIA_INSUMO_INEXISTENTE y nombra el id', () => {
@@ -148,6 +192,83 @@ describe('Errores de dominio de insumos', () => {
       expect(error.message).toContain('CE285A');
       expect(error.message).toContain('sin fabricante');
       expect(error.message).not.toContain('null');
+    });
+  });
+
+  describe('MotivoAjusteRequeridoError', () => {
+    /**
+     * Un ajuste sin motivo es un faltante sin explicación. La base NO puede
+     * exigirlo —un `CHECK` condicional sería un segundo dueño de la regla, y
+     * además un espacio en blanco lo conformaría igual—, así que el error es
+     * la única señal que recibe quien carga.
+     */
+    it('expone code MOTIVO_AJUSTE_REQUERIDO y nombra el insumo', () => {
+      const error = new MotivoAjusteRequeridoError('id-insumo', 'AJUSTE_NEGATIVO');
+
+      expect(error).toBeInstanceOf(DomainError);
+      expect(error.code).toBe('MOTIVO_AJUSTE_REQUERIDO');
+      expect(error.message).toContain('id-insumo');
+    });
+
+    /**
+     * El mensaje nombra el tipo EXACTO, no la palabra genérica "ajuste": los
+     * dos ajustes son la misma operación con distinto signo, y quien acaba de
+     * asentar un faltante necesita ver en el error que el sistema entendió
+     * `AJUSTE_NEGATIVO` y no el positivo. El caso se recorre DESDE
+     * `TIPOS_AJUSTE_INSUMO`, así que un tercer ajuste quedaría cubierto solo.
+     *
+     * El motivo además es OPCIONAL en la entrada y en la salida: sin el tipo
+     * en el mensaje, quien registra una salida leería "el motivo es
+     * obligatorio", lo generalizaría y cargaría relleno en toda la bitácora.
+     */
+    it('nombra el tipo de ajuste exacto, y no el otro', () => {
+      for (const tipo of TIPOS_AJUSTE_INSUMO) {
+        const error = new MotivoAjusteRequeridoError('id-insumo', tipo);
+        const elOtro = TIPOS_AJUSTE_INSUMO.filter((candidato) => candidato !== tipo);
+
+        expect(error.message).toContain(tipo);
+        for (const ajeno of elOtro) {
+          expect(error.message).not.toContain(ajeno);
+        }
+      }
+    });
+  });
+  describe('StockInsuficienteError', () => {
+    /**
+     * Es la invariante que la base NO puede sostener: Postgres no sabe
+     * expresar `SUM(cantidad) >= 0` sobre varias filas, así que no hay
+     * `CHECK` que ataje el stock negativo. El error del dominio es el único
+     * lugar donde la salida imposible se rechaza.
+     */
+    it('expone code STOCK_INSUFICIENTE y nombra el insumo', () => {
+      const error = new StockInsuficienteError('id-insumo', 5, 2);
+
+      expect(error).toBeInstanceOf(DomainError);
+      expect(error.code).toBe('STOCK_INSUFICIENTE');
+      expect(error.message).toContain('id-insumo');
+    });
+
+    /**
+     * El mensaje dice los DOS números. Con uno solo, quien registra la salida
+     * no sabe si tiene que corregir lo que escribió o ir a contar el depósito:
+     * "no hay stock suficiente" a secas obliga a abrir otra pantalla para
+     * averiguar cuánto hay.
+     */
+    it('dice cuánto se pidió y cuánto hay disponible', () => {
+      const error = new StockInsuficienteError('id-insumo', 5, 2);
+
+      expect(error.message).toContain('5');
+      expect(error.message).toContain('2');
+    });
+
+    /**
+     * El depósito vacío es el caso más frecuente y el que peor se lee si el
+     * cero se pierde en la interpolación.
+     */
+    it('dice el disponible aunque sea cero', () => {
+      const error = new StockInsuficienteError('id-insumo', 1, 0);
+
+      expect(error.message).toContain('0');
     });
   });
 });

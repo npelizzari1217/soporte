@@ -10,29 +10,55 @@ import { FamiliasInsumoController } from './interface/controllers/familias-insum
 import { UnidadesMedidaController } from './interface/controllers/unidades-medida.controller';
 import { ModelosEquipoController } from './interface/controllers/modelos-equipo.controller';
 import { InsumosController } from './interface/controllers/insumos.controller';
+import { MovimientosInsumoController } from './interface/controllers/movimientos-insumo.controller';
 import { AuthModule } from '../auth/auth.module';
 import { FAMILIA_INSUMO_REPOSITORY } from './domain/ports/i-familia-insumo.repository';
 import { UNIDAD_MEDIDA_REPOSITORY } from './domain/ports/i-unidad-medida.repository';
 import { MODELO_EQUIPO_REPOSITORY } from './domain/ports/i-modelo-equipo.repository';
 import { INSUMO_REPOSITORY } from './domain/ports/i-insumo.repository';
+import { MOVIMIENTO_INSUMO_REPOSITORY } from './domain/ports/i-movimiento-insumo.repository';
 import { CrearInsumoUseCase } from './application/use-cases/crear-insumo.use-case';
 import { EditarInsumoUseCase } from './application/use-cases/editar-insumo.use-case';
 import { CambiarEstadoActivoInsumoUseCase } from './application/use-cases/cambiar-estado-activo-insumo.use-case';
 import { ListarInsumosUseCase } from './application/use-cases/listar-insumos.use-case';
 import { ListarInsumosPorModeloEquipoUseCase } from './application/use-cases/listar-insumos-por-modelo-equipo.use-case';
+import { RegistrarEntradaInsumoUseCase } from './application/use-cases/registrar-entrada-insumo.use-case';
+import { RegistrarSalidaInsumoUseCase } from './application/use-cases/registrar-salida-insumo.use-case';
+import { RegistrarAjusteInsumoUseCase } from './application/use-cases/registrar-ajuste-insumo.use-case';
+import { ConsultarStockInsumoUseCase } from './application/use-cases/consultar-stock-insumo.use-case';
 
 describe('InsumosModule wiring', () => {
-  it('registra los controllers de los tres catálogos y el del insumo', () => {
+  it('registra los controllers de los tres catálogos, el del insumo y el de los movimientos', () => {
     const controllers = (Reflect.getMetadata('controllers', InsumosModule) ?? []) as unknown[];
     expect(controllers).toContain(FamiliasInsumoController);
     expect(controllers).toContain(UnidadesMedidaController);
     expect(controllers).toContain(ModelosEquipoController);
     expect(controllers).toContain(InsumosController);
+    expect(controllers).toContain(MovimientosInsumoController);
   });
 
   it('importa AuthModule (guards JwtAuthGuard/TenantGuard/AdminClienteGuard)', () => {
     const imports = (Reflect.getMetadata('imports', InsumosModule) ?? []) as unknown[];
     expect(imports).toContain(AuthModule);
+  });
+
+  /**
+   * El puerto de la bitácora se provee pero NO se exporta, a diferencia de los
+   * otros cuatro: sus únicos consumidores son los cuatro casos de uso de este
+   * mismo módulo. Exportarlo abriría un segundo camino de escritura a
+   * `movimientos_insumo` desde afuera, y la invariante del stock depende de que
+   * toda escritura pase por el único punto que toma el advisory lock — Postgres
+   * no puede expresar `SUM(cantidad) >= 0`, así que no hay backstop de base que
+   * atrape esa fuga.
+   */
+  it('provee MOVIMIENTO_INSUMO_REPOSITORY sin exportarlo', () => {
+    const providers = (Reflect.getMetadata('providers', InsumosModule) ?? []) as Array<{
+      provide?: unknown;
+    }>;
+    expect(providers.map((p) => p.provide)).toContain(MOVIMIENTO_INSUMO_REPOSITORY);
+
+    const exportsMeta = (Reflect.getMetadata('exports', InsumosModule) ?? []) as unknown[];
+    expect(exportsMeta).not.toContain(MOVIMIENTO_INSUMO_REPOSITORY);
   });
 
   // Los cuatro puertos se exportan: los tres catálogos porque el ABM de
@@ -54,11 +80,10 @@ describe('InsumosModule wiring', () => {
   });
 
   /**
-   * Los cinco casos de uso del insumo se registran con `useFactory`, no como
-   * clases: sus constructores reciben PUERTOS —tokens de inyección— y NestJS
-   * no puede resolverlos por metadata de tipo. Sin este assert, un caso de uso
-   * que se quede afuera del módulo se descubre recién cuando el endpoint
-   * devuelve 500.
+   * Los casos de uso se registran con `useFactory`, no como clases: sus
+   * constructores reciben PUERTOS —tokens de inyección— y NestJS no puede
+   * resolverlos por metadata de tipo. Sin este assert, un caso de uso que se
+   * quede afuera del módulo se descubre recién cuando el endpoint devuelve 500.
    */
   it.each([
     ['CrearInsumoUseCase', CrearInsumoUseCase],
@@ -66,10 +91,45 @@ describe('InsumosModule wiring', () => {
     ['CambiarEstadoActivoInsumoUseCase', CambiarEstadoActivoInsumoUseCase],
     ['ListarInsumosUseCase', ListarInsumosUseCase],
     ['ListarInsumosPorModeloEquipoUseCase', ListarInsumosPorModeloEquipoUseCase],
+    ['RegistrarEntradaInsumoUseCase', RegistrarEntradaInsumoUseCase],
+    ['RegistrarSalidaInsumoUseCase', RegistrarSalidaInsumoUseCase],
+    ['RegistrarAjusteInsumoUseCase', RegistrarAjusteInsumoUseCase],
+    ['ConsultarStockInsumoUseCase', ConsultarStockInsumoUseCase],
   ])('provee %s', (_nombre, useCase) => {
     const providers = (Reflect.getMetadata('providers', InsumosModule) ?? []) as Array<{
       provide?: unknown;
     }>;
     expect(providers.map((p) => p.provide)).toContain(useCase);
+  });
+
+  /**
+   * El `inject` de cada factory se assertea aparte del `provide` porque son dos
+   * fallas distintas y solo una la ve el smoke del grafo DI: un token que falta
+   * revienta al arrancar, pero un token de MÁS o en el ORDEN equivocado
+   * construye igual y le entrega al caso de uso un colaborador que no es el
+   * que su constructor espera.
+   *
+   * La asimetría entre los tres registros es la decisión de diseño, no un
+   * descuido: la ENTRADA no recibe el `TENANT_TX_RUNNER` porque suma y no
+   * decide nada bajo la sección crítica, mientras que la SALIDA y el AJUSTE lo
+   * reciben porque pueden dejar el saldo negativo. Si la entrada empezara a
+   * recibirlo, el `Pick` angosto de su constructor dejaría de ser el mecanismo
+   * que le impide tomar el lock por descuido.
+   */
+  it.each([
+    ['RegistrarEntradaInsumoUseCase', RegistrarEntradaInsumoUseCase, 2],
+    ['RegistrarSalidaInsumoUseCase', RegistrarSalidaInsumoUseCase, 3],
+    ['RegistrarAjusteInsumoUseCase', RegistrarAjusteInsumoUseCase, 3],
+    ['ConsultarStockInsumoUseCase', ConsultarStockInsumoUseCase, 2],
+  ])('inyecta en %s los puertos que su constructor declara', (_nombre, useCase, cantidad) => {
+    const providers = (Reflect.getMetadata('providers', InsumosModule) ?? []) as Array<{
+      provide?: unknown;
+      inject?: unknown[];
+    }>;
+    const registro = providers.find((p) => p.provide === useCase);
+
+    expect(registro?.inject).toHaveLength(cantidad);
+    expect(registro?.inject?.[0]).toBe(INSUMO_REPOSITORY);
+    expect(registro?.inject?.[1]).toBe(MOVIMIENTO_INSUMO_REPOSITORY);
   });
 });

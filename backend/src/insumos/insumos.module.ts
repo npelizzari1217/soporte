@@ -13,14 +13,23 @@
  * la compatibilidad con insumos: `equipos_informaticos.modelo_equipo_id` es un
  * consumidor del catálogo, no su dueño.
  *
- * Los cuatro puertos se EXPORTAN: los tres catálogos porque el ABM de
- * `Insumo` los usa para validar que la familia, la unidad y los modelos
+ * Los cuatro puertos del catálogo se EXPORTAN: los tres auxiliares porque el
+ * ABM de `Insumo` los usa para validar que la familia, la unidad y los modelos
  * compatibles referenciados existen y están vigentes, e `INSUMO_REPOSITORY`
- * porque los movimientos de existencias (Entrega 2) van a resolver el insumo
- * desde su propio módulo.
+ * porque los movimientos de existencias resuelven el insumo desde acá.
  *
- * Importa `AuthModule` para `JwtAuthGuard`/`TenantGuard`/`AdminClienteGuard`
- * vía `@UseGuards` en los controllers (mismo patrón que `SectoresModule`).
+ * **`MOVIMIENTO_INSUMO_REPOSITORY` NO se exporta, y esa asimetría es
+ * deliberada.** Sus únicos consumidores son los cuatro casos de uso de este
+ * mismo módulo. La invariante del stock —que el saldo no quede negativo—
+ * depende de que TODA escritura pase por el único punto que toma el advisory
+ * lock, y Postgres no puede expresar `SUM(cantidad) >= 0` sobre varias filas,
+ * así que no hay backstop de base que atrape la fuga. Exportar el puerto sería
+ * ofrecerle a otro módulo el camino para abrirla.
+ *
+ * Importa `AuthModule` para `JwtAuthGuard`/`TenantGuard`/`AdminClienteGuard`/
+ * `AccionesGuard` vía `@UseGuards` en los controllers (mismo patrón que
+ * `SectoresModule`). `TENANT_TX_RUNNER` no se importa: lo provee `SharedModule`,
+ * que es `@Global`.
  */
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
@@ -42,6 +51,15 @@ import { PrismaUnidadMedidaRepository } from './infrastructure/persistence/prism
 import { PrismaModeloEquipoRepository } from './infrastructure/persistence/prisma/prisma-modelo-equipo.repository';
 import { IInsumoRepository, INSUMO_REPOSITORY } from './domain/ports/i-insumo.repository';
 import { PrismaInsumoRepository } from './infrastructure/persistence/prisma/prisma-insumo.repository';
+import {
+  IMovimientoInsumoRepository,
+  MOVIMIENTO_INSUMO_REPOSITORY,
+} from './domain/ports/i-movimiento-insumo.repository';
+import { PrismaMovimientoInsumoRepository } from './infrastructure/persistence/prisma/prisma-movimiento-insumo.repository';
+import {
+  ITenantTransactionRunner,
+  TENANT_TX_RUNNER,
+} from '../shared/infrastructure/persistence/tenant-transaction-runner';
 
 import { CrearFamiliaInsumoUseCase } from './application/use-cases/crear-familia-insumo.use-case';
 import { EditarFamiliaInsumoUseCase } from './application/use-cases/editar-familia-insumo.use-case';
@@ -64,10 +82,16 @@ import { CambiarEstadoActivoInsumoUseCase } from './application/use-cases/cambia
 import { ListarInsumosUseCase } from './application/use-cases/listar-insumos.use-case';
 import { ListarInsumosPorModeloEquipoUseCase } from './application/use-cases/listar-insumos-por-modelo-equipo.use-case';
 
+import { RegistrarEntradaInsumoUseCase } from './application/use-cases/registrar-entrada-insumo.use-case';
+import { RegistrarSalidaInsumoUseCase } from './application/use-cases/registrar-salida-insumo.use-case';
+import { RegistrarAjusteInsumoUseCase } from './application/use-cases/registrar-ajuste-insumo.use-case';
+import { ConsultarStockInsumoUseCase } from './application/use-cases/consultar-stock-insumo.use-case';
+
 import { FamiliasInsumoController } from './interface/controllers/familias-insumo.controller';
 import { UnidadesMedidaController } from './interface/controllers/unidades-medida.controller';
 import { ModelosEquipoController } from './interface/controllers/modelos-equipo.controller';
 import { InsumosController } from './interface/controllers/insumos.controller';
+import { MovimientosInsumoController } from './interface/controllers/movimientos-insumo.controller';
 
 @Module({
   imports: [AuthModule],
@@ -76,6 +100,7 @@ import { InsumosController } from './interface/controllers/insumos.controller';
     UnidadesMedidaController,
     ModelosEquipoController,
     InsumosController,
+    MovimientosInsumoController,
   ],
   providers: [
     { provide: FAMILIA_INSUMO_REPOSITORY, useClass: PrismaFamiliaInsumoRepository },
@@ -198,6 +223,49 @@ import { InsumosController } from './interface/controllers/insumos.controller';
       provide: ListarInsumosPorModeloEquipoUseCase,
       useFactory: (repo: IInsumoRepository) => new ListarInsumosPorModeloEquipoUseCase(repo),
       inject: [INSUMO_REPOSITORY],
+    },
+
+    { provide: MOVIMIENTO_INSUMO_REPOSITORY, useClass: PrismaMovimientoInsumoRepository },
+    {
+      // La ENTRADA NO recibe el runner de transacciones, y esa ausencia es la
+      // decisión: una entrada SUMA, así que no puede dejar el saldo negativo y
+      // no tiene nada que decidir bajo la sección crítica. El `Pick` angosto de
+      // su constructor es lo que le impide tomar el advisory lock por
+      // descuido; pasarle el runner acá lo volvería posible de nuevo.
+      provide: RegistrarEntradaInsumoUseCase,
+      useFactory: (insumoRepo: IInsumoRepository, movimientoRepo: IMovimientoInsumoRepository) =>
+        new RegistrarEntradaInsumoUseCase(insumoRepo, movimientoRepo),
+      inject: [INSUMO_REPOSITORY, MOVIMIENTO_INSUMO_REPOSITORY],
+    },
+    {
+      // La SALIDA y el AJUSTE sí lo reciben: los dos pueden restar, y leer las
+      // sumas y escribir el asiento tienen que ocurrir dentro de la MISMA
+      // transacción para que el advisory lock sirva de algo.
+      provide: RegistrarSalidaInsumoUseCase,
+      useFactory: (
+        insumoRepo: IInsumoRepository,
+        movimientoRepo: IMovimientoInsumoRepository,
+        txRunner: ITenantTransactionRunner,
+      ) => new RegistrarSalidaInsumoUseCase(insumoRepo, movimientoRepo, txRunner),
+      inject: [INSUMO_REPOSITORY, MOVIMIENTO_INSUMO_REPOSITORY, TENANT_TX_RUNNER],
+    },
+    {
+      provide: RegistrarAjusteInsumoUseCase,
+      useFactory: (
+        insumoRepo: IInsumoRepository,
+        movimientoRepo: IMovimientoInsumoRepository,
+        txRunner: ITenantTransactionRunner,
+      ) => new RegistrarAjusteInsumoUseCase(insumoRepo, movimientoRepo, txRunner),
+      inject: [INSUMO_REPOSITORY, MOVIMIENTO_INSUMO_REPOSITORY, TENANT_TX_RUNNER],
+    },
+    {
+      // La consulta tampoco lo recibe: usa `sumByTipo()`, la lectura SIN lock.
+      // Mostrar un número en pantalla no puede hacer esperar a los técnicos que
+      // están sacando cosas del depósito.
+      provide: ConsultarStockInsumoUseCase,
+      useFactory: (insumoRepo: IInsumoRepository, movimientoRepo: IMovimientoInsumoRepository) =>
+        new ConsultarStockInsumoUseCase(insumoRepo, movimientoRepo),
+      inject: [INSUMO_REPOSITORY, MOVIMIENTO_INSUMO_REPOSITORY],
     },
   ],
   exports: [

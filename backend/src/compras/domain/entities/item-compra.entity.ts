@@ -1,4 +1,5 @@
 import { BaseEntity } from '../../../shared/domain/base-entity';
+import { enCentesimas } from '../../../shared/domain/centesimas';
 import { DomainError, Result } from '../../../shared/domain/result';
 import {
   CantidadEntregadaExcedeRecibidaError,
@@ -19,7 +20,6 @@ import {
 } from '../errors/compras.errors';
 import { hoyArgentina, soloFecha } from '../services/fecha-argentina';
 import {
-  enCentesimas,
   EstadoAprobacionItem,
   itemComprado,
   itemEntregado,
