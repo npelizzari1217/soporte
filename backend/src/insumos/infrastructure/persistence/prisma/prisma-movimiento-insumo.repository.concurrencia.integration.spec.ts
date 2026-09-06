@@ -129,10 +129,15 @@ function instrumentarConcurrenciaDelPool(pool: Pool): () => number {
 }
 
 /**
- * Stock a partir del desglose por tipo. La regla de en qué dirección pesa
- * cada tipo es de NEGOCIO y vive en el caso de uso (unidad 5), no en el
- * repositorio —el puerto devuelve un desglose justamente para no fijarla—:
- * acá se la escribe porque el test tiene que hacer de consumidor.
+ * Stock a partir del desglose por tipo. La regla de en qué dirección pesa cada
+ * tipo es de NEGOCIO y vive en `calcularStock()`
+ * (`domain/entities/tipo-movimiento-insumo.ts`), no en el repositorio — el
+ * puerto devuelve un desglose justamente para no fijarla.
+ *
+ * Acá se escribe una segunda vez, a mano, y es deliberado: este spec verifica
+ * que el LOCK serializa, y afirmarlo con la misma función que usa el código
+ * bajo prueba haría que un error en esa función se cancelara contra sí mismo.
+ * Es una comprobación independiente, no una copia por descuido.
  */
 function stockDe(sumas: SumasPorTipoMovimiento): number {
   return sumas.ENTRADA + sumas.AJUSTE_POSITIVO - sumas.SALIDA - sumas.AJUSTE_NEGATIVO;

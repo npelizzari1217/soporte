@@ -13,7 +13,9 @@
  *
  * La serialización bajo el advisory lock NO se prueba acá: vive en
  * `prisma-movimiento-insumo.repository.concurrencia.integration.spec.ts`, que
- * necesita su propio pool instrumentado para demostrar paralelismo real.
+ * necesita su propio pool instrumentado para demostrar paralelismo real. Lo
+ * que sí se prueba acá es CUÁL de los dos métodos de lectura toma el lock:
+ * alcanza con dos conexiones y no necesita paralelismo genuino.
  *
  * Este spec NO toca `soporte_master_test`, así que no necesita
  * `usarLockMasterTest()`.
@@ -34,6 +36,41 @@ const TENANT_TEST_URL =
   process.env.DATABASE_URL_TENANT ??
   'postgresql://soporte:soporte@localhost:5432/soporte_tenant_test';
 const TENANT_TEST_DB_NAME = 'soporte_tenant_test';
+
+/**
+ * Tope de espera de los dos sondeos del advisory lock. Holgadamente mayor que
+ * una consulta agregada local —que resuelve en milisegundos— y holgadamente
+ * menor que el timeout de una transacción interactiva de Prisma (5 s por
+ * defecto), que es lo que sostiene el lock del otro lado.
+ */
+const MS_TOPE_DEL_SONDEO = 800;
+
+/** Marca de que la promesa sondeada no resolvió dentro del tope. */
+const TIEMPO_AGOTADO = Symbol('tiempo agotado');
+
+/**
+ * Espera a `promesa` con un tope, sin dejar el temporizador vivo.
+ *
+ * Es lo que convierte "quedó esperando el lock" en un fallo con nombre en vez
+ * de en un test colgado hasta el timeout del runner: una promesa que espera un
+ * advisory lock no se resuelve nunca por su cuenta.
+ *
+ * @param promesa Operación bajo sondeo.
+ * @param ms Tope de espera.
+ * @returns El valor de la promesa, o `TIEMPO_AGOTADO` si no resolvió a tiempo.
+ */
+async function conTope<T>(promesa: Promise<T>, ms: number): Promise<T | typeof TIEMPO_AGOTADO> {
+  let temporizador: ReturnType<typeof setTimeout> | undefined;
+  const tope = new Promise<typeof TIEMPO_AGOTADO>((resolve) => {
+    temporizador = setTimeout(() => resolve(TIEMPO_AGOTADO), ms);
+  });
+
+  try {
+    return await Promise.race([promesa, tope]);
+  } finally {
+    clearTimeout(temporizador);
+  }
+}
 
 describe('PrismaMovimientoInsumoRepository — Integration', () => {
   let prismaService: PrismaService;
@@ -82,6 +119,44 @@ describe('PrismaMovimientoInsumoRepository — Integration', () => {
         usuarioId,
       })),
     });
+  }
+
+  /**
+   * Abre OTRA transacción que toma el advisory lock del insumo bajo prueba y
+   * lo sostiene hasta que el test la libera. Es el fixture de los dos sondeos
+   * del lock: sin una sesión que lo tenga tomado de verdad, "no bloquea"
+   * pasaría en verde sobre un lock que nunca existió.
+   *
+   * La transacción avisa cuando ya tiene el lock en la mano, y ese aviso corre
+   * en carrera con la transacción entera: si fallara ANTES de tomarlo, esperar
+   * el aviso a secas colgaría el test en lugar de propagar el error.
+   *
+   * @returns Un `liberar()` que suelta el lock y espera al cierre real de la transacción.
+   */
+  async function tomarElLockEnOtraTransaccion(): Promise<{ liberar: () => Promise<void> }> {
+    let soltar: () => void = () => {};
+    const sostener = new Promise<void>((resolve) => {
+      soltar = resolve;
+    });
+    let avisarTomado: () => void = () => {};
+    const tomado = new Promise<void>((resolve) => {
+      avisarTomado = resolve;
+    });
+
+    const transaccion = txRunner.run(async () => {
+      await repo.lockAndSumByTipo(insumoId);
+      avisarTomado();
+      await sostener;
+    });
+
+    await Promise.race([tomado, transaccion]);
+
+    return {
+      liberar: async () => {
+        soltar();
+        await transaccion;
+      },
+    };
   }
 
   async function limpiarMovimientos(): Promise<void> {
@@ -364,6 +439,158 @@ describe('PrismaMovimientoInsumoRepository — Integration', () => {
       await expect(repo.lockAndSumByTipo(insumoId)).rejects.toThrow(
         /requiere una transacción activa/,
       );
+    });
+  });
+
+  describe('sumByTipo()', () => {
+    /**
+     * La diferencia que justifica que exista el método, y el hermano invertido
+     * exacto del caso de arriba: `lockAndSumByTipo()` LANZA sin transacción,
+     * así que la ficha del insumo no podría reusarlo ni envolviéndolo en un
+     * `run()` de mentira. Esta lectura corre tal cual, con el cliente normal.
+     */
+    it('no exige transacción activa: se la llama tal cual y devuelve las sumas', async () => {
+      await sembrar(insumoId, [
+        { tipo: 'ENTRADA', cantidad: 10 },
+        { tipo: 'SALIDA', cantidad: 4 },
+      ]);
+
+      const sumas = await repo.sumByTipo(insumoId);
+
+      expect(sumas.ENTRADA).toBe(10);
+      expect(sumas.SALIDA).toBe(4);
+    });
+
+    /**
+     * Mismo contrato de desglose completo que el hermano con lock: un
+     * `GROUP BY` no emite filas para los tipos sin movimientos. El fixture trae
+     * DOS tipos con filas a propósito — sin ellos, "los otros dos están en
+     * cero" pasaría en verde sobre un objeto vacío.
+     */
+    it('completa con 0 los tipos del catálogo que no tienen filas', async () => {
+      await sembrar(insumoId, [
+        { tipo: 'ENTRADA', cantidad: 10 },
+        { tipo: 'AJUSTE_NEGATIVO', cantidad: 2 },
+      ]);
+
+      const sumas = await repo.sumByTipo(insumoId);
+
+      expect(sumas).toEqual({
+        ENTRADA: 10,
+        SALIDA: 0,
+        AJUSTE_POSITIVO: 0,
+        AJUSTE_NEGATIVO: 2,
+      });
+    });
+
+    /**
+     * Hermano invertido del anterior: un insumo SIN bitácora devuelve los
+     * cuatro tipos en cero, no un objeto vacío. El fixture le da movimientos al
+     * OTRO insumo justamente para que el cero no pueda venir de una tabla
+     * vacía.
+     */
+    it('devuelve los cuatro tipos en cero para un insumo sin bitácora', async () => {
+      await sembrar(otroInsumoId, [
+        { tipo: 'ENTRADA', cantidad: 99 },
+        { tipo: 'AJUSTE_POSITIVO', cantidad: 7 },
+      ]);
+
+      const sumas = await repo.sumByTipo(insumoId);
+
+      expect(sumas).toEqual({
+        ENTRADA: 0,
+        SALIDA: 0,
+        AJUSTE_POSITIVO: 0,
+        AJUSTE_NEGATIVO: 0,
+      });
+    });
+
+    it('no suma los movimientos de otro insumo', async () => {
+      await sembrar(insumoId, [{ tipo: 'ENTRADA', cantidad: 10 }]);
+      await sembrar(otroInsumoId, [{ tipo: 'ENTRADA', cantidad: 99 }]);
+
+      const sumas = await repo.sumByTipo(insumoId);
+
+      expect(sumas.ENTRADA).toBe(10);
+    });
+
+    /**
+     * `cantidad` es `DECIMAL(10,2)`: la suma vuelve como `Prisma.Decimal`, un
+     * OBJETO. Se assertea el TIPO además del valor, porque un `Decimal` de
+     * igual valor pasaría el assert de valor sin problema.
+     */
+    it('devuelve números, no Decimal, y conserva los dos decimales de la columna', async () => {
+      await sembrar(insumoId, [
+        { tipo: 'ENTRADA', cantidad: 1.25 },
+        { tipo: 'ENTRADA', cantidad: 2.5 },
+      ]);
+
+      const sumas = await repo.sumByTipo(insumoId);
+
+      expect(typeof sumas.ENTRADA).toBe('number');
+      expect(sumas.ENTRADA).toBe(3.75);
+      expect(typeof sumas.AJUSTE_NEGATIVO).toBe('number');
+    });
+
+    /**
+     * **La propiedad que hace que la ficha no lastime a nadie.** Otra
+     * transacción tiene el advisory lock del insumo tomado; esta lectura tiene
+     * que contestar igual. Si tomara el lock, quedaría esperando a los
+     * escritores del insumo —y, peor, los haría esperar a ellos— cada vez que
+     * alguien abre una pantalla.
+     */
+    it('no toma el advisory lock: contesta mientras otra transacción lo tiene', async () => {
+      await sembrar(insumoId, [{ tipo: 'ENTRADA', cantidad: 4 }]);
+      const lock = await tomarElLockEnOtraTransaccion();
+
+      try {
+        const sumas = await conTope(repo.sumByTipo(insumoId), MS_TOPE_DEL_SONDEO);
+
+        if (sumas === TIEMPO_AGOTADO) {
+          throw new Error(
+            'sumByTipo() quedó esperando el advisory lock del insumo: está tomando el lock que promete no tomar.',
+          );
+        }
+        expect(sumas.ENTRADA).toBe(4);
+      } finally {
+        await lock.liberar();
+      }
+    });
+
+    /**
+     * Hermano invertido del sondeo, y lo único que impide que sea un verde
+     * falso: si el fixture no sostuviera el lock de verdad, el caso de arriba
+     * pasaría igual con una implementación que SÍ lo toma. Acá se prueba que
+     * el mismo lock, en la misma situación, efectivamente hace esperar a quien
+     * lo pide.
+     */
+    it('el hermano con lock SÍ queda esperando en esa misma situación', async () => {
+      await sembrar(insumoId, [{ tipo: 'ENTRADA', cantidad: 4 }]);
+      const lock = await tomarElLockEnOtraTransaccion();
+      const bloqueada = txRunner.run(() => repo.lockAndSumByTipo(insumoId));
+
+      try {
+        expect(await conTope(bloqueada, MS_TOPE_DEL_SONDEO)).toBe(TIEMPO_AGOTADO);
+      } finally {
+        await lock.liberar();
+        // Ya destrabada: se la espera para no dejar una transacción en vuelo
+        // que el `beforeEach` del próximo caso encontraría a medio cerrar.
+        await bloqueada;
+      }
+    });
+
+    /**
+     * No exigir transacción no es prohibirla: el repositorio participa de la
+     * que esté en curso, como cualquier otro método. Sin este caso, una
+     * implementación que rechazara la transacción activa —el error simétrico
+     * del hermano— pasaría desapercibida.
+     */
+    it('también funciona dentro de una transacción, sin exigirla', async () => {
+      await sembrar(insumoId, [{ tipo: 'ENTRADA', cantidad: 6 }]);
+
+      const sumas = await txRunner.run(() => repo.sumByTipo(insumoId));
+
+      expect(sumas.ENTRADA).toBe(6);
     });
   });
 });

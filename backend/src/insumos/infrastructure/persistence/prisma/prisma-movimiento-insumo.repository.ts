@@ -10,8 +10,8 @@
  * Quien abre la transacción es el caso de uso; el repositorio solo participa
  * de la que esté en curso.
  *
- * Solo dos métodos, y ningún `update` ni `delete`: la firma del puerto es lo
- * que hace estructuralmente append-only a la tabla.
+ * Un solo método de escritura y ningún `update` ni `delete`: la firma del
+ * puerto es lo que hace estructuralmente append-only a la tabla.
  *
  * Ref design: openspec/changes/insumos-entrega-2/design.md, decisiones 1 y 4.
  */
@@ -82,9 +82,9 @@ export class PrismaMovimientoInsumoRepository implements IMovimientoInsumoReposi
    * queden distinguibles: sin `TenantContext` lanza `getClient()` con su
    * propio mensaje; con contexto pero sin transacción, lanza este.
    *
-   * El desglose se arma desde `TIPOS_MOVIMIENTO_INSUMO` y no desde las filas
-   * que devuelve el `GROUP BY`: un agregado no emite filas para los tipos sin
-   * movimientos, y el contrato promete los cuatro tipos siempre presentes.
+   * El desglose lo arma `sumarPorTipo()`, compartido con `sumByTipo()`: lo
+   * único que este método agrega es el lock y la precondición que lo hace
+   * valer.
    *
    * @param insumoId Insumo cuya bitácora se bloquea y se suma.
    * @returns Las sumas por tipo, con `0` en los tipos sin movimientos.
@@ -106,6 +106,53 @@ export class PrismaMovimientoInsumoRepository implements IMovimientoInsumoReposi
     // INSUMO: dos técnicos sacando cosas distintas no se esperan entre sí.
     await client.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${PREFIJO_LOCK_STOCK + insumoId}))`;
 
+    return this.sumarPorTipo(client, insumoId);
+  }
+
+  /**
+   * Devuelve el desglose de la bitácora SIN tomar el advisory lock y sin
+   * exigir transacción. Ver el contrato completo —y por qué su resultado es
+   * una FOTO que no autoriza nada— en `IMovimientoInsumoRepository.sumByTipo`.
+   *
+   * **La ausencia del `$executeRaw` de arriba es la implementación, no un
+   * olvido.** Este método existe justamente para no tomar el lock: agregárselo
+   * "por las dudas" haría que cada apertura de la ficha de un insumo hiciera
+   * esperar a sus escritores. Que no lo toma lo prueba el spec de integración,
+   * que lo llama mientras otra transacción lo tiene tomado y exige que
+   * conteste igual.
+   *
+   * Tampoco hay chequeo de `enTransaccion`: sin lock que proteger, no hay
+   * precondición que hacer cumplir. Corre igual dentro o fuera de una
+   * transacción, con el cliente que el `TenantContext` tenga activo.
+   *
+   * @param insumoId Insumo cuya bitácora se suma.
+   * @returns Las sumas por tipo, con `0` en los tipos sin movimientos.
+   */
+  async sumByTipo(insumoId: string): Promise<SumasPorTipoMovimiento> {
+    return this.sumarPorTipo(this.client, insumoId);
+  }
+
+  /**
+   * `SUM(cantidad) GROUP BY tipo` de un insumo, completado con los tipos del
+   * catálogo que no tienen filas.
+   *
+   * Va en un método compartido y no copiado en los dos lugares porque las dos
+   * lecturas prometen EXACTAMENTE el mismo desglose: dos copias discreparían
+   * el día que entre un quinto tipo, y el número que autoriza una salida
+   * dejaría de ser el que la ficha muestra.
+   *
+   * El desglose se arma desde `TIPOS_MOVIMIENTO_INSUMO` y no desde las filas
+   * que devuelve el `GROUP BY`: un agregado no emite filas para los tipos sin
+   * movimientos, y el contrato promete los cuatro tipos siempre presentes.
+   *
+   * @param client Cliente del tenant ya resuelto —el normal o el transaccional, según quién llame.
+   * @param insumoId Insumo cuya bitácora se suma.
+   * @returns Las sumas por tipo, con `0` en los tipos sin movimientos.
+   */
+  private async sumarPorTipo(
+    client: InstanceType<typeof TenantPrismaClient>,
+    insumoId: string,
+  ): Promise<SumasPorTipoMovimiento> {
     const filas = await client.movimientoInsumo.groupBy({
       by: ['tipo'],
       where: { insumoId },

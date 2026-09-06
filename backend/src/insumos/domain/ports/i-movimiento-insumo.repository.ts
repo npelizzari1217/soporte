@@ -76,12 +76,46 @@ export interface IMovimientoInsumoRepository {
    *
    * El nombre dice que bloquea a propósito: una consulta de solo lectura —el
    * stock que se muestra en la ficha— no debe pasar por acá, porque haría
-   * esperar a los escritores del insumo sin necesidad.
+   * esperar a los escritores del insumo sin necesidad. Para eso está
+   * `sumByTipo()`, que devuelve el MISMO desglose sin tomar el lock; la
+   * contracara es que su resultado no autoriza nada. Este método es el único
+   * que sirve para DECIDIR sobre el stock.
    *
    * @param insumoId Insumo cuya bitácora se bloquea y se suma.
    * @returns Las sumas por tipo, con `0` en los tipos sin movimientos. Todos los tipos en cero si el insumo no tiene bitácora.
    */
   lockAndSumByTipo(insumoId: string): Promise<SumasPorTipoMovimiento>;
+
+  /**
+   * Devuelve el desglose de la bitácora de un insumo por tipo, SIN tomar
+   * ningún lock y SIN exigir transacción. Es la lectura de consulta: el stock
+   * que se muestra en la ficha del insumo.
+   *
+   * **Su resultado es una FOTO, y puede quedar viejo apenas se devuelve.**
+   * Nada impide que otra transacción asiente un movimiento del mismo insumo un
+   * instante después —justamente porque acá no se serializa a nadie—, así que
+   * el número que sale de este método describe un pasado reciente, no un
+   * presente garantizado. **Por eso NO sirve para decidir si una salida se
+   * autoriza**: dos salidas que consultaran por acá verían las mismas sumas y
+   * pasarían las dos, que es exactamente la carrera que la bitácora existe
+   * para evitar. Autorizar se autoriza con `lockAndSumByTipo()` dentro de la
+   * misma transacción que escribe, y no hay excepción — no hay backstop de
+   * base que atrape el error si se usa el método equivocado.
+   *
+   * Existe separado y no como una opción de `lockAndSumByTipo()` por dos
+   * motivos, y los dos importan: tomar el advisory lock para mostrar un número
+   * en pantalla haría esperar a los escritores del insumo cada vez que alguien
+   * abre una ficha, y `lockAndSumByTipo()` además LANZA si no hay transacción
+   * activa, así que una consulta no podría reusarlo ni envolviéndolo en un
+   * `run()` armado solo para satisfacerlo.
+   *
+   * Participa de la transacción en curso si la hay: no exigirla no es
+   * prohibirla.
+   *
+   * @param insumoId Insumo cuya bitácora se suma.
+   * @returns Las sumas por tipo, con `0` en los tipos sin movimientos. Todos los tipos en cero si el insumo no tiene bitácora.
+   */
+  sumByTipo(insumoId: string): Promise<SumasPorTipoMovimiento>;
 }
 
 /** Token de inyección de dependencias para IMovimientoInsumoRepository en NestJS. */
