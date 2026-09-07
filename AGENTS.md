@@ -340,7 +340,28 @@ vencen.
 
 ---
 
-## Ayuda de usuario
+## Ayuda de usuario — SUSPENDIDA desde el 2026-09-07
+
+> **No reportes la ausencia de un artículo de Ayuda como hallazgo.** La regla de abajo
+> está en pausa por decisión del dueño del repo, no por descuido de quien escribe el
+> commit.
+>
+> **Por qué.** Los artículos se estaban reescribiendo entrega tras entrega: cada tanda
+> tocaba lo que la siguiente volvía a tocar. Se escriben todos juntos al final del
+> proyecto, una sola vez, sobre la superficie ya estabilizada.
+>
+> **Qué SÍ sigue vigente.** Cuando un cambio deje la Ayuda desactualizada o pida un
+> artículo nuevo, eso se anota en el mensaje del commit y en el cuerpo del PR. La
+> suspensión es de la escritura, no del registro: sin esa anotación, la tanda final no
+> sabe qué cubrir.
+>
+> **Qué NO cambia.** Un artículo que ya existe y que un cambio vuelve FALSO sí se corrige.
+> Una Ayuda que miente es peor que una que falta, y eso no depende de si se están
+> escribiendo artículos nuevos.
+>
+> **Cómo se levanta.** Solo con un aviso explícito del dueño del repo. Al levantarla, se
+> borra este bloque y la regla de abajo vuelve a regir tal cual — por eso queda entera y
+> no se reescribió.
 
 El módulo KB se llama **Ayuda** y sus artículos viven como markdown en `backend/ayuda/*.md`.
 Un cambio que altera lo que el usuario ve o hace no está terminado hasta que la Ayuda lo
