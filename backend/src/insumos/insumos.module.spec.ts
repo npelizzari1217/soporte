@@ -80,6 +80,31 @@ describe('InsumosModule wiring', () => {
   });
 
   /**
+   * `RegistrarEntradaInsumoUseCase` es el ÚNICO caso de uso que sale del
+   * módulo (insumos-entrega-3, unidad 5): lo consume `ComprasModule` para que
+   * recibir una compra sume el stock solo. Se exporta el caso de uso —con sus
+   * guards de elegibilidad puestos— y no el puerto de la bitácora, por el
+   * mismo motivo del test de arriba.
+   */
+  it('exporta RegistrarEntradaInsumoUseCase, que es lo que consume ComprasModule', () => {
+    const exportsMeta = (Reflect.getMetadata('exports', InsumosModule) ?? []) as unknown[];
+    expect(exportsMeta).toContain(RegistrarEntradaInsumoUseCase);
+  });
+
+  // Hermano invertido del anterior: los otros tres casos de uso de existencias
+  // NO cruzan el borde del módulo. Sin este caso, exportar el módulo entero
+  // dejaría el test de arriba en verde, y la salida y el ajuste —los dos que
+  // RESTAN y dependen del advisory lock— quedarían al alcance de cualquiera.
+  it.each([
+    ['RegistrarSalidaInsumoUseCase', RegistrarSalidaInsumoUseCase],
+    ['RegistrarAjusteInsumoUseCase', RegistrarAjusteInsumoUseCase],
+    ['ConsultarStockInsumoUseCase', ConsultarStockInsumoUseCase],
+  ])('NO exporta %s', (_nombre, useCase) => {
+    const exportsMeta = (Reflect.getMetadata('exports', InsumosModule) ?? []) as unknown[];
+    expect(exportsMeta).not.toContain(useCase);
+  });
+
+  /**
    * Los casos de uso se registran con `useFactory`, no como clases: sus
    * constructores reciben PUERTOS —tokens de inyección— y NestJS no puede
    * resolverlos por metadata de tipo. Sin este assert, un caso de uso que se

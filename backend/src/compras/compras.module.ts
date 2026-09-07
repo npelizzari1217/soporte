@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { TicketsModule } from '../tickets/tickets.module';
 import { SectoresModule } from '../sectores/sectores.module';
+import { InsumosModule } from '../insumos/insumos.module';
 
 import {
   ITenantTransactionRunner,
@@ -43,6 +44,8 @@ import { ExportarComprasUseCase } from './application/use-cases/exportar-compras
 import { ObtenerCompraUseCase } from './application/use-cases/obtener-compra.use-case';
 import { ListarOperacionesCompraUseCase } from './application/use-cases/listar-operaciones-compra.use-case';
 
+import { RegistrarEntradaInsumoUseCase } from '../insumos/application/use-cases/registrar-entrada-insumo.use-case';
+
 import { ComprasController } from './interface/controllers/compras.controller';
 
 /**
@@ -80,6 +83,12 @@ import { ComprasController } from './interface/controllers/compras.controller';
  *   `@Injectable`) — se resuelven vía `useFactory`, igual que
  *   `NumeradorTicket`/`ResolverCicloActivoParaCreacion` en `EquiposModule`.
  * - `TENANT_TX_RUNNER` se inyecta desde `SharedModule` (`@Global`).
+ * - `InsumosModule` (insumos-entrega-3, unidades 5 y 6): exporta
+ *   `RegistrarEntradaInsumoUseCase`, que `RegistrarRecepcionDeItemUseCase`
+ *   invoca DENTRO de su transacción para que recibir una compra sume el stock
+ *   solo. La flecha va en este sentido y nunca al revés — `insumos` no importa
+ *   nada de `compras`, porque esa arista cerraría un ciclo entre los dos
+ *   módulos.
  *
  * FITNESS RULE: PrismaService y `@prisma/client` solo pueden importarse
  * desde `infrastructure/` (ver `backend/eslint.config.js`) — este módulo
@@ -89,7 +98,7 @@ import { ComprasController } from './interface/controllers/compras.controller';
  * USO, ADR-C2, ADR-C4, ADR-C5. Ref tasks: PR-22 (cierra la FASE E).
  */
 @Module({
-  imports: [AuthModule, TicketsModule, SectoresModule],
+  imports: [AuthModule, TicketsModule, SectoresModule, InsumosModule],
   controllers: [ComprasController],
   providers: [
     { provide: COMPRA_REPOSITORY, useClass: PrismaCompraRepository },
@@ -211,13 +220,29 @@ import { ComprasController } from './interface/controllers/compras.controller';
       inject: [COMPRA_REPOSITORY, RegistrarOperacionCompra, TENANT_TX_RUNNER],
     },
     {
+      // El ÚNICO mutador que recibe una cuarta dependencia, y viene de otro
+      // módulo: la recepción es la etapa que hace entrar mercadería al
+      // depósito, así que es el único punto del circuito de compras que tiene
+      // stock que asentar (insumos-entrega-3, unidad 6).
       provide: RegistrarRecepcionDeItemUseCase,
       useFactory: (
         compraRepo: ICompraRepository,
         registrarOperacion: RegistrarOperacionCompra,
         txRunner: ITenantTransactionRunner,
-      ) => new RegistrarRecepcionDeItemUseCase(compraRepo, registrarOperacion, txRunner),
-      inject: [COMPRA_REPOSITORY, RegistrarOperacionCompra, TENANT_TX_RUNNER],
+        registrarEntradaInsumo: RegistrarEntradaInsumoUseCase,
+      ) =>
+        new RegistrarRecepcionDeItemUseCase(
+          compraRepo,
+          registrarOperacion,
+          txRunner,
+          registrarEntradaInsumo,
+        ),
+      inject: [
+        COMPRA_REPOSITORY,
+        RegistrarOperacionCompra,
+        TENANT_TX_RUNNER,
+        RegistrarEntradaInsumoUseCase,
+      ],
     },
     {
       provide: RegistrarEntregaDeItemUseCase,

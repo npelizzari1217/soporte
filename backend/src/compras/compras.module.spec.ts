@@ -31,7 +31,10 @@ import { ComprasController } from './interface/controllers/compras.controller';
 import { TicketsModule } from '../tickets/tickets.module';
 import { AuthModule } from '../auth/auth.module';
 import { SectoresModule } from '../sectores/sectores.module';
+import { InsumosModule } from '../insumos/insumos.module';
 import { ISectorRepository } from '../sectores/domain/ports/i-sector.repository';
+import { RegistrarEntradaInsumoUseCase } from '../insumos/application/use-cases/registrar-entrada-insumo.use-case';
+import { MovimientoInsumoEntity } from '../insumos/domain/entities/movimiento-insumo.entity';
 import {
   TENANT_TX_RUNNER,
   ITenantTransactionRunner,
@@ -176,17 +179,37 @@ function fakeOperacionRepo(): Pick<IOperacionCompraRepository, 'crear'> & { crea
   return { crear: vi.fn().mockResolvedValue(undefined) };
 }
 
+/**
+ * Entrada de stock CARGADA: asienta un movimiento real con el DTO que recibe,
+ * en vez de devolver un valor fijo. Con un doble inerte, el caso de la
+ * recepción con insumo declarado quedaría verde sin haber probado que el
+ * cuarto argumento del factory llega a destino.
+ */
+function fakeEntradaInsumo(): Pick<RegistrarEntradaInsumoUseCase, 'execute'> & { execute: Mock } {
+  return {
+    execute: vi.fn(async (dto: { insumoId: string; cantidad: number; usuarioId: string }) =>
+      MovimientoInsumoEntity.create({
+        insumoId: dto.insumoId,
+        tipo: 'ENTRADA',
+        cantidad: dto.cantidad,
+        usuarioId: dto.usuarioId,
+      }),
+    ),
+  };
+}
+
 describe('ComprasModule wiring (PR-22, sdd/redisenio-modulo-compras)', () => {
   it('registra ComprasController', () => {
     const controllers = (Reflect.getMetadata('controllers', ComprasModule) ?? []) as unknown[];
     expect(controllers).toContain(ComprasController);
   });
 
-  it('importa TicketsModule, AuthModule y SectoresModule (fix post-verify W6)', () => {
+  it('importa TicketsModule, AuthModule, SectoresModule (fix post-verify W6) e InsumosModule (insumos-entrega-3)', () => {
     const imports = (Reflect.getMetadata('imports', ComprasModule) ?? []) as unknown[];
     expect(imports).toContain(TicketsModule);
     expect(imports).toContain(AuthModule);
     expect(imports).toContain(SectoresModule);
+    expect(imports).toContain(InsumosModule);
   });
 
   it.each([COMPRA_REPOSITORY, OPERACION_COMPRA_REPOSITORY])('%s está exportado', (token) => {
@@ -528,6 +551,7 @@ describe('ComprasModule wiring (PR-22, sdd/redisenio-modulo-compras)', () => {
         compraRepo,
         registrarOperacion,
         fakeTxRunner(),
+        fakeEntradaInsumo(),
       ) as RegistrarRecepcionDeItemUseCase;
 
       const result = await instance.execute({
@@ -543,6 +567,53 @@ describe('ComprasModule wiring (PR-22, sdd/redisenio-modulo-compras)', () => {
       expect(operacionRepo.crear).toHaveBeenCalledWith(
         expect.objectContaining({ tipo: 'RECEPCION_REGISTRADA' }),
       );
+    });
+
+    // Capa 3 del wiring para la dependencia NUEVA (insumos-entrega-3, unidad
+    // 5): el `inject[]` puede declarar `RegistrarEntradaInsumoUseCase` y el
+    // `useFactory` olvidarse de pasarlo al constructor. La metadata no ve esa
+    // diferencia; el comportamiento sí.
+    it('RegistrarRecepcionDeItemUseCase (wiring real): con insumo declarado, la entrada de stock wireada se invoca por el delta', async () => {
+      const operacionRepo = fakeOperacionRepo();
+      const registrarOperacion = new RegistrarOperacionCompra(operacionRepo);
+      const itemConInsumo = itemFixture({
+        insumoId: 'insumo-fixture-1',
+        estadoAprobacion: 'APROBADO',
+        decididoPorId: 'aprobador-1',
+        decididoEn: FECHA_BASE,
+        cantidadOrdenada: 2,
+      });
+      const compra = compraFixture([itemConInsumo]);
+      const compraRepo: Pick<ICompraRepository, 'findByIdConItems' | 'guardarItem'> = {
+        findByIdConItems: vi.fn().mockResolvedValue(compra),
+        guardarItem: vi.fn().mockResolvedValue(undefined),
+      };
+      const entradaInsumo = fakeEntradaInsumo();
+
+      const provider = getFactoryProvider(RegistrarRecepcionDeItemUseCase);
+      const instance = provider.useFactory(
+        compraRepo,
+        registrarOperacion,
+        fakeTxRunner(),
+        entradaInsumo,
+      ) as RegistrarRecepcionDeItemUseCase;
+
+      const result = await instance.execute({
+        compraId: COMPRA_ID,
+        itemId: ITEM_ID,
+        usuarioId: 'user-1',
+        cantidadRecibida: 1,
+        fecha: FECHA_BASE,
+      });
+
+      expect(result.isFail()).toBe(false);
+      expect(entradaInsumo.execute).toHaveBeenCalledTimes(1);
+      expect(entradaInsumo.execute).toHaveBeenCalledWith({
+        insumoId: 'insumo-fixture-1',
+        cantidad: 1,
+        usuarioId: 'user-1',
+        itemCompraId: ITEM_ID,
+      });
     });
 
     it('RegistrarEntregaDeItemUseCase (wiring real): execute() exitoso llama a la bitácora 1 vez con tipo ENTREGA_REGISTRADA', async () => {
