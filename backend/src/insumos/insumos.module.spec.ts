@@ -26,6 +26,7 @@ import { RegistrarEntradaInsumoUseCase } from './application/use-cases/registrar
 import { RegistrarSalidaInsumoUseCase } from './application/use-cases/registrar-salida-insumo.use-case';
 import { RegistrarAjusteInsumoUseCase } from './application/use-cases/registrar-ajuste-insumo.use-case';
 import { ConsultarStockInsumoUseCase } from './application/use-cases/consultar-stock-insumo.use-case';
+import { ListarMovimientosInsumoUseCase } from './application/use-cases/listar-movimientos-insumo.use-case';
 
 describe('InsumosModule wiring', () => {
   it('registra los controllers de los tres catálogos, el del insumo y el de los movimientos', () => {
@@ -44,7 +45,7 @@ describe('InsumosModule wiring', () => {
 
   /**
    * El puerto de la bitácora se provee pero NO se exporta, a diferencia de los
-   * otros cuatro: sus únicos consumidores son los cuatro casos de uso de este
+   * otros cuatro: sus únicos consumidores son los cinco casos de uso de este
    * mismo módulo. Exportarlo abriría un segundo camino de escritura a
    * `movimientos_insumo` desde afuera, y la invariante del stock depende de que
    * toda escritura pase por el único punto que toma el advisory lock — Postgres
@@ -99,6 +100,7 @@ describe('InsumosModule wiring', () => {
     ['RegistrarSalidaInsumoUseCase', RegistrarSalidaInsumoUseCase],
     ['RegistrarAjusteInsumoUseCase', RegistrarAjusteInsumoUseCase],
     ['ConsultarStockInsumoUseCase', ConsultarStockInsumoUseCase],
+    ['ListarMovimientosInsumoUseCase', ListarMovimientosInsumoUseCase],
   ])('NO exporta %s', (_nombre, useCase) => {
     const exportsMeta = (Reflect.getMetadata('exports', InsumosModule) ?? []) as unknown[];
     expect(exportsMeta).not.toContain(useCase);
@@ -120,6 +122,7 @@ describe('InsumosModule wiring', () => {
     ['RegistrarSalidaInsumoUseCase', RegistrarSalidaInsumoUseCase],
     ['RegistrarAjusteInsumoUseCase', RegistrarAjusteInsumoUseCase],
     ['ConsultarStockInsumoUseCase', ConsultarStockInsumoUseCase],
+    ['ListarMovimientosInsumoUseCase', ListarMovimientosInsumoUseCase],
   ])('provee %s', (_nombre, useCase) => {
     const providers = (Reflect.getMetadata('providers', InsumosModule) ?? []) as Array<{
       provide?: unknown;
@@ -146,6 +149,7 @@ describe('InsumosModule wiring', () => {
     ['RegistrarSalidaInsumoUseCase', RegistrarSalidaInsumoUseCase, 3],
     ['RegistrarAjusteInsumoUseCase', RegistrarAjusteInsumoUseCase, 3],
     ['ConsultarStockInsumoUseCase', ConsultarStockInsumoUseCase, 2],
+    ['ListarMovimientosInsumoUseCase', ListarMovimientosInsumoUseCase, 2],
   ])('inyecta en %s los puertos que su constructor declara', (_nombre, useCase, cantidad) => {
     const providers = (Reflect.getMetadata('providers', InsumosModule) ?? []) as Array<{
       provide?: unknown;

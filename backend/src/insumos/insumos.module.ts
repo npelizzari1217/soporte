@@ -19,7 +19,7 @@
  * porque los movimientos de existencias resuelven el insumo desde acá.
  *
  * **`MOVIMIENTO_INSUMO_REPOSITORY` NO se exporta, y esa asimetría es
- * deliberada.** Sus únicos consumidores son los cuatro casos de uso de este
+ * deliberada.** Sus únicos consumidores son los cinco casos de uso de este
  * mismo módulo. La invariante del stock —que el saldo no quede negativo—
  * depende de que TODA escritura pase por el único punto que toma el advisory
  * lock, y Postgres no puede expresar `SUM(cantidad) >= 0` sobre varias filas,
@@ -94,6 +94,7 @@ import { RegistrarEntradaInsumoUseCase } from './application/use-cases/registrar
 import { RegistrarSalidaInsumoUseCase } from './application/use-cases/registrar-salida-insumo.use-case';
 import { RegistrarAjusteInsumoUseCase } from './application/use-cases/registrar-ajuste-insumo.use-case';
 import { ConsultarStockInsumoUseCase } from './application/use-cases/consultar-stock-insumo.use-case';
+import { ListarMovimientosInsumoUseCase } from './application/use-cases/listar-movimientos-insumo.use-case';
 
 import { FamiliasInsumoController } from './interface/controllers/familias-insumo.controller';
 import { UnidadesMedidaController } from './interface/controllers/unidades-medida.controller';
@@ -273,6 +274,17 @@ import { MovimientosInsumoController } from './interface/controllers/movimientos
       provide: ConsultarStockInsumoUseCase,
       useFactory: (insumoRepo: IInsumoRepository, movimientoRepo: IMovimientoInsumoRepository) =>
         new ConsultarStockInsumoUseCase(insumoRepo, movimientoRepo),
+      inject: [INSUMO_REPOSITORY, MOVIMIENTO_INSUMO_REPOSITORY],
+    },
+    {
+      // El LISTADO tampoco recibe el runner, por el mismo motivo que la
+      // consulta de stock: usa `listarPorInsumo()`, la lectura sin lock.
+      // Dibujar la bitácora de la ficha no puede hacer esperar a los técnicos
+      // que están sacando cosas del depósito. Su `Pick` de dos métodos es lo
+      // que le impide sumar la bitácora o escribir en ella.
+      provide: ListarMovimientosInsumoUseCase,
+      useFactory: (insumoRepo: IInsumoRepository, movimientoRepo: IMovimientoInsumoRepository) =>
+        new ListarMovimientosInsumoUseCase(insumoRepo, movimientoRepo),
       inject: [INSUMO_REPOSITORY, MOVIMIENTO_INSUMO_REPOSITORY],
     },
   ],

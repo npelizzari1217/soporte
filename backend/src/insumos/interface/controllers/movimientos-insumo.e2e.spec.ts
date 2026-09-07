@@ -1,6 +1,6 @@
 /**
  * movimientos-insumo.e2e.spec.ts — levanta la app REAL (Nest, sin mocks de
- * infraestructura) y pega por HTTP a las cuatro rutas de la bitácora de
+ * infraestructura) y pega por HTTP a las cinco rutas de la bitácora de
  * existencias. Cubre lo que ningún unit test puede:
  *
  * 1. **Que los permisos estén separados de verdad.** Los unit tests instancian
@@ -16,6 +16,9 @@
  * 3. **Que el `usuarioId` salga del JWT.** Un body que pretenda fijarlo tiene
  *    que quedar ignorado, y la firma del asiento tiene que ser la de quien
  *    mandó el request.
+ * 4. **Que el listado devuelva el subconjunto de filas correcto.** Un 200 sobre
+ *    una ruta con scope no prueba nada por sí solo: los asserts son de
+ *    CONTENIDO, con el insumo ajeno realmente presente en la base.
  *
  * Archivo propio y no dentro de `insumos-catalogos.e2e.spec.ts`: aquel prueba
  * el gate por ROL (`AdminClienteGuard`) del ABM del catálogo, y este prueba el
@@ -28,7 +31,7 @@
  * `dropDatabase`) y mismo sembrado de celdas que `autorizacion.e2e.spec.ts`
  * (`PrismaMatrizPermisosRepository.setPermisos`, con el rol RBAC viejo vacío).
  */
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import {
   INestApplication,
   MiddlewareConsumer,
@@ -57,6 +60,7 @@ import { Argon2HashProvider } from '../../../auth/infrastructure/argon2-hash.pro
 import { CodigoAccion } from '../../../shared/domain/acciones';
 import { MOVIMIENTO_INSUMO_MOTIVO_MAX_LENGTH } from '../../domain/entities/movimiento-insumo.entity';
 import {
+  ListarMovimientosInsumoResponseDto,
   MovimientoInsumoResponseDto,
   StockInsumoResponseDto,
 } from '../dtos/movimientos-insumo.dto';
@@ -334,9 +338,12 @@ describe('Movimientos de insumo e2e — celdas separadas y topes del borde', () 
   function urlStock(insumoId: string): string {
     return `${baseUrl}/insumos/${insumoId}/stock`;
   }
+  function urlMovimientos(insumoId: string, query = ''): string {
+    return `${baseUrl}/insumos/${insumoId}/movimientos${query}`;
+  }
 
   describe('Sin JWT', () => {
-    it('las cuatro rutas responden 401', async () => {
+    it('las cinco rutas responden 401', async () => {
       const insumoId = '11111111-1111-4111-8111-111111111111';
 
       const entrada = await httpPost(urlEntrada(insumoId), { cantidad: 1 });
@@ -347,10 +354,15 @@ describe('Movimientos de insumo e2e — celdas separadas y topes del borde', () 
         motivo: 'X',
       });
       const stock = await httpGet(urlStock(insumoId));
+      const movimientos = await httpGet(urlMovimientos(insumoId));
 
-      expect([entrada.status, salida.status, ajuste.status, stock.status]).toEqual([
-        401, 401, 401, 401,
-      ]);
+      expect([
+        entrada.status,
+        salida.status,
+        ajuste.status,
+        stock.status,
+        movimientos.status,
+      ]).toEqual([401, 401, 401, 401, 401]);
     });
   });
 
@@ -753,6 +765,312 @@ describe('Movimientos de insumo e2e — celdas separadas y topes del borde', () 
 
       expect(data.stockMinimo).toBeNull();
       expect(data.estadoReposicion).toBe('SIN_PUNTO_DEFINIDO');
+    });
+  });
+
+  describe('GET /insumos/:insumoId/movimientos — la bitácora de la ficha', () => {
+    /**
+     * Siembra una entrada nacida de una RECEPCIÓN, con su cadena completa:
+     * ciclo → compra → ítem → movimiento.
+     *
+     * Va por el cliente del tenant y no por HTTP porque el único camino de
+     * aplicación que estampa `itemCompraId` vive en `ComprasModule`, que este
+     * harness no levanta a propósito —mezclarlo traería el gate por rol del ABM
+     * de compras a un archivo que prueba el gate por celda—. Es un FIXTURE: lo
+     * que el caso verifica es que el dato llegue al cliente por la ruta HTTP
+     * real, no cómo se escribió.
+     *
+     * El ciclo va `activo: false` porque `ciclos_cliente` tiene un único
+     * parcial sobre `activo = true`: la base del tenant NO se trunca entre
+     * casos, así que un segundo ciclo activo chocaría contra el índice.
+     */
+    async function sembrarEntradaDeRecepcion(
+      insumoId: string,
+      usuarioId: string,
+    ): Promise<{ movimientoId: string; itemCompraId: string }> {
+      const tenant = prismaService.getTenantClient(TENANT_DB_NAME);
+
+      const ciclo = await tenant.cicloCliente.create({
+        data: {
+          cicloVigenteId: randomUUID(),
+          nombre: `Ciclo E2E ${sufijo()}`,
+          fechaInicio: new Date('2026-01-01'),
+          fechaFin: new Date('2026-12-31'),
+          activo: false,
+        },
+      });
+      const compra = await tenant.compra.create({
+        data: {
+          numero: `E2E-${sufijo()}`,
+          fechaSolicitud: new Date('2026-09-07'),
+          motivo: 'Compra sembrada por el e2e',
+          solicitanteId: usuarioId,
+          cicloId: ciclo.id,
+        },
+      });
+      const item = await tenant.itemCompra.create({
+        data: {
+          compraId: compra.id,
+          descripcion: 'Tóner recibido',
+          insumoId,
+          cantidad: 5,
+          proveedor: 'Proveedor de prueba',
+          monto: 1000,
+          fechaCotizacion: new Date('2026-09-07'),
+        },
+      });
+      const movimiento = await tenant.movimientoInsumo.create({
+        data: {
+          insumoId,
+          tipo: 'ENTRADA',
+          cantidad: 5,
+          usuarioId,
+          itemCompraId: item.id,
+        },
+      });
+
+      return { movimientoId: movimiento.id, itemCompraId: item.id };
+    }
+
+    /**
+     * El listado lleva su propia celda `INSUMOS:LECTURA`, igual que el stock:
+     * escribir la bitácora no habilita a leerla entera. El caso permitido
+     * assertea CONTENIDO —el asiento que se acaba de registrar— y no solo el
+     * 200: un código de estado sobre una ruta con scope no prueba nada.
+     */
+    it('exige LECTURA: 403 con ALTAS a secas, 200 y el asiento sembrado con LECTURA', async () => {
+      const escenario = await prepararEscenario(['INSUMOS:ALTAS']);
+      const entrada = await httpPost(
+        urlEntrada(escenario.insumoId),
+        { cantidad: 7 },
+        bearer(escenario.token),
+      );
+      expect(entrada.status).toBe(201);
+
+      const sinLectura = await httpGet(urlMovimientos(escenario.insumoId), bearer(escenario.token));
+
+      const conLectura = await httpGet<ListarMovimientosInsumoResponseDto>(
+        urlMovimientos(escenario.insumoId),
+        bearer(escenario.tokenAdmin),
+      );
+
+      expect(sinLectura.status).toBe(403);
+      expect(conLectura.status).toBe(200);
+      expect(conLectura.data.items).toHaveLength(1);
+      expect(conLectura.data.items[0].tipo).toBe('ENTRADA');
+      expect(conLectura.data.items[0].cantidad).toBe(7);
+      expect(conLectura.data.items[0].insumoId).toBe(escenario.insumoId);
+    });
+
+    /**
+     * El scope es por INSUMO, y eso se prueba con el ajeno REALMENTE presente
+     * en el fixture: sin el segundo insumo movido, el assert de ausencia
+     * pasaría por construcción. Es la forma de verde falso que el `AGENTS.md`
+     * describe —el 200 sobre el subconjunto de filas equivocado—.
+     */
+    it('trae solo los movimientos del insumo pedido, con el ajeno presente en la base', async () => {
+      const escenario = await prepararEscenario(['INSUMOS:ALTAS', 'INSUMOS:LECTURA']);
+      const otroInsumoId = await sembrarInsumo(escenario.tokenAdmin);
+
+      const propia = await httpPost(
+        urlEntrada(escenario.insumoId),
+        { cantidad: 3, motivo: 'Del insumo pedido' },
+        bearer(escenario.token),
+      );
+      const ajena = await httpPost(
+        urlEntrada(otroInsumoId),
+        { cantidad: 99, motivo: 'Del OTRO insumo' },
+        bearer(escenario.token),
+      );
+      expect([propia.status, ajena.status]).toEqual([201, 201]);
+
+      const { status, data } = await httpGet<ListarMovimientosInsumoResponseDto>(
+        urlMovimientos(escenario.insumoId),
+        bearer(escenario.token),
+      );
+
+      expect(status).toBe(200);
+      expect(data.total).toBe(1);
+      expect(data.items).toHaveLength(1);
+      expect(data.items[0].insumoId).toBe(escenario.insumoId);
+      expect(data.items.map((item) => item.motivo)).not.toContain('Del OTRO insumo');
+      expect(data.items.map((item) => item.insumoId)).not.toContain(otroInsumoId);
+    });
+
+    /**
+     * El punto de toda la entrega: un asiento nacido de una recepción tiene que
+     * distinguirse de una carga manual. La entrada del enganche va SIN motivo a
+     * propósito, así que sin `itemCompraId` publicado las dos se ven idénticas.
+     * El fixture trae las DOS —la de recepción y una manual—, así que el assert
+     * de `null` de la segunda tampoco pasa por construcción.
+     */
+    it('publica el itemCompraId del asiento nacido de una recepción', async () => {
+      const escenario = await prepararEscenario(['INSUMOS:ALTAS', 'INSUMOS:LECTURA']);
+      const sembrado = await sembrarEntradaDeRecepcion(escenario.insumoId, escenario.usuarioId);
+
+      const manual = await httpPost(
+        urlEntrada(escenario.insumoId),
+        { cantidad: 1, motivo: 'Carga manual' },
+        bearer(escenario.token),
+      );
+      expect(manual.status).toBe(201);
+
+      const { status, data } = await httpGet<ListarMovimientosInsumoResponseDto>(
+        urlMovimientos(escenario.insumoId),
+        bearer(escenario.token),
+      );
+
+      expect(status).toBe(200);
+      const deRecepcion = data.items.find((item) => item.id === sembrado.movimientoId);
+      const deCargaManual = data.items.find((item) => item.motivo === 'Carga manual');
+
+      expect(deRecepcion?.itemCompraId).toBe(sembrado.itemCompraId);
+      expect(deCargaManual?.itemCompraId).toBeNull();
+    });
+
+    /**
+     * El orden lo fija la persistencia (`createdAt DESC, id DESC`) y tiene que
+     * llegar intacto al cliente: el más reciente primero. Sin este caso, un
+     * mapper que reordenara —o un `take` negativo que invirtiera la consulta—
+     * pasaría en verde con la misma cantidad de filas.
+     */
+    it('entrega el más reciente primero', async () => {
+      const escenario = await prepararEscenario(['INSUMOS:ALTAS', 'INSUMOS:LECTURA']);
+
+      const primera = await httpPost(
+        urlEntrada(escenario.insumoId),
+        { cantidad: 10, motivo: 'Primera' },
+        bearer(escenario.token),
+      );
+      const segunda = await httpPost(
+        urlSalida(escenario.insumoId),
+        { cantidad: 2, motivo: 'Segunda' },
+        bearer(escenario.token),
+      );
+      const tercera = await httpPost(
+        urlSalida(escenario.insumoId),
+        { cantidad: 3, motivo: 'Tercera' },
+        bearer(escenario.token),
+      );
+      expect([primera.status, segunda.status, tercera.status]).toEqual([201, 201, 201]);
+
+      const { data } = await httpGet<ListarMovimientosInsumoResponseDto>(
+        urlMovimientos(escenario.insumoId),
+        bearer(escenario.token),
+      );
+
+      expect(data.items.map((item) => item.motivo)).toEqual(['Tercera', 'Segunda', 'Primera']);
+    });
+
+    /**
+     * `total` es el universo completo del insumo y no el tamaño de la página:
+     * el fixture siembra MÁS movimientos que el `porPagina` que se pide, si no
+     * los dos números coincidirían y el assert no distinguiría nada.
+     */
+    it('el total es el universo del insumo y no el tamaño de la página', async () => {
+      const escenario = await prepararEscenario(['INSUMOS:ALTAS', 'INSUMOS:LECTURA']);
+
+      for (const cantidad of [1, 2, 3]) {
+        const registrado = await httpPost(
+          urlEntrada(escenario.insumoId),
+          { cantidad },
+          bearer(escenario.token),
+        );
+        expect(registrado.status).toBe(201);
+      }
+
+      const { status, data } = await httpGet<ListarMovimientosInsumoResponseDto>(
+        urlMovimientos(escenario.insumoId, '?porPagina=2'),
+        bearer(escenario.token),
+      );
+
+      expect(status).toBe(200);
+      expect(data.items).toHaveLength(2);
+      expect(data.total).toBe(3);
+      expect(data.porPagina).toBe(2);
+      expect(data.pagina).toBe(1);
+    });
+
+    /**
+     * EL candado del `take` negativo. Un `porPagina` menor a 1 llega al `take`
+     * de Prisma, que INVIERTE el orden: la respuesta serían los movimientos más
+     * VIEJOS presentados como los más nuevos, con un 200 de cara limpia. Sin
+     * este caso, el `@Min(1)` del DTO es una promesa sin guardia.
+     */
+    it.each([['porPagina=0'], ['porPagina=-1']])(
+      'con %s responde 400 y no un 200 con el orden invertido',
+      async (query) => {
+        const escenario = await prepararEscenario(['INSUMOS:ALTAS', 'INSUMOS:LECTURA']);
+        const entrada = await httpPost(
+          urlEntrada(escenario.insumoId),
+          { cantidad: 1 },
+          bearer(escenario.token),
+        );
+        expect(entrada.status).toBe(201);
+
+        const { status, data } = await httpGet<{ message: string[] }>(
+          urlMovimientos(escenario.insumoId, `?${query}`),
+          bearer(escenario.token),
+        );
+
+        expect(status).toBe(400);
+        expect(JSON.stringify(data.message)).toContain('porPagina');
+      },
+    );
+
+    /**
+     * El candado del `skip` negativo, que es la OTRA falla: el caso de uso
+     * traduce la página a `offset: (pagina - 1) * porPagina`, así que una
+     * página menor a 1 revienta en Prisma como 500 crudo sin nombrar el campo.
+     * Una miente y la otra explota; las dos las ataja el mismo `@Min(1)`.
+     */
+    it.each([['pagina=0'], ['pagina=-1']])('con %s responde 400 y no 500', async (query) => {
+      const escenario = await prepararEscenario(['INSUMOS:LECTURA']);
+
+      const { status, data } = await httpGet<{ message: string[] }>(
+        urlMovimientos(escenario.insumoId, `?${query}`),
+        bearer(escenario.token),
+      );
+
+      expect(status).toBe(400);
+      expect(JSON.stringify(data.message)).toContain('pagina');
+    });
+
+    it('con porPagina por encima del tope de página responde 400', async () => {
+      const escenario = await prepararEscenario(['INSUMOS:LECTURA']);
+
+      const { status, data } = await httpGet<{ message: string[] }>(
+        urlMovimientos(escenario.insumoId, '?porPagina=101'),
+        bearer(escenario.token),
+      );
+
+      expect(status).toBe(400);
+      expect(JSON.stringify(data.message)).toContain('porPagina');
+    });
+
+    /**
+     * Una bitácora vacía y un insumo inexistente son cosas distintas:
+     * responder `200 []` para el segundo le afirmaría al usuario que el insumo
+     * existe y nunca se movió.
+     */
+    it('con el insumo inexistente responde 404 y no una lista vacía', async () => {
+      const escenario = await prepararEscenario(['INSUMOS:LECTURA']);
+      const inexistente = '01919999-9999-7999-8999-999999999999';
+
+      const { status } = await httpGet(urlMovimientos(inexistente), bearer(escenario.token));
+
+      expect(status).toBe(404);
+    });
+
+    it('con el insumoId mal formado responde 400', async () => {
+      const escenario = await prepararEscenario(['INSUMOS:LECTURA']);
+
+      const { status } = await httpGet(
+        `${baseUrl}/insumos/no-es-un-uuid/movimientos`,
+        bearer(escenario.token),
+      );
+
+      expect(status).toBe(400);
     });
   });
 });

@@ -16,6 +16,7 @@ import {
   StockInsuficienteError,
 } from '../../domain/errors/insumos.errors';
 import { RegistrarMovimientoInsumoHttpDto } from '../dtos/movimientos-insumo.dto';
+import { ListarMovimientosInsumoResult } from '../../application/use-cases/listar-movimientos-insumo.use-case';
 
 const INSUMO_ID = '11111111-1111-4111-8111-111111111111';
 const USUARIO_ID = '22222222-2222-4222-8222-222222222222';
@@ -60,19 +61,29 @@ describe('MovimientosInsumoController', () => {
     salidaUseCase: UseCaseDoble;
     ajusteUseCase: UseCaseDoble;
     stockUseCase: UseCaseDoble;
+    listarUseCase: UseCaseDoble;
   } {
     const entradaUseCase = overrides.entrada ?? { execute: vi.fn() };
     const salidaUseCase = overrides.salida ?? { execute: vi.fn() };
     const ajusteUseCase = overrides.ajuste ?? { execute: vi.fn() };
     const stockUseCase = overrides.stock ?? { execute: vi.fn() };
+    const listarUseCase = overrides.listar ?? { execute: vi.fn() };
 
     const controller = new MovimientosInsumoController(
       entradaUseCase as never,
       salidaUseCase as never,
       ajusteUseCase as never,
       stockUseCase as never,
+      listarUseCase as never,
     );
-    return { controller, entradaUseCase, salidaUseCase, ajusteUseCase, stockUseCase };
+    return {
+      controller,
+      entradaUseCase,
+      salidaUseCase,
+      ajusteUseCase,
+      stockUseCase,
+      listarUseCase,
+    };
   }
 
   describe('POST /insumos/:insumoId/movimientos/entrada', () => {
@@ -310,6 +321,81 @@ describe('MovimientosInsumoController', () => {
     });
   });
 
+  describe('GET /insumos/:insumoId/movimientos', () => {
+    /** Página con dos asientos de orígenes distintos: uno de recepción y uno manual. */
+    function paginaDeMovimientos(): ListarMovimientosInsumoResult {
+      return {
+        items: [construirMovimiento('SALIDA', 4), construirMovimiento('ENTRADA', 9)],
+        total: 37,
+        pagina: 2,
+        porPagina: 10,
+      };
+    }
+
+    it('delega en el caso de uso con el insumoId y la ventana pedida', async () => {
+      const { controller, listarUseCase } = buildController({
+        listar: { execute: vi.fn().mockResolvedValue(Result.ok(paginaDeMovimientos())) },
+      });
+
+      await controller.listarMovimientos(INSUMO_ID, { pagina: 2, porPagina: 10 });
+
+      expect(listarUseCase.execute).toHaveBeenCalledWith(INSUMO_ID, {
+        pagina: 2,
+        porPagina: 10,
+      });
+    });
+
+    /**
+     * La query vacía tiene que llegar VACÍA: los dos defaults los resuelve el
+     * caso de uso, y un controller que los completara sería un segundo dueño de
+     * la misma regla.
+     */
+    it('con la query vacía no inventa defaults: los resuelve el caso de uso', async () => {
+      const { controller, listarUseCase } = buildController({
+        listar: { execute: vi.fn().mockResolvedValue(Result.ok(paginaDeMovimientos())) },
+      });
+
+      await controller.listarMovimientos(INSUMO_ID, {});
+
+      expect(listarUseCase.execute).toHaveBeenCalledWith(INSUMO_ID, {
+        pagina: undefined,
+        porPagina: undefined,
+      });
+    });
+
+    /**
+     * El assert es de CONTENIDO y no solo de forma: `total` es el universo del
+     * insumo —37 contra 2 filas—, así que un mapper que publicara
+     * `items.length` fallaría acá.
+     */
+    it('mapea la página con la ventana efectiva y el total del universo', async () => {
+      const pagina = paginaDeMovimientos();
+      const { controller } = buildController({
+        listar: { execute: vi.fn().mockResolvedValue(Result.ok(pagina)) },
+      });
+
+      const respuesta = await controller.listarMovimientos(INSUMO_ID, { pagina: 2, porPagina: 10 });
+
+      expect(respuesta.items.map((item) => item.id)).toEqual(pagina.items.map((item) => item.id));
+      expect(respuesta.items[0].tipo).toBe('SALIDA');
+      expect(respuesta.total).toBe(37);
+      expect(respuesta.pagina).toBe(2);
+      expect(respuesta.porPagina).toBe(10);
+    });
+
+    it('con el insumo inexistente lanza 404: es el recurso de la URL', async () => {
+      const error = new InsumoNoEncontradoError(INSUMO_ID);
+      const { controller } = buildController({
+        listar: { execute: vi.fn().mockResolvedValue(Result.fail(error)) },
+      });
+
+      const lanzado = await controller.listarMovimientos(INSUMO_ID, {}).catch((e: unknown) => e);
+
+      expect(lanzado).toBeInstanceOf(NotFoundException);
+      expect((lanzado as NotFoundException).message).toBe(error.message);
+    });
+  });
+
   /**
    * Sin este chequeo de metadata, borrar un `@RequiereAcciones` o un
    * `@UseGuards(AccionesGuard)` de cualquier método deja toda la suite en
@@ -334,20 +420,24 @@ describe('MovimientosInsumoController', () => {
       ['registrarSalida', 'INSUMOS:ALTAS'],
       ['registrarAjuste', 'INSUMOS:AJUSTAR'],
       ['consultarStock', 'INSUMOS:LECTURA'],
+      ['listarMovimientos', 'INSUMOS:LECTURA'],
     ])('%s exige exactamente %s', (metodo, codigo) => {
       const acciones = Reflect.getMetadata(ACCIONES_KEY, handlerDe(metodo)) as unknown;
 
       expect(acciones).toEqual([codigo]);
     });
 
-    it.each([['registrarEntrada'], ['registrarSalida'], ['registrarAjuste'], ['consultarStock']])(
-      '%s declara AccionesGuard en el propio método',
-      (metodo) => {
-        const guards = (Reflect.getMetadata(GUARDS_METADATA, handlerDe(metodo)) ?? []) as unknown[];
+    it.each([
+      ['registrarEntrada'],
+      ['registrarSalida'],
+      ['registrarAjuste'],
+      ['consultarStock'],
+      ['listarMovimientos'],
+    ])('%s declara AccionesGuard en el propio método', (metodo) => {
+      const guards = (Reflect.getMetadata(GUARDS_METADATA, handlerDe(metodo)) ?? []) as unknown[];
 
-        expect(guards).toContain(AccionesGuard);
-      },
-    );
+      expect(guards).toContain(AccionesGuard);
+    });
 
     /**
      * El caso hermano invertido: si `AccionesGuard` viviera a NIVEL DE CLASE,
@@ -363,7 +453,7 @@ describe('MovimientosInsumoController', () => {
 
     /**
      * La red que atrapa la ruta que TODAVÍA NO EXISTE. Los casos de arriba
-     * enumeran los cuatro métodos a mano, así que un quinto endpoint agregado
+     * enumeran los cinco métodos a mano, así que un sexto endpoint agregado
      * sin decorador los dejaría a todos en verde. Este deriva la lista del
      * prototipo, así que un método nuevo sin gate rompe acá el día que se
      * escribe — que es la falla silenciosa que el `AGENTS.md` describe: un gate
@@ -374,7 +464,7 @@ describe('MovimientosInsumoController', () => {
         (nombre) => nombre !== 'constructor',
       );
 
-      expect(metodos).toHaveLength(4);
+      expect(metodos).toHaveLength(5);
 
       const sinGate = metodos.filter((metodo) => {
         const acciones = (Reflect.getMetadata(ACCIONES_KEY, handlerDe(metodo)) ?? []) as unknown[];
