@@ -2,12 +2,20 @@
  * DTOs de entrada/salida de `MovimientosInsumoController` — la bitácora de
  * existencias y la consulta de stock.
  *
- * **Ningún tope declara su número: todos lo IMPORTAN del dominio**, que es la
- * autoridad del límite. Acá el tope solo se adelanta al borde HTTP para
- * devolver un 400 que nombra el campo, en vez de la violación de precondición
- * que `MovimientoInsumoEntity` lanza como `throw` —y que, sin este espejo,
- * llegaría al usuario como un 500 crudo: es la clase 1 de fallo de topes que el
- * `AGENTS.md` de este repo describe—.
+ * **Ningún tope de un campo del ASIENTO declara su número: todos lo IMPORTAN
+ * de `MovimientoInsumoEntity`**, que es la autoridad del límite. Acá el tope
+ * solo se adelanta al borde HTTP para devolver un 400 que nombra el campo, en
+ * vez de la violación de precondición que la entidad lanza como `throw` —y
+ * que, sin este espejo, llegaría al usuario como un 500 crudo: es la clase 1
+ * de fallo de topes que el `AGENTS.md` de este repo describe—.
+ *
+ * La excepción son los topes de PAGINACIÓN (`@Min(1)`, `@Max(100)` en
+ * `ListarMovimientosInsumoQueryDto`), que sí van con literales: no espejan
+ * ninguna regla de negocio ni ninguna columna, sino el tamaño de página que el
+ * borde acepta. Mismo criterio y mismo número que `ListarComprasQueryDto`,
+ * `ListTicketsQueryDto` y `ListKbArticulosQueryDto` —este último nombra sus
+ * campos `page`/`pageSize`, así que comparte el criterio y no el molde—. No
+ * hay constante de dominio que importar porque no hay dominio del otro lado.
  *
  * Los `@Transform` aplican las MISMAS funciones de normalización del dominio,
  * por el mismo motivo que en `insumos.dto.ts`: `class-transformer` corre la
@@ -27,7 +35,6 @@
 import {
   IsIn,
   IsInt,
-  IsNumber,
   IsOptional,
   IsPositive,
   IsString,
@@ -37,6 +44,7 @@ import {
   Min,
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
+import { EsNumeroConDecimales } from '../../../shared/interface/validators/es-numero-con-decimales';
 import {
   MovimientoInsumoEntity,
   MOVIMIENTO_INSUMO_CANTIDAD_DECIMALES,
@@ -89,14 +97,16 @@ export class RegistrarMovimientoInsumoHttpDto {
    * - `@IsPositive` en vez de `@Min(0)`: el cero no es un movimiento, y `@Min`
    *   lo dejaría pasar. No hay constante que importar porque el piso es el cero
    *   exclusivo, que es la definición misma de `isPositive`.
-   * - `maxDecimalPlaces` no es una formalidad: Postgres NO falla ante un tercer
-   *   decimal en un `DECIMAL(10,2)`, lo REDONDEA en silencio. Acá ese redondeo
-   *   no se queda en una fila: se acumula sobre el stock, que ES la suma de
-   *   todas ellas. `@IsNumber` además rechaza `NaN` e `Infinity`, que no caen
-   *   en ninguna comparación de rango.
+   * - El tope de decimales no es una formalidad: Postgres NO falla ante un
+   *   tercer decimal en un `DECIMAL(10,2)`, lo REDONDEA en silencio. Acá ese
+   *   redondeo no se queda en una fila: se acumula sobre el stock, que ES la
+   *   suma de todas ellas. `@EsNumeroConDecimales` además rechaza `NaN` e
+   *   `Infinity`, que no caen en ninguna comparación de rango; ver su JSDoc
+   *   para por qué cuenta los decimales por su cuenta en vez de delegar en
+   *   `@IsNumber({ maxDecimalPlaces })`.
    * - `@Max` importa el techo de NEGOCIO, no el límite físico de la columna.
    */
-  @IsNumber({ maxDecimalPlaces: MOVIMIENTO_INSUMO_CANTIDAD_DECIMALES })
+  @EsNumeroConDecimales(MOVIMIENTO_INSUMO_CANTIDAD_DECIMALES)
   @IsPositive()
   @Max(MOVIMIENTO_INSUMO_CANTIDAD_MAXIMA)
   cantidad!: number;

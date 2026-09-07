@@ -35,9 +35,9 @@ function bodyAjuste(overrides: Record<string, unknown> = {}): Record<string, unk
 
 /**
  * Recopila las restricciones que fallaron, para poder assertar CUÁL regla
- * rechazó y no solo "hubo algún error": con `@IsNumber`, `@IsPositive` y
- * `@Max` sobre el mismo campo, un `not.toHaveLength(0)` queda verde por la
- * regla equivocada. Mismo helper que `insumos.dto.spec.ts`.
+ * rechazó y no solo "hubo algún error": con `@EsNumeroConDecimales`,
+ * `@IsPositive` y `@Max` sobre el mismo campo, un `not.toHaveLength(0)` queda
+ * verde por la regla equivocada. Mismo helper que `insumos.dto.spec.ts`.
  */
 async function restriccionesDe(dto: object): Promise<string[]> {
   const errores = await validate(dto);
@@ -88,14 +88,14 @@ describe('RegistrarMovimientoInsumoHttpDto', () => {
      * acumula movimiento a movimiento sobre el stock, que ES la suma de todas
      * ellas.
      */
-    it('rechaza una cantidad con un decimal de más por isNumber', async () => {
+    it('rechaza una cantidad con un decimal de más por esNumeroConDecimales', async () => {
       const decimalDeMas = 1 / 10 ** (MOVIMIENTO_INSUMO_CANTIDAD_DECIMALES + 1);
       const dto = plainToInstance(
         RegistrarMovimientoInsumoHttpDto,
         bodyMovimiento({ cantidad: 1 + decimalDeMas }),
       );
 
-      expect(await restriccionesDe(dto)).toContain('isNumber');
+      expect(await restriccionesDe(dto)).toContain('esNumeroConDecimales');
     });
 
     it('acepta una cantidad con exactamente los decimales de la columna', async () => {
@@ -127,19 +127,19 @@ describe('RegistrarMovimientoInsumoHttpDto', () => {
       expect(await restriccionesDe(dto)).toContain('max');
     });
 
-    it('rechaza una cantidad que no es un número por isNumber', async () => {
+    it('rechaza una cantidad que no es un número por esNumeroConDecimales', async () => {
       const dto = plainToInstance(
         RegistrarMovimientoInsumoHttpDto,
         bodyMovimiento({ cantidad: 'dos' }),
       );
 
-      expect(await restriccionesDe(dto)).toContain('isNumber');
+      expect(await restriccionesDe(dto)).toContain('esNumeroConDecimales');
     });
 
-    it('rechaza el body sin cantidad por isNumber', async () => {
+    it('rechaza el body sin cantidad por esNumeroConDecimales', async () => {
       const dto = plainToInstance(RegistrarMovimientoInsumoHttpDto, {});
 
-      expect(await restriccionesDe(dto)).toContain('isNumber');
+      expect(await restriccionesDe(dto)).toContain('esNumeroConDecimales');
     });
   });
 

@@ -16,7 +16,6 @@
  */
 import {
   IsDateString,
-  IsNumber,
   IsOptional,
   IsString,
   Max,
@@ -26,6 +25,7 @@ import {
   IsUUID,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
+import { EsNumeroConDecimales } from '../../../shared/interface/validators/es-numero-con-decimales';
 import {
   TICKET_TITULO_MAX_LENGTH,
   TicketEntity,
@@ -109,7 +109,7 @@ export class CreateEquipoHttpDto {
 
   /** Importe/valor del equipo (2 decimales, no negativo, techo de negocio). */
   @IsOptional()
-  @IsNumber({ maxDecimalPlaces: 2 })
+  @EsNumeroConDecimales(2)
   @Min(EQUIPO_VALOR_MONETARIO_MINIMO)
   @Max(EQUIPO_VALOR_MONETARIO_MAXIMO)
   importe?: number | null;
@@ -127,7 +127,7 @@ export class CreateEquipoHttpDto {
    * negocio). El % de depreciación NO se persiste.
    */
   @IsOptional()
-  @IsNumber({ maxDecimalPlaces: 2 })
+  @EsNumeroConDecimales(2)
   @Min(EQUIPO_VALOR_MONETARIO_MINIMO)
   @Max(EQUIPO_VALOR_MONETARIO_MAXIMO)
   valorResidual?: number | null;
@@ -185,7 +185,7 @@ export class EditarEquipoHttpDto {
   modeloEquipoId?: string | null;
 
   @IsOptional()
-  @IsNumber({ maxDecimalPlaces: 2 })
+  @EsNumeroConDecimales(2)
   @Min(EQUIPO_VALOR_MONETARIO_MINIMO)
   @Max(EQUIPO_VALOR_MONETARIO_MAXIMO)
   importe?: number | null;
@@ -199,7 +199,7 @@ export class EditarEquipoHttpDto {
   observaciones?: string | null;
 
   @IsOptional()
-  @IsNumber({ maxDecimalPlaces: 2 })
+  @EsNumeroConDecimales(2)
   @Min(EQUIPO_VALOR_MONETARIO_MINIMO)
   @Max(EQUIPO_VALOR_MONETARIO_MAXIMO)
   valorResidual?: number | null;

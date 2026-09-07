@@ -124,13 +124,13 @@ describe('CreateInsumoDto', () => {
    * Postgres NO falla ante un tercer decimal en un `DECIMAL(10,2)`: lo REDONDEA
    * en silencio. El usuario guardaría `0.005` y le quedaría `0.01`. El borde y
    * el dominio son los únicos lugares donde eso se atrapa, y se assertea la
-   * restricción `isNumber` en particular porque el campo tiene además `@Min` y
-   * `@Max`.
+   * restricción `esNumeroConDecimales` en particular porque el campo tiene
+   * además `@Min` y `@Max`.
    */
   it('rechaza stockMinimo con más de dos decimales', async () => {
     const dto = plainToInstance(CreateInsumoDto, bodyAlta({ stockMinimo: 0.005 }));
 
-    expect(await restriccionesDe(dto)).toContain('isNumber');
+    expect(await restriccionesDe(dto)).toContain('esNumeroConDecimales');
   });
 
   it('rechaza stockMinimo negativo', async () => {

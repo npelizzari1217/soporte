@@ -90,6 +90,28 @@ async function httpPost<T = unknown>(
   return { status: res.status, data };
 }
 
+/**
+ * POST con el body ya escrito como TEXTO, sin pasar por `JSON.stringify`.
+ *
+ * Existe porque hay entradas que solo se distinguen en el texto del JSON y no
+ * sobreviven a un ida y vuelta por un objeto de JavaScript: `1E-7` en mayúscula
+ * es el mismo `number` que `1e-7`, así que serializar un objeto nunca produce
+ * esa forma. El servidor sí la recibe, porque `JSON.parse` la acepta.
+ */
+async function httpPostCrudo<T = unknown>(
+  url: string,
+  bodyCrudo: string,
+  headers: Headers = {},
+): Promise<{ status: number; data: T }> {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...headers },
+    body: bodyCrudo,
+  });
+  const data = (await res.json().catch(() => null)) as T;
+  return { status: res.status, data };
+}
+
 /** Hermano de `httpPost` para GET. */
 async function httpGet<T = unknown>(
   url: string,
@@ -633,6 +655,33 @@ describe('Movimientos de insumo e2e — celdas separadas y topes del borde', () 
       const { status, data } = await httpPost<{ message: string[] }>(
         urlEntrada(escenario.insumoId),
         { cantidad: 1.005 },
+        bearer(escenario.token),
+      );
+
+      expect(status).toBe(400);
+      expect(JSON.stringify(data.message)).toContain('cantidad');
+    });
+
+    /**
+     * `1E-7` son 7 decimales, así que la respuesta correcta es 400 — el mismo
+     * 400 que se lleva `1.005`. Lo que este caso agrega es POR DÓNDE se
+     * rechaza: un número tan chico se escribe en notación exponencial cuando se
+     * lo pasa a texto, y contar sus decimales partiendo por el punto no
+     * encuentra ninguno porque no hay punto. Ese conteo vive DENTRO del
+     * validador, así que su fallo no sale como un error de validación: sale
+     * como una excepción cruda desde adentro del `ValidationPipe`, y el borde
+     * responde 500 donde el DTO promete 400.
+     *
+     * El body va como TEXTO y no como objeto a propósito: la mayúscula de
+     * `1E-7` no sobrevive a `JSON.stringify`, y es exactamente la forma que un
+     * cliente puede mandar porque `JSON.parse` la acepta.
+     */
+    it('una cantidad en notación exponencial responde 400 y no 500', async () => {
+      const escenario = await prepararEscenario(['INSUMOS:ALTAS']);
+
+      const { status, data } = await httpPostCrudo<{ message: string[] }>(
+        urlEntrada(escenario.insumoId),
+        '{"cantidad":1E-7}',
         bearer(escenario.token),
       );
 

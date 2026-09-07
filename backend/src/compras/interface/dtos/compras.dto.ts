@@ -33,7 +33,6 @@ import {
   IsDateString,
   IsIn,
   IsInt,
-  IsNumber,
   IsOptional,
   IsString,
   IsUUID,
@@ -41,6 +40,7 @@ import {
   Min,
   MinLength,
 } from 'class-validator';
+import { EsNumeroConDecimales } from '../../../shared/interface/validators/es-numero-con-decimales';
 import { CompraEntity } from '../../domain/entities/compra.entity';
 import { ItemCompraEntity } from '../../domain/entities/item-compra.entity';
 import {
@@ -140,10 +140,13 @@ export class AgregarItemCompraHttpDto {
   /**
    * Cubre el throw plano `ItemCompraEntity.validarCamposBase`: "cantidad
    * debe ser mayor a 0". `@Min(0.01)` es el equivalente exacto de `> 0`
-   * dado `maxDecimalPlaces: 2` (`Decimal(10,2)`, ADR-C3): el menor valor
+   * dado el tope de 2 decimales (`Decimal(10,2)`, ADR-C3): el menor valor
    * positivo representable es 0.01, así que `>= 0.01` y `> 0` coinciden.
+   *
+   * Ese tope lo mide `@EsNumeroConDecimales` y no `@IsNumber`: ver su JSDoc
+   * para por qué el conteo de decimales de la librería no sirve acá.
    */
-  @IsNumber({ maxDecimalPlaces: 2 })
+  @EsNumeroConDecimales(2)
   @Min(0.01)
   cantidad!: number;
 
@@ -152,7 +155,7 @@ export class AgregarItemCompraHttpDto {
   proveedor!: string;
 
   /** Cubre el throw plano `ItemCompraEntity.validarCamposBase`: "monto no puede ser negativo". */
-  @IsNumber({ maxDecimalPlaces: 2 })
+  @EsNumeroConDecimales(2)
   @Min(0)
   monto!: number;
 
@@ -200,7 +203,7 @@ export class EditarItemCompraHttpDto {
 
   /** Si se provee, cubre el mismo throw plano que `AgregarItemCompraHttpDto.cantidad`. */
   @IsOptional()
-  @IsNumber({ maxDecimalPlaces: 2 })
+  @EsNumeroConDecimales(2)
   @Min(0.01)
   cantidad?: number;
 
@@ -211,7 +214,7 @@ export class EditarItemCompraHttpDto {
 
   /** Si se provee, cubre el mismo throw plano que `AgregarItemCompraHttpDto.monto`. */
   @IsOptional()
-  @IsNumber({ maxDecimalPlaces: 2 })
+  @EsNumeroConDecimales(2)
   @Min(0)
   monto?: number;
 
@@ -279,7 +282,7 @@ export class EditarCompraHttpDto {
  * (Argentina).
  */
 export class RegistrarOrdenDeItemHttpDto {
-  @IsNumber({ maxDecimalPlaces: 2 })
+  @EsNumeroConDecimales(2)
   @Min(0)
   cantidadOrdenada!: number;
 
@@ -294,7 +297,7 @@ export class RegistrarOrdenDeItemHttpDto {
  * etapas. Ver `RegistrarOrdenDeItemHttpDto` para el criterio de `fecha`.
  */
 export class RegistrarRecepcionDeItemHttpDto {
-  @IsNumber({ maxDecimalPlaces: 2 })
+  @EsNumeroConDecimales(2)
   @Min(0)
   cantidadRecibida!: number;
 
@@ -305,7 +308,7 @@ export class RegistrarRecepcionDeItemHttpDto {
 
 /** Ver `RegistrarOrdenDeItemHttpDto` — mismo criterio para `cantidadEntregada`. */
 export class RegistrarEntregaDeItemHttpDto {
-  @IsNumber({ maxDecimalPlaces: 2 })
+  @EsNumeroConDecimales(2)
   @Min(0)
   cantidadEntregada!: number;
 
