@@ -28,3 +28,28 @@ export interface Insumo {
   createdAt: string;
   updatedAt: string;
 }
+
+/**
+ * Espejo de `FamiliaInsumoResponseDto`, RECORTADO con el mismo criterio que
+ * `Insumo`: solo lo que la pantalla consume hoy, que es resolver el
+ * `familiaId` del listado a un nombre legible.
+ *
+ * `codigo`, `activo` y los timestamps quedan afuera a propósito. Cuando el ABM
+ * de familias los muestre, se agregan acá con su forma completa; declararlos
+ * ahora obligaría a cada fixture a construirlos sin que ningún assert los mire.
+ */
+export interface FamiliaInsumo {
+  id: string;
+  nombre: string;
+}
+
+/**
+ * Espejo de `UnidadMedidaResponseDto`, recortado con el mismo criterio que
+ * `FamiliaInsumo`. Las dos respuestas tienen el MISMO shape en el backend, pero
+ * se declaran por separado: son catálogos distintos, y un alias compartido haría
+ * que agregarle un campo a uno se lo agregue al otro sin que nadie lo decida.
+ */
+export interface UnidadMedida {
+  id: string;
+  nombre: string;
+}
