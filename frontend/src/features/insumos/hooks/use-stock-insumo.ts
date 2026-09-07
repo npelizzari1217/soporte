@@ -4,12 +4,15 @@
  * useStockInsumo — CONTAINER hook para `GET /insumos/:insumoId/stock`: cuánto
  * hay de un insumo y cómo se lee ese saldo contra su punto de reposición.
  *
- * A DIFERENCIA de los tres catálogos de este módulo, va SIN `staleTime`: el
- * default de TanStack Query (`0`, revalidar al montar y al volver a la
- * pestaña) es lo correcto acá. Un catálogo cambia cuando un administrador
- * edita el ABM; el stock cambia con CADA movimiento —entrada, salida o
- * ajuste—, incluido uno que registró otro usuario hace un segundo. Cachearlo
- * cinco minutos mostraría un saldo viejo en la pantalla que se mira
+ * A DIFERENCIA de los tres catálogos de este módulo, va con `staleTime: 0`
+ * EXPLÍCITO. Un catálogo cambia cuando un administrador edita el ABM; el stock
+ * cambia con CADA movimiento —entrada, salida o ajuste—, incluido uno que
+ * registró otro usuario hace un segundo, así que revalidar al montar y al
+ * volver a la pestaña es lo correcto acá.
+ *
+ * El `0` se escribe y no se hereda: el `QueryClient` de
+ * `shared/providers/query-provider.tsx` fija `staleTime: 30_000`, así que
+ * omitirlo cachearía el saldo medio minuto en la pantalla que se mira
  * justamente para saber cuánto queda.
  *
  * El endpoint SÍ exige `INSUMOS:LECTURA` en el backend (a diferencia del
@@ -23,7 +26,7 @@
  * refetchee el stock de todas las fichas abiertas, y viceversa. Son dos
  * lecturas con ritmos distintos.
  */
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { apiFetch } from "@/shared/api/client";
 import type { StockInsumo } from "../types";
 
@@ -31,8 +34,10 @@ import type { StockInsumo } from "../types";
  * @param insumoId Insumo cuya existencia se consulta.
  * @returns La query con el saldo, el punto de reposición y el estado ya resuelto.
  */
-export function useStockInsumo(insumoId: string) {
+export function useStockInsumo(insumoId: string): UseQueryResult<StockInsumo, Error> {
   return useQuery({
+    // El `0` va escrito y no heredado: ver el JSDoc de módulo.
+    staleTime: 0,
     queryKey: ["insumo", insumoId, "stock"],
     queryFn: () => apiFetch<StockInsumo>(`insumos/${insumoId}/stock`),
     enabled: !!insumoId,
