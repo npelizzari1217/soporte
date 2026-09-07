@@ -111,6 +111,20 @@ describe("nav-config", () => {
     expect(items.map((i) => i.href)).not.toContain("/preventivo");
   });
 
+  // Entrega 1 (sdd/insumos-entrega-2): ítem de nav gateado por
+  // INSUMOS:LECTURA, mismo criterio que COMPRAS/EDILICIA/EQUIPOS/PREVENTIVO.
+  it("con INSUMOS:LECTURA → ve /insumos", () => {
+    const user = makeUser({ permisos: ["INSUMOS:LECTURA"] });
+    const items = visibleNavItems(user);
+    expect(items.map((i) => i.href)).toContain("/insumos");
+  });
+
+  it("sin INSUMOS:LECTURA → /insumos queda oculto", () => {
+    const user = makeUser({ permisos: [] });
+    const items = visibleNavItems(user);
+    expect(items.map((i) => i.href)).not.toContain("/insumos");
+  });
+
   it("null user (no logueado) → no revienta, devuelve solo ítems públicos (ninguno gated)", () => {
     const items = visibleNavItems(null);
     expect(items.every((i) => i.href !== "/dashboard" && i.href !== "/admin/clientes")).toBe(true);

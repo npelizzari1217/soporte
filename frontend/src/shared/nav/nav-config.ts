@@ -11,6 +11,7 @@ import {
   CalendarRange,
   ClipboardCheck,
   Tag,
+  Package,
 } from "lucide-react";
 import type { JwtPayload } from "@/shared/api/types";
 import { ETIQUETAS_MODULOS } from "@/shared/auth/etiquetas-modulos";
@@ -103,6 +104,12 @@ const DEFAULT_SECTION_ITEMS: NavItem[] = [
     label: ETIQUETAS_MODULOS.EQUIPOS,
     icon: Monitor,
     visible: (can) => can("EQUIPOS:LECTURA"),
+  },
+  {
+    href: "/insumos",
+    label: ETIQUETAS_MODULOS.INSUMOS,
+    icon: Package,
+    visible: (can) => can("INSUMOS:LECTURA"),
   },
   {
     href: "/preventivo",
