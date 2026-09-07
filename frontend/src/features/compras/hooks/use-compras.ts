@@ -4,10 +4,10 @@
  * use-compras — CONTAINER hooks para `GET /compras` (listado paginado,
  * S32-S34, NUNCA incluye `items`) y `GET /compras/:id` (detalle CON ítems,
  * H3 del design). Mismo patrón que `features/equipos/hooks/use-equipos.ts`:
- * ambas consultas conviven en un solo archivo. Sin gate de permiso en el
- * backend (`ComprasController.listar()`/`.obtener()` no declaran
- * `@RequirePermissions`) — cualquier usuario autenticado del tenant puede
- * consultar.
+ * ambas consultas conviven en un solo archivo. Las dos rutas SÍ exigen
+ * `COMPRAS:LECTURA` en el backend (`compras.controller.ts`: `@RequiereAcciones`
+ * en el `@Get()` y en el `@Get(':id')`, con `AccionesGuard` a nivel de clase),
+ * así que un 403 acá es la respuesta esperada y no una falla.
  *
  * Manejo de error defensivo: `apiFetch` (`shared/api/client.ts`) normaliza
  * fallos de red y HTTP a `ApiError`/`SessionExpiredError`; TanStack Query
@@ -17,6 +17,7 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/shared/api/client";
+import { buildQueryString } from "@/shared/lib/build-query-string";
 import type { CompraDetalle, ComprasFiltros, ListarComprasResponse } from "../types";
 
 /**
@@ -28,12 +29,7 @@ import type { CompraDetalle, ComprasFiltros, ListarComprasResponse } from "../ty
  * los mismos nombres que `ComprasFiltros`.
  */
 export function buildComprasQueryString(filtros: ComprasFiltros): string {
-  const params = new URLSearchParams();
-  for (const [key, value] of Object.entries(filtros)) {
-    if (value === undefined) continue;
-    params.set(key, String(value));
-  }
-  return params.toString();
+  return buildQueryString({ ...filtros });
 }
 
 /** Listado paginado de compras del tenant activo (§4.9, S32-S34). */
