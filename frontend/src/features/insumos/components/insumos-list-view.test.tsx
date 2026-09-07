@@ -1,10 +1,20 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse, delay } from "msw";
 import { server } from "../../../../test/msw/server";
 import { renderWithProviders, buildUser } from "../../../../test/render-with-providers";
 import { InsumosListView } from "./insumos-list-view";
 import type { FamiliaInsumo, Insumo, UnidadMedida } from "../types";
+
+const pushMock = vi.fn();
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: pushMock }),
+}));
+
+beforeEach(() => {
+  pushMock.mockClear();
+});
 
 /**
  * El fixture trae los DOS estados a propósito: un insumo habilitado y uno
@@ -192,5 +202,22 @@ describe("InsumosListView — gate INSUMOS:LECTURA", () => {
 
     expect(await screen.findByText("TON-001")).toBeInTheDocument();
     expect(screen.queryByText(/no tiene permiso/i)).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * Hasta esta entrega el listado se veía pero no llevaba a ningún lado: la
+ * `DataTable` se renderizaba sin `onRowClick`, así que la ficha del insumo era
+ * inalcanzable desde la UI. El assert mira el destino EXACTO, no que se haya
+ * navegado: un `push` a `/insumos` dejaría al usuario donde ya estaba.
+ */
+describe("InsumosListView — navegación a la ficha del insumo", () => {
+  it("al hacer click en una fila navega a la ficha de ESE insumo", async () => {
+    mockCatalogos([INSUMO_HABILITADO, INSUMO_DESHABILITADO]);
+    renderWithProviders(<InsumosListView />, { user: LECTOR });
+
+    await userEvent.click(await screen.findByText("CAB-009"));
+
+    expect(pushMock).toHaveBeenCalledWith(`/insumos/${INSUMO_DESHABILITADO.id}`);
   });
 });

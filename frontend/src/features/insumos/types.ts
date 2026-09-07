@@ -53,3 +53,50 @@ export interface UnidadMedida {
   id: string;
   nombre: string;
 }
+
+/**
+ * Catálogo CERRADO de estados de reposición, espejo exacto de
+ * `ESTADOS_REPOSICION_INSUMO` del backend
+ * (`backend/src/insumos/domain/entities/estado-reposicion-insumo.ts`).
+ *
+ * Se declara como array `as const` y la unión se DERIVA de él, que es la forma
+ * con la que este repo modela un conjunto cerrado de valores: así el listado de
+ * etiquetas de la ficha puede tiparse como `Record<EstadoReposicionInsumo, …>`
+ * y un estado nuevo rompe el typecheck en vez de renderizar vacío.
+ *
+ * Son TRES y no un booleano a propósito: `stockMinimo` es `number | null`, y el
+ * `null` significa "sin punto de reposición definido", que NO es lo mismo que
+ * "tiene punto y está por encima". Colapsarlos escondería justo los insumos a
+ * los que falta configurarles el punto.
+ */
+export const ESTADOS_REPOSICION_INSUMO = [
+  "SIN_PUNTO_DEFINIDO",
+  "SUFICIENTE",
+  "BAJO_MINIMO",
+] as const;
+
+/** Estado de reposición de un insumo, derivado de `ESTADOS_REPOSICION_INSUMO`. */
+export type EstadoReposicionInsumo = (typeof ESTADOS_REPOSICION_INSUMO)[number];
+
+/**
+ * Espejo de `StockInsumoResponseDto` — lo que devuelve
+ * `GET /insumos/:insumoId/stock`.
+ *
+ * `estadoReposicion` llega YA RESUELTO y la ficha solo lo traduce a una
+ * etiqueta: la regla de cuándo hay que reponer es de negocio (`evaluarReposicion`
+ * compara en centésimas enteras, con `<=`, para que el punto en cero avise), y
+ * repetirla acá sería una SEGUNDA definición de "bajo el mínimo" que puede
+ * discrepar de la del servidor sin que nadie se entere.
+ *
+ * `stockMinimo` viaja igual, además del estado, porque la ficha lo muestra:
+ * "quedan 3, el punto es 10" dice bastante más que "reponer".
+ */
+export interface StockInsumo {
+  insumoId: string;
+  /** Saldo actual derivado de la bitácora. Es una FOTO: sirve para mostrar, no para decidir. */
+  stock: number;
+  /** Punto de reposición del insumo, o `null` si no tiene uno definido. */
+  stockMinimo: number | null;
+  /** Lectura del saldo contra el punto de reposición, resuelta por el backend. */
+  estadoReposicion: EstadoReposicionInsumo;
+}

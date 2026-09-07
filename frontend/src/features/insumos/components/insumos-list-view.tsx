@@ -16,9 +16,10 @@
  * gobierna el catálogo—, y los dos endpoints que exponen eso exigen
  * `INSUMOS:LECTURA` hoy: `GET /insumos/:insumoId/stock` y
  * `GET /insumos/:insumoId/movimientos` (`movimientos-insumo.controller.ts`).
- * La ficha del insumo que va a consumirlos es una entrega pendiente, y cuando
- * exista vivirá dentro de esta sección. Abrir la sección a quien no tiene el
- * permiso sería ofrecerle un camino que termina en 403.
+ * La ficha del insumo (`/insumos/[id]`, `InsumoDetailView`) ya consume el
+ * primero y se alcanza haciendo click en una fila de este listado. Abrir la
+ * sección a quien no tiene el permiso sería ofrecerle un camino que termina
+ * en 403.
  *
  * Por eso tampoco vale el paralelo con `EquiposListView`, aunque el código se
  * le parezca: ahí el backend SÍ exige `EQUIPOS:LECTURA` en `GET /equipos*`, y
@@ -28,6 +29,7 @@
  * abierta porque otras pantallas los necesitan para poblar sus `<select>`. La
  * autoridad de autorización sigue siendo el backend (ADR-4); esto es UI.
  */
+import { useRouter } from "next/navigation";
 import { useInsumos } from "../hooks/use-insumos";
 import { useFamiliasInsumo } from "../hooks/use-familias-insumo";
 import { useUnidadesMedida } from "../hooks/use-unidades-medida";
@@ -45,6 +47,7 @@ const SIN_VALOR = "—";
 
 /** @returns El listado del catálogo de insumos, gateado por `INSUMOS:LECTURA`. */
 export function InsumosListView() {
+  const router = useRouter();
   const insumosQuery = useInsumos();
   const familiasQuery = useFamiliasInsumo();
   const unidadesQuery = useUnidadesMedida();
@@ -112,6 +115,7 @@ export function InsumosListView() {
           isLoading={insumosQuery.isLoading}
           error={insumosQuery.isError ? "No se pudieron cargar los insumos." : undefined}
           onRetry={() => insumosQuery.refetch().catch(notifyError)}
+          onRowClick={(row) => router.push(`/insumos/${row.id}`)}
           emptyTitle="Sin insumos"
           emptyDescription="Todavía no hay insumos cargados en el catálogo."
         />
