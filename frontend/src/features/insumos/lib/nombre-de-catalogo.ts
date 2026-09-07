@@ -13,7 +13,13 @@
  * unidad de medida) necesitan la misma regla, y una regla de presentación
  * duplicada se corrige en una copia y queda atrás en la otra EN SILENCIO —
  * mismo criterio que `opciones-insumo.ts`.
+ *
+ * La regla EN SÍ —el orden de las guardas— ya no vive acá: la resuelve
+ * `resolverDeCatalogo`, porque la ficha del insumo la necesita igual para
+ * ramificar la pantalla entera. Este módulo quedó como lo que siempre fue de
+ * este lado: el TEXTO con el que una celda nombra cada desenlace.
  */
+import { resolverDeCatalogo, type EstadoCatalogo as EstadoDeCatalogoDe } from "./resolucion-de-catalogo";
 
 /** Lo mínimo que una entrada de catálogo necesita para nombrar un id. */
 export interface EntradaDeCatalogo {
@@ -21,18 +27,8 @@ export interface EntradaDeCatalogo {
   nombre: string;
 }
 
-/**
- * El catálogo tal como lo entrega TanStack Query, sin aplanar.
- *
- * `entradas` es `undefined` mientras la query no resolvió — y llega así a
- * propósito, sin `?? []`: un array vacío por default colapsaría "cargando",
- * "falló" y "el catálogo está realmente vacío" en el mismo valor, que es
- * exactamente el error que este módulo evita.
- */
-export interface EstadoCatalogo {
-  entradas: EntradaDeCatalogo[] | undefined;
-  cargando: boolean;
-}
+/** El catálogo de nombres tal como lo entrega TanStack Query, sin aplanar. */
+export type EstadoCatalogo = EstadoDeCatalogoDe<EntradaDeCatalogo>;
 
 /** El catálogo está en vuelo: no se sabe nada todavía. */
 export const ETIQUETA_CATALOGO_CARGANDO = "Cargando…";
@@ -61,11 +57,19 @@ export const ETIQUETA_FUERA_DE_CATALOGO = "Fuera del catálogo";
  *   corresponde al estado — nunca un guion ni el id crudo.
  */
 export function nombreDeCatalogo(id: string, catalogo: EstadoCatalogo): string {
-  // El orden importa: primero se decide si la lista RESOLVIÓ, y recién ahí se
-  // mira si el id está. Invertirlo es el defecto que este módulo evita.
-  if (!catalogo.entradas) {
-    return catalogo.cargando ? ETIQUETA_CATALOGO_CARGANDO : ETIQUETA_CATALOGO_NO_DISPONIBLE;
+  const resolucion = resolverDeCatalogo(id, catalogo);
+
+  // Sin `default`: el `switch` exhaustivo sobre la unión es lo que hace que un
+  // estado nuevo en `ResolucionDeCatalogo` rompa el typecheck acá en vez de
+  // caer en silencio en una rama genérica.
+  switch (resolucion.estado) {
+    case "CARGANDO":
+      return ETIQUETA_CATALOGO_CARGANDO;
+    case "NO_DISPONIBLE":
+      return ETIQUETA_CATALOGO_NO_DISPONIBLE;
+    case "FUERA_DE_CATALOGO":
+      return ETIQUETA_FUERA_DE_CATALOGO;
+    case "ENCONTRADA":
+      return resolucion.entrada.nombre;
   }
-  const entrada = catalogo.entradas.find((candidata) => candidata.id === id);
-  return entrada ? entrada.nombre : ETIQUETA_FUERA_DE_CATALOGO;
 }
