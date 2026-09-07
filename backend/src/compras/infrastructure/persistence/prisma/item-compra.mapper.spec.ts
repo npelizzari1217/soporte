@@ -104,6 +104,21 @@ describe('ItemCompraMapper', () => {
       expect(entity.cantidadRecibida).toBe(1);
     });
 
+    it('mapea el insumo del ítem cuando la fila lo trae', () => {
+      const row = makeFakeRow({ insumoId: '01966a6a-0000-7000-8000-0000000000aa' });
+      const entity = ItemCompraMapper.toDomain(row);
+
+      expect(entity.insumoId).toBe('01966a6a-0000-7000-8000-0000000000aa');
+    });
+
+    // Hermano invertido: los ítems históricos quedan en NULL para siempre
+    // (insumos-entrega-3, decisión 6) y el mapper tiene que sostenerlo.
+    it('mapea a null el ítem histórico sin insumo', () => {
+      const entity = ItemCompraMapper.toDomain(makeFakeRow());
+
+      expect(entity.insumoId).toBeNull();
+    });
+
     it('mapea las tres fechas de etapa cuando están presentes', () => {
       const row = makeFakeRow({
         fechaOrden: new Date('2026-08-10'),
@@ -130,6 +145,7 @@ describe('ItemCompraMapper', () => {
           moneda: 'USD',
           fechaCotizacion: new Date('2026-01-05'),
           observaciones: 'Urgente',
+          insumoId: null,
           estadoAprobacion: 'PENDIENTE',
           decididoPorId: null,
           decididoEn: null,
@@ -158,6 +174,72 @@ describe('ItemCompraMapper', () => {
       expect(data.moneda).toBe('USD');
       expect(data.deletedAt).toBeNull();
       expect(data.createdAt).toEqual(new Date('2026-01-05T09:00:00.000Z'));
+    });
+  });
+
+  // EL RIESGO DE TRASPASO de insumos-entrega-3, unidad 1 -> unidad 2. Este
+  // shape alimenta un UPSERT: mientras `toPersistence` emitiera `insumoId:
+  // null` fijo, cada guardado del ítem reescribía la columna a NULL. Era
+  // inocuo mientras nada escribía el vínculo, y pérdida silenciosa en cuanto
+  // la entidad pasó a llevarlo. Ni un error ni un log habrían avisado.
+  describe('toPersistence() — el vínculo con el insumo sobrevive al UPSERT', () => {
+    /** Ítem reconstituido con el insumo indicado, listo para persistir. */
+    function itemConInsumo(insumoId: string | null): ItemCompraEntity {
+      return ItemCompraEntity.reconstitute(
+        {
+          compraId: 'compra-1',
+          descripcion: 'Tóner negro',
+          insumoId,
+          cantidad: 3,
+          proveedor: 'Proveedor SA',
+          monto: 1000,
+          moneda: 'ARS',
+          fechaCotizacion: new Date('2026-01-05'),
+          observaciones: null,
+          estadoAprobacion: 'PENDIENTE',
+          decididoPorId: null,
+          decididoEn: null,
+          cantidadOrdenada: 0,
+          cantidadRecibida: 0,
+          cantidadEntregada: 0,
+          fechaOrden: null,
+          fechaRecepcion: null,
+          fechaEntrega: null,
+          cerradoConFaltante: false,
+          motivoCierreFaltante: null,
+        },
+        'item-1',
+        new Date('2026-01-05T09:00:00.000Z'),
+        new Date('2026-01-05T09:00:00.000Z'),
+        null,
+      );
+    }
+
+    it('emite el insumo de la ENTIDAD, no un null fijo', () => {
+      const data = ItemCompraMapper.toPersistence(itemConInsumo('insumo-a'));
+
+      expect(data.insumoId).toBe('insumo-a');
+    });
+
+    // Hermano invertido: el ítem sin insumo sí emite null, así que el test de
+    // arriba no pasa por un mapper que devolviera cualquier cosa no nula.
+    it('emite null cuando el ítem no tiene insumo', () => {
+      const data = ItemCompraMapper.toPersistence(itemConInsumo(null));
+
+      expect(data.insumoId).toBeNull();
+    });
+
+    it('GUARDAR DOS VECES no pierde el vínculo: el segundo shape lo sigue trayendo', () => {
+      const primera = ItemCompraMapper.toPersistence(itemConInsumo('insumo-a'));
+
+      // Lo que la DB devolvería tras ese primer guardado, releído por el repo.
+      const relectura = ItemCompraMapper.toDomain(
+        makeFakeRow({ id: primera.id, insumoId: primera.insumoId }),
+      );
+      const segunda = ItemCompraMapper.toPersistence(relectura);
+
+      expect(relectura.insumoId).toBe('insumo-a');
+      expect(segunda.insumoId).toBe('insumo-a');
     });
   });
 

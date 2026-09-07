@@ -34,6 +34,7 @@ export class ItemCompraMapper {
       {
         compraId: row.compraId,
         descripcion: row.descripcion,
+        insumoId: row.insumoId ?? null,
         cantidad: Number(row.cantidad),
         proveedor: row.proveedor,
         monto: Number(row.monto),
@@ -85,16 +86,13 @@ export class ItemCompraMapper {
       id: entity.id,
       compraId: entity.compraId,
       descripcion: entity.descripcion,
-      // `null` fijo y no `entity.insumoId`: la columna existe desde la unidad 1
-      // de `insumos-entrega-3`, pero la entidad todavía no tiene el campo — lo
-      // agrega la unidad 2, y esta línea pasa a leerlo entonces.
-      //
-      // CUIDADO al hacerlo: este shape alimenta un UPSERT, así que mientras
-      // diga `null` cada guardado reescribe la columna a NULL. Hoy es inocuo
-      // porque nada la escribe; en cuanto la entidad lleve el insumo, dejar
-      // esta línea sin tocar sería perder el vínculo en cada actualización del
-      // ítem.
-      insumoId: null,
+      // Leído de la ENTIDAD, nunca un `null` fijo: este shape alimenta un
+      // UPSERT, así que un literal acá vaciaría la columna en la rama UPDATE
+      // —en cada actualización del ítem, sin error y sin log— y el ítem
+      // perdería la única explicación del stock que ya emitió. Mismo criterio
+      // y mismo defecto evitado que `modeloEquipoId` en
+      // `equipo-informatico.mapper.ts`.
+      insumoId: entity.insumoId,
       cantidad: entity.cantidad,
       proveedor: entity.proveedor,
       monto: entity.monto,

@@ -79,6 +79,7 @@ function crearItemFixture(overrides: Partial<ItemCompraProps> = {}): ItemCompraE
   const props: ItemCompraProps = {
     compraId: 'compra-cancelada-1',
     descripcion: 'Monitor',
+    insumoId: null,
     cantidad: 1,
     proveedor: 'Proveedor SA',
     monto: 50000,

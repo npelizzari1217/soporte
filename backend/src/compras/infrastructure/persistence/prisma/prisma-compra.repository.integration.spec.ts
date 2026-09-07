@@ -47,6 +47,7 @@ describe('PrismaCompraRepository — Integration (PR-11, secuencial)', () => {
   let tenantContext: TenantContext;
   let compraRepo: PrismaCompraRepository;
   let cicloId: string;
+  let insumoId: string;
   const comprasIdsCreadas: string[] = [];
 
   const RUN_PREFIX = randomBytes(2).toString('hex');
@@ -97,6 +98,27 @@ describe('PrismaCompraRepository — Integration (PR-11, secuencial)', () => {
       },
     });
     cicloId = ciclo.id;
+
+    // Catálogo de apoyo para el enlace `items_compra.insumo_id`
+    // (insumos-entrega-3, unidad 1). Fixtures propios y prefijados, igual que
+    // el ciclo: la DB de test es COMPARTIDA y el `afterAll` los borra por
+    // prefijo. La FK es RESTRICT, así que sin un insumo real el UPSERT del
+    // ítem rebotaría y el test pasaría por el motivo equivocado.
+    const familia = await tenantClient.familiaInsumo.create({
+      data: { codigo: `PR11TEST_FAM_${suffix}`, nombre: 'Familia de test PR-11' },
+    });
+    const unidad = await tenantClient.unidadMedida.create({
+      data: { codigo: `PR11TEST_UM_${suffix}`, nombre: 'Unidad de test PR-11' },
+    });
+    const insumo = await tenantClient.insumo.create({
+      data: {
+        codigo: `PR11TEST_INS_${suffix}`,
+        nombre: 'Insumo de test PR-11',
+        familiaId: familia.id,
+        unidadMedidaId: unidad.id,
+      },
+    });
+    insumoId = insumo.id;
   }, 30_000);
 
   afterAll(async () => {
@@ -112,6 +134,14 @@ describe('PrismaCompraRepository — Integration (PR-11, secuencial)', () => {
       where: { numero: { startsWith: `COM-${ANIO_TEST}-` } },
     });
     await tenantClient.cicloCliente.delete({ where: { id: cicloId } });
+    // Después de los ítems: la FK `items_compra_insumo_id_fkey` es RESTRICT.
+    await tenantClient.insumo.deleteMany({ where: { codigo: { startsWith: 'PR11TEST_INS_' } } });
+    await tenantClient.familiaInsumo.deleteMany({
+      where: { codigo: { startsWith: 'PR11TEST_FAM_' } },
+    });
+    await tenantClient.unidadMedida.deleteMany({
+      where: { codigo: { startsWith: 'PR11TEST_UM_' } },
+    });
     await prismaService.onModuleDestroy();
   }, 30_000);
 
@@ -199,6 +229,9 @@ describe('PrismaCompraRepository — Integration (PR-11, secuencial)', () => {
         expect(found!.items[0].descripcion).toBe('Notebook');
         expect(found!.items[0].cantidad).toBe(2);
         expect(found!.items[0].monto).toBe(1500);
+        // Hermano invertido del caso de abajo: un ítem de texto libre persiste
+        // sin insumo, que es lo que hacen todos los ítems históricos.
+        expect(found!.items[0].insumoId).toBeNull();
       });
     });
 
@@ -226,6 +259,46 @@ describe('PrismaCompraRepository — Integration (PR-11, secuencial)', () => {
         const found = await compraRepo.findByIdConItems(compra.id);
         expect(found!.items).toHaveLength(1);
         expect(found!.items[0].isDeleted()).toBe(true);
+      });
+    });
+
+    // EL RIESGO DE TRASPASO de insumos-entrega-3 (unidad 1 -> unidad 2), contra
+    // el UPSERT REAL y no contra un mock. `guardarItem()` es un upsert por id:
+    // mientras `ItemCompraMapper.toPersistence` emitiera `insumoId: null` fijo,
+    // el INSERT guardaba el vínculo y el UPDATE del segundo guardado lo
+    // vaciaba, sin error y sin log. Un test que guarde una sola vez no lo ve.
+    describe('el vínculo con el insumo sobrevive al segundo guardado', () => {
+      it('guardar el ítem dos veces conserva su insumoId en la fila', async () => {
+        const compra = makeCompra();
+
+        await withTenant(async () => {
+          await compraRepo.guardar(compra);
+          compra
+            .agregarItem({
+              descripcion: 'Tóner negro',
+              insumoId,
+              cantidad: 2,
+              proveedor: 'Proveedor SA',
+              monto: 1500,
+              moneda: 'ARS',
+              fechaCotizacion: new Date('2026-03-01'),
+              observaciones: null,
+            })
+            .getOrThrow();
+          const [item] = compra.items;
+
+          await compraRepo.guardarItem(item);
+          const trasElInsert = await compraRepo.findByIdConItems(compra.id);
+          expect(trasElInsert!.items[0].insumoId).toBe(insumoId);
+
+          // Segundo guardado: la rama UPDATE del upsert, la que vaciaba.
+          compra.editarItem(item.id, { descripcion: 'Tóner negro XL' }).getOrThrow();
+          await compraRepo.guardarItem(item);
+
+          const trasElUpdate = await compraRepo.findByIdConItems(compra.id);
+          expect(trasElUpdate!.items[0].descripcion).toBe('Tóner negro XL');
+          expect(trasElUpdate!.items[0].insumoId).toBe(insumoId);
+        });
       });
     });
   });

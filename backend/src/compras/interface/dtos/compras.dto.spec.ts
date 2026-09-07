@@ -351,6 +351,7 @@ describe('toCompraDetalleResponseDto', () => {
       {
         compraId: 'compra-1',
         descripcion: 'Item activo',
+        insumoId: null,
         cantidad: 1,
         proveedor: 'Proveedor SA',
         monto: 100,
@@ -378,6 +379,7 @@ describe('toCompraDetalleResponseDto', () => {
       {
         compraId: 'compra-1',
         descripcion: 'Item eliminado',
+        insumoId: null,
         cantidad: 1,
         proveedor: 'Proveedor SA',
         monto: 100,

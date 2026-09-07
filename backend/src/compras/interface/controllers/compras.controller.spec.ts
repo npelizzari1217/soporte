@@ -46,6 +46,7 @@ import { CompraEntity } from '../../domain/entities/compra.entity';
 import { ItemCompraEntity } from '../../domain/entities/item-compra.entity';
 import * as ComprasErrors from '../../domain/errors/compras.errors';
 import {
+  InsumoDeItemNoReasignableError,
   CantidadOrdenadaExcedeSolicitadaError,
   CantidadOrdenadaRetrocedeError,
   CantidadRecibidaExcedeOrdenadaError,
@@ -852,8 +853,8 @@ describe('toHttpException — catálogo de errores → HTTP (spec §5)', () => {
     (valor) => typeof valor === 'function' && valor.prototype instanceof DomainError,
   );
 
-  it('el catálogo tiene EXACTAMENTE 27 clases de error (2×409 + 2×404 + 23×422, + exportación a CSV)', () => {
-    expect(CLASES_DE_ERROR).toHaveLength(27);
+  it('el catálogo tiene EXACTAMENTE 28 clases de error (2×409 + 2×404 + 24×422, + exportación a CSV)', () => {
+    expect(CLASES_DE_ERROR).toHaveLength(28);
   });
 
   const TABLA: Array<[string, () => DomainError, 404 | 409 | 422]> = [
@@ -904,6 +905,7 @@ describe('toHttpException — catálogo de errores → HTTP (spec §5)', () => {
     ['EtapaNoRegistradaError', () => new EtapaNoRegistradaError('item-1', 'ENTREGA'), 422],
     ['SectorInexistenteError', () => new SectorInexistenteError('sector-1'), 422],
     ['ExportacionDemasiadoGrandeError', () => new ExportacionDemasiadoGrandeError(6000, 5000), 422],
+    ['InsumoDeItemNoReasignableError', () => new InsumoDeItemNoReasignableError('item-1'), 422],
   ];
 
   it('TABLA cubre EXACTAMENTE las clases exportadas (ninguna falta, ninguna sobra)', () => {

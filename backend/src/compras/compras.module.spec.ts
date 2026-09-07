@@ -126,6 +126,7 @@ function itemProps(overrides: Partial<ItemCompraProps> = {}): ItemCompraProps {
   return {
     compraId: COMPRA_ID,
     descripcion: 'Notebook Dell Latitude',
+    insumoId: null,
     cantidad: 2,
     proveedor: 'Proveedor SA',
     monto: 150000,

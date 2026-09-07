@@ -474,6 +474,41 @@ export class SectorInexistenteError extends DomainError {
 }
 
 /**
+ * InsumoDeItemNoReasignableError — se intentó CAMBIAR el `insumoId` de un ítem
+ * de compra que ya recibió mercadería (`cantidadRecibida > 0`).
+ *
+ * Recibir una compra suma stock por DELTA sobre el insumo que el ítem declara.
+ * Si ese insumo cambia después de la primera recepción, la historia se parte
+ * en dos sin error y sin log: lo ya emitido queda contado en el insumo viejo y
+ * los deltas futuros van al nuevo, y ninguno de los dos saldos dice la verdad.
+ *
+ * Cubre las TRES formas de reasignar, porque el daño es el mismo en las tres:
+ * cambiar de un insumo a otro, ASIGNAR uno donde no había (las recepciones
+ * pasadas no generaron movimiento y las futuras sí lo van a generar, así que
+ * el saldo contaría solo una parte de lo que entró) y BORRARLO (los
+ * movimientos ya emitidos quedan sin explicación y el saldo se congela con una
+ * parte contada). Lo que dispara el rechazo es el CAMBIO EFECTIVO del valor:
+ * reenviar el mismo `insumoId` no reasigna nada y se acepta.
+ *
+ * El camino correcto es declarar el insumo ANTES de la primera recepción. Si
+ * ya se recibió, la corrección va por una entrada o un ajuste manual de
+ * insumos, que deja rastro en la bitácora en vez de reescribir la historia.
+ * → HTTP 422 en la capa de presentación.
+ *
+ * Ref design: openspec/changes/insumos-entrega-3/design.md, decisión 5.
+ */
+export class InsumoDeItemNoReasignableError extends DomainError {
+  readonly code = 'INSUMO_DE_ITEM_NO_REASIGNABLE';
+
+  constructor(itemId: string) {
+    super(
+      `El ítem de compra "${itemId}" ya recibió mercadería: su insumo no se puede ` +
+        `cambiar, asignar ni borrar. Corregir el stock con un movimiento manual de insumos.`,
+    );
+  }
+}
+
+/**
  * ItemCompraYaCerradoError — se intentó registrar compra, entrega, o un
  * nuevo cierre con faltante sobre un ítem que ya fue cerrado con faltante.
  * `cerradoConFaltante` es TERMINAL (spec §6.3): bloquea cualquier mutación
