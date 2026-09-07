@@ -335,4 +335,151 @@ describe("ItemCreateDialog", () => {
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith(MENSAJE_BACKEND));
     expect(screen.getByLabelText(/descripción/i)).toBeInTheDocument();
   });
+
+  /**
+   * El insumo del ítem (insumos-entrega-3). `GET /insumos` es lectura abierta
+   * para cualquier autenticado del inquilino y devuelve los insumos vigentes,
+   * habilitados y deshabilitados.
+   */
+  describe("insumo del ítem", () => {
+    const CATALOGO = [
+      {
+        id: "ins-1",
+        codigo: "TON-001",
+        nombre: "Tóner negro",
+        familiaId: "fam-1",
+        unidadMedidaId: "um-1",
+        stockMinimo: null,
+        activo: true,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
+      {
+        id: "ins-2",
+        codigo: "PAP-002",
+        nombre: "Papel A4",
+        familiaId: "fam-1",
+        unidadMedidaId: "um-1",
+        stockMinimo: null,
+        activo: false,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
+    ];
+
+    function mockCatalogo() {
+      server.use(http.get("/api/insumos", () => HttpResponse.json(CATALOGO)));
+    }
+
+    function capturarPost(): { body: Record<string, unknown> } {
+      const capturado: { body: Record<string, unknown> } = { body: {} };
+      server.use(
+        http.post(`/api/compras/${COMPRA_ID}/items`, async ({ request }) => {
+          capturado.body = (await request.json()) as Record<string, unknown>;
+          return HttpResponse.json(compraDetalleFixture, { status: 201 });
+        }),
+      );
+      return capturado;
+    }
+
+    async function completarCamposObligatorios(user: ReturnType<typeof userEvent.setup>) {
+      await user.type(screen.getByLabelText(/descripción/i), "Insumo");
+      await user.clear(screen.getByLabelText(/cantidad/i));
+      await user.type(screen.getByLabelText(/cantidad/i), "1");
+      await user.type(screen.getByLabelText(/proveedor/i), "ACME");
+      await user.clear(screen.getByLabelText(/monto/i));
+      await user.type(screen.getByLabelText(/monto/i), "100");
+      await user.selectOptions(screen.getByLabelText(/moneda/i), "ARS");
+      await user.type(screen.getByLabelText(/fecha de cotización/i), "2026-01-01");
+    }
+
+    it("ofrece los insumos del catálogo por código y nombre, con «Sin insumo» como opción vacía", async () => {
+      mockCatalogo();
+      renderWithProviders(<ItemCreateDialog compraId={COMPRA_ID} />, {
+        user: buildUser({ permisos: ["COMPRAS:ALTAS"] }),
+      });
+
+      await abrirDialog();
+
+      const select = await screen.findByLabelText(/insumo \(opcional\)/i);
+      await waitFor(() => expect(screen.getByRole("option", { name: /TON-001 — Tóner negro/ })).toBeInTheDocument());
+      expect(screen.getByRole("option", { name: "Sin insumo" })).toBeInTheDocument();
+      expect(select).toHaveValue("");
+    });
+
+    /**
+     * El catálogo trae los deshabilitados y el backend los acepta en el alta
+     * (`validarInsumoElegible` sin `exigirHabilitado`). El fixture incluye a
+     * `ins-2` deshabilitado justamente para que este assert pueda fallar.
+     */
+    it("el insumo deshabilitado aparece marcado y sigue siendo elegible", async () => {
+      mockCatalogo();
+      const capturado = capturarPost();
+      renderWithProviders(<ItemCreateDialog compraId={COMPRA_ID} />, {
+        user: buildUser({ permisos: ["COMPRAS:ALTAS"] }),
+      });
+
+      const user = await abrirDialog();
+      await screen.findByRole("option", { name: /PAP-002 — Papel A4 \(deshabilitado\)/ });
+      await completarCamposObligatorios(user);
+      await user.selectOptions(screen.getByLabelText(/insumo \(opcional\)/i), "ins-2");
+      await user.click(screen.getByRole("button", { name: /agregar$/i }));
+
+      await waitFor(() => expect(capturado.body.insumoId).toBe("ins-2"));
+    });
+
+    it("el insumo elegido viaja en el POST", async () => {
+      mockCatalogo();
+      const capturado = capturarPost();
+      renderWithProviders(<ItemCreateDialog compraId={COMPRA_ID} />, {
+        user: buildUser({ permisos: ["COMPRAS:ALTAS"] }),
+      });
+
+      const user = await abrirDialog();
+      await screen.findByRole("option", { name: /TON-001 — Tóner negro/ });
+      await completarCamposObligatorios(user);
+      await user.selectOptions(screen.getByLabelText(/insumo \(opcional\)/i), "ins-1");
+      await user.click(screen.getByRole("button", { name: /agregar$/i }));
+
+      await waitFor(() => expect(capturado.body.insumoId).toBe("ins-1"));
+    });
+
+    /**
+     * Hermano invertido del anterior, y assert de ausencia sobre un catálogo
+     * CARGADO: las dos opciones existían y no se eligió ninguna.
+     */
+    it("dejarlo en «Sin insumo» no manda ningún insumoId", async () => {
+      mockCatalogo();
+      const capturado = capturarPost();
+      renderWithProviders(<ItemCreateDialog compraId={COMPRA_ID} />, {
+        user: buildUser({ permisos: ["COMPRAS:ALTAS"] }),
+      });
+
+      const user = await abrirDialog();
+      await screen.findByRole("option", { name: /TON-001 — Tóner negro/ });
+      await completarCamposObligatorios(user);
+      await user.click(screen.getByRole("button", { name: /agregar$/i }));
+
+      await waitFor(() => expect(capturado.body.descripcion).toBe("Insumo"));
+      expect(Object.keys(capturado.body)).not.toContain("insumoId");
+    });
+
+    it("cerrar el diálogo con un insumo elegido y reabrirlo vuelve a «Sin insumo»", async () => {
+      mockCatalogo();
+      renderWithProviders(<ItemCreateDialog compraId={COMPRA_ID} />, {
+        user: buildUser({ permisos: ["COMPRAS:ALTAS"] }),
+      });
+
+      const user = await abrirDialog();
+      await screen.findByRole("option", { name: /TON-001 — Tóner negro/ });
+      await user.selectOptions(screen.getByLabelText(/insumo \(opcional\)/i), "ins-1");
+      expect(screen.getByLabelText(/insumo \(opcional\)/i)).toHaveValue("ins-1");
+
+      await user.keyboard("{Escape}");
+      await waitFor(() => expect(screen.queryByLabelText(/insumo \(opcional\)/i)).not.toBeInTheDocument());
+      await user.click(screen.getByRole("button", { name: /agregar ítem/i }));
+
+      expect(await screen.findByLabelText(/insumo \(opcional\)/i)).toHaveValue("");
+    });
+  });
 });

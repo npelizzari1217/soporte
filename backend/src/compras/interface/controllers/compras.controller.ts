@@ -144,6 +144,11 @@ import {
   SectorInexistenteError,
   SinCicloActivoError,
 } from '../../domain/errors/compras.errors';
+// El error viene de `insumos` sin traducir, a propósito: el mismo hecho —el id
+// no está en el catálogo— tiene que dar el mismo código venga por el endpoint
+// que venga. Traducirlo a una clase propia de compras daría dos errores para
+// una sola causa.
+import { InsumoNoEncontradoError } from '../../../insumos/domain/errors/insumos.errors';
 
 import {
   AgregarItemCompraHttpDto,
@@ -218,7 +223,15 @@ export function toHttpException(
     // Exportación a CSV: cae igual en 422 por el default, pero se lista
     // explícito como los otros 22 — el default existe para el error que
     // NADIE mapeó, no para ahorrarse una línea en uno conocido.
-    error instanceof ExportacionDemasiadoGrandeError
+    error instanceof ExportacionDemasiadoGrandeError ||
+    // El insumo declarado para un ítem, cuando no está en el catálogo del
+    // inquilino o tiene baja lógica. Es 422 y NO 404 a propósito, aunque
+    // `InsumosController` conteste 404 para esta misma clase: allá el insumo
+    // ES el recurso de la URL, y acá es un valor del BODY. Un 404 sobre
+    // `POST /compras/:id/items` se leería como "la compra no existe" y
+    // mandaría a mirar el lugar equivocado. Se lista explícito por el mismo
+    // motivo que el de arriba.
+    error instanceof InsumoNoEncontradoError
   ) {
     return new UnprocessableEntityException(error.message);
   }
@@ -302,8 +315,10 @@ export class ComprasController {
    * Agrega un ítem a una compra existente (§4.2, S4, S5). El ítem nace
    * `PENDIENTE`; si la cabecera estaba `APROBADO`/`RECHAZADO` vuelve a
    * `PENDIENTE` por T2 (consecuencia intencional del estado derivado).
+   * El `insumoId` es opcional (insumos-entrega-3): declararlo es lo que hace
+   * que registrar la recepción sume el stock solo.
    * @throws 404 compra inexistente/otro tenant
-   * @throws 422 compra cancelada (S5)
+   * @throws 422 compra cancelada (S5), o `insumoId` inexistente en el catálogo
    */
   @Post(':id/items')
   @RequiereAcciones('COMPRAS:ALTAS')
@@ -323,6 +338,7 @@ export class ComprasController {
       moneda: dto.moneda,
       fechaCotizacion: new Date(dto.fechaCotizacion),
       observaciones: dto.observaciones ?? null,
+      insumoId: dto.insumoId ?? null,
     });
 
     if (result.isFail()) {
@@ -369,9 +385,12 @@ export class ComprasController {
    * PATCH /compras/:id/items/:itemId
    * Edita los campos de solicitud de un ítem (§4.2/§4.4, PATCH semántico —
    * `undefined` no toca el campo). El congelamiento (S13) y los campos libres
-   * (S14) los resuelve la entidad, no este controller.
+   * (S14) los resuelve la entidad, no este controller. `insumoId` es el tercer
+   * grupo (insumos-entrega-3): `null` explícito borra el vínculo, y el guard de
+   * reasignación de la entidad lo bloquea en cuanto el ítem recibió mercadería.
    * @throws 404 compra o ítem inexistente
-   * @throws 422 compra cancelada (S5), o ítem congelado (S13)
+   * @throws 422 compra cancelada (S5), ítem congelado (S13), insumo no
+   *         reasignable tras una recepción, o `insumoId` inexistente
    */
   @Patch(':id/items/:itemId')
   @RequiereAcciones('COMPRAS:MODIFICACION')
@@ -393,6 +412,9 @@ export class ComprasController {
       moneda: dto.moneda,
       fechaCotizacion: dto.fechaCotizacion ? new Date(dto.fechaCotizacion) : undefined,
       observaciones: dto.observaciones,
+      // Sin `??`: las tres posibilidades del PATCH tienen que llegar
+      // distinguidas — ausente no toca el vínculo, `null` lo borra.
+      insumoId: dto.insumoId,
     });
 
     if (result.isFail()) {

@@ -42,6 +42,7 @@ function makeFakeItemRow(overrides: Partial<PrismaItemCompra> = {}): PrismaItemC
     id: '01966a6a-0000-7000-8000-000000000020',
     compraId: '01966a6a-0000-7000-8000-000000000001',
     descripcion: 'Notebook Dell',
+    insumoId: null,
     cantidad: new Prisma.Decimal('2.00'),
     proveedor: 'Proveedor SA',
     monto: new Prisma.Decimal('150000.50'),

@@ -2,14 +2,15 @@
  * PR-5 [UNIT] — RED→GREEN: errores de dominio de `compras/` (`compras.errors.ts`).
  *
  * Verifica `code` estable + herencia de `DomainError`/`Error` para cada uno
- * de los 25 errores del catálogo, y que los 25 `code` sean únicos entre sí
+ * de los 27 errores del catálogo, y que los 27 `code` sean únicos entre sí
  * (sin colisiones).
  *
  * Nota de conteo: arrancó en 19 (2×409 + 2×404 + 15×422) con
  * `sdd/redisenio-modulo-compras`. `compras-tres-etapas-y-sectores` lo llevó a
  * 23 (renombres de cantidades + fechas de etapa) y el fix post-verify a 25
  * (`EtapaNoRegistradaError`, `SectorInexistenteError`). Editar cabecera de
- * compra lo lleva a 26 (`CompraNoPendienteError`).
+ * compra lo lleva a 26 (`CompraNoPendienteError`) y el enlace con insumos a 27
+ * (`InsumoDeItemNoReasignableError`, insumos-entrega-3 unidad 2).
  *
  * Este archivo ya se comió una vez el defecto que testea: el JSDoc pasó a
  * decir 25 mientras `CASES` seguía en 23. Un comentario que declara MÁS
@@ -53,6 +54,7 @@ import {
   FechaEtapasFueraDeOrdenError,
   EtapaNoRegistradaError,
   SectorInexistenteError,
+  InsumoDeItemNoReasignableError,
 } from './compras.errors';
 
 interface ErrorCase {
@@ -250,9 +252,16 @@ const CASES: readonly ErrorCase[] = [
     build: () => new SectorInexistenteError('sector-1'),
     messageContains: ['sector-1'],
   },
+  {
+    name: 'InsumoDeItemNoReasignableError',
+    code: 'INSUMO_DE_ITEM_NO_REASIGNABLE',
+    httpStatus: 422,
+    build: () => new InsumoDeItemNoReasignableError('item-1'),
+    messageContains: ['item-1'],
+  },
 ];
 
-describe('compras.errors — catálogo de errores de dominio (26, WU-15 ADR-T2 + fix post-verify + editar cabecera)', () => {
+describe('compras.errors — catálogo de errores de dominio (27, WU-15 ADR-T2 + fix post-verify + editar cabecera + enlace con insumos)', () => {
   it.each(CASES.map((testCase) => [testCase.name, testCase] as const))(
     '%s expone code estable, extiende DomainError, y el mensaje conserva el identificador',
     (_name, testCase) => {
@@ -266,19 +275,19 @@ describe('compras.errors — catálogo de errores de dominio (26, WU-15 ADR-T2 +
     },
   );
 
-  it('los 26 codes del catálogo son únicos entre sí (sin colisiones)', () => {
+  it('los 27 codes del catálogo son únicos entre sí (sin colisiones)', () => {
     const codes = CASES.map((testCase) => testCase.code);
     expect(new Set(codes).size).toBe(codes.length);
-    expect(codes.length).toBe(26);
+    expect(codes.length).toBe(27);
   });
 
-  it('el catálogo mapea cada code a exactamente el HTTP status esperado (2×409, 2×404, 22×422)', () => {
+  it('el catálogo mapea cada code a exactamente el HTTP status esperado (2×409, 2×404, 23×422)', () => {
     const porStatus = { 404: 0, 409: 0, 422: 0 } as Record<404 | 409 | 422, number>;
     for (const testCase of CASES) {
       porStatus[testCase.httpStatus] += 1;
     }
     expect(porStatus[409]).toBe(2);
     expect(porStatus[404]).toBe(2);
-    expect(porStatus[422]).toBe(22);
+    expect(porStatus[422]).toBe(23);
   });
 });

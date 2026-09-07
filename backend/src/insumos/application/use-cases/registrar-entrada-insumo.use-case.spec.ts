@@ -139,6 +139,40 @@ describe('RegistrarEntradaInsumoUseCase', () => {
     expect(result.getValue().motivo).toBeNull();
   });
 
+  // ─── El origen: de qué ítem de compra vino la entrada ─────────────────────
+
+  /**
+   * El `itemCompraId` es la respuesta a "¿de qué compra vino esto que entró?".
+   * Se assertea sobre lo que se le PASA al repositorio y no solo sobre el valor
+   * devuelto: lo que la bitácora conserva es lo que se persiste, y un caso de
+   * uso que armara bien la entidad y asentara otra cosa pasaría el assert del
+   * retorno igual.
+   */
+  it('asienta el origen del ítem de compra que generó la entrada', async () => {
+    const movimientoRepo = buildMovimientoRepo();
+    const useCase = new RegistrarEntradaInsumoUseCase(buildInsumoRepo(), movimientoRepo);
+
+    const result = await useCase.execute({ ...dtoBase, itemCompraId: 'item-77' });
+
+    expect(result.getValue().itemCompraId).toBe('item-77');
+    expect(movimientoRepo.insert).toHaveBeenCalledWith(
+      expect.objectContaining({ itemCompraId: 'item-77' }),
+    );
+  });
+
+  /**
+   * Hermano invertido: la entrada manual no tiene origen de compra, y ese
+   * `null` es lo que la distingue de una recepción — tanto en la bitácora como
+   * en la regla del insumo deshabilitado de más abajo.
+   */
+  it('deja el origen en null cuando la entrada no viene de una compra', async () => {
+    const useCase = new RegistrarEntradaInsumoUseCase(buildInsumoRepo(), buildMovimientoRepo());
+
+    const result = await useCase.execute(dtoBase);
+
+    expect(result.getValue().itemCompraId).toBeNull();
+  });
+
   // ─── Concurrencia: la entrada NO pasa por la sección crítica ──────────────
 
   /**
@@ -205,6 +239,10 @@ describe('RegistrarEntradaInsumoUseCase', () => {
    *
    * La SALIDA y el AJUSTE son el caso opuesto y NO se responden igual: operan
    * sobre lo que ya está en el depósito.
+   *
+   * **Este es el hermano invertido del salteo por recepción**: mismo insumo
+   * deshabilitado, misma cantidad, y la única diferencia es que esta entrada no
+   * trae origen de compra. La carga manual sigue rechazando.
    */
   it('rechaza con INSUMO_DESHABILITADO si el insumo está deshabilitado', async () => {
     const movimientoRepo = buildMovimientoRepo();
@@ -217,6 +255,80 @@ describe('RegistrarEntradaInsumoUseCase', () => {
 
     expect(result.isFail()).toBe(true);
     expect(result.getError().code).toBe('INSUMO_DESHABILITADO');
+    expect(movimientoRepo.insert).not.toHaveBeenCalled();
+  });
+
+  // ─── El insumo deshabilitado: la recepción pasa, la carga manual no ───────
+
+  /**
+   * Decisión 1 del diseño de la Entrega 3. El guard de `activo` nació para la
+   * entrada MANUAL, y su regla es "deshabilitar significa que no se compra más
+   * de esto". Una recepción NO es una decisión nueva de compra: se aprobó antes
+   * de la baja, la mercadería ya está en el depósito, y el stock tiene que
+   * reflejar lo que hay. Rechazarla dejaría una recepción registrada en compras
+   * sin su movimiento de stock, que es la peor de las alternativas.
+   *
+   * **El permiso sale del ORIGEN, no de un pedido del caller.** No hay un
+   * segundo campo del estilo `exigirHabilitado: false` en el DTO: un booleano
+   * de "saltear la validación" es una llave sin dueño —cualquiera la pide, y no
+   * queda dicho por qué—, mientras que el `itemCompraId` es un hecho que la FK
+   * verifica y que además hay que persistir igual.
+   *
+   * Su hermano invertido es el caso siguiente, que es el que le da sentido: sin
+   * origen, el mismo insumo deshabilitado sigue rechazando.
+   */
+  it('asienta la entrada sobre un insumo deshabilitado cuando viene de una recepción de compra', async () => {
+    const movimientoRepo = buildMovimientoRepo();
+    const useCase = new RegistrarEntradaInsumoUseCase(
+      buildInsumoRepo(insumoDeshabilitado()),
+      movimientoRepo,
+    );
+
+    const result = await useCase.execute({ ...dtoBase, itemCompraId: 'item-77' });
+
+    expect(result.isOk()).toBe(true);
+    expect(result.getValue().itemCompraId).toBe('item-77');
+    expect(movimientoRepo.insert).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * Un `itemCompraId` EXPLÍCITAMENTE nulo no es un origen: es la entrada
+   * manual escrita de la forma larga. Sin este caso, un guard escrito como
+   * `'itemCompraId' in dto` pasaría en verde y le abriría el salteo a cualquier
+   * caller que mandara el campo en `null`.
+   */
+  it('rechaza con INSUMO_DESHABILITADO la entrada con origen explícitamente nulo', async () => {
+    const movimientoRepo = buildMovimientoRepo();
+    const useCase = new RegistrarEntradaInsumoUseCase(
+      buildInsumoRepo(insumoDeshabilitado()),
+      movimientoRepo,
+    );
+
+    const result = await useCase.execute({ ...dtoBase, itemCompraId: null });
+
+    expect(result.isFail()).toBe(true);
+    expect(result.getError().code).toBe('INSUMO_DESHABILITADO');
+    expect(movimientoRepo.insert).not.toHaveBeenCalled();
+  });
+
+  /**
+   * El origen levanta UN solo guard, el de `activo`, y no la elegibilidad
+   * entera. Un insumo dado de baja no está en el catálogo: asentar contra él
+   * dejaría stock imputado a una fila que ninguna pantalla muestra, y el ítem
+   * de compra no cambia ese hecho. Sin este caso, un guard escrito como "si
+   * viene de una compra, no valides nada" pasaría en verde.
+   */
+  it('rechaza con INSUMO_NO_ENCONTRADO la recepción sobre un insumo dado de baja', async () => {
+    const movimientoRepo = buildMovimientoRepo();
+    const useCase = new RegistrarEntradaInsumoUseCase(
+      buildInsumoRepo(insumoDadoDeBaja()),
+      movimientoRepo,
+    );
+
+    const result = await useCase.execute({ ...dtoBase, itemCompraId: 'item-77' });
+
+    expect(result.isFail()).toBe(true);
+    expect(result.getError().code).toBe('INSUMO_NO_ENCONTRADO');
     expect(movimientoRepo.insert).not.toHaveBeenCalled();
   });
 

@@ -22,6 +22,8 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { MontoInput } from "@/components/shared/monto-input";
+import { useInsumos } from "@/features/insumos/hooks/use-insumos";
+import { opcionesDeInsumo } from "@/features/insumos/lib/opciones-insumo";
 import { useAgregarItemCompra } from "../hooks/use-compra-mutations";
 import { agregarItemCompraSchema, type AgregarItemCompraFormValues } from "../schemas";
 
@@ -31,6 +33,7 @@ export interface ItemCreateDialogProps {
 
 const EMPTY: AgregarItemCompraFormValues = {
   descripcion: "",
+  insumoId: "",
   cantidad: 0,
   proveedor: "",
   monto: 0,
@@ -42,6 +45,17 @@ const EMPTY: AgregarItemCompraFormValues = {
 export function ItemCreateDialog({ compraId }: ItemCreateDialogProps) {
   const [open, setOpen] = useState(false);
   const agregarMutation = useAgregarItemCompra(compraId);
+  const insumosQuery = useInsumos();
+
+  // El catálogo trae los insumos deshabilitados junto con los habilitados y no
+  // se filtra ninguno: el backend acepta el alta contra un insumo deshabilitado
+  // (`validarInsumoElegible` se invoca sin `exigirHabilitado`), así que sacarlos
+  // dejaría al formulario RECHAZANDO lo que el servidor aceptaría.
+  //
+  // Acá no hace falta el equivalente de `useReaplicarAlResolver`: el alta arranca
+  // siempre en "" y esa opción existe desde el primer render, así que el
+  // `<select>` nunca queda con un valor sin `<option>` que lo respalde.
+  const opcionesInsumo = opcionesDeInsumo(insumosQuery.data ?? []);
 
   const {
     register,
@@ -58,6 +72,10 @@ export function ItemCreateDialog({ compraId }: ItemCreateDialogProps) {
     agregarMutation.mutate(
       {
         descripcion: values.descripcion,
+        // "" es "sin insumo": va como clave AUSENTE, igual que `observaciones`.
+        // En un POST no hay nada que "no tocar", así que ausente y `null` son lo
+        // mismo para el backend y el shape queda parejo con el resto del alta.
+        insumoId: values.insumoId || undefined,
         cantidad: values.cantidad,
         proveedor: values.proveedor,
         monto: values.monto,
@@ -100,6 +118,22 @@ export function ItemCreateDialog({ compraId }: ItemCreateDialogProps) {
                 {errors.descripcion.message}
               </p>
             )}
+          </div>
+          <div className="flex flex-col gap-1">
+            <label htmlFor="item-crear-insumo" className="text-sm font-medium text-foreground">
+              Insumo (opcional)
+            </label>
+            <Select id="item-crear-insumo" {...register("insumoId")}>
+              <option value="">Sin insumo</option>
+              {opcionesInsumo.map((opcion) => (
+                <option key={opcion.id} value={opcion.id}>
+                  {opcion.nombre}
+                </option>
+              ))}
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Al registrar la recepción de este ítem, el stock del insumo elegido sube solo.
+            </p>
           </div>
           <div className="flex flex-col gap-1">
             <label htmlFor="item-crear-cantidad" className="text-sm font-medium text-foreground">

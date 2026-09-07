@@ -22,21 +22,36 @@ export interface MovimientoInsumoProps {
   equipoId: string | null;
   /** A qué sector fue lo que se movió. SOLO trazabilidad: hay UN solo stock, no uno por sector. */
   sectorId: string | null;
+  /**
+   * De DÓNDE vino lo que entró: FK a `items_compra`, o `null` si el asiento no
+   * nació de una recepción de compra. A diferencia de `equipoId` y `sectorId`,
+   * que dicen a dónde FUE lo que se movió, este dice de dónde SALIÓ.
+   *
+   * `null` es "sin origen de compra" —la entrada manual, la salida, el ajuste y
+   * la recepción de un ítem histórico sin insumo—, y es la mayoría de la tabla.
+   *
+   * **Que el ítem exista NO se valida en el dominio ni en la aplicación**: la
+   * comprobación necesitaría un puerto de `compras` dentro de `insumos`, y esa
+   * arista cierra un ciclo entre los dos módulos. Quien la atrapa es
+   * `movimientos_insumo_item_compra_id_fkey`.
+   */
+  itemCompraId: string | null;
 }
 
 /**
  * CrearMovimientoInsumoProps — props que acepta `create()`. El motivo llega
- * CRUDO —la entidad lo normaliza— y los tres campos opcionales admiten el
+ * CRUDO —la entidad lo normaliza— y los cuatro campos opcionales admiten el
  * ausente además del nulo, porque el borde puede simplemente no mandarlos.
  * Mismo criterio que `CrearOperacionTicketProps`.
  */
 export type CrearMovimientoInsumoProps = Omit<
   MovimientoInsumoProps,
-  'motivo' | 'equipoId' | 'sectorId'
+  'motivo' | 'equipoId' | 'sectorId' | 'itemCompraId'
 > & {
   motivo?: string | null;
   equipoId?: string | null;
   sectorId?: string | null;
+  itemCompraId?: string | null;
 };
 
 /** Escala de la columna: `movimientos_insumo.cantidad DECIMAL(10,2)`. */
@@ -210,7 +225,7 @@ export class MovimientoInsumoEntity extends BaseEntity<MovimientoInsumoProps> {
    * con distinto signo, y enumerarlos a mano acá sería el lugar exacto donde
    * el catálogo y sus reglas se desincronizan cuando entre una dirección más.
    *
-   * @param props Campos del movimiento; `motivo` llega crudo y `equipoId`/`sectorId` pueden faltar.
+   * @param props Campos del movimiento; `motivo` llega crudo y `equipoId`, `sectorId` e `itemCompraId` pueden faltar.
    * @param id Id explícito; si se omite lo genera `BaseEntity` (UUIDv7).
    * @returns El movimiento creado, o `MotivoAjusteRequeridoError` si un ajuste no trae un motivo con contenido.
    * @throws Error si la cantidad no es finita, no es positiva, pasa el techo de
@@ -240,6 +255,7 @@ export class MovimientoInsumoEntity extends BaseEntity<MovimientoInsumoProps> {
           motivo,
           equipoId: props.equipoId ?? null,
           sectorId: props.sectorId ?? null,
+          itemCompraId: props.itemCompraId ?? null,
         },
         id,
       ),
@@ -312,5 +328,14 @@ export class MovimientoInsumoEntity extends BaseEntity<MovimientoInsumoProps> {
   /** Sector al que fue lo que se movió, o `null`. SOLO trazabilidad: hay UN solo stock. */
   get sectorId(): string | null {
     return this.props.sectorId;
+  }
+
+  /**
+   * Ítem de compra cuya recepción originó el asiento, o `null` si no nació de
+   * una compra. Es el ORIGEN, no el destino: responde "¿de qué compra vino
+   * esto que entró?".
+   */
+  get itemCompraId(): string | null {
+    return this.props.itemCompraId;
   }
 }

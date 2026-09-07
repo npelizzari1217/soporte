@@ -26,6 +26,14 @@
  * así que no hay backstop de base que atrape la fuga. Exportar el puerto sería
  * ofrecerle a otro módulo el camino para abrirla.
  *
+ * **`RegistrarEntradaInsumoUseCase` SÍ se exporta** (insumos-entrega-3, unidad
+ * 5): lo consume `ComprasModule` para que recibir una compra sume el stock
+ * solo. Se exporta el CASO DE USO y no el puerto de movimientos justamente por
+ * el párrafo anterior — compras obtiene la capacidad de asentar una entrada,
+ * con sus guards de elegibilidad puestos, y no el acceso crudo a la bitácora.
+ * La dependencia va `compras → insumos` y nunca al revés: `insumos` no importa
+ * nada de `compras`, porque esa arista cerraría un ciclo entre los dos.
+ *
  * Importa `AuthModule` para `JwtAuthGuard`/`TenantGuard`/`AdminClienteGuard`/
  * `AccionesGuard` vía `@UseGuards` en los controllers (mismo patrón que
  * `SectoresModule`). `TENANT_TX_RUNNER` no se importa: lo provee `SharedModule`,
@@ -273,6 +281,7 @@ import { MovimientosInsumoController } from './interface/controllers/movimientos
     UNIDAD_MEDIDA_REPOSITORY,
     MODELO_EQUIPO_REPOSITORY,
     INSUMO_REPOSITORY,
+    RegistrarEntradaInsumoUseCase,
   ],
 })
 export class InsumosModule {}

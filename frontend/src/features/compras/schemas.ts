@@ -132,6 +132,17 @@ export type EditarCompraFormValues = z.infer<typeof editarCompraSchema>;
 export const agregarItemCompraSchema = z.object({
   descripcion: z.string().min(1, "La descripción es requerida"),
   /**
+   * Espejo de `@IsOptional() @IsUUID()` — el ítem puede declarar qué insumo
+   * del catálogo compra, y ese vínculo es lo que hace que la recepción sume
+   * el stock solo.
+   *
+   * Va como `z.string().optional()` y NO como `.uuid()`, mismo criterio que
+   * `sectorId` en `crearCompraSchema`, que espeja los mismos dos decoradores:
+   * el único origen del valor es el `<select>` del catálogo, así que un id con
+   * forma inválida no es alcanzable desde el formulario.
+   */
+  insumoId: z.string().optional(),
+  /**
    * Espejo de `@IsNumber({maxDecimalPlaces:2}) @Min(0.01)` — equivalente a
    * "cantidad > 0".
    *
@@ -172,6 +183,17 @@ export type AgregarItemCompraFormValues = z.infer<typeof agregarItemCompraSchema
  */
 export const editarItemCompraSchema = z.object({
   descripcion: z.string().min(1, "La descripción es requerida").optional(),
+  /**
+   * Espejo de `@IsOptional() @IsUUID()` — el ítem puede declarar qué insumo
+   * del catálogo compra, y ese vínculo es lo que hace que la recepción sume
+   * el stock solo.
+   *
+   * Va como `z.string().optional()` y NO como `.uuid()`, mismo criterio que
+   * `sectorId` en `crearCompraSchema`, que espeja los mismos dos decoradores:
+   * el único origen del valor es el `<select>` del catálogo, así que un id con
+   * forma inválida no es alcanzable desde el formulario.
+   */
+  insumoId: z.string().optional(),
   cantidad: z.coerce
     .number()
     .min(0.01, "La cantidad debe ser mayor a 0")

@@ -34,6 +34,7 @@ export class ItemCompraMapper {
       {
         compraId: row.compraId,
         descripcion: row.descripcion,
+        insumoId: row.insumoId ?? null,
         cantidad: Number(row.cantidad),
         proveedor: row.proveedor,
         monto: Number(row.monto),
@@ -85,6 +86,13 @@ export class ItemCompraMapper {
       id: entity.id,
       compraId: entity.compraId,
       descripcion: entity.descripcion,
+      // Leído de la ENTIDAD, nunca un `null` fijo: este shape alimenta un
+      // UPSERT, así que un literal acá vaciaría la columna en la rama UPDATE
+      // —en cada actualización del ítem, sin error y sin log— y el ítem
+      // perdería la única explicación del stock que ya emitió. Mismo criterio
+      // y mismo defecto evitado que `modeloEquipoId` en
+      // `equipo-informatico.mapper.ts`.
+      insumoId: entity.insumoId,
       cantidad: entity.cantidad,
       proveedor: entity.proveedor,
       monto: entity.monto,

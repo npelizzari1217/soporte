@@ -100,6 +100,10 @@ import {
   SECTOR_REPOSITORY,
   type ISectorRepository,
 } from '../../src/sectores/domain/ports/i-sector.repository';
+import {
+  INSUMO_REPOSITORY,
+  type IInsumoRepository,
+} from '../../src/insumos/domain/ports/i-insumo.repository';
 
 import {
   CrearCompraUseCase,
@@ -540,9 +544,21 @@ async function crearEquiposDemo(
 // ─── Compras demo (sdd/redisenio-modulo-compras, PR-14) ────────────────────
 
 /**
- * `ComprasModule` todavía es un placeholder (`@Module({})`, PR-1 —
- * `ComprasModule` real llega en PR-22) — sus casos de uso NO están
- * registrados como providers de Nest. Mismo criterio que
+ * **Este armado a mano es DEUDA, no un requisito.** Nació cuando
+ * `ComprasModule` era un placeholder (`@Module({})`, PR-1) y sus casos de uso
+ * no estaban registrados como providers. Hoy el módulo es real y
+ * `app.module.ts` lo registra, así que `app.get(...)` los resolvería solo
+ * —`createApplicationContext` resuelve con `strict: false` y recorre el árbol
+ * entero, que es de lo que ya dependen `CrearClienteUseCase`,
+ * `CrearTicketUseCase` y `CrearEquipoUseCase`—.
+ *
+ * El costo es concreto y ya se pagó: cada dependencia nueva de estos casos de
+ * uso hay que agregarla en DOS lugares, el módulo y este archivo, y nada falla
+ * hasta que alguien corre el seed. La Entrega 3 de insumos lo pagó con
+ * `INSUMO_REPOSITORY`. Sacar estos dos builders es un cambio propio, no de
+ * contrabando en el commit que descubrió el problema.
+ *
+ * Mismo criterio que
  * `buildCrearClienteUseCase` (arriba): se instancian a mano, resolviendo
  * cada colaborador desde el `app` ya construido (`TenantContext`,
  * `TENANT_TX_RUNNER`, `CICLO_CLIENTE_REPOSITORY` — todos providers
@@ -579,7 +595,13 @@ function buildAgregarItemCompraUseCase(app: INestApplicationContext): AgregarIte
   const operacionRepo = new PrismaOperacionCompraRepository(tenantContext);
   const registrarOperacion = new RegistrarOperacionCompra(operacionRepo);
   const txRunner = app.get<ITenantTransactionRunner>(TENANT_TX_RUNNER);
-  return new AgregarItemCompraUseCase(compraRepo, registrarOperacion, txRunner);
+  // insumos-entrega-3: INSUMO_REPOSITORY (InsumosModule, ya registrado en
+  // AppModule) verifica el `insumoId` declarado contra el catálogo — mismo
+  // criterio que `sectorRepo` en `buildCrearCompraUseCase`. Los ítems de la
+  // demo son de texto libre, así que este puerto no se consulta; va igual
+  // porque la firma del caso de uso es la de producción.
+  const insumoRepo = app.get<IInsumoRepository>(INSUMO_REPOSITORY);
+  return new AgregarItemCompraUseCase(compraRepo, insumoRepo, registrarOperacion, txRunner);
 }
 
 interface ItemCompraDemoSpec {

@@ -466,4 +466,224 @@ describe('ItemCompraEntity', () => {
       expect(result.getError()).toBeInstanceOf(ItemCompraYaCerradoError);
     });
   });
+
+  // ─── insumos-entrega-3, unidad 2: el ítem dice de qué insumo se trata ────
+  //
+  // El guard de reasignación es NUEVO y distinto de `asegurarNoCongelado()`
+  // (design, decisión 5). Cubre las TRES formas de reasignar, porque las tres
+  // parten la historia del stock igual: cambiar de insumo, asignar uno donde
+  // no había, y borrarlo. Lo que dispara el rechazo es el CAMBIO EFECTIVO del
+  // valor con `cantidadRecibida > 0`, no la mera presencia del campo.
+  describe('insumoId — el enlace con el catálogo (design, decisiones 5 y 6)', () => {
+    /** Ítem APROBADO con orden registrada y `cantidadRecibida` en el valor pedido. */
+    function crearItemConRecibido(
+      recibido: number,
+      overrides: Partial<ItemCompraCreateProps> = {},
+    ): ItemCompraEntity {
+      const item = crearItemAprobado({ cantidad: 10, ...overrides });
+      item.registrarOrden(10, new Date('2026-01-16')).getOrThrow();
+      if (recibido > 0) {
+        item.registrarRecepcion(recibido, new Date('2026-01-17')).getOrThrow();
+      }
+      return item;
+    }
+
+    describe('create()', () => {
+      it('nace sin insumo cuando el alta no lo declara (decisión 6: el NULL significa "sin insumo")', () => {
+        const item = ItemCompraEntity.create(crearPropsValidas());
+
+        expect(item.insumoId).toBeNull();
+      });
+
+      it('conserva el insumo declarado en el alta', () => {
+        const item = ItemCompraEntity.create(crearPropsValidas({ insumoId: 'insumo-a' }));
+
+        expect(item.insumoId).toBe('insumo-a');
+      });
+    });
+
+    describe('actualizar() sin recepciones todavía — las tres formas se permiten', () => {
+      it('asigna un insumo donde no había (null -> valor)', () => {
+        const item = crearItemConRecibido(0);
+
+        const result = item.actualizar({ insumoId: 'insumo-a' });
+
+        expect(result.isOk()).toBe(true);
+        expect(item.insumoId).toBe('insumo-a');
+      });
+
+      it('cambia de un insumo a otro (valor -> otro valor)', () => {
+        const item = crearItemConRecibido(0, { insumoId: 'insumo-a' });
+
+        const result = item.actualizar({ insumoId: 'insumo-b' });
+
+        expect(result.isOk()).toBe(true);
+        expect(item.insumoId).toBe('insumo-b');
+      });
+
+      it('borra el insumo con un null EXPLÍCITO (valor -> null)', () => {
+        const item = crearItemConRecibido(0, { insumoId: 'insumo-a' });
+
+        const result = item.actualizar({ insumoId: null });
+
+        expect(result.isOk()).toBe(true);
+        expect(item.insumoId).toBeNull();
+      });
+    });
+
+    describe('actualizar() con recepciones — las tres formas se rechazan', () => {
+      // Caso obvio: el stock ya emitido queda en el insumo viejo y los deltas
+      // futuros van al nuevo.
+      it('cambiar de un insumo a otro falla con InsumoDeItemNoReasignableError, sin mutar NINGÚN campo de la llamada', () => {
+        const item = crearItemConRecibido(4, { insumoId: 'insumo-a' });
+
+        const result = item.actualizar({ insumoId: 'insumo-b', descripcion: 'Otra cosa' });
+
+        expect(result.isFail()).toBe(true);
+        expect(result.getError().code).toBe('INSUMO_DE_ITEM_NO_REASIGNABLE');
+        expect(item.insumoId).toBe('insumo-a');
+        expect(item.descripcion).toBe('Notebook Dell Latitude');
+      });
+
+      // El caso que el design no distinguía: las recepciones pasadas no
+      // generaron movimiento porque no había insumo, y las futuras sí lo van a
+      // generar. El saldo contaría solo una parte de lo que entró, y contado de
+      // menos es peor que ausente: un ítem sin insumo se ve sin insumo, un
+      // saldo incompleto se lee como completo.
+      it('asignar un insumo donde no había falla con InsumoDeItemNoReasignableError, sin mutar', () => {
+        const item = crearItemConRecibido(4);
+
+        const result = item.actualizar({ insumoId: 'insumo-b' });
+
+        expect(result.isFail()).toBe(true);
+        expect(result.getError().code).toBe('INSUMO_DE_ITEM_NO_REASIGNABLE');
+        expect(item.insumoId).toBeNull();
+      });
+
+      // Borrarlo deja los movimientos ya emitidos sin explicación y congela el
+      // saldo con una parte contada. Es además lo que el `ON DELETE RESTRICT`
+      // de la migración impide desde la base: permitirlo desde el dominio lo
+      // lograría por la puerta de atrás.
+      it('borrar el insumo con un null EXPLÍCITO falla con InsumoDeItemNoReasignableError, sin mutar', () => {
+        const item = crearItemConRecibido(4, { insumoId: 'insumo-a' });
+
+        const result = item.actualizar({ insumoId: null });
+
+        expect(result.isFail()).toBe(true);
+        expect(result.getError().code).toBe('INSUMO_DE_ITEM_NO_REASIGNABLE');
+        expect(item.insumoId).toBe('insumo-a');
+      });
+    });
+
+    describe('actualizar() con recepciones — lo que el guard NO bloquea', () => {
+      // Sin este caso el guard podría rechazar todo y los tests de arriba
+      // seguirían en verde.
+      it('el campo AUSENTE no dispara el guard: editar la descripción de un ítem ya recibido sigue siendo posible', () => {
+        const item = crearItemConRecibido(4, { insumoId: 'insumo-a' });
+
+        const result = item.actualizar({ descripcion: 'Notebook Dell Latitude 5440' });
+
+        expect(result.isOk()).toBe(true);
+        expect(item.descripcion).toBe('Notebook Dell Latitude 5440');
+        expect(item.insumoId).toBe('insumo-a');
+      });
+
+      // El guard es por CAMBIO efectivo, no por presencia. Los formularios de
+      // este repo mandan el shape completo: si la presencia bastara, ningún
+      // ítem con recepciones se podría editar más.
+      it('reenviar el MISMO insumoId no es una reasignación y se acepta', () => {
+        const item = crearItemConRecibido(4, { insumoId: 'insumo-a' });
+
+        const result = item.actualizar({ insumoId: 'insumo-a', proveedor: 'Proveedor BIS' });
+
+        expect(result.isOk()).toBe(true);
+        expect(item.insumoId).toBe('insumo-a');
+        expect(item.proveedor).toBe('Proveedor BIS');
+      });
+
+      /**
+       * El mismo reenvío con OTRA capitalización. La columna es `uuid`: para
+       * Postgres los dos literales son la MISMA fila, así que esto no es una
+       * reasignación y el guard no tiene nada que bloquear.
+       *
+       * Sin este caso, comparar con `===` crudo deja todo verde —el test de
+       * arriba manda el string idéntico— y un formulario que reenviara el id en
+       * mayúsculas se comería un 422 al intentar corregir el proveedor de un
+       * ítem ya recibido. Este guard es el que decide primero y el que contesta
+       * con 422, así que es donde la comparación tiene que estar bien.
+       */
+      it('reenviar el mismo insumoId con OTRA capitalización tampoco es una reasignación', () => {
+        const item = crearItemConRecibido(4, { insumoId: 'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d' });
+
+        const result = item.actualizar({
+          insumoId: 'A1B2C3D4-E5F6-4A7B-8C9D-0E1F2A3B4C5D',
+          proveedor: 'Proveedor BIS',
+        });
+
+        expect(result.isOk()).toBe(true);
+        expect(item.proveedor).toBe('Proveedor BIS');
+        // Queda el id tal como vino: no es una reasignación, pero tampoco se
+        // normaliza a la forma vieja — la entidad no reescribe lo que recibe.
+        expect(item.insumoId).toBe('A1B2C3D4-E5F6-4A7B-8C9D-0E1F2A3B4C5D');
+      });
+
+      it('reenviar el MISMO null explícito sobre un ítem sin insumo tampoco es una reasignación', () => {
+        const item = crearItemConRecibido(4);
+
+        const result = item.actualizar({ insumoId: null });
+
+        expect(result.isOk()).toBe(true);
+        expect(item.insumoId).toBeNull();
+      });
+    });
+
+    describe('el límite exacto de cantidadRecibida', () => {
+      it('con cantidadRecibida en 0 (orden emitida, nada recibido todavía) se puede reasignar', () => {
+        const item = crearItemConRecibido(0, { insumoId: 'insumo-a' });
+
+        const result = item.actualizar({ insumoId: 'insumo-b' });
+
+        expect(result.isOk()).toBe(true);
+        expect(item.insumoId).toBe('insumo-b');
+      });
+
+      it('con cantidadRecibida en 0.01 —la centésima indivisible, primer valor positivo— ya no se puede', () => {
+        const item = crearItemConRecibido(0.01, { insumoId: 'insumo-a' });
+
+        const result = item.actualizar({ insumoId: 'insumo-b' });
+
+        expect(result.isFail()).toBe(true);
+        expect(result.getError().code).toBe('INSUMO_DE_ITEM_NO_REASIGNABLE');
+        expect(item.insumoId).toBe('insumo-a');
+      });
+    });
+
+    describe('el guard es propio, no el de congelamiento', () => {
+      // Si `insumoId` hubiera entrado al grupo de `cantidad`/`monto`/`moneda`,
+      // asignarle el insumo a un ítem APROBADO sin recibir —justo el momento en
+      // que uno quiere hacerlo— sería imposible.
+      it('un ítem APROBADO y sin recepciones acepta el cambio de insumo, aunque cantidad/monto/moneda estén congelados', () => {
+        const item = crearItemAprobado({ cantidad: 10 });
+
+        expect(item.decidido).toBe(true);
+        expect(item.actualizar({ insumoId: 'insumo-a' }).isOk()).toBe(true);
+        expect(item.insumoId).toBe('insumo-a');
+        expect(item.actualizar({ cantidad: 99 }).getError().code).toBe('ITEM_COMPRA_CONGELADO');
+      });
+
+      // El guard nuevo corre DESPUÉS del de congelamiento: un ítem con
+      // recepciones está siempre decidido, así que ponerlo antes cambiaría el
+      // error que hoy ve el usuario en un caso ya cubierto.
+      it('tocar cantidad Y reasignar el insumo a la vez falla primero por el congelamiento', () => {
+        const item = crearItemConRecibido(4, { insumoId: 'insumo-a' });
+
+        const result = item.actualizar({ cantidad: 9, insumoId: 'insumo-b' });
+
+        expect(result.isFail()).toBe(true);
+        expect(result.getError().code).toBe('ITEM_COMPRA_CONGELADO');
+        expect(item.insumoId).toBe('insumo-a');
+        expect(item.cantidad).toBe(10);
+      });
+    });
+  });
 });

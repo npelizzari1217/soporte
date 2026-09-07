@@ -1,4 +1,5 @@
 import { BaseEntity } from '../../../shared/domain/base-entity';
+import { esElMismoId } from '../../../shared/domain/identidad-uuid';
 import { enCentesimas } from '../../../shared/domain/centesimas';
 import { DomainError, Result } from '../../../shared/domain/result';
 import {
@@ -11,6 +12,7 @@ import {
   EtapaNoRegistradaError,
   FechaEtapaFuturaError,
   FechaEtapasFueraDeOrdenError,
+  InsumoDeItemNoReasignableError,
   ItemCompraCongeladoError,
   ItemCompraNoAprobadoError,
   ItemCompraYaCerradoError,
@@ -80,6 +82,17 @@ export type EtapaEjecucion = (typeof ETAPAS_EJECUCION)[number];
 export interface ItemCompraProps {
   readonly compraId: string;
   descripcion: string;
+  /**
+   * Insumo del catálogo que este ítem compra, o `null` si no lo declara
+   * (insumos-entrega-3, decisión 6: los ítems históricos son texto libre y
+   * quedan sin insumo para siempre, sin backfill). Es lo que permite que
+   * recibir la compra sume el stock solo.
+   *
+   * OBLIGATORIO en el shape completo y opcional solo en `create()`: quien
+   * reconstituye desde la base tiene el valor real de la columna y omitirlo
+   * sería inventar un `null`.
+   */
+  insumoId: string | null;
   cantidad: number;
   proveedor: string;
   monto: number;
@@ -103,6 +116,12 @@ export interface ItemCompraProps {
 export interface ItemCompraCreateProps {
   compraId: string;
   descripcion: string;
+  /**
+   * OPCIONAL, y `null` por defecto: la enorme mayoría de las altas no declara
+   * insumo y obligar a escribir `insumoId: null` en cada una no compraría
+   * nada. Mismo criterio que `EquipoInformaticoCreateProps.modeloEquipoId`.
+   */
+  insumoId?: string | null;
   cantidad: number;
   proveedor: string;
   monto: number;
@@ -111,9 +130,23 @@ export interface ItemCompraCreateProps {
   observaciones: string | null;
 }
 
-/** Campos editables por `actualizar()`. `cantidad`/`monto`/`moneda` están sujetos al congelamiento (§4.4); el resto (S14) no. */
+/**
+ * Campos editables por `actualizar()`, en TRES grupos con guards distintos:
+ * `cantidad`/`monto`/`moneda` están sujetos al congelamiento (§4.4),
+ * `insumoId` a `asegurarInsumoReasignable()` (insumos-entrega-3, decisión 5),
+ * y el resto (S14) no pasa por ningún guard.
+ */
 export interface ItemCompraActualizarProps {
   descripcion?: string;
+  /**
+   * PATCH semántico con las TRES posibilidades distinguidas, y acá confundir
+   * las dos últimas es pérdida de datos: AUSENTE no toca el vínculo, un valor
+   * lo asigna o lo cambia, y un `null` EXPLÍCITO lo borra. Mismo criterio que
+   * `observaciones` y que `ComponenteEquipoEntity.actualizar`.
+   *
+   * Sujeto a `asegurarInsumoReasignable()`, NO al congelamiento.
+   */
+  insumoId?: string | null;
   cantidad?: number;
   proveedor?: string;
   monto?: number;
@@ -135,7 +168,8 @@ export class ItemCompraEntity extends BaseEntity<ItemCompraProps> {
    * Inicializa siempre `estadoAprobacion='PENDIENTE'`, `decididoPorId`/
    * `decididoEn=null`, las tres cantidades de ejecución en 0, las tres
    * fechas de etapa en `null`, `cerradoConFaltante=false`,
-   * `motivoCierreFaltante=null` (spec S4).
+   * `motivoCierreFaltante=null` (spec S4). `insumoId` queda en `null` cuando
+   * el alta no lo declara (insumos-entrega-3, decisión 6).
    */
   static create(props: ItemCompraCreateProps, id?: string): ItemCompraEntity {
     ItemCompraEntity.validarCamposBase(
@@ -147,6 +181,7 @@ export class ItemCompraEntity extends BaseEntity<ItemCompraProps> {
 
     const fullProps: ItemCompraProps = {
       ...props,
+      insumoId: props.insumoId ?? null,
       estadoAprobacion: 'PENDIENTE',
       decididoPorId: null,
       decididoEn: null,
@@ -236,6 +271,11 @@ export class ItemCompraEntity extends BaseEntity<ItemCompraProps> {
 
   get observaciones(): string | null {
     return this.props.observaciones;
+  }
+
+  /** Insumo del catálogo que este ítem compra, `null` si no lo declara (ver `ItemCompraProps.insumoId`). */
+  get insumoId(): string | null {
+    return this.props.insumoId;
   }
 
   get estadoAprobacion(): EstadoAprobacionItem {
@@ -378,6 +418,12 @@ export class ItemCompraEntity extends BaseEntity<ItemCompraProps> {
    * `observaciones` siguen editables aunque el ítem esté decidido — no
    * pasan por el guard de congelamiento.
    *
+   * `insumoId` es un TERCER grupo, con guard propio
+   * (`asegurarInsumoReasignable()`, insumos-entrega-3 decisión 5): ni libre
+   * —reasignarlo tras una recepción parte la historia del stock— ni
+   * congelado, porque declarar el insumo de un ítem ya APROBADO y todavía no
+   * recibido es justo cuando hace falta hacerlo.
+   *
    * PATCH semántico: `undefined` no toca el campo; `observaciones: null`
    * lo limpia explícitamente (mismo criterio que `ComponenteEquipoEntity.actualizar`).
    */
@@ -389,6 +435,16 @@ export class ItemCompraEntity extends BaseEntity<ItemCompraProps> {
       const guard = this.asegurarNoCongelado();
       if (guard.isFail()) {
         return guard;
+      }
+    }
+
+    // DESPUÉS del congelamiento a propósito: un ítem con recepciones está
+    // siempre decidido, así que anteponer este guard cambiaría el error que
+    // hoy ve el usuario en casos que ya fallan con `ItemCompraCongeladoError`.
+    if (datos.insumoId !== undefined) {
+      const guardInsumo = this.asegurarInsumoReasignable(datos.insumoId);
+      if (guardInsumo.isFail()) {
+        return guardInsumo;
       }
     }
 
@@ -423,6 +479,9 @@ export class ItemCompraEntity extends BaseEntity<ItemCompraProps> {
     if (datos.observaciones !== undefined) {
       this.props.observaciones = datos.observaciones;
     }
+    if (datos.insumoId !== undefined) {
+      this.props.insumoId = datos.insumoId;
+    }
 
     this.touch();
     return Result.ok(undefined);
@@ -437,6 +496,43 @@ export class ItemCompraEntity extends BaseEntity<ItemCompraProps> {
   private asegurarNoCongelado(): Result<void, DomainError> {
     if (this.decidido) {
       return Result.fail(new ItemCompraCongeladoError(this.id));
+    }
+    return Result.ok(undefined);
+  }
+
+  /**
+   * Guard de reasignación del insumo (insumos-entrega-3, decisión 5) —
+   * NUEVO y DISTINTO de `asegurarNoCongelado()`: los dos bloquean campos
+   * distintos por condiciones distintas.
+   *
+   * Bloquea cuando el ítem ya recibió mercadería, porque recibir suma stock
+   * por DELTA sobre el insumo declarado y cambiarlo después parte la historia
+   * en dos, sin error y sin log. Vale para las TRES formas de reasignar
+   * —cambiar de insumo, asignar uno donde no había y borrarlo—: en las tres
+   * queda contado en un lado lo que entró y en el otro lo que entre después
+   * (ver `InsumoDeItemNoReasignableError`).
+   *
+   * Dispara por CAMBIO EFECTIVO y no por presencia del campo: reenviar el
+   * mismo `insumoId` no reasigna nada. Es lo que permite que un formulario que
+   * manda el shape completo edite la descripción de un ítem ya recibido.
+   *
+   * La igualdad se pregunta con `esElMismoId` y NO con `===`: la columna es
+   * `uuid`, y para Postgres `9F1B…` y `9f1b…` son la misma fila. Con la
+   * comparación cruda, un formulario que reenviara el mismo insumo en otra
+   * capitalización se leería como una reasignación y esta guarda contestaría
+   * 422 sobre una edición de descripción — exactamente el caso que el párrafo
+   * de arriba promete permitir.
+   *
+   * `enCentesimas` y no `> 0` pelado, por ADR-C3: la columna es
+   * `DECIMAL(10,2)` y toda comparación de cantidades de este módulo se hace en
+   * la escala entera.
+   */
+  private asegurarInsumoReasignable(nuevoInsumoId: string | null): Result<void, DomainError> {
+    if (esElMismoId(nuevoInsumoId, this.props.insumoId)) {
+      return Result.ok(undefined);
+    }
+    if (enCentesimas(this.props.cantidadRecibida) > 0) {
+      return Result.fail(new InsumoDeItemNoReasignableError(this.id));
     }
     return Result.ok(undefined);
   }

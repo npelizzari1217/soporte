@@ -37,6 +37,7 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { ComprasController, toHttpException } from './compras.controller';
+import { InsumoNoEncontradoError } from '../../../insumos/domain/errors/insumos.errors';
 import { ACCIONES_KEY } from '../../../auth/infrastructure/guards/decorators';
 import { AccionesGuard } from '../../../auth/infrastructure/guards/acciones.guard';
 import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
@@ -46,6 +47,7 @@ import { CompraEntity } from '../../domain/entities/compra.entity';
 import { ItemCompraEntity } from '../../domain/entities/item-compra.entity';
 import * as ComprasErrors from '../../domain/errors/compras.errors';
 import {
+  InsumoDeItemNoReasignableError,
   CantidadOrdenadaExcedeSolicitadaError,
   CantidadOrdenadaRetrocedeError,
   CantidadRecibidaExcedeOrdenadaError,
@@ -220,6 +222,8 @@ describe('ComprasController — traducción HTTP ↔ use case (PR-21)', () => {
     });
   });
 
+  const INSUMO_ID = '00000000-0000-4000-8000-0000000000aa';
+
   describe('POST /compras/:id/items', () => {
     it('agrega un ítem: usuarioId=JWT.sub, observaciones ausente → null → 201 + detalle con el ítem', async () => {
       const { controller, agregarItemCompraUseCase } = buildController();
@@ -254,8 +258,28 @@ describe('ComprasController — traducción HTTP ↔ use case (PR-21)', () => {
         moneda: 'ARS',
         fechaCotizacion: new Date('2026-08-13'),
         observaciones: null,
+        insumoId: null,
       });
       expect(res.items).toHaveLength(1);
+    });
+
+    it('insumos-entrega-3: el insumoId del body viaja al caso de uso', async () => {
+      const { controller, agregarItemCompraUseCase } = buildController();
+      agregarItemCompraUseCase.execute.mockResolvedValue(Result.ok(buildCompra()));
+
+      await controller.agregarItem(USUARIO, 'compra-1', {
+        descripcion: 'Tóner negro',
+        cantidad: 2,
+        proveedor: 'Proveedor SA',
+        monto: 1000,
+        moneda: 'ARS',
+        fechaCotizacion: '2026-08-13',
+        insumoId: INSUMO_ID,
+      });
+
+      expect(agregarItemCompraUseCase.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ insumoId: INSUMO_ID }),
+      );
     });
   });
 
@@ -318,8 +342,29 @@ describe('ComprasController — traducción HTTP ↔ use case (PR-21)', () => {
         moneda: undefined,
         fechaCotizacion: undefined,
         observaciones: undefined,
+        insumoId: undefined,
       });
       expect(res.id).toBe('item-1');
+    });
+
+    /**
+     * Las tres posibilidades del PATCH tienen que llegar distinguidas al caso
+     * de uso: colapsar el `null` en `undefined` con un `??` haría imposible
+     * borrar el vínculo, y colapsarlo al revés lo borraría en cada edición.
+     */
+    it('insumos-entrega-3: el insumoId viaja con valor y en null explícito, que es "borrar el vínculo"', async () => {
+      const { controller, editarItemCompraUseCase } = buildController();
+      editarItemCompraUseCase.execute.mockResolvedValue(Result.ok(buildItem()));
+
+      await controller.editarItem(USUARIO, 'compra-1', 'item-1', { insumoId: INSUMO_ID });
+      expect(editarItemCompraUseCase.execute).toHaveBeenLastCalledWith(
+        expect.objectContaining({ insumoId: INSUMO_ID }),
+      );
+
+      await controller.editarItem(USUARIO, 'compra-1', 'item-1', { insumoId: null });
+      expect(editarItemCompraUseCase.execute).toHaveBeenLastCalledWith(
+        expect.objectContaining({ insumoId: null }),
+      );
     });
   });
 
@@ -852,8 +897,8 @@ describe('toHttpException — catálogo de errores → HTTP (spec §5)', () => {
     (valor) => typeof valor === 'function' && valor.prototype instanceof DomainError,
   );
 
-  it('el catálogo tiene EXACTAMENTE 27 clases de error (2×409 + 2×404 + 23×422, + exportación a CSV)', () => {
-    expect(CLASES_DE_ERROR).toHaveLength(27);
+  it('el catálogo tiene EXACTAMENTE 28 clases de error (2×409 + 2×404 + 24×422, + exportación a CSV)', () => {
+    expect(CLASES_DE_ERROR).toHaveLength(28);
   });
 
   const TABLA: Array<[string, () => DomainError, 404 | 409 | 422]> = [
@@ -904,6 +949,7 @@ describe('toHttpException — catálogo de errores → HTTP (spec §5)', () => {
     ['EtapaNoRegistradaError', () => new EtapaNoRegistradaError('item-1', 'ENTREGA'), 422],
     ['SectorInexistenteError', () => new SectorInexistenteError('sector-1'), 422],
     ['ExportacionDemasiadoGrandeError', () => new ExportacionDemasiadoGrandeError(6000, 5000), 422],
+    ['InsumoDeItemNoReasignableError', () => new InsumoDeItemNoReasignableError('item-1'), 422],
   ];
 
   it('TABLA cubre EXACTAMENTE las clases exportadas (ninguna falta, ninguna sobra)', () => {
@@ -925,6 +971,29 @@ describe('toHttpException — catálogo de errores → HTTP (spec §5)', () => {
     } else {
       expect(excepcion).toBeInstanceOf(UnprocessableEntityException);
     }
+  });
+
+  /**
+   * Va FUERA de la TABLA a propósito: `InsumoNoEncontradoError` no pertenece al
+   * catálogo de compras —viene de `insumos`, sin traducir— así que sumarlo
+   * rompería el test de "EXACTAMENTE las clases exportadas". Es el único error
+   * de otro módulo que este mapeo lista.
+   *
+   * Y necesita su caso propio por un motivo que no es de prolijidad: el default
+   * de `toHttpException` YA devuelve 422, así que borrar su rama del `instanceof`
+   * no cambiaría nada en runtime y ningún test se pondría rojo. Sin esta
+   * verificación, el contrato que el JSDoc defiende —422 y NO 404, porque acá el
+   * insumo es un valor del BODY— no lo sostiene nada.
+   *
+   * El hermano invertido vive en el otro controller: `insumos.controller.spec.ts`
+   * fija que la MISMA clase da 404 cuando el insumo es el recurso de la URL.
+   */
+  it('InsumoNoEncontradoError → 422 acá, aunque InsumosController le dé 404 a la misma clase', () => {
+    const excepcion = toHttpException(new InsumoNoEncontradoError('insumo-1'));
+
+    expect(excepcion.getStatus()).toBe(422);
+    expect(excepcion).toBeInstanceOf(UnprocessableEntityException);
+    expect(excepcion).not.toBeInstanceOf(NotFoundException);
   });
 });
 

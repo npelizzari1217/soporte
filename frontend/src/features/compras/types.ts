@@ -66,6 +66,12 @@ export interface ItemCompra {
   id: string;
   compraId: string;
   descripcion: string;
+  /**
+   * Insumo del catálogo que el ítem declara, `null` si es de texto libre
+   * (insumos-entrega-3). Es lo que hace que registrar la recepción sume el
+   * stock solo.
+   */
+  insumoId: string | null;
   cantidad: number;
   proveedor: string;
   monto: number;
@@ -188,6 +194,8 @@ export interface EditarCompraDto {
 /** Body de `POST /compras/:id/items` (`AgregarItemCompraHttpDto`). */
 export interface AgregarItemCompraDto {
   descripcion: string;
+  /** Insumo del catálogo, ausente o `null` si el ítem es de texto libre. */
+  insumoId?: string | null;
   cantidad: number;
   proveedor: string;
   monto: number;
@@ -202,6 +210,12 @@ export interface AgregarItemCompraDto {
  */
 export interface EditarItemCompraDto {
   descripcion?: string;
+  /**
+   * Las TRES posibilidades del PATCH semántico, distinguidas: ausente no toca
+   * el vínculo, un id lo asigna o lo cambia, y un `null` EXPLÍCITO lo borra.
+   * El backend rechaza el cambio con 422 en cuanto el ítem recibió mercadería.
+   */
+  insumoId?: string | null;
   cantidad?: number;
   proveedor?: string;
   monto?: number;

@@ -668,6 +668,10 @@ model Insumo {
   codigosAlternativos InsumoCodigoAlternativo[]
   compatibilidad      InsumoModeloEquipo[]
   movimientos         MovimientoInsumo[]
+  /// Ítems de compra que declaran comprar ESTE insumo (insumos-entrega-3,
+  /// unidad 1). Relación inversa de `ItemCompra.insumo`; no todo ítem tiene
+  /// una — los históricos son texto libre y quedan sin insumo para siempre.
+  itemsCompra         ItemCompra[]
 
   @@index([familiaId])
   @@index([unidadMedidaId])
@@ -764,21 +768,42 @@ model MovimientoInsumo {
   equipoId String? @map("equipo_id") @db.Uuid
   sectorId String? @map("sector_id") @db.Uuid
 
+  /// De DÓNDE vino lo que entró (insumos-entrega-3, unidad 1): el ítem de
+  /// compra cuya recepción originó el movimiento. Sin esta columna, "¿de qué
+  /// compra vino esta entrada?" no tiene respuesta.
+  ///
+  /// NULLABLE: la entrada manual, la salida y el ajuste no nacen de una
+  /// compra. Tampoco la origina un ítem histórico, que no tiene insumo.
+  ///
+  /// UNA SOLA columna hacia compras, y no también `compraId`: `items_compra`
+  /// ya tiene su índice por compra y la compra se resuelve con un join. Una
+  /// segunda columna sería un segundo dueño del mismo dato, y el día que
+  /// discrepen no hay forma de saber cuál miente.
+  ///
+  /// Agregarla NO contradice el append-only de esta tabla: append-only prohíbe
+  /// el UPDATE y el DELETE de filas, no el `ALTER TABLE ADD COLUMN` nullable,
+  /// que no reescribe ningún hecho ya asentado.
+  ///
+  /// Lleva ÍNDICE PARCIAL `WHERE item_compra_id IS NOT NULL` — CREATE INDEX en
+  /// la migración.
+  itemCompraId String? @map("item_compra_id") @db.Uuid
+
   // SIN updatedAt NI deletedAt — bitácora append-only (ver comentario de
   // cabecera de esta sección). Un movimiento no se edita ni se borra: se
   // corrige con otro movimiento, que deja rastro de la corrección. NO agregar
   // por "simetría" con el resto del catálogo de insumos.
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
 
-  /// `onDelete` EXPLÍCITO en las tres, y en las dos opcionales no es
+  /// `onDelete` EXPLÍCITO en las cuatro, y en las tres opcionales no es
   /// redundante: el default de Prisma para una relación OPCIONAL es
   /// `SetNull`, que contradice el `ON DELETE RESTRICT` que escribió la
   /// migración. Sin declararlo, el próximo `migrate dev` regeneraría la FK
   /// vaciando la trazabilidad en vez de frenar el borrado — justo lo que los
   /// comentarios de la migración existen para evitar.
-  insumo Insumo             @relation(fields: [insumoId], references: [id], onDelete: Restrict)
-  equipo EquipoInformatico? @relation(fields: [equipoId], references: [id], onDelete: Restrict)
-  sector Sector?            @relation(fields: [sectorId], references: [id], onDelete: Restrict)
+  insumo     Insumo             @relation(fields: [insumoId], references: [id], onDelete: Restrict)
+  equipo     EquipoInformatico? @relation(fields: [equipoId], references: [id], onDelete: Restrict)
+  sector     Sector?            @relation(fields: [sectorId], references: [id], onDelete: Restrict)
+  itemCompra ItemCompra?        @relation(fields: [itemCompraId], references: [id], onDelete: Restrict)
 
   /// Índice compuesto que sirve a las dos consultas del módulo: el stock
   /// (`SUM(cantidad) WHERE insumo_id = ?`, cubierto por el prefijo) y la
@@ -786,6 +811,13 @@ model MovimientoInsumo {
   /// `@@index([insumoId])` aparte sería su prefijo, redundante y pagado en
   /// cada escritura.
   @@index([insumoId, createdAt])
+  /// Índice PARCIAL `WHERE item_compra_id IS NOT NULL` — raw SQL en la
+  /// migración, igual que los de `equipo_id` y `sector_id`. Sirve a "los
+  /// movimientos de este ítem de compra" y evita el seq scan de la bitácora
+  /// entera que el RESTRICT obliga al borrar un ítem. Parcial porque solo las
+  /// entradas por recepción llevan origen: las salidas, los ajustes y las
+  /// entradas manuales quedan en NULL y son la mayoría de la tabla.
+  @@index([itemCompraId])
   @@map("movimientos_insumo")
 }
 
@@ -937,6 +969,16 @@ model ItemCompra {
   id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   compraId             String    @map("compra_id") @db.Uuid
   descripcion          String    @db.VarChar(255)
+  /// De qué insumo del catálogo se trata (insumos-entrega-3, unidad 1). Es lo
+  /// que permite que recibir la compra sume el stock solo: sin esta columna,
+  /// `descripcion` es texto libre y no hay a qué insumo imputarle la entrada.
+  ///
+  /// NULLABLE y SIN backfill, para siempre. Los ítems anteriores a esta
+  /// migración son texto libre y no hay forma confiable de mapearlos al
+  /// catálogo; backfillear uno con `cantidadRecibida > 0` abriría además la
+  /// pregunta de fabricar movimientos retroactivos con fecha falsa. El NULL
+  /// significa "sin insumo" y la recepción de ese ítem funciona como antes.
+  insumoId             String?   @map("insumo_id") @db.Uuid
   /// CHECK (cantidad > 0) — migration SQL.
   cantidad             Decimal   @db.Decimal(10, 2)
   proveedor            String    @db.VarChar(255)
@@ -974,11 +1016,27 @@ model ItemCompra {
   deletedAt DateTime? @map("deleted_at") @db.Timestamptz
 
   compra Compra @relation(fields: [compraId], references: [id])
+  /// `onDelete` EXPLÍCITO y NO redundante: el default de Prisma para una
+  /// relación OPCIONAL es `SetNull`, que contradice el `ON DELETE RESTRICT`
+  /// que escribió la migración. Sin declararlo, el próximo `migrate dev`
+  /// regeneraría la FK vaciando el vínculo en silencio, y el ítem perdería la
+  /// única explicación del stock que ya emitió. Mismo criterio que las
+  /// relaciones opcionales de `MovimientoInsumo`.
+  insumo Insumo? @relation(fields: [insumoId], references: [id], onDelete: Restrict)
 
   operaciones OperacionCompra[]
+  /// Movimientos de stock originados por la recepción de este ítem. Relación
+  /// inversa de `MovimientoInsumo.itemCompra`.
+  movimientos MovimientoInsumo[]
 
   @@index([compraId])
   @@index([compraId, estadoAprobacion])
+  /// Índice PARCIAL `WHERE insumo_id IS NOT NULL` — raw SQL en la migración,
+  /// Prisma no expresa índices parciales en el DSL. Sirve a "qué ítems de
+  /// compra tienen este insumo" y evita el seq scan que el RESTRICT obliga al
+  /// borrar un insumo. Parcial porque los ítems históricos quedan en NULL para
+  /// siempre y ninguna consulta los busca por esta columna.
+  @@index([insumoId])
   @@map("items_compra")
 }
 
