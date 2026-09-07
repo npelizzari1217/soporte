@@ -91,19 +91,6 @@ import {
 import { CrearTicketUseCase, type CrearTicketDto } from '../../src/tickets/application/use-cases/crear-ticket.use-case';
 import { TransicionarEstadoUseCase } from '../../src/tickets/application/use-cases/transicionar-estado.use-case';
 import { AsignarTicketUseCase } from '../../src/tickets/application/use-cases/asignar-ticket.use-case';
-import { ResolverCicloActivoParaCreacion } from '../../src/tickets/application/services/resolver-ciclo-activo.service';
-import {
-  CICLO_CLIENTE_REPOSITORY,
-  type ICicloClienteRepository,
-} from '../../src/tickets/domain/ports/i-ciclo-cliente.repository';
-import {
-  SECTOR_REPOSITORY,
-  type ISectorRepository,
-} from '../../src/sectores/domain/ports/i-sector.repository';
-import {
-  INSUMO_REPOSITORY,
-  type IInsumoRepository,
-} from '../../src/insumos/domain/ports/i-insumo.repository';
 
 import {
   CrearCompraUseCase,
@@ -113,14 +100,6 @@ import {
   AgregarItemCompraUseCase,
   type AgregarItemCompraDto,
 } from '../../src/compras/application/use-cases/agregar-item-compra.use-case';
-import { RegistrarOperacionCompra } from '../../src/compras/application/services/registrar-operacion-compra';
-import { NumeradorCompra } from '../../src/compras/domain/services/numerador-compra';
-import { PrismaCompraRepository } from '../../src/compras/infrastructure/persistence/prisma/prisma-compra.repository';
-import { PrismaOperacionCompraRepository } from '../../src/compras/infrastructure/persistence/prisma/prisma-operacion-compra.repository';
-import {
-  TENANT_TX_RUNNER,
-  type ITenantTransactionRunner,
-} from '../../src/shared/infrastructure/persistence/tenant-transaction-runner';
 
 import { CrearTicketEdilicioUseCase } from '../../src/reparaciones/application/use-cases/crear-ticket-edilicio.use-case';
 import { CrearSubtareaUseCase } from '../../src/reparaciones/application/use-cases/crear-subtarea.use-case';
@@ -543,67 +522,6 @@ async function crearEquiposDemo(
 
 // ─── Compras demo (sdd/redisenio-modulo-compras, PR-14) ────────────────────
 
-/**
- * **Este armado a mano es DEUDA, no un requisito.** Nació cuando
- * `ComprasModule` era un placeholder (`@Module({})`, PR-1) y sus casos de uso
- * no estaban registrados como providers. Hoy el módulo es real y
- * `app.module.ts` lo registra, así que `app.get(...)` los resolvería solo
- * —`createApplicationContext` resuelve con `strict: false` y recorre el árbol
- * entero, que es de lo que ya dependen `CrearClienteUseCase`,
- * `CrearTicketUseCase` y `CrearEquipoUseCase`—.
- *
- * El costo es concreto y ya se pagó: cada dependencia nueva de estos casos de
- * uso hay que agregarla en DOS lugares, el módulo y este archivo, y nada falla
- * hasta que alguien corre el seed. La Entrega 3 de insumos lo pagó con
- * `INSUMO_REPOSITORY`. Sacar estos dos builders es un cambio propio, no de
- * contrabando en el commit que descubrió el problema.
- *
- * Mismo criterio que
- * `buildCrearClienteUseCase` (arriba): se instancian a mano, resolviendo
- * cada colaborador desde el `app` ya construido (`TenantContext`,
- * `TENANT_TX_RUNNER`, `CICLO_CLIENTE_REPOSITORY` — todos providers
- * EXPORTADOS de `SharedModule`/`TicketsModule`, ya registrados en el árbol
- * de `AppModule`).
- */
-function buildCrearCompraUseCase(app: INestApplicationContext): CrearCompraUseCase {
-  const tenantContext = app.get(TenantContext);
-  const compraRepo = new PrismaCompraRepository(tenantContext);
-  const numerador = new NumeradorCompra(compraRepo);
-  const cicloRepo = app.get<ICicloClienteRepository>(CICLO_CLIENTE_REPOSITORY);
-  const resolverCicloActivo = new ResolverCicloActivoParaCreacion(cicloRepo);
-  const operacionRepo = new PrismaOperacionCompraRepository(tenantContext);
-  const registrarOperacion = new RegistrarOperacionCompra(operacionRepo);
-  const txRunner = app.get<ITenantTransactionRunner>(TENANT_TX_RUNNER);
-  // Fix post-verify W6: SECTOR_REPOSITORY (SectoresModule, ya registrado en
-  // AppModule) valida `sectorId` antes del INSERT — mismo criterio que
-  // `cicloRepo` arriba.
-  const sectorRepo = app.get<ISectorRepository>(SECTOR_REPOSITORY);
-  return new CrearCompraUseCase(
-    compraRepo,
-    numerador,
-    resolverCicloActivo,
-    sectorRepo,
-    registrarOperacion,
-    txRunner,
-  );
-}
-
-/** Ver JSDoc de `buildCrearCompraUseCase` — mismo criterio de instanciación manual. */
-function buildAgregarItemCompraUseCase(app: INestApplicationContext): AgregarItemCompraUseCase {
-  const tenantContext = app.get(TenantContext);
-  const compraRepo = new PrismaCompraRepository(tenantContext);
-  const operacionRepo = new PrismaOperacionCompraRepository(tenantContext);
-  const registrarOperacion = new RegistrarOperacionCompra(operacionRepo);
-  const txRunner = app.get<ITenantTransactionRunner>(TENANT_TX_RUNNER);
-  // insumos-entrega-3: INSUMO_REPOSITORY (InsumosModule, ya registrado en
-  // AppModule) verifica el `insumoId` declarado contra el catálogo — mismo
-  // criterio que `sectorRepo` en `buildCrearCompraUseCase`. Los ítems de la
-  // demo son de texto libre, así que este puerto no se consulta; va igual
-  // porque la firma del caso de uso es la de producción.
-  const insumoRepo = app.get<IInsumoRepository>(INSUMO_REPOSITORY);
-  return new AgregarItemCompraUseCase(compraRepo, insumoRepo, registrarOperacion, txRunner);
-}
-
 interface ItemCompraDemoSpec {
   descripcion: string;
   cantidad: number;
@@ -625,7 +543,7 @@ async function crearCompraDemo(
   anio: number,
   spec: CompraDemoSpec,
 ): Promise<void> {
-  const crearCompra = buildCrearCompraUseCase(app);
+  const crearCompra = app.get(CrearCompraUseCase);
   const dto: CrearCompraDto = {
     motivo: spec.motivo,
     descripcion: spec.descripcion,
@@ -641,7 +559,7 @@ async function crearCompraDemo(
   }
   const compraId = result.getValue().id;
 
-  const agregarItem = buildAgregarItemCompraUseCase(app);
+  const agregarItem = app.get(AgregarItemCompraUseCase);
   for (const item of spec.items) {
     const dtoItem: AgregarItemCompraDto = {
       compraId,
