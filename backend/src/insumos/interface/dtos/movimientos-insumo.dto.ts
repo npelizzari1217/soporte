@@ -24,17 +24,9 @@
  * body que pretenda fijarlo queda descartado antes de llegar al handler. Mismo
  * criterio que `solicitanteId` en `compras.dto.ts`.
  */
-import {
-  IsIn,
-  IsNumber,
-  IsOptional,
-  IsPositive,
-  IsString,
-  IsUUID,
-  Max,
-  MaxLength,
-} from 'class-validator';
+import { IsIn, IsOptional, IsPositive, IsString, IsUUID, Max, MaxLength } from 'class-validator';
 import { Transform } from 'class-transformer';
+import { EsNumeroConDecimales } from '../../../shared/interface/validators/es-numero-con-decimales';
 import {
   MovimientoInsumoEntity,
   MOVIMIENTO_INSUMO_CANTIDAD_DECIMALES,
@@ -86,14 +78,16 @@ export class RegistrarMovimientoInsumoHttpDto {
    * - `@IsPositive` en vez de `@Min(0)`: el cero no es un movimiento, y `@Min`
    *   lo dejaría pasar. No hay constante que importar porque el piso es el cero
    *   exclusivo, que es la definición misma de `isPositive`.
-   * - `maxDecimalPlaces` no es una formalidad: Postgres NO falla ante un tercer
-   *   decimal en un `DECIMAL(10,2)`, lo REDONDEA en silencio. Acá ese redondeo
-   *   no se queda en una fila: se acumula sobre el stock, que ES la suma de
-   *   todas ellas. `@IsNumber` además rechaza `NaN` e `Infinity`, que no caen
-   *   en ninguna comparación de rango.
+   * - El tope de decimales no es una formalidad: Postgres NO falla ante un
+   *   tercer decimal en un `DECIMAL(10,2)`, lo REDONDEA en silencio. Acá ese
+   *   redondeo no se queda en una fila: se acumula sobre el stock, que ES la
+   *   suma de todas ellas. `@EsNumeroConDecimales` además rechaza `NaN` e
+   *   `Infinity`, que no caen en ninguna comparación de rango; ver su JSDoc
+   *   para por qué cuenta los decimales por su cuenta en vez de delegar en
+   *   `@IsNumber({ maxDecimalPlaces })`.
    * - `@Max` importa el techo de NEGOCIO, no el límite físico de la columna.
    */
-  @IsNumber({ maxDecimalPlaces: MOVIMIENTO_INSUMO_CANTIDAD_DECIMALES })
+  @EsNumeroConDecimales(MOVIMIENTO_INSUMO_CANTIDAD_DECIMALES)
   @IsPositive()
   @Max(MOVIMIENTO_INSUMO_CANTIDAD_MAXIMA)
   cantidad!: number;

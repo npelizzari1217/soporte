@@ -18,7 +18,6 @@ import {
   ArrayMaxSize,
   IsArray,
   IsBoolean,
-  IsNumber,
   IsOptional,
   IsString,
   IsUUID,
@@ -30,6 +29,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
+import { EsNumeroConDecimales } from '../../../shared/interface/validators/es-numero-con-decimales';
 import {
   InsumoEntity,
   INSUMO_CODIGOS_ALTERNATIVOS_MAX,
@@ -184,12 +184,14 @@ export class CreateInsumoDto {
    * Punto de reposición. Ausente o `null` es "sin punto definido", que NO es
    * cero — de ahí el `@IsOptional`, que deja pasar el `null` explícito.
    *
-   * `maxDecimalPlaces` no es una formalidad: Postgres NO falla ante un tercer
-   * decimal en un `DECIMAL(10,2)`, lo REDONDEA en silencio, y el usuario
-   * guardaría una cosa y le quedaría otra.
+   * El tope de decimales no es una formalidad: Postgres NO falla ante un
+   * tercer decimal en un `DECIMAL(10,2)`, lo REDONDEA en silencio, y el usuario
+   * guardaría una cosa y le quedaría otra. El número lo importa del dominio, y
+   * quien lo mide es `@EsNumeroConDecimales` — ver su JSDoc para por qué el
+   * conteo no se delega en `@IsNumber({ maxDecimalPlaces })`.
    */
   @IsOptional()
-  @IsNumber({ maxDecimalPlaces: INSUMO_STOCK_MINIMO_DECIMALES })
+  @EsNumeroConDecimales(INSUMO_STOCK_MINIMO_DECIMALES)
   @Min(INSUMO_STOCK_MINIMO_MINIMO)
   @Max(INSUMO_STOCK_MINIMO_MAXIMO)
   stockMinimo?: number | null;
@@ -269,7 +271,7 @@ export class EditInsumoDto {
 
   /** `undefined` deja el punto de reposición intacto; `null` lo borra. */
   @IsOptional()
-  @IsNumber({ maxDecimalPlaces: INSUMO_STOCK_MINIMO_DECIMALES })
+  @EsNumeroConDecimales(INSUMO_STOCK_MINIMO_DECIMALES)
   @Min(INSUMO_STOCK_MINIMO_MINIMO)
   @Max(INSUMO_STOCK_MINIMO_MAXIMO)
   stockMinimo?: number | null;
