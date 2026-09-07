@@ -12,7 +12,7 @@ import { validarInsumoElegible } from '../services/validar-insumo.service';
  * capa de aplicación lo copia tal cual a la bitácora — si lo inventara, la
  * respuesta a "quién lo movió" sería la del proceso, no la de la persona.
  *
- * Los tres campos opcionales admiten el ausente además del nulo, porque el
+ * Los cuatro campos opcionales admiten el ausente además del nulo, porque el
  * borde puede simplemente no mandarlos; la entidad los normaliza.
  */
 export interface RegistrarEntradaInsumoDto {
@@ -27,6 +27,21 @@ export interface RegistrarEntradaInsumoDto {
   equipoId?: string | null;
   /** Trazabilidad, no stock: hay UN solo stock, no uno por sector. */
   sectorId?: string | null;
+  /**
+   * Ítem de compra cuya recepción originó la entrada, o ausente/`null` si la
+   * carga es manual.
+   *
+   * **Hace DOS cosas y esa es la decisión, no un efecto colateral**: se
+   * persiste como trazabilidad, y su sola presencia es lo que exime al insumo
+   * del guard de habilitado (ver la clase). Que un mismo dato haga las dos es
+   * lo que impide que la trazabilidad y el permiso puedan discrepar.
+   *
+   * **El borde HTTP no lo declara ni lo debe declarar.** Lo llena únicamente el
+   * enganche de la recepción de compra, del lado del servidor, con el id del
+   * ítem que está recibiendo. Mismo criterio que `usuarioId`, que sale del JWT
+   * y nunca del body.
+   */
+  itemCompraId?: string | null;
 }
 
 /**
@@ -58,11 +73,49 @@ export interface RegistrarEntradaInsumoDto {
  * el que sí lo necesita — el método directamente no está en su tipo.
  *
  * Dos reglas de elegibilidad, las dos delegadas en `validarInsumoElegible`:
- * el insumo tiene que existir y estar VIGENTE, y además HABILITADO. La segunda
- * se pide con `exigirHabilitado` porque vale SOLO para la entrada: la salida y
- * el ajuste operan sobre lo que ya está en el depósito (ver
- * `InsumoDeshabilitadoError`). Este caso de uso es el ÚNICO de los tres que
- * pasa esa opción.
+ * el insumo tiene que existir y estar VIGENTE, y además HABILITADO cuando la
+ * carga es manual. La segunda se pide con `exigirHabilitado` porque vale SOLO
+ * para la entrada: la salida y el ajuste operan sobre lo que ya está en el
+ * depósito (ver `InsumoDeshabilitadoError`). Este caso de uso es el ÚNICO de
+ * los tres que pasa esa opción, y la sección siguiente explica cuándo la pide
+ * en `false`.
+ *
+ * ## El guard de habilitado NO corre cuando la entrada viene de una compra
+ *
+ * Decisión 1 del diseño de la Entrega 3. El guard nació para la carga MANUAL, y
+ * lo que dice es "no se compra más de esto". Una recepción no es una decisión
+ * nueva de compra: se aprobó antes de la baja y la mercadería ya está en el
+ * depósito. Rechazarla dejaría la recepción asentada en compras sin su
+ * movimiento de stock, que es exactamente la pérdida silenciosa que el diseño
+ * descartó.
+ *
+ * **Lo pide el ORIGEN, no un booleano.** El permiso se deriva de
+ * `dto.itemCompraId`, y NO hay un segundo campo del estilo `exigirHabilitado`
+ * en el DTO. Las dos razones:
+ *
+ * 1. Un booleano de "saltear la validación" es una llave sin dueño: cualquier
+ *    caller la pide, no queda dicho por qué, y el día que aparezca un salteo
+ *    indebido no hay forma de distinguirlo del legítimo. El `itemCompraId`, en
+ *    cambio, es un hecho —hay un ítem de compra que originó esto— que la FK
+ *    `movimientos_insumo_item_compra_id_fkey` verifica contra la base.
+ * 2. Con dos campos, dos de sus cuatro combinaciones no significan nada: origen
+ *    sin salteo rechazaría la recepción que la decisión 1 manda aceptar, y
+ *    salteo sin origen es el permiso suelto del punto anterior. Un campo cuyos
+ *    únicos valores útiles son los que el otro ya determina no es un segundo
+ *    campo: es el mismo, escrito dos veces.
+ *
+ * El origen levanta UN solo guard. El insumo inexistente o con baja lógica
+ * sigue rechazando venga de donde venga: asentar contra una fila que el
+ * catálogo no muestra dejaría stock imputado a la nada, y la recepción no
+ * cambia eso.
+ *
+ * **Que el `itemCompraId` exista NO se valida acá**, a propósito: la
+ * comprobación necesitaría un puerto de `compras` dentro de `insumos`, y esa
+ * arista cierra un ciclo —`compras` ya va a depender de `insumos`—. La FK lo
+ * atrapa. La contracara es que el guard no se puede abrir desde el borde: el
+ * DTO HTTP de la entrada manual no declara el campo y el controller enumera lo
+ * que pasa al caso de uso en vez de esparcir el body, así que un
+ * `itemCompraId` inventado no tiene por dónde llegar.
  */
 export class RegistrarEntradaInsumoUseCase {
   constructor(
@@ -71,10 +124,11 @@ export class RegistrarEntradaInsumoUseCase {
   ) {}
 
   /**
-   * @param dto Datos de la entrada, con el `usuarioId` ya resuelto por el borde.
+   * @param dto Datos de la entrada, con el `usuarioId` ya resuelto por el borde
+   *   y el `itemCompraId` presente solo si la entrada nace de una recepción.
    * @returns El movimiento asentado, o `InsumoNoEncontradoError` si el insumo
    *   no existe o está dado de baja, o `InsumoDeshabilitadoError` si está
-   *   deshabilitado.
+   *   deshabilitado y la entrada es manual.
    * @throws Error si la cantidad no es finita, no es positiva, pasa el techo de
    *   negocio o tiene más decimales que la columna, o si el motivo excede su
    *   tope de largo: son violaciones de contrato del caller que el borde
@@ -83,8 +137,14 @@ export class RegistrarEntradaInsumoUseCase {
   async execute(
     dto: RegistrarEntradaInsumoDto,
   ): Promise<Result<MovimientoInsumoEntity, DomainError>> {
+    // `== null` cubre el ausente y el nulo con una sola comparación: las dos
+    // formas significan "carga manual". Preguntar por la PRESENCIA de la clave
+    // —`'itemCompraId' in dto`— le abriría el salteo a quien mandara el campo
+    // en `null`, que es justo la entrada manual escrita de la forma larga.
+    const vieneDeUnaRecepcion = dto.itemCompraId != null;
+
     const elegible = await validarInsumoElegible(this.insumoRepo, dto.insumoId, {
-      exigirHabilitado: true,
+      exigirHabilitado: !vieneDeUnaRecepcion,
     });
 
     if (elegible.isFail()) {
@@ -103,6 +163,7 @@ export class RegistrarEntradaInsumoUseCase {
       motivo: dto.motivo,
       equipoId: dto.equipoId,
       sectorId: dto.sectorId,
+      itemCompraId: dto.itemCompraId,
     });
 
     // Hoy este camino es inalcanzable para la ENTRADA: el único `Result.fail`

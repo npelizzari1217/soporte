@@ -56,6 +56,7 @@ export class MovimientoInsumoMapper {
         motivo: row.motivo ?? null,
         equipoId: row.equipoId ?? null,
         sectorId: row.sectorId ?? null,
+        itemCompraId: row.itemCompraId ?? null,
       },
       row.id,
       row.createdAt,
@@ -73,9 +74,18 @@ export class MovimientoInsumoMapper {
    * UUIDv7 entre dos asientos con el mismo `created_at`, que es justo lo que
    * la entidad gana heredando de `BaseEntity`.
    *
-   * Los tres nullables viajan como `null` EXPLÍCITO y no como campo ausente:
+   * Los cuatro nullables viajan como `null` EXPLÍCITO y no como campo ausente:
    * para Prisma no son lo mismo, y un `undefined` que se colara del caller se
-   * leería como "no tocar la columna" en vez de "sin motivo".
+   * leería como "no tocar la columna" en vez de "sin motivo". La entidad ya
+   * resuelve el ausente a `null`, así que acá alcanza con leer sus getters.
+   *
+   * **`itemCompraId` se lee de la entidad y no se fija en `null`.** Mientras la
+   * entidad no tuvo el campo, esta línea emitió un `null` constante; dejarla
+   * así después de que la entidad lo ganó haría que un movimiento creado con
+   * origen se persistiera SIN él — sin error, sin log y sin más síntoma que una
+   * trazabilidad que nunca aparece. Por eso la entidad y su persistencia
+   * viajaron en la misma unidad, y por eso el spec compara el valor emitido
+   * contra el de la entidad en vez de contra un literal.
    *
    * @param entity Movimiento de dominio a asentar.
    * @returns El shape de fila que espera Prisma, sin `updatedAt` ni `deletedAt`.
@@ -90,12 +100,7 @@ export class MovimientoInsumoMapper {
       motivo: entity.motivo,
       equipoId: entity.equipoId,
       sectorId: entity.sectorId,
-      // `null` fijo y no `entity.itemCompraId`: la columna existe desde la
-      // unidad 1 de `insumos-entrega-3`, pero la entidad todavía no tiene el
-      // campo — lo agrega la unidad 3, y esta línea pasa a leerlo en la unidad
-      // 4. Va explícito y no ausente por el mismo motivo que los tres
-      // nullables de arriba.
-      itemCompraId: null,
+      itemCompraId: entity.itemCompraId,
       createdAt: entity.createdAt,
     };
   }

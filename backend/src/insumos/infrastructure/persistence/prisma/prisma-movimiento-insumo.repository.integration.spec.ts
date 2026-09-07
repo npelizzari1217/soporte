@@ -26,6 +26,7 @@ import { TenantContext } from '../../../../shared/tenancy/tenant-context';
 import { TenantPrismaClient } from '../../../../shared/infrastructure/persistence/prisma-clients';
 import { PrismaTenantTransactionRunner } from '../../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { PrismaMovimientoInsumoRepository } from './prisma-movimiento-insumo.repository';
+import { MovimientoInsumoMapper } from './movimiento-insumo.mapper';
 import { MovimientoInsumoEntity } from '../../../domain/entities/movimiento-insumo.entity';
 import {
   TIPOS_MOVIMIENTO_INSUMO,
@@ -90,6 +91,11 @@ describe('PrismaMovimientoInsumoRepository — Integration', () => {
   let otroInsumoId: string;
   let equipoId: string;
   let sectorId: string;
+  /** Ciclo y compra del fixture: solo existen para que el ítem tenga a qué colgarse. */
+  let cicloId: string;
+  let compraId: string;
+  /** El ORIGEN: `movimientos_insumo.item_compra_id` es una FK real, no un id suelto. */
+  let itemCompraId: string;
 
   /** Construye un asiento válido sobre el insumo bajo prueba. */
   function construirMovimiento(
@@ -215,12 +221,58 @@ describe('PrismaMovimientoInsumoRepository — Integration', () => {
       data: { codigo: `${PREFIJO}S`, nombre: 'Sector de prueba' },
     });
     sectorId = sector.id;
+
+    // `activo: false` A PROPÓSITO, mismo criterio que
+    // `enlace-compras-insumos-constraints.integration.spec.ts`: `findActive()`
+    // resuelve el ciclo vigente con un `findFirst` sin `orderBy`, así que un
+    // ciclo activo de más en la DB compartida vuelve intermitente a cualquier
+    // spec que lo consulte. Acá el ciclo solo hace de destino de FK.
+    const ciclo = await tenantClient.cicloCliente.create({
+      data: {
+        cicloVigenteId: randomUUID(),
+        nombre: `${PREFIJO}ciclo`,
+        fechaInicio: new Date('2026-01-01'),
+        fechaFin: new Date('2026-12-31'),
+        activo: false,
+      },
+    });
+    cicloId = ciclo.id;
+
+    const compra = await tenantClient.compra.create({
+      data: {
+        numero: PREFIJO.slice(0, 20),
+        fechaSolicitud: new Date('2026-01-01'),
+        motivo: 'Compra del fixture de la bitácora',
+        solicitanteId: randomUUID(),
+        cicloId,
+      },
+    });
+    compraId = compra.id;
+
+    // El ítem apunta al insumo bajo prueba, que es la forma en que existe en
+    // producción: la recepción sabe a qué insumo imputarle la entrada.
+    const itemCompra = await tenantClient.itemCompra.create({
+      data: {
+        compraId,
+        descripcion: 'Ítem del fixture',
+        cantidad: 10,
+        proveedor: 'Proveedor del fixture',
+        monto: 1000,
+        fechaCotizacion: new Date('2026-01-01'),
+        insumoId,
+      },
+    });
+    itemCompraId = itemCompra.id;
   });
 
-  // Orden obligado por las FK con RESTRICT: primero la bitácora, después los
-  // insumos, y al final los catálogos a los que referencian.
+  // Orden obligado por las FK con RESTRICT: primero la bitácora, después el
+  // ítem de compra que sus asientos referencian, después los insumos, y al
+  // final los catálogos a los que todos referencian.
   afterAll(async () => {
     await limpiarMovimientos();
+    await tenantClient.itemCompra.deleteMany({ where: { compraId } });
+    await tenantClient.compra.deleteMany({ where: { cicloId } });
+    await tenantClient.cicloCliente.deleteMany({ where: { id: cicloId } });
     await tenantClient.insumo.deleteMany({ where: { codigo: { startsWith: PREFIJO } } });
     await tenantClient.familiaInsumo.deleteMany({ where: { codigo: { startsWith: PREFIJO } } });
     await tenantClient.unidadMedida.deleteMany({ where: { codigo: { startsWith: PREFIJO } } });
@@ -284,6 +336,103 @@ describe('PrismaMovimientoInsumoRepository — Integration', () => {
       expect(fila?.motivo).toBeNull();
       expect(fila?.equipoId).toBeNull();
       expect(fila?.sectorId).toBeNull();
+    });
+
+    /**
+     * **El caso que prueba que el origen llega a la columna.** El mapper emitió
+     * `item_compra_id: null` FIJO mientras la entidad no tenía el campo, y ese
+     * fallo no se ve por ningún lado desde arriba: el caso de uso devuelve el
+     * asiento con su origen, la escritura no falla, y lo único distinto es una
+     * columna en `NULL` que nadie mira hasta que alguien pregunta de qué compra
+     * vino una entrada. Se lee la fila CRUDA, sin pasar por el mapper, para que
+     * el assert no pueda quedar satisfecho por el mismo código que se prueba.
+     */
+    it('guarda el itemCompraId del asiento en la columna item_compra_id', async () => {
+      const movimiento = construirMovimiento('ENTRADA', 6, { itemCompraId });
+
+      await txRunner.run(() => repo.insert(movimiento));
+
+      const fila = await tenantClient.movimientoInsumo.findUnique({
+        where: { id: movimiento.id },
+      });
+      expect(fila?.itemCompraId).toBe(itemCompraId);
+    });
+
+    /**
+     * Hermano invertido del de arriba: la entrada manual, la salida y el ajuste
+     * no nacen de una compra, y su columna queda en `NULL`. Sin este caso, un
+     * mapper que emitiera SIEMPRE el id del último ítem visto pasaría el
+     * anterior igual.
+     */
+    it('deja item_compra_id en null cuando el asiento no viene de una compra', async () => {
+      const movimiento = construirMovimiento('ENTRADA', 6);
+
+      await txRunner.run(() => repo.insert(movimiento));
+
+      const fila = await tenantClient.movimientoInsumo.findUnique({
+        where: { id: movimiento.id },
+      });
+      expect(fila?.itemCompraId).toBeNull();
+    });
+
+    /**
+     * Ida y vuelta COMPLETO contra Postgres: se guarda con el repositorio y se
+     * relee con el mapper, que es el camino por el que la bitácora vuelve al
+     * dominio. Es el caso que atrapa la pérdida en cualquiera de las dos
+     * mitades —una escritura que no manda el origen, o una lectura que no lo
+     * levanta—, que por separado se ven iguales desde afuera: un movimiento sin
+     * trazabilidad.
+     */
+    it('un movimiento con origen sobrevive el ida y vuelta por la base', async () => {
+      const movimiento = construirMovimiento('ENTRADA', 8.25, {
+        itemCompraId,
+        motivo: 'Recepción de la orden del fixture',
+      });
+
+      await txRunner.run(() => repo.insert(movimiento));
+
+      const fila = await tenantClient.movimientoInsumo.findUniqueOrThrow({
+        where: { id: movimiento.id },
+      });
+      const releido = MovimientoInsumoMapper.toDomain(fila);
+
+      expect(releido.id).toBe(movimiento.id);
+      expect(releido.insumoId).toBe(movimiento.insumoId);
+      expect(releido.tipo).toBe('ENTRADA');
+      expect(releido.cantidad).toBe(8.25);
+      expect(releido.motivo).toBe('Recepción de la orden del fixture');
+      expect(releido.itemCompraId).toBe(itemCompraId);
+    });
+
+    /** Caso hermano del anterior: el asiento sin origen se relee sin origen. */
+    it('un movimiento sin origen se relee con itemCompraId en null', async () => {
+      const movimiento = construirMovimiento('ENTRADA', 8.25);
+
+      await txRunner.run(() => repo.insert(movimiento));
+
+      const fila = await tenantClient.movimientoInsumo.findUniqueOrThrow({
+        where: { id: movimiento.id },
+      });
+
+      expect(MovimientoInsumoMapper.toDomain(fila).itemCompraId).toBeNull();
+    });
+
+    /**
+     * El origen tiene que ser un ítem que EXISTE. La validación no vive en el
+     * dominio ni en la aplicación a propósito —necesitaría un puerto de
+     * `compras` dentro de `insumos`, y esa arista cierra un ciclo—, así que la
+     * única red es la FK. Este caso fija que esa red está puesta en el camino
+     * real de escritura, no solo en la migración.
+     */
+    it('rechaza el asiento cuyo origen no es un ítem de compra existente', async () => {
+      const movimiento = construirMovimiento('ENTRADA', 2, { itemCompraId: randomUUID() });
+
+      await expect(txRunner.run(() => repo.insert(movimiento))).rejects.toThrow(
+        /movimientos_insumo_item_compra_id_fkey/,
+      );
+
+      const filas = await tenantClient.movimientoInsumo.findMany({ where: { insumoId } });
+      expect(filas).toHaveLength(0);
     });
 
     /**

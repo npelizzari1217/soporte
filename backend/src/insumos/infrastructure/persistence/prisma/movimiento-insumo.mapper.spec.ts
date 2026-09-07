@@ -94,6 +94,20 @@ describe('MovimientoInsumoMapper', () => {
     });
 
     /**
+     * El ORIGEN de la entrada. Es la respuesta a "¿de qué compra vino esto?", y
+     * si la lectura lo perdiera la columna guardaría un dato que ninguna
+     * pantalla podría mostrar. Va con su hermano invertido en el mismo caso: el
+     * `null` de la mayoría de la tabla tiene que llegar como `null`.
+     */
+    it('preserva el itemCompraId de la fila, y deja null cuando la fila no lo trae', () => {
+      expect(
+        MovimientoInsumoMapper.toDomain(filaMovimiento({ itemCompraId: 'item-compra-1' }))
+          .itemCompraId,
+      ).toBe('item-compra-1');
+      expect(MovimientoInsumoMapper.toDomain(filaMovimiento()).itemCompraId).toBeNull();
+    });
+
+    /**
      * La tabla es append-only y NO tiene `updated_at` ni `deleted_at`. La
      * entidad hereda igual esos dos campos de `BaseEntity`, así que la lectura
      * tiene que dejarlos en un valor que no invente nada: `updatedAt` espejado
@@ -184,6 +198,34 @@ describe('MovimientoInsumoMapper', () => {
     });
 
     /**
+     * **El caso que cierra la pérdida silenciosa.** El mapper emitió
+     * `itemCompraId: null` FIJO mientras la entidad no tenía el campo; si esa
+     * línea sobreviviera a la entidad, un movimiento creado con origen se
+     * guardaría sin él —sin error, sin log y sin forma de notarlo salvo
+     * consultando la columna—. El assert compara contra el valor de la entidad,
+     * no contra un literal: un `null` fijo lo rompe.
+     */
+    it('emite el itemCompraId de la entidad, no un null fijo', () => {
+      const movimiento = crearMovimiento({ itemCompraId: 'item-compra-1' });
+
+      const fila = MovimientoInsumoMapper.toPersistence(movimiento);
+
+      expect(fila.itemCompraId).toBe(movimiento.itemCompraId);
+      expect(fila.itemCompraId).toBe('item-compra-1');
+    });
+
+    /**
+     * Hermano invertido del de arriba: el asiento sin origen —la entrada
+     * manual, la salida, el ajuste— manda `null` EXPLÍCITO y no el campo
+     * ausente, por el mismo motivo que los otros tres nullables.
+     */
+    it('manda el itemCompraId como null explícito cuando el asiento no tiene origen', () => {
+      const fila = MovimientoInsumoMapper.toPersistence(crearMovimiento());
+
+      expect(fila).toHaveProperty('itemCompraId', null);
+    });
+
+    /**
      * La tabla NO tiene esas dos columnas: mandarlas haría fallar el INSERT
      * entero. El assert de ausencia va acompañado del de presencia para que no
      * pase en verde sobre un objeto vacío — el verde falso clásico.
@@ -211,6 +253,7 @@ describe('MovimientoInsumoMapper', () => {
       motivo: 'Conteo físico: sobraban 7,25',
       equipoId: 'equipo-1',
       sectorId: 'sector-1',
+      itemCompraId: 'item-compra-1',
     });
 
     const fila = MovimientoInsumoMapper.toPersistence(movimiento);
@@ -227,6 +270,7 @@ describe('MovimientoInsumoMapper', () => {
     expect(reconstruido.motivo).toBe(movimiento.motivo);
     expect(reconstruido.equipoId).toBe(movimiento.equipoId);
     expect(reconstruido.sectorId).toBe(movimiento.sectorId);
+    expect(reconstruido.itemCompraId).toBe(movimiento.itemCompraId);
     expect(reconstruido.createdAt).toEqual(movimiento.createdAt);
   });
 });

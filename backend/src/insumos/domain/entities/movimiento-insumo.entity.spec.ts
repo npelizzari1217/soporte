@@ -107,6 +107,49 @@ describe('MovimientoInsumoEntity', () => {
     });
 
     /**
+     * `itemCompraId` es el ORIGEN del asiento, no su destino: dice de qué ítem
+     * de compra vino lo que entró. Sin él, "¿de qué compra salió esta entrada?"
+     * no tiene respuesta, y la bitácora solo puede decir que alguien cargó una
+     * cantidad a mano.
+     */
+    it('conserva el itemCompraId del ítem de compra que originó el movimiento', () => {
+      const movimiento = crear({ tipo: 'ENTRADA', itemCompraId: 'id-item-compra' });
+
+      expect(movimiento.itemCompraId).toBe('id-item-compra');
+    });
+
+    /**
+     * Caso hermano invertido del de arriba, con el mismo criterio que
+     * `equipoId` y `sectorId`: la columna admite un solo vacío, así que el
+     * campo ausente y el nulo tienen que colapsar en `null`. Un `undefined`
+     * haría mentir a la firma `string | null` y viajaría al INSERT como "no
+     * tocar la columna" en vez de como "sin origen".
+     */
+    it('resuelve el origen ausente a null, sin dejar undefined', () => {
+      expect(crear().itemCompraId).toBeNull();
+      expect(crear({ itemCompraId: null }).itemCompraId).toBeNull();
+    });
+
+    /**
+     * El origen no está restringido a la ENTRADA. La devolución al proveedor
+     * sería una SALIDA nacida del mismo ítem de compra, y la migración declara
+     * la columna nullable para todos los tipos, sin ningún `CHECK` que la ate
+     * al tipo: el dominio no inventa una restricción que el diseño descartó a
+     * propósito.
+     */
+    it('acepta origen en cualquier tipo del catálogo, porque la columna no lo ata al tipo', () => {
+      for (const tipo of TIPOS_MOVIMIENTO_INSUMO) {
+        const movimiento = crear({
+          tipo,
+          motivo: 'Conteo físico del depósito',
+          itemCompraId: 'id-item-compra',
+        });
+
+        expect(movimiento.itemCompraId).toBe('id-item-compra');
+      }
+    });
+
+    /**
      * La trazabilidad NO está restringida al tipo `SALIDA`: una `ENTRADA`
      * puede ser la devolución de un tóner que un sector no usó, y el dato de
      * dónde volvió es justo lo que hace útil la bitácora. La migración las
@@ -356,6 +399,7 @@ describe('MovimientoInsumoEntity', () => {
       motivo: null,
       equipoId: null,
       sectorId: null,
+      itemCompraId: null,
     };
 
     it('preserva el id y el createdAt persistidos', () => {
@@ -364,6 +408,28 @@ describe('MovimientoInsumoEntity', () => {
 
       expect(movimiento.id).toBe('id-persistido');
       expect(movimiento.createdAt).toEqual(createdAt);
+    });
+
+    /**
+     * La lectura tiene que devolver el origen que la fila guarda. Si
+     * `reconstitute` lo perdiera, la trazabilidad existiría en la base y no en
+     * el modelo: la columna diría de qué compra vino la entrada y ninguna
+     * pantalla podría mostrarlo. El caso hermano con `null` cubre el asiento
+     * sin origen, que es la mayoría de la tabla.
+     */
+    it('preserva el itemCompraId persistido, y el null del asiento sin origen', () => {
+      const createdAt = new Date('2026-01-15T10:30:00.000Z');
+
+      expect(
+        MovimientoInsumoEntity.reconstitute(
+          { ...props, itemCompraId: 'id-item-compra' },
+          'id-persistido',
+          createdAt,
+        ).itemCompraId,
+      ).toBe('id-item-compra');
+      expect(
+        MovimientoInsumoEntity.reconstitute(props, 'id-persistido', createdAt).itemCompraId,
+      ).toBeNull();
     });
 
     /**
