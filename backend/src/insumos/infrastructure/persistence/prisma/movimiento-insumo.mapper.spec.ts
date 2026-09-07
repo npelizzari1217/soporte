@@ -16,6 +16,7 @@ function filaMovimiento(
     motivo: null,
     equipoId: null,
     sectorId: null,
+    itemCompraId: null,
     createdAt: new Date('2026-09-06T10:00:00.000Z'),
     ...overrides,
   };

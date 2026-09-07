@@ -90,6 +90,12 @@ export class MovimientoInsumoMapper {
       motivo: entity.motivo,
       equipoId: entity.equipoId,
       sectorId: entity.sectorId,
+      // `null` fijo y no `entity.itemCompraId`: la columna existe desde la
+      // unidad 1 de `insumos-entrega-3`, pero la entidad todavía no tiene el
+      // campo — lo agrega la unidad 3, y esta línea pasa a leerlo en la unidad
+      // 4. Va explícito y no ausente por el mismo motivo que los tres
+      // nullables de arriba.
+      itemCompraId: null,
       createdAt: entity.createdAt,
     };
   }
