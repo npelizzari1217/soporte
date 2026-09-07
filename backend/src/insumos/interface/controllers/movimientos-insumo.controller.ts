@@ -8,6 +8,13 @@
  *   POST /insumos/:insumoId/movimientos/salida  → RegistrarSalidaInsumoUseCase  [INSUMOS:ALTAS]
  *   POST /insumos/:insumoId/movimientos/ajuste  → RegistrarAjusteInsumoUseCase  [INSUMOS:AJUSTAR]
  *   GET  /insumos/:insumoId/stock               → ConsultarStockInsumoUseCase   [INSUMOS:LECTURA]
+ *   GET  /insumos/:insumoId/movimientos         → ListarMovimientosInsumoUseCase [INSUMOS:LECTURA]
+ *
+ * Las tres primeras ESCRIBEN la bitácora; las dos últimas la LEEN, y responden
+ * dos preguntas distintas: el stock contesta "cuánto hay" y el listado "qué
+ * pasó". Las dos llevan `INSUMOS:LECTURA` porque las dos exponen el mismo
+ * secreto —qué tiene el depósito—, y ninguna necesita el `sub` del JWT: la
+ * firma del asiento es cosa de las rutas de escritura.
  *
  * ## Por qué UNA RUTA POR OPERACIÓN y no un solo `POST /movimientos` con el
  * `tipo` en el body
@@ -48,7 +55,7 @@
  *
  * Los dos modelos de autorización del módulo no se mezclan en un archivo. El
  * ABM del catálogo se gatea 100% por rol (`AdminClienteGuard`, Entrega 1);
- * estas cuatro rutas se gatean por la matriz `MODULO:ACCION`. Tenerlas
+ * estas cinco rutas se gatean por la matriz `MODULO:ACCION`. Tenerlas
  * separadas deja las celdas de `INSUMOS` en un solo lugar auditable, y evita
  * que un `@UseGuards` copiado de un método vecino aplique el gate equivocado.
  *
@@ -72,6 +79,7 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 
@@ -85,6 +93,7 @@ import { RegistrarEntradaInsumoUseCase } from '../../application/use-cases/regis
 import { RegistrarSalidaInsumoUseCase } from '../../application/use-cases/registrar-salida-insumo.use-case';
 import { RegistrarAjusteInsumoUseCase } from '../../application/use-cases/registrar-ajuste-insumo.use-case';
 import { ConsultarStockInsumoUseCase } from '../../application/use-cases/consultar-stock-insumo.use-case';
+import { ListarMovimientosInsumoUseCase } from '../../application/use-cases/listar-movimientos-insumo.use-case';
 
 // El mapeo `DomainError` → `HttpException` se REUSA del controller del catálogo
 // en vez de copiarse: el criterio —solo el insumo de la URL es 404, el resto
@@ -94,10 +103,13 @@ import { ConsultarStockInsumoUseCase } from '../../application/use-cases/consult
 import { toHttpException } from './insumos.controller';
 
 import {
+  ListarMovimientosInsumoQueryDto,
+  ListarMovimientosInsumoResponseDto,
   MovimientoInsumoResponseDto,
   RegistrarAjusteInsumoHttpDto,
   RegistrarMovimientoInsumoHttpDto,
   StockInsumoResponseDto,
+  toListarMovimientosInsumoResponseDto,
   toMovimientoInsumoResponseDto,
   toStockInsumoResponseDto,
 } from '../dtos/movimientos-insumo.dto';
@@ -110,6 +122,7 @@ export class MovimientosInsumoController {
     private readonly registrarSalidaInsumoUseCase: RegistrarSalidaInsumoUseCase,
     private readonly registrarAjusteInsumoUseCase: RegistrarAjusteInsumoUseCase,
     private readonly consultarStockInsumoUseCase: ConsultarStockInsumoUseCase,
+    private readonly listarMovimientosInsumoUseCase: ListarMovimientosInsumoUseCase,
   ) {}
 
   /**
@@ -267,5 +280,45 @@ export class MovimientosInsumoController {
       throw toHttpException(result.getError());
     }
     return toStockInsumoResponseDto(result.getValue());
+  }
+
+  /**
+   * GET /insumos/:insumoId/movimientos — la bitácora de la ficha: qué pasó con
+   * la existencia de este insumo, del más reciente al más viejo.
+   *
+   * Comparte la celda `INSUMOS:LECTURA` con el stock porque las dos lecturas
+   * exponen el mismo secreto: qué hay en el depósito. Y es la que además dice
+   * de DÓNDE vino cada entrada — el `itemCompraId` que publica el mapper es lo
+   * único que distingue un asiento nacido de una recepción de una carga manual.
+   *
+   * La ventana pedida viaja CRUDA al caso de uso, incluidos sus `undefined`:
+   * los defaults de `pagina` y `porPagina` son suyos, y completarlos acá le
+   * daría dos dueños a la misma regla. El controller se mantiene fino: parsea,
+   * delega y mapea.
+   *
+   * @param insumoId Insumo cuya bitácora se lista.
+   * @param query Ventana pedida; ausente significa la primera página con el tamaño por defecto.
+   * @returns La página de movimientos con el total del insumo y la ventana efectiva.
+   * @throws 400 id mal formado, o paginación fuera de rango — un `porPagina` menor a 1 invertiría el orden y una `pagina` menor a 1 daría un offset negativo
+   * @throws 401 sin JWT
+   * @throws 403 sin `INSUMOS:LECTURA`
+   * @throws 404 insumo inexistente o dado de baja — una bitácora vacía y un insumo que no está son cosas distintas
+   */
+  @Get(':insumoId/movimientos')
+  @UseGuards(AccionesGuard)
+  @RequiereAcciones('INSUMOS:LECTURA')
+  async listarMovimientos(
+    @Param('insumoId', new ParseUUIDPipe()) insumoId: string,
+    @Query() query: ListarMovimientosInsumoQueryDto,
+  ): Promise<ListarMovimientosInsumoResponseDto> {
+    const result = await this.listarMovimientosInsumoUseCase.execute(insumoId, {
+      pagina: query.pagina,
+      porPagina: query.porPagina,
+    });
+
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+    return toListarMovimientosInsumoResponseDto(result.getValue());
   }
 }

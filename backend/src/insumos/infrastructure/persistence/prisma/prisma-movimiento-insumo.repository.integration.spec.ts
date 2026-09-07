@@ -112,10 +112,27 @@ describe('PrismaMovimientoInsumoRepository — Integration', () => {
     }).getValue();
   }
 
-  /** Inserta filas directo por Prisma: fixtures de lectura, sin pasar por el repo. */
+  /**
+   * Inserta filas directo por Prisma: fixtures de lectura, sin pasar por el repo.
+   *
+   * `id`, `createdAt` e `itemCompraId` son opcionales y se omiten de la fila
+   * cuando no se los pasa, para que la base aplique sus propios defaults.
+   *
+   * Los dos primeros existen porque el ORDEN de la bitácora es parte del
+   * contrato que se prueba, y con los defaults no se lo puede fijar: dos
+   * asientos sembrados en la misma llamada quedan a microsegundos de distancia
+   * —así que no hay empate de `createdAt` que probar— y sus ids son aleatorios
+   * —así que el orden esperado por `id` sería distinto en cada corrida—.
+   */
   async function sembrar(
     idDelInsumo: string,
-    asientos: Array<{ tipo: TipoMovimientoInsumo; cantidad: number }>,
+    asientos: Array<{
+      tipo: TipoMovimientoInsumo;
+      cantidad: number;
+      id?: string;
+      createdAt?: Date;
+      itemCompraId?: string;
+    }>,
   ): Promise<void> {
     await tenantClient.movimientoInsumo.createMany({
       data: asientos.map((a) => ({
@@ -123,6 +140,9 @@ describe('PrismaMovimientoInsumoRepository — Integration', () => {
         tipo: a.tipo,
         cantidad: a.cantidad,
         usuarioId,
+        ...(a.id !== undefined ? { id: a.id } : {}),
+        ...(a.createdAt !== undefined ? { createdAt: a.createdAt } : {}),
+        ...(a.itemCompraId !== undefined ? { itemCompraId: a.itemCompraId } : {}),
       })),
     });
   }
@@ -740,6 +760,196 @@ describe('PrismaMovimientoInsumoRepository — Integration', () => {
       const sumas = await txRunner.run(() => repo.sumByTipo(insumoId));
 
       expect(sumas.ENTRADA).toBe(6);
+    });
+  });
+
+  describe('listarPorInsumo()', () => {
+    /**
+     * Instantes separados y fijos: el orden que se prueba es el del reloj de
+     * la fila, no el de inserción. Se siembran a propósito en un orden
+     * distinto del esperado, para que una consulta sin `orderBy` no pueda
+     * pasar por casualidad.
+     */
+    const T_VIEJO = new Date('2026-03-01T10:00:00.000Z');
+    const T_MEDIO = new Date('2026-03-02T10:00:00.000Z');
+    const T_NUEVO = new Date('2026-03-03T10:00:00.000Z');
+
+    /** Lee los ids de la bitácora de un insumo directo de la base, sin pasar por el repositorio. */
+    async function idsEnBase(idDelInsumo: string): Promise<string[]> {
+      const filas = await tenantClient.movimientoInsumo.findMany({
+        where: { insumoId: idDelInsumo },
+        select: { id: true },
+      });
+      return filas.map((fila) => fila.id);
+    }
+
+    it('devuelve los movimientos del insumo ordenados por createdAt descendente', async () => {
+      await sembrar(insumoId, [
+        { tipo: 'ENTRADA', cantidad: 10, createdAt: T_MEDIO },
+        { tipo: 'SALIDA', cantidad: 3, createdAt: T_VIEJO },
+        { tipo: 'AJUSTE_POSITIVO', cantidad: 7, createdAt: T_NUEVO },
+      ]);
+
+      const pagina = await repo.listarPorInsumo(insumoId);
+
+      expect(pagina.movimientos.map((m) => m.tipo)).toEqual([
+        'AJUSTE_POSITIVO',
+        'ENTRADA',
+        'SALIDA',
+      ]);
+      expect(pagina.movimientos.map((m) => m.createdAt.getTime())).toEqual([
+        T_NUEVO.getTime(),
+        T_MEDIO.getTime(),
+        T_VIEJO.getTime(),
+      ]);
+    });
+
+    /**
+     * El asiento ajeno se siembra MÁS NUEVO que el propio a propósito: una
+     * consulta sin `where` por insumo lo pondría primero, así que el caso
+     * falla por la razón correcta en vez de por un conteo que podría cuadrar
+     * de casualidad. El fixture ya tiene un segundo insumo justamente para que
+     * este assert no pase sobre una tabla donde no hay nada ajeno.
+     */
+    it('no trae los movimientos de otro insumo', async () => {
+      await sembrar(insumoId, [{ tipo: 'ENTRADA', cantidad: 10, createdAt: T_MEDIO }]);
+      await sembrar(otroInsumoId, [{ tipo: 'ENTRADA', cantidad: 99, createdAt: T_NUEVO }]);
+      const ajenos = await idsEnBase(otroInsumoId);
+      expect(ajenos).toHaveLength(1);
+
+      const pagina = await repo.listarPorInsumo(insumoId);
+
+      expect(pagina.total).toBe(1);
+      expect(pagina.movimientos).toHaveLength(1);
+      expect(pagina.movimientos.map((m) => m.id)).not.toContain(ajenos[0]);
+      expect(pagina.movimientos.every((m) => m.insumoId === insumoId)).toBe(true);
+    });
+
+    /**
+     * `total` es el universo del insumo, no el tamaño de la página: es el dato
+     * con el que la pantalla decide cuántas páginas hay. Se siembran más
+     * movimientos que el `limit` para que los dos números no puedan coincidir,
+     * y se le da bitácora al otro insumo para que el total tampoco pueda venir
+     * de contar la tabla entera.
+     */
+    it('cuenta en total el universo del insumo, no el tamaño de la página', async () => {
+      await sembrar(insumoId, [
+        { tipo: 'ENTRADA', cantidad: 1, createdAt: new Date('2026-03-01T10:00:00.000Z') },
+        { tipo: 'ENTRADA', cantidad: 2, createdAt: new Date('2026-03-02T10:00:00.000Z') },
+        { tipo: 'ENTRADA', cantidad: 3, createdAt: new Date('2026-03-03T10:00:00.000Z') },
+        { tipo: 'ENTRADA', cantidad: 4, createdAt: new Date('2026-03-04T10:00:00.000Z') },
+        { tipo: 'ENTRADA', cantidad: 5, createdAt: new Date('2026-03-05T10:00:00.000Z') },
+      ]);
+      await sembrar(otroInsumoId, [{ tipo: 'ENTRADA', cantidad: 99, createdAt: T_NUEVO }]);
+
+      const pagina = await repo.listarPorInsumo(insumoId, { limit: 2 });
+
+      expect(pagina.movimientos).toHaveLength(2);
+      expect(pagina.total).toBe(5);
+    });
+
+    /**
+     * Las dos páginas juntas tienen que dar el universo exacto: ningún id
+     * repetido entre ellas y ninguno perdido. Es la propiedad que el usuario
+     * percibe como "la bitácora está completa", y la que un `orderBy` no
+     * determinista rompe primero.
+     */
+    it('pagina con limit y offset sin repetir ni saltear filas', async () => {
+      await sembrar(insumoId, [
+        { tipo: 'ENTRADA', cantidad: 1, createdAt: new Date('2026-03-01T10:00:00.000Z') },
+        { tipo: 'ENTRADA', cantidad: 2, createdAt: new Date('2026-03-02T10:00:00.000Z') },
+        { tipo: 'SALIDA', cantidad: 3, createdAt: new Date('2026-03-03T10:00:00.000Z') },
+        { tipo: 'SALIDA', cantidad: 4, createdAt: new Date('2026-03-04T10:00:00.000Z') },
+      ]);
+      const universo = await idsEnBase(insumoId);
+
+      const primera = await repo.listarPorInsumo(insumoId, { limit: 2, offset: 0 });
+      const segunda = await repo.listarPorInsumo(insumoId, { limit: 2, offset: 2 });
+
+      const idsPrimera = primera.movimientos.map((m) => m.id);
+      const idsSegunda = segunda.movimientos.map((m) => m.id);
+      expect(idsPrimera).toHaveLength(2);
+      expect(idsSegunda).toHaveLength(2);
+      expect(idsPrimera.filter((id) => idsSegunda.includes(id))).toEqual([]);
+      expect([...idsPrimera, ...idsSegunda].sort()).toEqual([...universo].sort());
+      expect(primera.total).toBe(4);
+      expect(segunda.total).toBe(4);
+    });
+
+    /**
+     * **El caso que justifica que el orden sea compuesto.** Los tres asientos
+     * comparten el MISMO `createdAt`, así que ordenar solo por fecha deja el
+     * desempate en manos del plan de ejecución: con `limit`/`offset`, cada
+     * página es una consulta independiente, y sobre una clave no única nada
+     * obliga a que dos de ellas desempaten igual — una fila puede repetirse en
+     * dos páginas y otra no aparecer en ninguna.
+     *
+     * Los ids se siembran EXPLÍCITOS y en orden ASCENDENTE a propósito, que es
+     * lo único que le da al caso poder de detección real. Con ids aleatorios,
+     * el orden físico de las tres filas coincide con el orden de inserción y
+     * una consulta sin desempate devuelve las tres igual, sin repetir ninguna:
+     * el caso pasaría en verde sobre la implementación defectuosa (verificado
+     * quitando el `{ id: 'desc' }`). Insertándolos ascendentes, el orden
+     * esperado —`id` DESC— es exactamente el INVERSO del físico, así que el
+     * assert de secuencia distingue las dos implementaciones sin depender del
+     * azar.
+     */
+    it('desempata por id descendente cuando el createdAt es el mismo, sin repetir ni perder filas', async () => {
+      const mismoInstante = new Date('2026-03-06T12:00:00.000Z');
+      // `randomUUID()` emite hexadecimal en minúsculas, y Postgres compara
+      // `uuid` byte a byte: el orden de `sort()` sobre estos strings es el
+      // mismo que el de la columna.
+      const idsAscendentes = [randomUUID(), randomUUID(), randomUUID()].sort();
+      await sembrar(
+        insumoId,
+        idsAscendentes.map((id, indice) => ({
+          tipo: 'ENTRADA' as TipoMovimientoInsumo,
+          cantidad: indice + 1,
+          id,
+          createdAt: mismoInstante,
+        })),
+      );
+
+      const recorridas: string[] = [];
+      for (let offset = 0; offset < idsAscendentes.length; offset += 1) {
+        const pagina = await repo.listarPorInsumo(insumoId, { limit: 1, offset });
+        expect(pagina.movimientos).toHaveLength(1);
+        recorridas.push(pagina.movimientos[0].id);
+      }
+
+      expect(recorridas).toEqual([...idsAscendentes].reverse());
+      expect(new Set(recorridas).size).toBe(idsAscendentes.length);
+    });
+
+    it('sin paginación devuelve todos los movimientos del insumo', async () => {
+      await sembrar(insumoId, [
+        { tipo: 'ENTRADA', cantidad: 1, createdAt: T_VIEJO },
+        { tipo: 'ENTRADA', cantidad: 2, createdAt: T_MEDIO },
+        { tipo: 'SALIDA', cantidad: 3, createdAt: T_NUEVO },
+      ]);
+
+      const pagina = await repo.listarPorInsumo(insumoId, undefined);
+
+      expect(pagina.movimientos).toHaveLength(3);
+      expect(pagina.total).toBe(3);
+    });
+
+    /**
+     * La trazabilidad del origen es el dato que motiva todo el listado: sin
+     * él, la bitácora no puede contestar de qué compra vino una entrada. Se
+     * siembra un asiento CON origen y otro SIN, y se assertea contra el
+     * `itemCompraId` del fixture —no contra un literal—, así el caso no puede
+     * quedar satisfecho por una implementación que devuelva un id fijo.
+     */
+    it('conserva el itemCompraId de cada asiento en el viaje de vuelta', async () => {
+      await sembrar(insumoId, [
+        { tipo: 'ENTRADA', cantidad: 6, createdAt: T_NUEVO, itemCompraId },
+        { tipo: 'SALIDA', cantidad: 2, createdAt: T_VIEJO },
+      ]);
+
+      const pagina = await repo.listarPorInsumo(insumoId);
+
+      expect(pagina.movimientos.map((m) => m.itemCompraId)).toEqual([itemCompraId, null]);
     });
   });
 });

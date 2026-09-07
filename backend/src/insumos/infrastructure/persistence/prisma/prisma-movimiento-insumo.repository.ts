@@ -20,6 +20,8 @@ import { TenantContext } from '../../../../shared/tenancy/tenant-context';
 import { TenantPrismaClient } from '../../../../shared/infrastructure/persistence/prisma-clients';
 import {
   IMovimientoInsumoRepository,
+  PaginaDeMovimientosInsumo,
+  PaginacionMovimientosInsumo,
   SumasPorTipoMovimiento,
 } from '../../../domain/ports/i-movimiento-insumo.repository';
 import { MovimientoInsumoEntity } from '../../../domain/entities/movimiento-insumo.entity';
@@ -130,6 +132,57 @@ export class PrismaMovimientoInsumoRepository implements IMovimientoInsumoReposi
    */
   async sumByTipo(insumoId: string): Promise<SumasPorTipoMovimiento> {
     return this.sumarPorTipo(this.client, insumoId);
+  }
+
+  /**
+   * Lista las FILAS de la bitácora de un insumo, paginadas y ordenadas. Ver el
+   * contrato completo —por qué no toma el lock, por qué el orden es compuesto
+   * y por qué el resultado es una FOTO— en
+   * `IMovimientoInsumoRepository.listarPorInsumo`.
+   *
+   * **Sin chequeo de `enTransaccion`, y eso es la implementación del
+   * contrato.** El que exige transacción es `lockAndSumByTipo()`, porque sin
+   * ella su advisory lock no protege nada. Acá no hay lock que proteger:
+   * pedirle una transacción a la pantalla que dibuja la ficha sería
+   * exactamente lo contrario de lo que este método existe para hacer.
+   *
+   * **Las dos consultas van en `Promise.all` y NO en `$transaction([...])`.**
+   * El motivo es el mismo que explica la cabecera de esta clase: el cliente
+   * activo puede ser ya un `Prisma.TransactionClient` —cuando el llamador
+   * corre dentro de `ITenantTransactionRunner.run()`— y ese cliente no expone
+   * `$transaction`, así que abrirla acá rompería el método justo en el camino
+   * en el que hoy funciona. El precio que se paga es real y se dice: bajo
+   * escritura concurrente, `total` puede corresponder a un instante levemente
+   * distinto del de las filas —un movimiento asentado entre las dos consultas
+   * cuenta en uno y no en el otro—. Para una bitácora que ya se declara una
+   * FOTO, un total desfasado por una fila es del mismo orden que la foto
+   * misma; perder la capacidad de listar dentro de una transacción no lo es.
+   *
+   * @param insumoId Insumo cuya bitácora se lista.
+   * @param paginacion Ventana a devolver. `undefined` trae la bitácora completa.
+   * @returns Los movimientos de la página ya ordenados, y el total del insumo sin paginar.
+   */
+  async listarPorInsumo(
+    insumoId: string,
+    paginacion?: PaginacionMovimientosInsumo,
+  ): Promise<PaginaDeMovimientosInsumo> {
+    const client = this.client;
+    const where = { insumoId };
+
+    const [filas, total] = await Promise.all([
+      client.movimientoInsumo.findMany({
+        where,
+        // `id` como segunda clave: `createdAt` sola no es única, y con
+        // `skip`/`take` un empate deja la partición en páginas a criterio del
+        // plan de ejecución. Ver el JSDoc del puerto.
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: paginacion?.limit,
+        skip: paginacion?.offset,
+      }),
+      client.movimientoInsumo.count({ where }),
+    ]);
+
+    return { movimientos: filas.map(MovimientoInsumoMapper.toDomain), total };
   }
 
   /**
