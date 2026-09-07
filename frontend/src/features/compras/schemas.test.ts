@@ -211,4 +211,56 @@ describe("schemas de compras — espejo de las reglas del backend", () => {
       if (!r.success) expect(r.error.issues[0].message).toBe("Ingresá un monto válido");
     });
   });
+
+  /**
+   * `insumoId` es espejo de `@IsOptional() @IsUUID()` en los dos DTO del ítem
+   * (`AgregarItemCompraHttpDto` y `EditarItemCompraHttpDto`).
+   *
+   * Va como `z.string().optional()` y NO como `.uuid()`, mismo criterio que
+   * `sectorId` en `crearCompraSchema`, que espeja los mismos dos decoradores: el
+   * único origen del valor es el `<select>` del catálogo, así que un id con forma
+   * inválida no es alcanzable desde el formulario y la regla de formato solo
+   * agregaría un mensaje que nadie puede disparar.
+   *
+   * Lo que sí importa es que el campo EXISTA en el schema: zod descarta las
+   * claves que no declara, así que sin él el insumo elegido se caía del payload
+   * en silencio y el ítem se guardaba sin vínculo.
+   */
+  describe("insumoId del ítem (espejo de @IsOptional @IsUUID)", () => {
+    it("agregarItemCompra conserva el insumoId elegido en el dato parseado", () => {
+      const r = agregarItemCompraSchema.safeParse({ ...ITEM_VALIDO, insumoId: "ins-1" });
+      expect(r.success).toBe(true);
+      if (r.success) expect(r.data.insumoId).toBe("ins-1");
+    });
+
+    it("agregarItemCompra acepta el ítem SIN insumo, porque el campo es opcional", () => {
+      const r = agregarItemCompraSchema.safeParse(ITEM_VALIDO);
+      expect(r.success).toBe(true);
+      if (r.success) expect(r.data.insumoId).toBeUndefined();
+    });
+
+    it("agregarItemCompra rechaza un insumoId que no es texto", () => {
+      const r = agregarItemCompraSchema.safeParse({ ...ITEM_VALIDO, insumoId: 5 });
+      expect(r.success).toBe(false);
+      if (!r.success) expect(r.error.issues[0].path).toEqual(["insumoId"]);
+    });
+
+    it("editarItemCompra conserva el insumoId elegido en el dato parseado", () => {
+      const r = editarItemCompraSchema.safeParse({ monto: 100, insumoId: "ins-1" });
+      expect(r.success).toBe(true);
+      if (r.success) expect(r.data.insumoId).toBe("ins-1");
+    });
+
+    it("editarItemCompra acepta la edición SIN insumo, porque el campo es opcional", () => {
+      const r = editarItemCompraSchema.safeParse({ monto: 100 });
+      expect(r.success).toBe(true);
+      if (r.success) expect(r.data.insumoId).toBeUndefined();
+    });
+
+    it("editarItemCompra rechaza un insumoId que no es texto", () => {
+      const r = editarItemCompraSchema.safeParse({ monto: 100, insumoId: 5 });
+      expect(r.success).toBe(false);
+      if (!r.success) expect(r.error.issues[0].path).toEqual(["insumoId"]);
+    });
+  });
 });

@@ -17,6 +17,7 @@ function buildItem(overrides: Partial<ItemCompra> = {}): ItemCompra {
     id: "item-1",
     compraId: COMPRA_ID,
     descripcion: "Insumo original",
+    insumoId: null,
     cantidad: 2,
     proveedor: "ACME",
     monto: 100,
@@ -270,5 +271,312 @@ describe("ItemEditDialog", () => {
     await user.click(screen.getByRole("button", { name: /guardar/i }));
 
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith(MENSAJE_BACKEND));
+  });
+
+  /**
+   * El insumo del ítem (insumos-entrega-3). Dos clases de defecto medidas en
+   * este repo se cruzan acá: el `<select>` con un valor fuera de catálogo y la
+   * sincronización de un diálogo que vive en una fila de tabla.
+   */
+  describe("insumo del ítem", () => {
+    const CATALOGO = [
+      {
+        id: "ins-1",
+        codigo: "TON-001",
+        nombre: "Tóner negro",
+        familiaId: "fam-1",
+        unidadMedidaId: "um-1",
+        stockMinimo: null,
+        activo: true,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
+      {
+        id: "ins-2",
+        codigo: "PAP-002",
+        nombre: "Papel A4",
+        familiaId: "fam-1",
+        unidadMedidaId: "um-1",
+        stockMinimo: null,
+        activo: false,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
+    ];
+
+    const SELECT_INSUMO = /insumo \(opcional\)/i;
+
+    function mockCatalogo() {
+      server.use(http.get("/api/insumos", () => HttpResponse.json(CATALOGO)));
+    }
+
+    function capturarPatch(): { body: Record<string, unknown> } {
+      const capturado: { body: Record<string, unknown> } = { body: {} };
+      server.use(
+        http.patch(`/api/compras/${COMPRA_ID}/items/item-1`, async ({ request }) => {
+          capturado.body = (await request.json()) as Record<string, unknown>;
+          return HttpResponse.json(buildItem());
+        }),
+      );
+      return capturado;
+    }
+
+    it("precarga el insumo que el ítem declara", async () => {
+      mockCatalogo();
+      renderWithProviders(<ItemEditDialog compraId={COMPRA_ID} item={buildItem({ insumoId: "ins-1" })} />, {
+        user: buildUser({ permisos: ["COMPRAS:MODIFICACION"] }),
+      });
+
+      await abrirDialog();
+
+      await waitFor(() => expect(screen.getByLabelText(SELECT_INSUMO)).toHaveValue("ins-1"));
+    });
+
+    it("el ítem sin insumo precarga «Sin insumo»", async () => {
+      mockCatalogo();
+      renderWithProviders(<ItemEditDialog compraId={COMPRA_ID} item={buildItem({ insumoId: null })} />, {
+        user: buildUser({ permisos: ["COMPRAS:MODIFICACION"] }),
+      });
+
+      await abrirDialog();
+
+      await screen.findByRole("option", { name: /TON-001 — Tóner negro/ });
+      expect(screen.getByLabelText(SELECT_INSUMO)).toHaveValue("");
+    });
+
+    it("cambiar el insumo lo manda en el PATCH", async () => {
+      mockCatalogo();
+      const capturado = capturarPatch();
+      renderWithProviders(<ItemEditDialog compraId={COMPRA_ID} item={buildItem({ insumoId: null })} />, {
+        user: buildUser({ permisos: ["COMPRAS:MODIFICACION"] }),
+      });
+
+      const user = await abrirDialog();
+      await screen.findByRole("option", { name: /TON-001 — Tóner negro/ });
+      await user.selectOptions(screen.getByLabelText(SELECT_INSUMO), "ins-1");
+      await user.click(screen.getByRole("button", { name: /guardar/i }));
+
+      await waitFor(() => expect(capturado.body.insumoId).toBe("ins-1"));
+    });
+
+    /**
+     * El `null` EXPLÍCITO es el que borra el vínculo: el PATCH es semántico y
+     * una clave ausente no toca el campo, así que mandar `undefined` dejaría al
+     * ítem con el insumo que el usuario acaba de sacar de la pantalla.
+     */
+    it("volver a «Sin insumo» manda insumoId en null explícito, no la clave ausente", async () => {
+      mockCatalogo();
+      const capturado = capturarPatch();
+      renderWithProviders(<ItemEditDialog compraId={COMPRA_ID} item={buildItem({ insumoId: "ins-1" })} />, {
+        user: buildUser({ permisos: ["COMPRAS:MODIFICACION"] }),
+      });
+
+      const user = await abrirDialog();
+      await waitFor(() => expect(screen.getByLabelText(SELECT_INSUMO)).toHaveValue("ins-1"));
+      await user.selectOptions(screen.getByLabelText(SELECT_INSUMO), "");
+      await user.click(screen.getByRole("button", { name: /guardar/i }));
+
+      await waitFor(() => expect(Object.keys(capturado.body)).toContain("insumoId"));
+      expect(capturado.body.insumoId).toBeNull();
+    });
+
+    /**
+     * El insumo DESHABILITADO sí viene en `GET /insumos` y el backend lo acepta
+     * (`validarInsumoElegible` sin `exigirHabilitado`). El fixture lo trae para
+     * que el assert de que sigue elegible pueda fallar de verdad.
+     */
+    it("el insumo deshabilitado se precarga marcado y sigue viajando en el PATCH", async () => {
+      mockCatalogo();
+      const capturado = capturarPatch();
+      renderWithProviders(<ItemEditDialog compraId={COMPRA_ID} item={buildItem({ insumoId: "ins-2" })} />, {
+        user: buildUser({ permisos: ["COMPRAS:MODIFICACION"] }),
+      });
+
+      const user = await abrirDialog();
+      await waitFor(() => expect(screen.getByLabelText(SELECT_INSUMO)).toHaveValue("ins-2"));
+      expect(screen.getByRole("option", { name: /PAP-002 — Papel A4 \(deshabilitado\)/ })).toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: /guardar/i }));
+
+      await waitFor(() => expect(capturado.body.insumoId).toBe("ins-2"));
+    });
+
+    /**
+     * Clase de defecto "select con valor fuera de catálogo": el insumo con baja
+     * lógica NO viene en `GET /insumos`. Sin la opción sintética, el `<select>`
+     * nativo cae en otra opción y el PATCH guarda algo distinto de lo que se ve.
+     * El catálogo del fixture está CARGADO y contiene otros dos insumos, así que
+     * el assert de que el valor no cambió puede fallar.
+     */
+    it("el insumo dado de baja del catálogo se sigue mostrando y no cae en otra opción", async () => {
+      mockCatalogo();
+      const capturado = capturarPatch();
+      renderWithProviders(<ItemEditDialog compraId={COMPRA_ID} item={buildItem({ insumoId: "ins-borrado" })} />, {
+        user: buildUser({ permisos: ["COMPRAS:MODIFICACION"] }),
+      });
+
+      const user = await abrirDialog();
+      await waitFor(() => expect(screen.getByLabelText(SELECT_INSUMO)).toHaveValue("ins-borrado"));
+      expect(screen.getByRole("option", { name: "Insumo eliminado del catálogo" })).toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: /guardar/i }));
+
+      await waitFor(() => expect(capturado.body.insumoId).toBe("ins-borrado"));
+    });
+
+    /**
+     * Hermano invertido del anterior: con el catálogo TODAVÍA sin resolver, la
+     * ausencia no prueba ninguna baja. Etiquetar ahí le mentiría al usuario
+     * sobre un insumo que puede seguir vigente.
+     */
+    it("con el catálogo sin resolver NO etiqueta el insumo como eliminado", async () => {
+      server.use(http.get("/api/insumos", () => new Promise(() => {})));
+      renderWithProviders(<ItemEditDialog compraId={COMPRA_ID} item={buildItem({ insumoId: "ins-borrado" })} />, {
+        user: buildUser({ permisos: ["COMPRAS:MODIFICACION"] }),
+      });
+
+      await abrirDialog();
+
+      await screen.findByLabelText(SELECT_INSUMO);
+      expect(screen.queryByRole("option", { name: "Insumo eliminado del catálogo" })).not.toBeInTheDocument();
+    });
+
+    /**
+     * Segundo camino de la misma clase de defecto: la opción existe, pero llega
+     * DESPUÉS de que el `<select>` montó. El `<select>` no controlado fija su
+     * valor una sola vez, así que sin reaplicar queda mostrando «Sin insumo»
+     * mientras el formulario guarda el insumo real.
+     */
+    it("el catálogo que resuelve después de abrir deja seleccionado el insumo del ítem", async () => {
+      let liberar: () => void = () => {};
+      const pendiente = new Promise<void>((resolve) => {
+        liberar = resolve;
+      });
+      server.use(
+        http.get("/api/insumos", async () => {
+          await pendiente;
+          return HttpResponse.json(CATALOGO);
+        }),
+      );
+      renderWithProviders(<ItemEditDialog compraId={COMPRA_ID} item={buildItem({ insumoId: "ins-1" })} />, {
+        user: buildUser({ permisos: ["COMPRAS:MODIFICACION"] }),
+      });
+
+      await abrirDialog();
+      await screen.findByLabelText(SELECT_INSUMO);
+      liberar();
+
+      await waitFor(() => expect(screen.getByLabelText(SELECT_INSUMO)).toHaveValue("ins-1"));
+    });
+
+    /**
+     * `asegurarInsumoReasignable` bloquea el cambio con `cantidadRecibida > 0`
+     * y responde 422 `INSUMO_DE_ITEM_NO_REASIGNABLE`. El control se deshabilita
+     * y el campo se OMITE del PATCH: una clave ausente no puede disparar el
+     * guard ni siquiera reenviando el mismo valor.
+     */
+    it("el ítem que ya recibió mercadería deshabilita el insumo y lo omite del PATCH", async () => {
+      mockCatalogo();
+      const capturado = capturarPatch();
+      const item = buildItem({
+        insumoId: "ins-1",
+        estadoAprobacion: "APROBADO",
+        cantidadOrdenada: 2,
+        cantidadRecibida: 2,
+      });
+      renderWithProviders(<ItemEditDialog compraId={COMPRA_ID} item={item} />, {
+        user: buildUser({ permisos: ["COMPRAS:MODIFICACION"] }),
+      });
+
+      const user = await abrirDialog();
+      await waitFor(() => expect(screen.getByLabelText(SELECT_INSUMO)).toBeDisabled());
+      expect(screen.getByText(/el ítem ya recibió mercadería/i)).toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: /guardar/i }));
+
+      await waitFor(() => expect(capturado.body.descripcion).toBe("Insumo original"));
+      expect(Object.keys(capturado.body)).not.toContain("insumoId");
+    });
+
+    /**
+     * Hermano invertido, y la precondición que se olvida: el congelamiento de
+     * `cantidad`/`monto`/`moneda` NO alcanza al insumo. Declararlo con el ítem
+     * ya APROBADO y todavía sin recibir es justo cuando hace falta, y el dominio
+     * lo permite — deshabilitar por `decidido` sería un control más estricto que
+     * la regla que espeja.
+     */
+    it("el ítem APROBADO pero sin recepción sí puede cambiar de insumo", async () => {
+      mockCatalogo();
+      const capturado = capturarPatch();
+      const item = buildItem({
+        insumoId: null,
+        estadoAprobacion: "APROBADO",
+        cantidadOrdenada: 2,
+        cantidadRecibida: 0,
+      });
+      renderWithProviders(<ItemEditDialog compraId={COMPRA_ID} item={item} />, {
+        user: buildUser({ permisos: ["COMPRAS:MODIFICACION"] }),
+      });
+
+      const user = await abrirDialog();
+      await screen.findByRole("option", { name: /TON-001 — Tóner negro/ });
+      expect(screen.getByLabelText(SELECT_INSUMO)).not.toBeDisabled();
+      await user.selectOptions(screen.getByLabelText(SELECT_INSUMO), "ins-1");
+      await user.click(screen.getByRole("button", { name: /guardar/i }));
+
+      await waitFor(() => expect(capturado.body.insumoId).toBe("ins-1"));
+    });
+
+    /**
+     * El diálogo vive en una fila de tabla y NO se desmonta al cerrarse: sin
+     * resincronizar al abrir, su snapshot inicial sobrevive toda la sesión.
+     */
+    it("abrir, cerrar, cambiar el ítem y reabrir muestra el insumo VIGENTE, no el del primer render", async () => {
+      mockCatalogo();
+      const { rerender } = renderWithProviders(
+        <ItemEditDialog compraId={COMPRA_ID} item={buildItem({ insumoId: "ins-1" })} />,
+        { user: buildUser({ permisos: ["COMPRAS:MODIFICACION"] }) },
+      );
+
+      const user = await abrirDialog();
+      await waitFor(() => expect(screen.getByLabelText(SELECT_INSUMO)).toHaveValue("ins-1"));
+
+      await user.keyboard("{Escape}");
+      await waitFor(() => expect(screen.queryByLabelText(SELECT_INSUMO)).not.toBeInTheDocument());
+
+      rerender(<ItemEditDialog compraId={COMPRA_ID} item={buildItem({ insumoId: "ins-2" })} />);
+      await user.click(screen.getByRole("button", { name: /editar ítem/i }));
+
+      expect(await screen.findByLabelText(SELECT_INSUMO)).toHaveValue("ins-2");
+    });
+
+    /**
+     * El mismo síntoma que el test anterior, pero aislando al `reset(defaults)`
+     * de la apertura: con el catálogo CAÍDO, `useReaplicarAlResolver` nunca
+     * corre —solo reaplica cuando la lista resolvió—, así que lo único que
+     * resincroniza el formulario es el `reset`. Sin él, el diálogo manda el
+     * insumo del PRIMER render, que ya no es el del ítem, y lo hace sin ningún
+     * error visible.
+     */
+    it("con el catálogo caído, reabrir manda el insumo VIGENTE en el PATCH y no el del primer render", async () => {
+      server.use(
+        http.get("/api/insumos", () => HttpResponse.json({ statusCode: 500, message: "Falló" }, { status: 500 })),
+      );
+      const capturado = capturarPatch();
+      const { rerender } = renderWithProviders(
+        <ItemEditDialog compraId={COMPRA_ID} item={buildItem({ insumoId: "ins-1" })} />,
+        { user: buildUser({ permisos: ["COMPRAS:MODIFICACION"] }) },
+      );
+
+      const user = await abrirDialog();
+      await screen.findByLabelText(SELECT_INSUMO);
+
+      await user.keyboard("{Escape}");
+      await waitFor(() => expect(screen.queryByLabelText(SELECT_INSUMO)).not.toBeInTheDocument());
+
+      rerender(<ItemEditDialog compraId={COMPRA_ID} item={buildItem({ insumoId: "ins-2" })} />);
+      await user.click(screen.getByRole("button", { name: /editar ítem/i }));
+      await screen.findByLabelText(SELECT_INSUMO);
+      await user.click(screen.getByRole("button", { name: /guardar/i }));
+
+      await waitFor(() => expect(capturado.body.insumoId).toBe("ins-2"));
+    });
   });
 });
