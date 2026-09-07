@@ -22,6 +22,35 @@ import { TipoMovimientoInsumo } from '../entities/tipo-movimiento-insumo';
 export type SumasPorTipoMovimiento = Readonly<Record<TipoMovimientoInsumo, number>>;
 
 /**
+ * PaginacionMovimientosInsumo — cuánto de la bitácora se pide y desde dónde.
+ *
+ * Mismo molde que `CompraListFiltros`: los dos campos son opcionales y su
+ * ausencia significa algo distinto en cada uno, así que se dice cuál es cuál
+ * en vez de dejarlo librado a la implementación.
+ */
+export interface PaginacionMovimientosInsumo {
+  /** Cantidad máxima de movimientos a retornar. `undefined` = sin límite. */
+  limit?: number;
+  /** Cantidad de movimientos a saltear. `undefined` = 0. */
+  offset?: number;
+}
+
+/**
+ * PaginaDeMovimientosInsumo — las filas pedidas MÁS el total del universo
+ * completo del insumo, ignorando `limit`/`offset`.
+ *
+ * Los dos valores van juntos porque la pantalla los necesita juntos: con las
+ * filas sola no se sabe cuántas páginas hay, y `movimientos.length` responde
+ * el tamaño de la página, nunca el del universo.
+ */
+export interface PaginaDeMovimientosInsumo {
+  /** Movimientos de la página, YA ordenados (createdAt DESC, id DESC). */
+  movimientos: MovimientoInsumoEntity[];
+  /** Total de movimientos del insumo, sin `limit`/`offset`. */
+  total: number;
+}
+
+/**
  * IMovimientoInsumoRepository — puerto de persistencia de la bitácora de
  * existencias de los insumos del tenant.
  *
@@ -116,6 +145,59 @@ export interface IMovimientoInsumoRepository {
    * @returns Las sumas por tipo, con `0` en los tipos sin movimientos. Todos los tipos en cero si el insumo no tiene bitácora.
    */
   sumByTipo(insumoId: string): Promise<SumasPorTipoMovimiento>;
+
+  /**
+   * Devuelve las FILAS de la bitácora de un insumo, paginadas y ordenadas, con
+   * el total del universo completo.
+   *
+   * Es la única lectura del puerto que trae asientos: las otras dos devuelven
+   * agregados —`SUM(cantidad) GROUP BY tipo`— y contestan "cuánto hay", nunca
+   * "qué pasó". La pregunta que responde este método es la de la ficha del
+   * insumo: qué movimientos hubo, cuándo, de qué tipo y —cuando la entrada
+   * vino de una recepción— de qué ítem de compra.
+   *
+   * **Agregar una LECTURA no contradice el append-only del puerto.** Lo que
+   * hace append-only a esta bitácora es la ausencia de `update`, `delete`,
+   * `save` y `guardar` en la firma: es una restricción sobre la ESCRITURA.
+   * Leer las filas ya escritas no reescribe ningún hecho asentado, igual que
+   * el `ALTER TABLE ADD COLUMN` nullable que la tabla ya recibió.
+   *
+   * **NO toma el advisory lock y NO exige transacción**, exactamente como
+   * `sumByTipo()`. Es una lectura de pantalla: tomar el lock para dibujar una
+   * tabla haría esperar a quien está sacando cosas del depósito, y ese es el
+   * intercambio equivocado —la tabla puede mostrarse un instante vieja, el
+   * depósito no puede quedar trabado—. La contracara, dicha y no escondida:
+   * **el resultado es una FOTO**. Otra transacción puede asentar un movimiento
+   * del mismo insumo un instante después, y esta lista no lo va a incluir. Por
+   * eso NO sirve para decidir nada sobre el stock: para eso está
+   * `lockAndSumByTipo()` dentro de la transacción que escribe.
+   *
+   * Participa de la transacción en curso si la hay: no exigirla no es
+   * prohibirla.
+   *
+   * **El orden es `createdAt DESC, id DESC`, y el desempate por `id` no es
+   * prolijidad: es lo que hace que la paginación no mienta.** Con `limit` y
+   * `offset`, Postgres resuelve cada página con una consulta independiente, y
+   * si la clave de orden NO ES ÚNICA el motor queda libre de desempatar de
+   * distinta forma en cada una. Dos movimientos con el mismo `createdAt`
+   * —dos asientos de la misma recepción, escritos en la misma transacción—
+   * pueden entonces aparecer los dos en la página 1 y ninguno en la página 2,
+   * o repetirse en las dos. El `id` es un UUIDv7 generado por `BaseEntity`,
+   * único y monótono, así que agregarlo como segunda clave vuelve el orden
+   * total y la partición en páginas determinista.
+   *
+   * El índice `@@index([insumoId, createdAt])` del schema ya sirve a esta
+   * consulta: existe declaradamente para "la bitácora de la ficha, ordenada
+   * por fecha", así que no hace falta índice nuevo.
+   *
+   * @param insumoId Insumo cuya bitácora se lista.
+   * @param paginacion Ventana a devolver. `undefined` trae la bitácora completa.
+   * @returns Los movimientos de la página ya ordenados, y el total del insumo sin paginar. Lista vacía y `total` en 0 si el insumo no tiene bitácora.
+   */
+  listarPorInsumo(
+    insumoId: string,
+    paginacion?: PaginacionMovimientosInsumo,
+  ): Promise<PaginaDeMovimientosInsumo>;
 }
 
 /** Token de inyección de dependencias para IMovimientoInsumoRepository en NestJS. */
