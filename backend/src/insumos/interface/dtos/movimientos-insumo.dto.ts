@@ -163,6 +163,13 @@ export class RegistrarAjusteInsumoHttpDto extends RegistrarMovimientoInsumoHttpD
  * esa columna: publicarlo inventaría un dato de "última modificación" sobre una
  * tabla append-only, donde un movimiento no se edita nunca —se corrige con otro
  * movimiento—.
+ *
+ * **Con `itemCompraId`, y por una razón simétrica** (insumos-entrega-3): la
+ * entrada que genera la recepción de una compra va deliberadamente SIN
+ * `motivo`, porque el origen ya está dicho con un dato estructurado y con FK en
+ * vez de una frase. Ese dato es este campo; sin publicarlo, un asiento nacido
+ * de una recepción se ve exactamente igual que una carga manual sin motivo y la
+ * trazabilidad que la base guarda no llega nunca a quien la necesita.
  */
 export interface MovimientoInsumoResponseDto {
   id: string;
@@ -173,6 +180,8 @@ export interface MovimientoInsumoResponseDto {
   motivo: string | null;
   equipoId: string | null;
   sectorId: string | null;
+  /** Ítem de compra cuya recepción originó el asiento; `null` si la carga fue manual. */
+  itemCompraId: string | null;
   createdAt: string;
 }
 
@@ -209,6 +218,7 @@ export function toMovimientoInsumoResponseDto(
     motivo: entidad.motivo,
     equipoId: entidad.equipoId,
     sectorId: entidad.sectorId,
+    itemCompraId: entidad.itemCompraId,
     createdAt: entidad.createdAt.toISOString(),
   };
 }

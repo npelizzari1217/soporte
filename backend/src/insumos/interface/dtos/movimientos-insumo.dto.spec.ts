@@ -19,6 +19,7 @@ const INSUMO_ID = '11111111-1111-4111-8111-111111111111';
 const USUARIO_ID = '22222222-2222-4222-8222-222222222222';
 const EQUIPO_ID = '33333333-3333-4333-8333-333333333333';
 const SECTOR_ID = '44444444-4444-4444-8444-444444444444';
+const ITEM_COMPRA_ID = '55555555-5555-4555-8555-555555555555';
 
 /** Body mínimo válido de una entrada o una salida. */
 function bodyMovimiento(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -354,6 +355,18 @@ describe('toMovimientoInsumoResponseDto', () => {
     return resultado.getValue();
   }
 
+  /** Entrada nacida de la recepción de un ítem de compra: con origen y SIN motivo. */
+  function construirEntradaDeRecepcion(): MovimientoInsumoEntity {
+    const resultado = MovimientoInsumoEntity.create({
+      insumoId: INSUMO_ID,
+      tipo: 'ENTRADA',
+      cantidad: 4,
+      usuarioId: USUARIO_ID,
+      itemCompraId: ITEM_COMPRA_ID,
+    });
+    return resultado.getValue();
+  }
+
   it('mapea el asiento completo, con el motivo ya normalizado y la fecha en ISO-8601', () => {
     const movimiento = construirMovimiento();
 
@@ -368,8 +381,25 @@ describe('toMovimientoInsumoResponseDto', () => {
       motivo: 'Conteo físico del 06/09',
       equipoId: EQUIPO_ID,
       sectorId: SECTOR_ID,
+      itemCompraId: null,
       createdAt: movimiento.createdAt.toISOString(),
     });
+  });
+
+  /**
+   * El origen es lo ÚNICO que distingue una entrada nacida de una recepción de
+   * una carga manual: la del enganche va deliberadamente SIN `motivo`, así que
+   * sin este campo las dos se ven idénticas del lado del consumidor. El fixture
+   * SÍ trae el origen —no es un assert de ausencia sobre un fixture vacío— y su
+   * hermano invertido es el asiento manual de arriba, que lo trae en `null`.
+   */
+  it('publica el itemCompraId de la entrada que nació de una recepción de compra', () => {
+    const movimiento = construirEntradaDeRecepcion();
+
+    const dto = toMovimientoInsumoResponseDto(movimiento);
+
+    expect(dto.itemCompraId).toBe(ITEM_COMPRA_ID);
+    expect(dto.motivo).toBeNull();
   });
 
   /**
