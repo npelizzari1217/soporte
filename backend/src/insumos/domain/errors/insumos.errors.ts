@@ -3,8 +3,14 @@ import { DomainError } from '../../../shared/domain/result';
 
 /**
  * InsumoNoEncontradoError — el `id` de insumo indicado no existe en el
- * catálogo del tenant.
- * → HTTP 404 en la capa de presentación.
+ * catálogo del tenant, o tiene baja lógica.
+ *
+ * **Su código HTTP depende de dónde venía el id, y no es una inconsistencia.**
+ * En `InsumosController` es 404, porque ahí el insumo ES el recurso de la URL.
+ * En `ComprasController` —donde llega como el insumo declarado para un ítem— es
+ * 422, porque es un valor del BODY: un 404 sobre `POST /compras/:id/items` se
+ * leería como "la compra no existe" y mandaría a mirar el lugar equivocado.
+ * Los dos controllers lo listan explícito en su mapeo.
  */
 export class InsumoNoEncontradoError extends DomainError {
   readonly code = 'INSUMO_NO_ENCONTRADO';

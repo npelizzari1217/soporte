@@ -35,6 +35,8 @@ import { InsumosModule } from '../insumos/insumos.module';
 import { ISectorRepository } from '../sectores/domain/ports/i-sector.repository';
 import { RegistrarEntradaInsumoUseCase } from '../insumos/application/use-cases/registrar-entrada-insumo.use-case';
 import { MovimientoInsumoEntity } from '../insumos/domain/entities/movimiento-insumo.entity';
+import { InsumoEntity } from '../insumos/domain/entities/insumo.entity';
+import { IInsumoRepository } from '../insumos/domain/ports/i-insumo.repository';
 import {
   TENANT_TX_RUNNER,
   ITenantTransactionRunner,
@@ -109,6 +111,7 @@ function getFactoryProvider(token: unknown): FactoryProvider {
 const COMPRA_ID = 'compra-fixture-1';
 const ITEM_ID = 'item-fixture-1';
 const FECHA_BASE = new Date('2026-01-01');
+const INSUMO_ID = '00000000-0000-4000-8000-0000000000aa';
 
 function compraProps(overrides: Partial<CompraProps> = {}): CompraProps {
   return {
@@ -177,6 +180,35 @@ function fakeTxRunner(): ITenantTransactionRunner {
 
 function fakeOperacionRepo(): Pick<IOperacionCompraRepository, 'crear'> & { crear: Mock } {
   return { crear: vi.fn().mockResolvedValue(undefined) };
+}
+
+/**
+ * Catálogo de insumos que SÍ resuelve el id que le piden. Un doble que
+ * devolviera `null` dejaría verde el wiring del alta y la edición del ítem sin
+ * haber probado que el segundo argumento del factory llega a destino: el caso
+ * de uso cortaría con `InsumoNoEncontradoError` y el test nunca lo notaría.
+ */
+function fakeCatalogoInsumos(): Pick<IInsumoRepository, 'findById'> {
+  return {
+    findById: vi.fn().mockResolvedValue(
+      InsumoEntity.reconstitute(
+        {
+          codigo: 'TON-001',
+          nombre: 'Tóner negro',
+          familiaId: 'familia-1',
+          unidadMedidaId: 'unidad-1',
+          stockMinimo: null,
+          activo: true,
+          codigosAlternativos: [],
+          compatibilidad: [],
+        },
+        INSUMO_ID,
+        FECHA_BASE,
+        FECHA_BASE,
+        null,
+      ),
+    ),
+  };
 }
 
 /**
@@ -350,13 +382,17 @@ describe('ComprasModule wiring (PR-22, sdd/redisenio-modulo-compras)', () => {
         guardarItem: vi.fn().mockResolvedValue(undefined),
       };
 
+      const catalogoInsumos = fakeCatalogoInsumos();
       const provider = getFactoryProvider(AgregarItemCompraUseCase);
       const instance = provider.useFactory(
         compraRepo,
+        catalogoInsumos,
         registrarOperacion,
         fakeTxRunner(),
       ) as AgregarItemCompraUseCase;
 
+      // Con `insumoId` declarado: es lo que hace pasar el segundo argumento del
+      // factory por el camino real en vez de dejarlo inerte en la firma.
       const result = await instance.execute({
         compraId: COMPRA_ID,
         usuarioId: 'user-1',
@@ -367,9 +403,11 @@ describe('ComprasModule wiring (PR-22, sdd/redisenio-modulo-compras)', () => {
         moneda: 'ARS',
         fechaCotizacion: FECHA_BASE,
         observaciones: null,
+        insumoId: INSUMO_ID,
       });
 
       expect(result.isFail()).toBe(false);
+      expect(catalogoInsumos.findById).toHaveBeenCalledWith(INSUMO_ID);
       expect(operacionRepo.crear).toHaveBeenCalledTimes(1);
       expect(operacionRepo.crear).toHaveBeenCalledWith(
         expect.objectContaining({ tipo: 'ITEM_AGREGADO' }),
@@ -386,9 +424,11 @@ describe('ComprasModule wiring (PR-22, sdd/redisenio-modulo-compras)', () => {
         guardarItem: vi.fn().mockResolvedValue(undefined),
       };
 
+      const catalogoInsumos = fakeCatalogoInsumos();
       const provider = getFactoryProvider(EditarItemCompraUseCase);
       const instance = provider.useFactory(
         compraRepo,
+        catalogoInsumos,
         registrarOperacion,
         fakeTxRunner(),
       ) as EditarItemCompraUseCase;
@@ -398,9 +438,11 @@ describe('ComprasModule wiring (PR-22, sdd/redisenio-modulo-compras)', () => {
         itemId: ITEM_ID,
         usuarioId: 'user-1',
         descripcion: 'Notebook Dell Latitude (editado)',
+        insumoId: INSUMO_ID,
       });
 
       expect(result.isFail()).toBe(false);
+      expect(catalogoInsumos.findById).toHaveBeenCalledWith(INSUMO_ID);
       expect(operacionRepo.crear).toHaveBeenCalledTimes(1);
       expect(operacionRepo.crear).toHaveBeenCalledWith(
         expect.objectContaining({ tipo: 'ITEM_EDITADO' }),

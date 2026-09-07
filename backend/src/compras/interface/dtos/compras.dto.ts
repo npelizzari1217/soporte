@@ -118,6 +118,26 @@ export class AgregarItemCompraHttpDto {
   descripcion!: string;
 
   /**
+   * Insumo del catálogo que este ítem compra (insumos-entrega-3). OPCIONAL: el
+   * ítem de texto libre sigue siendo legítimo y es la enorme mayoría de lo
+   * cargado hasta hoy. Declararlo es lo que hace que registrar la recepción
+   * sume el stock solo.
+   *
+   * El `@IsUUID` no es una formalidad: el campo viaja en el BODY, así que
+   * ningún `ParseUUIDPipe` lo alcanza. Sin él, un id crudo llega a Prisma
+   * contra una columna `@db.Uuid`, Postgres tira `22P02` y el usuario se come
+   * un 500 en vez del 400 que nombra el campo. Mismo criterio que `equipoId` en
+   * `movimientos-insumo.dto.ts`.
+   *
+   * Que el insumo EXISTA de verdad no lo decide este decorador: lo verifica
+   * `AgregarItemCompraUseCase` contra el catálogo, porque la forma del id no
+   * dice nada de la fila.
+   */
+  @IsOptional()
+  @IsUUID()
+  insumoId?: string | null;
+
+  /**
    * Cubre el throw plano `ItemCompraEntity.validarCamposBase`: "cantidad
    * debe ser mayor a 0". `@Min(0.01)` es el equivalente exacto de `> 0`
    * dado `maxDecimalPlaces: 2` (`Decimal(10,2)`, ADR-C3): el menor valor
@@ -161,6 +181,22 @@ export class EditarItemCompraHttpDto {
   @IsString()
   @MinLength(1)
   descripcion?: string;
+
+  /**
+   * Insumo del catálogo que este ítem compra (insumos-entrega-3), con las TRES
+   * posibilidades del PATCH distinguidas: ausente no toca el vínculo, un UUID
+   * lo asigna o lo cambia, y un `null` EXPLÍCITO lo borra. `@IsOptional()` deja
+   * pasar el nulo a propósito — borrar el vínculo es una operación legítima,
+   * no un valor inválido—; quién puede hacerlo y cuándo lo decide
+   * `ItemCompraEntity.actualizar()` con su guard de reasignación, que bloquea
+   * el cambio en cuanto el ítem recibió mercadería.
+   *
+   * Ver `AgregarItemCompraHttpDto.insumoId` para por qué el `@IsUUID` importa
+   * y por qué la existencia se verifica en la capa de aplicación.
+   */
+  @IsOptional()
+  @IsUUID()
+  insumoId?: string | null;
 
   /** Si se provee, cubre el mismo throw plano que `AgregarItemCompraHttpDto.cantidad`. */
   @IsOptional()
@@ -430,6 +466,14 @@ export interface ItemCompraResponseDto {
   id: string;
   compraId: string;
   descripcion: string;
+  /**
+   * Insumo del catálogo que el ítem declara, o `null` si es de texto libre
+   * (insumos-entrega-3). Se publica porque sin él quien lo declara no puede
+   * verlo después: el formulario de edición no tendría de dónde precargar el
+   * valor vigente, y la pantalla no podría distinguir el ítem que va a mover
+   * stock del que no.
+   */
+  insumoId: string | null;
   cantidad: number;
   proveedor: string;
   monto: number;
@@ -462,6 +506,7 @@ export function toItemCompraResponseDto(item: ItemCompraEntity): ItemCompraRespo
     id: item.id,
     compraId: item.compraId,
     descripcion: item.descripcion,
+    insumoId: item.insumoId,
     cantidad: item.cantidad,
     proveedor: item.proveedor,
     monto: item.monto,

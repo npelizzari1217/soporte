@@ -271,6 +271,9 @@ describe('Compras e2e — contrato HTTP real de las 16 rutas (cierra W-B/W-A del
   const admin = new PostgresAdminService(MASTER_TEST_URL);
 
   let cicloActivoId: string;
+  /** Familia y unidad del catálogo de insumos: las FK que todo insumo necesita. */
+  let familiaInsumoId: string;
+  let unidadMedidaId: string;
 
   beforeAll(async () => {
     if (!process.env.DATABASE_URL_MASTER) {
@@ -299,6 +302,19 @@ describe('Compras e2e — contrato HTTP real de las 16 rutas (cierra W-B/W-A del
       },
     });
     cicloActivoId = cicloActivo.id;
+
+    // Catálogo mínimo de insumos (insumos-entrega-3): se siembra directo en el
+    // tenant y no por HTTP porque su ABM está detrás de `AdminClienteGuard`,
+    // un modelo de autorización distinto del que esta suite ejercita. Es el
+    // mismo criterio con el que el ciclo activo se crea a mano acá arriba.
+    const familia = await tenantClient.familiaInsumo.create({
+      data: { codigo: `FAM-E2E-${randomBytes(3).toString('hex')}`, nombre: 'Familia E2E' },
+    });
+    familiaInsumoId = familia.id;
+    const unidad = await tenantClient.unidadMedida.create({
+      data: { codigo: `UM-E2E-${randomBytes(3).toString('hex')}`, nombre: 'Unidad E2E' },
+    });
+    unidadMedidaId = unidad.id;
 
     const moduleRef: TestingModule = await Test.createTestingModule({
       imports: [TestHarnessModule],
@@ -463,6 +479,79 @@ describe('Compras e2e — contrato HTTP real de las 16 rutas (cierra W-B/W-A del
       fechaCotizacion: '2026-06-01',
       ...overrides,
     };
+  }
+
+  /**
+   * Insumo NUEVO en el catálogo del tenant, uno por caso. Uno compartido haría
+   * que los movimientos de un test se sumaran a los del siguiente y las
+   * aserciones de conteo pasarían por la razón equivocada — el `beforeEach`
+   * trunca master, no el tenant.
+   */
+  async function crearInsumoEnCatalogo(activo = true): Promise<string> {
+    const insumo = await tenantClient.insumo.create({
+      data: {
+        codigo: `INS-E2E-${randomBytes(4).toString('hex').toUpperCase()}`,
+        nombre: 'Tóner negro E2E',
+        familiaId: familiaInsumoId,
+        unidadMedidaId,
+        activo,
+      },
+    });
+    return insumo.id;
+  }
+
+  /** Asientos de la bitácora de existencias de un insumo, del más viejo al más nuevo. */
+  async function movimientosDe(
+    insumoId: string,
+  ): Promise<{ tipo: string; cantidad: number; itemCompraId: string | null }[]> {
+    const filas = await tenantClient.movimientoInsumo.findMany({
+      where: { insumoId },
+      orderBy: { createdAt: 'asc' },
+    });
+    return filas.map((fila) => ({
+      tipo: fila.tipo,
+      cantidad: Number(fila.cantidad),
+      itemCompraId: fila.itemCompraId,
+    }));
+  }
+
+  /** Compra con UN ítem aprobado y su orden emitida: el estado desde el que se recibe. */
+  async function compraConItemListoParaRecibir(
+    token: string,
+    cantidad: number,
+    itemOverrides: Record<string, unknown> = {},
+  ): Promise<{ compraId: string; itemId: string }> {
+    const crear = await httpPost<CompraDetalleResponseDto>(
+      `${baseUrl}/compras`,
+      buildCrearCompraDto(),
+      bearer(token),
+    );
+    expect(crear.status).toBe(201);
+    const compraId = crear.data.id;
+
+    const agregar = await httpPost<CompraDetalleResponseDto>(
+      `${baseUrl}/compras/${compraId}/items`,
+      buildAgregarItemDto(cantidad, itemOverrides),
+      bearer(token),
+    );
+    expect(agregar.status).toBe(201);
+    const itemId = agregar.data.items[0].id;
+
+    expect(
+      (await httpPost(`${baseUrl}/compras/${compraId}/items/${itemId}/aprobar`, {}, bearer(token)))
+        .status,
+    ).toBe(200);
+    expect(
+      (
+        await httpPost(
+          `${baseUrl}/compras/${compraId}/items/${itemId}/registrar-orden`,
+          { cantidadOrdenada: cantidad },
+          bearer(token),
+        )
+      ).status,
+    ).toBe(200);
+
+    return { compraId, itemId };
   }
 
   // ─── Requisito 1 — Existencia y forma de las 13 rutas (paths LITERALES) ──
@@ -981,6 +1070,170 @@ describe('Compras e2e — contrato HTTP real de las 16 rutas (cierra W-B/W-A del
   });
 
   // ─── Sanity ───────────────────────────────────────────────────────────────
+
+  describe('insumos-entrega-3 — el ítem declara su insumo y recibir sube el stock', () => {
+    const PERMISOS = [
+      'COMPRAS:ALTAS',
+      'COMPRAS:MODIFICACION',
+      'COMPRAS:APROBACION',
+      'COMPRAS:LECTURA',
+    ];
+
+    /**
+     * El camino completo por HTTP: declarar el insumo al crear el ítem y ver
+     * la bitácora de existencias crecer sola al recibir, sin que nadie cargue
+     * un movimiento aparte. La segunda recepción prueba además que se emite
+     * por DELTA: el acumulado pasa de 4 a 10 y el asiento nuevo es de 6, no de
+     * 10 — un asiento por el acumulado duplicaría el stock.
+     */
+    it('declarar el insumo y registrar la recepción asienta la ENTRADA sola, por delta y con el ítem como origen', async () => {
+      const actor = await crearActorConPermisos(PERMISOS);
+      const insumoId = await crearInsumoEnCatalogo();
+      const { compraId, itemId } = await compraConItemListoParaRecibir(actor.accessToken, 10, {
+        insumoId,
+      });
+
+      const detalle = await httpGet<CompraDetalleResponseDto>(
+        `${baseUrl}/compras/${compraId}`,
+        bearer(actor.accessToken),
+      );
+      expect(detalle.status).toBe(200);
+      expect(detalle.data.items[0].insumoId).toBe(insumoId);
+
+      const primera = await httpPost<ItemCompraResponseDto>(
+        `${baseUrl}/compras/${compraId}/items/${itemId}/registrar-recepcion`,
+        { cantidadRecibida: 4 },
+        bearer(actor.accessToken),
+      );
+      expect(primera.status).toBe(200);
+      expect(primera.data.cantidadRecibida).toBe(4);
+      expect(await movimientosDe(insumoId)).toEqual([
+        { tipo: 'ENTRADA', cantidad: 4, itemCompraId: itemId },
+      ]);
+
+      const segunda = await httpPost<ItemCompraResponseDto>(
+        `${baseUrl}/compras/${compraId}/items/${itemId}/registrar-recepcion`,
+        { cantidadRecibida: 10 },
+        bearer(actor.accessToken),
+      );
+      expect(segunda.status).toBe(200);
+      expect(await movimientosDe(insumoId)).toEqual([
+        { tipo: 'ENTRADA', cantidad: 4, itemCompraId: itemId },
+        { tipo: 'ENTRADA', cantidad: 6, itemCompraId: itemId },
+      ]);
+    });
+
+    /**
+     * Hermano invertido del anterior, y el que protege a los ítems ya
+     * cargados: sin insumo declarado la recepción tiene que comportarse
+     * exactamente como antes de esta entrega. El insumo del fixture existe y
+     * queda en cero movimientos — no es un assert de ausencia sobre una tabla
+     * vacía, porque el caso hermano prueba que ese mismo camino SÍ asienta.
+     */
+    it('el ítem de texto libre, sin insumo, se recibe igual que siempre y no mueve ningún stock', async () => {
+      const actor = await crearActorConPermisos(PERMISOS);
+      const insumoId = await crearInsumoEnCatalogo();
+      const { compraId, itemId } = await compraConItemListoParaRecibir(actor.accessToken, 10);
+
+      const recibir = await httpPost<ItemCompraResponseDto>(
+        `${baseUrl}/compras/${compraId}/items/${itemId}/registrar-recepcion`,
+        { cantidadRecibida: 10 },
+        bearer(actor.accessToken),
+      );
+      expect(recibir.status).toBe(200);
+      expect(recibir.data.cantidadRecibida).toBe(10);
+      expect(recibir.data.insumoId).toBeNull();
+      expect(await movimientosDe(insumoId)).toEqual([]);
+    });
+
+    /**
+     * Decisión 5 del diseño, por HTTP: el stock ya sumado quedaría contado en
+     * el insumo viejo. Lo que se verifica acá y ningún unit test puede es que
+     * el error salga como 422 con su mensaje y no como el 500 que daría un
+     * `DomainError` sin mapear.
+     */
+    it('reasignar el insumo de un ítem que ya recibió da 422 con su mensaje, nunca 500, y no toca el vínculo', async () => {
+      const actor = await crearActorConPermisos(PERMISOS);
+      const insumoId = await crearInsumoEnCatalogo();
+      const otroInsumoId = await crearInsumoEnCatalogo();
+      const { compraId, itemId } = await compraConItemListoParaRecibir(actor.accessToken, 10, {
+        insumoId,
+      });
+      expect(
+        (
+          await httpPost(
+            `${baseUrl}/compras/${compraId}/items/${itemId}/registrar-recepcion`,
+            { cantidadRecibida: 10 },
+            bearer(actor.accessToken),
+          )
+        ).status,
+      ).toBe(200);
+
+      const reasignar = await httpPatch<{ message: string }>(
+        `${baseUrl}/compras/${compraId}/items/${itemId}`,
+        { insumoId: otroInsumoId },
+        bearer(actor.accessToken),
+      );
+
+      expect(reasignar.status).toBe(422);
+      expect(reasignar.data.message).toContain('ya recibió mercadería');
+
+      const detalle = await httpGet<CompraDetalleResponseDto>(
+        `${baseUrl}/compras/${compraId}`,
+        bearer(actor.accessToken),
+      );
+      expect(detalle.data.items[0].insumoId).toBe(insumoId);
+      expect(await movimientosDe(otroInsumoId)).toEqual([]);
+    });
+
+    /**
+     * Sin la verificación contra el catálogo, este id llega al `INSERT`, la FK
+     * lo rechaza con `P2003` y el filtro de Prisma contesta 409 "la operación
+     * afecta datos relacionados", que no dice cuál id está mal. El assert es
+     * de contenido justamente para distinguir un 422 del otro.
+     */
+    it('declarar un insumoId inexistente da 422 nombrando el id, no el 409 genérico de la FK', async () => {
+      const actor = await crearActorConPermisos(PERMISOS);
+      const inexistente = '00000000-0000-4000-8000-0000000000ff';
+
+      const crear = await httpPost<CompraDetalleResponseDto>(
+        `${baseUrl}/compras`,
+        buildCrearCompraDto(),
+        bearer(actor.accessToken),
+      );
+      const agregar = await httpPost<{ message: string }>(
+        `${baseUrl}/compras/${crear.data.id}/items`,
+        buildAgregarItemDto(10, { insumoId: inexistente }),
+        bearer(actor.accessToken),
+      );
+
+      expect(agregar.status).toBe(422);
+      expect(agregar.data.message).toContain(inexistente);
+
+      const detalle = await httpGet<CompraDetalleResponseDto>(
+        `${baseUrl}/compras/${crear.data.id}`,
+        bearer(actor.accessToken),
+      );
+      expect(detalle.data.items).toHaveLength(0);
+    });
+
+    it('un insumoId que ni siquiera es UUID lo rechaza el borde con 400, sin llegar a la columna @db.Uuid', async () => {
+      const actor = await crearActorConPermisos(PERMISOS);
+      const crear = await httpPost<CompraDetalleResponseDto>(
+        `${baseUrl}/compras`,
+        buildCrearCompraDto(),
+        bearer(actor.accessToken),
+      );
+
+      const agregar = await httpPost(
+        `${baseUrl}/compras/${crear.data.id}/items`,
+        buildAgregarItemDto(10, { insumoId: 'no-es-uuid' }),
+        bearer(actor.accessToken),
+      );
+
+      expect(agregar.status).toBe(400);
+    });
+  });
 
   it('sanity: DATABASE_URL_MASTER apunta a una DB *_test y el tenant es efímero *_test', () => {
     expect(MASTER_TEST_URL).toMatch(/_test$/);

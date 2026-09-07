@@ -1,4 +1,5 @@
 import { BaseEntity } from '../../../shared/domain/base-entity';
+import { esElMismoId } from '../../../shared/domain/identidad-uuid';
 import { enCentesimas } from '../../../shared/domain/centesimas';
 import { DomainError, Result } from '../../../shared/domain/result';
 import {
@@ -515,12 +516,19 @@ export class ItemCompraEntity extends BaseEntity<ItemCompraProps> {
    * mismo `insumoId` no reasigna nada. Es lo que permite que un formulario que
    * manda el shape completo edite la descripción de un ítem ya recibido.
    *
+   * La igualdad se pregunta con `esElMismoId` y NO con `===`: la columna es
+   * `uuid`, y para Postgres `9F1B…` y `9f1b…` son la misma fila. Con la
+   * comparación cruda, un formulario que reenviara el mismo insumo en otra
+   * capitalización se leería como una reasignación y esta guarda contestaría
+   * 422 sobre una edición de descripción — exactamente el caso que el párrafo
+   * de arriba promete permitir.
+   *
    * `enCentesimas` y no `> 0` pelado, por ADR-C3: la columna es
    * `DECIMAL(10,2)` y toda comparación de cantidades de este módulo se hace en
    * la escala entera.
    */
   private asegurarInsumoReasignable(nuevoInsumoId: string | null): Result<void, DomainError> {
-    if (nuevoInsumoId === this.props.insumoId) {
+    if (esElMismoId(nuevoInsumoId, this.props.insumoId)) {
       return Result.ok(undefined);
     }
     if (enCentesimas(this.props.cantidadRecibida) > 0) {

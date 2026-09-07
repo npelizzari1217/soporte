@@ -601,6 +601,32 @@ describe('ItemCompraEntity', () => {
         expect(item.proveedor).toBe('Proveedor BIS');
       });
 
+      /**
+       * El mismo reenvío con OTRA capitalización. La columna es `uuid`: para
+       * Postgres los dos literales son la MISMA fila, así que esto no es una
+       * reasignación y el guard no tiene nada que bloquear.
+       *
+       * Sin este caso, comparar con `===` crudo deja todo verde —el test de
+       * arriba manda el string idéntico— y un formulario que reenviara el id en
+       * mayúsculas se comería un 422 al intentar corregir el proveedor de un
+       * ítem ya recibido. Este guard es el que decide primero y el que contesta
+       * con 422, así que es donde la comparación tiene que estar bien.
+       */
+      it('reenviar el mismo insumoId con OTRA capitalización tampoco es una reasignación', () => {
+        const item = crearItemConRecibido(4, { insumoId: 'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d' });
+
+        const result = item.actualizar({
+          insumoId: 'A1B2C3D4-E5F6-4A7B-8C9D-0E1F2A3B4C5D',
+          proveedor: 'Proveedor BIS',
+        });
+
+        expect(result.isOk()).toBe(true);
+        expect(item.proveedor).toBe('Proveedor BIS');
+        // Queda el id tal como vino: no es una reasignación, pero tampoco se
+        // normaliza a la forma vieja — la entidad no reescribe lo que recibe.
+        expect(item.insumoId).toBe('A1B2C3D4-E5F6-4A7B-8C9D-0E1F2A3B4C5D');
+      });
+
       it('reenviar el MISMO null explícito sobre un ítem sin insumo tampoco es una reasignación', () => {
         const item = crearItemConRecibido(4);
 

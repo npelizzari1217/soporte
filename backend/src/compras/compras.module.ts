@@ -45,6 +45,7 @@ import { ObtenerCompraUseCase } from './application/use-cases/obtener-compra.use
 import { ListarOperacionesCompraUseCase } from './application/use-cases/listar-operaciones-compra.use-case';
 
 import { RegistrarEntradaInsumoUseCase } from '../insumos/application/use-cases/registrar-entrada-insumo.use-case';
+import { INSUMO_REPOSITORY, IInsumoRepository } from '../insumos/domain/ports/i-insumo.repository';
 
 import { ComprasController } from './interface/controllers/compras.controller';
 
@@ -83,12 +84,17 @@ import { ComprasController } from './interface/controllers/compras.controller';
  *   `@Injectable`) — se resuelven vía `useFactory`, igual que
  *   `NumeradorTicket`/`ResolverCicloActivoParaCreacion` en `EquiposModule`.
  * - `TENANT_TX_RUNNER` se inyecta desde `SharedModule` (`@Global`).
- * - `InsumosModule` (insumos-entrega-3, unidades 5 y 6): exporta
+ * - `InsumosModule` (insumos-entrega-3, unidades 5, 6 y 7): exporta
  *   `RegistrarEntradaInsumoUseCase`, que `RegistrarRecepcionDeItemUseCase`
  *   invoca DENTRO de su transacción para que recibir una compra sume el stock
- *   solo. La flecha va en este sentido y nunca al revés — `insumos` no importa
- *   nada de `compras`, porque esa arista cerraría un ciclo entre los dos
- *   módulos.
+ *   solo, e `INSUMO_REPOSITORY`, con el que el alta y la edición del ítem
+ *   verifican que el `insumoId` declarado exista en el catálogo. Es el puerto
+ *   de LECTURA del catálogo, no el de la bitácora de existencias
+ *   (`MOVIMIENTO_INSUMO_REPOSITORY`, que `InsumosModule` no exporta a
+ *   propósito): compras nunca escribe un movimiento salvo a través del caso de
+ *   uso, que lleva sus guards puestos. La flecha va en este sentido y nunca al
+ *   revés — `insumos` no importa nada de `compras`, porque esa arista cerraría
+ *   un ciclo entre los dos módulos.
  *
  * FITNESS RULE: PrismaService y `@prisma/client` solo pueden importarse
  * desde `infrastructure/` (ver `backend/eslint.config.js`) — este módulo
@@ -152,13 +158,18 @@ import { ComprasController } from './interface/controllers/compras.controller';
       ],
     },
     {
+      // Inyecta INSUMO_REPOSITORY (exportado por InsumosModule) con el MISMO
+      // criterio con el que `CrearCompraUseCase` inyecta SECTOR_REPOSITORY
+      // (fix W6): un `insumoId` inexistente tiene que dar un 422 que lo nombre,
+      // no el 409 genérico con el que la FK lo rechaza en el INSERT.
       provide: AgregarItemCompraUseCase,
       useFactory: (
         compraRepo: ICompraRepository,
+        insumoRepo: IInsumoRepository,
         registrarOperacion: RegistrarOperacionCompra,
         txRunner: ITenantTransactionRunner,
-      ) => new AgregarItemCompraUseCase(compraRepo, registrarOperacion, txRunner),
-      inject: [COMPRA_REPOSITORY, RegistrarOperacionCompra, TENANT_TX_RUNNER],
+      ) => new AgregarItemCompraUseCase(compraRepo, insumoRepo, registrarOperacion, txRunner),
+      inject: [COMPRA_REPOSITORY, INSUMO_REPOSITORY, RegistrarOperacionCompra, TENANT_TX_RUNNER],
     },
     {
       // Inyecta SECTOR_REPOSITORY por la misma razón que `CrearCompraUseCase`
@@ -175,13 +186,16 @@ import { ComprasController } from './interface/controllers/compras.controller';
       inject: [COMPRA_REPOSITORY, SECTOR_REPOSITORY, RegistrarOperacionCompra, TENANT_TX_RUNNER],
     },
     {
+      // Mismo criterio que `AgregarItemCompraUseCase`: sin esto, el PATCH del
+      // ítem reabriría por la puerta de la edición el agujero que el alta cierra.
       provide: EditarItemCompraUseCase,
       useFactory: (
         compraRepo: ICompraRepository,
+        insumoRepo: IInsumoRepository,
         registrarOperacion: RegistrarOperacionCompra,
         txRunner: ITenantTransactionRunner,
-      ) => new EditarItemCompraUseCase(compraRepo, registrarOperacion, txRunner),
-      inject: [COMPRA_REPOSITORY, RegistrarOperacionCompra, TENANT_TX_RUNNER],
+      ) => new EditarItemCompraUseCase(compraRepo, insumoRepo, registrarOperacion, txRunner),
+      inject: [COMPRA_REPOSITORY, INSUMO_REPOSITORY, RegistrarOperacionCompra, TENANT_TX_RUNNER],
     },
     {
       provide: EliminarItemCompraUseCase,
@@ -220,10 +234,12 @@ import { ComprasController } from './interface/controllers/compras.controller';
       inject: [COMPRA_REPOSITORY, RegistrarOperacionCompra, TENANT_TX_RUNNER],
     },
     {
-      // El ÚNICO mutador que recibe una cuarta dependencia, y viene de otro
-      // módulo: la recepción es la etapa que hace entrar mercadería al
-      // depósito, así que es el único punto del circuito de compras que tiene
-      // stock que asentar (insumos-entrega-3, unidad 6).
+      // La recepción es la etapa que hace entrar mercadería al depósito, así
+      // que es el único punto del circuito de compras que tiene stock que
+      // ASENTAR. Los otros consumidores de `InsumosModule` de este archivo solo
+      // LEEN el catálogo para validar el insumo declarado; este escribe la
+      // bitácora de existencias, y por eso recibe el caso de uso de la entrada
+      // en vez del puerto del catálogo.
       provide: RegistrarRecepcionDeItemUseCase,
       useFactory: (
         compraRepo: ICompraRepository,

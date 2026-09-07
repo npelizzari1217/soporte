@@ -14,6 +14,7 @@ import {
   CancelarCompraHttpDto,
   ListarComprasQueryDto,
   toCompraDetalleResponseDto,
+  toItemCompraResponseDto,
 } from './compras.dto';
 import { CompraEntity } from '../../domain/entities/compra.entity';
 import { ItemCompraEntity } from '../../domain/entities/item-compra.entity';
@@ -40,6 +41,8 @@ const VALIDOS_ITEM = {
   moneda: 'ARS',
   fechaCotizacion: '2026-08-13',
 };
+
+const INSUMO_ID = '00000000-0000-4000-8000-00000000000a';
 
 describe('CrearCompraHttpDto', () => {
   it('acepta datos válidos sin errores', async () => {
@@ -117,6 +120,26 @@ describe('AgregarItemCompraHttpDto', () => {
     const errores = await validate(dto);
     expect(errores.some((e) => e.property === propiedadEsperada)).toBe(true);
   });
+
+  it('insumos-entrega-3: acepta el insumoId opcional cuando es un UUID', async () => {
+    const dto = plainToInstance(AgregarItemCompraHttpDto, {
+      ...VALIDOS_ITEM,
+      insumoId: INSUMO_ID,
+    });
+
+    expect(await validate(dto)).toHaveLength(0);
+    expect(dto.insumoId).toBe(INSUMO_ID);
+  });
+
+  it('insumos-entrega-3: rechaza un insumoId que no es UUID, que sin este decorador moriría como 500 en la columna @db.Uuid', async () => {
+    const dto = plainToInstance(AgregarItemCompraHttpDto, {
+      ...VALIDOS_ITEM,
+      insumoId: 'no-es-uuid',
+    });
+
+    const errores = await validate(dto);
+    expect(errores.some((e) => e.property === 'insumoId')).toBe(true);
+  });
 });
 
 describe('EditarItemCompraHttpDto', () => {
@@ -151,6 +174,22 @@ describe('EditarItemCompraHttpDto', () => {
     const dto = plainToInstance(EditarItemCompraHttpDto, payload);
     const errores = await validate(dto);
     expect(errores.some((e) => e.property === propiedadEsperada)).toBe(true);
+  });
+
+  it('insumos-entrega-3: acepta el insumoId como UUID y como null explícito, que es "borrar el vínculo"', async () => {
+    const conValor = plainToInstance(EditarItemCompraHttpDto, { insumoId: INSUMO_ID });
+    expect(await validate(conValor)).toHaveLength(0);
+
+    const borrando = plainToInstance(EditarItemCompraHttpDto, { insumoId: null });
+    expect(await validate(borrando)).toHaveLength(0);
+    expect(borrando.insumoId).toBeNull();
+  });
+
+  it('insumos-entrega-3: rechaza un insumoId que no es UUID si se provee', async () => {
+    const dto = plainToInstance(EditarItemCompraHttpDto, { insumoId: 'no-es-uuid' });
+
+    const errores = await validate(dto);
+    expect(errores.some((e) => e.property === 'insumoId')).toBe(true);
   });
 });
 
@@ -340,6 +379,54 @@ describe('ListarComprasQueryDto', () => {
     const dto = plainToInstance(ListarComprasQueryDto, { cicloId: 'no-es-uuid' });
     const errores = await validate(dto);
     expect(errores.some((e) => e.property === 'cicloId')).toBe(true);
+  });
+});
+
+describe('toItemCompraResponseDto', () => {
+  const now = new Date('2026-01-01T00:00:00.000Z');
+
+  function itemCon(insumoId: string | null): ItemCompraEntity {
+    return ItemCompraEntity.reconstitute(
+      {
+        compraId: 'compra-1',
+        descripcion: 'Toner negro',
+        insumoId,
+        cantidad: 1,
+        proveedor: 'Proveedor SA',
+        monto: 100,
+        moneda: 'ARS',
+        fechaCotizacion: now,
+        observaciones: null,
+        estadoAprobacion: 'PENDIENTE',
+        decididoPorId: null,
+        decididoEn: null,
+        cantidadOrdenada: 0,
+        cantidadRecibida: 0,
+        cantidadEntregada: 0,
+        fechaOrden: null,
+        fechaRecepcion: null,
+        fechaEntrega: null,
+        cerradoConFaltante: false,
+        motivoCierreFaltante: null,
+      },
+      'item-1',
+      now,
+      now,
+      null,
+    );
+  }
+
+  /**
+   * Sin este campo en la respuesta, quien carga el ítem declara un insumo que
+   * después no puede ver ni volver a editar: el formulario de edición no tiene
+   * de dónde precargar el valor vigente.
+   */
+  it('publica el insumoId declarado por el ítem', () => {
+    expect(toItemCompraResponseDto(itemCon(INSUMO_ID)).insumoId).toBe(INSUMO_ID);
+  });
+
+  it('publica insumoId=null en el ítem histórico de texto libre, que no declara insumo', () => {
+    expect(toItemCompraResponseDto(itemCon(null)).insumoId).toBeNull();
   });
 });
 
