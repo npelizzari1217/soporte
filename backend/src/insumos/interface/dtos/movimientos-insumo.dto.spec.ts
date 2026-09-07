@@ -3,8 +3,10 @@ import 'reflect-metadata';
 import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
 import {
+  ListarMovimientosInsumoQueryDto,
   RegistrarAjusteInsumoHttpDto,
   RegistrarMovimientoInsumoHttpDto,
+  toListarMovimientosInsumoResponseDto,
   toMovimientoInsumoResponseDto,
   toStockInsumoResponseDto,
 } from './movimientos-insumo.dto';
@@ -448,5 +450,176 @@ describe('toStockInsumoResponseDto', () => {
 
     expect(dto.stockMinimo).toBeNull();
     expect(dto.estadoReposicion).toBe('SIN_PUNTO_DEFINIDO');
+  });
+});
+
+describe('ListarMovimientosInsumoQueryDto', () => {
+  /**
+   * El query param llega SIEMPRE como string: sin el `@Type(() => Number)` de
+   * `class-transformer`, `@IsInt` rechazaría toda paginación válida y el
+   * listado quedaría inutilizable con un 400 permanente.
+   */
+  it('acepta la paginación que llega como texto y la convierte a número', async () => {
+    const dto = plainToInstance(
+      ListarMovimientosInsumoQueryDto,
+      { pagina: '2', porPagina: '50' },
+      { enableImplicitConversion: false },
+    );
+
+    expect(await validate(dto)).toHaveLength(0);
+    expect(dto.pagina).toBe(2);
+    expect(dto.porPagina).toBe(50);
+  });
+
+  it('acepta la query vacía: los dos defaults los resuelve el caso de uso', async () => {
+    const dto = plainToInstance(ListarMovimientosInsumoQueryDto, {});
+
+    expect(await validate(dto)).toHaveLength(0);
+    expect(dto.pagina).toBeUndefined();
+    expect(dto.porPagina).toBeUndefined();
+  });
+
+  /**
+   * El piso de `porPagina` es de CORRECTITUD, no de higiene: el valor viaja
+   * hasta el `take` de Prisma, y un `take` negativo INVIERTE el orden — la
+   * respuesta serían los movimientos más VIEJOS presentados como los más
+   * nuevos, con un 200 de cara limpia, sin error y sin log.
+   *
+   * El assert es de la restricción `min` y no de "hubo algún error": con
+   * `@IsInt`, `@Min` y `@Max` sobre el mismo campo, un `not.toHaveLength(0)`
+   * queda verde por la regla equivocada.
+   */
+  it.each([[0], [-1]])(
+    'rechaza porPagina %s por min: un take negativo invierte el orden',
+    async (porPagina) => {
+      const dto = plainToInstance(ListarMovimientosInsumoQueryDto, { porPagina });
+
+      expect(await restriccionesDe(dto)).toContain('min');
+    },
+  );
+
+  /**
+   * El piso de `pagina` ataja la OTRA falla, que no es la misma: el caso de uso
+   * traduce la página a `offset: (pagina - 1) * porPagina`, así que una página
+   * menor a 1 da un `skip` negativo y Prisma revienta con un 500 crudo que no
+   * nombra el campo. Una miente y la otra explota; las dos las ataja el mismo
+   * `@Min(1)`.
+   */
+  it.each([[0], [-1]])(
+    'rechaza pagina %s por min: un skip negativo revienta en Prisma',
+    async (pagina) => {
+      const dto = plainToInstance(ListarMovimientosInsumoQueryDto, { pagina });
+
+      expect(await restriccionesDe(dto)).toContain('min');
+    },
+  );
+
+  it('rechaza porPagina por encima del tope de página por max', async () => {
+    const dto = plainToInstance(ListarMovimientosInsumoQueryDto, { porPagina: 101 });
+
+    expect(await restriccionesDe(dto)).toContain('max');
+  });
+
+  it('acepta el tope de página exacto', async () => {
+    const dto = plainToInstance(ListarMovimientosInsumoQueryDto, { porPagina: 100 });
+
+    expect(await validate(dto)).toHaveLength(0);
+  });
+
+  /**
+   * Un `porPagina` fraccionario llegaría al `take` de Prisma, que espera un
+   * entero. `@IsInt` corre DESPUÉS del `@Type(() => Number)`, así que mide el
+   * número ya convertido y no el texto.
+   */
+  it.each([
+    ['pagina', { pagina: '1.5' }],
+    ['porPagina', { porPagina: '2.5' }],
+  ])('rechaza %s fraccionario por isInt', async (_campo, payload) => {
+    const dto = plainToInstance(ListarMovimientosInsumoQueryDto, payload);
+
+    expect(await restriccionesDe(dto)).toContain('isInt');
+  });
+});
+
+describe('toListarMovimientosInsumoResponseDto', () => {
+  function movimientoManual(): MovimientoInsumoEntity {
+    return MovimientoInsumoEntity.create({
+      insumoId: INSUMO_ID,
+      tipo: 'SALIDA',
+      cantidad: 2,
+      usuarioId: USUARIO_ID,
+      motivo: 'Reposición del piso 3',
+    }).getValue();
+  }
+
+  function movimientoDeRecepcion(): MovimientoInsumoEntity {
+    return MovimientoInsumoEntity.create({
+      insumoId: INSUMO_ID,
+      tipo: 'ENTRADA',
+      cantidad: 6,
+      usuarioId: USUARIO_ID,
+      itemCompraId: ITEM_COMPRA_ID,
+    }).getValue();
+  }
+
+  /**
+   * El envoltorio REUSA `toMovimientoInsumoResponseDto` para cada fila: un
+   * segundo mapeo copiado derivaría, y la copia que se olvidara de un campo
+   * nuevo lo dejaría de publicar solo en el listado.
+   */
+  it('mapea cada fila con el mapper del asiento, incluido el itemCompraId', () => {
+    const manual = movimientoManual();
+    const recepcion = movimientoDeRecepcion();
+
+    const dto = toListarMovimientosInsumoResponseDto({
+      items: [recepcion, manual],
+      total: 2,
+      pagina: 1,
+      porPagina: 20,
+    });
+
+    expect(dto.items).toEqual([
+      toMovimientoInsumoResponseDto(recepcion),
+      toMovimientoInsumoResponseDto(manual),
+    ]);
+    expect(dto.items[0].itemCompraId).toBe(ITEM_COMPRA_ID);
+    expect(dto.items[1].itemCompraId).toBeNull();
+  });
+
+  /**
+   * `total` es el universo completo del insumo y NO el tamaño de la página: el
+   * fixture trae MENOS filas que `total` a propósito, porque con los dos
+   * números iguales el assert pasaría aunque el mapper publicara
+   * `items.length`.
+   */
+  it('publica el total del universo y no el tamaño de la página', () => {
+    const dto = toListarMovimientosInsumoResponseDto({
+      items: [movimientoManual()],
+      total: 47,
+      pagina: 3,
+      porPagina: 5,
+    });
+
+    expect(dto.items).toHaveLength(1);
+    expect(dto.total).toBe(47);
+    expect(dto.pagina).toBe(3);
+    expect(dto.porPagina).toBe(5);
+  });
+
+  /**
+   * La página vacía —el offset se pasó del final— sigue diciendo cuántos
+   * movimientos tiene el insumo: sin eso, el paginador leería "no hay nada" en
+   * vez de "esta página quedó afuera".
+   */
+  it('conserva el total con la página vacía', () => {
+    const dto = toListarMovimientosInsumoResponseDto({
+      items: [],
+      total: 12,
+      pagina: 9,
+      porPagina: 20,
+    });
+
+    expect(dto.items).toEqual([]);
+    expect(dto.total).toBe(12);
   });
 });

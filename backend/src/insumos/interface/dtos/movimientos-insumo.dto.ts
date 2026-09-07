@@ -2,12 +2,20 @@
  * DTOs de entrada/salida de `MovimientosInsumoController` — la bitácora de
  * existencias y la consulta de stock.
  *
- * **Ningún tope declara su número: todos lo IMPORTAN del dominio**, que es la
- * autoridad del límite. Acá el tope solo se adelanta al borde HTTP para
- * devolver un 400 que nombra el campo, en vez de la violación de precondición
- * que `MovimientoInsumoEntity` lanza como `throw` —y que, sin este espejo,
- * llegaría al usuario como un 500 crudo: es la clase 1 de fallo de topes que el
- * `AGENTS.md` de este repo describe—.
+ * **Ningún tope de un campo del ASIENTO declara su número: todos lo IMPORTAN
+ * de `MovimientoInsumoEntity`**, que es la autoridad del límite. Acá el tope
+ * solo se adelanta al borde HTTP para devolver un 400 que nombra el campo, en
+ * vez de la violación de precondición que la entidad lanza como `throw` —y
+ * que, sin este espejo, llegaría al usuario como un 500 crudo: es la clase 1
+ * de fallo de topes que el `AGENTS.md` de este repo describe—.
+ *
+ * La excepción son los topes de PAGINACIÓN (`@Min(1)`, `@Max(100)` en
+ * `ListarMovimientosInsumoQueryDto`), que sí van con literales: no espejan
+ * ninguna regla de negocio ni ninguna columna, sino el tamaño de página que el
+ * borde acepta. Mismo criterio y mismo número que `ListarComprasQueryDto`,
+ * `ListTicketsQueryDto` y `ListKbArticulosQueryDto` —este último nombra sus
+ * campos `page`/`pageSize`, así que comparte el criterio y no el molde—. No
+ * hay constante de dominio que importar porque no hay dominio del otro lado.
  *
  * Los `@Transform` aplican las MISMAS funciones de normalización del dominio,
  * por el mismo motivo que en `insumos.dto.ts`: `class-transformer` corre la
@@ -24,8 +32,18 @@
  * body que pretenda fijarlo queda descartado antes de llegar al handler. Mismo
  * criterio que `solicitanteId` en `compras.dto.ts`.
  */
-import { IsIn, IsOptional, IsPositive, IsString, IsUUID, Max, MaxLength } from 'class-validator';
-import { Transform } from 'class-transformer';
+import {
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsPositive,
+  IsString,
+  IsUUID,
+  Max,
+  MaxLength,
+  Min,
+} from 'class-validator';
+import { Transform, Type } from 'class-transformer';
 import { EsNumeroConDecimales } from '../../../shared/interface/validators/es-numero-con-decimales';
 import {
   MovimientoInsumoEntity,
@@ -41,6 +59,7 @@ import {
 } from '../../domain/entities/tipo-movimiento-insumo';
 import { EstadoReposicionInsumo } from '../../domain/entities/estado-reposicion-insumo';
 import { StockDeInsumo } from '../../application/use-cases/consultar-stock-insumo.use-case';
+import { ListarMovimientosInsumoResult } from '../../application/use-cases/listar-movimientos-insumo.use-case';
 
 /**
  * Normaliza el motivo con la función del dominio: recorta los espacios de
@@ -234,5 +253,99 @@ export function toStockInsumoResponseDto(stock: StockDeInsumo): StockInsumoRespo
     stock: stock.stock,
     stockMinimo: stock.stockMinimo,
     estadoReposicion: stock.estadoReposicion,
+  };
+}
+
+/**
+ * Query params de `GET /insumos/:insumoId/movimientos`. Mismo molde que
+ * `ListarComprasQueryDto`: es la forma de pedir una página en este
+ * repositorio, y una segunda forma sería una diferencia que nadie decidió.
+ *
+ * **El `@Type(() => Number)` no es decorativo**: un query param llega SIEMPRE
+ * como texto, y sin la conversión previa `@IsInt` rechazaría toda paginación
+ * válida — el listado quedaría con un 400 permanente. `class-transformer` corre
+ * la transformación ANTES de que `class-validator` mida nada, así que los tres
+ * decoradores de abajo evalúan el número ya convertido.
+ *
+ * **Los dos `@Min(1)` son reglas de CORRECTITUD, no de higiene**, y atajan dos
+ * fallas distintas, las dos silenciosas de distinta manera:
+ *
+ * - `porPagina` viaja hasta el `take` de Prisma, y **un `take` negativo
+ *   INVIERTE el orden**: la respuesta serían los movimientos más VIEJOS
+ *   presentados como los más nuevos, con un 200 de cara limpia, sin error y sin
+ *   log. Es exactamente la clase de falla que el `AGENTS.md` de este repo
+ *   describe como la peor —el resultado equivocado sin síntoma—.
+ * - `pagina` se traduce a `offset: (pagina - 1) * porPagina` en el caso de uso,
+ *   así que una página menor a 1 da un `skip` NEGATIVO y Prisma revienta con un
+ *   error de validación del cliente: un **500 crudo** que no nombra el campo
+ *   que vino mal.
+ *
+ * Una miente y la otra explota; las dos las ataja el mismo `@Min(1)`, y el
+ * borde es la única capa que puede devolver un 400 que nombre el parámetro.
+ *
+ * El `@Max(100)` es el tope de página, igual que en compras: acota lo que una
+ * sola respuesta puede traer de una bitácora que crece con cada movimiento.
+ *
+ * Los dos son OPCIONALES y su ausencia no es un error: los defaults los
+ * resuelve `ListarMovimientosInsumoUseCase`, que es su único dueño.
+ */
+export class ListarMovimientosInsumoQueryDto {
+  /** Página 1-indexed. Ausente = la primera, por el default del caso de uso. */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  pagina?: number;
+
+  /** Tamaño de página. Ausente = el default del caso de uso. */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  porPagina?: number;
+}
+
+/**
+ * Response de `GET /insumos/:insumoId/movimientos` — envoltorio con la
+ * metadata de paginación, mismo shape que `ListarComprasResponseDto`.
+ *
+ * **`total` es el universo COMPLETO del insumo, no el tamaño de la página**:
+ * es lo que le permite al paginador saber cuántas páginas hay, y sigue siendo
+ * correcto cuando `items` vuelve vacío porque el offset se pasó del final.
+ * `items.length` responde otra pregunta.
+ *
+ * `pagina` y `porPagina` viajan de vuelta porque son la ventana EFECTIVA, ya
+ * con los defaults del caso de uso aplicados: sin ellas, quien no mandó nada no
+ * tendría cómo saber sobre qué ventana está mirando esas filas.
+ */
+export interface ListarMovimientosInsumoResponseDto {
+  items: MovimientoInsumoResponseDto[];
+  total: number;
+  pagina: number;
+  porPagina: number;
+}
+
+/**
+ * Convierte el resultado paginado de `ListarMovimientosInsumoUseCase` al shape
+ * de respuesta HTTP.
+ *
+ * Cada fila pasa por `toMovimientoInsumoResponseDto`, el MISMO mapper que usan
+ * las tres rutas de escritura, y no por una copia: dos mapeos del asiento
+ * derivarían, y el que se olvidara de un campo nuevo lo dejaría de publicar
+ * solo en el listado. Es además el que publica `itemCompraId`, que es el dato
+ * que distingue una entrada nacida de una recepción de una carga manual.
+ *
+ * @param resultado Página de movimientos con el total del insumo y la ventana efectiva.
+ * @returns El DTO de respuesta, con cada asiento ya mapeado.
+ */
+export function toListarMovimientosInsumoResponseDto(
+  resultado: ListarMovimientosInsumoResult,
+): ListarMovimientosInsumoResponseDto {
+  return {
+    items: resultado.items.map(toMovimientoInsumoResponseDto),
+    total: resultado.total,
+    pagina: resultado.pagina,
+    porPagina: resultado.porPagina,
   };
 }
