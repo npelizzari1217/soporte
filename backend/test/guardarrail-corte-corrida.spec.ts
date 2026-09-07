@@ -37,6 +37,15 @@ function correrVitestHijo(envExtra: Record<string, string>): {
       {
         env: { ...process.env, ...envExtra },
         encoding: 'utf8',
+        // `stdio` EXPLÍCITO, y no es cosmético: cuando no se lo fija,
+        // `execFileSync` vuelca el stderr del hijo al stderr del PADRE además
+        // de capturarlo. Como el caso de arriba envenena la URL a propósito,
+        // eso imprime el mensaje del guardarraíl y su "corrida abortada" en
+        // medio de una corrida sana de `pnpm test`, donde se lee como una
+        // falla real. Ya mandó a investigar un defecto inexistente dos veces.
+        // Con las tres bocas declaradas, el stderr sigue llegando a
+        // `err.stderr` —que es lo que asierta el test— sin ensuciar la salida.
+        stdio: ['ignore', 'pipe', 'pipe'],
       },
     );
     return { status: 0, stdout, stderr: '' };
