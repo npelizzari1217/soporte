@@ -61,7 +61,22 @@ Monorepo con `backend/` y `frontend/`.
 
 ---
 
-## La Ayuda se mantiene con el código (OBLIGATORIO)
+## La Ayuda se mantiene con el código — SUSPENDIDO desde el 2026-09-07
+
+> **En pausa por decisión del dueño del repo.** No se crean ni se actualizan artículos de
+> `backend/ayuda/*.md` hasta nuevo aviso: se escriben todos juntos al final del proyecto,
+> sobre la superficie ya estabilizada, en vez de reescribirlos entrega tras entrega.
+>
+> Lo que **sigue vigente** mientras dure la pausa:
+> - **Anotar la deuda** en el mensaje del commit y en el cuerpo del PR cada vez que un
+>   cambio deje la Ayuda desactualizada o pida un artículo nuevo. Se suspende la escritura,
+>   no el registro: sin esa anotación, la tanda final no sabe qué cubrir.
+> - **Corregir un artículo existente que un cambio vuelva FALSO.** Una Ayuda que miente es
+>   peor que una que falta, y eso no depende de si se están escribiendo artículos nuevos.
+>
+> El `AGENTS.md` del repo lleva la misma nota, para que el revisor automático no marque la
+> ausencia como hallazgo. Al levantar la pausa se borran los dos bloques y la regla de
+> abajo vuelve a regir tal cual — por eso queda entera.
 
 El módulo `KB` se llama **Ayuda** y contiene cómo se usa el sistema. Los artículos viven
 como markdown en el repo y un script idempotente los sincroniza a cada tenant.
