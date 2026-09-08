@@ -65,3 +65,27 @@ rules:
   archive:
     - Advertir antes de fusionar deltas destructivos sobre specs/ vigentes
     - review_budget_lines de referencia para el preflight de sdd-attempt: 7000 (diff crudo, no líneas revisables — ver ~/proyectos/CLAUDE.md)
+
+# ---------------------------------------------------------------------------
+# Modelos por fase SDD — override del default global.
+#
+# Precedencia (mayor a menor):
+#   1. este bloque `models:`
+#   2. tabla "Model Assignments" de ~/.claude/CLAUDE.md
+#   3. fila `default` de esa tabla
+#
+# Declarar SOLO las fases que se apartan del global; el resto hereda.
+# Fases válidas: sdd-explore, sdd-research, sdd-propose, sdd-spec, sdd-design,
+# sdd-tasks, sdd-apply, sdd-verify, sdd-archive, sdd-onboard,
+# jd-judge-a, jd-judge-b, jd-fix-agent.
+#
+# La SECUENCIA del ciclo no se configura acá: es global e inmutable
+# (proyectos/CLAUDE.md, sección 6.1). Este bloque elige con qué modelo corre
+# cada fase, nunca qué fases se corren ni en qué orden.
+#
+# Lo lee el orquestador antes de delegar. `gentle-ai` lo ignora.
+#
+# models:
+#   sdd-apply: opus
+#   sdd-verify: opus
+# ---------------------------------------------------------------------------
