@@ -20,6 +20,13 @@ concurrency:
   group: gates-${{ github.ref }}
   cancel-in-progress: true
 
+# pnpm/action-setup resuelve su version leyendo el "packageManager" de un
+# package.json, y su default es el de la raiz. Este repo no tiene raiz: por eso
+# cada job le pasa "package_json_file" apuntando al package.json de su proyecto.
+# Sin eso la accion muere con "No pnpm version is specified" antes de instalar
+# nada. El "defaults.run.working-directory" no alcanza: solo aplica a los pasos
+# "run", no a las acciones invocadas con "uses".
+
 jobs:
   # Corre primero: verifica que backend y frontend sigan declarando lint/test/build
   # antes de gastar tiempo corriendo las compuertas reales. Si un proyecto nuevo se
@@ -43,6 +50,8 @@ jobs:
       - uses: actions/checkout@v7
 
       - uses: pnpm/action-setup@v6
+        with:
+          package_json_file: backend/package.json
 
       - uses: actions/setup-node@v7
         with:
@@ -66,6 +75,8 @@ jobs:
       - uses: actions/checkout@v7
 
       - uses: pnpm/action-setup@v6
+        with:
+          package_json_file: frontend/package.json
 
       - uses: actions/setup-node@v7
         with:
