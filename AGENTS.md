@@ -5,8 +5,7 @@
 > copiadas acá abajo, entre los marcadores `BEGIN:global` / `END:global`, y las mantiene
 > sincronizadas `sync-agents.py`. **No edites ese bloque a mano.**
 >
-> Lo que va **después** del bloque es lo propio de este proyecto: amplía al global, y ante
-> conflicto **gana lo local**.
+> Lo que va **después** del bloque es lo propio de este proyecto: amplía al global.
 >
 > Señalá solo lo accionable y apoyado en el diff. Esta revisión corre en `pre-commit`, sobre
 > un commit suelto, antes de que exista el PR y sin conocer el resto de la rama: no reportes
@@ -15,8 +14,7 @@
 <!-- BEGIN:global -->
 <!-- Generado por sync-agents.py desde ~/proyectos/AGENTS.md (v05ed8761).
      NO EDITAR A MANO: el proximo sync pisa los cambios.
-     Para cambiar una regla universal, edita el global y volve a correr el script.
-     Para que este proyecto se aparte, usa la seccion [Anulaciones] de mas abajo. -->
+     Para cambiar una regla universal, edita el global y volve a correr el script. -->
 
 ## Lenguaje y tipos
 
@@ -134,8 +132,6 @@ No rechaces un cambio por estas razones:
 - **Reescrituras arquitectónicas** de código que funciona cuando el diff es un fix acotado.
 - **La falta de tests** en cambios que son puramente de configuración, comentarios o docs.
 - **Preferencias subjetivas de nombres** cuando el nombre existente ya es claro.
-- **Ceremonias de equipo** que no aplican a un proyecto de una sola persona: issue-first,
-  labels de PR, aprobación de maintainer externo.
 
 <!-- END:global -->
 

@@ -1,7 +1,5 @@
 # openspec/config.yaml — soporte
-# Generado por sdd-init el 2026-09-01. Idioma de los artefactos SDD: español neutro
-# (ver ~/proyectos/CLAUDE.md, tabla de convenciones de código — anula el default en
-# inglés del contrato propio de gentle-ai para este repo).
+# Generado por sdd-init el 2026-09-01.
 
 schema: spec-driven
 
@@ -44,15 +42,12 @@ rules:
     - Documentar en qué capa hexagonal cae cada pieza (domain/application/infrastructure/interface) y por qué
     - Si el cambio toca autorización, señalar los dos lugares donde vive: decoradores del borde Y los chequeos inline dentro del cuerpo de los métodos
   tasks:
-    - No emitir Review Workload Forecast ni presupuesto de 400 líneas (anulado por ~/proyectos/CLAUDE.md: lo decide el corte de PR, no el ciclo SDD)
     - Agrupar por work unit entregable con sus tests adentro (work-unit-commits), no por capa
     - Tests ANTES que la implementación en cada tarea (TDD estricto)
   apply:
     guidelines:
       - RED verificado (correr y ver fallar por la razón correcta) antes de GREEN
       - Máximo ~5 archivos de código por commit hacia el revisor (GGA lee AGENTS.md del repo)
-      - No ejecutar el gate de "Review Workload Decision" (anulado, ver tasks)
-      - Comentarios de código y mensajes de commit en español rioplatense; identificadores en inglés
     tdd: true
     test_command: "pnpm test"
   verify:
@@ -64,28 +59,3 @@ rules:
       - RDD está OFF (decidido por default, gentle-ai#3289) — delivery bajo política ordinaria del repo, nunca fabricar un receipt
   archive:
     - Advertir antes de fusionar deltas destructivos sobre specs/ vigentes
-    - review_budget_lines de referencia para el preflight de sdd-attempt: 7000 (diff crudo, no líneas revisables — ver ~/proyectos/CLAUDE.md)
-
-# ---------------------------------------------------------------------------
-# Modelos por fase SDD — override del default global.
-#
-# Precedencia (mayor a menor):
-#   1. este bloque `models:`
-#   2. tabla "Model Assignments" de ~/.claude/CLAUDE.md
-#   3. fila `default` de esa tabla
-#
-# Declarar SOLO las fases que se apartan del global; el resto hereda.
-# Fases válidas: sdd-explore, sdd-research, sdd-propose, sdd-spec, sdd-design,
-# sdd-tasks, sdd-apply, sdd-verify, sdd-archive, sdd-onboard,
-# jd-judge-a, jd-judge-b, jd-fix-agent.
-#
-# La SECUENCIA del ciclo no se configura acá: es global e inmutable
-# (proyectos/CLAUDE.md, sección 6.1). Este bloque elige con qué modelo corre
-# cada fase, nunca qué fases se corren ni en qué orden.
-#
-# Lo lee el orquestador antes de delegar. `gentle-ai` lo ignora.
-#
-# models:
-#   sdd-apply: opus
-#   sdd-verify: opus
-# ---------------------------------------------------------------------------
