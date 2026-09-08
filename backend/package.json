@@ -5,6 +5,7 @@
   "main": "dist/main.js",
   "packageManager": "pnpm@11.18.0",
   "scripts": {
+    "postinstall": "pnpm run generate:master && pnpm run generate:tenant",
     "build": "tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json",
     "start": "node dist/main",
     "start:dev": "ts-node -r tsconfig-paths/register src/main.ts",

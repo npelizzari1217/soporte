@@ -1,0 +1,79 @@
+# Compuertas de calidad del repo "soporte".
+#
+# No hay workspace en la raiz: backend/ y frontend/ son dos proyectos pnpm
+# independientes, cada uno con su propio pnpm-lock.yaml. Por eso este workflow
+# tiene un job por proyecto en vez de una matriz: backend declara "typecheck"
+# y frontend no, asi que una matriz obligaria a condicionales por paso segun
+# el proyecto (`if: matrix.project == 'backend'`), lo que termina siendo mas
+# dificil de leer que dos jobs explicitos con los pasos que a cada uno le
+# corresponden.
+name: gates
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancela una corrida anterior del mismo ref (misma rama o mismo PR) cuando
+# llega un push nuevo, para no gastar minutos de CI en corridas obsoletas.
+concurrency:
+  group: gates-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Corre primero: verifica que backend y frontend sigan declarando lint/test/build
+  # antes de gastar tiempo corriendo las compuertas reales. Si un proyecto nuevo se
+  # agrega sin cubrirlo, este job frena el resto.
+  gate-coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - run: node scripts/check-gate-coverage.mjs
+
+  backend:
+    needs: gate-coverage
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+          cache-dependency-path: backend/pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run lint
+      - run: pnpm run typecheck
+      - run: pnpm run test
+      - run: pnpm run build
+
+  frontend:
+    needs: gate-coverage
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run lint
+      - run: pnpm run test
+      - run: pnpm run build
