@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { screen } from "@testing-library/react";
 import { render } from "@testing-library/react";
-import { usePathname } from "next/navigation";
 import { vi } from "vitest";
 import { AdminNav } from "./admin-nav";
 import { SessionContext } from "@/shared/providers/session-provider";
@@ -33,14 +32,15 @@ function payload(overrides: Partial<JwtPayload>): JwtPayload {
   };
 }
 
-// ADR-P5: las 3 secciones son ADMINISTRADOR-o-ROOT exclusivas — un TECNICO
+// ADR-P5: las 4 secciones son ADMINISTRADOR-o-ROOT exclusivas — un TECNICO
 // no ve NINGÚN link de gestión, aunque las lecturas de catálogos sigan abiertas.
 describe("AdminNav (ADR-P5)", () => {
-  it("ADMINISTRADOR ve las 3 secciones", () => {
+  it("ADMINISTRADOR ve las 4 secciones", () => {
     renderWithUser(payload({ rol: "ADMINISTRADOR" }));
     expect(screen.getByRole("link", { name: "Catálogos" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Ciclos" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Usuarios" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Insumos" })).toBeInTheDocument();
   });
 
   it("TECNICO (no admin, no root) no ve ninguna sección", () => {
@@ -48,5 +48,4 @@ describe("AdminNav (ADR-P5)", () => {
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
   });
 
-  void usePathname;
 });

@@ -64,3 +64,36 @@ export function resolverDeCatalogo<T extends { id: string }>(
   const entrada = catalogo.entradas.find((candidata) => candidata.id === id);
   return entrada ? { estado: "ENCONTRADA", entrada } : { estado: "FUERA_DE_CATALOGO" };
 }
+
+/**
+ * Los cuatro desenlaces de mirar un catálogo COMO LISTA, sin buscar ningún id.
+ *
+ * Es el caso del `<select>` de un formulario: no pregunta "¿está este id?" sino
+ * "¿puedo ofrecer opciones?". Sin esta distinción, un `!cargando && length === 0`
+ * dice "el catálogo está vacío" cuando en realidad la query FALLÓ —`data` es
+ * `undefined`, un `?? []` lo aplana a cero— y la pantalla manda al usuario a
+ * cargar un catálogo que ya existe.
+ */
+export type ResolucionDeLista =
+  /** La query está en vuelo. */
+  | "CARGANDO"
+  /** La query no resolvió y ya no está cargando. */
+  | "NO_DISPONIBLE"
+  /** Resolvió y el catálogo está realmente vacío. */
+  | "VACIA"
+  /** Resolvió con al menos una entrada. */
+  | "CON_ENTRADAS";
+
+/**
+ * Clasifica un catálogo como lista, con el MISMO orden de guardas que
+ * `resolverDeCatalogo`: primero se decide si resolvió, y recién ahí se mira
+ * cuántas entradas trae.
+ *
+ * @param catalogo Estado crudo de la query del catálogo.
+ * @returns El estado de la lista.
+ */
+export function resolverLista<T>(catalogo: EstadoCatalogo<T>): ResolucionDeLista {
+  if (!catalogo.entradas) return catalogo.cargando ? "CARGANDO" : "NO_DISPONIBLE";
+  return catalogo.entradas.length === 0 ? "VACIA" : "CON_ENTRADAS";
+}
+

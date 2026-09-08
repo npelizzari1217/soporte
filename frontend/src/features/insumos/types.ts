@@ -30,28 +30,106 @@ export interface Insumo {
 }
 
 /**
- * Espejo de `FamiliaInsumoResponseDto`, RECORTADO con el mismo criterio que
- * `Insumo`: solo lo que la pantalla consume hoy, que es resolver el
- * `familiaId` del listado a un nombre legible.
- *
- * `codigo`, `activo` y los timestamps quedan afuera a propósito. Cuando el ABM
- * de familias los muestre, se agregan acá con su forma completa; declararlos
- * ahora obligaría a cada fixture a construirlos sin que ningún assert los mire.
+ * Body de `POST /insumos` (`CreateInsumoDto`), RECORTADO al scope de esta
+ * entrega: sin `codigosAlternativos`/`compatibilidad`. El backend trata
+ * "ausente" como "lista vacía" para las dos, así que omitirlas es
+ * equivalente a mandarlas vacías — nunca se manda `[]` ni `null` a propósito
+ * (`null` es rechazo directo, 400, `@ValidateIf`). Se gestionan desde la
+ * ficha en una entrega posterior.
  */
-export interface FamiliaInsumo {
-  id: string;
+export interface CreateInsumoDto {
+  codigo: string;
   nombre: string;
+  familiaId: string;
+  unidadMedidaId: string;
+  /** Ausente es "sin punto de reposición definido", que NO es cero. */
+  stockMinimo?: number;
 }
 
 /**
- * Espejo de `UnidadMedidaResponseDto`, recortado con el mismo criterio que
- * `FamiliaInsumo`. Las dos respuestas tienen el MISMO shape en el backend, pero
- * se declaran por separado: son catálogos distintos, y un alias compartido haría
- * que agregarle un campo a uno se lo agregue al otro sin que nadie lo decida.
+ * Body de `PATCH /insumos/:id` (`EditInsumoDto`) — PATCH parcial, mismo
+ * recorte de scope que `CreateInsumoDto`. `stockMinimo` es la ÚNICA
+ * excepción de esta entrega donde `null` SÍ viaja: es la orden explícita de
+ * borrar el punto de reposición (`undefined` deja el campo intacto).
+ */
+export interface EditInsumoDto {
+  codigo?: string;
+  nombre?: string;
+  familiaId?: string;
+  unidadMedidaId?: string;
+  stockMinimo?: number | null;
+}
+
+/** Body de `PATCH /insumos/:id/estado` (`CambiarEstadoActivoInsumoDto`). */
+export interface CambiarEstadoActivoInsumoDto {
+  activo: boolean;
+}
+
+/**
+ * Espejo de `FamiliaInsumoResponseDto`
+ * (`backend/src/insumos/interface/dtos/familias-insumo.dto.ts`). Forma
+ * completa, con `codigo`/`activo`/timestamps: el ABM del catálogo (Admin >
+ * Insumos) los edita y los muestra.
+ */
+export interface FamiliaInsumo {
+  id: string;
+  codigo: string;
+  nombre: string;
+  activo: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Body de `POST /familias-insumo` (`CreateFamiliaInsumoDto`). */
+export interface CreateFamiliaInsumoDto {
+  codigo: string;
+  nombre: string;
+}
+
+/** Body de `PATCH /familias-insumo/:id` (`EditFamiliaInsumoDto`) — PATCH parcial. */
+export interface EditFamiliaInsumoDto {
+  codigo?: string;
+  nombre?: string;
+}
+
+/** Body de `PATCH /familias-insumo/:id/estado` (`CambiarEstadoActivoFamiliaInsumoDto`). */
+export interface CambiarEstadoActivoFamiliaInsumoDto {
+  activo: boolean;
+}
+
+/**
+ * Espejo de `UnidadMedidaResponseDto`
+ * (`backend/src/insumos/interface/dtos/unidades-medida.dto.ts`). Forma
+ * completa, con `codigo`/`activo`/timestamps: el ABM del catálogo (Admin >
+ * Insumos) los edita y los muestra. Las dos respuestas tienen el MISMO shape
+ * en el backend, pero se declaran por separado: son catálogos distintos, y un
+ * alias compartido haría que agregarle un campo a uno se lo agregue al otro
+ * sin que nadie lo decida.
  */
 export interface UnidadMedida {
   id: string;
+  codigo: string;
   nombre: string;
+  activo: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Body de `POST /unidades-medida` (`CreateUnidadMedidaDto`). */
+export interface CreateUnidadMedidaDto {
+  codigo: string;
+  nombre: string;
+}
+
+/** Body de `PATCH /unidades-medida/:id` (`EditUnidadMedidaDto`) — PATCH parcial. */
+export interface EditUnidadMedidaDto {
+  codigo?: string;
+  nombre?: string;
+}
+
+/** Body de `PATCH /unidades-medida/:id/estado` (`CambiarEstadoActivoUnidadMedidaDto`). */
+export interface CambiarEstadoActivoUnidadMedidaDto {
+  activo: boolean;
 }
 
 /**

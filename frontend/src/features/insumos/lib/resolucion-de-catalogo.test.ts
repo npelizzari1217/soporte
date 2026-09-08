@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { resolverDeCatalogo } from "./resolucion-de-catalogo";
+import { resolverDeCatalogo, resolverLista } from "./resolucion-de-catalogo";
 
 const CATALOGO = [
   { id: "ins-1", nombre: "Tóner negro" },
@@ -46,3 +46,28 @@ describe("resolverDeCatalogo", () => {
     });
   });
 });
+
+/**
+ * `resolverLista` existe porque el `<select>` de un formulario no pregunta
+ * "¿está este id?" sino "¿puedo ofrecer opciones?". El caso que justifica los
+ * cuatro estados es NO_DISPONIBLE: sin él, una query caída se lee como catálogo
+ * vacío y la pantalla manda a cargar algo que ya existe.
+ */
+describe("resolverLista", () => {
+  it("en vuelo es CARGANDO", () => {
+    expect(resolverLista({ entradas: undefined, cargando: true })).toBe("CARGANDO");
+  });
+
+  it("sin entradas y sin cargar es NO_DISPONIBLE, no VACIA", () => {
+    expect(resolverLista({ entradas: undefined, cargando: false })).toBe("NO_DISPONIBLE");
+  });
+
+  it("resolvio con lista vacia es VACIA", () => {
+    expect(resolverLista({ entradas: [], cargando: false })).toBe("VACIA");
+  });
+
+  it("resolvio con entradas es CON_ENTRADAS", () => {
+    expect(resolverLista({ entradas: [{ id: "a" }], cargando: false })).toBe("CON_ENTRADAS");
+  });
+});
+

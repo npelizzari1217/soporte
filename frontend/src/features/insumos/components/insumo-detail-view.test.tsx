@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse, delay } from "msw";
 import { server } from "../../../../test/msw/server";
@@ -46,13 +46,41 @@ const OTRO_INSUMO: Insumo = {
 };
 
 const FAMILIAS: FamiliaInsumo[] = [
-  { id: "fam-1", nombre: "Consumibles de impresión" },
-  { id: "fam-2", nombre: "Cableado de red" },
+  {
+    id: "fam-1",
+    codigo: "CONSUMIBLES",
+    nombre: "Consumibles de impresión",
+    activo: true,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  },
+  {
+    id: "fam-2",
+    codigo: "CABLEADO",
+    nombre: "Cableado de red",
+    activo: true,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  },
 ];
 
 const UNIDADES: UnidadMedida[] = [
-  { id: "um-1", nombre: "Unidad" },
-  { id: "um-2", nombre: "Metro" },
+  {
+    id: "um-1",
+    codigo: "UN",
+    nombre: "Unidad",
+    activo: true,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  },
+  {
+    id: "um-2",
+    codigo: "M",
+    nombre: "Metro",
+    activo: true,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  },
 ];
 
 const STOCK_SUFICIENTE: StockInsumo = {
@@ -842,5 +870,121 @@ describe("InsumoDetailView — registrar ajuste", () => {
     // invalidación del POST: si el refetch fuera casualidad, este contador
     // seguiría en 1.
     expect(stockPedido).toBe(2);
+  });
+});
+
+/**
+ * ABM del insumo (crear/editar/activar-desactivar) — gate `AdminClienteGuard`
+ * en el backend, `<SoloAdminCliente>` en el frontend (ADR-P5): es un chequeo
+ * de IDENTIDAD (`esAdminCliente`), no una celda de la matriz `MODULO:ACCION`,
+ * así que `LECTOR` (rol ADMINISTRADOR por default de `buildUser`) SÍ ve estos
+ * triggers aunque su fixture solo declare `INSUMOS:LECTURA`.
+ */
+describe("InsumoDetailView — editar y cambiar estado (ABM, gate AdminClienteGuard)", () => {
+  it("admin ve los botones «Editar» y «Deshabilitar»", async () => {
+    mockFicha([INSUMO], STOCK_SUFICIENTE);
+    renderWithProviders(<InsumoDetailView insumoId={INSUMO.id} />, { user: LECTOR });
+
+    expect(await screen.findByRole("button", { name: /^editar$/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^deshabilitar$/i })).toBeInTheDocument();
+  });
+
+  it("insumo deshabilitado → el trigger de estado dice «Habilitar»", async () => {
+    mockFicha([{ ...INSUMO, activo: false }], STOCK_SUFICIENTE);
+    renderWithProviders(<InsumoDetailView insumoId={INSUMO.id} />, { user: LECTOR });
+
+    expect(await screen.findByRole("button", { name: /^habilitar$/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^deshabilitar$/i })).not.toBeInTheDocument();
+  });
+
+  it("no-admin (TECNICO) sigue viendo la ficha, pero sin «Editar» ni el trigger de estado", async () => {
+    mockFicha([INSUMO], STOCK_SUFICIENTE);
+    renderWithProviders(<InsumoDetailView insumoId={INSUMO.id} />, {
+      user: buildUser({ rol: "TECNICO", permisos: ["INSUMOS:LECTURA"], modulos: ["INSUMOS"] }),
+    });
+
+    expect(await screen.findByText("Tóner negro HP 26A")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^editar$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^deshabilitar$/i })).not.toBeInTheDocument();
+  });
+
+  it("editar desde la ficha manda el PATCH y refleja el cambio sin recargar la página", async () => {
+    // `codigo` propio, sin guion: el resto de esta suite usa "TON-001" para
+    // fixtures de solo LECTURA (nunca pasan por el schema de escritura), pero
+    // el schema del ABM exige `/^[A-Z0-9_]+$/` (mismo criterio que
+    // familias/unidades) — ver el JSDoc de `insumoSchema`.
+    // Estado MUTABLE, no un fixture estático: `useEditarInsumo` invalida
+    // `["insumos"]` al tener éxito, así que la ficha vuelve a pedir
+    // `GET /insumos` — si ese handler siguiera devolviendo el insumo viejo, el
+    // assert de abajo pasaría por casualidad (el PATCH se mandó bien, pero la
+    // pantalla no reflejaría nada).
+    let insumoActual: Insumo = { ...INSUMO, codigo: "TON001" };
+    mockFicha([insumoActual], STOCK_SUFICIENTE);
+    server.use(http.get("/api/insumos", () => HttpResponse.json([insumoActual])));
+    let enviado: Record<string, unknown> = {};
+    server.use(
+      http.patch(`/api/insumos/${INSUMO.id}`, async ({ request }) => {
+        enviado = (await request.json()) as Record<string, unknown>;
+        insumoActual = { ...insumoActual, nombre: "Tóner negro HP 26A XL" };
+        return HttpResponse.json(insumoActual);
+      }),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<InsumoDetailView insumoId={INSUMO.id} />, { user: LECTOR });
+
+    await user.click(await screen.findByRole("button", { name: /^editar$/i }));
+    const nombreInput = await screen.findByLabelText("Nombre");
+    await user.clear(nombreInput);
+    await user.type(nombreInput, "Tóner negro HP 26A XL");
+    await user.click(screen.getByRole("button", { name: /^guardar$/i }));
+
+    await waitFor(() =>
+      expect(enviado).toEqual({
+        codigo: "TON001",
+        nombre: "Tóner negro HP 26A XL",
+        familiaId: "fam-1",
+        unidadMedidaId: "um-1",
+        stockMinimo: 5,
+      }),
+    );
+    expect(await screen.findByText("Tóner negro HP 26A XL")).toBeInTheDocument();
+  });
+
+  it("deshabilitar pide confirmación y manda { activo: false }", async () => {
+    mockFicha([INSUMO], STOCK_SUFICIENTE);
+    let enviado: Record<string, unknown> = {};
+    server.use(
+      http.patch(`/api/insumos/${INSUMO.id}/estado`, async ({ request }) => {
+        enviado = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({ ...INSUMO, activo: false });
+      }),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<InsumoDetailView insumoId={INSUMO.id} />, { user: LECTOR });
+
+    await user.click(await screen.findByRole("button", { name: /^deshabilitar$/i }));
+    const dialogo = await screen.findByRole("alertdialog");
+    await user.click(within(dialogo).getByRole("button", { name: /^deshabilitar$/i }));
+
+    await waitFor(() => expect(enviado).toEqual({ activo: false }));
+  });
+
+  it("habilitar (insumo deshabilitado) pide confirmación y manda { activo: true }", async () => {
+    mockFicha([{ ...INSUMO, activo: false }], STOCK_SUFICIENTE);
+    let enviado: Record<string, unknown> = {};
+    server.use(
+      http.patch(`/api/insumos/${INSUMO.id}/estado`, async ({ request }) => {
+        enviado = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({ ...INSUMO, activo: true });
+      }),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<InsumoDetailView insumoId={INSUMO.id} />, { user: LECTOR });
+
+    await user.click(await screen.findByRole("button", { name: /^habilitar$/i }));
+    const dialogo = await screen.findByRole("alertdialog");
+    await user.click(within(dialogo).getByRole("button", { name: /^habilitar$/i }));
+
+    await waitFor(() => expect(enviado).toEqual({ activo: true }));
   });
 });
