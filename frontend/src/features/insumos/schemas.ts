@@ -8,6 +8,7 @@
 import { z } from "zod";
 import { conDosDecimales, formatearNumeroEsAr, parsearNumeroEsAr } from "@/shared/lib/formato-numero";
 import { mensajeDemasiadoLargo } from "@/shared/lib/mensaje-tope";
+import type { TipoAjusteInsumo } from "./types";
 
 /**
  * Topes de `movimientos_insumo`, espejo de las constantes de
@@ -28,13 +29,14 @@ const MENSAJE_DECIMALES = `Máximo ${MOVIMIENTO_INSUMO_CANTIDAD_DECIMALES} decim
  * `numeroRequerido` en `features/compras/schemas.ts`). Parsea con
  * `parsearNumeroEsAr`, no `Number()` pelado: soporta el formato es-AR
  * (`"1.234,56"` → `1234.56`, donde `Number()` pelado daría `NaN`) para
- * cualquier valor que llegue como texto. En el diálogo de entrada
- * (`movimiento-entrada-dialog.tsx`) el campo es `<input type="number">`, y el
+ * cualquier valor que llegue como texto. Mientras el campo sea un
+ * `<input type="number">` (todos los diálogos de movimientos lo son hoy), el
  * browser sanitiza un pegado inválido a cadena vacía antes de que este schema
- * lo vea — ese camino de parseo no se ejerce desde ahí hoy. El punto solo se
- * lee como separador de miles cuando además hay una coma decimal, así que el
- * crudo de un `<input type="number">` (`"1000.5"`) se interpreta igual que
- * hoy.
+ * lo vea, así que ese camino de parseo de texto no se ejerce desde ahí — solo
+ * corre si algún consumidor futuro lo cablea a un campo de texto libre. El
+ * punto solo se lee como separador de miles cuando además hay una coma
+ * decimal, así que el crudo de un `<input type="number">` (`"1000.5"`) se
+ * interpreta igual que hoy.
  *
  * `.positive()` y NO `.min(0)`: el backend exige `@IsPositive()` — el cero NO
  * es un movimiento, el piso es exclusivo. Es la diferencia de fondo con
@@ -67,14 +69,44 @@ const cantidadMovimientoSchema = z.preprocess(
 );
 
 /**
- * Espejo de `RegistrarMovimientoInsumoHttpDto` — sirve tanto para la ENTRADA
- * como para la SALIDA: el backend recibe el mismo body en las dos rutas y el
- * tipo del asiento lo fija la ruta, no el cuerpo.
+ * Mensaje de "no hay existencia suficiente" — un solo dueño de la frase,
+ * compartido por `registrarSalidaInsumoSchema` y `registrarAjusteInsumoSchema`
+ * (este último solo lo dispara para `AJUSTE_NEGATIVO`). Mismo criterio que
+ * `construirNotaEquiposNoDisponibles` (`movimiento-insumo-dialog.tsx`): la
+ * frase no puede divergir entre las dos puertas que la usan.
  *
- * `motivo` es OPCIONAL A PROPÓSITO, incluso acá: que el ajuste lo exija es una
- * regla de NEGOCIO que vive en `MovimientoInsumoEntity.create()` (422,
- * `MotivoAjusteRequeridoError`), no de forma — duplicarla en este schema le
- * daría dos dueños a la misma regla. Se mide TRIMEADO, igual que el backend
+ * @param stockDisponible Stock vigente a mostrar en el mensaje; `undefined` se muestra como `0`.
+ * @returns El texto completo del mensaje de error, listo para el `.refine()` que lo dispara.
+ */
+function mensajeStockInsuficiente(stockDisponible: number | undefined): string {
+  return `No hay existencia suficiente: disponible ${formatearNumeroEsAr(stockDisponible ?? 0)}`;
+}
+
+/**
+ * Predicado del tope de stock — mismo dueño que `mensajeStockInsuficiente`.
+ * `stockDisponible` en `undefined` DESACTIVA el tope, nunca lo trata como `0`
+ * (ver el JSDoc de `registrarSalidaInsumoSchema` para el porqué).
+ *
+ * @param cantidad Cantidad tipeada en el form, ya parseada a número.
+ * @param stockDisponible Stock vigente; `undefined` cuando la consulta sigue en vuelo o falló.
+ * @returns `true` si la cantidad pasa el tope, o si el tope está desactivado.
+ */
+function cantidadDentroDelStock(cantidad: number, stockDisponible: number | undefined): boolean {
+  return stockDisponible === undefined || cantidad <= stockDisponible;
+}
+
+/**
+ * Espejo de `RegistrarMovimientoInsumoHttpDto` — sirve tanto para la ENTRADA
+ * como para la SALIDA (mismo body en el backend, el tipo lo fija la ruta).
+ * `registrarAjusteInsumoSchema`, más abajo, LO EXTIENDE con el discriminador
+ * `tipo` propio del ajuste y sobrescribe `motivo` porque esa puerta sí lo
+ * exige con contenido.
+ *
+ * `motivo` es OPCIONAL A PROPÓSITO EN ESTE SCHEMA BASE: que el ajuste lo
+ * exija es una regla de NEGOCIO que vive en `MovimientoInsumoEntity.create()`
+ * (422, `MotivoAjusteRequeridoError`), no de forma — duplicarla acá le
+ * daría dos dueños a la misma regla, y por eso la exigencia vive en el
+ * schema del ajuste, no en este. Se mide TRIMEADO, igual que el backend
  * (`@Transform` corre antes que `@MaxLength`): sin el `.trim()`, un motivo que
  * solo pasa el tope por sus espacios de borde se rechazaría acá y se
  * aceptaría en el servidor — el front quedaría MÁS estricto que el backend.
@@ -114,12 +146,77 @@ export type RegistrarMovimientoInsumoFormValues = z.infer<typeof registrarMovimi
  * (`MovimientoSalidaDialog`): mientras `useStockInsumo` está en vuelo o
  * falló, no hay con qué comparar, y bloquear con un tope inventado sería peor
  * que dejar pasar y confiar en el 422 del backend como backstop.
+ *
+ * @param stockDisponible Stock vigente del insumo; `undefined` desactiva el tope.
+ * @returns `registrarMovimientoInsumoSchema` con el `.refine()` de stock agregado.
  */
-export function registrarSalidaInsumoSchema(stockDisponible: number | undefined) {
+export type RegistrarSalidaInsumoSchema = z.ZodEffects<typeof registrarMovimientoInsumoSchema>;
+
+export function registrarSalidaInsumoSchema(stockDisponible: number | undefined): RegistrarSalidaInsumoSchema {
   return registrarMovimientoInsumoSchema.refine(
-    (valores) => stockDisponible === undefined || valores.cantidad <= stockDisponible,
+    (valores) => cantidadDentroDelStock(valores.cantidad, stockDisponible),
     {
-      message: `No hay existencia suficiente: disponible ${formatearNumeroEsAr(stockDisponible ?? 0)}`,
+      message: mensajeStockInsuficiente(stockDisponible),
+      path: ["cantidad"],
+    },
+  );
+}
+
+/**
+ * Las dos direcciones válidas del campo `tipo` del ajuste, como tupla literal
+ * para `z.enum`. Se escribe una sola vez y el `satisfies` la ata a
+ * `TipoAjusteInsumo` (que a su vez deriva de `TIPOS_MOVIMIENTO_INSUMO`,
+ * `types.ts`): si esos nombres cambiaran ahí, esto rompe el typecheck en vez
+ * de validar contra un valor que el dominio ya no reconoce.
+ */
+const OPCIONES_TIPO_AJUSTE = ["AJUSTE_POSITIVO", "AJUSTE_NEGATIVO"] as const satisfies readonly TipoAjusteInsumo[];
+
+/**
+ * Base del formulario de AJUSTE: extiende `registrarMovimientoInsumoSchema`
+ * con el discriminador `tipo` (espejo de `RegistrarAjusteInsumoHttpDto`,
+ * backend) y SOBRESCRIBE `motivo` para exigirle contenido.
+ *
+ * A diferencia de entrada/salida, acá SÍ corresponde mirar esta precondición
+ * en el cliente: el dominio la exige siempre (`MotivoAjusteRequeridoError`,
+ * 422), y es una condición que se conoce al tipear — no una carrera con el
+ * servidor, como sí lo es el stock de la salida. Dejarla viajar al backend
+ * mandaría al usuario a perder lo escrito por algo que el formulario ya podía
+ * decirle (AGENTS.md, formularios, "forma 2 de fallo"). Se mide TRIMEADO,
+ * igual que `transformarMotivo` del backend (`movimientos-insumo.dto.ts`):
+ * un motivo de puros espacios no es contenido.
+ */
+const ajusteInsumoObjectSchema = registrarMovimientoInsumoSchema.extend({
+  tipo: z.enum(OPCIONES_TIPO_AJUSTE, { required_error: "El tipo de ajuste es requerido" }),
+  motivo: z
+    .string({ required_error: "El motivo es requerido" })
+    .refine((valor) => valor.trim().length > 0, "El motivo es requerido")
+    .refine(
+      (valor) => valor.trim().length <= MOVIMIENTO_INSUMO_MOTIVO_MAX_LENGTH,
+      mensajeDemasiadoLargo("El motivo", MOVIMIENTO_INSUMO_MOTIVO_MAX_LENGTH),
+    ),
+});
+export type RegistrarAjusteInsumoFormValues = z.infer<typeof ajusteInsumoObjectSchema>;
+
+/**
+ * Schema completo del AJUSTE: agrega sobre `ajusteInsumoObjectSchema` el tope
+ * de stock, que aplica SOLO al `AJUSTE_NEGATIVO` — un ajuste positivo sube la
+ * existencia, nunca puede quedarse corto de nada. Mismo mecanismo de
+ * `.refine` con `stockDisponible` inyectado que `registrarSalidaInsumoSchema`
+ * — ver su JSDoc para por qué `undefined` desactiva el tope en vez de
+ * tratarse como `0` — con el agregado de que acá el tope además queda
+ * condicionado al `tipo` que el usuario eligió.
+ *
+ * @param stockDisponible Stock vigente del insumo; topa la cantidad solo cuando `tipo` es `AJUSTE_NEGATIVO`.
+ * @returns `ajusteInsumoObjectSchema` con el `.refine()` de stock agregado.
+ */
+export type RegistrarAjusteInsumoSchema = z.ZodEffects<typeof ajusteInsumoObjectSchema>;
+
+export function registrarAjusteInsumoSchema(stockDisponible: number | undefined): RegistrarAjusteInsumoSchema {
+  return ajusteInsumoObjectSchema.refine(
+    (valores) =>
+      valores.tipo !== "AJUSTE_NEGATIVO" || cantidadDentroDelStock(valores.cantidad, stockDisponible),
+    {
+      message: mensajeStockInsuficiente(stockDisponible),
       path: ["cantidad"],
     },
   );

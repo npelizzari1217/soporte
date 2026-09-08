@@ -7,9 +7,11 @@
  * repo, ver `EquipoCreateDialog`/`CompraCreateDialog`) — este componente no se
  * auto-gatea.
  *
- * Envuelve el `MovimientoInsumoDialog` compartido (`movimiento-insumo-dialog.tsx`,
- * ver su JSDoc): acá vive el `useForm` con `registrarMovimientoInsumoSchema`,
- * la mutación de alta y la precondición de estado de esta puerta.
+ * Envuelve el `MovimientoInsumoDialog` compartido (`movimiento-insumo-dialog.tsx`
+ * — ver su JSDoc para el porqué de la extracción y de por qué NO es genérico
+ * sobre el shape del form): acá vive el `useForm` con
+ * `registrarMovimientoInsumoSchema`, la mutación de alta y la ÚNICA
+ * precondición de estado que le corresponde a esta puerta.
  *
  * **`activo` refleja `insumo.activo` de la ficha** y deshabilita el trigger
  * —con un `title` que explica por qué— cuando es `false`. El backend exige
@@ -22,9 +24,11 @@
  * abierto —es una carrera, no el camino normal—, así que el 422 sigue
  * manejándose como backstop (ver el test homónimo en el archivo de test).
  *
- * `motivo` es OPCIONAL A PROPÓSITO, incluso para la entrada: que el ajuste lo
- * exija es una regla de negocio del backend (422), no de este formulario —
- * ver el JSDoc de `registrarMovimientoInsumoSchema`.
+ * `motivo` es OPCIONAL A PROPÓSITO, incluso para la entrada: `registrarMovimientoInsumoSchema`
+ * (el que usa este formulario) no lo exige. El ajuste SÍ lo exige, pero eso
+ * ya no vive acá — `registrarAjusteInsumoSchema` sobrescribe `motivo` con su
+ * propio `.refine()` (ver su JSDoc en `schemas.ts`), así que esta puerta ni
+ * siquiera comparte el schema con la que sí lo exige.
  */
 import { useState } from "react";
 import { useForm } from "react-hook-form";

@@ -1,42 +1,77 @@
 "use client";
 
 /**
- * MovimientoInsumoDialog — pieza PRESENTACIONAL del diálogo que registra un
- * movimiento en la bitácora de un insumo: el chrome del diálogo (trigger,
- * título, formulario) y los cuatro campos que necesita el alta (cantidad,
- * motivo, equipo, sector). No conoce la mutación, el schema ni el `useForm`
- * del caller — eso lo resuelve cada caller (`MovimientoEntradaDialog`,
- * `MovimientoSalidaDialog`).
+ * MovimientoInsumoDialog — diálogo PRESENTACIONAL compartido por las TRES
+ * puertas de escritura de la bitácora de un insumo: entrada, salida y
+ * ajuste. Es la extracción que salió de tener las tres a la vista
+ * (`MovimientoEntradaDialog`/`MovimientoSalidaDialog`/`MovimientoAjusteDialog`):
+ * mismo `useEquipos(open)`/`useSectores(open)`, mismo branch de
+ * `ETIQUETA_EQUIPOS_NO_DISPONIBLES` (select deshabilitado, opción única,
+ * párrafo explicativo), y el mismo bloque de JSX de cantidad/motivo/equipo/
+ * sector con sus `role="alert"`.
  *
- * Recibe el resultado YA LLAMADO de `register(...)` para cada campo
- * (`UseFormRegisterReturn<"cantidad">` y sus hermanos) en vez de un
- * `register` crudo: son tipos concretos, resueltos por el caller contra su
- * propio `useForm` — este componente no necesita saber nada del tipo del
- * formulario para pintar los campos.
+ * **Por qué NO es genérico sobre el shape del formulario.** La tentación
+ * obvia era un componente `<TValues extends RegistrarMovimientoInsumoFormValues>`
+ * que llamara `useForm<TValues>()` y `register(...)` puertas adentro. Se
+ * probó y NO tipa: `register("cantidad")` necesita que `"cantidad"` sea
+ * literalmente un miembro de `Path<TValues>`, y `Path<T>` (tipo condicional
+ * recursivo de React Hook Form) no se puede resolver contra un parámetro de
+ * tipo todavía genérico — ni siquiera con una firma de tipo concreta del otro
+ * lado, `UseFormRegister<Extendido>` NO es asignable a
+ * `UseFormRegister<Base>` (lo verificado: falta la propiedad del campo
+ * agregado, aunque la dirección de la asignación sugiera lo contrario). La
+ * única salida sin `as`/cast sin chequear era resolver `useForm` y llamar a
+ * `register(...)` donde el tipo SÍ es concreto: en cada CALLER. Por eso este
+ * componente recibe el resultado YA LLAMADO de `register(...)` para los
+ * cuatro campos que comparten las tres puertas
+ * (`UseFormRegisterReturn<"cantidad">` y sus hermanos, que SÍ son tipos
+ * concretos, sin generic abierto) en vez de un `register` crudo.
+ *
+ * Lo que CADA puerta trae distinto queda en manos del CALLER:
+ * - `onSubmit`/`isPending`/`registro*`/`error*` — ya resueltos contra el
+ *   `useForm` + `schema` + mutación propios de esa puerta.
+ * - `deshabilitado`/`motivoDeshabilitado` — la precondición del TRIGGER
+ *   (`insumo.activo` en la entrada, el stock en la salida, ninguna en el
+ *   ajuste). Este componente no evalúa ninguna precondición de dominio: solo
+ *   pinta lo que el caller ya decidió.
+ * - `motivoRequerido` — si el rótulo del campo dice "Motivo" o
+ *   "Motivo (opcional)". La VALIDACIÓN de si el motivo hace falta vive en el
+ *   `schema` de cada caller (`registrarAjusteInsumoSchema` lo exige,
+ *   `registrarMovimientoInsumoSchema` no) — este flag es solo el rótulo, para
+ *   que no quede desincronizado del schema.
+ * - `notaEquiposNoDisponibles` — el párrafo COMPLETO bajo el select de
+ *   equipo cuando `GET /equipos` devuelve 403. Lo arma
+ *   `construirNotaEquiposNoDisponibles` a partir del nombre de la operación,
+ *   que es lo único que cambia entre las tres puertas; la frase tiene un solo
+ *   dueño y el componente sigue sin saber cuál de ellas la pidió.
+ * - `camposAdicionales` — JSX YA RESUELTO por el caller (con SU `register`
+ *   concreto) para insertar antes de "Cantidad". El ajuste lo usa para su
+ *   selector de `tipo`; entrada y salida simplemente no lo pasan. Este
+ *   componente nunca pregunta "¿soy el de ajuste?" — solo reserva el hueco.
+ * - `open`/`onOpenChange` — el estado del diálogo vive en el caller, que es
+ *   el ÚNICO dueño de la limpieza del formulario: su `handleOpenChange`
+ *   (`setOpen` + `reset` condicionado a `!next`) es la misma función que la
+ *   mutación llama al tener éxito (`onSuccess: () => handleOpenChange(false)`)
+ *   y la que Radix invoca cuando el cierre viene de Escape, el overlay o la
+ *   X. Este componente solo reenvía `onOpenChange` al `Dialog` de Radix — no
+ *   decide ni ejecuta ningún reset.
  *
  * `equipoId`/`sectorId` son vínculos de TRAZABILIDAD opcionales, no de stock:
  * "Sin equipo"/"Sin sector" son las opciones por defecto y el payload NUNCA
- * los envía cuando quedan sin elegir — eso lo resuelve
- * `construirMovimientoInsumoDto` (`use-insumo-mutations.ts`) del lado del
- * caller.
+ * los envía cuando quedan sin elegir — eso lo resuelve `construirDto` de cada
+ * caller con `construirMovimientoInsumoDto` (`use-insumo-mutations.ts`).
  *
  * **Los dos catálogos NO llevan el mismo gate.** `GET /sectores` es lectura
  * abierta (sin `@RequiereAcciones`, `SectoresController` línea ~79). `GET
  * /equipos` SÍ lleva gate propio —`@RequiereAcciones('EQUIPOS:LECTURA')`,
  * `EquiposController` línea ~216— y ese permiso es INDEPENDIENTE del gate que
- * el caller exige para escribir. Un usuario sin `EQUIPOS:LECTURA` recibe 403
- * en `GET /equipos`, y el select lo refleja con
+ * cada puerta exige para escribir. Un usuario sin `EQUIPOS:LECTURA` recibe
+ * 403 en `GET /equipos`, y el select lo refleja con
  * `ETIQUETA_EQUIPOS_NO_DISPONIBLES` en vez de degradar en silencio a "no hay
  * equipos cargados" (mismo criterio que `nombreDeUsuario`/`resolverDeCatalogo`
  * de esta misma feature).
- *
- * `open`/`onOpenChange` viven en el caller, que es el ÚNICO dueño de la
- * limpieza del formulario: su `handleOpenChange` (`setOpen` + `reset`
- * condicionado a `!next`) es la misma función que la mutación llama al tener
- * éxito y la que Radix invoca cuando el cierre viene de Escape, el overlay o
- * la X. Este componente solo reenvía `onOpenChange` al `Dialog` de Radix — no
- * decide ni ejecuta ningún reset.
  */
+import type { ReactNode } from "react";
 import type { FieldError, UseFormRegisterReturn } from "react-hook-form";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button, type ButtonProps } from "@/components/ui/button";
@@ -56,11 +91,11 @@ const ETIQUETA_EQUIPOS_NO_DISPONIBLES = "Sin datos de equipos";
 
 /**
  * Arma el párrafo que va bajo el select de equipo cuando `GET /equipos`
- * devuelve 403. Toma la operación con su artículo, tal como se lee en la
- * frase (`"la entrada"`), así el copy vive una sola vez y cada caller solo
- * aporta el nombre de su propia operación.
+ * devuelve 403. Entre las tres puertas lo único que cambia es cómo se nombra
+ * la operación —y su género—, así que eso es lo que se parametriza: el resto
+ * de la frase vive acá una sola vez y no puede divergir entre puertas.
  *
- * @param operacion La operación con su artículo, tal como se lee en la frase: `"la entrada"`.
+ * @param operacion La operación con su artículo, tal como se lee en la frase: `"la entrada"`, `"la salida"`, `"el ajuste"`.
  */
 export function construirNotaEquiposNoDisponibles(operacion: string): string {
   return (
@@ -73,16 +108,18 @@ export interface MovimientoInsumoDialogProps {
   open: boolean;
   /** Único dueño de la limpieza del form del caller: cierra Y resetea cuando `open` pasa a `false`, sin importar la vía. */
   onOpenChange: (open: boolean) => void;
-  /** Texto del trigger y del título del diálogo (mismo texto en los dos). */
+  /** Texto del trigger y del título del diálogo (mismo texto en los dos, como en las tres puertas). */
   titulo: string;
   /** Prefijo de los `id`/`htmlFor` de cada campo, para que no choquen si dos diálogos de esta familia coexistieran en la misma página. */
   idPrefijo: string;
-  /** Variante del botón trigger; cada caller elige la suya. */
+  /** Variante del botón trigger; cada puerta elige la suya. */
   variant?: ButtonProps["variant"];
-  /** `true` deshabilita el trigger. */
+  /** `true` deshabilita el trigger. Cada puerta decide su propia precondición de estado (o ninguna, como el ajuste). */
   deshabilitado?: boolean;
   /** `title` del trigger cuando `deshabilitado` es `true`, explicando por qué. */
   motivoDeshabilitado?: string;
+  /** `true` muestra el rótulo "Motivo" a secas; `false` (default) agrega "(opcional)". Solo cambia el RÓTULO — la validación real vive en el `schema` del caller. */
+  motivoRequerido?: boolean;
   /** Párrafo completo bajo el select de equipo cuando `GET /equipos` devuelve 403 — cada caller trae su propio copy. */
   notaEquiposNoDisponibles: string;
   /** `mutation.isPending` del caller: controla el spinner del botón "Registrar". */
@@ -95,6 +132,8 @@ export interface MovimientoInsumoDialogProps {
   errorMotivo?: FieldError;
   registroEquipo: UseFormRegisterReturn<"equipoId">;
   registroSector: UseFormRegisterReturn<"sectorId">;
+  /** JSX ya resuelto por el caller (con SU `register` concreto) para insertar antes de "Cantidad". El ajuste lo usa para su selector de `tipo`; entrada y salida no lo pasan. */
+  camposAdicionales?: ReactNode;
 }
 
 /**
@@ -108,6 +147,7 @@ export function MovimientoInsumoDialog({
   variant,
   deshabilitado = false,
   motivoDeshabilitado,
+  motivoRequerido = false,
   notaEquiposNoDisponibles,
   isPending,
   onSubmit,
@@ -117,6 +157,7 @@ export function MovimientoInsumoDialog({
   errorMotivo,
   registroEquipo,
   registroSector,
+  camposAdicionales,
 }: MovimientoInsumoDialogProps) {
   // Los dos catálogos solo hacen falta DENTRO del diálogo: pedirlos ya con la
   // ficha montada le costaría un 403 innecesario a un usuario de depósito sin
@@ -147,6 +188,8 @@ export function MovimientoInsumoDialog({
           <DialogTitle>{titulo}</DialogTitle>
         </DialogHeader>
         <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
+          {camposAdicionales}
+
           <div className="flex flex-col gap-1">
             <label htmlFor={`${idPrefijo}-cantidad`} className="text-sm font-medium text-foreground">
               Cantidad
@@ -168,7 +211,7 @@ export function MovimientoInsumoDialog({
 
           <div className="flex flex-col gap-1">
             <label htmlFor={`${idPrefijo}-motivo`} className="text-sm font-medium text-foreground">
-              Motivo (opcional)
+              {motivoRequerido ? "Motivo" : "Motivo (opcional)"}
             </label>
             <Textarea
               id={`${idPrefijo}-motivo`}

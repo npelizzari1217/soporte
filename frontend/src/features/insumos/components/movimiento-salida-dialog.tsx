@@ -13,9 +13,9 @@
  *
  * **La salida NO exige el insumo habilitado.** El JSDoc del controller
  * (`MovimientosInsumoController.registrarSalida`) es explícito: la entrada es
- * la ÚNICA que lo exige. Copiar el `disabled={!activo}` de
- * `MovimientoEntradaDialog` acá sería un bug: un insumo deshabilitado igual
- * puede necesitar que se saque lo que queda.
+ * la ÚNICA de las tres operaciones que lo exige. Copiar el
+ * `disabled={!activo}` de `MovimientoEntradaDialog` acá sería un bug: un
+ * insumo deshabilitado igual puede necesitar que se saque lo que queda.
  *
  * **La precondición que SÍ corresponde espejar acá es el STOCK.** Con
  * `stockDisponible` en `0` no hay salida posible: el trigger se deshabilita

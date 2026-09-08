@@ -5,7 +5,11 @@ import { http, HttpResponse } from "msw";
 import type { ReactNode } from "react";
 import { server } from "../../../../test/msw/server";
 import { ApiError } from "@/shared/api/types";
-import { useRegistrarEntradaInsumo, useRegistrarSalidaInsumo } from "./use-insumo-mutations";
+import {
+  useRegistrarEntradaInsumo,
+  useRegistrarSalidaInsumo,
+  useRegistrarAjusteInsumo,
+} from "./use-insumo-mutations";
 
 const INSUMO_ID = "11111111-1111-1111-1111-111111111111";
 
@@ -156,6 +160,103 @@ describe("useRegistrarSalidaInsumo", () => {
       wrapper: wrapper(buildClient()),
     });
     result.current.mutate({ cantidad: 10 });
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(result.current.error).toBeInstanceOf(ApiError);
+    expect(result.current.error).toMatchObject({
+      statusCode: 422,
+      message: MENSAJE_BACKEND,
+    });
+  });
+});
+
+describe("useRegistrarAjusteInsumo", () => {
+  const MOVIMIENTO_AJUSTE_FIXTURE = { ...MOVIMIENTO_FIXTURE, tipo: "AJUSTE_NEGATIVO", motivo: "Conteo físico" };
+
+  it("pega a POST /insumos/:insumoId/movimientos/ajuste con el body correcto, incluido tipo", async () => {
+    let capturedBody: unknown = null;
+    server.use(
+      http.post(`/api/insumos/${INSUMO_ID}/movimientos/ajuste`, async ({ request }) => {
+        capturedBody = await request.json();
+        return HttpResponse.json(MOVIMIENTO_AJUSTE_FIXTURE, { status: 201 });
+      }),
+    );
+
+    const { result } = renderHook(() => useRegistrarAjusteInsumo(INSUMO_ID), {
+      wrapper: wrapper(buildClient()),
+    });
+    result.current.mutate({ cantidad: 3, motivo: "Conteo físico", tipo: "AJUSTE_NEGATIVO" });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(capturedBody).toEqual({ cantidad: 3, motivo: "Conteo físico", tipo: "AJUSTE_NEGATIVO" });
+  });
+
+  it("un ajuste exitoso invalida la existencia y la bitácora del insumo (PREFIJO, cubre cualquier página)", async () => {
+    server.use(
+      http.post(`/api/insumos/${INSUMO_ID}/movimientos/ajuste`, () =>
+        HttpResponse.json(MOVIMIENTO_AJUSTE_FIXTURE, { status: 201 }),
+      ),
+    );
+    const queryClient = buildClient();
+    const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+
+    const { result } = renderHook(() => useRegistrarAjusteInsumo(INSUMO_ID), {
+      wrapper: wrapper(queryClient),
+    });
+    result.current.mutate({ cantidad: 3, motivo: "Conteo físico", tipo: "AJUSTE_NEGATIVO" });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    const keys = invalidateSpy.mock.calls.map((call) => call[0]?.queryKey);
+    expect(keys).toContainEqual(["insumo", INSUMO_ID, "stock"]);
+    expect(keys).toContainEqual(["insumo", INSUMO_ID, "movimientos"]);
+    invalidateSpy.mockRestore();
+  });
+
+  /**
+   * `MotivoAjusteRequeridoError` (backend, `movimiento-insumo.entity.ts`)
+   * llega como 422 con el mensaje real del dominio. El schema del cliente
+   * (`registrarAjusteInsumoSchema`) ya bloquea este caso antes del POST — este
+   * test cubre el hook de mutación en sí, que es lo único que puede pegarle
+   * al backend directamente sin pasar por el formulario.
+   */
+  it("422 (motivo sin contenido) llega como ApiError con el mensaje real del backend", async () => {
+    const MENSAJE_BACKEND = "El motivo del ajuste no puede estar vacío.";
+    server.use(
+      http.post(`/api/insumos/${INSUMO_ID}/movimientos/ajuste`, () =>
+        HttpResponse.json({ statusCode: 422, message: MENSAJE_BACKEND }, { status: 422 }),
+      ),
+    );
+
+    const { result } = renderHook(() => useRegistrarAjusteInsumo(INSUMO_ID), {
+      wrapper: wrapper(buildClient()),
+    });
+    result.current.mutate({ cantidad: 3, motivo: "", tipo: "AJUSTE_NEGATIVO" });
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(result.current.error).toBeInstanceOf(ApiError);
+    expect(result.current.error).toMatchObject({
+      statusCode: 422,
+      message: MENSAJE_BACKEND,
+    });
+  });
+
+  /**
+   * `StockInsuficienteError` aplica también al ajuste, pero SOLO cuando es
+   * `AJUSTE_NEGATIVO` (ver el JSDoc de `registrarAjusteInsumoSchema` para por
+   * qué el positivo no tiene esta precondición).
+   */
+  it("422 (stock insuficiente en un ajuste negativo) llega como ApiError con el mensaje real del backend", async () => {
+    const MENSAJE_BACKEND = "Stock insuficiente: se pidieron 10, hay 4 disponibles.";
+    server.use(
+      http.post(`/api/insumos/${INSUMO_ID}/movimientos/ajuste`, () =>
+        HttpResponse.json({ statusCode: 422, message: MENSAJE_BACKEND }, { status: 422 }),
+      ),
+    );
+
+    const { result } = renderHook(() => useRegistrarAjusteInsumo(INSUMO_ID), {
+      wrapper: wrapper(buildClient()),
+    });
+    result.current.mutate({ cantidad: 10, motivo: "Conteo físico", tipo: "AJUSTE_NEGATIVO" });
 
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect(result.current.error).toBeInstanceOf(ApiError);

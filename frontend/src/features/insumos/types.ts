@@ -126,6 +126,15 @@ export const TIPOS_MOVIMIENTO_INSUMO = [
 export type TipoMovimientoInsumo = (typeof TIPOS_MOVIMIENTO_INSUMO)[number];
 
 /**
+ * Las dos direcciones que puede llevar el discriminador `tipo` del ajuste
+ * (`RegistrarAjusteInsumoHttpDto`, backend). Se DERIVA de `TipoMovimientoInsumo`
+ * con `Extract`, nunca se redeclara: si esos dos nombres cambiaran en
+ * `TIPOS_MOVIMIENTO_INSUMO`, este tipo rompe el typecheck en vez de quedar
+ * desincronizado en silencio.
+ */
+export type TipoAjusteInsumo = Extract<TipoMovimientoInsumo, "AJUSTE_POSITIVO" | "AJUSTE_NEGATIVO">;
+
+/**
  * Espejo de `MovimientoInsumoResponseDto` — un asiento de la bitácora que
  * devuelve `GET /insumos/:insumoId/movimientos`.
  *

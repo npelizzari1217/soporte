@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { registrarMovimientoInsumoSchema, registrarSalidaInsumoSchema } from "./schemas";
+import {
+  registrarMovimientoInsumoSchema,
+  registrarSalidaInsumoSchema,
+  registrarAjusteInsumoSchema,
+} from "./schemas";
 
 /**
  * Validación cliente-side de `registrarMovimientoInsumoSchema` — espejo de
@@ -196,5 +200,135 @@ describe("registrarSalidaInsumoSchema — tope contra el stock disponible", () =
   it("con stockDisponible en 0, cualquier cantidad positiva se rechaza por el tope", () => {
     const result = registrarSalidaInsumoSchema(0).safeParse({ cantidad: "1" });
     expect(result.success).toBe(false);
+  });
+});
+
+/** Valores base de un ajuste válido: solo lo que cada test necesita override. */
+function baseAjusteValues(tipo: "AJUSTE_POSITIVO" | "AJUSTE_NEGATIVO" = "AJUSTE_POSITIVO"): {
+  cantidad: unknown;
+  tipo: unknown;
+  motivo: unknown;
+} {
+  return { cantidad: "10", tipo, motivo: "Conteo físico de fin de mes" };
+}
+
+/**
+ * `registrarAjusteInsumoSchema` agrega DOS cosas sobre
+ * `registrarMovimientoInsumoSchema`: el discriminador `tipo` y un `motivo`
+ * que pasa de opcional a REQUERIDO. La diferencia con la salida es a
+ * propósito — ver el JSDoc de la función: acá no hay carrera, el dominio
+ * exige motivo siempre, así que corresponde espejarlo en el cliente.
+ */
+describe("registrarAjusteInsumoSchema — tipo", () => {
+  it("acepta AJUSTE_POSITIVO", () => {
+    const result = registrarAjusteInsumoSchema(undefined).safeParse(baseAjusteValues("AJUSTE_POSITIVO"));
+    expect(result.success).toBe(true);
+  });
+
+  it("acepta AJUSTE_NEGATIVO", () => {
+    const result = registrarAjusteInsumoSchema(undefined).safeParse(baseAjusteValues("AJUSTE_NEGATIVO"));
+    expect(result.success).toBe(true);
+  });
+
+  it("rechaza un tipo fuera de las dos direcciones del ajuste (p. ej. ENTRADA)", () => {
+    const result = registrarAjusteInsumoSchema(undefined).safeParse({
+      ...baseAjusteValues(),
+      tipo: "ENTRADA",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("sin tipo, rechaza con el mensaje de requerido", () => {
+    const result = registrarAjusteInsumoSchema(undefined).safeParse({
+      cantidad: "10",
+      motivo: "Conteo físico de fin de mes",
+    });
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    const issue = result.error.issues.find((i) => i.path[0] === "tipo");
+    expect(issue?.message).toBe("El tipo de ajuste es requerido");
+  });
+});
+
+describe("registrarAjusteInsumoSchema — motivo (REQUERIDO, a diferencia de entrada/salida)", () => {
+  it("sin motivo, rechaza con el mensaje de requerido", () => {
+    const result = registrarAjusteInsumoSchema(undefined).safeParse({
+      cantidad: "10",
+      tipo: "AJUSTE_POSITIVO",
+    });
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    const issue = result.error.issues.find((i) => i.path[0] === "motivo");
+    expect(issue?.message).toBe("El motivo es requerido");
+  });
+
+  it("un motivo de puros espacios no es contenido: rechaza con el mismo mensaje de requerido", () => {
+    const result = registrarAjusteInsumoSchema(undefined).safeParse({
+      ...baseAjusteValues(),
+      motivo: "     ",
+    });
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    const issue = result.error.issues.find((i) => i.path[0] === "motivo");
+    expect(issue?.message).toBe("El motivo es requerido");
+  });
+
+  it("un motivo con contenido rodeado de espacios de borde se acepta", () => {
+    const result = registrarAjusteInsumoSchema(undefined).safeParse({
+      ...baseAjusteValues(),
+      motivo: "  Conteo físico  ",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rechaza un motivo por encima de 500 caracteres, medido TRIMEADO", () => {
+    const result = registrarAjusteInsumoSchema(undefined).safeParse({
+      ...baseAjusteValues(),
+      motivo: `  ${"A".repeat(501)}  `,
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+/**
+ * El tope de stock del ajuste replica `registrarSalidaInsumoSchema` con un
+ * agregado: solo corre cuando el `tipo` elegido es `AJUSTE_NEGATIVO`. Un
+ * `AJUSTE_POSITIVO` sube la existencia — nunca puede quedarse corto de nada,
+ * así que ninguna cantidad lo rechaza por este motivo.
+ */
+describe("registrarAjusteInsumoSchema — tope de stock, SOLO en AJUSTE_NEGATIVO", () => {
+  it("AJUSTE_NEGATIVO por encima del stock disponible se rechaza", () => {
+    const result = registrarAjusteInsumoSchema(5).safeParse({
+      ...baseAjusteValues("AJUSTE_NEGATIVO"),
+      cantidad: "10",
+    });
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    const issue = result.error.issues.find((i) => i.path[0] === "cantidad");
+    expect(issue?.message).toMatch(/no hay existencia suficiente/i);
+  });
+
+  it("AJUSTE_NEGATIVO igual o por debajo del stock disponible se acepta", () => {
+    const result = registrarAjusteInsumoSchema(5).safeParse({
+      ...baseAjusteValues("AJUSTE_NEGATIVO"),
+      cantidad: "5",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("AJUSTE_POSITIVO por encima del 'stock disponible' se acepta igual: el tope no le aplica", () => {
+    const result = registrarAjusteInsumoSchema(5).safeParse({
+      ...baseAjusteValues("AJUSTE_POSITIVO"),
+      cantidad: "1000",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("con stockDisponible undefined, un AJUSTE_NEGATIVO no queda topado", () => {
+    const result = registrarAjusteInsumoSchema(undefined).safeParse({
+      ...baseAjusteValues("AJUSTE_NEGATIVO"),
+      cantidad: "1000000",
+    });
+    expect(result.success).toBe(true);
   });
 });
