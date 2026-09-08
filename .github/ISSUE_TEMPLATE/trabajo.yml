@@ -1,0 +1,58 @@
+name: Trabajo
+description: Funcionalidad, refactor, mantenimiento o documentacion
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Este issue es donde se discute **si** el trabajo vale la pena, antes de que
+        exista codigo que defender. Para habilitar el PR que lo cierre, alguien con
+        permiso tiene que agregarle el label `status:approved`.
+
+  - type: textarea
+    id: problema
+    attributes:
+      label: Que problema resuelve
+      description: El problema del usuario o del equipo, no la solucion.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alcance
+    attributes:
+      label: Alcance
+      description: Que entra y, sobre todo, que NO entra.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: tipo
+    attributes:
+      label: Tipo de trabajo
+      description: Define el label type:* que va a llevar el PR.
+      options:
+        - Funcionalidad nueva
+        - Refactor sin cambio de conducta
+        - Mantenimiento o tooling
+        - Solo documentacion
+        - Cambio incompatible hacia atras
+    validations:
+      required: true
+
+  - type: textarea
+    id: como-se-verifica
+    attributes:
+      label: Como se verifica que quedo hecho
+      description: Los escenarios observables. Son los que despues se convierten en tests.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: impacto
+    attributes:
+      label: Impacto
+      options:
+        - label: Cambia lo que el usuario ve o hace
+        - label: Toca autorizacion o permisos
+        - label: Toca el aislamiento entre inquilinos
+        - label: Deja algun articulo de la Ayuda desactualizado o pide uno nuevo

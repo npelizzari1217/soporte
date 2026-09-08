@@ -1,0 +1,82 @@
+# Compuerta issue-first del repo "soporte".
+#
+# La exige el skill `branch-pr` de gentle-ai: todo PR referencia un issue
+# aprobado y declara exactamente un label `type:*`. Los nombres de los tres
+# jobs son los que ese skill nombra en su tabla de "Automated Checks" y por
+# eso van en ingles: son identificadores del contrato, no prosa.
+#
+# El check de shellcheck que ese mismo skill lista NO se replica: este repo no
+# tiene ningun archivo .sh (verificado 2026-09-08). Sus compuertas de lint,
+# tipos, tests y build viven en gates.yml.
+name: pr-validation
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize, labeled, unlabeled]
+
+concurrency:
+  group: pr-validation-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+
+jobs:
+  issue-reference:
+    name: Check Issue Reference
+    runs-on: ubuntu-latest
+    steps:
+      # El numero del issue se extrae del cuerpo y se exporta para el job
+      # siguiente. Sin esto, cada job volveria a parsear el mismo texto.
+      - name: Extraer el issue referenciado
+        id: extract
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          numero=$(printf '%s' "$PR_BODY" \
+            | grep -ioP '\b(closes|fixes|resolves)\s+#\K[0-9]+' \
+            | head -1 || true)
+          if [ -z "$numero" ]; then
+            echo "::error::El cuerpo del PR no referencia ningun issue. Agrega 'Closes #N' (o Fixes / Resolves)."
+            exit 1
+          fi
+          echo "numero=$numero" >> "$GITHUB_OUTPUT"
+          echo "PR referencia el issue #$numero."
+    outputs:
+      numero: ${{ steps.extract.outputs.numero }}
+
+  issue-approved:
+    name: Check Issue Has status:approved
+    runs-on: ubuntu-latest
+    needs: issue-reference
+    steps:
+      - name: Verificar el label del issue referenciado
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NUMERO: ${{ needs.issue-reference.outputs.numero }}
+        run: |
+          labels=$(gh issue view "$NUMERO" --repo "$GITHUB_REPOSITORY" --json labels --jq '.labels[].name')
+          if ! printf '%s\n' "$labels" | grep -qx 'status:approved'; then
+            echo "::error::El issue #$NUMERO no tiene el label status:approved."
+            exit 1
+          fi
+          echo "El issue #$NUMERO esta aprobado."
+
+  type-label:
+    name: Check PR Has type:* Label
+    runs-on: ubuntu-latest
+    steps:
+      # Exactamente uno: cero deja el PR sin clasificar y dos lo dejan
+      # ambiguo para quien despues arme el changelog.
+      - name: Contar los labels type:*
+        env:
+          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+        run: |
+          cantidad=$(printf '%s' "$LABELS" | grep -o '"type:[^"]*"' | wc -l)
+          if [ "$cantidad" -ne 1 ]; then
+            echo "::error::El PR tiene $cantidad labels type:*. Tiene que tener exactamente uno."
+            exit 1
+          fi
+          echo "El PR declara exactamente un label type:*."

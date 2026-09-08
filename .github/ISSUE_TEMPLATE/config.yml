@@ -1,0 +1,5 @@
+# El skill issue-creation de gentle-ai declara que los YAML Issue Forms son la
+# unica autoridad de formato: "Never use Markdown, a blank body, an alternate
+# publisher, or a browser route as a fallback". Por eso el issue en blanco se
+# deshabilita.
+blank_issues_enabled: false
