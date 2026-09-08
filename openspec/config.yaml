@@ -22,7 +22,7 @@ testing:
     e2e: "*.e2e.spec.ts"
     coverage: "vitest run --coverage (provider v8)"
     lint: "pnpm lint (eslint ., cero errores verificado 2026-08-30)"
-    typecheck: "pnpm typecheck (tsc --noEmit -p tsconfig.typecheck.json — NO cubre *.spec.ts)"
+    typecheck: "pnpm typecheck (tsc --noEmit -p tsconfig.typecheck.json — cubre src/**/* y los seeds, *.spec.ts incluidos)"
   frontend:
     runner: vitest
     unit: true
