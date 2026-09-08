@@ -1,9 +1,9 @@
 # CLAUDE.md — soporte
 
-> Las reglas universales (SDD, tabla de modelos, persistencia, commits, rama+PR, TDD,
+> Las reglas universales (SDD, persistencia, commits, rama+PR, TDD,
 > delegación, estándares de código) viven en `~/proyectos/CLAUDE.md`. Este archivo define
 > solo lo específico de este proyecto: qué es, su stack, cómo se opera y sus convenciones
-> propias. Ante discrepancia, gana este archivo.
+> propias.
 
 ---
 
