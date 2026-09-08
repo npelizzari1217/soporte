@@ -335,6 +335,9 @@ describe("InsumoDetailView — gate INSUMOS:LECTURA", () => {
  *    verse igual — sin toast y sin mostrar nunca el UUID.
  */
 describe("InsumoDetailView — bitácora de movimientos", () => {
+  /** Fixture del asiento de RECEPCION, no un `undefined` que un cast tendría que forzar a `string`. */
+  const ITEM_COMPRA_ID_RECEPCION = "1c1c1c1c-1c1c-1c1c-1c1c-1c1c1c1c1c1c";
+
   const RECEPCION: MovimientoInsumo = {
     ...MOVIMIENTO_BASE,
     id: "mov-recepcion",
@@ -342,7 +345,7 @@ describe("InsumoDetailView — bitácora de movimientos", () => {
     cantidad: 10,
     usuarioId: USUARIO_ANA.id,
     motivo: null,
-    itemCompraId: "1c1c1c1c-1c1c-1c1c-1c1c-1c1c1c1c1c1c",
+    itemCompraId: ITEM_COMPRA_ID_RECEPCION,
     createdAt: "2026-03-01T13:30:00.000Z",
   };
 
@@ -448,7 +451,7 @@ describe("InsumoDetailView — bitácora de movimientos", () => {
     expect(screen.getByText("Carga manual")).toBeInTheDocument();
     // El `itemCompraId` es la trazabilidad, no algo que el usuario tenga que
     // leer: no hay endpoint que lo traduzca a un número de compra.
-    expect(screen.queryByText(RECEPCION.itemCompraId as string)).not.toBeInTheDocument();
+    expect(screen.queryByText(ITEM_COMPRA_ID_RECEPCION)).not.toBeInTheDocument();
   });
 
   it("sin movimientos → lo dice, y no se confunde con la bitácora caída", async () => {
@@ -537,5 +540,89 @@ describe("InsumoDetailView — la bitácora sobrevive al 403 de usuarios", () =>
 
     expect(await screen.findByText("Ana Gómez")).toBeInTheDocument();
     expect(screen.queryByText(/sin datos de usuarios/i)).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * Wiring de `MovimientoEntradaDialog` en la ficha (unidad "diálogos de
+ * movimientos de insumos", entrega 1 de 3 — salida y ajuste quedan para las
+ * unidades siguientes). Gate `INSUMOS:ALTAS`, espejo exacto de
+ * `MovimientosInsumoController.registrarEntrada` — la lectura sola
+ * (`INSUMOS:LECTURA`) no alcanza para ver el botón.
+ */
+describe("InsumoDetailView — registrar entrada", () => {
+  it("con INSUMOS:ALTAS → ve el botón «Registrar entrada» junto a la existencia", async () => {
+    mockFicha([INSUMO], STOCK_SUFICIENTE);
+    renderWithProviders(<InsumoDetailView insumoId={INSUMO.id} />, {
+      user: buildUser({ permisos: ["INSUMOS:LECTURA", "INSUMOS:ALTAS"] }),
+    });
+
+    expect(await screen.findByRole("button", { name: /registrar entrada/i })).toBeInTheDocument();
+  });
+
+  /**
+   * El backend rechaza la entrada de un insumo deshabilitado con 422
+   * (`MovimientosInsumoController.registrarEntrada`, `InsumoError`) — la
+   * única de las tres operaciones que lo exige habilitado. El botón lo
+   * refleja ANTES de que el usuario llegue a tipear y mandar el formulario:
+   * deshabilitado, con un `title` que explica por qué (mismo mecanismo que
+   * `ItemEliminarControl`/`ItemDecisionActions` de `features/compras`), no
+   * escondido sin explicación.
+   */
+  it("insumo deshabilitado → el botón «Registrar entrada» aparece deshabilitado, con un title explicando por qué", async () => {
+    mockFicha([{ ...INSUMO, activo: false }], STOCK_SUFICIENTE);
+    renderWithProviders(<InsumoDetailView insumoId={INSUMO.id} />, {
+      user: buildUser({ permisos: ["INSUMOS:LECTURA", "INSUMOS:ALTAS"] }),
+    });
+
+    const boton = await screen.findByRole("button", { name: /registrar entrada/i });
+    expect(boton).toBeDisabled();
+    expect(boton.getAttribute("title")).toMatch(/deshabilitad/i);
+  });
+
+  it("sin INSUMOS:ALTAS → no ve el botón, aunque sí vea la existencia", async () => {
+    mockFicha([INSUMO], STOCK_SUFICIENTE);
+    renderWithProviders(<InsumoDetailView insumoId={INSUMO.id} />, { user: LECTOR });
+
+    expect(await screen.findByText("12,00")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /registrar entrada/i })).not.toBeInTheDocument();
+  });
+
+  /**
+   * Prueba la invalidación REAL, no solo que el hook llame
+   * `invalidateQueries` (eso ya lo cubre `use-insumo-mutations.test.tsx`):
+   * acá el segundo `GET /stock` devuelve un saldo distinto, y la ficha tiene
+   * que mostrarlo SOLA, sin recargar la página — es lo que efectivamente ve
+   * el usuario después de registrar.
+   */
+  it("registrar una entrada desde la ficha refresca la existencia mostrada", async () => {
+    mockFicha([INSUMO], STOCK_SUFICIENTE);
+    let stockPedido = 0;
+    server.use(
+      http.get("/api/equipos", () => HttpResponse.json([])),
+      http.get("/api/sectores", () => HttpResponse.json([])),
+      http.get("/api/insumos/:insumoId/stock", () => {
+        stockPedido += 1;
+        return HttpResponse.json(stockPedido === 1 ? STOCK_SUFICIENTE : { ...STOCK_SUFICIENTE, stock: 22 });
+      }),
+      http.post(`/api/insumos/${INSUMO.id}/movimientos/entrada`, () =>
+        HttpResponse.json(
+          { ...MOVIMIENTO_BASE, id: "mov-nuevo", insumoId: INSUMO.id, cantidad: 10 },
+          { status: 201 },
+        ),
+      ),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<InsumoDetailView insumoId={INSUMO.id} />, {
+      user: buildUser({ permisos: ["INSUMOS:LECTURA", "INSUMOS:ALTAS"] }),
+    });
+
+    expect(await screen.findByText("12,00")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /registrar entrada/i }));
+    await user.type(await screen.findByLabelText(/^cantidad$/i), "10");
+    await user.click(screen.getByRole("button", { name: /^registrar$/i }));
+
+    await waitFor(() => expect(screen.getByText("22,00")).toBeInTheDocument());
   });
 });

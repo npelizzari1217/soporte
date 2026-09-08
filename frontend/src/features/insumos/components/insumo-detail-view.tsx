@@ -55,6 +55,7 @@ import { useMovimientosInsumo } from "../hooks/use-movimientos-insumo";
 import { nombreDeCatalogo } from "../lib/nombre-de-catalogo";
 import { nombreDeUsuario } from "../lib/nombre-de-usuario";
 import { resolverDeCatalogo } from "../lib/resolucion-de-catalogo";
+import { MovimientoEntradaDialog } from "./movimiento-entrada-dialog";
 import type { EstadoReposicionInsumo, Insumo, MovimientoInsumo, TipoMovimientoInsumo } from "../types";
 
 /** Placeholder de la celda sin valor, el mismo que usan los listados. */
@@ -240,7 +241,23 @@ export function InsumoDetailView({ insumoId }: InsumoDetailViewProps) {
         </section>
 
         <section className="flex flex-col gap-3 rounded-lg border border-border p-4">
-          <h2 className="text-sm font-semibold text-foreground">Existencia</h2>
+          <div className="flex items-center justify-between gap-4">
+            <h2 className="text-sm font-semibold text-foreground">Existencia</h2>
+            {/* Gate `INSUMOS:ALTAS`, espejo exacto de
+                `MovimientosInsumoController.registrarEntrada` — la lectura
+                sola (`INSUMOS:LECTURA`, gate de la vista) no alcanza para
+                registrar un movimiento. La precondición de ESTADO
+                (`insumo.activo`) la aplica el propio diálogo, no acá: el
+                backend rechaza la entrada de un insumo deshabilitado con 422
+                (`InsumoError`), y el trigger la refleja deshabilitándose con
+                un `title` que explica por qué — mismo mecanismo `disabled` +
+                `title` que `ItemEliminarControl`/`ItemDecisionActions`
+                (`features/compras`). Salida y ajuste son unidades de trabajo
+                siguientes. */}
+            <Can permiso="INSUMOS:ALTAS">
+              <MovimientoEntradaDialog insumoId={insumo.id} activo={insumo.activo} />
+            </Can>
+          </div>
           {existencia()}
         </section>
 

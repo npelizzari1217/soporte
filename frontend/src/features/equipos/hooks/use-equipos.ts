@@ -2,19 +2,31 @@
 
 /**
  * use-equipos — CONTAINER hooks para `GET /equipos` y `GET /equipos/:id`
- * (T5.11). Sin gate de permiso en el backend (a diferencia de crear/editar/
- * eliminar) — cualquier usuario autenticado del tenant puede consultar el
- * inventario (necesario para el selector de "Vincular equipo" en el form
- * de ticket de soporte).
+ * (T5.11).
+ *
+ * **El listado lleva gate de permiso.** `EquiposController.listar`
+ * (`GET /equipos`) declara `@RequiereAcciones('EQUIPOS:LECTURA')` — no
+ * alcanza con estar autenticado en el tenant, hace falta ese permiso
+ * puntual. Un caller que use este hook
+ * para poblar un selector opcional (ej. "Vincular equipo") tiene que asumir
+ * que puede llegar un 403 y distinguirlo de "no hay equipos cargados", no
+ * degradar en silencio a una lista vacía.
  */
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/shared/api/client";
 import type { Equipo, EquipoDetalle, TipoComponente } from "../types";
 
-export function useEquipos() {
+/**
+ * @param enabled Permite no pedir el listado hasta que el consumidor lo
+ * necesite (ej. un diálogo cerrado) — mismo criterio que
+ * `useComentariosReparacion` (`features/edilicia`). `true` por defecto:
+ * los callers que ya listan equipos apenas montan siguen igual.
+ */
+export function useEquipos(enabled = true) {
   return useQuery({
     queryKey: ["equipos"],
     queryFn: () => apiFetch<Equipo[]>("equipos"),
+    enabled,
   });
 }
 
