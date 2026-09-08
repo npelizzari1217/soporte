@@ -5,8 +5,8 @@
  * movimiento en la bitácora de un insumo: el chrome del diálogo (trigger,
  * título, formulario) y los cuatro campos que necesita el alta (cantidad,
  * motivo, equipo, sector). No conoce la mutación, el schema ni el `useForm`
- * del caller — eso lo resuelve `MovimientoEntradaDialog`, su único
- * consumidor hoy.
+ * del caller — eso lo resuelve cada caller (`MovimientoEntradaDialog`,
+ * `MovimientoSalidaDialog`).
  *
  * Recibe el resultado YA LLAMADO de `register(...)` para cada campo
  * (`UseFormRegisterReturn<"cantidad">` y sus hermanos) en vez de un
@@ -39,7 +39,7 @@
  */
 import type { FieldError, UseFormRegisterReturn } from "react-hook-form";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
+import { Button, type ButtonProps } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select } from "@/components/ui/select";
@@ -77,6 +77,8 @@ export interface MovimientoInsumoDialogProps {
   titulo: string;
   /** Prefijo de los `id`/`htmlFor` de cada campo, para que no choquen si dos diálogos de esta familia coexistieran en la misma página. */
   idPrefijo: string;
+  /** Variante del botón trigger; cada caller elige la suya. */
+  variant?: ButtonProps["variant"];
   /** `true` deshabilita el trigger. */
   deshabilitado?: boolean;
   /** `title` del trigger cuando `deshabilitado` es `true`, explicando por qué. */
@@ -103,6 +105,7 @@ export function MovimientoInsumoDialog({
   onOpenChange,
   titulo,
   idPrefijo,
+  variant,
   deshabilitado = false,
   motivoDeshabilitado,
   notaEquiposNoDisponibles,
@@ -132,6 +135,7 @@ export function MovimientoInsumoDialog({
         <Button
           type="button"
           size="sm"
+          variant={variant}
           disabled={deshabilitado}
           title={deshabilitado ? motivoDeshabilitado : undefined}
         >

@@ -56,6 +56,7 @@ import { nombreDeCatalogo } from "../lib/nombre-de-catalogo";
 import { nombreDeUsuario } from "../lib/nombre-de-usuario";
 import { resolverDeCatalogo } from "../lib/resolucion-de-catalogo";
 import { MovimientoEntradaDialog } from "./movimiento-entrada-dialog";
+import { MovimientoSalidaDialog } from "./movimiento-salida-dialog";
 import type { EstadoReposicionInsumo, Insumo, MovimientoInsumo, TipoMovimientoInsumo } from "../types";
 
 /** Placeholder de la celda sin valor, el mismo que usan los listados. */
@@ -244,18 +245,23 @@ export function InsumoDetailView({ insumoId }: InsumoDetailViewProps) {
           <div className="flex items-center justify-between gap-4">
             <h2 className="text-sm font-semibold text-foreground">Existencia</h2>
             {/* Gate `INSUMOS:ALTAS`, espejo exacto de
-                `MovimientosInsumoController.registrarEntrada` — la lectura
-                sola (`INSUMOS:LECTURA`, gate de la vista) no alcanza para
-                registrar un movimiento. La precondición de ESTADO
-                (`insumo.activo`) la aplica el propio diálogo, no acá: el
-                backend rechaza la entrada de un insumo deshabilitado con 422
-                (`InsumoError`), y el trigger la refleja deshabilitándose con
-                un `title` que explica por qué — mismo mecanismo `disabled` +
+                `MovimientosInsumoController.registrarEntrada`/`registrarSalida`
+                — comparten esa celda, y la lectura sola (`INSUMOS:LECTURA`,
+                gate de la vista) no alcanza para registrar un movimiento.
+                Cada diálogo aplica su PROPIA precondición de estado, y son
+                DISTINTAS: la entrada exige el insumo habilitado
+                (`insumo.activo`, 422 `InsumoError`); la salida exige stock
+                (`stockQuery.data?.stock`, 422 `StockInsuficienteError`) — la
+                entrada NO mira el stock ni la salida mira `activo`. Los dos
+                triggers reflejan su precondición deshabilitándose con un
+                `title` que explica por qué, mismo mecanismo `disabled` +
                 `title` que `ItemEliminarControl`/`ItemDecisionActions`
-                (`features/compras`). Salida y ajuste son unidades de trabajo
-                siguientes. */}
+                (`features/compras`). */}
             <Can permiso="INSUMOS:ALTAS">
-              <MovimientoEntradaDialog insumoId={insumo.id} activo={insumo.activo} />
+              <div className="flex gap-2">
+                <MovimientoEntradaDialog insumoId={insumo.id} activo={insumo.activo} />
+                <MovimientoSalidaDialog insumoId={insumo.id} stockDisponible={stockQuery.data?.stock} />
+              </div>
             </Can>
           </div>
           {existencia()}

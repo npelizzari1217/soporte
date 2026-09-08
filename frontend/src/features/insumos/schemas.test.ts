@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { registrarMovimientoInsumoSchema } from "./schemas";
+import { registrarMovimientoInsumoSchema, registrarSalidaInsumoSchema } from "./schemas";
 
 /**
  * Validación cliente-side de `registrarMovimientoInsumoSchema` — espejo de
@@ -154,5 +154,47 @@ describe("registrarMovimientoInsumoSchema — equipoId/sectorId (UUID opcionales
       sectorId: "22222222-2222-2222-2222-222222222222",
     });
     expect(result.success).toBe(true);
+  });
+});
+
+/**
+ * `registrarSalidaInsumoSchema` agrega el tope de stock por encima de
+ * `registrarMovimientoInsumoSchema`: es un `.refine()` sobre ese mismo
+ * schema, así que estos tests solo cubren la diferencia — el resto de las
+ * reglas de `cantidad`/`motivo`/`equipoId`/`sectorId` ya está probado arriba.
+ */
+describe("registrarSalidaInsumoSchema — tope contra el stock disponible", () => {
+  it("rechaza una cantidad por encima del stock disponible, con un mensaje sobre 'cantidad'", () => {
+    const result = registrarSalidaInsumoSchema(5).safeParse({ cantidad: "10" });
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    const issue = result.error.issues.find((i) => i.path[0] === "cantidad");
+    expect(issue?.message).toMatch(/no hay existencia suficiente/i);
+    expect(issue?.message).toContain("5,00");
+  });
+
+  it("acepta una cantidad igual al stock disponible: el techo es inclusivo", () => {
+    const result = registrarSalidaInsumoSchema(5).safeParse({ cantidad: "5" });
+    expect(result.success).toBe(true);
+  });
+
+  it("acepta una cantidad por debajo del stock disponible", () => {
+    const result = registrarSalidaInsumoSchema(5).safeParse({ cantidad: "4" });
+    expect(result.success).toBe(true);
+  });
+
+  /**
+   * `stockDisponible: undefined` cubre "todavía no resuelto o la consulta
+   * falló" (ver JSDoc de la función): el tope se DESACTIVA, nunca se trata
+   * como `0` — con `0` cualquier cantidad positiva rechazaría.
+   */
+  it("con stockDisponible undefined no aplica tope alguno", () => {
+    const result = registrarSalidaInsumoSchema(undefined).safeParse({ cantidad: "1000000" });
+    expect(result.success).toBe(true);
+  });
+
+  it("con stockDisponible en 0, cualquier cantidad positiva se rechaza por el tope", () => {
+    const result = registrarSalidaInsumoSchema(0).safeParse({ cantidad: "1" });
+    expect(result.success).toBe(false);
   });
 });

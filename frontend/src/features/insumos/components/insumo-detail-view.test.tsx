@@ -544,9 +544,7 @@ describe("InsumoDetailView — la bitácora sobrevive al 403 de usuarios", () =>
 });
 
 /**
- * Wiring de `MovimientoEntradaDialog` en la ficha (unidad "diálogos de
- * movimientos de insumos", entrega 1 de 3 — salida y ajuste quedan para las
- * unidades siguientes). Gate `INSUMOS:ALTAS`, espejo exacto de
+ * Wiring de `MovimientoEntradaDialog` en la ficha. Gate `INSUMOS:ALTAS`, espejo exacto de
  * `MovimientosInsumoController.registrarEntrada` — la lectura sola
  * (`INSUMOS:LECTURA`) no alcanza para ver el botón.
  */
@@ -563,7 +561,7 @@ describe("InsumoDetailView — registrar entrada", () => {
   /**
    * El backend rechaza la entrada de un insumo deshabilitado con 422
    * (`MovimientosInsumoController.registrarEntrada`, `InsumoError`) — la
-   * única de las tres operaciones que lo exige habilitado. El botón lo
+   * única de las dos operaciones que lo exige habilitado. El botón lo
    * refleja ANTES de que el usuario llegue a tipear y mandar el formulario:
    * deshabilitado, con un `title` que explica por qué (mismo mecanismo que
    * `ItemEliminarControl`/`ItemDecisionActions` de `features/compras`), no
@@ -624,5 +622,101 @@ describe("InsumoDetailView — registrar entrada", () => {
     await user.click(screen.getByRole("button", { name: /^registrar$/i }));
 
     await waitFor(() => expect(screen.getByText("22,00")).toBeInTheDocument());
+  });
+});
+
+/**
+ * `MovimientosInsumoController.registrarSalida` comparte la celda
+ * `INSUMOS:ALTAS` con la entrada — la lectura sola no alcanza para ver el
+ * botón. La precondición de estado es DISTINTA de la entrada: acá es el
+ * STOCK, no `insumo.activo` (ver el JSDoc de `MovimientoSalidaDialog`).
+ */
+describe("InsumoDetailView — registrar salida", () => {
+  it("con INSUMOS:ALTAS → ve el botón «Registrar salida» junto a la existencia", async () => {
+    mockFicha([INSUMO], STOCK_SUFICIENTE);
+    renderWithProviders(<InsumoDetailView insumoId={INSUMO.id} />, {
+      user: buildUser({ permisos: ["INSUMOS:LECTURA", "INSUMOS:ALTAS"] }),
+    });
+
+    expect(await screen.findByRole("button", { name: /registrar salida/i })).toBeInTheDocument();
+  });
+
+  /**
+   * A diferencia de la entrada, un insumo DESHABILITADO no bloquea la
+   * salida — el botón sigue habilitado, porque `activo` no es su
+   * precondición.
+   */
+  it("insumo deshabilitado → el botón «Registrar salida» sigue habilitado (la salida no exige el insumo activo)", async () => {
+    mockFicha([{ ...INSUMO, activo: false }], STOCK_SUFICIENTE);
+    renderWithProviders(<InsumoDetailView insumoId={INSUMO.id} />, {
+      user: buildUser({ permisos: ["INSUMOS:LECTURA", "INSUMOS:ALTAS"] }),
+    });
+
+    const boton = await screen.findByRole("button", { name: /registrar salida/i });
+    expect(boton).not.toBeDisabled();
+  });
+
+  /**
+   * El backend rechaza la salida sin stock con 422 (`StockInsuficienteError`).
+   * El botón lo refleja ANTES de que el usuario llegue a tipear: deshabilitado,
+   * con un `title` que explica por qué.
+   */
+  it("stock en 0 → el botón «Registrar salida» aparece deshabilitado, con un title explicando por qué", async () => {
+    mockFicha([INSUMO], { ...STOCK_SUFICIENTE, stock: 0 });
+    renderWithProviders(<InsumoDetailView insumoId={INSUMO.id} />, {
+      user: buildUser({ permisos: ["INSUMOS:LECTURA", "INSUMOS:ALTAS"] }),
+    });
+
+    const boton = await screen.findByRole("button", { name: /registrar salida/i });
+    expect(boton).toBeDisabled();
+    expect(boton.getAttribute("title")).toMatch(/existencia/i);
+  });
+
+  it("sin INSUMOS:ALTAS → no ve el botón, aunque sí vea la existencia", async () => {
+    mockFicha([INSUMO], STOCK_SUFICIENTE);
+    renderWithProviders(<InsumoDetailView insumoId={INSUMO.id} />, { user: LECTOR });
+
+    expect(await screen.findByText("12,00")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /registrar salida/i })).not.toBeInTheDocument();
+  });
+
+  /**
+   * Prueba la invalidación REAL (ya cubierta a nivel de hook por
+   * `use-insumo-mutations.test.tsx`): acá el segundo `GET /stock` devuelve un
+   * saldo distinto, y la ficha lo muestra sola, sin recargar la página.
+   */
+  it("registrar una salida desde la ficha refresca la existencia mostrada", async () => {
+    mockFicha([INSUMO], STOCK_SUFICIENTE);
+    let stockPedido = 0;
+    server.use(
+      http.get("/api/equipos", () => HttpResponse.json([])),
+      http.get("/api/sectores", () => HttpResponse.json([])),
+      http.get("/api/insumos/:insumoId/stock", () => {
+        stockPedido += 1;
+        return HttpResponse.json(stockPedido === 1 ? STOCK_SUFICIENTE : { ...STOCK_SUFICIENTE, stock: 2 });
+      }),
+      http.post(`/api/insumos/${INSUMO.id}/movimientos/salida`, () =>
+        HttpResponse.json(
+          { ...MOVIMIENTO_BASE, id: "mov-nuevo", tipo: "SALIDA", insumoId: INSUMO.id, cantidad: 10 },
+          { status: 201 },
+        ),
+      ),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<InsumoDetailView insumoId={INSUMO.id} />, {
+      user: buildUser({ permisos: ["INSUMOS:LECTURA", "INSUMOS:ALTAS"] }),
+    });
+
+    expect(await screen.findByText("12,00")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /registrar salida/i }));
+    await user.type(await screen.findByLabelText(/^cantidad$/i), "10");
+    await user.click(screen.getByRole("button", { name: /^registrar$/i }));
+
+    await waitFor(() => expect(screen.getByText("2,00")).toBeInTheDocument());
+    // El "2,00" solo puede venir de un segundo GET /stock disparado por la
+    // invalidación del POST: si el refetch fuera casualidad, este contador
+    // seguiría en 1.
+    expect(stockPedido).toBe(2);
   });
 });

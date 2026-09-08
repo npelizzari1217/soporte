@@ -6,7 +6,7 @@
  * antes de pegarle a la API, no la barrera.
  */
 import { z } from "zod";
-import { conDosDecimales, parsearNumeroEsAr } from "@/shared/lib/formato-numero";
+import { conDosDecimales, formatearNumeroEsAr, parsearNumeroEsAr } from "@/shared/lib/formato-numero";
 import { mensajeDemasiadoLargo } from "@/shared/lib/mensaje-tope";
 
 /**
@@ -68,9 +68,8 @@ const cantidadMovimientoSchema = z.preprocess(
 
 /**
  * Espejo de `RegistrarMovimientoInsumoHttpDto` — sirve tanto para la ENTRADA
- * como para la SALIDA (mismo body en el backend, el tipo lo fija la ruta). El
- * diálogo de ajuste, que agrega su propio discriminador `tipo`, es una unidad
- * de trabajo aparte.
+ * como para la SALIDA: el backend recibe el mismo body en las dos rutas y el
+ * tipo del asiento lo fija la ruta, no el cuerpo.
  *
  * `motivo` es OPCIONAL A PROPÓSITO, incluso acá: que el ajuste lo exija es una
  * regla de NEGOCIO que vive en `MovimientoInsumoEntity.create()` (422,
@@ -97,3 +96,31 @@ export const registrarMovimientoInsumoSchema = z.object({
   sectorId: z.string().uuid().optional().or(z.literal("")),
 });
 export type RegistrarMovimientoInsumoFormValues = z.infer<typeof registrarMovimientoInsumoSchema>;
+
+/**
+ * Variante de `registrarMovimientoInsumoSchema` exclusiva de la SALIDA:
+ * agrega el tope de que `cantidad` no supere `stockDisponible`. NO es una
+ * regla de negocio duplicada — el backend valida el stock bajo un advisory
+ * lock en el momento del POST (`StockInsuficienteError`, 422,
+ * `MovimientosInsumoController.registrarSalida`) y ESE 422 sigue siendo la
+ * autoridad real: otro usuario puede sacar existencia mientras este
+ * formulario sigue abierto, y ahí el tope de acá ya no alcanza. Esto es solo
+ * el atajo de UX documentado en `AGENTS.md` (clase "topes sin espejar"):
+ * evitar el viaje al servidor cuando ya se sabe, al tipear, que la cantidad
+ * no entra.
+ *
+ * `stockDisponible` en `undefined` DESACTIVA el tope — nunca lo trata como
+ * `0`. Es el mismo criterio de "no asumir" que aplica al trigger del diálogo
+ * (`MovimientoSalidaDialog`): mientras `useStockInsumo` está en vuelo o
+ * falló, no hay con qué comparar, y bloquear con un tope inventado sería peor
+ * que dejar pasar y confiar en el 422 del backend como backstop.
+ */
+export function registrarSalidaInsumoSchema(stockDisponible: number | undefined) {
+  return registrarMovimientoInsumoSchema.refine(
+    (valores) => stockDisponible === undefined || valores.cantidad <= stockDisponible,
+    {
+      message: `No hay existencia suficiente: disponible ${formatearNumeroEsAr(stockDisponible ?? 0)}`,
+      path: ["cantidad"],
+    },
+  );
+}

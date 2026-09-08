@@ -5,7 +5,7 @@ import { http, HttpResponse } from "msw";
 import type { ReactNode } from "react";
 import { server } from "../../../../test/msw/server";
 import { ApiError } from "@/shared/api/types";
-import { useRegistrarEntradaInsumo } from "./use-insumo-mutations";
+import { useRegistrarEntradaInsumo, useRegistrarSalidaInsumo } from "./use-insumo-mutations";
 
 const INSUMO_ID = "11111111-1111-1111-1111-111111111111";
 
@@ -92,6 +92,76 @@ describe("useRegistrarEntradaInsumo", () => {
     expect(result.current.error).toMatchObject({
       statusCode: 422,
       message: "El insumo está deshabilitado.",
+    });
+  });
+});
+
+describe("useRegistrarSalidaInsumo", () => {
+  const MOVIMIENTO_SALIDA_FIXTURE = { ...MOVIMIENTO_FIXTURE, tipo: "SALIDA" };
+
+  it("pega a POST /insumos/:insumoId/movimientos/salida con el body correcto", async () => {
+    let capturedBody: unknown = null;
+    server.use(
+      http.post(`/api/insumos/${INSUMO_ID}/movimientos/salida`, async ({ request }) => {
+        capturedBody = await request.json();
+        return HttpResponse.json(MOVIMIENTO_SALIDA_FIXTURE, { status: 201 });
+      }),
+    );
+
+    const { result } = renderHook(() => useRegistrarSalidaInsumo(INSUMO_ID), {
+      wrapper: wrapper(buildClient()),
+    });
+    result.current.mutate({ cantidad: 3 });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(capturedBody).toEqual({ cantidad: 3 });
+  });
+
+  it("una salida exitosa invalida la existencia y la bitácora del insumo (PREFIJO, cubre cualquier página)", async () => {
+    server.use(
+      http.post(`/api/insumos/${INSUMO_ID}/movimientos/salida`, () =>
+        HttpResponse.json(MOVIMIENTO_SALIDA_FIXTURE, { status: 201 }),
+      ),
+    );
+    const queryClient = buildClient();
+    const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+
+    const { result } = renderHook(() => useRegistrarSalidaInsumo(INSUMO_ID), {
+      wrapper: wrapper(queryClient),
+    });
+    result.current.mutate({ cantidad: 3 });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    const keys = invalidateSpy.mock.calls.map((call) => call[0]?.queryKey);
+    expect(keys).toContainEqual(["insumo", INSUMO_ID, "stock"]);
+    expect(keys).toContainEqual(["insumo", INSUMO_ID, "movimientos"]);
+    invalidateSpy.mockRestore();
+  });
+
+  /**
+   * `StockInsuficienteError` (backend, `movimientos-insumo.controller.ts`)
+   * llega como 422 con los dos números del dominio en el mensaje. El assert
+   * es de CONTENIDO, no de bandera: `isError` solo no distingue este 422 de
+   * cualquier otro.
+   */
+  it("422 (stock insuficiente) llega como ApiError con el mensaje real del backend", async () => {
+    const MENSAJE_BACKEND = "Stock insuficiente: se pidieron 10, hay 4 disponibles.";
+    server.use(
+      http.post(`/api/insumos/${INSUMO_ID}/movimientos/salida`, () =>
+        HttpResponse.json({ statusCode: 422, message: MENSAJE_BACKEND }, { status: 422 }),
+      ),
+    );
+
+    const { result } = renderHook(() => useRegistrarSalidaInsumo(INSUMO_ID), {
+      wrapper: wrapper(buildClient()),
+    });
+    result.current.mutate({ cantidad: 10 });
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(result.current.error).toBeInstanceOf(ApiError);
+    expect(result.current.error).toMatchObject({
+      statusCode: 422,
+      message: MENSAJE_BACKEND,
     });
   });
 });
