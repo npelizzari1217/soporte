@@ -55,6 +55,9 @@ import { useMovimientosInsumo } from "../hooks/use-movimientos-insumo";
 import { nombreDeCatalogo } from "../lib/nombre-de-catalogo";
 import { nombreDeUsuario } from "../lib/nombre-de-usuario";
 import { resolverDeCatalogo } from "../lib/resolucion-de-catalogo";
+import { MovimientoEntradaDialog } from "./movimiento-entrada-dialog";
+import { MovimientoSalidaDialog } from "./movimiento-salida-dialog";
+import { MovimientoAjusteDialog } from "./movimiento-ajuste-dialog";
 import type { EstadoReposicionInsumo, Insumo, MovimientoInsumo, TipoMovimientoInsumo } from "../types";
 
 /** Placeholder de la celda sin valor, el mismo que usan los listados. */
@@ -240,7 +243,40 @@ export function InsumoDetailView({ insumoId }: InsumoDetailViewProps) {
         </section>
 
         <section className="flex flex-col gap-3 rounded-lg border border-border p-4">
-          <h2 className="text-sm font-semibold text-foreground">Existencia</h2>
+          <div className="flex items-center justify-between gap-4">
+            <h2 className="text-sm font-semibold text-foreground">Existencia</h2>
+            {/* Gate `INSUMOS:ALTAS`, espejo exacto de
+                `MovimientosInsumoController.registrarEntrada`/`registrarSalida`
+                — comparten esa celda, y la lectura sola (`INSUMOS:LECTURA`,
+                gate de la vista) no alcanza para registrar un movimiento.
+                Cada diálogo aplica su PROPIA precondición de estado, y son
+                DISTINTAS: la entrada exige el insumo habilitado
+                (`insumo.activo`, 422 `InsumoError`); la salida exige stock
+                (`stockQuery.data?.stock`, 422 `StockInsuficienteError`) — la
+                entrada NO mira el stock ni la salida mira `activo`. Los dos
+                triggers reflejan su precondición deshabilitándose con un
+                `title` que explica por qué, mismo mecanismo `disabled` +
+                `title` que `ItemEliminarControl`/`ItemDecisionActions`
+                (`features/compras`). */}
+            <Can permiso="INSUMOS:ALTAS">
+              <div className="flex gap-2">
+                <MovimientoEntradaDialog insumoId={insumo.id} activo={insumo.activo} />
+                <MovimientoSalidaDialog insumoId={insumo.id} stockDisponible={stockQuery.data?.stock} />
+              </div>
+            </Can>
+            {/* Gate PROPIO, `INSUMOS:AJUSTAR` — espejo exacto de
+                `MovimientosInsumoController.registrarAjuste`, cuyo JSDoc es
+                explícito: tener `INSUMOS:ALTAS` no alcanza. Por eso NO
+                comparte el `<Can>` de arriba: alguien con `ALTAS` y sin
+                `AJUSTAR` no tiene que ver este botón, y viceversa. El ajuste
+                no lleva precondición de estado propia (ni `activo` como la
+                entrada, ni stock a secas como la salida — el tope de stock
+                que sí tiene el `AJUSTE_NEGATIVO` vive adentro del diálogo,
+                condicionado al `tipo` que se elija ahí). */}
+            <Can permiso="INSUMOS:AJUSTAR">
+              <MovimientoAjusteDialog insumoId={insumo.id} stockDisponible={stockQuery.data?.stock} />
+            </Can>
+          </div>
           {existencia()}
         </section>
 
@@ -295,8 +331,9 @@ export function InsumoDetailView({ insumoId }: InsumoDetailViewProps) {
 
   /**
    * La bitácora del insumo: qué pasó con su existencia, del asiento más
-   * reciente al más viejo. Es solo LECTURA — registrar un movimiento es otra
-   * pantalla y otro permiso.
+   * reciente al más viejo. Esta TABLA es de solo lectura —lista lo que ya se
+   * registró, nunca edita ni borra un asiento— aunque la sección de arriba
+   * ("Existencia") sí ofrece los tres diálogos que agregan uno nuevo.
    *
    * El orden lo resuelve el servidor y la paginación es server-side: acá NO se
    * reordena ni se recorta la página recibida, porque hacerlo sobre una ventana
