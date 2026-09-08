@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { server } from "../../../../test/msw/server";
 import { renderWithProviders, buildUser } from "../../../../test/render-with-providers";
 import { MovimientoEntradaDialog } from "./movimiento-entrada-dialog";
-import type { RegistrarEntradaInsumoDto } from "../hooks/use-insumo-mutations";
+import type { RegistrarMovimientoInsumoDto } from "../hooks/use-insumo-mutations";
 import type { Equipo } from "@/features/equipos/types";
 import type { Sector } from "@/features/sectores/types";
 
@@ -40,14 +40,14 @@ const SECTORES: Pick<Sector, "id" | "nombre">[] = [{ id: SECTOR_ID, nombre: "Ven
  * Registra el handler de alta y devuelve el body que efectivamente viajó.
  *
  * El body se tipa con el generic `RequestBodyType` de `http.post` —no con un
- * cast— así `request.json()` devuelve `Promise<Partial<RegistrarEntradaInsumoDto>>`
+ * cast— así `request.json()` devuelve `Promise<Partial<RegistrarMovimientoInsumoDto>>`
  * de verdad: `Partial` porque el punto de varios tests es afirmar que un
  * campo opcional NO viajó.
  */
-function capturarPost(): { body: Partial<RegistrarEntradaInsumoDto> } {
-  const capturado: { body: Partial<RegistrarEntradaInsumoDto> } = { body: {} };
+function capturarPost(): { body: Partial<RegistrarMovimientoInsumoDto> } {
+  const capturado: { body: Partial<RegistrarMovimientoInsumoDto> } = { body: {} };
   server.use(
-    http.post<PathParams, Partial<RegistrarEntradaInsumoDto>>(
+    http.post<PathParams, Partial<RegistrarMovimientoInsumoDto>>(
       `/api/insumos/${INSUMO_ID}/movimientos/entrada`,
       async ({ request }) => {
         capturado.body = await request.json();
@@ -129,6 +129,7 @@ describe("MovimientoEntradaDialog", () => {
     const selectEquipo = await screen.findByLabelText(/equipo/i);
     expect(selectEquipo).toBeDisabled();
     expect(screen.getByText(/sin datos de equipos/i)).toBeInTheDocument();
+    expect(screen.getByText(/la entrada se puede registrar igual/i)).toBeInTheDocument();
     expect(screen.queryByText(/^sin equipo$/i)).not.toBeInTheDocument();
 
     // El catálogo de sectores no llevó gate: sigue resolviendo normal.

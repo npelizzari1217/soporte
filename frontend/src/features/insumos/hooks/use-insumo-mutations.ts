@@ -22,18 +22,41 @@ import { useMutation, useQueryClient, type UseMutationResult } from "@tanstack/r
 import { apiFetch } from "@/shared/api/client";
 import { notifyError, notifySuccess } from "@/shared/lib/toast";
 import type { MovimientoInsumo } from "../types";
+import type { RegistrarMovimientoInsumoFormValues } from "../schemas";
 
 /**
  * Body de `POST /insumos/:insumoId/movimientos/entrada`, espejo de
- * `RegistrarMovimientoInsumoHttpDto` (backend). `motivo`/`equipoId`/
- * `sectorId` OPCIONALES, igual que en el borde — el `usuarioId` no viaja
- * acá: lo estampa el servidor desde el JWT.
+ * `RegistrarMovimientoInsumoHttpDto` (backend) — mismo nombre que
+ * `registrarMovimientoInsumoSchema` en `schemas.ts`, del que este shape
+ * deriva. `motivo`/`equipoId`/`sectorId` OPCIONALES, igual que en el borde —
+ * el `usuarioId` no viaja acá: lo estampa el servidor desde el JWT.
  */
-export interface RegistrarEntradaInsumoDto {
+export interface RegistrarMovimientoInsumoDto {
   cantidad: number;
   motivo?: string;
   equipoId?: string;
   sectorId?: string;
+}
+
+/**
+ * Arma el body a partir de los valores ya validados del formulario:
+ * `equipoId`/`sectorId`/`motivo` viajan `undefined` cuando quedan sin
+ * completar en vez de la cadena vacía que deja el `<select>`/textarea (mismo
+ * criterio que "Sin equipo"/"Sin sector" como opción por defecto, ver el
+ * JSDoc de `MovimientoInsumoDialog`).
+ *
+ * @param values Valores ya validados del formulario.
+ * @returns El body, listo para viajar a `POST /insumos/:insumoId/movimientos/entrada`.
+ */
+export function construirMovimientoInsumoDto(
+  values: RegistrarMovimientoInsumoFormValues,
+): RegistrarMovimientoInsumoDto {
+  return {
+    cantidad: values.cantidad,
+    motivo: values.motivo || undefined,
+    equipoId: values.equipoId || undefined,
+    sectorId: values.sectorId || undefined,
+  };
 }
 
 /**
@@ -42,10 +65,10 @@ export interface RegistrarEntradaInsumoDto {
  */
 export function useRegistrarEntradaInsumo(
   insumoId: string,
-): UseMutationResult<MovimientoInsumo, unknown, RegistrarEntradaInsumoDto> {
+): UseMutationResult<MovimientoInsumo, unknown, RegistrarMovimientoInsumoDto> {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (dto: RegistrarEntradaInsumoDto) =>
+    mutationFn: (dto: RegistrarMovimientoInsumoDto) =>
       apiFetch<MovimientoInsumo>(`insumos/${insumoId}/movimientos/entrada`, {
         method: "POST",
         json: dto,
