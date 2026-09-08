@@ -268,7 +268,18 @@ describe("MovimientoSalidaDialog", () => {
       user: buildUser({ permisos: ["INSUMOS:ALTAS"] }),
     });
 
-    expect(pedidos).toEqual([]);
+    // `pedidos` se llena DENTRO del handler de MSW, que resuelve asincrónico:
+    // un assert sincrónico acá lo ve vacío incluso si el fetch ya salió, así
+    // que "no se pidió" y "todavía no llegó" se verían iguales. Se le da al
+    // fetch una ventana real para completarse: si `pedidos` llegara a tener
+    // CUALQUIER catálogo, `waitFor` resuelve y el `rejects` de abajo falla.
+    // Se afirma la ausencia de todo pedido y no la del PAR: `useEquipos` y
+    // `useSectores` son hooks independientes, así que exigir los dos dejaría
+    // pasar en verde una fuga de uno solo —que es justo el caso que este test
+    // vigila, el 403 por ficha del usuario sin `EQUIPOS:LECTURA`—.
+    await expect(
+      waitFor(() => expect(pedidos.length).toBeGreaterThan(0), { timeout: 100 }),
+    ).rejects.toThrow();
 
     await abrirDialog();
 

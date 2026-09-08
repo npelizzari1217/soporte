@@ -331,9 +331,7 @@ describe("MovimientoAjusteDialog", () => {
     // antes de afirmar la ausencia: si `pedidos` llegara a tener "equipos" en
     // esta ventana, `waitFor` resuelve y el `rejects` de abajo falla.
     await expect(
-      waitFor(() => expect(pedidos).toEqual(expect.arrayContaining(["equipos", "sectores"])), {
-        timeout: 100,
-      }),
+      waitFor(() => expect(pedidos.length).toBeGreaterThan(0), { timeout: 100 }),
     ).rejects.toThrow();
 
     await abrirDialog();
