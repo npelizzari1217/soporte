@@ -30,6 +30,7 @@ import {
   NOMBRE_CONTENEDOR_POR_DEFECTO,
   inspeccionarContenedorTolerante,
   resolverNombreContenedor,
+  verificarLeyendoElEntorno,
 } from './regenerar-entorno.mjs';
 import { inspeccionarContenedor } from './lib/docker-postgres.mjs';
 
@@ -238,7 +239,7 @@ describe('ejecutarVerificar()', () => {
     expect(salida).not.toContain('para crearlo');
     expect(salida).toContain('NO lo crea');
     // Y debe traer el remedio que SI funciona, listo para copiar y pegar.
-    expect(salida).toContain('docker run -d --name soporte-postgres-master');
+    expect(salida).toContain(`docker run -d --name ${NOMBRE_CONTENEDOR_POR_DEFECTO}`);
     // Read-only de punta a punta: la única llamada a "Docker" fue el
     // `docker inspect` de solo lectura — nada de crear/arrancar/parar.
     expect(execFileSyncFn).toHaveBeenCalledTimes(1);
@@ -247,6 +248,50 @@ describe('ejecutarVerificar()', () => {
       ['inspect', 'soporte-postgres-master'],
       expect.anything(),
     );
+  });
+
+  // Issue #124. Con el nombre parametrizado (#122), un remedio que nombra
+  // siempre el contenedor de desarrollo manda al usuario a crear uno que la
+  // herramienta va a seguir viendo como ausente: lo copia, lo corre, vuelve a
+  // verificar y obtiene el mismo error. Gira en falso — que es exactamente lo
+  // que condena el comentario del test de arriba.
+  it('contenedor ausente con otro nombre: el remedio nombra ESE contenedor, no el de desarrollo', () => {
+    const resultado = ejecutarVerificar({
+      envEjemplo: {},
+      envArchivo: {},
+      envProceso: {},
+      estadoContenedor: { estado: 'ausente', imagen: null },
+      nombreContenedor: 'mi-pg',
+    });
+
+    const salida = resultado.lineas.join('\n');
+    expect(salida).toContain('docker run -d --name mi-pg');
+    expect(salida).not.toContain(NOMBRE_CONTENEDOR_POR_DEFECTO);
+  });
+
+  // El cable entero, no sus dos puntas por separado: es `verificarLeyendoElEntorno`
+  // — la composición que corre en el CLI — la que se ejercita acá. Componerla del
+  // lado del test no sirve: borrar el `nombreContenedor` de la composición real
+  // dejaba en verde tanto a este test como al de `mi-pg`, y el defecto volvía
+  // entero sin que la suite se enterara.
+  it('verificarLeyendoElEntorno(): el remedio usa el nombre que resuelve SOPORTE_PG_CONTAINER', () => {
+    const original = process.env.SOPORTE_PG_CONTAINER;
+    process.env.SOPORTE_PG_CONTAINER = 'ghaction-postgres-abc123';
+    try {
+      const resultado = verificarLeyendoElEntorno({
+        envEjemplo: {},
+        envArchivo: {},
+        envProceso: {},
+        inspeccionar: () => ({ estado: 'ausente', imagen: null }),
+      });
+
+      expect(resultado.lineas.join('\n')).toContain(
+        'docker run -d --name ghaction-postgres-abc123',
+      );
+    } finally {
+      if (original === undefined) delete process.env.SOPORTE_PG_CONTAINER;
+      else process.env.SOPORTE_PG_CONTAINER = original;
+    }
   });
 });
 
