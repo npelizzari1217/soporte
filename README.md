@@ -298,6 +298,25 @@ pnpm entorno:regenerar --confirmar
 seeds, claves faltantes en `.env`) sin mutar nada. Correlo así primero si querés ver
 qué haría antes de aplicar.
 
+#### Si tu contenedor no se llama `soporte-postgres-master`
+
+`entorno:verificar` y `entorno:regenerar` inspeccionan el contenedor por nombre, y
+ese nombre es `soporte-postgres-master` salvo que declares otro:
+
+| Variable | Default | Para qué |
+|---|---|---|
+| `SOPORTE_PG_CONTAINER` | `soporte-postgres-master` | Nombre del contenedor Docker a inspeccionar. Vacía o solo espacios se trata igual que ausente: se usa el default. |
+
+No hace falta ponerla en `.env`: es un override puntual, no parte del contrato de
+`backend/src/config/validar-entorno.ts`. Se usa en dos casos.
+
+- **Tu contenedor local se llama distinto.** `SOPORTE_PG_CONTAINER=mi-pg pnpm entorno:verificar`.
+- **CI.** En GitHub Actions el Postgres corre como *service container* con un nombre
+  que genera el runner, no el fijo de desarrollo. `.github/workflows/gates.yml` lo
+  descubre por imagen y exporta la variable antes de correr la suite; sin eso,
+  `regenerar-entorno.integration.spec.ts` ve el contenedor como ausente y falla
+  aunque Postgres esté corriendo.
+
 Si `soporte_master_test` o `soporte_tenant_test` quedaron en un estado inconsistente
 (migración a medias, datos corruptos de una corrida anterior), **`pnpm entorno:regenerar
 --recrear-test --confirmar`** las dropea y recrea vacías — es la única operación
