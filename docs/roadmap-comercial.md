@@ -3,14 +3,23 @@
 Análisis del 2026-08-19. Compara el sistema contra Zendesk, Freshservice, GLPI y
 Jira Service Management, y prioriza qué falta para competir.
 
-**Estado: en ejecución.** El punto 1 está en producción desde el 2026-08-20. El
-resto se reordenó el 2026-08-21 bajo una decisión nueva del usuario: **los datos
-de producción son descartables** en esta etapa. Es menos trabajo destruirlos y
-regenerarlos que convertirlos, así que se prioriza construir el software sólido
-sin cargar el peso de las migraciones.
+**Estado: cinco de seis puntos cerrados.** Actualizado el 2026-09-09 contra el
+código de `main` (`340a1a5`), archivo por archivo. Los puntos 1, 2, 3 y 4 están
+entregados; el punto 5 es el único que sigue pendiente y el 6 sigue diferido.
+La Fase 0 está integrada y sus dos gates viven en `main`.
 
-Eso agregó una **Fase 0 de fundación** antes de seguir con los seis puntos, y
-cambió las estimaciones — ver "Fase 0" y "El plan de carriles" más abajo.
+> **Este documento estuvo desactualizado tres semanas.** Daba por pendientes los
+> puntos 2, 3 y 4 y por inexistente el cambio de contraseña, con las cuatro cosas
+> construidas y mergeadas. También omitía por completo el módulo de Insumos, que
+> es la entrega más grande del período. La corrección del 2026-09-09 repone el
+> estado real y deja la evidencia (commit y fecha) en cada fila, para que la
+> próxima lectura no dependa de la memoria de nadie.
+
+El reordenamiento del 2026-08-21 sigue vigente: bajo la decisión de que **los
+datos de producción son descartables** en esta etapa, es menos trabajo
+destruirlos y regenerarlos que convertirlos, así que se prioriza construir el
+software sólido sin cargar el peso de las migraciones. Eso agregó una **Fase 0 de
+fundación**, hoy terminada — ver "Fase 0" más abajo.
 
 ## El marco
 
@@ -35,25 +44,21 @@ consultor.
 
 | # | Qué | Dificultad | Estimado | Estado |
 |---|---|---|---|---|
-| 1 | Exportar a Excel/CSV | Baja | 1-2 días | **HECHO** — en producción desde el 2026-08-20 (`a9bb3fa`) |
-| 2 | Reparación ↔ Compra | Media | 3-4 días | pendiente — decisiones de producto cerradas |
-| 3 | Encuesta de satisfacción | Media | 4-6 días | pendiente |
-| 4 | Mantenimiento preventivo recurrente | Media | 5-8 días | pendiente — decisiones de producto cerradas |
-| 5 | Horario laboral en el SLA | Media | 4-6 días | pendiente — decisiones de producto cerradas |
+| 1 | Exportar a Excel/CSV | Baja | 1-2 días | **HECHO** — del 2026-08-19 (`c442af8`) al 2026-08-20 (`a9bb3fa`), en producción |
+| 2 | Reparación ↔ Compra | Media | 3-4 días | **HECHO** — del 2026-08-22 (`d219b50`) al 2026-09-04 |
+| 3 | Encuesta de satisfacción | Media | 4-6 días | **HECHO** — del 2026-08-22 (`24b0618`) al 2026-09-04 |
+| 4 | Mantenimiento preventivo recurrente | Media | 5-8 días | **HECHO** — del 2026-08-24 (`bd098f9`) al 2026-09-05 |
+| 5 | Horario laboral en el SLA | Media | 4-6 días | **PENDIENTE — el único que queda.** Decisiones de producto cerradas |
 | 6 | Ticket por email entrante | Alta | 2-3 semanas | **DIFERIDO** por decisión del 2026-08-20 |
 
-Estimado restante sobre los puntos 2 a 5: **~16-24 días en serie**. Los puntos 2
-y 5 bajaron respecto de la estimación original porque la política de datos
-descartables les saca el peso de la migración — al punto 5 le saca "el problema
-mayor", que era recalcular `slaVenceAt` histórico.
+Estimado restante: **~4-6 días sobre el punto 5**, el único abierto. Ese número
+ya descuenta "el problema mayor" que la estimación original le cargaba —
+recalcular `slaVenceAt` histórico —, porque la política de datos descartables le
+saca el peso de la migración.
 
-Con **dos carriles en paralelo** (ver "El plan de carriles"): **~9-14 días de
-wall-clock**. Sumando la Fase 0, el total del proyecto queda en **~12,5-19 días**
-contra los ~21-30 que costaría en serie.
-
-> Ojo con leer eso como un ahorro. El total **no baja: se reasigna.** Lo que se
-> caía de migración volvió a entrar como fundación. Lo que se gana no es
-> velocidad, es que lo que quede parado no tenga grietas abajo.
+Con un solo punto abierto, **el plan de dos carriles en paralelo dejó de
+aplicar**: se describe más abajo porque explica cómo se ejecutaron los puntos 2 a
+4, no porque quede trabajo que repartir.
 
 > **Mantené esta columna al día.** Un roadmap sin estado obliga a reconstruir de
 > memoria qué se entregó, y esa reconstrucción falla: el punto 1 estuvo en
@@ -71,6 +76,24 @@ para que el roadmap refleje el esfuerzo real, no solo el previsto.
 | Asignar tickets también a COLABORADOR | 2026-08-20 (`d2d90a4`) | Los colaboradores cumplen funciones de técnico |
 | Rotación de la clave del admin, reparada y versionada | 2026-08-20 (`d2d90a4`) | La herramienta existente estaba rota y **reportaba éxito igual** |
 | `deploy.ps1`: auto-actualización, orden de correo y chequeo de exit codes | 2026-08-20 (`d2d90a4`) | Cuatro incidentes de deploy en un día, todos por la misma causa |
+| **Cambio de contraseña propia** | 2026-08-21 (`dcbf73a`) | Carencia detectada al rotar la clave del admin de producción — ver la sección propia más abajo |
+| **Módulo de Insumos**: catálogo, kardex y recepción de compras | 2026-09-04 a 2026-09-09 (`ebd565e` a `db6da31`) | Pedido de producto posterior al análisis del 2026-08-19. **Es la entrega más grande del período** y no figuraba en este documento |
+| Compuerta issue-first de CI y `gates.yml` en verde | 2026-09-08 al 09 | La compuerta de calidad existía y nunca había pasado; ver el historial de PRs #119 a #132 |
+
+### El módulo de Insumos
+
+No estaba previsto en el análisis del 2026-08-19 y terminó siendo el trabajo más
+voluminoso del período: **30 commits y 7 pull requests** (#100, #101, #102, #104,
+#108, #109 y #119), entregados en tres entregas más el ABM.
+
+Qué hace hoy: catálogo de insumos con códigos alternativos, familias, unidades de
+medida y modelos de equipo con su compatibilidad; kardex de existencias por
+movimientos de entrada, salida y ajuste, bajo sección crítica con advisory lock;
+recepción de una compra que genera stock; y las pantallas de listado, ficha y
+bitácora.
+
+Se anota acá, y no entre los seis puntos, porque no nació de la comparación
+competitiva: nació de operar el sistema.
 
 ## Fase 0 — Fundación
 
@@ -81,9 +104,14 @@ bien parado. Pero eso **no sale gratis** — el total no baja, se reasigna: se c
 
 | Carril | Qué | Estado |
 |---|---|---|
-| A | **Saneamiento de tipos del backend** — 119 errores escondidos tras la exclusión `**/*.spec.ts` | 6 work units, **hecho**, pendiente merge |
-| B | **Render de fechas del frontend** — 6 copias de `Intl.DateTimeFormat` sin `timeZone` | 7 work units, **hecho**, pendiente merge |
-| — | **Cambio de contraseña** (ver más abajo) | sin empezar |
+| A | **Saneamiento de tipos del backend** — 119 errores escondidos tras la exclusión `**/*.spec.ts` | 6 work units, **INTEGRADO en `main`** — el gate vive en `backend/tsconfig.json:27`, que documenta que los specs ya no se excluyen |
+| B | **Render de fechas del frontend** — 6 copias de `Intl.DateTimeFormat` sin `timeZone` | 7 work units, **INTEGRADO en `main`** — el gate es la regla `no-restricted-syntax` de `frontend/eslint.config.mjs` |
+| — | **Cambio de contraseña** (ver más abajo) | **HECHO** — 2026-08-21 (`dcbf73a`) |
+
+> **Corrección del 2026-09-09.** Esta tabla decía "hecho, pendiente merge" para
+> los carriles A y B, y la tabla de deuda técnica del final los daba por
+> resueltos: el documento se contradecía a sí mismo. Verificado contra el código,
+> los dos están integrados y sus dos gates están instalados en `main`.
 
 **Lo que destapó el carril A**, y que justifica el ciclo entero: el renombre del
 enum `SOPORTE → TICKETS` nunca llegó a los tests; un campo retirado de una
@@ -99,7 +127,12 @@ Los dos carriles dejaron **un gate instalado y probado rompiéndolo a propósito
 `pnpm typecheck` ahora falla si un test tiene un error de tipo, y `pnpm lint`
 falla si aparece una séptima copia del formateador de fechas.
 
-### El plan de carriles
+### El plan de carriles — **registro histórico**
+
+> **Ya no aplica.** Con el punto 5 como único trabajo abierto no hay nada que
+> repartir entre dos carriles. Se conserva porque explica cómo se ejecutaron la
+> Fase 0 y los puntos 2 a 4, y porque la restricción de las migraciones de Prisma
+> vuelve a morder apenas se abran dos frentes de nuevo.
 
 `sdd-apply` no admite dos instancias sobre el mismo cambio, pero el ledger es
 **por cambio** y `sdd-attempt handoff` contempla worktrees enlazados. Así que dos
@@ -112,14 +145,21 @@ corrompe la contabilidad de líneas y le bloquea el `settle`.
 **El techo son dos carriles, no cuatro** — cada uno exige verificación propia
 antes de integrar, y con cuatro el orquestador se vuelve el cuello de botella.
 
-Con dos carriles, los puntos 2 a 5 pasan de ~21-30 días en serie a **~12,5-19 de
-wall-clock**. Pero antes de abrir cada ola hay que **aterrizar las migraciones de
-Prisma en serie**: `schema.prisma` es un archivo solo y dos carriles
+~~Con dos carriles, los puntos 2 a 5 pasan de ~21-30 días en serie a ~12,5-19 de
+wall-clock.~~ Los puntos 2 a 4 ya están entregados. Lo que **sigue vigente** es la
+restricción: antes de abrir cada ola hay que **aterrizar las migraciones de
+Prisma en serie**, porque `schema.prisma` es un archivo solo y dos carriles
 escribiéndolo es conflicto garantizado.
 
 ### Decisiones de producto ya cerradas (2026-08-21)
 
-Para no re-litigarlas al empezar cada punto:
+Para no re-litigarlas al empezar cada punto.
+
+> **Contrastadas contra el código el 2026-09-09.** La del punto 2 se cumplió tal
+> cual. **La del punto 4 NO**: se pidió un `tipoTicket` propio "Preventivo"
+> excluido de las métricas de SLA, y el código reusa `MANTENIMIENTO` con la
+> exclusión colgada de la prioridad del plan. Ver el detalle en la sección del
+> punto 4. La del punto 5 sigue sin ejecutarse porque el punto sigue abierto.
 
 - **Punto 2** — "bloqueada" es un estado **derivado** (tiene ≥1 compra vinculada
   sin recibir), **no** frena `porcentajeAvance`, y **sí** se ve en el listado con
@@ -143,7 +183,17 @@ CSV.
 - Cuidado: BOM de UTF-8 (sin eso Excel muestra `Reparación` como `ReparaciÃ³n`).
 - Cuidado: no bufferear en memoria; exportar en streaming.
 
-### 2 · Reparación ↔ Compra — Media
+### 2 · Reparación ↔ Compra — Media — **ENTREGADO**
+
+> **Entregado** entre el 2026-08-22 (`d219b50`) y el 2026-09-04, tal como estaba
+> decidido. La relación N:N vive en `model ReparacionCompra`
+> (`backend/prisma_tenant/schema.prisma:494`), y "bloqueada" quedó como estado
+> **derivado**: `comprasQueBloquean()` en
+> `backend/src/reparaciones/domain/services/bloqueo-reparacion.ts:48` lo calcula
+> a demanda en vez de persistirlo. Los casos de uso de vincular y desvincular
+> están en `backend/src/reparaciones/application/use-cases/`.
+>
+> Lo de abajo se conserva como registro de por qué se construyó así.
 
 Conectar una reparación con la compra que la está frenando. Responde la pregunta
 que **ninguno de los cuatro competidores** puede responder, porque ninguno tiene
@@ -159,7 +209,19 @@ compras: *¿por qué esta reparación lleva tres semanas?*
 - Origen: el usuario pidió comentarios en reparaciones y el ejemplo que dio fue
   "falta un repuesto". Hoy eso es texto libre.
 
-### 3 · Encuesta de satisfacción (CSAT) — Media
+### 3 · Encuesta de satisfacción (CSAT) — Media — **ENTREGADO**
+
+> **Entregado** entre el 2026-08-22 (`24b0618`) y el 2026-09-04, en
+> `backend/src/csat/`. La superficie pública sin auth es
+> `POST /publico/encuesta/:token`
+> (`backend/src/csat/interface/controllers/encuesta-publica.controller.ts`), con
+> el token firmado tenant + ticket, de un solo uso y con vencimiento, guardado
+> hasheado en la tabla `EncuestaToken` de la base master. La métrica llegó al
+> dashboard (`csatPromedio` / `csatRespuestas`, detrás del permiso
+> `CSAT:LECTURA`) y la encuesta viene **apagada por cliente** con
+> `csatHabilitado` en `false`.
+>
+> Lo de abajo se conserva como registro de por qué se construyó así.
 
 Al cerrar el ticket, mail con enlace de calificación. Ya existen SMTP, listeners
 y plantillas en `backend/src/notificaciones/`.
@@ -169,7 +231,24 @@ y plantillas en `backend/src/notificaciones/`.
   un solo uso y con vencimiento. Es la única superficie sin auth del sistema.
 - Sumar la métrica al dashboard.
 
-### 4 · Mantenimiento preventivo recurrente — Media
+### 4 · Mantenimiento preventivo recurrente — Media — **ENTREGADO, con una desviación**
+
+> **Entregado** entre el 2026-08-24 (`bd098f9`) y el 2026-09-05, en
+> `backend/src/preventivo/`. El scheduler copia el patrón de `SlaSweepScheduler`
+> como estaba previsto, y la idempotencia quedó resuelta con un `INSERT ... ON
+> CONFLICT DO NOTHING` sobre la tabla `PreventivoGeneracion`, como primera
+> sentencia de la transacción.
+>
+> **La desviación, que hay que decidir si se corrige o se adopta:** la decisión
+> de producto del 2026-08-21 decía `tipoTicket` propio **"Preventivo"** y
+> exclusión explícita de las métricas de SLA. El código reusa el tipo existente
+> **`MANTENIMIENTO`** del módulo EDILICIA, y la exclusión del SLA no es por tipo:
+> depende de que la prioridad del plan tenga `slaActivo = false`, porque el
+> dashboard solo cuenta tickets con `slaVenceAt` no nulo. Funciona, pero por un
+> mecanismo distinto del que se acordó, y **un plan cargado con una prioridad con
+> SLA activo entra en las métricas sin que nadie lo note.**
+>
+> Lo de abajo se conserva como registro de por qué se construyó así.
 
 Generar tareas automáticas ("revisar la caldera cada 6 meses"). Sin esto, el
 módulo de equipos es un inventario, no un plan de mantenimiento.
@@ -184,7 +263,12 @@ módulo de equipos es un inventario, no un plan de mantenimiento.
   test que corra el generador dos veces y verifique que crea una sola.
 - Decidir qué entidad se genera: ¿ticket?, ¿reparación edilicia?, ¿ambas?
 
-### 5 · Horario laboral en el SLA — Media-alta
+### 5 · Horario laboral en el SLA — Media-alta — **EL ÚNICO PENDIENTE**
+
+> **Verificado pendiente el 2026-09-09.** `calcular-sla-vence.service.ts:3`
+> declara el reloj 24/7 en su propio comentario: el cálculo es
+> `venceAt = creadoEn + horas` y cruza medianoche y fin de semana sin ajuste. No
+> hay entidad de calendario ni de feriados en `backend/src/sla/`.
 
 Hoy el SLA son horas corridas: un ticket abierto viernes 18:00 vence el sábado.
 
@@ -223,13 +307,18 @@ como siempre.
    propia cuenta SMTP, lo que resuelve el ENVÍO. La RECEPCIÓN (que alguien abra
    un ticket mandando un mail) sigue sin construirse y es lo que queda del
    punto 6.
-2. **Punto 2 — el diferencial. Es el siguiente.**
-3. Punto 4 — reusa infraestructura probada.
-4. Punto 3.
-5. Punto 5.
+2. ~~**Punto 2 — el diferencial. Es el siguiente.**~~ — **entregado** el 2026-09-04.
+3. ~~Punto 4 — reusa infraestructura probada.~~ — **entregado** el 2026-09-05.
+4. ~~Punto 3.~~ — **entregado** el 2026-09-04.
+5. **Punto 5 — es el siguiente, y el último que queda.**
 6. Punto 6 — diferido.
 
-**Antes del punto 2 va la Fase 0** (ver más abajo).
+~~**Antes del punto 2 va la Fase 0**~~ — la Fase 0 está integrada en `main`.
+
+> **Actualizado el 2026-09-09.** El orden se cumplió tal como estaba acordado:
+> puntos 2, 4 y 3, en ese orden, y la Fase 0 antes que todos. Lo único que se
+> salió del plan fue el módulo de Insumos, que entró después del punto 4 y no
+> estaba en ninguna lista.
 
 > **Corrección del 2026-08-21.** Acá decía que "el ADMINISTRADOR de Cic Lanus no
 > tiene ningún permiso de módulo". **No es un bug y se baja del roadmap.**
@@ -251,13 +340,24 @@ como siempre.
 > del tipo "quiénes tienen el permiso X" excluye administradores en silencio. Hoy
 > no muerde porque las consultas que existen filtran por rol, pero es una costura.
 
-## Carencia detectada fuera de los seis puntos
+## Carencia detectada fuera de los seis puntos — **CERRADA**
 
-### Cambio de contraseña — Baja dificultad, prioridad alta
+### Cambio de contraseña — Baja dificultad, prioridad alta — **ENTREGADO**
 
-**Hoy ningún usuario puede cambiar su propia contraseña.** No hay pantalla ni
+> **Entregado** el 2026-08-21 (`dcbf73a`), el día siguiente a detectarlo.
+> `POST /auth/change-password` (`backend/src/auth/interface/controllers/auth.controller.ts`)
+> exige la contraseña actual, rechaza repetir la vigente y **revoca todas las
+> sesiones** del usuario; el frontend es `CambiarPasswordDialog.tsx`, que avisa
+> de ese cierre de sesiones antes de confirmar. El alcance entregado es
+> exactamente el "alcance mínimo" que pedía esta sección.
+>
+> **El reseteo por olvido sigue sin construirse**, tal como se anticipó abajo: es
+> un problema distinto, necesita tokens de un solo uso con vencimiento, y hoy es
+> lo único que queda de esta carencia.
+
+~~**Hoy ningún usuario puede cambiar su propia contraseña.** No hay pantalla ni
 endpoint: buscado en `backend/src` y `frontend/src` (`cambiar-password`,
-`change-password`, `CambiarPassword`), cero resultados.
+`change-password`, `CambiarPassword`), cero resultados.~~
 
 Apareció el 2026-08-20 al intentar rotar la clave del admin de producción. La
 única herramienta que existía (`rotate-admin-pw.ps1`, sin versionar en el VPS)
@@ -283,8 +383,8 @@ cabeza de alguien deja de existir cuando esa persona no está.
 
 | Qué | Por qué importa |
 |---|---|
-| **Regeneración reproducible del entorno**: `demo-seed.ts` solo aplica preset al rol TECNICO, y **la creación del contenedor de Postgres no está documentada en ninguna parte** | Es el cimiento del que cuelga toda la política de datos descartables. Destruir y regenerar sale más barato que migrar **solo si el generador está sano y regenerar es un comando**. Falló dos veces el 2026-08-21: el seed reproduciría el hueco de permisos, y al perderse la base local el README arranca en "cuando haya una instancia de Postgres disponible" — justo después del paso que faltaba |
-| **301 `as never`/`as any` en 83 specs**, diferidos a propósito | El gate de tipos nuevo **NO los frena**: `as never` compila igual. Sin una regla de lint que los prohíba en specs, la deuda se reconstruye sola |
+| **Regeneración reproducible del entorno — PARCIALMENTE RESUELTA el 2026-09-09.** La creación del contenedor **ya está documentada**: `README.md:278` trae el `docker run` completo y `pnpm entorno:verificar` / `pnpm entorno:regenerar` (`55be976`). Lo que sigue vivo es que `demo-seed.ts:278` **solo aplica preset al rol TECNICO** | Es el cimiento del que cuelga toda la política de datos descartables. Destruir y regenerar sale más barato que migrar **solo si el generador está sano y regenerar es un comando**. Falló dos veces el 2026-08-21: el seed reproduciría el hueco de permisos, y al perderse la base local el README arranca en "cuando haya una instancia de Postgres disponible" — justo después del paso que faltaba |
+| **672 `as never`/`as any` en 121 specs**, diferidos a propósito | El gate de tipos nuevo **NO los frena**: `as never` compila igual. Sin una regla de lint que los prohíba en specs, la deuda se reconstruye sola. **Medido de nuevo el 2026-09-09: eran 301 en 83 specs el 2026-08-21, hoy son 672 en 121. Se duplicó en tres semanas** — es la única deuda de esta tabla que está creciendo |
 | ~~123 errores de tipos escondidos tras la exclusión `**/*.spec.ts`~~ | **RESUELTO** el 2026-08-21 (Fase 0, carril A). El gate quedó instalado y probado: un error de tipo en un spec ahora rompe `pnpm typecheck` |
 | ~~Render de fechas del frontend~~ | **RESUELTO** el 2026-08-21 (Fase 0, carril B). Un solo módulo formatea fechas, con regla de lint que impide una séptima copia |
 | **Rotación de `EMAIL_CRYPTO_KEY`**: no existe herramienta | Rotarla sin re-cifrar convierte TODA contraseña SMTP guardada en basura indescifrable. El payload lleva prefijo `v1:` justamente para permitir una migración de re-cifrado, pero esa migración no está escrita |
