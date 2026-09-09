@@ -66,10 +66,25 @@ export function resolverNombreContenedor() {
  *   envArchivo: Record<string, string>,
  *   envProceso: Record<string, string | undefined>,
  *   estadoContenedor?: {estado: 'corriendo'|'parado'|'ausente'|'otra-imagen', imagen: string|null} | {errorInspeccion: string},
+ *   nombreContenedor?: string,
  * }} entrada
  * @returns {{exitCode: number, lineas: string[]}}
+ *
+ * `nombreContenedor` entra como DATO, igual que `estadoContenedor`, y no se
+ * resuelve acá adentro: esta función es pura a propósito y llamar a
+ * `resolverNombreContenedor()` desde adentro la haría leer el entorno. Lo
+ * necesita para que el remedio de "contenedor AUSENTE" nombre el contenedor
+ * que la herramienta va a buscar (issue #124): con `SOPORTE_PG_CONTAINER`
+ * puesta, un remedio con el nombre fijo manda a crear un contenedor que
+ * `entorno:verificar` va a seguir reportando como ausente.
  */
-export function ejecutarVerificar({ envEjemplo, envArchivo, envProceso, estadoContenedor }) {
+export function ejecutarVerificar({
+  envEjemplo,
+  envArchivo,
+  envProceso,
+  estadoContenedor,
+  nombreContenedor = NOMBRE_CONTENEDOR_POR_DEFECTO,
+}) {
   const lineas = [];
   let exitCode = 0;
 
@@ -91,7 +106,7 @@ export function ejecutarVerificar({ envEjemplo, envArchivo, envProceso, estadoCo
         '[entorno:verificar] Contenedor Docker: AUSENTE. Ojo: "entorno:regenerar --confirmar" NO lo crea, solo lo usa.',
       );
       lineas.push(
-        '[entorno:verificar] Crealo a mano (ver README, paso 1): docker run -d --name soporte-postgres-master ' +
+        `[entorno:verificar] Crealo a mano (ver README, paso 1): docker run -d --name ${nombreContenedor} ` +
           '-p 5432:5432 -e POSTGRES_USER=soporte -e POSTGRES_PASSWORD=soporte --restart unless-stopped postgres:16',
       );
     } else if (estadoContenedor.estado === 'otra-imagen') {
@@ -922,6 +937,39 @@ export function inspeccionarContenedorTolerante({ execFileSyncFn = execFileSync 
 }
 
 /**
+ * Compone `ejecutarVerificar` con las dos piezas que SÍ leen el mundo: el estado
+ * del contenedor y su nombre.
+ *
+ * Existe exportada, y no inline dentro de `main()`, para que la composición
+ * tenga un test. Con las piezas sueltas probadas por separado, borrar el
+ * `nombreContenedor` de acá dejaba la suite entera en verde y devolvía el
+ * defecto del #124 completo. Un test que no puede fallar cuando se rompe lo
+ * que dice cuidar no es un test.
+ *
+ * @param {{
+ *   envEjemplo: Record<string, string>,
+ *   envArchivo: Record<string, string>,
+ *   envProceso: Record<string, string | undefined>,
+ *   inspeccionar?: () => ReturnType<typeof inspeccionarContenedorTolerante>,
+ * }} entrada
+ * @returns {{exitCode: number, lineas: string[]}}
+ */
+export function verificarLeyendoElEntorno({
+  envEjemplo,
+  envArchivo,
+  envProceso,
+  inspeccionar = inspeccionarContenedorTolerante,
+}) {
+  return ejecutarVerificar({
+    envEjemplo,
+    envArchivo,
+    envProceso,
+    estadoContenedor: inspeccionar(),
+    nombreContenedor: resolverNombreContenedor(),
+  });
+}
+
+/**
  * Punto de entrada del CLI. Único adaptador que lee el mundo (argv, `.env`,
  * `.env.example`, `process.env`, Docker, Postgres) — toda la decisión vive
  * en `ejecutarVerificar`/`ejecutarRegenerar`.
@@ -941,12 +989,7 @@ async function main() {
   const envProceso = { ...process.env };
 
   if (subcomando === 'verificar') {
-    const { exitCode, lineas } = ejecutarVerificar({
-      envEjemplo,
-      envArchivo,
-      envProceso,
-      estadoContenedor: inspeccionarContenedorTolerante(),
-    });
+    const { exitCode, lineas } = verificarLeyendoElEntorno({ envEjemplo, envArchivo, envProceso });
     for (const linea of lineas) console.log(linea);
     process.exitCode = exitCode;
     return;
