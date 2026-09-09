@@ -2,6 +2,17 @@
 # Idempotente, aborta ante el primer error. Correr como administrator (restart NSSM).
 # 100% ASCII (PS 5.1 lee .ps1 sin BOM como ANSI: un acento corrompe el parseo).
 # Ver DEPLOY-VPS-runbook.md para gotchas (pnpm 11 via corepack, hoist Prisma, BACKEND_URL en build).
+
+# Commit al que revertir si el deploy sale mal. Lo pasa la instancia PADRE al
+# re-ejecutarse (paso 3b). Sin esto, la hija recapturaba HEAD DESPUES del pull y
+# reportaba como rollback el commit recien desplegado - un 'git reset --hard' que
+# no revierte nada, y justo en los deploys donde el script cambio, que son los
+# que mas probablemente lo necesiten (#139).
+#
+# Vacio en una corrida normal: ahi lo captura el pre-flight, que corre antes del
+# pull y por lo tanto ve el commit correcto.
+param([string]$RollbackCommit = '')
+
 $ErrorActionPreference = 'Stop'
 
 $RepoRoot   = 'C:\soporte'
@@ -63,8 +74,13 @@ Write-Host ("Node en uso: " + $nodeVer)
 
 $current = (git rev-parse --abbrev-ref HEAD).Trim()
 if ($current -ne $Branch) { throw "Debe estar en la rama '$Branch' (esta en '$current')" }
-$rollback = (git rev-parse --short HEAD).Trim()
-Write-Host ("Commit actual (rollback): " + $rollback)
+if ($RollbackCommit) {
+  $rollback = $RollbackCommit
+  Write-Host ("Commit de rollback (heredado de la instancia anterior): " + $rollback)
+} else {
+  $rollback = (git rev-parse --short HEAD).Trim()
+  Write-Host ("Commit actual (rollback): " + $rollback)
+}
 
 # 2. Hash de lockfiles ANTES del pull (el deploy NO instala; ver runbook)
 $lockBefore = @{}
@@ -103,7 +119,9 @@ Write-Host ("Commit nuevo: " + $newCommit)
 # 3b. Si el pull cambio ESTE script, re-ejecutar la version nueva y salir.
 if ((Get-FileHash $selfPath -Algorithm SHA256).Hash -ne $selfBefore) {
   Step 'deploy.ps1 cambio en el pull - re-ejecutando la version nueva'
-  & powershell -NoProfile -ExecutionPolicy Bypass -File $selfPath
+  # -RollbackCommit: lo unico del arranque original que la hija NO puede
+  # recalcular, porque su pre-flight corre con el pull ya hecho (#139).
+  & powershell -NoProfile -ExecutionPolicy Bypass -File $selfPath -RollbackCommit $rollback
   exit $LASTEXITCODE
 }
 

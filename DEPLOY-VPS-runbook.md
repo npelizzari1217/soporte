@@ -133,10 +133,14 @@ propia verificación.
 
 ## Qué hace, en orden
 
-1. **Pre-flight** — exige estar en `main` y anota el commit actual como punto de rollback.
+1. **Pre-flight** — exige estar en `main`, verifica que el `node` resuelto sea `>=24` y anota
+   el punto de rollback: el commit actual, o el que **hereda** de la instancia anterior si
+   esta corrida es el re-ejecutado del paso 4.
 2. **Hash de los lockfiles y del propio script**, antes del pull.
 3. **`git pull --ff-only origin main`**.
-4. **Si el pull cambió `deploy.ps1`**, se re-ejecuta la versión nueva y sale.
+4. **Si el pull cambió `deploy.ps1`**, se re-ejecuta la versión nueva y sale, pasándole
+   `-RollbackCommit` con el commit previo al pull. Es lo único del arranque original que la
+   instancia nueva no puede recalcular, porque su pre-flight ya corre con el pull hecho.
 5. **Si cambió algún lockfile**, aborta y pide instalación manual.
 6. **Carga `backend/.env`** al entorno del proceso; exige `DATABASE_URL_MASTER`.
 7. **`EMAIL_CRYPTO_KEY`**: la genera **solo si no existe**.
@@ -312,6 +316,13 @@ cd C:\soporte
 git reset --hard <commit-de-rollback>
 .\deploy.ps1
 ```
+
+> **Corrección del 2026-09-09 (issue #139).** Hasta `f33a334`, cuando `deploy.ps1` cambiaba
+> en el pull la instancia re-ejecutada recapturaba `HEAD` **después** del pull, así que la
+> línea final imprimía como rollback **el commit recién desplegado**: un `git reset --hard`
+> que no revierte nada. Fallaba justo en los deploys donde el script de despliegue había
+> cambiado, que son los que más probablemente necesiten revertirse. Ahora el commit se
+> hereda por parámetro.
 
 > El rollback **no revierte migraciones**. Si el deploy alcanzó a migrar, volver el código atrás
 > deja código viejo contra schema nuevo. Con migraciones aditivas suele andar; con una
