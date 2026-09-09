@@ -10,6 +10,23 @@ $FrontDir   = Join-Path $RepoRoot 'frontend'
 $Services   = @('soporte-backend', 'soporte-frontend')
 $Branch     = 'main'
 $NodeExe    = 'C:\nodejs24\node.exe'
+$NodeDir    = 'C:\nodejs24'
+
+# Fijar Node 24 para TODO el pipeline, no solo para los tres usos de $NodeExe.
+#
+# Los dos package.json declaran "engines": { "node": ">=24" }, pero el PATH del
+# VPS resuelve node Y corepack a C:\Program Files\nodejs (v22.23.2): corepack.cmd
+# vive junto al node que lo instalo y se lo lleva puesto. Invocar $NodeExe por
+# ruta absoluta NO alcanzaba: prisma generate, los dos build y los dos migrate
+# corren por 'corepack pnpm run ...', asi que corrian en Node 22 mientras pnpm
+# avisaba "Unsupported engine" seis veces por deploy sin frenar nada (#137).
+#
+# Anteponer el directorio al PATH cubre ademas los subprocesos: pnpm, prisma y
+# cualquier script que resuelva 'node' a secas heredan el 24. El re-exec de 3b
+# hereda este PATH, por eso el guard evita duplicar la entrada.
+if (-not $env:Path.StartsWith($NodeDir + ';')) {
+  $env:Path = $NodeDir + ';' + $env:Path
+}
 
 function Step($msg) { Write-Host ("========== " + $msg + " ==========") -ForegroundColor Cyan }
 
@@ -30,6 +47,20 @@ Set-Location $RepoRoot
 
 # 1. Pre-flight: rama main + commit de rollback
 Step 'Pre-flight'
+# Guarda dura de la version de Node. El WARN de pnpm ante un engine mismatch NO
+# frena el deploy - esto si. Sin esto, que el PATH vuelva a resolver el Node 22
+# (reinstalacion, cambio de PATH del sistema) es invisible hasta que algo falle
+# en produccion con los servicios detenidos, que es el peor momento posible.
+$nodeVer = (& node -v).Trim()
+if ($nodeVer -match '^v(\d+)\.') {
+  if ([int]$Matches[1] -lt 24) {
+    throw ("Node " + $nodeVer + " resuelve antes que " + $NodeDir + " en el PATH. Los package.json exigen >=24 y los build y migrate correrian con el Node viejo (#137).")
+  }
+} else {
+  throw ("No se pudo leer la version de Node: 'node -v' devolvio '" + $nodeVer + "'.")
+}
+Write-Host ("Node en uso: " + $nodeVer)
+
 $current = (git rev-parse --abbrev-ref HEAD).Trim()
 if ($current -ne $Branch) { throw "Debe estar en la rama '$Branch' (esta en '$current')" }
 $rollback = (git rev-parse --short HEAD).Trim()
