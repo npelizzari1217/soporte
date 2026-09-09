@@ -25,6 +25,7 @@ function makeFakeRow(overrides: Partial<PrismaTicket> = {}): PrismaTicket {
     asignadoId: null,
     slaVenceAt: null,
     vencido: false,
+    slaRegla: 'HABIL',
     fechaCierre: null,
     createdAt: new Date('2026-01-10T10:00:00.000Z'),
     updatedAt: new Date('2026-01-10T10:00:00.000Z'),
@@ -75,6 +76,22 @@ describe('TicketMapper', () => {
       expect(entity.fechaCierre?.toISOString()).toBe('2026-02-01T23:30:00.000Z');
       expect(entity.vencido).toBe(true);
     });
+
+    /**
+     * sdd/sla-habil WU-3: el mapper es el único punto donde `slaRegla`
+     * entra al dominio — angosta el `string` crudo de la columna al tipo
+     * `SlaRegla`, para las dos cohortes reales.
+     */
+    it.each(['CORRIDO', 'HABIL'] as const)('mapea sla_regla = %s a entity.slaRegla', (valor) => {
+      const entity = TicketMapper.toDomain(makeFakeRow({ slaRegla: valor }));
+      expect(entity.slaRegla).toBe(valor);
+    });
+
+    it('lanza si la fila trae un sla_regla fuera del catálogo cerrado', () => {
+      expect(() => TicketMapper.toDomain(makeFakeRow({ slaRegla: 'ALGO_INVALIDO' }))).toThrow(
+        /sla_regla/,
+      );
+    });
   });
 
   describe('toPersistence()', () => {
@@ -104,6 +121,34 @@ describe('TicketMapper', () => {
       expect(data.fechaCierre).toBeNull();
       expect(data.deletedAt).toBeNull();
       expect(data.createdAt).toBeInstanceOf(Date);
+    });
+
+    /**
+     * sdd/sla-habil WU-3: `toPersistence()` NUNCA incluye `slaRegla` —
+     * ningún caso de uso la elige, ver {@link SlaRegla} para de dónde sale
+     * su valor. Sin este resguardo, escribirla desde acá dejaría que un
+     * caso de uso fijara la cohorte, exactamente lo que el WU prohíbe.
+     *
+     * Esta entidad viene de `create()` (nunca persistida): si el mapper
+     * intentara leer `entity.slaRegla` para incluirlo, el getter lanzaría —
+     * este test falla también si alguien reintroduce esa lectura.
+     */
+    it('NUNCA incluye slaRegla — ningún caso de uso elige la cohorte', () => {
+      const entity = TicketEntity.create({
+        numero: 'SOP-2026-00099',
+        titulo: 'Título',
+        descripcion: null,
+        tipoId: 'tipo-id',
+        estadoId: 'estado-id',
+        prioridadId: 'prioridad-id',
+        cicloId: null,
+        ticketReferenciaId: null,
+        solicitanteId: 'solicitante-id',
+      });
+
+      const data = TicketMapper.toPersistence(entity);
+
+      expect(data).not.toHaveProperty('slaRegla');
     });
   });
 });

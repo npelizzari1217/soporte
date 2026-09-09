@@ -24,6 +24,17 @@ import {
 import { PrismaSlaTicketQueryRepository } from './infrastructure/persistence/prisma/prisma-sla-ticket-query.repository';
 import { TENANT_ENUMERATOR, ITenantEnumerator } from '../shared/domain/ports/i-tenant-enumerator';
 
+import { CalendarioLaboralModule } from '../calendario-laboral/calendario-laboral.module';
+import {
+  CALENDARIO_LABORAL_SEMANAL_REPOSITORY,
+  ICalendarioLaboralSemanalRepository,
+} from '../calendario-laboral/domain/ports/i-calendario-laboral-semanal.repository';
+import {
+  FERIADOS_LABORALES_REPOSITORY,
+  IFeriadosLaboralesRepository,
+} from '../calendario-laboral/domain/ports/i-feriados-laborales.repository';
+import { CalcularSlaHabilVenceService } from '../calendario-laboral/domain/services/calcular-sla-habil-vence.service';
+
 import { CalcularSlaVenceService } from './domain/services/calcular-sla-vence.service';
 import { AplicarSlaUseCase } from './application/use-cases/aplicar-sla.use-case';
 import { MarcarVencidosUseCase } from './application/use-cases/marcar-vencidos.use-case';
@@ -68,23 +79,32 @@ import {
  *   (`findIdByCodigo`, mismo puerto que ya usa `GenerarPreventivosUseCase`)
  *   para cortar el cálculo de SLA de los tickets de tipo `PREVENTIVO` — no
  *   crea un puerto propio, ya lo exporta `TicketsModule`.
+ * - sdd/sla-habil WU-3: `AplicarSlaUseCase` suma `CalcularSlaHabilVenceService`
+ *   (WU-1, cálculo puro) + `CALENDARIO_LABORAL_SEMANAL_REPOSITORY`/
+ *   `FERIADOS_LABORALES_REPOSITORY` (WU-2, `CalendarioLaboralModule`) para
+ *   elegir el calculador por `ticket.slaRegla` (discriminador de cohortes:
+ *   `CORRIDO` sigue con `CalcularSlaVenceService`, `HABIL` usa el nuevo).
+ *   Este módulo importa `CalendarioLaboralModule` para inyectar esos dos
+ *   puertos — NO reimplementa el acceso a MASTER.
  * - `ScheduleModule.forRoot()` ya NO se llama acá: se movió a `AppModule`
  *   (ola-2 WU-0) porque dos `forRoot()` de `@nestjs/schedule` fallan al
  *   bootear (no al compilar) si otro módulo (`preventivo`) también lo llama.
  * - Importa `TicketsModule` (para TICKET_REPOSITORY/ESTADO_REPOSITORY/
  *   PRIORIDAD_REPOSITORY/TIPO_TICKET_REPOSITORY, que `AplicarSlaUseCase`
- *   necesita — el módulo SLA NO reimplementa ese acceso) y `AuthModule`.
+ *   necesita — el módulo SLA NO reimplementa ese acceso), `CalendarioLaboralModule`
+ *   y `AuthModule`.
  *
  * FITNESS RULE: PrismaService y @prisma/client solo pueden importarse desde
  * infrastructure/ (ver backend/eslint.config.js).
  */
 @Module({
-  imports: [AuthModule, TicketsModule],
+  imports: [AuthModule, TicketsModule, CalendarioLaboralModule],
   providers: [
     { provide: SLA_TICKET_WRITE_REPOSITORY, useClass: PrismaSlaTicketWriteRepository },
     { provide: SLA_TICKET_QUERY_REPOSITORY, useClass: PrismaSlaTicketQueryRepository },
 
     { provide: CalcularSlaVenceService, useFactory: () => new CalcularSlaVenceService() },
+    { provide: CalcularSlaHabilVenceService, useFactory: () => new CalcularSlaHabilVenceService() },
 
     {
       provide: AplicarSlaUseCase,
@@ -95,6 +115,9 @@ import {
         estadoRepo: IEstadoRepository,
         calculador: CalcularSlaVenceService,
         tipoTicketRepo: ITipoTicketRepository,
+        calculadorHabil: CalcularSlaHabilVenceService,
+        calendarioRepo: ICalendarioLaboralSemanalRepository,
+        feriadosRepo: IFeriadosLaboralesRepository,
       ) =>
         new AplicarSlaUseCase(
           prioridadRepo,
@@ -103,6 +126,9 @@ import {
           estadoRepo,
           calculador,
           tipoTicketRepo,
+          calculadorHabil,
+          calendarioRepo,
+          feriadosRepo,
         ),
       inject: [
         PRIORIDAD_REPOSITORY,
@@ -111,6 +137,9 @@ import {
         ESTADO_REPOSITORY,
         CalcularSlaVenceService,
         TIPO_TICKET_REPOSITORY,
+        CalcularSlaHabilVenceService,
+        CALENDARIO_LABORAL_SEMANAL_REPOSITORY,
+        FERIADOS_LABORALES_REPOSITORY,
       ],
     },
     {

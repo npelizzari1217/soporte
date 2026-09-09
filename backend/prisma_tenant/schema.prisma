@@ -242,6 +242,15 @@ model Ticket {
   slaVenceAt         DateTime? @map("sla_vence_at") @db.Timestamptz
   /// Desnormalizado — recalculado por el módulo SLA, no autocalculado en DB.
   vencido            Boolean   @default(false)
+  /// Cohorte de cálculo de SLA (sdd/sla-habil WU-3): 'CORRIDO' (24/7, tickets
+  /// existentes al introducir el cálculo hábil) o 'HABIL' (horas hábiles,
+  /// tickets nuevos). CHECK tickets_sla_regla_check IN ('CORRIDO','HABIL').
+  /// Las filas viejas quedaron en CORRIDO por el ADD COLUMN de la migración;
+  /// las nuevas nacen en HABIL por ESTE @default, que Prisma resuelve del
+  /// lado del cliente y manda en el INSERT — el DEFAULT de la columna no
+  /// actúa en ese camino. Mover la cohorte exige tocar los dos. Ningún caso
+  /// de uso la elige: ver TicketEntity.slaRegla / TicketMapper.
+  slaRegla           String    @default("HABIL") @map("sla_regla") @db.VarChar(16)
   fechaCierre        DateTime? @map("fecha_cierre") @db.Timestamptz
   createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz
