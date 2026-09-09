@@ -43,6 +43,15 @@ describe('NumeradorTicket', () => {
       expect(NumeradorTicket.derivarPrefijo('MANTENIMIENTO')).toBe('MAN');
     });
 
+    // PREVENTIVO (issue #135) NO entra al mapa base: el fallback custom ya
+    // deriva 'PRE', y agregar la entrada no cambiaría nada — un assert que
+    // pasa con o sin ella no prueba nada. Este test fija ESA rama, igual que
+    // el de COMPRAS: si el fallback cambia, la numeración del preventivo se
+    // mueve y el test avisa.
+    it('PREVENTIVO no está en el mapa base: deriva PRE por el fallback custom', () => {
+      expect(NumeradorTicket.derivarPrefijo('PREVENTIVO')).toBe('PRE');
+    });
+
     // COMPRAS salió del mapa base al demoler el módulo legacy
     // (sdd/redisenio-modulo-compras, PR-1). Sigue dando 'COM', pero ahora por
     // el fallback de tipos custom, no por el mapa. Este test fija ESA rama:

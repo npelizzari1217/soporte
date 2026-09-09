@@ -61,7 +61,8 @@ import { PreventivoSweepScheduler } from './infrastructure/schedulers/preventivo
  *   (`@Global`).
  * - `TicketsModule`: `GenerarPreventivosUseCase` (WU-5) reusa
  *   `CrearTicketUseCase` (exportado por `TicketsModule` desde 5.1) y
- *   `TIPO_TICKET_REPOSITORY` para resolver el tipo FIJO `MANTENIMIENTO`.
+ *   `TIPO_TICKET_REPOSITORY` para resolver el tipo FIJO `PREVENTIVO`
+ *   (issue #135: antes reusaba `MANTENIMIENTO` del módulo EDILICIA).
  * - `EquiposModule` (WU-2, ADR-2): `GenerarPreventivosUseCase` suma un
  *   noveno parámetro `Pick<IEquipoInformaticoRepository, 'findById'>` para
  *   resolver el objetivo del ticket. `EquiposModule` ya exporta

@@ -3,14 +3,16 @@ import { CalcularSlaVenceService } from '../../domain/services/calcular-sla-venc
 import { ITicketRepository } from '../../../tickets/domain/ports/i-ticket.repository';
 import { IEstadoRepository } from '../../../tickets/domain/ports/i-estado.repository';
 import { IPrioridadRepository } from '../../../tickets/domain/ports/i-prioridad.repository';
+import { ITipoTicketRepository } from '../../../tickets/domain/ports/i-tipo-ticket.repository';
+import { TIPO_CODIGO_PREVENTIVO } from '../../../tickets/domain/tipos-ticket.constants';
+import { ESTADOS_TERMINALES } from '../../../tickets/domain/state-machine/estados.constants';
 
-/**
- * Estados sin arcos de salida (mismo catálogo que `TERMINAL_STATES` de
- * `TicketEntity`, Fase 2) — un ticket en uno de estos códigos NO recalcula
- * su SLA al repriorizarse (S3). Redeclarado localmente: el módulo SLA no
- * importa constantes internas de `tickets/domain/`, solo sus puertos.
- */
-const ESTADOS_TERMINALES = new Set<string>(['CERRADO', 'CANCELADO']);
+// Estados sin arcos de salida — un ticket en uno de estos códigos NO
+// recalcula su SLA al repriorizarse (S3). Se DERIVA de la fuente única de
+// `tickets/domain/state-machine/`, la misma que usa `TicketEntity`: antes
+// estaba redeclarado acá con el argumento de que este módulo solo importaba
+// puertos, y ese argumento dejó de valer al importar `TIPO_CODIGO_PREVENTIVO`
+// arriba. Un guard de dominio espejado en dos capas se declara una sola vez.
 
 /** DTO de entrada de `AplicarSlaUseCase` (S2/S3) — datos mínimos del evento consumido. */
 export interface AplicarSlaDto {
@@ -34,6 +36,15 @@ export interface AplicarSlaDto {
  * eliminada). El CÁLCULO no cambió, solo el origen de los datos: el SLA es
  * un atributo de la prioridad, editable desde Catálogos.
  *
+ * issue #135: los tickets de tipo `PREVENTIVO` (el barrido de mantenimiento
+ * preventivo) quedan FUERA de `cumplimientoSla` — `aplicar()` corta antes de
+ * calcular nada si el `tipoId` del ticket resuelve al código `PREVENTIVO`
+ * (`TIPO_TICKET_REPOSITORY`, mismo puerto que ya usa `GenerarPreventivosUseCase`).
+ * Si el tenant todavía no tiene el tipo sembrado (`findIdByCodigo` → null),
+ * la comparación no iguala nunca y el cálculo sigue normal — a diferencia
+ * del throw defensivo del preventivo, este módulo NO puede romper la
+ * creación de tickets por un catálogo desactualizado.
+ *
  * Ref spec: sdd/premium/spec S2, S3. Ref design: ADR-P2, ADR-P4. Tarea: SA12.
  */
 export class AplicarSlaUseCase {
@@ -43,6 +54,7 @@ export class AplicarSlaUseCase {
     private readonly ticketRepo: Pick<ITicketRepository, 'findById'>,
     private readonly estadoRepo: Pick<IEstadoRepository, 'findById'>,
     private readonly calculador: Pick<CalcularSlaVenceService, 'venceAt'>,
+    private readonly tipoTicketRepo: Pick<ITipoTicketRepository, 'findIdByCodigo'>,
   ) {}
 
   /**
@@ -57,7 +69,7 @@ export class AplicarSlaUseCase {
       // negocio a modelar, se ignora sin lanzar (listener log-and-swallow).
       return;
     }
-    await this.aplicar(ticket.id, dto.prioridadId, ticket.createdAt);
+    await this.aplicar(ticket.id, ticket.tipoId, dto.prioridadId, ticket.createdAt);
   }
 
   /**
@@ -77,15 +89,38 @@ export class AplicarSlaUseCase {
       return;
     }
 
-    await this.aplicar(ticket.id, dto.prioridadId, ticket.createdAt);
+    await this.aplicar(ticket.id, ticket.tipoId, dto.prioridadId, ticket.createdAt);
   }
 
   /**
    * Cálculo + persistencia compartidos por ambos flujos (S2/S3): sin
    * `slaHoras` configurado, o `slaActivo=false`, o prioridad inexistente
    * (defensivo) → `sla_vence_at = null` (sin SLA aplicable).
+   *
+   * issue #135 (corte de SLA para preventivo): PRIMERO resuelve el `tipoId`
+   * del código `PREVENTIVO` — si coincide con el `tipoId` del ticket, corta
+   * en este punto, sin consultar la prioridad ni calcular nada: `sla_vence_at = null`
+   * siempre para un ticket generado por el barrido de mantenimiento
+   * preventivo. Con el tipo sin sembrar (`findIdByCodigo` → null) la
+   * comparación no iguala y sigue el cálculo normal: este módulo no puede
+   * romper la creación/repriorización de un ticket por un catálogo
+   * desactualizado (criterio distinto al throw defensivo del preventivo).
    */
-  private async aplicar(ticketId: string, prioridadId: string, creadoEn: Date): Promise<void> {
+  private async aplicar(
+    ticketId: string,
+    tipoId: string,
+    prioridadId: string,
+    creadoEn: Date,
+  ): Promise<void> {
+    const tipoPreventivoId = await this.tipoTicketRepo.findIdByCodigo(TIPO_CODIGO_PREVENTIVO);
+    // Sin guarda explícita contra `null`: `tipoId` es `string`, así que un
+    // catálogo sin el tipo sembrado (`findIdByCodigo` → null) nunca iguala y
+    // cae solo al cálculo normal. La guarda extra sería infalsificable.
+    if (tipoId === tipoPreventivoId) {
+      await this.slaTicketWriteRepo.setSlaVenceAt(ticketId, null);
+      return;
+    }
+
     const prioridad = await this.prioridadRepo.findById(prioridadId);
     const venceAt =
       prioridad && prioridad.slaHoras !== null && prioridad.slaActivo

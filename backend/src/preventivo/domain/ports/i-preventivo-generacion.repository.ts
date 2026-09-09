@@ -72,11 +72,16 @@ export interface IPreventivoGeneracionRepository {
   listarPorPlan(planId: string): Promise<PreventivoGeneracionProps[]>;
 
   /**
-   * `true` si el plan tiene un ticket `MANTENIMIENTO` GENERADO todavía
-   * abierto y sin atender ([R8]): existe una generación con `ticket_id` no
-   * nulo cuyo ticket no está soft-deleted y su estado NO es
+   * `true` si el plan tiene un ticket GENERADO todavía abierto y sin
+   * atender ([R8]): existe una generación con `ticket_id` no nulo cuyo
+   * ticket no está soft-deleted y su estado NO es
    * `RESUELTO`/`CERRADO`/`CANCELADO`. Usado por `GenerarPreventivosUseCase`
    * (WU-5) para decidir `SALTEADO_PENDIENTE` vs. generar un ticket nuevo.
+   *
+   * Resuelve por el enlace `preventivo_generacion.ticket_id`, NUNCA por el
+   * tipo del ticket — y eso es lo que hace segura la transición del issue
+   * #135: en un tenant ya migrado, el ticket abierto de un plan puede ser
+   * uno viejo de tipo `MANTENIMIENTO` y sigue frenando el ciclo nuevo igual.
    *
    * Ref design: ADR-PV2 (paso 2 de la transacción por ciclo). Tarea: 5.3/5.4.
    */

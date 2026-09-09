@@ -15,10 +15,18 @@ corresponde.
 ## Cuándo aparecen los tickets
 
 Una vez por día el sistema revisa todos los planes activos y, por cada uno que
-haya llegado a su fecha, crea un ticket de tipo **Mantenimiento**. El ticket
+haya llegado a su fecha, crea un ticket de tipo **Preventivo**. El ticket
 queda a nombre del responsable del plan, con el título que el plan tenga
 cargado y una descripción que arranca con el objetivo (ver "Qué dice la
 descripción del ticket generado", abajo).
+
+Los tickets del preventivo **no entran en las métricas de cumplimiento de SLA**
+del dashboard, y es a propósito: un preventivo se cierra cuando toca la fecha,
+no contra un reloj de respuesta, así que contarlo ahí ensuciaba el número.
+
+Los tickets que el preventivo generó **antes** de esta separación siguen
+figurando con el tipo **Mantenimiento**: no se los reclasificó para no alterar
+números ya informados. Si ves los dos tipos conviviendo en el listado, es eso.
 
 Las fechas se calculan **siempre desde la fecha de inicio del plan**, no desde
 el último ticket. Un plan mensual que arrancó un 31 de enero cae el 28 de
