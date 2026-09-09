@@ -85,9 +85,38 @@ scripts `_vps-*`, `backups/`, `iis/`). Ninguno colisionaba, pero el script docum
 | Repo en el VPS | `C:\soporte` |
 | Servicios (NSSM) | `soporte-backend`, `soporte-frontend` |
 | Puertos internos | backend **3101**, frontend **3100** |
-| Node | `C:\nodejs24\node.exe` |
+| Node | `C:\nodejs24\node.exe` (v24) — **hay un segundo Node en el PATH**, ver abajo |
 | Rama | `main` (el script aborta si estás en otra) |
 | Package manager | `corepack pnpm` — **pnpm 11.18.0**, fijado en `packageManager` de los dos `package.json` |
+
+### En el VPS hay DOS Node, y el del PATH es el equivocado
+
+| Ruta | Versión | Quién la usa |
+|---|---|---|
+| `C:\Program Files\nodejs\node.exe` | **22.23.2** | la que resuelve `node` a secas: es la que está en el PATH |
+| `C:\nodejs24\node.exe` | 24.20.0 | la que usa `deploy.ps1`, siempre por ruta absoluta (`$NodeExe`) |
+
+Los dos `package.json` declaran `"engines": { "node": ">=24" }`. Por eso `deploy.ps1` nunca
+escribe `node` a secas: lo invoca por ruta absoluta y no depende del PATH.
+
+**Cualquier comando que corras a mano en el VPS sí depende del PATH**, y ahí te toca el 22.
+Antes de instalar dependencias o correr un script del repo:
+
+```powershell
+$env:Path = "C:\nodejs24;" + $env:Path
+node -v   # confirmar v24.x
+```
+
+Comprobar cuál está resolviendo, en cualquier momento:
+
+```powershell
+where.exe node   # -> C:\Program Files\nodejs\node.exe
+node -v          # -> v22.23.2
+```
+
+No se desinstala el 22 ni se toca el PATH del sistema: **el VPS es compartido con educandow** y
+puede haber otra cosa dependiendo de esa versión. Cambiarlo es una decisión aparte, con su
+propia verificación.
 
 ---
 
@@ -160,15 +189,43 @@ El deploy **no instala dependencias**. Si detecta que cambió `pnpm-lock.yaml`, 
 a instalar a mano.
 
 ```powershell
+$env:Path = "C:\nodejs24;" + $env:Path   # NO es opcional — ver abajo
+node -v                                   # confirmar v24.x antes de seguir
+
 Stop-Service soporte-backend, soporte-frontend -Force
-cd C:\soporte\backend  ; corepack pnpm install
-cd C:\soporte\frontend ; corepack pnpm install
-cd C:\soporte          ; .\deploy.ps1
+
+Set-Location C:\soporte\backend  ; corepack pnpm install
+if ($LASTEXITCODE -ne 0) { throw "fallo el install del backend" }
+
+Set-Location C:\soporte\frontend ; corepack pnpm install
+if ($LASTEXITCODE -ne 0) { throw "fallo el install del frontend" }
+
+Set-Location C:\soporte ; .\deploy.ps1
 ```
 
 **Con los servicios DETENIDOS**, y el motivo es concreto: `@node-rs/argon2` es un módulo nativo,
 y en Windows un binario que un proceso tiene abierto no se puede reemplazar — la instalación
 falla con `EPERM`. El script cita este caso en su mensaje de aborto.
+
+**Y con el Node 24 al frente del PATH**, que es lo que agrega la primera línea. El VPS tiene
+**dos** Node instalados (ver "Cómo se llega al VPS"): el del PATH es el 22, y los dos
+`package.json` declaran `"engines": { "node": ">=24" }`. Sin esa línea, el install del backend
+revienta en su `postinstall` — el que corre los dos `prisma generate`:
+
+```
+postinstall:  ERROR  packages field missing or empty
+[ELIFECYCLE] Command failed with exit code 1.
+[WARN] Unsupported engine: wanted: {"node":">=24"} (current: {"node":"v22.23.2"})
+```
+
+El frontend no falla, pero eso engaña: no falla porque en ese momento no tiene nada que
+instalar, no porque la versión sirva.
+
+**Cada install verifica su PROPIO exit code**, y por eso van en líneas separadas con su `throw`.
+Encadenar los tres comandos y leer un solo `$LASTEXITCODE` devuelve el del último: un install de
+backend fallido queda tapado por un install de frontend exitoso y se lee como recuperación
+completa. Es la misma trampa que el `echo $?` detrás de un pipe, unos párrafos más arriba —
+pasó de verdad el 2026-09-09, desplegando `83bdc8a`.
 
 ### 5. `EMAIL_CRYPTO_KEY` no se rota
 
