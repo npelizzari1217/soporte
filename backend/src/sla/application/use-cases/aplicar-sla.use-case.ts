@@ -6,6 +6,10 @@ import { IPrioridadRepository } from '../../../tickets/domain/ports/i-prioridad.
 import { ITipoTicketRepository } from '../../../tickets/domain/ports/i-tipo-ticket.repository';
 import { TIPO_CODIGO_PREVENTIVO } from '../../../tickets/domain/tipos-ticket.constants';
 import { ESTADOS_TERMINALES } from '../../../tickets/domain/state-machine/estados.constants';
+import { SlaRegla } from '../../../tickets/domain/entities/ticket.entity';
+import { CalcularSlaHabilVenceService } from '../../../calendario-laboral/domain/services/calcular-sla-habil-vence.service';
+import { ICalendarioLaboralSemanalRepository } from '../../../calendario-laboral/domain/ports/i-calendario-laboral-semanal.repository';
+import { IFeriadosLaboralesRepository } from '../../../calendario-laboral/domain/ports/i-feriados-laborales.repository';
 
 // Estados sin arcos de salida — un ticket en uno de estos códigos NO
 // recalcula su SLA al repriorizarse (S3). Se DERIVA de la fuente única de
@@ -45,6 +49,26 @@ export interface AplicarSlaDto {
  * del throw defensivo del preventivo, este módulo NO puede romper la
  * creación de tickets por un catálogo desactualizado.
  *
+ * sdd/sla-habil WU-3 — discriminador de cohortes: el corte PREVENTIVO de
+ * arriba corre PRIMERO, sin importar `ticket.slaRegla` (un preventivo queda
+ * en `null` siempre). Para todo lo demás, `aplicar()` elige el calculador
+ * por `ticket.slaRegla` — nunca por un estado global — y NUNCA lo escribe:
+ * ningún caso de uso elige esa cohorte (de dónde sale su valor, ver el
+ * docstring de `SlaRegla` en `tickets/domain/entities/ticket.entity.ts`).
+ * Un ticket `CORRIDO` sigue con `CalcularSlaVenceService` (24/7, sin
+ * cambios); uno `HABIL` usa `CalcularSlaHabilVenceService` sobre el
+ * calendario/feriados de MASTER (`CalendarioLaboralModule`, WU-2). Sin
+ * fallback silencioso: si `calendarioRepo`/`feriadosRepo` lanzan, el error
+ * se propaga tal cual — jamás se degrada a la regla vieja sin que quede
+ * registrado (el listener log-and-swallow es quien absorbe el throw).
+ *
+ * Costo (documentado, sin optimizar en este WU — no hay evidencia de que
+ * sea un cuello de botella, y un caché del calendario se desactualizaría
+ * si alguien lo edita desde el ABM): un ticket `HABIL` suma DOS consultas a
+ * MASTER (calendario + feriados) a las que ya hacía este use case
+ * (`findIdByCodigo` del tipo PREVENTIVO) — tres lecturas por creación o
+ * repriorización.
+ *
  * Ref spec: sdd/premium/spec S2, S3. Ref design: ADR-P2, ADR-P4. Tarea: SA12.
  */
 export class AplicarSlaUseCase {
@@ -55,6 +79,9 @@ export class AplicarSlaUseCase {
     private readonly estadoRepo: Pick<IEstadoRepository, 'findById'>,
     private readonly calculador: Pick<CalcularSlaVenceService, 'venceAt'>,
     private readonly tipoTicketRepo: Pick<ITipoTicketRepository, 'findIdByCodigo'>,
+    private readonly calculadorHabil: Pick<CalcularSlaHabilVenceService, 'venceAt'>,
+    private readonly calendarioRepo: Pick<ICalendarioLaboralSemanalRepository, 'obtener'>,
+    private readonly feriadosRepo: Pick<IFeriadosLaboralesRepository, 'obtener'>,
   ) {}
 
   /**
@@ -69,7 +96,13 @@ export class AplicarSlaUseCase {
       // negocio a modelar, se ignora sin lanzar (listener log-and-swallow).
       return;
     }
-    await this.aplicar(ticket.id, ticket.tipoId, dto.prioridadId, ticket.createdAt);
+    await this.aplicar(
+      ticket.id,
+      ticket.tipoId,
+      dto.prioridadId,
+      ticket.createdAt,
+      ticket.slaRegla,
+    );
   }
 
   /**
@@ -77,6 +110,11 @@ export class AplicarSlaUseCase {
    * `createdAt` ORIGINAL del ticket (ancla fija — nunca la fecha de
    * repriorización). Si el ticket ya está en estado terminal
    * (CERRADO/CANCELADO), NO recalcula.
+   *
+   * sdd/sla-habil WU-3: recalcula con `ticket.slaRegla` — la cohorte con la
+   * que el ticket NACIÓ, leída de la fila persistida y nunca reescrita por
+   * este use case. Es la garantía de que repriorizar un ticket `CORRIDO`
+   * jamás lo "sube" a horas hábiles.
    */
   async alReprioritizar(dto: AplicarSlaDto): Promise<void> {
     const ticket = await this.ticketRepo.findById(dto.ticketId);
@@ -89,7 +127,13 @@ export class AplicarSlaUseCase {
       return;
     }
 
-    await this.aplicar(ticket.id, ticket.tipoId, dto.prioridadId, ticket.createdAt);
+    await this.aplicar(
+      ticket.id,
+      ticket.tipoId,
+      dto.prioridadId,
+      ticket.createdAt,
+      ticket.slaRegla,
+    );
   }
 
   /**
@@ -101,16 +145,18 @@ export class AplicarSlaUseCase {
    * del código `PREVENTIVO` — si coincide con el `tipoId` del ticket, corta
    * en este punto, sin consultar la prioridad ni calcular nada: `sla_vence_at = null`
    * siempre para un ticket generado por el barrido de mantenimiento
-   * preventivo. Con el tipo sin sembrar (`findIdByCodigo` → null) la
-   * comparación no iguala y sigue el cálculo normal: este módulo no puede
-   * romper la creación/repriorización de un ticket por un catálogo
-   * desactualizado (criterio distinto al throw defensivo del preventivo).
+   * preventivo, SIN IMPORTAR su `slaRegla`. Con el tipo sin sembrar
+   * (`findIdByCodigo` → null) la comparación no iguala y sigue el cálculo
+   * normal: este módulo no puede romper la creación/repriorización de un
+   * ticket por un catálogo desactualizado (criterio distinto al throw
+   * defensivo del preventivo).
    */
   private async aplicar(
     ticketId: string,
     tipoId: string,
     prioridadId: string,
     creadoEn: Date,
+    slaRegla: SlaRegla,
   ): Promise<void> {
     const tipoPreventivoId = await this.tipoTicketRepo.findIdByCodigo(TIPO_CODIGO_PREVENTIVO);
     // Sin guarda explícita contra `null`: `tipoId` es `string`, así que un
@@ -122,10 +168,30 @@ export class AplicarSlaUseCase {
     }
 
     const prioridad = await this.prioridadRepo.findById(prioridadId);
-    const venceAt =
-      prioridad && prioridad.slaHoras !== null && prioridad.slaActivo
-        ? this.calculador.venceAt(creadoEn, prioridad.slaHoras)
-        : null;
+    if (!prioridad || prioridad.slaHoras === null || !prioridad.slaActivo) {
+      await this.slaTicketWriteRepo.setSlaVenceAt(ticketId, null);
+      return;
+    }
+
+    const venceAt = await this.calcularVenceAt(slaRegla, creadoEn, prioridad.slaHoras);
     await this.slaTicketWriteRepo.setSlaVenceAt(ticketId, venceAt);
+  }
+
+  /**
+   * Enruta al calculador según la cohorte del ticket (WU-3, discriminador).
+   * `CORRIDO` (24/7) no toca MASTER. `HABIL` lee calendario + feriados de
+   * MASTER (WU-2) — sin try/catch: un fallo de cualquiera de los dos
+   * puertos propaga tal cual, nunca degrada a `CalcularSlaVenceService`
+   * (eso daría un vencimiento incorrecto sin que nadie se entere).
+   */
+  private async calcularVenceAt(slaRegla: SlaRegla, creadoEn: Date, horas: number): Promise<Date> {
+    if (slaRegla === 'CORRIDO') {
+      return this.calculador.venceAt(creadoEn, horas);
+    }
+    const [calendario, feriados] = await Promise.all([
+      this.calendarioRepo.obtener(),
+      this.feriadosRepo.obtener(),
+    ]);
+    return this.calculadorHabil.venceAt(creadoEn, horas, calendario, feriados);
   }
 }

@@ -101,6 +101,49 @@ describe('TicketEntity', () => {
     });
 
     /**
+     * sdd/sla-habil WU-3: `slaRegla` NO es parte de `TicketProps` — ningún
+     * caso de uso la elige; de dónde sale su valor, ver {@link SlaRegla}.
+     * Por eso viaja como
+     * parámetro propio de `reconstitute()`, con default `'HABIL'` para no
+     * romper a los callers preexistentes de este método (tests/mappers que
+     * todavía no versan sobre cohortes de SLA) que no lo pasan.
+     */
+    it('sin slaRegla explícito, reconstituye con el default HABIL', () => {
+      const ticket = TicketEntity.reconstitute(
+        {
+          ...baseCrearProps(),
+          asignadoId: null,
+          slaVenceAt: null,
+          vencido: false,
+          fechaCierre: null,
+        },
+        'db-uuid-ticket',
+        new Date(),
+        new Date(),
+        null,
+      );
+      expect(ticket.slaRegla).toBe('HABIL');
+    });
+
+    it('con slaRegla explícito CORRIDO, lo preserva', () => {
+      const ticket = TicketEntity.reconstitute(
+        {
+          ...baseCrearProps(),
+          asignadoId: null,
+          slaVenceAt: null,
+          vencido: false,
+          fechaCierre: null,
+        },
+        'db-uuid-ticket',
+        new Date(),
+        new Date(),
+        null,
+        'CORRIDO',
+      );
+      expect(ticket.slaRegla).toBe('CORRIDO');
+    });
+
+    /**
      * Hermano invertido de la precondición de largo: `create()` rechaza un
      * título largo, `reconstitute()` lo acepta. La exención está documentada
      * en la entidad, pero sin este test es solo un comentario — mover el guard
@@ -265,6 +308,20 @@ describe('TicketEntity', () => {
     it('acepta titulo de exactamente 255 caracteres (límite inclusive)', () => {
       const ticket = TicketEntity.create(baseCrearProps());
       expect(() => ticket.actualizarDatos({ titulo: 'A'.repeat(255) })).not.toThrow();
+    });
+  });
+
+  /**
+   * sdd/sla-habil WU-3: una entidad recién `create()`-ada todavía no fue
+   * persistida — ningún caso de uso elige `slaRegla` (ver {@link SlaRegla}),
+   * así que el valor es indeterminado hasta el `reconstitute()` posterior a
+   * la escritura. Acceder al getter antes de eso es un bug del
+   * caller (leer un dato que todavía no existe), no un `null` de negocio.
+   */
+  describe('slaRegla — cohorte de cálculo de SLA (sdd/sla-habil WU-3)', () => {
+    it('create() no decide slaRegla: leerlo antes de persistir lanza', () => {
+      const ticket = TicketEntity.create(baseCrearProps());
+      expect(() => ticket.slaRegla).toThrow();
     });
   });
 

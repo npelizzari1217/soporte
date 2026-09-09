@@ -86,6 +86,46 @@ export type CrearTicketProps = Omit<
 >;
 
 /**
+ * Catálogo CERRADO de cohortes de cálculo de SLA de un ticket:
+ * `'CORRIDO'` (reloj 24/7, `CalcularSlaVenceService`) o `'HABIL'` (horas
+ * hábiles sobre calendario laboral, `CalcularSlaHabilVenceService`).
+ *
+ * **Es un array y no solo una unión, y es la ÚNICA fuente de verdad**: el
+ * tipo se deriva de acá. Una unión de TypeScript se borra al compilar, así
+ * que sin esta constante no hay nada que un test pueda comparar contra el
+ * CHECK real de la base. Mismo criterio que `TIPOS_MOVIMIENTO_INSUMO`.
+ *
+ * Agregar una cohorte acá SIN su migración hace que el INSERT lo rechace el
+ * CHECK `tickets_sla_regla_check`. Esa deriva la ataja
+ * `infrastructure/persistence/prisma/tickets-sla-regla.integration.spec.ts`,
+ * que lee la definición real del CHECK con `pg_get_constraintdef` y la
+ * compara contra este array.
+ */
+export const SLA_REGLAS = ['CORRIDO', 'HABIL'] as const;
+
+/**
+ * Cohorte de cálculo de SLA de un ticket, derivada de {@link SLA_REGLAS}.
+ *
+ * NO es parte de `TicketProps`/`CrearTicketProps`: ningún caso de uso la
+ * elige, y `TicketMapper.toPersistence` la excluye del INSERT.
+ *
+ * **De dónde sale el valor, con precisión — dos fuentes espejadas:**
+ * - Las filas que YA existían al correr la migración quedaron en `'CORRIDO'`
+ *   por el `ADD COLUMN ... DEFAULT 'CORRIDO'`. Ese sí es el DEFAULT de la
+ *   columna, aplicado por el motor durante el DDL.
+ * - Las filas NUEVAS nacen en `'HABIL'` por el `@default("HABIL")` del
+ *   schema Prisma, que el query engine resuelve **del lado del cliente** y
+ *   manda dentro del INSERT. El DEFAULT de la columna NO llega a actuar en
+ *   ese camino.
+ *
+ * Por eso mover la cohorte de los tickets nuevos exige tocar **las dos**: el
+ * `@default` del schema y el DEFAULT de la columna en una migración. Cambiar
+ * solo el segundo no tiene ningún efecto sobre lo que escribe la aplicación,
+ * y el silencio es total.
+ */
+export type SlaRegla = (typeof SLA_REGLAS)[number];
+
+/**
  * TicketEntity — entidad central del dominio "tickets".
  *
  * Reglas de dominio (Fase 2):
@@ -101,6 +141,14 @@ export type CrearTicketProps = Omit<
  * Tarea: T3.3, T3.4.
  */
 export class TicketEntity extends BaseEntity<TicketProps> {
+  /**
+   * Cohorte de cálculo de SLA (ver {@link SlaRegla}). `undefined` en una
+   * entidad recién `create()`-ada: todavía no fue persistida, y ningún caso
+   * de uso lo elige — de dónde sale, ver {@link SlaRegla}. Se resuelve
+   * recién en `reconstitute()`, después del INSERT real.
+   */
+  private _slaRegla: SlaRegla | undefined;
+
   /**
    * Factory method para nuevas instancias de dominio.
    * El use case debe proveer el estadoId del estado con codigo='NUEVO'
@@ -121,6 +169,13 @@ export class TicketEntity extends BaseEntity<TicketProps> {
 
   /**
    * Reconstitución desde persistencia (mappers de infraestructura).
+   *
+   * `slaRegla` (sdd/sla-habil WU-3) es opcional con default `'HABIL'` — NO
+   * para dejar que la app lo decida (eso lo prohíbe {@link SlaRegla}), sino
+   * para no romper a los callers preexistentes de este método (fixtures de
+   * tests que reconstituyen tickets sin versar sobre cohortes de SLA). El
+   * único caller real de infraestructura (`TicketMapper.toDomain`) siempre
+   * pasa el valor real de la fila.
    */
   static reconstitute(
     props: TicketProps,
@@ -128,9 +183,10 @@ export class TicketEntity extends BaseEntity<TicketProps> {
     createdAt: Date,
     updatedAt: Date,
     deletedAt: Date | null,
+    slaRegla: SlaRegla = 'HABIL',
   ): TicketEntity {
     const entity = new TicketEntity(props, id);
-    Object.assign(entity, { _createdAt: createdAt, _updatedAt: updatedAt });
+    Object.assign(entity, { _createdAt: createdAt, _updatedAt: updatedAt, _slaRegla: slaRegla });
     entity._deletedAt = deletedAt;
     return entity;
   }
@@ -187,6 +243,20 @@ export class TicketEntity extends BaseEntity<TicketProps> {
 
   get fechaCierre(): Date | null {
     return this.props.fechaCierre;
+  }
+
+  /**
+   * Cohorte de cálculo de SLA (sdd/sla-habil WU-3) — ver {@link SlaRegla}.
+   * @throws Error si se lee sobre una entidad recién `create()`-ada, todavía
+   *               no persistida: la DB no decidió el valor aún.
+   */
+  get slaRegla(): SlaRegla {
+    if (this._slaRegla === undefined) {
+      throw new Error(
+        'TicketEntity: slaRegla no está disponible antes de persistir — ningún caso de uso la elige, ver SlaRegla.',
+      );
+    }
+    return this._slaRegla;
   }
 
   // ─── Comportamiento de dominio ─────────────────────────────────────────
