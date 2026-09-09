@@ -221,3 +221,168 @@ export function registrarAjusteInsumoSchema(stockDisponible: number | undefined)
     },
   );
 }
+
+/** `codigo` de catálogo: mayúsculas/números/guion bajo, sin espacios (consistente con sectores/tipos_ticket). */
+const CODIGO_CATALOGO_PATTERN = /^[A-Z0-9_]+$/;
+
+/**
+ * Validación cliente-side del form de familias de insumo (ABM, Admin >
+ * Insumos). Espejo mínimo de `CreateFamiliaInsumoDto`/`EditFamiliaInsumoDto`
+ * — el backend sigue siendo la fuente de verdad real (422 en código
+ * duplicado, `FamiliaInsumoCodigoDuplicadoError`).
+ *
+ * `.max(...)` espeja el `@MaxLength` del DTO, que a su vez espeja
+ * `FamiliaInsumoEntity` (`FAMILIA_INSUMO_CODIGO_MAX_LENGTH = 30`,
+ * `FAMILIA_INSUMO_NOMBRE_MAX_LENGTH = 100`). Mismo patrón que `sectorSchema`
+ * (`features/sectores/schemas.ts`).
+ */
+const FAMILIA_INSUMO_CODIGO_MAX_LENGTH = 30;
+const FAMILIA_INSUMO_NOMBRE_MAX_LENGTH = 100;
+
+/**
+ * Espejo exacto de `normalizarCodigoInsumo` (`insumo.entity.ts`), que el borde
+ * aplica con `@Transform` ANTES de su `@MaxLength`.
+ *
+ * Va con `refine` y no con `.min()`/`.max()` porque esos miden el string CRUDO:
+ * `toUpperCase()` puede AGRANDARLO —`'ß'` se convierte en `'SS'`—, así que 50
+ * caracteres tipeados pueden ser 100 al persistirse. Mismo criterio que
+ * `features/tipos-componente/limites.ts`.
+ *
+ * @param valor Lo que el usuario tipeó en el campo.
+ * @returns El código tal como va a persistirse.
+ */
+const normalizarCodigoInsumo = (valor: string): string => valor.trim().toUpperCase();
+
+export const familiaInsumoSchema = z.object({
+  codigo: z
+    .string()
+    .min(1, "El código es requerido")
+    .max(FAMILIA_INSUMO_CODIGO_MAX_LENGTH, mensajeDemasiadoLargo("El código", FAMILIA_INSUMO_CODIGO_MAX_LENGTH))
+    .regex(CODIGO_CATALOGO_PATTERN, "Mayúsculas/números/guion bajo, sin espacios"),
+  // El `.trim()` espeja que el `@Transform` del borde corre ANTES del
+  // `@MinLength(1)`: sin recortar, un nombre de solo espacios mide 3 caracteres,
+  // pasa el mínimo del front y se come un 400 remoto por algo que el formulario
+  // podía decirle en línea. Mismo criterio que `insumoSchema.codigo`.
+  nombre: z
+    .string()
+    .trim()
+    .min(1, "El nombre es requerido")
+    .max(FAMILIA_INSUMO_NOMBRE_MAX_LENGTH, mensajeDemasiadoLargo("El nombre", FAMILIA_INSUMO_NOMBRE_MAX_LENGTH)),
+});
+export type FamiliaInsumoFormValues = z.infer<typeof familiaInsumoSchema>;
+
+/**
+ * Validación cliente-side del form de unidades de medida (ABM, Admin >
+ * Insumos). Espejo mínimo de `CreateUnidadMedidaDto`/`EditUnidadMedidaDto`,
+ * mismo criterio que `familiaInsumoSchema` — topes propios porque
+ * `UnidadMedidaEntity` los declara distintos (`UNIDAD_MEDIDA_CODIGO_MAX_LENGTH
+ * = 20`, `UNIDAD_MEDIDA_NOMBRE_MAX_LENGTH = 50`).
+ */
+const UNIDAD_MEDIDA_CODIGO_MAX_LENGTH = 20;
+const UNIDAD_MEDIDA_NOMBRE_MAX_LENGTH = 50;
+
+export const unidadMedidaSchema = z.object({
+  codigo: z
+    .string()
+    .min(1, "El código es requerido")
+    .max(UNIDAD_MEDIDA_CODIGO_MAX_LENGTH, mensajeDemasiadoLargo("El código", UNIDAD_MEDIDA_CODIGO_MAX_LENGTH))
+    .regex(CODIGO_CATALOGO_PATTERN, "Mayúsculas/números/guion bajo, sin espacios"),
+  // `.trim()` por el mismo motivo que en `familiaInsumoSchema.nombre`.
+  nombre: z
+    .string()
+    .trim()
+    .min(1, "El nombre es requerido")
+    .max(UNIDAD_MEDIDA_NOMBRE_MAX_LENGTH, mensajeDemasiadoLargo("El nombre", UNIDAD_MEDIDA_NOMBRE_MAX_LENGTH)),
+});
+export type UnidadMedidaFormValues = z.infer<typeof unidadMedidaSchema>;
+
+/**
+ * Topes de `InsumoEntity` (backend, `insumo.entity.ts`) — duplicados acá por
+ * el mismo motivo que `MOVIMIENTO_INSUMO_*` arriba: no hay paquete
+ * compartido entre Nest y Next. Propios de esta entidad, distintos de
+ * `FAMILIA_INSUMO_*`/`UNIDAD_MEDIDA_*`.
+ */
+const INSUMO_CODIGO_MAX_LENGTH = 50;
+const INSUMO_NOMBRE_MAX_LENGTH = 255;
+const INSUMO_STOCK_MINIMO_DECIMALES = 2;
+const INSUMO_STOCK_MINIMO_MINIMO = 0;
+const INSUMO_STOCK_MINIMO_MAXIMO = 1_000_000;
+
+/**
+ * Punto de reposición del insumo: OPCIONAL y, a diferencia de
+ * `cantidadMovimientoSchema`, con piso INCLUSIVO en cero —
+ * `INSUMO_STOCK_MINIMO_MINIMO` es `0`, y cero es un punto de reposición
+ * legítimo ("avisame apenas se agote"), no un movimiento que no puede ser
+ * cero.
+ *
+ * Vacío/espacios → `undefined` ("sin punto definido"), NUNCA `0` — mismo
+ * criterio "vacío que se vuelve valor" que `cantidadMovimientoSchema`. El
+ * `.refine(conDosDecimales)` adelanta el `@EsNumeroConDecimales` del
+ * backend: Postgres NO rechaza un tercer decimal en un `DECIMAL(10,2)`, lo
+ * REDONDEA en silencio, así que sin este chequeo el usuario guardaría un
+ * número y le quedaría otro distinto.
+ */
+const stockMinimoInsumoSchema = z.preprocess(
+  (valor) => {
+    if (valor === null) return undefined;
+    if (typeof valor !== "string") return valor;
+    return valor.trim() === "" ? undefined : (parsearNumeroEsAr(valor) ?? Number.NaN);
+  },
+  z
+    .number({ invalid_type_error: "Ingresá un stock mínimo válido" })
+    .min(INSUMO_STOCK_MINIMO_MINIMO, `El stock mínimo no puede ser menor a ${INSUMO_STOCK_MINIMO_MINIMO}`)
+    .max(INSUMO_STOCK_MINIMO_MAXIMO, `El stock mínimo no puede superar ${INSUMO_STOCK_MINIMO_MAXIMO}`)
+    .refine(conDosDecimales, `Máximo ${INSUMO_STOCK_MINIMO_DECIMALES} decimales`)
+    .optional(),
+);
+
+/**
+ * Validación cliente-side del form de insumo (ABM sobre `/insumos` — a
+ * diferencia de familias/unidades, el catálogo del insumo NO vive bajo
+ * `/admin/*`: se gestiona desde la misma pantalla que ya lo lista, gateada
+ * por `<SoloAdminCliente>` en cada trigger de escritura). Espejo mínimo de
+ * `CreateInsumoDto`/`EditInsumoDto`, RECORTADO al scope de esta entrega:
+ * `codigosAlternativos`/`compatibilidad` no tienen campo acá — se gestionan
+ * desde la ficha en una entrega posterior (ver el JSDoc de
+ * `use-insumo-abm-mutations.ts` para el porqué de nunca mandarlos).
+ *
+ * `familiaId`/`unidadMedidaId` son los ids que un `<select>` ya restringe a
+ * un catálogo real: `.min(1, ...)` alcanza para expresar "requerido", mismo
+ * criterio que `proveedor`/`descripcion` en `features/compras/schemas.ts` —
+ * no hace falta `.uuid()` para un valor que solo puede salir de una
+ * `<option>` real.
+ */
+export const insumoSchema = z.object({
+  /**
+   * SIN patrón, a propósito, y ES la diferencia con `familiaInsumoSchema` y
+   * `unidadMedidaSchema`: `CreateInsumoDto`/`EditInsumoDto` NO declaran
+   * `@Matches` sobre `codigo` —su única normalización es
+   * `normalizarCodigoInsumo`, que hace `trim().toUpperCase()`—. Imponer acá
+   * `CODIGO_CATALOGO_PATTERN` dejaría al front MÁS ESTRICTO que el borde, y
+   * un insumo ya guardado con guion (`TON-001`) quedaría inedi­table: el
+   * formulario de edición lo rechazaría aunque el usuario solo quisiera
+   * corregirle el nombre.
+   *
+   * El `.trim()` espeja que el `@MinLength(1)` del borde mide DESPUÉS del
+   * `@Transform`: un código de solo espacios llega vacío y se rechaza, en vez
+   * de viajar y cobrar un 400.
+   */
+  codigo: z
+    .string()
+    .refine((valor) => normalizarCodigoInsumo(valor).length >= 1, "El código es requerido")
+    .refine(
+      (valor) => normalizarCodigoInsumo(valor).length <= INSUMO_CODIGO_MAX_LENGTH,
+      mensajeDemasiadoLargo("El código", INSUMO_CODIGO_MAX_LENGTH),
+    ),
+  // `.trim()` por el mismo motivo que el `codigo` de arriba: el `@Transform`
+  // del `nombre` tambien corre antes de su `@MinLength(1)` en el borde.
+  nombre: z
+    .string()
+    .trim()
+    .min(1, "El nombre es requerido")
+    .max(INSUMO_NOMBRE_MAX_LENGTH, mensajeDemasiadoLargo("El nombre", INSUMO_NOMBRE_MAX_LENGTH)),
+  familiaId: z.string().min(1, "La familia es requerida"),
+  unidadMedidaId: z.string().min(1, "La unidad de medida es requerida"),
+  stockMinimo: stockMinimoInsumoSchema,
+});
+export type InsumoFormValues = z.infer<typeof insumoSchema>;

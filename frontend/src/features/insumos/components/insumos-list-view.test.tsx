@@ -48,13 +48,41 @@ const INSUMO_DESHABILITADO: Insumo = {
 };
 
 const FAMILIAS: FamiliaInsumo[] = [
-  { id: "fam-1", nombre: "Consumibles de impresión" },
-  { id: "fam-2", nombre: "Cableado de red" },
+  {
+    id: "fam-1",
+    codigo: "CONSUMIBLES",
+    nombre: "Consumibles de impresión",
+    activo: true,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  },
+  {
+    id: "fam-2",
+    codigo: "CABLEADO",
+    nombre: "Cableado de red",
+    activo: true,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  },
 ];
 
 const UNIDADES: UnidadMedida[] = [
-  { id: "um-1", nombre: "Unidad" },
-  { id: "um-2", nombre: "Metro" },
+  {
+    id: "um-1",
+    codigo: "UN",
+    nombre: "Unidad",
+    activo: true,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  },
+  {
+    id: "um-2",
+    codigo: "M",
+    nombre: "Metro",
+    activo: true,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  },
 ];
 
 /** Los tres endpoints resuelven bien: el caso normal. */
@@ -219,5 +247,30 @@ describe("InsumosListView — navegación a la ficha del insumo", () => {
     await userEvent.click(await screen.findByText("CAB-009"));
 
     expect(pushMock).toHaveBeenCalledWith(`/insumos/${INSUMO_DESHABILITADO.id}`);
+  });
+});
+
+/**
+ * Gate `AdminClienteGuard` (ADMINISTRADOR-o-ROOT), no la matriz de permisos:
+ * `LECTOR` (rol ADMINISTRADOR por default de `buildUser`) ve el trigger
+ * aunque su fixture solo declare `INSUMOS:LECTURA` — es un chequeo de
+ * IDENTIDAD (`esAdminCliente`), no una celda `MODULO:ACCION`.
+ */
+describe("InsumosListView — trigger «Nuevo insumo» (gate AdminClienteGuard)", () => {
+  it("admin ve el botón «Nuevo insumo»", async () => {
+    mockCatalogos([INSUMO_HABILITADO]);
+    renderWithProviders(<InsumosListView />, { user: LECTOR });
+
+    expect(await screen.findByRole("button", { name: /nuevo insumo/i })).toBeInTheDocument();
+  });
+
+  it("no-admin (TECNICO) sigue viendo el listado, pero sin el botón «Nuevo insumo»", async () => {
+    mockCatalogos([INSUMO_HABILITADO]);
+    renderWithProviders(<InsumosListView />, {
+      user: buildUser({ rol: "TECNICO", permisos: ["INSUMOS:LECTURA"], modulos: ["INSUMOS"] }),
+    });
+
+    expect(await screen.findByText("TON-001")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /nuevo insumo/i })).not.toBeInTheDocument();
   });
 });

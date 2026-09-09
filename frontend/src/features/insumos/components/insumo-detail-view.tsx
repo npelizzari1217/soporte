@@ -39,9 +39,12 @@ import { DetailSkeleton } from "@/components/shared/skeletons";
 import { ErrorState } from "@/components/shared/error-state";
 import { PageHeader } from "@/components/shared/page-header";
 import { Can } from "@/components/shared/can";
+import { SoloAdminCliente } from "@/components/shared/solo-admin-cliente";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { DataTable, type Column } from "@/components/shared/data-table";
 import { Pagination } from "@/components/shared/pagination";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatearNumeroEsAr } from "@/shared/lib/formato-numero";
 import { formatearInstante } from "@/shared/lib/formato-fecha";
@@ -52,12 +55,14 @@ import { useFamiliasInsumo } from "../hooks/use-familias-insumo";
 import { useUnidadesMedida } from "../hooks/use-unidades-medida";
 import { useStockInsumo } from "../hooks/use-stock-insumo";
 import { useMovimientosInsumo } from "../hooks/use-movimientos-insumo";
+import { useCambiarEstadoActivoInsumo } from "../hooks/use-insumo-abm-mutations";
 import { nombreDeCatalogo } from "../lib/nombre-de-catalogo";
 import { nombreDeUsuario } from "../lib/nombre-de-usuario";
 import { resolverDeCatalogo } from "../lib/resolucion-de-catalogo";
 import { MovimientoEntradaDialog } from "./movimiento-entrada-dialog";
 import { MovimientoSalidaDialog } from "./movimiento-salida-dialog";
 import { MovimientoAjusteDialog } from "./movimiento-ajuste-dialog";
+import { InsumoFormDialog } from "./insumo-form-dialog";
 import type { EstadoReposicionInsumo, Insumo, MovimientoInsumo, TipoMovimientoInsumo } from "../types";
 
 /** Placeholder de la celda sin valor, el mismo que usan los listados. */
@@ -137,6 +142,33 @@ function Campo({ rotulo, children }: { rotulo: string; children: React.ReactNode
       <span className="text-xs text-muted-foreground">{rotulo}</span>
       <span className="text-sm text-foreground">{children}</span>
     </div>
+  );
+}
+
+/**
+ * Activar/desactivar el insumo desde la ficha, detrás de `ConfirmDialog` —
+ * mismo mecanismo que `EstadoActivoAction` (`familia-insumo-list.tsx`), pero
+ * con el VOCABULARIO propio de este módulo: "Habilitar"/"Deshabilitar", no
+ * "Activar"/"Dar de baja" — acá `activo: false` es DESHABILITADO, sigue en el
+ * catálogo y se puede volver a elegir (ver el JSDoc de `InsumosListView`
+ * sobre por qué este módulo no comparte vocabulario con equipos).
+ */
+function EstadoActivoInsumoAction({ insumo }: { insumo: Insumo }) {
+  const mutation = useCambiarEstadoActivoInsumo(insumo.id);
+  return (
+    <ConfirmDialog
+      trigger={
+        <Button variant={insumo.activo ? "destructive" : "outline"} size="sm">
+          {insumo.activo ? "Deshabilitar" : "Habilitar"}
+        </Button>
+      }
+      title={insumo.activo ? "Deshabilitar insumo" : "Habilitar insumo"}
+      description={`¿Confirmás ${insumo.activo ? "deshabilitar" : "habilitar"} "${insumo.nombre}"?`}
+      confirmLabel={insumo.activo ? "Deshabilitar" : "Habilitar"}
+      confirmVariant={insumo.activo ? "destructive" : "default"}
+      isConfirming={mutation.isPending}
+      onConfirm={() => mutation.mutate({ activo: !insumo.activo })}
+    />
   );
 }
 
@@ -224,7 +256,28 @@ export function InsumoDetailView({ insumoId }: InsumoDetailViewProps) {
   function ficha(insumo: Insumo) {
     return (
       <div className="flex flex-col gap-6">
-        <PageHeader title={insumo.nombre} description={insumo.codigo} />
+        <PageHeader
+          title={insumo.nombre}
+          description={insumo.codigo}
+          actions={
+            // Gate `AdminClienteGuard`: el ABM del catálogo se gatea 100% por
+            // rol, no por la matriz de permisos — mismo criterio que el
+            // trigger "Nuevo insumo" de `InsumosListView`.
+            <SoloAdminCliente>
+              <div className="flex items-center gap-2">
+                <InsumoFormDialog
+                  insumo={insumo}
+                  trigger={
+                    <Button variant="outline" size="sm">
+                      Editar
+                    </Button>
+                  }
+                />
+                <EstadoActivoInsumoAction insumo={insumo} />
+              </div>
+            </SoloAdminCliente>
+          }
+        />
 
         <section className="grid grid-cols-1 gap-4 rounded-lg border border-border p-4 sm:grid-cols-3">
           <Campo rotulo="Familia">{nombreDeCatalogo(insumo.familiaId, familias)}</Campo>

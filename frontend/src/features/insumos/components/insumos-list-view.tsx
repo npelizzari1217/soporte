@@ -29,6 +29,7 @@
  * abierta porque otras pantallas los necesitan para poblar sus `<select>`. La
  * autoridad de autorización sigue siendo el backend (ADR-4); esto es UI.
  */
+import { Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useInsumos } from "../hooks/use-insumos";
 import { useFamiliasInsumo } from "../hooks/use-familias-insumo";
@@ -37,9 +38,12 @@ import { nombreDeCatalogo } from "../lib/nombre-de-catalogo";
 import { DataTable, type Column } from "@/components/shared/data-table";
 import { PageHeader } from "@/components/shared/page-header";
 import { Can } from "@/components/shared/can";
+import { SoloAdminCliente } from "@/components/shared/solo-admin-cliente";
 import { ErrorState } from "@/components/shared/error-state";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { notifyError } from "@/shared/lib/toast";
+import { InsumoFormDialog } from "./insumo-form-dialog";
 import type { Insumo } from "../types";
 
 /** Placeholder de la celda sin valor, el mismo que usan los demás listados. */
@@ -108,17 +112,36 @@ export function InsumosListView() {
         permiso="INSUMOS:LECTURA"
         fallback={<ErrorState message="No tiene permiso para ver el catálogo de insumos." />}
       >
-        <DataTable
-          columns={columns}
-          data={insumosQuery.data ?? []}
-          getRowKey={(row) => row.id}
-          isLoading={insumosQuery.isLoading}
-          error={insumosQuery.isError ? "No se pudieron cargar los insumos." : undefined}
-          onRetry={() => insumosQuery.refetch().catch(notifyError)}
-          onRowClick={(row) => router.push(`/insumos/${row.id}`)}
-          emptyTitle="Sin insumos"
-          emptyDescription="Todavía no hay insumos cargados en el catálogo."
-        />
+        <div>
+          {/* Gate `AdminClienteGuard` (ADMINISTRADOR-o-ROOT), no la matriz de
+              permisos: el ABM del catálogo se gatea 100% por rol, igual que
+              familias/unidades — ver el JSDoc de `InsumosController`. El
+              listado sigue siendo de lectura abierta para cualquier
+              autenticado del inquilino; solo este trigger desaparece. */}
+          <div className="mb-3 flex justify-end">
+            <SoloAdminCliente>
+              <InsumoFormDialog
+                trigger={
+                  <Button size="sm">
+                    <Plus className="h-4 w-4" aria-hidden="true" />
+                    Nuevo insumo
+                  </Button>
+                }
+              />
+            </SoloAdminCliente>
+          </div>
+          <DataTable
+            columns={columns}
+            data={insumosQuery.data ?? []}
+            getRowKey={(row) => row.id}
+            isLoading={insumosQuery.isLoading}
+            error={insumosQuery.isError ? "No se pudieron cargar los insumos." : undefined}
+            onRetry={() => insumosQuery.refetch().catch(notifyError)}
+            onRowClick={(row) => router.push(`/insumos/${row.id}`)}
+            emptyTitle="Sin insumos"
+            emptyDescription="Todavía no hay insumos cargados en el catálogo."
+          />
+        </div>
       </Can>
     </div>
   );

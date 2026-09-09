@@ -3,6 +3,9 @@ import {
   registrarMovimientoInsumoSchema,
   registrarSalidaInsumoSchema,
   registrarAjusteInsumoSchema,
+  familiaInsumoSchema,
+  unidadMedidaSchema,
+  insumoSchema,
 } from "./schemas";
 
 /**
@@ -330,5 +333,265 @@ describe("registrarAjusteInsumoSchema — tope de stock, SOLO en AJUSTE_NEGATIVO
       cantidad: "1000000",
     });
     expect(result.success).toBe(true);
+  });
+});
+
+/**
+ * Validación cliente-side del ABM de familias de insumo — espejo de
+ * `CreateFamiliaInsumoDto` (`FAMILIA_INSUMO_CODIGO_MAX_LENGTH = 30`,
+ * `FAMILIA_INSUMO_NOMBRE_MAX_LENGTH = 100`, `familia-insumo.entity.ts`).
+ * Mismo criterio que `sectorSchema`: el backend sigue siendo la fuente de
+ * verdad, esto solo adelanta el feedback.
+ */
+describe("familiaInsumoSchema — límites de largo (espejo de CreateFamiliaInsumoDto)", () => {
+  it("rechaza codigo de más de 30 caracteres", () => {
+    const result = familiaInsumoSchema.safeParse({ codigo: "A".repeat(31), nombre: "Tóner" });
+    expect(result.success).toBe(false);
+  });
+
+  it("acepta codigo de exactamente 30 caracteres", () => {
+    const result = familiaInsumoSchema.safeParse({ codigo: "A".repeat(30), nombre: "Tóner" });
+    expect(result.success).toBe(true);
+  });
+
+  /**
+   * El `@Transform` del `nombre` corre ANTES de su `@MinLength(1)` en el borde
+   * (lo dice el JSDoc de `CreateFamiliaInsumoDto`): un nombre de solo espacios llega
+   * recortado y el backend lo rechaza. Sin el `.trim()` del schema, el front lo
+   * dejaba pasar y el usuario perdía lo tipeado contra un 400 remoto. El caso
+   * hermano de `codigo` ya existía; este cierra la cobertura parcial.
+   */
+  it("rechaza nombre de solo espacios", () => {
+    const result = familiaInsumoSchema.safeParse({ codigo: "TONER", nombre: "   " });
+    expect(result.success).toBe(false);
+  });
+
+  it("mide el tope del nombre DESPUÉS de recortar, igual que el borde", () => {
+    const alBorde = " " + "A".repeat(100) + " ";
+    const result = familiaInsumoSchema.safeParse({ codigo: "TONER", nombre: alBorde });
+    expect(result.success).toBe(true);
+  });
+
+  it("rechaza nombre de más de 100 caracteres", () => {
+    const result = familiaInsumoSchema.safeParse({ codigo: "TONER", nombre: "N".repeat(101) });
+    expect(result.success).toBe(false);
+  });
+
+  it("acepta nombre de exactamente 100 caracteres", () => {
+    const result = familiaInsumoSchema.safeParse({ codigo: "TONER", nombre: "N".repeat(100) });
+    expect(result.success).toBe(true);
+  });
+
+  it("rechaza codigo vacío", () => {
+    const result = familiaInsumoSchema.safeParse({ codigo: "", nombre: "Tóner" });
+    expect(result.success).toBe(false);
+  });
+
+  it("rechaza codigo con caracteres fuera de mayúsculas/números/guion bajo", () => {
+    const result = familiaInsumoSchema.safeParse({ codigo: "toner-1", nombre: "Tóner" });
+    expect(result.success).toBe(false);
+  });
+
+  it("acepta un codigo válido", () => {
+    const result = familiaInsumoSchema.safeParse({ codigo: "TONER_1", nombre: "Tóner" });
+    expect(result.success).toBe(true);
+  });
+});
+
+/**
+ * Validación cliente-side del ABM de unidades de medida — espejo de
+ * `CreateUnidadMedidaDto` (`UNIDAD_MEDIDA_CODIGO_MAX_LENGTH = 20`,
+ * `UNIDAD_MEDIDA_NOMBRE_MAX_LENGTH = 50`, `unidad-medida.entity.ts`).
+ */
+describe("unidadMedidaSchema — límites de largo (espejo de CreateUnidadMedidaDto)", () => {
+  it("rechaza codigo de más de 20 caracteres", () => {
+    const result = unidadMedidaSchema.safeParse({ codigo: "A".repeat(21), nombre: "Unidad" });
+    expect(result.success).toBe(false);
+  });
+
+  it("acepta codigo de exactamente 20 caracteres", () => {
+    const result = unidadMedidaSchema.safeParse({ codigo: "A".repeat(20), nombre: "Unidad" });
+    expect(result.success).toBe(true);
+  });
+
+  /**
+   * El `@Transform` del `nombre` corre ANTES de su `@MinLength(1)` en el borde
+   * (lo dice el JSDoc de `CreateUnidadMedidaDto`): un nombre de solo espacios llega
+   * recortado y el backend lo rechaza. Sin el `.trim()` del schema, el front lo
+   * dejaba pasar y el usuario perdía lo tipeado contra un 400 remoto. El caso
+   * hermano de `codigo` ya existía; este cierra la cobertura parcial.
+   */
+  it("rechaza nombre de solo espacios", () => {
+    const result = unidadMedidaSchema.safeParse({ codigo: "UN", nombre: "   " });
+    expect(result.success).toBe(false);
+  });
+
+  it("mide el tope del nombre DESPUÉS de recortar, igual que el borde", () => {
+    const alBorde = " " + "A".repeat(50) + " ";
+    const result = unidadMedidaSchema.safeParse({ codigo: "UN", nombre: alBorde });
+    expect(result.success).toBe(true);
+  });
+
+  it("rechaza nombre de más de 50 caracteres", () => {
+    const result = unidadMedidaSchema.safeParse({ codigo: "UN", nombre: "N".repeat(51) });
+    expect(result.success).toBe(false);
+  });
+
+  it("acepta nombre de exactamente 50 caracteres", () => {
+    const result = unidadMedidaSchema.safeParse({ codigo: "UN", nombre: "N".repeat(50) });
+    expect(result.success).toBe(true);
+  });
+
+  it("rechaza codigo con caracteres fuera de mayúsculas/números/guion bajo", () => {
+    const result = unidadMedidaSchema.safeParse({ codigo: "un-1", nombre: "Unidad" });
+    expect(result.success).toBe(false);
+  });
+
+  it("acepta un codigo válido", () => {
+    const result = unidadMedidaSchema.safeParse({ codigo: "UN_1", nombre: "Unidad" });
+    expect(result.success).toBe(true);
+  });
+});
+
+/**
+ * Validación cliente-side del ABM del insumo — espejo de
+ * `CreateInsumoDto`/`EditInsumoDto` (`INSUMO_CODIGO_MAX_LENGTH = 50`,
+ * `INSUMO_NOMBRE_MAX_LENGTH = 255`, `insumo.entity.ts`), RECORTADO al scope
+ * de esta entrega: sin `codigosAlternativos`/`compatibilidad`.
+ */
+function baseInsumoValues(): Record<string, unknown> {
+  return { codigo: "TON_001", nombre: "Tóner", familiaId: "fam-1", unidadMedidaId: "um-1" };
+}
+
+describe("insumoSchema — límites de codigo/nombre (espejo de CreateInsumoDto)", () => {
+  it("rechaza codigo de más de 50 caracteres", () => {
+    const result = insumoSchema.safeParse({ ...baseInsumoValues(), codigo: "A".repeat(51) });
+    expect(result.success).toBe(false);
+  });
+
+  it("acepta codigo de exactamente 50 caracteres", () => {
+    const result = insumoSchema.safeParse({ ...baseInsumoValues(), codigo: "A".repeat(50) });
+    expect(result.success).toBe(true);
+  });
+
+  /**
+   * El `@Transform` del `nombre` corre ANTES de su `@MinLength(1)` en el borde
+   * (lo dice el JSDoc de `CreateInsumoDto`): un nombre de solo espacios llega
+   * recortado y el backend lo rechaza. Sin el `.trim()` del schema, el front lo
+   * dejaba pasar y el usuario perdía lo tipeado contra un 400 remoto. El caso
+   * hermano de `codigo` ya existía; este cierra la cobertura parcial.
+   */
+  it("rechaza nombre de solo espacios", () => {
+    const result = insumoSchema.safeParse({ ...baseInsumoValues(), nombre: "   " });
+    expect(result.success).toBe(false);
+  });
+
+  it("mide el tope del nombre DESPUÉS de recortar, igual que el borde", () => {
+    const alBorde = " " + "A".repeat(255) + " ";
+    const result = insumoSchema.safeParse({ ...baseInsumoValues(), nombre: alBorde });
+    expect(result.success).toBe(true);
+  });
+
+  it("rechaza nombre de más de 255 caracteres", () => {
+    const result = insumoSchema.safeParse({ ...baseInsumoValues(), nombre: "N".repeat(256) });
+    expect(result.success).toBe(false);
+  });
+
+  it("acepta nombre de exactamente 255 caracteres", () => {
+    const result = insumoSchema.safeParse({ ...baseInsumoValues(), nombre: "N".repeat(255) });
+    expect(result.success).toBe(true);
+  });
+
+  /**
+   * A DIFERENCIA de `familiaInsumoSchema`/`unidadMedidaSchema`, el código del
+   * insumo NO lleva patrón: `CreateInsumoDto`/`EditInsumoDto` no tienen
+   * `@Matches` sobre `codigo` — su única normalización es
+   * `normalizarCodigoInsumo` (`trim().toUpperCase()`). Un patrón acá sería
+   * MÁS ESTRICTO que el borde, y volvería INEDITABLE desde el front a
+   * cualquier insumo ya guardado cuyo código traiga un guion: el usuario no
+   * podría ni corregirle el nombre sin antes cambiarle el código.
+   */
+  it("acepta codigo con guion — el backend no le impone patrón", () => {
+    const result = insumoSchema.safeParse({ ...baseInsumoValues(), codigo: "TON-001" });
+    expect(result.success).toBe(true);
+  });
+
+  it("acepta codigo en minúsculas — lo normaliza a mayúsculas el backend", () => {
+    const result = insumoSchema.safeParse({ ...baseInsumoValues(), codigo: "ton-001" });
+    expect(result.success).toBe(true);
+  });
+
+  /**
+   * El `@MinLength(1)` del borde mide DESPUÉS del `@Transform`, así que un
+   * código de solo espacios llega vacío y el backend lo rechaza. Sin el
+   * `.trim()` acá, el front lo dejaba pasar y el usuario cobraba un 400.
+   */
+  /**
+   * Forma 3 de fallo de tope del AGENTS.md: tope en las dos capas que NO
+   * coincide con la columna. El borde mide DESPUÉS de `trim().toUpperCase()`, y
+   * `toUpperCase()` puede AGRANDAR el string —`'ß'` se convierte en `'SS'`—. Un
+   * `.max()` sobre el crudo aceptaba 50 caracteres que se persisten como 100.
+   */
+  it("mide el tope del codigo sobre el NORMALIZADO: 50 'ß' son 100 al persistirse", () => {
+    const result = insumoSchema.safeParse({ ...baseInsumoValues(), codigo: "ß".repeat(50) });
+    expect(result.success).toBe(false);
+  });
+
+  it("rechaza codigo de solo espacios", () => {
+    const result = insumoSchema.safeParse({ ...baseInsumoValues(), codigo: "   " });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("insumoSchema — familiaId/unidadMedidaId requeridos", () => {
+  it("rechaza familiaId vacío (sin elegir en el select)", () => {
+    const result = insumoSchema.safeParse({ ...baseInsumoValues(), familiaId: "" });
+    expect(result.success).toBe(false);
+  });
+
+  it("rechaza unidadMedidaId vacío (sin elegir en el select)", () => {
+    const result = insumoSchema.safeParse({ ...baseInsumoValues(), unidadMedidaId: "" });
+    expect(result.success).toBe(false);
+  });
+});
+
+/**
+ * `stockMinimo` es OPCIONAL y NULLABLE en el dominio: ausente/vacío es "sin
+ * punto definido", que NO es cero. A diferencia de `cantidadMovimientoSchema`,
+ * el piso ES cero (`INSUMO_STOCK_MINIMO_MINIMO = 0`) — cero es un punto de
+ * reposición legítimo, no un movimiento inválido.
+ */
+describe("insumoSchema — stockMinimo (opcional, nullable, tope de decimales)", () => {
+  it("vacío → stockMinimo queda undefined (AUSENTE, no cero)", () => {
+    const result = insumoSchema.safeParse({ ...baseInsumoValues(), stockMinimo: "" });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.stockMinimo).toBeUndefined();
+  });
+
+  it("acepta cero como stock mínimo legítimo", () => {
+    const result = insumoSchema.safeParse({ ...baseInsumoValues(), stockMinimo: "0" });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.stockMinimo).toBe(0);
+  });
+
+  it("rechaza un valor negativo", () => {
+    const result = insumoSchema.safeParse({ ...baseInsumoValues(), stockMinimo: "-1" });
+    expect(result.success).toBe(false);
+  });
+
+  it("rechaza más de 2 decimales (Postgres redondearía en silencio)", () => {
+    const result = insumoSchema.safeParse({ ...baseInsumoValues(), stockMinimo: "12.345" });
+    expect(result.success).toBe(false);
+  });
+
+  it("acepta exactamente 2 decimales", () => {
+    const result = insumoSchema.safeParse({ ...baseInsumoValues(), stockMinimo: "12.34" });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.stockMinimo).toBe(12.34);
+  });
+
+  it("rechaza un valor por encima del techo de negocio (1.000.000)", () => {
+    const result = insumoSchema.safeParse({ ...baseInsumoValues(), stockMinimo: "1000001" });
+    expect(result.success).toBe(false);
   });
 });
