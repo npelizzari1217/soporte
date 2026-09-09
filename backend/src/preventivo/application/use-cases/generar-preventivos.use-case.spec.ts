@@ -108,7 +108,7 @@ describe('GenerarPreventivosUseCase (5.3/5.4/5.5)', () => {
       registrarSalteadoAtraso: vi.fn().mockResolvedValue(undefined),
       existeTicketAbiertoDelPlan: vi.fn().mockResolvedValue(false),
     };
-    const tipoTicketRepo = { findIdByCodigo: vi.fn().mockResolvedValue('tipo-mantenimiento-uuid') };
+    const tipoTicketRepo = { findIdByCodigo: vi.fn().mockResolvedValue('tipo-preventivo-uuid') };
     const crearTicketUseCase = {
       execute: vi.fn().mockResolvedValue(Result.ok(fakeTicket('ticket-uuid'))),
     };
@@ -170,12 +170,12 @@ describe('GenerarPreventivosUseCase (5.3/5.4/5.5)', () => {
     expect(txRunner.run).not.toHaveBeenCalled();
   });
 
-  it('catálogo MANTENIMIENTO ausente → throw (bug de infraestructura, no error esperado)', async () => {
+  it('catálogo PREVENTIVO ausente → throw (bug de infraestructura, no error esperado)', async () => {
     const plan = makePlan();
     const { useCase, tipoTicketRepo } = buildUseCase(plan);
     tipoTicketRepo.findIdByCodigo.mockResolvedValue(null);
 
-    await expect(useCase.execute('cliente-uuid')).rejects.toThrow(/MANTENIMIENTO/);
+    await expect(useCase.execute('cliente-uuid')).rejects.toThrow(/PREVENTIVO/);
   });
 
   it('[R6/R9] ciclo sin pendiente ni error → reserva, crea ticket, marca GENERADO y avanza el puntero, EN ESE ORDEN', async () => {
@@ -195,7 +195,7 @@ describe('GenerarPreventivosUseCase (5.3/5.4/5.5)', () => {
         autorId: plan.responsableId,
         clienteId: 'cliente-uuid',
         prioridadId: plan.prioridadId,
-        tipoId: 'tipo-mantenimiento-uuid',
+        tipoId: 'tipo-preventivo-uuid',
       }),
     );
     expect(generacionRepo.marcarGenerado).toHaveBeenCalledWith('generacion-uuid', 'ticket-uuid');
@@ -421,7 +421,7 @@ describe('GenerarPreventivosUseCase (5.3/5.4/5.5)', () => {
       registrarSalteadoAtraso: vi.fn().mockResolvedValue(undefined),
       existeTicketAbiertoDelPlan: vi.fn().mockResolvedValue(false),
     };
-    const tipoTicketRepo = { findIdByCodigo: vi.fn().mockResolvedValue('tipo-mantenimiento-uuid') };
+    const tipoTicketRepo = { findIdByCodigo: vi.fn().mockResolvedValue('tipo-preventivo-uuid') };
     const crearTicketUseCase = {
       execute: vi.fn().mockResolvedValue(Result.ok(fakeTicket('ticket-2-uuid'))),
     };
@@ -487,7 +487,7 @@ describe('GenerarPreventivosUseCase (5.3/5.4/5.5)', () => {
         expect.objectContaining({
           descripcion: 'Equipo: Notebook Dell 5420\n\nLimpiar ventiladores',
           titulo: plan.titulo,
-          tipoId: 'tipo-mantenimiento-uuid',
+          tipoId: 'tipo-preventivo-uuid',
           prioridadId: plan.prioridadId,
           solicitanteId: plan.responsableId,
           clienteId: 'cliente-uuid',
@@ -633,7 +633,7 @@ describe('GenerarPreventivosUseCase (5.3/5.4/5.5)', () => {
         existeTicketAbiertoDelPlan: vi.fn().mockResolvedValue(false),
       };
       const tipoTicketRepo = {
-        findIdByCodigo: vi.fn().mockResolvedValue('tipo-mantenimiento-uuid'),
+        findIdByCodigo: vi.fn().mockResolvedValue('tipo-preventivo-uuid'),
       };
       const crearTicketUseCase = {
         execute: vi

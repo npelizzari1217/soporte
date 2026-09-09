@@ -11,8 +11,11 @@
  * - `prioridades` (4, FIJO): BAJA, MEDIA, ALTA, CRITICA.
  * - `tipo_operacion` (5, FIJO): CAMBIO_ESTADO, COMENTARIO, ASIGNACION,
  *   ADJUNTO, AVANCE_EDILICIO.
- * - `tipos_ticket` (3, base EDITABLE por el admin del tenant — este seed
- *   solo garantiza el piso): SOPORTE, EDILICIA, MANTENIMIENTO (no-IT).
+ * - `tipos_ticket` (4, base EDITABLE por el admin del tenant — este seed
+ *   solo garantiza el piso): SOPORTE, EDILICIA, MANTENIMIENTO (no-IT),
+ *   PREVENTIVO (issue #135: código propio para que el barrido de
+ *   preventivo deje de reusar MANTENIMIENTO y sus tickets queden afuera de
+ *   `cumplimientoSla`).
  *
  * `tipos_componente` (Fase 3 F3-Q3) se sembraba acá como catálogo tenant
  * FIJO — ELIMINADO en PR4b (sdd/tipos-componente-master): el catálogo pasó a
@@ -49,6 +52,7 @@ import { Pool } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { ITenantSeeder } from '../domain/ports/i-tenant-seeder.port';
 import { TenantPrismaClient } from '../../shared/infrastructure/persistence/prisma-clients';
+import { TIPO_CODIGO_PREVENTIVO } from '../../tickets/domain/tipos-ticket.constants';
 
 type TenantClient = InstanceType<typeof TenantPrismaClient>;
 
@@ -116,6 +120,10 @@ const TIPOS_TICKET = [
   { codigo: 'SOPORTE', nombre: 'Soporte', modulo: 'TICKETS' },
   { codigo: 'EDILICIA', nombre: 'Edilicia', modulo: 'EDILICIA' },
   { codigo: 'MANTENIMIENTO', nombre: 'Mantenimiento', modulo: 'EDILICIA' },
+  // issue #135: el preventivo tiene su propio tipo. Mapea al mismo módulo
+  // que MANTENIMIENTO (el que reusaba antes) para no cambiar routing ni
+  // permisos.
+  { codigo: TIPO_CODIGO_PREVENTIVO, nombre: 'Preventivo', modulo: 'EDILICIA' },
 ];
 
 @Injectable()

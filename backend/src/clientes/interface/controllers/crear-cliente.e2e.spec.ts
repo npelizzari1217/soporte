@@ -383,9 +383,11 @@ describe('Crear Cliente e2e — provisioning real (T8.5, R16-R19)', () => {
         const prioridades = await tenantClient.prioridad.findMany({ orderBy: { orden: 'asc' } });
         expect(prioridades.map((p) => p.codigo)).toEqual(['BAJA', 'MEDIA', 'ALTA', 'CRITICA']);
 
+        // El catálogo provisionado incluye PREVENTIVO (issue #135) además de
+        // MANTENIMIENTO: son tipos distintos desde que el barrido dejó de reusarlo.
         const tiposTicket = await tenantClient.tipoTicket.findMany({ orderBy: { codigo: 'asc' } });
         expect(tiposTicket.map((t) => t.codigo).sort()).toEqual(
-          ['SOPORTE', 'EDILICIA', 'MANTENIMIENTO'].sort(),
+          ['SOPORTE', 'EDILICIA', 'MANTENIMIENTO', 'PREVENTIVO'].sort(),
         );
       } finally {
         await tenantClient.$disconnect();

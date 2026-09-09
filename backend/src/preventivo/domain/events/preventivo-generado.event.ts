@@ -2,7 +2,7 @@ import { DomainEvent } from '../../../shared/domain/ports/i-domain-event-publish
 
 /**
  * PreventivoGeneradoEvent — evento de dominio emitido cuando el barrido
- * (`GenerarPreventivosUseCase`, WU-5) genera un ticket `MANTENIMIENTO`
+ * (`GenerarPreventivosUseCase`, WU-5) genera un ticket `PREVENTIVO`
  * desde un plan vencido ([R11]). Publicado POST-COMMIT, log-and-swallow —
  * mismo patrón que `SlaVencidoEvent` (ADR-6). NUNCA se emite en
  * `SALTEADO_PENDIENTE` ni `SALTEADO_ATRASO`: solo cuando el ciclo produjo

@@ -69,6 +69,13 @@ describe('TenantSeederAdapter (T7.4, integración — Postgres real, DB efímera
   });
 
   it('[CRITICAL] seed() persiste los 4 catálogos con los códigos exactos en la DB tenant real', async () => {
+    // La migración 20260909120000_add_tipo_preventivo ya insertó PREVENTIVO
+    // al correr `migrate deploy` en el beforeAll, así que sin este DELETE la
+    // aserción de tipos_ticket pasaría aunque el seeder NO lo sembrara: el
+    // test probaría la migración, no el seed. Se borra la fila para que la
+    // única fuente posible del PREVENTIVO que se verifica abajo sea seed().
+    await verifyClient.tipoTicket.deleteMany({ where: { codigo: 'PREVENTIVO' } });
+
     await seeder.seed(DB_NAME);
 
     const estados = await verifyClient.estado.findMany({ orderBy: { orden: 'asc' } });
@@ -98,7 +105,7 @@ describe('TenantSeederAdapter (T7.4, integración — Postgres real, DB efímera
 
     const tiposTicket = await verifyClient.tipoTicket.findMany({ orderBy: { codigo: 'asc' } });
     expect(tiposTicket.map((t) => t.codigo).sort()).toEqual(
-      ['SOPORTE', 'EDILICIA', 'MANTENIMIENTO'].sort(),
+      ['SOPORTE', 'EDILICIA', 'MANTENIMIENTO', 'PREVENTIVO'].sort(),
     );
   }, 30_000);
 
@@ -116,6 +123,6 @@ describe('TenantSeederAdapter (T7.4, integración — Postgres real, DB efímera
     expect(estados).toHaveLength(6);
     expect(prioridades).toHaveLength(4);
     expect(tipoOperacion).toHaveLength(5);
-    expect(tiposTicket).toHaveLength(3);
+    expect(tiposTicket).toHaveLength(4);
   }, 30_000);
 });

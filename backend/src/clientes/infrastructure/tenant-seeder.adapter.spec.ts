@@ -9,7 +9,7 @@
  * - Siembra `estados` (6: NUEVO, ASIGNADO, EN_PROCESO, RESUELTO, CERRADO,
  *   CANCELADO), `prioridades` (4), `tipo_operacion` (5 de R19 —
  *   APROBACION/RECHAZO removidos en PR-1 de sdd/redisenio-modulo-compras),
- *   `tipos_ticket` base incl. MANTENIMIENTO (3) — cada catálogo vía `createMany` con
+ *   `tipos_ticket` base incl. MANTENIMIENTO y PREVENTIVO (4) — cada catálogo vía `createMany` con
  *   `skipDuplicates: true` (equivalente a `ON CONFLICT (codigo) DO NOTHING`,
  *   por eso correr el seed dos veces no duplica ni falla).
  * - `tipos_componente` (Fase 3 F3-Q3) YA NO se siembra acá — PR4b
@@ -121,7 +121,7 @@ describe('TenantSeederAdapter (T7.4, unit — createClient mockeado)', () => {
     ]);
   });
 
-  it('[CRITICAL] siembra tipos_ticket base incluyendo MANTENIMIENTO (no-IT)', async () => {
+  it('[CRITICAL] siembra tipos_ticket base incluyendo MANTENIMIENTO y PREVENTIVO (no-IT)', async () => {
     const client = makeFakeClient();
     const createClient = vi.fn().mockReturnValue({ client, pool: makeFakePool() });
     const adapter = new TenantSeederAdapter(MASTER_URL, createClient);
@@ -133,6 +133,7 @@ describe('TenantSeederAdapter (T7.4, unit — createClient mockeado)', () => {
       'SOPORTE',
       'EDILICIA',
       'MANTENIMIENTO',
+      'PREVENTIVO',
     ]);
   });
 

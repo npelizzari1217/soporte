@@ -27,13 +27,15 @@ function makePrioridadConSla(overrides: { slaHoras?: number | null; slaActivo?: 
   });
 }
 
-function makeTicket(overrides: { estadoId?: string; createdAt?: Date } = {}): TicketEntity {
+function makeTicket(
+  overrides: { estadoId?: string; createdAt?: Date; tipoId?: string } = {},
+): TicketEntity {
   const ticket = TicketEntity.create(
     {
       numero: 'SOP-2026-00001',
       titulo: 'Ticket',
       descripcion: null,
-      tipoId: 'tipo-uuid',
+      tipoId: overrides.tipoId ?? 'tipo-uuid',
       estadoId: overrides.estadoId ?? 'estado-nuevo-uuid',
       prioridadId: 'prioridad-alta-uuid',
       cicloId: null,
@@ -48,11 +50,18 @@ function makeTicket(overrides: { estadoId?: string; createdAt?: Date } = {}): Ti
   return ticket;
 }
 
+/**
+ * `tipoTicketRepo.findIdByCodigo` resuelve el id del tipo `PREVENTIVO`
+ * (issue #135, corte de SLA) — por defecto un id fijo distinto de
+ * `'tipo-uuid'` (el tipo default de `makeTicket`), así que los tests que no
+ * versan sobre el corte no necesitan mockear esto a mano.
+ */
 function makeCollaborators() {
   const prioridadRepo = { findById: vi.fn() };
   const slaTicketWriteRepo = { setSlaVenceAt: vi.fn().mockResolvedValue(undefined) };
   const ticketRepo = { findById: vi.fn() };
   const estadoRepo = { findById: vi.fn() };
+  const tipoTicketRepo = { findIdByCodigo: vi.fn().mockResolvedValue('tipo-preventivo-uuid') };
   const calculador = new CalcularSlaVenceService();
 
   const useCase = new AplicarSlaUseCase(
@@ -61,9 +70,10 @@ function makeCollaborators() {
     ticketRepo as never,
     estadoRepo as never,
     calculador,
+    tipoTicketRepo as never,
   );
 
-  return { useCase, prioridadRepo, slaTicketWriteRepo, ticketRepo, estadoRepo };
+  return { useCase, prioridadRepo, slaTicketWriteRepo, ticketRepo, estadoRepo, tipoTicketRepo };
 }
 
 describe('AplicarSlaUseCase', () => {
@@ -96,6 +106,33 @@ describe('AplicarSlaUseCase', () => {
       await c.useCase.alCrear({ ticketId: 'ticket-uuid', prioridadId: 'prioridad-alta-uuid' });
 
       expect(c.slaTicketWriteRepo.setSlaVenceAt).toHaveBeenCalledWith('ticket-uuid', null);
+    });
+
+    it('issue #135: ticket de tipo PREVENTIVO → sla_vence_at = null, SIN consultar la prioridad', async () => {
+      const c = makeCollaborators();
+      c.ticketRepo.findById.mockResolvedValue(makeTicket({ tipoId: 'tipo-preventivo-uuid' }));
+
+      await c.useCase.alCrear({ ticketId: 'ticket-uuid', prioridadId: 'prioridad-alta-uuid' });
+
+      expect(c.slaTicketWriteRepo.setSlaVenceAt).toHaveBeenCalledWith('ticket-uuid', null);
+      expect(c.prioridadRepo.findById).not.toHaveBeenCalled();
+    });
+
+    it('issue #135: con el catálogo sin PREVENTIVO sembrado, el SLA normal se sigue aplicando', async () => {
+      const c = makeCollaborators();
+      c.tipoTicketRepo.findIdByCodigo.mockResolvedValue(null);
+      const createdAt = new Date('2026-08-06T10:00:00.000Z');
+      c.ticketRepo.findById.mockResolvedValue(makeTicket({ createdAt }));
+      c.prioridadRepo.findById.mockResolvedValue(
+        makePrioridadConSla({ slaHoras: 8, slaActivo: true }),
+      );
+
+      await c.useCase.alCrear({ ticketId: 'ticket-uuid', prioridadId: 'prioridad-alta-uuid' });
+
+      expect(c.slaTicketWriteRepo.setSlaVenceAt).toHaveBeenCalledWith(
+        'ticket-uuid',
+        new Date('2026-08-06T18:00:00.000Z'),
+      );
     });
   });
 
@@ -159,6 +196,25 @@ describe('AplicarSlaUseCase', () => {
       });
 
       expect(c.slaTicketWriteRepo.setSlaVenceAt).not.toHaveBeenCalled();
+    });
+
+    it('issue #135: ticket de tipo PREVENTIVO → sla_vence_at = null, tampoco re-aplica SLA', async () => {
+      const c = makeCollaborators();
+      c.ticketRepo.findById.mockResolvedValue(makeTicket({ tipoId: 'tipo-preventivo-uuid' }));
+      c.estadoRepo.findById.mockResolvedValue(
+        EstadoEntity.create(
+          { codigo: 'ASIGNADO', nombre: 'Asignado', color: null, orden: 2, activo: true },
+          'estado-nuevo-uuid',
+        ),
+      );
+
+      await c.useCase.alReprioritizar({
+        ticketId: 'ticket-uuid',
+        prioridadId: 'prioridad-critica-uuid',
+      });
+
+      expect(c.slaTicketWriteRepo.setSlaVenceAt).toHaveBeenCalledWith('ticket-uuid', null);
+      expect(c.prioridadRepo.findById).not.toHaveBeenCalled();
     });
 
     it('ticket inexistente → no hace nada (defensivo, no lanza)', async () => {

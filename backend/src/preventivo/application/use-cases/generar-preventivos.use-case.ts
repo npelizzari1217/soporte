@@ -14,9 +14,7 @@ import {
   ObjetivoResuelto,
   componerDescripcionTicket,
 } from '../../domain/services/describir-objetivo.service';
-
-/** Código FIJO del tipo de ticket que genera este barrido (F3-M1, ya sembrado). */
-const TIPO_CODIGO_MANTENIMIENTO = 'MANTENIMIENTO';
+import { TIPO_CODIGO_PREVENTIVO } from '../../../tickets/domain/tipos-ticket.constants';
 
 /**
  * GenerarPreventivosUseCase — orquestación transaccional del barrido de
@@ -111,16 +109,16 @@ export class GenerarPreventivosUseCase {
     // Catálogo FIJO (seed de provisioning) — su ausencia es un bug de
     // infraestructura del tenant, no un error esperado de un plan puntual:
     // throw defensivo, igual criterio que CrearTicketSoporteUseCase.
-    const tipoMantenimientoId = await this.tipoTicketRepo.findIdByCodigo(TIPO_CODIGO_MANTENIMIENTO);
-    if (!tipoMantenimientoId) {
+    const tipoPreventivoId = await this.tipoTicketRepo.findIdByCodigo(TIPO_CODIGO_PREVENTIVO);
+    if (!tipoPreventivoId) {
       throw new Error(
-        `Catálogo de tipos de ticket inconsistente: no existe el tipo "${TIPO_CODIGO_MANTENIMIENTO}" en el tenant activo.`,
+        `Catálogo de tipos de ticket inconsistente: no existe el tipo "${TIPO_CODIGO_PREVENTIVO}" en el tenant activo.`,
       );
     }
 
     for (const plan of planes) {
       try {
-        await this.procesarPlan(plan, hoy, anio, clienteId, tipoMantenimientoId);
+        await this.procesarPlan(plan, hoy, anio, clienteId, tipoPreventivoId);
       } catch (error) {
         // Aislamiento por plan: un plan roto no aborta el resto del barrido
         // del tenant. Log con `planId` + mensaje — nunca el error crudo.
@@ -135,7 +133,7 @@ export class GenerarPreventivosUseCase {
     hoy: Date,
     anio: number,
     clienteId: string,
-    tipoMantenimientoId: string,
+    tipoPreventivoId: string,
   ): Promise<void> {
     await this.txRunner.run(async () => {
       const resultado = this.calcularCiclo.ciclosPendientes(
@@ -203,7 +201,7 @@ export class GenerarPreventivosUseCase {
       const ticketResult = await this.crearTicketUseCase.execute({
         titulo: plan.titulo,
         descripcion,
-        tipoId: tipoMantenimientoId,
+        tipoId: tipoPreventivoId,
         prioridadId: plan.prioridadId,
         solicitanteId: plan.responsableId,
         clienteId,

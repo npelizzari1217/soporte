@@ -102,7 +102,7 @@ describe('GenerarPreventivosUseCase — Integration (5.8-5.13, 6.1)', () => {
   let logger: { error: ReturnType<typeof vi.fn<(mensaje: string) => void>> };
 
   let prioridadId: string;
-  let tipoMantenimientoId: string;
+  let tipoPreventivoId: string;
 
   const RUN_PREFIX = randomBytes(3).toString('hex');
   let planCounter = 0;
@@ -224,10 +224,10 @@ describe('GenerarPreventivosUseCase — Integration (5.8-5.13, 6.1)', () => {
     });
     prioridadId = prioridad.id;
 
-    const tipoMantenimiento = await tenantClient.tipoTicket.findUniqueOrThrow({
-      where: { codigo: 'MANTENIMIENTO' },
+    const tipoPreventivo = await tenantClient.tipoTicket.findUniqueOrThrow({
+      where: { codigo: 'PREVENTIVO' },
     });
-    tipoMantenimientoId = tipoMantenimiento.id;
+    tipoPreventivoId = tipoPreventivo.id;
 
     await tenantClient.cicloCliente.create({
       data: {
@@ -259,7 +259,7 @@ describe('GenerarPreventivosUseCase — Integration (5.8-5.13, 6.1)', () => {
     return tenantClient.preventivoGeneracion.findMany({ where: { planId: plan.id } });
   }
 
-  it('[CRITICAL][R6] doble invocación consecutiva → exactamente 1 ticket MAN- y 1 fila GENERADO', async () => {
+  it('[CRITICAL][R6] doble invocación consecutiva → exactamente 1 ticket PRE- y 1 fila GENERADO', async () => {
     const plan = await crearPlan();
 
     await withTenant(() => generarPreventivosUseCase.execute(CLIENTE_ID));
@@ -269,7 +269,7 @@ describe('GenerarPreventivosUseCase — Integration (5.8-5.13, 6.1)', () => {
     const generaciones = await generacionesDelPlan(plan);
 
     expect(tickets).toHaveLength(1);
-    expect(tickets[0].numero.startsWith('MAN-')).toBe(true);
+    expect(tickets[0].numero.startsWith('PRE-')).toBe(true);
     expect(generaciones).toHaveLength(1);
     expect(generaciones[0].resultado).toBe('GENERADO');
     expect(generaciones[0].ticketId).toBe(tickets[0].id);
@@ -385,7 +385,7 @@ describe('GenerarPreventivosUseCase — Integration (5.8-5.13, 6.1)', () => {
       crearTicketUseCase.execute({
         titulo: plan.titulo,
         descripcion: null,
-        tipoId: tipoMantenimientoId,
+        tipoId: tipoPreventivoId,
         prioridadId,
         solicitanteId: DUMMY_RESPONSABLE_ID,
         clienteId: CLIENTE_ID,

@@ -109,7 +109,7 @@ export function templateSlaVencido(datos: DatosTicketBase): PlantillaEmail {
 /**
  * templatePreventivoGenerado — plantilla de `preventivo.generado` ([R11],
  * WU-6). Se dispara solo cuando el barrido efectivamente creó un ticket
- * `MANTENIMIENTO` desde un plan vencido — nunca en un salteo.
+ * `PREVENTIVO` desde un plan vencido — nunca en un salteo.
  *
  * Ref spec: sdd/preventivo/spec, Requirement "Notificación solo al generar".
  * Ref design: ADR-PV2 (flujo de datos). Tarea: 6.2.

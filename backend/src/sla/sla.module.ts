@@ -7,6 +7,10 @@ import {
   PRIORIDAD_REPOSITORY,
   IPrioridadRepository,
 } from '../tickets/domain/ports/i-prioridad.repository';
+import {
+  TIPO_TICKET_REPOSITORY,
+  ITipoTicketRepository,
+} from '../tickets/domain/ports/i-tipo-ticket.repository';
 
 import {
   SLA_TICKET_WRITE_REPOSITORY,
@@ -60,12 +64,16 @@ import {
  *   lee `slaHoras`/`slaActivo` vía `PRIORIDAD_REPOSITORY`, exportado por
  *   `TicketsModule`), MarcarVencidos (S4, corrido por tenant desde
  *   SlaSweepScheduler).
+ * - issue #135: `AplicarSlaUseCase` suma `TIPO_TICKET_REPOSITORY`
+ *   (`findIdByCodigo`, mismo puerto que ya usa `GenerarPreventivosUseCase`)
+ *   para cortar el cálculo de SLA de los tickets de tipo `PREVENTIVO` — no
+ *   crea un puerto propio, ya lo exporta `TicketsModule`.
  * - `ScheduleModule.forRoot()` ya NO se llama acá: se movió a `AppModule`
  *   (ola-2 WU-0) porque dos `forRoot()` de `@nestjs/schedule` fallan al
  *   bootear (no al compilar) si otro módulo (`preventivo`) también lo llama.
  * - Importa `TicketsModule` (para TICKET_REPOSITORY/ESTADO_REPOSITORY/
- *   PRIORIDAD_REPOSITORY, que `AplicarSlaUseCase` necesita — el módulo SLA
- *   NO reimplementa ese acceso) y `AuthModule`.
+ *   PRIORIDAD_REPOSITORY/TIPO_TICKET_REPOSITORY, que `AplicarSlaUseCase`
+ *   necesita — el módulo SLA NO reimplementa ese acceso) y `AuthModule`.
  *
  * FITNESS RULE: PrismaService y @prisma/client solo pueden importarse desde
  * infrastructure/ (ver backend/eslint.config.js).
@@ -86,6 +94,7 @@ import {
         ticketRepo: ITicketRepository,
         estadoRepo: IEstadoRepository,
         calculador: CalcularSlaVenceService,
+        tipoTicketRepo: ITipoTicketRepository,
       ) =>
         new AplicarSlaUseCase(
           prioridadRepo,
@@ -93,6 +102,7 @@ import {
           ticketRepo,
           estadoRepo,
           calculador,
+          tipoTicketRepo,
         ),
       inject: [
         PRIORIDAD_REPOSITORY,
@@ -100,6 +110,7 @@ import {
         TICKET_REPOSITORY,
         ESTADO_REPOSITORY,
         CalcularSlaVenceService,
+        TIPO_TICKET_REPOSITORY,
       ],
     },
     {

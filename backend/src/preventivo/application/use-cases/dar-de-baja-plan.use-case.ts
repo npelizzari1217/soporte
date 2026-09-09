@@ -15,8 +15,10 @@ export interface DarDeBajaPlanDto {
  * `IPlanPreventivoRepository.findVencibles` filtra por AMBOS
  * (`activo AND deleted_at IS NULL`), así que cualquiera de los dos alcanza
  * para frenar la generación futura — se setean los dos por defensa en
- * profundidad. Los tickets `MANTENIMIENTO` y filas `preventivo_generacion`
- * YA generados NO se tocan: este use case no los referencia en absoluto.
+ * profundidad. Los tickets y filas `preventivo_generacion` YA generados NO
+ * se tocan: este use case no los referencia en absoluto. Sin nombrar un
+ * tipo a propósito — tras el issue #135 un plan viejo puede tener tickets
+ * `MANTENIMIENTO` y `PREVENTIVO` conviviendo, y a ninguno se lo toca.
  *
  * Ref spec: sdd/preventivo/spec, Requirement "Baja de plan frena generación
  * sin borrar historial". Tarea: 4.2.
