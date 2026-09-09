@@ -36,7 +36,23 @@ const RUTA_BACKEND = path.join(path.dirname(fileURLToPath(import.meta.url)), '..
 const require = createRequire(import.meta.url);
 
 /** Nombre del contenedor Postgres del entorno vivo (ver CLAUDE.md — contexto operativo). */
-const NOMBRE_CONTENEDOR_POR_DEFECTO = 'soporte-postgres-master';
+export const NOMBRE_CONTENEDOR_POR_DEFECTO = 'soporte-postgres-master';
+
+/**
+ * Nombre EFECTIVO del contenedor a inspeccionar. En desarrollo local es
+ * SIEMPRE `NOMBRE_CONTENEDOR_POR_DEFECTO`; en CI el Postgres corre como
+ * service container de GitHub Actions con un nombre generado (no el fijo de
+ * desarrollo), así que el workflow (`.github/workflows/gates.yml`) lo
+ * descubre y lo exporta en `SOPORTE_PG_CONTAINER` antes de correr la suite.
+ * Sin degradar a string vacío (regla `no-restricted-syntax`): un override
+ * vacío se trata igual que ausente, no como un nombre real.
+ * @returns {string}
+ */
+export function resolverNombreContenedor() {
+  const override = process.env.SOPORTE_PG_CONTAINER;
+  if (typeof override === 'string' && override.trim().length > 0) return override.trim();
+  return NOMBRE_CONTENEDOR_POR_DEFECTO;
+}
 
 /**
  * Ejecuta el subcomando `verificar` de punta a punta: read-only, nunca abre
@@ -884,12 +900,21 @@ function leerEnvArchivo(ruta) {
   }
 }
 
-/** Inspecciona el contenedor de forma tolerante — read-only, nunca cuelga el resto si Docker no está disponible. */
-function inspeccionarContenedorTolerante() {
+/**
+ * Inspecciona el contenedor de forma tolerante — read-only, nunca cuelga el resto si
+ * Docker no está disponible.
+ *
+ * `execFileSyncFn` se inyecta para que un test pueda verificar QUE ESTE call site
+ * honra `SOPORTE_PG_CONTAINER`: probar `resolverNombreContenedor()` aislada deja
+ * pasar un revert del nombre acá adentro con la suite en verde.
+ *
+ * @param {{ execFileSyncFn?: typeof execFileSync }} [opciones]
+ */
+export function inspeccionarContenedorTolerante({ execFileSyncFn = execFileSync } = {}) {
   try {
     return inspeccionarContenedor({
-      nombreContenedor: NOMBRE_CONTENEDOR_POR_DEFECTO,
-      execFileSyncFn: execFileSync,
+      nombreContenedor: resolverNombreContenedor(),
+      execFileSyncFn,
     });
   } catch (error) {
     return { errorInspeccion: error.message };

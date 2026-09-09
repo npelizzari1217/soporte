@@ -27,8 +27,87 @@ import {
   ejecutarRecrearTest,
   ejecutarRegenerar,
   ejecutarVerificar,
+  NOMBRE_CONTENEDOR_POR_DEFECTO,
+  inspeccionarContenedorTolerante,
+  resolverNombreContenedor,
 } from './regenerar-entorno.mjs';
 import { inspeccionarContenedor } from './lib/docker-postgres.mjs';
+
+/**
+ * Regresión para la parametrización del nombre de contenedor (issue #122):
+ * sin `SOPORTE_PG_CONTAINER` los dos `beforeAll` de más abajo (W4 y W5) usan
+ * el default de desarrollo; en CI el workflow la define con el nombre real
+ * del service container y `inspeccionarContenedor` tiene que apuntar a ESE
+ * nombre, no al fijo. No es "integración" (no toca Docker ni Postgres): vive
+ * acá y no en `docker-postgres.spec.ts` porque prueba la función nueva de
+ * ESTE archivo (`regenerar-entorno.mjs`), no `inspeccionarContenedor` en sí.
+ */
+describe('resolverNombreContenedor()', () => {
+  const ORIGINAL = process.env.SOPORTE_PG_CONTAINER;
+
+  afterEach(() => {
+    if (ORIGINAL === undefined) delete process.env.SOPORTE_PG_CONTAINER;
+    else process.env.SOPORTE_PG_CONTAINER = ORIGINAL;
+  });
+
+  it('sin SOPORTE_PG_CONTAINER usa el default de desarrollo', () => {
+    delete process.env.SOPORTE_PG_CONTAINER;
+    expect(resolverNombreContenedor()).toBe(NOMBRE_CONTENEDOR_POR_DEFECTO);
+  });
+
+  it('con SOPORTE_PG_CONTAINER definida inspecciona ESE nombre (el del service container de CI)', () => {
+    process.env.SOPORTE_PG_CONTAINER = 'ghaction-postgres-abc123';
+    expect(resolverNombreContenedor()).toBe('ghaction-postgres-abc123');
+  });
+
+  it('SOPORTE_PG_CONTAINER vacía se trata igual que ausente: usa el default', () => {
+    process.env.SOPORTE_PG_CONTAINER = '';
+    expect(resolverNombreContenedor()).toBe(NOMBRE_CONTENEDOR_POR_DEFECTO);
+  });
+
+  // Misma regla que `estaAusente()` en src/config/validar-entorno.ts: solo
+  // espacios es ausente, no un nombre de contenedor. Un `docker inspect "  "`
+  // falla con un mensaje que no ayuda a nadie.
+  it('SOPORTE_PG_CONTAINER con solo espacios se trata igual que ausente', () => {
+    process.env.SOPORTE_PG_CONTAINER = '   ';
+    expect(resolverNombreContenedor()).toBe(NOMBRE_CONTENEDOR_POR_DEFECTO);
+  });
+
+  it('SOPORTE_PG_CONTAINER con espacios alrededor se usa recortada', () => {
+    process.env.SOPORTE_PG_CONTAINER = '  ghaction-postgres-abc123  ';
+    expect(resolverNombreContenedor()).toBe('ghaction-postgres-abc123');
+  });
+
+  // Los tests de arriba prueban la función AISLADA: un revert del nombre en el
+  // call site los deja a todos en verde. Este prueba el call site que corre de
+  // verdad — el que usa `pnpm entorno:verificar` — verificando qué nombre le
+  // llega a `docker inspect`.
+  it('inspeccionarContenedorTolerante() le pasa a docker el nombre del override', () => {
+    process.env.SOPORTE_PG_CONTAINER = 'ghaction-postgres-abc123';
+    const execFileSyncFn = vi.fn(() => JSON.stringify([{ Config: { Image: 'postgres:16' } }]));
+
+    inspeccionarContenedorTolerante({ execFileSyncFn });
+
+    expect(execFileSyncFn).toHaveBeenCalledWith(
+      'docker',
+      ['inspect', 'ghaction-postgres-abc123'],
+      expect.anything(),
+    );
+  });
+
+  it('inspeccionarContenedorTolerante() sin override le pasa el nombre de desarrollo', () => {
+    delete process.env.SOPORTE_PG_CONTAINER;
+    const execFileSyncFn = vi.fn(() => JSON.stringify([{ Config: { Image: 'postgres:16' } }]));
+
+    inspeccionarContenedorTolerante({ execFileSyncFn });
+
+    expect(execFileSyncFn).toHaveBeenCalledWith(
+      'docker',
+      ['inspect', NOMBRE_CONTENEDOR_POR_DEFECTO],
+      expect.anything(),
+    );
+  });
+});
 
 describe('ejecutarVerificar()', () => {
   it('detecta un entorno incompleto (claves faltantes) y sale con código distinto de cero, sin crear ni modificar nada', () => {
@@ -299,7 +378,7 @@ describe('ejecutarRegenerar() (W4, integración — Postgres real)', () => {
 
   beforeAll(() => {
     estadoContenedor = inspeccionarContenedor({
-      nombreContenedor: 'soporte-postgres-master',
+      nombreContenedor: resolverNombreContenedor(),
       execFileSyncFn: execFileSync,
     });
   });
@@ -564,7 +643,7 @@ describe('ejecutarRecrearTest() (W5, integración — Postgres real)', () => {
 
   beforeAll(() => {
     estadoContenedor = inspeccionarContenedor({
-      nombreContenedor: 'soporte-postgres-master',
+      nombreContenedor: resolverNombreContenedor(),
       execFileSyncFn: execFileSync,
     });
   });
