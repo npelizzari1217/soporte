@@ -94,10 +94,21 @@ scripts `_vps-*`, `backups/`, `iis/`). Ninguno colisionaba, pero el script docum
 | Ruta | Versión | Quién la usa |
 |---|---|---|
 | `C:\Program Files\nodejs\node.exe` | **22.23.2** | la que resuelve `node` a secas: es la que está en el PATH |
-| `C:\nodejs24\node.exe` | 24.20.0 | la que usa `deploy.ps1`, siempre por ruta absoluta (`$NodeExe`) |
+| `C:\nodejs24\node.exe` | 24.20.0 | la que `deploy.ps1` antepone al PATH del proceso |
 
-Los dos `package.json` declaran `"engines": { "node": ">=24" }`. Por eso `deploy.ps1` nunca
-escribe `node` a secas: lo invoca por ruta absoluta y no depende del PATH.
+Los dos `package.json` declaran `"engines": { "node": ">=24" }`, y `deploy.ps1` **antepone
+`C:\nodejs24` a su propio `$env:Path`** antes de cualquier otro paso. Eso cubre `node`,
+`corepack`, `pnpm`, `prisma` y cualquier subproceso que resuelva `node` a secas. Un guard
+en el pre-flight corta el deploy si lo que resuelve es anterior a la 24.
+
+> **Corrección del 2026-09-09 (issue #137).** Acá decía que `deploy.ps1` "nunca escribe
+> `node` a secas: lo invoca por ruta absoluta y no depende del PATH". Era falso: `$NodeExe`
+> se usaba en **tres** lugares (la `EMAIL_CRYPTO_KEY` y las dos piezas del backfill de
+> correo), mientras `prisma generate`, los dos `build` y **`migrate:master` y
+> `migrate:tenants`** iban por `corepack` a secas. Y `corepack` resolvía a
+> `C:\Program Files\nodejs\corepack.cmd`, el de la instalación de Node 22: un shim se
+> lleva puesto el runtime junto al que fue instalado. **No alcanza con no escribir `node`
+> a secas si escribís `corepack` a secas.**
 
 **Cualquier comando que corras a mano en el VPS sí depende del PATH**, y ahí te toca el 22.
 Antes de instalar dependencias o correr un script del repo:
