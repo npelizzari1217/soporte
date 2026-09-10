@@ -608,7 +608,12 @@ model EquipoInformatico {
 //
 // `ComponenteEquipo` e `Insumo` NO se pisan: el componente es lo que está
 // adentro de un equipo hoy, el insumo es lo que se compra y se consume. Un
-// disco rígido es las dos cosas en momentos distintos.
+// disco rígido es las dos cosas en momentos distintos. Desde WU-3
+// (sdd/repuestos-vinculo-componente) un componente puede DECLARAR de qué
+// repuesto del catálogo salió (`ComponenteEquipo.insumoId`, nullable) — el
+// vínculo es solo trazabilidad y sigue sin pisar nada: vincularlo NO mueve
+// stock ni convierte al componente en un insumo. Sacar un repuesto del
+// depósito para instalarlo es la acción de WU-4, distinta de este vínculo.
 //
 // Las existencias (`MovimientoInsumo`) son la Entrega 2 y no están acá.
 
@@ -688,6 +693,11 @@ model Insumo {
   /// unidad 1). Relación inversa de `ItemCompra.insumo`; no todo ítem tiene
   /// una — los históricos son texto libre y quedan sin insumo para siempre.
   itemsCompra         ItemCompra[]
+  /// Componentes de equipo que declaran venir DE este repuesto (WU-3,
+  /// sdd/repuestos-vinculo-componente). Relación inversa de
+  /// `ComponenteEquipo.insumo`; no todo componente tiene una — el camino de
+  /// texto libre sigue siendo válido.
+  componentes         ComponenteEquipo[]
 
   @@index([familiaId])
   @@index([unidadMedidaId])
@@ -845,6 +855,21 @@ model ComponenteEquipo {
   /// `tipos_componente` eliminado (ver migración 20260805194710_init_tenant
   /// para el estado previo con `tipo_componente_id` FK).
   tipoComponenteCodigo String    @map("tipo_componente_codigo") @db.VarChar(50)
+  /// FK real → `insumos.id` (WU-3, sdd/repuestos-vinculo-componente) —
+  /// MISMA base del inquilino, a diferencia de `tipoComponenteCodigo` (que
+  /// referencia MASTER, cross-DB, por eso ese es soft-ref sin FK). Nullable
+  /// a propósito: el camino de texto libre sigue siendo válido, y los
+  /// componentes existentes antes de este WU no tienen ni van a tener uno
+  /// (sin backfill).
+  ///
+  /// `onDelete: Restrict`, mismo criterio que las cuatro FK de
+  /// `MovimientoInsumo` hacia sus catálogos: un repuesto referenciado por un
+  /// componente no se puede borrar por debajo sin que la base lo frene. Acá
+  /// no aplica de todos modos —`insumos` no tiene DELETE, solo baja lógica
+  /// (`activo = false`)—, pero declararlo explícito evita que un futuro
+  /// `migrate dev` lo regenere en `SetNull` (default de Prisma para una
+  /// relación opcional) y vacíe el vínculo en silencio.
+  insumoId             String?   @map("insumo_id") @db.Uuid
   descripcion          String?   @db.VarChar(255)
   numeroSerie          String?   @map("numero_serie") @db.VarChar(255)
   capacidad            String?   @db.VarChar(100)
@@ -853,9 +878,11 @@ model ComponenteEquipo {
   deletedAt            DateTime? @map("deleted_at") @db.Timestamptz
 
   equipo EquipoInformatico @relation(fields: [equipoId], references: [id])
+  insumo Insumo?           @relation(fields: [insumoId], references: [id], onDelete: Restrict)
 
   @@index([equipoId])
   @@index([tipoComponenteCodigo])
+  @@index([insumoId])
   @@map("componentes_equipo")
 }
 

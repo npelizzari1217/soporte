@@ -103,26 +103,43 @@ export class PrismaInsumoRepository implements IInsumoRepository {
   }
 
   /**
-   * Filtra por `deletedAt: null`, NO por `activo`: un insumo deshabilitado
-   * tiene que seguir llegando al listado para que el administrador pueda
-   * volver a habilitarlo.
+   * Filtra por `deletedAt: null`, NO por `activo` —salvo que `soloVinculables`
+   * lo pida—: un insumo deshabilitado tiene que seguir llegando al listado
+   * para que el administrador pueda volver a habilitarlo. Ver el JSDoc de
+   * `IInsumoRepository.findAllActive` para los DOS comportamientos que este
+   * método sostiene y por qué.
    *
    * `esRepuesto` filtra por la FAMILIA (`familia.esRepuesto`, WU-1), no por
    * una columna propia de `insumos` —no existe—: viaja como filtro sobre la
    * relación, en la MISMA consulta, en vez de traer todo y filtrar en
-   * memoria. `undefined` omite la cláusula por completo y no filtra nada —
-   * ver el JSDoc de `IInsumoRepository.findAllActive` para el porqué de ese
-   * default.
+   * memoria. `undefined` omite la cláusula por completo y no filtra nada.
+   *
+   * `soloVinculables` (WU-3, sdd/repuestos-vinculo-componente) agrega, en la
+   * MISMA consulta, `activo: true` sobre el insumo Y `familia.activo: true`
+   * sobre la relación —las DOS condiciones que `AgregarComponenteUseCase`
+   * exige para aceptar un vínculo—. Va junto con `esRepuesto` en el MISMO
+   * objeto `familia` del `where`: Prisma no admite dos claves `familia`
+   * separadas en un mismo nivel.
    *
    * @param esRepuesto Filtro por familia; ausente trae repuestos y consumibles por igual.
-   * @returns Los insumos vigentes del tenant —habilitados o no—, con su
-   *   agregado completo, ordenados por código.
+   * @param soloVinculables `true` restringe a los insumos vinculables (habilitados, de familia habilitada); ausente no aplica ese filtro.
+   * @returns Los insumos vigentes del tenant, con su agregado completo, ordenados por código.
    */
-  async findAllActive(esRepuesto?: boolean): Promise<InsumoEntity[]> {
+  async findAllActive(esRepuesto?: boolean, soloVinculables?: boolean): Promise<InsumoEntity[]> {
+    const filtroFamilia = {
+      ...(esRepuesto !== undefined ? { esRepuesto } : {}),
+      // `activo` y `deletedAt` son independientes: `softDelete()` no toca
+      // `activo`, así que una familia borrada lógicamente conserva
+      // `activo: true`. Sin el segundo filtro, sus repuestos seguirían
+      // ofreciéndose como vinculables.
+      ...(soloVinculables ? { activo: true, deletedAt: null } : {}),
+    };
+
     const rows = await this.client.insumo.findMany({
       where: {
         deletedAt: null,
-        ...(esRepuesto !== undefined ? { familia: { esRepuesto } } : {}),
+        ...(soloVinculables ? { activo: true } : {}),
+        ...(Object.keys(filtroFamilia).length > 0 ? { familia: filtroFamilia } : {}),
       },
       orderBy: { codigo: 'asc' },
       include: INCLUIR_AGREGADO,

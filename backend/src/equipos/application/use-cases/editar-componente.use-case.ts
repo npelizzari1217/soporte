@@ -5,6 +5,7 @@ import { ITipoComponenteMasterChecker } from '../../domain/ports/i-tipo-componen
 import {
   ComponenteDadoDeBajaError,
   ComponenteNoEncontradoError,
+  ComponenteVinculadoTipoInmutableError,
   TipoComponenteCodigoRequeridoError,
   TipoComponenteInactivoError,
 } from '../../domain/errors/equipos.errors';
@@ -30,9 +31,18 @@ export interface EditarComponenteDto {
  * 2. Si está dado de baja → `ComponenteDadoDeBajaError` (hay que
  *    reactivarlo primero — editar y reactivar son operaciones separadas,
  *    mismo criterio que "un registro suspendido no se edita a ciegas").
- * 3. Si `tipoComponenteCodigo` fue provisto y difiere del actual: verifica
- *    que exista+esté `activo` en el catálogo MASTER (mismo checker que
- *    `AgregarComponenteUseCase`) → `TipoComponenteInactivoError` si no.
+ * 3. Si `tipoComponenteCodigo` fue provisto Y DIFIERE del actual (mandar el
+ *    mismo código que ya tiene no pide cambiar nada — `ComponenteEditDialog`
+ *    SIEMPRE manda este campo, lo haya tocado el usuario o no, así que
+ *    rechazar por sola presencia dejaba de solo lectura a todo componente
+ *    VINCULADO; hallazgo de revisión automática):
+ *    - si el componente está VINCULADO a un repuesto (`insumoId != null`): se
+ *      rechaza con `ComponenteVinculadoTipoInmutableError` — su tipo lo
+ *      determina la familia del repuesto, no un PATCH (WU-3, hallazgo de
+ *      revisión automática; ver JSDoc de ese error).
+ *    - si no: verifica que exista+esté `activo` en el catálogo MASTER (mismo
+ *      checker que `AgregarComponenteUseCase`) → `TipoComponenteInactivoError`
+ *      si no.
  * 4. Aplica `actualizar()` (PATCH semántico) y persiste.
  *
  * Sin throw — todos los fallos esperados retornan `Result.fail()`.
@@ -61,7 +71,15 @@ export class EditarComponenteUseCase {
       if (!dto.tipoComponenteCodigo) {
         return Result.fail(new TipoComponenteCodigoRequeridoError());
       }
+      // Solo un cambio REAL de tipo pisa las reglas de abajo: mandar el
+      // mismo código que ya tiene el componente no es un pedido de cambio.
+      // `ComponenteEditDialog` manda este campo SIEMPRE (nunca `undefined`),
+      // así que rechazar por sola presencia dejaba de solo lectura a todo
+      // componente vinculado el día que alguien editara solo la descripción.
       if (dto.tipoComponenteCodigo !== componente.tipoComponenteCodigo) {
+        if (componente.insumoId != null) {
+          return Result.fail(new ComponenteVinculadoTipoInmutableError(dto.componenteId));
+        }
         const activo = await this.tipoComponenteMasterChecker.estaActivo(dto.tipoComponenteCodigo);
         if (!activo) {
           return Result.fail(new TipoComponenteInactivoError(dto.tipoComponenteCodigo));

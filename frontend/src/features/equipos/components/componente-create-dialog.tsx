@@ -2,8 +2,10 @@
 
 /**
  * ComponenteCreateDialog — alta de un componente de un equipo desde el
- * toolbar del detalle (mismos 4 campos que `ComponenteEditDialog`: tipo,
- * descripción, número de serie, capacidad). Reemplaza el formulario inline
+ * toolbar del detalle (son cinco campos: los mismos 4 de `ComponenteEditDialog`
+ * — tipo, descripción, número de serie, capacidad — más el repuesto del
+ * catálogo (WU-3, ver más abajo), que `ComponenteEditDialog` no tiene.
+ * Reemplaza el formulario inline
  * incompleto de `EquipoComponentesSection` (que solo pedía tipo + capacidad
  * — bug que dejaba `descripcion`/`numeroSerie` afuera del payload de alta).
  *
@@ -16,8 +18,16 @@
  * `ComponenteEditDialog` (PATCH semántico, donde `null` borra el valor
  * explícitamente), el alta es un POST — un campo vacío simplemente se omite
  * del body en vez de mandarse como "borrar" un valor que nunca existió.
+ *
+ * `insumoId` (WU-3, sdd/repuestos-vinculo-componente) agrega un segundo
+ * camino: elegir un repuesto del catálogo (`useInsumos(true, true)`, la
+ * MISMA fuente que la sección Repuestos, WU-2, con `soloVinculables: true`
+ * agregado). Con un repuesto elegido, el select de "Tipo" se DESHABILITA y
+ * se limpia — el backend deriva `tipoComponenteCodigo` de la familia del
+ * repuesto, así que mostrarlo editable sugeriría una elección que el use
+ * case ignora.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -26,6 +36,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { useTiposComponente } from "../hooks/use-equipos";
 import { useAgregarComponente } from "../hooks/use-equipo-mutations";
+import { useInsumos } from "@/features/insumos/hooks/use-insumos";
 import { componenteSchema, type ComponenteFormValues } from "../schemas";
 
 export interface ComponenteCreateDialogProps {
@@ -34,6 +45,7 @@ export interface ComponenteCreateDialogProps {
 
 const EMPTY: ComponenteFormValues = {
   tipoComponenteCodigo: "",
+  insumoId: "",
   descripcion: "",
   numeroSerie: "",
   capacidad: "",
@@ -42,12 +54,15 @@ const EMPTY: ComponenteFormValues = {
 export function ComponenteCreateDialog({ equipoId }: ComponenteCreateDialogProps) {
   const [open, setOpen] = useState(false);
   const tiposComponenteQuery = useTiposComponente();
+  const repuestosQuery = useInsumos(true, true);
   const agregarMutation = useAgregarComponente(equipoId);
 
   const {
     register,
     handleSubmit,
     reset,
+    watch,
+    setValue,
     formState: { errors },
   } = useForm<ComponenteFormValues>({
     resolver: zodResolver(componenteSchema),
@@ -55,11 +70,33 @@ export function ComponenteCreateDialog({ equipoId }: ComponenteCreateDialogProps
   });
 
   const tiposActivos = tiposComponenteQuery.data ?? [];
+  // SIN filtro propio a propósito (WU-3): `useInsumos(true, true)` ya pide
+  // `soloVinculables: true`, que el SERVIDOR resuelve contra las DOS
+  // condiciones que `AgregarComponenteUseCase` exige — insumo habilitado Y
+  // familia habilitada. Filtrar de nuevo acá sería una segunda definición de
+  // "vinculable" que puede discrepar de la del servidor sin que nadie se
+  // entere; antes de WU-3 este filtro solo cubría `activo` del insumo (no la
+  // familia), que es justo el caso que dejaba pasar un 422
+  // `FAMILIA_REPUESTO_DESHABILITADA` por algo que el usuario veía en la lista.
+  const repuestos = repuestosQuery.data ?? [];
+  const insumoIdElegido = watch("insumoId");
+
+  // Repuesto elegido → el tipo se deriva en el backend; limpiar lo que haya
+  // en el select de "Tipo" evita mandar un código que el use case ignora.
+  // `shouldValidate: true` es necesario: sin él, si el usuario ya había
+  // disparado el `.refine()` (envío vacío, "Elegí un tipo de componente o un
+  // repuesto del catálogo") y RECIÉN DESPUÉS elige un repuesto, el mensaje de
+  // error quedaba en pantalla — apuntando además a un campo que en ese
+  // momento está deshabilitado — aunque el formulario ya fuera válido.
+  useEffect(() => {
+    if (insumoIdElegido) setValue("tipoComponenteCodigo", "", { shouldValidate: true });
+  }, [insumoIdElegido, setValue]);
 
   function submit(values: ComponenteFormValues) {
     agregarMutation.mutate(
       {
-        tipoComponenteCodigo: values.tipoComponenteCodigo,
+        tipoComponenteCodigo: values.insumoId ? undefined : values.tipoComponenteCodigo,
+        insumoId: values.insumoId || undefined,
         descripcion: values.descripcion || undefined,
         numeroSerie: values.numeroSerie || undefined,
         capacidad: values.capacidad || undefined,
@@ -90,16 +127,30 @@ export function ComponenteCreateDialog({ equipoId }: ComponenteCreateDialogProps
         </DialogHeader>
         <form onSubmit={handleSubmit(submit)} className="flex flex-col gap-3" noValidate>
           <div className="flex flex-col gap-1">
+            <label htmlFor="crear-componente-repuesto" className="text-sm font-medium text-foreground">
+              Repuesto del catálogo (opcional)
+            </label>
+            <Select id="crear-componente-repuesto" {...register("insumoId")}>
+              <option value="">Sin repuesto — cargar tipo a mano</option>
+              {repuestos.map((repuesto) => (
+                <option key={repuesto.id} value={repuesto.id}>
+                  {repuesto.codigo} — {repuesto.nombre}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div className="flex flex-col gap-1">
             <label htmlFor="crear-componente-tipo" className="text-sm font-medium text-foreground">
               Tipo
             </label>
             <Select
               id="crear-componente-tipo"
+              disabled={!!insumoIdElegido}
               error={!!errors.tipoComponenteCodigo}
               {...register("tipoComponenteCodigo")}
             >
               <option value="" disabled>
-                Elegí un tipo
+                {insumoIdElegido ? "Se deriva del repuesto elegido" : "Elegí un tipo"}
               </option>
               {tiposActivos.map((tipo) => (
                 <option key={tipo.codigo} value={tipo.codigo}>

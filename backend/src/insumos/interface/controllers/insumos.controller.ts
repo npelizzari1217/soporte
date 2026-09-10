@@ -86,14 +86,19 @@ export class InsumosController {
    * GET /insumos — catálogo vigente (habilitados y deshabilitados), SIN gate.
    *
    * `esRepuesto` filtra por familia (WU-2, sdd/repuestos-seccion); ausente
-   * trae TODOS — ver el JSDoc de `ListarInsumosUseCase.execute`.
+   * trae TODOS. `soloVinculables` (WU-3, sdd/repuestos-vinculo-componente)
+   * restringe a los insumos vinculables; ausente no aplica ese filtro. Ver el
+   * JSDoc de `ListarInsumosUseCase.execute`.
    *
-   * @param query Filtro opcional `esRepuesto`.
+   * @param query Filtros opcionales `esRepuesto` y `soloVinculables`.
    * @returns Los insumos vigentes del tenant, con sus códigos alternativos.
    */
   @Get()
   async listar(@Query() query: ListarInsumosQueryDto): Promise<InsumoResponseDto[]> {
-    const insumos = await this.listarInsumosUseCase.execute(query.esRepuesto);
+    const insumos = await this.listarInsumosUseCase.execute(
+      query.esRepuesto,
+      query.soloVinculables,
+    );
     return insumos.map(toInsumoResponseDto);
   }
 

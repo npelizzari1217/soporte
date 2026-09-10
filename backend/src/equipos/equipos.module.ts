@@ -36,6 +36,11 @@ import {
   MODELO_EQUIPO_REPOSITORY,
   IModeloEquipoRepository,
 } from '../insumos/domain/ports/i-modelo-equipo.repository';
+import { INSUMO_REPOSITORY, IInsumoRepository } from '../insumos/domain/ports/i-insumo.repository';
+import {
+  FAMILIA_INSUMO_REPOSITORY,
+  IFamiliaInsumoRepository,
+} from '../insumos/domain/ports/i-familia-insumo.repository';
 
 import {
   EQUIPO_INFORMATICO_REPOSITORY,
@@ -100,7 +105,10 @@ import { SoporteController } from './interface/controllers/soporte.controller';
  *   el catálogo `modelos_equipo` (que existe, que está habilitado) antes de
  *   asignarlo. La dirección es la correcta y NO hay ciclo: `InsumosModule`
  *   sólo importa `AuthModule` — `equipos_informaticos.modelo_equipo_id` es
- *   consumidor del catálogo, no su dueño.
+ *   consumidor del catálogo, no su dueño. WU-3 (sdd/repuestos-vinculo-componente)
+ *   suma `INSUMO_REPOSITORY`/`FAMILIA_INSUMO_REPOSITORY` por el mismo motivo:
+ *   `AgregarComponenteUseCase` resuelve el repuesto vinculado (`insumoId`) y
+ *   la familia de la que deriva `tipoComponenteCodigo`.
  * - `TENANT_TX_RUNNER` se inyecta desde `SharedModule` (`@Global`).
  * - `EquiposController` expone el inventario + componentes + catálogo de
  *   tipos; `SoporteController` expone la creación de tickets de soporte y
@@ -190,16 +198,32 @@ import { SoporteController } from './interface/controllers/soporte.controller';
       inject: [EQUIPO_INFORMATICO_REPOSITORY],
     },
     {
+      // WU-3 (sdd/repuestos-vinculo-componente): agrega INSUMO_REPOSITORY y
+      // FAMILIA_INSUMO_REPOSITORY (ambos de InsumosModule, ya importado más
+      // arriba para MODELO_EQUIPO_REPOSITORY — misma dirección de
+      // dependencia, sin ciclo) para resolver el repuesto vinculado y
+      // derivar `tipoComponenteCodigo` de su familia.
       provide: AgregarComponenteUseCase,
       useFactory: (
         equipoRepo: IEquipoInformaticoRepository,
         tipoComponenteMasterChecker: ITipoComponenteMasterChecker,
         componenteRepo: IComponenteEquipoRepository,
-      ) => new AgregarComponenteUseCase(equipoRepo, tipoComponenteMasterChecker, componenteRepo),
+        insumoRepo: IInsumoRepository,
+        familiaInsumoRepo: IFamiliaInsumoRepository,
+      ) =>
+        new AgregarComponenteUseCase(
+          equipoRepo,
+          tipoComponenteMasterChecker,
+          componenteRepo,
+          insumoRepo,
+          familiaInsumoRepo,
+        ),
       inject: [
         EQUIPO_INFORMATICO_REPOSITORY,
         TIPO_COMPONENTE_MASTER_CHECKER,
         COMPONENTE_EQUIPO_REPOSITORY,
+        INSUMO_REPOSITORY,
+        FAMILIA_INSUMO_REPOSITORY,
       ],
     },
     {

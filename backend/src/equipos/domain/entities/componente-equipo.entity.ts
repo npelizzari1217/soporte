@@ -75,6 +75,14 @@ export interface ComponenteEquipoProps {
   equipoId: string;
   /** Código estable del tipo de componente (soft ref → master.tipos_componente.codigo). Obligatorio. */
   tipoComponenteCodigo: string;
+  /**
+   * FK real → `insumos.id` (WU-3, sdd/repuestos-vinculo-componente). `null`
+   * cuando el componente se cargó por el camino de texto libre — sigue
+   * siendo válido, no todo componente está en el catálogo. La existencia del
+   * insumo y que su familia sea de repuesto (no un consumible) las valida la
+   * capa de aplicación (`AgregarComponenteUseCase`), no esta entidad.
+   */
+  insumoId: string | null;
   descripcion: string | null;
   numeroSerie: string | null;
   capacidad: string | null;
@@ -145,6 +153,11 @@ export class ComponenteEquipoEntity extends BaseEntity<ComponenteEquipoProps> {
 
   get tipoComponenteCodigo(): string {
     return this.props.tipoComponenteCodigo;
+  }
+
+  /** Repuesto del catálogo del que viene este componente, o `null` si se cargó por texto libre. */
+  get insumoId(): string | null {
+    return this.props.insumoId;
   }
 
   get descripcion(): string | null {

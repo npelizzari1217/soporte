@@ -172,31 +172,47 @@ export const crearEquipoSchema = z.object({
 });
 export type CrearEquipoFormValues = z.infer<typeof crearEquipoSchema>;
 
-/** Espejo de `CreateComponenteHttpDto`/`EditarComponenteHttpDto` (F3-Q2). */
-export const componenteSchema = z.object({
-  tipoComponenteCodigo: z.string().min(1, "Elegí un tipo de componente"),
-  descripcion: z
-    .string()
-    .max(
-      COMPONENTE_DESCRIPCION_MAX_LENGTH,
-      mensajeDemasiadoLargo("La descripción", COMPONENTE_DESCRIPCION_MAX_LENGTH),
-    )
-    .optional(),
-  numeroSerie: z
-    .string()
-    .max(
-      COMPONENTE_NUMERO_SERIE_MAX_LENGTH,
-      mensajeDemasiadoLargo("El número de serie", COMPONENTE_NUMERO_SERIE_MAX_LENGTH),
-    )
-    .optional(),
-  capacidad: z
-    .string()
-    .max(
-      COMPONENTE_CAPACIDAD_MAX_LENGTH,
-      mensajeDemasiadoLargo("La capacidad", COMPONENTE_CAPACIDAD_MAX_LENGTH),
-    )
-    .optional(),
-});
+/**
+ * Espejo de `CreateComponenteHttpDto`/`EditarComponenteHttpDto` (F3-Q2).
+ *
+ * `insumoId` (WU-3, sdd/repuestos-vinculo-componente, solo alta): vincula un
+ * repuesto del catálogo. `tipoComponenteCodigo` pasa a ser OPCIONAL a nivel
+ * de campo y se exige por `.refine()` SOLO cuando `insumoId` está vacío —
+ * mismo criterio que `@ValidateIf` en `CreateComponenteHttpDto` (backend):
+ * con un repuesto vinculado, el tipo se deriva de su familia y no hace falta
+ * elegirlo a mano. `ComponenteEditDialog` nunca setea `insumoId`, así que
+ * ahí el `.refine()` sigue exigiendo `tipoComponenteCodigo` igual que antes.
+ */
+export const componenteSchema = z
+  .object({
+    tipoComponenteCodigo: z.string().optional(),
+    insumoId: z.string().uuid().optional().or(z.literal("")),
+    descripcion: z
+      .string()
+      .max(
+        COMPONENTE_DESCRIPCION_MAX_LENGTH,
+        mensajeDemasiadoLargo("La descripción", COMPONENTE_DESCRIPCION_MAX_LENGTH),
+      )
+      .optional(),
+    numeroSerie: z
+      .string()
+      .max(
+        COMPONENTE_NUMERO_SERIE_MAX_LENGTH,
+        mensajeDemasiadoLargo("El número de serie", COMPONENTE_NUMERO_SERIE_MAX_LENGTH),
+      )
+      .optional(),
+    capacidad: z
+      .string()
+      .max(
+        COMPONENTE_CAPACIDAD_MAX_LENGTH,
+        mensajeDemasiadoLargo("La capacidad", COMPONENTE_CAPACIDAD_MAX_LENGTH),
+      )
+      .optional(),
+  })
+  .refine((valores) => !!valores.insumoId || !!valores.tipoComponenteCodigo?.trim(), {
+    message: "Elegí un tipo de componente o un repuesto del catálogo",
+    path: ["tipoComponenteCodigo"],
+  });
 export type ComponenteFormValues = z.infer<typeof componenteSchema>;
 
 /** `equipoId` OPCIONAL (vínculo ticket↔equipo, espejo de `@IsOptional() @IsUUID() equipoId` backend). */

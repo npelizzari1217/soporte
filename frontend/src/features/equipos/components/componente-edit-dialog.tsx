@@ -10,6 +10,15 @@
  * que resuelve el nombre de tipos ya no vigentes desde el dato embebido).
  * Solo aplica a componentes ACTIVOS — un componente dado de baja se edita
  * después de reactivarlo (`EditarComponenteUseCase` lo rechaza).
+ *
+ * Con `componente.insumoId != null` (VINCULADO a un repuesto del catálogo,
+ * WU-3), el select de "Tipo" se DESHABILITA: el backend deriva ese campo de
+ * la familia del repuesto y rechaza cualquier PATCH que intente cambiarlo
+ * (`ComponenteVinculadoTipoInmutableError`, hallazgo de revisión automática).
+ * Ofrecer un campo editable que el backend va a rechazar sería deshonesto —
+ * mismo criterio que la rama `insumoIdElegido` de `ComponenteCreateDialog`.
+ * El `submit()` de abajo sigue mandando este campo SIEMPRE (con el mismo
+ * valor precargado): no cambiarlo no es lo mismo que omitirlo.
  */
 import { useState } from "react";
 import { useForm } from "react-hook-form";
@@ -103,6 +112,7 @@ export function ComponenteEditDialog({ equipoId, componente }: ComponenteEditDia
             </label>
             <Select
               id="editar-componente-tipo"
+              disabled={componente.insumoId != null}
               error={!!errors.tipoComponenteCodigo}
               {...register("tipoComponenteCodigo")}
             >
@@ -112,6 +122,12 @@ export function ComponenteEditDialog({ equipoId, componente }: ComponenteEditDia
                 </option>
               ))}
             </Select>
+            {componente.insumoId != null && (
+              <p className="text-xs text-muted-foreground">
+                El tipo lo determina el repuesto vinculado del catálogo: no se puede cambiar editando este
+                componente. Para que tenga otro tipo hay que reemplazarlo (eliminarlo y agregar uno nuevo).
+              </p>
+            )}
             {errors.tipoComponenteCodigo && (
               <p role="alert" className="text-sm text-destructive">
                 {errors.tipoComponenteCodigo.message}

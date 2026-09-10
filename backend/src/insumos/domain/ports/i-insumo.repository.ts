@@ -76,9 +76,27 @@ export interface IInsumoRepository {
    * TODOS. Ese default es a propósito y está documentado en
    * `ListarInsumosUseCase` — no es "devuelve todo por descuido".
    *
+   * **Este método tiene DOS comportamientos, a propósito, y `soloVinculables`
+   * es el que elige entre ellos (WU-3, sdd/repuestos-vinculo-componente):**
+   *
+   * - `soloVinculables` AUSENTE (el comportamiento de siempre): mira el
+   *   catálogo COMPLETO, habilitados y deshabilitados por igual. Es lo que el
+   *   ABM (`InsumosListView`/`RepuestosListView`) necesita para que el
+   *   administrador pueda encontrar y reactivar algo deshabilitado — filtrar
+   *   acá rompería esa pantalla.
+   * - `soloVinculables: true`: trae SOLO los insumos que
+   *   `AgregarComponenteUseCase` aceptaría vincular a un componente —
+   *   `activo: true` Y `familia.activo: true`, las DOS condiciones que ese
+   *   use case exige por separado (`InsumoRepuestoInexistenteError` y
+   *   `FamiliaInsumoDeshabilitadaError`). Es lo que necesita un selector que
+   *   OFRECE algo para elegir: mostrar una opción que el backend va a
+   *   rechazar es peor que no mostrarla, porque el rechazo llega recién al
+   *   guardar, por algo que la pantalla ya tenía en la mano.
+   *
    * @param esRepuesto Filtro por familia; ausente trae repuestos y consumibles por igual.
+   * @param soloVinculables `true` restringe a los insumos vinculables (habilitados, de familia habilitada); ausente no aplica ese filtro.
    */
-  findAllActive(esRepuesto?: boolean): Promise<InsumoEntity[]>;
+  findAllActive(esRepuesto?: boolean, soloVinculables?: boolean): Promise<InsumoEntity[]>;
 
   /**
    * Los insumos vigentes compatibles con un modelo de equipo, ordenados por

@@ -8,6 +8,7 @@ describe('EliminarComponenteUseCase', () => {
     const componente = ComponenteEquipoEntity.create({
       equipoId: 'equipo-1',
       tipoComponenteCodigo: 'RAM',
+      insumoId: null,
       descripcion: null,
       numeroSerie: null,
       capacidad: null,
@@ -24,6 +25,7 @@ describe('EliminarComponenteUseCase', () => {
     const componente = ComponenteEquipoEntity.create({
       equipoId: 'equipo-1',
       tipoComponenteCodigo: 'RAM',
+      insumoId: null,
       descripcion: null,
       numeroSerie: null,
       capacidad: null,

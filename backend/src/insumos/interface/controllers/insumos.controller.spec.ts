@@ -77,7 +77,7 @@ describe('InsumosController', () => {
 
     await controller.listar({ esRepuesto: true });
 
-    expect(listar.execute).toHaveBeenCalledWith(true);
+    expect(listar.execute).toHaveBeenCalledWith(true, undefined);
   });
 
   it('GET /insumos con esRepuesto=false delega exactamente ese valor al caso de uso', async () => {
@@ -86,7 +86,7 @@ describe('InsumosController', () => {
 
     await controller.listar({ esRepuesto: false });
 
-    expect(listar.execute).toHaveBeenCalledWith(false);
+    expect(listar.execute).toHaveBeenCalledWith(false, undefined);
   });
 
   it('GET /insumos sin esRepuesto delega undefined (sin filtrar) al caso de uso', async () => {
@@ -95,7 +95,40 @@ describe('InsumosController', () => {
 
     await controller.listar({});
 
-    expect(listar.execute).toHaveBeenCalledWith(undefined);
+    expect(listar.execute).toHaveBeenCalledWith(undefined, undefined);
+  });
+
+  /**
+   * WU-3 (sdd/repuestos-vinculo-componente): mismo criterio de a-tres-casos
+   * que el bloque de `esRepuesto` de arriba, ahora para `soloVinculables` —
+   * sin el caso "ausente" como gemelo, un controller que SIEMPRE mandara
+   * `true` (o SIEMPRE `false`) pasaría el caso `true` por separado.
+   */
+  it('GET /insumos con soloVinculables=true delega exactamente ese valor al caso de uso', async () => {
+    const listar = { execute: vi.fn().mockResolvedValue([]) };
+    const { controller } = buildController({ listar });
+
+    await controller.listar({ soloVinculables: true });
+
+    expect(listar.execute).toHaveBeenCalledWith(undefined, true);
+  });
+
+  it('GET /insumos con soloVinculables=false delega exactamente ese valor al caso de uso', async () => {
+    const listar = { execute: vi.fn().mockResolvedValue([]) };
+    const { controller } = buildController({ listar });
+
+    await controller.listar({ soloVinculables: false });
+
+    expect(listar.execute).toHaveBeenCalledWith(undefined, false);
+  });
+
+  it('GET /insumos sin soloVinculables delega undefined (sin filtrar) al caso de uso', async () => {
+    const listar = { execute: vi.fn().mockResolvedValue([]) };
+    const { controller } = buildController({ listar });
+
+    await controller.listar({});
+
+    expect(listar.execute).toHaveBeenCalledWith(undefined, undefined);
   });
 
   it('POST /insumos crea y retorna el DTO', async () => {
