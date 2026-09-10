@@ -179,8 +179,10 @@ export class FamiliaInsumoEntity extends BaseEntity<FamiliaInsumoProps> {
 
   /**
    * `true` si la familia es un repuesto de equipo (mouse, teclado, CPU...)
-   * en vez de un consumible (tóner, cartucho...). No filtra ningún listado
-   * todavía: la marca solo habilita filtrar en un WU posterior.
+   * en vez de un consumible (tóner, cartucho...). Filtra el listado de
+   * insumos (WU-2, sdd/repuestos-seccion: `IInsumoRepository.findAllActive`,
+   * `ListarInsumosUseCase`) y separa las secciones Insumos/Repuestos del
+   * frontend.
    */
   get esRepuesto(): boolean {
     return this.props.esRepuesto;

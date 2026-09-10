@@ -107,12 +107,23 @@ export class PrismaInsumoRepository implements IInsumoRepository {
    * tiene que seguir llegando al listado para que el administrador pueda
    * volver a habilitarlo.
    *
+   * `esRepuesto` filtra por la FAMILIA (`familia.esRepuesto`, WU-1), no por
+   * una columna propia de `insumos` —no existe—: viaja como filtro sobre la
+   * relación, en la MISMA consulta, en vez de traer todo y filtrar en
+   * memoria. `undefined` omite la cláusula por completo y no filtra nada —
+   * ver el JSDoc de `IInsumoRepository.findAllActive` para el porqué de ese
+   * default.
+   *
+   * @param esRepuesto Filtro por familia; ausente trae repuestos y consumibles por igual.
    * @returns Los insumos vigentes del tenant —habilitados o no—, con su
    *   agregado completo, ordenados por código.
    */
-  async findAllActive(): Promise<InsumoEntity[]> {
+  async findAllActive(esRepuesto?: boolean): Promise<InsumoEntity[]> {
     const rows = await this.client.insumo.findMany({
-      where: { deletedAt: null },
+      where: {
+        deletedAt: null,
+        ...(esRepuesto !== undefined ? { familia: { esRepuesto } } : {}),
+      },
       orderBy: { codigo: 'asc' },
       include: INCLUIR_AGREGADO,
     });
