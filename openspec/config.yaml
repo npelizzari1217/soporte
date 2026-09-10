@@ -10,9 +10,12 @@ context: |
   espejo del backend). pnpm + Vitest, sin Jest. Postgres en Docker
   (soporte-postgres-master:5432), base de control soporte_master + una base
   por inquilino. Result<T, DomainError> para fallos esperados del dominio.
-  strict_tdd: true — el RED se verifica, nunca se asume.
+  strict_tdd: false para features — el test no tiene que escribirse antes que la
+  implementación, pero sigue viajando en el mismo commit. En bugfixes TDD sigue siendo
+  OBLIGATORIO: el test de regresión se escribe antes del fix y tiene que fallar por la
+  razón correcta. Ver AGENTS.md.
 
-strict_tdd: true
+strict_tdd: false
 
 testing:
   backend:

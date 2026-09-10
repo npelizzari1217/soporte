@@ -76,10 +76,16 @@
 
 ---
 
-## Tests y TDD
+## Tests
 
-Este proyecto trabaja con **TDD obligatorio**: el test se escribe antes que la
-implementación, y `work-unit-commits` exige que ambos viajen en el mismo commit.
+Este proyecto **no exige TDD como regla general**: para una feature, el test no tiene que
+escribirse antes que la implementación. Lo que `work-unit-commits` sí exige siempre es que
+el test y la conducta que verifica **viajen en el mismo commit**.
+
+**La excepción son los bugfixes, y ahí TDD sigue siendo obligatorio.** Un bugfix va con un
+test de regresión escrito ANTES del fix, que **falle por la razón correcta** y pase después.
+No es ceremonia: un test escrito después del fix no prueba que el bug existía, y nadie puede
+saber si habría fallado. En un bugfix, el orden **es** la evidencia.
 
 **Qué SÍ podés verificar desde acá.** Corrés en `pre-commit`, sobre un commit suelto, y
 el commit **tiene que traer sus tests adentro**. Entonces:
@@ -87,7 +93,7 @@ el commit **tiene que traer sus tests adentro**. Entonces:
 - Un commit que agrega o cambia conducta y **no trae ningún test** es hallazgo.
 - Un test cuyos asserts **describen la implementación** en vez de la conducta esperada
   (repite la fórmula del código, mockea justo lo que debía probar, afirma sobre detalles
-  internos) es la firma de un test escrito *después*. Es hallazgo.
+  internos) es hallazgo: no prueba nada que un refactor no rompa de casualidad.
 - Un test de regresión que **no podría haber fallado antes del fix** — porque su assert
   pasa por construcción, o el fixture no contiene el caso — es hallazgo.
 
@@ -95,8 +101,6 @@ el commit **tiene que traer sus tests adentro**. Entonces:
 orden en que se escribieron los archivos. **No afirmes que el RED no se verificó**: no
 tenés cómo saberlo. Limitate a lo que el diff muestra.
 
-- Las features no triviales y todo bugfix van con tests. Un bugfix necesita un test de
-  regresión que **falle antes del fix por la razón correcta** y pase después.
 - Se cubren los caminos críticos y los edge cases (errores, límites, entradas inválidas),
   no solo el happy path.
 - **Borrar o comentar tests para pasar en verde es hallazgo bloqueante.**
