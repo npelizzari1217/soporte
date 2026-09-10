@@ -155,6 +155,114 @@ export class TipoComponenteInactivoError extends DomainError {
 }
 
 /**
+ * InsumoRepuestoInexistenteError — el `insumoId` recibido al agregar un
+ * componente no existe en el catálogo de insumos del tenant, o fue dado de
+ * baja lógica.
+ * → HTTP 422 en la capa de presentación.
+ *
+ * Ref: sdd/repuestos-vinculo-componente (WU-3).
+ */
+export class InsumoRepuestoInexistenteError extends DomainError {
+  readonly code = 'INSUMO_REPUESTO_INEXISTENTE';
+
+  constructor(insumoId: string) {
+    super(
+      `El campo "insumoId" apunta al insumo con id "${insumoId}", que no existe en el catálogo de ` +
+        `este tenant o fue dado de baja. Elegí un insumo vigente del catálogo.`,
+    );
+  }
+}
+
+/**
+ * InsumoNoEsRepuestoError — el `insumoId` recibido existe y está `activo`,
+ * pero su familia tiene `esRepuesto = false`: es un consumible (tóner,
+ * cartucho...), no un repuesto de equipo. El arreglo es elegir OTRO insumo,
+ * de una familia marcada como repuesto.
+ *
+ * Va SEPARADO de `FamiliaRepuestoDeshabilitadaError` a propósito, mismo
+ * criterio que `ModeloEquipoInexistenteError`/`ModeloEquipoDeshabilitadoError`
+ * un poco más arriba en este archivo: son dos arreglos distintos —elegir otro
+ * insumo vs. habilitar la familia en el ABM—, y un solo error para los dos
+ * casos deja al usuario adivinando cuál le tocó. (Hasta WU-3 esto era un
+ * único error para ambas razones; se partió por el mismo hallazgo de
+ * revisión automática que separó los dos de `modeloEquipoId`.)
+ * → HTTP 422 en la capa de presentación.
+ *
+ * Ref: sdd/repuestos-vinculo-componente (WU-3).
+ */
+export class InsumoNoEsRepuestoError extends DomainError {
+  readonly code = 'INSUMO_NO_ES_REPUESTO';
+
+  constructor(insumoId: string) {
+    super(
+      `El insumo con id "${insumoId}" no se puede vincular a un componente: su familia no es de repuesto ` +
+        `(es un consumible). Elegí un insumo de una familia marcada como repuesto.`,
+    );
+  }
+}
+
+/**
+ * FamiliaRepuestoDeshabilitadaError — el `insumoId` recibido existe y está
+ * `activo`, y su familia tiene `esRepuesto = true`, pero la familia está
+ * DESHABILITADA (`activo = false`).
+ *
+ * Mismo criterio que `ModeloEquipoDeshabilitadoError`: la fila de la familia
+ * existe, así que la base acepta el vínculo sin chistar, y deshabilitar una
+ * familia no serviría de nada si igual se pudiera seguir vinculando
+ * repuestos de esa familia a un componente — una falla silenciosa, sin error
+ * ni log. El arreglo es habilitar la familia en el ABM, no elegir otro
+ * insumo: por eso este error va separado de `InsumoNoEsRepuestoError`.
+ *
+ * El mensaje nombra el PAR `código` + `nombre` de la familia, igual que
+ * `ModeloEquipoDeshabilitadoError` nombra `marca` + `modelo`: es lo que el
+ * administrador ve en el catálogo de familias, el id de la familia no lo lee
+ * nadie.
+ * → HTTP 422 en la capa de presentación.
+ *
+ * Ref: sdd/repuestos-vinculo-componente (WU-3, hallazgo de revisión automática).
+ */
+export class FamiliaRepuestoDeshabilitadaError extends DomainError {
+  readonly code = 'FAMILIA_REPUESTO_DESHABILITADA';
+
+  constructor(insumoId: string, familiaCodigo: string, familiaNombre: string) {
+    super(
+      `El insumo con id "${insumoId}" no se puede vincular a un componente: su familia "${familiaNombre}" ` +
+        `(código "${familiaCodigo}") es de repuesto pero está deshabilitada. Habilitala en el catálogo de ` +
+        `familias de insumo o elegí un repuesto de otra familia.`,
+    );
+  }
+}
+
+/**
+ * RepuestoSinTipoEnCatalogoError — el repuesto elegido pertenece a una familia
+ * del inquilino cuyo código NO existe en el catálogo MASTER de tipos de
+ * componente, así que no hay tipo con el que darlo de alta.
+ *
+ * Va SEPARADO de `TipoComponenteInactivoError` a propósito, aunque los dos
+ * salgan del mismo chequeo: en el camino vinculado el usuario NUNCA eligió un
+ * tipo —la pantalla se lo deshabilita y el código se deriva de la familia—,
+ * así que un error que nombre "el tipo TORNILLO" lo manda a arreglar algo que
+ * no tocó y no puede tocar. Este nombra lo que sí eligió: el repuesto y su
+ * familia.
+ *
+ * La restricción de fondo es la del WU-3: solo se pueden vincular repuestos
+ * cuya familia tenga su código sembrado también en MASTER. Se levanta en el
+ * WU-5, cuando cambie de dónde sale la autoridad del catálogo.
+ */
+export class RepuestoSinTipoEnCatalogoError extends DomainError {
+  readonly code = 'REPUESTO_SIN_TIPO_EN_CATALOGO';
+  constructor(insumoId: string, familiaCodigo: string, familiaNombre: string) {
+    super(
+      `El repuesto con id "${insumoId}" pertenece a la familia "${familiaNombre}" ` +
+        `(código "${familiaCodigo}"), que todavía no existe en el catálogo global de tipos ` +
+        `de componente. Por ahora solo se pueden vincular repuestos de las familias que ` +
+        `vienen sembradas. Elegí un repuesto de otra familia, o cargá el componente ` +
+        `escribiendo el tipo a mano.`,
+    );
+  }
+}
+
+/**
  * ComponenteNoEncontradoError — el componente de equipo con el id indicado
  * no existe o fue eliminado (soft delete).
  * → HTTP 404 en la capa de presentación.
@@ -196,6 +304,50 @@ export class ComponenteYaActivoError extends DomainError {
 
   constructor(id: string) {
     super(`El componente con id "${id}" ya está activo.`);
+  }
+}
+
+/**
+ * ComponenteVinculadoTipoInmutableError — se intentó cambiar `tipoComponenteCodigo`
+ * al editar un componente que tiene `insumoId` (vinculado a un repuesto del
+ * catálogo, WU-3).
+ *
+ * `AgregarComponenteUseCase` sostiene que es imposible que un componente diga
+ * "MOUSE" y apunte a un repuesto de familia "TECLADO" porque, en el camino
+ * vinculado, el código SIEMPRE sale de la familia del repuesto. Pero esa
+ * invariante solo cubría el ALTA: `EditarComponenteUseCase` aceptaba
+ * `tipoComponenteCodigo` sin mirar `insumoId`, así que un PATCH podía guardar
+ * la contradicción que el alta impide — la FK no lo atrapa porque la fila del
+ * insumo existe. Este error cierra ese camino: con `insumoId != null`, un
+ * cambio de `tipoComponenteCodigo` que DIFIERE del actual se rechaza siempre.
+ *
+ * Rechaza por DIFERENCIA de valor, no por presencia del campo: se corrigió
+ * después de detectar que rechazar por sola presencia dejaba de solo lectura
+ * a todo componente vinculado, porque `ComponenteEditDialog` manda
+ * `tipoComponenteCodigo` en CADA submit, lo haya tocado el usuario o no —
+ * mandar el mismo código que ya tiene no es un pedido de cambio, y
+ * rechazarlo igual le impedía editar los demás campos. No se re-deriva en
+ * silencio a propósito: en el alta el usuario nunca elige el código (la
+ * pantalla lo oculta cuando hay repuesto), así que ignorarlo no le quita
+ * nada; en una edición, mandar un código DISTINTO al actual sí es un pedido
+ * explícito de cambio — y ESE es el que se rechaza.
+ *
+ * `EditarComponenteDto` NO acepta `insumoId`: por esa vía no se puede
+ * desvincular el repuesto ni cambiarlo por otro. Por eso el mensaje nombra la
+ * salida real — reemplazar el componente — en vez de una que no existe.
+ * → HTTP 422 en la capa de presentación.
+ *
+ * Ref: sdd/repuestos-vinculo-componente (WU-3, hallazgo de revisión automática).
+ */
+export class ComponenteVinculadoTipoInmutableError extends DomainError {
+  readonly code = 'COMPONENTE_VINCULADO_TIPO_INMUTABLE';
+
+  constructor(id: string) {
+    super(
+      `El componente con id "${id}" está vinculado a un repuesto del catálogo: su tipo lo ` +
+        `determina la familia de ese repuesto y no se puede cambiar editando "tipoComponenteCodigo". ` +
+        `Para que tenga otro tipo hay que reemplazar el componente (eliminarlo y agregar uno nuevo).`,
+    );
   }
 }
 

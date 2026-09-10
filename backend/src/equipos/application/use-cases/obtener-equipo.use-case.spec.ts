@@ -30,6 +30,7 @@ describe('ObtenerEquipoUseCase', () => {
     return ComponenteEquipoEntity.create({
       equipoId,
       tipoComponenteCodigo,
+      insumoId: null,
       descripcion: null,
       numeroSerie: null,
       capacidad: null,

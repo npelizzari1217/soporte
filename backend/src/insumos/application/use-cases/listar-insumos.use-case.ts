@@ -36,10 +36,18 @@ export class ListarInsumosUseCase {
    * tiene que evitar, y por eso el frontend nunca omite el filtro en esas dos
    * pantallas.
    *
+   * `soloVinculables` (WU-3, sdd/repuestos-vinculo-componente) es un segundo
+   * filtro, independiente de `esRepuesto`: restringe a los insumos que
+   * `AgregarComponenteUseCase` aceptaría vincular a un componente
+   * (habilitados, de familia habilitada). Lo usa el select de repuesto de
+   * `ComponenteCreateDialog` — ver el JSDoc de
+   * `IInsumoRepository.findAllActive` para los dos comportamientos completos.
+   *
    * @param esRepuesto Filtro por familia; ausente trae TODOS los insumos.
-   * @returns Los insumos vigentes del tenant —habilitados o no—, ordenados por código.
+   * @param soloVinculables `true` restringe a los insumos vinculables; ausente no aplica ese filtro.
+   * @returns Los insumos vigentes del tenant, ordenados por código.
    */
-  async execute(esRepuesto?: boolean): Promise<InsumoEntity[]> {
-    return this.insumoRepo.findAllActive(esRepuesto);
+  async execute(esRepuesto?: boolean, soloVinculables?: boolean): Promise<InsumoEntity[]> {
+    return this.insumoRepo.findAllActive(esRepuesto, soloVinculables);
   }
 }

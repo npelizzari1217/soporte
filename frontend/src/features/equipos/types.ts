@@ -47,6 +47,8 @@ export interface Componente {
   id: string;
   equipoId: string;
   tipoComponenteCodigo: string;
+  /** Repuesto del catálogo vinculado (WU-3), o `null` en el camino de texto libre. */
+  insumoId: string | null;
   descripcion: string | null;
   numeroSerie: string | null;
   capacidad: string | null;
@@ -107,8 +109,10 @@ export interface EditarEquipoDto {
   fechaValorResidual?: string | null;
 }
 
+/** `tipoComponenteCodigo` es requerido SOLO si `insumoId` está ausente (WU-3): con un repuesto vinculado se deriva de su familia. */
 export interface CreateComponenteDto {
-  tipoComponenteCodigo: string;
+  tipoComponenteCodigo?: string;
+  insumoId?: string | null;
   descripcion?: string | null;
   numeroSerie?: string | null;
   capacidad?: string | null;

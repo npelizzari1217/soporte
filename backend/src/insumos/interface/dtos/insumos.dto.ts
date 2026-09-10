@@ -308,24 +308,53 @@ export class CambiarEstadoActivoInsumoDto {
 }
 
 /**
- * Query params de `GET /insumos` (WU-2, sdd/repuestos-seccion).
+ * Normaliza un booleano que llega como query param: Express los entrega
+ * siempre como string. Vive suelto y no repetido en cada campo porque la
+ * segunda copia ya había traído consigo un cast sin chequear, y la tercera
+ * lo habría vuelto permanente.
  *
- * `esRepuesto` viaja como string en la querystring (`?esRepuesto=false`);
+ * Un valor que no sea `'true'` ni `'false'` se deja pasar tal cual para que
+ * el `@IsBoolean()` de cada campo lo rechace con su propio mensaje, en vez
+ * de que esta función invente un default.
+ */
+function parsearBooleanQuery(value: unknown): unknown {
+  if (value === 'true') {
+    return true;
+  }
+  if (value === 'false') {
+    return false;
+  }
+  return value;
+}
+
+/**
+ * Query params de `GET /insumos` (WU-2, sdd/repuestos-seccion; `soloVinculables`
+ * WU-3, sdd/repuestos-vinculo-componente).
+ *
+ * Los dos viajan como string en la querystring (`?esRepuesto=false`);
  * `@Type(() => Boolean)` de `class-transformer` NO interpreta `'false'` como
- * `false` (cualquier string no vacío es truthy) — se parsea a mano, mismo
+ * `false` (cualquier string no vacío es truthy) — se parsean a mano, mismo
  * patrón que `soloEnCurso` en `ListarComprasQueryDto`.
  *
- * **AUSENTE no filtra: trae TODOS los insumos.** Ver el JSDoc de
+ * **`esRepuesto` AUSENTE no filtra: trae TODOS los insumos.** Ver el JSDoc de
  * `ListarInsumosUseCase.execute` para por qué ese default no es un descuido
  * y quiénes lo necesitan.
+ *
+ * **`soloVinculables` AUSENTE no filtra: trae habilitados y deshabilitados
+ * por igual**, el mismo default de siempre. `true` restringe a los insumos
+ * que `AgregarComponenteUseCase` aceptaría vincular — ver el JSDoc de
+ * `IInsumoRepository.findAllActive` para los dos comportamientos completos.
  */
 export class ListarInsumosQueryDto {
   @IsOptional()
-  @Transform(({ value }: { value: unknown }) =>
-    value === 'false' ? false : value === 'true' ? true : (value as boolean | undefined),
-  )
+  @Transform(({ value }: { value: unknown }) => parsearBooleanQuery(value))
   @IsBoolean()
   esRepuesto?: boolean;
+
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) => parsearBooleanQuery(value))
+  @IsBoolean()
+  soloVinculables?: boolean;
 }
 
 /** Response shape de un código alternativo dentro de la respuesta del insumo. */

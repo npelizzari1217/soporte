@@ -148,6 +148,7 @@ describe('EquiposController (T12.6)', () => {
       const componente = ComponenteEquipoEntity.create({
         equipoId: 'equipo-uuid',
         tipoComponenteCodigo: 'RAM',
+        insumoId: null,
         descripcion: '16GB',
         numeroSerie: null,
         capacidad: null,
@@ -211,6 +212,7 @@ describe('EquiposController (T12.6)', () => {
       const componente = ComponenteEquipoEntity.create({
         equipoId: 'equipo-uuid',
         tipoComponenteCodigo: 'RAM',
+        insumoId: null,
         descripcion: null,
         numeroSerie: null,
         capacidad: null,
@@ -221,6 +223,68 @@ describe('EquiposController (T12.6)', () => {
         tipoComponenteCodigo: 'RAM',
       } as any);
       expect(result.tipoComponenteCodigo).toBe('RAM');
+    });
+
+    /**
+     * El `insumoId` cruza la frontera HTTP por dos líneas —el `?? null` que
+     * lo pasa al caso de uso, y el campo del response DTO— y ninguna tenía
+     * assert: borrar cualquiera de las dos dejaba la suite entera en verde.
+     *
+     * El lado del response es el que muerde. `ComponenteEditDialog` decide
+     * con `componente.insumoId != null` si el select de tipo va
+     * deshabilitado; si el campo deja de llegar, ese guard se vuelve
+     * siempre falso EN SILENCIO, el select queda editable sobre un
+     * componente vinculado, y el usuario se come el 422
+     * `COMPONENTE_VINCULADO_TIPO_INMUTABLE` — exactamente el error que este
+     * work unit existe para evitarle.
+     */
+    it('el insumoId viaja al caso de uso Y vuelve en el response', async () => {
+      const { controller, agregarComponenteUseCase } = buildController();
+      const insumoId = '33333333-3333-4333-8333-333333333333';
+      const componente = ComponenteEquipoEntity.create({
+        equipoId: 'equipo-uuid',
+        tipoComponenteCodigo: 'MOUSE',
+        insumoId,
+        descripcion: null,
+        numeroSerie: null,
+        capacidad: null,
+      }).getValue();
+      agregarComponenteUseCase.execute.mockResolvedValue(Result.ok(componente));
+
+      const result = await controller.agregarComponente('equipo-uuid', { insumoId } as any);
+
+      expect(agregarComponenteUseCase.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ insumoId }),
+      );
+      expect(result.insumoId).toBe(insumoId);
+    });
+
+    /**
+     * Gemelo invertido: sin `insumoId` en el body, el caso de uso lo recibe
+     * en `null` —no `undefined`— y el response lo devuelve en `null`. Sin
+     * este caso, el `?? null` del controller podría desaparecer sin que nada
+     * se ponga rojo.
+     */
+    it('sin insumoId en el body, el caso de uso lo recibe en null y el response lo devuelve null', async () => {
+      const { controller, agregarComponenteUseCase } = buildController();
+      const componente = ComponenteEquipoEntity.create({
+        equipoId: 'equipo-uuid',
+        tipoComponenteCodigo: 'RAM',
+        insumoId: null,
+        descripcion: null,
+        numeroSerie: null,
+        capacidad: null,
+      }).getValue();
+      agregarComponenteUseCase.execute.mockResolvedValue(Result.ok(componente));
+
+      const result = await controller.agregarComponente('equipo-uuid', {
+        tipoComponenteCodigo: 'RAM',
+      } as any);
+
+      expect(agregarComponenteUseCase.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ insumoId: null }),
+      );
+      expect(result.insumoId).toBeNull();
     });
 
     it('tipo inactivo → 422', async () => {
@@ -268,6 +332,7 @@ describe('EquiposController (T12.6)', () => {
       const componente = ComponenteEquipoEntity.create({
         equipoId: 'equipo-uuid',
         tipoComponenteCodigo: 'RAM',
+        insumoId: null,
         descripcion: 'Editado',
         numeroSerie: null,
         capacidad: null,
@@ -314,6 +379,7 @@ describe('EquiposController (T12.6)', () => {
       const componente = ComponenteEquipoEntity.create({
         equipoId: 'equipo-uuid',
         tipoComponenteCodigo: 'RAM',
+        insumoId: null,
         descripcion: null,
         numeroSerie: null,
         capacidad: null,
@@ -469,8 +535,8 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
     (valor) => typeof valor === 'function' && valor.prototype instanceof DomainError,
   );
 
-  it('el catálogo tiene EXACTAMENTE 12 clases de error (10 previas + las 2 de modeloEquipoId)', () => {
-    expect(CLASES_DE_ERROR).toHaveLength(12);
+  it('el catálogo tiene EXACTAMENTE 17 clases de error (12 previas + las 5 de WU-3: InsumoRepuestoInexistente, InsumoNoEsRepuesto, FamiliaRepuestoDeshabilitada, RepuestoSinTipoEnCatalogo y ComponenteVinculadoTipoInmutable)', () => {
+    expect(CLASES_DE_ERROR).toHaveLength(17);
   });
 
   const TABLA: Array<[string, () => DomainError, 404 | 422]> = [
@@ -530,6 +596,39 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
     [
       'ModeloEquipoDeshabilitadoError',
       () => new EquiposErrors.ModeloEquipoDeshabilitadoError('modelo-1', 'HP', 'LaserJet Pro M404'),
+      422,
+    ],
+    // Los dos de `insumoId` (WU-3, sdd/repuestos-vinculo-componente) van a 422
+    // por el mismo criterio que los de `modeloEquipoId`/`tipoComponenteCodigo`:
+    // un valor del BODY que referencia un catálogo, no el recurso de la URL.
+    [
+      'InsumoRepuestoInexistenteError',
+      () => new EquiposErrors.InsumoRepuestoInexistenteError('insumo-1'),
+      422,
+    ],
+    ['InsumoNoEsRepuestoError', () => new EquiposErrors.InsumoNoEsRepuestoError('insumo-1'), 422],
+    // `FamiliaRepuestoDeshabilitadaError` (WU-3, hallazgo de revisión automática):
+    // split de `InsumoNoEsRepuestoError` — mismo criterio 422 que su hermano.
+    [
+      'FamiliaRepuestoDeshabilitadaError',
+      () =>
+        new EquiposErrors.FamiliaRepuestoDeshabilitadaError('insumo-1', 'TORNILLO', 'Tornillos'),
+      422,
+    ],
+    // `RepuestoSinTipoEnCatalogoError` (WU-3): el camino vinculado no puede
+    // devolver `TipoComponenteInactivoError`, porque el usuario nunca eligió
+    // ese tipo — se derivó de la familia y la pantalla se lo deshabilitó.
+    [
+      'RepuestoSinTipoEnCatalogoError',
+      () => new EquiposErrors.RepuestoSinTipoEnCatalogoError('insumo-1', 'TORNILLO', 'Tornillos'),
+      422,
+    ],
+    // Editar `tipoComponenteCodigo` de un componente VINCULADO a un repuesto
+    // (WU-3, hallazgo de revisión automática): mismo criterio 422 que el
+    // resto de valores del BODY que referencian un catálogo.
+    [
+      'ComponenteVinculadoTipoInmutableError',
+      () => new EquiposErrors.ComponenteVinculadoTipoInmutableError('componente-1'),
       422,
     ],
   ];

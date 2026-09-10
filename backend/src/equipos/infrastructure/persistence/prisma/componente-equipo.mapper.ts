@@ -20,6 +20,7 @@ export class ComponenteEquipoMapper {
       {
         equipoId: row.equipoId,
         tipoComponenteCodigo: row.tipoComponenteCodigo,
+        insumoId: row.insumoId ?? null,
         descripcion: row.descripcion ?? null,
         numeroSerie: row.numeroSerie ?? null,
         capacidad: row.capacidad ?? null,
@@ -41,6 +42,7 @@ export class ComponenteEquipoMapper {
       id: entity.id,
       equipoId: entity.equipoId,
       tipoComponenteCodigo: entity.tipoComponenteCodigo,
+      insumoId: entity.insumoId,
       descripcion: entity.descripcion,
       numeroSerie: entity.numeroSerie,
       capacidad: entity.capacidad,

@@ -23,6 +23,7 @@ import {
   Min,
   MinLength,
   IsUUID,
+  ValidateIf,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { EsNumeroConDecimales } from '../../../shared/interface/validators/es-numero-con-decimales';
@@ -253,10 +254,22 @@ export class CreateComponenteHttpDto {
    * MASTER por igualdad exacta ANTES de llegar al dominio — un código
    * demasiado largo ya vuelve 422 (`TipoComponenteInactivoError`) sin tocar
    * nunca el INSERT (ver el JSDoc de `componente-equipo.entity.ts`).
+   *
+   * `@ValidateIf` (WU-3, sdd/repuestos-vinculo-componente): obligatorio SOLO
+   * en el camino de texto libre (`insumoId` ausente). Cuando `insumoId`
+   * viene, el use case DERIVA este código de la familia del repuesto y
+   * descarta lo que llegue acá — exigirlo igual obligaría a mandar un valor
+   * que nunca se usa.
    */
+  @ValidateIf((dto: CreateComponenteHttpDto) => dto.insumoId == null)
   @IsString()
   @MinLength(1)
-  tipoComponenteCodigo!: string;
+  tipoComponenteCodigo?: string;
+
+  /** Repuesto del catálogo a vincular (WU-3). Ausente/`null` = camino de texto libre. */
+  @IsOptional()
+  @IsUUID()
+  insumoId?: string | null;
 
   @IsOptional()
   @IsString()
@@ -362,6 +375,8 @@ export interface ComponenteResponseDto {
   id: string;
   equipoId: string;
   tipoComponenteCodigo: string;
+  /** Repuesto del catálogo vinculado (WU-3), o `null` en el camino de texto libre. */
+  insumoId: string | null;
   descripcion: string | null;
   numeroSerie: string | null;
   capacidad: string | null;
@@ -377,6 +392,7 @@ export function toComponenteResponseDto(componente: ComponenteEquipoEntity): Com
     id: componente.id,
     equipoId: componente.equipoId,
     tipoComponenteCodigo: componente.tipoComponenteCodigo,
+    insumoId: componente.insumoId,
     descripcion: componente.descripcion,
     numeroSerie: componente.numeroSerie,
     capacidad: componente.capacidad,

@@ -25,6 +25,13 @@
  * `item-edit-dialog`: se puede comprar cualquier insumo). Las dos pantallas
  * de sección nunca dependen de ese default: siempre pasan `false` o `true`
  * explícito.
+ *
+ * `soloVinculables` (WU-3, sdd/repuestos-vinculo-componente) también corre en
+ * el SERVIDOR: restringe a los insumos que `AgregarComponenteUseCase`
+ * aceptaría vincular a un componente (habilitados, de familia habilitada).
+ * Lo usa `ComponenteCreateDialog` para su select de repuesto — un selector
+ * que OFRECE algo para elegir no puede mostrar una opción que el backend va
+ * a rechazar. **AUSENTE no filtra**, el mismo default de siempre.
  */
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/shared/api/client";
@@ -36,12 +43,13 @@ const INSUMOS_STALE_TIME = 5 * 60_000;
 
 /**
  * @param esRepuesto Filtro por familia; ausente trae TODOS los insumos.
+ * @param soloVinculables `true` restringe a los insumos vinculables; ausente no aplica ese filtro.
  * @returns La query del catálogo de insumos del inquilino.
  */
-export function useInsumos(esRepuesto?: boolean) {
-  const qs = buildQueryString({ esRepuesto });
+export function useInsumos(esRepuesto?: boolean, soloVinculables?: boolean) {
+  const qs = buildQueryString({ esRepuesto, soloVinculables });
   return useQuery({
-    queryKey: ["insumos", esRepuesto ?? null],
+    queryKey: ["insumos", esRepuesto ?? null, soloVinculables ?? null],
     queryFn: () => apiFetch<Insumo[]>(`insumos${qs ? `?${qs}` : ""}`),
     staleTime: INSUMOS_STALE_TIME,
   });

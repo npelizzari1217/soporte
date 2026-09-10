@@ -68,6 +68,10 @@ describe('Equipos Persistence Repos — Integration (PR11)', () => {
   const equipoIdsCreados: string[] = [];
   /** Fixture del catálogo `modelos_equipo` — destino de `equipos.modelo_equipo_id`. */
   let modeloEquipoId: string;
+  /** Fixtures de WU-3 — destino de `componentes_equipo.insumo_id` (FK real, misma base). */
+  let unidadMedidaId: string;
+  let familiaInsumoRepuestoId: string;
+  let insumoRepuestoId: string;
 
   function makeTicketProps(overrides: Partial<TicketProps> = {}): TicketProps {
     return {
@@ -153,6 +157,29 @@ describe('Equipos Persistence Repos — Integration (PR11)', () => {
       data: { marca: `T11_TEST_HP_${RUN_PREFIX}`, modelo: 'LaserJet Pro M404' },
     });
     modeloEquipoId = modeloEquipo.id;
+
+    // Fixtures de WU-3 (sdd/repuestos-vinculo-componente): repuesto real del
+    // catálogo del tenant para cubrir `componentes_equipo.insumo_id` (FK real,
+    // MISMA base — a diferencia de `tipoComponenteCodigo`, cross-DB).
+    const unidadMedida = await tenantClient.unidadMedida.create({
+      data: { codigo: `T11_TEST_UN_${RUN_PREFIX}`, nombre: 'Unidad Test PR11' },
+    });
+    unidadMedidaId = unidadMedida.id;
+
+    const familiaRepuesto = await tenantClient.familiaInsumo.create({
+      data: { codigo: `T11_TEST_MOUSE_${RUN_PREFIX}`, nombre: 'Mouse Test PR11', esRepuesto: true },
+    });
+    familiaInsumoRepuestoId = familiaRepuesto.id;
+
+    const insumoRepuesto = await tenantClient.insumo.create({
+      data: {
+        codigo: `T11_TEST_REP_${RUN_PREFIX}`,
+        nombre: 'Mouse óptico Test PR11',
+        familiaId: familiaInsumoRepuestoId,
+        unidadMedidaId,
+      },
+    });
+    insumoRepuestoId = insumoRepuesto.id;
   }, 30_000);
 
   afterAll(async () => {
@@ -170,6 +197,11 @@ describe('Equipos Persistence Repos — Integration (PR11)', () => {
       });
       await tenantClient.equipoInformatico.deleteMany({ where: { id: { in: equipoIdsCreados } } });
     }
+    // Después de los componentes (arriba): `componentes_equipo.insumo_id` (WU-3,
+    // ON DELETE RESTRICT) apunta acá — borrar el insumo antes fallaría.
+    await tenantClient.insumo.delete({ where: { id: insumoRepuestoId } });
+    await tenantClient.familiaInsumo.delete({ where: { id: familiaInsumoRepuestoId } });
+    await tenantClient.unidadMedida.delete({ where: { id: unidadMedidaId } });
     // Después de los equipos: `equipos_informaticos.modelo_equipo_id` apunta acá.
     await tenantClient.modeloEquipo.delete({ where: { id: modeloEquipoId } });
     await tenantClient.prioridad.delete({ where: { id: prioridadMediaId } });
@@ -307,6 +339,7 @@ describe('Equipos Persistence Repos — Integration (PR11)', () => {
       const componente1 = ComponenteEquipoEntity.create({
         equipoId: equipo.id,
         tipoComponenteCodigo: tipoComponenteRamCodigo,
+        insumoId: null,
         descripcion: 'RAM slot 1',
         numeroSerie: null,
         capacidad: '8GB',
@@ -314,6 +347,7 @@ describe('Equipos Persistence Repos — Integration (PR11)', () => {
       const componente2 = ComponenteEquipoEntity.create({
         equipoId: equipo.id,
         tipoComponenteCodigo: tipoComponenteRamCodigo,
+        insumoId: null,
         descripcion: 'RAM slot 2',
         numeroSerie: null,
         capacidad: '8GB',
@@ -321,6 +355,7 @@ describe('Equipos Persistence Repos — Integration (PR11)', () => {
       const componenteABorrar = ComponenteEquipoEntity.create({
         equipoId: equipo.id,
         tipoComponenteCodigo: tipoComponenteRamCodigo,
+        insumoId: null,
         descripcion: 'RAM a borrar',
         numeroSerie: null,
         capacidad: '4GB',
@@ -334,6 +369,88 @@ describe('Equipos Persistence Repos — Integration (PR11)', () => {
 
         const activos = await componenteRepo.findActiveByEquipoId(equipo.id);
         expect(activos.map((c) => c.id).sort()).toEqual([componente1.id, componente2.id].sort());
+      });
+    });
+
+    /**
+     * T-INT [WU-3, sdd/repuestos-vinculo-componente] — `insumo_id` es
+     * NULLABLE (camino de texto libre, sin backfill) y, cuando viene, es una
+     * FK REAL contra Postgres: un id inexistente lo rechaza la base, no una
+     * validación de aplicación que podría faltar.
+     */
+    it('save() con insumoId NULL persiste el camino de texto libre (sin backfill)', async () => {
+      const equipo = await crearEquipo();
+      const componente = ComponenteEquipoEntity.create({
+        equipoId: equipo.id,
+        tipoComponenteCodigo: tipoComponenteRamCodigo,
+        insumoId: null,
+        descripcion: 'Cargado a mano',
+        numeroSerie: null,
+        capacidad: null,
+      }).getValue();
+
+      await withTenant(async () => {
+        await componenteRepo.save(componente);
+        const encontrado = await componenteRepo.findById(componente.id);
+        expect(encontrado!.insumoId).toBeNull();
+      });
+    });
+
+    /**
+     * El segundo `save()` es parte del caso y no un caso aparte, por el mismo
+     * motivo que en `modeloEquipoId sobrevive al INSERT y al UPDATE`: el objeto
+     * que arma `ComponenteEquipoMapper.toPersistence()` es el MISMO que viaja
+     * al `update` del upsert. Si alguien vuelve a excluir `insumoId` de ese
+     * literal —o peor, lo fija en `null`— el vínculo con el repuesto se borra
+     * solo en el siguiente guardado, sin error y sin log.
+     *
+     * Y ese segundo guardado no es hipotético: es el camino normal. Editar la
+     * descripción de un componente vinculado termina en `componenteRepo.save()`
+     * (`EditarComponenteUseCase`, y lo mismo `ReactivarComponenteUseCase`),
+     * y `actualizar()` no toca `insumoId`. Probar solo el INSERT deja afuera
+     * justo la mitad donde se pierden datos, y ningún otro caso de esta suite
+     * lo vería: todos los demás componentes de fixture tienen `insumoId: null`.
+     */
+    it('insumoId sobrevive al INSERT y al UPDATE de save()', async () => {
+      const equipo = await crearEquipo();
+      const componente = ComponenteEquipoEntity.create({
+        equipoId: equipo.id,
+        tipoComponenteCodigo: tipoComponenteRamCodigo,
+        insumoId: insumoRepuestoId,
+        descripcion: null,
+        numeroSerie: null,
+        capacidad: null,
+      }).getValue();
+
+      await withTenant(async () => {
+        await componenteRepo.save(componente);
+        const trasInsert = await componenteRepo.findById(componente.id);
+        expect(trasInsert!.insumoId).toBe(insumoRepuestoId);
+      });
+
+      componente.actualizar({ descripcion: 'Memoria renombrada' });
+      await withTenant(async () => {
+        await componenteRepo.save(componente);
+        const trasUpdate = await componenteRepo.findById(componente.id);
+        expect(trasUpdate!.descripcion).toBe('Memoria renombrada');
+        expect(trasUpdate!.insumoId).toBe(insumoRepuestoId);
+      });
+    });
+
+    it('save() con insumoId inexistente falla — la FK real lo rechaza', async () => {
+      const equipo = await crearEquipo();
+      const insumoIdInexistente = '00000000-0000-7000-8000-000000000000';
+      const componente = ComponenteEquipoEntity.create({
+        equipoId: equipo.id,
+        tipoComponenteCodigo: tipoComponenteRamCodigo,
+        insumoId: insumoIdInexistente,
+        descripcion: null,
+        numeroSerie: null,
+        capacidad: null,
+      }).getValue();
+
+      await withTenant(async () => {
+        await expect(componenteRepo.save(componente)).rejects.toThrow();
       });
     });
   });

@@ -10,6 +10,9 @@ import { TipoComponenteCodigoRequeridoError } from '../errors/equipos.errors';
  * catálogo MASTER por `codigo` (string estable, ej. "RAM"), no por `id`
  * tenant — el catálogo tenant `tipos_componente` se elimina.
  *
+ * WU-3 (sdd/repuestos-vinculo-componente): agrega `insumoId`, FK real y
+ * NULLABLE hacia el repuesto del catálogo del que viene el componente.
+ *
  * Ref spec: sdd/flujos-especializados/spec F3-Q2. Ref design: ADR-9.
  */
 describe('ComponenteEquipoEntity', () => {
@@ -17,6 +20,7 @@ describe('ComponenteEquipoEntity', () => {
     const result = ComponenteEquipoEntity.create({
       equipoId: 'equipo-1',
       tipoComponenteCodigo: '',
+      insumoId: null,
       descripcion: null,
       numeroSerie: null,
       capacidad: null,
@@ -25,10 +29,11 @@ describe('ComponenteEquipoEntity', () => {
     expect(result.getError()).toBeInstanceOf(TipoComponenteCodigoRequeridoError);
   });
 
-  it('create() acepta un componente válido con tipoComponenteCodigo presente', () => {
+  it('create() acepta un componente válido con tipoComponenteCodigo presente, sin repuesto vinculado (camino de texto libre)', () => {
     const result = ComponenteEquipoEntity.create({
       equipoId: 'equipo-1',
       tipoComponenteCodigo: 'RAM',
+      insumoId: null,
       descripcion: 'Kingston 16GB',
       numeroSerie: null,
       capacidad: '16GB',
@@ -38,6 +43,20 @@ describe('ComponenteEquipoEntity', () => {
     expect(componente.equipoId).toBe('equipo-1');
     expect(componente.tipoComponenteCodigo).toBe('RAM');
     expect(componente.capacidad).toBe('16GB');
+    expect(componente.insumoId).toBeNull();
+  });
+
+  it('create() acepta un componente con un repuesto vinculado (insumoId presente)', () => {
+    const result = ComponenteEquipoEntity.create({
+      equipoId: 'equipo-1',
+      tipoComponenteCodigo: 'MOUSE',
+      insumoId: 'insumo-1',
+      descripcion: null,
+      numeroSerie: null,
+      capacidad: null,
+    });
+    expect(result.isOk()).toBe(true);
+    expect(result.getValue().insumoId).toBe('insumo-1');
   });
 
   /**
@@ -51,6 +70,7 @@ describe('ComponenteEquipoEntity', () => {
       return {
         equipoId: 'equipo-1',
         tipoComponenteCodigo: 'RAM',
+        insumoId: null,
         descripcion: null,
         numeroSerie: null,
         capacidad: null,
@@ -94,6 +114,7 @@ describe('ComponenteEquipoEntity', () => {
         {
           equipoId: 'equipo-1',
           tipoComponenteCodigo: 'RAM',
+          insumoId: null,
           descripcion: 'A'.repeat(300),
           numeroSerie: null,
           capacidad: null,
@@ -106,11 +127,12 @@ describe('ComponenteEquipoEntity', () => {
     ).not.toThrow();
   });
 
-  it('reconstitute() restaura estado desde persistencia', () => {
+  it('reconstitute() restaura un componente EXISTENTE sin repuesto vinculado (insumoId null) desde persistencia', () => {
     const componente = ComponenteEquipoEntity.reconstitute(
       {
         equipoId: 'equipo-1',
         tipoComponenteCodigo: 'CPU',
+        insumoId: null,
         descripcion: null,
         numeroSerie: null,
         capacidad: null,
@@ -122,12 +144,14 @@ describe('ComponenteEquipoEntity', () => {
     );
     expect(componente.id).toBe('componente-1');
     expect(componente.tipoComponenteCodigo).toBe('CPU');
+    expect(componente.insumoId).toBeNull();
   });
 
   it('activo es true recién creado y false luego de softDelete()', () => {
     const componente = ComponenteEquipoEntity.create({
       equipoId: 'equipo-1',
       tipoComponenteCodigo: 'RAM',
+      insumoId: null,
       descripcion: null,
       numeroSerie: null,
       capacidad: null,
@@ -143,6 +167,7 @@ describe('ComponenteEquipoEntity', () => {
     const componente = ComponenteEquipoEntity.create({
       equipoId: 'equipo-1',
       tipoComponenteCodigo: 'RAM',
+      insumoId: null,
       descripcion: 'Original',
       numeroSerie: 'SN-1',
       capacidad: '8GB',
@@ -160,6 +185,7 @@ describe('ComponenteEquipoEntity', () => {
     const componente = ComponenteEquipoEntity.create({
       equipoId: 'equipo-1',
       tipoComponenteCodigo: 'RAM',
+      insumoId: null,
       descripcion: null,
       numeroSerie: null,
       capacidad: null,

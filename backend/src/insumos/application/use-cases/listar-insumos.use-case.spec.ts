@@ -46,7 +46,7 @@ describe('ListarInsumosUseCase', () => {
 
     await useCase.execute(true);
 
-    expect(repo.findAllActive).toHaveBeenCalledWith(true);
+    expect(repo.findAllActive).toHaveBeenCalledWith(true, undefined);
   });
 
   /** Gemelo invertido del caso anterior: `false` no se confunde con `undefined`. */
@@ -56,21 +56,41 @@ describe('ListarInsumosUseCase', () => {
 
     await useCase.execute(false);
 
-    expect(repo.findAllActive).toHaveBeenCalledWith(false);
+    expect(repo.findAllActive).toHaveBeenCalledWith(false, undefined);
   });
 
   /**
-   * Comportamiento cuando el parámetro se omite: delega `undefined`, que el
-   * repositorio interpreta como "sin filtrar" — devuelve repuestos y
-   * consumibles por igual. Ver el JSDoc de `execute` para por qué este
-   * default NO es un descuido.
+   * Comportamiento cuando se omiten LOS DOS parámetros: delega `undefined` en
+   * ambos, que el repositorio interpreta como "sin filtrar" — repuestos y
+   * consumibles por igual, y el catálogo completo que necesita el ABM.
+   *
+   * Es un solo caso y no dos porque la llamada, el setup y el assert son
+   * idénticos: dos tests con el mismo cuerpo y distinto título no cubren dos
+   * condiciones, cubren una y la cuentan dos veces. Ver el JSDoc de `execute`
+   * para por qué estos defaults NO son un descuido.
    */
-  it('esRepuesto omitido: delega undefined al repositorio, sin filtrar', async () => {
+  it('ambos parámetros omitidos: delega undefined en los dos, sin filtrar', async () => {
     const repo = { findAllActive: vi.fn().mockResolvedValue([]) };
     const useCase = new ListarInsumosUseCase(repo);
 
     await useCase.execute();
 
-    expect(repo.findAllActive).toHaveBeenCalledWith(undefined);
+    expect(repo.findAllActive).toHaveBeenCalledWith(undefined, undefined);
+  });
+
+  /**
+   * WU-3 (sdd/repuestos-vinculo-componente): el filtro por vinculabilidad
+   * también se resuelve en el repositorio (ver
+   * `prisma-insumo.repository.integration.spec.ts`, bloque `soloVinculables`,
+   * para los asserts de filtrado real). Acá solo se prueba que el caso de uso
+   * DELEGA el segundo parámetro tal cual, sin perderlo.
+   */
+  it('delega soloVinculables=true al repositorio', async () => {
+    const repo = { findAllActive: vi.fn().mockResolvedValue([]) };
+    const useCase = new ListarInsumosUseCase(repo);
+
+    await useCase.execute(undefined, true);
+
+    expect(repo.findAllActive).toHaveBeenCalledWith(undefined, true);
   });
 });

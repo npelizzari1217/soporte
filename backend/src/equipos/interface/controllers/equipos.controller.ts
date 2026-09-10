@@ -83,7 +83,12 @@ import {
   ComponenteNoEncontradoError,
   ComponenteDadoDeBajaError,
   ComponenteYaActivoError,
+  ComponenteVinculadoTipoInmutableError,
   ExportacionDemasiadoGrandeError,
+  InsumoRepuestoInexistenteError,
+  InsumoNoEsRepuestoError,
+  FamiliaRepuestoDeshabilitadaError,
+  RepuestoSinTipoEnCatalogoError,
 } from '../../domain/errors/equipos.errors';
 
 import {
@@ -120,6 +125,17 @@ export function toHttpException(
     error instanceof ModeloEquipoDeshabilitadoError ||
     error instanceof ComponenteDadoDeBajaError ||
     error instanceof ComponenteYaActivoError ||
+    // `insumoId` es otro valor del BODY que referencia un catálogo (WU-3,
+    // sdd/repuestos-vinculo-componente): mismo criterio 422 que
+    // `modeloEquipoId`/`tipoComponenteCodigo`.
+    error instanceof InsumoRepuestoInexistenteError ||
+    error instanceof InsumoNoEsRepuestoError ||
+    error instanceof FamiliaRepuestoDeshabilitadaError ||
+    error instanceof RepuestoSinTipoEnCatalogoError ||
+    // Editar `tipoComponenteCodigo` de un componente VINCULADO a un repuesto
+    // (WU-3, hallazgo de revisión automática): el valor rechazado viaja en el
+    // BODY, mismo criterio 422 que sus hermanos de esta lista.
+    error instanceof ComponenteVinculadoTipoInmutableError ||
     // Exportación a CSV (sdd/exportar-listados-csv, decisión D2): cae igual
     // en 422 por el default, pero se lista explícito como los demás — el
     // default existe para el error que NADIE mapeó, no para ahorrarse una
@@ -342,9 +358,12 @@ export class EquiposController {
 
   /**
    * POST /equipos/:id/componentes
-   * Agrega un componente físico al equipo.
+   * Agrega un componente físico al equipo. `insumoId` (WU-3, opcional) vincula
+   * un repuesto del catálogo — deriva `tipoComponenteCodigo` de su familia.
    * @throws 404 equipo inexistente
-   * @throws 422 tipo de componente inexistente/inactivo
+   * @throws 422 tipo de componente inexistente/inactivo, insumo inexistente,
+   *   insumo cuya familia no es de repuesto (es un consumible), o insumo
+   *   cuya familia SÍ es de repuesto pero está deshabilitada
    */
   @Post(':id/componentes')
   @RequiereAcciones('EQUIPOS:ALTAS')
@@ -356,6 +375,7 @@ export class EquiposController {
     const result = await this.agregarComponenteUseCase.execute({
       equipoId: id,
       tipoComponenteCodigo: dto.tipoComponenteCodigo,
+      insumoId: dto.insumoId ?? null,
       descripcion: dto.descripcion ?? null,
       numeroSerie: dto.numeroSerie ?? null,
       capacidad: dto.capacidad ?? null,
@@ -389,7 +409,8 @@ export class EquiposController {
    * PATCH /equipos/:id/componentes/:componenteId
    * Edita un componente ACTIVO (listado enriquecido de componentes).
    * @throws 404 componente inexistente
-   * @throws 422 componente dado de baja, o tipo de componente inexistente/inactivo
+   * @throws 422 componente dado de baja, tipo de componente inexistente/inactivo,
+   *   o intento de cambiar el tipo de un componente vinculado a un repuesto
    */
   @Patch(':id/componentes/:componenteId')
   @RequiereAcciones('EQUIPOS:MODIFICACION')

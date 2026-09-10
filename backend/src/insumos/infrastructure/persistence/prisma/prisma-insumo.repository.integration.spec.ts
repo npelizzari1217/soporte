@@ -437,6 +437,105 @@ describe('PrismaInsumoRepository — Integration', () => {
     });
   });
 
+  /**
+   * WU-3 (sdd/repuestos-vinculo-componente): `soloVinculables` restringe a
+   * los insumos que `AgregarComponenteUseCase` aceptaría vincular —
+   * `activo: true` Y `familia.activo: true`, las DOS condiciones que ese use
+   * case exige por separado. De ahí la familia DESHABILITADA propia de este
+   * bloque, que ninguna otra `describe` de este spec necesita.
+   */
+  describe('findAllActive() — filtro soloVinculables', () => {
+    let familiaDeshabilitadaId: string;
+
+    // Sin `afterAll` propio, mismo motivo que `familiaRepuestoId` arriba: el
+    // `afterAll` EXTERNO ya la barre, DESPUÉS de `limpiarInsumos()`.
+    beforeAll(async () => {
+      const familiaDeshabilitada = await tenantClient.familiaInsumo.create({
+        data: {
+          codigo: `${PREFIJO}FD`,
+          nombre: 'Familia deshabilitada de prueba',
+          activo: false,
+        },
+      });
+      familiaDeshabilitadaId = familiaDeshabilitada.id;
+    });
+
+    function construirInsumoEnFamilia(
+      sufijo: string,
+      familia: string,
+      activo: boolean,
+    ): InsumoEntity {
+      const insumo = InsumoEntity.create({
+        codigo: `${PREFIJO}${sufijo}`,
+        nombre: `Insumo ${sufijo}`,
+        familiaId: familia,
+        unidadMedidaId,
+        stockMinimo: null,
+        activo: true,
+        codigosAlternativos: [],
+        compatibilidad: [],
+      });
+      if (!activo) insumo.desactivar();
+      return insumo;
+    }
+
+    it('findAllActive(undefined, true) NO incluye un insumo habilitado de familia deshabilitada', async () => {
+      // Insumo HABILITADO, familia DESHABILITADA: es el hallazgo que originó
+      // este work unit — el select lo ofrecía y el alta terminaba en un 422
+      // `FAMILIA_INSUMO_DESHABILITADA` por algo que el usuario acababa de ver
+      // en la lista.
+      const deFamiliaDeshabilitada = construirInsumoEnFamilia(
+        'VINC_FAM_A',
+        familiaDeshabilitadaId,
+        true,
+      );
+      const vinculable = construirInsumoEnFamilia('VINC_FAM_B', familiaId, true);
+      await repo.save(deFamiliaDeshabilitada);
+      await repo.save(vinculable);
+
+      const vinculables = await repo.findAllActive(undefined, true);
+
+      expect(vinculables.some((i) => i.id === deFamiliaDeshabilitada.id)).toBe(false);
+      // Gemelo invertido: el vinculable de familia habilitada SÍ tiene que
+      // aparecer — sin este assert, un filtro que no filtrara nada (o que
+      // filtrara de más y dejara la lista vacía) pasaría igual.
+      expect(vinculables.some((i) => i.id === vinculable.id)).toBe(true);
+    });
+
+    it('findAllActive(undefined, true) NO incluye un insumo deshabilitado, aunque su familia esté habilitada', async () => {
+      const deshabilitado = construirInsumoEnFamilia('VINC_ACT_A', familiaId, false);
+      const vinculable = construirInsumoEnFamilia('VINC_ACT_B', familiaId, true);
+      await repo.save(deshabilitado);
+      await repo.save(vinculable);
+
+      const vinculables = await repo.findAllActive(undefined, true);
+
+      expect(vinculables.some((i) => i.id === deshabilitado.id)).toBe(false);
+      expect(vinculables.some((i) => i.id === vinculable.id)).toBe(true);
+    });
+
+    it('findAllActive() SIN soloVinculables SÍ incluye el insumo de familia deshabilitada — el ABM lo necesita', async () => {
+      // Gemelo invertido de todo el bloque: sin el parámetro, el catálogo
+      // completo (el que usa el ABM) tiene que seguir trayendo TODO, mismo
+      // criterio que `findAllActive() SÍ incluye un insumo deshabilitado` más
+      // arriba. Sin este caso, un `findAllActive` que SIEMPRE aplicara el
+      // filtro de familia pasaría los dos tests de arriba igual.
+      const deFamiliaDeshabilitada = construirInsumoEnFamilia(
+        'VINC_ABM_A',
+        familiaDeshabilitadaId,
+        true,
+      );
+      const deshabilitado = construirInsumoEnFamilia('VINC_ABM_B', familiaId, false);
+      await repo.save(deFamiliaDeshabilitada);
+      await repo.save(deshabilitado);
+
+      const todos = await repo.findAllActive();
+
+      expect(todos.some((i) => i.id === deFamiliaDeshabilitada.id)).toBe(true);
+      expect(todos.some((i) => i.id === deshabilitado.id)).toBe(true);
+    });
+  });
+
   it('findAllActive() trae los códigos alternativos de cada insumo', async () => {
     const insumo = construirInsumo('CONCODIGOS', [
       InsumoCodigoAlternativoEntity.create({ codigo: `${PREFIJO}LISTADO`, fabricante: 'CANON' }),
