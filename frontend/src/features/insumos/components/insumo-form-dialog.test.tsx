@@ -26,6 +26,7 @@ function buildFamilia(overrides: Partial<FamiliaInsumo> = {}): FamiliaInsumo {
     codigo: "CONSUMIBLES",
     nombre: "Consumibles de impresión",
     activo: true,
+    esRepuesto: false,
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
     ...overrides,
@@ -285,10 +286,12 @@ describe("InsumoFormDialog — validación cliente-side", () => {
 });
 
 /**
- * Es la situación real de producción hoy: las dos tablas de catálogo (familias
- * y unidades de medida) todavía están vacías. Sin este manejo, el usuario se
- * queda mirando dos `<select>` sin ninguna opción y sin ninguna pista de qué
- * hacer al respecto.
+ * Un catálogo vacío es un estado alcanzable, no una hipótesis: `unidades_medida`
+ * nace vacía en todo inquilino nuevo, y `familias_insumo` —que desde
+ * sdd/repuestos-familias sí trae un piso sembrado— vuelve a quedar sin opciones
+ * si el administrador desactiva todas. Sin este manejo, el usuario se queda
+ * mirando dos `<select>` sin ninguna opción y sin ninguna pista de qué hacer al
+ * respecto.
  */
 describe("InsumoFormDialog — catálogos auxiliares vacíos", () => {
   it("sin familias ni unidades cargadas, avisa y deshabilita los dos selects", async () => {

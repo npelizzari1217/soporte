@@ -1,0 +1,16 @@
+-- Migration: 20260910120000_add_familia_insumo_es_repuesto
+-- WU-1 — sdd/repuestos-familias (proyecto soporte)
+--
+-- Un repuesto de equipo (mouse, teclado, CPU, tornillo...) es un `Insumo`
+-- como cualquier otro: se compra, tiene stock, se consume. Lo que lo
+-- distingue del resto del catálogo (tóner, cartucho...) es su FAMILIA. Esta
+-- columna agrega esa distinción; NINGÚN listado ni pantalla cambia de
+-- conducta todavía — filtrar por ella es un WU posterior.
+--
+-- DEFAULT false es solo el piso de las dos filas existentes en producción
+-- (TONNER y LIMP, consumibles reales, no repuestos) y de quien no marque
+-- nada en el ABM. La elección real la hace el administrador del tenant al
+-- crear o editar una familia: ver CrearFamiliaInsumoUseCase y
+-- EditarFamiliaInsumoUseCase, que siempre mandan el valor explícito en el
+-- INSERT/UPDATE — el DEFAULT de la columna no actúa en ese camino.
+ALTER TABLE "familias_insumo" ADD COLUMN "es_repuesto" BOOLEAN NOT NULL DEFAULT false;

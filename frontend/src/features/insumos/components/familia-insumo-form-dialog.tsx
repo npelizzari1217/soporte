@@ -12,6 +12,7 @@ import type { ReactNode } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useCrearFamiliaInsumo, useEditarFamiliaInsumo } from "../hooks/use-familia-insumo-mutations";
 import { familiaInsumoSchema, type FamiliaInsumoFormValues } from "../schemas";
 import type { FamiliaInsumo } from "../types";
@@ -31,13 +32,15 @@ export function FamiliaInsumoFormDialog({ trigger, familia }: FamiliaInsumoFormD
   // Recalculado en CADA render: el reset de apertura inyecta el dato vigente
   // aunque el diálogo lleve montado desde el primer pintado de la tabla.
   const valoresVigentes: FamiliaInsumoFormValues = familia
-    ? { codigo: familia.codigo, nombre: familia.nombre }
-    : { codigo: "", nombre: "" };
+    ? { codigo: familia.codigo, nombre: familia.nombre, esRepuesto: familia.esRepuesto }
+    : { codigo: "", nombre: "", esRepuesto: false };
 
   const {
     register,
     handleSubmit,
     reset,
+    watch,
+    setValue,
     formState: { errors },
   } = useForm<FamiliaInsumoFormValues>({
     resolver: zodResolver(familiaInsumoSchema),
@@ -89,6 +92,14 @@ export function FamiliaInsumoFormDialog({ trigger, familia }: FamiliaInsumoFormD
               </p>
             )}
           </div>
+
+          <label className="flex items-center gap-2 text-sm text-foreground">
+            <Checkbox
+              checked={watch("esRepuesto")}
+              onCheckedChange={(checked) => setValue("esRepuesto", checked === true)}
+            />
+            Es repuesto
+          </label>
 
           <div className="flex justify-end gap-2">
             <Button type="submit" isLoading={mutation.isPending}>

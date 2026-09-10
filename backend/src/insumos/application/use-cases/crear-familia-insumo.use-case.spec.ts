@@ -63,6 +63,24 @@ describe('CrearFamiliaInsumoUseCase', () => {
     expect(repo.findByCodigo).toHaveBeenCalledWith('TONER');
   });
 
+  it('crea la familia con esRepuesto en false cuando el DTO no lo manda', async () => {
+    const repo = buildRepo();
+    const useCase = new CrearFamiliaInsumoUseCase(repo);
+
+    const result = await useCase.execute({ codigo: 'TONER', nombre: 'Tóner' });
+
+    expect(result.getValue().esRepuesto).toBe(false);
+  });
+
+  it('crea la familia con esRepuesto en true cuando el DTO lo marca', async () => {
+    const repo = buildRepo();
+    const useCase = new CrearFamiliaInsumoUseCase(repo);
+
+    const result = await useCase.execute({ codigo: 'CPU', nombre: 'CPU', esRepuesto: true });
+
+    expect(result.getValue().esRepuesto).toBe(true);
+  });
+
   it('rechaza con FamiliaInsumoCodigoDuplicadoError si el codigo ya existe (habilitado o no)', async () => {
     const existente = FamiliaInsumoEntity.create({ codigo: 'TONER', nombre: 'X', activo: false });
     const repo = buildRepo({ findByCodigo: vi.fn().mockResolvedValue(existente) });

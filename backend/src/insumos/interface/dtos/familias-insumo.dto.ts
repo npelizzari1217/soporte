@@ -69,6 +69,11 @@ export class CreateFamiliaInsumoDto {
   @Transform(transformarNombre)
   @MaxLength(FAMILIA_INSUMO_NOMBRE_MAX_LENGTH)
   nombre!: string;
+
+  /** Ausente se toma como `false` — ver `CrearFamiliaInsumoUseCase`. */
+  @IsOptional()
+  @IsBoolean()
+  esRepuesto?: boolean;
 }
 
 /** Body de `PATCH /familias-insumo/:id` — PATCH parcial. */
@@ -89,6 +94,11 @@ export class EditFamiliaInsumoDto {
   @Transform(transformarNombre)
   @MaxLength(FAMILIA_INSUMO_NOMBRE_MAX_LENGTH)
   nombre?: string;
+
+  /** Ausente deja la marca intacta — PATCH semántico, igual que `codigo`/`nombre`. */
+  @IsOptional()
+  @IsBoolean()
+  esRepuesto?: boolean;
 }
 
 /** Body de `PATCH /familias-insumo/:id/estado` — activar/desactivar. */
@@ -103,6 +113,7 @@ export interface FamiliaInsumoResponseDto {
   codigo: string;
   nombre: string;
   activo: boolean;
+  esRepuesto: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -119,6 +130,7 @@ export function toFamiliaInsumoResponseDto(familia: FamiliaInsumoEntity): Famili
     codigo: familia.codigo,
     nombre: familia.nombre,
     activo: familia.activo,
+    esRepuesto: familia.esRepuesto,
     createdAt: familia.createdAt.toISOString(),
     updatedAt: familia.updatedAt.toISOString(),
   };

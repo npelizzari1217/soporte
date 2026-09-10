@@ -105,6 +105,33 @@ describe('FamiliaInsumoEntity', () => {
       expect(familia.activo).toBe(true);
       expect(familia.isDeleted()).toBe(false);
     });
+
+    /**
+     * `esRepuesto` es OPCIONAL en `create()` para que los fixtures de otros
+     * módulos —que no tienen nada que ver con repuestos— sigan compilando sin
+     * tocarlos. El default tiene que ser `false`: una familia nueva NO es un
+     * repuesto salvo que alguien lo elija explícitamente.
+     */
+    it('sin esRepuesto en el input, queda en false', () => {
+      const familia = FamiliaInsumoEntity.create({
+        codigo: 'TONER',
+        nombre: 'Tóner',
+        activo: true,
+      });
+
+      expect(familia.esRepuesto).toBe(false);
+    });
+
+    it('respeta esRepuesto en true cuando el caller lo elige', () => {
+      const familia = FamiliaInsumoEntity.create({
+        codigo: 'CPU',
+        nombre: 'CPU',
+        activo: true,
+        esRepuesto: true,
+      });
+
+      expect(familia.esRepuesto).toBe(true);
+    });
   });
 
   describe('reconstitute()', () => {
@@ -112,7 +139,7 @@ describe('FamiliaInsumoEntity', () => {
       const createdAt = new Date('2026-01-01T00:00:00Z');
       const updatedAt = new Date('2026-01-02T00:00:00Z');
       const familia = FamiliaInsumoEntity.reconstitute(
-        { codigo: 'CARTUCHO', nombre: 'Cartucho', activo: false },
+        { codigo: 'CARTUCHO', nombre: 'Cartucho', activo: false, esRepuesto: false },
         'id-fijo',
         createdAt,
         updatedAt,
@@ -123,6 +150,18 @@ describe('FamiliaInsumoEntity', () => {
       expect(familia.createdAt).toEqual(createdAt);
       expect(familia.updatedAt).toEqual(updatedAt);
       expect(familia.activo).toBe(false);
+    });
+
+    it('preserva esRepuesto tal como viene de la fila persistida', () => {
+      const familia = FamiliaInsumoEntity.reconstitute(
+        { codigo: 'CPU', nombre: 'CPU', activo: true, esRepuesto: true },
+        'id-cpu',
+        new Date(),
+        new Date(),
+        null,
+      );
+
+      expect(familia.esRepuesto).toBe(true);
     });
 
     /**
@@ -137,6 +176,7 @@ describe('FamiliaInsumoEntity', () => {
             codigo: 'A'.repeat(FAMILIA_INSUMO_CODIGO_MAX_LENGTH + 10),
             nombre: 'Histórica',
             activo: true,
+            esRepuesto: false,
           },
           'id-legado',
           new Date(),
@@ -171,6 +211,33 @@ describe('FamiliaInsumoEntity', () => {
       familia.actualizar({ codigo: 'B' });
 
       expect(familia.codigo).toBe('B');
+    });
+
+    it('actualiza esRepuesto cuando se provee', () => {
+      const familia = FamiliaInsumoEntity.create({ codigo: 'A', nombre: 'A', activo: true });
+
+      familia.actualizar({ esRepuesto: true });
+
+      expect(familia.esRepuesto).toBe(true);
+    });
+
+    /**
+     * Caso hermano del anterior: sin este test, borrar el `if (datos.esRepuesto
+     * !== undefined)` de `actualizar()` y reemplazarlo por una asignación
+     * incondicional seguiría en verde arriba, pero pisaría `esRepuesto` con
+     * `undefined` en cualquier PATCH que no lo toque.
+     */
+    it('NO toca esRepuesto cuando no se provee', () => {
+      const familia = FamiliaInsumoEntity.create({
+        codigo: 'A',
+        nombre: 'A',
+        activo: true,
+        esRepuesto: true,
+      });
+
+      familia.actualizar({ nombre: 'A renombrada' });
+
+      expect(familia.esRepuesto).toBe(true);
     });
   });
 

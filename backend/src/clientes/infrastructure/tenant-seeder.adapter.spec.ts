@@ -15,6 +15,9 @@
  * - `tipos_componente` (Fase 3 F3-Q3) YA NO se siembra acá — PR4b
  *   (sdd/tipos-componente-master) lo movió a un catálogo GLOBAL en MASTER,
  *   sembrado una única vez (fuera del alcance de `TenantSeederAdapter`).
+ * - `familias_insumo` (11, WU-1 sdd/repuestos-familias) — el piso universal
+ *   de familias marcadas `esRepuesto: true`, mismos código/nombre que la
+ *   migración de datos hermana (ver `tenant-seeder.adapter.ts`).
  * - `seed` MUST cerrar el client (`$disconnect`) y el pool (`pool.end`)
  *   antes de retornar, incluso si una siembra falla (R18: sin conexiones
  *   activas, si no el DROP de rollback falla).
@@ -36,6 +39,7 @@ function makeFakeClient() {
     },
     tipoOperacion: { createMany: vi.fn().mockResolvedValue({ count: 7 }) },
     tipoTicket: { createMany: vi.fn().mockResolvedValue({ count: 4 }) },
+    familiaInsumo: { createMany: vi.fn().mockResolvedValue({ count: 11 }) },
     $disconnect: vi.fn().mockResolvedValue(undefined),
   };
 }
@@ -137,6 +141,35 @@ describe('TenantSeederAdapter (T7.4, unit — createClient mockeado)', () => {
     ]);
   });
 
+  /**
+   * WU-1 (sdd/repuestos-familias): las 11 familias universales de repuesto,
+   * verbatim del catálogo `master.tipos_componente` vigente en producción
+   * (ver el header de `tenant-seeder.adapter.ts` y de la migración de datos
+   * hermana). CPU2, EST500W y DISCO NO están en esta lista a propósito.
+   */
+  it('[CRITICAL] siembra las 11 familias de insumo de repuesto, todas con esRepuesto: true', async () => {
+    const client = makeFakeClient();
+    const createClient = vi.fn().mockReturnValue({ client, pool: makeFakePool() });
+    const adapter = new TenantSeederAdapter(MASTER_URL, createClient);
+
+    await adapter.seed('soporte_prov_demo_test');
+
+    const [[{ data }]] = client.familiaInsumo.createMany.mock.calls;
+    expect(data).toEqual([
+      { codigo: 'CPU', nombre: 'CPU', esRepuesto: true },
+      { codigo: 'MOUSE', nombre: 'Mouse', esRepuesto: true },
+      { codigo: 'TECLADO', nombre: 'Teclado', esRepuesto: true },
+      { codigo: 'RAM', nombre: 'Memoria RAM', esRepuesto: true },
+      { codigo: 'MONITOR', nombre: 'Monitor', esRepuesto: true },
+      { codigo: 'FUENTE', nombre: 'Fuente de alimentación', esRepuesto: true },
+      { codigo: 'GPU', nombre: 'Placa de video', esRepuesto: true },
+      { codigo: 'RED', nombre: 'Placa de red', esRepuesto: true },
+      { codigo: 'SSD', nombre: 'Discos SSD', esRepuesto: true },
+      { codigo: 'HDD', nombre: 'Disco HDD', esRepuesto: true },
+      { codigo: 'IMPRESORA', nombre: 'Impresora', esRepuesto: true },
+    ]);
+  });
+
   it('todos los createMany usan skipDuplicates: true (idempotencia, R19)', async () => {
     const client = makeFakeClient();
     const createClient = vi.fn().mockReturnValue({ client, pool: makeFakePool() });
@@ -148,6 +181,7 @@ describe('TenantSeederAdapter (T7.4, unit — createClient mockeado)', () => {
     expect(client.prioridad.createMany.mock.calls[0]![0].skipDuplicates).toBe(true);
     expect(client.tipoOperacion.createMany.mock.calls[0]![0].skipDuplicates).toBe(true);
     expect(client.tipoTicket.createMany.mock.calls[0]![0].skipDuplicates).toBe(true);
+    expect(client.familiaInsumo.createMany.mock.calls[0]![0].skipDuplicates).toBe(true);
   });
 
   it('[CRITICAL] construye el client con el dbName recibido', async () => {

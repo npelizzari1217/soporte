@@ -268,6 +268,10 @@ export const familiaInsumoSchema = z.object({
     .trim()
     .min(1, "El nombre es requerido")
     .max(FAMILIA_INSUMO_NOMBRE_MAX_LENGTH, mensajeDemasiadoLargo("El nombre", FAMILIA_INSUMO_NOMBRE_MAX_LENGTH)),
+  // Repuesto de equipo vs. consumible (WU-1, sdd/repuestos-familias). Lo
+  // elige el usuario con un checkbox; sin marcar queda en `false`, igual que
+  // `CrearFamiliaInsumoUseCase` en el backend.
+  esRepuesto: z.boolean().default(false),
 });
 export type FamiliaInsumoFormValues = z.infer<typeof familiaInsumoSchema>;
 

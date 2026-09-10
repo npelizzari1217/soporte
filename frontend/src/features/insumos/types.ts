@@ -76,6 +76,12 @@ export interface FamiliaInsumo {
   codigo: string;
   nombre: string;
   activo: boolean;
+  /**
+   * Repuesto de equipo (mouse, teclado, CPU...) vs. consumible (tóner,
+   * cartucho...). WU-1 (sdd/repuestos-familias): la marca es visible y
+   * editable en el ABM, pero ningún listado filtra por ella todavía.
+   */
+  esRepuesto: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -84,12 +90,14 @@ export interface FamiliaInsumo {
 export interface CreateFamiliaInsumoDto {
   codigo: string;
   nombre: string;
+  esRepuesto: boolean;
 }
 
 /** Body de `PATCH /familias-insumo/:id` (`EditFamiliaInsumoDto`) — PATCH parcial. */
 export interface EditFamiliaInsumoDto {
   codigo?: string;
   nombre?: string;
+  esRepuesto?: boolean;
 }
 
 /** Body de `PATCH /familias-insumo/:id/estado` (`CambiarEstadoActivoFamiliaInsumoDto`). */

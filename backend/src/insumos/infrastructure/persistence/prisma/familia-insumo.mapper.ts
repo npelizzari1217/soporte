@@ -13,7 +13,7 @@ export class FamiliaInsumoMapper {
    */
   static toDomain(row: PrismaFamiliaInsumo): FamiliaInsumoEntity {
     return FamiliaInsumoEntity.reconstitute(
-      { codigo: row.codigo, nombre: row.nombre, activo: row.activo },
+      { codigo: row.codigo, nombre: row.nombre, activo: row.activo, esRepuesto: row.esRepuesto },
       row.id,
       row.createdAt,
       row.updatedAt,
@@ -33,6 +33,7 @@ export class FamiliaInsumoMapper {
       codigo: entity.codigo,
       nombre: entity.nombre,
       activo: entity.activo,
+      esRepuesto: entity.esRepuesto,
       deletedAt: entity.deletedAt,
       createdAt: entity.createdAt,
     };
