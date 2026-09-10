@@ -307,6 +307,27 @@ export class CambiarEstadoActivoInsumoDto {
   activo!: boolean;
 }
 
+/**
+ * Query params de `GET /insumos` (WU-2, sdd/repuestos-seccion).
+ *
+ * `esRepuesto` viaja como string en la querystring (`?esRepuesto=false`);
+ * `@Type(() => Boolean)` de `class-transformer` NO interpreta `'false'` como
+ * `false` (cualquier string no vacío es truthy) — se parsea a mano, mismo
+ * patrón que `soloEnCurso` en `ListarComprasQueryDto`.
+ *
+ * **AUSENTE no filtra: trae TODOS los insumos.** Ver el JSDoc de
+ * `ListarInsumosUseCase.execute` para por qué ese default no es un descuido
+ * y quiénes lo necesitan.
+ */
+export class ListarInsumosQueryDto {
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    value === 'false' ? false : value === 'true' ? true : (value as boolean | undefined),
+  )
+  @IsBoolean()
+  esRepuesto?: boolean;
+}
+
 /** Response shape de un código alternativo dentro de la respuesta del insumo. */
 export interface InsumoCodigoAlternativoResponseDto {
   id: string;

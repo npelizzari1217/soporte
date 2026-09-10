@@ -44,6 +44,21 @@ export function FamiliaInsumoList() {
     { key: "codigo", header: "Código" },
     { key: "nombre", header: "Nombre" },
     {
+      key: "esRepuesto",
+      header: "Tipo",
+      // WU-2 (sdd/repuestos-seccion): el ABM de familias no se partió en dos
+      // pantallas — sigue siendo UNA tabla con las familias de repuesto y las
+      // consumibles mezcladas, y esta columna es el único indicador de cuál
+      // es cuál. `esRepuesto` es la marca que filtra las secciones
+      // Insumos/Repuestos del catálogo (`FamiliaInsumoEntity.esRepuesto`).
+      render: (row) =>
+        row.esRepuesto ? (
+          <Badge variant="secondary">Repuesto</Badge>
+        ) : (
+          <Badge variant="outline">Consumible</Badge>
+        ),
+    },
+    {
       key: "activo",
       header: "Estado",
       render: (row) =>

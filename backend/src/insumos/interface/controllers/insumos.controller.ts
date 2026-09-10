@@ -31,6 +31,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
   UnprocessableEntityException,
   UseGuards,
 } from '@nestjs/common';
@@ -48,6 +49,7 @@ import {
   CreateInsumoDto,
   EditInsumoDto,
   InsumoResponseDto,
+  ListarInsumosQueryDto,
   toInsumoResponseDto,
 } from '../dtos/insumos.dto';
 
@@ -83,11 +85,15 @@ export class InsumosController {
   /**
    * GET /insumos — catálogo vigente (habilitados y deshabilitados), SIN gate.
    *
+   * `esRepuesto` filtra por familia (WU-2, sdd/repuestos-seccion); ausente
+   * trae TODOS — ver el JSDoc de `ListarInsumosUseCase.execute`.
+   *
+   * @param query Filtro opcional `esRepuesto`.
    * @returns Los insumos vigentes del tenant, con sus códigos alternativos.
    */
   @Get()
-  async listar(): Promise<InsumoResponseDto[]> {
-    const insumos = await this.listarInsumosUseCase.execute();
+  async listar(@Query() query: ListarInsumosQueryDto): Promise<InsumoResponseDto[]> {
+    const insumos = await this.listarInsumosUseCase.execute(query.esRepuesto);
     return insumos.map(toInsumoResponseDto);
   }
 

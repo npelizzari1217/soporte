@@ -98,6 +98,30 @@ function mockCatalogos(insumos: Insumo[]): void {
 
 const LECTOR = buildUser({ permisos: ["INSUMOS:LECTURA"], modulos: ["INSUMOS"] });
 
+/**
+ * WU-2 (sdd/repuestos-seccion): `InsumosListView` SIEMPRE manda el filtro
+ * explícito — nunca depende del default "sin filtrar" del backend. Sin este
+ * test, un `useInsumos()` sin argumento (que hoy trae TODO) colaría
+ * repuestos en la sección Insumos sin que ningún otro caso lo note.
+ */
+describe("InsumosListView — filtro esRepuesto (WU-2)", () => {
+  it("pide el catálogo con esRepuesto=false — nunca omite el filtro", async () => {
+    let queryRecibida: string | null = null;
+    server.use(
+      http.get("/api/insumos", ({ request }) => {
+        queryRecibida = new URL(request.url).searchParams.get("esRepuesto");
+        return HttpResponse.json([]);
+      }),
+      http.get("/api/familias-insumo", () => HttpResponse.json(FAMILIAS)),
+      http.get("/api/unidades-medida", () => HttpResponse.json(UNIDADES)),
+    );
+    renderWithProviders(<InsumosListView />, { user: LECTOR });
+
+    await screen.findByText(/sin insumos/i);
+    expect(queryRecibida).toBe("false");
+  });
+});
+
 describe("InsumosListView — listado del catálogo", () => {
   it("muestra el código y el nombre de cada insumo que devuelve el endpoint", async () => {
     mockCatalogos([INSUMO_HABILITADO, INSUMO_DESHABILITADO]);

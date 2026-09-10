@@ -2,7 +2,12 @@ import { describe, expect, it } from 'vitest';
 import 'reflect-metadata';
 import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
-import { CreateInsumoDto, EditInsumoDto, toInsumoResponseDto } from './insumos.dto';
+import {
+  CreateInsumoDto,
+  EditInsumoDto,
+  ListarInsumosQueryDto,
+  toInsumoResponseDto,
+} from './insumos.dto';
 import {
   InsumoEntity,
   INSUMO_CODIGOS_ALTERNATIVOS_MAX,
@@ -626,5 +631,45 @@ describe('toInsumoResponseDto', () => {
     });
 
     expect(toInsumoResponseDto(insumo).stockMinimo).toBeNull();
+  });
+});
+
+/**
+ * `ListarInsumosQueryDto` (WU-2, sdd/repuestos-seccion). Mismo patrón que
+ * `soloEnCurso` de `ListarComprasQueryDto`: la querystring manda el booleano
+ * como string, y `'false'` tiene que llegar como `false`, no como un string
+ * truthy.
+ */
+describe('ListarInsumosQueryDto', () => {
+  it("'esRepuesto=true' en la querystring se transforma al boolean true", async () => {
+    const dto = plainToInstance(ListarInsumosQueryDto, { esRepuesto: 'true' });
+    const errores = await validate(dto);
+    expect(errores).toHaveLength(0);
+    expect(dto.esRepuesto).toBe(true);
+  });
+
+  /**
+   * Gemelo invertido del caso anterior: sin él, un `@Type(() => Boolean)` que
+   * tratara cualquier string no vacío como verdadero pasaría igual con solo
+   * el caso `'true'` cubierto.
+   */
+  it("'esRepuesto=false' en la querystring se transforma al boolean false, no truthy", async () => {
+    const dto = plainToInstance(ListarInsumosQueryDto, { esRepuesto: 'false' });
+    const errores = await validate(dto);
+    expect(errores).toHaveLength(0);
+    expect(dto.esRepuesto).toBe(false);
+  });
+
+  it('esRepuesto ausente no rechaza — el catálogo GET /insumos no lo exige', async () => {
+    const dto = plainToInstance(ListarInsumosQueryDto, {});
+    const errores = await validate(dto);
+    expect(errores).toHaveLength(0);
+    expect(dto.esRepuesto).toBeUndefined();
+  });
+
+  it('rechaza un esRepuesto que no es "true" ni "false"', async () => {
+    const dto = plainToInstance(ListarInsumosQueryDto, { esRepuesto: 'tal-vez' });
+    const errores = await validate(dto);
+    expect(errores.some((e) => e.property === 'esRepuesto')).toBe(true);
   });
 });

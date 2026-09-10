@@ -125,6 +125,20 @@ describe("nav-config", () => {
     expect(items.map((i) => i.href)).not.toContain("/insumos");
   });
 
+  // WU-2 (sdd/repuestos-seccion): "Repuestos" gatea con el MISMO
+  // INSUMOS:LECTURA que "Insumos" — no hay permiso REPUESTOS propio.
+  it("con INSUMOS:LECTURA → ve /repuestos", () => {
+    const user = makeUser({ permisos: ["INSUMOS:LECTURA"] });
+    const items = visibleNavItems(user);
+    expect(items.map((i) => i.href)).toContain("/repuestos");
+  });
+
+  it("sin INSUMOS:LECTURA → /repuestos queda oculto", () => {
+    const user = makeUser({ permisos: [] });
+    const items = visibleNavItems(user);
+    expect(items.map((i) => i.href)).not.toContain("/repuestos");
+  });
+
   it("null user (no logueado) → no revienta, devuelve solo ítems públicos (ninguno gated)", () => {
     const items = visibleNavItems(null);
     expect(items.every((i) => i.href !== "/dashboard" && i.href !== "/admin/clientes")).toBe(true);

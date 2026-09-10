@@ -56,13 +56,46 @@ describe('InsumosController', () => {
       listar: { execute: vi.fn().mockResolvedValue([insumo]) },
     });
 
-    const result = await controller.listar();
+    const result = await controller.listar({});
 
     expect(result).toHaveLength(1);
     expect(result[0]!.codigo).toBe('TON-001');
     expect(result[0]!.codigosAlternativos).toEqual([
       { id: insumo.codigosAlternativos[0]!.id, codigo: 'CE285A', fabricante: 'HP' },
     ]);
+  });
+
+  /**
+   * Los tres casos de `esRepuesto` van juntos: ausente, `true` y `false` se
+   * distinguen entre sí en la llamada al caso de uso. Sin el caso "ausente"
+   * como gemelo de los otros dos, un controller que SIEMPRE mandara `false`
+   * (o SIEMPRE `true`) pasaría cualquiera de los dos primeros por separado.
+   */
+  it('GET /insumos con esRepuesto=true delega exactamente ese valor al caso de uso', async () => {
+    const listar = { execute: vi.fn().mockResolvedValue([]) };
+    const { controller } = buildController({ listar });
+
+    await controller.listar({ esRepuesto: true });
+
+    expect(listar.execute).toHaveBeenCalledWith(true);
+  });
+
+  it('GET /insumos con esRepuesto=false delega exactamente ese valor al caso de uso', async () => {
+    const listar = { execute: vi.fn().mockResolvedValue([]) };
+    const { controller } = buildController({ listar });
+
+    await controller.listar({ esRepuesto: false });
+
+    expect(listar.execute).toHaveBeenCalledWith(false);
+  });
+
+  it('GET /insumos sin esRepuesto delega undefined (sin filtrar) al caso de uso', async () => {
+    const listar = { execute: vi.fn().mockResolvedValue([]) };
+    const { controller } = buildController({ listar });
+
+    await controller.listar({});
+
+    expect(listar.execute).toHaveBeenCalledWith(undefined);
   });
 
   it('POST /insumos crea y retorna el DTO', async () => {

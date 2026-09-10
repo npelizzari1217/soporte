@@ -68,8 +68,17 @@ export interface IInsumoRepository {
    * códigos alternativos y su compatibilidad, ordenados por código. INCLUYE
    * los deshabilitados (`activo: false`): son los que el administrador
    * necesita ver para volver a habilitarlos.
+   *
+   * `esRepuesto` filtra por la marca de la FAMILIA del insumo (WU-1,
+   * `FamiliaInsumoEntity.esRepuesto`), NO por un campo propio del insumo —
+   * `Insumo` no tiene esa columna. `false` trae los consumibles, `true` los
+   * repuestos de equipo. `undefined` (el parámetro se omite) NO filtra: trae
+   * TODOS. Ese default es a propósito y está documentado en
+   * `ListarInsumosUseCase` — no es "devuelve todo por descuido".
+   *
+   * @param esRepuesto Filtro por familia; ausente trae repuestos y consumibles por igual.
    */
-  findAllActive(): Promise<InsumoEntity[]>;
+  findAllActive(esRepuesto?: boolean): Promise<InsumoEntity[]>;
 
   /**
    * Los insumos vigentes compatibles con un modelo de equipo, ordenados por

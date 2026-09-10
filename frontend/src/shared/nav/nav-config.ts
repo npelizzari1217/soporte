@@ -12,6 +12,7 @@ import {
   ClipboardCheck,
   Tag,
   Package,
+  Cog,
 } from "lucide-react";
 import type { JwtPayload } from "@/shared/api/types";
 import { ETIQUETAS_MODULOS } from "@/shared/auth/etiquetas-modulos";
@@ -109,6 +110,17 @@ const DEFAULT_SECTION_ITEMS: NavItem[] = [
     href: "/insumos",
     label: ETIQUETAS_MODULOS.INSUMOS,
     icon: Package,
+    visible: (can) => can("INSUMOS:LECTURA"),
+  },
+  {
+    href: "/repuestos",
+    // Literal, NO de `ETIQUETAS_MODULOS`: "Repuestos" no es un módulo propio
+    // de la matriz de permisos (WU-2, sdd/repuestos-seccion, decisión del
+    // dueño del repo) — es una segunda sección del catálogo de insumos,
+    // gateada por el MISMO `INSUMOS:LECTURA` que la fila de arriba. Mismo
+    // criterio que el ítem "Admin", que tampoco sale de ese mapa.
+    label: "Repuestos",
+    icon: Cog,
     visible: (can) => can("INSUMOS:LECTURA"),
   },
   {

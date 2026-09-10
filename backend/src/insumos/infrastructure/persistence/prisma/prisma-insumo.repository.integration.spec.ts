@@ -360,6 +360,83 @@ describe('PrismaInsumoRepository — Integration', () => {
     expect(vigentes.some((i) => i.id === vigente.id)).toBe(true);
   });
 
+  /**
+   * WU-2 (sdd/repuestos-seccion): `esRepuesto` filtra por la FAMILIA del
+   * insumo (WU-1, `familia_insumo.es_repuesto`), no por una columna propia de
+   * `insumos` — de ahí la familia de repuesto propia de este bloque, además
+   * de la familia consumible que ya usa el resto del spec.
+   */
+  describe('findAllActive() — filtro esRepuesto', () => {
+    let familiaRepuestoId: string;
+
+    // Sin `afterAll` propio: esta familia también arranca con `PREFIJO`, así
+    // que el `afterAll` EXTERNO ya la barre en su `familiaInsumo.deleteMany`
+    // (línea de arriba) — DESPUÉS de `limpiarInsumos()`, que es el orden que
+    // el RESTRICT de la FK exige. Un `afterAll` anidado correría ANTES que
+    // ese `limpiarInsumos()` externo (los hooks internos corren primero) y el
+    // RESTRICT lo rechazaría con los insumos de este bloque todavía en pie.
+    beforeAll(async () => {
+      const familiaRepuesto = await tenantClient.familiaInsumo.create({
+        data: { codigo: `${PREFIJO}FR`, nombre: 'Familia de repuesto de prueba', esRepuesto: true },
+      });
+      familiaRepuestoId = familiaRepuesto.id;
+    });
+
+    function construirInsumoEnFamilia(sufijo: string, familia: string): InsumoEntity {
+      return InsumoEntity.create({
+        codigo: `${PREFIJO}${sufijo}`,
+        nombre: `Insumo ${sufijo}`,
+        familiaId: familia,
+        unidadMedidaId,
+        stockMinimo: null,
+        activo: true,
+        codigosAlternativos: [],
+        compatibilidad: [],
+      });
+    }
+
+    it('findAllActive(true) trae el insumo de familia repuesto', async () => {
+      const repuesto = construirInsumoEnFamilia('FILT_REP_A', familiaRepuestoId);
+      const consumible = construirInsumoEnFamilia('FILT_REP_B', familiaId);
+      await repo.save(repuesto);
+      await repo.save(consumible);
+
+      const repuestos = await repo.findAllActive(true);
+
+      expect(repuestos.some((i) => i.id === repuesto.id)).toBe(true);
+      // Gemelo invertido: el consumible NO tiene que aparecer en el listado
+      // de repuestos — sin este assert, un filtro que no filtrara nada
+      // pasaría igual por el `some()` de arriba.
+      expect(repuestos.some((i) => i.id === consumible.id)).toBe(false);
+    });
+
+    it('findAllActive(false) trae el insumo de familia consumible', async () => {
+      const repuesto = construirInsumoEnFamilia('FILT_CONS_A', familiaRepuestoId);
+      const consumible = construirInsumoEnFamilia('FILT_CONS_B', familiaId);
+      await repo.save(repuesto);
+      await repo.save(consumible);
+
+      const consumibles = await repo.findAllActive(false);
+
+      expect(consumibles.some((i) => i.id === consumible.id)).toBe(true);
+      // Gemelo invertido del caso anterior: el repuesto NO tiene que aparecer
+      // en el listado de consumibles.
+      expect(consumibles.some((i) => i.id === repuesto.id)).toBe(false);
+    });
+
+    it('findAllActive() sin argumento NO filtra: trae repuesto y consumible por igual', async () => {
+      const repuesto = construirInsumoEnFamilia('FILT_TODOS_A', familiaRepuestoId);
+      const consumible = construirInsumoEnFamilia('FILT_TODOS_B', familiaId);
+      await repo.save(repuesto);
+      await repo.save(consumible);
+
+      const todos = await repo.findAllActive();
+
+      expect(todos.some((i) => i.id === repuesto.id)).toBe(true);
+      expect(todos.some((i) => i.id === consumible.id)).toBe(true);
+    });
+  });
+
   it('findAllActive() trae los códigos alternativos de cada insumo', async () => {
     const insumo = construirInsumo('CONCODIGOS', [
       InsumoCodigoAlternativoEntity.create({ codigo: `${PREFIJO}LISTADO`, fabricante: 'CANON' }),
