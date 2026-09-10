@@ -1,7 +1,7 @@
 /**
  * TenantSeederAdapter — implementación de `ITenantSeeder`: siembra los
- * catálogos base (estados, prioridades, tipo_operacion, tipos_ticket) de una
- * DB tenant recién migrada.
+ * catálogos base (estados, prioridades, tipo_operacion, tipos_ticket,
+ * familias_insumo de repuesto) de una DB tenant recién migrada.
  *
  * Catálogos sembrados (R19; `estados` reemplazado por decisión #2025, que
  * corrige la lista original de 8 códigos de R19 a los 6 finales; ampliado
@@ -16,6 +16,14 @@
  *   PREVENTIVO (issue #135: código propio para que el barrido de
  *   preventivo deje de reusar MANTENIMIENTO y sus tickets queden afuera de
  *   `cumplimientoSla`).
+ * - `familias_insumo` (11, base EDITABLE por el admin del tenant — WU-1,
+ *   sdd/repuestos-familias): el piso universal de familias de REPUESTO
+ *   (CPU, MOUSE, TECLADO, RAM, MONITOR, FUENTE, GPU, RED, SSD, HDD,
+ *   IMPRESORA). Código y nombre salen VERBATIM del catálogo
+ *   `master.tipos_componente` vigente en producción — ver el header de la
+ *   migración de datos `20260910120100_seed_familias_insumo_repuesto`, que
+ *   backfillea el mismo piso para los tenants que ya existen y documenta
+ *   por qué CPU2/EST500W/DISCO quedan afuera.
  *
  * `tipos_componente` (Fase 3 F3-Q3) se sembraba acá como catálogo tenant
  * FIJO — ELIMINADO en PR4b (sdd/tipos-componente-master): el catálogo pasó a
@@ -126,6 +134,29 @@ const TIPOS_TICKET = [
   { codigo: TIPO_CODIGO_PREVENTIVO, nombre: 'Preventivo', modulo: 'EDILICIA' },
 ];
 
+/**
+ * Piso UNIVERSAL de familias de insumo marcadas como repuesto (WU-1,
+ * sdd/repuestos-familias). Mismo criterio de procedencia y las mismas 3
+ * exclusiones que la migración de datos hermana
+ * `20260910120100_seed_familias_insumo_repuesto` (ver su header): código y
+ * nombre VERBATIM del catálogo `master.tipos_componente` vigente en
+ * producción, no del master local de desarrollo ni de la migración de seed
+ * original de ese catálogo.
+ */
+const FAMILIAS_INSUMO_REPUESTO = [
+  { codigo: 'CPU', nombre: 'CPU', esRepuesto: true },
+  { codigo: 'MOUSE', nombre: 'Mouse', esRepuesto: true },
+  { codigo: 'TECLADO', nombre: 'Teclado', esRepuesto: true },
+  { codigo: 'RAM', nombre: 'Memoria RAM', esRepuesto: true },
+  { codigo: 'MONITOR', nombre: 'Monitor', esRepuesto: true },
+  { codigo: 'FUENTE', nombre: 'Fuente de alimentación', esRepuesto: true },
+  { codigo: 'GPU', nombre: 'Placa de video', esRepuesto: true },
+  { codigo: 'RED', nombre: 'Placa de red', esRepuesto: true },
+  { codigo: 'SSD', nombre: 'Discos SSD', esRepuesto: true },
+  { codigo: 'HDD', nombre: 'Disco HDD', esRepuesto: true },
+  { codigo: 'IMPRESORA', nombre: 'Impresora', esRepuesto: true },
+];
+
 @Injectable()
 export class TenantSeederAdapter implements ITenantSeeder {
   constructor(
@@ -141,6 +172,10 @@ export class TenantSeederAdapter implements ITenantSeeder {
       await client.prioridad.createMany({ data: PRIORIDADES, skipDuplicates: true });
       await client.tipoOperacion.createMany({ data: TIPO_OPERACION, skipDuplicates: true });
       await client.tipoTicket.createMany({ data: TIPOS_TICKET, skipDuplicates: true });
+      await client.familiaInsumo.createMany({
+        data: FAMILIAS_INSUMO_REPUESTO,
+        skipDuplicates: true,
+      });
     } finally {
       await client.$disconnect();
       await pool.end();

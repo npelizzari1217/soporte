@@ -11,6 +11,8 @@ import { IFamiliaInsumoRepository } from '../../domain/ports/i-familia-insumo.re
 export interface CrearFamiliaInsumoDto {
   codigo: string;
   nombre: string;
+  /** Elegido por el usuario en el ABM; ausente se toma como `false`. */
+  esRepuesto?: boolean;
 }
 
 /**
@@ -22,6 +24,9 @@ export interface CrearFamiliaInsumoDto {
  *
  * El `nombre` pasa por la misma capa: se le recortan los espacios de borde para
  * que `'  Tóner  '` no entre al catálogo desalineado.
+ *
+ * `esRepuesto` lo elige el usuario en el ABM; si el DTO no lo manda, la
+ * familia se crea como NO repuesto (`false`).
  */
 export class CrearFamiliaInsumoUseCase {
   constructor(
@@ -29,7 +34,7 @@ export class CrearFamiliaInsumoUseCase {
   ) {}
 
   /**
-   * @param dto Código y nombre de la familia a crear.
+   * @param dto Código, nombre y marca de repuesto de la familia a crear.
    * @returns La familia creada, o `FamiliaInsumoCodigoDuplicadoError` si el
    *   código ya está en uso, esté esa familia habilitada o no.
    */
@@ -42,7 +47,12 @@ export class CrearFamiliaInsumoUseCase {
     }
 
     const nombre = normalizarNombreFamiliaInsumo(dto.nombre);
-    const familia = FamiliaInsumoEntity.create({ codigo, nombre, activo: true });
+    const familia = FamiliaInsumoEntity.create({
+      codigo,
+      nombre,
+      activo: true,
+      esRepuesto: dto.esRepuesto ?? false,
+    });
     await this.familiaRepo.save(familia);
 
     return Result.ok(familia);

@@ -15,6 +15,8 @@ export interface EditarFamiliaInsumoDto {
   id: string;
   codigo?: string;
   nombre?: string;
+  /** Ausente deja la marca intacta, igual que `codigo`/`nombre`. */
+  esRepuesto?: boolean;
 }
 
 /**
@@ -60,7 +62,7 @@ export class EditarFamiliaInsumoUseCase {
 
     const nombre = dto.nombre === undefined ? undefined : normalizarNombreFamiliaInsumo(dto.nombre);
 
-    familia.actualizar({ codigo, nombre });
+    familia.actualizar({ codigo, nombre, esRepuesto: dto.esRepuesto });
     await this.familiaRepo.save(familia);
 
     return Result.ok(familia);

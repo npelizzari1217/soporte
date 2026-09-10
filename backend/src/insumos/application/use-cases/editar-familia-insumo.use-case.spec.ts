@@ -54,6 +54,35 @@ describe('EditarFamiliaInsumoUseCase', () => {
     expect(result.getValue().nombre).toBe('Tóner');
   });
 
+  it('edita esRepuesto cuando se provee', async () => {
+    const familia = FamiliaInsumoEntity.create({ codigo: 'A', nombre: 'A', activo: true }, 'id-1');
+    const repo = buildRepo(familia);
+    const useCase = new EditarFamiliaInsumoUseCase(repo);
+
+    const result = await useCase.execute({ id: 'id-1', esRepuesto: true });
+
+    expect(result.getValue().esRepuesto).toBe(true);
+  });
+
+  /**
+   * Caso hermano del anterior: sin este test, cambiar `actualizar({ ...,
+   * esRepuesto: dto.esRepuesto })` por una asignación incondicional seguiría
+   * en verde arriba, pero pisaría la marca con `false` en cualquier PATCH que
+   * no la mencione.
+   */
+  it('NO toca esRepuesto cuando el PATCH no lo menciona', async () => {
+    const familia = FamiliaInsumoEntity.create(
+      { codigo: 'A', nombre: 'A', activo: true, esRepuesto: true },
+      'id-1',
+    );
+    const repo = buildRepo(familia);
+    const useCase = new EditarFamiliaInsumoUseCase(repo);
+
+    const result = await useCase.execute({ id: 'id-1', nombre: 'A renombrada' });
+
+    expect(result.getValue().esRepuesto).toBe(true);
+  });
+
   it('rechaza con FamiliaInsumoNoEncontradaError si el id no existe', async () => {
     const repo = buildRepo(null);
     const useCase = new EditarFamiliaInsumoUseCase(repo);

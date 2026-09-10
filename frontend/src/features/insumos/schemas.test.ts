@@ -396,6 +396,25 @@ describe("familiaInsumoSchema — límites de largo (espejo de CreateFamiliaInsu
     const result = familiaInsumoSchema.safeParse({ codigo: "TONER_1", nombre: "Tóner" });
     expect(result.success).toBe(true);
   });
+
+  /**
+   * `esRepuesto` distingue un repuesto de equipo de un consumible (WU-1,
+   * sdd/repuestos-familias). Ausente en el input tiene que quedar en
+   * `false` en el output parseado — no solo `success: true`, que también
+   * sería cierto si `.default()` se rompiera y el campo quedara
+   * `undefined`.
+   */
+  it("esRepuesto ausente parsea a false", () => {
+    const result = familiaInsumoSchema.safeParse({ codigo: "TONER", nombre: "Tóner" });
+    expect(result.success).toBe(true);
+    expect(result.success && result.data.esRepuesto).toBe(false);
+  });
+
+  it("esRepuesto en true se preserva en el output parseado", () => {
+    const result = familiaInsumoSchema.safeParse({ codigo: "CPU", nombre: "CPU", esRepuesto: true });
+    expect(result.success).toBe(true);
+    expect(result.success && result.data.esRepuesto).toBe(true);
+  });
 });
 
 /**

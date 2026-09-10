@@ -10,6 +10,14 @@ export interface FamiliaInsumoProps {
   codigo: string;
   nombre: string;
   activo: boolean;
+  /**
+   * Distingue un repuesto de equipo (mouse, teclado, CPU...) del resto del
+   * catálogo (tóner, cartucho...). Sembrado en `true` para el piso universal
+   * de familias de repuesto (WU-1, sdd/repuestos-familias); en cualquier
+   * otro caso lo elige el administrador del tenant en el ABM al crear o
+   * editar la familia.
+   */
+  esRepuesto: boolean;
 }
 
 /**
@@ -92,7 +100,12 @@ function validarLargos(codigo?: string, nombre?: string): void {
 /**
  * FamiliaInsumoEntity — entidad de dominio del catálogo de familias de insumo
  * (Tóner, Cartucho, Repuesto, ...). Catálogo EDITABLE por el ADMINISTRADOR del
- * cliente, nace vacío (sin seed).
+ * cliente, con un PISO sembrado: `TenantSeederAdapter` siembra las 11 familias
+ * universales de repuesto en cada inquilino nuevo, y la migración
+ * `20260910120100_seed_familias_insumo_repuesto` las backfilleó en los que ya
+ * existían. Desde ahí el administrador agrega, edita y desactiva a voluntad —
+ * a diferencia de `UnidadMedidaEntity` y `ModeloEquipoEntity`, que sí nacen
+ * vacías.
  *
  * No hay borrado: `familias_insumo` es referenciada por `insumos` con
  * `ON DELETE RESTRICT`, así que una familia en uso no se elimina — se
@@ -103,14 +116,23 @@ export class FamiliaInsumoEntity extends BaseEntity<FamiliaInsumoProps> {
   /**
    * Crea una familia nueva, validando la precondición de largo.
    *
-   * @param props Código, nombre y estado de la familia.
+   * `esRepuesto` es OPCIONAL en la firma y por defecto queda en `false`: la
+   * mayoría de los llamadores (fixtures de tests de otros módulos, catálogos
+   * que no son de repuesto) no tienen por qué elegirlo. Quien SÍ lo elige es
+   * el ABM (`CrearFamiliaInsumoUseCase`), que siempre manda el valor
+   * explícito que tipeó el usuario.
+   *
+   * @param props Código, nombre, estado y marca de repuesto de la familia.
    * @param id Id explícito; si se omite lo genera `BaseEntity`.
    * @returns La entidad creada.
    * @throws Error si `codigo` o `nombre` exceden el tope de su columna.
    */
-  static create(props: FamiliaInsumoProps, id?: string): FamiliaInsumoEntity {
+  static create(
+    props: Omit<FamiliaInsumoProps, 'esRepuesto'> & { esRepuesto?: boolean },
+    id?: string,
+  ): FamiliaInsumoEntity {
     validarLargos(props.codigo, props.nombre);
-    return new FamiliaInsumoEntity(props, id);
+    return new FamiliaInsumoEntity({ ...props, esRepuesto: props.esRepuesto ?? false }, id);
   }
 
   /**
@@ -120,7 +142,7 @@ export class FamiliaInsumoEntity extends BaseEntity<FamiliaInsumoProps> {
    * explotar una lectura por un valor histórico convertiría un dato viejo en
    * una caída de sistema.
    *
-   * @param props Código, nombre y estado leídos de la base.
+   * @param props Código, nombre, estado y marca de repuesto leídos de la base.
    * @param id Id persistido.
    * @param createdAt Alta original.
    * @param updatedAt Última modificación.
@@ -156,20 +178,32 @@ export class FamiliaInsumoEntity extends BaseEntity<FamiliaInsumoProps> {
   }
 
   /**
+   * `true` si la familia es un repuesto de equipo (mouse, teclado, CPU...)
+   * en vez de un consumible (tóner, cartucho...). No filtra ningún listado
+   * todavía: la marca solo habilita filtrar en un WU posterior.
+   */
+  get esRepuesto(): boolean {
+    return this.props.esRepuesto;
+  }
+
+  /**
    * Actualiza los campos editables (PATCH semántico — `undefined` no toca el
    * campo). La unicidad de `codigo` se valida en la capa de aplicación
-   * (`EditarFamiliaInsumoUseCase`), no acá.
+   * (`EditarFamiliaInsumoUseCase`), no aquí.
    *
    * @param datos Campos a modificar; los ausentes quedan intactos.
    * @returns Nada; lanza si algún valor excede el tope de su columna.
    */
-  actualizar(datos: { codigo?: string; nombre?: string }): void {
+  actualizar(datos: { codigo?: string; nombre?: string; esRepuesto?: boolean }): void {
     validarLargos(datos.codigo, datos.nombre);
     if (datos.codigo !== undefined) {
       this.props.codigo = datos.codigo;
     }
     if (datos.nombre !== undefined) {
       this.props.nombre = datos.nombre;
+    }
+    if (datos.esRepuesto !== undefined) {
+      this.props.esRepuesto = datos.esRepuesto;
     }
     this.touch();
   }

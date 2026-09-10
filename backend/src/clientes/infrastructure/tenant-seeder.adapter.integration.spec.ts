@@ -10,12 +10,14 @@
  * `afterAll`. NUNCA toca `soporte_master`, `soporte_master_test`,
  * `soporte_tenant_test`, `soporte_e2e` ni las bases `soporte_019f...`.
  *
- * Contrato verificado (R19, ampliado Fase 3 ADR-5/F3-S1):
+ * Contrato verificado (R19, ampliado Fase 3 ADR-5/F3-S1; WU-1
+ * sdd/repuestos-familias):
  * - Tras `seed()`, la DB tenant tiene 6 estados / 4 prioridades /
  *   5 tipo_operacion (los de R19; APROBACION/RECHAZO removidos en PR-1 de
- *   sdd/redisenio-modulo-compras) / 3 tipos_ticket
- *   persistidos con los códigos exactos. `tipos_componente` YA NO se siembra
- *   por tenant (PR4b, sdd/tipos-componente-master — catálogo GLOBAL en MASTER).
+ *   sdd/redisenio-modulo-compras) / 4 tipos_ticket / 11 familias_insumo de
+ *   repuesto persistidos con los códigos exactos. `tipos_componente` YA NO
+ *   se siembra por tenant (PR4b, sdd/tipos-componente-master — catálogo
+ *   GLOBAL en MASTER).
  * - Correr `seed()` una segunda vez sobre la MISMA DB no duplica filas ni
  *   lanza error (idempotencia real, no solo mockeada).
  *
@@ -68,13 +70,37 @@ describe('TenantSeederAdapter (T7.4, integración — Postgres real, DB efímera
     await admin.dropDatabase(DB_NAME);
   });
 
-  it('[CRITICAL] seed() persiste los 4 catálogos con los códigos exactos en la DB tenant real', async () => {
+  const CODIGOS_FAMILIAS_REPUESTO = [
+    'CPU',
+    'MOUSE',
+    'TECLADO',
+    'RAM',
+    'MONITOR',
+    'FUENTE',
+    'GPU',
+    'RED',
+    'SSD',
+    'HDD',
+    'IMPRESORA',
+  ];
+
+  it('[CRITICAL] seed() persiste los 5 catálogos con los códigos exactos en la DB tenant real', async () => {
     // La migración 20260909120000_add_tipo_preventivo ya insertó PREVENTIVO
     // al correr `migrate deploy` en el beforeAll, así que sin este DELETE la
     // aserción de tipos_ticket pasaría aunque el seeder NO lo sembrara: el
     // test probaría la migración, no el seed. Se borra la fila para que la
     // única fuente posible del PREVENTIVO que se verifica abajo sea seed().
     await verifyClient.tipoTicket.deleteMany({ where: { codigo: 'PREVENTIVO' } });
+
+    // Mismo motivo, para familias_insumo: la migración de datos
+    // 20260910120100_seed_familias_insumo_repuesto ya insertó las 11 filas
+    // al correr `migrate deploy` en el beforeAll. Sin este DELETE, la
+    // aserción de abajo pasaría aunque `TenantSeederAdapter.seed()` NO
+    // sembrara nada — probaría la migración, no el seed (mismo hallazgo que
+    // ya bloqueó la revisión automática en un caso idéntico).
+    await verifyClient.familiaInsumo.deleteMany({
+      where: { codigo: { in: CODIGOS_FAMILIAS_REPUESTO } },
+    });
 
     await seeder.seed(DB_NAME);
 
@@ -107,22 +133,31 @@ describe('TenantSeederAdapter (T7.4, integración — Postgres real, DB efímera
     expect(tiposTicket.map((t) => t.codigo).sort()).toEqual(
       ['SOPORTE', 'EDILICIA', 'MANTENIMIENTO', 'PREVENTIVO'].sort(),
     );
+
+    const familias = await verifyClient.familiaInsumo.findMany({
+      where: { codigo: { in: CODIGOS_FAMILIAS_REPUESTO } },
+      orderBy: { codigo: 'asc' },
+    });
+    expect(familias.map((f) => f.codigo).sort()).toEqual([...CODIGOS_FAMILIAS_REPUESTO].sort());
+    expect(familias.every((f) => f.esRepuesto)).toBe(true);
   }, 30_000);
 
   it('[CRITICAL] correr seed() una segunda vez NO duplica filas ni falla (R19, ampliado F3-S1)', async () => {
     await seeder.seed(DB_NAME);
     await seeder.seed(DB_NAME); // re-run
 
-    const [estados, prioridades, tipoOperacion, tiposTicket] = await Promise.all([
+    const [estados, prioridades, tipoOperacion, tiposTicket, familias] = await Promise.all([
       verifyClient.estado.findMany(),
       verifyClient.prioridad.findMany(),
       verifyClient.tipoOperacion.findMany(),
       verifyClient.tipoTicket.findMany(),
+      verifyClient.familiaInsumo.findMany({ where: { codigo: { in: CODIGOS_FAMILIAS_REPUESTO } } }),
     ]);
 
     expect(estados).toHaveLength(6);
     expect(prioridades).toHaveLength(4);
     expect(tipoOperacion).toHaveLength(5);
     expect(tiposTicket).toHaveLength(4);
+    expect(familias).toHaveLength(11);
   }, 30_000);
 });

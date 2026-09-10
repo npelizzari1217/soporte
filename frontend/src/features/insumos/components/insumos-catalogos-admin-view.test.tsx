@@ -17,6 +17,8 @@ const FAMILIA_TONER = {
   codigo: "TONER",
   nombre: "Tóner",
   activo: true,
+  // El endpoint siempre devuelve esRepuesto; el Tóner es consumible, no repuesto.
+  esRepuesto: false,
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",
 };
@@ -77,7 +79,9 @@ describe("InsumosCatalogosAdminView", () => {
     await user.type(screen.getByLabelText("Nombre"), "Cartucho");
     await user.click(screen.getByRole("button", { name: /^crear$/i }));
 
-    await waitFor(() => expect(creado).toEqual({ codigo: "CARTUCHO", nombre: "Cartucho" }));
+    await waitFor(() =>
+      expect(creado).toEqual({ codigo: "CARTUCHO", nombre: "Cartucho", esRepuesto: false }),
+    );
   });
 
   it("familias: dar de baja pide confirmación y envía { activo: false }", async () => {

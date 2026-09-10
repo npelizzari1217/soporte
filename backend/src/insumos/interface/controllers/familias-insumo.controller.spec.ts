@@ -50,6 +50,27 @@ describe('FamiliasInsumoController', () => {
     expect(result.codigo).toBe('A');
   });
 
+  it('POST /familias-insumo reenvía esRepuesto al use case sin transformarlo', async () => {
+    const familia = FamiliaInsumoEntity.create({
+      codigo: 'CPU',
+      nombre: 'CPU',
+      activo: true,
+      esRepuesto: true,
+    });
+    const { controller, crearUseCase } = buildController({
+      crear: { execute: vi.fn().mockResolvedValue(Result.ok(familia)) },
+    });
+
+    const result = await controller.crear({ codigo: 'CPU', nombre: 'CPU', esRepuesto: true });
+
+    expect(crearUseCase.execute).toHaveBeenCalledWith({
+      codigo: 'CPU',
+      nombre: 'CPU',
+      esRepuesto: true,
+    });
+    expect(result.esRepuesto).toBe(true);
+  });
+
   it('POST /familias-insumo con codigo duplicado lanza 422', async () => {
     const { controller } = buildController({
       crear: {

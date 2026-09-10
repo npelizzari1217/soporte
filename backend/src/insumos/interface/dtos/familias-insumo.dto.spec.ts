@@ -120,11 +120,48 @@ describe.each([
   });
 });
 
+/**
+ * `esRepuesto` es OPCIONAL en los dos DTOs (PATCH semántico en edición,
+ * default `false` en alta) — se recorre con `describe.each` por el mismo
+ * motivo que los topes de largo: con un solo caso, borrar el decorador del
+ * otro DTO no pondría nada en rojo.
+ */
+describe.each([
+  ['CreateFamiliaInsumoDto', CreateFamiliaInsumoDto],
+  ['EditFamiliaInsumoDto', EditFamiliaInsumoDto],
+])('%s — esRepuesto', (_nombre, Dto) => {
+  it('acepta esRepuesto ausente', async () => {
+    const dto = plainToInstance(Dto, { codigo: 'TONER', nombre: 'Tóner' });
+    expect(await validate(dto)).toHaveLength(0);
+  });
+
+  it('acepta esRepuesto en true', async () => {
+    const dto = plainToInstance(Dto, { codigo: 'CPU', nombre: 'CPU', esRepuesto: true });
+    expect(await validate(dto)).toHaveLength(0);
+  });
+
+  it('rechaza esRepuesto que no es booleano', async () => {
+    const dto = plainToInstance(Dto, { codigo: 'CPU', nombre: 'CPU', esRepuesto: 'si' });
+    expect(await validate(dto)).not.toHaveLength(0);
+  });
+});
+
 describe('toFamiliaInsumoResponseDto', () => {
   it('mapea la entidad al shape de respuesta HTTP', () => {
     const familia = FamiliaInsumoEntity.create({ codigo: 'A', nombre: 'A', activo: true });
     const dto = toFamiliaInsumoResponseDto(familia);
     expect(dto.codigo).toBe('A');
     expect(typeof dto.createdAt).toBe('string');
+  });
+
+  it('mapea esRepuesto tal como lo trae la entidad', () => {
+    const familia = FamiliaInsumoEntity.create({
+      codigo: 'CPU',
+      nombre: 'CPU',
+      activo: true,
+      esRepuesto: true,
+    });
+    const dto = toFamiliaInsumoResponseDto(familia);
+    expect(dto.esRepuesto).toBe(true);
   });
 });

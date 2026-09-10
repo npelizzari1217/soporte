@@ -636,6 +636,13 @@ model FamiliaInsumo {
   codigo    String    @unique @db.VarChar(30)
   nombre    String    @db.VarChar(100)
   activo    Boolean   @default(true)
+  /// Repuesto de equipo (mouse, teclado, CPU...) vs. consumible (tóner,
+  /// cartucho...). Sembrado en `true` para el piso universal de repuestos
+  /// (WU-1, sdd/repuestos-familias); el `@default(false)` es solo el piso de
+  /// las filas existentes y de quien no lo marque en el ABM — Prisma resuelve
+  /// este DEFAULT del lado del cliente y lo manda en el INSERT, así que el
+  /// ABM siempre lo envía explícito.
+  esRepuesto Boolean  @default(false) @map("es_repuesto")
   createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt DateTime? @map("deleted_at") @db.Timestamptz
