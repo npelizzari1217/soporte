@@ -1083,4 +1083,122 @@ describe('PrismaInsumoRepository — Integration', () => {
       });
     }
   });
+
+  /**
+   * `findLastSecuenciaCodigo()` — comportamiento SECUENCIAL, sin concurrencia
+   * (issue #162; ver `prisma-insumo.repository.concurrencia.integration.spec.ts`
+   * para la carrera real).
+   *
+   * A diferencia de `PrismaCompraRepository`/`PrismaTicketRepository`, la
+   * serie de `codigo` NO tiene una dimensión propia para reservar un valor
+   * "fuera de rango real" (compras usa un año como 2098; acá el prefijo es
+   * SIEMPRE `INS` o `REP`, sin variante). Por eso estos tests miden la
+   * secuencia YA EXISTENTE en la serie ANTES de sembrar (`baseline`) y
+   * afirman sobre el DELTA que ellos mismos introducen, nunca sobre un valor
+   * absoluto — así el resultado no depende de qué haya quedado de otra
+   * corrida en la base de test compartida. La limpieza es por id exacto
+   * (`insumosIdsCreados`), nunca por rango de código.
+   */
+  describe('findLastSecuenciaCodigo() — comportamiento secuencial (sin concurrencia, ver spec dedicado)', () => {
+    const insumosIdsCreados: string[] = [];
+
+    afterEach(async () => {
+      if (insumosIdsCreados.length > 0) {
+        await tenantClient.insumo.deleteMany({ where: { id: { in: insumosIdsCreados } } });
+        insumosIdsCreados.length = 0;
+      }
+    });
+
+    function construirConCodigo(codigo: string): InsumoEntity {
+      return InsumoEntity.create({
+        codigo,
+        nombre: `Insumo serie ${codigo}`,
+        familiaId,
+        unidadMedidaId,
+        stockMinimo: null,
+        activo: true,
+        codigosAlternativos: [],
+        compatibilidad: [],
+      });
+    }
+
+    /** Siembra un insumo con `codigo` y lo agenda para limpieza por id. */
+    async function sembrar(codigo: string): Promise<void> {
+      const insumo = construirConCodigo(codigo);
+      await repo.save(insumo);
+      insumosIdsCreados.push(insumo.id);
+    }
+
+    /** `INS-{n}` / `REP-{n}` con el padding de 4 dígitos del numerador real. */
+    function codigoDeLaSerie(prefijo: 'INS' | 'REP', n: number): string {
+      return `${prefijo}-${String(n).padStart(4, '0')}`;
+    }
+
+    it('retorna el MÁXIMO de la serie, no el último insertado', async () => {
+      const baseline = await repo.findLastSecuenciaCodigo('INS');
+
+      // Insertados fuera de orden a propósito: si el repo confiara en el
+      // orden de inserción en vez de un MAX real, este test lo detecta.
+      await sembrar(codigoDeLaSerie('INS', baseline + 1));
+      await sembrar(codigoDeLaSerie('INS', baseline + 3));
+      await sembrar(codigoDeLaSerie('INS', baseline + 2));
+
+      const last = await repo.findLastSecuenciaCodigo('INS');
+      expect(last).toBe(baseline + 3);
+    });
+
+    /**
+     * Las dos series son independientes: crear en `REP` no puede mover el
+     * contador de `INS`, ni viceversa (issue #162, "las dos series son
+     * independientes y correlativas dentro del inquilino").
+     */
+    it('la serie REP es independiente de la serie INS', async () => {
+      const baselineIns = await repo.findLastSecuenciaCodigo('INS');
+      const baselineRep = await repo.findLastSecuenciaCodigo('REP');
+
+      await sembrar(codigoDeLaSerie('REP', baselineRep + 1));
+
+      expect(await repo.findLastSecuenciaCodigo('REP')).toBe(baselineRep + 1);
+      expect(await repo.findLastSecuenciaCodigo('INS')).toBe(baselineIns);
+    });
+
+    /**
+     * LEFT-ANCHORED (mismo criterio que `PrismaCompraRepository`, "MEJORA
+     * sobre tickets"): un código que contiene el prefijo como SUBSTRING, pero
+     * no lo tiene al INICIO, no puede confundirse con la serie.
+     */
+    it('un código que contiene el prefijo pero no empieza con él NO se cuenta', async () => {
+      const baseline = await repo.findLastSecuenciaCodigo('INS');
+      // Contiene "INS-0001" como substring, pero empieza con "X".
+      await sembrar(`X${codigoDeLaSerie('INS', baseline + 1)}`);
+
+      expect(await repo.findLastSecuenciaCodigo('INS')).toBe(baseline);
+    });
+
+    /**
+     * El código escrito a mano con el MISMO prefijo pero otra forma —sin los
+     * 4 dígitos exactos— no participa de la serie: sin este filtro, un
+     * `ORDER BY codigo DESC` alfabético podría hacer que `INS-ABCD` o
+     * `INS-12345` le ganaran a la secuencia numérica real.
+     */
+    it('un código a mano con el mismo prefijo pero sin la forma de la serie NO se cuenta', async () => {
+      const baseline = await repo.findLastSecuenciaCodigo('INS');
+
+      await sembrar('INS-ABCD');
+      await sembrar('INS-12345');
+      await sembrar('INS-12');
+
+      expect(await repo.findLastSecuenciaCodigo('INS')).toBe(baseline);
+    });
+
+    it('SÍ retoma la secuencia de un código a mano que casualmente respeta el formato', async () => {
+      const baseline = await repo.findLastSecuenciaCodigo('INS');
+
+      // El usuario tipeó esto a mano, pero tiene la forma exacta de la serie:
+      // el numerador lo respeta como si lo hubiera generado él mismo.
+      await sembrar(codigoDeLaSerie('INS', baseline + 1));
+
+      expect(await repo.findLastSecuenciaCodigo('INS')).toBe(baseline + 1);
+    });
+  });
 });

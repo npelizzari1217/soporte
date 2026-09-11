@@ -323,3 +323,25 @@ export class StockInsuficienteError extends DomainError {
     );
   }
 }
+
+/**
+ * SecuenciaCodigoInsumoAgotadaError — la serie de `codigo` autogenerado
+ * (`INS-{SEQ4}` o `REP-{SEQ4}`, issue #162) superaría los 4 dígitos (> 9999)
+ * al generar el próximo código.
+ *
+ * Mismo criterio que `SecuenciaAgotadaError` (tickets) y
+ * `NumeradorCompraAgotadoError` (compras): es una precondición de
+ * infraestructura de negocio, no un error de carga del usuario, así que va
+ * como 409 y no como 422.
+ * → HTTP 409 en la capa de presentación.
+ */
+export class SecuenciaCodigoInsumoAgotadaError extends DomainError {
+  readonly code = 'SECUENCIA_CODIGO_INSUMO_AGOTADA';
+
+  constructor(prefijo: string) {
+    super(
+      `NumeradorInsumo: la secuencia de la serie "${prefijo}" superó el máximo de 9999. ` +
+        `No se pueden generar más códigos automáticos en esta serie; cargue el código a mano.`,
+    );
+  }
+}

@@ -15,6 +15,7 @@ import {
   ConflictoCodigoAlternativo,
   FamiliaDeInsumo,
   IInsumoRepository,
+  PrefijoCodigoInsumo,
 } from '../../../domain/ports/i-insumo.repository';
 import { InsumoEntity } from '../../../domain/entities/insumo.entity';
 import {
@@ -289,5 +290,40 @@ export class PrismaInsumoRepository implements IInsumoRepository {
         },
       },
     });
+  }
+
+  /**
+   * Ver el contrato completo de concurrencia en el JSDoc de
+   * `IInsumoRepository.findLastSecuenciaCodigo`.
+   *
+   * El `LIKE` es LEFT-ANCHORED (`'{prefijo}-%'`), mismo criterio que
+   * `PrismaCompraRepository.findLastSecuencia`: al anclar el patrón al
+   * inicio de la columna, Postgres puede resolver la búsqueda con un range
+   * scan sobre el índice único de `codigo` (`@unique`) en vez de un seq scan
+   * completo. El `~` con el patrón EXACTO (`^{prefijo}-[0-9]{4}$`) filtra los
+   * códigos escritos a mano que empiezan igual pero no tienen la forma de la
+   * serie (`INS-ABCD`, `INS-12345`) — sin ese filtro, un código así entraría
+   * al `ORDER BY codigo DESC` con un orden alfabético que no es numérico y
+   * podría ganarle a la secuencia real.
+   */
+  async findLastSecuenciaCodigo(prefijo: PrefijoCodigoInsumo): Promise<number> {
+    const lockKey = `insumo-codigo:${prefijo}`;
+    await this.client.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`;
+
+    const patronLike = `${prefijo}-%`;
+    const patronExacto = `^${prefijo}-[0-9]{4}$`;
+    const rows = await this.client.$queryRaw<Array<{ codigo: string }>>`
+      SELECT codigo FROM insumos
+      WHERE codigo LIKE ${patronLike} AND codigo ~ ${patronExacto}
+      ORDER BY codigo DESC
+      LIMIT 1
+    `;
+
+    if (rows.length === 0) {
+      return 0;
+    }
+
+    const partes = rows[0].codigo.split('-');
+    return parseInt(partes[partes.length - 1], 10) || 0;
   }
 }

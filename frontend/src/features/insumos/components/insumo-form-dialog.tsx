@@ -139,16 +139,23 @@ export function InsumoFormDialog({ trigger, insumo }: InsumoFormDialogProps) {
   }, [open, unidadesListas]);
 
   function submit(values: InsumoFormValues) {
+    // Vacío o de solo espacios es la señal de "autogenerar" (issue #162): la
+    // clave `codigo` se OMITE del body en vez de mandar `""` — mismo criterio
+    // que `stockMinimo` ausente en el alta, y el que interpreta el PATCH como
+    // "no tocar" en la edición (`EditInsumoDto.codigo` es `undefined` ⇒ deja
+    // el código guardado intacto).
+    const codigo = values.codigo.trim();
+
     if (isEdit) {
       // `stockMinimo` es el ÚNICO campo donde `null` viaja a propósito: es la
       // orden explícita de borrar el punto de reposición cuando el usuario
       // limpia el campo (ver el JSDoc de `EditInsumoDto`).
       const dto: EditInsumoDto = {
-        codigo: values.codigo,
         nombre: values.nombre,
         familiaId: values.familiaId,
         unidadMedidaId: values.unidadMedidaId,
         stockMinimo: values.stockMinimo ?? null,
+        ...(codigo ? { codigo } : {}),
       };
       editarMutation.mutate(dto, { onSuccess: () => setOpen(false) });
       return;
@@ -158,10 +165,10 @@ export function InsumoFormDialog({ trigger, insumo }: InsumoFormDialogProps) {
     // body cuando el campo queda sin completar (ni `undefined` explícito ni
     // `null` — la clave directamente no está).
     const dto: CreateInsumoDto = {
-      codigo: values.codigo,
       nombre: values.nombre,
       familiaId: values.familiaId,
       unidadMedidaId: values.unidadMedidaId,
+      ...(codigo ? { codigo } : {}),
       ...(values.stockMinimo === undefined ? {} : { stockMinimo: values.stockMinimo }),
     };
     crearMutation.mutate(dto, { onSuccess: () => setOpen(false) });
@@ -182,10 +189,25 @@ export function InsumoFormDialog({ trigger, insumo }: InsumoFormDialogProps) {
         </DialogHeader>
         <form onSubmit={handleSubmit(submit)} className="flex flex-col gap-4" noValidate>
           <div className="flex flex-col gap-1">
+            {/*
+              Sin "(opcional)" en el rótulo a propósito, a diferencia de
+              "Stock mínimo (opcional)" más abajo: la suite entera referencia
+              este campo con `getByLabelText("Código")` EXACTO —en el alta, en
+              la edición y en la validación—, y agregarle un sufijo rompería
+              esos matches por accesibilidad (el nombre accesible pasaría a
+              ser "Código (opcional)"). El hint de abajo ya comunica que el
+              campo es opcional en el alta.
+            */}
             <label htmlFor="insumo-codigo" className="text-sm font-medium text-foreground">
               Código
             </label>
             <Input id="insumo-codigo" error={!!errors.codigo} {...register("codigo")} />
+            {/* Issue #162: dejarlo vacío autogenera INS-0001/REP-0001 según la familia. */}
+            {!isEdit && !errors.codigo && (
+              <p className="text-xs text-muted-foreground">
+                Si lo dejás vacío, se genera solo: INS-0001 para insumos, REP-0001 para repuestos.
+              </p>
+            )}
             {errors.codigo && (
               <p role="alert" className="text-sm text-destructive">
                 {errors.codigo.message}

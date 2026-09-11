@@ -97,6 +97,8 @@ import { EditarModeloEquipoUseCase } from './application/use-cases/editar-modelo
 import { CambiarEstadoActivoModeloEquipoUseCase } from './application/use-cases/cambiar-estado-activo-modelo-equipo.use-case';
 import { ListarModelosEquipoUseCase } from './application/use-cases/listar-modelos-equipo.use-case';
 
+import { NumeradorInsumo } from './domain/services/numerador-insumo.service';
+
 import { CrearInsumoUseCase } from './application/use-cases/crear-insumo.use-case';
 import { EditarInsumoUseCase } from './application/use-cases/editar-insumo.use-case';
 import { CambiarEstadoActivoInsumoUseCase } from './application/use-cases/cambiar-estado-activo-insumo.use-case';
@@ -196,21 +198,45 @@ import { MovimientosInsumoController } from './interface/controllers/movimientos
 
     { provide: INSUMO_REPOSITORY, useClass: PrismaInsumoRepository },
     {
-      // El alta y la edición reciben los CUATRO puertos: el insumo valida que
-      // su familia, su unidad y cada modelo compatible sean elegibles, y
-      // "existe" no es "es elegible" —la FK deja pasar la fila deshabilitada—.
+      // `NumeradorInsumo` es una clase plana (sin `@Injectable`) — se resuelve
+      // vía `useFactory`, igual que `NumeradorCompra` en `CompraModule` y
+      // `NumeradorTicket` en `EquiposModule` (issue #162).
+      provide: NumeradorInsumo,
+      useFactory: (repo: IInsumoRepository) => new NumeradorInsumo(repo),
+      inject: [INSUMO_REPOSITORY],
+    },
+    {
+      // El alta recibe, además, `NumeradorInsumo` y `TENANT_TX_RUNNER` (issue
+      // #162): la rama de autogeneración de `codigo` necesita el numerador y
+      // corre su sección crítica (numeración + guardado) dentro de una
+      // transacción para que el advisory lock de
+      // `PrismaInsumoRepository.findLastSecuenciaCodigo` sirva de algo. El
+      // camino de código a mano no los usa, mismo criterio que
+      // `RegistrarEntradaInsumoUseCase` no recibe el runner.
       provide: CrearInsumoUseCase,
       useFactory: (
         insumoRepo: IInsumoRepository,
         familiaRepo: IFamiliaInsumoRepository,
         unidadRepo: IUnidadMedidaRepository,
         modeloRepo: IModeloEquipoRepository,
-      ) => new CrearInsumoUseCase(insumoRepo, familiaRepo, unidadRepo, modeloRepo),
+        numerador: NumeradorInsumo,
+        txRunner: ITenantTransactionRunner,
+      ) =>
+        new CrearInsumoUseCase(
+          insumoRepo,
+          familiaRepo,
+          unidadRepo,
+          modeloRepo,
+          numerador,
+          txRunner,
+        ),
       inject: [
         INSUMO_REPOSITORY,
         FAMILIA_INSUMO_REPOSITORY,
         UNIDAD_MEDIDA_REPOSITORY,
         MODELO_EQUIPO_REPOSITORY,
+        NumeradorInsumo,
+        TENANT_TX_RUNNER,
       ],
     },
     {

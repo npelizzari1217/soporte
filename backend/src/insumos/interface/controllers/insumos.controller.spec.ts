@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import 'reflect-metadata';
 import { GUARDS_METADATA } from '@nestjs/common/constants';
-import { NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { ConflictException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { InsumosController } from './insumos.controller';
 import { AdminClienteGuard } from '../../../auth/infrastructure/guards/admin-cliente.guard';
 import { InsumoEntity } from '../../domain/entities/insumo.entity';
@@ -12,6 +12,7 @@ import {
   FamiliaInsumoDeshabilitadaError,
   InsumoCodigoDuplicadoError,
   InsumoNoEncontradoError,
+  SecuenciaCodigoInsumoAgotadaError,
 } from '../../domain/errors/insumos.errors';
 
 const FAMILIA_ID = '11111111-1111-4111-8111-111111111111';
@@ -154,6 +155,58 @@ describe('InsumosController', () => {
       unidadMedidaId: UNIDAD_ID,
       stockMinimo: 5.5,
     });
+  });
+
+  /**
+   * Issue #162: el campo dejó de ser obligatorio. Sin `codigo` en el body, el
+   * controller lo pasa TAL CUAL —ausente— al use case, que es quien decide
+   * autogenerarlo. Si el controller inventara un `codigo: undefined` explícito
+   * o cualquier otro valor, este test lo detecta.
+   */
+  it('POST /insumos sin codigo lo pasa ausente al use case (autogeneración)', async () => {
+    const insumo = construirInsumo({ codigo: 'INS-0001' });
+    const { controller, crearUseCase } = buildController({
+      crear: { execute: vi.fn().mockResolvedValue(Result.ok(insumo)) },
+    });
+
+    const result = await controller.crear({
+      nombre: 'Tóner negro',
+      familiaId: FAMILIA_ID,
+      unidadMedidaId: UNIDAD_ID,
+    });
+
+    expect(result.codigo).toBe('INS-0001');
+    expect(crearUseCase.execute).toHaveBeenCalledWith({
+      nombre: 'Tóner negro',
+      familiaId: FAMILIA_ID,
+      unidadMedidaId: UNIDAD_ID,
+    });
+    const dtoEnviado = crearUseCase.execute.mock.calls[0]![0] as Record<string, unknown>;
+    expect(dtoEnviado).not.toHaveProperty('codigo');
+  });
+
+  /**
+   * `SecuenciaCodigoInsumoAgotadaError` (issue #162) es 409, no 422: es una
+   * precondición de infraestructura de negocio, no un error de carga del
+   * body. Mismo criterio que `SinCicloActivoError`/`SecuenciaAgotadaError` en
+   * `tickets` y `compras`.
+   */
+  it('POST /insumos con la serie de códigos agotada lanza 409', async () => {
+    const { controller } = buildController({
+      crear: {
+        execute: vi
+          .fn()
+          .mockResolvedValue(Result.fail(new SecuenciaCodigoInsumoAgotadaError('INS'))),
+      },
+    });
+
+    await expect(
+      controller.crear({
+        nombre: 'Tóner negro',
+        familiaId: FAMILIA_ID,
+        unidadMedidaId: UNIDAD_ID,
+      }),
+    ).rejects.toBeInstanceOf(ConflictException);
   });
 
   it('POST /insumos con código duplicado lanza 422', async () => {

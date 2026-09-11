@@ -11,6 +11,7 @@ import {
   InsumoNoEncontradoError,
   MotivoAjusteRequeridoError,
   ModeloEquipoDeshabilitadoError,
+  SecuenciaCodigoInsumoAgotadaError,
   StockInsuficienteError,
   ModeloEquipoInexistenteError,
   UnidadMedidaDeshabilitadaError,
@@ -269,6 +270,29 @@ describe('Errores de dominio de insumos', () => {
       const error = new StockInsuficienteError('id-insumo', 1, 0);
 
       expect(error.message).toContain('0');
+    });
+  });
+
+  describe('SecuenciaCodigoInsumoAgotadaError', () => {
+    /**
+     * 409, no 422 (issue #162): es una precondición de infraestructura de
+     * negocio —la serie de códigos autogenerados se agotó—, no un error de
+     * carga del usuario sobre un campo del body. Mismo criterio que
+     * `SecuenciaAgotadaError` (tickets) y `NumeradorCompraAgotadoError`
+     * (compras).
+     */
+    it('expone code SECUENCIA_CODIGO_INSUMO_AGOTADA y nombra la serie', () => {
+      const error = new SecuenciaCodigoInsumoAgotadaError('INS');
+
+      expect(error).toBeInstanceOf(DomainError);
+      expect(error.code).toBe('SECUENCIA_CODIGO_INSUMO_AGOTADA');
+      expect(error.message).toContain('INS');
+    });
+
+    it('nombra la serie REP y no la INS cuando la agotada es REP', () => {
+      const error = new SecuenciaCodigoInsumoAgotadaError('REP');
+
+      expect(error.message).toContain('REP');
     });
   });
 });
