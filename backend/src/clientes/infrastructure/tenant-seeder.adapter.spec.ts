@@ -18,6 +18,10 @@
  * - `familias_insumo` (11, WU-1 sdd/repuestos-familias) — el piso universal
  *   de familias marcadas `esRepuesto: true`, mismos código/nombre que la
  *   migración de datos hermana (ver `tenant-seeder.adapter.ts`).
+ * - `unidades_medida` (4, issue #155) — UNI, PAR, CM, MM, mismos
+ *   código/nombre que la migración de datos hermana
+ *   `20260911120000_seed_unidades_medida`. Sin este piso ningún tenant nuevo
+ *   puede dar de alta un insumo.
  * - `seed` MUST cerrar el client (`$disconnect`) y el pool (`pool.end`)
  *   antes de retornar, incluso si una siembra falla (R18: sin conexiones
  *   activas, si no el DROP de rollback falla).
@@ -40,6 +44,7 @@ function makeFakeClient() {
     tipoOperacion: { createMany: vi.fn().mockResolvedValue({ count: 7 }) },
     tipoTicket: { createMany: vi.fn().mockResolvedValue({ count: 4 }) },
     familiaInsumo: { createMany: vi.fn().mockResolvedValue({ count: 11 }) },
+    unidadMedida: { createMany: vi.fn().mockResolvedValue({ count: 4 }) },
     $disconnect: vi.fn().mockResolvedValue(undefined),
   };
 }
@@ -170,6 +175,29 @@ describe('TenantSeederAdapter (T7.4, unit — createClient mockeado)', () => {
     ]);
   });
 
+  /**
+   * Issue #155: un tenant recién creado no podía dar de alta NINGÚN insumo
+   * porque `unidades_medida` nacía vacía y el alta exige elegir una unidad.
+   * Mismo criterio de procedencia que las familias de repuesto (#147): se
+   * copia lo que el negocio YA USA en producción (verificado contra el
+   * tenant "Santa Cruz"), no una lista inventada.
+   */
+  it('[CRITICAL] siembra las 4 unidades de medida: UNI, PAR, CM, MM', async () => {
+    const client = makeFakeClient();
+    const createClient = vi.fn().mockReturnValue({ client, pool: makeFakePool() });
+    const adapter = new TenantSeederAdapter(MASTER_URL, createClient);
+
+    await adapter.seed('soporte_prov_demo_test');
+
+    const [[{ data }]] = client.unidadMedida.createMany.mock.calls;
+    expect(data).toEqual([
+      { codigo: 'UNI', nombre: 'Unidad' },
+      { codigo: 'PAR', nombre: 'Pares' },
+      { codigo: 'CM', nombre: 'Centímetro' },
+      { codigo: 'MM', nombre: 'Milímetro' },
+    ]);
+  });
+
   it('todos los createMany usan skipDuplicates: true (idempotencia, R19)', async () => {
     const client = makeFakeClient();
     const createClient = vi.fn().mockReturnValue({ client, pool: makeFakePool() });
@@ -182,6 +210,7 @@ describe('TenantSeederAdapter (T7.4, unit — createClient mockeado)', () => {
     expect(client.tipoOperacion.createMany.mock.calls[0]![0].skipDuplicates).toBe(true);
     expect(client.tipoTicket.createMany.mock.calls[0]![0].skipDuplicates).toBe(true);
     expect(client.familiaInsumo.createMany.mock.calls[0]![0].skipDuplicates).toBe(true);
+    expect(client.unidadMedida.createMany.mock.calls[0]![0].skipDuplicates).toBe(true);
   });
 
   it('[CRITICAL] construye el client con el dbName recibido', async () => {

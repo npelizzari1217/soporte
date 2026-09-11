@@ -92,7 +92,10 @@ function validarLargos(codigo?: string, nombre?: string): void {
 /**
  * UnidadMedidaEntity — entidad de dominio del catálogo de unidades de medida
  * (Unidad, Litro, Metro, ...). Catálogo EDITABLE por el ADMINISTRADOR del
- * cliente, nace vacío (sin seed).
+ * cliente: nace con el piso de 4 unidades que siembra
+ * `TenantSeederAdapter.UNIDADES_MEDIDA` (issue #155) — UNI, PAR, CM, MM —, no
+ * vacío. El piso es un punto de partida, no un cierre: el administrador
+ * sigue pudiendo crear, editar y desactivar las suyas, piso incluido.
  *
  * No hay borrado: `unidades_medida` es referenciada por `insumos` con
  * `ON DELETE RESTRICT`, así que una unidad en uso no se elimina — se

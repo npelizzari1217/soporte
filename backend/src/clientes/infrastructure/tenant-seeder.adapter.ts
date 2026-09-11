@@ -24,6 +24,14 @@
  *   migración de datos `20260910120100_seed_familias_insumo_repuesto`, que
  *   backfillea el mismo piso para los tenants que ya existen y documenta
  *   por qué CPU2/EST500W/DISCO quedan afuera.
+ * - `unidades_medida` (4, base EDITABLE por el admin del tenant — issue
+ *   #155): UNI (Unidad), PAR (Pares), CM (Centímetro), MM (Milímetro). Sin
+ *   este piso ningún tenant nuevo puede dar de alta un insumo — el alta
+ *   exige elegir una unidad y el catálogo nacía vacío. Códigos copiados de
+ *   los que el negocio YA USA en producción (mismo criterio que
+ *   `familias_insumo`) — ver el header de la migración de datos hermana
+ *   `20260911120000_seed_unidades_medida`, que backfillea el mismo piso
+ *   para los tenants que ya existen.
  *
  * `tipos_componente` (Fase 3 F3-Q3) se sembraba acá como catálogo tenant
  * FIJO — ELIMINADO en PR4b (sdd/tipos-componente-master): el catálogo pasó a
@@ -157,6 +165,23 @@ const FAMILIAS_INSUMO_REPUESTO = [
   { codigo: 'IMPRESORA', nombre: 'Impresora', esRepuesto: true },
 ];
 
+/**
+ * Piso de unidades de medida (issue #155): sin esto, un tenant recién
+ * provisionado no puede dar de alta NINGÚN insumo — el alta exige elegir una
+ * unidad y `unidades_medida` nacía vacía. Mismo criterio de procedencia que
+ * `FAMILIAS_INSUMO_REPUESTO`: código y nombre copiados de lo que el negocio
+ * YA USA en producción (verificado contra el tenant "Santa Cruz", que las
+ * tenía cargadas a mano), no una lista inventada. Ver el header de la
+ * migración de datos hermana `20260911120000_seed_unidades_medida` para el
+ * backfill de los tenants que ya existen.
+ */
+const UNIDADES_MEDIDA = [
+  { codigo: 'UNI', nombre: 'Unidad' },
+  { codigo: 'PAR', nombre: 'Pares' },
+  { codigo: 'CM', nombre: 'Centímetro' },
+  { codigo: 'MM', nombre: 'Milímetro' },
+];
+
 @Injectable()
 export class TenantSeederAdapter implements ITenantSeeder {
   constructor(
@@ -176,6 +201,7 @@ export class TenantSeederAdapter implements ITenantSeeder {
         data: FAMILIAS_INSUMO_REPUESTO,
         skipDuplicates: true,
       });
+      await client.unidadMedida.createMany({ data: UNIDADES_MEDIDA, skipDuplicates: true });
     } finally {
       await client.$disconnect();
       await pool.end();
