@@ -358,6 +358,11 @@ const stockMinimoInsumoSchema = z.preprocess(
  */
 export const insumoSchema = z.object({
   /**
+   * OPCIONAL desde el issue #162: vacío o de solo espacios ⇒ el backend lo
+   * AUTOGENERA (`INS-0001`/`REP-0001` según la familia). Ya no lleva el
+   * `.refine` de "requerido" que tenía antes de este issue — el único chequeo
+   * que sobrevive es el tope de largo, y solo quien complete el campo lo mide.
+   *
    * SIN patrón, a propósito, y ES la diferencia con `familiaInsumoSchema` y
    * `unidadMedidaSchema`: `CreateInsumoDto`/`EditInsumoDto` NO declaran
    * `@Matches` sobre `codigo` —su única normalización es
@@ -366,14 +371,9 @@ export const insumoSchema = z.object({
    * un insumo ya guardado con guion (`TON-001`) quedaría inedi­table: el
    * formulario de edición lo rechazaría aunque el usuario solo quisiera
    * corregirle el nombre.
-   *
-   * El `.trim()` espeja que el `@MinLength(1)` del borde mide DESPUÉS del
-   * `@Transform`: un código de solo espacios llega vacío y se rechaza, en vez
-   * de viajar y cobrar un 400.
    */
   codigo: z
     .string()
-    .refine((valor) => normalizarCodigoInsumo(valor).length >= 1, "El código es requerido")
     .refine(
       (valor) => normalizarCodigoInsumo(valor).length <= INSUMO_CODIGO_MAX_LENGTH,
       mensajeDemasiadoLargo("El código", INSUMO_CODIGO_MAX_LENGTH),

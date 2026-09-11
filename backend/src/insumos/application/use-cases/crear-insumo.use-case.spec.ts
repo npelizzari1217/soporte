@@ -1,11 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
 import { CrearInsumoUseCase } from './crear-insumo.use-case';
+import { Result } from '../../../shared/domain/result';
+import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { FamiliaInsumoEntity } from '../../domain/entities/familia-insumo.entity';
 import { UnidadMedidaEntity } from '../../domain/entities/unidad-medida.entity';
 import { InsumoEntity } from '../../domain/entities/insumo.entity';
 import { InsumoCodigoAlternativoEntity } from '../../domain/entities/insumo-codigo-alternativo.entity';
 import { ModeloEquipoEntity } from '../../domain/entities/modelo-equipo.entity';
 import { IInsumoRepository } from '../../domain/ports/i-insumo.repository';
+import { SecuenciaCodigoInsumoAgotadaError } from '../../domain/errors/insumos.errors';
+import { NumeradorInsumo } from '../../domain/services/numerador-insumo.service';
 
 describe('CrearInsumoUseCase', () => {
   type InsumoRepoMock = Pick<
@@ -26,6 +30,14 @@ describe('CrearInsumoUseCase', () => {
     return FamiliaInsumoEntity.create({ codigo: 'TONER', nombre: 'Tóner', activo: true }, 'fam-1');
   }
 
+  /** Familia de repuestos (`esRepuesto: true`), para la serie `REP-####`. */
+  function familiaDeRepuestos(): FamiliaInsumoEntity {
+    return FamiliaInsumoEntity.create(
+      { codigo: 'CPU', nombre: 'CPU', activo: true, esRepuesto: true },
+      'fam-1',
+    );
+  }
+
   function unidadHabilitada(): UnidadMedidaEntity {
     return UnidadMedidaEntity.create({ codigo: 'UN', nombre: 'Unidad', activo: true }, 'uni-1');
   }
@@ -36,6 +48,34 @@ describe('CrearInsumoUseCase', () => {
 
   function buildUnidadRepo(unidad: UnidadMedidaEntity | null = unidadHabilitada()) {
     return { findById: vi.fn().mockResolvedValue(unidad) };
+  }
+
+  /**
+   * `NumeradorInsumo` falso: por default resuelve `INS-0001`. Los tests de
+   * autogeneración pisan el mock para devolver otro código o un fallo.
+   */
+  function buildNumerador(
+    overrides: Partial<Pick<NumeradorInsumo, 'generarCodigo'>> = {},
+  ): Pick<NumeradorInsumo, 'generarCodigo'> {
+    return {
+      generarCodigo: vi
+        .fn()
+        .mockResolvedValue(Result.ok<string, SecuenciaCodigoInsumoAgotadaError>('INS-0001')),
+      ...overrides,
+    };
+  }
+
+  /**
+   * Runner falso que ejecuta el callback DIRECTAMENTE, sin Prisma real —
+   * mismo criterio que `crear-compra.use-case.spec.ts`. Escrito a mano y no
+   * con `vi.fn()`: `Mock<...>` instancia el genérico de
+   * `ITenantTransactionRunner.run` en `unknown` y no encaja en el `Pick` del
+   * constructor sin un cast.
+   */
+  function buildTxRunner(): Pick<ITenantTransactionRunner, 'run'> {
+    return {
+      run: async <T>(fn: () => Promise<T>): Promise<T> => fn(),
+    };
   }
 
   function modeloHabilitado(id: string): ModeloEquipoEntity {
@@ -73,6 +113,8 @@ describe('CrearInsumoUseCase', () => {
       buildFamiliaRepo(),
       buildUnidadRepo(),
       buildModeloRepo(),
+      buildNumerador(),
+      buildTxRunner(),
     );
 
     const result = await useCase.execute(dtoBase);
@@ -89,6 +131,8 @@ describe('CrearInsumoUseCase', () => {
       buildFamiliaRepo(),
       buildUnidadRepo(),
       buildModeloRepo(),
+      buildNumerador(),
+      buildTxRunner(),
     );
 
     const result = await useCase.execute(dtoBase);
@@ -102,6 +146,8 @@ describe('CrearInsumoUseCase', () => {
       buildFamiliaRepo(),
       buildUnidadRepo(),
       buildModeloRepo(),
+      buildNumerador(),
+      buildTxRunner(),
     );
 
     const result = await useCase.execute({ ...dtoBase, stockMinimo: 12.5 });
@@ -121,6 +167,8 @@ describe('CrearInsumoUseCase', () => {
       buildFamiliaRepo(),
       buildUnidadRepo(),
       buildModeloRepo(),
+      buildNumerador(),
+      buildTxRunner(),
     );
 
     const result = await useCase.execute({
@@ -141,6 +189,8 @@ describe('CrearInsumoUseCase', () => {
       buildFamiliaRepo(),
       buildUnidadRepo(),
       buildModeloRepo(),
+      buildNumerador(),
+      buildTxRunner(),
     );
 
     await useCase.execute({ ...dtoBase, codigo: ' ton-001 ' });
@@ -157,6 +207,8 @@ describe('CrearInsumoUseCase', () => {
       buildFamiliaRepo(null),
       buildUnidadRepo(),
       buildModeloRepo(),
+      buildNumerador(),
+      buildTxRunner(),
     );
 
     const result = await useCase.execute(dtoBase);
@@ -179,6 +231,8 @@ describe('CrearInsumoUseCase', () => {
       buildFamiliaRepo(familia),
       buildUnidadRepo(),
       buildModeloRepo(),
+      buildNumerador(),
+      buildTxRunner(),
     );
 
     const result = await useCase.execute(dtoBase);
@@ -200,6 +254,8 @@ describe('CrearInsumoUseCase', () => {
       buildFamiliaRepo(familia),
       buildUnidadRepo(),
       buildModeloRepo(),
+      buildNumerador(),
+      buildTxRunner(),
     );
 
     const result = await useCase.execute(dtoBase);
@@ -214,6 +270,8 @@ describe('CrearInsumoUseCase', () => {
       buildFamiliaRepo(),
       buildUnidadRepo(null),
       buildModeloRepo(),
+      buildNumerador(),
+      buildTxRunner(),
     );
 
     const result = await useCase.execute(dtoBase);
@@ -231,6 +289,8 @@ describe('CrearInsumoUseCase', () => {
       buildFamiliaRepo(),
       buildUnidadRepo(unidad),
       buildModeloRepo(),
+      buildNumerador(),
+      buildTxRunner(),
     );
 
     const result = await useCase.execute(dtoBase);
@@ -247,6 +307,8 @@ describe('CrearInsumoUseCase', () => {
       buildFamiliaRepo(),
       buildUnidadRepo(unidad),
       buildModeloRepo(),
+      buildNumerador(),
+      buildTxRunner(),
     );
 
     const result = await useCase.execute(dtoBase);
@@ -277,12 +339,184 @@ describe('CrearInsumoUseCase', () => {
       buildFamiliaRepo(),
       buildUnidadRepo(),
       buildModeloRepo(),
+      buildNumerador(),
+      buildTxRunner(),
     );
 
     const result = await useCase.execute(dtoBase);
 
     expect(result.isFail()).toBe(true);
     expect(result.getError().code).toBe('INSUMO_CODIGO_DUPLICADO');
+    expect(insumoRepo.save).not.toHaveBeenCalled();
+  });
+
+  // ─── Código autogenerado (issue #162) ──────────────────────────────────────
+
+  const dtoSinCodigo = {
+    nombre: 'Tóner negro',
+    familiaId: 'fam-1',
+    unidadMedidaId: 'uni-1',
+  };
+
+  /**
+   * Camino feliz de la autogeneración: sin `codigo` en el alta, el use case
+   * le pide el código al numerador y persiste lo que este devuelve — no
+   * inventa el formato por su cuenta.
+   */
+  it('autogenera el código con el numerador cuando el alta no trae codigo', async () => {
+    const insumoRepo = buildInsumoRepo();
+    const numerador = buildNumerador({
+      generarCodigo: vi
+        .fn()
+        .mockResolvedValue(Result.ok<string, SecuenciaCodigoInsumoAgotadaError>('INS-0007')),
+    });
+    const useCase = new CrearInsumoUseCase(
+      insumoRepo,
+      buildFamiliaRepo(),
+      buildUnidadRepo(),
+      buildModeloRepo(),
+      numerador,
+      buildTxRunner(),
+    );
+
+    const result = await useCase.execute(dtoSinCodigo);
+
+    expect(result.isOk()).toBe(true);
+    expect(result.getValue().codigo).toBe('INS-0007');
+    expect(insumoRepo.findByCodigo).not.toHaveBeenCalled();
+    expect(insumoRepo.save).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * `esRepuesto` de la familia decide la serie: `true` ⇒ `REP`. El use case
+   * no lo infiere de nada más —ni del nombre ni del código—, así que este
+   * test se pone rojo si alguien invierte el booleano al pasarlo al
+   * numerador.
+   */
+  it('pide la serie REP al numerador cuando la familia es de repuestos', async () => {
+    const numerador = buildNumerador({
+      generarCodigo: vi
+        .fn()
+        .mockResolvedValue(Result.ok<string, SecuenciaCodigoInsumoAgotadaError>('REP-0001')),
+    });
+    const useCase = new CrearInsumoUseCase(
+      buildInsumoRepo(),
+      buildFamiliaRepo(familiaDeRepuestos()),
+      buildUnidadRepo(),
+      buildModeloRepo(),
+      numerador,
+      buildTxRunner(),
+    );
+
+    const result = await useCase.execute(dtoSinCodigo);
+
+    expect(result.isOk()).toBe(true);
+    expect(result.getValue().codigo).toBe('REP-0001');
+    expect(numerador.generarCodigo).toHaveBeenCalledWith(true);
+  });
+
+  it('pide la serie INS al numerador cuando la familia NO es de repuestos', async () => {
+    const numerador = buildNumerador();
+    const useCase = new CrearInsumoUseCase(
+      buildInsumoRepo(),
+      buildFamiliaRepo(familiaHabilitada()),
+      buildUnidadRepo(),
+      buildModeloRepo(),
+      numerador,
+      buildTxRunner(),
+    );
+
+    await useCase.execute(dtoSinCodigo);
+
+    expect(numerador.generarCodigo).toHaveBeenCalledWith(false);
+  });
+
+  /**
+   * EL BORDE del issue #162: si el usuario igual escribe un código a mano, se
+   * respeta — el autogenerado es el default, no una imposición. Este test es
+   * el que se pone rojo si alguien invierte la condición y autogenera SIEMPRE.
+   */
+  it('usa el código provisto por el usuario y NO consulta al numerador', async () => {
+    const numerador = buildNumerador();
+    const useCase = new CrearInsumoUseCase(
+      buildInsumoRepo(),
+      buildFamiliaRepo(),
+      buildUnidadRepo(),
+      buildModeloRepo(),
+      numerador,
+      buildTxRunner(),
+    );
+
+    const result = await useCase.execute(dtoBase);
+
+    expect(result.isOk()).toBe(true);
+    expect(result.getValue().codigo).toBe('TON-001');
+    expect(numerador.generarCodigo).not.toHaveBeenCalled();
+  });
+
+  /**
+   * La sección crítica (numeración + guardado) corre DENTRO de la
+   * transacción SOLO cuando autogenera. El camino manual no abre ninguna: es
+   * el mismo criterio "sin lock" que ya tenía antes de este issue, y abrir
+   * una transacción de más ahí no rompería nada hoy, pero escondería una
+   * regresión el día que alguien la necesite para otra cosa.
+   */
+  it('abre la transacción para autogenerar, pero NO cuando el código viene a mano', async () => {
+    let vecesAbierta = 0;
+    const txRunner: Pick<ITenantTransactionRunner, 'run'> = {
+      run: async <T>(fn: () => Promise<T>): Promise<T> => {
+        vecesAbierta += 1;
+        return fn();
+      },
+    };
+
+    const useCaseAutogenerado = new CrearInsumoUseCase(
+      buildInsumoRepo(),
+      buildFamiliaRepo(),
+      buildUnidadRepo(),
+      buildModeloRepo(),
+      buildNumerador(),
+      txRunner,
+    );
+    await useCaseAutogenerado.execute(dtoSinCodigo);
+    expect(vecesAbierta).toBe(1);
+
+    const useCaseManual = new CrearInsumoUseCase(
+      buildInsumoRepo(),
+      buildFamiliaRepo(),
+      buildUnidadRepo(),
+      buildModeloRepo(),
+      buildNumerador(),
+      txRunner,
+    );
+    await useCaseManual.execute(dtoBase);
+    expect(vecesAbierta).toBe(1);
+  });
+
+  /**
+   * `SecuenciaCodigoInsumoAgotadaError` (serie agotada, > 9999) se propaga
+   * como cualquier otro `Result.fail`, y NO persiste nada — mismo criterio
+   * que `NumeradorCompraAgotadoError` en `CrearCompraUseCase`.
+   */
+  it('propaga el error del numerador cuando la serie está agotada, sin persistir nada', async () => {
+    const error = new SecuenciaCodigoInsumoAgotadaError('INS');
+    const insumoRepo = buildInsumoRepo();
+    const numerador = buildNumerador({
+      generarCodigo: vi.fn().mockResolvedValue(Result.fail(error)),
+    });
+    const useCase = new CrearInsumoUseCase(
+      insumoRepo,
+      buildFamiliaRepo(),
+      buildUnidadRepo(),
+      buildModeloRepo(),
+      numerador,
+      buildTxRunner(),
+    );
+
+    const result = await useCase.execute(dtoSinCodigo);
+
+    expect(result.isFail()).toBe(true);
+    expect(result.getError().code).toBe('SECUENCIA_CODIGO_INSUMO_AGOTADA');
     expect(insumoRepo.save).not.toHaveBeenCalled();
   });
 
@@ -309,6 +543,8 @@ describe('CrearInsumoUseCase', () => {
       buildFamiliaRepo(null),
       buildUnidadRepo(),
       buildModeloRepo(),
+      buildNumerador(),
+      buildTxRunner(),
     );
 
     const result = await useCase.execute(dtoBase);
@@ -334,6 +570,8 @@ describe('CrearInsumoUseCase', () => {
       buildFamiliaRepo(),
       buildUnidadRepo(null),
       buildModeloRepo(),
+      buildNumerador(),
+      buildTxRunner(),
     );
 
     const result = await useCase.execute(dtoBase);
@@ -351,6 +589,8 @@ describe('CrearInsumoUseCase', () => {
       buildFamiliaRepo(familia),
       buildUnidadRepo(),
       buildModeloRepo(),
+      buildNumerador(),
+      buildTxRunner(),
     );
 
     const result = await useCase.execute({
@@ -370,6 +610,8 @@ describe('CrearInsumoUseCase', () => {
       buildFamiliaRepo(),
       buildUnidadRepo(),
       buildModeloRepo(),
+      buildNumerador(),
+      buildTxRunner(),
     );
 
     const result = await useCase.execute({
@@ -394,6 +636,8 @@ describe('CrearInsumoUseCase', () => {
       buildFamiliaRepo(),
       buildUnidadRepo(),
       buildModeloRepo(),
+      buildNumerador(),
+      buildTxRunner(),
     );
 
     const result = await useCase.execute({
@@ -421,6 +665,8 @@ describe('CrearInsumoUseCase', () => {
       buildFamiliaRepo(),
       buildUnidadRepo(),
       buildModeloRepo(),
+      buildNumerador(),
+      buildTxRunner(),
     );
 
     await useCase.execute({
@@ -446,6 +692,8 @@ describe('CrearInsumoUseCase', () => {
       buildFamiliaRepo(),
       buildUnidadRepo(),
       buildModeloRepo(),
+      buildNumerador(),
+      buildTxRunner(),
     );
 
     const result = await useCase.execute({
@@ -471,6 +719,8 @@ describe('CrearInsumoUseCase', () => {
       buildFamiliaRepo(),
       buildUnidadRepo(),
       buildModeloRepo(),
+      buildNumerador(),
+      buildTxRunner(),
     );
 
     const result = await useCase.execute({
@@ -489,6 +739,8 @@ describe('CrearInsumoUseCase', () => {
       buildFamiliaRepo(),
       buildUnidadRepo(),
       buildModeloRepo(),
+      buildNumerador(),
+      buildTxRunner(),
     );
 
     const result = await useCase.execute({
@@ -519,6 +771,8 @@ describe('CrearInsumoUseCase', () => {
       buildFamiliaRepo(),
       buildUnidadRepo(),
       buildModeloRepo(),
+      buildNumerador(),
+      buildTxRunner(),
     );
 
     const result = await useCase.execute({
@@ -543,6 +797,8 @@ describe('CrearInsumoUseCase', () => {
       buildFamiliaRepo(),
       buildUnidadRepo(),
       buildModeloRepo(),
+      buildNumerador(),
+      buildTxRunner(),
     );
 
     const result = await useCase.execute({
@@ -572,6 +828,8 @@ describe('CrearInsumoUseCase', () => {
       buildFamiliaRepo(),
       buildUnidadRepo(),
       buildModeloRepo(),
+      buildNumerador(),
+      buildTxRunner(),
     );
 
     const result = await useCase.execute(dtoBase);
@@ -592,6 +850,8 @@ describe('CrearInsumoUseCase', () => {
       buildFamiliaRepo(),
       buildUnidadRepo(),
       buildModeloRepo(),
+      buildNumerador(),
+      buildTxRunner(),
     );
 
     const result = await useCase.execute({ ...dtoBase, codigosAlternativos: [] });
@@ -607,6 +867,8 @@ describe('CrearInsumoUseCase', () => {
       buildFamiliaRepo(),
       buildUnidadRepo(),
       buildModeloRepo(),
+      buildNumerador(),
+      buildTxRunner(),
     );
 
     await useCase.execute({
@@ -632,6 +894,8 @@ describe('CrearInsumoUseCase', () => {
       buildFamiliaRepo(),
       buildUnidadRepo(),
       buildModeloRepo(),
+      buildNumerador(),
+      buildTxRunner(),
     );
 
     const result = await useCase.execute({
@@ -654,6 +918,8 @@ describe('CrearInsumoUseCase', () => {
       buildFamiliaRepo(),
       buildUnidadRepo(),
       buildModeloRepo(),
+      buildNumerador(),
+      buildTxRunner(),
     );
 
     const result = await useCase.execute({
@@ -683,6 +949,8 @@ describe('CrearInsumoUseCase', () => {
       buildFamiliaRepo(),
       buildUnidadRepo(),
       buildModeloRepo(),
+      buildNumerador(),
+      buildTxRunner(),
     );
 
     const result = await useCase.execute({
@@ -707,6 +975,8 @@ describe('CrearInsumoUseCase', () => {
       buildFamiliaRepo(),
       buildUnidadRepo(),
       buildModeloRepo({ 'mod-9': null }),
+      buildNumerador(),
+      buildTxRunner(),
     );
 
     const result = await useCase.execute({
@@ -732,6 +1002,8 @@ describe('CrearInsumoUseCase', () => {
       buildFamiliaRepo(),
       buildUnidadRepo(),
       buildModeloRepo({ 'mod-1': modelo }),
+      buildNumerador(),
+      buildTxRunner(),
     );
 
     const result = await useCase.execute({
@@ -756,6 +1028,8 @@ describe('CrearInsumoUseCase', () => {
       buildFamiliaRepo(),
       buildUnidadRepo(),
       buildModeloRepo({ 'mod-1': modelo }),
+      buildNumerador(),
+      buildTxRunner(),
     );
 
     const result = await useCase.execute({
@@ -780,6 +1054,8 @@ describe('CrearInsumoUseCase', () => {
       buildFamiliaRepo(),
       buildUnidadRepo(),
       buildModeloRepo(),
+      buildNumerador(),
+      buildTxRunner(),
     );
 
     const result = await useCase.execute({
@@ -808,6 +1084,8 @@ describe('CrearInsumoUseCase', () => {
       buildFamiliaRepo(),
       buildUnidadRepo(),
       buildModeloRepo(),
+      buildNumerador(),
+      buildTxRunner(),
     );
 
     const result = await useCase.execute({
@@ -835,6 +1113,8 @@ describe('CrearInsumoUseCase', () => {
       buildFamiliaRepo(),
       buildUnidadRepo(),
       modeloRepo,
+      buildNumerador(),
+      buildTxRunner(),
     );
 
     const result = await useCase.execute({
@@ -853,6 +1133,8 @@ describe('CrearInsumoUseCase', () => {
       buildFamiliaRepo(),
       buildUnidadRepo(),
       modeloRepo,
+      buildNumerador(),
+      buildTxRunner(),
     );
 
     const result = await useCase.execute(dtoBase);
@@ -869,6 +1151,8 @@ describe('CrearInsumoUseCase', () => {
       buildFamiliaRepo(),
       buildUnidadRepo(),
       modeloRepo,
+      buildNumerador(),
+      buildTxRunner(),
     );
 
     const result = await useCase.execute({ ...dtoBase, compatibilidad: [] });
@@ -889,6 +1173,8 @@ describe('CrearInsumoUseCase', () => {
       buildFamiliaRepo(null),
       buildUnidadRepo(),
       modeloRepo,
+      buildNumerador(),
+      buildTxRunner(),
     );
 
     const result = await useCase.execute({
@@ -907,6 +1193,8 @@ describe('CrearInsumoUseCase', () => {
       buildFamiliaRepo(),
       buildUnidadRepo(),
       modeloRepo,
+      buildNumerador(),
+      buildTxRunner(),
     );
 
     const result = await useCase.execute({
@@ -926,6 +1214,8 @@ describe('CrearInsumoUseCase', () => {
       buildFamiliaRepo(),
       buildUnidadRepo(),
       buildModeloRepo(),
+      buildNumerador(),
+      buildTxRunner(),
     );
 
     await useCase.execute({

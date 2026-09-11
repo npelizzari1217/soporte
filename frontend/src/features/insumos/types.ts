@@ -38,7 +38,13 @@ export interface Insumo {
  * ficha en una entrega posterior.
  */
 export interface CreateInsumoDto {
-  codigo: string;
+  /**
+   * Ausente ⇒ el backend lo AUTOGENERA (issue #162): `REP-0001` si la familia
+   * es de repuestos, `INS-0001` si no. Si el usuario lo escribe a mano, se
+   * manda tal cual y se respeta — el autogenerado es el default, no una
+   * imposición.
+   */
+  codigo?: string;
   nombre: string;
   familiaId: string;
   unidadMedidaId: string;

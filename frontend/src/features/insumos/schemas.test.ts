@@ -556,9 +556,17 @@ describe("insumoSchema — límites de codigo/nombre (espejo de CreateInsumoDto)
     expect(result.success).toBe(false);
   });
 
-  it("rechaza codigo de solo espacios", () => {
-    const result = insumoSchema.safeParse({ ...baseInsumoValues(), codigo: "   " });
-    expect(result.success).toBe(false);
+  /**
+   * Issue #162: el código dejó de ser obligatorio en el alta. Vacío o de solo
+   * espacios ya no se rechaza acá — es la señal de "autogenerar", que decide
+   * el diálogo (`InsumoFormDialog`), no el schema.
+   */
+  it("acepta codigo vacío o de solo espacios — el backend lo autogenera", () => {
+    const vacio = insumoSchema.safeParse({ ...baseInsumoValues(), codigo: "" });
+    const espacios = insumoSchema.safeParse({ ...baseInsumoValues(), codigo: "   " });
+
+    expect(vacio.success).toBe(true);
+    expect(espacios.success).toBe(true);
   });
 });
 

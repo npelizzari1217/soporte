@@ -22,6 +22,7 @@
  */
 import {
   Body,
+  ConflictException,
   Controller,
   Get,
   HttpCode,
@@ -40,7 +41,10 @@ import { EditarInsumoUseCase } from '../../application/use-cases/editar-insumo.u
 import { CambiarEstadoActivoInsumoUseCase } from '../../application/use-cases/cambiar-estado-activo-insumo.use-case';
 import { ListarInsumosUseCase } from '../../application/use-cases/listar-insumos.use-case';
 import { DomainError } from '../../../shared/domain/result';
-import { InsumoNoEncontradoError } from '../../domain/errors/insumos.errors';
+import {
+  InsumoNoEncontradoError,
+  SecuenciaCodigoInsumoAgotadaError,
+} from '../../domain/errors/insumos.errors';
 import { JwtAuthGuard } from '../../../auth/infrastructure/guards/jwt-auth.guard';
 import { TenantGuard } from '../../../auth/infrastructure/guards/tenant.guard';
 import { AdminClienteGuard } from '../../../auth/infrastructure/guards/admin-cliente.guard';
@@ -60,14 +64,23 @@ import {
  * NO lo son: sus filas existen y el administrador las ve en su propio listado,
  * así que un "no encontrado" lo mandaría a buscar un problema que no está.
  *
+ * `SecuenciaCodigoInsumoAgotadaError` (issue #162) es 409, no 422: es una
+ * precondición de infraestructura de negocio —la serie de códigos
+ * autogenerados se agotó—, no un error de carga del usuario sobre un campo
+ * del body. Mismo criterio que `SecuenciaAgotadaError` (tickets) y
+ * `NumeradorCompraAgotadoError` (compras).
+ *
  * @param error Error de dominio devuelto por un use case.
- * @returns 404 si el insumo no existe; 422 para el resto.
+ * @returns 404 si el insumo no existe; 409 si la serie de códigos se agotó; 422 para el resto.
  */
 export function toHttpException(
   error: DomainError,
-): NotFoundException | UnprocessableEntityException {
+): NotFoundException | UnprocessableEntityException | ConflictException {
   if (error instanceof InsumoNoEncontradoError) {
     return new NotFoundException(error.message);
+  }
+  if (error instanceof SecuenciaCodigoInsumoAgotadaError) {
+    return new ConflictException(error.message);
   }
   return new UnprocessableEntityException(error.message);
 }

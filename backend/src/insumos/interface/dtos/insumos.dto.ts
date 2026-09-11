@@ -154,11 +154,21 @@ export class CompatibilidadInputDto {
 
 /** Body de `POST /insumos`. */
 export class CreateInsumoDto {
+  /**
+   * Ausente ⇒ SE AUTOGENERA (issue #162): `REP-0001` si la familia es de
+   * repuestos, `INS-0001` si no (`CrearInsumoUseCase`). `@ValidateIf` y no
+   * `@IsOptional` a propósito, mismo criterio que `codigo` en `EditInsumoDto`:
+   * `@IsOptional` también dejaría pasar un `null` explícito, que llegaría
+   * intacto a `normalizarCodigoInsumo` y reventaría — un 500 por un body que
+   * el borde tenía que rechazar con un 400. Con `@ValidateIf`, la ÚNICA forma
+   * de disparar la autogeneración es OMITIR la clave del body.
+   */
+  @ValidateIf((objeto: CreateInsumoDto) => objeto.codigo !== undefined)
   @IsString()
   @MinLength(1)
   @Transform(transformarCodigo)
   @MaxLength(INSUMO_CODIGO_MAX_LENGTH)
-  codigo!: string;
+  codigo?: string;
 
   @IsString()
   @MinLength(1)

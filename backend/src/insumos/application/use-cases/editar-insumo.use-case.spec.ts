@@ -258,6 +258,28 @@ describe('EditarInsumoUseCase', () => {
     expect(result.getValue().familiaId).toBe('fam-2');
   });
 
+  /**
+   * Decisión explícita del dueño (issue #162): el código NUNCA cambia, ni
+   * siquiera el prefijo, cuando el insumo cambia de familia. El prefijo dice
+   * dónde NACIÓ el insumo, no dónde está — un `INS-0003` dentro de una
+   * familia de repuestos es esperable y correcto. Este test es el que se
+   * pone rojo si alguien intenta "recalcular" el código al reasignar familia.
+   */
+  it('NO cambia el codigo, ni siquiera el prefijo, cuando el insumo cambia de familia', async () => {
+    const repo = buildInsumoRepo(buildInsumo());
+    const useCase = new EditarInsumoUseCase(
+      repo,
+      buildFamiliaRepo(),
+      buildUnidadRepo(),
+      buildModeloRepo(),
+    );
+
+    const result = await useCase.execute({ id: 'ins-1', familiaId: 'fam-2' });
+
+    expect(result.isOk()).toBe(true);
+    expect(result.getValue().codigo).toBe('TON-001');
+  });
+
   it('rechaza con FAMILIA_INSUMO_INEXISTENTE si la familia nueva no está en el catálogo', async () => {
     const repo = buildInsumoRepo(buildInsumo());
     const useCase = new EditarInsumoUseCase(

@@ -101,6 +101,49 @@ describe("InsumoFormDialog — crear", () => {
     expect(enviado).not.toHaveProperty("compatibilidad");
   });
 
+  /**
+   * Issue #162: el campo dejó de ser obligatorio. Sin tipear nada, el POST
+   * viaja SIN la clave `codigo` — es la señal que el backend interpreta como
+   * "autogenerar" (`REP-0001`/`INS-0001` según la familia); mandar `""`
+   * explícito en cambio dispararía el `@MinLength(1)` del borde.
+   */
+  it("sin codigo tipeado, el POST viaja sin la clave codigo (autogeneración)", async () => {
+    mockCatalogosConDatos();
+    const user = userEvent.setup();
+    let enviado: Record<string, unknown> = {};
+    server.use(
+      http.post("/api/insumos", async ({ request }) => {
+        enviado = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({ ...buildInsumo(), ...enviado, codigo: "INS-0001", id: "ins-2" }, { status: 201 });
+      }),
+    );
+
+    renderWithProviders(<InsumoFormDialog trigger={<button>Nuevo insumo</button>} />);
+    await user.click(screen.getByRole("button", { name: "Nuevo insumo" }));
+    await user.type(screen.getByLabelText("Nombre"), "Cartucho de tinta");
+    await user.selectOptions(await screen.findByLabelText("Familia"), "fam-1");
+    await user.selectOptions(screen.getByLabelText("Unidad de medida"), "um-1");
+    await user.click(screen.getByRole("button", { name: /^crear$/i }));
+
+    await waitFor(() =>
+      expect(enviado).toEqual({
+        nombre: "Cartucho de tinta",
+        familiaId: "fam-1",
+        unidadMedidaId: "um-1",
+      }),
+    );
+    expect(enviado).not.toHaveProperty("codigo");
+  });
+
+  it("el hint de autogeneración solo se muestra en el alta, no al editar", async () => {
+    mockCatalogosConDatos();
+    const user = userEvent.setup();
+
+    renderWithProviders(<InsumoFormDialog trigger={<button>Nuevo insumo</button>} />);
+    await user.click(screen.getByRole("button", { name: "Nuevo insumo" }));
+    expect(screen.getByText(/se genera solo/i)).toBeInTheDocument();
+  });
+
   it("con stockMinimo completado, lo incluye en el POST", async () => {
     mockCatalogosConDatos();
     const user = userEvent.setup();
@@ -162,6 +205,43 @@ describe("InsumoFormDialog — editar", () => {
     );
     expect(enviado).not.toHaveProperty("codigosAlternativos");
     expect(enviado).not.toHaveProperty("compatibilidad");
+  });
+
+  it("el hint de autogeneración NO se muestra al editar — el código ya existe", async () => {
+    mockCatalogosConDatos();
+    const user = userEvent.setup();
+
+    renderWithProviders(<InsumoFormDialog insumo={buildInsumo()} trigger={<button>Editar</button>} />);
+    await user.click(screen.getByRole("button", { name: "Editar" }));
+
+    expect(screen.queryByText(/se genera solo/i)).not.toBeInTheDocument();
+  });
+
+  /**
+   * Issue #162: el código NUNCA cambia solo, ni siquiera al editar. Si el
+   * usuario borra el campo en la edición, el PATCH NO manda `codigo` —se
+   * interpreta como "no tocar" (`EditInsumoDto.codigo: undefined`)—, nunca
+   * como una orden de borrarlo o de disparar una autogeneración tardía.
+   */
+  it("borrar el código en la edición NO lo manda en el PATCH — se interpreta como 'no tocar'", async () => {
+    mockCatalogosConDatos();
+    const user = userEvent.setup();
+    const insumo = buildInsumo();
+    let enviado: Record<string, unknown> = {};
+    server.use(
+      http.patch("/api/insumos/ins-1", async ({ request }) => {
+        enviado = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({ ...insumo, ...enviado });
+      }),
+    );
+
+    renderWithProviders(<InsumoFormDialog insumo={insumo} trigger={<button>Editar</button>} />);
+    await user.click(screen.getByRole("button", { name: "Editar" }));
+
+    await user.clear(screen.getByLabelText("Código"));
+    await user.click(screen.getByRole("button", { name: /^guardar$/i }));
+
+    await waitFor(() => expect(enviado).not.toHaveProperty("codigo"));
   });
 
   it("borrar el stock mínimo en la edición manda stockMinimo: null explícito", async () => {

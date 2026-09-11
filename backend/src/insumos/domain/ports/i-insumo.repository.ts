@@ -1,6 +1,15 @@
 import { InsumoEntity } from '../entities/insumo.entity';
 
 /**
+ * Prefijo de la serie de `codigo` autogenerado (issue #162). Las dos series
+ * son independientes y correlativas dentro del tenant: `REP` para los
+ * insumos nacidos en una familia de repuestos, `INS` para el resto. El
+ * prefijo dice DÓNDE NACIÓ el insumo, no dónde está — no se recalcula si el
+ * insumo cambia de familia después.
+ */
+export type PrefijoCodigoInsumo = 'INS' | 'REP';
+
+/**
  * ConflictoCodigoAlternativo — un par `(codigo, fabricante)` ya tomado, junto
  * con el insumo que lo tiene. El `insumoId` viaja porque el mensaje de error
  * necesita distinguir el choque con otro insumo del choque con el que se está
@@ -165,6 +174,42 @@ export interface IInsumoRepository {
    * construcción que las resuelva enteras.
    */
   save(insumo: InsumoEntity): Promise<void>;
+
+  /**
+   * Retorna la última secuencia de la SERIE `prefijo` (`INS` o `REP`) usada en
+   * `codigo` (formato `{PREFIJO}-{SEQ4}`, ej. `INS-0007`). `0` si la serie
+   * todavía no tiene ningún código con ese formato en el tenant.
+   *
+   * Concurrencia (issue #162, mismo patrón que
+   * `PrismaTicketRepository.findLastSecuencia`/
+   * `PrismaCompraRepository.findLastSecuencia`): ANTES de leer, adquiere un
+   * advisory lock transaccional de Postgres
+   * (`pg_advisory_xact_lock(hashtext(...))`) scopeado a la SERIE
+   * (`insumo-codigo:INS` / `insumo-codigo:REP`), no al insumo. Un
+   * `SELECT ... FOR UPDATE` sobre un `MAX()` agregado no lockea nada, y
+   * bloquear la última fila existente no protege el PRIMER código de la
+   * serie —no hay fila previa que lockear—. El advisory lock serializa TODA
+   * la sección crítica (lectura de secuencia + INSERT del insumo) para la
+   * misma serie, incluso cuando todavía no existe ningún código con ese
+   * prefijo. Se libera solo al cerrar la transacción (commit o rollback).
+   *
+   * **CRÍTICO — el lock SOLO sirve si esta lectura y el `save()` subsiguiente
+   * corren DENTRO de la MISMA transacción** (`ITenantTransactionRunner.run`,
+   * como hace `CrearInsumoUseCase` en su rama de autogeneración). Invocado
+   * fuera de una transacción explícita, Postgres abre una transacción
+   * implícita de una sola sentencia: el lock se adquiere y libera de
+   * inmediato, sin efecto de serialización.
+   *
+   * Solo cuenta un código que matchea EXACTO el formato `{prefijo}-DDDD` (4
+   * dígitos): un código escrito a mano con el mismo prefijo pero otra forma
+   * —`INS-ABCD`, `INS-12345`— no participa de la serie, para que un código
+   * manual no corrompa la detección del "último" vía un orden alfabético que
+   * no es numérico.
+   *
+   * @param prefijo Serie a consultar (`INS` o `REP`).
+   * @returns La última secuencia numérica usada en esa serie; `0` si ninguna.
+   */
+  findLastSecuenciaCodigo(prefijo: PrefijoCodigoInsumo): Promise<number>;
 }
 
 /** Token de inyección de dependencias para IInsumoRepository en NestJS. */
