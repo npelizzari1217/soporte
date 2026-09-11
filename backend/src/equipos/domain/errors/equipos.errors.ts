@@ -234,35 +234,6 @@ export class FamiliaRepuestoDeshabilitadaError extends DomainError {
 }
 
 /**
- * RepuestoSinTipoEnCatalogoError — el repuesto elegido pertenece a una familia
- * del inquilino cuyo código NO existe en el catálogo MASTER de tipos de
- * componente, así que no hay tipo con el que darlo de alta.
- *
- * Va SEPARADO de `TipoComponenteInactivoError` a propósito, aunque los dos
- * salgan del mismo chequeo: en el camino vinculado el usuario NUNCA eligió un
- * tipo —la pantalla se lo deshabilita y el código se deriva de la familia—,
- * así que un error que nombre "el tipo TORNILLO" lo manda a arreglar algo que
- * no tocó y no puede tocar. Este nombra lo que sí eligió: el repuesto y su
- * familia.
- *
- * La restricción de fondo es la del WU-3: solo se pueden vincular repuestos
- * cuya familia tenga su código sembrado también en MASTER. Se levanta en el
- * WU-5, cuando cambie de dónde sale la autoridad del catálogo.
- */
-export class RepuestoSinTipoEnCatalogoError extends DomainError {
-  readonly code = 'REPUESTO_SIN_TIPO_EN_CATALOGO';
-  constructor(insumoId: string, familiaCodigo: string, familiaNombre: string) {
-    super(
-      `El repuesto con id "${insumoId}" pertenece a la familia "${familiaNombre}" ` +
-        `(código "${familiaCodigo}"), que todavía no existe en el catálogo global de tipos ` +
-        `de componente. Por ahora solo se pueden vincular repuestos de las familias que ` +
-        `vienen sembradas. Elegí un repuesto de otra familia, o cargá el componente ` +
-        `escribiendo el tipo a mano.`,
-    );
-  }
-}
-
-/**
  * ComponenteNoEncontradoError — el componente de equipo con el id indicado
  * no existe o fue eliminado (soft delete).
  * → HTTP 404 en la capa de presentación.

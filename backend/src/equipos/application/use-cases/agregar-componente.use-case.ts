@@ -12,7 +12,6 @@ import {
   InsumoRepuestoInexistenteError,
   InsumoNoEsRepuestoError,
   FamiliaRepuestoDeshabilitadaError,
-  RepuestoSinTipoEnCatalogoError,
 } from '../../domain/errors/equipos.errors';
 
 /**
@@ -64,33 +63,33 @@ export interface AgregarComponenteDto {
  *   guardar esa contradicción). Los DOS caminos sostienen la invariante; sin
  *   el de edición, esta afirmación era falsa.
  *
- * **LIMITACIÓN DELIBERADA**: en el camino vinculado, la validación contra
- * el catálogo MASTER (`ITipoComponenteMasterChecker.estaActivo`) se
- * conserva SIN CAMBIOS sobre el código derivado. Eso significa que solo se
- * pueden vincular repuestos cuya familia tenga su código sembrado TAMBIÉN
- * en MASTER. Las 11 familias universales de WU-1 (sdd/repuestos-familias)
- * lo cumplen porque salieron de ahí, pero una familia propia del tenant
- * —por ejemplo "TORNILLO"— cae en el mismo camino y falla con
- * `RepuestoSinTipoEnCatalogoError`, que nombra el repuesto y su familia en
- * vez de un tipo que en ese camino el usuario nunca eligió. Eso es correcto
- * para este work unit:
- * levantar esta restricción exige cambiar de dónde sale la autoridad del
- * catálogo, y eso es WU-5. En este work unit se documenta y se fija la
- * conducta, no se resuelve.
+ * **Autoridad del camino vinculado (sdd/repuestos-autoridad-catalogo, ADR-1)**:
+ * en la rama vinculada, el gate contra el catálogo MASTER
+ * (`ITipoComponenteMasterChecker.estaActivo`) se RETIRA — no se sustituye por
+ * otro. La familia del tenant (existente, `esRepuesto: true`, `activo: true`)
+ * es la ÚNICA autoridad de qué tipo es un componente vinculado: los cuatro
+ * guards de insumo/familia de arriba ya cubren, del lado correcto de la base,
+ * exactamente lo que ese gate cubría. Antes de este cambio, una familia
+ * propia del tenant —por ejemplo "TORNILLO"— caía en el mismo camino que un
+ * texto libre y fallaba con `RepuestoSinTipoEnCatalogoError` (WU-3/WU-5, ya
+ * ELIMINADO: sin el gate no queda ningún camino que lo emita). Consecuencia
+ * aceptada, no defecto: ROOT deja de poder retirar globalmente un tipo para
+ * los inquilinos que ya tienen esa familia — la baja en MASTER sigue
+ * aplicando completa al camino de texto libre, que sí sigue exigiéndola.
  *
  * Flujo:
  * 1. Verifica que el equipo exista y no esté soft-deleted.
  * 2. Si viene `insumoId`: resuelve el repuesto (existente y `activo`) y su
  *    familia (existente, `esRepuesto` y `activo`), y deriva
- *    `tipoComponenteCodigo` de esa familia (descartando el del DTO). Si no
- *    viene: usa el `tipoComponenteCodigo` del DTO tal cual (camino de
- *    texto libre).
- * 3. Verifica que el `tipoComponenteCodigo` (derivado o de texto libre)
- *    exista y esté `activo` en el catálogo MASTER
+ *    `tipoComponenteCodigo` de esa familia (descartando el del DTO) — la
+ *    familia del tenant YA es la autoridad completa de este camino, MASTER
+ *    no participa. Si no viene `insumoId`: usa el `tipoComponenteCodigo` del
+ *    DTO tal cual (camino de texto libre).
+ * 3. Camino de texto libre ÚNICAMENTE: verifica que ese
+ *    `tipoComponenteCodigo` exista y esté `activo` en el catálogo MASTER
  *    (`ITipoComponenteMasterChecker.estaActivo`, PR4b). Si no:
- *    `RepuestoSinTipoEnCatalogoError` en el camino vinculado —el usuario no
- *    eligió ese tipo, se derivó de la familia— y `TipoComponenteInactivoError`
- *    en el de texto libre, donde sí lo escribió.
+ *    `TipoComponenteInactivoError`. El camino vinculado NO pasa por este
+ *    paso (ADR-1).
  * 4. Crea `ComponenteEquipoEntity` (permite N componentes del mismo tipo
  *    por equipo — sin restricción de unicidad) y persiste, con `insumoId`
  *    en `null` o el del repuesto vinculado según el camino.
@@ -100,8 +99,9 @@ export interface AgregarComponenteDto {
  * Ref spec: sdd/flujos-especializados/spec F3-Q2. Ref: sdd/tipos-componente-master
  * (PR4b — migra de `ITipoComponenteRepository` tenant a
  * `ITipoComponenteMasterChecker` cross-DB). Ref: sdd/repuestos-vinculo-componente
- * (WU-3 — vínculo opcional a un repuesto del catálogo de insumos). Tarea:
- * T12.4, T12.5.
+ * (WU-3 — vínculo opcional a un repuesto del catálogo de insumos). Ref:
+ * sdd/repuestos-autoridad-catalogo (ADR-1 — retira el gate MASTER del camino
+ * vinculado). Tarea: T12.4, T12.5.
  */
 export class AgregarComponenteUseCase {
   constructor(
@@ -120,7 +120,9 @@ export class AgregarComponenteUseCase {
 
     let tipoComponenteCodigo: string;
     let insumoId: string | null = null;
-    let familiaVinculada: { insumoId: string; codigo: string; nombre: string } | null = null;
+    // `true` en el camino vinculado: marca que NO hay que consultar MASTER
+    // (ADR-1) — la familia del tenant ya es la única autoridad del tipo.
+    let vinculado = false;
 
     if (dto.insumoId != null) {
       const insumo = await this.insumoRepo.findById(dto.insumoId);
@@ -158,7 +160,7 @@ export class AgregarComponenteUseCase {
       // única fuente del tipo (ver JSDoc de la clase, decisión #1).
       tipoComponenteCodigo = familia.codigo;
       insumoId = insumo.id;
-      familiaVinculada = { insumoId: insumo.id, codigo: familia.codigo, nombre: familia.nombre };
+      vinculado = true;
     } else {
       // Camino de texto libre: obligatorio, mismo criterio que antes de
       // WU-3 (la validación `@ValidateIf` del DTO HTTP ya lo exige, pero el
@@ -169,21 +171,15 @@ export class AgregarComponenteUseCase {
       tipoComponenteCodigo = dto.tipoComponenteCodigo;
     }
 
-    const activo = await this.tipoComponenteMasterChecker.estaActivo(tipoComponenteCodigo);
-    if (!activo) {
-      // En el camino vinculado el usuario no eligió el tipo: se derivó de la
-      // familia del repuesto y la pantalla se lo mostró deshabilitado. Un
-      // error que nombre el TIPO lo mandaría a arreglar algo que no tocó.
-      if (familiaVinculada !== null) {
-        return Result.fail(
-          new RepuestoSinTipoEnCatalogoError(
-            familiaVinculada.insumoId,
-            familiaVinculada.codigo,
-            familiaVinculada.nombre,
-          ),
-        );
+    // ADR-1 (sdd/repuestos-autoridad-catalogo): el gate contra MASTER corre
+    // SOLO en el camino de texto libre. El vinculado ya pasó los cuatro
+    // guards de insumo/familia de arriba, y esos ALCANZAN — no hay chequeo
+    // sustituto contra MASTER, la familia del tenant es la autoridad completa.
+    if (!vinculado) {
+      const activo = await this.tipoComponenteMasterChecker.estaActivo(tipoComponenteCodigo);
+      if (!activo) {
+        return Result.fail(new TipoComponenteInactivoError(tipoComponenteCodigo));
       }
-      return Result.fail(new TipoComponenteInactivoError(tipoComponenteCodigo));
     }
 
     const componenteResult = ComponenteEquipoEntity.create({

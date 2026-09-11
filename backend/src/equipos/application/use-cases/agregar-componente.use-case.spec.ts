@@ -7,7 +7,6 @@ import {
   EquipoNoEncontradoError,
   TipoComponenteCodigoRequeridoError,
   TipoComponenteInactivoError,
-  RepuestoSinTipoEnCatalogoError,
   InsumoRepuestoInexistenteError,
   InsumoNoEsRepuestoError,
   FamiliaRepuestoDeshabilitadaError,
@@ -26,7 +25,13 @@ import {
  * de `ITipoComponenteRepository` (catálogo tenant, eliminado) a
  * `ITipoComponenteMasterChecker.estaActivo(codigo)` (catálogo MASTER cross-DB).
  *
- * Ref spec: sdd/flujos-especializados/spec F3-Q2.
+ * sdd/repuestos-autoridad-catalogo (ADR-1): esa verificación contra MASTER
+ * se retira del camino VINCULADO — corre SOLO en el de texto libre. La
+ * familia del tenant (existente, `esRepuesto`, `activo`) pasa a ser la única
+ * autoridad de qué tipo es un componente vinculado a un repuesto.
+ *
+ * Ref spec: sdd/flujos-especializados/spec F3-Q2. Ref:
+ * sdd/repuestos-autoridad-catalogo.
  */
 describe('AgregarComponenteUseCase', () => {
   function makeEquipo() {
@@ -211,7 +216,9 @@ describe('AgregarComponenteUseCase', () => {
     expect(result.isOk()).toBe(true);
     expect(result.getValue().tipoComponenteCodigo).toBe('MOUSE');
     expect(result.getValue().insumoId).toBe(insumo.id);
-    expect(tipoComponenteMasterChecker.estaActivo).toHaveBeenCalledWith('MOUSE');
+    // ADR-1 (sdd/repuestos-autoridad-catalogo): el gate MASTER se retiró del
+    // camino vinculado — la familia del tenant ya es la autoridad completa.
+    expect(tipoComponenteMasterChecker.estaActivo).not.toHaveBeenCalled();
   });
 
   it('vincular un consumible (familia esRepuesto=false) falla con InsumoNoEsRepuestoError', async () => {
@@ -439,16 +446,15 @@ describe('AgregarComponenteUseCase', () => {
   });
 
   /**
-   * LIMITACIÓN DELIBERADA de WU-3, fijada acá con un test: la validación de
-   * "tipo activo" sigue siendo contra el catálogo MASTER
-   * (`ITipoComponenteMasterChecker`), sin cambios. Si la familia del
-   * repuesto vinculado no tiene su código sembrado en MASTER —una familia
-   * propia del tenant, ej. "TORNILLO"—, el vínculo se rechaza con el MISMO
-   * `TipoComponenteInactivoError` que un código de texto libre inexistente.
-   * Levantar esta restricción es WU-5: cambia de dónde sale la autoridad del
-   * catálogo. Acá se documenta y se fija la conducta, no se resuelve.
+   * INVERTIDO por sdd/repuestos-autoridad-catalogo (ADR-1): este test fijaba
+   * la LIMITACIÓN DELIBERADA de WU-3 — que una familia propia del tenant sin
+   * código sembrado en MASTER (ej. "TORNILLO") no se podía vincular. Su
+   * propio JSDoc nombró a WU-5 como el ciclo que la levanta; este ES ese
+   * ciclo. Ahora afirma lo contrario: la familia del tenant es la ÚNICA
+   * autoridad del camino vinculado, y MASTER ni se consulta — no solo que no
+   * rechace, sino que el gate no corre.
    */
-  it('vincular un repuesto de una familia sin código en MASTER falla nombrando el REPUESTO, no el tipo (límite documentado, WU-5 lo resuelve)', async () => {
+  it('vincular un repuesto de una familia SIN código en MASTER se acepta: la familia del tenant es la autoridad (ADR-1)', async () => {
     const equipo = makeEquipo();
     const familia = makeFamilia(true, 'TORNILLO');
     const insumo = makeInsumo(familia.id);
@@ -473,9 +479,13 @@ describe('AgregarComponenteUseCase', () => {
       capacidad: null,
     });
 
-    expect(result.isFail()).toBe(true);
-    expect(result.getError()).toBeInstanceOf(RepuestoSinTipoEnCatalogoError);
-    expect(tipoComponenteMasterChecker.estaActivo).toHaveBeenCalledWith('TORNILLO');
-    expect(componenteRepo.save).not.toHaveBeenCalled();
+    expect(result.isOk()).toBe(true);
+    expect(result.getValue().tipoComponenteCodigo).toBe('TORNILLO');
+    expect(componenteRepo.save).toHaveBeenCalledTimes(1);
+    expect(componenteRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({ tipoComponenteCodigo: 'TORNILLO' }),
+    );
+    // MASTER ni se consulta: es la prueba de la autoridad, no solo que no rechace.
+    expect(tipoComponenteMasterChecker.estaActivo).not.toHaveBeenCalled();
   });
 });
