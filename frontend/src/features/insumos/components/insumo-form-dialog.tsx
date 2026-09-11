@@ -25,8 +25,11 @@
  * `useUnidadesMedida()` (hooks ya existentes, reusados sin reimplementar).
  * Los dos catálogos pueden venir VACÍOS —es la situación real de producción
  * hoy—: en ese caso el `<select>` correspondiente queda deshabilitado con una
- * nota que manda a Admin > Insumos a cargar el catálogo primero, en vez de
- * dejar dos selects vacíos sin explicación.
+ * nota que manda a cargar el catálogo primero, en vez de dejar dos selects
+ * vacíos sin explicación. CADA nota apunta a SU pantalla: las familias se
+ * administran en Admin > Insumos y las unidades en Admin > Unidades (issue
+ * #156). Mandar a la pantalla equivocada es peor que no poner nota: es el
+ * callejón sin salida que ese issue existe para cerrar.
  *
  * Las DESHABILITADAS se listan igual, marcadas en la etiqueta: nunca se
  * eliminan (RESTRICT en el FK de `insumos`), así que ocultarlas dejaría sin
@@ -56,7 +59,7 @@ export interface InsumoFormDialogProps {
 
 /** Nota bajo el select cuando el catálogo correspondiente resolvió VACÍO. */
 const NOTA_FAMILIAS_VACIAS = "No hay familias de insumo cargadas. Creá una desde Admin > Insumos.";
-const NOTA_UNIDADES_VACIAS = "No hay unidades de medida cargadas. Creá una desde Admin > Insumos.";
+const NOTA_UNIDADES_VACIAS = "No hay unidades de medida cargadas. Creá una desde Admin > Unidades.";
 
 /**
  * Nota cuando el catálogo NO resolvió. Es un mensaje distinto del de vacío a

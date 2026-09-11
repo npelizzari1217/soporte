@@ -9,8 +9,13 @@ import { InsumosCatalogosAdminView } from "./insumos-catalogos-admin-view";
 /**
  * InsumosCatalogosAdminView — mismo patrón que
  * `features/catalogos/components/catalogos-admin-view.test.tsx`: gate por
- * rol (`SoloAdminCliente`, ADR-P5) y flujo de listar/crear/dar de
- * baja/activar en cada tab (Familias/Unidades).
+ * rol (`SoloAdminCliente`, ADR-P5) y flujo de listar/crear/dar de baja de
+ * familias.
+ *
+ * Issue #156: las unidades de medida se mudaron a `Admin -> Unidades`
+ * (`unidades-medida-admin-view.test.tsx`); esta suite solo cubre lo que
+ * QUEDA acá (familias) más el assert negativo de que el bloque de unidades
+ * ya no se renderiza.
  */
 const FAMILIA_TONER = {
   id: "fam-1",
@@ -23,20 +28,8 @@ const FAMILIA_TONER = {
   updatedAt: "2026-01-01T00:00:00.000Z",
 };
 
-const UNIDAD_UN = {
-  id: "um-1",
-  codigo: "UN",
-  nombre: "Unidad",
-  activo: true,
-  createdAt: "2026-01-01T00:00:00.000Z",
-  updatedAt: "2026-01-01T00:00:00.000Z",
-};
-
 function mockBackend() {
-  server.use(
-    http.get("/api/familias-insumo", () => HttpResponse.json([FAMILIA_TONER])),
-    http.get("/api/unidades-medida", () => HttpResponse.json([UNIDAD_UN])),
-  );
+  server.use(http.get("/api/familias-insumo", () => HttpResponse.json([FAMILIA_TONER])));
 }
 
 describe("InsumosCatalogosAdminView", () => {
@@ -105,25 +98,17 @@ describe("InsumosCatalogosAdminView", () => {
     await waitFor(() => expect(enviado).toEqual({ activo: false }));
   });
 
-  it("tab Unidades lista el catálogo y reactiva una unidad dada de baja", async () => {
-    const user = userEvent.setup();
-    server.use(http.get("/api/unidades-medida", () => HttpResponse.json([{ ...UNIDAD_UN, activo: false }])));
-    let enviado: Record<string, unknown> = {};
-    server.use(
-      http.patch("/api/unidades-medida/um-1/estado", async ({ request }) => {
-        enviado = (await request.json()) as Record<string, unknown>;
-        return HttpResponse.json({ ...UNIDAD_UN, activo: true });
-      }),
-    );
-
+  /**
+   * El gemelo invertido del issue #156: `Admin -> Insumos` ya NO muestra el
+   * bloque de unidades de medida (ni su tab, ni su tabla), mientras el resto
+   * de sus catálogos (familias) sigue intacto.
+   */
+  it("ya no muestra el bloque de unidades de medida, y las familias siguen intactas", async () => {
     renderWithProviders(<InsumosCatalogosAdminView />, { user: buildUser({ rol: "ADMINISTRADOR" }) });
-    await user.click(screen.getByRole("tab", { name: /unidades de medida/i }));
-    await screen.findByText("UN");
 
-    await user.click(screen.getByRole("button", { name: /^activar$/i }));
-    const dialogo = await screen.findByRole("alertdialog");
-    await user.click(within(dialogo).getByRole("button", { name: /^activar$/i }));
-
-    await waitFor(() => expect(enviado).toEqual({ activo: true }));
+    await screen.findByText("TONER");
+    expect(screen.queryByRole("tab", { name: /unidades de medida/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /nueva unidad/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/unidades de medida/i)).not.toBeInTheDocument();
   });
 });

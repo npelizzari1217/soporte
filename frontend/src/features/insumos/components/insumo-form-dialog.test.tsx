@@ -286,12 +286,12 @@ describe("InsumoFormDialog — validación cliente-side", () => {
 });
 
 /**
- * Un catálogo vacío es un estado alcanzable, no una hipótesis: `unidades_medida`
- * nace vacía en todo inquilino nuevo, y `familias_insumo` —que desde
- * sdd/repuestos-familias sí trae un piso sembrado— vuelve a quedar sin opciones
- * si el administrador desactiva todas. Sin este manejo, el usuario se queda
- * mirando dos `<select>` sin ninguna opción y sin ninguna pista de qué hacer al
- * respecto.
+ * Un catálogo vacío es un estado alcanzable, no una hipótesis. Los DOS traen hoy
+ * un piso sembrado —`familias_insumo` desde sdd/repuestos-familias,
+ * `unidades_medida` desde el issue #155—, pero cualquiera de los dos vuelve a
+ * quedar sin opciones si el administrador desactiva todas. Sin este manejo, el
+ * usuario se queda mirando dos `<select>` sin ninguna opción y sin ninguna
+ * pista de qué hacer al respecto.
  */
 describe("InsumoFormDialog — catálogos auxiliares vacíos", () => {
   it("sin familias ni unidades cargadas, avisa y deshabilita los dos selects", async () => {
@@ -308,6 +308,35 @@ describe("InsumoFormDialog — catálogos auxiliares vacíos", () => {
     expect(screen.getByText(/no hay unidades de medida cargadas/i)).toBeInTheDocument();
     expect(screen.getByLabelText("Familia")).toBeDisabled();
     expect(screen.getByLabelText("Unidad de medida")).toBeDisabled();
+  });
+
+  /**
+   * Gemelo invertido de la nota: no alcanza con que AVISE, tiene que mandar a la
+   * pantalla CORRECTA. Desde el issue #156 los dos catálogos se administran en
+   * lugares distintos —familias en Admin > Insumos, unidades en Admin >
+   * Unidades—, así que una nota que apunta a la pantalla equivocada reproduce el
+   * callejón sin salida que ese issue existe para cerrar, y encima mintiendo.
+   * Sin este test, el texto se vuelve falso el día que un catálogo se mude y
+   * nada lo delata.
+   */
+  it("cada nota manda a SU pantalla: familias a Insumos, unidades a Unidades", async () => {
+    server.use(
+      http.get("/api/familias-insumo", () => HttpResponse.json([])),
+      http.get("/api/unidades-medida", () => HttpResponse.json([])),
+    );
+    const user = userEvent.setup();
+
+    renderWithProviders(<InsumoFormDialog trigger={<button>Nuevo insumo</button>} />);
+    await user.click(screen.getByRole("button", { name: "Nuevo insumo" }));
+
+    const notaFamilias = await screen.findByText(/no hay familias de insumo cargadas/i);
+    const notaUnidades = screen.getByText(/no hay unidades de medida cargadas/i);
+
+    expect(notaFamilias).toHaveTextContent("Admin > Insumos");
+    expect(notaUnidades).toHaveTextContent("Admin > Unidades");
+    // Y el inverso, que es el que se rompe solo: la nota de unidades NO debe
+    // seguir mandando a Insumos.
+    expect(notaUnidades).not.toHaveTextContent("Admin > Insumos");
   });
 });
 
