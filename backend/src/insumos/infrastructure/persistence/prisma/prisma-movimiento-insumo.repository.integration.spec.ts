@@ -305,6 +305,211 @@ describe('PrismaMovimientoInsumoRepository — Integration', () => {
     await limpiarMovimientos();
   });
 
+  describe('insert() — issue #159: la fecha la pone la base, no el proceso', () => {
+    /**
+     * **EL TEST QUE DECIDE EL ISSUE #159.** Sin desviar el reloj, este caso
+     * pasaría por construcción y no probaría nada: el bug SOLO se manifiesta
+     * cuando el reloj del proceso difiere del de Postgres, que es exactamente
+     * lo que pasó en producción (VPS ~44 minutos adelantado, issue #159).
+     *
+     * Se desvía el reloj del PROCESO 44 minutos hacia el futuro —mismo orden
+     * de magnitud que la deriva verificada— con `vi.setSystemTime()`, ANTES de
+     * construir la entidad: `MovimientoInsumoEntity.create()` hereda de
+     * `BaseEntity`, que fija `createdAt = new Date()` en su constructor, así
+     * que el asiento en memoria queda con la fecha DESVIADA. Solo se falsea
+     * `Date` (`toFake: ['Date']`) y no los timers: falsear `setTimeout`
+     * también arriesgaría colgar la consulta real a Postgres, que si depende
+     * de algún timeout interno del driver jamás dispararía.
+     *
+     * Lo que se lee después NO es el asiento en memoria — que seguiría
+     * mintiendo, desviado, pase lo que pase del lado de la base—, sino la fila
+     * CRUDA de `movimientos_insumo`, leída con el reloj REAL ya restaurado.
+     * Esa fila tiene que caer en la ventana del reloj REAL de este test
+     * (`antesDeLaEscritura`..`despuesDeLaEscritura`, con 5 s de margen para el
+     * viaje de red a Postgres), y a más de un minuto de distancia de la
+     * ventana desviada — así se distingue "cayó donde cae el reloj real" de
+     * "cayó donde cae el reloj desviado" sin depender de que los dos rangos no
+     * se toquen por casualidad.
+     */
+    /**
+     * EL QUE DISTINGUE `clock_timestamp()` DE `CURRENT_TIMESTAMP`, y sin el cual
+     * el arreglo del #159 no arregla lo que dice arreglar.
+     *
+     * En PostgreSQL `CURRENT_TIMESTAMP` —y `now()`— son la hora de INICIO DE LA
+     * TRANSACCIÓN, no la del statement: quedan congeladas mientras la
+     * transacción vive. `clock_timestamp()` avanza.
+     *
+     * Acá eso decide el orden. `insert()` corre dentro de la MISMA transacción
+     * que el `pg_advisory_xact_lock`, así que con `CURRENT_TIMESTAMP` la fecha
+     * se fijaría ANTES de que el lock se otorgue, y dos movimientos escritos en
+     * una sola transacción compartirían el MISMO instante al microsegundo —
+     * indistinguibles, sin orden.
+     *
+     * Dos inserts en la misma transacción es la forma más barata de exponerlo:
+     * si las fechas son iguales, el DEFAULT es de transacción y el historial de
+     * stock no tiene orden. Si difieren, es del statement.
+     */
+    it('dos movimientos en UNA transaccion reciben fechas DISTINTAS: el DEFAULT es del statement, no de la transaccion', async () => {
+      const uno = construirMovimiento('ENTRADA', 1);
+      const dos = construirMovimiento('ENTRADA', 1);
+
+      await txRunner.run(async () => {
+        await repo.insert(uno);
+        await repo.insert(dos);
+      });
+
+      // SE LEE EN CRUDO, NO POR PRISMA, y la diferencia decide si el test sirve.
+      // Prisma entrega `timestamptz` como `Date` de JS, que tiene resolución de
+      // MILISEGUNDOS; `clock_timestamp()` avanza en MICROsegundos. Dos INSERT
+      // seguidos sobre una conexión caliente entran cómodos en el mismo
+      // milisegundo, así que comparar `getTime()` daría rojo con el código
+      // CORRECTO, al azar. Un test que falla a veces es peor que no tenerlo:
+      // enseña a re-correr hasta que pase.
+      const [{ micro_uno, micro_dos }] = await tenantClient.$queryRaw<
+        { micro_uno: bigint; micro_dos: bigint }[]
+      >`
+        SELECT
+          (SELECT EXTRACT(EPOCH FROM created_at) * 1000000 FROM movimientos_insumo WHERE id = ${uno.id}::uuid)::bigint AS micro_uno,
+          (SELECT EXTRACT(EPOCH FROM created_at) * 1000000 FROM movimientos_insumo WHERE id = ${dos.id}::uuid)::bigint AS micro_dos
+      `;
+
+      expect(micro_uno).not.toBe(micro_dos);
+      expect(micro_dos).toBeGreaterThan(micro_uno);
+    });
+
+    it('asienta con la fecha de LA BASE, no la del proceso, con el reloj del proceso desviado 44 minutos', async () => {
+      const DESVIO_MS = 44 * 60 * 1000;
+      const antesDeLaEscritura = new Date();
+      let movimiento: MovimientoInsumoEntity;
+
+      vi.useFakeTimers({ toFake: ['Date'] });
+      try {
+        vi.setSystemTime(new Date(antesDeLaEscritura.getTime() + DESVIO_MS));
+        movimiento = construirMovimiento('ENTRADA', 3);
+        // Guarda de que el fixture realmente reproduce la deriva: si esto
+        // fallara, el resto del caso no probaría lo que dice probar.
+        expect(movimiento.createdAt.getTime()).toBe(antesDeLaEscritura.getTime() + DESVIO_MS);
+
+        await txRunner.run(() => repo.insert(movimiento));
+      } finally {
+        vi.useRealTimers();
+      }
+      const despuesDeLaEscritura = new Date();
+
+      const fila = await tenantClient.movimientoInsumo.findUniqueOrThrow({
+        where: { id: movimiento.id },
+      });
+
+      const MARGEN_RED_MS = 5000;
+      expect(fila.createdAt.getTime()).toBeGreaterThanOrEqual(
+        antesDeLaEscritura.getTime() - MARGEN_RED_MS,
+      );
+      expect(fila.createdAt.getTime()).toBeLessThanOrEqual(
+        despuesDeLaEscritura.getTime() + MARGEN_RED_MS,
+      );
+      // La ventana desviada empieza en antesDeLaEscritura + 44min; se exige
+      // que la fila quede a más de un minuto ANTES de ese arranque.
+      expect(fila.createdAt.getTime()).toBeLessThan(
+        antesDeLaEscritura.getTime() + DESVIO_MS - 60_000,
+      );
+    });
+
+    /**
+     * LA OTRA MITAD DEL #159, y la que no cubría ninguna prueba. Que la
+     * COLUMNA quede con la fecha de la base no alcanza: lo que el usuario ve
+     * es lo que `insert()` DEVUELVE — los tres casos de uso asientan en
+     * `const asentado` y devuelven eso, ver `RegistrarEntradaInsumoUseCase`,
+     * `RegistrarSalidaInsumoUseCase` y `RegistrarAjusteInsumoUseCase`. Si
+     * este método devolviera el argumento que recibió, la fila quedaría bien
+     * y el usuario seguiría viendo la fecha DESVIADA del proceso: el bug del
+     * issue, intacto, con la base ya arreglada.
+     *
+     * Los specs de los casos de uso no pueden cubrirlo: mockean el
+     * repositorio, así que prueban que reenvían lo que el mock les dé, no que
+     * el repositorio REAL devuelva la fecha de la base.
+     *
+     * Sin este caso, reemplazar el cuerpo de `insert()` por
+     * `return movimiento;` dejaría la suite entera en verde.
+     */
+    it('DEVUELVE el asiento con la fecha de la base, no el que recibio con la fecha del proceso', async () => {
+      const DESVIO_MS = 44 * 60 * 1000;
+      const antesDeLaEscritura = new Date();
+      let movimiento: MovimientoInsumoEntity;
+      let devuelto: MovimientoInsumoEntity;
+
+      vi.useFakeTimers({ toFake: ['Date'] });
+      try {
+        vi.setSystemTime(new Date(antesDeLaEscritura.getTime() + DESVIO_MS));
+        movimiento = construirMovimiento('ENTRADA', 3);
+        // Guarda del fixture: sin la deriva en memoria, el caso no prueba nada.
+        expect(movimiento.createdAt.getTime()).toBe(antesDeLaEscritura.getTime() + DESVIO_MS);
+
+        devuelto = await txRunner.run(() => repo.insert(movimiento));
+      } finally {
+        vi.useRealTimers();
+      }
+
+      const fila = await tenantClient.movimientoInsumo.findUniqueOrThrow({
+        where: { id: movimiento.id },
+      });
+
+      // Es el MISMO asiento, no uno distinto.
+      expect(devuelto.id).toBe(movimiento.id);
+      // Lo devuelto es EXACTAMENTE lo que quedó escrito en la fila...
+      expect(devuelto.createdAt.getTime()).toBe(fila.createdAt.getTime());
+      // ...y por lo tanto NO es la fecha desviada con la que se construyó.
+      expect(devuelto.createdAt.getTime()).not.toBe(movimiento.createdAt.getTime());
+    });
+
+    /**
+     * Segundo criterio de aceptación del issue #159: el orden de la bitácora
+     * tiene que sobrevivir un salto del reloj del PROCESO entre dos asientos
+     * consecutivos — es justo la propiedad de la que depende "stock a la
+     * fecha X" y la trazabilidad del #153. Acá el salto es hacia ATRÁS: el
+     * segundo movimiento se crea con un `createdAt` en memoria ANTERIOR al
+     * del primero, que es el caso que de verdad podría invertir el orden si
+     * la fecha la siguiera poniendo el proceso.
+     *
+     * Contra el reloj REAL de Postgres —que no retrocede— el segundo INSERT
+     * ocurre después en tiempo real, así que su `created_at` tiene que quedar
+     * igual o posterior al del primero pase lo que pase con el reloj del
+     * proceso.
+     */
+    it('dos movimientos en secuencia quedan ordenados por created_at aunque el reloj del proceso salte hacia atrás entre uno y otro', async () => {
+      let primero: MovimientoInsumoEntity;
+      let segundo: MovimientoInsumoEntity;
+
+      vi.useFakeTimers({ toFake: ['Date'] });
+      try {
+        const ahora = new Date();
+        // Primer asiento: reloj del proceso 10 minutos ADELANTADO.
+        vi.setSystemTime(new Date(ahora.getTime() + 10 * 60 * 1000));
+        primero = construirMovimiento('ENTRADA', 1);
+        await txRunner.run(() => repo.insert(primero));
+
+        // Segundo asiento: el reloj del proceso SALTA hacia atrás 20 minutos
+        // respecto de sí mismo — quedaría ANTES que el primero si la fecha
+        // saliera del proceso.
+        vi.setSystemTime(new Date(ahora.getTime() - 10 * 60 * 1000));
+        segundo = construirMovimiento('ENTRADA', 2);
+        expect(segundo.createdAt.getTime()).toBeLessThan(primero.createdAt.getTime());
+
+        await txRunner.run(() => repo.insert(segundo));
+      } finally {
+        vi.useRealTimers();
+      }
+
+      const [filaPrimero, filaSegundo] = await Promise.all([
+        tenantClient.movimientoInsumo.findUniqueOrThrow({ where: { id: primero.id } }),
+        tenantClient.movimientoInsumo.findUniqueOrThrow({ where: { id: segundo.id } }),
+      ]);
+
+      expect(filaSegundo.createdAt.getTime()).toBeGreaterThanOrEqual(
+        filaPrimero.createdAt.getTime(),
+      );
+    });
+  });
+
   describe('insert()', () => {
     it('asienta el movimiento completo, con sus tres campos opcionales', async () => {
       const movimiento = construirMovimiento('SALIDA', 2.5, {

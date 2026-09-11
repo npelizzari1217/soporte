@@ -152,9 +152,12 @@ export class RegistrarSalidaInsumoUseCase {
         );
       }
 
-      await this.movimientoRepo.insert(asiento);
+      // El asentado, NO `asiento`: issue #159 — `insert()` devuelve el
+      // asiento con el `createdAt` que realmente le puso la base, que puede
+      // diferir del reloj del proceso con el que se construyó acá arriba.
+      const asentado = await this.movimientoRepo.insert(asiento);
 
-      return Result.ok<MovimientoInsumoEntity, DomainError>(asiento);
+      return Result.ok<MovimientoInsumoEntity, DomainError>(asentado);
     });
   }
 }

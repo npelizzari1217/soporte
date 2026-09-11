@@ -153,12 +153,22 @@ describe('MovimientoInsumoMapper', () => {
       expect(fila.id).toBe(movimiento.id);
     });
 
-    it('incluye createdAt de la entidad, no el default de la base', () => {
+    /**
+     * Issue #159 — invierte el caso que existía antes ("incluye createdAt de
+     * la entidad, no el default de la base"). El anterior era exactamente el
+     * bug: la entidad guarda el reloj del PROCESO, y si viaja en el INSERT
+     * Prisma lo manda siempre, dejando el `DEFAULT clock_timestamp()` de la
+     * columna —el reloj de POSTGRES— sin disparar nunca. Omitir el campo acá
+     * es la mitad de la corrección; la otra mitad —releer la fila real y
+     * devolver el asiento con SU fecha— vive en
+     * `PrismaMovimientoInsumoRepository.insert()`.
+     */
+    it('NO incluye createdAt: la fecha la tiene que poner el DEFAULT de la columna, no el proceso', () => {
       const movimiento = crearMovimiento();
 
       const fila = MovimientoInsumoMapper.toPersistence(movimiento);
 
-      expect(fila.createdAt).toEqual(movimiento.createdAt);
+      expect(fila).not.toHaveProperty('createdAt');
     });
 
     it('traslada los campos del asiento', () => {
@@ -226,15 +236,19 @@ describe('MovimientoInsumoMapper', () => {
     });
 
     /**
-     * La tabla NO tiene esas dos columnas: mandarlas haría fallar el INSERT
-     * entero. El assert de ausencia va acompañado del de presencia para que no
-     * pase en verde sobre un objeto vacío — el verde falso clásico.
+     * La tabla NO tiene `updated_at` ni `deleted_at`: mandarlas haría fallar
+     * el INSERT entero. `createdAt` tampoco se emite —issue #159, ver el caso
+     * de arriba—, pero por un motivo distinto: la columna SÍ existe, es que
+     * tiene que ponerla la base. El assert de ausencia va acompañado del de
+     * presencia (`insumoId`) para que no pase en verde sobre un objeto vacío —
+     * el verde falso clásico.
      */
-    it('no emite updatedAt ni deletedAt, que la tabla no tiene', () => {
+    it('no emite createdAt, updatedAt ni deletedAt', () => {
       const fila = MovimientoInsumoMapper.toPersistence(crearMovimiento());
       const claves = Object.keys(fila);
 
-      expect(claves).toContain('createdAt');
+      expect(claves).toContain('insumoId');
+      expect(claves).not.toContain('createdAt');
       expect(claves).not.toContain('updatedAt');
       expect(claves).not.toContain('deletedAt');
     });
@@ -245,8 +259,16 @@ describe('MovimientoInsumoMapper', () => {
    * que dar la misma entidad. Es el caso que atrapa un campo olvidado en
    * cualquiera de los dos lados, que ninguno de los casos de arriba ve por
    * separado.
+   *
+   * **`createdAt` NO sale de `fila` — issue #159.** `toPersistence()` lo omite
+   * a propósito (ver el caso de esa sección), así que en este nivel —sin base
+   * real de por medio— la "fecha de la base" se simula con un valor propio,
+   * DISTINTO del `createdAt` en memoria de `movimiento`. Es lo que prueba que
+   * el round-trip usa la fecha que trae la FILA y no la que tenía la entidad
+   * antes de persistirse: si `toDomain` leyera de otro lado, este assert
+   * fallaría con cualquier valor que no coincidiera por casualidad.
    */
-  it('hace round-trip de un movimiento completo', () => {
+  it('hace round-trip de un movimiento completo, con la fecha que asigna la base', () => {
     const movimiento = crearMovimiento({
       tipo: 'AJUSTE_POSITIVO',
       cantidad: 7.25,
@@ -255,11 +277,13 @@ describe('MovimientoInsumoMapper', () => {
       sectorId: 'sector-1',
       itemCompraId: 'item-compra-1',
     });
+    const fechaDeLaBase = new Date('2026-09-11T09:00:00.000Z');
 
     const fila = MovimientoInsumoMapper.toPersistence(movimiento);
     const reconstruido = MovimientoInsumoMapper.toDomain({
       ...fila,
       cantidad: new Prisma.Decimal(fila.cantidad),
+      createdAt: fechaDeLaBase,
     });
 
     expect(reconstruido.id).toBe(movimiento.id);
@@ -271,6 +295,7 @@ describe('MovimientoInsumoMapper', () => {
     expect(reconstruido.equipoId).toBe(movimiento.equipoId);
     expect(reconstruido.sectorId).toBe(movimiento.sectorId);
     expect(reconstruido.itemCompraId).toBe(movimiento.itemCompraId);
-    expect(reconstruido.createdAt).toEqual(movimiento.createdAt);
+    expect(reconstruido.createdAt).toEqual(fechaDeLaBase);
+    expect(reconstruido.createdAt).not.toEqual(movimiento.createdAt);
   });
 });

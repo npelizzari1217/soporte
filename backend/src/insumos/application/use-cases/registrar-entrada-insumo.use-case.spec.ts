@@ -60,9 +60,17 @@ describe('RegistrarEntradaInsumoUseCase', () => {
     AJUSTE_NEGATIVO: 3,
   };
 
+  /**
+   * `insert` resuelve con el MISMO asiento que recibió — no `undefined` — a
+   * propósito, issue #159: el puerto real devuelve el asiento reconstituido
+   * con el `createdAt` de la base, y el caso de uso tiene que reenviar ESE
+   * valor de retorno, no el que él mismo construyó. Un mock que resolviera
+   * `undefined` dejaría pasar una regresión a "el caso de uso ignora lo que
+   * `insert()` devuelve" sin que ningún test lo note.
+   */
   function buildMovimientoRepo() {
     return {
-      insert: vi.fn().mockResolvedValue(undefined),
+      insert: vi.fn().mockImplementation(async (movimiento) => movimiento),
       lockAndSumByTipo: vi.fn().mockResolvedValue(SUMAS_CARGADAS),
     };
   }
@@ -84,6 +92,30 @@ describe('RegistrarEntradaInsumoUseCase', () => {
     expect(movimiento.cantidad).toBe(10);
     expect(movimientoRepo.insert).toHaveBeenCalledTimes(1);
     expect(movimientoRepo.insert).toHaveBeenCalledWith(movimiento);
+  });
+
+  /**
+   * Issue #159 — el caso de uso tiene que devolver lo que `insert()`
+   * RESUELVE, no el asiento que construyó antes de llamarlo. `insert()` puede
+   * devolver un asiento con un `createdAt` distinto —el que le puso la
+   * base—, y este test lo hace explícito con un mock que resuelve un objeto
+   * DIFERENTE del que recibió: si el caso de uso devolviera su variable local
+   * `movimiento` en lugar del resultado de `insert()`, este assert lo
+   * detecta. Sin un mock que resuelva algo distinto, el caso pasaría igual
+   * con la implementación vieja y no probaría nada.
+   */
+  it('devuelve el asiento que resuelve insert(), no el que construyó antes de llamarlo', async () => {
+    const asentadoPorLaBase = { esElAsientoQueDevuelveLaBase: true };
+    const movimientoRepo = {
+      insert: vi.fn().mockResolvedValue(asentadoPorLaBase),
+      lockAndSumByTipo: vi.fn().mockResolvedValue(SUMAS_CARGADAS),
+    };
+    const useCase = new RegistrarEntradaInsumoUseCase(buildInsumoRepo(), movimientoRepo);
+
+    const result = await useCase.execute(dtoBase);
+
+    expect(result.isOk()).toBe(true);
+    expect(result.getValue()).toBe(asentadoPorLaBase);
   });
 
   /**

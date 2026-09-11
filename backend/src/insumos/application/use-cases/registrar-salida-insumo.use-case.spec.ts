@@ -81,8 +81,12 @@ describe('RegistrarSalidaInsumoUseCase', () => {
     const insumoRepo = { findById: vi.fn().mockResolvedValue(insumo) };
 
     const movimientoRepo = {
-      insert: vi.fn(async () => {
+      // Resuelve con el MISMO asiento que recibió, a propósito — issue #159:
+      // el puerto real devuelve el asiento reconstituido con el `createdAt`
+      // de la base, y el caso de uso tiene que reenviar ESE valor de retorno.
+      insert: vi.fn(async (movimiento) => {
         anotarSiEstaFuera('insert');
+        return movimiento;
       }),
       lockAndSumByTipo: vi.fn(async () => {
         anotarSiEstaFuera('lockAndSumByTipo');
@@ -130,6 +134,33 @@ describe('RegistrarSalidaInsumoUseCase', () => {
     expect(movimiento.cantidad).toBe(10);
     expect(c.movimientoRepo.insert).toHaveBeenCalledTimes(1);
     expect(c.movimientoRepo.insert).toHaveBeenCalledWith(movimiento);
+  });
+
+  /**
+   * Issue #159 — el caso de uso tiene que devolver lo que `insert()`
+   * RESUELVE, no el asiento que construyó antes de entrar a la transacción.
+   * El mock resuelve un objeto DIFERENTE del que recibió a propósito: si el
+   * caso de uso devolviera su variable local `asiento` en lugar del resultado
+   * de `insert()`, este assert lo detecta; con el mock genérico de
+   * `buildColaboradores()` —que resuelve el mismo objeto que recibe— este
+   * caso pasaría igual con la implementación vieja y no probaría nada.
+   */
+  it('devuelve el asiento que resuelve insert(), no el que construyó antes de llamarlo', async () => {
+    const asentadoPorLaBase = { esElAsientoQueDevuelveLaBase: true };
+    const insumoRepo = { findById: vi.fn().mockResolvedValue(insumoVigente()) };
+    const movimientoRepo = {
+      insert: vi.fn().mockResolvedValue(asentadoPorLaBase),
+      lockAndSumByTipo: vi.fn().mockResolvedValue(sumas({ ENTRADA: 100 })),
+    };
+    const txRunner: Pick<ITenantTransactionRunner, 'run'> = {
+      run: async <T>(fn: () => Promise<T>): Promise<T> => fn(),
+    };
+    const useCase = new RegistrarSalidaInsumoUseCase(insumoRepo, movimientoRepo, txRunner);
+
+    const result = await useCase.execute(dtoBase);
+
+    expect(result.isOk()).toBe(true);
+    expect(result.getValue()).toBe(asentadoPorLaBase);
   });
 
   it('asienta el usuarioId que recibe, sin derivarlo de ningún otro dato', async () => {

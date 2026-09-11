@@ -1,0 +1,30 @@
+-- Migration: 20260911210000_movimientos_created_at_clock_timestamp
+-- Issue #159 — la fecha de un movimiento la pone la BASE, en el instante del INSERT.
+--
+-- QUE CAMBIA: el DEFAULT de movimientos_insumo.created_at pasa de
+-- CURRENT_TIMESTAMP a clock_timestamp(). No cambia el tipo, ni la nulabilidad,
+-- ni ninguna fila existente.
+--
+-- POR QUE NO ALCANZABA CURRENT_TIMESTAMP. En PostgreSQL, CURRENT_TIMESTAMP y
+-- now() devuelven la hora de INICIO DE LA TRANSACCION, no la del statement.
+-- Quedan congeladas mientras la transaccion vive: con un pg_sleep(1) en el
+-- medio, dos lecturas devuelven el mismo valor al microsegundo. clock_timestamp()
+-- avanza.
+--
+-- Aca eso decide la correccion. El insert de un movimiento corre DENTRO de la
+-- misma transaccion que el pg_advisory_xact_lock de lockAndSumByTipo, asi que
+-- con CURRENT_TIMESTAMP la fecha quedaria fijada ANTES de que el lock se
+-- otorgue. Dos movimientos simultaneos sobre el mismo insumo podrian asentarse
+-- EN ORDEN INVERSO al de commit: el que arranco antes y espero el lock
+-- recibiria una fecha anterior a la del que arranco despues, tomo el lock
+-- primero y commiteo primero.
+--
+-- movimientos_insumo es append-only y su created_at ORDENA el historial de
+-- stock: si ese orden no es el de los hechos, cualquier lectura de "stock a la
+-- fecha X" miente, y la trazabilidad del issue #153 se apoya justo ahi.
+--
+-- LAS FILAS EXISTENTES NO SE TOCAN. Incluye las dos que quedaron con fecha
+-- futura cuando el reloj del VPS derivo: reescribir timestamps historicos
+-- borraria la evidencia de que eso paso.
+ALTER TABLE "movimientos_insumo"
+  ALTER COLUMN "created_at" SET DEFAULT clock_timestamp();
