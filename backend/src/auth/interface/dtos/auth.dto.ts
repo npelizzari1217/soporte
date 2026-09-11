@@ -45,6 +45,17 @@ export class SwitchTenantRequestDto {
   @IsString()
   @IsNotEmpty()
   clienteId!: string;
+
+  /**
+   * Refresh token crudo vigente (cookie `rt`, reenviada por el BFF —
+   * fix #168: sin esto, `SwitchTenantUseCase` no puede mantener al día el
+   * scope del refresh, y el usuario pierde el tenant elegido a los 15
+   * minutos). Opcional para no romper compatibilidad con un BFF viejo.
+   */
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  refreshToken?: string;
 }
 
 /**

@@ -194,6 +194,7 @@ export class AuthController {
     const result = await this.switchTenantUseCase.execute({
       actor: user,
       clienteId: dto.clienteId,
+      ...(dto.refreshToken !== undefined ? { refreshToken: dto.refreshToken } : {}),
     });
 
     if (result.isFail()) {

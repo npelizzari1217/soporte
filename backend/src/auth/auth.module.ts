@@ -206,13 +206,26 @@ import { RolesController } from './interface/controllers/roles.controller';
         tokenService: ITokenService,
         logger: ILogger,
         permisosRepo: IMatrizPermisosRepository,
-      ) => new SwitchTenantUseCase(membresiaRepo, clienteRepo, tokenService, logger, permisosRepo),
+        refreshTokenRepo: IRefreshTokenRepository,
+      ) =>
+        new SwitchTenantUseCase(
+          membresiaRepo,
+          clienteRepo,
+          tokenService,
+          logger,
+          permisosRepo,
+          refreshTokenRepo,
+        ),
       inject: [
         MEMBRESIA_REPOSITORY,
         CLIENTE_REPOSITORY,
         TOKEN_SERVICE,
         LOGGER,
         MATRIZ_PERMISOS_REPOSITORY,
+        // REFRESH_TOKEN_REPOSITORY (fix #168): el switch ahora mantiene al
+        // día el scope del refresh token vigente — ver JSDoc de
+        // SwitchTenantUseCase, punto 4.
+        REFRESH_TOKEN_REPOSITORY,
       ],
     },
     // CambiarPasswordUseCase (sdd/cambio-de-contrasena, WU2): cambia la

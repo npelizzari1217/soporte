@@ -118,6 +118,7 @@ describe('Auth Use Cases — Integration end-to-end (T5.5)', () => {
       tokenService,
       logger,
       permisosRepo,
+      refreshTokenRepo,
     );
   });
 
@@ -555,7 +556,7 @@ describe('Auth Use Cases — Integration end-to-end (T5.5)', () => {
       expect(logger.messages).toHaveLength(0); // no se audita un intento rechazado
     });
 
-    it('NO rota el refresh token (el refresh original sigue vigente tras el switch)', async () => {
+    it('NO rota el refresh token, pero SÍ actualiza su scope (regresión #168 — el tenant elegido sobrevive al refresh)', async () => {
       const clienteA = await createCliente('switch-no-rota-a');
       const clienteB = await createCliente('switch-no-rota-b');
       const role = await createRoleConPermisos('TECNICO', ['ticket:editar']);
@@ -575,14 +576,23 @@ describe('Auth Use Cases — Integration end-to-end (T5.5)', () => {
       if (value.kind !== 'tokens') throw new Error('expected tokens');
       const actorPayload = tokenService.verifyJwt(value.accessToken) as JwtPayload;
 
-      await switchTenantUseCase.execute({ actor: actorPayload, clienteId: clienteB.id });
+      // El BFF reenvía el refresh token crudo vigente (cookie `rt`) junto con
+      // el switch (fix #168) — así SwitchTenantUseCase puede correlacionarlo
+      // y mantener su scope al día, sin rotarlo.
+      await switchTenantUseCase.execute({
+        actor: actorPayload,
+        clienteId: clienteB.id,
+        refreshToken: value.refreshToken,
+      });
 
-      // El refresh original (emitido en el login, scopeado a clienteA) sigue
-      // sirviendo para refrescar — el switch no lo tocó.
+      // El refresh SIGUE SIENDO EL MISMO (mismo rawToken, no se rota en el
+      // switch — R8/ADR-4), pero a los 15 minutos ya no debe resucitar el
+      // scope viejo: el usuario había saltado a clienteB, y ESO es lo que
+      // tiene que sobrevivir a la renovación.
       const refreshResult = await refreshTokenUseCase.execute({ rawToken: value.refreshToken });
       expect(refreshResult.isOk()).toBe(true);
       const payload = tokenService.verifyJwt(refreshResult.getValue().accessToken) as JwtPayload;
-      expect(payload.cliente_id).toBe(clienteA.id); // el refresh mantiene el scope ORIGINAL
+      expect(payload.cliente_id).toBe(clienteB.id); // el refresh ya NO pierde el último switch
     });
   });
 });
