@@ -40,7 +40,13 @@ describe("AdminNav (ADR-P5)", () => {
     expect(screen.getByRole("link", { name: "Catálogos" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Ciclos" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Usuarios" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Insumos" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Insumos y repuestos" })).toBeInTheDocument();
+    // GEMELO INVERTIDO del renombre (#163): el item de Admin pasa a nombrar las
+    // dos clases de familia, pero la seccion del SIDEBAR PRINCIPAL sigue
+    // llamandose "Insumos" y listando solo consumibles — los repuestos tienen la
+    // suya propia desde el #149. Renombrar aquella seria el error simetrico:
+    // prometeria repuestos en una pantalla que los excluye.
+    expect(screen.queryByRole("link", { name: "Insumos" })).not.toBeInTheDocument();
     // Issue #156: "Unidades" salió de adentro de Admin > Insumos y pasó a
     // tener entrada propia, con el MISMO gate (esAdminCliente).
     expect(screen.getByRole("link", { name: "Unidades" })).toBeInTheDocument();

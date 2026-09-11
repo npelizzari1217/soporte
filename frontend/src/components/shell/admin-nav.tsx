@@ -39,7 +39,12 @@ const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { href: "/admin/catalogos", label: "Catálogos" },
   { href: "/admin/ciclos", label: "Ciclos" },
   { href: "/admin/usuarios", label: "Usuarios" },
-  { href: "/admin/insumos", label: "Insumos" },
+  // "Insumos y repuestos" y no "Insumos" a secas: este ABM administra las
+  // FAMILIAS, y una familia puede tener `esRepuesto` en true o en false, asi
+  // que desde acá se crean y editan las de las dos clases. Ojo con el error
+  // simétrico: la sección del sidebar principal SÍ se llama "Insumos" y lista
+  // solo consumibles — los repuestos tienen la suya propia desde el #149.
+  { href: "/admin/insumos", label: "Insumos y repuestos" },
   { href: "/admin/unidades", label: "Unidades" },
   // "Clientes" NO vive en el área Admin: es exclusivo de ROOT (plataforma),
   // no una sección administrable por el ADMINISTRADOR del tenant. Se accede
