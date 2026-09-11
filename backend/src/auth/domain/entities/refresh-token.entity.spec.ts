@@ -137,6 +137,38 @@ describe('RefreshTokenEntity', () => {
     });
   });
 
+  describe('actualizarClienteId() (fix #168)', () => {
+    it('actualiza el clienteId de null a un cliente (usuario elige su primer tenant)', () => {
+      const token = makeToken({ clienteId: null });
+      token.actualizarClienteId('cliente-1');
+      expect(token.clienteId).toBe('cliente-1');
+    });
+
+    it('actualiza el clienteId de un cliente a otro (switch entre tenants)', () => {
+      const token = makeToken({ clienteId: 'cliente-1' });
+      token.actualizarClienteId('cliente-2');
+      expect(token.clienteId).toBe('cliente-2');
+    });
+
+    it('actualiza el clienteId de un cliente a null (vuelta a scope MASTER)', () => {
+      const token = makeToken({ clienteId: 'cliente-1' });
+      token.actualizarClienteId(null);
+      expect(token.clienteId).toBeNull();
+    });
+
+    it('NO es una rotación: tokenHash/expiresAt/revokedAt no cambian', () => {
+      const token = makeToken({
+        clienteId: 'cliente-1',
+        tokenHash: 'hash-fijo',
+        expiresAt: future,
+      });
+      token.actualizarClienteId('cliente-2');
+      expect(token.tokenHash).toBe('hash-fijo');
+      expect(token.expiresAt.getTime()).toBe(future.getTime());
+      expect(token.revokedAt).toBeNull();
+    });
+  });
+
   describe('reconstitute()', () => {
     it('reconstruye token desde persistencia con todos los campos', () => {
       const exp = new Date(Date.now() + 3600000);

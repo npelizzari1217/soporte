@@ -1,8 +1,10 @@
+import * as crypto from 'crypto';
 import { Result } from '../../../shared/domain/result';
 import { DomainError } from '../../../shared/domain/result';
 import { IMembresiaRepository } from '../../domain/ports/i-membresia.repository';
 import { IMatrizPermisosRepository } from '../../domain/ports/i-matriz-permisos.repository';
 import { IClienteRepository } from '../../../clientes/domain/ports/i-cliente.repository';
+import { IRefreshTokenRepository } from '../../domain/ports/i-refresh-token.repository';
 import { ITokenService, JwtPayload, VERSION_PAYLOAD_JWT } from '../../domain/ports/i-token.service';
 import { ILogger } from '../../../shared/domain/ports/i-logger.port';
 import { resolverScope } from './resolver-scope';
@@ -13,6 +15,14 @@ export interface SwitchTenantDto {
   actor: JwtPayload;
   /** Cliente al que se quiere saltar. */
   clienteId: string;
+  /**
+   * Refresh token crudo vigente (cookie `rt`, reenviada por el BFF —
+   * fix #168). Opcional para no romper compatibilidad durante el rollout:
+   * si no viene (front viejo, o usuario todavía sin refresh emitido), el
+   * switch sigue emitiendo el access token igual, solo que no puede
+   * mantener al día el scope del refresh (mismo comportamiento pre-fix).
+   */
+  refreshToken?: string;
 }
 
 /** DTO de salida: solo el nuevo access token (R10 — el switch NO rota refresh). */
@@ -41,8 +51,33 @@ export interface SwitchTenantResult {
  * 3. Audita el salto vía `ILogger.log` con formato
  *    `SWITCH TENANT | usuario={sub} | from={cliente_id} | to={clienteId} | at={ISO}`
  *    — SOLO en el camino de éxito (un intento rechazado no es un salto real).
- * 4. NO toca `IRefreshTokenRepository` — el refresh token no se rota en el
- *    switch (eso es exclusivo de `RefreshTokenUseCase`, R8).
+ * 4. Si `dto.refreshToken` viene presente, actualiza EN EL LUGAR el
+ *    `clienteId` del refresh token vigente (fix #168 — reemplaza el punto 4
+ *    original, que decía que el switch no tocaba `IRefreshTokenRepository`).
+ *    NO es una rotación: `tokenHash`/`expiresAt` no cambian, y la rotación
+ *    sigue siendo exclusiva de `RefreshTokenUseCase` (R8) — ese límite no se
+ *    mueve. Antes de este fix, el refresh token conservaba el `clienteId`
+ *    con el que fue emitido en el LOGIN; como `RefreshTokenUseCase` lee ese
+ *    campo como "única fuente de verdad" del scope, a los 15 minutos (TTL
+ *    del access token) el usuario perdía el tenant recién elegido.
+ *
+ *    Elección de diseño: se agregó `RefreshTokenEntity.actualizarClienteId`
+ *    (comportamiento de dominio) en vez de un método nuevo en
+ *    `IRefreshTokenRepository` — el puerto ya expone `findByHash` + `save`
+ *    (upsert), que alcanzan para leer, mutar el scope en la entidad y
+ *    persistir sin ampliar el contrato del puerto.
+ *
+ *    Guardas defensivas ANTES de mutar (ninguna hace fallar el switch: el
+ *    access token ya es válido igual, solo se salteca la persistencia del
+ *    refresh si algo no cierra):
+ *    - Token no encontrado (hash sin match) → no-op.
+ *    - `usuarioId` del token no coincide con `dto.actor.sub` → no-op (nunca
+ *      se pisa el scope de un refresh ajeno).
+ *    - Token ya revocado o expirado → no-op (mutarlo no tendría efecto:
+ *      `RefreshTokenUseCase` lo rechaza ANTES de leer `clienteId`).
+ *    Ninguna de estas guardas debilita `resolverScope`: el `clienteId` que
+ *    se persiste es SIEMPRE `scope.clienteId`, ya validado arriba — nunca el
+ *    `dto.clienteId` crudo.
  */
 export class SwitchTenantUseCase {
   constructor(
@@ -51,6 +86,7 @@ export class SwitchTenantUseCase {
     private readonly tokenService: ITokenService,
     private readonly logger: ILogger,
     private readonly permisosRepo: IMatrizPermisosRepository,
+    private readonly refreshTokenRepo: IRefreshTokenRepository,
   ) {}
 
   async execute(dto: SwitchTenantDto): Promise<Result<SwitchTenantResult, DomainError>> {
@@ -90,6 +126,49 @@ export class SwitchTenantUseCase {
       apellido: dto.actor.apellido ?? '',
     };
     const accessToken = this.tokenService.signJwt(payload);
+
+    // Fix #168: mantiene al día el scope del refresh token vigente (ver
+    // punto 4 del docstring de la clase).
+    //
+    // TODO ESTE BLOQUE ES BEST-EFFORT Y NO PUEDE VOLTEAR EL SWITCH. El salto
+    // ya está autorizado y el access token ya está firmado: lo que sigue solo
+    // evita que el tenant se pierda dentro de 15 minutos.
+    //
+    // Las guardas lógicas (token ausente, de otro usuario, revocado, vencido)
+    // salen por el `if` sin hacer nada. Pero `findByHash` y `save` van a la
+    // BASE, y una base que tose LANZA — no devuelve falso. Sin este catch, el
+    // arreglo que existe para que no pierdas el inquilino te impediría
+    // ELEGIRLO: un hipo en `refresh_tokens` —una tabla que antes de este fix
+    // ni participaba del switch— tiraría abajo toda la operación.
+    //
+    // El peor caso con el catch es exactamente el comportamiento previo al
+    // fix: el scope no se actualiza y el tenant se pierde al renovar. Molesto
+    // y conocido, no bloqueante.
+    if (dto.refreshToken) {
+      try {
+        const tokenHash = crypto.createHash('sha256').update(dto.refreshToken).digest('hex');
+        const refreshTokenEntity = await this.refreshTokenRepo.findByHash(tokenHash);
+        if (
+          refreshTokenEntity &&
+          refreshTokenEntity.usuarioId === dto.actor.sub &&
+          !refreshTokenEntity.isRevoked() &&
+          !refreshTokenEntity.isExpired()
+        ) {
+          refreshTokenEntity.actualizarClienteId(scope.clienteId);
+          await this.refreshTokenRepo.save(refreshTokenEntity);
+        }
+      } catch (error) {
+        // Se registra y se sigue. Silenciarlo del todo dejaría el bug #168
+        // volviendo en sordina, sin nada que lo explique en el log.
+        // Mismo criterio que `CambiarPasswordUseCase` con `revokeAllByUsuarioId`
+        // (ver JSDoc de `ILogger.error`): degradación silenciosa que sale por
+        // stderr, no mezclada con la auditoría normal del salto.
+        const detalle = error instanceof Error ? error.message : String(error);
+        this.logger.error(
+          `SWITCH TENANT | no se pudo persistir el scope del refresh token | usuario=${dto.actor.sub} | to=${dto.clienteId} | el salto continua | causa=${detalle}`,
+        );
+      }
+    }
 
     this.logger.log(
       `SWITCH TENANT | usuario=${dto.actor.sub} | from=${dto.actor.cliente_id ?? 'null'} | to=${dto.clienteId} | at=${new Date().toISOString()}`,

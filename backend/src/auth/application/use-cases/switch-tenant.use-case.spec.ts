@@ -7,19 +7,25 @@
  * - Root sin membresía en ese cliente → rol=null/permisos=[], igual autorizado.
  * - Normal → clienteId DEBE tener membresía activa; sin ella → 403
  *   ClienteNoAutorizado.
- * - Emite SOLO el access token (no toca refresh tokens — SwitchTenantUseCase
- *   no depende de IRefreshTokenRepository, verificado por su firma).
+ * - Emite SOLO el access token (no ROTA el refresh — ver más abajo, fix
+ *   #168, que SÍ actualiza su scope en el lugar).
  * - Audita el salto vía ILogger.log con formato exacto
  *   `SWITCH TENANT | usuario={sub} | from={cliente_id} | to={clienteId} | at={ISO}`.
  * - El nuevo payload incluye membresias[] completo (consistencia con
  *   login/refresh — ADR-3).
+ * - fix #168: si `dto.refreshToken` viene, actualiza (sin rotar) el
+ *   `clienteId` del refresh token vigente — así `RefreshTokenUseCase` no
+ *   revive el scope de la emisión original tras el switch.
  */
+import * as crypto from 'crypto';
 import type { Mocked } from 'vitest';
 import { SwitchTenantUseCase, SwitchTenantDto } from './switch-tenant.use-case';
 import { ClienteEntity } from '../../../clientes/domain/entities/cliente.entity';
+import { RefreshTokenEntity } from '../../domain/entities/refresh-token.entity';
 import { IMembresiaRepository, MembresiaResuelta } from '../../domain/ports/i-membresia.repository';
 import { IMatrizPermisosRepository } from '../../domain/ports/i-matriz-permisos.repository';
 import { IClienteRepository } from '../../../clientes/domain/ports/i-cliente.repository';
+import { IRefreshTokenRepository } from '../../domain/ports/i-refresh-token.repository';
 import { ITokenService, JwtPayload } from '../../domain/ports/i-token.service';
 import { ILogger } from '../../../shared/domain/ports/i-logger.port';
 import { ClienteNoAutorizadoError } from '../../domain/errors/auth.errors';
@@ -82,9 +88,13 @@ const makeTokenService = (): Mocked<ITokenService> => ({
 
 const makeLogger = (): Mocked<ILogger> => ({
   log: vi.fn(),
-  // SwitchTenantUseCase nunca llama a error(): un stub mudo taparía que
-  // producción empiece a llamarlo sin que ningún test se entere.
-  error: unstubbed('ILogger.error'),
+  // Desde el fix #168 SÍ llama a error(): es la degradación silenciosa cuando
+  // no se puede persistir el scope del refresh token. Hasta entonces esto era
+  // `unstubbed('ILogger.error')` justamente para que, si producción empezaba a
+  // llamarlo, ningún test lo tapara — y funcionó: el mock explotó al agregar
+  // el `try/catch`, que es cómo se descubrió que había que actualizar esta
+  // nota. Los dos tests gemelos de más abajo fijan que se llama.
+  error: vi.fn(),
 });
 
 const makePermisosRepo = (): Mocked<IMatrizPermisosRepository> => ({
@@ -92,12 +102,38 @@ const makePermisosRepo = (): Mocked<IMatrizPermisosRepository> => ({
   setPermisos: vi.fn().mockResolvedValue(undefined),
 });
 
+const makeRefreshTokenRepo = (): Mocked<IRefreshTokenRepository> => ({
+  findByHash: vi.fn().mockResolvedValue(null),
+  revokeAllByUsuarioId: unstubbed('revokeAllByUsuarioId'),
+  save: vi.fn().mockResolvedValue(undefined),
+});
+
+const future = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+const makeRefreshTokenEntity = (
+  overrides: Partial<{
+    usuarioId: string;
+    tokenHash: string;
+    expiresAt: Date;
+    revokedAt: Date | null;
+    clienteId: string | null;
+  }> = {},
+): RefreshTokenEntity =>
+  RefreshTokenEntity.create({
+    usuarioId: overrides.usuarioId ?? 'usuario-1',
+    tokenHash: overrides.tokenHash ?? 'hash-de-test',
+    expiresAt: overrides.expiresAt ?? future,
+    revokedAt: overrides.revokedAt ?? null,
+    clienteId: 'clienteId' in overrides ? (overrides.clienteId as string | null) : null,
+  });
+
 describe('SwitchTenantUseCase', () => {
   let membresiaRepo: Mocked<IMembresiaRepository>;
   let clienteRepo: Mocked<IClienteRepository>;
   let tokenService: Mocked<ITokenService>;
   let logger: Mocked<ILogger>;
   let permisosRepo: Mocked<IMatrizPermisosRepository>;
+  let refreshTokenRepo: Mocked<IRefreshTokenRepository>;
   let useCase: SwitchTenantUseCase;
 
   beforeEach(() => {
@@ -106,12 +142,14 @@ describe('SwitchTenantUseCase', () => {
     tokenService = makeTokenService();
     logger = makeLogger();
     permisosRepo = makePermisosRepo();
+    refreshTokenRepo = makeRefreshTokenRepo();
     useCase = new SwitchTenantUseCase(
       membresiaRepo,
       clienteRepo,
       tokenService,
       logger,
       permisosRepo,
+      refreshTokenRepo,
     );
   });
 
@@ -195,9 +233,9 @@ describe('SwitchTenantUseCase', () => {
   });
 
   describe('Emite SOLO access token (no rota refresh)', () => {
-    it('el constructor toma exactamente 5 puertos (sin IRefreshTokenRepository — no rota refresh)', () => {
+    it('el constructor toma exactamente 6 puertos (fix #168 agrega IRefreshTokenRepository — actualiza el scope del refresh, no lo rota)', () => {
       expect(useCase).toBeInstanceOf(SwitchTenantUseCase);
-      expect(SwitchTenantUseCase.length).toBe(5);
+      expect(SwitchTenantUseCase.length).toBe(6);
     });
 
     it('el resultado exitoso solo expone accessToken', async () => {
@@ -338,6 +376,232 @@ describe('SwitchTenantUseCase', () => {
 
       expect(captured!.nombre).toBe('');
       expect(captured!.apellido).toBe('');
+    });
+  });
+
+  describe('Persistencia del scope en el refresh token vigente (fix #168)', () => {
+    const rawRefreshToken = 'r'.repeat(64);
+    const tokenHash = crypto.createHash('sha256').update(rawRefreshToken).digest('hex');
+
+    it('actualiza (sin rotar) el clienteId del refresh vigente cuando el switch es autorizado', async () => {
+      const actor = makeActorPayload({ sub: 'usuario-1', is_global_admin: false });
+      clienteRepo.findById.mockResolvedValue(makeCliente('Beta SA'));
+      membresiaRepo.findActivaByUsuarioYCliente.mockResolvedValue(makeMembresiaResuelta());
+      const tokenVigente = makeRefreshTokenEntity({
+        usuarioId: 'usuario-1',
+        tokenHash,
+        clienteId: 'cliente-1',
+      });
+      refreshTokenRepo.findByHash.mockResolvedValue(tokenVigente);
+
+      const dto: SwitchTenantDto = {
+        actor,
+        clienteId: 'cliente-2',
+        refreshToken: rawRefreshToken,
+      };
+      const result = await useCase.execute(dto);
+
+      expect(result.isOk()).toBe(true);
+      expect(refreshTokenRepo.findByHash).toHaveBeenCalledWith(tokenHash);
+      expect(refreshTokenRepo.save).toHaveBeenCalledWith(tokenVigente);
+      // Mismo token (misma entidad, mismo hash) — NO es una rotación.
+      expect(tokenVigente.tokenHash).toBe(tokenHash);
+      expect(tokenVigente.clienteId).toBe('cliente-2');
+    });
+
+    it('el usuario que cambia de cliente varias veces queda, tras cada switch, en el ÚLTIMO elegido', async () => {
+      const actor = makeActorPayload({ sub: 'usuario-1', is_global_admin: false });
+      clienteRepo.findById.mockResolvedValue(makeCliente('Beta SA'));
+      membresiaRepo.findActivaByUsuarioYCliente.mockResolvedValue(makeMembresiaResuelta());
+      const tokenVigente = makeRefreshTokenEntity({
+        usuarioId: 'usuario-1',
+        tokenHash,
+        clienteId: null,
+      });
+      refreshTokenRepo.findByHash.mockResolvedValue(tokenVigente);
+
+      await useCase.execute({ actor, clienteId: 'cliente-1', refreshToken: rawRefreshToken });
+      expect(tokenVigente.clienteId).toBe('cliente-1');
+
+      await useCase.execute({ actor, clienteId: 'cliente-2', refreshToken: rawRefreshToken });
+      expect(tokenVigente.clienteId).toBe('cliente-2'); // el último, no el anterior
+    });
+
+    it('EL GEMELO INVERTIDO — switch rechazado por falta de membresía → el refresh NUNCA se toca', async () => {
+      const actor = makeActorPayload({ sub: 'usuario-1', is_global_admin: false });
+      clienteRepo.findById.mockResolvedValue(makeCliente('Beta SA'));
+      membresiaRepo.findActivaByUsuarioYCliente.mockResolvedValue(null);
+
+      const result = await useCase.execute({
+        actor,
+        clienteId: 'cliente-2',
+        refreshToken: rawRefreshToken,
+      });
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(ClienteNoAutorizadoError);
+      // La persistencia arreglada NO puede convertirse en persistir una
+      // autorización que nunca existió: si resolverScope rechaza, el
+      // refresh token ni se busca.
+      expect(refreshTokenRepo.findByHash).not.toHaveBeenCalled();
+      expect(refreshTokenRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('sin refreshToken en el dto (compat con BFF pre-fix) → no toca IRefreshTokenRepository, el switch igual funciona', async () => {
+      const actor = makeActorPayload({ is_global_admin: false });
+      clienteRepo.findById.mockResolvedValue(makeCliente('Beta SA'));
+      membresiaRepo.findActivaByUsuarioYCliente.mockResolvedValue(makeMembresiaResuelta());
+
+      const result = await useCase.execute({ actor, clienteId: 'cliente-2' });
+
+      expect(result.isOk()).toBe(true);
+      expect(refreshTokenRepo.findByHash).not.toHaveBeenCalled();
+      expect(refreshTokenRepo.save).not.toHaveBeenCalled();
+    });
+
+    /**
+     * EL BLOQUE ES BEST-EFFORT Y NO PUEDE VOLTEAR EL SWITCH — y las guardas
+     * lógicas no alcanzan para garantizarlo.
+     *
+     * `findByHash` y `save` van a la BASE: una base caída LANZA, no devuelve
+     * falso, así que sale por afuera de todo `if`. Sin el `try/catch`, este
+     * fix —que existe para que el tenant no se pierda— impediría ELEGIRLO:
+     * un hipo en `refresh_tokens`, una tabla que antes del #168 ni
+     * participaba del switch, voltearía la operación entera.
+     *
+     * Los dos tests de abajo son gemelos: uno cubre la lectura y otro la
+     * escritura, porque un `try` mal puesto puede cubrir una y dejar la otra
+     * afuera. El peor caso aceptado es volver al comportamiento previo al
+     * fix: el scope no se actualiza y el tenant se pierde al renovar.
+     */
+    it('si findByHash LANZA → el switch igual responde OK y se registra la degradación', async () => {
+      const actor = makeActorPayload({ is_global_admin: false });
+      clienteRepo.findById.mockResolvedValue(makeCliente('Beta SA'));
+      membresiaRepo.findActivaByUsuarioYCliente.mockResolvedValue(makeMembresiaResuelta());
+      refreshTokenRepo.findByHash.mockRejectedValue(new Error('conexión caída'));
+
+      const result = await useCase.execute({
+        actor,
+        clienteId: 'cliente-2',
+        refreshToken: rawRefreshToken,
+      });
+
+      expect(result.isOk()).toBe(true);
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.stringContaining('no se pudo persistir el scope del refresh token'),
+      );
+    });
+
+    it('si save LANZA → el switch igual responde OK y se registra la degradación', async () => {
+      const actor = makeActorPayload({ sub: 'usuario-1', is_global_admin: false });
+      clienteRepo.findById.mockResolvedValue(makeCliente('Beta SA'));
+      membresiaRepo.findActivaByUsuarioYCliente.mockResolvedValue(makeMembresiaResuelta());
+      refreshTokenRepo.findByHash.mockResolvedValue(
+        makeRefreshTokenEntity({ usuarioId: 'usuario-1', tokenHash }),
+      );
+      refreshTokenRepo.save.mockRejectedValue(new Error('deadlock'));
+
+      const result = await useCase.execute({
+        actor,
+        clienteId: 'cliente-2',
+        refreshToken: rawRefreshToken,
+      });
+
+      expect(result.isOk()).toBe(true);
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.stringContaining('no se pudo persistir el scope del refresh token'),
+      );
+    });
+
+    it('refreshToken que no matchea ningún hash conocido → no-op, el switch igual responde OK', async () => {
+      const actor = makeActorPayload({ is_global_admin: false });
+      clienteRepo.findById.mockResolvedValue(makeCliente('Beta SA'));
+      membresiaRepo.findActivaByUsuarioYCliente.mockResolvedValue(makeMembresiaResuelta());
+      refreshTokenRepo.findByHash.mockResolvedValue(null);
+
+      const result = await useCase.execute({
+        actor,
+        clienteId: 'cliente-2',
+        refreshToken: rawRefreshToken,
+      });
+
+      expect(result.isOk()).toBe(true);
+      expect(refreshTokenRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('refreshToken de OTRO usuario (usuarioId no coincide) → no lo pisa (defensivo)', async () => {
+      const actor = makeActorPayload({ sub: 'usuario-1', is_global_admin: false });
+      clienteRepo.findById.mockResolvedValue(makeCliente('Beta SA'));
+      membresiaRepo.findActivaByUsuarioYCliente.mockResolvedValue(makeMembresiaResuelta());
+      const tokenDeOtro = makeRefreshTokenEntity({ usuarioId: 'usuario-ajeno', tokenHash });
+      refreshTokenRepo.findByHash.mockResolvedValue(tokenDeOtro);
+
+      const result = await useCase.execute({
+        actor,
+        clienteId: 'cliente-2',
+        refreshToken: rawRefreshToken,
+      });
+
+      expect(result.isOk()).toBe(true);
+      expect(refreshTokenRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('refreshToken ya revocado → no-op (RefreshTokenUseCase ya lo rechaza antes de leer clienteId)', async () => {
+      const actor = makeActorPayload({ sub: 'usuario-1', is_global_admin: false });
+      clienteRepo.findById.mockResolvedValue(makeCliente('Beta SA'));
+      membresiaRepo.findActivaByUsuarioYCliente.mockResolvedValue(makeMembresiaResuelta());
+      const tokenRevocado = makeRefreshTokenEntity({
+        usuarioId: 'usuario-1',
+        tokenHash,
+        revokedAt: new Date(),
+      });
+      refreshTokenRepo.findByHash.mockResolvedValue(tokenRevocado);
+
+      const result = await useCase.execute({
+        actor,
+        clienteId: 'cliente-2',
+        refreshToken: rawRefreshToken,
+      });
+
+      expect(result.isOk()).toBe(true);
+      expect(refreshTokenRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('refreshToken ya expirado → no-op', async () => {
+      const actor = makeActorPayload({ sub: 'usuario-1', is_global_admin: false });
+      clienteRepo.findById.mockResolvedValue(makeCliente('Beta SA'));
+      membresiaRepo.findActivaByUsuarioYCliente.mockResolvedValue(makeMembresiaResuelta());
+      const tokenExpirado = makeRefreshTokenEntity({
+        usuarioId: 'usuario-1',
+        tokenHash,
+        expiresAt: new Date(Date.now() - 1000),
+      });
+      refreshTokenRepo.findByHash.mockResolvedValue(tokenExpirado);
+
+      const result = await useCase.execute({
+        actor,
+        clienteId: 'cliente-2',
+        refreshToken: rawRefreshToken,
+      });
+
+      expect(result.isOk()).toBe(true);
+      expect(refreshTokenRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('persiste SIEMPRE scope.clienteId (ya validado), nunca el dto.clienteId crudo — root sin membresía en el destino', async () => {
+      const actor = makeActorPayload({ sub: 'root-1', is_global_admin: true });
+      clienteRepo.findById.mockResolvedValue(makeCliente('Beta SA'));
+      membresiaRepo.findActivaByUsuarioYCliente.mockResolvedValue(null);
+      const tokenVigente = makeRefreshTokenEntity({
+        usuarioId: 'root-1',
+        tokenHash,
+        clienteId: null,
+      });
+      refreshTokenRepo.findByHash.mockResolvedValue(tokenVigente);
+
+      await useCase.execute({ actor, clienteId: 'cliente-2', refreshToken: rawRefreshToken });
+
+      expect(tokenVigente.clienteId).toBe('cliente-2');
     });
   });
 });

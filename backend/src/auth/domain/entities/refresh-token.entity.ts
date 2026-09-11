@@ -109,4 +109,24 @@ export class RefreshTokenEntity extends BaseEntity<RefreshTokenProps> {
       this.props.revokedAt = new Date();
     }
   }
+
+  /**
+   * Actualiza el `clienteId` (scope) del token EN EL LUGAR, sin rotarlo
+   * (fix #168 — "cada 15 minutos se pierde el inquilino elegido").
+   *
+   * Distinto de `revoke()`+reemisión: `tokenHash`/`expiresAt` NO cambian, el
+   * token sigue siendo el mismo (mismo hash, mismo `id`) — solo se corrige el
+   * dato de a qué cliente quedó scopeado. La rotación (revocar + emitir uno
+   * nuevo) sigue siendo exclusiva de `RefreshTokenUseCase` (R8); esto NO es
+   * una rotación.
+   *
+   * Único consumidor: `SwitchTenantUseCase`, para que el refresh token deje
+   * de arrastrar el `clienteId` de la emisión original (login) cuando el
+   * usuario salta de tenant — sin este método, `RefreshTokenUseCase` (que
+   * lee `clienteId` como "única fuente de verdad") revive el scope viejo en
+   * cuanto el access token vence.
+   */
+  actualizarClienteId(clienteId: string | null): void {
+    this.props.clienteId = clienteId;
+  }
 }
