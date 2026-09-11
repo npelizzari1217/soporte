@@ -961,4 +961,126 @@ describe('PrismaInsumoRepository — Integration', () => {
       expect(conflictos).toEqual([]);
     });
   });
+
+  /**
+   * `findFamiliasDeInsumos()` (sdd/repuestos-autoridad-catalogo, ADR-3): la
+   * lectura por lote que usa `ObtenerEquipoUseCase` para mostrar el tipo de un
+   * componente vinculado desde el catálogo del tenant, sin consultar MASTER.
+   */
+  describe('findFamiliasDeInsumos()', () => {
+    let familiaDeshabilitadaId: string;
+    let familiaBorradaId: string;
+
+    // Sin `afterAll` propio, mismo motivo que en `soloVinculables` de arriba:
+    // el `afterAll` EXTERNO ya barre por prefijo, DESPUÉS de `limpiarInsumos()`.
+    beforeAll(async () => {
+      const familiaDeshabilitada = await tenantClient.familiaInsumo.create({
+        data: {
+          codigo: `${PREFIJO}FAMFD`,
+          nombre: 'Familia deshabilitada (findFamiliasDeInsumos)',
+          activo: false,
+        },
+      });
+      familiaDeshabilitadaId = familiaDeshabilitada.id;
+
+      const familiaBorrada = await tenantClient.familiaInsumo.create({
+        data: {
+          codigo: `${PREFIJO}FAMBJ`,
+          nombre: 'Familia borrada (findFamiliasDeInsumos)',
+          activo: true,
+        },
+      });
+      await tenantClient.familiaInsumo.update({
+        where: { id: familiaBorrada.id },
+        data: { deletedAt: new Date() },
+      });
+      familiaBorradaId = familiaBorrada.id;
+    });
+
+    it('resuelve varios ids en UNA llamada, cada uno con su familia', async () => {
+      const uno = construirInsumo('FAM_UNO');
+      const dos = construirInsumo('FAM_DOS');
+      await repo.save(uno);
+      await repo.save(dos);
+
+      const mapa = await repo.findFamiliasDeInsumos([uno.id, dos.id]);
+
+      expect(mapa.size).toBe(2);
+      expect(mapa.get(uno.id)).toEqual({
+        insumoId: uno.id,
+        codigo: `${PREFIJO}F`,
+        nombre: 'Familia de prueba',
+        activo: true,
+        deletedAt: null,
+      });
+      expect(mapa.get(dos.id)?.insumoId).toBe(dos.id);
+    });
+
+    /**
+     * EL INSUMO BORRADO SIGUE RESOLVIENDO, Y ES A PROPÓSITO.
+     *
+     * La consulta filtra por `id`, nunca por `deletedAt` del insumo. Un
+     * componente vinculado sobrevive a la baja lógica de su insumo —el FK es
+     * RESTRICT, la fila no se va— y su tipo tiene que seguir mostrándose.
+     *
+     * Sin este test, "agregar `deletedAt: null` al where" parece una mejora
+     * obvia, y reintroduce EXACTAMENTE el bug que este ciclo vino a cerrar: el
+     * componente cae a tipo sin resolver y se muestra "Dado de baja".
+     */
+    it('un insumo con baja lógica SIGUE resolviendo su familia, no desaparece del mapa', async () => {
+      const borrado = construirInsumo('FAM_INSUMO_BORRADO');
+      await repo.save(borrado);
+      borrado.softDelete();
+      await repo.save(borrado);
+
+      const mapa = await repo.findFamiliasDeInsumos([borrado.id]);
+
+      expect(mapa.size).toBe(1);
+      expect(mapa.get(borrado.id)?.insumoId).toBe(borrado.id);
+      expect(mapa.get(borrado.id)?.codigo).toBe(`${PREFIJO}F`);
+    });
+
+    it('un id inexistente simplemente no aparece en el mapa', async () => {
+      const mapa = await repo.findFamiliasDeInsumos(['00000000-0000-4000-8000-000000000000']);
+      expect(mapa.size).toBe(0);
+    });
+
+    it('lista vacía devuelve mapa vacío sin consultar la base', async () => {
+      const mapa = await repo.findFamiliasDeInsumos([]);
+      expect(mapa).toEqual(new Map());
+    });
+
+    it('familia deshabilitada viaja con activo:false CRUDO, sin colapsarlo', async () => {
+      const insumo = construirInsumoEnFamiliaGenerica('FAM_DESHAB', familiaDeshabilitadaId);
+      await repo.save(insumo);
+
+      const mapa = await repo.findFamiliasDeInsumos([insumo.id]);
+
+      expect(mapa.get(insumo.id)?.activo).toBe(false);
+      expect(mapa.get(insumo.id)?.deletedAt).toBeNull();
+    });
+
+    it('familia soft-deleted viaja con deletedAt CRUDO, sin colapsarlo', async () => {
+      const insumo = construirInsumoEnFamiliaGenerica('FAM_BORRADA', familiaBorradaId);
+      await repo.save(insumo);
+
+      const mapa = await repo.findFamiliasDeInsumos([insumo.id]);
+
+      expect(mapa.get(insumo.id)?.activo).toBe(true);
+      expect(mapa.get(insumo.id)?.deletedAt).not.toBeNull();
+    });
+
+    function construirInsumoEnFamiliaGenerica(sufijo: string, familia: string): InsumoEntity {
+      return InsumoEntity.create({
+        codigo: `${PREFIJO}${sufijo}`,
+        nombre: `Insumo ${sufijo}`,
+        familiaId: familia,
+        unidadMedidaId,
+        stockMinimo: null,
+        activo: true,
+        codigosAlternativos: [],
+        compatibilidad: [],
+      });
+    }
+  });
 });

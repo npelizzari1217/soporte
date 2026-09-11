@@ -13,6 +13,25 @@ export interface ConflictoCodigoAlternativo {
 }
 
 /**
+ * Proyección de solo lectura: la familia de un insumo, sin el agregado.
+ * NO es `InsumoEntity` ni `FamiliaInsumoEntity` a propósito — no se puede
+ * pasar a ningún `save()`, así que no puede borrar listas en silencio.
+ * `activo` y `deletedAt` viajan CRUDOS: colapsarlos acá metería una regla de
+ * presentación en el repositorio; quien decide es el caso de uso.
+ *
+ * Ref: sdd/repuestos-autoridad-catalogo (ADR-3) — la resuelve
+ * `findFamiliasDeInsumos()`, para que `ObtenerEquipoUseCase` muestre el tipo
+ * de un componente vinculado desde el catálogo del tenant, no desde MASTER.
+ */
+export interface FamiliaDeInsumo {
+  insumoId: string;
+  codigo: string;
+  nombre: string;
+  activo: boolean;
+  deletedAt: Date | null;
+}
+
+/**
  * IInsumoRepository — puerto de acceso al catálogo de insumos del tenant.
  * `InsumoEntity` es la raíz del agregado: todos estos métodos lo devuelven o
  * lo persisten COMPLETO —con sus códigos alternativos Y con su
@@ -21,6 +40,11 @@ export interface ConflictoCodigoAlternativo {
  * Que el agregado viaje entero no es prolijidad: una lectura que trajera una
  * de esas listas vacía y un `save()` posterior la persistirían vacía, borrando
  * lo guardado sin un solo error ni log.
+ *
+ * **Excepción a esa regla, explícita**: `findFamiliasDeInsumos()` devuelve una
+ * proyección (`FamiliaDeInsumo`) que NO es `InsumoEntity` y por lo tanto no es
+ * pasable a `save()` — el peligro que la regla de arriba previene no existe
+ * ahí (sdd/repuestos-autoridad-catalogo, ADR-3).
  */
 export interface IInsumoRepository {
   /**
@@ -108,6 +132,25 @@ export interface IInsumoRepository {
    * @returns Los insumos compatibles, cada uno con el agregado completo. Vacío si no hay ninguno.
    */
   findAllByModeloEquipo(modeloEquipoId: string): Promise<InsumoEntity[]>;
+
+  /**
+   * Resuelve, en UNA consulta, la familia de cada insumo pedido —
+   * `insumoId → { codigo, nombre, activo, deletedAt }` de la familia a la que
+   * pertenece. Es la lectura que necesita el DETALLE de un equipo para
+   * mostrar el nombre/estado de un componente vinculado a un repuesto SIN
+   * consultar MASTER (sdd/repuestos-autoridad-catalogo, ADR-2/ADR-3): el
+   * catálogo del tenant es la autoridad del camino vinculado.
+   *
+   * Va en una sola consulta y no en una por insumo porque el detalle trae
+   * TODOS los componentes de un equipo (activos y dados de baja) y una
+   * resolución por componente sería N+1.
+   *
+   * @param insumoIds Ids de insumo a resolver.
+   * @returns Mapa `insumoId → FamiliaDeInsumo`. Lista vacía ⇒ mapa vacío, sin
+   *   ir a la base. Un id inexistente simplemente no aparece en el mapa: la
+   *   ausencia no es un error.
+   */
+  findFamiliasDeInsumos(insumoIds: readonly string[]): Promise<Map<string, FamiliaDeInsumo>>;
 
   /**
    * Upsert del agregado COMPLETO por id: el insumo, su lista de códigos

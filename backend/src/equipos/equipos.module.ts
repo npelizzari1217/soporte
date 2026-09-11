@@ -115,18 +115,24 @@ import { SoporteController } from './interface/controllers/soporte.controller';
  *   `RegistrarSalidaInsumoUseCase` (exportado por `InsumosModule`, nunca su
  *   puerto de movimientos) para que `InstalarComponenteDesdeDepositoUseCase`
  *   registre la salida de stock y cree el componente en UNA sola transacción.
+ *   sdd/repuestos-autoridad-catalogo suma `INSUMO_REPOSITORY` también al
+ *   `inject` de `ObtenerEquipoUseCase`: el detalle resuelve el tipo de un
+ *   componente VINCULADO por el catálogo del tenant, no por MASTER (ver
+ *   nota de abajo).
  * - `TENANT_TX_RUNNER` se inyecta desde `SharedModule` (`@Global`).
  * - `EquiposController` expone el inventario + componentes + catálogo de
  *   tipos; `SoporteController` expone la creación de tickets de soporte y
  *   el registro de solución.
- * - PR3/PR4b (sdd/tipos-componente-master): `ListarTiposComponenteUseCase`,
- *   `AgregarComponenteUseCase` (verifica `activo` por código) y
- *   `ObtenerEquipoUseCase` (enriquece componentes con nombre/estado, batch)
- *   leen el catálogo desde MASTER vía `TIPO_COMPONENTE_MASTER_CHECKER`
- *   (checker cross-DB decoplado del módulo `tipos-componente/`, mismo
- *   criterio que `USUARIO_MASTER_CHECKER`). El catálogo tenant
- *   `tipos_componente`/`TIPO_COMPONENTE_REPOSITORY` se ELIMINÓ en PR4b —
- *   ya nada lo referencia.
+ * - PR3/PR4b (sdd/tipos-componente-master): `ListarTiposComponenteUseCase` y
+ *   `AgregarComponenteUseCase` (camino de texto libre) leen el catálogo desde
+ *   MASTER vía `TIPO_COMPONENTE_MASTER_CHECKER` (checker cross-DB decoplado
+ *   del módulo `tipos-componente/`, mismo criterio que
+ *   `USUARIO_MASTER_CHECKER`). El catálogo tenant
+ *   `tipos_componente`/`TIPO_COMPONENTE_REPOSITORY` se ELIMINÓ en PR4b — ya
+ *   nada lo referencia. `ObtenerEquipoUseCase` (sdd/repuestos-autoridad-catalogo,
+ *   ADR-2) YA NO lee MASTER para un componente vinculado: resuelve su tipo
+ *   por `INSUMO_REPOSITORY` contra el catálogo del tenant, y solo consulta
+ *   `TIPO_COMPONENTE_MASTER_CHECKER` para los de texto libre.
  *
  * FITNESS RULE: PrismaService y @prisma/client solo pueden importarse desde
  * infrastructure/ (ver backend/eslint.config.js).
@@ -179,16 +185,29 @@ import { SoporteController } from './interface/controllers/soporte.controller';
       inject: [EQUIPO_INFORMATICO_REPOSITORY, TENANT_TX_RUNNER, MODELO_EQUIPO_REPOSITORY],
     },
     {
+      // sdd/repuestos-autoridad-catalogo (ADR-3): suma INSUMO_REPOSITORY (de
+      // InsumosModule, ya importado más arriba) para que el detalle resuelva
+      // el tipo de un componente VINCULADO por el catálogo del tenant
+      // (`findFamiliasDeInsumos`), en vez de MASTER — mismo motivo y misma
+      // dirección de dependencia que WU-3 suma a `AgregarComponenteUseCase`.
       provide: ObtenerEquipoUseCase,
       useFactory: (
         equipoRepo: IEquipoInformaticoRepository,
         componenteRepo: IComponenteEquipoRepository,
         tipoComponenteMasterChecker: ITipoComponenteMasterChecker,
-      ) => new ObtenerEquipoUseCase(equipoRepo, componenteRepo, tipoComponenteMasterChecker),
+        insumoRepo: IInsumoRepository,
+      ) =>
+        new ObtenerEquipoUseCase(
+          equipoRepo,
+          componenteRepo,
+          tipoComponenteMasterChecker,
+          insumoRepo,
+        ),
       inject: [
         EQUIPO_INFORMATICO_REPOSITORY,
         COMPONENTE_EQUIPO_REPOSITORY,
         TIPO_COMPONENTE_MASTER_CHECKER,
+        INSUMO_REPOSITORY,
       ],
     },
     {
