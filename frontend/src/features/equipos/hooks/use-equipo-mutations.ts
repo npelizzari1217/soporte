@@ -17,6 +17,7 @@ import type {
   EditarComponenteDto,
   EditarEquipoDto,
   Equipo,
+  InstalarComponenteDesdeDepositoDto,
 } from "../types";
 
 export function useCrearEquipo() {
@@ -73,6 +74,37 @@ export function useAgregarComponente(equipoId: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["equipo", equipoId] });
       notifySuccess("Componente agregado.");
+    },
+    onError: notifyError,
+  });
+}
+
+/**
+ * `POST /equipos/:id/componentes/instalar-desde-deposito` (WU-4, issue #153):
+ * en UNA transacción del backend, descuenta 1 unidad del repuesto elegido Y
+ * crea el componente vinculado. Mismo shape de respuesta que
+ * `useAgregarComponente`, pero **NO el mismo criterio de cache**: aquel no
+ * mueve stock y este SI. Copiarle el criterio dejaria la seccion Repuestos
+ * mostrando el stock viejo despues de instalar, porque nada invalidaria las
+ * queries de insumos. Por eso ademas de `["equipo", equipoId]` invalida las
+ * tres claves que ya invalida un movimiento de stock en
+ * `useRegistrarMovimientoInsumo`: el stock y los movimientos del insumo, mas
+ * el listado `["insumos"]` del que cuelgan las secciones Insumos y Repuestos.
+ */
+export function useInstalarComponenteDesdeDeposito(equipoId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (dto: InstalarComponenteDesdeDepositoDto) =>
+      apiFetch<Componente>(`equipos/${equipoId}/componentes/instalar-desde-deposito`, {
+        method: "POST",
+        json: dto,
+      }),
+    onSuccess: (_componente, dto) => {
+      queryClient.invalidateQueries({ queryKey: ["equipo", equipoId] });
+      queryClient.invalidateQueries({ queryKey: ["insumo", dto.insumoId, "stock"] });
+      queryClient.invalidateQueries({ queryKey: ["insumo", dto.insumoId, "movimientos"] });
+      queryClient.invalidateQueries({ queryKey: ["insumos"] });
+      notifySuccess("Repuesto instalado desde el depósito.");
     },
     onError: notifyError,
   });

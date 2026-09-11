@@ -215,6 +215,41 @@ export const componenteSchema = z
   });
 export type ComponenteFormValues = z.infer<typeof componenteSchema>;
 
+/**
+ * Espejo de `InstalarComponenteDesdeDepositoHttpDto` (WU-4, issue #153).
+ *
+ * `insumoId` es OBLIGATORIO acá (a diferencia de `componenteSchema`, donde es
+ * opcional): este formulario no tiene camino de texto libre, siempre instala
+ * un repuesto del catálogo — mismo criterio que `prioridadId` en
+ * `crearTicketSoporteSchema`, sin `.or(z.literal(""))`, así que un select sin
+ * elegir queda inválido en vez de viajar como "sin repuesto".
+ */
+export const instalarComponenteSchema = z.object({
+  insumoId: z.string().uuid("Elegí un repuesto del catálogo"),
+  descripcion: z
+    .string()
+    .max(
+      COMPONENTE_DESCRIPCION_MAX_LENGTH,
+      mensajeDemasiadoLargo("La descripción", COMPONENTE_DESCRIPCION_MAX_LENGTH),
+    )
+    .optional(),
+  numeroSerie: z
+    .string()
+    .max(
+      COMPONENTE_NUMERO_SERIE_MAX_LENGTH,
+      mensajeDemasiadoLargo("El número de serie", COMPONENTE_NUMERO_SERIE_MAX_LENGTH),
+    )
+    .optional(),
+  capacidad: z
+    .string()
+    .max(
+      COMPONENTE_CAPACIDAD_MAX_LENGTH,
+      mensajeDemasiadoLargo("La capacidad", COMPONENTE_CAPACIDAD_MAX_LENGTH),
+    )
+    .optional(),
+});
+export type InstalarComponenteFormValues = z.infer<typeof instalarComponenteSchema>;
+
 /** `equipoId` OPCIONAL (vínculo ticket↔equipo, espejo de `@IsOptional() @IsUUID() equipoId` backend). */
 export const crearTicketSoporteSchema = z.object({
   titulo: z

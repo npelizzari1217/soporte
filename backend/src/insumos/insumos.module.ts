@@ -34,6 +34,19 @@
  * La dependencia va `compras → insumos` y nunca al revés: `insumos` no importa
  * nada de `compras`, porque esa arista cerraría un ciclo entre los dos.
  *
+ * **`RegistrarSalidaInsumoUseCase` TAMBIÉN se exporta** (WU-4,
+ * sdd/repuestos-instalar-desde-deposito, issue #153): lo consume `EquiposModule`
+ * para que instalar un repuesto del depósito descuente el stock y cree el
+ * componente en una sola transacción
+ * (`InstalarComponenteDesdeDepositoUseCase`). Mismo criterio que la entrada:
+ * se exporta el CASO DE USO, con su advisory lock y su validación de stock ya
+ * puestos, nunca el puerto de movimientos — exportar el puerto le daría a
+ * `equipos` el camino para asentar una salida SIN pasar por el lock, que es
+ * justamente la fuga que el párrafo de arriba explica que no hay backstop de
+ * base para atrapar. La dependencia sigue yendo `equipos → insumos`, mismo
+ * sentido que ya tiene por `MODELO_EQUIPO_REPOSITORY`/`INSUMO_REPOSITORY`/
+ * `FAMILIA_INSUMO_REPOSITORY` (WU-3) — sin ciclo nuevo.
+ *
  * Importa `AuthModule` para `JwtAuthGuard`/`TenantGuard`/`AdminClienteGuard`/
  * `AccionesGuard` vía `@UseGuards` en los controllers (mismo patrón que
  * `SectoresModule`). `TENANT_TX_RUNNER` no se importa: lo provee `SharedModule`,
@@ -294,6 +307,7 @@ import { MovimientosInsumoController } from './interface/controllers/movimientos
     MODELO_EQUIPO_REPOSITORY,
     INSUMO_REPOSITORY,
     RegistrarEntradaInsumoUseCase,
+    RegistrarSalidaInsumoUseCase,
   ],
 })
 export class InsumosModule {}
