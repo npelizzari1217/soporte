@@ -13,6 +13,7 @@
  *   PATCH  /equipos/:id                                       → EditarEquipoUseCase          `EQUIPOS:MODIFICACION`
  *   DELETE /equipos/:id                                       → EliminarEquipoUseCase        `EQUIPOS:BORRADO`
  *   POST   /equipos/:id/componentes                           → AgregarComponenteUseCase     `EQUIPOS:ALTAS`
+ *   POST   /equipos/:id/componentes/instalar-desde-deposito   → InstalarComponenteDesdeDepositoUseCase `EQUIPOS:ALTAS`
  *   DELETE /equipos/:id/componentes/:componenteId             → EliminarComponenteUseCase    `EQUIPOS:BORRADO`
  *   PATCH  /equipos/:id/componentes/:componenteId             → EditarComponenteUseCase      `EQUIPOS:MODIFICACION`
  *   PATCH  /equipos/:id/componentes/:componenteId/reactivar   → ReactivarComponenteUseCase   `EQUIPOS:MODIFICACION`
@@ -57,7 +58,8 @@ import {
 import { JwtAuthGuard } from '../../../auth/infrastructure/guards/jwt-auth.guard';
 import { TenantGuard } from '../../../auth/infrastructure/guards/tenant.guard';
 import { AccionesGuard } from '../../../auth/infrastructure/guards/acciones.guard';
-import { RequiereAcciones } from '../../../auth/infrastructure/guards/decorators';
+import { CurrentUser, RequiereAcciones } from '../../../auth/infrastructure/guards/decorators';
+import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
 import { DomainError } from '../../../shared/domain/result';
 
 import { CrearEquipoUseCase } from '../../application/use-cases/crear-equipo.use-case';
@@ -66,6 +68,7 @@ import { ObtenerEquipoUseCase } from '../../application/use-cases/obtener-equipo
 import { ListarEquiposUseCase } from '../../application/use-cases/listar-equipos.use-case';
 import { EliminarEquipoUseCase } from '../../application/use-cases/eliminar-equipo.use-case';
 import { AgregarComponenteUseCase } from '../../application/use-cases/agregar-componente.use-case';
+import { InstalarComponenteDesdeDepositoUseCase } from '../../application/use-cases/instalar-componente-desde-deposito.use-case';
 import { EliminarComponenteUseCase } from '../../application/use-cases/eliminar-componente.use-case';
 import { EditarComponenteUseCase } from '../../application/use-cases/editar-componente.use-case';
 import { ReactivarComponenteUseCase } from '../../application/use-cases/reactivar-componente.use-case';
@@ -99,6 +102,7 @@ import {
   EditarEquipoHttpDto,
   EquipoDetalleResponseDto,
   EquipoResponseDto,
+  InstalarComponenteDesdeDepositoHttpDto,
   TipoComponenteResponseDto,
   toComponenteResponseDto,
   toEquipoDetalleResponseDto,
@@ -192,6 +196,9 @@ export class EquiposController {
     // `TicketsController.exportarTicketsUseCase`: evita reindexar los tests
     // existentes que instancian el controller con args posicionales.
     private readonly exportarEquiposUseCase: ExportarEquiposUseCase,
+    // WU-4 (sdd/repuestos-instalar-desde-deposito, issue #153) — mismo
+    // criterio: agregado al final.
+    private readonly instalarComponenteDesdeDepositoUseCase: InstalarComponenteDesdeDepositoUseCase,
   ) {}
 
   /**
@@ -376,6 +383,48 @@ export class EquiposController {
       equipoId: id,
       tipoComponenteCodigo: dto.tipoComponenteCodigo,
       insumoId: dto.insumoId ?? null,
+      descripcion: dto.descripcion ?? null,
+      numeroSerie: dto.numeroSerie ?? null,
+      capacidad: dto.capacidad ?? null,
+    });
+
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+    return toComponenteResponseDto(result.getValue());
+  }
+
+  /**
+   * POST /equipos/:id/componentes/instalar-desde-deposito
+   *
+   * WU-4 (sdd/repuestos-instalar-desde-deposito, issue #153): en UNA sola
+   * transacción, registra la SALIDA de 1 unidad del repuesto elegido —con
+   * `equipoId` poblado, para trazabilidad real por primera vez— y crea el
+   * componente vinculado. O pasan las dos cosas, o no pasa ninguna.
+   *
+   * `usuarioId` sale SIEMPRE de `JWT.sub` vía `@CurrentUser()`, nunca del
+   * body — firma quién instaló el repuesto, mismo criterio que
+   * `MovimientosInsumoController`.
+   *
+   * @throws 404 equipo inexistente
+   * @throws 422 insumo inexistente/deshabilitado/borrado, familia no es de
+   *   repuesto o está deshabilitada, familia sin tipo en el catálogo MASTER
+   *   (mismos errores que `POST .../componentes`, WU-3), o stock insuficiente
+   *   (`StockInsuficienteError` — no mapeado explícito, cae en el 422 por
+   *   defecto, igual que en `MovimientosInsumoController`)
+   */
+  @Post(':id/componentes/instalar-desde-deposito')
+  @RequiereAcciones('EQUIPOS:ALTAS')
+  @HttpCode(HttpStatus.CREATED)
+  async instalarComponenteDesdeDeposito(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Body() dto: InstalarComponenteDesdeDepositoHttpDto,
+  ): Promise<ComponenteResponseDto> {
+    const result = await this.instalarComponenteDesdeDepositoUseCase.execute({
+      equipoId: id,
+      insumoId: dto.insumoId,
+      usuarioId: user.sub,
       descripcion: dto.descripcion ?? null,
       numeroSerie: dto.numeroSerie ?? null,
       capacidad: dto.capacidad ?? null,

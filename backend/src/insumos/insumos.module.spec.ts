@@ -92,12 +92,25 @@ describe('InsumosModule wiring', () => {
     expect(exportsMeta).toContain(RegistrarEntradaInsumoUseCase);
   });
 
-  // Hermano invertido del anterior: los otros tres casos de uso de existencias
-  // NO cruzan el borde del módulo. Sin este caso, exportar el módulo entero
-  // dejaría el test de arriba en verde, y la salida y el ajuste —los dos que
-  // RESTAN y dependen del advisory lock— quedarían al alcance de cualquiera.
+  /**
+   * WU-4 (sdd/repuestos-instalar-desde-deposito, issue #153):
+   * `RegistrarSalidaInsumoUseCase` se suma como SEGUNDO caso de uso exportado
+   * —lo consume `EquiposModule` para que instalar un repuesto del depósito
+   * descuente stock y cree el componente en una sola transacción
+   * (`InstalarComponenteDesdeDepositoUseCase`). Mismo criterio que la
+   * entrada: se exporta el caso de uso, con su advisory lock y su validación
+   * de stock ya puestos, nunca el puerto de la bitácora.
+   */
+  it('exporta RegistrarSalidaInsumoUseCase, que es lo que consume EquiposModule (WU-4, issue #153)', () => {
+    const exportsMeta = (Reflect.getMetadata('exports', InsumosModule) ?? []) as unknown[];
+    expect(exportsMeta).toContain(RegistrarSalidaInsumoUseCase);
+  });
+
+  // Hermano invertido de los dos de arriba: los otros dos casos de uso de
+  // existencias NO cruzan el borde del módulo. Sin este caso, exportar el
+  // módulo entero dejaría los tests de arriba en verde, y el ajuste —que
+  // también depende del advisory lock— quedaría al alcance de cualquiera.
   it.each([
-    ['RegistrarSalidaInsumoUseCase', RegistrarSalidaInsumoUseCase],
     ['RegistrarAjusteInsumoUseCase', RegistrarAjusteInsumoUseCase],
     ['ConsultarStockInsumoUseCase', ConsultarStockInsumoUseCase],
     ['ListarMovimientosInsumoUseCase', ListarMovimientosInsumoUseCase],

@@ -79,4 +79,22 @@ describe("EquipoDetailView — consume componentes embebidos de GET /equipos/:id
     await screen.findByText("Notebook Dell");
     expect(screen.queryByRole("button", { name: /agregar componente/i })).not.toBeInTheDocument();
   });
+
+  /** WU-4 (sdd/repuestos-instalar-desde-deposito, issue #153): gate idéntico a "Agregar componente" (EQUIPOS:ALTAS). */
+  it("muestra «Instalar desde depósito» con EQUIPOS:ALTAS y lo oculta sin ese permiso", async () => {
+    const { unmount } = renderWithProviders(<EquipoDetailView equipoId={EQUIPO_ID} />, {
+      user: buildUser({ permisos: ["EQUIPOS:ALTAS"] }),
+    });
+
+    expect(
+      await screen.findByRole("button", { name: /instalar desde depósito/i }),
+    ).toBeInTheDocument();
+    unmount();
+
+    renderWithProviders(<EquipoDetailView equipoId={EQUIPO_ID} />, {
+      user: buildUser({ permisos: [] }),
+    });
+    await screen.findByText("Notebook Dell");
+    expect(screen.queryByRole("button", { name: /instalar desde depósito/i })).not.toBeInTheDocument();
+  });
 });

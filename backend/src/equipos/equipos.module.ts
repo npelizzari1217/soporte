@@ -41,6 +41,7 @@ import {
   FAMILIA_INSUMO_REPOSITORY,
   IFamiliaInsumoRepository,
 } from '../insumos/domain/ports/i-familia-insumo.repository';
+import { RegistrarSalidaInsumoUseCase } from '../insumos/application/use-cases/registrar-salida-insumo.use-case';
 
 import {
   EQUIPO_INFORMATICO_REPOSITORY,
@@ -69,6 +70,7 @@ import { ObtenerEquipoUseCase } from './application/use-cases/obtener-equipo.use
 import { ListarEquiposUseCase } from './application/use-cases/listar-equipos.use-case';
 import { EliminarEquipoUseCase } from './application/use-cases/eliminar-equipo.use-case';
 import { AgregarComponenteUseCase } from './application/use-cases/agregar-componente.use-case';
+import { InstalarComponenteDesdeDepositoUseCase } from './application/use-cases/instalar-componente-desde-deposito.use-case';
 import { EliminarComponenteUseCase } from './application/use-cases/eliminar-componente.use-case';
 import { EditarComponenteUseCase } from './application/use-cases/editar-componente.use-case';
 import { ReactivarComponenteUseCase } from './application/use-cases/reactivar-componente.use-case';
@@ -108,7 +110,11 @@ import { SoporteController } from './interface/controllers/soporte.controller';
  *   consumidor del catálogo, no su dueño. WU-3 (sdd/repuestos-vinculo-componente)
  *   suma `INSUMO_REPOSITORY`/`FAMILIA_INSUMO_REPOSITORY` por el mismo motivo:
  *   `AgregarComponenteUseCase` resuelve el repuesto vinculado (`insumoId`) y
- *   la familia de la que deriva `tipoComponenteCodigo`.
+ *   la familia de la que deriva `tipoComponenteCodigo`. WU-4
+ *   (sdd/repuestos-instalar-desde-deposito, issue #153) suma
+ *   `RegistrarSalidaInsumoUseCase` (exportado por `InsumosModule`, nunca su
+ *   puerto de movimientos) para que `InstalarComponenteDesdeDepositoUseCase`
+ *   registre la salida de stock y cree el componente en UNA sola transacción.
  * - `TENANT_TX_RUNNER` se inyecta desde `SharedModule` (`@Global`).
  * - `EquiposController` expone el inventario + componentes + catálogo de
  *   tipos; `SoporteController` expone la creación de tickets de soporte y
@@ -225,6 +231,25 @@ import { SoporteController } from './interface/controllers/soporte.controller';
         INSUMO_REPOSITORY,
         FAMILIA_INSUMO_REPOSITORY,
       ],
+    },
+    {
+      // WU-4 (sdd/repuestos-instalar-desde-deposito, issue #153): compone
+      // `AgregarComponenteUseCase` (reusado completo — no se duplica ninguna
+      // validación del WU-3) y `RegistrarSalidaInsumoUseCase` (de
+      // `InsumosModule`, exportado por el mismo motivo que
+      // `RegistrarEntradaInsumoUseCase`) dentro de UNA transacción propia.
+      provide: InstalarComponenteDesdeDepositoUseCase,
+      useFactory: (
+        txRunner: ITenantTransactionRunner,
+        agregarComponenteUseCase: AgregarComponenteUseCase,
+        registrarSalidaInsumoUseCase: RegistrarSalidaInsumoUseCase,
+      ) =>
+        new InstalarComponenteDesdeDepositoUseCase(
+          txRunner,
+          agregarComponenteUseCase,
+          registrarSalidaInsumoUseCase,
+        ),
+      inject: [TENANT_TX_RUNNER, AgregarComponenteUseCase, RegistrarSalidaInsumoUseCase],
     },
     {
       provide: EliminarComponenteUseCase,

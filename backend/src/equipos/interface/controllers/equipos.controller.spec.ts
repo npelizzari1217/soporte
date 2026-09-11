@@ -28,6 +28,7 @@ import {
   ComponenteDadoDeBajaError,
   ComponenteYaActivoError,
 } from '../../domain/errors/equipos.errors';
+import { StockInsuficienteError } from '../../../insumos/domain/errors/insumos.errors';
 
 function makeEquipo(): EquipoInformaticoEntity {
   return EquipoInformaticoEntity.create(
@@ -61,6 +62,7 @@ describe('EquiposController (T12.6)', () => {
     const reactivarComponenteUseCase = { execute: vi.fn() };
     const listarTiposComponenteUseCase = { execute: vi.fn() };
     const exportarEquiposUseCase = { execute: vi.fn() };
+    const instalarComponenteDesdeDepositoUseCase = { execute: vi.fn() };
 
     const controller = new EquiposController(
       crearEquipoUseCase as any,
@@ -74,6 +76,7 @@ describe('EquiposController (T12.6)', () => {
       reactivarComponenteUseCase as any,
       listarTiposComponenteUseCase as any,
       exportarEquiposUseCase as any,
+      instalarComponenteDesdeDepositoUseCase as any,
     );
 
     return {
@@ -89,6 +92,7 @@ describe('EquiposController (T12.6)', () => {
       reactivarComponenteUseCase,
       listarTiposComponenteUseCase,
       exportarEquiposUseCase,
+      instalarComponenteDesdeDepositoUseCase,
     };
   }
 
@@ -304,6 +308,76 @@ describe('EquiposController (T12.6)', () => {
     });
   });
 
+  describe('POST /equipos/:id/componentes/instalar-desde-deposito (WU-4, issue #153)', () => {
+    const actor = { sub: 'usuario-jwt-uuid' } as any;
+
+    it('instala el componente: usuarioId sale del JWT (@CurrentUser), nunca del body', async () => {
+      const { controller, instalarComponenteDesdeDepositoUseCase } = buildController();
+      const componente = ComponenteEquipoEntity.create({
+        equipoId: 'equipo-uuid',
+        tipoComponenteCodigo: 'MOUSE',
+        insumoId: 'insumo-uuid',
+        descripcion: null,
+        numeroSerie: null,
+        capacidad: null,
+      }).getValue();
+      instalarComponenteDesdeDepositoUseCase.execute.mockResolvedValue(Result.ok(componente));
+
+      const result = await controller.instalarComponenteDesdeDeposito(actor, 'equipo-uuid', {
+        insumoId: 'insumo-uuid',
+        // Un `usuarioId` en el body no debería existir en el DTO tipado, pero
+        // `as any` simula un cliente que lo manda igual — el handler nunca lo
+        // lee de acá.
+        usuarioId: 'usuario-suplantado',
+      } as any);
+
+      expect(instalarComponenteDesdeDepositoUseCase.execute).toHaveBeenCalledWith({
+        equipoId: 'equipo-uuid',
+        insumoId: 'insumo-uuid',
+        usuarioId: 'usuario-jwt-uuid',
+        descripcion: null,
+        numeroSerie: null,
+        capacidad: null,
+      });
+      expect(result.insumoId).toBe('insumo-uuid');
+      expect(result.tipoComponenteCodigo).toBe('MOUSE');
+    });
+
+    it('equipo inexistente → 404', async () => {
+      const { controller, instalarComponenteDesdeDepositoUseCase } = buildController();
+      instalarComponenteDesdeDepositoUseCase.execute.mockResolvedValue(
+        Result.fail(new EquipoNoEncontradoError('no-existe')),
+      );
+
+      await expect(
+        controller.instalarComponenteDesdeDeposito(actor, 'no-existe', {
+          insumoId: 'insumo-uuid',
+        } as any),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('stock insuficiente → 422 (StockInsuficienteError, sin mapeo explícito, cae en el default)', async () => {
+      const { controller, instalarComponenteDesdeDepositoUseCase } = buildController();
+      instalarComponenteDesdeDepositoUseCase.execute.mockResolvedValue(
+        Result.fail(new StockInsuficienteError('insumo-uuid', 1, 0)),
+      );
+
+      await expect(
+        controller.instalarComponenteDesdeDeposito(actor, 'equipo-uuid', {
+          insumoId: 'insumo-uuid',
+        } as any),
+      ).rejects.toThrow(UnprocessableEntityException);
+    });
+
+    it('declara @RequiereAcciones("EQUIPOS:ALTAS") — misma celda que agregar, decisión del issue #153', () => {
+      const meta = Reflect.getMetadata(
+        ACCIONES_KEY,
+        EquiposController.prototype.instalarComponenteDesdeDeposito,
+      );
+      expect(meta).toEqual(['EQUIPOS:ALTAS']);
+    });
+  });
+
   describe('DELETE /equipos/:id/componentes/:componenteId', () => {
     it('elimina el componente', async () => {
       const { controller, eliminarComponenteUseCase } = buildController();
@@ -463,6 +537,7 @@ describe('EquiposController.exportar — GET /equipos/export (sdd/exportar-lista
       stub() as any, // reactivarComponenteUseCase
       stub() as any, // listarTiposComponenteUseCase
       exportarEquipos as any, // exportarEquiposUseCase
+      stub() as any, // instalarComponenteDesdeDepositoUseCase
     );
     return { controller, exportarEquipos };
   }

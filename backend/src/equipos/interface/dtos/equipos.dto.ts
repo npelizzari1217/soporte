@@ -288,6 +288,38 @@ export class CreateComponenteHttpDto {
 }
 
 /**
+ * Body de `POST /equipos/:id/componentes/instalar-desde-deposito` (WU-4,
+ * sdd/repuestos-instalar-desde-deposito, issue #153).
+ *
+ * `insumoId` es OBLIGATORIO (a diferencia de `CreateComponenteHttpDto`): este
+ * endpoint no tiene camino de texto libre — siempre mueve stock de un
+ * repuesto del catálogo, así que `tipoComponenteCodigo` NI SIQUIERA se
+ * declara acá (el use case lo deriva de la familia del repuesto, igual que el
+ * camino vinculado del WU-3). Sin ningún campo de cantidad: un componente es
+ * siempre UNA unidad física (issue #153, "NO entra").
+ */
+export class InstalarComponenteDesdeDepositoHttpDto {
+  /** Repuesto del catálogo a instalar. */
+  @IsUUID()
+  insumoId!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(COMPONENTE_DESCRIPCION_MAX_LENGTH)
+  descripcion?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(COMPONENTE_NUMERO_SERIE_MAX_LENGTH)
+  numeroSerie?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(COMPONENTE_CAPACIDAD_MAX_LENGTH)
+  capacidad?: string | null;
+}
+
+/**
  * Body de `PATCH /equipos/:id/componentes/:componenteId` (listado enriquecido
  * de componentes — editar). PATCH semántico: `undefined` = no tocar. Si se
  * provee `tipoComponenteCodigo`, no puede ser vacío (campo obligatorio del

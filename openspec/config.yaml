@@ -10,9 +10,19 @@ context: |
   espejo del backend). pnpm + Vitest, sin Jest. Postgres en Docker
   (soporte-postgres-master:5432), base de control soporte_master + una base
   por inquilino. Result<T, DomainError> para fallos esperados del dominio.
-  strict_tdd: true — el RED se verifica, nunca se asume.
+  strict_tdd: false para features — el test no tiene que escribirse antes que la
+  implementación, pero sigue viajando en el mismo commit. En bugfixes TDD sigue siendo
+  OBLIGATORIO: el test de regresión se escribe antes del fix y tiene que fallar por la
+  razón correcta. Ver AGENTS.md.
 
-strict_tdd: true
+# La excepcion de los bugfixes NO cabe en este booleano, y por eso va escrita aca:
+# strict_tdd: false aplica SOLO a las features. En un cambio cuyo tipo de trabajo es
+# CORRECCION DE DEFECTO, TDD sigue siendo OBLIGATORIO. El orquestador inyecta
+# "STRICT TDD MODE IS ACTIVE" al lanzar sdd-apply y sdd-verify, y esa inyeccion manda
+# por encima de este valor: sdd-apply debe cargar strict-tdd.md y entregar su tabla de
+# TDD Cycle Evidence (RED -> GREEN -> REFACTOR), y sdd-verify la exige.
+# Ver la seccion `## Tests` de AGENTS.md y la 6.3 de ~/proyectos/CLAUDE.md.
+strict_tdd: false
 
 testing:
   backend:

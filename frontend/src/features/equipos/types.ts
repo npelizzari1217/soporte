@@ -118,6 +118,22 @@ export interface CreateComponenteDto {
   capacidad?: string | null;
 }
 
+/**
+ * Body de `POST /equipos/:id/componentes/instalar-desde-deposito` (WU-4,
+ * issue #153). `insumoId` es OBLIGATORIO acá — a diferencia de
+ * `CreateComponenteDto`, este endpoint no tiene camino de texto libre: mueve
+ * stock de un repuesto del catálogo siempre, así que `tipoComponenteCodigo`
+ * ni siquiera existe en este DTO (se deriva de la familia en el backend,
+ * igual que el camino vinculado del WU-3). Sin ningún campo de cantidad: un
+ * componente es siempre UNA unidad física.
+ */
+export interface InstalarComponenteDesdeDepositoDto {
+  insumoId: string;
+  descripcion?: string | null;
+  numeroSerie?: string | null;
+  capacidad?: string | null;
+}
+
 /** Body de `PATCH /equipos/:id/componentes/:componenteId` (PATCH semántico: `undefined` = no tocar). */
 export interface EditarComponenteDto {
   tipoComponenteCodigo?: string;
