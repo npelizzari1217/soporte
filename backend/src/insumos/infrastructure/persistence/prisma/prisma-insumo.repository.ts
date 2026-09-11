@@ -13,6 +13,7 @@ import { TenantContext } from '../../../../shared/tenancy/tenant-context';
 import { TenantPrismaClient } from '../../../../shared/infrastructure/persistence/prisma-clients';
 import {
   ConflictoCodigoAlternativo,
+  FamiliaDeInsumo,
   IInsumoRepository,
 } from '../../../domain/ports/i-insumo.repository';
 import { InsumoEntity } from '../../../domain/entities/insumo.entity';
@@ -168,6 +169,49 @@ export class PrismaInsumoRepository implements IInsumoRepository {
       include: INCLUIR_AGREGADO,
     });
     return rows.map(InsumoMapper.toDomain);
+  }
+
+  /**
+   * Resuelve la familia de cada insumo pedido en UN `findMany` con `select`
+   * sobre la relación `familia`, no un `findById` por insumo: el detalle de
+   * un equipo trae TODOS sus componentes y una consulta por componente sería
+   * N+1 (sdd/repuestos-autoridad-catalogo, ADR-3).
+   *
+   * Lista vacía ⇒ mapa vacío SIN consultar la base: `findMany({ id: { in: [] } })`
+   * iría igual a Postgres por una lista que ya se sabe vacía.
+   *
+   * `activo` y `deletedAt` de la familia viajan CRUDOS en la proyección — el
+   * repositorio no decide si eso significa "tipo activo", esa regla vive en
+   * el caso de uso (ADR-2).
+   *
+   * @param insumoIds Ids de insumo a resolver.
+   * @returns Mapa `insumoId → FamiliaDeInsumo`. Un id inexistente no aparece.
+   */
+  async findFamiliasDeInsumos(insumoIds: readonly string[]): Promise<Map<string, FamiliaDeInsumo>> {
+    if (insumoIds.length === 0) return new Map();
+
+    const rows = await this.client.insumo.findMany({
+      where: { id: { in: [...insumoIds] } },
+      select: {
+        id: true,
+        familia: {
+          select: { codigo: true, nombre: true, activo: true, deletedAt: true },
+        },
+      },
+    });
+
+    return new Map(
+      rows.map((row) => [
+        row.id,
+        {
+          insumoId: row.id,
+          codigo: row.familia.codigo,
+          nombre: row.familia.nombre,
+          activo: row.familia.activo,
+          deletedAt: row.familia.deletedAt,
+        },
+      ]),
+    );
   }
 
   /**

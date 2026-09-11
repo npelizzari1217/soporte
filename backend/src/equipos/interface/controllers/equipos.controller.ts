@@ -91,7 +91,6 @@ import {
   InsumoRepuestoInexistenteError,
   InsumoNoEsRepuestoError,
   FamiliaRepuestoDeshabilitadaError,
-  RepuestoSinTipoEnCatalogoError,
 } from '../../domain/errors/equipos.errors';
 
 import {
@@ -135,7 +134,6 @@ export function toHttpException(
     error instanceof InsumoRepuestoInexistenteError ||
     error instanceof InsumoNoEsRepuestoError ||
     error instanceof FamiliaRepuestoDeshabilitadaError ||
-    error instanceof RepuestoSinTipoEnCatalogoError ||
     // Editar `tipoComponenteCodigo` de un componente VINCULADO a un repuesto
     // (WU-3, hallazgo de revisión automática): el valor rechazado viaja en el
     // BODY, mismo criterio 422 que sus hermanos de esta lista.

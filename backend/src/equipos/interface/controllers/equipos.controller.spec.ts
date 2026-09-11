@@ -610,8 +610,8 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
     (valor) => typeof valor === 'function' && valor.prototype instanceof DomainError,
   );
 
-  it('el catálogo tiene EXACTAMENTE 17 clases de error (12 previas + las 5 de WU-3: InsumoRepuestoInexistente, InsumoNoEsRepuesto, FamiliaRepuestoDeshabilitada, RepuestoSinTipoEnCatalogo y ComponenteVinculadoTipoInmutable)', () => {
-    expect(CLASES_DE_ERROR).toHaveLength(17);
+  it('el catálogo tiene EXACTAMENTE 16 clases de error (12 previas + las 4 de WU-3 que siguen vigentes: InsumoRepuestoInexistente, InsumoNoEsRepuesto, FamiliaRepuestoDeshabilitada y ComponenteVinculadoTipoInmutable — RepuestoSinTipoEnCatalogo se eliminó en sdd/repuestos-autoridad-catalogo, ADR-4: sin el gate MASTER en el camino vinculado no queda ningún camino que la emita)', () => {
+    expect(CLASES_DE_ERROR).toHaveLength(16);
   });
 
   const TABLA: Array<[string, () => DomainError, 404 | 422]> = [
@@ -688,14 +688,6 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
       'FamiliaRepuestoDeshabilitadaError',
       () =>
         new EquiposErrors.FamiliaRepuestoDeshabilitadaError('insumo-1', 'TORNILLO', 'Tornillos'),
-      422,
-    ],
-    // `RepuestoSinTipoEnCatalogoError` (WU-3): el camino vinculado no puede
-    // devolver `TipoComponenteInactivoError`, porque el usuario nunca eligió
-    // ese tipo — se derivó de la familia y la pantalla se lo deshabilitó.
-    [
-      'RepuestoSinTipoEnCatalogoError',
-      () => new EquiposErrors.RepuestoSinTipoEnCatalogoError('insumo-1', 'TORNILLO', 'Tornillos'),
       422,
     ],
     // Editar `tipoComponenteCodigo` de un componente VINCULADO a un repuesto

@@ -16,14 +16,16 @@
  * componente cuando la salida de stock falla.
  *
  * Necesita, además de lo que `compras.e2e.spec.ts` siembra a mano
- * (familia/unidad de insumos), UNA fila en el catálogo MASTER de tipos de
- * componente (`tipoComponente`, `soporte_master_test`) con el MISMO código
- * que la familia de repuesto de fixture: `AgregarComponenteUseCase` (reusado
- * por el use case bajo prueba) exige que ese código exista y esté activo en
- * MASTER antes de crear cualquier componente (WU-3, PR4b).
+ * (familia/unidad de insumos), la familia de REPUESTO de fixture
+ * (`crearFamiliaRepuesto`) — que YA NO siembra una fila gemela en el
+ * catálogo MASTER de tipos de componente (sdd/repuestos-autoridad-catalogo,
+ * ADR-1): la familia del tenant es la única autoridad del camino vinculado,
+ * y `AgregarComponenteUseCase` (reusado por el use case bajo prueba) ya no
+ * consulta MASTER para ese camino.
  *
  * Ref issue: #153. Ref precedente: `compras.e2e.spec.ts` (mismo patrón),
  * `registrar-operacion-compra.s36.integration.spec.ts` (mismo mecanismo).
+ * Ref: sdd/repuestos-autoridad-catalogo (WU-2).
  */
 import { randomBytes } from 'node:crypto';
 import {
@@ -54,7 +56,7 @@ import { ClienteEntity } from '../../../clientes/domain/entities/cliente.entity'
 import { UsuarioEntity } from '../../../auth/domain/entities/usuario.entity';
 import { RoleEntity } from '../../../auth/domain/entities/role.entity';
 import { Argon2HashProvider } from '../../../auth/infrastructure/argon2-hash.provider';
-import { ComponenteResponseDto } from '../dtos/equipos.dto';
+import { ComponenteResponseDto, EquipoDetalleResponseDto } from '../dtos/equipos.dto';
 import { usarLockMasterTest } from '../../../testing/lock-master-test';
 
 const MASTER_TEST_URL =
@@ -78,6 +80,15 @@ async function httpPost<T = unknown>(
     headers: { 'Content-Type': 'application/json', ...headers },
     body: JSON.stringify(body),
   });
+  const data = (await res.json().catch(() => null)) as T;
+  return { status: res.status, data };
+}
+
+async function httpGet<T = unknown>(
+  url: string,
+  headers: Headers = {},
+): Promise<{ status: number; data: T }> {
+  const res = await fetch(url, { method: 'GET', headers });
   const data = (await res.json().catch(() => null)) as T;
   return { status: res.status, data };
 }
@@ -113,8 +124,6 @@ describe('Equipos e2e — instalar componente desde depósito (WU-4, issue #153)
   const RUN_PREFIX = randomBytes(3).toString('hex').toUpperCase();
   let contadorFamilia = 0;
 
-  const tiposComponenteMasterCreados: string[] = [];
-
   beforeAll(async () => {
     if (!process.env.DATABASE_URL_MASTER) {
       process.env.DATABASE_URL_MASTER = MASTER_TEST_URL;
@@ -149,15 +158,6 @@ describe('Equipos e2e — instalar componente desde depósito (WU-4, issue #153)
     // SIEMPRE antes de dropDatabase.
     try {
       await app?.close();
-    } catch {
-      /* no-op */
-    }
-    try {
-      if (tiposComponenteMasterCreados.length > 0) {
-        await masterClient.tipoComponente.deleteMany({
-          where: { codigo: { in: tiposComponenteMasterCreados } },
-        });
-      }
     } catch {
       /* no-op */
     }
@@ -245,28 +245,27 @@ describe('Equipos e2e — instalar componente desde depósito (WU-4, issue #153)
   }
 
   /**
-   * Familia de REPUESTO (`esRepuesto: true`, `activo: true`) + su fila
-   * gemela en el catálogo MASTER de tipos de componente (mismo código,
-   * `activo: true`) — sin la fila de MASTER, `AgregarComponenteUseCase`
-   * rechaza con `RepuestoSinTipoEnCatalogoError` (límite deliberado del
-   * WU-3/WU-5, no lo que este spec quiere ejercitar).
+   * Familia de REPUESTO (`esRepuesto: true`, `activo: true`) — SIN fila
+   * gemela en el catálogo MASTER de tipos de componente
+   * (sdd/repuestos-autoridad-catalogo, ADR-1): la familia del tenant es la
+   * ÚNICA autoridad del camino vinculado, y `AgregarComponenteUseCase` ya no
+   * consulta MASTER para derivar ni validar el tipo de un componente
+   * vinculado. Antes de este cambio (WU-3/WU-5) esta fábrica sembraba esa
+   * fila gemela para esquivar el gate; ahora el gate no existe y sembrarla
+   * sería probar un caso que ya no pasa por ese camino.
    */
-  async function crearFamiliaRepuesto(): Promise<{ familiaId: string; codigo: string }> {
+  async function crearFamiliaRepuesto(): Promise<{
+    familiaId: string;
+    codigo: string;
+    nombre: string;
+  }> {
     contadorFamilia += 1;
     const codigo = `${RUN_PREFIX}F${contadorFamilia}`;
+    const nombre = `Familia repuesto E2E ${contadorFamilia}`;
     const familia = await tenantClient.familiaInsumo.create({
-      data: {
-        codigo,
-        nombre: `Familia repuesto E2E ${contadorFamilia}`,
-        esRepuesto: true,
-        activo: true,
-      },
+      data: { codigo, nombre, esRepuesto: true, activo: true },
     });
-    await masterClient.tipoComponente.create({
-      data: { codigo, nombre: `Tipo E2E ${contadorFamilia}`, activo: true },
-    });
-    tiposComponenteMasterCreados.push(codigo);
-    return { familiaId: familia.id, codigo };
+    return { familiaId: familia.id, codigo, nombre };
   }
 
   async function crearUnidadMedida(): Promise<string> {
@@ -391,10 +390,12 @@ describe('Equipos e2e — instalar componente desde depósito (WU-4, issue #153)
 
   describe('Flujo feliz', () => {
     it('instala: crea EXACTAMENTE un componente vinculado + UN movimiento SALIDA de cantidad 1 con equipoId poblado, y el stock baja en 1', async () => {
-      const { familiaId, codigo } = await crearFamiliaRepuesto();
+      const { familiaId, codigo, nombre } = await crearFamiliaRepuesto();
       const unidadMedidaId = await crearUnidadMedida();
       const insumoId = await crearInsumoRepuesto(familiaId, unidadMedidaId);
-      const actor = await crearActorConPermisos(['EQUIPOS:ALTAS']);
+      // `EQUIPOS:LECTURA` además de `EQUIPOS:ALTAS`: el GET posterior de este
+      // test necesita el mismo actor para leer el detalle recién creado.
+      const actor = await crearActorConPermisos(['EQUIPOS:ALTAS', 'EQUIPOS:LECTURA']);
       await sembrarEntrada(insumoId, 5, actor.usuarioId);
       const equipoId = await crearEquipoDirecto();
 
@@ -410,6 +411,19 @@ describe('Equipos e2e — instalar componente desde depósito (WU-4, issue #153)
       // El tipo se DERIVA de la familia (WU-3), nunca de lo que mande el body
       // (este endpoint ni siquiera acepta tipoComponenteCodigo).
       expect(data.tipoComponenteCodigo).toBe(codigo);
+
+      // sdd/repuestos-autoridad-catalogo (ADR-1/ADR-2): la familia NO tiene
+      // fila en MASTER (`crearFamiliaRepuesto` ya no la siembra) y el detalle
+      // igual muestra su nombre real con `tipoActivo: true` — nunca "dado de
+      // baja" — porque resuelve por el catálogo del TENANT, no por MASTER.
+      const detalle = await httpGet<EquipoDetalleResponseDto>(
+        `${baseUrl}/equipos/${equipoId}`,
+        bearer(actor.accessToken),
+      );
+      expect(detalle.status).toBe(200);
+      const componenteDetalle = detalle.data.componentes.find((c) => c.insumoId === insumoId);
+      expect(componenteDetalle?.tipoNombre).toBe(nombre);
+      expect(componenteDetalle?.tipoActivo).toBe(true);
 
       const movimientos = await movimientosDe(insumoId);
       const salidas = movimientos.filter((m) => m.tipo === 'SALIDA');
