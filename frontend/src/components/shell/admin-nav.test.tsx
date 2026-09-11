@@ -32,15 +32,18 @@ function payload(overrides: Partial<JwtPayload>): JwtPayload {
   };
 }
 
-// ADR-P5: las 4 secciones son ADMINISTRADOR-o-ROOT exclusivas — un TECNICO
+// ADR-P5: las 5 secciones son ADMINISTRADOR-o-ROOT exclusivas — un TECNICO
 // no ve NINGÚN link de gestión, aunque las lecturas de catálogos sigan abiertas.
 describe("AdminNav (ADR-P5)", () => {
-  it("ADMINISTRADOR ve las 4 secciones", () => {
+  it("ADMINISTRADOR ve las 5 secciones", () => {
     renderWithUser(payload({ rol: "ADMINISTRADOR" }));
     expect(screen.getByRole("link", { name: "Catálogos" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Ciclos" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Usuarios" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Insumos" })).toBeInTheDocument();
+    // Issue #156: "Unidades" salió de adentro de Admin > Insumos y pasó a
+    // tener entrada propia, con el MISMO gate (esAdminCliente).
+    expect(screen.getByRole("link", { name: "Unidades" })).toBeInTheDocument();
   });
 
   it("TECNICO (no admin, no root) no ve ninguna sección", () => {
