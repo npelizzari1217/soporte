@@ -911,16 +911,12 @@ describe("InsumoDetailView — editar y cambiar estado (ABM, gate AdminClienteGu
   });
 
   it("editar desde la ficha manda el PATCH y refleja el cambio sin recargar la página", async () => {
-    // `codigo` propio, sin guion: el resto de esta suite usa "TON-001" para
-    // fixtures de solo LECTURA (nunca pasan por el schema de escritura), pero
-    // el schema del ABM exige `/^[A-Z0-9_]+$/` (mismo criterio que
-    // familias/unidades) — ver el JSDoc de `insumoSchema`.
     // Estado MUTABLE, no un fixture estático: `useEditarInsumo` invalida
     // `["insumos"]` al tener éxito, así que la ficha vuelve a pedir
     // `GET /insumos` — si ese handler siguiera devolviendo el insumo viejo, el
     // assert de abajo pasaría por casualidad (el PATCH se mandó bien, pero la
     // pantalla no reflejaría nada).
-    let insumoActual: Insumo = { ...INSUMO, codigo: "TON001" };
+    let insumoActual: Insumo = { ...INSUMO };
     mockFicha([insumoActual], STOCK_SUFICIENTE);
     server.use(http.get("/api/insumos", () => HttpResponse.json([insumoActual])));
     let enviado: Record<string, unknown> = {};
@@ -940,15 +936,17 @@ describe("InsumoDetailView — editar y cambiar estado (ABM, gate AdminClienteGu
     await user.type(nombreInput, "Tóner negro HP 26A XL");
     await user.click(screen.getByRole("button", { name: /^guardar$/i }));
 
+    // Sin `codigo` en el PATCH (issue #166): no es un campo editable, ni
+    // siquiera desde la ficha.
     await waitFor(() =>
       expect(enviado).toEqual({
-        codigo: "TON001",
         nombre: "Tóner negro HP 26A XL",
         familiaId: "fam-1",
         unidadMedidaId: "um-1",
         stockMinimo: 5,
       }),
     );
+    expect(enviado).not.toHaveProperty("codigo");
     expect(await screen.findByText("Tóner negro HP 26A XL")).toBeInTheDocument();
   });
 

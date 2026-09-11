@@ -11,7 +11,7 @@ import { IInsumoRepository } from '../../domain/ports/i-insumo.repository';
 describe('EditarInsumoUseCase', () => {
   type InsumoRepoMock = Pick<
     IInsumoRepository,
-    'findById' | 'findByCodigo' | 'findConflictosDeCodigoAlternativo' | 'save'
+    'findById' | 'findConflictosDeCodigoAlternativo' | 'save'
   >;
 
   function buildInsumo(
@@ -37,7 +37,6 @@ describe('EditarInsumoUseCase', () => {
   function buildInsumoRepo(insumo: InsumoEntity | null, overrides: Partial<InsumoRepoMock> = {}) {
     return {
       findById: vi.fn().mockResolvedValue(insumo),
-      findByCodigo: vi.fn().mockResolvedValue(null),
       findConflictosDeCodigoAlternativo: vi.fn().mockResolvedValue([]),
       save: vi.fn().mockResolvedValue(undefined),
       ...overrides,
@@ -149,44 +148,22 @@ describe('EditarInsumoUseCase', () => {
     expect(result.getValue().stockMinimo).toBeNull();
   });
 
-  // ─── Código único: solo si el código resultante cambió ────────────────────
-
-  it('normaliza el código nuevo a mayúscula', async () => {
-    const repo = buildInsumoRepo(buildInsumo());
-    const useCase = new EditarInsumoUseCase(
-      repo,
-      buildFamiliaRepo(),
-      buildUnidadRepo(),
-      buildModeloRepo(),
-    );
-
-    const result = await useCase.execute({ id: 'ins-1', codigo: ' ton-002 ' });
-
-    expect(result.getValue().codigo).toBe('TON-002');
-    expect(repo.findByCodigo).toHaveBeenCalledWith('TON-002');
-  });
-
-  it('re-enviar el código actual NO dispara la revalidación de unicidad', async () => {
-    const repo = buildInsumoRepo(buildInsumo());
-    const useCase = new EditarInsumoUseCase(
-      repo,
-      buildFamiliaRepo(),
-      buildUnidadRepo(),
-      buildModeloRepo(),
-    );
-
-    const result = await useCase.execute({ id: 'ins-1', codigo: 'TON-001' });
-
-    expect(result.isOk()).toBe(true);
-    expect(repo.findByCodigo).not.toHaveBeenCalled();
-  });
+  // ─── Código: NUNCA editable (issue #166) ───────────────────────────────────
 
   /**
-   * La comparación se hace sobre los valores YA normalizados: comparando el
-   * crudo, mandar `ton-001` sobre un insumo que ya es `TON-001` dispararía una
-   * revalidación que se encuentra a sí misma.
+   * EL GEMELO INVERTIDO que cierra el agujero del WU-3: el #162 dejaba que
+   * `EditarInsumoUseCase` cambiara el `codigo` cuando el resultante difería
+   * del guardado — esta sección entera ("normaliza el código nuevo",
+   * "re-enviar el código actual no dispara la revalidación",
+   * "rechaza con INSUMO_CODIGO_DUPLICADO si el código nuevo pertenece a OTRO
+   * insumo", "no es choque cuando findByCodigo devuelve el mismo insumo") lo
+   * probaba. Issue #166 la reemplaza por esta única prueba: `EditarInsumoDto`
+   * ya no declara `codigo`, así que no hay revalidación de unicidad que
+   * disparar, ni un `findByCodigo` que llamar —ni siquiera está en el `Pick`
+   * del constructor—. Un "código nuevo" ya no es una entrada posible del caso
+   * de uso.
    */
-  it('re-enviar el código actual en minúscula tampoco la dispara', async () => {
+  it('el codigo del insumo queda intacto pase lo que pase con el resto del PATCH', async () => {
     const repo = buildInsumoRepo(buildInsumo());
     const useCase = new EditarInsumoUseCase(
       repo,
@@ -195,50 +172,16 @@ describe('EditarInsumoUseCase', () => {
       buildModeloRepo(),
     );
 
-    const result = await useCase.execute({ id: 'ins-1', codigo: '  ton-001  ' });
-
-    expect(result.isOk()).toBe(true);
-    expect(repo.findByCodigo).not.toHaveBeenCalled();
-  });
-
-  it('rechaza con INSUMO_CODIGO_DUPLICADO si el código nuevo pertenece a OTRO insumo', async () => {
-    const otro = buildInsumo([], 'ins-2');
-    const repo = buildInsumoRepo(buildInsumo(), {
-      findByCodigo: vi.fn().mockResolvedValue(otro),
+    const result = await useCase.execute({
+      id: 'ins-1',
+      nombre: 'Tóner negro renombrado',
+      familiaId: 'fam-2',
+      unidadMedidaId: 'uni-2',
+      stockMinimo: 9,
     });
-    const useCase = new EditarInsumoUseCase(
-      repo,
-      buildFamiliaRepo(),
-      buildUnidadRepo(),
-      buildModeloRepo(),
-    );
-
-    const result = await useCase.execute({ id: 'ins-1', codigo: 'TON-002' });
-
-    expect(result.isFail()).toBe(true);
-    expect(result.getError().code).toBe('INSUMO_CODIGO_DUPLICADO');
-    expect(repo.save).not.toHaveBeenCalled();
-  });
-
-  /**
-   * Hermano invertido del test de arriba: el `findByCodigo` que devuelve el
-   * MISMO insumo no es un choque consigo mismo. Sin la comparación por id, una
-   * lectura desfasada del código bloquearía una edición legítima.
-   */
-  it('no es choque cuando findByCodigo devuelve el mismo insumo que se edita', async () => {
-    const insumo = buildInsumo();
-    const repo = buildInsumoRepo(insumo, { findByCodigo: vi.fn().mockResolvedValue(insumo) });
-    const useCase = new EditarInsumoUseCase(
-      repo,
-      buildFamiliaRepo(),
-      buildUnidadRepo(),
-      buildModeloRepo(),
-    );
-
-    const result = await useCase.execute({ id: 'ins-1', codigo: 'TON-002' });
 
     expect(result.isOk()).toBe(true);
-    expect(result.getValue().codigo).toBe('TON-002');
+    expect(result.getValue().codigo).toBe('TON-001');
   });
 
   // ─── Existe ≠ es elegible, también al reasignar ───────────────────────────
@@ -400,53 +343,15 @@ describe('EditarInsumoUseCase', () => {
 
   // ─── Orden de validación ──────────────────────────────────────────────────
 
-  it('con la familia deshabilitada Y el código duplicado gana el error de la familia', async () => {
-    const familia = familiaHabilitada();
-    familia.desactivar();
-    const repo = buildInsumoRepo(buildInsumo(), {
-      findByCodigo: vi.fn().mockResolvedValue(buildInsumo([], 'ins-2')),
-    });
-    const useCase = new EditarInsumoUseCase(
-      repo,
-      buildFamiliaRepo(familia),
-      buildUnidadRepo(),
-      buildModeloRepo(),
-    );
-
-    const result = await useCase.execute({
-      id: 'ins-1',
-      familiaId: 'fam-2',
-      codigo: 'TON-002',
-    });
-
-    expect(result.getError().code).toBe('FAMILIA_INSUMO_DESHABILITADA');
-    expect(repo.findByCodigo).not.toHaveBeenCalled();
-  });
-
-  it('con el código duplicado Y un código alternativo tomado gana el error del código', async () => {
-    const repo = buildInsumoRepo(buildInsumo(), {
-      findByCodigo: vi.fn().mockResolvedValue(buildInsumo([], 'ins-2')),
-      findConflictosDeCodigoAlternativo: vi
-        .fn()
-        .mockResolvedValue([{ codigo: 'CE285A', fabricante: 'HP', insumoId: 'ins-3' }]),
-    });
-    const useCase = new EditarInsumoUseCase(
-      repo,
-      buildFamiliaRepo(),
-      buildUnidadRepo(),
-      buildModeloRepo(),
-    );
-
-    const result = await useCase.execute({
-      id: 'ins-1',
-      codigo: 'TON-002',
-      codigosAlternativos: [{ codigo: 'CE285A', fabricante: 'HP' }],
-    });
-
-    expect(result.getError().code).toBe('INSUMO_CODIGO_DUPLICADO');
-    expect(repo.findConflictosDeCodigoAlternativo).not.toHaveBeenCalled();
-  });
-
+  /**
+   * Issue #166 quita dos casos de esta sección ("con la familia deshabilitada
+   * Y el código duplicado gana el error de la familia" y "con el código
+   * duplicado Y un código alternativo tomado gana el error del código"): el
+   * `codigo` ya no es un campo de `EditarInsumoDto`, así que no hay
+   * revalidación de unicidad con la que competir por prioridad —el escenario
+   * que esos tests fijaban ya no es alcanzable—. El orden que SÍ sigue
+   * vigente lo cubren los tests de abajo y el de compatibilidad más adelante.
+   */
   // ─── Códigos alternativos: la lista es PATCH ──────────────────────────────
 
   /**
@@ -831,29 +736,10 @@ describe('EditarInsumoUseCase', () => {
   });
 
   /**
-   * La compatibilidad va ÚLTIMA: el código propio del insumo se corrige antes,
-   * y pedirle al usuario que arregle la lista de modelos cuando lo que choca es
-   * el código lo manda a editar un campo que no tiene nada.
+   * "con el código duplicado Y la compatibilidad duplicada gana el error del
+   * código" (#162) se quita por el mismo motivo que las dos de "Orden de
+   * validación" más arriba: sin `codigo` en `EditarInsumoDto`, no hay
+   * revalidación de código con la que la compatibilidad duplicada pueda
+   * competir por prioridad.
    */
-  it('con el código duplicado Y la compatibilidad duplicada gana el error del código', async () => {
-    const repo = buildInsumoRepo(buildInsumo(), {
-      findByCodigo: vi.fn().mockResolvedValue(buildInsumo([], 'ins-2')),
-    });
-    const modeloRepo = buildModeloRepo();
-    const useCase = new EditarInsumoUseCase(
-      repo,
-      buildFamiliaRepo(),
-      buildUnidadRepo(),
-      modeloRepo,
-    );
-
-    const result = await useCase.execute({
-      id: 'ins-1',
-      codigo: 'TON-002',
-      compatibilidad: [{ modeloEquipoId: 'mod-1' }, { modeloEquipoId: 'mod-1' }],
-    });
-
-    expect(result.getError().code).toBe('INSUMO_CODIGO_DUPLICADO');
-    expect(modeloRepo.findById).not.toHaveBeenCalled();
-  });
 });

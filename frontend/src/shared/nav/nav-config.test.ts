@@ -128,18 +128,18 @@ describe("nav-config", () => {
   // WU-2 (sdd/repuestos-seccion): "Repuestos" gatea con el MISMO
   // INSUMOS:LECTURA que "Insumos" — no hay permiso REPUESTOS propio.
   /**
-   * GEMELO INVERTIDO del renombre de `Admin > Insumos` a "Insumos y repuestos"
+   * GEMELO INVERTIDO del renombre de `Admin > Insumos` a "Familia de Catálogos"
    * (#163). Ese ABM administra las familias de las DOS clases, pero esta
    * sección del sidebar principal lista SOLO consumibles desde el #149.
    * Renombrarla también sería el error simétrico: prometería repuestos en una
    * pantalla que los excluye a propósito.
    */
-  it("la sección principal sigue llamándose Insumos, no Insumos y repuestos", () => {
+  it("la sección principal sigue llamándose Insumos, y no toma el nombre del ABM", () => {
     const user = makeUser({ permisos: ["INSUMOS:LECTURA"] });
     const items = visibleNavItems(user);
     const insumos = items.find((i) => i.href === "/insumos");
     expect(insumos?.label).toBe("Insumos");
-    expect(items.map((i) => i.label)).not.toContain("Insumos y repuestos");
+    expect(items.map((i) => i.label)).not.toContain("Familia de Catálogos");
   });
 
   it("con INSUMOS:LECTURA → ve /repuestos", () => {

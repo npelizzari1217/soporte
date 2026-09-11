@@ -239,20 +239,6 @@ const CODIGO_CATALOGO_PATTERN = /^[A-Z0-9_]+$/;
 const FAMILIA_INSUMO_CODIGO_MAX_LENGTH = 30;
 const FAMILIA_INSUMO_NOMBRE_MAX_LENGTH = 100;
 
-/**
- * Espejo exacto de `normalizarCodigoInsumo` (`insumo.entity.ts`), que el borde
- * aplica con `@Transform` ANTES de su `@MaxLength`.
- *
- * Va con `refine` y no con `.min()`/`.max()` porque esos miden el string CRUDO:
- * `toUpperCase()` puede AGRANDARLO —`'ß'` se convierte en `'SS'`—, así que 50
- * caracteres tipeados pueden ser 100 al persistirse. Mismo criterio que
- * `features/tipos-componente/limites.ts`.
- *
- * @param valor Lo que el usuario tipeó en el campo.
- * @returns El código tal como va a persistirse.
- */
-const normalizarCodigoInsumo = (valor: string): string => valor.trim().toUpperCase();
-
 export const familiaInsumoSchema = z.object({
   codigo: z
     .string()
@@ -305,8 +291,11 @@ export type UnidadMedidaFormValues = z.infer<typeof unidadMedidaSchema>;
  * el mismo motivo que `MOVIMIENTO_INSUMO_*` arriba: no hay paquete
  * compartido entre Nest y Next. Propios de esta entidad, distintos de
  * `FAMILIA_INSUMO_*`/`UNIDAD_MEDIDA_*`.
+ *
+ * Sin `INSUMO_CODIGO_MAX_LENGTH` (issue #166): el código dejó de ser un
+ * campo del formulario, así que no hay ningún largo que este schema tenga
+ * que espejar.
  */
-const INSUMO_CODIGO_MAX_LENGTH = 50;
 const INSUMO_NOMBRE_MAX_LENGTH = 255;
 const INSUMO_STOCK_MINIMO_DECIMALES = 2;
 const INSUMO_STOCK_MINIMO_MINIMO = 0;
@@ -350,6 +339,13 @@ const stockMinimoInsumoSchema = z.preprocess(
  * desde la ficha en una entrega posterior (ver el JSDoc de
  * `use-insumo-abm-mutations.ts` para el porqué de nunca mandarlos).
  *
+ * **Sin `codigo` (issue #166).** El #162 lo había dejado opcional; el dueño
+ * pidió cerrar la puerta del todo: el código no es un dato que el formulario
+ * pida, ni al crear ni al editar — lo pone el sistema. `InsumoFormDialog` no
+ * lo registra con `react-hook-form`, así que no hay nada que este schema
+ * tenga que validar. Ver el JSDoc de `CreateInsumoDto`/`EditInsumoDto`
+ * (`types.ts`), que tampoco lo declaran.
+ *
  * `familiaId`/`unidadMedidaId` son los ids que un `<select>` ya restringe a
  * un catálogo real: `.min(1, ...)` alcanza para expresar "requerido", mismo
  * criterio que `proveedor`/`descripcion` en `features/compras/schemas.ts` —
@@ -357,29 +353,10 @@ const stockMinimoInsumoSchema = z.preprocess(
  * `<option>` real.
  */
 export const insumoSchema = z.object({
-  /**
-   * OPCIONAL desde el issue #162: vacío o de solo espacios ⇒ el backend lo
-   * AUTOGENERA (`INS-0001`/`REP-0001` según la familia). Ya no lleva el
-   * `.refine` de "requerido" que tenía antes de este issue — el único chequeo
-   * que sobrevive es el tope de largo, y solo quien complete el campo lo mide.
-   *
-   * SIN patrón, a propósito, y ES la diferencia con `familiaInsumoSchema` y
-   * `unidadMedidaSchema`: `CreateInsumoDto`/`EditInsumoDto` NO declaran
-   * `@Matches` sobre `codigo` —su única normalización es
-   * `normalizarCodigoInsumo`, que hace `trim().toUpperCase()`—. Imponer acá
-   * `CODIGO_CATALOGO_PATTERN` dejaría al front MÁS ESTRICTO que el borde, y
-   * un insumo ya guardado con guion (`TON-001`) quedaría inedi­table: el
-   * formulario de edición lo rechazaría aunque el usuario solo quisiera
-   * corregirle el nombre.
-   */
-  codigo: z
-    .string()
-    .refine(
-      (valor) => normalizarCodigoInsumo(valor).length <= INSUMO_CODIGO_MAX_LENGTH,
-      mensajeDemasiadoLargo("El código", INSUMO_CODIGO_MAX_LENGTH),
-    ),
-  // `.trim()` por el mismo motivo que el `codigo` de arriba: el `@Transform`
-  // del `nombre` tambien corre antes de su `@MinLength(1)` en el borde.
+  // `.trim()` espeja que el `@Transform` del `nombre` corre antes de su
+  // `@MinLength(1)` en el borde: sin recortar, un nombre de solo espacios
+  // mide caracteres, pasa el mínimo del front y se come un 400 remoto por
+  // algo que el formulario podía decirle en línea.
   nombre: z
     .string()
     .trim()

@@ -11,7 +11,6 @@ import {
 import {
   InsumoEntity,
   INSUMO_CODIGOS_ALTERNATIVOS_MAX,
-  INSUMO_CODIGO_MAX_LENGTH,
   INSUMO_COMPATIBILIDAD_MAX,
   INSUMO_NOMBRE_MAX_LENGTH,
   INSUMO_STOCK_MINIMO_MAXIMO,
@@ -31,7 +30,6 @@ const OTRO_MODELO_ID = '66666666-6666-4666-8666-666666666666';
 /** Body mínimo válido del alta, para que cada caso sobrescriba solo lo suyo. */
 function bodyAlta(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
-    codigo: 'TON-001',
     nombre: 'Tóner negro',
     familiaId: FAMILIA_ID,
     unidadMedidaId: UNIDAD_ID,
@@ -75,11 +73,37 @@ async function restriccionesDe(dto: object): Promise<string[]> {
 }
 
 describe('CreateInsumoDto', () => {
-  it('acepta un alta mínima y normaliza el código a mayúscula', async () => {
-    const dto = plainToInstance(CreateInsumoDto, bodyAlta({ codigo: '  ton-001  ' }));
+  it('acepta un alta mínima', async () => {
+    const dto = plainToInstance(CreateInsumoDto, bodyAlta());
 
     expect(await validate(dto)).toHaveLength(0);
-    expect(dto.codigo).toBe('TON-001');
+  });
+
+  /**
+   * EL BORDE del issue #166 — el assert que importa: `CreateInsumoDto` no
+   * declara `codigo` (no tiene ningún decorador de `class-validator` sobre esa
+   * clave), así que el `ValidationPipe` global (`whitelist: true`,
+   * `AppModule`) lo DESCARTA en silencio de la instancia antes de que llegue
+   * al controller. La prueba corre la misma regla que corre production:
+   * `validate(dto, { whitelist: true })` sin mockear nada.
+   *
+   * INVIERTE "acepta un alta mínima y normaliza el código a mayúscula" (#162):
+   * ahí un `codigo` en el body se aceptaba y se guardaba tal cual. Acá se
+   * demuestra lo contrario — sobrevive a la instancia, pero no a la
+   * validación con whitelist, así que el use case jamás lo ve.
+   */
+  it('un codigo en el body NO sobrevive al ValidationPipe — whitelist lo descarta en silencio', async () => {
+    const dto = plainToInstance(CreateInsumoDto, bodyAlta({ codigo: 'CUALQUIERA' }));
+
+    // Antes de validar, class-transformer todavía copió la clave cruda: la
+    // prueba real está en lo que pasa DESPUÉS, no en que el borde ya la haya
+    // filtrado por su cuenta.
+    expect((dto as unknown as { codigo?: string }).codigo).toBe('CUALQUIERA');
+
+    const errores = await validate(dto, { whitelist: true });
+
+    expect(errores).toHaveLength(0);
+    expect((dto as unknown as { codigo?: string }).codigo).toBeUndefined();
   });
 
   /**
@@ -168,26 +192,16 @@ describe('CreateInsumoDto', () => {
  * edición). Recorrer los dos no es redundancia: con un solo caso, borrar el
  * decorador de `EditInsumoDto` no pone nada en rojo y el camino PATCH queda
  * sin guard.
+ *
+ * **Ya no mide `codigo` (issue #166).** Ninguno de los dos DTOs lo declara,
+ * así que no hay `@MaxLength`/`@MinLength` que espejar acá — el test de borde
+ * que reemplaza a los viejos vive en `describe('CreateInsumoDto', ...)` de
+ * arriba y prueba lo contrario: que el campo se DESCARTA, no que se mida.
  */
 describe.each([
   ['CreateInsumoDto', CreateInsumoDto],
   ['EditInsumoDto', EditInsumoDto],
 ])('%s — topes de largo espejando la columna', (_nombre, Dto) => {
-  it('rechaza un codigo de más de 50 caracteres', async () => {
-    const dto = plainToInstance(
-      Dto,
-      bodyAlta({ codigo: 'A'.repeat(INSUMO_CODIGO_MAX_LENGTH + 1) }),
-    );
-
-    expect(await restriccionesDe(dto)).toContain('maxLength');
-  });
-
-  it('acepta un codigo de exactamente 50 caracteres (límite inclusive)', async () => {
-    const dto = plainToInstance(Dto, bodyAlta({ codigo: 'A'.repeat(INSUMO_CODIGO_MAX_LENGTH) }));
-
-    expect(await validate(dto)).toHaveLength(0);
-  });
-
   it('rechaza un nombre de más de 255 caracteres', async () => {
     const dto = plainToInstance(
       Dto,
@@ -203,28 +217,10 @@ describe.each([
     expect(await validate(dto)).toHaveLength(0);
   });
 
-  it('rechaza un codigo de solo espacios', async () => {
-    const dto = plainToInstance(Dto, bodyAlta({ codigo: '   ' }));
-
-    expect(await restriccionesDe(dto)).toContain('minLength');
-  });
-
   it('rechaza un nombre de solo espacios', async () => {
     const dto = plainToInstance(Dto, bodyAlta({ nombre: '   ' }));
 
     expect(await restriccionesDe(dto)).toContain('minLength');
-  });
-
-  /**
-   * El tope se mide sobre el código YA NORMALIZADO: `'ß'.toUpperCase()` es
-   * `'SS'`, así que 50 `ß` crudas son 100 caracteres en la columna. Midiendo el
-   * crudo, este valor pasa el DTO y explota recién en Postgres. Es el bug que
-   * ya mordió a `tipos-componente` en este repo.
-   */
-  it('rechaza un codigo que entra crudo pero se pasa del tope al normalizarse', async () => {
-    const dto = plainToInstance(Dto, bodyAlta({ codigo: 'ß'.repeat(INSUMO_CODIGO_MAX_LENGTH) }));
-
-    expect(await restriccionesDe(dto)).toContain('maxLength');
   });
 
   it('normaliza el código alternativo a mayúscula y colapsa el fabricante vacío a null', async () => {
@@ -507,7 +503,24 @@ describe('EditInsumoDto — PATCH parcial', () => {
     const dto = plainToInstance(EditInsumoDto, { nombre: 'Renombrado' });
 
     expect(await validate(dto)).toHaveLength(0);
-    expect(dto.codigo).toBeUndefined();
+  });
+
+  /**
+   * EL BORDE del issue #166 — cierra el agujero que el #162 dejaba abierto:
+   * no alcanzaba con que el alta no aceptara un código a mano si Editar SÍ lo
+   * cambiaba después. `EditInsumoDto` no declara `codigo`, así que el
+   * `ValidationPipe` global (`whitelist: true`) lo descarta en silencio del
+   * body del PATCH, igual que en `CreateInsumoDto`.
+   */
+  it('un codigo en el PATCH NO sobrevive al ValidationPipe — whitelist lo descarta en silencio', async () => {
+    const dto = plainToInstance(EditInsumoDto, { nombre: 'Renombrado', codigo: 'TON-999' });
+
+    expect((dto as unknown as { codigo?: string }).codigo).toBe('TON-999');
+
+    const errores = await validate(dto, { whitelist: true });
+
+    expect(errores).toHaveLength(0);
+    expect((dto as unknown as { codigo?: string }).codigo).toBeUndefined();
   });
 
   /**
@@ -550,7 +563,6 @@ describe('EditInsumoDto — PATCH parcial', () => {
     });
 
     expect(await validate(dto)).toHaveLength(0);
-    expect(dto.codigo).toBeUndefined();
   });
 });
 

@@ -40,7 +40,7 @@ describe("AdminNav (ADR-P5)", () => {
     expect(screen.getByRole("link", { name: "Catálogos" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Ciclos" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Usuarios" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Insumos y repuestos" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Familia de Catálogos" })).toBeInTheDocument();
     // GEMELO INVERTIDO del renombre (#163): el item de Admin pasa a nombrar las
     // dos clases de familia, pero la seccion del SIDEBAR PRINCIPAL sigue
     // llamandose "Insumos" y listando solo consumibles — los repuestos tienen la

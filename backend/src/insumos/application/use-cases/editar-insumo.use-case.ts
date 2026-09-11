@@ -1,15 +1,8 @@
 import { DomainError, Result } from '../../../shared/domain/result';
 import { CompatibilidadModelo } from '../../domain/entities/compatibilidad-modelo';
 import { InsumoCodigoAlternativoEntity } from '../../domain/entities/insumo-codigo-alternativo.entity';
-import {
-  InsumoEntity,
-  normalizarCodigoInsumo,
-  normalizarNombreInsumo,
-} from '../../domain/entities/insumo.entity';
-import {
-  InsumoCodigoDuplicadoError,
-  InsumoNoEncontradoError,
-} from '../../domain/errors/insumos.errors';
+import { InsumoEntity, normalizarNombreInsumo } from '../../domain/entities/insumo.entity';
+import { InsumoNoEncontradoError } from '../../domain/errors/insumos.errors';
 import { IInsumoRepository } from '../../domain/ports/i-insumo.repository';
 import {
   CodigoAlternativoInput,
@@ -23,10 +16,19 @@ import {
   validarUnidadMedidaElegible,
 } from '../services/validar-insumo.service';
 
-/** DTO de entrada de `EditarInsumoUseCase` — PATCH semántico. */
+/**
+ * DTO de entrada de `EditarInsumoUseCase` — PATCH semántico.
+ *
+ * **Sin `codigo` (issue #166).** Cierra el agujero que el #162 dejaba
+ * abierto: no alcanzaba con que el alta no aceptara un código a mano si
+ * Editar sí lo cambiaba treinta segundos después. `EditInsumoDto` —el borde—
+ * tampoco lo declara, y el `ValidationPipe` global (`whitelist: true`)
+ * descarta en silencio cualquier `codigo` que llegue en el body. Esta
+ * interfaz no lo declara tampoco por el mismo motivo que `CrearInsumoDto`: el
+ * caso de uso no tiene nada que traducir si el tipo no admite el campo.
+ */
 export interface EditarInsumoDto {
   id: string;
-  codigo?: string;
   nombre?: string;
   familiaId?: string;
   unidadMedidaId?: string;
@@ -47,16 +49,10 @@ export interface EditarInsumoDto {
 /**
  * EditarInsumoUseCase — edita un insumo del catálogo del tenant.
  *
- * Mantiene el mismo orden de validación que el alta —familia, unidad, código
- * único, códigos alternativos, compatibilidad—, con tres diferencias que solo
- * existen en la edición:
+ * Mantiene el mismo orden de validación que el alta —familia, unidad, códigos
+ * alternativos, compatibilidad—, con dos diferencias que solo existen en la
+ * edición:
  *
- * - **La revalidación del código único corre solo si el código RESULTANTE
- *   cambió**, y se compara sobre los valores YA normalizados: reenviar
- *   `ton-001` sobre un insumo que ya es `TON-001` no es un cambio, y comparar
- *   el crudo dispararía una revalidación que se encuentra a sí misma. Cuando sí
- *   corre, el `findByCodigo` que devuelve el MISMO insumo no es un choque —de
- *   ahí la comparación por id—.
  * - **El conflicto global de códigos alternativos se consulta excluyendo al
  *   insumo que se edita**: sus propios códigos no chocan consigo mismo, y sin
  *   la exclusión reenviar la lista sin cambios se rechazaría a sí misma.
@@ -65,6 +61,14 @@ export interface EditarInsumoDto {
  *   lista se reemplaza entera, así que revalidar lo viejo convertiría una baja
  *   del catálogo en una trampa —deshabilitar un modelo dejaría sin poder
  *   editar, ni el nombre, a los insumos ya compatibles con él—.
+ *
+ * **El `codigo` NO es un campo editable (issue #166).** `EditarInsumoDto` no
+ * lo declara —ver su JSDoc—, así que no hay nada que normalizar ni revalidar
+ * acá: `insumo.actualizar()` tampoco acepta un `codigo` en su tipo (ver el
+ * JSDoc de `InsumoEntity.actualizar()`). La consecuencia asumida por el
+ * dueño: un código con typo queda congelado con el typo, para siempre, y
+ * reasignar la familia de un insumo NUNCA le toca el código —ni el prefijo—,
+ * como ya fijaba el test de esta clase desde el #162.
  *
  * Los campos ausentes del PATCH no se validan ni se tocan: consultar el
  * catálogo por una familia que nadie reasignó haría fallar una edición de
@@ -76,7 +80,7 @@ export class EditarInsumoUseCase {
   constructor(
     private readonly insumoRepo: Pick<
       IInsumoRepository,
-      'findById' | 'findByCodigo' | 'findConflictosDeCodigoAlternativo' | 'save'
+      'findById' | 'findConflictosDeCodigoAlternativo' | 'save'
     >,
     private readonly familiaRepo: LectorCatalogoFamilias,
     private readonly unidadMedidaRepo: LectorCatalogoUnidades,
@@ -85,12 +89,13 @@ export class EditarInsumoUseCase {
 
   /**
    * @param dto Id del insumo y campos a modificar; los ausentes no se tocan.
+   *   Nunca trae `codigo`: no es un campo editable.
    * @returns El insumo editado, o el primer error de negocio que lo impide:
    *   `InsumoNoEncontradoError`, `FamiliaInsumoInexistenteError`,
    *   `FamiliaInsumoDeshabilitadaError`, `UnidadMedidaInexistenteError`,
-   *   `UnidadMedidaDeshabilitadaError`, `InsumoCodigoDuplicadoError`,
-   *   `CodigoAlternativoDuplicadoError`, `CompatibilidadDuplicadaError`,
-   *   `ModeloEquipoInexistenteError` o `ModeloEquipoDeshabilitadoError`.
+   *   `UnidadMedidaDeshabilitadaError`, `CodigoAlternativoDuplicadoError`,
+   *   `CompatibilidadDuplicadaError`, `ModeloEquipoInexistenteError` o
+   *   `ModeloEquipoDeshabilitadoError`.
    */
   async execute(dto: EditarInsumoDto): Promise<Result<InsumoEntity, DomainError>> {
     const insumo = await this.insumoRepo.findById(dto.id);
@@ -98,7 +103,6 @@ export class EditarInsumoUseCase {
       return Result.fail(new InsumoNoEncontradoError(dto.id));
     }
 
-    const codigo = dto.codigo === undefined ? undefined : normalizarCodigoInsumo(dto.codigo);
     const nombre = dto.nombre === undefined ? undefined : normalizarNombreInsumo(dto.nombre);
 
     if (dto.familiaId !== undefined) {
@@ -112,14 +116,6 @@ export class EditarInsumoUseCase {
       const unidad = await validarUnidadMedidaElegible(this.unidadMedidaRepo, dto.unidadMedidaId);
       if (unidad.isFail()) {
         return Result.fail(unidad.getError());
-      }
-    }
-
-    const codigoResultante = codigo ?? insumo.codigo;
-    if (codigoResultante !== insumo.codigo) {
-      const ocupante = await this.insumoRepo.findByCodigo(codigoResultante);
-      if (ocupante && ocupante.id !== insumo.id) {
-        return Result.fail(new InsumoCodigoDuplicadoError(codigoResultante));
       }
     }
 
@@ -148,7 +144,6 @@ export class EditarInsumoUseCase {
     }
 
     insumo.actualizar({
-      codigo,
       nombre,
       familiaId: dto.familiaId,
       unidadMedidaId: dto.unidadMedidaId,

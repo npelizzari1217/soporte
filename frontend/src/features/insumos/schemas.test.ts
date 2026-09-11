@@ -474,31 +474,21 @@ describe("unidadMedidaSchema — límites de largo (espejo de CreateUnidadMedida
 
 /**
  * Validación cliente-side del ABM del insumo — espejo de
- * `CreateInsumoDto`/`EditInsumoDto` (`INSUMO_CODIGO_MAX_LENGTH = 50`,
- * `INSUMO_NOMBRE_MAX_LENGTH = 255`, `insumo.entity.ts`), RECORTADO al scope
- * de esta entrega: sin `codigosAlternativos`/`compatibilidad`.
+ * `CreateInsumoDto`/`EditInsumoDto` (`INSUMO_NOMBRE_MAX_LENGTH = 255`,
+ * `insumo.entity.ts`), RECORTADO al scope de esta entrega: sin
+ * `codigosAlternativos`/`compatibilidad`. Sin `codigo` (issue #166): no es un
+ * campo del formulario.
  */
 function baseInsumoValues(): Record<string, unknown> {
-  return { codigo: "TON_001", nombre: "Tóner", familiaId: "fam-1", unidadMedidaId: "um-1" };
+  return { nombre: "Tóner", familiaId: "fam-1", unidadMedidaId: "um-1" };
 }
 
-describe("insumoSchema — límites de codigo/nombre (espejo de CreateInsumoDto)", () => {
-  it("rechaza codigo de más de 50 caracteres", () => {
-    const result = insumoSchema.safeParse({ ...baseInsumoValues(), codigo: "A".repeat(51) });
-    expect(result.success).toBe(false);
-  });
-
-  it("acepta codigo de exactamente 50 caracteres", () => {
-    const result = insumoSchema.safeParse({ ...baseInsumoValues(), codigo: "A".repeat(50) });
-    expect(result.success).toBe(true);
-  });
-
+describe("insumoSchema — límites de nombre (espejo de CreateInsumoDto)", () => {
   /**
    * El `@Transform` del `nombre` corre ANTES de su `@MinLength(1)` en el borde
    * (lo dice el JSDoc de `CreateInsumoDto`): un nombre de solo espacios llega
    * recortado y el backend lo rechaza. Sin el `.trim()` del schema, el front lo
-   * dejaba pasar y el usuario perdía lo tipeado contra un 400 remoto. El caso
-   * hermano de `codigo` ya existía; este cierra la cobertura parcial.
+   * dejaba pasar y el usuario perdía lo tipeado contra un 400 remoto.
    */
   it("rechaza nombre de solo espacios", () => {
     const result = insumoSchema.safeParse({ ...baseInsumoValues(), nombre: "   " });
@@ -520,53 +510,26 @@ describe("insumoSchema — límites de codigo/nombre (espejo de CreateInsumoDto)
     const result = insumoSchema.safeParse({ ...baseInsumoValues(), nombre: "N".repeat(255) });
     expect(result.success).toBe(true);
   });
+});
 
-  /**
-   * A DIFERENCIA de `familiaInsumoSchema`/`unidadMedidaSchema`, el código del
-   * insumo NO lleva patrón: `CreateInsumoDto`/`EditInsumoDto` no tienen
-   * `@Matches` sobre `codigo` — su única normalización es
-   * `normalizarCodigoInsumo` (`trim().toUpperCase()`). Un patrón acá sería
-   * MÁS ESTRICTO que el borde, y volvería INEDITABLE desde el front a
-   * cualquier insumo ya guardado cuyo código traiga un guion: el usuario no
-   * podría ni corregirle el nombre sin antes cambiarle el código.
-   */
-  it("acepta codigo con guion — el backend no le impone patrón", () => {
-    const result = insumoSchema.safeParse({ ...baseInsumoValues(), codigo: "TON-001" });
+/**
+ * Issue #166 QUITA la sección "insumoSchema — límites de codigo" entera
+ * (tope de largo, patrón libre —"acepta codigo con guion"—, normalización
+ * sobre el string agrandado por `toUpperCase()`, vacío como señal de
+ * autogenerar). Ninguno tiene reemplazo posible: `insumoSchema` ya no declara
+ * `codigo`, así que no hay ninguna regla que este schema pueda imponerle. Lo
+ * que queda demostrado es lo de abajo: el schema ignora silenciosamente
+ * cualquier `codigo` que alguien intente colarle, exactamente igual que el
+ * `ValidationPipe` del backend.
+ */
+describe("insumoSchema — sin codigo (issue #166)", () => {
+  it("ignora un codigo colado en el input — el schema no lo declara ni lo valida", () => {
+    const result = insumoSchema.safeParse({ ...baseInsumoValues(), codigo: "CUALQUIERA" });
+
     expect(result.success).toBe(true);
-  });
-
-  it("acepta codigo en minúsculas — lo normaliza a mayúsculas el backend", () => {
-    const result = insumoSchema.safeParse({ ...baseInsumoValues(), codigo: "ton-001" });
-    expect(result.success).toBe(true);
-  });
-
-  /**
-   * El `@MinLength(1)` del borde mide DESPUÉS del `@Transform`, así que un
-   * código de solo espacios llega vacío y el backend lo rechaza. Sin el
-   * `.trim()` acá, el front lo dejaba pasar y el usuario cobraba un 400.
-   */
-  /**
-   * Forma 3 de fallo de tope del AGENTS.md: tope en las dos capas que NO
-   * coincide con la columna. El borde mide DESPUÉS de `trim().toUpperCase()`, y
-   * `toUpperCase()` puede AGRANDAR el string —`'ß'` se convierte en `'SS'`—. Un
-   * `.max()` sobre el crudo aceptaba 50 caracteres que se persisten como 100.
-   */
-  it("mide el tope del codigo sobre el NORMALIZADO: 50 'ß' son 100 al persistirse", () => {
-    const result = insumoSchema.safeParse({ ...baseInsumoValues(), codigo: "ß".repeat(50) });
-    expect(result.success).toBe(false);
-  });
-
-  /**
-   * Issue #162: el código dejó de ser obligatorio en el alta. Vacío o de solo
-   * espacios ya no se rechaza acá — es la señal de "autogenerar", que decide
-   * el diálogo (`InsumoFormDialog`), no el schema.
-   */
-  it("acepta codigo vacío o de solo espacios — el backend lo autogenera", () => {
-    const vacio = insumoSchema.safeParse({ ...baseInsumoValues(), codigo: "" });
-    const espacios = insumoSchema.safeParse({ ...baseInsumoValues(), codigo: "   " });
-
-    expect(vacio.success).toBe(true);
-    expect(espacios.success).toBe(true);
+    if (result.success) {
+      expect(result.data).not.toHaveProperty("codigo");
+    }
   });
 });
 

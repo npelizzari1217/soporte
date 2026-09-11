@@ -550,7 +550,7 @@ describe('Insumos e2e — gate por método + borde completo', () => {
       const catalogos = await sembrarCatalogos(adminActor.accessToken, suf);
       const creado = await httpPost<InsumoResponseDto>(
         `${baseUrl}/insumos`,
-        { codigo: `INS_${suf}`, nombre: 'Tóner negro', ...catalogos },
+        { nombre: 'Tóner negro', ...catalogos },
         bearer(adminActor.accessToken),
       );
       expect(creado.status).toBe(201);
@@ -559,7 +559,7 @@ describe('Insumos e2e — gate por método + borde completo', () => {
 
       const alta = await httpPost(
         `${baseUrl}/insumos`,
-        { codigo: `INS_OTRO_${suf}`, nombre: 'Otro', ...catalogos },
+        { nombre: 'Otro', ...catalogos },
         bearer(actor.accessToken),
       );
       const editar = await httpPatch(
@@ -587,7 +587,6 @@ describe('Insumos e2e — gate por método + borde completo', () => {
       const sembrado = await httpPost<InsumoResponseDto>(
         `${baseUrl}/insumos`,
         {
-          codigo: `INS_LECTURA_${suf}`,
           nombre: 'Lectura abierta',
           ...catalogos,
           codigosAlternativos: [{ codigo: `ALT_${suf}`, fabricante: 'HP' }],
@@ -605,20 +604,21 @@ describe('Insumos e2e — gate por método + borde completo', () => {
 
       expect(status).toBe(200);
       const fila = data.find((insumo) => insumo.id === sembrado.data.id);
-      expect(fila?.codigo).toBe(`INS_LECTURA_${suf}`);
+      // El código lo autogenera el sistema (issue #166): el assert de
+      // contenido es contra lo que YA quedó guardado en el alta, no contra un
+      // valor que el test haya elegido.
+      expect(fila?.codigo).toBe(sembrado.data.codigo);
       expect(fila?.codigosAlternativos).toEqual([
         { id: sembrado.data.codigosAlternativos[0]!.id, codigo: `ALT_${suf}`, fabricante: 'HP' },
       ]);
     });
 
     /**
-     * El código viaja en minúscula y el fabricante también; los dos tienen que
-     * llegar en mayúscula. Atraviesa el `@Transform` del DTO y la
-     * normalización de la capa de aplicación: si alguna de las dos se cae, acá
-     * se ve. El fabricante de solo espacios colapsa a `null`, que es lo que
+     * El nombre y los códigos alternativos se siguen normalizando igual que
+     * siempre. El fabricante de solo espacios colapsa a `null`, que es lo que
      * hace utilizable al índice `NULLS NOT DISTINCT`.
      */
-    it('POST /insumos normaliza el código, el fabricante y colapsa el fabricante vacío a null', async () => {
+    it('POST /insumos normaliza el nombre, el fabricante y colapsa el fabricante vacío a null', async () => {
       const suf = sufijo();
       const adminActor = await crearActorConRol('ADMINISTRADOR');
       const catalogos = await sembrarCatalogos(adminActor.accessToken, suf);
@@ -626,7 +626,6 @@ describe('Insumos e2e — gate por método + borde completo', () => {
       const { status, data } = await httpPost<InsumoResponseDto>(
         `${baseUrl}/insumos`,
         {
-          codigo: `  ins_norm_${suf.toLowerCase()}  `,
           nombre: '  Tóner negro  ',
           ...catalogos,
           codigosAlternativos: [
@@ -638,11 +637,35 @@ describe('Insumos e2e — gate por método + borde completo', () => {
       );
 
       expect(status).toBe(201);
-      expect(data.codigo).toBe(`INS_NORM_${suf}`);
       expect(data.nombre).toBe('Tóner negro');
       const porCodigo = new Map(data.codigosAlternativos.map((c) => [c.codigo, c.fabricante]));
       expect(porCodigo.get(`ALT_${suf}`)).toBe('HP');
       expect(porCodigo.get(`GEN_${suf}`)).toBeNull();
+    });
+
+    /**
+     * EL BORDE del issue #166, de punta a punta —sin mockear NADA—: un
+     * `codigo` en el body de `POST /insumos` atraviesa `ValidationPipe`
+     * (`whitelist: true`), que lo descarta en silencio, y el insumo se crea
+     * con el código autogenerado (`INS-0001`/`REP-0001` según la familia), NO
+     * con el valor que mandó el cliente. INVIERTE el test homónimo de #162
+     * ("POST /insumos normaliza el código..."), que ahí sí esperaba ver el
+     * valor del cliente reflejado en la respuesta.
+     */
+    it('POST /insumos ignora el codigo del cliente y autogenera el propio', async () => {
+      const suf = sufijo();
+      const adminActor = await crearActorConRol('ADMINISTRADOR');
+      const catalogos = await sembrarCatalogos(adminActor.accessToken, suf);
+
+      const { status, data } = await httpPost<InsumoResponseDto>(
+        `${baseUrl}/insumos`,
+        { codigo: `NUNCA_${suf}`, nombre: 'Ignora el codigo del cliente', ...catalogos },
+        bearer(adminActor.accessToken),
+      );
+
+      expect(status).toBe(201);
+      expect(data.codigo).not.toBe(`NUNCA_${suf}`);
+      expect(data.codigo).toMatch(/^(INS|REP)-\d{4}$/);
     });
 
     /**
@@ -669,7 +692,6 @@ describe('Insumos e2e — gate por método + borde completo', () => {
       const conDeshabilitada = await httpPost(
         `${baseUrl}/insumos`,
         {
-          codigo: `INS_OFF_${suf}`,
           nombre: 'Con familia deshabilitada',
           familiaId: deshabilitada.data.id,
           unidadMedidaId: vigente.unidadMedidaId,
@@ -678,7 +700,7 @@ describe('Insumos e2e — gate por método + borde completo', () => {
       );
       const conHabilitada = await httpPost(
         `${baseUrl}/insumos`,
-        { codigo: `INS_ON_${suf}`, nombre: 'Con familia habilitada', ...vigente },
+        { nombre: 'Con familia habilitada', ...vigente },
         bearer(adminActor.accessToken),
       );
 
@@ -700,7 +722,6 @@ describe('Insumos e2e — gate por método + borde completo', () => {
       const primero = await httpPost(
         `${baseUrl}/insumos`,
         {
-          codigo: `INS_PAR_A_${suf}`,
           nombre: 'Ocupante',
           ...catalogos,
           codigosAlternativos: [{ codigo: `PAR_${suf}`, fabricante: 'HP' }],
@@ -712,7 +733,6 @@ describe('Insumos e2e — gate por método + borde completo', () => {
       const choque = await httpPost(
         `${baseUrl}/insumos`,
         {
-          codigo: `INS_PAR_B_${suf}`,
           nombre: 'Choca',
           ...catalogos,
           codigosAlternativos: [{ codigo: `PAR_${suf}`, fabricante: 'hp' }],
@@ -722,7 +742,6 @@ describe('Insumos e2e — gate por método + borde completo', () => {
       const otroFabricante = await httpPost(
         `${baseUrl}/insumos`,
         {
-          codigo: `INS_PAR_C_${suf}`,
           nombre: 'Otro fabricante',
           ...catalogos,
           codigosAlternativos: [{ codigo: `PAR_${suf}`, fabricante: 'CANON' }],
@@ -743,7 +762,6 @@ describe('Insumos e2e — gate por método + borde completo', () => {
       const { status } = await httpPost(
         `${baseUrl}/insumos`,
         {
-          codigo: `INS_REP_${suf}`,
           nombre: 'Payload con repetido',
           ...catalogos,
           codigosAlternativos: [
@@ -769,7 +787,7 @@ describe('Insumos e2e — gate por método + borde completo', () => {
 
       const { status } = await httpPost(
         `${baseUrl}/insumos`,
-        { codigo: `INS_DEC_${suf}`, nombre: 'Tres decimales', ...catalogos, stockMinimo: 0.005 },
+        { nombre: 'Tres decimales', ...catalogos, stockMinimo: 0.005 },
         bearer(adminActor.accessToken),
       );
 
@@ -806,6 +824,38 @@ describe('Insumos e2e — gate por método + borde completo', () => {
       expect(status).toBe(400);
     });
 
+    /**
+     * EL GEMELO INVERTIDO que cierra el agujero del WU-3 (issue #166), de
+     * punta a punta: un `codigo` distinto en el body de `PATCH /insumos/:id`
+     * atraviesa `ValidationPipe` (`whitelist: true`), que lo descarta en
+     * silencio ANTES de llegar a `EditarInsumoUseCase`. Sin este test, la
+     * garantía sería falsa: el alta podría no aceptar un código a mano y
+     * Editar cambiarlo igual treinta segundos después.
+     */
+    it('PATCH /insumos/:id con un codigo distinto en el body NO cambia el codigo del insumo', async () => {
+      const suf = sufijo();
+      const adminActor = await crearActorConRol('ADMINISTRADOR');
+      const catalogos = await sembrarCatalogos(adminActor.accessToken, suf);
+
+      const crear = await httpPost<InsumoResponseDto>(
+        `${baseUrl}/insumos`,
+        { nombre: 'Codigo congelado', ...catalogos },
+        bearer(adminActor.accessToken),
+      );
+      expect(crear.status).toBe(201);
+
+      const editar = await httpPatch<InsumoResponseDto>(
+        `${baseUrl}/insumos/${crear.data.id}`,
+        { codigo: `OTRO_${suf}`, nombre: 'Renombrado' },
+        bearer(adminActor.accessToken),
+      );
+
+      expect(editar.status).toBe(200);
+      expect(editar.data.codigo).toBe(crear.data.codigo);
+      expect(editar.data.codigo).not.toBe(`OTRO_${suf}`);
+      expect(editar.data.nombre).toBe('Renombrado');
+    });
+
     it('flujo completo: crear → editar la lista de códigos → desactivar → sigue listado → reactivar', async () => {
       const suf = sufijo();
       const adminActor = await crearActorConRol('ADMINISTRADOR');
@@ -814,7 +864,6 @@ describe('Insumos e2e — gate por método + borde completo', () => {
       const crear = await httpPost<InsumoResponseDto>(
         `${baseUrl}/insumos`,
         {
-          codigo: `INS_FLUJO_${suf}`,
           nombre: 'Original',
           ...catalogos,
           stockMinimo: 10.5,
@@ -933,7 +982,6 @@ describe('Insumos e2e — gate por método + borde completo', () => {
         const compatible = await httpPost<InsumoResponseDto>(
           `${baseUrl}/insumos`,
           {
-            codigo: `INS_COMPAT_${suf}`,
             nombre: 'Le sirve al modelo buscado',
             ...catalogos,
             compatibilidad: [{ modeloEquipoId: modeloBuscado, rol: ' negro ' }],
@@ -943,7 +991,6 @@ describe('Insumos e2e — gate por método + borde completo', () => {
         const ajeno = await httpPost<InsumoResponseDto>(
           `${baseUrl}/insumos`,
           {
-            codigo: `INS_AJENO_${suf}`,
             nombre: 'Le sirve a otro modelo',
             ...catalogos,
             compatibilidad: [{ modeloEquipoId: otroModelo }],
@@ -1020,7 +1067,6 @@ describe('Insumos e2e — gate por método + borde completo', () => {
         const conDeshabilitado = await httpPost(
           `${baseUrl}/insumos`,
           {
-            codigo: `INS_MOFF_${suf}`,
             nombre: 'Con modelo deshabilitado',
             ...catalogos,
             compatibilidad: [{ modeloEquipoId: apagado }],
@@ -1030,7 +1076,6 @@ describe('Insumos e2e — gate por método + borde completo', () => {
         const conHabilitado = await httpPost(
           `${baseUrl}/insumos`,
           {
-            codigo: `INS_MON_${suf}`,
             nombre: 'Con modelo habilitado',
             ...catalogos,
             compatibilidad: [{ modeloEquipoId: vigente }],
@@ -1056,7 +1101,6 @@ describe('Insumos e2e — gate por método + borde completo', () => {
         const { status } = await httpPost(
           `${baseUrl}/insumos`,
           {
-            codigo: `INS_MREP_${suf}`,
             nombre: 'Modelo repetido',
             ...catalogos,
             compatibilidad: [
@@ -1085,7 +1129,6 @@ describe('Insumos e2e — gate por método + borde completo', () => {
         const crear = await httpPost<InsumoResponseDto>(
           `${baseUrl}/insumos`,
           {
-            codigo: `INS_MPATCH_${suf}`,
             nombre: 'Original',
             ...catalogos,
             compatibilidad: [{ modeloEquipoId: modeloId, rol: 'NEGRO' }],

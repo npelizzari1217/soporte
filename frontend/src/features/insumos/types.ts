@@ -14,6 +14,13 @@
  */
 export interface Insumo {
   id: string;
+  /**
+   * Lo pone el sistema, siempre (issue #166): `INS-0001`/`REP-0001` según la
+   * familia, autogenerado al crear (issue #162). Ni el alta ni la edición
+   * aceptan uno del cliente — ver `CreateInsumoDto` (no declara `codigo`) y
+   * `EditInsumoDto` (tampoco). Un insumo existente conserva el suyo para
+   * siempre, typo incluido si lo tuviera: no hay forma de corregirlo.
+   */
   codigo: string;
   nombre: string;
   familiaId: string;
@@ -38,13 +45,6 @@ export interface Insumo {
  * ficha en una entrega posterior.
  */
 export interface CreateInsumoDto {
-  /**
-   * Ausente ⇒ el backend lo AUTOGENERA (issue #162): `REP-0001` si la familia
-   * es de repuestos, `INS-0001` si no. Si el usuario lo escribe a mano, se
-   * manda tal cual y se respeta — el autogenerado es el default, no una
-   * imposición.
-   */
-  codigo?: string;
   nombre: string;
   familiaId: string;
   unidadMedidaId: string;
@@ -57,9 +57,11 @@ export interface CreateInsumoDto {
  * recorte de scope que `CreateInsumoDto`. `stockMinimo` es la ÚNICA
  * excepción de esta entrega donde `null` SÍ viaja: es la orden explícita de
  * borrar el punto de reposición (`undefined` deja el campo intacto).
+ *
+ * **Sin `codigo` (issue #166).** El código no es un campo editable — ni el
+ * borde lo declara. Ver el JSDoc de `Insumo.codigo` para el porqué.
  */
 export interface EditInsumoDto {
-  codigo?: string;
   nombre?: string;
   familiaId?: string;
   unidadMedidaId?: string;

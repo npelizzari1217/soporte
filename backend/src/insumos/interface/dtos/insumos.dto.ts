@@ -33,13 +33,11 @@ import { EsNumeroConDecimales } from '../../../shared/interface/validators/es-nu
 import {
   InsumoEntity,
   INSUMO_CODIGOS_ALTERNATIVOS_MAX,
-  INSUMO_CODIGO_MAX_LENGTH,
   INSUMO_COMPATIBILIDAD_MAX,
   INSUMO_NOMBRE_MAX_LENGTH,
   INSUMO_STOCK_MINIMO_DECIMALES,
   INSUMO_STOCK_MINIMO_MAXIMO,
   INSUMO_STOCK_MINIMO_MINIMO,
-  normalizarCodigoInsumo,
   normalizarNombreInsumo,
 } from '../../domain/entities/insumo.entity';
 import {
@@ -54,18 +52,6 @@ import {
   COMPATIBILIDAD_ROL_MAX_LENGTH,
   normalizarRolCompatibilidad,
 } from '../../domain/entities/compatibilidad-modelo';
-
-/**
- * Normaliza el código del insumo con la función del dominio. Deja pasar
- * intacto lo que no es un string para que `@IsString` sea quien reporte el
- * error de tipo.
- *
- * @param value Valor crudo del campo `codigo`, tal como llega del body.
- * @returns El código recortado y en mayúscula, o el valor intacto.
- */
-function transformarCodigo({ value }: { value: unknown }): unknown {
-  return typeof value === 'string' ? normalizarCodigoInsumo(value) : value;
-}
 
 /**
  * Recorta el nombre —sin gritarlo— con la función del dominio. El recorte
@@ -152,24 +138,20 @@ export class CompatibilidadInputDto {
   rol?: string | null;
 }
 
-/** Body de `POST /insumos`. */
+/**
+ * Body de `POST /insumos`.
+ *
+ * **Sin `codigo` (issue #166).** El #162 lo dejaba opcional para que el
+ * cliente pudiera escribirlo a mano; el dueño pidió cerrar esa puerta: el
+ * código lo pone el sistema SIEMPRE (`CrearInsumoUseCase` + `NumeradorInsumo`,
+ * `REP-0001`/`INS-0001` según la familia). Esta clase NO declara la
+ * propiedad, así que un `codigo` en el body no tiene decorador que lo mida ni
+ * lo transforme — el `ValidationPipe` global (`whitelist: true`) lo DESCARTA
+ * en silencio antes de que llegue al controller. Es una decisión deliberada
+ * de "ignorar y no rechazar": ver el test de borde en
+ * `insumos-catalogos.e2e.spec.ts` que fija justamente esto.
+ */
 export class CreateInsumoDto {
-  /**
-   * Ausente ⇒ SE AUTOGENERA (issue #162): `REP-0001` si la familia es de
-   * repuestos, `INS-0001` si no (`CrearInsumoUseCase`). `@ValidateIf` y no
-   * `@IsOptional` a propósito, mismo criterio que `codigo` en `EditInsumoDto`:
-   * `@IsOptional` también dejaría pasar un `null` explícito, que llegaría
-   * intacto a `normalizarCodigoInsumo` y reventaría — un 500 por un body que
-   * el borde tenía que rechazar con un 400. Con `@ValidateIf`, la ÚNICA forma
-   * de disparar la autogeneración es OMITIR la clave del body.
-   */
-  @ValidateIf((objeto: CreateInsumoDto) => objeto.codigo !== undefined)
-  @IsString()
-  @MinLength(1)
-  @Transform(transformarCodigo)
-  @MaxLength(INSUMO_CODIGO_MAX_LENGTH)
-  codigo?: string;
-
   @IsString()
   @MinLength(1)
   @Transform(transformarNombre)
@@ -255,15 +237,15 @@ export class CreateInsumoDto {
  * normalización del dominio como si fuera un string. `stockMinimo` es la
  * ÚNICA excepción, porque ahí el `null` sí es un valor con significado — la
  * orden de borrar el punto de reposición.
+ *
+ * **Sin `codigo` (issue #166).** Cierra el agujero que el #162 dejaba
+ * abierto: el alta ya no aceptaba un código a mano, pero Editar SÍ lo
+ * cambiaba después. Esta clase NO declara la propiedad, así que el
+ * `ValidationPipe` global (`whitelist: true`) descarta en silencio cualquier
+ * `codigo` que llegue en el body del PATCH — mismo criterio de "ignorar y no
+ * rechazar" que `CreateInsumoDto`.
  */
 export class EditInsumoDto {
-  @ValidateIf((objeto: EditInsumoDto) => objeto.codigo !== undefined)
-  @IsString()
-  @MinLength(1)
-  @Transform(transformarCodigo)
-  @MaxLength(INSUMO_CODIGO_MAX_LENGTH)
-  codigo?: string;
-
   @ValidateIf((objeto: EditInsumoDto) => objeto.nombre !== undefined)
   @IsString()
   @MinLength(1)
