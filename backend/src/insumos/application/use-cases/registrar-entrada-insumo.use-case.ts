@@ -175,8 +175,11 @@ export class RegistrarEntradaInsumoUseCase {
       return Result.fail(movimiento.getError());
     }
 
-    await this.movimientoRepo.insert(movimiento.getValue());
+    // El asentado, NO `movimiento.getValue()`: issue #159 — `insert()`
+    // devuelve el asiento con el `createdAt` que realmente le puso la base,
+    // que puede diferir del reloj del proceso con el que se construyó acá.
+    const asentado = await this.movimientoRepo.insert(movimiento.getValue());
 
-    return Result.ok(movimiento.getValue());
+    return Result.ok(asentado);
   }
 }

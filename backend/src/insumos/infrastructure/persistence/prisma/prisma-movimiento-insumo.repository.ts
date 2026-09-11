@@ -56,12 +56,27 @@ export class PrismaMovimientoInsumoRepository implements IMovimientoInsumoReposi
    * append-only, así que un id repetido tiene que rebotar contra la PK en vez
    * de pisar en silencio un asiento ya escrito.
    *
+   * **Relee la fila recién escrita y devuelve el asiento RECONSTITUIDO desde
+   * ella — issue #159.** `MovimientoInsumoMapper.toPersistence()` omite
+   * `createdAt` del INSERT a propósito, para que el
+   * `DEFAULT clock_timestamp()` de la columna —el reloj de POSTGRES— sea quien
+   * la fije, y no el reloj del proceso que trae `movimiento.createdAt`. Es
+   * `clock_timestamp()` y no `CURRENT_TIMESTAMP` porque este `insert()` corre
+   * dentro de la misma transacción que el advisory lock, y `CURRENT_TIMESTAMP`
+   * es la hora de INICIO de esa transacción: ver el porqué completo en
+   * `prisma_tenant/schema.prisma`, sobre `MovimientoInsumo.createdAt`.
+   * `create()` de Prisma ya devuelve la fila completa tal como quedó —sin una
+   * segunda consulta—, así que `MovimientoInsumoMapper.toDomain()` alcanza
+   * para reconstituir el asiento canónico.
+   *
    * @param movimiento Movimiento de dominio a asentar.
+   * @returns El mismo asiento, con el `createdAt` que realmente le asignó la base.
    */
-  async insert(movimiento: MovimientoInsumoEntity): Promise<void> {
-    await this.client.movimientoInsumo.create({
+  async insert(movimiento: MovimientoInsumoEntity): Promise<MovimientoInsumoEntity> {
+    const fila = await this.client.movimientoInsumo.create({
       data: MovimientoInsumoMapper.toPersistence(movimiento),
     });
+    return MovimientoInsumoMapper.toDomain(fila);
   }
 
   /**

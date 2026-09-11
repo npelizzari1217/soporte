@@ -818,7 +818,58 @@ model MovimientoInsumo {
   // cabecera de esta sección). Un movimiento no se edita ni se borra: se
   // corrige con otro movimiento, que deja rastro de la corrección. NO agregar
   // por "simetría" con el resto del catálogo de insumos.
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  //
+  // `dbgenerated("clock_timestamp()")` — issue #159, y la función importa. Con
+  // `@default(now())` Prisma resuelve la fecha del lado del CLIENTE (el
+  // proceso Node) y la manda siempre dentro del INSERT, así que el
+  // `DEFAULT CURRENT_TIMESTAMP` de la columna (ver
+  // `20260906120000_movimientos_insumo/migration.sql`) nunca llega a
+  // dispararse por el camino de la aplicación. Verificado en producción: dos
+  // filas quedaron con `created_at` ~44 minutos en el futuro cuando el reloj
+  // del VPS derivó, mientras que las filas sembradas por migración —que usan
+  // `CURRENT_TIMESTAMP` en SQL crudo— quedaron correctas.
+  //
+  // POR QUÉ `clock_timestamp()` Y NO `CURRENT_TIMESTAMP`, que es lo que este
+  // mismo issue puso primero: en PostgreSQL `CURRENT_TIMESTAMP` —y `now()`— son
+  // la hora de INICIO DE LA TRANSACCIÓN, no la del INSERT. Quedan congeladas:
+  // verificado con un `pg_sleep(1)` en el medio, las dos lecturas devuelven el
+  // mismo valor al microsegundo, mientras `clock_timestamp()` avanza.
+  //
+  // Acá eso NO es un detalle. `insert()` corre dentro de la MISMA transacción
+  // que el `pg_advisory_xact_lock` de `lockAndSumByTipo`, así que la fecha
+  // quedaría fijada ANTES de que el lock se otorgue. Dos movimientos
+  // simultáneos sobre el mismo insumo podrían asentarse EN ORDEN INVERSO al de
+  // commit: el que arrancó antes y se quedó esperando el lock recibiría una
+  // fecha anterior a la del que arrancó después, tomó el lock primero y
+  // commiteó primero. Es exactamente la propiedad de orden que este cambio
+  // existe para proteger — cambiar el reloj del proceso por el de inicio de
+  // transacción sería seguir mintiendo, solo que distinto.
+  //
+  // `dbgenerated()` es la marca de Prisma para "esto lo calcula LA BASE, no
+  // yo": el mapper (`MovimientoInsumoMapper.toPersistence`) omite `createdAt`
+  // del INSERT a propósito, y recién ahí el `DEFAULT` de la columna se
+  // dispara. Mismo mecanismo que ya usa `id` en este mismo modelo
+  // (`dbgenerated("gen_random_uuid()")`), aunque ahí la app siempre pasa un
+  // valor explícito y acá, después de este cambio, nunca lo pasa.
+  //
+  // SOLO esta tabla, no las ~30 que en este schema tienen
+  // `@default(now())`: `movimientos_insumo` es la ÚNICA donde `created_at` no
+  // es metadato descriptivo sino EVIDENCIA que ordena un hecho de negocio — es
+  // append-only y su orden temporal decide "cuánto había en tal fecha" y a qué
+  // equipo fue a parar cada repuesto (trazabilidad del #153). Un reloj de
+  // proceso desviado ahí corrompe una lectura derivada, no solo un dato
+  // mostrado. En el resto de las tablas `created_at` es auditoría —no
+  // alimenta ninguna suma ni ningún cálculo—, así que un desvío de minutos no
+  // arrastra un error de negocio; tocarlas igual multiplicaría este diff por
+  // ~30 mappers para blindar un caso sin evidencia de daño. Si aparece
+  // evidencia de que otra tabla SÍ deriva algo de su orden temporal, extender
+  // el mismo mecanismo ahí es la próxima unidad, no esta.
+  //
+  // `updatedAt` (`@updatedAt`) NO se toca: es un mecanismo distinto —Prisma lo
+  // resuelve también del lado del cliente, así que en teoría comparte el
+  // mismo problema— pero esta tabla no tiene esa columna (ver cabecera:
+  // append-only, sin `updated_at`), así que acá no hay nada que corregir.
+  createdAt DateTime @default(dbgenerated("clock_timestamp()")) @map("created_at") @db.Timestamptz
 
   /// `onDelete` EXPLÍCITO en las cuatro, y en las tres opcionales no es
   /// redundante: el default de Prisma para una relación OPCIONAL es

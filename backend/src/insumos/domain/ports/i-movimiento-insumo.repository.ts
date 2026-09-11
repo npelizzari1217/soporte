@@ -77,8 +77,20 @@ export interface IMovimientoInsumoRepository {
    * (`ITenantTransactionRunner.run(...)`) que el `lockAndSumByTipo()` que
    * decidió que el movimiento era admisible. Fuera de ella el lock ya se
    * liberó y la comprobación de stock no vale nada: ver `lockAndSumByTipo()`.
+   *
+   * **Devuelve el asiento TAL COMO QUEDÓ EN LA BASE, y no el que recibió —
+   * issue #159.** `movimiento.createdAt` es el reloj del PROCESO
+   * (`BaseEntity` lo fija en su constructor, antes de este `insert()`); la
+   * columna `created_at` la pone el `DEFAULT clock_timestamp()` de la base
+   * —ver `MovimientoInsumoMapper.toPersistence()`—, que puede diferir del
+   * reloj del proceso si este último derivó. El caller tiene que usar SIEMPRE
+   * el valor de retorno como el asiento canónico —es el que hay que devolver
+   * al usuario—, nunca el argumento que pasó.
+   *
+   * @param movimiento Movimiento de dominio a asentar.
+   * @returns El mismo asiento, reconstituido con el `createdAt` que le asignó la base.
    */
-  insert(movimiento: MovimientoInsumoEntity): Promise<void>;
+  insert(movimiento: MovimientoInsumoEntity): Promise<MovimientoInsumoEntity>;
 
   /**
    * Toma el advisory lock transaccional del insumo y devuelve el desglose de
