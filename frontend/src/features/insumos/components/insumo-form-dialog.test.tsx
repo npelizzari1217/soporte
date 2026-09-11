@@ -69,45 +69,15 @@ function mockCatalogosConDatos(): void {
 }
 
 describe("InsumoFormDialog — crear", () => {
-  it("envía el POST con codigo/nombre/familiaId/unidadMedidaId, sin stockMinimo cuando queda vacío", async () => {
-    mockCatalogosConDatos();
-    const user = userEvent.setup();
-    let enviado: Record<string, unknown> = {};
-    server.use(
-      http.post("/api/insumos", async ({ request }) => {
-        enviado = (await request.json()) as Record<string, unknown>;
-        return HttpResponse.json({ ...buildInsumo(), ...enviado, id: "ins-2" }, { status: 201 });
-      }),
-    );
-
-    renderWithProviders(<InsumoFormDialog trigger={<button>Nuevo insumo</button>} />);
-    await user.click(screen.getByRole("button", { name: "Nuevo insumo" }));
-    await user.type(screen.getByLabelText("Código"), "CARTUCHO01");
-    await user.type(screen.getByLabelText("Nombre"), "Cartucho de tinta");
-    await user.selectOptions(await screen.findByLabelText("Familia"), "fam-1");
-    await user.selectOptions(screen.getByLabelText("Unidad de medida"), "um-1");
-    await user.click(screen.getByRole("button", { name: /^crear$/i }));
-
-    await waitFor(() =>
-      expect(enviado).toEqual({
-        codigo: "CARTUCHO01",
-        nombre: "Cartucho de tinta",
-        familiaId: "fam-1",
-        unidadMedidaId: "um-1",
-      }),
-    );
-    expect(enviado).not.toHaveProperty("stockMinimo");
-    expect(enviado).not.toHaveProperty("codigosAlternativos");
-    expect(enviado).not.toHaveProperty("compatibilidad");
-  });
-
   /**
-   * Issue #162: el campo dejó de ser obligatorio. Sin tipear nada, el POST
-   * viaja SIN la clave `codigo` — es la señal que el backend interpreta como
-   * "autogenerar" (`REP-0001`/`INS-0001` según la familia); mandar `""`
-   * explícito en cambio dispararía el `@MinLength(1)` del borde.
+   * INVIERTE "envía el POST con codigo/nombre/familiaId/unidadMedidaId..." y
+   * "sin codigo tipeado, el POST viaja sin la clave codigo (autogeneración)"
+   * (#162): ahí existía un `<input>` de código, y el POST llevaba o no la
+   * clave según si el usuario tipeaba algo. Issue #166 borra esa rama entera:
+   * no hay ningún control que pueda producir un `codigo` en el body — el
+   * único camino que queda es el de abajo.
    */
-  it("sin codigo tipeado, el POST viaja sin la clave codigo (autogeneración)", async () => {
+  it("el POST nunca lleva la clave codigo — no existe ningún control para escribirlo", async () => {
     mockCatalogosConDatos();
     const user = userEvent.setup();
     let enviado: Record<string, unknown> = {};
@@ -120,6 +90,10 @@ describe("InsumoFormDialog — crear", () => {
 
     renderWithProviders(<InsumoFormDialog trigger={<button>Nuevo insumo</button>} />);
     await user.click(screen.getByRole("button", { name: "Nuevo insumo" }));
+
+    // El borde del componente: no hay ningún textbox de "Código" que rellenar.
+    expect(screen.queryByRole("textbox", { name: "Código" })).not.toBeInTheDocument();
+
     await user.type(screen.getByLabelText("Nombre"), "Cartucho de tinta");
     await user.selectOptions(await screen.findByLabelText("Familia"), "fam-1");
     await user.selectOptions(screen.getByLabelText("Unidad de medida"), "um-1");
@@ -135,13 +109,21 @@ describe("InsumoFormDialog — crear", () => {
     expect(enviado).not.toHaveProperty("codigo");
   });
 
-  it("el hint de autogeneración solo se muestra en el alta, no al editar", async () => {
+  /**
+   * INVIERTE "el hint de autogeneración solo se muestra en el alta, no al
+   * editar" (#162): el hint sobre un `<input>` deshabilitado desapareció junto
+   * con el input. Lo que queda es la ETIQUETA vacía que el issue #166 pidió —
+   * "se genera al guardar" comunica que el código no es del usuario, ni
+   * siquiera un campo que decidió no completar.
+   */
+  it("en el alta, la etiqueta Código aparece vacía con 'Se genera al guardar'", async () => {
     mockCatalogosConDatos();
     const user = userEvent.setup();
 
     renderWithProviders(<InsumoFormDialog trigger={<button>Nuevo insumo</button>} />);
     await user.click(screen.getByRole("button", { name: "Nuevo insumo" }));
-    expect(screen.getByText(/se genera solo/i)).toBeInTheDocument();
+
+    expect(screen.getByLabelText("Código")).toHaveTextContent("Se genera al guardar");
   });
 
   it("con stockMinimo completado, lo incluye en el POST", async () => {
@@ -157,7 +139,6 @@ describe("InsumoFormDialog — crear", () => {
 
     renderWithProviders(<InsumoFormDialog trigger={<button>Nuevo insumo</button>} />);
     await user.click(screen.getByRole("button", { name: "Nuevo insumo" }));
-    await user.type(screen.getByLabelText("Código"), "CARTUCHO01");
     await user.type(screen.getByLabelText("Nombre"), "Cartucho de tinta");
     await user.selectOptions(await screen.findByLabelText("Familia"), "fam-1");
     await user.selectOptions(screen.getByLabelText("Unidad de medida"), "um-1");
@@ -171,7 +152,7 @@ describe("InsumoFormDialog — crear", () => {
 });
 
 describe("InsumoFormDialog — editar", () => {
-  it("prefilla desde la fila (incluido stock mínimo) y el PATCH no lleva codigosAlternativos ni compatibilidad", async () => {
+  it("prefilla desde la fila (incluido stock mínimo) y el PATCH no lleva codigo, codigosAlternativos ni compatibilidad", async () => {
     mockCatalogosConDatos();
     const user = userEvent.setup();
     const insumo = buildInsumo();
@@ -186,7 +167,7 @@ describe("InsumoFormDialog — editar", () => {
     renderWithProviders(<InsumoFormDialog insumo={insumo} trigger={<button>Editar</button>} />);
     await user.click(screen.getByRole("button", { name: "Editar" }));
 
-    expect(screen.getByLabelText("Código")).toHaveValue("TON001");
+    expect(screen.getByLabelText("Código")).toHaveTextContent("TON001");
     expect(screen.getByLabelText("Nombre")).toHaveValue("Tóner negro HP 26A");
     expect(await screen.findByLabelText("Familia")).toHaveValue("fam-1");
     expect(screen.getByLabelText("Unidad de medida")).toHaveValue("um-1");
@@ -196,34 +177,37 @@ describe("InsumoFormDialog — editar", () => {
 
     await waitFor(() =>
       expect(enviado).toEqual({
-        codigo: "TON001",
         nombre: "Tóner negro HP 26A",
         familiaId: "fam-1",
         unidadMedidaId: "um-1",
         stockMinimo: 5,
       }),
     );
+    expect(enviado).not.toHaveProperty("codigo");
     expect(enviado).not.toHaveProperty("codigosAlternativos");
     expect(enviado).not.toHaveProperty("compatibilidad");
   });
 
-  it("el hint de autogeneración NO se muestra al editar — el código ya existe", async () => {
+  it("al editar, la etiqueta Código muestra el código real — no 'Se genera al guardar'", async () => {
     mockCatalogosConDatos();
     const user = userEvent.setup();
 
     renderWithProviders(<InsumoFormDialog insumo={buildInsumo()} trigger={<button>Editar</button>} />);
     await user.click(screen.getByRole("button", { name: "Editar" }));
 
-    expect(screen.queryByText(/se genera solo/i)).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Código")).toHaveTextContent("TON001");
+    expect(screen.queryByText(/se genera al guardar/i)).not.toBeInTheDocument();
   });
 
   /**
-   * Issue #162: el código NUNCA cambia solo, ni siquiera al editar. Si el
-   * usuario borra el campo en la edición, el PATCH NO manda `codigo` —se
-   * interpreta como "no tocar" (`EditInsumoDto.codigo: undefined`)—, nunca
-   * como una orden de borrarlo o de disparar una autogeneración tardía.
+   * EL GEMELO INVERTIDO que cierra el agujero del WU-3 (issue #166): antes
+   * (#162) existía un `<input>` de código en la edición, y borrarlo se
+   * interpretaba como "no tocar". Ahora no hay ningún control que pueda
+   * cambiar el código: ni un `<input>` para escribir uno nuevo, ni uno para
+   * borrarlo. El PATCH nunca lleva `codigo`, sin que el usuario tenga que
+   * hacer nada para lograrlo.
    */
-  it("borrar el código en la edición NO lo manda en el PATCH — se interpreta como 'no tocar'", async () => {
+  it("no existe ningún control para tocar el código al editar — el PATCH nunca lleva codigo", async () => {
     mockCatalogosConDatos();
     const user = userEvent.setup();
     const insumo = buildInsumo();
@@ -238,7 +222,8 @@ describe("InsumoFormDialog — editar", () => {
     renderWithProviders(<InsumoFormDialog insumo={insumo} trigger={<button>Editar</button>} />);
     await user.click(screen.getByRole("button", { name: "Editar" }));
 
-    await user.clear(screen.getByLabelText("Código"));
+    expect(screen.queryByRole("textbox", { name: "Código" })).not.toBeInTheDocument();
+
     await user.click(screen.getByRole("button", { name: /^guardar$/i }));
 
     await waitFor(() => expect(enviado).not.toHaveProperty("codigo"));
@@ -300,7 +285,6 @@ describe("InsumoFormDialog — validación cliente-side", () => {
 
     renderWithProviders(<InsumoFormDialog trigger={<button>Nuevo insumo</button>} />);
     await user.click(screen.getByRole("button", { name: "Nuevo insumo" }));
-    await user.type(screen.getByLabelText("Código"), "TON001");
     await user.type(screen.getByLabelText("Nombre"), "N".repeat(256));
     await user.selectOptions(await screen.findByLabelText("Familia"), "fam-1");
     await user.selectOptions(screen.getByLabelText("Unidad de medida"), "um-1");
@@ -311,35 +295,12 @@ describe("InsumoFormDialog — validación cliente-side", () => {
   });
 
   /**
-   * REGRESIÓN: el form NO puede ser más estricto que el borde. `CreateInsumoDto`
-   * no declara `@Matches` sobre `codigo` —solo `trim().toUpperCase()`—, así que
-   * un guion es válido y una minúscula la normaliza el backend. Un patrón
-   * cliente-side acá dejaba INEDITABLE a todo insumo ya guardado con guion:
-   * `TON-001` no podía ni cambiarse de nombre sin cambiarle antes el código.
+   * "codigo con guion y minúsculas viaja tal cual — lo normaliza el backend"
+   * (#162) se QUITA, no se invierte: probaba la normalización de un
+   * `<input>` de código que el issue #166 elimina del formulario por
+   * completo. No hay equivalente posible — no queda ningún valor de código
+   * que el cliente pueda tipear.
    */
-  it("codigo con guion y minúsculas viaja tal cual — lo normaliza el backend", async () => {
-    mockCatalogosConDatos();
-    const user = userEvent.setup();
-    let capturado: unknown = null;
-    server.use(
-      http.post("/api/insumos", async ({ request }) => {
-        capturado = await request.json();
-        return HttpResponse.json(buildInsumo(), { status: 201 });
-      }),
-    );
-
-    renderWithProviders(<InsumoFormDialog trigger={<button>Nuevo insumo</button>} />);
-    await user.click(screen.getByRole("button", { name: "Nuevo insumo" }));
-    await user.type(screen.getByLabelText("Código"), "ton-001");
-    await user.type(screen.getByLabelText("Nombre"), "Tóner");
-    await user.selectOptions(await screen.findByLabelText("Familia"), "fam-1");
-    await user.selectOptions(screen.getByLabelText("Unidad de medida"), "um-1");
-    await user.click(screen.getByRole("button", { name: /^crear$/i }));
-
-    await waitFor(() => expect(capturado).not.toBeNull());
-    expect(capturado).toMatchObject({ codigo: "ton-001" });
-  });
-
   it("stockMinimo con un decimal de más no dispara la request (Postgres redondearía en silencio)", async () => {
     mockCatalogosConDatos();
     const user = userEvent.setup();
@@ -353,7 +314,6 @@ describe("InsumoFormDialog — validación cliente-side", () => {
 
     renderWithProviders(<InsumoFormDialog trigger={<button>Nuevo insumo</button>} />);
     await user.click(screen.getByRole("button", { name: "Nuevo insumo" }));
-    await user.type(screen.getByLabelText("Código"), "TON001");
     await user.type(screen.getByLabelText("Nombre"), "Tóner");
     await user.selectOptions(await screen.findByLabelText("Familia"), "fam-1");
     await user.selectOptions(screen.getByLabelText("Unidad de medida"), "um-1");

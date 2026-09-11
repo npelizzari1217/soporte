@@ -1,11 +1,6 @@
 import { DomainError, Result } from '../../../shared/domain/result';
 import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
-import {
-  InsumoEntity,
-  normalizarCodigoInsumo,
-  normalizarNombreInsumo,
-} from '../../domain/entities/insumo.entity';
-import { InsumoCodigoDuplicadoError } from '../../domain/errors/insumos.errors';
+import { InsumoEntity, normalizarNombreInsumo } from '../../domain/entities/insumo.entity';
 import { IInsumoRepository } from '../../domain/ports/i-insumo.repository';
 import { NumeradorInsumo } from '../../domain/services/numerador-insumo.service';
 import {
@@ -20,16 +15,18 @@ import {
   validarUnidadMedidaElegible,
 } from '../services/validar-insumo.service';
 
-/** DTO de entrada de `CrearInsumoUseCase`. */
+/**
+ * DTO de entrada de `CrearInsumoUseCase`.
+ *
+ * **Sin `codigo` (issue #166).** El #162 lo dejaba opcional y, si el caller lo
+ * mandaba, lo respetaba tal cual. El dueño pidió cerrar esa puerta: el código
+ * lo pone el sistema SIEMPRE, nunca el cliente. El borde ya ni siquiera deja
+ * pasar la clave —`CreateInsumoDto` no la declara, y el `ValidationPipe`
+ * global (`whitelist: true`) la descarta en silencio si alguien la manda—,
+ * así que esta interfaz no la declara tampoco: el borde no tiene nada que
+ * traducir.
+ */
 export interface CrearInsumoDto {
-  /**
-   * Ausente ⇒ SE AUTOGENERA (issue #162): `REP-0001` si la familia es de
-   * repuestos, `INS-0001` si no, correlativo e independiente por serie
-   * dentro del tenant. Si el caller manda un valor, se respeta tal cual —el
-   * autogenerado es el default, no una imposición— y pasa por el mismo
-   * chequeo de unicidad de siempre.
-   */
-  codigo?: string;
   nombre: string;
   familiaId: string;
   unidadMedidaId: string;
@@ -52,20 +49,16 @@ export interface CrearInsumoDto {
  *    inexistente, pero la familia deshabilitada tiene fila y pasa en silencio.
  * 2. Códigos alternativos —primero el duplicado dentro del payload, después
  *    el choque global—. 3. Compatibilidad —primero el modelo repetido dentro
- *    del payload, después la elegibilidad de cada uno—. Van antes que el
- *    código porque un error de catálogo hace irrelevante todo lo que viene
- *    después: pedirle al usuario que corrija un código cuando lo que está mal
- *    es la familia lo manda a editar un campo que no tiene nada.
- * 3. Código: si el caller lo manda (`dto.codigo !== undefined`), se normaliza
- *    y se verifica único, IGUAL que siempre — sin transacción ni lock, esa
- *    carrera es teórica (dos personas tendrían que tipear el mismo código a
- *    mano en el mismo instante) y sigue siéndolo. Si NO lo manda, se
- *    AUTOGENERA (issue #162) dentro de una transacción que serializa la
- *    numeración con un advisory lock — ver el JSDoc de
- *    `PrismaInsumoRepository.findLastSecuenciaCodigo` para el porqué: sin
- *    ella, dos altas simultáneas calculan el mismo "próximo código" y la
- *    segunda choca contra el `@unique` con un "código duplicado" sobre un
- *    código que el usuario nunca escribió.
+ *    del payload, después la elegibilidad de cada uno—.
+ *
+ * **El código SIEMPRE se autogenera (issue #166 cierra la puerta que el #162
+ * dejaba abierta).** No hay más rama de "código a mano": la única fuente es
+ * `NumeradorInsumo`, dentro de una transacción que serializa la numeración
+ * con un advisory lock — ver el JSDoc de
+ * `PrismaInsumoRepository.findLastSecuenciaCodigo` para el porqué: sin ella,
+ * dos altas simultáneas calculan el mismo "próximo código" y la segunda choca
+ * contra el `@unique`. `CrearInsumoDto` ni siquiera declara un campo `codigo`
+ * — ver su JSDoc.
  *
  * Sin `throw` para los fallos esperados: todos se modelan con `Result.fail()`.
  */
@@ -73,7 +66,7 @@ export class CrearInsumoUseCase {
   constructor(
     private readonly insumoRepo: Pick<
       IInsumoRepository,
-      'findByCodigo' | 'findConflictosDeCodigoAlternativo' | 'save'
+      'findConflictosDeCodigoAlternativo' | 'save'
     >,
     private readonly familiaRepo: LectorCatalogoFamilias,
     private readonly unidadMedidaRepo: LectorCatalogoUnidades,
@@ -83,14 +76,14 @@ export class CrearInsumoUseCase {
   ) {}
 
   /**
-   * @param dto Datos del insumo a crear, tal como llegan del borde.
+   * @param dto Datos del insumo a crear, tal como llegan del borde. Nunca
+   *   trae `codigo`: lo pone el sistema.
    * @returns El insumo creado, o el primer error de negocio que lo impide:
    *   `FamiliaInsumoInexistenteError`, `FamiliaInsumoDeshabilitadaError`,
    *   `UnidadMedidaInexistenteError`, `UnidadMedidaDeshabilitadaError`,
    *   `CodigoAlternativoDuplicadoError`, `CompatibilidadDuplicadaError`,
-   *   `ModeloEquipoInexistenteError`, `ModeloEquipoDeshabilitadoError`,
-   *   `InsumoCodigoDuplicadoError` (código a mano) o
-   *   `SecuenciaCodigoInsumoAgotadaError` (autogenerado).
+   *   `ModeloEquipoInexistenteError`, `ModeloEquipoDeshabilitadoError` o
+   *   `SecuenciaCodigoInsumoAgotadaError`.
    */
   async execute(dto: CrearInsumoDto): Promise<Result<InsumoEntity, DomainError>> {
     const nombre = normalizarNombreInsumo(dto.nombre);
@@ -121,35 +114,10 @@ export class CrearInsumoUseCase {
       return Result.fail(compatibilidad.getError());
     }
 
-    // Código escrito a mano: se respeta tal cual (issue #162, "el
-    // autogenerado es el default, no una imposición"). Sin transacción ni
-    // lock — ver el JSDoc de la clase para el porqué de esa asimetría.
-    if (dto.codigo !== undefined) {
-      const codigo = normalizarCodigoInsumo(dto.codigo);
-
-      const ocupante = await this.insumoRepo.findByCodigo(codigo);
-      if (ocupante) {
-        return Result.fail(new InsumoCodigoDuplicadoError(codigo));
-      }
-
-      const insumo = InsumoEntity.create({
-        codigo,
-        nombre,
-        familiaId: dto.familiaId,
-        unidadMedidaId: dto.unidadMedidaId,
-        stockMinimo: dto.stockMinimo ?? null,
-        activo: true,
-        codigosAlternativos: codigosAlternativos.getValue(),
-        compatibilidad: compatibilidad.getValue(),
-      });
-
-      await this.insumoRepo.save(insumo);
-      return Result.ok(insumo);
-    }
-
-    // Autogeneración (issue #162). La familia YA se validó elegible arriba;
-    // esta segunda lectura solo resuelve `esRepuesto` para elegir la serie,
-    // no repite ningún chequeo de elegibilidad.
+    // Autogeneración (issue #162, único camino desde el #166). La familia YA
+    // se validó elegible arriba; esta segunda lectura solo resuelve
+    // `esRepuesto` para elegir la serie, no repite ningún chequeo de
+    // elegibilidad.
     const familiaEntidad = await this.familiaRepo.findById(dto.familiaId);
     const esRepuesto = familiaEntidad?.esRepuesto ?? false;
 

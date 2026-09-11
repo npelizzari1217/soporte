@@ -139,7 +139,6 @@ describe('InsumosController', () => {
     });
 
     const result = await controller.crear({
-      codigo: 'TON-001',
       nombre: 'Tóner negro',
       familiaId: FAMILIA_ID,
       unidadMedidaId: UNIDAD_ID,
@@ -149,7 +148,6 @@ describe('InsumosController', () => {
     expect(result.codigo).toBe('TON-001');
     expect(result.stockMinimo).toBe(5.5);
     expect(crearUseCase.execute).toHaveBeenCalledWith({
-      codigo: 'TON-001',
       nombre: 'Tóner negro',
       familiaId: FAMILIA_ID,
       unidadMedidaId: UNIDAD_ID,
@@ -158,10 +156,10 @@ describe('InsumosController', () => {
   });
 
   /**
-   * Issue #162: el campo dejó de ser obligatorio. Sin `codigo` en el body, el
-   * controller lo pasa TAL CUAL —ausente— al use case, que es quien decide
-   * autogenerarlo. Si el controller inventara un `codigo: undefined` explícito
-   * o cualquier otro valor, este test lo detecta.
+   * Issue #162: el campo dejó de ser obligatorio. Issue #166: dejó de EXISTIR
+   * en `CreateInsumoDto` — no hay ningún body posible que lo incluya, así que
+   * el controller SIEMPRE lo pasa ausente al use case, que es quien decide
+   * autogenerarlo.
    */
   it('POST /insumos sin codigo lo pasa ausente al use case (autogeneración)', async () => {
     const insumo = construirInsumo({ codigo: 'INS-0001' });
@@ -209,6 +207,14 @@ describe('InsumosController', () => {
     ).rejects.toBeInstanceOf(ConflictException);
   });
 
+  /**
+   * `CrearInsumoUseCase` ya no puede producir este error desde el #166 —el
+   * cliente no elige código, así que no hay colisión que evaluar—, pero el
+   * mapeo genérico de `toHttpException` sigue siendo el mismo para
+   * cualquier `DomainError` no listado explícitamente: este test lo fija por
+   * si la clase se reutiliza en otro flujo futuro (una importación masiva,
+   * por ejemplo).
+   */
   it('POST /insumos con código duplicado lanza 422', async () => {
     const { controller } = buildController({
       crear: {
@@ -218,7 +224,6 @@ describe('InsumosController', () => {
 
     await expect(
       controller.crear({
-        codigo: 'TON-001',
         nombre: 'Tóner negro',
         familiaId: FAMILIA_ID,
         unidadMedidaId: UNIDAD_ID,
@@ -242,7 +247,6 @@ describe('InsumosController', () => {
 
     await expect(
       controller.crear({
-        codigo: 'TON-001',
         nombre: 'Tóner negro',
         familiaId: FAMILIA_ID,
         unidadMedidaId: UNIDAD_ID,
@@ -261,7 +265,6 @@ describe('InsumosController', () => {
 
     await expect(
       controller.crear({
-        codigo: 'TON-001',
         nombre: 'Tóner negro',
         familiaId: FAMILIA_ID,
         unidadMedidaId: UNIDAD_ID,

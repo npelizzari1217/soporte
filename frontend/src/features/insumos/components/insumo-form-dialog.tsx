@@ -10,11 +10,21 @@
  * en el listado desde el primer pintado, y sin esto reabrirlo mostraría el
  * snapshot del primer render, no el dato vigente.
  *
- * SCOPE recortado a propósito (decisión del dueño del repo): `codigo`,
- * `nombre`, `familiaId`, `unidadMedidaId`, `stockMinimo` (opcional). Sin
- * campos para `codigosAlternativos`/`compatibilidad` — se gestionan desde la
- * ficha en una entrega posterior, y el body de POST/PATCH los omite siempre
- * (ver el JSDoc de `use-insumo-abm-mutations.ts`).
+ * SCOPE recortado a propósito (decisión del dueño del repo): `nombre`,
+ * `familiaId`, `unidadMedidaId`, `stockMinimo` (opcional). Sin campos para
+ * `codigosAlternativos`/`compatibilidad` — se gestionan desde la ficha en una
+ * entrega posterior, y el body de POST/PATCH los omite siempre (ver el
+ * JSDoc de `use-insumo-abm-mutations.ts`).
+ *
+ * **El código NO es un campo del formulario (issue #166).** El #162 lo dejaba
+ * como un `<input>` opcional; el dueño pidió reemplazarlo por una ETIQUETA:
+ * en el alta aparece vacía —"se genera al guardar"—, y en la edición muestra
+ * el código real pero sin forma de tocarlo. La diferencia no es cosmética: un
+ * input deshabilitado sigue pareciendo un campo del formulario que es tuyo
+ * pero está temporalmente bloqueado; una etiqueta comunica que el código no
+ * es del usuario, es del sistema. Por eso no se registra con
+ * `react-hook-form` ni viaja en ningún DTO — ver `CreateInsumoDto`/
+ * `EditInsumoDto` en `types.ts`, que ya no lo declaran.
  *
  * Gate de ESCRITURA: este componente NO se auto-gatea — el CALLER decide con
  * `<SoloAdminCliente>` (mismo criterio que el resto de los diálogos del
@@ -107,13 +117,12 @@ export function InsumoFormDialog({ trigger, insumo }: InsumoFormDialogProps) {
   // Recalculado en CADA render: ver el JSDoc de arriba.
   const valoresVigentes: InsumoFormValues = insumo
     ? {
-        codigo: insumo.codigo,
         nombre: insumo.nombre,
         familiaId: insumo.familiaId,
         unidadMedidaId: insumo.unidadMedidaId,
         stockMinimo: insumo.stockMinimo ?? undefined,
       }
-    : { codigo: "", nombre: "", familiaId: "", unidadMedidaId: "", stockMinimo: undefined };
+    : { nombre: "", familiaId: "", unidadMedidaId: "", stockMinimo: undefined };
 
   const {
     register,
@@ -139,36 +148,29 @@ export function InsumoFormDialog({ trigger, insumo }: InsumoFormDialogProps) {
   }, [open, unidadesListas]);
 
   function submit(values: InsumoFormValues) {
-    // Vacío o de solo espacios es la señal de "autogenerar" (issue #162): la
-    // clave `codigo` se OMITE del body en vez de mandar `""` — mismo criterio
-    // que `stockMinimo` ausente en el alta, y el que interpreta el PATCH como
-    // "no tocar" en la edición (`EditInsumoDto.codigo` es `undefined` ⇒ deja
-    // el código guardado intacto).
-    const codigo = values.codigo.trim();
-
     if (isEdit) {
       // `stockMinimo` es el ÚNICO campo donde `null` viaja a propósito: es la
       // orden explícita de borrar el punto de reposición cuando el usuario
-      // limpia el campo (ver el JSDoc de `EditInsumoDto`).
+      // limpia el campo (ver el JSDoc de `EditInsumoDto`). Sin `codigo`: no
+      // es un campo editable (issue #166).
       const dto: EditInsumoDto = {
         nombre: values.nombre,
         familiaId: values.familiaId,
         unidadMedidaId: values.unidadMedidaId,
         stockMinimo: values.stockMinimo ?? null,
-        ...(codigo ? { codigo } : {}),
       };
       editarMutation.mutate(dto, { onSuccess: () => setOpen(false) });
       return;
     }
 
-    // En el alta, en cambio, vacío es AUSENCIA: `stockMinimo` no viaja en el
-    // body cuando el campo queda sin completar (ni `undefined` explícito ni
-    // `null` — la clave directamente no está).
+    // En el alta, vacío es AUSENCIA: `stockMinimo` no viaja en el body cuando
+    // el campo queda sin completar (ni `undefined` explícito ni `null` — la
+    // clave directamente no está). Sin `codigo`: lo autogenera el sistema
+    // (issue #166) y el formulario no tiene ningún valor que ofrecer.
     const dto: CreateInsumoDto = {
       nombre: values.nombre,
       familiaId: values.familiaId,
       unidadMedidaId: values.unidadMedidaId,
-      ...(codigo ? { codigo } : {}),
       ...(values.stockMinimo === undefined ? {} : { stockMinimo: values.stockMinimo }),
     };
     crearMutation.mutate(dto, { onSuccess: () => setOpen(false) });
@@ -190,29 +192,19 @@ export function InsumoFormDialog({ trigger, insumo }: InsumoFormDialogProps) {
         <form onSubmit={handleSubmit(submit)} className="flex flex-col gap-4" noValidate>
           <div className="flex flex-col gap-1">
             {/*
-              Sin "(opcional)" en el rótulo a propósito, a diferencia de
-              "Stock mínimo (opcional)" más abajo: la suite entera referencia
-              este campo con `getByLabelText("Código")` EXACTO —en el alta, en
-              la edición y en la validación—, y agregarle un sufijo rompería
-              esos matches por accesibilidad (el nombre accesible pasaría a
-              ser "Código (opcional)"). El hint de abajo ya comunica que el
-              campo es opcional en el alta.
+              Issue #166: el código NO es un input, es una etiqueta. Vacía
+              mientras se crea —comunica que el sistema todavía no lo generó,
+              no que sea un campo bloqueado que te pertenece— y con el código
+              real, sin poder tocarlo, al editar. `id="insumo-codigo"` se
+              conserva para que la suite existente siga ubicando el bloque
+              con el mismo criterio de siempre.
             */}
-            <label htmlFor="insumo-codigo" className="text-sm font-medium text-foreground">
+            <span id="insumo-codigo-label" className="text-sm font-medium text-foreground">
               Código
-            </label>
-            <Input id="insumo-codigo" error={!!errors.codigo} {...register("codigo")} />
-            {/* Issue #162: dejarlo vacío autogenera INS-0001/REP-0001 según la familia. */}
-            {!isEdit && !errors.codigo && (
-              <p className="text-xs text-muted-foreground">
-                Si lo dejás vacío, se genera solo: INS-0001 para insumos, REP-0001 para repuestos.
-              </p>
-            )}
-            {errors.codigo && (
-              <p role="alert" className="text-sm text-destructive">
-                {errors.codigo.message}
-              </p>
-            )}
+            </span>
+            <p aria-labelledby="insumo-codigo-label" className="text-sm text-foreground">
+              {insumo ? insumo.codigo : <span className="text-muted-foreground">Se genera al guardar</span>}
+            </p>
           </div>
 
           <div className="flex flex-col gap-1">

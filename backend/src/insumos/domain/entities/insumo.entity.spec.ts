@@ -100,37 +100,43 @@ describe('normalizarNombreInsumo()', () => {
 });
 
 /**
- * El dominio es la AUTORIDAD del largo; el `VarChar(50)`/`VarChar(255)` de
- * `insumos` es backstop. Se recorren `create()` Y `actualizar()`: el guard
- * está invocado en los dos y, sin el par, borrar uno solo no pone nada en
- * rojo.
+ * El dominio es la AUTORIDAD del largo del `codigo`; el `VarChar(50)` de
+ * `insumos` es backstop. Se mide SOLO en `create()`: desde el issue #166
+ * `actualizar()` ni siquiera acepta un `codigo` en su tipo, así que no hay
+ * segundo guard que sincronizar con este.
  */
-describe.each([
-  [
-    'create()',
-    (codigo: string, nombre: string) => (): unknown =>
-      InsumoEntity.create(propsBase({ codigo, nombre })),
-  ],
-  [
-    'actualizar()',
-    (codigo: string, nombre: string) => (): unknown =>
-      InsumoEntity.create(propsBase()).actualizar({ codigo, nombre }),
-  ],
-])('InsumoEntity %s — precondición de largo', (_caso, construir) => {
+describe('InsumoEntity create() — precondición de largo de codigo', () => {
   it('lanza si codigo excede el tope de la columna', () => {
-    expect(construir('A'.repeat(INSUMO_CODIGO_MAX_LENGTH + 1), 'Tóner')).toThrow(/codigo excede/);
+    expect(() =>
+      InsumoEntity.create(propsBase({ codigo: 'A'.repeat(INSUMO_CODIGO_MAX_LENGTH + 1) })),
+    ).toThrow(/codigo excede/);
   });
 
   it('acepta codigo en el tope exacto (límite inclusive)', () => {
-    expect(construir('A'.repeat(INSUMO_CODIGO_MAX_LENGTH), 'Tóner')).not.toThrow();
+    expect(() =>
+      InsumoEntity.create(propsBase({ codigo: 'A'.repeat(INSUMO_CODIGO_MAX_LENGTH) })),
+    ).not.toThrow();
   });
+});
 
+/**
+ * El guard de largo del `nombre` sí corre en los dos: `create()` Y
+ * `actualizar()` lo aceptan, y sin el par, borrar uno solo no pone nada en
+ * rojo.
+ */
+describe.each([
+  ['create()', (nombre: string) => (): unknown => InsumoEntity.create(propsBase({ nombre }))],
+  [
+    'actualizar()',
+    (nombre: string) => (): unknown => InsumoEntity.create(propsBase()).actualizar({ nombre }),
+  ],
+])('InsumoEntity %s — precondición de largo de nombre', (_caso, construir) => {
   it('lanza si nombre excede el tope de la columna', () => {
-    expect(construir('TON-001', 'N'.repeat(INSUMO_NOMBRE_MAX_LENGTH + 1))).toThrow(/nombre excede/);
+    expect(construir('N'.repeat(INSUMO_NOMBRE_MAX_LENGTH + 1))).toThrow(/nombre excede/);
   });
 
   it('acepta nombre en el tope exacto (límite inclusive)', () => {
-    expect(construir('TON-001', 'N'.repeat(INSUMO_NOMBRE_MAX_LENGTH))).not.toThrow();
+    expect(construir('N'.repeat(INSUMO_NOMBRE_MAX_LENGTH))).not.toThrow();
   });
 });
 
@@ -271,6 +277,26 @@ describe('InsumoEntity', () => {
       expect(insumo.familiaId).toBe('id-familia');
       expect(insumo.unidadMedidaId).toBe('id-unidad');
       expect(insumo.stockMinimo).toBe(5);
+    });
+
+    /**
+     * Issue #166: el `codigo` no está en el TIPO de `actualizar()`, así que
+     * ningún caller tipado puede pasarlo. Este test cubre al que no lo está
+     * —un script, un `any` colado— con un cast defensivo: aunque alguien
+     * fuerce un `codigo` por fuera del tipo, el método no lo lee ni lo
+     * persiste, porque su cuerpo ya no tiene ninguna rama que toque
+     * `this.props.codigo`.
+     */
+    it('ignora un codigo colado por fuera del tipo — el codigo no es editable ni forzando el cast', () => {
+      const insumo = InsumoEntity.create(propsBase());
+
+      (insumo.actualizar as (datos: { codigo?: string; nombre?: string }) => void)({
+        codigo: 'HACKEADO',
+        nombre: 'Nombre nuevo',
+      });
+
+      expect(insumo.codigo).toBe('TON-001');
+      expect(insumo.nombre).toBe('Nombre nuevo');
     });
 
     it('reasigna familia y unidad de medida cuando se proveen', () => {

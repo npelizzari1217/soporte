@@ -12,14 +12,10 @@ import { SecuenciaCodigoInsumoAgotadaError } from '../../domain/errors/insumos.e
 import { NumeradorInsumo } from '../../domain/services/numerador-insumo.service';
 
 describe('CrearInsumoUseCase', () => {
-  type InsumoRepoMock = Pick<
-    IInsumoRepository,
-    'findByCodigo' | 'findConflictosDeCodigoAlternativo' | 'save'
-  >;
+  type InsumoRepoMock = Pick<IInsumoRepository, 'findConflictosDeCodigoAlternativo' | 'save'>;
 
   function buildInsumoRepo(overrides: Partial<InsumoRepoMock> = {}) {
     return {
-      findByCodigo: vi.fn().mockResolvedValue(null),
       findConflictosDeCodigoAlternativo: vi.fn().mockResolvedValue([]),
       save: vi.fn().mockResolvedValue(undefined),
       ...overrides,
@@ -97,8 +93,12 @@ describe('CrearInsumoUseCase', () => {
     };
   }
 
+  /**
+   * Sin `codigo` (issue #166): `CrearInsumoDto` ya no lo declara, así que
+   * ningún fixture de este archivo puede mandarlo. El código SIEMPRE sale del
+   * numerador — `buildNumerador()` por default resuelve `INS-0001`.
+   */
   const dtoBase = {
-    codigo: 'TON-001',
     nombre: 'Tóner negro',
     familiaId: 'fam-1',
     unidadMedidaId: 'uni-1',
@@ -120,7 +120,7 @@ describe('CrearInsumoUseCase', () => {
     const result = await useCase.execute(dtoBase);
 
     expect(result.isOk()).toBe(true);
-    expect(result.getValue().codigo).toBe('TON-001');
+    expect(result.getValue().codigo).toBe('INS-0001');
     expect(result.getValue().activo).toBe(true);
     expect(insumoRepo.save).toHaveBeenCalledTimes(1);
   });
@@ -157,11 +157,8 @@ describe('CrearInsumoUseCase', () => {
 
   // ─── Normalización ────────────────────────────────────────────────────────
 
-  /**
-   * `insumos.codigo` es UNIQUE case-sensitive: sin normalizar acá, `ton-001` y
-   * `TON-001` entrarían como dos insumos distintos.
-   */
-  it('normaliza el código a mayúscula y recorta el nombre antes de persistir', async () => {
+  /** El nombre se recorta igual que siempre; el código no depende de él ni del input. */
+  it('recorta el nombre antes de persistir', async () => {
     const useCase = new CrearInsumoUseCase(
       buildInsumoRepo(),
       buildFamiliaRepo(),
@@ -173,29 +170,10 @@ describe('CrearInsumoUseCase', () => {
 
     const result = await useCase.execute({
       ...dtoBase,
-      codigo: '  ton-001  ',
       nombre: '  Tóner negro  ',
     });
 
-    expect(result.getValue().codigo).toBe('TON-001');
     expect(result.getValue().nombre).toBe('Tóner negro');
-  });
-
-  /** El índice es case-sensitive, así que la búsqueda tiene que ir normalizada. */
-  it('busca el duplicado con el código YA normalizado', async () => {
-    const insumoRepo = buildInsumoRepo();
-    const useCase = new CrearInsumoUseCase(
-      insumoRepo,
-      buildFamiliaRepo(),
-      buildUnidadRepo(),
-      buildModeloRepo(),
-      buildNumerador(),
-      buildTxRunner(),
-    );
-
-    await useCase.execute({ ...dtoBase, codigo: ' ton-001 ' });
-
-    expect(insumoRepo.findByCodigo).toHaveBeenCalledWith('TON-001');
   });
 
   // ─── Existe ≠ es elegible ─────────────────────────────────────────────────
@@ -316,26 +294,27 @@ describe('CrearInsumoUseCase', () => {
     expect(result.getError().code).toBe('UNIDAD_MEDIDA_INEXISTENTE');
   });
 
-  // ─── Código único ─────────────────────────────────────────────────────────
+  // ─── Código: SIEMPRE autogenerado, nunca del cliente (issue #166) ─────────
 
   /**
-   * `insumos_codigo_key` NO es parcial: el código sigue tomado aunque el
-   * insumo que lo ocupa esté deshabilitado.
+   * INVIERTE el test homónimo del #162 ("rechaza con INSUMO_CODIGO_DUPLICADO
+   * aunque el insumo que ocupa el código esté deshabilitado"): antes, un
+   * código a mano que colisionaba con uno existente rechazaba el alta. Ahora
+   * el cliente NO ELIGE código, así que no hay colisión que evaluar — el
+   * `findByCodigo` de la unicidad manual ni siquiera está en el `Pick` del
+   * constructor. El insumo se crea igual, con el código que el numerador le
+   * asigna.
+   *
+   * EL NOMBRE DICE LO QUE ESTE TEST PRUEBA, y no más: que el alta ya no
+   * depende de la unicidad manual. NO ejercita "un código provisto por el
+   * cliente", porque a esta altura eso dejó de ser expresable — `CrearInsumoDto`
+   * ya no tiene `codigo`. Ese caso vive donde todavía es posible mandarlo: la
+   * frontera del DTO (`insumos.dto.spec.ts`) y el e2e contra HTTP real. Un
+   * título que prometa el caso del cliente acá sería cobertura falsa.
    */
-  it('rechaza con INSUMO_CODIGO_DUPLICADO aunque el insumo que ocupa el código esté deshabilitado', async () => {
-    const ocupante = InsumoEntity.create({
-      codigo: 'TON-001',
-      nombre: 'Tóner viejo',
-      familiaId: 'fam-1',
-      unidadMedidaId: 'uni-1',
-      stockMinimo: null,
-      activo: false,
-      codigosAlternativos: [],
-      compatibilidad: [],
-    });
-    const insumoRepo = buildInsumoRepo({ findByCodigo: vi.fn().mockResolvedValue(ocupante) });
+  it('el alta ya no consulta la unicidad manual: se crea con el codigo del numerador', async () => {
     const useCase = new CrearInsumoUseCase(
-      insumoRepo,
+      buildInsumoRepo(),
       buildFamiliaRepo(),
       buildUnidadRepo(),
       buildModeloRepo(),
@@ -345,9 +324,8 @@ describe('CrearInsumoUseCase', () => {
 
     const result = await useCase.execute(dtoBase);
 
-    expect(result.isFail()).toBe(true);
-    expect(result.getError().code).toBe('INSUMO_CODIGO_DUPLICADO');
-    expect(insumoRepo.save).not.toHaveBeenCalled();
+    expect(result.isOk()).toBe(true);
+    expect(result.getValue().codigo).toBe('INS-0001');
   });
 
   // ─── Código autogenerado (issue #162) ──────────────────────────────────────
@@ -383,7 +361,6 @@ describe('CrearInsumoUseCase', () => {
 
     expect(result.isOk()).toBe(true);
     expect(result.getValue().codigo).toBe('INS-0007');
-    expect(insumoRepo.findByCodigo).not.toHaveBeenCalled();
     expect(insumoRepo.save).toHaveBeenCalledTimes(1);
   });
 
@@ -432,11 +409,13 @@ describe('CrearInsumoUseCase', () => {
   });
 
   /**
-   * EL BORDE del issue #162: si el usuario igual escribe un código a mano, se
-   * respeta — el autogenerado es el default, no una imposición. Este test es
-   * el que se pone rojo si alguien invierte la condición y autogenera SIEMPRE.
+   * INVIERTE "usa el código provisto por el usuario y NO consulta al
+   * numerador" (#162): ahí un código a mano se respetaba tal cual y el
+   * numerador ni se llamaba. Issue #166 cierra esa puerta — `CrearInsumoDto`
+   * ya no tiene campo `codigo`, así que no hay ningún valor que "usar": el
+   * numerador SIEMPRE se consulta, sea cual sea el payload.
    */
-  it('usa el código provisto por el usuario y NO consulta al numerador', async () => {
+  it('SIEMPRE consulta al numerador — ya no existe un código a mano que respetar', async () => {
     const numerador = buildNumerador();
     const useCase = new CrearInsumoUseCase(
       buildInsumoRepo(),
@@ -450,18 +429,18 @@ describe('CrearInsumoUseCase', () => {
     const result = await useCase.execute(dtoBase);
 
     expect(result.isOk()).toBe(true);
-    expect(result.getValue().codigo).toBe('TON-001');
-    expect(numerador.generarCodigo).not.toHaveBeenCalled();
+    expect(result.getValue().codigo).toBe('INS-0001');
+    expect(numerador.generarCodigo).toHaveBeenCalledTimes(1);
   });
 
   /**
-   * La sección crítica (numeración + guardado) corre DENTRO de la
-   * transacción SOLO cuando autogenera. El camino manual no abre ninguna: es
-   * el mismo criterio "sin lock" que ya tenía antes de este issue, y abrir
-   * una transacción de más ahí no rompería nada hoy, pero escondería una
-   * regresión el día que alguien la necesite para otra cosa.
+   * INVIERTE "abre la transacción para autogenerar, pero NO cuando el código
+   * viene a mano" (#162): aquel test fijaba una asimetría —transacción solo
+   * en el camino autogenerado— que dependía de que existiera un camino
+   * manual. Issue #166 borra el camino manual: TODA alta abre la sección
+   * crítica (numeración + persistencia) dentro de la misma transacción.
    */
-  it('abre la transacción para autogenerar, pero NO cuando el código viene a mano', async () => {
+  it('SIEMPRE abre la transacción — ya no existe un camino manual sin ella', async () => {
     let vecesAbierta = 0;
     const txRunner: Pick<ITenantTransactionRunner, 'run'> = {
       run: async <T>(fn: () => Promise<T>): Promise<T> => {
@@ -470,7 +449,7 @@ describe('CrearInsumoUseCase', () => {
       },
     };
 
-    const useCaseAutogenerado = new CrearInsumoUseCase(
+    const useCase = new CrearInsumoUseCase(
       buildInsumoRepo(),
       buildFamiliaRepo(),
       buildUnidadRepo(),
@@ -478,19 +457,12 @@ describe('CrearInsumoUseCase', () => {
       buildNumerador(),
       txRunner,
     );
-    await useCaseAutogenerado.execute(dtoSinCodigo);
+
+    await useCase.execute(dtoSinCodigo);
     expect(vecesAbierta).toBe(1);
 
-    const useCaseManual = new CrearInsumoUseCase(
-      buildInsumoRepo(),
-      buildFamiliaRepo(),
-      buildUnidadRepo(),
-      buildModeloRepo(),
-      buildNumerador(),
-      txRunner,
-    );
-    await useCaseManual.execute(dtoBase);
-    expect(vecesAbierta).toBe(1);
+    await useCase.execute(dtoBase);
+    expect(vecesAbierta).toBe(2);
   });
 
   /**
@@ -523,63 +495,14 @@ describe('CrearInsumoUseCase', () => {
   // ─── Orden de validación ──────────────────────────────────────────────────
 
   /**
-   * El orden es contrato, no casualidad. Sin fijarlo, la primera refactorización
-   * lo reordena y el usuario recibe el error de un campo que ya corrigió.
+   * Issue #166 quita dos casos de esta sección ("con familia/unidad
+   * inexistente Y código duplicado gana el error de la familia/unidad"): el
+   * alta ya no revalida un código contra el catálogo —`findByCodigo` ni
+   * siquiera está en el `Pick` del constructor—, así que la colisión que esos
+   * tests fijaban ya no es alcanzable desde `CrearInsumoUseCase`. El orden que
+   * SÍ sigue vigente —familia y unidad antes que códigos alternativos y
+   * compatibilidad— lo cubren los tests de abajo.
    */
-  it('con familia inexistente Y código duplicado gana el error de la familia', async () => {
-    const ocupante = InsumoEntity.create({
-      codigo: 'TON-001',
-      nombre: 'Tóner viejo',
-      familiaId: 'fam-1',
-      unidadMedidaId: 'uni-1',
-      stockMinimo: null,
-      activo: true,
-      codigosAlternativos: [],
-      compatibilidad: [],
-    });
-    const insumoRepo = buildInsumoRepo({ findByCodigo: vi.fn().mockResolvedValue(ocupante) });
-    const useCase = new CrearInsumoUseCase(
-      insumoRepo,
-      buildFamiliaRepo(null),
-      buildUnidadRepo(),
-      buildModeloRepo(),
-      buildNumerador(),
-      buildTxRunner(),
-    );
-
-    const result = await useCase.execute(dtoBase);
-
-    expect(result.getError().code).toBe('FAMILIA_INSUMO_INEXISTENTE');
-    expect(insumoRepo.findByCodigo).not.toHaveBeenCalled();
-  });
-
-  it('con unidad inexistente Y código duplicado gana el error de la unidad', async () => {
-    const ocupante = InsumoEntity.create({
-      codigo: 'TON-001',
-      nombre: 'Tóner viejo',
-      familiaId: 'fam-1',
-      unidadMedidaId: 'uni-1',
-      stockMinimo: null,
-      activo: true,
-      codigosAlternativos: [],
-      compatibilidad: [],
-    });
-    const insumoRepo = buildInsumoRepo({ findByCodigo: vi.fn().mockResolvedValue(ocupante) });
-    const useCase = new CrearInsumoUseCase(
-      insumoRepo,
-      buildFamiliaRepo(),
-      buildUnidadRepo(null),
-      buildModeloRepo(),
-      buildNumerador(),
-      buildTxRunner(),
-    );
-
-    const result = await useCase.execute(dtoBase);
-
-    expect(result.getError().code).toBe('UNIDAD_MEDIDA_INEXISTENTE');
-    expect(insumoRepo.findByCodigo).not.toHaveBeenCalled();
-  });
-
   it('con la familia deshabilitada Y un código alternativo repetido gana el error de la familia', async () => {
     const familia = familiaHabilitada();
     familia.desactivar();

@@ -350,8 +350,16 @@ export class InsumoEntity extends BaseEntity<InsumoProps> {
 
   /**
    * Actualiza los campos editables (PATCH semántico — `undefined` no toca el
-   * campo). La unicidad del código y la elegibilidad de familia y unidad se
-   * validan en la capa de aplicación, no acá.
+   * campo). La elegibilidad de familia y unidad se valida en la capa de
+   * aplicación, no acá.
+   *
+   * **El `codigo` NO está entre los campos editables (issue #166).** Lo pone
+   * el sistema al crear (`normalizarCodigoInsumo` + `NumeradorInsumo`, issue
+   * #162) y queda congelado para siempre: ni el borde, ni la capa de
+   * aplicación, ni esta entidad ofrecen una vía para cambiarlo después. Un
+   * insumo con un código con typo se queda con el typo — decisión explícita
+   * del dueño, la misma razón por la que reasignar la familia tampoco le toca
+   * el prefijo (ver el test de `EditarInsumoUseCase` que lo fija).
    *
    * `stockMinimo` distingue las dos formas del vacío: `undefined` es el campo
    * ausente del PATCH y deja el valor guardado intacto, mientras que `null` es
@@ -363,18 +371,14 @@ export class InsumoEntity extends BaseEntity<InsumoProps> {
    * @returns Nada; lanza si algún valor viola su precondición.
    */
   actualizar(datos: {
-    codigo?: string;
     nombre?: string;
     familiaId?: string;
     unidadMedidaId?: string;
     stockMinimo?: number | null;
   }): void {
-    validarLargos(datos.codigo, datos.nombre);
+    validarLargos(undefined, datos.nombre);
     validarStockMinimo(datos.stockMinimo);
 
-    if (datos.codigo !== undefined) {
-      this.props.codigo = datos.codigo;
-    }
     if (datos.nombre !== undefined) {
       this.props.nombre = datos.nombre;
     }
