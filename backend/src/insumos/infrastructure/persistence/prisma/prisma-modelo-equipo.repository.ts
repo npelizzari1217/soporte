@@ -64,17 +64,20 @@ export class PrismaModeloEquipoRepository implements IModeloEquipoRepository {
 
   /**
    * Upsert por id: INSERT si es nuevo, UPDATE si existe. Nunca pisa
-   * `createdAt` en el UPDATE.
+   * `createdAt` en el UPDATE — y desde el issue #172 tampoco lo fija en el
+   * CREATE: `ModeloEquipoMapper.toPersistence()` ya omite el campo del todo,
+   * así que el mismo shape sirve para las dos ramas del `upsert` y el
+   * `DEFAULT clock_timestamp()` de la columna es quien decide la fecha de
+   * alta.
    *
    * @param modelo Modelo de dominio a persistir.
    */
   async save(modelo: ModeloEquipoEntity): Promise<void> {
     const data = ModeloEquipoMapper.toPersistence(modelo);
-    const { createdAt: _createdAt, ...updateData } = data;
     await this.client.modeloEquipo.upsert({
       where: { id: data.id },
       create: data,
-      update: updateData,
+      update: data,
     });
   }
 }

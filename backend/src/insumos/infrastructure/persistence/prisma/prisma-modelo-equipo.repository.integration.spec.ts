@@ -160,6 +160,13 @@ describe('PrismaModeloEquipoRepository — Integration', () => {
     expect(fila!.activo).toBe(false);
   });
 
+  /**
+   * El createdAt REAL lo pone la base (issue #172), no `modelo.createdAt` en
+   * memoria: ese valor es el reloj del PROCESO al construir la entidad, y ya
+   * no es el que queda en la fila desde que `ModeloEquipoMapper.toPersistence()`
+   * lo omite del CREATE. Por eso el baseline se relee con `findById()` recién
+   * después del primer `save()`, en vez de compararse contra la entidad.
+   */
   it('save() en un modelo existente actualiza sin pisar createdAt', async () => {
     const modelo = ModeloEquipoEntity.create({
       marca: `${PREFIJO}UPD`,
@@ -167,12 +174,126 @@ describe('PrismaModeloEquipoRepository — Integration', () => {
       activo: true,
     });
     await repo.save(modelo);
+    const creado = await repo.findById(modelo.id);
 
     modelo.actualizar({ modelo: 'Editado' });
     await repo.save(modelo);
 
     const found = await repo.findById(modelo.id);
     expect(found!.modelo).toBe('Editado');
-    expect(found!.createdAt).toEqual(modelo.createdAt);
+    expect(found!.createdAt).toEqual(creado!.createdAt);
+  });
+
+  /**
+   * Issue #172 — gemelo del que ya existe para `insumos`
+   * (`prisma-insumo.repository.integration.spec.ts`, describe "save() —
+   * issue #172..."), aplicado a `modelos_equipo`. Mismo mecanismo: reloj del
+   * PROCESO desviado con `vi.useFakeTimers` ANTES de construir la entidad, y
+   * lectura de la fila CRUDA con el reloj real restaurado.
+   */
+  describe('save() — issue #172: la fecha de alta la pone la base, no el proceso', () => {
+    /** Mismo desvío EXACTO reportado en el issue: +3 horas. */
+    const DESVIO_MS = 3 * 60 * 60 * 1000;
+
+    it('crea un modelo con el reloj del proceso desviado 3 horas: created_at en la base NO hereda el desvío', async () => {
+      const antesDeLaEscritura = new Date();
+      let modelo: ModeloEquipoEntity;
+
+      vi.useFakeTimers({ toFake: ['Date'] });
+      try {
+        vi.setSystemTime(new Date(antesDeLaEscritura.getTime() + DESVIO_MS));
+        modelo = ModeloEquipoEntity.create({
+          marca: `${PREFIJO}DESVIO`,
+          modelo: 'Desviado',
+          activo: true,
+        });
+        expect(modelo.createdAt.getTime()).toBe(antesDeLaEscritura.getTime() + DESVIO_MS);
+
+        await repo.save(modelo);
+      } finally {
+        vi.useRealTimers();
+      }
+
+      const fila = await tenantClient.modeloEquipo.findUniqueOrThrow({
+        where: { id: modelo.id },
+      });
+
+      expect(fila.createdAt.getTime()).toBeLessThan(
+        antesDeLaEscritura.getTime() + DESVIO_MS - 60_000,
+      );
+    });
+
+    it('created_at cae en la ventana del reloj real, entre el antes y el después de la escritura', async () => {
+      const antesDeLaEscritura = new Date();
+      let modelo: ModeloEquipoEntity;
+
+      vi.useFakeTimers({ toFake: ['Date'] });
+      try {
+        vi.setSystemTime(new Date(antesDeLaEscritura.getTime() + DESVIO_MS));
+        modelo = ModeloEquipoEntity.create({
+          marca: `${PREFIJO}VENTANA`,
+          modelo: 'Ventana',
+          activo: true,
+        });
+        await repo.save(modelo);
+      } finally {
+        vi.useRealTimers();
+      }
+      const despuesDeLaEscritura = new Date();
+
+      const fila = await tenantClient.modeloEquipo.findUniqueOrThrow({
+        where: { id: modelo.id },
+      });
+
+      const MARGEN_RED_MS = 5000;
+      expect(fila.createdAt.getTime()).toBeGreaterThanOrEqual(
+        antesDeLaEscritura.getTime() - MARGEN_RED_MS,
+      );
+      expect(fila.createdAt.getTime()).toBeLessThanOrEqual(
+        despuesDeLaEscritura.getTime() + MARGEN_RED_MS,
+      );
+    });
+
+    it('created_at tiene resolución sub-milisegundo: la puso la base, no un Date de JS', async (ctx) => {
+      const muestras: bigint[] = [];
+      for (let i = 0; i < 10; i += 1) {
+        const [{ resto }] = await tenantClient.$queryRaw<{ resto: bigint }[]>`
+          SELECT (EXTRACT(MICROSECONDS FROM clock_timestamp())::bigint % 1000) AS resto
+        `;
+        muestras.push(resto);
+      }
+      const resolucionSubMilisegundoLocal = muestras.some((resto) => resto !== 0n);
+
+      ctx.skip(
+        !resolucionSubMilisegundoLocal,
+        'clock_timestamp() de esta instancia local de Postgres resuelve solo en ' +
+          'milisegundos (10/10 muestras con resto 0): el criterio de microsegundos ' +
+          'no aplica en este entorno, así que no se puede afirmar nada con él acá.',
+      );
+
+      // La afirmación NO se hace sobre una sola fila: un `clock_timestamp()`
+      // sano cae en resto 0 una vez cada mil, y eso sería un rojo espurio en
+      // CI indistinguible de una regresión real. Si la fecha la pusiera el
+      // proceso, los CANTIDAD_MUESTRAS restos darían 0.
+      const CANTIDAD_MUESTRAS = 5;
+      const restos: bigint[] = [];
+      for (let i = 0; i < CANTIDAD_MUESTRAS; i += 1) {
+        const modelo = ModeloEquipoEntity.create({
+          marca: `${PREFIJO}MICR${i}`,
+          modelo: `Microsegundos ${i}`,
+          activo: true,
+        });
+        await repo.save(modelo);
+
+        const [{ resto }] = await tenantClient.$queryRaw<{ resto: bigint }[]>`
+          SELECT (EXTRACT(MICROSECONDS FROM created_at)::bigint % 1000) AS resto
+          FROM modelos_equipo WHERE id = ${modelo.id}::uuid
+        `;
+        restos.push(resto);
+      }
+
+      expect(restos).toHaveLength(CANTIDAD_MUESTRAS);
+      expect(restos.some((resto) => resto !== 0n)).toBe(true);
+    });
   });
 });

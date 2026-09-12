@@ -1,0 +1,24 @@
+-- Migration: 20260912120000_modelos_equipo_created_at_clock_timestamp
+-- Issue #172 — gemelo del #159 (20260911210000_movimientos_created_at_clock_timestamp),
+-- aplicado al catalogo de insumos. Primera de cuatro unidades encadenadas:
+-- modelos_equipo, familias_insumo, unidades_medida e insumos.
+--
+-- QUE CAMBIA: el DEFAULT de created_at pasa de CURRENT_TIMESTAMP a
+-- clock_timestamp() en modelos_equipo. No cambia el tipo, ni la nulabilidad,
+-- ni ninguna fila existente.
+--
+-- POR QUE CURRENT_TIMESTAMP NO ALCANZABA: ver el comentario completo en
+-- 20260911210000_movimientos_created_at_clock_timestamp/migration.sql. Aca
+-- la tabla no participa de una seccion critica con advisory lock, asi que el
+-- argumento del orden de commits no aplica: el motivo del cambio es
+-- directamente que Prisma nunca deja disparar el DEFAULT de la columna, sea
+-- cual sea la funcion que tenga.
+--
+-- LAS FILAS EXISTENTES NO SE TOCAN: reescribir timestamps historicos
+-- borraria la evidencia de que el desvio ocurrio.
+--
+-- Quedan ~15 agregados del catalogo del backend con el patron viejo
+-- (@default(now())) sin corregir: el issue #172 acoto el alcance al catalogo
+-- de insumos, no a todas las tablas que comparten el mismo mecanismo.
+ALTER TABLE "modelos_equipo"
+  ALTER COLUMN "created_at" SET DEFAULT clock_timestamp();
