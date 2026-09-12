@@ -236,11 +236,19 @@ export class PrismaInsumoRepository implements IInsumoRepository {
    * así que su `createdAt` es el único rastro de cuándo se declaró y un
    * borrar-y-recrear se lo llevaría puesto.
    *
+   * `data` y `codigos` ya vienen SIN `createdAt` —issue #172,
+   * `InsumoMapper.toPersistence()` e `InsumoCodigoAlternativoMapper.toPersistence()`
+   * lo omiten del todo—, así que el mismo shape sirve para el CREATE y el
+   * UPDATE de las dos: en el CREATE dispara el `DEFAULT clock_timestamp()` de
+   * la columna, y en el UPDATE, al no viajar, no pisa la fecha de alta de lo
+   * que ya existía. Antes de este cambio, el CREATE mandaba
+   * `entity.createdAt` —el reloj del PROCESO, no el de la base— y era
+   * exactamente el bug.
+   *
    * @param insumo Insumo de dominio a persistir, con sus dos listas ya resueltas.
    */
   async save(insumo: InsumoEntity): Promise<void> {
     const data = InsumoMapper.toPersistence(insumo);
-    const { createdAt: _createdAt, ...updateData } = data;
 
     const codigos = insumo.codigosAlternativos.map((codigo) =>
       InsumoCodigoAlternativoMapper.toPersistence(codigo),
@@ -260,15 +268,16 @@ export class PrismaInsumoRepository implements IInsumoRepository {
         compatibilidad: { create: compatibilidad },
       },
       update: {
-        ...updateData,
+        ...data,
         codigosAlternativos: {
           // Con la lista vacía el filtro es `{}`: se van todos. Un
           // `notIn: []` dependería de cómo Prisma traduce el conjunto vacío.
           deleteMany: idsVigentes.length > 0 ? { id: { notIn: idsVigentes } } : {},
-          upsert: codigos.map((codigo) => {
-            const { createdAt: _codigoCreatedAt, ...codigoUpdate } = codigo;
-            return { where: { id: codigo.id }, create: codigo, update: codigoUpdate };
-          }),
+          upsert: codigos.map((codigo) => ({
+            where: { id: codigo.id },
+            create: codigo,
+            update: codigo,
+          })),
         },
         compatibilidad: {
           // Mismo criterio que arriba: con la lista vacía el filtro es `{}` y

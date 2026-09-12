@@ -37,7 +37,7 @@ export type FilaInsumoConAgregado = PrismaInsumo & {
  */
 export type FilaCodigoAlternativoAnidada = Omit<
   PrismaInsumoCodigoAlternativo,
-  'updatedAt' | 'insumoId'
+  'updatedAt' | 'insumoId' | 'createdAt'
 >;
 
 /**
@@ -67,9 +67,14 @@ export class InsumoCodigoAlternativoMapper {
   }
 
   /**
-   * Incluye `createdAt` para el CREATE; el repo lo excluye del UPDATE, así el
-   * reguardado del agregado no le pisa la fecha de alta a un código que ya
-   * existía.
+   * SIN `createdAt` — issue #172. El shape sirve para el CREATE y para el
+   * UPDATE del `upsert` de `PrismaInsumoRepository.save()`: mandarlo en el
+   * CREATE traía el reloj del PROCESO (`BaseEntity` lo fija con `new Date()`
+   * al construir la entidad) y dejaba sin disparar nunca el
+   * `DEFAULT clock_timestamp()` de la columna; mandarlo en el UPDATE le
+   * pisaría la fecha de alta a un código que ya existía. Omitirlo del todo
+   * resuelve las dos ramas con un solo shape, mismo criterio que
+   * `CompatibilidadModeloMapper.toPersistence` en este archivo.
    *
    * @param entity Código alternativo de dominio a persistir.
    * @returns El shape anidado que espera Prisma bajo el insumo padre.
@@ -80,7 +85,6 @@ export class InsumoCodigoAlternativoMapper {
       codigo: entity.codigo,
       fabricante: entity.fabricante,
       deletedAt: entity.deletedAt,
-      createdAt: entity.createdAt,
     };
   }
 }
@@ -156,12 +160,24 @@ export class InsumoMapper {
    * el objeto: el UPDATE del upsert manda este mismo shape, así que un campo
    * ausente sería un punto de reposición imposible de borrar.
    *
-   * Incluye `createdAt` para el CREATE; el repo lo excluye del UPDATE.
+   * SIN `createdAt` — issue #172. `save()` manda este mismo shape en las dos
+   * ramas del `upsert` (CREATE y UPDATE): incluirlo traía el reloj del
+   * PROCESO (`BaseEntity` lo fija con `new Date()` al construir la entidad,
+   * no el de la base) y dejaba sin disparar nunca el
+   * `DEFAULT clock_timestamp()` de la columna (ver
+   * `prisma_tenant/schema.prisma`, sobre `Insumo.createdAt`). Omitirlo del
+   * todo alcanza para las dos ramas: en el CREATE dispara el `DEFAULT`, y en
+   * el UPDATE, al no viajar, no pisa la fecha de alta de un insumo que ya
+   * existía — mismo mecanismo que ya usaba `CompatibilidadModeloMapper` en
+   * este archivo, y que ahora también usa `InsumoCodigoAlternativoMapper`.
    *
    * @param entity Insumo de dominio a persistir.
-   * @returns El shape de fila que espera Prisma, sin `updatedAt` (lo maneja el ORM).
+   * @returns El shape de fila que espera Prisma, sin `updatedAt` (lo maneja el ORM) ni `createdAt`.
    */
-  static toPersistence(entity: InsumoEntity): Omit<PrismaInsumo, 'updatedAt' | 'stockMinimo'> & {
+  static toPersistence(entity: InsumoEntity): Omit<
+    PrismaInsumo,
+    'updatedAt' | 'stockMinimo' | 'createdAt'
+  > & {
     stockMinimo: Prisma.Decimal | number | string | null;
   } {
     return {
@@ -173,7 +189,6 @@ export class InsumoMapper {
       stockMinimo: entity.stockMinimo,
       activo: entity.activo,
       deletedAt: entity.deletedAt,
-      createdAt: entity.createdAt,
     };
   }
 }
