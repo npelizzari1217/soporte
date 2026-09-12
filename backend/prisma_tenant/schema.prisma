@@ -671,7 +671,9 @@ model UnidadMedida {
   codigo    String    @unique @db.VarChar(20)
   nombre    String    @db.VarChar(50)
   activo    Boolean   @default(true)
-  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  /// `clock_timestamp()` — issue #172. Ver el comentario de
+  /// `ModeloEquipo.createdAt`, arriba, para el porqué completo.
+  createdAt DateTime  @default(dbgenerated("clock_timestamp()")) @map("created_at") @db.Timestamptz
   updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt DateTime? @map("deleted_at") @db.Timestamptz
 

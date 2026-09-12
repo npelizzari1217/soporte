@@ -22,19 +22,28 @@ export class UnidadMedidaMapper {
   }
 
   /**
-   * Incluye `createdAt` para el CREATE; el repo lo excluye del UPDATE.
+   * SIN `createdAt` — issue #172. `save()` manda este mismo shape en las dos
+   * ramas del `upsert` (CREATE y UPDATE): incluirlo traía el reloj del
+   * PROCESO (`BaseEntity` lo fija con `new Date()` al construir la entidad,
+   * no el de la base) y dejaba sin disparar nunca el
+   * `DEFAULT clock_timestamp()` de la columna (ver
+   * `prisma_tenant/schema.prisma`, sobre `UnidadMedida.createdAt`). Omitirlo
+   * del todo alcanza para las dos ramas: en el CREATE dispara el `DEFAULT`, y
+   * en el UPDATE, al no viajar, no pisa la fecha de alta de una unidad que ya
+   * existía.
    *
    * @param entity Unidad de dominio a persistir.
-   * @returns El shape de fila que espera Prisma, sin `updatedAt` (lo maneja el ORM).
+   * @returns El shape de fila que espera Prisma, sin `updatedAt` (lo maneja el ORM) ni `createdAt`.
    */
-  static toPersistence(entity: UnidadMedidaEntity): Omit<PrismaUnidadMedida, 'updatedAt'> {
+  static toPersistence(
+    entity: UnidadMedidaEntity,
+  ): Omit<PrismaUnidadMedida, 'updatedAt' | 'createdAt'> {
     return {
       id: entity.id,
       codigo: entity.codigo,
       nombre: entity.nombre,
       activo: entity.activo,
       deletedAt: entity.deletedAt,
-      createdAt: entity.createdAt,
     };
   }
 }

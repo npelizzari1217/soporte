@@ -48,4 +48,20 @@ describe('UnidadMedidaMapper', () => {
     expect(row.codigo).toBe('A');
     expect(row.deletedAt).toBeNull();
   });
+
+  /**
+   * Issue #172 — gemelo de `movimiento-insumo.mapper.spec.ts` ("NO incluye
+   * createdAt..."). La entidad guarda el reloj del PROCESO (`BaseEntity`,
+   * `new Date()`); si viajara en el INSERT, el `DEFAULT clock_timestamp()`
+   * de la columna (`prisma_tenant/schema.prisma`, `UnidadMedida.createdAt`)
+   * no se dispararía nunca. `save()` manda este mismo shape también en el
+   * UPDATE, así que omitirlo alcanza para las dos ramas del `upsert`.
+   */
+  it('toPersistence() NO incluye createdAt: la fecha la tiene que poner el DEFAULT de la columna, no el proceso', () => {
+    const entity = UnidadMedidaEntity.create({ codigo: 'A', nombre: 'A', activo: true }, 'id-1');
+
+    const row = UnidadMedidaMapper.toPersistence(entity);
+
+    expect(row).not.toHaveProperty('createdAt');
+  });
 });

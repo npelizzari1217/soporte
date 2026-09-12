@@ -240,12 +240,14 @@ describe('TenantSeederAdapter (T7.4, integración — Postgres real, DB efímera
         return row ? UnidadMedidaMapper.toDomain(row) : null;
       },
       async save(entity) {
+        // `UnidadMedidaMapper.toPersistence()` ya omite `createdAt` del todo
+        // (issue #172), así que el mismo shape sirve para las dos ramas del
+        // `upsert` — ver el JSDoc de `PrismaUnidadMedidaRepository.save()`.
         const data = UnidadMedidaMapper.toPersistence(entity);
-        const { createdAt: _createdAt, ...updateData } = data;
         await verifyClient.unidadMedida.upsert({
           where: { id: data.id },
           create: data,
-          update: updateData,
+          update: data,
         });
       },
     };
