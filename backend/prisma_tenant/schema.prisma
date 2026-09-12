@@ -623,7 +623,14 @@ model ModeloEquipo {
   marca     String    @db.VarChar(100)
   modelo    String    @db.VarChar(150)
   activo    Boolean   @default(true)
-  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  /// `clock_timestamp()` y no `now()` — issue #172, mismo mecanismo que
+  /// `MovimientoInsumo.createdAt` (ver su comentario, más abajo, para el
+  /// porqué completo). `now()` se resuelve del lado del cliente y viaja
+  /// siempre en el INSERT; el mapper (`ModeloEquipoMapper.toPersistence`) lo
+  /// omite a propósito para que este DEFAULT sea quien decida la fecha.
+  /// Quedan ~15 agregados del catálogo con el patrón viejo, sin evidencia de
+  /// que su orden temporal alimente ningún cálculo — no es esta unidad.
+  createdAt DateTime  @default(dbgenerated("clock_timestamp()")) @map("created_at") @db.Timestamptz
   updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt DateTime? @map("deleted_at") @db.Timestamptz
 
