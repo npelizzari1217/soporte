@@ -174,7 +174,34 @@ describe('InsumoMapper', () => {
     expect(row.stockMinimo).toBe(5);
     expect(row.activo).toBe(true);
     expect(row.deletedAt).toBeNull();
-    expect(row.createdAt).toEqual(entity.createdAt);
+  });
+
+  /**
+   * Issue #172 — gemelo de `movimiento-insumo.mapper.spec.ts` ("NO incluye
+   * createdAt..."). La entidad guarda el reloj del PROCESO (`BaseEntity`,
+   * `new Date()`); si viajara en el INSERT, el `DEFAULT clock_timestamp()`
+   * de la columna (`prisma_tenant/schema.prisma`, `Insumo.createdAt`) no se
+   * dispararía nunca. `save()` manda este mismo shape también en el UPDATE,
+   * así que omitirlo alcanza para las dos ramas del `upsert`.
+   */
+  it('toPersistence() NO incluye createdAt: la fecha la tiene que poner el DEFAULT de la columna, no el proceso', () => {
+    const entity = InsumoEntity.create(
+      {
+        codigo: 'TON-001',
+        nombre: 'Tóner negro',
+        familiaId: 'familia-1',
+        unidadMedidaId: 'unidad-1',
+        stockMinimo: 5,
+        activo: true,
+        codigosAlternativos: [],
+        compatibilidad: [],
+      },
+      'insumo-1',
+    );
+
+    const row = InsumoMapper.toPersistence(entity);
+
+    expect(row).not.toHaveProperty('createdAt');
   });
 
   /**
@@ -256,8 +283,27 @@ describe('InsumoCodigoAlternativoMapper', () => {
     expect(row.codigo).toBe('CE285A');
     expect(row.fabricante).toBe('HP');
     expect(row.deletedAt).toBeNull();
-    expect(row.createdAt).toEqual(entity.createdAt);
     expect('insumoId' in row).toBe(false);
+  });
+
+  /**
+   * Issue #172 — gemelo de `movimiento-insumo.mapper.spec.ts` ("NO incluye
+   * createdAt..."). Esta fila la escribe el MISMO `PrismaInsumoRepository.save()`
+   * que `insumos`, en la MISMA transacción anidada —ver la excepción
+   * documentada en `prisma_tenant/schema.prisma`, sobre
+   * `InsumoCodigoAlternativo.createdAt`—, así que le aplica el mismo
+   * mecanismo: si `createdAt` viajara en el CREATE, sería el reloj del
+   * PROCESO y no el `DEFAULT clock_timestamp()` de la columna.
+   */
+  it('toPersistence() NO incluye createdAt: la fecha la tiene que poner el DEFAULT de la columna, no el proceso', () => {
+    const entity = InsumoCodigoAlternativoEntity.create(
+      { codigo: 'CE285A', fabricante: 'HP' },
+      'cod-1',
+    );
+
+    const row = InsumoCodigoAlternativoMapper.toPersistence(entity);
+
+    expect(row).not.toHaveProperty('createdAt');
   });
 });
 

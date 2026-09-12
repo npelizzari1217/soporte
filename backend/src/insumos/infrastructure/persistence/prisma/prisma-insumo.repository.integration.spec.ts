@@ -286,16 +286,24 @@ describe('PrismaInsumoRepository — Integration', () => {
     expect((await repo.findById(insumo.id))!.codigosAlternativos).toHaveLength(0);
   });
 
+  /**
+   * El createdAt REAL lo pone la base (issue #172), no `insumo.createdAt` en
+   * memoria: ese valor es el reloj del PROCESO al construir la entidad, y ya
+   * no es el que queda en la fila desde que `InsumoMapper.toPersistence()`
+   * lo omite del CREATE. Por eso el baseline se relee con `findById()` recién
+   * después del primer `save()`, en vez de compararse contra la entidad.
+   */
   it('save() en un insumo existente actualiza sin pisar createdAt', async () => {
     const insumo = construirInsumo('UPD');
     await repo.save(insumo);
+    const creado = await repo.findById(insumo.id);
 
     insumo.actualizar({ nombre: 'Editado' });
     await repo.save(insumo);
 
     const found = await repo.findById(insumo.id);
     expect(found!.nombre).toBe('Editado');
-    expect(found!.createdAt).toEqual(insumo.createdAt);
+    expect(found!.createdAt).toEqual(creado!.createdAt);
   });
 
   it('findByCodigo() encuentra el insumo por su código único', async () => {
@@ -1199,6 +1207,154 @@ describe('PrismaInsumoRepository — Integration', () => {
       await sembrar(codigoDeLaSerie('INS', baseline + 1));
 
       expect(await repo.findLastSecuenciaCodigo('INS')).toBe(baseline + 1);
+    });
+  });
+
+  /**
+   * Issue #172 — gemelo del #159 (`prisma-movimiento-insumo.repository.integration.spec.ts`,
+   * `describe('insert() — issue #159...')`), aplicado a la rama CREATE del
+   * `upsert()` de `save()`.
+   *
+   * En producción un insumo dado de alta a las 19:44 ART (UTC-3) quedó en
+   * `insumos.created_at` como `01:44:22` UTC, cuando el UTC real era `22:44`:
+   * un desvío de +3h. En el MISMO request, `movimientos_insumo` quedó
+   * correcto —esa tabla la arregló el #159—, que es justo la pista de que acá
+   * el problema es otro: `InsumoMapper.toPersistence()` (línea 176) incluye
+   * `createdAt: entity.createdAt` en el shape que `save()` manda al `create`
+   * del upsert, y ese valor sale de `BaseEntity` (`new Date()`, resolución de
+   * milisegundo) en vez de dejar que la columna use su propio
+   * `@default(now())`.
+   *
+   * Se reproduce el mismo mecanismo que el #159: reloj del PROCESO desviado
+   * con `vi.useFakeTimers({ toFake: ['Date'] })` ANTES de construir la
+   * entidad —`InsumoEntity.create()` hereda de `BaseEntity`, que fija
+   * `createdAt = new Date()` en el constructor—, y lectura de la fila CRUDA
+   * ya con el reloj real restaurado.
+   */
+  describe('save() — issue #172: la fecha de alta la pone la base, no el proceso', () => {
+    /** Mismo desvío EXACTO reportado en el issue: +3 horas. */
+    const DESVIO_MS = 3 * 60 * 60 * 1000;
+
+    /**
+     * **EL TEST QUE DECIDE EL ISSUE #172.** Sin desviar el reloj, este caso
+     * pasaría por construcción y no probaría nada. Hoy tiene que FALLAR: el
+     * mapper manda `createdAt` del proceso en el INSERT, así que la fila
+     * hereda el desvío de 3h en vez de la hora real de la base.
+     */
+    it('crea un insumo con el reloj del proceso desviado 3 horas: created_at en la base NO hereda el desvío', async () => {
+      const antesDeLaEscritura = new Date();
+      let insumo: InsumoEntity;
+
+      vi.useFakeTimers({ toFake: ['Date'] });
+      try {
+        vi.setSystemTime(new Date(antesDeLaEscritura.getTime() + DESVIO_MS));
+        insumo = construirInsumo('ISS172_DESVIO');
+        // Guarda de que el fixture realmente reproduce la deriva: si esto
+        // fallara, el resto del caso no probaría lo que dice probar.
+        expect(insumo.createdAt.getTime()).toBe(antesDeLaEscritura.getTime() + DESVIO_MS);
+
+        await repo.save(insumo);
+      } finally {
+        vi.useRealTimers();
+      }
+
+      const fila = await tenantClient.insumo.findUniqueOrThrow({ where: { id: insumo.id } });
+
+      // La ventana desviada arranca en antesDeLaEscritura + 3h; se exige que
+      // la fila quede a más de un minuto ANTES de ese arranque — así se
+      // distingue "cayó donde cae el reloj real" de "cayó donde cae el reloj
+      // desviado" sin depender de que los dos rangos no se toquen por
+      // casualidad (mismo criterio que el #159).
+      expect(fila.createdAt.getTime()).toBeLessThan(
+        antesDeLaEscritura.getTime() + DESVIO_MS - 60_000,
+      );
+    });
+
+    /**
+     * Segundo criterio: la fila tiene que caer dentro de la ventana del reloj
+     * REAL de este test, no en cualquier punto fuera del rango desviado. Con
+     * el bug presente, el valor persistido cae ~3h por delante de esta
+     * ventana, así que también se espera que este caso FALLE hoy.
+     */
+    it('created_at cae en la ventana del reloj real, entre el antes y el después de la escritura', async () => {
+      const antesDeLaEscritura = new Date();
+      let insumo: InsumoEntity;
+
+      vi.useFakeTimers({ toFake: ['Date'] });
+      try {
+        vi.setSystemTime(new Date(antesDeLaEscritura.getTime() + DESVIO_MS));
+        insumo = construirInsumo('ISS172_VENTANA');
+        await repo.save(insumo);
+      } finally {
+        vi.useRealTimers();
+      }
+      const despuesDeLaEscritura = new Date();
+
+      const fila = await tenantClient.insumo.findUniqueOrThrow({ where: { id: insumo.id } });
+
+      const MARGEN_RED_MS = 5000;
+      expect(fila.createdAt.getTime()).toBeGreaterThanOrEqual(
+        antesDeLaEscritura.getTime() - MARGEN_RED_MS,
+      );
+      expect(fila.createdAt.getTime()).toBeLessThanOrEqual(
+        despuesDeLaEscritura.getTime() + MARGEN_RED_MS,
+      );
+    });
+
+    /**
+     * Detector de "quién puso la fecha": `clock_timestamp()` de Postgres
+     * resuelve en microsegundos; un `Date` de JavaScript resuelve en
+     * milisegundos y siempre trae los tres dígitos de microsegundos en cero.
+     * Si `created_at` quedó puesto por el proceso, ese resto da SIEMPRE 0.
+     *
+     * Antes de afirmar nada con este criterio se verifica que la INSTANCIA
+     * LOCAL de Postgres realmente resuelva por debajo del milisegundo: se
+     * toman 10 muestras de `clock_timestamp()` y, si las 10 caen justo en el
+     * milisegundo, el criterio no sirve en este entorno y el caso se
+     * saltea con `ctx.skip()` en vez de dar un veredicto falso.
+     *
+     * La afirmación NO se hace sobre una sola fila. Un `clock_timestamp()`
+     * perfectamente sano cae en resto 0 aproximadamente una vez cada mil, y
+     * afirmar sobre una única extracción convertiría esa coincidencia en un
+     * rojo espurio en CI. Esa casualidad ya ocurrió al verificar el issue
+     * #159 en produccion. Por eso se dan de alta CANTIDAD_MUESTRAS insumos y
+     * se exige que AL MENOS UNO traiga resto distinto de cero: si la fecha la
+     * pusiera el proceso, los restos darían 0 los CANTIDAD_MUESTRAS. Con 5
+     * filas, la probabilidad de un rojo espurio baja del orden de 1e-3 al de
+     * 1e-15, y el poder del test para detectar el defecto real no cambia.
+     */
+    it('created_at tiene resolución sub-milisegundo: la puso la base, no un Date de JS', async (ctx) => {
+      const muestras: bigint[] = [];
+      for (let i = 0; i < 10; i += 1) {
+        const [{ resto }] = await tenantClient.$queryRaw<{ resto: bigint }[]>`
+          SELECT (EXTRACT(MICROSECONDS FROM clock_timestamp())::bigint % 1000) AS resto
+        `;
+        muestras.push(resto);
+      }
+      const resolucionSubMilisegundoLocal = muestras.some((resto) => resto !== 0n);
+
+      ctx.skip(
+        !resolucionSubMilisegundoLocal,
+        'clock_timestamp() de esta instancia local de Postgres resuelve solo en ' +
+          'milisegundos (10/10 muestras con resto 0): el criterio de microsegundos ' +
+          'no aplica en este entorno, así que no se puede afirmar nada con él acá.',
+      );
+
+      const CANTIDAD_MUESTRAS = 5;
+      const restos: bigint[] = [];
+      for (let i = 0; i < CANTIDAD_MUESTRAS; i += 1) {
+        const insumo = construirInsumo(`ISS172_MICRO_${i}`);
+        await repo.save(insumo);
+
+        const [{ resto }] = await tenantClient.$queryRaw<{ resto: bigint }[]>`
+          SELECT (EXTRACT(MICROSECONDS FROM created_at)::bigint % 1000) AS resto
+          FROM insumos WHERE id = ${insumo.id}::uuid
+        `;
+        restos.push(resto);
+      }
+
+      expect(restos).toHaveLength(CANTIDAD_MUESTRAS);
+      expect(restos.some((resto) => resto !== 0n)).toBe(true);
     });
   });
 });

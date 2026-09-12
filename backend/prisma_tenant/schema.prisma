@@ -691,7 +691,9 @@ model Insumo {
   /// Punto de reposición. Nullable: no todo insumo tiene uno. CHECK (>= 0).
   stockMinimo    Decimal?  @map("stock_minimo") @db.Decimal(10, 2)
   activo         Boolean   @default(true)
-  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  /// `clock_timestamp()` — issue #172. Ver el comentario de
+  /// `ModeloEquipo.createdAt`, arriba, para el porqué completo.
+  createdAt      DateTime  @default(dbgenerated("clock_timestamp()")) @map("created_at") @db.Timestamptz
   updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt      DateTime? @map("deleted_at") @db.Timestamptz
 
@@ -720,7 +722,12 @@ model InsumoCodigoAlternativo {
   insumoId   String    @map("insumo_id") @db.Uuid
   codigo     String    @db.VarChar(50)
   fabricante String?   @db.VarChar(100)
-  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  /// `clock_timestamp()` — issue #172. Se corrige junto con `Insumo`, no por
+  /// simetría con el resto del catálogo, sino porque esta fila la escribe el
+  /// MISMO `PrismaInsumoRepository.save()`, en la MISMA transacción anidada
+  /// que la raíz del agregado. Ver el comentario de `ModeloEquipo.createdAt`,
+  /// arriba, para el porqué completo del mecanismo.
+  createdAt  DateTime  @default(dbgenerated("clock_timestamp()")) @map("created_at") @db.Timestamptz
   updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt  DateTime? @map("deleted_at") @db.Timestamptz
 
