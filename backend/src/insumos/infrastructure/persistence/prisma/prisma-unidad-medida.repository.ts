@@ -60,17 +60,20 @@ export class PrismaUnidadMedidaRepository implements IUnidadMedidaRepository {
 
   /**
    * Upsert por id: INSERT si es nueva, UPDATE si existe. Nunca pisa
-   * `createdAt` en el UPDATE.
+   * `createdAt` en el UPDATE — y desde el issue #172 tampoco lo fija en el
+   * CREATE: `UnidadMedidaMapper.toPersistence()` ya omite el campo del todo,
+   * así que el mismo shape sirve para las dos ramas del `upsert` y el
+   * `DEFAULT clock_timestamp()` de la columna es quien decide la fecha de
+   * alta.
    *
    * @param unidad Unidad de dominio a persistir.
    */
   async save(unidad: UnidadMedidaEntity): Promise<void> {
     const data = UnidadMedidaMapper.toPersistence(unidad);
-    const { createdAt: _createdAt, ...updateData } = data;
     await this.client.unidadMedida.upsert({
       where: { id: data.id },
       create: data,
-      update: updateData,
+      update: data,
     });
   }
 }
