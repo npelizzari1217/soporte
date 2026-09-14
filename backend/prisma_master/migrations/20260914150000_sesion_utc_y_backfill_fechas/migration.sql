@@ -63,6 +63,16 @@ BEGIN
        AND t.table_type = 'BASE TABLE'
        AND col.udt_name = 'timestamptz'
        AND col.table_name <> '_prisma_migrations'
+     -- ORDER BY por consistencia con la migracion homonima de prisma_tenant
+     -- (CRITICAL-2, sdd-verify FAIL round 1). `soporte_master` HOY no tiene
+     -- ninguna columna `clock_timestamp()` ni segunda guarda que dependa
+     -- del orden de `updated_at` frente a `created_at`, asi que este
+     -- ORDER BY no es load-bearing en este archivo -- pero un catalogo
+     -- SQL sin ORDER BY no tiene orden garantizado, y la migracion de
+     -- tenant es prueba de que un orden fisico de columnas inesperado
+     -- puede convertirse en un bug real. Mismo criterio en los dos
+     -- schemas, aunque solo uno lo necesite hoy.
+     ORDER BY col.table_name, (col.column_name <> 'created_at'), col.column_name
   LOOP
     EXECUTE format(
       'UPDATE %I SET %I = %I - INTERVAL ''3 hours''
