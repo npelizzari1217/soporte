@@ -90,6 +90,24 @@ BEGIN
        AND t.table_type = 'BASE TABLE'
        AND col.udt_name = 'timestamptz'
        AND col.table_name <> '_prisma_migrations'
+     -- ORDER BY LOAD-BEARING (CRITICAL-2, sdd-verify FAIL round 1):
+     -- `information_schema.columns` sin ORDER BY no da ninguna garantia de
+     -- orden -- devuelve el orden fisico de declaracion de columnas de
+     -- CADA tabla, que esta query no controla. La segunda guarda de ADR-3
+     -- (mas abajo) lee la columna `updated_at` TAL COMO ESTA en el momento
+     -- de evaluarla: si el catalogo entrega `updated_at` ANTES que
+     -- `created_at` para una tabla con guarda, la guarda lee un
+     -- `updated_at` YA trasladado -3h, el delta cae fuera de banda, y
+     -- `created_at` se sobre-corrige -3h de mas -- exactamente el
+     -- resultado irreversible que ADR-3 declara no negociable. Reproducido
+     -- por sdd-verify invirtiendo el orden fisico de columnas de una tabla
+     -- de prueba (ver `utc-backfill-fechas.integration.spec.ts`
+     -- `[CRITICAL-2]`): sin este ORDER BY, `created_at` cambia de
+     -- 20:13:00.000Z a 17:13:00.000Z. La expresion `(col.column_name <>
+     -- 'created_at')` es booleana (false=0 antes que true=1 en Postgres),
+     -- asi que `created_at` ordena SIEMPRE primero dentro de su tabla,
+     -- pase lo que pase con el orden fisico de columnas.
+     ORDER BY col.table_name, (col.column_name <> 'created_at'), col.column_name
   LOOP
     IF c.column_name = 'created_at' AND c.table_name = ANY(tablas_guarda_delta) THEN
       SELECT EXISTS (

@@ -90,10 +90,12 @@ describe('migración 20260914150000 — backfill catalogado + segunda guarda de 
   let idInsumoCorregido: string;
   let idInsumoBase: string;
   let idInsumoAmbiguo: string;
+  let idInsumoFirmaReal: string;
   let idCodigoAltCorregido: string;
   let idCodigoAltBase: string;
   let idMovimientoCorregido: string;
   let idMovimientoBase: string;
+  let idCicloDate: string;
 
   const notices: string[] = [];
 
@@ -182,15 +184,42 @@ describe('migración 20260914150000 — backfill catalogado + segunda guarda de 
       [idFamiliaBase, idUnidadBase, '2026-09-05 10:00:00.123456+00'],
     ));
     // Ambiguo: microsegundos=0 (parece Prisma) Y delta updated_at-created_at
-    // = 02:59:59.998391, dentro de la banda [2:59:55, 3:00:05] (parece
-    // base+Prisma en el mismo INSERT). NO debe tocarse.
+    // en banda [2:59:55, 3:00:05] (parece base+Prisma en el mismo INSERT).
+    // `created_at` NO debe tocarse. `updated_at` SÍ tiene microsegundos=0
+    // (WARNING-1, sdd-verify FAIL round 1: la fixture original tenía
+    // microsegundos=391, un valor que Prisma NUNCA puede escribir — un
+    // `Date` de JS solo tiene resolución de milisegundos — así que la
+    // aserción sobre `updated_at` no podía fallar por ninguna vía; con
+    // microsegundos=0, `updated_at` participa del paso genérico del
+    // discriminador como cualquier columna Prisma y SÍ se corrige -3h,
+    // independientemente de que `created_at` se excluya por la guarda).
     ({
       rows: [{ id: idInsumoAmbiguo }],
     } = await pool.query<{ id: string }>(
       `INSERT INTO insumos (id, codigo, nombre, familia_id, unidad_medida_id, created_at, updated_at)
        VALUES (gen_random_uuid(), 'WU4-INS-AMBIG', 'Insumo WU4 ambiguo', $1, $2, $3::timestamptz, $4::timestamptz)
        RETURNING id`,
-      [idFamiliaBase, idUnidadBase, '2026-09-12 20:13:00.000000+00', '2026-09-12 23:12:59.998391+00'],
+      [idFamiliaBase, idUnidadBase, '2026-09-12 20:13:00.000000+00', '2026-09-12 23:12:59.998000+00'],
+    ));
+
+    // Firma REAL de "los tres insumos conocidos" en producción (CRITICAL-1,
+    // sdd-verify FAIL round 1 — fixture faltante). A diferencia del caso
+    // ambiguo de arriba, acá `created_at` lo escribe la base
+    // (`clock_timestamp()`, microsegundos != 0: el discriminador primario
+    // JAMÁS la toca, sin pasar por la guarda de ADR-3 en absoluto) y
+    // `updated_at` lo escribe Prisma (microsegundos = 0) en el MISMO
+    // INSERT, con el delta real medido en producción: 02:59:59.998391.
+    // Tras el backfill, `updated_at` queda apenas ~1.6ms ANTES que
+    // `created_at` — no es un error de datos, es el orden real
+    // JS-antes-que-`clock_timestamp()`; ver R7 con tolerancia de 1s en
+    // `spec.md` y el test `[4.4/R7]` de más abajo.
+    ({
+      rows: [{ id: idInsumoFirmaReal }],
+    } = await pool.query<{ id: string }>(
+      `INSERT INTO insumos (id, codigo, nombre, familia_id, unidad_medida_id, created_at, updated_at)
+       VALUES (gen_random_uuid(), 'WU-R7-FIRMA-REAL', 'Insumo firma real base+Prisma', $1, $2, $3::timestamptz, $4::timestamptz)
+       RETURNING id`,
+      [idFamiliaBase, idUnidadBase, '2026-09-12 20:13:00.001609+00', '2026-09-12 23:13:00.000000+00'],
     ));
 
     // ── insumos_codigos_alternativos ──
@@ -232,6 +261,21 @@ describe('migración 20260914150000 — backfill catalogado + segunda guarda de 
        VALUES (gen_random_uuid(), $1, 'ENTRADA', 5, gen_random_uuid(), $2::timestamptz)
        RETURNING id`,
       [idInsumoBase, '2026-09-08 10:00:00.123456+00'],
+    ));
+
+    // ── ciclos_cliente.fecha_inicio (@db.Date) — WARNING-2, sdd-verify FAIL
+    //    round 1: el spec de tenant no afirmaba que las columnas @db.Date
+    //    quedan intactas (13 en el schema tenant, contra 3 en master, que sí
+    //    lo afirma). La exclusión es estructural (`udt_name = 'timestamptz'`
+    //    en el catálogo del migration.sql, verificado en WU3/WU4), pero acá
+    //    queda con guarda de regresión propia. ──
+    ({
+      rows: [{ id: idCicloDate }],
+    } = await pool.query<{ id: string }>(
+      `INSERT INTO ciclos_cliente (id, ciclo_vigente_id, nombre, fecha_inicio, fecha_fin, created_at, updated_at)
+       VALUES (gen_random_uuid(), gen_random_uuid(), 'WU4-CICLO-DATE', $1::date, $2::date, now(), now())
+       RETURNING id`,
+      ['2026-01-01', '2026-12-31'],
     ));
   }, 60_000);
 
@@ -303,13 +347,35 @@ describe('migración 20260914150000 — backfill catalogado + segunda guarda de 
     );
     expect(insumoBase.rows[0].created_at.toISOString()).toBe('2026-09-05T10:00:00.123Z');
 
-    // insumos — el caso AMBIGUO: NO se toca.
+    // insumos — el caso AMBIGUO: `created_at` NO se toca (excluido por la
+    // guarda de ADR-3); `updated_at` SÍ se corrige -3h (participa del paso
+    // genérico del discriminador, ajeno a la guarda de `created_at`).
     const insumoAmbiguo = await pool.query<{ created_at: Date; updated_at: Date }>(
       'SELECT created_at, updated_at FROM insumos WHERE id = $1',
       [idInsumoAmbiguo],
     );
     expect(insumoAmbiguo.rows[0].created_at.toISOString()).toBe('2026-09-12T20:13:00.000Z');
-    expect(insumoAmbiguo.rows[0].updated_at.toISOString()).toBe('2026-09-12T23:12:59.998Z');
+    expect(insumoAmbiguo.rows[0].updated_at.toISOString()).toBe('2026-09-12T20:12:59.998Z');
+
+    // insumos — firma REAL (CRITICAL-1): `created_at` de la base intacto
+    // (microsegundos != 0, nunca pasa por la guarda), `updated_at` de
+    // Prisma corregido -3h.
+    const insumoFirmaReal = await pool.query<{ created_at: Date; updated_at: Date }>(
+      'SELECT created_at, updated_at FROM insumos WHERE id = $1',
+      [idInsumoFirmaReal],
+    );
+    expect(insumoFirmaReal.rows[0].created_at.toISOString()).toBe('2026-09-12T20:13:00.001Z');
+    expect(insumoFirmaReal.rows[0].updated_at.toISOString()).toBe('2026-09-12T20:13:00.000Z');
+
+    // ciclos_cliente.fecha_inicio (@db.Date) — WARNING-2: intacta. Se
+    // compara `::text` (no el `Date` que arma `pg`, que reinterpreta un
+    // DATE con el TZ local del proceso), mismo criterio que el spec de
+    // master sobre `feriados.fecha`.
+    const ciclo = await pool.query<{ fecha_inicio_texto: string }>(
+      'SELECT fecha_inicio::text AS fecha_inicio_texto FROM ciclos_cliente WHERE id = $1',
+      [idCicloDate],
+    );
+    expect(ciclo.rows[0].fecha_inicio_texto).toBe('2026-01-01');
 
     // insumos_codigos_alternativos
     const codigoAlt = await pool.query<{ created_at: Date }>(
@@ -346,7 +412,14 @@ describe('migración 20260914150000 — backfill catalogado + segunda guarda de 
   }, 60_000);
 
   it('[4.4/R7] invariantes de integridad temporal tras el backfill', async () => {
-    // updated_at >= created_at en las tablas que tienen ambas columnas.
+    // updated_at no anterior a created_at en más de 1s, en las tablas que
+    // tienen ambas columnas. Tolerancia de 1s (spec `fechas-sesion-utc`,
+    // decisión del dueño 2026-09-14, CRITICAL-1 en sdd-verify FAIL round 1):
+    // Prisma calcula `updated_at` en JS milisegundos antes de que la base
+    // evalúe `clock_timestamp()` para `created_at` del mismo INSERT, así
+    // que un desvío estricto de 0s es inalcanzable por construcción para
+    // estas 5 tablas — la fila `idInsumoFirmaReal` de abajo lo demuestra
+    // con los números reales medidos en producción.
     for (const tabla of [
       'modelos_equipo',
       'familias_insumo',
@@ -355,10 +428,24 @@ describe('migración 20260914150000 — backfill catalogado + segunda guarda de 
       'insumos_codigos_alternativos',
     ]) {
       const { rows } = await pool.query<{ n: string }>(
-        `SELECT count(*)::text AS n FROM ${tabla} WHERE updated_at < created_at`,
+        `SELECT count(*)::text AS n FROM ${tabla} WHERE updated_at < created_at - INTERVAL '1 second'`,
       );
       expect(Number(rows[0].n)).toBe(0);
     }
+
+    // Firma real (CRITICAL-1): el delta es de apenas ~1.6ms (updated_at
+    // ANTES que created_at), causado por el orden JS-antes-que-base de la
+    // escritura, no por un error del backfill. Cae dentro de la tolerancia
+    // de 1s de R7. SIN la tolerancia (aserción estricta `updated_at >=
+    // created_at`), esta fila viola R7 de forma reproducible — ver la
+    // evidencia RED en `apply-progress` (observado corriendo esta misma
+    // aserción con `INTERVAL '0 seconds'` antes de fijar la tolerancia en 1s).
+    const firmaReal = await pool.query<{ n: string }>(
+      `SELECT count(*)::text AS n FROM insumos
+        WHERE id = $1 AND updated_at < created_at - INTERVAL '1 second'`,
+      [idInsumoFirmaReal],
+    );
+    expect(Number(firmaReal.rows[0].n)).toBe(0);
 
     // movimientos_insumo.created_at >= created_at del insumo padre.
     const huerfanos = await pool.query<{ n: string }>(
@@ -446,4 +533,63 @@ describe('migración 20260914150000 — ejecución exactamente-una-vez vía `pri
       (primero.rows[0].finished_at as Date).toISOString(),
     );
   }, 90_000);
+});
+
+describe('migración 20260914150000 — la guarda de ADR-3 no depende del orden físico de columnas (WU4, tenant, regresión CRITICAL-2)', () => {
+  // Base efímera propia y MÍNIMA: una sola tabla llamada `insumos` (mismo
+  // nombre que uno de los `tablas_guarda_delta` de la migración, para
+  // activar la segunda guarda de ADR-3) con `updated_at` declarada ANTES
+  // que `created_at` — el orden físico exacto que, sin el `ORDER BY`
+  // agregado tras sdd-verify FAIL round 1, hace que
+  // `information_schema.columns` devuelva `updated_at` antes que
+  // `created_at` (confirmado empíricamente: sin ORDER BY, Postgres
+  // devuelve el orden físico de declaración de columnas). Reproducido
+  // corriendo el `migration.sql` PRE-fix contra esta misma tabla: `created_at`
+  // pasaba de `2026-09-12T20:13:00.000Z` a `2026-09-12T17:13:00.000Z`
+  // (sobre-corrección de -3h irreversible, exactamente lo que ADR-3
+  // declara no negociable).
+  const admin = new PostgresAdminService(MASTER_TEST_URL);
+  const dbName = nuevoNombreDbEfimera('orden_catalogo');
+  let pool: InstanceType<typeof Pool>;
+  let idFilaAmbigua: string;
+
+  beforeAll(async () => {
+    await admin.createDatabase(dbName);
+    pool = new Pool({ connectionString: urlHaciaDb(dbName) });
+
+    await pool.query(`
+      CREATE TABLE insumos (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        updated_at timestamptz,
+        created_at timestamptz
+      )
+    `);
+
+    // Misma fila ambigua que el caso [4.1/4.2/4.3]: created_at con
+    // microsegundos=0 (parece Prisma) y delta en banda [2:59:55, 3:00:05]
+    // (parece base+Prisma en el mismo INSERT). `created_at` NO debe
+    // tocarse, sin importar el orden físico de columnas de esta tabla.
+    ({
+      rows: [{ id: idFilaAmbigua }],
+    } = await pool.query<{ id: string }>(
+      `INSERT INTO insumos (created_at, updated_at) VALUES ($1::timestamptz, $2::timestamptz) RETURNING id`,
+      ['2026-09-12 20:13:00.000000+00', '2026-09-12 23:12:59.998000+00'],
+    ));
+  }, 30_000);
+
+  afterAll(async () => {
+    await pool.end().catch(() => undefined);
+    await admin.dropDatabase(dbName);
+  }, 30_000);
+
+  it('[CRITICAL-2] created_at ambiguo permanece intacto aunque updated_at esté declarada antes en la tabla', async () => {
+    const sql = fs.readFileSync(MIGRATION_FILE, 'utf8');
+    await pool.query(sql);
+
+    const fila = await pool.query<{ created_at: Date }>(
+      'SELECT created_at FROM insumos WHERE id = $1',
+      [idFilaAmbigua],
+    );
+    expect(fila.rows[0].created_at.toISOString()).toBe('2026-09-12T20:13:00.000Z');
+  });
 });
