@@ -276,18 +276,12 @@ module.exports = [
   },
 
   // ─── FITNESS RULE: `new Pool(` fuera de utc-connection-string.ts (ADR-1) ──
-  // Alcance DELIBERADAMENTE PARCIAL, por diseño de la cadena de PRs de
-  // sdd/sesion-utc-y-backfill-de-fechas: cubre solo los call sites de `pg.Pool`
-  // ya migrados a `conUtc()` en el momento de este PR. Ampliar el alcance a un
-  // archivo que TODAVÍA construye `new Pool(` directo rompería `pnpm lint` en
-  // un PR que ni siquiera lo toca — cada PR de la cadena tiene que quedar
-  // verde por sí solo (`chained-pr`/`work-unit-commits`).
-  //
-  // `postgres-admin.service.ts` y `tenant-seeder.adapter.ts` migran en WU2
-  // (PR2, tareas 2.2/2.3): sacarlos de `ignores` es parte de esa migración,
-  // no un olvido de este bloque. `scripts/migrate-tenants.js` (WU2, 2.4) es
-  // CommonJS y no cae bajo `files: ['src/**/*.ts']` — sumarlo requiere su
-  // propio bloque con `languageOptions` CJS, igual que el resto de scripts/.
+  // `postgres-admin.service.ts` y `tenant-seeder.adapter.ts` ya migraron a
+  // `conUtc()` (WU2, tareas 2.2/2.3, sdd/sesion-utc-y-backfill-de-fechas):
+  // salieron de `ignores`, la regla ahora los cubre igual que a
+  // `prisma.service.ts` (WU1). `scripts/migrate-tenants.js` (WU2, 2.4) migró
+  // también, pero es CommonJS y no cae bajo `files: ['src/**/*.ts']` — tiene
+  // su propio bloque más abajo, junto al resto de `scripts/**/*.js`.
   //
   // Los demás scripts de `scripts/**` que construyen `new Pool(`
   // (`regenerar-entorno.mjs`, `backfill-tipos-componente-codigo.js`,
@@ -299,8 +293,6 @@ module.exports = [
     ignores: [
       '**/*.spec.ts', // ADR-7: los specs de round-trip abren `pg` crudo a propósito.
       'src/shared/infrastructure/persistence/utc-connection-string.ts', // el helper mismo.
-      'src/clientes/infrastructure/postgres-admin.service.ts', // TODO(WU2 2.2): migrar y sacar.
-      'src/clientes/infrastructure/tenant-seeder.adapter.ts', // TODO(WU2 2.3): migrar y sacar.
     ],
     rules: {
       ...reglaPoolYEnvVacio,
@@ -339,6 +331,39 @@ module.exports = [
     rules: {
       ...reglasBaseJs,
       ...reglaEnvStringVacio,
+      ...prettierConfig.rules,
+      'prettier/prettier': 'error',
+    },
+  },
+
+  // ─── scripts/migrate-tenants.js · Pool + env vacío (WU2 2.4, ADR-1) ──────
+  // Migró a `conUtc()` (tarea 2.4, sdd/sesion-utc-y-backfill-de-fechas):
+  // suma el selector de Pool AL bloque CommonJS de arriba, para ESTE único
+  // archivo — nunca a `scripts/**/*.js` en general, porque otros scripts de
+  // `scripts/` (`backfill-tipos-componente-codigo.js`, `sync-ayuda.js`)
+  // todavía construyen `new Pool(` directo y son ajenos a este cambio (ver
+  // el comment del bloque hermano de `src/**/*.ts`, más arriba).
+  //
+  // El glob usa un sufijo (`migrate-tenants*.js`), no el nombre literal
+  // exacto: en el archivo real solo matchea `migrate-tenants.js`, pero
+  // permite testear el bloque con un archivo TEMPORAL real
+  // (`migrate-tenants-tmp-<hex>.js`, en `regla-env-vacio.lint.spec.ts`) sin
+  // pisar el script de producción — mismo motivo por el que el caso
+  // `*.spec.ts` de ese mismo spec arma su propio nombre temporal en vez de
+  // usar `lintear()`. Va DESPUÉS del bloque general de `scripts/**/*.js`
+  // para que sus reglas lo sobrescriban (el flat config REEMPLAZA `rules`
+  // por bloque matcheado, en orden de aparición).
+  {
+    files: ['scripts/migrate-tenants*.js'],
+    languageOptions: {
+      ecmaVersion: 'latest',
+      sourceType: 'commonjs',
+      globals: globalsCommonJs,
+    },
+    plugins: { prettier: prettierPlugin },
+    rules: {
+      ...reglasBaseJs,
+      ...reglaPoolYEnvVacio,
       ...prettierConfig.rules,
       'prettier/prettier': 'error',
     },
