@@ -96,6 +96,7 @@ describe('migración 20260914150000 — backfill catalogado por microsegundos (W
   const dbName = nuevoNombreDbEfimera('discriminador');
   let idMicrosegundosCero: string;
   let idMicrosegundosDistintoDeCero: string;
+  let idClienteConUpdateReal: string;
 
   beforeAll(async () => {
     await admin.createDatabase(dbName);
@@ -112,6 +113,26 @@ describe('migración 20260914150000 — backfill catalogado por microsegundos (W
       dbName: 'test_wu3_us_distinto',
       timestamp: '2026-09-01 10:00:00.123456+00',
     });
+
+    // Fixture no trivial para R7 (WARNING-4, sdd-verify FAIL round 1):
+    // `created_at` y `updated_at` DISTINTOS, ambos con microsegundos=0 (los
+    // dos los escribe Prisma — en `soporte_master` TODO `created_at` es
+    // `@default(now())` resuelto en cliente, nunca `clock_timestamp()`, así
+    // que no existe acá el caso extremo de ADR-3). La traslación uniforme
+    // de -3h preserva el delta entre ambas columnas.
+    ({
+      rows: [{ id: idClienteConUpdateReal }],
+    } = await pool.query<{ id: string }>(
+      `INSERT INTO clientes (id, nombre, db_name, created_at, updated_at)
+       VALUES (gen_random_uuid(), $1, $2, $3::timestamptz, $4::timestamptz)
+       RETURNING id`,
+      [
+        'Fixture WU3 R7 created!=updated (Prisma, microsegundos=0)',
+        'test_wu3_r7_delta',
+        '2026-09-01 10:00:00.000000+00',
+        '2026-09-02 09:30:00.000000+00',
+      ],
+    ));
   }, 60_000);
 
   afterAll(async () => {
@@ -130,6 +151,37 @@ describe('migración 20260914150000 — backfill catalogado por microsegundos (W
     const conMicrosegundosDistinto = await leerFechasCliente(pool, idMicrosegundosDistintoDeCero);
     expect(conMicrosegundosDistinto.createdAt.toISOString()).toBe('2026-09-01T10:00:00.123Z');
     expect(conMicrosegundosDistinto.updatedAt.toISOString()).toBe('2026-09-01T10:00:00.123Z');
+  });
+
+  it('[R7] invariantes de integridad temporal tras el backfill (soporte_master)', async () => {
+    // WARNING-4, sdd-verify FAIL round 1: R7 no tenía evidencia de ningún
+    // tipo para `soporte_master` — solo fixtures sintéticas de tenant. Se
+    // corre INMEDIATAMENTE después de [3.1/3.4] (una sola corrida correcta
+    // de la migración), antes de la caracterización [3.2] que corrompe los
+    // datos a propósito.
+    //
+    // Tolerancia de 1s (spec `fechas-sesion-utc`, ver R7): en master TODAS
+    // las fechas las escribe Prisma (@default(now()) resuelto en cliente,
+    // nunca clock_timestamp()), así que esta base no tiene el caso extremo
+    // de ADR-3 (created_at de la base + updated_at de Prisma) — se audita
+    // igual, con la misma tolerancia que el resto del spec, por
+    // consistencia y para dejar la propiedad efectivamente comprobada acá,
+    // no solo asumida.
+    const { rows } = await pool.query<{ n: string }>(
+      `SELECT count(*)::text AS n FROM clientes WHERE updated_at < created_at - INTERVAL '1 second'`,
+    );
+    expect(Number(rows[0].n)).toBe(0);
+
+    const futuro = await pool.query<{ n: string }>(
+      `SELECT count(*)::text AS n FROM clientes WHERE created_at > now() OR updated_at > now()`,
+    );
+    expect(Number(futuro.rows[0].n)).toBe(0);
+
+    // El delta entre created_at y updated_at de una fila con update real se
+    // preserva tras la traslación uniforme de -3h.
+    const conUpdateReal = await leerFechasCliente(pool, idClienteConUpdateReal);
+    expect(conUpdateReal.createdAt.toISOString()).toBe('2026-09-01T07:00:00.000Z');
+    expect(conUpdateReal.updatedAt.toISOString()).toBe('2026-09-02T06:30:00.000Z');
   });
 
   it('[3.2] caracterización ADR-4: correr el mismo SQL una SEGUNDA vez, directo (vía psql), CORROMPE', async () => {
