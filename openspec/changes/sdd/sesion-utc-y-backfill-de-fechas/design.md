@@ -68,20 +68,70 @@ post-deploy (`SHOW timezone` en sesión nueva).
 | Opción | Tradeoff | Decisión |
 |---|---|---|
 | (a) Migración numerada | `_prisma_migrations` ya garantiza y auditá ejecución única por base; llega sola a master, a cada tenant activo, al tenant reactivado y al tenant nuevo; **no requiere tocar el hueco de backfill de `deploy.ps1`**, así que la atomicidad sale gratis | **Elegida** |
-| (b) Script standalone + fila marcadora | Guarda de una-sola-vez escrita a mano (hay que meter marcador y UPDATE en la misma transacción, por base); el marcador necesita una tabla, que necesita… una migración; no alcanza al tenant reactivado; agrega cableado nuevo en `deploy.ps1` | Rechazada |
+| (b) Script standalone + fila marcadora | Guarda de una-sola-vez escrita a mano (hay que meter marcador y UPDATE en la misma transacción, por base); el marcador necesita una tabla, que necesita… una migración; no alcanza al tenant reactivado; agrega cableado nuevo en `deploy.ps1` | Rechazada **como mecanismo único** — ver el addendum de más abajo: SÍ se adoptó como defensa en profundidad, no como reemplazo |
 
-**Un solo archivo por schema, no dos migraciones.** Prisma corre cada archivo en su propia
-transacción. Separar el `ALTER DATABASE` del backfill admite un estado parcial —sesión ya en UTC,
-datos sin corregir, es decir +3h a la vista— que es justo lo que ADR-5 prohíbe. Un archivo, una
-transacción, un estado.
+**Un solo archivo por schema, no dos migraciones.**
+
+**Corrección (review lineage `review-f4098720ccc4b038`, CRITICAL `R3-r4-retry-path-unproved`,
+2026-09-14).** Este párrafo decía "Prisma corre cada archivo en su propia transacción" como
+justificación de que un solo archivo alcanzaba para la atomicidad. **Eso es falso** — verificado de
+forma independiente con Prisma 7.10.0: una migración `CREATE TABLE paso_uno; SELECT 1/0; CREATE TABLE
+paso_dos` deja `paso_uno` **vivo** tras el fallo. No hay una transacción que envuelva el archivo
+entero.
+
+Lo que SÍ es cierto, y es la razón real por la que el archivo único sigue de pie: el bloque `DO $$`
+del backfill es la ÚLTIMA sentencia del archivo, y un `DO $$` **es una sola sentencia** — por lo tanto
+atómico por sí mismo, con o sin transacción de archivo completo. Separar el `ALTER DATABASE` del
+backfill en dos migraciones seguiría admitiendo un estado parcial —sesión ya en UTC, datos sin
+corregir, +3h a la vista— que ADR-5 prohíbe, así que las dos correcciones se mantienen en el mismo
+archivo por **orden de deploy**, no por atomicidad de archivo.
+
+**La ventana real, y por qué hacía falta una segunda guarda.** Si el `DO $$` del backfill COMMITEA
+pero el proceso muere antes de que Prisma deje registrado el éxito en `_prisma_migrations` (esa
+escritura de bookkeeping es una operación SEPARADA, posterior a la transacción de datos), un operador
+que corre `prisma migrate resolve` + `migrate deploy` para recuperarse vuelve a ejecutar el archivo
+completo — y el discriminador de microsegundos (ADR-3) no cambia al restar horas, así que una fila ya
+corregida vuelve a calificar como "escrita por Prisma" y se le resta otras 3h. R4 se había certificado
+corriendo `prisma migrate deploy` dos veces sobre un primer apply que SALIÓ BIEN, que no ejercita este
+camino en absoluto.
+
+**Guarda agregada: tabla `_utc_backfill_aplicado`, escrita DENTRO del mismo `DO $$` que hace el
+backfill.** Mismo bloque, misma sentencia, misma transacción implícita: si el bloque commitea, el
+marcador commitea junto con el desplazamiento de datos, sin depender de si `_prisma_migrations` llega
+a registrar el éxito. Esto retoma la opción (b) de la tabla de arriba, pero **como defensa en
+profundidad, no como reemplazo** de (a): `_prisma_migrations` sigue cubriendo el camino ordinario
+(incluido el tenant reactivado, donde (b) sola no alcanzaría), y el marcador cierra específicamente el
+hueco fallo-y-reintento que (a) sola no cubre. El check (¿ya está el marcador?) va PRIMERO en el
+bloque, antes de tocar cualquier fila; si ya está, el bloque hace `RAISE NOTICE` y `RETURN` — un no-op
+limpio.
 
 **El SQL es idéntico en los dos schemas salvo la cabecera**, porque recorre el catálogo en vez de
 enumerar tablas:
 
 ```sql
-SET LOCAL TimeZone = 'UTC';   -- ningún GUC de sesión influye en lo que sigue
+-- Marcador: sentencia propia, CREATE TABLE IF NOT EXISTS es idempotente por
+-- construcción y no necesita compartir transacción con nada.
+CREATE TABLE IF NOT EXISTS _utc_backfill_aplicado (
+  migration        text PRIMARY KEY,
+  aplicado_en      timestamptz NOT NULL,
+  filas_corregidas bigint NOT NULL
+);
 
-DO $$ DECLARE c record; BEGIN
+DO $$ DECLARE
+  c record;
+  ya_aplicado boolean;
+  filas_corregidas bigint := 0;
+  filas_este_update bigint;
+BEGIN
+  SELECT EXISTS (
+    SELECT 1 FROM _utc_backfill_aplicado WHERE migration = '<esta_migracion>'
+  ) INTO ya_aplicado;
+
+  IF ya_aplicado THEN
+    RAISE NOTICE '[sesion-utc] backfill ya aplicado -- no se toca ninguna fila';
+    RETURN;
+  END IF;
+
   FOR c IN
     SELECT col.table_name, col.column_name
       FROM information_schema.columns col
@@ -91,14 +141,24 @@ DO $$ DECLARE c record; BEGIN
        AND t.table_type = 'BASE TABLE'
        AND col.udt_name = 'timestamptz'
        AND col.table_name <> '_prisma_migrations'
+       AND col.table_name <> '_utc_backfill_aplicado'
   LOOP
     EXECUTE format(
       'UPDATE %I SET %I = %I - INTERVAL ''3 hours''
         WHERE %I IS NOT NULL AND EXTRACT(MICROSECONDS FROM %I)::bigint %% 1000 = 0',
       c.table_name, c.column_name, c.column_name, c.column_name, c.column_name);
+    GET DIAGNOSTICS filas_este_update = ROW_COUNT;
+    filas_corregidas := filas_corregidas + filas_este_update;
   END LOOP;
+
+  INSERT INTO _utc_backfill_aplicado (migration, aplicado_en, filas_corregidas)
+  VALUES ('<esta_migracion>', clock_timestamp(), filas_corregidas);
 END $$;
 ```
+
+(Sin `SET LOCAL TimeZone`: ver el addendum de ADR-4 más abajo — la aritmética del backfill no
+depende del `TimeZone` de sesión, y ese `SET LOCAL` era además inerte fuera de una transacción
+explícita.)
 
 Tres propiedades que se obtienen del catálogo y no de una lista: cubre las 44 tablas sin riesgo de
 omisión; **estructuralmente no puede tocar `@db.Date`** (`Feriado.fecha`, ADR-4/#2542, fuera de
@@ -172,20 +232,38 @@ dentro de un archivo de migración: **ningún valor de JavaScript cruza el lími
 que el bug de serialización de `@prisma/adapter-pg` no puede dispararse — es estrictamente más
 fuerte que usar `pg` crudo, que igual serializa parámetros. Además:
 
-- `SET LOCAL TimeZone = 'UTC'` como primera sentencia: ni `EXTRACT` ni un literal dependen del GUC.
 - La aritmética es `timestamptz - INTERVAL '3 hours'`: campos de hora, absolutos, independientes de
-  la zona de sesión y de DST.
+  la zona de sesión y de DST. `EXTRACT(MICROSECONDS FROM ...)` (el discriminador de ADR-3) tampoco
+  depende del GUC — lee la parte de microsegundos del valor almacenado.
 - **Regla que queda vigente para este repo**: cualquier script futuro que corrija timestamps usa
   `pg` crudo, nunca `@prisma/client`. Precedentes: `backfill-correo-clientes.mjs:233` y
   `scripts/migrate-tenants.js:41`.
 
-**Diferencia explícita con `backfill-correo-clientes.mjs`.** Aquél es idempotente **por
-construcción**: su guarda (`smtp_password_cifrada IS NULL`, reevaluada en el propio `UPDATE`,
-líneas 176-185) deja de cumplirse tras la primera corrida. El nuestro **no puede serlo**: restar 3h
-no cambia los microsegundos, así que una segunda corrida vuelve a identificar las mismas filas y les
-resta otras 3h. Por eso la garantía es externa al SQL (`_prisma_migrations`, ADR-2) y por eso el
-spec de integración **afirma explícitamente que correr el SQL dos veces corrompe** — es un test de
-caracterización que impide que alguien "simplifique" la guarda más adelante.
+**Corrección (CRITICAL `R3-r4-retry-path-unproved`, 2026-09-14) — se quitó `SET LOCAL TimeZone =
+'UTC'`.** Como el punto anterior ya establece, ningún cálculo del backfill depende del `TimeZone` de
+sesión — el `SET LOCAL` no aportaba corrección, solo intención documental. Y era además **inerte**
+fuera de una transacción explícita: si alguien corriera el archivo con `psql -f` (uso ya prohibido por
+la cabecera del propio archivo), cada sentencia de nivel superior corre en autocommit y Postgres emite
+`WARNING: SET LOCAL can only be used in transaction blocks` — verificado empíricamente. Dentro de
+`prisma migrate deploy` (el único camino permitido) y dentro de `pg.Pool.query()` con el archivo
+completo como una sola llamada (como hacen los specs de integración) el `SET LOCAL` SÍ tomaba efecto
+sin warning — pero como no hacía falta para la corrección, se retiró en vez de dejar una sentencia
+cuyo comportamiento depende de CÓMO se ejecute el archivo.
+
+**Diferencia explícita con `backfill-correo-clientes.mjs` — y su corrección.** Aquél es idempotente
+**por construcción**: su guarda (`smtp_password_cifrada IS NULL`, reevaluada en el propio `UPDATE`,
+líneas 176-185) deja de cumplirse tras la primera corrida. **El discriminador de microsegundos de
+ADR-3 sigue sin poder serlo por construcción**: restar 3h no cambia los microsegundos, así que una
+segunda corrida del `UPDATE` vuelve a identificar las mismas filas y les resta otras 3h — esa
+propiedad no cambió y es la razón de ser de la guarda. Lo que sí cambió (ver addendum de ADR-2): el
+ARCHIVO completo ya no depende únicamente de una garantía externa (`_prisma_migrations`) para ser
+seguro ante una segunda corrida — la tabla `_utc_backfill_aplicado`, escrita en la misma transacción
+implícita que el `UPDATE`, hace que reejecutar el archivo (con o sin `_prisma_migrations` de por
+medio) sea un no-op para los datos. El spec de integración de master, que antes afirmaba
+explícitamente que correr el SQL dos veces corrompe, ahora documenta lo contrario (`[3.2]`,
+corregido tras esta review) — y agrega un caso nuevo (`[R3/R4-retry]`, en ambos specs) que reproduce
+el escenario real: no una segunda corrida manual, sino fallo-y-reintento vía
+`prisma migrate resolve` + `migrate deploy`.
 
 ## ADR-5 — Orden de deploy y ventana atómica
 

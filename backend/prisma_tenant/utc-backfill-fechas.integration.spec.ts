@@ -593,3 +593,87 @@ describe('migración 20260914150000 — la guarda de ADR-3 no depende del orden 
     expect(fila.rows[0].created_at.toISOString()).toBe('2026-09-12T20:13:00.000Z');
   });
 });
+
+describe('migración 20260914150000 — auto-guarda de una-sola-vez ante fallo-y-reintento (WU4, tenant, R3/R4, CRITICAL R3-r4-retry-path-unproved)', () => {
+  // Mismo caso que el describe homónimo de `prisma_master`: R4 se había
+  // certificado con dos `prisma migrate deploy` seguidos sobre un primer
+  // apply exitoso — eso no prueba el camino de fallo-y-reintento, que es
+  // justo el que puede duplicar un backfill irreversible (review lineage
+  // `review-f4098720ccc4b038`, lens reliability, CRITICAL
+  // `R3-r4-retry-path-unproved`).
+  const admin = new PostgresAdminService(MASTER_TEST_URL);
+  const dbName = nuevoNombreDbEfimera('reintento');
+  let pool: InstanceType<typeof Pool>;
+
+  function correrMigrateDeploy(): void {
+    execFileSync(
+      process.execPath,
+      [
+        PRISMA_BIN,
+        'migrate',
+        'deploy',
+        '--schema=prisma_tenant/schema.prisma',
+        '--config',
+        'prisma.tenant.config.ts',
+      ],
+      {
+        cwd: RUTA_BACKEND,
+        env: { ...process.env, DATABASE_URL_TENANT: urlHaciaDb(dbName) },
+        stdio: 'pipe',
+      },
+    );
+  }
+
+  beforeAll(async () => {
+    await admin.createDatabase(dbName);
+    correrMigrateDeploy(); // primer deploy: historial completo + la migración bajo test
+    pool = new Pool({ connectionString: urlHaciaDb(dbName) });
+    // Tabla ad hoc, creada DESPUÉS del primer deploy: el loop catalogado de
+    // la migración (information_schema, udt_name='timestamptz') no
+    // distingue tablas de Prisma de tablas creadas a mano — cualquier BASE
+    // TABLE de 'public' con columna timestamptz entra. Aísla el caso del
+    // review de la complejidad de la segunda guarda de ADR-3 (ninguna de
+    // las 6 tablas guardadas participa acá).
+    await pool.query(
+      `CREATE TABLE zz_retry_probe (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), valor timestamptz)`,
+    );
+  }, 90_000);
+
+  afterAll(async () => {
+    await pool?.end().catch(() => undefined);
+    await admin.dropDatabase(dbName);
+  }, 30_000);
+
+  it('[R3/R4-retry] una fila ya corregida (microsegundos=0) NO se vuelve a tocar aunque el reintento reaplique el archivo', async () => {
+    const {
+      rows: [{ id: idFixture }],
+    } = await pool.query<{ id: string }>(
+      `INSERT INTO zz_retry_probe (valor) VALUES ($1::timestamptz) RETURNING id`,
+      ['2026-09-01 07:00:00.000000+00'],
+    );
+
+    // Simula el crash: la migración ya corrió (primer deploy) pero el
+    // proceso murió DESPUÉS de que el bloque de backfill commiteó y ANTES
+    // de que Prisma escribiera su fila de bookkeeping.
+    await pool.query('DELETE FROM _prisma_migrations WHERE migration_name = $1', [
+      MIGRATION_UNDER_TEST,
+    ]);
+
+    correrMigrateDeploy();
+
+    const {
+      rows: [{ valor }],
+    } = await pool.query<{ valor: Date }>('SELECT valor FROM zz_retry_probe WHERE id = $1', [
+      idFixture,
+    ]);
+    // SIN el marcador `_utc_backfill_aplicado`: 07:00:00 - 3h = 04:00:00.
+    // CON el marcador: sigue en 07:00:00 — el reintento es un no-op.
+    expect(valor.toISOString()).toBe('2026-09-01T07:00:00.000Z');
+
+    const { rows } = await pool.query(
+      'SELECT migration_name FROM _prisma_migrations WHERE migration_name = $1',
+      [MIGRATION_UNDER_TEST],
+    );
+    expect(rows).toHaveLength(1);
+  }, 90_000);
+});
