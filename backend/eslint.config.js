@@ -179,6 +179,39 @@ const reglaEnvStringVacio = {
   ],
 };
 
+// ─── FITNESS RULE: `new Pool(` fuera del helper de conexión UTC ───────────
+// ADR-1 (sdd/sesion-utc-y-backfill-de-fechas): `utc-connection-string.ts` es
+// el único lugar autorizado a construir un `pg.Pool` — cualquier otro sitio
+// que lo haga se salta el helper `conUtc()` y la sesión Postgres puede
+// quedar en una zona horaria distinta de UTC.
+//
+// CUPO DE UNO (ver el comment de `reglaEnvStringVacio`, arriba): agregar acá
+// una clave `no-restricted-syntax` nueva y spreadearla en el MISMO `rules`
+// que `reglaEnvStringVacio` borraría la regla de env vacío en ese bloque —
+// por eso este selector se suma como UN ITEM MÁS al array ya existente
+// (`reglaPoolYEnvVacio`, más abajo), nunca como una clave separada.
+const MENSAJE_POOL_FUERA_DEL_HELPER =
+  'FITNESS RULE (ADR-1, sdd/sesion-utc-y-backfill-de-fechas): construir un `pg.Pool` fuera de ' +
+  '`utc-connection-string.ts` se salta el helper `conUtc()` — la sesión Postgres puede quedar ' +
+  "en una zona horaria distinta de UTC. Usá `conUtc(url)` en su lugar.";
+
+const SELECTOR_POOL_FUERA_DEL_HELPER = {
+  selector: "NewExpression[callee.name='Pool']",
+  message: MENSAJE_POOL_FUERA_DEL_HELPER,
+};
+
+// Combinación (no reemplazo) de los selectores de env vacío + el nuevo de
+// Pool, para el bloque de abajo que los aplica juntos sobre un subconjunto
+// de archivos. `reglaEnvStringVacio['no-restricted-syntax']` empieza con la
+// severidad `'error'`, seguida de los selectores — el spread preserva ese
+// orden y agrega el nuevo al final.
+const reglaPoolYEnvVacio = {
+  'no-restricted-syntax': [
+    ...reglaEnvStringVacio['no-restricted-syntax'],
+    SELECTOR_POOL_FUERA_DEL_HELPER,
+  ],
+};
+
 /** @type {import('eslint').Linter.Config[]} */
 module.exports = [
   // ─── Base: TypeScript + Prettier ───────────────────────────────────────────
@@ -239,6 +272,38 @@ module.exports = [
     files: ['src/**/infrastructure/**/*.ts'],
     rules: {
       'no-restricted-imports': 'off',
+    },
+  },
+
+  // ─── FITNESS RULE: `new Pool(` fuera de utc-connection-string.ts (ADR-1) ──
+  // Alcance DELIBERADAMENTE PARCIAL, por diseño de la cadena de PRs de
+  // sdd/sesion-utc-y-backfill-de-fechas: cubre solo los call sites de `pg.Pool`
+  // ya migrados a `conUtc()` en el momento de este PR. Ampliar el alcance a un
+  // archivo que TODAVÍA construye `new Pool(` directo rompería `pnpm lint` en
+  // un PR que ni siquiera lo toca — cada PR de la cadena tiene que quedar
+  // verde por sí solo (`chained-pr`/`work-unit-commits`).
+  //
+  // `postgres-admin.service.ts` y `tenant-seeder.adapter.ts` migran en WU2
+  // (PR2, tareas 2.2/2.3): sacarlos de `ignores` es parte de esa migración,
+  // no un olvido de este bloque. `scripts/migrate-tenants.js` (WU2, 2.4) es
+  // CommonJS y no cae bajo `files: ['src/**/*.ts']` — sumarlo requiere su
+  // propio bloque con `languageOptions` CJS, igual que el resto de scripts/.
+  //
+  // Los demás scripts de `scripts/**` que construyen `new Pool(`
+  // (`regenerar-entorno.mjs`, `backfill-tipos-componente-codigo.js`,
+  // `sync-ayuda.js`) son ajenos a este cambio — no están en el proposal, la
+  // spec ni el design de sdd/sesion-utc-y-backfill-de-fechas — por eso el
+  // `files` de este bloque NO incluye `scripts/**` en general.
+  {
+    files: ['src/**/*.ts'],
+    ignores: [
+      '**/*.spec.ts', // ADR-7: los specs de round-trip abren `pg` crudo a propósito.
+      'src/shared/infrastructure/persistence/utc-connection-string.ts', // el helper mismo.
+      'src/clientes/infrastructure/postgres-admin.service.ts', // TODO(WU2 2.2): migrar y sacar.
+      'src/clientes/infrastructure/tenant-seeder.adapter.ts', // TODO(WU2 2.3): migrar y sacar.
+    ],
+    rules: {
+      ...reglaPoolYEnvVacio,
     },
   },
 
