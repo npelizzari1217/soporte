@@ -20,8 +20,18 @@
 # DETENIDOS a proposito (Stop-Service -Force sobre uno ya detenido es
 # no-op, igual que en deploy.ps1) - asi el punto de restore es exacto y el
 # operador recien despues abre la ventana con deploy.ps1. Fail-closed: si
-# cualquier verificacion falla, rearranca los servicios y sale con codigo
-# distinto de cero - el sistema queda exactamente como estaba.
+# cualquier verificacion falla, BORRA la carpeta de dump del intento (pg_dump
+# crea el archivo de salida ANTES de fallar - medido contra produccion, ver
+# comentario junto al pg_dump real mas abajo), rearranca los servicios, y
+# sale con codigo distinto de cero - el sistema queda exactamente como
+# estaba, y backups/ nunca queda con un dump a medias que parezca valido.
+#
+# TODA URL de conexion pasa SIEMPRE por DbUrl() (unico lugar que la arma) y
+# SIEMPRE con -d explicito y las opciones antes: psql y pg_dump usan el
+# parser de URI de libpq, que rechaza el "?schema=public" que trae
+# DATABASE_URL_MASTER (parametro propio de Prisma) y que, ademas, si la URL
+# se pasa como primer argumento posicional, ignora los flags que la siguen.
+# Medido contra produccion el 2026-09-14 - ver comentarios en DbUrl().
 #
 # Uso:
 #   powershell -NoProfile -ExecutionPolicy Bypass -File predeploy-dump.ps1 -DryRun
@@ -62,11 +72,21 @@ function AssertOk($que) {
 # URL de una base especifica, derivada de DATABASE_URL_MASTER reemplazando
 # solo el path - nunca hardcodea host/user/clave. Mismo criterio que
 # tenantUrl() en backend/scripts/migrate-tenants.js.
+#
+# UNICO lugar que arma una URL para psql/pg_dump - por eso el query string se
+# descarta ACA, no en cada call site. DATABASE_URL_MASTER trae "?schema=public"
+# (parametro propio de Prisma, selecciona el schema logico de la conexion).
+# psql y pg_dump usan el parser de URI de libpq, que NO conoce ese parametro y
+# lo rechaza de plano: "invalid URI query parameter: schema" (exit 2, medido
+# contra el VPS de produccion el 2026-09-14). pg (node-postgres), que es lo
+# unico que usaba esta URL hasta este script, lo tolera - por eso ningun otro
+# camino de este repo lo habia pisado antes. Que nadie "restaure" el query de
+# vuelta: rompe TODO llamado a psql/pg_dump de este archivo por igual.
 function DbUrl([string]$dbName) {
   if ($env:DATABASE_URL_MASTER -notmatch '^(.*://[^/]+)/[^/?]*(\?.*)?$') {
     throw ("No se pudo derivar la URL de la base '" + $dbName + "' desde DATABASE_URL_MASTER")
   }
-  return $Matches[1] + '/' + $dbName + $Matches[2]
+  return $Matches[1] + '/' + $dbName
 }
 
 Set-Location $RepoRoot
@@ -100,8 +120,15 @@ Write-Host ("pg_dump: " + $pgDumpVersion)
 # hardcodeadas (el sufijo hex de un tenant cambia si se recrea). SIEMPRE con
 # -t -A: columna sola, sin encabezado, sin alineacion - la causa raiz del
 # dump fantasma fue justo la falta de estos dos flags.
+#
+# La URL SIEMPRE va con -d explicito, y las opciones ANTES que -d. Medido
+# contra el VPS de produccion el 2026-09-14: con la URL como primer argumento
+# posicional (`psql <url> -t -A -c "..."`), psql la toma como el nombre de
+# base y trata -t/-A/-c como argumentos posicionales EXTRA - los ignora con
+# un warning y ninguno de los tres surte efecto. `-d <url>` es la unica forma
+# verificada que anda (exit 0).
 Step 'Enumerar bases desde el registro'
-$tenantNamesRaw = & $PsqlExe $env:DATABASE_URL_MASTER -t -A -c "SELECT db_name FROM clientes WHERE activo = true AND deleted_at IS NULL ORDER BY db_name"
+$tenantNamesRaw = & $PsqlExe -t -A -d (DbUrl $masterDbName) -c "SELECT db_name FROM clientes WHERE activo = true AND deleted_at IS NULL ORDER BY db_name"
 AssertOk 'enumeracion de tenants (psql)'
 $tenantNames = @($tenantNamesRaw -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' })
 
@@ -128,11 +155,11 @@ Write-Host "Todos los identificadores son validos."
 Step 'Verificar espacio libre y permiso de conexion por base'
 $estimatedBytes = 0
 foreach ($db in $dbNames) {
-  $sizeRaw = & $PsqlExe (DbUrl $db) -t -A -c "SELECT pg_database_size(current_database())"
+  $sizeRaw = & $PsqlExe -t -A -d (DbUrl $db) -c "SELECT pg_database_size(current_database())"
   AssertOk ("consulta de tamano de " + $db)
   $estimatedBytes += [int64]($sizeRaw.Trim())
 
-  & $PsqlExe (DbUrl $db) -t -A -c "SELECT 1" | Out-Null
+  & $PsqlExe -t -A -d (DbUrl $db) -c "SELECT 1" | Out-Null
   AssertOk ("conexion de verificacion a " + $db)
 }
 $driveLetter = $RepoRoot.Substring(0, 1)
@@ -171,7 +198,18 @@ try {
   foreach ($db in $dbNames) {
     $dumpFile = Join-Path $dumpDir ($db + '.dump')
     Write-Host ("  " + $db + " -> " + $dumpFile)
-    & $PgDumpExe (DbUrl $db) '-Fc' '-f' $dumpFile
+    # pg_dump usa el mismo parser de URI de libpq que psql (ver DbUrl arriba)
+    # - mismo -d explicito, misma razon: una URL posicional se puede tomar
+    # como un argumento suelto y dejar -Fc/-f sin efecto. Medido contra el
+    # VPS de produccion el 2026-09-14, y PEOR de lo que -DryRun deja ver:
+    # con la URL vieja (?schema= sin limpiar) pg_dump salio con exit 1 pero
+    # IGUAL CREO el archivo de salida ANTES de fallar - un dump de 0 bytes
+    # que a simple vista parece un backup valido. Es la forma exacta del
+    # artefacto historico de C:\soporte\backups\ (dump fantasma del
+    # 2026-08-20). Por eso la verificacion de abajo (tamano > 0 Y
+    # pg_restore --list) NO es decoracion defensiva: es la unica manera de
+    # detectar un pg_dump que fallo pero dejo un archivo.
+    & $PgDumpExe '-Fc' '-d' (DbUrl $db) '-f' $dumpFile
     AssertOk ("pg_dump de " + $db)
   }
 
@@ -186,9 +224,12 @@ try {
     $dumpFile = Join-Path $dumpDir ($db + '.dump')
     $file = Get-Item $dumpFile
     if ($file.Length -le 0) {
-      throw ("Dump de tamano 0 para " + $db + " (" + $dumpFile + ") - exactamente la falla que este script existe para prevenir.")
+      throw ("Dump de tamano 0 para " + $db + " (" + $dumpFile + ") - exactamente la falla que este script existe para prevenir (pg_dump crea el archivo ANTES de fallar).")
     }
 
+    # pg_restore --list SOLO lee el archivo local $dumpFile - no abre ninguna
+    # conexion a base, asi que no necesita -d ni pasa por DbUrl. El parser de
+    # URI de libpq (la causa del defecto de arriba) nunca entra en juego aca.
     $toc = & $PgRestoreExe '--list' $dumpFile
     AssertOk ("pg_restore --list de " + $dumpFile)
 
@@ -206,10 +247,21 @@ try {
   $resumen | Format-Table -AutoSize | Out-String | Write-Host
 
 } catch {
-  Step 'FALLO - rearrancando servicios (fail-closed, ADR-6)'
+  Step 'FALLO - limpiando dump parcial y rearrancando servicios (fail-closed, ADR-6)'
+  # pg_dump crea el archivo de salida ANTES de fallar (medido contra
+  # produccion, ver comentario arriba) - un intento fallido puede dejar
+  # backups/ con dumps de 0 bytes, o con algunas bases completas y otras no,
+  # que a simple vista parecen un backup valido. BORRAR la carpeta entera
+  # del intento (nunca dejarla "por las dudas") es lo que evita que un
+  # operador futuro confunda un intento fallido con uno verificado - un
+  # backup a medias es peor que ninguno, porque miente.
+  if (Test-Path $dumpDir) {
+    Remove-Item -Path $dumpDir -Recurse -Force
+    Write-Host ("Carpeta de dump parcial borrada: " + $dumpDir) -ForegroundColor Yellow
+  }
   foreach ($s in $Services) { Start-Service $s }
   Write-Host $_.Exception.Message -ForegroundColor Red
-  Write-Host "########## PREDEPLOY-DUMP FALLO - servicios rearrancados, sistema como estaba ##########" -ForegroundColor Red
+  Write-Host "########## PREDEPLOY-DUMP FALLO - dump parcial borrado, servicios rearrancados, sistema como estaba ##########" -ForegroundColor Red
   exit 1
 }
 

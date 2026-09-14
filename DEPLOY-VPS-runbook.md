@@ -167,7 +167,9 @@ segundos.
 **`deploy.ps1` no cambia.** El backfill de fechas (issue #173) entra por `migrate:master` y
 `migrate:tenants` — ya dentro de la ventana `Stop-Service` → `Start-Service` del paso 9 — y por
 eso el script de deploy queda intacto. Lo nuevo es que ese backfill **no se puede deshacer con un
-`git revert`**: resta 3 horas a ~1614 valores históricos, y un revert de código no vuelve a sumarlas.
+`git revert`**: resta 3 horas a los valores históricos que el discriminador detecta como escritos
+por Prisma (~1614, medidos el 2026-09-14 sobre los tenants activos en ese momento — el número
+crece con cada tenant nuevo, no es una constante), y un revert de código no vuelve a sumarlas.
 El único rollback de datos es restaurar un dump tomado antes de esa corrida.
 
 **Por eso el dump es una precondición operativa, no un paso del pipeline.** `predeploy-dump.ps1`
@@ -390,9 +392,11 @@ git reset --hard <commit-de-rollback>
 ### Restore de datos (si el backfill de fechas hay que revertirlo)
 
 Caso puntual: el backfill de `sdd/sesion-utc-y-backfill-de-fechas` (issue #173, ADR-6) resta 3
-horas a ~1614 valores históricos, y eso **el `git reset --hard` de arriba no lo deshace** — la
-migración ya corrió y quedó marcada en `_prisma_migrations`. El único rollback de datos es
-restaurar el dump que tomó `predeploy-dump.ps1` antes del deploy.
+horas a los valores históricos afectados (~1614, medidos el 2026-09-14 sobre master + los tenants
+activos en ese momento — es una foto, no una constante: crece con cada tenant nuevo), y eso **el
+`git reset --hard` de arriba no lo deshace** — la migración ya corrió y quedó marcada en
+`_prisma_migrations`. El único rollback de datos es restaurar el dump que tomó
+`predeploy-dump.ps1` antes del deploy.
 
 **Los dos pasos van SIEMPRE juntos.** Revertir el código sin restaurar los datos deja las filas ya
 corregidas mostrándose −3h (la lectura vuelve a restar 3h a un valor que ya está en UTC):
