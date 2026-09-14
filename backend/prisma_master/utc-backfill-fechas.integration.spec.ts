@@ -184,22 +184,30 @@ describe('migración 20260914150000 — backfill catalogado por microsegundos (W
     expect(conUpdateReal.updatedAt.toISOString()).toBe('2026-09-02T06:30:00.000Z');
   });
 
-  it('[3.2] caracterización ADR-4: correr el mismo SQL una SEGUNDA vez, directo (vía psql), CORROMPE', async () => {
-    // Repite la corrida anterior tal cual la ejecutaría `psql` a mano — sin
-    // pasar por `_prisma_migrations`. El discriminador de microsegundos NO
-    // cambia al restar horas, así que la fila ya corregida vuelve a
-    // clasificar como "escrita por Prisma" y se le resta OTRA vez 3h. Este
-    // test documenta POR QUÉ la garantía de una-sola-vez tiene que ser
-    // externa al SQL (ADR-2): si alguien "simplificara" la guarda pensando
-    // que basta con no correr el archivo dos veces, este test falla.
+  it('[3.2] corrección tras CRITICAL R3-r4-retry-path-unproved: correr el mismo SQL una SEGUNDA vez, directo (vía psql), ya NO corrompe', async () => {
+    // Este test documentaba, ANTES de la corrección de
+    // `R3-r4-retry-path-unproved` (review lineage
+    // `review-f4098720ccc4b038`), que una segunda corrida directa
+    // corrompía — porque el discriminador de microsegundos, por sí solo,
+    // NO es idempotente (restar 3h no cambia los microsegundos, así que
+    // una fila ya corregida vuelve a calificar). Esa propiedad del
+    // discriminador SIGUE siendo cierta y es la razón de ser de la guarda.
+    // Lo que cambió es que ahora el ARCHIVO tiene su propia guarda de
+    // una-sola-vez (`_utc_backfill_aplicado`, ADR-2), escrita en la MISMA
+    // transacción implícita que el backfill — así que una segunda corrida
+    // del archivo completo (con o sin `_prisma_migrations` de por medio)
+    // es un no-op para los datos. Ver `[R3/R4-retry]` más abajo para el
+    // escenario real que motivó la guarda (fallo-y-reintento, no una
+    // segunda corrida manual).
     const sql = fs.readFileSync(MIGRATION_FILE, 'utf8');
     await pool.query(sql);
 
-    const corrompida = await leerFechasCliente(pool, idMicrosegundosCero);
-    // Segunda resta de 3h sobre el valor YA corregido (07:00) -> 04:00, no
-    // el instante real (10:00 original). Los datos quedan peor, no iguales.
-    expect(corrompida.createdAt.toISOString()).toBe('2026-09-01T04:00:00.000Z');
-    expect(corrompida.updatedAt.toISOString()).toBe('2026-09-01T04:00:00.000Z');
+    const sinDobleCorreccion = await leerFechasCliente(pool, idMicrosegundosCero);
+    // Con la guarda: sigue en 07:00 (la primera corrida ya la dejó ahí),
+    // NO baja a 04:00 — la marca `_utc_backfill_aplicado` corta la segunda
+    // pasada antes de tocar ninguna fila.
+    expect(sinDobleCorreccion.createdAt.toISOString()).toBe('2026-09-01T07:00:00.000Z');
+    expect(sinDobleCorreccion.updatedAt.toISOString()).toBe('2026-09-01T07:00:00.000Z');
 
     // El valor escrito por la base sigue intacto — el discriminador nunca
     // lo tocó, ni en la primera corrida ni en esta.
@@ -291,4 +299,80 @@ describe('migración 20260914150000 — ejecución exactamente-una-vez vía `pri
     const fixtureIntacta = await leerFechasCliente(pool, idFixture);
     expect(fixtureIntacta.createdAt.toISOString()).toBe('2026-09-05T08:00:00.000Z');
   }, 60_000);
+});
+
+describe('migración 20260914150000 — auto-guarda de una-sola-vez ante fallo-y-reintento (WU3, master, R3/R4, CRITICAL R3-r4-retry-path-unproved)', () => {
+  // Review lineage `review-f4098720ccc4b038`, lens reliability. R4 se
+  // había certificado corriendo `prisma migrate deploy` dos veces sobre un
+  // primer apply que SALIÓ BIEN — eso no prueba nada sobre el camino que
+  // puede duplicar un backfill irreversible. El camino real: el DO $$ del
+  // backfill COMMITEA (es una sola sentencia, atómica por sí misma) y el
+  // proceso muere ANTES de que Prisma deje registrado el éxito en
+  // `_prisma_migrations` (escritura de bookkeeping separada de la
+  // transacción de datos). Un reintento (`prisma migrate resolve` +
+  // `migrate deploy`) vuelve a correr el archivo completo: el
+  // discriminador de microsegundos no cambia al restar horas, así que una
+  // fila YA corregida vuelve a calificar y se le restarían otras 3h.
+  const admin = new PostgresAdminService(MASTER_TEST_URL);
+  const dbName = nuevoNombreDbEfimera('reintento');
+  let pool: InstanceType<typeof Pool>;
+
+  function correrMigrateDeploy(): void {
+    execFileSync(process.execPath, [PRISMA_BIN, 'migrate', 'deploy', '--schema=prisma_master/schema.prisma'], {
+      cwd: RUTA_BACKEND,
+      env: { ...process.env, DATABASE_URL_MASTER: urlHaciaDb(dbName) },
+      stdio: 'pipe',
+    });
+  }
+
+  beforeAll(async () => {
+    await admin.createDatabase(dbName);
+    correrMigrateDeploy(); // primer deploy: historial completo + la migración bajo test, sin filas propias todavía
+    pool = new Pool({ connectionString: urlHaciaDb(dbName) });
+  }, 90_000);
+
+  afterAll(async () => {
+    await pool?.end().catch(() => undefined);
+    await admin.dropDatabase(dbName);
+  }, 30_000);
+
+  it('[R3/R4-retry] una fila ya corregida (microsegundos=0) NO se vuelve a tocar aunque el reintento reaplique el archivo', async () => {
+    // Fixture representando una fila YA desplazada por la corrida anterior:
+    // microsegundos=0 es indistinguible de una fila recién corregida — el
+    // discriminador de ADR-3 es por valor, no por historial de ejecución.
+    const idFixture = await insertarClienteFixture(pool, {
+      nombre: 'Fixture R3/R4-retry (ya corregida, microsegundos=0)',
+      dbName: 'test_r3r4_retry',
+      timestamp: '2026-09-01 07:00:00.000000+00',
+    });
+
+    // Simula el crash descrito por la review: la migración ya corrió
+    // (arriba, en el primer deploy) pero el proceso murió DESPUÉS de que
+    // el bloque de backfill commiteó y ANTES de que Prisma escribiera su
+    // propia fila de bookkeeping — el registro para ESTA migración queda
+    // ausente de `_prisma_migrations`, exactamente el estado que describe
+    // `R3-r4-retry-path-unproved`.
+    await pool.query('DELETE FROM _prisma_migrations WHERE migration_name = $1', [
+      MIGRATION_UNDER_TEST,
+    ]);
+
+    correrMigrateDeploy();
+
+    const trasReintento = await leerFechasCliente(pool, idFixture);
+    // SIN el marcador `_utc_backfill_aplicado`: 07:00:00 - 3h = 04:00:00
+    // (corrupción, −6h acumuladas respecto del instante real). CON el
+    // marcador: sigue en 07:00:00 — el reintento es un no-op para los datos.
+    expect(trasReintento.createdAt.toISOString()).toBe('2026-09-01T07:00:00.000Z');
+    expect(trasReintento.updatedAt.toISOString()).toBe('2026-09-01T07:00:00.000Z');
+
+    // La garantía ordinaria (_prisma_migrations) queda restaurada: el
+    // reintento SÍ vuelve a dejar una fila propia — el archivo "corrió"
+    // exitosamente desde el punto de vista de Prisma, el backfill fue un
+    // no-op por el marcador (defensa en profundidad, ADR-2).
+    const { rows } = await pool.query(
+      'SELECT migration_name FROM _prisma_migrations WHERE migration_name = $1',
+      [MIGRATION_UNDER_TEST],
+    );
+    expect(rows).toHaveLength(1);
+  }, 90_000);
 });
