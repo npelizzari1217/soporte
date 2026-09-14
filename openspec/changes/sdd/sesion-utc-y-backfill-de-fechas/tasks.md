@@ -32,6 +32,57 @@ Detalle completo, con RED observado para la fixture de R7 y el test de
 regresión de orden: `apply-progress` (engram
 `sdd/sesion-utc-y-backfill-de-fechas/apply-progress`).
 
+## Remediación (review lineage `review-f4098720ccc4b038`, lens reliability, 2026-09-14)
+
+CRITICAL `R3-r4-retry-path-unproved`: R4 se había certificado corriendo
+`prisma migrate deploy` dos veces sobre un primer apply que SALIÓ BIEN,
+camino que no prueba nada sobre fallo-y-reintento — el camino que sí puede
+duplicar un backfill irreversible. El `DO $$` del backfill es la última
+sentencia del archivo y es atómico por sí mismo (commitea o rueda para
+atrás como un todo), pero si COMMITEA y el proceso muere antes de que
+Prisma deje registrado el éxito en `_prisma_migrations` (escritura de
+bookkeeping separada de la transacción de datos), un reintento
+(`prisma migrate resolve` + `migrate deploy`) vuelve a correr el archivo
+completo: el discriminador de microsegundos no cambia al restar horas, así
+que una fila ya corregida vuelve a calificar y se le restan otras 3h.
+
+No reabre ninguna tarea de WU3/WU4 (ya `[x]`); agrega una guarda nueva,
+distribuida por la rama dueña de cada archivo y mergeada hacia adelante
+(`backfill-master` → `backfill-tenant` → `dump-runbook`):
+
+- **Guarda nueva**: tabla `_utc_backfill_aplicado`, con check+INSERT DENTRO
+  del mismo `DO $$` que hace el backfill (misma sentencia = misma
+  transacción implícita que el `UPDATE`) — defensa en profundidad sobre
+  `_prisma_migrations`, no reemplazo. Aplicada a ambas migraciones
+  (`migration.sql` master y tenant), sin tocar el `ORDER BY` ni la segunda
+  guarda de ADR-3 (CRITICAL-2, intactos).
+- **Test nuevo `[R3/R4-retry]`** en ambos specs de integración: aplica el
+  primer deploy real, borra la fila de `_prisma_migrations` de la migración
+  bajo test (simula el crash post-commit), corre `migrate deploy` de nuevo,
+  y afirma que ninguna fila se desplaza una segunda vez. RED observado por
+  ejecución real antes de la guarda (07:00:00 → 04:00:00, doble resta de 3h
+  confirmada en ambos schemas); GREEN tras agregar la guarda.
+- **Test `[3.2]` de master actualizado**: antes documentaba que correr el
+  SQL dos veces "corrompe" (justificación externa de la guarda); ahora
+  documenta que el archivo completo ya es seguro ante una segunda corrida
+  gracias al marcador — el discriminador por sí solo sigue sin ser
+  idempotente por construcción, eso no cambió.
+- **Documentación corregida**: ADR-2 de `design.md` justificaba el archivo
+  único con "Prisma corre cada archivo en su propia transacción" —
+  verificado FALSO con Prisma 7.10.0 (una sentencia que falla puede dejar
+  sentencias previas del mismo archivo ya commiteadas). Corregido: la razón
+  real es que el `DO $$` del backfill es atómico por sí mismo, más el
+  marcador como guarda de una-sola-vez. ADR-4 corregido para explicar por
+  qué se quitó `SET LOCAL TimeZone = 'UTC'` de ambas migraciones (inerte
+  fuera de una transacción explícita — `psql -f` emite
+  `WARNING: SET LOCAL can only be used in transaction blocks`, verificado
+  empíricamente — y no aportaba corrección: la aritmética del backfill no
+  depende del `TimeZone` de sesión). Cabeceras de ambos `migration.sql`
+  corregidas con la misma aclaración.
+
+Detalle completo, con RED observado y los comandos de verificación:
+`apply-progress` (engram `sdd/sesion-utc-y-backfill-de-fechas/apply-progress`).
+
 ## Review Workload Forecast
 
 | Field | Value |
