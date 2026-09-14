@@ -162,6 +162,65 @@ segundos.
 
 ---
 
+## Precondición operativa: `predeploy-dump.ps1` (ADR-6, sdd/sesion-utc-y-backfill-de-fechas)
+
+**`deploy.ps1` no cambia.** El backfill de fechas (issue #173) entra por `migrate:master` y
+`migrate:tenants` — ya dentro de la ventana `Stop-Service` → `Start-Service` del paso 9 — y por
+eso el script de deploy queda intacto. Lo nuevo es que ese backfill **no se puede deshacer con un
+`git revert`**: resta 3 horas a ~1614 valores históricos, y un revert de código no vuelve a sumarlas.
+El único rollback de datos es restaurar un dump tomado antes de esa corrida.
+
+**Por eso el dump es una precondición operativa, no un paso del pipeline.** `predeploy-dump.ps1`
+(raíz del repo, junto a `deploy.ps1`) es un script aparte que el operador corre y **lee antes** de
+abrir la ventana — verificarse a sí mismo con los servicios ya detenidos es la falla del
+2026-08-20 que `deploy.ps1` ya documenta (ver más abajo, "Un archivo sin versionar…" y el resto de
+los cinco modos de falla: acá el equivalente sería un backup cortado a mitad de camino, con la app
+abajo y sin dump verificado).
+
+### Uso
+
+```powershell
+cd C:\soporte
+
+# 1. DryRun primero, SIEMPRE — no detiene nada, no escribe nada, no toca ninguna base.
+.\predeploy-dump.ps1 -DryRun
+echo "EXIT=$LASTEXITCODE"   # 0 = precondiciones en verde
+
+# 2. Recién si el DryRun salió en verde, la corrida real:
+.\predeploy-dump.ps1
+echo "EXIT=$LASTEXITCODE"   # 0 = dump verificado, servicios DETENIDOS a propósito
+```
+
+`-DryRun` enumera las bases desde `clientes.db_name` (activo=true, nunca hardcodeadas — el sufijo
+hex de un tenant cambia si se recrea) más `soporte_master`, valida cada identificador contra el
+mismo criterio que `assertValidIdentifier` (`backend/src/clientes/infrastructure/postgres-admin.service.ts:27`)
+y **aborta ante uno inválido, nunca lo saltea**, verifica `pg_dump`/`pg_restore`/`psql`, espacio
+libre contra el tamaño estimado, y permiso de conexión por base. Es corrible **contra producción
+sin riesgo**. Lo único que deja sin ejercitar es el `Stop-Service` y el `pg_dump` real — `pg_dump`
+no tiene un modo dry-run propio (necesita un archivo seekable para `-Fc`).
+
+La corrida real detiene `soporte-backend` y `soporte-frontend`, los **deja detenidos** (el punto de
+restore queda exacto), dumpea cada base en formato `-Fc` a
+`C:\soporte\backups\utc-backfill-<timestamp>\<base>.dump`, y verifica antes de devolver el
+control: cantidad de archivos = cantidad de bases, cada archivo con tamaño > 0, y `pg_restore
+--list` mostrando la tabla esperada (`clientes` en master, `tickets` en cada tenant). **Fail-closed
+de verdad**: si cualquier verificación falla, rearranca los servicios y sale con código distinto de
+cero — el sistema queda exactamente como estaba, sin ventana abierta.
+
+Si el dump queda verificado en verde, los servicios **siguen detenidos**: recién ahí el operador
+corre `deploy.ps1`, que tolera un servicio ya detenido (`Stop-Service -Force` sobre uno parado es
+no-op) y sigue su curso normal.
+
+### Por qué reemplaza al método anterior
+
+`C:\soporte\backups\` tenía un archivo de **0 bytes** llamado
+`                 datname                  _predeploy_20260820.dump` — un loop ad-hoc que leyó la
+salida de `psql` **sin `-t -A`** y tomó el encabezado de la columna como nombre de base. El mismo
+defecto puede saltearse una base real en silencio sin que nadie lo note. `predeploy-dump.ps1`
+enumera siempre con `-t -A` y valida cada nombre antes de componer cualquier comando.
+
+---
+
 ## Los cinco modos de falla que el script conoce
 
 Los cinco están documentados adentro con la fecha en que pasaron. No son hipotéticos.
@@ -328,6 +387,49 @@ git reset --hard <commit-de-rollback>
 > deja código viejo contra schema nuevo. Con migraciones aditivas suele andar; con una
 > destructiva, no. Mirá qué migró antes de decidir.
 
+### Restore de datos (si el backfill de fechas hay que revertirlo)
+
+Caso puntual: el backfill de `sdd/sesion-utc-y-backfill-de-fechas` (issue #173, ADR-6) resta 3
+horas a ~1614 valores históricos, y eso **el `git reset --hard` de arriba no lo deshace** — la
+migración ya corrió y quedó marcada en `_prisma_migrations`. El único rollback de datos es
+restaurar el dump que tomó `predeploy-dump.ps1` antes del deploy.
+
+**Los dos pasos van SIEMPRE juntos.** Revertir el código sin restaurar los datos deja las filas ya
+corregidas mostrándose −3h (la lectura vuelve a restar 3h a un valor que ya está en UTC):
+
+```powershell
+# 1. Detener servicios
+Stop-Service soporte-backend, soporte-frontend -Force
+
+# 2. Restaurar cada base desde el dump verificado (mismo directorio con timestamp
+#    que reportó predeploy-dump.ps1 al terminar en verde)
+$dumpDir = 'C:\soporte\backups\utc-backfill-<timestamp>'
+& 'C:\Program Files\PostgreSQL\16\bin\pg_restore.exe' --clean --if-exists --no-owner `
+  -d soporte_master (Join-Path $dumpDir 'soporte_master.dump')
+if ($LASTEXITCODE -ne 0) { throw "restore de soporte_master fallo" }
+# repetir --clean --if-exists --no-owner -d <tenant> <tenant>.dump por cada tenant del dump
+
+# 3. Revertir el código y redesplegar
+cd C:\soporte
+git reset --hard <commit-de-rollback>
+.\deploy.ps1
+
+# 4. Recién con el código viejo Y los datos restaurados, arrancar servicios
+#    (deploy.ps1 ya los arranca en su paso 11 — este paso es solo si algo
+#    quedo manual a mitad de camino)
+Start-Service soporte-backend, soporte-frontend
+```
+
+`--clean --if-exists` deja el restore idempotente ante un reintento; `--no-owner` evita que
+`pg_restore` intente reasignar el dueño de los objetos (el rol del dump y el rol de producción no
+siempre coinciden). **Residuo declarado**: el restore vuelve al instante del dump — con los
+servicios detenidos por `predeploy-dump.ps1` desde antes de tomarlo, esa ventana de actividad
+perdida es cero.
+
+**`EMAIL_CRYPTO_KEY` se respalda junto con la base** (va en `backend/.env`, no en Postgres) — un
+restore de datos sin conservar esa clave deja las credenciales SMTP de los clientes
+indescifrables.
+
 ---
 
 ## Después del deploy
@@ -338,6 +440,44 @@ el sitio esté publicado. Verificá desde afuera:
 ```bash
 curl -sL -o /dev/null -w "%{http_code} %{url_effective}\n" https://soporte.sesitec.net/
 # esperado: 200 https://soporte.sesitec.net/login  (la raíz redirige con 307)
+```
+
+### Verificación de la sesión UTC (sdd/sesion-utc-y-backfill-de-fechas, ADR-1/ADR-6)
+
+**`SHOW timezone` en una sesión NUEVA por cada base** — `soporte_master` y cada tenant activo.
+Tiene que dar `UTC`:
+
+```powershell
+$env:Path = "C:\nodejs24;" + $env:Path
+cd C:\soporte\backend
+& 'C:\Program Files\PostgreSQL\16\bin\psql.exe' $env:DATABASE_URL_MASTER -t -A -c "SHOW timezone"
+```
+
+y lo mismo contra la URL de cada tenant (reemplazando el path de `DATABASE_URL_MASTER` por su
+`db_name`, igual que hace `predeploy-dump.ps1`). **Tiene que ser una conexión nueva**: el
+`ALTER DATABASE ... SET timezone` de la migración (ADR-1) sólo afecta sesiones que arrancan
+DESPUÉS de aplicarlo — una conexión ya abierta antes del deploy sigue viendo la zona vieja aunque
+la migración ya haya corrido.
+
+Si `soporte_master` da otra cosa que `UTC`: el `ALTER DATABASE` puede haber emitido solo un
+`RAISE WARNING` por `insufficient_privilege` (42501) — el rol de `DATABASE_URL_MASTER` no es dueño
+de la base. Revisá el log de `migrate:master` en la corrida del deploy. No es necesariamente un
+fallo: la garantía por conexión (`conUtc()`, ADR-1) sigue cubriendo el 100% del tráfico de la app
+aunque el `ALTER DATABASE` no haya podido aplicarse.
+
+**Criterio de aceptación del proposal**: los tickets del barrido preventivo tienen que caer en
+**`01:00` hora local**, la hora que declara `CronExpression.EVERY_DAY_AT_1AM` en
+`preventivo-sweep.scheduler.ts:44`. Antes del fix caían en `04:00` (la sesión corría en
+`America/Sao_Paulo`, +3h respecto de la hora que el cron cree que es). Verificalo al día
+siguiente del deploy, contra un ticket generado por el barrido:
+
+```sql
+SELECT t.id, t.created_at AT TIME ZONE 'America/Sao_Paulo' AS creado_hora_local
+  FROM tickets t
+  JOIN tipos_ticket tt ON tt.id = t.tipo_id
+ WHERE tt.codigo = 'PREVENTIVO'
+ ORDER BY t.created_at DESC
+ LIMIT 5;
 ```
 
 Los dos smokes del repo:
