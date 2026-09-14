@@ -146,14 +146,17 @@ foreach ($db in $dbNames) {
 }
 Write-Host "Todos los identificadores son validos."
 
-# 5. Tamano estimado vs. espacio libre, y permiso de conexion por base.
+# 5. Tamano estimado vs. espacio libre, permiso de conexion por base, y
+# cantidad de tablas de origen (para la verificacion estructural del dump
+# real, mas abajo - se toma ACA, antes de dumpear, sobre la base origen).
 #
 # "Permiso del rol para dumpear" se verifica por CONEXION (SELECT 1): pg_dump
 # no tiene un modo -DryRun propio (necesita un archivo seekable para -Fc), asi
 # que una corrida real de pg_dump no se puede simular sin escribir un dump -
 # eso es lo unico que -DryRun deja sin ejercitar (ver cabecera del archivo).
-Step 'Verificar espacio libre y permiso de conexion por base'
+Step 'Verificar espacio libre, permiso de conexion, y contar tablas por base'
 $estimatedBytes = 0
+$tableCounts = @{}
 foreach ($db in $dbNames) {
   $sizeRaw = & $PsqlExe -t -A -d (DbUrl $db) -c "SELECT pg_database_size(current_database())"
   AssertOk ("consulta de tamano de " + $db)
@@ -161,6 +164,13 @@ foreach ($db in $dbNames) {
 
   & $PsqlExe -t -A -d (DbUrl $db) -c "SELECT 1" | Out-Null
   AssertOk ("conexion de verificacion a " + $db)
+
+  # Cantidad de tablas de la base ORIGEN, medida ANTES del dump - la unica
+  # forma de comparar "el dump tiene todas las tablas que tenia la base" sin
+  # asumir CUALES tablas son (ver comentario junto a la verificacion real).
+  $tableCountRaw = & $PsqlExe -t -A -d (DbUrl $db) -c "SELECT count(*) FROM pg_tables WHERE schemaname = 'public'"
+  AssertOk ("conteo de tablas de " + $db)
+  $tableCounts[$db] = [int]($tableCountRaw.Trim())
 }
 $driveLetter = $RepoRoot.Substring(0, 1)
 $freeBytes = (Get-PSDrive -Name $driveLetter).Free
@@ -233,14 +243,43 @@ try {
     $toc = & $PgRestoreExe '--list' $dumpFile
     AssertOk ("pg_restore --list de " + $dumpFile)
 
-    $tablaEsperada = if ($db -eq $masterDbName) { 'clientes' } else { 'tickets' }
-    $patronTabla = 'TABLE\s+public\s+' + [regex]::Escape($tablaEsperada) + '\b'
-    $tieneTablaEsperada = ($toc | Select-String -Pattern $patronTabla -Quiet)
-    if (-not $tieneTablaEsperada) {
-      throw ("El dump de " + $db + " no lista la tabla esperada '" + $tablaEsperada + "' en su TOC.")
+    # Verificacion ESTRUCTURAL, no de negocio - y esto no es un detalle de
+    # estilo, es una correccion sobre una version anterior de este mismo
+    # archivo que asumia "clientes" en master y "tickets" en cada tenant.
+    # Medido contra produccion el 2026-09-14: los 4 tenants activos corren
+    # LAS MISMAS 39 migraciones, pero dos de ellos (los mas viejos, con
+    # tablas de ticketing borradas a mano por decision del dueno) tienen 28
+    # tablas en vez de 33 - CERO de tickets/compras/items_compra/
+    # ticket_edilicia/ticket_soporte. Esa divergencia es legitima, no un
+    # defecto: un verificador multi-tenant no puede afirmar nada sobre el
+    # catalogo de negocio de un tenant, porque los tenants difieren por
+    # motivos validos (intervencion manual, modulos por cliente, alta en
+    # distintas fechas). Lo unico que SI tiene que ser cierto para CUALQUIER
+    # esquema es que el dump este completo: misma cantidad de tablas que la
+    # base origen tenia (medido en el paso 5, ANTES de dumpear). Esto
+    # generaliza al caso anterior en vez de debilitarlo: si CUALQUIER tabla
+    # -incluida "clientes" en master- faltara en el dump, el conteo no
+    # cerraria y esto igual abortaria. `master` no tiene un tratamiento
+    # especial aparte: es multi-tenant en el sentido de que su esquema
+    # tambien podria evolucionar, y el conteo ya lo cubre sin necesidad de
+    # asumir el nombre de ninguna tabla puntual.
+    #
+    # El patron cuenta entradas "TABLE public <nombre>" del TOC - el tipo de
+    # entrada que pg_restore --list emite por la DDL de cada tabla real
+    # cuando el dump es de esquema+datos (el default de -Fc, sin
+    # --schema-only/--data-only). Deliberadamente NO matchea "TABLE DATA
+    # public <nombre>" (la entrada del payload de datos, una por tabla
+    # tambien): el "\s+public" inmediatamente despues de "TABLE" no admite
+    # la palabra "DATA" en el medio, asi que cada tabla real cuenta UNA sola
+    # vez via esta entrada, nunca dos.
+    $patronTablasToc = 'TABLE\s+public\s+\S+'
+    $tocTableCount = (($toc | Select-String -Pattern $patronTablasToc)).Count
+    $sourceTableCount = $tableCounts[$db]
+    if ($tocTableCount -ne $sourceTableCount) {
+      throw ("El dump de " + $db + " tiene " + $tocTableCount + " tabla(s) en su TOC, pero la base origen tenia " + $sourceTableCount + " tabla(s) en 'public' - dump incompleto.")
     }
 
-    $resumen += [PSCustomObject]@{ Base = $db; Bytes = $file.Length; EntradasTOC = ($toc | Measure-Object).Count }
+    $resumen += [PSCustomObject]@{ Base = $db; Bytes = $file.Length; TablasOrigen = $sourceTableCount; TablasTOC = $tocTableCount; EntradasTOC = ($toc | Measure-Object).Count }
   }
 
   Step 'Resumen'

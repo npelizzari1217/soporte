@@ -205,9 +205,16 @@ La corrida real detiene `soporte-backend` y `soporte-frontend`, los **deja deten
 restore queda exacto), dumpea cada base en formato `-Fc` a
 `C:\soporte\backups\utc-backfill-<timestamp>\<base>.dump`, y verifica antes de devolver el
 control: cantidad de archivos = cantidad de bases, cada archivo con tamaño > 0, y `pg_restore
---list` mostrando la tabla esperada (`clientes` en master, `tickets` en cada tenant). **Fail-closed
-de verdad**: si cualquier verificación falla, rearranca los servicios y sale con código distinto de
-cero — el sistema queda exactamente como estaba, sin ventana abierta.
+--list` con la MISMA cantidad de tablas que tenía la base origen (medida antes de dumpear). **La
+verificación es estructural, no de negocio** — no asume que ningún tenant tenga una tabla
+puntual: medido el 2026-09-14, los 4 tenants activos comparten las mismas 39 migraciones pero dos
+de los más viejos tienen 28 tablas en vez de 33 (les faltan `tickets`/`compras`/`items_compra`/
+`ticket_edilicia`/`ticket_soporte`, borradas a mano por decisión del dueño) — una divergencia
+legítima entre tenants, no un defecto. Un conteo de tablas detecta un dump incompleto para
+cualquier esquema sin necesitar saber cuál es. **Fail-closed de verdad**: si cualquier
+verificación falla, borra la carpeta del intento y rearranca los servicios, saliendo con código
+distinto de cero — el sistema queda exactamente como estaba, sin ventana abierta y sin un dump a
+medias en `backups/`.
 
 Si el dump queda verificado en verde, los servicios **siguen detenidos**: recién ahí el operador
 corre `deploy.ps1`, que tolera un servicio ya detenido (`Stop-Service -Force` sobre uno parado es
