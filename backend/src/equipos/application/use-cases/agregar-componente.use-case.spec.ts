@@ -357,7 +357,52 @@ describe('AgregarComponenteUseCase', () => {
     expect(componenteRepo.save).not.toHaveBeenCalled();
   });
 
-  /** Gemelo invertido de los tres anteriores: un insumo ACTIVO y vigente de una familia repuesto habilitada funciona. */
+  /**
+   * La OTRA mitad del guard de `agregar-componente.use-case.ts:147`
+   * (`if (!familia || familia.isDeleted())`). El test de arriba cubre
+   * `familia.isDeleted()`; este cubre `!familia`: la familia que el insumo
+   * referencia y que el repositorio no resuelve.
+   *
+   * POR QUE EXISTE. Sin este caso se podia BORRAR la disyuncion `!familia`
+   * del guard y la suite entera del modulo seguia en verde — 28 archivos /
+   * 319 tests, e2e incluido. Medido por mutacion dirigida en `sdd-verify`
+   * ronda 2 del ciclo `repuestos-autoridad-catalogo` (2026-09-15) y
+   * reproducido de forma independiente. Los 9 tests de la rama vinculada
+   * mockeaban `familiaInsumoRepo.findById` SIEMPRE con una familia; el unico
+   * que llegaba sin familia cortaba antes, en `:136`, por `insumoRepo`.
+   *
+   * CRITERIO DE ACEPTACION de este test: con esa disyuncion borrada del
+   * guard, tiene que ponerse ROJO. Si sigue verde, no esta probando nada.
+   *
+   * `insumo.familiaId` es FK, asi que en produccion la condicion solo es
+   * alcanzable por carrera (la familia desaparece entre las dos lecturas).
+   * El guard existe igual, y lo que existe se prueba.
+   */
+  it('vincular un repuesto cuya familia NO EXISTE falla como inexistente', async () => {
+    const equipo = makeEquipo();
+    const familia = makeFamilia(true, 'MOUSE');
+    const insumo = makeInsumo(familia.id, true);
+    const equipoRepo = { findById: vi.fn().mockResolvedValue(equipo) };
+    const componenteRepo = { save: vi.fn() };
+    const insumoRepo = { findById: vi.fn().mockResolvedValue(insumo) };
+    // El insumo referencia `familia.id`, pero el repositorio NO la resuelve.
+    const familiaInsumoRepo = { findById: vi.fn().mockResolvedValue(null) };
+    const useCase = makeUseCase({ equipoRepo, componenteRepo, insumoRepo, familiaInsumoRepo });
+
+    const result = await useCase.execute({
+      equipoId: equipo.id,
+      insumoId: insumo.id,
+      descripcion: null,
+      numeroSerie: null,
+      capacidad: null,
+    });
+
+    expect(result.isFail()).toBe(true);
+    expect(result.getError()).toBeInstanceOf(InsumoRepuestoInexistenteError);
+    expect(componenteRepo.save).not.toHaveBeenCalled();
+  });
+
+  /** Gemelo invertido de los cuatro anteriores: un insumo ACTIVO y vigente de una familia repuesto habilitada funciona. */
   it('vincular un insumo ACTIVO de una familia repuesto habilitada permite agregar el componente', async () => {
     const equipo = makeEquipo();
     const familia = makeFamilia(true, 'MOUSE');
