@@ -200,6 +200,9 @@ WU1→R1,R6 · WU2→R5 · WU3→R3,R4 · WU4→R2,R3,R4 · WU5/Post→R7 (audit
 > idéntico al tracker, y `c3bcf54` (el fix de WU1) NO es ancestro de `origin/main`.
 
 - [x] 6.1 Integrar la cadena en orden: `gh pr merge 178 --merge`, luego `179`, `180`, `181`, `182`.
+      Los cinco `MERGEABLE` y sin draft al 2026-09-15; cada uno con base en el anterior, y #178
+      sobre el tracker. La punta `4606f07` ya contiene los 4 WUs de código (`c3bcf54`, `2220df2`,
+      `816f045`, `54dc0cb`, confirmados como ancestros), porque la cadena se mergeó hacia adelante.
       **CORRECCIÓN 2026-09-15 — esa instrucción sola NO integra la cadena.** Este repo tiene
       `deleteBranchOnMerge: false` (medido con `gh repo view --json deleteBranchOnMerge`), así que
       GitHub no borra la rama padre al mergear y **no reapunta los PRs hijos**. Mergear ascendente
@@ -213,9 +216,6 @@ WU1→R1,R6 · WU2→R5 · WU3→R3,R4 · WU4→R2,R3,R4 · WU5/Post→R7 (audit
       **Compuertas sobre el tracker integrado** (primera corrida con los 5 WUs en el mismo árbol):
       `pnpm lint` exit 0 · `pnpm typecheck` exit 0 · `pnpm test` **431/431 archivos, 5136/5136
       tests**, exit 0, 495.72s.
-      Los cinco `MERGEABLE` y sin draft al 2026-09-15; cada uno con base en el anterior, y #178
-      sobre el tracker. La punta `4606f07` ya contiene los 4 WUs de código (`c3bcf54`, `2220df2`,
-      `816f045`, `54dc0cb`, confirmados como ancestros), porque la cadena se mergeó hacia adelante.
 - [x] 6.2 Mergear el tracker `fix/sesion-utc-y-backfill-de-fechas` → `main` y pushear.
       **COMPUERTA**: no abrir la ventana hasta que `git merge-base --is-ancestor c3bcf54 origin/main`
       salga con éxito. Anotar `git rev-parse --short origin/main` como punto de rollback de código.
