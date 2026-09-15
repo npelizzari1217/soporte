@@ -25,12 +25,30 @@ de JavaScript vía Prisma, sea cual sea el `TimeZone` de la sesión Postgres.
 - AND hoy, sin el fix, la escritura almacena `12:31:01.231 UTC` (+3h) y la
   lectura devuelve `06:00:00Z` (−3h)
 
-#### Scenario: Tickets del barrido preventivo se leen en la hora del cron
+#### Scenario: Una escritura de Prisma se lee en el instante real
 
-- GIVEN un ticket con `clock_timestamp()` a las 01:00 local
-  (`CronExpression.EVERY_DAY_AT_1AM`)
-- WHEN se lee su fecha vía Prisma bajo sesión `America/Sao_Paulo`
-- THEN se muestra `01:00` local, no `04:00` (valor actual sin el fix)
+- GIVEN una fila escrita por Prisma bajo sesión `America/Sao_Paulo`, identificable
+  porque `EXTRACT(MICROSECONDS FROM <col>)::bigint % 1000 = 0`
+- WHEN se lee su fecha
+- THEN coincide con el instante real de la escritura, no `+3h`
+
+> **Testigo corregido el 2026-09-15.** Este escenario decía *"un ticket con
+> `clock_timestamp()` a las 01:00 local"*, y ese testigo **nunca existió**: la columna
+> `tickets.created_at` es `DEFAULT CURRENT_TIMESTAMP`, no `clock_timestamp()`
+> (`prisma_tenant/migrations/20260805194710_init_tenant/migration.sql:88`). Peor: medido
+> contra producción, **ningún inquilino puede generar un ticket preventivo** — los dos que
+> tienen `planes_preventivo` no tienen tabla `tickets`, los dos que tienen `tickets` no
+> tienen planes, y el único plan activo corre en 2027. El escenario era inverificable por
+> partida doble.
+>
+> El testigo nuevo no nombra ninguna tabla de negocio: describe **la propiedad**, que es lo
+> que el requisito persigue. El `% 1000 = 0` es el discriminador de ADR-3 usado al revés —
+> en el backfill identifica filas a corregir; acá confirma que la fila medida **sí pasó por
+> el driver**, que es donde vive el defecto.
+>
+> **Evidencia de producción, 2026-09-15**: `refresh_tokens.created_at` = `11:12:32` local
+> contra un reloj de pared de `11:15:51`, con `µs % 1000 = 0` y `SHOW timezone` = `UTC` en
+> sesión nueva. Antes del fix esa fila habría leído `14:12:32`.
 
 ### Requirement: Coherencia entre fecha generada por la base y por la aplicación
 
@@ -93,11 +111,22 @@ este requisito, porque ahí el defecto es un no-op.
 
 #### Scenario: La prueba fuerza la sesión y detecta el desvío
 
-- GIVEN una prueba que ejecuta `SET TIME ZONE 'America/Sao_Paulo'` antes de
-  escribir y leer una fecha, y `RESET TIME ZONE` después (precedente:
-  `ticket-fecha-cierre-timestamptz.integration.spec.ts:91,94,97`)
+- GIVEN una prueba que crea una **base efímera**, le aplica
+  `ALTER DATABASE <efimera> SET timezone TO 'America/Sao_Paulo'` y **recién entonces**
+  abre pools nuevos contra ella (ADR-7)
 - WHEN el defecto de sesión reaparece
 - THEN la prueba falla
+
+> **Mecanismo corregido el 2026-09-15.** Este escenario pedía una prueba que ejecutara
+> `SET TIME ZONE 'America/Sao_Paulo'` sobre la conexión. **Eso NO satisface el requisito**, y
+> ADR-7 lo había rechazado explícitamente por esa razón: un `SET TIME ZONE` sobre una
+> conexión **ya abierta** prueba la expresión SQL, pero **no prueba la cadena de conexión** —
+> que es exactamente lo que el fix corrige. Una prueba escrita al pie de la letra del texto
+> viejo habría pasado **sin que el fix existiera**.
+>
+> El texto ahora describe el mecanismo que la implementación realmente usa y que sí tiene
+> poder de detección: la base efímera con la zona puesta a nivel de base, para que los pools
+> nuevos la hereden al conectarse. Es la réplica exacta de producción.
 
 ### Requirement: Invariantes de integridad temporal tras la corrección
 
