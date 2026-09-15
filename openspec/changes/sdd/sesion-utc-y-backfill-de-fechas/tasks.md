@@ -216,22 +216,22 @@ WU1→R1,R6 · WU2→R5 · WU3→R3,R4 · WU4→R2,R3,R4 · WU5/Post→R7 (audit
       Los cinco `MERGEABLE` y sin draft al 2026-09-15; cada uno con base en el anterior, y #178
       sobre el tracker. La punta `4606f07` ya contiene los 4 WUs de código (`c3bcf54`, `2220df2`,
       `816f045`, `54dc0cb`, confirmados como ancestros), porque la cadena se mergeó hacia adelante.
-- [ ] 6.2 Mergear el tracker `fix/sesion-utc-y-backfill-de-fechas` → `main` y pushear.
+- [x] 6.2 Mergear el tracker `fix/sesion-utc-y-backfill-de-fechas` → `main` y pushear.
       **COMPUERTA**: no abrir la ventana hasta que `git merge-base --is-ancestor c3bcf54 origin/main`
       salga con éxito. Anotar `git rev-parse --short origin/main` como punto de rollback de código.
-- [ ] 6.3 Preflight de lectura en el VPS (no detiene nada): rama y commit actuales, y
+- [x] 6.3 Preflight de lectura en el VPS (no detiene nada): rama y commit actuales, y
       `git status --short` — un archivo sin versionar que colisione bloquea el `pull --ff-only`,
       y el 2026-08-20 ese fallo se reportó como éxito.
-- [ ] 6.4 `predeploy-dump.ps1 -DryRun` en el VPS, como administrator. No detiene servicios, no
+- [x] 6.4 `predeploy-dump.ps1 -DryRun` en el VPS, como administrator. No detiene servicios, no
       escribe archivos, no toca ninguna base. `echo "EXIT=$LASTEXITCODE"` en su propia línea,
       nunca detrás de un pipe.
-- [ ] 6.5 `predeploy-dump.ps1` (corrida real). **Acá arranca la ventana**: deja los dos servicios
+- [x] 6.5 `predeploy-dump.ps1` (corrida real). **Acá arranca la ventana**: deja los dos servicios
       DETENIDOS a propósito, para que el punto de restore quede exacto. Anotar el directorio
       `C:\soporte\backups\utc-backfill-<ts>\` que reporta — es el único rollback de datos, porque
       el backfill resta ~3h a los valores históricos y `git revert` no las devuelve.
-- [ ] 6.6 Deploy vía `deploy.ps1` (sin cambios de código, ADR-5). Tolera los servicios ya
+- [x] 6.6 Deploy vía `deploy.ps1` (sin cambios de código, ADR-5). Tolera los servicios ya
       detenidos y los arranca en su paso 11.
-- [ ] 6.7 Verificación manual post-deploy: `SHOW timezone` = `UTC` en sesión **nueva** por base
+- [x] 6.7 Verificación manual post-deploy: `SHOW timezone` = `UTC` en sesión **nueva** por base
       (`soporte_master` + cada tenant activo, enumerados desde `clientes`, nunca hardcodeados —
       el sufijo hex cambia si el tenant se recrea). Más el `curl` externo a
       `https://soporte.sesitec.net/` y los dos smokes del repo, con `C:\nodejs24` antepuesto al
@@ -240,3 +240,25 @@ WU1→R1,R6 · WU2→R5 · WU3→R3,R4 · WU4→R2,R3,R4 · WU5/Post→R7 (audit
       (`preventivo-sweep.scheduler.ts:44`, read-only) — criterio de aceptación del proposal y
       **evidencia de R7**, que es justo lo que le faltaba a verify ronda 2 (`requirements: 5/7`).
       Recién con esto en mano corre `sdd-verify` ronda 3.
+
+
+### Evidencia de ejecución de la ventana (2026-09-15)
+
+Ventana abierta y cerrada sin incidentes. Tareas 6.2 a 6.7 completas; queda 6.8.
+
+| # | Qué | Evidencia |
+|---|---|---|
+| 6.2 | Merge del tracker a `main` | `origin/main` = `fa3d609` (antes `3f6e63d`). Compuerta verificada contra el remoto: los 4 commits de WU + `e379c09` son ancestros; `predeploy-dump.ps1`, `utc-connection-string.ts` y ambos `migration.sql` presentes; `git diff 3f6e63d..origin/main -- deploy.ps1` → **0 líneas** (ADR-5). El primer push fue rechazado con `Internal Server Error` (500 transitorio de GitHub); el reintento pasó. La compuerta detectó el rechazo: reportó `FALTA` en los 4 WUs porque `origin/main` no se había movido. |
+| 6.3 | Preflight de lectura en el VPS | VPS en `main` a `3f6e63d`, 19 archivos sin versionar, **cero colisiones** con los 23 entrantes. Sesión SSH elevada (`True`), `pg_dump` 16.14, `node` por PATH v22.23.2 y `C:\nodejs24\node.exe` v24.20.0. **Descubrió que `predeploy-dump.ps1` no existía en el VPS** (estaba en `fa3d609`, no en `3f6e63d`): hizo falta un `git pull --ff-only origin main` antes del 6.4 — `Updating 3f6e63d..fa3d609`, fast-forward, exit 0, servicios intactos. |
+| 6.4 | `-DryRun` | `DRYRUN OK - ninguna base ni servicio fue tocado`, exit 0. 5 bases desde el registro, identificadores válidos, 47.3 MB estimados contra 17 GB libres, permiso de conexión OK. Corroborado desde afuera: servicios `Running`, ninguna carpeta `utc-backfill-*` creada, sitio 200. |
+| 6.5 | Dump real | exit 0. **Punto de restore: `C:\soporte\backups\utc-backfill-20260915-063946`**. Verificación estructural en verde en las 5 bases (tablas origen = tablas del TOC): master 13/13, tenants 28/28, 28/28, 33/33, 33/33. Servicios `Stopped` a propósito. |
+| 6.6 | `deploy.ps1` | exit 0, `DEPLOY OK (fa3d609)`, sin errores. Migración `20260914150000_sesion_utc_y_backfill_fechas` aplicada en `soporte_master` y en los 4 tenants. Smoke interno: 3101 responde, 3100 → 200. |
+| 6.7 | Verificación post-deploy | `SHOW timezone` = `UTC` en **conexión nueva** en las 5 bases. Marcador `_utc_backfill_aplicado`: master 1030, tenants 268, 240, 36, 36 — **1610 filas corregidas**. Sin `insufficient_privilege` (42501) en el log, o sea que el `ALTER DATABASE` se aplicó de verdad. Servicios `Running`, sitio `200 https://soporte.sesitec.net/login`. |
+
+**📌 Los dos puntos de vuelta atrás, que van juntos o no sirven:**
+- **Datos**: `C:\soporte\backups\utc-backfill-20260915-063946`
+- **Código**: `3f6e63d`
+
+**ATENCIÓN — el log del deploy miente sobre el rollback.** Imprime `Rollback: git reset --hard fa3d609`, que es el commit **desplegado**, no el anterior. Ocurre porque `deploy.ps1:81` captura HEAD antes de su propio pull y en esta ventana el pull se adelantó (ver 6.3). El rollback de código correcto es **`3f6e63d`**.
+
+**Sobre el conteo**: 1610 filas corregidas contra las ~1614 estimadas en `design.md`. No se puede atribuir la diferencia a filas ambiguas: el log no muestra `RAISE NOTICE`, pero `prisma migrate deploy` no necesariamente propaga los NOTICE del servidor, así que ese silencio no prueba nada. El ~1614 era una estimación del 2026-09-14 y el propio diseño aclara que el número no es constante.
