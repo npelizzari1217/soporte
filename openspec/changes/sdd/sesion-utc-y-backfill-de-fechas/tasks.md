@@ -199,7 +199,20 @@ WU1→R1,R6 · WU2→R5 · WU3→R3,R4 · WU4→R2,R3,R4 · WU5/Post→R7 (audit
 > Verificado el 2026-09-15 con `git merge-base --is-ancestor`: `origin/main` = `3f6e63d` =
 > idéntico al tracker, y `c3bcf54` (el fix de WU1) NO es ancestro de `origin/main`.
 
-- [ ] 6.1 Integrar la cadena en orden: `gh pr merge 178 --merge`, luego `179`, `180`, `181`, `182`.
+- [x] 6.1 Integrar la cadena en orden: `gh pr merge 178 --merge`, luego `179`, `180`, `181`, `182`.
+      **CORRECCIÓN 2026-09-15 — esa instrucción sola NO integra la cadena.** Este repo tiene
+      `deleteBranchOnMerge: false` (medido con `gh repo view --json deleteBranchOnMerge`), así que
+      GitHub no borra la rama padre al mergear y **no reapunta los PRs hijos**. Mergear ascendente
+      sin más deposita `#179` en `conexion-utc`, `#180` en `alta-tenant`, etc., y el tracker queda
+      **con WU1 solo**. El procedimiento correcto es ascendente **reapuntando cada PR al tracker con
+      `gh pr edit <n> --base fix/sesion-utc-y-backfill-de-fechas` DESPUÉS de mergear su padre**, sin
+      borrar ramas: así cada PR entra mostrando solo su rebanada, porque sus ancestros ya están.
+      **HECHO y verificado con `git merge-base --is-ancestor` en cada paso**: WU1 en `bbb82be`,
+      WU2 en `9fb1ec2`, WU3 en `67db3a1`, WU4 en `510f4af`, resto en `5f8f0bc`. Los 5 PRs quedaron
+      `MERGED` contra el tracker, sin PRs abiertos.
+      **Compuertas sobre el tracker integrado** (primera corrida con los 5 WUs en el mismo árbol):
+      `pnpm lint` exit 0 · `pnpm typecheck` exit 0 · `pnpm test` **431/431 archivos, 5136/5136
+      tests**, exit 0, 495.72s.
       Los cinco `MERGEABLE` y sin draft al 2026-09-15; cada uno con base en el anterior, y #178
       sobre el tracker. La punta `4606f07` ya contiene los 4 WUs de código (`c3bcf54`, `2220df2`,
       `816f045`, `54dc0cb`, confirmados como ancestros), porque la cadena se mergeó hacia adelante.
