@@ -1,7 +1,8 @@
 import { Injectable, OnModuleDestroy } from '@nestjs/common';
-import { Pool } from 'pg';
+import type { Pool } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { MasterPrismaClient, TenantPrismaClient } from './prisma-clients';
+import { conUtc } from './utc-connection-string';
 
 /**
  * PrismaService — factory multi-tenant de clientes Prisma.
@@ -34,7 +35,11 @@ export class PrismaService implements OnModuleDestroy {
 
   constructor(masterUrl: string) {
     this.masterUrl = masterUrl;
-    const pool = new Pool({ connectionString: masterUrl });
+    // Pool vía conUtc() (ADR-1, sdd/sesion-utc-y-backfill-de-fechas): fuerza
+    // la sesión Postgres a TimeZone='UTC' sin importar el TimeZone del rol o
+    // de la base. Único punto autorizado a construir `pg.Pool` (ver el
+    // comment de utc-connection-string.ts y la fitness rule de ESLint).
+    const pool = conUtc(masterUrl);
     this.masterPool = pool;
     const adapter = new PrismaPg(pool);
     this.masterClient = new MasterPrismaClient({ adapter });
@@ -57,7 +62,8 @@ export class PrismaService implements OnModuleDestroy {
   getTenantClient(dbName: string): InstanceType<typeof TenantPrismaClient> {
     if (!this.tenantClients.has(dbName)) {
       const tenantUrl = this.buildTenantUrl(dbName);
-      const pool = new Pool({ connectionString: tenantUrl });
+      // Pool vía conUtc() — misma garantía que el pool master, ver arriba.
+      const pool = conUtc(tenantUrl);
       this.tenantPools.set(dbName, pool);
       const adapter = new PrismaPg(pool);
       const client = new TenantPrismaClient({ adapter });
