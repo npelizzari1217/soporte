@@ -236,10 +236,45 @@ WU1→R1,R6 · WU2→R5 · WU3→R3,R4 · WU4→R2,R3,R4 · WU5/Post→R7 (audit
       el sufijo hex cambia si el tenant se recrea). Más el `curl` externo a
       `https://soporte.sesitec.net/` y los dos smokes del repo, con `C:\nodejs24` antepuesto al
       PATH (el `node` del PATH es el 22, el equivocado).
-- [ ] 6.8 Al día siguiente: los tickets del barrido preventivo caen en `01:00` hora local
-      (`preventivo-sweep.scheduler.ts:44`, read-only) — criterio de aceptación del proposal y
-      **evidencia de R7**, que es justo lo que le faltaba a verify ronda 2 (`requirements: 5/7`).
-      Recién con esto en mano corre `sdd-verify` ronda 3.
+- [x] 6.8 Evidencia de R7 en producción — **obtenida el 2026-09-15, con un testigo distinto
+      del que esta tarea había elegido. El original resultó INMEDIBLE.**
+
+      **Por qué se cambió el testigo.** La tarea pedía mirar los tickets del barrido
+      preventivo (`preventivo-sweep.scheduler.ts:44`, `CronExpression.EVERY_DAY_AT_1AM`,
+      `PREVENTIVO_SWEEP_CRON` no seteada en el VPS). Medido contra producción, **ningún
+      inquilino puede generar uno**:
+
+      | Inquilino | `planes_preventivo` | `tickets` |
+      |---|:--:|:--:|
+      | `soporte_019fdc6444ab7f…` | 2 | **no existe** |
+      | `soporte_019fdc673ebb72…` | 1 | **no existe** |
+      | `soporte_01a09fb06f967d…` | 0 | existe, vacía |
+      | `soporte_01a09fb2c81672…` | 0 | existe, vacía |
+
+      Los que tienen planes son los de 28 tablas, sin ticketing; los que tienen `tickets` no
+      tienen planes. Y de los dos planes que existen, uno está inactivo y borrado y el otro
+      corre recién el **2027-01-01**. La tabla `preventivo_generacion` tampoco sirve de
+      sustituto: sus filas ya marcaban `01:00` local ANTES del fix, porque su `created_at` lo
+      escribe Postgres (`µs % 1000` = 370 y 526, `≠ 0`) y nunca tuvo el bug.
+
+      **La propiedad que R7 persigue es "una escritura de Prisma aterriza en el instante
+      correcto".** El ticket preventivo era un ejemplo de esa propiedad, no la propiedad. Se
+      usó un testigo que depende de mucho menos estado de negocio: un login.
+
+      **LA EVIDENCIA, tomada contra el reloj de pared en el mismo instante:**
+      ```
+      RELOJ DE PARED DEL VPS  : 2026-09-15 11:15:51
+      refresh_tokens.created_at: 2026-09-15 11:12:32 local | 14:12:32 UTC | µs % 1000 = 0
+      SHOW timezone (sesión nueva): UTC
+      ```
+      Tres minutos antes de medirlo. Los tres datos hacen falta juntos: la hora correcta
+      contra el reloj, el **`µs % 1000 = 0`** que confirma que la escribió **Prisma y no la
+      base** (el discriminador de ADR-3 usado al revés), y el `SHOW timezone` que confirma que
+      la garantía del `ALTER DATABASE` sigue en pie. Antes del fix esa misma fila habría leído
+      `14:12:32` local.
+
+      **Para el próximo que lea esto**: no busques tickets preventivos en producción, no los
+      hay. Si necesitás re-probar R7, logueate y mirá `refresh_tokens.created_at`.
 
 
 ### Evidencia de ejecución de la ventana (2026-09-15)
