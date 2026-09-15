@@ -236,8 +236,21 @@ WU1→R1,R6 · WU2→R5 · WU3→R3,R4 · WU4→R2,R3,R4 · WU5/Post→R7 (audit
       el sufijo hex cambia si el tenant se recrea). Más el `curl` externo a
       `https://soporte.sesitec.net/` y los dos smokes del repo, con `C:\nodejs24` antepuesto al
       PATH (el `node` del PATH es el 22, el equivocado).
-- [x] 6.8 Evidencia de R7 en producción — **obtenida el 2026-09-15, con un testigo distinto
-      del que esta tarea había elegido. El original resultó INMEDIBLE.**
+- [x] 6.8 Evidencia de **R1** en producción — **obtenida el 2026-09-15, con un testigo
+      distinto del que esta tarea había elegido. El original resultó INMEDIBLE.**
+
+      **CORRECCIÓN DE ETIQUETA (verify ronda 3).** Esta tarea decía "evidencia de R7" y
+      **era incorrecto**. R7 pide tres invariantes RELACIONALES sobre el estado de datos
+      post-backfill (`updated_at` no anterior a `created_at` en más de 1 s;
+      `movimientos_insumo.created_at` no anterior al del insumo padre; ninguna fecha
+      `> now()`). Una fila de `refresh_tokens` medida contra el reloj no prueba ninguna de
+      las tres. Lo que la medición de abajo SÍ prueba es **R1** — *"Round-trip de fecha
+      correcto en sesión no-UTC"* — y resulta ser la única evidencia de producción de R1
+      que existe, porque el testigo que la spec eligió para su segundo escenario (los
+      tickets del barrido) es el que resultó inmedible.
+      **R7 pasa por otra vía**: los tests `[R7]` de master y `[4.4/R7]` de tenant, que
+      corren el `migration.sql` real contra Postgres real. Queda abierto, como residuo
+      operativo, auditar las tres invariantes contra las 5 bases de producción.
 
       **Por qué se cambió el testigo.** La tarea pedía mirar los tickets del barrido
       preventivo (`preventivo-sweep.scheduler.ts:44`, `CronExpression.EVERY_DAY_AT_1AM`,
@@ -257,7 +270,7 @@ WU1→R1,R6 · WU2→R5 · WU3→R3,R4 · WU4→R2,R3,R4 · WU5/Post→R7 (audit
       sustituto: sus filas ya marcaban `01:00` local ANTES del fix, porque su `created_at` lo
       escribe Postgres (`µs % 1000` = 370 y 526, `≠ 0`) y nunca tuvo el bug.
 
-      **La propiedad que R7 persigue es "una escritura de Prisma aterriza en el instante
+      **La propiedad que R1 persigue es "una escritura de Prisma aterriza en el instante
       correcto".** El ticket preventivo era un ejemplo de esa propiedad, no la propiedad. Se
       usó un testigo que depende de mucho menos estado de negocio: un login.
 
@@ -274,7 +287,8 @@ WU1→R1,R6 · WU2→R5 · WU3→R3,R4 · WU4→R2,R3,R4 · WU5/Post→R7 (audit
       `14:12:32` local.
 
       **Para el próximo que lea esto**: no busques tickets preventivos en producción, no los
-      hay. Si necesitás re-probar R7, logueate y mirá `refresh_tokens.created_at`.
+      hay. Si necesitás re-probar **R1**, logueate y mirá `refresh_tokens.created_at`. Para
+      **R7**, corré las tres consultas de invariantes que deja el `verify-report.md`.
 
 
 ### Evidencia de ejecución de la ventana (2026-09-15)

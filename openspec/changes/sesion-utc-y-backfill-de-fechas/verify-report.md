@@ -1,393 +1,331 @@
 ```yaml
 schema: gentle-ai.verify-result/v1
-evidence_revision: sha256:446462c63ac2947fea0d82a93bf81b033b2aa238411d190c760fc4d7aeeac012
-verdict: fail
-blockers: 2
-critical_findings: 2
-requirements: 5/7
-scenarios: 5/8
+evidence_revision: sha256:721c8c7012877e6aeadcf8d571b7272c835c494c9c68aa326b26a1d2d97f8c64
+verdict: pass
+blockers: 0
+critical_findings: 0
+requirements: 7/7
+scenarios: 8/8
 test_command: pnpm test
 test_exit_code: 0
-test_output_hash: sha256:2c9fdc1fd2bb8064488ad92412a892ce9d5e1e95f082ff29026fd3308d8578a3
-build_command: pnpm typecheck
+test_output_hash: sha256:69d43d41c139aec30dc794fd243fd9eb4ecbde3122f3fb73af4efe2434d27433
+build_command: pnpm typecheck && pnpm lint
 build_exit_code: 0
-build_output_hash: sha256:1e7364545b505adc6ef70012ce70f69a90a7eb05ebb0a0886a63cceb701bcb27
+build_output_hash: sha256:88249a5ad1fb258c1a5bee87d73fa205d9a29c2d0b23e5983a95663d7abbc4a3
 ```
 
-## Verification Report — ROUND 2
+## Verification Report
 
-**Change**: sesion-utc-y-backfill-de-fechas (issue #173, BUGFIX)
-**Version**: spec `fechas-sesion-utc` — 7 requisitos, 8 escenarios
-**Mode**: Strict TDD (inyectado por el orquestador, autoritativo sobre `strict_tdd: false` del config)
-**Revisión verificada**: `1d907e6` (rama `fix/sesion-utc-y-backfill-de-fechas-dump-runbook`), árbol de trabajo limpio antes y después de esta verificación.
-
-Esta ronda verifica la remediación de los hallazgos de la ronda 1
-(`verdict: fail`, 2 CRITICAL / 4 WARNING / 3 SUGGESTION, engram #4427) y busca
-regresiones y defectos nuevos introducidos por esa remediación.
+**Change**: sesion-utc-y-backfill-de-fechas (issue #173)
+**Version**: spec `fechas-sesion-utc` (7 requisitos / 8 escenarios)
+**Mode**: Strict TDD (inyectado por el orquestador; `strict_tdd: false` del `config.yaml` aplica solo a features)
+**Ronda**: 3 — remedia la evidencia fallida `sha256:446462c63ac2947fea0d82a93bf81b033b2aa238411d190c760fc4d7aeeac012` (ronda 2: `requirements 5/7`, `scenarios 5/8`, 2 CRITICAL)
+**Candidato**: `HEAD` = `origin/main` = `8af820a`, árbol limpio, tree `564f70cbb5870fdd22cb0ebe1a2a41889c10b7e6`
 
 ### Completeness
 
 | Metric | Value |
 |--------|-------|
-| Tasks total | 32 |
-| Tasks complete | 28 |
-| Tasks incomplete | 4 (6.1–6.4, fase post-chain: dump, deploy, verificación manual y merge — posteriores a `verify` por construcción) |
+| Tasks total | 38 |
+| Tasks complete | 38 |
+| Tasks incomplete | 0 |
 
-La remediación no reabrió ninguna tarea. Su alcance es acotado y se verificó por
-diff: `git diff --stat e728ad6 HEAD` toca exactamente los dos `migration.sql`,
-los dos specs de backfill y los artefactos SDD. **No tocó una sola línea de
-WU1, WU2 ni WU5**: `git diff 2220df2 HEAD -- src/shared/infrastructure/persistence/
-src/clientes/infrastructure/ eslint.config.js scripts/migrate-tenants.js
-src/config/regla-env-vacio.lint.spec.ts` devuelve vacío, y
-`git diff origin/main -- deploy.ps1` devuelve 0 líneas (ADR-5 intacto).
+Verificado por conteo directo sobre `tasks.md` (`- [x]` = 38, `- [ ]` = 0) y corroborado por
+`gentle-ai sdd-status sesion-utc-y-backfill-de-fechas` → `tasks: 38/38 complete`, `verify: ready`.
 
 ### Build & Tests Execution
 
-**Lint**: ✅ Pasó — `pnpm lint` (`eslint .`), exit 0, cero errores y cero advertencias.
-
-**Build / tipos**: ✅ Pasó — `pnpm typecheck` (`tsc --noEmit -p tsconfig.typecheck.json`), exit 0.
-
-**Tests**: ✅ 5134 pasan / 0 fallan — coincide exactamente con la línea base declarada (+2 sobre los 5132 de la ronda 1).
+**Build**: ✅ Passed
 
 ```text
-pnpm test  (backend/, vitest run)
+$ cd backend && pnpm typecheck && pnpm lint
+$ tsc --noEmit -p tsconfig.typecheck.json
+$ eslint .
+EXIT=0
+```
+
+**Tests**: ✅ 5137 passed
+
+```text
+$ cd backend && pnpm test
  Test Files  431 passed (431)
-      Tests  5134 passed (5134)
-   Duration  486.91s
- exit 0
+      Tests  5137 passed (5137)
+   Duration  463.75s
+EXIT=0
 ```
 
-**Corrida focalizada de cierre**: `pnpm vitest run prisma_tenant/utc-backfill-fechas.integration.spec.ts
-prisma_master/utc-backfill-fechas.integration.spec.ts prisma_tenant/utc-sesion-round-trip.integration.spec.ts`
-→ 3 archivos, 12/12 GREEN.
+Ruido esperado y declarado: la salida contiene 3 bloques `Failed Suites 1 — FAIL
+orden-de-arranque.spec.ts`. Es un proyecto Vitest hijo lanzado a propósito; el proceso sale con
+exit 0. No es un hallazgo.
 
-**Coverage**: ➖ No se midió (no se solicitó; informativo, no bloqueante).
+Discrepancia de conteo respecto de `apply-progress.md` y de la tarea 6.1, que registran
+**5136/5136**: la diferencia de +1 es del commit posterior `aab164f`
+(`test(equipos): cubrir la disyuncion !familia del guard de alta vinculada`, +47 líneas en
+`agregar-componente.use-case.spec.ts`), ajeno a este ciclo. No hay tests perdidos.
 
-### RED re-derivado de forma independiente (no tomado de la fase de apply)
+**Coverage**: threshold configurado = 0 → informativo. Medido sobre los archivos de producción
+creados/modificados por el cambio que la corrida focalizada ejercita:
 
-**CRITICAL-1 — la fixture nueva SÍ puede fallar.** `idInsumoFirmaReal` tiene la
-forma real de producción: `created_at = 2026-09-12 20:13:00.001609+00`
-(microsegundos 1609, `% 1000 = 609 ≠ 0` — la escribe la base, el discriminador
-nunca la toca) y `updated_at = 2026-09-12 23:13:00.000000+00` (microsegundos 0 —
-la escribe Prisma). Reemplazando la tolerancia por la invariante estricta
-(`INTERVAL '1 second'` → `INTERVAL '0 seconds'`) en las dos aserciones de
-`[4.4/R7]`, sin tocar nada más:
+| File | Line % | Branch % | Funcs % | Rating |
+|------|--------|----------|---------|--------|
+| `backend/src/shared/infrastructure/persistence/utc-connection-string.ts` | 100% | 100% | 100% | ✅ Excellent |
+| `backend/src/clientes/infrastructure/postgres-admin.service.ts` | 100% | 90% | 100% | ✅ Excellent |
+| `backend/src/shared/infrastructure/persistence/prisma.service.ts` | n/m | n/m | n/m | ➖ No medido en el subset |
+| `backend/src/clientes/infrastructure/tenant-seeder.adapter.ts` | n/m | n/m | n/m | ➖ No medido en el subset |
 
-```text
-× [4.4/R7] invariantes de integridad temporal tras el backfill
-AssertionError: expected 2 to be +0
- Test Files  1 failed (1) · Tests  1 failed | 3 passed (4)
-```
+`prisma.service.ts` y `tenant-seeder.adapter.ts` quedan en 0% en esta medición porque los specs
+que los cubren (`utc-sesion-round-trip.integration.spec.ts`,
+`tenant-seeder.adapter.integration.spec.ts`) no entraron en la corrida de cobertura focalizada.
+No es una laguna de cobertura: ambos están cubiertos en la corrida completa.
 
-Dos filas de `insumos` violan la invariante estricta: la de firma real
-(−1,609 ms) y la ambigua (−2 ms). La tolerancia de 1 s es **load-bearing**, no
-decorativa, y la aserción discrimina. Archivo restaurado byte a byte.
+### Adversarial (exigido por `rules.verify` del `config.yaml`)
 
-**CRITICAL-2 — el `ORDER BY` es el que sostiene la guarda.** Reemplazando
-únicamente la cláusula `ORDER BY col.table_name, (col.column_name <>
-'created_at'), col.column_name` del `migration.sql` de tenant por un comentario:
+Guard central mutado: `agregarTimezoneUtc()` en
+`backend/src/shared/infrastructure/persistence/utc-connection-string.ts:49` convertida en no-op
+(`return connectionString;`).
 
-```text
-× [CRITICAL-2] created_at ambiguo permanece intacto aunque updated_at esté declarada antes en la tabla
-AssertionError: expected '2026-09-12T17:13:00.000Z' to be '2026-09-12T20:13:00.000Z'
- Test Files  1 failed (1) · Tests  1 failed | 3 passed (4)
-```
+| Fase | Comando | Resultado observado |
+|---|---|---|
+| RED | `pnpm vitest run prisma_tenant/utc-sesion-round-trip.integration.spec.ts src/shared/infrastructure/persistence/utc-connection-string.spec.ts src/clientes/infrastructure/postgres-admin.service.integration.spec.ts` | exit 1 — `Test Files 2 failed \| 1 passed (3)`, `Tests 8 failed \| 7 passed (15)`. Firma exacta del defecto: `AssertionError: expected 10800 to be +0` (escritura +3h) y `AssertionError: expected -10800 to be +0` (lectura −3h) |
+| Revert | `git checkout -- backend/src/shared/infrastructure/persistence/utc-connection-string.ts` | `git status --short` vacío |
+| GREEN | mismo comando | exit 0 — `Test Files 3 passed (3)`, `Tests 15 passed (15)` |
 
-Es la sobre-corrección de −3 h irreversible que ADR-3 declara no negociable.
-Archivo restaurado (`git checkout --`, `diff` contra la copia previa al
-experimento: idéntico), `git status` limpio, 12/12 GREEN tras restaurar.
+Dos resultados que el ciclo adversarial prueba y que ningún artefacto afirmaba con evidencia
+propia:
 
-**El razonamiento del `ORDER BY` se verificó, no se asumió.** `(col.column_name
-<> 'created_at')` es booleana y en Postgres `false` ordena antes que `true`,
-comprobado contra el motor real:
+1. **R6 detecta efectivamente el defecto.** El `THEN` de R6 ("cuando el defecto reaparece, la
+   prueba falla") queda verificado por ejecución, no por construcción: los números medidos
+   (`10800` / `-10800`) son exactamente los que `design.md` ADR-7 predijo como RED.
+2. **Las dos garantías de ADR-1 son realmente independientes.** Con `conUtc()` anulado,
+   `postgres-admin.service.integration.spec.ts` siguió en verde (1 archivo pasado), porque el
+   `ALTER DATABASE ... SET timezone TO 'UTC'` sostiene R5 por sí solo. La defensa en profundidad
+   que ADR-1 declara no es retórica.
 
-```text
-SELECT x FROM (VALUES ('updated_at'),('created_at'),('deleted_at'),('fecha_cierre')) v(x)
- ORDER BY (x <> 'created_at'), x;
- -> created_at, deleted_at, fecha_cierre, updated_at
-```
-
-Y contra el schema tenant real (`soporte_tenant_test`), la query completa del
-`migration.sql` devuelve `created_at` primero en **las 6 tablas con guarda**,
-sin importar su `ordinal_position` (5, 8, 9 según la tabla). La guarda ya no
-depende del orden físico de declaración de columnas para ninguna de las 6.
+Árbol limpio al cerrar: `git status --short` sin salida.
 
 ### Spec Compliance Matrix
 
-| Requisito | Escenario | Test | Resultado |
-|-----------|-----------|------|-----------|
-| R1 round-trip | Escritura y lectura sin desvío bajo America/Sao_Paulo | `prisma_tenant/utc-sesion-round-trip.integration.spec.ts` > `[R1]` + `[R1/R7]` | ✅ COMPLIANT |
-| R1 round-trip | Tickets del barrido preventivo en la hora del cron | El mecanismo está probado; la aserción sobre tickets reales sigue siendo manual (tarea 6.3) | ⚠️ PARTIAL |
-| R2 coherencia created/updated | Los tres insumos conocidos quedan con created ≈ updated | `prisma_tenant/utc-backfill-fechas.integration.spec.ts` — la fixture `WU-R7-FIRMA-REAL` deja las dos columnas a 1,6 ms tras el backfill, con los números medidos en producción | ✅ COMPLIANT |
-| R3 backfill histórico | El backfill corrige solo lo escrito por Prisma | `prisma_master/...` `[3.1/3.4]` · `prisma_tenant/...` `[4.1/4.2/4.3]` | ✅ COMPLIANT |
-| R4 exactamente-una-vez | Una segunda corrida no re-corrompe | `prisma_master/...` `[3.2]` + `[R4]` · `prisma_tenant/...` `[R4]` (ambos spawnean `prisma migrate deploy` dos veces) — **pero ambos parten de un primer apply EXITOSO** | ⚠️ PARCIAL — ver CRITICAL-R4 |
-| R5 tenant nuevo | Aprovisionamiento posterior al cambio | `postgres-admin.service.spec.ts` (4 casos) + `postgres-admin.service.integration.spec.ts` (`SHOW timezone` = UTC real) | ✅ COMPLIANT |
-| R6 regresión no-UTC | La prueba fuerza la sesión y detecta el desvío | round-trip spec sobre base efímera con `ALTER DATABASE ... SET timezone TO 'America/Sao_Paulo'` | ✅ COMPLIANT |
-| R7 invariantes temporales | Se auditan las tres invariantes tras el fix y el backfill | Contra `spec.md` versionado (tolerancia 1 s): `[4.4/R7]` tenant + `[R7]` master, RED re-derivado. Contra el locator `spec` de engram (invariante estricta, sin tolerancia): **violado por 2 filas, reproducido en esta corrida** | ❌ FAILING (ver CRITICAL-1 de ronda 2) |
+| Requirement | Scenario | Test | Result |
+|-------------|----------|------|--------|
+| R1 Round-trip en sesión no-UTC | Escritura y lectura sin desvío bajo America/Sao_Paulo | `prisma_tenant/utc-sesion-round-trip.integration.spec.ts:109` `[R1]` + `:126` `[R1/R7]` | ✅ COMPLIANT |
+| R1 Round-trip en sesión no-UTC | Tickets del barrido preventivo se leen en la hora del cron | `prisma_tenant/utc-sesion-round-trip.integration.spec.ts:126` `[R1/R7]` | ✅ COMPLIANT (ver WARNING-1) |
+| R2 Coherencia base ↔ aplicación | Los tres insumos conocidos quedan con created ≈ updated | `prisma_tenant/utc-backfill-fechas.integration.spec.ts:287` `[4.1/4.2/4.3]` (aserciones :367-368) + `:414` `[4.4/R7]` | ✅ COMPLIANT |
+| R3 Corrección del dato histórico | El backfill corrige solo lo escrito por Prisma | `prisma_master/...:143` `[3.1/3.4]` + `prisma_tenant/...:287` `[4.1/4.2/4.3]` | ✅ COMPLIANT |
+| R4 Ejecución exactamente-una-vez | Una segunda corrida no re-corrompe los datos | `prisma_master/...:187` `[3.2]`, `:268` `[3.2/R4]`, `:339` `[R3/R4-retry]`; `prisma_tenant/...:511` `[R4]`, `:647` `[R3/R4-retry]` | ✅ COMPLIANT |
+| R5 Tenant nuevo nace sin el defecto | Aprovisionamiento posterior al cambio | `src/clientes/infrastructure/postgres-admin.service.integration.spec.ts:118` + unit `postgres-admin.service.spec.ts:150,164,175,199` | ✅ COMPLIANT |
+| R6 Regresión bajo sesión no-UTC forzada | La prueba fuerza la sesión y detecta el desvío | `prisma_tenant/utc-sesion-round-trip.integration.spec.ts` (archivo completo) + ciclo adversarial de esta ronda | ✅ COMPLIANT (ver WARNING-2) |
+| R7 Invariantes de integridad temporal | Se auditan las tres invariantes tras el fix y el backfill | `prisma_master/utc-backfill-fechas.integration.spec.ts:156` `[R7]` + `prisma_tenant/utc-backfill-fechas.integration.spec.ts:414` `[4.4/R7]` | ✅ COMPLIANT (ver WARNING-3) |
 
-**Compliance summary**: 5/8 escenarios compliant · 2 partial · 1 failing.
+**Compliance summary**: 8/8 escenarios compliant · 7/7 requisitos cubiertos.
+
+Los 12 tests de los dos specs de backfill fueron reconfirmados con reporter verbose en esta
+ronda: `Test Files 2 passed (2)`, `Tests 12 passed (12)`, exit 0.
+
+### R7 — juicio explícito sobre la evidencia de producción de la tarea 6.8
+
+La ronda 2 cerró en `fail` señalando R7 sin evidencia. **R7 queda satisfecho en esta ronda, pero
+NO por la evidencia que la tarea 6.8 presenta.** Corresponde dejarlo escrito con precisión:
+
+**Lo que la tarea 6.8 mide** (`refresh_tokens.created_at` = `2026-09-15 11:12:32` local contra
+reloj de pared `11:15:51`, `µs % 1000 = 0`, `SHOW timezone` = `UTC` en sesión nueva) es una
+escritura de Prisma que aterriza en el instante correcto bajo una base ya en UTC. Eso es
+**exactamente la propiedad de R1**, y es buena evidencia de R1 en producción — de hecho es la
+única evidencia de producción de R1 que existe, porque el testigo que la spec eligió para R1
+(los tickets del barrido preventivo) resultó inmedible por las razones que 6.8 documenta.
+
+**Lo que R7 pide es otra cosa**: tres invariantes de integridad relacional sobre el estado de
+datos posterior al backfill — `updated_at` no anterior a `created_at` en más de 1 segundo,
+`movimientos_insumo.created_at` no anterior al `created_at` de su insumo padre, y ninguna fecha
+posterior a `now()`. Una sola fila de `refresh_tokens` medida contra el reloj no prueba ninguna
+de las tres. El marcador `_utc_backfill_aplicado` (1610 filas: master 1030, tenants 268/240/36/36)
+prueba que el backfill corrió y cuántas filas tocó; no prueba que las invariantes se cumplan.
+
+**Por qué R7 pasa igual.** El escenario de R7 tiene test cubriente que pasó en runtime:
+
+- `prisma_master/utc-backfill-fechas.integration.spec.ts:156` `[R7]` audita, sobre el schema
+  master, las dos invariantes aplicables (`updated_at < created_at - INTERVAL '1 second'` → 0
+  filas; `created_at > now() OR updated_at > now()` → 0 filas) y además comprueba que la
+  traslación uniforme de −3h preserva el delta de una fila con update real. La tercera
+  invariante no aplica: `soporte_master` no tiene `movimientos_insumo`.
+- `prisma_tenant/utc-backfill-fechas.integration.spec.ts:414` `[4.4/R7]` audita **las tres**
+  sobre el schema tenant, sobre las 5 tablas con `updated_at` más `movimientos_insumo`, con la
+  fixture de firma real de producción (`created_at` `20:13:00.001609+00` escrito por la base,
+  `updated_at` `23:13:00.000000+00` escrito por Prisma) que tras el backfill queda en
+  `20:13:00.001Z` / `20:13:00.000Z` — delta de 1,6 ms, dentro de la tolerancia de 1 s.
+
+Ambos corren el `migration.sql` real leído del disco contra Postgres real, no una copia. El
+alcance que R7 enuncia ("en `soporte_master` y en cada base de inquilino") se lee, en este repo,
+como los dos schemas — que es la lectura que el propio equipo aplicó al agregar el test `[R7]`
+de master en la remediación de la ronda 1. Con esa lectura, R7 está probado.
+
+Queda como **WARNING-3**, no como bloqueo: nadie corrió las tres consultas de auditoría contra
+las 5 bases de producción, y ahora que el backfill ya se aplicó ese estado existe y la consulta
+es trivial. No bloquea el archivado porque la propiedad está probada a nivel de código sobre el
+mismo SQL que producción ejecutó, pero conviene cerrarlo como acción operativa.
 
 ### Correctness (Static Evidence)
 
-| Requisito | Estado | Notas |
-|-----------|--------|-------|
-| R1 / R6 | ✅ Implementado | Sin cambios respecto de la ronda 1; la remediación no tocó WU1. |
-| R3 | ✅ Implementado | Loop catalogado + discriminador `% 1000 = 0`, ahora con orden determinístico del catálogo. |
-| R4 | ⚠️ Implementado, probado solo para el camino feliz | Garantía externa al SQL vía `_prisma_migrations`, probada spawneando el CLI real **sobre un primer apply exitoso**. El camino fallo-y-reintento queda sin probar. Ver CRITICAL-R4. |
-| R5 | ✅ Implementado | Sin cambios respecto de la ronda 1; la remediación no tocó WU2. |
-| R7 | ⚠️ Implementado contra una de las dos copias del spec | El código cumple la versión con tolerancia de 1 s. La copia en engram todavía exige la invariante estricta. Ver CRITICAL-1. |
-| `@db.Date` intacta | ✅ Verificado | Ahora con aserción de regresión en AMBOS specs: `feriados.fecha` (master) y `ciclos_cliente.fecha_inicio` (tenant, vía `::text`). WARNING-2 cerrado. |
-| `_prisma_migrations` intacta | ✅ Verificado | Sin cambio tras el segundo `migrate deploy`, en ambos specs. |
+| Requirement | Status | Notes |
+|------------|--------|-------|
+| R1 Round-trip | ✅ Implemented | `utc-connection-string.ts:49-64` (`agregarTimezoneUtc`), `:75-80` (`conUtc`); consumido en `prisma.service.ts:42` (pool master) y `:66` (pool tenant) |
+| R2 Coherencia | ✅ Implemented | Consecuencia de R1 + de la exclusión de la segunda guarda: `prisma_tenant/migrations/20260914150000_.../migration.sql:194-208` |
+| R3 Backfill histórico | ✅ Implemented | Loop catalogado `migration.sql:149-223` (master y tenant); discriminador `EXTRACT(MICROSECONDS ...) % 1000 = 0` :205, :219 |
+| R4 Una-sola-vez | ✅ Implemented | Marcador `_utc_backfill_aplicado` `migration.sql:101-105`; check+`RETURN` :139-147; `INSERT` final :225-226, todo dentro del mismo `DO $$` |
+| R5 Tenant nuevo | ✅ Implemented | `postgres-admin.service.ts:68` (`ALTER DATABASE`), `:72-74` (degradación a WARNING en 42501), `:115` (pool admin vía `conUtc`) |
+| R6 Regresión no-UTC | ✅ Implemented | `utc-sesion-round-trip.integration.spec.ts:68-79` (`forzarTimezoneNoUtc`), `:92` aplicado antes de abrir pools |
+| R7 Invariantes | ✅ Implemented | Tolerancia de 1 s en `spec.md:110-125` y ADR-3 addendum `design.md:207-215`; `ORDER BY` de la guarda `migration.sql:176` |
+
+Alcance del helper verificado además por regla de fitness: `eslint.config.js` prohíbe `new Pool(`
+fuera de `utc-connection-string.ts`, con 13 casos en `src/config/regla-env-vacio.lint.spec.ts`
+(incluidos los tres archivos migrados en WU2 y el `CUPO DE UNO` de `no-restricted-syntax`).
 
 ### Coherence (Design)
 
-| Decisión | ¿Seguida? | Notas |
+| Decision | Followed? | Notes |
 |----------|-----------|-------|
-| ADR-1 — tres garantías | ✅ Sí | Sin cambios; WU1/WU2 intactos. |
-| ADR-2 — migración numerada, un archivo por schema, **en una sola transacción** | ❌ La premisa es falsa | `prisma migrate deploy` NO envuelve el archivo en una transacción. Medido: ver WARNING-1. El backfill en sí SÍ es atómico (es un único `DO $$`), así que no hay riesgo de backfill a medias. |
-| ADR-3 — discriminador + segunda guarda | ✅ Sí | La dependencia del orden de catálogo quedó cerrada con el `ORDER BY`, con test de regresión propio y RED re-derivado. Addendum versionado en `design.md`. |
-| ADR-3 — addendum de tolerancia R7 | ✅ Sí en `design.md` / ❌ No en engram | Decisión del dueño registrada en el archivo; la copia del spec en engram no se actualizó. Ver CRITICAL-1. |
-| ADR-4 — el backfill no pasa por Prisma | ✅ Sí | SQL puro. La cláusula `SET LOCAL TimeZone='UTC'` que esta ADR menciona resulta inerte, sin impacto en el resultado (medido). Ver WARNING-1. |
-| ADR-5 — `deploy.ps1` sin cambios | ✅ Sí | `git diff origin/main -- deploy.ps1` → 0 líneas. |
-| ADR-6 — dump como precondición operativa | ✅ Sí | WU5 intacto. |
-| ADR-7 — el test fuerza la sesión no-UTC | ✅ Sí | Vigente para el round-trip. No se extiende a los specs de backfill; ver WARNING-2. |
+| ADR-1 — tres garantías (flag por conexión + `ALTER DATABASE` en migración + en alta de tenant) | ✅ Sí | Las tres presentes. Independencia **probada** por el ciclo adversarial de esta ronda |
+| ADR-2 — migración numerada, un archivo por schema, + marcador como defensa en profundidad | ✅ Sí | `_utc_backfill_aplicado` dentro del mismo `DO $$`; `_prisma_migrations` no se quitó |
+| ADR-3 — discriminador de microsegundos + segunda guarda de delta + `ORDER BY` | ✅ Sí | `migration.sql:176-215`; regresión dedicada `[CRITICAL-2]` en el spec de tenant |
+| ADR-4 — el backfill no pasa por Prisma; `SET LOCAL TimeZone` retirado | ✅ Sí | SQL puro; sin `SET LOCAL` en ninguno de los dos archivos |
+| ADR-5 — `deploy.ps1` sin cambios, ventana atómica | ✅ Sí | `git diff 3f6e63d..origin/main -- deploy.ps1` → 0 líneas (tarea 6.2) |
+| ADR-6 — dump como precondición operativa | ✅ Sí | `predeploy-dump.ps1` versionado; punto de restore `C:\soporte\backups\utc-backfill-20260915-063946` |
+| ADR-7 — base efímera con `ALTER DATABASE`, no `SET TIME ZONE` de sesión | ✅ Sí | `utc-sesion-round-trip.integration.spec.ts:86-101`. Desvía del texto literal de R6 (ver WARNING-2) |
+| ADR-3 hallazgo — `movimientos_insumo` sin `updated_at` | ✅ Sí | Detección por catálogo (`tiene_updated_at`, `migration.sql:179-186`), nunca hardcodeada |
 
 ### TDD Compliance
 
-| Check | Resultado | Detalle |
-|-------|-----------|---------|
-| Evidencia TDD reportada | ✅ | La tabla **TDD Cycle Evidence** ahora vive en el propio locator `apply-progress` (engram #4417), con 7 filas: WU1–WU4 más las tres unidades de remediación. WARNING-3 de la ronda 1 cerrado. |
-| Todas las tareas de código tienen tests | ✅ | WU1–WU4 con spec propio; WU5 es el gap declarado y aceptado (no hay harness PowerShell). |
-| RED confirmado | ✅ | Los dos RED de la remediación re-derivados de forma independiente en esta ronda (`expected 2 to be +0`; `expected '...T17:13:00.000Z' to be '...T20:13:00.000Z'`). |
-| GREEN confirmado | ✅ | 5134/5134 en la corrida completa de esta verificación. |
-| Triangulación | ✅ | Backfill tenant: corregible / base / ambiguo / firma real / orden de catálogo invertido / doble corrida. Master: µs=0 / µs≠0 / delta preservado / corrupción deliberada / exactamente-una-vez. |
-| Safety net en archivos modificados | ✅ | Baseline verde previo documentado y reproducido (5132 → 5134). |
+| Check | Result | Details |
+|-------|--------|---------|
+| TDD Evidence reported | ✅ | Tabla `## TDD Cycle Evidence` presente en `apply-progress.md:74-79`, con columnas RED (observado) → GREEN → REFACTOR |
+| All tasks have tests | ⚠️ | La tabla cubre 2 archivos (la remediación de la ronda 2). El RED de WU1–WU5 vive como anotación inline en `tasks.md` (1.1, 2.1, 3.1, 4.1), no en la tabla |
+| RED confirmed (tests exist) | ✅ | 2/2 archivos existen: `prisma_master/utc-backfill-fechas.integration.spec.ts:339`, `prisma_tenant/utc-backfill-fechas.integration.spec.ts:647` |
+| GREEN confirmed (tests pass) | ✅ | 12/12 verificados con reporter verbose en esta ronda; ambos `[R3/R4-retry]` ✓ (master 1416 ms, tenant 1457 ms) |
+| Triangulation adequate | ⚠️ | La tabla no trae columna TRIANGULATE. Triangulación real medida: master 7 casos, tenant 5 casos, round-trip 2, helper 7, admin unit 11 / integración 6, fitness 13 |
+| Safety Net for modified files | ⚠️ | La tabla no trae columna SAFETY NET. Suplido por la corrida completa de `pnpm test` que `apply-progress.md:88` registra dos veces |
 
-**TDD Compliance**: 6/6 checks.
+**TDD Compliance**: 3/6 checks completos, 3 con WARNING de forma (ninguno de fondo).
+
+RED reportado en `apply-progress.md` y su verificación independiente en esta ronda:
+
+| Claim de la tabla | Verificación de esta ronda |
+|---|---|
+| master `[R3/R4-retry]`: `expected '2026-09-01T04:00:00.000Z' to be '2026-09-01T07:00:00.000Z'` | Test existe (`:339`) y pasa. La aserción vigente (`:671`) es `expect(valor.toISOString()).toBe('2026-09-01T07:00:00.000Z')` — coherente con el RED reportado |
+| tenant `[R3/R4-retry]`: mismos números vía `zz_retry_probe` | Test existe (`:647`) y pasa; tabla ad-hoc creada tras el primer deploy (`:637-639`), aísla el caso de la segunda guarda |
+| WU1 RED predicho: desvío 10800 s / −10800 s | **Verificado por ejecución en esta ronda** vía la mutación adversarial: `expected 10800 to be +0` y `expected -10800 to be +0` |
 
 ### Test Layer Distribution
 
-| Capa | Tests | Archivos | Herramienta |
-|------|-------|----------|-------------|
-| Unit | 7 (`utc-connection-string.spec.ts`) + 4 (`postgres-admin.service.spec.ts`) | 2 | Vitest |
-| Fitness (lint) | 33 (`regla-env-vacio.lint.spec.ts`) | 1 | Vitest + ESLint API |
-| Integración | 2 (round-trip) + 6 (backfill master) + 4 (backfill tenant) + 1 (alta de tenant real) | 4 | Vitest + Postgres real / bases efímeras |
-| E2E | 0 propios del cambio | 0 | — |
-| PowerShell | 0 | 0 | ➖ No existe harness en el repo (gap declarado en el threat matrix) |
+| Layer | Tests | Files | Tools |
+|-------|-------|-------|-------|
+| Unit | 31 | 3 | Vitest (`utc-connection-string.spec.ts` 7, `postgres-admin.service.spec.ts` 11, `regla-env-vacio.lint.spec.ts` 13) |
+| Integration | 20 | 4 | Vitest + Postgres real, bases efímeras, `prisma migrate deploy` como subproceso |
+| E2E | 0 | 0 | No aplica: el cambio es de driver y de datos, sin superficie HTTP |
+| **Total** | **51** | **7** | |
+
+Los 4 archivos de integración ejecutan el `migration.sql` real leído del disco y `prisma migrate
+deploy` como subproceso real: sin mocks, sin copias del SQL.
 
 ### Assertion Quality
 
-Las dos aserciones que la ronda 1 marcó quedaron corregidas y se verificó que
-ahora discriminan:
+Auditados los 6 archivos de test del cambio (118 `expect` en total, 1 solo `vi.mock`).
 
-| Archivo | Aserción | Estado |
-|---------|----------|--------|
-| `prisma_tenant/utc-backfill-fechas.integration.spec.ts:358` | `updated_at` de la fila ambigua | ✅ Corregida — la fixture pasó a microsegundos 998000 (`% 1000 = 0`, escribible por Prisma), así que la columna participa del paso genérico y la aserción `'2026-09-12T20:12:59.998Z'` puede fallar. WARNING-1 cerrado. |
-| `prisma_tenant/utc-backfill-fechas.integration.spec.ts:414-448` | `[4.4/R7]` invariantes | ✅ Corregida — la fixture `WU-R7-FIRMA-REAL` reproduce la forma real y hace fallar la invariante estricta (verificado en esta ronda). |
+| Patrón buscado | Resultado |
+|---|---|
+| Tautologías (`expect(true).toBe(true)`) | Ninguna |
+| Aserciones sin llamar código de producción | Ninguna |
+| Ghost loops sobre colecciones posiblemente vacías | Ninguno — los loops de `[4.4/R7]` iteran arrays literales de nombres de tabla, siempre ejecutan |
+| Colecciones vacías sin compañera no-vacía | Ninguna |
+| Aserciones type-only aisladas | Ninguna — las 4 (`toBeDefined`/`not.toBeNull`) conviven con aserciones de valor en el mismo test |
+| Smoke-test-only | Ninguno |
+| Acoplamiento a detalle de implementación | Ninguno |
+| Tests mock-heavy (mocks > 2× asserts) | Ninguno — `postgres-admin.service.spec.ts` es 1 mock / 19 asserts |
 
-Sin tautologías, sin ghost loops, sin aserciones que no ejecuten código de
-producción, sin tests mock-heavy. Observación menor: la aserción dedicada de
-firma real dentro de `[4.4/R7]` es redundante con el loop por tabla del mismo
-test (ambos cubren la fila); el valor exacto de esa fila sí se verifica, con
-poder de discriminación, en `[4.1/4.2/4.3]` líneas 367-368.
-
-**Assertion quality**: 0 CRITICAL, 0 WARNING.
+**Assertion quality**: ✅ Todas las aserciones verifican comportamiento real. 0 CRITICAL, 0 WARNING.
 
 ### Quality Metrics
 
-**Linter**: ✅ Sin errores · **Type Checker**: ✅ Sin errores
+**Linter**: ✅ `eslint .` sin errores (exit 0)
+**Type Checker**: ✅ `tsc --noEmit -p tsconfig.typecheck.json` sin errores (exit 0)
 
 ### Issues Found
 
-**CRITICAL**:
+**CRITICAL**: Ninguno.
 
-1. **La copia del spec en engram —el locator que declara el status nativo— sigue
-   teniendo el R7 estricto previo a la remediación, y contra ese texto la
-   implementación lo incumple de forma reproducible.**
+Los dos CRITICAL de la ronda 2 quedan cerrados con evidencia verificada de forma independiente
+en esta ronda:
 
-   `gentle-ai sdd-status sesion-utc-y-backfill-de-fechas --json` reporta
-   `artifactStore: engram` y `artifactPaths.specs =
-   ["sdd/sesion-utc-y-backfill-de-fechas/spec"]`. Esa observación (engram #4412,
-   `Revisions: 1`, creada el 2026-09-14 12:13 y **nunca actualizada**) no es un
-   resumen: es el texto completo del spec, y su R7 dice todavía:
-
-   ```text
-   ... que ninguna fila tenga `updated_at` anterior a `created_at`, que ningún
-   `movimientos_insumo.created_at` ...
-   - THEN ninguna fila tiene `updated_at < created_at`
-   ```
-
-   Sin tolerancia. El archivo versionado
-   (`openspec/changes/sdd/.../specs/fechas-sesion-utc/spec.md`, commit `e56f5d7`)
-   dice "en más de 1 segundo" y trae el párrafo de decisión del dueño. **Las dos
-   copias vivas del spec se contradicen exactamente en el requisito que hizo
-   fallar la ronda 1.**
-
-   No es una discrepancia teórica: contra el texto de engram, R7 se incumple, y
-   está medido en esta misma verificación — con la invariante estricta,
-   `[4.4/R7]` falla con `expected 2 to be +0` (la fila de firma real por 1,6 ms
-   y la ambigua por 2 ms).
-
-   Matiz que corresponde registrar: por §3.1 de `proyectos/CLAUDE.md`, Git es
-   Nivel 1 y engram es caché, así que el dueño puede resolver que el archivo
-   manda y degradar este hallazgo. Se reporta como bloqueante igual porque (a) el
-   orquestador declaró persistencia `hybrid`, que obliga a escribir las dos
-   copias, y la remediación escribió una sola; (b) `sdd-archive` lee el locator
-   de engram, de modo que archivar hoy congela un spec que el código viola; y
-   (c) cualquier `mem_search` futuro sobre este ciclo devuelve el R7 viejo.
-
-   El arreglo no toca código: un `mem_save` de upsert sobre
-   `topic_key: sdd/sesion-utc-y-backfill-de-fechas/spec` con el texto del archivo.
-   No corresponde a `sdd-verify` hacerlo.
-
-2. **R4 queda sin probar para el camino fallo-y-reintento.** Hallazgo aportado
-   por la revisión RDD posterior a esta verificación (linaje
-   `review-f4098720ccc4b038`, lente `reliability`), no por `sdd-verify`. Se
-   desarrolla en la sección `## CRITICAL-R4` al final de este informe, y es la
-   razón por la que R4 figura como `⚠️ PARCIAL` en la matriz y en la tabla de
-   requisitos.
+- `R7-sin-evidencia` → cerrado. R7 probado por `[R7]` (master) y `[4.4/R7]` (tenant), ambos
+  verdes con reporter verbose. Ver la sección de juicio explícito: la evidencia de producción de
+  la tarea 6.8 **no** es lo que lo cierra.
+- `R3-r4-retry-path-unproved` → cerrado. Reproducción real del camino fallo-y-reintento (borrar
+  la fila de `_prisma_migrations` y redesplegar) en ambos schemas, verde con la guarda del
+  marcador.
 
 **WARNING**:
 
-1. **`SET LOCAL TimeZone = 'UTC'` es INERTE bajo `prisma migrate deploy`, y el
-   archivo de migración NO se aplica en una sola transacción.** La ronda de
-   remediación afirma lo contrario ("`prisma migrate deploy` DOES wrap the whole
-   migration.sql content in one implicit transaction — `SET LOCAL` takes effect
-   as designed", verificado con una probe descartable), y lo mismo afirman ADR-2
-   y la cabecera de **los dos** `migration.sql`. Medido tres veces en esta
-   verificación, contra el binario real de Prisma 7.10.0:
-
-   - Probe con una base cuya zona por defecto es `America/Sao_Paulo` (una base ya
-     en UTC no discrimina): migración `SET LOCAL TimeZone='UTC'; CREATE TABLE
-     tz_probe...; INSERT ... current_setting('TimeZone')` aplicada con
-     `prisma migrate deploy` → el valor insertado es **`America/Sao_Paulo`**, no
-     `Etc/UTC`.
-   - El log del servidor emite `WARNING: SET LOCAL can only be used in
-     transaction blocks` en esa misma corrida.
-   - Control positivo: el MISMO SQL enviado como una sola `client.query()`
-     multi-sentencia de `pg` (que sí abre una transacción implícita) inserta
-     `UTC`. La probe discrimina.
-   - Atomicidad, prueba directa: migración `CREATE TABLE paso_uno; INSERT...;
-     SELECT 1/0; CREATE TABLE paso_dos`. Tras el fallo, **`paso_uno` sobrevive**.
-     El archivo no es atómico.
-
-   Probable causa de la conclusión equivocada de la remediación: la probe corrió
-   contra una base efímera creada con `PostgresAdminService.createDatabase`, que
-   desde WU2 hace `ALTER DATABASE ... SET timezone TO 'UTC'`. Ahí
-   `current_setting('TimeZone')` devuelve UTC funcione o no el `SET LOCAL`.
-
-   **Impacto en la corrección: ninguno, y está medido** (ver WARNING-2). El
-   impacto real es otro: el backfill quedará corriendo bajo la zona de la sesión
-   (en producción, `America/Sao_Paulo` — el `ALTER DATABASE` de la propia
-   migración solo afecta a sesiones nuevas), y un fallo entre la sentencia del
-   `ALTER DATABASE` y el `DO $$` del backfill deja el estado parcial que ADR-2
-   dice que no puede existir (zona ya cambiada, datos sin corregir; recuperable
-   por el dump de ADR-6). El backfill en sí es un único `DO $$`, o sea una sola
-   sentencia y una sola transacción implícita: no hay riesgo de backfill a
-   medias. Corresponde corregir el texto de ADR-2 y de las dos cabeceras, que
-   hoy afirman algo falso sobre el motor.
-
-2. **Ningún test ejercita el backfill bajo una sesión no-UTC.** Todas las bases
-   efímeras de los specs de backfill las crea
-   `PostgresAdminService.createDatabase`, que las deja en UTC. Dado WARNING-1, en
-   producción la migración correrá bajo `America/Sao_Paulo`. Verificado a mano en
-   esta ronda: se ejecutó el `migration.sql` real de tenant contra una base con
-   `ALTER DATABASE ... SET timezone TO 'America/Sao_Paulo'`, con las cuatro
-   fixtures del spec, y el resultado es idéntico al de la corrida en UTC
-   (`corregible 07:00:00.000` · `base 10:00:00.123` · `ambiguo 20:13:00.000 /
-   20:12:59.998` · `firma real 20:13:00.001 / 20:13:00.000`, 1 `RAISE NOTICE`).
-   La aritmética es efectivamente independiente de la zona. Pero esa propiedad no
-   tiene guarda en el repo, y R6 es justamente el requisito que declara que una
-   prueba que solo corre en UTC no cuenta. Un `ALTER DATABASE ... SET timezone TO
-   'America/Sao_Paulo'` en el `beforeAll` de los specs de backfill lo cerraría.
-
-3. **WARNING-4 de la ronda 1 quedó cerrado a medias.** La parte de
-   `soporte_master` sí se cerró: el test `[R7]` nuevo existe, corre después de la
-   única corrida correcta y antes de la corrupción deliberada de `[3.2]`, y su
-   fixture no es trivial (`created_at != updated_at`, delta preservado tras la
-   traslación uniforme). La otra mitad del hallazgo —"ni contra ninguna base
-   real"— sigue abierta: `DEPLOY-VPS-runbook.md` no menciona R7 ni las
-   invariantes en su verificación post-deploy (cubre `SHOW timezone` y los
-   tickets del preventivo), y las tareas 6.1–6.4 tampoco. Tras un backfill
-   irreversible, las tres invariantes siguen siendo la propiedad que nadie va a
-   comprobar contra los datos reales.
+1. **El testigo que R1 nombra no existe en el schema.** El escenario "Tickets del barrido
+   preventivo se leen en la hora del cron" abre con `GIVEN un ticket con clock_timestamp()`.
+   Medido contra el repositorio: `tickets.created_at` es `TIMESTAMPTZ NOT NULL DEFAULT
+   CURRENT_TIMESTAMP` (`backend/prisma_tenant/migrations/20260805194710_init_tenant/migration.sql:88`),
+   y el modelo Prisma es `@default(now())` (`prisma_tenant/schema.prisma:255`) — nunca
+   `clock_timestamp()`. Las 6 columnas que sí usan `clock_timestamp()` están enumeradas en ADR-3
+   y `tickets` no es una de ellas. El escenario queda COMPLIANT porque el test `[R1/R7]` prueba
+   el mecanismo exacto que el escenario describe (lectura vía Prisma de una columna `DEFAULT
+   clock_timestamp()` bajo sesión `America/Sao_Paulo`, desvío 0) sobre `unidades_medida`, y
+   porque `design.md` establece que el fix corrige el driver para las 44 tablas por igual, sin
+   tocar ningún mapper. **Recomendación**: corregir el texto del escenario en el archive, o
+   sustituir el testigo por uno que exista. La tarea 6.8 ya documenta por qué el original es
+   inmedible en producción; el spec todavía no lo refleja.
+2. **R6 describe un mecanismo más débil que el implementado.** El `GIVEN` de R6 pide
+   `SET TIME ZONE 'America/Sao_Paulo'` + `RESET TIME ZONE`. La implementación usa `ALTER DATABASE
+   <efímera> SET timezone` y abre pools nuevos después — estrictamente más fuerte, porque prueba
+   la cadena de conexión y no solo la expresión SQL, tal como ADR-7 argumenta. No rompe el
+   requisito (el `THEN` quedó verificado por el ciclo adversarial). **Recomendación**: alinear el
+   texto de R6 con ADR-7 en el archive.
+3. **R7 sin auditoría del lado de producción.** Las tres invariantes nunca se consultaron contra
+   las 5 bases reales, pese a que la tarea 6.8 se titula "Evidencia de R7 en producción" y a que
+   el estado post-backfill ya existe desde el 2026-09-15. **Recomendación** (operativa, no
+   bloqueante), por base: `SELECT count(*) FROM <tabla> WHERE updated_at < created_at - INTERVAL
+   '1 second'`; `SELECT count(*) FROM movimientos_insumo m JOIN insumos i ON i.id = m.insumo_id
+   WHERE m.created_at < i.created_at`; `SELECT count(*) FROM <tabla> WHERE created_at > now()`.
+4. **`apply-progress.md` materializa solo la ronda 2.** El archivo se creó el 2026-09-15 desde
+   la observación de engram de 9 revisiones, pero su contenido cubre únicamente la remediación
+   del CRITICAL `R3-r4-retry-path-unproved`. La evidencia TDD de WU1–WU5 quedó solo como
+   anotación inline en `tasks.md`, y varias remisiones del propio artefacto apuntan a engram
+   (`tasks.md:32-33`, `:84`) — que `config.yaml` declara explícitamente que NO es el artifact
+   store. Consecuencia práctica: la tarea 2.1 dice "confirmados RED ... (ver apply-progress)" y
+   `apply-progress.md` no contiene ese RED. **Recomendación**: consolidar la evidencia TDD de
+   WU1–WU5 en el archivo antes del archive, o reescribir esas remisiones para que apunten a
+   `tasks.md`.
+5. **La tabla de TDD Cycle Evidence no trae las columnas TRIANGULATE ni SAFETY NET.** Trae las
+   tres que la regla del repo exige (RED → GREEN → REFACTOR, §6.3 de `~/proyectos/CLAUDE.md`),
+   así que no es rechazo; queda como desvío de forma respecto de la plantilla de
+   `strict-tdd-verify.md`. La triangulación real es holgada (51 tests sobre 7 archivos) y la red
+   de seguridad está suplida por las dos corridas completas que `apply-progress.md:88` registra.
 
 **SUGGESTION**:
 
-1. `tablas_guarda_delta` sigue hardcodeada. La remediación lo investigó, confirmó
-   por catálogo que hoy coincide exactamente con las 6 columnas
-   `clock_timestamp()`, y decidió NO generalizarlo con una justificación
-   razonable (no introducir un camino de código nuevo sin probar en la parte más
-   riesgosa de una migración irreversible). Se acepta la decisión; queda como
-   deuda para la eventual séptima tabla.
-
-2. La asimetría entre artefactos de engram es lo que hizo posible CRITICAL-1:
-   `design` (#4413) y `tasks` (#4416) son observaciones-puntero que declaran
-   "artefacto completo en `openspec/...`", mientras que `spec` (#4412) es una
-   copia verbatim completa. Una copia verbatim se desactualiza en silencio; un
-   puntero no puede. Conviene unificar el criterio.
-
-3. La aserción dedicada de firma real dentro de `[4.4/R7]` es redundante con el
-   loop por tabla del mismo test. No es un defecto; se anota para que no se la
-   lea como una segunda verificación independiente.
+1. La cabecera de ambos `migration.sql` conserva la línea `EJECUTAR ESTE ARCHIVO DOS VECES
+   CORROMPE LOS DATOS POR SÍ SOLO (ADR-4)` (`migration.sql:58-60`) y, 4 líneas más abajo,
+   explica que el marcador `_utc_backfill_aplicado` hace que el archivo sea seguro ante una
+   segunda corrida. Las dos cosas son ciertas en sentidos distintos (el discriminador por sí solo
+   no es idempotente; el archivo completo sí lo es), pero leídas seguidas se contradicen.
+   Conviene reformular la primera a "el discriminador por sí solo no es idempotente".
+2. Los `Success Criteria` de `proposal.md:116-125` siguen todos en `[ ]` pese a que las 38 tareas
+   están cerradas y el fix está en producción. No cuentan como tareas para el status nativo, pero
+   dejan una lectura confusa en el archive.
+3. `[4.4/R7]` afirma las invariantes como `count(*) = 0`, que pasaría trivialmente sobre tablas
+   vacías. En la práctica no es vacuo porque el `[4.1/4.2/4.3]` del mismo `describe` asserta
+   valores concretos de esas mismas fixtures sobre el mismo pool. Una aserción de no-vacuidad
+   haría el test auto-protegido.
+4. `expect(mensajeAmbiguo).toBeDefined()`
+   (`prisma_tenant/utc-backfill-fechas.integration.spec.ts:411`) podría afirmar el texto exacto
+   del `RAISE NOTICE` en lugar de la mera existencia del match.
 
 ### Verdict
 
-**FAIL** — la remediación de código es correcta y está probada: los dos CRITICAL
-de la ronda 1 quedaron cerrados con REDs re-derivados de forma independiente en
-esta verificación, WARNING-1/2/3 cerrados, WARNING-4 cerrado a medias, y lint,
-typecheck y 5134/5134 en verde sin tocar WU1, WU2 ni WU5. **Bloquean dos
-hallazgos, y ninguno es de código.**
-
-**CRITICAL-1**: el locator `spec` que declara el status nativo sigue
-exigiendo el R7 estricto que la implementación incumple de forma reproducible,
-mientras el archivo versionado exige el R7 con tolerancia que sí cumple. Mientras
-las dos copias se contradigan en ese requisito, archivar congela un spec que el
-código viola.
-
-**CRITICAL-R4** (agregado por la revisión RDD `review-f4098720ccc4b038`): R4
-quedaba certificado sobre un primer apply exitoso sin re-evaluarse contra la
-no-atomicidad que este mismo informe prueba. La ventana fallo → `migrate resolve`
-→ reintento puede aplicar el backfill dos veces, no tiene test que la cubra, y
-solo la cierra el marcador propio que el dueño decidió agregar. Hasta entonces,
-R4 vale únicamente para el camino feliz.
-
-Se suma, sin bloquear, que la premisa de transacción única de ADR-2
-y la conclusión de la remediación sobre `SET LOCAL` son falsas contra el motor
-real, sin impacto en la corrección del backfill (medido).
-
-## CRITICAL-R4 — R4 queda sin probar para el único modo de falla que este mismo informe demostró alcanzable
-
-**Corrección de este informe, exigida por la revisión RDD (linaje
-`review-f4098720ccc4b038`, lente `reliability`, hallazgo
-`R3-r4-retry-path-unproved`).**
-
-Este informe certificaba R4 como `COMPLIANT` apoyándose en spawnear
-`prisma migrate deploy` dos veces. Esa prueba **parte de un primer apply
-exitoso**, y en otra sección el mismo informe establece por medición directa
-que el archivo de migración **no es atómico**. Las dos conclusiones nunca se
-cruzaron.
-
-**La ventana que queda abierta.** El backfill es la última sentencia del
-archivo y su `DO $$` es atómico, así que un fallo *dentro* del backfill lo
-revierte entero y un reintento es seguro. Pero si el `DO $$` **commitea** y el
-proceso muere antes de que Prisma registre el éxito en `_prisma_migrations`,
-quedan los datos ya corridos y la migración marcada como fallida. Un
-`prisma migrate resolve` seguido de reintento **vuelve a aplicar el backfill**:
-una fila ya corregida conserva microsegundos `% 1000 = 0`, así que el
-discriminador la matchea de nuevo y le resta otras 3 horas.
-
-Es angosta, pero es real, y es exactamente el resultado irreversible que ADR-2
-existe para evitar. Alcanzable, además, **por la no-atomicidad que este informe
-acaba de probar** — de ahí que la certificación anterior no se sostenga.
-
-**No hay test que cubra ese camino.** Ningún spec ejercita
-fallo → `migrate resolve` → reintento.
-
-**Decisión del dueño (2026-09-14)**: agregar al backfill un **marcador propio**
-que lo vuelva no-op en una re-corrida, independiente de `_prisma_migrations`.
-Es la opción que la exploración propuso y ADR-2 descartó con un argumento de
-conveniencia ("el marcador necesitaría su propia tabla"), no de corrección.
-Queda como trabajo siguiente, fuera del candidato congelado de esta revisión;
-hasta que exista, **R4 vale solo para el camino feliz**.
-
+**PASS WITH WARNINGS** — los 7 requisitos y los 8 escenarios tienen test cubriente verde en
+runtime, `pnpm test` y `pnpm typecheck && pnpm lint` salen en 0, el ciclo adversarial reprodujo
+el defecto y lo revirtió con el árbol limpio, y los 2 CRITICAL de la ronda 2 quedan cerrados. Las
+5 WARNING son de texto de spec y de consolidación de artefactos; ninguna toca el comportamiento
+desplegado.
