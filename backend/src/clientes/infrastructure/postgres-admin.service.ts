@@ -17,14 +17,31 @@
  * Ref spec: sdd/auth-multitenancy/spec §R17
  * Ref design: sdd/auth-multitenancy/design ADR-6
  * Tareas: T7.1, T7.2 (PR7 — Provisioning: ports + adapters)
+ *
+ * WU2 (sdd/sesion-utc-y-backfill-de-fechas, ADR-1, R5): `createDatabase`
+ * emite `ALTER DATABASE ... SET timezone TO 'UTC'` inmediatamente después de
+ * `CREATE DATABASE`, sobre el MISMO pool admin, para que un tenant nuevo
+ * nazca en UTC antes de que corran `migrate`/`seed` — segunda garantía
+ * independiente de la que ya cubre `conUtc()` (por conexión). El pool admin
+ * también pasa a abrirse vía `conUtc()`. `ALTER DATABASE` requiere ser
+ * dueño de la base: si el rol de `masterUrl` no lo es, Postgres devuelve
+ * `insufficient_privilege` (SQLSTATE 42501) — se captura y se degrada a
+ * WARNING (no se propaga): cortar el alta de un tenant por esto sería peor
+ * que quedarse solo con la garantía por conexión, que ya cubre el 100% del
+ * tráfico de la app. Cualquier otro error del ALTER DATABASE sí propaga.
+ * El runbook agrega la verificación post-deploy (`SHOW timezone`).
  */
 import { Injectable } from '@nestjs/common';
-import { Pool } from 'pg';
+import type { Pool } from 'pg';
+import { conUtc } from '../../shared/infrastructure/persistence/utc-connection-string';
 import { IPostgresAdminPort } from '../domain/ports/i-postgres-admin.port';
 import { InvalidDatabaseNameError } from '../domain/errors/clientes.errors';
 
 /** Identificador Postgres seguro: letras/dígitos/guion bajo, sin empezar con dígito. */
 const VALID_IDENTIFIER = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+
+/** SQLSTATE de Postgres para "el rol no tiene el privilegio requerido". */
+const SQLSTATE_INSUFFICIENT_PRIVILEGE = '42501';
 
 @Injectable()
 export class PostgresAdminService implements IPostgresAdminPort {
@@ -35,8 +52,32 @@ export class PostgresAdminService implements IPostgresAdminPort {
     const pool = this.openAdminPool();
     try {
       await pool.query(`CREATE DATABASE ${quoteIdentifier(dbName)}`);
+      await this.setDatabaseTimezoneUtc(pool, dbName);
     } finally {
       await pool.end();
+    }
+  }
+
+  /**
+   * ALTER DATABASE ... SET timezone TO 'UTC' (ADR-1, R5). Degrada a WARNING
+   * en `insufficient_privilege` en vez de fallar el alta del tenant — ver el
+   * comment de cabecera del archivo.
+   */
+  private async setDatabaseTimezoneUtc(pool: Pool, dbName: string): Promise<void> {
+    try {
+      await pool.query(`ALTER DATABASE ${quoteIdentifier(dbName)} SET timezone TO 'UTC'`);
+    } catch (error) {
+      if (isInsufficientPrivilege(error)) {
+        console.warn(
+          `[postgres-admin] ALTER DATABASE ${quoteIdentifier(dbName)} SET timezone TO 'UTC' ` +
+            'falló por insufficient_privilege (42501): el rol no es dueño de la base. ' +
+            'La sesión sigue garantizada por conexión (conUtc); verificar `SHOW timezone` ' +
+            'post-deploy.',
+          error,
+        );
+        return;
+      }
+      throw error;
     }
   }
 
@@ -63,11 +104,15 @@ export class PostgresAdminService implements IPostgresAdminPort {
     }
   }
 
-  /** Abre un Pool contra la DB de mantenimiento `postgres` (misma instancia/credenciales que `masterUrl`). */
-  private openAdminPool(): InstanceType<typeof Pool> {
+  /**
+   * Abre un Pool contra la DB de mantenimiento `postgres` (misma instancia/
+   * credenciales que `masterUrl`), vía `conUtc()` (ADR-1, sdd/sesion-utc-y-
+   * backfill-de-fechas) — único punto autorizado a construir `pg.Pool`.
+   */
+  private openAdminPool(): Pool {
     const adminUrl = new URL(this.masterUrl);
     adminUrl.pathname = '/postgres';
-    return new Pool({ connectionString: adminUrl.toString() });
+    return conUtc(adminUrl.toString());
   }
 }
 
@@ -81,4 +126,14 @@ function assertValidIdentifier(dbName: string): void {
 /** Quotea un identificador ya validado (duplica comillas dobles internas por si las hubiera). */
 function quoteIdentifier(dbName: string): string {
   return `"${dbName.replace(/"/g, '""')}"`;
+}
+
+/** ¿El error es `insufficient_privilege` (SQLSTATE 42501) — el rol no es dueño de la base? */
+function isInsufficientPrivilege(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: unknown }).code === SQLSTATE_INSUFFICIENT_PRIVILEGE
+  );
 }

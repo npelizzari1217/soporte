@@ -15,6 +15,17 @@
  * Ref spec: sdd/auth-multitenancy/spec §R17
  * Ref design: sdd/auth-multitenancy/design ADR-6
  * Tarea: T7.1
+ *
+ * WU2 (sdd/sesion-utc-y-backfill-de-fechas, ADR-1, R5) suma:
+ * - `createDatabase` emite `ALTER DATABASE %I SET timezone TO 'UTC'`
+ *   INMEDIATAMENTE después del `CREATE DATABASE`, sobre el MISMO pool admin
+ *   (mismo quoting que `quoteIdentifier`).
+ * - El pool admin se abre vía `conUtc()`, no `new Pool(` directo.
+ * - `ALTER DATABASE` requiere ser dueño de la base: si el rol de
+ *   `masterUrl` no lo es, Postgres devuelve `insufficient_privilege`
+ *   (SQLSTATE `42501`) — createDatabase NO debe propagar ese error (la
+ *   garantía por conexión de WU1 ya cubre el 100% del tráfico), solo
+ *   emitir un WARNING. Cualquier OTRO error del ALTER DATABASE sí propaga.
  */
 import { Pool } from 'pg';
 import { PostgresAdminService } from './postgres-admin.service';
@@ -133,6 +144,71 @@ describe('PostgresAdminService (T7.1, unit — stub de pg.Pool)', () => {
     await service.createDatabase('soporte_prov_demo_test');
 
     const { end } = lastPoolInstance();
+    expect(end).toHaveBeenCalledTimes(1);
+  });
+
+  it('[CRITICAL] createDatabase: emite ALTER DATABASE con el identificador QUOTED, tras CREATE DATABASE (WU2, ADR-1, R5)', async () => {
+    const service = new PostgresAdminService(MASTER_URL);
+    lastPoolInstanceSetOk();
+
+    await service.createDatabase('soporte_prov_demo_test');
+
+    const { query } = lastPoolInstance();
+    expect(query).toHaveBeenNthCalledWith(1, 'CREATE DATABASE "soporte_prov_demo_test"');
+    expect(query).toHaveBeenNthCalledWith(
+      2,
+      `ALTER DATABASE "soporte_prov_demo_test" SET timezone TO 'UTC'`,
+    );
+  });
+
+  it('createDatabase: abre el pool admin vía conUtc() — la URL lleva options=-c TimeZone=UTC (WU2, ADR-1)', async () => {
+    const service = new PostgresAdminService(MASTER_URL);
+    lastPoolInstanceSetOk();
+
+    await service.createDatabase('soporte_prov_demo_test');
+
+    const PoolMock = Pool as unknown as ReturnType<typeof vi.fn>;
+    const usedUrl = PoolMock.mock.calls[0]![0].connectionString as string;
+    expect(new URL(usedUrl).searchParams.get('options')).toBe('-c TimeZone=UTC');
+  });
+
+  it('[CRITICAL] createDatabase: ALTER DATABASE con insufficient_privilege (42501) NO propaga — solo WARNING (WU2, ADR-1)', async () => {
+    const service = new PostgresAdminService(MASTER_URL);
+    const PoolMock = Pool as unknown as ReturnType<typeof vi.fn>;
+    const insufficientPrivilegeError = Object.assign(
+      new Error('must be owner of database soporte_prov_demo_test'),
+      { code: '42501' },
+    );
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce({ rowCount: 0 })
+      .mockRejectedValueOnce(insufficientPrivilegeError);
+    const end = vi.fn();
+    PoolMock.mockImplementationOnce(function PoolStub() {
+      return { query, end };
+    });
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    await expect(service.createDatabase('soporte_prov_demo_test')).resolves.toBeUndefined();
+
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(end).toHaveBeenCalledTimes(1);
+    warnSpy.mockRestore();
+  });
+
+  it('[CRITICAL] createDatabase: ALTER DATABASE con otro error (no insufficient_privilege) SÍ propaga (WU2, ADR-1)', async () => {
+    const service = new PostgresAdminService(MASTER_URL);
+    const PoolMock = Pool as unknown as ReturnType<typeof vi.fn>;
+    const otroError = new Error('conexión perdida');
+    const query = vi.fn().mockResolvedValueOnce({ rowCount: 0 }).mockRejectedValueOnce(otroError);
+    const end = vi.fn();
+    PoolMock.mockImplementationOnce(function PoolStub() {
+      return { query, end };
+    });
+
+    await expect(service.createDatabase('soporte_prov_demo_test')).rejects.toThrow(
+      'conexión perdida',
+    );
     expect(end).toHaveBeenCalledTimes(1);
   });
 });
