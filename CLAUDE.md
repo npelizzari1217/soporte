@@ -119,7 +119,24 @@ El alcance del lint es `eslint .` y cubre `src/**/*.ts` y `scripts/**/*.{mjs,js,
 
 ## Dónde vive el historial de decisiones
 
-- `openspec/` existe desde el 2026-08-30. Los ciclos desde esa fecha están ahí.
+Este repo aplica el reparto de la §3.3 de `~/proyectos/CLAUDE.md`: **los artefactos del
+ciclo viven en Git, la memoria vive en engram, y nada vive en los dos lados.**
+
+- **Artefactos del ciclo → `openspec/changes/<change>/`.** Desde el 2026-09-15,
+  `openspec/config.yaml` declara `sdd.artifact_store: openspec` y el dispatcher lee solo
+  esos archivos. Cada ciclo lleva `proposal.md`, `specs/`, `design.md`, `tasks.md`,
+  `apply-progress.md`, `verify-report.md` y `state.yaml`.
+  **No crear copias en engram de ninguno de esos artefactos.**
+- **Memoria → engram.** Decisiones con su porqué, hallazgos, gotchas, narrativa de
+  bugfixes, resúmenes de sesión. Puede referenciar un artefacto por ruta o por sha;
+  nunca copiar su contenido.
+- Las copias que existieron hasta el 2026-09-15 quedaron como **lápidas** con el título
+  prefijado `[MIGRADO A GIT]` y un puntero al archivo. Si una búsqueda devuelve una,
+  **no se lee su contenido**: se va al archivo.
+- `openspec/` existe desde el 2026-08-30. Los ciclos desde esa fecha están ahí. Hasta el
+  2026-09-15 estuvieron un nivel más abajo, en `openspec/changes/sdd/<change>/`; se
+  movieron con `git mv` (commit `9d1e152`) porque el modo `openspec` los busca en
+  `changes/<change>/`.
 - **Los ciclos anteriores al 2026-08-30 viven solo en engram** y no se backfillearon:
   habría que reconstruir artefactos a partir de observaciones, y un artefacto inventado
   miente peor que uno ausente. Para recuperar una decisión vieja, `mem_search` →
