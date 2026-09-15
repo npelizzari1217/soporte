@@ -186,9 +186,44 @@ WU1→R1,R6 · WU2→R5 · WU3→R3,R4 · WU4→R2,R3,R4 · WU5/Post→R7 (audit
 - [x] 5.4 Confirmar explícitamente en el PR body: `deploy.ps1` NO se modifica (ADR-5) — el backfill entra por `migrate:master`/`migrate:tenants`, ya dentro de la ventana `Stop-Service`→`Start-Service` existente. **Confirmado: `git diff 23142b8 -- deploy.ps1` → 0 líneas.**
 - [x] 5.5 Anotar en PR body: alta de `predeploy-dump.ps1` en la tabla de scripts PowerShell de `~/proyectos/CLAUDE.md` (read-only) queda como commit separado en el repo padre, fuera de esta cadena. **Anotado en el cuerpo del commit `0923448`.**
 
-## Phase 6 — Post-chain (operación en el tracker, tras integrar PR1→PR5)
+## Phase 6 — Post-chain (operación, tras integrar PR1→PR5 en el tracker)
 
-- [ ] 6.1 Ejecutar `predeploy-dump.ps1` en el VPS; abrir la ventana solo si la verificación queda en verde.
-- [ ] 6.2 Deploy vía `deploy.ps1` (sin cambios de código, ADR-5).
-- [ ] 6.3 Verificación manual post-deploy: `SHOW timezone` = `UTC` en sesión nueva por base; tickets del barrido preventivo caen en `01:00` local (`preventivo-sweep.scheduler.ts:44`, read-only) — criterio de aceptación del proposal.
-- [ ] 6.4 Mergear el tracker `fix/sesion-utc-y-backfill-de-fechas` → `main`.
+> **ORDEN CORREGIDO 2026-09-15.** La versión anterior listaba el merge a `main` como último
+> paso (6.4), después del deploy. Es **inejecutable**: `deploy.ps1` solo despliega `main`
+> (`:22` `$Branch = 'main'`; `:75-76` aborta si HEAD no es `main`; `:112`
+> `git pull --ff-only origin $Branch`). Con el merge al final, el deploy corre `pull --ff-only`
+> sobre el mismo commit que ya está en producción y termina **en verde sin desplegar nada** —
+> sin migración, sin backfill, sin `ALTER DATABASE` — con los servicios ya detenidos por el
+> dump y la ventana abierta al pedo. La verificación siguiente daría `SHOW timezone` ≠ `UTC` y
+> se leería como un fallo del fix, cuando el fix nunca llegó al VPS.
+> Verificado el 2026-09-15 con `git merge-base --is-ancestor`: `origin/main` = `3f6e63d` =
+> idéntico al tracker, y `c3bcf54` (el fix de WU1) NO es ancestro de `origin/main`.
+
+- [ ] 6.1 Integrar la cadena en orden: `gh pr merge 178 --merge`, luego `179`, `180`, `181`, `182`.
+      Los cinco `MERGEABLE` y sin draft al 2026-09-15; cada uno con base en el anterior, y #178
+      sobre el tracker. La punta `4606f07` ya contiene los 4 WUs de código (`c3bcf54`, `2220df2`,
+      `816f045`, `54dc0cb`, confirmados como ancestros), porque la cadena se mergeó hacia adelante.
+- [ ] 6.2 Mergear el tracker `fix/sesion-utc-y-backfill-de-fechas` → `main` y pushear.
+      **COMPUERTA**: no abrir la ventana hasta que `git merge-base --is-ancestor c3bcf54 origin/main`
+      salga con éxito. Anotar `git rev-parse --short origin/main` como punto de rollback de código.
+- [ ] 6.3 Preflight de lectura en el VPS (no detiene nada): rama y commit actuales, y
+      `git status --short` — un archivo sin versionar que colisione bloquea el `pull --ff-only`,
+      y el 2026-08-20 ese fallo se reportó como éxito.
+- [ ] 6.4 `predeploy-dump.ps1 -DryRun` en el VPS, como administrator. No detiene servicios, no
+      escribe archivos, no toca ninguna base. `echo "EXIT=$LASTEXITCODE"` en su propia línea,
+      nunca detrás de un pipe.
+- [ ] 6.5 `predeploy-dump.ps1` (corrida real). **Acá arranca la ventana**: deja los dos servicios
+      DETENIDOS a propósito, para que el punto de restore quede exacto. Anotar el directorio
+      `C:\soporte\backups\utc-backfill-<ts>\` que reporta — es el único rollback de datos, porque
+      el backfill resta ~3h a los valores históricos y `git revert` no las devuelve.
+- [ ] 6.6 Deploy vía `deploy.ps1` (sin cambios de código, ADR-5). Tolera los servicios ya
+      detenidos y los arranca en su paso 11.
+- [ ] 6.7 Verificación manual post-deploy: `SHOW timezone` = `UTC` en sesión **nueva** por base
+      (`soporte_master` + cada tenant activo, enumerados desde `clientes`, nunca hardcodeados —
+      el sufijo hex cambia si el tenant se recrea). Más el `curl` externo a
+      `https://soporte.sesitec.net/` y los dos smokes del repo, con `C:\nodejs24` antepuesto al
+      PATH (el `node` del PATH es el 22, el equivocado).
+- [ ] 6.8 Al día siguiente: los tickets del barrido preventivo caen en `01:00` hora local
+      (`preventivo-sweep.scheduler.ts:44`, read-only) — criterio de aceptación del proposal y
+      **evidencia de R7**, que es justo lo que le faltaba a verify ronda 2 (`requirements: 5/7`).
+      Recién con esto en mano corre `sdd-verify` ronda 3.
