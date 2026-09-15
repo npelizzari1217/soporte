@@ -53,6 +53,21 @@ import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import type { ESLint } from 'eslint';
 
+/**
+ * Este spec lintea con el BINARIO de ESLint como proceso hijo. El lote de
+ * `beforeAll` paga ese arranque UNA vez para todos los casos que estan en
+ * `TODOS_LOS_CASOS`, pero unos pocos tests no pueden entrar al lote porque
+ * necesitan su propia invocacion (escriben un archivo temporal con una
+ * extension o un nombre que el lote no puede derivar de `rutaArchivo`): el
+ * control del `.spec.ts` y los tres de `scripts/migrate-tenants*.js`. Esos
+ * pagan ~1-5 s cada uno, y con el `testTimeout` default de 5000 ms quedaban a
+ * ~250 ms del limite: bajo la suite completa lo cruzaban y volvian rojo el
+ * `pnpm test` de CUALQUIER ciclo del repo (verify de
+ * `repuestos-autoridad-catalogo`, 2026-09-15). El margen va aca, no en el
+ * `vitest.config.ts`, para no aflojar el limite del resto de la suite.
+ */
+vi.setConfig({ testTimeout: 30_000 });
+
 const RUTA_ARCHIVO_REAL = __filename;
 
 /**
@@ -162,6 +177,27 @@ const NEGATIVOS = {
   arbolYaMigrado: 'const x = entorno.APP_BASE_URL;',
 } as const;
 
+/**
+ * Archivos reales bajo cuyo directorio se evalúan los casos del selector de
+ * `new Pool(` (ADR-1 de sdd/sesion-utc-y-backfill-de-fechas). Viven ACÁ ARRIBA,
+ * no dentro de su `describe`, porque `TODOS_LOS_CASOS` los necesita ANTES de
+ * correr: son parte de la misma invocación única de ESLint. Declararlos
+ * adentro fue lo que dejó a esos tests en el camino lento.
+ */
+const ARCHIVO_PRODUCCION_CUBIERTO = path.resolve(
+  __dirname,
+  '../shared/infrastructure/persistence/prisma.service.ts',
+);
+const ARCHIVO_POSTGRES_ADMIN = path.resolve(
+  __dirname,
+  '../clientes/infrastructure/postgres-admin.service.ts',
+);
+const ARCHIVO_TENANT_SEEDER = path.resolve(
+  __dirname,
+  '../clientes/infrastructure/tenant-seeder.adapter.ts',
+);
+const SNIPPET_POOL = 'const x = new Pool({});';
+
 /** Un caso a lintear: el snippet y el archivo real bajo cuyo directorio se evalúa. */
 type CasoALintear = { readonly codigo: string; readonly rutaArchivo: string };
 
@@ -183,6 +219,13 @@ const TODOS_LOS_CASOS: readonly CasoALintear[] = [
     rutaArchivo,
   })),
   ...Object.values(NEGATIVOS).map((codigo) => ({ codigo, rutaArchivo: RUTA_ARCHIVO_REAL })),
+  // Casos del selector de `new Pool(` que pasan por `lintear()`. Sin estas
+  // cuatro entradas caen al camino lento y pagan ~4,75 s de arranque de ESLint
+  // cada uno — ver el comentario de `vi.setConfig` arriba.
+  { codigo: SNIPPET_POOL, rutaArchivo: ARCHIVO_PRODUCCION_CUBIERTO },
+  { codigo: degradacionAVacio('??', 'punto'), rutaArchivo: ARCHIVO_PRODUCCION_CUBIERTO },
+  { codigo: SNIPPET_POOL, rutaArchivo: ARCHIVO_POSTGRES_ADMIN },
+  { codigo: SNIPPET_POOL, rutaArchivo: ARCHIVO_TENANT_SEEDER },
 ];
 
 function claveDe(codigo: string, rutaArchivo: string): string {
@@ -451,11 +494,6 @@ describe('regla no-restricted-syntax: `new Pool(` fuera del helper conUtc (ADR-1
   // en sus `ignores`): el de `prisma.service.ts`, ya migrado a `conUtc()`.
   // Nunca el de este propio spec (`src/config/`, que no está en `ignores`
   // tampoco — pero probar ahí mezclaría de dónde sale la cobertura real).
-  const ARCHIVO_PRODUCCION_CUBIERTO = path.resolve(
-    __dirname,
-    '../shared/infrastructure/persistence/prisma.service.ts',
-  );
-  const SNIPPET_POOL = 'const x = new Pool({});';
 
   function marcaPoolFueraDelHelper(resultados: ESLint.LintResult[]): boolean {
     return resultados.some((r) =>
@@ -493,14 +531,6 @@ describe('regla no-restricted-syntax: `new Pool(` fuera del helper conUtc (ADR-1
   // archivos SALIERON de los `ignores` del bloque de `src/**/*.ts` al migrar
   // a `conUtc()` — si alguien los vuelve a agregar a `ignores` sin migrarlos
   // de nuevo, este test se pone rojo.
-  const ARCHIVO_POSTGRES_ADMIN = path.resolve(
-    __dirname,
-    '../clientes/infrastructure/postgres-admin.service.ts',
-  );
-  const ARCHIVO_TENANT_SEEDER = path.resolve(
-    __dirname,
-    '../clientes/infrastructure/tenant-seeder.adapter.ts',
-  );
 
   it('marca `new Pool(` en postgres-admin.service.ts (WU2 2.2: ya no está en `ignores`)', () => {
     const resultados = lintear(SNIPPET_POOL, ARCHIVO_POSTGRES_ADMIN);
