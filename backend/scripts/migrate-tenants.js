@@ -12,7 +12,24 @@
  */
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
-const { Pool } = require('pg');
+
+// El helper `conUtc()` (ADR-1, sdd/sesion-utc-y-backfill-de-fechas) vive en
+// TypeScript bajo src/; este script es CommonJS y corre DESPUÉS del build en
+// deploy.ps1 ("Backend: build" va antes de migrate:master/migrate:tenants,
+// ver deploy.ps1:183-214), así que se lee del BUILD, no de la fuente — mismo
+// criterio que post-deploy-smoke-matriz-permisos.mjs con
+// dist/shared/domain/acciones.js.
+let conUtc;
+try {
+  ({ conUtc } = require('../dist/shared/infrastructure/persistence/utc-connection-string.js'));
+} catch (e) {
+  console.error(
+    '[migrate-tenants] no se pudo leer ' +
+      'dist/shared/infrastructure/persistence/utc-connection-string.js — ¿corriste el build?\n         ' +
+      e.message,
+  );
+  process.exit(1);
+}
 
 try {
   process.loadEnvFile();
@@ -38,7 +55,7 @@ function tenantUrl(dbName) {
 }
 
 (async () => {
-  const pool = new Pool({ connectionString: masterUrl, connectionTimeoutMillis: 10000 });
+  const pool = conUtc(masterUrl, { connectionTimeoutMillis: 10000 });
   let dbNames;
   try {
     const { rows } = await pool.query(

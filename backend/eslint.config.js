@@ -179,6 +179,39 @@ const reglaEnvStringVacio = {
   ],
 };
 
+// ─── FITNESS RULE: `new Pool(` fuera del helper de conexión UTC ───────────
+// ADR-1 (sdd/sesion-utc-y-backfill-de-fechas): `utc-connection-string.ts` es
+// el único lugar autorizado a construir un `pg.Pool` — cualquier otro sitio
+// que lo haga se salta el helper `conUtc()` y la sesión Postgres puede
+// quedar en una zona horaria distinta de UTC.
+//
+// CUPO DE UNO (ver el comment de `reglaEnvStringVacio`, arriba): agregar acá
+// una clave `no-restricted-syntax` nueva y spreadearla en el MISMO `rules`
+// que `reglaEnvStringVacio` borraría la regla de env vacío en ese bloque —
+// por eso este selector se suma como UN ITEM MÁS al array ya existente
+// (`reglaPoolYEnvVacio`, más abajo), nunca como una clave separada.
+const MENSAJE_POOL_FUERA_DEL_HELPER =
+  'FITNESS RULE (ADR-1, sdd/sesion-utc-y-backfill-de-fechas): construir un `pg.Pool` fuera de ' +
+  '`utc-connection-string.ts` se salta el helper `conUtc()` — la sesión Postgres puede quedar ' +
+  "en una zona horaria distinta de UTC. Usá `conUtc(url)` en su lugar.";
+
+const SELECTOR_POOL_FUERA_DEL_HELPER = {
+  selector: "NewExpression[callee.name='Pool']",
+  message: MENSAJE_POOL_FUERA_DEL_HELPER,
+};
+
+// Combinación (no reemplazo) de los selectores de env vacío + el nuevo de
+// Pool, para el bloque de abajo que los aplica juntos sobre un subconjunto
+// de archivos. `reglaEnvStringVacio['no-restricted-syntax']` empieza con la
+// severidad `'error'`, seguida de los selectores — el spread preserva ese
+// orden y agrega el nuevo al final.
+const reglaPoolYEnvVacio = {
+  'no-restricted-syntax': [
+    ...reglaEnvStringVacio['no-restricted-syntax'],
+    SELECTOR_POOL_FUERA_DEL_HELPER,
+  ],
+};
+
 /** @type {import('eslint').Linter.Config[]} */
 module.exports = [
   // ─── Base: TypeScript + Prettier ───────────────────────────────────────────
@@ -242,6 +275,30 @@ module.exports = [
     },
   },
 
+  // ─── FITNESS RULE: `new Pool(` fuera de utc-connection-string.ts (ADR-1) ──
+  // `postgres-admin.service.ts` y `tenant-seeder.adapter.ts` ya migraron a
+  // `conUtc()` (WU2, tareas 2.2/2.3, sdd/sesion-utc-y-backfill-de-fechas):
+  // salieron de `ignores`, la regla ahora los cubre igual que a
+  // `prisma.service.ts` (WU1). `scripts/migrate-tenants.js` (WU2, 2.4) migró
+  // también, pero es CommonJS y no cae bajo `files: ['src/**/*.ts']` — tiene
+  // su propio bloque más abajo, junto al resto de `scripts/**/*.js`.
+  //
+  // Los demás scripts de `scripts/**` que construyen `new Pool(`
+  // (`regenerar-entorno.mjs`, `backfill-tipos-componente-codigo.js`,
+  // `sync-ayuda.js`) son ajenos a este cambio — no están en el proposal, la
+  // spec ni el design de sdd/sesion-utc-y-backfill-de-fechas — por eso el
+  // `files` de este bloque NO incluye `scripts/**` en general.
+  {
+    files: ['src/**/*.ts'],
+    ignores: [
+      '**/*.spec.ts', // ADR-7: los specs de round-trip abren `pg` crudo a propósito.
+      'src/shared/infrastructure/persistence/utc-connection-string.ts', // el helper mismo.
+    ],
+    rules: {
+      ...reglaPoolYEnvVacio,
+    },
+  },
+
   // ─── scripts/ · ESM (.mjs) ────────────────────────────────────────────────
   // El glob es por extensión y no por lista de archivos A PROPÓSITO: un script
   // nuevo en scripts/ (o en scripts/lib/) queda linteado el día que se crea,
@@ -274,6 +331,39 @@ module.exports = [
     rules: {
       ...reglasBaseJs,
       ...reglaEnvStringVacio,
+      ...prettierConfig.rules,
+      'prettier/prettier': 'error',
+    },
+  },
+
+  // ─── scripts/migrate-tenants.js · Pool + env vacío (WU2 2.4, ADR-1) ──────
+  // Migró a `conUtc()` (tarea 2.4, sdd/sesion-utc-y-backfill-de-fechas):
+  // suma el selector de Pool AL bloque CommonJS de arriba, para ESTE único
+  // archivo — nunca a `scripts/**/*.js` en general, porque otros scripts de
+  // `scripts/` (`backfill-tipos-componente-codigo.js`, `sync-ayuda.js`)
+  // todavía construyen `new Pool(` directo y son ajenos a este cambio (ver
+  // el comment del bloque hermano de `src/**/*.ts`, más arriba).
+  //
+  // El glob usa un sufijo (`migrate-tenants*.js`), no el nombre literal
+  // exacto: en el archivo real solo matchea `migrate-tenants.js`, pero
+  // permite testear el bloque con un archivo TEMPORAL real
+  // (`migrate-tenants-tmp-<hex>.js`, en `regla-env-vacio.lint.spec.ts`) sin
+  // pisar el script de producción — mismo motivo por el que el caso
+  // `*.spec.ts` de ese mismo spec arma su propio nombre temporal en vez de
+  // usar `lintear()`. Va DESPUÉS del bloque general de `scripts/**/*.js`
+  // para que sus reglas lo sobrescriban (el flat config REEMPLAZA `rules`
+  // por bloque matcheado, en orden de aparición).
+  {
+    files: ['scripts/migrate-tenants*.js'],
+    languageOptions: {
+      ecmaVersion: 'latest',
+      sourceType: 'commonjs',
+      globals: globalsCommonJs,
+    },
+    plugins: { prettier: prettierPlugin },
+    rules: {
+      ...reglasBaseJs,
+      ...reglaPoolYEnvVacio,
       ...prettierConfig.rules,
       'prettier/prettier': 'error',
     },

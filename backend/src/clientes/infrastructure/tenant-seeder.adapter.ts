@@ -64,10 +64,11 @@
  * Tarea: T7.4 (PR7 Fase 2 — Provisioning: ports + adapters) / T1.1-T1.2 (PR1 Fase 3)
  */
 import { Injectable } from '@nestjs/common';
-import { Pool } from 'pg';
+import type { Pool } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { ITenantSeeder } from '../domain/ports/i-tenant-seeder.port';
 import { TenantPrismaClient } from '../../shared/infrastructure/persistence/prisma-clients';
+import { conUtc } from '../../shared/infrastructure/persistence/utc-connection-string';
 import { TIPO_CODIGO_PREVENTIVO } from '../../tickets/domain/tipos-ticket.constants';
 
 type TenantClient = InstanceType<typeof TenantPrismaClient>;
@@ -209,14 +210,18 @@ export class TenantSeederAdapter implements ITenantSeeder {
   }
 }
 
-/** Factory por defecto: abre un Pool + TenantPrismaClient propios contra `dbName`. */
+/**
+ * Factory por defecto: abre un Pool + TenantPrismaClient propios contra
+ * `dbName`, vía `conUtc()` (ADR-1, sdd/sesion-utc-y-backfill-de-fechas) —
+ * único punto autorizado a construir `pg.Pool`.
+ */
 function defaultCreateTenantClient(
   masterUrl: string,
   dbName: string,
 ): { client: TenantClient; pool: Pool } {
   const url = new URL(masterUrl);
   url.pathname = `/${dbName}`;
-  const pool = new Pool({ connectionString: url.toString() });
+  const pool = conUtc(url.toString());
   const adapter = new PrismaPg(pool);
   const client = new TenantPrismaClient({ adapter });
   return { client, pool };

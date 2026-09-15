@@ -429,3 +429,161 @@ describe('regla no-restricted-syntax: degradación de env a string vacío', () =
     expect(tieneViolacionDeLaRegla(lintear(NEGATIVOS.arbolYaMigrado))).toBe(false);
   });
 });
+
+/**
+ * `new Pool(` fuera del helper `conUtc()` — WU1 (sdd/sesion-utc-y-backfill-de-fechas),
+ * ADR-1. Bloque NUEVO en `eslint.config.js`, agregado el mismo día que este:
+ * mismo criterio que arriba (archivo real de disco + binario de ESLint), pero
+ * los casos de acá NO están en `TODOS_LOS_CASOS`/`lintearTodo()` — `lintear()`
+ * cae a su camino lento (una invocación suelta por caso), documentado como
+ * correcto, solo más caro. Sumarlos al lote no vale la pena por 3 casos.
+ *
+ * El caso de exención de `*.spec.ts` NO puede usar `lintear()`: esa función
+ * arma el nombre temporal con `path.extname(rutaArchivo)`, que para
+ * `algo.spec.ts` devuelve solo `.ts` (el `extname` de Node corta en el
+ * ÚLTIMO punto) — el temporal quedaría `lintear-tmp-xxxx.ts`, SIN el sufijo
+ * `.spec.`, y nunca matchearía el `ignores: ['**‌/*.spec.ts']` del bloque
+ * nuevo, sin importar si la regla anda bien o no. Por eso ese caso arma su
+ * propio nombre temporal con el sufijo completo.
+ */
+describe('regla no-restricted-syntax: `new Pool(` fuera del helper conUtc (ADR-1)', () => {
+  // Directorio real que SÍ cae bajo el bloque nuevo (`src/**/*.ts`, sin estar
+  // en sus `ignores`): el de `prisma.service.ts`, ya migrado a `conUtc()`.
+  // Nunca el de este propio spec (`src/config/`, que no está en `ignores`
+  // tampoco — pero probar ahí mezclaría de dónde sale la cobertura real).
+  const ARCHIVO_PRODUCCION_CUBIERTO = path.resolve(
+    __dirname,
+    '../shared/infrastructure/persistence/prisma.service.ts',
+  );
+  const SNIPPET_POOL = 'const x = new Pool({});';
+
+  function marcaPoolFueraDelHelper(resultados: ESLint.LintResult[]): boolean {
+    return resultados.some((r) =>
+      r.messages.some((m) => m.ruleId === 'no-restricted-syntax' && /pg\.Pool/.test(m.message)),
+    );
+  }
+
+  it('marca `new Pool(` en un archivo de producción cubierto por el bloque nuevo', () => {
+    const resultados = lintear(SNIPPET_POOL, ARCHIVO_PRODUCCION_CUBIERTO);
+
+    expect(marcaPoolFueraDelHelper(resultados)).toBe(true);
+  });
+
+  it('NO marca `new Pool(` en un `*.spec.ts` (ADR-7: los specs de round-trip abren pg crudo a propósito)', () => {
+    const rutaTemporalSpec = path.join(
+      path.dirname(ARCHIVO_PRODUCCION_CUBIERTO),
+      `${PREFIJO_TEMPORAL}${randomBytes(6).toString('hex')}.spec.ts`,
+    );
+    writeFileSync(rutaTemporalSpec, SNIPPET_POOL);
+    try {
+      const resultados = lintearConElBinario([rutaTemporalSpec]);
+      expect(marcaPoolFueraDelHelper(resultados)).toBe(false);
+    } finally {
+      rmSync(rutaTemporalSpec, { force: true });
+    }
+  });
+
+  it('la regla de env vacío SIGUE marcando en el mismo bloque (CUPO DE UNO: sumar el selector de Pool no la borró)', () => {
+    const resultados = lintear(degradacionAVacio('??', 'punto'), ARCHIVO_PRODUCCION_CUBIERTO);
+
+    expect(tieneViolacionDeLaRegla(resultados)).toBe(true);
+  });
+
+  // WU2 (sdd/sesion-utc-y-backfill-de-fechas, tareas 2.2-2.4): estos dos
+  // archivos SALIERON de los `ignores` del bloque de `src/**/*.ts` al migrar
+  // a `conUtc()` — si alguien los vuelve a agregar a `ignores` sin migrarlos
+  // de nuevo, este test se pone rojo.
+  const ARCHIVO_POSTGRES_ADMIN = path.resolve(
+    __dirname,
+    '../clientes/infrastructure/postgres-admin.service.ts',
+  );
+  const ARCHIVO_TENANT_SEEDER = path.resolve(
+    __dirname,
+    '../clientes/infrastructure/tenant-seeder.adapter.ts',
+  );
+
+  it('marca `new Pool(` en postgres-admin.service.ts (WU2 2.2: ya no está en `ignores`)', () => {
+    const resultados = lintear(SNIPPET_POOL, ARCHIVO_POSTGRES_ADMIN);
+
+    expect(marcaPoolFueraDelHelper(resultados)).toBe(true);
+  });
+
+  it('marca `new Pool(` en tenant-seeder.adapter.ts (WU2 2.3: ya no está en `ignores`)', () => {
+    const resultados = lintear(SNIPPET_POOL, ARCHIVO_TENANT_SEEDER);
+
+    expect(marcaPoolFueraDelHelper(resultados)).toBe(true);
+  });
+});
+
+/**
+ * `new Pool(` fuera del helper conUtc en `scripts/migrate-tenants.js` — WU2
+ * (sdd/sesion-utc-y-backfill-de-fechas), tarea 2.4, ADR-1. Bloque NUEVO en
+ * `eslint.config.js` (`files: ['scripts/migrate-tenants*.js']`), DESPUÉS del
+ * bloque general de `scripts/**‌/*.js` para sobrescribirlo solo en este
+ * archivo — ver el comment de ese bloque.
+ *
+ * El glob usa un SUFIJO (`migrate-tenants*.js`), no el nombre literal, para
+ * que un archivo temporal real (`migrate-tenants-tmp-<hex>.js`, en el MISMO
+ * directorio que el script de producción) matchee el bloque específico sin
+ * tocar el archivo real — mismo motivo que el caso `.spec.ts` de arriba: acá
+ * tampoco alcanza `lintear()` (que arma el temporal a partir de
+ * `path.extname()`, sin el prefijo del nombre), así que arma su propio
+ * archivo temporal con el prefijo correcto.
+ */
+describe('regla no-restricted-syntax: `new Pool(` + env vacío en scripts/migrate-tenants.js (WU2 2.4, ADR-1)', () => {
+  const ARCHIVO_MIGRATE_TENANTS = path.resolve(__dirname, '../../scripts/migrate-tenants.js');
+  const SNIPPET_POOL_CJS = 'const x = new Pool({});';
+
+  function marcaPoolFueraDelHelper(resultados: ESLint.LintResult[]): boolean {
+    return resultados.some((r) =>
+      r.messages.some((m) => m.ruleId === 'no-restricted-syntax' && /pg\.Pool/.test(m.message)),
+    );
+  }
+
+  function rutaTemporalMigrateTenants(): string {
+    return path.join(
+      path.dirname(ARCHIVO_MIGRATE_TENANTS),
+      `migrate-tenants-tmp-${randomBytes(6).toString('hex')}.js`,
+    );
+  }
+
+  it('marca `new Pool(` en el bloque específico de migrate-tenants.js', () => {
+    const rutaTemporal = rutaTemporalMigrateTenants();
+    writeFileSync(rutaTemporal, SNIPPET_POOL_CJS);
+    try {
+      const resultados = lintearConElBinario([rutaTemporal]);
+      expect(marcaPoolFueraDelHelper(resultados)).toBe(true);
+    } finally {
+      rmSync(rutaTemporal, { force: true });
+    }
+  });
+
+  it('la regla de env vacío SIGUE marcando en ese mismo bloque (CUPO DE UNO: sumar el selector de Pool no la borró)', () => {
+    const rutaTemporal = rutaTemporalMigrateTenants();
+    writeFileSync(rutaTemporal, degradacionAVacio('??', 'punto'));
+    try {
+      const resultados = lintearConElBinario([rutaTemporal]);
+      expect(tieneViolacionDeLaRegla(resultados)).toBe(true);
+    } finally {
+      rmSync(rutaTemporal, { force: true });
+    }
+  });
+
+  it('un script `scripts/` cualquiera (fuera del prefijo `migrate-tenants`) NO cae bajo este bloque específico', () => {
+    // Control negativo: prueba que el glob de sufijo no se filtró al bloque
+    // general de `scripts/**/*.js` — un archivo temporal SIN el prefijo
+    // `migrate-tenants` (mismo nombre que usa el resto de este spec para
+    // otros bloques) no debe marcar Pool, solo env vacío.
+    const rutaTemporal = path.join(
+      path.dirname(ARCHIVO_MIGRATE_TENANTS),
+      `lintear-tmp-${randomBytes(6).toString('hex')}.js`,
+    );
+    writeFileSync(rutaTemporal, SNIPPET_POOL_CJS);
+    try {
+      const resultados = lintearConElBinario([rutaTemporal]);
+      expect(marcaPoolFueraDelHelper(resultados)).toBe(false);
+    } finally {
+      rmSync(rutaTemporal, { force: true });
+    }
+  });
+});

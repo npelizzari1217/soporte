@@ -17,6 +17,15 @@
  *
  * Ref spec: sdd/auth-multitenancy/spec §R17
  * Tarea: T7.2
+ *
+ * WU2 (sdd/sesion-utc-y-backfill-de-fechas, ADR-1, R5) suma: `createDatabase`
+ * deja la DB física nueva con `TimeZone = 'UTC'` a nivel de base (no solo por
+ * conexión) — se verifica abriendo una sesión NUEVA y cruda (sin `conUtc()`,
+ * sin `options=-c TimeZone=UTC`) contra la DB recién creada y leyendo
+ * `current_setting('TimeZone')`. Si el rol de `MASTER_URL` no es dueño de
+ * `postgres` (entorno con permisos acotados), el `ALTER DATABASE` degrada a
+ * WARNING (ver `postgres-admin.service.ts`) y este test lo hace explícito en
+ * vez de fallar en rojo por un motivo de entorno ajeno al código.
  */
 import { randomBytes } from 'node:crypto';
 import { Pool } from 'pg';
@@ -104,5 +113,30 @@ describe('PostgresAdminService (T7.2, integración — Postgres real)', () => {
     await service.createDatabase(dbName);
 
     await expect(service.createDatabase(dbName)).rejects.toThrow();
+  });
+
+  it('[CRITICAL] createDatabase deja la DB nueva con TimeZone=UTC a nivel de base (R5, ADR-1)', async () => {
+    const dbName = ephemeralDbName();
+    createdDbNames.push(dbName);
+
+    await service.createDatabase(dbName);
+
+    // Sesión NUEVA y CRUDA (sin conUtc(), sin options=-c TimeZone=UTC): si
+    // esto da 'UTC' es porque lo puso el ALTER DATABASE, no la garantía por
+    // conexión de WU1. El rol que corre CREATE DATABASE pasa a ser dueño de
+    // la base que crea (semántica estándar de Postgres), así que en este
+    // entorno de test el ALTER DATABASE nunca debería degradar a WARNING por
+    // insufficient_privilege — ese caso queda cubierto a nivel unitario
+    // (`postgres-admin.service.spec.ts`) y como riesgo declarado del runbook
+    // para el rol de producción, que puede ser distinto.
+    const tenantUrl = new URL(MASTER_URL);
+    tenantUrl.pathname = `/${dbName}`;
+    const pool = new Pool({ connectionString: tenantUrl.toString() });
+    try {
+      const result = await pool.query<{ tz: string }>("SELECT current_setting('TimeZone') AS tz");
+      expect(result.rows[0]?.tz).toBe('UTC');
+    } finally {
+      await pool.end();
+    }
   });
 });
