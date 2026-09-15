@@ -69,3 +69,9 @@ rules:
       - RDD está OFF (decidido por default, gentle-ai#3289) — delivery bajo política ordinaria del repo, nunca fabricar un receipt
   archive:
     - Advertir antes de fusionar deltas destructivos sobre specs/ vigentes
+
+# Artefactos del ciclo SDD: fuente unica en Git, bajo openspec/changes/.
+# Engram queda como memoria (decisiones, hallazgos, contexto entre sesiones),
+# nunca como copia de estos artefactos. Decision del 2026-09-15.
+sdd:
+  artifact_store: openspec
