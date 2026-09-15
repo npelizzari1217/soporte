@@ -214,3 +214,37 @@ The change has been fully planned, implemented, verified, and archived. No furth
 No follow-up changes required from this cycle. The fix is stable in production with rollback preparation documented.
 
 If a follow-up is needed (e.g., spec witness correction as per WARNING-1, or operational invariant audit as per WARNING-3), those would be separate SDD cycles and should reference this archive report by change name and archive date.
+
+---
+
+## Addendum post-archivo: R7 auditado contra producción (2026-09-15)
+
+El informe de arriba deja la auditoría de R7 como acción operativa pendiente. **Se corrió el
+mismo día, después de archivar, y cerró en verde.** Este addendum existe para que el artefacto
+no siga declarando pendiente algo que ya se hizo.
+
+Las tres invariantes se evaluaron **catalogadas desde `information_schema`** — sin hardcodear
+tablas, el mismo criterio que usa el `migration.sql` del backfill — sobre las **5 bases de
+producción**:
+
+| Base | A: `updated_at` anterior a `created_at` en más de 1 s | B: `movimientos_insumo.created_at` anterior al del insumo padre | C: fecha `> now()` | tablas con `created_at` |
+|---|:--:|:--:|:--:|:--:|
+| `soporte_master` | **0** | n/a — no tiene `movimientos_insumo` | **0** | 12 |
+| `soporte_019fdc6444ab7f…` | **0** | **0** | **0** | 27 |
+| `soporte_019fdc673ebb72…` | **0** | **0** | **0** | 27 |
+| `soporte_01a09fb06f967d…` | **0** | **0** | **0** | 32 |
+| `soporte_01a09fb2c81672…` | **0** | **0** | **0** | 32 |
+
+**130 tablas auditadas, cero violaciones.** El estado de datos posterior al fix y al backfill
+cumple las tres invariantes que R7 declara.
+
+Consultas usadas, para reproducir: invariante A
+`extract(epoch from (created_at - updated_at)) > 1` por tabla; invariante B
+`SELECT count(*) FROM movimientos_insumo m JOIN insumos i ON i.id = m.insumo_id WHERE m.created_at < i.created_at`;
+invariante C `created_at > now()` por tabla. Las A y C se aplican por catálogo vía
+`query_to_xml(format(...))` sobre toda tabla `BASE TABLE` de `public` con la columna
+`timestamptz` correspondiente.
+
+**Con esto queda cerrada la WARNING-3 del verify de ronda 3.** Las otras dos advertencias de
+texto de spec (el testigo de R1 que no existe en el schema, y R6 describiendo un mecanismo más
+débil que el implementado) siguen abiertas como trabajo de spec, no de código.
