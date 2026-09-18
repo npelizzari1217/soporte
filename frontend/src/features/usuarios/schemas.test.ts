@@ -59,11 +59,15 @@ describe("crearUsuarioTenantSchema — topes espejados del alta", () => {
   });
 });
 
+/** Campo vacío = "no cambiar la contraseña" (ADR-6). Base para los tests de tope. */
+const SIN_CAMBIO_DE_PASSWORD = { password: "", repetirPassword: "" };
+
 describe("editarUsuarioSchema — el MISMO tope que el alta", () => {
   it("acepta los valores en el límite exacto", () => {
     const r = editarUsuarioSchema.safeParse({
       nombre: largo(USUARIO_NOMBRE_MAX_LENGTH),
       apellido: largo(USUARIO_APELLIDO_MAX_LENGTH),
+      ...SIN_CAMBIO_DE_PASSWORD,
     });
     expect(r.success).toBe(true);
   });
@@ -72,7 +76,7 @@ describe("editarUsuarioSchema — el MISMO tope que el alta", () => {
     ["nombre", USUARIO_NOMBRE_MAX_LENGTH],
     ["apellido", USUARIO_APELLIDO_MAX_LENGTH],
   ])("rechaza un %s que pasa el tope", (campo, max) => {
-    const base = { nombre: "Ada", apellido: "Lovelace" };
+    const base = { nombre: "Ada", apellido: "Lovelace", ...SIN_CAMBIO_DE_PASSWORD };
     const r = editarUsuarioSchema.safeParse({ ...base, [campo]: largo(max + 1) });
     expect(r.success).toBe(false);
   });
@@ -82,7 +86,50 @@ describe("editarUsuarioSchema — el MISMO tope que el alta", () => {
 it("el alta y la edición usan el mismo tope", () => {
   const pasado = { nombre: largo(USUARIO_NOMBRE_MAX_LENGTH + 1), apellido: "Lovelace" };
   expect(crearUsuarioTenantSchema.safeParse({ ...ALTA_VALIDA, ...pasado }).success).toBe(false);
-  expect(editarUsuarioSchema.safeParse(pasado).success).toBe(false);
+  expect(editarUsuarioSchema.safeParse({ ...pasado, ...SIN_CAMBIO_DE_PASSWORD }).success).toBe(false);
+});
+
+/**
+ * `password`/`repetirPassword` (ADR-6, `sdd/reset-de-contrasena-por-admin`):
+ * cadena vacía es válida ("no cambiar"), 7 caracteres se rechaza ANTES de
+ * tocar el backend, y una confirmación distinta marca `repetirPassword`.
+ */
+describe("editarUsuarioSchema — reset opcional de contraseña", () => {
+  const IDENTIDAD = { nombre: "Ada", apellido: "Lovelace" };
+
+  it("campo vacío es válido — no cambiar la contraseña", () => {
+    const r = editarUsuarioSchema.safeParse({ ...IDENTIDAD, password: "", repetirPassword: "" });
+    expect(r.success).toBe(true);
+  });
+
+  it("una contraseña de 7 caracteres se rechaza", () => {
+    const r = editarUsuarioSchema.safeParse({
+      ...IDENTIDAD,
+      password: "1234567",
+      repetirPassword: "1234567",
+    });
+    expect(r.success).toBe(false);
+    expect(mensajes(r)).toContain("Mínimo 8 caracteres");
+  });
+
+  it("una contraseña de 8 caracteres se acepta si coincide con la repetida", () => {
+    const r = editarUsuarioSchema.safeParse({
+      ...IDENTIDAD,
+      password: "12345678",
+      repetirPassword: "12345678",
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it("contraseñas distintas marcan repetirPassword", () => {
+    const r = editarUsuarioSchema.safeParse({
+      ...IDENTIDAD,
+      password: "12345678",
+      repetirPassword: "distinta1",
+    });
+    expect(r.success).toBe(false);
+    expect(mensajes(r)).toContain("Las contraseñas no coinciden");
+  });
 });
 
 /**

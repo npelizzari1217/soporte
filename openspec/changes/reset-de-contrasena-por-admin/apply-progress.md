@@ -115,4 +115,109 @@ con `ForbiddenException` — el comportamiento real del guard, no un mock.
 
 ## WU-3 — campo de reset en `EditarUsuarioDialog`
 
-Pendiente.
+**Estado: completo (10/10 tareas).**
+
+| Tarea | Estado |
+|---|---|
+| 3.1 `editarUsuarioSchema` + `password`/`repetirPassword` + `superRefine` (ADR-6) | [x] |
+| 3.2 `ResetearPasswordUsuarioDto` en `types.ts` | [x] |
+| 3.3 `useResetearPasswordUsuarioTenant` + `useEditarUsuarioTenant` cede sus toasts | [x] |
+| 3.4 `submit()` reescrito con la secuencia de corte de ADR-3 | [x] |
+| 3.5 Test: desenlace 1 (identidad y password ok) | [x] |
+| 3.6 Test: desenlace 2 (falla identidad, reset nunca se emite) | [x] |
+| 3.7 Test: desenlace 3 (identidad ok, falla el reset) | [x] |
+| 3.8 Test: campo vacío ⇒ el endpoint de password nunca se llama | [x] |
+| 3.9 Test schema: 7 caracteres rechaza, contraseñas distintas, vacío válido | [x] |
+| 3.10 Cierre WU-3 y del ciclo (lint + type-check + tests en verde, deuda de Ayuda anotada) | [x] |
+
+### Archivos
+
+- `frontend/src/features/usuarios/schemas.ts` (modificado): `editarUsuarioSchema`
+  pasó de `z.object` a `z.object(...).superRefine(...)`, sumando `password` y
+  `repetirPassword` (`z.string()`, NO `.optional()` — cadena vacía es la señal
+  de "no cambiar"). El `min(8)` es el literal `8` con comentario, espejo de
+  `@MinLength(8)` en `usuario-tenant.dto.ts:51` (misma convención que
+  `crearUsuarioTenantSchema`, sin constante compartida).
+- `frontend/src/features/usuarios/schemas.test.ts` (modificado): los tests
+  existentes de `editarUsuarioSchema` necesitaron sumar
+  `password: "", repetirPassword: ""` a sus objetos base porque el schema ya
+  no acepta esas claves ausentes; se agregó el describe
+  `"editarUsuarioSchema — reset opcional de contraseña"` con los casos de la
+  tarea 3.9.
+- `frontend/src/features/usuarios/types.ts` (modificado): agregado
+  `ResetearPasswordUsuarioDto { password: string }`, sin `clienteId`.
+- `frontend/src/features/usuarios/hooks/use-usuarios-tenant-mutations.ts`
+  (modificado): `useEditarUsuarioTenant` perdió `notifySuccess`/`onError:
+  notifyError` (conserva `invalidateQueries`); nuevo
+  `useResetearPasswordUsuarioTenant(usuarioId)` — `PATCH .../password`, sin
+  toasts, `apiFetch<void>` porque el endpoint devuelve 204 sin cuerpo.
+- `frontend/src/features/usuarios/components/editar-usuario-dialog.tsx`
+  (modificado): dos campos `type="password"` nuevos con hint; `submit()`
+  reescrito como `async function` con la secuencia de corte de ADR-3
+  (identidad primero, corte si falla; reset solo si el campo no está vacío;
+  cierre condicional); toasts compuestos localmente vía `toast` de `sonner`
+  + un helper `mensajeDeError()` (mismo patrón que `use-login.ts:74-81`, que
+  también compone mensajes fuera de `notifyError`/`notifySuccess`).
+- `frontend/src/features/usuarios/components/editar-usuario-dialog.test.tsx`
+  (modificado): el test original (precarga + envío solo-identidad) queda
+  intacto; se agregaron 4 tests para los desenlaces 1/2/3 de ADR-3 y el caso
+  de campo vacío, con `vi.mock("sonner", ...)` (patrón de
+  `comentarios-dialog.test.tsx` / `compra-cancelar-dialog.test.tsx`) para
+  asertar el contenido exacto de los toasts compuestos.
+
+### Sanity-check del test de corte (mandatorio, ver prompt de lanzamiento)
+
+Sobre el test "desenlace 2", se comentó temporalmente el `return;` que sigue
+al `catch` de la mutación de identidad (dejando que el flujo cayera al PATCH
+de password igual). Resultado: el test pasó de verde a **rojo** —
+`expect(passwordCalls).toBe(0)` falló con `received 1` — confirmando que el
+test SÍ detecta la rotura del corte. Se revirtió el cambio inmediatamente
+(`return;` restaurado) y se re-corrió la suite completa de `usuarios/`, que
+volvió a los 37 tests en verde.
+
+### Decisión de testing: dónde compone el mensaje de error (`mensajeDeError`)
+
+`notifyError`/`notifySuccess` (`shared/lib/toast.ts`) toman un `unknown`/`string`
+fijo y no admiten componer un mensaje con contexto adicional (p. ej. "... pero
+la contraseña NO se cambió: <motivo>"). En vez de modificar `toast.ts` (fuera
+de la lista de `File Changes` del design), se replicó localmente en el diálogo
+la misma lógica de extracción de `ApiError.messages` que ya usa `notifyError`
+— exactamente el patrón que `use-login.ts` (`mensajeDeErrorDeLogin`) ya usa
+para componer sus propios mensajes con `toast` importado directo de `sonner`.
+Es una pequeña duplicación deliberada, acotada a este archivo, en vez de tocar
+un módulo compartido por 30+ consumidores fuera del alcance de este ciclo.
+
+### Verificación (frontend/)
+
+- `pnpm vitest run src/features/usuarios`: 37 passed (37) — 5 archivos
+- `pnpm lint`: sin errores ni warnings
+- `pnpm type-check` (`tsc --noEmit`): sin errores
+- `pnpm test` (suite COMPLETA de frontend): 188 archivos / 1424 tests passed
+- `pnpm test` (suite COMPLETA de backend, `soporte-postgres-master` levantado):
+  432 archivos / 5157 tests passed — mismo número que el cierre de WU-2,
+  confirmando que esta unidad no tocó ningún archivo de `backend/`
+
+### Notas de alcance
+
+- Ningún archivo de `backend/` se tocó en esta unidad — se consumió
+  `PATCH /usuarios/:id/password` (WU-2) tal cual, sin modificarlo.
+- `usuarios-admin-view.tsx` no se tocó: el diálogo ya estaba montado, no hace
+  falta un control nuevo (confirmado por `design.md`, File Changes).
+
+### Deuda de Ayuda (pausa vigente desde 2026-09-07)
+
+`backend/ayuda/*.md` sin cambios en este ciclo, por la pausa vigente. Se deja
+anotada la deuda para la tanda final de artículos, que debe cubrir:
+
+- Un admin del tenant ahora puede establecer la contraseña de un usuario
+  desde el diálogo de edición (Admin > Usuarios).
+- Dejar el campo vacío NO cambia la contraseña existente.
+- Establecer una contraseña nueva **revoca las sesiones abiertas** del
+  usuario destino.
+- El usuario puede volver a cambiarla él mismo después, desde la pantalla de
+  cambio de contraseña ya existente.
+- Cualquier artículo existente que describa "cómo un admin gestiona
+  usuarios" puede haber quedado incompleto y debe revisarse contra esta
+  capacidad nueva.
+
+Esta misma nota va en el cuerpo del commit y del PR.

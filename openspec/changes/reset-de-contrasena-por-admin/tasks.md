@@ -152,40 +152,40 @@ líneas; se revierte solo sin dejar nada roto porque nada lo invoca todavía.
 
 ## WU-3 — commit 3: `feat(usuarios): campo de reset de contraseña en EditarUsuarioDialog`
 
-- [ ] 3.1 [R5,R6] `frontend/src/features/usuarios/schemas.ts`: sumar `password` y
+- [x] 3.1 [R5,R6] `frontend/src/features/usuarios/schemas.ts`: sumar `password` y
       `repetirPassword` a `editarUsuarioSchema` como `z.string()` (cadena vacía = "no
       cambiar") con `.superRefine` que SOLO valida si `password` no está vacío (mínimo 8 +
       coincidencia con `repetirPassword`) — molde de `cambiarPasswordSchema`
       (`frontend/src/features/auth/schemas.ts:25-34`), ADR-6 (`design.md:242-253`).
-- [ ] 3.2 `frontend/src/features/usuarios/types.ts`: agregar
+- [x] 3.2 `frontend/src/features/usuarios/types.ts`: agregar
       `ResetearPasswordUsuarioDto { password: string }`, espejo del DTO backend, SIN
       `clienteId`.
-- [ ] 3.3 [R5] `frontend/src/features/usuarios/hooks/use-usuarios-tenant-mutations.ts`:
+- [x] 3.3 [R5] `frontend/src/features/usuarios/hooks/use-usuarios-tenant-mutations.ts`:
       crear `useResetearPasswordUsuarioTenant(usuarioId)` — `PATCH usuarios/${usuarioId}/password`,
       SIN toasts (nacen del diálogo, ADR-3). Modificar `useEditarUsuarioTenant` (`:55-69`)
       para ceder sus toasts al diálogo, conservando su `invalidateQueries`.
-- [ ] 3.4 [R5] `frontend/src/features/usuarios/components/editar-usuario-dialog.tsx`:
+- [x] 3.4 [R5] `frontend/src/features/usuarios/components/editar-usuario-dialog.tsx`:
       reescribir el `submit()` con la secuencia de corte de ADR-3 (`design.md:119-157`): dos
       campos nuevos `type="password"` (`password`, `repetirPassword`); PATCH de identidad
       primero SOLO si `nombre`/`apellido` cambiaron respecto de `usuario`, y si falla se
       corta ahí (el segundo PATCH nunca se emite); PATCH de password SOLO si el campo no
       está vacío; mensajes y cierre condicional para los tres desenlaces alcanzables (tabla
       `design.md:138-143`); el diálogo emite los toasts, no los hooks.
-- [ ] 3.5 [R5] Test componente — desenlace 1: identidad y password ok (o solo identidad con
+- [x] 3.5 [R5] Test componente — desenlace 1: identidad y password ok (o solo identidad con
       el campo de password vacío) → toast de éxito, el diálogo cierra.
-- [ ] 3.6 Test componente — desenlace 2: falla el PATCH de identidad → NADA cambia, el
+- [x] 3.6 Test componente — desenlace 2: falla el PATCH de identidad → NADA cambia, el
       PATCH de password NUNCA se emite, el diálogo permanece abierto con el mensaje de
       error.
-- [ ] 3.7 Test componente — desenlace 3: identidad ok, reset de password falla → mensaje
+- [x] 3.7 Test componente — desenlace 3: identidad ok, reset de password falla → mensaje
       explícito de que nombre/apellido se guardaron pero la contraseña NO cambió, diálogo
       abierto, credencial intacta.
-- [ ] 3.8 [R5] Test componente: con el campo de password vacío, la llamada HTTP al endpoint
+- [x] 3.8 [R5] Test componente: con el campo de password vacío, la llamada HTTP al endpoint
       de password NO ocurre — una sola llamada (identidad), fila 8 de la tabla de abuso de
       `design.md:371`.
-- [ ] 3.9 [R6] Test schema: una contraseña de 7 caracteres se rechaza en el form ANTES de
+- [x] 3.9 [R6] Test schema: una contraseña de 7 caracteres se rechaza en el form ANTES de
       tocar el backend; contraseñas distintas marcan `repetirPassword`; campo vacío es
       válido.
-- [ ] 3.10 Cierre WU-3 y del ciclo: anotar la deuda de Ayuda en el mensaje del commit y en
+- [x] 3.10 Cierre WU-3 y del ciclo: anotar la deuda de Ayuda en el mensaje del commit y en
       el cuerpo del PR (pausa vigente desde 2026-09-07 — `backend/ayuda/*.md` sin cambios;
       este ciclo agrega una capacidad visible en Admin > Usuarios); `pnpm vitest run src/features/usuarios`
       + `pnpm lint` + `pnpm type-check` en verde; correr la suite `pnpm test` COMPLETA de

@@ -15,6 +15,7 @@ import type {
   CambiarRolUsuarioDto,
   CreateUsuarioTenantDto,
   EditarUsuarioDto,
+  ResetearPasswordUsuarioDto,
   UsuarioTenantMembresia,
 } from "../types";
 
@@ -51,6 +52,14 @@ export function useCambiarRolUsuarioTenant(usuarioId: string) {
  * Edita nombre/apellido del usuario `usuarioId` (identidad global — el email
  * no se edita). Invalida el prefijo `["usuarios"]` para refrescar tanto la
  * vista admin como el selector de asignación.
+ *
+ * SIN toasts (ADR-3, `sdd/reset-de-contrasena-por-admin`): `EditarUsuarioDialog`
+ * es el ÚNICO consumidor de este hook en todo `frontend/src`, y desde que su
+ * `submit` dispara esta mutación seguida de `useResetearPasswordUsuarioTenant`
+ * en una secuencia con corte, es el diálogo quien compone el mensaje final —
+ * un toast verde "Usuario actualizado" emitido acá al lado de uno rojo del
+ * segundo PATCH reproduciría la ambigüedad de `scripts/reset-password.ts:6-19`
+ * (éxito reportado, algo debajo falló).
  */
 export function useEditarUsuarioTenant(usuarioId: string) {
   const queryClient = useQueryClient();
@@ -62,9 +71,23 @@ export function useEditarUsuarioTenant(usuarioId: string) {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["usuarios"] });
-      notifySuccess("Usuario actualizado.");
     },
-    onError: notifyError,
+  });
+}
+
+/**
+ * Resetea la contraseña del usuario `usuarioId` (ADR-3, ADR-4,
+ * `sdd/reset-de-contrasena-por-admin`). SIN toasts, por el mismo motivo que
+ * `useEditarUsuarioTenant` arriba: nace para vivir dentro de la secuencia de
+ * dos mutaciones de `EditarUsuarioDialog`, que es quien decide el mensaje
+ * final según cuál de las dos llamadas falló.
+ *
+ * `PATCH .../password` devuelve 204 sin cuerpo — de ahí `apiFetch<void>`.
+ */
+export function useResetearPasswordUsuarioTenant(usuarioId: string) {
+  return useMutation({
+    mutationFn: (dto: ResetearPasswordUsuarioDto) =>
+      apiFetch<void>(`usuarios/${usuarioId}/password`, { method: "PATCH", json: dto }),
   });
 }
 
