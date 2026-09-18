@@ -44,6 +44,43 @@ describe("ModelosEquipoAdminView", () => {
     }
   });
 
+  /**
+   * La dirección que faltaba (W1 del verify de este ciclo). El escenario R2 de
+   * la spec dice GIVEN un modelo ACTIVO / WHEN lo DESACTIVA, y el test de abajo
+   * recorre la dirección inversa. No alcanzaba con tener uno solo:
+   * `EstadoActivoAction` es una función LOCAL de `modelo-equipo-list.tsx` —el
+   * patrón está duplicado en siete listas del repo—, así que el test de
+   * unidades de medida no cubre esta copia. Si alguien invierte el ternario de
+   * `activo ? "Dar de baja" : "Activar"`, solo un test por dirección lo atrapa.
+   */
+  it("da de baja un modelo activo desde la lista", async () => {
+    const user = userEvent.setup();
+    let enviado: Record<string, unknown> = {};
+    // El GET refleja la baja: sin esto el refetch posterior al PATCH devolvería
+    // el estado viejo y el badge nunca cambiaría, que es lo que se está
+    // probando. El test hermano no lo necesita porque no afirma la UI.
+    let activo = true;
+    server.use(
+      http.get("/api/modelos-equipo", () => HttpResponse.json([{ ...MODELO_HP, activo }])),
+      http.patch("/api/modelos-equipo/me-1/estado", async ({ request }) => {
+        enviado = (await request.json()) as Record<string, unknown>;
+        activo = (enviado as { activo: boolean }).activo;
+        return HttpResponse.json({ ...MODELO_HP, activo });
+      }),
+    );
+
+    renderWithProviders(<ModelosEquipoAdminView />, { user: buildUser({ rol: "ADMINISTRADOR" }) });
+    await screen.findByText("HP");
+    expect(screen.getByText("Activo")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /^dar de baja$/i }));
+    const dialogo = await screen.findByRole("alertdialog");
+    await user.click(within(dialogo).getByRole("button", { name: /^dar de baja$/i }));
+
+    await waitFor(() => expect(enviado).toEqual({ activo: false }));
+    expect(await screen.findByText("Baja")).toBeInTheDocument();
+  });
+
   it("lista el catálogo y reactiva un modelo dado de baja", async () => {
     const user = userEvent.setup();
     mockBackend([{ ...MODELO_HP, activo: false }]);
