@@ -33,15 +33,42 @@ jobs:
   # agrega sin cubrirlo, este job frena el resto.
   gate-coverage:
     runs-on: ubuntu-latest
+    # Que areas toco el cambio. Los dos jobs de abajo lo leen para saltearse
+    # cuando no los toca: medido sobre los ultimos 15 PRs, 9 tocaron solo
+    # `backend/`, 4 solo `frontend/` y uno solo toco ambos, asi que 14 de 15
+    # corrian una compuerta entera al pedo.
+    outputs:
+      backend: ${{ steps.cambios.outputs.backend }}
+      frontend: ${{ steps.cambios.outputs.frontend }}
     steps:
       - uses: actions/checkout@v7
+      # Resuelve la deteccion para `push` y para `pull_request`, que se calculan
+      # distinto (uno compara contra el commit anterior, el otro contra la base
+      # del PR). Hacerlo a mano con `git diff` tiene casos borde -- clone shallow,
+      # primer push de una rama -- que no podemos probar: la cuota de Actions
+      # esta agotada y estos workflows no corren.
+      - uses: dorny/paths-filter@v3
+        id: cambios
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+              - '.github/workflows/gates.yml'
+            frontend:
+              - 'frontend/**'
+              - '.github/workflows/gates.yml'
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
+      # Este paso NO se filtra y corre siempre, a proposito: verifica que TODO
+      # proyecto npm del repo declare sus compuertas. Si se filtrara, un PR que
+      # agregue un proyecto nuevo lo saltearia en silencio -- justo lo que el
+      # guard existe para evitar.
       - run: node scripts/check-gate-coverage.mjs
 
   backend:
     needs: gate-coverage
+    if: needs.gate-coverage.outputs.backend == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -140,6 +167,7 @@ jobs:
 
   frontend:
     needs: gate-coverage
+    if: needs.gate-coverage.outputs.frontend == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
