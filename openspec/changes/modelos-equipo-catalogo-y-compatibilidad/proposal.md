@@ -61,7 +61,8 @@ Este ciclo entrega la administración del catálogo y su primer consumidor. Term
 | `frontend/src/components/shell/admin-nav.tsx` | Modified | Un ítem más en `ADMIN_NAV_ITEMS` |
 | `frontend/src/features/equipos/types.ts` · `schemas.ts` | Modified | `modeloEquipoId` entra al espejo recortado |
 | `frontend/src/features/equipos/components/equipo-create-dialog.tsx` · `equipo-edit-dialog.tsx` | Modified | Selector + enclavamiento, con sus tests |
-| `frontend/src/features/equipos/components/equipo-detail-view.tsx` | Modified (a confirmar en diseño) | Mostrar el modelo resuelto |
+| `frontend/src/features/equipos/components/equipos-list-view.tsx` | Modified | Columna `Marca` (:43): hoy es el único lugar donde el usuario ve la marca, y el enclavamiento la vacía. Resuelve el modelo de catálogo del lado cliente |
+| `frontend/src/features/equipos/components/equipo-detail-view.tsx` | **Sin cambios** (cerrado por ADR-2) | Hoy no renderiza `marca`, `modelo` ni `modeloEquipoId`: no mostrar el modelo ahí es un hueco preexistente, no una regresión de este ciclo |
 | Backend | Ninguno | — |
 
 ## Risks
@@ -73,6 +74,12 @@ Este ciclo entrega la administración del catálogo y su primer consumidor. Term
 | El enclavamiento vacía texto libre que el usuario había cargado a mano | Media | Es el comportamiento elegido y va a la spec como escenario, no como defecto. El vaciado ocurre al seleccionar, a la vista del usuario, no en silencio al guardar |
 | Caché de la query del catálogo sin scope de tenant | Baja | Confirmar en diseño que la `queryKey` sigue el patrón de `use-unidades-medida.ts` |
 | La Ayuda queda describiendo un formulario de equipo que cambió | Media | Anotar la deuda en commit y PR. Si algún artículo existente queda FALSO, corregirlo: esa excepción sigue vigente durante la pausa |
+
+## Addendum del diseño (2026-09-18)
+
+El diseño cerró la casilla abierta de `equipo-detail-view.tsx` **invirtiendo** lo que esta propuesta suponía, y la tabla de arriba ya refleja el resultado. El criterio de ADR-2: **se paga la regresión que uno introduce; el hueco viejo queda como seguimiento.** La ficha nunca mostró `marca`/`modelo`, así que seguir sin mostrarlos no es deuda de este ciclo; la columna `Marca` del listado sí, porque el enclavamiento la vacía.
+
+**Consecuencia registrada, sin cerrar**: `backend/src/equipos/application/use-cases/exportar-equipos.use-case.ts:77` exporta la columna `Marca` desde el campo crudo. Tras este ciclo, un equipo con modelo de catálogo la exporta **vacía**. Corregirlo es trabajo de backend y sacaría al ciclo de su propiedad "solo frontend", así que queda como seguimiento explícito y no como defecto silencioso.
 
 ## Rollback Plan
 
