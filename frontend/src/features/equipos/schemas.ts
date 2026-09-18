@@ -127,6 +127,14 @@ export const crearEquipoSchema = z.object({
     .max(EQUIPO_MODELO_MAX_LENGTH, mensajeDemasiadoLargo("El modelo", EQUIPO_MODELO_MAX_LENGTH))
     .optional(),
   /**
+   * Modelo del catálogo `ModeloEquipo` elegido en el `<select>` de los dos
+   * diálogos de equipo (WU-3, modelos-equipo-catalogo-y-compatibilidad).
+   * Admite vacío (R4: un equipo sin modelo de catálogo sigue siendo válido) —
+   * mismo molde que `equipoId` en `crearTicketSoporteSchema` (`:267`):
+   * `.uuid()` rechaza `""`, así que hace falta el `.or(z.literal(""))`.
+   */
+  modeloEquipoId: z.string().uuid().optional().or(z.literal("")),
+  /**
    * `<input type="date">` → "YYYY-MM-DD" (o "" sin fecha). El backend valida
    * `@IsDateString`. Sin `.or(z.literal(""))`: `z.string().optional()` ya
    * acepta `""` (una cadena vacía es un string válido) — el `.or()` era

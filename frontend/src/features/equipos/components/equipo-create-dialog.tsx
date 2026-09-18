@@ -5,16 +5,19 @@
  * dedicada de creación (ADR-1: `/equipos`, `/equipos/[id]`) — alta inline,
  * mismo patrón que `CompraCreateDialog`/`ReparacionCreateDialog` (B5).
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { MontoInput } from "@/components/shared/monto-input";
 import { formatearNumeroEsAr } from "@/shared/lib/formato-numero";
 import { useCrearEquipo } from "../hooks/use-equipo-mutations";
+import { useModelosEquipo } from "@/features/modelos-equipo/hooks/use-modelos-equipo";
+import { resolverLista } from "@/features/insumos/lib/resolucion-de-catalogo";
 import {
   crearEquipoSchema,
   esPorcentajeDepreciacionValido,
@@ -24,9 +27,28 @@ import {
 import { hoyFechaCalendario } from "@/shared/lib/formato-fecha";
 import { baseDepreciacion, calcularValorResidual, parseImporte } from "../depreciacion";
 
+/** Nota bajo el select cuando el catálogo de modelos resolvió VACÍO. */
+const NOTA_MODELOS_VACIOS = "No hay modelos de equipo cargados. Creá uno desde Admin > Modelos de equipo.";
+
+/**
+ * Nota cuando el catálogo NO resolvió. Mensaje distinto del de vacío a
+ * propósito (mismo criterio que `insumo-form-dialog.tsx`): decirle "no hay
+ * modelos cargados" a alguien cuya query se cayó lo manda a cargar un
+ * catálogo que ya existe.
+ */
+const NOTA_MODELOS_NO_DISPONIBLES = "No se pudieron cargar los modelos de equipo.";
+
 export function EquipoCreateDialog() {
   const [open, setOpen] = useState(false);
   const crearMutation = useCrearEquipo();
+  const modelosQuery = useModelosEquipo();
+  const modelos = modelosQuery.data ?? [];
+  // Cuatro estados, molde de `insumo-form-dialog.tsx` (ADR-6 del design de
+  // modelos-equipo-catalogo-y-compatibilidad): `=== "CON_ENTRADAS"`, NO
+  // `!== "CARGANDO"` — ver el JSDoc de ese archivo para la transición que ese
+  // guard rompe.
+  const estadoModelos = resolverLista({ entradas: modelosQuery.data, cargando: modelosQuery.isLoading });
+  const modelosListos = estadoModelos === "CON_ENTRADAS";
 
   const {
     register,
@@ -38,6 +60,19 @@ export function EquipoCreateDialog() {
     setValue,
     formState: { errors },
   } = useForm<CrearEquipoFormValues>({ resolver: zodResolver(crearEquipoSchema) });
+
+  // Un `<select>` nativo no puede mostrar un valor cuya `<option>` todavía no
+  // existe: si el catálogo resuelve DESPUÉS de abrir el diálogo, el DOM cae al
+  // placeholder mientras react-hook-form conserva el valor en su store. Reaplicar
+  // el valor guardado cuando la lista resuelve evita ese salto silencioso.
+  useEffect(() => {
+    if (!open || !modelosListos) return;
+    setValue("modeloEquipoId", getValues("modeloEquipoId"));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, modelosListos]);
+
+  const modeloEquipoIdActual = watch("modeloEquipoId");
+  const conModeloDeCatalogo = !!modeloEquipoIdActual;
 
   const importeActual = watch("importe");
   const valorResidualActual = watch("valorResidual");
@@ -77,6 +112,9 @@ export function EquipoCreateDialog() {
         numeroSerie: values.numeroSerie || undefined,
         marca: values.marca || undefined,
         modelo: values.modelo || undefined,
+        // Vacío es AUSENCIA en alta, mismo criterio que el resto de los
+        // campos opcionales de este submit (R4 del spec: admite vacío).
+        modeloEquipoId: values.modeloEquipoId || undefined,
         fechaAdquisicion: values.fechaAdquisicion || undefined,
         ubicacion: values.ubicacion ? normalizarUbicacion(values.ubicacion) : undefined,
         importe: parseImporte(values.importe) ?? undefined,
@@ -138,7 +176,12 @@ export function EquipoCreateDialog() {
             <label htmlFor="equipo-marca" className="text-sm font-medium text-foreground">
               Marca
             </label>
-            <Input id="equipo-marca" error={!!errors.marca} {...register("marca")} />
+            <Input
+              id="equipo-marca"
+              error={!!errors.marca}
+              disabled={conModeloDeCatalogo}
+              {...register("marca")}
+            />
             {errors.marca && (
               <p role="alert" className="text-sm text-destructive">
                 {errors.marca.message}
@@ -149,10 +192,52 @@ export function EquipoCreateDialog() {
             <label htmlFor="equipo-modelo" className="text-sm font-medium text-foreground">
               Modelo
             </label>
-            <Input id="equipo-modelo" error={!!errors.modelo} {...register("modelo")} />
+            <Input
+              id="equipo-modelo"
+              error={!!errors.modelo}
+              disabled={conModeloDeCatalogo}
+              {...register("modelo")}
+            />
             {errors.modelo && (
               <p role="alert" className="text-sm text-destructive">
                 {errors.modelo.message}
+              </p>
+            )}
+          </div>
+          <div className="flex flex-col gap-1">
+            <label htmlFor="equipo-modelo-equipo" className="text-sm font-medium text-foreground">
+              Modelo de catálogo
+            </label>
+            <Select
+              id="equipo-modelo-equipo"
+              error={!!errors.modeloEquipoId}
+              disabled={!modelosListos}
+              defaultValue=""
+              {...register("modeloEquipoId", {
+                onChange: (e) => {
+                  // Quitarlo (valor vacío) NO borra nada — ADR-4: el vaciado
+                  // solo dispara al ELEGIR un modelo, nunca al deseleccionar.
+                  if (!e.target.value) return;
+                  setValue("marca", "", { shouldValidate: true });
+                  setValue("modelo", "", { shouldValidate: true });
+                },
+              })}
+            >
+              <option value="">Sin modelo de catálogo</option>
+              {modelos.map((modelo) => (
+                <option key={modelo.id} value={modelo.id}>
+                  {modelo.marca} {modelo.modelo}
+                  {modelo.activo ? "" : " (deshabilitado)"}
+                </option>
+              ))}
+            </Select>
+            {estadoModelos === "VACIA" && <p className="text-xs text-muted-foreground">{NOTA_MODELOS_VACIOS}</p>}
+            {estadoModelos === "NO_DISPONIBLE" && (
+              <p className="text-xs text-muted-foreground">{NOTA_MODELOS_NO_DISPONIBLES}</p>
+            )}
+            {errors.modeloEquipoId && (
+              <p role="alert" className="text-sm text-destructive">
+                {errors.modeloEquipoId.message}
               </p>
             )}
           </div>

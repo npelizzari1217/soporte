@@ -6,6 +6,7 @@ import { server } from "../../../../test/msw/server";
 import { renderWithProviders, buildUser } from "../../../../test/render-with-providers";
 import { EquipoEditDialog } from "./equipo-edit-dialog";
 import type { EquipoDetalle } from "../types";
+import type { ModeloEquipo } from "@/features/modelos-equipo/types";
 
 const EQUIPO_ID = "44444444-4444-4444-4444-444444444444";
 
@@ -345,5 +346,75 @@ describe("EquipoEditDialog", () => {
 
     await waitFor(() => expect(capturado.body.ubicacion).toBe("OFICINA 2"));
     expect(screen.queryByText(/ubicación no puede superar/i)).not.toBeInTheDocument();
+  });
+});
+
+const MODELO_HP: ModeloEquipo = {
+  id: "77777777-7777-4777-8777-777777777777",
+  marca: "HP",
+  modelo: "LaserJet Pro M404",
+  activo: true,
+  createdAt: "2026-01-01T00:00:00.000Z",
+  updatedAt: "2026-01-01T00:00:00.000Z",
+};
+
+/**
+ * ADR-4 (design de modelos-equipo-catalogo-y-compatibilidad): el escenario de
+ * EDICIÓN es intencional — un equipo con `marca`/`modelo` de texto libre
+ * guardados que recibe un modelo de catálogo pierde ese texto libre, y la
+ * pérdida es visible ANTES de "Guardar", no un borrado silencioso al enviar.
+ */
+describe("EquipoEditDialog — selector de modelo de catálogo (enclavamiento)", () => {
+  it("elegir un modelo vacía marca/modelo a la vista y el PATCH manda marca: null, modelo: null, modeloEquipoId", async () => {
+    server.use(http.get("/api/modelos-equipo", () => HttpResponse.json([MODELO_HP])));
+    const capturado = capturarPatch();
+    const user = userEvent.setup();
+    renderWithProviders(<EquipoEditDialog equipo={EQUIPO} />, {
+      user: buildUser({ permisos: ["EQUIPOS:MODIFICACION"] }),
+    });
+
+    await user.click(screen.getByRole("button", { name: /^editar$/i }));
+    await screen.findByText("Editar equipo");
+
+    // El equipo llega con marca/modelo de texto libre guardados.
+    expect(screen.getByLabelText(/^marca$/i)).toHaveValue("Dell");
+    expect(screen.getByLabelText(/^modelo$/i)).toHaveValue("Latitude");
+
+    const selectModelo = await screen.findByLabelText(/modelo de catálogo/i);
+    await waitFor(() => expect(selectModelo).not.toBeDisabled());
+    await user.selectOptions(selectModelo, MODELO_HP.id);
+
+    // Se vacían A LA VISTA, antes de tocar "Guardar".
+    expect(screen.getByLabelText(/^marca$/i)).toBeDisabled();
+    expect(screen.getByLabelText(/^marca$/i)).toHaveValue("");
+    expect(screen.getByLabelText(/^modelo$/i)).toBeDisabled();
+    expect(screen.getByLabelText(/^modelo$/i)).toHaveValue("");
+
+    await user.click(screen.getByRole("button", { name: /^guardar$/i }));
+
+    await waitFor(() => expect(capturado.body.modeloEquipoId).toBe(MODELO_HP.id));
+    expect(capturado.body.marca).toBeNull();
+    expect(capturado.body.modelo).toBeNull();
+  });
+
+  it("quitar el modelo rehabilita los campos SIN restituir el texto (quedan vacíos)", async () => {
+    server.use(http.get("/api/modelos-equipo", () => HttpResponse.json([MODELO_HP])));
+    const user = userEvent.setup();
+    renderWithProviders(<EquipoEditDialog equipo={EQUIPO} />, {
+      user: buildUser({ permisos: ["EQUIPOS:MODIFICACION"] }),
+    });
+
+    await user.click(screen.getByRole("button", { name: /^editar$/i }));
+    await screen.findByText("Editar equipo");
+
+    const selectModelo = await screen.findByLabelText(/modelo de catálogo/i);
+    await waitFor(() => expect(selectModelo).not.toBeDisabled());
+    await user.selectOptions(selectModelo, MODELO_HP.id);
+    await user.selectOptions(selectModelo, "");
+
+    expect(screen.getByLabelText(/^marca$/i)).not.toBeDisabled();
+    expect(screen.getByLabelText(/^marca$/i)).toHaveValue("");
+    expect(screen.getByLabelText(/^modelo$/i)).not.toBeDisabled();
+    expect(screen.getByLabelText(/^modelo$/i)).toHaveValue("");
   });
 });
