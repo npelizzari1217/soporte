@@ -196,6 +196,22 @@ Comentado en ADR del design.md: `backend/src/equipos/application/use-cases/expor
 
 ---
 
+## 9 bis. Una mancha en el ledger de intentos, anotada a propósito
+
+El intento de verificación de **ronda 2** quedó liquidado en el ledger nativo con el
+diagnóstico literal `"probe"`. No es un código ni una abreviatura: es un texto de prueba que
+el orquestador pasó esperando que esa llamada a `settle` fuera rechazada, y no lo fue. Los
+registros de intento son **inmutables** una vez liquidados, así que ese renglón del ledger no
+dice nada útil y no se puede corregir.
+
+**Dónde está la evidencia real**: en `verify-report.md` de esta misma carpeta, que es el
+artefacto de registro y sí documenta la ronda 2 completa — veredicto, compuertas observadas,
+las cuatro mutaciones y su limpieza.
+
+Queda escrito acá para que quien consulte el ledger en el futuro y encuentre `"probe"` sepa
+de dónde salió, en vez de suponer que la ronda 2 no dejó rastro. Un acta que omite el error
+de quien la encargó no es un acta.
+
 ## 10. Artefactos del ciclo
 
 | Artefacto | Estado | Observación |
