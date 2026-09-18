@@ -19,7 +19,7 @@
 **100% frontend.** Entrega del ABM (crear, editar, activar/desactivar) del catálogo `ModeloEquipo` con selector en los diálogos de alta y edición de equipos, resolviendo nombres de modelos del lado cliente contra `GET /modelos-equipo` existente. El backend no requiere cambios; la entidad, DTOs, errores y endpoints ya existían, solo sin interfaz de usuario.
 
 **Decisiones de alcance confirmadas al cierre**:
-- Enclavamiento entre selector y texto libre: con modelo de catálogo seleccionado, `marca` y `modelo` quedan deshabilitados y vaciados (ADR-5, verificado por mutación M4).
+- Enclavamiento entre selector y texto libre: con modelo de catálogo seleccionado, `marca` y `modelo` quedan deshabilitados y vaciados (ADR-4, verificado por mutación M4).
 - Sin cambios en `equipo-detail-view.tsx` (ADR-2): es correcto, preexistente hueco no cubierto por este ciclo.
 - Backend `exportar-equipos.use-case.ts:77` exporta `Marca` vacía para equipos con modelo de catálogo (conocido, registrado como seguimiento de backend).
 
