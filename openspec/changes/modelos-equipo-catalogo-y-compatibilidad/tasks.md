@@ -55,13 +55,13 @@ anotado como mejora posible, no como tarea de este ciclo.
 
 ## WU-1 — commit 1: `feat(modelos-equipo): capa de datos del catálogo (types, schemas, hooks)`
 
-- [ ] 1.1 [R2] `frontend/src/features/modelos-equipo/types.ts`: crear — espejo de
+- [x] 1.1 [R2] `frontend/src/features/modelos-equipo/types.ts`: crear — espejo de
       `ModeloEquipoResponseDto` (`backend/src/insumos/interface/dtos/modelos-equipo.dto.ts:100-107`)
       con `CreateModeloEquipoDto`/`EditModeloEquipoDto` (PATCH parcial, molde de `:77-91`) y
       `CambiarEstadoActivoModeloEquipoDto` (molde de `:94-97`). Molde de estructura general:
       `frontend/src/features/insumos/types.ts:15-37`. Sin `codigo`: la identidad es el par
       `marca`+`modelo` (`backend/src/insumos/domain/entities/modelo-equipo.entity.ts:10-14`).
-- [ ] 1.2 [R2,R3] `frontend/src/features/modelos-equipo/schemas.ts`: crear —
+- [x] 1.2 [R2,R3] `frontend/src/features/modelos-equipo/schemas.ts`: crear —
       `normalizarMarca`/`normalizarModelo`, espejo de `normalizarMarcaModeloEquipo`/
       `normalizarModeloModeloEquipo` (`backend/src/insumos/domain/entities/modelo-equipo.entity.ts:46-48,67-69`);
       `modeloEquipoSchema` con `MODELO_EQUIPO_MARCA_MAX_LENGTH = 100` medido sobre el valor
@@ -70,25 +70,25 @@ anotado como mejora posible, no como tarea de este ciclo.
       agrandar el string) — y `MODELO_EQUIPO_MODELO_MAX_LENGTH = 150` con `.trim().max()`
       directo (`trim()` nunca agranda). Sin `@Matches` de código (ADR-1: `marca` es texto
       libre con espacios internos).
-- [ ] 1.3 [R2,R3] `frontend/src/features/modelos-equipo/schemas.test.ts`: crear — molde de
+- [x] 1.3 [R2,R3] `frontend/src/features/modelos-equipo/schemas.test.ts`: crear — molde de
       `frontend/src/features/equipos/schemas.test.ts:34-40` (`it.each` de topes) adaptado a
       `marca`/`modelo`; caso "una marca que crece al pasar a mayúscula se rechaza en el form,
       no en el 400 remoto" (mismo criterio que el caso `ubicacion` de equipos); `modelo`
       preserva su capitalización tal como se tipeó (sin `.toUpperCase()`).
-- [ ] 1.4 [R2] `frontend/src/features/modelos-equipo/hooks/use-modelos-equipo.ts`: crear —
+- [x] 1.4 [R2] `frontend/src/features/modelos-equipo/hooks/use-modelos-equipo.ts`: crear —
       `GET /modelos-equipo`, `queryKey: ["modelos-equipo"]` (ADR-5, SIN segmento de tenant:
       la invalidación de caché al cambiar de inquilino es global, `tenant-switcher.tsx:62`),
       molde exacto de `frontend/src/features/insumos/hooks/use-unidades-medida.ts`. Sin gate
       de permiso: la lectura es abierta a cualquier autenticado — la consume también el
       selector de equipos en WU-3.
-- [ ] 1.5 [R2,R3] `frontend/src/features/modelos-equipo/hooks/use-modelo-equipo-mutations.ts`:
+- [x] 1.5 [R2,R3] `frontend/src/features/modelos-equipo/hooks/use-modelo-equipo-mutations.ts`:
       crear — `useCrearModeloEquipo`/`useEditarModeloEquipo`/
       `useCambiarEstadoActivoModeloEquipo`, molde exacto de
       `frontend/src/features/insumos/hooks/use-unidad-medida-mutations.ts` (invalidación de
       `["modelos-equipo"]` + toasts en las tres). El 422 de par duplicado (R3) no se
       intercepta acá: llega como error genérico y lo maneja `notifyError` en el diálogo de
       WU-2.
-- [ ] 1.6 Cierre WU-1: `pnpm vitest run src/features/modelos-equipo/schemas.test.ts` +
+- [x] 1.6 Cierre WU-1: `pnpm vitest run src/features/modelos-equipo/schemas.test.ts` +
       `pnpm lint` + `pnpm type-check` en verde. Commit.
 
 ---
