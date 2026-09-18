@@ -343,10 +343,15 @@ describe('UsuariosController (gestión mínima de usuarios, sdd/beta-frontend §
       // `@UseGuards` deja en ESTE método puntual: si alguien lo borra, o lo
       // sube a nivel de clase, este assert lo detecta sin necesidad de un
       // harness e2e (Fuera de alcance de este ciclo, tasks.md).
-      const guardsEnElMetodo = Reflect.getMetadata(
+      // El `?? []` es LOAD-BEARING y sigue el modismo ya usado en
+      // `modelos-equipo.controller.spec.ts:162`. Sin el decorador,
+      // `getMetadata` devuelve `undefined`, y `expect(undefined).toContain(x)`
+      // PASA en este Vitest en vez de fallar. Medido: sin el coalesce, borrar
+      // `@UseGuards(AdminClienteGuard)` de la ruta dejaba este test en verde.
+      const guardsEnElMetodo = (Reflect.getMetadata(
         GUARDS_METADATA,
         UsuariosController.prototype.resetearPassword,
-      );
+      ) ?? []) as unknown[];
 
       expect(guardsEnElMetodo).toContain(AdminClienteGuard);
     });
