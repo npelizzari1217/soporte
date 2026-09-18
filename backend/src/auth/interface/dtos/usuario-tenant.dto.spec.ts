@@ -10,7 +10,11 @@
 import { describe, expect, it } from 'vitest';
 import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
-import { CreateUsuarioTenantDto, EditarUsuarioDto } from './usuario-tenant.dto';
+import {
+  CreateUsuarioTenantDto,
+  EditarUsuarioDto,
+  ResetearPasswordUsuarioDto,
+} from './usuario-tenant.dto';
 import {
   USUARIO_APELLIDO_MAX_LENGTH,
   USUARIO_EMAIL_MAX_LENGTH,
@@ -112,5 +116,36 @@ describe('EditarUsuarioDto — el mismo tope que el alta', () => {
   it('sigue aceptando un patch que no toca ningún campo acotado', async () => {
     const dto = plainToInstance(EditarUsuarioDto, {});
     expect(await validate(dto)).toHaveLength(0);
+  });
+});
+
+/**
+ * `ResetearPasswordUsuarioDto` — el largo mínimo de la contraseña.
+ *
+ * Existe porque el verify de este ciclo lo destapó como W1: borrando el
+ * `@MinLength(8)` del DTO, los 672 tests de `src/auth` seguían en verde. Ese
+ * decorador es la AUTORIDAD de la que deriva el Zod del frontend
+ * (`features/usuarios/schemas.ts`), y la derivada tenía tres tests mientras la
+ * autoridad no tenía ninguno. Sin esto, un admin podía fijar una contraseña de
+ * un carácter en cuanto alguien tocara el decorador.
+ */
+describe('ResetearPasswordUsuarioDto — largo mínimo de la contraseña', () => {
+  it('acepta una contraseña en el límite exacto de 8', async () => {
+    const dto = plainToInstance(ResetearPasswordUsuarioDto, { password: '12345678' });
+    expect(await validate(dto)).toHaveLength(0);
+  });
+
+  it('rechaza una contraseña de 7 caracteres', async () => {
+    const dto = plainToInstance(ResetearPasswordUsuarioDto, { password: '1234567' });
+    const errores = await validate(dto);
+
+    expect(errores).toHaveLength(1);
+    expect(errores[0].property).toBe('password');
+    expect(Object.keys(errores[0].constraints ?? {})).toContain('minLength');
+  });
+
+  it('rechaza una contraseña vacía', async () => {
+    const dto = plainToInstance(ResetearPasswordUsuarioDto, { password: '' });
+    expect(await validate(dto)).not.toHaveLength(0);
   });
 });
