@@ -35,7 +35,7 @@ function payload(overrides: Partial<JwtPayload>): JwtPayload {
 // ADR-P5: las 5 secciones son ADMINISTRADOR-o-ROOT exclusivas — un TECNICO
 // no ve NINGÚN link de gestión, aunque las lecturas de catálogos sigan abiertas.
 describe("AdminNav (ADR-P5)", () => {
-  it("ADMINISTRADOR ve las 5 secciones", () => {
+  it("ADMINISTRADOR ve las 6 secciones", () => {
     renderWithUser(payload({ rol: "ADMINISTRADOR" }));
     expect(screen.getByRole("link", { name: "Catálogos" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Ciclos" })).toBeInTheDocument();
@@ -50,6 +50,9 @@ describe("AdminNav (ADR-P5)", () => {
     // Issue #156: "Unidades" salió de adentro de Admin > Insumos y pasó a
     // tener entrada propia, con el MISMO gate (esAdminCliente).
     expect(screen.getByRole("link", { name: "Unidades" })).toBeInTheDocument();
+    // Ciclo modelos-equipo-catalogo-y-compatibilidad: sexta sección, mismo
+    // gate `esAdminCliente`, sin permiso nuevo en la matriz `MODULO:ACCION`.
+    expect(screen.getByRole("link", { name: "Modelos de equipo" })).toBeInTheDocument();
   });
 
   it("TECNICO (no admin, no root) no ve ninguna sección", () => {

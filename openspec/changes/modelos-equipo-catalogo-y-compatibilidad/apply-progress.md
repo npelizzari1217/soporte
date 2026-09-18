@@ -31,11 +31,92 @@ sin `codigo`, normalización marca/modelo distinta, largo medido sobre el valor
 normalizado, sin patrón de código) y ADR-5 (`queryKey` plana `["modelos-equipo"]`,
 sin segmento de tenant).
 
+## WU-2 — pantalla ABM y navegación — DONE
+
+Rama: `feat/modelos-equipo-pantalla-abm` (ramificada desde
+`feat/modelos-equipo-capa-de-datos`, WU-1, aún no mergeada a `main`).
+
+Tareas completadas (ver `tasks.md`):
+
+- [x] 2.1 `frontend/src/features/modelos-equipo/components/modelo-equipo-form-dialog.tsx`
+- [x] 2.2 `frontend/src/features/modelos-equipo/components/modelo-equipo-form-dialog.test.tsx`
+- [x] 2.3 `frontend/src/features/modelos-equipo/components/modelo-equipo-list.tsx`
+- [x] 2.4 `frontend/src/features/modelos-equipo/components/modelos-equipo-admin-view.tsx`
+- [x] 2.5 `frontend/src/features/modelos-equipo/components/modelos-equipo-admin-view.test.tsx`
+- [x] 2.6 `frontend/src/app/(dashboard)/admin/modelos-equipo/page.tsx`
+- [x] 2.7 `frontend/src/components/shell/admin-nav.tsx` (+ `admin-nav.test.tsx`)
+- [x] 2.8 Cierre WU-2: lint + type-check + tests en verde. Commit.
+
+Total: 476 líneas (8 archivos) — ~19% sobre el presupuesto de 400. **Excepción
+aprobada por el dueño (`size:exception`)**: es una sola pantalla cohesiva
+(diálogo + lista + gate + nav), y partirla habría fragmentado artificialmente
+un ABM que ya converge con el molde de unidades de medida.
+
+### Work Unit Evidence
+
+| Evidencia | Valor |
+|---|---|
+| Test focalizado | `pnpm vitest run src/features/modelos-equipo/components src/components/shell/admin-nav.test.tsx` — 3 archivos, 10 tests, verde |
+| Harness de runtime | N/A — sin routing de servidor ni proceso propio; el harness real es MSW + `renderWithProviders` sobre los componentes, ya cubierto por el test focalizado |
+| Límite de rollback | Los 8 archivos de esta unidad (5 nuevos bajo `features/modelos-equipo/components/` y `app/.../admin/modelos-equipo/`, más el diff acotado de `admin-nav.tsx`/`admin-nav.test.tsx`) — revertibles sin tocar WU-1 ni WU-3 |
+
+### Verificación (desde `frontend/`)
+
+- `pnpm lint`: verde — "No ESLint warnings or errors".
+- `pnpm type-check`: verde — `tsc --noEmit` sin salida.
+- `pnpm vitest run src/features/modelos-equipo/components src/components/shell/admin-nav.test.tsx`: verde — 3 archivos, 10 tests.
+- `pnpm test` (suite completa de frontend): verde — 188 archivos de test, 1403 tests, exit code 0.
+
+### Desviaciones del diseño
+
+Ninguna. Se siguió ADR-1 (molde exacto de `unidad-medida-form-dialog.tsx`,
+`unidad-medida-list.tsx`, `unidades-medida-admin-view.tsx`), R1 (gate
+`esAdminCliente`, sin permiso nuevo en `MODULO:ACCION`) y R3 (el 422 de par
+duplicado llega como `notifyError` genérico dentro del hook de mutación de
+WU-1; el diálogo no cierra en ese camino porque `setOpen(false)` solo corre en
+`onSuccess`, igual que su molde).
+
+`ModeloEquipoList` no lleva test propio — se cubre integrado desde
+`modelos-equipo-admin-view.test.tsx`, mismo criterio que `unidad-medida-list.tsx`
+se cubre desde `unidades-medida-admin-view.test.tsx` (tasks.md lo pide así
+explícitamente).
+
+### Issues Found
+
+Ninguno.
+
+### Deuda de Ayuda
+
+Este WU agrega una pantalla de administración nueva (`Admin > Modelos de
+equipo`). La pausa de `backend/ayuda/*.md` sigue vigente desde el 2026-09-07:
+no se escribió artículo. Queda anotada como deuda para la tanda final de
+Ayuda, junto con la deuda de WU-3 (selector en los diálogos de equipo).
+
 ## WU-3 — selector de modelo, enclavamiento y columna en equipos — DONE
 
-Rama: `feat/modelos-equipo-selector-en-equipos` (branch desde
-`feat/modelos-equipo-capa-de-datos`, WU-1 — NO incluye la pantalla ABM de WU-2,
-que vive en otra rama y no hace falta para este work unit).
+**Partida en DOS ramas y dos PRs** por decisión del dueño (2026-09-18): el commit
+único daba 567 líneas de código contra el presupuesto de revisión de 400.
+
+| Rama | Commit | Qué entrega | Líneas |
+|---|---|---|---:|
+| `feat/modelos-equipo-columna-marca` | `9cf0316` | Tipos + la columna `Marca` resuelta (tareas 3.1, 3.7, 3.8) | 176 |
+| `feat/modelos-equipo-selector-dialogos` | `f300b6b` | Schemas + selector y enclavamiento en los dos diálogos (tareas 3.2-3.6, 3.9) | 381 |
+
+**La columna va PRIMERA a propósito.** Mientras no exista el selector, ningún
+equipo tiene `modeloEquipoId`, así que la celda resuelta cae al texto libre y se
+comporta igual que antes: cero cambio visible. El orden inverso habría mergeado
+una ventana con la columna vacía para todo equipo con modelo de catálogo, que es
+la regresión que ADR-2 existe para evitar.
+
+**Gotcha de la partición**: la primera mitad NO compilaba sola. `types.ts` hace
+`modeloEquipoId` requerido en `EquipoDetalle`, y un fixture de
+`equipo-edit-dialog.test.tsx` —archivo de la segunda mitad— dejaba de tipar. Se
+incluyó en la primera mitad **solo esa línea del fixture**, no la conducta del
+diálogo. Se detecta corriendo `type-check` sobre cada mitad AISLADA; sobre el
+commit entero pasaba en verde.
+
+Ninguna de las dos incluye la pantalla ABM de WU-2, que vive en otra rama y no
+hace falta para este work unit.
 
 Tareas completadas (ver `tasks.md`):
 
