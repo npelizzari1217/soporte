@@ -95,7 +95,7 @@ anotado como mejora posible, no como tarea de este ciclo.
 
 ## WU-2 — commit 2: `feat(modelos-equipo): pantalla ABM y navegación`
 
-- [ ] 2.1 [R2,R3] `frontend/src/features/modelos-equipo/components/modelo-equipo-form-dialog.tsx`:
+- [x] 2.1 [R2,R3] `frontend/src/features/modelos-equipo/components/modelo-equipo-form-dialog.tsx`:
       crear — molde exacto de
       `frontend/src/features/insumos/components/unidad-medida-form-dialog.tsx`, dos campos
       (`marca`, `modelo`, sin `codigo`), `valoresVigentes` recalculado en CADA render +
@@ -104,40 +104,40 @@ anotado como mejora posible, no como tarea de este ciclo.
       (mismo criterio que `normalizarUbicacion` en `equipo-create-dialog.tsx:81`); el 422 de
       par duplicado llega como `notifyError` genérico (ADR-1: no hay campo `codigo` que
       resaltar en el mensaje, a diferencia de `FamiliaInsumoCodigoDuplicadoError`).
-- [ ] 2.2 [R2,R3] `frontend/src/features/modelos-equipo/components/modelo-equipo-form-dialog.test.tsx`:
+- [x] 2.2 [R2,R3] `frontend/src/features/modelos-equipo/components/modelo-equipo-form-dialog.test.tsx`:
       crear — molde de
       `frontend/src/features/insumos/components/unidad-medida-form-dialog.test.tsx`; alta
       normaliza `marca` a mayúscula y preserva la capitalización de `modelo`; edición
       prefilla desde la fila y el PATCH lleva el formulario completo; alta duplicada devuelve
       422 (mock `HttpResponse.json({ message: ... }, { status: 422 })`) y el formulario NO se
       cierra.
-- [ ] 2.3 [R2] `frontend/src/features/modelos-equipo/components/modelo-equipo-list.tsx`:
+- [x] 2.3 [R2] `frontend/src/features/modelos-equipo/components/modelo-equipo-list.tsx`:
       crear — molde exacto de
       `frontend/src/features/insumos/components/unidad-medida-list.tsx`, columnas
       `Marca`/`Modelo`/`Estado`/`Acciones`, `EstadoActivoAction` tras `ConfirmDialog`
       (`unidad-medida-list.tsx:22-39`). Sin test propio: el molde tampoco lo tiene — se cubre
       integrado desde `modelos-equipo-admin-view.test.tsx` (2.5), mismo criterio que
       `unidad-medida-list.tsx` se cubre desde `unidades-medida-admin-view.test.tsx`.
-- [ ] 2.4 [R1] `frontend/src/features/modelos-equipo/components/modelos-equipo-admin-view.tsx`:
+- [x] 2.4 [R1] `frontend/src/features/modelos-equipo/components/modelos-equipo-admin-view.tsx`:
       crear — molde exacto de
       `frontend/src/features/insumos/components/unidades-medida-admin-view.tsx` (39 líneas):
       `AdminNav` + `SoloAdminCliente` (fallback `ErrorState`) + `PageHeader` +
       `ModeloEquipoList`.
-- [ ] 2.5 [R1,R2] `frontend/src/features/modelos-equipo/components/modelos-equipo-admin-view.test.tsx`:
+- [x] 2.5 [R1,R2] `frontend/src/features/modelos-equipo/components/modelos-equipo-admin-view.test.tsx`:
       crear — molde del gate `it.each` de
       `frontend/src/features/insumos/components/unidades-medida-admin-view.test.tsx:37-49`
       (`ADMINISTRADOR` ve el contenido, `TECNICO` ve el `ErrorState`, sin ver el listado);
       más el flujo de listar + desactivar/activar un modelo (molde de `:51-70`).
-- [ ] 2.6 [R1] `frontend/src/app/(dashboard)/admin/modelos-equipo/page.tsx`: crear — Server
+- [x] 2.6 [R1] `frontend/src/app/(dashboard)/admin/modelos-equipo/page.tsx`: crear — Server
       Component fino, molde exacto de `frontend/src/app/(dashboard)/admin/unidades/page.tsx`.
-- [ ] 2.7 [R1] `frontend/src/components/shell/admin-nav.tsx`: modificar — agregar
+- [x] 2.7 [R1] `frontend/src/components/shell/admin-nav.tsx`: modificar — agregar
       `{ href: "/admin/modelos-equipo", label: "Modelos de equipo" }` a `ADMIN_NAV_ITEMS`
       (`:38-53`), después de la entrada "Unidades" (`:48`), mismo gate `esAdminCliente`
       (`:56-58`), sin permiso nuevo en la matriz `MODULO:ACCION`. Actualizar
       `frontend/src/components/shell/admin-nav.test.tsx:38-53` ("ADMINISTRADOR ve las 5
       secciones" → 6, agregar el `expect(screen.getByRole("link", { name: "Modelos de
       equipo" })).toBeInTheDocument()`).
-- [ ] 2.8 Cierre WU-2: `pnpm vitest run src/features/modelos-equipo/components
+- [x] 2.8 Cierre WU-2: `pnpm vitest run src/features/modelos-equipo/components
       src/components/shell/admin-nav.test.tsx` + `pnpm lint` + `pnpm type-check` en verde.
       Commit.
 
