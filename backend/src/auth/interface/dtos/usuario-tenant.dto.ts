@@ -101,6 +101,20 @@ export class EditarUsuarioDto {
   apellido?: string;
 }
 
+/**
+ * Body de `PATCH /usuarios/:id/password`. `AdminClienteGuard`
+ * (sdd/reset-de-contrasena-por-admin, ADR-1). Mínimo de 8 caracteres, el
+ * mismo que exige el alta (`CreateUsuarioTenantDto.password` arriba). SIN
+ * `clienteId`: el `ValidationPipe` global (`whitelist: true`) lo descartaría
+ * si llegara — el `clienteId` que usa el caso de uso SIEMPRE sale del JWT del
+ * actor, nunca del body.
+ */
+export class ResetearPasswordUsuarioDto {
+  @IsString()
+  @MinLength(8)
+  password!: string;
+}
+
 // ─── ABM de la matriz de permisos (WU-7.4, sdd/matriz-permisos-por-usuario, ADR-P10) ───
 
 /**

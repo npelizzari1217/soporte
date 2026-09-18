@@ -7,6 +7,7 @@
  *   POST   /usuarios                          → CrearUsuarioTenantUseCase     [AdminClienteGuard]
  *   PATCH  /usuarios/:id/rol                  → CambiarRolUsuarioTenantUseCase [AdminClienteGuard] (R6: `reaplicarPreset` opcional)
  *   PATCH  /usuarios/:id                      → EditarUsuarioTenantUseCase      [AdminClienteGuard]
+ *   PATCH  /usuarios/:id/password             → ResetearPasswordUsuarioTenantUseCase [AdminClienteGuard] (sdd/reset-de-contrasena-por-admin, ADR-1)
  *   DELETE /usuarios/:id/membresia            → DesactivarMembresiaUsuarioTenantUseCase [AdminClienteGuard]
  *   GET    /usuarios/:id/permisos             → ObtenerPermisosUsuarioTenantUseCase [AdminClienteGuard] (ADR-P10)
  *   PATCH  /usuarios/:id/permisos             → AsignarPermisosUsuarioTenantUseCase [AdminClienteGuard] (ADR-P10, reemplazo total)
@@ -66,6 +67,7 @@ import { ListarUsuariosTenantUseCase } from '../../application/use-cases/listar-
 import { CrearUsuarioTenantUseCase } from '../../application/use-cases/crear-usuario-tenant.use-case';
 import { CambiarRolUsuarioTenantUseCase } from '../../application/use-cases/cambiar-rol-usuario-tenant.use-case';
 import { EditarUsuarioTenantUseCase } from '../../application/use-cases/editar-usuario-tenant.use-case';
+import { ResetearPasswordUsuarioTenantUseCase } from '../../application/use-cases/resetear-password-usuario-tenant.use-case';
 import { DesactivarMembresiaUsuarioTenantUseCase } from '../../application/use-cases/desactivar-membresia-usuario-tenant.use-case';
 import { ObtenerPermisosUsuarioTenantUseCase } from '../../application/use-cases/obtener-permisos-usuario-tenant.use-case';
 import { AsignarPermisosUsuarioTenantUseCase } from '../../application/use-cases/asignar-permisos-usuario-tenant.use-case';
@@ -77,6 +79,7 @@ import {
   CreateUsuarioTenantDto,
   EditarUsuarioDto,
   PermisosUsuarioTenantResponseDto,
+  ResetearPasswordUsuarioDto,
   UsuarioTenantMembresiaResponseDto,
   UsuarioTenantResponseDto,
 } from '../dtos/usuario-tenant.dto';
@@ -156,6 +159,7 @@ export class UsuariosController {
     private readonly cambiarRolUsuarioTenantUseCase: CambiarRolUsuarioTenantUseCase,
     private readonly desactivarMembresiaUsuarioTenantUseCase: DesactivarMembresiaUsuarioTenantUseCase,
     private readonly editarUsuarioTenantUseCase: EditarUsuarioTenantUseCase,
+    private readonly resetearPasswordUsuarioTenantUseCase: ResetearPasswordUsuarioTenantUseCase,
     private readonly obtenerPermisosUsuarioTenantUseCase: ObtenerPermisosUsuarioTenantUseCase,
     private readonly asignarPermisosUsuarioTenantUseCase: AsignarPermisosUsuarioTenantUseCase,
     private readonly aplicarPresetPermisosUseCase: AplicarPresetPermisosUseCase,
@@ -280,6 +284,36 @@ export class UsuariosController {
     }
     const usuario = result.getValue();
     return { usuarioId: usuario.id, nombre: usuario.nombre, apellido: usuario.apellido };
+  }
+
+  /**
+   * PATCH /usuarios/:id/password
+   * Establece una contraseña nueva para el usuario `:id` EN EL CLIENTE DEL
+   * TOKEN y revoca sus sesiones activas (sdd/reset-de-contrasena-por-admin,
+   * ADR-1). `clienteId` SIEMPRE es `actor.cliente_id` (JWT), nunca el body ni
+   * el path — es lo único que ata el destino al tenant del actor. 204 SIN
+   * CUERPO: garantía estructural de que el plaintext nunca vuelve en la
+   * respuesta.
+   * @throws 404 si no existe membresía activa de ese usuario en este cliente
+   * @throws 422 si la cuenta global del destino está inactiva o soft-deleted
+   */
+  @Patch(':id/password')
+  @UseGuards(AdminClienteGuard)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async resetearPassword(
+    @CurrentUser() actor: JwtPayload,
+    @Param('id') usuarioId: string,
+    @Body() dto: ResetearPasswordUsuarioDto,
+  ): Promise<void> {
+    const result = await this.resetearPasswordUsuarioTenantUseCase.execute({
+      clienteId: actor.cliente_id as string,
+      usuarioId,
+      password: dto.password,
+    });
+
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
   }
 
   /**

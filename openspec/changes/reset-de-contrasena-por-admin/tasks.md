@@ -118,10 +118,10 @@ líneas; se revierte solo sin dejar nada roto porque nada lo invoca todavía.
 
 ## WU-2 — commit 2: `feat(auth): endpoint PATCH /usuarios/:id/password`
 
-- [ ] 2.1 [R6] `backend/src/auth/interface/dtos/usuario-tenant.dto.ts`: agregar
+- [x] 2.1 [R6] `backend/src/auth/interface/dtos/usuario-tenant.dto.ts`: agregar
       `ResetearPasswordUsuarioDto { @IsString() @MinLength(8) password: string }`, molde de
       `EditarUsuarioDto` (`:92-101`), SIN `clienteId`.
-- [ ] 2.2 [R1,R2,R9] `backend/src/auth/interface/controllers/usuarios.controller.ts`:
+- [x] 2.2 [R1,R2,R9] `backend/src/auth/interface/controllers/usuarios.controller.ts`:
       agregar `@Patch(':id/password')` + `@UseGuards(AdminClienteGuard)` +
       `@HttpCode(HttpStatus.NO_CONTENT)` junto a `editar()` (`:264-283`, ADR-1).
       `clienteId: actor.cliente_id as string` SIEMPRE del JWT, NUNCA del body ni del path
@@ -130,22 +130,22 @@ líneas; se revierte solo sin dejar nada roto porque nada lo invoca todavía.
       (`:136-148`, sin tocarlo: `MembresiaNoEncontradaError`→404 en la rama `:139-141`,
       `UsuarioNoDisponibleError`→422 por el fallthrough `:145-147`). Actualizar el mapa de
       rutas del JSDoc de cabecera (`:5-13`).
-- [ ] 2.3 [R1] `backend/src/auth/auth.module.ts`: agregar provider `useFactory` para
+- [x] 2.3 [R1] `backend/src/auth/auth.module.ts`: agregar provider `useFactory` para
       `ResetearPasswordUsuarioTenantUseCase` con `USUARIO_REPOSITORY`, `MEMBRESIA_REPOSITORY`,
       `HASH_PROVIDER`, `REFRESH_TOKEN_REPOSITORY`, `LOGGER` — molde del provider de
       `CambiarPasswordUseCase` (`:234-243`).
-- [ ] 2.4 [R3] Test controller: un actor sin `esAdminDeCliente` (TECNICO y SOLICITANTE)
+- [x] 2.4 [R3] Test controller: un actor sin `esAdminDeCliente` (TECNICO y SOLICITANTE)
       recibe 403 EN ESTA RUTA (`PATCH /:id/password`), nunca heredado del test de una ruta
       hermana.
-- [ ] 2.5 [R2] Test controller: el `clienteId` que recibe el caso de uso sale de
+- [x] 2.5 [R2] Test controller: el `clienteId` que recibe el caso de uso sale de
       `actor.cliente_id` (JWT) aunque el body de la request traiga otro valor — el DTO no lo
       declara y `whitelist: true` lo descartaría si llegara.
-- [ ] 2.6 [R2,R9] Test controller: `MembresiaNoEncontradaError` → 404;
+- [x] 2.6 [R2,R9] Test controller: `MembresiaNoEncontradaError` → 404;
       `UsuarioNoDisponibleError` → 422 — usando el `toHttpException` existente, sin rama
       nueva.
-- [ ] 2.7 [R10] Test controller: la respuesta 204 no lleva cuerpo — ninguna superficie de
+- [x] 2.7 [R10] Test controller: la respuesta 204 no lleva cuerpo — ninguna superficie de
       respuesta puede transportar el plaintext.
-- [ ] 2.8 Cierre WU-2: `pnpm vitest run src/auth/interface/controllers/usuarios.controller.spec.ts`
+- [x] 2.8 Cierre WU-2: `pnpm vitest run src/auth/interface/controllers/usuarios.controller.spec.ts`
       + `pnpm lint` + `pnpm typecheck` en verde. Commit.
 
 ---
