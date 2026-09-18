@@ -31,16 +31,56 @@ import { notifyError } from "@/shared/lib/toast";
 import { ExportarCsvButton } from "@/shared/components/exportar-csv-button";
 import { EquipoCreateDialog } from "./equipo-create-dialog";
 import { TicketSoporteCreateDialog } from "./ticket-soporte-create-dialog";
+import { useModelosEquipo } from "@/features/modelos-equipo/hooks/use-modelos-equipo";
+import { resolverDeCatalogo, type EstadoCatalogo } from "@/features/insumos/lib/resolucion-de-catalogo";
+import {
+  ETIQUETA_CATALOGO_CARGANDO,
+  ETIQUETA_CATALOGO_NO_DISPONIBLE,
+  ETIQUETA_FUERA_DE_CATALOGO,
+} from "@/features/insumos/lib/nombre-de-catalogo";
 import type { Equipo } from "../types";
+import type { ModeloEquipo } from "@/features/modelos-equipo/types";
+
+/**
+ * Resuelve el texto de la celda `Marca` (ADR-2/ADR-3 del design de
+ * modelos-equipo-catalogo-y-compatibilidad). Sin `modeloEquipoId`, sigue
+ * mostrando `row.marca` de texto libre — camino de hoy, sin cambios. No se
+ * reusa `nombreDeCatalogo()`: exige entradas `{id, nombre}` y `ModeloEquipo`
+ * es `{id, marca, modelo}`.
+ */
+function marcaDeEquipo(row: Equipo, catalogo: EstadoCatalogo<ModeloEquipo>): string {
+  if (!row.modeloEquipoId) return row.marca ?? "—";
+
+  const resolucion = resolverDeCatalogo(row.modeloEquipoId, catalogo);
+  // Sin `default`: el `switch` exhaustivo sobre la unión rompe el typecheck
+  // acá si `ResolucionDeCatalogo` suma un estado nuevo, mismo criterio que
+  // `nombreDeCatalogo`.
+  switch (resolucion.estado) {
+    case "CARGANDO":
+      return ETIQUETA_CATALOGO_CARGANDO;
+    case "NO_DISPONIBLE":
+      return ETIQUETA_CATALOGO_NO_DISPONIBLE;
+    case "FUERA_DE_CATALOGO":
+      return ETIQUETA_FUERA_DE_CATALOGO;
+    case "ENCONTRADA":
+      return `${resolucion.entrada.marca} ${resolucion.entrada.modelo}`;
+  }
+}
 
 export function EquiposListView() {
   const router = useRouter();
   const equiposQuery = useEquipos();
+  const modelosQuery = useModelosEquipo();
   const { canModulo } = useSession();
 
   const columns: Column<Equipo>[] = [
     { key: "nombre", header: "Nombre" },
-    { key: "marca", header: "Marca", render: (row) => row.marca ?? "—" },
+    {
+      key: "marca",
+      header: "Marca",
+      render: (row) =>
+        marcaDeEquipo(row, { entradas: modelosQuery.data, cargando: modelosQuery.isLoading }),
+    },
     { key: "numeroSerie", header: "N.º de serie", render: (row) => row.numeroSerie ?? "—" },
     {
       key: "activo",

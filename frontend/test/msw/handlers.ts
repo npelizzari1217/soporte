@@ -9,5 +9,13 @@ import { http, HttpResponse, type RequestHandler } from "msw";
  * que falla, y el ruido se confunde con un fallo del test. Devuelve el catálogo
  * VACÍO a propósito — el test que necesita insumos declara los suyos con
  * `server.use(...)`, y ninguno hereda datos que no pidió.
+ *
+ * `GET /api/modelos-equipo` está acá por el mismo motivo (WU-3,
+ * modelos-equipo-catalogo-y-compatibilidad): los dos diálogos de equipo y el
+ * listado ahora consultan `useModelosEquipo()` para el selector/columna
+ * `Marca`. VACÍO por default; el test que necesita modelos declara los suyos.
  */
-export const handlers: RequestHandler[] = [http.get("/api/insumos", () => HttpResponse.json([]))];
+export const handlers: RequestHandler[] = [
+  http.get("/api/insumos", () => HttpResponse.json([])),
+  http.get("/api/modelos-equipo", () => HttpResponse.json([])),
+];
