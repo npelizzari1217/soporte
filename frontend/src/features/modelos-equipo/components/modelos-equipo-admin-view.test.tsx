@@ -47,11 +47,23 @@ describe("ModelosEquipoAdminView", () => {
   /**
    * La dirección que faltaba (W1 del verify de este ciclo). El escenario R2 de
    * la spec dice GIVEN un modelo ACTIVO / WHEN lo DESACTIVA, y el test de abajo
-   * recorre la dirección inversa. No alcanzaba con tener uno solo:
-   * `EstadoActivoAction` es una función LOCAL de `modelo-equipo-list.tsx` —el
-   * patrón está duplicado en siete listas del repo—, así que el test de
-   * unidades de medida no cubre esta copia. Si alguien invierte el ternario de
-   * `activo ? "Dar de baja" : "Activar"`, solo un test por dirección lo atrapa.
+   * recorre la dirección inversa: arranca en `activo: false` y reactiva.
+   *
+   * LO QUE ESTE TEST APORTA, medido por mutación en la ronda 2 del verify:
+   * cambiar `mutation.mutate({ activo: !modelo.activo })` por `{ activo: true }`
+   * en `modelo-equipo-list.tsx` mata **solo a este test**; el hermano pasa,
+   * porque `{ activo: true }` es exactamente lo que espera. Antes de esta
+   * cobertura ese error quedaba verde.
+   *
+   * NO lo sostiene invertir el ternario `activo ? "Dar de baja" : "Activar"`:
+   * esa mutación es simétrica, cambia las etiquetas en las dos ramas, y el
+   * hermano por sí solo también la mata. Queda anotado porque la primera
+   * versión de este comentario afirmaba lo contrario.
+   *
+   * Por qué hace falta acá y no alcanza con el test de otra feature:
+   * `EstadoActivoAction` es una función LOCAL de `modelo-equipo-list.tsx`, y
+   * el patrón está duplicado en seis listas del repo, cada una con su propia
+   * copia.
    */
   it("da de baja un modelo activo desde la lista", async () => {
     const user = userEvent.setup();
