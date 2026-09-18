@@ -153,6 +153,30 @@ fallo solo vía `logger.error`, sin el plaintext.
 - AND el sistema registra el fallo de revocación en el log sin incluir el
   plaintext
 
+### Requirement: No se establece contraseña sobre una cuenta global no disponible
+
+El sistema DEBE rechazar el reset cuando la cuenta global del destino está
+inactiva o soft-deleted, con `UsuarioNoDisponibleError`
+(`auth.errors.ts:215`), ANTES de tocar `passwordHash`.
+
+La razón no es formal: `LoginUseCase` rechaza a cualquier usuario con
+`!usuario.activo || usuario.isDeleted()` antes de siquiera verificar la
+contraseña (`login.use-case.ts:111`). Establecer una credencial sobre esa
+cuenta reportaría éxito al administrador y dejaría al usuario afuera igual —
+la misma forma del incidente documentado en `scripts/reset-password.ts:6-19`,
+donde una operación informó éxito sobre una credencial que no servía.
+
+Es el mismo criterio que ya aplica `CambiarPasswordUseCase`, que carga el
+usuario y falla con ese error si no existe o no está disponible.
+
+#### Scenario: Reset sobre una cuenta inactiva se rechaza en vez de reportar éxito
+
+- GIVEN un usuario con membresía activa en el tenant del actor pero con su
+  cuenta global inactiva o soft-deleted
+- WHEN un admin del tenant intenta establecerle una contraseña
+- THEN el sistema rechaza la operación con `UsuarioNoDisponibleError`
+- AND `passwordHash` no se modifica
+
 ### Requirement: El plaintext nunca se expone
 
 El sistema NO DEBE incluir la contraseña en texto plano en la respuesta
