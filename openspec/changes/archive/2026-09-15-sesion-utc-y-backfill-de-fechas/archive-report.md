@@ -245,6 +245,34 @@ invariante C `created_at > now()` por tabla. Las A y C se aplican por catálogo 
 `query_to_xml(format(...))` sobre toda tabla `BASE TABLE` de `public` con la columna
 `timestamptz` correspondiente.
 
-**Con esto queda cerrada la WARNING-3 del verify de ronda 3.** Las otras dos advertencias de
-texto de spec (el testigo de R1 que no existe en el schema, y R6 describiendo un mecanismo más
-débil que el implementado) siguen abiertas como trabajo de spec, no de código.
+**Con esto queda cerrada la WARNING-3 del verify de ronda 3.**
+
+---
+
+## Addendum post-archivo: WARNING-1 y WARNING-2 corregidas en la spec vigente (2026-09-15)
+
+Las otras dos advertencias eran de texto de especificación, no de código, y se corrigieron el
+mismo día en el commit `3ec97ff`, **solo sobre la spec vigente**
+`openspec/specs/fechas-sesion-utc/spec.md`:
+
+- **WARNING-1 — el testigo de R1 nunca existió.** El escenario pedía «un ticket con
+  `clock_timestamp()` a las 01:00 local», pero `tickets.created_at` es
+  `DEFAULT CURRENT_TIMESTAMP`
+  (`prisma_tenant/migrations/20260805194710_init_tenant/migration.sql:88`), y ningún inquilino
+  de producción puede generar un ticket preventivo hoy. Era inverificable por partida doble. El
+  testigo nuevo no nombra tabla de negocio: describe la propiedad, con una fila escrita por
+  Prisma identificable por `EXTRACT(MICROSECONDS FROM <col>)::bigint % 1000 = 0`.
+- **WARNING-2 — R6 describía el mecanismo que ADR-7 había rechazado.** El texto pedía
+  `SET TIME ZONE` sobre la conexión, que prueba la expresión SQL pero no la cadena de conexión,
+  que es donde vive el fix. Ahora describe el mecanismo implementado y verificado:
+  `ALTER DATABASE <efímera> SET timezone` antes de abrir pools nuevos
+  (`utc-sesion-round-trip.integration.spec.ts:75`).
+
+Ambas correcciones llevan en la spec una nota al pie con fecha y motivo, para que no se lean
+como un cambio de alcance.
+
+**El delta archivado en este directorio quedó intacto a propósito**: es el registro de lo que el
+ciclo declaró y verificó, y editarlo reescribiría la historia. El texto vigente de R1 y R6 se lee
+en `openspec/specs/fechas-sesion-utc/spec.md`.
+
+**Con esto el ciclo no deja ninguna advertencia abierta.**
