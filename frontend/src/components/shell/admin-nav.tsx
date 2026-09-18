@@ -46,6 +46,11 @@ const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   // solo consumibles — los repuestos tienen la suya propia desde el #149.
   { href: "/admin/insumos", label: "Familia de Catálogos" },
   { href: "/admin/unidades", label: "Unidades" },
+  // Catálogo `ModeloEquipo` (ciclo modelos-equipo-catalogo-y-compatibilidad):
+  // MISMO gate que el resto, `esAdminCliente` — el backend gatea
+  // `crear`/`editar`/`cambiarEstadoActivo` solo con `AdminClienteGuard`, sin
+  // permiso propio en la matriz `MODULO:ACCION`.
+  { href: "/admin/modelos-equipo", label: "Modelos de equipo" },
   // "Clientes" NO vive en el área Admin: es exclusivo de ROOT (plataforma),
   // no una sección administrable por el ADMINISTRADOR del tenant. Se accede
   // por su ítem top-level propio del sidebar (nav-config.ts), gateado por
