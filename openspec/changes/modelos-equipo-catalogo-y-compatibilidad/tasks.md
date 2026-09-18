@@ -145,16 +145,16 @@ anotado como mejora posible, no como tarea de este ciclo.
 
 ## WU-3 — commit 3: `feat(equipos): selector de modelo de catálogo con enclavamiento y display`
 
-- [ ] 3.1 [R4] `frontend/src/features/equipos/types.ts`: modificar — agregar
+- [x] 3.1 [R4] `frontend/src/features/equipos/types.ts`: modificar — agregar
       `modeloEquipoId: string | null` a `Equipo` (`:24-44`), `modeloEquipoId?: string | null`
       a `CreateEquipoDto` (`:84-96`) y a `EditarEquipoDto` (`:98-110`); espejo de
       `EquipoResponseDto.modeloEquipoId` (`backend/src/equipos/interface/dtos/equipos.dto.ts:362`)
       y de los DTOs de request (`:109,186`).
-- [ ] 3.2 [R4] `frontend/src/features/equipos/schemas.ts`: modificar — agregar
+- [x] 3.2 [R4] `frontend/src/features/equipos/schemas.ts`: modificar — agregar
       `modeloEquipoId: z.string().uuid().optional().or(z.literal(""))` a `crearEquipoSchema`
       (molde exacto de `equipoId` en `crearTicketSoporteSchema:267`: admite vacío para que un
       equipo sin modelo de catálogo siga siendo válido, R4 "el selector DEBE admitir vacío").
-- [ ] 3.3 [R4,R5] `frontend/src/features/equipos/components/equipo-create-dialog.tsx`:
+- [x] 3.3 [R4,R5] `frontend/src/features/equipos/components/equipo-create-dialog.tsx`:
       modificar — importar `useModelosEquipo` (WU-1) y `resolverLista`
       (`@/features/insumos/lib/resolucion-de-catalogo`); `<select>` de modelo con los cuatro
       estados `CARGANDO`/`NO_DISPONIBLE`/`VACIA`/`CON_ENTRADAS` (`estado === "CON_ENTRADAS"`,
@@ -166,14 +166,14 @@ anotado como mejora posible, no como tarea de este ciclo.
       en los `<Input>` de `marca` (`:141`) y `modelo` (`:152`); `submit()` (`:73-95`) agrega
       `modeloEquipoId: values.modeloEquipoId || undefined` (vacío es AUSENCIA en alta, mismo
       criterio que el resto de los campos opcionales de este `submit`).
-- [ ] 3.4 [R4,R5] `frontend/src/features/equipos/components/equipo-create-dialog.test.tsx`:
+- [x] 3.4 [R4,R5] `frontend/src/features/equipos/components/equipo-create-dialog.test.tsx`:
       modificar — el par de aserciones gemelas de ADR-4: elegir un modelo ⇒ `marca`/`modelo`
       quedan deshabilitados Y vacíos, y el POST capturado NO los trae; quitar el modelo ⇒
       vuelven habilitados y el POST trae lo tipeado; catálogo que resuelve DESPUÉS de abrir el
       diálogo ⇒ el `<select>` no cae al placeholder y reaplica el valor (molde del
       `useEffect` de `insumo-form-dialog.tsx:138-148`); `VACIA` y `NO_DISPONIBLE` muestran
       notas distintas bajo el campo.
-- [ ] 3.5 [R4,R5] `frontend/src/features/equipos/components/equipo-edit-dialog.tsx`:
+- [x] 3.5 [R4,R5] `frontend/src/features/equipos/components/equipo-edit-dialog.tsx`:
       modificar — mismo `<select>` + enclavamiento que 3.3, sobre los `<Input>` de `marca`
       (`:188`) y `modelo` (`:199`); `equipoAFormValues()` (`:59-74`) suma
       `modeloEquipoId: equipo.modeloEquipoId ?? ""`; `submit()` (`:128-147`) agrega
@@ -181,13 +181,13 @@ anotado como mejora posible, no como tarea de este ciclo.
       y, cuando hay un modelo de catálogo elegido, manda `marca: null, modelo: null` — el
       PATCH limpia el texto libre que hubiera quedado guardado (ADR-4, tabla "Qué se envía en
       cada estado").
-- [ ] 3.6 [R4,R5] `frontend/src/features/equipos/components/equipo-edit-dialog.test.tsx`:
+- [x] 3.6 [R4,R5] `frontend/src/features/equipos/components/equipo-edit-dialog.test.tsx`:
       modificar — el escenario de EDICIÓN explícito de ADR-4: un equipo con `marca`/`modelo`
       de texto libre guardados al que el usuario le elige un modelo de catálogo ⇒ los campos
       se vacían A LA VISTA, antes de "Guardar" (no en silencio al enviar), y el PATCH
       capturado manda `marca: null, modelo: null, modeloEquipoId: <uuid>`; quitar el modelo
       rehabilita los campos SIN restituir el texto (quedan vacíos, hay que retipear).
-- [ ] 3.7 [R4] `frontend/src/features/equipos/components/equipos-list-view.tsx`: modificar —
+- [x] 3.7 [R4] `frontend/src/features/equipos/components/equipos-list-view.tsx`: modificar —
       celda `Marca` (`:43`, hoy `render: (row) => row.marca ?? "—"`) resuelta contra
       `useModelosEquipo()` con `resolverDeCatalogo` (`@/features/insumos/lib/resolucion-de-catalogo`)
       cuando `row.modeloEquipoId` existe (ADR-2, ADR-3): `ENCONTRADA` → `"{marca} {modelo}"`;
@@ -196,12 +196,12 @@ anotado como mejora posible, no como tarea de este ciclo.
       (`ETIQUETA_CATALOGO_CARGANDO`, `ETIQUETA_CATALOGO_NO_DISPONIBLE`,
       `ETIQUETA_FUERA_DE_CATALOGO`); sin `modeloEquipoId`, sigue mostrando `row.marca ?? "—"`
       (camino de hoy, sin cambios).
-- [ ] 3.8 [R4] `frontend/src/features/equipos/components/equipos-list-view.test.tsx`:
+- [x] 3.8 [R4] `frontend/src/features/equipos/components/equipos-list-view.test.tsx`:
       modificar — los cuatro desenlaces de la celda `Marca` para un equipo CON
       `modeloEquipoId` (encontrado/cargando/no disponible/fuera de catálogo), más el quinto
       camino: un equipo SIN `modeloEquipoId` sigue mostrando su `marca` de texto libre sin
       tocar `useModelosEquipo()`.
-- [ ] 3.9 Cierre WU-3 y del ciclo: anotar la deuda de Ayuda en el mensaje del commit y en el
+- [x] 3.9 Cierre WU-3 y del ciclo: anotar la deuda de Ayuda en el mensaje del commit y en el
       cuerpo del PR (pausa vigente desde 2026-09-07 — `backend/ayuda/*.md` sin cambios, este
       ciclo agrega una pantalla de administración y altera el formulario de equipo);
       `pnpm vitest run src/features/equipos` + `pnpm lint` + `pnpm type-check` en verde;

@@ -5,6 +5,7 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../../test/msw/server";
 import { renderWithProviders, buildUser } from "../../../../test/render-with-providers";
 import { EquipoCreateDialog } from "./equipo-create-dialog";
+import type { ModeloEquipo } from "@/features/modelos-equipo/types";
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
@@ -269,5 +270,121 @@ describe("EquipoCreateDialog", () => {
 
     await waitFor(() => expect(capturado.body.ubicacion).toBe("OFICINA 1"));
     expect(screen.queryByText(/ubicación no puede superar/i)).not.toBeInTheDocument();
+  });
+});
+
+const MODELO_HP: ModeloEquipo = {
+  id: "66666666-6666-4666-8666-666666666666",
+  marca: "HP",
+  modelo: "LaserJet Pro M404",
+  activo: true,
+  createdAt: "2026-01-01T00:00:00.000Z",
+  updatedAt: "2026-01-01T00:00:00.000Z",
+};
+
+function mockModelosEquipo(modelos: ModeloEquipo[]) {
+  server.use(http.get("/api/modelos-equipo", () => HttpResponse.json(modelos)));
+}
+
+/**
+ * ADR-4 (design de modelos-equipo-catalogo-y-compatibilidad): el enclavamiento
+ * corre por `onChange` del `register`, nunca por `useEffect` — este bloque
+ * cubre el par de aserciones gemelas y sus vecinas directas.
+ */
+describe("EquipoCreateDialog — selector de modelo de catálogo (enclavamiento)", () => {
+  it("elegir un modelo deshabilita y vacía marca/modelo, y el POST no los trae", async () => {
+    mockModelosEquipo([MODELO_HP]);
+    const capturado = capturarPost();
+    renderWithProviders(<EquipoCreateDialog />, { user: buildUser({ permisos: ["EQUIPOS:ALTAS"] }) });
+
+    const user = await abrirDialog();
+    await user.type(screen.getByLabelText(/^nombre$/i), "Notebook Dell");
+    await user.type(screen.getByLabelText(/^marca$/i), "Genérico");
+    await user.type(screen.getByLabelText(/^modelo$/i), "Clon");
+
+    const selectModelo = await screen.findByLabelText(/modelo de catálogo/i);
+    await waitFor(() => expect(selectModelo).not.toBeDisabled());
+    await user.selectOptions(selectModelo, MODELO_HP.id);
+
+    expect(screen.getByLabelText(/^marca$/i)).toBeDisabled();
+    expect(screen.getByLabelText(/^marca$/i)).toHaveValue("");
+    expect(screen.getByLabelText(/^modelo$/i)).toBeDisabled();
+    expect(screen.getByLabelText(/^modelo$/i)).toHaveValue("");
+
+    await user.click(screen.getByRole("button", { name: /^crear$/i }));
+
+    await waitFor(() => expect(capturado.body.modeloEquipoId).toBe(MODELO_HP.id));
+    expect(capturado.body.marca).toBeUndefined();
+    expect(capturado.body.modelo).toBeUndefined();
+  });
+
+  it("quitar el modelo rehabilita los campos y el POST trae lo tipeado después", async () => {
+    mockModelosEquipo([MODELO_HP]);
+    const capturado = capturarPost();
+    renderWithProviders(<EquipoCreateDialog />, { user: buildUser({ permisos: ["EQUIPOS:ALTAS"] }) });
+
+    const user = await abrirDialog();
+    await user.type(screen.getByLabelText(/^nombre$/i), "Notebook Dell");
+
+    const selectModelo = await screen.findByLabelText(/modelo de catálogo/i);
+    await waitFor(() => expect(selectModelo).not.toBeDisabled());
+    await user.selectOptions(selectModelo, MODELO_HP.id);
+    await user.selectOptions(selectModelo, "");
+
+    expect(screen.getByLabelText(/^marca$/i)).not.toBeDisabled();
+    expect(screen.getByLabelText(/^modelo$/i)).not.toBeDisabled();
+
+    await user.type(screen.getByLabelText(/^marca$/i), "Genérico");
+    await user.type(screen.getByLabelText(/^modelo$/i), "Clon");
+    await user.click(screen.getByRole("button", { name: /^crear$/i }));
+
+    await waitFor(() => expect(capturado.body.marca).toBe("Genérico"));
+    expect(capturado.body.modelo).toBe("Clon");
+    expect(capturado.body.modeloEquipoId).toBeUndefined();
+  });
+
+  it("catálogo que resuelve DESPUÉS de abrir el diálogo habilita el select sin caer al placeholder", async () => {
+    let liberar: () => void = () => {};
+    const enVuelo = new Promise<void>((resolve) => {
+      liberar = resolve;
+    });
+    server.use(
+      http.get("/api/modelos-equipo", async () => {
+        await enVuelo;
+        return HttpResponse.json([MODELO_HP]);
+      }),
+    );
+    renderWithProviders(<EquipoCreateDialog />, { user: buildUser({ permisos: ["EQUIPOS:ALTAS"] }) });
+
+    const user = await abrirDialog();
+    const selectModelo = screen.getByLabelText(/modelo de catálogo/i) as HTMLSelectElement;
+    expect(selectModelo).toBeDisabled();
+
+    liberar();
+
+    await waitFor(() => expect(selectModelo).not.toBeDisabled());
+    expect(selectModelo.value).toBe("");
+    await user.selectOptions(selectModelo, MODELO_HP.id);
+    expect(selectModelo).toHaveValue(MODELO_HP.id);
+  });
+
+  it("catálogo VACÍO muestra la nota de vacío, no la de caído", async () => {
+    mockModelosEquipo([]);
+    renderWithProviders(<EquipoCreateDialog />, { user: buildUser({ permisos: ["EQUIPOS:ALTAS"] }) });
+
+    await abrirDialog();
+
+    expect(await screen.findByText(/no hay modelos de equipo cargados/i)).toBeInTheDocument();
+    expect(screen.queryByText(/no se pudieron cargar los modelos/i)).not.toBeInTheDocument();
+  });
+
+  it("catálogo CAÍDO muestra la nota de no disponible, no la de vacío", async () => {
+    server.use(http.get("/api/modelos-equipo", () => new HttpResponse(null, { status: 500 })));
+    renderWithProviders(<EquipoCreateDialog />, { user: buildUser({ permisos: ["EQUIPOS:ALTAS"] }) });
+
+    await abrirDialog();
+
+    expect(await screen.findByText(/no se pudieron cargar los modelos/i)).toBeInTheDocument();
+    expect(screen.queryByText(/no hay modelos de equipo cargados/i)).not.toBeInTheDocument();
   });
 });
