@@ -15,6 +15,7 @@ const EQUIPO: EquipoDetalle = {
   numeroSerie: "SN-001",
   marca: "Dell",
   modelo: "Latitude",
+  modeloEquipoId: null,
   fechaAdquisicion: null,
   ubicacion: "OFICINA 1",
   importe: 1000,

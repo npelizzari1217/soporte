@@ -27,6 +27,15 @@ export interface Equipo {
   numeroSerie: string | null;
   marca: string | null;
   modelo: string | null;
+  /**
+   * Modelo del catálogo `ModeloEquipo` elegido para este equipo (WU-3,
+   * modelos-equipo-catalogo-y-compatibilidad), espejo de
+   * `EquipoResponseDto.modeloEquipoId`. Excluyente en la práctica con
+   * `marca`/`modelo` de texto libre: elegir un modelo de catálogo los vacía
+   * (ADR-4 del design de ese ciclo) — pero el backend no lo impone, así que
+   * este tipo no lo modela como unión.
+   */
+  modeloEquipoId: string | null;
   fechaAdquisicion: string | null;
   /** Ubicación como texto libre (siempre en mayúscula). */
   ubicacion: string | null;
@@ -86,6 +95,8 @@ export interface CreateEquipoDto {
   numeroSerie?: string | null;
   marca?: string | null;
   modelo?: string | null;
+  /** Vacío es AUSENCIA en alta (`undefined`) — ver `equipo-create-dialog.tsx`. */
+  modeloEquipoId?: string | null;
   fechaAdquisicion?: string | null;
   ubicacion?: string | null;
   importe?: number | null;
@@ -100,6 +111,8 @@ export interface EditarEquipoDto {
   numeroSerie?: string | null;
   marca?: string | null;
   modelo?: string | null;
+  /** Vacío es LIMPIAR en edición (`null`) — ver `equipo-edit-dialog.tsx`. */
+  modeloEquipoId?: string | null;
   fechaAdquisicion?: string | null;
   ubicacion?: string | null;
   importe?: number | null;
