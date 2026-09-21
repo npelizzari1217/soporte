@@ -8,10 +8,11 @@
 import {
   ConflictException,
   ForbiddenException,
+  HttpStatus,
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { GUARDS_METADATA } from '@nestjs/common/constants';
+import { GUARDS_METADATA, HTTP_CODE_METADATA } from '@nestjs/common/constants';
 import { UsuariosController } from './usuarios.controller';
 import { AdminClienteGuard } from '../../infrastructure/guards/admin-cliente.guard';
 import { Result } from '../../../shared/domain/result';
@@ -418,6 +419,21 @@ describe('UsuariosController (gestión mínima de usuarios, sdd/beta-frontend §
       await expect(
         controller.resetearPassword(actor, 'usuario-1', { password: 'x'.repeat(8) } as any),
       ).rejects.toBeInstanceOf(UnprocessableEntityException);
+    });
+
+    it('[R10] la ruta declara 204 explícitamente, no el 200 por defecto de Nest', () => {
+      // W2 del verify de este ciclo: sin esta aserción, borrar
+      // `@HttpCode(HttpStatus.NO_CONTENT)` dejaba los 29 tests en verde y Nest
+      // respondía 200 con cuerpo vacío. ADR-1 llama al 204 "garantía
+      // estructural", y `apiFetch<void>` del frontend y el handler MSW del
+      // test de desenlace 1 dependen de él. `toBe` falla contra `undefined`,
+      // así que la aserción sí puede morir.
+      const codigo = Reflect.getMetadata(
+        HTTP_CODE_METADATA,
+        UsuariosController.prototype.resetearPassword,
+      ) as unknown;
+
+      expect(codigo).toBe(HttpStatus.NO_CONTENT);
     });
 
     it('[R10] la respuesta 204 no lleva cuerpo: el método no retorna nada', async () => {

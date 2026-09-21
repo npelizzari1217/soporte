@@ -52,6 +52,16 @@ export interface EditarUsuarioDto {
   apellido?: string;
 }
 
+/**
+ * Body de `PATCH usuarios/:id/password` (`sdd/reset-de-contrasena-por-admin`).
+ * Espejo de `ResetearPasswordUsuarioDto` del backend — SIN `clienteId`, por la
+ * misma razón que el resto de este archivo: el backend SIEMPRE usa
+ * `actor.cliente_id` del JWT.
+ */
+export interface ResetearPasswordUsuarioDto {
+  password: string;
+}
+
 export interface UsuarioTenantMembresia {
   usuarioId: string;
   email: string;
