@@ -23,10 +23,16 @@
  *   Alimenta el bloque de usuario del sidebar. Tokens emitidos antes de
  *   agregar este campo pueden no traerlo — `decodeJwtPayload` normaliza a
  *   `""` (mismo criterio defensivo que `modulos`).
- *
- * Decodificado en el BFF (login/switch, sin verificación — viene del backend
- * confiable) y verificado con `jose` en el middleware Edge (R26). Toda
- * autorización real la aplica el backend NestJS.
+ * - `cliente_logo_v`: epoch ms de `logoUpdatedAt` del cliente activo, `null`
+ *   sin logo o sesión MASTER (sdd/logo-por-cliente, design D3). Alimenta el
+ *   bloque de marca del sidebar (`?v=` en la URL del logo, para que cambie
+ *   de cliente invalide el cache del navegador). **Declarado `?:` a
+ *   propósito, a diferencia de `modulos`/`nombre`**: esos campos ya tenían
+ *   fixtures de `JwtPayload` construidos a mano en ~15 archivos de test de
+ *   este repo (sin una factory única como la del backend,
+ *   `payloadDeTest()`), y forzar este campo a requerido rompería el
+ *   typecheck de todos ellos por un dato que no les importa. La normalización
+ *   de `decodeJwtPayload` es la misma en los dos casos: `?? null`.
  */
 export interface JwtPayload {
   sub: string;
@@ -39,6 +45,7 @@ export interface JwtPayload {
   modulos: string[];
   nombre: string;
   apellido: string;
+  cliente_logo_v?: number | null;
 }
 
 /**
@@ -63,6 +70,7 @@ export function decodeJwtPayload(accessToken: string): JwtPayload {
     modulos: payload.modulos ?? [],
     nombre: payload.nombre ?? "",
     apellido: payload.apellido ?? "",
+    cliente_logo_v: payload.cliente_logo_v ?? null,
   };
 }
 
