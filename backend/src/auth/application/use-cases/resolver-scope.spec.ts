@@ -36,7 +36,12 @@ import { PARES_VALIDOS, moduloDe, CodigoAccion } from '../../../shared/domain/ac
 const MODULOS_DE_BYPASS = [...new Set(PARES_VALIDOS.map((codigo) => moduloDe(codigo)))];
 
 const makeCliente = (
-  overrides: Partial<{ activo: boolean; deleted: boolean; nombre: string }> = {},
+  overrides: Partial<{
+    activo: boolean;
+    deleted: boolean;
+    nombre: string;
+    logoUpdatedAt: Date | null;
+  }> = {},
 ) => {
   const cliente = ClienteEntity.create({
     nombre: overrides.nombre ?? 'Acme SA',
@@ -44,6 +49,7 @@ const makeCliente = (
     cuit: null,
     dbName: 'acme_sa',
     activo: overrides.activo ?? true,
+    logoUpdatedAt: overrides.logoUpdatedAt ?? null,
   });
   if (overrides.deleted) {
     cliente.softDelete();
@@ -108,6 +114,7 @@ describe('resolverScope (WU-7.1 — matriz de permisos)', () => {
         rol: null,
         permisos: [...PARES_VALIDOS],
         modulos: MODULOS_DE_BYPASS,
+        clienteLogoVersion: null,
       });
       expect(clienteRepo.findById).not.toHaveBeenCalled();
       expect(permisosRepo.findByUsuarioYCliente).not.toHaveBeenCalled();
@@ -212,6 +219,7 @@ describe('resolverScope (WU-7.1 — matriz de permisos)', () => {
         rol: 'ADMINISTRADOR',
         permisos: [...PARES_VALIDOS],
         modulos: MODULOS_DE_BYPASS,
+        clienteLogoVersion: null,
       });
       expect(permisosRepo.findByUsuarioYCliente).not.toHaveBeenCalled();
     });
@@ -237,6 +245,7 @@ describe('resolverScope (WU-7.1 — matriz de permisos)', () => {
         rol: 'TECNICO',
         permisos: [...PARES_VALIDOS],
         modulos: MODULOS_DE_BYPASS,
+        clienteLogoVersion: null,
       });
       expect(permisosRepo.findByUsuarioYCliente).not.toHaveBeenCalled();
     });
@@ -260,6 +269,7 @@ describe('resolverScope (WU-7.1 — matriz de permisos)', () => {
         rol: null,
         permisos: [...PARES_VALIDOS],
         modulos: MODULOS_DE_BYPASS,
+        clienteLogoVersion: null,
       });
       expect(permisosRepo.findByUsuarioYCliente).not.toHaveBeenCalled();
     });
@@ -292,6 +302,7 @@ describe('resolverScope (WU-7.1 — matriz de permisos)', () => {
         rol: 'TECNICO',
         permisos: ['TICKETS:ALTAS', 'TICKETS:LECTURA', 'EQUIPOS:LECTURA'],
         modulos: ['TICKETS', 'EQUIPOS'],
+        clienteLogoVersion: null,
       });
       expect(permisosRepo.findByUsuarioYCliente).toHaveBeenCalledWith('user-1', 'cliente-1');
     });
@@ -431,6 +442,73 @@ describe('resolverScope (WU-7.1 — matriz de permisos)', () => {
 
       expect(result.getValue().modulos).toEqual(MODULOS_DE_BYPASS);
       expect(result.getValue().modulos).toHaveLength(9);
+    });
+  });
+
+  // ─── clienteLogoVersion (sdd/logo-por-cliente, WU3) ──────────────────────
+  describe('clienteLogoVersion', () => {
+    it('cliente sin logo (logoUpdatedAt null) → clienteLogoVersion: null', async () => {
+      clienteRepo.findById.mockResolvedValue(makeCliente({ logoUpdatedAt: null }));
+      membresiaRepo.findActivaByUsuarioYCliente.mockResolvedValue(makeMembresiaResuelta());
+
+      const result = await resolverScope(
+        { usuarioId: 'user-1', isGlobalAdmin: false },
+        'cliente-1',
+        membresiaRepo,
+        clienteRepo,
+        permisosRepo,
+      );
+
+      expect(result.isOk()).toBe(true);
+      expect(result.getValue().clienteLogoVersion).toBeNull();
+    });
+
+    it('cliente CON logo → clienteLogoVersion es el epoch ms de logoUpdatedAt, sin queries nuevas', async () => {
+      const logoUpdatedAt = new Date('2026-09-01T12:00:00.000Z');
+      clienteRepo.findById.mockResolvedValue(makeCliente({ logoUpdatedAt }));
+      membresiaRepo.findActivaByUsuarioYCliente.mockResolvedValue(makeMembresiaResuelta());
+
+      const result = await resolverScope(
+        { usuarioId: 'user-1', isGlobalAdmin: false },
+        'cliente-1',
+        membresiaRepo,
+        clienteRepo,
+        permisosRepo,
+      );
+
+      expect(result.isOk()).toBe(true);
+      expect(result.getValue().clienteLogoVersion).toBe(logoUpdatedAt.getTime());
+      // Sin queries nuevas: solo la llamada a findById ya existente (autorización).
+      expect(clienteRepo.findById).toHaveBeenCalledTimes(1);
+    });
+
+    it('root con clienteId válido y logo cargado → también resuelve clienteLogoVersion (bypass no lo omite)', async () => {
+      const logoUpdatedAt = new Date('2026-01-15T00:00:00.000Z');
+      clienteRepo.findById.mockResolvedValue(makeCliente({ logoUpdatedAt }));
+      membresiaRepo.findActivaByUsuarioYCliente.mockResolvedValue(null);
+
+      const result = await resolverScope(
+        { usuarioId: 'root-1', isGlobalAdmin: true },
+        'cliente-1',
+        membresiaRepo,
+        clienteRepo,
+        permisosRepo,
+      );
+
+      expect(result.getValue().clienteLogoVersion).toBe(logoUpdatedAt.getTime());
+    });
+
+    it('token master (clienteId null) → clienteLogoVersion: null, sin tocar clienteRepo', async () => {
+      const result = await resolverScope(
+        { usuarioId: 'root-1', isGlobalAdmin: true },
+        null,
+        membresiaRepo,
+        clienteRepo,
+        permisosRepo,
+      );
+
+      expect(result.getValue().clienteLogoVersion).toBeNull();
+      expect(clienteRepo.findById).not.toHaveBeenCalled();
     });
   });
 });
