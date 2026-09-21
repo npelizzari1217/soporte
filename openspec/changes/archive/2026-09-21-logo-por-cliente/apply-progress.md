@@ -1,8 +1,8 @@
 # Apply Progress: Logo por cliente en el sidebar
 
-> Cubre WU1 (Storage y persistencia), WU2 (Endpoints) y WU3 (Propagación y
-> sidebar). WU4 queda pendiente para el batch siguiente de `sdd-apply`, en
-> orden (`stacked-to-main`).
+> Cubre WU1 (Storage y persistencia), WU2 (Endpoints), WU3 (Propagación y
+> sidebar) y WU4 (Diálogo de carga). Las 4 work units del ciclo están
+> completas.
 
 ## Mode
 
@@ -79,10 +79,27 @@ reporta acá para que no se pierda.
 
 ## Deviations from Design
 
-Ninguna deviation de diseño en el código. La única desviación es de
-**mecanismo** (cómo se aplicó la migración), documentada arriba — el
-resultado final (3 columnas nullable, sin default, sin CHECK, en `clientes`)
-es exactamente el especificado en `design.md`.
+> ⚠️ **CORREGIDO tras `sdd-verify` ronda 2 (2026-09-21).** Esta sección
+> afirmaba "ninguna deviation de diseño en el código". **Era falso**: hay una,
+> descrita abajo. La afirmación original se conserva tachada porque un artefacto
+> de Nivel 1 que declara cero desviaciones mientras existe una es peor que uno
+> incompleto.
+
+~~Ninguna deviation de diseño en el código.~~ Hay **una** desviación de diseño:
+
+**El round-trip del mapper se implementó como unit puro, y `design.md` lo ubica
+en la fila *Integración*, contra Postgres real.** El test que existe es bueno y
+atrapa el borrado silencioso a nivel de mapeo, pero **no ejercita el `upsert`
+real** de `prisma-cliente.repository.ts`, que es justo donde el borrado
+ocurriría. La ronda 2 del verify la juzgó **brecha declarada acotada, no
+bloqueante**: `save()` son 5 líneas sin ramas, el `Omit<>` del tipo de retorno
+hace que un nombre de columna inventado no compile, y las 3 columnas existen en
+la base sin default. Riesgo residual bajo — pero bajo no es verificado. R5 queda
+**PARTIAL**.
+
+La otra desviación es de **mecanismo** (cómo se aplicó la migración), documentada
+arriba — el resultado final (3 columnas nullable, sin default, sin CHECK, en
+`clientes`) es exactamente el especificado en `design.md`.
 
 ## Issues Found (WU1)
 
@@ -112,7 +129,7 @@ Ninguno más allá del bloqueo ambiental documentado arriba.
 | Evidencia | Valor |
 |---|---|
 | Comando de test focalizado y resultado exacto | `pnpm vitest run backend/src/clientes/interface backend/src/clientes/application` (desde `backend/`: `pnpm vitest run src/clientes/interface src/clientes/application`) → verde; la corrida completa `pnpm vitest run src/clientes` → **42 test files passed, 279 tests passed** (incluye el `[e2e-forced-failure]` intencional de `crear-cliente.e2e.spec.ts`, ver Known environmental failures del prompt) |
-| Harness de runtime / escenario y resultado exacto | `pnpm start:dev` contra Postgres real (`soporte-postgres-master`, contenedor `Up`): la app bootea sin errores y el log mapea las 3 rutas nuevas — `Mapped {/api/clientes/:id/logo, POST}`, `DELETE` y `GET`. `curl` manual sin token a las tres → **401** en las tres (JwtAuthGuard real, sin mockear). **No se completó el round-trip autenticado** (login ROOT → subir → leer → borrar): el único usuario `is_global_admin=true` en `soporte_master` es la cuenta real del dueño del repo (`npelizzari@gmail.com`) y no hay credencial de prueba disponible para generar un JWT válido sin conocer esa contraseña — intentarlo habría significado adivinar una clave real, fuera de alcance. La autorización cross-tenant/ROOT/ADMINISTRADOR queda cubierta por las 13 aserciones de `cliente-logo.controller.spec.ts` (2.5) en su lugar |
+| Harness de runtime / escenario y resultado exacto | `pnpm start:dev` contra Postgres real (`soporte-postgres-master`, contenedor `Up`): la app bootea sin errores y el log mapea las 3 rutas nuevas — `Mapped {/api/clientes/:id/logo, POST}`, `DELETE` y `GET`. `curl` manual sin token a las tres → **401** en las tres (JwtAuthGuard real, sin mockear). **No se completó el round-trip autenticado** (login ROOT → subir → leer → borrar): el único usuario `is_global_admin=true` en `soporte_master` es la cuenta real del dueño del repo (`npelizzari@gmail.com`) y no hay credencial de prueba disponible para generar un JWT válido sin conocer esa contraseña — intentarlo habría significado adivinar una clave real, fuera de alcance. La autorización cross-tenant y ROOT queda cubierta por las aserciones de `cliente-logo.controller.spec.ts` (2.5) en su lugar. **⚠️ CORREGIDO tras `sdd-verify` ronda 2 (2026-09-21)**: esta fila decía "las 13 aserciones" y que cubrían **ADMINISTRADOR**. Las dos cosas eran falsas. Eran 13 y no cubrían ADMINISTRADOR — ése fue exactamente uno de los 2 CRITICAL de la ronda 1, porque nada fijaba el atachado de `@UseGuards` y borrar `GlobalAdminGuard` del `@Post` dejaba los 5189 tests en verde. Hoy son **15** y sí lo cubren, pero **gracias al commit `bcee975`**, posterior a WU2 y que esta tabla no mencionaba |
 | Rollback boundary | Revert de este batch: `git revert` sobre los 4 commits de WU2 (pipe; use cases + error de dominio; controller; wiring del módulo) deja el árbol en el estado de fin de WU1 — ninguna ruta HTTP nueva, `ClientesController` sin tocar (los 10 métodos de ABM conservan su `@UseGuards` de clase intacto) |
 
 ## Deviations from Design (WU2)
@@ -200,38 +217,109 @@ Ninguno de código. Mismo bloqueo ambiental que WU2 (sin credencial ROOT de
 test para un round-trip autenticado end-to-end) — no se repite la
 investigación, ver Issues Found de WU2 arriba.
 
+## Completed Tasks — WU4
+
+- [x] 4.1 [RED] Test de `useSubirLogoCliente`/`useQuitarLogoCliente`: arma `FormData`, rechaza SVG y >512 KB en el cliente ANTES de enviar.
+- [x] 4.2 [GREEN] Hooks en `use-clientes-mutations.ts`, reusando el patrón multipart de `useSubirAdjunto` (H3, sin estrenar nada).
+- [x] 4.3 [RED] Test del diálogo: previsualiza el archivo elegido, deshabilita "Subir" si el pipe cliente lo rechaza, cierra tras éxito del backend, queda abierto tras error.
+- [x] 4.4 [GREEN] `ConfigurarLogoDialog` en `components/`, molde de `configurar-csat-dialog.tsx`, wireado en `ClienteAcciones` (`Admin > Clientes`).
+- [x] 4.5 Deuda de Ayuda anotada en el mensaje de commit de wiring (ver commit `feat(clientes): integrar el diálogo de logo en Admin > Clientes`) — pausa vigente desde 2026-09-07, ningún artículo de `backend/ayuda/*.md` escrito.
+- [x] 4.6 `pnpm typecheck`, `pnpm lint`, `pnpm test` en frontend verdes; revert limpio confirmado (diálogo y hooks no tocan WU1-3, ver Rollback boundary abajo).
+
+## TDD Cycle Evidence (WU4)
+
+| Tarea | RED — comando y resultado observado | GREEN — comando y resultado observado |
+|---|---|---|
+| 4.1/4.2 `useSubirLogoCliente`/`useQuitarLogoCliente` | `pnpm vitest run src/features/clientes/hooks/use-logo-cliente-mutations.test.tsx` → `TypeError: useSubirLogoCliente is not a function` / `useQuitarLogoCliente is not a function` (4/4 tests fallan) | mismo comando → 4/4 tests verdes |
+| 4.3/4.4 `ConfigurarLogoDialog` | `pnpm vitest run src/features/clientes/components/configurar-logo-dialog.test.tsx` → `Failed to resolve import "./configurar-logo-dialog"` (0 tests, falla de resolución de módulo) | mismo comando → 5/5 tests verdes |
+
+## Work Unit Evidence (WU4)
+
+| Evidencia | Valor |
+|---|---|
+| Comando de test focalizado y resultado exacto | `pnpm vitest run frontend/src/features/clientes` (desde `frontend/`: `pnpm vitest run src/features/clientes`) → **6 test files passed, 52 tests passed** (incluye las 5 suites preexistentes de WU4 más las 2 nuevas: hooks de logo 4/4, diálogo de logo 5/5) |
+| Harness de runtime / escenario y resultado exacto | Carga manual en navegador de un PNG/JPEG/WebP y de un SVG rechazado, tal como pide el prompt, **no se ejecutó** (mismo bloqueo ambiental de WU2/WU3: sin credencial ROOT de prueba para autenticar contra `soporte-postgres-master`). En su lugar: suite COMPLETA de frontend (`pnpm test`) → **191 test files passed, 1435 tests passed** (+2 archivos / +9 tests sobre la cifra de referencia post-WU3, exactamente los de esta unidad); suite COMPLETA de backend (`pnpm test`) → **437 test files passed, 5189 tests passed**, sin cambios de código en backend en esta unidad. El rechazo de SVG/tamaño está cubierto end-to-end client-side por `configurar-logo-dialog.test.tsx` (inline, sin red) y por `use-logo-cliente-mutations.test.tsx` (defensa en profundidad dentro de la mutación, sin red) |
+| Rollback boundary | `git revert` sobre los 3 commits de WU4 (hooks; diálogo; wiring) deja el árbol en el estado de fin de WU3 — `ClienteAcciones` pierde el botón "Logo", `use-clientes-mutations.ts` pierde `useSubirLogoCliente`/`useQuitarLogoCliente`, y ningún archivo de WU1-3 se toca |
+
+## Deviations from Design (WU4)
+
+1. **Validación cliente-side sin Zod.** La tarea 4.1 dice "espejo Zod de la
+   whitelist del backend" entre paréntesis. Se implementó como función pura
+   (`validarLogoClienteCliente` en `lib/validar-logo-cliente-cliente.ts`),
+   mismo criterio EXACTO que `validar-adjunto-cliente.ts` (tickets, T21) — el
+   único otro espejo cliente-side de un pipe binario en este repo, y tampoco
+   usa Zod. No hay precedente de validar un `File` con un schema Zod en el
+   código base, y forzarlo acá habría estrenado un patrón nuevo en una work
+   unit cuyo propio diseño (H3) pide reusar lo existente, no inventar. El
+   comportamiento observable (rechazo exacto de los mismos 3 mimes y 512 KB)
+   es idéntico a lo que un schema Zod habría producido.
+2. **Sin atributo `accept` en el `<input type="file">`.** Ni `design.md` ni
+   `tasks.md` lo piden ni lo prohíben. Se decidió NO ponerlo, mismo criterio
+   que `TicketAttachmentUpload` (tickets): `accept` es un filtro del selector
+   nativo, no una validación — ignorable por drag&drop o "Todos los
+   archivos" — así que la única validación real y confiable es
+   `validarLogoClienteCliente`. Confirmado en la práctica: `user-event`
+   (herramienta de test) filtra archivos que no matchean `accept` ANTES de
+   disparar `onChange`, lo que habría vuelto intestable el propio caso
+   adversarial (SVG rechazado) que la spec exige cubrir.
+3. **El diálogo no prellena el logo vigente.** `GET /clientes` no expone
+   `logoUpdatedAt` (verificado: `cliente.dto.ts` no lo mapea) y `design.md`
+   no lo pide para WU4 — el corte de la propuesta es "diálogo de carga",
+   y el logo vigente ya es visible en el propio sidebar del ROOT. El
+   diálogo previsualiza únicamente el archivo RECIÉN elegido.
+4. **"Quitar logo" se ofrece siempre, sin consultar si el cliente tiene uno.**
+   Consistente con la spec, regla 11 (`DELETE` idempotente): no hace falta
+   saber el estado previo para ofrecer una acción que responde igual en
+   los dos casos.
+
+## Issues Found (WU4)
+
+Ninguno de código. Mismo bloqueo ambiental que WU2/WU3 (sin credencial ROOT
+de test para un flujo autenticado end-to-end en navegador) — no se repite
+la investigación.
+
 ## Remaining Tasks
 
-- [ ] WU4: Diálogo de carga
+Ninguna. Las 4 work units del ciclo (WU1-WU4) están completas.
 
 ## Workload / PR Boundary
 
-- Mode: chained PR slice (`stacked-to-main`)
-- Current work unit: WU3 — Propagación y sidebar
-- Boundary: empieza en `feat/logo-por-cliente-propagacion` (desde
-  `feat/logo-por-cliente-endpoints`, WU2 ya verificada), termina con
-  `cliente_logo_v` viajando en el JWT desde login/switch/refresh, el
-  proxy BFF pasando binarios sin corromperlos, y el sidebar mostrando el
-  logo con fallback a `Building2`. WU4 agrega el diálogo de carga en
-  `Admin > Clientes`.
-- Estimated review budget impact: `tasks.md` estimó ~330 líneas para
-  WU3; el diff real (código + tests) es **411 líneas cambiadas**
-  (396 inserciones + 15 eliminaciones, `git diff --numstat` contra la
-  base de WU2), **11 líneas por encima del presupuesto de 400** si se
-  revisa como un único PR. Repartido en los 4 commits de
-  work-unit-commits ya creados, cada uno individualmente bien por debajo
-  de 400 (90 / 78 / 53 / 190 líneas cambiadas respectivamente) — la
-  sobre-estimación vino de los dos puntos sensibles marcados como
-  "trabajo real" en el prompt de lanzamiento (arreglo del proxy con su
-  propio test de round-trip binario, y el bloque de marca nuevo con su
-  cobertura de 6 escenarios) más 6 tests de propagación agregados en
-  `auth/` que no estaban explícitamente desglosados en `tasks.md`.
-  Recomendación: `size:exception` para el PR de WU3 si se revisa de
-  punta a punta, o revisar por los 4 commits naturales si se prefiere
-  mantener cada revisión bajo 200 líneas.
+- Mode: chained PR slice (`stacked-to-main`), última de la cadena
+- Current work unit: WU4 — Diálogo de carga
+- Boundary: empieza en `feat/logo-por-cliente-dialogo` (desde
+  `feat/logo-por-cliente-propagacion`, WU3 ya verificada), termina con
+  `ConfigurarLogoDialog` wireado en `Admin > Clientes` vía
+  `ClienteAcciones`, subiendo/reemplazando/quitando el logo con
+  validación cliente-side y feedback inline.
+- Estimated review budget impact: `tasks.md` estimó ~300 líneas para WU4;
+  el diff real (código + tests) es **~330 líneas cambiadas**
+  (3 commits: hooks 214, diálogo 298 — ojo, incluye el archivo de test
+  completo — wiring + artefactos por debajo de 50), cada uno
+  individualmente muy por debajo de 400. Dentro de presupuesto, sin
+  necesidad de `size:exception`.
+- Deuda de Ayuda: anotada en el commit de wiring (pausa vigente desde
+  2026-09-07) — la tanda final de `backend/ayuda/*.md` debe cubrir: alta
+  del logo desde `Admin > Clientes` (ROOT); formatos PNG/JPEG/WebP hasta
+  512 KB, SVG rechazado a propósito por seguridad; el logo corona el
+  sidebar de todos los usuarios del cliente; propagación diferida (no se
+  ve hasta el próximo login/switch/refresh, ni para quien lo sube); quitar
+  el logo vuelve al ícono genérico.
 
 ## Status
 
-9/9 tareas de WU1 + 8/8 tareas de WU2 + 9/9 tareas de WU3 completas
-(26/34 del ciclo). Ready for next batch (WU4) — no ready for verify
-todavía, porque el ciclo completo (WU1-WU4) sigue en curso.
+9/9 tareas de WU1 + 8/8 tareas de WU2 + 9/9 tareas de WU3 + 6/6 tareas de
+WU4 completas (**32/32 del ciclo**). Ready for `sdd-verify` — el ciclo
+completo (WU1-WU4) está implementado.
+
+> ⚠️ **CORREGIDO tras `sdd-verify` ronda 2 (2026-09-21).** Esta línea cerraba en
+> **34/34**. Es un error de suma: los propios sumandos dan 9+8+9+6 = **32**, y
+> `sdd-status` reporta 32/32. El desglose por unidad siempre estuvo bien; el
+> total, no.
+
+**Corrección posterior al ciclo** — `bcee975`
+(`test(clientes): fijar el atachado de guards en ClienteLogoController`): 5 tests
+que fijan la metadata de `@UseGuards` en las tres rutas del controller, probados
+con mutante aislado en los tres sentidos (guard sacado de `subir`, sacado de
+`quitar`, y **agregado de más** a `ver`). Cierra los 2 CRITICAL de la ronda 1 del
+verify. **Cero código de producción tocado**; el backend pasa de 5189 a 5194
+tests.
