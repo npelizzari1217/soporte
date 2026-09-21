@@ -47,14 +47,14 @@ Chain strategy: stacked-to-main
 
 ## WU2: Endpoints
 
-- [ ] 2.1 [RED] Test en `validar-logo-cliente.spec.ts`: acepta `image/png`, `image/jpeg`, `image/webp` hasta 512 KB; rechaza `image/svg+xml` con 422 aunque empiece con `image/`; rechaza >512 KB y 0 bytes con 422, antes de escribir en disco. Debe ponerse en rojo si la whitelist muta a prefijo `image/*`.
-- [ ] 2.2 [GREEN] Crear `backend/src/clientes/interface/pipes/validar-logo-cliente.ts`, HERMANO de `backend/src/tickets/interface/pipes/validar-archivo-adjunto.ts` (read-only, nunca reuso): `MIMES_LOGO` como `Set` exacto de 3 valores, `MAX_LOGO_BYTES = 512 * 1024`.
-- [ ] 2.3 [RED] Test de casos de uso con mocks de `IFileStorage`: sube con key nueva (UUID), persiste la fila, borra la key anterior best-effort; si `delete` falla, la operación igual reporta éxito.
-- [ ] 2.4 [GREEN] Crear `ConfigurarLogoCliente`, `QuitarLogoCliente`, `VerLogoCliente` en `backend/src/clientes/application/use-cases/` con `Result<T, DomainError>`; orden: key nueva → upload → persistir → delete best-effort de la key anterior.
-- [ ] 2.5 [RED] Test de controller (guards mockeados salvo el chequeo inline): usuario de A pide logo de B → 403; pide el suyo → 200; ROOT pide cualquiera → 200; ADMINISTRADOR intenta `POST` → 403; sin token → 401; `DELETE` sin logo → 204.
-- [ ] 2.6 [GREEN] Crear `backend/src/clientes/interface/controllers/cliente-logo.controller.ts` NUEVO — nunca agregar rutas a `clientes.controller.ts` (read-only, su `GlobalAdminGuard` de clase volvería el `GET` ROOT-only). `POST`/`DELETE`: `JwtAuthGuard + GlobalAdminGuard`. `GET`: solo `JwtAuthGuard` + chequeo inline `user.is_global_admin || user.cliente_id === params.id` — nunca `TenantGuard`.
-- [ ] 2.7 [GREEN] `GET`: responder con el `Content-Type` almacenado, `X-Content-Type-Options: nosniff`, `Content-Disposition: inline`, siguiendo el patrón `@Res({ passthrough: true })` de `backend/src/equipos/interface/controllers/equipos.controller.ts` (read-only, molde); nunca exponer storage key ni ruta de filesystem.
-- [ ] 2.8 Wiring en `backend/src/clientes/clientes.module.ts` (`FILE_STORAGE` ya lo exporta `SharedModule`); correr `pnpm typecheck`, `pnpm lint`, `pnpm test` en backend.
+- [x] 2.1 [RED] Test en `validar-logo-cliente.spec.ts`: acepta `image/png`, `image/jpeg`, `image/webp` hasta 512 KB; rechaza `image/svg+xml` con 422 aunque empiece con `image/`; rechaza >512 KB y 0 bytes con 422, antes de escribir en disco. Debe ponerse en rojo si la whitelist muta a prefijo `image/*`.
+- [x] 2.2 [GREEN] Crear `backend/src/clientes/interface/pipes/validar-logo-cliente.ts`, HERMANO de `backend/src/tickets/interface/pipes/validar-archivo-adjunto.ts` (read-only, nunca reuso): `MIMES_LOGO` como `Set` exacto de 3 valores, `MAX_LOGO_BYTES = 512 * 1024`.
+- [x] 2.3 [RED] Test de casos de uso con mocks de `IFileStorage`: sube con key nueva (UUID), persiste la fila, borra la key anterior best-effort; si `delete` falla, la operación igual reporta éxito.
+- [x] 2.4 [GREEN] Crear `ConfigurarLogoCliente`, `QuitarLogoCliente`, `VerLogoCliente` en `backend/src/clientes/application/use-cases/` con `Result<T, DomainError>`; orden: key nueva → upload → persistir → delete best-effort de la key anterior.
+- [x] 2.5 [RED] Test de controller (guards mockeados salvo el chequeo inline): usuario de A pide logo de B → 403; pide el suyo → 200; ROOT pide cualquiera → 200; ADMINISTRADOR intenta `POST` → 403; sin token → 401; `DELETE` sin logo → 204.
+- [x] 2.6 [GREEN] Crear `backend/src/clientes/interface/controllers/cliente-logo.controller.ts` NUEVO — nunca agregar rutas a `clientes.controller.ts` (read-only, su `GlobalAdminGuard` de clase volvería el `GET` ROOT-only). `POST`/`DELETE`: `JwtAuthGuard + GlobalAdminGuard`. `GET`: solo `JwtAuthGuard` + chequeo inline `user.is_global_admin || user.cliente_id === params.id` — nunca `TenantGuard`.
+- [x] 2.7 [GREEN] `GET`: responder con el `Content-Type` almacenado, `X-Content-Type-Options: nosniff`, `Content-Disposition: inline`, siguiendo el patrón `@Res({ passthrough: true })` de `backend/src/equipos/interface/controllers/equipos.controller.ts` (read-only, molde); nunca exponer storage key ni ruta de filesystem.
+- [x] 2.8 Wiring en `backend/src/clientes/clientes.module.ts` (`FILE_STORAGE` ya lo exporta `SharedModule`); correr `pnpm typecheck`, `pnpm lint`, `pnpm test` en backend.
 
 ## WU3: Propagación y sidebar
 

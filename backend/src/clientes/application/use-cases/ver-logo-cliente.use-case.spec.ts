@@ -35,7 +35,9 @@ function buildFileStorageMock(overrides: Partial<IFileStorage> = {}): IFileStora
   };
 }
 
-function buildCliente(props: Partial<Parameters<typeof ClienteEntity.create>[0]> = {}): ClienteEntity {
+function buildCliente(
+  props: Partial<Parameters<typeof ClienteEntity.create>[0]> = {},
+): ClienteEntity {
   return ClienteEntity.create({
     nombre: 'ACME S.A.',
     razonSocial: null,

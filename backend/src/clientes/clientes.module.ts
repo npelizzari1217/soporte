@@ -74,6 +74,10 @@ import {
 } from '../shared/domain/ports/i-email-connection-verifier.port';
 import { SmtpConnectionVerifier } from '../notificaciones/infrastructure/email/smtp-connection-verifier';
 
+// ─── Storage del logo del cliente (sdd/logo-por-cliente, WU2) — FILE_STORAGE
+// ya lo exporta SharedModule (IFileStorage → LocalDiskFileStorage) ──────────
+import { FILE_STORAGE, IFileStorage } from '../shared/domain/ports/i-file-storage';
+
 // ─── Use Cases (plain classes — instanciadas vía useFactory) ─────────────────
 import { CrearCicloVigenteUseCase } from './application/use-cases/crear-ciclo-vigente.use-case';
 import { ListarCiclosVigentesUseCase } from './application/use-cases/listar-ciclos-vigentes.use-case';
@@ -95,15 +99,24 @@ import { QuitarCorreoClienteUseCase } from './application/use-cases/quitar-corre
 import { ProbarCorreoClienteUseCase } from './application/use-cases/probar-correo-cliente.use-case';
 import { VerCorreoClienteUseCase } from './application/use-cases/ver-correo-cliente.use-case';
 import { ConfigurarCsatClienteUseCase } from './application/use-cases/configurar-csat-cliente.use-case';
+import { ConfigurarLogoClienteUseCase } from './application/use-cases/configurar-logo-cliente.use-case';
+import { QuitarLogoClienteUseCase } from './application/use-cases/quitar-logo-cliente.use-case';
+import { VerLogoClienteUseCase } from './application/use-cases/ver-logo-cliente.use-case';
 
 // ─── Controllers ─────────────────────────────────────────────────────────────
 import { CicloVigenteController } from './interface/controllers/ciclos-vigentes.controller';
 import { CiclosController } from './interface/controllers/ciclos.controller';
 import { ClientesController } from './interface/controllers/clientes.controller';
+import { ClienteLogoController } from './interface/controllers/cliente-logo.controller';
 
 @Module({
   imports: [AuthModule],
-  controllers: [CicloVigenteController, CiclosController, ClientesController],
+  controllers: [
+    CicloVigenteController,
+    CiclosController,
+    ClientesController,
+    ClienteLogoController,
+  ],
   providers: [
     { provide: CICLO_VIGENTE_REPOSITORY, useClass: PrismaCicloVigenteRepository },
     { provide: CICLO_CLIENTE_REPOSITORY, useClass: PrismaCicloClienteRepository },
@@ -243,6 +256,24 @@ import { ClientesController } from './interface/controllers/clientes.controller'
       provide: ConfigurarCsatClienteUseCase,
       useFactory: (repo: IClienteRepository) => new ConfigurarCsatClienteUseCase(repo),
       inject: [CLIENTE_REPOSITORY],
+    },
+    {
+      provide: ConfigurarLogoClienteUseCase,
+      useFactory: (repo: IClienteRepository, fileStorage: IFileStorage) =>
+        new ConfigurarLogoClienteUseCase(repo, fileStorage),
+      inject: [CLIENTE_REPOSITORY, FILE_STORAGE],
+    },
+    {
+      provide: QuitarLogoClienteUseCase,
+      useFactory: (repo: IClienteRepository, fileStorage: IFileStorage) =>
+        new QuitarLogoClienteUseCase(repo, fileStorage),
+      inject: [CLIENTE_REPOSITORY, FILE_STORAGE],
+    },
+    {
+      provide: VerLogoClienteUseCase,
+      useFactory: (repo: IClienteRepository, fileStorage: IFileStorage) =>
+        new VerLogoClienteUseCase(repo, fileStorage),
+      inject: [CLIENTE_REPOSITORY, FILE_STORAGE],
     },
     {
       provide: CrearClienteUseCase,
