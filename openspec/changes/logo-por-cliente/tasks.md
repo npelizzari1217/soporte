@@ -35,15 +35,15 @@ Chain strategy: stacked-to-main
 
 ## WU1: Storage y persistencia
 
-- [ ] 1.1 [RED] Test en `local-disk-file-storage.spec.ts`: `retrieve()` devuelve el `Buffer` de un archivo existente y `null` si no existe (`ENOENT`), sin lanzar.
-- [ ] 1.2 [GREEN] Agregar `retrieve(key): Promise<Buffer | null>` a `backend/src/shared/domain/ports/i-file-storage.ts` e implementarlo en `backend/src/shared/infrastructure/storage/local-disk-file-storage.ts`.
-- [ ] 1.3 Migración Prisma: agregar `logo_storage_key`, `logo_mime_type`, `logo_updated_at` (nullable, sin default, sin CHECK) a `Cliente` en `backend/prisma_master/schema.prisma`; generar con `prisma migrate dev`.
-- [ ] 1.4 Escribir la migración de reversa (`down`) que dropea las 3 columnas — es el único paso que `git revert` no cubre del plan de rollback de la propuesta.
-- [ ] 1.5 [RED] Test en `cliente.entity.spec.ts`: `actualizarLogo(key, mime, fecha)` setea las 3 props juntas; `quitarLogo()` las limpia juntas.
-- [ ] 1.6 [GREEN] Extender `ClienteProps` (key/mime/fecha nullable) y agregar `actualizarLogo()`/`quitarLogo()` + getters en `backend/src/clientes/domain/entities/cliente.entity.ts`.
-- [ ] 1.7 [RED] Test OBLIGATORIO de round-trip en `cliente.mapper.spec.ts`: `toDomain(toPersistence(clienteConLogo))` conserva las 3 columnas de logo. Debe fallar si `toDomain` no las hidrata — sin esto, un `PATCH` comercial borra el logo en silencio vía el `upsert` de `prisma-cliente.repository.ts` (read-only, evidencia del riesgo).
-- [ ] 1.8 [GREEN] Mapear las 3 columnas en `toDomain` Y en `toPersistence` de `backend/src/clientes/infrastructure/persistence/prisma/cliente.mapper.ts` (espejo completo, nunca `Omit`).
-- [ ] 1.9 Correr `pnpm typecheck` y `pnpm test` en backend; confirmar revert limpio de WU1 (sin consumidor HTTP todavía).
+- [x] 1.1 [RED] Test en `local-disk-file-storage.spec.ts`: `retrieve()` devuelve el `Buffer` de un archivo existente y `null` si no existe (`ENOENT`), sin lanzar.
+- [x] 1.2 [GREEN] Agregar `retrieve(key): Promise<Buffer | null>` a `backend/src/shared/domain/ports/i-file-storage.ts` e implementarlo en `backend/src/shared/infrastructure/storage/local-disk-file-storage.ts`.
+- [x] 1.3 Migración Prisma: agregar `logo_storage_key`, `logo_mime_type`, `logo_updated_at` (nullable, sin default, sin CHECK) a `Cliente` en `backend/prisma_master/schema.prisma`; generar con `prisma migrate dev`.
+- [x] 1.4 Escribir la migración de reversa (`down`) que dropea las 3 columnas — es el único paso que `git revert` no cubre del plan de rollback de la propuesta.
+- [x] 1.5 [RED] Test en `cliente.entity.spec.ts`: `actualizarLogo(key, mime, fecha)` setea las 3 props juntas; `quitarLogo()` las limpia juntas.
+- [x] 1.6 [GREEN] Extender `ClienteProps` (key/mime/fecha nullable) y agregar `actualizarLogo()`/`quitarLogo()` + getters en `backend/src/clientes/domain/entities/cliente.entity.ts`.
+- [x] 1.7 [RED] Test OBLIGATORIO de round-trip en `cliente.mapper.spec.ts`: `toDomain(toPersistence(clienteConLogo))` conserva las 3 columnas de logo. Debe fallar si `toDomain` no las hidrata — sin esto, un `PATCH` comercial borra el logo en silencio vía el `upsert` de `prisma-cliente.repository.ts` (read-only, evidencia del riesgo).
+- [x] 1.8 [GREEN] Mapear las 3 columnas en `toDomain` Y en `toPersistence` de `backend/src/clientes/infrastructure/persistence/prisma/cliente.mapper.ts` (espejo completo, nunca `Omit`).
+- [x] 1.9 Correr `pnpm typecheck` y `pnpm test` en backend; confirmar revert limpio de WU1 (sin consumidor HTTP todavía).
 
 ## WU2: Endpoints
 

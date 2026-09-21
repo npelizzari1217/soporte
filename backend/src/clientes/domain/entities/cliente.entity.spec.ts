@@ -98,6 +98,114 @@ describe('ClienteEntity — csatHabilitado', () => {
 });
 
 /**
+ * WU1 T1.5 — Unit test de `actualizarLogo()` / `quitarLogo()` (sdd/logo-por-cliente).
+ *
+ * Cubre la regla no trivial: las 3 props de logo (`logoStorageKey`,
+ * `logoMimeType`, `logoUpdatedAt`) viajan SIEMPRE juntas — ninguna de las dos
+ * operaciones deja el trío a medio setear. El round-trip con el mapper
+ * Prisma (D4) es el que valida que la persistencia respeta ese trío; acá se
+ * valida solo el comportamiento de la entidad.
+ */
+describe('ClienteEntity — logo', () => {
+  const makeClienteSinLogo = () =>
+    ClienteEntity.create({
+      nombre: 'Acme SA',
+      razonSocial: null,
+      cuit: null,
+      dbName: 'acme_sa',
+      activo: true,
+    });
+
+  describe('create() / reconstitute()', () => {
+    it('sin logo, los 3 getters son null', () => {
+      const cliente = makeClienteSinLogo();
+      expect(cliente.logoStorageKey).toBeNull();
+      expect(cliente.logoMimeType).toBeNull();
+      expect(cliente.logoUpdatedAt).toBeNull();
+    });
+
+    it('reconstitute() respeta las 3 props de logo persistidas', () => {
+      const fecha = new Date('2026-09-20T12:00:00Z');
+      const cliente = ClienteEntity.reconstitute(
+        {
+          nombre: 'Acme SA',
+          razonSocial: null,
+          cuit: null,
+          dbName: 'acme_sa',
+          activo: true,
+          logoStorageKey: 'clientes/cliente-id/uuid-1',
+          logoMimeType: 'image/png',
+          logoUpdatedAt: fecha,
+        },
+        'cliente-id',
+        new Date('2025-01-01T00:00:00Z'),
+        new Date('2025-01-01T00:00:00Z'),
+        null,
+      );
+      expect(cliente.logoStorageKey).toBe('clientes/cliente-id/uuid-1');
+      expect(cliente.logoMimeType).toBe('image/png');
+      expect(cliente.logoUpdatedAt).toEqual(fecha);
+    });
+  });
+
+  describe('actualizarLogo()', () => {
+    it('setea las 3 props juntas y actualiza updatedAt', () => {
+      const cliente = makeClienteSinLogo();
+      const updatedAtOriginal = cliente.updatedAt;
+      const fecha = new Date('2026-09-21T10:00:00Z');
+
+      cliente.actualizarLogo('clientes/cliente-id/uuid-2', 'image/webp', fecha);
+
+      expect(cliente.logoStorageKey).toBe('clientes/cliente-id/uuid-2');
+      expect(cliente.logoMimeType).toBe('image/webp');
+      expect(cliente.logoUpdatedAt).toEqual(fecha);
+      expect(cliente.updatedAt.getTime()).toBeGreaterThanOrEqual(updatedAtOriginal.getTime());
+    });
+
+    it('reemplaza un logo existente por uno nuevo, sin dejar mezcla de props', () => {
+      const cliente = makeClienteSinLogo();
+      cliente.actualizarLogo(
+        'clientes/cliente-id/uuid-1',
+        'image/png',
+        new Date('2026-09-01T00:00:00Z'),
+      );
+
+      const fechaNueva = new Date('2026-09-21T10:00:00Z');
+      cliente.actualizarLogo('clientes/cliente-id/uuid-2', 'image/jpeg', fechaNueva);
+
+      expect(cliente.logoStorageKey).toBe('clientes/cliente-id/uuid-2');
+      expect(cliente.logoMimeType).toBe('image/jpeg');
+      expect(cliente.logoUpdatedAt).toEqual(fechaNueva);
+    });
+  });
+
+  describe('quitarLogo()', () => {
+    it('limpia las 3 props juntas y actualiza updatedAt', () => {
+      const cliente = makeClienteSinLogo();
+      cliente.actualizarLogo(
+        'clientes/cliente-id/uuid-1',
+        'image/png',
+        new Date('2026-09-01T00:00:00Z'),
+      );
+      const updatedAtConLogo = cliente.updatedAt;
+
+      cliente.quitarLogo();
+
+      expect(cliente.logoStorageKey).toBeNull();
+      expect(cliente.logoMimeType).toBeNull();
+      expect(cliente.logoUpdatedAt).toBeNull();
+      expect(cliente.updatedAt.getTime()).toBeGreaterThanOrEqual(updatedAtConLogo.getTime());
+    });
+
+    it('es idempotente: quitar el logo de un cliente sin logo no lanza', () => {
+      const cliente = makeClienteSinLogo();
+      expect(() => cliente.quitarLogo()).not.toThrow();
+      expect(cliente.logoStorageKey).toBeNull();
+    });
+  });
+});
+
+/**
  * Guard de largo de `cuit` — cierra la divergencia entre la columna y el DTO.
  *
  * `clientes.cuit` es `VARCHAR(13)` (`prisma_master/schema.prisma`,

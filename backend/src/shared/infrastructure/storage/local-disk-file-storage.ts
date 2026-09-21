@@ -41,4 +41,18 @@ export class LocalDiskFileStorage implements IFileStorage {
       }
     }
   }
+
+  async retrieve(key: string): Promise<Buffer | null> {
+    const fullPath = path.join(this.baseDir, key);
+
+    try {
+      return await fs.promises.readFile(fullPath);
+    } catch (err: unknown) {
+      // Simétrico con delete(): archivo ausente no es un error observable.
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        return null;
+      }
+      throw err;
+    }
+  }
 }

@@ -108,6 +108,20 @@ model Cliente {
   /// de `smtp_*` — mismo criterio que `smtpSecure`.
   csatHabilitado Boolean @default(false) @map("csat_habilitado")
 
+  /// ─── Logo del cliente (sdd/logo-por-cliente, WU1) ────────────────────────
+  ///
+  /// Las tres columnas viajan SIEMPRE juntas desde `ConfigurarLogoCliente` /
+  /// `QuitarLogoCliente` (WU2) — sin CHECK todo-o-nada porque un solo use
+  /// case las escribe atómicamente, a diferencia de `smtp_*` que acepta
+  /// escritura parcial desde un formulario.
+  ///
+  /// `logoUpdatedAt` es DELIBERADAMENTE distinta de `updatedAt` — mismo
+  /// criterio que `smtpConfigUpdatedAt`: editar `nombre` invalidaría un
+  /// `cliente_logo_v` del JWT que seguía siendo válido (design.md D3).
+  logoStorageKey String?   @map("logo_storage_key") @db.VarChar(255)
+  logoMimeType   String?   @map("logo_mime_type") @db.VarChar(50)
+  logoUpdatedAt  DateTime? @map("logo_updated_at") @db.Timestamptz
+
   membresias     Membresia[]
   encuestaTokens EncuestaToken[]
 

@@ -92,6 +92,14 @@ export interface ClienteProps {
    * Defaults to false.
    */
   csatHabilitado?: boolean;
+  /**
+   * Logo del cliente (sdd/logo-por-cliente, WU1). Las 3 props viajan
+   * SIEMPRE juntas: `actualizarLogo()` las setea juntas, `quitarLogo()` las
+   * limpia juntas. Nunca una mezcla de null/no-null entre ellas.
+   */
+  logoStorageKey?: string | null;
+  logoMimeType?: string | null;
+  logoUpdatedAt?: Date | null;
 }
 
 /**
@@ -119,7 +127,16 @@ export class ClienteEntity extends BaseEntity<ClienteProps> {
    */
   static create(props: ClienteProps, id?: string): ClienteEntity {
     validarLargos(props);
-    return new ClienteEntity({ ...props, csatHabilitado: props.csatHabilitado ?? false }, id);
+    return new ClienteEntity(
+      {
+        ...props,
+        csatHabilitado: props.csatHabilitado ?? false,
+        logoStorageKey: props.logoStorageKey ?? null,
+        logoMimeType: props.logoMimeType ?? null,
+        logoUpdatedAt: props.logoUpdatedAt ?? null,
+      },
+      id,
+    );
   }
 
   /**
@@ -135,7 +152,13 @@ export class ClienteEntity extends BaseEntity<ClienteProps> {
     deletedAt: Date | null,
   ): ClienteEntity {
     const entity = new ClienteEntity(
-      { ...props, csatHabilitado: props.csatHabilitado ?? false },
+      {
+        ...props,
+        csatHabilitado: props.csatHabilitado ?? false,
+        logoStorageKey: props.logoStorageKey ?? null,
+        logoMimeType: props.logoMimeType ?? null,
+        logoUpdatedAt: props.logoUpdatedAt ?? null,
+      },
       id,
     );
     (entity as unknown as { _createdAt: Date })._createdAt = createdAt;
@@ -169,6 +192,26 @@ export class ClienteEntity extends BaseEntity<ClienteProps> {
   /** Ver `ClienteProps.csatHabilitado`. Defaults to false. */
   get csatHabilitado(): boolean {
     return this.props.csatHabilitado ?? false;
+  }
+
+  /** storage_key del logo cargado, o `null` si el cliente no tiene logo. */
+  get logoStorageKey(): string | null {
+    return this.props.logoStorageKey ?? null;
+  }
+
+  /** MIME type almacenado del logo, o `null` si el cliente no tiene logo. */
+  get logoMimeType(): string | null {
+    return this.props.logoMimeType ?? null;
+  }
+
+  /**
+   * Fecha de la última carga/reemplazo del logo, o `null` si no tiene.
+   * Deliberadamente distinta de `updatedAt` — es la base de
+   * `cliente_logo_v` del JWT (design.md D3): editar un dato comercial no
+   * debe invalidar un `cliente_logo_v` que seguía siendo válido.
+   */
+  get logoUpdatedAt(): Date | null {
+    return this.props.logoUpdatedAt ?? null;
   }
 
   // ─── Comportamiento de dominio ─────────────────────────────────────────
@@ -213,6 +256,34 @@ export class ClienteEntity extends BaseEntity<ClienteProps> {
    */
   configurarCsat(habilitado: boolean): void {
     this.props.csatHabilitado = habilitado;
+    this.touch();
+  }
+
+  /**
+   * Configura o reemplaza el logo del cliente. Las 3 props se setean
+   * JUNTAS (design.md D4): nunca queda una mezcla de logo nuevo/viejo entre
+   * `logoStorageKey`, `logoMimeType` y `logoUpdatedAt`.
+   *
+   * El use case orquestador (`ConfigurarLogoCliente`, WU2) es quien decide
+   * el orden de escritura contra el storage (D5); esta entidad solo
+   * garantiza la consistencia del trío en memoria.
+   */
+  actualizarLogo(storageKey: string, mimeType: string, actualizadoEn: Date): void {
+    this.props.logoStorageKey = storageKey;
+    this.props.logoMimeType = mimeType;
+    this.props.logoUpdatedAt = actualizadoEn;
+    this.touch();
+  }
+
+  /**
+   * Quita el logo del cliente: limpia las 3 props juntas. Idempotente —
+   * quitarlo de un cliente que ya no tiene logo no lanza (regla 11 de la
+   * spec: `DELETE` sin logo es idempotente).
+   */
+  quitarLogo(): void {
+    this.props.logoStorageKey = null;
+    this.props.logoMimeType = null;
+    this.props.logoUpdatedAt = null;
     this.touch();
   }
 }
