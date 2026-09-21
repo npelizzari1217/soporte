@@ -31,6 +31,18 @@ export interface IFileStorage {
    * @param key storage_key del archivo a eliminar.
    */
   delete(key: string): Promise<void>;
+
+  /**
+   * Lee un archivo del almacenamiento por su storage_key.
+   * Devuelve `null` si el archivo no existe — nunca lanza por ausencia
+   * (simétrico con `delete()`, que también es idempotente ante ausencia).
+   *
+   * Ref design: sdd/logo-por-cliente, D-camino de lectura (WU1).
+   *
+   * @param key storage_key del archivo a leer.
+   * @returns   el Buffer del archivo, o `null` si no existe.
+   */
+  retrieve(key: string): Promise<Buffer | null>;
 }
 
 /** Token de inyección de dependencias para IFileStorage en NestJS. */

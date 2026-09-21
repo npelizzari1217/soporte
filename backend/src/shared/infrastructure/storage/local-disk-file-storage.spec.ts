@@ -15,6 +15,7 @@ vi.mock('fs', () => ({
     mkdir: vi.fn(),
     writeFile: vi.fn(),
     unlink: vi.fn(),
+    readFile: vi.fn(),
   },
 }));
 
@@ -50,6 +51,35 @@ describe('LocalDiskFileStorage', () => {
       const result = await storage.upload(key, Buffer.from('x'), 'image/png');
 
       expect(result).toBe(key);
+    });
+  });
+
+  describe('retrieve()', () => {
+    it('devuelve el Buffer del archivo existente en {baseDir}/{key}', async () => {
+      const key = 'clientes/abc-123/logo.png';
+      const buffer = Buffer.from('contenido-fake');
+      (fs.promises.readFile as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce(buffer);
+
+      const result = await storage.retrieve(key);
+
+      expect(fs.promises.readFile).toHaveBeenCalledWith(
+        expect.stringContaining(key.split('/').join(path.sep)),
+      );
+      expect(result).toBe(buffer);
+    });
+
+    it('devuelve null si el archivo no existe (ENOENT), sin lanzar', async () => {
+      const enoent = Object.assign(new Error('no existe'), { code: 'ENOENT' });
+      (fs.promises.readFile as unknown as ReturnType<typeof vi.fn>).mockRejectedValueOnce(enoent);
+
+      await expect(storage.retrieve('clientes/x/logo.png')).resolves.toBeNull();
+    });
+
+    it('propaga errores que no sean ENOENT', async () => {
+      const boom = Object.assign(new Error('disco lleno'), { code: 'EIO' });
+      (fs.promises.readFile as unknown as ReturnType<typeof vi.fn>).mockRejectedValueOnce(boom);
+
+      await expect(storage.retrieve('clientes/x/logo.png')).rejects.toThrow('disco lleno');
     });
   });
 
