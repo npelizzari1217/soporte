@@ -304,6 +304,28 @@ describe('LoginUseCase', () => {
         'cliente-1',
       );
     });
+
+    it('propaga cliente_logo_v desde resolverScope (sdd/logo-por-cliente, WU3)', async () => {
+      usuarioRepo.findByEmail.mockResolvedValue(makeUsuario());
+      const membresia = makeMembresiaResuelta({ clienteId: 'cliente-1', rolCodigo: 'TECNICO' });
+      membresiaRepo.findActivasByUsuario.mockResolvedValue([membresia]);
+      const cliente = makeCliente({ nombre: 'Acme SA' });
+      const logoUpdatedAt = new Date('2026-05-01T00:00:00.000Z');
+      cliente.actualizarLogo('clientes/cliente-1/logo.png', 'image/png', logoUpdatedAt);
+      clienteRepo.findById.mockResolvedValue(cliente);
+      membresiaRepo.findActivaByUsuarioYCliente.mockResolvedValue(membresia);
+      permisosRepo.findByUsuarioYCliente.mockResolvedValue([]);
+
+      let captured: JwtPayload | undefined;
+      tokenService.signJwt.mockImplementation((p) => {
+        captured = p;
+        return 'jwt.token';
+      });
+
+      await useCase.execute({ email: 'user@test.com', password: 'secret' });
+
+      expect(captured!.cliente_logo_v).toBe(logoUpdatedAt.getTime());
+    });
   });
 
   // ─── T3.5 — normal, >1 membresías (R4) ─────────────────────────────────────

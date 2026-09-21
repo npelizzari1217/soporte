@@ -61,6 +61,7 @@ function usuarioDe(clienteId: string | null, isGlobalAdmin = false): JwtPayload 
     modulos: [],
     nombre: 'Test',
     apellido: 'User',
+    cliente_logo_v: null,
   };
 }
 

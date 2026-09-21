@@ -58,15 +58,15 @@ Chain strategy: stacked-to-main
 
 ## WU3: Propagación y sidebar
 
-- [ ] 3.1 [RED] Test de `resolver-scope.spec.ts`: `ScopeResuelto` incluye `clienteLogoVersion` (epoch ms de `logoUpdatedAt`, `null` sin logo), sin queries nuevas.
-- [ ] 3.2 [GREEN] Agregar `clienteLogoVersion` a `ScopeResuelto` en `backend/src/auth/application/use-cases/resolver-scope.ts`.
-- [ ] 3.3 [GREEN] Agregar `cliente_logo_v: number | null` a `JwtPayload` en `backend/src/auth/domain/ports/i-token.service.ts` SIN bumpear `VERSION_PAYLOAD_JWT` (queda en 2); propagarlo desde `backend/src/auth/application/use-cases/login.use-case.ts`, `switch-tenant.use-case.ts` y `refresh-token.use-case.ts`. Actualizar `backend/src/auth/test-helpers/payload-de-test.ts`.
-- [ ] 3.4 [RED] Test del proxy BFF: una respuesta binaria (PNG) atraviesa `frontend/src/app/api/[...path]/route.ts` byte a byte, sin corromperse.
-- [ ] 3.5 [GREEN] Arreglar `route.ts`: usar `arrayBuffer()` en vez de `text()` para respuestas no-JSON; reenviar `x-content-type-options` y `cache-control`. Revisar y ajustar aserciones existentes de tests del proxy que ese cambio mueva (incluidas descargas CSV).
-- [ ] 3.6 [RED] Test de `app-sidebar.test.tsx`: con `cliente_logo_v` renderiza `<img src="/api/clientes/{id}/logo?v={cliente_logo_v}">`; sin el campo, con error de carga (401/404), o con sesión MASTER (`cliente_id: null`) renderiza `Building2` sin imagen rota ni hueco de layout; cambiar de cliente actualiza el logo sin recargar.
-- [ ] 3.7 [GREEN] Espejar `cliente_logo_v` en `frontend/src/shared/api/types.ts` (`JwtPayload` + normalización defensiva a `null` en `decodeJwtPayload`, igual que `modulos`/`nombre`).
-- [ ] 3.8 [GREEN] Agregar el bloque de marca —NUEVO, no existía antes de este cambio— a `frontend/src/components/shell/app-sidebar.tsx`, entre el botón de colapsar y el bloque de identidad: contenedor cuadrado fijo con `object-contain`, mismo tamaño colapsado/expandido, fallback a `Building2`.
-- [ ] 3.9 Correr `pnpm typecheck`, `pnpm lint`, `pnpm test` en frontend y backend; confirmar 403/401 de aislamiento con Postgres real.
+- [x] 3.1 [RED] Test de `resolver-scope.spec.ts`: `ScopeResuelto` incluye `clienteLogoVersion` (epoch ms de `logoUpdatedAt`, `null` sin logo), sin queries nuevas.
+- [x] 3.2 [GREEN] Agregar `clienteLogoVersion` a `ScopeResuelto` en `backend/src/auth/application/use-cases/resolver-scope.ts`.
+- [x] 3.3 [GREEN] Agregar `cliente_logo_v: number | null` a `JwtPayload` en `backend/src/auth/domain/ports/i-token.service.ts` SIN bumpear `VERSION_PAYLOAD_JWT` (queda en 2); propagarlo desde `backend/src/auth/application/use-cases/login.use-case.ts`, `switch-tenant.use-case.ts` y `refresh-token.use-case.ts`. Actualizar `backend/src/auth/test-helpers/payload-de-test.ts`.
+- [x] 3.4 [RED] Test del proxy BFF: una respuesta binaria (PNG) atraviesa `frontend/src/app/api/[...path]/route.ts` byte a byte, sin corromperse.
+- [x] 3.5 [GREEN] Arreglar `route.ts`: usar `arrayBuffer()` en vez de `text()` para respuestas no-JSON; reenviar `x-content-type-options` y `cache-control`. Revisar y ajustar aserciones existentes de tests del proxy que ese cambio mueva (incluidas descargas CSV).
+- [x] 3.6 [RED] Test de `app-sidebar.test.tsx`: con `cliente_logo_v` renderiza `<img src="/api/clientes/{id}/logo?v={cliente_logo_v}">`; sin el campo, con error de carga (401/404), o con sesión MASTER (`cliente_id: null`) renderiza `Building2` sin imagen rota ni hueco de layout; cambiar de cliente actualiza el logo sin recargar.
+- [x] 3.7 [GREEN] Espejar `cliente_logo_v` en `frontend/src/shared/api/types.ts` (`JwtPayload` + normalización defensiva a `null` en `decodeJwtPayload`, igual que `modulos`/`nombre`).
+- [x] 3.8 [GREEN] Agregar el bloque de marca —NUEVO, no existía antes de este cambio— a `frontend/src/components/shell/app-sidebar.tsx`, entre el botón de colapsar y el bloque de identidad: contenedor cuadrado fijo con `object-contain`, mismo tamaño colapsado/expandido, fallback a `Building2`.
+- [x] 3.9 Correr `pnpm typecheck`, `pnpm lint`, `pnpm test` en frontend y backend; confirmar 403/401 de aislamiento con Postgres real.
 
 ## WU4: Diálogo de carga
 

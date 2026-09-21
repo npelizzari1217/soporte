@@ -321,6 +321,29 @@ describe('RefreshTokenUseCase', () => {
       expect(captured!.nombre).toBe('Juan');
       expect(captured!.apellido).toBe('Perez');
     });
+
+    it('propaga cliente_logo_v desde resolverScope al rotar (sdd/logo-por-cliente, WU3)', async () => {
+      const oldToken = makeToken({ tokenHash, usuarioId: 'usuario-1', clienteId: 'cliente-1' });
+      refreshTokenRepo.findByHash.mockResolvedValue(oldToken);
+      usuarioRepo.findById.mockResolvedValue(makeUsuario({ id: 'usuario-1' }));
+      const cliente = makeCliente();
+      const logoUpdatedAt = new Date('2026-07-04T00:00:00.000Z');
+      cliente.actualizarLogo('clientes/cliente-1/logo.png', 'image/png', logoUpdatedAt);
+      clienteRepo.findById.mockResolvedValue(cliente);
+      const membresia = makeMembresiaResuelta({ clienteId: 'cliente-1' });
+      membresiaRepo.findActivaByUsuarioYCliente.mockResolvedValue(membresia);
+      membresiaRepo.findActivasByUsuario.mockResolvedValue([membresia]);
+
+      let captured: JwtPayload | undefined;
+      tokenService.signJwt.mockImplementation((p) => {
+        captured = p;
+        return 'new.jwt.token';
+      });
+
+      await useCase.execute({ rawToken });
+
+      expect(captured!.cliente_logo_v).toBe(logoUpdatedAt.getTime());
+    });
   });
 
   describe('Refresh feliz (root, clienteId embebido null → token master)', () => {

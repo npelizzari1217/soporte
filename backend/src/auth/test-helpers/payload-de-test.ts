@@ -28,6 +28,7 @@ export function payloadDeTest(overrides: Partial<JwtPayload> = {}): JwtPayload {
     modulos: [],
     nombre: 'Test',
     apellido: 'Usuario',
+    cliente_logo_v: null,
     ...overrides,
   };
 }

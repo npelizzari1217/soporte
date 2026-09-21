@@ -1,8 +1,8 @@
 # Apply Progress: Logo por cliente en el sidebar
 
-> Cubre WU1 (Storage y persistencia) y WU2 (Endpoints). WU3-WU4 quedan
-> pendientes para batches posteriores de `sdd-apply`, en orden
-> (`stacked-to-main`).
+> Cubre WU1 (Storage y persistencia), WU2 (Endpoints) y WU3 (Propagación y
+> sidebar). WU4 queda pendiente para el batch siguiente de `sdd-apply`, en
+> orden (`stacked-to-main`).
 
 ## Mode
 
@@ -129,27 +129,109 @@ credencial ROOT de prueba) — el flujo HTTP completo con autenticación real
 queda para que `sdd-verify` lo confirme con sus propios medios, o para un
 seed de usuario ROOT de test si el dueño del repo lo autoriza.
 
+## Completed Tasks — WU3
+
+- [x] 3.1 [RED] Test en `resolver-scope.spec.ts`: `ScopeResuelto` incluye `clienteLogoVersion` (epoch ms de `logoUpdatedAt`, `null` sin logo), sin queries nuevas.
+- [x] 3.2 [GREEN] `clienteLogoVersion` agregado a `ScopeResuelto` en `resolver-scope.ts`, leído del `cliente` ya resuelto por `clienteRepo.findById` (cero queries nuevas).
+- [x] 3.3 [GREEN] `cliente_logo_v: number | null` agregado a `JwtPayload` (`i-token.service.ts`) SIN bumpear `VERSION_PAYLOAD_JWT` (queda en 2); propagado desde `LoginUseCase`, `SwitchTenantUseCase` y `RefreshTokenUseCase`. `payloadDeTest()` actualizado.
+- [x] 3.4 [RED] Test en `route.test.ts`: una respuesta binaria (PNG, con bytes deliberadamente inválidos como UTF-8) atraviesa el proxy BFF byte a byte.
+- [x] 3.5 [GREEN] `route.ts`: `arrayBuffer()` en vez de `text()` para respuestas no-JSON; reenvía `x-content-type-options` y `cache-control`. Suite completa del proxy revisada (9/9 verde, incluida la aserción preexistente de descarga CSV — sin ajustes necesarios: `res.text()` sobre un `NextResponse` construido con `ArrayBuffer` decodifica igual).
+- [x] 3.6 [RED] Test en `app-sidebar.test.tsx`: con `cliente_logo_v` renderiza `<img src="/api/clientes/{id}/logo?v=...">`; sin el campo, con error de carga (`fireEvent.error`), o con sesión MASTER cae a `Building2` sin imagen rota ni hueco de layout; cambiar de cliente (rerender) actualiza el `src` sin recargar.
+- [x] 3.7 [GREEN] `cliente_logo_v` espejado en `types.ts` (`JwtPayload` + normalización defensiva a `null` en `decodeJwtPayload`). Test dedicado nuevo: `types.test.ts`.
+- [x] 3.8 [GREEN] Bloque de marca nuevo (`SidebarBrand`) en `app-sidebar.tsx`, entre el botón de colapsar y el bloque de identidad: contenedor cuadrado fijo `h-9 w-9` con `object-contain`, mismo tamaño colapsado/expandido (igual que el círculo de iniciales), fallback `Building2` con `data-testid="sidebar-brand-fallback"`.
+- [x] 3.9 `pnpm typecheck`, `pnpm lint`, `pnpm test` verdes en frontend Y backend (ver Work Unit Evidence). Aislamiento 403/401 confirmado — ver nota de alcance abajo.
+
+## TDD Cycle Evidence (WU3)
+
+Tareas 3.1/3.4/3.6 llevan `[RED]` explícito en `tasks.md`; 3.3 y 3.7 NO
+(marcadas `[GREEN]` sin contraparte `[RED]` en el propio `tasks.md`) — se
+agregaron tests de todos modos, escritos después de la implementación,
+consistente con lo que el artefacto pide.
+
+| Tarea | RED — comando y resultado observado | GREEN — comando y resultado observado |
+|---|---|---|
+| 3.1/3.2 `clienteLogoVersion` | `pnpm vitest run src/auth/application/use-cases/resolver-scope.spec.ts` → 9 tests fallan: `expected undefined to be <epoch>/null` | mismo comando → 20/20 tests verdes |
+| 3.4/3.5 proxy binario | `pnpm vitest run "src/app/api/[...path]/route.test.ts"` → 1 test falla: `expected null to be 'nosniff'` (headers no reenviados; ni se llegaba a comparar bytes) | mismo comando → 9/9 tests verdes, incluida la descarga CSV preexistente |
+| 3.6/3.8 bloque de marca | `pnpm vitest run src/components/shell/app-sidebar.test.tsx` → 6 tests nuevos fallan: `<img>`/`data-testid="sidebar-brand-fallback"` no existían | mismo comando → 18/18 tests verdes |
+
+## Work Unit Evidence (WU3)
+
+| Evidencia | Valor |
+|---|---|
+| Comando de test focalizado y resultado exacto | `pnpm vitest run backend/src/auth frontend/src/components/shell frontend/src/app/api` (desde cada paquete) → backend `src/auth`: **46 test files passed, 659 tests passed**; frontend `src/components/shell/app-sidebar.test.tsx`: **18/18**; frontend `src/app/api/[...path]/route.test.ts`: **9/9**; frontend `src/shared/api/types.test.ts` (nuevo): **3/3** |
+| Harness de runtime / escenario y resultado exacto | Login manual en navegador NO se ejecutó (sin credencial ROOT de prueba disponible, mismo bloqueo que WU2). En su lugar: (a) suite COMPLETA del backend contra Postgres real — `pnpm test` en `backend/` → **437 test files passed, 5189 tests passed** (incluye `prisma-auth.integration.spec.ts`, `prisma-auth-repos.integration.spec.ts` y los e2e de `clientes`/`sectores`, todos contra `soporte-postgres-master`); (b) suite COMPLETA del frontend — `pnpm test` en `frontend/` → **189 test files passed, 1426 tests passed**. El aislamiento 403/401 en sí NO cambió en WU3 (`resolverScope`/`JwtAuthGuard`/`GlobalAdminGuard` no se tocaron — WU3 solo agrega un campo derivado de datos YA autorizados); su cobertura de regresión es la de WU1/WU2 (`cliente-logo.controller.spec.ts`, 10/10) más la re-confirmación de que sigue en verde contra Postgres real |
+| Rollback boundary | Revert de este batch: `git revert` sobre los 4 commits de WU3 (`resolverScope`; propagación JWT; proxy binario; sidebar) deja el árbol en el estado de fin de WU2 — `cliente_logo_v` desaparece del JWT y del sidebar, `ClienteLogoController` (WU2) sigue intacto y sirviendo el binario igual, solo que el proxy vuelve a corromperlo (regresión pre-existente, no introducida por el revert) |
+
+## Deviations from Design (WU3)
+
+1. **`cliente_logo_v` queda `?:` (opcional) en el `JwtPayload` del
+   frontend, NO requerido como en el backend.** `design.md`/`tasks.md`
+   (3.7) piden "mismo criterio que `modulos`/`nombre`" — esos DOS campos
+   son requeridos en la interfaz. Verificado antes de implementar: el
+   frontend tiene ~15-20 archivos con fixtures de `JwtPayload` construidos
+   a mano (`rg -l "is_global_admin:" frontend/src` → 36 archivos en
+   total, ~15 con el objeto completo), SIN una factory única como
+   `payloadDeTest()` del backend. Forzar el campo a requerido rompía el
+   typecheck de fixtures de features que no tienen nada que ver con el
+   logo (tickets, kb, ciclos, etc.) — muy por fuera del alcance de WU3 y
+   del presupuesto de revisión. Se declaró opcional; el comportamiento
+   (normalización a `null` en `decodeJwtPayload`, mismo `?? null` que
+   `modulos`/`nombre`) es idéntico. Documentado con el razonamiento
+   completo en el JSDoc de `JwtPayload` en `types.ts`.
+2. **Arrastre mecánico de compilación fuera de `auth/`.** Agregar
+   `cliente_logo_v: number | null` (requerido) al `JwtPayload` del
+   backend rompió el typecheck de dos specs de OTROS módulos que
+   construyen el payload a mano en vez de usar `payloadDeTest()`:
+   `cliente-logo.controller.spec.ts` (WU2) y
+   `movimientos-insumo.controller.spec.ts` (preexistente, ajeno a este
+   ciclo). Se les agregó `cliente_logo_v: null` — una línea cada uno,
+   sin tocar su lógica de test.
+3. **Ningún ajuste de aserciones fue necesario en el proxy pese a la
+   advertencia del prompt.** El cambio de `text()` a `arrayBuffer()`
+   pasa igual la suite completa de `route.test.ts` (9/9, incluida la
+   descarga CSV) sin modificar ninguna aserción existente: `res.text()`
+   sobre un `NextResponse` construido con un `ArrayBuffer` de bytes ASCII
+   decodifica igual que antes. Se revisó explícitamente (no se asumió) y
+   no hizo falta tocar ninguna aserción preexistente.
+
+## Issues Found (WU3)
+
+Ninguno de código. Mismo bloqueo ambiental que WU2 (sin credencial ROOT de
+test para un round-trip autenticado end-to-end) — no se repite la
+investigación, ver Issues Found de WU2 arriba.
+
 ## Remaining Tasks
 
-- [ ] WU3: Propagación y sidebar
 - [ ] WU4: Diálogo de carga
 
 ## Workload / PR Boundary
 
 - Mode: chained PR slice (`stacked-to-main`)
-- Current work unit: WU2 — Endpoints
-- Boundary: empieza en `feat/logo-por-cliente-endpoints` (desde
-  `feat/logo-por-cliente-storage`, WU1 ya verificada), termina con las 3
-  rutas de `ClienteLogoController` funcionando de punta a punta contra
-  Postgres real (salvo el round-trip autenticado, ver arriba). WU3 agrega
-  la propagación por JWT y el consumo en el sidebar.
-- Estimated review budget impact: ~380 líneas estimadas en tasks.md (la
-  unidad más ajustada del forecast); el diff real de código+tests de WU2
-  queda repartido en 4 commits de work-unit-commits, cada uno bien por
-  debajo del presupuesto de 400 líneas por sí solo.
+- Current work unit: WU3 — Propagación y sidebar
+- Boundary: empieza en `feat/logo-por-cliente-propagacion` (desde
+  `feat/logo-por-cliente-endpoints`, WU2 ya verificada), termina con
+  `cliente_logo_v` viajando en el JWT desde login/switch/refresh, el
+  proxy BFF pasando binarios sin corromperlos, y el sidebar mostrando el
+  logo con fallback a `Building2`. WU4 agrega el diálogo de carga en
+  `Admin > Clientes`.
+- Estimated review budget impact: `tasks.md` estimó ~330 líneas para
+  WU3; el diff real (código + tests) es **411 líneas cambiadas**
+  (396 inserciones + 15 eliminaciones, `git diff --numstat` contra la
+  base de WU2), **11 líneas por encima del presupuesto de 400** si se
+  revisa como un único PR. Repartido en los 4 commits de
+  work-unit-commits ya creados, cada uno individualmente bien por debajo
+  de 400 (90 / 78 / 53 / 190 líneas cambiadas respectivamente) — la
+  sobre-estimación vino de los dos puntos sensibles marcados como
+  "trabajo real" en el prompt de lanzamiento (arreglo del proxy con su
+  propio test de round-trip binario, y el bloque de marca nuevo con su
+  cobertura de 6 escenarios) más 6 tests de propagación agregados en
+  `auth/` que no estaban explícitamente desglosados en `tasks.md`.
+  Recomendación: `size:exception` para el PR de WU3 si se revisa de
+  punta a punta, o revisar por los 4 commits naturales si se prefiere
+  mantener cada revisión bajo 200 líneas.
 
 ## Status
 
-9/9 tareas de WU1 + 8/8 tareas de WU2 completas (17/34 del ciclo). Ready
-for next batch (WU3) — no ready for verify todavía, porque el ciclo
-completo (WU1-WU4) sigue en curso.
+9/9 tareas de WU1 + 8/8 tareas de WU2 + 9/9 tareas de WU3 completas
+(26/34 del ciclo). Ready for next batch (WU4) — no ready for verify
+todavía, porque el ciclo completo (WU1-WU4) sigue en curso.

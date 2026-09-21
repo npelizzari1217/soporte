@@ -41,6 +41,14 @@ export interface ScopeResuelto {
    * `usuario_cliente_modulos`). Sin duplicados.
    */
   modulos: string[];
+  /**
+   * Epoch ms de `Cliente.logoUpdatedAt` (sdd/logo-por-cliente, design D3),
+   * `null` si el cliente no tiene logo cargado o si el scope es el token
+   * MASTER (`clienteId === null`, sin cliente al que referirse). Se lee del
+   * MISMO `cliente` ya resuelto por `clienteRepo.findById` para autorizar —
+   * cero queries nuevas.
+   */
+  clienteLogoVersion: number | null;
 }
 
 /**
@@ -112,6 +120,7 @@ export async function resolverScope(
       rol: null,
       permisos,
       modulos: derivarModulos(permisos),
+      clienteLogoVersion: null,
     });
   }
 
@@ -145,5 +154,6 @@ export async function resolverScope(
     rol: membresia?.rolCodigo ?? null,
     permisos,
     modulos: derivarModulos(permisos),
+    clienteLogoVersion: cliente.logoUpdatedAt?.getTime() ?? null,
   });
 }

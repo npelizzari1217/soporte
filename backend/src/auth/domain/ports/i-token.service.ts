@@ -43,6 +43,13 @@ export const VERSION_PAYLOAD_JWT = 2;
  *   Alimentan el bloque de usuario del sidebar (front). Default `''` en
  *   SwitchTenantUseCase para tokens emitidos antes de este campo (ventana de
  *   rollout) — se repueblan solos en el próximo login.
+ * - cliente_logo_v: epoch ms de `Cliente.logoUpdatedAt` (sdd/logo-por-cliente,
+ *   design D3), `null` = cliente sin logo o token MASTER. Viene de
+ *   `resolverScope.clienteLogoVersion` — NO amerita bump de `v` (ADR-P7): es
+ *   un campo aditivo, no un cambio de forma incompatible (ver
+ *   `VERSION_PAYLOAD_JWT`). Un token emitido ANTES de este campo simplemente
+ *   no lo trae; el frontend lo normaliza a `null` (mismo criterio que
+ *   `modulos`/`nombre`) sin invalidar la sesión.
  *
  * Los guards verifican `rol`/`permisos`/`is_global_admin` contra el JWT sin
  * query a DB (R11, R13, R14).
@@ -59,6 +66,7 @@ export interface JwtPayload {
   modulos: string[];
   nombre: string;
   apellido: string;
+  cliente_logo_v: number | null;
 }
 
 /**

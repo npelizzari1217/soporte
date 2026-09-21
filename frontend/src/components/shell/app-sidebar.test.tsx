@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AppSidebar } from "./app-sidebar";
 import { SessionContext } from "@/shared/providers/session-provider";
@@ -9,12 +9,16 @@ vi.mock("next/navigation", () => ({
   usePathname: () => "/tickets",
 }));
 
-function renderWithUser(user: JwtPayload | null) {
-  return render(
+function sessionTree(user: JwtPayload | null) {
+  return (
     <SessionContext.Provider value={{ user, isLoading: false, setUser: () => {} }}>
       <AppSidebar />
-    </SessionContext.Provider>,
+    </SessionContext.Provider>
   );
+}
+
+function renderWithUser(user: JwtPayload | null) {
+  return render(sessionTree(user));
 }
 
 const usuario: JwtPayload = {
@@ -140,6 +144,58 @@ describe("AppSidebar", () => {
     it("sin usuario (sesión cargando) → no rompe, no renderiza el bloque de identidad", () => {
       renderWithUser(null);
       expect(screen.queryByText("Juan Pérez")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("Bloque de marca (logo del cliente, sdd/logo-por-cliente WU3)", () => {
+    it("con cliente_logo_v → renderiza <img> apuntando al proxy con ?v=<version>", () => {
+      const { container } = renderWithUser({ ...usuario, cliente_id: "c1", cliente_logo_v: 1700000000000 });
+      const img = container.querySelector("img");
+      expect(img).toBeInTheDocument();
+      expect(img).toHaveAttribute("src", "/api/clientes/c1/logo?v=1700000000000");
+      expect(screen.queryByTestId("sidebar-brand-fallback")).not.toBeInTheDocument();
+    });
+
+    it("sin el campo cliente_logo_v (token pre-rollout) → Building2, sin <img>", () => {
+      const { container } = renderWithUser(usuario);
+      expect(container.querySelector("img")).not.toBeInTheDocument();
+      expect(screen.getByTestId("sidebar-brand-fallback")).toBeInTheDocument();
+    });
+
+    it("con cliente_logo_v pero la carga del binario falla (401/404) → cae a Building2, sin imagen rota", () => {
+      const { container } = renderWithUser({ ...usuario, cliente_id: "c1", cliente_logo_v: 1700000000000 });
+      const img = container.querySelector("img");
+      expect(img).toBeInTheDocument();
+
+      fireEvent.error(img!);
+
+      expect(container.querySelector("img")).not.toBeInTheDocument();
+      expect(screen.getByTestId("sidebar-brand-fallback")).toBeInTheDocument();
+    });
+
+    it("sesión MASTER (cliente_id: null) → Building2, aunque cliente_logo_v viniera seteado", () => {
+      const { container } = renderWithUser({ ...root, cliente_id: null, cliente_logo_v: 1700000000000 });
+      expect(container.querySelector("img")).not.toBeInTheDocument();
+      expect(screen.getByTestId("sidebar-brand-fallback")).toBeInTheDocument();
+    });
+
+    it("cambiar de cliente (switch, sin recargar) actualiza el <img> al logo del cliente nuevo", () => {
+      const { container, rerender } = render(sessionTree({ ...usuario, cliente_id: "c1", cliente_logo_v: 111 }));
+      expect(container.querySelector("img")).toHaveAttribute("src", "/api/clientes/c1/logo?v=111");
+
+      rerender(sessionTree({ ...usuario, cliente_id: "c2", cliente_logo_v: 222 }));
+
+      expect(container.querySelector("img")).toHaveAttribute("src", "/api/clientes/c2/logo?v=222");
+    });
+
+    it("nunca deja un hueco de layout: el contenedor del logo está presente con o sin imagen", () => {
+      const { container: sinLogo } = renderWithUser(usuario);
+      const bloqueSinLogo = sinLogo.querySelector('[data-testid="sidebar-brand"]');
+      expect(bloqueSinLogo).toBeInTheDocument();
+
+      const { container: conLogo } = renderWithUser({ ...usuario, cliente_id: "c1", cliente_logo_v: 1 });
+      const bloqueConLogo = conLogo.querySelector('[data-testid="sidebar-brand"]');
+      expect(bloqueConLogo).toBeInTheDocument();
     });
   });
 });

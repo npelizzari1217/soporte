@@ -17,14 +17,15 @@
  *
  * Spec: R-M0 Shell/layout premium.
  */
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { Building2, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSession } from "@/shared/hooks/use-session";
 import { visibleNavSections } from "@/shared/nav/nav-config";
 import { tipoUsuario } from "@/shared/auth/tipo-usuario";
+import type { JwtPayload } from "@/shared/api/types";
 
 /**
  * Iniciales para el avatar compacto (riel colapsado): primera letra de
@@ -35,6 +36,64 @@ import { tipoUsuario } from "@/shared/auth/tipo-usuario";
 function iniciales(nombre: string, apellido: string): string {
   const ini = `${nombre.charAt(0)}${apellido.charAt(0)}`.toUpperCase();
   return ini || "?";
+}
+
+/**
+ * SidebarBrand — bloque de marca del sidebar (sdd/logo-por-cliente, WU3).
+ * NUEVO: no existía antes de este cambio (design.md H5, spec regla 7).
+ *
+ * `Building2` es el fallback en TODOS los casos donde no hay un logo
+ * confiable que mostrar: sin `cliente_logo_v` (token pre-rollout o cliente
+ * sin logo), sesión MASTER (`cliente_id: null`, root sin tenant elegido —
+ * no hay cliente al que asociarle un logo), o si la carga del binario
+ * falla (401/404 incluidos). Nunca una imagen rota, nunca un hueco de
+ * layout: el contenedor cuadrado (`h-9 w-9`, mismo tamaño que el círculo de
+ * iniciales del bloque de identidad) está SIEMPRE presente,
+ * colapsado o expandido — sin condicional de ancho (design.md D6/§corte).
+ *
+ * El `key` en el `<img>` fuerza un remount al cambiar de cliente o de
+ * versión de logo: sin él, un error de carga anterior (`logoError=true`)
+ * seguiría ocultando el logo del cliente NUEVO tras un switch. El `useEffect`
+ * cumple el mismo rol para el estado de error en sí.
+ */
+function SidebarBrand({ user, collapsed }: { user: JwtPayload | null; collapsed: boolean }) {
+  const [logoError, setLogoError] = useState(false);
+  const clienteId = user?.cliente_id ?? null;
+  const logoVersion = user?.cliente_logo_v ?? null;
+  const tieneLogo = clienteId !== null && logoVersion !== null;
+
+  useEffect(() => {
+    setLogoError(false);
+  }, [clienteId, logoVersion]);
+
+  return (
+    <div
+      data-testid="sidebar-brand"
+      className={cn(
+        "flex items-center border-b border-border",
+        collapsed ? "justify-center py-3" : "gap-3 px-3 py-3",
+      )}
+    >
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
+        {tieneLogo && !logoError ? (
+          // eslint-disable-next-line @next/next/no-img-element -- binario autenticado servido por el proxy BFF (design.md D6), no un asset estático optimizable
+          <img
+            key={`${clienteId}-${logoVersion}`}
+            src={`/api/clientes/${clienteId}/logo?v=${logoVersion}`}
+            alt=""
+            className="h-full w-full object-contain"
+            onError={() => setLogoError(true)}
+          />
+        ) : (
+          <Building2
+            className="h-5 w-5 text-muted-foreground"
+            aria-hidden="true"
+            data-testid="sidebar-brand-fallback"
+          />
+        )}
+      </div>
+    </div>
+  );
 }
 
 export function AppSidebar() {
@@ -64,6 +123,8 @@ export function AppSidebar() {
           <PanelLeftClose className="h-4 w-4" aria-hidden="true" />
         )}
       </button>
+
+      <SidebarBrand user={user} collapsed={collapsed} />
 
       {user && (
         <div
