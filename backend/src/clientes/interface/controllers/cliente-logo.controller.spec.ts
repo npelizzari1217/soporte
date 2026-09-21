@@ -19,9 +19,13 @@
  */
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
+import 'reflect-metadata';
+import { GUARDS_METADATA } from '@nestjs/common/constants';
 import { ClienteLogoController } from './cliente-logo.controller';
 import { Result } from '../../../shared/domain/result';
 import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
+import { JwtAuthGuard } from '../../../auth/infrastructure/guards/jwt-auth.guard';
+import { GlobalAdminGuard } from '../../../auth/infrastructure/guards/global-admin.guard';
 import {
   ClienteNoEncontradoError,
   LogoClienteNoEncontradoError,
@@ -211,6 +215,84 @@ describe('ClienteLogoController (2.5)', () => {
       );
 
       await expect(controller.quitar(CLIENTE_A)).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  /**
+   * Backstop de tasks.md 2.5 (verify-report.md, CRITICAL 1 y 2).
+   *
+   * Los tests de arriba instancian el controller a mano y nunca pasan por
+   * `@UseGuards(...)`: borrar `GlobalAdminGuard` del `@Post`/`@Delete`, o
+   * agregarlo al `@Get`, deja TODA la suite de arriba en verde. Este bloque
+   * lee `GUARDS_METADATA` en runtime —mismo patrón que los otros 23 specs del
+   * repo que lo usan, p. ej. `movimientos-insumo.controller.spec.ts`— para
+   * fijar qué guard va en cada ruta.
+   *
+   * `?? []` es obligatorio: sin el decorador, `Reflect.getMetadata` devuelve
+   * `undefined`, y `expect(undefined).toContain(x)` PASA en el Vitest de este
+   * repo (así perdió tiempo `reset-de-contrasena-por-admin`, commit
+   * `e4c8257`). Sin el `?? []`, esta aserción no muerde.
+   */
+  describe('RBAC — metadata de guards, por ruta', () => {
+    function handlerDe(metodo: 'subir' | 'quitar' | 'ver'): (...args: unknown[]) => unknown {
+      return ClienteLogoController.prototype[metodo] as unknown as (...args: unknown[]) => unknown;
+    }
+
+    it('subir (POST) declara JwtAuthGuard y GlobalAdminGuard — exclusivo ROOT', () => {
+      const guards = (Reflect.getMetadata(GUARDS_METADATA, handlerDe('subir')) ?? []) as unknown[];
+
+      expect(guards).toEqual([JwtAuthGuard, GlobalAdminGuard]);
+    });
+
+    it('quitar (DELETE) declara JwtAuthGuard y GlobalAdminGuard — exclusivo ROOT', () => {
+      const guards = (Reflect.getMetadata(GUARDS_METADATA, handlerDe('quitar')) ?? []) as unknown[];
+
+      expect(guards).toEqual([JwtAuthGuard, GlobalAdminGuard]);
+    });
+
+    /**
+     * El caso invertido, y el que de verdad importa: si alguien agregara
+     * `GlobalAdminGuard` acá, el `GET` se volvería ROOT-only y ningún usuario
+     * del inquilino vería su propio logo (design.md, tabla "Autorización: los
+     * dos lugares"). `not.toContain` atrapa esa adición además de la
+     * ausencia de `JwtAuthGuard`.
+     */
+    it('ver (GET) declara JwtAuthGuard y NO declara GlobalAdminGuard', () => {
+      const guards = (Reflect.getMetadata(GUARDS_METADATA, handlerDe('ver')) ?? []) as unknown[];
+
+      expect(guards).toContain(JwtAuthGuard);
+      expect(guards).not.toContain(GlobalAdminGuard);
+    });
+
+    it('la clase NO declara guards a nivel de clase (design.md D1/H1)', () => {
+      const guardsDeClase = (Reflect.getMetadata(GUARDS_METADATA, ClienteLogoController) ??
+        []) as unknown[];
+
+      expect(guardsDeClase).toEqual([]);
+    });
+
+    /**
+     * La red que atrapa una ruta nueva sin ningún guard: si `subir`/`quitar`/
+     * `ver` fueran solo tres de varios métodos, un cuarto sin `@UseGuards`
+     * quedaría fuera de los asserts de arriba. Esto deriva la lista del
+     * prototipo en vez de enumerarla a mano.
+     */
+    it('ningún método del controller queda sin guards declarados', () => {
+      const metodos = Object.getOwnPropertyNames(ClienteLogoController.prototype).filter(
+        (nombre) => nombre !== 'constructor',
+      );
+
+      expect(metodos).toHaveLength(3);
+
+      const sinGuards = metodos.filter((metodo) => {
+        const guards = (Reflect.getMetadata(
+          GUARDS_METADATA,
+          handlerDe(metodo as 'subir' | 'quitar' | 'ver'),
+        ) ?? []) as unknown[];
+        return guards.length === 0;
+      });
+
+      expect(sinGuards).toEqual([]);
     });
   });
 });
