@@ -32,7 +32,9 @@ function buildFileStorageMock(overrides: Partial<IFileStorage> = {}): IFileStora
   };
 }
 
-function buildCliente(props: Partial<Parameters<typeof ClienteEntity.create>[0]> = {}): ClienteEntity {
+function buildCliente(
+  props: Partial<Parameters<typeof ClienteEntity.create>[0]> = {},
+): ClienteEntity {
   return ClienteEntity.create({
     nombre: 'ACME S.A.',
     razonSocial: null,
@@ -76,7 +78,8 @@ describe('ConfigurarLogoClienteUseCase (2.3)', () => {
     });
 
     expect(result.isOk()).toBe(true);
-    const [key, subidoBuffer, mime] = (fileStorage.upload as ReturnType<typeof vi.fn>).mock.calls[0];
+    const [key, subidoBuffer, mime] = (fileStorage.upload as ReturnType<typeof vi.fn>).mock
+      .calls[0];
     expect(key).toMatch(new RegExp(`^clientes/${cliente.id}/[0-9a-f-]{36}$`));
     expect(subidoBuffer).toBe(buffer);
     expect(mime).toBe('image/png');
@@ -134,7 +137,11 @@ describe('ConfigurarLogoClienteUseCase (2.3)', () => {
     const fileStorage = buildFileStorageMock();
     const useCase = new ConfigurarLogoClienteUseCase(clienteRepo, fileStorage);
 
-    await useCase.execute({ clienteId: cliente.id, buffer: Buffer.from('x'), mimeType: 'image/png' });
+    await useCase.execute({
+      clienteId: cliente.id,
+      buffer: Buffer.from('x'),
+      mimeType: 'image/png',
+    });
 
     expect(fileStorage.delete).not.toHaveBeenCalled();
   });

@@ -40,7 +40,12 @@ function buildController() {
     quitarLogoClienteUseCase as any,
     verLogoClienteUseCase as any,
   );
-  return { controller, configurarLogoClienteUseCase, quitarLogoClienteUseCase, verLogoClienteUseCase };
+  return {
+    controller,
+    configurarLogoClienteUseCase,
+    quitarLogoClienteUseCase,
+    verLogoClienteUseCase,
+  };
 }
 
 function usuarioDe(clienteId: string | null, isGlobalAdmin = false): JwtPayload {
@@ -79,9 +84,7 @@ describe('ClienteLogoController (2.5)', () => {
       const { controller, verLogoClienteUseCase } = buildController();
       const user = usuarioDe(CLIENTE_A);
       const buffer = Buffer.from('binario-png');
-      verLogoClienteUseCase.execute.mockResolvedValue(
-        Result.ok({ buffer, mimeType: 'image/png' }),
-      );
+      verLogoClienteUseCase.execute.mockResolvedValue(Result.ok({ buffer, mimeType: 'image/png' }));
       const res = buildResSpy();
 
       const body = await controller.ver(user, CLIENTE_A, res as any);
@@ -146,7 +149,11 @@ describe('ClienteLogoController (2.5)', () => {
         logoUpdatedAt: new Date('2026-01-01'),
       });
       configurarLogoClienteUseCase.execute.mockResolvedValue(Result.ok(cliente));
-      const file = { buffer: Buffer.from('x'), mimetype: 'image/png', size: 100 } as Express.Multer.File;
+      const file = {
+        buffer: Buffer.from('x'),
+        mimetype: 'image/png',
+        size: 100,
+      } as Express.Multer.File;
 
       const body = await controller.subir(CLIENTE_A, file);
 
@@ -175,7 +182,11 @@ describe('ClienteLogoController (2.5)', () => {
       configurarLogoClienteUseCase.execute.mockResolvedValue(
         Result.fail(new ClienteNoEncontradoError(CLIENTE_A)),
       );
-      const file = { buffer: Buffer.from('x'), mimetype: 'image/png', size: 100 } as Express.Multer.File;
+      const file = {
+        buffer: Buffer.from('x'),
+        mimetype: 'image/png',
+        size: 100,
+      } as Express.Multer.File;
 
       await expect(controller.subir(CLIENTE_A, file)).rejects.toBeInstanceOf(NotFoundException);
     });
