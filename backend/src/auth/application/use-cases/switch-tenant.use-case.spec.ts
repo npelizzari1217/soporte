@@ -206,6 +206,25 @@ describe('SwitchTenantUseCase', () => {
       expect(result.getError()).toBeInstanceOf(ClienteNoAutorizadoError);
       expect(tokenService.signJwt).not.toHaveBeenCalled();
     });
+
+    it('propaga cliente_logo_v desde resolverScope al saltar de cliente (sdd/logo-por-cliente, WU3)', async () => {
+      const actor = makeActorPayload({ is_global_admin: true });
+      const cliente = makeCliente('Beta SA');
+      const logoUpdatedAt = new Date('2026-06-15T00:00:00.000Z');
+      cliente.actualizarLogo('clientes/cliente-2/logo.png', 'image/png', logoUpdatedAt);
+      clienteRepo.findById.mockResolvedValue(cliente);
+      membresiaRepo.findActivaByUsuarioYCliente.mockResolvedValue(makeMembresiaResuelta());
+
+      let captured: JwtPayload | undefined;
+      tokenService.signJwt.mockImplementation((p) => {
+        captured = p;
+        return 'new.access.token';
+      });
+
+      await useCase.execute({ actor, clienteId: 'cliente-2' });
+
+      expect(captured!.cliente_logo_v).toBe(logoUpdatedAt.getTime());
+    });
   });
 
   describe('Normal → clienteId DEBE tener membresía activa', () => {

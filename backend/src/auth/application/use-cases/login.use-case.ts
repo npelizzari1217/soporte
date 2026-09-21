@@ -183,6 +183,7 @@ export class LoginUseCase {
       // UsuarioEntity ya está cargada en este flujo, sin query extra.
       nombre: usuario.nombre,
       apellido: usuario.apellido,
+      cliente_logo_v: scope.clienteLogoVersion,
     };
     const accessToken = this.tokenService.signJwt(payload);
 

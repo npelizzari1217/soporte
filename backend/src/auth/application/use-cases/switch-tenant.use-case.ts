@@ -124,6 +124,7 @@ export class SwitchTenantUseCase {
       // traen (ver docstring de la clase).
       nombre: dto.actor.nombre ?? '',
       apellido: dto.actor.apellido ?? '',
+      cliente_logo_v: scope.clienteLogoVersion,
     };
     const accessToken = this.tokenService.signJwt(payload);
 

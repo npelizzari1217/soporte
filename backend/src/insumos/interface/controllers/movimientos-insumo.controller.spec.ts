@@ -36,6 +36,7 @@ function actor(overrides: Partial<JwtPayload> = {}): JwtPayload {
     modulos: ['INSUMOS'],
     nombre: 'Ana',
     apellido: 'Técnica',
+    cliente_logo_v: null,
     ...overrides,
   };
 }

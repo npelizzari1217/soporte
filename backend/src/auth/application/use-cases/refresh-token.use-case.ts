@@ -140,6 +140,7 @@ export class RefreshTokenUseCase {
       // query extra dedicada a esto.
       nombre: usuario.nombre,
       apellido: usuario.apellido,
+      cliente_logo_v: scope.clienteLogoVersion,
     };
     const accessToken = this.tokenService.signJwt(payload);
 
