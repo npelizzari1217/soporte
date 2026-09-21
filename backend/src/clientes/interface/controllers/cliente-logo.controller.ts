@@ -43,6 +43,7 @@ import {
   Param,
   Post,
   Res,
+  StreamableFile,
   UploadedFile,
   UseGuards,
   UseInterceptors,
@@ -159,7 +160,44 @@ export class ClienteLogoController {
    * su propio `cliente_id`. Responde con el `Content-Type` almacenado,
    * `X-Content-Type-Options: nosniff` y `Content-Disposition: inline`
    * (spec, regla 5) — nunca expone la storage key ni una ruta de filesystem.
-   * @returns 200 + el binario del logo
+   *
+   * BUG DE PRODUCCIÓN CORREGIDO ACÁ (fix/logo-streamable-file): esta versión
+   * devolvía un `Buffer` desnudo con `@Res({ passthrough: true })`. Con
+   * `passthrough: true`, Nest SIGUE serializando el valor de retorno del
+   * handler — no delega el control total de la respuesta al `res` inyectado.
+   * Un `Buffer` es un objeto para esa serialización, así que
+   * `ExpressAdapter.reply()` termina llamando `res.json(buffer)`, que lo
+   * convierte en el string `{"type":"Buffer","data":[...]}` y le pega
+   * `; charset=utf-8` al `Content-Type` ya seteado — medido contra
+   * producción: 70356 bytes servidos vs. 20370 en disco, arrancando con
+   * `7b2274797065223a` (`{"type":` en ASCII) en vez de la firma PNG
+   * `89504e470d0a1a0a`. El navegador nunca lo decodifica como imagen: el
+   * `<img>` dispara `onError` y el sidebar cae al ícono genérico,
+   * indistinguible de "no hay logo".
+   *
+   * El error de origen fue copiar el precedente de los exports CSV
+   * (`equipos.controller.ts:281`, `reparaciones-controller:255`,
+   * `tickets.controller.ts:327`, `compras.controller.ts:743`), que sí
+   * funcionan con `@Res({ passthrough: true })` — pero esos handlers
+   * devuelven `Promise<string>`. Un string se envía tal cual
+   * (`res.send(String(body))`); un `Buffer` no: `isObject(buffer)` es
+   * verdadero, así que cae por la rama `res.json(...)`. El patrón era
+   * correcto para texto y equivocado para binario.
+   *
+   * EL FIX: envolver el buffer en `StreamableFile` (`@nestjs/common`) —
+   * primer uso en este repo. Con un `StreamableFile`, `ExpressAdapter.reply()`
+   * toma la rama de streaming (`body instanceof StreamableFile`) ANTES de
+   * llegar a `res.json`, y hace `stream.pipe(response)`: bytes crudos, sin
+   * pasar por JSON. Los headers que este método setea a mano con
+   * `res.setHeader(...)` (Content-Type/nosniff/inline) se escriben en el
+   * `res` REAL antes del `return`, y `applyStreamHeaders()` de Nest sólo
+   * completa los que falten (`setHeaderIfNotExists`, ver
+   * `express-adapter.js`) — no los pisa. Por eso el orden de este método NO
+   * cambia: setear headers primero, `return new StreamableFile(buffer)` al
+   * final. Nunca devolver un `Buffer`/`Uint8Array` binario desnudo con
+   * `@Res({ passthrough: true })`: para servir bytes, siempre
+   * `StreamableFile`.
+   * @returns 200 + el binario del logo, servido como stream (no JSON)
    * @throws 403 ForbiddenException si el actor no es ROOT ni dueño del cliente
    * @throws 404 NotFoundException si el cliente no existe o no tiene logo
    */
@@ -169,7 +207,7 @@ export class ClienteLogoController {
     @CurrentUser() user: JwtPayload,
     @Param('id') id: string,
     @Res({ passthrough: true }) res: RespuestaConHeaders,
-  ): Promise<Buffer> {
+  ): Promise<StreamableFile> {
     if (!user.is_global_admin && user.cliente_id !== id) {
       throw new ForbiddenException('No tiene acceso al logo de este cliente.');
     }
@@ -183,6 +221,6 @@ export class ClienteLogoController {
     res.setHeader('Content-Type', mimeType);
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Content-Disposition', 'inline');
-    return buffer;
+    return new StreamableFile(buffer);
   }
 }

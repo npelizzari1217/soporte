@@ -17,7 +17,7 @@
  * (`global-admin.guard.spec.ts`, `jwt-auth.guard.spec.ts`). Este spec cubre
  * el código nuevo: el `if` inline del `GET`.
  */
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException, StreamableFile } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
 import 'reflect-metadata';
 import { GUARDS_METADATA } from '@nestjs/common/constants';
@@ -73,6 +73,20 @@ function buildResSpy() {
   return { setHeader: vi.fn() };
 }
 
+/**
+ * Drena el stream interno de un `StreamableFile` a un `Buffer` — desde el
+ * fix fix/logo-streamable-file, `ver()` ya no devuelve el `Buffer` a secas
+ * (ver docstring del método: un `Buffer` con `@Res({ passthrough: true })`
+ * se serializa a JSON en vez de mandar los bytes crudos).
+ */
+async function leerStreamable(streamable: StreamableFile): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of streamable.getStream()) {
+    chunks.push(chunk as Buffer);
+  }
+  return Buffer.concat(chunks);
+}
+
 describe('ClienteLogoController (2.5)', () => {
   describe('GET /clientes/:id/logo — chequeo inline de aislamiento', () => {
     it('usuario del cliente A pide el logo del cliente B → 403, sin invocar el use case', async () => {
@@ -94,7 +108,8 @@ describe('ClienteLogoController (2.5)', () => {
 
       const body = await controller.ver(user, CLIENTE_A, res as any);
 
-      expect(body).toBe(buffer);
+      expect(body).toBeInstanceOf(StreamableFile);
+      expect(await leerStreamable(body)).toEqual(buffer);
       expect(verLogoClienteUseCase.execute).toHaveBeenCalledWith(CLIENTE_A);
       expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'image/png');
       expect(res.setHeader).toHaveBeenCalledWith('X-Content-Type-Options', 'nosniff');
@@ -111,7 +126,8 @@ describe('ClienteLogoController (2.5)', () => {
 
       const body = await controller.ver(root, CLIENTE_B, buildResSpy() as any);
 
-      expect(body).toBe(buffer);
+      expect(body).toBeInstanceOf(StreamableFile);
+      expect(await leerStreamable(body)).toEqual(buffer);
       expect(verLogoClienteUseCase.execute).toHaveBeenCalledWith(CLIENTE_B);
     });
 
