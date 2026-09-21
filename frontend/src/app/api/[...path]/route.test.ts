@@ -155,6 +155,38 @@ describe("/api/[...path] generic BFF proxy", () => {
     expect(res.status).toBe(204);
   });
 
+  it("GET: respuesta binaria (PNG) atraviesa el proxy byte a byte, sin corromperse (sdd/logo-por-cliente, WU3)", async () => {
+    // Bytes deliberadamente inválidos como UTF-8 (firma PNG + JPEG + 0xFF/0xFE
+    // sueltos): si el proxy decodifica con `text()` y re-serializa, estos
+    // bytes cambian. `arrayBuffer()` los preserva exactos.
+    const pngBytes = new Uint8Array([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0xff, 0xd8, 0xff, 0xe0, 0x00, 0x01, 0xfe, 0x80,
+    ]);
+    server.use(
+      http.get(`${BACKEND}/clientes/c1/logo`, () =>
+        new HttpResponse(pngBytes, {
+          headers: {
+            "content-type": "image/png",
+            "x-content-type-options": "nosniff",
+            "cache-control": "no-store",
+          },
+        }),
+      ),
+    );
+
+    const req = new NextRequest("http://localhost/api/clientes/c1/logo?v=123", {
+      headers: { cookie: "at=token123" },
+    });
+    const res = await GET(req, { params: Promise.resolve({ path: ["clientes", "c1", "logo"] }) });
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("image/png");
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    const bytesRecibidos = new Uint8Array(await res.arrayBuffer());
+    expect(Array.from(bytesRecibidos)).toEqual(Array.from(pngBytes));
+  });
+
   it("GET: descarga CSV → propaga el cuerpo Y el Content-Disposition (el front saca el nombre de ahí)", async () => {
     server.use(
       http.get(

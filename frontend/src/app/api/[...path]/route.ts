@@ -24,8 +24,11 @@ import { cookieName, COOKIE_AT } from "@/shared/auth/cookies";
  * - Response passthrough: 204 short-circuits (no JSON parse attempt, mirrors
  *   `shared/api/normalize.ts`); JSON bodies pass through as-is so `ApiError`
  *   normalization on the client sees the exact NestJS `{statusCode,message}`
- *   shape; anything else falls back to text, conservando `Content-Disposition`
- *   cuando el backend lo manda (descargas: `GET /compras/export`).
+ *   shape; anything else (binarios, CSV, etc.) pasa como `ArrayBuffer` —
+ *   NUNCA `text()` (sdd/logo-por-cliente, WU3, H6): decodificar un PNG como
+ *   UTF-8 y volver a serializarlo lo corrompe. `Content-Disposition` (nombre
+ *   de descarga), `X-Content-Type-Options` (nosniff del logo) y
+ *   `Cache-Control` se reenvían cuando el backend los manda.
  *
  * 401 handling is intentionally NOT special-cased here — `apiFetch`'s
  * single-flight refresh (PR11) reacts to a plain proxied 401 exactly like it
@@ -84,7 +87,10 @@ async function proxy(request: NextRequest, params: Promise<{ path: string[] }>):
     return NextResponse.json(data, { status: backendRes.status });
   }
 
-  const text = await backendRes.text();
+  // `arrayBuffer()`, nunca `text()`: preserva los bytes exactos para
+  // binarios (logo del cliente, WU3) igual que para las descargas de texto
+  // ya existentes (CSV) — mismo camino, sin recodificar ninguno de los dos.
+  const buffer = await backendRes.arrayBuffer();
   const resHeaders = new Headers();
   if (resContentType) resHeaders.set("content-type", resContentType);
   // `Content-Disposition` se reenvía porque es el ÚNICO lugar donde viaja el
@@ -93,8 +99,15 @@ async function proxy(request: NextRequest, params: Promise<{ path: string[] }>):
   // extensión — falla silenciosa: el archivo baja igual, solo que inservible.
   const resDisposition = backendRes.headers.get("content-disposition");
   if (resDisposition) resHeaders.set("content-disposition", resDisposition);
+  // `X-Content-Type-Options`/`Cache-Control`: el `GET` del logo (WU2) los
+  // manda para que el navegador no haga MIME-sniffing y para su política de
+  // caché — sin reenviarlos acá, el proxy los tira silenciosamente.
+  const resNosniff = backendRes.headers.get("x-content-type-options");
+  if (resNosniff) resHeaders.set("x-content-type-options", resNosniff);
+  const resCacheControl = backendRes.headers.get("cache-control");
+  if (resCacheControl) resHeaders.set("cache-control", resCacheControl);
 
-  return new NextResponse(text, { status: backendRes.status, headers: resHeaders });
+  return new NextResponse(buffer, { status: backendRes.status, headers: resHeaders });
 }
 
 export async function GET(request: NextRequest, { params }: RouteParams): Promise<NextResponse> {
