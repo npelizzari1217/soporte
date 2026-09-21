@@ -68,7 +68,7 @@ líneas; se revierte solo sin dejar nada roto porque nada lo invoca todavía.
 
 ## WU-1 — commit 1: `feat(auth): caso de uso de reset de contraseña por admin`
 
-- [ ] 1.1 [R1,R2,R9] `backend/src/auth/application/use-cases/resetear-password-usuario-tenant.use-case.ts`:
+- [x] 1.1 [R1,R2,R9] `backend/src/auth/application/use-cases/resetear-password-usuario-tenant.use-case.ts`:
       crear. Constructor con `Pick<IUsuarioRepository,'findById'|'save'>`,
       `Pick<IMembresiaRepository,'findActivaByUsuarioYCliente'>`, `IHashProvider`,
       `Pick<IRefreshTokenRepository,'revokeAllByUsuarioId'>`, `ILogger` — molde de
@@ -83,35 +83,35 @@ líneas; se revierte solo sin dejar nada roto porque nada lo invoca todavía.
       `usuarioRepo.save(usuario)`; 6) `try { revokeAllByUsuarioId(usuarioId) } catch { logger.error(...) }`
       SIN propagar, SIN plaintext (molde `cambiar-password.use-case.ts:77-84`); 7)
       `Result.ok(undefined as unknown as void)`.
-- [ ] 1.2 [R1] Test: un ADMINISTRADOR resetea a un usuario con membresía activa en su
+- [x] 1.2 [R1] Test: un ADMINISTRADOR resetea a un usuario con membresía activa en su
       cliente y un ROOT (`is_global_admin: true`) resetea en el cliente B — ambos verifican
       `hashProvider.hash` llamado con el plaintext y `usuarioRepo.save` llamado con el
       usuario mutado (`resetear-password-usuario-tenant.use-case.spec.ts`, molde
       `cambiar-password.use-case.spec.ts:101-117`).
-- [ ] 1.3 [R2] Test: un usuario cuya única membresía activa está en el cliente B recibe
+- [x] 1.3 [R2] Test: un usuario cuya única membresía activa está en el cliente B recibe
       `MembresiaNoEncontradaError` al resolverse desde el cliente A del actor, y
       `usuarioRepo.save` NUNCA se llama.
-- [ ] 1.4 [R2] Test: un `usuarioId` inexistente devuelve el MISMO `MembresiaNoEncontradaError`
+- [x] 1.4 [R2] Test: un `usuarioId` inexistente devuelve el MISMO `MembresiaNoEncontradaError`
       del caso anterior; test defensivo adicional para `findById` nulo tras una membresía
       encontrada (molde `editar-usuario-tenant.use-case.ts:60-63`).
-- [ ] 1.5 [R9] Test: cuenta global inactiva o soft-deleted con membresía activa en el tenant
+- [x] 1.5 [R9] Test: cuenta global inactiva o soft-deleted con membresía activa en el tenant
       del actor → `UsuarioNoDisponibleError`; `passwordHash` no se modifica; `usuarioRepo.save`
       NUNCA se llama.
-- [ ] 1.6 [R1] Test: el hash guardado se produce con LA MISMA instancia de `IHashProvider`
+- [x] 1.6 [R1] Test: el hash guardado se produce con LA MISMA instancia de `IHashProvider`
       inyectada (assert sobre `hashProvider.hash`, nunca una llamada a `argon2` fuera de esa
       instancia) — blanco #1 de la mutación adversarial de `sdd-verify`.
-- [ ] 1.7 [R7,R8] Test: `usuarioRepo.save` ocurre ANTES que `revokeAllByUsuarioId` (sin
+- [x] 1.7 [R7,R8] Test: `usuarioRepo.save` ocurre ANTES que `revokeAllByUsuarioId` (sin
       timers, molde `cambiar-password.use-case.spec.ts:155-175`); test separado para la
       revocación que rechaza — `Result.ok`, `save` llamado 1 vez, `logger.error` llamado 1
       vez, molde `cambiar-password.use-case.spec.ts:177-193`.
-- [ ] 1.8 [R4] Test: un ADMINISTRADOR resetea a otro ADMINISTRADOR del mismo cliente, y un
+- [x] 1.8 [R4] Test: un ADMINISTRADOR resetea a otro ADMINISTRADOR del mismo cliente, y un
       ADMINISTRADOR resetea su propia contraseña (`usuarioId === actor.sub`) — ambos casos
       reportan éxito, documentando que el caso de uso NO agrega restricción extra (la única
       restricción de rol vive en el guard de WU-2).
-- [ ] 1.9 [R10] Test: el argumento pasado a `logger.error` en el camino de revocación
+- [x] 1.9 [R10] Test: el argumento pasado a `logger.error` en el camino de revocación
       fallida NO contiene el plaintext de la contraseña (assert explícito sobre el string,
       no un snapshot).
-- [ ] 1.10 Cierre WU-1: `pnpm vitest run src/auth/application/use-cases/resetear-password-usuario-tenant.use-case.spec.ts`
+- [x] 1.10 Cierre WU-1: `pnpm vitest run src/auth/application/use-cases/resetear-password-usuario-tenant.use-case.spec.ts`
       + `pnpm lint` + `pnpm typecheck` en verde. Commit.
 
 ---
