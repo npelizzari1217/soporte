@@ -70,9 +70,9 @@ Chain strategy: stacked-to-main
 
 ## WU4: Diálogo de carga
 
-- [ ] 4.1 [RED] Test de `use-subir-logo-cliente` / `use-quitar-logo-cliente`: arma `FormData`, rechaza SVG y >512 KB en el cliente ANTES de enviar (espejo Zod de la whitelist del backend).
-- [ ] 4.2 [GREEN] Crear los hooks en `frontend/src/features/clientes/hooks/`, reusando el patrón multipart de `frontend/src/features/tickets/hooks/use-ticket-mutations.ts` (read-only, molde ya existente — H3, no es trabajo nuevo).
-- [ ] 4.3 [RED] Test del diálogo: previsualiza el archivo elegido, deshabilita el submit si el pipe cliente lo rechaza, muestra éxito/error del backend.
-- [ ] 4.4 [GREEN] Crear el diálogo de carga en `frontend/src/features/clientes/components/`, molde de `frontend/src/features/clientes/components/configurar-csat-dialog.tsx` (read-only, molde), con `<input type="file">` en `Admin > Clientes`.
-- [ ] 4.5 Anotar la deuda de Ayuda en el mensaje de commit y en el cuerpo del PR de esta unidad (pausa vigente desde 2026-09-07; NO se escribe ningún artículo de `backend/ayuda/*.md`) — el cambio agrega una pantalla de carga y un elemento visible del sidebar.
-- [ ] 4.6 Correr `pnpm typecheck`, `pnpm lint`, `pnpm test` en frontend; confirmar revert limpio (diálogo y hooks no tocan WU1-3).
+- [x] 4.1 [RED] Test de `use-subir-logo-cliente` / `use-quitar-logo-cliente`: arma `FormData`, rechaza SVG y >512 KB en el cliente ANTES de enviar (espejo Zod de la whitelist del backend).
+- [x] 4.2 [GREEN] Crear los hooks en `frontend/src/features/clientes/hooks/`, reusando el patrón multipart de `frontend/src/features/tickets/hooks/use-ticket-mutations.ts` (read-only, molde ya existente — H3, no es trabajo nuevo).
+- [x] 4.3 [RED] Test del diálogo: previsualiza el archivo elegido, deshabilita el submit si el pipe cliente lo rechaza, muestra éxito/error del backend.
+- [x] 4.4 [GREEN] Crear el diálogo de carga en `frontend/src/features/clientes/components/`, molde de `frontend/src/features/clientes/components/configurar-csat-dialog.tsx` (read-only, molde), con `<input type="file">` en `Admin > Clientes`.
+- [x] 4.5 Anotar la deuda de Ayuda en el mensaje de commit y en el cuerpo del PR de esta unidad (pausa vigente desde 2026-09-07; NO se escribe ningún artículo de `backend/ayuda/*.md`) — el cambio agrega una pantalla de carga y un elemento visible del sidebar.
+- [x] 4.6 Correr `pnpm typecheck`, `pnpm lint`, `pnpm test` en frontend; confirmar revert limpio (diálogo y hooks no tocan WU1-3).
