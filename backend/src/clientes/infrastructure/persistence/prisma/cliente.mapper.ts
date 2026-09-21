@@ -20,6 +20,9 @@ export class ClienteMapper {
         dbName: row.dbName,
         activo: row.activo,
         csatHabilitado: row.csatHabilitado,
+        logoStorageKey: row.logoStorageKey ?? null,
+        logoMimeType: row.logoMimeType ?? null,
+        logoUpdatedAt: row.logoUpdatedAt ?? null,
       },
       row.id,
       row.createdAt,
@@ -35,6 +38,13 @@ export class ClienteMapper {
    * estructuralmente imposible que una edición comercial (nombre, cuit, etc.)
    * borre la config de correo sin querer. La lectura/escritura de esas
    * columnas va por `IClienteEmailConfigRepository` (WU3), no por acá.
+   *
+   * Las 3 columnas de logo NO se omiten (design.md D4, a diferencia de
+   * `smtp_*`): el logo no tiene cifrado ni invariante todo-o-nada que
+   * justifique un repo satélite, así que es espejo completo. Omitirlas acá
+   * sería el mismo bug que motivó el test de round-trip de T1.7: un `PATCH`
+   * comercial borraría el logo en el `upsert` de
+   * `PrismaClienteRepository.save()`.
    */
   static toPersistence(
     entity: ClienteEntity,
@@ -60,6 +70,9 @@ export class ClienteMapper {
       dbName: entity.dbName,
       activo: entity.activo,
       csatHabilitado: entity.csatHabilitado,
+      logoStorageKey: entity.logoStorageKey,
+      logoMimeType: entity.logoMimeType,
+      logoUpdatedAt: entity.logoUpdatedAt,
       deletedAt: entity.deletedAt,
     };
   }
