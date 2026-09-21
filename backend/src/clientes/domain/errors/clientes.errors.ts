@@ -187,3 +187,23 @@ export class CorreoNoConfiguradoError extends DomainError {
     super('El cliente no tiene una configuración de correo guardada para probar.');
   }
 }
+
+/**
+ * LogoClienteNoEncontradoError — `VerLogoClienteUseCase` (sdd/logo-por-cliente,
+ * WU2) no tiene un logo que devolver para este cliente: o bien el cliente
+ * existe pero nunca cargó uno (`logoStorageKey === null`), o bien la fila
+ * apunta a una key que `IFileStorage.retrieve()` ya no encuentra (huérfano de
+ * lectura). Deliberadamente DISTINTO de `ClienteNoEncontradoError` (ese es
+ * "el cliente no existe"; este es "el cliente existe, pero no hay logo") —
+ * ambos mapean al mismo 404 en la capa de presentación (spec, regla 7:
+ * degradación al fallback ante cualquier motivo, 404 incluido), pero
+ * conviene no perder la distinción en el dominio.
+ * → HTTP 404 Not Found en la capa de presentación.
+ */
+export class LogoClienteNoEncontradoError extends DomainError {
+  readonly code = 'LOGO_CLIENTE_NO_ENCONTRADO';
+
+  constructor(clienteId: string) {
+    super(`El cliente con id "${clienteId}" no tiene un logo disponible.`);
+  }
+}
