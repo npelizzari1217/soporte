@@ -93,3 +93,13 @@ export interface ConfigurarCorreoDto {
 export interface ConfigurarCsatDto {
   habilitado: boolean;
 }
+
+/**
+ * Respuesta de `POST /clientes/:id/logo` — espejo de `ClienteLogoResponseDto`
+ * (backend, sdd/logo-por-cliente design.md D3/D7). Nunca expone la storage
+ * key ni una ruta de filesystem: lo único que viaja es la marca de tiempo
+ * que alimenta `cliente_logo_v` en el JWT (WU3).
+ */
+export interface ClienteLogoDto {
+  logoUpdatedAt: string | null;
+}

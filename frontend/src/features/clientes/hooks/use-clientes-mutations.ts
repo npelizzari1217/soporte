@@ -3,9 +3,11 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/shared/api/client";
 import { notifyError, notifySuccess } from "@/shared/lib/toast";
+import { validarLogoClienteCliente } from "../lib/validar-logo-cliente-cliente";
 import type {
   Cliente,
   ClienteCorreo,
+  ClienteLogoDto,
   ConfigurarCorreoDto,
   ConfigurarCsatDto,
   CreateClienteDto,
@@ -133,6 +135,56 @@ export function useProbarCorreoCliente(clienteId: string) {
       queryClient.setQueryData(["cliente-correo", clienteId], data);
       queryClient.invalidateQueries({ queryKey: ["clientes"] });
       notifySuccess("Prueba de conexión ejecutada.");
+    },
+    onError: notifyError,
+  });
+}
+
+/**
+ * Sube o reemplaza el logo de un cliente (`POST /clientes/:id/logo`,
+ * design.md D5/D8, sdd/logo-por-cliente WU4). Solo ROOT. Reusa el patrón
+ * multipart de `useSubirAdjunto` (H3, tickets): `FormData` + `apiFetch` con
+ * `body`, sin estrenar nada.
+ *
+ * Valida el archivo (`validarLogoClienteCliente`, espejo de
+ * `validarLogoCliente` del backend) ANTES de armar el `FormData` — defensa
+ * en profundidad DENTRO de la mutación. En el flujo normal el diálogo ya
+ * deshabilita "Subir" con un archivo inválido; esto cubre cualquier otro
+ * caller que invoque la mutación directo.
+ *
+ * El logo nuevo NO se ve en el sidebar de quien lo sube hasta su próximo
+ * login/switch/refresh (design.md, pregunta abierta "Refresco inmediato") —
+ * este hook no toca `SessionContext`.
+ */
+export function useSubirLogoCliente(clienteId: string) {
+  const queryClient = useQueryClient();
+  return useMutation<ClienteLogoDto, Error, File>({
+    mutationFn: (file: File) => {
+      const error = validarLogoClienteCliente(file);
+      if (error) return Promise.reject(new Error(error));
+      const formData = new FormData();
+      formData.set("logo", file);
+      return apiFetch<ClienteLogoDto>(`clientes/${clienteId}/logo`, { method: "POST", body: formData });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["clientes"] });
+      notifySuccess("Logo actualizado. Los usuarios lo verán en su próximo inicio de sesión.");
+    },
+    onError: notifyError,
+  });
+}
+
+/**
+ * Quita el logo de un cliente (`DELETE /clientes/:id/logo`). Idempotente
+ * (spec, regla 11): responde 204 exista o no un logo previo. Solo ROOT.
+ */
+export function useQuitarLogoCliente(clienteId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiFetch<void>(`clientes/${clienteId}/logo`, { method: "DELETE" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["clientes"] });
+      notifySuccess("Logo eliminado.");
     },
     onError: notifyError,
   });
