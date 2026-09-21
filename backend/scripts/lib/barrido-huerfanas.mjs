@@ -17,16 +17,44 @@
  * Nombre de una base tenant EFÍMERA de test.
  *
  * Estricto a propósito, porque el precio de un falso positivo acá es una base
- * borrada. Exige las TRES cosas: el prefijo `soporte_prov_`, un segmento de 8
- * caracteres hexadecimales (el `randomBytes(4).toString('hex')` que los specs
- * le cuelgan al nombre) y el sufijo `_test`. El slug del medio es opcional
- * porque hay specs que lo ponen (`autorizE2E`, `tickiso`) y uno que no.
+ * borrada. Cuatro familias, cada una atada a su generador exacto — si el
+ * generador cambia de forma, este patrón se queda corto A PROPÓSITO (fail
+ * closed) y hay que ampliarlo a mano, no al revés:
  *
- * Una base de tenant REAL se llama `soporte_<32 hex>`: no tiene `_prov_` ni
- * `_test`, así que no puede entrar ni por error. `soporte_prov_demo_test`
- * tampoco entra — es un nombre fijo de tests unitarios, sin segmento hex.
+ * 1. `soporte_prov_(<slug>_)?<8 hex>_test` — `randomBytes(4).toString('hex')`
+ *    colgado al nombre por la mayoría de los specs e2e/integration
+ *    (`test/preventivo.e2e.spec.ts`,
+ *    `src/tickets/interface/controllers/tickets.e2e.spec.ts`, y el resto de
+ *    los `*.e2e.spec.ts` de `src/`). El slug es opcional porque hay specs que
+ *    lo ponen (`autorizE2E`, `tickiso`) y uno que no.
+ *
+ * 2. `soporte_e2e_cliente_<16 hex>_test` — de
+ *    `src/clientes/interface/controllers/crear-cliente.e2e.spec.ts`:
+ *    ``soporte_e2e_cliente_${clienteId.replace(/-/g,'').slice(0,16)}_test``.
+ *    `clienteId` es el UUID de Postgres (`gen_random_uuid()`, siempre
+ *    minúsculas) sin guiones, cortado a 16 caracteres.
+ *
+ * 3. `soporte_demo_seed_it_<16 hex>_test` — de
+ *    `prisma_master/seeds/demo-seed.integration.spec.ts`, misma construcción
+ *    que la familia 2 (mismo `clienteId` de Postgres, mismo corte a 16).
+ *
+ * 4. `soporte_regen_<8 hex>_<etiqueta>_test` — de
+ *    `scripts/regenerar-entorno.integration.spec.ts`:
+ *    ``soporte_regen_${randomBytes(4).toString('hex')}_${etiqueta}_test``.
+ *    La etiqueta es siempre una palabra en minúsculas fija en el código del
+ *    spec (`master`, `tenanttest`, `recreara`...), nunca generada al azar.
+ *
+ * Todas exigen hex en minúsculas porque `randomBytes().toString('hex')` y los
+ * UUID de Postgres siempre dan minúsculas — un hex en mayúsculas no es un
+ * nombre que ningún generador produzca, así que no se acepta.
+ *
+ * Una base de tenant REAL se llama `soporte_<32 hex>`: no tiene `_prov_`,
+ * `_e2e_cliente_`, `_demo_seed_it_` ni `_regen_`, así que no puede entrar ni
+ * por error. `soporte_prov_demo_test` tampoco entra — es un nombre fijo de
+ * tests unitarios, sin segmento hex.
  */
-export const PATRON_BASE_EFIMERA = /^soporte_prov_(?:[A-Za-z0-9]+_)?[0-9a-f]{8}_test$/;
+export const PATRON_BASE_EFIMERA =
+  /^soporte_(?:prov_(?:[A-Za-z0-9]+_)?[0-9a-f]{8}|e2e_cliente_[0-9a-f]{16}|demo_seed_it_[0-9a-f]{16}|regen_[0-9a-f]{8}_[a-z]+)_test$/;
 
 /** Motivos por los que una base se conserva. Sirven para el log del adaptador. */
 export const MOTIVO = {
