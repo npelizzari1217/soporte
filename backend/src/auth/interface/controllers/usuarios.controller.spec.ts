@@ -11,7 +11,9 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
+import { GUARDS_METADATA } from '@nestjs/common/constants';
 import { UsuariosController } from './usuarios.controller';
+import { AdminClienteGuard } from '../../infrastructure/guards/admin-cliente.guard';
 import { Result } from '../../../shared/domain/result';
 import { UsuarioEntity } from '../../domain/entities/usuario.entity';
 import { MembresiaEntity } from '../../domain/entities/membresia.entity';
@@ -20,6 +22,7 @@ import {
   MembresiaYaActivaError,
   PresetRolNoDefinidoError,
   RolNoEncontradoError,
+  UsuarioNoDisponibleError,
 } from '../../domain/errors/auth.errors';
 import { JwtPayload } from '../../domain/ports/i-token.service';
 import { payloadDeTest } from '../../test-helpers/payload-de-test';
@@ -30,6 +33,7 @@ function buildController() {
   const cambiarRolUsuarioTenantUseCase = { execute: vi.fn() };
   const desactivarMembresiaUsuarioTenantUseCase = { execute: vi.fn() };
   const editarUsuarioTenantUseCase = { execute: vi.fn() };
+  const resetearPasswordUsuarioTenantUseCase = { execute: vi.fn() };
   const obtenerPermisosUsuarioTenantUseCase = { execute: vi.fn() };
   const asignarPermisosUsuarioTenantUseCase = { execute: vi.fn() };
   const aplicarPresetPermisosUseCase = { execute: vi.fn() };
@@ -39,6 +43,7 @@ function buildController() {
     cambiarRolUsuarioTenantUseCase as any,
     desactivarMembresiaUsuarioTenantUseCase as any,
     editarUsuarioTenantUseCase as any,
+    resetearPasswordUsuarioTenantUseCase as any,
     obtenerPermisosUsuarioTenantUseCase as any,
     asignarPermisosUsuarioTenantUseCase as any,
     aplicarPresetPermisosUseCase as any,
@@ -50,6 +55,7 @@ function buildController() {
     cambiarRolUsuarioTenantUseCase,
     desactivarMembresiaUsuarioTenantUseCase,
     editarUsuarioTenantUseCase,
+    resetearPasswordUsuarioTenantUseCase,
     obtenerPermisosUsuarioTenantUseCase,
     asignarPermisosUsuarioTenantUseCase,
     aplicarPresetPermisosUseCase,
@@ -325,6 +331,105 @@ describe('UsuariosController (gestión mínima de usuarios, sdd/beta-frontend §
       await expect(
         controller.editar(actor, 'usuario-ajeno', { nombre: 'X' } as any),
       ).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  // sdd/reset-de-contrasena-por-admin (WU-2)
+  describe('PATCH /usuarios/:id/password', () => {
+    it('[R3] @UseGuards(AdminClienteGuard) está en ESTA ruta — no heredado de una hermana', () => {
+      // Regresión dirigida (design.md: "AdminClienteGuard va POR MÉTODO,
+      // nunca contiguo" — los 4 métodos existentes lo llevan en :197/:231/
+      // :265/:292, sin ser consecutivos). Inspecciona la metadata que
+      // `@UseGuards` deja en ESTE método puntual: si alguien lo borra, o lo
+      // sube a nivel de clase, este assert lo detecta sin necesidad de un
+      // harness e2e (Fuera de alcance de este ciclo, tasks.md).
+      // El `?? []` es LOAD-BEARING y sigue el modismo ya usado en
+      // `modelos-equipo.controller.spec.ts:162`. Sin el decorador,
+      // `getMetadata` devuelve `undefined`, y `expect(undefined).toContain(x)`
+      // PASA en este Vitest en vez de fallar. Medido: sin el coalesce, borrar
+      // `@UseGuards(AdminClienteGuard)` de la ruta dejaba este test en verde.
+      const guardsEnElMetodo = (Reflect.getMetadata(
+        GUARDS_METADATA,
+        UsuariosController.prototype.resetearPassword,
+      ) ?? []) as unknown[];
+
+      expect(guardsEnElMetodo).toContain(AdminClienteGuard);
+    });
+
+    it('[R3] TECNICO sin esAdminDeCliente: el guard real rechaza con 403', () => {
+      const guard = new AdminClienteGuard();
+      const context = {
+        switchToHttp: () => ({
+          getRequest: () => ({ user: buildActor({ rol: 'TECNICO', permisos: [] }) }),
+        }),
+      } as any;
+
+      expect(() => guard.canActivate(context)).toThrow(ForbiddenException);
+    });
+
+    it('[R3] SOLICITANTE sin esAdminDeCliente: el guard real rechaza con 403', () => {
+      const guard = new AdminClienteGuard();
+      const context = {
+        switchToHttp: () => ({
+          getRequest: () => ({ user: buildActor({ rol: 'SOLICITANTE', permisos: [] }) }),
+        }),
+      } as any;
+
+      expect(() => guard.canActivate(context)).toThrow(ForbiddenException);
+    });
+
+    it('[R2] el clienteId que recibe el caso de uso sale SIEMPRE del JWT del actor, aunque el body traiga otro', async () => {
+      const { controller, resetearPasswordUsuarioTenantUseCase } = buildController();
+      resetearPasswordUsuarioTenantUseCase.execute.mockResolvedValue(Result.ok(undefined));
+      const actor = buildActor({ rol: 'ADMINISTRADOR', cliente_id: 'cliente-token' });
+      // El DTO no declara `clienteId` — el `whitelist: true` global lo
+      // descartaría si llegara. Este cast simula igual un valor colado para
+      // dejar constancia de que el controller lo ignora por completo.
+      const dtoConClienteIdColado = { password: 'contraseñaNueva123' } as any;
+
+      await controller.resetearPassword(actor, 'usuario-1', dtoConClienteIdColado);
+
+      expect(resetearPasswordUsuarioTenantUseCase.execute).toHaveBeenCalledWith({
+        clienteId: 'cliente-token',
+        usuarioId: 'usuario-1',
+        password: 'contraseñaNueva123',
+      });
+    });
+
+    it('[R2,R9] propaga 404 NotFoundException cuando no hay membresía activa en este cliente', async () => {
+      const { controller, resetearPasswordUsuarioTenantUseCase } = buildController();
+      resetearPasswordUsuarioTenantUseCase.execute.mockResolvedValue(
+        Result.fail(new MembresiaNoEncontradaError()),
+      );
+      const actor = buildActor({ rol: 'ADMINISTRADOR' });
+
+      await expect(
+        controller.resetearPassword(actor, 'usuario-ajeno', { password: 'x'.repeat(8) } as any),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('[R9] propaga 422 UnprocessableEntityException cuando la cuenta global no está disponible', async () => {
+      const { controller, resetearPasswordUsuarioTenantUseCase } = buildController();
+      resetearPasswordUsuarioTenantUseCase.execute.mockResolvedValue(
+        Result.fail(new UsuarioNoDisponibleError()),
+      );
+      const actor = buildActor({ rol: 'ADMINISTRADOR' });
+
+      await expect(
+        controller.resetearPassword(actor, 'usuario-1', { password: 'x'.repeat(8) } as any),
+      ).rejects.toBeInstanceOf(UnprocessableEntityException);
+    });
+
+    it('[R10] la respuesta 204 no lleva cuerpo: el método no retorna nada', async () => {
+      const { controller, resetearPasswordUsuarioTenantUseCase } = buildController();
+      resetearPasswordUsuarioTenantUseCase.execute.mockResolvedValue(Result.ok(undefined));
+      const actor = buildActor({ rol: 'ADMINISTRADOR' });
+
+      const result = await controller.resetearPassword(actor, 'usuario-1', {
+        password: 'x'.repeat(8),
+      } as any);
+
+      expect(result).toBeUndefined();
     });
   });
 

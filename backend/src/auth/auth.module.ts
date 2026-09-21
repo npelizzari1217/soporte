@@ -73,6 +73,7 @@ import { ListarUsuariosTenantUseCase } from './application/use-cases/listar-usua
 import { CrearUsuarioTenantUseCase } from './application/use-cases/crear-usuario-tenant.use-case';
 import { CambiarRolUsuarioTenantUseCase } from './application/use-cases/cambiar-rol-usuario-tenant.use-case';
 import { EditarUsuarioTenantUseCase } from './application/use-cases/editar-usuario-tenant.use-case';
+import { ResetearPasswordUsuarioTenantUseCase } from './application/use-cases/resetear-password-usuario-tenant.use-case';
 import { DesactivarMembresiaUsuarioTenantUseCase } from './application/use-cases/desactivar-membresia-usuario-tenant.use-case';
 import { ObtenerPermisosUsuarioTenantUseCase } from './application/use-cases/obtener-permisos-usuario-tenant.use-case';
 import { AsignarPermisosUsuarioTenantUseCase } from './application/use-cases/asignar-permisos-usuario-tenant.use-case';
@@ -287,6 +288,34 @@ import { RolesController } from './interface/controllers/roles.controller';
       useFactory: (usuarioRepo: IUsuarioRepository, membresiaRepo: IMembresiaRepository) =>
         new EditarUsuarioTenantUseCase(usuarioRepo, membresiaRepo),
       inject: [USUARIO_REPOSITORY, MEMBRESIA_REPOSITORY],
+    },
+    // ResetearPasswordUsuarioTenantUseCase (sdd/reset-de-contrasena-por-admin,
+    // ADR-2): molde exacto del provider de CambiarPasswordUseCase de arriba —
+    // mismos 4 tokens de infraestructura más MEMBRESIA_REPOSITORY para el
+    // scoping por tenant.
+    {
+      provide: ResetearPasswordUsuarioTenantUseCase,
+      useFactory: (
+        usuarioRepo: IUsuarioRepository,
+        membresiaRepo: IMembresiaRepository,
+        hashProvider: IHashProvider,
+        refreshTokenRepo: IRefreshTokenRepository,
+        logger: ILogger,
+      ) =>
+        new ResetearPasswordUsuarioTenantUseCase(
+          usuarioRepo,
+          membresiaRepo,
+          hashProvider,
+          refreshTokenRepo,
+          logger,
+        ),
+      inject: [
+        USUARIO_REPOSITORY,
+        MEMBRESIA_REPOSITORY,
+        HASH_PROVIDER,
+        REFRESH_TOKEN_REPOSITORY,
+        LOGGER,
+      ],
     },
     {
       provide: DesactivarMembresiaUsuarioTenantUseCase,
