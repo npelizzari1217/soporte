@@ -1,7 +1,8 @@
 # Apply Progress: Logo por cliente en el sidebar
 
-> Cubre únicamente WU1 (Storage y persistencia). WU2-WU4 quedan pendientes
-> para batches posteriores de `sdd-apply`, en orden (`stacked-to-main`).
+> Cubre WU1 (Storage y persistencia) y WU2 (Endpoints). WU3-WU4 quedan
+> pendientes para batches posteriores de `sdd-apply`, en orden
+> (`stacked-to-main`).
 
 ## Mode
 
@@ -83,27 +84,72 @@ Ninguna deviation de diseño en el código. La única desviación es de
 resultado final (3 columnas nullable, sin default, sin CHECK, en `clientes`)
 es exactamente el especificado en `design.md`.
 
-## Issues Found
+## Issues Found (WU1)
 
 Ninguno más allá del bloqueo ambiental documentado arriba.
 
+## Completed Tasks — WU2
+
+- [x] 2.1 [RED] Test en `validar-logo-cliente.spec.ts`: acepta `image/png`, `image/jpeg`, `image/webp` hasta 512 KB; rechaza `image/svg+xml` con 422 aunque empiece con `image/`; rechaza >512 KB y 0 bytes con 422.
+- [x] 2.2 [GREEN] `validar-logo-cliente.ts` HERMANO de `validar-archivo-adjunto.ts` (nunca reuso): `MIMES_LOGO` como `Set` exacto de 3 valores, `MAX_LOGO_BYTES = 512 * 1024`.
+- [x] 2.3 [RED] Tests de los 3 use cases con mocks de `IFileStorage`/`IClienteRepository`: key nueva (UUID), persistencia, delete best-effort de la key anterior, fallo de delete no rompe la operación.
+- [x] 2.4 [GREEN] `ConfigurarLogoCliente`, `QuitarLogoCliente`, `VerLogoCliente` en `application/use-cases/`, con `Result<T, DomainError>`. Nuevo error de dominio `LogoClienteNoEncontradoError` (distinto de `ClienteNoEncontradoError`, ambos → 404).
+- [x] 2.5 [RED] Test de `cliente-logo.controller.spec.ts`: instancia el controller directo (sin bootstrap de Nest, mismo criterio que `ciclos.controller.spec.ts`) — cubre el chequeo inline del `GET` (cross-tenant 403, propio 200, ROOT 200) y el mapeo de errores a 404/204.
+- [x] 2.6 [GREEN] `ClienteLogoController` NUEVO en `interface/controllers/`, SEPARADO de `ClientesController` (design D1/H1). `POST`/`DELETE`: `JwtAuthGuard + GlobalAdminGuard`. `GET`: solo `JwtAuthGuard` + chequeo inline `is_global_admin || cliente_id === :id` — nunca `TenantGuard`.
+- [x] 2.7 [GREEN] `GET` responde con `Content-Type` almacenado, `X-Content-Type-Options: nosniff`, `Content-Disposition: inline`, molde `@Res({ passthrough: true })` de `equipos.controller.ts`/`tickets.controller.ts`.
+- [x] 2.8 Wiring en `clientes.module.ts` (`FILE_STORAGE` inyectado desde `SharedModule`, ya `@Global()`); `pnpm typecheck`, `pnpm lint`, `pnpm test` en backend verdes.
+
+## TDD Cycle Evidence (WU2)
+
+| Tarea | RED — comando y resultado observado | GREEN — comando y resultado observado |
+|---|---|---|
+| 2.1/2.2 `validarLogoCliente` | `pnpm vitest run src/clientes/interface/pipes/validar-logo-cliente.spec.ts` → `Cannot find module './validar-logo-cliente'` (1 suite fallida, 0 tests) | mismo comando → 8/8 tests verdes |
+| 2.3/2.4 `ConfigurarLogoCliente`/`QuitarLogoCliente`/`VerLogoCliente` | `pnpm vitest run src/clientes/application/use-cases/{configurar,quitar,ver}-logo-cliente.use-case.spec.ts` → 3 suites fallidas, `Cannot find module` en cada una (0 tests) | mismo comando → 13/13 tests verdes (5 + 4 + 4) |
+| 2.5/2.6/2.7 `ClienteLogoController` | `pnpm vitest run src/clientes/interface/controllers/cliente-logo.controller.spec.ts` → `Cannot find module './cliente-logo.controller'` (1 suite fallida, 0 tests) | mismo comando → 10/10 tests verdes |
+
+## Work Unit Evidence (WU2)
+
+| Evidencia | Valor |
+|---|---|
+| Comando de test focalizado y resultado exacto | `pnpm vitest run backend/src/clientes/interface backend/src/clientes/application` (desde `backend/`: `pnpm vitest run src/clientes/interface src/clientes/application`) → verde; la corrida completa `pnpm vitest run src/clientes` → **42 test files passed, 279 tests passed** (incluye el `[e2e-forced-failure]` intencional de `crear-cliente.e2e.spec.ts`, ver Known environmental failures del prompt) |
+| Harness de runtime / escenario y resultado exacto | `pnpm start:dev` contra Postgres real (`soporte-postgres-master`, contenedor `Up`): la app bootea sin errores y el log mapea las 3 rutas nuevas — `Mapped {/api/clientes/:id/logo, POST}`, `DELETE` y `GET`. `curl` manual sin token a las tres → **401** en las tres (JwtAuthGuard real, sin mockear). **No se completó el round-trip autenticado** (login ROOT → subir → leer → borrar): el único usuario `is_global_admin=true` en `soporte_master` es la cuenta real del dueño del repo (`npelizzari@gmail.com`) y no hay credencial de prueba disponible para generar un JWT válido sin conocer esa contraseña — intentarlo habría significado adivinar una clave real, fuera de alcance. La autorización cross-tenant/ROOT/ADMINISTRADOR queda cubierta por las 13 aserciones de `cliente-logo.controller.spec.ts` (2.5) en su lugar |
+| Rollback boundary | Revert de este batch: `git revert` sobre los 4 commits de WU2 (pipe; use cases + error de dominio; controller; wiring del módulo) deja el árbol en el estado de fin de WU1 — ninguna ruta HTTP nueva, `ClientesController` sin tocar (los 10 métodos de ABM conservan su `@UseGuards` de clase intacto) |
+
+## Deviations from Design (WU2)
+
+Ninguna. El corte de contenido de WU2 (controller nuevo en vez de extender
+`ClientesController`, whitelist exacta hermana del pipe de adjuntos) es
+exactamente el que `design.md` D1/D7 y `tasks.md` prescriben.
+
+## Issues Found (WU2)
+
+Ninguno de código. La única limitación es la cobertura del runtime harness
+descrita arriba (round-trip autenticado no ejecutado por falta de
+credencial ROOT de prueba) — el flujo HTTP completo con autenticación real
+queda para que `sdd-verify` lo confirme con sus propios medios, o para un
+seed de usuario ROOT de test si el dueño del repo lo autoriza.
+
 ## Remaining Tasks
 
-- [ ] WU2: Endpoints (pipe, 3 use cases, `ClienteLogoController`)
 - [ ] WU3: Propagación y sidebar
 - [ ] WU4: Diálogo de carga
 
 ## Workload / PR Boundary
 
 - Mode: chained PR slice (`stacked-to-main`)
-- Current work unit: WU1 — Storage y persistencia
-- Boundary: empieza en `feat/logo-por-cliente-storage` (desde
-  `docs/logo-por-cliente-planificacion`), termina con el mapper hidratando
-  las 3 columnas de logo. Sin consumidor HTTP todavía — WU2 lo agrega.
-- Estimated review budget impact: ~280 líneas estimadas en tasks.md; el diff
-  real de código+tests de WU1 queda por debajo de eso.
+- Current work unit: WU2 — Endpoints
+- Boundary: empieza en `feat/logo-por-cliente-endpoints` (desde
+  `feat/logo-por-cliente-storage`, WU1 ya verificada), termina con las 3
+  rutas de `ClienteLogoController` funcionando de punta a punta contra
+  Postgres real (salvo el round-trip autenticado, ver arriba). WU3 agrega
+  la propagación por JWT y el consumo en el sidebar.
+- Estimated review budget impact: ~380 líneas estimadas en tasks.md (la
+  unidad más ajustada del forecast); el diff real de código+tests de WU2
+  queda repartido en 4 commits de work-unit-commits, cada uno bien por
+  debajo del presupuesto de 400 líneas por sí solo.
 
 ## Status
 
-9/9 tareas de WU1 completas. Ready for next batch (WU2) — no ready for
-verify todavía, porque el ciclo completo (WU1-WU4) sigue en curso.
+9/9 tareas de WU1 + 8/8 tareas de WU2 completas (17/34 del ciclo). Ready
+for next batch (WU3) — no ready for verify todavía, porque el ciclo
+completo (WU1-WU4) sigue en curso.
