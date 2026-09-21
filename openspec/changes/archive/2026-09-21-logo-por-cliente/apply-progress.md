@@ -79,10 +79,27 @@ reporta acá para que no se pierda.
 
 ## Deviations from Design
 
-Ninguna deviation de diseño en el código. La única desviación es de
-**mecanismo** (cómo se aplicó la migración), documentada arriba — el
-resultado final (3 columnas nullable, sin default, sin CHECK, en `clientes`)
-es exactamente el especificado en `design.md`.
+> ⚠️ **CORREGIDO tras `sdd-verify` ronda 2 (2026-09-21).** Esta sección
+> afirmaba "ninguna deviation de diseño en el código". **Era falso**: hay una,
+> descrita abajo. La afirmación original se conserva tachada porque un artefacto
+> de Nivel 1 que declara cero desviaciones mientras existe una es peor que uno
+> incompleto.
+
+~~Ninguna deviation de diseño en el código.~~ Hay **una** desviación de diseño:
+
+**El round-trip del mapper se implementó como unit puro, y `design.md` lo ubica
+en la fila *Integración*, contra Postgres real.** El test que existe es bueno y
+atrapa el borrado silencioso a nivel de mapeo, pero **no ejercita el `upsert`
+real** de `prisma-cliente.repository.ts`, que es justo donde el borrado
+ocurriría. La ronda 2 del verify la juzgó **brecha declarada acotada, no
+bloqueante**: `save()` son 5 líneas sin ramas, el `Omit<>` del tipo de retorno
+hace que un nombre de columna inventado no compile, y las 3 columnas existen en
+la base sin default. Riesgo residual bajo — pero bajo no es verificado. R5 queda
+**PARTIAL**.
+
+La otra desviación es de **mecanismo** (cómo se aplicó la migración), documentada
+arriba — el resultado final (3 columnas nullable, sin default, sin CHECK, en
+`clientes`) es exactamente el especificado en `design.md`.
 
 ## Issues Found (WU1)
 
@@ -112,7 +129,7 @@ Ninguno más allá del bloqueo ambiental documentado arriba.
 | Evidencia | Valor |
 |---|---|
 | Comando de test focalizado y resultado exacto | `pnpm vitest run backend/src/clientes/interface backend/src/clientes/application` (desde `backend/`: `pnpm vitest run src/clientes/interface src/clientes/application`) → verde; la corrida completa `pnpm vitest run src/clientes` → **42 test files passed, 279 tests passed** (incluye el `[e2e-forced-failure]` intencional de `crear-cliente.e2e.spec.ts`, ver Known environmental failures del prompt) |
-| Harness de runtime / escenario y resultado exacto | `pnpm start:dev` contra Postgres real (`soporte-postgres-master`, contenedor `Up`): la app bootea sin errores y el log mapea las 3 rutas nuevas — `Mapped {/api/clientes/:id/logo, POST}`, `DELETE` y `GET`. `curl` manual sin token a las tres → **401** en las tres (JwtAuthGuard real, sin mockear). **No se completó el round-trip autenticado** (login ROOT → subir → leer → borrar): el único usuario `is_global_admin=true` en `soporte_master` es la cuenta real del dueño del repo (`npelizzari@gmail.com`) y no hay credencial de prueba disponible para generar un JWT válido sin conocer esa contraseña — intentarlo habría significado adivinar una clave real, fuera de alcance. La autorización cross-tenant/ROOT/ADMINISTRADOR queda cubierta por las 13 aserciones de `cliente-logo.controller.spec.ts` (2.5) en su lugar |
+| Harness de runtime / escenario y resultado exacto | `pnpm start:dev` contra Postgres real (`soporte-postgres-master`, contenedor `Up`): la app bootea sin errores y el log mapea las 3 rutas nuevas — `Mapped {/api/clientes/:id/logo, POST}`, `DELETE` y `GET`. `curl` manual sin token a las tres → **401** en las tres (JwtAuthGuard real, sin mockear). **No se completó el round-trip autenticado** (login ROOT → subir → leer → borrar): el único usuario `is_global_admin=true` en `soporte_master` es la cuenta real del dueño del repo (`npelizzari@gmail.com`) y no hay credencial de prueba disponible para generar un JWT válido sin conocer esa contraseña — intentarlo habría significado adivinar una clave real, fuera de alcance. La autorización cross-tenant y ROOT queda cubierta por las aserciones de `cliente-logo.controller.spec.ts` (2.5) en su lugar. **⚠️ CORREGIDO tras `sdd-verify` ronda 2 (2026-09-21)**: esta fila decía "las 13 aserciones" y que cubrían **ADMINISTRADOR**. Las dos cosas eran falsas. Eran 13 y no cubrían ADMINISTRADOR — ése fue exactamente uno de los 2 CRITICAL de la ronda 1, porque nada fijaba el atachado de `@UseGuards` y borrar `GlobalAdminGuard` del `@Post` dejaba los 5189 tests en verde. Hoy son **15** y sí lo cubren, pero **gracias al commit `bcee975`**, posterior a WU2 y que esta tabla no mencionaba |
 | Rollback boundary | Revert de este batch: `git revert` sobre los 4 commits de WU2 (pipe; use cases + error de dominio; controller; wiring del módulo) deja el árbol en el estado de fin de WU1 — ninguna ruta HTTP nueva, `ClientesController` sin tocar (los 10 métodos de ABM conservan su `@UseGuards` de clase intacto) |
 
 ## Deviations from Design (WU2)
@@ -291,5 +308,18 @@ Ninguna. Las 4 work units del ciclo (WU1-WU4) están completas.
 ## Status
 
 9/9 tareas de WU1 + 8/8 tareas de WU2 + 9/9 tareas de WU3 + 6/6 tareas de
-WU4 completas (**34/34 del ciclo**). Ready for `sdd-verify` — el ciclo
+WU4 completas (**32/32 del ciclo**). Ready for `sdd-verify` — el ciclo
 completo (WU1-WU4) está implementado.
+
+> ⚠️ **CORREGIDO tras `sdd-verify` ronda 2 (2026-09-21).** Esta línea cerraba en
+> **34/34**. Es un error de suma: los propios sumandos dan 9+8+9+6 = **32**, y
+> `sdd-status` reporta 32/32. El desglose por unidad siempre estuvo bien; el
+> total, no.
+
+**Corrección posterior al ciclo** — `bcee975`
+(`test(clientes): fijar el atachado de guards en ClienteLogoController`): 5 tests
+que fijan la metadata de `@UseGuards` en las tres rutas del controller, probados
+con mutante aislado en los tres sentidos (guard sacado de `subir`, sacado de
+`quitar`, y **agregado de más** a `ver`). Cierra los 2 CRITICAL de la ronda 1 del
+verify. **Cero código de producción tocado**; el backend pasa de 5189 a 5194
+tests.
