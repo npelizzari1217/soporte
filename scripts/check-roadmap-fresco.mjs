@@ -24,11 +24,22 @@
  *      silencio, porque el CI cuenta los commits.
  *   4. Exige que todo sha citado como evidencia en la tabla de los seis puntos
  *      exista y sea ancestro de `main`.
+ *   5. Exige que todo punto marcado HECHO cuya decision de producto quedo
+ *      registrada declare, en su vinieta, o bien que se cumplio, o bien la
+ *      desviacion con su motivo. Nace de #209: se colaron dos desviaciones (los
+ *      puntos 4 y 5) que nadie vio hasta semanas despues, y la del punto 5
+ *      sobrevivio DIEZ pasadas de revision adversarial. No fallo el rigor, fallo
+ *      el alcance: las revisiones contrastaban contra `AGENTS.md` y contra la
+ *      spec del work unit, nunca contra la decision de producto. Es el criterio
+ *      de las EXCEPTIONS de `check-gate-coverage.mjs`, aplicado a otra cosa:
+ *      desviacion declarada, si; desviacion silenciosa, no.
  *
- * Lo que este check NO hace, a proposito: decidir si un punto esta hecho. Eso es
- * juicio humano. Un check que pretenda inferir "entregado" leyendo el historial
- * va a dar falsos verdes, y un falso verde es PEOR que el problema que resuelve:
- * entonces mienten el documento Y el control que debia atraparlo.
+ * Lo que este check NO hace, a proposito: decidir si un punto esta hecho, ni
+ * juzgar si una declaracion de cumplimiento es VERDADERA. Las dos cosas son
+ * juicio humano. Un check que pretenda inferirlas va a dar falsos verdes, y un
+ * falso verde es PEOR que el problema que resuelve: entonces mienten el
+ * documento Y el control que debia atraparlo. Este check exige que la frase
+ * exista; que sea cierta lo sigue mirando una persona.
  *
  * Uso (desde la raiz del repo; no hay package.json raiz, por eso no es un script
  * de npm):
@@ -70,6 +81,24 @@ const ANCLA = /Actualizado el (\d{4}-\d{2}-\d{2}) contra el c[oó]digo de `main`
 
 /** Encabezado de la tabla cuyas celdas de estado se contrastan. */
 const SECCION_TABLA = '## Los seis puntos';
+
+/** Encabezado de la seccion con las decisiones de producto cerradas. */
+const SECCION_DECISIONES = '### Decisiones de producto ya cerradas';
+
+/** `| 4 | Mantenimiento ... | **HECHO** — ... |` */
+const FILA_PUNTO = /^\|\s*(\d+)\s*\|/;
+
+/** Marca de entregado en la celda de estado. */
+const MARCA_HECHO = /\*\*HECHO\*\*/;
+
+/** `- **Punto 4** — ...` */
+const VINIETA_DECISION = /^-\s+\*\*Punto\s+(\d+)\*\*/;
+
+/**
+ * Declaracion admitida en la vinieta de una decision. Una sola de las dos alcanza.
+ * Se aceptan las dos grafias de "desviacion" porque el documento mezcla acentos.
+ */
+const DECLARACION = /\*\*(Cumplida|Desviaci[oó]n)/;
 
 /**
  * Un sha citado como evidencia. Exige 7+ digitos hex para no confundirse con una
@@ -140,6 +169,36 @@ function filasDeLaTabla(lineas) {
   return filas;
 }
 
+/**
+ * Extrae las vinietas de "Decisiones de producto ya cerradas", indexadas por
+ * numero de punto. Cada vinieta incluye sus lineas de continuacion: la
+ * declaracion suele estar dos o tres renglones mas abajo del guion.
+ */
+function decisionesPorPunto(lineas) {
+  const inicio = lineas.findIndex((l) => l.trim().startsWith(SECCION_DECISIONES));
+  if (inicio === -1) return null;
+
+  const decisiones = new Map();
+  let actual = null;
+
+  for (let i = inicio + 1; i < lineas.length; i += 1) {
+    const linea = lineas[i];
+    if (linea.startsWith('### ') || linea.startsWith('## ')) break;
+
+    const vinieta = linea.match(VINIETA_DECISION);
+    if (vinieta) {
+      actual = { punto: Number(vinieta[1]), numero: i + 1, texto: linea };
+      decisiones.set(actual.punto, actual);
+      continue;
+    }
+    // Continuacion: sangrada y dentro de una vinieta ya abierta.
+    if (actual && /^\s+\S/.test(linea)) actual.texto += `\n${linea}`;
+    else if (linea.trim() === '') continue;
+    else actual = null;
+  }
+  return decisiones;
+}
+
 const ruta = process.argv[2] ?? DOCUMENTO_POR_DEFECTO;
 const errores = [];
 
@@ -206,6 +265,39 @@ if (filas === null) {
     }
   }
   console.log(`Tabla de los seis puntos: ${filas.length} filas | ${citados} shas citados`);
+}
+
+// 5 — todo punto entregado con decision registrada declara cumplimiento o desviacion.
+const decisiones = decisionesPorPunto(lineas);
+if (decisiones === null) {
+  errores.push(`No encontre la seccion "${SECCION_DECISIONES}" en el documento.`);
+} else if (filas !== null) {
+  let declaradas = 0;
+  for (const fila of filas) {
+    const encabezado = fila.texto.match(FILA_PUNTO);
+    if (!encabezado) continue;
+    if (!MARCA_HECHO.test(fila.texto)) continue; // solo se le exige a lo entregado
+
+    const punto = Number(encabezado[1]);
+    const decision = decisiones.get(punto);
+    if (!decision) continue; // sin decision registrada no hay nada que contrastar
+
+    if (DECLARACION.test(decision.texto)) {
+      declaradas += 1;
+      continue;
+    }
+    errores.push(
+      `${ruta}:${decision.numero} — el punto ${punto} figura como HECHO y su decision de ` +
+        'producto no declara si se cumplio.\n' +
+        '  Agregale a la vinieta **Cumplida** con su evidencia, o **Desviacion** con lo que\n' +
+        '  se entrego distinto y por que. Este check no puede saber cual de las dos es: solo\n' +
+        '  sabe que nadie lo dijo.\n' +
+        '  Las dos desviaciones que motivaron esto (#209) se colaron asi — y la del punto 5\n' +
+        '  sobrevivio diez pasadas de revision adversarial, porque ninguna tenia la decision\n' +
+        '  a la vista.',
+    );
+  }
+  console.log(`Decisiones de producto: ${decisiones.size} registradas | ${declaradas} declaradas sobre puntos entregados`);
 }
 
 if (errores.length > 0) {

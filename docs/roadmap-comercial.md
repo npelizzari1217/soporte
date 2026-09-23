@@ -4,7 +4,7 @@ Análisis del 2026-08-19. Compara el sistema contra Zendesk, Freshservice, GLPI 
 Jira Service Management, y prioriza qué falta para competir.
 
 **Estado: los seis puntos están resueltos — cinco entregados y uno diferido por
-decisión.** Actualizado el 2026-09-23 contra el código de `main` (`ee7761a`),
+decisión.** Actualizado el 2026-09-23 contra el código de `main` (`f438a10`),
 archivo por archivo. Los puntos 1, 2, 3, 4 y 5 están entregados; el 6 sigue
 diferido. La Fase 0 está integrada y sus dos gates viven en `main`.
 
@@ -164,21 +164,36 @@ escribiéndolo es conflicto garantizado.
 Para no re-litigarlas al empezar cada punto.
 
 > **Contrastadas contra el código el 2026-09-09, y de nuevo el 2026-09-23.** La
-> del punto 2 se cumplió tal cual. **La del punto 4 NO**: se pidió un
-> `tipoTicket` propio "Preventivo" excluido de las métricas de SLA, y el código
-> reusa `MANTENIMIENTO` con la exclusión colgada de la prioridad del plan. Ver
-> el detalle en la sección del punto 4. **La del punto 5 se cumplió a medias**:
-> el default 9-18 lun-vie y el arranque del reloj en la próxima ventana hábil
-> están construidos, pero el calendario **NO es por cliente** — es uno solo,
+> del punto 2 se cumplió tal cual. La del punto 4 **se desvió y ya se corrigió**:
+> se había entregado reusando `MANTENIMIENTO`, y el issue #135 le dio al
+> preventivo su propio tipo `PREVENTIVO`. **La del punto 5 se cumplió a
+> medias**: el default 9-18 lun-vie y el arranque del reloj en la próxima ventana
+> hábil están construidos, pero el calendario **NO es por cliente** — es uno solo,
 > global, en la base master. Detalle en el punto siguiente.
+>
+> Cada viñeta de abajo declara **Cumplida** o **Desviación**. No es adorno:
+> `scripts/check-roadmap-fresco.mjs` exige esa declaración para todo punto
+> marcado HECHO y falla si falta. Desviación declarada, sí; desviación
+> silenciosa, no — que es exactamente como se colaron las dos que hubo.
 
 - **Punto 2** — "bloqueada" es un estado **derivado** (tiene ≥1 compra vinculada
   sin recibir), **no** frena `porcentajeAvance`, y **sí** se ve en el listado con
   chip y filtro. El tiempo bloqueado se descuenta del tiempo de reparación que se
   le muestra al cliente.
+  **Cumplida**: contrastada contra el código el 2026-09-09 y de nuevo el
+  2026-09-23. Se entregó tal cual se acordó, sin desviaciones.
 - **Punto 4** — el preventivo genera un **ticket** con `tipoTicket` propio
   "Preventivo", **excluido de las métricas de SLA**. Solicitante: un usuario de
   sistema por tenant, sembrado por el seed.
+  **Cumplida, después de una desviación corregida.** La entrega original reusaba
+  el tipo `MANTENIMIENTO` de EDILICIA y la exclusión del SLA colgaba de que la
+  prioridad del plan tuviera `slaActivo = false` — funcionaba por un mecanismo
+  distinto del acordado, y un plan con prioridad de SLA activo entraba en las
+  métricas sin que nadie lo notara. El issue #135 (`2617a2a`, cerrado el
+  2026-09-09) lo corrigió: existe `TIPO_CODIGO_PREVENTIVO`
+  (`backend/src/tickets/domain/tipos-ticket.constants.ts`), el seeder lo siembra
+  por tenant y `AplicarSlaUseCase` excluye **por tipo**
+  (`aplicar-sla.use-case.ts:161`), no por prioridad.
 - **Punto 5** — calendario **por cliente** con default 9-18 lun-vie; feriados
   nacionales AR precargados en el seed más excepciones por cliente; un ticket
   abierto fuera de horario arranca el reloj en la **próxima ventana hábil**.
@@ -259,7 +274,7 @@ y plantillas en `backend/src/notificaciones/`.
   un solo uso y con vencimiento. Es la única superficie sin auth del sistema.
 - Sumar la métrica al dashboard.
 
-### 4 · Mantenimiento preventivo recurrente — Media — **ENTREGADO, con una desviación**
+### 4 · Mantenimiento preventivo recurrente — Media — **ENTREGADO**
 
 > **Entregado** entre el 2026-08-24 (`bd098f9`) y el 2026-09-05, en
 > `backend/src/preventivo/`. El scheduler copia el patrón de `SlaSweepScheduler`
@@ -267,14 +282,24 @@ y plantillas en `backend/src/notificaciones/`.
 > CONFLICT DO NOTHING` sobre la tabla `PreventivoGeneracion`, como primera
 > sentencia de la transacción.
 >
-> **La desviación, que hay que decidir si se corrige o se adopta:** la decisión
-> de producto del 2026-08-21 decía `tipoTicket` propio **"Preventivo"** y
-> exclusión explícita de las métricas de SLA. El código reusa el tipo existente
-> **`MANTENIMIENTO`** del módulo EDILICIA, y la exclusión del SLA no es por tipo:
-> depende de que la prioridad del plan tenga `slaActivo = false`, porque el
-> dashboard solo cuenta tickets con `slaVenceAt` no nulo. Funciona, pero por un
-> mecanismo distinto del que se acordó, y **un plan cargado con una prioridad con
-> SLA activo entra en las métricas sin que nadie lo note.**
+> **Hubo una desviación, y está corregida.** La decisión de producto del
+> 2026-08-21 pedía `tipoTicket` propio **"Preventivo"** con exclusión explícita
+> de las métricas de SLA. La entrega original reusaba **`MANTENIMIENTO`** de
+> EDILICIA y la exclusión colgaba de que la prioridad del plan tuviera
+> `slaActivo = false` — funcionaba por un mecanismo distinto del acordado, y un
+> plan con prioridad de SLA activo entraba en las métricas sin que nadie lo
+> notara.
+>
+> El issue #135 la cerró el 2026-09-09 (`2617a2a`): existe
+> `TIPO_CODIGO_PREVENTIVO` en
+> `backend/src/tickets/domain/tipos-ticket.constants.ts`, el seeder de tenants lo
+> siembra, y `AplicarSlaUseCase` excluye **por tipo**
+> (`aplicar-sla.use-case.ts:161`) en vez de depender de la prioridad.
+>
+> **Este documento afirmó que la desviación seguía abierta hasta el 2026-09-23**,
+> dos semanas después de cerrada. Tercera afirmación vencida de la misma tanda
+> del 2026-09-09, y por la misma causa que las otras dos: el issue #135 se cerró
+> a las 16:36 UTC y el roadmap se escribió a las 14:59 UTC del mismo día.
 >
 > Lo de abajo se conserva como registro de por qué se construyó así.
 
