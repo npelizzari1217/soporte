@@ -1,0 +1,133 @@
+# Compuerta de calidad de backend/.
+#
+# Vive en su propio archivo, y no como un job de gates.yml, por una sola razon:
+# el filtro `paths` de abajo se evalua ANTES de que exista un runner. Un PR que
+# no toca backend/ no encola este workflow y no consume un minuto. Un filtro por
+# job — con dorny/paths-filter o equivalente — habria necesitado un job propio
+# para decidir, y un job que corre consume runner: Actions factura por minuto
+# redondeando hacia arriba, asi que un filtro de veinte segundos cuesta un
+# minuto, en cada PR. Para un problema que es literalmente "se acabaron los
+# minutos", esa diferencia decide. Ref issue #188.
+#
+# Lo que se paga a cambio: se pierde el `needs: gate-coverage` que tenia cuando
+# era un job de gates.yml. Ahora corre en paralelo con esa compuerta en vez de
+# esperarla. Solo cuesta minutos cuando gate-coverage FALLA, que pasa unicamente
+# si alguien agrega un proyecto npm sin declarar lint/test/build.
+#
+# pnpm/action-setup resuelve su version leyendo el "packageManager" de un
+# package.json, y su default es el de la raiz. Este repo no tiene raiz: por eso
+# se le pasa "package_json_file". El "defaults.run.working-directory" no alcanza:
+# solo aplica a los pasos "run", no a las acciones invocadas con "uses".
+name: gates-backend
+
+on:
+  push:
+    branches: [main]
+    paths: &rutas
+      - 'backend/**'
+      - '.nvmrc'
+      - '.github/workflows/gates-backend.yml'
+  pull_request:
+    paths: *rutas
+
+concurrency:
+  group: gates-backend-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    # La suite de integracion habla con un Postgres real: no hay mocks del ORM.
+    # El servicio se declara aca en vez de en un docker-compose porque el repo no
+    # tiene uno a proposito (backend/ y frontend/ son proyectos independientes) y
+    # porque un compose en el repo describiria el entorno local, no el del runner.
+    #
+    # El rol tiene que poder crear y borrar bases: los specs de provisionamiento
+    # emiten CREATE DATABASE / DROP DATABASE sobre bases efimeras soporte_prov_*_test
+    # (src/clientes/infrastructure/postgres-admin.service.ts) y el globalSetup de
+    # test/barrido-huerfanas.global-setup.mjs barre las huerfanas al arrancar. El rol
+    # que crea POSTGRES_USER es superusuario de la instancia, asi que cumple.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: soporte
+          POSTGRES_PASSWORD: soporte
+          POSTGRES_DB: soporte_master_test
+        ports:
+          - 5432:5432
+        # Sin health-check el job arranca antes de que Postgres acepte conexiones
+        # y las migraciones fallan con ECONNREFUSED.
+        options: >-
+          --health-cmd "pg_isready -U soporte -d soporte_master_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    # Los cuatro valores son de test y van literales, no en secrets: no protegen
+    # nada. DATABASE_URL_MASTER, APP_BASE_URL y JWT_SECRET son el contrato de
+    # src/config/validar-entorno.ts. DATABASE_URL_TENANT no lo es, pero sin el los
+    # specs de aislamiento entre inquilinos SE SALTEAN en vez de fallar, y una
+    # compuerta que saltea lo mas critico del producto no es una compuerta.
+    #
+    # El host tiene que ser localhost: test/guardarrail-host.global-setup.mjs aborta
+    # la corrida entera si alguna DATABASE_URL_* apunta a otra cosa.
+    env:
+      DATABASE_URL_MASTER: postgresql://soporte:soporte@localhost:5432/soporte_master_test
+      DATABASE_URL_TENANT: postgresql://soporte:soporte@localhost:5432/soporte_tenant_test
+      APP_BASE_URL: http://localhost:5173
+      JWT_SECRET: jwt-secret-de-test
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+        with:
+          package_json_file: backend/package.json
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+          cache-dependency-path: backend/pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+
+      # POSTGRES_DB solo crea la master. La de tenant hay que crearla aparte, y
+      # antes de migrarla.
+      - name: Crear la base de tenant de test
+        run: psql "$DATABASE_URL_MASTER" -v ON_ERROR_STOP=1 -c 'CREATE DATABASE soporte_tenant_test'
+
+      # backend/package.json no tiene hook "pretest": su unico postinstall son los
+      # dos `prisma generate`. Las migraciones son pasos explicitos o no corren.
+      - run: pnpm run migrate:master
+      - run: pnpm run migrate:tenant
+
+      - run: pnpm run lint
+      - run: pnpm run typecheck
+
+      # El servicio "postgres" de arriba es un contenedor Docker con nombre
+      # generado por Actions, no "soporte-postgres-master" (el fijo de
+      # desarrollo local). regenerar-entorno.integration.spec.ts inspecciona
+      # ese contenedor por nombre (resolverNombreContenedor(), issue #122):
+      # sin este paso lo ve "ausente" y varios tests fallan aunque Postgres
+      # este corriendo. Lo descubrimos por imagen (postgres:16, la misma
+      # declarada arriba) y lo exportamos via GITHUB_ENV para que quede
+      # disponible en el resto de los steps del job, incluido "pnpm run test".
+      # Si no aparece ningun contenedor con esa imagen, el paso falla ruidoso
+      # en vez de dejar que la suite falle mas abajo con un mensaje confuso.
+      - name: Descubrir el nombre del service container de Postgres
+        run: |
+          NOMBRE=$(docker ps --filter "ancestor=postgres:16" --format '{{.Names}}' | head -n 1)
+          if [ -z "$NOMBRE" ]; then
+            echo "No se encontro ningun contenedor corriendo con imagen postgres:16" >&2
+            exit 1
+          fi
+          echo "SOPORTE_PG_CONTAINER=$NOMBRE" >> "$GITHUB_ENV"
+
+      - run: pnpm run test
+      - run: pnpm run build

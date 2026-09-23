@@ -1,0 +1,52 @@
+# Compuerta de calidad de frontend/.
+#
+# Mismo motivo que gates-backend.yml para vivir en su propio archivo: el filtro
+# `paths` se evalua antes de que exista un runner, asi que un PR que no toca
+# frontend/ no encola este workflow y no consume minutos. Ref issue #188, y el
+# comentario largo de gates-backend.yml para el razonamiento completo.
+name: gates-frontend
+
+on:
+  push:
+    branches: [main]
+    paths: &rutas
+      - 'frontend/**'
+      - '.nvmrc'
+      - '.github/workflows/gates-frontend.yml'
+  pull_request:
+    paths: *rutas
+
+concurrency:
+  group: gates-frontend-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    # Solo `next build` necesita esto: carga next.config.ts, que exige JWT_SECRET
+    # sin default y aborta el build. `pnpm run test` corre en jsdom y no importa
+    # next.config.ts. BACKEND_URL no va: ya tiene default en next.config.ts.
+    env:
+      JWT_SECRET: jwt-secret-de-test
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+        with:
+          package_json_file: frontend/package.json
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run lint
+      - run: pnpm run test
+      - run: pnpm run build
