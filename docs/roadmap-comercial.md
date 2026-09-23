@@ -3,10 +3,10 @@
 Análisis del 2026-08-19. Compara el sistema contra Zendesk, Freshservice, GLPI y
 Jira Service Management, y prioriza qué falta para competir.
 
-**Estado: cinco de seis puntos cerrados.** Actualizado el 2026-09-09 contra el
-código de `main` (`340a1a5`), archivo por archivo. Los puntos 1, 2, 3 y 4 están
-entregados; el punto 5 es el único que sigue pendiente y el 6 sigue diferido.
-La Fase 0 está integrada y sus dos gates viven en `main`.
+**Estado: los seis puntos están resueltos — cinco entregados y uno diferido por
+decisión.** Actualizado el 2026-09-23 contra el código de `main` (`ee7761a`),
+archivo por archivo. Los puntos 1, 2, 3, 4 y 5 están entregados; el 6 sigue
+diferido. La Fase 0 está integrada y sus dos gates viven en `main`.
 
 > **Este documento estuvo desactualizado tres semanas.** Daba por pendientes los
 > puntos 2, 3 y 4 y por inexistente el cambio de contraseña, con las cuatro cosas
@@ -48,21 +48,29 @@ consultor.
 | 2 | Reparación ↔ Compra | Media | 3-4 días | **HECHO** — del 2026-08-22 (`d219b50`) al 2026-09-04 |
 | 3 | Encuesta de satisfacción | Media | 4-6 días | **HECHO** — del 2026-08-22 (`24b0618`) al 2026-09-04 |
 | 4 | Mantenimiento preventivo recurrente | Media | 5-8 días | **HECHO** — del 2026-08-24 (`bd098f9`) al 2026-09-05 |
-| 5 | Horario laboral en el SLA | Media | 4-6 días | **PENDIENTE — el único que queda.** Decisiones de producto cerradas |
+| 5 | Horario laboral en el SLA | Media | 4-6 días | **HECHO** — 2026-09-09 (`a5ec64d`, PR #146), en producción |
 | 6 | Ticket por email entrante | Alta | 2-3 semanas | **DIFERIDO** por decisión del 2026-08-20 |
 
-Estimado restante: **~4-6 días sobre el punto 5**, el único abierto. Ese número
-ya descuenta "el problema mayor" que la estimación original le cargaba —
-recalcular `slaVenceAt` histórico —, porque la política de datos descartables le
-saca el peso de la migración.
+Estimado restante sobre los seis puntos: **cero**. Lo único que sigue sin
+construirse es la recepción de correo del punto 6, diferida por decisión del
+2026-08-20.
 
-Con un solo punto abierto, **el plan de dos carriles en paralelo dejó de
-aplicar**: se describe más abajo porque explica cómo se ejecutaron los puntos 2 a
-4, no porque quede trabajo que repartir.
+El plan de dos carriles en paralelo **ya no aplica**: se describe más abajo
+porque explica cómo se ejecutaron los puntos 2 a 4, no porque quede trabajo que
+repartir.
 
 > **Mantené esta columna al día.** Un roadmap sin estado obliga a reconstruir de
 > memoria qué se entregó, y esa reconstrucción falla: el punto 1 estuvo en
 > producción varias semanas mientras el documento seguía diciendo "pendiente".
+>
+> **Volvió a pasar, y mucho más rápido.** La corrección del 2026-09-09 se
+> escribió a las 16:59 (`82a3a3c`) y dejó el punto 5 como "el único pendiente".
+> Era cierto en ese instante: el punto 5 se mergeó a `main` a las **22:52 del
+> mismo día** (PR #146). El documento envejeció **seis horas** después de
+> corregirse, y siguió diciendo "pendiente" dos semanas más, hasta el
+> 2026-09-23. En un repo donde se mergean varios PRs por día, un estado
+> mantenido a mano miente por construcción. **Antes de arrancar cualquier punto,
+> verificalo contra el código y contra `git log` — no contra esta tabla.**
 
 ## Entregado fuera de los seis puntos
 
@@ -129,10 +137,10 @@ falla si aparece una séptima copia del formateador de fechas.
 
 ### El plan de carriles — **registro histórico**
 
-> **Ya no aplica.** Con el punto 5 como único trabajo abierto no hay nada que
-> repartir entre dos carriles. Se conserva porque explica cómo se ejecutaron la
-> Fase 0 y los puntos 2 a 4, y porque la restricción de las migraciones de Prisma
-> vuelve a morder apenas se abran dos frentes de nuevo.
+> **Ya no aplica.** Sin puntos abiertos no hay nada que repartir entre dos
+> carriles. Se conserva porque explica cómo se ejecutaron la Fase 0 y los puntos
+> 2 a 4, y porque la restricción de las migraciones de Prisma vuelve a morder
+> apenas se abran dos frentes de nuevo.
 
 `sdd-apply` no admite dos instancias sobre el mismo cambio, pero el ledger es
 **por cambio** y `sdd-attempt handoff` contempla worktrees enlazados. Así que dos
@@ -155,11 +163,14 @@ escribiéndolo es conflicto garantizado.
 
 Para no re-litigarlas al empezar cada punto.
 
-> **Contrastadas contra el código el 2026-09-09.** La del punto 2 se cumplió tal
-> cual. **La del punto 4 NO**: se pidió un `tipoTicket` propio "Preventivo"
-> excluido de las métricas de SLA, y el código reusa `MANTENIMIENTO` con la
-> exclusión colgada de la prioridad del plan. Ver el detalle en la sección del
-> punto 4. La del punto 5 sigue sin ejecutarse porque el punto sigue abierto.
+> **Contrastadas contra el código el 2026-09-09, y de nuevo el 2026-09-23.** La
+> del punto 2 se cumplió tal cual. **La del punto 4 NO**: se pidió un
+> `tipoTicket` propio "Preventivo" excluido de las métricas de SLA, y el código
+> reusa `MANTENIMIENTO` con la exclusión colgada de la prioridad del plan. Ver
+> el detalle en la sección del punto 4. **La del punto 5 se cumplió a medias**:
+> el default 9-18 lun-vie y el arranque del reloj en la próxima ventana hábil
+> están construidos, pero el calendario **NO es por cliente** — es uno solo,
+> global, en la base master. Detalle en el punto siguiente.
 
 - **Punto 2** — "bloqueada" es un estado **derivado** (tiene ≥1 compra vinculada
   sin recibir), **no** frena `porcentajeAvance`, y **sí** se ve en el listado con
@@ -171,8 +182,25 @@ Para no re-litigarlas al empezar cada punto.
 - **Punto 5** — calendario **por cliente** con default 9-18 lun-vie; feriados
   nacionales AR precargados en el seed más excepciones por cliente; un ticket
   abierto fuera de horario arranca el reloj en la **próxima ventana hábil**.
+  **Desviación entregada el 2026-09-09**: el arranque en la próxima ventana
+  hábil está implementado (`calcular-sla-habil-vence.service.ts`), pero el
+  calendario y los feriados son **globales**, no por cliente:
+  `CalendarioLaboralDia` tiene como clave solo `dia_semana` y `Feriado` solo
+  `fecha`, ambos en la base master
+  (`backend/prisma_master/schema.prisma:477-512`). No hay excepciones por
+  cliente. Anotado en la deuda técnica.
 
-### 1 · Exportar a Excel/CSV — Baja
+### 1 · Exportar a Excel/CSV — Baja — **ENTREGADO**
+
+> **Entregado** entre el 2026-08-19 (`c442af8`) y el 2026-08-20 (`a9bb3fa`), en
+> producción. La tabla de arriba ya lo marcaba; esta sección se quedó sin la
+> etiqueta y en tiempo futuro hasta el 2026-09-23. El código vive en
+> `backend/src/shared/application/armar-export-csv.ts`,
+> `backend/src/shared/infrastructure/csv/csv.ts`,
+> `backend/src/shared/domain/tope-filas-export.ts` y, del lado del frontend, en
+> `frontend/src/shared/components/exportar-csv-button.tsx` con
+> `frontend/src/shared/hooks/use-exportar-csv.ts`. Lo que sigue son las notas de
+> diseño originales, que se cumplieron.
 
 Reusar los casos de uso de listado que ya existen, con sus filtros, y volcar a
 CSV.
@@ -263,22 +291,50 @@ módulo de equipos es un inventario, no un plan de mantenimiento.
   test que corra el generador dos veces y verifique que crea una sola.
 - Decidir qué entidad se genera: ¿ticket?, ¿reparación edilicia?, ¿ambas?
 
-### 5 · Horario laboral en el SLA — Media-alta — **EL ÚNICO PENDIENTE**
+### 5 · Horario laboral en el SLA — Media-alta — **ENTREGADO**
 
-> **Verificado pendiente el 2026-09-09.** `calcular-sla-vence.service.ts:3`
-> declara el reloj 24/7 en su propio comentario: el cálculo es
-> `venceAt = creadoEn + horas` y cruza medianoche y fin de semana sin ajuste. No
-> hay entidad de calendario ni de feriados en `backend/src/sla/`.
+> **Entregado el 2026-09-09** (`a5ec64d`, PR #146 `feat/sla-habil-cableado`,
+> ciclo `sdd/sla-habil`). En producción desde el deploy del 2026-09-21.
+>
+> Esta sección decía "EL ÚNICO PENDIENTE" hasta el 2026-09-23 — ver la nota de
+> la tabla de los seis puntos sobre por qué.
 
-Hoy el SLA son horas corridas: un ticket abierto viernes 18:00 vence el sábado.
+El cálculo sobre horas hábiles vive en
+`backend/src/calendario-laboral/domain/services/calcular-sla-habil-vence.service.ts`.
+`AplicarSlaUseCase` elige entre ese servicio y el viejo `CalcularSlaVenceService`
+(reloj 24/7) según la cohorte del ticket.
 
-- Calendario de atención por cliente + feriados; vencimiento sobre horas hábiles.
-- La aritmética de fechas es traicionera (noches, fines de semana, feriados,
-  cambio de horario). Exige tests parametrizados fuertes.
-- **El problema mayor es la migración**: los tickets existentes tienen
-  `slaVenceAt` con la regla vieja. Recalcular cambia números históricos de
-  cumplimiento que quizá ya se le mostraron a un cliente; no recalcular deja dos
-  reglas conviviendo. **Decidirlo antes de empezar.**
+**Cómo se resolvió "el problema mayor" — con una columna de cohorte, no
+recalculando.** La decisión de producto está grabada en el comentario de
+`backend/prisma_tenant/migrations/20260909130000_add_sla_regla_tickets/migration.sql`:
+los tickets existentes **no se recalculan**; su `sla_vence_at` queda con la regla
+vieja de horas corridas.
+
+El mecanismo es un `ALTER` en dos tiempos, sin código de aplicación:
+
+1. `sla_regla VARCHAR(16) NOT NULL DEFAULT 'CORRIDO'` — Postgres backfillea ese
+   valor en todas las filas existentes de un solo saque.
+2. `ALTER COLUMN sla_regla SET DEFAULT 'HABIL'` — los tickets nuevos nacen en la
+   cohorte nueva.
+
+Más un `CHECK sla_regla IN ('CORRIDO','HABIL')` que cierra el catálogo.
+`AplicarSlaUseCase` **lee** esa columna y **nunca la escribe**.
+
+Sin esa columna había una fuga silenciosa: `alReprioritizar` recalcula desde el
+`created_at` **original** cada vez que cambia la prioridad, así que un ticket
+viejo se habría recalculado con la regla nueva la primera vez que alguien lo
+repriorizara. Y `RESUELTO` **no** es estado terminal — solo `CERRADO` y
+`CANCELADO` lo son —, de modo que hasta un ticket resuelto entraba por ese
+camino. La decisión "no recalculamos" se habría filtrado de a un ticket por vez.
+
+> **Ojo al tocar la cohorte de los tickets nuevos: son dos fuentes espejadas.**
+> El `DEFAULT 'HABIL'` de la base **nunca llega a actuar** por el camino de la
+> aplicación, porque Prisma resuelve el `@default("HABIL")` del schema del lado
+> del cliente y lo manda dentro del `INSERT`. Mover la cohorte exige tocar las
+> dos.
+
+Lo que quedó fuera del alcance entregado: el calendario es **uno solo para todos
+los inquilinos** — ver la deuda técnica de abajo.
 
 ### 6 · Ticket por email entrante — Alta
 
@@ -310,8 +366,11 @@ como siempre.
 2. ~~**Punto 2 — el diferencial. Es el siguiente.**~~ — **entregado** el 2026-09-04.
 3. ~~Punto 4 — reusa infraestructura probada.~~ — **entregado** el 2026-09-05.
 4. ~~Punto 3.~~ — **entregado** el 2026-09-04.
-5. **Punto 5 — es el siguiente, y el último que queda.**
+5. ~~**Punto 5 — es el siguiente, y el último que queda.**~~ — **entregado** el
+   2026-09-09 (PR #146), con la desviación del calendario global.
 6. Punto 6 — diferido.
+
+**No queda ningún punto abierto.**
 
 ~~**Antes del punto 2 va la Fase 0**~~ — la Fase 0 está integrada en `main`.
 
@@ -384,6 +443,7 @@ cabeza de alguien deja de existir cuando esa persona no está.
 | Qué | Por qué importa |
 |---|---|
 | **Regeneración reproducible del entorno — PARCIALMENTE RESUELTA el 2026-09-09.** La creación del contenedor **ya está documentada**: `README.md:278` trae el `docker run` completo y `pnpm entorno:verificar` / `pnpm entorno:regenerar` (`55be976`). Lo que sigue vivo es que `demo-seed.ts:278` **solo aplica preset al rol TECNICO** | Es el cimiento del que cuelga toda la política de datos descartables. Destruir y regenerar sale más barato que migrar **solo si el generador está sano y regenerar es un comando**. Falló dos veces el 2026-08-21: el seed reproduciría el hueco de permisos, y al perderse la base local el README arranca en "cuando haya una instancia de Postgres disponible" — justo después del paso que faltaba |
+| **El calendario laboral es global, no por cliente.** `CalendarioLaboralDia` (clave: solo `dia_semana`) y `Feriado` (clave: solo `fecha`) viven en la base **master** (`backend/prisma_master/schema.prisma:477-512`), sin columna de cliente | Hoy no muerde porque los dos clientes de producción comparten horario y feriados. El día que uno atienda sábados, o tenga un feriado provincial que el otro no, hay que agregarle `clienteId` a esas dos tablas y migrar las filas existentes. Es más barato saberlo ahora que descubrirlo con un cliente esperando |
 | **672 `as never`/`as any` en 121 specs**, diferidos a propósito | El gate de tipos nuevo **NO los frena**: `as never` compila igual. Sin una regla de lint que los prohíba en specs, la deuda se reconstruye sola. **Medido de nuevo el 2026-09-09: eran 301 en 83 specs el 2026-08-21, hoy son 672 en 121. Se duplicó en tres semanas** — es la única deuda de esta tabla que está creciendo |
 | ~~123 errores de tipos escondidos tras la exclusión `**/*.spec.ts`~~ | **RESUELTO** el 2026-08-21 (Fase 0, carril A). El gate quedó instalado y probado: un error de tipo en un spec ahora rompe `pnpm typecheck` |
 | ~~Render de fechas del frontend~~ | **RESUELTO** el 2026-08-21 (Fase 0, carril B). Un solo módulo formatea fechas, con regla de lint que impide una séptima copia |
