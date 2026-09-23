@@ -141,3 +141,40 @@ ciclo viven en Git, la memoria vive en engram, y nada vive en los dos lados.**
   habría que reconstruir artefactos a partir de observaciones, y un artefacto inventado
   miente peor que uno ausente. Para recuperar una decisión vieja, `mem_search` →
   `mem_get_observation` con `project: "soporte"`, contra la base de WSL.
+
+---
+
+## Un ciclo que implementa un punto del roadmap cita su decisión de producto
+
+`docs/roadmap-comercial.md` tiene una sección, **"Decisiones de producto ya cerradas"**,
+donde vive lo que se acordó para cada punto antes de que existiera código. Ese archivo
+**no lo lee ninguna fase del ciclo SDD**. Por eso se colaron dos desviaciones.
+
+La del punto 5 es la que hay que tener presente: el ciclo `sdd/sla-habil` tuvo
+**diez pasadas de revisión adversarial** —WU-1 tres veces, WU-2 tres, WU-3 cuatro—, con
+un FAILED real encontrado por mutación, corregido y re-revisado. Y ninguna vio que el
+calendario entregado es **global** cuando la decisión acordada pedía **por cliente**.
+
+**No falló el rigor. Falló el alcance.** Cada revisión contrastó el código contra
+`AGENTS.md` y contra la spec de su propio work unit. La decisión existía desde tres días
+antes de que el ciclo arrancara, y nunca entró al alcance de nadie.
+
+Por eso, cuando un ciclo implementa un punto del roadmap:
+
+1. **La spec cita la decisión por ruta** — `docs/roadmap-comercial.md`, sección
+   "Decisiones de producto ya cerradas", viñeta del punto.
+2. **Cada viñeta de esa decisión se convierte en un requerimiento con su escenario
+   verificable.** No se parafrasea en prosa suelta: entra como requerimiento, que es lo
+   que `sdd-verify` sabe contrastar.
+3. Si algo de la decisión **no** se va a implementar, se declara en la spec con su
+   motivo, antes de empezar. Una desviación acordada de antemano es una decisión; una
+   descubierta dos meses después es un defecto.
+
+Esto no agrega una fase ni un control nuevo: le da a `sdd-verify` —que ya existe y ya
+corre— el insumo que le faltaba.
+
+**Al cerrar el punto**, su viñeta en "Decisiones de producto ya cerradas" declara
+**Cumplida** o **Desviación** con su motivo. No es opcional:
+`scripts/check-roadmap-fresco.mjs` lo exige para todo punto marcado HECHO y falla si
+falta. El check nunca juzga si la declaración es **verdadera** —eso sigue siendo juicio
+humano—, solo que **exista**. Desviación declarada, sí; desviación silenciosa, no.
