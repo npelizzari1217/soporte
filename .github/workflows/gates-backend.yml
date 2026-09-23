@@ -95,6 +95,14 @@ jobs:
           cache: pnpm
           cache-dependency-path: backend/pnpm-lock.yaml
 
+      # Antes del install: es node puro y no necesita dependencias, asi que si el
+      # ratchet se rompio conviene enterarse antes de gastar la instalacion, las
+      # migraciones y la suite. `working-directory` explicito porque el default
+      # del job es backend/ y el script se para en la raiz del repo.
+      - name: Ratchet de casts en specs
+        working-directory: ${{ github.workspace }}
+        run: node scripts/check-casts-en-specs.mjs
+
       - run: pnpm install --frozen-lockfile
 
       # POSTGRES_DB solo crea la master. La de tenant hay que crearla aparte, y
