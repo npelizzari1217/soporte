@@ -70,3 +70,73 @@ Ninguna.
 ### Status
 
 7/7 tareas de WU1 completas, entregadas como WU1a + WU1b. Lista para WU2 (ABM global + controller).
+
+## WU2a: Casos de uso globales (tarea 2.1) — PARCIAL
+
+Decisión del dueño (2026-09-24): WU2 viene pre-dividida en WU2a (tarea 2.1: casos de uso + tests
+unitarios), WU2b (2.2/2.3/2.5: DTOs, controller, wiring), WU2c (2.4: e2e). Esta corrida cubre
+solo WU2a, en la rama `feat/feriados-configurables-wu2a` (apilada sobre WU1b).
+
+La tarea 2.1 en sí **no está completamente hecha**: implementar los cuatro casos de uso (Listar, Crear,
+Editar, Eliminar) más sus tests unitarios midió 434 líneas cambiadas, por encima del presupuesto de
+400 líneas. Según la regla del dueño, solo se comiteó un subconjunto coherente y revertible:
+
+- [x] Casos de uso Listar/Crear/Eliminar + tests unitarios (este commit)
+- [ ] Caso de uso Editar + tests unitarios — **diferido**, no implementado en esta corrida
+
+El checkbox de la tarea 2.1 en `tasks.md` sigue en `[ ]` — cubre los cuatro casos de uso, y Editar
+falta. La próxima pasada de apply (o una porción WU2a-2) implementa
+`EditarFeriadoGlobalUseCase` (`application/use-cases/editar-feriado-global.use-case.ts` +
+spec) siguiendo la misma forma que `CrearFeriadoGlobalUseCase`: cargar por id →
+`FeriadoNoEncontradoError` si no se encuentra, validar la nueva `fecha` con
+`FechaCalendario.crear()`, llamar a `FeriadoEntity.editar()`, persistir, capturar P2002 →
+`FeriadoFechaDuplicadaError`. Esa porción sola es chica (~184 líneas incl. spec) y entra
+bien dentro del presupuesto por sí sola.
+
+### Files Changed
+
+| Archivo | Acción | Qué |
+|---|---|---|
+| `backend/src/calendario-laboral/application/use-cases/listar-feriados-globales.use-case.ts` | Creado | `ListarFeriadosGlobalesUseCase` — delega en `IFeriadoGlobalRepository.listar()`, envuelve en `Result` por consistencia (sin fallo esperado) |
+| `backend/src/calendario-laboral/application/use-cases/listar-feriados-globales.use-case.spec.ts` | Creado | Tests unitarios: devuelve la lista del repo, la lista vacía no falla |
+| `backend/src/calendario-laboral/application/use-cases/crear-feriado-global.use-case.ts` | Creado | `CrearFeriadoGlobalUseCase` — valida `fecha` vía `FechaCalendario.crear()`, crea `FeriadoEntity`, persiste; captura P2002 → `FeriadoFechaDuplicadaError` (precedente `crear-equipo.use-case.ts:11-19`) |
+| `backend/src/calendario-laboral/application/use-cases/crear-feriado-global.use-case.spec.ts` | Creado | Tests unitarios: camino feliz, la fecha inválida (`2026-02-30`) corta antes de llamar al repo, mapeo de P2002, otros errores de infra se vuelven a lanzar sin mapear |
+| `backend/src/calendario-laboral/application/use-cases/eliminar-feriado-global.use-case.ts` | Creado | `EliminarFeriadoGlobalUseCase` — carga por id → `FeriadoNoEncontradoError` si no se encuentra, luego borrado físico (D1: el feriado global no tiene soft delete, a diferencia de `EliminarEquipoUseCase`) |
+| `backend/src/calendario-laboral/application/use-cases/eliminar-feriado-global.use-case.spec.ts` | Creado | Tests unitarios: elimina cuando se encuentra, falla con `FeriadoNoEncontradoError` y nunca llama a `eliminar()` cuando no se encuentra |
+
+### Deviations from Design
+
+Ninguna en el código entregado — coincide con D2 de design.md (validación de `FechaCalendario.crear()`),
+las formas de error de D4/D7 (`FeriadoFechaDuplicadaError`, `FeriadoNoEncontradoError`), y el
+precedente de captura de P2002 que cita el diseño (`crear-equipo.use-case.ts:11-19`). La desviación es
+solo de cronograma: la tarea 2.1 se divide en dos corridas de apply para respetar el presupuesto de 400 líneas,
+declarado arriba y en el Review Workload Forecast de `tasks.md` (WU2 ya estaba marcada en
+el límite del presupuesto, ~400 est.).
+
+### Hallazgos
+
+Ninguna.
+
+### Work Unit Evidence
+
+| Evidencia | Valor |
+|---|---|
+| Comando de test focalizado y resultado | `pnpm vitest run src/calendario-laboral` (desde `backend/`) → 10 archivos de test, 59 tests, todos aprobados |
+| Harness de runtime | N/A — todavía no hay controller cableado (WU2b cablea `FeriadosController`); solo tests unitarios, sin ida y vuelta real de Postgres/HTTP para esta porción |
+| Límite de rollback | Los tres archivos nuevos (+ sus specs) son aditivos, nada más los referencia todavía (sin controller, sin wiring de module). `git revert` de este commit solo elimina los casos de uso Listar/Crear/Eliminar sin dependientes downstream |
+
+### Workload / PR Boundary
+
+- Modo: porción de PR encadenada (Feature Branch Chain), apilada sobre `feat/feriados-configurables-wu1b`
+- Unidad de trabajo actual: WU2a (solo tarea 2.1) — parcial
+- Límite: arranca desde el repositorio/mapper global de WU1b; termina con los casos de uso
+  Listar/Crear/Eliminar listos para que WU2b los cablee una vez que Editar aterrice
+- Impacto medido sobre el presupuesto de revisión: 250 líneas cambiadas de backend (código) para este commit,
+  contra un presupuesto de 400 líneas — la tarea 2.1 completa (incl. Editar) midió 434 líneas y se
+  dividió según la regla del dueño
+
+### Status
+
+3/4 casos de uso de la tarea 2.1 completos (Listar, Crear, Eliminar). Falta Editar. El checkbox
+de la tarea 2.1 en `tasks.md` sigue sin marcar hasta que Editar se entregue. No está listo para `sdd-verify` sobre WU2
+como un todo; listo para otra pasada de `sdd-apply` que termine la tarea 2.1 (Editar) antes de WU2b.
