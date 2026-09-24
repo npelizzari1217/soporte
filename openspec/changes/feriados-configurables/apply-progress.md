@@ -616,3 +616,70 @@ línea por el orquestador: el docstring del puerto, el encabezado de
 `CalendarioLaboralModule` y el docstring de `AplicarSlaUseCase` ahora describen la unión
 global ∪ del propio cliente, el throw de falla cerrado y el registro del listener. Solo
 comentarios; sin cambio de comportamiento.
+
+## WU5c: prueba end-to-end de SLA (tarea 5.6) — COMPLETA, WU5 cerrada por completo
+
+Rama `feat/feriados-configurables-wu5c`, apilada sobre `wu5b2` (`4bc213b`).
+
+- [x] 5.6 El nuevo spec `aplicar-sla-habil-feriados.e2e.spec.ts` prueba la unión global ∪
+  del propio cliente de punta a punta contra Postgres real, con dos inquilinos efímeros
+  (A, B). Conexión manual de las clases exactas de producción
+  (`AplicarSlaListener`/`AplicarSlaUseCase`/
+  `CalcularSlaHabilVenceService`/`PrismaFeriadosLaboralesRepository`/etc., el mismo
+  conjunto que `sla.module.ts:100-159` conecta vía DI) en lugar de compilar todo el árbol
+  `SlaModule` + `TicketsModule` + `AuthModule` + `CalendarioLaboralModule` — no hace falta
+  HTTP/JWT porque el camino bajo prueba es el listener, no un controlador; se mantiene muy
+  por debajo del presupuesto sin perder realismo (mismas clases, mismo Postgres, mismo
+  cálculo de dominio). El calendario semanal (lun-vie 09:00-18:00 ART) es una semilla de
+  migración permanente, no un fixture. Un `it()`, 4 aserciones secuenciales sobre el mismo
+  ticket (un ticket HABIL, SLA de 27h y luego 36h, anclado el lunes 2031-04-07 09:00 ART):
+  - Creación: salta el feriado global (mar 04-08) y el feriado propio de A (mié 04-09),
+    cuenta el feriado de B (jue 04-10) con normalidad → `sla_vence_at =
+    2031-04-11T21:00:00.000Z` (vie 18:00 ART). Cubre tanto "salta global+propio" como
+    "nunca salta el de otro cliente" en un solo cálculo, ya que la misma ventana contiene
+    los tres tipos de feriado.
+  - Repriorización (mismo ancla `createdAt`, nueva prioridad de 36h): recalcula con la
+    misma unión, cruzando un fin de semana → `2031-04-14T21:00:00.000Z` (el lunes
+    siguiente 18:00 ART).
+  - Agregar un nuevo feriado de A (04-16) después de que el ticket ya tiene `sla_vence_at`
+    fijado: el valor no cambia — nada dispara un recálculo al crear un feriado.
+  - Las 4 aserciones exactas de vencimiento/salto pasaron en la primera corrida
+    (coincidencia manual de aritmética de calendario, sin necesidad de reintentos).
+
+### Deviations from Design
+
+Ninguna en las aserciones/requisitos del spec. Una decisión de alcance: la fila de
+Testing Strategy de design.md dice "`insumos-catalogos.e2e.spec.ts` / `tickets.e2e.spec.ts`
+templates" como el precedente de E2E; este spec en cambio sigue el patrón más liviano de
+conexión manual de `prisma-sla-ticket.integration.spec.ts` (repositorios reales
+respaldados por Prisma, sin contenedor de DI de Nest, sin HTTP). Justificado arriba — el
+prompt de lanzamiento permitió explícitamente "the use case + listener wiring" como
+alternativa al camino HTTP y pidió "prefer the most real path that stays within budget".
+
+### Hallazgos
+
+Ninguna.
+
+### Work Unit Evidence
+
+| Evidencia | Valor |
+|---|---|
+| `pnpm typecheck` (desde `backend/`) | sin errores |
+| `pnpm lint` (desde `backend/`) | sin errores, sin hallazgos (5 hallazgos de prettier corregidos automáticamente con `eslint --fix`, luego reverificado sin errores) |
+| `pnpm vitest run src/sla src/calendario-laboral src/tickets` (desde `backend/`) | 83 archivos, 723 pruebas, todas pasaron |
+| Arnés de ejecución | Postgres real: `soporte_master_test` (nunca truncada, su propia fila se elimina en `afterAll`, `usarLockMasterTest()`) + dos bases de inquilino efímeras (A, B) creadas/migradas/eliminadas por corrida; se confirmó que no queda ninguna base `soporte_*_test` huérfana (solo quedan `soporte_master_test`/`soporte_tenant_test`) |
+| Límite de rollback | Solo un archivo de prueba nuevo, puramente aditivo; `git revert` lo elimina sin dependientes posteriores |
+
+### Workload / PR Boundary
+
+- Modo: porción de PR encadenado (Feature Branch Chain), apilada sobre `feat/feriados-configurables-wu5b2`
+- Unidad de trabajo actual: WU5c (5.6) — completa; **WU5 ahora está cerrada por completo**
+  (5.1-5.6 todas en `[x]`)
+- Límite: un archivo de spec e2e nuevo, solo pruebas, no se tocó código de producción
+- Impacto medido en el presupuesto de revisión: muy por debajo de 400 líneas cambiadas
+  (un solo archivo de prueba)
+
+### Status
+
+Tarea 5.6 completa (`tasks.md` actualizado). WU5 (5.1-5.6) cerrada por completo.
+Siguiente: WU6 (tokens/badge/scaffolding de frontend).
