@@ -26,8 +26,7 @@
 - **Las descripciones de test (`describe`/`it`) son la EXCEPCIÓN: no tienen idioma fijo.**
   Se sigue el idioma de los `it()` **del archivo que se toca**, no el de la regla de arriba.
   **Un `it()` nuevo en inglés NO es un hallazgo** si sus vecinos del archivo están en
-  inglés, y viceversa. Los comentarios DENTRO del cuerpo del test sí van en español
-  siempre. Si el repo tiene un censo medido, vive en su sección propia, no acá.
+  inglés, y viceversa. Si el repo tiene un censo medido, vive en su sección propia, no acá.
 - **La regla NO es retroactiva.** No reportes copy, mensajes de error ni comentarios en
   inglés preexistentes: **solo los nuevos**, y solo en las líneas que el diff agrega o
   reescribe. Un archivo con copy viejo en inglés no es un hallazgo.
