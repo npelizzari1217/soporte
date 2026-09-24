@@ -318,3 +318,59 @@ consumidores todavía, así que `git revert` elimina solo este tramo.
 ### Status
 
 WU3 completo (3.1-3.5 todos `[x]`). Listo para `sdd-verify` en WU3, o WU4 (ABM de cliente).
+
+## WU4a: Casos de uso de cliente (tarea 4.1, parcial) — COMPLETA para este tramo
+
+Branch `feat/feriados-configurables-wu4a`, apilado sobre `wu3b` (`46d3e56`). La tarea 4.1 está
+pre-dividida como WU2: WU4a = casos de uso Listar/Crear/Eliminar + tests unitarios (esta ejecución);
+WU4a2 = `EditarFeriadoCliente`; WU4b = DTOs + controller + conexión; WU4c = e2e de aislamiento.
+
+- [x] `ListarFeriadosClienteUseCase` — refleja `ListarFeriadosGlobalesUseCase`, delega
+  a `IFeriadoClienteRepository.listar()`.
+- [x] `CrearFeriadoClienteUseCase` — valida `fecha` mediante `FechaCalendario.crear()`,
+  verifica de antemano `IFeriadosGlobalesChecker.esGlobal()` (D4) → `FeriadoFechaEsGlobalError`,
+  y luego persiste; captura P2002 → `FeriadoFechaDuplicadaError` para el duplicado
+  dentro de la misma lista (sin verificación previa separada contra la propia lista del
+  cliente, según el precedente de `CrearFeriadoGlobalUseCase` y la condición de carrera
+  entre bases aceptada por D4).
+- [x] `EliminarFeriadoClienteUseCase` — refleja `EliminarFeriadoGlobalUseCase`,
+  borrado físico, `FeriadoNoEncontradoError` cuando `buscarPorId` no encuentra nada.
+
+El checkbox de la tarea 4.1 en `tasks.md` sigue en `[ ]` — cubre los cuatro casos de uso y
+`EditarFeriadoCliente` queda diferido para WU4a2.
+
+### Files Changed
+
+| Archivo | Acción | Qué |
+|---|---|---|
+| `backend/src/calendario-laboral/application/use-cases/listar-feriados-cliente.use-case.ts` | Creado | `ListarFeriadosClienteUseCase` |
+| `backend/src/calendario-laboral/application/use-cases/listar-feriados-cliente.use-case.spec.ts` | Creado | Tests unitarios: devuelve la lista del repo, una lista vacía no falla |
+| `backend/src/calendario-laboral/application/use-cases/crear-feriado-cliente.use-case.ts` | Creado | `CrearFeriadoClienteUseCase` |
+| `backend/src/calendario-laboral/application/use-cases/crear-feriado-cliente.use-case.spec.ts` | Creado | Tests unitarios: camino feliz, fecha inválida, rechazo por deduplicación global, mapeo de P2002, otros errores se relanzan |
+| `backend/src/calendario-laboral/application/use-cases/eliminar-feriado-cliente.use-case.ts` | Creado | `EliminarFeriadoClienteUseCase` |
+| `backend/src/calendario-laboral/application/use-cases/eliminar-feriado-cliente.use-case.spec.ts` | Creado | Tests unitarios: elimina cuando se encuentra, si no se encuentra corta el flujo |
+
+### Deviations from Design
+
+Ninguna — coincide con D4 (verificación previa de deduplicación global, duplicado dentro
+de la misma lista vía P2002, condición de carrera entre bases aceptada) y refleja exactamente
+la forma del caso de uso global de WU2.
+
+### Work Unit Evidence
+
+| Evidencia | Valor |
+|---|---|
+| Comando de test focalizado y resultado | `pnpm vitest run src/calendario-laboral` (desde `backend/`) → 18 archivos de test, 112 tests, todos aprobados |
+| Runtime harness | N/A — todavía no hay controller conectado (WU4b conecta `FeriadosClienteController`); solo tests unitarios |
+| Límite de rollback | 6 archivos nuevos, todo aditivo; nada los referencia todavía. `git revert` elimina solo este tramo |
+
+### Workload / PR Boundary
+
+- Modo: tramo de PR encadenada (Feature Branch Chain), apilado sobre `feat/feriados-configurables-wu3b`
+- Unidad de trabajo actual: WU4a (tarea 4.1 parcial) — Listar/Crear/Eliminar completos
+- Impacto medido en el presupuesto de revisión: 324 líneas cambiadas (código) para este commit, bien por debajo de 400
+
+### Status
+
+3/4 casos de uso de la tarea 4.1 completos. El checkbox de la tarea 4.1 en `tasks.md` sigue
+sin marcar hasta que Editar se entregue en WU4a2.
