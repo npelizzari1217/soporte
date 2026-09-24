@@ -294,3 +294,27 @@ Detalles a tener en cuenta: `TenantContext.bind()` (el fallback `enterWith`) no 
 
 Evidencia: `pnpm vitest run src/calendario-laboral` → 14 archivos, 99 tests en verde. Rollback:
 puramente aditivo (sin wiring de módulo, sin consumidores todavía); la migración es un `CREATE TABLE`.
+
+## WU3b: Verificador master + tests de esGlobal — COMPLETA
+
+Branch `feat/feriados-configurables-wu3b`, apilado sobre `wu3a` (`cf3cdb6`). Cierra WU3:
+puerto `IFeriadosGlobalesChecker` + `FeriadosGlobalesMasterChecker` (`esGlobal`, solo
+lectura de master, precedente de `UsuarioMasterChecker`/`i-usuario-master.checker.ts`) +
+sus tests de integración. Todavía no está conectado en `calendario-laboral.module.ts` — lo
+consumen los casos de uso de cliente de WU4 (D4), el mismo patrón de conexión diferida
+que el repositorio de WU1.
+
+Desviación: la mitad restante de la tarea 3.4 corre contra `soporte_master_test`
+(`usarLockMasterTest()`), no contra una "base de inquilino efímera" como decía su
+redacción original — el checker solo lee master, así que no hay base de inquilino en su
+camino. Nunca trunca `feriados`; verifica que `esGlobal('2026-12-25')` sea true (Navidad
+sembrada) y que `esGlobal('2026-01-15')` sea false, más un fixture de 2031 creado y
+eliminado por el propio test (`afterAll`).
+
+Evidencia: `pnpm vitest run src/calendario-laboral` → 15 archivos, 102 tests en verde (+3).
+Rollback: 2 archivos nuevos (port + checker) + 1 spec de integración nuevo, todo aditivo; sin
+consumidores todavía, así que `git revert` elimina solo este tramo.
+
+### Status
+
+WU3 completo (3.1-3.5 todos `[x]`). Listo para `sdd-verify` en WU3, o WU4 (ABM de cliente).

@@ -66,16 +66,16 @@ igual está mal desplegarlo fuera de orden).
 ## WU3: Tabla del inquilino + repositorio de cliente + checker de master
 
 - [x] 3.1 Agregar `model FeriadoCliente` a `backend/prisma_tenant/schema.prisma` según D1 (`id uuid gen_random_uuid()`, `fecha DateTime @unique @db.Date`, `descripcion VarChar(200)`, `created_at`/`updated_at timestamptz`, advertencia `@db.Date` copiada de `prisma_master/schema.prisma:492-498`); generar la migración `prisma_tenant/migrations/20260924130000_feriados_cliente/` (WU3a; el timestamp difiere de la sugerencia original de esta línea — ver la nota de desviación en apply-progress).
-- [ ] 3.2 Crear los ports `IFeriadoClienteRepository` e `IFeriadosGlobalesChecker` en `domain/ports/`.
+- [x] 3.2 Crear los ports `IFeriadoClienteRepository` e `IFeriadosGlobalesChecker` en `domain/ports/`.
   - [x] `IFeriadoClienteRepository` (WU3a)
-  - [ ] `IFeriadosGlobalesChecker` — diferido a WU3b
-- [ ] 3.3 Implementar `PrismaFeriadoClienteRepository` (cliente del inquilino, reutiliza el static UTC de WU1) y `FeriadosGlobalesMasterChecker` (`esGlobal`, master de solo lectura, precedente `UsuarioMasterChecker`) en infrastructure.
+  - [x] `IFeriadosGlobalesChecker` (WU3b)
+- [x] 3.3 Implementar `PrismaFeriadoClienteRepository` (cliente del inquilino, reutiliza el static UTC de WU1) y `FeriadosGlobalesMasterChecker` (`esGlobal`, master de solo lectura, precedente `UsuarioMasterChecker`) en infrastructure.
   - [x] `PrismaFeriadoClienteRepository` (WU3a)
-  - [ ] `FeriadosGlobalesMasterChecker` — diferido a WU3b
-- [ ] 3.4 Tests de integración sobre una base de inquilino efímera: CRUD, constraint `fecha` única, `esGlobal` true/false, ida y vuelta del mapper para la tabla del inquilino.
+  - [x] `FeriadosGlobalesMasterChecker` (WU3b)
+- [x] 3.4 Tests de integración sobre una base de inquilino efímera: CRUD, constraint `fecha` única, `esGlobal` true/false, ida y vuelta del mapper para la tabla del inquilino.
   - [x] CRUD, constraint `fecha` única, ida y vuelta del mapper/fecha para `feriados_cliente` (WU3a)
-  - [ ] `esGlobal` true/false — diferido a WU3b
-- [ ] 3.5 Correr `pnpm typecheck` y la suite de integración; orden de higiene limpiar filas → `app.close()` → `dropDatabase` (WU3a corrió ambos para su porción — en verde; el cierre completo de WU3 espera a WU3b).
+  - [x] `esGlobal` true/false (WU3b — contra `soporte_master_test`, no una base de inquilino efímera, ya que el checker lee master; ver la nota de desviación en apply-progress)
+- [x] 3.5 Correr `pnpm typecheck` y la suite de integración; orden de higiene limpiar filas → `app.close()` → `dropDatabase` (WU3a corrió ambos para su porción; el test del checker de WU3b usa `usarLockMasterTest()` y nunca trunca — WU3 ahora está completamente cerrada).
 
 ## WU4: ABM del cliente + aislamiento
 
