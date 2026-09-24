@@ -80,9 +80,9 @@ igual está mal desplegarlo fuera de orden).
 ## WU4: ABM del cliente + aislamiento
 
 - [x] 4.1 Crear los casos de uso `ListarFeriadosCliente`, `CrearFeriadoCliente`, `EditarFeriadoCliente`, `EliminarFeriadoCliente`; tests unitarios: pre-chequeo de deduplicación global al crear Y al editar, duplicado dentro de la misma lista, no encontrado.
-- [ ] 4.2 Crear los DTOs espejando las constantes de WU1; crear `FeriadosClienteController` (`@Controller('feriados-cliente') @UseGuards(JwtAuthGuard, TenantGuard)`; las escrituras llevan `@UseGuards(AdminClienteGuard)` por método, precedente `catalogos.controller.ts:94,160-161`, de solo lectura).
+- [x] 4.2 Crear los DTOs espejando las constantes de WU1; crear `FeriadosClienteController` (`@Controller('feriados-cliente') @UseGuards(JwtAuthGuard, TenantGuard)`; las escrituras llevan `@UseGuards(AdminClienteGuard)` por método, precedente `catalogos.controller.ts:94,160-161`, de solo lectura).
 - [ ] 4.3 Spec e2e de aislamiento con dos inquilinos efímeros: A nunca lista las filas de B, un `:id` de B resuelve 404 dentro de la base de A, un rol no-admin recibe 403, la escritura de ROOT sobre el inquilino tiene éxito.
-- [ ] 4.4 Cablear en `calendario-laboral.module.ts`. Correr `pnpm typecheck`, `pnpm lint`, `pnpm vitest run backend/src/calendario-laboral`; orden de higiene limpiar filas → `app.close()` → `dropDatabase`.
+- [x] 4.4 Cablear en `calendario-laboral.module.ts`. Correr `pnpm typecheck`, `pnpm lint`, `pnpm vitest run backend/src/calendario-laboral`; orden de higiene limpiar filas → `app.close()` → `dropDatabase` (N/A para esta porción — solo tests unitarios, sin ida y vuelta real contra Postgres; diferido a WU4c según el precedente de WU2b/WU2c).
 
 ## WU5: Unión de SLA, falla cerrado, observabilidad, correcciones de referencias desactualizadas
 

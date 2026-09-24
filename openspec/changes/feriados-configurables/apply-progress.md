@@ -411,3 +411,35 @@ refleja exactamente la forma del caso de uso Editar global de WU2a2.
 
 4/4 casos de uso de la tarea 4.1 completos (Listar, Crear, Editar, Eliminar). El checkbox
 de la tarea 4.1 en `tasks.md` ahora está en `[x]`. Listo para WU4b (DTOs, controller, conexión).
+
+## WU4b: DTOs, controller y conexión de cliente (tareas 4.2/4.4) — COMPLETA
+
+Branch `feat/feriados-configurables-wu4b`, apilado sobre `wu4a2` (`6ff53a5`).
+Solo las tareas 4.2 (`feriado-cliente.dto.ts` + `FeriadosClienteController`) y 4.4
+(conexión de módulo) — la tarea 4.3 (e2e de aislamiento) es WU4c.
+
+`Create/UpdateFeriadoClienteDto` reflejan `feriado.dto.ts` (D9) como clases
+separadas, sin reutilizar — dueño de escritura/recurso distinto, precedente
+de `catalogo.dto.ts`. `FeriadosClienteController`: `@UseGuards(JwtAuthGuard,
+TenantGuard)` a nivel de clase (D5, `catalogos.controller.ts:94`);
+`AdminClienteGuard` solo por método de escritura, nunca a nivel de clase
+(ADR-P5 — no hay metadata para sobrescribir desde el handler, rompería el
+`GET` abierto). Sin verificación inline de `clienteId` (D6): el aislamiento
+es estructural vía `TenantContext`, un `:id` de otro inquilino no se
+encuentra → 404. `toHttpException` (D7): `FeriadoNoEncontradoError` → 404,
+el resto del catálogo de 4 clases → 422, `DELETE` → 204.
+`calendario-laboral.module.ts` (solo aditivo): conecta
+`FERIADO_CLIENTE_REPOSITORY`/`FERIADOS_GLOBALES_CHECKER` (construidos en
+WU3a/WU3b) + los 4 casos de uso vía `useFactory`; comentario desactualizado
+de H3 sin tocar (WU5). `.spec.ts` acotado según lo asignado: metadata de
+guard + tabla error→HTTP.
+
+Ninguna vs. D2/D4/D5/D6/D7/D9. `pnpm typecheck`/`pnpm lint`: limpio. `pnpm
+vitest run src/calendario-laboral`: 20 archivos, 128 tests, todos aprobados.
+Runtime harness: N/A — todavía no hay ida y vuelta de HTTP/Postgres (WU4c).
+Rollback: 3 archivos nuevos + una edición aditiva de módulo. Bien por
+debajo del presupuesto de 400 líneas.
+
+### Status
+
+Tareas 4.2/4.4 completas (`tasks.md` actualizado). La tarea 4.3 queda pendiente para WU4c.
