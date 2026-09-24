@@ -1052,3 +1052,11 @@ Success Criteria de `proposal.md`, verificados contra evidencia:
 7. Compuertas en verde: ver arriba.
 8. Punto 5 del roadmap declarado, `check-roadmap-fresco.mjs` pasa: WU8c.
 9. Deuda de Ayuda registrada en los cuerpos de los commits. **Abierto:** cuerpos de PR (los PR todavía no se abrieron).
+
+## WU9: Fijar la zona horaria de las pruebas del backend (verificar W1) — COMPLETA
+
+El dueño eligió corregir W1 de verify-report dentro de este cambio. `backend/vitest.config.ts` ahora fija
+`process.env.TZ = 'America/Argentina/Buenos_Aires'` antes de que arranque el pool. Evidencia: la
+mutación superviviente M8 (getters UTC cambiados por locales en `claveDiaUtcDe`) ahora falla 18
+pruebas sin TZ en el shell; sin mutar, `src/calendario-laboral src/sla` pasan 196/196, y
+la suite completa del backend pasa 5360/5360 bajo esta zona horaria.

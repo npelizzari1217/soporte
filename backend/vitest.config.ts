@@ -2,6 +2,14 @@ import swc from 'unplugin-swc';
 import tsconfigPaths from 'vite-tsconfig-paths';
 import { configDefaults, defineConfig } from 'vitest/config';
 
+// Zona horaria fija para TODA la corrida, sea cual sea la máquina (una laptop en
+// CEST, el runner de CI en UTC). Los tests de la trampa de `@db.Date` (ver
+// `prisma_master/schema.prisma`, comentario sobre `feriados`) solo detectan un
+// corrimiento de día en una zona de offset NEGATIVO: en UTC o en UTC+ un mapper
+// que lea con getters locales en vez de UTC pasa igual. Se fija antes de que
+// arranque el pool, así lo heredan los workers (forks o threads).
+process.env.TZ = 'America/Argentina/Buenos_Aires';
+
 export default defineConfig({
   test: {
     globals: true,
