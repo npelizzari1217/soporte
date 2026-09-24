@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * FeriadoGlobalFormDialog — crear/editar un feriado, GLOBAL (`/feriados`,
+ * FeriadoFormDialog — crear/editar un feriado, GLOBAL (`/feriados`,
  * ROOT-only) o de CLIENTE (`/feriados-cliente`, ADMINISTRADOR-only, WU8b) —
  * generalizado vía inyección de HOOKS de mutación (no una mutación ya
  * instanciada): `useCrearMutation`/`useEditarMutation` se llaman DENTRO de
@@ -30,19 +30,19 @@ export interface FeriadoBasico {
   descripcion: string;
 }
 
-export interface FeriadoGlobalFormDialogProps {
+export interface FeriadoFormDialogProps {
   trigger: ReactNode;
   feriado?: FeriadoBasico;
   useCrearMutation: () => UseMutationResult<unknown, unknown, FeriadoFormValues>;
   useEditarMutation: (id: string) => UseMutationResult<unknown, unknown, FeriadoFormValues>;
 }
 
-export function FeriadoGlobalFormDialog({
+export function FeriadoFormDialog({
   trigger,
   feriado,
   useCrearMutation,
   useEditarMutation,
-}: FeriadoGlobalFormDialogProps) {
+}: FeriadoFormDialogProps) {
   const [open, setOpen] = useState(false);
   const isEdit = !!feriado;
   const crearMutation = useCrearMutation();

@@ -8,7 +8,7 @@
  * `CiclosVigentesAdminView` y `TiposComponenteAdminView`.
  *
  * WU7a dejó la lista SOLO LECTURA; el commit anterior agregó crear/editar
- * (`FeriadoGlobalFormDialog`). Este commit cierra el ABM con la baja:
+ * (`FeriadoFormDialog`). Este commit cierra el ABM con la baja:
  * `ConfirmDialog` + `useEliminarFeriado`, mismo wiring que
  * `CiclosVigentesAdminView`'s `EliminarCicloVigenteAction`.
  */
@@ -28,7 +28,7 @@ import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { notifyError } from "@/shared/lib/toast";
 import { formatearFechaCalendario } from "@/shared/lib/formato-fecha";
 import { OrigenFeriadoBadge } from "./origen-feriado-badge";
-import { FeriadoGlobalFormDialog } from "./feriado-global-form-dialog";
+import { FeriadoFormDialog } from "./feriado-form-dialog";
 import type { Feriado } from "../types";
 
 export function FeriadosGlobalesAdminView() {
@@ -87,7 +87,7 @@ function FeriadosGlobalesAdminContent() {
       header: "Acciones",
       render: (row) => (
         <div className="flex items-center gap-2">
-          <FeriadoGlobalFormDialog
+          <FeriadoFormDialog
             feriado={row}
             useCrearMutation={useCrearFeriado}
             useEditarMutation={useEditarFeriado}
@@ -109,7 +109,7 @@ function FeriadosGlobalesAdminContent() {
         title="Feriados nacionales"
         description="Lista maestra de feriados nacionales (solo ROOT). Se usan en el cálculo de vencimientos SLA hábiles de todos los clientes."
         actions={
-          <FeriadoGlobalFormDialog
+          <FeriadoFormDialog
             useCrearMutation={useCrearFeriado}
             useEditarMutation={useEditarFeriado}
             trigger={

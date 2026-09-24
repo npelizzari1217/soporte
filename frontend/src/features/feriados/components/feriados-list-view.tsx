@@ -10,7 +10,7 @@
  * tenant lee). La ESCRITURA (WU8b) sí gatea por `esAdminCliente`: agrega la
  * columna Acciones solo entonces, y dentro `render` devuelve `null` para
  * filas GLOBAL — nunca editables/eliminables acá, mismo criterio que
- * `FeriadosGlobalesAdminContent`. Reutiliza `FeriadoGlobalFormDialog` (WU7b,
+ * `FeriadosGlobalesAdminContent`. Reutiliza `FeriadoFormDialog` (WU7b,
  * generalizado en este commit) con los hooks de
  * `use-feriados-cliente-admin-mutations.ts`, sin duplicar el diálogo.
  */
@@ -31,7 +31,7 @@ import { Plus } from "lucide-react";
 import { formatearFechaCalendario } from "@/shared/lib/formato-fecha";
 import { notifyError } from "@/shared/lib/toast";
 import { OrigenFeriadoBadge } from "./origen-feriado-badge";
-import { FeriadoGlobalFormDialog, type FeriadoBasico } from "./feriado-global-form-dialog";
+import { FeriadoFormDialog, type FeriadoBasico } from "./feriado-form-dialog";
 
 // `Column.key` es `keyof T & string`; `acciones` es sintética (`render`
 // override, no lee `row.acciones`) — mismo recurso de tipado local que
@@ -84,7 +84,7 @@ export function FeriadosListView() {
             render: (row: FilaColumnRow) =>
               row.origen === "CLIENTE" ? (
                 <div className="flex items-center gap-2">
-                  <FeriadoGlobalFormDialog
+                  <FeriadoFormDialog
                     feriado={row}
                     useCrearMutation={useCrearFeriadoCliente}
                     useEditarMutation={useEditarFeriadoCliente}
@@ -109,7 +109,7 @@ export function FeriadosListView() {
         description="Feriados nacionales y del cliente que aplican al cálculo de vencimientos SLA hábiles."
         actions={
           esAdminCliente ? (
-            <FeriadoGlobalFormDialog
+            <FeriadoFormDialog
               useCrearMutation={useCrearFeriadoCliente}
               useEditarMutation={useEditarFeriadoCliente}
               trigger={
