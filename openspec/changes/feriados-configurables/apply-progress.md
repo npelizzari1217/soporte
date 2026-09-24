@@ -1036,3 +1036,19 @@ fuera del alcance de #216). También se corrigieron cuatro afirmaciones del road
 introducción de "decisiones", la línea de cierre de la sección 5, y dos filas de deuda técnica), todas marcadas como aún no
 desplegadas. `node scripts/check-roadmap-fresco.mjs` → "El roadmap esta fresco", exit 0. Deuda de Ayuda
 registrada en el cuerpo del commit (8.5). La tarea 8.6 queda para sdd-verify.
+
+## Tarea 8.6: compuertas completas y Success Criteria — COMPLETA (con dos ítems abiertos)
+
+Suites completas en el árbol final: backend `pnpm test` 458 archivos / 5360 pruebas en verde; frontend
+`pnpm test` 197 archivos / 1490 pruebas en verde; lint y chequeos de tipos limpios en ambos lados.
+Success Criteria de `proposal.md`, verificados contra evidencia:
+1-2. Escrituras globales solo de ROOT, escrituras solo de admin de cliente y aislamiento A/B: e2e de WU2c y WU4c.
+3. Fecha de cliente ya global rechazada: caso 6 de WU4c.
+4. HABIL salta feriados globales + del propio cliente, nunca los de otro cliente: WU5c (vencimientos verificados a mano).
+5. Badges verde/azul pálido: clases de variante probadas y contraste WCAG calculado (info claro 5.2:1,
+   info oscuro 6.5:1, éxito claro 4.6:1, éxito oscuro 8.6:1). **Abierto:** todavía no hay verificación visual en un
+   navegador real en ambos temas.
+6. Las 46 filas globales sin cambios: contadas en `soporte_master` y `soporte_master_test`.
+7. Compuertas en verde: ver arriba.
+8. Punto 5 del roadmap declarado, `check-roadmap-fresco.mjs` pasa: WU8c.
+9. Deuda de Ayuda registrada en los cuerpos de los commits. **Abierto:** cuerpos de PR (los PR todavía no se abrieron).
