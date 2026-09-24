@@ -543,3 +543,68 @@ Ninguna.
 ### Status
 
 Tareas 5.3/5.4 completas (`tasks.md` actualizado). WU5 continúa con WU5b (5.1/5.2/5.5) y WU5c (5.6).
+
+## WU5b: unión de SLA, falla cerrado, corrección de H4, corrección parcial de comentario desactualizado (tareas 5.1/5.2, 5.5 parcial) — COMPLETA para esta porción
+
+Rama `feat/feriados-configurables-wu5b`, apilada sobre `wu5a` (`46044e9`).
+
+- [x] 5.1 `PrismaFeriadosLaboralesRepository.obtener()` toma `TenantContext` como segundo
+  parámetro del constructor (Nest lo autoinyecta vía `useClass`, no hace falta cambiar la
+  factory de `module.ts`). `tenantContext.get()` sin bind → lanza `FeriadosSinTenantContextError extends
+  Error` (D3, error de infraestructura simple, precedente `ErrorEntornoInvalido`). Con bind →
+  `Promise.all([master.feriado.findMany(), tenantClient.feriadoCliente.findMany()])`, ambos
+  pasados por `PrismaCalendarioLaboralMapper.claveDiaUtcDe` hacia un único `Set<string>`.
+- [x] 5.2 H4 corregido: el spec de integración ahora crea una base de inquilino efímera
+  (`PostgresAdminService`/`TenantMigrationRunnerAdapter`, patrón
+  `prisma-feriado-cliente...`), la vincula mediante `tenantContext.run(ctx, fn)` y la
+  elimina en `afterAll`. Agregado: unión entre fuentes, deduplicación en una fecha
+  compartida, ejecución del throw sin bind fuera de `conContexto()`. Nuevo spec unitario
+  `prisma-feriados-laborales.repository.spec.ts` (Prisma + TenantContext mockeados):
+  unión, deduplicación, tabla de inquilino vacía, throw sin bind, mapeo `@db.Date` para
+  ambas fuentes.
+- [x] 5.5 (**parcial**) Solo se reescribió el comentario de encabezado propio del
+  repositorio (unión/sin caché/falla cerrado) — inevitable, este archivo se reescribió en
+  este commit.
+
+### Diferido a una subunidad de seguimiento (presupuesto)
+
+Un primer borrador también corrigió los otros 3 comentarios de H3 (docstring del puerto,
+docstring de `AplicarSlaUseCase`, encabezado de `module.ts`) — solo comentarios, en
+archivos que esta WU de otro modo nunca toca. Con eso, el commit midió 443 líneas contra
+el presupuesto de 400; según la regla del dueño se revirtieron al texto previo a WU5b.
+`tasks.md` 5.5 queda en `[ ]`. Objetivo del rehacer: expresar
+unión/sin caché/falla cerrado/registro del listener en los 3, además de corregir el falso
+"no se importa desde ningún otro" de `module.ts` (`sla.module.ts:101` ya lo importa).
+
+### Deviations from Design
+
+Ninguna en el código entregado — coincide con D3 (throw de falla cerrado, no
+`Result`/degradar/`getClient()`), reutiliza `claveDiaUtcDe` según D2; la firma del puerto
+no cambia, no hace falta editar `AplicarSlaUseCase`/`CalcularSlaHabilVenceService`. La
+única desviación es de cronograma: 5.5 se dividió entre esta corrida y un seguimiento,
+mismo patrón que WU2a/WU2a2 y WU4a/WU4a2.
+
+### Work Unit Evidence
+
+| Evidencia | Valor |
+|---|---|
+| `pnpm typecheck` / `pnpm lint` (desde `backend/`) | ambos sin errores |
+| `pnpm vitest run src/sla src/calendario-laboral src/tickets` | 82 archivos, 722 pruebas, todas pasaron |
+| Arnés de ejecución | Postgres real: `soporte_master_test` (nunca truncada) + una base de inquilino efímera creada/migrada/eliminada por corrida; se confirmó que no queda ninguna base `soporte_*_test` huérfana |
+| Límite de rollback | `git revert` restaura la lectura solo-global previa a la unión (una regresión de spec, no un crash); sin dependientes posteriores más allá de este commit |
+
+### Workload / PR Boundary
+
+- Modo: porción de PR encadenado (Feature Branch Chain), apilada sobre `feat/feriados-configurables-wu5a`
+- Unidad de trabajo actual: WU5b (5.1/5.2 completas, 5.5 parcial) — WU5c (5.6) y el resto
+  de 5.5 son corridas de seguimiento separadas
+- Nota de deploy (arrastrada): `migrate:tenants` debe correr antes de que esto se
+  despliegue a cualquier inquilino, o el camino de SLA lanza `P2021` ahí (registrado
+  mediante D10 de WU5a, no en silencio)
+- Impacto medido en el presupuesto de revisión: por debajo del presupuesto de 400 tras
+  diferir 3/4 de 5.5 (ver arriba); la porción completa con los 4 comentarios midió 443
+
+### Status
+
+5.1/5.2 completas; 5.5 parcial (el checkbox queda en `[ ]`). WU5 continúa con un
+pequeño seguimiento para el resto de 5.5, y luego WU5c.
