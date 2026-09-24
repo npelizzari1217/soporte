@@ -1,34 +1,52 @@
 "use client";
 
 /**
- * FeriadoGlobalFormDialog — crear/editar un feriado del calendario GLOBAL
- * (`/feriados`, master, ROOT-only, sdd/feriados-configurables). Mismo patrón
- * que `CicloVigenteFormDialog`: modal genérico + RHF/zod, un solo componente
- * para crear y editar. `feriadoSchema` valida el FORMATO de `fecha` y el
- * largo de `descripcion`; fecha real y duplicados los valida el backend,
- * mapeados a 422 y mostrados vía `notifyError` (`onError` del hook).
+ * FeriadoGlobalFormDialog — crear/editar un feriado, GLOBAL (`/feriados`,
+ * ROOT-only) o de CLIENTE (`/feriados-cliente`, ADMINISTRADOR-only, WU8b) —
+ * generalizado vía inyección de HOOKS de mutación (no una mutación ya
+ * instanciada): `useCrearMutation`/`useEditarMutation` se llaman DENTRO de
+ * este componente para respetar las reglas de hooks (cada fila monta su
+ * propia instancia, con su propio hook de editar ligado a `feriado.id`).
+ * `FeriadosGlobalesAdminView` (WU7b) y `FeriadosListView` (WU8b) pasan sus
+ * propios hooks de `../hooks/*`. Mismo patrón que `CicloVigenteFormDialog`:
+ * RHF/zod, un solo componente para crear y editar. `feriadoSchema` valida
+ * FORMATO; fecha real y duplicados los valida el backend, 422 vía
+ * `notifyError` (`onError` del hook inyectado).
  */
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import type { ReactNode } from "react";
+import type { UseMutationResult } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useCrearFeriado, useEditarFeriado } from "../hooks/use-feriados-globales-admin-mutations";
 import { feriadoSchema, type FeriadoFormValues } from "../schemas";
-import type { Feriado } from "../types";
+
+/** Shape mínimo que necesita el diálogo — `Feriado` y `FeriadoCliente` lo cumplen ambos. */
+export interface FeriadoBasico {
+  id: string;
+  fecha: string;
+  descripcion: string;
+}
 
 export interface FeriadoGlobalFormDialogProps {
   trigger: ReactNode;
-  feriado?: Feriado;
+  feriado?: FeriadoBasico;
+  useCrearMutation: () => UseMutationResult<unknown, unknown, FeriadoFormValues>;
+  useEditarMutation: (id: string) => UseMutationResult<unknown, unknown, FeriadoFormValues>;
 }
 
-export function FeriadoGlobalFormDialog({ trigger, feriado }: FeriadoGlobalFormDialogProps) {
+export function FeriadoGlobalFormDialog({
+  trigger,
+  feriado,
+  useCrearMutation,
+  useEditarMutation,
+}: FeriadoGlobalFormDialogProps) {
   const [open, setOpen] = useState(false);
   const isEdit = !!feriado;
-  const crearMutation = useCrearFeriado();
-  const editarMutation = useEditarFeriado(feriado?.id ?? "");
+  const crearMutation = useCrearMutation();
+  const editarMutation = useEditarMutation(feriado?.id ?? "");
   const mutation = isEdit ? editarMutation : crearMutation;
 
   // Recalculado en CADA render, mismo criterio que `CicloVigenteFormDialog`:

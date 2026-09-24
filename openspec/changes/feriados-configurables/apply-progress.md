@@ -979,3 +979,50 @@ de este segmento.
 
 Tareas 8.1/8.2 parciales (lado de lectura hecho, pruebas del lado de escritura diferidas a WU8b), 8.3 hecha
 (ruta desviada, declarada). Siguiente: WU8b (diálogos/mutaciones de escritura), WU8c (cierre de roadmap).
+
+## WU8b: pantalla de feriados del cliente — lado de ESCRITURA (finalización de tareas 8.1/8.2) — COMPLETA
+
+Rama `feat/feriados-configurables-wu8b`, apilada sobre `wu8a` (`d55eb68`). Solo frontend.
+
+Se generalizó `FeriadoGlobalFormDialog` (WU7b) en vez de duplicarlo:
+`useCrearMutation`/`useEditarMutation` ahora son funciones hook inyectadas, llamadas DENTRO
+del diálogo (no preinstanciadas por quien llama — cada fila monta su propia instancia
+de diálogo, así que los hooks deben vivir en esa instancia según las reglas de los hooks).
+`FeriadosGlobalesAdminView` pasa sus propios hooks explícitamente en ambos puntos de llamada; sus
+pruebas a nivel de DOM quedan sin cambios y siguen en verde. El nuevo
+`use-feriados-cliente-admin-mutations.ts` refleja el archivo de mutaciones globales de WU7b
+(`crearFeriadoCliente`/`editarFeriadoCliente`/`eliminarFeriadoCliente`, `api.ts` WU6b),
+invalidando `["feriados-cliente"]` — la misma key que lee `useFeriadosCliente`, así que una escritura
+también refresca la lista combinada. `FeriadosListView`: la compuerta `esAdminCliente` agrega una
+columna Acciones sintética (`& { acciones?: never }`, el mismo truco que WU7b) solo cuando
+es verdadera; dentro de ella, `render` devuelve `null` para las filas GLOBAL — nadie, ROOT incluido, obtiene
+una acción sobre una fila GLOBAL desde esta pantalla. Los no admin no tienen columna Acciones ni el
+botón "Nuevo feriado". El 422 `FeriadoFechaEsGlobalError` no necesita código de caso especial:
+`notifyError`/`onError` ya muestra el mensaje de cualquier `ApiError` tal cual.
+
+Archivos: `feriado-global-form-dialog.tsx` (generalizado), `feriados-globales-admin-view.tsx`
+(pasa los hooks explícitamente), `use-feriados-cliente-admin-mutations.ts` (nuevo),
+`feriados-list-view.tsx` (acciones de escritura), `feriados-list-view.test.tsx` (nuevas pruebas
+del lado de escritura), `tasks.md` (8.1/8.2 → `[x]`).
+
+Desviaciones: ninguna — coincide con D8 (combinación del lado del cliente, escrituras protegidas por
+`esAdminCliente`) y con las formas de dedup/DTO de D9; la generalización del diálogo es una decisión de
+implementación dentro del alcance, no una desviación. Problemas: ninguno.
+
+Evidencia: `pnpm type-check`/`pnpm lint` (desde `frontend/`) ambos limpios. `pnpm vitest run
+src/features/feriados src/shared/nav src/components src/app` → 42 archivos, 221 pruebas, todas
+exitosas (+6 respecto de las 215 de WU8a). Rollback: 1 archivo nuevo + 4 ediciones de alcance acotado (las
+pruebas de DOM propias de la pantalla global siguen en verde); `git revert` elimina solo la posibilidad
+de escritura de este segmento, la pantalla de solo lectura de WU8a queda intacta.
+
+### Workload / PR Boundary
+
+- Modo: segmento de PR encadenado (Feature Branch Chain), apilado sobre `feat/feriados-configurables-wu8a`
+- Unidad de trabajo actual: WU8b (finalización de tareas 8.1/8.2, incl. eliminar) — completa
+- Impacto medido en el presupuesto de revisión: ver el `git show --numstat` del commit — apuntado a/por debajo
+  del presupuesto de 400 líneas
+
+### Status
+
+Tareas 8.1/8.2 completamente terminadas (`tasks.md` actualizado). Siguiente: WU8c (cierre de roadmap, tarea 8.4,
+más verificación final 8.5/8.6).

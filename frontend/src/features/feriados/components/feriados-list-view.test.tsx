@@ -1,9 +1,13 @@
-import { describe, it, expect, beforeEach } from "vitest";
-import { screen } from "@testing-library/react";
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
+import { toast } from "sonner";
 import { server } from "../../../../test/msw/server";
 import { renderWithProviders, buildUser } from "../../../../test/render-with-providers";
 import { FeriadosListView } from "./feriados-list-view";
+
+vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 const GLOBAL_ENERO = { id: "g1", fecha: "2026-01-01", descripcion: "Año Nuevo" };
 const GLOBAL_MAYO = { id: "g2", fecha: "2026-05-01", descripcion: "Día del Trabajador" };
@@ -99,5 +103,128 @@ describe("FeriadosListView (/feriados, task 8.1, WU8a)", () => {
 
     expect(await screen.findByText("No se pudieron cargar los feriados.")).toBeInTheDocument();
     expect(screen.queryByText("Año Nuevo")).not.toBeInTheDocument();
+  });
+});
+
+// Escritura (task 8.1/8.2 remainder, WU8b): create/editar/eliminar SOLO
+// sobre filas CLIENTE, gateado por `esAdminCliente`. Filas GLOBAL nunca
+// llevan acciones acá, para nadie (spec.md: "el cliente ve los globales read-only").
+describe("FeriadosListView — escritura (task 8.1/8.2, WU8b)", () => {
+  beforeEach(() => {
+    mockBackendOk();
+    vi.mocked(toast.success).mockClear();
+    vi.mocked(toast.error).mockClear();
+  });
+
+  it("ADMINISTRADOR ve Acciones solo en la fila CLIENTE, nunca en las filas GLOBAL", async () => {
+    renderWithProviders(<FeriadosListView />, { user: buildUser({ rol: "ADMINISTRADOR" }) });
+
+    await screen.findByText("Año Nuevo");
+    const filas = screen.getAllByRole("row").slice(1);
+    expect(filas).toHaveLength(3);
+    // fila 0 = Año Nuevo (GLOBAL), fila 1 = Aniversario del cliente (CLIENTE), fila 2 = Día del Trabajador (GLOBAL)
+    expect(within(filas[0]!).queryByRole("button", { name: "Editar" })).not.toBeInTheDocument();
+    expect(within(filas[1]!).getByRole("button", { name: "Editar" })).toBeInTheDocument();
+    expect(within(filas[1]!).getByRole("button", { name: "Eliminar" })).toBeInTheDocument();
+    expect(within(filas[2]!).queryByRole("button", { name: "Editar" })).not.toBeInTheDocument();
+  });
+
+  it("un rol no admin (TECNICO) no ve ninguna acción de escritura, ni siquiera sobre la fila CLIENTE", async () => {
+    renderWithProviders(<FeriadosListView />, { user: buildUser({ rol: "TECNICO" }) });
+
+    await screen.findByText("Aniversario del cliente");
+    expect(screen.queryByRole("button", { name: /nuevo feriado/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /editar/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /eliminar/i })).not.toBeInTheDocument();
+  });
+
+  it("crear feriado propio envía el DTO correcto a POST /feriados-cliente y muestra el toast de éxito", async () => {
+    const user = userEvent.setup();
+    let capturedBody: Record<string, unknown> = {};
+    server.use(
+      http.post("/api/feriados-cliente", async ({ request }) => {
+        capturedBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({ id: "c2", ...capturedBody }, { status: 201 });
+      }),
+    );
+
+    renderWithProviders(<FeriadosListView />, { user: buildUser({ rol: "ADMINISTRADOR" }) });
+    await screen.findByText("Aniversario del cliente");
+
+    await user.click(screen.getByRole("button", { name: /nuevo feriado/i }));
+    await user.type(screen.getByLabelText(/^fecha$/i), "2026-07-09");
+    await user.type(screen.getByLabelText(/^descripción$/i), "Aniversario 2 (propio)");
+    await user.click(screen.getByRole("button", { name: /^crear$/i }));
+
+    await waitFor(() =>
+      expect(capturedBody).toEqual({ fecha: "2026-07-09", descripcion: "Aniversario 2 (propio)" }),
+    );
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Feriado creado."));
+  });
+
+  it("una fecha ya global (422 FeriadoFechaEsGlobalError) muestra el mensaje EXACTO del backend en el toast de error", async () => {
+    const user = userEvent.setup();
+    const MENSAJE_BACKEND =
+      'La fecha "2026-12-25" ya es un feriado del calendario global. No se puede agregar como feriado propio del cliente.';
+    server.use(
+      http.post("/api/feriados-cliente", () =>
+        HttpResponse.json({ statusCode: 422, message: MENSAJE_BACKEND }, { status: 422 }),
+      ),
+    );
+
+    renderWithProviders(<FeriadosListView />, { user: buildUser({ rol: "ADMINISTRADOR" }) });
+    await screen.findByText("Aniversario del cliente");
+
+    await user.click(screen.getByRole("button", { name: /nuevo feriado/i }));
+    await user.type(screen.getByLabelText(/^fecha$/i), "2026-12-25");
+    await user.type(screen.getByLabelText(/^descripción$/i), "Navidad (propia)");
+    await user.click(screen.getByRole("button", { name: /^crear$/i }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(MENSAJE_BACKEND));
+  });
+
+  it("editar el feriado propio confirma con PATCH /feriados-cliente/:id y muestra el toast de éxito", async () => {
+    const user = userEvent.setup();
+    let patchCalled = false;
+    server.use(
+      http.patch("/api/feriados-cliente/c1", async ({ request }) => {
+        patchCalled = true;
+        const body = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({ ...CLIENTE_MARZO, ...body });
+      }),
+    );
+
+    renderWithProviders(<FeriadosListView />, { user: buildUser({ rol: "ADMINISTRADOR" }) });
+    await screen.findByText("Aniversario del cliente");
+
+    await user.click(screen.getByRole("button", { name: "Editar" }));
+    const descripcionInput = await screen.findByLabelText(/^descripción$/i);
+    await user.clear(descripcionInput);
+    await user.type(descripcionInput, "Aniversario del cliente (renombrado)");
+    await user.click(screen.getByRole("button", { name: /^guardar$/i }));
+
+    await waitFor(() => expect(patchCalled).toBe(true));
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Feriado actualizado."));
+  });
+
+  it("eliminar el feriado propio confirma en el diálogo, dispara el DELETE y muestra el toast de éxito", async () => {
+    const user = userEvent.setup();
+    let deleteCalled = false;
+    server.use(
+      http.delete("/api/feriados-cliente/c1", () => {
+        deleteCalled = true;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+
+    renderWithProviders(<FeriadosListView />, { user: buildUser({ rol: "ADMINISTRADOR" }) });
+    await screen.findByText("Aniversario del cliente");
+
+    await user.click(screen.getByRole("button", { name: "Eliminar" }));
+    const confirmButtons = await screen.findAllByRole("button", { name: "Eliminar" });
+    await user.click(confirmButtons[confirmButtons.length - 1]!);
+
+    await waitFor(() => expect(deleteCalled).toBe(true));
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Feriado eliminado."));
   });
 });

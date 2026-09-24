@@ -15,7 +15,11 @@
 import { Plus } from "lucide-react";
 import { useSession } from "@/shared/hooks/use-session";
 import { useFeriadosGlobales } from "../hooks/use-feriados-globales";
-import { useEliminarFeriado } from "../hooks/use-feriados-globales-admin-mutations";
+import {
+  useCrearFeriado,
+  useEditarFeriado,
+  useEliminarFeriado,
+} from "../hooks/use-feriados-globales-admin-mutations";
 import { DataTable, type Column } from "@/components/shared/data-table";
 import { Button } from "@/components/ui/button";
 import { ErrorState } from "@/components/shared/error-state";
@@ -85,6 +89,8 @@ function FeriadosGlobalesAdminContent() {
         <div className="flex items-center gap-2">
           <FeriadoGlobalFormDialog
             feriado={row}
+            useCrearMutation={useCrearFeriado}
+            useEditarMutation={useEditarFeriado}
             trigger={
               <Button variant="outline" size="sm">
                 Editar
@@ -104,6 +110,8 @@ function FeriadosGlobalesAdminContent() {
         description="Lista maestra de feriados nacionales (solo ROOT). Se usan en el cálculo de vencimientos SLA hábiles de todos los clientes."
         actions={
           <FeriadoGlobalFormDialog
+            useCrearMutation={useCrearFeriado}
+            useEditarMutation={useEditarFeriado}
             trigger={
               <Button size="sm">
                 <Plus className="h-4 w-4" aria-hidden="true" />
