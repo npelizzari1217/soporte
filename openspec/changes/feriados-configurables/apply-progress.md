@@ -608,3 +608,11 @@ mismo patrón que WU2a/WU2a2 y WU4a/WU4a2.
 
 5.1/5.2 completas; 5.5 parcial (el checkbox queda en `[ ]`). WU5 continúa con un
 pequeño seguimiento para el resto de 5.5, y luego WU5c.
+
+## WU5b2: correcciones restantes de comentarios desactualizados (tarea 5.5) — COMPLETA
+
+Rama `feat/feriados-configurables-wu5b2`, apilada sobre `wu5b` (`1cc0a15`). Hecho en
+línea por el orquestador: el docstring del puerto, el encabezado de
+`CalendarioLaboralModule` y el docstring de `AplicarSlaUseCase` ahora describen la unión
+global ∪ del propio cliente, el throw de falla cerrado y el registro del listener. Solo
+comentarios; sin cambio de comportamiento.

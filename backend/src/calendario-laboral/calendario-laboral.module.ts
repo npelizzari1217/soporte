@@ -1,10 +1,12 @@
 /**
  * CalendarioLaboralModule — provee los puertos de lectura del calendario
- * laboral y los feriados (WU-2, sdd/sla-habil), con sus adaptadores Prisma
- * de MASTER, más el ABM de feriados globales (WU2, sdd/feriados-configurables).
+ * laboral y los feriados (sdd/sla-habil) que consume `SlaModule`, más los ABM
+ * de feriados globales (MASTER, solo ROOT) y de feriados por cliente (base
+ * del tenant, ADMINISTRADOR del cliente o ROOT) de sdd/feriados-configurables.
  *
- * Deliberadamente SIN cablear todavía al módulo SLA: eso es WU-3. Este
- * módulo no se importa desde ningún otro todavía.
+ * La lectura de feriados para el SLA une globales y propios del cliente
+ * (`PrismaFeriadosLaboralesRepository`) y falla cerrado si no hay un
+ * `TenantContext` activo.
  *
  * FITNESS RULE: PrismaService y @prisma/client solo pueden importarse desde
  * infrastructure/ (ver `backend/eslint.config.js`).
