@@ -6,13 +6,14 @@
  * `OrigenFeriado` es un tipo puramente de frontend: el backend nunca lo
  * devuelve (`GET /feriados` y `GET /feriados-cliente` no llevan un campo de
  * origen) — lo asigna `combinarFeriados()` (tarea 8.1) según de qué endpoint
- * vino cada fila. Se declara acá porque `types.ts` de la feature todavía no
- * existe (tarea 6.3, WU6b); cuando exista, este tipo se mueve/reexporta desde
- * ahí sin cambiar su forma.
+ * vino cada fila. Vive en `../types.ts` (tarea 6.3, WU6b) y se reexporta acá
+ * sin cambiar su forma, para no romper a quien ya lo importaba desde este
+ * archivo en WU6a.
  */
 import { Badge } from "@/components/ui/badge";
+import type { OrigenFeriado } from "../types";
 
-export type OrigenFeriado = "GLOBAL" | "CLIENTE";
+export type { OrigenFeriado };
 
 const ORIGEN_CONFIG: Record<OrigenFeriado, { label: string; variant: "success-light" | "info" }> = {
   GLOBAL: { label: "Nacional", variant: "success-light" },

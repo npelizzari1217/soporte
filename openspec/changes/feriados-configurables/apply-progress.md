@@ -756,3 +756,78 @@ autocontenido e importable tal cual.
 Tareas 6.1/6.2 completas (`tasks.md` actualizado). WU6 continúa con WU6b (tarea 6.3:
 types/cliente de API/Zod/`limites.ts`). La tarea 6.4 (entrada de navegación) se movió a
 WU7.
+
+## WU6b: scaffolding de frontend — types, cliente de API, Zod, limites (tarea 6.3) —
+COMPLETA, WU6 cerrada por completo
+
+Rama `feat/feriados-configurables-wu6b`, apilada sobre `wu6a` (`8a8588c`). Solo
+frontend; `backend/` sin tocar.
+
+- [x] 6.3 `types.ts` (respuestas `Feriado`/`FeriadoCliente`, 4 DTOs de escritura que
+  reflejan `feriado.dto.ts`/`feriado-cliente.dto.ts`, `OrigenFeriado` movido aquí desde el
+  archivo del badge de WU6a y reexportado desde ahí sin cambios). `limites.ts` copia
+  `FERIADO_DESCRIPCION_MAX_LENGTH`/`FECHA_CALENDARIO_REGEX` desde `feriados.constants.ts`
+  del backend (D9), precedente `ciclos-master/limites.ts`. `schemas.ts`: un único
+  `feriadoSchema` (regex de fecha + mínimo/máximo de descripción) reutilizado en los 4
+  DTOs, ya que los cuatro comparten la misma forma — solo validación a nivel de DTO
+  (regex, no la verificación de fecha de calendario real del dominio), en línea con el
+  mismo nivel de simplicidad de `ciclos-master/schemas.ts`. `api.ts`: 8 funciones async
+  simples (listar/crear/editar/eliminar × global/cliente) que envuelven `apiFetch`.
+- [x] Prueba centinela en `schemas.test.ts` (patrón de `ciclos-master/schemas.test.ts`):
+  verifica los valores literales copiados (`200`, la cadena de origen del regex) — detecta
+  una edición accidental aquí, no un cambio del lado del backend (mismo límite de alcance
+  documentado que el precedente).
+
+### Desviación: `api.ts` como funciones simples, no incorporadas en hooks
+
+El único precedente de `ciclos-master` para "dónde viven las llamadas a la API" es
+`apiFetch` llamado en línea dentro de `useQuery`/`useMutation`
+(`hooks/use-ciclos-vigentes-admin*.ts`) — no existe ningún precedente de módulo de
+cliente de API independiente en ningún lugar de `frontend/src/features/` (se revisó
+`ciclos-master`, `catalogos`, y se buscó con grep en el comentario de encabezado de cada
+`features/*/types.ts` un archivo de cliente hermano; no existe ninguno). La tarea 6.3
+pide explícitamente "API client functions for both endpoints" como entregable de WU6b,
+mientras que los hooks se difieren a WU7/WU8. Resuelto extrayendo 8 funciones async
+simples (sin `useQuery`/`useMutation`) en `api.ts`: esto satisface la letra de 6.3 sin
+introducir un hook, y le da a `combinarFeriados()` de WU8 (D8) dos funciones de listado
+que puede llamar directamente fuera del ciclo de vida de cualquier hook único — una
+necesidad real que `ciclos-master` nunca tuvo (nunca combina dos endpoints de listado del
+lado del cliente). Los hooks de WU7/WU8 llaman a estas funciones en lugar de incorporar
+`apiFetch` una segunda vez. Declarado aquí, no en silencio.
+
+### Files Changed
+
+| Archivo | Acción | Qué |
+|---|---|---|
+| `frontend/src/features/feriados/types.ts` | Creado | `Feriado`, `FeriadoCliente`, 4 DTOs de escritura, `OrigenFeriado` (movido desde el archivo del badge) |
+| `frontend/src/features/feriados/limites.ts` | Creado | `FERIADO_DESCRIPCION_MAX_LENGTH = 200`, `FECHA_CALENDARIO_REGEX`, copiados desde el backend |
+| `frontend/src/features/feriados/schemas.ts` | Creado | `feriadoSchema` (regex de fecha + mínimo/máximo de descripción), `FeriadoFormValues` |
+| `frontend/src/features/feriados/schemas.test.ts` | Creado | Pruebas de tope de descripción, pruebas de formato de fecha, 2 centinelas de valor |
+| `frontend/src/features/feriados/api.ts` | Creado | 8 funciones simples que envuelven `apiFetch` para `/feriados` y `/feriados-cliente` |
+| `frontend/src/features/feriados/components/origen-feriado-badge.tsx` | Modificado | `OrigenFeriado` ahora se importa desde `../types` y se reexporta (antes se declaraba localmente en WU6a) |
+| `openspec/changes/feriados-configurables/tasks.md` | Modificado | 6.3/6.5 → `[x]` |
+
+### Work Unit Evidence
+
+| Evidencia | Valor |
+|---|---|
+| `pnpm type-check` (desde `frontend/`) | limpio |
+| `pnpm lint` (desde `frontend/`) | limpio, sin hallazgos |
+| `pnpm vitest run src/features/feriados src/components/ui` (desde `frontend/`) | 8 archivos de prueba, 28 pruebas, todas exitosas |
+| Arnés de runtime | N/A — ninguna pantalla/hook consume `api.ts` todavía (WU7/WU8); funciones puras + esquemas Zod, no se necesita una ida y vuelta en runtime para este segmento |
+| Límite de reversión | 5 archivos nuevos + 1 edición solo aditiva (el badge ahora importa un tipo que antes declaraba, misma forma pública); nada más importa `api.ts`/`schemas.ts` fuera de las pruebas propias de esta funcionalidad, por lo que `git revert` elimina solo este segmento |
+
+### Workload / PR Boundary
+
+- Modo: segmento de PR encadenado (Feature Branch Chain), apilado sobre `feat/feriados-configurables-wu6a`
+- Unidad de trabajo actual: WU6b (tarea 6.3 + 6.5) — completa; **WU6 ahora está completamente cerrada** (6.1-6.3/6.5
+  todas `[x]`; 6.4 se mantiene movida a WU7 según la nota de WU6a)
+- Impacto medido en el presupuesto de revisión: total de `git show --numstat HEAD` (commit completo incl.
+  openspec) — ver el commit para la cifra exacta; bien por debajo del presupuesto de 400 líneas (5 archivos nuevos
+  pequeños + 1 edición solo de comentario de documentación + 2 casillas)
+
+### Status
+
+Tarea 6.3 completa, tarea 6.5 (verificación) ejecutada y en verde. `tasks.md` actualizado. WU6 (6.1-6.3,
+6.5) completamente cerrada; 6.4 permanece incorporada en la tarea 7.1 de WU7. Siguiente: WU7 (pantalla de feriados
+globales de ROOT).

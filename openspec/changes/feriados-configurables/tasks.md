@@ -102,9 +102,9 @@ apunte `/admin/feriados-globales` a una pantalla que todavía no existe.
 
 - [x] 6.1 Agregar los tokens `--info`/`--info-foreground`/`--info-light` (claro `#0369a1`/`#ffffff`/`#e0f2fe`, oscuro `#38bdf8`/`#082f49`/`#082f49`) + `@theme inline --color-info*` a `frontend/src/styles/globals.css:49-54`; agregar las variantes `info` y `success-light` a `frontend/src/components/ui/badge.tsx`.
 - [x] 6.2 Crear `OrigenFeriadoBadge` en `frontend/src/features/feriados/` (verde `success-light` para global, `info` para cliente), siguiendo `frontend/src/components/ui/status-badge.tsx` (solo lectura, plantilla); test de componente para ambas variantes en ambos temas.
-- [ ] 6.3 Crear el scaffolding: `types.ts`, funciones de cliente API para ambos endpoints, schemas de Zod espejando los DTOs del backend, `frontend/src/features/feriados/limites.ts` copiando las constantes de WU1 con un test centinela, `frontend/src/features/ciclos-master/limites.ts` (solo lectura, precedente).
+- [x] 6.3 Crear el scaffolding: `types.ts`, funciones de cliente API para ambos endpoints, schemas de Zod espejando los DTOs del backend, `frontend/src/features/feriados/limites.ts` copiando las constantes de WU1 con un test centinela, `frontend/src/features/ciclos-master/limites.ts` (solo lectura, precedente).
 - [ ] 6.4 Registrar `/admin/feriados-globales` en `ROOT_SECTION_ITEMS` (`frontend/src/shared/nav/nav-config.ts:134-161`, gateado por `isGlobalAdmin`). **Movido a WU7**, plegado en la tarea 7.1 — la división del plan de WU6a/WU6b registra la entrada de nav solo una vez que la pantalla a la que apunta existe, así el menú nunca enlaza a un 404.
-- [ ] 6.5 Correr `pnpm type-check`, `pnpm lint`, `pnpm vitest run frontend/src/features/feriados frontend/src/components/ui`.
+- [x] 6.5 Correr `pnpm type-check`, `pnpm lint`, `pnpm vitest run frontend/src/features/feriados frontend/src/components/ui`.
 
 ## WU7: Pantalla de feriados globales para ROOT
 
