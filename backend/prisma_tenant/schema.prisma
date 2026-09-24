@@ -1267,3 +1267,33 @@ model PreventivoGeneracion {
   @@unique([planId, fechaProgramada], map: "preventivo_generacion_plan_fecha_key")
   @@map("preventivo_generacion")
 }
+
+// ─── FERIADOS_CLIENTE (feriados propios del tenant, WU3 sdd/feriados-configurables) ─
+//
+// Excepción por cliente al calendario global de feriados (D1). Sin
+// `clienteId`: el tenant ES la base de datos (mismo criterio que el resto
+// del schema), y hard delete — a diferencia de las entidades con identidad
+// de negocio propia, un feriado dado de baja no necesita dejar rastro; una
+// fecha soft-deleted seguiría ocupando el `@unique` de `fecha`.
+//
+// TRAMPA DE `@db.Date`: Prisma devuelve esta columna como MEDIANOCHE UTC del
+// día calendario. Aplicarle `desplazarAArgentina` (shared/domain/zona-horaria-argentina.ts)
+// CORRE EL DÍA PARA ATRÁS (cae 21:00 del día anterior). El mapper que lea
+// esta columna DEBE leer los componentes UTC crudos
+// (`getUTCFullYear/getUTCMonth/getUTCDate`) — nunca aplicar el offset
+// argentino acá. Ver `prisma_master/schema.prisma:492-498` (mismo criterio
+// para el feriado global) y el hallazgo #2542 de sdd/sla-habil.
+//
+// El `@unique` en `fecha` ya sirve de índice de rango — sin índice adicional.
+
+model FeriadoCliente {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// @db.Date: Prisma la devuelve como medianoche UTC — ver nota arriba. NO
+  /// aplicar `desplazarAArgentina` a este campo.
+  fecha       DateTime @unique @db.Date
+  descripcion String   @db.VarChar(200)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@map("feriados_cliente")
+}

@@ -17,15 +17,19 @@ function validarDescripcion(descripcion: string): void {
   }
 }
 
-/** Shape de las propiedades del feriado GLOBAL (master `feriados`). Dominio puro. */
+/** Shape de las propiedades de un feriado (global o de cliente). Dominio puro. */
 export interface FeriadoProps {
   fecha: FechaCalendario;
   descripcion: string;
 }
 
 /**
- * FeriadoEntity — feriado global (master `feriados`, sin `clienteId`, hard
- * delete — D1). El repositorio hace el DELETE físico; sin `softDelete()`.
+ * FeriadoEntity — feriado global (master `feriados`) O feriado de cliente
+ * (tenant `feriados_cliente`, WU3a): mismo shape `{ fecha, descripcion }` y
+ * mismo hard delete en las dos tablas (D1, sin `clienteId` ni soft-delete),
+ * así que una sola entidad de dominio respalda a `IFeriadoGlobalRepository`
+ * y `IFeriadoClienteRepository`. El repositorio de cada capa hace el DELETE
+ * físico; sin `softDelete()`.
  */
 export class FeriadoEntity extends BaseEntity<FeriadoProps> {
   private constructor(props: FeriadoProps, id?: string) {

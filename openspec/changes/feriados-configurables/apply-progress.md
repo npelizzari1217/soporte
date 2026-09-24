@@ -264,3 +264,33 @@ contra un presupuesto de 400.
 ### Status
 
 WU2 completa (2.1-2.5 todas en `[x]`). Lista para `sdd-verify`.
+
+## WU3a: Tabla del inquilino + repositorio de cliente — COMPLETA
+
+Rama `feat/feriados-configurables-wu3a`, apilada sobre `wu2c` (`895845c`). Pre-dividida:
+WU3a = tarea 3.1 más la mitad de 3.2/3.3/3.4 correspondiente al repositorio de cliente; WU3b =
+`IFeriadosGlobalesChecker` + `FeriadosGlobalesMasterChecker` + tests de `esGlobal`.
+
+- [x] 3.1 `model FeriadoCliente` (`feriados_cliente`, forma de D1, sin `clienteId`, sin soft
+  delete, advertencia `@db.Date` copiada de master). La migración
+  `prisma_tenant/migrations/20260924130000_feriados_cliente/` se escribió a mano, y después
+  el orquestador verificó que coincidiera exactamente con el SQL de
+  `prisma migrate diff --from-schema <previous tenant schema> --to-schema prisma_tenant/schema.prisma --script`,
+  y se aplicó sin problemas con `prisma migrate deploy` sobre una base descartable (borrada después).
+  No se tocó ninguna base de inquilino real.
+- [x] 3.2 (mitad) Port `IFeriadoClienteRepository`, reutilizando `FeriadoEntity`.
+- [x] 3.3 (mitad) `PrismaFeriadoClienteRepository` + mapper, cliente del inquilino vía
+  `TenantContext`, reutilizando `claveDiaUtcDe` para la trampa de `@db.Date`.
+- [x] 3.4 (mitad) Tests de integración sobre una base de inquilino efímera (crear → migrar → CRUD,
+  `UNIQUE(fecha)`, ida y vuelta de fecha → desconectar → dropear).
+
+Desviación: timestamp de migración `20260924130000` en lugar de `20260925120000`; ambos ordenan
+después de la última migración del inquilino.
+
+Detalles a tener en cuenta: `TenantContext.bind()` (el fallback `enterWith`) no se propagaba desde un
+`beforeAll` async que espera (await) un subproceso; los tests envuelven cada body en
+`TenantContext.run(ctx, fn)`. Los ids de fixture deben ser UUIDs reales (`feriados_cliente.id` es
+`uuid`), a diferencia de los specs con Prisma mockeado de WU1.
+
+Evidencia: `pnpm vitest run src/calendario-laboral` → 14 archivos, 99 tests en verde. Rollback:
+puramente aditivo (sin wiring de módulo, sin consumidores todavía); la migración es un `CREATE TABLE`.
