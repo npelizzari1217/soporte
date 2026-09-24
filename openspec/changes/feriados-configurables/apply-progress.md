@@ -443,3 +443,38 @@ debajo del presupuesto de 400 líneas.
 ### Status
 
 Tareas 4.2/4.4 completas (`tasks.md` actualizado). La tarea 4.3 queda pendiente para WU4c.
+
+## WU4c: e2e de aislamiento de cliente (tarea 4.3) — COMPLETA
+
+`feriados-cliente.e2e.spec.ts` (Creado), branch `feat/feriados-configurables-wu4c`
+(apilado sobre `wu4b`, commit `204fd8e`). No existía precedente de e2e con dos inquilinos
+en este repo; se construyó sobre el patrón de un solo inquilino (`csat.e2e.spec.ts`,
+`sectores.e2e.spec.ts`) duplicado para los inquilinos A y B
+(`PostgresAdminService.createDatabase` + `TenantMigrationRunnerAdapter` ×2), más JWTs
+firmados directamente vía `payloadDeTest`/`tokenService.signJwt` — ni `TenantGuard` (solo
+lee `master.clientes`) ni `AdminClienteGuard` (solo claims del JWT) tocan
+`usuarios`/`membresias`, así que no hicieron falta fixtures de login/membresía.
+
+Cubre los 7 casos del prompt de lanzamiento: (1) aislamiento A/B en ambas direcciones, (2)
+un `:id` de B → 404 en el PATCH/DELETE de A, verificado luego directamente contra la base
+del inquilino B, (3) rol no administrador de A — 200 en lectura / 403 en escritura ×3, (4)
+ROOT con `cliente_id=A` → 201, (5) sin token → 401, (6) fecha ya global (`2026-12-25`,
+Navidad sembrada) → 422, misma fecha dos veces en A → 422 la segunda vez, (7) ida y vuelta
+de fecha, sin corrimiento de UTC.
+
+Desviaciones: ninguna respecto del diseño (D5/D6/D7). Higiene: las filas de `clientes` en
+master se borran por id en `afterAll` (nunca se truncan); ambas bases de inquilino
+efímeras se dropean completas, sin necesidad de limpieza previa a nivel de fila ya que
+nada fuera del archivo las toca.
+
+Evidencia: `pnpm typecheck` limpio; `pnpm lint` limpio (2 hallazgos de prettier
+corregidos automáticamente); `pnpm vitest run src/calendario-laboral` → 21 archivos, 139
+tests, todos aprobados (+11). Verificado después de la corrida: sin base efímera
+`soporte_*_test` huérfana, sin fila de `clientes` remanente. Total de `git show --numstat
+HEAD`: 371 líneas (359 del spec nuevo + 11 de apply-progress + 1 del checkbox de
+tasks.md), por debajo del presupuesto de 400. Rollback: un archivo nuevo + un checkbox de
+`tasks.md` + esta nota; nada depende de esto.
+
+### Status
+
+WU4 completo (4.1-4.4 todos `[x]`). Listo para `sdd-verify` en WU4.
