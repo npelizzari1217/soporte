@@ -140,3 +140,65 @@ Ninguna.
 3/4 casos de uso de la tarea 2.1 completos (Listar, Crear, Eliminar). Falta Editar. El checkbox
 de la tarea 2.1 en `tasks.md` sigue sin marcar hasta que Editar se entregue. No está listo para `sdd-verify` sobre WU2
 como un todo; listo para otra pasada de `sdd-apply` que termine la tarea 2.1 (Editar) antes de WU2b.
+
+## WU2a2: Caso de uso global Editar (finalización de la tarea 2.1) — COMPLETA
+
+Esta corrida implementa la pieza que faltaba de la tarea 2.1: `EditarFeriadoGlobalUseCase` +
+tests unitarios, en la rama `feat/feriados-configurables-wu2a2` (apilada sobre
+`feat/feriados-configurables-wu2a`, commit `f1f508b`). Espeja
+`CrearFeriadoGlobalUseCase` según el plan que quedó en la sección de WU2a de arriba:
+
+- [x] `EditarFeriadoGlobalUseCase`: carga por id vía `buscarPorId` →
+  `FeriadoNoEncontradoError` si no se encuentra; valida la nueva `fecha` con
+  `FechaCalendario.crear()` → propaga `FechaCalendarioInvalidaError`; aplica
+  `FeriadoEntity.editar()` (reemplazo completo de `fecha` + `descripcion`); persiste vía
+  `repo.editar()`; captura P2002 → `FeriadoFechaDuplicadaError` (mismo precedente que
+  `CrearFeriadoGlobalUseCase`, `crear-equipo.use-case.ts:11-19`).
+- [x] Tests unitarios: camino feliz (la edición tiene éxito, se llama al repo con la entidad mutada),
+  no-encontrado corta antes de `editar()`, fecha inválida corta antes de
+  `editar()`, mapeo de P2002, otros errores de infra se vuelven a lanzar sin mapear.
+
+La tarea 2.1 en `tasks.md` ahora está en `[x]` — los cuatro casos de uso globales (Listar, Crear, Editar,
+Eliminar) existen con tests unitarios.
+
+### Files Changed
+
+| Archivo | Acción | Qué |
+|---|---|---|
+| `backend/src/calendario-laboral/application/use-cases/editar-feriado-global.use-case.ts` | Creado | `EditarFeriadoGlobalUseCase` — carga por id, valida la nueva `fecha`, reemplaza completo vía `FeriadoEntity.editar()`, persiste; captura P2002 → `FeriadoFechaDuplicadaError` |
+| `backend/src/calendario-laboral/application/use-cases/editar-feriado-global.use-case.spec.ts` | Creado | Tests unitarios: camino feliz, no-encontrado, fecha inválida, mapeo de P2002, otros errores se vuelven a lanzar |
+| `openspec/changes/feriados-configurables/tasks.md` | Modificado | Checkbox de la tarea 2.1 `[ ]` → `[x]` |
+
+### Deviations from Design
+
+Ninguna — coincide con D2 de design.md (`FechaCalendario.crear()` validation) y con las
+formas de error `FeriadoFechaDuplicadaError`/`FeriadoNoEncontradoError` (catálogo de errores de
+D4/D7), y con el precedente de captura de P2002 (`crear-equipo.use-case.ts:11-19`). El
+orden `buscarPorId`-antes-de-validar (chequeo de existencia antes de la validación de fecha) coincide con
+el precedente de `EliminarFeriadoGlobalUseCase` de chequear la existencia primero.
+
+### Hallazgos
+
+Ninguna.
+
+### Work Unit Evidence
+
+| Evidencia | Valor |
+|---|---|
+| Comando de test focalizado y resultado | `pnpm vitest run src/calendario-laboral` (desde `backend/`) → 11 archivos de test, 64 tests, todos aprobados |
+| Harness de runtime | N/A — todavía no hay controller cableado (WU2b cablea `FeriadosController`); solo tests unitarios, sin ida y vuelta real de Postgres/HTTP para esta porción |
+| Límite de rollback | Ambos archivos nuevos son aditivos, nada más los referencia todavía (sin controller, sin wiring de module). `git revert` de este commit solo elimina el caso de uso Editar sin dependientes downstream |
+
+### Workload / PR Boundary
+
+- Modo: porción de PR encadenada (Feature Branch Chain), apilada sobre `feat/feriados-configurables-wu2a`
+- Unidad de trabajo actual: WU2a2 (finalización de la tarea 2.1) — completa
+- Límite: arranca desde los casos de uso Listar/Crear/Eliminar de WU2a; termina con los cuatro
+  casos de uso globales (tarea 2.1) listos para que WU2b cablee los DTOs/controller
+- Impacto medido sobre el presupuesto de revisión: porción chica, bien por debajo del presupuesto de 400 líneas (según la
+  estimación de ~184 líneas que quedó en la sección de WU2a)
+
+### Status
+
+4/4 casos de uso de la tarea 2.1 completos (Listar, Crear, Editar, Eliminar). El checkbox de la
+tarea 2.1 en `tasks.md` ahora está en `[x]`. Lista para WU2b (DTOs, controller, wiring — tareas 2.2/2.3/2.5).

@@ -57,7 +57,7 @@ igual está mal desplegarlo fuera de orden).
 
 ## WU2: ABM global + controller
 
-- [ ] 2.1 Crear los casos de uso `ListarFeriadosGlobales`, `CrearFeriadoGlobal`, `EditarFeriadoGlobal`, `EliminarFeriadoGlobal` en `application/use-cases/`, `Result<T, DomainError>`; tests unitarios incl. el mapeo `P2002` → `FeriadoFechaDuplicadaError`.
+- [x] 2.1 Crear los casos de uso `ListarFeriadosGlobales`, `CrearFeriadoGlobal`, `EditarFeriadoGlobal`, `EliminarFeriadoGlobal` en `application/use-cases/`, `Result<T, DomainError>`; tests unitarios incl. el mapeo `P2002` → `FeriadoFechaDuplicadaError`.
 - [ ] 2.2 Crear los DTOs de crear/editar que apliquen el regex de solo-fecha y el límite de 200 caracteres de las constantes de WU1.
 - [ ] 2.3 Crear `FeriadosController` en `interface/controllers/` (`@Controller('feriados') @UseGuards(JwtAuthGuard)`; las escrituras llevan `@UseGuards(GlobalAdminGuard)` por método, precedente `ciclos-vigentes.controller.ts:103-121`, de solo lectura); mapeo error→HTTP (D7): 400/422/404, `DELETE` → 204.
 - [ ] 2.4 Tests e2e del controller: 401 sin token, 403 escritura no-ROOT, 200 escritura de ROOT + lectura de vuelta, las 46 filas sembradas sin cambios.
