@@ -7,17 +7,20 @@
  * de una membresía, ADR-4), mismo criterio que `ClientesAdminView`,
  * `CiclosVigentesAdminView` y `TiposComponenteAdminView`.
  *
- * WU7a dejó la lista SOLO LECTURA. Este slice agrega crear/editar
- * (`FeriadoGlobalFormDialog`, wiring de `CiclosVigentesAdminView`); la baja
- * llega en un commit propio (budget de revisión, ver apply-progress.md).
+ * WU7a dejó la lista SOLO LECTURA; el commit anterior agregó crear/editar
+ * (`FeriadoGlobalFormDialog`). Este commit cierra el ABM con la baja:
+ * `ConfirmDialog` + `useEliminarFeriado`, mismo wiring que
+ * `CiclosVigentesAdminView`'s `EliminarCicloVigenteAction`.
  */
 import { Plus } from "lucide-react";
 import { useSession } from "@/shared/hooks/use-session";
 import { useFeriadosGlobales } from "../hooks/use-feriados-globales";
+import { useEliminarFeriado } from "../hooks/use-feriados-globales-admin-mutations";
 import { DataTable, type Column } from "@/components/shared/data-table";
 import { Button } from "@/components/ui/button";
 import { ErrorState } from "@/components/shared/error-state";
 import { PageHeader } from "@/components/shared/page-header";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { notifyError } from "@/shared/lib/toast";
 import { formatearFechaCalendario } from "@/shared/lib/formato-fecha";
 import { OrigenFeriadoBadge } from "./origen-feriado-badge";
@@ -42,6 +45,25 @@ export function FeriadosGlobalesAdminView() {
 // pero hacen falta 4 columnas (Origen/Acciones son sintéticas). Extensión de
 // tipado local, sin tocar `Feriado` — razón completa en apply-progress.md.
 type FeriadoColumnRow = Feriado & { origen?: never; acciones?: never };
+
+function EliminarFeriadoAction({ feriado }: { feriado: Feriado }) {
+  const mutation = useEliminarFeriado();
+  return (
+    <ConfirmDialog
+      trigger={
+        <Button variant="outline" size="sm">
+          Eliminar
+        </Button>
+      }
+      title="Eliminar feriado"
+      description={`¿Confirmás eliminar "${feriado.descripcion}" (${formatearFechaCalendario(feriado.fecha)})? Esta acción no se puede deshacer.`}
+      confirmLabel="Eliminar"
+      confirmVariant="destructive"
+      isConfirming={mutation.isPending}
+      onConfirm={() => mutation.mutate(feriado.id)}
+    />
+  );
+}
 
 function FeriadosGlobalesAdminContent() {
   const feriadosQuery = useFeriadosGlobales();
@@ -69,6 +91,7 @@ function FeriadosGlobalesAdminContent() {
               </Button>
             }
           />
+          <EliminarFeriadoAction feriado={row} />
         </div>
       ),
     },

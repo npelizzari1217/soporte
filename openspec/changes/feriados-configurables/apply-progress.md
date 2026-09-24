@@ -879,3 +879,76 @@ Tareas 6.4 y 7.3 completas (`tasks.md` actualizado). Tarea 7.1 parcialmente hech
 solo de lista + entrada de navegación; diálogos/mutaciones diferidos). Tarea 7.2 parcialmente hecha (renderizado
 ordenado + badge cubiertos; validación de diálogo/toasts diferidos). Siguiente: WU7b (diálogos de crear/editar/
 eliminar, mutaciones, sus pruebas — resto de tareas 7.1/7.2, 7.4, 7.5).
+
+## WU7b: pantalla de feriados globales de ROOT — lado de ESCRITURA (resto de tareas 7.1/7.2, 7.4, 7.5) — COMPLETA
+
+Rama `feat/feriados-configurables-wu7b`, apilada sobre `wu7a` (`eef0287`). Solo frontend.
+**Dividido en dos commits** — el segmento completo medía más del presupuesto de 400 líneas en un solo
+commit, así que crear/editar se integró primero y eliminar le siguió en la misma rama, según la
+regla del dueño para unidades de más de 400 líneas cambiadas.
+
+- `FeriadoGlobalFormDialog` (crear+editar, un solo componente) sigue a `CicloVigenteFormDialog`
+  al pie de la letra: RHF + `zodResolver(feriadoSchema)`, `valoresVigentes` se recalcula en cada render
+  para que al reabrir el diálogo sobre una fila cambiada se muestre el valor vigente. `use-feriados-globales-
+  admin-mutations.ts` sigue a `use-ciclos-vigentes-admin-mutations.ts` pero llama a las funciones planas de
+  `api.ts` (desviación declarada de WU6b) en vez de poner `apiFetch` inline. Solo invalida
+  `["feriados-globales"]` (todavía no hay un segundo consumidor de esa query key).
+- **Desviación, declarada acá**: `Column.key` de `DataTable` es `keyof T & string`, la key de React
+  para cada header/celda. `Feriado` solo tiene 3 campos reales pero esta tabla necesita 4 columnas
+  — Origen (WU7a) y Acciones (este commit) son AMBAS puramente sintéticas (overrides de `render`,
+  ninguna lee `row[key]`). Toda otra pantalla que combina un badge + columna de Acciones tiene
+  un booleano real de sobra (`activo`/`eliminado`) para el badge; `Feriado` no lo tiene. Resuelto con
+  una extensión local solo de tipado de columna, `type FeriadoColumnRow = Feriado & { origen?: never;
+  acciones?: never }`, acotada a `feriados-globales-admin-view.tsx` — `types.ts` y
+  `data-table.tsx` quedan sin tocar.
+- Eliminar reutiliza `ConfirmDialog`, la misma forma que `EliminarCicloVigenteAction` (sin condición
+  `disabled` — los feriados globales no tienen flag de soft-delete sobre la cual condicionar).
+- **División de pruebas de toast+validación, y por qué**: `<input type="date">` implementa el algoritmo de
+  saneamiento de valor de HTML5 — una cadena que no coincide con su formato, INCLUYENDO una fecha bien
+  formada pero inexistente como `2026-02-30`, nunca llega a `.value`. Verificado directamente contra
+  jsdom: `input.value = "2026-02-30"` en un nodo `type="date"` produce `""`, y mutar primero el
+  atributo `type` a `"text"` NO evita esto — jsdom mantiene las reglas de saneamiento del tipo original
+  sin importar el atributo `type` vigente. Entonces el 422 de `FechaCalendarioInvalidaError` (D7) es
+  inalcanzable desde el DOM de este diálogo, tanto en un navegador real como en una prueba — el
+  único camino alcanzable es directamente el hook de mutación. División: `feriados-globales-admin-view.
+  test.tsx` cubre lo que el input de fecha SÍ puede producir (vacío → "La fecha es requerida", el
+  422 de fecha duplicada con una fecha real) más la validación de descripción, los tres toasts de
+  éxito, y el flujo de confirmación de eliminación; `use-feriados-globales-admin-mutations.test.tsx`
+  (nuevo, `renderHook`+`QueryClientProvider`, sigue a `use-insumo-mutations.test.tsx`) cubre
+  solo lo que la prueba de DOM no puede: la invalidación de query y el 422 de fecha de calendario inválida.
+- Ayuda (tarea 7.4): nueva superficie de pantalla de ROOT (crear/editar/eliminar), Ayuda en pausa desde
+  el 2026-09-07 — deuda anotada en el cuerpo del commit de eliminación, sin artículo nuevo en `backend/ayuda/*.md`.
+
+### Files Changed
+
+| Archivo | Acción |
+|---|---|
+| `frontend/src/features/feriados/hooks/use-feriados-globales-admin-mutations.ts` | Creado (commit 1: crear/editar; commit 2: +eliminar) |
+| `frontend/src/features/feriados/hooks/use-feriados-globales-admin-mutations.test.tsx` | Creado (commit 1) |
+| `frontend/src/features/feriados/components/feriado-global-form-dialog.tsx` | Creado (commit 1) |
+| `frontend/src/features/feriados/components/feriados-globales-admin-view.tsx` | Modificado (commit 1: Acciones/Editar; commit 2: +Eliminar) |
+| `frontend/src/features/feriados/components/feriados-globales-admin-view.test.tsx` | Modificado (commit 1: crear/editar/validación/toasts; commit 2: +eliminar) |
+| `openspec/changes/feriados-configurables/tasks.md` | Modificado (commit 2) — 7.1/7.2/7.3/7.4/7.5 → `[x]` |
+
+### Work Unit Evidence
+
+| Evidencia | Valor |
+|---|---|
+| `pnpm type-check` (desde `frontend/`) | limpio, ambos commits |
+| `pnpm lint` (desde `frontend/`) | limpio, sin hallazgos, ambos commits |
+| `pnpm vitest run src/features/feriados src/shared/nav src/app` | 15 archivos de prueba, 86 pruebas, todas exitosas (estado final) |
+| `git show --numstat HEAD` (commit 1, crear/editar) | exactamente 400 líneas cambiadas |
+| `git show --numstat HEAD` (commit 2, eliminar) | ver el commit — bien por debajo de 400 |
+| Límite de reversión | cada commit acotado a `features/feriados/` y sus propias pruebas; `git revert` sobre cualquiera de los dos elimina solo ese segmento (eliminar es aditivo sobre crear/editar, así que revertir el commit 1 sin el commit 2 rompería el build — revertir ambos juntos si se hace rollback de toda la WU) |
+
+### Workload / PR Boundary
+
+- Modo: segmento de PR encadenado (Feature Branch Chain), apilado sobre `feat/feriados-configurables-wu7a`
+- Unidad de trabajo actual: WU7b (resto de tarea 7.1, resto de tarea 7.2, 7.4, 7.5) — completa en
+  sus dos commits; **WU7 ahora está completamente cerrada** (7.1-7.5 todas `[x]`)
+- Impacto medido en el presupuesto de revisión: commit 1 = exactamente 400 líneas cambiadas (al límite del presupuesto); commit 2
+  (eliminar + docs) bien por debajo — ver el `git show --numstat` de cada commit
+
+### Status
+
+WU7 completamente cerrada. Siguiente: WU8 (pantalla del cliente, lista combinada, cierre de roadmap).

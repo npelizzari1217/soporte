@@ -7,11 +7,10 @@
  * `use-ciclos-vigentes-admin-mutations.ts`, salvo que llaman a `../api`
  * (WU6b) en vez de repetir `apiFetch` inline. Invalidan solo
  * `["feriados-globales"]` — no hay una segunda vista que lea este recurso
- * todavía. `useEliminarFeriado` llega en el commit de baja (budget de
- * revisión aparte, ver apply-progress.md).
+ * todavía.
  */
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { crearFeriado, editarFeriado } from "../api";
+import { crearFeriado, editarFeriado, eliminarFeriado } from "../api";
 import { notifyError, notifySuccess } from "@/shared/lib/toast";
 import type { CreateFeriadoDto, UpdateFeriadoDto } from "../types";
 
@@ -36,6 +35,18 @@ export function useEditarFeriado(id: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: FERIADOS_GLOBALES_QUERY_KEY });
       notifySuccess("Feriado actualizado.");
+    },
+    onError: notifyError,
+  });
+}
+
+export function useEliminarFeriado() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => eliminarFeriado(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: FERIADOS_GLOBALES_QUERY_KEY });
+      notifySuccess("Feriado eliminado.");
     },
     onError: notifyError,
   });

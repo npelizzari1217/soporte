@@ -72,7 +72,7 @@ describe("FeriadosGlobalesAdminView (sdd/feriados-configurables)", () => {
     expect(await screen.findByText("Sin feriados nacionales")).toBeInTheDocument();
   });
 
-  // --- Escritura: crear/editar (la baja llega en un commit propio) ---
+  // --- Escritura: crear/editar/eliminar ---
 
   it("crear feriado envía el DTO correcto a POST /feriados y muestra el toast de éxito", async () => {
     const user = userEvent.setup();
@@ -119,6 +119,28 @@ describe("FeriadosGlobalesAdminView (sdd/feriados-configurables)", () => {
 
     await waitFor(() => expect(patchCalled).toBe(true));
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Feriado actualizado."));
+  });
+
+  it("eliminar feriado confirma en el diálogo, dispara el DELETE y muestra el toast de éxito", async () => {
+    const user = userEvent.setup();
+    let deleteCalled = false;
+    server.use(
+      http.delete("/api/feriados/f1", () => {
+        deleteCalled = true;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+
+    renderWithProviders(<FeriadosGlobalesAdminView />, { user: buildUser({ is_global_admin: true }) });
+    await screen.findByText("Año Nuevo");
+
+    const eliminarButtons = await screen.findAllByRole("button", { name: "Eliminar" });
+    await user.click(eliminarButtons[0]!);
+    const confirmButtons = await screen.findAllByRole("button", { name: "Eliminar" });
+    await user.click(confirmButtons[confirmButtons.length - 1]!);
+
+    await waitFor(() => expect(deleteCalled).toBe(true));
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Feriado eliminado."));
   });
 
   it("el diálogo rechaza una descripción vacía y una que supera el tope, sin llamar al backend", async () => {
