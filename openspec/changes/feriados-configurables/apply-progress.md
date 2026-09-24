@@ -683,3 +683,76 @@ Ninguna.
 
 Tarea 5.6 completa (`tasks.md` actualizado). WU5 (5.1-5.6) cerrada por completo.
 Siguiente: WU6 (tokens/badge/scaffolding de frontend).
+
+## WU6a: token info + variantes de badge + OrigenFeriadoBadge (tareas 6.1/6.2) — COMPLETA
+
+Rama `feat/feriados-configurables-wu6a`, apilada sobre `wu5c` (`156c764`). Solo
+frontend; `backend/` sin tocar.
+
+- [x] 6.1 `globals.css`: `--info`/`--info-foreground`/`--info-light` en `:root` y
+  `.dark` (valores exactos de tasks.md) + `@theme inline --color-info*`, junto al bloque
+  `--color-success-light`/`--color-warning-light`. `badge.tsx`: variantes `success-light`
+  (`bg-success-light text-success`) e `info` (`bg-info-light text-info`).
+- [x] 6.2 `OrigenFeriadoBadge` en
+  `frontend/src/features/feriados/components/origen-feriado-badge.tsx`, con la misma
+  forma de configuración estática que `status-badge.tsx`/`estado-compra-badge.tsx`:
+  `GLOBAL` → "Nacional" + `success-light`, `CLIENTE` → "Del cliente" + `info`. El tipo
+  `OrigenFeriado` se declara localmente (el backend nunca devuelve un campo origen —
+  `combinarFeriados()`, tarea 8.1, lo asignará); WU6b/types.ts podrá reexportarlo más
+  adelante sin cambiar su forma.
+
+**Decisión de contraste (ambas variantes usan `text-{color}`, nunca
+`text-{color}-foreground`, sobre el fondo `-light`):** `--success-foreground`/
+`--warning-foreground` están emparejados con el SÓLIDO `bg-success`/`bg-warning`, no con
+`-light`. En modo oscuro, `--warning-foreground` (`#451a03`) ya es igual a
+`--warning-light` (`#451a03`) — usar `-foreground` sobre un fondo `-light` renderizaría
+texto invisible. Se le dio a `--info` la misma forma a propósito y se eligió
+`text-info`/`text-success` para ambas variantes nuevas:
+- Claro: `#0369a1` sobre `#e0f2fe` (~5.2:1), `#15803d` sobre `#dcfce7` (`--success`
+  preexistente, ~4.6:1) — ambos pasan WCAG AA.
+- Oscuro: `#38bdf8` sobre `#082f49` (~6.5:1), `#4ade80` sobre `#052e16` (`--success`
+  preexistente, ~8.6:1) — ambos pasan. `text-info-foreground` sobre `bg-info-light` en
+  modo oscuro habría sido `#082f49` sobre `#082f49` — invisible. Se evitó la misma trampa
+  que `warning` ya tenía latente (nunca se disparó porque no existía ninguna variante de
+  badge `warning-light` antes de esta WU).
+
+### Files Changed
+
+| Archivo | Acción | Qué |
+|---|---|---|
+| `frontend/src/styles/globals.css` | Modificado | `--info`/`--info-foreground`/`--info-light` (claro + oscuro) + `@theme inline --color-info*` |
+| `frontend/src/components/ui/badge.tsx` | Modificado | Se agregaron las variantes `success-light` e `info` a `badgeVariants` |
+| `frontend/src/features/feriados/components/origen-feriado-badge.tsx` | Creado | `OrigenFeriadoBadge` + tipo `OrigenFeriado` |
+| `frontend/src/features/feriados/components/origen-feriado-badge.test.tsx` | Creado | Etiqueta + clase de variante por origen, GLOBAL/CLIENTE visualmente distintos |
+| `openspec/changes/feriados-configurables/tasks.md` | Modificado | 6.1/6.2 → `[x]`; 6.4 anotada como movida a WU7; se agregó nota de división de WU6 |
+
+### Deviations from Design
+
+Ninguna en los tokens/variantes entregados (los valores hex exactos de D8, la forma
+`bg-*-light text-*`). La ubicación del tipo `OrigenFeriado` (colocado en el archivo del
+badge, no en `types.ts`) es una decisión de alcance, no una desviación: la tarea 6.3
+(scaffolding incl. `types.ts`) es WU6b, fuera del alcance de esta corrida; el tipo es
+autocontenido e importable tal cual.
+
+### Work Unit Evidence
+
+| Evidencia | Valor |
+|---|---|
+| `pnpm type-check` (desde `frontend/`) | sin errores |
+| `pnpm lint` (desde `frontend/`) | sin errores, sin hallazgos |
+| `pnpm vitest run src/features/feriados src/components/ui` (desde `frontend/`) | 7 archivos de prueba, 20 pruebas, todas pasaron |
+| Arnés de ejecución | Manual (ambos temas) no se corrió en esta sesión — se verificó en cambio mediante la aritmética de contraste de arriba; ninguna pantalla consume el badge todavía (WU7) |
+| Límite de rollback | 2 archivos nuevos, 2 ediciones puramente aditivas (variables CSS nuevas + variantes cva nuevas, nada existente se eliminó/renombró); nada más referencia `OrigenFeriadoBadge` todavía — `git revert` elimina solo esta porción |
+
+### Workload / PR Boundary
+
+- Modo: porción de PR encadenado (Feature Branch Chain), apilada sobre `feat/feriados-configurables-wu5c`
+- Unidad de trabajo actual: WU6a (solo tareas 6.1/6.2) — completa
+- Impacto medido en el presupuesto de revisión: el commit completo incl. openspec está
+  muy por debajo del presupuesto de 400 líneas
+
+### Status
+
+Tareas 6.1/6.2 completas (`tasks.md` actualizado). WU6 continúa con WU6b (tarea 6.3:
+types/cliente de API/Zod/`limites.ts`). La tarea 6.4 (entrada de navegación) se movió a
+WU7.

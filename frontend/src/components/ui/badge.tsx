@@ -18,6 +18,12 @@ const badgeVariants = cva(
         outline: "border-border text-foreground",
         success: "border-transparent bg-success text-success-foreground",
         warning: "border-transparent bg-warning text-warning-foreground",
+        // Variantes "light": fondo pastel + texto del color base (NO el
+        // `-foreground` del par sólido — en dark ese `-foreground` coincide
+        // con el propio `-light` y el texto quedaría invisible; ver
+        // globals.css). D8, sdd/feriados-configurables.
+        "success-light": "border-transparent bg-success-light text-success",
+        info: "border-transparent bg-info-light text-info",
       },
     },
     defaultVariants: {
