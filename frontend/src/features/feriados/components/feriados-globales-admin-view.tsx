@@ -2,23 +2,26 @@
 
 /**
  * FeriadosGlobalesAdminView — CONTAINER client component montado por
- * `/admin/feriados-globales` (sdd/feriados-configurables, WU7a). Gate por
+ * `/admin/feriados-globales` (sdd/feriados-configurables). Gate por
  * `isGlobalAdmin` — NUNCA por `permisos` (ROOT es ortogonal al rol/permisos
  * de una membresía, ADR-4), mismo criterio que `ClientesAdminView`,
  * `CiclosVigentesAdminView` y `TiposComponenteAdminView`.
  *
- * WU7a es SOLO LECTURA: lista de feriados nacionales ordenada por fecha,
- * cada fila con `OrigenFeriadoBadge`. Sin acciones de crear/editar/eliminar
- * todavía — WU7b agrega los diálogos y las mutaciones (task 7.1, apply-progress).
+ * WU7a dejó la lista SOLO LECTURA. Este slice agrega crear/editar
+ * (`FeriadoGlobalFormDialog`, wiring de `CiclosVigentesAdminView`); la baja
+ * llega en un commit propio (budget de revisión, ver apply-progress.md).
  */
+import { Plus } from "lucide-react";
 import { useSession } from "@/shared/hooks/use-session";
 import { useFeriadosGlobales } from "../hooks/use-feriados-globales";
 import { DataTable, type Column } from "@/components/shared/data-table";
+import { Button } from "@/components/ui/button";
 import { ErrorState } from "@/components/shared/error-state";
 import { PageHeader } from "@/components/shared/page-header";
 import { notifyError } from "@/shared/lib/toast";
 import { formatearFechaCalendario } from "@/shared/lib/formato-fecha";
 import { OrigenFeriadoBadge } from "./origen-feriado-badge";
+import { FeriadoGlobalFormDialog } from "./feriado-global-form-dialog";
 import type { Feriado } from "../types";
 
 export function FeriadosGlobalesAdminView() {
@@ -35,18 +38,39 @@ export function FeriadosGlobalesAdminView() {
   );
 }
 
+// `Column.key` es `keyof T & string`; `Feriado` solo tiene 3 campos reales
+// pero hacen falta 4 columnas (Origen/Acciones son sintéticas). Extensión de
+// tipado local, sin tocar `Feriado` — razón completa en apply-progress.md.
+type FeriadoColumnRow = Feriado & { origen?: never; acciones?: never };
+
 function FeriadosGlobalesAdminContent() {
   const feriadosQuery = useFeriadosGlobales();
   const feriados = feriadosQuery.data ?? [];
 
-  const columns: Column<Feriado>[] = [
+  const columns: Column<FeriadoColumnRow>[] = [
     // Feriado.fecha es @db.Date — fecha de calendario.
     { key: "fecha", header: "Fecha", render: (row) => formatearFechaCalendario(row.fecha) },
     { key: "descripcion", header: "Descripción" },
     {
-      key: "id",
+      key: "origen",
       header: "Origen",
       render: () => <OrigenFeriadoBadge origen="GLOBAL" />,
+    },
+    {
+      key: "acciones",
+      header: "Acciones",
+      render: (row) => (
+        <div className="flex items-center gap-2">
+          <FeriadoGlobalFormDialog
+            feriado={row}
+            trigger={
+              <Button variant="outline" size="sm">
+                Editar
+              </Button>
+            }
+          />
+        </div>
+      ),
     },
   ];
 
@@ -55,6 +79,16 @@ function FeriadosGlobalesAdminContent() {
       <PageHeader
         title="Feriados nacionales"
         description="Lista maestra de feriados nacionales (solo ROOT). Se usan en el cálculo de vencimientos SLA hábiles de todos los clientes."
+        actions={
+          <FeriadoGlobalFormDialog
+            trigger={
+              <Button size="sm">
+                <Plus className="h-4 w-4" aria-hidden="true" />
+                Nuevo feriado
+              </Button>
+            }
+          />
+        }
       />
       <DataTable
         columns={columns}
