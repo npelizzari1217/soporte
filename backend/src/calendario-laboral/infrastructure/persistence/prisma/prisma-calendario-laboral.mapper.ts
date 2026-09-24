@@ -75,8 +75,14 @@ export class PrismaCalendarioLaboralMapper {
   /**
    * Clave `'YYYY-MM-DD'` a partir de los componentes UTC crudos de la
    * medianoche que Prisma devuelve para una columna `@db.Date`.
+   *
+   * PÚBLICA (WU1, sdd/feriados-configurables): `PrismaFeriadoGlobalMapper`
+   * (feriado global, ABM WU2) reusa este mismo método — una sola
+   * implementación de la trampa `@db.Date` para las dos columnas
+   * (`Feriado.fecha` acá y `FeriadoCliente.fecha` desde WU3), en vez de
+   * duplicarla.
    */
-  private static claveDiaUtcDe(fecha: Date): string {
+  static claveDiaUtcDe(fecha: Date): string {
     const anio = String(fecha.getUTCFullYear()).padStart(4, '0');
     const mes = String(fecha.getUTCMonth() + 1).padStart(2, '0');
     const dia = String(fecha.getUTCDate()).padStart(2, '0');

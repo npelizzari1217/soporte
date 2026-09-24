@@ -57,17 +57,21 @@ export interface AplicarSlaDto {
  * docstring de `SlaRegla` en `tickets/domain/entities/ticket.entity.ts`).
  * Un ticket `CORRIDO` sigue con `CalcularSlaVenceService` (24/7, sin
  * cambios); uno `HABIL` usa `CalcularSlaHabilVenceService` sobre el
- * calendario/feriados de MASTER (`CalendarioLaboralModule`, WU-2). Sin
- * fallback silencioso: si `calendarioRepo`/`feriadosRepo` lanzan, el error
- * se propaga tal cual — jamás se degrada a la regla vieja sin que quede
- * registrado (el listener log-and-swallow es quien absorbe el throw).
+ * calendario semanal de MASTER y los feriados que aplican al cliente del
+ * ticket: los globales de MASTER unidos a los propios de la base del tenant
+ * (`CalendarioLaboralModule`). Sin fallback silencioso: si
+ * `calendarioRepo`/`feriadosRepo` lanzan — incluido el fail-closed cuando no
+ * hay `TenantContext` —, el error se propaga tal cual y
+ * `AplicarSlaListener` lo registra (`SLA_APLICAR_ERROR`) sin revertir el
+ * ticket ya committeado.
  *
- * Costo (documentado, sin optimizar en este WU — no hay evidencia de que
- * sea un cuello de botella, y un caché del calendario se desactualizaría
- * si alguien lo edita desde el ABM): un ticket `HABIL` suma DOS consultas a
- * MASTER (calendario + feriados) a las que ya hacía este use case
- * (`findIdByCodigo` del tipo PREVENTIVO) — tres lecturas por creación o
- * repriorización.
+ * Costo (documentado, sin optimizar — no hay evidencia de que sea un cuello
+ * de botella, y un caché se desactualizaría cuando alguien edite feriados
+ * desde los ABM): un ticket `HABIL` suma el calendario de MASTER más los
+ * feriados (MASTER y tenant, en paralelo) a la consulta que ya hacía este use
+ * case (`findIdByCodigo` del tipo PREVENTIVO), por creación o
+ * repriorización. Los tickets ya abiertos no se recalculan al cambiar un
+ * feriado; solo al repriorizarse.
  *
  * Ref spec: sdd/premium/spec S2, S3. Ref design: ADR-P2, ADR-P4. Tarea: SA12.
  */

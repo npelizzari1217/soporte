@@ -13,6 +13,7 @@ import {
   Tag,
   Package,
   Cog,
+  PartyPopper,
 } from "lucide-react";
 import type { JwtPayload } from "@/shared/api/types";
 import { ETIQUETAS_MODULOS } from "@/shared/auth/etiquetas-modulos";
@@ -129,6 +130,22 @@ const DEFAULT_SECTION_ITEMS: NavItem[] = [
     icon: ClipboardCheck,
     visible: (can) => can("PREVENTIVO:LECTURA"),
   },
+  {
+    href: "/feriados",
+    label: "Feriados",
+    icon: PartyPopper,
+    // Lista combinada (global + propios del tenant, task 8.1, WU8a,
+    // sdd/feriados-configurables). `visible: () => true`, mismo criterio que
+    // Tickets/KB arriba: `spec.md` ("Per-client admin manages its own
+    // holidays; other roles read") exige lectura abierta a CUALQUIER
+    // autenticado del tenant — NUNCA gateado por `esAdminCliente`. Desviación
+    // declarada de design.md D8, que proponía `/admin/feriados` en `AdminNav`
+    // (gate por `esAdminCliente`): ese gate bloquearía la lectura a un actor
+    // no-admin, violando el requerimiento. Razón completa en
+    // apply-progress.md (WU8a). La escritura (WU8b) sigue gateada por
+    // `esAdminCliente`, dentro de la vista, no acá.
+    visible: () => true,
+  },
 ];
 
 const ROOT_SECTION_ITEMS: NavItem[] = [
@@ -156,6 +173,18 @@ const ROOT_SECTION_ITEMS: NavItem[] = [
     // sdd/tipos-componente-master). Exclusivo de ROOT, mismo criterio que
     // "Clientes" y "Ciclos" (master) — NO vive en `AdminNav` (esa sub-nav es
     // solo para secciones gateadas por `permisos` del tenant).
+    visible: (_can, isGlobalAdmin) => isGlobalAdmin,
+  },
+  {
+    href: "/admin/feriados-globales",
+    label: "Feriados nacionales",
+    icon: PartyPopper,
+    // Catálogo MASTER de feriados nacionales (ABM del ROOT,
+    // sdd/feriados-configurables, D8 design.md, task 6.4 movida a WU7).
+    // Exclusivo de ROOT, mismo criterio que "Clientes", "Ciclos" y "Tipos de
+    // componente" — distinto de `/feriados` (WU8a, más abajo en
+    // `DEFAULT_SECTION_ITEMS`, lista combinada global+cliente abierta a
+    // cualquier autenticado del tenant, no gateada por `esAdminCliente`).
     visible: (_can, isGlobalAdmin) => isGlobalAdmin,
   },
 ];

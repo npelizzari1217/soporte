@@ -2,7 +2,9 @@ import { FeriadosLaborales } from '../services/calcular-sla-habil-vence.service'
 
 /**
  * IFeriadosLaboralesRepository — puerto de lectura de los feriados de día
- * completo (`feriados`, vive en MASTER).
+ * completo que aplican al tenant en curso: la unión de los globales
+ * (`feriados`, en MASTER) y los propios del cliente (`feriados_cliente`, en
+ * la base del tenant). Nunca incluye feriados de otro cliente.
  *
  * Devuelve exactamente el tipo `FeriadosLaborales` que
  * `CalcularSlaHabilVenceService` (WU-1) ya espera — este puerto no define

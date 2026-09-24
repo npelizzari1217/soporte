@@ -153,9 +153,9 @@ import {
 
     {
       provide: AplicarSlaListener,
-      useFactory: (aplicarSlaUseCase: AplicarSlaUseCase) =>
-        new AplicarSlaListener(aplicarSlaUseCase),
-      inject: [AplicarSlaUseCase],
+      useFactory: (aplicarSlaUseCase: AplicarSlaUseCase, logger: ILogger) =>
+        new AplicarSlaListener(aplicarSlaUseCase, logger),
+      inject: [AplicarSlaUseCase, LOGGER],
     },
     {
       provide: SlaSweepScheduler,

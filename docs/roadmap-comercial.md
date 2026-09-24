@@ -167,8 +167,9 @@ Para no re-litigarlas al empezar cada punto.
 > del punto 2 se cumplió tal cual. La del punto 4 **se desvió y ya se corrigió**:
 > se había entregado reusando `MANTENIMIENTO`, y el issue #135 le dio al
 > preventivo su propio tipo `PREVENTIVO`. **La del punto 5 se cumplió a
-> medias**: el default 9-18 lun-vie y el arranque del reloj en la próxima ventana
-> hábil están construidos, pero el calendario **NO es por cliente** — es uno solo,
+> medias**: el default 9-18 lun-vie, el arranque del reloj en la próxima ventana
+> hábil y, desde el ciclo `feriados-configurables` (issue #216), los feriados
+> por cliente están construidos; el **horario semanal** sigue siendo uno solo,
 > global, en la base master. Detalle en el punto siguiente.
 >
 > Cada viñeta de abajo declara **Cumplida** o **Desviación**. No es adorno:
@@ -197,13 +198,21 @@ Para no re-litigarlas al empezar cada punto.
 - **Punto 5** — calendario **por cliente** con default 9-18 lun-vie; feriados
   nacionales AR precargados en el seed más excepciones por cliente; un ticket
   abierto fuera de horario arranca el reloj en la **próxima ventana hábil**.
-  **Desviación entregada el 2026-09-09**: el arranque en la próxima ventana
-  hábil está implementado (`calcular-sla-habil-vence.service.ts`), pero el
-  calendario y los feriados son **globales**, no por cliente:
-  `CalendarioLaboralDia` tiene como clave solo `dia_semana` y `Feriado` solo
-  `fecha`, ambos en la base master
-  (`backend/prisma_master/schema.prisma:477-512`). No hay excepciones por
-  cliente. Anotado en la deuda técnica.
+  Se declara por cláusula:
+  - **Cumplida** — próxima ventana hábil: entregada el 2026-09-09
+    (`calcular-sla-habil-vence.service.ts`).
+  - **Cumplida** — feriados nacionales precargados más excepciones por cliente:
+    ciclo `feriados-configurables` (issue #216, 2026-09-24, en la rama
+    `feat/feriados-configurables`, todavía sin desplegar). Los nacionales
+    siguen en `feriados` (master) y ahora se administran desde
+    `/admin/feriados-globales` (solo ROOT); cada cliente carga los suyos en
+    `feriados_cliente` de su propia base desde `/feriados` (su ADMINISTRADOR).
+    El SLA hábil saltea la unión de ambos y nunca los de otro cliente
+    (`prisma-feriados-laborales.repository.ts`).
+  - **Desviación** — horario semanal por cliente: `CalendarioLaboralDia` sigue
+    siendo global (clave solo `dia_semana`, base master). El issue #216 se
+    acotó a los feriados por decisión del dueño; el horario por cliente queda
+    en la deuda técnica.
 
 ### 1 · Exportar a Excel/CSV — Baja — **ENTREGADO**
 
@@ -358,8 +367,9 @@ camino. La decisión "no recalculamos" se habría filtrado de a un ticket por ve
 > del cliente y lo manda dentro del `INSERT`. Mover la cohorte exige tocar las
 > dos.
 
-Lo que quedó fuera del alcance entregado: el calendario es **uno solo para todos
-los inquilinos** — ver la deuda técnica de abajo.
+Lo que quedó fuera del alcance entregado: el **horario semanal** es uno solo para
+todos los inquilinos — ver la deuda técnica de abajo. Los feriados por cliente
+llegaron con el ciclo `feriados-configurables` (issue #216).
 
 ### 6 · Ticket por email entrante — Alta
 
@@ -468,8 +478,8 @@ cabeza de alguien deja de existir cuando esa persona no está.
 | Qué | Por qué importa |
 |---|---|
 | **Regeneración reproducible del entorno — PARCIALMENTE RESUELTA el 2026-09-09.** La creación del contenedor **ya está documentada**: `README.md:278` trae el `docker run` completo y `pnpm entorno:verificar` / `pnpm entorno:regenerar` (`55be976`). Lo que sigue vivo es que `demo-seed.ts:278` **solo aplica preset al rol TECNICO** | Es el cimiento del que cuelga toda la política de datos descartables. Destruir y regenerar sale más barato que migrar **solo si el generador está sano y regenerar es un comando**. Falló dos veces el 2026-08-21: el seed reproduciría el hueco de permisos, y al perderse la base local el README arranca en "cuando haya una instancia de Postgres disponible" — justo después del paso que faltaba |
-| **El calendario laboral no lo puede configurar nadie.** El módulo `backend/src/calendario-laboral/` no tiene controller, ni DTOs, ni endpoint, y no hay pantalla: el calendario y los feriados **solo se cambian escribiendo una migración**. Además, los feriados sembrados llegan hasta **2028** | Es la carencia de fondo, y hace que "global vs. por cliente" sea el tercer problema y no el primero: agregarle `clienteId` a esas tablas sin capa HTTP solo produce dos filas que nadie puede editar. El costo ya se cobró una vez: los feriados móviles y trasladables faltaron hasta el 2026-09-23 (issue #214), y un ticket abierto el viernes previo al 12 de octubre vencía **24 horas antes** de lo que corresponde. Desde 2029 la tabla se vacía sola y el SLA vuelve a tratar todo feriado como día hábil, en silencio |
-| **El calendario es global, no por cliente.** `CalendarioLaboralDia` (clave: solo `dia_semana`) y `Feriado` (clave: solo `fecha`) viven en la base **master** (`backend/prisma_master/schema.prisma:477-512`), sin columna de cliente | Hoy no muerde porque los dos clientes de producción comparten horario y feriados. El día que uno atienda sábados, o tenga un feriado provincial que el otro no, hay que agregarle `clienteId` a esas dos tablas y migrar las filas existentes. Va después de la fila de arriba: sin capa de configuración, esto no se puede aprovechar |
+| **El horario semanal no lo puede configurar nadie — los feriados sí, desde el 2026-09-24.** El ciclo `feriados-configurables` (issue #216, en la rama `feat/feriados-configurables`, todavía sin desplegar) agregó el ABM de feriados globales (`/admin/feriados-globales`, solo ROOT) y por cliente (`/feriados`). El horario 9-18 lun-vie (`CalendarioLaboralDia`) sigue sin controller ni pantalla: **solo se cambia escribiendo una migración**. Los feriados sembrados llegan hasta **2028** | Desde 2029 la tabla global se vacía y el SLA vuelve a tratar todo feriado como día hábil, en silencio — ahora se evita cargándolos desde la pantalla, pero alguien tiene que acordarse. El costo de no poder editar ya se cobró una vez: los feriados móviles y trasladables faltaron hasta el 2026-09-23 (issue #214) |
+| **El horario semanal es global, no por cliente.** `CalendarioLaboralDia` (clave: solo `dia_semana`) vive en la base **master** (`backend/prisma_master/schema.prisma`), sin columna de cliente. Los feriados ya son por cliente (issue #216) | Hoy no muerde porque los dos clientes de producción comparten horario. El día que uno atienda sábados hay que llevar el horario a la base de cada tenant, como se hizo con `feriados_cliente`. Es la **Desviación** declarada del punto 5 |
 | ~~**672 `as never`/`as any` en 121 specs**, creciendo sin freno~~ | **CONGELADA** el 2026-09-23 por `scripts/check-casts-en-specs.mjs` (issue #212): un ratchet que falla si el número sube, y también si baja sin actualizar su línea base. Hoy son **693 en 123 archivos**, todos en `backend/`; frontend está en cero. Convertirlos a mocks completos sigue pendiente, pero ya no puede empeorar. **Corrección de método**: la versión anterior de esta fila decía "eran 301 en 83 specs, hoy 672 en 121 — se duplicó en tres semanas". Los dos números medían cosas distintas: el 301 era **solo `as never`** y el 672 era **`as never` + `as any`**. El crecimiento real del combinado fue **527 → 693 en 33 días, +31%** — real y sostenido, pero no una duplicación. Un número mantenido a mano no solo envejece: puede nacer mal |
 | ~~123 errores de tipos escondidos tras la exclusión `**/*.spec.ts`~~ | **RESUELTO** el 2026-08-21 (Fase 0, carril A). El gate quedó instalado y probado: un error de tipo en un spec ahora rompe `pnpm typecheck` |
 | ~~Render de fechas del frontend~~ | **RESUELTO** el 2026-08-21 (Fase 0, carril B). Un solo módulo formatea fechas, con regla de lint que impide una séptima copia |

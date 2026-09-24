@@ -52,6 +52,9 @@
   --color-warning:                var(--warning);
   --color-warning-foreground:     var(--warning-foreground);
   --color-warning-light:          var(--warning-light);
+  --color-info:                   var(--info);
+  --color-info-foreground:        var(--info-foreground);
+  --color-info-light:             var(--info-light);
 
   /* Elevación: reasigna la escala de sombra de Tailwind (shadow-sm/md/lg/xl)
      a variables que flipean por tema, igual que los colores — así cualquier
@@ -106,6 +109,14 @@
   --warning-foreground:     #451a03;
   --warning-light:          #fef3c7;
 
+  /* Azul informativo (sky-700 sobre sky-100), mismo patrón que success/warning:
+     el par bg-*-light/text-* usa `--info` (no `--info-foreground`) para el
+     texto — `--info-foreground` es el par pensado para bg-info SÓLIDO
+     (blanco), no para el fondo claro. Contraste #0369a1 sobre #e0f2fe ~5.2:1. */
+  --info:                   #0369a1;
+  --info-foreground:        #ffffff;
+  --info-light:             #e0f2fe;
+
   /* Escala de elevación educandow (--shadow-sm..xl, design-system.css) — capas
      suaves, únicas (no dobles), que se profundizan en dark más abajo. */
   --elevation-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
@@ -159,6 +170,16 @@
   --warning:                #fbbf24;
   --warning-foreground:     #451a03;
   --warning-light:          #451a03;
+
+  /* --info-foreground (#082f49) es IGUAL a --info-light acá — mismo patrón que
+     --warning-foreground/--warning-light arriba. Es intencional: ese par es
+     para texto blanco/oscuro sobre bg-info SÓLIDO, no sobre bg-info-light.
+     El badge "info" (bg-info-light) usa `text-info` (#38bdf8, sky-400), NUNCA
+     `text-info-foreground` acá — con este último el texto sería invisible
+     (mismo color que el fondo). Contraste #38bdf8 sobre #082f49 ~6.5:1. */
+  --info:                   #38bdf8;
+  --info-foreground:        #082f49;
+  --info-light:             #082f49;
 
   --elevation-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
   --elevation-md: 0 4px 6px rgba(0, 0, 0, 0.4);

@@ -72,6 +72,18 @@ describe("nav-config", () => {
     expect(items.map((i) => i.href)).not.toContain("/ciclos");
   });
 
+  it("is_global_admin=true → ve Feriados nacionales (catálogo master ROOT, sdd/feriados-configurables)", () => {
+    const user = makeUser({ permisos: [], is_global_admin: true });
+    const items = visibleNavItems(user);
+    expect(items.map((i) => i.href)).toContain("/admin/feriados-globales");
+  });
+
+  it("is_global_admin=false → NO ve Feriados nacionales (catálogo master ROOT) aunque sea ADMINISTRADOR", () => {
+    const user = makeUser({ rol: "ADMINISTRADOR", is_global_admin: false });
+    const items = visibleNavItems(user);
+    expect(items.map((i) => i.href)).not.toContain("/admin/feriados-globales");
+  });
+
   it("is_global_admin=true con permisos=[] → ve TODOS los ítems del menú (ROOT puede TODO)", () => {
     const user = makeUser({ permisos: [], is_global_admin: true });
     const items = visibleNavItems(user);
@@ -154,6 +166,27 @@ describe("nav-config", () => {
     expect(items.map((i) => i.href)).not.toContain("/repuestos");
   });
 
+  // WU8a (sdd/feriados-configurables): lectura abierta a CUALQUIER
+  // autenticado del tenant (spec.md), no gateada por permiso ni por
+  // esAdminCliente — mismo criterio que Tickets/KB.
+  it("TECNICO sin permisos → ve /feriados igual (lectura abierta a cualquier autenticado)", () => {
+    const user = makeUser({ rol: "TECNICO", permisos: [] });
+    const items = visibleNavItems(user);
+    expect(items.map((i) => i.href)).toContain("/feriados");
+  });
+
+  it("ADMINISTRADOR → también ve /feriados (no depende de esAdminCliente)", () => {
+    const user = makeUser({ rol: "ADMINISTRADOR" });
+    const items = visibleNavItems(user);
+    expect(items.map((i) => i.href)).toContain("/feriados");
+  });
+
+  it("ROOT sin cliente (cliente_id: null) → /feriados sigue visible (bypass total)", () => {
+    const user = makeUser({ is_global_admin: true, cliente_id: null });
+    const items = visibleNavItems(user);
+    expect(items.map((i) => i.href)).toContain("/feriados");
+  });
+
   it("null user (no logueado) → no revienta, devuelve solo ítems públicos (ninguno gated)", () => {
     const items = visibleNavItems(null);
     expect(items.every((i) => i.href !== "/dashboard" && i.href !== "/admin/clientes")).toBe(true);
@@ -165,13 +198,13 @@ describe("nav-config", () => {
   });
 
   describe("visibleNavSections", () => {
-    it("ROOT (is_global_admin) → ve la sección 'ROOT' con Clientes, Ciclos y Tipos de componente", () => {
+    it("ROOT (is_global_admin) → ve la sección 'ROOT' con Clientes, Ciclos, Tipos de componente y Feriados nacionales", () => {
       const user = makeUser({ permisos: [], is_global_admin: true });
       const sections = visibleNavSections(user);
       const rootSection = sections.find((s) => s.title === "ROOT");
       expect(rootSection).toBeDefined();
       expect(rootSection?.items.map((i) => i.href)).toEqual(
-        expect.arrayContaining(["/admin/clientes", "/ciclos", "/admin/tipos-componente"]),
+        expect.arrayContaining(["/admin/clientes", "/ciclos", "/admin/tipos-componente", "/admin/feriados-globales"]),
       );
     });
 
