@@ -952,3 +952,30 @@ regla del dueño para unidades de más de 400 líneas cambiadas.
 ### Status
 
 WU7 completamente cerrada. Siguiente: WU8 (pantalla del cliente, lista combinada, cierre de roadmap).
+
+## WU8a: pantalla de feriados del cliente — lado de LECTURA (tareas 8.1/8.2 parcial, 8.3) — COMPLETA para este segmento
+
+Rama `feat/feriados-configurables-wu8a`, apilada sobre `wu7b` (`469613f`). Solo frontend.
+
+**Decisión de ruta, se desvía de D8**: `/feriados` (nivel superior, fuera de `/admin/`), no
+`/admin/feriados` en `AdminNav`. `spec.md` líneas 35-40: cualquier rol autenticado del
+cliente lee; solo ADMINISTRADOR/ROOT escribe. `admin/layout.tsx` protege todo el
+subárbol `/admin/*` mediante `puedeEntrarAdmin` — ubicarla ahí devolvería 403 a los lectores no admin.
+La entrada de navegación vive en `DEFAULT_SECTION_ITEMS` de `nav-config.ts`, `visible: () => true`, la misma
+forma que `/tickets`/`/kb`. Razonamiento completo en `tasks.md` 8.3.
+
+`combinarFeriados()` (pura, ordenada por string, nunca `new Date()`) + `useFeriadosCliente`
+(refleja a `useFeriadosGlobales`) + `FeriadosListView` (solo lectura, sin columna Acciones —
+WU8b agrega crear/editar/eliminar solo para filas CLIENTE, protegido por `esAdminCliente` dentro de la
+vista). Sin compuerta del lado del cliente en la lectura, según la spec.
+
+Evidencia: `pnpm type-check`/`pnpm lint` limpios; `pnpm vitest run src/features/feriados
+src/shared/nav src/components src/app` → 42 archivos, 215 pruebas, todas exitosas. Total de `git show
+--numstat HEAD` por debajo del presupuesto de 400. Rollback: todos archivos nuevos + 2 ediciones solo aditivas
+(`nav-config.ts`, `tasks.md`); nada hace referencia a `/feriados` todavía fuera de las pruebas propias
+de este segmento.
+
+### Status
+
+Tareas 8.1/8.2 parciales (lado de lectura hecho, pruebas del lado de escritura diferidas a WU8b), 8.3 hecha
+(ruta desviada, declarada). Siguiente: WU8b (diálogos/mutaciones de escritura), WU8c (cierre de roadmap).

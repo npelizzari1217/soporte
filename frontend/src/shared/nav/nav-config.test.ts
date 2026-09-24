@@ -166,6 +166,27 @@ describe("nav-config", () => {
     expect(items.map((i) => i.href)).not.toContain("/repuestos");
   });
 
+  // WU8a (sdd/feriados-configurables): lectura abierta a CUALQUIER
+  // autenticado del tenant (spec.md), no gateada por permiso ni por
+  // esAdminCliente — mismo criterio que Tickets/KB.
+  it("TECNICO sin permisos → ve /feriados igual (lectura abierta a cualquier autenticado)", () => {
+    const user = makeUser({ rol: "TECNICO", permisos: [] });
+    const items = visibleNavItems(user);
+    expect(items.map((i) => i.href)).toContain("/feriados");
+  });
+
+  it("ADMINISTRADOR → también ve /feriados (no depende de esAdminCliente)", () => {
+    const user = makeUser({ rol: "ADMINISTRADOR" });
+    const items = visibleNavItems(user);
+    expect(items.map((i) => i.href)).toContain("/feriados");
+  });
+
+  it("ROOT sin cliente (cliente_id: null) → /feriados sigue visible (bypass total)", () => {
+    const user = makeUser({ is_global_admin: true, cliente_id: null });
+    const items = visibleNavItems(user);
+    expect(items.map((i) => i.href)).toContain("/feriados");
+  });
+
   it("null user (no logueado) → no revienta, devuelve solo ítems públicos (ninguno gated)", () => {
     const items = visibleNavItems(null);
     expect(items.every((i) => i.href !== "/dashboard" && i.href !== "/admin/clientes")).toBe(true);
