@@ -831,3 +831,51 @@ lado del cliente). Los hooks de WU7/WU8 llaman a estas funciones en lugar de inc
 Tarea 6.3 completa, tarea 6.5 (verificación) ejecutada y en verde. `tasks.md` actualizado. WU6 (6.1-6.3,
 6.5) completamente cerrada; 6.4 permanece incorporada en la tarea 7.1 de WU7. Siguiente: WU7 (pantalla de feriados
 globales de ROOT).
+
+## WU7a: pantalla de feriados globales de ROOT — lado de LECTURA (tareas 6.4, 7.1 parcial, 7.3) — COMPLETA
+
+Rama `feat/feriados-configurables-wu7a`, apilada sobre `wu6b` (`a1073b4`). Solo frontend.
+
+- Decisión de ruta: `/admin/feriados-globales`, coincide con el nombre literal del diseño D8 — no la
+  forma de nivel superior `/ciclos`. `admin/clientes` y `admin/tipos-componente` son el precedente
+  más cercano: ambas son pantallas master solo de ROOT anidadas bajo `/admin/`, cada una con su propio
+  `layout.tsx` que llama a `rootLayoutGate()`. Se siguió esa estructura al pie de la letra.
+- El hook `useFeriadosGlobales` llama a `listarFeriados()` desde `api.ts` (WU6b), sin
+  `apiFetch` inline. `FeriadosGlobalesAdminView` sigue a `ciclos-vigentes-admin-view.tsx`:
+  compuerta de cliente `isGlobalAdmin`, `DataTable` + `OrigenFeriadoBadge` ("Nacional"), todavía sin columna de
+  acciones (solo de vista; WU7b agrega crear/editar/eliminar). El backend ya ordena por `fecha`
+  ascendente (D8); la pantalla renderiza tal como se recibe, sin reordenar del lado del cliente.
+- Entrada de navegación (6.4) registrada en `ROOT_SECTION_ITEMS`, protegida por la compuerta `isGlobalAdmin`, nuevo
+  ícono `PartyPopper` (verificado presente en las declaraciones de tipos de `lucide-react`).
+- 7.3: `nav-config.test.ts` demuestra que no hay entrada `/admin/feriados-globales` para no-ROOT;
+  el bloqueo de navegación directa reutiliza `rootLayoutGate` sin modificar (sin lógica nueva → sin
+  prueba nueva de layout, igual que `/admin/clientes`/`/admin/tipos-componente`, ninguna de las cuales tiene
+  una) más una prueba de compuerta del lado del cliente en el propio archivo de pruebas de la vista.
+
+### Files Changed
+
+| Archivo | Acción |
+|---|---|
+| `frontend/src/app/(dashboard)/admin/feriados-globales/page.tsx` | Creado |
+| `frontend/src/app/(dashboard)/admin/feriados-globales/layout.tsx` | Creado |
+| `frontend/src/features/feriados/hooks/use-feriados-globales.ts` | Creado |
+| `frontend/src/features/feriados/components/feriados-globales-admin-view.tsx` | Creado |
+| `frontend/src/features/feriados/components/feriados-globales-admin-view.test.tsx` | Creado |
+| `frontend/src/shared/nav/nav-config.ts` | Modificado — nueva entrada de navegación |
+| `frontend/src/shared/nav/nav-config.test.ts` | Modificado — pruebas de acceso |
+
+### Work Unit Evidence
+
+| Evidencia | Valor |
+|---|---|
+| `pnpm type-check` | limpio |
+| `pnpm lint` | limpio, sin hallazgos |
+| `pnpm vitest run src/features/feriados src/shared/nav src/app` | 14 archivos de prueba, 78 pruebas, todas exitosas |
+| Límite de reversión | 5 archivos nuevos + 2 ediciones solo aditivas (nuevo import de ícono, nuevo ítem de navegación, nuevos casos de prueba); nada más hace referencia a la nueva ruta/vista; `git revert` elimina solo este segmento |
+
+### Status
+
+Tareas 6.4 y 7.3 completas (`tasks.md` actualizado). Tarea 7.1 parcialmente hecha (pantalla
+solo de lista + entrada de navegación; diálogos/mutaciones diferidos). Tarea 7.2 parcialmente hecha (renderizado
+ordenado + badge cubiertos; validación de diálogo/toasts diferidos). Siguiente: WU7b (diálogos de crear/editar/
+eliminar, mutaciones, sus pruebas — resto de tareas 7.1/7.2, 7.4, 7.5).

@@ -13,6 +13,7 @@ import {
   Tag,
   Package,
   Cog,
+  PartyPopper,
 } from "lucide-react";
 import type { JwtPayload } from "@/shared/api/types";
 import { ETIQUETAS_MODULOS } from "@/shared/auth/etiquetas-modulos";
@@ -156,6 +157,18 @@ const ROOT_SECTION_ITEMS: NavItem[] = [
     // sdd/tipos-componente-master). Exclusivo de ROOT, mismo criterio que
     // "Clientes" y "Ciclos" (master) — NO vive en `AdminNav` (esa sub-nav es
     // solo para secciones gateadas por `permisos` del tenant).
+    visible: (_can, isGlobalAdmin) => isGlobalAdmin,
+  },
+  {
+    href: "/admin/feriados-globales",
+    label: "Feriados nacionales",
+    icon: PartyPopper,
+    // Catálogo MASTER de feriados nacionales (ABM del ROOT,
+    // sdd/feriados-configurables, D8 design.md, task 6.4 movida a WU7).
+    // Exclusivo de ROOT, mismo criterio que "Clientes", "Ciclos" y "Tipos de
+    // componente" — distinto de `/admin/feriados` (WU8, lista combinada
+    // global+cliente del admin de tenant, gateada por `esAdminCliente` en
+    // `AdminNav`, no acá).
     visible: (_can, isGlobalAdmin) => isGlobalAdmin,
   },
 ];
