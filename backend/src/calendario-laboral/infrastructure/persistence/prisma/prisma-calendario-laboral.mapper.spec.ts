@@ -92,3 +92,15 @@ describe('PrismaCalendarioLaboralMapper.toFeriados', () => {
     expect(feriados).toEqual(new Set(['2026-05-01', '2026-07-09']));
   });
 });
+
+describe('PrismaCalendarioLaboralMapper.claveDiaUtcDe (WU1, ahora público)', () => {
+  it('mapea la medianoche UTC escrita por FechaCalendario.aDateUtc() al mismo día calendario', () => {
+    // Ronda completa de la trampa @db.Date (D2): FechaCalendario.aDateUtc()
+    // escribe `…T00:00:00.000Z`; leerlo con desplazarAArgentina restaría 3hs
+    // y caería en 2026-12-24 — el caso que este test hace fallar si alguien
+    // lo introduce en el mapper de feriados globales (PrismaFeriadoGlobalMapper).
+    const medianocheUtc = new Date('2026-12-25T00:00:00.000Z');
+
+    expect(PrismaCalendarioLaboralMapper.claveDiaUtcDe(medianocheUtc)).toBe('2026-12-25');
+  });
+});

@@ -47,13 +47,13 @@ igual está mal desplegarlo fuera de orden).
 
 ## WU1: Base de dominio + repositorio global
 
-- [ ] 1.1 Agregar `FERIADO_DESCRIPCION_MAX_LENGTH = 200` y `FECHA_CALENDARIO_REGEX` a `backend/src/calendario-laboral/domain/feriados.constants.ts`.
-- [ ] 1.2 Crear el VO `FechaCalendario` en `backend/src/calendario-laboral/domain/value-objects/fecha-calendario.ts` (`crear(iso)`, `aClave()`, `aDateUtc()`); test en `fecha-calendario.spec.ts`: `2026-02-30` rechazada, `2028-02-29` aceptada.
-- [ ] 1.3 Crear `FeriadoEntity` y `feriados.errors.ts` (`FechaCalendarioInvalidaError`, `FeriadoFechaDuplicadaError`, `FeriadoFechaEsGlobalError`, `FeriadoNoEncontradoError`) en domain.
-- [ ] 1.4 Crear el port `IFeriadoGlobalRepository` en `domain/ports/i-feriado-global.repository.ts`.
-- [ ] 1.5 Promover `claveDiaUtcDe` a static público en `backend/src/calendario-laboral/infrastructure/persistence/prisma/prisma-calendario-laboral.mapper.ts:79-84`; agregar un test de ida y vuelta del mapper que pruebe que `…T00:00:00.000Z` mapea al mismo día calendario (trampa UTC de D2).
-- [ ] 1.6 Implementar `PrismaFeriadoGlobalRepository` (tabla `feriado` de master) reutilizando el static promovido; tests unitarios con un cliente Prisma mockeado para CRUD + lista ordenada por `fecha` asc.
-- [ ] 1.7 Correr `pnpm typecheck` y `pnpm vitest run backend/src/calendario-laboral/domain backend/src/calendario-laboral/infrastructure`.
+- [x] 1.1 Agregar `FERIADO_DESCRIPCION_MAX_LENGTH = 200` y `FECHA_CALENDARIO_REGEX` a `backend/src/calendario-laboral/domain/feriados.constants.ts`.
+- [x] 1.2 Crear el VO `FechaCalendario` en `backend/src/calendario-laboral/domain/value-objects/fecha-calendario.ts` (`crear(iso)`, `aClave()`, `aDateUtc()`); test en `fecha-calendario.spec.ts`: `2026-02-30` rechazada, `2028-02-29` aceptada.
+- [x] 1.3 Crear `FeriadoEntity` y `feriados.errors.ts` (`FechaCalendarioInvalidaError`, `FeriadoFechaDuplicadaError`, `FeriadoFechaEsGlobalError`, `FeriadoNoEncontradoError`) en domain.
+- [x] 1.4 Crear el port `IFeriadoGlobalRepository` en `domain/ports/i-feriado-global.repository.ts`.
+- [x] 1.5 Promover `claveDiaUtcDe` a static público en `backend/src/calendario-laboral/infrastructure/persistence/prisma/prisma-calendario-laboral.mapper.ts:79-84`; agregar un test de ida y vuelta del mapper que pruebe que `…T00:00:00.000Z` mapea al mismo día calendario (trampa UTC de D2).
+- [x] 1.6 Implementar `PrismaFeriadoGlobalRepository` (tabla `feriado` de master) reutilizando el static promovido; tests unitarios con un cliente Prisma mockeado para CRUD + lista ordenada por `fecha` asc.
+- [x] 1.7 Correr `pnpm typecheck` y `pnpm vitest run backend/src/calendario-laboral/domain backend/src/calendario-laboral/infrastructure`.
 
 ## WU2: ABM global + controller
 
