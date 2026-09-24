@@ -202,3 +202,41 @@ Ninguna.
 
 4/4 casos de uso de la tarea 2.1 completos (Listar, Crear, Editar, Eliminar). El checkbox de la
 tarea 2.1 en `tasks.md` ahora está en `[x]`. Lista para WU2b (DTOs, controller, wiring — tareas 2.2/2.3/2.5).
+
+## WU2b: DTOs, controller, wiring (tareas 2.2/2.3/2.5) — COMPLETA
+
+Superficie HTTP de feriados globales, rama `feat/feriados-configurables-wu2b` (apilada sobre
+`wu2a2`, commit `be3c355`). La tarea 2.4 (e2e) se difiere a WU2c.
+
+- [x] `interface/dtos/feriado.dto.ts` (Creado): `Create/UpdateFeriadoDto`, `fecha` vía
+  `@Matches(FECHA_CALENDARIO_REGEX)` (D2, no `@IsDateString`), `descripcion` vía
+  `@MaxLength(FERIADO_DESCRIPCION_MAX_LENGTH)` (D9, ambas de las constantes de WU1).
+  `UpdateFeriadoDto` exige ambos campos (reemplazo completo).
+- [x] `interface/controllers/feriados.controller.ts` (Creado): `JwtAuthGuard`
+  a nivel de clase; `GET` abierto a cualquier actor autenticado; `POST`/`PATCH :id`/
+  `DELETE :id` agregan `GlobalAdminGuard` por método (D5,
+  precedente `ciclos-vigentes.controller.ts:103-121`). `toHttpException` (D7):
+  `FeriadoNoEncontradoError` → 404, resto del catálogo → 422; `DELETE` → 204.
+- [x] `calendario-laboral.module.ts` (Modificado, solo aditivo): `imports:
+  [AuthModule]`, `controllers: [FeriadosController]`, `FERIADO_GLOBAL_REPOSITORY`
+  (`PrismaFeriadoGlobalRepository`, construido en WU1, cableado recién ahora) + 4 casos de uso vía
+  `useFactory`, patrón `ClientesModule`. El comentario desactualizado H3 se deja intacto (tarea 5.5).
+- [x] `interface/controllers/feriados.controller.spec.ts` (Creado), acotado exactamente al
+  alcance asignado: metadata de guard por método + tabla error→HTTP, catálogo completo de 4 clases
+  (filtro `instanceof DomainError`, patrón `equipos.controller.spec.ts`).
+- [x] `tasks.md`: 2.2/2.3/2.5 → `[x]`; 2.4 sigue en `[ ]`.
+
+### Deviations / Issues / Evidence
+
+Ninguna vs. D2/D5/D7/D9. Nota de presupuesto: un primer borrador agregó tests funcionales por endpoint
+más allá del alcance asignado de "metadata de guard + tabla error→HTTP", midiendo 486 líneas contra
+el presupuesto de 400; se sacaron (el propio ejemplo de la regla de "dejar parte de los tests afuera"), quedando en
+359; la cobertura funcional se difiere al e2e de WU2c. Test focalizado: `pnpm vitest run
+src/calendario-laboral` → 12 archivos, 74 tests, todos aprobados. Harness de runtime: N/A —
+controller cableado/alcanzable, todavía sin ida y vuelta HTTP (tarea 2.4). Rollback: 3 archivos nuevos +
+una edición de module solo aditiva; `git revert` elimina toda la superficie, sin dependientes.
+
+### Workload / Status
+
+Porción de PR encadenada, apilada sobre `wu2a2`. 359 líneas cambiadas contra 400. 3/4 tareas de esta
+porción completas; la tarea 2.4 (e2e) queda para WU2c. WU2 todavía no está lista para `sdd-verify`.
