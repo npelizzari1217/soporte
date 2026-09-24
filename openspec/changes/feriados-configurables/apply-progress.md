@@ -374,3 +374,40 @@ la forma del caso de uso global de WU2.
 
 3/4 casos de uso de la tarea 4.1 completos. El checkbox de la tarea 4.1 en `tasks.md` sigue
 sin marcar hasta que Editar se entregue en WU4a2.
+
+## WU4a2: Caso de uso Editar de cliente (finalización de la tarea 4.1) — COMPLETA
+
+Branch `feat/feriados-configurables-wu4a2`, apilado sobre `wu4a` (`55ffcdc`). Implementa la
+parte diferida de la tarea 4.1: `EditarFeriadoClienteUseCase` + tests unitarios. Refleja
+la forma de `EditarFeriadoGlobalUseCase` (buscarPorId → `FeriadoNoEncontradoError`,
+`FechaCalendario.crear()`, `FeriadoEntity.editar()` reemplazo completo, P2002 →
+`FeriadoFechaDuplicadaError`), más la verificación previa de deduplicación global de
+`CrearFeriadoClienteUseCase` (`IFeriadosGlobalesChecker.esGlobal` → `FeriadoFechaEsGlobalError`)
+según D4, que exige la verificación tanto en editar como en crear. Orden: buscarPorId →
+validación de fecha → verificación de esGlobal → persistir.
+
+### Files Changed
+
+| Archivo | Acción | Qué |
+|---|---|---|
+| `backend/src/calendario-laboral/application/use-cases/editar-feriado-cliente.use-case.ts` | Creado | `EditarFeriadoClienteUseCase` |
+| `backend/src/calendario-laboral/application/use-cases/editar-feriado-cliente.use-case.spec.ts` | Creado | Tests unitarios: camino feliz, no encontrado, fecha inválida, edición hacia una fecha global rechazada, mapeo de P2002, otros errores se relanzan |
+| `openspec/changes/feriados-configurables/tasks.md` | Modificado | Checkbox de la tarea 4.1 `[ ]` → `[x]` |
+
+### Deviations from Design
+
+Ninguna — coincide con D4 (verificación previa de deduplicación global en la edición) y
+refleja exactamente la forma del caso de uso Editar global de WU2a2.
+
+### Work Unit Evidence
+
+| Evidencia | Valor |
+|---|---|
+| Comando de test focalizado y resultado | `pnpm vitest run src/calendario-laboral` (desde `backend/`) → 19 archivos de test, 118 tests, todos aprobados |
+| Runtime harness | N/A — todavía no hay controller conectado (WU4b conecta `FeriadosClienteController`); solo tests unitarios |
+| Límite de rollback | Ambos archivos nuevos son aditivos, nada más los referencia todavía. `git revert` elimina solo este tramo |
+
+### Status
+
+4/4 casos de uso de la tarea 4.1 completos (Listar, Crear, Editar, Eliminar). El checkbox
+de la tarea 4.1 en `tasks.md` ahora está en `[x]`. Listo para WU4b (DTOs, controller, conexión).
