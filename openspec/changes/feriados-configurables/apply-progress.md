@@ -478,3 +478,68 @@ tasks.md), por debajo del presupuesto de 400. Rollback: un archivo nuevo + un ch
 ### Status
 
 WU4 completo (4.1-4.4 todos `[x]`). Listo para `sdd-verify` en WU4.
+
+## WU5a: Observabilidad del listener (tareas 5.3/5.4, D10) — COMPLETA
+
+Branch `feat/feriados-configurables-wu5a`, apilado sobre `wu4c` (`bc4cc2e`). El
+orquestador pre-dividió WU5 para que el logging llegue antes del throw fail-closed de
+WU5b: WU5a = 5.3/5.4 (esta ejecución); WU5b = 5.1/5.2/5.5 (unión + fail-closed + H4 +
+comentarios desactualizados); WU5c = 5.6 (e2e de SLA).
+
+- [x] 5.3 `AplicarSlaListener` ahora recibe `ILogger` (token `LOGGER`) como segundo
+  parámetro del constructor, el mismo puerto que ya usa el sweep scheduler. Ambos bloques
+  `catch` (`onTicketCreado`, `onTicketReprioritizado`) llaman a `logger.error('SLA_APLICAR_ERROR |
+  evento=<...> | ticket=<id> | error=<mensaje>')`, con `mensaje` derivado exactamente
+  igual que en `sla-sweep.scheduler.ts:55-56` (`error instanceof Error ? error.message :
+  'error desconocido'`). Sin relanzamiento (ADR-6 sigue vigente — el ticket ya está
+  commiteado). Los comentarios "log-and-swallow" se mantuvieron y se actualizaron para
+  que describan lo que el código hace ahora (loguear y luego silenciar) en vez de
+  silencio puro. La factory de `AplicarSlaListener` en `sla.module.ts` ahora inyecta
+  `LOGGER` junto con `AplicarSlaUseCase`.
+- [x] 5.4 `aplicar-sla.listener.spec.ts`: se agregó un `ILogger` mockeado (spies de
+  `log`/`error`) a `makeListener()`. Casos nuevos por handler: rechazo → `logger.error`
+  llamado exactamente una vez con un mensaje que contiene el nombre del evento,
+  `ticket=<id>`, y el mensaje de error original, verificando que NO contenga
+  `[object Object]` ni un marcador de stack trace (`at `); el handler igual resuelve sin
+  relanzar. También cubre un valor de rechazo que no es `Error` (loguea `error
+  desconocido`) y el camino feliz (sin llamada a error). Los 4 tests preexistentes se
+  mantuvieron en verde sin cambios.
+
+### Files Changed
+
+| Archivo | Acción | Qué |
+|---|---|---|
+| `backend/src/sla/infrastructure/listeners/aplicar-sla.listener.ts` | Modificado | Se inyectó `ILogger`; ambos bloques `catch` ahora registran mediante `logger.error` antes de silenciar el error |
+| `backend/src/sla/sla.module.ts` | Modificado | La factory de `AplicarSlaListener` ahora inyecta `LOGGER` |
+| `backend/src/sla/infrastructure/listeners/aplicar-sla.listener.spec.ts` | Modificado | Se agregó el mock de `ILogger`; 5 casos de prueba nuevos para el comportamiento de logging de D10 |
+| `openspec/changes/feriados-configurables/tasks.md` | Modificado | Tareas 5.3/5.4 `[ ]` → `[x]` |
+
+### Deviations from Design
+
+Ninguna — coincide exactamente con D10 (puerto, token, formato del mensaje, derivación del mensaje de error, sin relanzamiento). Los comentarios preexistentes de "log-and-swallow" se reformularon (no se eliminaron) para que sigan siendo precisos ahora que existe una llamada de log; esto estaba implícito en la instrucción del prompt de lanzamiento "Keep/refresh the existing... comment so it is now TRUE", no es una desviación.
+
+### Hallazgos
+
+Ninguna.
+
+### Work Unit Evidence
+
+| Evidencia | Valor |
+|---|---|
+| `pnpm typecheck` | sin errores |
+| `pnpm lint` | sin errores, sin hallazgos |
+| `pnpm vitest run src/sla src/calendario-laboral` (desde `backend/`) | 27 archivos de prueba, 187 pruebas, todas pasaron |
+| Total de `git show --numstat HEAD` (commit completo incl. openspec) | 3 archivos de código modificados, 96 inserciones / 13 eliminaciones antes de los archivos de openspec; ver el commit para el total final, muy por debajo del presupuesto de 400 líneas |
+| Límite de rollback | Cambio de comportamiento puramente aditivo sobre un listener existente ya conectado; `git revert` restaura el silenciamiento silencioso sin afectar dependientes posteriores |
+
+### Workload / PR Boundary
+
+- Modo: porción de PR encadenado (Feature Branch Chain), apilada sobre `feat/feriados-configurables-wu4c`
+- Unidad de trabajo actual: WU5a (solo tareas 5.3/5.4) — completa
+- Límite: comienza desde el `AplicarSlaListener` existente (catch silencioso); termina con
+  ambos manejadores registrando mediante `ILogger.error` antes de silenciar el error, listo para que el throw fail-closed de WU5b deje de ser silencioso
+- Impacto medido en el presupuesto de revisión: muy por debajo de 400 líneas cambiadas
+
+### Status
+
+Tareas 5.3/5.4 completas (`tasks.md` actualizado). WU5 continúa con WU5b (5.1/5.2/5.5) y WU5c (5.6).
