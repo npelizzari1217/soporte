@@ -240,3 +240,27 @@ una edición de module solo aditiva; `git revert` elimina toda la superficie, si
 
 Porción de PR encadenada, apilada sobre `wu2a2`. 359 líneas cambiadas contra 400. 3/4 tareas de esta
 porción completas; la tarea 2.4 (e2e) queda para WU2c. WU2 todavía no está lista para `sdd-verify`.
+
+## WU2c: e2e de feriados globales (tarea 2.4) — COMPLETA
+
+`feriados.e2e.spec.ts` (Creado), rama `feat/feriados-configurables-wu2c` (apilada sobre
+`wu2b`, commit `b38060a`): matriz de guards (401 sin token, 403 escritura no-ROOT, 200 lectura abierta)
++ la cobertura funcional que WU2b había diferido (201 crear + ida y vuelta de fecha según D2, editar, eliminar,
+fecha de calendario inválida → **422** según D7/`toHttpException` — no 400 como sugería la
+paráfrasis del prompt de lanzamiento; forma inválida → 400 a nivel transporte, duplicado → 422, id desconocido →
+404, lista ordenada) + regresión de filas sembradas. No hace falta base de inquilino: `GlobalAdminGuard` solo lee
+el JWT. Los fixtures usan el año 2031 (fuera del rango sembrado 2026-2028), se limpian por id en
+`afterAll`; `feriados` nunca se trunca. `tasks.md` 2.4 → `[x]`.
+
+Desviaciones: el código HTTP para una fecha de calendario sintácticamente válida pero inexistente (por ej.
+`2031-02-30`) es 422, coincidiendo con el mapeo de `FechaCalendarioInvalidaError` de D7 y con la
+propia tabla de `feriados.controller.spec.ts` — no el 400 que nombraba el resumen del prompt de lanzamiento.
+
+Evidencia: `pnpm vitest run src/calendario-laboral` → 13 archivos, 92 tests, todos aprobados (+18).
+Postgres real, `soporte_master_test`, `usarLockMasterTest()`; se confirmó que las 46 filas sembradas
+quedan sin cambios antes/después. Rollback: un archivo nuevo + un checkbox de `tasks.md`. 373 líneas cambiadas
+contra un presupuesto de 400.
+
+### Status
+
+WU2 completa (2.1-2.5 todas en `[x]`). Lista para `sdd-verify`.
