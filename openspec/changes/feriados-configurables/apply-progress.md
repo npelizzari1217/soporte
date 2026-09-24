@@ -1026,3 +1026,13 @@ de escritura de este segmento, la pantalla de solo lectura de WU8a queda intacta
 
 Tareas 8.1/8.2 completamente terminadas (`tasks.md` actualizado). Siguiente: WU8c (cierre de roadmap, tarea 8.4,
 más verificación final 8.5/8.6).
+
+## WU8c: Cierre de roadmap (tareas 8.4/8.5) — COMPLETA
+
+Hecho en línea por el orquestador en `feat/feriados-configurables-wu8c`. El Punto 5 de
+`docs/roadmap-comercial.md` ahora declara por cláusula: **Cumplida** (próxima ventana hábil;
+feriados nacionales más excepciones por cliente) y **Desviación** (horario semanal por cliente,
+fuera del alcance de #216). También se corrigieron cuatro afirmaciones del roadmap que este cambio volvió falsas (la
+introducción de "decisiones", la línea de cierre de la sección 5, y dos filas de deuda técnica), todas marcadas como aún no
+desplegadas. `node scripts/check-roadmap-fresco.mjs` → "El roadmap esta fresco", exit 0. Deuda de Ayuda
+registrada en el cuerpo del commit (8.5). La tarea 8.6 queda para sdd-verify.
