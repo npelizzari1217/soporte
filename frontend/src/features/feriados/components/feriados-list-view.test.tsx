@@ -310,8 +310,9 @@ describe("FeriadosListView — almanaque (WU2, sdd/feriados-almanaque)", () => {
     expect(screen.queryByRole("button", { name: "Eliminar" })).not.toBeInTheDocument();
   });
 
-  // Los días libres no son accionables todavía en ningún rol (ver el
-  // PENDIENTE en el JSDoc del componente) — clickear uno no dispara nada.
+  // Un rol no admin no tiene `onDiaLibre` inyectado (ver JSDoc del
+  // componente) — clickear un día libre no dispara nada, para nadie que no
+  // sea `esAdminCliente`.
   it("un rol no admin no ve acciones en el panel y un día libre no dispara nada", async () => {
     const user = userEvent.setup();
     renderWithProviders(<FeriadosListView />, { user: buildUser({ rol: "TECNICO" }) });
@@ -324,5 +325,34 @@ describe("FeriadosListView — almanaque (WU2, sdd/feriados-almanaque)", () => {
 
     await user.click(screen.getByRole("gridcell", { name: "05/03/2026" })); // día libre
     expect(screen.queryByLabelText(/^fecha$/i)).not.toBeInTheDocument();
+  });
+
+  // WU2b: para `esAdminCliente`, un día LIBRE del almanaque abre el mismo
+  // alta que "Nuevo feriado", con `fecha` precargada — nunca vía `new Date()`,
+  // el `YYYY-MM-DD` clickeado llega tal cual desde `AlmanaqueFeriados`.
+  it("ADMINISTRADOR clickea un día libre → abre el alta con la fecha precargada, y crear dispara POST /feriados-cliente", async () => {
+    const user = userEvent.setup();
+    let capturedBody: Record<string, unknown> = {};
+    server.use(
+      http.post("/api/feriados-cliente", async ({ request }) => {
+        capturedBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({ id: "c3", ...capturedBody }, { status: 201 });
+      }),
+    );
+
+    renderWithProviders(<FeriadosListView />, { user: buildUser({ rol: "ADMINISTRADOR" }) });
+    await screen.findByRole("grid", { name: /almanaque de feriados/i });
+
+    await user.click(screen.getByRole("gridcell", { name: "05/03/2026" })); // día libre
+    expect(await screen.findByLabelText(/^fecha$/i)).toHaveValue("2026-03-05");
+
+    await user.type(screen.getByLabelText(/^descripción$/i), "Feriado nuevo desde el almanaque");
+    await user.click(screen.getByRole("button", { name: /^crear$/i }));
+
+    await waitFor(() =>
+      expect(capturedBody).toEqual({ fecha: "2026-03-05", descripcion: "Feriado nuevo desde el almanaque" }),
+    );
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Feriado creado."));
+    await waitFor(() => expect(screen.queryByLabelText(/^fecha$/i)).not.toBeInTheDocument());
   });
 });

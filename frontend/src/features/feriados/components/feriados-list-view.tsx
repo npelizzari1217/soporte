@@ -16,15 +16,14 @@
  *
  * SIN gate de admin en la LECTURA (`spec.md`: cualquier autenticado del
  * tenant lee), en NINGUNA de las dos vistas. La ESCRITURA sí gatea por
- * `esAdminCliente`: columna Acciones (tabla) o `renderAcciones` (almanaque)
- * solo entonces, y en ambas un feriado GLOBAL nunca lleva acciones — mismo
- * criterio que `FeriadosGlobalesAdminContent`.
+ * `esAdminCliente`: columna Acciones (tabla), `renderAcciones` (almanaque) y
+ * `onDiaLibre` (almanaque, WU2b) solo entonces, y en las tres un feriado
+ * GLOBAL nunca lleva acciones — mismo criterio que `FeriadosGlobalesAdminContent`.
  *
- * PENDIENTE (follow-up, fuera de este WU2 por presupuesto de revisión):
- * clickear un día LIBRE del almanaque, para `esAdminCliente`, todavía no
- * abre el diálogo de creación con la fecha precargada — hoy no hace nada,
- * para ningún rol. Queda para un cambio aparte: precargar `fecha` en
- * `FeriadoFormDialog` y controlar su apertura desde acá vía `onDiaLibre`.
+ * Clickear un día LIBRE del almanaque (WU2b), solo para `esAdminCliente`,
+ * abre el mismo `FeriadoFormDialog` de alta con la fecha clickeada precargada
+ * (`fechaCreacion`, instancia controlada sin `trigger` propio — se abre vía
+ * `onDiaLibre`). Para el resto de los roles el día libre sigue sin acción.
  */
 import { useState, type ReactNode } from "react";
 import { useSession } from "@/shared/hooks/use-session";
@@ -80,6 +79,10 @@ export function FeriadosListView() {
   const globalesQuery = useFeriadosGlobales();
   const clienteQuery = useFeriadosCliente();
   const [vista, setVista] = useState<Vista>("almanaque");
+  // `null` = diálogo de alta cerrado. Fecha `YYYY-MM-DD` del día libre
+  // clickeado (nunca `new Date()` — mismo criterio que `combinarFeriados`,
+  // la fecha de calendario ya viene armada del almanaque).
+  const [fechaCreacion, setFechaCreacion] = useState<string | null>(null);
 
   const filas = combinarFeriados(globalesQuery.data ?? [], clienteQuery.data ?? []);
   const isLoading = globalesQuery.isLoading || clienteQuery.isLoading;
@@ -173,12 +176,27 @@ export function FeriadosListView() {
           </div>
         }
       />
+      {esAdminCliente ? (
+        <FeriadoFormDialog
+          useCrearMutation={useCrearFeriadoCliente}
+          useEditarMutation={useEditarFeriadoCliente}
+          fechaInicial={fechaCreacion ?? undefined}
+          open={fechaCreacion !== null}
+          onOpenChange={(next) => {
+            if (!next) setFechaCreacion(null);
+          }}
+        />
+      ) : null}
       {isLoading ? (
         <TableSkeleton rows={5} columns={columnas.length} />
       ) : isError ? (
         <ErrorState message="No se pudieron cargar los feriados." onRetry={reintentar} />
       ) : vista === "almanaque" ? (
-        <AlmanaqueFeriados feriados={filas} renderAcciones={esAdminCliente ? renderAccionesAlmanaque : undefined} />
+        <AlmanaqueFeriados
+          feriados={filas}
+          renderAcciones={esAdminCliente ? renderAccionesAlmanaque : undefined}
+          onDiaLibre={esAdminCliente ? setFechaCreacion : undefined}
+        />
       ) : (
         <DataTable
           columns={columnas}

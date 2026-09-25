@@ -12,8 +12,16 @@
  * RHF/zod, un solo componente para crear y editar. `feriadoSchema` valida
  * FORMATO; fecha real y duplicados los valida el backend, 422 vía
  * `notifyError` (`onError` del hook inyectado).
+ *
+ * Apertura: por defecto NO controlada (`trigger` + estado interno, uso
+ * histórico de ambas pantallas). `FeriadosListView` (WU2b, almanaque) además
+ * necesita abrir el alta programáticamente al clickear un día libre, con la
+ * fecha precargada — para eso, `open`/`onOpenChange` la vuelven controlada
+ * (mismo par que `Dialog` de Radix) y `fechaInicial` precarga `fecha` en modo
+ * creación. `trigger` pasa a opcional: la instancia controlada del almanaque
+ * no tiene disparador propio, la abre `onDiaLibre`.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import type { ReactNode } from "react";
@@ -31,8 +39,14 @@ export interface FeriadoBasico {
 }
 
 export interface FeriadoFormDialogProps {
-  trigger: ReactNode;
+  /** Sin `trigger`, el diálogo no dibuja disparador propio — se abre solo vía `open`. */
+  trigger?: ReactNode;
   feriado?: FeriadoBasico;
+  /** Precarga `fecha` en modo creación (ignorado si `feriado` está presente). */
+  fechaInicial?: string;
+  /** Con `open`/`onOpenChange`, la apertura queda controlada por quien monta el diálogo. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
   useCrearMutation: () => UseMutationResult<unknown, unknown, FeriadoFormValues>;
   useEditarMutation: (id: string) => UseMutationResult<unknown, unknown, FeriadoFormValues>;
 }
@@ -40,10 +54,14 @@ export interface FeriadoFormDialogProps {
 export function FeriadoFormDialog({
   trigger,
   feriado,
+  fechaInicial,
+  open: openControlado,
+  onOpenChange: onOpenChangeProp,
   useCrearMutation,
   useEditarMutation,
 }: FeriadoFormDialogProps) {
-  const [open, setOpen] = useState(false);
+  const [openInterno, setOpenInterno] = useState(false);
+  const open = openControlado ?? openInterno;
   const isEdit = !!feriado;
   const crearMutation = useCrearMutation();
   const editarMutation = useEditarMutation(feriado?.id ?? "");
@@ -54,7 +72,7 @@ export function FeriadoFormDialog({
   // montado desde el primer pintado de la tabla.
   const valoresVigentes: FeriadoFormValues = feriado
     ? { fecha: feriado.fecha, descripcion: feriado.descripcion }
-    : { fecha: "", descripcion: "" };
+    : { fecha: fechaInicial ?? "", descripcion: "" };
 
   const {
     register,
@@ -66,26 +84,33 @@ export function FeriadoFormDialog({
     defaultValues: valoresVigentes,
   });
 
+  // Dispara en CUALQUIER apertura, incluida la programática (el `open` pasa
+  // de `false` a `true` por afuera, sin pasar por `onOpenChange` de Radix —
+  // Radix solo lo llama ante una interacción propia: trigger, ESC, overlay).
+  useEffect(() => {
+    if (open) reset(valoresVigentes);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  function cambiarApertura(next: boolean): void {
+    if (openControlado === undefined) setOpenInterno(next);
+    onOpenChangeProp?.(next);
+  }
+
   function submit(values: FeriadoFormValues) {
     mutation.mutate(
       { fecha: values.fecha, descripcion: values.descripcion },
       {
         onSuccess: () => {
-          setOpen(false);
+          cambiarApertura(false);
         },
       },
     );
   }
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        setOpen(next);
-        if (next) reset(valoresVigentes);
-      }}
-    >
-      <DialogTrigger asChild>{trigger}</DialogTrigger>
+    <Dialog open={open} onOpenChange={cambiarApertura}>
+      {trigger ? <DialogTrigger asChild>{trigger}</DialogTrigger> : null}
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{isEdit ? "Editar feriado" : "Nuevo feriado"}</DialogTitle>
