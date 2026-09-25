@@ -319,7 +319,7 @@ describe("FeriadosListView — almanaque (WU2, sdd/feriados-almanaque)", () => {
     await screen.findByRole("grid", { name: /almanaque de feriados/i });
 
     await user.click(screen.getByRole("gridcell", { name: `15/03/2026, feriado: ${CLIENTE_MARZO.descripcion}` }));
-    expect(screen.getByText(CLIENTE_MARZO.descripcion)).toBeInTheDocument();
+    expect(within(screen.getByRole("region", { name: "Detalle del día" })).getByText(CLIENTE_MARZO.descripcion)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Editar" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Eliminar" })).not.toBeInTheDocument();
 

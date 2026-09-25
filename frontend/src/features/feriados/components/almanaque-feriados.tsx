@@ -48,9 +48,11 @@ export interface AlmanaqueFeriadosProps {
 
 // Reutiliza los tokens de `Badge` (`success-light`/`info`) — mismo criterio
 // de color que `OrigenFeriadoBadge`, sin introducir colores nuevos.
+// Mismos pares de color que las variantes `success-light` e `info` de Badge
+// (texto base sobre fondo claro), con el contraste WCAG ya verificado.
 const MARCA_ORIGEN_CLASSNAME: Record<OrigenFeriado, string> = {
-  GLOBAL: "bg-success-light border border-success",
-  CLIENTE: "bg-info-light border border-info",
+  GLOBAL: "bg-success-light text-success",
+  CLIENTE: "bg-info-light text-info",
 };
 
 function construirAriaLabel(dia: DiaAlmanaque, feriadosDelDia: FeriadoAlmanaqueRow[]): string {
@@ -142,13 +144,20 @@ export function AlmanaqueFeriados({ feriados, hoy, renderAcciones, onDiaLibre }:
                 >
                   <span className={cn(dia.esFinDeSemana && "font-bold")}>{dia.diaMes}</span>
                   {feriadosDelDia.length > 0 ? (
-                    <span className="flex items-center gap-0.5">
+                    // Mini etiqueta con el nombre recortado. Es `aria-hidden` porque el
+                    // `aria-label` del día ya incluye la descripción completa.
+                    <span className="flex w-full flex-col gap-0.5">
                       {feriadosDelDia.map((feriado) => (
                         <span
                           key={feriado.id}
                           aria-hidden="true"
-                          className={cn("h-2 w-2 rounded-full", MARCA_ORIGEN_CLASSNAME[feriado.origen])}
-                        />
+                          className={cn(
+                            "block w-full truncate rounded px-1 text-left text-[11px] font-medium leading-4",
+                            MARCA_ORIGEN_CLASSNAME[feriado.origen],
+                          )}
+                        >
+                          {feriado.descripcion}
+                        </span>
                       ))}
                     </span>
                   ) : null}
@@ -159,7 +168,7 @@ export function AlmanaqueFeriados({ feriados, hoy, renderAcciones, onDiaLibre }:
         ))}
       </div>
 
-      <div className="mt-4 rounded-md border border-border p-4" aria-live="polite">
+      <div className="mt-4 rounded-md border border-border p-4" role="region" aria-label="Detalle del día" aria-live="polite">
         {feriadosSeleccionados.length > 0 ? (
           <div className="space-y-4">
             {feriadosSeleccionados.map((feriado) => (
