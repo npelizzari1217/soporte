@@ -17,6 +17,14 @@ describe("OrigenFeriadoBadge", () => {
     expect(badge).toHaveClass("bg-info-light", "text-info");
   });
 
+  it.each(["GLOBAL", "CLIENTE"] as const)(
+    "%s → the label never wraps onto a second line (narrow Origen column)",
+    (origen) => {
+      render(<OrigenFeriadoBadge origen={origen} />);
+      expect(screen.getByTestId("origen-feriado-badge")).toHaveClass("whitespace-nowrap");
+    },
+  );
+
   it("GLOBAL and CLIENTE never share a variant class (visually distinct)", () => {
     const { unmount } = render(<OrigenFeriadoBadge origen="GLOBAL" />);
     const globalClasses = screen.getByTestId("origen-feriado-badge").className;
