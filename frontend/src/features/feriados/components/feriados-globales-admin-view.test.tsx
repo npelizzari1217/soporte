@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -20,6 +20,24 @@ function mockBackend() {
   server.use(http.get("/api/feriados", () => HttpResponse.json([FERIADO_ENERO, FERIADO_MAYO])));
 }
 
+// El almanaque (WU3, sdd/feriados-almanaque) es la vista por defecto y abre
+// en el mes de "hoy" (`hoyFechaCalendario`, offset fijo Argentina) — fijo el
+// reloj en enero 2026 para todo el archivo, mismo mes que `FERIADO_ENERO`,
+// mismo criterio que `feriados-list-view.test.tsx`.
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-01-15T12:00:00.000Z"));
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+/** Pasa de la vista por defecto (almanaque) a la tabla existente. */
+async function irAListaView(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+  await user.click(screen.getByRole("button", { name: /ver como lista/i }));
+}
+
 describe("FeriadosGlobalesAdminView (sdd/feriados-configurables)", () => {
   beforeEach(() => {
     mockBackend();
@@ -31,9 +49,11 @@ describe("FeriadosGlobalesAdminView (sdd/feriados-configurables)", () => {
     ["ROOT (is_global_admin)", true, [], true],
     ["ADMINISTRADOR de tenant sin is_global_admin", false, [], false],
   ])("gate de acceso a /admin/feriados-globales es por is_global_admin, NUNCA por permisos — %s", async (_label, isGlobalAdmin, permisos, shouldShowContent) => {
+    const user = userEvent.setup();
     renderWithProviders(<FeriadosGlobalesAdminView />, { user: buildUser({ permisos, is_global_admin: isGlobalAdmin }) });
 
     if (shouldShowContent) {
+      await irAListaView(user);
       await screen.findByText("Año Nuevo");
     } else {
       expect(await screen.findByText(/solo.*root/i)).toBeInTheDocument();
@@ -42,7 +62,9 @@ describe("FeriadosGlobalesAdminView (sdd/feriados-configurables)", () => {
   });
 
   it("renderiza la lista ordenada por fecha (tal cual la manda el backend), cada fila con el badge verde de origen", async () => {
+    const user = userEvent.setup();
     renderWithProviders(<FeriadosGlobalesAdminView />, { user: buildUser({ is_global_admin: true }) });
+    await irAListaView(user);
 
     await screen.findByText("Año Nuevo");
     const filas = screen.getAllByRole("row").slice(1); // descarta el header
@@ -57,7 +79,9 @@ describe("FeriadosGlobalesAdminView (sdd/feriados-configurables)", () => {
   });
 
   it("muestra la fecha en formato dd/mm/yyyy, nunca el ISO crudo", async () => {
+    const user = userEvent.setup();
     renderWithProviders(<FeriadosGlobalesAdminView />, { user: buildUser({ is_global_admin: true }) });
+    await irAListaView(user);
 
     await screen.findByText("Año Nuevo");
     expect(screen.getByText("01/01/2026")).toBeInTheDocument();
@@ -67,7 +91,9 @@ describe("FeriadosGlobalesAdminView (sdd/feriados-configurables)", () => {
 
   it("lista vacía muestra el estado vacío, no un error", async () => {
     server.use(http.get("/api/feriados", () => HttpResponse.json([])));
+    const user = userEvent.setup();
     renderWithProviders(<FeriadosGlobalesAdminView />, { user: buildUser({ is_global_admin: true }) });
+    await irAListaView(user);
 
     expect(await screen.findByText("Sin feriados nacionales")).toBeInTheDocument();
   });
@@ -85,7 +111,7 @@ describe("FeriadosGlobalesAdminView (sdd/feriados-configurables)", () => {
     );
 
     renderWithProviders(<FeriadosGlobalesAdminView />, { user: buildUser({ is_global_admin: true }) });
-    await screen.findByText("Año Nuevo");
+    await screen.findByRole("grid", { name: /almanaque de feriados/i });
 
     await user.click(screen.getByRole("button", { name: /nuevo feriado/i }));
     await user.type(screen.getByLabelText(/^fecha$/i), "2026-12-25");
@@ -108,6 +134,7 @@ describe("FeriadosGlobalesAdminView (sdd/feriados-configurables)", () => {
     );
 
     renderWithProviders(<FeriadosGlobalesAdminView />, { user: buildUser({ is_global_admin: true }) });
+    await irAListaView(user);
     await screen.findByText("Año Nuevo");
 
     const editarButtons = await screen.findAllByRole("button", { name: "Editar" });
@@ -132,6 +159,7 @@ describe("FeriadosGlobalesAdminView (sdd/feriados-configurables)", () => {
     );
 
     renderWithProviders(<FeriadosGlobalesAdminView />, { user: buildUser({ is_global_admin: true }) });
+    await irAListaView(user);
     await screen.findByText("Año Nuevo");
 
     const eliminarButtons = await screen.findAllByRole("button", { name: "Eliminar" });
@@ -152,7 +180,7 @@ describe("FeriadosGlobalesAdminView (sdd/feriados-configurables)", () => {
     }));
 
     renderWithProviders(<FeriadosGlobalesAdminView />, { user: buildUser({ is_global_admin: true }) });
-    await screen.findByText("Año Nuevo");
+    await screen.findByRole("grid", { name: /almanaque de feriados/i });
 
     await user.click(screen.getByRole("button", { name: /nuevo feriado/i }));
     await user.type(screen.getByLabelText(/^fecha$/i), "2026-12-25");
@@ -182,7 +210,7 @@ describe("FeriadosGlobalesAdminView (sdd/feriados-configurables)", () => {
     }));
 
     renderWithProviders(<FeriadosGlobalesAdminView />, { user: buildUser({ is_global_admin: true }) });
-    await screen.findByText("Año Nuevo");
+    await screen.findByRole("grid", { name: /almanaque de feriados/i });
 
     await user.click(screen.getByRole("button", { name: /nuevo feriado/i }));
     await user.type(screen.getByLabelText(/^descripción$/i), "Navidad");
@@ -202,7 +230,7 @@ describe("FeriadosGlobalesAdminView (sdd/feriados-configurables)", () => {
     );
 
     renderWithProviders(<FeriadosGlobalesAdminView />, { user: buildUser({ is_global_admin: true }) });
-    await screen.findByText("Año Nuevo");
+    await screen.findByRole("grid", { name: /almanaque de feriados/i });
 
     await user.click(screen.getByRole("button", { name: /nuevo feriado/i }));
     await user.type(screen.getByLabelText(/^fecha$/i), "2026-01-01");
@@ -214,4 +242,70 @@ describe("FeriadosGlobalesAdminView (sdd/feriados-configurables)", () => {
 
   // El 422 "fecha de calendario inválida" no es alcanzable desde este
   // diálogo (ver `use-feriados-globales-admin-mutations.test.tsx`).
+});
+
+// Almanaque (WU3, sdd/feriados-almanaque): vista por defecto de
+// `/admin/feriados-globales`. A diferencia de `FeriadosListView`, acá TODAS
+// las filas son GLOBAL — ROOT es el único usuario de esta pantalla, sin el
+// filtro por origen que sí necesita la pantalla de cliente.
+describe("FeriadosGlobalesAdminView — almanaque (WU3, sdd/feriados-almanaque)", () => {
+  beforeEach(() => {
+    mockBackend();
+    vi.mocked(toast.success).mockClear();
+    vi.mocked(toast.error).mockClear();
+  });
+
+  it("el almanaque es la vista por defecto; el toggle muestra la tabla y vuelve", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<FeriadosGlobalesAdminView />, { user: buildUser({ is_global_admin: true }) });
+
+    expect(await screen.findByRole("grid", { name: /almanaque de feriados/i })).toBeInTheDocument();
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /ver como lista/i }));
+    expect(await screen.findByText("Año Nuevo")).toBeInTheDocument();
+    expect(screen.queryByRole("grid", { name: /almanaque de feriados/i })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /ver como almanaque/i }));
+    expect(await screen.findByRole("grid", { name: /almanaque de feriados/i })).toBeInTheDocument();
+  });
+
+  it("el panel muestra Editar/Eliminar para un feriado global seleccionado", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<FeriadosGlobalesAdminView />, { user: buildUser({ is_global_admin: true }) });
+    await screen.findByRole("grid", { name: /almanaque de feriados/i });
+
+    await user.click(screen.getByRole("gridcell", { name: "01/01/2026, feriado: Año Nuevo" }));
+    expect(screen.getByRole("button", { name: "Editar" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Eliminar" })).toBeInTheDocument();
+  });
+
+  // WU3: un día LIBRE del almanaque abre el mismo alta que "Nuevo feriado",
+  // con `fecha` precargada — nunca vía `new Date()`, el `YYYY-MM-DD`
+  // clickeado llega tal cual desde `AlmanaqueFeriados`.
+  it("clickear un día libre abre el alta con la fecha precargada, y crear dispara POST /feriados", async () => {
+    const user = userEvent.setup();
+    let capturedBody: Record<string, unknown> = {};
+    server.use(
+      http.post("/api/feriados", async ({ request }) => {
+        capturedBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({ id: "f3", ...capturedBody }, { status: 201 });
+      }),
+    );
+
+    renderWithProviders(<FeriadosGlobalesAdminView />, { user: buildUser({ is_global_admin: true }) });
+    await screen.findByRole("grid", { name: /almanaque de feriados/i });
+
+    await user.click(screen.getByRole("gridcell", { name: "20/01/2026" })); // día libre
+    expect(await screen.findByLabelText(/^fecha$/i)).toHaveValue("2026-01-20");
+
+    await user.type(screen.getByLabelText(/^descripción$/i), "Feriado nuevo desde el almanaque");
+    await user.click(screen.getByRole("button", { name: /^crear$/i }));
+
+    await waitFor(() =>
+      expect(capturedBody).toEqual({ fecha: "2026-01-20", descripcion: "Feriado nuevo desde el almanaque" }),
+    );
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Feriado creado."));
+    await waitFor(() => expect(screen.queryByLabelText(/^fecha$/i)).not.toBeInTheDocument());
+  });
 });

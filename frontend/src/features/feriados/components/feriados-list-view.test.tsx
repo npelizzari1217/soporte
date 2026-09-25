@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -22,6 +22,25 @@ function mockBackendOk() {
   );
 }
 
+// El almanaque (WU2) es la vista por defecto y abre en el mes de "hoy"
+// (`hoyFechaCalendario`, offset fijo Argentina) — fijo el reloj en marzo
+// 2026 para todo el archivo, mismo mes que `CLIENTE_MARZO`, así los tests
+// de tabla (view-independientes en su mayoría) y los de almanaque comparten
+// fixtures sin navegar meses.
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-03-15T12:00:00.000Z"));
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+/** Pasa de la vista por defecto (almanaque) a la tabla existente (WU8a/WU8b). */
+async function irAListaView(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+  await user.click(screen.getByRole("button", { name: /ver como lista/i }));
+}
+
 describe("FeriadosListView (/feriados, task 8.1, WU8a)", () => {
   beforeEach(() => {
     mockBackendOk();
@@ -33,8 +52,10 @@ describe("FeriadosListView (/feriados, task 8.1, WU8a)", () => {
   it.each([
     ["TECNICO sin permisos", buildUser({ rol: "TECNICO", permisos: [] })],
     ["ADMINISTRADOR", buildUser({ rol: "ADMINISTRADOR" })],
-  ])("%s ve la lista combinada, sin gate de admin", async (_label, user) => {
-    renderWithProviders(<FeriadosListView />, { user });
+  ])("%s ve la lista combinada, sin gate de admin", async (_label, sessionUser) => {
+    const user = userEvent.setup();
+    renderWithProviders(<FeriadosListView />, { user: sessionUser });
+    await irAListaView(user);
 
     await screen.findByText("Año Nuevo");
     expect(screen.getByText("Aniversario del cliente")).toBeInTheDocument();
@@ -42,7 +63,9 @@ describe("FeriadosListView (/feriados, task 8.1, WU8a)", () => {
   });
 
   it("combina ambas listas ordenadas por fecha, con el badge de origen correcto por fila", async () => {
+    const user = userEvent.setup();
     renderWithProviders(<FeriadosListView />, { user: buildUser({ rol: "TECNICO" }) });
+    await irAListaView(user);
 
     await screen.findByText("Año Nuevo");
     const filas = screen.getAllByRole("row").slice(1); // descarta el header
@@ -57,7 +80,9 @@ describe("FeriadosListView (/feriados, task 8.1, WU8a)", () => {
   });
 
   it("muestra la fecha en formato dd/mm/yyyy, nunca el ISO crudo", async () => {
+    const user = userEvent.setup();
     renderWithProviders(<FeriadosListView />, { user: buildUser({ rol: "TECNICO" }) });
+    await irAListaView(user);
 
     await screen.findByText("Año Nuevo");
     expect(screen.getByText("15/03/2026")).toBeInTheDocument();
@@ -69,13 +94,17 @@ describe("FeriadosListView (/feriados, task 8.1, WU8a)", () => {
       http.get("/api/feriados", () => HttpResponse.json([])),
       http.get("/api/feriados-cliente", () => HttpResponse.json([])),
     );
+    const user = userEvent.setup();
     renderWithProviders(<FeriadosListView />, { user: buildUser({ rol: "TECNICO" }) });
+    await irAListaView(user);
 
     expect(await screen.findByText("Sin feriados")).toBeInTheDocument();
   });
 
   it("no muestra ninguna columna de Acciones (WU8a es solo lectura)", async () => {
+    const user = userEvent.setup();
     renderWithProviders(<FeriadosListView />, { user: buildUser({ rol: "TECNICO" }) });
+    await irAListaView(user);
 
     await screen.findByText("Año Nuevo");
     expect(screen.queryByRole("columnheader", { name: "Acciones" })).not.toBeInTheDocument();
@@ -117,7 +146,9 @@ describe("FeriadosListView — escritura (task 8.1/8.2, WU8b)", () => {
   });
 
   it("ADMINISTRADOR ve Acciones solo en la fila CLIENTE, nunca en las filas GLOBAL", async () => {
+    const user = userEvent.setup();
     renderWithProviders(<FeriadosListView />, { user: buildUser({ rol: "ADMINISTRADOR" }) });
+    await irAListaView(user);
 
     await screen.findByText("Año Nuevo");
     const filas = screen.getAllByRole("row").slice(1);
@@ -130,7 +161,9 @@ describe("FeriadosListView — escritura (task 8.1/8.2, WU8b)", () => {
   });
 
   it("un rol no admin (TECNICO) no ve ninguna acción de escritura, ni siquiera sobre la fila CLIENTE", async () => {
+    const user = userEvent.setup();
     renderWithProviders(<FeriadosListView />, { user: buildUser({ rol: "TECNICO" }) });
+    await irAListaView(user);
 
     await screen.findByText("Aniversario del cliente");
     expect(screen.queryByRole("button", { name: /nuevo feriado/i })).not.toBeInTheDocument();
@@ -149,7 +182,9 @@ describe("FeriadosListView — escritura (task 8.1/8.2, WU8b)", () => {
     );
 
     renderWithProviders(<FeriadosListView />, { user: buildUser({ rol: "ADMINISTRADOR" }) });
-    await screen.findByText("Aniversario del cliente");
+    // Señal de que la carga terminó, view-independiente: el "Nuevo feriado"
+    // que se clickea abajo vive en el header, ajeno a la vista almanaque/lista.
+    await screen.findByRole("grid", { name: /almanaque de feriados/i });
 
     await user.click(screen.getByRole("button", { name: /nuevo feriado/i }));
     await user.type(screen.getByLabelText(/^fecha$/i), "2026-07-09");
@@ -173,7 +208,7 @@ describe("FeriadosListView — escritura (task 8.1/8.2, WU8b)", () => {
     );
 
     renderWithProviders(<FeriadosListView />, { user: buildUser({ rol: "ADMINISTRADOR" }) });
-    await screen.findByText("Aniversario del cliente");
+    await screen.findByRole("grid", { name: /almanaque de feriados/i });
 
     await user.click(screen.getByRole("button", { name: /nuevo feriado/i }));
     await user.type(screen.getByLabelText(/^fecha$/i), "2026-12-25");
@@ -195,6 +230,7 @@ describe("FeriadosListView — escritura (task 8.1/8.2, WU8b)", () => {
     );
 
     renderWithProviders(<FeriadosListView />, { user: buildUser({ rol: "ADMINISTRADOR" }) });
+    await irAListaView(user);
     await screen.findByText("Aniversario del cliente");
 
     await user.click(screen.getByRole("button", { name: "Editar" }));
@@ -218,6 +254,7 @@ describe("FeriadosListView — escritura (task 8.1/8.2, WU8b)", () => {
     );
 
     renderWithProviders(<FeriadosListView />, { user: buildUser({ rol: "ADMINISTRADOR" }) });
+    await irAListaView(user);
     await screen.findByText("Aniversario del cliente");
 
     await user.click(screen.getByRole("button", { name: "Eliminar" }));
@@ -226,5 +263,96 @@ describe("FeriadosListView — escritura (task 8.1/8.2, WU8b)", () => {
 
     await waitFor(() => expect(deleteCalled).toBe(true));
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Feriado eliminado."));
+  });
+});
+
+// Almanaque (WU2, sdd/feriados-almanaque): vista por defecto de `/feriados`,
+// con el mismo gate de escritura que la tabla — solo `esAdminCliente`, y
+// nunca sobre una fila GLOBAL. `GLOBAL_MARZO` cae en el mismo mes que
+// `CLIENTE_MARZO`/"hoy" (fijado por el `beforeEach` de arriba) para que
+// ambos sean visibles sin navegar meses.
+describe("FeriadosListView — almanaque (WU2, sdd/feriados-almanaque)", () => {
+  const GLOBAL_MARZO = { id: "g3", fecha: "2026-03-10", descripcion: "Feriado nacional de marzo" };
+
+  beforeEach(() => {
+    server.use(
+      http.get("/api/feriados", () => HttpResponse.json([GLOBAL_MARZO])),
+      http.get("/api/feriados-cliente", () => HttpResponse.json([CLIENTE_MARZO])),
+    );
+  });
+
+  it("el almanaque es la vista por defecto; el toggle muestra la tabla y vuelve", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<FeriadosListView />, { user: buildUser({ rol: "TECNICO" }) });
+
+    expect(await screen.findByRole("grid", { name: /almanaque de feriados/i })).toBeInTheDocument();
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /ver como lista/i }));
+    expect(await screen.findByText(CLIENTE_MARZO.descripcion)).toBeInTheDocument();
+    expect(screen.queryByRole("grid", { name: /almanaque de feriados/i })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /ver como almanaque/i }));
+    expect(await screen.findByRole("grid", { name: /almanaque de feriados/i })).toBeInTheDocument();
+  });
+
+  it("ADMINISTRADOR ve Editar/Eliminar en el panel solo para el feriado CLIENTE, nunca para el GLOBAL", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<FeriadosListView />, { user: buildUser({ rol: "ADMINISTRADOR" }) });
+    await screen.findByRole("grid", { name: /almanaque de feriados/i });
+
+    await user.click(screen.getByRole("gridcell", { name: `15/03/2026, feriado: ${CLIENTE_MARZO.descripcion}` }));
+    expect(screen.getByRole("button", { name: "Editar" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Eliminar" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("gridcell", { name: `10/03/2026, feriado: ${GLOBAL_MARZO.descripcion}` }));
+    expect(screen.queryByRole("button", { name: "Editar" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Eliminar" })).not.toBeInTheDocument();
+  });
+
+  // Un rol no admin no tiene `onDiaLibre` inyectado (ver JSDoc del
+  // componente) — clickear un día libre no dispara nada, para nadie que no
+  // sea `esAdminCliente`.
+  it("un rol no admin no ve acciones en el panel y un día libre no dispara nada", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<FeriadosListView />, { user: buildUser({ rol: "TECNICO" }) });
+    await screen.findByRole("grid", { name: /almanaque de feriados/i });
+
+    await user.click(screen.getByRole("gridcell", { name: `15/03/2026, feriado: ${CLIENTE_MARZO.descripcion}` }));
+    expect(within(screen.getByRole("region", { name: "Detalle del día" })).getByText(CLIENTE_MARZO.descripcion)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Editar" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Eliminar" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("gridcell", { name: "05/03/2026" })); // día libre
+    expect(screen.queryByLabelText(/^fecha$/i)).not.toBeInTheDocument();
+  });
+
+  // WU2b: para `esAdminCliente`, un día LIBRE del almanaque abre el mismo
+  // alta que "Nuevo feriado", con `fecha` precargada — nunca vía `new Date()`,
+  // el `YYYY-MM-DD` clickeado llega tal cual desde `AlmanaqueFeriados`.
+  it("ADMINISTRADOR clickea un día libre → abre el alta con la fecha precargada, y crear dispara POST /feriados-cliente", async () => {
+    const user = userEvent.setup();
+    let capturedBody: Record<string, unknown> = {};
+    server.use(
+      http.post("/api/feriados-cliente", async ({ request }) => {
+        capturedBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({ id: "c3", ...capturedBody }, { status: 201 });
+      }),
+    );
+
+    renderWithProviders(<FeriadosListView />, { user: buildUser({ rol: "ADMINISTRADOR" }) });
+    await screen.findByRole("grid", { name: /almanaque de feriados/i });
+
+    await user.click(screen.getByRole("gridcell", { name: "05/03/2026" })); // día libre
+    expect(await screen.findByLabelText(/^fecha$/i)).toHaveValue("2026-03-05");
+
+    await user.type(screen.getByLabelText(/^descripción$/i), "Feriado nuevo desde el almanaque");
+    await user.click(screen.getByRole("button", { name: /^crear$/i }));
+
+    await waitFor(() =>
+      expect(capturedBody).toEqual({ fecha: "2026-03-05", descripcion: "Feriado nuevo desde el almanaque" }),
+    );
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Feriado creado."));
+    await waitFor(() => expect(screen.queryByLabelText(/^fecha$/i)).not.toBeInTheDocument());
   });
 });
