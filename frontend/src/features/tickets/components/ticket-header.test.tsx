@@ -37,6 +37,17 @@ function buildTicket(overrides: Partial<Ticket> = {}): Ticket {
 }
 
 describe("TicketHeader", () => {
+  it("solicitante con nombre y sin apellido → muestra el nombre, no el ID crudo", () => {
+    render(<TicketHeader ticket={buildTicket({ solicitanteNombre: "Juan Pérez", solicitanteApellido: "" })} />);
+    expect(screen.getByText("Juan Pérez")).toBeInTheDocument();
+    expect(screen.queryByText("u1")).not.toBeInTheDocument();
+  });
+
+  it("solicitante sin nombre ni apellido resueltos → cae al ID crudo", () => {
+    render(<TicketHeader ticket={buildTicket({ solicitanteNombre: null, solicitanteApellido: null })} />);
+    expect(screen.getByText("u1")).toBeInTheDocument();
+  });
+
   it("con slaVenceAt, muestra 'SLA vence' con FECHA Y HORA (regresión: antes se comía la hora)", () => {
     // 2026-08-20T23:30:00.000Z = 20:30 en America/Argentina/Buenos_Aires (UTC-3).
     render(<TicketHeader ticket={buildTicket({ slaVenceAt: "2026-08-20T23:30:00.000Z" })} />);
