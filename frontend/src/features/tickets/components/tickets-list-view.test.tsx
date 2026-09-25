@@ -32,7 +32,19 @@ const TICKET = {
   updatedAt: "2026-01-01T00:00:00.000Z",
 };
 
-function mockBackend() {
+/** Dos ciclos: uno activo (2026) y uno pasado (2024) — mismo shape que devuelve `GET /ciclos`. */
+const CICLOS_CON_ACTIVO = {
+  ciclos: [
+    { id: "c-2024", nombre: "Ciclo 2024", fechaInicio: "2024-01-01", fechaFin: "2024-12-31", activo: false, cicloVigenteId: "c-2026" },
+    { id: "c-2026", nombre: "Ciclo 2026", fechaInicio: "2026-01-01", fechaFin: "2026-12-31", activo: true, cicloVigenteId: "c-2026" },
+  ],
+  cicloActivoId: "c-2026",
+};
+
+/** Mismos ciclos, pero sin ninguno activo (R2: cae al más reciente por fechaInicio → c-2026). */
+const CICLOS_SIN_ACTIVO = { ...CICLOS_CON_ACTIVO, cicloActivoId: null };
+
+function mockBackend(overrides: { ciclos?: unknown } = {}) {
   server.use(
     http.get("/api/tickets", () =>
       HttpResponse.json({ items: [TICKET], total: 1, pagina: 1, porPagina: 10 }),
@@ -51,6 +63,7 @@ function mockBackend() {
       ]),
     ),
     http.get("/api/usuarios", () => HttpResponse.json([])),
+    http.get("/api/ciclos", () => HttpResponse.json(overrides.ciclos ?? CICLOS_CON_ACTIVO)),
   );
 }
 
@@ -122,5 +135,107 @@ describe("TicketsListView", () => {
     } else {
       expect(button).not.toBeInTheDocument();
     }
+  });
+
+  describe("filtro de ciclo", () => {
+    it("con ciclo activo, el pedido a /tickets NO manda `ciclo` (comportamiento actual, sin cambios)", async () => {
+      let urlPedida = "";
+      server.use(
+        http.get("/api/tickets", ({ request }) => {
+          urlPedida = request.url;
+          return HttpResponse.json({ items: [TICKET], total: 1, pagina: 1, porPagina: 10 });
+        }),
+      );
+
+      renderWithProviders(<TicketsListView />, { user: buildUser({ permisos: ["TICKETS:VER_TODOS"] }) });
+      await screen.findByText("Impresora rota");
+
+      expect(new URL(urlPedida).searchParams.get("ciclo")).toBeNull();
+      const select = screen.getByLabelText(/ciclo/i) as HTMLSelectElement;
+      expect(select.value).toBe("");
+      expect(screen.getByText("Ciclo 2026 (activo)")).toBeInTheDocument();
+    });
+
+    it("elegir un ciclo pasado agrega `?ciclo=<id>` a la URL y resetea a página 1", async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<TicketsListView />, { user: buildUser({ permisos: ["TICKETS:VER_TODOS"] }) });
+      await screen.findByText("Impresora rota");
+
+      await user.selectOptions(screen.getByLabelText(/ciclo/i), "c-2024");
+
+      await waitFor(() => expect(replaceMock).toHaveBeenCalled());
+      const calledWith = replaceMock.mock.calls.at(-1)?.[0] as string;
+      const params = new URLSearchParams(calledWith.split("?")[1]);
+      expect(params.get("ciclo")).toBe("c-2024");
+      expect(params.get("pagina")).toBe("1");
+    });
+
+    it("con `ciclo=<id>` en la URL, pide y muestra los tickets de ESE ciclo", async () => {
+      server.use(
+        http.get("/api/tickets", ({ request }) => {
+          const ciclo = new URL(request.url).searchParams.get("ciclo");
+          if (ciclo === "c-2024") {
+            return HttpResponse.json({
+              items: [{ ...TICKET, id: "t-2024", titulo: "Ticket del ciclo 2024" }],
+              total: 1,
+              pagina: 1,
+              porPagina: 10,
+            });
+          }
+          return HttpResponse.json({ items: [TICKET], total: 1, pagina: 1, porPagina: 10 });
+        }),
+      );
+      currentSearch = "ciclo=c-2024";
+
+      renderWithProviders(<TicketsListView />, { user: buildUser({ permisos: ["TICKETS:VER_TODOS"] }) });
+
+      expect(await screen.findByText("Ticket del ciclo 2024")).toBeInTheDocument();
+      expect(screen.queryByText("Impresora rota")).not.toBeInTheDocument();
+      const select = screen.getByLabelText(/ciclo/i) as HTMLSelectElement;
+      expect(select.value).toBe("c-2024");
+    });
+
+    it("«Exportar a Excel» usa el ciclo elegido en el filtro", async () => {
+      URL.createObjectURL = vi.fn(() => "blob:mock");
+      URL.revokeObjectURL = vi.fn();
+      const clickSpy = vi
+        .spyOn(HTMLAnchorElement.prototype, "click")
+        .mockImplementation(() => {});
+      let urlExportPedida = "";
+      server.use(
+        http.get("/api/tickets/export", ({ request }) => {
+          urlExportPedida = request.url;
+          return new HttpResponse("numero,titulo\n", { headers: { "content-type": "text/csv" } });
+        }),
+      );
+      currentSearch = "ciclo=c-2024";
+
+      const user = userEvent.setup();
+      renderWithProviders(<TicketsListView />, { user: buildUser({ permisos: ["TICKETS:VER_TODOS"] }) });
+      await screen.findByText("Impresora rota");
+
+      await user.click(screen.getByRole("button", { name: /exportar a excel/i }));
+
+      await waitFor(() => expect(clickSpy).toHaveBeenCalled());
+      expect(new URL(urlExportPedida).searchParams.get("ciclo")).toBe("c-2024");
+    });
+
+    it("sin ciclo activo, precarga y pide el ciclo más reciente por fechaInicio", async () => {
+      mockBackend({ ciclos: CICLOS_SIN_ACTIVO });
+      let urlPedida = "";
+      server.use(
+        http.get("/api/tickets", ({ request }) => {
+          urlPedida = request.url;
+          return HttpResponse.json({ items: [TICKET], total: 1, pagina: 1, porPagina: 10 });
+        }),
+      );
+
+      renderWithProviders(<TicketsListView />, { user: buildUser({ permisos: ["TICKETS:VER_TODOS"] }) });
+      await screen.findByText("Impresora rota");
+
+      await waitFor(() => expect(new URL(urlPedida).searchParams.get("ciclo")).toBe("c-2026"));
+      const select = screen.getByLabelText(/ciclo/i) as HTMLSelectElement;
+      expect(select.value).toBe("c-2026");
+    });
   });
 });

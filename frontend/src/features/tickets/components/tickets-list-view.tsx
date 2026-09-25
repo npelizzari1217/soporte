@@ -11,6 +11,12 @@
  * asignado/búsqueda — el rango de fechas queda pendiente para un batch
  * posterior (el tipo `TicketsFiltros`/hook `useTickets` ya soportan
  * `fechaDesde`/`fechaHasta`, falta solo el control de UI).
+ *
+ * Filtro de ciclo (feat/selector-ciclo-tickets): sin `ciclo` en la URL, el
+ * backend lista el ciclo activo (`GET /tickets` sin `?ciclo`). Los tickets de
+ * ciclos pasados quedaban invisibles porque acá nunca se mandaba ese param —
+ * ahora hay un select que lo agrega, con el mismo `useCiclos` que usa el
+ * dashboard.
  */
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo } from "react";
@@ -18,6 +24,10 @@ import { useTickets } from "../hooks/use-tickets";
 import { useUrlFilters } from "@/shared/hooks/use-url-filters";
 import { useTiposTicket, usePrioridades, useEstados } from "../hooks/use-catalogos";
 import { useUsuariosAsignables } from "../hooks/use-usuarios-asignables";
+// Mismo hook que usa el dashboard (`features/dashboard/hooks/use-ciclos.ts`)
+// para el filtro de ciclo — no se duplica, se reusa cruzando de feature,
+// mismo criterio que `dashboard-view.tsx` importando catálogos de `tickets/`.
+import { useCiclos } from "@/features/dashboard/hooks/use-ciclos";
 import { buildIdToCodigoMap } from "../lib/catalog-map";
 import { DataTable, type Column } from "@/components/shared/data-table";
 import { FilterBar } from "@/components/shared/filter-bar";
@@ -45,6 +55,7 @@ export function TicketsListView() {
       tipo: searchParams.get("tipo") ?? undefined,
       prioridad: searchParams.get("prioridad") ?? undefined,
       asignado: searchParams.get("asignado") ?? undefined,
+      ciclo: searchParams.get("ciclo") ?? undefined,
       busqueda: searchParams.get("busqueda") ?? undefined,
       pagina: Number(searchParams.get("pagina") ?? "1"),
       porPagina: PAGE_SIZE,
@@ -62,14 +73,45 @@ export function TicketsListView() {
     Boolean(filtros.tipo) ||
     Boolean(filtros.prioridad) ||
     Boolean(filtros.asignado) ||
+    Boolean(filtros.ciclo) ||
     Boolean(filtros.busqueda) ||
     (filtros.pagina ?? 1) > 1;
 
-  const ticketsQuery = useTickets(filtros);
   const tiposQuery = useTiposTicket();
   const prioridadesQuery = usePrioridades();
   const estadosQuery = useEstados();
   const usuariosQuery = useUsuariosAsignables();
+  const ciclosQuery = useCiclos();
+
+  const ciclos = useMemo(() => ciclosQuery.data?.ciclos ?? [], [ciclosQuery.data]);
+  const cicloActivoId = ciclosQuery.data?.cicloActivoId ?? null;
+
+  /**
+   * Sin ciclo elegido en la URL, no se manda `ciclo`: el backend ya lista el
+   * ciclo activo por defecto (comportamiento actual, sin cambios, R2). Si el
+   * tenant NO tiene ciclo activo, ese default del backend deja la lista
+   * vacía sin motivo — acá se elige el ciclo más reciente por `fechaInicio`
+   * para evitarlo. Con el tenant sin ciclos, no hay de dónde elegir y queda
+   * el estado vacío existente.
+   */
+  const cicloMasRecienteId = useMemo(() => {
+    if (ciclos.length === 0) return undefined;
+    return ciclos.reduce((masReciente, actual) =>
+      new Date(actual.fechaInicio) > new Date(masReciente.fechaInicio) ? actual : masReciente,
+    ).id;
+  }, [ciclos]);
+  const cicloPorDefecto = cicloActivoId === null ? cicloMasRecienteId : undefined;
+  const cicloSeleccionado = filtros.ciclo ?? cicloPorDefecto;
+
+  // Filtros REALES con los que se pide el listado y se exporta — puede
+  // diferir de `filtros` (URL) solo en `ciclo`, cuando se aplica el default
+  // de "sin ciclo activo" de arriba.
+  const filtrosEfectivos: TicketsFiltros = useMemo(
+    () => ({ ...filtros, ciclo: cicloSeleccionado }),
+    [filtros, cicloSeleccionado],
+  );
+
+  const ticketsQuery = useTickets(filtrosEfectivos);
 
   const prioridadCodigoMap = useMemo(
     () => buildIdToCodigoMap(prioridadesQuery.data ?? []),
@@ -112,10 +154,12 @@ export function TicketsListView() {
         actions={
           <>
             {/*
-              Recibe el MISMO objeto `filtros` que alimenta `useTickets`: es lo
-              que garantiza que el CSV y la pantalla cuenten lo mismo.
+              Recibe el MISMO objeto `filtrosEfectivos` que alimenta
+              `useTickets` (incluye el ciclo por default cuando no hay ciclo
+              activo): es lo que garantiza que el CSV y la pantalla cuenten
+              lo mismo.
             */}
-            <ExportarTicketsButton filtros={filtros} />
+            <ExportarTicketsButton filtros={filtrosEfectivos} />
             <Can permiso="TICKETS:ALTAS">
               <TicketCreateDialog />
             </Can>
@@ -128,6 +172,24 @@ export function TicketsListView() {
         searchValue={filtros.busqueda ?? ""}
         onSearchChange={(value) => updateFiltros({ busqueda: value })}
       >
+        <div className="flex flex-col gap-1">
+          <label htmlFor="filtro-ciclo" className="sr-only">
+            Ciclo
+          </label>
+          <Select
+            id="filtro-ciclo"
+            value={cicloSeleccionado ?? ""}
+            onChange={(e) => updateFiltros({ ciclo: e.target.value || undefined })}
+          >
+            <option value="">Ciclo activo</option>
+            {ciclos.map((ciclo) => (
+              <option key={ciclo.id} value={ciclo.id}>
+                {ciclo.id === cicloActivoId ? `${ciclo.nombre} (activo)` : ciclo.nombre}
+              </option>
+            ))}
+          </Select>
+        </div>
+
         <div className="flex flex-col gap-1">
           <label htmlFor="filtro-estado" className="sr-only">
             Estado
