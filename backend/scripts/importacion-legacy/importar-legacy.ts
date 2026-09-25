@@ -46,8 +46,11 @@ export async function importar(
 ): Promise<ResultadoImportacion> {
   const master = prisma.getMasterClient();
   const clienteR = await resolverCliente(master, clienteNombre);
-  if (clienteR.isFail())
-    return { conflictos: [clienteR.getError().message], master: null, tenant: null };
+  if (clienteR.isFail()) {
+    const conflicto = clienteR.getError().message;
+    log(`CONFLICTO: ${conflicto}`);
+    return { conflictos: [conflicto], master: null, tenant: null };
+  }
   const cliente = clienteR.getValue();
   const tenant = prisma.getTenantClient(cliente.dbName);
 
