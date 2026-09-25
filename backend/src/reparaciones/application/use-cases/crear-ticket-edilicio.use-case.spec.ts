@@ -12,6 +12,7 @@ import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
 import { CicloClienteEntity } from '../../../tickets/domain/entities/ciclo-cliente.entity';
 import { CrearTicketEdilicioUseCase } from './crear-ticket-edilicio.use-case';
 import { SolicitanteInvalidoError } from '../../../tickets/domain/errors/tickets.errors';
+import { TicketCreadoEvent } from '../../../tickets/domain/events/ticket-creado.event';
 
 function makeCicloActivo(): CicloClienteEntity {
   return CicloClienteEntity.reconstitute(
@@ -44,7 +45,11 @@ describe('CrearTicketEdilicioUseCase', () => {
     const resolverCicloActivo = {
       resolver: vi.fn().mockResolvedValue(Result.ok(makeCicloActivo())),
     };
-    const txRunner = { run: vi.fn((fn: () => Promise<unknown>) => fn()) };
+    const txRunner = {
+      run: vi.fn((fn: () => Promise<unknown>) => fn()),
+      alCommitear: vi.fn((fn: () => void) => fn()),
+    };
+    const eventPublisher = { publish: vi.fn() };
 
     const useCase = new CrearTicketEdilicioUseCase(
       ticketRepo as any,
@@ -56,6 +61,7 @@ describe('CrearTicketEdilicioUseCase', () => {
       usuarioMasterChecker as any,
       numerador as any,
       resolverCicloActivo as any,
+      eventPublisher as any,
       txRunner as any,
     );
 
@@ -65,6 +71,8 @@ describe('CrearTicketEdilicioUseCase', () => {
       operacionRepo,
       ticketEdiliciaRepo,
       usuarioMasterChecker,
+      eventPublisher,
+      txRunner,
     };
   }
 
@@ -113,5 +121,27 @@ describe('CrearTicketEdilicioUseCase', () => {
 
     expect(result.isFail()).toBe(true);
     expect(result.getError()).toBeInstanceOf(SolicitanteInvalidoError);
+  });
+
+  it('publica TicketCreadoEvent POST-COMMIT con ticketId/prioridadId (dispara AplicarSlaListener)', async () => {
+    const { useCase, eventPublisher } = buildDeps();
+
+    const result = await useCase.execute(baseDto);
+    const { ticket } = result.getValue();
+
+    expect(eventPublisher.publish).toHaveBeenCalledTimes(1);
+    const evento = eventPublisher.publish.mock.calls[0][0];
+    expect(evento).toBeInstanceOf(TicketCreadoEvent);
+    expect(evento.ticketId).toBe(ticket.id);
+    expect(evento.prioridadId).toBe(baseDto.prioridadId);
+  });
+
+  it('no publica el evento si la creación falla (solicitante inválido)', async () => {
+    const { useCase, usuarioMasterChecker, eventPublisher } = buildDeps();
+    usuarioMasterChecker.existeEnTenant.mockResolvedValue(false);
+
+    await useCase.execute(baseDto);
+
+    expect(eventPublisher.publish).not.toHaveBeenCalled();
   });
 });

@@ -31,6 +31,10 @@ import {
   ITenantTransactionRunner,
   TENANT_TX_RUNNER,
 } from '../shared/infrastructure/persistence/tenant-transaction-runner';
+import {
+  IDomainEventPublisher,
+  DOMAIN_EVENT_PUBLISHER,
+} from '../shared/domain/ports/i-domain-event-publisher';
 import { COMPRA_REPOSITORY, ICompraRepository } from '../compras/domain/ports/i-compra.repository';
 
 import {
@@ -133,6 +137,7 @@ import { ReparacionesController } from './interface/controllers/reparaciones.con
         usuarioMasterChecker: IUsuarioMasterChecker,
         numerador: NumeradorTicket,
         resolverCicloActivo: ResolverCicloActivoParaCreacion,
+        eventPublisher: IDomainEventPublisher,
         txRunner: ITenantTransactionRunner,
       ) =>
         new CrearTicketEdilicioUseCase(
@@ -145,6 +150,7 @@ import { ReparacionesController } from './interface/controllers/reparaciones.con
           usuarioMasterChecker,
           numerador,
           resolverCicloActivo,
+          eventPublisher,
           txRunner,
         ),
       inject: [
@@ -157,6 +163,7 @@ import { ReparacionesController } from './interface/controllers/reparaciones.con
         USUARIO_MASTER_CHECKER,
         NumeradorTicket,
         ResolverCicloActivoParaCreacion,
+        DOMAIN_EVENT_PUBLISHER,
         TENANT_TX_RUNNER,
       ],
     },

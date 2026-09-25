@@ -1,7 +1,9 @@
 import { DomainError, Result } from '../../../shared/domain/result';
 import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
+import { IDomainEventPublisher } from '../../../shared/domain/ports/i-domain-event-publisher';
 import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
 import { OperacionTicketEntity } from '../../../tickets/domain/entities/operacion-ticket.entity';
+import { TicketCreadoEvent } from '../../../tickets/domain/events/ticket-creado.event';
 import { NumeradorTicket } from '../../../tickets/domain/services/numerador-ticket.service';
 import { ResolverCicloActivoParaCreacion } from '../../../tickets/application/services/resolver-ciclo-activo.service';
 import { ITicketRepository } from '../../../tickets/domain/ports/i-ticket.repository';
@@ -60,11 +62,17 @@ export interface CrearTicketSoporteDto {
  * 6. **DENTRO de la transacción**: genera el `numero` (prefijo SOP, ADR-4),
  *    crea `TicketEntity` + `OperacionTicketEntity` de apertura +
  *    `TicketSoporteEntity` satélite, y persiste las 3 entidades.
+ * 7. **POST-COMMIT** (`txRunner.alCommitear`, mismo criterio que
+ *    `CrearTicketUseCase` — GATE G3/defecto #244): publica `TicketCreadoEvent`
+ *    para que `AplicarSlaListener` calcule `sla_vence_at`. Un ticket de
+ *    soporte es un ticket como cualquier otro a efectos de SLA; antes de
+ *    este fix nunca se publicaba el evento y `sla_vence_at` quedaba `null`
+ *    siempre.
  *
  * Sin throw para fallos esperados — todos se modelan con `Result.fail()`.
  *
  * Ref spec: sdd/flujos-especializados/spec F3-Q4. Ref design: ADR-3, ADR-4.
- * Tarea: T13.1, T13.2.
+ * Tarea: T13.1, T13.2. Defecto: #244.
  */
 export class CrearTicketSoporteUseCase {
   constructor(
@@ -78,6 +86,7 @@ export class CrearTicketSoporteUseCase {
     private readonly numerador: Pick<NumeradorTicket, 'generarNumero'>,
     private readonly resolverCicloActivo: Pick<ResolverCicloActivoParaCreacion, 'resolver'>,
     private readonly equipoRepo: Pick<IEquipoInformaticoRepository, 'findById'>,
+    private readonly eventPublisher: IDomainEventPublisher,
     private readonly txRunner: ITenantTransactionRunner,
   ) {}
 
@@ -131,7 +140,7 @@ export class CrearTicketSoporteUseCase {
 
     // 6. Sección crítica: numeración (advisory lock, ADR-5 Fase 2) +
     //    persistencia atómica de ticket + operación + satélite.
-    return this.txRunner.run(async () => {
+    const resultado = await this.txRunner.run(async () => {
       const numeroResult = await this.numerador.generarNumero(
         tipoSoporte.id,
         tipoSoporte.codigo,
@@ -182,5 +191,25 @@ export class CrearTicketSoporteUseCase {
         ticketSoporte,
       });
     });
+
+    // 7. DIFERIDO A POST-COMMIT vía `txRunner.alCommitear()` — mismo criterio
+    // que `CrearTicketUseCase` (defecto #244): publica TicketCreadoEvent para
+    // que el módulo SLA calcule sla_vence_at (AplicarSlaUseCase).
+    // `PrismaTenantTransactionRunner` envuelve cada callback en su propio
+    // try/catch y loguea si el publisher falla, así que el callback publica
+    // directo, sin try/catch propio (log-and-swallow, ADR-6).
+    if (resultado.isOk()) {
+      const { ticket } = resultado.getValue();
+      this.txRunner.alCommitear(() => {
+        this.eventPublisher.publish(
+          new TicketCreadoEvent({
+            ticketId: ticket.id,
+            prioridadId: ticket.prioridadId,
+          }),
+        );
+      });
+    }
+
+    return resultado;
   }
 }
