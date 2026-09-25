@@ -27,7 +27,9 @@ export interface OrigenFeriadoBadgeProps {
 export function OrigenFeriadoBadge({ origen }: OrigenFeriadoBadgeProps) {
   const config = ORIGEN_CONFIG[origen];
   return (
-    <Badge data-testid="origen-feriado-badge" variant={config.variant}>
+    // `whitespace-nowrap`: la columna Origen es angosta y "Del cliente" se partía
+    // en dos líneas, al lado de "Nacional" que entra en una.
+    <Badge data-testid="origen-feriado-badge" variant={config.variant} className="whitespace-nowrap">
       {config.label}
     </Badge>
   );
