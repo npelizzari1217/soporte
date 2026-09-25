@@ -31,6 +31,26 @@ describe("AlmanaqueFeriados", () => {
     expect(celdaCliente.querySelector("[aria-hidden='true']")).toHaveClass("bg-info-light", "border-info");
   });
 
+  it("a date with both a GLOBAL and a CLIENTE holiday shows both marks and lists both in the panel", () => {
+    const AMBOS_GLOBAL: FeriadoAlmanaqueRow = { id: "g2", fecha: "2026-10-20", descripcion: "Feriado nacional agregado", origen: "GLOBAL" };
+    const acciones = vi.fn((f: FeriadoAlmanaqueRow) => <button>{`Editar ${f.descripcion}`}</button>);
+    render(<AlmanaqueFeriados feriados={[CLIENTE, AMBOS_GLOBAL]} hoy={HOY} renderAcciones={acciones} />);
+
+    const celda = screen.getByRole("gridcell", {
+      name: `20/10/2026, feriados: ${CLIENTE.descripcion}, ${AMBOS_GLOBAL.descripcion}`,
+    });
+    const marcas = celda.querySelectorAll("[aria-hidden='true']");
+    expect(marcas).toHaveLength(2);
+    expect(marcas[0]).toHaveClass("bg-info-light", "border-info");
+    expect(marcas[1]).toHaveClass("bg-success-light", "border-success");
+
+    fireEvent.click(celda);
+    expect(screen.getByText(CLIENTE.descripcion)).toBeInTheDocument();
+    expect(screen.getByText(AMBOS_GLOBAL.descripcion)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: `Editar ${CLIENTE.descripcion}` })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: `Editar ${AMBOS_GLOBAL.descripcion}` })).toBeInTheDocument();
+  });
+
   it("does not render a mark for a holiday outside the shown month", () => {
     render(<AlmanaqueFeriados feriados={[FUERA_DE_MES]} hoy={HOY} />);
     expect(screen.queryByText(FUERA_DE_MES.descripcion)).not.toBeInTheDocument();

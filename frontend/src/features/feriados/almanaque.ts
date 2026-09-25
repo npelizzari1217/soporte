@@ -7,6 +7,7 @@
  * misma trampa que `formatearFechaCalendario` (`shared/lib/formato-fecha.ts`)
  * y el incidente `corregir-fecha-cierre-tickets`.
  */
+import { hoyFechaCalendario } from "@/shared/lib/formato-fecha";
 
 /** Año + mes, 1-indexado (`mes: 1` = enero ... `mes: 12` = diciembre). */
 export interface AnioMes {
@@ -105,13 +106,13 @@ export function anioMesDeFecha(fecha: string): AnioMes {
   return { anio, mes };
 }
 
-// `YYYY-MM-DD` de hoy, en el reloj local — única función acá que lee el
-// reloj en vez de operar sobre una cadena recibida. Default de la prop
-// `hoy` del componente, inyectable en tests.
+// `YYYY-MM-DD` de hoy, delegado a `hoyFechaCalendario()` (WU2, fix sobre
+// WU1) — única función acá que lee el reloj en vez de operar sobre una
+// cadena recibida. Default de la prop `hoy` del componente, inyectable en
+// tests. NUNCA el reloj local del navegador: `hoyFechaCalendario` usa el
+// offset fijo de Argentina, el mismo "hoy" que el backend valida
+// (`hoyArgentina()`) — ver la nota sobre `OFFSET_ARGENTINA_MS` en
+// `shared/lib/formato-fecha.ts`.
 export function fechaDeHoy(): string {
-  const ahora = new Date();
-  const anio = ahora.getFullYear();
-  const mes = String(ahora.getMonth() + 1).padStart(2, "0");
-  const dia = String(ahora.getDate()).padStart(2, "0");
-  return `${anio}-${mes}-${dia}`;
+  return hoyFechaCalendario();
 }

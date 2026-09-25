@@ -53,35 +53,42 @@ const MARCA_ORIGEN_CLASSNAME: Record<OrigenFeriado, string> = {
   CLIENTE: "bg-info-light border border-info",
 };
 
-function construirAriaLabel(dia: DiaAlmanaque, feriado?: FeriadoAlmanaqueRow): string {
+function construirAriaLabel(dia: DiaAlmanaque, feriadosDelDia: FeriadoAlmanaqueRow[]): string {
   const fechaLegible = formatearFechaCalendario(dia.fecha);
-  return feriado ? `${fechaLegible}, feriado: ${feriado.descripcion}` : fechaLegible;
+  if (feriadosDelDia.length === 0) return fechaLegible;
+  if (feriadosDelDia.length === 1) return `${fechaLegible}, feriado: ${feriadosDelDia[0]!.descripcion}`;
+  // Una fecha puede tener a la vez un feriado GLOBAL y uno CLIENTE (ej. ROOT
+  // agrega un feriado nacional en una fecha que el cliente ya tenía propia).
+  return `${fechaLegible}, feriados: ${feriadosDelDia.map((feriado) => feriado.descripcion).join(", ")}`;
 }
 
 export function AlmanaqueFeriados({ feriados, hoy, renderAcciones, onDiaLibre }: AlmanaqueFeriadosProps) {
   const [mesActual, setMesActual] = useState<AnioMes>(() => anioMesDeFecha(hoy ?? fechaDeHoy()));
-  const [feriadoSeleccionado, setFeriadoSeleccionado] = useState<FeriadoAlmanaqueRow | null>(null);
+  const [fechaSeleccionada, setFechaSeleccionada] = useState<string | null>(null);
 
-  // Un feriado por fecha: si GLOBAL y CLIENTE coinciden (caso de borde no
-  // cubierto hoy), se muestra el primero.
-  const feriadoPorFecha = useMemo(() => {
-    const mapa = new Map<string, FeriadoAlmanaqueRow>();
+  // Todos los feriados de una fecha, no solo el primero: una fecha puede
+  // tener a la vez un feriado GLOBAL y uno CLIENTE (ver `construirAriaLabel`).
+  const feriadosPorFecha = useMemo(() => {
+    const mapa = new Map<string, FeriadoAlmanaqueRow[]>();
     for (const feriado of feriados) {
-      if (!mapa.has(feriado.fecha)) mapa.set(feriado.fecha, feriado);
+      const listaExistente = mapa.get(feriado.fecha);
+      if (listaExistente) listaExistente.push(feriado);
+      else mapa.set(feriado.fecha, [feriado]);
     }
     return mapa;
   }, [feriados]);
 
   const semanas = useMemo(() => obtenerSemanasDelMes(mesActual.anio, mesActual.mes), [mesActual]);
+  const feriadosSeleccionados = fechaSeleccionada ? (feriadosPorFecha.get(fechaSeleccionada) ?? []) : [];
 
   function cambiarMes(calcular: (actual: AnioMes) => AnioMes): void {
     setMesActual(calcular);
-    setFeriadoSeleccionado(null);
+    setFechaSeleccionada(null);
   }
 
-  function manejarClick(dia: DiaAlmanaque, feriado?: FeriadoAlmanaqueRow): void {
-    if (feriado) {
-      setFeriadoSeleccionado(feriado);
+  function manejarClick(dia: DiaAlmanaque, feriadosDelDia: FeriadoAlmanaqueRow[]): void {
+    if (feriadosDelDia.length > 0) {
+      setFechaSeleccionada(dia.fecha);
       return;
     }
     onDiaLibre?.(dia.fecha);
@@ -114,18 +121,18 @@ export function AlmanaqueFeriados({ feriados, hoy, renderAcciones, onDiaLibre }:
         {semanas.map((semana) => (
           <div role="row" key={semana[0].fecha} className="grid grid-cols-7">
             {semana.map((dia) => {
-              const feriado = dia.esDelMesActual ? feriadoPorFecha.get(dia.fecha) : undefined;
+              const feriadosDelDia = dia.esDelMesActual ? (feriadosPorFecha.get(dia.fecha) ?? []) : [];
               const esHoy = hoy !== undefined ? dia.fecha === hoy : dia.fecha === fechaDeHoy();
               return (
                 <button
                   key={dia.fecha}
                   type="button"
                   role="gridcell"
-                  aria-label={construirAriaLabel(dia, feriado)}
-                  aria-selected={feriado !== undefined && feriadoSeleccionado?.id === feriado.id}
-                  onMouseEnter={() => feriado && setFeriadoSeleccionado(feriado)}
-                  onFocus={() => feriado && setFeriadoSeleccionado(feriado)}
-                  onClick={() => manejarClick(dia, feriado)}
+                  aria-label={construirAriaLabel(dia, feriadosDelDia)}
+                  aria-selected={feriadosDelDia.length > 0 && fechaSeleccionada === dia.fecha}
+                  onMouseEnter={() => feriadosDelDia.length > 0 && setFechaSeleccionada(dia.fecha)}
+                  onFocus={() => feriadosDelDia.length > 0 && setFechaSeleccionada(dia.fecha)}
+                  onClick={() => manejarClick(dia, feriadosDelDia)}
                   className={cn(
                     "flex min-h-16 flex-col items-center gap-1 border-b border-r border-border p-1.5 text-sm last:border-r-0",
                     "hover:bg-accent focus:outline-none focus:ring-2 focus:ring-ring focus:ring-inset",
@@ -134,8 +141,16 @@ export function AlmanaqueFeriados({ feriados, hoy, renderAcciones, onDiaLibre }:
                   )}
                 >
                   <span className={cn(dia.esFinDeSemana && "font-bold")}>{dia.diaMes}</span>
-                  {feriado ? (
-                    <span aria-hidden="true" className={cn("h-2 w-2 rounded-full", MARCA_ORIGEN_CLASSNAME[feriado.origen])} />
+                  {feriadosDelDia.length > 0 ? (
+                    <span className="flex items-center gap-0.5">
+                      {feriadosDelDia.map((feriado) => (
+                        <span
+                          key={feriado.id}
+                          aria-hidden="true"
+                          className={cn("h-2 w-2 rounded-full", MARCA_ORIGEN_CLASSNAME[feriado.origen])}
+                        />
+                      ))}
+                    </span>
                   ) : null}
                 </button>
               );
@@ -145,14 +160,18 @@ export function AlmanaqueFeriados({ feriados, hoy, renderAcciones, onDiaLibre }:
       </div>
 
       <div className="mt-4 rounded-md border border-border p-4" aria-live="polite">
-        {feriadoSeleccionado ? (
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <p className="text-sm font-medium text-foreground">{formatearFechaCalendario(feriadoSeleccionado.fecha)}</p>
-              <OrigenFeriadoBadge origen={feriadoSeleccionado.origen} />
-            </div>
-            <p className="text-sm text-muted-foreground">{feriadoSeleccionado.descripcion}</p>
-            {renderAcciones ? <div className="flex items-center gap-2">{renderAcciones(feriadoSeleccionado)}</div> : null}
+        {feriadosSeleccionados.length > 0 ? (
+          <div className="space-y-4">
+            {feriadosSeleccionados.map((feriado) => (
+              <div key={feriado.id} className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-medium text-foreground">{formatearFechaCalendario(feriado.fecha)}</p>
+                  <OrigenFeriadoBadge origen={feriado.origen} />
+                </div>
+                <p className="text-sm text-muted-foreground">{feriado.descripcion}</p>
+                {renderAcciones ? <div className="flex items-center gap-2">{renderAcciones(feriado)}</div> : null}
+              </div>
+            ))}
           </div>
         ) : (
           <p className="text-sm text-muted-foreground">Pasá el mouse o seleccioná un día con feriado para ver el detalle.</p>

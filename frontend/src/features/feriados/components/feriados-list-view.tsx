@@ -2,18 +2,31 @@
 
 /**
  * FeriadosListView — CONTAINER client component montado por `/feriados`
- * (tasks 8.1/8.2, WU8a+WU8b, sdd/feriados-configurables). Lista COMBINADA:
- * feriados nacionales (`GET /feriados`) + propios del tenant
- * (`GET /feriados-cliente`), merge client-side (`combinarFeriados()`, D8).
+ * (tasks 8.1/8.2, WU8a+WU8b, sdd/feriados-configurables; almanaque WU2,
+ * sdd/feriados-almanaque). Lista COMBINADA: feriados nacionales
+ * (`GET /feriados`) + propios del tenant (`GET /feriados-cliente`), merge
+ * client-side (`combinarFeriados()`, D8).
+ *
+ * DOS vistas sobre la misma lista combinada, alternadas con un toggle —
+ * decisión del dueño del repo: el ALMANAQUE es la vista por DEFECTO, la
+ * tabla existente (WU8a/WU8b) queda intacta detrás del toggle "Ver como
+ * lista". `AlmanaqueFeriados` (WU1) es puramente presentacional: esta
+ * pantalla le inyecta `renderAcciones`, igual que ya hace con
+ * `FeriadoFormDialog`/`EliminarFeriadoClienteAction` para la tabla.
  *
  * SIN gate de admin en la LECTURA (`spec.md`: cualquier autenticado del
- * tenant lee). La ESCRITURA (WU8b) sí gatea por `esAdminCliente`: agrega la
- * columna Acciones solo entonces, y dentro `render` devuelve `null` para
- * filas GLOBAL — nunca editables/eliminables acá, mismo criterio que
- * `FeriadosGlobalesAdminContent`. Reutiliza `FeriadoFormDialog` (WU7b,
- * generalizado en este commit) con los hooks de
- * `use-feriados-cliente-admin-mutations.ts`, sin duplicar el diálogo.
+ * tenant lee), en NINGUNA de las dos vistas. La ESCRITURA sí gatea por
+ * `esAdminCliente`: columna Acciones (tabla) o `renderAcciones` (almanaque)
+ * solo entonces, y en ambas un feriado GLOBAL nunca lleva acciones — mismo
+ * criterio que `FeriadosGlobalesAdminContent`.
+ *
+ * PENDIENTE (follow-up, fuera de este WU2 por presupuesto de revisión):
+ * clickear un día LIBRE del almanaque, para `esAdminCliente`, todavía no
+ * abre el diálogo de creación con la fecha precargada — hoy no hace nada,
+ * para ningún rol. Queda para un cambio aparte: precargar `fecha` en
+ * `FeriadoFormDialog` y controlar su apertura desde acá vía `onDiaLibre`.
  */
+import { useState, type ReactNode } from "react";
 import { useSession } from "@/shared/hooks/use-session";
 import { useFeriadosGlobales } from "../hooks/use-feriados-globales";
 import { useFeriadosCliente } from "../hooks/use-feriados-cliente";
@@ -24,6 +37,8 @@ import {
 } from "../hooks/use-feriados-cliente-admin-mutations";
 import { combinarFeriados, type FilaFeriadoCombinada } from "../combinar-feriados";
 import { DataTable, type Column } from "@/components/shared/data-table";
+import { TableSkeleton } from "@/components/shared/skeletons";
+import { ErrorState } from "@/components/shared/error-state";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
@@ -32,11 +47,14 @@ import { formatearFechaCalendario } from "@/shared/lib/formato-fecha";
 import { notifyError } from "@/shared/lib/toast";
 import { OrigenFeriadoBadge } from "./origen-feriado-badge";
 import { FeriadoFormDialog, type FeriadoBasico } from "./feriado-form-dialog";
+import { AlmanaqueFeriados } from "./almanaque-feriados";
 
 // `Column.key` es `keyof T & string`; `acciones` es sintética (`render`
 // override, no lee `row.acciones`) — mismo recurso de tipado local que
 // `FeriadoColumnRow` en `feriados-globales-admin-view.tsx`.
 type FilaColumnRow = FilaFeriadoCombinada & { acciones?: never };
+
+type Vista = "almanaque" | "lista";
 
 function EliminarFeriadoClienteAction({ feriado }: { feriado: FeriadoBasico }) {
   const mutation = useEliminarFeriadoCliente();
@@ -61,6 +79,7 @@ export function FeriadosListView() {
   const { esAdminCliente } = useSession();
   const globalesQuery = useFeriadosGlobales();
   const clienteQuery = useFeriadosCliente();
+  const [vista, setVista] = useState<Vista>("almanaque");
 
   const filas = combinarFeriados(globalesQuery.data ?? [], clienteQuery.data ?? []);
   const isLoading = globalesQuery.isLoading || clienteQuery.isLoading;
@@ -69,6 +88,28 @@ export function FeriadosListView() {
   function reintentar(): void {
     globalesQuery.refetch().catch(notifyError);
     clienteQuery.refetch().catch(notifyError);
+  }
+
+  // Mismas acciones que la columna "Acciones" de la tabla, reutilizando
+  // EXACTAMENTE el mismo diálogo de edición y confirmación de borrado — solo
+  // se llama cuando `esAdminCliente` (ver el `renderAcciones` pasado abajo).
+  function renderAccionesAlmanaque(row: FilaFeriadoCombinada): ReactNode {
+    if (row.origen !== "CLIENTE") return null;
+    return (
+      <>
+        <FeriadoFormDialog
+          feriado={row}
+          useCrearMutation={useCrearFeriadoCliente}
+          useEditarMutation={useEditarFeriadoCliente}
+          trigger={
+            <Button variant="outline" size="sm">
+              Editar
+            </Button>
+          }
+        />
+        <EliminarFeriadoClienteAction feriado={row} />
+      </>
+    );
   }
 
   const columnas: Column<FilaColumnRow>[] = [
@@ -108,30 +149,45 @@ export function FeriadosListView() {
         title="Feriados"
         description="Feriados nacionales y del cliente que aplican al cálculo de vencimientos SLA hábiles."
         actions={
-          esAdminCliente ? (
-            <FeriadoFormDialog
-              useCrearMutation={useCrearFeriadoCliente}
-              useEditarMutation={useEditarFeriadoCliente}
-              trigger={
-                <Button size="sm">
-                  <Plus className="h-4 w-4" aria-hidden="true" />
-                  Nuevo feriado
-                </Button>
-              }
-            />
-          ) : undefined
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setVista((actual) => (actual === "almanaque" ? "lista" : "almanaque"))}
+            >
+              {vista === "almanaque" ? "Ver como lista" : "Ver como almanaque"}
+            </Button>
+            {esAdminCliente ? (
+              <FeriadoFormDialog
+                useCrearMutation={useCrearFeriadoCliente}
+                useEditarMutation={useEditarFeriadoCliente}
+                trigger={
+                  <Button size="sm">
+                    <Plus className="h-4 w-4" aria-hidden="true" />
+                    Nuevo feriado
+                  </Button>
+                }
+              />
+            ) : undefined}
+          </div>
         }
       />
-      <DataTable
-        columns={columnas}
-        data={filas}
-        getRowKey={(row) => row.id}
-        isLoading={isLoading}
-        error={isError ? "No se pudieron cargar los feriados." : undefined}
-        onRetry={reintentar}
-        emptyTitle="Sin feriados"
-        emptyDescription="Todavía no hay feriados cargados."
-      />
+      {isLoading ? (
+        <TableSkeleton rows={5} columns={columnas.length} />
+      ) : isError ? (
+        <ErrorState message="No se pudieron cargar los feriados." onRetry={reintentar} />
+      ) : vista === "almanaque" ? (
+        <AlmanaqueFeriados feriados={filas} renderAcciones={esAdminCliente ? renderAccionesAlmanaque : undefined} />
+      ) : (
+        <DataTable
+          columns={columnas}
+          data={filas}
+          getRowKey={(row) => row.id}
+          emptyTitle="Sin feriados"
+          emptyDescription="Todavía no hay feriados cargados."
+        />
+      )}
     </div>
   );
 }
