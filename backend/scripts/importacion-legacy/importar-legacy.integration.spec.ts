@@ -174,4 +174,10 @@ describe('importar (integración: master de test + tenant efímero)', () => {
     const r = await importar(prisma, paqueteSintetico(), 'No existe', true, () => undefined);
     expect(r.conflictos[0]).toMatch(/coincide con 0 clientes/);
   });
+
+  it('cliente inexistente → el conflicto se informa en el log (el CLI no sale en silencio)', async () => {
+    const log: string[] = [];
+    const r = await importar(prisma, paqueteSintetico(), 'No existe', false, (l) => log.push(l));
+    expect(log).toEqual([`CONFLICTO: ${r.conflictos[0]}`]);
+  });
 });
