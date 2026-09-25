@@ -33,10 +33,14 @@ export interface TicketHeaderProps {
   puedeVerCsat?: boolean;
 }
 
-/** Nombre completo o fallback al ID crudo si el backend no pudo resolverlo. */
+/**
+ * Nombre completo, o lo que haya de él (un usuario puede no tener apellido,
+ * p. ej. los importados de un sistema anterior). Cae al ID crudo solo si el
+ * backend no resolvió ni nombre ni apellido.
+ */
 function nombreCompleto(nombre: string | null, apellido: string | null, idFallback: string): string {
-  if (nombre && apellido) return `${nombre} ${apellido}`;
-  return idFallback;
+  const completo = [nombre, apellido].filter((parte) => parte && parte.trim()).join(" ");
+  return completo || idFallback;
 }
 
 export function TicketHeader({
