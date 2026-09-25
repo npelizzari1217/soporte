@@ -3,5 +3,5 @@
   "compilerOptions": {
     "noEmit": true
   },
-  "include": ["src/**/*", "prisma_master/seeds/**/*", "prisma_tenant/seeds/**/*"]
+  "include": ["src/**/*", "prisma_master/seeds/**/*", "prisma_tenant/seeds/**/*", "scripts/importacion-legacy/**/*"]
 }

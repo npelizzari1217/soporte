@@ -27,7 +27,8 @@
     "entorno:verificar": "node scripts/regenerar-entorno.mjs verificar",
     "entorno:regenerar": "node scripts/regenerar-entorno.mjs regenerar",
     "seed:root": "ts-node prisma_master/seeds/root-bootstrap.seed.ts",
-    "seed:demo": "ts-node -r tsconfig-paths/register prisma_master/seeds/demo-seed.ts"
+    "seed:demo": "ts-node -r tsconfig-paths/register prisma_master/seeds/demo-seed.ts",
+    "importar:legacy": "ts-node -r tsconfig-paths/register scripts/importacion-legacy/importar-legacy.ts"
   },
   "keywords": [],
   "author": "",
