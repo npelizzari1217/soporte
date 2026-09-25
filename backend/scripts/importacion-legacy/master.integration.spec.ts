@@ -138,6 +138,8 @@ describe('importacion legacy — lado master (integración)', () => {
       include: { membresias: { include: { rol: true } } },
     });
     expect(tecnico).toMatchObject({
+      nombre: 'Tito',
+      apellido: 'Tecnico',
       activo: true,
       isGlobalAdmin: false,
       passwordHash: PASSWORD_HASH_SIN_ACCESO,

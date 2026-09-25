@@ -26,6 +26,16 @@ describe('validarPaquete', () => {
     expect(errores).toEqual(['formato desconocido: "soporte-importacion-legacy/v2"']);
   });
 
+  it('apellido presente pero no texto → rechaza; ausente → acepta (paquetes anteriores)', () => {
+    const errores = erroresDe(
+      mutado((p) => {
+        (p.usuarios[0] as unknown as { apellido: unknown }).apellido = 42;
+      }),
+    );
+    expect(errores).toEqual(['usuarios[0].apellido: no es texto']);
+    expect(validarPaquete(mutado((p) => delete p.usuarios[1].apellido)).isOk()).toBe(true);
+  });
+
   it('no es un objeto → rechaza', () => {
     expect(erroresDe([])).toEqual(['el paquete no es un objeto JSON']);
   });

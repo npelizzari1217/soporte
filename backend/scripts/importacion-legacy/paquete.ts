@@ -29,6 +29,8 @@ export interface UsuarioPaquete {
   email: string;
   emailOriginalValido: boolean;
   nombre: string;
+  /** Opcional: los paquetes anteriores traian el nombre completo en `nombre`. */
+  apellido?: string;
   rol: (typeof ROLES_PAQUETE)[number];
 }
 
@@ -169,6 +171,10 @@ export function validarPaquete(crudo: unknown): Result<PaqueteLegacy, PaqueteInv
     exigir(esTexto(u.email) && u.email.includes('@'), `${r}.email: invalido`);
     exigir(typeof u.emailOriginalValido === 'boolean', `${r}.emailOriginalValido: no es booleano`);
     exigir(esTexto(u.nombre), `${r}.nombre: vacio`);
+    exigir(
+      u.apellido === undefined || typeof u.apellido === 'string',
+      `${r}.apellido: no es texto`,
+    );
     exigir(ROLES_PAQUETE.includes(u.rol as never), `${r}.rol: desconocido`);
     if (esId(u.legacyId)) unico(idsUsuario, String(u.legacyId), `${r}.legacyId`);
     if (esTexto(u.email)) unico(emails, u.email.trim().toLowerCase(), `${r}.email`);

@@ -127,6 +127,7 @@ export async function aplicarMaster(
     vigentesCreados: 0,
   };
   const nombrePorLegacy = new Map(usuarios.map((u) => [String(u.legacyId), u.nombre]));
+  const apellidoPorLegacy = new Map(usuarios.map((u) => [String(u.legacyId), u.apellido ?? '']));
 
   for (const p of planUsuarios) {
     let usuarioId = p.usuarioId;
@@ -138,8 +139,7 @@ export async function aplicarMaster(
         create: {
           email: p.email,
           nombre: (nombrePorLegacy.get(p.legacyId) ?? p.email).slice(0, LARGO_NOMBRE),
-          // El paquete trae el nombre completo en un solo campo.
-          apellido: '',
+          apellido: (apellidoPorLegacy.get(p.legacyId) ?? '').trim().slice(0, LARGO_NOMBRE),
           passwordHash: PASSWORD_HASH_SIN_ACCESO,
           activo: true,
           isGlobalAdmin: false,

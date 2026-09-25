@@ -9,8 +9,21 @@ import {
   type UsuarioPaquete,
 } from './paquete';
 
-const usuario = (legacyId: number, email: string, nombre: string, rol: UsuarioPaquete['rol']) =>
-  ({ legacyId, email, emailOriginalValido: true, nombre, rol }) satisfies UsuarioPaquete;
+const usuario = (
+  legacyId: number,
+  email: string,
+  nombre: string,
+  rol: UsuarioPaquete['rol'],
+  apellido?: string,
+) =>
+  ({
+    legacyId,
+    email,
+    emailOriginalValido: true,
+    nombre,
+    rol,
+    ...(apellido === undefined ? {} : { apellido }),
+  }) satisfies UsuarioPaquete;
 
 const comentario = (legacyId: number, autorLegacyId: number, fecha: string, texto: string) =>
   ({ legacyId, autorLegacyId, fecha, texto }) satisfies ComentarioPaquete;
@@ -26,7 +39,7 @@ export function paqueteSintetico(): PaqueteLegacy {
     ],
     usuarios: [
       usuario(10, 'Existente@Legacy.test', 'Ana Existente', 'USUARIO'),
-      usuario(11, 'tecnico@legacy.test', 'Tito Tecnico', 'TECNICO'),
+      usuario(11, 'tecnico@legacy.test', 'Tito', 'TECNICO', 'Tecnico'),
       {
         ...usuario(12, 'legacy-12@importado.invalid', 'Sin Correo', 'USUARIO'),
         emailOriginalValido: false,
