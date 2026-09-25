@@ -31,6 +31,10 @@ import {
   ITenantTransactionRunner,
   TENANT_TX_RUNNER,
 } from '../shared/infrastructure/persistence/tenant-transaction-runner';
+import {
+  IDomainEventPublisher,
+  DOMAIN_EVENT_PUBLISHER,
+} from '../shared/domain/ports/i-domain-event-publisher';
 
 import {
   MODELO_EQUIPO_REPOSITORY,
@@ -309,6 +313,7 @@ import { SoporteController } from './interface/controllers/soporte.controller';
         numerador: NumeradorTicket,
         resolverCicloActivo: ResolverCicloActivoParaCreacion,
         equipoRepo: IEquipoInformaticoRepository,
+        eventPublisher: IDomainEventPublisher,
         txRunner: ITenantTransactionRunner,
       ) =>
         new CrearTicketSoporteUseCase(
@@ -322,6 +327,7 @@ import { SoporteController } from './interface/controllers/soporte.controller';
           numerador,
           resolverCicloActivo,
           equipoRepo,
+          eventPublisher,
           txRunner,
         ),
       inject: [
@@ -335,6 +341,7 @@ import { SoporteController } from './interface/controllers/soporte.controller';
         NumeradorTicket,
         ResolverCicloActivoParaCreacion,
         EQUIPO_INFORMATICO_REPOSITORY,
+        DOMAIN_EVENT_PUBLISHER,
         TENANT_TX_RUNNER,
       ],
     },

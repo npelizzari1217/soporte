@@ -5,6 +5,7 @@ import { EquipoInformaticoEntity } from '../../domain/entities/equipo-informatic
 import { EquipoInvalidoError } from '../../domain/errors/equipos.errors';
 import { Result } from '../../../shared/domain/result';
 import { SolicitanteInvalidoError } from '../../../tickets/domain/errors/tickets.errors';
+import { TicketCreadoEvent } from '../../../tickets/domain/events/ticket-creado.event';
 
 /**
  * T13.1 [U][RED] — CrearTicketSoporteUseCase: base+satélite tx; equipoId
@@ -42,7 +43,11 @@ describe('CrearTicketSoporteUseCase', () => {
         ),
       ),
     };
-    const txRunner = { run: vi.fn((fn: () => Promise<unknown>) => fn()) };
+    const txRunner = {
+      run: vi.fn((fn: () => Promise<unknown>) => fn()),
+      alCommitear: vi.fn((fn: () => void) => fn()),
+    };
+    const eventPublisher = { publish: vi.fn() };
     return {
       ticketRepo,
       operacionRepo,
@@ -54,6 +59,7 @@ describe('CrearTicketSoporteUseCase', () => {
       usuarioMasterChecker,
       numerador,
       resolverCicloActivo,
+      eventPublisher,
       txRunner,
     };
   }
@@ -85,6 +91,7 @@ describe('CrearTicketSoporteUseCase', () => {
       deps.numerador as never,
       deps.resolverCicloActivo as never,
       deps.equipoRepo as never,
+      deps.eventPublisher as never,
       deps.txRunner as never,
     );
   }
@@ -218,5 +225,29 @@ describe('CrearTicketSoporteUseCase', () => {
     expect(deps.ticketRepo.save).toHaveBeenCalledTimes(1);
     expect(deps.operacionRepo.save).toHaveBeenCalledTimes(1);
     expect(deps.ticketSoporteRepo.save).toHaveBeenCalledTimes(1);
+  });
+
+  it('publica TicketCreadoEvent POST-COMMIT con ticketId/prioridadId (dispara AplicarSlaListener)', async () => {
+    const deps = makeDeps();
+    const useCase = buildUseCase(deps);
+
+    const result = await useCase.execute(baseDto());
+    const { ticket } = result.getValue();
+
+    expect(deps.eventPublisher.publish).toHaveBeenCalledTimes(1);
+    const evento = deps.eventPublisher.publish.mock.calls[0][0];
+    expect(evento).toBeInstanceOf(TicketCreadoEvent);
+    expect(evento.ticketId).toBe(ticket.id);
+    expect(evento.prioridadId).toBe('prioridad-media');
+  });
+
+  it('no publica el evento si la creación falla (equipoId invalido)', async () => {
+    const deps = makeDeps();
+    deps.equipoRepo.findById.mockResolvedValue(null);
+    const useCase = buildUseCase(deps);
+
+    await useCase.execute(baseDto({ equipoId: 'no-existe' }));
+
+    expect(deps.eventPublisher.publish).not.toHaveBeenCalled();
   });
 });
