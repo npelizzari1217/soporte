@@ -3,7 +3,10 @@ import { ThrottlerStorage, ThrottlerStorageService, getOptionsToken } from '@nes
 import { AuthModule } from './auth.module';
 import { NotificacionesModule } from '../notificaciones/notificaciones.module';
 import { LOGGER, ILogger } from '../shared/domain/ports/i-logger.port';
-import { TAREAS_SEGUNDO_PLANO } from '../shared/domain/ports/i-tareas-segundo-plano.port';
+import {
+  TAREAS_SEGUNDO_PLANO,
+  ITareasSegundoPlano,
+} from '../shared/domain/ports/i-tareas-segundo-plano.port';
 import { TareasSegundoPlano } from '../shared/infrastructure/segundo-plano/tareas-segundo-plano';
 import { RecuperacionPasswordThrottlerGuard } from './infrastructure/guards/recuperacion-password-throttler.guard';
 import { EMAIL_SENDER, IEmailSender } from '../shared/domain/ports/i-email-sender';
@@ -13,6 +16,11 @@ import { entorno } from '../config/entorno';
 
 import { USUARIO_REPOSITORY, IUsuarioRepository } from './domain/ports/i-usuario.repository';
 import { MEMBRESIA_REPOSITORY, IMembresiaRepository } from './domain/ports/i-membresia.repository';
+import { HASH_PROVIDER, IHashProvider } from './domain/ports/i-hash.provider';
+import {
+  REFRESH_TOKEN_REPOSITORY,
+  IRefreshTokenRepository,
+} from './domain/ports/i-refresh-token.repository';
 import {
   CLIENTE_REPOSITORY,
   IClienteRepository,
@@ -30,6 +38,7 @@ import { PrismaPasswordResetTokenRepository } from './infrastructure/persistence
 import { CORREO_DE_CLIENTE, ICorreoDeCliente } from './domain/ports/i-correo-de-cliente.port';
 import { CorreoDeClienteAdapter } from './infrastructure/email/correo-de-cliente.adapter';
 import { SolicitarResetPasswordUseCase } from './application/use-cases/solicitar-reset-password.use-case';
+import { ConfirmarResetPasswordUseCase } from './application/use-cases/confirmar-reset-password.use-case';
 import { RecuperacionPasswordController } from './interface/controllers/recuperacion-password.controller';
 
 /**
@@ -46,8 +55,14 @@ import { RecuperacionPasswordController } from './interface/controllers/recupera
  * `ThrottlerModule.forRoot()` — ver `RecuperacionPasswordThrottlerGuard`.
  *
  * Alcance de WU-7: `RecuperacionPasswordController` con
- * `POST /auth/forgot-password` (ADR-1, ADR-2, ADR-3). `POST
- * /auth/reset-password` (confirmación) se suma en WU-8.
+ * `POST /auth/forgot-password` (ADR-1, ADR-2, ADR-3).
+ *
+ * Alcance de WU-8: `POST /auth/reset-password` en el mismo controller, y el
+ * provider de `ConfirmarResetPasswordUseCase` (ADR-5) — reusa
+ * `HASH_PROVIDER` y `REFRESH_TOKEN_REPOSITORY`, ya exportados por
+ * `AuthModule` (WU-6), y los tokens locales/reusados de WU-5b
+ * (`PASSWORD_RESET_TOKEN_REPOSITORY`, `CORREO_DE_CLIENTE`,
+ * `TAREAS_SEGUNDO_PLANO`) — ninguno se duplica acá.
  *
  * Alcance de WU-5b (tarea 5.4, split de WU-5): wirea `CORREO_DE_CLIENTE` →
  * `CorreoDeClienteAdapter` (ADR-4), `PASSWORD_RESET_TOKEN_REPOSITORY` →
@@ -66,7 +81,7 @@ import { RecuperacionPasswordController } from './interface/controllers/recupera
  * así que importar `NotificacionesModule` desde `AuthModule` cerraría un
  * ciclo.
  *
- * Ref design: ADR-1, ADR-2, ADR-3, ADR-4, ADR-5, ADR-6, ADR-7. Tarea: 4.6, 5.4, 7.2.
+ * Ref design: ADR-1, ADR-2, ADR-3, ADR-4, ADR-5, ADR-6, ADR-7. Tarea: 4.6, 5.4, 7.2, 8.2.
  */
 @Module({
   imports: [AuthModule, NotificacionesModule],
@@ -166,6 +181,40 @@ import { RecuperacionPasswordController } from './interface/controllers/recupera
         MEMBRESIA_REPOSITORY,
         PASSWORD_RESET_TOKEN_REPOSITORY,
         CORREO_DE_CLIENTE,
+        LOGGER,
+      ],
+    },
+
+    // ─── WU-8: ConfirmarResetPasswordUseCase (tarea 8.2) ────────────────────
+    // `HASH_PROVIDER` y `REFRESH_TOKEN_REPOSITORY` se reusan de `AuthModule`
+    // (exportados desde WU-6); el resto ya lo provee este módulo (WU-5b/WU-4).
+    {
+      provide: ConfirmarResetPasswordUseCase,
+      useFactory: (
+        tokenRepo: IPasswordResetTokenRepository,
+        usuarioRepo: IUsuarioRepository,
+        hashProvider: IHashProvider,
+        refreshTokenRepo: IRefreshTokenRepository,
+        correoDeCliente: ICorreoDeCliente,
+        tareas: ITareasSegundoPlano,
+        logger: ILogger,
+      ) =>
+        new ConfirmarResetPasswordUseCase(
+          tokenRepo,
+          usuarioRepo,
+          hashProvider,
+          refreshTokenRepo,
+          correoDeCliente,
+          tareas,
+          logger,
+        ),
+      inject: [
+        PASSWORD_RESET_TOKEN_REPOSITORY,
+        USUARIO_REPOSITORY,
+        HASH_PROVIDER,
+        REFRESH_TOKEN_REPOSITORY,
+        CORREO_DE_CLIENTE,
+        TAREAS_SEGUNDO_PLANO,
         LOGGER,
       ],
     },

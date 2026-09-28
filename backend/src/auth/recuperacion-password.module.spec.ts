@@ -7,6 +7,7 @@ import { TAREAS_SEGUNDO_PLANO } from '../shared/domain/ports/i-tareas-segundo-pl
 import { CORREO_DE_CLIENTE } from './domain/ports/i-correo-de-cliente.port';
 import { PASSWORD_RESET_TOKEN_REPOSITORY } from './domain/ports/i-password-reset-token.repository';
 import { SolicitarResetPasswordUseCase } from './application/use-cases/solicitar-reset-password.use-case';
+import { ConfirmarResetPasswordUseCase } from './application/use-cases/confirmar-reset-password.use-case';
 import { RecuperacionPasswordController } from './interface/controllers/recuperacion-password.controller';
 
 /**
@@ -27,7 +28,8 @@ import { RecuperacionPasswordController } from './interface/controllers/recupera
  *
  * Ref design: ADR-1, ADR-2, ADR-3, ADR-4, ADR-5, ADR-6, ADR-7. Tarea: 5.4
  * (WU-5b), 7.2 (WU-7 — agrega `RecuperacionPasswordController` a
- * `controllers`; `main` sigue sin montarlo, ver ADR-1 "Migration / Rollout").
+ * `controllers`; `main` sigue sin montarlo, ver ADR-1 "Migration / Rollout"),
+ * 8.2 (WU-8 — agrega el provider de `ConfirmarResetPasswordUseCase`).
  */
 describe('RecuperacionPasswordModule — compilación real (WU-5b)', () => {
   it('compila con SharedModule y resuelve SolicitarResetPasswordUseCase', async () => {
@@ -37,6 +39,17 @@ describe('RecuperacionPasswordModule — compilación real (WU-5b)', () => {
 
     const useCase = moduleRef.get(SolicitarResetPasswordUseCase);
     expect(useCase).toBeInstanceOf(SolicitarResetPasswordUseCase);
+
+    await moduleRef.close();
+  });
+
+  it('resuelve también ConfirmarResetPasswordUseCase (WU-8)', async () => {
+    const moduleRef = await Test.createTestingModule({
+      imports: [SharedModule, RecuperacionPasswordModule],
+    }).compile();
+
+    const useCase = moduleRef.get(ConfirmarResetPasswordUseCase);
+    expect(useCase).toBeInstanceOf(ConfirmarResetPasswordUseCase);
 
     await moduleRef.close();
   });

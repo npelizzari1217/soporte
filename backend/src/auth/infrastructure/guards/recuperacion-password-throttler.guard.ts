@@ -14,9 +14,11 @@ import { ThrottlerGuard } from '@nestjs/throttler';
  *
  * `ThrottlerModule` es `@Global()` y `CsatModule` ya llama `forRoot`: un
  * segundo `forRoot` registraría dos `THROTTLER_OPTIONS` globales (sin
- * verificar cómo lo resuelve Nest). Por eso este guard se instancia por
- * `useFactory` en `RecuperacionPasswordModule`, con su propia
- * `ThrottlerStorageService` — nunca vía `ThrottlerModule.forRoot`.
+ * verificar cómo lo resuelve Nest). Por eso nunca se usa `forRoot` acá:
+ * `RecuperacionPasswordModule` registra localmente el token de opciones y
+ * su propio `ThrottlerStorage`. `@UseGuards` instancia este guard por su
+ * cuenta (no pasa por un `useFactory`), y resuelve esas dependencias contra
+ * los providers del módulo.
  *
  * Los límites reales (3/15min solicitud, 5/15min confirmación) se fijan
  * por ruta con `@Throttle({ default: { limit, ttl } })` en el controller

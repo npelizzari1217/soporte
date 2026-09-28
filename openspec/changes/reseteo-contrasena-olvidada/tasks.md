@@ -255,17 +255,21 @@ Rollback boundary: revert de PR7; DTO/ruta viven en módulo aún no registrado e
 
 ## WU-8 — Ruta de confirmación
 
+**`size:exception`** (criterio del dueño, 2026-09-28): el e2e es la única prueba del flujo
+completo, del reuso y de la concurrencia. Incluye dos correcciones del verificador de WU-7
+(caso de email mal formado en el e2e y JSDoc del guard), que tocan el mismo archivo.
+
 Files: `backend/src/auth/interface/dtos/recuperacion-password.dto.ts` (parte confirmación),
 `backend/src/auth/interface/controllers/recuperacion-password.controller.ts` + `.spec.ts` (parte
 confirmación), `backend/src/auth/interface/controllers/recuperacion-password.e2e.spec.ts` (parte
 confirmación)
 
-- [ ] 8.1 `ConfirmarResetDto { token: string, passwordNueva: @MinLength(8) }` — el DTO no declara
+- [x] 8.1 `ConfirmarResetDto { token: string, passwordNueva: @MinLength(8) }` — el DTO no declara
       `usuarioId` ni `clienteId`; `whitelist: true` (`app.module.ts:71`) los descartaría si
       llegaran. [Req 7 — abuso: ids fuera del token]
-- [ ] 8.2 `POST /auth/reset-password`, `@Throttle` 5/15min por token; 204 en éxito, 400 con
+- [x] 8.2 `POST /auth/reset-password`, `@Throttle` 5/15min por token; 204 en éxito, 400 con
       mensaje único en cualquier rechazo. [Req 5, Req 6, Req 13]
-- [ ] 8.3 e2e (llama `usarLockMasterTest()`): token extraído del link del mensaje enviado en
+- [x] 8.3 e2e (llama `usarLockMasterTest()`): token extraído del link del mensaje enviado en
       WU-7; flujo completo hasta 204; dos POST concurrentes con el mismo token dan un 204 y un
       400, y solo una de las dos claves verifica login; login funciona con la clave nueva y falla
       con la vieja; sesiones quedan revocadas; se envía el mail de confirmación por el mismo

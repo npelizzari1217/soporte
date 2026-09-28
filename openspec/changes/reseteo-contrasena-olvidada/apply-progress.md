@@ -102,9 +102,8 @@ este apply. Costura limpia: el use case y su spec no dependen de DI (se instanci
 el test), así que 5.4 se separa sin romper nada — mismo patrón de exposición gradual que WU-1/
 WU-4 (pieza creada y probada, no conectada todavía).
 
-Deviations: ninguna en la lógica (ADR-2/3/4/7). Desvío de alcance: 5.4 queda sin commitear por
-presupuesto de línea; se resuelve en la próxima pasada de `sdd-apply` o con `size:exception`
-del dueño. WU-6 reusa `CORREO_DE_CLIENTE`, así que necesita 5.4 resuelto antes de arrancar.
+Deviations: ninguna en la lógica (ADR-2/3/4/7). Desvío de alcance: 5.4 (cableado de DI) pasó a
+WU-5b por una costura limpia de presupuesto.
 
 Evidence: focused test
 `pnpm vitest run backend/src/auth/application/use-cases/solicitar-reset-password.use-case.spec.ts`
@@ -147,7 +146,7 @@ Status: 2/2 tareas (5.4b–5.4c) completas y commiteadas. WU-5 y WU-5b cierran j
 
 ## WU-6 — ConfirmarResetPasswordUseCase — COMPLETO (size:exception) (presupuesto de línea)
 
-Files (en disco, verificados, no commiteados): `confirmar-reset-password.use-case.ts` (102 líneas),
+Files: `confirmar-reset-password.use-case.ts` (102 líneas),
 `confirmar-reset-password.use-case.spec.ts` (243 líneas), `auth/domain/errors/recuperacion-password.errors.ts`
 (30 líneas, create — ver desvío abajo), `auth.module.ts` (+5, exporta `REFRESH_TOKEN_REPOSITORY`).
 Total: **380 líneas** solo código, antes de openspec — ya sobre el umbral de ~370 de este apply.
@@ -176,7 +175,7 @@ código de su prueba.
 
 ## WU-7 — Ruta de solicitud — COMPLETO (`size:exception`, criterio del dueño)
 
-Files (en disco, verificados, NO commiteados): `recuperacion-password.dto.ts` (21 líneas, create),
+Files: `recuperacion-password.dto.ts` (21 líneas, create),
 `recuperacion-password.controller.ts` (54 líneas, create), `recuperacion-password.controller.spec.ts`
 (62 líneas, create), `recuperacion-password.e2e.spec.ts` (388 líneas, create),
 `recuperacion-password.module.ts` (+30/-19, modify), `recuperacion-password.module.spec.ts`
@@ -211,22 +210,65 @@ guardián actualizado: el módulo ahora SÍ declara `RecuperacionPasswordControl
 · `pnpm typecheck` OK · `rg -n RecuperacionPasswordModule src/app.module.ts` sin resultados (HARD
 CONSTRAINT respetado: el módulo sigue sin registrarse en la app real, eso es WU-11).
 
-**No commiteado — presupuesto de línea.** 583 líneas totales (549 código+tests, sin variación de
-openspec todavía) sobre el techo duro de 400 de este apply. Costura limpia SÍ existe, a diferencia
-de WU-6: `recuperacion-password.e2e.spec.ts` (388 líneas) es un archivo nuevo, autocontenido, que
-no modifica ningún otro archivo — quitarlo del commit no rompe nada (el módulo compila, el lint y
-el typecheck pasan, y la ruta queda probada por unidad vía 7.3). El resto —DTO + controller +
-spec de controller + el fix de wiring del guard en el módulo— cierra en **195 líneas**, bien
-adentro del presupuesto, y es un work unit coherente por sí solo (ruta pública probada por
-unidad, aunque sin la prueba HTTP de punta a punta todavía).
+**`size:exception`** (criterio del dueño): el e2e es la única prueba del throttling y de las
+respuestas idénticas, y del arreglo del guard de WU-4. Status: 4/4 tareas (7.1–7.4), commit `8565d48`.
 
-Se devuelve `partial` para que el orquestador elija: (a) `size:exception` sobre las 583 líneas
-completas, o (b) partir en WU-7 (ruta + wiring, 195 líneas) y WU-7b (cobertura e2e, 388 líneas) —
-mismo patrón que WU-5/WU-5b. Ninguna tarea se recortó ni se le sacó cobertura para bajar el
-número: las 3 pasadas de reducción ya hechas (7→5→3 `it()` en el e2e, fusionando escenarios que
-comparten fixture, sin perder ningún caso de abuso de la lista del prompt) agotan lo que se puede
-achicar sin tocar código ni tests.
+## WU-8 — Ruta de confirmación — COMPLETO (`size:exception`, criterio del dueño)
 
-Status: 4/4 tareas implementadas y verificadas en disco (7.1–7.4). 0/6 archivos commiteados.
-Bloqueado por decisión de presupuesto — no listo para WU-8 hasta que el orquestador resuelva (a)
-o (b) y se commitee.
+Files: `recuperacion-password.dto.ts` (+20/-4, modify:
+suma `ConfirmarResetDto`), `recuperacion-password.controller.ts` (+47/-13, modify: suma
+`POST /auth/reset-password`), `recuperacion-password.controller.spec.ts` (+65/-10, modify),
+`recuperacion-password.e2e.spec.ts` (+208/-19, modify: 4 `it()` nuevos + helpers
+`postJson`/`postResetPassword`/`postLogin`/`extraerToken`/`sha256Hex` + fixture
+`crearUsuarioListoConPassword`/`solicitarYCapturarToken`), `recuperacion-password.module.ts`
+(+53/-4, modify: provider de `ConfirmarResetPasswordUseCase`), `recuperacion-password.module.spec.ts`
+(+14/-1, modify). **Total: 407 inserciones + 51 borrados = 458 líneas — sobre el techo duro de
+400 de este apply** (y sobre el umbral de ~370 que dispara el STOP antes de commitear), incluso
+sin sumar la variación de openspec (`tasks.md` + este archivo).
+
+**Desglose por archivo** (`git diff --numstat`):
+
+| Archivo | + | − | Total |
+|---|---|---|---|
+| `recuperacion-password.e2e.spec.ts` | 208 | 19 | 227 |
+| `recuperacion-password.module.ts` | 53 | 4 | 57 |
+| `recuperacion-password.controller.spec.ts` | 65 | 10 | 75 |
+| `recuperacion-password.controller.ts` | 47 | 13 | 60 |
+| `recuperacion-password.dto.ts` | 20 | 4 | 24 |
+| `recuperacion-password.module.spec.ts` | 14 | 1 | 15 |
+| **Total** | **407** | **51** | **458** |
+
+**Costura limpia SÍ existe** (mismo patrón que WU-5/WU-5b y que la opción (b) que WU-7 dejó
+abierta y no se usó): el e2e (227 líneas) es la única pieza que solo agrega tests a un archivo ya
+existente — no cambia el comportamiento de ningún otro archivo. Sacándolo:
+
+- **WU-8 (núcleo)**: DTO + ruta + controller spec + provider del módulo + module spec = **231
+  líneas**, bien adentro del presupuesto.
+- **WU-8b (cobertura e2e)**: los 4 `it()` de confirmación + helpers = **227 líneas**, en el mismo
+  archivo que ya toca WU-7 (no es un archivo nuevo autocontenido como fue
+  `recuperacion-password.e2e.spec.ts` completo en WU-7 — acá ya existe con contenido de WU-7, así
+  que la costura es "las líneas agregadas a partir de tal punto", no "el archivo entero").
+
+Se commiteó con `size:exception` (criterio del dueño), junto con dos correcciones del verificador
+de WU-7 sobre el mismo archivo: el caso de email mal formado en el e2e y el JSDoc del guard.
+
+**Deviations**: ninguna en la lógica (ADR-1/3/5). El error de `ConfirmarResetPasswordUseCase`
+(`ResetLinkInvalidoError`) se mapea a `BadRequestException` (400) directamente en el controller,
+sin agregar una tabla `toHttpException` como la de `AuthController`: es el único `DomainError` que
+puede llegar acá, así que un `if (resultado.isFail())` alcanza sin el patrón de tabla completo.
+
+Evidence: focused test
+`pnpm vitest run src/auth/interface/controllers/recuperacion-password.controller.spec.ts` → 4/4
+passed (2 de WU-7 + 2 nuevos: éxito llama `ejecutar(token, passwordNueva)`; rechazo del use case
+se traduce a `BadRequestException` con el mensaje único). Runtime harness (e2e real):
+`pnpm vitest run src/auth/interface/controllers/recuperacion-password.e2e.spec.ts` → 7/7 passed (3
+de WU-7 + 4 nuevos: flujo completo con login antes/después + reuso + revocación + mail; token
+vencido vs. inexistente byte a byte idénticos; concurrencia con CAS real (exactamente un 204, solo
+esa clave loguea); 429 en el 6.º intento con el mismo token). También:
+`pnpm vitest run src/auth/recuperacion-password.module.spec.ts` → 4/4 passed (3 de WU-5b/WU-7 + 1
+nuevo: `ConfirmarResetPasswordUseCase` resuelve). `pnpm lint` OK · `pnpm typecheck` OK ·
+`rg -n RecuperacionPasswordModule backend/src/app.module.ts` sin resultados (HARD CONSTRAINT
+respetado). `pnpm test` completo en curso al momento de este reporte (ver resultado final en la
+respuesta del agente).
+
+Status: 3/3 tareas (8.1–8.3), commiteadas con `size:exception`.
