@@ -19,6 +19,7 @@ tasks_progress:
     - wu07
     - wu08a
     - wu08b
+    - wu09
   pending: []
 last_updated: 2026-09-29
-last_completed_wu: wu08b
+last_completed_wu: wu09

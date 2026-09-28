@@ -111,6 +111,19 @@ describe('CHECK calendario_laboral_dias_cliente — Integration (WU-1, sdd/horar
     ).rejects.toThrow(DIA_SEMANA_CHECK);
   });
 
+  // WU-9 (fix W6, verify-report.md): `dia_semana BETWEEN 0 AND 6` tiene DOS
+  // extremos — el test de arriba solo ejerce el de arriba (7). Sin este, un
+  // CHECK que perdiera el piso (p. ej. `dia_semana <= 6`, sin `>= 0`)
+  // sobrevivía sin que ningún test de este archivo lo detectara.
+  it('CHECK dia_semana_check rechaza dia_semana = -1 (fuera de 0..6)', async () => {
+    await expect(
+      rawClient.query(
+        `INSERT INTO calendario_laboral_dias_cliente (dia_semana, apertura_minuto, cierre_minuto, updated_at)
+         VALUES (-1, NULL, NULL, now())`,
+      ),
+    ).rejects.toThrow(DIA_SEMANA_CHECK);
+  });
+
   describe('CHECK ventana_check — INSERT raw', () => {
     // La PK (dia_semana) cubre 0..6 con las 7 filas fijas del seed. Para
     // ejercer el INSERT (no el UPDATE) sin confundirlo con el CHECK de

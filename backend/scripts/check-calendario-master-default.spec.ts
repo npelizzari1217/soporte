@@ -38,6 +38,37 @@ describe('compararConDefault() — evaluacion pura de las 7 filas', () => {
     expect(resultado.motivo).toContain('encontrado apertura=480 cierre=720');
   });
 
+  // WU-9 (fix W3, verify-report.md): el caso de arriba cambia AMBOS extremos
+  // a la vez. El design (fila Adversarial, "Estrategia de testing") pide que
+  // el guard NO acepte que el lunes cambie SOLO la apertura o SOLO el
+  // cierre — un chequeo que solo comparara "algo cambio en la fila" sin
+  // mirar cada columna por separado podia dejar pasar uno de los dos.
+  it('un dia con SOLO la apertura cambiada falla', () => {
+    const filas = FILAS_DEFAULT.map((f) =>
+      f.dia_semana === 1 ? { ...f, apertura_minuto: 600 } : f,
+    );
+
+    const resultado = compararConDefault(filas);
+
+    expect(resultado.ok).toBe(false);
+    expect(resultado.motivo).toContain('dia_semana=1');
+    expect(resultado.motivo).toContain('esperado apertura=540 cierre=1080');
+    expect(resultado.motivo).toContain('encontrado apertura=600 cierre=1080');
+  });
+
+  it('un dia con SOLO el cierre cambiado falla', () => {
+    const filas = FILAS_DEFAULT.map((f) =>
+      f.dia_semana === 1 ? { ...f, cierre_minuto: 1020 } : f,
+    );
+
+    const resultado = compararConDefault(filas);
+
+    expect(resultado.ok).toBe(false);
+    expect(resultado.motivo).toContain('dia_semana=1');
+    expect(resultado.motivo).toContain('esperado apertura=540 cierre=1080');
+    expect(resultado.motivo).toContain('encontrado apertura=540 cierre=1020');
+  });
+
   it('una fila faltante (6 en vez de 7) falla', () => {
     const filas = FILAS_DEFAULT.filter((f) => f.dia_semana !== 6);
 

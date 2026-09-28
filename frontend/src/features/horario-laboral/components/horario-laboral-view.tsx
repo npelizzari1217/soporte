@@ -19,11 +19,22 @@
  *   `notifyError`.
  * - El botón se deshabilita solo mientras `guardarMutation.isPending`
  *   (`guardando`, prop de `HorarioLaboralForm`).
- * - Al tener éxito: `guardarMutation.data` (el horario leído después del
- *   commit, D6) pasa a ser `valoresIniciales`, lo que dispara el `reset`
- *   interno de `HorarioLaboralForm` (su `useEffect` sobre
+ * - Al tener éxito: `useGuardarHorarioLaboral` (WU-9, fix W1) escribe el
+ *   horario devuelto DIRECTO en la cache de `useHorarioLaboral` vía
+ *   `setQueryData`, así que `valoresIniciales` — que acá SOLO sale de
+ *   `horarioQuery.data`, nunca de `guardarMutation.data` — se actualiza y
+ *   dispara el `reset` interno de `HorarioLaboralForm` (su `useEffect` sobre
  *   `valoresIniciales`) sin esperar el refetch en segundo plano — y
  *   `notifySuccess`.
+ *
+ * D16 tenía un agujero (W1, verify-report.md): `valoresIniciales` salía de
+ * `guardarMutation.data ?? horarioQuery.data`, y `data` de una mutación de
+ * React Query vuelve a `undefined` apenas arranca la SIGUIENTE `mutate` — así
+ * que un segundo guardado fallido, después de uno exitoso, reseteaba el form
+ * a `horarioQuery.data` (todavía sin refetchear) ANTES de que llegara el 422
+ * o el 500, y la edición en curso se perdía. Con `valoresIniciales` atado
+ * SOLO a la query (y esa query ya actualizada por `setQueryData` en el
+ * guardado previo), un guardado en curso no toca la fuente del form.
  */
 import { useSession } from "@/shared/hooks/use-session";
 import { DetailSkeleton } from "@/components/shared/skeletons";
@@ -78,7 +89,7 @@ export function HorarioLaboralView() {
         description="Ventana horaria semanal usada para calcular los vencimientos de SLA hábiles."
       />
       <HorarioLaboralForm
-        valoresIniciales={guardarMutation.data ?? horarioQuery.data}
+        valoresIniciales={horarioQuery.data}
         soloLectura={!esAdminCliente}
         guardando={guardarMutation.isPending}
         errorServidor={guardarMutation.isError ? mensajeErrorGuardado(guardarMutation.error) : null}

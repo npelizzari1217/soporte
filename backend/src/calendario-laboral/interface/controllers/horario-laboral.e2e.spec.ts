@@ -103,6 +103,13 @@ function horarioSeisDias(): DiaHorarioBody[] {
   return HORARIO_DEFAULT.slice(0, 6);
 }
 
+/** Lunes (1) con apertura >= cierre: DTO válida en forma, el VO la rechaza (S2, verify-report.md). */
+function horarioAperturaMayorQueCierre(): DiaHorarioBody[] {
+  return HORARIO_DEFAULT.map((dia) =>
+    dia.diaSemana === 1 ? { ...dia, aperturaMinuto: 1080, cierreMinuto: 540 } : dia,
+  );
+}
+
 type Headers = Record<string, string>;
 
 async function httpGet<T = unknown>(
@@ -282,6 +289,24 @@ describe('HorarioLaboralController e2e — matriz de guards y aislamiento A/B (W
     const put = await httpPut(
       `${baseUrl}/horario-laboral`,
       { dias: horarioDiaRepetido() },
+      bearer(adminA()),
+    );
+    expect(put.status).toBe(422);
+
+    const { data } = await httpGet<HorarioLaboralResponseDto>(
+      `${baseUrl}/horario-laboral`,
+      bearer(adminA()),
+    );
+    expect(data.dias).toEqual(HORARIO_DEFAULT);
+  });
+
+  // WU-9 (S2, verify-report.md): antes esta escena solo estaba probada por
+  // composición (VO spec + "no llama a txRunner.run" del use-case spec +
+  // el único mapeo a 422 del controller) — acá va la prueba HTTP end-to-end.
+  it('[CRITICAL] PUT con apertura >= cierre en un día → 422; el GET posterior no cambió', async () => {
+    const put = await httpPut(
+      `${baseUrl}/horario-laboral`,
+      { dias: horarioAperturaMayorQueCierre() },
       bearer(adminA()),
     );
     expect(put.status).toBe(422);

@@ -2,8 +2,13 @@
 // LECTURA. Antes de correr el seed de `calendario_laboral_dias_cliente`
 // (WU-1, migracion 20260928150000) hay que confirmar que la master de
 // produccion TODAVIA esta en el default lun-vie 540-1080 (9-18hs) y
-// sab/dom NULL: si alguien la cambio a mano, el seed nuevo copiaria un
-// horario que el cliente NO eligio, silenciosamente.
+// sab/dom NULL: el seed es FIJO y NUNCA lee master, asi que el riesgo es el
+// inverso — si alguien la cambio a mano, el deploy cambiaria en silencio el
+// horario vigente (y el sla_vence_at) de TODOS los clientes al valor fijo
+// del seed.
+//
+// Correccion del 2026-09-29 (fix W5, verify-report.md): antes decia que el
+// seed nuevo "copiaria" un horario ajeno. El seed nunca lee master.
 //
 // No crea, edita ni borra nada: un solo SELECT contra
 // `calendario_laboral_dias` en master. Exit 0 = default confirmado.

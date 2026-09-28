@@ -242,6 +242,31 @@ corte limpio. WU-8a-i: la fila y su test (8a.1). WU-8a-ii: el formulario de 7 fi
 
 ---
 
+## WU-9 — Corrección post-verify (PASS WITH WARNINGS)
+
+**Branch**: `feat/horario-laboral-por-cliente-wu09` · **Base**: `feat/horario-laboral-por-cliente-wu08b`
+
+Una única corrección acotada sobre los hallazgos de `verify-report.md` (`PASS WITH WARNINGS`,
+0 CRITICAL, 7 WARNING, 4 SUGGESTION). No reabre el diseño: cada tarea es el "Minimal fix" que
+ya proponía el reporte.
+
+- [x] 9.1 (W1, real) `use-guardar-horario-laboral.ts`: `onSuccess` escribe el horario devuelto en la cache con `setQueryData` (mantiene `invalidateQueries`); `horario-laboral-view.tsx`: `valoresIniciales` sale SOLO de `horarioQuery.data`. Regresión: editar → guardar OK → editar de nuevo → guardar falla con 422 → la segunda edición sigue en los inputs.
+- [x] 9.2 (S3) Los tests 422/500 de `horario-laboral-view.test.tsx` editan un campo antes de guardar, para que "conserva sus valores" deje de ser trivialmente cierto.
+- [x] 9.3 (W2) `aplicar-sla-horario-cliente.e2e.spec.ts`: el cambio de horario de A pasa por `GuardarHorarioLaboralUseCase` real, cableado con `PrismaCalendarioLaboralSemanalRepository` y `PrismaTenantTransactionRunner` reales, en vez del `update` directo por Prisma.
+- [x] 9.4 (W3) `check-calendario-master-default.spec.ts`: dos casos nuevos — SOLO la apertura del lunes cambiada, SOLO el cierre cambiado.
+- [x] 9.5 (W4) `aplicar-sla-habil-feriados.e2e.spec.ts`: inserta la fecha del feriado global también como feriado propio de A (raw insert) y mantiene la misma fecha de vencimiento esperada.
+- [x] 9.6 (W5) Reescribe el motivo de la precondición de deploy en `DEPLOY-VPS-runbook.md:109-111`, `deploy.ps1` (comentario 5a) y el header de `check-calendario-master-default.mjs`: el seed es FIJO, nunca copia master; el riesgo es el inverso.
+- [x] 9.7 (W6) `calendario-laboral-dias-cliente-check.integration.spec.ts`: agrega el caso `dia_semana = -1`; corrige la afirmación falsa de `apply-progress.md:10`.
+- [x] 9.8 (W7) Corrige los dos comentarios "calendario global" obsoletos: `prisma_master/schema.prisma:483` y `aplicar-sla.use-case.spec.ts:440`.
+- [x] 9.9 (S2) `horario-laboral.e2e.spec.ts`: agrega el caso HTTP "apertura >= cierre → 422, sin escritura".
+
+**Test enfocado**: `(cd backend && pnpm vitest run src/calendario-laboral src/sla/infrastructure/listeners scripts/check-calendario-master-default.spec.ts) && (cd frontend && pnpm vitest run src/features/horario-laboral)`
+**Verificación**: `pnpm lint` · `pnpm typecheck` (backend) · `pnpm lint` · `pnpm type-check` (frontend) · `rg -n '[^\x00-\x7F]' deploy.ps1` (debe imprimir nada)
+**Runtime harness**: e2e HTTP y de listener contra Postgres real (mismos harnesses que WU-4/WU-5c/WU-6b); integration spec de CHECK contra DB tenant efímera.
+**Rollback boundary**: revertir el commit de WU-9 deja el ciclo en el estado `PASS WITH WARNINGS` verificado el 2026-09-29 — ningún archivo de WU-1 a WU-8b se toca.
+
+---
+
 ## Nota final (no es un work unit — corre en `sdd-archive`)
 
 - A.1 (en `sdd-archive`) En `docs/roadmap-comercial.md`, pasar la cláusula "calendario por cliente con default 9-18 lun-vie" del Punto 5 de **Desviación** a **Cumplida**, y confirmar `scripts/check-roadmap-fresco.mjs` en verde. (Req: La viñeta del roadmap declara el cierre)

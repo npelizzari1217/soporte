@@ -480,7 +480,10 @@ model CalendarioLaboralDia {
 // ─── FERIADOS (feriados de día completo, sdd/sla-habil) ──────────────────────
 //
 // Cada fila = un día completo cerrado para el cálculo de SLA (REQ-2), sin
-// importar el día de semana en que caiga. Global, igual que el calendario.
+// importar el día de semana en que caiga. Global — a diferencia del horario
+// laboral, que desde `horario-laboral-por-cliente` es POR CLIENTE (tabla
+// `calendario_laboral_dias_cliente`, tenant); esta tabla sigue viviendo en
+// MASTER (fix W7, verify-report.md, WU-9).
 //
 // TRAMPA DE `@db.Date`: Prisma devuelve esta columna como MEDIANOCHE UTC del
 // día calendario. Aplicarle `desplazarAArgentina` (shared/domain/zona-horaria-argentina.ts)

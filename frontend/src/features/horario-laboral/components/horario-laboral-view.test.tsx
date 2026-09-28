@@ -93,7 +93,7 @@ describe("HorarioLaboralView (task 8b.3, WU-8b)", () => {
     [422, "Debe quedar al menos un día abierto."],
     [500, "Error interno"],
   ])(
-    "un %i al guardar conserva el form con sus valores, muestra el alert inline y llama a notifyError",
+    "un %i al guardar conserva el form CON LA EDICIÓN en curso, muestra el alert inline y llama a notifyError (regresión S3/W1)",
     async (statusCode, mensaje) => {
       mockGetOk();
       server.use(
@@ -104,15 +104,58 @@ describe("HorarioLaboralView (task 8b.3, WU-8b)", () => {
       renderWithProviders(<HorarioLaboralView />, { user: buildUser({ rol: "ADMINISTRADOR" }) });
 
       await screen.findByRole("button", { name: /guardar/i });
+      // Edita ANTES de guardar (S3): sin esto, "conserva sus valores" es
+      // trivialmente cierto porque nunca cambió nada.
+      await user.click(screen.getByRole("checkbox", { name: "Martes" }));
+      expect(screen.getByRole("checkbox", { name: "Martes" })).not.toBeChecked();
+
       await user.click(screen.getByRole("button", { name: /guardar/i }));
 
       expect(await screen.findByRole("alert")).toHaveTextContent(mensaje);
-      // el form sigue montado con sus valores: el checkbox de lunes conserva su estado.
+      // el form sigue montado CON la edición: ni el checkbox de lunes (sin
+      // tocar) ni la edición de martes (recién hecha) se pierden.
       expect(screen.getByRole("checkbox", { name: "Lunes" })).toBeChecked();
+      expect(screen.getByRole("checkbox", { name: "Martes" })).not.toBeChecked();
       expect(screen.getByRole("button", { name: /guardar/i })).toBeInTheDocument();
       await waitFor(() => expect(toast.error).toHaveBeenCalledWith(mensaje));
     },
   );
+
+  it("un guardado exitoso seguido de un guardado fallido conserva la SEGUNDA edición (regresión W1)", async () => {
+    mockGetOk();
+    let intentos = 0;
+    server.use(
+      http.put("/api/horario-laboral", () => {
+        intentos += 1;
+        if (intentos === 1) return HttpResponse.json({ dias: NUEVOS_DIAS });
+        return HttpResponse.json(
+          { statusCode: 422, message: "Debe quedar al menos un día abierto." },
+          { status: 422 },
+        );
+      }),
+    );
+
+    const user = userEvent.setup();
+    renderWithProviders(<HorarioLaboralView />, { user: buildUser({ rol: "ADMINISTRADOR" }) });
+
+    // Primer guardado: exitoso, sin editar nada.
+    await screen.findByRole("button", { name: /guardar/i });
+    await user.click(screen.getByRole("button", { name: /guardar/i }));
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Horario laboral guardado."));
+
+    // Segunda edición, DESPUÉS del guardado exitoso: destilda martes.
+    await user.click(screen.getByRole("checkbox", { name: "Martes" }));
+    expect(screen.getByRole("checkbox", { name: "Martes" })).not.toBeChecked();
+
+    // Segundo guardado: falla con 422.
+    await user.click(screen.getByRole("button", { name: /guardar/i }));
+    await screen.findByRole("alert");
+
+    // La segunda edición sigue en los inputs — antes de W1, el `reset` que
+    // dispara `guardarMutation.data` volviendo a `undefined` la pisaba con
+    // el valor todavía sin refetchear.
+    expect(screen.getByRole("checkbox", { name: "Martes" })).not.toBeChecked();
+  });
 
   it("el botón Guardar se deshabilita solo mientras la mutación está isPending", async () => {
     mockGetOk();
@@ -136,8 +179,19 @@ describe("HorarioLaboralView (task 8b.3, WU-8b)", () => {
   });
 
   it("al guardar con éxito, la grilla se resetea con el horario devuelto por el servidor y notifica éxito", async () => {
-    mockGetOk();
-    server.use(http.put("/api/horario-laboral", () => HttpResponse.json({ dias: NUEVOS_DIAS })));
+    // GET refleja el guardado a partir de la 2da llamada — mismo criterio
+    // que el 1er test de este archivo: un backend real devuelve el dato ya
+    // guardado en el refetch que dispara `invalidateQueries` (WU-9, fix W1:
+    // `valoresIniciales` ahora sale solo de la query, así que un GET mockeado
+    // que ignorara el guardado pisaría el `setQueryData` con el default viejo).
+    let cargas = 0;
+    server.use(
+      http.get("/api/horario-laboral", () => {
+        cargas += 1;
+        return HttpResponse.json({ dias: cargas === 1 ? DEFAULT_DIAS : NUEVOS_DIAS });
+      }),
+      http.put("/api/horario-laboral", () => HttpResponse.json({ dias: NUEVOS_DIAS })),
+    );
 
     const user = userEvent.setup();
     renderWithProviders(<HorarioLaboralView />, { user: buildUser({ rol: "ADMINISTRADOR" }) });

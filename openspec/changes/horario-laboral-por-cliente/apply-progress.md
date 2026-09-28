@@ -7,7 +7,7 @@
 ### Completed Tasks
 - [x] 1.1 Modelo `CalendarioLaboralDiaCliente` (`calendario_laboral_dias_cliente`) en `backend/prisma_tenant/schema.prisma`, mismo shape/CHECK que `CalendarioLaboralDia` de master.
 - [x] 1.2 Migración `backend/prisma_tenant/migrations/20260928150000_calendario_laboral_dias_cliente/migration.sql`: CREATE, los dos CHECK y el seed `ON CONFLICT DO NOTHING` (SQL exacto de D1).
-- [x] 1.3 `calendario-laboral-dias-cliente-check.integration.spec.ts`: seed de 7 filas, cada violación de CHECK (incluye `dia_semana = 7` y `-1`), y re-ejecutar el seed no pisa una fila editada.
+- [x] 1.3 `calendario-laboral-dias-cliente-check.integration.spec.ts`: seed de 7 filas, cada violación de CHECK (incluye `dia_semana = 7`; el `-1` de esta lista original era de `apertura_minuto`, no de `dia_semana` — el caso `dia_semana = -1` se agregó en WU-9, fix W6 de `verify-report.md`), y re-ejecutar el seed no pisa una fila editada.
 
 ### Files Changed
 | File | Action | What Was Done |
@@ -442,3 +442,53 @@ None.
 
 ### Status
 4/4 tasks de WU-8b completas. Ready for verify. Con esto, las 11 work units del ciclo `horario-laboral-por-cliente` quedan completas (WU-1 a WU-8b); solo restan las notas A.1/A.2 de `sdd-archive`.
+
+## WU-9 — Corrección post-verify (PASS WITH WARNINGS)
+
+**Branch**: `feat/horario-laboral-por-cliente-wu09` · **Base**: `feat/horario-laboral-por-cliente-wu08b` · **Status**: Complete
+
+Una única corrección acotada sobre `verify-report.md` (PASS WITH WARNINGS, 0 CRITICAL, 7 WARNING,
+4 SUGGESTION). Cubre W1-W7 y S2; S1 y S4 quedan fuera (documentación/PR, no código de este ciclo).
+
+### Completed Tasks
+- [x] 9.1 (W1, real) `useGuardarHorarioLaboral.onSuccess` escribe el horario en la cache con `setQueryData` antes de `invalidateQueries`; `HorarioLaboralView.valoresIniciales` sale solo de `horarioQuery.data`. Regresión agregada y probada RED sobre el código previo (ver Work Unit Evidence).
+- [x] 9.2 (S3) `horario-laboral-view.test.tsx`: el `it.each` de 422/500 ahora destilda un día antes de guardar y afirma que la edición sobrevive al error.
+- [x] 9.3 (W2) `aplicar-sla-horario-cliente.e2e.spec.ts`: reemplazado el `update` directo por `GuardarHorarioLaboralUseCase` real (mismos repos/tx runner que `HorarioLaboralModule` cablea por DI). Probado RED con una mutación scratch (ver Work Unit Evidence).
+- [x] 9.4 (W3) `check-calendario-master-default.spec.ts`: casos nuevos para "solo apertura" y "solo cierre" del lunes.
+- [x] 9.5 (W4) `aplicar-sla-habil-feriados.e2e.spec.ts`: inserta `FECHA_GLOBAL` también como feriado propio de A (raw insert); la aserción del vencimiento ya existente queda como prueba del dedup real-DB.
+- [x] 9.6 (W5) Reescrito el motivo en `DEPLOY-VPS-runbook.md`, `deploy.ps1` (comentario 5a) y el header de `check-calendario-master-default.mjs`: el seed es fijo y nunca lee master; el riesgo es el inverso (una master editada movería el horario de todos los clientes).
+- [x] 9.7 (W6) `calendario-laboral-dias-cliente-check.integration.spec.ts`: agregado el caso `dia_semana = -1`. Corregida la afirmación falsa de la línea 10 de este mismo archivo (arriba, sección WU-1).
+- [x] 9.8 (W7) Corregidos los comentarios de `prisma_master/schema.prisma:483` (Feriado sigue global) y `aplicar-sla.use-case.spec.ts` (docstring: calendario es de tenant, feriados de master+cliente).
+- [x] 9.9 (S2) `horario-laboral.e2e.spec.ts`: caso HTTP nuevo "apertura >= cierre → 422, GET sin cambios".
+
+### Files Changed
+Frontend (W1/S3): `use-guardar-horario-laboral.ts`, `horario-laboral-view.tsx`, `horario-laboral-view.test.tsx`.
+Backend (W2-W7, S2): `aplicar-sla-horario-cliente.e2e.spec.ts`, `check-calendario-master-default.spec.ts`,
+`aplicar-sla-habil-feriados.e2e.spec.ts`, `DEPLOY-VPS-runbook.md`, `deploy.ps1`,
+`check-calendario-master-default.mjs`, `calendario-laboral-dias-cliente-check.integration.spec.ts`,
+`prisma_master/schema.prisma`, `aplicar-sla.use-case.spec.ts`, `horario-laboral.e2e.spec.ts`. Detalle
+por ítem en "Completed Tasks" arriba.
+
+### Deviations from Design
+None — ninguna de las nueve correcciones toca una decisión de `design.md`; todas son las de
+"Minimal fix" que `verify-report.md` ya proponía.
+
+### Issues Found
+None nuevos. `verify-report.md` sigue siendo la fuente de los hallazgos que esta unidad cierra.
+
+### Work Unit Evidence
+| Evidence | Value |
+|---|---|
+| Focused test command and exact result | `(cd backend && pnpm vitest run src/calendario-laboral src/sla/infrastructure/listeners scripts/check-calendario-master-default.spec.ts) && (cd frontend && pnpm vitest run src/features/horario-laboral)` — ver `## Verification` del reporte de retorno de `sdd-apply` |
+| Runtime harness command/scenario and exact result | e2e HTTP y de listener contra Postgres real (WU-4/WU-5c/WU-6b); integration spec de CHECK contra DB tenant efímera — ver `## Verification` del reporte de retorno |
+| Rollback boundary | Revertir el commit de WU-9 vuelve al estado `PASS WITH WARNINGS` verificado el 2026-09-29; ningún archivo de WU-1 a WU-8b se toca |
+| RED proof — W1 | Con el fix revertido, el test "guardado exitoso seguido de un guardado fallido conserva la SEGUNDA edición" falla; restaurado, pasa |
+| RED proof — W2 | Un `reemplazar()` que además tocara `ticket` (mutación scratch, disparada DESDE `GuardarHorarioLaboralUseCase`) hace fallar la aserción `venceInicialA` del e2e |
+| RED proof — W6 | `dia_semana BETWEEN 0 AND 6` sin el piso (`>= 0`) aceptaría `-1`: razonado del CHECK de `migration.sql:33`, sin editar el archivo aplicado |
+
+### Workload / PR Boundary
+- Mode: chained PR slice (stacked-to-main) · Boundary: corrige W1-W7 y S2 de `verify-report.md`; no toca ninguna migración aplicada ni corre DDL destructivo
+- Review budget: ver `git diff --shortstat HEAD~1 HEAD` en el reporte de retorno
+
+### Status
+9/9 tasks de WU-9 completas. Ready for verify.

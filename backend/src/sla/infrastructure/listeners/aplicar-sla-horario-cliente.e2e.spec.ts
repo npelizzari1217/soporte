@@ -11,10 +11,17 @@
  * (sdd/feriados-configurables): el camino real bajo prueba es
  * `AplicarSlaListener.onTicketCreado/onTicketReprioritizado`, no HTTP.
  *
- * El endpoint de escritura del horario (WU-5/WU-6a) todavía no existe: el
- * cambio de horario de A se escribe DIRECTO contra
- * `calendarioLaboralDiaCliente` (Prisma), sin pasar por ningún caso de uso.
+ * WU-9 (fix W2, verify-report.md): el cambio de horario de A pasa por
+ * `GuardarHorarioLaboralUseCase` REAL, cableado a mano con
+ * `PrismaCalendarioLaboralSemanalRepository` (lectura Y escritura, WU-3/WU-5)
+ * y `PrismaTenantTransactionRunner` (transacción de tenant real, D6). Antes
+ * de WU-9 el cambio se escribía DIRECTO contra `calendarioLaboralDiaCliente`
+ * (Prisma), sin pasar por ningún caso de uso — eso dejaba a la escena "guardar
+ * el horario no recalcula el SLA de tickets abiertos" sin cobertura real del
+ * camino de guardado: una mutación que hiciera recalcular o tocar tickets
+ * abiertos DESDE el use case podía sobrevivir sin que este spec la detectara.
  *
+
  * Fechas 2031 para no depender de qué feriado venga sembrado por la
  * migración (rango 2026-2028). Ancla fija de creación: lunes 2031-04-07
  * 12:00 UTC (09:00 ART), la MISMA para las 4 cuentas de tickets — así A
@@ -59,6 +66,8 @@ import { AplicarSlaListener } from './aplicar-sla.listener';
 import { PrismaCalendarioLaboralSemanalRepository } from '../../../calendario-laboral/infrastructure/persistence/prisma/prisma-calendario-laboral-semanal.repository';
 import { PrismaFeriadosLaboralesRepository } from '../../../calendario-laboral/infrastructure/persistence/prisma/prisma-feriados-laborales.repository';
 import { CalcularSlaHabilVenceService } from '../../../calendario-laboral/domain/services/calcular-sla-habil-vence.service';
+import { GuardarHorarioLaboralUseCase } from '../../../calendario-laboral/application/use-cases/guardar-horario-laboral.use-case';
+import { PrismaTenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 
 import { TicketCreadoEvent } from '../../../tickets/domain/events/ticket-creado.event';
 import { TicketReprioritizadoEvent } from '../../../tickets/domain/events/ticket-reprioritizado.event';
@@ -83,6 +92,8 @@ describe('SLA HABIL e2e — horario laboral por cliente gobierna el vencimiento 
   let prismaService: PrismaService;
   let tenantContext: TenantContext;
   let aplicarSlaListener: AplicarSlaListener;
+
+  let guardarHorarioUseCase: GuardarHorarioLaboralUseCase;
 
   let tenantAClient: ReturnType<PrismaService['getTenantClient']>;
   let tenantBClient: ReturnType<PrismaService['getTenantClient']>;
@@ -194,6 +205,16 @@ describe('SLA HABIL e2e — horario laboral por cliente gobierna el vencimiento 
       new PrismaFeriadosLaboralesRepository(prismaService, tenantContext),
     );
     aplicarSlaListener = new AplicarSlaListener(useCase, logger);
+
+    // WU-9 (fix W2): mismo repo que la lectura (implementa los dos puertos,
+    // WU-5) más un `PrismaTenantTransactionRunner` real — la MISMA
+    // composición que `HorarioLaboralModule` cablea vía DI para el `PUT`.
+    const calendarioEscrituraRepo = new PrismaCalendarioLaboralSemanalRepository(tenantContext);
+    guardarHorarioUseCase = new GuardarHorarioLaboralUseCase(
+      calendarioEscrituraRepo,
+      calendarioEscrituraRepo,
+      new PrismaTenantTransactionRunner(tenantContext, logger),
+    );
   }, 90_000);
 
   afterAll(async () => {
@@ -232,16 +253,26 @@ describe('SLA HABIL e2e — horario laboral por cliente gobierna el vencimiento 
     expect(venceInicialA?.toISOString()).toBe('2031-04-07T20:00:00.000Z');
 
     // Escenario "Guardar el horario no recalcula el SLA de tickets abiertos":
-    // se escribe el horario nuevo de A DIRECTO en la tabla (el endpoint de
-    // escritura llega en WU-5/WU-6a) — lun-vie pasa a 08:00-12:00 ART
-    // (480-720 minutos). Nada dispara `AplicarSlaUseCase` al guardar: el
-    // vencimiento ya fijado de A no cambia.
-    for (let diaSemana = 1; diaSemana <= 5; diaSemana++) {
-      await tenantAClient.calendarioLaboralDiaCliente.update({
-        where: { diaSemana },
-        data: { aperturaMinuto: 480, cierreMinuto: 720 },
-      });
-    }
+    // el horario nuevo de A pasa por `GuardarHorarioLaboralUseCase` REAL
+    // (WU-9, fix W2) — lun-vie pasa a 08:00-12:00 ART (480-720 minutos),
+    // domingo y sábado siguen cerrados. Nada en el caso de uso toca
+    // `ticket`: el vencimiento ya fijado de A no cambia.
+    const guardado = await tenantContext.run(
+      { prismaClient: tenantAClient, dbName: DB_A, clienteId: 'horario-cliente-e2e-A' },
+      () =>
+        guardarHorarioUseCase.execute({
+          dias: [
+            { diaSemana: 0, aperturaMinuto: null, cierreMinuto: null },
+            { diaSemana: 1, aperturaMinuto: 480, cierreMinuto: 720 },
+            { diaSemana: 2, aperturaMinuto: 480, cierreMinuto: 720 },
+            { diaSemana: 3, aperturaMinuto: 480, cierreMinuto: 720 },
+            { diaSemana: 4, aperturaMinuto: 480, cierreMinuto: 720 },
+            { diaSemana: 5, aperturaMinuto: 480, cierreMinuto: 720 },
+            { diaSemana: 6, aperturaMinuto: null, cierreMinuto: null },
+          ],
+        }),
+    );
+    expect(guardado.isOk()).toBe(true);
     expect((await slaVenceAtDe(tenantAClient, ticketA.id))?.toISOString()).toBe(
       venceInicialA?.toISOString(),
     );

@@ -106,9 +106,11 @@ Salida esperada, exacta (7 filas — lun-vie 9-18hs, sáb/dom sin horario):
           6 |                 |
 ```
 
-Cualquier diferencia bloquea el seed de `calendario_laboral_dias_cliente` (WU-1): ese seed copia
-el default de master a cada tenant, y una master editada a mano copiaría un horario que ningún
-cliente eligió.
+Cualquier diferencia bloquea el seed de `calendario_laboral_dias_cliente` (WU-1): ese seed es
+FIJO (lun-vie 9-18), nunca copia el valor de master. El riesgo es el inverso — si master difiere,
+el deploy cambiaría en silencio el horario vigente (y con él, `sla_vence_at`) de TODOS los
+clientes al valor fijo del seed. **Corrección del 2026-09-29** (fix W5, `verify-report.md`): acá
+decía que el seed "copia el default de master a cada tenant". El seed nunca lee master.
 
 | Qué | Valor |
 |---|---|
