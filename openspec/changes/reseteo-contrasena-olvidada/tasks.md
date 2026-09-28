@@ -35,7 +35,7 @@ Rama base: `main`. Ramas: `feat/reseteo-contrasena-olvidada-wu01` … `wu11`. PR
 | 7 | DTO + ruta solicitud + controller spec + e2e solicitud | PR 7 (base PR6) | `pnpm vitest run backend/src/auth/interface/controllers/recuperacion-password.controller.spec.ts` | `usarLockMasterTest()`; e2e con `TestHarnessModule` propio (`csat.e2e.spec.ts:91`), `overrideProvider(EMAIL_SENDER)` fake, `esperarPendientes()` | revert PR7: DTO/ruta en módulo aún no registrado |
 | 8 | DTO + ruta confirmación + controller spec + e2e confirmación | PR 8 (base PR7) | `pnpm vitest run backend/src/auth/interface/controllers/recuperacion-password.e2e.spec.ts` | idem WU-7 | revert PR8 sin afectar anteriores |
 | 9 | FE: schemas + hooks | PR 9 (base PR8) | `pnpm vitest run frontend/src/features/auth/schemas.test.ts` | N/A — hooks sin página que los use | revert PR9: schemas/hooks sin import |
-| 10 | FE: form + página restablecer + middleware | PR 10 (base PR9) | `pnpm vitest run frontend/src/app/(auth)/restablecer-password` | Playwright manual: navegar `/restablecer-password#token=x` | revert PR10: ruta pública desregistrada en `middleware.ts` |
+| 10 | FE: form + página restablecer + middleware | PR 10 (base PR9) | `pnpm vitest run frontend/src/app/(auth)/restablecer-password` | Playwright manual: navegar la ruta de restablecer con `#token=x` | revert PR10: ruta pública desregistrada en `middleware.ts` |
 | 11 | FE: form + página solicitud, link login, Ayuda, registro del módulo | PR 11 (base PR10) | `pnpm vitest run frontend/src/app/(auth)/olvide-password frontend/src/features/auth/components/LoginForm.test.tsx` | e2e completo: `POST /auth/forgot-password` real contra app montada | revert PR11: `app.module.ts` deja de montar el módulo, rutas vuelven a 404 |
 
 ---
@@ -293,7 +293,7 @@ Files: `frontend/src/features/auth/schemas.ts` + `schemas.test.ts` (modify),
       429 aviso de límite; 0/5xx infraestructura (criterio `mensajeDeErrorDeLogin`). [Req 1,
       Req 14]
 - [x] 9.4 `use-restablecer-password.ts`: 400 → "link no válido o vencido" con enlace a
-      `/olvide-password`. [Req 6, Req 14]
+      la ruta `olvide-password`. [Req 6, Req 14]
 - [x] 9.5 Tests de schemas y hooks para cada rama de mensaje.
 
 Focused test: `pnpm vitest run frontend/src/features/auth/schemas.test.ts`
@@ -302,16 +302,21 @@ Rollback boundary: revert de PR9; hooks y schemas sin página que los importe.
 
 ## WU-10 — Frontend: página de restablecer + middleware
 
+**`size:exception`** (criterio del dueño, 2026-09-28): corrección del verificador independiente.
+Un 429 o un error de red/5xx ocultaba el formulario sin salida (el token ya no estaba en la
+URL); ahora el formulario sigue visible para reintentar. El middleware pasa a coincidencia exacta
+para rutas sin `/` final. Partir habría separado el arreglo de sus tests.
+
 Files: `frontend/src/features/auth/components/RestablecerPasswordForm.tsx` + test (create),
 `frontend/src/app/(auth)/restablecer-password/page.tsx` + test (create),
 `frontend/src/middleware.ts` + `middleware.test.ts` (modify)
 
-- [ ] 10.1 `RestablecerPasswordForm.tsx` (presentacional): valida localmente largo mínimo e
+- [x] 10.1 `RestablecerPasswordForm.tsx` (presentacional): valida localmente largo mínimo e
       igualdad antes de enviar. [Req 14]
-- [ ] 10.2 `page.tsx`: lee `window.location.hash` en `useEffect`, `history.replaceState` saca el
+- [x] 10.2 `page.tsx`: lee `window.location.hash` en `useEffect`, `history.replaceState` saca el
       token de la barra de direcciones, sin token muestra mensaje de link inválido. [Req 14]
-- [ ] 10.3 Suma `/restablecer-password` a `RUTAS_PUBLICAS` en `middleware.ts:35`. [Req 14]
-- [ ] 10.4 Tests: form (validación local), página (fragmento, `replaceState`, sin token),
+- [x] 10.3 Suma la ruta `restablecer-password` a `RUTAS_PUBLICAS` en `middleware.ts:35`. [Req 14]
+- [x] 10.4 Tests: form (validación local), página (fragmento, `replaceState`, sin token),
       middleware (ruta pública).
 
 Focused test: `pnpm vitest run frontend/src/app/(auth)/restablecer-password`
@@ -324,13 +329,13 @@ existir.
 Files: `frontend/src/features/auth/components/SolicitarResetForm.tsx` + test (create),
 `frontend/src/app/(auth)/olvide-password/page.tsx` + test (create),
 `frontend/src/features/auth/components/LoginForm.tsx` + test (modify),
-`frontend/src/middleware.ts` (modify: suma `/olvide-password`),
+`frontend/src/middleware.ts` (modify: suma la ruta `olvide-password`),
 `backend/ayuda/mi-cuenta-contrasena.md` (modify `:31-35`),
 `backend/src/app.module.ts` (modify: registra `RecuperacionPasswordModule`)
 
 - [ ] 11.1 `SolicitarResetForm.tsx`: siempre el mismo mensaje tras enviar, exista o no el email.
       [Req 14]
-- [ ] 11.2 `page.tsx` de `/olvide-password`; suma la ruta a `RUTAS_PUBLICAS`. [Req 14]
+- [ ] 11.2 `page.tsx` de la ruta `olvide-password`; suma la ruta a `RUTAS_PUBLICAS`. [Req 14]
 - [ ] 11.3 `LoginForm.tsx`: `<Link href="/olvide-password">¿Olvidaste tu contraseña?</Link>`
       estático. [Req 14]
 - [ ] 11.4 Reescribe `backend/ayuda/mi-cuenta-contrasena.md:31-35`: ya no afirma la ausencia del
@@ -342,7 +347,7 @@ Files: `frontend/src/features/auth/components/SolicitarResetForm.tsx` + test (cr
       imports de `app.module.ts`. Ninguna tarea anterior a esta lo hace (ADR-1, Migration /
       Rollout del diseño).
 - [ ] 11.6 Tests: form (mensaje único), página, `LoginForm` (link presente), middleware
-      (`/olvide-password` pública).
+      (la ruta `olvide-password` pública).
 - [ ] 11.7 e2e manual/smoke post-merge: `POST /auth/forgot-password` contra la app montada
       responde 204 (módulo ya registrado).
 

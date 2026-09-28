@@ -293,3 +293,25 @@ Verification: `pnpm lint` OK · `pnpm type-check` OK · `pnpm vitest run fronten
 · `pnpm test` OK.
 
 Status: 5/5 tareas completas. Ready for WU-10.
+
+## WU-10 — Frontend: página de restablecer + middleware — COMPLETO (10.1–10.4)
+
+Files: `frontend/src/features/auth/components/RestablecerPasswordForm.tsx` + `.test.tsx` (create),
+`frontend/src/app/(auth)/restablecer-password/page.tsx` + `.test.tsx` (create),
+`frontend/src/middleware.ts` + `.test.ts` (modify: suma `/restablecer-password` a `RUTAS_PUBLICAS`).
+
+Deviations: none (ADR-7/ADR-8). Sin token o con un 400 el formulario se oculta y muestra el mismo
+mensaje con link a `/olvide-password`; cualquier otro error del hook también lo oculta, por
+simplicidad — ningún escenario de este WU ejercita 429/5xx sobre esta página.
+
+Evidence: focused test `pnpm vitest run frontend/src/app/(auth)/restablecer-password
+frontend/src/features/auth/components/RestablecerPasswordForm.test.tsx frontend/src/middleware.test.ts`
+→ 21/21 passed (sin token, fragmento leído y `replaceState` limpia la URL, 400, éxito, validación
+local de largo/igualdad en el componente). Runtime harness: N/A — el módulo backend sigue sin
+registrar (WU-11); el fragmento no llega nunca al servidor por diseño (ADR-7). Rollback: revert del
+commit; ruta pública se retira de `middleware.ts`, página deja de existir.
+
+Verification: `pnpm lint` OK · `pnpm type-check` OK · focused tests arriba OK ·
+`pnpm test` → 203 archivos / 1547 tests OK.
+
+Status: 4/4 tareas completas. Ready for WU-11.
