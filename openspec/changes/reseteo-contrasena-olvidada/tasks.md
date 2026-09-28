@@ -69,12 +69,12 @@ Files: `backend/src/auth/domain/ports/i-password-reset-token.repository.ts`,
 `backend/src/auth/infrastructure/persistence/prisma/prisma-password-reset-token.repository.ts` +
 `.integration.spec.ts`
 
-- [ ] 2.1 `IPasswordResetTokenRepository`: `findByHash`, `save`, `revocarVigentesDeUsuario`,
+- [x] 2.1 `IPasswordResetTokenRepository`: `findByHash`, `save`, `revocarVigentesDeUsuario`,
       `consumirSiVigente`. [Req 3, Req 4]
-- [ ] 2.2 Mapper Prisma ↔ entidad. [Req 3]
-- [ ] 2.3 `PrismaPasswordResetTokenRepository.consumirSiVigente`: `UPDATE … SET used_at=now()
+- [x] 2.2 Mapper Prisma ↔ entidad. [Req 3]
+- [x] 2.3 `PrismaPasswordResetTokenRepository.consumirSiVigente`: `UPDATE … SET used_at=now()
       WHERE id=$1 AND used_at IS NULL AND revoked_at IS NULL AND expires_at > now()`. [Req 5, Req 6]
-- [ ] 2.4 Integración (llama `usarLockMasterTest()` antes de truncar `soporte_master_test`): CAS
+- [x] 2.4 Integración (llama `usarLockMasterTest()` antes de truncar `soporte_master_test`): CAS
       concurrente — `Promise.all` de dos `consumirSiVigente` da exactamente un `true`;
       `consumirSiVigente` sobre token revocado o vencido da `false`; `revocarVigentesDeUsuario`
       revoca solo los vigentes. [Req 4, Req 5, Req 6 — abuso: CAS sin `revoked_at`/`expires_at`,
