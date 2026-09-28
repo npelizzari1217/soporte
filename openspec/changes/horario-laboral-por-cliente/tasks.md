@@ -218,8 +218,8 @@ corte limpio. WU-8a-i: la fila y su test (8a.1). WU-8a-ii: el formulario de 7 fi
 **Branch**: `feat/horario-laboral-por-cliente-wu08a` · **Base**: `feat/horario-laboral-por-cliente-wu07`
 
 - [x] 8a.1 Crear `frontend/src/features/horario-laboral/components/horario-laboral-fila.tsx` (checkbox "Abierto" + dos `<Input type="time">`) y su test.
-- [ ] 8a.2 Crear `frontend/src/features/horario-laboral/components/horario-laboral-form.tsx` (RHF + `zodResolver`, props `valoresIniciales`, `soloLectura`, `guardando`, `errorServidor`, `onGuardar`); en `soloLectura`, inputs `disabled` y sin botón Guardar. (Req: Contrato observable del frontend)
-- [ ] 8a.3 Escribir `horario-laboral-form.test.tsx`: admin puede editar; no-admin ve solo lectura; marcar los 7 días cerrados muestra el mensaje de la raíz del schema y **no llama** a `onGuardar`. (Req: Contrato observable del frontend)
+- [x] 8a.2 Crear `frontend/src/features/horario-laboral/components/horario-laboral-form.tsx` (RHF + `zodResolver`, props `valoresIniciales`, `soloLectura`, `guardando`, `errorServidor`, `onGuardar`); en `soloLectura`, inputs `disabled` y sin botón Guardar. (Req: Contrato observable del frontend)
+- [x] 8a.3 Escribir `horario-laboral-form.test.tsx`: admin puede editar; no-admin ve solo lectura; marcar los 7 días cerrados muestra el mensaje de la raíz del schema y **no llama** a `onGuardar`. (Req: Contrato observable del frontend)
 
 **Test enfocado**: `cd frontend && pnpm vitest run src/features/horario-laboral/components`
 **Verificación**: `pnpm lint` · `pnpm type-check` (frontend)

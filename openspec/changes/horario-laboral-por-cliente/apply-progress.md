@@ -363,3 +363,38 @@ Ninguno.
 
 ### Status
 6/6 tareas de WU-7 completas y commiteadas en WU-7a, WU-7b y WU-7c.
+
+## WU-8a-i + WU-8a-ii — Frontend: componentes presentacionales
+
+**Partida por corte limpio** (criterio del dueño, 2026-09-29): la unidad sumó ~516 líneas. WU-8a-i
+(`feat/horario-laboral-por-cliente-wu08a`, base `wu07c`): la fila y su test (8a.1, 216 líneas).
+WU-8a-ii (`wu08a2`): el formulario de 7 filas y su test (8a.2, 8a.3). Cada parte pasa lint,
+type-check y sus tests por separado. **Status**: Complete
+
+### Implementación
+- `frontend/src/features/horario-laboral/components/horario-laboral-fila.tsx` — fila
+  presentacional pura (checkbox "Abierto" + dos `<Input type="time">`, sin hooks propios).
+  Pista visible de que `"00:00"` en CIERRE = 1440 (D14).
+- `frontend/src/features/horario-laboral/components/horario-laboral-fila.test.tsx` — 5 tests.
+- `frontend/src/features/horario-laboral/components/horario-laboral-form.tsx` — grilla de 7
+  filas, RHF + `zodResolver(horarioLaboralFormSchema)` envuelto en `{ dias }` (el schema de
+  WU-7b es un array, no un objeto). Conversión HH:MM↔minutos vía `minutos.ts` al entrar
+  (`desdeHorario`) y al salir (`aDto`, en `onGuardar`). `soloLectura` deshabilita las 7 filas
+  y oculta "Guardar". Gotcha verificado en runtime: el error agregado de "al menos un día
+  abierto" (`superRefine` con `path: []`) llega en `errors.dias.message`, NO en
+  `errors.dias.root.message` — esa forma es de `useFieldArray`, que este form no usa.
+- `frontend/src/features/horario-laboral/components/horario-laboral-form.test.tsx` — 5 tests
+  (admin edita, no-admin ve solo lectura, 7 días cerrados no llama a `onGuardar`, error de
+  servidor no desmonta el form, `guardando` deshabilita el botón).
+
+### Verificación ya corrida (todo verde)
+- `pnpm lint` (frontend) → sin errores ni warnings
+- `pnpm type-check` (frontend) → sin errores
+- `pnpm vitest run src/features/horario-laboral/components` → 2 archivos, 10/10 tests passed
+- `pnpm test` (suite completa, frontend) → 206/206 archivos, 1554/1554 tests passed (sube de
+  204/1544 en WU-7c: +2 archivos, +10 tests)
+
+### Verificación
+
+`pnpm lint` y `pnpm type-check` limpios; 10/10 en los specs de componentes; suite completa del
+frontend 1554/1554.
