@@ -310,24 +310,49 @@ backend fallido queda tapado por un install de frontend exitoso y se lee como re
 completa. Es la misma trampa que el `echo $?` detrás de un pipe, unos párrafos más arriba —
 pasó de verdad el 2026-09-09, desplegando `83bdc8a`.
 
-### 5. `EMAIL_CRYPTO_KEY` no se rota
+### 5. Rotación de `EMAIL_CRYPTO_KEY` (`rotate-email-crypto-key.ps1`)
 
-Cifra en reposo la contraseña SMTP de cada cliente. Se genera **una sola vez** y, si existe, no
-se toca.
+Cifra en reposo la contraseña SMTP de cada cliente. Se genera **una sola vez** en el deploy
+(`deploy.ps1` paso 5b) y, si existe, no se toca — regenerarla a mano convierte toda credencial
+guardada en basura indescifrable. Rotarla de verdad exige re-cifrar cada fila, no solo reemplazar
+el valor; eso es lo que hace `rotate-email-crypto-key.ps1` (ver `sdd/rotacion-email-crypto-key`).
 
-**No es como `JWT_SECRET`**: rotar el JWT solo invalida sesiones; **regenerar esta clave
-convierte toda credencial guardada en basura indescifrable.** Una rotación real exige una
-migración de re-cifrado — por eso el payload lleva el prefijo de versión `v1:`.
+**Uso** (como administrator, con `backend/.env` presente y los servicios corriendo):
 
-Se genera en el server y nunca se imprime: solo se reporta la longitud.
+```powershell
+cd C:\soporte
+.\rotate-email-crypto-key.ps1 -DryRun   # precondiciones en verde, nada se toca
+.\rotate-email-crypto-key.ps1           # corrida real: dump, ventana, rotación
+```
 
-> **Respaldala junto con la base.** Un backup de la base sin esta clave no restaura las
-> credenciales SMTP.
+**Qué hace, en orden**: valida `OLD_KEY` de `backend/.env`, genera `NEW_KEY` en el server (nunca
+se tipea ni se pega), corre un dry-run con los servicios arriba, invoca `predeploy-dump.ps1` (deja
+un dump verificado y los servicios detenidos), escribe un archivo de recuperación `PENDIENTE`
+**antes** de la corrida real, re-cifra todas las filas en una sola transacción, reescribe
+`backend/.env` completo (archivo temporal + `[System.IO.File]::Replace`, nunca `Add-Content` —
+misma trampa que `ROOT_ADMIN_PASSWORD` el 2026-08-20), y recién ahí arranca los servicios.
 
-También hay una trampa de escritura resuelta: la clave se agrega **reescribiendo el `.env`
-entero**, no con `Add-Content`. Si el archivo no termina en salto de línea, `Add-Content` pega el
-valor al final de la última variable y corrompe dos cosas de una. Pasó el 2026-08-20 contra
-`ROOT_ADMIN_PASSWORD`.
+**Exit codes**:
+
+| Exit | Estado de la base | Qué hacer |
+|---|---|---|
+| 0 | Rotación confirmada | Nada — servicios arriba, `backend/.env` verificado |
+| 1 | Sin cambios (`OLD_KEY`), servicios arriba | Revisar el error de consola y re-correr |
+| 3 | Base en `NEW_KEY`, `backend/.env` **sin** actualizar | Recuperación manual (ver abajo) |
+| 4 | Estado ambiguo, servicios **detenidos** | Intervención manual — no re-correr sin diagnosticar |
+
+**Recuperación manual (exit 3 o 4)**: el mensaje de consola nombra el archivo
+`backups\rotacion-email-crypto-key-<ts>.PENDIENTE.txt` (ASCII, `OLD_KEY`/`NEW_KEY`/`DUMP`).
+Copiar la línea `NEW_KEY` al `EMAIL_CRYPTO_KEY=` de `backend/.env`, confirmar con
+`ROTACION_VERIFICAR_KEY=<NEW_KEY> node backend\scripts\rotar-email-crypto-key.mjs --verificar`
+(con `DATABASE_URL_MASTER` en el entorno), renombrar el `PENDIENTE` sacándole el sufijo, y arrancar
+los dos servicios. Ninguna clave se imprime en ningún paso — el script solo reporta longitudes y rutas.
+
+**Retención de los archivos de recuperación**: al cerrar bien, el `PENDIENTE` se reemplaza por uno
+permanente (`rotacion-email-crypto-key-<ts>.txt`) con solo `OLD_KEY` + la ruta del dump + la fecha
+— **nunca** `NEW_KEY`. Los dos quedan en `backups\` con permisos solo para `Administrators` y
+`SYSTEM` (`icacls`). **No borrar un archivo de recuperación mientras exista el dump de esa
+ventana**: `OLD_KEY` es la única forma de descifrar las credenciales SMTP que ese dump contiene.
 
 ---
 

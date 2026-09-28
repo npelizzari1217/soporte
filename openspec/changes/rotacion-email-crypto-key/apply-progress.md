@@ -167,8 +167,37 @@ que promete 2b.3 (se agregó el caso de entrada inválida), y `main()` llamaba a
 Verificación: `pnpm lint` y `pnpm typecheck` limpios; los 4 specs del script en verde;
 `pnpm test` completo en verde con Postgres arriba.
 
+## WU3: `.ps1` operativo + runbook + README (PR 5 → rama de PR 4)
+
+- `rotate-email-crypto-key.ps1` creado (ADR-3/ADR-4): pasos 0-9, `-DryRun`, env vars
+  `ROTACION_*`/`DATABASE_URL_MASTER` seteadas justo antes de cada invocación de Node y
+  borradas en `finally`, archivo `PENDIENTE` con ACL (`icacls` SIDs
+  `S-1-5-32-544`/`S-1-5-18`) ANTES de la corrida real, árbol de recuperación
+  `--verificar OLD/NEW` ante fallo, reescritura de `.env` vía temporal +
+  `[System.IO.File]::Replace`, archivo permanente con solo `OLD_KEY`+`DUMP`+fecha.
+- `backend/scripts/ps1-ascii.spec.ts` creado: los 4 `*.ps1` de la raíz, ASCII puro y sin BOM.
+- `DEPLOY-VPS-runbook.md` §5 reescrita (uso, exit codes, recuperación manual, retención) y
+  `README.md:155` actualizado.
+
+### Work Unit Evidence (WU3)
+
+| Evidence | Value |
+|---|---|
+| Focused test command and exact result | `pnpm vitest run scripts/ps1-ascii.spec.ts` → 1 file, 5/5 tests passed |
+| Runtime harness command/scenario y exact result | N/A — el runtime real es el VPS (`-DryRun` manual); hueco declarado en `tasks.md`, no ejecutable desde WSL |
+| Rollback boundary | `rotate-email-crypto-key.ps1` y `ps1-ascii.spec.ts` son archivos nuevos; el runbook y el README son ediciones aditivas de una sección/fila — revertir el commit no toca WU1/WU2 |
+
+### Verification (backend/)
+
+| Command | Result |
+|---|---|
+| `pnpm lint` | Clean — 0 errors |
+| `pnpm typecheck` | Clean — 0 errors |
+| `pnpm vitest run scripts/ps1-ascii.spec.ts` | 1 file, 5/5 passed |
+| `pnpm test` | 469/469 files, 5465/5465 tests passed, exit 0 |
+| `file rotate-email-crypto-key.ps1` / byte scan | ASCII text, sin BOM, sin bytes > 0x7F |
+| `pwsh` parse de sintaxis | No disponible en WSL — hueco declarado, no se instaló |
+
 ## Status
 
-Tareas 1.1-1.7, 2a.1-2a.5 y 2b.1-2b.4 completas y commiteadas (WU1a `c00ba59`, WU1b
-`4cbfdf0`, WU2a con `size:exception`, WU2b). Queda pendiente WU3 (ver
-`tasks.md`).
+Ciclo completo: WU1a-WU3 completas y commiteadas. Ver `tasks.md` — todas las tareas `[x]`.

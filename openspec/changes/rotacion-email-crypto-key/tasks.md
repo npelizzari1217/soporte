@@ -127,32 +127,32 @@ sin partir, para no separar la transacción de sus 8 escenarios de integración.
 
 ## WU3: `.ps1` operativo + runbook + README (PR 5 → rama de PR 4)
 
-- [ ] 3.1 Crear `rotate-email-crypto-key.ps1`, pasos 0-3: guardia de PATH/versión de Node
+- [x] 3.1 Crear `rotate-email-crypto-key.ps1`, pasos 0-3: guardia de PATH/versión de Node
       (molde `deploy.ps1:38-73` (read-only)), carga y validación de `OLD` desde
       `backend/.env`, aborto si existe `backups\rotacion-email-crypto-key-*.PENDIENTE.txt`,
       generación de `NEW` vía `& $NodeExe -e "...randomBytes(32)..."` (molde
       `deploy.ps1:160` (read-only)), invocación de Node en `--dry-run`. (R13)
-- [ ] 3.2 Agregar los pasos 4-6: invocar `predeploy-dump.ps1` (read-only) como proceso hijo,
+- [x] 3.2 Agregar los pasos 4-6: invocar `predeploy-dump.ps1` (read-only) como proceso hijo,
       escribir `backups\rotacion-email-crypto-key-<ts>.PENDIENTE.txt` (ASCII) ANTES del paso
       que puede hacer `COMMIT`, invocar Node en modo real, árbol de recuperación con
       `--verificar OLD/NEW` ante `exit ≠ 0` (ADR-4). (R13)
-- [ ] 3.3 Agregar los pasos 7-9: reescritura completa de `.env` vía archivo temporal +
+- [x] 3.3 Agregar los pasos 7-9: reescritura completa de `.env` vía archivo temporal +
       `[System.IO.File]::Replace` (nunca `Add-Content`), relectura desde disco +
       `--verificar`, ACL con `icacls` (SIDs `S-1-5-32-544`/`S-1-5-18`) sobre los dos
       archivos de recuperación, cierre del archivo permanente (solo `OLD_KEY`+`DUMP`+fecha,
       nunca `NEW_KEY`) y borrado del `PENDIENTE`, `Start-Service` de los dos servicios.
       (R13)
-- [ ] 3.4 Códigos de salida 0/1/3/4 del `.ps1` y mensajes de consola sin secretos (ADR-4);
+- [x] 3.4 Códigos de salida 0/1/3/4 del `.ps1` y mensajes de consola sin secretos (ADR-4);
       molde `rotate-admin-pw.ps1` (read-only) y `AssertOk` de `deploy.ps1:51-55`
       (read-only). (R12, R13)
-- [ ] 3.5 Crear `backend/scripts/ps1-ascii.spec.ts`: todo `*.ps1` de la raíz del repo, cada
+- [x] 3.5 Crear `backend/scripts/ps1-ascii.spec.ts`: todo `*.ps1` de la raíz del repo, cada
       byte ≤ 0x7F y sin marca BOM. (R14)
-- [ ] 3.6 Reescribir `DEPLOY-VPS-runbook.md` §5 (~313-330): uso del `.ps1`, códigos de
+- [x] 3.6 Reescribir `DEPLOY-VPS-runbook.md` §5 (~313-330): uso del `.ps1`, códigos de
       salida, recuperación ante fallo tras `COMMIT`, retención de los archivos de
       recuperación. (R13)
-- [ ] 3.7 Actualizar `README.md:155`: la fila de `EMAIL_CRYPTO_KEY` remite a
+- [x] 3.7 Actualizar `README.md:155`: la fila de `EMAIL_CRYPTO_KEY` remite a
       `rotate-email-crypto-key.ps1`.
-- [ ] 3.8 Verificación de la unidad: `pnpm lint`, `pnpm typecheck`,
+- [x] 3.8 Verificación de la unidad: `pnpm lint`, `pnpm typecheck`,
       `pnpm vitest run backend/scripts/ps1-ascii.spec.ts`, `pnpm test`.
 
 ---

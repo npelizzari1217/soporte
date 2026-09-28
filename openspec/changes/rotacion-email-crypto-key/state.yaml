@@ -12,6 +12,6 @@ tasks_progress:
     - WU1b
     - WU2a
     - WU2b
-  pending:
     - WU3
+  pending: []
 last_updated: 2026-09-28
