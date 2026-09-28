@@ -202,8 +202,8 @@ cortes limpios. WU-7a: tipos, api, límites y minutos (7.1-7.3). WU-7b: esquemas
 - [x] 7.2 Crear `frontend/src/features/horario-laboral/limites.ts` (copia `DIAS_POR_SEMANA`/`MINUTOS_POR_DIA`) con un test centinela contra `horario-laboral.constants.ts`.
 - [x] 7.3 Crear `frontend/src/features/horario-laboral/minutos.ts` (conversión HH:MM ↔ minutos, pura; en cierre `"00:00"` = 1440) y `minutos.test.ts` (ida y vuelta, caso `00:00`). (Req: Contrato observable del frontend)
 - [x] 7.4 Crear `frontend/src/features/horario-laboral/schemas.ts`: `diaFormSchema` + `horarioLaboralFormSchema` con `.length(7)` y `superRefine` (apertura obligatoria si abierto, `apertura < cierre`, `diaSemana` único, al menos un día abierto → error en la raíz). Y `schemas.test.ts` (7 cerrados, apertura ≥ cierre, día repetido). (Req: Contrato observable del frontend)
-- [ ] 7.5 Crear `frontend/src/features/horario-laboral/hooks/use-horario-laboral.ts` y `use-guardar-horario-laboral.ts` (React Query; `isLoading` para skeleton, `isError && !data` para `ErrorState`, `invalidateQueries(["horario-laboral"])` al guardar) con sus tests.
-- [ ] 7.6 Agregar el ítem "Horario laboral" en `DEFAULT_SECTION_ITEMS` de `frontend/src/shared/nav/nav-config.ts`, justo después de "Feriados", `visible: () => true`, icono `Clock`, y su test confirmando visibilidad para cualquier rol.
+- [x] 7.5 Crear `frontend/src/features/horario-laboral/hooks/use-horario-laboral.ts` y `use-guardar-horario-laboral.ts` (React Query; `isLoading` para skeleton, `isError && !data` para `ErrorState`, `invalidateQueries(["horario-laboral"])` al guardar) con sus tests.
+- [x] 7.6 Agregar el ítem "Horario laboral" en `DEFAULT_SECTION_ITEMS` de `frontend/src/shared/nav/nav-config.ts`, justo después de "Feriados", `visible: () => true`, icono `Clock`, y su test confirmando visibilidad para cualquier rol.
 
 **Test enfocado**: `cd frontend && pnpm vitest run src/features/horario-laboral`
 **Verificación**: `pnpm lint` · `pnpm type-check` (frontend)

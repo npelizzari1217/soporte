@@ -82,7 +82,7 @@ None.
 
 **Branch**: `feat/horario-laboral-por-cliente-wu02` · **Base**: `feat/horario-laboral-por-cliente-wu01b` · **Status**: COMPLETO (`size:exception`, criterio del dueño)
 
-### Implementation (code written, verified, uncommitted)
+### Implementation
 - 2.1 `backend/src/calendario-laboral/domain/constants/horario-laboral.constants.ts` — `DIAS_POR_SEMANA`, `MINUTOS_POR_DIA`, `MINUTO_MINIMO_DIA`.
 - 2.2 `backend/src/calendario-laboral/domain/errors/horario-laboral.errors.ts` — `HorarioLaboralDiasInvalidosError`, `VentanaLaboralInvalidaError(dia)`, `HorarioLaboralSinDiasAbiertosError`, unión `HorarioLaboralInvalidoError`.
 - 2.3 `backend/src/calendario-laboral/domain/value-objects/horario-laboral-semanal.ts` — `HorarioLaboralSemanal.crear(dias)` con el orden de validación de D7 (length 7 → `diaSemana` único 0..6 → por día ambos null o `0 <= apertura < cierre <= 1440` → al menos un día abierto) y `aCalendario()`, reusando `VentanaLaboral`/`CalendarioLaboralSemanal` de `calcular-sla-habil-vence.service.ts` sin tocarlos.
@@ -331,3 +331,35 @@ None.
 
 ### Status
 4/4 tasks de WU-6b completas. Ready for verify.
+
+## WU-7a + WU-7b + WU-7c — Frontend: contrato de datos
+
+**Partida por cortes limpios** (criterio del dueño, 2026-09-29): la unidad sumó 525 líneas. WU-7a
+(`feat/horario-laboral-por-cliente-wu07`, base `wu06b`): tipos, api, límites y minutos (7.1-7.3).
+WU-7b (`wu07b`): esquemas Zod (7.4). WU-7c (`wu07c`): hooks e ítem de navegación (7.5-7.6). Cada
+parte pasa lint, type-check y sus tests por separado. La cadena es lineal: WU-7a sale de `wu06b`
+aunque `tasks.md` nombre `wu06a` como base. **Status**: Complete
+
+### Implementation
+- 7.1 `frontend/src/features/horario-laboral/types.ts` (`DiaHorarioLaboral`, `HorarioLaboral`, `HorarioLaboralDto`) y `api.ts` (`obtenerHorarioLaboral` GET, `guardarHorarioLaboral` PUT), espejo exacto de `horario-laboral.dto.ts` (backend, WU-6a).
+- 7.2 `limites.ts` (`DIAS_POR_SEMANA`, `MINUTOS_POR_DIA`) + `limites.test.ts`, centinela de valor contra `horario-laboral.constants.ts` (backend).
+- 7.3 `minutos.ts` (`minutosAHhmm`/`hhmmAMinutos`, puras, `esCierre` distingue `"00:00"` = 0 en apertura vs. 1440 en cierre, D14) + `minutos.test.ts` (ida y vuelta, caso `00:00`).
+- 7.4 `schemas.ts` (`diaFormSchema` + `horarioLaboralFormSchema`, `.length(7)` + `superRefine`: apertura/cierre obligatorios si abierto, `apertura < cierre` en minutos, `diaSemana` único, "al menos un día abierto" con `path: []`) + `schemas.test.ts` (7 cerrados, apertura ≥ cierre, día repetido, largo ≠ 7, caso límite `00:00`/`00:00`).
+- 7.5 `hooks/use-horario-laboral.ts` (`useQuery`, key `["horario-laboral"]`) y `hooks/use-guardar-horario-laboral.ts` (`useMutation` + `invalidateQueries(["horario-laboral"])` en `onSuccess`; deliberadamente SIN `notifySuccess`/`notifyError` propios — D16 exige `reset(nuevos)` con el `data` de la mutación, que solo el componente de WU-8b puede hacer) + sus tests (msw, incluyendo un caso 422 que confirma que NO se invalida la query).
+- 7.6 Ítem "Horario laboral" en `DEFAULT_SECTION_ITEMS` (`frontend/src/shared/nav/nav-config.ts`), justo después de "Feriados", icono `Clock`, `visible: () => true` + 2 tests nuevos en `nav-config.test.ts` (visible para TECNICO sin permisos y para ADMINISTRADOR).
+
+### Verification already run (all green)
+- `cd frontend && pnpm vitest run src/features/horario-laboral src/shared/nav/nav-config.test.ts` → 6 archivos, 51/51 tests passed
+- `cd frontend && pnpm lint` → sin errores ni warnings
+- `cd frontend && pnpm type-check` → sin errores
+- `cd frontend && pnpm test` (suite completa) → 204/204 archivos, 1544/1544 tests passed
+
+### Tamaño
+
+525 líneas en total, partidas en tres PRs de 159, 171 y el resto; cada uno dentro de 400.
+
+### Issues Found
+Ninguno.
+
+### Status
+6/6 tareas de WU-7 completas y commiteadas en WU-7a, WU-7b y WU-7c.
