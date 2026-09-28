@@ -42,3 +42,24 @@ Verification: `pnpm lint` OK · `pnpm typecheck` OK · `pnpm test` → 466 archi
 mandado a `main` el CAS sin sus tests de abuso (revocado, vencido, concurrencia).
 
 Status: 4/4 tareas implementadas, verificadas y commiteadas.
+
+## WU-3 — escaparHtml, plantillas y adaptador de correo — COMPLETO (3.1–3.6)
+
+Files: `shared/domain/escapar-html.ts` (create), `notificaciones/domain/templates/email-templates.ts`
+(modify: importa), `auth/domain/templates/reset-password-email.template.ts` + `.spec.ts`,
+`auth/domain/ports/i-correo-de-cliente.port.ts`, `auth/infrastructure/email/correo-de-cliente.adapter.ts`
++ `.spec.ts` (create).
+
+Deviations: none — sigue ADR-4/ADR-7. `enviar()` resuelve `dbName` con un `clienteRepo.findById`
+propio (el puerto solo recibe `clienteId`); si el cliente ya no existe, no lanza — defensivo, el
+caller ya validó `estado() === 'LISTO'` con el mismo id.
+
+Evidence: focused test `pnpm vitest run backend/src/auth/domain/templates/reset-password-email.template.spec.ts
+backend/src/auth/infrastructure/email/correo-de-cliente.adapter.spec.ts` → 11/11 passed. No
+regresión: `email-templates.spec.ts` → 14/14 passed. Runtime harness: N/A (funciones puras y
+adaptador con dobles). Rollback: revert del commit; `email-templates.ts` vuelve a su
+`escaparHtml` local.
+
+Verification: `pnpm lint` OK · `pnpm typecheck` OK · `pnpm test` OK.
+
+Status: 6/6 tareas implementadas y verificadas. Ready for WU-4.

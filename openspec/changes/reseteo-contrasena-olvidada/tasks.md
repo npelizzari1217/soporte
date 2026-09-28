@@ -86,25 +86,29 @@ Rollback boundary: revert de PR2; repo sin consumidores, PR1 intacto.
 
 ## WU-3 — escaparHtml, plantillas y adaptador de correo
 
+**`size:exception`** (criterio del dueño, 2026-09-28): 414 líneas tras la corrección del
+verificador independiente (el adaptador no cumplía el "nunca lanza" del puerto). Partir
+habría separado el adaptador de sus tests de falla.
+
 Files: `backend/src/shared/domain/escapar-html.ts` (create),
 `backend/src/notificaciones/domain/templates/email-templates.ts` (modify: importa),
 `backend/src/auth/domain/templates/reset-password-email.template.ts` + `.spec.ts`,
 `backend/src/auth/domain/ports/i-correo-de-cliente.port.ts`,
 `backend/src/auth/infrastructure/email/correo-de-cliente.adapter.ts` + `.spec.ts`
 
-- [ ] 3.1 Mover `escaparHtml` de `email-templates.ts:37` a `backend/src/shared/domain/escapar-html.ts`;
+- [x] 3.1 Mover `escaparHtml` de `email-templates.ts:37` a `backend/src/shared/domain/escapar-html.ts`;
       `email-templates.ts` importa desde ahí. [Req 12]
-- [ ] 3.2 `templateResetPassword({nombre, token, appBaseUrl, vigenciaMinutos})`: link
+- [x] 3.2 `templateResetPassword({nombre, token, appBaseUrl, vigenciaMinutos})`: link
       `${appBaseUrl}/restablecer-password#token=${token}`; todo valor interpolado pasa por
       `escaparHtml`. [Req 11]
-- [ ] 3.3 `templateResetConfirmado({nombre})`. [Req 10]
-- [ ] 3.4 `.spec.ts` de plantillas: el link empieza con `appBaseUrl` (nunca con `Host`); escapado
+- [x] 3.3 `templateResetConfirmado({nombre})`. [Req 10]
+- [x] 3.4 `.spec.ts` de plantillas: el link empieza con `appBaseUrl` (nunca con `Host`); escapado
       de valores interpolados. [Req 11 — abuso: link con `Host`]
-- [ ] 3.5 `ICorreoDeCliente` (`estado`, `enviar`) + `CorreoDeClienteAdapter`: `estado()` vía
+- [x] 3.5 `ICorreoDeCliente` (`estado`, `enviar`) + `CorreoDeClienteAdapter`: `estado()` vía
       `IClienteRepository.findById` + `IClienteEmailConfigRepository.findState().configurado`;
       `enviar()` bindea `tenantContext.run(...)` (molde `sla-sweep.scheduler.ts:45-49`). [Req 1,
       Req 10]
-- [ ] 3.6 `.spec.ts` del adaptador: los tres estados (`LISTO`/`SIN_CORREO`/`CLIENTE_NO_DISPONIBLE`)
+- [x] 3.6 `.spec.ts` del adaptador: los tres estados (`LISTO`/`SIN_CORREO`/`CLIENTE_NO_DISPONIBLE`)
       y que `enviar` corre dentro del `TenantContext` del `clienteId` recibido. [Req 1, Req 10]
 
 Focused test: `pnpm vitest run backend/src/auth/domain/templates/reset-password-email.template.spec.ts backend/src/auth/infrastructure/email/correo-de-cliente.adapter.spec.ts`
