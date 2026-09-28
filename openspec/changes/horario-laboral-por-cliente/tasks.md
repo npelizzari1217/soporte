@@ -131,10 +131,10 @@ pasos del mismo método; partir separaba código de sus tests.
 
 **Branch**: `feat/horario-laboral-por-cliente-wu04` · **Base**: `feat/horario-laboral-por-cliente-wu03`
 
-- [ ] 4.1 Crear `backend/src/sla/infrastructure/listeners/aplicar-sla-horario-cliente.e2e.spec.ts` con tenants A y B, `createdAt` lunes 2031-04-07 12:00Z, prioridad de 8h: ticket en A con el default → `2031-04-07T20:00Z`. (Req: Guardar el horario no recalcula el SLA de tickets abiertos)
-- [ ] 4.2 En el mismo spec, cambiar A a lun-vie 480-720 por SQL directo y confirmar que el `sla_vence_at` del ticket ya abierto **no cambia**. (Req: Guardar el horario no recalcula el SLA de tickets abiertos)
-- [ ] 4.3 Repriorizar ese ticket y confirmar `2031-04-09T12:00Z`, anclado al `createdAt` original. (Req: Guardar el horario no recalcula el SLA de tickets abiertos)
-- [ ] 4.4 Crear un ticket nuevo en A y confirmar que usa el horario nuevo; crear uno en B con el mismo `createdAt` y confirmar `2031-04-07T20:00Z` (aislamiento, sin afectarse entre sí). (Req: Aislamiento por cliente; Zona horaria fija Argentina)
+- [x] 4.1 Crear `backend/src/sla/infrastructure/listeners/aplicar-sla-horario-cliente.e2e.spec.ts` con tenants A y B, `createdAt` lunes 2031-04-07 12:00Z, prioridad de 8h: ticket en A con el default → `2031-04-07T20:00Z`. (Req: Guardar el horario no recalcula el SLA de tickets abiertos)
+- [x] 4.2 En el mismo spec, cambiar A a lun-vie 480-720 por SQL directo y confirmar que el `sla_vence_at` del ticket ya abierto **no cambia**. (Req: Guardar el horario no recalcula el SLA de tickets abiertos)
+- [x] 4.3 Repriorizar ese ticket y confirmar `2031-04-09T12:00Z`, anclado al `createdAt` original. (Req: Guardar el horario no recalcula el SLA de tickets abiertos)
+- [x] 4.4 Crear un ticket nuevo en A y confirmar que usa el horario nuevo; crear uno en B con el mismo `createdAt` y confirmar `2031-04-07T20:00Z` (aislamiento, sin afectarse entre sí). (Req: Aislamiento por cliente; Zona horaria fija Argentina)
 
 **Test enfocado**: `cd backend && pnpm vitest run src/sla/infrastructure/listeners/aplicar-sla-horario-cliente.e2e.spec.ts`
 **Verificación**: `pnpm lint` · `pnpm typecheck` (backend)

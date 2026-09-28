@@ -147,3 +147,44 @@ None.
 
 ### Status
 7/7 tasks de WU-3 completas. Ready for verify.
+
+## WU-4 — E2E SLA: no-recálculo, repriorización, aislamiento
+
+**Branch**: `feat/horario-laboral-por-cliente-wu04` · **Base**: `feat/horario-laboral-por-cliente-wu03` · **Status**: Complete
+
+### Completed Tasks
+- [x] 4.1 Ticket HABIL en tenant A, `createdAt` lunes 2031-04-07T12:00:00.000Z, prioridad 8h, calendario default (lun-vie 09-18 ART) → `sla_vence_at = 2031-04-07T20:00:00.000Z`.
+- [x] 4.2 Horario de A reescrito DIRECTO vía `calendarioLaboralDiaCliente.update` (lun-vie 480-720 = 08-12 ART; el endpoint de escritura no existe hasta WU-5/WU-6a) — el `sla_vence_at` del ticket ya abierto no cambia.
+- [x] 4.3 Repriorización del mismo ticket (nueva `prioridadId`, mismas 8h) con el horario nuevo, anclada al `createdAt` original → `2031-04-09T12:00:00.000Z`.
+- [x] 4.4 Ticket nuevo en A (mismo `createdAt`) usa el horario nuevo → `2031-04-09T12:00:00.000Z`; ticket nuevo en B (mismo `createdAt`, horario default sin tocar) → `2031-04-07T20:00:00.000Z` — aislamiento confirmado.
+
+### Files Changed
+| File | Action | What Was Done |
+|---|---|---|
+| `backend/src/sla/infrastructure/listeners/aplicar-sla-horario-cliente.e2e.spec.ts` | Created | E2E real, wiring manual (mismo patrón que `aplicar-sla-habil-feriados.e2e.spec.ts`), 2 tenants efímeros A/B, 1 `it` con las 4 escenarios en secuencia, `usarLockMasterTest()` |
+
+### Deviations from Design
+None — implementación matches D6/D11 (sin recálculo al guardar) y la fila "E2E SLA" de la Estrategia de testing.
+
+### Issues Found
+None.
+
+### Work Unit Evidence
+| Evidence | Value |
+|---|---|
+| Focused test command and exact result | `cd backend && pnpm vitest run src/sla/infrastructure/listeners/aplicar-sla-horario-cliente.e2e.spec.ts` → 1/1 passed |
+| Runtime harness command/scenario and exact result | E2E real contra Postgres, 2 tenants efímeros (`PostgresAdminService`/`TenantMigrationRunnerAdapter`), `usarLockMasterTest()` obligatorio (el spec hermano inserta un feriado global temporal el 2031-04-08 dentro de la ventana repriorizada); corrido junto a `aplicar-sla-habil-feriados.e2e.spec.ts` → 2/2 passed, sin interferencia |
+| Rollback boundary | Retira el spec nuevo; no toca producción ni ningún otro spec |
+
+### Verification already run (all green)
+- `pnpm lint` → 0 errores
+- `pnpm typecheck` → 0 errores
+- `pnpm test` completo → 468/468 archivos, 5453/5453 tests (sube de 5452: +1 archivo, +1 test)
+
+### Workload / PR Boundary
+- Mode: chained PR slice (stacked-to-main, `auto-chain`) · Current work unit: WU-4
+- Boundary: agrega el e2e SLA de no-recálculo/repriorización/aislamiento; no toca producción ni consumidores
+- Review budget: `backend/` 319 líneas autoría + openspec — dentro de 400
+
+### Status
+4/4 tasks de WU-4 completas. Ready for verify.

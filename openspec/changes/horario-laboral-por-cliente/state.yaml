@@ -12,8 +12,8 @@ tasks_progress:
     - wu01b
     - wu02
     - wu03
-  pending:
     - wu04
+  pending:
     - wu05
     - wu06a
     - wu06b
@@ -21,4 +21,4 @@ tasks_progress:
     - wu08a
     - wu08b
 last_updated: 2026-09-28
-last_completed_wu: wu03
+last_completed_wu: wu04
