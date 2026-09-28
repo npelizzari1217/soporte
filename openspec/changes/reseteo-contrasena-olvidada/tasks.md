@@ -361,6 +361,62 @@ Verification (backend): `pnpm lint` · `pnpm typecheck` · `pnpm test`
 Rollback boundary: revert de PR11; `app.module.ts` deja de montar el módulo (las dos rutas
 vuelven a 404), Ayuda vuelve al texto previo.
 
+## WU-12 — Corrección acotada tras `sdd-verify` (PASS WITH WARNINGS)
+
+Una única transacción de corrección sobre `verify-report.md` (revisión
+`feat/reseteo-contrasena-olvidada-wu11` @ `6c351ad`), con las 5 `WARNING` y las
+5 `SUGGESTION` del reporte. Rama `feat/reseteo-contrasena-olvidada-wu12`,
+apilada sobre `wu11` (`stacked-to-main`).
+
+Files (todas `modify`): backend — `recuperacion-password.e2e.spec.ts`,
+`solicitar-reset-password.use-case.spec.ts`, `confirmar-reset-password.use-case.spec.ts`,
+`ayuda/mi-cuenta-contrasena.md`, `reset-password-email.template.ts` + `.spec.ts`,
+`correo-de-cliente.adapter.ts`, `tareas-segundo-plano.ts` + `.spec.ts`. frontend —
+`use-solicitar-reset.ts`, `use-restablecer-password.ts` (docstring), `olvide-password/page.tsx` +
+`.test.tsx`, `restablecer-password/page.tsx` + `.test.tsx`, `middleware.ts`. openspec —
+`apply-progress.md`, `state.yaml`.
+
+- [x] 12.1 [W1] e2e: `passwordNueva: 'corta'` con token válido da 400, no toca `password_hash`
+      y no consume el token (`used_at IS NULL`). [Req 7]
+- [x] 12.2 [W4] `solicitar-reset-password.use-case.spec.ts`: en las 6 ramas sin mail (inexistente,
+      inactiva, 0/2+ membresías, `SIN_CORREO`, `CLIENTE_NO_DISPONIBLE`) se asertan
+      `tokenRepo.revocarVigentesDeUsuario` y `tokenRepo.save` NO llamados. [Req 4]
+- [x] 12.3 [S1] Caso "activo pero soft-deleted" (`UsuarioEntity.reconstitute` con `deletedAt`
+      seteado y `activo: true`) en `solicitar-reset-password.use-case.spec.ts` y en
+      `confirmar-reset-password.use-case.spec.ts`. [Req 6, Req 9]
+- [x] 12.4 [W2] Reescribe `backend/ayuda/mi-cuenta-contrasena.md` — el mail (solicitud y
+      confirmación) sale solo con cuenta activa, **una única** membresía activa y correo
+      configurado en ese cliente; toda otra combinación no envía nada y deriva al admin. TTL,
+      cierre de sesiones y vía asistida sin cambios (pausa del 2026-09-07 vigente). [Req 15]
+- [x] 12.5 [W3] `reset-password-email.template.ts`: el mail de confirmación dice "contactá a
+      tu administrador" (decisión 3 del dueño), no "contactá a soporte"; test que lo fija.
+      [Req 10]
+- [x] 12.6 [S2] `CorreoDeClienteAdapter.logError` y `TareasSegundoPlano` loguean
+      `error.name`, no `error.message` — mismo criterio que los use cases. [Req 12]
+- [x] 12.7 [S3] `/olvide-password`: un 429 o un error de red/5xx mantiene el formulario
+      visible con el mensaje arriba (`esTransitorio` en `use-solicitar-reset.ts`), en vez
+      de ocultarlo; test `it.each([429, 500])`. [Req 14]
+- [x] 12.8 [S4] `/restablecer-password`: `decodeURIComponent` del fragmento en try/catch —
+      un token mal codificado se trata como ausente (mensaje genérico de link inválido);
+      test con `#token=%E0`. [Req 14]
+- [x] 12.9 [S5] Corrige el JSDoc de `use-restablecer-password.ts` (proxy real
+      `/api/auth/reset-password`, no `/api/reset-password`) y el comentario de
+      `RUTAS_PUBLICAS` en `middleware.ts` (ya no es "match por prefijo").
+- [x] 12.10 [W5] Corrige en `apply-progress.md`: el párrafo de WU-7 pegado al final de WU-6
+      (sin Status propio), "`pnpm test` completo en curso" en WU-8, la Deviations de WU-10
+      que decía que cualquier error ocultaba el formulario, el "(ver conteo abajo)" sin
+      conteo de WU-4, y el conteo frontend de WU-11 (1554 → 1557). Suma esta sección WU-12.
+      `state.yaml` pasa a `phase: apply` con WU-12 completa.
+
+Focused test (backend): 6 specs tocados arriba — ver `apply-progress.md` WU-12 (50/50 passed).
+Verification: backend — `pnpm lint` · `pnpm typecheck` · focused tests · `pnpm test`. frontend —
+`pnpm lint` · `pnpm type-check` · specs de `olvide-password`/`restablecer-password`/
+`use-solicitar-reset`/`middleware` · `pnpm test`. Detalle y resultados en `apply-progress.md`.
+Prueba de mutación (working tree, revertida): quitar `@MinLength(8)` mata 12.1; revocar en
+`MEMBRESIAS_N` mata 12.2; quitar `isDeleted()` de cada use case mata 12.3.
+Rollback boundary: revert del commit de WU-12; WU-1 a WU-11 quedan intactas — solo agrega tests,
+corrige texto/logs y ajusta dos páginas del frontend, sin tocar el contrato HTTP ni el modelo.
+
 ---
 
 ## Requirement Coverage

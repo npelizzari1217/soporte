@@ -521,6 +521,23 @@ describe('POST /auth/forgot-password e2e (WU-7, 7.4)', () => {
       expect(reuso.status).toBe(400);
     });
 
+    it('[W1] passwordNueva con menos de 8 caracteres → 400 (ValidationPipe), sin tocar password_hash ni consumir el token', async () => {
+      const rol = await crearRole('corta');
+      const { id, token } = await solicitarYCapturarToken('corta', rol, 'ClaveOriginal123');
+      const hashAntes = (await masterClient.usuario.findUnique({ where: { id } }))?.passwordHash;
+
+      const { status } = await postResetPassword(baseUrl, token, 'corta');
+
+      expect(status).toBe(400);
+      expect((await masterClient.usuario.findUnique({ where: { id } }))?.passwordHash).toBe(
+        hashAntes,
+      );
+      const fila = await masterClient.passwordResetToken.findUnique({
+        where: { tokenHash: sha256Hex(token) },
+      });
+      expect(fila?.usedAt).toBeNull();
+    });
+
     it('[abuso: causa del rechazo expuesta] un token vencido y uno inexistente dan 400 byte a byte idénticos', async () => {
       const rol = await crearRole('vencido');
       const { token } = await solicitarYCapturarToken('vencido', rol, 'ClaveOriginal123');

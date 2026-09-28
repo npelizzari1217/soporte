@@ -19,8 +19,9 @@ describe('TareasSegundoPlano (ADR-2)', () => {
     expect(() => tareas.lanzar('reset-password.solicitud', tarea)).not.toThrow();
     await tareas.esperarPendientes();
 
+    // [S2] Solo el TIPO del error (`error.name`), nunca su `.message`.
     expect(logger.error).toHaveBeenCalledWith(
-      'SEGUNDO_PLANO_ERROR | tarea=reset-password.solicitud | error=fallo-smtp',
+      'SEGUNDO_PLANO_ERROR | tarea=reset-password.solicitud | error=Error',
     );
   });
 
@@ -34,9 +35,7 @@ describe('TareasSegundoPlano (ADR-2)', () => {
     tareas.lanzar('etiqueta', tarea);
     await tareas.esperarPendientes();
 
-    expect(logger.error).toHaveBeenCalledWith(
-      'SEGUNDO_PLANO_ERROR | tarea=etiqueta | error=sincrono',
-    );
+    expect(logger.error).toHaveBeenCalledWith('SEGUNDO_PLANO_ERROR | tarea=etiqueta | error=Error');
   });
 
   it('esperarPendientes() resuelve cuando el Set queda vacío', async () => {

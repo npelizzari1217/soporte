@@ -39,13 +39,23 @@ const ERROR_SIN_TOKEN: ErrorRestablecerPassword = {
   mostrarLinkSolicitud: true,
 };
 
-/** Lee `#token=<hex>` del fragmento y lo saca de la URL. `null` si no hay. */
+/**
+ * Lee `#token=<hex>` del fragmento y lo saca de la URL. `null` si no hay
+ * fragmento con esa forma, o si el token viene mal codificado [S4]:
+ * `decodeURIComponent` puede lanzar `URIError` con una secuencia `%`
+ * inválida, y un token roto se trata igual que uno ausente (mismo mensaje
+ * genérico de link inválido).
+ */
 function leerYLimpiarToken(): string | null {
   const match = /^#token=(.+)$/.exec(window.location.hash);
   if (!match) return null;
 
   window.history.replaceState(null, "", window.location.pathname + window.location.search);
-  return decodeURIComponent(match[1]);
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return null;
+  }
 }
 
 export default function RestablecerPasswordPage() {

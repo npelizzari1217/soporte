@@ -38,6 +38,17 @@ export function mensajeDeSolicitudReset(error: ApiError | null): string {
   return MENSAJE_SOLICITUD_RESET;
 }
 
+/**
+ * [S3] `true` para 429/red/5xx: son fallas de infraestructura, no un
+ * resultado de la solicitud en sí — la UI mantiene el formulario visible
+ * para reintentar, mismo criterio que `errorDeRestablecerPassword`
+ * (`use-restablecer-password.ts`).
+ */
+export function esErrorTransitorioSolicitud(error: ApiError | null): boolean {
+  if (!error) return false;
+  return error.statusCode === 429 || error.statusCode === 0 || error.statusCode >= 500;
+}
+
 export function useSolicitarReset() {
   const mutation = useMutation<void, ApiError, SolicitarResetDto>({
     mutationFn: (dto) => apiFetch<void>("auth/forgot-password", { method: "POST", json: dto }),
@@ -50,5 +61,7 @@ export function useSolicitarReset() {
     isPending: mutation.isPending,
     /** `null` mientras no se envió nada todavía. */
     mensaje: terminado ? mensajeDeSolicitudReset(mutation.error) : null,
+    /** [S3] `true` solo ante 429/red/5xx — el resultado real sigue oculto. */
+    esTransitorio: esErrorTransitorioSolicitud(mutation.error),
   };
 }

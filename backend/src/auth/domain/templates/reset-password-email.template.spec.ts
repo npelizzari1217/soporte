@@ -48,4 +48,13 @@ describe('templateResetConfirmado', () => {
     expect(msg.html).not.toContain('<b>x</b>');
     expect(msg.html).toContain('&lt;b&gt;');
   });
+
+  /** [W3] wording de la decisión 3 del dueño (proposal.md): "contactá a tu administrador". */
+  it('deriva al usuario a su administrador, no a "soporte"', () => {
+    const msg = templateResetConfirmado({ nombre: 'Ana' });
+
+    expect(msg.text).toContain('contactá a tu administrador');
+    expect(msg.html).toContain('contactá a tu administrador');
+    expect(msg.text).not.toContain('contactá a soporte');
+  });
 });

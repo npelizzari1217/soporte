@@ -44,6 +44,14 @@ describe("RestablecerPasswordPage", () => {
     expect(screen.queryByLabelText(/^nueva contraseña$/i)).not.toBeInTheDocument();
   });
 
+  it("[S4] token mal codificado en el fragmento → se trata como ausente, mismo mensaje genérico", async () => {
+    window.location.hash = "#token=%E0";
+    renderPage();
+
+    expect(await screen.findByText(/no es válido o venció/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/^nueva contraseña$/i)).not.toBeInTheDocument();
+  });
+
   it("lee el token del fragmento y lo saca de la barra de direcciones", async () => {
     window.location.hash = "#token=abc123";
     renderPage();

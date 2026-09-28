@@ -34,6 +34,26 @@ const makeUsuario = (activo = true): UsuarioEntity =>
     activo,
   });
 
+/**
+ * [S1] `activo=true` pero soft-deleted (`deletedAt` seteado): `suspend()`
+ * siempre pone los dos juntos, así que hace falta `reconstitute()` para
+ * armar la combinación que el guard `isDeleted()` cubre de forma defensiva.
+ */
+const makeUsuarioSoftDeletedActivo = (): UsuarioEntity =>
+  UsuarioEntity.reconstitute(
+    {
+      email: EMAIL,
+      nombre: 'Juan',
+      apellido: 'Perez',
+      passwordHash: 'hash-existente',
+      activo: true,
+    },
+    'usuario-soft-deleted-uuid',
+    new Date(),
+    new Date(),
+    new Date(),
+  );
+
 const makeMembresia = (clienteId = CLIENTE_ID): MembresiaResuelta => ({
   clienteId,
   clienteNombre: 'Cliente Test',
@@ -105,6 +125,8 @@ describe('SolicitarResetPasswordUseCase', () => {
     expect(membresiaRepo.findActivasByUsuario).not.toHaveBeenCalled();
     expect(correoDeCliente.estado).not.toHaveBeenCalled();
     expect(correoDeCliente.enviar).not.toHaveBeenCalled();
+    expect(tokenRepo.revocarVigentesDeUsuario).not.toHaveBeenCalled();
+    expect(tokenRepo.save).not.toHaveBeenCalled();
   });
 
   it('cuenta inactiva: loguea CUENTA_NO_DISPONIBLE con usuarioId, no consulta membresías', async () => {
@@ -118,6 +140,22 @@ describe('SolicitarResetPasswordUseCase', () => {
     );
     expect(membresiaRepo.findActivasByUsuario).not.toHaveBeenCalled();
     expect(correoDeCliente.enviar).not.toHaveBeenCalled();
+    expect(tokenRepo.revocarVigentesDeUsuario).not.toHaveBeenCalled();
+    expect(tokenRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('[S1: abuso: activo=true con deletedAt] cuenta activa pero soft-deleted: loguea CUENTA_NO_DISPONIBLE, no consulta membresías', async () => {
+    const usuario = makeUsuarioSoftDeletedActivo();
+    usuarioRepo.findByEmail.mockResolvedValue(usuario);
+
+    await useCase.ejecutar(EMAIL);
+
+    expect(logger.log).toHaveBeenCalledWith(
+      `RESET_PASSWORD_SOLICITUD | resultado=CUENTA_NO_DISPONIBLE | usuarioId=${usuario.id}`,
+    );
+    expect(membresiaRepo.findActivasByUsuario).not.toHaveBeenCalled();
+    expect(tokenRepo.revocarVigentesDeUsuario).not.toHaveBeenCalled();
+    expect(tokenRepo.save).not.toHaveBeenCalled();
   });
 
   it('0 membresías: loguea MEMBRESIAS_0 con usuarioId, no consulta el correo', async () => {
@@ -131,6 +169,8 @@ describe('SolicitarResetPasswordUseCase', () => {
       `RESET_PASSWORD_SOLICITUD | resultado=MEMBRESIAS_0 | usuarioId=${usuario.id}`,
     );
     expect(correoDeCliente.estado).not.toHaveBeenCalled();
+    expect(tokenRepo.revocarVigentesDeUsuario).not.toHaveBeenCalled();
+    expect(tokenRepo.save).not.toHaveBeenCalled();
   });
 
   it('2+ membresías: loguea MEMBRESIAS_N con usuarioId, no consulta el correo', async () => {
@@ -147,6 +187,8 @@ describe('SolicitarResetPasswordUseCase', () => {
       `RESET_PASSWORD_SOLICITUD | resultado=MEMBRESIAS_N | usuarioId=${usuario.id}`,
     );
     expect(correoDeCliente.estado).not.toHaveBeenCalled();
+    expect(tokenRepo.revocarVigentesDeUsuario).not.toHaveBeenCalled();
+    expect(tokenRepo.save).not.toHaveBeenCalled();
   });
 
   it('cliente sin correo: loguea CLIENTE_SIN_CORREO, no revoca ni emite token', async () => {
@@ -161,6 +203,7 @@ describe('SolicitarResetPasswordUseCase', () => {
       `RESET_PASSWORD_SOLICITUD | resultado=CLIENTE_SIN_CORREO | usuarioId=${usuario.id} | clienteId=${CLIENTE_ID}`,
     );
     expect(tokenRepo.revocarVigentesDeUsuario).not.toHaveBeenCalled();
+    expect(tokenRepo.save).not.toHaveBeenCalled();
     expect(correoDeCliente.enviar).not.toHaveBeenCalled();
   });
 
@@ -176,6 +219,8 @@ describe('SolicitarResetPasswordUseCase', () => {
       `RESET_PASSWORD_SOLICITUD | resultado=CLIENTE_NO_DISPONIBLE | usuarioId=${usuario.id} | clienteId=${CLIENTE_ID}`,
     );
     expect(correoDeCliente.enviar).not.toHaveBeenCalled();
+    expect(tokenRepo.revocarVigentesDeUsuario).not.toHaveBeenCalled();
+    expect(tokenRepo.save).not.toHaveBeenCalled();
   });
 
   it('cliente LISTO: revoca vigentes, persiste solo el hash, envía el mail y loguea MAIL_DESPACHADO — sin token/email en ningún log', async () => {

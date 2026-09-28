@@ -84,7 +84,9 @@ Evidence: focused test
 `app.module.ts` (mismo criterio que WU-1). Rollback: revert del commit; módulo huérfano sin
 importar, `app.module.ts` intacto.
 
-Verification: `pnpm lint` OK · `pnpm typecheck` OK · `pnpm test` OK (ver conteo abajo) ·
+Verification: `pnpm lint` OK · `pnpm typecheck` OK · `pnpm test` OK — conteo no registrado aparte
+en este WU; la progresión consolidada sigue en WU-5b (472 archivos / 5476 tests), que ya incluye
+lo agregado acá [W5: corregido, decía "(ver conteo abajo)" sin conteo] ·
 `rg -n RecuperacionPasswordModule backend/src/app.module.ts` sin resultados.
 
 Status: 6/6 tareas completas. Ready for WU-5.
@@ -168,10 +170,13 @@ revocación degradada sin `.message`, mail de fondo sin token/plaintext en logs)
 `auth.controller.spec.ts` sigue en 16/16 — el desvío de archivo lo mantiene intacto.
 `pnpm lint` OK · `pnpm typecheck` OK.
 
-**`size:exception`** (criterio del dueño, 2026-09-28): el e2e es la única prueba del throttling
-y de las respuestas idénticas, y del arreglo del guard de WU-4 (nunca estuvo cableado:
-`@UseGuards` instancia la clase por su cuenta y salteaba el `useFactory`). Partir separaba el
-código de su prueba.
+**`size:exception`** (criterio del dueño, 2026-09-28): 458 líneas. El caso de uso, su error y su
+matriz de abuso son un solo flujo (ADR-5); no hay corte limpio.
+
+Status: 4/4 tareas completas. `pnpm test` no se registró aparte en este WU [W5: sección corregida
+— terminaba con un párrafo de WU-7 (e2e, throttling, arreglo del guard) pegado acá por error, sin
+Status ni conteo propios]; el primer conteo consolidado de la suite completa con este WU adentro
+queda en WU-11 (475 archivos / 5501 tests). Ready for WU-7.
 
 ## WU-7 — Ruta de solicitud — COMPLETO (`size:exception`, criterio del dueño)
 
@@ -268,8 +273,9 @@ esa clave loguea); 429 en el 6.º intento con el mismo token). También:
 `pnpm vitest run src/auth/recuperacion-password.module.spec.ts` → 4/4 passed (3 de WU-5b/WU-7 + 1
 nuevo: `ConfirmarResetPasswordUseCase` resuelve). `pnpm lint` OK · `pnpm typecheck` OK ·
 `rg -n RecuperacionPasswordModule backend/src/app.module.ts` sin resultados (HARD CONSTRAINT
-respetado). `pnpm test` completo en curso al momento de este reporte (ver resultado final en la
-respuesta del agente).
+respetado). `pnpm test` sin conteo registrado para esta unidad (la suite completa pasó en WU-11, que la contiene), sin el módulo registrado todavía en `app.module.ts`
+[W5: corregido — decía "completo en curso al momento de este reporte"]; el conteo consolidado con
+el módulo ya registrado queda en WU-11 (475 archivos / 5501 tests).
 
 Status: 3/3 tareas (8.1–8.3), commiteadas con `size:exception`.
 
@@ -301,8 +307,11 @@ Files: `frontend/src/features/auth/components/RestablecerPasswordForm.tsx` + `.t
 `frontend/src/middleware.ts` + `.test.ts` (modify: suma `/restablecer-password` a `RUTAS_PUBLICAS`).
 
 Deviations: none (ADR-7/ADR-8). Sin token o con un 400 el formulario se oculta y muestra el mismo
-mensaje con link a `/olvide-password`; cualquier otro error del hook también lo oculta, por
-simplicidad — ningún escenario de este WU ejercita 429/5xx sobre esta página.
+mensaje con link a `/olvide-password`. Un 429 o un error de red/5xx SÍ se ejercita en este WU y NO
+oculta el formulario: queda visible con el mensaje arriba para reintentar (`errorTransitorio` en
+`page.tsx`) [W5: corregido — decía que "cualquier otro error" ocultaba el form y que "ningún
+escenario de este WU ejercita 429/5xx"; el `size:exception` de esta WU en `tasks.md` ya describía
+el arreglo correcto].
 
 Evidence: focused test `pnpm vitest run frontend/src/app/(auth)/restablecer-password
 frontend/src/features/auth/components/RestablecerPasswordForm.test.tsx frontend/src/middleware.test.ts`
@@ -340,7 +349,8 @@ harness de test). Rollback: revert del commit; `app.module.ts` deja de montar el
 rutas vuelven a 404), Ayuda vuelve al texto previo, `RUTAS_PUBLICAS` pierde `/olvide-password`.
 
 Verification: frontend — `pnpm lint` OK · `pnpm type-check` OK · focused tests arriba OK ·
-`pnpm test` → 205 archivos / 1554 tests OK. Backend — `pnpm lint` OK · `pnpm typecheck` OK ·
+`pnpm test` → 205 archivos / 1557 tests OK [W5: corregido — decía 1554; el `verify-report.md`
+independiente, sobre la misma revisión, observó 1557]. Backend — `pnpm lint` OK · `pnpm typecheck` OK ·
 `pnpm test` → 475 archivos / 5501 tests OK · `rg -n RecuperacionPasswordModule backend/src/app.module.ts`
 → import + entrada en `imports: []`, único punto de registro (WU-1 a WU-10 lo dejaron
 intencionalmente afuera).
@@ -351,3 +361,38 @@ FALSA en `mi-cuenta-contrasena.md:31-35`.
 
 Status: 7/7 tareas completas. Ciclo `reseteo-contrasena-olvidada` COMPLETO — 11/11 work units.
 Ready for `sdd-verify`.
+
+## WU-12 — Corrección acotada tras `sdd-verify` (PASS WITH WARNINGS) — COMPLETO (12.1–12.10)
+
+Una única transacción de corrección sobre `verify-report.md` (revisión `wu11` @ `6c351ad`,
+`evidence_revision: sha256:695d1932...`), con las 5 `WARNING` (W1–W5) y las 5 `SUGGESTION`
+(S1–S5) del reporte. Rama `feat/reseteo-contrasena-olvidada-wu12`, apilada sobre `wu11`. Detalle
+de cada tarea (qué se tocó y por qué) en `tasks.md` WU-12; las correcciones de W5 sobre texto
+stale quedan anotadas inline con `[W5: corregido — ...]` en las secciones WU-4/WU-6/WU-8/WU-10/
+WU-11 de arriba.
+
+Deviations: ninguna en el contrato HTTP ni en el modelo de datos — WU-12 es una corrección
+acotada, no una work unit de diseño nueva.
+
+Evidence — prueba de mutación (working tree, revertida después de cada corrida, sin diff
+residual verificado con `git diff --stat`):
+
+| Hallazgo | Mutación | Resultado |
+|---|---|---|
+| 12.1 (W1) | Quitar `@MinLength(8)` de `ConfirmarResetDto.passwordNueva` | `expected 204 to be 400` — MATA |
+| 12.2 (W4) | `revocarVigentesDeUsuario` dentro de `MEMBRESIAS_N` | `expected "vi.fn()" to not be called` — MATA |
+| 12.3 (S1) | Quitar `isDeleted()` en `solicitar-reset-password.use-case.ts` | `expected false to be true` — MATA |
+| 12.3 (S1) | Quitar `isDeleted()` en `confirmar-reset-password.use-case.ts` | `expected false to be true` — MATA |
+
+Focused test (6 specs backend, ver lista en `tasks.md` WU-12): 50/50 passed. Runtime harness: el
+e2e de W1 (12.1) corre contra `soporte_master_test` real, mismo harness de WU-7/WU-8.
+
+Verification: backend — `pnpm lint` OK · `pnpm typecheck` OK · focused (50/50) · `pnpm test` →
+475 archivos / 5505 tests OK (`orden-de-arranque.spec.ts` lanza un fixture de proceso hijo excluido
+de la suite; su salida FAIL es el comportamiento esperado que verifica el spec padre). frontend — `pnpm lint` OK ·
+`pnpm type-check` OK · focused (33/33) · `pnpm test` → 205 archivos / 1560 tests OK.
+
+Rollback boundary: revert del commit de WU-12; WU-1 a WU-11 intactas — solo agrega tests, corrige
+texto/logs y ajusta el reintento de dos páginas del frontend ante errores de infraestructura.
+
+Status: 10/10 tareas (12.1–12.10) completas. Ciclo — 12/12 work units. Ready for `sdd-verify`.

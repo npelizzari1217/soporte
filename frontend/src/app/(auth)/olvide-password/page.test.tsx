@@ -51,6 +51,32 @@ describe("OlvidePasswordPage", () => {
     expect(screen.queryByLabelText(/email/i)).not.toBeInTheDocument();
   });
 
+  it.each([429, 500])(
+    "[S3] %i del backend → el formulario sigue visible con el mensaje, y reintentar vuelve a enviar",
+    async (status) => {
+      let intentos = 0;
+      server.use(
+        http.post("/api/auth/forgot-password", () => {
+          intentos += 1;
+          return intentos === 1
+            ? HttpResponse.json({ statusCode: status, message: "x" }, { status })
+            : new HttpResponse(null, { status: 204 });
+        }),
+      );
+
+      const user = userEvent.setup();
+      renderPage();
+      await enviar(user, "existe@example.com");
+
+      expect(await screen.findByRole("alert")).toBeInTheDocument();
+      expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: /enviar link/i }));
+      expect(await screen.findByText(MENSAJE_SOLICITUD_RESET)).toBeInTheDocument();
+      expect(intentos).toBe(2);
+    },
+  );
+
   it("muestra un link para volver a /login tras enviar", async () => {
     server.use(http.post("/api/auth/forgot-password", () => new HttpResponse(null, { status: 204 })));
 

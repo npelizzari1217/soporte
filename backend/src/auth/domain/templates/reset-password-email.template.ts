@@ -54,10 +54,10 @@ export function templateResetConfirmado(datos: DatosResetConfirmado): PlantillaE
   const subject = 'Tu contraseña fue restablecida';
   const text =
     `Hola ${datos.nombre},\n\n` +
-    `Tu contraseña se restableció con éxito. Si no fuiste vos, contactá a soporte.`;
+    `Tu contraseña se restableció con éxito. Si no fuiste vos, contactá a tu administrador.`;
   const html =
     `<p>Hola ${escaparHtml(datos.nombre)},</p>` +
-    `<p>Tu contraseña se restableció con éxito. Si no fuiste vos, contactá a soporte.</p>`;
+    `<p>Tu contraseña se restableció con éxito. Si no fuiste vos, contactá a tu administrador.</p>`;
 
   return { subject, text, html };
 }

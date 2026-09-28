@@ -9,7 +9,8 @@ import { ILogger } from '../../domain/ports/i-logger.port';
  * Cada `lanzar()` difiere `tarea` al siguiente tick con `setImmediate` y la
  * registra en un `Set` de pendientes hasta que termina. Un rechazo se
  * atrapa y loguea con `SEGUNDO_PLANO_ERROR | tarea=<etiqueta> |
- * error=<message>` — nunca se propaga ni revienta el proceso.
+ * error=<nombre>` (solo el TIPO del error, [S2]) — nunca se propaga ni
+ * revienta el proceso.
  *
  * `esperarPendientes()` resuelve cuando el `Set` queda vacío: la usan los
  * tests (sin `sleep`) y `onApplicationShutdown()`, para no cortar envíos en
@@ -32,8 +33,10 @@ export class TareasSegundoPlano implements ITareasSegundoPlano, OnApplicationShu
         Promise.resolve()
           .then(() => tarea())
           .catch((error: unknown) => {
-            const detalle = error instanceof Error ? error.message : String(error);
-            this.logger.error(`SEGUNDO_PLANO_ERROR | tarea=${etiqueta} | error=${detalle}`);
+            // [S2] Solo el TIPO del error, nunca `.message` — puede traer un
+            // email u otro dato sensible de la tarea diferida.
+            const tipo = error instanceof Error ? error.name : typeof error;
+            this.logger.error(`SEGUNDO_PLANO_ERROR | tarea=${etiqueta} | error=${tipo}`);
           })
           .finally(() => {
             this.pendientes.delete(promesa);

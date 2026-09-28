@@ -14,8 +14,9 @@ import { EstadoCorreoCliente, ICorreoDeCliente } from '../../domain/ports/i-corr
  * (`sla/infrastructure/schedulers/sla-sweep.scheduler.ts:45-49`).
  *
  * Cumple el "nunca lanza" del puerto: un fallo de repositorio o de Prisma se
- * loguea (solo `clienteId` y el mensaje del error, nunca el mail) y `estado()`
- * lo trata como `CLIENTE_NO_DISPONIBLE`.
+ * loguea (solo `clienteId` y el TIPO del error — nunca su `.message`, que
+ * puede traer el mail, mismo criterio que los use cases — y nunca el mail)
+ * y `estado()` lo trata como `CLIENTE_NO_DISPONIBLE`.
  *
  * Ref spec: sdd/auth-reseteo-por-olvido/spec, Requirement "La solicitud de
  * reset devuelve una respuesta uniforme". Ref design: ADR-4. Tarea: 3.5.
@@ -66,9 +67,11 @@ export class CorreoDeClienteAdapter implements ICorreoDeCliente {
   }
 
   private logError(operacion: string, clienteId: string, error: unknown): void {
-    const detalle = error instanceof Error ? error.message : String(error);
+    // [S2] Solo el TIPO del error, nunca `.message` — igual que los use
+    // cases: un `.message` de infra o de correo puede traer el email.
+    const tipo = error instanceof Error ? error.name : typeof error;
     this.logger.error(
-      `CORREO_CLIENTE_ERROR | op=${operacion} | clienteId=${clienteId} | error=${detalle}`,
+      `CORREO_CLIENTE_ERROR | op=${operacion} | clienteId=${clienteId} | error=${tipo}`,
     );
   }
 }

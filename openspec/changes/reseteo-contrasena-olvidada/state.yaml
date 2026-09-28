@@ -1,5 +1,5 @@
 change: reseteo-contrasena-olvidada
-phase: tasks
+phase: apply
 artifact_store: openspec
 artifacts:
   proposal: true
@@ -20,6 +20,7 @@ tasks_progress:
     - WU-9
     - WU-10
     - WU-11
+    - WU-12
   pending: []
 last_updated: 2026-09-28
-last_wu_completed: WU-11
+last_wu_completed: WU-12

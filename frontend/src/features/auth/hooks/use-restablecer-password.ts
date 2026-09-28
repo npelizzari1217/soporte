@@ -2,8 +2,8 @@
 
 /**
  * use-restablecer-password — CONTAINER hook para `POST /auth/reset-password`
- * (proxy genérico `/api/reset-password` — ADR-8, sin ruta dedicada: no toca
- * cookies). Body `{ token, passwordNueva }`, mismos nombres que
+ * (proxy genérico `/api/auth/reset-password` — ADR-8, sin ruta dedicada: no
+ * toca cookies). Body `{ token, passwordNueva }`, mismos nombres que
  * `ConfirmarResetDto`; `repetirPassword` es solo del cliente y nunca viaja.
  *
  * Un 400 (vencido/usado/revocado/inexistente — Req 6) siempre da el MISMO

@@ -40,6 +40,26 @@ const makeUsuario = (activo = true): UsuarioEntity =>
     USUARIO_ID,
   );
 
+/**
+ * [S1] `activo=true` pero soft-deleted (`deletedAt` seteado): `suspend()`
+ * siempre pone los dos juntos, así que hace falta `reconstitute()` para
+ * armar la combinación que el guard `isDeleted()` cubre de forma defensiva.
+ */
+const makeUsuarioSoftDeletedActivo = (): UsuarioEntity =>
+  UsuarioEntity.reconstitute(
+    {
+      email: 'usuario@test.com',
+      nombre: 'Juan',
+      apellido: 'Perez',
+      passwordHash: 'hash-existente',
+      activo: true,
+    },
+    USUARIO_ID,
+    new Date(),
+    new Date(),
+    new Date(),
+  );
+
 const makeToken = (
   overrides: Partial<{ usedAt: Date | null; revokedAt: Date | null; expiresAt: Date }> = {},
 ): PasswordResetTokenEntity =>
@@ -140,6 +160,7 @@ describe('ConfirmarResetPasswordUseCase', () => {
     it.each([
       ['inexistente', null],
       ['inactivo', makeUsuario(false)],
+      ['activo pero soft-deleted [S1]', makeUsuarioSoftDeletedActivo()],
     ])('usuario %s', async (_causa, usuarioMock) => {
       tokenRepo.findByHash.mockResolvedValue(makeToken());
       usuarioRepo.findById.mockResolvedValue(usuarioMock);
