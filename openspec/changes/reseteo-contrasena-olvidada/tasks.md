@@ -286,15 +286,15 @@ Files: `frontend/src/features/auth/schemas.ts` + `schemas.test.ts` (modify),
 `frontend/src/features/auth/hooks/use-solicitar-reset.ts`, `use-restablecer-password.ts` + tests
 (create)
 
-- [ ] 9.1 `solicitarResetSchema { email }` espeja `@IsEmail`. [Req 14]
-- [ ] 9.2 `restablecerPasswordSchema { passwordNueva: min(8), repetirPassword }` con `.refine` de
+- [x] 9.1 `solicitarResetSchema { email }` espeja `@IsEmail`. [Req 14]
+- [x] 9.2 `restablecerPasswordSchema { passwordNueva: min(8), repetirPassword }` con `.refine` de
       igualdad, copia de `cambiarPasswordSchema:25-34`. [Req 7, Req 14]
-- [ ] 9.3 `use-solicitar-reset.ts` (`apiFetch` + `useMutation`): mismo mensaje siempre tras 204;
+- [x] 9.3 `use-solicitar-reset.ts` (`apiFetch` + `useMutation`): mismo mensaje siempre tras 204;
       429 aviso de límite; 0/5xx infraestructura (criterio `mensajeDeErrorDeLogin`). [Req 1,
       Req 14]
-- [ ] 9.4 `use-restablecer-password.ts`: 400 → "link no válido o vencido" con enlace a
+- [x] 9.4 `use-restablecer-password.ts`: 400 → "link no válido o vencido" con enlace a
       `/olvide-password`. [Req 6, Req 14]
-- [ ] 9.5 Tests de schemas y hooks para cada rama de mensaje.
+- [x] 9.5 Tests de schemas y hooks para cada rama de mensaje.
 
 Focused test: `pnpm vitest run frontend/src/features/auth/schemas.test.ts`
 Verification: `pnpm lint` · `pnpm type-check` · `pnpm vitest run frontend/src/features/auth/` · `pnpm test`

@@ -17,9 +17,9 @@ tasks_progress:
     - WU-6
     - WU-7
     - WU-8
-  pending:
     - WU-9
+  pending:
     - WU-10
     - WU-11
 last_updated: 2026-09-28
-last_wu_completed: WU-8
+last_wu_completed: WU-9

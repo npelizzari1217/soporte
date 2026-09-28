@@ -33,3 +33,36 @@ export const cambiarPasswordSchema = z
     path: ["repetirPassword"],
   });
 export type CambiarPasswordFormValues = z.infer<typeof cambiarPasswordSchema>;
+
+/**
+ * solicitarResetSchema — validación cliente-side de la pantalla de "olvidé mi
+ * contraseña" (`/olvide-password`). Espeja `SolicitarResetDto.email`
+ * (`@IsEmail()`, `recuperacion-password.dto.ts`).
+ *
+ * Spec: sdd/reseteo-contrasena-olvidada — WU-9. Design ADR-8, "Schemas".
+ */
+export const solicitarResetSchema = z.object({
+  email: z.string().min(1, "El email es requerido").email("Ingresá un email válido"),
+});
+export type SolicitarResetFormValues = z.infer<typeof solicitarResetSchema>;
+
+/**
+ * restablecerPasswordSchema — validación cliente-side de la pantalla de
+ * confirmación (`/restablecer-password`). Copia textual de
+ * `cambiarPasswordSchema` (arriba) sin `passwordActual`: acá no hay
+ * contraseña vigente que pedir, la posesión del token es la autorización
+ * (design ADR-1, "Autorización"). `repetirPassword` tampoco viaja al
+ * backend — espeja `ConfirmarResetDto.passwordNueva` (`@MinLength(8)`).
+ *
+ * Spec: sdd/reseteo-contrasena-olvidada — WU-9. Design ADR-8, "Schemas".
+ */
+export const restablecerPasswordSchema = z
+  .object({
+    passwordNueva: z.string().min(8, "Mínimo 8 caracteres"),
+    repetirPassword: z.string().min(1, "Repetí la nueva contraseña"),
+  })
+  .refine((data) => data.passwordNueva === data.repetirPassword, {
+    message: "Las contraseñas no coinciden",
+    path: ["repetirPassword"],
+  });
+export type RestablecerPasswordFormValues = z.infer<typeof restablecerPasswordSchema>;

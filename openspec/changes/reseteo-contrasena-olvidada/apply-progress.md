@@ -272,3 +272,24 @@ respetado). `pnpm test` completo en curso al momento de este reporte (ver result
 respuesta del agente).
 
 Status: 3/3 tareas (8.1–8.3), commiteadas con `size:exception`.
+
+## WU-9 — Frontend: schemas y hooks — COMPLETO (9.1–9.5)
+
+Files: `frontend/src/features/auth/schemas.ts` + `.test.ts` (modify: suma
+`solicitarResetSchema`/`restablecerPasswordSchema`),
+`frontend/src/features/auth/hooks/use-solicitar-reset.ts` + `.test.tsx` (create),
+`frontend/src/features/auth/hooks/use-restablecer-password.ts` + `.test.tsx` (create).
+
+Deviations: none (ADR-8). Sin página que los importe todavía (WU-10/WU-11); los hooks no
+conocen rutas — `errorDeRestablecerPassword` solo expone `mostrarLinkSolicitud: boolean`
+para que la UI decida el link a `/olvide-password`.
+
+Evidence: focused test `pnpm vitest run frontend/src/features/auth/` → todas las ramas de
+mensaje cubiertas (204 genérico, 429, 500, red, y el 400 único de confirmación con
+`mostrarLinkSolicitud`). Runtime harness: N/A — hooks sin página que los use (mismo
+criterio que WU-1/WU-4). Rollback: revert del commit; hooks y schemas sin import.
+
+Verification: `pnpm lint` OK · `pnpm type-check` OK · `pnpm vitest run frontend/src/features/auth/` OK
+· `pnpm test` OK.
+
+Status: 5/5 tareas completas. Ready for WU-10.
