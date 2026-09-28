@@ -4,9 +4,10 @@
  * de feriados globales (MASTER, solo ROOT) y de feriados por cliente (base
  * del tenant, ADMINISTRADOR del cliente o ROOT) de sdd/feriados-configurables.
  *
- * La lectura de feriados para el SLA une globales y propios del cliente
- * (`PrismaFeriadosLaboralesRepository`) y falla cerrado si no hay un
- * `TenantContext` activo.
+ * El calendario laboral es por cliente (tenant, desde
+ * sdd/horario-laboral-por-cliente) y la lectura de feriados para el SLA une
+ * globales y propios del cliente (`PrismaFeriadosLaboralesRepository`);
+ * ambos fallan cerrado si no hay un `TenantContext` activo.
  *
  * FITNESS RULE: PrismaService y @prisma/client solo pueden importarse desde
  * infrastructure/ (ver `backend/eslint.config.js`).
@@ -58,6 +59,9 @@ import { FeriadosClienteController } from './interface/controllers/feriados-clie
   controllers: [FeriadosController, FeriadosClienteController],
   providers: [
     {
+      // TenantContext llega vía SharedModule (@Global) — desde WU-3
+      // (sdd/horario-laboral-por-cliente) el repo ya no depende de
+      // PrismaService, Nest lo resuelve solo por el constructor.
       provide: CALENDARIO_LABORAL_SEMANAL_REPOSITORY,
       useClass: PrismaCalendarioLaboralSemanalRepository,
     },

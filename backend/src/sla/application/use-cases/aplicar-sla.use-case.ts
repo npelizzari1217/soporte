@@ -57,9 +57,10 @@ export interface AplicarSlaDto {
  * docstring de `SlaRegla` en `tickets/domain/entities/ticket.entity.ts`).
  * Un ticket `CORRIDO` sigue con `CalcularSlaVenceService` (24/7, sin
  * cambios); uno `HABIL` usa `CalcularSlaHabilVenceService` sobre el
- * calendario semanal de MASTER y los feriados que aplican al cliente del
- * ticket: los globales de MASTER unidos a los propios de la base del tenant
- * (`CalendarioLaboralModule`). Sin fallback silencioso: si
+ * calendario semanal propio del cliente (tenant, sdd/horario-laboral-por-cliente)
+ * y los feriados que aplican al cliente del ticket: los globales de MASTER
+ * unidos a los propios de la base del tenant (`CalendarioLaboralModule`).
+ * Sin fallback silencioso: si
  * `calendarioRepo`/`feriadosRepo` lanzan — incluido el fail-closed cuando no
  * hay `TenantContext` —, el error se propaga tal cual y
  * `AplicarSlaListener` lo registra (`SLA_APLICAR_ERROR`) sin revertir el
@@ -67,8 +68,8 @@ export interface AplicarSlaDto {
  *
  * Costo (documentado, sin optimizar — no hay evidencia de que sea un cuello
  * de botella, y un caché se desactualizaría cuando alguien edite feriados
- * desde los ABM): un ticket `HABIL` suma el calendario de MASTER más los
- * feriados (MASTER y tenant, en paralelo) a la consulta que ya hacía este use
+ * desde los ABM): un ticket `HABIL` suma el calendario del cliente (tenant)
+ * más los feriados (MASTER y tenant, en paralelo) a la consulta que ya hacía este use
  * case (`findIdByCodigo` del tipo PREVENTIVO), por creación o
  * repriorización. Los tickets ya abiertos no se recalculan al cambiar un
  * feriado; solo al repriorizarse.
@@ -183,8 +184,9 @@ export class AplicarSlaUseCase {
 
   /**
    * Enruta al calculador según la cohorte del ticket (WU-3, discriminador).
-   * `CORRIDO` (24/7) no toca MASTER. `HABIL` lee calendario + feriados de
-   * MASTER (WU-2) — sin try/catch: un fallo de cualquiera de los dos
+   * `CORRIDO` (24/7) no toca MASTER. `HABIL` lee el calendario propio del
+   * cliente (tenant, sdd/horario-laboral-por-cliente) y los feriados de
+   * MASTER+tenant (WU-2) — sin try/catch: un fallo de cualquiera de los dos
    * puertos propaga tal cual, nunca degrada a `CalcularSlaVenceService`
    * (eso daría un vencimiento incorrecto sin que nadie se entere).
    */

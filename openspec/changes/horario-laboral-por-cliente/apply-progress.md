@@ -99,3 +99,51 @@ None.
 415 líneas de código y tests (más openspec). Las cuatro validaciones de `crear()` son pasos del
 mismo método: no hay corte limpio que no separe código de sus tests. Verificación: `pnpm lint` y
 `pnpm typecheck` limpios, 19/19 en el spec focalizado, suite completa 5456/5456.
+
+## WU-3 — Swap del repositorio, fail-closed, deprecación de master
+
+**Branch**: `feat/horario-laboral-por-cliente-wu03` · **Base**: `feat/horario-laboral-por-cliente-wu02` · **Status**: Complete
+
+### Completed Tasks
+- [x] 3.1 `PrismaCalendarioLaboralSemanalRepository` ahora `constructor(tenantContext: TenantContext)`, sin `PrismaService`; `obtener()` lanza `CalendarioLaboralSinTenantContextError extends Error` (mismo archivo) si `tenantContext.get()` es `undefined`; con contexto, `ctx.prismaClient.calendarioLaboralDiaCliente.findMany()`.
+- [x] 3.2 `prisma-calendario-laboral.mapper.ts`: `FilaCalendarioLaboralDia` tipada estructuralmente (`{diaSemana; aperturaMinuto; cierreMinuto}`); deja de importar `CalendarioLaboralDia` de `.prisma/master` (el import de `Feriado` se conserva: el feriado global sigue en master, sin cambios de este WU).
+- [x] 3.3 Provider de `CALENDARIO_LABORAL_SEMANAL_REPOSITORY` en `calendario-laboral.module.ts`: `useClass` ya resuelve `TenantContext` por el nuevo constructor sin cambio de wiring; se agregó un comentario documentando la nueva dependencia.
+- [x] 3.4 11 docstrings corregidos (D8): puerto de lectura, repositorio, mapper (header + 2 mensajes), `calcular-sla-habil-vence.service.ts` (3 citas), `aplicar-sla.use-case.ts` (3 bloques), `sla.module.ts`, `calendario-laboral.module.ts`, `prisma_master/schema.prisma`, el spec de integración migrado (3.6), el e2e SLA (3.7) y `calcular-sla-habil-vence.service.spec.ts`.
+- [x] 3.5 `prisma_master/schema.prisma` (454-475): comentario reemplazado por "DEPRECADA desde `horario-laboral-por-cliente`: sin lectores, red de rollback, no dropear"; se borró la promesa del ABM ROOT.
+- [x] 3.6 `calendario-laboral.repositorios.integration.spec.ts` migrado al constructor nuevo y al patrón de DB tenant efímera (`prisma-feriado-cliente.repository.integration.spec.ts:27-50`); ya no usa `soporte_master_test` ni `usarLockMasterTest()`. Casos: lectura del seed, fila faltante lanza, fail-closed sin `TenantContext`. El describe de `PrismaFeriadosLaboralesRepository` que vivía en este archivo se retiró (fuera de alcance de este WU; ya cubierto por `prisma-feriados-laborales.repository.spec.ts`, unit con mocks) — ver Deviations.
+- [x] 3.7 `aplicar-sla-habil-feriados.e2e.spec.ts`: constructor corregido a `new PrismaCalendarioLaboralSemanalRepository(tenantContext)`; cita de migración corregida a `20260830210000_add_calendario_laboral` (la que existe) y actualizada para explicar que el seed real ahora lo trae la migración de tenant `20260928150000_calendario_laboral_dias_cliente`. Vencimientos esperados sin cambios (`2031-04-11T21:00:00.000Z`, `2031-04-14T21:00:00.000Z`).
+
+Files: los 11 de `backend/` que lista `git diff --stat` (repo, mapper, módulo, puerto,
+calculador + su spec, use case, sla.module, schema master, spec de integración migrado, e2e SLA).
+
+### Deviations from Design
+El describe de `PrismaFeriadosLaboralesRepository` que compartía archivo con el calendario en
+`calendario-laboral.repositorios.integration.spec.ts` se retiró en vez de migrarse: la tarea 3.6
+lista solo 3 casos para este archivo (los del calendario) y exige que deje de usar
+`soporte_master_test`/`usarLockMasterTest()` — incompatible con conservar ahí los feriados
+globales (siguen en master). Esa cobertura (fail-closed, unión, dedup, `@db.Date`) sigue intacta
+en `prisma-feriados-laborales.repository.spec.ts` (unit, mocks); no quedó sin cubrir.
+
+### Issues Found
+None.
+
+### Work Unit Evidence
+| Evidence | Value |
+|---|---|
+| Focused test command and exact result | `pnpm vitest run .../calendario-laboral.repositorios.integration.spec.ts .../calcular-sla-habil-vence.service.spec.ts` → 18/18 passed |
+| Runtime harness command/scenario and exact result | `pnpm vitest run .../aplicar-sla-habil-feriados.e2e.spec.ts` → 1/1 passed, `usarLockMasterTest()`; vencimientos idénticos a antes del swap |
+| Rollback boundary | Revertir el commit vuelve a leer master vía `PrismaService`; ningún consumidor externo queda a mitad de camino |
+
+### Verification already run (all green)
+- `pnpm run migrate:tenants` → 2 tenants locales migrados con `20260928150000_calendario_laboral_dias_cliente`
+- `pnpm lint` / `pnpm typecheck` → 0 errores
+- `pnpm test` completo → 467/467 archivos, 5452/5452 tests (baja de 5456: -5 del describe de feriados retirado, +3 del nuevo describe de calendario efímero)
+- `rg -n 'calendarioLaboralDia\.' src` → 1 resultado (`calendario-laboral-dias-check.integration.spec.ts:178`, test del CHECK master, esperado por D12); con `--glob '!*.spec.ts'` → 0, ningún camino de producción lee el modelo master
+
+### Workload / PR Boundary
+- Mode: chained PR slice (stacked-to-main, `auto-chain`) · Current work unit: WU-3
+- Boundary: swap a `TenantContext` fail-closed, 11 docstrings (D8), master deprecada, los dos specs de H2 migrados
+- Review budget: `backend/` 335 líneas autoría + openspec — dentro de 400
+
+### Status
+7/7 tasks de WU-3 completas. Ready for verify.

@@ -1,10 +1,14 @@
 /**
- * PrismaCalendarioLaboralMapper — convierte las filas Prisma de MASTER
- * (`CalendarioLaboralDia`, `Feriado`) a los tipos de dominio que
- * `CalcularSlaHabilVenceService` (WU-1) ya espera.
+ * PrismaCalendarioLaboralMapper — convierte filas Prisma a los tipos de
+ * dominio que `CalcularSlaHabilVenceService` (WU-1) ya espera:
+ * `calendario_laboral_dias_cliente` (tenant, sdd/horario-laboral-por-cliente
+ * WU-3) para el calendario, `Feriado` de MASTER para los feriados globales.
  *
- * Importa de '.prisma/master' solo porque está en infrastructure/ (fitness
- * rule de ESLint lo permite acá exclusivamente).
+ * `FilaCalendarioLaboralDia` se tipa estructuralmente porque la fila llega
+ * del `TenantPrismaClient`, no de `.prisma/master`. `Feriado` sigue
+ * importándose de `.prisma/master` — el feriado global no cambió con este WU
+ * y sigue viviendo ahí (fitness rule de ESLint: solo infrastructure/ importa
+ * `.prisma/master`).
  *
  * TRAMPA DE `Feriado.fecha` (`@db.Date`): Prisma la devuelve como medianoche
  * UTC del día calendario. `toFeriados` lee los componentes UTC crudos
@@ -12,22 +16,23 @@
  * que restaría 3hs y correría el día para atrás. Ver
  * `prisma_master/schema.prisma:479-484` y `shared/domain/zona-horaria-argentina.ts`.
  */
-import type { CalendarioLaboralDia, Feriado } from '.prisma/master';
+import type { Feriado } from '.prisma/master';
 import {
   CalendarioLaboralSemanal,
   FeriadosLaborales,
   VentanaLaboral,
 } from '../../../domain/services/calcular-sla-habil-vence.service';
 
-type FilaCalendarioLaboralDia = Pick<
-  CalendarioLaboralDia,
-  'diaSemana' | 'aperturaMinuto' | 'cierreMinuto'
->;
+interface FilaCalendarioLaboralDia {
+  readonly diaSemana: number;
+  readonly aperturaMinuto: number | null;
+  readonly cierreMinuto: number | null;
+}
 type FilaFeriado = Pick<Feriado, 'fecha'>;
 
 export class PrismaCalendarioLaboralMapper {
   /**
-   * Mapea las filas de `calendario_laboral_dias` a la tupla semanal.
+   * Mapea las filas de `calendario_laboral_dias_cliente` a la tupla semanal.
    *
    * @throws Error si falta alguna fila 0..6 — un calendario incompleto nunca
    *               se completa en silencio con un valor por defecto.
@@ -45,8 +50,8 @@ export class PrismaCalendarioLaboralMapper {
       const ventana = porDia.get(diaSemana);
       if (ventana === undefined) {
         throw new Error(
-          `PrismaCalendarioLaboralMapper: falta en calendario_laboral_dias la fila del día de ` +
-            `semana ${diaSemana} — un calendario incompleto no se completa en silencio.`,
+          `PrismaCalendarioLaboralMapper: falta en calendario_laboral_dias_cliente la fila del ` +
+            `día de semana ${diaSemana} — un calendario incompleto no se completa en silencio.`,
         );
       }
       return ventana;

@@ -2,7 +2,8 @@ import { CalendarioLaboralSemanal } from '../services/calcular-sla-habil-vence.s
 
 /**
  * ICalendarioLaboralSemanalRepository — puerto de lectura del calendario
- * laboral semanal global (`calendario_laboral_dias`, vive en MASTER).
+ * laboral semanal del cliente (`calendario_laboral_dias_cliente`, vive en la
+ * base de cada tenant — sdd/horario-laboral-por-cliente).
  *
  * Devuelve exactamente el tipo `CalendarioLaboralSemanal` que
  * `CalcularSlaHabilVenceService` (WU-1) ya espera — este puerto no define

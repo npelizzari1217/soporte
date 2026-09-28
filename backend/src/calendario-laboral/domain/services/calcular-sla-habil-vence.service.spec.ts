@@ -23,7 +23,8 @@ import {
  * Calendario de producción (regla de negocio 4 del WU): lunes a viernes
  * 09:00–18:00 (540–1080 minutos desde medianoche local), sábado y domingo
  * cerrados. Índice = día de semana ISO-JS (0 = domingo … 6 = sábado), igual
- * a `CalendarioLaboralDia.diaSemana` en `prisma_master/schema.prisma:463`.
+ * a `CalendarioLaboralDiaCliente.diaSemana` en
+ * `prisma_tenant/schema.prisma:1315-1323` (sdd/horario-laboral-por-cliente).
  */
 const CALENDARIO_L_A_V_9_A_18: CalendarioLaboralSemanal = [
   { aperturaMinuto: null, cierreMinuto: null }, // domingo

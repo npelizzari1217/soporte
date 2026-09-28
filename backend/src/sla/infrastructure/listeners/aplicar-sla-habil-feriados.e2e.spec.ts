@@ -15,10 +15,13 @@
  * 400 líneas sin perder realismo: mismas clases, mismo Postgres, mismo
  * cálculo de dominio.
  *
- * El calendario semanal (L-V 09:00-18:00 ART, fin de semana cerrado) es un
- * seed PERMANENTE de la migración `20260824130000_add_calendario_laboral`
- * (`calendario-laboral-dias-check.integration.spec.ts`) — no hace falta
- * sembrarlo acá.
+ * El calendario semanal (L-V 09:00-18:00 ART, fin de semana cerrado) es el
+ * default por cliente que trae solo cada tenant provisionado: lo siembra la
+ * migración de tenant `20260928150000_calendario_laboral_dias_cliente`
+ * (sdd/horario-laboral-por-cliente, `calendario-laboral-dias-cliente-check.integration.spec.ts`),
+ * que corre automático vía `TenantMigrationRunnerAdapter.run()` — no hace
+ * falta sembrarlo acá. Antes vivía en MASTER, migración
+ * `20260830210000_add_calendario_laboral` (hoy deprecada, D12).
  *
  * Fechas 2031 (fuera del rango 2026-2028 sembrado por migración) para todo lo
  * propio del tenant; el feriado GLOBAL usa una fila 2031 insertada y borrada
@@ -26,7 +29,7 @@
  *
  * Higiene (soporte/CLAUDE.md): NUNCA trunca `feriados` (master, compartida) —
  * borra solo su propia fila en `afterAll`. `usarLockMasterTest()` por tocar
- * `feriados` y leer `calendario_laboral_dias` (master compartida). Orden:
+ * `feriados` (master, sigue siendo global). Orden:
  * limpiar filas propias → `app` no existe acá (sin HTTP) →
  * `prismaService.onModuleDestroy()` → `dropDatabase` de A y B.
  *
@@ -181,7 +184,7 @@ describe('SLA HABIL e2e — union global ∪ feriados del cliente (WU5c, tarea 5
       new CalcularSlaVenceService(),
       new PrismaTipoTicketRepository(tenantContext),
       new CalcularSlaHabilVenceService(),
-      new PrismaCalendarioLaboralSemanalRepository(prismaService),
+      new PrismaCalendarioLaboralSemanalRepository(tenantContext),
       new PrismaFeriadosLaboralesRepository(prismaService, tenantContext),
     );
     aplicarSlaListener = new AplicarSlaListener(useCase, logger);
