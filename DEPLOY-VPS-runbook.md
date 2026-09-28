@@ -317,12 +317,15 @@ Cifra en reposo la contraseña SMTP de cada cliente. Se genera **una sola vez** 
 guardada en basura indescifrable. Rotarla de verdad exige re-cifrar cada fila, no solo reemplazar
 el valor; eso es lo que hace `rotate-email-crypto-key.ps1` (ver `sdd/rotacion-email-crypto-key`).
 
-**Uso** (como administrator, con `backend/.env` presente y los servicios corriendo):
+**Uso** (administrator, `backend/.env` presente, servicios arriba). Invocar siempre con
+`-File` — la tabla de exit codes de abajo solo es confiable así; un `throw` dentro de una
+sesión interactiva abierta con `.\rotate-email-crypto-key.ps1` puede cerrar esa sesión en vez
+de devolver el exit code:
 
 ```powershell
 cd C:\soporte
-.\rotate-email-crypto-key.ps1 -DryRun   # precondiciones en verde, nada se toca
-.\rotate-email-crypto-key.ps1           # corrida real: dump, ventana, rotación
+powershell -NoProfile -ExecutionPolicy Bypass -File .\rotate-email-crypto-key.ps1 -DryRun
+powershell -NoProfile -ExecutionPolicy Bypass -File .\rotate-email-crypto-key.ps1
 ```
 
 **Qué hace, en orden**: valida `OLD_KEY` de `backend/.env`, genera `NEW_KEY` en el server (nunca
@@ -338,21 +341,42 @@ misma trampa que `ROOT_ADMIN_PASSWORD` el 2026-08-20), y recién ahí arranca lo
 |---|---|---|
 | 0 | Rotación confirmada | Nada — servicios arriba, `backend/.env` verificado |
 | 1 | Sin cambios (`OLD_KEY`), servicios arriba | Revisar el error de consola y re-correr |
-| 3 | Base en `NEW_KEY`, `backend/.env` **sin** actualizar | Recuperación manual (ver abajo) |
-| 4 | Estado ambiguo, servicios **detenidos** | Intervención manual — no re-correr sin diagnosticar |
+| 3 | Base en `NEW_KEY`, `backend/.env` **sin** actualizar | Recuperación manual, ver abajo |
+| 4 | Estado ambiguo, servicios **detenidos** | Verificar OLD/NEW (ver abajo) antes de nada |
+| 5 | Rotación confirmada, cierre final incompleto | Base OK — cerrar `PENDIENTE`/servicios a mano |
 
-**Recuperación manual (exit 3 o 4)**: el mensaje de consola nombra el archivo
-`backups\rotacion-email-crypto-key-<ts>.PENDIENTE.txt` (ASCII, `OLD_KEY`/`NEW_KEY`/`DUMP`).
-Copiar la línea `NEW_KEY` al `EMAIL_CRYPTO_KEY=` de `backend/.env`, confirmar con
-`ROTACION_VERIFICAR_KEY=<NEW_KEY> node backend\scripts\rotar-email-crypto-key.mjs --verificar`
-(con `DATABASE_URL_MASTER` en el entorno), renombrar el `PENDIENTE` sacándole el sufijo, y arrancar
-los dos servicios. Ninguna clave se imprime en ningún paso — el script solo reporta longitudes y rutas.
+**Recuperación manual (exit 3, 4 o 5)**: el mensaje de consola nombra el `PENDIENTE`
+(`backups\rotacion-email-crypto-key-<ts>.PENDIENTE.txt`, ASCII, `OLD_KEY`/`NEW_KEY`/`DUMP`). Todo
+en PowerShell, como administrator — ninguna clave se tipea ni se pega, se lee del archivo a una
+variable de entorno:
+
+```powershell
+$pendiente = 'C:\soporte\backups\rotacion-email-crypto-key-<ts>.PENDIENTE.txt'
+$env:DATABASE_URL_MASTER = ((Select-String -Path C:\soporte\backend\.env -Pattern '^DATABASE_URL_MASTER=').Line -split '=', 2)[1].Trim('"')
+$env:ROTACION_VERIFICAR_KEY = ((Select-String -Path $pendiente -Pattern '^OLD_KEY=').Line -split '=', 2)[1]
+node C:\soporte\backend\scripts\rotar-email-crypto-key.mjs --verificar   # exit 0 = no hubo COMMIT
+$env:ROTACION_VERIFICAR_KEY = ((Select-String -Path $pendiente -Pattern '^NEW_KEY=').Line -split '=', 2)[1]
+node C:\soporte\backend\scripts\rotar-email-crypto-key.mjs --verificar   # exit 0 = SI hubo COMMIT
+Remove-Item Env:\ROTACION_VERIFICAR_KEY, Env:\DATABASE_URL_MASTER
+```
+
+Si `OLD_KEY` verifica, no hubo `COMMIT`: borrar el `PENDIENTE` y arrancar los servicios. Si
+`NEW_KEY` verifica (exit 3, o exit 4 resuelto a `NEW_KEY`): copiar esa línea al
+`EMAIL_CRYPTO_KEY=` de `backend\.env` (temporal + `Replace`, nunca `Add-Content`), cerrar el
+`PENDIENTE` **sin renombrarlo** — escribir un archivo nuevo solo con `OLD_KEY`+`DUMP`+fecha
+(igual que el paso 9 del script, nunca `NEW_KEY`), aplicarle el `icacls` de abajo, y recién ahí
+borrar el `PENDIENTE` y arrancar los servicios. Si ninguna clave verifica, es intervención
+manual real: revisar `soporte_master.clientes` antes de arrancar nada. **Exit 5**: la base y
+`backend/.env` YA están en `NEW_KEY` y verificados — confirmar que el archivo permanente quedó
+bien escrito (sin `NEW_KEY`) antes de borrar el `PENDIENTE`, y arrancar los servicios que
+falten. Ninguna clave se imprime en ningún paso — el script solo reporta longitudes y rutas.
 
 **Retención de los archivos de recuperación**: al cerrar bien, el `PENDIENTE` se reemplaza por uno
 permanente (`rotacion-email-crypto-key-<ts>.txt`) con solo `OLD_KEY` + la ruta del dump + la fecha
 — **nunca** `NEW_KEY`. Los dos quedan en `backups\` con permisos solo para `Administrators` y
-`SYSTEM` (`icacls`). **No borrar un archivo de recuperación mientras exista el dump de esa
-ventana**: `OLD_KEY` es la única forma de descifrar las credenciales SMTP que ese dump contiene.
+`SYSTEM` (`icacls <archivo> /inheritance:r /grant:r "*S-1-5-32-544:F" "*S-1-5-18:F"`). **No borrar
+un archivo de recuperación mientras exista el dump de esa ventana**: `OLD_KEY` es la única forma
+de descifrar las credenciales SMTP que ese dump contiene.
 
 ---
 

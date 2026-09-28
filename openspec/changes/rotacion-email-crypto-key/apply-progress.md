@@ -198,6 +198,48 @@ Verificación: `pnpm lint` y `pnpm typecheck` limpios; los 4 specs del script en
 | `file rotate-email-crypto-key.ps1` / byte scan | ASCII text, sin BOM, sin bytes > 0x7F |
 | `pwsh` parse de sintaxis | No disponible en WSL — hueco declarado, no se instaló |
 
+## WU3-fix: correccion tras verify FAIL (PR 6 → rama de WU3)
+
+`verify-report.md` (`evidence_revision: sha256:36ee70a...`) encontro que `rotate-email-crypto-key.ps1`
+no podia completar ninguna corrida. Correccion acotada a esos hallazgos; Node y su spec de
+proceso no se tocan.
+
+| Hallazgo | Fix |
+|---|---|
+| C1 | `InvocarRotacion` devolvia `@(stdout..., $LASTEXITCODE)` (array) en vez del exit code: `& $NodeExe ... \| Out-Host; return [int]$LASTEXITCODE`. Auditadas `Step`/`AssertOk`/`AplicarAclRecuperacion` — ninguna otra tenia el patron |
+| C2 | Pasos 7-8 (temporal `.env`, `Replace`, relectura, `--verificar` final) en un solo `try/catch`: cualquier falla ahi (antes, `Set-Content`/`Get-Content` sin atrapar) imprime "BASE YA ROTADA" y sale exit 3 |
+| W1 | Pasos 4-5 en `try/catch`: rearranca servicios y borra un `PENDIENTE` vacio/sin `NEW_KEY` antes del exit 1. Cierre del paso 9 en su propio `try/catch`: **exit 5** nuevo (rotacion confirmada, cierre incompleto) en vez del exit 1 de "sin cambios" |
+| W2 | Runbook Seccion 5 reescrita en PowerShell puro: clave leida del `PENDIENTE` a `$env:ROTACION_VERIFICAR_KEY` (nunca tipeada/pegada), cierre siempre en archivo nuevo sin `NEW_KEY` (nunca renombra), exit 3/4 con procedimientos distintos, exit 5 documentado, invocacion siempre `-File` |
+| C3 | `backend/scripts/rotate-email-crypto-key.ps1.spec.ts`: extrae `InvocarRotacion` del `.ps1` real via AST y la corre contra un Node stub con `pwsh` real (`PWSH_PATH`/PATH; skip limpio sin ninguno). Contra `78c4216` (pre-fix): RED en "exito". Contra el fix: GREEN |
+
+### Deviations (incluye W3)
+
+- **W3 — ADR-1 no seguido al pie de la letra (declarada, sin tocar Node)**: `ejecutarRotacion`
+  (WU2a, `:158-200`) clasifica y hace `UPDATE` en el mismo recorrido, no clasifica todas las
+  filas antes del primer `UPDATE` como pide el diseño; depende del `ROLLBACK`, confirmado con
+  dos mutaciones adversariales. R2/R4/R5 se cumplen igual — desviacion aceptada, fuera de WU3-fix.
+- Ninguna otra desviacion de design/spec en WU3-fix.
+
+### Work Unit Evidence (WU3-fix)
+
+| Evidence | Value |
+|---|---|
+| Focused test command and exact result | `PWSH_PATH=<pwsh 7.4.6> pnpm vitest run scripts/rotate-email-crypto-key.ps1.spec.ts scripts/ps1-ascii.spec.ts` → 2 files, 8/8 passed; misma spec sin `PWSH_PATH` → 1 file, 3 skipped (limpio) |
+| Runtime harness command/scenario and exact result | `pwsh` 7.4.6 (`DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1`) corre `InvocarRotacion` via AST contra un stub Node; pre-fix (`78c4216`) RED en "exito" (`esEntero: false`), fix GREEN — C1 reproducido y corregido en runtime |
+| Rollback boundary | Un commit en `feat/rotacion-email-crypto-key-wu3-fix`: `rotate-email-crypto-key.ps1`, spec nuevo, runbook §5, 1 nota en README; `git revert` no toca WU1/WU2/WU3 |
+
+### Verification (backend/)
+
+| Command | Result |
+|---|---|
+| `pnpm lint` / `pnpm typecheck` | Clean — 0 errors |
+| pwsh `Parser::ParseFile` sobre el `.ps1` completo | 0 parse errors |
+| `PWSH_PATH=<pwsh> pnpm vitest run scripts/rotate-email-crypto-key.ps1.spec.ts scripts/ps1-ascii.spec.ts` | 2 files, 8/8 passed |
+| misma spec sin `PWSH_PATH` | 1 file, 3 skipped (limpio) |
+| `pnpm test` (suite completa, Postgres arriba) | ver reporte de retorno de esta fase |
+
 ## Status
 
-Ciclo completo: WU1a-WU3 completas y commiteadas. Ver `tasks.md` — todas las tareas `[x]`.
+Ciclo completo: WU1a-WU3 completas y commiteadas. WU3-fix corrige el FAIL de
+`verify-report.md` (`evidence_revision: sha256:36ee70a...`) — C1/C2/C3/W1/W2/W3 resueltos. Ver
+`tasks.md` — todas las tareas `[x]`.

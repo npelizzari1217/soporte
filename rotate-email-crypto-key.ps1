@@ -19,6 +19,9 @@
 # Exit codes: 0 = OK. 1 = no se hizo nada (base en OLD_KEY, servicios arriba).
 # 3 = base en NEW_KEY y backend/.env sin actualizar - recuperacion manual, ver
 # DEPLOY-VPS-runbook.md Seccion 5. 4 = estado ambiguo, requiere intervencion.
+# 5 = rotacion confirmada (base y backend/.env en NEW_KEY, verificados) pero el
+# cierre final (borrar el PENDIENTE o arrancar un servicio) no se completo -
+# revisar a mano, ver DEPLOY-VPS-runbook.md Seccion 5.
 #
 # Ninguna clave se imprime nunca. Solo se reportan longitudes y rutas de archivo.
 #
@@ -75,8 +78,10 @@ function InvocarRotacion([string[]]$FlagsNode, [hashtable]$EnvVarsRotacion) {
     [System.Environment]::SetEnvironmentVariable($k, $envVarsTodos[$k], 'Process')
   }
   try {
-    & $NodeExe $ScriptNode @FlagsNode
-    return $LASTEXITCODE
+    # `Out-Host` evita que el stdout de Node se mezcle con $LASTEXITCODE en el
+    # retorno de la funcion (C1: sin esto, `-eq 0`/`-ne 0` comparan un array).
+    & $NodeExe $ScriptNode @FlagsNode | Out-Host
+    return [int]$LASTEXITCODE
   } finally {
     foreach ($k in $envVarsTodos.Keys) { Remove-Item ("Env:\" + $k) -ErrorAction SilentlyContinue }
   }
@@ -155,25 +160,39 @@ $antesDump = Get-Date
 if ($LASTEXITCODE -ne 0) {
   throw ("predeploy-dump.ps1 fallo (exit " + $LASTEXITCODE + "). El hijo ya rearranco los servicios. Nada fue tocado.")
 }
-$dumpDir = Get-ChildItem -Path $BackupDir -Directory -Filter 'utc-backfill-*' |
-  Where-Object { $_.CreationTime -ge $antesDump } | Sort-Object CreationTime -Descending | Select-Object -First 1
-if (-not $dumpDir) { throw 'No se encontro la carpeta de dump generada por predeploy-dump.ps1.' }
-Write-Host ('Dump verificado en ' + $dumpDir.FullName)
+# Servicios DETENIDOS desde aca (predeploy-dump.ps1 los paro). W1: atrapar,
+# rearrancar, y recien despues re-lanzar para que el exit 1 de abajo sea honesto.
+$pendienteFile = $null
+try {
+  $dumpDir = Get-ChildItem -Path $BackupDir -Directory -Filter 'utc-backfill-*' |
+    Where-Object { $_.CreationTime -ge $antesDump } | Sort-Object CreationTime -Descending | Select-Object -First 1
+  if (-not $dumpDir) { throw 'No se encontro la carpeta de dump generada por predeploy-dump.ps1.' }
+  Write-Host ('Dump verificado en ' + $dumpDir.FullName)
 
-# 5. Archivo PENDIENTE: existe en disco desde ANTES del primer instante en
-# que la base puede quedar en NEW_KEY (ADR-4). Crear vacio, aplicar el ACL,
-# y recien ahi escribir las claves.
-Step 'Escribir archivo de recuperacion PENDIENTE'
-$timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-$pendienteFile = Join-Path $BackupDir ('rotacion-email-crypto-key-' + $timestamp + '.PENDIENTE.txt')
-New-Item -ItemType File -Path $pendienteFile -Force | Out-Null
-AplicarAclRecuperacion $pendienteFile
-Set-Content -Path $pendienteFile -Encoding ascii -Value @(
-  'OLD_KEY=' + $oldKey,
-  'NEW_KEY=' + $newKey,
-  'DUMP=' + $dumpDir.FullName
-)
-Write-Host ('Archivo de recuperacion: ' + $pendienteFile)
+  # 5. Archivo PENDIENTE: existe en disco desde ANTES del primer instante en
+  # que la base puede quedar en NEW_KEY (ADR-4). Crear vacio, aplicar el ACL,
+  # y recien ahi escribir las claves.
+  Step 'Escribir archivo de recuperacion PENDIENTE'
+  $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+  $pendienteFile = Join-Path $BackupDir ('rotacion-email-crypto-key-' + $timestamp + '.PENDIENTE.txt')
+  New-Item -ItemType File -Path $pendienteFile -Force | Out-Null
+  AplicarAclRecuperacion $pendienteFile
+  Set-Content -Path $pendienteFile -Encoding ascii -Value @(
+    'OLD_KEY=' + $oldKey,
+    'NEW_KEY=' + $newKey,
+    'DUMP=' + $dumpDir.FullName
+  )
+  Write-Host ('Archivo de recuperacion: ' + $pendienteFile)
+} catch {
+  if ($pendienteFile -and (Test-Path $pendienteFile)) {
+    $lineasParciales = @(Get-Content $pendienteFile -ErrorAction SilentlyContinue)
+    if (-not ($lineasParciales -match '^NEW_KEY=')) {
+      Remove-Item -Path $pendienteFile -ErrorAction SilentlyContinue
+    }
+  }
+  foreach ($s in $Services) { Start-Service $s }
+  throw ("Paso 4/5 (dump o archivo PENDIENTE) fallo: " + $_.Exception.Message + ". Servicios reiniciados. Nada fue tocado en la base.")
+}
 
 # 6. Corrida real. Si falla, el arbol de --verificar (ADR-4) determina si
 # hubo COMMIT antes de decidir el exit code.
@@ -201,29 +220,31 @@ if ($exitReal -ne 0) {
 # Add-Content corrompe la variable anterior).
 Step 'Reescribir backend/.env con NEW_KEY'
 $mensajeBaseRotada = 'BASE YA ROTADA A LA CLAVE NUEVA. backend/.env NO se actualizo. Clave en ' + $pendienteFile + '. NO re-corras este script. Ver DEPLOY-VPS-runbook.md Seccion 5, Recuperacion.'
-$tmpEnvFile = $envFile + '.rotacion-tmp'
-$reemplazos = 0
-$lineasNuevas = foreach ($linea in $lineasEnvOriginal) {
-  if ($linea -match '^EMAIL_CRYPTO_KEY=[0-9a-fA-F]{64}$') { $reemplazos++; 'EMAIL_CRYPTO_KEY=' + $newKey } else { $linea }
-}
-if ($reemplazos -ne 1) { Write-Host $mensajeBaseRotada -ForegroundColor Red; exit 3 }
-Set-Content -Path $tmpEnvFile -Encoding ascii -Value $lineasNuevas
+# Pasos 7-8: pueden correr DESPUES de un COMMIT. Cualquier falla aca (C2,
+# incluidos Set-Content/Get-Content, antes sin atrapar) va al mismo exit 3.
 try {
+  $tmpEnvFile = $envFile + '.rotacion-tmp'
+  $reemplazos = 0
+  $lineasNuevas = foreach ($linea in $lineasEnvOriginal) {
+    if ($linea -match '^EMAIL_CRYPTO_KEY=[0-9a-fA-F]{64}$') { $reemplazos++; 'EMAIL_CRYPTO_KEY=' + $newKey } else { $linea }
+  }
+  if ($reemplazos -ne 1) { throw "backend/.env no tiene una sola linea EMAIL_CRYPTO_KEY= (encontradas: $reemplazos)" }
+  Set-Content -Path $tmpEnvFile -Encoding ascii -Value $lineasNuevas
   [System.IO.File]::Replace($tmpEnvFile, $envFile, $null)
+
+  # 8. Releer .env del DISCO (nunca la variable en memoria) y --verificar.
+  Step 'Releer backend/.env del disco y verificar'
+  $claveReleida = $null
+  foreach ($linea in (Get-Content $envFile)) {
+    if ($linea -match '^EMAIL_CRYPTO_KEY=([0-9a-fA-F]{64})$') { $claveReleida = $Matches[1] }
+  }
+  if ($claveReleida -ne $newKey) { throw 'La relectura de backend/.env no coincide con NEW_KEY.' }
+  $exitVerificarFinal = InvocarRotacion -FlagsNode @('--verificar') -EnvVarsRotacion @{ ROTACION_VERIFICAR_KEY = $claveReleida }
+  if ($exitVerificarFinal -ne 0) { throw ('--verificar final fallo (exit ' + $exitVerificarFinal + ').') }
 } catch {
-  Write-Host $mensajeBaseRotada -ForegroundColor Red
+  Write-Host ($mensajeBaseRotada + ' Detalle: ' + $_.Exception.Message) -ForegroundColor Red
   exit 3
 }
-
-# 8. Releer .env del DISCO (nunca la variable en memoria) y --verificar.
-Step 'Releer backend/.env del disco y verificar'
-$claveReleida = $null
-foreach ($linea in (Get-Content $envFile)) {
-  if ($linea -match '^EMAIL_CRYPTO_KEY=([0-9a-fA-F]{64})$') { $claveReleida = $Matches[1] }
-}
-if ($claveReleida -ne $newKey) { Write-Host $mensajeBaseRotada -ForegroundColor Red; exit 3 }
-$exitVerificarFinal = InvocarRotacion -FlagsNode @('--verificar') -EnvVarsRotacion @{ ROTACION_VERIFICAR_KEY = $claveReleida }
-if ($exitVerificarFinal -ne 0) { Write-Host $mensajeBaseRotada -ForegroundColor Red; exit 3 }
 Write-Host 'backend/.env verificado contra la base.'
 
 # 9. Cerrar el archivo de recuperacion: SOLO OLD_KEY+DUMP+fecha, escrito como
@@ -247,14 +268,21 @@ if ($lineasOldKeyValidas.Count -ne 1 -or $tieneNewKey -or $oldKeyEnArchivo -ne $
   Write-Host ('El archivo de recuperacion permanente no paso la verificacion. Se conserva ' + $pendienteFile + '. Cierra este paso a mano (ver DEPLOY-VPS-runbook.md Seccion 5).') -ForegroundColor Red
   exit 3
 }
-Remove-Item -Path $pendienteFile
+# Rotacion ya confirmada aca (base+.env en NEW_KEY, archivo permanente
+# validado): un fallo de aca en mas no es "sin cambios" (W1) -- exit 5.
+try {
+  Remove-Item -Path $pendienteFile
 
-foreach ($s in $Services) { Start-Service $s }
-Start-Sleep -Seconds 5
-foreach ($s in $Services) {
-  $st = (Get-Service $s).Status
-  Write-Host ($s + ' -> ' + $st)
-  if ($st -ne 'Running') { throw "El servicio $s no quedo Running (esta $st)." }
+  foreach ($s in $Services) { Start-Service $s }
+  Start-Sleep -Seconds 5
+  foreach ($s in $Services) {
+    $st = (Get-Service $s).Status
+    Write-Host ($s + ' -> ' + $st)
+    if ($st -ne 'Running') { throw "El servicio $s no quedo Running (esta $st)." }
+  }
+} catch {
+  Write-Host ('ROTACION CONFIRMADA (backend/.env actualizado y verificado), pero el cierre final fallo: ' + $_.Exception.Message + '. Archivo permanente: ' + $permanenteFile + '. Revisar el PENDIENTE y los servicios a mano. Ver DEPLOY-VPS-runbook.md Seccion 5.') -ForegroundColor Yellow
+  exit 5
 }
 
 Write-Host ''

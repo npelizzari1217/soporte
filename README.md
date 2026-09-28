@@ -382,6 +382,8 @@ pnpm test
 > primero revisá el entorno: `pnpm prisma migrate status --schema prisma_master/schema.prisma`.
 > Un `P1001` es la base caída y un `P1000` es la contraseña, no el código.
 
+> `scripts/rotate-email-crypto-key.ps1.spec.ts` necesita `pwsh` (`PWSH_PATH=<ruta>` o en PATH); si no, se skippea solo.
+
 ### Smoke e2e (Playwright, `frontend/e2e/caminos-criticos.spec.ts`)
 
 A diferencia de `pnpm test` (Vitest + MSW, no necesita nada externo),

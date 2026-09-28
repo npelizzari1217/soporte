@@ -177,3 +177,26 @@ indescifrable aborta sin modificar nada (1.4, 2a.4) · re-corrida no-op (1.4, 2a
 descifrado cruzado en verde (1.2) · `.ps1` ASCII sin BOM (3.5) · runbook + README
 actualizados (3.6, 3.7) · `pnpm lint`/`typecheck`/`test` en verde en cada unidad (1.6, 1.7, 2a.5,
 2b.4, 3.8).
+
+## WU3-fix: correccion de una revision FAIL (PR 6 → rama de PR 5)
+
+`verify-report.md` (`evidence_revision: sha256:36ee70a...`) marco FAIL: C1, C2, C3 CRITICAL,
+W1/W2/W3 WARNING sobre `rotate-email-crypto-key.ps1` (WU3). Detalle de cada fix en
+`apply-progress.md`. Una sola correccion acotada.
+
+- [x] C1 `InvocarRotacion` ya no mezcla el stdout de Node con `$LASTEXITCODE` en su valor de
+      retorno (`Out-Host` + `return [int]$LASTEXITCODE`); auditadas las demas funciones. (R13)
+- [x] C2 Pasos 7-8 unificados en un `try/catch`: cualquier falla imprime "BASE YA ROTADA" y
+      sale exit 3 (`Set-Content`/`Get-Content`, antes sin atrapar, incluidas). (R13)
+- [x] W1 Pasos 4-5 en `try/catch` (rearranca servicios, borra `PENDIENTE` sin claves antes del
+      exit 1); paso 9 con exit 5 nuevo (rotacion confirmada, cierre incompleto), documentado.
+- [x] W2 `DEPLOY-VPS-runbook.md` Seccion 5 reescrita: PowerShell puro, clave leida del
+      `PENDIENTE` a `$env:ROTACION_VERIFICAR_KEY`, cierre sin `NEW_KEY` (nunca renombra), exit
+      3/4/5 documentados, invocacion siempre `-File`.
+- [x] W3 Desviacion de ADR-1 declarada en `apply-progress.md` — sin cambios en el codigo Node.
+- [x] C3 `backend/scripts/rotate-email-crypto-key.ps1.spec.ts` creado: extrae `InvocarRotacion`
+      via AST y la corre contra un Node stub con `pwsh` real (skip limpio sin `pwsh`); RED
+      contra el pre-fix, GREEN contra el fix.
+- [x] Verificacion de la unidad: `pnpm lint`, `pnpm typecheck`, parseo `pwsh` del `.ps1` (0
+      errores), `PWSH_PATH=<pwsh> pnpm vitest run scripts/rotate-email-crypto-key.ps1.spec.ts
+      scripts/ps1-ascii.spec.ts` (corre) + sin `PWSH_PATH` (skip limpio), `pnpm test` completo.
