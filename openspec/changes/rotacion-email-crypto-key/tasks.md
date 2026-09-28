@@ -157,6 +157,11 @@ sin partir, para no separar la transacción de sus 8 escenarios de integración.
 
 ---
 
+## C-R1: Recuperación manual del runbook (tercera corrección)
+
+- [x] 5.1 Runbook §5: el segundo bloque lee `NEW_KEY` del `PENDIENTE` y un tercer bloque
+      verifica el `.env` en disco antes de cerrar el `PENDIENTE`; probado en pwsh.
+
 ## Seguimiento fuera de este ciclo
 
 La fila de `rotate-email-crypto-key.ps1` en la tabla §2.2 de las reglas globales vive en el
@@ -200,3 +205,27 @@ W1/W2/W3 WARNING sobre `rotate-email-crypto-key.ps1` (WU3). Detalle de cada fix 
 - [x] Verificacion de la unidad: `pnpm lint`, `pnpm typecheck`, parseo `pwsh` del `.ps1` (0
       errores), `PWSH_PATH=<pwsh> pnpm vitest run scripts/rotate-email-crypto-key.ps1.spec.ts
       scripts/ps1-ascii.spec.ts` (corre) + sin `PWSH_PATH` (skip limpio), `pnpm test` completo.
+
+## WU3-fix2: segunda correccion tras un FAIL (PR 7 → rama de WU3-fix)
+
+`verify-report.md` (`evidence_revision: sha256:45bd21f...`) marco FAIL: C-N1 CRITICAL, W-A/W-B
+WARNING. Correccion acotada a esos tres hallazgos, autorizada por el dueño del repo
+(2026-09-28).
+
+- [x] C-N1 `[System.IO.File]::Replace($tmpEnvFile, $envFile, $null)` reemplazado por
+      `[NullString]::Value` (`:233`). Auditado el resto del script: es el unico `$null` pasado
+      a un parametro `[string]` de .NET.
+- [x] W-B Pasos 9 completo (crear/ACL/escribir/leer el archivo permanente, su validacion,
+      borrar el `PENDIENTE`, arrancar servicios) unificado en un solo `try/catch` que sale
+      exit 5 ante cualquier falla — nunca 1 ni 3. `PENDIENTE` se conserva en todos los casos.
+      Runbook Seccion 5 actualizada (tabla de exit codes y recuperacion manual).
+- [x] W-A `backend/scripts/rotate-email-crypto-key.ps1.spec.ts` extendido: nuevo bloque que
+      extrae via AST la asignacion de `$mensajeBaseRotada` y el `try/catch` de reescritura de
+      `.env` (pasos 7-8), lo corre contra un `.env` temporal con `InvocarRotacion` stubbed.
+      Camino exitoso reescribe `.env` con `NEW_KEY` (exit 0); fallo forzado imprime "BASE YA
+      ROTADA" y sale exit 3 sin imprimir ninguna clave. RED probado contra `f7fe6c6` (el bug de
+      C-N1), GREEN contra el fix.
+- [x] Verificacion de la unidad: `pnpm lint`, `pnpm typecheck`, parseo `pwsh` del `.ps1`
+      completo (0 errores), `PWSH_PATH=<pwsh> pnpm vitest run
+      scripts/rotate-email-crypto-key.ps1.spec.ts scripts/ps1-ascii.spec.ts` (10/10), `pnpm
+      test` completo (Postgres arriba).

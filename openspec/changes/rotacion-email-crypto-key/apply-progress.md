@@ -238,8 +238,50 @@ proceso no se tocan.
 | misma spec sin `PWSH_PATH` | 1 file, 3 skipped (limpio) |
 | `pnpm test` (suite completa, Postgres arriba) | ver reporte de retorno de esta fase |
 
+## WU3-fix2: segunda correccion tras un FAIL (PR 7 → rama de WU3-fix)
+
+`verify-report.md` (`evidence_revision: sha256:45bd21f...`) encontro que
+`[System.IO.File]::Replace(..., $null)` hace que TODA rotacion real termine en exit 3.
+Correccion acotada a C-N1, W-A y W-B; Node y su spec de proceso no se tocan.
+
+| Hallazgo | Fix |
+|---|---|
+| C-N1 | `Replace($tmpEnvFile, $envFile, $null)` → `[NullString]::Value` (`:233`). El binder de PowerShell convierte `$null` en `""` para un parametro `[string]`, y `Replace` rechaza un backup path vacio. Auditado el resto del script: es el unico caso |
+| W-B | Paso 9 completo (crear/ACL/escribir/leer el archivo permanente, su validacion, borrar `PENDIENTE`, arrancar servicios) unificado en un solo `try/catch` que sale exit 5 ante cualquier falla — nunca exit 1 (antes: sin `try`) ni exit 3 (antes: la validacion del archivo permanente). `PENDIENTE` se conserva en todos los casos. Runbook Seccion 5: tabla de exit 5 y comando de `Replace` manual con `[NullString]::Value` (evita que un operador repita C-N1 a mano) |
+| W-A | `rotate-email-crypto-key.ps1.spec.ts` extendido con un segundo harness AST que extrae la asignacion de `$mensajeBaseRotada` y el `try/catch` de los pasos 7-8, y lo corre contra un `.env` temporal con `InvocarRotacion` stubbed |
+
+### Deviations
+
+Ninguna. El fix es exactamente el alcance declarado por C-N1/W-A/W-B en `verify-report.md`.
+
+### Work Unit Evidence (WU3-fix2)
+
+| Evidence | Value |
+|---|---|
+| Focused test command and exact result | `PWSH_PATH=<pwsh 7.4.6> pnpm vitest run scripts/rotate-email-crypto-key.ps1.spec.ts scripts/ps1-ascii.spec.ts` → 2 files, 10/10 passed |
+| Runtime harness command/scenario and exact result | `pwsh` 7.4.6 (`DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1`) corre el try/catch de reescritura de `.env` via AST contra un `.env` temporal: camino exitoso reescribe con `NEW_KEY` (exit 0), fallo forzado en `--verificar` final imprime "BASE YA ROTADA" y sale exit 3 sin claves en la salida. RED probado manualmente contra `f7fe6c6` (el `$null` bug: el caso exitoso tambien termina en exit 3), GREEN contra el fix — ambos confirmados en esta sesion |
+| Rollback boundary | Un commit en `feat/rotacion-email-crypto-key-wu3-fix2`: `rotate-email-crypto-key.ps1`, spec extendido, runbook §5; `git revert` no toca WU1/WU2/WU3/WU3-fix |
+
+### Verification (backend/)
+
+| Command | Result |
+|---|---|
+| `pnpm lint` / `pnpm typecheck` | Clean — 0 errors |
+| pwsh `Parser::ParseFile` sobre el `.ps1` completo | 0 parse errors |
+| `PWSH_PATH=<pwsh> pnpm vitest run scripts/rotate-email-crypto-key.ps1.spec.ts scripts/ps1-ascii.spec.ts` | 2 files, 10/10 passed |
+| `pnpm test` (suite completa, Postgres arriba) | 469/470 test files passed (1 skip: el bloque `pwsh` sin `PWSH_PATH`), 5465/5470 tests passed (5 skip), exit 0 |
+
+### C-R1 (tercera corrección, solo runbook, autorizada por el dueño el 2026-09-28)
+
+La recuperación manual de la §5 borraba `ROTACION_VERIFICAR_KEY` en el primer bloque y la
+usaba en el segundo: el `.env` quedaba con `EMAIL_CRYPTO_KEY=` vacía. Ahora el segundo
+bloque lee `NEW_KEY` del `PENDIENTE`, y un tercer bloque obligatorio verifica el `.env` en
+disco con `--verificar` antes de cerrar el `PENDIENTE`. Probado ejecutando los tres bloques
+en secuencia, tal cual, en pwsh contra un `.env` temporal: queda `EMAIL_CRYPTO_KEY=<NEW_KEY>`.
+
 ## Status
 
-Ciclo completo: WU1a-WU3 completas y commiteadas. WU3-fix corrige el FAIL de
-`verify-report.md` (`evidence_revision: sha256:36ee70a...`) — C1/C2/C3/W1/W2/W3 resueltos. Ver
+Ciclo completo: WU1a-WU3 completas y commiteadas. WU3-fix corrigio el primer FAIL
+(`evidence_revision: sha256:36ee70a...`) — C1/C2/C3/W1/W2/W3 resueltos. WU3-fix2 corrige el
+segundo FAIL (`evidence_revision: sha256:45bd21f...`) — C-N1/W-A/W-B resueltos. Ver
 `tasks.md` — todas las tareas `[x]`.

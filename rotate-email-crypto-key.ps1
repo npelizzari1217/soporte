@@ -20,8 +20,9 @@
 # 3 = base en NEW_KEY y backend/.env sin actualizar - recuperacion manual, ver
 # DEPLOY-VPS-runbook.md Seccion 5. 4 = estado ambiguo, requiere intervencion.
 # 5 = rotacion confirmada (base y backend/.env en NEW_KEY, verificados) pero el
-# cierre final (borrar el PENDIENTE o arrancar un servicio) no se completo -
-# revisar a mano, ver DEPLOY-VPS-runbook.md Seccion 5.
+# cierre final (archivo de recuperacion permanente, borrar el PENDIENTE, o
+# arrancar un servicio) no se completo - revisar a mano, ver
+# DEPLOY-VPS-runbook.md Seccion 5.
 #
 # Ninguna clave se imprime nunca. Solo se reportan longitudes y rutas de archivo.
 #
@@ -230,7 +231,10 @@ try {
   }
   if ($reemplazos -ne 1) { throw "backend/.env no tiene una sola linea EMAIL_CRYPTO_KEY= (encontradas: $reemplazos)" }
   Set-Content -Path $tmpEnvFile -Encoding ascii -Value $lineasNuevas
-  [System.IO.File]::Replace($tmpEnvFile, $envFile, $null)
+  # [NullString]::Value, NUNCA $null: el binder de PowerShell convierte $null
+  # en "" para un parametro [string] (aca, el backup de Replace), y Replace
+  # la rechaza siempre ("empty string") - C-N1, verify-report.
+  [System.IO.File]::Replace($tmpEnvFile, $envFile, [NullString]::Value)
 
   # 8. Releer .env del DISCO (nunca la variable en memoria) y --verificar.
   Step 'Releer backend/.env del disco y verificar'
@@ -250,27 +254,29 @@ Write-Host 'backend/.env verificado contra la base.'
 # 9. Cerrar el archivo de recuperacion: SOLO OLD_KEY+DUMP+fecha, escrito como
 # archivo nuevo (nunca editando el PENDIENTE en el lugar, para que NEW_KEY
 # jamas llegue a este archivo). Se verifica ANTES de borrar el PENDIENTE.
+# Rotacion ya confirmada aca (base+.env en NEW_KEY, verificados): CUALQUIER
+# fallo de aca en mas -- crear/ACL-ar/escribir/leer el archivo permanente, su
+# validacion, borrar el PENDIENTE, o arrancar un servicio -- no es "sin
+# cambios" (W1) ni "sin actualizar" (W-B): es exit 5, nunca 1 ni 3.
 Step 'Cerrar archivo de recuperacion y arrancar servicios'
 $permanenteFile = Join-Path $BackupDir ('rotacion-email-crypto-key-' + $timestamp + '.txt')
-New-Item -ItemType File -Path $permanenteFile -Force | Out-Null
-AplicarAclRecuperacion $permanenteFile
-Set-Content -Path $permanenteFile -Encoding ascii -Value @(
-  'OLD_KEY=' + $oldKey,
-  'DUMP=' + $dumpDir.FullName,
-  'ROTADA_EL=' + (Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
-)
-
-$contenidoPermanente = @(Get-Content $permanenteFile)
-$lineasOldKeyValidas = @($contenidoPermanente | Where-Object { $_ -cmatch '^OLD_KEY=[0-9a-fA-F]{64}$' })
-$tieneNewKey = ($contenidoPermanente | Where-Object { $_ -match 'NEW_KEY' }).Count -gt 0
-$oldKeyEnArchivo = if ($lineasOldKeyValidas.Count -eq 1) { $lineasOldKeyValidas[0].Substring(8) } else { $null }
-if ($lineasOldKeyValidas.Count -ne 1 -or $tieneNewKey -or $oldKeyEnArchivo -ne $oldKey) {
-  Write-Host ('El archivo de recuperacion permanente no paso la verificacion. Se conserva ' + $pendienteFile + '. Cierra este paso a mano (ver DEPLOY-VPS-runbook.md Seccion 5).') -ForegroundColor Red
-  exit 3
-}
-# Rotacion ya confirmada aca (base+.env en NEW_KEY, archivo permanente
-# validado): un fallo de aca en mas no es "sin cambios" (W1) -- exit 5.
 try {
+  New-Item -ItemType File -Path $permanenteFile -Force | Out-Null
+  AplicarAclRecuperacion $permanenteFile
+  Set-Content -Path $permanenteFile -Encoding ascii -Value @(
+    'OLD_KEY=' + $oldKey,
+    'DUMP=' + $dumpDir.FullName,
+    'ROTADA_EL=' + (Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
+  )
+
+  $contenidoPermanente = @(Get-Content $permanenteFile)
+  $lineasOldKeyValidas = @($contenidoPermanente | Where-Object { $_ -cmatch '^OLD_KEY=[0-9a-fA-F]{64}$' })
+  $tieneNewKey = ($contenidoPermanente | Where-Object { $_ -match 'NEW_KEY' }).Count -gt 0
+  $oldKeyEnArchivo = if ($lineasOldKeyValidas.Count -eq 1) { $lineasOldKeyValidas[0].Substring(8) } else { $null }
+  if ($lineasOldKeyValidas.Count -ne 1 -or $tieneNewKey -or $oldKeyEnArchivo -ne $oldKey) {
+    throw 'El archivo de recuperacion permanente no paso la verificacion.'
+  }
+
   Remove-Item -Path $pendienteFile
 
   foreach ($s in $Services) { Start-Service $s }
@@ -281,7 +287,7 @@ try {
     if ($st -ne 'Running') { throw "El servicio $s no quedo Running (esta $st)." }
   }
 } catch {
-  Write-Host ('ROTACION CONFIRMADA (backend/.env actualizado y verificado), pero el cierre final fallo: ' + $_.Exception.Message + '. Archivo permanente: ' + $permanenteFile + '. Revisar el PENDIENTE y los servicios a mano. Ver DEPLOY-VPS-runbook.md Seccion 5.') -ForegroundColor Yellow
+  Write-Host ('ROTACION CONFIRMADA (backend/.env actualizado y verificado), pero el cierre final fallo: ' + $_.Exception.Message + '. Se conserva ' + $pendienteFile + ', el archivo permanente puede haber quedado a medias (' + $permanenteFile + '). Revisar y cerrar a mano. Ver DEPLOY-VPS-runbook.md Seccion 5.') -ForegroundColor Yellow
   exit 5
 }
 

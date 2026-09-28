@@ -14,5 +14,6 @@ tasks_progress:
     - WU2b
     - WU3
     - WU3-fix
+    - WU3-fix2
   pending: []
 last_updated: 2026-09-28

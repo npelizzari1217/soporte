@@ -159,3 +159,125 @@ suite(
     });
   },
 );
+
+/**
+ * Reescritura de backend/.env (pasos 7-8) — WU3-fix2. Extrae, via el AST del
+ * .ps1 real (nunca una copia pegada a mano), la asignacion de
+ * `$mensajeBaseRotada` y el try/catch que hace `Set-Content` + `Replace` +
+ * relectura + `--verificar` final, y lo corre contra un `.env` temporal con
+ * `InvocarRotacion` stubbed. Prueba en runtime C-N1 del verify-report:
+ * `[System.IO.File]::Replace($tmp, $envFile, $null)` — el binder de
+ * PowerShell convierte `$null` en `""` para el parametro `[string]` de
+ * backup, y `Replace` la rechaza SIEMPRE, incluso en el camino exitoso.
+ *
+ * RED contra `f7fe6c6` (el bug de C-N1): el caso "camino exitoso" termina en
+ * exit 3 ("BASE YA ROTADA...") en vez de reescribir backend/.env. GREEN
+ * contra el fix (`[NullString]::Value`). Prueba manual, no comprometida como
+ * test (correr `.ps1` de un commit viejo no es responsabilidad de este spec).
+ */
+const HARNESS_ENV_PS1 = `
+param(
+  [Parameter(Mandatory=$true)][string]$RealScriptPath,
+  [Parameter(Mandatory=$true)][string]$EnvFilePath,
+  [Parameter(Mandatory=$true)][string]$NewKey,
+  [Parameter(Mandatory=$true)][string]$PendienteFilePath,
+  [Parameter(Mandatory=$true)][int]$ExitVerificarFinal
+)
+$ErrorActionPreference = 'Stop'
+$tokens = $null
+$errors = $null
+$ast = [System.Management.Automation.Language.Parser]::ParseFile($RealScriptPath, [ref]$tokens, [ref]$errors)
+if ($errors.Count -gt 0) { throw 'Parse errors in real script' }
+
+function Step($msg) { Write-Host ("========== " + $msg + " ==========") }
+function InvocarRotacion([string[]]$FlagsNode, [hashtable]$EnvVarsRotacion) { return $ExitVerificarFinal }
+
+$asignacionMensajeAst = $ast.Find({ param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and $n.Left.Extent.Text -eq '$mensajeBaseRotada' }, $true)
+if (-not $asignacionMensajeAst) { throw 'mensajeBaseRotada assignment not found in real script' }
+$tryAst = $ast.Find({ param($n) $n -is [System.Management.Automation.Language.TryStatementAst] -and $n.Extent.Text.Contains('[System.IO.File]::Replace') }, $true)
+if (-not $tryAst) { throw 'Reescritura de .env (try/catch pasos 7-8) not found in real script' }
+
+$envFile = $EnvFilePath
+$pendienteFile = $PendienteFilePath
+$newKey = $NewKey
+$lineasEnvOriginal = @(Get-Content $envFile)
+
+Invoke-Expression $asignacionMensajeAst.Extent.Text
+Invoke-Expression $tryAst.Extent.Text
+Write-Host 'REESCRITURA-OK'
+`;
+
+const suiteEnv = pwsh ? describe : describe.skip;
+
+suiteEnv(
+  'Reescritura de backend/.env (pasos 7-8, rotate-email-crypto-key.ps1) — runtime real via pwsh (C-N1)',
+  () => {
+    const oldKey = '11'.repeat(32);
+    const newKey = '22'.repeat(32);
+    let dir: string;
+    let envFilePath: string;
+
+    beforeEach(() => {
+      dir = mkdtempSync(join(tmpdir(), 'rotate-ps1-env-spec-'));
+      envFilePath = join(dir, '.env');
+      writeFileSync(
+        envFilePath,
+        ['DATABASE_URL_MASTER=postgres://x', 'EMAIL_CRYPTO_KEY=' + oldKey, ''].join('\n'),
+        'ascii',
+      );
+    });
+
+    afterEach(() => {
+      rmSync(dir, { recursive: true, force: true });
+    });
+
+    function correr(exitVerificarFinal: number): { exitCode: number; salida: string } {
+      const harnessPath = join(dir, 'harness-env.ps1');
+      writeFileSync(harnessPath, HARNESS_ENV_PS1, 'ascii');
+      try {
+        const stdout = execFileSync(
+          pwsh as string,
+          [
+            '-NoProfile',
+            '-File',
+            harnessPath,
+            '-RealScriptPath',
+            PS1_PATH,
+            '-EnvFilePath',
+            envFilePath,
+            '-NewKey',
+            newKey,
+            '-PendienteFilePath',
+            '/fake/pendiente.txt',
+            '-ExitVerificarFinal',
+            String(exitVerificarFinal),
+          ],
+          { env: PWSH_ENV },
+        );
+        return { exitCode: 0, salida: stdout.toString('utf8') };
+      } catch (err) {
+        const e = err as { status: number | null; stdout: Buffer; stderr: Buffer };
+        return {
+          exitCode: e.status ?? -1,
+          salida: (e.stdout?.toString('utf8') ?? '') + (e.stderr?.toString('utf8') ?? ''),
+        };
+      }
+    }
+
+    it('camino exitoso: reescribe backend/.env con NEW_KEY, exit 0', () => {
+      const r = correr(0);
+      expect(r.exitCode).toBe(0);
+      const contenido = readFileSync(envFilePath, 'ascii');
+      expect(contenido).toContain('EMAIL_CRYPTO_KEY=' + newKey);
+      expect(contenido).not.toContain('EMAIL_CRYPTO_KEY=' + oldKey);
+    });
+
+    it('fallo forzado en --verificar final: imprime BASE YA ROTADA, exit 3, sin claves', () => {
+      const r = correr(3);
+      expect(r.exitCode).toBe(3);
+      expect(r.salida).toContain('BASE YA ROTADA');
+      expect(r.salida).not.toContain(oldKey);
+      expect(r.salida).not.toContain(newKey);
+    });
+  },
+);
