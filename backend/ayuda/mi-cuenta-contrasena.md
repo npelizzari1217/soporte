@@ -30,6 +30,17 @@ donde tenés que ingresar de nuevo con la contraseña nueva.
 
 ## Si no te acordás tu contraseña actual
 
-Para cambiar la contraseña necesitás saber la actual — no hay un botón de
-"olvidé mi contraseña" que te la resetee por email. Si no te acordás cuál
-es, pedísela a tu administrador: es la única forma de recuperar el acceso.
+En la pantalla de inicio de sesión vas a encontrar el link
+**"¿Olvidaste tu contraseña?"**. Al hacer clic te pedimos tu email y, si
+existe una cuenta activa asociada, te enviamos un link para restablecerla.
+Por seguridad, siempre te mostramos el mismo mensaje después de enviarlo,
+exista o no ese email en el sistema.
+
+El link que recibís por mail vence a los **60 minutos**. Si se vence, pedí
+uno nuevo desde la misma pantalla. Al confirmar la contraseña nueva, el
+sistema cierra todas tus sesiones activas — igual que al cambiarla desde
+adentro — y te llega un mail avisando que se restableció.
+
+Si el mail no te llega (por ejemplo, porque tu cliente no tiene el correo
+configurado), pedísela a tu administrador: el reset asistido sigue
+disponible como vía alternativa.

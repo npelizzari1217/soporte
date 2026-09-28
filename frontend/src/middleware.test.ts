@@ -201,6 +201,19 @@ describe("middleware", () => {
     expect(res.headers.get("location")).toContain("/login");
   });
 
+  // ── /olvide-password (sdd/reseteo-contrasena-olvidada, WU-11) ────────────
+  // Pantalla de solicitud, público por diseño: nadie tiene sesión antes de
+  // pedir el reset.
+
+  it("passes through /olvide-password without any cookie", async () => {
+    const req = makeRequest("/olvide-password");
+    const res = await middleware(req);
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("location")).toBeNull();
+    expect(mockVerify).not.toHaveBeenCalled();
+  });
+
   // ── Matcher exclusions ────────────────────────────────────────────────────
 
   it("config.matcher is exported and excludes api/_next/favicon", () => {

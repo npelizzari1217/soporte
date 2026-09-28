@@ -32,7 +32,7 @@ import { COOKIE_AT, COOKIE_RT, cookieName } from "@/shared/auth/cookies";
  * propósito: una allowlist ancha (p. ej. `/`) dejaría pasar rutas protegidas
  * reales como `/tickets`.
  */
-const RUTAS_PUBLICAS = ["/encuesta/", "/restablecer-password"];
+const RUTAS_PUBLICAS = ["/encuesta/", "/restablecer-password", "/olvide-password"];
 
 /** Una entrada que termina en `/` es un prefijo; si no, la ruta es exacta. */
 function esRutaPublica(pathname: string): boolean {

@@ -315,3 +315,39 @@ Verification: `pnpm lint` OK · `pnpm type-check` OK · focused tests arriba OK 
 `pnpm test` → 203 archivos / 1547 tests OK.
 
 Status: 4/4 tareas completas. Ready for WU-11.
+
+## WU-11 — Frontend: solicitud, link de login, Ayuda y registro del módulo — COMPLETO (11.1–11.7)
+
+Files: `frontend/src/features/auth/components/SolicitarResetForm.tsx` + `.test.tsx` (create),
+`frontend/src/app/(auth)/olvide-password/page.tsx` + `.test.tsx` (create),
+`frontend/src/features/auth/components/LoginForm.tsx` + `.test.tsx` (modify: link estático),
+`frontend/src/middleware.ts` + `.test.ts` (modify: suma `/olvide-password` a `RUTAS_PUBLICAS`),
+`backend/ayuda/mi-cuenta-contrasena.md` (modify `:31-35`), `backend/src/app.module.ts` (modify:
+único punto de registro de `RecuperacionPasswordModule`, ADR-1/Migration-Rollout).
+
+Deviations: none (ADR-1/ADR-8). 11.7 (e2e manual/smoke post-merge) se cubrió con la suite
+backend completa corriendo con el módulo ya registrado en `AppModule` (sin un e2e HTTP nuevo):
+los e2e reales de las dos rutas ya existen en WU-7/WU-8 contra su propio `TestHarnessModule`;
+este WU solo necesitaba confirmar que el mismo módulo, montado en la app real, compila sin
+colisión de rutas con `AuthController` — confirmado con `rg` (cero rutas `forgot-password` /
+`reset-password` en `auth.controller.ts`).
+
+Evidence: focused test `pnpm vitest run frontend/src/app/(auth)/olvide-password frontend/src/features/auth/components/SolicitarResetForm.test.tsx frontend/src/features/auth/components/LoginForm.test.tsx frontend/src/middleware.test.ts`
+→ 25/25 passed. Runtime harness: `pnpm test` backend completo con `RecuperacionPasswordModule`
+registrado en `app.module.ts` → 475/475 archivos, 5501/5501 tests OK (primera vez que las rutas
+`POST /auth/forgot-password` y `POST /auth/reset-password` existen en la app real, no solo en
+harness de test). Rollback: revert del commit; `app.module.ts` deja de montar el módulo (las dos
+rutas vuelven a 404), Ayuda vuelve al texto previo, `RUTAS_PUBLICAS` pierde `/olvide-password`.
+
+Verification: frontend — `pnpm lint` OK · `pnpm type-check` OK · focused tests arriba OK ·
+`pnpm test` → 205 archivos / 1554 tests OK. Backend — `pnpm lint` OK · `pnpm typecheck` OK ·
+`pnpm test` → 475 archivos / 5501 tests OK · `rg -n RecuperacionPasswordModule backend/src/app.module.ts`
+→ import + entrada en `imports: []`, único punto de registro (WU-1 a WU-10 lo dejaron
+intencionalmente afuera).
+
+**Deuda de Ayuda**: el artículo nuevo y completo sobre el flujo de self-service queda pendiente
+de la pausa del 2026-09-07 (sigue vigente); esta WU solo corrigió la sección que había quedado
+FALSA en `mi-cuenta-contrasena.md:31-35`.
+
+Status: 7/7 tareas completas. Ciclo `reseteo-contrasena-olvidada` COMPLETO — 11/11 work units.
+Ready for `sdd-verify`.

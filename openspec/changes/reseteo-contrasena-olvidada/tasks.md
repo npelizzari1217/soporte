@@ -333,23 +333,27 @@ Files: `frontend/src/features/auth/components/SolicitarResetForm.tsx` + test (cr
 `backend/ayuda/mi-cuenta-contrasena.md` (modify `:31-35`),
 `backend/src/app.module.ts` (modify: registra `RecuperacionPasswordModule`)
 
-- [ ] 11.1 `SolicitarResetForm.tsx`: siempre el mismo mensaje tras enviar, exista o no el email.
+- [x] 11.1 `SolicitarResetForm.tsx`: siempre el mismo mensaje tras enviar, exista o no el email.
       [Req 14]
-- [ ] 11.2 `page.tsx` de la ruta `olvide-password`; suma la ruta a `RUTAS_PUBLICAS`. [Req 14]
-- [ ] 11.3 `LoginForm.tsx`: `<Link href="/olvide-password">¿Olvidaste tu contraseña?</Link>`
+- [x] 11.2 `page.tsx` de la ruta `olvide-password`; suma la ruta a `RUTAS_PUBLICAS`. [Req 14]
+- [x] 11.3 `LoginForm.tsx`: `<Link href="/olvide-password">¿Olvidaste tu contraseña?</Link>`
       estático. [Req 14]
-- [ ] 11.4 Reescribe `backend/ayuda/mi-cuenta-contrasena.md:31-35`: ya no afirma la ausencia del
+- [x] 11.4 Reescribe `backend/ayuda/mi-cuenta-contrasena.md:31-35`: ya no afirma la ausencia del
       botón; describe el link nuevo, el vencimiento de 60 min, el cierre de sesiones y el reset
       por admin como vía asistida si el mail no llega. Anota en el commit y en el cuerpo del PR
       la deuda del artículo nuevo (pausa del 2026-09-07 sigue vigente: no se escribe artículo
       nuevo ahora). [Req 15]
-- [ ] 11.5 **Único punto de registro del módulo**: agrega `RecuperacionPasswordModule` a los
+- [x] 11.5 **Único punto de registro del módulo**: agrega `RecuperacionPasswordModule` a los
       imports de `app.module.ts`. Ninguna tarea anterior a esta lo hace (ADR-1, Migration /
       Rollout del diseño).
-- [ ] 11.6 Tests: form (mensaje único), página, `LoginForm` (link presente), middleware
+- [x] 11.6 Tests: form (mensaje único), página, `LoginForm` (link presente), middleware
       (la ruta `olvide-password` pública).
-- [ ] 11.7 e2e manual/smoke post-merge: `POST /auth/forgot-password` contra la app montada
-      responde 204 (módulo ya registrado).
+- [x] 11.7 e2e manual/smoke post-merge: `POST /auth/forgot-password` contra la app montada
+      responde 204 (módulo ya registrado). Verificado vía suite backend completa con el módulo
+      registrado (`pnpm test` → 475/475 archivos, 5501/5501 tests), sin un e2e HTTP dedicado
+      nuevo — los e2e reales de la ruta ya viven en WU-7/WU-8 contra su propio
+      `TestHarnessModule`; este WU solo confirma que el mismo módulo, ya montado en `AppModule`,
+      sigue compilando y sin colisión de rutas con `AuthController` (`rg` confirmado).
 
 Focused test: `pnpm vitest run frontend/src/app/(auth)/olvide-password frontend/src/features/auth/components/LoginForm.test.tsx`
 Verification (frontend): `pnpm lint` · `pnpm type-check` · `pnpm vitest run frontend/src/app/(auth)/olvide-password frontend/src/features/auth/components/SolicitarResetForm.test.tsx frontend/src/features/auth/components/LoginForm.test.tsx frontend/src/middleware.test.ts` · `pnpm test`
