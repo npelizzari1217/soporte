@@ -25,6 +25,7 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { CALENDARIO_LABORAL_SEMANAL_REPOSITORY } from './domain/ports/i-calendario-laboral-semanal.repository';
+import { HORARIO_LABORAL_ESCRITURA_REPOSITORY } from './domain/ports/i-horario-laboral-escritura.repository';
 import { FERIADOS_LABORALES_REPOSITORY } from './domain/ports/i-feriados-laborales.repository';
 import {
   FERIADO_GLOBAL_REPOSITORY,
@@ -64,6 +65,13 @@ import { FeriadosClienteController } from './interface/controllers/feriados-clie
       // PrismaService, Nest lo resuelve solo por el constructor.
       provide: CALENDARIO_LABORAL_SEMANAL_REPOSITORY,
       useClass: PrismaCalendarioLaboralSemanalRepository,
+    },
+    {
+      // Alias sobre el MISMO provider (WU-5, sdd/horario-laboral-por-cliente,
+      // tarea 5.3): `PrismaCalendarioLaboralSemanalRepository` implementa los
+      // dos puertos (ISP), pero cada caso de uso lo pide por su propio token.
+      provide: HORARIO_LABORAL_ESCRITURA_REPOSITORY,
+      useExisting: CALENDARIO_LABORAL_SEMANAL_REPOSITORY,
     },
     { provide: FERIADOS_LABORALES_REPOSITORY, useClass: PrismaFeriadosLaboralesRepository },
     { provide: FERIADO_GLOBAL_REPOSITORY, useClass: PrismaFeriadoGlobalRepository },

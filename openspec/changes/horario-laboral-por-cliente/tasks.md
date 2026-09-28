@@ -141,17 +141,21 @@ pasos del mismo método; partir separaba código de sus tests.
 **Runtime harness**: e2e con `usarLockMasterTest()` **obligatorio** — lee feriados de master y el spec hermano inserta un feriado global el 2031-04-08 dentro de la ventana repriorizada.
 **Rollback boundary**: retira el spec nuevo; no toca producción ni otros specs.
 
-## WU-5 — Puerto de escritura, `reemplazar`, casos de uso
+## WU-5a — Puerto de escritura y `reemplazar`
+
+**Partida en WU-5a / WU-5b** (criterio del dueño, 2026-09-28): la unidad sumó 468 líneas y tiene un
+corte limpio. WU-5a lleva el puerto, `reemplazar()` y su test de integración (5.1, 5.2, 5.3, 5.7);
+WU-5b lleva los casos de uso y sus specs (5.4, 5.5, 5.6).
 
 **Branch**: `feat/horario-laboral-por-cliente-wu05` · **Base**: `feat/horario-laboral-por-cliente-wu04`
 
-- [ ] 5.1 Crear `backend/src/calendario-laboral/domain/ports/i-horario-laboral-escritura.repository.ts` (`reemplazar(horario): Promise<void>`).
-- [ ] 5.2 Implementar `reemplazar()` en `backend/src/calendario-laboral/infrastructure/persistence/prisma/prisma-calendario-laboral-semanal.repository.ts`: 7 `upsert` por `diaSemana`, **secuenciales (`for … await`, nunca `Promise.all`)**, en orden fijo `dia_semana` 0→6 ascendente. (Req: Reemplazo atómico de las 7 filas)
-- [ ] 5.3 Registrar el puerto de escritura en `backend/src/calendario-laboral/calendario-laboral.module.ts` con alias `useExisting` sobre el mismo provider.
+- [x] 5.1 Crear `backend/src/calendario-laboral/domain/ports/i-horario-laboral-escritura.repository.ts` (`reemplazar(horario): Promise<void>`).
+- [x] 5.2 Implementar `reemplazar()` en `backend/src/calendario-laboral/infrastructure/persistence/prisma/prisma-calendario-laboral-semanal.repository.ts`: 7 `upsert` por `diaSemana`, **secuenciales (`for … await`, nunca `Promise.all`)**, en orden fijo `dia_semana` 0→6 ascendente. (Req: Reemplazo atómico de las 7 filas)
+- [x] 5.3 Registrar el puerto de escritura en `backend/src/calendario-laboral/calendario-laboral.module.ts` con alias `useExisting` sobre el mismo provider.
 - [ ] 5.4 Crear `backend/src/calendario-laboral/application/use-cases/obtener-horario-laboral.use-case.ts` y su spec.
 - [ ] 5.5 Crear `backend/src/calendario-laboral/application/use-cases/guardar-horario-laboral.use-case.ts`: `HorarioLaboralSemanal.crear(dto.dias)`; si falla, `Result.fail` sin tocar la base; si pasa, `txRunner.run(() => repo.reemplazar(horario))`, devuelve el horario leído después del commit. (Req: Al menos un día abierto; Reemplazo atómico de las 7 filas)
 - [ ] 5.6 Escribir `backend/src/calendario-laboral/application/use-cases/guardar-horario-laboral.use-case.spec.ts`: si el VO es inválido, `txRunner.run` **no se llama**. (Req: Al menos un día abierto; Reemplazo atómico de las 7 filas)
-- [ ] 5.7 En `calendario-laboral.repositorios.integration.spec.ts`, agregar `reemplazar` dentro de un `PrismaTenantTransactionRunner` real: los 7 `upsert` salen en orden `diaSemana` 0→6, cada uno después de que termina el anterior; si algo lanza a mitad de camino, las 7 filas siguen como estaban. (Req: Reemplazo atómico de las 7 filas)
+- [x] 5.7 En `calendario-laboral.repositorios.integration.spec.ts`, agregar `reemplazar` dentro de un `PrismaTenantTransactionRunner` real: los 7 `upsert` salen en orden `diaSemana` 0→6, cada uno después de que termina el anterior; si algo lanza a mitad de camino, las 7 filas siguen como estaban. (Req: Reemplazo atómico de las 7 filas)
 
 **Test enfocado**: `cd backend && pnpm vitest run src/calendario-laboral/application/use-cases/guardar-horario-laboral.use-case.spec.ts src/calendario-laboral/infrastructure/persistence/prisma/calendario-laboral.repositorios.integration.spec.ts`
 **Verificación**: `pnpm lint` · `pnpm typecheck` (backend)

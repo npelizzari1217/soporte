@@ -1,5 +1,5 @@
 /**
- * calendario-laboral.repositorios.integration.spec.ts — WU-3
+ * calendario-laboral.repositorios.integration.spec.ts — WU-3/WU-5
  * (sdd/horario-laboral-por-cliente, H2).
  *
  * Contra Postgres REAL: ejerce `PrismaCalendarioLaboralSemanalRepository`
@@ -14,6 +14,16 @@
  * vivía antes en este mismo archivo; queda fuera de alcance de este WU y ya
  * está cubierta por `prisma-feriados-laborales.repository.spec.ts` (unit,
  * con mocks) sin duplicar Postgres real.
+ *
+ * WU-5 (tarea 5.7) agrega `reemplazar()` envuelto en un
+ * `PrismaTenantTransactionRunner` REAL (mismo mecanismo que
+ * `registrar-operacion-compra.s36.integration.spec.ts`: el throw propaga
+ * hasta el callback de `client.$transaction`, que lo rechaza, y Postgres
+ * revierte TODO lo escrito en esa transacción). La falla a mitad de camino
+ * se fuerza parcheando el delegado `upsert` del cliente TRANSACCIONAL (`tx`,
+ * capturado interceptando `$transaction`) — nunca el repositorio ni el VO,
+ * que no tienen forma de producir un payload inválido a mitad de un
+ * agregado ya validado.
  */
 import { randomBytes } from 'node:crypto';
 import { PostgresAdminService } from '../../../../clientes/infrastructure/postgres-admin.service';
@@ -21,6 +31,8 @@ import { TenantMigrationRunnerAdapter } from '../../../../clientes/infrastructur
 import { PrismaService } from '../../../../shared/infrastructure/persistence/prisma.service';
 import { TenantPrismaClient } from '../../../../shared/infrastructure/persistence/prisma-clients';
 import { TenantContext, TenantContextData } from '../../../../shared/tenancy/tenant-context';
+import { PrismaTenantTransactionRunner } from '../../../../shared/infrastructure/persistence/tenant-transaction-runner';
+import { HorarioLaboralSemanal } from '../../../domain/value-objects/horario-laboral-semanal';
 import {
   CalendarioLaboralSinTenantContextError,
   PrismaCalendarioLaboralSemanalRepository,
@@ -91,5 +103,85 @@ describe('PrismaCalendarioLaboralSemanalRepository — Integration (WU-3, sdd/ho
   it('lanza CalendarioLaboralSinTenantContextError si corre sin TenantContext bindeado (D4, fail-closed)', async () => {
     // Deliberadamente FUERA de `conContexto()`.
     await expect(repo.obtener()).rejects.toThrow(CalendarioLaboralSinTenantContextError);
+  });
+
+  describe('reemplazar() — WU-5, tarea 5.7', () => {
+    it(
+      'los 7 upsert salen SECUENCIALES en orden diaSemana 0→6, cada uno después de que ' +
+        'termina el anterior, y un fallo a mitad de camino deja las 7 filas SIN CAMBIOS ' +
+        '(rollback real de Postgres vía PrismaTenantTransactionRunner)',
+      () =>
+        conContexto(async () => {
+          const txRunner = new PrismaTenantTransactionRunner(tenantContext, { error: () => {} });
+          const antes = await repo.obtener();
+
+          const horarioNuevo = HorarioLaboralSemanal.crear([
+            { diaSemana: 0, aperturaMinuto: null, cierreMinuto: null },
+            { diaSemana: 1, aperturaMinuto: 480, cierreMinuto: 720 },
+            { diaSemana: 2, aperturaMinuto: 480, cierreMinuto: 720 },
+            { diaSemana: 3, aperturaMinuto: 480, cierreMinuto: 720 },
+            { diaSemana: 4, aperturaMinuto: 480, cierreMinuto: 720 },
+            { diaSemana: 5, aperturaMinuto: 480, cierreMinuto: 720 },
+            { diaSemana: 6, aperturaMinuto: null, cierreMinuto: null },
+          ]).getValue();
+
+          const ordenInicio: number[] = [];
+          const tiempoInicio: number[] = [];
+          const transaccionOriginal = tenantClient.$transaction.bind(tenantClient);
+
+          // Intercepta `$transaction` (no el repo ni el VO) para parchear el
+          // delegado `upsert` DEL CLIENTE TRANSACCIONAL que Prisma le pasa al
+          // callback — nunca el `tenantClient` de afuera, que las próximas
+          // aserciones (`repo.obtener()`) siguen necesitando intacto.
+          const transaccionMockeada = (async (fn: (tx: any) => Promise<unknown>) =>
+            transaccionOriginal(async (tx: any) => {
+              const upsertOriginal = tx.calendarioLaboralDiaCliente.upsert.bind(
+                tx.calendarioLaboralDiaCliente,
+              );
+              tx.calendarioLaboralDiaCliente.upsert = vi.fn(async (args: any) => {
+                const diaSemana = args.where.diaSemana as number;
+                ordenInicio.push(diaSemana);
+                tiempoInicio.push(Date.now());
+                // Delay SOLO en el día 0: si `reemplazar` corriera con
+                // Promise.all en vez de `for...await` secuencial, el día 1
+                // arrancaría casi junto al día 0, sin esperar este delay.
+                if (diaSemana === 0) {
+                  await new Promise((resolve) => setTimeout(resolve, 150));
+                }
+                // Falla SOLO en el día 3, a mitad de los 7: prueba que
+                // Postgres revierte TODO lo escrito hasta acá en esta tx.
+                if (diaSemana === 3) {
+                  throw new Error('Fallo simulado a mitad de camino (WU-5, atomicidad)');
+                }
+                return upsertOriginal(args);
+              });
+              return fn(tx);
+            })) as unknown as typeof tenantClient.$transaction;
+
+          const txSpy = vi
+            .spyOn(tenantClient, '$transaction')
+            .mockImplementation(transaccionMockeada);
+
+          try {
+            await expect(txRunner.run(() => repo.reemplazar(horarioNuevo))).rejects.toThrow(
+              'Fallo simulado a mitad de camino',
+            );
+          } finally {
+            txSpy.mockRestore();
+          }
+
+          // Orden fijo y secuencial hasta el punto del fallo: los días 4-6
+          // nunca arrancan — el `for...await` corta ahí. Con `Promise.all`
+          // los 7 se hubieran disparado ya (map síncrono), sin esperar el
+          // delay del día 0 ni detenerse en el día 3.
+          expect(ordenInicio).toEqual([0, 1, 2, 3]);
+          expect(tiempoInicio[1] - tiempoInicio[0]).toBeGreaterThanOrEqual(140);
+
+          // Rollback real: las 7 filas quedan EXACTAMENTE como antes del intento.
+          const despues = await repo.obtener();
+          expect(despues).toEqual(antes);
+        }),
+      10_000,
+    );
   });
 });

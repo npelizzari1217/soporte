@@ -15,7 +15,9 @@ import { Injectable } from '@nestjs/common';
 import { TenantContext } from '../../../../shared/tenancy/tenant-context';
 import { TenantPrismaClient } from '../../../../shared/infrastructure/persistence/prisma-clients';
 import { ICalendarioLaboralSemanalRepository } from '../../../domain/ports/i-calendario-laboral-semanal.repository';
+import { IHorarioLaboralEscrituraRepository } from '../../../domain/ports/i-horario-laboral-escritura.repository';
 import { CalendarioLaboralSemanal } from '../../../domain/services/calcular-sla-habil-vence.service';
+import { HorarioLaboralSemanal } from '../../../domain/value-objects/horario-laboral-semanal';
 import { PrismaCalendarioLaboralMapper } from './prisma-calendario-laboral.mapper';
 
 /**
@@ -35,7 +37,9 @@ export class CalendarioLaboralSinTenantContextError extends Error {
 }
 
 @Injectable()
-export class PrismaCalendarioLaboralSemanalRepository implements ICalendarioLaboralSemanalRepository {
+export class PrismaCalendarioLaboralSemanalRepository
+  implements ICalendarioLaboralSemanalRepository, IHorarioLaboralEscrituraRepository
+{
   constructor(private readonly tenantContext: TenantContext) {}
 
   async obtener(): Promise<CalendarioLaboralSemanal> {
@@ -46,5 +50,33 @@ export class PrismaCalendarioLaboralSemanalRepository implements ICalendarioLabo
     const tenantClient = ctx.prismaClient as InstanceType<typeof TenantPrismaClient>;
     const filas = await tenantClient.calendarioLaboralDiaCliente.findMany();
     return PrismaCalendarioLaboralMapper.toCalendarioSemanal(filas);
+  }
+
+  /**
+   * Reemplaza las 7 filas del horario laboral del tenant activo (WU-5, D6).
+   *
+   * Los 7 `upsert` son SECUENCIALES (`for … await`), en orden `diaSemana`
+   * 0→6 ascendente — NUNCA `Promise.all`: así dos `PUT` concurrentes toman
+   * los locks de fila en el mismo orden y no pueden deadlockear entre sí.
+   * Sin control de versión optimista: gana el último payload que commitea
+   * (D6, `design.md`).
+   */
+  async reemplazar(horario: HorarioLaboralSemanal): Promise<void> {
+    const ctx = this.tenantContext.get();
+    if (!ctx) {
+      throw new CalendarioLaboralSinTenantContextError();
+    }
+    const tenantClient = ctx.prismaClient as InstanceType<typeof TenantPrismaClient>;
+    const dias = horario.aCalendario();
+
+    for (let diaSemana = 0; diaSemana < dias.length; diaSemana++) {
+      const { aperturaMinuto, cierreMinuto } = dias[diaSemana];
+      // Secuencial a propósito (D6): nunca Promise.all.
+      await tenantClient.calendarioLaboralDiaCliente.upsert({
+        where: { diaSemana },
+        create: { diaSemana, aperturaMinuto, cierreMinuto },
+        update: { aperturaMinuto, cierreMinuto },
+      });
+    }
   }
 }
