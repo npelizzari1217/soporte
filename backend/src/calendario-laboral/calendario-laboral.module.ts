@@ -54,6 +54,7 @@ import { EditarFeriadoClienteUseCase } from './application/use-cases/editar-feri
 import { EliminarFeriadoClienteUseCase } from './application/use-cases/eliminar-feriado-cliente.use-case';
 import { FeriadosController } from './interface/controllers/feriados.controller';
 import { FeriadosClienteController } from './interface/controllers/feriados-cliente.controller';
+import { HorarioLaboralController } from './interface/controllers/horario-laboral.controller';
 import {
   ITenantTransactionRunner,
   TENANT_TX_RUNNER,
@@ -65,7 +66,7 @@ import { GuardarHorarioLaboralUseCase } from './application/use-cases/guardar-ho
 
 @Module({
   imports: [AuthModule],
-  controllers: [FeriadosController, FeriadosClienteController],
+  controllers: [FeriadosController, FeriadosClienteController, HorarioLaboralController],
   providers: [
     {
       // TenantContext llega vía SharedModule (@Global) — desde WU-3

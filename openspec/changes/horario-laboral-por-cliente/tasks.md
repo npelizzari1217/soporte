@@ -166,10 +166,10 @@ WU-5b lleva los casos de uso y sus specs (5.4, 5.5, 5.6).
 
 **Branch**: `feat/horario-laboral-por-cliente-wu06a` · **Base**: `feat/horario-laboral-por-cliente-wu05`
 
-- [ ] 6a.1 Crear `backend/src/calendario-laboral/interface/dtos/horario-laboral.dto.ts`: `@IsArray @ArrayMinSize(7) @ArrayMaxSize(7) @ValidateNested` con `@IsInt @Min(0) @Max(6) diaSemana` y minutos `@ValidateIf(v !== null) @IsInt @Min(0) @Max(1440)`. (Req: Un intervalo por día, dentro de rango)
-- [ ] 6a.2 Crear `backend/src/calendario-laboral/interface/controllers/horario-laboral.controller.ts`: `@Controller('horario-laboral') @UseGuards(JwtAuthGuard, TenantGuard)`; `GET` → 200 `{ dias }` abierto a cualquier autenticado del tenant; `PUT` + `@UseGuards(AdminClienteGuard)` por método → 200 `{ dias }`; errores de dominio → 422. (Req: Permisos de edición y lectura; Reemplazo atómico de las 7 filas)
-- [ ] 6a.3 Registrar el controller en `calendario-laboral.module.ts`.
-- [ ] 6a.4 Escribir `backend/src/calendario-laboral/interface/controllers/horario-laboral.controller.spec.ts`: metadata de guards con `?? []`; `PUT` lleva `AdminClienteGuard`, `GET` no; prueba por mutación (borrar el decorador pone el test en rojo). (Req: Permisos de edición y lectura)
+- [x] 6a.1 Crear `backend/src/calendario-laboral/interface/dtos/horario-laboral.dto.ts`: `@IsArray @ArrayMinSize(7) @ArrayMaxSize(7) @ValidateNested` con `@IsInt @Min(0) @Max(6) diaSemana` y minutos `@ValidateIf(v !== null) @IsInt @Min(0) @Max(1440)`. (Req: Un intervalo por día, dentro de rango)
+- [x] 6a.2 Crear `backend/src/calendario-laboral/interface/controllers/horario-laboral.controller.ts`: `@Controller('horario-laboral') @UseGuards(JwtAuthGuard, TenantGuard)`; `GET` → 200 `{ dias }` abierto a cualquier autenticado del tenant; `PUT` + `@UseGuards(AdminClienteGuard)` por método → 200 `{ dias }`; errores de dominio → 422. (Req: Permisos de edición y lectura; Reemplazo atómico de las 7 filas)
+- [x] 6a.3 Registrar el controller en `calendario-laboral.module.ts`.
+- [x] 6a.4 Escribir `backend/src/calendario-laboral/interface/controllers/horario-laboral.controller.spec.ts`: metadata de guards con `?? []`; `PUT` lleva `AdminClienteGuard`, `GET` no; prueba por mutación (borrar el decorador pone el test en rojo). (Req: Permisos de edición y lectura)
 
 **Test enfocado**: `cd backend && pnpm vitest run src/calendario-laboral/interface/controllers/horario-laboral.controller.spec.ts`
 **Verificación**: `pnpm lint` · `pnpm typecheck` (backend)

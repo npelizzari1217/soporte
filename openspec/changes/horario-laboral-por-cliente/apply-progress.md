@@ -246,3 +246,47 @@ el archivo no conserva la mutación.
 
 ### Status
 7/7 tasks de WU-5 completas. Ready for verify.
+
+## WU-6a — Controller, DTOs, wiring, guards
+
+**Branch**: `feat/horario-laboral-por-cliente-wu06a` · **Base**: `feat/horario-laboral-por-cliente-wu05b` · **Status**: Complete
+
+### Completed Tasks
+- [x] 6a.1 `horario-laboral.dto.ts`: `DiaHorarioLaboralDto` (`@IsInt @Min(0) @Max(6) diaSemana`; minutos `@ValidateIf(v !== null) @IsInt @Min(0) @Max(1440)`, precedente `catalogo.dto.ts:95`) y `HorarioLaboralDto` (`@IsArray @ArrayMinSize(7) @ArrayMaxSize(7) @ValidateNested @Type`, precedente `insumos.dto.ts:206-208`).
+- [x] 6a.2 `horario-laboral.controller.ts`: `@Controller('horario-laboral') @UseGuards(JwtAuthGuard, TenantGuard)`; `GET` → 200 `{ dias }` abierto a cualquier autenticado; `PUT` + `@UseGuards(AdminClienteGuard)` por método → 200 `{ dias }`; `toHttpException` mapea cualquier `HorarioLaboralInvalidoError` a 422 (D9).
+- [x] 6a.3 Controller registrado en `calendario-laboral.module.ts` (`controllers: [..., HorarioLaboralController]`); los providers de los dos use cases ya estaban cableados desde WU-5b.
+- [x] 6a.4 `horario-laboral.controller.spec.ts`: metadata de guards con el modismo `?? []` (`GUARDS_METADATA` de `@nestjs/common/constants`, precedente `modelos-equipo.controller.spec.ts:162`); class-level `[JwtAuthGuard, TenantGuard]`; `GET` sin `AdminClienteGuard`; `PUT` con `AdminClienteGuard`. Prueba por mutación: leer la metadata real del handler compilado, no un mock.
+
+### Files Changed
+| File | Action | What Was Done |
+|---|---|---|
+| `backend/src/calendario-laboral/interface/dtos/horario-laboral.dto.ts` | Created | `DiaHorarioLaboralDto` + `HorarioLaboralDto` (body `PUT`) y los tipos de respuesta `DiaHorarioLaboralResponseDto`/`HorarioLaboralResponseDto` |
+| `backend/src/calendario-laboral/interface/controllers/horario-laboral.controller.ts` | Created | `HorarioLaboralController` (`GET`/`PUT`) + `toHttpException` |
+| `backend/src/calendario-laboral/interface/controllers/horario-laboral.controller.spec.ts` | Created | 3 tests de metadata de guards |
+| `backend/src/calendario-laboral/calendario-laboral.module.ts` | Modified | Import + registro de `HorarioLaboralController` en `controllers` |
+
+### Deviations from Design
+None — implementación matches D9/D10.
+
+### Issues Found
+None.
+
+### Work Unit Evidence
+| Evidence | Value |
+|---|---|
+| Focused test command and exact result | `cd backend && pnpm vitest run src/calendario-laboral/interface/controllers/horario-laboral.controller.spec.ts` → 3/3 passed |
+| Runtime harness command/scenario and exact result | N/A por diseño (spec unitario de metadata de guards; el e2e HTTP real es WU-6b) |
+| Rollback boundary | Revertir el commit retira el endpoint (controller, DTOs, spec, registro en el módulo); sin frontend que lo consuma todavía |
+
+### Verification already run (all green)
+- `pnpm lint` → 0 errores
+- `pnpm typecheck` → 0 errores
+- `pnpm test` completo → 471/471 archivos, 5462/5462 tests (sube de 5459: +1 archivo, +3 tests). Los tres bloques `FAIL orden-de-arranque.spec.ts` que imprime la corrida son la salida capturada de ese spec ejercitando a propósito las ramas de error de `construirEntorno` (env vars faltantes) — no afectan el resumen final ni el exit code (0)
+
+### Workload / PR Boundary
+- Mode: chained PR slice (stacked-to-main, `auto-chain`) · Current work unit: WU-6a
+- Boundary: agrega el endpoint HTTP del horario laboral (GET/PUT), su DTO y sus guards; sin frontend que lo consuma todavía (llega en WU-7/WU-8a/WU-8b)
+- Review budget: 211 líneas autoría (`git diff --shortstat` sobre los 5 archivos de `backend/`) + openspec — dentro de 400
+
+### Status
+4/4 tasks de WU-6a completas. Ready for verify.
