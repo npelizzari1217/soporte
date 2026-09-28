@@ -77,19 +77,22 @@ presupuesto de 400. Por decisión del dueño del repo (2026-09-28) se parte en *
 
 ## WU2a: Transacción real + `--dry-run` (PR 3 → rama de PR 2)
 
-- [ ] 2a.1 Agregar `ejecutarRotacion(pool, opciones, deps = { cifrar: cifrarV1 })` a
+**`size:exception`** (decisión del dueño del repo, 2026-09-28): 488 líneas de código y tests,
+sin partir, para no separar la transacción de sus 8 escenarios de integración.
+
+- [x] 2a.1 Agregar `ejecutarRotacion(pool, opciones, deps = { cifrar: cifrarV1 })` a
       `backend/scripts/rotar-email-crypto-key.mjs`: un solo
       `client = await pool.connect()`, `BEGIN`, `SELECT ... FOR UPDATE` (excluye
       `smtp_password_cifrada IS NULL`), clasificar con 1.4, `UPDATE ... WHERE id=$1 AND
       smtp_password_cifrada=$2` exigiendo `rowCount===1`, `SELECT` de relectura, descifrado
       con `NEW_KEY` y comparación contra el texto plano, `COMMIT`/`ROLLBACK`.
       (R2, R4, R7, R8, R9)
-- [ ] 2a.2 Agregar el modo `--dry-run` (`BEGIN READ ONLY` … `ROLLBACK`, round-trip solo en
+- [x] 2a.2 Agregar el modo `--dry-run` (`BEGIN READ ONLY` … `ROLLBACK`, round-trip solo en
       memoria, ningún `UPDATE`). (R3)
-- [ ] 2a.3 Agregar el parseo de CLI y `main()` con guarda `import.meta.url` (molde
+- [x] 2a.3 Agregar el parseo de CLI y `main()` con guarda `import.meta.url` (molde
       `backend/scripts/backfill-correo-clientes.mjs:250` (read-only)); códigos de salida
       0/1/2/3 de ADR-1. (R1, R2)
-- [ ] 2a.4 Crear `backend/scripts/rotar-email-crypto-key.integration.spec.ts`: base efímera
+- [x] 2a.4 Crear `backend/scripts/rotar-email-crypto-key.integration.spec.ts`: base efímera
       (molde `backend/scripts/backfill-correo-clientes.integration.spec.ts` (read-only),
       `PostgresAdminService`, replay hasta `20260820160000_add_cliente_smtp_config`,
       `pool.end()` antes de `dropDatabase()`); escenarios: rotación completa exitosa,
@@ -97,7 +100,7 @@ presupuesto de 400. Por decisión del dueño del repo (2026-09-28) se parte en *
       byte a byte), re-corrida no-op, filas mixtas OLD/NEW, filas `NULL` intactas, AAD
       ligado (el ciphertext de A no descifra con el `id` de B), round-trip fallido vía
       `deps.cifrar` → `ROLLBACK` total. (R2, R3, R4, R5, R6, R7, R8, R9)
-- [ ] 2a.5 Verificación de la unidad: `pnpm lint`, `pnpm typecheck`,
+- [x] 2a.5 Verificación de la unidad: `pnpm lint`, `pnpm typecheck`,
       `pnpm vitest run backend/scripts/rotar-email-crypto-key.integration.spec.ts`,
       `pnpm test`.
 

@@ -10,8 +10,8 @@ tasks_progress:
   completed:
     - WU1a
     - WU1b
-  pending:
     - WU2a
+  pending:
     - WU2b
     - WU3
 last_updated: 2026-09-28

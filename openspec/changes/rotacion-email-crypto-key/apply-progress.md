@@ -85,6 +85,63 @@ None.
     `validarClaves`/`clasificarFila` en `rotar-email-crypto-key.mjs` + su spec (209 líneas).
 - Cadena resultante: WU1a → WU1b → WU2a → WU2b → WU3.
 
+## WU2a: Transacción real + `--dry-run` (PR 3 → rama de PR 2) — `size:exception`
+
+- `ejecutarRotacion(pool, opciones, deps = {})` agregado a `rotar-email-crypto-key.mjs`: un
+  solo `client = await pool.connect()`, `BEGIN` (`BEGIN READ ONLY` en dry-run),
+  `SELECT ... FOR UPDATE` (omitido en dry-run — Postgres rechaza `FOR UPDATE` en una
+  transacción de solo lectura), clasifica con `clasificarFila` (WU1b), `UPDATE ... WHERE
+  id=$1 AND smtp_password_cifrada=$2` exigiendo `rowCount===1`, releída de TODAS las filas
+  no nulas verificando `NEW_KEY` + texto plano, `COMMIT`/`ROLLBACK`. Alcance: todas las filas
+  con `smtp_password_cifrada IS NOT NULL` sin filtrar `deleted_at` (ADR-1).
+- `--dry-run`: mismo recorrido de clasificación, pero el round-trip de las `pendiente` ocurre
+  SOLO en memoria (cifra con `deps.cifrar`/`cifrarV1`, descifra en el momento, compara) — nunca
+  emite `UPDATE`; la transacción siempre cierra con `ROLLBACK`.
+- CLI/`main()` con guarda `import.meta.url` (molde `backfill-correo-clientes.mjs:250`):
+  `parsearArgs` solo acepta `--dry-run`; lee `ROTACION_OLD_KEY`/`ROTACION_NEW_KEY` (nunca
+  `EMAIL_CRYPTO_KEY`, ADR-3); exit codes 0 (éxito) / 2 (entrada inválida — flag desconocido,
+  falta `DATABASE_URL_MASTER`, clave inválida) / 3 (dato — fila indescifrable, `UPDATE`
+  inesperado, round-trip fallido) / 1 (inesperado — conexión/SQL, `COMMIT` ambiguo).
+- `rotar-email-crypto-key.integration.spec.ts` creado: DB efímera (molde
+  `backfill-correo-clientes.integration.spec.ts`, `PostgresAdminService`, replay hasta
+  `20260820160000_add_cliente_smtp_config`, `pool.end()` antes de `dropDatabase()`). 8
+  escenarios, uno por bullet de la task 2a.4: rotación completa, `ROLLBACK` ante fila
+  indescifrable (incluida una fila `pendiente` en la misma corrida, para probar que el
+  `ROLLBACK` también la deshace), `--dry-run` sin cambios (byte a byte), re-corrida no-op,
+  filas mixtas OLD/NEW, fila `NULL` intacta, AAD ligado (ciphertext de A no descifra con el
+  `id` de B), round-trip fallido inyectado vía `deps.cifrar` → `ROLLBACK` total. `afterEach`
+  hace `DELETE FROM clientes` entre tests — la tabla `membresias` tiene FK hacia `clientes`, así
+  que un `TRUNCATE` sin `CASCADE` la rechaza, y cada corrida de `ejecutarRotacion()` mira TODA
+  la tabla (una fila indescifrable que sobreviviera de un test anterior forzaría `ROLLBACK` en
+  el siguiente).
+
+### Tamaño: `size:exception` aceptada por el dueño del repo (2026-09-28)
+
+La unidad suma **488 líneas** de código y tests: 231 en `rotar-email-crypto-key.mjs` (diff
+sobre WU1b) y 257 en `rotar-email-crypto-key.integration.spec.ts`. La estimación era ~230.
+La diferencia viene de los 8 escenarios de integración que exige la task 2a.4 contra una
+única función transaccional (ADR-2), que no se puede partir sin separar el código de su
+cobertura. Se descartó partir el suite de tests: `main` habría recibido la transacción con
+3 de los 8 escenarios hasta que llegara la unidad siguiente.
+
+### Work Unit Evidence (WU2a)
+
+| Evidence | Value |
+|---|---|
+| Focused test command and exact result | `pnpm vitest run scripts/rotar-email-crypto-key.integration.spec.ts scripts/rotar-email-crypto-key.spec.ts scripts/lib/cifrado-secreto-v1.spec.ts` → 3 files, 33/33 tests passed |
+| Runtime harness command/scenario and exact result | Base efímera de Postgres real (`PostgresAdminService`, `soporte-postgres-master`); los 8 escenarios de `rotar-email-crypto-key.integration.spec.ts` corrieron contra ella — 8/8 passed |
+| Rollback boundary | Un solo commit en `feat/rotacion-email-crypto-key-wu2a`; `git revert` lo deshace sin tocar WU1a/WU1b |
+
+### Verification (backend/)
+
+| Command | Result |
+|---|---|
+| `pnpm lint` | Clean — 0 errors, 0 warnings |
+| `pnpm typecheck` | Clean — 0 errors |
+| `pnpm vitest run backend/scripts/rotar-email-crypto-key.integration.spec.ts` (+ specs de WU1a/WU1b) | 3 test files passed, 33/33 tests passed |
+| `pnpm test` (suite completa, Postgres arriba) | 467/467 test files passed, 5450/5450 tests passed, exit code 0 |
+
 ## Status
 
-Tareas 1.1-1.7 completas (WU1a y WU1b). Quedan pendientes WU2a, WU2b y WU3 (ver `tasks.md`).
+Tareas 1.1-1.7 y 2a.1-2a.5 completas y commiteadas (WU1a `c00ba59`, WU1b `4cbfdf0`, WU2a con
+`size:exception`). Quedan pendientes WU2b y WU3 (ver `tasks.md`).
