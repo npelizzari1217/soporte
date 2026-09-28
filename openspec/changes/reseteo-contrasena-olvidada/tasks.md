@@ -117,24 +117,28 @@ Rollback boundary: revert de PR3; `email-templates.ts` vuelve a su `escaparHtml`
 
 ## WU-4 — TareasSegundoPlano, guard de throttling y módulo (sin registrar)
 
+**`size:exception`** (criterio del dueño, 2026-09-28): 412 líneas tras la corrección del
+verificador independiente (`esperarPendientes()` no esperaba las tareas lanzadas durante la
+espera). Partir habría separado el arreglo de su test.
+
 Files: `backend/src/shared/domain/ports/i-tareas-segundo-plano.port.ts`,
 `backend/src/shared/infrastructure/segundo-plano/tareas-segundo-plano.ts` + `.spec.ts`,
 `backend/src/auth/infrastructure/guards/recuperacion-password-throttler.guard.ts` + `.spec.ts`,
 `backend/src/auth/recuperacion-password.module.ts`
 
-- [ ] 4.1 `ITareasSegundoPlano.lanzar(etiqueta, tarea)`. [Req 2]
-- [ ] 4.2 `TareasSegundoPlano`: difiere con `setImmediate`, `Set` de pendientes, `catch` +
+- [x] 4.1 `ITareasSegundoPlano.lanzar(etiqueta, tarea)`. [Req 2]
+- [x] 4.2 `TareasSegundoPlano`: difiere con `setImmediate`, `Set` de pendientes, `catch` +
       `logger.error('SEGUNDO_PLANO_ERROR | tarea=<etiqueta> | error=<message>')`,
       `esperarPendientes()`, `onApplicationShutdown` la llama. [Req 2, Req 12]
-- [ ] 4.3 `.spec.ts`: la tarea no corre síncronamente; un rechazo se captura y loguea sin abortar;
+- [x] 4.3 `.spec.ts`: la tarea no corre síncronamente; un rechazo se captura y loguea sin abortar;
       `esperarPendientes()` resuelve cuando el `Set` queda vacío. [Req 2 — abuso: trabajo de rama
       antes de responder]
-- [ ] 4.4 `RecuperacionPasswordThrottlerGuard` (subclase vacía de `ThrottlerGuard`, `useFactory`,
+- [x] 4.4 `RecuperacionPasswordThrottlerGuard` (subclase vacía de `ThrottlerGuard`, `useFactory`,
       storage y `Reflector` propios); tracker por email o por token, sin `x-forwarded-for`.
       [Req 13]
-- [ ] 4.5 `.spec.ts` del guard: mismo email con `xff` distintos comparte cupo; el intento que
+- [x] 4.5 `.spec.ts` del guard: mismo email con `xff` distintos comparte cupo; el intento que
       excede el límite fijado en diseño da 429. [Req 13 — abuso: tracker con `xff`]
-- [ ] 4.6 `RecuperacionPasswordModule` (imports `AuthModule`, `NotificacionesModule`; controller
+- [x] 4.6 `RecuperacionPasswordModule` (imports `AuthModule`, `NotificacionesModule`; controller
       `@Controller('auth')`) creado y probado; **NO se registra en `app.module.ts`** (queda para
       WU-11).
 

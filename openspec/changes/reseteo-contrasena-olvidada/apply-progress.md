@@ -63,3 +63,28 @@ adaptador con dobles). Rollback: revert del commit; `email-templates.ts` vuelve 
 Verification: `pnpm lint` OK · `pnpm typecheck` OK · `pnpm test` OK.
 
 Status: 6/6 tareas implementadas y verificadas. Ready for WU-4.
+
+## WU-4 — TareasSegundoPlano, guard de throttling y módulo (sin registrar) — COMPLETO (4.1–4.6)
+
+Files: `shared/domain/ports/i-tareas-segundo-plano.port.ts` (create),
+`shared/infrastructure/segundo-plano/tareas-segundo-plano.ts` + `.spec.ts` (create),
+`auth/infrastructure/guards/recuperacion-password-throttler.guard.ts` + `.spec.ts` (create),
+`auth/recuperacion-password.module.ts` + `.spec.ts` (create).
+
+Deviations: none — sigue ADR-2/ADR-3. El módulo no declara `controllers` todavía (array vacío):
+`RecuperacionPasswordController` no existe hasta WU-7/WU-8, tal como fija la lista de archivos
+de esta WU en tasks.md. `RecuperacionPasswordThrottlerGuard` se construye por `useFactory` con
+una `ThrottlerStorageService` propia — evita un segundo `ThrottlerModule.forRoot()` global
+(`CsatModule` ya lo llama). `app.module.ts` sigue sin referenciar el módulo nuevo (verificado con
+`rg`).
+
+Evidence: focused test
+`pnpm vitest run backend/src/shared/infrastructure/segundo-plano/ backend/src/auth/infrastructure/guards/`
+→ 13/13 passed. Runtime harness: N/A — módulo creado, sin controller, no registrado en
+`app.module.ts` (mismo criterio que WU-1). Rollback: revert del commit; módulo huérfano sin
+importar, `app.module.ts` intacto.
+
+Verification: `pnpm lint` OK · `pnpm typecheck` OK · `pnpm test` OK (ver conteo abajo) ·
+`rg -n RecuperacionPasswordModule backend/src/app.module.ts` sin resultados.
+
+Status: 6/6 tareas completas. Ready for WU-5.
