@@ -212,9 +212,12 @@ cortes limpios. WU-7a: tipos, api, límites y minutos (7.1-7.3). WU-7b: esquemas
 
 ## WU-8a — Frontend: componentes presentacionales
 
+**Partida en WU-8a-i / WU-8a-ii** (criterio del dueño, 2026-09-29): la unidad sumó ~516 líneas y tiene un
+corte limpio. WU-8a-i: la fila y su test (8a.1). WU-8a-ii: el formulario de 7 filas y su test (8a.2, 8a.3).
+
 **Branch**: `feat/horario-laboral-por-cliente-wu08a` · **Base**: `feat/horario-laboral-por-cliente-wu07`
 
-- [ ] 8a.1 Crear `frontend/src/features/horario-laboral/components/horario-laboral-fila.tsx` (checkbox "Abierto" + dos `<Input type="time">`) y su test.
+- [x] 8a.1 Crear `frontend/src/features/horario-laboral/components/horario-laboral-fila.tsx` (checkbox "Abierto" + dos `<Input type="time">`) y su test.
 - [ ] 8a.2 Crear `frontend/src/features/horario-laboral/components/horario-laboral-form.tsx` (RHF + `zodResolver`, props `valoresIniciales`, `soloLectura`, `guardando`, `errorServidor`, `onGuardar`); en `soloLectura`, inputs `disabled` y sin botón Guardar. (Req: Contrato observable del frontend)
 - [ ] 8a.3 Escribir `horario-laboral-form.test.tsx`: admin puede editar; no-admin ve solo lectura; marcar los 7 días cerrados muestra el mensaje de la raíz del schema y **no llama** a `onGuardar`. (Req: Contrato observable del frontend)
 
