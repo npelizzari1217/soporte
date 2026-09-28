@@ -7,6 +7,7 @@ import { TAREAS_SEGUNDO_PLANO } from '../shared/domain/ports/i-tareas-segundo-pl
 import { CORREO_DE_CLIENTE } from './domain/ports/i-correo-de-cliente.port';
 import { PASSWORD_RESET_TOKEN_REPOSITORY } from './domain/ports/i-password-reset-token.repository';
 import { SolicitarResetPasswordUseCase } from './application/use-cases/solicitar-reset-password.use-case';
+import { RecuperacionPasswordController } from './interface/controllers/recuperacion-password.controller';
 
 /**
  * recuperacion-password.module.spec.ts — compilación REAL del módulo
@@ -24,7 +25,9 @@ import { SolicitarResetPasswordUseCase } from './application/use-cases/solicitar
  * es lazy, ver `prisma.service.ts:16-17`), así que `compile()` no toca la
  * red ni la DB — arma el grafo de providers y nada más.
  *
- * Ref design: ADR-1, ADR-4, ADR-5, ADR-6, ADR-7. Tarea: 5.4 (WU-5b).
+ * Ref design: ADR-1, ADR-2, ADR-3, ADR-4, ADR-5, ADR-6, ADR-7. Tarea: 5.4
+ * (WU-5b), 7.2 (WU-7 — agrega `RecuperacionPasswordController` a
+ * `controllers`; `main` sigue sin montarlo, ver ADR-1 "Migration / Rollout").
  */
 describe('RecuperacionPasswordModule — compilación real (WU-5b)', () => {
   it('compila con SharedModule y resuelve SolicitarResetPasswordUseCase', async () => {
@@ -51,9 +54,9 @@ describe('RecuperacionPasswordModule — compilación real (WU-5b)', () => {
     await moduleRef.close();
   });
 
-  it('NO declara controllers todavía — el controller llega en WU-7/WU-8', () => {
+  it('declara RecuperacionPasswordController (WU-7) — POST /auth/reset-password llega en WU-8', () => {
     const controllers = (Reflect.getMetadata('controllers', RecuperacionPasswordModule) ??
       []) as unknown[];
-    expect(controllers).toHaveLength(0);
+    expect(controllers).toEqual([RecuperacionPasswordController]);
   });
 });

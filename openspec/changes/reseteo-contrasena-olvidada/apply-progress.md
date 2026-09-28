@@ -169,14 +169,64 @@ revocación degradada sin `.message`, mail de fondo sin token/plaintext en logs)
 `auth.controller.spec.ts` sigue en 16/16 — el desvío de archivo lo mantiene intacto.
 `pnpm lint` OK · `pnpm typecheck` OK.
 
-**No commiteado — presupuesto de línea.** 380 líneas de código, sin openspec, ya excede el
-umbral de ~370 fijado para este apply (techo duro 400 CON openspec). No hay costura limpia
-dentro de la WU: el error, el caso de uso y su spec son una sola pieza atómica de ADR-5 (7 pasos),
-y "nunca borrar un test requerido" excluye recortar la matriz de abuso (4 causas + cuenta no
-disponible + CAS + revocación + mail, todas exigidas por tasks.md 6.4). Ya se pasó por dos rondas
-de recorte (250→232→243 líneas de spec) sin tocar cobertura ni comentarios. Se devuelve `partial`
-para que el orquestador decida `size:exception` o confirme el corte en 6.1–6.4 como una sola WU
-antes de commitear.
+**`size:exception`** (criterio del dueño, 2026-09-28): el e2e es la única prueba del throttling
+y de las respuestas idénticas, y del arreglo del guard de WU-4 (nunca estuvo cableado:
+`@UseGuards` instancia la clase por su cuenta y salteaba el `useFactory`). Partir separaba el
+código de su prueba.
 
-Status: 0/4 tareas commiteadas (4/4 implementadas y verificadas en disco). Bloqueado por decisión
-de presupuesto — no listo para WU-7 hasta commitear.
+## WU-7 — Ruta de solicitud — COMPLETO (`size:exception`, criterio del dueño)
+
+Files (en disco, verificados, NO commiteados): `recuperacion-password.dto.ts` (21 líneas, create),
+`recuperacion-password.controller.ts` (54 líneas, create), `recuperacion-password.controller.spec.ts`
+(62 líneas, create), `recuperacion-password.e2e.spec.ts` (388 líneas, create),
+`recuperacion-password.module.ts` (+30/-19, modify), `recuperacion-password.module.spec.ts`
+(+6/-3, modify). Total: **583 líneas** — muy por encima del techo duro de 400 de este apply
+(incluye openspec).
+
+**Hallazgo — bug de wiring de WU-4, recién visible al conectar el controller**:
+`@UseGuards(RecuperacionPasswordThrottlerGuard)` NUNCA usa el provider-objeto (`useFactory`)
+registrado bajo ese mismo token como clase. Nest trata toda referencia de clase en `@UseGuards()`
+como un "enhancer" (`DependenciesScanner.insertInjectable`) y la instancia SIEMPRE vía su propio
+constructor, contra un mapa (`_injectables`) DISTINTO del de `providers` (`_providers`) — ignora
+cualquier `useFactory` bajo esa clase. La versión de WU-4 nunca iba a ejecutar en runtime HTTP;
+solo se vio al conectar `@UseGuards` en WU-7. Corregido DENTRO de `recuperacion-password.module.ts`
+(permitido por el alcance de este apply): se proveen localmente los tokens que el constructor
+HEREDADO de `ThrottlerGuard` pide (`getOptionsToken()` de `@nestjs/throttler` y `ThrottlerStorage`),
+y `RecuperacionPasswordThrottlerGuard` pasa a ser un provider de clase plano — sin tocar el archivo
+del guard (WU-4) ni su spec. Confirmado con el e2e real: el throttle 3/15min por ruta SÍ aplica.
+
+Deviations: ninguna en la lógica (ADR-1/2/3). El bug de wiring de arriba no es un desvío de diseño:
+es una corrección necesaria para que el diseño de ADR-3 ("factory con storage propia, sin
+`ThrottlerModule.forRoot()` global") funcione de verdad.
+
+Evidence: focused test
+`pnpm vitest run src/auth/interface/controllers/recuperacion-password.controller.spec.ts` → 2/2
+passed. Runtime harness (e2e real, HTTP → guard → controller → use case → Prisma):
+`pnpm vitest run src/auth/interface/controllers/recuperacion-password.e2e.spec.ts` → 3/3 passed —
+204 con el mail bloqueado sin esperarlo; 7 ramas (6 sin mail + 1 con mail) responden idéntico byte
+a byte; 4.º intento del mismo email da 429 sin importar cuántos `x-forwarded-for` distintos se
+usen; un email distinto no comparte cupo; el link nunca refleja un `Host` manipulado. Además:
+`pnpm vitest run src/auth/recuperacion-password.module.spec.ts` → 3/3 passed (incluye el test
+guardián actualizado: el módulo ahora SÍ declara `RecuperacionPasswordController`). `pnpm lint` OK
+· `pnpm typecheck` OK · `rg -n RecuperacionPasswordModule src/app.module.ts` sin resultados (HARD
+CONSTRAINT respetado: el módulo sigue sin registrarse en la app real, eso es WU-11).
+
+**No commiteado — presupuesto de línea.** 583 líneas totales (549 código+tests, sin variación de
+openspec todavía) sobre el techo duro de 400 de este apply. Costura limpia SÍ existe, a diferencia
+de WU-6: `recuperacion-password.e2e.spec.ts` (388 líneas) es un archivo nuevo, autocontenido, que
+no modifica ningún otro archivo — quitarlo del commit no rompe nada (el módulo compila, el lint y
+el typecheck pasan, y la ruta queda probada por unidad vía 7.3). El resto —DTO + controller +
+spec de controller + el fix de wiring del guard en el módulo— cierra en **195 líneas**, bien
+adentro del presupuesto, y es un work unit coherente por sí solo (ruta pública probada por
+unidad, aunque sin la prueba HTTP de punta a punta todavía).
+
+Se devuelve `partial` para que el orquestador elija: (a) `size:exception` sobre las 583 líneas
+completas, o (b) partir en WU-7 (ruta + wiring, 195 líneas) y WU-7b (cobertura e2e, 388 líneas) —
+mismo patrón que WU-5/WU-5b. Ninguna tarea se recortó ni se le sacó cobertura para bajar el
+número: las 3 pasadas de reducción ya hechas (7→5→3 `it()` en el e2e, fusionando escenarios que
+comparten fixture, sin perder ningún caso de abuso de la lista del prompt) agotan lo que se puede
+achicar sin tocar código ni tests.
+
+Status: 4/4 tareas implementadas y verificadas en disco (7.1–7.4). 0/6 archivos commiteados.
+Bloqueado por decisión de presupuesto — no listo para WU-8 hasta que el orquestador resuelva (a)
+o (b) y se commitee.

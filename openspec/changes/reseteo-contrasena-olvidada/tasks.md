@@ -228,18 +228,22 @@ Rollback boundary: revert de PR6; sin controller que exponga el caso de uso.
 
 ## WU-7 — Ruta de solicitud
 
+**`size:exception`** (criterio del dueño, 2026-09-28): ~650 líneas. El e2e es la única prueba
+del throttling y de las respuestas idénticas; partir separaba la ruta (y el arreglo del guard
+de WU-4, que nunca estuvo cableado) de su prueba.
+
 Files: `backend/src/auth/interface/dtos/recuperacion-password.dto.ts` (parte solicitud),
 `backend/src/auth/interface/controllers/recuperacion-password.controller.ts` + `.spec.ts` (parte
 solicitud), `backend/src/auth/interface/controllers/recuperacion-password.e2e.spec.ts` (parte
 solicitud)
 
-- [ ] 7.1 `SolicitarResetDto { email: @IsEmail() }`. [Req 1]
-- [ ] 7.2 `RecuperacionPasswordController`: `POST /auth/forgot-password`,
+- [x] 7.1 `SolicitarResetDto { email: @IsEmail() }`. [Req 1]
+- [x] 7.2 `RecuperacionPasswordController`: `POST /auth/forgot-password`,
       `@UseGuards(RecuperacionPasswordThrottlerGuard)`, `@Throttle` 3/15min por email; el handler
       solo llama `tareas.lanzar(...)` y devuelve 204, sin awaitear `ejecutar`. [Req 1, Req 2, Req 13]
-- [ ] 7.3 `.spec.ts` del controller: `ejecutar` NO se invoca de forma síncrona en el handler.
+- [x] 7.3 `.spec.ts` del controller: `ejecutar` NO se invoca de forma síncrona en el handler.
       [Req 2 — abuso: trabajo de rama antes de responder]
-- [ ] 7.4 e2e (`TestHarnessModule` propio importando `RecuperacionPasswordModule`, molde
+- [x] 7.4 e2e (`TestHarnessModule` propio importando `RecuperacionPasswordModule`, molde
       `csat.e2e.spec.ts:91`; llama `usarLockMasterTest()`): las 6 ramas sin mail dan 204 idéntico
       byte a byte (status, cuerpo, headers sin `Date`); con `EMAIL_SENDER` fake bloqueado, igual
       llega el 204; el 4.º intento del mismo email da 429. [Req 1, Req 2, Req 13 — abuso: respuesta

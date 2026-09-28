@@ -1,6 +1,5 @@
 import { Module } from '@nestjs/common';
-import { Reflector } from '@nestjs/core';
-import { ThrottlerStorageService } from '@nestjs/throttler';
+import { ThrottlerStorage, ThrottlerStorageService, getOptionsToken } from '@nestjs/throttler';
 import { AuthModule } from './auth.module';
 import { NotificacionesModule } from '../notificaciones/notificaciones.module';
 import { LOGGER, ILogger } from '../shared/domain/ports/i-logger.port';
@@ -31,6 +30,7 @@ import { PrismaPasswordResetTokenRepository } from './infrastructure/persistence
 import { CORREO_DE_CLIENTE, ICorreoDeCliente } from './domain/ports/i-correo-de-cliente.port';
 import { CorreoDeClienteAdapter } from './infrastructure/email/correo-de-cliente.adapter';
 import { SolicitarResetPasswordUseCase } from './application/use-cases/solicitar-reset-password.use-case';
+import { RecuperacionPasswordController } from './interface/controllers/recuperacion-password.controller';
 
 /**
  * RecuperacionPasswordModule — reseteo de contraseña por olvido,
@@ -44,8 +44,10 @@ import { SolicitarResetPasswordUseCase } from './application/use-cases/solicitar
  * Alcance de WU-4: `TAREAS_SEGUNDO_PLANO` (ADR-2) y el throttler guard
  * (ADR-3), con su propia `ThrottlerStorageService` en vez de un segundo
  * `ThrottlerModule.forRoot()` — ver `RecuperacionPasswordThrottlerGuard`.
- * `RecuperacionPasswordController` (WU-7/WU-8) se suma después a
- * `controllers`.
+ *
+ * Alcance de WU-7: `RecuperacionPasswordController` con
+ * `POST /auth/forgot-password` (ADR-1, ADR-2, ADR-3). `POST
+ * /auth/reset-password` (confirmación) se suma en WU-8.
  *
  * Alcance de WU-5b (tarea 5.4, split de WU-5): wirea `CORREO_DE_CLIENTE` →
  * `CorreoDeClienteAdapter` (ADR-4), `PASSWORD_RESET_TOKEN_REPOSITORY` →
@@ -64,30 +66,39 @@ import { SolicitarResetPasswordUseCase } from './application/use-cases/solicitar
  * así que importar `NotificacionesModule` desde `AuthModule` cerraría un
  * ciclo.
  *
- * Ref design: ADR-1, ADR-2, ADR-3, ADR-4, ADR-5, ADR-6, ADR-7. Tarea: 4.6, 5.4.
+ * Ref design: ADR-1, ADR-2, ADR-3, ADR-4, ADR-5, ADR-6, ADR-7. Tarea: 4.6, 5.4, 7.2.
  */
 @Module({
   imports: [AuthModule, NotificacionesModule],
-  controllers: [],
+  controllers: [RecuperacionPasswordController],
   providers: [
     {
       provide: TAREAS_SEGUNDO_PLANO,
       useFactory: (logger: ILogger) => new TareasSegundoPlano(logger),
       inject: [LOGGER],
     },
-    // Provider por `useFactory` con `ThrottlerStorageService` propia (ADR-3):
-    // ver el JSDoc de la clase para el motivo de NO usar `forRoot`. Los
-    // límites reales se fijan por ruta con `@Throttle` en el controller.
-    {
-      provide: RecuperacionPasswordThrottlerGuard,
-      useFactory: (reflector: Reflector) =>
-        new RecuperacionPasswordThrottlerGuard(
-          [{ name: 'default', limit: 5, ttl: 900_000 }],
-          new ThrottlerStorageService(),
-          reflector,
-        ),
-      inject: [Reflector],
-    },
+    // ─── WU-7 (fix sobre el wiring de WU-4): providers LOCALES de Throttler ──
+    // `@UseGuards(RecuperacionPasswordThrottlerGuard)` (controller) NUNCA usa
+    // un provider-objeto registrado bajo ese mismo token como clase: Nest
+    // trata toda referencia de clase en `@UseGuards()` como un "enhancer" y
+    // la instancia SIEMPRE vía su propio constructor
+    // (`DependenciesScanner.insertInjectable`, `_injectables` — un mapa
+    // DISTINTO de `_providers`), ignorando cualquier `useFactory` registrado
+    // bajo esa clase. La versión de WU-4 (`useFactory` construyendo con
+    // `new RecuperacionPasswordThrottlerGuard(...)`) nunca iba a ejecutarse
+    // en runtime HTTP — recién se ve al conectar `@UseGuards` acá.
+    //
+    // El constructor HEREDADO de `ThrottlerGuard` pide `THROTTLER:MODULE_OPTIONS`
+    // (`getOptionsToken()`) y `ThrottlerStorage` — proveerlos LOCAL en este
+    // módulo (en vez de un segundo `ThrottlerModule.forRoot()` global, ver el
+    // JSDoc de la clase) alcanza: Nest resuelve el constructor de CUALQUIER
+    // instancia de `RecuperacionPasswordThrottlerGuard` (sea vía `_providers`
+    // o `_injectables`) contra los providers de ESTE módulo. Los límites
+    // reales se fijan por ruta con `@Throttle` en el controller — este valor
+    // es solo el fallback base.
+    { provide: getOptionsToken(), useValue: [{ name: 'default', limit: 5, ttl: 900_000 }] },
+    { provide: ThrottlerStorage, useClass: ThrottlerStorageService },
+    RecuperacionPasswordThrottlerGuard,
 
     // ─── WU-5b: CLIENTE_EMAIL_CONFIG_REPOSITORY local (ADR-4) ───────────────
     // Local, NO reusado de otro módulo — ver el comment de `SharedModule`
