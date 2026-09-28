@@ -13,12 +13,12 @@ tasks_progress:
     - wu02
     - wu03
     - wu04
-  pending:
     - wu05
+  pending:
     - wu06a
     - wu06b
     - wu07
     - wu08a
     - wu08b
 last_updated: 2026-09-28
-last_completed_wu: wu04
+last_completed_wu: wu05

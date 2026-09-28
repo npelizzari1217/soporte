@@ -188,3 +188,61 @@ None.
 
 ### Status
 4/4 tasks de WU-4 completas. Ready for verify.
+
+## WU-5a + WU-5b — Puerto de escritura, `reemplazar`, casos de uso
+
+**Partida por corte limpio** (criterio del dueño): la unidad sumó 468 líneas. WU-5a (`feat/horario-laboral-por-cliente-wu05`, base `wu04`) lleva el puerto, `reemplazar()` y su test de integración (5.1, 5.2, 5.3, 5.7); WU-5b (`feat/horario-laboral-por-cliente-wu05b`, base `wu05`) lleva los casos de uso y sus specs (5.4, 5.5, 5.6). Cada mitad pasa lint, typecheck y sus tests por separado. **Status**: Complete
+
+### Completed Tasks
+- [x] 5.1 `i-horario-laboral-escritura.repository.ts` — `IHorarioLaboralEscrituraRepository.reemplazar(horario): Promise<void>`, token `HORARIO_LABORAL_ESCRITURA_REPOSITORY`.
+- [x] 5.2 `PrismaCalendarioLaboralSemanalRepository.reemplazar()`: 7 `upsert` por `diaSemana`, secuenciales (`for … await`, nunca `Promise.all`), orden fijo 0→6.
+- [x] 5.3 `calendario-laboral.module.ts`: `HORARIO_LABORAL_ESCRITURA_REPOSITORY` registrado con `useExisting` sobre `CALENDARIO_LABORAL_SEMANAL_REPOSITORY` (mismo provider, dos tokens/puertos — ISP).
+- [x] 5.4 `ObtenerHorarioLaboralUseCase` + spec (pass-through de lectura, `Result.ok`).
+- [x] 5.5 `GuardarHorarioLaboralUseCase`: `HorarioLaboralSemanal.crear(dto.dias)` → si falla, `Result.fail` sin tocar la base; si pasa, `txRunner.run(() => repo.reemplazar(horario))` y luego una lectura aparte, POST-commit, fuera de la transacción (D6).
+- [x] 5.6 `guardar-horario-laboral.use-case.spec.ts`: VO inválido (7 cerrados, 6 días) → `txRunner.run` NO se llama; VO válido → `txRunner.run` una vez y lectura post-commit.
+- [x] 5.7 `calendario-laboral.repositorios.integration.spec.ts`: `reemplazar()` envuelto en `PrismaTenantTransactionRunner` real — orden secuencial 0→3 probado con un delay artificial en el día 0 (el día 1 arranca ≥140ms después, nunca simultáneo), y un throw forzado en el día 3 confirma rollback real de Postgres (las 7 filas quedan idénticas a las de antes del intento).
+
+### Files Changed
+| File | Action | What Was Done |
+|---|---|---|
+| `backend/src/calendario-laboral/domain/ports/i-horario-laboral-escritura.repository.ts` | Created | Puerto de escritura + token DI |
+| `backend/src/calendario-laboral/infrastructure/persistence/prisma/prisma-calendario-laboral-semanal.repository.ts` | Modified | Implementa `IHorarioLaboralEscrituraRepository.reemplazar()` |
+| `backend/src/calendario-laboral/calendario-laboral.module.ts` | Modified | Alias `useExisting` del puerto de escritura + providers de los dos casos de uso nuevos |
+| `backend/src/calendario-laboral/application/use-cases/obtener-horario-laboral.use-case.ts` | Created | Caso de uso de lectura |
+| `backend/src/calendario-laboral/application/use-cases/obtener-horario-laboral.use-case.spec.ts` | Created | 2 tests |
+| `backend/src/calendario-laboral/application/use-cases/guardar-horario-laboral.use-case.ts` | Created | Caso de uso de escritura atómica |
+| `backend/src/calendario-laboral/application/use-cases/guardar-horario-laboral.use-case.spec.ts` | Created | 3 tests |
+| `backend/src/calendario-laboral/infrastructure/persistence/prisma/calendario-laboral.repositorios.integration.spec.ts` | Modified | +1 test de `reemplazar()` con `PrismaTenantTransactionRunner` real |
+
+### Deviations from Design
+None — implementación matches D6/D7 y el mapa de capas.
+
+### Issues Found
+None.
+
+### Work Unit Evidence
+| Evidence | Value |
+|---|---|
+| Focused test command and exact result | `cd backend && pnpm vitest run src/calendario-laboral/application/use-cases/guardar-horario-laboral.use-case.spec.ts src/calendario-laboral/infrastructure/persistence/prisma/calendario-laboral.repositorios.integration.spec.ts` → 7/7 passed |
+| Runtime harness command/scenario and exact result | DB tenant efímera (integración real de `reemplazar` con `PrismaTenantTransactionRunner`), incluida en el comando de arriba → 4/4 en ese archivo, incluyendo el test de orden/atomicidad |
+| Rollback boundary | Revertir el commit retira los dos casos de uso, el puerto de escritura y el método `reemplazar`; sin consumidores todavía (el controller llega en WU-6a) |
+
+### Mutation proof (Promise.all)
+Se cambió temporalmente `reemplazar()` a `Promise.all` en el working tree y se corrió el
+test de orden/atomicidad: dio ROJO como se esperaba (`ordenInicio` incluyó los 7 días en vez
+de cortar en el día 3 — con `Promise.all` los 7 `upsert` se disparan sin esperar el throw).
+Se restauró la versión secuencial (`for … await`) inmediatamente después; `git diff` sobre
+el archivo no conserva la mutación.
+
+### Verification already run (all green)
+- `pnpm lint` → 0 errores
+- `pnpm typecheck` → 0 errores
+- `pnpm test` completo → 470/470 archivos, 5459/5459 tests (sube de 5453: +6 tests nuevos)
+
+### Workload / PR Boundary
+- Mode: chained PR slice (stacked-to-main, `auto-chain`) · Current work unit: WU-5
+- Boundary: puerto de escritura, `reemplazar` secuencial, los dos casos de uso y sus tests; sin consumidor HTTP todavía
+- Review budget: WU-5a 176 líneas; WU-5b el resto, las dos dentro de 400
+
+### Status
+7/7 tasks de WU-5 completas. Ready for verify.

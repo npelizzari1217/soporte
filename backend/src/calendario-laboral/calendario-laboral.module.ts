@@ -54,6 +54,14 @@ import { EditarFeriadoClienteUseCase } from './application/use-cases/editar-feri
 import { EliminarFeriadoClienteUseCase } from './application/use-cases/eliminar-feriado-cliente.use-case';
 import { FeriadosController } from './interface/controllers/feriados.controller';
 import { FeriadosClienteController } from './interface/controllers/feriados-cliente.controller';
+import {
+  ITenantTransactionRunner,
+  TENANT_TX_RUNNER,
+} from '../shared/infrastructure/persistence/tenant-transaction-runner';
+import { ICalendarioLaboralSemanalRepository } from './domain/ports/i-calendario-laboral-semanal.repository';
+import { IHorarioLaboralEscrituraRepository } from './domain/ports/i-horario-laboral-escritura.repository';
+import { ObtenerHorarioLaboralUseCase } from './application/use-cases/obtener-horario-laboral.use-case';
+import { GuardarHorarioLaboralUseCase } from './application/use-cases/guardar-horario-laboral.use-case';
 
 @Module({
   imports: [AuthModule],
@@ -118,6 +126,25 @@ import { FeriadosClienteController } from './interface/controllers/feriados-clie
       provide: EliminarFeriadoClienteUseCase,
       useFactory: (repo: IFeriadoClienteRepository) => new EliminarFeriadoClienteUseCase(repo),
       inject: [FERIADO_CLIENTE_REPOSITORY],
+    },
+    {
+      provide: ObtenerHorarioLaboralUseCase,
+      useFactory: (repo: ICalendarioLaboralSemanalRepository) =>
+        new ObtenerHorarioLaboralUseCase(repo),
+      inject: [CALENDARIO_LABORAL_SEMANAL_REPOSITORY],
+    },
+    {
+      provide: GuardarHorarioLaboralUseCase,
+      useFactory: (
+        lecturaRepo: ICalendarioLaboralSemanalRepository,
+        escrituraRepo: IHorarioLaboralEscrituraRepository,
+        txRunner: ITenantTransactionRunner,
+      ) => new GuardarHorarioLaboralUseCase(lecturaRepo, escrituraRepo, txRunner),
+      inject: [
+        CALENDARIO_LABORAL_SEMANAL_REPOSITORY,
+        HORARIO_LABORAL_ESCRITURA_REPOSITORY,
+        TENANT_TX_RUNNER,
+      ],
     },
   ],
   exports: [CALENDARIO_LABORAL_SEMANAL_REPOSITORY, FERIADOS_LABORALES_REPOSITORY],
