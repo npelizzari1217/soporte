@@ -9,8 +9,8 @@ artifacts:
 tasks_progress:
   completed:
     - wu01
-  pending:
     - wu01b
+  pending:
     - wu02
     - wu03
     - wu04

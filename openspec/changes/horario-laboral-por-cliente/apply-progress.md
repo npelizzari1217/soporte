@@ -37,3 +37,43 @@ None.
 
 ### Status
 3/3 tasks de WU-1 completas. Ready for verify.
+
+## WU-1b — Precondición de deploy (D18) y runbook
+
+**Branch**: `feat/horario-laboral-por-cliente-wu01b` · **Base**: `feat/horario-laboral-por-cliente-wu01` · **Status**: Complete
+
+### Completed Tasks
+- [x] 1b.1 `backend/scripts/check-calendario-master-default.mjs`: solo lectura, `DATABASE_URL_MASTER` vía `process.loadEnvFile()`, exit 1 imprimiendo la diferencia si las 7 filas de `calendario_laboral_dias` (master) no son exactamente el default, o si la tabla no existe.
+- [x] 1b.2 `backend/scripts/check-calendario-master-default.spec.ts` con la consulta inyectada (precedente `backfill-correo-clientes.spec.ts`): default exacto pasa; un día cambiado falla y lo reporta; 6 filas fallan; tabla ausente (`42P01`) se traduce a `ok:false` sin propagar la excepción; un error de DB distinto de `42P01` sí se propaga.
+- [x] 1b.3 Paso `Precondicion: calendario master = default` en `deploy.ps1`, después de `Cargar backend/.env` (5) y antes de `EMAIL_CRYPTO_KEY` (5b)/`Detener servicios`, envuelto en `AssertOk`; corre con `$NodeExe` (Node 24 fijado), mismo criterio que la invocación del backfill de correo (línea ~252). Archivo verificado 100% ASCII, sin BOM.
+- [x] 1b.4 `DEPLOY-VPS-runbook.md`: paso nuevo en "Qué hace, en orden" (renumerado 7-13) y sección nueva "Precondición: calendario master = default" en "Preflight que conviene correr antes", con la consulta de solo lectura y su salida esperada de 7 filas, indicando que `deploy.ps1` ya lo verifica.
+
+### Files Changed
+| File | Action | What Was Done |
+|---|---|---|
+| `backend/scripts/check-calendario-master-default.mjs` | Created | Script de solo lectura D18: `compararConDefault()` puro + `chequearDefaultMaster(query)` con la consulta inyectada + `main()` real contra `DATABASE_URL_MASTER` |
+| `backend/scripts/check-calendario-master-default.spec.ts` | Created | 6 tests: default exacto, día cambiado, fila faltante, consulta inyectada default, tabla ausente (42P01), error de DB distinto propagado |
+| `deploy.ps1` | Modified | Paso nuevo "Precondicion: calendario master = default" (D18), entre carga de `.env` y `EMAIL_CRYPTO_KEY` |
+| `DEPLOY-VPS-runbook.md` | Modified | Paso nuevo en "Qué hace, en orden" + sección "Precondición: calendario master = default" en el preflight, con consulta y salida esperada |
+
+### Deviations from Design
+None — implementación matches D18. `ps1-ascii.spec.ts` (spec de convención ASCII/sin BOM para `.ps1`) no existe en esta rama; vive en una cadena sin mergear. Se verificó el archivo directamente: `rg -n '[^\x00-\x7F]' deploy.ps1` sin resultados, primeros 3 bytes distintos de `EF BB BF`, y un parseo sintáctico con `pwsh` portátil (`DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1`) reportó 0 errores.
+
+### Issues Found
+None.
+
+### Work Unit Evidence
+| Evidence | Value |
+|---|---|
+| Focused test command and exact result | `cd backend && pnpm vitest run scripts/check-calendario-master-default.spec.ts` → 6/6 passed |
+| Runtime harness command/scenario and exact result | N/A por diseño — script de solo lectura; ejercitado con la consulta inyectada del spec unitario. Corrido además una vez contra la DB master de desarrollo real: `node backend/scripts/check-calendario-master-default.mjs` → exit 0, `[check-calendario-master-default] OK: master en el default (lun-vie 540-1080, sab/dom NULL)` (local está en 9-18 lun-vie, confirma el default sin cambiar nada) |
+| Rollback boundary | Revertir el commit saca el paso de `deploy.ps1`, el script y su spec, y las dos secciones del runbook; el deploy vuelve a no tener esta precondición automatizada, sin afectar WU-1 |
+
+### Workload / PR Boundary
+- Mode: chained PR slice (stacked-to-main, `auto-chain`)
+- Current work unit: WU-1b
+- Boundary: agrega el script de precondición de solo lectura, su spec, el paso en `deploy.ps1` y la documentación del runbook; no toca el dominio ni el repositorio (llegan en WU-2/WU-3)
+- Estimated review budget impact: 6 files changed, 289 insertions(+), 11 deletions(-) (incluye ediciones de openspec: `tasks.md`, `state.yaml`, este archivo) — dentro del presupuesto de 400 líneas
+
+### Status
+4/4 tasks de WU-1b completas. Ready for verify.

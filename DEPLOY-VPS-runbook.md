@@ -80,6 +80,36 @@ El paso 3 importa: al 2026-08-31 el VPS tenía **18 archivos sin versionar** (lo
 scripts `_vps-*`, `backups/`, `iis/`). Ninguno colisionaba, pero el script documenta que el
 2026-08-20 uno de ellos bloqueó el pull y el deploy **reportó éxito igual**.
 
+### Precondición: calendario master = default (D18, `sdd/horario-laboral-por-cliente`)
+
+**`deploy.ps1` ya la verifica sola** (paso 7 de "Qué hace, en orden"), con
+`scripts/check-calendario-master-default.mjs` — solo lectura, aborta el deploy si difiere. La
+consulta manual de abajo sirve de diagnóstico si ese paso aborta, o para chequear antes sin
+esperar a la corrida:
+
+```sql
+SELECT dia_semana, apertura_minuto, cierre_minuto
+FROM calendario_laboral_dias ORDER BY dia_semana;
+```
+
+Salida esperada, exacta (7 filas — lun-vie 9-18hs, sáb/dom sin horario):
+
+```text
+ dia_semana | apertura_minuto | cierre_minuto
+------------+-----------------+---------------
+          0 |                 |
+          1 |             540 |          1080
+          2 |             540 |          1080
+          3 |             540 |          1080
+          4 |             540 |          1080
+          5 |             540 |          1080
+          6 |                 |
+```
+
+Cualquier diferencia bloquea el seed de `calendario_laboral_dias_cliente` (WU-1): ese seed copia
+el default de master a cada tenant, y una master editada a mano copiaría un horario que ningún
+cliente eligió.
+
 | Qué | Valor |
 |---|---|
 | Repo en el VPS | `C:\soporte` |
@@ -143,12 +173,16 @@ propia verificación.
    instancia nueva no puede recalcular, porque su pre-flight ya corre con el pull hecho.
 5. **Si cambió algún lockfile**, aborta y pide instalación manual.
 6. **Carga `backend/.env`** al entorno del proceso; exige `DATABASE_URL_MASTER`.
-7. **`EMAIL_CRYPTO_KEY`**: la genera **solo si no existe**.
-8. **Builds**: `generate:master`, `generate:tenant`, build del backend, build del frontend.
-9. **Detiene los servicios**, migra master, migra el fan-out a tenants.
-10. **Backfill de config de correo** — solo la primera vez, con dos guardas.
-11. **Arranca los servicios**, espera 10 s y exige `Running`.
-12. **Smoke interno** contra 3101 y 3100.
+7. **Precondición: calendario master = default** (D18, `sdd/horario-laboral-por-cliente`) —
+   corre `node scripts/check-calendario-master-default.mjs` (solo lectura) y aborta si las 7
+   filas de `calendario_laboral_dias` en master no son exactamente el default. Ver el detalle
+   más abajo, "Precondición: calendario master = default".
+8. **`EMAIL_CRYPTO_KEY`**: la genera **solo si no existe**.
+9. **Builds**: `generate:master`, `generate:tenant`, build del backend, build del frontend.
+10. **Detiene los servicios**, migra master, migra el fan-out a tenants.
+11. **Backfill de config de correo** — solo la primera vez, con dos guardas.
+12. **Arranca los servicios**, espera 10 s y exige `Running`.
+13. **Smoke interno** contra 3101 y 3100.
 
 ### Por qué los builds van ANTES de migrar
 
