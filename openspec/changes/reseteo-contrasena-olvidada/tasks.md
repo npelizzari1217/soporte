@@ -150,18 +150,19 @@ Rollback boundary: revert de PR4; módulo huérfano sin importar, `app.module.ts
 
 Files: `backend/src/auth/application/use-cases/solicitar-reset-password.use-case.ts` + `.spec.ts`
 
-- [ ] 5.1 `SolicitarResetPasswordUseCase.ejecutar(email)`: `findByEmail` → inactivo/inexistente
+- [x] 5.1 `SolicitarResetPasswordUseCase.ejecutar(email)`: `findByEmail` → inactivo/inexistente
       fin; `findActivasByUsuario` (mismo query que login) ≠1 fin; `correo.estado(clienteId)`
       ≠`LISTO` fin (sin token); si `LISTO`: `revocarVigentesDeUsuario` → `randomBytes(32)` →
       `save(sha256, +60min TTL, clienteId)` → `correo.enviar(...)` con link `APP_BASE_URL`.
       Atrapa todo internamente, nunca lanza. [Req 1, Req 3, Req 4, Req 11]
-- [ ] 5.2 Log único `RESET_PASSWORD_SOLICITUD | resultado=<...>` con `usuarioId`/`clienteId`
+- [x] 5.2 Log único `RESET_PASSWORD_SOLICITUD | resultado=<...>` con `usuarioId`/`clienteId`
       cuando existan; nunca email, token ni plaintext. [Req 12]
-- [ ] 5.3 `.spec.ts`: tabla de ramas (inexistente, inactivo, 0 membresías, 2+ membresías,
+- [x] 5.3 `.spec.ts`: tabla de ramas (inexistente, inactivo, 0 membresías, 2+ membresías,
       `SIN_CORREO`, `CLIENTE_NO_DISPONIBLE`, `LISTO`) con las llamadas esperadas por rama; en
       ramas sin mail, ni `save` ni `enviar`; se captura el token del mensaje enviado y ninguna
       llamada a `logger.*` lo contiene. [Req 1, Req 12 — abuso: log con token/plaintext]
-- [ ] 5.4 Provider en el módulo (`useFactory`, `appBaseUrl` desde `entorno.APP_BASE_URL`).
+- [ ] 5.4 Provider en el módulo (`useFactory`, `appBaseUrl` desde `entorno.APP_BASE_URL`) —
+      DEFERIDO por presupuesto de línea, ver apply-progress.md WU-5.
 
 Focused test: `pnpm vitest run backend/src/auth/application/use-cases/solicitar-reset-password.use-case.spec.ts`
 Verification: `pnpm lint` · `pnpm typecheck` · `pnpm vitest run backend/src/auth/application/use-cases/solicitar-reset-password.use-case.spec.ts` · `pnpm test`

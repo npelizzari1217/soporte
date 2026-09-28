@@ -88,3 +88,31 @@ Verification: `pnpm lint` OK · `pnpm typecheck` OK · `pnpm test` OK (ver conte
 `rg -n RecuperacionPasswordModule backend/src/app.module.ts` sin resultados.
 
 Status: 6/6 tareas completas. Ready for WU-5.
+
+## WU-5 — SolicitarResetPasswordUseCase — PARCIAL (5.1–5.3; 5.4 diferida)
+
+Files: `solicitar-reset-password.use-case.ts` + `.spec.ts` (create).
+
+**Presupuesto de línea**: 5.1–5.3 (use case + spec) dan 346 líneas — el flujo de 7 ramas con
+log auditable pesa más que el estimado (~285) de tasks.md. Sumar 5.4 (provider de
+`SolicitarResetPasswordUseCase`, más wirear `CORREO_DE_CLIENTE`→`CorreoDeClienteAdapter` y
+`PASSWORD_RESET_TOKEN_REPOSITORY`→`PrismaPasswordResetTokenRepository`, ninguno provisto en
+ningún módulo desde WU-2/WU-3) sumaba ~90 líneas más, total 439 — sobre el techo duro de 400 de
+este apply. Costura limpia: el use case y su spec no dependen de DI (se instancian directo en
+el test), así que 5.4 se separa sin romper nada — mismo patrón de exposición gradual que WU-1/
+WU-4 (pieza creada y probada, no conectada todavía).
+
+Deviations: ninguna en la lógica (ADR-2/3/4/7). Desvío de alcance: 5.4 queda sin commitear por
+presupuesto de línea; se resuelve en la próxima pasada de `sdd-apply` o con `size:exception`
+del dueño. WU-6 reusa `CORREO_DE_CLIENTE`, así que necesita 5.4 resuelto antes de arrancar.
+
+Evidence: focused test
+`pnpm vitest run backend/src/auth/application/use-cases/solicitar-reset-password.use-case.spec.ts`
+→ 7/7 passed (las 7 ramas; la de `LISTO` incluye el chequeo de abuso: ningún log contiene el
+token crudo ni el email). Runtime harness: N/A — sin DI wireada (5.4 diferida). Rollback:
+revert del commit; caso de uso sin consumidores.
+
+Verification: `pnpm lint` OK · `pnpm typecheck` OK · `pnpm test` (ver conteo abajo).
+
+Status: 3/4 tareas (5.1–5.3) completas y commiteadas. 5.4 pendiente, bloqueada por presupuesto
+de línea, no por diseño ni por tests.
