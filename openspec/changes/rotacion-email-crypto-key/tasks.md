@@ -12,12 +12,12 @@
 
 | Campo | Valor |
 |-------|-------|
-| Líneas cambiadas estimadas | WU1 ~330 · WU2a ~230 · WU2b ~170 · WU3 ~345 (total ~1.075) |
+| Líneas cambiadas estimadas | WU1a ~212 · WU1b ~209 · WU2a ~230 · WU2b ~170 · WU3 ~345 (total ~1.075) |
 | Riesgo respecto del presupuesto de 400 líneas | Alto si fuera una sola PR; cada unidad ya dividida queda Baja/Media |
 | PRs encadenadas recomendadas | Sí |
-| División sugerida | PR 1 (WU1) → PR 2 (WU2a) → PR 3 (WU2b) → PR 4 (WU3) |
+| División sugerida | PR 1 (WU1a) → PR 2 (WU1b) → PR 3 (WU2a) → PR 4 (WU2b) → PR 5 (WU3) |
 | Estrategia de entrega | auto-chain |
-| Estrategia de cadena | stacked-to-main (PR1 → `main`; PR2 → rama de PR1; PR3 → rama de PR2; PR4 → rama de PR3) |
+| Estrategia de cadena | stacked-to-main (PR1 → `main`; PR2 → rama de PR1; PR3 → rama de PR2; PR4 → rama de PR3; PR5 → rama de PR4) |
 
 Decision needed before apply: No
 Chained PRs recommended: Yes
@@ -34,39 +34,48 @@ código real queda más largo que la estimación.
 
 | Unidad | Objetivo | PR probable | Comando de test focalizado | Harness de runtime | Límite de rollback |
 |---|---|---|---|---|---|
-| 1 | `lib/cifrado-secreto-v1.mjs` (puro) + validación/clasificación de `rotar-email-crypto-key.mjs` + sus dos specs unitarios | PR 1 | `pnpm vitest run backend/scripts/lib/cifrado-secreto-v1.spec.ts backend/scripts/rotar-email-crypto-key.spec.ts` | N/A — funciones puras, sin I/O ni base de datos | Archivos nuevos sin wiring; revertir borra dos módulos sin tocar nada existente |
-| 2a | `ejecutarRotacion()` transaccional + `--dry-run` + `main()`/CLI + integración completa | PR 2 | `pnpm vitest run backend/scripts/rotar-email-crypto-key.integration.spec.ts` | Base efímera de Postgres (`soporte-postgres-master`), corrida real del script contra ella | Extiende el archivo de WU1 de forma aditiva; el script nunca corrió fuera de una base de test, revertir no afecta producción |
-| 2b | Modo `--verificar` + test de proceso (exit codes y ausencia de secretos en stdout/stderr) | PR 3 | `pnpm vitest run backend/scripts/rotar-email-crypto-key.proceso.spec.ts` | `spawn` real del proceso Node contra la misma base efímera | Agrega un modo de solo lectura y un spec nuevo; revertir no toca la transacción de WU2a |
-| 3 | `rotate-email-crypto-key.ps1` + `ps1-ascii.spec.ts` + runbook §5 + `README.md:155` | PR 4 | `pnpm vitest run backend/scripts/ps1-ascii.spec.ts` | Manual: `-DryRun` contra el VPS real — hueco declarado, no hay forma de ejecutar `.ps1` desde WSL | `.ps1` + docs nuevos/modificados; revertir no toca el script Node de WU1/WU2 |
+| 1a | `lib/cifrado-secreto-v1.mjs` (puro) + su spec de descifrado cruzado | PR 1 | `pnpm vitest run scripts/lib/cifrado-secreto-v1.spec.ts` | N/A — funciones puras, sin I/O ni base de datos | Archivos nuevos sin wiring; revertir borra un módulo sin tocar nada existente |
+| 1b | Validación/clasificación de `rotar-email-crypto-key.mjs` + su spec unitario | PR 2 | `pnpm vitest run scripts/rotar-email-crypto-key.spec.ts` | N/A — funciones puras, sin I/O ni base de datos | Archivos nuevos que solo importan el módulo de WU1a; revertir no toca WU1a |
+| 2a | `ejecutarRotacion()` transaccional + `--dry-run` + `main()`/CLI + integración completa | PR 3 | `pnpm vitest run backend/scripts/rotar-email-crypto-key.integration.spec.ts` | Base efímera de Postgres (`soporte-postgres-master`), corrida real del script contra ella | Extiende el archivo de WU1 de forma aditiva; el script nunca corrió fuera de una base de test, revertir no afecta producción |
+| 2b | Modo `--verificar` + test de proceso (exit codes y ausencia de secretos en stdout/stderr) | PR 4 | `pnpm vitest run backend/scripts/rotar-email-crypto-key.proceso.spec.ts` | `spawn` real del proceso Node contra la misma base efímera | Agrega un modo de solo lectura y un spec nuevo; revertir no toca la transacción de WU2a |
+| 3 | `rotate-email-crypto-key.ps1` + `ps1-ascii.spec.ts` + runbook §5 + `README.md:155` | PR 5 | `pnpm vitest run backend/scripts/ps1-ascii.spec.ts` | Manual: `-DryRun` contra el VPS real — hueco declarado, no hay forma de ejecutar `.ps1` desde WSL | `.ps1` + docs nuevos/modificados; revertir no toca el script Node de WU1/WU2 |
 
 ---
 
-## WU1: Cifrado puro + validación/clasificación (PR 1 → `main`)
+**Nota sobre WU1**: la unidad original sumó 421 líneas de código y tests, por encima del
+presupuesto de 400. Por decisión del dueño del repo (2026-09-28) se parte en **WU1a**
+(cifrado puro + descifrado cruzado) y **WU1b** (validación y clasificación).
 
-- [ ] 1.1 Crear `backend/scripts/lib/cifrado-secreto-v1.mjs`: `leerClaveHex(hex)`,
+## WU1a: Cifrado puro (PR 1 → `main`)
+
+- [x] 1.1 Crear `backend/scripts/lib/cifrado-secreto-v1.mjs`: `leerClaveHex(hex)`,
       `cifrarV1(claveBuffer, textoPlano, aad)`, `descifrarV1(claveBuffer, payload, aad)`,
       formato `v1:{iv}:{tag}:{ct}` espejo de
       `backend/src/shared/infrastructure/crypto/aes-gcm-secret-cipher.ts` (read-only). (R8, R10)
-- [ ] 1.2 Crear `backend/scripts/lib/cifrado-secreto-v1.spec.ts`: descifrado cruzado en las
+- [x] 1.2 Crear `backend/scripts/lib/cifrado-secreto-v1.spec.ts`: descifrado cruzado en las
       dos direcciones contra `AesGcmSecretCipher` (read-only), payload rechazado con AAD
       ajeno, payload rechazado con clave ajena. (R8, R10)
-- [ ] 1.3 Agregar `validarClaves(oldKey, newKey)` a
+- [x] 1.6 Verificación de la unidad: `pnpm lint`, `pnpm typecheck`,
+      `pnpm vitest run scripts/lib/cifrado-secreto-v1.spec.ts`, `pnpm test` (suite completa de backend).
+
+## WU1b: Validación y clasificación (PR 2 → rama de PR 1)
+
+- [x] 1.3 Agregar `validarClaves(oldKey, newKey)` a
       `backend/scripts/rotar-email-crypto-key.mjs`: 64 caracteres hexadecimales, comparación
       **como bytes** para exigir `OLD !== NEW`, aborta antes de abrir cualquier conexión a la
       base. (R1)
-- [ ] 1.4 Agregar `clasificarFila(fila, oldKeyBuf, newKeyBuf)` a
+- [x] 1.4 Agregar `clasificarFila(fila, oldKeyBuf, newKeyBuf)` a
       `backend/scripts/rotar-email-crypto-key.mjs`: tabla ADR-1
       (`pendiente`/`ya_migrada`/`indescifrable`); un payload malformado (≠4 segmentos o
       prefijo ≠ `v1`) también es `indescifrable`. (R5, R6)
-- [ ] 1.5 Crear `backend/scripts/rotar-email-crypto-key.spec.ts`: validación de longitud/hex/
+- [x] 1.5 Crear `backend/scripts/rotar-email-crypto-key.spec.ts`: validación de longitud/hex/
       igualdad por bytes (R1), tabla completa de clasificación de ADR-1 incl. payload
       malformado (R5, R6); molde `backend/scripts/backfill-correo-clientes.spec.ts`
       (read-only) para setear `process.env.EMAIL_CRYPTO_KEY`.
-- [ ] 1.6 Verificación de la unidad: `pnpm lint`, `pnpm typecheck`,
-      `pnpm vitest run backend/scripts/lib/cifrado-secreto-v1.spec.ts backend/scripts/rotar-email-crypto-key.spec.ts`,
-      `pnpm test` (suite completa de backend).
+- [x] 1.7 Verificación de la unidad: `pnpm lint`, `pnpm typecheck`,
+      `pnpm vitest run scripts/rotar-email-crypto-key.spec.ts`, `pnpm test` (suite completa de backend).
 
-## WU2a: Transacción real + `--dry-run` (PR 2 → rama de PR 1)
+## WU2a: Transacción real + `--dry-run` (PR 3 → rama de PR 2)
 
 - [ ] 2a.1 Agregar `ejecutarRotacion(pool, opciones, deps = { cifrar: cifrarV1 })` a
       `backend/scripts/rotar-email-crypto-key.mjs`: un solo
@@ -92,7 +101,7 @@ código real queda más largo que la estimación.
       `pnpm vitest run backend/scripts/rotar-email-crypto-key.integration.spec.ts`,
       `pnpm test`.
 
-## WU2b: Modo `--verificar` + test de proceso (PR 3 → rama de PR 2)
+## WU2b: Modo `--verificar` + test de proceso (PR 4 → rama de PR 3)
 
 - [ ] 2b.1 Agregar el modo `--verificar` a `backend/scripts/rotar-email-crypto-key.mjs`:
       recibe `ROTACION_VERIFICAR_KEY`, `BEGIN READ ONLY` … `ROLLBACK`, comprueba que toda
@@ -113,7 +122,7 @@ código real queda más largo que la estimación.
       `pnpm vitest run backend/scripts/rotar-email-crypto-key.integration.spec.ts backend/scripts/rotar-email-crypto-key.proceso.spec.ts`,
       `pnpm test`.
 
-## WU3: `.ps1` operativo + runbook + README (PR 4 → rama de PR 3)
+## WU3: `.ps1` operativo + runbook + README (PR 5 → rama de PR 4)
 
 - [ ] 3.1 Crear `rotate-email-crypto-key.ps1`, pasos 0-3: guardia de PATH/versión de Node
       (molde `deploy.ps1:38-73` (read-only)), carga y validación de `OLD` desde
@@ -163,5 +172,5 @@ R1 → 1.3, 1.5, 2a.3 · R2 → 2a.1, 2a.3, 2a.4 · R3 → 2a.2, 2a.4 · R4 → 
 Cubiertos: base efímera en `NEW_KEY` (2a.4) · `--dry-run` sin escritura (2a.2, 2a.4) · fila
 indescifrable aborta sin modificar nada (1.4, 2a.4) · re-corrida no-op (1.4, 2a.4) ·
 descifrado cruzado en verde (1.2) · `.ps1` ASCII sin BOM (3.5) · runbook + README
-actualizados (3.6, 3.7) · `pnpm lint`/`typecheck`/`test` en verde en cada unidad (1.6, 2a.5,
+actualizados (3.6, 3.7) · `pnpm lint`/`typecheck`/`test` en verde en cada unidad (1.6, 1.7, 2a.5,
 2b.4, 3.8).

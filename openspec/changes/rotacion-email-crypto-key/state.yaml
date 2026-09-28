@@ -7,9 +7,10 @@ artifacts:
   design: true
   tasks: true
 tasks_progress:
-  completed: []
+  completed:
+    - WU1a
+    - WU1b
   pending:
-    - WU1
     - WU2a
     - WU2b
     - WU3
