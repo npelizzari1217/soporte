@@ -46,16 +46,16 @@ Files: `backend/prisma_master/schema.prisma`,
 `backend/prisma_master/migrations/20260928120000_add_password_reset_tokens/migration.sql`,
 `backend/src/auth/domain/entities/password-reset-token.entity.ts` + `.spec.ts`
 
-- [ ] 1.1 Migración `20260928120000_add_password_reset_tokens` (convención `YYYYMMDDHHMMSS_snake`,
+- [x] 1.1 Migración `20260928120000_add_password_reset_tokens` (convención `YYYYMMDDHHMMSS_snake`,
       sigue a `20260923150000_…`): tabla `password_reset_tokens` — `id`, `usuario_id` FK
       `usuarios` `ON DELETE CASCADE`, `cliente_id` FK `clientes`, `token_hash` TEXT UNIQUE,
       `expires_at`, `used_at`, `revoked_at`, `created_at/updated_at/deleted_at`, índice
       `(usuario_id)`. [Req 3]
-- [ ] 1.2 `schema.prisma`: modelo `PasswordResetToken` + back-relations en `Usuario` y `Cliente`.
+- [x] 1.2 `schema.prisma`: modelo `PasswordResetToken` + back-relations en `Usuario` y `Cliente`.
       [Req 3]
-- [ ] 1.3 `PasswordResetTokenEntity` (molde `encuesta-token.entity.ts`): `isExpired()`,
+- [x] 1.3 `PasswordResetTokenEntity` (molde `encuesta-token.entity.ts`): `isExpired()`,
       `isUsed()`, `isRevoked()`. [Req 3, Req 4, Req 6]
-- [ ] 1.4 `password-reset-token.entity.spec.ts`: vigencia para cada combinación de
+- [x] 1.4 `password-reset-token.entity.spec.ts`: vigencia para cada combinación de
       `expiresAt/usedAt/revokedAt`. [Req 6]
 
 Focused test: `pnpm vitest run backend/src/auth/domain/entities/password-reset-token.entity.spec.ts`
