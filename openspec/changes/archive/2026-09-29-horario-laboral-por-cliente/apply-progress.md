@@ -448,7 +448,7 @@ None.
 **Branch**: `feat/horario-laboral-por-cliente-wu09` · **Base**: `feat/horario-laboral-por-cliente-wu08b` · **Status**: Complete
 
 Una única corrección acotada sobre `verify-report.md` (PASS WITH WARNINGS, 0 CRITICAL, 7 WARNING,
-4 SUGGESTION). Cubre W1-W7 y S2; S1 y S4 quedan fuera (documentación/PR, no código de este ciclo).
+4 SUGGESTION). Cubre W1-W7, S2 y S3; S1 y S4 quedan fuera (documentación/PR, no código de este ciclo).
 
 ### Completed Tasks
 - [x] 9.1 (W1, real) `useGuardarHorarioLaboral.onSuccess` escribe el horario en la cache con `setQueryData` antes de `invalidateQueries`; `HorarioLaboralView.valoresIniciales` sale solo de `horarioQuery.data`. Regresión agregada y probada RED sobre el código previo (ver Work Unit Evidence).
@@ -481,10 +481,10 @@ None nuevos. `verify-report.md` sigue siendo la fuente de los hallazgos que esta
 |---|---|
 | Focused test command and exact result | `(cd backend && pnpm vitest run src/calendario-laboral src/sla/infrastructure/listeners scripts/check-calendario-master-default.spec.ts) && (cd frontend && pnpm vitest run src/features/horario-laboral)` — ver `## Verification` del reporte de retorno de `sdd-apply` |
 | Runtime harness command/scenario and exact result | e2e HTTP y de listener contra Postgres real (WU-4/WU-5c/WU-6b); integration spec de CHECK contra DB tenant efímera — ver `## Verification` del reporte de retorno |
-| Rollback boundary | Revertir el commit de WU-9 vuelve al estado `PASS WITH WARNINGS` verificado el 2026-09-29; ningún archivo de WU-1 a WU-8b se toca |
+| Rollback boundary | Revertir el commit de WU-9 vuelve al estado `PASS WITH WARNINGS` verificado el 2026-09-29; ningún commit de WU-1 a WU-8b se reescribe, y los archivos afectados vuelven a su contenido en `7bc037b` |
 | RED proof — W1 | Con el fix revertido, el test "guardado exitoso seguido de un guardado fallido conserva la SEGUNDA edición" falla; restaurado, pasa |
 | RED proof — W2 | Un `reemplazar()` que además tocara `ticket` (mutación scratch, disparada DESDE `GuardarHorarioLaboralUseCase`) hace fallar la aserción `venceInicialA` del e2e |
-| RED proof — W6 | `dia_semana BETWEEN 0 AND 6` sin el piso (`>= 0`) aceptaría `-1`: razonado del CHECK de `migration.sql:33`, sin editar el archivo aplicado |
+| RED proof — W6 | Mutación M7 matada en runtime por el nuevo caso `dia_semana = -1` de `calendario-laboral-dias-cliente-check.integration.spec.ts`. Prueba en `verify-report.md`. |
 
 ### Workload / PR Boundary
 - Mode: chained PR slice (stacked-to-main) · Boundary: corrige W1-W7 y S2 de `verify-report.md`; no toca ninguna migración aplicada ni corre DDL destructivo

@@ -227,10 +227,9 @@ describe('SLA HABIL e2e — union global ∪ feriados del cliente (WU5c, tarea 5
     // date never skips another client's holiday"): 27h desde el lunes
     // 09:00 ART saltan el martes (global) y el miércoles (propio de A), NO
     // el jueves (propio de B) — consume lun 9h + jue 9h + vie 9h = 27h,
-    // vence viernes 18:00 ART = 21:00 UTC. El martes está DOS VECES en el
-    // union crudo (global Y feriado propio de A, fix W4): si la
-    // deduplicación fallara y lo contara como 2 días saltados, el
-    // vencimiento se correría un día y esta misma aserción lo detectaría.
+    // vence viernes 18:00 ART = 21:00 UTC. El martes aparece en ambas
+    // fuentes (global Y feriado propio de A, fix W4): esta aserción verifica
+    // que una fecha presente en ambas se resuelve a exactamente un día saltado.
     await tenantContext.run(
       { prismaClient: tenantAClient, dbName: DB_A, clienteId: 'sla-habil-e2e-A' },
       () =>

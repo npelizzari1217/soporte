@@ -263,7 +263,7 @@ ya proponía el reporte.
 **Test enfocado**: `(cd backend && pnpm vitest run src/calendario-laboral src/sla/infrastructure/listeners scripts/check-calendario-master-default.spec.ts) && (cd frontend && pnpm vitest run src/features/horario-laboral)`
 **Verificación**: `pnpm lint` · `pnpm typecheck` (backend) · `pnpm lint` · `pnpm type-check` (frontend) · `rg -n '[^\x00-\x7F]' deploy.ps1` (debe imprimir nada)
 **Runtime harness**: e2e HTTP y de listener contra Postgres real (mismos harnesses que WU-4/WU-5c/WU-6b); integration spec de CHECK contra DB tenant efímera.
-**Rollback boundary**: revertir el commit de WU-9 deja el ciclo en el estado `PASS WITH WARNINGS` verificado el 2026-09-29 — ningún archivo de WU-1 a WU-8b se toca.
+**Rollback boundary**: revertir el commit de WU-9 deja el ciclo en el estado `PASS WITH WARNINGS` verificado el 2026-09-29 — ningún commit de WU-1 a WU-8b se reescribe, y los archivos afectados vuelven a su contenido en `7bc037b`.
 
 ---
 

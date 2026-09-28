@@ -25,7 +25,7 @@ Punto 5 (líneas 197-206). Cada cláusula de esa viñeta, y cómo la resuelve es
 | Clause | Disposition |
 |---|---|
 | "feriados nacionales AR precargados en el seed más excepciones por cliente" | **Implementada.** Esta capacidad es la mitad de "excepciones por cliente"; ver los requerimientos abajo |
-| "calendario por cliente con default 9-18 lun-vie" | **Desviación declarada, no implementada.** `CalendarioLaboralDia` sigue siendo global (con clave `dia_semana`, schema master). Motivo: el dueño acotó el issue #216 solo a feriados; el remanente del horario semanal queda como deuda técnica abierta |
+| "calendario por cliente con default 9-18 lun-vie" | **Cumplida.** Ciclo `horario-laboral-por-cliente` (2026-09-29). `CalendarioLaboralDiaCliente` en la base de cada tenant, editable por ADMINISTRADOR. Ver especificación en `openspec/specs/horario-laboral-cliente/spec.md`. |
 | "un ticket abierto fuera de horario arranca el reloj en la próxima ventana hábil" | **Ya entregada** (`calcular-sla-habil-vence.service.ts`, 2026-09-09). Solo referencia — esta capacidad no la toca |
 
 ## Requirements
