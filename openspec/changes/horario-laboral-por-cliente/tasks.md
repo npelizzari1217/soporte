@@ -190,13 +190,17 @@ WU-5b lleva los casos de uso y sus specs (5.4, 5.5, 5.6).
 **Runtime harness**: e2e HTTP con DB tenant efímera (sin `soporte_master_test`, sin `usarLockMasterTest()`).
 **Rollback boundary**: retira el spec nuevo; no toca producción.
 
-## WU-7 — Frontend: contrato de datos
+## WU-7a — Frontend: contrato de datos
+
+**Partida en WU-7a / WU-7b / WU-7c** (criterio del dueño, 2026-09-29): la unidad sumó 525 líneas y tiene
+cortes limpios. WU-7a: tipos, api, límites y minutos (7.1-7.3). WU-7b: esquemas Zod (7.4). WU-7c: hooks e
+ítem de navegación (7.5-7.6).
 
 **Branch**: `feat/horario-laboral-por-cliente-wu07` · **Base**: `feat/horario-laboral-por-cliente-wu06a`
 
-- [ ] 7.1 Crear `frontend/src/features/horario-laboral/types.ts` y `frontend/src/features/horario-laboral/api.ts` (GET/PUT `horario-laboral`, sin ruta inicial con `/`).
-- [ ] 7.2 Crear `frontend/src/features/horario-laboral/limites.ts` (copia `DIAS_POR_SEMANA`/`MINUTOS_POR_DIA`) con un test centinela contra `horario-laboral.constants.ts`.
-- [ ] 7.3 Crear `frontend/src/features/horario-laboral/minutos.ts` (conversión HH:MM ↔ minutos, pura; en cierre `"00:00"` = 1440) y `minutos.test.ts` (ida y vuelta, caso `00:00`). (Req: Contrato observable del frontend)
+- [x] 7.1 Crear `frontend/src/features/horario-laboral/types.ts` y `frontend/src/features/horario-laboral/api.ts` (GET/PUT `horario-laboral`, sin ruta inicial con `/`).
+- [x] 7.2 Crear `frontend/src/features/horario-laboral/limites.ts` (copia `DIAS_POR_SEMANA`/`MINUTOS_POR_DIA`) con un test centinela contra `horario-laboral.constants.ts`.
+- [x] 7.3 Crear `frontend/src/features/horario-laboral/minutos.ts` (conversión HH:MM ↔ minutos, pura; en cierre `"00:00"` = 1440) y `minutos.test.ts` (ida y vuelta, caso `00:00`). (Req: Contrato observable del frontend)
 - [ ] 7.4 Crear `frontend/src/features/horario-laboral/schemas.ts`: `diaFormSchema` + `horarioLaboralFormSchema` con `.length(7)` y `superRefine` (apertura obligatoria si abierto, `apertura < cierre`, `diaSemana` único, al menos un día abierto → error en la raíz). Y `schemas.test.ts` (7 cerrados, apertura ≥ cierre, día repetido). (Req: Contrato observable del frontend)
 - [ ] 7.5 Crear `frontend/src/features/horario-laboral/hooks/use-horario-laboral.ts` y `use-guardar-horario-laboral.ts` (React Query; `isLoading` para skeleton, `isError && !data` para `ErrorState`, `invalidateQueries(["horario-laboral"])` al guardar) con sus tests.
 - [ ] 7.6 Agregar el ítem "Horario laboral" en `DEFAULT_SECTION_ITEMS` de `frontend/src/shared/nav/nav-config.ts`, justo después de "Feriados", `visible: () => true`, icono `Clock`, y su test confirmando visibilidad para cualquier rol.
