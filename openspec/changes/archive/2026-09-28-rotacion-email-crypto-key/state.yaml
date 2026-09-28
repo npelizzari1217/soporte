@@ -1,11 +1,14 @@
 change: rotacion-email-crypto-key
-phase: tasks
+phase: archive
 artifact_store: openspec
 artifacts:
   proposal: true
   specs: true
   design: true
   tasks: true
+  apply-progress: true
+  verify-report: true
+  archive-report: true
 tasks_progress:
   completed:
     - WU1a
@@ -17,3 +20,4 @@ tasks_progress:
     - WU3-fix2
   pending: []
 last_updated: 2026-09-28
+archived: 2026-09-28
