@@ -141,7 +141,34 @@ cobertura. Se descartó partir el suite de tests: `main` habría recibido la tra
 | `pnpm vitest run backend/scripts/rotar-email-crypto-key.integration.spec.ts` (+ specs de WU1a/WU1b) | 3 test files passed, 33/33 tests passed |
 | `pnpm test` (suite completa, Postgres arriba) | 467/467 test files passed, 5450/5450 tests passed, exit code 0 |
 
+## WU2b: Modo `--verificar` + test de proceso (PR 4 → rama de PR 3)
+
+- `validarClaveVerificar` (formato de `ROTACION_VERIFICAR_KEY`) y `ejecutarVerificacion(pool,
+  { verificarKeyBuf })` agregados a `rotar-email-crypto-key.mjs`: `BEGIN READ ONLY` …
+  `ROLLBACK` (nunca escribe por construcción), relee filas no nulas y confirma que descifran
+  con la clave dada (AAD = `id`); exit 0 si todas descifran, exit 3 (mismo código que una
+  fila `indescifrable`) si al menos una falla, exit 1 ante error de conexión/SQL. El mensaje
+  de fallo solo lleva el `id`, nunca clave ni texto descifrado.
+- `parsearArgs`/`main()` extendidos: `--verificar` (mutuamente excluyente con `--dry-run`)
+  bifurca antes de tocar `ROTACION_OLD_KEY`/`ROTACION_NEW_KEY` y lee
+  `ROTACION_VERIFICAR_KEY` en su lugar (ADR-3).
+- `rotar-email-crypto-key.integration.spec.ts`: +2 escenarios `--verificar` (éxito sin
+  escritura, fallo sin escritura). `rotar-email-crypto-key.spec.ts`: +3 casos unitarios de
+  `validarClaveVerificar`.
+- `rotar-email-crypto-key.proceso.spec.ts` creado: spawnea el script real contra una DB
+  efímera propia. 5 tests: rotación éxito + re-corrida no-op (0), fila indescifrable (3),
+  `--verificar` éxito (0) y fallo (3), entrada inválida (2). Cada corrida afirma que ninguna
+  clave ni texto plano aparece en stdout+stderr (ADR-3).
+
+**Corrección tras la verificación independiente (riesgo alto):** faltaba cubrir el exit 2
+que promete 2b.3 (se agregó el caso de entrada inválida), y `main()` llamaba a
+`process.loadEnvFile('.env')` contra lo que dice ADR-3 (se quitó del commit de WU2a).
+
+Verificación: `pnpm lint` y `pnpm typecheck` limpios; los 4 specs del script en verde;
+`pnpm test` completo en verde con Postgres arriba.
+
 ## Status
 
-Tareas 1.1-1.7 y 2a.1-2a.5 completas y commiteadas (WU1a `c00ba59`, WU1b `4cbfdf0`, WU2a con
-`size:exception`). Quedan pendientes WU2b y WU3 (ver `tasks.md`).
+Tareas 1.1-1.7, 2a.1-2a.5 y 2b.1-2b.4 completas y commiteadas (WU1a `c00ba59`, WU1b
+`4cbfdf0`, WU2a con `size:exception`, WU2b). Queda pendiente WU3 (ver
+`tasks.md`).

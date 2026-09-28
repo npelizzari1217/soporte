@@ -9,11 +9,11 @@
  *
  * Molde: `backend/scripts/backfill-correo-clientes.spec.ts` (read-only),
  * para setear `process.env.EMAIL_CRYPTO_KEY` y generar payloads reales vía
- * `AesGcmSecretCipher`. Ref tasks: 1.5.
+ * `AesGcmSecretCipher`. Ref tasks: 1.5, 2b.1 (`validarClaveVerificar`).
  */
 import { AesGcmSecretCipher } from '../src/shared/infrastructure/crypto/aes-gcm-secret-cipher';
 import { leerClaveHex } from './lib/cifrado-secreto-v1.mjs';
-import { clasificarFila, validarClaves } from './rotar-email-crypto-key.mjs';
+import { clasificarFila, validarClaveVerificar, validarClaves } from './rotar-email-crypto-key.mjs';
 
 const OLD_KEY_HEX = 'a'.repeat(64);
 const NEW_KEY_HEX = 'b'.repeat(64);
@@ -48,6 +48,20 @@ describe('validarClaves() — R1: longitud, formato hex y OLD !== NEW comparadas
     expect(() => validarClaves(OLD_KEY_HEX, OLD_KEY_HEX.toUpperCase())).toThrow(
       /OLD_KEY y NEW_KEY son la misma clave/,
     );
+  });
+});
+
+describe('validarClaveVerificar() — R11: formato de ROTACION_VERIFICAR_KEY', () => {
+  it('con una clave válida, devuelve el buffer decodificado', () => {
+    expect(validarClaveVerificar(NEW_KEY_HEX)).toEqual(Buffer.from(NEW_KEY_HEX, 'hex'));
+  });
+
+  it('rechaza una clave con longitud inválida', () => {
+    expect(() => validarClaveVerificar('ab')).toThrow(/ROTACION_VERIFICAR_KEY inválida/);
+  });
+
+  it('rechaza una clave no hexadecimal', () => {
+    expect(() => validarClaveVerificar('z'.repeat(64))).toThrow(/ROTACION_VERIFICAR_KEY inválida/);
   });
 });
 

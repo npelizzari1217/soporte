@@ -3,9 +3,9 @@
 // formato `v1` de `AesGcmSecretCipher` sin introducir keyring ni `kid`.
 //
 // Ref proposal/spec: sdd/rotacion-email-crypto-key. Ref design: ADR-1 a
-// ADR-5. Ref tasks: WU1 (1.3, 1.4) agregó validación y clasificación. Esta
-// unidad (WU2a, 2a.1-2a.3) agrega la transacción real (`ejecutarRotacion`),
-// `--dry-run` y `main()`/CLI. `--verificar` llega en WU2b.
+// ADR-5. Ref tasks: WU1 (1.3, 1.4) agregó validación y clasificación. WU2a
+// (2a.1-2a.3) agregó la transacción real (`ejecutarRotacion`), `--dry-run` y
+// `main()`/CLI. Esta unidad (WU2b, 2b.1) agrega el modo `--verificar`.
 //
 // El cifrado v1 vive aparte, en `scripts/lib/cifrado-secreto-v1.mjs` (ADR-5):
 // ese módulo es puro y tiene su propio test de descifrado cruzado contra
@@ -46,6 +46,21 @@ export function validarClaves(oldKey, newKey) {
   }
 
   return { oldKeyBuf, newKeyBuf };
+}
+
+/**
+ * Valida `ROTACION_VERIFICAR_KEY` (spec: "Modo `--verificar` de solo
+ * lectura"): mismo formato que `OLD_KEY`/`NEW_KEY`, sin comparar contra otra
+ * clave. Lanza `Error` antes de abrir cualquier conexión a la base.
+ * @param {unknown} verificarKey
+ * @returns {Buffer}
+ */
+export function validarClaveVerificar(verificarKey) {
+  const verificarKeyBuf = leerClaveHex(verificarKey);
+  if (!verificarKeyBuf) {
+    throw new Error('ROTACION_VERIFICAR_KEY inválida: se esperan 64 caracteres hexadecimales');
+  }
+  return verificarKeyBuf;
 }
 
 /**
@@ -227,14 +242,66 @@ export async function ejecutarRotacion(pool, opciones, deps = {}) {
   }
 }
 
-/** Parsea los argv del CLI. Único flag soportado por ahora: `--dry-run`. */
+/**
+ * Modo `--verificar`: dentro de `BEGIN READ ONLY` … `ROLLBACK` (nunca
+ * escribe por construcción), comprueba que toda fila no nula descifra con
+ * `verificarKeyBuf` usando su `id` como AAD. Nunca imprime la clave ni
+ * texto descifrado — solo el `id` de la fila que falla, como
+ * {@link falloDeDatos}.
+ * @param {import('pg').Pool} pool
+ * @param {{ verificarKeyBuf: Buffer }} opciones
+ * @returns {Promise<{ exitCode: 0 } | { exitCode: 1 | 3, motivo: string }>}
+ */
+export async function ejecutarVerificacion(pool, opciones) {
+  const { verificarKeyBuf } = opciones;
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN READ ONLY');
+
+    const { rows } = await client.query(
+      `SELECT id, smtp_password_cifrada FROM clientes WHERE smtp_password_cifrada IS NOT NULL ORDER BY id`,
+    );
+
+    for (const fila of rows) {
+      const id = String(fila.id);
+      try {
+        descifrarV1(verificarKeyBuf, fila.smtp_password_cifrada, id);
+      } catch {
+        await client.query('ROLLBACK');
+        return falloDeDatos(`fila ${id}: indescifrable con la clave de --verificar`);
+      }
+    }
+
+    await client.query('ROLLBACK');
+    return { exitCode: 0 };
+  } catch (error) {
+    try {
+      await client.query('ROLLBACK');
+    } catch {
+      // La conexión ya puede estar rota — no hay nada más que intentar.
+    }
+    return { exitCode: 1, motivo: error.message };
+  } finally {
+    client.release();
+  }
+}
+
+/** Parsea los argv del CLI. Flags soportados: `--dry-run` y `--verificar`
+ * (mutuamente excluyentes). */
 function parsearArgs(argv) {
   const args = argv.slice(2);
-  const desconocido = args.find((arg) => arg !== '--dry-run');
+  const flagsConocidos = new Set(['--dry-run', '--verificar']);
+  const desconocido = args.find((arg) => !flagsConocidos.has(arg));
   if (desconocido) {
     throw new Error(`Flag desconocido: ${desconocido}`);
   }
-  return { dryRun: args.includes('--dry-run') };
+  const dryRun = args.includes('--dry-run');
+  const verificar = args.includes('--verificar');
+  if (dryRun && verificar) {
+    throw new Error('--dry-run y --verificar son mutuamente excluyentes');
+  }
+  return { dryRun, verificar };
 }
 
 async function main() {
@@ -253,6 +320,36 @@ async function main() {
   if (!connectionString) {
     console.error('[rotar-email-crypto-key] falta DATABASE_URL_MASTER');
     process.exit(2);
+    return;
+  }
+
+  if (opcionesCli.verificar) {
+    let verificarKeyBuf;
+    try {
+      verificarKeyBuf = validarClaveVerificar(process.env.ROTACION_VERIFICAR_KEY);
+    } catch (e) {
+      console.error('[rotar-email-crypto-key] ' + e.message);
+      process.exit(2);
+      return;
+    }
+
+    const poolVerificar = new pg.Pool({ connectionString });
+    try {
+      const resultado = await ejecutarVerificacion(poolVerificar, { verificarKeyBuf });
+      if (resultado.exitCode !== 0) {
+        console.error('[rotar-email-crypto-key] --verificar: ' + resultado.motivo);
+        process.exit(resultado.exitCode);
+        return;
+      }
+      console.log(
+        '[rotar-email-crypto-key] --verificar: todas las filas descifran con la clave dada',
+      );
+    } catch (e) {
+      console.error('[rotar-email-crypto-key] Error inesperado: ' + e.message);
+      process.exit(1);
+    } finally {
+      await poolVerificar.end();
+    }
     return;
   }
 

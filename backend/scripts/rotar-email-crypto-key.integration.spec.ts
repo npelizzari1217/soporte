@@ -9,9 +9,12 @@
  * Cubre `ejecutarRotacion()`: rotación completa, `ROLLBACK` ante fila
  * indescifrable, `--dry-run` sin escritura, re-corrida no-op, filas mixtas
  * OLD/NEW, filas `NULL` intactas, AAD ligado por fila, y round-trip fallido
- * inyectado vía `deps.cifrar` → `ROLLBACK` total.
+ * inyectado vía `deps.cifrar` → `ROLLBACK` total. También cubre
+ * `ejecutarVerificacion()` (WU2b, 2b.1-2b.2): todas las filas descifran con
+ * la clave dada (exit 0, sin escritura) y al menos una no descifra
+ * (exit ≠0, sin escritura).
  *
- * Ref design: ADR-1, ADR-2. Ref tasks: 2a.4.
+ * Ref design: ADR-1, ADR-2. Ref tasks: 2a.4, 2b.2.
  */
 import { randomBytes, randomUUID } from 'node:crypto';
 import * as fs from 'fs';
@@ -19,7 +22,7 @@ import * as path from 'path';
 import { Pool } from 'pg';
 import { PostgresAdminService } from '../src/clientes/infrastructure/postgres-admin.service';
 import { cifrarV1, descifrarV1, leerClaveHex } from './lib/cifrado-secreto-v1.mjs';
-import { ejecutarRotacion } from './rotar-email-crypto-key.mjs';
+import { ejecutarRotacion, ejecutarVerificacion } from './rotar-email-crypto-key.mjs';
 
 const MASTER_TEST_URL =
   process.env.DATABASE_URL_MASTER ??
@@ -253,5 +256,45 @@ describe('rotar-email-crypto-key — ejecutarRotacion() (WU2a, master)', () => {
     const corrupto = rows.find((r) => r.id === idCorrupto);
     expect(sano.smtp_password_cifrada).toBe(payloadSanoOriginal);
     expect(corrupto.smtp_password_cifrada).toBe(payloadCorruptoOriginal);
+  });
+
+  it('--verificar: todas las filas descifran con la clave dada → exit 0, sin escritura', async () => {
+    const idA = randomUUID();
+    const idB = randomUUID();
+    const payloadA = cifrarV1(newKeyBuf, 'secreto-verificar-a', idA);
+    const payloadB = cifrarV1(newKeyBuf, 'secreto-verificar-b', idB);
+    await insertarCliente(pool, idA, 'verificar-a', payloadA);
+    await insertarCliente(pool, idB, 'verificar-b', payloadB);
+
+    const resultado = await ejecutarVerificacion(pool, { verificarKeyBuf: newKeyBuf });
+    expect(resultado).toMatchObject({ exitCode: 0 });
+
+    const { rows } = await pool.query(
+      `SELECT id, smtp_password_cifrada FROM clientes WHERE id = ANY($1) ORDER BY id`,
+      [[idA, idB]],
+    );
+    expect(rows.find((r) => r.id === idA).smtp_password_cifrada).toBe(payloadA);
+    expect(rows.find((r) => r.id === idB).smtp_password_cifrada).toBe(payloadB);
+  });
+
+  it('--verificar: al menos una fila no descifra con la clave dada → exit ≠0, sin escritura', async () => {
+    const idSano = randomUUID();
+    const idIndescifrable = randomUUID();
+    const payloadSano = cifrarV1(newKeyBuf, 'secreto-verificar-sano', idSano);
+    const payloadIndescifrable = cifrarV1(otraKeyBuf, 'secreto-verificar-ajeno', idIndescifrable);
+    await insertarCliente(pool, idSano, 'verificar-sano', payloadSano);
+    await insertarCliente(pool, idIndescifrable, 'verificar-indescifrable', payloadIndescifrable);
+
+    const resultado = await ejecutarVerificacion(pool, { verificarKeyBuf: newKeyBuf });
+    expect(resultado.exitCode).not.toBe(0);
+
+    const { rows } = await pool.query(
+      `SELECT id, smtp_password_cifrada FROM clientes WHERE id = ANY($1) ORDER BY id`,
+      [[idSano, idIndescifrable]],
+    );
+    expect(rows.find((r) => r.id === idSano).smtp_password_cifrada).toBe(payloadSano);
+    expect(rows.find((r) => r.id === idIndescifrable).smtp_password_cifrada).toBe(
+      payloadIndescifrable,
+    );
   });
 });

@@ -106,22 +106,22 @@ sin partir, para no separar la transacción de sus 8 escenarios de integración.
 
 ## WU2b: Modo `--verificar` + test de proceso (PR 4 → rama de PR 3)
 
-- [ ] 2b.1 Agregar el modo `--verificar` a `backend/scripts/rotar-email-crypto-key.mjs`:
+- [x] 2b.1 Agregar el modo `--verificar` a `backend/scripts/rotar-email-crypto-key.mjs`:
       recibe `ROTACION_VERIFICAR_KEY`, `BEGIN READ ONLY` … `ROLLBACK`, comprueba que toda
       fila no nula descifra con esa clave usando su `id` como AAD, nunca escribe, nunca
       imprime la clave ni texto plano, exit 0 si todas descifran, mismo exit que una fila
       indescifrable si al menos una falla. (R11, R12)
-- [ ] 2b.2 Extender `rotar-email-crypto-key.integration.spec.ts` con los escenarios de
+- [x] 2b.2 Extender `rotar-email-crypto-key.integration.spec.ts` con los escenarios de
       `--verificar`: todas las filas descifran (exit 0, sin escritura), al menos una no
       descifra (exit ≠0, sin escritura). (R11)
-- [ ] 2b.3 Crear `backend/scripts/rotar-email-crypto-key.proceso.spec.ts`:
+- [x] 2b.3 Crear `backend/scripts/rotar-email-crypto-key.proceso.spec.ts`:
       `spawn(process.execPath, [script])` contra la misma base efímera; exit codes 0/2/3
       para rotación éxito/no-op/fallo y para `--verificar` éxito/fallo; asserts de que
       `OLD_KEY`, `NEW_KEY` y cualquier texto plano **nunca** aparecen en stdout+stderr
       combinados. Es el único caso de la matriz de amenazas del diseño con applicability
       real (paso de secretos al proceso hijo, ADR-3) — test obligatorio antes de cerrar
       esta unidad. (R12)
-- [ ] 2b.4 Verificación de la unidad: `pnpm lint`, `pnpm typecheck`,
+- [x] 2b.4 Verificación de la unidad: `pnpm lint`, `pnpm typecheck`,
       `pnpm vitest run backend/scripts/rotar-email-crypto-key.integration.spec.ts backend/scripts/rotar-email-crypto-key.proceso.spec.ts`,
       `pnpm test`.
 
