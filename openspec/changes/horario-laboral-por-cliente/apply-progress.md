@@ -398,3 +398,47 @@ type-check y sus tests por separado. **Status**: Complete
 
 `pnpm lint` y `pnpm type-check` limpios; 10/10 en los specs de componentes; suite completa del
 frontend 1554/1554.
+
+## WU-8b — Frontend: vista, página, nav y deuda de Ayuda
+
+**Branch**: `feat/horario-laboral-por-cliente-wu08b` · **Base**: `feat/horario-laboral-por-cliente-wu08a2` · **Status**: Complete
+
+### Completed Tasks
+- [x] 8b.1 `horario-laboral-view.tsx` — container: `useHorarioLaboral`/`useGuardarHorarioLaboral` (WU-7c) sobre `HorarioLaboralForm` (WU-8a-ii); `esAdminCliente` gatea `soloLectura`. Un error de guardado (422/500) nunca desmonta el form: `errorServidor` queda seteado (`ApiError.messages.join(" ")` o fallback genérico) y `notifyError` se dispara en `onError`. El botón queda deshabilitado solo mientras `guardarMutation.isPending`. Al tener éxito, `valoresIniciales = guardarMutation.data ?? horarioQuery.data`: el dato recién commiteado dispara el `reset` interno de `HorarioLaboralForm` (su `useEffect` sobre `valoresIniciales`, ya existente desde WU-8a-ii) sin esperar el refetch de `invalidateQueries`, y `notifySuccess`.
+- [x] 8b.2 `frontend/src/app/(dashboard)/horario-laboral/page.tsx` — Server Component fino, sin `layout.tsx`, mismo criterio que `/feriados/page.tsx`. `RUTAS_PUBLICAS` (`middleware.ts`) sin cambios: la ruta exige sesión.
+- [x] 8b.3 `horario-laboral-view.test.tsx` — 7 tests: skeleton solo por `isLoading` y nunca reaparece por un refetch de fondo (`isFetching`); `ErrorState` con retry solo cuando `isError && !data` (carga inicial); 422 y 500 al guardar (`it.each`) conservan el form con sus valores, muestran el alert inline y llaman a `notifyError`; el botón Guardar se deshabilita solo mientras `isPending`; éxito resetea la grilla con el horario devuelto por el servidor y notifica éxito; un rol no-admin ve la grilla de solo lectura sin botón Guardar.
+- [x] 8b.4 Deuda de Ayuda anotada en este apply-progress y en el mensaje del commit: pantalla nueva (`/horario-laboral`) sin artículo en `backend/ayuda/*.md` — la escritura de Ayuda sigue en pausa desde 2026-09-07 (`soporte/CLAUDE.md`).
+
+### Files Changed
+| File | Action | What Was Done |
+|---|---|---|
+| `frontend/src/features/horario-laboral/components/horario-laboral-view.tsx` | Created | Container de la pantalla (D16) |
+| `frontend/src/features/horario-laboral/components/horario-laboral-view.test.tsx` | Created | 7 tests de D16 y el gate de rol |
+| `frontend/src/app/(dashboard)/horario-laboral/page.tsx` | Created | Página fina montando el container |
+
+### Deviations from Design
+None — implementación matches D13/D16. El ítem de nav ya se agregó en WU-7c (`nav-config.ts`); esta unidad no lo toca.
+
+### Issues Found
+None.
+
+### Work Unit Evidence
+| Evidence | Value |
+|---|---|
+| Focused test command and exact result | `cd frontend && pnpm vitest run src/features/horario-laboral` → 8 archivos, 37/37 passed |
+| Runtime harness command/scenario and exact result | N/A por diseño — Testing Library, sin red (msw simula el backend) |
+| Rollback boundary | Revertir el commit retira la ruta `/horario-laboral` (página + container + tests); el backend queda funcional por API, sin consumidor de frontend |
+
+### Verification already run (all green)
+- `pnpm lint` (frontend) → sin errores ni warnings
+- `pnpm type-check` (frontend) → sin errores
+- `pnpm test` (suite completa, frontend) → 207/207 archivos, 1561/1561 tests passed (sube de 206/1554: +1 archivo, +7 tests)
+- `pnpm build` (frontend) → compila; ruta `/horario-laboral` listada en el árbol de rutas (5.52 kB, 176 kB First Load JS)
+
+### Workload / PR Boundary
+- Mode: chained PR slice (stacked-to-main, `auto-chain`) · Current work unit: WU-8b (última unidad del ciclo)
+- Boundary: agrega el container, la página y sus tests; retira la ruta y deja el backend intacto si se revierte
+- Review budget: 3 archivos de `frontend/` + openspec — dentro de 400
+
+### Status
+4/4 tasks de WU-8b completas. Ready for verify. Con esto, las 11 work units del ciclo `horario-laboral-por-cliente` quedan completas (WU-1 a WU-8b); solo restan las notas A.1/A.2 de `sdd-archive`.

@@ -230,10 +230,10 @@ corte limpio. WU-8a-i: la fila y su test (8a.1). WU-8a-ii: el formulario de 7 fi
 
 **Branch**: `feat/horario-laboral-por-cliente-wu08b` · **Base**: `feat/horario-laboral-por-cliente-wu08a`
 
-- [ ] 8b.1 Crear `frontend/src/features/horario-laboral/components/horario-laboral-view.tsx` (container: `useHorarioLaboral`, `useGuardarHorarioLaboral`, `useSession().esAdminCliente`). Errores de mutación no desmontan el form: conservan valores, alert inline, `notifyError`; botón deshabilitado solo mientras `isPending`; éxito → `reset(nuevos)` + `notifySuccess`. (Req: Contrato observable del frontend)
-- [ ] 8b.2 Crear `frontend/src/app/(dashboard)/horario-laboral/page.tsx` (Server Component fino, sin `layout.tsx`, como la página de feriados).
-- [ ] 8b.3 Escribir `horario-laboral-view.test.tsx`: skeleton depende de `isLoading` (nunca de `isFetching`); `ErrorState` con `onRetry={refetch}` solo si `isError && !data`; un 422 y un 500 dejan el form con sus valores. (Req: Contrato observable del frontend)
-- [ ] 8b.4 Commit y PR de esta unidad anotan la deuda de Ayuda: pantalla nueva sin artículo en `backend/ayuda/*.md` (escritura en pausa desde 2026-09-07).
+- [x] 8b.1 Crear `frontend/src/features/horario-laboral/components/horario-laboral-view.tsx` (container: `useHorarioLaboral`, `useGuardarHorarioLaboral`, `useSession().esAdminCliente`). Errores de mutación no desmontan el form: conservan valores, alert inline, `notifyError`; botón deshabilitado solo mientras `isPending`; éxito → `reset(nuevos)` + `notifySuccess`. (Req: Contrato observable del frontend)
+- [x] 8b.2 Crear `frontend/src/app/(dashboard)/horario-laboral/page.tsx` (Server Component fino, sin `layout.tsx`, como la página de feriados).
+- [x] 8b.3 Escribir `horario-laboral-view.test.tsx`: skeleton depende de `isLoading` (nunca de `isFetching`); `ErrorState` con `onRetry={refetch}` solo si `isError && !data`; un 422 y un 500 dejan el form con sus valores. (Req: Contrato observable del frontend)
+- [x] 8b.4 Commit y PR de esta unidad anotan la deuda de Ayuda: pantalla nueva sin artículo en `backend/ayuda/*.md` (escritura en pausa desde 2026-09-07).
 
 **Test enfocado**: `cd frontend && pnpm vitest run src/features/horario-laboral/components/horario-laboral-view.test.tsx`
 **Verificación**: `pnpm lint` · `pnpm type-check` · `pnpm build` (frontend)
@@ -244,8 +244,8 @@ corte limpio. WU-8a-i: la fila y su test (8a.1). WU-8a-ii: el formulario de 7 fi
 
 ## Nota final (no es un work unit — corre en `sdd-archive`)
 
-- [ ] A.1 En `docs/roadmap-comercial.md`, pasar la cláusula "calendario por cliente con default 9-18 lun-vie" del Punto 5 de **Desviación** a **Cumplida**, y confirmar `scripts/check-roadmap-fresco.mjs` en verde. (Req: La viñeta del roadmap declara el cierre)
-- [ ] A.2 Corregir la fila de citación en `openspec/specs/feriados-cliente/spec.md` (read-only en este ciclo, línea 28), que hoy declara "Desviación declarada, no implementada": referenciar esta capacidad como Cumplida. (Req: La viñeta del roadmap declara el cierre)
+- A.1 (en `sdd-archive`) En `docs/roadmap-comercial.md`, pasar la cláusula "calendario por cliente con default 9-18 lun-vie" del Punto 5 de **Desviación** a **Cumplida**, y confirmar `scripts/check-roadmap-fresco.mjs` en verde. (Req: La viñeta del roadmap declara el cierre)
+- A.2 (en `sdd-archive`) Corregir la fila de citación en `openspec/specs/feriados-cliente/spec.md` (read-only en este ciclo, línea 28), que hoy declara "Desviación declarada, no implementada": referenciar esta capacidad como Cumplida. (Req: La viñeta del roadmap declara el cierre)
 
 Ninguna de las dos ediciones pertenece a la autoridad de edición de `sdd-apply`: quedan para
 `sdd-archive`, en paralelo a mover `openspec/changes/horario-laboral-por-cliente/` al archivo.
