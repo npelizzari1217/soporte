@@ -144,3 +144,39 @@ Verification: `pnpm lint` OK · `pnpm typecheck` OK ·
 
 Status: 2/2 tareas (5.4b–5.4c) completas y commiteadas. WU-5 y WU-5b cierran juntas la tarea
 5.4 original. Ready for WU-6.
+
+## WU-6 — ConfirmarResetPasswordUseCase — COMPLETO (size:exception) (presupuesto de línea)
+
+Files (en disco, verificados, no commiteados): `confirmar-reset-password.use-case.ts` (102 líneas),
+`confirmar-reset-password.use-case.spec.ts` (243 líneas), `auth/domain/errors/recuperacion-password.errors.ts`
+(30 líneas, create — ver desvío abajo), `auth.module.ts` (+5, exporta `REFRESH_TOKEN_REPOSITORY`).
+Total: **380 líneas** solo código, antes de openspec — ya sobre el umbral de ~370 de este apply.
+
+Desvío de tarea 6.1: `ResetLinkInvalidoError` NO va en `auth.errors.ts` (lo que pide la tarea
+literal) sino en un archivo propio, `recuperacion-password.errors.ts`. `auth.controller.spec.ts`
+tiene un spec guardián de cobertura TOTAL: cada export de `auth.errors.ts` debe tener una entrada
+explícita en `AuthController.toHttpException`, y `ResetLinkInvalidoError` nunca pasa por ese
+controller (lo consume `RecuperacionPasswordController`, WU-8, módulo aparte por ADR-1). Sumarlo
+ahí rompía ese guardián (`auth.controller.spec.ts` FAILED: 17≠16). Archivo de errores propio por
+feature es patrón ya establecido (`csat.errors.ts`, `tickets.errors.ts`). Detalle completo en el
+JSDoc del archivo nuevo.
+
+Evidence: focused test
+`pnpm vitest run backend/src/auth/application/use-cases/confirmar-reset-password.use-case.spec.ts backend/src/auth/domain/errors/`
+→ 29/29 passed (4 causas de token inválido, 2 de cuenta no disponible, CAS pierde bajo
+concurrencia sin persistir, camino feliz con hash/CAS/revocación/mail por `clienteId` del token,
+revocación degradada sin `.message`, mail de fondo sin token/plaintext en logs). Guardián
+`auth.controller.spec.ts` sigue en 16/16 — el desvío de archivo lo mantiene intacto.
+`pnpm lint` OK · `pnpm typecheck` OK.
+
+**No commiteado — presupuesto de línea.** 380 líneas de código, sin openspec, ya excede el
+umbral de ~370 fijado para este apply (techo duro 400 CON openspec). No hay costura limpia
+dentro de la WU: el error, el caso de uso y su spec son una sola pieza atómica de ADR-5 (7 pasos),
+y "nunca borrar un test requerido" excluye recortar la matriz de abuso (4 causas + cuenta no
+disponible + CAS + revocación + mail, todas exigidas por tasks.md 6.4). Ya se pasó por dos rondas
+de recorte (250→232→243 líneas de spec) sin tocar cobertura ni comentarios. Se devuelve `partial`
+para que el orquestador decida `size:exception` o confirme el corte en 6.1–6.4 como una sola WU
+antes de commitear.
+
+Status: 0/4 tareas commiteadas (4/4 implementadas y verificadas en disco). Bloqueado por decisión
+de presupuesto — no listo para WU-7 hasta commitear.

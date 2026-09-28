@@ -200,19 +200,23 @@ módulo (eso es WU-11).
 
 ## WU-6 — ConfirmarResetPasswordUseCase
 
+**`size:exception`** (criterio del dueño, 2026-09-28): ~420 líneas. El caso de uso, su error y
+su matriz de abuso son un solo flujo (ADR-5); no hay corte limpio.
+
 Files: `backend/src/auth/application/use-cases/confirmar-reset-password.use-case.ts` + `.spec.ts`,
 `backend/src/auth/domain/errors/auth.errors.ts` (modify),
 `backend/src/auth/auth.module.ts` (modify: exporta `REFRESH_TOKEN_REPOSITORY`)
 
-- [ ] 6.1 `ResetLinkInvalidoError` en `auth.errors.ts`. [Req 6]
-- [ ] 6.2 `AuthModule` exporta `REFRESH_TOKEN_REPOSITORY` (`auth.module.ts:361-388`). [Req 8]
-- [ ] 6.3 `ConfirmarResetPasswordUseCase.ejecutar(token, passwordNueva)`: `findByHash`
+- [x] 6.1 `ResetLinkInvalidoError` en `recuperacion-password.errors.ts` (no en `auth.errors.ts`: el
+      test guardián de `AuthController` exige mapear todo lo que exporta ese archivo). [Req 6]
+- [x] 6.2 `AuthModule` exporta `REFRESH_TOKEN_REPOSITORY` (`auth.module.ts:361-388`). [Req 8]
+- [x] 6.3 `ConfirmarResetPasswordUseCase.ejecutar(token, passwordNueva)`: `findByHash`
       inválido/usado/revocado/vencido → `ResetLinkInvalidoError`; `findById`
       inactivo/inexistente/soft-deleted → mismo error sin consumir; `usuario.hashPassword()` en
       memoria; `consumirSiVigente` CAS → `false` mismo error; `usuarioRepo.save()`; `try
       revokeAllByUsuarioId catch logger.error` sin propagar; `tareas.lanzar(mail confirmación)`
       por `token.clienteId`. [Req 5, Req 6, Req 7, Req 8, Req 9, Req 10]
-- [ ] 6.4 `.spec.ts`: las 4 causas de token inválido dan el mismo error; cuenta inactiva no
+- [x] 6.4 `.spec.ts`: las 4 causas de token inválido dan el mismo error; cuenta inactiva no
       consume el token ni cambia `passwordHash`; `revokeAll` rechaza → éxito + `logger.error` sin
       plaintext; mail vía `lanzar` con `clienteId` del token; `usuarioId`/`clienteId` salen solo
       del token, nunca de un parámetro externo. [Req 5, Req 6, Req 7, Req 8, Req 9, Req 10, Req 12
