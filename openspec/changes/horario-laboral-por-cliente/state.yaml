@@ -10,8 +10,8 @@ tasks_progress:
   completed:
     - wu01
     - wu01b
-  pending:
     - wu02
+  pending:
     - wu03
     - wu04
     - wu05

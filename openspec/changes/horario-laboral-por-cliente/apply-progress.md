@@ -77,3 +77,25 @@ None.
 
 ### Status
 4/4 tasks de WU-1b completas. Ready for verify.
+
+## WU-2 — Dominio: VO, errores, constantes
+
+**Branch**: `feat/horario-laboral-por-cliente-wu02` · **Base**: `feat/horario-laboral-por-cliente-wu01b` · **Status**: COMPLETO (`size:exception`, criterio del dueño)
+
+### Implementation (code written, verified, uncommitted)
+- 2.1 `backend/src/calendario-laboral/domain/constants/horario-laboral.constants.ts` — `DIAS_POR_SEMANA`, `MINUTOS_POR_DIA`, `MINUTO_MINIMO_DIA`.
+- 2.2 `backend/src/calendario-laboral/domain/errors/horario-laboral.errors.ts` — `HorarioLaboralDiasInvalidosError`, `VentanaLaboralInvalidaError(dia)`, `HorarioLaboralSinDiasAbiertosError`, unión `HorarioLaboralInvalidoError`.
+- 2.3 `backend/src/calendario-laboral/domain/value-objects/horario-laboral-semanal.ts` — `HorarioLaboralSemanal.crear(dias)` con el orden de validación de D7 (length 7 → `diaSemana` único 0..6 → por día ambos null o `0 <= apertura < cierre <= 1440` → al menos un día abierto) y `aCalendario()`, reusando `VentanaLaboral`/`CalendarioLaboralSemanal` de `calcular-sla-habil-vence.service.ts` sin tocarlos.
+- 2.4 `backend/src/calendario-laboral/domain/value-objects/horario-laboral-semanal.spec.ts` — 19 tests: cada rama de `crear` (vacío, 6 días, 8 días, lunes repetido + domingo faltante, `diaSemana` −1 y 7, no entero, apertura ≥ cierre, apertura = cierre, un solo extremo null ×2, cierre 1441, apertura −1, minutos no enteros, apertura 0/cierre 1440 aceptado, 7 días cerrados, un solo día abierto) y `aCalendario()` exacto con entrada desordenada.
+
+### Verification already run (all green)
+- `pnpm vitest run src/calendario-laboral/domain/value-objects/horario-laboral-semanal.spec.ts` → 19/19 passed
+- `pnpm lint` → 0 errores (post `--fix` de formato Prettier)
+- `pnpm typecheck` → 0 errores
+- `pnpm test` (suite completa backend) → 467/467 archivos, 5456/5456 tests passed
+
+### Tamaño: `size:exception`
+
+415 líneas de código y tests (más openspec). Las cuatro validaciones de `crear()` son pasos del
+mismo método: no hay corte limpio que no separe código de sus tests. Verificación: `pnpm lint` y
+`pnpm typecheck` limpios, 19/19 en el spec focalizado, suite completa 5456/5456.

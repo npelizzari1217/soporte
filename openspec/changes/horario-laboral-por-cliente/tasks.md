@@ -95,12 +95,15 @@ nunca separar código de sus tests. WU-3 toca 11 archivos pero la mayoría son d
 
 ## WU-2 — Dominio: VO, errores, constantes
 
+**`size:exception`** (criterio del dueño, 2026-09-28): ~440 líneas. Las cuatro validaciones de `crear()` son
+pasos del mismo método; partir separaba código de sus tests.
+
 **Branch**: `feat/horario-laboral-por-cliente-wu02` · **Base**: `feat/horario-laboral-por-cliente-wu01b`
 
-- [ ] 2.1 Crear `backend/src/calendario-laboral/domain/constants/horario-laboral.constants.ts` (`DIAS_POR_SEMANA`, `MINUTOS_POR_DIA`, etc.).
-- [ ] 2.2 Crear `backend/src/calendario-laboral/domain/errors/horario-laboral.errors.ts` (`HorarioLaboralDiasInvalidosError`, `VentanaLaboralInvalidaError(dia)`, `HorarioLaboralSinDiasAbiertosError`).
-- [ ] 2.3 Crear `backend/src/calendario-laboral/domain/value-objects/horario-laboral-semanal.ts`: `crear(dias)` con el orden de validación del diseño (length 7 → `diaSemana` único 0..6 → por día ambos null o `0 <= apertura < cierre <= 1440` → al menos un día abierto) y `aCalendario()`. (Req: Un intervalo por día, dentro de rango; Al menos un día abierto)
-- [ ] 2.4 Escribir `backend/src/calendario-laboral/domain/value-objects/horario-laboral-semanal.spec.ts`: cada rama de `crear` (6 días, 8 días, lunes repetido + domingo faltante, apertura ≥ cierre, un solo extremo null, 1441, −1, no entero, 7 cerrados) y el `aCalendario()` exacto. (Req: Un intervalo por día, dentro de rango; Al menos un día abierto)
+- [x] 2.1 Crear `backend/src/calendario-laboral/domain/constants/horario-laboral.constants.ts` (`DIAS_POR_SEMANA`, `MINUTOS_POR_DIA`, etc.).
+- [x] 2.2 Crear `backend/src/calendario-laboral/domain/errors/horario-laboral.errors.ts` (`HorarioLaboralDiasInvalidosError`, `VentanaLaboralInvalidaError(dia)`, `HorarioLaboralSinDiasAbiertosError`).
+- [x] 2.3 Crear `backend/src/calendario-laboral/domain/value-objects/horario-laboral-semanal.ts`: `crear(dias)` con el orden de validación del diseño (length 7 → `diaSemana` único 0..6 → por día ambos null o `0 <= apertura < cierre <= 1440` → al menos un día abierto) y `aCalendario()`. (Req: Un intervalo por día, dentro de rango; Al menos un día abierto)
+- [x] 2.4 Escribir `backend/src/calendario-laboral/domain/value-objects/horario-laboral-semanal.spec.ts`: cada rama de `crear` (6 días, 8 días, lunes repetido + domingo faltante, apertura ≥ cierre, un solo extremo null, 1441, −1, no entero, 7 cerrados) y el `aCalendario()` exacto. (Req: Un intervalo por día, dentro de rango; Al menos un día abierto)
 
 **Test enfocado**: `cd backend && pnpm vitest run src/calendario-laboral/domain/value-objects/horario-laboral-semanal.spec.ts`
 **Verificación**: `pnpm lint` · `pnpm typecheck` (backend)
