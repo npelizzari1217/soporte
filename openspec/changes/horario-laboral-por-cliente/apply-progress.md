@@ -290,3 +290,44 @@ None.
 
 ### Status
 4/4 tasks de WU-6a completas. Ready for verify.
+
+## WU-6b — E2E HTTP: matriz de guards y aislamiento A/B
+
+**Branch**: `feat/horario-laboral-por-cliente-wu06b` · **Base**: `feat/horario-laboral-por-cliente-wu06a` · **Status**: Complete
+
+### Completed Tasks
+- [x] 6b.1 `horario-laboral.e2e.spec.ts` (harness de `feriados-cliente.e2e.spec.ts`, 2 tenants efímeros A/B): 401 en `GET`/`PUT` sin token; 200 en `GET` para no-admin; 403 en su `PUT`; 200 para ADMINISTRADOR y ROOT.
+- [x] 6b.2 422 con 7 días cerrados y 422 con un día repetido (DTO válida en forma, dominio rechaza), cada uno seguido de un `GET` que confirma el horario sin cambios; 400 con 6 días (falla en `ValidationPipe`, antes del use case).
+- [x] 6b.3 A guarda un horario propio (600-900) → el `GET` de B sigue devolviendo el default — aislamiento estructural (D4/D10).
+- [x] 6b.4 Higiene de DB tenant efímera: borrar filas de `clientes` en `afterAll` → `app.close()` → `prismaService.onModuleDestroy()` → `dropDatabase` de A y B.
+
+### Files Changed
+| File | Action | What Was Done |
+|---|---|---|
+| `backend/src/calendario-laboral/interface/controllers/horario-laboral.e2e.spec.ts` | Created | E2E real, 9 tests: guards (401/403/200×2), 422×2 con `GET` de no-cambio, 400, aislamiento A/B |
+
+### Deviations from Design
+None — cubre exactamente la fila "E2E HTTP" de la Estrategia de testing. `usarLockMasterTest()` deliberadamente omitido (recordatorio operativo de `tasks.md`): el spec no lee feriados de master, solo registra clientes.
+
+### Issues Found
+None.
+
+### Work Unit Evidence
+| Evidence | Value |
+|---|---|
+| Focused test command and exact result | `cd backend && pnpm vitest run src/calendario-laboral/interface/controllers/horario-laboral.e2e.spec.ts` → 9/9 passed |
+| Runtime harness command/scenario and exact result | E2E HTTP real contra Postgres, 2 tenants efímeros (`PostgresAdminService`/`TenantMigrationRunnerAdapter`), sin `usarLockMasterTest()` (no toca `soporte_master_test` más que el registro de clientes) |
+| Rollback boundary | Retira el spec nuevo; no toca producción ni ningún otro spec |
+
+### Verification already run (all green)
+- `pnpm lint` → 0 errores
+- `pnpm typecheck` → 0 errores
+- `pnpm test` completo → 472/472 archivos, 5471/5471 tests passed
+
+### Workload / PR Boundary
+- Mode: chained PR slice (stacked-to-main, `auto-chain`) · Current work unit: WU-6b
+- Boundary: agrega el e2e HTTP de guards y aislamiento; no toca producción
+- Review budget: 339 líneas autoría (archivo nuevo) + openspec — dentro de 400
+
+### Status
+4/4 tasks de WU-6b completas. Ready for verify.

@@ -180,10 +180,10 @@ WU-5b lleva los casos de uso y sus specs (5.4, 5.5, 5.6).
 
 **Branch**: `feat/horario-laboral-por-cliente-wu06b` · **Base**: `feat/horario-laboral-por-cliente-wu06a`
 
-- [ ] 6b.1 Crear `backend/src/calendario-laboral/interface/controllers/horario-laboral.e2e.spec.ts` con el harness de `feriados-cliente.e2e.spec.ts`: 401 en `GET`/`PUT` sin token; 200 en `GET` para no-admin; 403 en su `PUT`; 200 para ADMINISTRADOR y ROOT. (Req: Permisos de edición y lectura)
-- [ ] 6b.2 En el mismo spec: 422 con 7 días cerrados y 422 con un día repetido; en ambos casos, un `GET` posterior devuelve el horario sin cambios; 400 con 6 días. (Req: Al menos un día abierto; Reemplazo atómico de las 7 filas)
-- [ ] 6b.3 En el mismo spec: A guarda un horario propio → el `GET` de B sigue devolviendo el default (aislamiento). (Req: Aislamiento por cliente)
-- [ ] 6b.4 Aplicar la higiene de DB tenant efímera: limpiar filas de `clientes` → `app.close()` → `onModuleDestroy()` → `dropDatabase`.
+- [x] 6b.1 Crear `backend/src/calendario-laboral/interface/controllers/horario-laboral.e2e.spec.ts` con el harness de `feriados-cliente.e2e.spec.ts`: 401 en `GET`/`PUT` sin token; 200 en `GET` para no-admin; 403 en su `PUT`; 200 para ADMINISTRADOR y ROOT. (Req: Permisos de edición y lectura)
+- [x] 6b.2 En el mismo spec: 422 con 7 días cerrados y 422 con un día repetido; en ambos casos, un `GET` posterior devuelve el horario sin cambios; 400 con 6 días. (Req: Al menos un día abierto; Reemplazo atómico de las 7 filas)
+- [x] 6b.3 En el mismo spec: A guarda un horario propio → el `GET` de B sigue devolviendo el default (aislamiento). (Req: Aislamiento por cliente)
+- [x] 6b.4 Aplicar la higiene de DB tenant efímera: limpiar filas de `clientes` → `app.close()` → `onModuleDestroy()` → `dropDatabase`.
 
 **Test enfocado**: `cd backend && pnpm vitest run src/calendario-laboral/interface/controllers/horario-laboral.e2e.spec.ts`
 **Verificación**: `pnpm lint` · `pnpm typecheck` (backend)
