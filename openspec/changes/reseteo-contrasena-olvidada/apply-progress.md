@@ -114,5 +114,33 @@ revert del commit; caso de uso sin consumidores.
 
 Verification: `pnpm lint` OK · `pnpm typecheck` OK · `pnpm test` (ver conteo abajo).
 
-Status: 3/4 tareas (5.1–5.3) completas y commiteadas. 5.4 pendiente, bloqueada por presupuesto
-de línea, no por diseño ni por tests.
+Status: 4/4 tareas completas (5.1–5.3 en WU-5; 5.4 movida a WU-5b, ver abajo). Ready for WU-6.
+
+## WU-5b — Wiring de DI en RecuperacionPasswordModule — COMPLETO (5.4b–5.4c)
+
+Files: `recuperacion-password.module.ts` (modify), `recuperacion-password.module.spec.ts`
+(modify: reemplaza el spec de solo-metadata por una compilación real).
+
+Deviations: none — sigue ADR-1/ADR-4/ADR-5/ADR-6/ADR-7. `CLIENTE_EMAIL_CONFIG_REPOSITORY` se
+provee local en este módulo (mismo criterio que `notificaciones.module.ts:65-68`, documentado
+en `SharedModule` sobre `TENANT_ENUMERATOR`): es un token de alcance módulo, y una segunda
+instancia de un adaptador de solo lectura es inofensiva.
+
+Evidence: focused test `pnpm vitest run backend/src/auth/recuperacion-password.module.spec.ts`
+→ 3/3 passed, incluye `Test.createTestingModule({ imports: [SharedModule,
+RecuperacionPasswordModule] }).compile()` real y `get(SolicitarResetPasswordUseCase)`
+resuelve. Runtime harness: la propia compilación de Nest es el harness — arma el grafo de DI
+completo (AuthModule + NotificacionesModule + TicketsModule transitivo) sin mocks, molde
+`TestHarnessModule` de `csat.e2e.spec.ts:91`; `SharedModule` se importa explícito porque sus
+providers son `@Global()` y este grafo aislado no los ve si no. Sin conexión real a Postgres:
+`PrismaService` es lazy (`pg.Pool` no abre hasta la primera query). Rollback: revert del
+commit; el módulo vuelve a proveer solo lo de WU-4, `app.module.ts` sigue sin registrar nada
+(eso es WU-11).
+
+Verification: `pnpm lint` OK · `pnpm typecheck` OK ·
+`pnpm vitest run src/auth/recuperacion-password.module.spec.ts` → 3/3 passed ·
+`rg -n RecuperacionPasswordModule src/app.module.ts` sin resultados ·
+`pnpm test` → 472 archivos / 5476 tests OK.
+
+Status: 2/2 tareas (5.4b–5.4c) completas y commiteadas. WU-5 y WU-5b cierran juntas la tarea
+5.4 original. Ready for WU-6.

@@ -161,12 +161,42 @@ Files: `backend/src/auth/application/use-cases/solicitar-reset-password.use-case
       `SIN_CORREO`, `CLIENTE_NO_DISPONIBLE`, `LISTO`) con las llamadas esperadas por rama; en
       ramas sin mail, ni `save` ni `enviar`; se captura el token del mensaje enviado y ninguna
       llamada a `logger.*` lo contiene. [Req 1, Req 12 — abuso: log con token/plaintext]
-- [ ] 5.4 Provider en el módulo (`useFactory`, `appBaseUrl` desde `entorno.APP_BASE_URL`) —
-      DEFERIDO por presupuesto de línea, ver apply-progress.md WU-5.
+- [x] 5.4 Provider en el módulo (`useFactory`, `appBaseUrl` desde `entorno.APP_BASE_URL`) —
+      DEFERIDO por presupuesto de línea en WU-5; movido a **WU-5b** (costura limpia por
+      criterio de dueño, ver apply-progress.md WU-5b).
 
 Focused test: `pnpm vitest run backend/src/auth/application/use-cases/solicitar-reset-password.use-case.spec.ts`
 Verification: `pnpm lint` · `pnpm typecheck` · `pnpm vitest run backend/src/auth/application/use-cases/solicitar-reset-password.use-case.spec.ts` · `pnpm test`
 Rollback boundary: revert de PR5; caso de uso sin controller que lo invoque.
+
+## WU-5b — Wiring de DI en RecuperacionPasswordModule (split de la tarea 5.4)
+
+Split sobre costura limpia (criterio de dueño, 2026-09-28): 5.4 quedó fuera de WU-5 por
+presupuesto de línea. El use case y su spec no dependen de DI (se instancian directo en el
+test), así que separar el wiring no rompe nada — mismo patrón de exposición gradual que
+WU-1/WU-4.
+
+Files: `backend/src/auth/recuperacion-password.module.ts` (modify: agrega los providers),
+`backend/src/auth/recuperacion-password.module.spec.ts` (modify: reemplaza el spec de
+metadata por una compilación real)
+
+- [x] 5.4b Provider de `SolicitarResetPasswordUseCase` en `RecuperacionPasswordModule`:
+      `CORREO_DE_CLIENTE` → `CorreoDeClienteAdapter` (factory con sus colaboradores),
+      `PASSWORD_RESET_TOKEN_REPOSITORY` → `PrismaPasswordResetTokenRepository`, y
+      `appBaseUrl` desde `entorno.APP_BASE_URL`. Reusa los tokens y providers ya exportados
+      por `AuthModule`/`NotificacionesModule`/`SharedModule` — no duplica ninguno. [Req 1,
+      Req 3, Req 4, Req 11]
+- [x] 5.4c `recuperacion-password.module.spec.ts`: reemplaza el spec de solo-metadata
+      (hallazgo del verificador independiente de WU-4: nunca compilaba el módulo) por
+      `Test.createTestingModule({ imports: [SharedModule, RecuperacionPasswordModule] }).compile()`
+      y asertar que `get(SolicitarResetPasswordUseCase)` resuelve.
+
+Focused test: `pnpm vitest run backend/src/auth/recuperacion-password.module.spec.ts`
+Verification: `pnpm lint` · `pnpm typecheck` · `pnpm vitest run backend/src/auth/recuperacion-password.module.spec.ts` · `pnpm test` ·
+`rg -n RecuperacionPasswordModule backend/src/app.module.ts` sin resultados
+Rollback boundary: revert del commit de WU-5b; el módulo vuelve a proveer solo lo de WU-4,
+sin `SolicitarResetPasswordUseCase` conectado. `app.module.ts` sigue sin registrar el
+módulo (eso es WU-11).
 
 ## WU-6 — ConfirmarResetPasswordUseCase
 
