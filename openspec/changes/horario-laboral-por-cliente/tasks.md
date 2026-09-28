@@ -70,9 +70,9 @@ nunca separar código de sus tests. WU-3 toca 11 archivos pero la mayoría son d
 
 **Branch**: `feat/horario-laboral-por-cliente-wu01` · **Base**: `main`
 
-- [ ] 1.1 Agregar el modelo `CalendarioLaboralDiaCliente` (tabla `calendario_laboral_dias_cliente`) a `backend/prisma_tenant/schema.prisma`, mismo shape y CHECK que `CalendarioLaboralDia` de master. (Req: Default sembrado sin cambio de comportamiento)
-- [ ] 1.2 Crear `backend/prisma_tenant/migrations/20260928150000_calendario_laboral_dias_cliente/migration.sql` con el CREATE, los dos CHECK y el seed `ON CONFLICT DO NOTHING` del SQL de D1. (Req: Default sembrado sin cambio de comportamiento; Un intervalo por día, dentro de rango)
-- [ ] 1.3 Escribir `backend/src/calendario-laboral/infrastructure/persistence/prisma/calendario-laboral-dias-cliente-check.integration.spec.ts`: seed exacto de 7 filas, cada violación de CHECK, `dia_semana = 7`, y confirmar que re-ejecutar el seed no pisa una fila ya editada. (Req: Un intervalo por día, dentro de rango)
+- [x] 1.1 Agregar el modelo `CalendarioLaboralDiaCliente` (tabla `calendario_laboral_dias_cliente`) a `backend/prisma_tenant/schema.prisma`, mismo shape y CHECK que `CalendarioLaboralDia` de master. (Req: Default sembrado sin cambio de comportamiento)
+- [x] 1.2 Crear `backend/prisma_tenant/migrations/20260928150000_calendario_laboral_dias_cliente/migration.sql` con el CREATE, los dos CHECK y el seed `ON CONFLICT DO NOTHING` del SQL de D1. (Req: Default sembrado sin cambio de comportamiento; Un intervalo por día, dentro de rango)
+- [x] 1.3 Escribir `backend/src/calendario-laboral/infrastructure/persistence/prisma/calendario-laboral-dias-cliente-check.integration.spec.ts`: seed exacto de 7 filas, cada violación de CHECK, `dia_semana = 7`, y confirmar que re-ejecutar el seed no pisa una fila ya editada. (Req: Un intervalo por día, dentro de rango)
 
 **Test enfocado**: `cd backend && pnpm vitest run src/calendario-laboral/infrastructure/persistence/prisma/calendario-laboral-dias-cliente-check.integration.spec.ts`
 **Verificación**: `pnpm lint` · `pnpm typecheck` (ambos en `backend/`)

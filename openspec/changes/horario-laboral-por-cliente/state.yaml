@@ -1,5 +1,5 @@
 change: horario-laboral-por-cliente
-phase: tasks
+phase: apply
 artifact_store: openspec
 artifacts:
   proposal: true
@@ -7,9 +7,9 @@ artifacts:
   design: true
   tasks: true
 tasks_progress:
-  completed: []
-  pending:
+  completed:
     - wu01
+  pending:
     - wu01b
     - wu02
     - wu03

@@ -1297,3 +1297,27 @@ model FeriadoCliente {
 
   @@map("feriados_cliente")
 }
+
+// ─── CALENDARIO_LABORAL_DIAS_CLIENTE (horario semanal por cliente, WU-1 sdd/horario-laboral-por-cliente) ─
+//
+// Mismo shape y mismos CHECK que `CalendarioLaboralDia` de MASTER
+// (`prisma_master/schema.prisma:477-485`), ahora por tenant: el horario que
+// usa el SLA HABIL deja de ser global. PK en `dia_semana` (0=domingo..6=sábado,
+// una fila por día, sin duplicados posibles). `aperturaMinuto`/`cierreMinuto`
+// NULL en ambos = día cerrado; NOT NULL en ambos con apertura < cierre = día
+// abierto — el CHECK de ventana rechaza cualquier otra combinación (ver la
+// migración `20260928150000_calendario_laboral_dias_cliente`). Sembrada con
+// el default 9-18 lunes a viernes en la misma migración (D1).
+//
+// `updatedAt` NO tiene `@default` (`@updatedAt` solo actualiza en UPDATE de
+// Prisma): el INSERT raw del seed setea el valor explícito.
+
+model CalendarioLaboralDiaCliente {
+  diaSemana      Int      @id @map("dia_semana") @db.SmallInt
+  aperturaMinuto Int?     @map("apertura_minuto") @db.SmallInt
+  cierreMinuto   Int?     @map("cierre_minuto") @db.SmallInt
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@map("calendario_laboral_dias_cliente")
+}
