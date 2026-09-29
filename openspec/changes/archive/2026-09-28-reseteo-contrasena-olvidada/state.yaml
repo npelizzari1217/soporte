@@ -1,0 +1,29 @@
+change: reseteo-contrasena-olvidada
+phase: archive
+artifact_store: openspec
+artifacts:
+  proposal: true
+  specs: true
+  design: true
+  tasks: true
+  archive_report: true
+tasks_progress:
+  completed:
+    - WU-1
+    - WU-2
+    - WU-3
+    - WU-4
+    - WU-5
+    - WU-5b
+    - WU-6
+    - WU-7
+    - WU-8
+    - WU-9
+    - WU-10
+    - WU-11
+    - WU-12
+  pending: []
+last_updated: 2026-09-28
+last_wu_completed: WU-12
+archived_on: 2026-09-28
+archive_location: openspec/changes/archive/2026-09-28-reseteo-contrasena-olvidada/

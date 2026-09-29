@@ -181,6 +181,39 @@ describe("middleware", () => {
     expect(res.headers.get("location")).toContain("/login");
   });
 
+  // ── /restablecer-password (sdd/reseteo-contrasena-olvidada, WU-10) ───────
+  // El token viaja en el fragmento (`#token=...`), que nunca llega al
+  // servidor: la página SIEMPRE se sirve sin sesión, exista o no el token.
+
+  it("passes through /restablecer-password without any cookie", async () => {
+    const req = makeRequest("/restablecer-password");
+    const res = await middleware(req);
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("location")).toBeNull();
+    expect(mockVerify).not.toHaveBeenCalled();
+  });
+
+  it("does NOT treat a longer path starting with /restablecer-password as public", async () => {
+    const req = makeRequest("/restablecer-password-x");
+    const res = await middleware(req);
+
+    expect(res.headers.get("location")).toContain("/login");
+  });
+
+  // ── /olvide-password (sdd/reseteo-contrasena-olvidada, WU-11) ────────────
+  // Pantalla de solicitud, público por diseño: nadie tiene sesión antes de
+  // pedir el reset.
+
+  it("passes through /olvide-password without any cookie", async () => {
+    const req = makeRequest("/olvide-password");
+    const res = await middleware(req);
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("location")).toBeNull();
+    expect(mockVerify).not.toHaveBeenCalled();
+  });
+
   // ── Matcher exclusions ────────────────────────────────────────────────────
 
   it("config.matcher is exported and excludes api/_next/favicon", () => {

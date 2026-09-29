@@ -7,9 +7,12 @@
  * Wired by the login page which uses the `use-login` hook (Container/
  * Presentational pattern).
  *
- * Spec: PR11 — LoginForm (react-hook-form + zod).
+ * Spec: PR11 — LoginForm (react-hook-form + zod). El link "¿Olvidaste tu
+ * contraseña?" es estático (sdd/reseteo-contrasena-olvidada, WU-11): apunta a
+ * `/olvide-password`, ruta pública agregada a `RUTAS_PUBLICAS` en el mismo WU.
  */
 
+import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@/components/ui/button";
@@ -68,6 +71,12 @@ export function LoginForm({ onSubmit, isLoading }: LoginFormProps) {
             {errors.password.message}
           </p>
         )}
+        <Link
+          href="/olvide-password"
+          className="self-end text-sm font-medium text-primary underline-offset-4 hover:underline"
+        >
+          ¿Olvidaste tu contraseña?
+        </Link>
       </div>
 
       <Button type="submit" isLoading={isLoading} className="w-full">

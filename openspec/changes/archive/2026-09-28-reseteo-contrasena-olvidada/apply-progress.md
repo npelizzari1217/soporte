@@ -1,0 +1,398 @@
+# Apply Progress: Reseteo de contraseña por olvido (self-service)
+
+Mode: Standard (TDD disabled — feature).
+
+## WU-1 — Modelo, migración y entidad — COMPLETO (1.1–1.4)
+
+Files: migración `20260928120000_add_password_reset_tokens`, `schema.prisma` (modelo
+`PasswordResetToken` + back-relations), `password-reset-token.entity.ts` + `.spec.ts`.
+
+Deviations: none — sigue ADR-6. `usuario_id` FK usa `ON DELETE CASCADE` (deliberado, diverge de
+`refresh_tokens`/`RESTRICT`, tal como fija el design).
+
+Evidence: focused test `pnpm vitest run backend/src/auth/domain/entities/password-reset-token.entity.spec.ts`
+→ 14/14 passed. Runtime harness: N/A (sin tabla poblada, sin ruta expuesta). Rollback: revert del
+commit; migración aditiva queda huérfana, sin filas.
+
+Verification: `pnpm lint` OK · `pnpm typecheck` OK · `pnpm test` → 465 archivos / 5431 tests OK.
+Migración aplicada a `soporte_master` y `soporte_master_test`; cliente Prisma regenerado.
+
+Status: 4/4 tareas completas. Ready for WU-2.
+
+## WU-2 — Puerto, mapper y repo Prisma — COMPLETO (2.1–2.4)
+
+Files: `i-password-reset-token.repository.ts` (create), `password-reset-token.mapper.ts` (create),
+`prisma-password-reset-token.repository.ts` + `.integration.spec.ts` (create). Molde:
+`prisma-encuesta-token.repository.ts` / `.mapper.ts` (CSAT).
+
+Deviations: none — sigue ADR-5/ADR-6. El puerto no tiene `liberarUso` (a diferencia de
+`IEncuestaTokenRepository`): no hay INSERT en el tenant que compensar, `save()` del usuario ya es
+el punto de no retorno (ADR-5).
+
+Evidence: focused test
+`pnpm vitest run backend/src/auth/infrastructure/persistence/prisma/prisma-password-reset-token.repository.integration.spec.ts`
+→ 11/11 passed, incluye el CAS concurrente (`Promise.all` de dos `consumirSiVigente` da
+exactamente un `true`) y el CAS sobre token revocado/vencido (`false`). Runtime harness:
+`usarLockMasterTest()` contra `soporte_master_test` real (Postgres, no mocks). Rollback: revert
+del commit; repo sin consumidores, WU-1 intacto.
+
+Verification: `pnpm lint` OK · `pnpm typecheck` OK · `pnpm test` → 466 archivos / 5442 tests OK.
+
+**`size:exception`** (criterio del dueño, 2026-09-28): 444 líneas cambiadas. Partir habría
+mandado a `main` el CAS sin sus tests de abuso (revocado, vencido, concurrencia).
+
+Status: 4/4 tareas implementadas, verificadas y commiteadas.
+
+## WU-3 — escaparHtml, plantillas y adaptador de correo — COMPLETO (3.1–3.6)
+
+Files: `shared/domain/escapar-html.ts` (create), `notificaciones/domain/templates/email-templates.ts`
+(modify: importa), `auth/domain/templates/reset-password-email.template.ts` + `.spec.ts`,
+`auth/domain/ports/i-correo-de-cliente.port.ts`, `auth/infrastructure/email/correo-de-cliente.adapter.ts`
++ `.spec.ts` (create).
+
+Deviations: none — sigue ADR-4/ADR-7. `enviar()` resuelve `dbName` con un `clienteRepo.findById`
+propio (el puerto solo recibe `clienteId`); si el cliente ya no existe, no lanza — defensivo, el
+caller ya validó `estado() === 'LISTO'` con el mismo id.
+
+Evidence: focused test `pnpm vitest run backend/src/auth/domain/templates/reset-password-email.template.spec.ts
+backend/src/auth/infrastructure/email/correo-de-cliente.adapter.spec.ts` → 11/11 passed. No
+regresión: `email-templates.spec.ts` → 14/14 passed. Runtime harness: N/A (funciones puras y
+adaptador con dobles). Rollback: revert del commit; `email-templates.ts` vuelve a su
+`escaparHtml` local.
+
+Verification: `pnpm lint` OK · `pnpm typecheck` OK · `pnpm test` OK.
+
+Status: 6/6 tareas implementadas y verificadas. Ready for WU-4.
+
+## WU-4 — TareasSegundoPlano, guard de throttling y módulo (sin registrar) — COMPLETO (4.1–4.6)
+
+Files: `shared/domain/ports/i-tareas-segundo-plano.port.ts` (create),
+`shared/infrastructure/segundo-plano/tareas-segundo-plano.ts` + `.spec.ts` (create),
+`auth/infrastructure/guards/recuperacion-password-throttler.guard.ts` + `.spec.ts` (create),
+`auth/recuperacion-password.module.ts` + `.spec.ts` (create).
+
+Deviations: none — sigue ADR-2/ADR-3. El módulo no declara `controllers` todavía (array vacío):
+`RecuperacionPasswordController` no existe hasta WU-7/WU-8, tal como fija la lista de archivos
+de esta WU en tasks.md. `RecuperacionPasswordThrottlerGuard` se construye por `useFactory` con
+una `ThrottlerStorageService` propia — evita un segundo `ThrottlerModule.forRoot()` global
+(`CsatModule` ya lo llama). `app.module.ts` sigue sin referenciar el módulo nuevo (verificado con
+`rg`).
+
+Evidence: focused test
+`pnpm vitest run backend/src/shared/infrastructure/segundo-plano/ backend/src/auth/infrastructure/guards/`
+→ 13/13 passed. Runtime harness: N/A — módulo creado, sin controller, no registrado en
+`app.module.ts` (mismo criterio que WU-1). Rollback: revert del commit; módulo huérfano sin
+importar, `app.module.ts` intacto.
+
+Verification: `pnpm lint` OK · `pnpm typecheck` OK · `pnpm test` OK — conteo no registrado aparte
+en este WU; la progresión consolidada sigue en WU-5b (472 archivos / 5476 tests), que ya incluye
+lo agregado acá [W5: corregido, decía "(ver conteo abajo)" sin conteo] ·
+`rg -n RecuperacionPasswordModule backend/src/app.module.ts` sin resultados.
+
+Status: 6/6 tareas completas. Ready for WU-5.
+
+## WU-5 — SolicitarResetPasswordUseCase — PARCIAL (5.1–5.3; 5.4 diferida)
+
+Files: `solicitar-reset-password.use-case.ts` + `.spec.ts` (create).
+
+**Presupuesto de línea**: 5.1–5.3 (use case + spec) dan 346 líneas — el flujo de 7 ramas con
+log auditable pesa más que el estimado (~285) de tasks.md. Sumar 5.4 (provider de
+`SolicitarResetPasswordUseCase`, más wirear `CORREO_DE_CLIENTE`→`CorreoDeClienteAdapter` y
+`PASSWORD_RESET_TOKEN_REPOSITORY`→`PrismaPasswordResetTokenRepository`, ninguno provisto en
+ningún módulo desde WU-2/WU-3) sumaba ~90 líneas más, total 439 — sobre el techo duro de 400 de
+este apply. Costura limpia: el use case y su spec no dependen de DI (se instancian directo en
+el test), así que 5.4 se separa sin romper nada — mismo patrón de exposición gradual que WU-1/
+WU-4 (pieza creada y probada, no conectada todavía).
+
+Deviations: ninguna en la lógica (ADR-2/3/4/7). Desvío de alcance: 5.4 (cableado de DI) pasó a
+WU-5b por una costura limpia de presupuesto.
+
+Evidence: focused test
+`pnpm vitest run backend/src/auth/application/use-cases/solicitar-reset-password.use-case.spec.ts`
+→ 7/7 passed (las 7 ramas; la de `LISTO` incluye el chequeo de abuso: ningún log contiene el
+token crudo ni el email). Runtime harness: N/A — sin DI wireada (5.4 diferida). Rollback:
+revert del commit; caso de uso sin consumidores.
+
+Verification: `pnpm lint` OK · `pnpm typecheck` OK · `pnpm test` (ver conteo abajo).
+
+Status: 4/4 tareas completas (5.1–5.3 en WU-5; 5.4 movida a WU-5b, ver abajo). Ready for WU-6.
+
+## WU-5b — Wiring de DI en RecuperacionPasswordModule — COMPLETO (5.4b–5.4c)
+
+Files: `recuperacion-password.module.ts` (modify), `recuperacion-password.module.spec.ts`
+(modify: reemplaza el spec de solo-metadata por una compilación real).
+
+Deviations: none — sigue ADR-1/ADR-4/ADR-5/ADR-6/ADR-7. `CLIENTE_EMAIL_CONFIG_REPOSITORY` se
+provee local en este módulo (mismo criterio que `notificaciones.module.ts:65-68`, documentado
+en `SharedModule` sobre `TENANT_ENUMERATOR`): es un token de alcance módulo, y una segunda
+instancia de un adaptador de solo lectura es inofensiva.
+
+Evidence: focused test `pnpm vitest run backend/src/auth/recuperacion-password.module.spec.ts`
+→ 3/3 passed, incluye `Test.createTestingModule({ imports: [SharedModule,
+RecuperacionPasswordModule] }).compile()` real y `get(SolicitarResetPasswordUseCase)`
+resuelve. Runtime harness: la propia compilación de Nest es el harness — arma el grafo de DI
+completo (AuthModule + NotificacionesModule + TicketsModule transitivo) sin mocks, molde
+`TestHarnessModule` de `csat.e2e.spec.ts:91`; `SharedModule` se importa explícito porque sus
+providers son `@Global()` y este grafo aislado no los ve si no. Sin conexión real a Postgres:
+`PrismaService` es lazy (`pg.Pool` no abre hasta la primera query). Rollback: revert del
+commit; el módulo vuelve a proveer solo lo de WU-4, `app.module.ts` sigue sin registrar nada
+(eso es WU-11).
+
+Verification: `pnpm lint` OK · `pnpm typecheck` OK ·
+`pnpm vitest run src/auth/recuperacion-password.module.spec.ts` → 3/3 passed ·
+`rg -n RecuperacionPasswordModule src/app.module.ts` sin resultados ·
+`pnpm test` → 472 archivos / 5476 tests OK.
+
+Status: 2/2 tareas (5.4b–5.4c) completas y commiteadas. WU-5 y WU-5b cierran juntas la tarea
+5.4 original. Ready for WU-6.
+
+## WU-6 — ConfirmarResetPasswordUseCase — COMPLETO (size:exception) (presupuesto de línea)
+
+Files: `confirmar-reset-password.use-case.ts` (102 líneas),
+`confirmar-reset-password.use-case.spec.ts` (243 líneas), `auth/domain/errors/recuperacion-password.errors.ts`
+(30 líneas, create — ver desvío abajo), `auth.module.ts` (+5, exporta `REFRESH_TOKEN_REPOSITORY`).
+Total: **380 líneas** solo código, antes de openspec — ya sobre el umbral de ~370 de este apply.
+
+Desvío de tarea 6.1: `ResetLinkInvalidoError` NO va en `auth.errors.ts` (lo que pide la tarea
+literal) sino en un archivo propio, `recuperacion-password.errors.ts`. `auth.controller.spec.ts`
+tiene un spec guardián de cobertura TOTAL: cada export de `auth.errors.ts` debe tener una entrada
+explícita en `AuthController.toHttpException`, y `ResetLinkInvalidoError` nunca pasa por ese
+controller (lo consume `RecuperacionPasswordController`, WU-8, módulo aparte por ADR-1). Sumarlo
+ahí rompía ese guardián (`auth.controller.spec.ts` FAILED: 17≠16). Archivo de errores propio por
+feature es patrón ya establecido (`csat.errors.ts`, `tickets.errors.ts`). Detalle completo en el
+JSDoc del archivo nuevo.
+
+Evidence: focused test
+`pnpm vitest run backend/src/auth/application/use-cases/confirmar-reset-password.use-case.spec.ts backend/src/auth/domain/errors/`
+→ 29/29 passed (4 causas de token inválido, 2 de cuenta no disponible, CAS pierde bajo
+concurrencia sin persistir, camino feliz con hash/CAS/revocación/mail por `clienteId` del token,
+revocación degradada sin `.message`, mail de fondo sin token/plaintext en logs). Guardián
+`auth.controller.spec.ts` sigue en 16/16 — el desvío de archivo lo mantiene intacto.
+`pnpm lint` OK · `pnpm typecheck` OK.
+
+**`size:exception`** (criterio del dueño, 2026-09-28): 458 líneas. El caso de uso, su error y su
+matriz de abuso son un solo flujo (ADR-5); no hay corte limpio.
+
+Status: 4/4 tareas completas. `pnpm test` no se registró aparte en este WU [W5: sección corregida
+— terminaba con un párrafo de WU-7 (e2e, throttling, arreglo del guard) pegado acá por error, sin
+Status ni conteo propios]; el primer conteo consolidado de la suite completa con este WU adentro
+queda en WU-11 (475 archivos / 5501 tests). Ready for WU-7.
+
+## WU-7 — Ruta de solicitud — COMPLETO (`size:exception`, criterio del dueño)
+
+Files: `recuperacion-password.dto.ts` (21 líneas, create),
+`recuperacion-password.controller.ts` (54 líneas, create), `recuperacion-password.controller.spec.ts`
+(62 líneas, create), `recuperacion-password.e2e.spec.ts` (388 líneas, create),
+`recuperacion-password.module.ts` (+30/-19, modify), `recuperacion-password.module.spec.ts`
+(+6/-3, modify). Total: **583 líneas** — muy por encima del techo duro de 400 de este apply
+(incluye openspec).
+
+**Hallazgo — bug de wiring de WU-4, recién visible al conectar el controller**:
+`@UseGuards(RecuperacionPasswordThrottlerGuard)` NUNCA usa el provider-objeto (`useFactory`)
+registrado bajo ese mismo token como clase. Nest trata toda referencia de clase en `@UseGuards()`
+como un "enhancer" (`DependenciesScanner.insertInjectable`) y la instancia SIEMPRE vía su propio
+constructor, contra un mapa (`_injectables`) DISTINTO del de `providers` (`_providers`) — ignora
+cualquier `useFactory` bajo esa clase. La versión de WU-4 nunca iba a ejecutar en runtime HTTP;
+solo se vio al conectar `@UseGuards` en WU-7. Corregido DENTRO de `recuperacion-password.module.ts`
+(permitido por el alcance de este apply): se proveen localmente los tokens que el constructor
+HEREDADO de `ThrottlerGuard` pide (`getOptionsToken()` de `@nestjs/throttler` y `ThrottlerStorage`),
+y `RecuperacionPasswordThrottlerGuard` pasa a ser un provider de clase plano — sin tocar el archivo
+del guard (WU-4) ni su spec. Confirmado con el e2e real: el throttle 3/15min por ruta SÍ aplica.
+
+Deviations: ninguna en la lógica (ADR-1/2/3). El bug de wiring de arriba no es un desvío de diseño:
+es una corrección necesaria para que el diseño de ADR-3 ("factory con storage propia, sin
+`ThrottlerModule.forRoot()` global") funcione de verdad.
+
+Evidence: focused test
+`pnpm vitest run src/auth/interface/controllers/recuperacion-password.controller.spec.ts` → 2/2
+passed. Runtime harness (e2e real, HTTP → guard → controller → use case → Prisma):
+`pnpm vitest run src/auth/interface/controllers/recuperacion-password.e2e.spec.ts` → 3/3 passed —
+204 con el mail bloqueado sin esperarlo; 7 ramas (6 sin mail + 1 con mail) responden idéntico byte
+a byte; 4.º intento del mismo email da 429 sin importar cuántos `x-forwarded-for` distintos se
+usen; un email distinto no comparte cupo; el link nunca refleja un `Host` manipulado. Además:
+`pnpm vitest run src/auth/recuperacion-password.module.spec.ts` → 3/3 passed (incluye el test
+guardián actualizado: el módulo ahora SÍ declara `RecuperacionPasswordController`). `pnpm lint` OK
+· `pnpm typecheck` OK · `rg -n RecuperacionPasswordModule src/app.module.ts` sin resultados (HARD
+CONSTRAINT respetado: el módulo sigue sin registrarse en la app real, eso es WU-11).
+
+**`size:exception`** (criterio del dueño): el e2e es la única prueba del throttling y de las
+respuestas idénticas, y del arreglo del guard de WU-4. Status: 4/4 tareas (7.1–7.4), commit `8565d48`.
+
+## WU-8 — Ruta de confirmación — COMPLETO (`size:exception`, criterio del dueño)
+
+Files: `recuperacion-password.dto.ts` (+20/-4, modify:
+suma `ConfirmarResetDto`), `recuperacion-password.controller.ts` (+47/-13, modify: suma
+`POST /auth/reset-password`), `recuperacion-password.controller.spec.ts` (+65/-10, modify),
+`recuperacion-password.e2e.spec.ts` (+208/-19, modify: 4 `it()` nuevos + helpers
+`postJson`/`postResetPassword`/`postLogin`/`extraerToken`/`sha256Hex` + fixture
+`crearUsuarioListoConPassword`/`solicitarYCapturarToken`), `recuperacion-password.module.ts`
+(+53/-4, modify: provider de `ConfirmarResetPasswordUseCase`), `recuperacion-password.module.spec.ts`
+(+14/-1, modify). **Total: 407 inserciones + 51 borrados = 458 líneas — sobre el techo duro de
+400 de este apply** (y sobre el umbral de ~370 que dispara el STOP antes de commitear), incluso
+sin sumar la variación de openspec (`tasks.md` + este archivo).
+
+**Desglose por archivo** (`git diff --numstat`):
+
+| Archivo | + | − | Total |
+|---|---|---|---|
+| `recuperacion-password.e2e.spec.ts` | 208 | 19 | 227 |
+| `recuperacion-password.module.ts` | 53 | 4 | 57 |
+| `recuperacion-password.controller.spec.ts` | 65 | 10 | 75 |
+| `recuperacion-password.controller.ts` | 47 | 13 | 60 |
+| `recuperacion-password.dto.ts` | 20 | 4 | 24 |
+| `recuperacion-password.module.spec.ts` | 14 | 1 | 15 |
+| **Total** | **407** | **51** | **458** |
+
+**Costura limpia SÍ existe** (mismo patrón que WU-5/WU-5b y que la opción (b) que WU-7 dejó
+abierta y no se usó): el e2e (227 líneas) es la única pieza que solo agrega tests a un archivo ya
+existente — no cambia el comportamiento de ningún otro archivo. Sacándolo:
+
+- **WU-8 (núcleo)**: DTO + ruta + controller spec + provider del módulo + module spec = **231
+  líneas**, bien adentro del presupuesto.
+- **WU-8b (cobertura e2e)**: los 4 `it()` de confirmación + helpers = **227 líneas**, en el mismo
+  archivo que ya toca WU-7 (no es un archivo nuevo autocontenido como fue
+  `recuperacion-password.e2e.spec.ts` completo en WU-7 — acá ya existe con contenido de WU-7, así
+  que la costura es "las líneas agregadas a partir de tal punto", no "el archivo entero").
+
+Se commiteó con `size:exception` (criterio del dueño), junto con dos correcciones del verificador
+de WU-7 sobre el mismo archivo: el caso de email mal formado en el e2e y el JSDoc del guard.
+
+**Deviations**: ninguna en la lógica (ADR-1/3/5). El error de `ConfirmarResetPasswordUseCase`
+(`ResetLinkInvalidoError`) se mapea a `BadRequestException` (400) directamente en el controller,
+sin agregar una tabla `toHttpException` como la de `AuthController`: es el único `DomainError` que
+puede llegar acá, así que un `if (resultado.isFail())` alcanza sin el patrón de tabla completo.
+
+Evidence: focused test
+`pnpm vitest run src/auth/interface/controllers/recuperacion-password.controller.spec.ts` → 4/4
+passed (2 de WU-7 + 2 nuevos: éxito llama `ejecutar(token, passwordNueva)`; rechazo del use case
+se traduce a `BadRequestException` con el mensaje único). Runtime harness (e2e real):
+`pnpm vitest run src/auth/interface/controllers/recuperacion-password.e2e.spec.ts` → 7/7 passed (3
+de WU-7 + 4 nuevos: flujo completo con login antes/después + reuso + revocación + mail; token
+vencido vs. inexistente byte a byte idénticos; concurrencia con CAS real (exactamente un 204, solo
+esa clave loguea); 429 en el 6.º intento con el mismo token). También:
+`pnpm vitest run src/auth/recuperacion-password.module.spec.ts` → 4/4 passed (3 de WU-5b/WU-7 + 1
+nuevo: `ConfirmarResetPasswordUseCase` resuelve). `pnpm lint` OK · `pnpm typecheck` OK ·
+`rg -n RecuperacionPasswordModule backend/src/app.module.ts` sin resultados (HARD CONSTRAINT
+respetado). `pnpm test` sin conteo registrado para esta unidad (la suite completa pasó en WU-11, que la contiene), sin el módulo registrado todavía en `app.module.ts`
+[W5: corregido — decía "completo en curso al momento de este reporte"]; el conteo consolidado con
+el módulo ya registrado queda en WU-11 (475 archivos / 5501 tests).
+
+Status: 3/3 tareas (8.1–8.3), commiteadas con `size:exception`.
+
+## WU-9 — Frontend: schemas y hooks — COMPLETO (9.1–9.5)
+
+Files: `frontend/src/features/auth/schemas.ts` + `.test.ts` (modify: suma
+`solicitarResetSchema`/`restablecerPasswordSchema`),
+`frontend/src/features/auth/hooks/use-solicitar-reset.ts` + `.test.tsx` (create),
+`frontend/src/features/auth/hooks/use-restablecer-password.ts` + `.test.tsx` (create).
+
+Deviations: none (ADR-8). Sin página que los importe todavía (WU-10/WU-11); los hooks no
+conocen rutas — `errorDeRestablecerPassword` solo expone `mostrarLinkSolicitud: boolean`
+para que la UI decida el link a `/olvide-password`.
+
+Evidence: focused test `pnpm vitest run frontend/src/features/auth/` → todas las ramas de
+mensaje cubiertas (204 genérico, 429, 500, red, y el 400 único de confirmación con
+`mostrarLinkSolicitud`). Runtime harness: N/A — hooks sin página que los use (mismo
+criterio que WU-1/WU-4). Rollback: revert del commit; hooks y schemas sin import.
+
+Verification: `pnpm lint` OK · `pnpm type-check` OK · `pnpm vitest run frontend/src/features/auth/` OK
+· `pnpm test` OK.
+
+Status: 5/5 tareas completas. Ready for WU-10.
+
+## WU-10 — Frontend: página de restablecer + middleware — COMPLETO (10.1–10.4)
+
+Files: `frontend/src/features/auth/components/RestablecerPasswordForm.tsx` + `.test.tsx` (create),
+`frontend/src/app/(auth)/restablecer-password/page.tsx` + `.test.tsx` (create),
+`frontend/src/middleware.ts` + `.test.ts` (modify: suma `/restablecer-password` a `RUTAS_PUBLICAS`).
+
+Deviations: none (ADR-7/ADR-8). Sin token o con un 400 el formulario se oculta y muestra el mismo
+mensaje con link a `/olvide-password`. Un 429 o un error de red/5xx SÍ se ejercita en este WU y NO
+oculta el formulario: queda visible con el mensaje arriba para reintentar (`errorTransitorio` en
+`page.tsx`) [W5: corregido — decía que "cualquier otro error" ocultaba el form y que "ningún
+escenario de este WU ejercita 429/5xx"; el `size:exception` de esta WU en `tasks.md` ya describía
+el arreglo correcto].
+
+Evidence: focused test `pnpm vitest run frontend/src/app/(auth)/restablecer-password
+frontend/src/features/auth/components/RestablecerPasswordForm.test.tsx frontend/src/middleware.test.ts`
+→ 21/21 passed (sin token, fragmento leído y `replaceState` limpia la URL, 400, éxito, validación
+local de largo/igualdad en el componente). Runtime harness: N/A — el módulo backend sigue sin
+registrar (WU-11); el fragmento no llega nunca al servidor por diseño (ADR-7). Rollback: revert del
+commit; ruta pública se retira de `middleware.ts`, página deja de existir.
+
+Verification: `pnpm lint` OK · `pnpm type-check` OK · focused tests arriba OK ·
+`pnpm test` → 203 archivos / 1547 tests OK.
+
+Status: 4/4 tareas completas. Ready for WU-11.
+
+## WU-11 — Frontend: solicitud, link de login, Ayuda y registro del módulo — COMPLETO (11.1–11.7)
+
+Files: `frontend/src/features/auth/components/SolicitarResetForm.tsx` + `.test.tsx` (create),
+`frontend/src/app/(auth)/olvide-password/page.tsx` + `.test.tsx` (create),
+`frontend/src/features/auth/components/LoginForm.tsx` + `.test.tsx` (modify: link estático),
+`frontend/src/middleware.ts` + `.test.ts` (modify: suma `/olvide-password` a `RUTAS_PUBLICAS`),
+`backend/ayuda/mi-cuenta-contrasena.md` (modify `:31-35`), `backend/src/app.module.ts` (modify:
+único punto de registro de `RecuperacionPasswordModule`, ADR-1/Migration-Rollout).
+
+Deviations: none (ADR-1/ADR-8). 11.7 (e2e manual/smoke post-merge) se cubrió con la suite
+backend completa corriendo con el módulo ya registrado en `AppModule` (sin un e2e HTTP nuevo):
+los e2e reales de las dos rutas ya existen en WU-7/WU-8 contra su propio `TestHarnessModule`;
+este WU solo necesitaba confirmar que el mismo módulo, montado en la app real, compila sin
+colisión de rutas con `AuthController` — confirmado con `rg` (cero rutas `forgot-password` /
+`reset-password` en `auth.controller.ts`).
+
+Evidence: focused test `pnpm vitest run frontend/src/app/(auth)/olvide-password frontend/src/features/auth/components/SolicitarResetForm.test.tsx frontend/src/features/auth/components/LoginForm.test.tsx frontend/src/middleware.test.ts`
+→ 25/25 passed. Runtime harness: `pnpm test` backend completo con `RecuperacionPasswordModule`
+registrado en `app.module.ts` → 475/475 archivos, 5501/5501 tests OK (primera vez que las rutas
+`POST /auth/forgot-password` y `POST /auth/reset-password` existen en la app real, no solo en
+harness de test). Rollback: revert del commit; `app.module.ts` deja de montar el módulo (las dos
+rutas vuelven a 404), Ayuda vuelve al texto previo, `RUTAS_PUBLICAS` pierde `/olvide-password`.
+
+Verification: frontend — `pnpm lint` OK · `pnpm type-check` OK · focused tests arriba OK ·
+`pnpm test` → 205 archivos / 1557 tests OK [W5: corregido — decía 1554; el `verify-report.md`
+independiente, sobre la misma revisión, observó 1557]. Backend — `pnpm lint` OK · `pnpm typecheck` OK ·
+`pnpm test` → 475 archivos / 5501 tests OK · `rg -n RecuperacionPasswordModule backend/src/app.module.ts`
+→ import + entrada en `imports: []`, único punto de registro (WU-1 a WU-10 lo dejaron
+intencionalmente afuera).
+
+**Deuda de Ayuda**: el artículo nuevo y completo sobre el flujo de self-service queda pendiente
+de la pausa del 2026-09-07 (sigue vigente); esta WU solo corrigió la sección que había quedado
+FALSA en `mi-cuenta-contrasena.md:31-35`.
+
+Status: 7/7 tareas completas. Ciclo `reseteo-contrasena-olvidada` COMPLETO — 11/11 work units.
+Ready for `sdd-verify`.
+
+## WU-12 — Corrección acotada tras `sdd-verify` (PASS WITH WARNINGS) — COMPLETO (12.1–12.10)
+
+Una única transacción de corrección sobre `verify-report.md` (revisión `wu11` @ `6c351ad`,
+`evidence_revision: sha256:695d1932...`), con las 5 `WARNING` (W1–W5) y las 5 `SUGGESTION`
+(S1–S5) del reporte. Rama `feat/reseteo-contrasena-olvidada-wu12`, apilada sobre `wu11`. Detalle
+de cada tarea (qué se tocó y por qué) en `tasks.md` WU-12; las correcciones de W5 sobre texto
+stale quedan anotadas inline con `[W5: corregido — ...]` en las secciones WU-4/WU-6/WU-8/WU-10/
+WU-11 de arriba.
+
+Deviations: ninguna en el contrato HTTP ni en el modelo de datos — WU-12 es una corrección
+acotada, no una work unit de diseño nueva.
+
+Evidence — prueba de mutación (working tree, revertida después de cada corrida, sin diff
+residual verificado con `git diff --stat`):
+
+| Hallazgo | Mutación | Resultado |
+|---|---|---|
+| 12.1 (W1) | Quitar `@MinLength(8)` de `ConfirmarResetDto.passwordNueva` | `expected 204 to be 400` — MATA |
+| 12.2 (W4) | `revocarVigentesDeUsuario` dentro de `MEMBRESIAS_N` | `expected "vi.fn()" to not be called` — MATA |
+| 12.3 (S1) | Quitar `isDeleted()` en `solicitar-reset-password.use-case.ts` | `expected false to be true` — MATA |
+| 12.3 (S1) | Quitar `isDeleted()` en `confirmar-reset-password.use-case.ts` | `expected false to be true` — MATA |
+
+Focused test (6 specs backend, ver lista en `tasks.md` WU-12): 50/50 passed. Runtime harness: el
+e2e de W1 (12.1) corre contra `soporte_master_test` real, mismo harness de WU-7/WU-8.
+
+Verification: backend — `pnpm lint` OK · `pnpm typecheck` OK · focused (50/50) · `pnpm test` →
+475 archivos / 5505 tests OK (`orden-de-arranque.spec.ts` lanza un fixture de proceso hijo excluido
+de la suite; su salida FAIL es el comportamiento esperado que verifica el spec padre). frontend — `pnpm lint` OK ·
+`pnpm type-check` OK · focused (33/33) · `pnpm test` → 205 archivos / 1560 tests OK.
+
+Rollback boundary: revert del commit de WU-12; WU-1 a WU-11 intactas — solo agrega tests, corrige
+texto/logs y ajusta el reintento de dos páginas del frontend ante errores de infraestructura.
+
+Status: 10/10 tareas (12.1–12.10) completas. Ciclo — 12/12 work units. Ready for `sdd-verify`.

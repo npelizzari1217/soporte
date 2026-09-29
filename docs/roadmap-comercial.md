@@ -445,9 +445,13 @@ como siempre.
 > de ese cierre de sesiones antes de confirmar. El alcance entregado es
 > exactamente el "alcance mínimo" que pedía esta sección.
 >
-> **El reseteo por olvido sigue sin construirse**, tal como se anticipó abajo: es
-> un problema distinto, necesita tokens de un solo uso con vencimiento, y hoy es
-> lo único que queda de esta carencia.
+> **Reseteo por olvido — Entregado** el 2026-09-28 (`sdd/reseteo-contrasena-olvidada`).
+> `POST /auth/forgot-password` y `POST /auth/reset-password` con anti-enumeración,
+> tokens de un solo uso de 60 min, confirmación por mail, revocación de sesiones y
+> rate limiting. El mail sale solo si la cuenta pertenece a un único cliente con correo
+> configurado; con 0 o 2+ clientes sigue el reseteo por administrador. Ciclo SDD
+> completo: 15/15 requisitos, 22/22 escenarios, 63/63 tareas, PASS WITH WARNINGS
+> (resuelto). Ver `openspec/changes/archive/2026-09-28-reseteo-contrasena-olvidada/`.
 
 ~~**Hoy ningún usuario puede cambiar su propia contraseña.** No hay pantalla ni
 endpoint: buscado en `backend/src` y `frontend/src` (`cambiar-password`,

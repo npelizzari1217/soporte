@@ -5,8 +5,20 @@ import { LoginForm } from "./LoginForm";
 
 // Spec: PR11 — LoginForm: react-hook-form + zod, submit válido llama onSubmit,
 // submit inválido bloquea el envío y muestra errores inline.
+// Spec: sdd/reseteo-contrasena-olvidada — Requirement "El frontend ofrece el
+// flujo completo de self-service", escenario "El login enlaza a la solicitud
+// de reset".
 
 describe("LoginForm", () => {
+  it("muestra un link '¿Olvidaste tu contraseña?' hacia /olvide-password", () => {
+    render(<LoginForm onSubmit={vi.fn()} isLoading={false} />);
+
+    expect(screen.getByRole("link", { name: /olvidaste tu contraseña/i })).toHaveAttribute(
+      "href",
+      "/olvide-password",
+    );
+  });
+
   it("valid email + password → calls onSubmit with the trimmed form values", async () => {
     const onSubmit = vi.fn();
     const user = userEvent.setup();

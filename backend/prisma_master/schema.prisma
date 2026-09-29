@@ -122,8 +122,9 @@ model Cliente {
   logoMimeType   String?   @map("logo_mime_type") @db.VarChar(50)
   logoUpdatedAt  DateTime? @map("logo_updated_at") @db.Timestamptz
 
-  membresias     Membresia[]
-  encuestaTokens EncuestaToken[]
+  membresias          Membresia[]
+  encuestaTokens      EncuestaToken[]
+  passwordResetTokens PasswordResetToken[]
 
   @@index([activo])
   @@map("clientes")
@@ -215,8 +216,9 @@ model Usuario {
   updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt    DateTime? @map("deleted_at") @db.Timestamptz
 
-  refreshTokens RefreshToken[]
-  membresias    Membresia[]
+  refreshTokens       RefreshToken[]
+  membresias          Membresia[]
+  passwordResetTokens PasswordResetToken[]
 
   @@index([activo]) // el índice real en DB es parcial: WHERE deleted_at IS NULL — ver migration SQL
   @@map("usuarios")
@@ -330,6 +332,37 @@ model EncuestaToken {
   /// un ticket por este par, antes de generar uno nuevo.
   @@index([clienteId, ticketId])
   @@map("encuesta_tokens")
+}
+
+// ─── PASSWORD_RESET_TOKENS (token opaco de reseteo de contraseña por olvido) ──
+//
+// sdd/reseteo-contrasena-olvidada, WU1. Hermana de `encuesta_tokens`: solo se
+// persiste el SHA-256 del token (`tokenHash`), nunca el crudo.
+//
+// A diferencia de `encuesta_tokens`, acá los dos extremos tienen FK real en
+// MASTER: `usuarioId` es el dueño (`ON DELETE CASCADE` — un token no tiene
+// valor sin su usuario) y `clienteId` es el tenant que emitió el token (la
+// única membresía activa al solicitar), que la confirmación reutiliza para
+// el mail de aviso. `expiresAt`: +60 min (ADR-3). `usedAt`/`revokedAt`: CAS
+// de uso único y revocación en bloque al emitir uno nuevo (ADR-5, Req 4).
+
+model PasswordResetToken {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  usuarioId String    @map("usuario_id") @db.Uuid
+  clienteId String    @map("cliente_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash") @db.Text
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz
+  usedAt    DateTime? @map("used_at") @db.Timestamptz
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  cliente Cliente @relation(fields: [clienteId], references: [id])
+
+  @@index([usuarioId])
+  @@map("password_reset_tokens")
 }
 
 // ─── ROLES (catálogo de roles del sistema) ────────────────────────────────────

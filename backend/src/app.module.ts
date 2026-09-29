@@ -17,6 +17,7 @@ import { SectoresModule } from './sectores/sectores.module';
 import { InsumosModule } from './insumos/insumos.module';
 import { CsatModule } from './csat/csat.module';
 import { PreventivoModule } from './preventivo/preventivo.module';
+import { RecuperacionPasswordModule } from './auth/recuperacion-password.module';
 import { TenantScopeMiddleware } from './shared/tenancy/tenant-scope.middleware';
 
 /**
@@ -63,6 +64,7 @@ import { TenantScopeMiddleware } from './shared/tenancy/tenant-scope.middleware'
     InsumosModule,
     CsatModule,
     PreventivoModule,
+    RecuperacionPasswordModule,
   ],
   controllers: [],
   providers: [

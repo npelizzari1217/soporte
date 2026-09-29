@@ -1,4 +1,5 @@
 import { EmailMessage } from '../../../shared/domain/ports/i-email-sender';
+import { escaparHtml } from '../../../shared/domain/escapar-html';
 
 /** Datos comunes a toda plantilla: identifican el ticket + el link de la app. */
 interface DatosTicketBase {
@@ -16,32 +17,7 @@ function linkTicket(datos: DatosTicketBase): string {
   return `${datos.appBaseUrl}/tickets/${datos.ticketId}`;
 }
 
-/**
- * Escapa un valor para interpolarlo dentro del `html` de una plantilla.
- *
- * El `titulo` de un ticket lo escribe un usuario final: interpolado crudo, un
- * `<script>` o un `&` suelto llegan al cliente de correo del destinatario.
- *
- * Se aplica a TODA interpolación del `html`, no solo a `titulo`. La alternativa
- * —escapar únicamente lo que hoy sabemos que viene del usuario— obliga a que
- * quien agregue un campo mañana recuerde clasificarlo, y esa es exactamente la
- * clase de decisión que se olvida. Cubre también el contexto de atributo:
- * `href="${link}"` se rompe con una comilla adentro.
- *
- * NO se usa en el `text`: ahí el escapado sería el bug — el usuario vería
- * `&lt;` donde escribió `<`.
- *
- * @param valor Texto a interpolar en el `html`.
- * @returns El mismo texto con `& < > " '` convertidos a entidades.
- */
-function escaparHtml(valor: string): string {
-  return valor
-    .replace(/&/g, '&amp;') // primero, o re-escaparía las entidades de abajo
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
+// escaparHtml vive en shared/domain/escapar-html.ts (WU-3, reseteo-contrasena-olvidada).
 
 /**
  * templateCambioEstado — plantilla de `ticket.estado_cambiado` (N3).

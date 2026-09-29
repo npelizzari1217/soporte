@@ -385,6 +385,11 @@ import { RolesController } from './interface/controllers/roles.controller';
     MEMBRESIA_REPOSITORY,
     ROLE_REPOSITORY,
     HASH_PROVIDER,
+    // REFRESH_TOKEN_REPOSITORY: consumido por ConfirmarResetPasswordUseCase
+    // (RecuperacionPasswordModule, sdd/reseteo-contrasena-olvidada WU-6) para
+    // revocar sesiones tras un reset exitoso — mismo criterio que los
+    // tokens de arriba.
+    REFRESH_TOKEN_REPOSITORY,
   ],
 })
 export class AuthModule {}

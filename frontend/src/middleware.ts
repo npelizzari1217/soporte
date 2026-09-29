@@ -22,7 +22,8 @@ import { verifyAccessToken } from "@/shared/auth/verify";
 import { COOKIE_AT, COOKIE_RT, cookieName } from "@/shared/auth/cookies";
 
 /**
- * Prefijos de rutas públicas, sin sesión (match por prefijo, no exacto).
+ * Rutas públicas, sin sesión. Exactas salvo que terminen en `/`: esas son
+ * prefijo (ver `esRutaPublica`).
  *
  * ADR-C7 (sdd/csat/design): el route group `(publico)` de Next es
  * TRANSPARENTE a la URL — no alcanza por sí solo para dejar pasar una ruta.
@@ -32,10 +33,13 @@ import { COOKIE_AT, COOKIE_RT, cookieName } from "@/shared/auth/cookies";
  * propósito: una allowlist ancha (p. ej. `/`) dejaría pasar rutas protegidas
  * reales como `/tickets`.
  */
-const RUTAS_PUBLICAS = ["/encuesta/"];
+const RUTAS_PUBLICAS = ["/encuesta/", "/restablecer-password", "/olvide-password"];
 
+/** Una entrada que termina en `/` es un prefijo; si no, la ruta es exacta. */
 function esRutaPublica(pathname: string): boolean {
-  return RUTAS_PUBLICAS.some((prefijo) => pathname.startsWith(prefijo));
+  return RUTAS_PUBLICAS.some((ruta) =>
+    ruta.endsWith("/") ? pathname.startsWith(ruta) : pathname === ruta,
+  );
 }
 
 export default async function middleware(request: NextRequest): Promise<NextResponse> {
