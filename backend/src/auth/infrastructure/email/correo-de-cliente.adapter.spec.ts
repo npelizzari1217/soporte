@@ -32,11 +32,11 @@ function makeCollaborators() {
   const tenantContext = new TenantContext();
   const emailSender = { send: vi.fn().mockResolvedValue(undefined) };
   const adapter = new CorreoDeClienteAdapter(
-    clienteRepo as never,
-    emailConfigRepo as never,
-    prismaService as never,
+    clienteRepo,
+    emailConfigRepo,
+    prismaService,
     tenantContext,
-    emailSender as never,
+    emailSender,
   );
   return { adapter, clienteRepo, emailConfigRepo, prismaService, tenantContext, emailSender };
 }

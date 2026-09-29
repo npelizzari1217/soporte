@@ -15,10 +15,7 @@ describe('CrearFeriadoClienteUseCase', () => {
 
   it('crea el feriado cuando la fecha es válida y no es global', async () => {
     const { feriadoRepo, feriadosGlobalesChecker } = makeDeps(false);
-    const useCase = new CrearFeriadoClienteUseCase(
-      feriadoRepo as never,
-      feriadosGlobalesChecker as never,
-    );
+    const useCase = new CrearFeriadoClienteUseCase(feriadoRepo, feriadosGlobalesChecker);
 
     const result = await useCase.execute({ fecha: '2026-11-20', descripcion: 'Feriado propio' });
 
@@ -31,10 +28,7 @@ describe('CrearFeriadoClienteUseCase', () => {
 
   it('falla con FechaCalendarioInvalidaError sin consultar al checker ni al repositorio (2026-02-30 no existe)', async () => {
     const { feriadoRepo, feriadosGlobalesChecker } = makeDeps();
-    const useCase = new CrearFeriadoClienteUseCase(
-      feriadoRepo as never,
-      feriadosGlobalesChecker as never,
-    );
+    const useCase = new CrearFeriadoClienteUseCase(feriadoRepo, feriadosGlobalesChecker);
 
     const result = await useCase.execute({ fecha: '2026-02-30', descripcion: 'Inválida' });
 
@@ -46,10 +40,7 @@ describe('CrearFeriadoClienteUseCase', () => {
 
   it('falla con FeriadoFechaEsGlobalError cuando la fecha ya es un feriado global, sin llamar al repositorio (D4)', async () => {
     const { feriadoRepo, feriadosGlobalesChecker } = makeDeps(true);
-    const useCase = new CrearFeriadoClienteUseCase(
-      feriadoRepo as never,
-      feriadosGlobalesChecker as never,
-    );
+    const useCase = new CrearFeriadoClienteUseCase(feriadoRepo, feriadosGlobalesChecker);
 
     const result = await useCase.execute({ fecha: '2026-12-25', descripcion: 'Navidad propia' });
 
@@ -62,10 +53,7 @@ describe('CrearFeriadoClienteUseCase', () => {
   it('mapea P2002 a FeriadoFechaDuplicadaError (duplicado dentro del propio listado de cliente)', async () => {
     const feriadoRepo = { crear: vi.fn().mockRejectedValue({ code: 'P2002' }) };
     const feriadosGlobalesChecker = { esGlobal: vi.fn().mockResolvedValue(false) };
-    const useCase = new CrearFeriadoClienteUseCase(
-      feriadoRepo as never,
-      feriadosGlobalesChecker as never,
-    );
+    const useCase = new CrearFeriadoClienteUseCase(feriadoRepo, feriadosGlobalesChecker);
 
     const result = await useCase.execute({ fecha: '2026-11-20', descripcion: 'Feriado propio' });
 
@@ -78,10 +66,7 @@ describe('CrearFeriadoClienteUseCase', () => {
     const otroError = new Error('conexión perdida');
     const feriadoRepo = { crear: vi.fn().mockRejectedValue(otroError) };
     const feriadosGlobalesChecker = { esGlobal: vi.fn().mockResolvedValue(false) };
-    const useCase = new CrearFeriadoClienteUseCase(
-      feriadoRepo as never,
-      feriadosGlobalesChecker as never,
-    );
+    const useCase = new CrearFeriadoClienteUseCase(feriadoRepo, feriadosGlobalesChecker);
 
     await expect(
       useCase.execute({ fecha: '2026-11-20', descripcion: 'Feriado propio' }),

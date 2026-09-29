@@ -14,7 +14,7 @@ describe('EliminarFeriadoClienteUseCase', () => {
       buscarPorId: vi.fn().mockResolvedValue(feriado),
       eliminar: vi.fn().mockResolvedValue(undefined),
     };
-    const useCase = new EliminarFeriadoClienteUseCase(feriadoRepo as never);
+    const useCase = new EliminarFeriadoClienteUseCase(feriadoRepo);
 
     const result = await useCase.execute({ feriadoId: 'feriado-cliente-1' });
 
@@ -27,7 +27,7 @@ describe('EliminarFeriadoClienteUseCase', () => {
       buscarPorId: vi.fn().mockResolvedValue(null),
       eliminar: vi.fn(),
     };
-    const useCase = new EliminarFeriadoClienteUseCase(feriadoRepo as never);
+    const useCase = new EliminarFeriadoClienteUseCase(feriadoRepo);
 
     const result = await useCase.execute({ feriadoId: 'inexistente' });
 
@@ -45,7 +45,7 @@ describe('EliminarFeriadoClienteUseCase', () => {
       buscarPorId: vi.fn().mockResolvedValue(null),
       eliminar: vi.fn(),
     };
-    const useCase = new EliminarFeriadoClienteUseCase(feriadoRepo as never);
+    const useCase = new EliminarFeriadoClienteUseCase(feriadoRepo);
 
     const result = await useCase.execute({ feriadoId: 'id-de-otro-tenant' });
 

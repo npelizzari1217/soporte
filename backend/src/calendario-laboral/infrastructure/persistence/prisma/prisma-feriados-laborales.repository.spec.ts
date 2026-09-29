@@ -12,17 +12,23 @@ import {
   FeriadosSinTenantContextError,
   PrismaFeriadosLaboralesRepository,
 } from './prisma-feriados-laborales.repository';
+import { PrismaService } from '../../../../shared/infrastructure/persistence/prisma.service';
+import { TenantContext, TenantContextData } from '../../../../shared/tenancy/tenant-context';
 
 function filaFeriado(fecha: string) {
   return { fecha: new Date(`${fecha}T00:00:00.000Z`) };
 }
 
-function makePrismaService(findMany: ReturnType<typeof vi.fn>) {
-  return { getMasterClient: () => ({ feriado: { findMany } }) };
+// PrismaService es una clase concreta con estado privado (pool de conexión
+// real) — no hay forma de satisfacerla estructuralmente con un fake. El
+// único método que este repositorio usa es `getMasterClient()`.
+function makePrismaService(findMany: ReturnType<typeof vi.fn>): PrismaService {
+  return { getMasterClient: () => ({ feriado: { findMany } }) } as unknown as PrismaService;
 }
 
-function makeTenantContext(ctx: { prismaClient: unknown } | undefined) {
-  return { get: vi.fn().mockReturnValue(ctx) };
+/** `TenantContextData` mínimo para bindear un scope de test — `dbName`/`clienteId` no se ejercitan acá. */
+function makeCtx(prismaClient: unknown): TenantContextData {
+  return { prismaClient, dbName: 'tenant-test', clienteId: 'cliente-test' };
 }
 
 describe('PrismaFeriadosLaboralesRepository (WU5b, sdd/feriados-configurables)', () => {
@@ -30,11 +36,9 @@ describe('PrismaFeriadosLaboralesRepository (WU5b, sdd/feriados-configurables)',
     it('lanza FeriadosSinTenantContextError y nunca consulta Prisma (fail-closed, D3)', async () => {
       const findMany = vi.fn();
       const prismaService = makePrismaService(findMany);
-      const tenantContext = makeTenantContext(undefined);
-      const repo = new PrismaFeriadosLaboralesRepository(
-        prismaService as never,
-        tenantContext as never,
-      );
+      // TenantContext real, sin `run()` — `.get()` devuelve undefined fuera de scope.
+      const tenantContext = new TenantContext();
+      const repo = new PrismaFeriadosLaboralesRepository(prismaService, tenantContext);
 
       await expect(repo.obtener()).rejects.toThrow(FeriadosSinTenantContextError);
       expect(findMany).not.toHaveBeenCalled();
@@ -46,15 +50,13 @@ describe('PrismaFeriadosLaboralesRepository (WU5b, sdd/feriados-configurables)',
       const findManyGlobal = vi.fn().mockResolvedValue([filaFeriado('2026-01-01')]);
       const findManyCliente = vi.fn().mockResolvedValue([filaFeriado('2026-05-01')]);
       const prismaService = makePrismaService(findManyGlobal);
-      const tenantContext = makeTenantContext({
-        prismaClient: { feriadoCliente: { findMany: findManyCliente } },
-      });
-      const repo = new PrismaFeriadosLaboralesRepository(
-        prismaService as never,
-        tenantContext as never,
-      );
+      const tenantContext = new TenantContext();
+      const repo = new PrismaFeriadosLaboralesRepository(prismaService, tenantContext);
 
-      const feriados = await repo.obtener();
+      const feriados = await tenantContext.run(
+        makeCtx({ feriadoCliente: { findMany: findManyCliente } }),
+        () => repo.obtener(),
+      );
 
       expect(feriados.has('2026-01-01')).toBe(true);
       expect(feriados.has('2026-05-01')).toBe(true);
@@ -65,15 +67,13 @@ describe('PrismaFeriadosLaboralesRepository (WU5b, sdd/feriados-configurables)',
       const findManyGlobal = vi.fn().mockResolvedValue([filaFeriado('2026-12-25')]);
       const findManyCliente = vi.fn().mockResolvedValue([filaFeriado('2026-12-25')]);
       const prismaService = makePrismaService(findManyGlobal);
-      const tenantContext = makeTenantContext({
-        prismaClient: { feriadoCliente: { findMany: findManyCliente } },
-      });
-      const repo = new PrismaFeriadosLaboralesRepository(
-        prismaService as never,
-        tenantContext as never,
-      );
+      const tenantContext = new TenantContext();
+      const repo = new PrismaFeriadosLaboralesRepository(prismaService, tenantContext);
 
-      const feriados = await repo.obtener();
+      const feriados = await tenantContext.run(
+        makeCtx({ feriadoCliente: { findMany: findManyCliente } }),
+        () => repo.obtener(),
+      );
 
       expect(feriados.size).toBe(1);
       expect(feriados.has('2026-12-25')).toBe(true);
@@ -83,15 +83,13 @@ describe('PrismaFeriadosLaboralesRepository (WU5b, sdd/feriados-configurables)',
       const findManyGlobal = vi.fn().mockResolvedValue([filaFeriado('2026-01-01')]);
       const findManyCliente = vi.fn().mockResolvedValue([]);
       const prismaService = makePrismaService(findManyGlobal);
-      const tenantContext = makeTenantContext({
-        prismaClient: { feriadoCliente: { findMany: findManyCliente } },
-      });
-      const repo = new PrismaFeriadosLaboralesRepository(
-        prismaService as never,
-        tenantContext as never,
-      );
+      const tenantContext = new TenantContext();
+      const repo = new PrismaFeriadosLaboralesRepository(prismaService, tenantContext);
 
-      const feriados = await repo.obtener();
+      const feriados = await tenantContext.run(
+        makeCtx({ feriadoCliente: { findMany: findManyCliente } }),
+        () => repo.obtener(),
+      );
 
       expect(Array.from(feriados)).toEqual(['2026-01-01']);
     });
@@ -102,15 +100,13 @@ describe('PrismaFeriadosLaboralesRepository (WU5b, sdd/feriados-configurables)',
       const findManyGlobal = vi.fn().mockResolvedValue([filaFeriado('2026-03-10')]);
       const findManyCliente = vi.fn().mockResolvedValue([filaFeriado('2026-08-17')]);
       const prismaService = makePrismaService(findManyGlobal);
-      const tenantContext = makeTenantContext({
-        prismaClient: { feriadoCliente: { findMany: findManyCliente } },
-      });
-      const repo = new PrismaFeriadosLaboralesRepository(
-        prismaService as never,
-        tenantContext as never,
-      );
+      const tenantContext = new TenantContext();
+      const repo = new PrismaFeriadosLaboralesRepository(prismaService, tenantContext);
 
-      const feriados = await repo.obtener();
+      const feriados = await tenantContext.run(
+        makeCtx({ feriadoCliente: { findMany: findManyCliente } }),
+        () => repo.obtener(),
+      );
 
       expect(feriados.has('2026-03-10')).toBe(true);
       expect(feriados.has('2026-03-09')).toBe(false);
