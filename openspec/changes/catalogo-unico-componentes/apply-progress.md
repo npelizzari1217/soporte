@@ -171,3 +171,20 @@ Estado: **completo** (tareas 11a.1 a 11a.4 marcadas en `tasks.md`).
 Borrado de `frontend/src/features/tipos-componente/` en tres commits (206, 211 y 286 líneas) para
 respetar el presupuesto de 400: cada paso deja type-check y lint en verde. `rg` no encuentra
 referencias vivas. Suite frontend final: 210 archivos, 1.576 tests.
+
+## WU-10a — Backend: checker MASTER y `GET /equipos/tipos-componente` (rama `feat/catalogo-unico-componentes-wu10a`, base wu11b)
+
+Estado: **completo** (tareas 10a.1 a 10a.5 marcadas en `tasks.md`).
+
+| Tarea | Resultado |
+|---|---|
+| 10a.1 | Retirado `GET /equipos/tipos-componente` del controller; fuera `TipoComponenteResponseDto` y `toTipoComponenteResponseDto` de `equipos.dto.ts` |
+| 10a.2 | Borrados `listar-tipos-componente.use-case.ts` y su spec; provider fuera de `equipos.module.ts` |
+| 10a.3 | Borrados el puerto `i-tipo-componente-master.checker.ts`, `tipo-componente-master.checker.ts` y su spec; provider y token fuera del módulo |
+| 10a.4 | Specs del controller ajustados; e2e de equipos con el caso `GET /equipos/tipos-componente` → 404 |
+| 10a.5 | lint 0 errores; typecheck limpio; `src/equipos` 26 archivos / 316 tests; `pnpm test` 494 archivos / 5694 tests |
+
+Desviación: con la ruta borrada, `GET /equipos/tipos-componente` cae en `GET /equipos/:id` y la columna
+`uuid` de Postgres respondía 500 (no 404). `obtener` ahora devuelve 404 (`EquipoNoEncontradoError`) para un
+id que no es UUID, sin consultar. Los tests del controller que usaban ids no UUID pasaron a UUID real.
+`src/tipos-componente/` (WU-10b) y el modelo Prisma MASTER (WU-12) quedan intactos.

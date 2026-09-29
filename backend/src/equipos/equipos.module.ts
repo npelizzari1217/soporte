@@ -57,8 +57,6 @@ import {
   IComponenteEquipoRepository,
 } from './domain/ports/i-componente-equipo.repository';
 import { PrismaComponenteEquipoRepository } from './infrastructure/persistence/prisma/prisma-componente-equipo.repository';
-import { TIPO_COMPONENTE_MASTER_CHECKER } from './domain/ports/i-tipo-componente-master.checker';
-import { TipoComponenteMasterChecker } from './infrastructure/persistence/prisma/tipo-componente-master.checker';
 import {
   TICKET_SOPORTE_REPOSITORY,
   ITicketSoporteRepository,
@@ -122,10 +120,9 @@ import { SoporteController } from './interface/controllers/soporte.controller';
  * - `TENANT_TX_RUNNER` se inyecta desde `SharedModule` (`@Global`).
  * - `EquiposController` expone el inventario + componentes; `SoporteController` expone la creación de tickets de soporte y
  *   el registro de solución.
- * - sdd/catalogo-unico-componentes: `GET /equipos/tipos-componente` se retiró;
- *   el tipo de un componente se resuelve solo por el catálogo del tenant
- *   (`INSUMO_REPOSITORY`). El checker MASTER ya no tiene consumidores y se
- *   retira en el paso siguiente del mismo ciclo.
+ * - sdd/catalogo-unico-componentes: el checker MASTER de tipos de componente y
+ *   `GET /equipos/tipos-componente` se retiraron; el tipo de un componente se
+ *   resuelve solo por el catálogo del tenant (`INSUMO_REPOSITORY`).
  *
  * FITNESS RULE: PrismaService y @prisma/client solo pueden importarse desde
  * infrastructure/ (ver backend/eslint.config.js).
@@ -145,7 +142,6 @@ import { SoporteController } from './interface/controllers/soporte.controller';
   providers: [
     { provide: EQUIPO_INFORMATICO_REPOSITORY, useClass: PrismaEquipoInformaticoRepository },
     { provide: COMPONENTE_EQUIPO_REPOSITORY, useClass: PrismaComponenteEquipoRepository },
-    { provide: TIPO_COMPONENTE_MASTER_CHECKER, useClass: TipoComponenteMasterChecker },
     { provide: TICKET_SOPORTE_REPOSITORY, useClass: PrismaTicketSoporteRepository },
 
     {

@@ -343,13 +343,16 @@ Frontend: type-check y lint en verde en cada paso; suite final 1.576/1.576.
 **Branch**: `feat/catalogo-unico-componentes-wu10a` · **Base**: wu11b · **Depende de WU-3 y WU-5**
 (consumidores del checker) y de WU-8, WU-9, WU-11 (consumidores frontend del endpoint).
 
-- [ ] 10a.1 Borrar **`GET /equipos/tipos-componente`** del controller de equipos y su DTO de respuesta. (Req: El catálogo MASTER de tipos de componente no existe; escenario Endpoints retirados)
-- [ ] 10a.2 Borrar `listar-tipos-componente.use-case.ts` y su `.spec.ts`; quitarlo de `equipos.module.ts`.
-- [ ] 10a.3 Borrar el checker `ITipoComponenteMasterChecker`, su implementación y el puerto MASTER, y sus providers en `equipos.module.ts`.
-- [ ] 10a.4 Actualizar specs del controller y del módulo. Agregar al e2e de equipos: `GET /equipos/tipos-componente` → 404.
-- [ ] 10a.5 Quality gates: `cd backend && pnpm lint && pnpm typecheck && pnpm test`.
+- [x] 10a.1 Borrar **`GET /equipos/tipos-componente`** del controller de equipos y su DTO de respuesta. (Req: El catálogo MASTER de tipos de componente no existe; escenario Endpoints retirados)
+- [x] 10a.2 Borrar `listar-tipos-componente.use-case.ts` y su `.spec.ts`; quitarlo de `equipos.module.ts`.
+- [x] 10a.3 Borrar el checker `ITipoComponenteMasterChecker`, su implementación y el puerto MASTER, y sus providers en `equipos.module.ts`.
+- [x] 10a.4 Actualizar specs del controller y del módulo. Agregar al e2e de equipos: `GET /equipos/tipos-componente` → 404.
+- [x] 10a.5 Quality gates: `cd backend && pnpm lint && pnpm typecheck && pnpm test`.
 
 **PR boundary**: ~150 líneas, base wu11b.
+**Real**: 465 líneas, partidas en costura limpia. **WU-10a** (endpoint, DTO y caso de uso, 214):
+incluye un chequeo de UUID en `GET /equipos/:id` para que la ruta retirada responda 404 y no 500.
+**WU-10a2** (puerto y checker MASTER con su spec, 261).
 
 ## WU-10b — Backend: módulo `tipos-componente`
 
