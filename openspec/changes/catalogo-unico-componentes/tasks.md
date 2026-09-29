@@ -136,15 +136,18 @@ tracker ← wu02 ← wu03 ← wu04 ← wu05 ← wu06 ← wu07 ← wu08 ← wu09 
 **Branch**: `feat/catalogo-unico-componentes-wu01` · **Base**: `main` · **PR**: a `main`,
 fuera de la cadena. Se despliega en un deploy ordinario **antes** de integrar el tracker.
 
-- [ ] 1.1 Crear `backend/scripts/limpiar-componentes-sin-insumo.mjs` (ESM, `pg` directo, sin leer `dist/`). Recorre el mismo conjunto de tenants que `migrate-tenants.js:62` con la misma derivación de URL (`tenantUrl`). Modo reporte (sin flags): lista por tenant cada fila con `insumo_id NULL` (id, equipo, `tipo_componente_codigo`, "viva" o "borrada lógicamente el …"), totales vivas/borradas y **clientes fuera del recorrido (inactivos o borrados)**; exit 0 sin filas, 2 con filas. (Req: La migración del tenant es fail-closed)
-- [ ] 1.2 Modo `--apply --esperadas=N`: recuenta; si el total ≠ N aborta **sin borrar nada**; si coincide, por tenant `DELETE … WHERE insumo_id IS NULL RETURNING id` en una transacción; si los ids difieren de los inventariados, `ROLLBACK` y aborta. Exit 0 ok, 1 error o desacuerdo. `--apply` sin `--esperadas` no hace nada y falla. (Req: La migración del tenant es fail-closed)
-- [ ] 1.3 Escribir `backend/scripts/limpiar-componentes-sin-insumo.spec.ts` (unit): parseo de flags; `--apply` sin `--esperadas` o con un número distinto no borra.
-- [ ] 1.4 Escribir `backend/scripts/limpiar-componentes-sin-insumo.integration.spec.ts` en base tenant **efímera** reproducida hasta `20260928150000` (molde `backfill-correo-clientes.integration.spec.ts`): fixtures de fila viva, borrada y vinculada; el reporte cuenta 2; `--apply` con número incorrecto no borra; con el correcto borra solo las 2 con `insumo_id NULL` y deja la vinculada.
-- [ ] 1.5 Agregar a `DEPLOY-VPS-runbook.md` la sección "Precondición: componentes sin repuesto": cómo correr el reporte, qué significa exit 2, cómo aplicar con `--esperadas`, y la **nota de que los clientes inactivos o borrados quedan fuera del recorrido de `migrate-tenants`** (el reporte los lista; la limpieza y la migración no los tocan, y hay que revisarlos a mano antes de reactivarlos).
-- [ ] 1.6 Quality gates (backend): `pnpm lint` · `pnpm typecheck` · `pnpm vitest run scripts/limpiar-componentes-sin-insumo.spec.ts scripts/limpiar-componentes-sin-insumo.integration.spec.ts`.
+- [x] 1.1 Crear `backend/scripts/limpiar-componentes-sin-insumo.mjs` (ESM, `pg` directo, sin leer `dist/`). Recorre el mismo conjunto de tenants que `migrate-tenants.js:62` con la misma derivación de URL (`tenantUrl`). Modo reporte (sin flags): lista por tenant cada fila con `insumo_id NULL` (id, equipo, `tipo_componente_codigo`, "viva" o "borrada lógicamente el …"), totales vivas/borradas y **clientes fuera del recorrido (inactivos o borrados)**; exit 0 sin filas, 2 con filas. (Req: La migración del tenant es fail-closed)
+- [x] 1.2 Modo `--apply --esperadas=N`: recuenta; si el total ≠ N aborta **sin borrar nada**; si coincide, por tenant `DELETE … WHERE insumo_id IS NULL RETURNING id` en una transacción; si los ids difieren de los inventariados, `ROLLBACK` y aborta. Exit 0 ok, 1 error o desacuerdo. `--apply` sin `--esperadas` no hace nada y falla. (Req: La migración del tenant es fail-closed)
+- [x] 1.3 Escribir `backend/scripts/limpiar-componentes-sin-insumo.spec.ts` (unit): parseo de flags; `--apply` sin `--esperadas` o con un número distinto no borra.
+- [x] 1.4 Escribir `backend/scripts/limpiar-componentes-sin-insumo.integration.spec.ts` en base tenant **efímera** reproducida hasta `20260928150000` (molde `backfill-correo-clientes.integration.spec.ts`): fixtures de fila viva, borrada y vinculada; el reporte cuenta 2; `--apply` con número incorrecto no borra; con el correcto borra solo las 2 con `insumo_id NULL` y deja la vinculada.
+- [x] 1.5 Agregar a `DEPLOY-VPS-runbook.md` la sección "Precondición: componentes sin repuesto": cómo correr el reporte, qué significa exit 2, cómo aplicar con `--esperadas`, y la **nota de que los clientes inactivos o borrados quedan fuera del recorrido de `migrate-tenants`** (el reporte los lista; la limpieza y la migración no los tocan, y hay que revisarlos a mano antes de reactivarlos).
+- [x] 1.6 Quality gates (backend): `pnpm lint` · `pnpm typecheck` · `pnpm vitest run scripts/limpiar-componentes-sin-insumo.spec.ts scripts/limpiar-componentes-sin-insumo.integration.spec.ts`.
 
 **Verificación**: `cd backend && pnpm lint && pnpm typecheck && pnpm test`
 **PR boundary**: ~330 líneas, a `main`. Revert limpio: el script es aditivo y sin consumidores.
+**Real**: 709 líneas (script 301, specs 334, runbook 45, artefactos 29). Se entrega con
+`size:exception`: partir separaría el script de los tests que prueban su borrado
+transaccional, que es el caso de excepción de la política del dueño.
 Commit `feat(scripts): limpiar componentes sin insumo con reporte y apply verificado`.
 
 ## WU-2 — demo-seed con repuestos (camino vinculado de hoy)
