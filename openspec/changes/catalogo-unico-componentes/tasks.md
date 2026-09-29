@@ -383,18 +383,19 @@ listo para integrarse a `main`.
 
 ## Tareas operativas del deploy (ejecuta el dueño; fuera de `sdd-apply`)
 
-Runbook: `DEPLOY-VPS-runbook.md`. Estas casillas no las marca `sdd-apply`; se cierran en la
-ventana de despliegue.
+Runbook: `DEPLOY-VPS-runbook.md`. Es una secuencia operativa, no una lista de casillas: como
+casillas bloqueaban `sdd-verify` y OP.3 pide integrar después del verify (dependencia circular,
+corregida por el orquestador el 2026-09-29). WU-1 ya está en `main` (`ca6b1d5`); falta su deploy.
 
-- [ ] OP.1 Mergear WU-1 a `main` y hacer un deploy ordinario (el script queda en disco del VPS).
-- [ ] OP.2 En producción, correr `node scripts/limpiar-componentes-sin-insumo.mjs` en **modo reporte**. Confirmar 12 filas (9 vivas y 3 borradas lógicamente: Cic Lanus 8+3, Santa Cruz 1) y revisar la lista de clientes fuera del recorrido.
-- [ ] OP.3 Integrar el tracker `feat/catalogo-unico-componentes` a `main` (una sola vez) tras el verify y el archive del ciclo.
-- [ ] OP.4 Ventana: `predeploy-dump.ps1 -DryRun`, luego la corrida real (servicios detenidos).
-- [ ] OP.5 Correr de nuevo el reporte; esperar N = 12.
-- [ ] OP.6 **Tras confirmación del dueño**: `node scripts/limpiar-componentes-sin-insumo.mjs --apply --esperadas=12`.
-- [ ] OP.7 Correr el reporte otra vez: exit 0.
-- [ ] OP.8 Correr `deploy.ps1` (pull → precondición → build → `migrate:master` DROP → `migrate:tenants` → arranque).
-- [ ] OP.9 Verificar: `\d componentes_equipo` en un tenant (NOT NULL, sin `tipo_componente_codigo`, sin índice, FK presente) y `tipos_componente` ausente en master.
+- OP.1. Mergear WU-1 a `main` y hacer un deploy ordinario (el script queda en disco del VPS).
+- OP.2. En producción, correr `node scripts/limpiar-componentes-sin-insumo.mjs` en **modo reporte**. Confirmar 12 filas (9 vivas y 3 borradas lógicamente: Cic Lanus 8+3, Santa Cruz 1) y revisar la lista de clientes fuera del recorrido.
+- OP.3. Integrar el tracker `feat/catalogo-unico-componentes` a `main` (una sola vez) tras el verify y el archive del ciclo.
+- OP.4. Ventana: `predeploy-dump.ps1 -DryRun`, luego la corrida real (servicios detenidos).
+- OP.5. Correr de nuevo el reporte; esperar N = 12.
+- OP.6. **Tras confirmación del dueño**: `node scripts/limpiar-componentes-sin-insumo.mjs --apply --esperadas=12`.
+- OP.7. Correr el reporte otra vez: exit 0.
+- OP.8. Correr `deploy.ps1` (pull → precondición → build → `migrate:master` DROP → `migrate:tenants` → arranque).
+- OP.9. Verificar: `\d componentes_equipo` en un tenant (NOT NULL, sin `tipo_componente_codigo`, sin índice, FK presente) y `tipos_componente` ausente en master.
 
 ## Rollback
 
