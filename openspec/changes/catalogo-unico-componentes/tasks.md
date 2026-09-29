@@ -171,13 +171,16 @@ esquema. La entidad y el mapper **siguen escribiendo** `tipoComponenteCodigo`; e
 de dónde sale el valor: siempre `familia.codigo`. No se toca `componente-equipo.entity.ts` ni el
 mapper (eso es WU-6).
 
-- [ ] 3.1 Reducir `agregar-componente.use-case.ts` a un camino: `insumoId` obligatorio; conservar los guards de insumo y familia con sus errores propios; derivar el tipo de `insumo.familia` y pasar `familia.codigo` a `tipoComponenteCodigo` de la entidad. Quitar la dependencia de `ITipoComponenteMasterChecker`. (Req: El alta exige un insumo repuesto válido; El tipo se deriva de la familia)
-- [ ] 3.2 Cambiar `AgregarComponenteDto` de aplicación a `{ equipoId, insumoId, descripcion?, numeroSerie?, capacidad? }` (sin `tipoComponenteCodigo`). Si el tipado obliga a tocar el controller para compilar, el cambio **mínimo** viaja en este WU; el contrato HTTP completo es WU-4.
-- [ ] 3.3 `instalar-componente-desde-deposito.use-case.ts`: solo JSDoc (ya no hay "chequeo MASTER"); la lógica no cambia.
-- [ ] 3.4 Reescribir `agregar-componente.use-case.spec.ts`: alta sin `insumoId` falla; cada guard rechaza con su error propio; alta válida con tipo = `familia.codigo` (verificar que **la entidad recibe ese valor**); familia propia del tenant sin catálogo global se vincula; ausencia de dependencia MASTER. Ajustar el spec de `instalar-...` si el DTO cambia. (Escenarios: Alta sin insumoId; Cada guard rechaza; Alta válida; Familia propia del tenant)
-- [ ] 3.5 Quality gates: `cd backend && pnpm lint && pnpm typecheck && pnpm vitest run src/equipos/application`. La suite completa `pnpm test` debe quedar verde (consumidores del checker y del DTO viejo se ajustan aquí o siguen intactos).
+- [x] 3.1 Reducir `agregar-componente.use-case.ts` a un camino: `insumoId` obligatorio; conservar los guards de insumo y familia con sus errores propios; derivar el tipo de `insumo.familia` y pasar `familia.codigo` a `tipoComponenteCodigo` de la entidad. Quitar la dependencia de `ITipoComponenteMasterChecker`. (Req: El alta exige un insumo repuesto válido; El tipo se deriva de la familia)
+- [x] 3.2 Cambiar `AgregarComponenteDto` de aplicación a `{ equipoId, insumoId, descripcion?, numeroSerie?, capacidad? }` (sin `tipoComponenteCodigo`). Si el tipado obliga a tocar el controller para compilar, el cambio **mínimo** viaja en este WU; el contrato HTTP completo es WU-4.
+- [x] 3.3 `instalar-componente-desde-deposito.use-case.ts`: solo JSDoc (ya no hay "chequeo MASTER"); la lógica no cambia.
+- [x] 3.4 Reescribir `agregar-componente.use-case.spec.ts`: alta sin `insumoId` falla; cada guard rechaza con su error propio; alta válida con tipo = `familia.codigo` (verificar que **la entidad recibe ese valor**); familia propia del tenant sin catálogo global se vincula; ausencia de dependencia MASTER. Ajustar el spec de `instalar-...` si el DTO cambia. (Escenarios: Alta sin insumoId; Cada guard rechaza; Alta válida; Familia propia del tenant)
+- [x] 3.5 Quality gates: `cd backend && pnpm lint && pnpm typecheck && pnpm vitest run src/equipos/application`. La suite completa `pnpm test` debe quedar verde (consumidores del checker y del DTO viejo se ajustan aquí o siguen intactos).
 
 **PR boundary**: ~380 líneas, base wu02. Si crece, dividir por caso de uso (ver forecast).
+**Real**: 794 líneas (190 +, 604 −; el spec reescrito de `agregar` suma 523). Se entrega con
+`size:exception`: sin costura limpia, porque caso de uso, spec, módulo, controller y spec de
+concurrencia tienen que moverse juntos para compilar y quedar en verde.
 
 ## WU-4 — Alta, borde HTTP: `descontarStock`, retiro de la ruta, e2e
 

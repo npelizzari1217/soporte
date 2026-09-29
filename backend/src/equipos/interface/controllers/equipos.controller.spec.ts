@@ -264,31 +264,23 @@ describe('EquiposController (T12.6)', () => {
     });
 
     /**
-     * Gemelo invertido: sin `insumoId` en el body, el caso de uso lo recibe
-     * en `null` —no `undefined`— y el response lo devuelve en `null`. Sin
-     * este caso, el `?? null` del controller podría desaparecer sin que nada
-     * se ponga rojo.
+     * Gemelo invertido: sin `insumoId` en el body, el controller manda `''`
+     * (no `null`) al caso de uso, que lo rechaza. Cambio mínimo de WU-3; el
+     * contrato HTTP con `insumoId` obligatorio llega en WU-4.
      */
-    it('sin insumoId en el body, el caso de uso lo recibe en null y el response lo devuelve null', async () => {
+    it('sin insumoId en el body, el caso de uso lo recibe vacío y el rechazo sube como 422', async () => {
       const { controller, agregarComponenteUseCase } = buildController();
-      const componente = ComponenteEquipoEntity.create({
-        equipoId: 'equipo-uuid',
-        tipoComponenteCodigo: 'RAM',
-        insumoId: null,
-        descripcion: null,
-        numeroSerie: null,
-        capacidad: null,
-      }).getValue();
-      agregarComponenteUseCase.execute.mockResolvedValue(Result.ok(componente));
+      agregarComponenteUseCase.execute.mockResolvedValue(
+        Result.fail(new EquiposErrors.InsumoRepuestoInexistenteError('')),
+      );
 
-      const result = await controller.agregarComponente('equipo-uuid', {
-        tipoComponenteCodigo: 'RAM',
-      } as any);
+      await expect(
+        controller.agregarComponente('equipo-uuid', { tipoComponenteCodigo: 'RAM' } as any),
+      ).rejects.toMatchObject({ status: 422 });
 
       expect(agregarComponenteUseCase.execute).toHaveBeenCalledWith(
-        expect.objectContaining({ insumoId: null }),
+        expect.objectContaining({ insumoId: '' }),
       );
-      expect(result.insumoId).toBeNull();
     });
 
     it('tipo inactivo → 422', async () => {

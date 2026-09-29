@@ -21,13 +21,7 @@
  * (`PrismaEquipoInformaticoRepository`, `PrismaComponenteEquipoRepository`,
  * `PrismaInsumoRepository`, `PrismaFamiliaInsumoRepository`,
  * `PrismaMovimientoInsumoRepository`) comparten el MISMO `TenantContext` y el
- * MISMO cliente instrumentado. El único FAKE es
- * `ITipoComponenteMasterChecker`: el catálogo MASTER vive en otra base
- * (`soporte_master`) y no es lo que este spec ejercita — instrumentar un
- * segundo pool cross-DB solo para esto diluiría la prueba de concurrencia real
- * sin sumar nada (mismo criterio de acotar el mock a lo que el spec NO
- * prueba, ver `registrar-operacion-compra.s36.integration.spec.ts`, que hace
- * lo mismo con el repo de bitácora).
+ * MISMO cliente instrumentado.
  */
 import { randomBytes } from 'node:crypto';
 import { Pool, type PoolClient } from 'pg';
@@ -46,7 +40,6 @@ import { PrismaMovimientoInsumoRepository } from '../../../insumos/infrastructur
 import { AgregarComponenteUseCase } from './agregar-componente.use-case';
 import { RegistrarSalidaInsumoUseCase } from '../../../insumos/application/use-cases/registrar-salida-insumo.use-case';
 import { InstalarComponenteDesdeDepositoUseCase } from './instalar-componente-desde-deposito.use-case';
-import { ITipoComponenteMasterChecker } from '../../domain/ports/i-tipo-componente-master.checker';
 import { StockInsuficienteError } from '../../../insumos/domain/errors/insumos.errors';
 
 const MASTER_TEST_URL =
@@ -104,11 +97,6 @@ describe('InstalarComponenteDesdeDepositoUseCase — Concurrencia real (WU-4, is
   let insumoRepo: PrismaInsumoRepository;
   let familiaInsumoRepo: PrismaFamiliaInsumoRepository;
   let movimientoRepo: PrismaMovimientoInsumoRepository;
-
-  /** Siempre `true`: el catálogo MASTER no es lo que este spec ejercita (ver JSDoc de cabecera). */
-  const masterCheckerFake: Pick<ITipoComponenteMasterChecker, 'estaActivo'> = {
-    estaActivo: async () => true,
-  };
 
   const PREFIJO = `INSTC_${randomBytes(2).toString('hex')}_`;
 
@@ -198,7 +186,6 @@ describe('InstalarComponenteDesdeDepositoUseCase — Concurrencia real (WU-4, is
     const txRunner = new PrismaTenantTransactionRunner(tenantContext, { error: () => {} });
     const agregarComponenteUseCase = new AgregarComponenteUseCase(
       equipoRepo,
-      masterCheckerFake,
       componenteRepo,
       insumoRepo,
       familiaInsumoRepo,

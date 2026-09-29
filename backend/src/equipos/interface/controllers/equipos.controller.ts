@@ -379,8 +379,9 @@ export class EquiposController {
   ): Promise<ComponenteResponseDto> {
     const result = await this.agregarComponenteUseCase.execute({
       equipoId: id,
-      tipoComponenteCodigo: dto.tipoComponenteCodigo,
-      insumoId: dto.insumoId ?? null,
+      // Cambio mínimo de WU-3: el use case ya exige `insumoId` (vacío = 422).
+      // El contrato HTTP completo se cierra en WU-4.
+      insumoId: dto.insumoId ?? '',
       descripcion: dto.descripcion ?? null,
       numeroSerie: dto.numeroSerie ?? null,
       capacidad: dto.capacidad ?? null,

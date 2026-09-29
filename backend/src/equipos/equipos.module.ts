@@ -235,21 +235,12 @@ import { SoporteController } from './interface/controllers/soporte.controller';
       provide: AgregarComponenteUseCase,
       useFactory: (
         equipoRepo: IEquipoInformaticoRepository,
-        tipoComponenteMasterChecker: ITipoComponenteMasterChecker,
         componenteRepo: IComponenteEquipoRepository,
         insumoRepo: IInsumoRepository,
         familiaInsumoRepo: IFamiliaInsumoRepository,
-      ) =>
-        new AgregarComponenteUseCase(
-          equipoRepo,
-          tipoComponenteMasterChecker,
-          componenteRepo,
-          insumoRepo,
-          familiaInsumoRepo,
-        ),
+      ) => new AgregarComponenteUseCase(equipoRepo, componenteRepo, insumoRepo, familiaInsumoRepo),
       inject: [
         EQUIPO_INFORMATICO_REPOSITORY,
-        TIPO_COMPONENTE_MASTER_CHECKER,
         COMPONENTE_EQUIPO_REPOSITORY,
         INSUMO_REPOSITORY,
         FAMILIA_INSUMO_REPOSITORY,
