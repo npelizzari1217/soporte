@@ -18,26 +18,9 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { correrParamBlock, MARCA_CUERPO, pwsh, PWSH_ENV } from './testing/pwsh-param-block';
 
 const PS1_PATH = join(__dirname, '..', '..', 'rotate-email-crypto-key.ps1');
-// pwsh en un contenedor/WSL sin ICU del sistema aborta sin esto (ver
-// verify-report, "PowerShell runtime evidence").
-const PWSH_ENV = { ...process.env, DOTNET_SYSTEM_GLOBALIZATION_INVARIANT: '1' };
-
-function resolverPwsh(): string | null {
-  const candidato = process.env.PWSH_PATH || 'pwsh';
-  try {
-    execFileSync(candidato, ['-NoProfile', '-Command', 'exit 0'], {
-      env: PWSH_ENV,
-      stdio: 'ignore',
-    });
-    return candidato;
-  } catch {
-    return null;
-  }
-}
-
-const pwsh = resolverPwsh();
 
 // Extrae InvocarRotacion del .ps1 real via el AST (nunca una copia pegada a
 // mano), la redefine en esta sesion apuntando a un Node stub, y la llama dos
@@ -400,64 +383,21 @@ suiteRecuperacion(
  * `[CmdletBinding()]` un script acepta argumentos desconocidos en `$args` sin
  * quejarse: `$DryRun` quedo en `$false` y corrio la rotacion REAL.
  *
- * El harness toma el bloque `param` del .ps1 real (con sus atributos) y le
- * pone un cuerpo inocuo: nunca ejecuta el script de rotacion.
+ * Usa el bloque `param` real con un cuerpo inocuo (`testing/pwsh-param-block.ts`):
+ * nunca ejecuta el script de rotacion.
  */
 const suiteParametros = pwsh ? describe : describe.skip;
 
 suiteParametros('Parametros de rotate-email-crypto-key.ps1 — runtime real via pwsh', () => {
-  function correrConArgs(args: string[]): { exitCode: number; salida: string } {
-    const dir = mkdtempSync(join(tmpdir(), 'rotate-ps1-params-spec-'));
-    try {
-      const extraerPath = join(dir, 'extraer.ps1');
-      const cuerpoPath = join(dir, 'solo-param.ps1');
-      writeFileSync(
-        extraerPath,
-        [
-          'param([string]$RealScriptPath, [string]$OutPath)',
-          "$ErrorActionPreference = 'Stop'",
-          '$tokens = $null; $errors = $null',
-          '$ast = [System.Management.Automation.Language.Parser]::ParseFile($RealScriptPath, [ref]$tokens, [ref]$errors)',
-          "if ($errors.Count -gt 0 -or -not $ast.ParamBlock) { throw 'param block not found in real script' }",
-          // `ParamBlock.Extent` NO incluye los atributos (`[CmdletBinding()]`):
-          // viven aparte, en `ParamBlock.Attributes`.
-          '$atributos = @($ast.ParamBlock.Attributes | ForEach-Object { $_.Extent.Text }) -join [Environment]::NewLine',
-          'Set-Content -Path $OutPath -Encoding ascii -Value ($atributos + [Environment]::NewLine + $ast.ParamBlock.Extent.Text + [Environment]::NewLine + \'Write-Host ("CUERPO-EJECUTADO DryRun=" + $DryRun)\')',
-        ].join('\n'),
-        'ascii',
-      );
-      execFileSync(
-        pwsh as string,
-        ['-NoProfile', '-File', extraerPath, '-RealScriptPath', PS1_PATH, '-OutPath', cuerpoPath],
-        { env: PWSH_ENV },
-      );
-      try {
-        const stdout = execFileSync(pwsh as string, ['-NoProfile', '-File', cuerpoPath, ...args], {
-          env: PWSH_ENV,
-          stdio: ['ignore', 'pipe', 'pipe'],
-        });
-        return { exitCode: 0, salida: stdout.toString('utf8') };
-      } catch (err) {
-        const e = err as { status: number | null; stdout: Buffer; stderr: Buffer };
-        return {
-          exitCode: e.status ?? -1,
-          salida: (e.stdout?.toString('utf8') ?? '') + (e.stderr?.toString('utf8') ?? ''),
-        };
-      }
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  }
-
   it('-DryRun bien pasado llega al cuerpo con DryRun en true', () => {
-    const r = correrConArgs(['-DryRun']);
+    const r = correrParamBlock(PS1_PATH, ['-DryRun']);
     expect(r.exitCode).toBe(0);
-    expect(r.salida).toContain('CUERPO-EJECUTADO DryRun=True');
+    expect(r.salida).toContain(`${MARCA_CUERPO} DryRun=True`);
   });
 
   it('un argumento desconocido (`-DryRun;`, como lo pasa cmd) corta ANTES de ejecutar el cuerpo', () => {
-    const r = correrConArgs(['-DryRun;']);
+    const r = correrParamBlock(PS1_PATH, ['-DryRun;']);
     expect(r.exitCode).not.toBe(0);
-    expect(r.salida).not.toContain('CUERPO-EJECUTADO');
+    expect(r.salida).not.toContain(MARCA_CUERPO);
   });
 });
