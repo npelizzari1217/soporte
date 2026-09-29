@@ -69,4 +69,69 @@ describe('SmtpEmailSender', () => {
     expect(logged).not.toContain('sensible@dominio.com');
     expect(logged).toContain('s***@d***.com');
   });
+
+  /**
+   * Regresion: el log volcaba el `error.message` crudo de nodemailer, y muchos
+   * servidores SMTP devuelven el usuario dentro de la respuesta 535. Mismo
+   * criterio que `SmtpConnectionVerifier` (D6): allowlist cerrado, nunca un
+   * scrub del mensaje.
+   */
+  describe('log de error saneado: nunca el mensaje crudo del servidor', () => {
+    function errorSmtp(message: string, extra: Record<string, unknown>): Error {
+      return Object.assign(new Error(message), extra);
+    }
+
+    it('[CRITICAL] un 535 que trae el usuario en el mensaje loguea solo el codigo y el status SMTP', async () => {
+      sendMailMock.mockRejectedValue(
+        errorSmtp(
+          'Invalid login: 535-5.7.8 Username and Password not accepted for soporte@cliente.com',
+          { code: 'EAUTH', responseCode: 535, response: '535-5.7.8 ... soporte@cliente.com' },
+        ),
+      );
+      const { sender, logger } = makeSender();
+
+      await sender.send({ to: 'destino@test.com', subject: 'Asunto', text: 'Cuerpo' });
+
+      const logged = logger.log.mock.calls[0][0] as string;
+      expect(logged).not.toContain('soporte@cliente.com');
+      expect(logged).not.toContain('Invalid login');
+      expect(logged).toContain('code=EAUTH');
+      expect(logged).toContain('smtp=535');
+    });
+
+    it('un code fuera del allowlist se loguea como OTRO, sin su texto', async () => {
+      sendMailMock.mockRejectedValue(errorSmtp('fail', { code: 'EINVENTADO-usuario@x.com' }));
+      const { sender, logger } = makeSender();
+
+      await sender.send({ to: 'destino@test.com', subject: 'Asunto', text: 'Cuerpo' });
+
+      const logged = logger.log.mock.calls[0][0] as string;
+      expect(logged).toContain('code=OTRO');
+      expect(logged).not.toContain('usuario@x.com');
+    });
+
+    it('un responseCode que no es un numero de status SMTP no se loguea', async () => {
+      sendMailMock.mockRejectedValue(
+        errorSmtp('fail', { code: 'EAUTH', responseCode: '535 usuario@x.com' }),
+      );
+      const { sender, logger } = makeSender();
+
+      await sender.send({ to: 'destino@test.com', subject: 'Asunto', text: 'Cuerpo' });
+
+      const logged = logger.log.mock.calls[0][0] as string;
+      expect(logged).toContain('smtp=-');
+      expect(logged).not.toContain('usuario@x.com');
+    });
+
+    it('un rechazo que no es un Error (un string) se loguea como OTRO sin su texto', async () => {
+      sendMailMock.mockRejectedValue('535 usuario@x.com');
+      const { sender, logger } = makeSender();
+
+      await sender.send({ to: 'destino@test.com', subject: 'Asunto', text: 'Cuerpo' });
+
+      const logged = logger.log.mock.calls[0][0] as string;
+      expect(logged).toContain('code=OTRO');
+      expect(logged).not.toContain('usuario@x.com');
+    });
+  });
 });
