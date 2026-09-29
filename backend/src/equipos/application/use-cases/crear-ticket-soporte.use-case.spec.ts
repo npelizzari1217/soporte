@@ -91,7 +91,7 @@ describe('CrearTicketSoporteUseCase', () => {
       deps.numerador as never,
       deps.resolverCicloActivo as never,
       deps.equipoRepo as never,
-      deps.eventPublisher as never,
+      deps.eventPublisher,
       deps.txRunner as never,
     );
   }

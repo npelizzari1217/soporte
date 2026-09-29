@@ -28,10 +28,7 @@ describe('EditarFeriadoClienteUseCase', () => {
 
   it('edita fecha y descripción cuando el feriado existe, la fecha es válida y no es global', async () => {
     const { feriadoRepo, feriadosGlobalesChecker } = makeDeps();
-    const useCase = new EditarFeriadoClienteUseCase(
-      feriadoRepo as never,
-      feriadosGlobalesChecker as never,
-    );
+    const useCase = new EditarFeriadoClienteUseCase(feriadoRepo, feriadosGlobalesChecker);
 
     const result = await useCase.execute({
       feriadoId: 'feriado-cliente-1',
@@ -49,10 +46,7 @@ describe('EditarFeriadoClienteUseCase', () => {
 
   it('falla con FeriadoNoEncontradoError si el id no existe, sin consultar al checker ni llamar a editar()', async () => {
     const { feriadoRepo, feriadosGlobalesChecker } = makeDeps(null);
-    const useCase = new EditarFeriadoClienteUseCase(
-      feriadoRepo as never,
-      feriadosGlobalesChecker as never,
-    );
+    const useCase = new EditarFeriadoClienteUseCase(feriadoRepo, feriadosGlobalesChecker);
 
     const result = await useCase.execute({
       feriadoId: 'inexistente',
@@ -68,10 +62,7 @@ describe('EditarFeriadoClienteUseCase', () => {
 
   it('falla con FechaCalendarioInvalidaError sin consultar al checker ni llamar a editar() (2026-02-30 no existe)', async () => {
     const { feriadoRepo, feriadosGlobalesChecker } = makeDeps();
-    const useCase = new EditarFeriadoClienteUseCase(
-      feriadoRepo as never,
-      feriadosGlobalesChecker as never,
-    );
+    const useCase = new EditarFeriadoClienteUseCase(feriadoRepo, feriadosGlobalesChecker);
 
     const result = await useCase.execute({
       feriadoId: 'feriado-cliente-1',
@@ -87,10 +78,7 @@ describe('EditarFeriadoClienteUseCase', () => {
 
   it('falla con FeriadoFechaEsGlobalError cuando la nueva fecha ya es un feriado global, sin llamar a editar() (D4)', async () => {
     const { feriadoRepo, feriadosGlobalesChecker } = makeDeps(makeFeriado(), true);
-    const useCase = new EditarFeriadoClienteUseCase(
-      feriadoRepo as never,
-      feriadosGlobalesChecker as never,
-    );
+    const useCase = new EditarFeriadoClienteUseCase(feriadoRepo, feriadosGlobalesChecker);
 
     const result = await useCase.execute({
       feriadoId: 'feriado-cliente-1',
@@ -111,10 +99,7 @@ describe('EditarFeriadoClienteUseCase', () => {
       editar: vi.fn().mockRejectedValue({ code: 'P2002' }),
     };
     const feriadosGlobalesChecker = { esGlobal: vi.fn().mockResolvedValue(false) };
-    const useCase = new EditarFeriadoClienteUseCase(
-      feriadoRepo as never,
-      feriadosGlobalesChecker as never,
-    );
+    const useCase = new EditarFeriadoClienteUseCase(feriadoRepo, feriadosGlobalesChecker);
 
     const result = await useCase.execute({
       feriadoId: 'feriado-cliente-1',
@@ -135,10 +120,7 @@ describe('EditarFeriadoClienteUseCase', () => {
       editar: vi.fn().mockRejectedValue(otroError),
     };
     const feriadosGlobalesChecker = { esGlobal: vi.fn().mockResolvedValue(false) };
-    const useCase = new EditarFeriadoClienteUseCase(
-      feriadoRepo as never,
-      feriadosGlobalesChecker as never,
-    );
+    const useCase = new EditarFeriadoClienteUseCase(feriadoRepo, feriadosGlobalesChecker);
 
     await expect(
       useCase.execute({ feriadoId: 'feriado-cliente-1', fecha: '2026-12-08', descripcion: 'X' }),

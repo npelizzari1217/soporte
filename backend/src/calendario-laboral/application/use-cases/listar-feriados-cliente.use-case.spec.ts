@@ -14,7 +14,7 @@ describe('ListarFeriadosClienteUseCase', () => {
       feriado('2026-05-01', 'Feriado propio 2'),
     ];
     const feriadoRepo = { listar: vi.fn().mockResolvedValue(feriados) };
-    const useCase = new ListarFeriadosClienteUseCase(feriadoRepo as never);
+    const useCase = new ListarFeriadosClienteUseCase(feriadoRepo);
 
     const result = await useCase.execute();
 
@@ -25,7 +25,7 @@ describe('ListarFeriadosClienteUseCase', () => {
 
   it('devuelve una lista vacía sin fallar', async () => {
     const feriadoRepo = { listar: vi.fn().mockResolvedValue([]) };
-    const useCase = new ListarFeriadosClienteUseCase(feriadoRepo as never);
+    const useCase = new ListarFeriadosClienteUseCase(feriadoRepo);
 
     const result = await useCase.execute();
 

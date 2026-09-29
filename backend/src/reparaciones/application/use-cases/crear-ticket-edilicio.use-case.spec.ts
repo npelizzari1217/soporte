@@ -61,7 +61,7 @@ describe('CrearTicketEdilicioUseCase', () => {
       usuarioMasterChecker as any,
       numerador as any,
       resolverCicloActivo as any,
-      eventPublisher as any,
+      eventPublisher,
       txRunner as any,
     );
 

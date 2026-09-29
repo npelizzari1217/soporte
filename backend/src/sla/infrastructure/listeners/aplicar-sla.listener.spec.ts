@@ -22,7 +22,7 @@ describe('AplicarSlaListener', () => {
       log: vi.fn(),
       error: vi.fn(),
     };
-    const listener = new AplicarSlaListener(aplicarSlaUseCase as never, logger as never);
+    const listener = new AplicarSlaListener(aplicarSlaUseCase as never, logger);
     return { listener, aplicarSlaUseCase, logger };
   }
 

@@ -14,7 +14,7 @@ describe('EliminarFeriadoGlobalUseCase', () => {
       buscarPorId: vi.fn().mockResolvedValue(feriado),
       eliminar: vi.fn().mockResolvedValue(undefined),
     };
-    const useCase = new EliminarFeriadoGlobalUseCase(feriadoRepo as never);
+    const useCase = new EliminarFeriadoGlobalUseCase(feriadoRepo);
 
     const result = await useCase.execute({ feriadoId: 'feriado-1' });
 
@@ -27,7 +27,7 @@ describe('EliminarFeriadoGlobalUseCase', () => {
       buscarPorId: vi.fn().mockResolvedValue(null),
       eliminar: vi.fn(),
     };
-    const useCase = new EliminarFeriadoGlobalUseCase(feriadoRepo as never);
+    const useCase = new EliminarFeriadoGlobalUseCase(feriadoRepo);
 
     const result = await useCase.execute({ feriadoId: 'inexistente' });
 

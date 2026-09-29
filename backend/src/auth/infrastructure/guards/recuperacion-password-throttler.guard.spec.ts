@@ -1,7 +1,18 @@
+import { Reflector } from '@nestjs/core';
+import { ThrottlerStorage } from '@nestjs/throttler';
 import { RecuperacionPasswordThrottlerGuard } from './recuperacion-password-throttler.guard';
+import { unstubbed } from '../../../testing/mocks';
 
+/**
+ * Los tres args del constructor heredado de `ThrottlerGuard` no se usan:
+ * `getTracker()` no los toca. `[]` es un `ThrottlerModuleOptions` válido
+ * (array vacío de `ThrottlerOptions`), `ThrottlerStorage` se completa contra
+ * su interfaz real y `Reflector` se instancia real — no hace falta ningún
+ * cast.
+ */
 function buildGuard(): RecuperacionPasswordThrottlerGuard {
-  return new RecuperacionPasswordThrottlerGuard({} as never, {} as never, {} as never);
+  const storage: ThrottlerStorage = { increment: unstubbed('increment') };
+  return new RecuperacionPasswordThrottlerGuard([], storage, new Reflector());
 }
 
 /** Acceso al método `protected` desde el test — mismo criterio que `csat-throttler.guard.spec.ts`. */

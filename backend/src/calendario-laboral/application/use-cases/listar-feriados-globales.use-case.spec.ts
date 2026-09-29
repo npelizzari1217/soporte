@@ -14,7 +14,7 @@ describe('ListarFeriadosGlobalesUseCase', () => {
       feriado('2026-05-01', 'Día del Trabajador'),
     ];
     const feriadoRepo = { listar: vi.fn().mockResolvedValue(feriados) };
-    const useCase = new ListarFeriadosGlobalesUseCase(feriadoRepo as never);
+    const useCase = new ListarFeriadosGlobalesUseCase(feriadoRepo);
 
     const result = await useCase.execute();
 
@@ -25,7 +25,7 @@ describe('ListarFeriadosGlobalesUseCase', () => {
 
   it('devuelve una lista vacía sin fallar', async () => {
     const feriadoRepo = { listar: vi.fn().mockResolvedValue([]) };
-    const useCase = new ListarFeriadosGlobalesUseCase(feriadoRepo as never);
+    const useCase = new ListarFeriadosGlobalesUseCase(feriadoRepo);
 
     const result = await useCase.execute();
 

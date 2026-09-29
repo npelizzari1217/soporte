@@ -13,7 +13,7 @@ describe('CrearFeriadoGlobalUseCase', () => {
 
   it('crea el feriado cuando la fecha es válida', async () => {
     const { feriadoRepo } = makeDeps();
-    const useCase = new CrearFeriadoGlobalUseCase(feriadoRepo as never);
+    const useCase = new CrearFeriadoGlobalUseCase(feriadoRepo);
 
     const result = await useCase.execute({ fecha: '2026-12-25', descripcion: 'Navidad' });
 
@@ -25,7 +25,7 @@ describe('CrearFeriadoGlobalUseCase', () => {
 
   it('falla con FechaCalendarioInvalidaError sin llamar al repositorio (2026-02-30 no existe)', async () => {
     const { feriadoRepo } = makeDeps();
-    const useCase = new CrearFeriadoGlobalUseCase(feriadoRepo as never);
+    const useCase = new CrearFeriadoGlobalUseCase(feriadoRepo);
 
     const result = await useCase.execute({ fecha: '2026-02-30', descripcion: 'Inválida' });
 
@@ -38,7 +38,7 @@ describe('CrearFeriadoGlobalUseCase', () => {
     const feriadoRepo = {
       crear: vi.fn().mockRejectedValue({ code: 'P2002' }),
     };
-    const useCase = new CrearFeriadoGlobalUseCase(feriadoRepo as never);
+    const useCase = new CrearFeriadoGlobalUseCase(feriadoRepo);
 
     const result = await useCase.execute({ fecha: '2026-01-01', descripcion: 'Año Nuevo' });
 
@@ -50,7 +50,7 @@ describe('CrearFeriadoGlobalUseCase', () => {
   it('relanza cualquier otro error de infraestructura sin mapearlo', async () => {
     const otroError = new Error('conexión perdida');
     const feriadoRepo = { crear: vi.fn().mockRejectedValue(otroError) };
-    const useCase = new CrearFeriadoGlobalUseCase(feriadoRepo as never);
+    const useCase = new CrearFeriadoGlobalUseCase(feriadoRepo);
 
     await expect(useCase.execute({ fecha: '2026-01-01', descripcion: 'Año Nuevo' })).rejects.toBe(
       otroError,

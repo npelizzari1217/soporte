@@ -26,7 +26,7 @@ describe('EditarFeriadoGlobalUseCase', () => {
 
   it('edita fecha y descripción cuando el feriado existe y la fecha es válida', async () => {
     const { feriadoRepo } = makeDeps();
-    const useCase = new EditarFeriadoGlobalUseCase(feriadoRepo as never);
+    const useCase = new EditarFeriadoGlobalUseCase(feriadoRepo);
 
     const result = await useCase.execute({
       feriadoId: 'feriado-1',
@@ -43,7 +43,7 @@ describe('EditarFeriadoGlobalUseCase', () => {
 
   it('falla con FeriadoNoEncontradoError si el id no existe, sin llamar a editar()', async () => {
     const { feriadoRepo } = makeDeps(null);
-    const useCase = new EditarFeriadoGlobalUseCase(feriadoRepo as never);
+    const useCase = new EditarFeriadoGlobalUseCase(feriadoRepo);
 
     const result = await useCase.execute({
       feriadoId: 'inexistente',
@@ -58,7 +58,7 @@ describe('EditarFeriadoGlobalUseCase', () => {
 
   it('falla con FechaCalendarioInvalidaError sin llamar a editar() (2026-02-30 no existe)', async () => {
     const { feriadoRepo } = makeDeps();
-    const useCase = new EditarFeriadoGlobalUseCase(feriadoRepo as never);
+    const useCase = new EditarFeriadoGlobalUseCase(feriadoRepo);
 
     const result = await useCase.execute({
       feriadoId: 'feriado-1',
@@ -77,7 +77,7 @@ describe('EditarFeriadoGlobalUseCase', () => {
       buscarPorId: vi.fn().mockResolvedValue(feriado),
       editar: vi.fn().mockRejectedValue({ code: 'P2002' }),
     };
-    const useCase = new EditarFeriadoGlobalUseCase(feriadoRepo as never);
+    const useCase = new EditarFeriadoGlobalUseCase(feriadoRepo);
 
     const result = await useCase.execute({
       feriadoId: 'feriado-1',
@@ -97,7 +97,7 @@ describe('EditarFeriadoGlobalUseCase', () => {
       buscarPorId: vi.fn().mockResolvedValue(feriado),
       editar: vi.fn().mockRejectedValue(otroError),
     };
-    const useCase = new EditarFeriadoGlobalUseCase(feriadoRepo as never);
+    const useCase = new EditarFeriadoGlobalUseCase(feriadoRepo);
 
     await expect(
       useCase.execute({ feriadoId: 'feriado-1', fecha: '2026-05-01', descripcion: 'X' }),

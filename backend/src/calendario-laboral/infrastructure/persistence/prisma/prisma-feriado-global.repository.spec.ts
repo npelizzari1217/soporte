@@ -6,6 +6,7 @@
  * la fecha en medianoche UTC (@db.Date, D2) vía el mapper.
  */
 import { PrismaFeriadoGlobalRepository } from './prisma-feriado-global.repository';
+import { PrismaService } from '../../../../shared/infrastructure/persistence/prisma.service';
 import { FeriadoEntity } from '../../../domain/entities/feriado.entity';
 import { FechaCalendario } from '../../../domain/value-objects/fecha-calendario';
 
@@ -36,9 +37,13 @@ function makePrismaService(client: {
   const create = client.create ?? vi.fn();
   const update = client.update ?? vi.fn();
   const del = client.delete ?? vi.fn();
+  // PrismaService es una clase concreta con estado privado (pool de conexión
+  // real, `PrismaPg`) — no hay forma de satisfacerla estructuralmente con un
+  // fake. El único método que este repositorio usa es `getMasterClient()`; el
+  // resto de la superficie de PrismaService nunca se ejercita.
   const prismaService = {
     getMasterClient: () => ({ feriado: { findMany, findUnique, create, update, delete: del } }),
-  };
+  } as unknown as PrismaService;
   return { prismaService, findMany, findUnique, create, update, delete: del };
 }
 
@@ -55,7 +60,7 @@ describe('PrismaFeriadoGlobalRepository', () => {
           }),
         ]),
       });
-      const repo = new PrismaFeriadoGlobalRepository(prismaService as never);
+      const repo = new PrismaFeriadoGlobalRepository(prismaService);
 
       const feriados = await repo.listar();
 
@@ -72,7 +77,7 @@ describe('PrismaFeriadoGlobalRepository', () => {
       const { prismaService, findUnique } = makePrismaService({
         findUnique: vi.fn().mockResolvedValueOnce(fila()).mockResolvedValueOnce(null),
       });
-      const repo = new PrismaFeriadoGlobalRepository(prismaService as never);
+      const repo = new PrismaFeriadoGlobalRepository(prismaService);
 
       const feriado = await repo.buscarPorId('feriado-1');
       const inexistente = await repo.buscarPorId('inexistente');
@@ -88,7 +93,7 @@ describe('PrismaFeriadoGlobalRepository', () => {
       const { prismaService, create } = makePrismaService({
         create: vi.fn().mockResolvedValue(undefined),
       });
-      const repo = new PrismaFeriadoGlobalRepository(prismaService as never);
+      const repo = new PrismaFeriadoGlobalRepository(prismaService);
       const feriado = FeriadoEntity.crear(
         { fecha: fecha('2026-12-25'), descripcion: 'Navidad' },
         'feriado-navidad',
@@ -111,7 +116,7 @@ describe('PrismaFeriadoGlobalRepository', () => {
       const { prismaService, update } = makePrismaService({
         update: vi.fn().mockResolvedValue(undefined),
       });
-      const repo = new PrismaFeriadoGlobalRepository(prismaService as never);
+      const repo = new PrismaFeriadoGlobalRepository(prismaService);
       const feriado = FeriadoEntity.reconstitute(
         { fecha: fecha('2026-01-01'), descripcion: 'Año Nuevo' },
         'feriado-1',
@@ -140,7 +145,7 @@ describe('PrismaFeriadoGlobalRepository', () => {
       const { prismaService, delete: del } = makePrismaService({
         delete: vi.fn().mockResolvedValue(undefined),
       });
-      const repo = new PrismaFeriadoGlobalRepository(prismaService as never);
+      const repo = new PrismaFeriadoGlobalRepository(prismaService);
 
       await repo.eliminar('feriado-1');
 
