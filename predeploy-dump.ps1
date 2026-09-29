@@ -40,6 +40,11 @@
 # Ver DEPLOY-VPS-runbook.md para el procedimiento completo (ventana atomica,
 # verificacion post-deploy, restore).
 
+# CmdletBinding hace que un argumento desconocido corte ANTES de ejecutar nada.
+# Sin el, `-DryRun;` (como lo pasa cmd por ssh) cae en $args, $DryRun queda en
+# $false y corre la version real: detiene los servicios y dumpea. Misma trampa
+# que corrio la rotacion real de rotate-email-crypto-key.ps1 el 2026-09-29.
+[CmdletBinding()]
 param(
   [switch]$DryRun
 )

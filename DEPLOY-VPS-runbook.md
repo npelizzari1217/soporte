@@ -203,6 +203,12 @@ echo "EXIT=$LASTEXITCODE"   # 0 = precondiciones en verde
 echo "EXIT=$LASTEXITCODE"   # 0 = dump verificado, servicios DETENIDOS a propósito
 ```
 
+> **Por ssh, el `-DryRun` va solo al final del comando**: nunca `-DryRun; echo ...`. El shell
+> por defecto del VPS es `cmd`, que le pasaría a PowerShell el literal `-DryRun;`. Desde el
+> 2026-09-29 el script tiene `[CmdletBinding()]` y corta con exit 1 ante un argumento
+> desconocido. Antes, lo aceptaba en silencio y corría la versión **real**: detenía los
+> servicios. Ver la sección 5, donde esa misma trampa corrió una rotación real.
+
 `-DryRun` enumera las bases desde `clientes.db_name` (activo=true, nunca hardcodeadas — el sufijo
 hex de un tenant cambia si se recrea) más `soporte_master`, valida cada identificador contra el
 mismo criterio que `assertValidIdentifier` (`backend/src/clientes/infrastructure/postgres-admin.service.ts:27`)
