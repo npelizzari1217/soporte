@@ -80,12 +80,10 @@ import {
   NumeroSerieDuplicadoError,
   ModeloEquipoInexistenteError,
   ModeloEquipoDeshabilitadoError,
-  TipoComponenteCodigoRequeridoError,
-  TipoComponenteInactivoError,
   ComponenteNoEncontradoError,
   ComponenteDadoDeBajaError,
   ComponenteYaActivoError,
-  ComponenteVinculadoTipoInmutableError,
+  TipoComponenteCodigoRequeridoError,
   ExportacionDemasiadoGrandeError,
   InsumoRepuestoInexistenteError,
   InsumoNoEsRepuestoError,
@@ -118,7 +116,6 @@ export function toHttpException(
     error instanceof EquipoInvalidoError ||
     error instanceof NumeroSerieDuplicadoError ||
     error instanceof TipoComponenteCodigoRequeridoError ||
-    error instanceof TipoComponenteInactivoError ||
     // `modeloEquipoId` es un valor del BODY que referencia un catálogo, igual
     // que `tipoComponenteCodigo`: 422, no 404. Un 404 acá se leería como "el
     // equipo no existe", que es otra cosa.
@@ -132,10 +129,6 @@ export function toHttpException(
     error instanceof InsumoRepuestoInexistenteError ||
     error instanceof InsumoNoEsRepuestoError ||
     error instanceof FamiliaRepuestoDeshabilitadaError ||
-    // Editar `tipoComponenteCodigo` de un componente VINCULADO a un repuesto
-    // (WU-3, hallazgo de revisión automática): el valor rechazado viaja en el
-    // BODY, mismo criterio 422 que sus hermanos de esta lista.
-    error instanceof ComponenteVinculadoTipoInmutableError ||
     // Exportación a CSV (sdd/exportar-listados-csv, decisión D2): cae igual
     // en 422 por el default, pero se lista explícito como los demás — el
     // default existe para el error que NADIE mapeó, no para ahorrarse una
@@ -423,8 +416,7 @@ export class EquiposController {
    * PATCH /equipos/:id/componentes/:componenteId
    * Edita un componente ACTIVO (listado enriquecido de componentes).
    * @throws 404 componente inexistente
-   * @throws 422 componente dado de baja, tipo de componente inexistente/inactivo,
-   *   o intento de cambiar el tipo de un componente vinculado a un repuesto
+   * @throws 422 componente dado de baja
    */
   @Patch(':id/componentes/:componenteId')
   @RequiereAcciones('EQUIPOS:MODIFICACION')
@@ -437,7 +429,6 @@ export class EquiposController {
     const result = await this.editarComponenteUseCase.execute({
       equipoId,
       componenteId,
-      tipoComponenteCodigo: dto.tipoComponenteCodigo,
       descripcion: dto.descripcion,
       numeroSerie: dto.numeroSerie,
       capacidad: dto.capacidad,

@@ -206,14 +206,23 @@ posible deja el e2e retargeteado fallando contra el código previo.
 Sigue escribiendo `tipo_componente_codigo` (el componente conserva el valor derivado al crearse; la
 edición no lo modifica). La entidad y el mapper no se tocan (WU-6).
 
-- [ ] 5.1 `editar-componente.use-case.ts`: solo `descripcion`, `numeroSerie`, `capacidad`; un `tipoComponenteCodigo` o un `insumoId` sobrantes no cambian nada (ADR-2). Quitar el checker y la validación de tipo. `PATCH` DTO sin esos campos. (Req: La edición no cambia el tipo ni el insumo)
-- [ ] 5.2 `obtener-equipo.use-case.ts`: resolver `tipoNombre` y `tipoActivo` **solo** por `findFamiliasDeInsumos`; sin consulta a MASTER; fallback de display `"—"` (ADR-6). `ComponenteConTipoResponseDto` conserva `tipoNombre`/`tipoActivo`. (Req: El display del tipo resuelve por la familia del tenant; escenarios Familia activa/desactivada)
-- [ ] 5.3 Borrar de `equipos.errors.ts` `TipoComponenteCodigoRequeridoError`, `TipoComponenteInactivoError` y `ComponenteVinculadoTipoInmutableError`: el catálogo queda en **13 clases**, y eliminar sus mapeos en el controller y sus specs. (Req: RepuestoSinTipoEnCatalogoError y los errores del camino de texto libre dejan de existir)
-- [ ] 5.4 Actualizar specs: `editar-componente.use-case.spec.ts`, `obtener-equipo.use-case.spec.ts`, el spec del catálogo de errores (recuento 13) y el del controller (PATCH ignora campos sobrantes). (Escenarios: Edición de datos propios; Intento de cambiar el insumo; Reemplazo como retiro más alta; Retiro sin stock)
-- [ ] 5.5 Quality gates: `cd backend && pnpm lint && pnpm typecheck && pnpm vitest run src/equipos` y `pnpm test`.
-- [ ] 5.6 Los componentes `equipos.module.ts` (providers del checker) **se conservan** hasta WU-10a.
+- [x] 5.1 `editar-componente.use-case.ts`: solo `descripcion`, `numeroSerie`, `capacidad`; un `tipoComponenteCodigo` o un `insumoId` sobrantes no cambian nada (ADR-2). Quitar el checker y la validación de tipo. `PATCH` DTO sin esos campos. (Req: La edición no cambia el tipo ni el insumo)
+- [x] 5.2 `obtener-equipo.use-case.ts`: resolver `tipoNombre` y `tipoActivo` **solo** por `findFamiliasDeInsumos`; sin consulta a MASTER; fallback de display `"—"` (ADR-6). `ComponenteConTipoResponseDto` conserva `tipoNombre`/`tipoActivo`. (Req: El display del tipo resuelve por la familia del tenant; escenarios Familia activa/desactivada)
+- [x] 5.3 Borrar de `equipos.errors.ts` `TipoComponenteCodigoRequeridoError`, `TipoComponenteInactivoError` y `ComponenteVinculadoTipoInmutableError`: el catálogo queda en **13 clases**, y eliminar sus mapeos en el controller y sus specs. (Req: RepuestoSinTipoEnCatalogoError y los errores del camino de texto libre dejan de existir)
+- [x] 5.4 Actualizar specs: `editar-componente.use-case.spec.ts`, `obtener-equipo.use-case.spec.ts`, el spec del catálogo de errores (recuento 13) y el del controller (PATCH ignora campos sobrantes). (Escenarios: Edición de datos propios; Intento de cambiar el insumo; Reemplazo como retiro más alta; Retiro sin stock)
+- [x] 5.5 Quality gates: `cd backend && pnpm lint && pnpm typecheck && pnpm vitest run src/equipos` y `pnpm test`.
+- [x] 5.6 Los componentes `equipos.module.ts` (providers del checker) **se conservan** hasta WU-10a.
+
+**Desviación de 5.3 (declarada):** se borraron `TipoComponenteInactivoError` y
+`ComponenteVinculadoTipoInmutableError`, pero `TipoComponenteCodigoRequeridoError` se **conserva**
+porque `componente-equipo.entity.ts` (`create()`) aún la emite mientras la columna existe y la
+entidad es de WU-6. El catálogo queda en **14 clases**, no 13; llega a 13 en WU-6 (6.3), que debe
+borrar esa clase junto con la validación de la entidad.
 
 **PR boundary**: ~380 líneas, base wu04. Si crece, dividir `editar` / `obtener-equipo`.
+**Real**: 883 líneas en total, partidas en costura limpia. **WU-5a** (`obtener-equipo` + su
+factory, 387): PR propio. **WU-5b** (`editar`, DTO, controller, errores, 496): `size:exception`,
+porque el caso de uso de edición no se separa del borrado de errores que habilita.
 
 ## WU-6 — Contrato del esquema tenant (migración fail-closed)
 

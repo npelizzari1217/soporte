@@ -228,7 +228,7 @@ describe.each([
   const base =
     nombreDto === 'CreateComponenteHttpDto'
       ? { insumoId: '33333333-3333-4333-8333-333333333333' }
-      : { tipoComponenteCodigo: 'RAM' };
+      : {};
 
   it.each([
     ['descripcion', 'A'.repeat(256)],
@@ -248,6 +248,29 @@ describe.each([
     const dto = plainToInstance(Dto, { ...base, [campo]: valor });
     const errorDelCampo = (await validate(dto)).find((e) => e.property === campo);
     expect(errorDelCampo).toBeUndefined();
+  });
+});
+
+/**
+ * Contrato HTTP de la edición de componente (ADR-2): solo `descripcion`,
+ * `numeroSerie` y `capacidad`; `tipoComponenteCodigo` e `insumoId` sobrantes
+ * los descarta el `whitelist` del `ValidationPipe` global, sin error.
+ */
+describe('EditarComponenteHttpDto — el tipo y el repuesto no se editan', () => {
+  it('descarta tipoComponenteCodigo e insumoId sobrantes con whitelist, sin error', async () => {
+    const dto = plainToInstance(EditarComponenteHttpDto, {
+      descripcion: 'Nueva',
+      tipoComponenteCodigo: 'CUALQUIERA',
+      insumoId: '33333333-3333-4333-8333-333333333333',
+    });
+
+    const errores = await validate(dto, { whitelist: true });
+
+    expect(errores).toHaveLength(0);
+    const plano = dto as unknown as Record<string, unknown>;
+    expect(plano.tipoComponenteCodigo).toBeUndefined();
+    expect(plano.insumoId).toBeUndefined();
+    expect(dto.descripcion).toBe('Nueva');
   });
 });
 

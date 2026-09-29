@@ -126,31 +126,16 @@ export class ModeloEquipoDeshabilitadoError extends DomainError {
  *
  * Ref spec: F3-Q2. Ref: sdd/tipos-componente-master (PR4b — dominio pasa a
  * referenciar el catálogo MASTER por `codigo`, no por `id` tenant).
+ *
+ * TRANSITORIO: sdd/catalogo-unico-componentes lo conserva solo porque
+ * `ComponenteEquipoEntity.create()` aún valida `tipoComponenteCodigo` mientras
+ * la columna existe; se borra en WU-6 junto con la columna.
  */
 export class TipoComponenteCodigoRequeridoError extends DomainError {
   readonly code = 'TIPO_COMPONENTE_CODIGO_REQUERIDO';
 
   constructor() {
     super('tipoComponenteCodigo es obligatorio para crear un componente de equipo.');
-  }
-}
-
-/**
- * TipoComponenteInactivoError — el `tipoComponenteCodigo` referenciado no
- * existe en el catálogo MASTER o existe pero está `activo=false`. Un tipo
- * inactivo bloquea NUEVOS componentes (los ya existentes no se ven afectados).
- * → HTTP 422 en la capa de presentación.
- *
- * Ref spec: F3-Q2. Ref: sdd/tipos-componente-master (PR4b).
- */
-export class TipoComponenteInactivoError extends DomainError {
-  readonly code = 'TIPO_COMPONENTE_INACTIVO';
-
-  constructor(tipoComponenteCodigo: string) {
-    super(
-      `El tipo de componente con código "${tipoComponenteCodigo}" está inactivo o no existe. ` +
-        `No se pueden agregar nuevos componentes de este tipo.`,
-    );
   }
 }
 
@@ -275,50 +260,6 @@ export class ComponenteYaActivoError extends DomainError {
 
   constructor(id: string) {
     super(`El componente con id "${id}" ya está activo.`);
-  }
-}
-
-/**
- * ComponenteVinculadoTipoInmutableError — se intentó cambiar `tipoComponenteCodigo`
- * al editar un componente que tiene `insumoId` (vinculado a un repuesto del
- * catálogo, WU-3).
- *
- * `AgregarComponenteUseCase` sostiene que es imposible que un componente diga
- * "MOUSE" y apunte a un repuesto de familia "TECLADO" porque, en el camino
- * vinculado, el código SIEMPRE sale de la familia del repuesto. Pero esa
- * invariante solo cubría el ALTA: `EditarComponenteUseCase` aceptaba
- * `tipoComponenteCodigo` sin mirar `insumoId`, así que un PATCH podía guardar
- * la contradicción que el alta impide — la FK no lo atrapa porque la fila del
- * insumo existe. Este error cierra ese camino: con `insumoId != null`, un
- * cambio de `tipoComponenteCodigo` que DIFIERE del actual se rechaza siempre.
- *
- * Rechaza por DIFERENCIA de valor, no por presencia del campo: se corrigió
- * después de detectar que rechazar por sola presencia dejaba de solo lectura
- * a todo componente vinculado, porque `ComponenteEditDialog` manda
- * `tipoComponenteCodigo` en CADA submit, lo haya tocado el usuario o no —
- * mandar el mismo código que ya tiene no es un pedido de cambio, y
- * rechazarlo igual le impedía editar los demás campos. No se re-deriva en
- * silencio a propósito: en el alta el usuario nunca elige el código (la
- * pantalla lo oculta cuando hay repuesto), así que ignorarlo no le quita
- * nada; en una edición, mandar un código DISTINTO al actual sí es un pedido
- * explícito de cambio — y ESE es el que se rechaza.
- *
- * `EditarComponenteDto` NO acepta `insumoId`: por esa vía no se puede
- * desvincular el repuesto ni cambiarlo por otro. Por eso el mensaje nombra la
- * salida real — reemplazar el componente — en vez de una que no existe.
- * → HTTP 422 en la capa de presentación.
- *
- * Ref: sdd/repuestos-vinculo-componente (WU-3, hallazgo de revisión automática).
- */
-export class ComponenteVinculadoTipoInmutableError extends DomainError {
-  readonly code = 'COMPONENTE_VINCULADO_TIPO_INMUTABLE';
-
-  constructor(id: string) {
-    super(
-      `El componente con id "${id}" está vinculado a un repuesto del catálogo: su tipo lo ` +
-        `determina la familia de ese repuesto y no se puede cambiar editando "tipoComponenteCodigo". ` +
-        `Para que tenga otro tipo hay que reemplazar el componente (eliminarlo y agregar uno nuevo).`,
-    );
   }
 }
 

@@ -62,3 +62,17 @@ Estado: **completo** (tareas 4.1 a 4.6 marcadas en `tasks.md`).
 | 4.6 Ayuda | Deuda anotada en el cuerpo del commit |
 
 Diferencias respecto del diseño: ninguna. El frontend sigue llamando a la ruta retirada hasta WU-8 (estado intermedio no desplegable, ADR-7).
+
+## WU-5 — Edición y lectura sin tipo; menos errores (rama `feat/catalogo-unico-componentes-wu05`)
+
+Estado: **completo, sin commitear** (excede el presupuesto de 400 líneas; decide el orquestador). Tareas 5.1 a 5.6 marcadas en `tasks.md`.
+
+| Tarea | Resultado |
+|---|---|
+| 5.1 Editar | `EditarComponenteUseCase(componenteRepo)`: solo `descripcion`, `numeroSerie`, `capacidad`; sin checker ni validación de tipo. `EditarComponenteHttpDto` sin `tipoComponenteCodigo` (el `whitelist` lo descarta); el controller ya no lo reenvía |
+| 5.2 Obtener | `ObtenerEquipoUseCase(equipoRepo, componenteRepo, insumoRepo)`: `tipoNombre`/`tipoActivo` solo por `findFamiliasDeInsumos` (una consulta, omitida sin componentes); sin MASTER. Sin match → `null`/`false` (el display `"—"` es del frontend, WU-9) |
+| 5.3 Errores | Borradas `TipoComponenteInactivoError` y `ComponenteVinculadoTipoInmutableError` y sus mapeos. **Desviación:** `TipoComponenteCodigoRequeridoError` se conserva (la entidad la emite en `create()`, WU-6): catálogo en **14** clases, no 13; llega a 13 en WU-6 |
+| 5.4 Specs | Reescritos `editar-componente` y `obtener-equipo`; catálogo del controller a 14; test de que el controller no reenvía `tipoComponenteCodigo`/`insumoId` en el PATCH; test del DTO de edición con `whitelist` |
+| 5.6 Módulo | Providers del checker conservados (`ListarTiposComponenteUseCase` aún lo inyecta, WU-10a); `Editar` y `Obtener` ya no lo inyectan |
+
+Entidad y mapper intactos (`actualizar()` conserva su parámetro opcional `tipoComponenteCodigo`, que nadie pasa; se retira en WU-6). Sin cambio de UI propio de este WU: la Ayuda de edición se anota en WU-9.

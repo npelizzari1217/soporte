@@ -283,18 +283,12 @@ export class CreateComponenteHttpDto {
 }
 
 /**
- * Body de `PATCH /equipos/:id/componentes/:componenteId` (listado enriquecido
- * de componentes — editar). PATCH semántico: `undefined` = no tocar. Si se
- * provee `tipoComponenteCodigo`, no puede ser vacío (campo obligatorio del
- * dominio, mismo criterio que `EditarEquipoHttpDto.nombre`).
+ * Body de `PATCH /equipos/:id/componentes/:componenteId`. PATCH semántico:
+ * `undefined` = no tocar. Solo `descripcion`, `numeroSerie` y `capacidad`: el
+ * tipo y el repuesto no se editan (sdd/catalogo-unico-componentes, ADR-2). Un
+ * `tipoComponenteCodigo` o `insumoId` sobrante lo descarta el `whitelist`.
  */
 export class EditarComponenteHttpDto {
-  /** Sin `@MaxLength`: el código se verifica contra el catálogo por igualdad exacta. */
-  @IsOptional()
-  @IsString()
-  @MinLength(1)
-  tipoComponenteCodigo?: string;
-
   @IsOptional()
   @IsString()
   @MaxLength(COMPONENTE_DESCRIPCION_MAX_LENGTH)

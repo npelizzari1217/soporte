@@ -261,11 +261,9 @@ import { SoporteController } from './interface/controllers/soporte.controller';
     },
     {
       provide: EditarComponenteUseCase,
-      useFactory: (
-        componenteRepo: IComponenteEquipoRepository,
-        tipoComponenteMasterChecker: ITipoComponenteMasterChecker,
-      ) => new EditarComponenteUseCase(componenteRepo, tipoComponenteMasterChecker),
-      inject: [COMPONENTE_EQUIPO_REPOSITORY, TIPO_COMPONENTE_MASTER_CHECKER],
+      useFactory: (componenteRepo: IComponenteEquipoRepository) =>
+        new EditarComponenteUseCase(componenteRepo),
+      inject: [COMPONENTE_EQUIPO_REPOSITORY],
     },
     {
       provide: ReactivarComponenteUseCase,

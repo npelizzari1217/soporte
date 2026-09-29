@@ -376,6 +376,33 @@ describe('EquiposController (T12.6)', () => {
       expect(result.descripcion).toBe('Editado');
     });
 
+    it('un tipoComponenteCodigo o insumoId sobrantes no llegan al use case (ADR-2)', async () => {
+      const { controller, editarComponenteUseCase } = buildController();
+      const componente = ComponenteEquipoEntity.create({
+        equipoId: 'equipo-uuid',
+        tipoComponenteCodigo: 'RAM',
+        insumoId: null,
+        descripcion: 'Editado',
+        numeroSerie: null,
+        capacidad: null,
+      }).getValue();
+      editarComponenteUseCase.execute.mockResolvedValue(Result.ok(componente));
+
+      await controller.editarComponente('equipo-uuid', 'componente-1', {
+        descripcion: 'Editado',
+        tipoComponenteCodigo: 'CPU',
+        insumoId: 'otro-insumo',
+      } as any);
+
+      expect(editarComponenteUseCase.execute).toHaveBeenCalledWith({
+        equipoId: 'equipo-uuid',
+        componenteId: 'componente-1',
+        descripcion: 'Editado',
+        numeroSerie: undefined,
+        capacidad: undefined,
+      });
+    });
+
     it('componente dado de baja → 422', async () => {
       const { controller, editarComponenteUseCase } = buildController();
       editarComponenteUseCase.execute.mockResolvedValue(
@@ -568,8 +595,8 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
     (valor) => typeof valor === 'function' && valor.prototype instanceof DomainError,
   );
 
-  it('el catálogo tiene EXACTAMENTE 16 clases de error (12 previas + las 4 de WU-3 que siguen vigentes: InsumoRepuestoInexistente, InsumoNoEsRepuesto, FamiliaRepuestoDeshabilitada y ComponenteVinculadoTipoInmutable — RepuestoSinTipoEnCatalogo se eliminó en sdd/repuestos-autoridad-catalogo, ADR-4: sin el gate MASTER en el camino vinculado no queda ningún camino que la emita)', () => {
-    expect(CLASES_DE_ERROR).toHaveLength(16);
+  it('el catálogo tiene EXACTAMENTE 14 clases de error (16 previas menos TipoComponenteInactivo y ComponenteVinculadoTipoInmutable, retiradas en sdd/catalogo-unico-componentes WU-5; TipoComponenteCodigoRequerido se conserva hasta WU-6 porque la entidad aún la emite; el catálogo llega a 13 en WU-6)', () => {
+    expect(CLASES_DE_ERROR).toHaveLength(14);
   });
 
   const TABLA: Array<[string, () => DomainError, 404 | 422]> = [
@@ -579,11 +606,6 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
     [
       'TipoComponenteCodigoRequeridoError',
       () => new EquiposErrors.TipoComponenteCodigoRequeridoError(),
-      422,
-    ],
-    [
-      'TipoComponenteInactivoError',
-      () => new EquiposErrors.TipoComponenteInactivoError('RAM'),
       422,
     ],
     [
@@ -618,8 +640,8 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
     ],
     // Los dos de `modeloEquipoId` van a 422 y no a 404: lo que no existe (o no
     // se puede elegir) es un valor del BODY, no el recurso de la URL — mismo
-    // criterio que `TipoComponenteInactivoError`, que es el otro campo del
-    // payload que referencia un catálogo. Un 404 acá diría "el equipo no
+    // criterio que `insumoId`, que es otro campo del payload que referencia
+    // un catálogo. Un 404 acá diría "el equipo no
     // existe", que es otra cosa.
     [
       'ModeloEquipoInexistenteError',
@@ -646,14 +668,6 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
       'FamiliaRepuestoDeshabilitadaError',
       () =>
         new EquiposErrors.FamiliaRepuestoDeshabilitadaError('insumo-1', 'TORNILLO', 'Tornillos'),
-      422,
-    ],
-    // Editar `tipoComponenteCodigo` de un componente VINCULADO a un repuesto
-    // (WU-3, hallazgo de revisión automática): mismo criterio 422 que el
-    // resto de valores del BODY que referencian un catálogo.
-    [
-      'ComponenteVinculadoTipoInmutableError',
-      () => new EquiposErrors.ComponenteVinculadoTipoInmutableError('componente-1'),
       422,
     ],
   ];
