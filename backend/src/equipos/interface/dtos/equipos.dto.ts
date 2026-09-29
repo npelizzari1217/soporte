@@ -15,6 +15,7 @@
  * Tarea: T12.6.
  */
 import {
+  IsBoolean,
   IsDateString,
   IsOptional,
   IsString,
@@ -23,7 +24,6 @@ import {
   Min,
   MinLength,
   IsUUID,
-  ValidateIf,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { EsNumeroConDecimales } from '../../../shared/interface/validators/es-numero-con-decimales';
@@ -247,61 +247,24 @@ export class RegistrarSolucionHttpDto {
   solucion!: string;
 }
 
-/** Body de `POST /equipos/:id/componentes` (F3-Q2). */
-export class CreateComponenteHttpDto {
-  /**
-   * Sin `@MaxLength`: el use case verifica este código contra el catálogo
-   * MASTER por igualdad exacta ANTES de llegar al dominio — un código
-   * demasiado largo ya vuelve 422 (`TipoComponenteInactivoError`) sin tocar
-   * nunca el INSERT (ver el JSDoc de `componente-equipo.entity.ts`).
-   *
-   * `@ValidateIf` (WU-3, sdd/repuestos-vinculo-componente): obligatorio SOLO
-   * en el camino de texto libre (`insumoId` ausente). Cuando `insumoId`
-   * viene, el use case DERIVA este código de la familia del repuesto y
-   * descarta lo que llegue acá — exigirlo igual obligaría a mandar un valor
-   * que nunca se usa.
-   */
-  @ValidateIf((dto: CreateComponenteHttpDto) => dto.insumoId == null)
-  @IsString()
-  @MinLength(1)
-  tipoComponenteCodigo?: string;
-
-  /** Repuesto del catálogo a vincular (WU-3). Ausente/`null` = camino de texto libre. */
-  @IsOptional()
-  @IsUUID()
-  insumoId?: string | null;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(COMPONENTE_DESCRIPCION_MAX_LENGTH)
-  descripcion?: string | null;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(COMPONENTE_NUMERO_SERIE_MAX_LENGTH)
-  numeroSerie?: string | null;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(COMPONENTE_CAPACIDAD_MAX_LENGTH)
-  capacidad?: string | null;
-}
-
 /**
- * Body de `POST /equipos/:id/componentes/instalar-desde-deposito` (WU-4,
- * sdd/repuestos-instalar-desde-deposito, issue #153).
- *
- * `insumoId` es OBLIGATORIO (a diferencia de `CreateComponenteHttpDto`): este
- * endpoint no tiene camino de texto libre — siempre mueve stock de un
- * repuesto del catálogo, así que `tipoComponenteCodigo` NI SIQUIERA se
- * declara acá (el use case lo deriva de la familia del repuesto, igual que el
- * camino vinculado del WU-3). Sin ningún campo de cantidad: un componente es
- * siempre UNA unidad física (issue #153, "NO entra").
+ * Body de `POST /equipos/:id/componentes`. Un solo camino de alta: `insumoId`
+ * (repuesto del catálogo) es obligatorio y el tipo se deriva de su familia.
+ * `tipoComponenteCodigo` NO se declara: si llega, el `ValidationPipe` global
+ * (`whitelist: true`) lo descarta en silencio (ADR-2).
  */
-export class InstalarComponenteDesdeDepositoHttpDto {
+export class CreateComponenteHttpDto {
   /** Repuesto del catálogo a instalar. */
   @IsUUID()
   insumoId!: string;
+
+  /**
+   * Descuenta 1 unidad del depósito (SALIDA) al instalar. Omitido = `true`.
+   * Sin conversión implícita: un `"false"` en texto vuelve 400.
+   */
+  @IsOptional()
+  @IsBoolean()
+  descontarStock?: boolean;
 
   @IsOptional()
   @IsString()
@@ -326,7 +289,7 @@ export class InstalarComponenteDesdeDepositoHttpDto {
  * dominio, mismo criterio que `EditarEquipoHttpDto.nombre`).
  */
 export class EditarComponenteHttpDto {
-  /** Sin `@MaxLength` — mismo motivo que `CreateComponenteHttpDto.tipoComponenteCodigo`. */
+  /** Sin `@MaxLength`: el código se verifica contra el catálogo por igualdad exacta. */
   @IsOptional()
   @IsString()
   @MinLength(1)
@@ -406,9 +369,8 @@ export function toEquipoResponseDto(equipo: EquipoInformaticoEntity): EquipoResp
 export interface ComponenteResponseDto {
   id: string;
   equipoId: string;
-  tipoComponenteCodigo: string;
-  /** Repuesto del catálogo vinculado (WU-3), o `null` en el camino de texto libre. */
-  insumoId: string | null;
+  /** Repuesto del catálogo vinculado; el tipo ya no viaja en esta respuesta (ADR-6). */
+  insumoId: string;
   descripcion: string | null;
   numeroSerie: string | null;
   capacidad: string | null;
@@ -423,8 +385,10 @@ export function toComponenteResponseDto(componente: ComponenteEquipoEntity): Com
   return {
     id: componente.id,
     equipoId: componente.equipoId,
-    tipoComponenteCodigo: componente.tipoComponenteCodigo,
-    insumoId: componente.insumoId,
+    // La entidad todavía tipa `insumoId` como nullable (se endurece con el
+    // esquema en WU-6); tras la limpieza previa al deploy ningún componente
+    // queda sin repuesto.
+    insumoId: componente.insumoId as string,
     descripcion: componente.descripcion,
     numeroSerie: componente.numeroSerie,
     capacidad: componente.capacidad,

@@ -12,8 +12,7 @@
  *   GET    /equipos/:id                                       → ObtenerEquipoUseCase         `EQUIPOS:LECTURA`
  *   PATCH  /equipos/:id                                       → EditarEquipoUseCase          `EQUIPOS:MODIFICACION`
  *   DELETE /equipos/:id                                       → EliminarEquipoUseCase        `EQUIPOS:BORRADO`
- *   POST   /equipos/:id/componentes                           → AgregarComponenteUseCase     `EQUIPOS:ALTAS`
- *   POST   /equipos/:id/componentes/instalar-desde-deposito   → InstalarComponenteDesdeDepositoUseCase `EQUIPOS:ALTAS`
+ *   POST   /equipos/:id/componentes                           → InstalarComponenteDesdeDepositoUseCase (descontarStock, por defecto) o AgregarComponenteUseCase (descontarStock=false) `EQUIPOS:ALTAS`
  *   DELETE /equipos/:id/componentes/:componenteId             → EliminarComponenteUseCase    `EQUIPOS:BORRADO`
  *   PATCH  /equipos/:id/componentes/:componenteId             → EditarComponenteUseCase      `EQUIPOS:MODIFICACION`
  *   PATCH  /equipos/:id/componentes/:componenteId/reactivar   → ReactivarComponenteUseCase   `EQUIPOS:MODIFICACION`
@@ -101,7 +100,6 @@ import {
   EditarEquipoHttpDto,
   EquipoDetalleResponseDto,
   EquipoResponseDto,
-  InstalarComponenteDesdeDepositoHttpDto,
   TipoComponenteResponseDto,
   toComponenteResponseDto,
   toEquipoDetalleResponseDto,
@@ -363,71 +361,39 @@ export class EquiposController {
 
   /**
    * POST /equipos/:id/componentes
-   * Agrega un componente físico al equipo. `insumoId` (WU-3, opcional) vincula
-   * un repuesto del catálogo — deriva `tipoComponenteCodigo` de su familia.
+   * Alta de un componente desde el catálogo de repuestos. `insumoId` es
+   * obligatorio y el tipo se deriva de la familia del repuesto. Con
+   * `descontarStock` omitido o `true`, registra en UNA transacción la SALIDA de
+   * 1 unidad y el alta (`InstalarComponenteDesdeDepositoUseCase`); con `false`
+   * solo agrega el componente (`AgregarComponenteUseCase`). `usuarioId` sale
+   * siempre de `JWT.sub` vía `@CurrentUser()`, nunca del body.
+   * @throws 400 `insumoId` ausente o inválido, `descontarStock` no booleano
    * @throws 404 equipo inexistente
-   * @throws 422 tipo de componente inexistente/inactivo, insumo inexistente,
-   *   insumo cuya familia no es de repuesto (es un consumible), o insumo
-   *   cuya familia SÍ es de repuesto pero está deshabilitada
+   * @throws 422 insumo inexistente/deshabilitado, familia que no es de
+   *   repuesto o deshabilitada, o stock insuficiente (con descuento)
    */
   @Post(':id/componentes')
   @RequiereAcciones('EQUIPOS:ALTAS')
   @HttpCode(HttpStatus.CREATED)
   async agregarComponente(
+    @CurrentUser() user: JwtPayload,
     @Param('id') id: string,
     @Body() dto: CreateComponenteHttpDto,
   ): Promise<ComponenteResponseDto> {
-    const result = await this.agregarComponenteUseCase.execute({
-      equipoId: id,
-      // Cambio mínimo de WU-3: el use case ya exige `insumoId` (vacío = 422).
-      // El contrato HTTP completo se cierra en WU-4.
-      insumoId: dto.insumoId ?? '',
-      descripcion: dto.descripcion ?? null,
-      numeroSerie: dto.numeroSerie ?? null,
-      capacidad: dto.capacidad ?? null,
-    });
-
-    if (result.isFail()) {
-      throw toHttpException(result.getError());
-    }
-    return toComponenteResponseDto(result.getValue());
-  }
-
-  /**
-   * POST /equipos/:id/componentes/instalar-desde-deposito
-   *
-   * WU-4 (sdd/repuestos-instalar-desde-deposito, issue #153): en UNA sola
-   * transacción, registra la SALIDA de 1 unidad del repuesto elegido —con
-   * `equipoId` poblado, para trazabilidad real por primera vez— y crea el
-   * componente vinculado. O pasan las dos cosas, o no pasa ninguna.
-   *
-   * `usuarioId` sale SIEMPRE de `JWT.sub` vía `@CurrentUser()`, nunca del
-   * body — firma quién instaló el repuesto, mismo criterio que
-   * `MovimientosInsumoController`.
-   *
-   * @throws 404 equipo inexistente
-   * @throws 422 insumo inexistente/deshabilitado/borrado, familia no es de
-   *   repuesto o está deshabilitada, familia sin tipo en el catálogo MASTER
-   *   (mismos errores que `POST .../componentes`, WU-3), o stock insuficiente
-   *   (`StockInsuficienteError` — no mapeado explícito, cae en el 422 por
-   *   defecto, igual que en `MovimientosInsumoController`)
-   */
-  @Post(':id/componentes/instalar-desde-deposito')
-  @RequiereAcciones('EQUIPOS:ALTAS')
-  @HttpCode(HttpStatus.CREATED)
-  async instalarComponenteDesdeDeposito(
-    @CurrentUser() user: JwtPayload,
-    @Param('id') id: string,
-    @Body() dto: InstalarComponenteDesdeDepositoHttpDto,
-  ): Promise<ComponenteResponseDto> {
-    const result = await this.instalarComponenteDesdeDepositoUseCase.execute({
+    const datos = {
       equipoId: id,
       insumoId: dto.insumoId,
-      usuarioId: user.sub,
       descripcion: dto.descripcion ?? null,
       numeroSerie: dto.numeroSerie ?? null,
       capacidad: dto.capacidad ?? null,
-    });
+    };
+    const result =
+      (dto.descontarStock ?? true)
+        ? await this.instalarComponenteDesdeDepositoUseCase.execute({
+            ...datos,
+            usuarioId: user.sub,
+          })
+        : await this.agregarComponenteUseCase.execute(datos);
 
     if (result.isFail()) {
       throw toHttpException(result.getError());

@@ -1,9 +1,10 @@
 /**
  * equipos-instalar-desde-deposito.e2e.spec.ts — WU-4
- * (sdd/repuestos-instalar-desde-deposito, issue #153).
+ * (sdd/repuestos-instalar-desde-deposito, issue #153; retargeteado en el ciclo
+ * catalogo-unico-componentes, ADR-1).
  *
  * Levanta la app REAL (Nest, sin mocks de infraestructura) y pega por HTTP a
- * `POST /equipos/:id/componentes/instalar-desde-deposito`. Mismo patrón que
+ * `POST /equipos/:id/componentes` (con `descontarStock` omitido = descuenta). Mismo patrón que
  * `compras/interface/controllers/compras.e2e.spec.ts`: DB tenant efímera
  * provisionada (`soporte_prov_equiposInstalarE2E_<rand>_test`), fetch nativo,
  * `soporte_master_test` truncada en `beforeEach`, `usarLockMasterTest()` para
@@ -312,7 +313,7 @@ describe('Equipos e2e — instalar componente desde depósito (WU-4, issue #153)
 
   /**
    * Equipo de fixture creado DIRECTO contra la base (no vía HTTP): este spec
-   * ejercita `POST .../instalar-desde-deposito`, no `POST /equipos`, y crear
+   * ejercita `POST .../componentes`, no `POST /equipos`, y crear
    * el equipo por HTTP obligaría a un SEGUNDO actor/cliente en tests donde el
    * actor bajo prueba no tiene `EQUIPOS:ALTAS` — dos clientes con el MISMO
    * `dbName` (esta única DB tenant efímera) violan el UNIQUE de
@@ -327,7 +328,7 @@ describe('Equipos e2e — instalar componente desde depósito (WU-4, issue #153)
   }
 
   function installUrl(equipoId: string): string {
-    return `${baseUrl}/equipos/${equipoId}/componentes/instalar-desde-deposito`;
+    return `${baseUrl}/equipos/${equipoId}/componentes`;
   }
 
   // ─── Gating de acceso ─────────────────────────────────────────────────
@@ -408,9 +409,9 @@ describe('Equipos e2e — instalar componente desde depósito (WU-4, issue #153)
       expect(status).toBe(201);
       expect(data.insumoId).toBe(insumoId);
       expect(data.equipoId).toBe(equipoId);
-      // El tipo se DERIVA de la familia (WU-3), nunca de lo que mande el body
-      // (este endpoint ni siquiera acepta tipoComponenteCodigo).
-      expect(data.tipoComponenteCodigo).toBe(codigo);
+      // La respuesta ya no expone el tipo (ADR-6); el derivado de la familia
+      // se persiste igual y se verifica contra la base más abajo.
+      expect(data).not.toHaveProperty('tipoComponenteCodigo');
 
       // sdd/repuestos-autoridad-catalogo (ADR-1/ADR-2): la familia NO tiene
       // fila en MASTER (`crearFamiliaRepuesto` ya no la siembra) y el detalle
@@ -438,6 +439,7 @@ describe('Equipos e2e — instalar componente desde depósito (WU-4, issue #153)
       const componentes = await componentesDe(equipoId);
       expect(componentes).toHaveLength(1);
       expect(componentes[0].insumoId).toBe(insumoId);
+      expect(componentes[0].tipoComponenteCodigo).toBe(codigo);
 
       // Stock: 5 (entrada) - 1 (salida) = 4.
       const suma = movimientos.reduce(
@@ -492,10 +494,10 @@ describe('Equipos e2e — instalar componente desde depósito (WU-4, issue #153)
     });
   });
 
-  // ─── Twin/inverted: instalar mueve stock, el vínculo del WU-3 no ──────
+  // ─── descontarStock, ruta retirada y tipo derivado ────────────────────
 
-  describe('Twin invertido — el camino WU-3 (vincular sin stock) NO mueve stock; este endpoint SÍ', () => {
-    it('POST /equipos/:id/componentes (WU-3, vínculo sin descontar) crea el componente y CERO movimientos', async () => {
+  describe('descontarStock, ruta retirada y tipo derivado (ADR-1, ADR-2)', () => {
+    it('descontarStock false: crea el componente y CERO movimientos, aunque no haya stock', async () => {
       const { familiaId } = await crearFamiliaRepuesto();
       const unidadMedidaId = await crearUnidadMedida();
       const insumoId = await crearInsumoRepuesto(familiaId, unidadMedidaId);
@@ -503,17 +505,18 @@ describe('Equipos e2e — instalar componente desde depósito (WU-4, issue #153)
       const equipoId = await crearEquipoDirecto();
 
       const { status, data } = await httpPost<ComponenteResponseDto>(
-        `${baseUrl}/equipos/${equipoId}/componentes`,
-        { insumoId },
+        installUrl(equipoId),
+        { insumoId, descontarStock: false },
         bearer(actor.accessToken),
       );
 
       expect(status).toBe(201);
       expect(data.insumoId).toBe(insumoId);
       expect(await movimientosDe(insumoId)).toHaveLength(0);
+      expect(await componentesDe(equipoId)).toHaveLength(1);
     });
 
-    it('POST .../instalar-desde-deposito, con el MISMO insumo y stock disponible, SÍ crea un movimiento', async () => {
+    it('descontarStock omitido con stock disponible: crea el componente y UNA SALIDA', async () => {
       const { familiaId } = await crearFamiliaRepuesto();
       const unidadMedidaId = await crearUnidadMedida();
       const insumoId = await crearInsumoRepuesto(familiaId, unidadMedidaId);
@@ -528,11 +531,75 @@ describe('Equipos e2e — instalar componente desde depósito (WU-4, issue #153)
       );
 
       expect(status).toBe(201);
-      // 2 movimientos en total: la ENTRADA sembrada arriba + la SALIDA que
-      // este endpoint asienta — el punto del test es que esa SALIDA exista.
+      // 2 movimientos: la ENTRADA sembrada + la SALIDA del alta.
       const movimientos = await movimientosDe(insumoId);
       expect(movimientos).toHaveLength(2);
       expect(movimientos.filter((m) => m.tipo === 'SALIDA')).toHaveLength(1);
+    });
+
+    it('descontarStock en texto ("false") → 400 y no se escribe nada', async () => {
+      const { familiaId } = await crearFamiliaRepuesto();
+      const unidadMedidaId = await crearUnidadMedida();
+      const insumoId = await crearInsumoRepuesto(familiaId, unidadMedidaId);
+      const actor = await crearActorConPermisos(['EQUIPOS:ALTAS']);
+      const equipoId = await crearEquipoDirecto();
+
+      const { status } = await httpPost(
+        installUrl(equipoId),
+        { insumoId, descontarStock: 'false' },
+        bearer(actor.accessToken),
+      );
+
+      expect(status).toBe(400);
+      expect(await componentesDe(equipoId)).toHaveLength(0);
+    });
+
+    it('sin insumoId → 400', async () => {
+      const actor = await crearActorConPermisos(['EQUIPOS:ALTAS']);
+      const equipoId = await crearEquipoDirecto();
+
+      const { status } = await httpPost(installUrl(equipoId), {}, bearer(actor.accessToken));
+
+      expect(status).toBe(400);
+      expect(await componentesDe(equipoId)).toHaveLength(0);
+    });
+
+    it('la ruta vieja instalar-desde-deposito ya no existe → 404', async () => {
+      const { familiaId } = await crearFamiliaRepuesto();
+      const unidadMedidaId = await crearUnidadMedida();
+      const insumoId = await crearInsumoRepuesto(familiaId, unidadMedidaId);
+      const actor = await crearActorConPermisos(['EQUIPOS:ALTAS']);
+      await sembrarEntrada(insumoId, 3, actor.usuarioId);
+      const equipoId = await crearEquipoDirecto();
+
+      const { status } = await httpPost(
+        `${installUrl(equipoId)}/instalar-desde-deposito`,
+        { insumoId },
+        bearer(actor.accessToken),
+      );
+
+      expect(status).toBe(404);
+      expect(await componentesDe(equipoId)).toHaveLength(0);
+      expect(await movimientosDe(insumoId)).toHaveLength(1);
+    });
+
+    it('un tipoComponenteCodigo sobrante se ignora: el tipo persistido es el de la familia', async () => {
+      const { familiaId, codigo } = await crearFamiliaRepuesto();
+      const unidadMedidaId = await crearUnidadMedida();
+      const insumoId = await crearInsumoRepuesto(familiaId, unidadMedidaId);
+      const actor = await crearActorConPermisos(['EQUIPOS:ALTAS']);
+      const equipoId = await crearEquipoDirecto();
+
+      const { status } = await httpPost(
+        installUrl(equipoId),
+        { insumoId, descontarStock: false, tipoComponenteCodigo: 'OTRO_TIPO' },
+        bearer(actor.accessToken),
+      );
+
+      expect(status).toBe(201);
+      const componentes = await componentesDe(equipoId);
+      expect(componentes).toHaveLength(1);
+      expect(componentes[0].tipoComponenteCodigo).toBe(codigo);
     });
   });
 

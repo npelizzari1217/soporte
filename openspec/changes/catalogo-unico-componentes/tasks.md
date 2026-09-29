@@ -188,14 +188,16 @@ concurrencia tienen que moverse juntos para compilar y quedar en verde.
 
 Sigue escribiendo `tipo_componente_codigo` (derivado) vía la entidad; no toca esquema.
 
-- [ ] 4.1 `equipos.dto.ts`: `CreateComponenteHttpDto` con `@IsUUID() insumoId` y `@IsOptional() @IsBoolean() descontarStock?`, **sin** `tipoComponenteCodigo` (se descarta por `whitelist`, ADR-2). Sin conversión implícita: `"false"` en texto da 400. `ComponenteResponseDto` (POST, PATCH, reactivar) **sin** `tipoComponenteCodigo`, con `insumoId: string` (ADR-6). (Req: Un solo flujo de alta; El tipo se deriva de la familia)
-- [ ] 4.2 `equipos.controller.ts`: en `POST :id/componentes` resolver `dto.descontarStock ?? true`; `true` → `InstalarComponenteDesdeDepositoUseCase` (usuario desde `@CurrentUser()`), `false` → `AgregarComponenteUseCase`. Mismo `@RequiereAcciones('EQUIPOS:ALTAS')`. **Borrar** la ruta `POST :id/componentes/instalar-desde-deposito`. Quitar del mapeo de errores los que ya no se lanzan en el alta (las clases se borran en WU-5). (ADR-1)
-- [ ] 4.3 Specs de borde: `equipos.dto.spec.ts` (sin `insumoId` da 400; `"false"` da 400; `tipoComponenteCodigo` sobrante se descarta con `validate(dto, { whitelist: true })`, molde `insumos.dto.spec.ts:95`) y `equipos.controller.spec.ts` (omitido o `true` llama a Instalar; `false` llama a Agregar). (Escenarios: Descuento por defecto; Alta sin descuento; Un tipo enviado en el request no define el tipo)
-- [ ] 4.4 Retargetear `equipos-instalar-desde-deposito.e2e.spec.ts` a `POST :id/componentes`: omitido → componente y SALIDA; `false` → sin movimiento; sin stock → nada queda escrito (rollback); ruta vieja `instalar-desde-deposito` → 404; `tipoComponenteCodigo` sobrante no cambia el tipo derivado. Conserva `usarLockMasterTest()`. (Escenarios: Falla la SALIDA y se revierte el alta; Alta sin descuento)
-- [ ] 4.5 Quality gates: `cd backend && pnpm lint && pnpm typecheck && pnpm vitest run src/equipos/interface` y `pnpm test`.
-- [ ] 4.6 Anotar la **deuda de Ayuda** en el commit y en el cuerpo del PR.
+- [x] 4.1 `equipos.dto.ts`: `CreateComponenteHttpDto` con `@IsUUID() insumoId` y `@IsOptional() @IsBoolean() descontarStock?`, **sin** `tipoComponenteCodigo` (se descarta por `whitelist`, ADR-2). Sin conversión implícita: `"false"` en texto da 400. `ComponenteResponseDto` (POST, PATCH, reactivar) **sin** `tipoComponenteCodigo`, con `insumoId: string` (ADR-6). (Req: Un solo flujo de alta; El tipo se deriva de la familia)
+- [x] 4.2 `equipos.controller.ts`: en `POST :id/componentes` resolver `dto.descontarStock ?? true`; `true` → `InstalarComponenteDesdeDepositoUseCase` (usuario desde `@CurrentUser()`), `false` → `AgregarComponenteUseCase`. Mismo `@RequiereAcciones('EQUIPOS:ALTAS')`. **Borrar** la ruta `POST :id/componentes/instalar-desde-deposito`. Quitar del mapeo de errores los que ya no se lanzan en el alta (las clases se borran en WU-5). (ADR-1)
+- [x] 4.3 Specs de borde: `equipos.dto.spec.ts` (sin `insumoId` da 400; `"false"` da 400; `tipoComponenteCodigo` sobrante se descarta con `validate(dto, { whitelist: true })`, molde `insumos.dto.spec.ts:95`) y `equipos.controller.spec.ts` (omitido o `true` llama a Instalar; `false` llama a Agregar). (Escenarios: Descuento por defecto; Alta sin descuento; Un tipo enviado en el request no define el tipo)
+- [x] 4.4 Retargetear `equipos-instalar-desde-deposito.e2e.spec.ts` a `POST :id/componentes`: omitido → componente y SALIDA; `false` → sin movimiento; sin stock → nada queda escrito (rollback); ruta vieja `instalar-desde-deposito` → 404; `tipoComponenteCodigo` sobrante no cambia el tipo derivado. Conserva `usarLockMasterTest()`. (Escenarios: Falla la SALIDA y se revierte el alta; Alta sin descuento)
+- [x] 4.5 Quality gates: `cd backend && pnpm lint && pnpm typecheck && pnpm vitest run src/equipos/interface` y `pnpm test`.
+- [x] 4.6 Anotar la **deuda de Ayuda** en el commit y en el cuerpo del PR.
 
 **PR boundary**: ~350 líneas, base wu03.
+**Real**: 516 líneas (273 +, 243 −; tests 337). Se entrega con `size:exception`: el único corte
+posible deja el e2e retargeteado fallando contra el código previo.
 
 ## WU-5 — Edición y lectura sin tipo; menos errores
 

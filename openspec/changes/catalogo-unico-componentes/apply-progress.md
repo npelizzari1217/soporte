@@ -47,3 +47,18 @@ Estado: **completo, sin commitear** (excede el presupuesto de 400 líneas; decid
 | 3.5 Gates | lint 0 errores; typecheck limpio; `vitest run src/equipos` 28 archivos / 321 tests; `pnpm test` 495 archivos / 5690 tests verdes |
 
 Entidad y mapper intactos (siguen escribiendo `tipoComponenteCodigo`, WU-6). Sin cambios de UI visibles por sí mismos; el 422 sin `insumoId` en HTTP se documenta en WU-4.
+
+## WU-4 — Alta, borde HTTP (rama `feat/catalogo-unico-componentes-wu04`)
+
+Estado: **completo** (tareas 4.1 a 4.6 marcadas en `tasks.md`).
+
+| Tarea | Resultado |
+|---|---|
+| 4.1 DTO | `CreateComponenteHttpDto` con `@IsUUID() insumoId` obligatorio y `@IsOptional() @IsBoolean() descontarStock?`; sin `tipoComponenteCodigo` ni `@ValidateIf`. Se borra `InstalarComponenteDesdeDepositoHttpDto`. `ComponenteResponseDto` sin `tipoComponenteCodigo` y con `insumoId: string` (la entidad sigue nullable hasta WU-6, por eso un cast comentado en el mapper) |
+| 4.2 Controller | `POST :id/componentes` resuelve `dto.descontarStock ?? true`: Instalar (usuario desde `@CurrentUser()`) o Agregar. Ruta `instalar-desde-deposito` borrada. Mapeo de errores sin cambios: los errores de tipo que quedan los siguen lanzando la entidad y la edición hasta WU-5 |
+| 4.3 Specs de borde | `equipos.dto.spec.ts` (sin insumoId, `"false"`, whitelist descarta el tipo) y `equipos.controller.spec.ts` (omitido/true a Instalar, false a Agregar, usuario del JWT, sin `tipoComponenteCodigo` en la respuesta, ruta vieja inexistente) |
+| 4.4 e2e | `equipos-instalar-desde-deposito.e2e.spec.ts` retargeteado a `POST :id/componentes`: omitido con SALIDA, `false` sin movimiento, sin stock con rollback, ruta vieja 404, `"false"` en texto 400, sin insumoId 400, tipo sobrante ignorado. Conserva `usarLockMasterTest()` |
+| 4.5 Gates | lint 0 errores; typecheck limpio; `vitest run src/equipos` 28 archivos / 334 tests; `pnpm test` ver reporte |
+| 4.6 Ayuda | Deuda anotada en el cuerpo del commit |
+
+Diferencias respecto del diseño: ninguna. El frontend sigue llamando a la ruta retirada hasta WU-8 (estado intermedio no desplegable, ADR-7).

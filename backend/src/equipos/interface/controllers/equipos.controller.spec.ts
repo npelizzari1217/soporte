@@ -23,7 +23,6 @@ import * as EquiposErrors from '../../domain/errors/equipos.errors';
 import {
   EquipoNoEncontradoError,
   NumeroSerieDuplicadoError,
-  TipoComponenteInactivoError,
   ComponenteNoEncontradoError,
   ComponenteDadoDeBajaError,
   ComponenteYaActivoError,
@@ -210,42 +209,11 @@ describe('EquiposController (T12.6)', () => {
     });
   });
 
-  describe('POST /equipos/:id/componentes', () => {
-    it('agrega el componente', async () => {
-      const { controller, agregarComponenteUseCase } = buildController();
-      const componente = ComponenteEquipoEntity.create({
-        equipoId: 'equipo-uuid',
-        tipoComponenteCodigo: 'RAM',
-        insumoId: null,
-        descripcion: null,
-        numeroSerie: null,
-        capacidad: null,
-      }).getValue();
-      agregarComponenteUseCase.execute.mockResolvedValue(Result.ok(componente));
-
-      const result = await controller.agregarComponente('equipo-uuid', {
-        tipoComponenteCodigo: 'RAM',
-      } as any);
-      expect(result.tipoComponenteCodigo).toBe('RAM');
-    });
-
-    /**
-     * El `insumoId` cruza la frontera HTTP por dos líneas —el `?? null` que
-     * lo pasa al caso de uso, y el campo del response DTO— y ninguna tenía
-     * assert: borrar cualquiera de las dos dejaba la suite entera en verde.
-     *
-     * El lado del response es el que muerde. `ComponenteEditDialog` decide
-     * con `componente.insumoId != null` si el select de tipo va
-     * deshabilitado; si el campo deja de llegar, ese guard se vuelve
-     * siempre falso EN SILENCIO, el select queda editable sobre un
-     * componente vinculado, y el usuario se come el 422
-     * `COMPONENTE_VINCULADO_TIPO_INMUTABLE` — exactamente el error que este
-     * work unit existe para evitarle.
-     */
-    it('el insumoId viaja al caso de uso Y vuelve en el response', async () => {
-      const { controller, agregarComponenteUseCase } = buildController();
-      const insumoId = '33333333-3333-4333-8333-333333333333';
-      const componente = ComponenteEquipoEntity.create({
+  describe('POST /equipos/:id/componentes (un solo endpoint, ADR-1)', () => {
+    const actor = { sub: 'usuario-jwt-uuid' } as any;
+    const insumoId = '33333333-3333-4333-8333-333333333333';
+    const makeComponente = () =>
+      ComponenteEquipoEntity.create({
         equipoId: 'equipo-uuid',
         tipoComponenteCodigo: 'MOUSE',
         insumoId,
@@ -253,86 +221,72 @@ describe('EquiposController (T12.6)', () => {
         numeroSerie: null,
         capacidad: null,
       }).getValue();
-      agregarComponenteUseCase.execute.mockResolvedValue(Result.ok(componente));
 
-      const result = await controller.agregarComponente('equipo-uuid', { insumoId } as any);
+    it('descontarStock omitido → instala desde el depósito; usuarioId sale del JWT, nunca del body', async () => {
+      const { controller, instalarComponenteDesdeDepositoUseCase, agregarComponenteUseCase } =
+        buildController();
+      instalarComponenteDesdeDepositoUseCase.execute.mockResolvedValue(Result.ok(makeComponente()));
 
-      expect(agregarComponenteUseCase.execute).toHaveBeenCalledWith(
-        expect.objectContaining({ insumoId }),
-      );
-      expect(result.insumoId).toBe(insumoId);
-    });
-
-    /**
-     * Gemelo invertido: sin `insumoId` en el body, el controller manda `''`
-     * (no `null`) al caso de uso, que lo rechaza. Cambio mínimo de WU-3; el
-     * contrato HTTP con `insumoId` obligatorio llega en WU-4.
-     */
-    it('sin insumoId en el body, el caso de uso lo recibe vacío y el rechazo sube como 422', async () => {
-      const { controller, agregarComponenteUseCase } = buildController();
-      agregarComponenteUseCase.execute.mockResolvedValue(
-        Result.fail(new EquiposErrors.InsumoRepuestoInexistenteError('')),
-      );
-
-      await expect(
-        controller.agregarComponente('equipo-uuid', { tipoComponenteCodigo: 'RAM' } as any),
-      ).rejects.toMatchObject({ status: 422 });
-
-      expect(agregarComponenteUseCase.execute).toHaveBeenCalledWith(
-        expect.objectContaining({ insumoId: '' }),
-      );
-    });
-
-    it('tipo inactivo → 422', async () => {
-      const { controller, agregarComponenteUseCase } = buildController();
-      agregarComponenteUseCase.execute.mockResolvedValue(
-        Result.fail(new TipoComponenteInactivoError('RAM')),
-      );
-
-      await expect(
-        controller.agregarComponente('equipo-uuid', { tipoComponenteCodigo: 'RAM' } as any),
-      ).rejects.toThrow(UnprocessableEntityException);
-    });
-
-    it('declara @RequiereAcciones("EQUIPOS:ALTAS")', () => {
-      const meta = Reflect.getMetadata(ACCIONES_KEY, EquiposController.prototype.agregarComponente);
-      expect(meta).toEqual(['EQUIPOS:ALTAS']);
-    });
-  });
-
-  describe('POST /equipos/:id/componentes/instalar-desde-deposito (WU-4, issue #153)', () => {
-    const actor = { sub: 'usuario-jwt-uuid' } as any;
-
-    it('instala el componente: usuarioId sale del JWT (@CurrentUser), nunca del body', async () => {
-      const { controller, instalarComponenteDesdeDepositoUseCase } = buildController();
-      const componente = ComponenteEquipoEntity.create({
-        equipoId: 'equipo-uuid',
-        tipoComponenteCodigo: 'MOUSE',
-        insumoId: 'insumo-uuid',
-        descripcion: null,
-        numeroSerie: null,
-        capacidad: null,
-      }).getValue();
-      instalarComponenteDesdeDepositoUseCase.execute.mockResolvedValue(Result.ok(componente));
-
-      const result = await controller.instalarComponenteDesdeDeposito(actor, 'equipo-uuid', {
-        insumoId: 'insumo-uuid',
-        // Un `usuarioId` en el body no debería existir en el DTO tipado, pero
-        // `as any` simula un cliente que lo manda igual — el handler nunca lo
-        // lee de acá.
+      const result = await controller.agregarComponente(actor, 'equipo-uuid', {
+        insumoId,
+        // Un cliente que manda `usuarioId` igual: el handler nunca lo lee.
         usuarioId: 'usuario-suplantado',
       } as any);
 
       expect(instalarComponenteDesdeDepositoUseCase.execute).toHaveBeenCalledWith({
         equipoId: 'equipo-uuid',
-        insumoId: 'insumo-uuid',
+        insumoId,
         usuarioId: 'usuario-jwt-uuid',
         descripcion: null,
         numeroSerie: null,
         capacidad: null,
       });
-      expect(result.insumoId).toBe('insumo-uuid');
-      expect(result.tipoComponenteCodigo).toBe('MOUSE');
+      expect(agregarComponenteUseCase.execute).not.toHaveBeenCalled();
+      expect(result.insumoId).toBe(insumoId);
+    });
+
+    it('descontarStock true → instala desde el depósito', async () => {
+      const { controller, instalarComponenteDesdeDepositoUseCase, agregarComponenteUseCase } =
+        buildController();
+      instalarComponenteDesdeDepositoUseCase.execute.mockResolvedValue(Result.ok(makeComponente()));
+
+      await controller.agregarComponente(actor, 'equipo-uuid', {
+        insumoId,
+        descontarStock: true,
+      } as any);
+
+      expect(instalarComponenteDesdeDepositoUseCase.execute).toHaveBeenCalledTimes(1);
+      expect(agregarComponenteUseCase.execute).not.toHaveBeenCalled();
+    });
+
+    it('descontarStock false → agrega sin movimiento de stock', async () => {
+      const { controller, instalarComponenteDesdeDepositoUseCase, agregarComponenteUseCase } =
+        buildController();
+      agregarComponenteUseCase.execute.mockResolvedValue(Result.ok(makeComponente()));
+
+      const result = await controller.agregarComponente(actor, 'equipo-uuid', {
+        insumoId,
+        descontarStock: false,
+      } as any);
+
+      expect(agregarComponenteUseCase.execute).toHaveBeenCalledWith({
+        equipoId: 'equipo-uuid',
+        insumoId,
+        descripcion: null,
+        numeroSerie: null,
+        capacidad: null,
+      });
+      expect(instalarComponenteDesdeDepositoUseCase.execute).not.toHaveBeenCalled();
+      expect(result.insumoId).toBe(insumoId);
+    });
+
+    it('la respuesta no expone tipoComponenteCodigo (ADR-6)', async () => {
+      const { controller, instalarComponenteDesdeDepositoUseCase } = buildController();
+      instalarComponenteDesdeDepositoUseCase.execute.mockResolvedValue(Result.ok(makeComponente()));
+
+      const result = await controller.agregarComponente(actor, 'equipo-uuid', { insumoId } as any);
+
+      expect(result).not.toHaveProperty('tipoComponenteCodigo');
     });
 
     it('equipo inexistente → 404', async () => {
@@ -342,31 +296,42 @@ describe('EquiposController (T12.6)', () => {
       );
 
       await expect(
-        controller.instalarComponenteDesdeDeposito(actor, 'no-existe', {
-          insumoId: 'insumo-uuid',
-        } as any),
+        controller.agregarComponente(actor, 'no-existe', { insumoId } as any),
       ).rejects.toThrow(NotFoundException);
     });
 
-    it('stock insuficiente → 422 (StockInsuficienteError, sin mapeo explícito, cae en el default)', async () => {
+    it('stock insuficiente → 422 (StockInsuficienteError cae en el default)', async () => {
       const { controller, instalarComponenteDesdeDepositoUseCase } = buildController();
       instalarComponenteDesdeDepositoUseCase.execute.mockResolvedValue(
-        Result.fail(new StockInsuficienteError('insumo-uuid', 1, 0)),
+        Result.fail(new StockInsuficienteError(insumoId, 1, 0)),
       );
 
       await expect(
-        controller.instalarComponenteDesdeDeposito(actor, 'equipo-uuid', {
-          insumoId: 'insumo-uuid',
+        controller.agregarComponente(actor, 'equipo-uuid', { insumoId } as any),
+      ).rejects.toThrow(UnprocessableEntityException);
+    });
+
+    it('insumo inexistente sin descuento → 422', async () => {
+      const { controller, agregarComponenteUseCase } = buildController();
+      agregarComponenteUseCase.execute.mockResolvedValue(
+        Result.fail(new EquiposErrors.InsumoRepuestoInexistenteError(insumoId)),
+      );
+
+      await expect(
+        controller.agregarComponente(actor, 'equipo-uuid', {
+          insumoId,
+          descontarStock: false,
         } as any),
       ).rejects.toThrow(UnprocessableEntityException);
     });
 
-    it('declara @RequiereAcciones("EQUIPOS:ALTAS") — misma celda que agregar, decisión del issue #153', () => {
-      const meta = Reflect.getMetadata(
-        ACCIONES_KEY,
-        EquiposController.prototype.instalarComponenteDesdeDeposito,
-      );
+    it('declara @RequiereAcciones("EQUIPOS:ALTAS")', () => {
+      const meta = Reflect.getMetadata(ACCIONES_KEY, EquiposController.prototype.agregarComponente);
       expect(meta).toEqual(['EQUIPOS:ALTAS']);
+    });
+
+    it('la ruta instalar-desde-deposito ya no existe en el controller', () => {
+      expect((EquiposController.prototype as any).instalarComponenteDesdeDeposito).toBeUndefined();
     });
   });
 
@@ -453,7 +418,8 @@ describe('EquiposController (T12.6)', () => {
       reactivarComponenteUseCase.execute.mockResolvedValue(Result.ok(componente));
 
       const result = await controller.reactivarComponente('equipo-uuid', 'componente-1');
-      expect(result.tipoComponenteCodigo).toBe('RAM');
+      expect(result.id).toBeDefined();
+      expect(result).not.toHaveProperty('tipoComponenteCodigo');
     });
 
     it('componente ya activo → 422', async () => {
