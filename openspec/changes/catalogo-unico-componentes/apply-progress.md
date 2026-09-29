@@ -152,3 +152,16 @@ Estado: **completo** (tareas 9.1 a 9.5 marcadas en `tasks.md`).
 | 9.4 | lint 0 errores; type-check limpio; `pnpm test` 212 archivos / 1592 tests |
 | 9.5 | Deuda de Ayuda para el commit |
 Retirados de `equipos`: `useTiposComponente` (hook) y el tipo `TipoComponente`; `ComponenteConTipo.tipoComponenteCodigo`. La feature `tipos-componente` usa su propio hook `useTiposComponenteAdmin`, no importa nada de `equipos`. AGENTS.md:208 (`tipoActualFueraDeCatalogo`) queda para WU-12.
+
+## WU-11a — Frontend: ruta y navegación de `tipos-componente` (rama `feat/catalogo-unico-componentes-wu11a`, base wu09)
+
+Estado: **completo** (tareas 11a.1 a 11a.4 marcadas en `tasks.md`).
+
+| Tarea | Resultado |
+|---|---|
+| 11a.1 | Borrada `app/(dashboard)/admin/tipos-componente/` (`page.tsx` y `layout.tsx`) |
+| 11a.2 | `nav-config.ts` sin la entrada ROOT ni el import `Tag`; `nav-config.test.ts` y `app-sidebar.test.tsx` ajustados (el link ya no aparece). Comentarios corregidos en `root-access.ts`, `root-layout-gate.ts`, `feriados-globales/{page,layout}.tsx`, `feriados-globales-admin-view.tsx` y `equipos/types.ts` (citaba el selector y `GET /equipos/tipos-componente` ya retirados) |
+| 11a.3 | lint 0 errores; type-check limpio (tras borrar `.next/types` obsoleto, ignorado por git); `pnpm test` 212 archivos / 1592 tests |
+| 11a.4 | Deuda de Ayuda en el cuerpo del commit |
+
+`src/features/tipos-componente/` queda intacta (WU-11b).

@@ -10,7 +10,6 @@ import {
   Monitor,
   CalendarRange,
   ClipboardCheck,
-  Tag,
   Package,
   Cog,
   PartyPopper,
@@ -175,16 +174,6 @@ const ROOT_SECTION_ITEMS: NavItem[] = [
     // de `/admin/ciclos` (adopción/activación por el admin del cliente,
     // gateado por `ciclo:gestionar` dentro de `/admin/catalogos`) — este ítem
     // es EXCLUSIVO de ROOT, igual que "Clientes".
-    visible: (_can, isGlobalAdmin) => isGlobalAdmin,
-  },
-  {
-    href: "/admin/tipos-componente",
-    label: "Tipos de componente",
-    icon: Tag,
-    // Catálogo MASTER de tipos de componente (ABM del ROOT, PR5,
-    // sdd/tipos-componente-master). Exclusivo de ROOT, mismo criterio que
-    // "Clientes" y "Ciclos" (master) — NO vive en `AdminNav` (esa sub-nav es
-    // solo para secciones gateadas por `permisos` del tenant).
     visible: (_can, isGlobalAdmin) => isGlobalAdmin,
   },
   {

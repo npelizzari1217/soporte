@@ -317,10 +317,10 @@ aborta todo deploy posterior. Además, el `migrate resolve` del runbook apunta a
 
 **Branch**: `feat/catalogo-unico-componentes-wu11a` · **Base**: wu09
 
-- [ ] 11a.1 Borrar `frontend/src/app/(dashboard)/admin/tipos-componente/**` (incluido el `layout.tsx` que gatea la ruta).
-- [ ] 11a.2 `frontend/src/shared/nav/nav-config.ts`: quitar la entrada ROOT (`:181-185`) y ajustar `nav-config.test`; actualizar comentarios de `root-access.ts`, `root-layout-gate.ts` y `feriados-globales` que mencionan la ruta retirada. (Escenario: Pantalla y navegación retiradas)
-- [ ] 11a.3 Quality gates: `cd frontend && pnpm lint && pnpm type-check && pnpm test`.
-- [ ] 11a.4 Anotar la **deuda de Ayuda** (pantalla ROOT retirada) en commit y PR.
+- [x] 11a.1 Borrar `frontend/src/app/(dashboard)/admin/tipos-componente/**` (incluido el `layout.tsx` que gatea la ruta).
+- [x] 11a.2 `frontend/src/shared/nav/nav-config.ts`: quitar la entrada ROOT (`:181-185`) y ajustar `nav-config.test`; actualizar comentarios de `root-access.ts`, `root-layout-gate.ts` y `feriados-globales` que mencionan la ruta retirada. (Escenario: Pantalla y navegación retiradas)
+- [x] 11a.3 Quality gates: `cd frontend && pnpm lint && pnpm type-check && pnpm test`.
+- [x] 11a.4 Anotar la **deuda de Ayuda** (pantalla ROOT retirada) en commit y PR.
 
 **PR boundary**: ~120 líneas, base wu09. Después de este PR la UI ya no llama a ningún endpoint de
 `tipos-componente`.

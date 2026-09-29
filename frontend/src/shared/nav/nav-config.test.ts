@@ -213,13 +213,13 @@ describe("nav-config", () => {
   });
 
   describe("visibleNavSections", () => {
-    it("ROOT (is_global_admin) → ve la sección 'ROOT' con Clientes, Ciclos, Tipos de componente y Feriados nacionales", () => {
+    it("ROOT (is_global_admin) → ve la sección 'ROOT' con Clientes, Ciclos y Feriados nacionales", () => {
       const user = makeUser({ permisos: [], is_global_admin: true });
       const sections = visibleNavSections(user);
       const rootSection = sections.find((s) => s.title === "ROOT");
       expect(rootSection).toBeDefined();
       expect(rootSection?.items.map((i) => i.href)).toEqual(
-        expect.arrayContaining(["/admin/clientes", "/ciclos", "/admin/tipos-componente", "/admin/feriados-globales"]),
+        expect.arrayContaining(["/admin/clientes", "/ciclos", "/admin/feriados-globales"]),
       );
     });
 

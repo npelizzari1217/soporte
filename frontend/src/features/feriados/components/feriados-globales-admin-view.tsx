@@ -4,8 +4,8 @@
  * FeriadosGlobalesAdminView — CONTAINER client component montado por
  * `/admin/feriados-globales` (sdd/feriados-configurables). Gate por
  * `isGlobalAdmin` — NUNCA por `permisos` (ROOT es ortogonal al rol/permisos
- * de una membresía, ADR-4), mismo criterio que `ClientesAdminView`,
- * `CiclosVigentesAdminView` y `TiposComponenteAdminView`.
+ * de una membresía, ADR-4), mismo criterio que `ClientesAdminView` y
+ * `CiclosVigentesAdminView`.
  *
  * WU7a dejó la lista SOLO LECTURA; un commit posterior agregó crear/editar
  * (`FeriadoFormDialog`) y otro cerró el ABM con la baja (`ConfirmDialog` +

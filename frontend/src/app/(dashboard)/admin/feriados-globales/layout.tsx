@@ -5,9 +5,8 @@
  * `FeriadosGlobalesAdminView` también gatea client-side — pero ninguno de
  * los dos impide el acceso por URL directa. Ver `rootLayoutGate` para el
  * detalle del patrón (refresh tolerante R26); mismo criterio que
- * `/admin/clientes` y `/admin/tipos-componente`, que reutilizan el mismo
- * gate sin lógica propia — por eso este archivo no lleva un test aparte
- * (ninguno de esos dos lo lleva tampoco): la cobertura vive en
+ * `/admin/clientes`, que reutiliza el mismo gate sin lógica propia — por
+ * eso este archivo no lleva un test aparte (`/admin/clientes` tampoco lo lleva): la cobertura vive en
  * `root-access.test.ts`, que ya prueba `puedeEntrarRoot`.
  */
 import { rootLayoutGate } from "@/shared/auth/root-layout-gate";

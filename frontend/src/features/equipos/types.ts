@@ -16,9 +16,7 @@
  * `EquipoDetalle.componentes` espeja `ComponenteConTipoResponseDto`
  * (`ComponenteConTipo`): además trae `tipoNombre`/`tipoActivo` resueltos
  * del catálogo MASTER — el único lugar confiable para mostrar el nombre de
- * un componente ya asignado (soporta tipos dados de baja, que el selector
- * de alta NO lista). El selector `TipoComponente` (catálogo de activos,
- * `GET /equipos/tipos-componente`) ya no expone `id` ni `activo` (PR3).
+ * un componente ya asignado (soporta tipos dados de baja).
  */
 
 export interface Equipo {
