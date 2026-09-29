@@ -188,3 +188,22 @@ Desviación: con la ruta borrada, `GET /equipos/tipos-componente` cae en `GET /e
 `uuid` de Postgres respondía 500 (no 404). `obtener` ahora devuelve 404 (`EquipoNoEncontradoError`) para un
 id que no es UUID, sin consultar. Los tests del controller que usaban ids no UUID pasaron a UUID real.
 `src/tipos-componente/` (WU-10b) y el modelo Prisma MASTER (WU-12) quedan intactos.
+
+## WU-10b — Backend: borrar `tipos-componente` (rama `feat/catalogo-unico-componentes-wu10b`, base wu10a2)
+
+Estado: **completo** (tareas 10b.1 a 10b.4 marcadas en `tasks.md`).
+
+Borrado de `backend/src/tipos-componente/` (23 archivos, ~1650 líneas) en seis commits de arriba hacia abajo
+(módulo + desregistro en `app.module.ts`, controller, dtos + infraestructura, casos de uso, entidad, dominio),
+cada uno con typecheck y lint en verde y por debajo de 400 líneas.
+
+| Tarea | Resultado |
+|---|---|
+| 10b.1 | Módulo, interface, application, infrastructure y domain borrados; `TiposComponenteModule` fuera de `app.module.ts` |
+| 10b.2 | Caso nuevo en `equipos-instalar-desde-deposito.e2e.spec.ts`: las 5 rutas raíz responden 404 con un token ROOT (`isGlobalAdmin`) |
+| 10b.3 | `rg` sin referencias vivas; comentarios que citaban archivos borrados reescritos. Quedan menciones históricas de la ruta `/equipos/tipos-componente` y del cambio `sdd/tipos-componente-master` |
+| 10b.4 | lint y typecheck limpios en cada commit; `pnpm test` completo verde (ver reporte de la fase) |
+
+Limitación: ningún e2e levanta `AppModule`; el 404 del e2e se verifica sobre un harness sin el módulo, así que
+prueba ausencia de rutas, no el desregistro (eso lo cubre el typecheck).
+El modelo Prisma MASTER `TipoComponente` queda intacto (WU-12).

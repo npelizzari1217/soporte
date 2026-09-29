@@ -358,10 +358,10 @@ incluye un chequeo de UUID en `GET /equipos/:id` para que la ruta retirada respo
 
 **Branch**: `feat/catalogo-unico-componentes-wu10b` · **Base**: wu10a
 
-- [ ] 10b.1 Borrar `backend/src/tipos-componente/**` (5 endpoints ROOT con `GlobalAdminGuard`, use cases, repositorio, DTOs, specs) y quitar el import de `app.module.ts:7`.
-- [ ] 10b.2 Agregar un e2e mínimo (o ampliar uno existente) que verifique 404 en los 5 endpoints retirados, con `usarLockMasterTest()` si trunca `soporte_master_test`. (Escenario: Endpoints retirados)
-- [ ] 10b.3 Verificar `rg "tipos-componente|TiposComponente" backend/src` sin referencias vivas.
-- [ ] 10b.4 Quality gates: `cd backend && pnpm lint && pnpm typecheck && pnpm test`.
+- [x] 10b.1 Borrar `backend/src/tipos-componente/**` (5 endpoints ROOT con `GlobalAdminGuard`, use cases, repositorio, DTOs, specs) y quitar el import de `app.module.ts:7`.
+- [x] 10b.2 Agregar un e2e mínimo (o ampliar uno existente) que verifique 404 en los 5 endpoints retirados, con `usarLockMasterTest()` si trunca `soporte_master_test`. (Escenario: Endpoints retirados)
+- [x] 10b.3 Verificar `rg "tipos-componente|TiposComponente" backend/src` sin referencias vivas.
+- [x] 10b.4 Quality gates: `cd backend && pnpm lint && pnpm typecheck && pnpm test`.
 
 **PR boundary**: borrado puro ≤400 líneas, base wu10a. Si supera 400, partir por carpeta
 (`application/` e `infrastructure/`); `size:exception` solo si partir separa código de sus tests.
