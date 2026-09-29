@@ -99,6 +99,51 @@ la pantalla "Horario laboral".
 | Rama | `main` (el script aborta si estás en otra) |
 | Package manager | `corepack pnpm` — **pnpm 11.18.0**, fijado en `packageManager` de los dos `package.json` |
 
+### Precondición: componentes sin repuesto
+
+`sdd/catalogo-unico-componentes` vuelve obligatorio el repuesto de cada componente de equipo:
+la migración tenant deja `componentes_equipo.insumo_id` en NOT NULL y **aborta si queda una sola
+fila con `insumo_id` NULL**, incluidas las borradas lógicamente. Esas filas se inventarían y se
+borran **antes** de esa migración con `backend/scripts/limpiar-componentes-sin-insumo.mjs`. Es
+Node directo (`pg`, sin `dist/`), y se corre desde `C:\soporte\backend` con el Node de
+`C:\nodejs24` (ver la sección siguiente). El script llega al VPS con un deploy ordinario, antes de
+integrar el resto del cambio.
+
+**1. Reporte (solo lectura).** Sin flags:
+
+```powershell
+& C:\nodejs24\node.exe scripts/limpiar-componentes-sin-insumo.mjs
+```
+
+Por cada tenant lista cada fila con `insumo_id` NULL (id, equipo, `tipo_componente_codigo` y si
+está viva o borrada lógicamente), los totales de vivas y borradas, y los clientes fuera del
+recorrido. **Exit 0**: no hay filas, no hay nada que limpiar. **Exit 2**: hay filas; el número
+total del reporte es el `N` del paso siguiente. Un exit 2 no es un error del script: es el aviso
+de que la migración abortaría.
+
+**2. Apply verificado.** Con el total que mostró el reporte:
+
+```powershell
+& C:\nodejs24\node.exe scripts/limpiar-componentes-sin-insumo.mjs --apply --esperadas=N
+```
+
+- Recuenta antes de tocar nada. Si el total no es `N` (producción cambió entre la medición y el
+  borrado), **aborta sin borrar** y sale con exit 1.
+- Si coincide, borra por tenant en una transacción y verifica que los ids borrados sean los
+  inventariados; si difieren, hace `ROLLBACK` de ese tenant y aborta con exit 1. Los tenants ya
+  confirmados antes del error quedan borrados: el mensaje indica cuántas filas se borraron.
+- `--apply` sin `--esperadas` no hace nada y falla con exit 1.
+- El borrado es irreversible salvo por el dump: correrlo dentro de la ventana, con
+  `predeploy-dump.ps1` ya hecho y **tras la confirmación del dueño**.
+
+**3. Reporte de nuevo.** Debe salir con exit 0 antes de correr la migración.
+
+**Clientes inactivos o borrados: fuera del recorrido.** El script recorre el mismo conjunto de
+tenants que `migrate-tenants` (`activo = true` y `deleted_at IS NULL`). Un cliente inactivo o
+borrado no se inspecciona, no se limpia y su migración tenant tampoco corre. El reporte los
+lista al final para que queden a la vista; si alguno se reactiva, hay que revisar a mano su base
+(filas con `insumo_id` NULL y migraciones pendientes) antes de volver a habilitarlo.
+
 ### En el VPS hay DOS Node, y el del PATH es el equivocado
 
 | Ruta | Versión | Quién la usa |

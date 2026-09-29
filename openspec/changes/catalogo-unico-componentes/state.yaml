@@ -1,0 +1,19 @@
+change: catalogo-unico-componentes
+phase: apply
+artifact_store: openspec
+research:
+  selected: true
+  revision: 3
+  outcome: done
+  scope: GLPI, Snipe-IT, ServiceNow (owner narrowed 2026-09-29)
+artifacts:
+  exploration: true
+  research: true
+  proposal: true
+  specs: true
+  design: true
+  tasks: true
+tasks_progress:
+  completed: []
+  pending: []
+last_updated: 2026-09-29
