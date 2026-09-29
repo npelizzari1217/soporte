@@ -32,6 +32,10 @@
 # Ver DEPLOY-VPS-runbook.md Seccion 5 para el procedimiento completo y la
 # recuperacion manual ante cada exit code.
 
+# CmdletBinding hace que un argumento desconocido corte ANTES de ejecutar nada.
+# Sin el, `-DryRun;` (como lo pasa cmd por ssh) cae en $args y $DryRun queda en
+# $false: el 2026-09-29 eso corrio la rotacion real en vez del dry-run.
+[CmdletBinding()]
 param(
   [switch]$DryRun
 )
@@ -178,10 +182,13 @@ try {
   $pendienteFile = Join-Path $BackupDir ('rotacion-email-crypto-key-' + $timestamp + '.PENDIENTE.txt')
   New-Item -ItemType File -Path $pendienteFile -Force | Out-Null
   AplicarAclRecuperacion $pendienteFile
+  # Cada elemento va entre parentesis: la coma liga mas fuerte que el `+`, y sin
+  # ellos PowerShell concatena todo en UNA linea separada por espacios (le paso
+  # a la rotacion en produccion del 2026-09-29).
   Set-Content -Path $pendienteFile -Encoding ascii -Value @(
-    'OLD_KEY=' + $oldKey,
-    'NEW_KEY=' + $newKey,
-    'DUMP=' + $dumpDir.FullName
+    ('OLD_KEY=' + $oldKey),
+    ('NEW_KEY=' + $newKey),
+    ('DUMP=' + $dumpDir.FullName)
   )
   Write-Host ('Archivo de recuperacion: ' + $pendienteFile)
 } catch {
@@ -264,9 +271,9 @@ try {
   New-Item -ItemType File -Path $permanenteFile -Force | Out-Null
   AplicarAclRecuperacion $permanenteFile
   Set-Content -Path $permanenteFile -Encoding ascii -Value @(
-    'OLD_KEY=' + $oldKey,
-    'DUMP=' + $dumpDir.FullName,
-    'ROTADA_EL=' + (Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
+    ('OLD_KEY=' + $oldKey),
+    ('DUMP=' + $dumpDir.FullName),
+    ('ROTADA_EL=' + (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'))
   )
 
   $contenidoPermanente = @(Get-Content $permanenteFile)

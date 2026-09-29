@@ -338,6 +338,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\rotate-email-crypto-key.ps
 powershell -NoProfile -ExecutionPolicy Bypass -File .\rotate-email-crypto-key.ps1
 ```
 
+> **Por ssh, el `-DryRun` va solo al final del comando.** El shell por defecto del VPS es
+> `cmd`, que no corta en `;`: `ssh educandow-vps '... -File rotate-email-crypto-key.ps1
+> -DryRun; echo ...'` le pasa a PowerShell el argumento literal `-DryRun;`. El 2026-09-29 eso
+> corrió la rotación **real** en vez del dry-run, porque el script todavía no tenía
+> `[CmdletBinding()]` y aceptaba argumentos desconocidos sin quejarse. Desde el fix, un
+> argumento desconocido corta con exit 1 antes de tocar nada. Aun así: nunca encadenar nada
+> detrás del switch en esa línea.
+
 **Qué hace, en orden**: valida `OLD_KEY` de `backend/.env`, genera `NEW_KEY` en el server (nunca
 se tipea ni se pega), corre un dry-run con los servicios arriba, invoca `predeploy-dump.ps1` (deja
 un dump verificado y los servicios detenidos), escribe un archivo de recuperación `PENDIENTE`

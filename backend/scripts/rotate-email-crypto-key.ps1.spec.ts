@@ -281,3 +281,183 @@ suiteEnv(
     });
   },
 );
+
+/**
+ * Archivos de recuperacion (pasos 5 y 9). Extrae via el AST del .ps1 real los
+ * dos `Set-Content` que escriben el PENDIENTE y el permanente, y los corre
+ * contra archivos temporales.
+ *
+ * Regresion de la rotacion en produccion del 2026-09-29: `@('OLD_KEY=' +
+ * $oldKey, 'NEW_KEY=' + $newKey, ...)` se evalua como `'OLD_KEY=' + ($oldKey,
+ * 'NEW_KEY=', ...)` porque la coma liga mas fuerte que el `+`. El resultado es
+ * UNA sola linea con los valores separados por espacios: la verificacion del
+ * permanente fallo (exit 5) y la recuperacion manual del runbook
+ * (`Select-String '^NEW_KEY='`) no habria encontrado la clave en el PENDIENTE.
+ */
+const HARNESS_RECUPERACION_PS1 = `
+param(
+  [Parameter(Mandatory=$true)][string]$RealScriptPath,
+  [Parameter(Mandatory=$true)][string]$PendienteFilePath,
+  [Parameter(Mandatory=$true)][string]$PermanenteFilePath,
+  [Parameter(Mandatory=$true)][string]$OldKey,
+  [Parameter(Mandatory=$true)][string]$NewKey,
+  [Parameter(Mandatory=$true)][string]$DumpDirPath
+)
+$ErrorActionPreference = 'Stop'
+$tokens = $null
+$errors = $null
+$ast = [System.Management.Automation.Language.Parser]::ParseFile($RealScriptPath, [ref]$tokens, [ref]$errors)
+if ($errors.Count -gt 0) { throw 'Parse errors in real script' }
+
+function EscrituraDe([string]$variable) {
+  $encontrados = @($ast.FindAll({ param($n)
+    $n -is [System.Management.Automation.Language.CommandAst] -and
+    $n.GetCommandName() -eq 'Set-Content' -and
+    $n.Extent.Text.Contains('-Path ' + $variable)
+  }, $true))
+  if ($encontrados.Count -ne 1) { throw ('Se esperaba un solo Set-Content sobre ' + $variable + ', hay ' + $encontrados.Count) }
+  return $encontrados[0].Extent.Text
+}
+
+$oldKey = $OldKey
+$newKey = $NewKey
+# Las variables de PowerShell no distinguen mayusculas: un parametro
+# '[string]$DumpDir' seria la misma variable que '$dumpDir' y convertiria el
+# objeto a texto. Por eso el parametro se llama distinto.
+$dumpDir = [pscustomobject]@{ FullName = $DumpDirPath }
+$pendienteFile = $PendienteFilePath
+$permanenteFile = $PermanenteFilePath
+
+Invoke-Expression (EscrituraDe '$pendienteFile')
+Invoke-Expression (EscrituraDe '$permanenteFile')
+`;
+
+const suiteRecuperacion = pwsh ? describe : describe.skip;
+
+suiteRecuperacion(
+  'Archivos de recuperacion (pasos 5 y 9, rotate-email-crypto-key.ps1) — runtime real via pwsh',
+  () => {
+    const oldKey = 'aa'.repeat(32);
+    const newKey = 'bb'.repeat(32);
+    const dumpDir = 'C:\\soporte\\backups\\utc-backfill-20260929-060853';
+    let pendiente: string[];
+    let permanente: string[];
+
+    beforeAll(() => {
+      const dir = mkdtempSync(join(tmpdir(), 'rotate-ps1-recuperacion-spec-'));
+      const harnessPath = join(dir, 'harness-recuperacion.ps1');
+      const pendientePath = join(dir, 'recuperacion.PENDIENTE.txt');
+      const permanentePath = join(dir, 'recuperacion.txt');
+      writeFileSync(harnessPath, HARNESS_RECUPERACION_PS1, 'ascii');
+      try {
+        execFileSync(
+          pwsh as string,
+          [
+            '-NoProfile',
+            '-File',
+            harnessPath,
+            '-RealScriptPath',
+            PS1_PATH,
+            '-PendienteFilePath',
+            pendientePath,
+            '-PermanenteFilePath',
+            permanentePath,
+            '-OldKey',
+            oldKey,
+            '-NewKey',
+            newKey,
+            '-DumpDirPath',
+            dumpDir,
+          ],
+          { env: PWSH_ENV },
+        );
+        const lineas = (ruta: string) => readFileSync(ruta, 'ascii').split(/\r?\n/).filter(Boolean);
+        pendiente = lineas(pendientePath);
+        permanente = lineas(permanentePath);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    it('el PENDIENTE lleva una clave por linea: OLD_KEY, NEW_KEY y DUMP', () => {
+      expect(pendiente).toEqual(['OLD_KEY=' + oldKey, 'NEW_KEY=' + newKey, 'DUMP=' + dumpDir]);
+    });
+
+    it('el permanente lleva OLD_KEY, DUMP y ROTADA_EL en lineas separadas, sin NEW_KEY', () => {
+      expect(permanente).toHaveLength(3);
+      expect(permanente[0]).toBe('OLD_KEY=' + oldKey);
+      expect(permanente[1]).toBe('DUMP=' + dumpDir);
+      expect(permanente[2]).toMatch(/^ROTADA_EL=\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
+      expect(permanente.join('\n')).not.toContain(newKey);
+    });
+  },
+);
+
+/**
+ * Parametros del script. Regresion del 2026-09-29: invocado por ssh contra el
+ * VPS, cuyo shell por defecto es cmd, `-File rotate-email-crypto-key.ps1
+ * -DryRun; echo ...` le paso a PowerShell el argumento literal `-DryRun;`. Sin
+ * `[CmdletBinding()]` un script acepta argumentos desconocidos en `$args` sin
+ * quejarse: `$DryRun` quedo en `$false` y corrio la rotacion REAL.
+ *
+ * El harness toma el bloque `param` del .ps1 real (con sus atributos) y le
+ * pone un cuerpo inocuo: nunca ejecuta el script de rotacion.
+ */
+const suiteParametros = pwsh ? describe : describe.skip;
+
+suiteParametros('Parametros de rotate-email-crypto-key.ps1 — runtime real via pwsh', () => {
+  function correrConArgs(args: string[]): { exitCode: number; salida: string } {
+    const dir = mkdtempSync(join(tmpdir(), 'rotate-ps1-params-spec-'));
+    try {
+      const extraerPath = join(dir, 'extraer.ps1');
+      const cuerpoPath = join(dir, 'solo-param.ps1');
+      writeFileSync(
+        extraerPath,
+        [
+          'param([string]$RealScriptPath, [string]$OutPath)',
+          "$ErrorActionPreference = 'Stop'",
+          '$tokens = $null; $errors = $null',
+          '$ast = [System.Management.Automation.Language.Parser]::ParseFile($RealScriptPath, [ref]$tokens, [ref]$errors)',
+          "if ($errors.Count -gt 0 -or -not $ast.ParamBlock) { throw 'param block not found in real script' }",
+          // `ParamBlock.Extent` NO incluye los atributos (`[CmdletBinding()]`):
+          // viven aparte, en `ParamBlock.Attributes`.
+          '$atributos = @($ast.ParamBlock.Attributes | ForEach-Object { $_.Extent.Text }) -join [Environment]::NewLine',
+          'Set-Content -Path $OutPath -Encoding ascii -Value ($atributos + [Environment]::NewLine + $ast.ParamBlock.Extent.Text + [Environment]::NewLine + \'Write-Host ("CUERPO-EJECUTADO DryRun=" + $DryRun)\')',
+        ].join('\n'),
+        'ascii',
+      );
+      execFileSync(
+        pwsh as string,
+        ['-NoProfile', '-File', extraerPath, '-RealScriptPath', PS1_PATH, '-OutPath', cuerpoPath],
+        { env: PWSH_ENV },
+      );
+      try {
+        const stdout = execFileSync(pwsh as string, ['-NoProfile', '-File', cuerpoPath, ...args], {
+          env: PWSH_ENV,
+          stdio: ['ignore', 'pipe', 'pipe'],
+        });
+        return { exitCode: 0, salida: stdout.toString('utf8') };
+      } catch (err) {
+        const e = err as { status: number | null; stdout: Buffer; stderr: Buffer };
+        return {
+          exitCode: e.status ?? -1,
+          salida: (e.stdout?.toString('utf8') ?? '') + (e.stderr?.toString('utf8') ?? ''),
+        };
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  it('-DryRun bien pasado llega al cuerpo con DryRun en true', () => {
+    const r = correrConArgs(['-DryRun']);
+    expect(r.exitCode).toBe(0);
+    expect(r.salida).toContain('CUERPO-EJECUTADO DryRun=True');
+  });
+
+  it('un argumento desconocido (`-DryRun;`, como lo pasa cmd) corta ANTES de ejecutar el cuerpo', () => {
+    const r = correrConArgs(['-DryRun;']);
+    expect(r.exitCode).not.toBe(0);
+    expect(r.salida).not.toContain('CUERPO-EJECUTADO');
+  });
+});

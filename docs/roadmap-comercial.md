@@ -94,7 +94,7 @@ para que el roadmap refleje el esfuerzo real, no solo el previsto.
 | **Importación de datos legacy**: CLI en `backend/scripts/importacion-legacy/` | 2026-09-25 (`808c24c`; fix `d8d1b97`) | Traer los datos de un sistema anterior a la base de un cliente. El fix hace que un cliente no resuelto falle en voz alta en vez de importarse en silencio |
 | Filtro por ciclo en la lista de tickets | 2026-09-25 (`ed8beac`) | Pedido de operación |
 | **Vencimiento de SLA en tickets edilicios y de soporte** | 2026-09-25 (`7550c1c`, issue #244) | Esos dos casos de uso nunca publicaban `TicketCreadoEvent`, así que `sla_vence_at` quedaba siempre en `null`: los tickets que nacían por `POST /reparaciones` y `POST /soporte` no tenían SLA |
-| **Rotación de `EMAIL_CRYPTO_KEY`** con re-cifrado de las contraseñas SMTP | 2026-09-28 (`9857e1a`) | Era deuda técnica: rotar la clave sin re-cifrar dejaba indescifrable toda contraseña SMTP guardada. La rotación real en producción todavía no se corrió |
+| **Rotación de `EMAIL_CRYPTO_KEY`** con re-cifrado de las contraseñas SMTP | 2026-09-28 (`9857e1a`) | Era deuda técnica: rotar la clave sin re-cifrar dejaba indescifrable toda contraseña SMTP guardada. La primera rotación real en producción se hizo el 2026-09-29 y destapó dos defectos del script, corregidos el mismo día: un `-DryRun` mal pasado por ssh corría la rotación real, y los archivos de recuperación salían en una sola línea |
 | **Reseteo de contraseña olvidada** por mail | 2026-09-28 (`521aca3`) | Lo que la sección del cambio de contraseña dejó "para después" — ver más abajo |
 
 ### El módulo de Insumos
