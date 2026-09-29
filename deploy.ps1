@@ -11,6 +11,11 @@
 #
 # Vacio en una corrida normal: ahi lo captura el pre-flight, que corre antes del
 # pull y por lo tanto ve el commit correcto.
+# CmdletBinding hace que un argumento desconocido corte ANTES de ejecutar nada.
+# Sin el, un nombre mal tipeado (-RolbackCommit) caia en $args sin quejarse y
+# el parametro quedaba vacio. Misma trampa que corrio la rotacion real de
+# rotate-email-crypto-key.ps1 el 2026-09-29.
+[CmdletBinding()]
 param([string]$RollbackCommit = '')
 
 $ErrorActionPreference = 'Stop'

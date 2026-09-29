@@ -15,6 +15,10 @@
 #   powershell -NoProfile -ExecutionPolicy Bypass -File rotate-admin-pw.ps1 [-Email admin@x.com]
 #   Sin -Email, usa ROOT_ADMIN_EMAIL de backend/.env como default.
 
+# CmdletBinding hace que un argumento desconocido corte ANTES de ejecutar nada.
+# Sin el, un nombre mal tipeado (-Emial) caia en $args sin quejarse, $Email
+# quedaba vacio y se rotaba la clave de ROOT_ADMIN_EMAIL en vez de la pedida.
+[CmdletBinding()]
 param(
   [string]$Email
 )
