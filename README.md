@@ -194,7 +194,9 @@ administradores del tenant en el caso de `sla.vencido`). Sin preferencias de usu
   sin que el cliente lo sepa.
 - **Tres razones de degradación distinguibles en logs**, que no colisionan a propósito:
   `EMAIL_SIN_TENANT_CONTEXT` (**bug nuestro**, hay que investigarlo), `EMAIL_CRYPTO_KEY_AUSENTE`
-  (no se pudo descifrar la config) y `EMAIL_CLIENTE_SIN_CONFIG` (**esperado y benigno**).
+  (no se pudo leer la config; su campo `causa=` dice si fue `CLAVE_AUSENTE`, `DESCIFRADO`,
+  `BASE` u `OTRO`, sin volcar nunca el mensaje del error) y `EMAIL_CLIENTE_SIN_CONFIG`
+  (**esperado y benigno**).
   Si el bug y el caso esperado compartieran línea, el bug sería invisible.
 - Resolución de contacto (email/nombre del destinatario) cross-DB contra `master.usuarios`/
   `master.membresias` — los eventos de dominio nunca llevan PII (ADR-6).

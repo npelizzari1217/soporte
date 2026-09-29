@@ -59,6 +59,33 @@ const defaultSenderFactory: SmtpEmailSenderFactory = (config, logger) =>
  * Ref design: sdd/configuracion-correo-por-cliente D2, D3.
  * Ref tasks: WU5 5.3, 5.4, 5.5.
  */
+/**
+ * Causa de un fallo de `findForSend`, de un conjunto cerrado. Nunca se loguea
+ * el `error.message`: ese metodo lee la base y descifra, y un error de Prisma
+ * puede traer el usuario de la base en el mensaje (P1000). El mensaje se LEE
+ * para distinguir la clave ausente (el mismo marcador que usa
+ * `ConfigurarCorreoClienteUseCase`), pero no se escribe.
+ */
+type CausaConfigIlegible = 'CLAVE_AUSENTE' | 'DESCIFRADO' | 'BASE' | 'OTRO';
+
+function causaConfigIlegible(error: unknown): CausaConfigIlegible {
+  if (!(error instanceof Error)) return 'OTRO';
+  if (error.name.startsWith('PrismaClient')) return 'BASE';
+  if (error.message.includes('EMAIL_CRYPTO_KEY')) return 'CLAVE_AUSENTE';
+  return 'DESCIFRADO';
+}
+
+/** Codigo de Prisma (`code` o `errorCode`) si tiene la forma `P1234`; `-` si no. */
+function codigoPrisma(error: unknown): string {
+  if (error && typeof error === 'object') {
+    for (const campo of ['code', 'errorCode'] as const) {
+      const valor = (error as Record<string, unknown>)[campo];
+      if (typeof valor === 'string' && /^P\d{4}$/.test(valor)) return valor;
+    }
+  }
+  return '-';
+}
+
 export class TenantAwareEmailSender implements IEmailSender {
   private readonly cache = new Map<string, IEmailSender>();
 
@@ -83,9 +110,8 @@ export class TenantAwareEmailSender implements IEmailSender {
     try {
       config = await this.emailConfigRepo.findForSend(clienteId);
     } catch (error) {
-      const mensaje = error instanceof Error ? error.message : 'error desconocido';
       this.logger.log(
-        `EMAIL_CRYPTO_KEY_AUSENTE | clienteId=${clienteId} | no se pudo descifrar la config — error=${mensaje}`,
+        `EMAIL_CRYPTO_KEY_AUSENTE | clienteId=${clienteId} | no se pudo leer la config — causa=${causaConfigIlegible(error)} | prisma=${codigoPrisma(error)}`,
       );
       return;
     }

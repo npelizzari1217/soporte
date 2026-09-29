@@ -92,6 +92,65 @@ describe('TenantAwareEmailSender', () => {
     const logged = logger.log.mock.calls[0][0] as string;
     expect(logged).toContain('EMAIL_CRYPTO_KEY_AUSENTE');
     expect(logged).toContain('cliente-uuid');
+    expect(logged).toContain('causa=CLAVE_AUSENTE');
+  });
+
+  /**
+   * Regresion: el log volcaba el `error.message` crudo de `findForSend`. Ese
+   * metodo lee la base y descifra, y un error de Prisma puede traer el usuario
+   * de la base en el mensaje (P1000). El log lleva una causa de un conjunto
+   * cerrado y el codigo de Prisma, nunca el mensaje.
+   */
+  describe('log de config ilegible saneado: nunca el mensaje crudo', () => {
+    class PrismaClientInitializationError extends Error {
+      constructor(
+        message: string,
+        readonly errorCode: string,
+      ) {
+        super(message);
+        this.name = 'PrismaClientInitializationError';
+      }
+    }
+
+    function logDe(error: unknown): Promise<string> {
+      const { sender, emailConfigRepo, logger } = makeHarness('cliente-uuid');
+      emailConfigRepo.findForSend.mockRejectedValue(error);
+      return sender.send(MENSAJE).then(() => logger.log.mock.calls[0][0] as string);
+    }
+
+    it('[CRITICAL] un error de Prisma con el usuario de la base en el mensaje loguea solo causa y codigo', async () => {
+      const logged = await logDe(
+        new PrismaClientInitializationError(
+          'Authentication failed against database server at `localhost`, the provided database credentials for `soporte_app` are not valid.',
+          'P1000',
+        ),
+      );
+      expect(logged).not.toContain('soporte_app');
+      expect(logged).not.toContain('Authentication failed');
+      expect(logged).toContain('causa=BASE');
+      expect(logged).toContain('prisma=P1000');
+    });
+
+    it('la clave ausente se distingue sin volcar el mensaje', async () => {
+      const logged = await logDe(
+        new Error('EMAIL_CRYPTO_KEY ausente o inválida — no se puede descifrar el secreto'),
+      );
+      expect(logged).toContain('causa=CLAVE_AUSENTE');
+      expect(logged).not.toContain('no se puede descifrar el secreto');
+    });
+
+    it('un fallo de descifrado (clave que no coincide) se loguea como DESCIFRADO, sin el mensaje', async () => {
+      const logged = await logDe(new Error('Unsupported state or unable to authenticate data'));
+      expect(logged).toContain('causa=DESCIFRADO');
+      expect(logged).toContain('prisma=-');
+      expect(logged).not.toContain('unable to authenticate');
+    });
+
+    it('un rechazo que no es un Error se loguea como OTRO, sin su texto', async () => {
+      const logged = await logDe('credenciales soporte_app:secreto');
+      expect(logged).toContain('causa=OTRO');
+      expect(logged).not.toContain('soporte_app');
+    });
   });
 
   it('cliente configurado: delega el envío al sender construido con su propia config', async () => {
