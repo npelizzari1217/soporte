@@ -370,11 +370,11 @@ incluye un chequeo de UUID en `GET /equipos/:id` para que la ruta retirada respo
 
 **Branch**: `feat/catalogo-unico-componentes-wu12` · **Base**: wu10b
 
-- [ ] 12.1 `backend/prisma_master/schema.prisma`: quitar el modelo `TipoComponente` y la migración master nueva `DROP TABLE "tipos_componente"`, **sin `rollback.sql`** (ADR-5). No editar migraciones viejas. (Escenario: Tabla MASTER eliminada)
-- [ ] 12.2 Ajustar cualquier seed o spec master que aún referencie la tabla; `pnpm prisma generate --schema prisma_master/schema.prisma`.
-- [ ] 12.3 `AGENTS.md:208`: dejar de citar `tipoActualFueraDeCatalogo` de `componente-edit-dialog` (desaparece); pasa a citar la prioridad del ticket (`:212`).
-- [ ] 12.4 `AGENTS.md:216-220`: los 8 campos pasan a 6, aclarando que los 2 de `tipos-componente` dejaron de existir.
-- [ ] 12.5 Quality gates: `cd backend && pnpm lint && pnpm typecheck && pnpm test`; `cd frontend && pnpm lint && pnpm type-check && pnpm test`. `openspec/specs/**` **no se edita** (lo hace `sdd-archive`).
+- [x] 12.1 `backend/prisma_master/schema.prisma`: quitar el modelo `TipoComponente` y la migración master nueva `DROP TABLE "tipos_componente"`, **sin `rollback.sql`** (ADR-5). No editar migraciones viejas. (Escenario: Tabla MASTER eliminada)
+- [x] 12.2 Ajustar cualquier seed o spec master que aún referencie la tabla; `pnpm prisma generate --schema prisma_master/schema.prisma`.
+- [x] 12.3 `AGENTS.md:208`: dejar de citar `tipoActualFueraDeCatalogo` de `componente-edit-dialog` (desaparece); pasa a citar la prioridad del ticket (`:212`).
+- [x] 12.4 `AGENTS.md:216-220`: los 8 campos pasan a 6, aclarando que los 2 de `tipos-componente` dejaron de existir.
+- [x] 12.5 Quality gates: `cd backend && pnpm lint && pnpm typecheck && pnpm test`; `cd frontend && pnpm lint && pnpm type-check && pnpm test`. `openspec/specs/**` **no se edita** (lo hace `sdd-archive`).
 
 **PR boundary**: ~60 líneas, base wu10b. Última unidad de la cadena; con ella el tracker queda
 listo para integrarse a `main`.

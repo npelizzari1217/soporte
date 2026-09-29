@@ -207,3 +207,18 @@ cada uno con typecheck y lint en verde y por debajo de 400 líneas.
 Limitación: ningún e2e levanta `AppModule`; el 404 del e2e se verifica sobre un harness sin el módulo, así que
 prueba ausencia de rutas, no el desregistro (eso lo cubre el typecheck).
 El modelo Prisma MASTER `TipoComponente` queda intacto (WU-12).
+
+## WU-12 — Master: borrar la tabla `tipos_componente` (rama `feat/catalogo-unico-componentes-wu12`, base wu10b)
+
+Estado: **completo** (tareas 12.1 a 12.5 marcadas en `tasks.md`).
+
+| Tarea | Resultado |
+|---|---|
+| 12.1 | Migración master `20260929130000_drop_tipos_componente` con `DROP TABLE "tipos_componente"`, sin `rollback.sql` (ADR-5); modelo `TipoComponente` fuera de `prisma_master/schema.prisma` |
+| 12.2 | Ningún seed ni spec master lo referenciaba; `prisma generate` master ejecutado. `rg` deja solo migraciones históricas y comentarios |
+| 12.3 | `AGENTS.md`: la fila "Select con valor fuera de catálogo" cita la prioridad en `ticket-edit-form` |
+| 12.4 | `AGENTS.md`: 8 campos pasan a 6; los 2 de tipos-componente dejaron de existir |
+| 12.5 | backend lint y typecheck limpios; `pnpm test` 484 archivos / 5638 tests; frontend lint, type-check y 210 archivos / 1576 tests |
+
+`soporte_master_test` se migró con `DATABASE_URL_MASTER=<url test> pnpm migrate:master` antes de la suite. La base
+`soporte_master` de desarrollo no se tocó. El drop es irreversible: revertir exige restaurar el dump de predeploy.

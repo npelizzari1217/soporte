@@ -155,32 +155,6 @@ model CicloVigente {
   @@map("ciclos_vigentes")
 }
 
-// ─── TIPOS_COMPONENTE (catálogo global MASTER de tipos de componente) ────────
-//
-// Catálogo MAESTRO de tipos de componente (CPU, RAM, DISCO, etc.), dueño
-// único y global de la fuente de verdad de `codigo`. Es el ÚNICO catálogo de
-// tipos de componente del sistema: el `ComponenteEquipo` de cada tenant lo
-// referencia por `codigo` (soft-ref cross-DB, sin FK). El antiguo catálogo
-// per-tenant `tipos_componente` fue eliminado (migración contract).
-//
-// Sin `deleted_at`: la baja lógica es exclusivamente vía `activo=false` (a
-// diferencia del resto del schema master, este catálogo no soft-elimina
-// filas — solo las oculta de nuevas altas).
-// ABM (alta/edición/baja) ROOT-only: se implementa en PR2 (use cases +
-// controller); acá solo el modelo.
-
-model TipoComponente {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  codigo    String   @unique @db.VarChar(50)
-  nombre    String   @db.VarChar(100)
-  activo    Boolean  @default(true)
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
-
-  @@index([activo])
-  @@map("tipos_componente")
-}
-
 // ─── USUARIOS ─────────────────────────────────────────────────────────────────
 //
 // Identidad global de todos los usuarios (cross-tenant). Siempre se valida
