@@ -1300,9 +1300,9 @@ model FeriadoCliente {
 
 // ─── CALENDARIO_LABORAL_DIAS_CLIENTE (horario semanal por cliente, WU-1 sdd/horario-laboral-por-cliente) ─
 //
-// Mismo shape y mismos CHECK que `CalendarioLaboralDia` de MASTER
-// (`prisma_master/schema.prisma:477-485`), ahora por tenant: el horario que
-// usa el SLA HABIL deja de ser global. PK en `dia_semana` (0=domingo..6=sábado,
+// Mismo shape y mismos CHECK que tenía `calendario_laboral_dias` de MASTER
+// (dropeada el 2026-09-29, migración `20260929100000_drop_calendario_laboral_dias`),
+// ahora por tenant: el horario que usa el SLA HABIL deja de ser global. PK en `dia_semana` (0=domingo..6=sábado,
 // una fila por día, sin duplicados posibles). `aperturaMinuto`/`cierreMinuto`
 // NULL en ambos = día cerrado; NOT NULL en ambos con apertura < cierre = día
 // abierto — el CHECK de ventana rechaza cualquier otra combinación (ver la

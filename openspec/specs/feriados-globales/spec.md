@@ -15,7 +15,8 @@ excepciones por cliente" — **implementado por esta capacidad**: los 46
 feriados nacionales ya sembrados siguen siendo el conjunto global que esta capacidad
 gestiona; la mitad de "excepciones por cliente" es `feriados-cliente`. La cláusula del
 horario semanal de la misma viñeta es una desviación declarada, seguida en la spec de
-`feriados-cliente` (fuera de alcance acá: `CalendarioLaboralDia` sigue siendo global).
+`feriados-cliente` (fuera de alcance acá; el horario semanal pasó a ser por cliente con
+`horario-laboral-cliente`, y la tabla global `calendario_laboral_dias` se dropeó el 2026-09-29).
 
 ## Requirements
 
