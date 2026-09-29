@@ -76,3 +76,19 @@ Estado: **completo, sin commitear** (excede el presupuesto de 400 líneas; decid
 | 5.6 Módulo | Providers del checker conservados (`ListarTiposComponenteUseCase` aún lo inyecta, WU-10a); `Editar` y `Obtener` ya no lo inyectan |
 
 Entidad y mapper intactos (`actualizar()` conserva su parámetro opcional `tipoComponenteCodigo`, que nadie pasa; se retira en WU-6). Sin cambio de UI propio de este WU: la Ayuda de edición se anota en WU-9.
+
+## WU-6 — Contrato del esquema tenant (rama `feat/catalogo-unico-componentes-wu06`, base wu05b)
+
+Estado: **completo** (tareas 6.1 a 6.7 marcadas en `tasks.md`).
+
+| Tarea | Resultado |
+|---|---|
+| 6.1 Migración | `prisma_tenant/migrations/20260929120000_componentes_insumo_obligatorio/migration.sql`: una sola sentencia `DO $$` (guard sobre todas las filas con `insumo_id NULL`, `RAISE EXCEPTION` con la ruta del script; `SET NOT NULL`; `DROP INDEX`; `DROP COLUMN`). FK `RESTRICT` intacta |
+| 6.2 Schema | `insumoId String` obligatorio, `insumo Insumo` no opcional, sin `tipoComponenteCodigo` ni su `@@index` |
+| 6.3 Entidad y mapper | Entidad sin `tipoComponenteCodigo`, `insumoId: string`; `create()` falla con `InsumoRepuestoInexistenteError` ante un `insumoId` vacío; `actualizar()` sin el parámetro de tipo. Mapper y `AgregarComponenteUseCase` alineados. Se borra `TipoComponenteCodigoRequeridoError` (arrastre de WU-5) con su mapeo en el controller; el catálogo de errores del controller queda en **13**. Se retiran los casts `as string` de `equipos.dto.ts` y de `obtener-equipo.use-case.ts` |
+| 6.4 Spec de migración | `prisma_tenant/componentes-insumo-obligatorio.integration.spec.ts` (base efímera hasta `20260928150000`): aborta con fila viva, aborta con fila solo borrada, pasa con tabla vacía (NOT NULL, sin columna, sin índice, FK `r`) |
+| 6.5 Generate | `prisma generate` limpio; typecheck sin usos del campo retirado |
+| 6.6 Adversarial | Sin el guard, los 3 tests del spec quedan en rojo; guard restaurado (no se commitea la mutación) |
+| 6.7 Gates | lint 0 errores; typecheck limpio; `vitest run src/equipos prisma_tenant` 36 archivos / 403 tests; `pnpm test` ver reporte |
+
+Entorno local: `soporte_tenant_test` estaba 3 migraciones atrás; se le aplicó `migrate deploy` (con el schema nuevo). Las bases tenant de dev NO se migraron: el script `limpiar-componentes-sin-insumo.mjs` (modo reporte) informa 2 filas vivas con `insumo_id NULL` (RAM y DISCO del "Notebook Dell Latitude 5420", demo libre) en un tenant, así que la migración abortaría ahí hasta correr el script con `--apply`.

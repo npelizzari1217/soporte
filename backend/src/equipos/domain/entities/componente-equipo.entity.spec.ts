@@ -1,39 +1,31 @@
 import { describe, it, expect } from 'vitest';
 import { ComponenteEquipoEntity, ComponenteEquipoProps } from './componente-equipo.entity';
-import { TipoComponenteCodigoRequeridoError } from '../errors/equipos.errors';
+import { InsumoRepuestoInexistenteError } from '../errors/equipos.errors';
 
 /**
- * T10.3 [U][RED] — ComponenteEquipoEntity: create() → Result.fail
- * (TipoComponenteCodigoRequeridoError) si falta código (NORMALIZADO a Result, ADR-9).
+ * ComponenteEquipoEntity — sdd/catalogo-unico-componentes: sin tipo propio
+ * (se deriva de la familia del insumo) e `insumoId` obligatorio: `create()`
+ * → Result.fail(InsumoRepuestoInexistenteError) si falta.
  *
- * PR4b (sdd/tipos-componente-master): el dominio pasa a referenciar el
- * catálogo MASTER por `codigo` (string estable, ej. "RAM"), no por `id`
- * tenant — el catálogo tenant `tipos_componente` se elimina.
- *
- * WU-3 (sdd/repuestos-vinculo-componente): agrega `insumoId`, FK real y
- * NULLABLE hacia el repuesto del catálogo del que viene el componente.
- *
- * Ref spec: sdd/flujos-especializados/spec F3-Q2. Ref design: ADR-9.
+ * Ref spec: sdd/flujos-especializados/spec F3-Q2 (Result normalizado, ADR-9).
  */
 describe('ComponenteEquipoEntity', () => {
-  it('create() falla con TipoComponenteCodigoRequeridoError si tipoComponenteCodigo está vacío', () => {
+  it('create() falla con InsumoRepuestoInexistenteError si insumoId está vacío', () => {
     const result = ComponenteEquipoEntity.create({
       equipoId: 'equipo-1',
-      tipoComponenteCodigo: '',
-      insumoId: null,
+      insumoId: '',
       descripcion: null,
       numeroSerie: null,
       capacidad: null,
     });
     expect(result.isFail()).toBe(true);
-    expect(result.getError()).toBeInstanceOf(TipoComponenteCodigoRequeridoError);
+    expect(result.getError()).toBeInstanceOf(InsumoRepuestoInexistenteError);
   });
 
-  it('create() acepta un componente válido con tipoComponenteCodigo presente, sin repuesto vinculado (camino de texto libre)', () => {
+  it('create() acepta un componente válido vinculado a un repuesto', () => {
     const result = ComponenteEquipoEntity.create({
       equipoId: 'equipo-1',
-      tipoComponenteCodigo: 'RAM',
-      insumoId: null,
+      insumoId: 'insumo-1',
       descripcion: 'Kingston 16GB',
       numeroSerie: null,
       capacidad: '16GB',
@@ -41,36 +33,19 @@ describe('ComponenteEquipoEntity', () => {
     expect(result.isOk()).toBe(true);
     const componente = result.getValue();
     expect(componente.equipoId).toBe('equipo-1');
-    expect(componente.tipoComponenteCodigo).toBe('RAM');
     expect(componente.capacidad).toBe('16GB');
-    expect(componente.insumoId).toBeNull();
-  });
-
-  it('create() acepta un componente con un repuesto vinculado (insumoId presente)', () => {
-    const result = ComponenteEquipoEntity.create({
-      equipoId: 'equipo-1',
-      tipoComponenteCodigo: 'MOUSE',
-      insumoId: 'insumo-1',
-      descripcion: null,
-      numeroSerie: null,
-      capacidad: null,
-    });
-    expect(result.isOk()).toBe(true);
-    expect(result.getValue().insumoId).toBe('insumo-1');
+    expect(componente.insumoId).toBe('insumo-1');
   });
 
   /**
    * Fix defecto "límites de equipos" (sdd/limites-db): la base impone topes
-   * (`VarChar`) que el dominio no hacía respetar. `tipoComponenteCodigo`
-   * queda FUERA (ver JSDoc de `componente-equipo.entity.ts` — transitivamente
-   * guardeado por el checker de catálogo MASTER antes de llegar acá).
+   * (`VarChar`) que el dominio no hacía respetar.
    */
   describe('límites de largo', () => {
     function baseProps(): ComponenteEquipoProps {
       return {
         equipoId: 'equipo-1',
-        tipoComponenteCodigo: 'RAM',
-        insumoId: null,
+        insumoId: 'insumo-1',
         descripcion: null,
         numeroSerie: null,
         capacidad: null,
@@ -113,8 +88,7 @@ describe('ComponenteEquipoEntity', () => {
       ComponenteEquipoEntity.reconstitute(
         {
           equipoId: 'equipo-1',
-          tipoComponenteCodigo: 'RAM',
-          insumoId: null,
+          insumoId: 'insumo-1',
           descripcion: 'A'.repeat(300),
           numeroSerie: null,
           capacidad: null,
@@ -127,12 +101,11 @@ describe('ComponenteEquipoEntity', () => {
     ).not.toThrow();
   });
 
-  it('reconstitute() restaura un componente EXISTENTE sin repuesto vinculado (insumoId null) desde persistencia', () => {
+  it('reconstitute() restaura un componente EXISTENTE desde persistencia', () => {
     const componente = ComponenteEquipoEntity.reconstitute(
       {
         equipoId: 'equipo-1',
-        tipoComponenteCodigo: 'CPU',
-        insumoId: null,
+        insumoId: 'insumo-1',
         descripcion: null,
         numeroSerie: null,
         capacidad: null,
@@ -143,15 +116,13 @@ describe('ComponenteEquipoEntity', () => {
       null,
     );
     expect(componente.id).toBe('componente-1');
-    expect(componente.tipoComponenteCodigo).toBe('CPU');
-    expect(componente.insumoId).toBeNull();
+    expect(componente.insumoId).toBe('insumo-1');
   });
 
   it('activo es true recién creado y false luego de softDelete()', () => {
     const componente = ComponenteEquipoEntity.create({
       equipoId: 'equipo-1',
-      tipoComponenteCodigo: 'RAM',
-      insumoId: null,
+      insumoId: 'insumo-1',
       descripcion: null,
       numeroSerie: null,
       capacidad: null,
@@ -166,8 +137,7 @@ describe('ComponenteEquipoEntity', () => {
   it('actualizar() aplica PATCH semántico: undefined no toca, null limpia', () => {
     const componente = ComponenteEquipoEntity.create({
       equipoId: 'equipo-1',
-      tipoComponenteCodigo: 'RAM',
-      insumoId: null,
+      insumoId: 'insumo-1',
       descripcion: 'Original',
       numeroSerie: 'SN-1',
       capacidad: '8GB',
@@ -178,14 +148,13 @@ describe('ComponenteEquipoEntity', () => {
     expect(componente.descripcion).toBeNull();
     expect(componente.capacidad).toBe('16GB');
     expect(componente.numeroSerie).toBe('SN-1'); // no tocado (undefined)
-    expect(componente.tipoComponenteCodigo).toBe('RAM'); // no tocado (undefined)
+    expect(componente.insumoId).toBe('insumo-1'); // el repuesto no se edita
   });
 
   it('reactivar() limpia deletedAt de un componente dado de baja', () => {
     const componente = ComponenteEquipoEntity.create({
       equipoId: 'equipo-1',
-      tipoComponenteCodigo: 'RAM',
-      insumoId: null,
+      insumoId: 'insumo-1',
       descripcion: null,
       numeroSerie: null,
       capacidad: null,

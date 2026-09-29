@@ -176,9 +176,11 @@ describe('runDemoSeed — integración real (T6.1, sdd/beta-frontend)', () => {
           expect(await tenantClient.equipoInformatico.count()).toBe(2);
           expect(await tenantClient.componenteEquipo.count()).toBe(2);
           // Los componentes sembrados van vinculados a un insumo repuesto (RAM y SSD).
-          const componentes = await tenantClient.componenteEquipo.findMany({ });
-          expect(componentes.every((c) => c.insumoId !== null)).toBe(true);
-          expect(componentes.map((c) => c.tipoComponenteCodigo).sort()).toEqual(['RAM', 'SSD']);
+          const componentes = await tenantClient.componenteEquipo.findMany({
+            include: { insumo: { include: { familia: true } } },
+          });
+          // El tipo de cada componente es la familia de su insumo.
+          expect(componentes.map((c) => c.insumo.familia.codigo).sort()).toEqual(['RAM', 'SSD']);
           expect(await tenantClient.insumo.count()).toBe(2);
           expect(await tenantClient.ticketSoporte.count()).toBe(1);
           // sdd/redisenio-modulo-compras PR-14 [H2]: modelo nuevo

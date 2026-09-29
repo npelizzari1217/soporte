@@ -226,22 +226,24 @@ porque el caso de uso de edición no se separa del borrado de errores que habili
 
 ## WU-6 — Contrato del esquema tenant (migración fail-closed)
 
-**Branch**: `feat/catalogo-unico-componentes-wu06` · **Base**: wu05
+**Branch**: `feat/catalogo-unico-componentes-wu06` · **Base**: wu05b
 
 Prerrequisitos: WU-3, WU-4 y WU-5 integrados (ningún código lee ni valida `tipo_componente_codigo`
 contra MASTER). **En este WU**, y no antes, la entidad y el mapper dejan de escribir
 `tipoComponenteCodigo`.
 
-- [ ] 6.1 Crear la migración tenant `backend/prisma_tenant/migrations/<timestamp>_componentes_insumo_obligatorio/migration.sql` con la **única sentencia `DO $$`** del ADR-4: guard `count(*)` sobre **todas** las filas (sin filtrar `deleted_at`) → `RAISE EXCEPTION` con el mensaje que nombra el script; `SET NOT NULL` en `insumo_id`; `DROP INDEX "componentes_equipo_tipo_componente_codigo_idx"`; `DROP COLUMN "tipo_componente_codigo"`. FK `RESTRICT` intacta. (Req: La migración del tenant es fail-closed)
-- [ ] 6.2 `backend/prisma_tenant/schema.prisma`: `insumoId String` obligatorio, sin `tipoComponenteCodigo` ni su `@@index`.
-- [ ] 6.3 Entidad `componente-equipo.entity.ts`: sin `tipoComponenteCodigo`, `insumoId: string`; `create()` conserva `Result` y falla con `InsumoRepuestoInexistenteError` ante un `insumoId` vacío. Mapper y repositorio Prisma alineados; `AgregarComponenteUseCase` deja de pasar el tipo. Ajustar specs de entidad, mapper y `prisma-equipos.integration.spec.ts` / concurrencia con fixtures de insumo.
-- [ ] 6.4 Escribir el spec de integración de la migración en base tenant **efímera** reproducida hasta `20260928150000` (molde `backfill-correo-clientes.integration.spec.ts`): aborta con una fila viva; aborta con una fila **solo borrada lógicamente**; pasa con la tabla vacía; al pasar deja NOT NULL, sin columna, sin índice y con la FK `RESTRICT`. (Escenarios: Fila viva con insumo_id NULL; Fila borrada lógicamente; Migración exitosa; Tenant nuevo con tabla vacía)
-- [ ] 6.5 Ejecutar `pnpm prisma generate --schema prisma_tenant/schema.prisma` y verificar que ningún `import` usa el campo retirado.
-- [ ] 6.6 Verificación adversarial local (no se commitea): quitar el guard de la migración debe dejar el spec en rojo.
-- [ ] 6.7 Quality gates: `cd backend && pnpm lint && pnpm typecheck && pnpm test`.
+- [x] 6.1 Crear la migración tenant `backend/prisma_tenant/migrations/<timestamp>_componentes_insumo_obligatorio/migration.sql` con la **única sentencia `DO $$`** del ADR-4: guard `count(*)` sobre **todas** las filas (sin filtrar `deleted_at`) → `RAISE EXCEPTION` con el mensaje que nombra el script; `SET NOT NULL` en `insumo_id`; `DROP INDEX "componentes_equipo_tipo_componente_codigo_idx"`; `DROP COLUMN "tipo_componente_codigo"`. FK `RESTRICT` intacta. (Req: La migración del tenant es fail-closed)
+- [x] 6.2 `backend/prisma_tenant/schema.prisma`: `insumoId String` obligatorio, sin `tipoComponenteCodigo` ni su `@@index`.
+- [x] 6.3 Entidad `componente-equipo.entity.ts`: sin `tipoComponenteCodigo`, `insumoId: string`; `create()` conserva `Result` y falla con `InsumoRepuestoInexistenteError` ante un `insumoId` vacío. Mapper y repositorio Prisma alineados; `AgregarComponenteUseCase` deja de pasar el tipo. Ajustar specs de entidad, mapper y `prisma-equipos.integration.spec.ts` / concurrencia con fixtures de insumo.
+- [x] 6.4 Escribir el spec de integración de la migración en base tenant **efímera** reproducida hasta `20260928150000` (molde `backfill-correo-clientes.integration.spec.ts`): aborta con una fila viva; aborta con una fila **solo borrada lógicamente**; pasa con la tabla vacía; al pasar deja NOT NULL, sin columna, sin índice y con la FK `RESTRICT`. (Escenarios: Fila viva con insumo_id NULL; Fila borrada lógicamente; Migración exitosa; Tenant nuevo con tabla vacía)
+- [x] 6.5 Ejecutar `pnpm prisma generate --schema prisma_tenant/schema.prisma` y verificar que ningún `import` usa el campo retirado.
+- [x] 6.6 Verificación adversarial local (no se commitea): quitar el guard de la migración debe dejar el spec en rojo.
+- [x] 6.7 Quality gates: `cd backend && pnpm lint && pnpm typecheck && pnpm test`.
 
 **PR boundary**: ~400 líneas, base wu05 (riesgo). Migración irreversible: revertir el código
 sin restaurar el dump deja código viejo contra esquema nuevo (ver "Rollback").
+**Real**: 534 líneas. Se entrega con `size:exception`: WU indivisible por diseño (migración,
+su spec y el retiro de la columna en entidad y mapper tienen que viajar juntos para compilar).
 
 ## WU-7 — Operación: precondición en `deploy.ps1`, runbook, borrado del backfill
 

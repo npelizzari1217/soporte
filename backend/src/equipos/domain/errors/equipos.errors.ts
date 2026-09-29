@@ -118,28 +118,6 @@ export class ModeloEquipoDeshabilitadoError extends DomainError {
 }
 
 /**
- * TipoComponenteCodigoRequeridoError — falta `tipoComponenteCodigo` al crear
- * un componente de equipo. NORMALIZADO a `Result.fail` (ADR-9): soporte1
- * lanzaba excepción; este proyecto usa el mismo criterio Result que el
- * resto de factories.
- * → HTTP 422 en la capa de presentación.
- *
- * Ref spec: F3-Q2. Ref: sdd/tipos-componente-master (PR4b — dominio pasa a
- * referenciar el catálogo MASTER por `codigo`, no por `id` tenant).
- *
- * TRANSITORIO: sdd/catalogo-unico-componentes lo conserva solo porque
- * `ComponenteEquipoEntity.create()` aún valida `tipoComponenteCodigo` mientras
- * la columna existe; se borra en WU-6 junto con la columna.
- */
-export class TipoComponenteCodigoRequeridoError extends DomainError {
-  readonly code = 'TIPO_COMPONENTE_CODIGO_REQUERIDO';
-
-  constructor() {
-    super('tipoComponenteCodigo es obligatorio para crear un componente de equipo.');
-  }
-}
-
-/**
  * InsumoRepuestoInexistenteError — el `insumoId` recibido al agregar un
  * componente no existe en el catálogo de insumos del tenant, o fue dado de
  * baja lógica.

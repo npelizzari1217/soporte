@@ -175,7 +175,7 @@ describe('AgregarComponenteUseCase', () => {
     });
   });
 
-  it('alta válida: la entidad recibe tipoComponenteCodigo = familia.codigo y queda vinculada al insumo', async () => {
+  it('alta válida: el componente queda vinculado al insumo y se guarda', async () => {
     const insumo = makeInsumo('fam-1');
     const { equipo, componenteRepo, useCase } = armar(insumo, makeFamilia(true, 'TECLADO'));
 
@@ -189,7 +189,6 @@ describe('AgregarComponenteUseCase', () => {
 
     expect(result.isOk()).toBe(true);
     const componente = result.getValue();
-    expect(componente.tipoComponenteCodigo).toBe('TECLADO');
     expect(componente.insumoId).toBe(insumo.id);
     expect(componente.descripcion).toBe('Teclado USB');
     expect(componente.numeroSerie).toBe('SN-1');
@@ -204,7 +203,6 @@ describe('AgregarComponenteUseCase', () => {
     const result = await useCase.execute({ equipoId: equipo.id, insumoId: insumo.id });
 
     expect(result.isOk()).toBe(true);
-    expect(result.getValue().tipoComponenteCodigo).toBe('TORNILLO');
     expect(componenteRepo.save).toHaveBeenCalledTimes(1);
   });
 

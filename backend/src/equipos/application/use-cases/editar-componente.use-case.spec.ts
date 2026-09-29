@@ -15,7 +15,6 @@ describe('EditarComponenteUseCase', () => {
   function makeComponente() {
     return ComponenteEquipoEntity.create({
       equipoId: 'equipo-1',
-      tipoComponenteCodigo: 'RAM',
       insumoId: 'insumo-1',
       descripcion: 'Original',
       numeroSerie: 'SN-1',
@@ -99,7 +98,7 @@ describe('EditarComponenteUseCase', () => {
     } as never);
 
     expect(result.isOk()).toBe(true);
-    expect(result.getValue().tipoComponenteCodigo).toBe('RAM');
+    expect(result.getValue()).not.toHaveProperty('tipoComponenteCodigo');
     expect(result.getValue().insumoId).toBe('insumo-1');
   });
 });

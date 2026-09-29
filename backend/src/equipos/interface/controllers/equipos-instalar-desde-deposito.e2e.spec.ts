@@ -391,7 +391,7 @@ describe('Equipos e2e — instalar componente desde depósito (WU-4, issue #153)
 
   describe('Flujo feliz', () => {
     it('instala: crea EXACTAMENTE un componente vinculado + UN movimiento SALIDA de cantidad 1 con equipoId poblado, y el stock baja en 1', async () => {
-      const { familiaId, codigo, nombre } = await crearFamiliaRepuesto();
+      const { familiaId, nombre } = await crearFamiliaRepuesto();
       const unidadMedidaId = await crearUnidadMedida();
       const insumoId = await crearInsumoRepuesto(familiaId, unidadMedidaId);
       // `EQUIPOS:LECTURA` además de `EQUIPOS:ALTAS`: el GET posterior de este
@@ -439,7 +439,6 @@ describe('Equipos e2e — instalar componente desde depósito (WU-4, issue #153)
       const componentes = await componentesDe(equipoId);
       expect(componentes).toHaveLength(1);
       expect(componentes[0].insumoId).toBe(insumoId);
-      expect(componentes[0].tipoComponenteCodigo).toBe(codigo);
 
       // Stock: 5 (entrada) - 1 (salida) = 4.
       const suma = movimientos.reduce(
@@ -583,8 +582,8 @@ describe('Equipos e2e — instalar componente desde depósito (WU-4, issue #153)
       expect(await movimientosDe(insumoId)).toHaveLength(1);
     });
 
-    it('un tipoComponenteCodigo sobrante se ignora: el tipo persistido es el de la familia', async () => {
-      const { familiaId, codigo } = await crearFamiliaRepuesto();
+    it('un tipoComponenteCodigo sobrante se ignora: el alta sale igual, vinculada al insumo', async () => {
+      const { familiaId } = await crearFamiliaRepuesto();
       const unidadMedidaId = await crearUnidadMedida();
       const insumoId = await crearInsumoRepuesto(familiaId, unidadMedidaId);
       const actor = await crearActorConPermisos(['EQUIPOS:ALTAS']);
@@ -599,7 +598,7 @@ describe('Equipos e2e — instalar componente desde depósito (WU-4, issue #153)
       expect(status).toBe(201);
       const componentes = await componentesDe(equipoId);
       expect(componentes).toHaveLength(1);
-      expect(componentes[0].tipoComponenteCodigo).toBe(codigo);
+      expect(componentes[0].insumoId).toBe(insumoId);
     });
   });
 

@@ -379,10 +379,7 @@ export function toComponenteResponseDto(componente: ComponenteEquipoEntity): Com
   return {
     id: componente.id,
     equipoId: componente.equipoId,
-    // La entidad todavía tipa `insumoId` como nullable (se endurece con el
-    // esquema en WU-6); tras la limpieza previa al deploy ningún componente
-    // queda sin repuesto.
-    insumoId: componente.insumoId as string,
+    insumoId: componente.insumoId,
     descripcion: componente.descripcion,
     numeroSerie: componente.numeroSerie,
     capacidad: componente.capacidad,

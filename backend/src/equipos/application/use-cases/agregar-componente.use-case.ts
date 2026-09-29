@@ -94,7 +94,6 @@ export class AgregarComponenteUseCase {
 
     const componenteResult = ComponenteEquipoEntity.create({
       equipoId: dto.equipoId,
-      tipoComponenteCodigo: familia.codigo,
       insumoId: insumo.id,
       descripcion: dto.descripcion ?? null,
       numeroSerie: dto.numeroSerie ?? null,

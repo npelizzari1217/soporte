@@ -27,14 +27,9 @@ describe('ObtenerEquipoUseCase', () => {
     });
   }
 
-  function makeComponente(
-    equipoId: string,
-    tipoComponenteCodigo: string,
-    insumoId: string = 'insumo-1',
-  ) {
+  function makeComponente(equipoId: string, insumoId: string = 'insumo-1') {
     return ComponenteEquipoEntity.create({
       equipoId,
-      tipoComponenteCodigo,
       insumoId,
       descripcion: null,
       numeroSerie: null,
@@ -60,7 +55,7 @@ describe('ObtenerEquipoUseCase', () => {
 
   it('retorna el equipo y sus componentes con el tipo de la familia (familia activa)', async () => {
     const equipo = makeEquipo();
-    const componente = makeComponente(equipo.id, 'TORNILLO');
+    const componente = makeComponente(equipo.id);
     const insumoRepo = {
       findFamiliasDeInsumos: vi
         .fn()
@@ -90,7 +85,7 @@ describe('ObtenerEquipoUseCase', () => {
     ['soft-deleted', { activo: true, deletedAt: new Date() }],
   ])('familia %s → tipoNombre presente, tipoActivo false', async (_caso, flags) => {
     const equipo = makeEquipo();
-    const componente = makeComponente(equipo.id, 'TORNILLO');
+    const componente = makeComponente(equipo.id);
     const useCase = makeUseCase({
       equipoRepo: { findById: vi.fn().mockResolvedValue(equipo) },
       componenteRepo: { findAllByEquipoId: vi.fn().mockResolvedValue([componente]) },
@@ -110,7 +105,7 @@ describe('ObtenerEquipoUseCase', () => {
 
   it('insumoId ausente del mapa → tipoNombre null, tipoActivo false (el display cae a "—")', async () => {
     const equipo = makeEquipo();
-    const componente = makeComponente(equipo.id, 'TORNILLO', 'insumo-fantasma');
+    const componente = makeComponente(equipo.id, 'insumo-fantasma');
     const useCase = makeUseCase({
       equipoRepo: { findById: vi.fn().mockResolvedValue(equipo) },
       componenteRepo: { findAllByEquipoId: vi.fn().mockResolvedValue([componente]) },
@@ -126,8 +121,8 @@ describe('ObtenerEquipoUseCase', () => {
 
   it('varios componentes → UNA sola consulta de familias (sin N+1)', async () => {
     const equipo = makeEquipo();
-    const a = makeComponente(equipo.id, 'TORNILLO', 'insumo-1');
-    const b = makeComponente(equipo.id, 'RAM', 'insumo-2');
+    const a = makeComponente(equipo.id, 'insumo-1');
+    const b = makeComponente(equipo.id, 'insumo-2');
     const insumoRepo = {
       findFamiliasDeInsumos: vi.fn().mockResolvedValue(
         new Map([
@@ -195,7 +190,7 @@ describe('ObtenerEquipoUseCase', () => {
 
   it('incluye componentes dados de baja (activo=false, deletedAt seteado)', async () => {
     const equipo = makeEquipo();
-    const componente = makeComponente(equipo.id, 'TORNILLO');
+    const componente = makeComponente(equipo.id);
     componente.softDelete();
     const useCase = makeUseCase({
       equipoRepo: { findById: vi.fn().mockResolvedValue(equipo) },

@@ -62,9 +62,7 @@ export class ObtenerEquipoUseCase {
     }
     const componentes = await this.componenteRepo.findAllByEquipoId(equipo.id);
 
-    const insumoIds = componentes
-      .filter((c) => c.insumoId != null)
-      .map((c) => c.insumoId as string);
+    const insumoIds = componentes.map((c) => c.insumoId);
     const familiasPorInsumo =
       insumoIds.length > 0 ? await this.insumoRepo.findFamiliasDeInsumos(insumoIds) : new Map();
 

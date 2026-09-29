@@ -150,8 +150,7 @@ describe('EquiposController (T12.6)', () => {
       const { controller, obtenerEquipoUseCase } = buildController();
       const componente = ComponenteEquipoEntity.create({
         equipoId: 'equipo-uuid',
-        tipoComponenteCodigo: 'RAM',
-        insumoId: null,
+        insumoId: 'insumo-1',
         descripcion: '16GB',
         numeroSerie: null,
         capacidad: null,
@@ -215,7 +214,6 @@ describe('EquiposController (T12.6)', () => {
     const makeComponente = () =>
       ComponenteEquipoEntity.create({
         equipoId: 'equipo-uuid',
-        tipoComponenteCodigo: 'MOUSE',
         insumoId,
         descripcion: null,
         numeroSerie: null,
@@ -362,8 +360,7 @@ describe('EquiposController (T12.6)', () => {
       const { controller, editarComponenteUseCase } = buildController();
       const componente = ComponenteEquipoEntity.create({
         equipoId: 'equipo-uuid',
-        tipoComponenteCodigo: 'RAM',
-        insumoId: null,
+        insumoId: 'insumo-1',
         descripcion: 'Editado',
         numeroSerie: null,
         capacidad: null,
@@ -380,8 +377,7 @@ describe('EquiposController (T12.6)', () => {
       const { controller, editarComponenteUseCase } = buildController();
       const componente = ComponenteEquipoEntity.create({
         equipoId: 'equipo-uuid',
-        tipoComponenteCodigo: 'RAM',
-        insumoId: null,
+        insumoId: 'insumo-1',
         descripcion: 'Editado',
         numeroSerie: null,
         capacidad: null,
@@ -436,8 +432,7 @@ describe('EquiposController (T12.6)', () => {
       const { controller, reactivarComponenteUseCase } = buildController();
       const componente = ComponenteEquipoEntity.create({
         equipoId: 'equipo-uuid',
-        tipoComponenteCodigo: 'RAM',
-        insumoId: null,
+        insumoId: 'insumo-1',
         descripcion: null,
         numeroSerie: null,
         capacidad: null,
@@ -595,19 +590,14 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
     (valor) => typeof valor === 'function' && valor.prototype instanceof DomainError,
   );
 
-  it('el catálogo tiene EXACTAMENTE 14 clases de error (16 previas menos TipoComponenteInactivo y ComponenteVinculadoTipoInmutable, retiradas en sdd/catalogo-unico-componentes WU-5; TipoComponenteCodigoRequerido se conserva hasta WU-6 porque la entidad aún la emite; el catálogo llega a 13 en WU-6)', () => {
-    expect(CLASES_DE_ERROR).toHaveLength(14);
+  it('el catálogo tiene EXACTAMENTE 13 clases de error (16 previas menos TipoComponenteInactivo, ComponenteVinculadoTipoInmutable y TipoComponenteCodigoRequerido, retiradas en sdd/catalogo-unico-componentes WU-5 y WU-6)', () => {
+    expect(CLASES_DE_ERROR).toHaveLength(13);
   });
 
   const TABLA: Array<[string, () => DomainError, 404 | 422]> = [
     ['EquipoNoEncontradoError', () => new EquiposErrors.EquipoNoEncontradoError('equipo-1'), 404],
     ['EquipoInvalidoError', () => new EquiposErrors.EquipoInvalidoError('equipo-1'), 422],
     ['NumeroSerieDuplicadoError', () => new EquiposErrors.NumeroSerieDuplicadoError('SN-001'), 422],
-    [
-      'TipoComponenteCodigoRequeridoError',
-      () => new EquiposErrors.TipoComponenteCodigoRequeridoError(),
-      422,
-    ],
     [
       'ComponenteNoEncontradoError',
       () => new EquiposErrors.ComponenteNoEncontradoError('componente-1'),
@@ -654,7 +644,7 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
       422,
     ],
     // Los dos de `insumoId` (WU-3, sdd/repuestos-vinculo-componente) van a 422
-    // por el mismo criterio que los de `modeloEquipoId`/`tipoComponenteCodigo`:
+    // por el mismo criterio que los de `modeloEquipoId`:
     // un valor del BODY que referencia un catálogo, no el recurso de la URL.
     [
       'InsumoRepuestoInexistenteError',

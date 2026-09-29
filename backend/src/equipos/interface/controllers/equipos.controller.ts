@@ -83,7 +83,6 @@ import {
   ComponenteNoEncontradoError,
   ComponenteDadoDeBajaError,
   ComponenteYaActivoError,
-  TipoComponenteCodigoRequeridoError,
   ExportacionDemasiadoGrandeError,
   InsumoRepuestoInexistenteError,
   InsumoNoEsRepuestoError,
@@ -115,9 +114,8 @@ export function toHttpException(
   if (
     error instanceof EquipoInvalidoError ||
     error instanceof NumeroSerieDuplicadoError ||
-    error instanceof TipoComponenteCodigoRequeridoError ||
-    // `modeloEquipoId` es un valor del BODY que referencia un catálogo, igual
-    // que `tipoComponenteCodigo`: 422, no 404. Un 404 acá se leería como "el
+    // `modeloEquipoId` es un valor del BODY que referencia un catálogo:
+    // 422, no 404. Un 404 acá se leería como "el
     // equipo no existe", que es otra cosa.
     error instanceof ModeloEquipoInexistenteError ||
     error instanceof ModeloEquipoDeshabilitadoError ||
@@ -125,7 +123,7 @@ export function toHttpException(
     error instanceof ComponenteYaActivoError ||
     // `insumoId` es otro valor del BODY que referencia un catálogo (WU-3,
     // sdd/repuestos-vinculo-componente): mismo criterio 422 que
-    // `modeloEquipoId`/`tipoComponenteCodigo`.
+    // `modeloEquipoId`.
     error instanceof InsumoRepuestoInexistenteError ||
     error instanceof InsumoNoEsRepuestoError ||
     error instanceof FamiliaRepuestoDeshabilitadaError ||
