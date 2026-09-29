@@ -310,24 +310,104 @@ backend fallido queda tapado por un install de frontend exitoso y se lee como re
 completa. Es la misma trampa que el `echo $?` detrás de un pipe, unos párrafos más arriba —
 pasó de verdad el 2026-09-09, desplegando `83bdc8a`.
 
-### 5. `EMAIL_CRYPTO_KEY` no se rota
+### 5. Rotación de `EMAIL_CRYPTO_KEY` (`rotate-email-crypto-key.ps1`)
 
-Cifra en reposo la contraseña SMTP de cada cliente. Se genera **una sola vez** y, si existe, no
-se toca.
+Cifra en reposo la contraseña SMTP de cada cliente. Se genera **una sola vez** en el deploy
+(`deploy.ps1` paso 5b) y, si existe, no se toca — regenerarla a mano convierte toda credencial
+guardada en basura indescifrable. Rotarla de verdad exige re-cifrar cada fila, no solo reemplazar
+el valor; eso es lo que hace `rotate-email-crypto-key.ps1` (ver `sdd/rotacion-email-crypto-key`).
 
-**No es como `JWT_SECRET`**: rotar el JWT solo invalida sesiones; **regenerar esta clave
-convierte toda credencial guardada en basura indescifrable.** Una rotación real exige una
-migración de re-cifrado — por eso el payload lleva el prefijo de versión `v1:`.
+**Uso** (administrator, `backend/.env` presente, servicios arriba). Invocar siempre con
+`-File` — la tabla de exit codes de abajo solo es confiable así; un `throw` dentro de una
+sesión interactiva abierta con `.\rotate-email-crypto-key.ps1` puede cerrar esa sesión en vez
+de devolver el exit code:
 
-Se genera en el server y nunca se imprime: solo se reporta la longitud.
+```powershell
+cd C:\soporte
+powershell -NoProfile -ExecutionPolicy Bypass -File .\rotate-email-crypto-key.ps1 -DryRun
+powershell -NoProfile -ExecutionPolicy Bypass -File .\rotate-email-crypto-key.ps1
+```
 
-> **Respaldala junto con la base.** Un backup de la base sin esta clave no restaura las
-> credenciales SMTP.
+**Qué hace, en orden**: valida `OLD_KEY` de `backend/.env`, genera `NEW_KEY` en el server (nunca
+se tipea ni se pega), corre un dry-run con los servicios arriba, invoca `predeploy-dump.ps1` (deja
+un dump verificado y los servicios detenidos), escribe un archivo de recuperación `PENDIENTE`
+**antes** de la corrida real, re-cifra todas las filas en una sola transacción, reescribe
+`backend/.env` completo (archivo temporal + `[System.IO.File]::Replace`, nunca `Add-Content` —
+misma trampa que `ROOT_ADMIN_PASSWORD` el 2026-08-20), y recién ahí arranca los servicios.
 
-También hay una trampa de escritura resuelta: la clave se agrega **reescribiendo el `.env`
-entero**, no con `Add-Content`. Si el archivo no termina en salto de línea, `Add-Content` pega el
-valor al final de la última variable y corrompe dos cosas de una. Pasó el 2026-08-20 contra
-`ROOT_ADMIN_PASSWORD`.
+**Exit codes**:
+
+| Exit | Estado de la base | Qué hacer |
+|---|---|---|
+| 0 | Rotación confirmada | Nada — servicios arriba, `backend/.env` verificado |
+| 1 | Sin cambios (`OLD_KEY`), servicios arriba | Revisar el error de consola y re-correr |
+| 3 | Base en `NEW_KEY`, `backend/.env` **sin** actualizar | Recuperación manual, ver abajo |
+| 4 | Estado ambiguo, servicios **detenidos** | Verificar OLD/NEW (ver abajo) antes de nada |
+| 5 | Rotación confirmada, cierre final incompleto | Base OK — completar a mano lo que quedó a medias: archivo permanente, borrar `PENDIENTE` o arrancar servicios |
+
+**Recuperación manual (exit 3, 4 o 5)**: el mensaje de consola nombra el `PENDIENTE`
+(`backups\rotacion-email-crypto-key-<ts>.PENDIENTE.txt`, ASCII, `OLD_KEY`/`NEW_KEY`/`DUMP`). Todo
+en PowerShell, como administrator — ninguna clave se tipea ni se pega, se lee del archivo a una
+variable de entorno:
+
+```powershell
+$pendiente = 'C:\soporte\backups\rotacion-email-crypto-key-<ts>.PENDIENTE.txt'
+$env:DATABASE_URL_MASTER = ((Select-String -Path C:\soporte\backend\.env -Pattern '^DATABASE_URL_MASTER=').Line -split '=', 2)[1].Trim('"')
+$env:ROTACION_VERIFICAR_KEY = ((Select-String -Path $pendiente -Pattern '^OLD_KEY=').Line -split '=', 2)[1]
+C:\nodejs24\node.exe C:\soporte\backend\scripts\rotar-email-crypto-key.mjs --verificar   # exit 0 = no hubo COMMIT
+$env:ROTACION_VERIFICAR_KEY = ((Select-String -Path $pendiente -Pattern '^NEW_KEY=').Line -split '=', 2)[1]
+C:\nodejs24\node.exe C:\soporte\backend\scripts\rotar-email-crypto-key.mjs --verificar   # exit 0 = SI hubo COMMIT
+Remove-Item Env:\ROTACION_VERIFICAR_KEY, Env:\DATABASE_URL_MASTER
+```
+
+Si `OLD_KEY` verifica, no hubo `COMMIT`: borrar el `PENDIENTE` y arrancar los servicios. Si
+`NEW_KEY` verifica (exit 3, o exit 4 resuelto a `NEW_KEY`), y **solo** si ese `--verificar`
+devolvió exit 0: escribir `NEW_KEY` en el `EMAIL_CRYPTO_KEY=` de `backend\.env` con un
+archivo temporal + `Replace`. La clave se lee otra vez del `PENDIENTE`, porque el bloque
+anterior ya borró las variables de entorno. **Nunca** `Add-Content`, y **nunca** `$null` como
+tercer argumento de `Replace`: el binder de PowerShell lo convierte en `""` y `Replace` la
+rechaza siempre (C-N1, `verify-report.md`). Si `.env` ya tenía `NEW_KEY` (exit 3 con el
+`Replace` hecho y la verificación del paso 8 fallida), el bloque lo deja igual:
+
+```powershell
+$newKey = ((Select-String -Path $pendiente -Pattern '^NEW_KEY=').Line -split '=', 2)[1]
+if ($newKey -notmatch '^[0-9a-fA-F]{64}$') { throw 'NEW_KEY ilegible en el PENDIENTE: no seguir' }
+$tmp = 'C:\soporte\backend\.env.rotacion-tmp'
+(Get-Content C:\soporte\backend\.env) -replace '^EMAIL_CRYPTO_KEY=[0-9a-fA-F]{64}$', ('EMAIL_CRYPTO_KEY=' + $newKey) |
+  Set-Content -Path $tmp -Encoding ascii
+[System.IO.File]::Replace($tmp, 'C:\soporte\backend\.env', [NullString]::Value)
+Remove-Variable newKey
+```
+
+**Antes de tocar el `PENDIENTE`, verificar el `.env` que quedó en disco** (igual que el paso 8
+del script). Si este bloque no termina en exit 0, **no seguir**: el `PENDIENTE` es la única
+copia de `NEW_KEY` fuera de la base.
+
+```powershell
+$env:DATABASE_URL_MASTER = ((Select-String -Path C:\soporte\backend\.env -Pattern '^DATABASE_URL_MASTER=').Line -split '=', 2)[1].Trim('"')
+$env:ROTACION_VERIFICAR_KEY = ((Select-String -Path C:\soporte\backend\.env -Pattern '^EMAIL_CRYPTO_KEY=').Line -split '=', 2)[1]
+if ($env:ROTACION_VERIFICAR_KEY -notmatch '^[0-9a-fA-F]{64}$') { throw 'EMAIL_CRYPTO_KEY invalida en .env: no borrar el PENDIENTE' }
+C:\nodejs24\node.exe C:\soporte\backend\scripts\rotar-email-crypto-key.mjs --verificar   # tiene que dar exit 0
+Remove-Item Env:\ROTACION_VERIFICAR_KEY, Env:\DATABASE_URL_MASTER
+```
+
+Con esa verificación en exit 0, cerrar el `PENDIENTE` **sin renombrarlo** — escribir un archivo nuevo solo con
+`OLD_KEY`+`DUMP`+fecha (igual que el paso 9 del script, nunca `NEW_KEY`), aplicarle el
+`icacls` de abajo, y recién ahí borrar el `PENDIENTE` y arrancar los servicios. Si ninguna
+clave verifica, es intervención manual real: revisar `soporte_master.clientes` antes de
+arrancar nada. **Exit 5**: la base y `backend/.env` YA están en `NEW_KEY` y verificados — el
+paso que quedó a medias puede ser cualquiera del cierre (crear/escribir/validar el archivo
+permanente, borrar el `PENDIENTE`, o arrancar un servicio; el mensaje de consola dice cuál).
+Confirmar que el archivo permanente quedó bien escrito (sin `NEW_KEY`) antes de borrar el
+`PENDIENTE`, y arrancar los servicios que falten. Ninguna clave se imprime en ningún paso — el
+script solo reporta longitudes y rutas.
+
+**Retención de los archivos de recuperación**: al cerrar bien, el `PENDIENTE` se reemplaza por uno
+permanente (`rotacion-email-crypto-key-<ts>.txt`) con solo `OLD_KEY` + la ruta del dump + la fecha
+— **nunca** `NEW_KEY`. Los dos quedan en `backups\` con permisos solo para `Administrators` y
+`SYSTEM` (`icacls <archivo> /inheritance:r /grant:r "*S-1-5-32-544:F" "*S-1-5-18:F"`). **No borrar
+un archivo de recuperación mientras exista el dump de esa ventana**: `OLD_KEY` es la única forma
+de descifrar las credenciales SMTP que ese dump contiene.
 
 ---
 

@@ -152,7 +152,7 @@ Las variables marcadas **Requerida** se validan al arrancar (`backend/src/config
 | `JWT_SECRET` | **Requerida — sin default.** Secreto de firma de los JWT (access + refresh). Antes tenía un default de desarrollo publicado en el repo; se eliminó. |
 | `JWT_ACCESS_EXPIRES_IN` / `JWT_REFRESH_EXPIRES_IN` | TTL de los tokens. |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASSWORD` / `SMTP_FROM` / `SMTP_SECURE` | **Solo para el backfill inicial** — desde `configuracion-correo-por-cliente`, el envío usa la config SMTP **de cada cliente**, no estas variables (ver abajo). `SMTP_SECURE="true"` usa SMTPS directo (típico puerto 465); default `false` (STARTTLS, puerto 587). |
-| `EMAIL_CRYPTO_KEY` | Clave maestra AES-256-GCM que cifra en reposo la contraseña SMTP de cada cliente. **64 caracteres hex** (32 bytes). Si falta, la app **no** falla al arrancar: el guardado de config responde 503 y el envío degrada explícito con razón `EMAIL_CRYPTO_KEY_AUSENTE`. Generarla con `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`. **NO se puede rotar reemplazando el valor**: cada credencial guardada quedaría indescifrable. Una rotación exige una migración de re-cifrado (por eso el payload lleva el prefijo de versión `v1:`). |
+| `EMAIL_CRYPTO_KEY` | Clave maestra AES-256-GCM que cifra en reposo la contraseña SMTP de cada cliente. **64 caracteres hex** (32 bytes). Si falta, la app **no** falla al arrancar: el guardado de config responde 503 y el envío degrada explícito con razón `EMAIL_CRYPTO_KEY_AUSENTE`. Generarla con `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`. **NO se puede rotar reemplazando el valor**: cada credencial guardada quedaría indescifrable. Rotarla de verdad usa `rotate-email-crypto-key.ps1` (VPS, ver `DEPLOY-VPS-runbook.md` Sección 5), que re-cifra cada fila preservando el prefijo de versión `v1:`. |
 | `ROOT_ADMIN_EMAIL` / `ROOT_ADMIN_PASSWORD` / `ROOT_ADMIN_NOMBRE` / `ROOT_ADMIN_APELLIDO` | Bootstrap idempotente del primer usuario **ROOT** (`is_global_admin = true`). |
 | `SLA_SWEEP_CRON` | Expresión cron del barrido periódico de vencimiento de SLA (`SlaSweepScheduler`, módulo `sla/`). Default: cada 5 min (`CronExpression.EVERY_5_MINUTES`) si no está seteada. |
 | `PREVENTIVO_SWEEP_CRON` | Expresión cron del barrido de generación de mantenimiento preventivo (`PreventivoSweepScheduler`, módulo `preventivo/`). Default: todos los días a la 1am (`CronExpression.EVERY_DAY_AT_1AM`) si no está seteada. |
@@ -381,6 +381,8 @@ pnpm test
 > Si los `*.integration.spec.ts` fallan en masa con `PrismaClientKnownRequestError`,
 > primero revisá el entorno: `pnpm prisma migrate status --schema prisma_master/schema.prisma`.
 > Un `P1001` es la base caída y un `P1000` es la contraseña, no el código.
+
+> `scripts/rotate-email-crypto-key.ps1.spec.ts` necesita `pwsh` (`PWSH_PATH=<ruta>` o en PATH); si no, se skippea solo.
 
 ### Smoke e2e (Playwright, `frontend/e2e/caminos-criticos.spec.ts`)
 
