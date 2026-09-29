@@ -22,8 +22,9 @@
  * `usuarios`/`clientes` — solo un JWT firmado con el claim que corresponde.
  *
  * Higiene de datos (soporte/CLAUDE.md): la tabla `feriados` NUNCA se
- * truncatea — 46 filas sembradas por migración deben sobrevivir la suite. Los
- * fixtures usan fechas de 2031 (fuera del rango sembrado, 2026-2028) y se
+ * truncatea — las filas sembradas por migración deben sobrevivir la suite: 46
+ * de 2026-2028 y 15 de 2029. Los fixtures usan fechas de 2031 (fuera del rango
+ * sembrado) y se
  * borran por `id` en `afterAll`, nunca por TRUNCATE.
  *
  * Ref spec: sdd/feriados-configurables specs/feriados-globales/spec.md.
@@ -367,5 +368,29 @@ describe('FeriadosController e2e (WU2c, tarea 2.4)', () => {
       where: { fecha: { lt: FIN_RANGO_SEMBRADO } },
     });
     expect(cantidad).toBe(46);
+  });
+
+  it('las 15 filas de 2029 (migración `20260929120000_seed_feriados_2029`) están sembradas', async () => {
+    const fechas2029 = await masterClient.feriado.findMany({
+      where: { fecha: { gte: FIN_RANGO_SEMBRADO, lt: new Date('2030-01-01T00:00:00.000Z') } },
+      orderBy: { fecha: 'asc' },
+    });
+    expect(fechas2029.map((f) => f.fecha.toISOString().slice(0, 10))).toEqual([
+      '2029-01-01', // Año Nuevo
+      '2029-02-12', // Carnaval
+      '2029-02-13', // Carnaval
+      '2029-03-24', // Memoria
+      '2029-03-30', // Viernes Santo (Pascua 2029-04-01)
+      '2029-04-02', // Malvinas
+      '2029-05-01', // Trabajador
+      '2029-05-25', // Revolución de Mayo
+      '2029-06-20', // Belgrano (el 17/06, Güemes, cae domingo: no se siembra)
+      '2029-07-09', // Independencia
+      '2029-08-20', // San Martín, trasladado del viernes 17/08
+      '2029-10-15', // Diversidad Cultural, trasladado del viernes 12/10
+      '2029-11-19', // Soberanía Nacional, trasladado del martes 20/11
+      '2029-12-08', // Inmaculada Concepción
+      '2029-12-25', // Navidad
+    ]);
   });
 });

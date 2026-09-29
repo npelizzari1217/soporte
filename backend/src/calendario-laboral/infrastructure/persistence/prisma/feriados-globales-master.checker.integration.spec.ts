@@ -6,8 +6,8 @@
  * `FeriadosGlobalesMasterChecker.esGlobal()` sin mockear Prisma.
  *
  * Higiene de datos (soporte/CLAUDE.md, design.md D4): la tabla `feriados`
- * NUNCA se truncatea — las 46 filas sembradas por migración (rango
- * 2026-2028) deben sobrevivir la suite. El fixture propio usa una fecha de
+ * NUNCA se truncatea — las filas sembradas por migración (46 de 2026-2028 y
+ * 15 de 2029) deben sobrevivir la suite. El fixture propio usa una fecha de
  * 2031 (fuera de ese rango) y se borra por `id` en `afterAll`.
  */
 import { PrismaService } from '../../../../shared/infrastructure/persistence/prisma.service';
