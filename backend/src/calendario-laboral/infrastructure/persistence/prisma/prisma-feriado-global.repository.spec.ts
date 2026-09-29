@@ -1,7 +1,6 @@
 /**
  * WU1 (sdd/feriados-configurables) — unit, sin DB. Mockea
- * `PrismaService.getMasterClient()`, mismo molde que
- * `tipos-componente/infrastructure/persistence/prisma/prisma-tipo-componente-master.repository.spec.ts`.
+ * `PrismaService.getMasterClient()`.
  * Cubre CRUD + orden ascendente por `fecha`, y que `crear`/`editar` escriban
  * la fecha en medianoche UTC (@db.Date, D2) vía el mapper.
  */

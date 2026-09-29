@@ -1,8 +1,7 @@
 /**
  * prisma-cliente-email-config.repository.spec.ts (WU3, sdd/configuracion-correo-por-cliente).
  *
- * Mockea `PrismaService.getMasterClient()` (mismo molde que
- * `tipos-componente/infrastructure/persistence/prisma/prisma-tipo-componente-master.repository.spec.ts`)
+ * Mockea `PrismaService.getMasterClient()`
  * y usa un `ISecretCipher` real (`AesGcmSecretCipher`) para probar el
  * cifrado/descifrado de punta a punta, no solo que se llamó una función.
  *

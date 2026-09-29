@@ -1,7 +1,7 @@
 /**
  * sectores.module.spec.ts — wiring de `SectoresModule` (WU-07). Inspecciona
  * la metadata del decorador `@Module()` directamente (sin compilar el árbol
- * de módulos ni requerir DB) — mismo patrón que `tipos-componente.module.spec.ts`.
+ * de módulos ni requerir DB).
  * El grafo DI REAL (`useFactory` real) se cubre en `sectores.e2e.spec.ts` (WU-08).
  */
 import 'reflect-metadata';

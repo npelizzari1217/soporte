@@ -198,14 +198,14 @@ describe('Equipos e2e — instalar componente desde depósito (WU-4, issue #153)
     return role;
   }
 
-  async function createUsuario(suffix: string): Promise<UsuarioEntity> {
+  async function createUsuario(suffix: string, isGlobalAdmin = false): Promise<UsuarioEntity> {
     const usuario = UsuarioEntity.create({
       email: `e2e_equipos_instalar_${suffix}@test.local`,
       nombre: 'E2E',
       apellido: 'EquiposInstalar',
       passwordHash: await hashProvider.hash(PLAINTEXT_PASSWORD),
       activo: true,
-      isGlobalAdmin: false,
+      isGlobalAdmin,
     });
     await usuarioRepo.save(usuario);
     return usuario;
@@ -591,6 +591,28 @@ describe('Equipos e2e — instalar componente desde depósito (WU-4, issue #153)
       );
 
       expect(status).toBe(404);
+    });
+
+    it('las 5 rutas raíz de /tipos-componente (ABM MASTER retirado) responden 404 incluso a ROOT', async () => {
+      const root = await createUsuario(`root_${randomBytes(3).toString('hex')}`, true);
+      const { accessToken } = await login(root.email);
+      const id = '11111111-1111-4111-8111-111111111111';
+      const rutas: Array<[string, string]> = [
+        ['POST', `${baseUrl}/tipos-componente`],
+        ['GET', `${baseUrl}/tipos-componente/admin`],
+        ['PATCH', `${baseUrl}/tipos-componente/${id}`],
+        ['POST', `${baseUrl}/tipos-componente/${id}/activar`],
+        ['POST', `${baseUrl}/tipos-componente/${id}/desactivar`],
+      ];
+
+      for (const [method, url] of rutas) {
+        const res = await fetch(url, {
+          method,
+          headers: { 'Content-Type': 'application/json', ...bearer(accessToken) },
+          body: method === 'GET' ? undefined : JSON.stringify({}),
+        });
+        expect({ method, url, status: res.status }).toEqual({ method, url, status: 404 });
+      }
     });
 
     it('un tipoComponenteCodigo sobrante se ignora: el alta sale igual, vinculada al insumo', async () => {
