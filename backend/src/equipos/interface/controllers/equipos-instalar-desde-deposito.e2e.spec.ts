@@ -635,6 +635,103 @@ describe('Equipos e2e — instalar componente desde depósito (WU-4, issue #153)
     });
   });
 
+  // ─── Retiro y reemplazo (verify W1/W2 de catalogo-unico-componentes) ───
+
+  describe('Retiro sin stock y reemplazo como retiro más alta', () => {
+    async function httpDelete(url: string, headers: Headers): Promise<number> {
+      const res = await fetch(url, { method: 'DELETE', headers });
+      return res.status;
+    }
+
+    it('Retiro sin stock: DELETE deja el componente borrado lógicamente y NO registra ningún movimiento', async () => {
+      const { familiaId } = await crearFamiliaRepuesto();
+      const unidadMedidaId = await crearUnidadMedida();
+      const insumoId = await crearInsumoRepuesto(familiaId, unidadMedidaId);
+      const actor = await crearActorConPermisos(['EQUIPOS:ALTAS', 'EQUIPOS:BORRADO']);
+      await sembrarEntrada(insumoId, 5, actor.usuarioId);
+      const equipoId = await crearEquipoDirecto();
+
+      const alta = await httpPost<ComponenteResponseDto>(
+        installUrl(equipoId),
+        { insumoId },
+        bearer(actor.accessToken),
+      );
+      expect(alta.status).toBe(201);
+      // ENTRADA sembrada + SALIDA del alta con descuento.
+      const antes = await movimientosDe(insumoId);
+      expect(antes).toHaveLength(2);
+
+      const status = await httpDelete(
+        `${installUrl(equipoId)}/${alta.data.id}`,
+        bearer(actor.accessToken),
+      );
+
+      expect(status).toBe(204);
+      const [componente] = await componentesDe(equipoId);
+      expect(componente.deletedAt).not.toBeNull();
+      // Sin devolución: mismos movimientos, mismo saldo (5 - 1 = 4).
+      const despues = await movimientosDe(insumoId);
+      expect(despues.map((m) => m.id)).toEqual(antes.map((m) => m.id));
+      const saldo = despues.reduce(
+        (acc, m) => acc + (m.tipo === 'SALIDA' ? -Number(m.cantidad) : Number(m.cantidad)),
+        0,
+      );
+      expect(saldo).toBe(4);
+    });
+
+    it('Reemplazo como retiro más alta: el A queda retirado con su insumo, el B activo y el detalle lista ambos', async () => {
+      const { familiaId } = await crearFamiliaRepuesto();
+      const unidadMedidaId = await crearUnidadMedida();
+      const insumoA = await crearInsumoRepuesto(familiaId, unidadMedidaId);
+      const insumoB = await crearInsumoRepuesto(familiaId, unidadMedidaId);
+      const actor = await crearActorConPermisos([
+        'EQUIPOS:ALTAS',
+        'EQUIPOS:BORRADO',
+        'EQUIPOS:LECTURA',
+      ]);
+      const equipoId = await crearEquipoDirecto();
+
+      const altaA = await httpPost<ComponenteResponseDto>(
+        installUrl(equipoId),
+        { insumoId: insumoA, descontarStock: false },
+        bearer(actor.accessToken),
+      );
+      expect(altaA.status).toBe(201);
+
+      const retiro = await httpDelete(
+        `${installUrl(equipoId)}/${altaA.data.id}`,
+        bearer(actor.accessToken),
+      );
+      expect(retiro).toBe(204);
+
+      const altaB = await httpPost<ComponenteResponseDto>(
+        installUrl(equipoId),
+        { insumoId: insumoB, descontarStock: false },
+        bearer(actor.accessToken),
+      );
+      expect(altaB.status).toBe(201);
+
+      const filas = await componentesDe(equipoId);
+      const filaA = filas.find((c) => c.id === altaA.data.id);
+      const filaB = filas.find((c) => c.id === altaB.data.id);
+      expect(filaA?.insumoId).toBe(insumoA);
+      expect(filaA?.deletedAt).not.toBeNull();
+      expect(filaB?.insumoId).toBe(insumoB);
+      expect(filaB?.deletedAt).toBeNull();
+
+      const detalle = await httpGet<EquipoDetalleResponseDto>(
+        `${baseUrl}/equipos/${equipoId}`,
+        bearer(actor.accessToken),
+      );
+      expect(detalle.status).toBe(200);
+      const ids = detalle.data.componentes.map((c) => c.id);
+      expect(ids).toEqual(expect.arrayContaining([altaA.data.id, altaB.data.id]));
+      // Ni el retiro ni el alta sin descuento tocaron el stock.
+      expect(await movimientosDe(insumoA)).toHaveLength(0);
+      expect(await movimientosDe(insumoB)).toHaveLength(0);
+    });
+  });
+
   it('sanity: DATABASE_URL_MASTER apunta a una DB *_test y el tenant es efímero *_test', () => {
     expect(MASTER_TEST_URL).toMatch(/_test$/);
     expect(TENANT_DB_NAME).toMatch(/^soporte_prov_equiposInstalarE2E_.*_test$/);

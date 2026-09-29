@@ -222,3 +222,17 @@ Estado: **completo** (tareas 12.1 a 12.5 marcadas en `tasks.md`).
 
 `soporte_master_test` se migró con `DATABASE_URL_MASTER=<url test> pnpm migrate:master` antes de la suite. La base
 `soporte_master` de desarrollo no se tocó. El drop es irreversible: revertir exige restaurar el dump de predeploy.
+
+## WU-13 — Cierre de verify: tests de los escenarios PARTIAL y nota de rollback (rama `feat/catalogo-unico-componentes-wu13`, base wu12)
+
+Estado: **completo** (tareas 13.1 a 13.5 marcadas en `tasks.md`). Cierra W1 a W3 de `verify-report.md`.
+
+| Tarea | Resultado | Mutación (roja, revertida) |
+|---|---|---|
+| 13.1 | `prisma_master/drop-tipos-componente.integration.spec.ts`: base efímera, todas las migraciones master en orden, `to_regclass('public.tipos_componente')` es NULL | Sacar la carpeta `20260929130000_drop_tipos_componente`: 2 rojos |
+| 13.2 | Dos casos en `equipos-instalar-desde-deposito.e2e.spec.ts`: "Retiro sin stock" (204, `deletedAt` poblado, mismos movimientos y saldo) y "Reemplazo como retiro más alta" (A retirado con su insumo, B activo, detalle lista ambos, cero movimientos) | `repo.delete` que además inserta un movimiento: 2 rojos. `repo.delete` que no marca `deletedAt`: 2 rojos |
+| 13.3 | `componentes-insumo-obligatorio.integration.spec.ts`: limpieza de filas en `afterEach` | Sin mutación (higiene) |
+| 13.4 | `DEPLOY-VPS-runbook.md`: subsección "Rollback del tracker" con puntero al restore existente | n/a |
+| 13.5 | lint, typecheck y `pnpm test` (ver reporte de la fase) | n/a |
+
+Sin cambios de comportamiento de producción. Ayuda: sin cambios.

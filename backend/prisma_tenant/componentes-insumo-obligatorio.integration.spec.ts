@@ -93,6 +93,11 @@ describe('migración componentes_insumo_obligatorio — fail-closed (WU-6, tenan
     await admin.dropDatabase(EPHEMERAL_DB_NAME);
   }, 30_000);
 
+  // Un test fallido no debe dejar filas que arrastren al siguiente.
+  afterEach(async () => {
+    await pool.query('DELETE FROM componentes_equipo');
+  });
+
   it('aborta si hay una fila VIVA con insumo_id NULL, nombrando el script, y no toca el esquema', async () => {
     await insertar('RAM', false);
 
@@ -100,8 +105,6 @@ describe('migración componentes_insumo_obligatorio — fail-closed (WU-6, tenan
       /1 fila\(s\) con insumo_id NULL.*backend\/scripts\/limpiar-componentes-sin-insumo\.mjs/s,
     );
     await esquemaIntacto();
-
-    await pool.query('DELETE FROM componentes_equipo');
   });
 
   it('aborta si la única fila con insumo_id NULL está borrada lógicamente', async () => {
@@ -109,8 +112,6 @@ describe('migración componentes_insumo_obligatorio — fail-closed (WU-6, tenan
 
     await expect(pool.query(sqlMigracion)).rejects.toThrow(/1 fila\(s\) con insumo_id NULL/);
     await esquemaIntacto();
-
-    await pool.query('DELETE FROM componentes_equipo');
   });
 
   it('con la tabla vacía pasa: insumo_id NOT NULL, sin columna de tipo, sin índice y FK RESTRICT', async () => {

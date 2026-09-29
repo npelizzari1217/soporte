@@ -680,6 +680,17 @@ git reset --hard <commit-de-rollback>
 > deja código viejo contra schema nuevo. Con migraciones aditivas suele andar; con una
 > destructiva, no. Mirá qué migró antes de decidir.
 
+### Rollback del tracker `catalogo-unico-componentes`
+
+Revertir el código de este release **exige restaurar el dump de master y de cada tenant**, siempre
+juntos. Las migraciones son destructivas e irreversibles: el tenant hace `DROP COLUMN
+tipo_componente_codigo` y `SET NOT NULL` sobre `insumo_id`, y master hace `DROP TABLE
+tipos_componente` (con sus 12 filas). El `git reset --hard` no las deshace, y no hay `rollback.sql`.
+El procedimiento es el de la sección siguiente ("Restore de datos"), con el dump que tomó
+`predeploy-dump.ps1` antes de este deploy: aunque el título de esa sección nombre el backfill de
+fechas, los pasos (detener servicios, `pg_restore --clean --if-exists` de master y de cada tenant,
+revertir el código, arrancar) son los mismos.
+
 ### Restore de datos (si el backfill de fechas hay que revertirlo)
 
 Caso puntual: el backfill de `sdd/sesion-utc-y-backfill-de-fechas` (issue #173, ADR-6) resta 3

@@ -381,11 +381,25 @@ listo para integrarse a `main`.
 
 ---
 
+
+## WU-13 — Cierre de verify: tests de los escenarios PARTIAL y nota de rollback
+
+**Branch**: `feat/catalogo-unico-componentes-wu13` · **Base**: wu12 · Origen: `verify-report.md`
+(PASS WITH WARNINGS, W1–W3). Corrección acotada única del ciclo.
+
+- [x] 13.1 Test de integración "Tabla MASTER eliminada": sobre `soporte_master_test` migrada, `to_regclass('public.tipos_componente')` es NULL; con `usarLockMasterTest()` si trunca.
+- [x] 13.2 Tests de "Reemplazo como retiro más alta" y "Retiro sin stock" (e2e de equipos): el retiro deja el componente borrado lógicamente y **no** registra movimiento de stock; el alta nueva con otro repuesto queda activa; el componente retirado no cambia de insumo.
+- [x] 13.3 `componentes-insumo-obligatorio.integration.spec.ts`: la limpieza de filas pasa a `afterEach`/`finally` para que un test fallido no arrastre al siguiente.
+- [x] 13.4 `DEPLOY-VPS-runbook.md`: nota de rollback del tracker: revertir el código exige restaurar el dump de master **y** de cada tenant (DROP de columna y de tabla irreversibles), con referencia al procedimiento de restore existente.
+- [x] 13.5 Quality gates: `cd backend && pnpm lint && pnpm typecheck && pnpm test`.
+
+**PR boundary**: ~200 líneas, base wu12.
+
 ## Tareas operativas del deploy (ejecuta el dueño; fuera de `sdd-apply`)
 
 Runbook: `DEPLOY-VPS-runbook.md`. Es una secuencia operativa, no una lista de casillas: como
 casillas bloqueaban `sdd-verify` y OP.3 pide integrar después del verify (dependencia circular,
-corregida por el orquestador el 2026-09-29). WU-1 ya está en `main` (`ca6b1d5`); falta su deploy.
+corregida por el orquestador el 2026-09-29). WU-1 ya está en `main` (`ca6b1d5`) y en producción desde el 2026-09-29 (backup `utc-backfill-20260929-174707`); el reporte de producción confirmó 12 filas.
 
 - OP.1. Mergear WU-1 a `main` y hacer un deploy ordinario (el script queda en disco del VPS).
 - OP.2. En producción, correr `node scripts/limpiar-componentes-sin-insumo.mjs` en **modo reporte**. Confirmar 12 filas (9 vivas y 3 borradas lógicamente: Cic Lanus 8+3, Santa Cruz 1) y revisar la lista de clientes fuera del recorrido.
