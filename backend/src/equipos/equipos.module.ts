@@ -198,21 +198,9 @@ import { SoporteController } from './interface/controllers/soporte.controller';
       useFactory: (
         equipoRepo: IEquipoInformaticoRepository,
         componenteRepo: IComponenteEquipoRepository,
-        tipoComponenteMasterChecker: ITipoComponenteMasterChecker,
         insumoRepo: IInsumoRepository,
-      ) =>
-        new ObtenerEquipoUseCase(
-          equipoRepo,
-          componenteRepo,
-          tipoComponenteMasterChecker,
-          insumoRepo,
-        ),
-      inject: [
-        EQUIPO_INFORMATICO_REPOSITORY,
-        COMPONENTE_EQUIPO_REPOSITORY,
-        TIPO_COMPONENTE_MASTER_CHECKER,
-        INSUMO_REPOSITORY,
-      ],
+      ) => new ObtenerEquipoUseCase(equipoRepo, componenteRepo, insumoRepo),
+      inject: [EQUIPO_INFORMATICO_REPOSITORY, COMPONENTE_EQUIPO_REPOSITORY, INSUMO_REPOSITORY],
     },
     {
       provide: ListarEquiposUseCase,

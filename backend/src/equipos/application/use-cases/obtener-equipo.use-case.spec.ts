@@ -5,15 +5,10 @@ import { ComponenteEquipoEntity } from '../../domain/entities/componente-equipo.
 import { EquipoNoEncontradoError } from '../../domain/errors/equipos.errors';
 
 /**
- * PR4b (sdd/tipos-componente-master): `ObtenerEquipoUseCase` enriquece cada
- * componente con `{tipoNombre, tipoActivo}`.
- *
- * sdd/repuestos-autoridad-catalogo (ADR-2/ADR-3): el batch se PARTE por el
- * CAMINO del componente. Un vinculado (`insumoId != null`) resuelve contra el
- * catálogo del TENANT vía `IInsumoRepository.findFamiliasDeInsumos`; uno de
- * texto libre (`insumoId === null`) sigue resolviendo contra MASTER vía
- * `ITipoComponenteMasterChecker.resolver`. Sin fallback cruzado entre las dos
- * fuentes.
+ * sdd/catalogo-unico-componentes (ADR-6): `ObtenerEquipoUseCase` resuelve
+ * `{tipoNombre, tipoActivo}` de cada componente SOLO por la familia de su
+ * insumo (`IInsumoRepository.findFamiliasDeInsumos`, una consulta al tenant).
+ * MASTER no se consulta.
  */
 describe('ObtenerEquipoUseCase', () => {
   function makeEquipo() {
@@ -35,7 +30,7 @@ describe('ObtenerEquipoUseCase', () => {
   function makeComponente(
     equipoId: string,
     tipoComponenteCodigo: string,
-    insumoId: string | null = null,
+    insumoId: string = 'insumo-1',
   ) {
     return ComponenteEquipoEntity.create({
       equipoId,
@@ -47,239 +42,64 @@ describe('ObtenerEquipoUseCase', () => {
     }).getValue();
   }
 
-  /** Construye el use case con mocks; los que no se pasan quedan sin llamadas registradas. */
   function makeUseCase(overrides: {
     equipoRepo?: unknown;
     componenteRepo?: unknown;
-    tipoComponenteMasterChecker?: unknown;
     insumoRepo?: unknown;
   }) {
     return new ObtenerEquipoUseCase(
       (overrides.equipoRepo ?? { findById: vi.fn() }) as never,
       (overrides.componenteRepo ?? { findAllByEquipoId: vi.fn() }) as never,
-      (overrides.tipoComponenteMasterChecker ?? { resolver: vi.fn() }) as never,
       (overrides.insumoRepo ?? { findFamiliasDeInsumos: vi.fn() }) as never,
     );
   }
 
-  it('retorna el equipo + sus componentes de texto libre enriquecidos desde MASTER (item 1 — G7)', async () => {
+  function familia(nombre: string, flags: { activo: boolean; deletedAt: Date | null }) {
+    return { insumoId: 'insumo-1', codigo: 'TORNILLO', nombre, ...flags };
+  }
+
+  it('retorna el equipo y sus componentes con el tipo de la familia (familia activa)', async () => {
     const equipo = makeEquipo();
-    const componente = makeComponente(equipo.id, 'RAM');
-    const equipoRepo = { findById: vi.fn().mockResolvedValue(equipo) };
-    const componenteRepo = { findAllByEquipoId: vi.fn().mockResolvedValue([componente]) };
-    const tipoComponenteMasterChecker = {
-      resolver: vi
-        .fn()
-        .mockResolvedValue(new Map([['RAM', { nombre: 'Memoria RAM', activo: true }]])),
-    };
-    const insumoRepo = { findFamiliasDeInsumos: vi.fn() };
-    const useCase = makeUseCase({
-      equipoRepo,
-      componenteRepo,
-      tipoComponenteMasterChecker,
-      insumoRepo,
-    });
-
-    const result = await useCase.execute({ equipoId: equipo.id });
-    expect(result.isOk()).toBe(true);
-    expect(result.getValue().equipo.id).toBe(equipo.id);
-    expect(tipoComponenteMasterChecker.resolver).toHaveBeenCalledWith(['RAM']);
-    expect(result.getValue().componentes).toEqual([
-      { componente, tipoNombre: 'Memoria RAM', tipoActivo: true },
-    ]);
-    // Ningún componente vinculado en esta lista: el tenant no se consulta.
-    expect(insumoRepo.findFamiliasDeInsumos).not.toHaveBeenCalled();
-  });
-
-  it('componente de texto libre sin match en MASTER → tipoNombre null, tipoActivo false (best-effort)', async () => {
-    const equipo = makeEquipo();
-    const componente = makeComponente(equipo.id, 'DESCONTINUADO');
-    const equipoRepo = { findById: vi.fn().mockResolvedValue(equipo) };
-    const componenteRepo = { findAllByEquipoId: vi.fn().mockResolvedValue([componente]) };
-    const tipoComponenteMasterChecker = { resolver: vi.fn().mockResolvedValue(new Map()) };
-    const useCase = makeUseCase({ equipoRepo, componenteRepo, tipoComponenteMasterChecker });
-
-    const result = await useCase.execute({ equipoId: equipo.id });
-    expect(result.getValue().componentes).toEqual([
-      { componente, tipoNombre: null, tipoActivo: false },
-    ]);
-  });
-
-  it('sin componentes → no consulta ni MASTER ni el catálogo del tenant', async () => {
-    const equipo = makeEquipo();
-    const equipoRepo = { findById: vi.fn().mockResolvedValue(equipo) };
-    const componenteRepo = { findAllByEquipoId: vi.fn().mockResolvedValue([]) };
-    const tipoComponenteMasterChecker = { resolver: vi.fn() };
-    const insumoRepo = { findFamiliasDeInsumos: vi.fn() };
-    const useCase = makeUseCase({
-      equipoRepo,
-      componenteRepo,
-      tipoComponenteMasterChecker,
-      insumoRepo,
-    });
-
-    const result = await useCase.execute({ equipoId: equipo.id });
-    expect(result.getValue().componentes).toEqual([]);
-    expect(tipoComponenteMasterChecker.resolver).not.toHaveBeenCalled();
-    expect(insumoRepo.findFamiliasDeInsumos).not.toHaveBeenCalled();
-  });
-
-  it('falla con EquipoNoEncontradoError si no existe (sin consultar componentes ni catálogos)', async () => {
-    const equipoRepo = { findById: vi.fn().mockResolvedValue(null) };
-    const componenteRepo = { findAllByEquipoId: vi.fn() };
-    const tipoComponenteMasterChecker = { resolver: vi.fn() };
-    const insumoRepo = { findFamiliasDeInsumos: vi.fn() };
-    const useCase = makeUseCase({
-      equipoRepo,
-      componenteRepo,
-      tipoComponenteMasterChecker,
-      insumoRepo,
-    });
-
-    const result = await useCase.execute({ equipoId: 'no-existe' });
-    expect(result.isFail()).toBe(true);
-    expect(result.getError()).toBeInstanceOf(EquipoNoEncontradoError);
-    expect(componenteRepo.findAllByEquipoId).not.toHaveBeenCalled();
-    expect(tipoComponenteMasterChecker.resolver).not.toHaveBeenCalled();
-    expect(insumoRepo.findFamiliasDeInsumos).not.toHaveBeenCalled();
-  });
-
-  it('incluye componentes dados de baja (activo=false, deletedAt seteado) — listado enriquecido', async () => {
-    const equipo = makeEquipo();
-    const componente = makeComponente(equipo.id, 'RAM');
-    componente.softDelete();
-    const equipoRepo = { findById: vi.fn().mockResolvedValue(equipo) };
-    const componenteRepo = { findAllByEquipoId: vi.fn().mockResolvedValue([componente]) };
-    const tipoComponenteMasterChecker = {
-      resolver: vi
-        .fn()
-        .mockResolvedValue(new Map([['RAM', { nombre: 'Memoria RAM', activo: true }]])),
-    };
-    const useCase = makeUseCase({ equipoRepo, componenteRepo, tipoComponenteMasterChecker });
-
-    const result = await useCase.execute({ equipoId: equipo.id });
-    expect(result.isOk()).toBe(true);
-    const [item] = result.getValue().componentes;
-    expect(item!.componente.activo).toBe(false);
-    expect(item!.componente.deletedAt).not.toBeNull();
-  });
-
-  /**
-   * ADR-2 — el caso que motiva todo el work unit: un componente vinculado a
-   * una familia SOLO del tenant (sin fila en MASTER) se muestra con su
-   * nombre real y activo, no como "Dado de baja".
-   */
-  it('componente vinculado a familia solo-tenant se muestra con su nombre y activo (ADR-2)', async () => {
-    const equipo = makeEquipo();
-    const componente = makeComponente(equipo.id, 'TORNILLO', 'insumo-1');
-    const equipoRepo = { findById: vi.fn().mockResolvedValue(equipo) };
-    const componenteRepo = { findAllByEquipoId: vi.fn().mockResolvedValue([componente]) };
-    const tipoComponenteMasterChecker = { resolver: vi.fn() };
-    const insumoRepo = {
-      findFamiliasDeInsumos: vi.fn().mockResolvedValue(
-        new Map([
-          [
-            'insumo-1',
-            {
-              insumoId: 'insumo-1',
-              codigo: 'TORNILLO',
-              nombre: 'Tornillos',
-              activo: true,
-              deletedAt: null,
-            },
-          ],
-        ]),
-      ),
-    };
-    const useCase = makeUseCase({
-      equipoRepo,
-      componenteRepo,
-      tipoComponenteMasterChecker,
-      insumoRepo,
-    });
-
-    const result = await useCase.execute({ equipoId: equipo.id });
-
-    expect(result.isOk()).toBe(true);
-    expect(result.getValue().componentes).toEqual([
-      { componente, tipoNombre: 'Tornillos', tipoActivo: true },
-    ]);
-    expect(insumoRepo.findFamiliasDeInsumos).toHaveBeenCalledWith(['insumo-1']);
-    // MASTER ni se consulta: es la prueba de que la autoridad es el tenant.
-    expect(tipoComponenteMasterChecker.resolver).not.toHaveBeenCalled();
-  });
-
-  /** Anti-N+1: los dos caminos en la misma lista, cada uno con su fuente y UNA sola llamada. */
-  it('los dos caminos en la misma lista: cada uno resuelve de su fuente, una sola llamada a cada una', async () => {
-    const equipo = makeEquipo();
-    const vinculado = makeComponente(equipo.id, 'TORNILLO', 'insumo-1');
-    const textoLibre = makeComponente(equipo.id, 'RAM');
-    const equipoRepo = { findById: vi.fn().mockResolvedValue(equipo) };
-    const componenteRepo = {
-      findAllByEquipoId: vi.fn().mockResolvedValue([vinculado, textoLibre]),
-    };
-    const tipoComponenteMasterChecker = {
-      resolver: vi
-        .fn()
-        .mockResolvedValue(new Map([['RAM', { nombre: 'Memoria RAM', activo: true }]])),
-    };
-    const insumoRepo = {
-      findFamiliasDeInsumos: vi.fn().mockResolvedValue(
-        new Map([
-          [
-            'insumo-1',
-            {
-              insumoId: 'insumo-1',
-              codigo: 'TORNILLO',
-              nombre: 'Tornillos',
-              activo: true,
-              deletedAt: null,
-            },
-          ],
-        ]),
-      ),
-    };
-    const useCase = makeUseCase({
-      equipoRepo,
-      componenteRepo,
-      tipoComponenteMasterChecker,
-      insumoRepo,
-    });
-
-    const result = await useCase.execute({ equipoId: equipo.id });
-
-    expect(result.getValue().componentes).toEqual([
-      { componente: vinculado, tipoNombre: 'Tornillos', tipoActivo: true },
-      { componente: textoLibre, tipoNombre: 'Memoria RAM', tipoActivo: true },
-    ]);
-    expect(insumoRepo.findFamiliasDeInsumos).toHaveBeenCalledTimes(1);
-    expect(insumoRepo.findFamiliasDeInsumos).toHaveBeenCalledWith(['insumo-1']);
-    expect(tipoComponenteMasterChecker.resolver).toHaveBeenCalledTimes(1);
-    expect(tipoComponenteMasterChecker.resolver).toHaveBeenCalledWith(['RAM']);
-  });
-
-  /** Familia deshabilitada o soft-deleted: nombre presente, tipoActivo false. */
-  it.each([
-    ['deshabilitada', { activo: false, deletedAt: null }],
-    ['soft-deleted', { activo: true, deletedAt: new Date() }],
-  ])('familia %s → tipoNombre presente, tipoActivo false', async (_caso, familiaFlags) => {
-    const equipo = makeEquipo();
-    const componente = makeComponente(equipo.id, 'TORNILLO', 'insumo-1');
-    const equipoRepo = { findById: vi.fn().mockResolvedValue(equipo) };
-    const componenteRepo = { findAllByEquipoId: vi.fn().mockResolvedValue([componente]) };
+    const componente = makeComponente(equipo.id, 'TORNILLO');
     const insumoRepo = {
       findFamiliasDeInsumos: vi
         .fn()
         .mockResolvedValue(
-          new Map([
-            [
-              'insumo-1',
-              { insumoId: 'insumo-1', codigo: 'TORNILLO', nombre: 'Tornillos', ...familiaFlags },
-            ],
-          ]),
+          new Map([['insumo-1', familia('Tornillos', { activo: true, deletedAt: null })]]),
         ),
     };
-    const useCase = makeUseCase({ equipoRepo, componenteRepo, insumoRepo });
+    const useCase = makeUseCase({
+      equipoRepo: { findById: vi.fn().mockResolvedValue(equipo) },
+      componenteRepo: { findAllByEquipoId: vi.fn().mockResolvedValue([componente]) },
+      insumoRepo,
+    });
+
+    const result = await useCase.execute({ equipoId: equipo.id });
+
+    expect(result.isOk()).toBe(true);
+    expect(result.getValue().equipo.id).toBe(equipo.id);
+    expect(result.getValue().componentes).toEqual([
+      { componente, tipoNombre: 'Tornillos', tipoActivo: true },
+    ]);
+    expect(insumoRepo.findFamiliasDeInsumos).toHaveBeenCalledTimes(1);
+    expect(insumoRepo.findFamiliasDeInsumos).toHaveBeenCalledWith(['insumo-1']);
+  });
+
+  it.each([
+    ['deshabilitada', { activo: false, deletedAt: null }],
+    ['soft-deleted', { activo: true, deletedAt: new Date() }],
+  ])('familia %s → tipoNombre presente, tipoActivo false', async (_caso, flags) => {
+    const equipo = makeEquipo();
+    const componente = makeComponente(equipo.id, 'TORNILLO');
+    const useCase = makeUseCase({
+      equipoRepo: { findById: vi.fn().mockResolvedValue(equipo) },
+      componenteRepo: { findAllByEquipoId: vi.fn().mockResolvedValue([componente]) },
+      insumoRepo: {
+        findFamiliasDeInsumos: vi
+          .fn()
+          .mockResolvedValue(new Map([['insumo-1', familia('Tornillos', flags)]])),
+      },
+    });
 
     const result = await useCase.execute({ equipoId: equipo.id });
 
@@ -288,19 +108,111 @@ describe('ObtenerEquipoUseCase', () => {
     ]);
   });
 
-  /** `insumoId` ausente del mapa (fila inexistente) ⇒ degradado best-effort, sin lanzar. */
-  it('insumoId ausente del mapa → tipoNombre null, tipoActivo false (best-effort)', async () => {
+  it('insumoId ausente del mapa → tipoNombre null, tipoActivo false (el display cae a "—")', async () => {
     const equipo = makeEquipo();
     const componente = makeComponente(equipo.id, 'TORNILLO', 'insumo-fantasma');
-    const equipoRepo = { findById: vi.fn().mockResolvedValue(equipo) };
-    const componenteRepo = { findAllByEquipoId: vi.fn().mockResolvedValue([componente]) };
-    const insumoRepo = { findFamiliasDeInsumos: vi.fn().mockResolvedValue(new Map()) };
-    const useCase = makeUseCase({ equipoRepo, componenteRepo, insumoRepo });
+    const useCase = makeUseCase({
+      equipoRepo: { findById: vi.fn().mockResolvedValue(equipo) },
+      componenteRepo: { findAllByEquipoId: vi.fn().mockResolvedValue([componente]) },
+      insumoRepo: { findFamiliasDeInsumos: vi.fn().mockResolvedValue(new Map()) },
+    });
 
     const result = await useCase.execute({ equipoId: equipo.id });
 
     expect(result.getValue().componentes).toEqual([
       { componente, tipoNombre: null, tipoActivo: false },
     ]);
+  });
+
+  it('varios componentes → UNA sola consulta de familias (sin N+1)', async () => {
+    const equipo = makeEquipo();
+    const a = makeComponente(equipo.id, 'TORNILLO', 'insumo-1');
+    const b = makeComponente(equipo.id, 'RAM', 'insumo-2');
+    const insumoRepo = {
+      findFamiliasDeInsumos: vi.fn().mockResolvedValue(
+        new Map([
+          ['insumo-1', familia('Tornillos', { activo: true, deletedAt: null })],
+          [
+            'insumo-2',
+            {
+              insumoId: 'insumo-2',
+              codigo: 'RAM',
+              nombre: 'Memoria RAM',
+              activo: true,
+              deletedAt: null,
+            },
+          ],
+        ]),
+      ),
+    };
+    const useCase = makeUseCase({
+      equipoRepo: { findById: vi.fn().mockResolvedValue(equipo) },
+      componenteRepo: { findAllByEquipoId: vi.fn().mockResolvedValue([a, b]) },
+      insumoRepo,
+    });
+
+    const result = await useCase.execute({ equipoId: equipo.id });
+
+    expect(result.getValue().componentes.map((c) => c.tipoNombre)).toEqual([
+      'Tornillos',
+      'Memoria RAM',
+    ]);
+    expect(insumoRepo.findFamiliasDeInsumos).toHaveBeenCalledTimes(1);
+    expect(insumoRepo.findFamiliasDeInsumos).toHaveBeenCalledWith(['insumo-1', 'insumo-2']);
+  });
+
+  it('sin componentes → no consulta el catálogo del tenant', async () => {
+    const equipo = makeEquipo();
+    const insumoRepo = { findFamiliasDeInsumos: vi.fn() };
+    const useCase = makeUseCase({
+      equipoRepo: { findById: vi.fn().mockResolvedValue(equipo) },
+      componenteRepo: { findAllByEquipoId: vi.fn().mockResolvedValue([]) },
+      insumoRepo,
+    });
+
+    const result = await useCase.execute({ equipoId: equipo.id });
+
+    expect(result.getValue().componentes).toEqual([]);
+    expect(insumoRepo.findFamiliasDeInsumos).not.toHaveBeenCalled();
+  });
+
+  it('falla con EquipoNoEncontradoError si no existe (sin consultar componentes ni el catálogo)', async () => {
+    const componenteRepo = { findAllByEquipoId: vi.fn() };
+    const insumoRepo = { findFamiliasDeInsumos: vi.fn() };
+    const useCase = makeUseCase({
+      equipoRepo: { findById: vi.fn().mockResolvedValue(null) },
+      componenteRepo,
+      insumoRepo,
+    });
+
+    const result = await useCase.execute({ equipoId: 'no-existe' });
+
+    expect(result.isFail()).toBe(true);
+    expect(result.getError()).toBeInstanceOf(EquipoNoEncontradoError);
+    expect(componenteRepo.findAllByEquipoId).not.toHaveBeenCalled();
+    expect(insumoRepo.findFamiliasDeInsumos).not.toHaveBeenCalled();
+  });
+
+  it('incluye componentes dados de baja (activo=false, deletedAt seteado)', async () => {
+    const equipo = makeEquipo();
+    const componente = makeComponente(equipo.id, 'TORNILLO');
+    componente.softDelete();
+    const useCase = makeUseCase({
+      equipoRepo: { findById: vi.fn().mockResolvedValue(equipo) },
+      componenteRepo: { findAllByEquipoId: vi.fn().mockResolvedValue([componente]) },
+      insumoRepo: {
+        findFamiliasDeInsumos: vi
+          .fn()
+          .mockResolvedValue(
+            new Map([['insumo-1', familia('Tornillos', { activo: true, deletedAt: null })]]),
+          ),
+      },
+    });
+
+    const result = await useCase.execute({ equipoId: equipo.id });
+
+    const [item] = result.getValue().componentes;
+    expect(item!.componente.activo).toBe(false);
+    expect(item!.componente.deletedAt).not.toBeNull();
   });
 });
