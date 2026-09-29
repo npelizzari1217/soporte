@@ -92,3 +92,15 @@ Estado: **completo** (tareas 6.1 a 6.7 marcadas en `tasks.md`).
 | 6.7 Gates | lint 0 errores; typecheck limpio; `vitest run src/equipos prisma_tenant` 36 archivos / 403 tests; `pnpm test` ver reporte |
 
 Entorno local: `soporte_tenant_test` estaba 3 migraciones atrás; se le aplicó `migrate deploy` (con el schema nuevo). Las bases tenant de dev NO se migraron: el script `limpiar-componentes-sin-insumo.mjs` (modo reporte) informa 2 filas vivas con `insumo_id NULL` (RAM y DISCO del "Notebook Dell Latitude 5420", demo libre) en un tenant, así que la migración abortaría ahí hasta correr el script con `--apply`.
+
+## WU-7 — Operación: precondición en `deploy.ps1`, runbook, borrado del backfill (rama `feat/catalogo-unico-componentes-wu07`, base wu06)
+
+Estado: **completo** (tareas 7.1 a 7.5 marcadas en `tasks.md`).
+
+| Tarea | Resultado |
+|---|---|
+| 7.1 `deploy.ps1` | Paso 5a entre "Cargar backend/.env" y `prisma generate`: `Set-Location $BackendDir`, `& $NodeExe scripts/limpiar-componentes-sin-insumo.mjs` (sin argumentos, el script lee `DATABASE_URL_MASTER` del entorno ya cargado), exit 2 corta con mensaje que remite al runbook, cualquier otro exit falla por `AssertOk`; vuelve a `$RepoRoot`. ASCII sin BOM; se conserva CRLF (`eol=crlf` del `.gitattributes`) |
+| 7.2 Specs | `deploy.ps1.spec.ts`: 3 tests estructurales (comando sin flags, orden respecto de `.env`/generate/builds/detener servicios, chequeo de exit 2 + `AssertOk`). `ps1-ascii.spec.ts` ya recorre todo `*.ps1` de la raíz: cubre el ASCII/BOM sin cambios |
+| 7.3 Runbook | Sección "Precondición: componentes sin repuesto" reescrita (la mide el deploy, retiro posterior, recuperación P3009 con `migrate resolve --rolled-back 20260929120000_componentes_insumo_obligatorio`, recordatorio de clientes fuera del recorrido) y el paso 6 de "Qué hace, en orden" |
+| 7.4 Backfill | Borrado `scripts/backfill-tipos-componente-codigo.js` y sus dos menciones en `eslint.config.js`. Quedan referencias en comentarios de dos migraciones históricas, que no se editan (checksums) |
+| 7.5 Gates | lint 0 errores; typecheck limpio; `vitest run scripts` y `pnpm test`: ver reporte del orquestador |

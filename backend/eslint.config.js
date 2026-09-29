@@ -284,8 +284,7 @@ module.exports = [
   // su propio bloque más abajo, junto al resto de `scripts/**/*.js`.
   //
   // Los demás scripts de `scripts/**` que construyen `new Pool(`
-  // (`regenerar-entorno.mjs`, `backfill-tipos-componente-codigo.js`,
-  // `sync-ayuda.js`) son ajenos a este cambio — no están en el proposal, la
+  // (`regenerar-entorno.mjs`, `sync-ayuda.js`) son ajenos a este cambio — no están en el proposal, la
   // spec ni el design de sdd/sesion-utc-y-backfill-de-fechas — por eso el
   // `files` de este bloque NO incluye `scripts/**` en general.
   {
@@ -340,7 +339,7 @@ module.exports = [
   // Migró a `conUtc()` (tarea 2.4, sdd/sesion-utc-y-backfill-de-fechas):
   // suma el selector de Pool AL bloque CommonJS de arriba, para ESTE único
   // archivo — nunca a `scripts/**/*.js` en general, porque otros scripts de
-  // `scripts/` (`backfill-tipos-componente-codigo.js`, `sync-ayuda.js`)
+  // `scripts/` (`sync-ayuda.js`)
   // todavía construyen `new Pool(` directo y son ajenos a este cambio (ver
   // el comment del bloque hermano de `src/**/*.ts`, más arriba).
   //

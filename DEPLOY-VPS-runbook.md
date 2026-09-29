@@ -106,8 +106,33 @@ la migración tenant deja `componentes_equipo.insumo_id` en NOT NULL y **aborta 
 fila con `insumo_id` NULL**, incluidas las borradas lógicamente. Esas filas se inventarían y se
 borran **antes** de esa migración con `backend/scripts/limpiar-componentes-sin-insumo.mjs`. Es
 Node directo (`pg`, sin `dist/`), y se corre desde `C:\soporte\backend` con el Node de
-`C:\nodejs24` (ver la sección siguiente). El script llega al VPS con un deploy ordinario, antes de
-integrar el resto del cambio.
+`C:\nodejs24` (ver la sección siguiente).
+
+**`deploy.ps1` la mide solo.** Justo después de cargar `backend/.env` (paso 5a) y antes de
+`prisma generate` y de los builds, corre el script en modo reporte, sin argumentos. Exit 0: el
+deploy sigue. Exit 2: quedan filas, el deploy se detiene con un mensaje que remite a esta
+sección, con `dist/` y los servicios intactos (los servicios se detienen recién después de los
+builds). Cualquier otro exit falla por `AssertOk`. Como el paso lo agrega el propio deploy, corre
+con la versión nueva del script (el re-ejecutado del paso 4 cubre el caso en que el pull la trae).
+
+Si el deploy cortó por esto, el flujo es: reporte → apply verificado → re-correr `deploy.ps1`.
+
+**Retiro.** Es una precondición transitoria: se retira de `deploy.ps1` en un cambio posterior,
+una vez desplegada la migración en producción (mismo patrón que la precondición del calendario
+master, arriba).
+
+**Recuperación de P3009.** Si la migración tenant llegó a correr y abortó en un tenant, Prisma
+marca la migración como fallida y los deploys siguientes fallan con `P3009`. Se limpia ese
+tenant con el script (pasos de abajo) y se marca la migración como revertida con el
+`DATABASE_URL_TENANT` de **ese** tenant (nombre de la migración: `20260929120000_componentes_insumo_obligatorio`):
+
+```powershell
+$env:DATABASE_URL_TENANT = '<url de la base de ese tenant>'
+corepack pnpm prisma migrate resolve --rolled-back 20260929120000_componentes_insumo_obligatorio --schema prisma_tenant/schema.prisma
+```
+
+Luego se re-corre `deploy.ps1`. Recordatorio: los clientes inactivos o borrados están **fuera del
+recorrido** de `migrate-tenants` y del script (ver más abajo); su base no se migra ni se limpia.
 
 **1. Reporte (solo lectura).** Sin flags:
 
@@ -198,6 +223,8 @@ propia verificación.
    instancia nueva no puede recalcular, porque su pre-flight ya corre con el pull hecho.
 5. **Si cambió algún lockfile**, aborta y pide instalación manual.
 6. **Carga `backend/.env`** al entorno del proceso; exige `DATABASE_URL_MASTER`.
+   **Precondición de componentes sin repuesto** (5a): reporte de solo lectura; exit 2 corta el
+   deploy antes de los builds (ver "Precondición: componentes sin repuesto").
 7. **`EMAIL_CRYPTO_KEY`**: la genera **solo si no existe**.
 8. **`JWT_SECRET`**: lee la única línea `JWT_SECRET=` de `backend/.env` (fuente única) y la
    empuja a los dos lugares que importan — el entorno de este proceso, para que el build del

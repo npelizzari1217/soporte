@@ -249,11 +249,11 @@ su spec y el retiro de la columna en entidad y mapper tienen que viajar juntos p
 
 **Branch**: `feat/catalogo-unico-componentes-wu07` · **Base**: wu06
 
-- [ ] 7.1 `deploy.ps1`: un paso nuevo inmediatamente después de "Cargar backend/.env" y **antes** de `prisma generate` y de los builds, que corre `& $NodeExe scripts/limpiar-componentes-sin-insumo.mjs` en modo reporte seguido de `AssertOk`. Si quedan filas, el deploy corta con `dist/` intacto. 100 % ASCII, sin BOM. (ADR-3)
-- [ ] 7.2 `scripts/deploy.ps1.spec.ts` y `ps1-ascii.spec.ts`: el paso existe, ocurre antes de `prisma generate`, va seguido de `AssertOk`, y el archivo sigue siendo ASCII sin BOM.
-- [ ] 7.3 `DEPLOY-VPS-runbook.md`: documentar el paso nuevo de `deploy.ps1`, la recuperación **P3009** (limpiar ese tenant y `prisma migrate resolve --rolled-back <migración>` con `DATABASE_URL_TENANT` de ese tenant, luego re-correr `deploy.ps1`), que la precondición se retira en un cambio posterior (mismo patrón que D18, `runbook:83-91`), y **de nuevo que los clientes inactivos o borrados están fuera del recorrido de `migrate-tenants`**.
-- [ ] 7.4 Borrar `backend/scripts/backfill-tipos-componente-codigo.js` (one-off cumplido) y sus referencias en `backend/eslint.config.js:287,343`.
-- [ ] 7.5 Quality gates: `cd backend && pnpm lint && pnpm typecheck && pnpm vitest run scripts/deploy.ps1.spec.ts scripts/ps1-ascii.spec.ts` y `pnpm test`.
+- [x] 7.1 `deploy.ps1`: un paso nuevo inmediatamente después de "Cargar backend/.env" y **antes** de `prisma generate` y de los builds, que corre `& $NodeExe scripts/limpiar-componentes-sin-insumo.mjs` en modo reporte seguido de `AssertOk`. Si quedan filas, el deploy corta con `dist/` intacto. 100 % ASCII, sin BOM. (ADR-3)
+- [x] 7.2 `scripts/deploy.ps1.spec.ts` y `ps1-ascii.spec.ts`: el paso existe, ocurre antes de `prisma generate`, va seguido de `AssertOk`, y el archivo sigue siendo ASCII sin BOM.
+- [x] 7.3 `DEPLOY-VPS-runbook.md`: documentar el paso nuevo de `deploy.ps1`, la recuperación **P3009** (limpiar ese tenant y `prisma migrate resolve --rolled-back <migración>` con `DATABASE_URL_TENANT` de ese tenant, luego re-correr `deploy.ps1`), que la precondición se retira en un cambio posterior (mismo patrón que D18, `runbook:83-91`), y **de nuevo que los clientes inactivos o borrados están fuera del recorrido de `migrate-tenants`**.
+- [x] 7.4 Borrar `backend/scripts/backfill-tipos-componente-codigo.js` (one-off cumplido) y sus referencias en `backend/eslint.config.js:287,343`.
+- [x] 7.5 Quality gates: `cd backend && pnpm lint && pnpm typecheck && pnpm vitest run scripts/deploy.ps1.spec.ts scripts/ps1-ascii.spec.ts` y `pnpm test`.
 
 **PR boundary**: ~200 líneas, base wu06. No agrega un `.ps1`, así que no toca la tabla §2.2 de
 `~/proyectos/CLAUDE.md`; solo modifica `deploy.ps1`, que ya figura en ella.
