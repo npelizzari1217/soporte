@@ -7,6 +7,11 @@ por los cálculos del SLA `HABIL`, quién puede leerla, y la integridad de lectu
 fechas que almacena. Hoy estas 46 filas existen solo vía migración; esta capacidad hace que
 la lista sea editable desde una pantalla sin tocar cómo la consume el SLA.
 
+> **Enmienda del 2026-09-29.** La migración `20260929120000_seed_feriados_2029` sembró 15
+> feriados más, los de 2029, con las mismas reglas que los de 2026-2028. Las "46 filas" de
+> este documento siguen siendo las de 2026-2028, y el requerimiento de que el despliegue no
+> las altere sigue vigente tal cual.
+
 ## Decisión de producto citada
 
 `docs/roadmap-comercial.md`, sección "Decisiones de producto ya cerradas",
