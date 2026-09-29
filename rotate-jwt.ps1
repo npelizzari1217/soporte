@@ -91,7 +91,7 @@ function AssertOk($que) {
 # del borde.
 function Get-ValorUnicoEnv([string]$Ruta, [string]$Clave) {
   $patron = '^' + [regex]::Escape($Clave) + '=(.*)$'
-  $coincidencias = @(Get-Content $Ruta) | Where-Object { $_ -match $patron }
+  $coincidencias = @(@(Get-Content $Ruta) | Where-Object { $_ -match $patron })
   if ($coincidencias.Count -ne 1) {
     throw ($Ruta + " no tiene una sola linea " + $Clave + "= (encontradas: " + $coincidencias.Count + ").")
   }
