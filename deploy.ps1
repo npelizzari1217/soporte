@@ -144,26 +144,6 @@ Get-Content $envFile | ForEach-Object {
 }
 if (-not $env:DATABASE_URL_MASTER) { throw "backend/.env sin DATABASE_URL_MASTER" }
 
-# 5a. Precondicion: calendario master = default (D18, sdd/horario-laboral-por-cliente)
-#
-# La migracion de WU-1 siembra `calendario_laboral_dias_cliente` por tenant
-# con un valor FIJO (lun-vie 9-18, sab/dom sin horario) - NUNCA copia master.
-# El riesgo es el inverso: si alguien cambio la master de produccion a mano,
-# el deploy cambiaria en silencio el horario vigente (y el sla_vence_at) de
-# TODOS los clientes al valor fijo del seed. Este paso lo bloquea ANTES de
-# builds y migraciones, sin downtime: el script es de solo lectura.
-#
-# Correccion del 2026-09-29 (fix W5, verify-report.md): antes decia que el
-# seed "copia el default de master a cada tenant". El seed nunca lee master.
-#
-# Se retira en un follow-up despues del primer deploy exitoso: a partir de
-# ahi master queda sin lectores y el chequeo deja de proteger algo.
-Set-Location $BackendDir
-Step 'Precondicion: calendario master = default'
-& $NodeExe scripts/check-calendario-master-default.mjs
-AssertOk 'check-calendario-master-default'
-Set-Location $RepoRoot
-
 # 5b. EMAIL_CRYPTO_KEY: cifra en reposo la contrasena SMTP de cada cliente.
 #
 # SE GENERA UNA SOLA VEZ. Si ya existe NO se toca, y eso NO es una
