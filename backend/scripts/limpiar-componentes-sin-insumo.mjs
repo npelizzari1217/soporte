@@ -98,10 +98,17 @@ function iso(fecha) {
   return fecha instanceof Date ? fecha.toISOString() : String(fecha);
 }
 
-/** Filas de `componentes_equipo` con `insumo_id NULL` (vivas y borradas lógicamente). */
+/**
+ * Filas de `componentes_equipo` con `insumo_id NULL` (vivas y borradas lógicamente).
+ *
+ * `tipo_componente_codigo` lo retira la migración 20260929120000: en un tenant
+ * ya migrado la columna no existe. `to_jsonb(c) ->> '...'` la lee si está y
+ * devuelve NULL si no, sin referenciarla por nombre, así el inventario corre en
+ * tenants migrados y sin migrar (recuperación P3009 con migración parcial).
+ */
 export async function inventariarTenant(pool) {
   const { rows } = await pool.query(
-    `select c.id, c.equipo_id, e.nombre as equipo, c.tipo_componente_codigo, c.deleted_at
+    `select c.id, c.equipo_id, e.nombre as equipo, to_jsonb(c) ->> 'tipo_componente_codigo' as tipo_componente_codigo, c.deleted_at
        from componentes_equipo c
        left join equipos_informaticos e on e.id = c.equipo_id
       where c.insumo_id is null
@@ -110,7 +117,7 @@ export async function inventariarTenant(pool) {
   return rows.map((r) => ({
     id: r.id,
     equipo: r.equipo ?? `(equipo ${r.equipo_id})`,
-    tipo: r.tipo_componente_codigo,
+    tipo: r.tipo_componente_codigo ?? '(sin tipo)',
     borradaEn: r.deleted_at ? iso(r.deleted_at) : null,
   }));
 }

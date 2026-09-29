@@ -120,3 +120,22 @@ Estado: **completo, sin commitear** (tareas 8.1 a 8.7 marcadas; el WU supera 400
 | 8.7 | Deuda de Ayuda para el commit |
 
 Transitorio para WU-9: `ComponenteConTipo` conserva `tipoComponenteCodigo: string` (edición y detalle aún lo leen) y el fixture de `componente-edit-dialog.test.tsx` fuerza `insumoId: null as unknown as string`.
+
+## WU-7fix — El inventario no depende de la columna retirada (rama `feat/catalogo-unico-componentes-wu07fix`, base wu08)
+
+Estado: **completo** (F.1 a F.4 marcadas en `tasks.md`).
+
+| Tarea | Resultado |
+|---|---|
+| F.1 RED | `limpiar-componentes-sin-insumo.integration.spec.ts`: segundo `describe` sobre tenant efímero migrado hasta `20260929120000` inclusive (`reproducirSchemaPrevio` recibe el corte). 3 casos: la columna no existe, reporte exit 0 con total 0, `--apply --esperadas=0` exit 0. Falló contra el script anterior con `column c.tipo_componente_codigo does not exist` |
+| F.2 GREEN | `inventariarTenant` lee el tipo con `to_jsonb(c) ->> 'tipo_componente_codigo'`: la muestra si la columna existe y da NULL (`(sin tipo)`) si no, sin nombrarla. Una sola consulta; `--apply --esperadas` sin cambios |
+| F.3 Runbook | `migrate resolve` con `--config prisma.tenant.config.ts` y su motivo; lista proactiva del deploy del tracker (dump, reporte, `--apply --esperadas=N` tras confirmación del dueño, `deploy.ps1`); referencia al re-exec corregida a paso 3b |
+| F.4 Gates | lint 0 errores; typecheck limpio; `vitest run scripts` 30 archivos / 377 tests; `pnpm test` 496 archivos / 5702 tests |
+
+### TDD Cycle Evidence
+
+| Task | Test File | Layer | Safety Net | RED | GREEN | TRIANGULATE | REFACTOR |
+|------|-----------|-------|------------|-----|-------|-------------|----------|
+| F.1/F.2 | `backend/scripts/limpiar-componentes-sin-insumo.integration.spec.ts` | Integration (tenant efímero) | 20/20 (unit + integration previos) | Written; falló: column does not exist (2 de 3 casos; el de precondición pasa) | 23/23 | Reporte y apply, sobre base migrada; la base pre-migración (tenant previo) se mantiene | Ninguno necesario |
+
+Ayuda: sin cambios.

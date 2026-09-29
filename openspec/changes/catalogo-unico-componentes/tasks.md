@@ -276,6 +276,31 @@ su spec y el retiro de la columna en entidad y mapper tienen que viajar juntos p
 Se entrega con `size:exception`: el diálogo viejo importa el schema y el hook que este WU retira,
 así que ninguna mitad compila sola.
 
+## WU-7fix — Corrección: el script de limpieza sobrevive a la migración (bugfix)
+
+**Branch**: `feat/catalogo-unico-componentes-wu07fix` · **Base**: wu08 · **TDD estricto**
+
+Origen: verificación independiente de WU-7 (`0910b69`). El script
+`limpiar-componentes-sin-insumo.mjs` selecciona `tipo_componente_codigo`, que la migración
+`20260929120000` borra: sobre un tenant ya migrado sale con exit 1 y el paso 5a de `deploy.ps1`
+aborta todo deploy posterior. Además, el `migrate resolve` del runbook apunta a MASTER.
+
+- [x] F.1 RED: test de regresión en base tenant efímera migrada **hasta
+  `20260929120000_componentes_insumo_obligatorio` inclusive**: el modo reporte sale con 0 y
+  reporta 0 filas; el reporte y `--apply` no dependen de la columna retirada. Debe fallar contra
+  el script actual por la razón correcta (columna inexistente).
+- [x] F.2 GREEN: el inventario no depende de `tipo_componente_codigo`. Si la columna existe, puede
+  seguir mostrándola; si no existe, el tenant se reporta sin filas pendientes. Sin cambios de
+  semántica en `--apply --esperadas`.
+- [x] F.3 `DEPLOY-VPS-runbook.md`: el `prisma migrate resolve` de la recuperación P3009 lleva
+  `--config prisma.tenant.config.ts` (sin él, Prisma 7 toma `DATABASE_URL_MASTER`); lista de pasos
+  **proactiva** para el deploy del tracker (dump, reporte, `--apply --esperadas=N`, recién después
+  `deploy.ps1`); corregir la referencia al re-exec (paso 3b, no 4).
+- [x] F.4 Quality gates: `cd backend && pnpm lint && pnpm typecheck && pnpm vitest run scripts` y
+  `pnpm test`.
+
+**PR boundary**: ~150 líneas, base wu08.
+
 ## WU-9 — Frontend: edición y display
 
 **Branch**: `feat/catalogo-unico-componentes-wu09` · **Base**: wu08
