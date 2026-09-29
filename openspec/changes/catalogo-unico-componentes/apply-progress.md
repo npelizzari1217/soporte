@@ -104,3 +104,19 @@ Estado: **completo** (tareas 7.1 a 7.5 marcadas en `tasks.md`).
 | 7.3 Runbook | Sección "Precondición: componentes sin repuesto" reescrita (la mide el deploy, retiro posterior, recuperación P3009 con `migrate resolve --rolled-back 20260929120000_componentes_insumo_obligatorio`, recordatorio de clientes fuera del recorrido) y el paso 6 de "Qué hace, en orden" |
 | 7.4 Backfill | Borrado `scripts/backfill-tipos-componente-codigo.js` y sus dos menciones en `eslint.config.js`. Quedan referencias en comentarios de dos migraciones históricas, que no se editan (checksums) |
 | 7.5 Gates | lint 0 errores; typecheck limpio; `vitest run scripts` y `pnpm test`: ver reporte del orquestador |
+
+## WU-8 — Frontend: diálogo único de alta (rama `feat/catalogo-unico-componentes-wu08`, base wu07)
+
+Estado: **completo, sin commitear** (tareas 8.1 a 8.7 marcadas; el WU supera 400 líneas por el borrado de `componente-instalar-dialog` y sus tests, la decisión de corte es del orquestador).
+
+| Tarea | Resultado |
+|---|---|
+| 8.1 | `agregarComponenteSchema` (`insumoId` uuid, `descontarStock` boolean, 3 textos) reemplaza a `instalarComponenteSchema`. `Componente` sin `tipoComponenteCodigo` y con `insumoId: string`; `CreateComponenteDto` espeja el DTO del backend. `componenteSchema` se conserva para el diálogo de edición (WU-9) |
+| 8.2 | `componente-create-dialog.tsx` con repuesto obligatorio, casilla "Descontar del depósito" marcada por defecto, `descontarStock` siempre explícito; se borra `componente-instalar-dialog` (+ test) y su botón en `equipo-detail-view.tsx` |
+| 8.3 | `useInstalarComponenteDesdeDeposito` borrado; `useAgregarComponente` invalida además stock, movimientos e insumos. `useTiposComponente` NO se borra: lo sigue importando `componente-edit-dialog.tsx` (WU-9) |
+| 8.4 | Un solo botón de alta (la barra vive en `equipo-detail-view.tsx`, no en la sección) |
+| 8.5 | Tests del diálogo y del hook reescritos; el de detalle afirma un solo botón |
+| 8.6 | lint 0 errores; type-check limpio; `pnpm test` 212 archivos / 1592 tests |
+| 8.7 | Deuda de Ayuda para el commit |
+
+Transitorio para WU-9: `ComponenteConTipo` conserva `tipoComponenteCodigo: string` (edición y detalle aún lo leen) y el fixture de `componente-edit-dialog.test.tsx` fuerza `insumoId: null as unknown as string`.

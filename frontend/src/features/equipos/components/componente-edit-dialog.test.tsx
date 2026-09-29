@@ -18,7 +18,8 @@ const COMPONENTE: ComponenteConTipo = {
   id: "c1",
   equipoId: EQUIPO_ID,
   tipoComponenteCodigo: "RAM",
-  insumoId: null,
+  // Transitorio: la edición actual aún ramifica por `insumoId` nulo; WU-9 reescribe este fixture.
+  insumoId: null as unknown as string,
   tipoNombre: "Memoria RAM",
   tipoActivo: true,
   descripcion: "Slot 1",

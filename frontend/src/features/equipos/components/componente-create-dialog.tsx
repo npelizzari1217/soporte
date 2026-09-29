@@ -1,51 +1,44 @@
 "use client";
 
 /**
- * ComponenteCreateDialog — alta de un componente de un equipo desde el
- * toolbar del detalle (son cinco campos: los mismos 4 de `ComponenteEditDialog`
- * — tipo, descripción, número de serie, capacidad — más el repuesto del
- * catálogo (WU-3, ver más abajo), que `ComponenteEditDialog` no tiene.
- * Reemplaza el formulario inline
- * incompleto de `EquipoComponentesSection` (que solo pedía tipo + capacidad
- * — bug que dejaba `descripcion`/`numeroSerie` afuera del payload de alta).
+ * ComponenteCreateDialog — único alta de un componente de un equipo
+ * (sdd/catalogo-unico-componentes, WU-8). Absorbe al ex `ComponenteInstalarDialog`:
+ * el repuesto del catálogo es OBLIGATORIO y no hay selector de tipo — el tipo
+ * se deriva SIEMPRE de la familia del repuesto, en el backend.
  *
- * Sin la rama `tipoActualFueraDeCatalogo` de `ComponenteEditDialog`: esa
- * rama existe para no forzar un cambio de tipo al EDITAR un componente cuyo
- * tipo quedó dado de baja en el catálogo. Un alta no tiene "tipo actual" —
- * siempre parte del catálogo de tipos ACTIVOS (`useTiposComponente`).
+ * La casilla "Descontar del depósito" arranca marcada. El cliente envía
+ * `descontarStock` SIEMPRE explícito (`true` o `false`), aunque el backend
+ * tome `true` cuando falta. Con la casilla marcada el backend descuenta 1
+ * unidad y crea el componente en una sola transacción; si el stock no alcanza
+ * rechaza todo con un 422 que se muestra vía `notifyError`, sin crear nada.
  *
- * `submit()` envía `values.campo || undefined` (no `null`): a diferencia de
- * `ComponenteEditDialog` (PATCH semántico, donde `null` borra el valor
- * explícitamente), el alta es un POST — un campo vacío simplemente se omite
- * del body en vez de mandarse como "borrar" un valor que nunca existió.
+ * Repuestos ofrecidos: `useInsumos(true, true)` — `esRepuesto` + `soloVinculables`
+ * (insumo habilitado Y familia habilitada). SIN filtro propio ni de stock en el
+ * cliente: la autoridad es el servidor, y filtrar de nuevo sería una segunda
+ * definición de "vinculable" que puede discrepar de la real.
  *
- * `insumoId` (WU-3, sdd/repuestos-vinculo-componente) agrega un segundo
- * camino: elegir un repuesto del catálogo (`useInsumos(true, true)`, la
- * MISMA fuente que la sección Repuestos, WU-2, con `soloVinculables: true`
- * agregado). Con un repuesto elegido, el select de "Tipo" se DESHABILITA y
- * se limpia — el backend deriva `tipoComponenteCodigo` de la familia del
- * repuesto, así que mostrarlo editable sugeriría una elección que el use
- * case ignora.
+ * `submit()` envía `values.campo || undefined` (no `null`): el alta es un POST,
+ * un campo vacío se omite del body en vez de mandarse como "borrar".
  */
-import { useEffect, useState } from "react";
-import { useForm } from "react-hook-form";
+import { useState } from "react";
+import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
-import { useTiposComponente } from "../hooks/use-equipos";
 import { useAgregarComponente } from "../hooks/use-equipo-mutations";
 import { useInsumos } from "@/features/insumos/hooks/use-insumos";
-import { componenteSchema, type ComponenteFormValues } from "../schemas";
+import { agregarComponenteSchema, type AgregarComponenteFormValues } from "../schemas";
 
 export interface ComponenteCreateDialogProps {
   equipoId: string;
 }
 
-const EMPTY: ComponenteFormValues = {
-  tipoComponenteCodigo: "",
+const EMPTY: AgregarComponenteFormValues = {
   insumoId: "",
+  descontarStock: true,
   descripcion: "",
   numeroSerie: "",
   capacidad: "",
@@ -53,50 +46,27 @@ const EMPTY: ComponenteFormValues = {
 
 export function ComponenteCreateDialog({ equipoId }: ComponenteCreateDialogProps) {
   const [open, setOpen] = useState(false);
-  const tiposComponenteQuery = useTiposComponente();
   const repuestosQuery = useInsumos(true, true);
   const agregarMutation = useAgregarComponente(equipoId);
 
   const {
     register,
+    control,
     handleSubmit,
     reset,
-    watch,
-    setValue,
     formState: { errors },
-  } = useForm<ComponenteFormValues>({
-    resolver: zodResolver(componenteSchema),
+  } = useForm<AgregarComponenteFormValues>({
+    resolver: zodResolver(agregarComponenteSchema),
     defaultValues: EMPTY,
   });
 
-  const tiposActivos = tiposComponenteQuery.data ?? [];
-  // SIN filtro propio a propósito (WU-3): `useInsumos(true, true)` ya pide
-  // `soloVinculables: true`, que el SERVIDOR resuelve contra las DOS
-  // condiciones que `AgregarComponenteUseCase` exige — insumo habilitado Y
-  // familia habilitada. Filtrar de nuevo acá sería una segunda definición de
-  // "vinculable" que puede discrepar de la del servidor sin que nadie se
-  // entere; antes de WU-3 este filtro solo cubría `activo` del insumo (no la
-  // familia), que es justo el caso que dejaba pasar un 422
-  // `FAMILIA_REPUESTO_DESHABILITADA` por algo que el usuario veía en la lista.
   const repuestos = repuestosQuery.data ?? [];
-  const insumoIdElegido = watch("insumoId");
 
-  // Repuesto elegido → el tipo se deriva en el backend; limpiar lo que haya
-  // en el select de "Tipo" evita mandar un código que el use case ignora.
-  // `shouldValidate: true` es necesario: sin él, si el usuario ya había
-  // disparado el `.refine()` (envío vacío, "Elegí un tipo de componente o un
-  // repuesto del catálogo") y RECIÉN DESPUÉS elige un repuesto, el mensaje de
-  // error quedaba en pantalla — apuntando además a un campo que en ese
-  // momento está deshabilitado — aunque el formulario ya fuera válido.
-  useEffect(() => {
-    if (insumoIdElegido) setValue("tipoComponenteCodigo", "", { shouldValidate: true });
-  }, [insumoIdElegido, setValue]);
-
-  function submit(values: ComponenteFormValues) {
+  function submit(values: AgregarComponenteFormValues) {
     agregarMutation.mutate(
       {
-        tipoComponenteCodigo: values.insumoId ? undefined : values.tipoComponenteCodigo,
-        insumoId: values.insumoId || undefined,
+        insumoId: values.insumoId,
+        descontarStock: values.descontarStock,
         descripcion: values.descripcion || undefined,
         numeroSerie: values.numeroSerie || undefined,
         capacidad: values.capacidad || undefined,
@@ -111,8 +81,8 @@ export function ComponenteCreateDialog({ equipoId }: ComponenteCreateDialogProps
       onOpenChange={(next) => {
         setOpen(next);
         // Reset al ABRIR (no al cerrar ni tras el éxito): así el formulario
-        // arranca siempre vacío, incluso si un alta anterior quedó a medio
-        // completar y se cerró el dialog sin guardar.
+        // arranca siempre con los valores vigentes (casilla marcada, resto
+        // vacío), incluso si un alta anterior quedó a medio completar.
         if (next) reset(EMPTY);
       }}
     >
@@ -128,39 +98,21 @@ export function ComponenteCreateDialog({ equipoId }: ComponenteCreateDialogProps
         <form onSubmit={handleSubmit(submit)} className="flex flex-col gap-3" noValidate>
           <div className="flex flex-col gap-1">
             <label htmlFor="crear-componente-repuesto" className="text-sm font-medium text-foreground">
-              Repuesto del catálogo (opcional)
+              Repuesto del catálogo
             </label>
-            <Select id="crear-componente-repuesto" {...register("insumoId")}>
-              <option value="">Sin repuesto — cargar tipo a mano</option>
+            <Select id="crear-componente-repuesto" error={!!errors.insumoId} {...register("insumoId")}>
+              <option value="" disabled>
+                Elegí un repuesto
+              </option>
               {repuestos.map((repuesto) => (
                 <option key={repuesto.id} value={repuesto.id}>
                   {repuesto.codigo} — {repuesto.nombre}
                 </option>
               ))}
             </Select>
-          </div>
-          <div className="flex flex-col gap-1">
-            <label htmlFor="crear-componente-tipo" className="text-sm font-medium text-foreground">
-              Tipo
-            </label>
-            <Select
-              id="crear-componente-tipo"
-              disabled={!!insumoIdElegido}
-              error={!!errors.tipoComponenteCodigo}
-              {...register("tipoComponenteCodigo")}
-            >
-              <option value="" disabled>
-                {insumoIdElegido ? "Se deriva del repuesto elegido" : "Elegí un tipo"}
-              </option>
-              {tiposActivos.map((tipo) => (
-                <option key={tipo.codigo} value={tipo.codigo}>
-                  {tipo.nombre}
-                </option>
-              ))}
-            </Select>
-            {errors.tipoComponenteCodigo && (
+            {errors.insumoId && (
               <p role="alert" className="text-sm text-destructive">
-                {errors.tipoComponenteCodigo.message}
+                {errors.insumoId.message}
               </p>
             )}
           </div>
@@ -181,6 +133,21 @@ export function ComponenteCreateDialog({ equipoId }: ComponenteCreateDialogProps
               Capacidad
             </label>
             <Input id="crear-componente-capacidad" {...register("capacidad")} />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="flex items-center gap-2 text-sm text-foreground">
+              <Controller
+                control={control}
+                name="descontarStock"
+                render={({ field }) => (
+                  <Checkbox checked={field.value} onCheckedChange={(checked) => field.onChange(checked === true)} />
+                )}
+              />
+              Descontar del depósito
+            </label>
+            <p className="text-xs text-muted-foreground">
+              Si lo desmarcás, el componente se registra sin descontar una unidad del stock del repuesto.
+            </p>
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button type="submit" isLoading={agregarMutation.isPending}>

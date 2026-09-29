@@ -224,16 +224,17 @@ export const componenteSchema = z
 export type ComponenteFormValues = z.infer<typeof componenteSchema>;
 
 /**
- * Espejo de `InstalarComponenteDesdeDepositoHttpDto` (WU-4, issue #153).
+ * Espejo de `CreateComponenteHttpDto` (sdd/catalogo-unico-componentes, WU-4).
  *
- * `insumoId` es OBLIGATORIO acá (a diferencia de `componenteSchema`, donde es
- * opcional): este formulario no tiene camino de texto libre, siempre instala
- * un repuesto del catálogo — mismo criterio que `prioridadId` en
- * `crearTicketSoporteSchema`, sin `.or(z.literal(""))`, así que un select sin
- * elegir queda inválido en vez de viajar como "sin repuesto".
+ * `insumoId` es OBLIGATORIO (sin `.or(z.literal(""))`): un select sin elegir
+ * queda inválido en vez de viajar como "sin repuesto". `descontarStock` es
+ * booleano requerido en el formulario: el cliente lo envía SIEMPRE explícito,
+ * aunque el backend lo tome como `true` cuando falta. No hay `tipoComponenteCodigo`:
+ * el tipo se deriva de la familia del repuesto.
  */
-export const instalarComponenteSchema = z.object({
+export const agregarComponenteSchema = z.object({
   insumoId: z.string().uuid("Elegí un repuesto del catálogo"),
+  descontarStock: z.boolean(),
   descripcion: z
     .string()
     .max(
@@ -256,7 +257,7 @@ export const instalarComponenteSchema = z.object({
     )
     .optional(),
 });
-export type InstalarComponenteFormValues = z.infer<typeof instalarComponenteSchema>;
+export type AgregarComponenteFormValues = z.infer<typeof agregarComponenteSchema>;
 
 /** `equipoId` OPCIONAL (vínculo ticket↔equipo, espejo de `@IsOptional() @IsUUID() equipoId` backend). */
 export const crearTicketSoporteSchema = z.object({

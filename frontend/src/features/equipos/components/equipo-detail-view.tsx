@@ -10,10 +10,9 @@
  * `EquiposController`. La asignación a personas se eliminó del dominio Equipos
  * — vive solo en `Ticket`.
  *
- * Toolbar de acciones: incluye `ComponenteCreateDialog` (alta de componente
- * con los 4 campos completos) y `ComponenteInstalarDialog` (WU-4, issue #153
- * — instalar un repuesto del depósito, que además descuenta stock en la
- * MISMA transacción). El form inline de alta que existía antes en
+ * Toolbar de acciones: incluye `ComponenteCreateDialog`, el único alta de
+ * componente: elige un repuesto del catálogo y, con la casilla "Descontar del
+ * depósito", descuenta stock en la MISMA transacción. El form inline de alta que existía antes en
  * `EquipoComponentesSection` (solo tipo + capacidad, incompleto) fue
  * retirado — el alta vive únicamente acá.
  */
@@ -27,7 +26,6 @@ import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { useEquipo } from "../hooks/use-equipos";
 import { useEliminarEquipo } from "../hooks/use-equipo-mutations";
 import { ComponenteCreateDialog } from "./componente-create-dialog";
-import { ComponenteInstalarDialog } from "./componente-instalar-dialog";
 import { EquipoComponentesSection } from "./equipo-componentes-section";
 import { EquipoEditDialog } from "./equipo-edit-dialog";
 
@@ -61,9 +59,6 @@ export function EquipoDetailView({ equipoId }: EquipoDetailViewProps) {
         description={equipo.numeroSerie ?? undefined}
         actions={
           <div className="flex items-center gap-2">
-            <Can permiso="EQUIPOS:ALTAS">
-              <ComponenteInstalarDialog equipoId={equipo.id} />
-            </Can>
             <Can permiso="EQUIPOS:ALTAS">
               <ComponenteCreateDialog equipoId={equipo.id} />
             </Can>

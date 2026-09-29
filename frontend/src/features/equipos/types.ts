@@ -55,9 +55,8 @@ export interface Equipo {
 export interface Componente {
   id: string;
   equipoId: string;
-  tipoComponenteCodigo: string;
-  /** Repuesto del catálogo vinculado (WU-3), o `null` en el camino de texto libre. */
-  insumoId: string | null;
+  /** Repuesto del catálogo vinculado: obligatorio; el tipo ya no viaja en la respuesta. */
+  insumoId: string;
   descripcion: string | null;
   numeroSerie: string | null;
   capacidad: string | null;
@@ -75,6 +74,8 @@ export interface Componente {
  * (`ComponenteConTipoResponseDto`).
  */
 export interface ComponenteConTipo extends Componente {
+  /** Transitorio: la respuesta ya no lo trae; lo retira WU-9 junto con la edición y el detalle. */
+  tipoComponenteCodigo: string;
   tipoNombre: string | null;
   tipoActivo: boolean;
 }
@@ -122,26 +123,10 @@ export interface EditarEquipoDto {
   fechaValorResidual?: string | null;
 }
 
-/** `tipoComponenteCodigo` es requerido SOLO si `insumoId` está ausente (WU-3): con un repuesto vinculado se deriva de su familia. */
+/** Body de `POST /equipos/:id/componentes` (espejo de `CreateComponenteHttpDto`): `descontarStock` viaja siempre explícito. */
 export interface CreateComponenteDto {
-  tipoComponenteCodigo?: string;
-  insumoId?: string | null;
-  descripcion?: string | null;
-  numeroSerie?: string | null;
-  capacidad?: string | null;
-}
-
-/**
- * Body de `POST /equipos/:id/componentes/instalar-desde-deposito` (WU-4,
- * issue #153). `insumoId` es OBLIGATORIO acá — a diferencia de
- * `CreateComponenteDto`, este endpoint no tiene camino de texto libre: mueve
- * stock de un repuesto del catálogo siempre, así que `tipoComponenteCodigo`
- * ni siquiera existe en este DTO (se deriva de la familia en el backend,
- * igual que el camino vinculado del WU-3). Sin ningún campo de cantidad: un
- * componente es siempre UNA unidad física.
- */
-export interface InstalarComponenteDesdeDepositoDto {
   insumoId: string;
+  descontarStock: boolean;
   descripcion?: string | null;
   numeroSerie?: string | null;
   capacidad?: string | null;

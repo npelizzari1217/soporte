@@ -263,15 +263,18 @@ su spec y el retiro de la columna en entidad y mapper tienen que viajar juntos p
 **Branch**: `feat/catalogo-unico-componentes-wu08` · **Base**: wu07 · **Depende de WU-4**
 (nuevo contrato del POST).
 
-- [ ] 8.1 `frontend/src/features/equipos/schemas.ts`: `agregarComponenteSchema` (`insumoId: z.string().uuid()`, `descontarStock: z.boolean()`, 3 textos) reemplaza a `instalarComponenteSchema`; `types.ts`: `Componente` sin `tipoComponenteCodigo`, con `insumoId: string`. La autoridad es el DTO del backend.
-- [ ] 8.2 `componente-create-dialog.tsx`: repuesto obligatorio y `Checkbox` "Descontar del depósito" **marcado por defecto**; envía siempre `descontarStock` explícito; siempre `POST /equipos/:id/componentes`. Borrar `componente-instalar-dialog.tsx` (+ test): absorbido. (Req: Un solo flujo de alta con descuento opcional)
-- [ ] 8.3 `hooks/use-equipos.ts` sin `useTiposComponente`; `hooks/use-equipo-mutations.ts` sin `useInstalarComponenteDesdeDeposito`; `useAgregarComponente` invalida además stock y movimientos.
-- [ ] 8.4 `equipo-componentes-section.tsx`: un solo botón de alta.
-- [ ] 8.5 Tests (MSW + `renderWithProviders`): casilla marcada por defecto; el payload lleva `descontarStock` explícito en ambos estados; sin selector de tipo libre; invalidaciones de stock y movimientos.
-- [ ] 8.6 Quality gates (frontend): `cd frontend && pnpm lint && pnpm type-check && pnpm test`.
-- [ ] 8.7 Anotar la **deuda de Ayuda** en commit y PR.
+- [x] 8.1 `frontend/src/features/equipos/schemas.ts`: `agregarComponenteSchema` (`insumoId: z.string().uuid()`, `descontarStock: z.boolean()`, 3 textos) reemplaza a `instalarComponenteSchema`; `types.ts`: `Componente` sin `tipoComponenteCodigo`, con `insumoId: string`. La autoridad es el DTO del backend.
+- [x] 8.2 `componente-create-dialog.tsx`: repuesto obligatorio y `Checkbox` "Descontar del depósito" **marcado por defecto**; envía siempre `descontarStock` explícito; siempre `POST /equipos/:id/componentes`. Borrar `componente-instalar-dialog.tsx` (+ test): absorbido. (Req: Un solo flujo de alta con descuento opcional)
+- [x] 8.3 `hooks/use-equipos.ts` sin `useTiposComponente`; `hooks/use-equipo-mutations.ts` sin `useInstalarComponenteDesdeDeposito`; `useAgregarComponente` invalida además stock y movimientos. (`useTiposComponente` se conserva en `use-equipos.ts`: aún lo importa `componente-edit-dialog.tsx`; lo retira WU-9.)
+- [x] 8.4 `equipo-componentes-section.tsx`: un solo botón de alta.
+- [x] 8.5 Tests (MSW + `renderWithProviders`): casilla marcada por defecto; el payload lleva `descontarStock` explícito en ambos estados; sin selector de tipo libre; invalidaciones de stock y movimientos.
+- [x] 8.6 Quality gates (frontend): `cd frontend && pnpm lint && pnpm type-check && pnpm test`.
+- [x] 8.7 Anotar la **deuda de Ayuda** en commit y PR.
 
 **PR boundary**: ~380 líneas, base wu07.
+**Real**: 1.053 líneas (235 +, 818 −; 358 son el borrado del diálogo de instalación y su test).
+Se entrega con `size:exception`: el diálogo viejo importa el schema y el hook que este WU retira,
+así que ninguna mitad compila sola.
 
 ## WU-9 — Frontend: edición y display
 
