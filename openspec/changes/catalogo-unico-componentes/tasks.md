@@ -155,9 +155,9 @@ Commit `feat(scripts): limpiar componentes sin insumo con reporte y apply verifi
 **Branch**: `feat/catalogo-unico-componentes-wu02` · **Base**: tracker
 (`feat/catalogo-unico-componentes`)
 
-- [ ] 2.1 Modificar `backend/prisma_master/seeds/demo-seed.ts`: crear 2 insumos con `CrearInsumoUseCase` (familias `RAM` y `SSD`, unidad `UNI`) y agregarlos como componentes con `insumoId`, **sin descuento** de stock, en lugar de los componentes libres `RAM`/`DISCO`. (Req: El alta de un componente exige un insumo repuesto válido)
-- [ ] 2.2 Ajustar o agregar el spec del seed para verificar que los componentes sembrados llevan `insumoId` y que el seed sigue siendo idempotente.
-- [ ] 2.3 Quality gates: `cd backend && pnpm lint && pnpm typecheck && pnpm vitest run prisma_master/seeds`.
+- [x] 2.1 Modificar `backend/prisma_master/seeds/demo-seed.ts`: crear 2 insumos con `CrearInsumoUseCase` (familias `RAM` y `SSD`, unidad `UNI`) y agregarlos como componentes con `insumoId`, **sin descuento** de stock, en lugar de los componentes libres `RAM`/`DISCO`. (Req: El alta de un componente exige un insumo repuesto válido)
+- [x] 2.2 Ajustar o agregar el spec del seed para verificar que los componentes sembrados llevan `insumoId` y que el seed sigue siendo idempotente.
+- [x] 2.3 Quality gates: `cd backend && pnpm lint && pnpm typecheck && pnpm vitest run prisma_master/seeds`.
 
 **PR boundary**: ~90 líneas, base tracker. El seed usa hoy el camino vinculado ya existente, así
 que queda en verde con el código actual.

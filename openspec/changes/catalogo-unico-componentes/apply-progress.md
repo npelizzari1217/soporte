@@ -21,3 +21,15 @@ Decisiones de implementación:
 - Sin PowerShell nuevo: corre con node en el VPS.
 
 Diferencias respecto del diseño: ninguna.
+
+## WU-2 — demo-seed con repuestos (rama `feat/catalogo-unico-componentes-wu02`)
+
+Estado: **completo** (tareas 2.1 a 2.3 marcadas en `tasks.md`).
+
+| Tarea | Resultado |
+|---|---|
+| 2.1 Seed | `demo-seed.ts`: `crearEquiposDemo` crea 2 insumos con `CrearInsumoUseCase` (familias `RAM` y `SSD`, unidad `UNI`, resueltas por código desde el tenant) y los agrega con `insumoId`, sin descuento de stock, en lugar de los componentes libres `RAM`/`DISCO` |
+| 2.2 Spec | `demo-seed.integration.spec.ts`: los 2 componentes llevan `insumoId`, tipos `RAM`/`SSD`, 2 insumos; tras la segunda corrida no crecen insumos ni componentes |
+| 2.3 Gates | lint 0 errores; typecheck limpio; `vitest run prisma_master/seeds` 20/20 |
+
+Notas: la idempotencia ya la garantiza el gate `ticket.count() > 0` del bloque de siembra; el spec no trunca `soporte_master_test`, por eso no usa `usarLockMasterTest()`. Sin cambios de UI, sin deuda de Ayuda.
