@@ -86,7 +86,8 @@ El deploy del 2026-09-29 (`64555d6`) corrió una vez un chequeo de solo lectura 
 `sdd/horario-laboral-por-cliente`) que exigía que `calendario_laboral_dias` en master fuera
 lun-vie 9-18: el seed por inquilino es fijo y un master editado a mano habría cambiado en silencio
 el horario de todos los clientes. Dio verde, las 8 bases de inquilino quedaron sembradas, y desde
-ahí master no tiene lectores: el paso se retiró de `deploy.ps1`. Cada cliente edita su horario en
+ahí master no tiene lectores: el paso se retiró de `deploy.ps1`, y la tabla se dropeó después
+(migración `20260929100000_drop_calendario_laboral_dias`). Cada cliente edita su horario en
 la pantalla "Horario laboral".
 
 | Qué | Valor |

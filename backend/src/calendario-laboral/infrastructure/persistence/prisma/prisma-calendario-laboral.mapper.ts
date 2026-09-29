@@ -14,7 +14,7 @@
  * UTC del día calendario. `toFeriados` lee los componentes UTC crudos
  * (`getUTCFullYear/getUTCMonth/getUTCDate`) — NUNCA `desplazarAArgentina`,
  * que restaría 3hs y correría el día para atrás. Ver
- * `prisma_master/schema.prisma:479-484` y `shared/domain/zona-horaria-argentina.ts`.
+ * `prisma_master/schema.prisma:495-509` y `shared/domain/zona-horaria-argentina.ts`.
  */
 import type { Feriado } from '.prisma/master';
 import {

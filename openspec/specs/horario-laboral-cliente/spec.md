@@ -183,11 +183,16 @@ zona horaria por cliente.
 - WHEN se calcula el vencimiento de un ticket dentro de ese intervalo
 - THEN el cálculo usa el offset fijo de Argentina, sin ajuste estacional
 
-### Requirement: La tabla master queda deprecada, no dropeada
+### Requirement: La tabla master deja de tener lectores y se dropea
 
 `calendario_laboral_dias` (master) DEBE dejar de tener lectores en el código de producción
-una vez desplegado este cambio. NO DEBE dropearse. Todo docstring que la describa como
-"global, vive en MASTER" DEBE corregirse para reflejar el horario por cliente.
+una vez desplegado este cambio. Todo docstring que la describa como "global, vive en
+MASTER" DEBE corregirse para reflejar el horario por cliente.
+
+> **Enmienda del 2026-09-29.** Este requerimiento decía "NO DEBE dropearse": la tabla quedó
+> como red de rollback hasta confirmar el deploy (`64555d6`). Con el deploy verificado, el
+> dueño decidió dropearla (migración `20260929100000_drop_calendario_laboral_dias`, con
+> `rollback.sql`).
 
 #### Scenario: Ningún camino de producción lee la tabla master
 

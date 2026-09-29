@@ -21,7 +21,7 @@
  * Los feriados se representan como `ReadonlySet<string>` de claves de día
  * calendario LOCAL `'YYYY-MM-DD'` (no `Date`). Motivo: la columna
  * `Feriado.fecha` es `@db.Date` y Prisma la devuelve como medianoche UTC del
- * día calendario (ver `prisma_master/schema.prisma:479-484`) — un `Date`
+ * día calendario (ver `prisma_master/schema.prisma:495-509`) — un `Date`
  * real, pero que NO representa un instante real: representa un día. Pasarlo
  * por este servicio como `Date` obligaría a decidir, en el peor lugar
  * posible, si hay que desplazarlo a Argentina (no hay que hacerlo: ya está
