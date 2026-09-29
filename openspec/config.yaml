@@ -53,12 +53,16 @@ rules:
     - "Si el cambio toca autorización, señalar los dos lugares donde vive: decoradores del borde Y los chequeos inline dentro del cuerpo de los métodos"
   tasks:
     - Agrupar por work unit entregable con sus tests adentro (work-unit-commits), no por capa
-    - Tests ANTES que la implementación en cada tarea (TDD estricto)
+    - "Feature: el test viaja en el mismo commit que la conducta, sin exigir que se escriba antes"
+    - "Corrección de defecto: la tarea del test de regresión va ANTES que la del fix (TDD obligatorio)"
   apply:
     guidelines:
-      - RED verificado (correr y ver fallar por la razón correcta) antes de GREEN
+      - "Corrección de defecto: RED verificado (correr y ver fallar por la razón correcta) antes de GREEN"
       - Máximo ~5 archivos de código por commit hacia el revisor (GGA lee AGENTS.md del repo)
-    tdd: true
+    # false = regla general (features). En un bugfix el orquestador inyecta
+    # "STRICT TDD MODE IS ACTIVE" y esa inyección manda sobre este valor, igual que
+    # sobre strict_tdd (ver el comentario de arriba y la 6.3 de ~/proyectos/CLAUDE.md).
+    tdd: false
     test_command: "pnpm test"
   verify:
     test_command: "pnpm test"
