@@ -16,9 +16,7 @@
  * `EquipoDetalle.componentes` espeja `ComponenteConTipoResponseDto`
  * (`ComponenteConTipo`): además trae `tipoNombre`/`tipoActivo` resueltos
  * del catálogo MASTER — el único lugar confiable para mostrar el nombre de
- * un componente ya asignado (soporta tipos dados de baja, que el selector
- * de alta NO lista). El selector `TipoComponente` (catálogo de activos,
- * `GET /equipos/tipos-componente`) ya no expone `id` ni `activo` (PR3).
+ * un componente ya asignado (soporta tipos dados de baja).
  */
 
 export interface Equipo {
@@ -55,9 +53,8 @@ export interface Equipo {
 export interface Componente {
   id: string;
   equipoId: string;
-  tipoComponenteCodigo: string;
-  /** Repuesto del catálogo vinculado (WU-3), o `null` en el camino de texto libre. */
-  insumoId: string | null;
+  /** Repuesto del catálogo vinculado: obligatorio; el tipo ya no viaja en la respuesta. */
+  insumoId: string;
   descripcion: string | null;
   numeroSerie: string | null;
   capacidad: string | null;
@@ -75,6 +72,7 @@ export interface Componente {
  * (`ComponenteConTipoResponseDto`).
  */
 export interface ComponenteConTipo extends Componente {
+  /** Nombre de la familia del repuesto; `null` si no se pudo resolver. */
   tipoNombre: string | null;
   tipoActivo: boolean;
 }
@@ -82,12 +80,6 @@ export interface ComponenteConTipo extends Componente {
 /** Shape de `GET /equipos/:id` (`EquipoDetalleResponseDto`, item 1 — cierra G7). */
 export interface EquipoDetalle extends Equipo {
   componentes: ComponenteConTipo[];
-}
-
-/** Catálogo READ-ONLY de tipos de componente ACTIVOS (`GET /equipos/tipos-componente`, PR3: sin `id` ni `activo`). */
-export interface TipoComponente {
-  codigo: string;
-  nombre: string;
 }
 
 export interface CreateEquipoDto {
@@ -122,26 +114,10 @@ export interface EditarEquipoDto {
   fechaValorResidual?: string | null;
 }
 
-/** `tipoComponenteCodigo` es requerido SOLO si `insumoId` está ausente (WU-3): con un repuesto vinculado se deriva de su familia. */
+/** Body de `POST /equipos/:id/componentes` (espejo de `CreateComponenteHttpDto`): `descontarStock` viaja siempre explícito. */
 export interface CreateComponenteDto {
-  tipoComponenteCodigo?: string;
-  insumoId?: string | null;
-  descripcion?: string | null;
-  numeroSerie?: string | null;
-  capacidad?: string | null;
-}
-
-/**
- * Body de `POST /equipos/:id/componentes/instalar-desde-deposito` (WU-4,
- * issue #153). `insumoId` es OBLIGATORIO acá — a diferencia de
- * `CreateComponenteDto`, este endpoint no tiene camino de texto libre: mueve
- * stock de un repuesto del catálogo siempre, así que `tipoComponenteCodigo`
- * ni siquiera existe en este DTO (se deriva de la familia en el backend,
- * igual que el camino vinculado del WU-3). Sin ningún campo de cantidad: un
- * componente es siempre UNA unidad física.
- */
-export interface InstalarComponenteDesdeDepositoDto {
   insumoId: string;
+  descontarStock: boolean;
   descripcion?: string | null;
   numeroSerie?: string | null;
   capacidad?: string | null;
@@ -149,7 +125,6 @@ export interface InstalarComponenteDesdeDepositoDto {
 
 /** Body de `PATCH /equipos/:id/componentes/:componenteId` (PATCH semántico: `undefined` = no tocar). */
 export interface EditarComponenteDto {
-  tipoComponenteCodigo?: string;
   descripcion?: string | null;
   numeroSerie?: string | null;
   capacidad?: string | null;

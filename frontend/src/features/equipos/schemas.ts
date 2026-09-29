@@ -181,59 +181,11 @@ export const crearEquipoSchema = z.object({
 export type CrearEquipoFormValues = z.infer<typeof crearEquipoSchema>;
 
 /**
- * Espejo de `CreateComponenteHttpDto`/`EditarComponenteHttpDto` (F3-Q2).
- *
- * `insumoId` (WU-3, sdd/repuestos-vinculo-componente, solo alta): vincula un
- * repuesto del catálogo. `tipoComponenteCodigo` pasa a ser OPCIONAL a nivel
- * de campo y se exige por `.refine()` SOLO cuando `insumoId` está vacío —
- * mismo criterio que `@ValidateIf` en `CreateComponenteHttpDto` (backend):
- * con un repuesto vinculado, el tipo se deriva de su familia y no hace falta
- * elegirlo a mano. `ComponenteEditDialog` nunca setea `insumoId`, así que
- * ahí el `.refine()` sigue exigiendo `tipoComponenteCodigo` igual que antes.
+ * Espejo de `EditarComponenteHttpDto`: la edición solo toca `descripcion`,
+ * `numeroSerie` y `capacidad`. El tipo (derivado de la familia del repuesto)
+ * y el repuesto son inmutables: no forman parte del formulario ni del PATCH.
  */
-export const componenteSchema = z
-  .object({
-    tipoComponenteCodigo: z.string().optional(),
-    insumoId: z.string().uuid().optional().or(z.literal("")),
-    descripcion: z
-      .string()
-      .max(
-        COMPONENTE_DESCRIPCION_MAX_LENGTH,
-        mensajeDemasiadoLargo("La descripción", COMPONENTE_DESCRIPCION_MAX_LENGTH),
-      )
-      .optional(),
-    numeroSerie: z
-      .string()
-      .max(
-        COMPONENTE_NUMERO_SERIE_MAX_LENGTH,
-        mensajeDemasiadoLargo("El número de serie", COMPONENTE_NUMERO_SERIE_MAX_LENGTH),
-      )
-      .optional(),
-    capacidad: z
-      .string()
-      .max(
-        COMPONENTE_CAPACIDAD_MAX_LENGTH,
-        mensajeDemasiadoLargo("La capacidad", COMPONENTE_CAPACIDAD_MAX_LENGTH),
-      )
-      .optional(),
-  })
-  .refine((valores) => !!valores.insumoId || !!valores.tipoComponenteCodigo?.trim(), {
-    message: "Elegí un tipo de componente o un repuesto del catálogo",
-    path: ["tipoComponenteCodigo"],
-  });
-export type ComponenteFormValues = z.infer<typeof componenteSchema>;
-
-/**
- * Espejo de `InstalarComponenteDesdeDepositoHttpDto` (WU-4, issue #153).
- *
- * `insumoId` es OBLIGATORIO acá (a diferencia de `componenteSchema`, donde es
- * opcional): este formulario no tiene camino de texto libre, siempre instala
- * un repuesto del catálogo — mismo criterio que `prioridadId` en
- * `crearTicketSoporteSchema`, sin `.or(z.literal(""))`, así que un select sin
- * elegir queda inválido en vez de viajar como "sin repuesto".
- */
-export const instalarComponenteSchema = z.object({
-  insumoId: z.string().uuid("Elegí un repuesto del catálogo"),
+export const editarComponenteSchema = z.object({
   descripcion: z
     .string()
     .max(
@@ -256,7 +208,43 @@ export const instalarComponenteSchema = z.object({
     )
     .optional(),
 });
-export type InstalarComponenteFormValues = z.infer<typeof instalarComponenteSchema>;
+export type EditarComponenteFormValues = z.infer<typeof editarComponenteSchema>;
+
+/**
+ * Espejo de `CreateComponenteHttpDto` (sdd/catalogo-unico-componentes, WU-4).
+ *
+ * `insumoId` es OBLIGATORIO (sin `.or(z.literal(""))`): un select sin elegir
+ * queda inválido en vez de viajar como "sin repuesto". `descontarStock` es
+ * booleano requerido en el formulario: el cliente lo envía SIEMPRE explícito,
+ * aunque el backend lo tome como `true` cuando falta. No hay `tipoComponenteCodigo`:
+ * el tipo se deriva de la familia del repuesto.
+ */
+export const agregarComponenteSchema = z.object({
+  insumoId: z.string().uuid("Elegí un repuesto del catálogo"),
+  descontarStock: z.boolean(),
+  descripcion: z
+    .string()
+    .max(
+      COMPONENTE_DESCRIPCION_MAX_LENGTH,
+      mensajeDemasiadoLargo("La descripción", COMPONENTE_DESCRIPCION_MAX_LENGTH),
+    )
+    .optional(),
+  numeroSerie: z
+    .string()
+    .max(
+      COMPONENTE_NUMERO_SERIE_MAX_LENGTH,
+      mensajeDemasiadoLargo("El número de serie", COMPONENTE_NUMERO_SERIE_MAX_LENGTH),
+    )
+    .optional(),
+  capacidad: z
+    .string()
+    .max(
+      COMPONENTE_CAPACIDAD_MAX_LENGTH,
+      mensajeDemasiadoLargo("La capacidad", COMPONENTE_CAPACIDAD_MAX_LENGTH),
+    )
+    .optional(),
+});
+export type AgregarComponenteFormValues = z.infer<typeof agregarComponenteSchema>;
 
 /** `equipoId` OPCIONAL (vínculo ticket↔equipo, espejo de `@IsOptional() @IsUUID() equipoId` backend). */
 export const crearTicketSoporteSchema = z.object({

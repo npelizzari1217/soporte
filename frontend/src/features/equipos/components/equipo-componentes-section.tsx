@@ -18,10 +18,9 @@
  *
  * PR6 (sdd/tipos-componente-master): el nombre/estado de un componente YA
  * ASIGNADO se resuelve del dato EMBEBIDO (`tipoNombre`/`tipoActivo`), NUNCA
- * del catálogo de activos — ese catálogo (`useTiposComponente()`) solo
- * lista tipos vigentes, así que un componente con un tipo dado de baja
- * caía al fallback (UUID/código crudo). Un tipo inactivo muestra un aviso
- * "Dado de baja" (distinto del propio componente estar dado de baja).
+ * del catálogo de activos — un tipo dado de baja se sigue mostrando
+ * con su nombre. Un tipo inactivo muestra un aviso "Dado de baja" (distinto
+ * del propio componente estar dado de baja); sin nombre de tipo se muestra "—".
  *
  * WU3 (spec R4/R6): el alta YA NO vive acá — el form inline (solo tipo +
  * capacidad, incompleto) fue retirado. El alta vive en `ComponenteCreateDialog`,
@@ -117,8 +116,8 @@ export function EquipoComponentesSection({ equipoId, componentes }: EquipoCompon
               <TableRow className="border-b-0">
                 <TableCell className={cn(!componente.activo && CELL_INACTIVO)}>
                   <span className="flex items-center gap-2">
-                    {componente.tipoNombre ?? componente.tipoComponenteCodigo}
-                    {!componente.tipoActivo && <Badge variant="outline">Dado de baja</Badge>}
+                    {componente.tipoNombre ?? <span aria-hidden="true">—</span>}
+                    {componente.tipoNombre != null && !componente.tipoActivo && <Badge variant="outline">Dado de baja</Badge>}
                   </span>
                 </TableCell>
                 <TableCell className={cn(!componente.activo && CELL_INACTIVO)}>

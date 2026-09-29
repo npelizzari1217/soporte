@@ -175,6 +175,13 @@ describe('runDemoSeed — integración real (T6.1, sdd/beta-frontend)', () => {
           expect(await tenantClient.subtareaEdilicia.count()).toBe(2);
           expect(await tenantClient.equipoInformatico.count()).toBe(2);
           expect(await tenantClient.componenteEquipo.count()).toBe(2);
+          // Los componentes sembrados van vinculados a un insumo repuesto (RAM y SSD).
+          const componentes = await tenantClient.componenteEquipo.findMany({
+            include: { insumo: { include: { familia: true } } },
+          });
+          // El tipo de cada componente es la familia de su insumo.
+          expect(componentes.map((c) => c.insumo.familia.codigo).sort()).toEqual(['RAM', 'SSD']);
+          expect(await tenantClient.insumo.count()).toBe(2);
           expect(await tenantClient.ticketSoporte.count()).toBe(1);
           // sdd/redisenio-modulo-compras PR-14 [H2]: modelo nuevo
           // (compra/itemCompra/operacionCompra) — 2 compras demo (5 ítems
@@ -240,6 +247,8 @@ describe('runDemoSeed — integración real (T6.1, sdd/beta-frontend)', () => {
       try {
         // Sin duplicados: el conteo de tickets NO creció tras la segunda corrida.
         expect(await tenantClient2.ticket.count()).toBe(ticketCountTrasPrimera);
+        expect(await tenantClient2.insumo.count()).toBe(2);
+        expect(await tenantClient2.componenteEquipo.count()).toBe(2);
       } finally {
         await tenantClient2.$disconnect();
         await pool2.end();

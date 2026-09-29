@@ -26,7 +26,6 @@ describe('InstalarComponenteDesdeDepositoUseCase', () => {
   function makeComponente(insumoId: string): ComponenteEquipoEntity {
     return ComponenteEquipoEntity.create({
       equipoId: 'equipo-uuid',
-      tipoComponenteCodigo: 'MOUSE',
       insumoId,
       descripcion: null,
       numeroSerie: null,

@@ -6,7 +6,7 @@ import { FechaCalendario } from '../value-objects/fecha-calendario';
  * Precondición de largo de `descripcion`. `throw`, no `Result`: el borde
  * (DTO, WU2) ya rechazó con 400 una descripción excedida, así que llegar
  * hasta acá es violación de contrato del caller (mismo criterio que
- * `tipos-componente/domain/entities/tipo-componente.entity.ts`). No se
+ * el resto de las entidades del dominio). No se
  * aplica en `reconstitute()`: una fila existente se lee, no se revalida.
  */
 function validarDescripcion(descripcion: string): void {

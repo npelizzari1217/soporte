@@ -58,11 +58,6 @@ import {
 } from './domain/ports/i-componente-equipo.repository';
 import { PrismaComponenteEquipoRepository } from './infrastructure/persistence/prisma/prisma-componente-equipo.repository';
 import {
-  TIPO_COMPONENTE_MASTER_CHECKER,
-  ITipoComponenteMasterChecker,
-} from './domain/ports/i-tipo-componente-master.checker';
-import { TipoComponenteMasterChecker } from './infrastructure/persistence/prisma/tipo-componente-master.checker';
-import {
   TICKET_SOPORTE_REPOSITORY,
   ITicketSoporteRepository,
 } from './domain/ports/i-ticket-soporte.repository';
@@ -78,7 +73,6 @@ import { InstalarComponenteDesdeDepositoUseCase } from './application/use-cases/
 import { EliminarComponenteUseCase } from './application/use-cases/eliminar-componente.use-case';
 import { EditarComponenteUseCase } from './application/use-cases/editar-componente.use-case';
 import { ReactivarComponenteUseCase } from './application/use-cases/reactivar-componente.use-case';
-import { ListarTiposComponenteUseCase } from './application/use-cases/listar-tipos-componente.use-case';
 import { CrearTicketSoporteUseCase } from './application/use-cases/crear-ticket-soporte.use-case';
 import { RegistrarSolucionUseCase } from './application/use-cases/registrar-solucion.use-case';
 import { ObtenerEquipoDeTicketUseCase } from './application/use-cases/obtener-equipo-de-ticket.use-case';
@@ -124,19 +118,11 @@ import { SoporteController } from './interface/controllers/soporte.controller';
  *   componente VINCULADO por el catálogo del tenant, no por MASTER (ver
  *   nota de abajo).
  * - `TENANT_TX_RUNNER` se inyecta desde `SharedModule` (`@Global`).
- * - `EquiposController` expone el inventario + componentes + catálogo de
- *   tipos; `SoporteController` expone la creación de tickets de soporte y
+ * - `EquiposController` expone el inventario + componentes; `SoporteController` expone la creación de tickets de soporte y
  *   el registro de solución.
- * - PR3/PR4b (sdd/tipos-componente-master): `ListarTiposComponenteUseCase` y
- *   `AgregarComponenteUseCase` (camino de texto libre) leen el catálogo desde
- *   MASTER vía `TIPO_COMPONENTE_MASTER_CHECKER` (checker cross-DB decoplado
- *   del módulo `tipos-componente/`, mismo criterio que
- *   `USUARIO_MASTER_CHECKER`). El catálogo tenant
- *   `tipos_componente`/`TIPO_COMPONENTE_REPOSITORY` se ELIMINÓ en PR4b — ya
- *   nada lo referencia. `ObtenerEquipoUseCase` (sdd/repuestos-autoridad-catalogo,
- *   ADR-2) YA NO lee MASTER para un componente vinculado: resuelve su tipo
- *   por `INSUMO_REPOSITORY` contra el catálogo del tenant, y solo consulta
- *   `TIPO_COMPONENTE_MASTER_CHECKER` para los de texto libre.
+ * - sdd/catalogo-unico-componentes: el checker MASTER de tipos de componente y
+ *   `GET /equipos/tipos-componente` se retiraron; el tipo de un componente se
+ *   resuelve solo por el catálogo del tenant (`INSUMO_REPOSITORY`).
  *
  * FITNESS RULE: PrismaService y @prisma/client solo pueden importarse desde
  * infrastructure/ (ver backend/eslint.config.js).
@@ -156,7 +142,6 @@ import { SoporteController } from './interface/controllers/soporte.controller';
   providers: [
     { provide: EQUIPO_INFORMATICO_REPOSITORY, useClass: PrismaEquipoInformaticoRepository },
     { provide: COMPONENTE_EQUIPO_REPOSITORY, useClass: PrismaComponenteEquipoRepository },
-    { provide: TIPO_COMPONENTE_MASTER_CHECKER, useClass: TipoComponenteMasterChecker },
     { provide: TICKET_SOPORTE_REPOSITORY, useClass: PrismaTicketSoporteRepository },
 
     {
@@ -198,21 +183,9 @@ import { SoporteController } from './interface/controllers/soporte.controller';
       useFactory: (
         equipoRepo: IEquipoInformaticoRepository,
         componenteRepo: IComponenteEquipoRepository,
-        tipoComponenteMasterChecker: ITipoComponenteMasterChecker,
         insumoRepo: IInsumoRepository,
-      ) =>
-        new ObtenerEquipoUseCase(
-          equipoRepo,
-          componenteRepo,
-          tipoComponenteMasterChecker,
-          insumoRepo,
-        ),
-      inject: [
-        EQUIPO_INFORMATICO_REPOSITORY,
-        COMPONENTE_EQUIPO_REPOSITORY,
-        TIPO_COMPONENTE_MASTER_CHECKER,
-        INSUMO_REPOSITORY,
-      ],
+      ) => new ObtenerEquipoUseCase(equipoRepo, componenteRepo, insumoRepo),
+      inject: [EQUIPO_INFORMATICO_REPOSITORY, COMPONENTE_EQUIPO_REPOSITORY, INSUMO_REPOSITORY],
     },
     {
       provide: ListarEquiposUseCase,
@@ -235,21 +208,12 @@ import { SoporteController } from './interface/controllers/soporte.controller';
       provide: AgregarComponenteUseCase,
       useFactory: (
         equipoRepo: IEquipoInformaticoRepository,
-        tipoComponenteMasterChecker: ITipoComponenteMasterChecker,
         componenteRepo: IComponenteEquipoRepository,
         insumoRepo: IInsumoRepository,
         familiaInsumoRepo: IFamiliaInsumoRepository,
-      ) =>
-        new AgregarComponenteUseCase(
-          equipoRepo,
-          tipoComponenteMasterChecker,
-          componenteRepo,
-          insumoRepo,
-          familiaInsumoRepo,
-        ),
+      ) => new AgregarComponenteUseCase(equipoRepo, componenteRepo, insumoRepo, familiaInsumoRepo),
       inject: [
         EQUIPO_INFORMATICO_REPOSITORY,
-        TIPO_COMPONENTE_MASTER_CHECKER,
         COMPONENTE_EQUIPO_REPOSITORY,
         INSUMO_REPOSITORY,
         FAMILIA_INSUMO_REPOSITORY,
@@ -282,23 +246,15 @@ import { SoporteController } from './interface/controllers/soporte.controller';
     },
     {
       provide: EditarComponenteUseCase,
-      useFactory: (
-        componenteRepo: IComponenteEquipoRepository,
-        tipoComponenteMasterChecker: ITipoComponenteMasterChecker,
-      ) => new EditarComponenteUseCase(componenteRepo, tipoComponenteMasterChecker),
-      inject: [COMPONENTE_EQUIPO_REPOSITORY, TIPO_COMPONENTE_MASTER_CHECKER],
+      useFactory: (componenteRepo: IComponenteEquipoRepository) =>
+        new EditarComponenteUseCase(componenteRepo),
+      inject: [COMPONENTE_EQUIPO_REPOSITORY],
     },
     {
       provide: ReactivarComponenteUseCase,
       useFactory: (componenteRepo: IComponenteEquipoRepository) =>
         new ReactivarComponenteUseCase(componenteRepo),
       inject: [COMPONENTE_EQUIPO_REPOSITORY],
-    },
-    {
-      provide: ListarTiposComponenteUseCase,
-      useFactory: (tipoComponenteMasterChecker: ITipoComponenteMasterChecker) =>
-        new ListarTiposComponenteUseCase(tipoComponenteMasterChecker),
-      inject: [TIPO_COMPONENTE_MASTER_CHECKER],
     },
     {
       provide: CrearTicketSoporteUseCase,

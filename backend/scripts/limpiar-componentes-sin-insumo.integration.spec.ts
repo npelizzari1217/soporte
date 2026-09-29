@@ -29,16 +29,20 @@ const MASTER_TEST_URL =
 
 const TENANT_MIGRATIONS_DIR = path.resolve(__dirname, '../prisma_tenant/migrations');
 const ULTIMA_CARPETA_PREVIA = '20260928150000_calendario_laboral_dias_cliente';
+const CARPETA_INSUMO_OBLIGATORIO = '20260929120000_componentes_insumo_obligatorio';
 const EPHEMERAL_DB_NAME = `soporte_limpiar_comp_${randomBytes(4).toString('hex')}_test`;
 const TENANT = 'tenant_efimero';
 
-/** Corre, en orden, los `migration.sql` con carpeta <= `ULTIMA_CARPETA_PREVIA`. */
-async function reproducirSchemaPrevio(pool: InstanceType<typeof Pool>): Promise<void> {
+/** Corre, en orden, los `migration.sql` con carpeta <= `ultimaCarpeta`. */
+async function reproducirSchemaPrevio(
+  pool: InstanceType<typeof Pool>,
+  ultimaCarpeta: string = ULTIMA_CARPETA_PREVIA,
+): Promise<void> {
   const carpetas = fs
     .readdirSync(TENANT_MIGRATIONS_DIR, { withFileTypes: true })
     .filter((entrada) => entrada.isDirectory())
     .map((entrada) => entrada.name)
-    .filter((nombre) => nombre <= ULTIMA_CARPETA_PREVIA)
+    .filter((nombre) => nombre <= ultimaCarpeta)
     .sort();
 
   for (const carpeta of carpetas) {
@@ -151,5 +155,53 @@ describe('limpiar-componentes-sin-insumo — reporte y apply verificado (WU-1, t
   it('con la tabla ya limpia el reporte termina en exit 0', async () => {
     const r = await ejecutarLimpieza({ tenants: tenants(), apply: false, log });
     expect(r.exitCode).toBe(EXIT_OK);
+  });
+});
+
+describe('limpiar-componentes-sin-insumo — tenant ya migrado (WU-7fix, columna tipo_componente_codigo retirada)', () => {
+  const nombreDb = `soporte_limpiar_mig_${randomBytes(4).toString('hex')}_test`;
+  let pool: InstanceType<typeof Pool>;
+  const admin = new PostgresAdminService(MASTER_TEST_URL);
+  const log = vi.fn();
+
+  beforeAll(async () => {
+    await admin.createDatabase(nombreDb);
+    const url = new URL(MASTER_TEST_URL);
+    url.pathname = `/${nombreDb}`;
+    pool = new Pool({ connectionString: url.toString() });
+    await reproducirSchemaPrevio(pool, CARPETA_INSUMO_OBLIGATORIO);
+  }, 120_000);
+
+  afterAll(async () => {
+    await pool.end().catch(() => undefined);
+    await admin.dropDatabase(nombreDb);
+  }, 30_000);
+
+  beforeEach(() => log.mockClear());
+
+  it('la base migrada ya no tiene la columna (precondición del caso)', async () => {
+    const { rows } = await pool.query(
+      `SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'componentes_equipo' AND column_name = 'tipo_componente_codigo'`,
+    );
+    expect(rows).toHaveLength(0);
+  });
+
+  it('el reporte sale con 0 y reporta 0 filas', async () => {
+    const r = await ejecutarLimpieza({ tenants: [{ dbName: TENANT, pool }], apply: false, log });
+
+    expect(r.exitCode).toBe(EXIT_OK);
+    expect(log.mock.calls.map((c) => c[0]).join('\n')).toContain('Total: 0 (0 vivas, 0 borradas');
+  });
+
+  it('--apply --esperadas=0 tampoco depende de la columna y termina en 0', async () => {
+    const r = await ejecutarLimpieza({
+      tenants: [{ dbName: TENANT, pool }],
+      apply: true,
+      esperadas: 0,
+      log,
+    });
+
+    expect(r).toEqual({ exitCode: EXIT_OK, borradas: 0 });
   });
 });

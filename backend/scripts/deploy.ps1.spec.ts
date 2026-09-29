@@ -280,3 +280,39 @@ suiteJwtFront('Test-JwtFrontendDistinto (deploy.ps1) — runtime real via pwsh',
     expect(r.sinArchivo).toBe(false);
   });
 });
+
+/**
+ * Precondicion de componentes sin repuesto (paso 5a, sdd/catalogo-unico-componentes).
+ * Verificacion estructural sobre el texto real del .ps1 (no ejecuta el deploy):
+ * el paso corre con el entorno de backend/.env ya cargado, antes de
+ * `prisma generate` y de los builds, y el exit code de un nativo se chequea.
+ */
+describe('deploy.ps1 — precondicion de componentes sin repuesto (paso 5a)', () => {
+  const texto = readFileSync(PS1_PATH, 'utf8');
+  const CMD = '& $NodeExe scripts/limpiar-componentes-sin-insumo.mjs';
+
+  it('invoca el script en modo reporte, sin argumentos', () => {
+    const lineas = texto
+      .split(/\r?\n/)
+      .filter((l) => l.includes('limpiar-componentes-sin-insumo.mjs'));
+    expect(lineas).toContain(CMD);
+    expect(lineas.every((l) => !/^\s*&.*\.mjs\s+-/.test(l))).toBe(true);
+  });
+
+  it('corre despues de cargar backend/.env y antes de prisma generate y de los builds', () => {
+    const idx = texto.indexOf(CMD);
+    expect(idx).toBeGreaterThan(texto.indexOf("Step 'Cargar backend/.env'"));
+    expect(idx).toBeLessThan(texto.indexOf("Step 'Backend: prisma generate'"));
+    expect(idx).toBeLessThan(texto.indexOf("Step 'Backend: build'"));
+    expect(idx).toBeLessThan(texto.indexOf("Step 'Frontend: build'"));
+    expect(idx).toBeLessThan(texto.indexOf("Step 'Detener servicios"));
+  });
+
+  it('corta con mensaje propio ante exit 2 y con AssertOk ante cualquier otro fallo', () => {
+    const idx = texto.indexOf(CMD);
+    const bloque = texto.slice(idx, texto.indexOf('Set-Location $RepoRoot', idx));
+    expect(bloque).toMatch(/\$LASTEXITCODE -eq 2/);
+    expect(bloque).toContain('Precondicion: componentes sin repuesto');
+    expect(bloque).toMatch(/AssertOk '/);
+  });
+});

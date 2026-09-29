@@ -6,7 +6,7 @@ import { puedeEntrarRoot } from "@/shared/auth/root-access";
 
 /**
  * Gate REAL server-side de las áreas EXCLUSIVAS de ROOT (`/admin/clientes`,
- * `/admin/tipos-componente`, `/ciclos`). Espeja el patrón de
+ * `/ciclos`). Espeja el patrón de
  * `moduloLayoutGate`/`/admin/layout.tsx`: el sidebar ya oculta estos ítems a
  * quien no es ROOT (nav-config.ts, sección "ROOT"), pero eso es solo UI;
  * esta capa impide el acceso por URL directa — antes, estas 3 rutas solo

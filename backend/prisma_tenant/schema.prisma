@@ -919,26 +919,16 @@ model MovimientoInsumo {
 model ComponenteEquipo {
   id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   equipoId             String    @map("equipo_id") @db.Uuid
-  /// Soft ref → master.tipos_componente.codigo (sin FK cross-DB). Contract
-  /// (PR4b): NOT NULL — poblado por el backfill de PR4a, catálogo tenant
-  /// `tipos_componente` eliminado (ver migración 20260805194710_init_tenant
-  /// para el estado previo con `tipo_componente_id` FK).
-  tipoComponenteCodigo String    @map("tipo_componente_codigo") @db.VarChar(50)
-  /// FK real → `insumos.id` (WU-3, sdd/repuestos-vinculo-componente) —
-  /// MISMA base del inquilino, a diferencia de `tipoComponenteCodigo` (que
-  /// referencia MASTER, cross-DB, por eso ese es soft-ref sin FK). Nullable
-  /// a propósito: el camino de texto libre sigue siendo válido, y los
-  /// componentes existentes antes de este WU no tienen ni van a tener uno
-  /// (sin backfill).
+  /// FK real → `insumos.id`, obligatoria (sdd/catalogo-unico-componentes): el
+  /// componente sale siempre del catálogo de repuestos y su tipo se deriva de
+  /// la familia del insumo. La migración `componentes_insumo_obligatorio` aborta
+  /// si quedan filas sin vínculo (ver `scripts/limpiar-componentes-sin-insumo.mjs`).
   ///
-  /// `onDelete: Restrict`, mismo criterio que las cuatro FK de
-  /// `MovimientoInsumo` hacia sus catálogos: un repuesto referenciado por un
-  /// componente no se puede borrar por debajo sin que la base lo frene. Acá
-  /// no aplica de todos modos —`insumos` no tiene DELETE, solo baja lógica
-  /// (`activo = false`)—, pero declararlo explícito evita que un futuro
-  /// `migrate dev` lo regenere en `SetNull` (default de Prisma para una
-  /// relación opcional) y vacíe el vínculo en silencio.
-  insumoId             String?   @map("insumo_id") @db.Uuid
+  /// `onDelete: Restrict`: un repuesto referenciado por un componente no se
+  /// puede borrar por debajo sin que la base lo frene (`insumos` solo tiene
+  /// baja lógica, pero declararlo evita que un futuro `migrate dev` regenere
+  /// el default de Prisma).
+  insumoId             String    @map("insumo_id") @db.Uuid
   descripcion          String?   @db.VarChar(255)
   numeroSerie          String?   @map("numero_serie") @db.VarChar(255)
   capacidad            String?   @db.VarChar(100)
@@ -947,10 +937,9 @@ model ComponenteEquipo {
   deletedAt            DateTime? @map("deleted_at") @db.Timestamptz
 
   equipo EquipoInformatico @relation(fields: [equipoId], references: [id])
-  insumo Insumo?           @relation(fields: [insumoId], references: [id], onDelete: Restrict)
+  insumo Insumo            @relation(fields: [insumoId], references: [id], onDelete: Restrict)
 
   @@index([equipoId])
-  @@index([tipoComponenteCodigo])
   @@index([insumoId])
   @@map("componentes_equipo")
 }

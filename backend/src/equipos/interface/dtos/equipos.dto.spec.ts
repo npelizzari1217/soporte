@@ -223,8 +223,12 @@ describe('Costura CreateEquipoHttpDto → EquipoInformaticoEntity (idempotencia 
 describe.each([
   ['CreateComponenteHttpDto', CreateComponenteHttpDto],
   ['EditarComponenteHttpDto', EditarComponenteHttpDto],
-])('%s — topes de largo espejando la columna', (_nombreDto, Dto) => {
-  const base = { tipoComponenteCodigo: 'RAM' };
+])('%s — topes de largo espejando la columna', (nombreDto, DtoCls) => {
+  const Dto = DtoCls as new () => object;
+  const base =
+    nombreDto === 'CreateComponenteHttpDto'
+      ? { insumoId: '33333333-3333-4333-8333-333333333333' }
+      : {};
 
   it.each([
     ['descripcion', 'A'.repeat(256)],
@@ -244,5 +248,76 @@ describe.each([
     const dto = plainToInstance(Dto, { ...base, [campo]: valor });
     const errorDelCampo = (await validate(dto)).find((e) => e.property === campo);
     expect(errorDelCampo).toBeUndefined();
+  });
+});
+
+/**
+ * Contrato HTTP de la edición de componente (ADR-2): solo `descripcion`,
+ * `numeroSerie` y `capacidad`; `tipoComponenteCodigo` e `insumoId` sobrantes
+ * los descarta el `whitelist` del `ValidationPipe` global, sin error.
+ */
+describe('EditarComponenteHttpDto — el tipo y el repuesto no se editan', () => {
+  it('descarta tipoComponenteCodigo e insumoId sobrantes con whitelist, sin error', async () => {
+    const dto = plainToInstance(EditarComponenteHttpDto, {
+      descripcion: 'Nueva',
+      tipoComponenteCodigo: 'CUALQUIERA',
+      insumoId: '33333333-3333-4333-8333-333333333333',
+    });
+
+    const errores = await validate(dto, { whitelist: true });
+
+    expect(errores).toHaveLength(0);
+    const plano = dto as unknown as Record<string, unknown>;
+    expect(plano.tipoComponenteCodigo).toBeUndefined();
+    expect(plano.insumoId).toBeUndefined();
+    expect(dto.descripcion).toBe('Nueva');
+  });
+});
+
+/**
+ * Contrato HTTP del alta de componente (ADR-1, ADR-2): `insumoId` obligatorio,
+ * `descontarStock` booleano estricto y `tipoComponenteCodigo` descartado por
+ * el `whitelist` del `ValidationPipe` global.
+ */
+describe('CreateComponenteHttpDto — contrato del alta única', () => {
+  const insumoId = '33333333-3333-4333-8333-333333333333';
+
+  it('sin insumoId es inválido (400 en el pipe)', async () => {
+    const errores = await validate(plainToInstance(CreateComponenteHttpDto, {}));
+    expect(errores.find((e) => e.property === 'insumoId')).toBeDefined();
+  });
+
+  it('acepta un alta mínima y descontarStock omitido', async () => {
+    const dto = plainToInstance(CreateComponenteHttpDto, { insumoId });
+    expect(await validate(dto)).toHaveLength(0);
+    expect(dto.descontarStock).toBeUndefined();
+  });
+
+  it.each([true, false])('acepta descontarStock booleano %s', async (valor) => {
+    const dto = plainToInstance(CreateComponenteHttpDto, { insumoId, descontarStock: valor });
+    expect(await validate(dto)).toHaveLength(0);
+  });
+
+  it.each(['false', 'true', 0, 1])(
+    'rechaza descontarStock no booleano %j (sin conversión implícita)',
+    async (valor) => {
+      const dto = plainToInstance(CreateComponenteHttpDto, { insumoId, descontarStock: valor });
+      const error = (await validate(dto)).find((e) => e.property === 'descontarStock');
+      expect(error?.constraints).toHaveProperty('isBoolean');
+    },
+  );
+
+  it('un tipoComponenteCodigo sobrante se descarta con whitelist, sin error', async () => {
+    const dto = plainToInstance(CreateComponenteHttpDto, {
+      insumoId,
+      tipoComponenteCodigo: 'CUALQUIERA',
+    });
+
+    const errores = await validate(dto, { whitelist: true });
+
+    expect(errores).toHaveLength(0);
+    expect(
+      (dto as unknown as { tipoComponenteCodigo?: string }).tipoComponenteCodigo,
+    ).toBeUndefined();
   });
 });

@@ -105,6 +105,7 @@ import { CrearTicketEdilicioUseCase } from '../../src/reparaciones/application/u
 import { CrearSubtareaUseCase } from '../../src/reparaciones/application/use-cases/crear-subtarea.use-case';
 
 import { CrearEquipoUseCase } from '../../src/equipos/application/use-cases/crear-equipo.use-case';
+import { CrearInsumoUseCase } from '../../src/insumos/application/use-cases/crear-insumo.use-case';
 import { AgregarComponenteUseCase } from '../../src/equipos/application/use-cases/agregar-componente.use-case';
 import { CrearTicketSoporteUseCase } from '../../src/equipos/application/use-cases/crear-ticket-soporte.use-case';
 
@@ -465,6 +466,7 @@ async function crearEdiliciaDemo(
 /** Crea 2 equipos con componentes + 1 ticket de soporte vinculado a uno de ellos. */
 async function crearEquiposDemo(
   app: INestApplicationContext,
+  tenantClient: TenantPrismaClient,
   clienteId: string,
   anio: number,
   catalogos: Awaited<ReturnType<typeof cargarCatalogos>>,
@@ -485,17 +487,33 @@ async function crearEquiposDemo(
   }
   const notebookId = notebook.getValue().id;
 
-  for (const [codigo, capacidad] of [
-    ['RAM', '16GB'],
-    ['DISCO', '512GB SSD'],
+  // Los componentes se vinculan a un insumo repuesto del catálogo (único camino
+  // de alta). Se vinculan SIN descuento de stock: `AgregarComponenteUseCase`
+  // solo guarda el vínculo. La familia y la unidad las siembra el alta del tenant.
+  const crearInsumo = app.get(CrearInsumoUseCase);
+  const unidad = await tenantClient.unidadMedida.findUnique({ where: { codigo: 'UNI' } });
+  if (!unidad) {
+    throw new Error('[demo-seed] El tenant no tiene la unidad de medida UNI sembrada.');
+  }
+  for (const [familiaCodigo, nombre, capacidad] of [
+    ['RAM', 'Memoria RAM DDR4 16GB', '16GB'],
+    ['SSD', 'Disco SSD 512GB', '512GB SSD'],
   ] as const) {
+    const familia = await tenantClient.familiaInsumo.findUnique({ where: { codigo: familiaCodigo } });
+    if (!familia) {
+      throw new Error(`[demo-seed] El tenant no tiene la familia de insumo ${familiaCodigo} sembrada.`);
+    }
+    const insumo = await crearInsumo.execute({ nombre, familiaId: familia.id, unidadMedidaId: unidad.id });
+    if (insumo.isFail()) {
+      throw new Error(`[demo-seed] No se pudo crear el insumo demo (${familiaCodigo}): ${insumo.getError().message}`);
+    }
     const r = await agregarComponente.execute({
       equipoId: notebookId,
-      tipoComponenteCodigo: codigo,
+      insumoId: insumo.getValue().id,
       capacidad,
     });
     if (r.isFail()) {
-      throw new Error(`[demo-seed] No se pudo agregar el componente demo (${codigo}): ${r.getError().message}`);
+      throw new Error(`[demo-seed] No se pudo agregar el componente demo (${familiaCodigo}): ${r.getError().message}`);
     }
   }
 
@@ -752,7 +770,7 @@ async function seedDemoTenantData(
     }
 
     await crearEdiliciaDemo(app, clienteId, anio, catalogos, usuarios);
-    await crearEquiposDemo(app, clienteId, anio, catalogos, usuarios);
+    await crearEquiposDemo(app, tenantClient, clienteId, anio, catalogos, usuarios);
     await crearComprasDemo(app, anio, usuarios);
 
     return true;

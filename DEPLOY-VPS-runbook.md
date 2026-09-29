@@ -106,8 +106,50 @@ la migración tenant deja `componentes_equipo.insumo_id` en NOT NULL y **aborta 
 fila con `insumo_id` NULL**, incluidas las borradas lógicamente. Esas filas se inventarían y se
 borran **antes** de esa migración con `backend/scripts/limpiar-componentes-sin-insumo.mjs`. Es
 Node directo (`pg`, sin `dist/`), y se corre desde `C:\soporte\backend` con el Node de
-`C:\nodejs24` (ver la sección siguiente). El script llega al VPS con un deploy ordinario, antes de
-integrar el resto del cambio.
+`C:\nodejs24` (ver la sección siguiente).
+
+**`deploy.ps1` la mide solo.** Justo después de cargar `backend/.env` (paso 5a) y antes de
+`prisma generate` y de los builds, corre el script en modo reporte, sin argumentos. Exit 0: el
+deploy sigue. Exit 2: quedan filas, el deploy se detiene con un mensaje que remite a esta
+sección, con `dist/` y los servicios intactos (los servicios se detienen recién después de los
+builds). Cualquier otro exit falla por `AssertOk`. Como el paso lo agrega el propio deploy, corre
+con la versión nueva del script (el re-ejecutado del paso 3b cubre el caso en que el pull la trae).
+
+Si el deploy cortó por esto, el flujo es: reporte → apply verificado → re-correr `deploy.ps1`.
+
+**Deploy del tracker (proactivo, en este orden).** El primer deploy que trae la migración
+`20260929120000` no debe descubrir las filas recién en el paso 5a. Antes de `deploy.ps1`:
+
+1. `predeploy-dump.ps1` (deja los servicios detenidos).
+2. Reporte: `& C:\nodejs24\node.exe scripts/limpiar-componentes-sin-insumo.mjs` desde
+   `C:\soporte\backend`. Anotar el total como `N` (exit 2 = hay filas; exit 0 = `N` es 0 y no
+   hay nada que borrar).
+3. Con `N` > 0 y **tras la confirmación del dueño**:
+   `& C:\nodejs24\node.exe scripts/limpiar-componentes-sin-insumo.mjs --apply --esperadas=N`.
+4. Recién después, `deploy.ps1`.
+
+El script funciona en tenants migrados y sin migrar: no depende de `tipo_componente_codigo`
+(la migración la retira; el reporte solo la muestra si existe).
+
+**Retiro.** Es una precondición transitoria: se retira de `deploy.ps1` en un cambio posterior,
+una vez desplegada la migración en producción (mismo patrón que la precondición del calendario
+master, arriba).
+
+**Recuperación de P3009.** Si la migración tenant llegó a correr y abortó en un tenant, Prisma
+marca la migración como fallida y los deploys siguientes fallan con `P3009`. Se limpia ese
+tenant con el script (pasos de abajo) y se marca la migración como revertida con el
+`DATABASE_URL_TENANT` de **ese** tenant (nombre de la migración: `20260929120000_componentes_insumo_obligatorio`):
+
+```powershell
+$env:DATABASE_URL_TENANT = '<url de la base de ese tenant>'
+corepack pnpm prisma migrate resolve --rolled-back 20260929120000_componentes_insumo_obligatorio --schema prisma_tenant/schema.prisma --config prisma.tenant.config.ts
+```
+
+El `--config prisma.tenant.config.ts` es obligatorio: sin él, Prisma 7 toma `DATABASE_URL_MASTER`
+y marcaría la migración contra la base master (igual que `migrate:tenant` en `package.json`).
+
+Luego se re-corre `deploy.ps1`. Recordatorio: los clientes inactivos o borrados están **fuera del
+recorrido** de `migrate-tenants` y del script (ver más abajo); su base no se migra ni se limpia.
 
 **1. Reporte (solo lectura).** Sin flags:
 
@@ -115,7 +157,8 @@ integrar el resto del cambio.
 & C:\nodejs24\node.exe scripts/limpiar-componentes-sin-insumo.mjs
 ```
 
-Por cada tenant lista cada fila con `insumo_id` NULL (id, equipo, `tipo_componente_codigo` y si
+Por cada tenant lista cada fila con `insumo_id` NULL (id, equipo, tipo si la columna
+`tipo_componente_codigo` todavía existe en ese tenant, y si
 está viva o borrada lógicamente), los totales de vivas y borradas, y los clientes fuera del
 recorrido. **Exit 0**: no hay filas, no hay nada que limpiar. **Exit 2**: hay filas; el número
 total del reporte es el `N` del paso siguiente. Un exit 2 no es un error del script: es el aviso
@@ -190,7 +233,7 @@ propia verificación.
 
 1. **Pre-flight** — exige estar en `main`, verifica que el `node` resuelto sea `>=24` y anota
    el punto de rollback: el commit actual, o el que **hereda** de la instancia anterior si
-   esta corrida es el re-ejecutado del paso 4.
+   esta corrida es el re-ejecutado (paso 3b en los comentarios de `deploy.ps1`, punto 4 de esta lista).
 2. **Hash de los lockfiles y del propio script**, antes del pull.
 3. **`git pull --ff-only origin main`**.
 4. **Si el pull cambió `deploy.ps1`**, se re-ejecuta la versión nueva y sale, pasándole
@@ -198,6 +241,8 @@ propia verificación.
    instancia nueva no puede recalcular, porque su pre-flight ya corre con el pull hecho.
 5. **Si cambió algún lockfile**, aborta y pide instalación manual.
 6. **Carga `backend/.env`** al entorno del proceso; exige `DATABASE_URL_MASTER`.
+   **Precondición de componentes sin repuesto** (5a): reporte de solo lectura; exit 2 corta el
+   deploy antes de los builds (ver "Precondición: componentes sin repuesto").
 7. **`EMAIL_CRYPTO_KEY`**: la genera **solo si no existe**.
 8. **`JWT_SECRET`**: lee la única línea `JWT_SECRET=` de `backend/.env` (fuente única) y la
    empuja a los dos lugares que importan — el entorno de este proceso, para que el build del
@@ -634,6 +679,17 @@ git reset --hard <commit-de-rollback>
 > El rollback **no revierte migraciones**. Si el deploy alcanzó a migrar, volver el código atrás
 > deja código viejo contra schema nuevo. Con migraciones aditivas suele andar; con una
 > destructiva, no. Mirá qué migró antes de decidir.
+
+### Rollback del tracker `catalogo-unico-componentes`
+
+Revertir el código de este release **exige restaurar el dump de master y de cada tenant**, siempre
+juntos. Las migraciones son destructivas e irreversibles: el tenant hace `DROP COLUMN
+tipo_componente_codigo` y `SET NOT NULL` sobre `insumo_id`, y master hace `DROP TABLE
+tipos_componente` (con sus 12 filas). El `git reset --hard` no las deshace, y no hay `rollback.sql`.
+El procedimiento es el de la sección siguiente ("Restore de datos"), con el dump que tomó
+`predeploy-dump.ps1` antes de este deploy: aunque el título de esa sección nombre el backfill de
+fechas, los pasos (detener servicios, `pg_restore --clean --if-exists` de master y de cada tenant,
+revertir el código, arrancar) son los mismos.
 
 ### Restore de datos (si el backfill de fechas hay que revertirlo)
 

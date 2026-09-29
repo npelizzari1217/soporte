@@ -14,7 +14,7 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/shared/api/client";
-import type { Equipo, EquipoDetalle, TipoComponente } from "../types";
+import type { Equipo, EquipoDetalle } from "../types";
 
 /**
  * @param enabled Permite no pedir el listado hasta que el consumidor lo
@@ -36,13 +36,5 @@ export function useEquipo(id: string) {
     queryKey: ["equipo", id],
     queryFn: () => apiFetch<EquipoDetalle>(`equipos/${id}`),
     enabled: !!id,
-  });
-}
-
-export function useTiposComponente() {
-  return useQuery({
-    queryKey: ["equipos", "tipos-componente"],
-    queryFn: () => apiFetch<TipoComponente[]>("equipos/tipos-componente"),
-    staleTime: 5 * 60_000,
   });
 }

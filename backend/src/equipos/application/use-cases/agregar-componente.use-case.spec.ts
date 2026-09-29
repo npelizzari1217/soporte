@@ -1,37 +1,19 @@
-import { describe, it, expect, vi } from 'vitest';
 import { AgregarComponenteUseCase } from './agregar-componente.use-case';
 import { EquipoInformaticoEntity } from '../../domain/entities/equipo-informatico.entity';
 import { InsumoEntity } from '../../../insumos/domain/entities/insumo.entity';
 import { FamiliaInsumoEntity } from '../../../insumos/domain/entities/familia-insumo.entity';
 import {
   EquipoNoEncontradoError,
-  TipoComponenteCodigoRequeridoError,
-  TipoComponenteInactivoError,
   InsumoRepuestoInexistenteError,
   InsumoNoEsRepuestoError,
   FamiliaRepuestoDeshabilitadaError,
 } from '../../domain/errors/equipos.errors';
 
 /**
- * T12.4 [U][RED] — AgregarComponenteUseCase: tipo inactivo/inexistente →
- * TipoComponenteInactivoError; N del mismo tipo permitido.
- *
- * WU-3 (sdd/repuestos-vinculo-componente) agrega el vínculo opcional
- * `insumoId`: vincular un repuesto DERIVA `tipoComponenteCodigo` de la
- * familia del insumo (no se elige por separado), y solo se pueden vincular
- * repuestos (`FamiliaInsumo.esRepuesto = true`), no consumibles.
- *
- * PR4b (sdd/tipos-componente-master): la verificación de "tipo activo" pasa
- * de `ITipoComponenteRepository` (catálogo tenant, eliminado) a
- * `ITipoComponenteMasterChecker.estaActivo(codigo)` (catálogo MASTER cross-DB).
- *
- * sdd/repuestos-autoridad-catalogo (ADR-1): esa verificación contra MASTER
- * se retira del camino VINCULADO — corre SOLO en el de texto libre. La
- * familia del tenant (existente, `esRepuesto`, `activo`) pasa a ser la única
- * autoridad de qué tipo es un componente vinculado a un repuesto.
- *
- * Ref spec: sdd/flujos-especializados/spec F3-Q2. Ref:
- * sdd/repuestos-autoridad-catalogo.
+ * AgregarComponenteUseCase — alta de un solo camino (sdd/catalogo-unico-componentes,
+ * WU-3): `insumoId` obligatorio, cada guard de insumo/familia con su error
+ * propio, y el tipo derivado siempre de `familia.codigo`. Sin dependencia del
+ * catálogo MASTER.
  */
 describe('AgregarComponenteUseCase', () => {
   function makeEquipo() {
@@ -70,467 +52,174 @@ describe('AgregarComponenteUseCase', () => {
   /** Construye el use case con mocks; los que no se pasan quedan sin llamadas registradas. */
   function makeUseCase(overrides: {
     equipoRepo?: unknown;
-    tipoComponenteMasterChecker?: unknown;
     componenteRepo?: unknown;
     insumoRepo?: unknown;
     familiaInsumoRepo?: unknown;
   }) {
     return new AgregarComponenteUseCase(
       (overrides.equipoRepo ?? { findById: vi.fn() }) as never,
-      (overrides.tipoComponenteMasterChecker ?? { estaActivo: vi.fn() }) as never,
       (overrides.componenteRepo ?? { save: vi.fn() }) as never,
       (overrides.insumoRepo ?? { findById: vi.fn() }) as never,
       (overrides.familiaInsumoRepo ?? { findById: vi.fn() }) as never,
     );
   }
 
-  it('falla con EquipoNoEncontradoError si el equipo no existe', async () => {
-    const equipoRepo = { findById: vi.fn().mockResolvedValue(null) };
-    const useCase = makeUseCase({ equipoRepo });
-
-    const result = await useCase.execute({
-      equipoId: 'no-existe',
-      tipoComponenteCodigo: 'RAM',
-      insumoId: null,
-      descripcion: null,
-      numeroSerie: null,
-      capacidad: null,
-    });
-    expect(result.isFail()).toBe(true);
-    expect(result.getError()).toBeInstanceOf(EquipoNoEncontradoError);
-  });
-
-  /**
-   * Hallazgo de la revisión automática: el `else` que devuelve
-   * `TipoComponenteCodigoRequeridoError` (camino de texto libre sin
-   * `insumoId` NI `tipoComponenteCodigo`) es la rama que existe para cuando
-   * la validación de presentación (`@ValidateIf` del DTO HTTP) no corrió —
-   * y no tenía ningún test propio.
-   */
-  it('falla con TipoComponenteCodigoRequeridoError si no vienen ni insumoId ni tipoComponenteCodigo', async () => {
+  /** Arma los cuatro colaboradores con un equipo válido, un insumo y una familia dados. */
+  function armar(insumo: InsumoEntity | null, familia: FamiliaInsumoEntity | null) {
     const equipo = makeEquipo();
     const equipoRepo = { findById: vi.fn().mockResolvedValue(equipo) };
+    const componenteRepo = { save: vi.fn() };
+    const insumoRepo = { findById: vi.fn().mockResolvedValue(insumo) };
+    const familiaInsumoRepo = { findById: vi.fn().mockResolvedValue(familia) };
+    const useCase = makeUseCase({ equipoRepo, componenteRepo, insumoRepo, familiaInsumoRepo });
+    return { equipo, componenteRepo, insumoRepo, familiaInsumoRepo, useCase };
+  }
+
+  it('falla con EquipoNoEncontradoError si el equipo no existe', async () => {
+    const equipoRepo = { findById: vi.fn().mockResolvedValue(null) };
     const componenteRepo = { save: vi.fn() };
     const useCase = makeUseCase({ equipoRepo, componenteRepo });
 
-    const result = await useCase.execute({
-      equipoId: equipo.id,
-      insumoId: null,
-      descripcion: null,
-      numeroSerie: null,
-      capacidad: null,
-    });
+    const result = await useCase.execute({ equipoId: 'no-existe', insumoId: 'ins-1' });
 
     expect(result.isFail()).toBe(true);
-    expect(result.getError()).toBeInstanceOf(TipoComponenteCodigoRequeridoError);
+    expect(result.getError()).toBeInstanceOf(EquipoNoEncontradoError);
     expect(componenteRepo.save).not.toHaveBeenCalled();
   });
 
-  it('falla con TipoComponenteInactivoError si el tipo está inactivo (o no existe) en MASTER — camino de texto libre', async () => {
+  it('falla con EquipoNoEncontradoError si el equipo está soft-deleted', async () => {
     const equipo = makeEquipo();
-    const equipoRepo = { findById: vi.fn().mockResolvedValue(equipo) };
-    const tipoComponenteMasterChecker = { estaActivo: vi.fn().mockResolvedValue(false) };
+    equipo.softDelete();
     const componenteRepo = { save: vi.fn() };
-    const useCase = makeUseCase({ equipoRepo, tipoComponenteMasterChecker, componenteRepo });
-
-    const result = await useCase.execute({
-      equipoId: equipo.id,
-      tipoComponenteCodigo: 'RAM',
-      insumoId: null,
-      descripcion: null,
-      numeroSerie: null,
-      capacidad: null,
-    });
-    expect(result.isFail()).toBe(true);
-    expect(result.getError()).toBeInstanceOf(TipoComponenteInactivoError);
-    expect(tipoComponenteMasterChecker.estaActivo).toHaveBeenCalledWith('RAM');
-    expect(componenteRepo.save).not.toHaveBeenCalled();
-  });
-
-  it('permite agregar N componentes del mismo tipo (sin restricción de unicidad) — camino de texto libre', async () => {
-    const equipo = makeEquipo();
-    const equipoRepo = { findById: vi.fn().mockResolvedValue(equipo) };
-    const tipoComponenteMasterChecker = { estaActivo: vi.fn().mockResolvedValue(true) };
-    const componenteRepo = { save: vi.fn() };
-    const insumoRepo = { findById: vi.fn() };
     const useCase = makeUseCase({
-      equipoRepo,
-      tipoComponenteMasterChecker,
+      equipoRepo: { findById: vi.fn().mockResolvedValue(equipo) },
       componenteRepo,
-      insumoRepo,
     });
 
-    const resultado1 = await useCase.execute({
-      equipoId: equipo.id,
-      tipoComponenteCodigo: 'RAM',
-      insumoId: null,
-      descripcion: 'Slot 1',
-      numeroSerie: null,
-      capacidad: '8GB',
-    });
-    const resultado2 = await useCase.execute({
-      equipoId: equipo.id,
-      tipoComponenteCodigo: 'RAM',
-      insumoId: null,
-      descripcion: 'Slot 2',
-      numeroSerie: null,
-      capacidad: '8GB',
-    });
+    const result = await useCase.execute({ equipoId: equipo.id, insumoId: 'ins-1' });
 
-    expect(resultado1.isOk()).toBe(true);
-    expect(resultado2.isOk()).toBe(true);
-    expect(resultado1.getValue().insumoId).toBeNull();
-    expect(componenteRepo.save).toHaveBeenCalledTimes(2);
-    // El camino de texto libre no consulta el catálogo de insumos.
+    expect(result.getError()).toBeInstanceOf(EquipoNoEncontradoError);
+    expect(componenteRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('alta sin insumoId: falla y no persiste ni consulta el catálogo', async () => {
+    const { equipo, componenteRepo, insumoRepo, useCase } = armar(null, null);
+
+    // Un llamador que salte la validación del borde (insumoId vacío o ausente).
+    const vacio = await useCase.execute({ equipoId: equipo.id, insumoId: '' });
+    const ausente = await useCase.execute({ equipoId: equipo.id } as never);
+
+    expect(vacio.getError()).toBeInstanceOf(InsumoRepuestoInexistenteError);
+    expect(ausente.getError()).toBeInstanceOf(InsumoRepuestoInexistenteError);
     expect(insumoRepo.findById).not.toHaveBeenCalled();
+    expect(componenteRepo.save).not.toHaveBeenCalled();
   });
 
-  it('vincular un repuesto deriva tipoComponenteCodigo de la familia del insumo', async () => {
-    const equipo = makeEquipo();
-    const familia = makeFamilia(true, 'MOUSE');
-    const insumo = makeInsumo(familia.id);
-    const equipoRepo = { findById: vi.fn().mockResolvedValue(equipo) };
-    const tipoComponenteMasterChecker = { estaActivo: vi.fn().mockResolvedValue(true) };
-    const componenteRepo = { save: vi.fn() };
-    const insumoRepo = { findById: vi.fn().mockResolvedValue(insumo) };
-    const familiaInsumoRepo = { findById: vi.fn().mockResolvedValue(familia) };
-    const useCase = makeUseCase({
-      equipoRepo,
-      tipoComponenteMasterChecker,
-      componenteRepo,
-      insumoRepo,
-      familiaInsumoRepo,
+  describe('cada guard rechaza con su error propio y no persiste', () => {
+    it('insumo inexistente → InsumoRepuestoInexistenteError', async () => {
+      const { equipo, componenteRepo, useCase } = armar(null, null);
+      const result = await useCase.execute({ equipoId: equipo.id, insumoId: 'ins-x' });
+      expect(result.getError()).toBeInstanceOf(InsumoRepuestoInexistenteError);
+      expect(componenteRepo.save).not.toHaveBeenCalled();
     });
+
+    it('insumo inactivo → InsumoRepuestoInexistenteError', async () => {
+      const insumo = makeInsumo('fam-1', false);
+      const { equipo, componenteRepo, useCase } = armar(insumo, makeFamilia(true));
+      const result = await useCase.execute({ equipoId: equipo.id, insumoId: insumo.id });
+      expect(result.getError()).toBeInstanceOf(InsumoRepuestoInexistenteError);
+      expect(componenteRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('insumo soft-deleted (con activo: true) → InsumoRepuestoInexistenteError', async () => {
+      const insumo = makeInsumo('fam-1');
+      insumo.softDelete();
+      const { equipo, componenteRepo, useCase } = armar(insumo, makeFamilia(true));
+      const result = await useCase.execute({ equipoId: equipo.id, insumoId: insumo.id });
+      expect(result.getError()).toBeInstanceOf(InsumoRepuestoInexistenteError);
+      expect(componenteRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('familia inexistente → InsumoRepuestoInexistenteError', async () => {
+      const insumo = makeInsumo('fam-1');
+      const { equipo, componenteRepo, useCase } = armar(insumo, null);
+      const result = await useCase.execute({ equipoId: equipo.id, insumoId: insumo.id });
+      expect(result.getError()).toBeInstanceOf(InsumoRepuestoInexistenteError);
+      expect(componenteRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('familia soft-deleted → InsumoRepuestoInexistenteError', async () => {
+      const insumo = makeInsumo('fam-1');
+      const familia = makeFamilia(true);
+      familia.softDelete();
+      const { equipo, componenteRepo, useCase } = armar(insumo, familia);
+      const result = await useCase.execute({ equipoId: equipo.id, insumoId: insumo.id });
+      expect(result.getError()).toBeInstanceOf(InsumoRepuestoInexistenteError);
+      expect(componenteRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('familia no repuesto (consumible) → InsumoNoEsRepuestoError', async () => {
+      const insumo = makeInsumo('fam-1');
+      const { equipo, componenteRepo, useCase } = armar(insumo, makeFamilia(false));
+      const result = await useCase.execute({ equipoId: equipo.id, insumoId: insumo.id });
+      expect(result.getError()).toBeInstanceOf(InsumoNoEsRepuestoError);
+      expect(componenteRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('familia repuesto deshabilitada → FamiliaRepuestoDeshabilitadaError', async () => {
+      const insumo = makeInsumo('fam-1');
+      const { equipo, componenteRepo, useCase } = armar(insumo, makeFamilia(true, 'MOUSE', false));
+      const result = await useCase.execute({ equipoId: equipo.id, insumoId: insumo.id });
+      expect(result.getError()).toBeInstanceOf(FamiliaRepuestoDeshabilitadaError);
+      expect(componenteRepo.save).not.toHaveBeenCalled();
+    });
+  });
+
+  it('alta válida: el componente queda vinculado al insumo y se guarda', async () => {
+    const insumo = makeInsumo('fam-1');
+    const { equipo, componenteRepo, useCase } = armar(insumo, makeFamilia(true, 'TECLADO'));
 
     const result = await useCase.execute({
       equipoId: equipo.id,
-      // Se manda un código distinto a propósito: tiene que ser IGNORADO — el
-      // vínculo con el repuesto es la única fuente del tipo (decisión #1).
-      tipoComponenteCodigo: 'CODIGO-QUE-NO-DEBERIA-USARSE',
       insumoId: insumo.id,
-      descripcion: null,
-      numeroSerie: null,
+      descripcion: 'Teclado USB',
+      numeroSerie: 'SN-1',
       capacidad: null,
     });
 
     expect(result.isOk()).toBe(true);
-    expect(result.getValue().tipoComponenteCodigo).toBe('MOUSE');
-    expect(result.getValue().insumoId).toBe(insumo.id);
-    // ADR-1 (sdd/repuestos-autoridad-catalogo): el gate MASTER se retiró del
-    // camino vinculado — la familia del tenant ya es la autoridad completa.
-    expect(tipoComponenteMasterChecker.estaActivo).not.toHaveBeenCalled();
+    const componente = result.getValue();
+    expect(componente.insumoId).toBe(insumo.id);
+    expect(componente.descripcion).toBe('Teclado USB');
+    expect(componente.numeroSerie).toBe('SN-1');
+    expect(componenteRepo.save).toHaveBeenCalledTimes(1);
+    expect(componenteRepo.save).toHaveBeenCalledWith(componente);
   });
 
-  it('vincular un consumible (familia esRepuesto=false) falla con InsumoNoEsRepuestoError', async () => {
-    const equipo = makeEquipo();
-    const familia = makeFamilia(false, 'TONER');
-    const insumo = makeInsumo(familia.id);
-    const equipoRepo = { findById: vi.fn().mockResolvedValue(equipo) };
-    const componenteRepo = { save: vi.fn() };
-    const insumoRepo = { findById: vi.fn().mockResolvedValue(insumo) };
-    const familiaInsumoRepo = { findById: vi.fn().mockResolvedValue(familia) };
-    const useCase = makeUseCase({ equipoRepo, componenteRepo, insumoRepo, familiaInsumoRepo });
+  it('familia propia del tenant sin catálogo global (TORNILLO) se vincula sin consultar MASTER', async () => {
+    const insumo = makeInsumo('fam-propia');
+    const { equipo, componenteRepo, useCase } = armar(insumo, makeFamilia(true, 'TORNILLO'));
 
-    const result = await useCase.execute({
-      equipoId: equipo.id,
-      insumoId: insumo.id,
-      descripcion: null,
-      numeroSerie: null,
-      capacidad: null,
-    });
-
-    expect(result.isFail()).toBe(true);
-    expect(result.getError()).toBeInstanceOf(InsumoNoEsRepuestoError);
-    expect(componenteRepo.save).not.toHaveBeenCalled();
-  });
-
-  it('vincular un insumoId inexistente falla con InsumoRepuestoInexistenteError', async () => {
-    const equipo = makeEquipo();
-    const equipoRepo = { findById: vi.fn().mockResolvedValue(equipo) };
-    const componenteRepo = { save: vi.fn() };
-    const insumoRepo = { findById: vi.fn().mockResolvedValue(null) };
-    const useCase = makeUseCase({ equipoRepo, componenteRepo, insumoRepo });
-
-    const result = await useCase.execute({
-      equipoId: equipo.id,
-      insumoId: 'no-existe',
-      descripcion: null,
-      numeroSerie: null,
-      capacidad: null,
-    });
-
-    expect(result.isFail()).toBe(true);
-    expect(result.getError()).toBeInstanceOf(InsumoRepuestoInexistenteError);
-    expect(componenteRepo.save).not.toHaveBeenCalled();
-  });
-
-  /**
-   * Hallazgo de la revisión automática: `PrismaInsumoRepository.findById` NO
-   * filtra por `activo` (`findUnique` crudo), así que sin este chequeo en el
-   * use case un repuesto dado de baja se vinculaba igual. Mismo criterio que
-   * `ModeloEquipoDeshabilitadoError`: la fila existe, la base acepta el
-   * vínculo sin chistar, y el chequeo tiene que vivir acá.
-   */
-  it('vincular un insumo INACTIVO falla con InsumoRepuestoInexistenteError (aunque la fila exista)', async () => {
-    const equipo = makeEquipo();
-    const familia = makeFamilia(true, 'MOUSE');
-    const insumo = makeInsumo(familia.id, false);
-    const equipoRepo = { findById: vi.fn().mockResolvedValue(equipo) };
-    const componenteRepo = { save: vi.fn() };
-    const insumoRepo = { findById: vi.fn().mockResolvedValue(insumo) };
-    const familiaInsumoRepo = { findById: vi.fn().mockResolvedValue(familia) };
-    const useCase = makeUseCase({ equipoRepo, componenteRepo, insumoRepo, familiaInsumoRepo });
-
-    const result = await useCase.execute({
-      equipoId: equipo.id,
-      insumoId: insumo.id,
-      descripcion: null,
-      numeroSerie: null,
-      capacidad: null,
-    });
-
-    expect(result.isFail()).toBe(true);
-    expect(result.getError()).toBeInstanceOf(InsumoRepuestoInexistenteError);
-    expect(componenteRepo.save).not.toHaveBeenCalled();
-  });
-
-  /**
-   * `activo` y `deletedAt` son columnas INDEPENDIENTES: `softDelete()` no toca
-   * `activo`, así que este insumo llega con `activo: true` y el guard de
-   * arriba no lo detendría. El catálogo del select nunca lo ofrece —
-   * `findAllActive` filtra `deletedAt: null`—, pero un formulario abierto
-   * mientras el administrador lo borra llega igual, y la FK no lo atrapa
-   * porque la fila existe.
-   */
-  it('vincular un insumo BORRADO logicamente falla, aunque siga activo', async () => {
-    const equipo = makeEquipo();
-    const familia = makeFamilia(true, 'MOUSE');
-    const insumo = makeInsumo(familia.id, true);
-    insumo.softDelete();
-    const equipoRepo = { findById: vi.fn().mockResolvedValue(equipo) };
-    const componenteRepo = { save: vi.fn() };
-    const insumoRepo = { findById: vi.fn().mockResolvedValue(insumo) };
-    const familiaInsumoRepo = { findById: vi.fn().mockResolvedValue(familia) };
-    const useCase = makeUseCase({ equipoRepo, componenteRepo, insumoRepo, familiaInsumoRepo });
-
-    const result = await useCase.execute({
-      equipoId: equipo.id,
-      insumoId: insumo.id,
-      descripcion: null,
-      numeroSerie: null,
-      capacidad: null,
-    });
-
-    expect(result.isFail()).toBe(true);
-    expect(result.getError()).toBeInstanceOf(InsumoRepuestoInexistenteError);
-    expect(componenteRepo.save).not.toHaveBeenCalled();
-  });
-
-  /**
-   * Del lado de la familia, con el error que corresponde: una familia borrada
-   * deja al repuesto sin catálogo que lo respalde, y eso no es "ser un
-   * consumible". `CrearInsumoUseCase` ya fijó ese criterio — "elegir una
-   * familia dada de baja no es una opción distinta de elegir una que nunca
-   * existió"— y este caso lo sigue.
-   */
-  it('vincular un repuesto de una familia BORRADA logicamente falla como inexistente', async () => {
-    const equipo = makeEquipo();
-    const familia = makeFamilia(true, 'MOUSE');
-    familia.softDelete();
-    const insumo = makeInsumo(familia.id, true);
-    const equipoRepo = { findById: vi.fn().mockResolvedValue(equipo) };
-    const componenteRepo = { save: vi.fn() };
-    const insumoRepo = { findById: vi.fn().mockResolvedValue(insumo) };
-    const familiaInsumoRepo = { findById: vi.fn().mockResolvedValue(familia) };
-    const useCase = makeUseCase({ equipoRepo, componenteRepo, insumoRepo, familiaInsumoRepo });
-
-    const result = await useCase.execute({
-      equipoId: equipo.id,
-      insumoId: insumo.id,
-      descripcion: null,
-      numeroSerie: null,
-      capacidad: null,
-    });
-
-    expect(result.isFail()).toBe(true);
-    expect(result.getError()).toBeInstanceOf(InsumoRepuestoInexistenteError);
-    expect(componenteRepo.save).not.toHaveBeenCalled();
-  });
-
-  /**
-   * La OTRA mitad del guard de `agregar-componente.use-case.ts:147`
-   * (`if (!familia || familia.isDeleted())`). El test de arriba cubre
-   * `familia.isDeleted()`; este cubre `!familia`: la familia que el insumo
-   * referencia y que el repositorio no resuelve.
-   *
-   * POR QUE EXISTE. Sin este caso se podia BORRAR la disyuncion `!familia`
-   * del guard y la suite entera del modulo seguia en verde — 28 archivos /
-   * 319 tests, e2e incluido. Medido por mutacion dirigida en `sdd-verify`
-   * ronda 2 del ciclo `repuestos-autoridad-catalogo` (2026-09-15) y
-   * reproducido de forma independiente. Los 9 tests de la rama vinculada
-   * mockeaban `familiaInsumoRepo.findById` SIEMPRE con una familia; el unico
-   * que llegaba sin familia cortaba antes, en `:136`, por `insumoRepo`.
-   *
-   * CRITERIO DE ACEPTACION de este test: con esa disyuncion borrada del
-   * guard, tiene que ponerse ROJO. Si sigue verde, no esta probando nada.
-   *
-   * `insumo.familiaId` es FK, asi que en produccion la condicion solo es
-   * alcanzable por carrera (la familia desaparece entre las dos lecturas).
-   * El guard existe igual, y lo que existe se prueba.
-   */
-  it('vincular un repuesto cuya familia NO EXISTE falla como inexistente', async () => {
-    const equipo = makeEquipo();
-    const familia = makeFamilia(true, 'MOUSE');
-    const insumo = makeInsumo(familia.id, true);
-    const equipoRepo = { findById: vi.fn().mockResolvedValue(equipo) };
-    const componenteRepo = { save: vi.fn() };
-    const insumoRepo = { findById: vi.fn().mockResolvedValue(insumo) };
-    // El insumo referencia `familia.id`, pero el repositorio NO la resuelve.
-    const familiaInsumoRepo = { findById: vi.fn().mockResolvedValue(null) };
-    const useCase = makeUseCase({ equipoRepo, componenteRepo, insumoRepo, familiaInsumoRepo });
-
-    const result = await useCase.execute({
-      equipoId: equipo.id,
-      insumoId: insumo.id,
-      descripcion: null,
-      numeroSerie: null,
-      capacidad: null,
-    });
-
-    expect(result.isFail()).toBe(true);
-    expect(result.getError()).toBeInstanceOf(InsumoRepuestoInexistenteError);
-    expect(componenteRepo.save).not.toHaveBeenCalled();
-  });
-
-  /** Gemelo invertido de los cuatro anteriores: un insumo ACTIVO y vigente de una familia repuesto habilitada funciona. */
-  it('vincular un insumo ACTIVO de una familia repuesto habilitada permite agregar el componente', async () => {
-    const equipo = makeEquipo();
-    const familia = makeFamilia(true, 'MOUSE');
-    const insumo = makeInsumo(familia.id, true);
-    const equipoRepo = { findById: vi.fn().mockResolvedValue(equipo) };
-    const tipoComponenteMasterChecker = { estaActivo: vi.fn().mockResolvedValue(true) };
-    const componenteRepo = { save: vi.fn() };
-    const insumoRepo = { findById: vi.fn().mockResolvedValue(insumo) };
-    const familiaInsumoRepo = { findById: vi.fn().mockResolvedValue(familia) };
-    const useCase = makeUseCase({
-      equipoRepo,
-      tipoComponenteMasterChecker,
-      componenteRepo,
-      insumoRepo,
-      familiaInsumoRepo,
-    });
-
-    const result = await useCase.execute({
-      equipoId: equipo.id,
-      insumoId: insumo.id,
-      descripcion: null,
-      numeroSerie: null,
-      capacidad: null,
-    });
+    const result = await useCase.execute({ equipoId: equipo.id, insumoId: insumo.id });
 
     expect(result.isOk()).toBe(true);
     expect(componenteRepo.save).toHaveBeenCalledTimes(1);
   });
 
-  /**
-   * Mismo hallazgo que el de `insumo.activo`, pero para `familia.activo`: la
-   * familia también se lee con un `findUnique` crudo, así que sin este
-   * chequeo una familia de repuesto deshabilitada seguía aceptando vínculos.
-   */
-  it('vincular un repuesto de una familia INACTIVA falla con FamiliaRepuestoDeshabilitadaError (aunque esRepuesto sea true)', async () => {
-    const equipo = makeEquipo();
-    const familia = makeFamilia(true, 'MOUSE', false);
-    const insumo = makeInsumo(familia.id, true);
-    const equipoRepo = { findById: vi.fn().mockResolvedValue(equipo) };
-    const componenteRepo = { save: vi.fn() };
-    const insumoRepo = { findById: vi.fn().mockResolvedValue(insumo) };
-    const familiaInsumoRepo = { findById: vi.fn().mockResolvedValue(familia) };
-    const useCase = makeUseCase({ equipoRepo, componenteRepo, insumoRepo, familiaInsumoRepo });
+  it('permite N componentes del mismo tipo por equipo (sin restricción de unicidad)', async () => {
+    const insumo = makeInsumo('fam-1');
+    const { equipo, componenteRepo, useCase } = armar(insumo, makeFamilia(true, 'MOUSE'));
 
-    const result = await useCase.execute({
-      equipoId: equipo.id,
-      insumoId: insumo.id,
-      descripcion: null,
-      numeroSerie: null,
-      capacidad: null,
-    });
+    const r1 = await useCase.execute({ equipoId: equipo.id, insumoId: insumo.id });
+    const r2 = await useCase.execute({ equipoId: equipo.id, insumoId: insumo.id });
 
-    expect(result.isFail()).toBe(true);
-    expect(result.getError()).toBeInstanceOf(FamiliaRepuestoDeshabilitadaError);
-    expect(componenteRepo.save).not.toHaveBeenCalled();
+    expect(r1.isOk()).toBe(true);
+    expect(r2.isOk()).toBe(true);
+    expect(r1.getValue().id).not.toBe(r2.getValue().id);
+    expect(componenteRepo.save).toHaveBeenCalledTimes(2);
   });
 
-  /** Gemelo invertido del test anterior: una familia repuesto ACTIVA funciona. */
-  it('vincular un repuesto de una familia repuesto ACTIVA permite agregar el componente', async () => {
-    const equipo = makeEquipo();
-    const familia = makeFamilia(true, 'MOUSE', true);
-    const insumo = makeInsumo(familia.id, true);
-    const equipoRepo = { findById: vi.fn().mockResolvedValue(equipo) };
-    const tipoComponenteMasterChecker = { estaActivo: vi.fn().mockResolvedValue(true) };
-    const componenteRepo = { save: vi.fn() };
-    const insumoRepo = { findById: vi.fn().mockResolvedValue(insumo) };
-    const familiaInsumoRepo = { findById: vi.fn().mockResolvedValue(familia) };
-    const useCase = makeUseCase({
-      equipoRepo,
-      tipoComponenteMasterChecker,
-      componenteRepo,
-      insumoRepo,
-      familiaInsumoRepo,
-    });
-
-    const result = await useCase.execute({
-      equipoId: equipo.id,
-      insumoId: insumo.id,
-      descripcion: null,
-      numeroSerie: null,
-      capacidad: null,
-    });
-
-    expect(result.isOk()).toBe(true);
-    expect(componenteRepo.save).toHaveBeenCalledTimes(1);
-  });
-
-  /**
-   * INVERTIDO por sdd/repuestos-autoridad-catalogo (ADR-1): este test fijaba
-   * la LIMITACIÓN DELIBERADA de WU-3 — que una familia propia del tenant sin
-   * código sembrado en MASTER (ej. "TORNILLO") no se podía vincular. Su
-   * propio JSDoc nombró a WU-5 como el ciclo que la levanta; este ES ese
-   * ciclo. Ahora afirma lo contrario: la familia del tenant es la ÚNICA
-   * autoridad del camino vinculado, y MASTER ni se consulta — no solo que no
-   * rechace, sino que el gate no corre.
-   */
-  it('vincular un repuesto de una familia SIN código en MASTER se acepta: la familia del tenant es la autoridad (ADR-1)', async () => {
-    const equipo = makeEquipo();
-    const familia = makeFamilia(true, 'TORNILLO');
-    const insumo = makeInsumo(familia.id);
-    const equipoRepo = { findById: vi.fn().mockResolvedValue(equipo) };
-    const tipoComponenteMasterChecker = { estaActivo: vi.fn().mockResolvedValue(false) };
-    const componenteRepo = { save: vi.fn() };
-    const insumoRepo = { findById: vi.fn().mockResolvedValue(insumo) };
-    const familiaInsumoRepo = { findById: vi.fn().mockResolvedValue(familia) };
-    const useCase = makeUseCase({
-      equipoRepo,
-      tipoComponenteMasterChecker,
-      componenteRepo,
-      insumoRepo,
-      familiaInsumoRepo,
-    });
-
-    const result = await useCase.execute({
-      equipoId: equipo.id,
-      insumoId: insumo.id,
-      descripcion: null,
-      numeroSerie: null,
-      capacidad: null,
-    });
-
-    expect(result.isOk()).toBe(true);
-    expect(result.getValue().tipoComponenteCodigo).toBe('TORNILLO');
-    expect(componenteRepo.save).toHaveBeenCalledTimes(1);
-    expect(componenteRepo.save).toHaveBeenCalledWith(
-      expect.objectContaining({ tipoComponenteCodigo: 'TORNILLO' }),
-    );
-    // MASTER ni se consulta: es la prueba de la autoridad, no solo que no rechace.
-    expect(tipoComponenteMasterChecker.estaActivo).not.toHaveBeenCalled();
+  it('no depende del catálogo MASTER: el constructor solo recibe cuatro colaboradores', () => {
+    expect(AgregarComponenteUseCase.length).toBe(4);
   });
 });

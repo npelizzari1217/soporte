@@ -54,8 +54,6 @@ describe('Equipos Persistence Repos — Integration (PR11)', () => {
   let tipoSoporteId: string;
   let estadoNuevoId: string;
   let prioridadMediaId: string;
-  /** Código de fixture del tipo de componente (soft ref a MASTER — sin fila real en esta DB). */
-  const tipoComponenteRamCodigo = 'T11_TEST_RAM';
 
   const RUN_PREFIX = randomBytes(2).toString('hex');
   let numeroCounter = 0;
@@ -160,7 +158,7 @@ describe('Equipos Persistence Repos — Integration (PR11)', () => {
 
     // Fixtures de WU-3 (sdd/repuestos-vinculo-componente): repuesto real del
     // catálogo del tenant para cubrir `componentes_equipo.insumo_id` (FK real,
-    // MISMA base — a diferencia de `tipoComponenteCodigo`, cross-DB).
+    // MISMA base).
     const unidadMedida = await tenantClient.unidadMedida.create({
       data: { codigo: `T11_TEST_UN_${RUN_PREFIX}`, nombre: 'Unidad Test PR11' },
     });
@@ -338,24 +336,21 @@ describe('Equipos Persistence Repos — Integration (PR11)', () => {
       const equipo = await crearEquipo();
       const componente1 = ComponenteEquipoEntity.create({
         equipoId: equipo.id,
-        tipoComponenteCodigo: tipoComponenteRamCodigo,
-        insumoId: null,
+        insumoId: insumoRepuestoId,
         descripcion: 'RAM slot 1',
         numeroSerie: null,
         capacidad: '8GB',
       }).getValue();
       const componente2 = ComponenteEquipoEntity.create({
         equipoId: equipo.id,
-        tipoComponenteCodigo: tipoComponenteRamCodigo,
-        insumoId: null,
+        insumoId: insumoRepuestoId,
         descripcion: 'RAM slot 2',
         numeroSerie: null,
         capacidad: '8GB',
       }).getValue();
       const componenteABorrar = ComponenteEquipoEntity.create({
         equipoId: equipo.id,
-        tipoComponenteCodigo: tipoComponenteRamCodigo,
-        insumoId: null,
+        insumoId: insumoRepuestoId,
         descripcion: 'RAM a borrar',
         numeroSerie: null,
         capacidad: '4GB',
@@ -373,29 +368,10 @@ describe('Equipos Persistence Repos — Integration (PR11)', () => {
     });
 
     /**
-     * T-INT [WU-3, sdd/repuestos-vinculo-componente] — `insumo_id` es
-     * NULLABLE (camino de texto libre, sin backfill) y, cuando viene, es una
-     * FK REAL contra Postgres: un id inexistente lo rechaza la base, no una
+     * `insumo_id` es obligatorio (sdd/catalogo-unico-componentes) y una FK
+     * REAL contra Postgres: un id inexistente lo rechaza la base, no una
      * validación de aplicación que podría faltar.
      */
-    it('save() con insumoId NULL persiste el camino de texto libre (sin backfill)', async () => {
-      const equipo = await crearEquipo();
-      const componente = ComponenteEquipoEntity.create({
-        equipoId: equipo.id,
-        tipoComponenteCodigo: tipoComponenteRamCodigo,
-        insumoId: null,
-        descripcion: 'Cargado a mano',
-        numeroSerie: null,
-        capacidad: null,
-      }).getValue();
-
-      await withTenant(async () => {
-        await componenteRepo.save(componente);
-        const encontrado = await componenteRepo.findById(componente.id);
-        expect(encontrado!.insumoId).toBeNull();
-      });
-    });
-
     /**
      * El segundo `save()` es parte del caso y no un caso aparte, por el mismo
      * motivo que en `modeloEquipoId sobrevive al INSERT y al UPDATE`: el objeto
@@ -409,13 +385,12 @@ describe('Equipos Persistence Repos — Integration (PR11)', () => {
      * (`EditarComponenteUseCase`, y lo mismo `ReactivarComponenteUseCase`),
      * y `actualizar()` no toca `insumoId`. Probar solo el INSERT deja afuera
      * justo la mitad donde se pierden datos, y ningún otro caso de esta suite
-     * lo vería: todos los demás componentes de fixture tienen `insumoId: null`.
+     * lo vería: los demás casos solo miran el alta.
      */
     it('insumoId sobrevive al INSERT y al UPDATE de save()', async () => {
       const equipo = await crearEquipo();
       const componente = ComponenteEquipoEntity.create({
         equipoId: equipo.id,
-        tipoComponenteCodigo: tipoComponenteRamCodigo,
         insumoId: insumoRepuestoId,
         descripcion: null,
         numeroSerie: null,
@@ -442,7 +417,6 @@ describe('Equipos Persistence Repos — Integration (PR11)', () => {
       const insumoIdInexistente = '00000000-0000-7000-8000-000000000000';
       const componente = ComponenteEquipoEntity.create({
         equipoId: equipo.id,
-        tipoComponenteCodigo: tipoComponenteRamCodigo,
         insumoId: insumoIdInexistente,
         descripcion: null,
         numeroSerie: null,

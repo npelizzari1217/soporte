@@ -12,8 +12,7 @@
  * FITNESS RULE: PrismaService y @prisma/client solo pueden importarse desde
  * infrastructure/ (ver `backend/eslint.config.js`).
  *
- * PrismaService llega vía `SharedModule` (`@Global()`) — no se importa acá,
- * mismo patrón que `TiposComponenteModule`.
+ * PrismaService llega vía `SharedModule` (`@Global()`) — no se importa acá.
  *
  * Importa `AuthModule` para poder usar `JwtAuthGuard`/`GlobalAdminGuard`/
  * `TenantGuard`/`AdminClienteGuard` vía `@UseGuards` en `FeriadosController`

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { ZodIssue } from "zod";
-import { crearEquipoSchema, componenteSchema } from "./schemas";
+import { crearEquipoSchema, editarComponenteSchema } from "./schemas";
 
 /**
  * Validación cliente-side de los topes de largo/rango de `equipos_informaticos`/
@@ -13,8 +13,8 @@ function baseEquipoValues(): { nombre: string } {
   return { nombre: "Notebook Dell" };
 }
 
-function baseComponenteValues(): { tipoComponenteCodigo: string } {
-  return { tipoComponenteCodigo: "RAM" };
+function baseComponenteValues(): Record<string, never> {
+  return {};
 }
 
 /**
@@ -140,14 +140,14 @@ describe("crearEquipoSchema — importe/valorResidual", () => {
   });
 });
 
-describe("componenteSchema — límites de largo", () => {
+describe("editarComponenteSchema — límites de largo", () => {
   it.each([
     ["descripcion", 256],
     ["numeroSerie", 256],
     ["capacidad", 101],
   ] as const)("rechaza %s de longitud %i, por too_big", (campo, longitud) => {
     const valor = "A".repeat(longitud);
-    const result = componenteSchema.safeParse({ ...baseComponenteValues(), [campo]: valor });
+    const result = editarComponenteSchema.safeParse({ ...baseComponenteValues(), [campo]: valor });
     expect(result.success).toBe(false);
     if (result.success) return;
     const issue = issueDe(result.error.issues, campo);
@@ -160,7 +160,7 @@ describe("componenteSchema — límites de largo", () => {
     ["capacidad", 100],
   ] as const)("acepta %s en el límite exacto (%i caracteres)", (campo, longitud) => {
     const valor = "A".repeat(longitud);
-    const result = componenteSchema.safeParse({ ...baseComponenteValues(), [campo]: valor });
+    const result = editarComponenteSchema.safeParse({ ...baseComponenteValues(), [campo]: valor });
     expect(result.success).toBe(true);
   });
 });

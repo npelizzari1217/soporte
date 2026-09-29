@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse, delay } from "msw";
@@ -10,11 +10,6 @@ import { renderWithProviders, buildUser } from "../../../../test/render-with-pro
 import { ComponenteCreateDialog } from "./componente-create-dialog";
 
 const EQUIPO_ID = "77777777-7777-7777-7777-777777777777";
-
-const TIPOS_ACTIVOS = [
-  { codigo: "RAM", nombre: "Memoria RAM" },
-  { codigo: "DISCO", nombre: "Disco rígido" },
-];
 
 /**
  * Catálogo CRUDO de repuestos (WU-3, sdd/repuestos-vinculo-componente) —
@@ -94,7 +89,6 @@ function repuestosParaQuery(url: URL): typeof REPUESTOS_CATALOGO {
 
 function mockBackend() {
   server.use(
-    http.get("/api/equipos/tipos-componente", () => HttpResponse.json(TIPOS_ACTIVOS)),
     http.get("/api/insumos", ({ request }) =>
       HttpResponse.json(repuestosParaQuery(new URL(request.url))),
     ),
@@ -107,127 +101,101 @@ async function abrirDialog() {
   return user;
 }
 
+const COMPONENTE_RESPUESTA = {
+  id: "c9",
+  equipoId: EQUIPO_ID,
+  insumoId: "11111111-1111-4111-8111-111111111111",
+  descripcion: null,
+  numeroSerie: null,
+  capacidad: null,
+  activo: true,
+  deletedAt: null,
+  createdAt: "2026-01-01T00:00:00.000Z",
+  updatedAt: "2026-01-01T00:00:00.000Z",
+};
+
+const MOUSE_ID = "11111111-1111-4111-8111-111111111111";
+
+/** Captura el body del POST de alta y responde 201. */
+function capturarPost(): { body: () => Record<string, unknown> } {
+  let capturedBody: Record<string, unknown> = {};
+  server.use(
+    http.post(`/api/equipos/${EQUIPO_ID}/componentes`, async ({ request }) => {
+      capturedBody = (await request.json()) as Record<string, unknown>;
+      return HttpResponse.json(COMPONENTE_RESPUESTA, { status: 201 });
+    }),
+  );
+  return { body: () => capturedBody };
+}
+
+function renderDialog() {
+  return renderWithProviders(<ComponenteCreateDialog equipoId={EQUIPO_ID} />, {
+    user: buildUser({ permisos: ["equipo:gestionar"] }),
+  });
+}
+
 describe("ComponenteCreateDialog", () => {
   beforeEach(() => mockBackend());
 
-  it("al abrir muestra los cinco campos: repuesto, tipo, descripción, número de serie y capacidad", async () => {
-    renderWithProviders(<ComponenteCreateDialog equipoId={EQUIPO_ID} />, {
-      user: buildUser({ permisos: ["equipo:gestionar"] }),
-    });
-
+  it("al abrir muestra repuesto, descripción, número de serie, capacidad y la casilla, y NO hay selector de tipo", async () => {
+    renderDialog();
     await abrirDialog();
 
     expect(await screen.findByLabelText(/repuesto del catálogo/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/^tipo$/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/descripción/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/número de serie/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/capacidad/i)).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: /descontar del depósito/i })).toBeInTheDocument();
+    expect(screen.queryByLabelText(/^tipo$/i)).not.toBeInTheDocument();
   });
 
-  it("elegir un repuesto deshabilita el select de tipo y envía insumoId sin tipoComponenteCodigo", async () => {
-    let capturedBody: Record<string, unknown> = {};
-    server.use(
-      http.post(`/api/equipos/${EQUIPO_ID}/componentes`, async ({ request }) => {
-        capturedBody = (await request.json()) as Record<string, unknown>;
-        return HttpResponse.json({
-          id: "c9",
-          equipoId: EQUIPO_ID,
-          tipoComponenteCodigo: "MOUSE",
-          insumoId: "11111111-1111-4111-8111-111111111111",
-          descripcion: null,
-          numeroSerie: null,
-          capacidad: null,
-          activo: true,
-          deletedAt: null,
-          createdAt: "2026-01-01T00:00:00.000Z",
-          updatedAt: "2026-01-01T00:00:00.000Z",
-        });
-      }),
-    );
+  it("la casilla «Descontar del depósito» arranca marcada", async () => {
+    renderDialog();
+    await abrirDialog();
 
-    renderWithProviders(<ComponenteCreateDialog equipoId={EQUIPO_ID} />, {
-      user: buildUser({ permisos: ["equipo:gestionar"] }),
-    });
+    expect(await screen.findByRole("checkbox", { name: /descontar del depósito/i })).toBeChecked();
+  });
 
+  it("con la casilla marcada el POST lleva descontarStock: true explícito", async () => {
+    const post = capturarPost();
+    renderDialog();
     const user = await abrirDialog();
-    await user.selectOptions(
-      await screen.findByLabelText(/repuesto del catálogo/i),
-      "11111111-1111-4111-8111-111111111111",
-    );
-
-    expect(screen.getByLabelText(/^tipo$/i)).toBeDisabled();
-
+    await user.selectOptions(await screen.findByLabelText(/repuesto del catálogo/i), MOUSE_ID);
     await user.click(screen.getByRole("button", { name: /agregar$/i }));
 
-    await waitFor(() => expect(capturedBody.insumoId).toBe("11111111-1111-4111-8111-111111111111"));
-    expect(capturedBody.tipoComponenteCodigo).toBeUndefined();
+    await waitFor(() => expect(post.body().insumoId).toBe(MOUSE_ID));
+    expect(post.body().descontarStock).toBe(true);
+    expect(post.body()).not.toHaveProperty("tipoComponenteCodigo");
   });
 
-  it("envía descripción y número de serie al hacer POST (regresión: campos ausentes del payload)", async () => {
-    let capturedBody: Record<string, unknown> = {};
-    server.use(
-      http.post(`/api/equipos/${EQUIPO_ID}/componentes`, async ({ request }) => {
-        capturedBody = (await request.json()) as Record<string, unknown>;
-        return HttpResponse.json({
-          id: "c9",
-          equipoId: EQUIPO_ID,
-          tipoComponenteCodigo: "RAM",
-          descripcion: "Slot 2",
-          numeroSerie: "SN-999",
-          capacidad: "32GB",
-          activo: true,
-          deletedAt: null,
-          createdAt: "2026-01-01T00:00:00.000Z",
-          updatedAt: "2026-01-01T00:00:00.000Z",
-        });
-      }),
-    );
-
-    renderWithProviders(<ComponenteCreateDialog equipoId={EQUIPO_ID} />, {
-      user: buildUser({ permisos: ["equipo:gestionar"] }),
-    });
-
+  it("con la casilla desmarcada el POST lleva descontarStock: false explícito", async () => {
+    const post = capturarPost();
+    renderDialog();
     const user = await abrirDialog();
+    await user.selectOptions(await screen.findByLabelText(/repuesto del catálogo/i), MOUSE_ID);
+    await user.click(screen.getByRole("checkbox", { name: /descontar del depósito/i }));
+    await user.click(screen.getByRole("button", { name: /agregar$/i }));
 
-    await user.selectOptions(await screen.findByLabelText(/tipo/i), "RAM");
+    await waitFor(() => expect(post.body().insumoId).toBe(MOUSE_ID));
+    expect(post.body().descontarStock).toBe(false);
+  });
+
+  it("envía descripción, número de serie y capacidad en el POST", async () => {
+    const post = capturarPost();
+    renderDialog();
+    const user = await abrirDialog();
+    await user.selectOptions(await screen.findByLabelText(/repuesto del catálogo/i), MOUSE_ID);
     await user.type(screen.getByLabelText(/descripción/i), "Slot 2");
     await user.type(screen.getByLabelText(/número de serie/i), "SN-999");
     await user.type(screen.getByLabelText(/capacidad/i), "32GB");
     await user.click(screen.getByRole("button", { name: /agregar$/i }));
 
-    await waitFor(() => expect(capturedBody.tipoComponenteCodigo).toBe("RAM"));
-    expect(capturedBody.descripcion).toBe("Slot 2");
-    expect(capturedBody.numeroSerie).toBe("SN-999");
-    expect(capturedBody.descripcion).not.toBeUndefined();
-    expect(capturedBody.numeroSerie).not.toBeUndefined();
-    expect(capturedBody.capacidad).toBe("32GB");
+    await waitFor(() => expect(post.body().descripcion).toBe("Slot 2"));
+    expect(post.body().numeroSerie).toBe("SN-999");
+    expect(post.body().capacidad).toBe("32GB");
   });
 
-  it("el selector de tipo ofrece EXACTAMENTE el catálogo de tipos activos, sin opciones fuera de catálogo (a diferencia de ComponenteEditDialog)", async () => {
-    renderWithProviders(<ComponenteCreateDialog equipoId={EQUIPO_ID} />, {
-      user: buildUser({ permisos: ["equipo:gestionar"] }),
-    });
-
-    await abrirDialog();
-
-    await screen.findByRole("option", { name: /memoria ram/i });
-    // Acotado al select de "Tipo" con `within()`: el de "Repuesto del
-    // catálogo" (WU-3) también renderiza `<option>`s propias, y mezclarlas
-    // en un solo `getAllByRole` global rompería este pin sin que el
-    // catálogo de tipos haya cambiado.
-    const options = within(screen.getByLabelText(/^tipo$/i))
-      .getAllByRole("option")
-      .map((option) => option.textContent);
-    // Placeholder + exactamente los 2 tipos activos del mock — ningún tipo
-    // extra inyectado. Contraste deliberado con `ComponenteEditDialog`, que
-    // SÍ agrega una opción fuera de catálogo para el tipo actual dado de
-    // baja (ver docblock del componente). Un `toContain`/`arrayContaining`
-    // no alcanza acá: no puede fallar si se agrega una opción de más, solo
-    // si falta una — por eso pinea la lista completa con `toEqual`.
-    expect(options).toEqual(["Elegí un tipo", "Memoria RAM", "Disco rígido"]);
-  });
-
-  it("pide el catálogo con esRepuesto=true y soloVinculables=true, y el select de repuesto ofrece EXACTAMENTE ese catálogo (WU-3)", async () => {
+  it("pide el catálogo con esRepuesto=true y soloVinculables=true, y el select ofrece EXACTAMENTE ese catálogo", async () => {
     let capturedUrl: URL | undefined;
     server.use(
       http.get("/api/insumos", ({ request }) => {
@@ -235,118 +203,54 @@ describe("ComponenteCreateDialog", () => {
         return HttpResponse.json(repuestosParaQuery(capturedUrl));
       }),
     );
-
-    renderWithProviders(<ComponenteCreateDialog equipoId={EQUIPO_ID} />, {
-      user: buildUser({ permisos: ["equipo:gestionar"] }),
-    });
-
+    renderDialog();
     await abrirDialog();
 
     await screen.findByRole("option", { name: /mouse-001/i });
-    // Fija que `useInsumos(true, true)` de verdad pide REPUESTOS VINCULABLES
-    // (`esRepuesto=true&soloVinculables=true`) al servidor — sin este assert,
-    // un `useInsumos(true, true)` que significara otra cosa habría pasado
-    // desapercibido: el select mostraría lo que devuelva el mock, no
-    // necesariamente repuestos vinculables reales.
     expect(capturedUrl?.searchParams.get("esRepuesto")).toBe("true");
     expect(capturedUrl?.searchParams.get("soloVinculables")).toBe("true");
 
-    // Mismo criterio `toEqual` que el pin del select de "Tipo": un
-    // `toContain`/`arrayContaining` no alcanza, no puede fallar si se cuela
-    // una opción de más (por ejemplo un consumible), solo si falta una.
+    // `toEqual` y no `toContain`: atrapa a los DOS repuestos que el servidor
+    // excluye (insumo dado de baja y familia deshabilitada).
     const options = within(screen.getByLabelText(/repuesto del catálogo/i))
       .getAllByRole("option")
       .map((option) => option.textContent);
-    // El pin `toEqual` es el que atrapa a los DOS repuestos que el servidor
-    // excluye: TECLA-009 (`activo: false`) y AURI-004 (familia deshabilitada,
-    // el hallazgo que originó WU-3). Con un `toContain` cualquiera de los dos
-    // filtros podría desaparecer sin que nada se ponga rojo.
-    expect(options).toEqual(["Sin repuesto — cargar tipo a mano", "MOUSE-001 — Mouse óptico USB"]);
+    expect(options).toEqual(["Elegí un repuesto", "MOUSE-001 — Mouse óptico USB"]);
   });
 
-  it("enviar vacío muestra el error del refine y, al elegir un repuesto, el error desaparece (bug: setValue sin shouldValidate)", async () => {
-    renderWithProviders(<ComponenteCreateDialog equipoId={EQUIPO_ID} />, {
-      user: buildUser({ permisos: ["equipo:gestionar"] }),
-    });
-
+  it("enviar sin elegir repuesto muestra el error y no hace POST", async () => {
+    let posteado = false;
+    server.use(
+      http.post(`/api/equipos/${EQUIPO_ID}/componentes`, () => {
+        posteado = true;
+        return HttpResponse.json(COMPONENTE_RESPUESTA, { status: 201 });
+      }),
+    );
+    renderDialog();
     const user = await abrirDialog();
     await user.click(screen.getByRole("button", { name: /agregar$/i }));
 
-    expect(
-      await screen.findByText(/elegí un tipo de componente o un repuesto del catálogo/i),
-    ).toBeInTheDocument();
-
-    await user.selectOptions(
-      await screen.findByLabelText(/repuesto del catálogo/i),
-      "11111111-1111-4111-8111-111111111111",
-    );
-
-    // Sin `shouldValidate: true` en el `setValue` que limpia el tipo, el
-    // mensaje de error quedaba en pantalla — apuntando a un select que en
-    // ese momento está deshabilitado — aunque el formulario ya sea válido.
-    await waitFor(() =>
-      expect(
-        screen.queryByText(/elegí un tipo de componente o un repuesto del catálogo/i),
-      ).not.toBeInTheDocument(),
-    );
+    expect(await screen.findByText(/elegí un repuesto del catálogo/i)).toBeInTheDocument();
+    expect(posteado).toBe(false);
   });
 
   it("cierra el dialog cuando el POST tiene éxito", async () => {
-    server.use(
-      http.post(`/api/equipos/${EQUIPO_ID}/componentes`, () =>
-        HttpResponse.json({
-          id: "c9",
-          equipoId: EQUIPO_ID,
-          tipoComponenteCodigo: "RAM",
-          descripcion: null,
-          numeroSerie: null,
-          capacidad: null,
-          activo: true,
-          deletedAt: null,
-          createdAt: "2026-01-01T00:00:00.000Z",
-          updatedAt: "2026-01-01T00:00:00.000Z",
-        }),
-      ),
-    );
-
-    renderWithProviders(<ComponenteCreateDialog equipoId={EQUIPO_ID} />, {
-      user: buildUser({ permisos: ["equipo:gestionar"] }),
-    });
-
+    capturarPost();
+    renderDialog();
     const user = await abrirDialog();
-
-    await user.selectOptions(await screen.findByLabelText(/tipo/i), "RAM");
+    await user.selectOptions(await screen.findByLabelText(/repuesto del catálogo/i), MOUSE_ID);
     await user.click(screen.getByRole("button", { name: /agregar$/i }));
 
     await waitFor(() => expect(screen.queryByLabelText(/descripción/i)).not.toBeInTheDocument());
   });
 
-  it("al reabrir después de un alta previa, muestra los campos vacíos (reset al abrir)", async () => {
-    server.use(
-      http.post(`/api/equipos/${EQUIPO_ID}/componentes`, () =>
-        HttpResponse.json({
-          id: "c9",
-          equipoId: EQUIPO_ID,
-          tipoComponenteCodigo: "RAM",
-          descripcion: "Slot 2",
-          numeroSerie: "SN-999",
-          capacidad: "32GB",
-          activo: true,
-          deletedAt: null,
-          createdAt: "2026-01-01T00:00:00.000Z",
-          updatedAt: "2026-01-01T00:00:00.000Z",
-        }),
-      ),
-    );
-
-    renderWithProviders(<ComponenteCreateDialog equipoId={EQUIPO_ID} />, {
-      user: buildUser({ permisos: ["equipo:gestionar"] }),
-    });
-
+  it("al reabrir después de un alta previa, vuelve a los valores vigentes: campos vacíos y casilla marcada (reset al abrir)", async () => {
+    capturarPost();
+    renderDialog();
     const user = await abrirDialog();
-    await user.selectOptions(await screen.findByLabelText(/tipo/i), "RAM");
+    await user.selectOptions(await screen.findByLabelText(/repuesto del catálogo/i), MOUSE_ID);
     await user.type(screen.getByLabelText(/descripción/i), "Slot 2");
-    await user.type(screen.getByLabelText(/número de serie/i), "SN-999");
+    await user.click(screen.getByRole("checkbox", { name: /descontar del depósito/i }));
     await user.click(screen.getByRole("button", { name: /agregar$/i }));
 
     await waitFor(() => expect(screen.queryByLabelText(/descripción/i)).not.toBeInTheDocument());
@@ -356,29 +260,14 @@ describe("ComponenteCreateDialog", () => {
     expect(await screen.findByLabelText(/descripción/i)).toHaveValue("");
     expect(screen.getByLabelText(/número de serie/i)).toHaveValue("");
     expect(screen.getByLabelText(/capacidad/i)).toHaveValue("");
-    expect(screen.getByLabelText(/tipo/i)).toHaveValue("");
+    expect(screen.getByLabelText(/repuesto del catálogo/i)).toHaveValue("");
+    expect(screen.getByRole("checkbox", { name: /descontar del depósito/i })).toBeChecked();
   });
 
-  it("C6: al dar de alta con éxito, invalida ['equipo', equipoId] (refresco por invalidación, spec R4)", async () => {
-    server.use(
-      http.post(`/api/equipos/${EQUIPO_ID}/componentes`, () =>
-        HttpResponse.json({
-          id: "c9",
-          equipoId: EQUIPO_ID,
-          tipoComponenteCodigo: "RAM",
-          descripcion: null,
-          numeroSerie: null,
-          capacidad: null,
-          activo: true,
-          deletedAt: null,
-          createdAt: "2026-01-01T00:00:00.000Z",
-          updatedAt: "2026-01-01T00:00:00.000Z",
-        }),
-      ),
-    );
-
+  it("al dar de alta con éxito invalida el equipo, el stock y los movimientos del repuesto y el listado de insumos", async () => {
+    capturarPost();
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    queryClient.setQueryData(["equipo", EQUIPO_ID], { id: EQUIPO_ID, nombre: "Notebook" });
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
     const wrapper = ({ children }: { children: ReactNode }) => (
       <QueryClientProvider client={queryClient}>
         <SessionContext.Provider
@@ -392,45 +281,33 @@ describe("ComponenteCreateDialog", () => {
     render(<ComponenteCreateDialog equipoId={EQUIPO_ID} />, { wrapper });
 
     const user = await abrirDialog();
-    await user.selectOptions(await screen.findByLabelText(/tipo/i), "RAM");
+    await user.selectOptions(await screen.findByLabelText(/repuesto del catálogo/i), MOUSE_ID);
     await user.click(screen.getByRole("button", { name: /agregar$/i }));
 
-    await waitFor(() => expect(queryClient.getQueryState(["equipo", EQUIPO_ID])!.isInvalidated).toBe(true));
+    await waitFor(() => {
+      const claves = invalidate.mock.calls.map(([arg]) => JSON.stringify(arg?.queryKey));
+      expect(claves).toContain(JSON.stringify(["equipo", EQUIPO_ID]));
+      expect(claves).toContain(JSON.stringify(["insumo", MOUSE_ID, "stock"]));
+      expect(claves).toContain(JSON.stringify(["insumo", MOUSE_ID, "movimientos"]));
+      expect(claves).toContain(JSON.stringify(["insumos"]));
+    });
   });
 
-  it("deshabilita el botón «Agregar» mientras el POST está pendiente (evita doble submit, spec R1)", async () => {
+  it("deshabilita el botón «Agregar» mientras el POST está pendiente (evita doble submit)", async () => {
     server.use(
       http.post(`/api/equipos/${EQUIPO_ID}/componentes`, async () => {
         await delay(50);
-        return HttpResponse.json({
-          id: "c9",
-          equipoId: EQUIPO_ID,
-          tipoComponenteCodigo: "RAM",
-          descripcion: null,
-          numeroSerie: null,
-          capacidad: null,
-          activo: true,
-          deletedAt: null,
-          createdAt: "2026-01-01T00:00:00.000Z",
-          updatedAt: "2026-01-01T00:00:00.000Z",
-        });
+        return HttpResponse.json(COMPONENTE_RESPUESTA, { status: 201 });
       }),
     );
-
-    renderWithProviders(<ComponenteCreateDialog equipoId={EQUIPO_ID} />, {
-      user: buildUser({ permisos: ["equipo:gestionar"] }),
-    });
-
+    renderDialog();
     const user = await abrirDialog();
-    await user.selectOptions(await screen.findByLabelText(/tipo/i), "RAM");
+    await user.selectOptions(await screen.findByLabelText(/repuesto del catálogo/i), MOUSE_ID);
 
     const submitButton = screen.getByRole("button", { name: /agregar$/i });
     await user.click(submitButton);
 
     await waitFor(() => expect(submitButton).toBeDisabled());
-
-    // Deja resolver el POST (delay de 50ms) para no dejar una promesa
-    // pendiente al terminar el test.
     await waitFor(() => expect(screen.queryByLabelText(/descripción/i)).not.toBeInTheDocument());
   });
 });

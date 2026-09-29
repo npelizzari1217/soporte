@@ -4,9 +4,8 @@
  *
  * IMPORTANTE: archivo en infrastructure/ — puede importar de '.prisma/tenant'.
  *
- * PR4b (sdd/tipos-componente-master, contract): el dominio pasa a manejar
- * `tipoComponenteCodigo` — se quita `tipoComponenteId` (columna/relación
- * eliminadas del schema tenant en este mismo PR).
+ * Sin tipo: la columna `tipo_componente_codigo` se retiró del esquema tenant
+ * (sdd/catalogo-unico-componentes); el tipo se deriva de la familia del insumo.
  *
  * Tarea: T11.2.
  */
@@ -19,8 +18,7 @@ export class ComponenteEquipoMapper {
     return ComponenteEquipoEntity.reconstitute(
       {
         equipoId: row.equipoId,
-        tipoComponenteCodigo: row.tipoComponenteCodigo,
-        insumoId: row.insumoId ?? null,
+        insumoId: row.insumoId,
         descripcion: row.descripcion ?? null,
         numeroSerie: row.numeroSerie ?? null,
         capacidad: row.capacidad ?? null,
@@ -41,7 +39,6 @@ export class ComponenteEquipoMapper {
     return {
       id: entity.id,
       equipoId: entity.equipoId,
-      tipoComponenteCodigo: entity.tipoComponenteCodigo,
       insumoId: entity.insumoId,
       descripcion: entity.descripcion,
       numeroSerie: entity.numeroSerie,

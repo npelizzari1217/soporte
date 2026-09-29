@@ -100,8 +100,8 @@ describe('SectoresController (WU-07)', () => {
   // de metadata, borrar `@UseGuards(AdminClienteGuard)` de `editar` o de
   // `cambiarEstadoActivo` deja las 3131 pruebas del repo en verde — exacta
   // misma regresión que el commit ebe4164 (gate perdido de
-  // `GET /equipos/tipos-componente`). Mismo patrón que
-  // `tipos-componente.controller.spec.ts` (GUARDS_METADATA real, no mock).
+  // `GET /equipos/tipos-componente`). Se lee
+  // GUARDS_METADATA real, no un mock.
   describe('RBAC — metadata de guards (S64), por método, NUNCA a nivel de clase', () => {
     it.each([
       ['crear', true],

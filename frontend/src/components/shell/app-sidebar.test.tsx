@@ -88,12 +88,12 @@ describe("AppSidebar", () => {
     expect(after).not.toBe(before);
   });
 
-  it("ROOT (is_global_admin) → ve el header 'ROOT' y sus 3 ítems (Clientes, Ciclos, Tipos de componente)", () => {
+  it("ROOT (is_global_admin) → ve el header 'ROOT' y sus ítems (Clientes, Ciclos)", () => {
     renderWithUser(root);
     expect(screen.getByText("ROOT")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /clientes/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /^ciclos$/i })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /tipos de componente/i })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /tipos de componente/i })).not.toBeInTheDocument();
   });
 
   it("ADMINISTRADOR no-root → NO ve el header 'ROOT' ni sus ítems", () => {

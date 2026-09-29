@@ -23,7 +23,6 @@ import * as EquiposErrors from '../../domain/errors/equipos.errors';
 import {
   EquipoNoEncontradoError,
   NumeroSerieDuplicadoError,
-  TipoComponenteInactivoError,
   ComponenteNoEncontradoError,
   ComponenteDadoDeBajaError,
   ComponenteYaActivoError,
@@ -60,7 +59,6 @@ describe('EquiposController (T12.6)', () => {
     const eliminarComponenteUseCase = { execute: vi.fn() };
     const editarComponenteUseCase = { execute: vi.fn() };
     const reactivarComponenteUseCase = { execute: vi.fn() };
-    const listarTiposComponenteUseCase = { execute: vi.fn() };
     const exportarEquiposUseCase = { execute: vi.fn() };
     const instalarComponenteDesdeDepositoUseCase = { execute: vi.fn() };
 
@@ -74,7 +72,6 @@ describe('EquiposController (T12.6)', () => {
       eliminarComponenteUseCase as any,
       editarComponenteUseCase as any,
       reactivarComponenteUseCase as any,
-      listarTiposComponenteUseCase as any,
       exportarEquiposUseCase as any,
       instalarComponenteDesdeDepositoUseCase as any,
     );
@@ -90,7 +87,6 @@ describe('EquiposController (T12.6)', () => {
       eliminarComponenteUseCase,
       editarComponenteUseCase,
       reactivarComponenteUseCase,
-      listarTiposComponenteUseCase,
       exportarEquiposUseCase,
       instalarComponenteDesdeDepositoUseCase,
     };
@@ -136,13 +132,20 @@ describe('EquiposController (T12.6)', () => {
   });
 
   describe('GET /equipos/:id', () => {
+    it('un id que no es UUID (ruta retirada como tipos-componente) → 404 sin consultar', async () => {
+      const { controller, obtenerEquipoUseCase } = buildController();
+
+      await expect(controller.obtener('tipos-componente')).rejects.toThrow(NotFoundException);
+      expect(obtenerEquipoUseCase.execute).not.toHaveBeenCalled();
+    });
+
     it('retorna el equipo con componentes embebidos vacíos', async () => {
       const { controller, obtenerEquipoUseCase } = buildController();
       obtenerEquipoUseCase.execute.mockResolvedValue(
         Result.ok({ equipo: makeEquipo(), componentes: [] }),
       );
 
-      const result = await controller.obtener('equipo-uuid');
+      const result = await controller.obtener('0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b');
       expect(result.id).toBe('equipo-uuid');
       expect(result.componentes).toEqual([]);
     });
@@ -151,8 +154,7 @@ describe('EquiposController (T12.6)', () => {
       const { controller, obtenerEquipoUseCase } = buildController();
       const componente = ComponenteEquipoEntity.create({
         equipoId: 'equipo-uuid',
-        tipoComponenteCodigo: 'RAM',
-        insumoId: null,
+        insumoId: 'insumo-1',
         descripcion: '16GB',
         numeroSerie: null,
         capacidad: null,
@@ -164,7 +166,7 @@ describe('EquiposController (T12.6)', () => {
         }),
       );
 
-      const result = await controller.obtener('equipo-uuid');
+      const result = await controller.obtener('0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b');
       expect(result.componentes).toHaveLength(1);
       expect(result.componentes[0].descripcion).toBe('16GB');
       expect(result.componentes[0].tipoNombre).toBe('Memoria RAM');
@@ -177,7 +179,9 @@ describe('EquiposController (T12.6)', () => {
         Result.fail(new EquipoNoEncontradoError('no-existe')),
       );
 
-      await expect(controller.obtener('no-existe')).rejects.toThrow(NotFoundException);
+      await expect(controller.obtener('0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -210,137 +214,83 @@ describe('EquiposController (T12.6)', () => {
     });
   });
 
-  describe('POST /equipos/:id/componentes', () => {
-    it('agrega el componente', async () => {
-      const { controller, agregarComponenteUseCase } = buildController();
-      const componente = ComponenteEquipoEntity.create({
+  describe('POST /equipos/:id/componentes (un solo endpoint, ADR-1)', () => {
+    const actor = { sub: 'usuario-jwt-uuid' } as any;
+    const insumoId = '33333333-3333-4333-8333-333333333333';
+    const makeComponente = () =>
+      ComponenteEquipoEntity.create({
         equipoId: 'equipo-uuid',
-        tipoComponenteCodigo: 'RAM',
-        insumoId: null,
-        descripcion: null,
-        numeroSerie: null,
-        capacidad: null,
-      }).getValue();
-      agregarComponenteUseCase.execute.mockResolvedValue(Result.ok(componente));
-
-      const result = await controller.agregarComponente('equipo-uuid', {
-        tipoComponenteCodigo: 'RAM',
-      } as any);
-      expect(result.tipoComponenteCodigo).toBe('RAM');
-    });
-
-    /**
-     * El `insumoId` cruza la frontera HTTP por dos líneas —el `?? null` que
-     * lo pasa al caso de uso, y el campo del response DTO— y ninguna tenía
-     * assert: borrar cualquiera de las dos dejaba la suite entera en verde.
-     *
-     * El lado del response es el que muerde. `ComponenteEditDialog` decide
-     * con `componente.insumoId != null` si el select de tipo va
-     * deshabilitado; si el campo deja de llegar, ese guard se vuelve
-     * siempre falso EN SILENCIO, el select queda editable sobre un
-     * componente vinculado, y el usuario se come el 422
-     * `COMPONENTE_VINCULADO_TIPO_INMUTABLE` — exactamente el error que este
-     * work unit existe para evitarle.
-     */
-    it('el insumoId viaja al caso de uso Y vuelve en el response', async () => {
-      const { controller, agregarComponenteUseCase } = buildController();
-      const insumoId = '33333333-3333-4333-8333-333333333333';
-      const componente = ComponenteEquipoEntity.create({
-        equipoId: 'equipo-uuid',
-        tipoComponenteCodigo: 'MOUSE',
         insumoId,
         descripcion: null,
         numeroSerie: null,
         capacidad: null,
       }).getValue();
-      agregarComponenteUseCase.execute.mockResolvedValue(Result.ok(componente));
 
-      const result = await controller.agregarComponente('equipo-uuid', { insumoId } as any);
+    it('descontarStock omitido → instala desde el depósito; usuarioId sale del JWT, nunca del body', async () => {
+      const { controller, instalarComponenteDesdeDepositoUseCase, agregarComponenteUseCase } =
+        buildController();
+      instalarComponenteDesdeDepositoUseCase.execute.mockResolvedValue(Result.ok(makeComponente()));
 
-      expect(agregarComponenteUseCase.execute).toHaveBeenCalledWith(
-        expect.objectContaining({ insumoId }),
-      );
-      expect(result.insumoId).toBe(insumoId);
-    });
-
-    /**
-     * Gemelo invertido: sin `insumoId` en el body, el caso de uso lo recibe
-     * en `null` —no `undefined`— y el response lo devuelve en `null`. Sin
-     * este caso, el `?? null` del controller podría desaparecer sin que nada
-     * se ponga rojo.
-     */
-    it('sin insumoId en el body, el caso de uso lo recibe en null y el response lo devuelve null', async () => {
-      const { controller, agregarComponenteUseCase } = buildController();
-      const componente = ComponenteEquipoEntity.create({
-        equipoId: 'equipo-uuid',
-        tipoComponenteCodigo: 'RAM',
-        insumoId: null,
-        descripcion: null,
-        numeroSerie: null,
-        capacidad: null,
-      }).getValue();
-      agregarComponenteUseCase.execute.mockResolvedValue(Result.ok(componente));
-
-      const result = await controller.agregarComponente('equipo-uuid', {
-        tipoComponenteCodigo: 'RAM',
-      } as any);
-
-      expect(agregarComponenteUseCase.execute).toHaveBeenCalledWith(
-        expect.objectContaining({ insumoId: null }),
-      );
-      expect(result.insumoId).toBeNull();
-    });
-
-    it('tipo inactivo → 422', async () => {
-      const { controller, agregarComponenteUseCase } = buildController();
-      agregarComponenteUseCase.execute.mockResolvedValue(
-        Result.fail(new TipoComponenteInactivoError('RAM')),
-      );
-
-      await expect(
-        controller.agregarComponente('equipo-uuid', { tipoComponenteCodigo: 'RAM' } as any),
-      ).rejects.toThrow(UnprocessableEntityException);
-    });
-
-    it('declara @RequiereAcciones("EQUIPOS:ALTAS")', () => {
-      const meta = Reflect.getMetadata(ACCIONES_KEY, EquiposController.prototype.agregarComponente);
-      expect(meta).toEqual(['EQUIPOS:ALTAS']);
-    });
-  });
-
-  describe('POST /equipos/:id/componentes/instalar-desde-deposito (WU-4, issue #153)', () => {
-    const actor = { sub: 'usuario-jwt-uuid' } as any;
-
-    it('instala el componente: usuarioId sale del JWT (@CurrentUser), nunca del body', async () => {
-      const { controller, instalarComponenteDesdeDepositoUseCase } = buildController();
-      const componente = ComponenteEquipoEntity.create({
-        equipoId: 'equipo-uuid',
-        tipoComponenteCodigo: 'MOUSE',
-        insumoId: 'insumo-uuid',
-        descripcion: null,
-        numeroSerie: null,
-        capacidad: null,
-      }).getValue();
-      instalarComponenteDesdeDepositoUseCase.execute.mockResolvedValue(Result.ok(componente));
-
-      const result = await controller.instalarComponenteDesdeDeposito(actor, 'equipo-uuid', {
-        insumoId: 'insumo-uuid',
-        // Un `usuarioId` en el body no debería existir en el DTO tipado, pero
-        // `as any` simula un cliente que lo manda igual — el handler nunca lo
-        // lee de acá.
+      const result = await controller.agregarComponente(actor, 'equipo-uuid', {
+        insumoId,
+        // Un cliente que manda `usuarioId` igual: el handler nunca lo lee.
         usuarioId: 'usuario-suplantado',
       } as any);
 
       expect(instalarComponenteDesdeDepositoUseCase.execute).toHaveBeenCalledWith({
         equipoId: 'equipo-uuid',
-        insumoId: 'insumo-uuid',
+        insumoId,
         usuarioId: 'usuario-jwt-uuid',
         descripcion: null,
         numeroSerie: null,
         capacidad: null,
       });
-      expect(result.insumoId).toBe('insumo-uuid');
-      expect(result.tipoComponenteCodigo).toBe('MOUSE');
+      expect(agregarComponenteUseCase.execute).not.toHaveBeenCalled();
+      expect(result.insumoId).toBe(insumoId);
+    });
+
+    it('descontarStock true → instala desde el depósito', async () => {
+      const { controller, instalarComponenteDesdeDepositoUseCase, agregarComponenteUseCase } =
+        buildController();
+      instalarComponenteDesdeDepositoUseCase.execute.mockResolvedValue(Result.ok(makeComponente()));
+
+      await controller.agregarComponente(actor, 'equipo-uuid', {
+        insumoId,
+        descontarStock: true,
+      } as any);
+
+      expect(instalarComponenteDesdeDepositoUseCase.execute).toHaveBeenCalledTimes(1);
+      expect(agregarComponenteUseCase.execute).not.toHaveBeenCalled();
+    });
+
+    it('descontarStock false → agrega sin movimiento de stock', async () => {
+      const { controller, instalarComponenteDesdeDepositoUseCase, agregarComponenteUseCase } =
+        buildController();
+      agregarComponenteUseCase.execute.mockResolvedValue(Result.ok(makeComponente()));
+
+      const result = await controller.agregarComponente(actor, 'equipo-uuid', {
+        insumoId,
+        descontarStock: false,
+      } as any);
+
+      expect(agregarComponenteUseCase.execute).toHaveBeenCalledWith({
+        equipoId: 'equipo-uuid',
+        insumoId,
+        descripcion: null,
+        numeroSerie: null,
+        capacidad: null,
+      });
+      expect(instalarComponenteDesdeDepositoUseCase.execute).not.toHaveBeenCalled();
+      expect(result.insumoId).toBe(insumoId);
+    });
+
+    it('la respuesta no expone tipoComponenteCodigo (ADR-6)', async () => {
+      const { controller, instalarComponenteDesdeDepositoUseCase } = buildController();
+      instalarComponenteDesdeDepositoUseCase.execute.mockResolvedValue(Result.ok(makeComponente()));
+
+      const result = await controller.agregarComponente(actor, 'equipo-uuid', { insumoId } as any);
+
+      expect(result).not.toHaveProperty('tipoComponenteCodigo');
     });
 
     it('equipo inexistente → 404', async () => {
@@ -350,31 +300,42 @@ describe('EquiposController (T12.6)', () => {
       );
 
       await expect(
-        controller.instalarComponenteDesdeDeposito(actor, 'no-existe', {
-          insumoId: 'insumo-uuid',
-        } as any),
+        controller.agregarComponente(actor, 'no-existe', { insumoId } as any),
       ).rejects.toThrow(NotFoundException);
     });
 
-    it('stock insuficiente → 422 (StockInsuficienteError, sin mapeo explícito, cae en el default)', async () => {
+    it('stock insuficiente → 422 (StockInsuficienteError cae en el default)', async () => {
       const { controller, instalarComponenteDesdeDepositoUseCase } = buildController();
       instalarComponenteDesdeDepositoUseCase.execute.mockResolvedValue(
-        Result.fail(new StockInsuficienteError('insumo-uuid', 1, 0)),
+        Result.fail(new StockInsuficienteError(insumoId, 1, 0)),
       );
 
       await expect(
-        controller.instalarComponenteDesdeDeposito(actor, 'equipo-uuid', {
-          insumoId: 'insumo-uuid',
+        controller.agregarComponente(actor, 'equipo-uuid', { insumoId } as any),
+      ).rejects.toThrow(UnprocessableEntityException);
+    });
+
+    it('insumo inexistente sin descuento → 422', async () => {
+      const { controller, agregarComponenteUseCase } = buildController();
+      agregarComponenteUseCase.execute.mockResolvedValue(
+        Result.fail(new EquiposErrors.InsumoRepuestoInexistenteError(insumoId)),
+      );
+
+      await expect(
+        controller.agregarComponente(actor, 'equipo-uuid', {
+          insumoId,
+          descontarStock: false,
         } as any),
       ).rejects.toThrow(UnprocessableEntityException);
     });
 
-    it('declara @RequiereAcciones("EQUIPOS:ALTAS") — misma celda que agregar, decisión del issue #153', () => {
-      const meta = Reflect.getMetadata(
-        ACCIONES_KEY,
-        EquiposController.prototype.instalarComponenteDesdeDeposito,
-      );
+    it('declara @RequiereAcciones("EQUIPOS:ALTAS")', () => {
+      const meta = Reflect.getMetadata(ACCIONES_KEY, EquiposController.prototype.agregarComponente);
       expect(meta).toEqual(['EQUIPOS:ALTAS']);
+    });
+
+    it('la ruta instalar-desde-deposito ya no existe en el controller', () => {
+      expect((EquiposController.prototype as any).instalarComponenteDesdeDeposito).toBeUndefined();
     });
   });
 
@@ -405,8 +366,7 @@ describe('EquiposController (T12.6)', () => {
       const { controller, editarComponenteUseCase } = buildController();
       const componente = ComponenteEquipoEntity.create({
         equipoId: 'equipo-uuid',
-        tipoComponenteCodigo: 'RAM',
-        insumoId: null,
+        insumoId: 'insumo-1',
         descripcion: 'Editado',
         numeroSerie: null,
         capacidad: null,
@@ -417,6 +377,32 @@ describe('EquiposController (T12.6)', () => {
         descripcion: 'Editado',
       } as any);
       expect(result.descripcion).toBe('Editado');
+    });
+
+    it('un tipoComponenteCodigo o insumoId sobrantes no llegan al use case (ADR-2)', async () => {
+      const { controller, editarComponenteUseCase } = buildController();
+      const componente = ComponenteEquipoEntity.create({
+        equipoId: 'equipo-uuid',
+        insumoId: 'insumo-1',
+        descripcion: 'Editado',
+        numeroSerie: null,
+        capacidad: null,
+      }).getValue();
+      editarComponenteUseCase.execute.mockResolvedValue(Result.ok(componente));
+
+      await controller.editarComponente('equipo-uuid', 'componente-1', {
+        descripcion: 'Editado',
+        tipoComponenteCodigo: 'CPU',
+        insumoId: 'otro-insumo',
+      } as any);
+
+      expect(editarComponenteUseCase.execute).toHaveBeenCalledWith({
+        equipoId: 'equipo-uuid',
+        componenteId: 'componente-1',
+        descripcion: 'Editado',
+        numeroSerie: undefined,
+        capacidad: undefined,
+      });
     });
 
     it('componente dado de baja → 422', async () => {
@@ -452,8 +438,7 @@ describe('EquiposController (T12.6)', () => {
       const { controller, reactivarComponenteUseCase } = buildController();
       const componente = ComponenteEquipoEntity.create({
         equipoId: 'equipo-uuid',
-        tipoComponenteCodigo: 'RAM',
-        insumoId: null,
+        insumoId: 'insumo-1',
         descripcion: null,
         numeroSerie: null,
         capacidad: null,
@@ -461,7 +446,8 @@ describe('EquiposController (T12.6)', () => {
       reactivarComponenteUseCase.execute.mockResolvedValue(Result.ok(componente));
 
       const result = await controller.reactivarComponente('equipo-uuid', 'componente-1');
-      expect(result.tipoComponenteCodigo).toBe('RAM');
+      expect(result.id).toBeDefined();
+      expect(result).not.toHaveProperty('tipoComponenteCodigo');
     });
 
     it('componente ya activo → 422', async () => {
@@ -483,41 +469,6 @@ describe('EquiposController (T12.6)', () => {
       expect(meta).toEqual(['EQUIPOS:MODIFICACION']);
     });
   });
-
-  describe('GET /equipos/tipos-componente', () => {
-    it('lista los tipos de componente activos SIN requerir permiso de escritura', async () => {
-      const { controller, listarTiposComponenteUseCase } = buildController();
-      const tipo = { codigo: 'RAM', nombre: 'Memoria RAM' };
-      listarTiposComponenteUseCase.execute.mockResolvedValue(Result.ok([tipo]));
-
-      const result = await controller.listarTiposComponente();
-      expect(result).toHaveLength(1);
-      expect(result[0].codigo).toBe('RAM');
-    });
-
-    /**
-     * Fix W5 (post-verify). Este assert estaba INVERTIDO: exigía que la ruta
-     * NO declarara acciones, fijando en verde un hueco de autorización. Al
-     * reemplazar `ModulosGuard` por `AccionesGuard`, la ruta quedó sin gate
-     * (el guard nuevo sin metadata deja pasar, R3) y el `@RequireModulo`
-     * que la cubría vivía a nivel de clase: quedó abierta a cualquier
-     * autenticado del tenant, un ensanchamiento de acceso dentro de un
-     * cambio cuyo objetivo era el contrario.
-     *
-     * `EQUIPOS:LECTURA` restaura exactamente la población anterior: el
-     * backfill sembró esa celda a quien tenía el módulo EQUIPOS asignado.
-     * Sigue sin exigir permiso de ESCRITURA, que es lo que el test de arriba
-     * protege y lo que el catálogo read-only necesita para poblar el
-     * selector al agregar componentes.
-     */
-    it('[CRITICAL] declara @RequiereAcciones("EQUIPOS:LECTURA")', () => {
-      const meta = Reflect.getMetadata(
-        ACCIONES_KEY,
-        EquiposController.prototype.listarTiposComponente,
-      );
-      expect(meta).toEqual(['EQUIPOS:LECTURA']);
-    });
-  });
 });
 
 describe('EquiposController.exportar — GET /equipos/export (sdd/exportar-listados-csv)', () => {
@@ -535,7 +486,6 @@ describe('EquiposController.exportar — GET /equipos/export (sdd/exportar-lista
       stub() as any, // eliminarComponenteUseCase
       stub() as any, // editarComponenteUseCase
       stub() as any, // reactivarComponenteUseCase
-      stub() as any, // listarTiposComponenteUseCase
       exportarEquipos as any, // exportarEquiposUseCase
       stub() as any, // instalarComponenteDesdeDepositoUseCase
     );
@@ -610,24 +560,14 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
     (valor) => typeof valor === 'function' && valor.prototype instanceof DomainError,
   );
 
-  it('el catálogo tiene EXACTAMENTE 16 clases de error (12 previas + las 4 de WU-3 que siguen vigentes: InsumoRepuestoInexistente, InsumoNoEsRepuesto, FamiliaRepuestoDeshabilitada y ComponenteVinculadoTipoInmutable — RepuestoSinTipoEnCatalogo se eliminó en sdd/repuestos-autoridad-catalogo, ADR-4: sin el gate MASTER en el camino vinculado no queda ningún camino que la emita)', () => {
-    expect(CLASES_DE_ERROR).toHaveLength(16);
+  it('el catálogo tiene EXACTAMENTE 13 clases de error (16 previas menos TipoComponenteInactivo, ComponenteVinculadoTipoInmutable y TipoComponenteCodigoRequerido, retiradas en sdd/catalogo-unico-componentes WU-5 y WU-6)', () => {
+    expect(CLASES_DE_ERROR).toHaveLength(13);
   });
 
   const TABLA: Array<[string, () => DomainError, 404 | 422]> = [
     ['EquipoNoEncontradoError', () => new EquiposErrors.EquipoNoEncontradoError('equipo-1'), 404],
     ['EquipoInvalidoError', () => new EquiposErrors.EquipoInvalidoError('equipo-1'), 422],
     ['NumeroSerieDuplicadoError', () => new EquiposErrors.NumeroSerieDuplicadoError('SN-001'), 422],
-    [
-      'TipoComponenteCodigoRequeridoError',
-      () => new EquiposErrors.TipoComponenteCodigoRequeridoError(),
-      422,
-    ],
-    [
-      'TipoComponenteInactivoError',
-      () => new EquiposErrors.TipoComponenteInactivoError('RAM'),
-      422,
-    ],
     [
       'ComponenteNoEncontradoError',
       () => new EquiposErrors.ComponenteNoEncontradoError('componente-1'),
@@ -660,8 +600,8 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
     ],
     // Los dos de `modeloEquipoId` van a 422 y no a 404: lo que no existe (o no
     // se puede elegir) es un valor del BODY, no el recurso de la URL — mismo
-    // criterio que `TipoComponenteInactivoError`, que es el otro campo del
-    // payload que referencia un catálogo. Un 404 acá diría "el equipo no
+    // criterio que `insumoId`, que es otro campo del payload que referencia
+    // un catálogo. Un 404 acá diría "el equipo no
     // existe", que es otra cosa.
     [
       'ModeloEquipoInexistenteError',
@@ -674,7 +614,7 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
       422,
     ],
     // Los dos de `insumoId` (WU-3, sdd/repuestos-vinculo-componente) van a 422
-    // por el mismo criterio que los de `modeloEquipoId`/`tipoComponenteCodigo`:
+    // por el mismo criterio que los de `modeloEquipoId`:
     // un valor del BODY que referencia un catálogo, no el recurso de la URL.
     [
       'InsumoRepuestoInexistenteError',
@@ -688,14 +628,6 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
       'FamiliaRepuestoDeshabilitadaError',
       () =>
         new EquiposErrors.FamiliaRepuestoDeshabilitadaError('insumo-1', 'TORNILLO', 'Tornillos'),
-      422,
-    ],
-    // Editar `tipoComponenteCodigo` de un componente VINCULADO a un repuesto
-    // (WU-3, hallazgo de revisión automática): mismo criterio 422 que el
-    // resto de valores del BODY que referencian un catálogo.
-    [
-      'ComponenteVinculadoTipoInmutableError',
-      () => new EquiposErrors.ComponenteVinculadoTipoInmutableError('componente-1'),
       422,
     ],
   ];

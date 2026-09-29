@@ -10,8 +10,7 @@ describe('ReactivarComponenteUseCase', () => {
   function makeComponente() {
     return ComponenteEquipoEntity.create({
       equipoId: 'equipo-1',
-      tipoComponenteCodigo: 'RAM',
-      insumoId: null,
+      insumoId: 'insumo-1',
       descripcion: null,
       numeroSerie: null,
       capacidad: null,

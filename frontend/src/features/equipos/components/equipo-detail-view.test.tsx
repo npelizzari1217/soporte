@@ -26,7 +26,7 @@ const EQUIPO_DETALLE = {
     {
       id: "c1",
       equipoId: EQUIPO_ID,
-      tipoComponenteCodigo: "RAM",
+      insumoId: "11111111-1111-4111-8111-111111111111",
       tipoNombre: "Memoria RAM",
       tipoActivo: true,
       descripcion: "RAM 16GB",
@@ -43,7 +43,6 @@ const EQUIPO_DETALLE = {
 function mockBackend() {
   server.use(
     http.get(`/api/equipos/${EQUIPO_ID}`, () => HttpResponse.json(EQUIPO_DETALLE)),
-    http.get("/api/equipos/tipos-componente", () => HttpResponse.json([{ codigo: "RAM", nombre: "Memoria RAM" }])),
     http.get("/api/usuarios", () => HttpResponse.json([])),
   );
 }
@@ -80,21 +79,13 @@ describe("EquipoDetailView — consume componentes embebidos de GET /equipos/:id
     expect(screen.queryByRole("button", { name: /agregar componente/i })).not.toBeInTheDocument();
   });
 
-  /** WU-4 (sdd/repuestos-instalar-desde-deposito, issue #153): gate idéntico a "Agregar componente" (EQUIPOS:ALTAS). */
-  it("muestra «Instalar desde depósito» con EQUIPOS:ALTAS y lo oculta sin ese permiso", async () => {
-    const { unmount } = renderWithProviders(<EquipoDetailView equipoId={EQUIPO_ID} />, {
+  /** WU-8: un solo flujo de alta; el botón «Instalar desde depósito» ya no existe. */
+  it("no muestra «Instalar desde depósito»: hay un solo botón de alta", async () => {
+    renderWithProviders(<EquipoDetailView equipoId={EQUIPO_ID} />, {
       user: buildUser({ permisos: ["EQUIPOS:ALTAS"] }),
     });
 
-    expect(
-      await screen.findByRole("button", { name: /instalar desde depósito/i }),
-    ).toBeInTheDocument();
-    unmount();
-
-    renderWithProviders(<EquipoDetailView equipoId={EQUIPO_ID} />, {
-      user: buildUser({ permisos: [] }),
-    });
-    await screen.findByText("Notebook Dell");
+    expect(await screen.findAllByRole("button", { name: /agregar componente/i })).toHaveLength(1);
     expect(screen.queryByRole("button", { name: /instalar desde depósito/i })).not.toBeInTheDocument();
   });
 });

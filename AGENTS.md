@@ -205,7 +205,7 @@ TODOS los casos que entran acá?".
 | Parseo del valor tipeado | Rechaza un monto que acepta un blur después | `parsearNumeroEsAr` en `shared/lib/formato-numero` |
 | Vacío que se vuelve valor | `Number("")` es `0` y sobrescribe un acumulado | helper `numeroRequerido` en `compras/schemas` |
 | Sincronización del formulario | Reabrir muestra el dato del primer render | `if (next) reset(valoresVigentes)` — 16 diálogos |
-| Select con valor fuera de catálogo | La pantalla dice una cosa y se guarda otra | `tipoActualFueraDeCatalogo` en `componente-edit-dialog` |
+| Select con valor fuera de catálogo | La pantalla dice una cosa y se guarda otra | la prioridad en `ticket-edit-form` |
 | Topes de largo sin espejar | 500 crudo de Postgres, o 400 remoto por algo que se veía en pantalla | la constante en la entidad, importada por el DTO |
 
 Las cuatro primeras están cerradas. El select fuera de catálogo cerró sus 2 instancias
@@ -214,9 +214,10 @@ Las cuatro primeras están cerradas. El select fuera de catálogo cerró sus 2 i
 lista traída solo vale cuando esa lista YA resolvió, porque con el catálogo cargando o caído
 la ausencia no prueba nada.
 
-**Las cinco clases están cerradas.** Los 8 campos sin tope espejado se cerraron en las tres
-capas —edilicia (ubicación, descripción de subtarea), usuarios (nombre, apellido), tipos-componente
-(código, nombre), ciclos-master (nombre) y kb (título)—, más los campos de admin de
+**Las cinco clases están cerradas.** Los 6 campos sin tope espejado se cerraron en las tres
+capas —edilicia (ubicación, descripción de subtarea), usuarios (nombre, apellido), ciclos-master
+(nombre) y kb (título)—; los 2 de tipos-componente (código, nombre) dejaron de existir con el
+módulo retirado, más los campos de admin de
 `CreateClienteDto`, que escriben las mismas columnas que el ABM de usuarios.
 
 El mecanismo que las mantiene cerradas: **el número vive en la entidad de dominio y el DTO lo

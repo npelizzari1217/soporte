@@ -12,7 +12,7 @@
  * que `class-validator` mida nada, y `toUpperCase()` puede AGRANDAR el string
  * (`'ß'` → `'SS'`), así que medir el valor crudo dejaría pasar valores que se
  * expanden recién al persistir. Es el defecto que ya mordió a
- * `tipos-componente` en este repo.
+ * un catálogo ya retirado de este repo.
  */
 import {
   ArrayMaxSize,

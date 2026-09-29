@@ -72,8 +72,8 @@ export interface InstalarComponenteDesdeDepositoDto {
  * ## Mecanismo de atomicidad (S36)
  *
  * El componente se crea PRIMERO (reusando `AgregarComponenteUseCase.execute()`
- * completo — equipo existe, insumo elegible, familia `esRepuesto`+activa, y el
- * chequeo contra el catálogo MASTER — nada de eso se duplica acá) y la salida
+ * completo — equipo existe, insumo elegible y familia `esRepuesto`+activa —
+ * nada de eso se duplica acá) y la salida
  * se intenta SEGUNDO, dentro del mismo `txRunner.run()`: si la salida falla
  * (stock insuficiente, `StockInsuficienteError`), se LANZA `FalloSalidaDeStock`
  * para que Postgres revierta TAMBIÉN el componente recién creado — igual

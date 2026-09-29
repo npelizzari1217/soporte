@@ -7,13 +7,11 @@
  * autenticación):
  *   POST   /equipos                                           → CrearEquipoUseCase           `EQUIPOS:ALTAS`
  *   GET    /equipos                                           → ListarEquiposUseCase         `EQUIPOS:LECTURA`
- *   GET    /equipos/tipos-componente                          → ListarTiposComponenteUseCase `EQUIPOS:LECTURA`
  *   GET    /equipos/export                                    → ExportarEquiposUseCase       `EQUIPOS:LECTURA` (sdd/exportar-listados-csv)
  *   GET    /equipos/:id                                       → ObtenerEquipoUseCase         `EQUIPOS:LECTURA`
  *   PATCH  /equipos/:id                                       → EditarEquipoUseCase          `EQUIPOS:MODIFICACION`
  *   DELETE /equipos/:id                                       → EliminarEquipoUseCase        `EQUIPOS:BORRADO`
- *   POST   /equipos/:id/componentes                           → AgregarComponenteUseCase     `EQUIPOS:ALTAS`
- *   POST   /equipos/:id/componentes/instalar-desde-deposito   → InstalarComponenteDesdeDepositoUseCase `EQUIPOS:ALTAS`
+ *   POST   /equipos/:id/componentes                           → InstalarComponenteDesdeDepositoUseCase (descontarStock, por defecto) o AgregarComponenteUseCase (descontarStock=false) `EQUIPOS:ALTAS`
  *   DELETE /equipos/:id/componentes/:componenteId             → EliminarComponenteUseCase    `EQUIPOS:BORRADO`
  *   PATCH  /equipos/:id/componentes/:componenteId             → EditarComponenteUseCase      `EQUIPOS:MODIFICACION`
  *   PATCH  /equipos/:id/componentes/:componenteId/reactivar   → ReactivarComponenteUseCase   `EQUIPOS:MODIFICACION`
@@ -25,13 +23,7 @@
  * AUTORIZACIÓN: mientras miente, miente sobre quién puede escribir el
  * inventario.
  *
- * `GET /equipos/tipos-componente` se declara ANTES de `GET /equipos/:id` en
- * la clase para que Nest lo matchee como ruta estática y NO como
- * `id="tipos-componente"` (mismo criterio de orden que cualquier router
- * Express-like). El catálogo de tipos de componente es READ-ONLY (F3-Q3), pero
- * READ-ONLY no es lo mismo que ABIERTO: declara `EQUIPOS:LECTURA`, igual que
- * el listado. Estuvo un tiempo sin gate alguno —`AccionesGuard` sin metadata
- * deja pasar— y eso se cerró; el JSDoc del handler cuenta ese episodio.
+ * `GET /equipos/export` se declara ANTES de `GET /equipos/:id` (ver su JSDoc).
  *
  * Guards a nivel de controller: `JwtAuthGuard` + `TenantGuard` +
  * `AccionesGuard` (WU-7.3, sdd/matriz-permisos-por-usuario — reemplaza a
@@ -72,7 +64,6 @@ import { InstalarComponenteDesdeDepositoUseCase } from '../../application/use-ca
 import { EliminarComponenteUseCase } from '../../application/use-cases/eliminar-componente.use-case';
 import { EditarComponenteUseCase } from '../../application/use-cases/editar-componente.use-case';
 import { ReactivarComponenteUseCase } from '../../application/use-cases/reactivar-componente.use-case';
-import { ListarTiposComponenteUseCase } from '../../application/use-cases/listar-tipos-componente.use-case';
 import { ExportarEquiposUseCase } from '../../application/use-cases/exportar-equipos.use-case';
 
 import {
@@ -81,12 +72,9 @@ import {
   NumeroSerieDuplicadoError,
   ModeloEquipoInexistenteError,
   ModeloEquipoDeshabilitadoError,
-  TipoComponenteCodigoRequeridoError,
-  TipoComponenteInactivoError,
   ComponenteNoEncontradoError,
   ComponenteDadoDeBajaError,
   ComponenteYaActivoError,
-  ComponenteVinculadoTipoInmutableError,
   ExportacionDemasiadoGrandeError,
   InsumoRepuestoInexistenteError,
   InsumoNoEsRepuestoError,
@@ -101,13 +89,12 @@ import {
   EditarEquipoHttpDto,
   EquipoDetalleResponseDto,
   EquipoResponseDto,
-  InstalarComponenteDesdeDepositoHttpDto,
-  TipoComponenteResponseDto,
   toComponenteResponseDto,
   toEquipoDetalleResponseDto,
   toEquipoResponseDto,
-  toTipoComponenteResponseDto,
 } from '../dtos/equipos.dto';
+
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Mapea un `DomainError` de los use cases de equipos a la `HttpException` correspondiente. */
 export function toHttpException(
@@ -119,10 +106,8 @@ export function toHttpException(
   if (
     error instanceof EquipoInvalidoError ||
     error instanceof NumeroSerieDuplicadoError ||
-    error instanceof TipoComponenteCodigoRequeridoError ||
-    error instanceof TipoComponenteInactivoError ||
-    // `modeloEquipoId` es un valor del BODY que referencia un catálogo, igual
-    // que `tipoComponenteCodigo`: 422, no 404. Un 404 acá se leería como "el
+    // `modeloEquipoId` es un valor del BODY que referencia un catálogo:
+    // 422, no 404. Un 404 acá se leería como "el
     // equipo no existe", que es otra cosa.
     error instanceof ModeloEquipoInexistenteError ||
     error instanceof ModeloEquipoDeshabilitadoError ||
@@ -130,14 +115,10 @@ export function toHttpException(
     error instanceof ComponenteYaActivoError ||
     // `insumoId` es otro valor del BODY que referencia un catálogo (WU-3,
     // sdd/repuestos-vinculo-componente): mismo criterio 422 que
-    // `modeloEquipoId`/`tipoComponenteCodigo`.
+    // `modeloEquipoId`.
     error instanceof InsumoRepuestoInexistenteError ||
     error instanceof InsumoNoEsRepuestoError ||
     error instanceof FamiliaRepuestoDeshabilitadaError ||
-    // Editar `tipoComponenteCodigo` de un componente VINCULADO a un repuesto
-    // (WU-3, hallazgo de revisión automática): el valor rechazado viaja en el
-    // BODY, mismo criterio 422 que sus hermanos de esta lista.
-    error instanceof ComponenteVinculadoTipoInmutableError ||
     // Exportación a CSV (sdd/exportar-listados-csv, decisión D2): cae igual
     // en 422 por el default, pero se lista explícito como los demás — el
     // default existe para el error que NADIE mapeó, no para ahorrarse una
@@ -189,7 +170,6 @@ export class EquiposController {
     private readonly eliminarComponenteUseCase: EliminarComponenteUseCase,
     private readonly editarComponenteUseCase: EditarComponenteUseCase,
     private readonly reactivarComponenteUseCase: ReactivarComponenteUseCase,
-    private readonly listarTiposComponenteUseCase: ListarTiposComponenteUseCase,
     // Agregado al final (no reordena los anteriores) — mismo criterio que
     // `TicketsController.exportarTicketsUseCase`: evita reindexar los tests
     // existentes que instancian el controller con args posicionales.
@@ -241,34 +221,12 @@ export class EquiposController {
   }
 
   /**
-   * GET /equipos/tipos-componente
-   * Lista el catálogo READ-ONLY de tipos de componente activos (F3-Q3).
-   *
-   * Fix W5 (post-verify): al reemplazar `ModulosGuard` por `AccionesGuard`
-   * esta ruta se quedó SIN gate, porque el guard nuevo sin metadata deja
-   * pasar (R3) y el `@RequireModulo('EQUIPOS')` que la cubría vivía a nivel
-   * de clase. Quedaba abierta a cualquier autenticado del tenant: un
-   * ensanchamiento de acceso dentro de un cambio cuyo objetivo era el
-   * contrario. `EQUIPOS:LECTURA` restaura exactamente la población anterior,
-   * porque el backfill sembró esa celda a quien tenía el módulo asignado.
-   * Sigue SIN exigir permiso de escritura: el catálogo es read-only y hace
-   * falta para poblar el selector al agregar componentes.
-   */
-  @Get('tipos-componente')
-  @RequiereAcciones('EQUIPOS:LECTURA')
-  async listarTiposComponente(): Promise<TipoComponenteResponseDto[]> {
-    const result = await this.listarTiposComponenteUseCase.execute();
-    return result.getValue().map(toTipoComponenteResponseDto);
-  }
-
-  /**
    * GET /equipos/export
    * Exporta a CSV el inventario ACTIVO completo de equipos
    * (sdd/exportar-listados-csv) — sin filtros, por diseño (spec, capability
    * exportacion-equipos): cualquier query string que llegue se ignora.
    *
-   * **Va declarada ANTES de `GET /equipos/:id`, mismo criterio funcional que
-   * `GET /equipos/tipos-componente`** (design D6): Nest resuelve las rutas
+   * **Va declarada ANTES de `GET /equipos/:id`** (design D6): Nest resuelve las rutas
    * en el orden en que se registran y `:id` también matchea la palabra
    * literal `export`; declarada después, esta ruta sería inalcanzable.
    *
@@ -304,6 +262,12 @@ export class EquiposController {
   @Get(':id')
   @RequiereAcciones('EQUIPOS:LECTURA')
   async obtener(@Param('id') id: string): Promise<EquipoDetalleResponseDto> {
+    // Un id que no es UUID no puede existir: 404 en vez de dejar que la columna
+    // `uuid` de Postgres rompa con 500. Cubre las rutas retiradas que caen acá
+    // (p. ej. `GET /equipos/tipos-componente`).
+    if (!UUID_REGEX.test(id)) {
+      throw toHttpException(new EquipoNoEncontradoError(id));
+    }
     const result = await this.obtenerEquipoUseCase.execute({ equipoId: id });
     if (result.isFail()) {
       throw toHttpException(result.getError());
@@ -363,70 +327,39 @@ export class EquiposController {
 
   /**
    * POST /equipos/:id/componentes
-   * Agrega un componente físico al equipo. `insumoId` (WU-3, opcional) vincula
-   * un repuesto del catálogo — deriva `tipoComponenteCodigo` de su familia.
+   * Alta de un componente desde el catálogo de repuestos. `insumoId` es
+   * obligatorio y el tipo se deriva de la familia del repuesto. Con
+   * `descontarStock` omitido o `true`, registra en UNA transacción la SALIDA de
+   * 1 unidad y el alta (`InstalarComponenteDesdeDepositoUseCase`); con `false`
+   * solo agrega el componente (`AgregarComponenteUseCase`). `usuarioId` sale
+   * siempre de `JWT.sub` vía `@CurrentUser()`, nunca del body.
+   * @throws 400 `insumoId` ausente o inválido, `descontarStock` no booleano
    * @throws 404 equipo inexistente
-   * @throws 422 tipo de componente inexistente/inactivo, insumo inexistente,
-   *   insumo cuya familia no es de repuesto (es un consumible), o insumo
-   *   cuya familia SÍ es de repuesto pero está deshabilitada
+   * @throws 422 insumo inexistente/deshabilitado, familia que no es de
+   *   repuesto o deshabilitada, o stock insuficiente (con descuento)
    */
   @Post(':id/componentes')
   @RequiereAcciones('EQUIPOS:ALTAS')
   @HttpCode(HttpStatus.CREATED)
   async agregarComponente(
+    @CurrentUser() user: JwtPayload,
     @Param('id') id: string,
     @Body() dto: CreateComponenteHttpDto,
   ): Promise<ComponenteResponseDto> {
-    const result = await this.agregarComponenteUseCase.execute({
-      equipoId: id,
-      tipoComponenteCodigo: dto.tipoComponenteCodigo,
-      insumoId: dto.insumoId ?? null,
-      descripcion: dto.descripcion ?? null,
-      numeroSerie: dto.numeroSerie ?? null,
-      capacidad: dto.capacidad ?? null,
-    });
-
-    if (result.isFail()) {
-      throw toHttpException(result.getError());
-    }
-    return toComponenteResponseDto(result.getValue());
-  }
-
-  /**
-   * POST /equipos/:id/componentes/instalar-desde-deposito
-   *
-   * WU-4 (sdd/repuestos-instalar-desde-deposito, issue #153): en UNA sola
-   * transacción, registra la SALIDA de 1 unidad del repuesto elegido —con
-   * `equipoId` poblado, para trazabilidad real por primera vez— y crea el
-   * componente vinculado. O pasan las dos cosas, o no pasa ninguna.
-   *
-   * `usuarioId` sale SIEMPRE de `JWT.sub` vía `@CurrentUser()`, nunca del
-   * body — firma quién instaló el repuesto, mismo criterio que
-   * `MovimientosInsumoController`.
-   *
-   * @throws 404 equipo inexistente
-   * @throws 422 insumo inexistente/deshabilitado/borrado, familia no es de
-   *   repuesto o está deshabilitada, familia sin tipo en el catálogo MASTER
-   *   (mismos errores que `POST .../componentes`, WU-3), o stock insuficiente
-   *   (`StockInsuficienteError` — no mapeado explícito, cae en el 422 por
-   *   defecto, igual que en `MovimientosInsumoController`)
-   */
-  @Post(':id/componentes/instalar-desde-deposito')
-  @RequiereAcciones('EQUIPOS:ALTAS')
-  @HttpCode(HttpStatus.CREATED)
-  async instalarComponenteDesdeDeposito(
-    @CurrentUser() user: JwtPayload,
-    @Param('id') id: string,
-    @Body() dto: InstalarComponenteDesdeDepositoHttpDto,
-  ): Promise<ComponenteResponseDto> {
-    const result = await this.instalarComponenteDesdeDepositoUseCase.execute({
+    const datos = {
       equipoId: id,
       insumoId: dto.insumoId,
-      usuarioId: user.sub,
       descripcion: dto.descripcion ?? null,
       numeroSerie: dto.numeroSerie ?? null,
       capacidad: dto.capacidad ?? null,
-    });
+    };
+    const result =
+      (dto.descontarStock ?? true)
+        ? await this.instalarComponenteDesdeDepositoUseCase.execute({
+            ...datos,
+            usuarioId: user.sub,
+          })
+        : await this.agregarComponenteUseCase.execute(datos);
 
     if (result.isFail()) {
       throw toHttpException(result.getError());
@@ -456,8 +389,7 @@ export class EquiposController {
    * PATCH /equipos/:id/componentes/:componenteId
    * Edita un componente ACTIVO (listado enriquecido de componentes).
    * @throws 404 componente inexistente
-   * @throws 422 componente dado de baja, tipo de componente inexistente/inactivo,
-   *   o intento de cambiar el tipo de un componente vinculado a un repuesto
+   * @throws 422 componente dado de baja
    */
   @Patch(':id/componentes/:componenteId')
   @RequiereAcciones('EQUIPOS:MODIFICACION')
@@ -470,7 +402,6 @@ export class EquiposController {
     const result = await this.editarComponenteUseCase.execute({
       equipoId,
       componenteId,
-      tipoComponenteCodigo: dto.tipoComponenteCodigo,
       descripcion: dto.descripcion,
       numeroSerie: dto.numeroSerie,
       capacidad: dto.capacidad,
