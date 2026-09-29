@@ -59,7 +59,6 @@ describe('EquiposController (T12.6)', () => {
     const eliminarComponenteUseCase = { execute: vi.fn() };
     const editarComponenteUseCase = { execute: vi.fn() };
     const reactivarComponenteUseCase = { execute: vi.fn() };
-    const listarTiposComponenteUseCase = { execute: vi.fn() };
     const exportarEquiposUseCase = { execute: vi.fn() };
     const instalarComponenteDesdeDepositoUseCase = { execute: vi.fn() };
 
@@ -73,7 +72,6 @@ describe('EquiposController (T12.6)', () => {
       eliminarComponenteUseCase as any,
       editarComponenteUseCase as any,
       reactivarComponenteUseCase as any,
-      listarTiposComponenteUseCase as any,
       exportarEquiposUseCase as any,
       instalarComponenteDesdeDepositoUseCase as any,
     );
@@ -89,7 +87,6 @@ describe('EquiposController (T12.6)', () => {
       eliminarComponenteUseCase,
       editarComponenteUseCase,
       reactivarComponenteUseCase,
-      listarTiposComponenteUseCase,
       exportarEquiposUseCase,
       instalarComponenteDesdeDepositoUseCase,
     };
@@ -135,13 +132,20 @@ describe('EquiposController (T12.6)', () => {
   });
 
   describe('GET /equipos/:id', () => {
+    it('un id que no es UUID (ruta retirada como tipos-componente) → 404 sin consultar', async () => {
+      const { controller, obtenerEquipoUseCase } = buildController();
+
+      await expect(controller.obtener('tipos-componente')).rejects.toThrow(NotFoundException);
+      expect(obtenerEquipoUseCase.execute).not.toHaveBeenCalled();
+    });
+
     it('retorna el equipo con componentes embebidos vacíos', async () => {
       const { controller, obtenerEquipoUseCase } = buildController();
       obtenerEquipoUseCase.execute.mockResolvedValue(
         Result.ok({ equipo: makeEquipo(), componentes: [] }),
       );
 
-      const result = await controller.obtener('equipo-uuid');
+      const result = await controller.obtener('0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b');
       expect(result.id).toBe('equipo-uuid');
       expect(result.componentes).toEqual([]);
     });
@@ -162,7 +166,7 @@ describe('EquiposController (T12.6)', () => {
         }),
       );
 
-      const result = await controller.obtener('equipo-uuid');
+      const result = await controller.obtener('0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b');
       expect(result.componentes).toHaveLength(1);
       expect(result.componentes[0].descripcion).toBe('16GB');
       expect(result.componentes[0].tipoNombre).toBe('Memoria RAM');
@@ -175,7 +179,9 @@ describe('EquiposController (T12.6)', () => {
         Result.fail(new EquipoNoEncontradoError('no-existe')),
       );
 
-      await expect(controller.obtener('no-existe')).rejects.toThrow(NotFoundException);
+      await expect(controller.obtener('0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -463,41 +469,6 @@ describe('EquiposController (T12.6)', () => {
       expect(meta).toEqual(['EQUIPOS:MODIFICACION']);
     });
   });
-
-  describe('GET /equipos/tipos-componente', () => {
-    it('lista los tipos de componente activos SIN requerir permiso de escritura', async () => {
-      const { controller, listarTiposComponenteUseCase } = buildController();
-      const tipo = { codigo: 'RAM', nombre: 'Memoria RAM' };
-      listarTiposComponenteUseCase.execute.mockResolvedValue(Result.ok([tipo]));
-
-      const result = await controller.listarTiposComponente();
-      expect(result).toHaveLength(1);
-      expect(result[0].codigo).toBe('RAM');
-    });
-
-    /**
-     * Fix W5 (post-verify). Este assert estaba INVERTIDO: exigía que la ruta
-     * NO declarara acciones, fijando en verde un hueco de autorización. Al
-     * reemplazar `ModulosGuard` por `AccionesGuard`, la ruta quedó sin gate
-     * (el guard nuevo sin metadata deja pasar, R3) y el `@RequireModulo`
-     * que la cubría vivía a nivel de clase: quedó abierta a cualquier
-     * autenticado del tenant, un ensanchamiento de acceso dentro de un
-     * cambio cuyo objetivo era el contrario.
-     *
-     * `EQUIPOS:LECTURA` restaura exactamente la población anterior: el
-     * backfill sembró esa celda a quien tenía el módulo EQUIPOS asignado.
-     * Sigue sin exigir permiso de ESCRITURA, que es lo que el test de arriba
-     * protege y lo que el catálogo read-only necesita para poblar el
-     * selector al agregar componentes.
-     */
-    it('[CRITICAL] declara @RequiereAcciones("EQUIPOS:LECTURA")', () => {
-      const meta = Reflect.getMetadata(
-        ACCIONES_KEY,
-        EquiposController.prototype.listarTiposComponente,
-      );
-      expect(meta).toEqual(['EQUIPOS:LECTURA']);
-    });
-  });
 });
 
 describe('EquiposController.exportar — GET /equipos/export (sdd/exportar-listados-csv)', () => {
@@ -515,7 +486,6 @@ describe('EquiposController.exportar — GET /equipos/export (sdd/exportar-lista
       stub() as any, // eliminarComponenteUseCase
       stub() as any, // editarComponenteUseCase
       stub() as any, // reactivarComponenteUseCase
-      stub() as any, // listarTiposComponenteUseCase
       exportarEquipos as any, // exportarEquiposUseCase
       stub() as any, // instalarComponenteDesdeDepositoUseCase
     );

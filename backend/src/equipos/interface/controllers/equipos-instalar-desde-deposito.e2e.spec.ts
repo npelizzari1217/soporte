@@ -582,6 +582,17 @@ describe('Equipos e2e — instalar componente desde depósito (WU-4, issue #153)
       expect(await movimientosDe(insumoId)).toHaveLength(1);
     });
 
+    it('GET /equipos/tipos-componente ya no existe (catálogo MASTER retirado) → 404', async () => {
+      const actor = await crearActorConPermisos(['EQUIPOS:LECTURA']);
+
+      const { status } = await httpGet(
+        `${baseUrl}/equipos/tipos-componente`,
+        bearer(actor.accessToken),
+      );
+
+      expect(status).toBe(404);
+    });
+
     it('un tipoComponenteCodigo sobrante se ignora: el alta sale igual, vinculada al insumo', async () => {
       const { familiaId } = await crearFamiliaRepuesto();
       const unidadMedidaId = await crearUnidadMedida();

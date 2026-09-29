@@ -49,7 +49,6 @@ import {
   COMPONENTE_CAPACIDAD_MAX_LENGTH,
 } from '../../domain/entities/componente-equipo.entity';
 import { TicketSoporteEntity } from '../../domain/entities/ticket-soporte.entity';
-import { TipoComponenteCatalogoItem } from '../../application/use-cases/listar-tipos-componente.use-case';
 import { ComponenteEquipoConTipo } from '../../application/use-cases/obtener-equipo.use-case';
 import { EquipoDeTicketResultado } from '../../application/use-cases/obtener-equipo-de-ticket.use-case';
 
@@ -511,28 +510,4 @@ export function toEquipoDeTicketResponseDto(
   resultado: EquipoDeTicketResultado,
 ): EquipoDeTicketResponseDto {
   return { equipo: resultado.equipo };
-}
-
-/**
- * Shape de respuesta de un tipo de componente (catálogo read-only, F3-Q3).
- *
- * PR3 (sdd/tipos-componente-master): el catálogo se lee desde MASTER vía
- * `ITipoComponenteMasterChecker.listarActivos()`, que ya solo expone
- * `{codigo, nombre}` de los tipos ACTIVOS (el filtro `activo=true` ocurre en
- * la query) — sin `id` (MASTER no expone su UUID interno a este listado) ni
- * `activo` (siempre `true`, redundante).
- */
-export interface TipoComponenteResponseDto {
-  codigo: string;
-  nombre: string;
-}
-
-/** Convierte un item del catálogo MASTER al shape de respuesta HTTP. */
-export function toTipoComponenteResponseDto(
-  tipo: TipoComponenteCatalogoItem,
-): TipoComponenteResponseDto {
-  return {
-    codigo: tipo.codigo,
-    nombre: tipo.nombre,
-  };
 }
