@@ -1,7 +1,8 @@
 # deploy.ps1 - Deploy de soporte (rewrite, rama main) en el VPS Windows.
 # Idempotente, aborta ante el primer error. Correr como administrator (restart NSSM).
 # 100% ASCII (PS 5.1 lee .ps1 sin BOM como ANSI: un acento corrompe el parseo).
-# Ver DEPLOY-VPS-runbook.md para gotchas (pnpm 11 via corepack, hoist Prisma, BACKEND_URL en build).
+# Ver DEPLOY-VPS-runbook.md para gotchas (pnpm 11 via corepack, hoist Prisma,
+# BACKEND_URL en build, JWT_SECRET fuente unica).
 
 # Commit al que revertir si el deploy sale mal. Lo pasa la instancia PADRE al
 # re-ejecutarse (paso 3b). Sin esto, la hija recapturaba HEAD DESPUES del pull y
@@ -46,7 +47,7 @@ if (-not $env:Path.StartsWith($NodeDir + ';')) {
 
 function Step($msg) { Write-Host ("========== " + $msg + " ==========") -ForegroundColor Cyan }
 
-# Chequeo obligatorio despues de CADA comando nativo (git, corepack, node).
+# Chequeo obligatorio despues de CADA comando nativo (git, corepack, node, nssm).
 #
 # $ErrorActionPreference = 'Stop' NO detiene ante el exit code de un nativo:
 # solo atrapa errores de PowerShell. Sin esto, un paso puede fallar y el deploy
@@ -57,6 +58,48 @@ function AssertOk($que) {
   if ($LASTEXITCODE -ne 0) {
     throw ($que + " fallo (exit " + $LASTEXITCODE + "). El deploy se detiene: continuar dejaria el sistema a medias.")
   }
+}
+
+# Get-ValorUnicoEnv: lee un archivo .env y devuelve el valor de EXACTAMENTE una
+# linea "Clave=valor". Corta si hay cero lineas o mas de una - las dos son un
+# archivo mal formado, no un "no esta" silencioso -, y corta si el valor queda
+# vacio despues de sacar las comillas del borde (mismo trim que usa el loop de
+# carga de backend/.env de mas abajo).
+function Get-ValorUnicoEnv([string]$Ruta, [string]$Clave) {
+  $patron = '^' + [regex]::Escape($Clave) + '=(.*)$'
+  $coincidencias = @(Get-Content $Ruta) | Where-Object { $_ -match $patron }
+  if ($coincidencias.Count -ne 1) {
+    throw ($Ruta + " no tiene una sola linea " + $Clave + "= (encontradas: " + $coincidencias.Count + ").")
+  }
+  $null = $coincidencias[0] -match $patron
+  $valor = $Matches[1].Trim('"')
+  if (-not $valor) {
+    throw ($Ruta + " tiene " + $Clave + "= vacia.")
+  }
+  return $valor
+}
+
+# Merge-EntradasEnv: mezcla Clave=Valor en un array de lineas "Clave=Valor"
+# (como devuelve `nssm get <servicio> AppEnvironmentExtra`, una por linea). Si
+# Clave ya esta, la REEMPLAZA en su misma posicion (preserva el orden del
+# resto); si no esta, la agrega al final. Nunca toca ninguna otra entrada:
+# `nssm set` reemplaza la lista ENTERA, asi que perder una entrada existente
+# aca es perderla en el servicio real.
+function Merge-EntradasEnv([string[]]$Entradas, [string]$Clave, [string]$Valor) {
+  $nuevaLinea = $Clave + '=' + $Valor
+  $reemplazada = $false
+  $resultado = @(
+    foreach ($entrada in $Entradas) {
+      if ($entrada -match ('^' + [regex]::Escape($Clave) + '=')) {
+        $reemplazada = $true
+        $nuevaLinea
+      } else {
+        $entrada
+      }
+    }
+  )
+  if (-not $reemplazada) { $resultado = $resultado + $nuevaLinea }
+  return $resultado
 }
 
 Set-Location $RepoRoot
@@ -178,6 +221,49 @@ if ($env:EMAIL_CRYPTO_KEY) {
   Write-Host "IMPORTANTE: respaldala junto con la base. Sin ella, las contrasenas SMTP guardadas no se pueden descifrar." -ForegroundColor Yellow
 }
 
+# 5c. JWT_SECRET: backend/.env es la UNICA fuente. Hoy tambien existe en
+# frontend/.env.local y en una variable de entorno MACHINE vieja (una
+# asignacion persistente a nivel de sistema hecha en su momento). Los tres
+# valen lo mismo hoy. El build del frontend ya usaba la de backend/.env: el
+# paso 5 carga ese archivo en ESTE proceso pisando lo heredado, y
+# frontend/next.config.ts la hornea EN TIEMPO DE BUILD. El hueco era el
+# servicio NSSM del backend: su AppEnvironmentExtra no traia JWT_SECRET, asi
+# que heredaba la MACHINE, que dotenv/config (src/main.ts) no pisa. Si las dos
+# difieren, backend y frontend quedan con claves distintas y nadie puede
+# loguearse. Ademas los servicios de Windows
+# (sshd incluido, por donde corre este deploy) suelen no ver un cambio de
+# variable MACHINE hasta un reboot, asi que ni siquiera es confiable depender
+# de ella.
+#
+# La correccion: leer backend/.env y EMPUJAR ese valor al AppEnvironmentExtra
+# del servicio backend (el proximo arranque ya no depende de la MACHINE). Se
+# vuelve a fijar tambien en ESTE proceso, aunque el paso 5 ya lo hizo, para que
+# el build del frontend (paso 7) no dependa de ese loop generico. rotate-jwt.ps1 hace lo mismo al
+# rotar. Ninguna clave se imprime, solo su longitud.
+Step 'JWT_SECRET (fuente unica: backend/.env)'
+$jwtSecret = Get-ValorUnicoEnv $envFile 'JWT_SECRET'
+[System.Environment]::SetEnvironmentVariable('JWT_SECRET', $jwtSecret, 'Process')
+Write-Host ("JWT_SECRET cargado de backend/.env (len=" + $jwtSecret.Length + ")")
+
+$frontEnvFile = Join-Path $FrontDir '.env.local'
+if (Test-Path $frontEnvFile) {
+  $lineasJwtFront = @(Get-Content $frontEnvFile) | Where-Object { $_ -match '^JWT_SECRET=' }
+  if ($lineasJwtFront.Count -eq 1) {
+    $jwtFront = ($lineasJwtFront[0] -replace '^JWT_SECRET=', '').Trim('"')
+    if ($jwtFront -ne $jwtSecret) {
+      Write-Host "ADVERTENCIA: frontend/.env.local tiene un JWT_SECRET distinto al de backend/.env (no se imprime ninguno de los dos). Se ignora: el build usa el del proceso, cargado desde backend/.env." -ForegroundColor Yellow
+    }
+  }
+}
+
+$nssmSalidaCruda = @(& nssm get 'soporte-backend' AppEnvironmentExtra)
+AssertOk 'nssm get soporte-backend AppEnvironmentExtra'
+$nssmEntradasActuales = @($nssmSalidaCruda | ForEach-Object { ($_ -replace [char]0, '').Trim() } | Where-Object { $_ -ne '' })
+$nssmEntradasNuevas = Merge-EntradasEnv $nssmEntradasActuales 'JWT_SECRET' $jwtSecret
+& nssm set 'soporte-backend' AppEnvironmentExtra @nssmEntradasNuevas | Out-Null
+AssertOk 'nssm set soporte-backend AppEnvironmentExtra'
+Write-Host 'AppEnvironmentExtra de soporte-backend actualizado con JWT_SECRET (el resto de las variables se preserva).'
+
 # 6. Backend: generate + build (ANTES de migrar, ver nota de orden abajo)
 Set-Location $BackendDir
 Step 'Backend: prisma generate'
@@ -189,7 +275,8 @@ Step 'Backend: build'
 corepack pnpm run build
 AssertOk 'build del backend'
 
-# 7. Frontend: build (OJO: BACKEND_URL se hornea aca; debe valer .../api al buildear)
+# 7. Frontend: build (OJO: BACKEND_URL y JWT_SECRET se hornean aca; deben valer
+# lo correcto ANTES de este paso - ver 5c para JWT_SECRET)
 Set-Location $FrontDir
 Step 'Frontend: build'
 corepack pnpm run build
