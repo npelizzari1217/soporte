@@ -195,3 +195,88 @@ suiteFunciones('Get-ValorUnicoEnv y Merge-EntradasEnv (deploy.ps1) — runtime r
     ]);
   });
 });
+
+/**
+ * Test-JwtFrontendDistinto (deploy.ps1, paso 5c). Regresion del deploy del
+ * 2026-09-29: con los tres JWT_SECRET iguales (verificado por huella), el
+ * deploy igual advirtio que frontend/.env.local era distinto. Un filtro de
+ * PowerShell que devuelve UNA sola linea da un string, no un array, y `[0]`
+ * sobre un string es su primer caracter: se comparaba "J" contra la clave.
+ */
+const HARNESS_JWT_FRONT_PS1 = `
+param(
+  [Parameter(Mandatory=$true)][string]$RealScriptPath,
+  [Parameter(Mandatory=$true)][string]$Dir,
+  [Parameter(Mandatory=$true)][string]$OutJsonPath
+)
+$ErrorActionPreference = 'Stop'
+$tokens = $null
+$errors = $null
+$ast = [System.Management.Automation.Language.Parser]::ParseFile($RealScriptPath, [ref]$tokens, [ref]$errors)
+if ($errors.Count -gt 0) { throw 'Parse errors in real script' }
+$funcAst = $ast.Find({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Test-JwtFrontendDistinto' }, $true)
+if (-not $funcAst) { throw 'Test-JwtFrontendDistinto not found in real script' }
+Invoke-Expression $funcAst.Extent.Text
+
+$clave = 'ab' * 32
+$archivo = Join-Path $Dir 'front.env'
+Set-Content -Path $archivo -Encoding ascii -Value @('BACKEND_URL=http://localhost:3101/api', ('JWT_SECRET=' + $clave))
+$archivoComillas = Join-Path $Dir 'front-comillas.env'
+Set-Content -Path $archivoComillas -Encoding ascii -Value @(('JWT_SECRET="' + $clave + '"'))
+
+[pscustomobject]@{
+  igual = (Test-JwtFrontendDistinto $archivo $clave)
+  distinto = (Test-JwtFrontendDistinto $archivo ('cd' * 32))
+  igualConComillas = (Test-JwtFrontendDistinto $archivoComillas $clave)
+  sinArchivo = (Test-JwtFrontendDistinto (Join-Path $Dir 'no-existe.env') $clave)
+} | ConvertTo-Json | Set-Content -Path $OutJsonPath -Encoding utf8
+`;
+
+const suiteJwtFront = pwsh ? describe : describe.skip;
+
+suiteJwtFront('Test-JwtFrontendDistinto (deploy.ps1) — runtime real via pwsh', () => {
+  let r: { igual: boolean; distinto: boolean; igualConComillas: boolean; sinArchivo: boolean };
+
+  beforeAll(() => {
+    const dir = mkdtempSync(join(tmpdir(), 'deploy-ps1-jwt-front-'));
+    try {
+      const harnessPath = join(dir, 'harness.ps1');
+      const outJsonPath = join(dir, 'out.json');
+      writeFileSync(harnessPath, HARNESS_JWT_FRONT_PS1, 'ascii');
+      execFileSync(
+        pwsh as string,
+        [
+          '-NoProfile',
+          '-File',
+          harnessPath,
+          '-RealScriptPath',
+          PS1_PATH,
+          '-Dir',
+          dir,
+          '-OutJsonPath',
+          outJsonPath,
+        ],
+        { env: PWSH_ENV },
+      );
+      r = JSON.parse(readFileSync(outJsonPath, 'utf8'));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('con la misma clave NO advierte (la regresion: comparaba el primer caracter)', () => {
+    expect(r.igual).toBe(false);
+  });
+
+  it('con otra clave advierte', () => {
+    expect(r.distinto).toBe(true);
+  });
+
+  it('la misma clave entre comillas tampoco advierte', () => {
+    expect(r.igualConComillas).toBe(false);
+  });
+
+  it('sin frontend/.env.local no opina', () => {
+    expect(r.sinArchivo).toBe(false);
+  });
+});

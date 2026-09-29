@@ -67,7 +67,7 @@ function AssertOk($que) {
 # carga de backend/.env de mas abajo).
 function Get-ValorUnicoEnv([string]$Ruta, [string]$Clave) {
   $patron = '^' + [regex]::Escape($Clave) + '=(.*)$'
-  $coincidencias = @(Get-Content $Ruta) | Where-Object { $_ -match $patron }
+  $coincidencias = @(@(Get-Content $Ruta) | Where-Object { $_ -match $patron })
   if ($coincidencias.Count -ne 1) {
     throw ($Ruta + " no tiene una sola linea " + $Clave + "= (encontradas: " + $coincidencias.Count + ").")
   }
@@ -100,6 +100,17 @@ function Merge-EntradasEnv([string[]]$Entradas, [string]$Clave, [string]$Valor) 
   )
   if (-not $reemplazada) { $resultado = $resultado + $nuevaLinea }
   return $resultado
+}
+
+# Test-JwtFrontendDistinto: true si frontend/.env.local tiene UNA linea
+# JWT_SECRET= con un valor distinto de $Valor. Sin archivo, o con cero o varias
+# lineas, no opina (false): el build no lee ese archivo, usa el del proceso.
+function Test-JwtFrontendDistinto([string]$Ruta, [string]$Valor) {
+  if (-not (Test-Path $Ruta)) { return $false }
+  $lineasJwtFront = @(@(Get-Content $Ruta) | Where-Object { $_ -match '^JWT_SECRET=' })
+  if ($lineasJwtFront.Count -ne 1) { return $false }
+  $jwtFront = ($lineasJwtFront[0] -replace '^JWT_SECRET=', '').Trim('"')
+  return ($jwtFront -ne $Valor)
 }
 
 Set-Location $RepoRoot
@@ -246,14 +257,8 @@ $jwtSecret = Get-ValorUnicoEnv $envFile 'JWT_SECRET'
 Write-Host ("JWT_SECRET cargado de backend/.env (len=" + $jwtSecret.Length + ")")
 
 $frontEnvFile = Join-Path $FrontDir '.env.local'
-if (Test-Path $frontEnvFile) {
-  $lineasJwtFront = @(Get-Content $frontEnvFile) | Where-Object { $_ -match '^JWT_SECRET=' }
-  if ($lineasJwtFront.Count -eq 1) {
-    $jwtFront = ($lineasJwtFront[0] -replace '^JWT_SECRET=', '').Trim('"')
-    if ($jwtFront -ne $jwtSecret) {
-      Write-Host "ADVERTENCIA: frontend/.env.local tiene un JWT_SECRET distinto al de backend/.env (no se imprime ninguno de los dos). Se ignora: el build usa el del proceso, cargado desde backend/.env." -ForegroundColor Yellow
-    }
-  }
+if (Test-JwtFrontendDistinto $frontEnvFile $jwtSecret) {
+  Write-Host "ADVERTENCIA: frontend/.env.local tiene un JWT_SECRET distinto al de backend/.env (no se imprime ninguno de los dos). Se ignora: el build usa el del proceso, cargado desde backend/.env." -ForegroundColor Yellow
 }
 
 $nssmSalidaCruda = @(& nssm get 'soporte-backend' AppEnvironmentExtra)
