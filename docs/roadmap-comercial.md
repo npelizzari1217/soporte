@@ -4,9 +4,11 @@ Análisis del 2026-08-19. Compara el sistema contra Zendesk, Freshservice, GLPI 
 Jira Service Management, y prioriza qué falta para competir.
 
 **Estado: los seis puntos están resueltos — cinco entregados y uno diferido por
-decisión.** Actualizado el 2026-09-23 contra el código de `main` (`f438a10`),
+decisión.** Actualizado el 2026-09-29 contra el código de `main` (`bbc8f07`),
 archivo por archivo. Los puntos 1, 2, 3, 4 y 5 están entregados; el 6 sigue
-diferido. La Fase 0 está integrada y sus dos gates viven en `main`.
+diferido. La Fase 0 está integrada y sus dos gates viven en `main`. Desde el
+2026-09-29 la decisión de producto del punto 5 se cumple entera: el horario
+semanal pasó a ser por cliente.
 
 > **Este documento estuvo desactualizado tres semanas.** Daba por pendientes los
 > puntos 2, 3 y 4 y por inexistente el cambio de contraseña, con las cuatro cosas
@@ -25,7 +27,8 @@ fundación**, hoy terminada — ver "Fase 0" más abajo.
 
 Esto **no es un sistema de tickets**: es una suite de operaciones (tickets + SLA
 + inventario de equipos + mantenimiento edilicio + compras con aprobación +
-ayuda), multi-tenant y ya en producción con dos clientes.
+ayuda), multi-tenant y ya en producción: ocho clientes activos en el registro al
+2026-09-29.
 
 Eso cambia contra quién se compite:
 
@@ -87,6 +90,12 @@ para que el roadmap refleje el esfuerzo real, no solo el previsto.
 | **Cambio de contraseña propia** | 2026-08-21 (`dcbf73a`) | Carencia detectada al rotar la clave del admin de producción — ver la sección propia más abajo |
 | **Módulo de Insumos**: catálogo, kardex y recepción de compras | 2026-09-04 a 2026-09-09 (`ebd565e` a `db6da31`) | Pedido de producto posterior al análisis del 2026-08-19. **Es la entrega más grande del período** y no figuraba en este documento |
 | Compuerta issue-first de CI y `gates.yml` en verde | 2026-09-08 al 09 | La compuerta de calidad existía y nunca había pasado; ver el historial de PRs #119 a #132 |
+| Gates de CI partidos por ruta (`gates-backend.yml` / `gates-frontend.yml`) | 2026-09-23 (`1263213`, PR #211) | Las dos compuertas corrían en cada PR, tocara lo que tocara: de 30 jobs caros en los últimos 15 PRs, 16 corrían sobre código que el PR no podía romper. La cuenta agotó los 2.000 minutos mensuales del plan Free y el CI está caído desde el 2026-09-18 |
+| **Importación de datos legacy**: CLI en `backend/scripts/importacion-legacy/` | 2026-09-25 (`808c24c`; fix `d8d1b97`) | Traer los datos de un sistema anterior a la base de un cliente. El fix hace que un cliente no resuelto falle en voz alta en vez de importarse en silencio |
+| Filtro por ciclo en la lista de tickets | 2026-09-25 (`ed8beac`) | Pedido de operación |
+| **Vencimiento de SLA en tickets edilicios y de soporte** | 2026-09-25 (`7550c1c`, issue #244) | Esos dos casos de uso nunca publicaban `TicketCreadoEvent`, así que `sla_vence_at` quedaba siempre en `null`: los tickets que nacían por `POST /reparaciones` y `POST /soporte` no tenían SLA |
+| **Rotación de `EMAIL_CRYPTO_KEY`** con re-cifrado de las contraseñas SMTP | 2026-09-28 (`9857e1a`) | Era deuda técnica: rotar la clave sin re-cifrar dejaba indescifrable toda contraseña SMTP guardada. La rotación real en producción todavía no se corrió |
+| **Reseteo de contraseña olvidada** por mail | 2026-09-28 (`521aca3`) | Lo que la sección del cambio de contraseña dejó "para después" — ver más abajo |
 
 ### El módulo de Insumos
 
@@ -163,14 +172,15 @@ escribiéndolo es conflicto garantizado.
 
 Para no re-litigarlas al empezar cada punto.
 
-> **Contrastadas contra el código el 2026-09-09, y de nuevo el 2026-09-23.** La
-> del punto 2 se cumplió tal cual. La del punto 4 **se desvió y ya se corrigió**:
-> se había entregado reusando `MANTENIMIENTO`, y el issue #135 le dio al
-> preventivo su propio tipo `PREVENTIVO`. **La del punto 5 se cumplió a
-> medias**: el default 9-18 lun-vie, el arranque del reloj en la próxima ventana
-> hábil y, desde el ciclo `feriados-configurables` (issue #216), los feriados
-> por cliente están construidos; el **horario semanal** sigue siendo uno solo,
-> global, en la base master. Detalle en el punto siguiente.
+> **Contrastadas contra el código el 2026-09-09, el 2026-09-23 y el
+> 2026-09-29.** La del punto 2 se cumplió tal cual. La del punto 4 **se desvió
+> y ya se corrigió**: se había entregado reusando `MANTENIMIENTO`, y el issue
+> #135 le dio al preventivo su propio tipo `PREVENTIVO`. **La del punto 5 se
+> desvió y ya se corrigió**: se entregó con un horario semanal único y global en
+> la base master; el ciclo `feriados-configurables` (issue #216) sumó los
+> feriados por cliente y el ciclo `horario-laboral-por-cliente` (2026-09-29)
+> pasó el horario semanal a la base de cada cliente. Detalle en el punto
+> siguiente.
 >
 > Cada viñeta de abajo declara **Cumplida** o **Desviación**. No es adorno:
 > `scripts/check-roadmap-fresco.mjs` exige esa declaración para todo punto
@@ -194,7 +204,7 @@ Para no re-litigarlas al empezar cada punto.
   2026-09-09) lo corrigió: existe `TIPO_CODIGO_PREVENTIVO`
   (`backend/src/tickets/domain/tipos-ticket.constants.ts`), el seeder lo siembra
   por tenant y `AplicarSlaUseCase` excluye **por tipo**
-  (`aplicar-sla.use-case.ts:161`), no por prioridad.
+  (`aplicar-sla.use-case.ts:170`), no por prioridad.
 - **Punto 5** — calendario **por cliente** con default 9-18 lun-vie; feriados
   nacionales AR precargados en el seed más excepciones por cliente; un ticket
   abierto fuera de horario arranca el reloj en la **próxima ventana hábil**.
@@ -202,18 +212,21 @@ Para no re-litigarlas al empezar cada punto.
   - **Cumplida** — próxima ventana hábil: entregada el 2026-09-09
     (`calcular-sla-habil-vence.service.ts`).
   - **Cumplida** — feriados nacionales precargados más excepciones por cliente:
-    ciclo `feriados-configurables` (issue #216, 2026-09-24, en la rama
-    `feat/feriados-configurables`, todavía sin desplegar). Los nacionales
-    siguen en `feriados` (master) y ahora se administran desde
+    ciclo `feriados-configurables` (issue #216, integrado el 2026-09-24 en
+    `912140e`, en producción desde el deploy del 2026-09-29). Los nacionales
+    siguen en `feriados` (master) y se administran desde
     `/admin/feriados-globales` (solo ROOT); cada cliente carga los suyos en
     `feriados_cliente` de su propia base desde `/feriados` (su ADMINISTRADOR).
     El SLA hábil saltea la unión de ambos y nunca los de otro cliente
     (`prisma-feriados-laborales.repository.ts`).
-  - **Cumplida** — horario semanal por cliente: ciclo `horario-laboral-por-cliente`
-    (2026-09-29, rama `feat/horario-laboral-por-cliente-wu09`). El modelo 
-    `CalendarioLaboralDiaCliente` vive en la base de cada tenant, editable por
-    ADMINISTRADOR del cliente. El SLA hábil saltea la unión del horario global
-    (master, deprecado) y el propio del cliente (tenant).
+  - **Cumplida, después de una desviación corregida** — horario semanal por
+    cliente. La entrega del 2026-09-09 tenía un solo horario global en master.
+    El ciclo `horario-laboral-por-cliente` (integrado y en producción el
+    2026-09-29, `64555d6`) lo movió a `CalendarioLaboralDiaCliente`, en la base
+    de cada cliente, editable desde `/horario-laboral` por su ADMINISTRADOR. El
+    SLA hábil lee **solo** el horario del propio cliente, sin unión con master
+    (`prisma-calendario-laboral-semanal.repository.ts`), y la tabla master
+    `calendario_laboral_dias` se dropeó el mismo día.
 
 ### 1 · Exportar a Excel/CSV — Baja — **ENTREGADO**
 
@@ -240,7 +253,7 @@ CSV.
 
 > **Entregado** entre el 2026-08-22 (`d219b50`) y el 2026-09-04, tal como estaba
 > decidido. La relación N:N vive en `model ReparacionCompra`
-> (`backend/prisma_tenant/schema.prisma:494`), y "bloqueada" quedó como estado
+> (`backend/prisma_tenant/schema.prisma:503`), y "bloqueada" quedó como estado
 > **derivado**: `comprasQueBloquean()` en
 > `backend/src/reparaciones/domain/services/bloqueo-reparacion.ts:48` lo calcula
 > a demanda en vez de persistirlo. Los casos de uso de vincular y desvincular
@@ -304,7 +317,7 @@ y plantillas en `backend/src/notificaciones/`.
 > `TIPO_CODIGO_PREVENTIVO` en
 > `backend/src/tickets/domain/tipos-ticket.constants.ts`, el seeder de tenants lo
 > siembra, y `AplicarSlaUseCase` excluye **por tipo**
-> (`aplicar-sla.use-case.ts:161`) en vez de depender de la prioridad.
+> (`aplicar-sla.use-case.ts:170`) en vez de depender de la prioridad.
 >
 > **Este documento afirmó que la desviación seguía abierta hasta el 2026-09-23**,
 > dos semanas después de cerrada. Tercera afirmación vencida de la misma tanda
@@ -368,9 +381,10 @@ camino. La decisión "no recalculamos" se habría filtrado de a un ticket por ve
 > del cliente y lo manda dentro del `INSERT`. Mover la cohorte exige tocar las
 > dos.
 
-Lo que quedó fuera del alcance entregado: el **horario semanal** es uno solo para
-todos los inquilinos — ver la deuda técnica de abajo. Los feriados por cliente
-llegaron con el ciclo `feriados-configurables` (issue #216).
+Lo que quedó fuera del alcance de esa entrega —el **horario semanal** era uno
+solo para todos los inquilinos— se resolvió el 2026-09-29 con el ciclo
+`horario-laboral-por-cliente`. Los feriados por cliente llegaron antes, con el
+ciclo `feriados-configurables` (issue #216).
 
 ### 6 · Ticket por email entrante — Alta
 
@@ -403,7 +417,8 @@ como siempre.
 3. ~~Punto 4 — reusa infraestructura probada.~~ — **entregado** el 2026-09-05.
 4. ~~Punto 3.~~ — **entregado** el 2026-09-04.
 5. ~~**Punto 5 — es el siguiente, y el último que queda.**~~ — **entregado** el
-   2026-09-09 (PR #146), con la desviación del calendario global.
+   2026-09-09 (PR #146), con la desviación del calendario global, corregida el
+   2026-09-29.
 6. Punto 6 — diferido.
 
 **No queda ningún punto abierto.**
@@ -418,14 +433,14 @@ como siempre.
 > **Corrección del 2026-08-21.** Acá decía que "el ADMINISTRADOR de Cic Lanus no
 > tiene ningún permiso de módulo". **No es un bug y se baja del roadmap.**
 > `PRESETS_ROL.ADMINISTRADOR: []` es deliberado y está documentado en
-> `backend/src/auth/domain/presets-rol.ts:87`: `resolverScope` materializa TODOS
-> los pares válidos en el payload del JWT (ADR-P6, `resolver-scope.ts:137`). Y el
+> `backend/src/auth/domain/presets-rol.ts:98`: `resolverScope` materializa TODOS
+> los pares válidos en el payload del JWT (ADR-P6, `resolver-scope.ts:138`). Y el
 > endpoint que alimenta la grilla devuelve `celdas: []` junto a
 > `esAdministrador: true` a propósito, para que el frontend la pinte toda
 > tildada. Lo que se reportó fue, casi seguro, alguien mirando esa grilla vacía.
 >
 > Lo de `TICKETS:ASIGNAR` sí era real, pero **ya está en el preset TECNICO**
-> (`presets-rol.ts:62`): se resuelve regenerando el tenant, sin tocar código. Ojo
+> (`presets-rol.ts:71`): se resuelve regenerando el tenant, sin tocar código. Ojo
 > con un matiz: la política de datos descartables se acordó para el entorno
 > local. **Producción no se regenera** — sigue en el VPS con dos clientes reales,
 > así que ahí hay que cargarlo a mano o decidir explícitamente regenerar.
@@ -482,10 +497,10 @@ cabeza de alguien deja de existir cuando esa persona no está.
 
 | Qué | Por qué importa |
 |---|---|
-| **Regeneración reproducible del entorno — PARCIALMENTE RESUELTA el 2026-09-09.** La creación del contenedor **ya está documentada**: `README.md:278` trae el `docker run` completo y `pnpm entorno:verificar` / `pnpm entorno:regenerar` (`55be976`). Lo que sigue vivo es que `demo-seed.ts:278` **solo aplica preset al rol TECNICO** | Es el cimiento del que cuelga toda la política de datos descartables. Destruir y regenerar sale más barato que migrar **solo si el generador está sano y regenerar es un comando**. Falló dos veces el 2026-08-21: el seed reproduciría el hueco de permisos, y al perderse la base local el README arranca en "cuando haya una instancia de Postgres disponible" — justo después del paso que faltaba |
-| **El horario semanal y los feriados se configuran desde la pantalla.** El ciclo `feriados-configurables` (issue #216, rama `feat/feriados-configurables`, sin desplegar todavía) agregó el ABM de feriados globales (`/admin/feriados-globales`, solo ROOT) y por cliente (`/feriados`). El ciclo `horario-laboral-por-cliente` (2026-09-29) agregó `/horario-laboral`, editable por ADMINISTRADOR de cada cliente. Los feriados sembrados llegan hasta **2028** | Horario configurable desde 2026-09-29; feriados desde pending PR de `feriados-configurables`. Intervalo por día, editable sin escribir migraciones. |
+| **Regeneración reproducible del entorno — PARCIALMENTE RESUELTA el 2026-09-09.** La creación del contenedor **ya está documentada**: `README.md:280` trae el `docker run` completo y `pnpm entorno:verificar` / `pnpm entorno:regenerar` (`55be976`). Lo que sigue vivo es que `demo-seed.ts:278` **solo aplica preset al rol TECNICO** | Es el cimiento del que cuelga toda la política de datos descartables. Destruir y regenerar sale más barato que migrar **solo si el generador está sano y regenerar es un comando**. Falló dos veces el 2026-08-21: el seed reproduciría el hueco de permisos, y al perderse la base local el README arranca en "cuando haya una instancia de Postgres disponible" — justo después del paso que faltaba |
+| **Los feriados sembrados llegan hasta 2028.** El horario semanal y los feriados ya se configuran desde la pantalla: `feriados-configurables` (issue #216, `912140e`) agregó el ABM de feriados globales (`/admin/feriados-globales`, solo ROOT) y por cliente (`/feriados`), y `horario-laboral-por-cliente` agregó `/horario-laboral`. Las dos cosas están en producción desde el deploy del 2026-09-29 | Los nacionales de 2029 en adelante no existen hasta que un ROOT los cargue a mano desde `/admin/feriados-globales`. Sin eso, a partir de 2029 el SLA hábil cuenta los feriados nacionales como días laborables |
 | ~~**El horario semanal es global, no por cliente.** `CalendarioLaboralDia` (clave: solo `dia_semana`) vive en la base **master** (`backend/prisma_master/schema.prisma`), sin columna de cliente.~~ | **RESUELTA** el 2026-09-29. Ciclo `horario-laboral-por-cliente`: `CalendarioLaboralDiaCliente` en la base de cada tenant (un intervalo por día, editable por ADMINISTRADOR o ROOT). El SLA hábil lee solo el horario del propio cliente, sin unión con master; la tabla master `calendario_laboral_dias` se dropeó el mismo día (`20260929100000_drop_calendario_laboral_dias`). |
-| ~~**672 `as never`/`as any` en 121 specs**, creciendo sin freno~~ | **CONGELADA** el 2026-09-23 por `scripts/check-casts-en-specs.mjs` (issue #212): un ratchet que falla si el número sube, y también si baja sin actualizar su línea base. Hoy son **693 en 123 archivos**, todos en `backend/`; frontend está en cero. Convertirlos a mocks completos sigue pendiente, pero ya no puede empeorar. **Corrección de método**: la versión anterior de esta fila decía "eran 301 en 83 specs, hoy 672 en 121 — se duplicó en tres semanas". Los dos números medían cosas distintas: el 301 era **solo `as never`** y el 672 era **`as never` + `as any`**. El crecimiento real del combinado fue **527 → 693 en 33 días, +31%** — real y sostenido, pero no una duplicación. Un número mantenido a mano no solo envejece: puede nacer mal |
+| **`as never`/`as any` en specs: el ratchet está en ROJO** | `scripts/check-casts-en-specs.mjs` (issue #212) se instaló el 2026-09-23 con base **693 en 123 archivos**, todos en `backend/`, y frontend en cero. Es un ratchet: falla si el número sube, y también si baja sin actualizar su línea base. **Medido el 2026-09-29: 759 en 136 archivos**, así que el check falla. Subió igual porque no corre en ningún lado donde frene un merge: las integraciones de la semana fueron merges locales, y el CI de GitHub Actions está caído desde el 2026-09-18 por falta de minutos. Hay que bajar los casts nuevos o, si son legítimos, actualizar la línea base con su motivo; lo que no corresponde es dejarlo en rojo. Convertirlos a mocks completos sigue pendiente. Convertirlos a mocks completos sigue pendiente, pero ya no puede empeorar. **Corrección de método**: la versión anterior de esta fila decía "eran 301 en 83 specs, hoy 672 en 121 — se duplicó en tres semanas". Los dos números medían cosas distintas: el 301 era **solo `as never`** y el 672 era **`as never` + `as any`**. El crecimiento real del combinado fue **527 → 693 en 33 días, +31%** — real y sostenido, pero no una duplicación. Un número mantenido a mano no solo envejece: puede nacer mal |
 | ~~123 errores de tipos escondidos tras la exclusión `**/*.spec.ts`~~ | **RESUELTO** el 2026-08-21 (Fase 0, carril A). El gate quedó instalado y probado: un error de tipo en un spec ahora rompe `pnpm typecheck` |
 | ~~Render de fechas del frontend~~ | **RESUELTO** el 2026-08-21 (Fase 0, carril B). Un solo módulo formatea fechas, con regla de lint que impide una séptima copia |
 | ~~**Rotación de `EMAIL_CRYPTO_KEY`**: no existe herramienta~~ | ~~Rotarla sin re-cifrar convierte TODA contraseña SMTP guardada en basura indescifrable. El payload lleva prefijo `v1:` justamente para permitir una migración de re-cifrado, pero esa migración no está escrita~~ **RESUELTA** el 2026-09-28. El ciclo `rotacion-email-crypto-key` entrega el script Node + `.ps1` operativo + runbook + tests end to end (referencias `openspec/changes/archive/2026-09-28-rotacion-email-crypto-key/`)|
@@ -497,6 +512,6 @@ cabeza de alguien deja de existir cuando esa persona no está.
 
 ## Nota
 
-El multi-tenant ya está resuelto y funcionando con dos clientes. Eso es lo caro
+El multi-tenant ya está resuelto y funcionando con ocho clientes activos. Eso es lo caro
 de un SaaS y ya está hecho: sumar el cliente número diez no cuesta trabajo de
 infraestructura.
