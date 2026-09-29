@@ -2,6 +2,7 @@ import * as nodemailer from 'nodemailer';
 import { EmailMessage, IEmailSender } from '../../../shared/domain/ports/i-email-sender';
 import { ILogger } from '../../../shared/domain/ports/i-logger.port';
 import { maskEmail } from '../../domain/util/mask-email';
+import { codigoSmtpParaLog, statusSmtpParaLog } from './smtp-error';
 
 /** Configuración de conexión SMTP (N1) — leída de env SMTP_* por el factory. */
 export interface SmtpConfig {
@@ -22,7 +23,7 @@ export interface SmtpConfig {
  * hace fail-fast en el arranque de la app.
  *
  * `send()` envuelve el envío real en try/catch log-and-swallow (enmascarado,
- * N5): un SMTP caído/credenciales inválidas NUNCA se propaga al caller (los
+ * N5, y sin el mensaje crudo del servidor: ver `smtp-error.ts`): un SMTP caído/credenciales inválidas NUNCA se propaga al caller (los
  * listeners de notificaciones, que a su vez tampoco deben propagar hacia el
  * emisor del evento de dominio).
  *
@@ -56,8 +57,11 @@ export class SmtpEmailSender implements IEmailSender {
       // log-and-swallow (N2): un fallo de transporte (SMTP caído, auth
       // inválida) NUNCA debe propagarse — se atrapa+loguea acá y el listener
       // que llamó a send() sigue su propio try/catch total sin ver el error.
-      const mensaje = error instanceof Error ? error.message : 'error desconocido';
-      this.logger.log(`EMAIL_SMTP_ERROR | to=${maskEmail(msg.to)} | error=${mensaje}`);
+      // Nunca el `error.message`: muchos servidores devuelven el usuario dentro
+      // de la respuesta 535. Solo el code (allowlist) y el status SMTP numerico.
+      this.logger.log(
+        `EMAIL_SMTP_ERROR | to=${maskEmail(msg.to)} | code=${codigoSmtpParaLog(error)} | smtp=${statusSmtpParaLog(error)}`,
+      );
     }
   }
 }

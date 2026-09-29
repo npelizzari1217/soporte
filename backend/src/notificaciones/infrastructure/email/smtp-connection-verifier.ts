@@ -22,6 +22,7 @@ import {
   IEmailConnectionVerifier,
   VerificationResult,
 } from '../../../shared/domain/ports/i-email-connection-verifier.port';
+import { extractErrorCode } from './smtp-error';
 
 const CONNECTION_TIMEOUT_MS = 10_000;
 const GREETING_TIMEOUT_MS = 10_000;
@@ -36,14 +37,6 @@ const SANITIZED_REASONS: Readonly<Record<string, string>> = {
 };
 
 const DEFAULT_REASON = 'Fallo de verificación';
-
-function extractErrorCode(error: unknown): string | undefined {
-  if (error && typeof error === 'object' && 'code' in error) {
-    const code = (error as { code: unknown }).code;
-    return typeof code === 'string' ? code : undefined;
-  }
-  return undefined;
-}
 
 export class SmtpConnectionVerifier implements IEmailConnectionVerifier {
   async verify(config: EmailConnectionConfig): Promise<VerificationResult> {
