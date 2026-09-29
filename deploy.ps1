@@ -203,28 +203,6 @@ Get-Content $envFile | ForEach-Object {
 }
 if (-not $env:DATABASE_URL_MASTER) { throw "backend/.env sin DATABASE_URL_MASTER" }
 
-# 5a. Precondicion: componentes de equipo sin repuesto (sdd/catalogo-unico-componentes).
-#
-# La migracion tenant que deja componentes_equipo.insumo_id en NOT NULL ABORTA si
-# queda una sola fila con insumo_id NULL, borradas logicas incluidas. Como los
-# builds van ANTES de migrar y los servicios se detienen recien despues, medir
-# aca (solo lectura, sin argumentos) deja el deploy cortado con dist/ y los
-# servicios intactos, en vez de a mitad de la ventana de migracion.
-#
-# El script es Node directo (pg, sin dist/) y toma DATABASE_URL_MASTER del
-# entorno ya cargado en el paso 5. Sin flags reporta y sale: exit 0 = nada que
-# limpiar, exit 2 = quedan filas (mensaje propio), otro = error (AssertOk). Un
-# comando nativo no aborta por si solo.
-# Precondicion transitoria: se retira en un cambio posterior (ver runbook).
-Set-Location $BackendDir
-Step 'Precondicion: componentes sin repuesto'
-& $NodeExe scripts/limpiar-componentes-sin-insumo.mjs
-if ($LASTEXITCODE -eq 2) {
-  throw "Quedan componentes de equipo sin repuesto (insumo_id NULL): la migracion tenant abortaria. El deploy se detiene con dist/ y los servicios intactos. Limpiar con 'scripts/limpiar-componentes-sin-insumo.mjs --apply --esperadas=N' (runbook: 'Precondicion: componentes sin repuesto') y re-correr deploy.ps1."
-}
-AssertOk 'limpiar-componentes-sin-insumo (precondicion de componentes sin repuesto)'
-Set-Location $RepoRoot
-
 # 5b. EMAIL_CRYPTO_KEY: cifra en reposo la contrasena SMTP de cada cliente.
 #
 # SE GENERA UNA SOLA VEZ. Si ya existe NO se toca, y eso NO es una

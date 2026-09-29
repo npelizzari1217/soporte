@@ -922,7 +922,8 @@ model ComponenteEquipo {
   /// FK real → `insumos.id`, obligatoria (sdd/catalogo-unico-componentes): el
   /// componente sale siempre del catálogo de repuestos y su tipo se deriva de
   /// la familia del insumo. La migración `componentes_insumo_obligatorio` aborta
-  /// si quedan filas sin vínculo (ver `scripts/limpiar-componentes-sin-insumo.mjs`).
+  /// si quedan filas sin vínculo (aplicada en todos los tenants el 2026-09-29; el
+  /// script de limpieza que la acompañaba se retiró el 2026-09-30).
   ///
   /// `onDelete: Restrict`: un repuesto referenciado por un componente no se
   /// puede borrar por debajo sin que la base lo frene (`insumos` solo tiene
