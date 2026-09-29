@@ -1,0 +1,25 @@
+change: horario-laboral-por-cliente
+phase: apply
+artifact_store: openspec
+artifacts:
+  proposal: true
+  specs: true
+  design: true
+  tasks: true
+tasks_progress:
+  completed:
+    - wu01
+    - wu01b
+    - wu02
+    - wu03
+    - wu04
+    - wu05
+    - wu06a
+    - wu06b
+    - wu07
+    - wu08a
+    - wu08b
+    - wu09
+  pending: []
+last_updated: 2026-09-29
+last_completed_wu: wu09

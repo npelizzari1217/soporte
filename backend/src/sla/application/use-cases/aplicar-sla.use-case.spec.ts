@@ -437,7 +437,8 @@ describe('AplicarSlaUseCase', () => {
     });
 
     /**
-     * Requisito explícito del WU: si el calendario/feriados de MASTER falla
+     * Requisito explícito del WU: si el calendario (tenant, desde
+     * `horario-laboral-por-cliente`) o los feriados (MASTER + cliente) fallan
      * (puerto que lanza, WU-2), NO hay fallback silencioso a la regla vieja
      * (24/7). El error debe propagarse — `setSlaVenceAt` nunca se llama con
      * un vencimiento calculado por `CalcularSlaVenceService`. El listener

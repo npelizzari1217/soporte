@@ -484,16 +484,12 @@ model KbArticulo {
   @@map("kb_articulos")
 }
 
-// ─── CALENDARIO_LABORAL_DIAS (calendario laboral global, sdd/sla-habil) ──────
+// ─── CALENDARIO_LABORAL_DIAS (DEPRECADA desde `horario-laboral-por-cliente`) ─
 //
-// UNA sola configuración compartida por todos los tenants: el SLA se cuenta
-// en horas hábiles y el horario laboral es el mismo sin importar el cliente
-// (ADR-1, sdd/sla-habil/design). Vive en MASTER por el mismo motivo que
-// `kb_articulos`: un dato genuinamente global no se duplica por tenant.
-//
-// Tabla de 7 FILAS FIJAS, sembradas por la migración `seed_calendario_laboral_default`
-// — el ABM (WU-6) solo hace UPDATE, nunca INSERT ni DELETE. Elimina de raíz el
-// caso "falta la fila del jueves".
+// DEPRECADA desde `horario-laboral-por-cliente`: sin lectores, red de
+// rollback, no dropear. El horario laboral pasó a ser por cliente
+// (`calendario_laboral_dias_cliente`, `prisma_tenant/schema.prisma`); esta
+// tabla queda como respaldo de rollback y por eso no se dropea.
 //
 // `diaSemana` 0..6 = domingo..sábado, mismo criterio que `Date.getUTCDay()`.
 // `aperturaMinuto`/`cierreMinuto` en minutos desde la medianoche local,
@@ -503,9 +499,6 @@ model KbArticulo {
 // El invariante (ambos NULL, o ambos no-NULL con apertura < cierre) se
 // enforcea con un CHECK raw SQL en la migración — Prisma no expresa CHECK en
 // el schema declarativo. Ver `calendario_laboral_dias_ventana_check`.
-//
-// ABM (edición) ROOT-only, fuera de la matriz de permisos por cliente
-// (ADR-5): se implementa en WU-6/WU-7 — acá solo el modelo.
 
 model CalendarioLaboralDia {
   diaSemana      Int      @id @map("dia_semana") @db.SmallInt
@@ -520,7 +513,10 @@ model CalendarioLaboralDia {
 // ─── FERIADOS (feriados de día completo, sdd/sla-habil) ──────────────────────
 //
 // Cada fila = un día completo cerrado para el cálculo de SLA (REQ-2), sin
-// importar el día de semana en que caiga. Global, igual que el calendario.
+// importar el día de semana en que caiga. Global — a diferencia del horario
+// laboral, que desde `horario-laboral-por-cliente` es POR CLIENTE (tabla
+// `calendario_laboral_dias_cliente`, tenant); esta tabla sigue viviendo en
+// MASTER (fix W7, verify-report.md, WU-9).
 //
 // TRAMPA DE `@db.Date`: Prisma devuelve esta columna como MEDIANOCHE UTC del
 // día calendario. Aplicarle `desplazarAArgentina` (shared/domain/zona-horaria-argentina.ts)

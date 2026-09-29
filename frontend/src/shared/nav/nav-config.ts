@@ -14,6 +14,7 @@ import {
   Package,
   Cog,
   PartyPopper,
+  Clock,
 } from "lucide-react";
 import type { JwtPayload } from "@/shared/api/types";
 import { ETIQUETAS_MODULOS } from "@/shared/auth/etiquetas-modulos";
@@ -144,6 +145,17 @@ const DEFAULT_SECTION_ITEMS: NavItem[] = [
     // no-admin, violando el requerimiento. Razón completa en
     // apply-progress.md (WU8a). La escritura (WU8b) sigue gateada por
     // `esAdminCliente`, dentro de la vista, no acá.
+    visible: () => true,
+  },
+  {
+    href: "/horario-laboral",
+    label: "Horario laboral",
+    icon: Clock,
+    // sdd/horario-laboral-por-cliente, WU-7. Lectura abierta a CUALQUIER
+    // autenticado del tenant (Requirement "Permisos de edición y lectura",
+    // spec.md) — mismo criterio que Tickets/KB/Feriados arriba, NUNCA
+    // gateado por `esAdminCliente`. La escritura (WU-8b) sigue gateada por
+    // `esAdminCliente` dentro de la vista, no acá.
     visible: () => true,
   },
 ];

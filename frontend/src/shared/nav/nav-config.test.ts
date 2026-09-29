@@ -187,6 +187,21 @@ describe("nav-config", () => {
     expect(items.map((i) => i.href)).toContain("/feriados");
   });
 
+  // WU-7 (sdd/horario-laboral-por-cliente): lectura abierta a CUALQUIER
+  // autenticado del tenant (spec.md), no gateada por permiso ni por
+  // esAdminCliente — mismo criterio que /feriados.
+  it("TECNICO sin permisos → ve /horario-laboral igual (lectura abierta a cualquier autenticado)", () => {
+    const user = makeUser({ rol: "TECNICO", permisos: [] });
+    const items = visibleNavItems(user);
+    expect(items.map((i) => i.href)).toContain("/horario-laboral");
+  });
+
+  it("ADMINISTRADOR → también ve /horario-laboral (no depende de esAdminCliente)", () => {
+    const user = makeUser({ rol: "ADMINISTRADOR" });
+    const items = visibleNavItems(user);
+    expect(items.map((i) => i.href)).toContain("/horario-laboral");
+  });
+
   it("null user (no logueado) → no revienta, devuelve solo ítems públicos (ninguno gated)", () => {
     const items = visibleNavItems(null);
     expect(items.every((i) => i.href !== "/dashboard" && i.href !== "/admin/clientes")).toBe(true);

@@ -85,7 +85,8 @@ import {
  *   elegir el calculador por `ticket.slaRegla` (discriminador de cohortes:
  *   `CORRIDO` sigue con `CalcularSlaVenceService`, `HABIL` usa el nuevo).
  *   Este módulo importa `CalendarioLaboralModule` para inyectar esos dos
- *   puertos — NO reimplementa el acceso a MASTER.
+ *   puertos — NO reimplementa el acceso a MASTER ni a la base del tenant
+ *   (el calendario es por cliente desde sdd/horario-laboral-por-cliente).
  * - `ScheduleModule.forRoot()` ya NO se llama acá: se movió a `AppModule`
  *   (ola-2 WU-0) porque dos `forRoot()` de `@nestjs/schedule` fallan al
  *   bootear (no al compilar) si otro módulo (`preventivo`) también lo llama.

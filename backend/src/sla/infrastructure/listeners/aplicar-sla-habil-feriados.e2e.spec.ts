@@ -15,10 +15,13 @@
  * 400 líneas sin perder realismo: mismas clases, mismo Postgres, mismo
  * cálculo de dominio.
  *
- * El calendario semanal (L-V 09:00-18:00 ART, fin de semana cerrado) es un
- * seed PERMANENTE de la migración `20260824130000_add_calendario_laboral`
- * (`calendario-laboral-dias-check.integration.spec.ts`) — no hace falta
- * sembrarlo acá.
+ * El calendario semanal (L-V 09:00-18:00 ART, fin de semana cerrado) es el
+ * default por cliente que trae solo cada tenant provisionado: lo siembra la
+ * migración de tenant `20260928150000_calendario_laboral_dias_cliente`
+ * (sdd/horario-laboral-por-cliente, `calendario-laboral-dias-cliente-check.integration.spec.ts`),
+ * que corre automático vía `TenantMigrationRunnerAdapter.run()` — no hace
+ * falta sembrarlo acá. Antes vivía en MASTER, migración
+ * `20260830210000_add_calendario_laboral` (hoy deprecada, D12).
  *
  * Fechas 2031 (fuera del rango 2026-2028 sembrado por migración) para todo lo
  * propio del tenant; el feriado GLOBAL usa una fila 2031 insertada y borrada
@@ -26,9 +29,18 @@
  *
  * Higiene (soporte/CLAUDE.md): NUNCA trunca `feriados` (master, compartida) —
  * borra solo su propia fila en `afterAll`. `usarLockMasterTest()` por tocar
- * `feriados` y leer `calendario_laboral_dias` (master compartida). Orden:
+ * `feriados` (master, sigue siendo global). Orden:
  * limpiar filas propias → `app` no existe acá (sin HTTP) →
  * `prismaService.onModuleDestroy()` → `dropDatabase` de A y B.
+ *
+ * WU-9 (fix W4, verify-report.md): además del feriado propio de A
+ * (`FECHA_A`), A también tiene un feriado propio EN LA MISMA FECHA que el
+ * global (`FECHA_GLOBAL`) — inserción raw en `feriadoCliente` (el caso de uso
+ * de creación lo rechazaría: mismo día que un feriado global). Antes de
+ * WU-9, la deduplicación de "la misma fecha existe en global Y en el
+ * cliente" solo tenía cobertura con mocks
+ * (`prisma-feriados-laborales.repository.spec.ts`) — este e2e usaba fechas
+ * siempre distintas entre global y cliente.
  *
  * Ref spec: sdd/feriados-configurables specs/feriados-cliente/spec.md,
  * requirement "SLA HABIL skips global and the ticket's own client holidays
@@ -119,6 +131,13 @@ describe('SLA HABIL e2e — union global ∪ feriados del cliente (WU5c, tarea 5
     await tenantAClient.feriadoCliente.create({
       data: { fecha: FECHA_A, descripcion: 'Propio de A' },
     });
+    // WU-9 (fix W4): la MISMA fecha que el feriado global, también como
+    // feriado propio de A — el use case de creación la rechazaría (mismo
+    // día que un feriado global), así que va por INSERT raw, igual que las
+    // otras filas de este `beforeAll`.
+    await tenantAClient.feriadoCliente.create({
+      data: { fecha: FECHA_GLOBAL, descripcion: 'Propio de A, MISMA fecha que el global (fix W4)' },
+    });
     await tenantBClient.feriadoCliente.create({
       data: { fecha: FECHA_B, descripcion: 'Propio de B — nunca debe afectar a A' },
     });
@@ -181,7 +200,7 @@ describe('SLA HABIL e2e — union global ∪ feriados del cliente (WU5c, tarea 5
       new CalcularSlaVenceService(),
       new PrismaTipoTicketRepository(tenantContext),
       new CalcularSlaHabilVenceService(),
-      new PrismaCalendarioLaboralSemanalRepository(prismaService),
+      new PrismaCalendarioLaboralSemanalRepository(tenantContext),
       new PrismaFeriadosLaboralesRepository(prismaService, tenantContext),
     );
     aplicarSlaListener = new AplicarSlaListener(useCase, logger);
@@ -208,7 +227,9 @@ describe('SLA HABIL e2e — union global ∪ feriados del cliente (WU5c, tarea 5
     // date never skips another client's holiday"): 27h desde el lunes
     // 09:00 ART saltan el martes (global) y el miércoles (propio de A), NO
     // el jueves (propio de B) — consume lun 9h + jue 9h + vie 9h = 27h,
-    // vence viernes 18:00 ART = 21:00 UTC.
+    // vence viernes 18:00 ART = 21:00 UTC. El martes aparece en ambas
+    // fuentes (global Y feriado propio de A, fix W4): esta aserción verifica
+    // que una fecha presente en ambas se resuelve a exactamente un día saltado.
     await tenantContext.run(
       { prismaClient: tenantAClient, dbName: DB_A, clienteId: 'sla-habil-e2e-A' },
       () =>

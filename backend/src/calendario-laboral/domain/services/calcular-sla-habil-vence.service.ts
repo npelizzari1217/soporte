@@ -9,8 +9,9 @@
  *
  * ─── Representación de dominio (deliberadamente propia, no la de Prisma) ──
  *
- * `VentanaLaboral` espeja el modelo `CalendarioLaboralDia`
- * (`prisma_master/schema.prisma:463`): `aperturaMinuto`/`cierreMinuto` en
+ * `VentanaLaboral` espeja el modelo `CalendarioLaboralDiaCliente`
+ * (`prisma_tenant/schema.prisma:1315-1323`, sdd/horario-laboral-por-cliente):
+ * `aperturaMinuto`/`cierreMinuto` en
  * minutos desde medianoche HORA LOCAL ARGENTINA, o ambos `null` = día
  * cerrado. `CalendarioLaboralSemanal` es una tupla de exactamente 7
  * ventanas, indexada 0 (domingo) a 6 (sábado) — la misma convención que
@@ -48,7 +49,7 @@ import {
  * Ventana horaria de un día del calendario laboral, en minutos desde
  * medianoche hora local argentina. Ambos `null` = día cerrado. La ventana es
  * `[aperturaMinuto, cierreMinuto)` — cierre exclusivo, igual que el CHECK
- * `calendario_laboral_dias_ventana_check` de la base.
+ * `calendario_laboral_dias_cliente_ventana_check` de la base.
  */
 export interface VentanaLaboral {
   readonly aperturaMinuto: number | null;
@@ -57,7 +58,7 @@ export interface VentanaLaboral {
 
 /**
  * Calendario laboral semanal completo: 7 ventanas, índice = día de semana
- * (0 = domingo … 6 = sábado), igual a `CalendarioLaboralDia.diaSemana`.
+ * (0 = domingo … 6 = sábado), igual a `CalendarioLaboralDiaCliente.diaSemana`.
  */
 export type CalendarioLaboralSemanal = readonly [
   VentanaLaboral, // 0 — domingo
