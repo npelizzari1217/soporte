@@ -32,6 +32,8 @@ import { PrismaService } from '../../src/shared/infrastructure/persistence/prism
 import { MasterPrismaClient, TenantPrismaClient } from '../../src/shared/infrastructure/persistence/prisma-clients';
 import { POSTGRES_ADMIN_PORT, IPostgresAdminPort } from '../../src/clientes/domain/ports/i-postgres-admin.port';
 
+import { PRESETS_ROL } from '../../src/auth/domain/presets-rol';
+
 import { runDemoSeed, DEFAULT_DEMO_SEED_PASSWORD } from './demo-seed';
 
 const MASTER_URL =
@@ -193,6 +195,25 @@ describe('runDemoSeed — integración real (T6.1, sdd/beta-frontend)', () => {
         }
       }
 
+      // Cada rol con preset queda con exactamente su preset tras la primera
+      // corrida: es el caso de "regenerar desde cero" del que cuelga la
+      // politica de datos descartables.
+      const idsConPreset = {
+        TECNICO: primera.usuarios.tecnico,
+        COLABORADOR: primera.usuarios.colaborador,
+        USUARIO: primera.usuarios.usuario,
+      } as const;
+      for (const [rol, usuarioId] of Object.entries(idsConPreset)) {
+        expect(await permisosDe(usuarioId, primera.clienteId), rol).toEqual([...PRESETS_ROL[rol]].sort());
+      }
+
+      // Alguien toca la matriz a mano entre corridas: la segunda corrida
+      // tiene que devolver a CADA rol a su preset (estado conocido y
+      // deterministico), no solo al tecnico.
+      await masterClient.usuarioClientePermiso.deleteMany({
+        where: { clienteId: primera.clienteId, usuarioId: { in: Object.values(idsConPreset) } },
+      });
+
       // ── Segunda corrida (idempotente) ────────────────────────────────
       const segunda = await runDemoSeed(app, {
         clienteNombre: CLIENTE_NOMBRE,
@@ -209,6 +230,12 @@ describe('runDemoSeed — integración real (T6.1, sdd/beta-frontend)', () => {
       const clientesConEseNombre = await masterClient.cliente.count({ where: { nombre: CLIENTE_NOMBRE } });
       expect(clientesConEseNombre).toBe(1);
 
+      for (const [rol, usuarioId] of Object.entries(idsConPreset)) {
+        expect(await permisosDe(usuarioId, primera.clienteId), `${rol} tras re-correr el seed`).toEqual(
+          [...PRESETS_ROL[rol]].sort(),
+        );
+      }
+
       const { client: tenantClient2, pool: pool2 } = await openTenantClient(primera.dbName);
       try {
         // Sin duplicados: el conteo de tickets NO creció tras la segunda corrida.
@@ -220,6 +247,12 @@ describe('runDemoSeed — integración real (T6.1, sdd/beta-frontend)', () => {
     },
     120_000,
   );
+
+  /** Permisos del usuario en ese cliente, como `MODULO:ACCION` ordenados. */
+  async function permisosDe(usuarioId: string, clienteId: string): Promise<string[]> {
+    const filas = await masterClient.usuarioClientePermiso.findMany({ where: { usuarioId, clienteId } });
+    return filas.map((f) => `${f.modulo}:${f.accion}`).sort();
+  }
 });
 
 async function openTenantClient(

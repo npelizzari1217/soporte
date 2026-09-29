@@ -252,39 +252,46 @@ async function provisionUsuarioTenant(
 }
 
 /**
- * Aplica el preset de permisos de TECNICO sobre la matriz nueva
- * (`usuario_cliente_permisos`) del técnico demo (WU-7.5, R9).
+ * Re-aplica el preset de permisos de su rol a cada usuario demo con preset
+ * (TECNICO, COLABORADOR, USUARIO) sobre la matriz nueva
+ * (`usuario_cliente_permisos`, WU-7.5, R9).
  *
- * Fix post-verify W4 (sdd/matriz-permisos-por-usuario): desde ese fix,
- * `CrearUsuarioTenantUseCase` YA siembra el preset como parte del alta
- * inicial — este call site queda como el paso EXPLÍCITO que garantiza
- * idempotencia en un RE-RUN del seed: en un re-run, `provisionUsuarioTenant`
- * encuentra la membresía YA activa (`MembresiaYaActivaError`) y retorna
- * ANTES de llegar al paso de sembrado del alta — sin este call site
- * adicional, un re-run no re-aplicaría el preset si alguien lo hubiera
- * tocado a mano entre corridas. `AplicarPresetPermisosUseCase.setPermisos`
- * es reemplazo atómico e idempotente (ADR-P3): un re-run no duplica ni
- * acumula.
+ * En la PRIMERA corrida no hace falta: desde el fix post-verify W4
+ * (sdd/matriz-permisos-por-usuario), `CrearUsuarioTenantUseCase` ya siembra
+ * el preset como parte del alta. Este paso existe por el RE-RUN: ahi
+ * `provisionUsuarioTenant` encuentra la membresia YA activa
+ * (`MembresiaYaActivaError`) y retorna ANTES del sembrado del alta, asi que
+ * sin este paso una matriz tocada a mano entre corridas quedaria como esta.
+ *
+ * Hasta el 2026-09-29 solo se re-aplicaba el del tecnico: COLABORADOR y
+ * USUARIO conservaban lo que alguien hubiera cambiado, y el seed dejaba de
+ * producir un estado conocido. ADMINISTRADOR no entra: su preset es vacio a
+ * proposito (`presets-rol.ts`), el bypass vive en el token.
+ *
+ * `AplicarPresetPermisosUseCase.setPermisos` es reemplazo atomico e
+ * idempotente (ADR-P3): un re-run no duplica ni acumula.
  */
-async function aplicarPresetPermisosTecnico(
+async function aplicarPresetsPermisos(
   app: INestApplicationContext,
   clienteId: string,
-  tecnicoId: string,
+  usuarios: ReadonlyArray<{ rolCodigo: string; usuarioId: string }>,
 ): Promise<void> {
   const aplicarPreset = app.get(AplicarPresetPermisosUseCase);
-  const result = await aplicarPreset.execute({
-    clienteId,
-    usuarioId: tecnicoId,
-    rolCodigo: 'TECNICO',
-    // `sobrescribir: true` (W11): el seed quiere un estado CONOCIDO y
-    // determinístico, no respetar lo que hubiera quedado de una corrida
-    // anterior. Es idempotente a propósito.
-    sobrescribir: true,
-  });
-  if (result.isFail()) {
-    throw new Error(
-      `[demo-seed] No se pudo aplicar el preset de permisos al técnico demo: ${result.getError().message}`,
-    );
+  for (const { rolCodigo, usuarioId } of usuarios) {
+    const result = await aplicarPreset.execute({
+      clienteId,
+      usuarioId,
+      rolCodigo,
+      // `sobrescribir: true` (W11): el seed quiere un estado CONOCIDO y
+      // determinístico, no respetar lo que hubiera quedado de una corrida
+      // anterior. Es idempotente a propósito.
+      sobrescribir: true,
+    });
+    if (result.isFail()) {
+      throw new Error(
+        `[demo-seed] No se pudo aplicar el preset de permisos al usuario demo ${rolCodigo}: ${result.getError().message}`,
+      );
+    }
   }
 }
 
@@ -808,11 +815,15 @@ export async function runDemoSeed(
     usuario: usuarioId,
   };
 
-  // El técnico debe tener sus permisos ANTES de sembrar los datos
-  // (seedDemoTenantData asigna tickets al técnico y la elegibilidad de
-  // asignado se evalúa ahí). WU-7.6: el ABM viejo de módulos se retiró —
-  // la elegibilidad la da EXCLUSIVAMENTE la matriz nueva (R9).
-  await aplicarPresetPermisosTecnico(app, clienteId, tecnicoId);
+  // Los permisos van ANTES de sembrar los datos: seedDemoTenantData asigna
+  // tickets al técnico y la elegibilidad de asignado se evalúa ahí. WU-7.6:
+  // el ABM viejo de módulos se retiró — la elegibilidad la da
+  // EXCLUSIVAMENTE la matriz nueva (R9).
+  await aplicarPresetsPermisos(app, clienteId, [
+    { rolCodigo: 'TECNICO', usuarioId: tecnicoId },
+    { rolCodigo: 'COLABORADOR', usuarioId: colaboradorId },
+    { rolCodigo: 'USUARIO', usuarioId: usuarioId },
+  ]);
 
   const sembrado = await seedDemoTenantData(app, { clienteId, dbName, prismaService, tenantContext, usuarios });
 
