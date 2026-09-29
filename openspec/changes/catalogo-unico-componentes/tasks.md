@@ -329,11 +329,14 @@ aborta todo deploy posterior. Además, el `migrate resolve` del runbook apunta a
 
 **Branch**: `feat/catalogo-unico-componentes-wu11b` · **Base**: wu11a
 
-- [ ] 11b.1 Borrar `frontend/src/features/tipos-componente/**` (componentes, hooks, api, schemas, tests). Verificar con `rg "tipos-componente" frontend/src` que no queda ninguna referencia.
-- [ ] 11b.2 Quality gates: `cd frontend && pnpm lint && pnpm type-check && pnpm test`.
+- [x] 11b.1 Borrar `frontend/src/features/tipos-componente/**` (componentes, hooks, api, schemas, tests). Verificar con `rg "tipos-componente" frontend/src` que no queda ninguna referencia.
+- [x] 11b.2 Quality gates: `cd frontend && pnpm lint && pnpm type-check && pnpm test`.
 
 **PR boundary**: borrado puro, ≤400 líneas, base wu11a. Separa el código de la ruta que lo montaba
 (costura por carpeta, no de código contra sus tests: los tests se borran junto al código).
+**Real**: 703 líneas de borrado, partidas en tres commits que compilan cada uno: la vista de
+administración con su test (206), diálogo, formulario y fila (211), y hooks, schemas y tipos (286).
+Frontend: type-check y lint en verde en cada paso; suite final 1.576/1.576.
 
 ## WU-10a — Backend: checker, puerto y `GET /equipos/tipos-componente`
 

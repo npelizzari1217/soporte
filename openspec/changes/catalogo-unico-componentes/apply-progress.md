@@ -165,3 +165,9 @@ Estado: **completo** (tareas 11a.1 a 11a.4 marcadas en `tasks.md`).
 | 11a.4 | Deuda de Ayuda en el cuerpo del commit |
 
 `src/features/tipos-componente/` queda intacta (WU-11b).
+
+## WU-11b — orquestador (2026-09-29)
+
+Borrado de `frontend/src/features/tipos-componente/` en tres commits (206, 211 y 286 líneas) para
+respetar el presupuesto de 400: cada paso deja type-check y lint en verde. `rg` no encuentra
+referencias vivas. Suite frontend final: 210 archivos, 1.576 tests.
