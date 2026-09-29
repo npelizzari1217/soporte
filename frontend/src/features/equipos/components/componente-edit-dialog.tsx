@@ -2,23 +2,14 @@
 
 /**
  * ComponenteEditDialog — edita un componente ACTIVO de un equipo (listado
- * enriquecido de componentes). Precarga tipo/descripción/número de
- * serie/capacidad. El selector de tipo lista los tipos ACTIVOS del catálogo
- * MASTER (`useTiposComponente`) + el tipo actual del componente si está
- * inactivo — para no forzar un cambio de tipo al editar solo otro campo
- * (mismo criterio que el badge "Dado de baja" de `EquipoComponentesSection`,
- * que resuelve el nombre de tipos ya no vigentes desde el dato embebido).
+ * enriquecido de componentes). Precarga descripción/número de serie/capacidad.
+ *
+ * El tipo y el repuesto son inmutables (sdd/catalogo-unico-componentes): el
+ * tipo se deriva de la familia del repuesto y se muestra como texto de solo
+ * lectura (`tipoNombre`, "—" si no se pudo resolver). El PATCH NO envía
+ * `tipoComponenteCodigo` ni `insumoId`.
  * Solo aplica a componentes ACTIVOS — un componente dado de baja se edita
  * después de reactivarlo (`EditarComponenteUseCase` lo rechaza).
- *
- * Con `componente.insumoId != null` (VINCULADO a un repuesto del catálogo,
- * WU-3), el select de "Tipo" se DESHABILITA: el backend deriva ese campo de
- * la familia del repuesto y rechaza cualquier PATCH que intente cambiarlo
- * (`ComponenteVinculadoTipoInmutableError`, hallazgo de revisión automática).
- * Ofrecer un campo editable que el backend va a rechazar sería deshonesto —
- * mismo criterio que la rama `insumoIdElegido` de `ComponenteCreateDialog`.
- * El `submit()` de abajo sigue mandando este campo SIEMPRE (con el mismo
- * valor precargado): no cambiarlo no es lo mismo que omitirlo.
  */
 import { useState } from "react";
 import { useForm } from "react-hook-form";
@@ -27,10 +18,8 @@ import { Pencil } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select } from "@/components/ui/select";
-import { useTiposComponente } from "../hooks/use-equipos";
 import { useEditarComponente } from "../hooks/use-equipo-mutations";
-import { componenteSchema, type ComponenteFormValues } from "../schemas";
+import { editarComponenteSchema, type EditarComponenteFormValues } from "../schemas";
 import type { ComponenteConTipo } from "../types";
 
 export interface ComponenteEditDialogProps {
@@ -40,11 +29,9 @@ export interface ComponenteEditDialogProps {
 
 export function ComponenteEditDialog({ equipoId, componente }: ComponenteEditDialogProps) {
   const [open, setOpen] = useState(false);
-  const tiposComponenteQuery = useTiposComponente();
   const editarMutation = useEditarComponente(equipoId);
 
-  const defaults: ComponenteFormValues = {
-    tipoComponenteCodigo: componente.tipoComponenteCodigo,
+  const defaults: EditarComponenteFormValues = {
     descripcion: componente.descripcion ?? "",
     numeroSerie: componente.numeroSerie ?? "",
     capacidad: componente.capacidad ?? "",
@@ -54,28 +41,16 @@ export function ComponenteEditDialog({ equipoId, componente }: ComponenteEditDia
     register,
     handleSubmit,
     reset,
-    formState: { errors },
-  } = useForm<ComponenteFormValues>({
-    resolver: zodResolver(componenteSchema),
+  } = useForm<EditarComponenteFormValues>({
+    resolver: zodResolver(editarComponenteSchema),
     defaultValues: defaults,
   });
 
-  const tiposActivos = tiposComponenteQuery.data ?? [];
-  const tipoActualFueraDeCatalogo =
-    !componente.tipoActivo && !tiposActivos.some((tipo) => tipo.codigo === componente.tipoComponenteCodigo);
-  const opcionesTipo = tipoActualFueraDeCatalogo
-    ? [
-        ...tiposActivos,
-        { codigo: componente.tipoComponenteCodigo, nombre: componente.tipoNombre ?? componente.tipoComponenteCodigo },
-      ]
-    : tiposActivos;
-
-  function submit(values: ComponenteFormValues) {
+  function submit(values: EditarComponenteFormValues) {
     editarMutation.mutate(
       {
         componenteId: componente.id,
         dto: {
-          tipoComponenteCodigo: values.tipoComponenteCodigo,
           descripcion: values.descripcion || null,
           numeroSerie: values.numeroSerie || null,
           capacidad: values.capacidad || null,
@@ -107,32 +82,14 @@ export function ComponenteEditDialog({ equipoId, componente }: ComponenteEditDia
         </DialogHeader>
         <form onSubmit={handleSubmit(submit)} className="flex flex-col gap-3" noValidate>
           <div className="flex flex-col gap-1">
-            <label htmlFor="editar-componente-tipo" className="text-sm font-medium text-foreground">
-              Tipo
-            </label>
-            <Select
-              id="editar-componente-tipo"
-              disabled={componente.insumoId != null}
-              error={!!errors.tipoComponenteCodigo}
-              {...register("tipoComponenteCodigo")}
-            >
-              {opcionesTipo.map((tipo) => (
-                <option key={tipo.codigo} value={tipo.codigo}>
-                  {tipo.nombre}
-                </option>
-              ))}
-            </Select>
-            {componente.insumoId != null && (
-              <p className="text-xs text-muted-foreground">
-                El tipo lo determina el repuesto vinculado del catálogo: no se puede cambiar editando este
-                componente. Para que tenga otro tipo hay que reemplazarlo (eliminarlo y agregar uno nuevo).
-              </p>
-            )}
-            {errors.tipoComponenteCodigo && (
-              <p role="alert" className="text-sm text-destructive">
-                {errors.tipoComponenteCodigo.message}
-              </p>
-            )}
+            <span className="text-sm font-medium text-foreground">Tipo</span>
+            <p data-testid="editar-componente-tipo" className="text-sm text-foreground">
+              {componente.tipoNombre ?? "—"}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              El tipo lo determina el repuesto del catálogo: no se puede cambiar editando este componente. Para que
+              tenga otro tipo hay que reemplazarlo (eliminarlo y agregar uno nuevo).
+            </p>
           </div>
           <div className="flex flex-col gap-1">
             <label htmlFor="editar-componente-descripcion" className="text-sm font-medium text-foreground">

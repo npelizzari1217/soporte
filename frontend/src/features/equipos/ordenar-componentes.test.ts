@@ -4,7 +4,6 @@ import { ordenarComponentes, type ComponenteOrdenable } from "./ordenar-componen
 function make(overrides: Partial<ComponenteOrdenable> & { id: string }): ComponenteOrdenable & { id: string } {
   return {
     activo: true,
-    tipoComponenteCodigo: "X",
     tipoNombre: null,
     descripcion: null,
     capacidad: null,
@@ -24,13 +23,14 @@ describe("ordenarComponentes", () => {
     expect(resultado.map((c) => c.id)).toEqual(["2", "1", "4", "3"]);
   });
 
-  it("usa tipoComponenteCodigo como clave cuando tipoNombre es null", () => {
-    const b = make({ id: "1", tipoNombre: null, tipoComponenteCodigo: "B" });
-    const a = make({ id: "2", tipoNombre: null, tipoComponenteCodigo: "A" });
+  it("sin tipoNombre la clave es vacía: va primero y desempata por descripcion", () => {
+    const conTipo = make({ id: "1", tipoNombre: "RAM", descripcion: "A" });
+    const sinTipoB = make({ id: "2", tipoNombre: null, descripcion: "B" });
+    const sinTipoA = make({ id: "3", tipoNombre: null, descripcion: "A" });
 
-    const resultado = ordenarComponentes([b, a]);
+    const resultado = ordenarComponentes([conTipo, sinTipoB, sinTipoA]);
 
-    expect(resultado.map((c) => c.id)).toEqual(["2", "1"]);
+    expect(resultado.map((c) => c.id)).toEqual(["3", "2", "1"]);
   });
 
   it("desempata por descripcion y luego capacidad cuando el tipo es igual", () => {

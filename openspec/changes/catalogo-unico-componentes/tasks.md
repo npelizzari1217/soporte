@@ -305,11 +305,11 @@ aborta todo deploy posterior. Además, el `migrate resolve` del runbook apunta a
 
 **Branch**: `feat/catalogo-unico-componentes-wu09` · **Base**: wu08
 
-- [ ] 9.1 `componente-edit-dialog.tsx`: sin selector de tipo ni de insumo; el tipo se muestra como texto de solo lectura; `editarComponenteSchema` con `descripcion`, `numeroSerie`, `capacidad`. Se elimina `tipoActualFueraDeCatalogo` y el flag que lo alimenta. (Req: La edición no cambia el tipo ni el insumo)
-- [ ] 9.2 `equipo-detail-view.tsx`, `ordenar-componentes.ts`: fallback de display `"—"` cuando no hay nombre de tipo; orden sin depender de `tipoComponenteCodigo`.
-- [ ] 9.3 Tests de los cuatro archivos tocados; el PATCH ya no envía `tipoComponenteCodigo` (compatibilidad del bundle viejo cubierta por ADR-2 en backend).
-- [ ] 9.4 Quality gates: `cd frontend && pnpm lint && pnpm type-check && pnpm test`.
-- [ ] 9.5 Anotar la **deuda de Ayuda** en commit y PR.
+- [x] 9.1 `componente-edit-dialog.tsx`: sin selector de tipo ni de insumo; el tipo se muestra como texto de solo lectura; `editarComponenteSchema` con `descripcion`, `numeroSerie`, `capacidad`. Se elimina `tipoActualFueraDeCatalogo` y el flag que lo alimenta. (Req: La edición no cambia el tipo ni el insumo)
+- [x] 9.2 `equipo-detail-view.tsx`, `ordenar-componentes.ts`: fallback de display `"—"` cuando no hay nombre de tipo; orden sin depender de `tipoComponenteCodigo`.
+- [x] 9.3 Tests de los cuatro archivos tocados; el PATCH ya no envía `tipoComponenteCodigo` (compatibilidad del bundle viejo cubierta por ADR-2 en backend).
+- [x] 9.4 Quality gates: `cd frontend && pnpm lint && pnpm type-check && pnpm test`.
+- [x] 9.5 Anotar la **deuda de Ayuda** en commit y PR.
 
 **PR boundary**: ~300 líneas, base wu08.
 

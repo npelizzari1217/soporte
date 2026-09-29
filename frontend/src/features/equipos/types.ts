@@ -74,8 +74,7 @@ export interface Componente {
  * (`ComponenteConTipoResponseDto`).
  */
 export interface ComponenteConTipo extends Componente {
-  /** Transitorio: la respuesta ya no lo trae; lo retira WU-9 junto con la edición y el detalle. */
-  tipoComponenteCodigo: string;
+  /** Nombre de la familia del repuesto; `null` si no se pudo resolver. */
   tipoNombre: string | null;
   tipoActivo: boolean;
 }
@@ -83,12 +82,6 @@ export interface ComponenteConTipo extends Componente {
 /** Shape de `GET /equipos/:id` (`EquipoDetalleResponseDto`, item 1 — cierra G7). */
 export interface EquipoDetalle extends Equipo {
   componentes: ComponenteConTipo[];
-}
-
-/** Catálogo READ-ONLY de tipos de componente ACTIVOS (`GET /equipos/tipos-componente`, PR3: sin `id` ni `activo`). */
-export interface TipoComponente {
-  codigo: string;
-  nombre: string;
 }
 
 export interface CreateEquipoDto {
@@ -134,7 +127,6 @@ export interface CreateComponenteDto {
 
 /** Body de `PATCH /equipos/:id/componentes/:componenteId` (PATCH semántico: `undefined` = no tocar). */
 export interface EditarComponenteDto {
-  tipoComponenteCodigo?: string;
   descripcion?: string | null;
   numeroSerie?: string | null;
   capacidad?: string | null;

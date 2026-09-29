@@ -58,7 +58,7 @@ Estado: **completo** (tareas 4.1 a 4.6 marcadas en `tasks.md`).
 | 4.2 Controller | `POST :id/componentes` resuelve `dto.descontarStock ?? true`: Instalar (usuario desde `@CurrentUser()`) o Agregar. Ruta `instalar-desde-deposito` borrada. Mapeo de errores sin cambios: los errores de tipo que quedan los siguen lanzando la entidad y la edición hasta WU-5 |
 | 4.3 Specs de borde | `equipos.dto.spec.ts` (sin insumoId, `"false"`, whitelist descarta el tipo) y `equipos.controller.spec.ts` (omitido/true a Instalar, false a Agregar, usuario del JWT, sin `tipoComponenteCodigo` en la respuesta, ruta vieja inexistente) |
 | 4.4 e2e | `equipos-instalar-desde-deposito.e2e.spec.ts` retargeteado a `POST :id/componentes`: omitido con SALIDA, `false` sin movimiento, sin stock con rollback, ruta vieja 404, `"false"` en texto 400, sin insumoId 400, tipo sobrante ignorado. Conserva `usarLockMasterTest()` |
-| 4.5 Gates | lint 0 errores; typecheck limpio; `vitest run src/equipos` 28 archivos / 334 tests; `pnpm test` ver reporte |
+| 4.5 Gates | lint 0 errores; typecheck limpio; `vitest run src/equipos` 28 archivos / 334 tests; `pnpm test` 212 archivos / 1592 tests |
 | 4.6 Ayuda | Deuda anotada en el cuerpo del commit |
 
 Diferencias respecto del diseño: ninguna. El frontend sigue llamando a la ruta retirada hasta WU-8 (estado intermedio no desplegable, ADR-7).
@@ -89,7 +89,7 @@ Estado: **completo** (tareas 6.1 a 6.7 marcadas en `tasks.md`).
 | 6.4 Spec de migración | `prisma_tenant/componentes-insumo-obligatorio.integration.spec.ts` (base efímera hasta `20260928150000`): aborta con fila viva, aborta con fila solo borrada, pasa con tabla vacía (NOT NULL, sin columna, sin índice, FK `r`) |
 | 6.5 Generate | `prisma generate` limpio; typecheck sin usos del campo retirado |
 | 6.6 Adversarial | Sin el guard, los 3 tests del spec quedan en rojo; guard restaurado (no se commitea la mutación) |
-| 6.7 Gates | lint 0 errores; typecheck limpio; `vitest run src/equipos prisma_tenant` 36 archivos / 403 tests; `pnpm test` ver reporte |
+| 6.7 Gates | lint 0 errores; typecheck limpio; `vitest run src/equipos prisma_tenant` 36 archivos / 403 tests; `pnpm test` 212 archivos / 1592 tests |
 
 Entorno local: `soporte_tenant_test` estaba 3 migraciones atrás; se le aplicó `migrate deploy` (con el schema nuevo). Las bases tenant de dev NO se migraron: el script `limpiar-componentes-sin-insumo.mjs` (modo reporte) informa 2 filas vivas con `insumo_id NULL` (RAM y DISCO del "Notebook Dell Latitude 5420", demo libre) en un tenant, así que la migración abortaría ahí hasta correr el script con `--apply`.
 
@@ -139,3 +139,16 @@ Estado: **completo** (F.1 a F.4 marcadas en `tasks.md`).
 | F.1/F.2 | `backend/scripts/limpiar-componentes-sin-insumo.integration.spec.ts` | Integration (tenant efímero) | 20/20 (unit + integration previos) | Written; falló: column does not exist (2 de 3 casos; el de precondición pasa) | 23/23 | Reporte y apply, sobre base migrada; la base pre-migración (tenant previo) se mantiene | Ninguno necesario |
 
 Ayuda: sin cambios.
+
+## WU-9 — Frontend: edición y display (rama `feat/catalogo-unico-componentes-wu09`, base wu07fix)
+
+Estado: **completo** (tareas 9.1 a 9.5 marcadas en `tasks.md`).
+
+| Tarea | Resultado |
+|---|---|
+| 9.1 | `componente-edit-dialog.tsx` sin selector ni `useTiposComponente`; el tipo es texto de solo lectura (`tipoNombre`, `"—"` si es null) con la nota de inmutabilidad. `componenteSchema` pasa a `editarComponenteSchema` (`descripcion`, `numeroSerie`, `capacidad`). Se elimina `tipoActualFueraDeCatalogo`. El PATCH no envía `tipoComponenteCodigo` ni `insumoId` (`EditarComponenteDto` sin el campo) |
+| 9.2 | `equipo-componentes-section.tsx` (la vista de detalle solo monta la sección): fallback `"—"` sin nombre de tipo; el aviso "Dado de baja" solo aparece si hay nombre de tipo. `ordenar-componentes.ts`: clave `tipoNombre ?? ""` (los sin tipo van primero), luego descripcion y capacidad |
+| 9.3 | Tests: edición (tipo de solo lectura, PATCH sin tipo ni insumo, fallback "—", familia dada de baja), orden (sin tipo), sección (fallback "—"), schema. Fixture transitorio `insumoId: null as unknown` reemplazado |
+| 9.4 | lint 0 errores; type-check limpio; `pnpm test` 212 archivos / 1592 tests |
+| 9.5 | Deuda de Ayuda para el commit |
+Retirados de `equipos`: `useTiposComponente` (hook) y el tipo `TipoComponente`; `ComponenteConTipo.tipoComponenteCodigo`. La feature `tipos-componente` usa su propio hook `useTiposComponenteAdmin`, no importa nada de `equipos`. AGENTS.md:208 (`tipoActualFueraDeCatalogo`) queda para WU-12.

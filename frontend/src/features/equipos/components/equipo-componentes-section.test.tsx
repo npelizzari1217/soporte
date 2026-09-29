@@ -14,19 +14,13 @@ import { EquipoComponentesSection } from "./equipo-componentes-section";
  * el nombre/estado de cada componente ya asignado se resuelve del dato
  * EMBEBIDO (`tipoNombre`/`tipoActivo` de `GET /equipos/:id`), NUNCA del
  * catálogo de activos (que no incluye tipos dados de baja — bug que
- * mostraba el UUID/código crudo). El alta sigue usando solo tipos activos
- * del selector y envía `tipoComponenteCodigo`.
+ * mostraba el UUID/código crudo). Sin nombre de tipo se muestra "—".
  */
 
 const EQUIPO_ID = "55555555-5555-5555-5555-555555555555";
 
-const TIPOS_ACTIVOS = [
-  { codigo: "RAM", nombre: "Memoria RAM" },
-  { codigo: "DISCO", nombre: "Disco rígido" },
-];
-
 function mockBackend() {
-  server.use(http.get("/api/equipos/tipos-componente", () => HttpResponse.json(TIPOS_ACTIVOS)));
+  // Sin endpoints que mockear: el detalle llega por props.
 }
 
 describe("EquipoComponentesSection", () => {
@@ -37,7 +31,6 @@ describe("EquipoComponentesSection", () => {
       {
         id: "c1",
         equipoId: EQUIPO_ID,
-        tipoComponenteCodigo: "TECLADO",
         insumoId: "11111111-1111-4111-8111-111111111111",
         tipoNombre: "Teclado mecánico",
         tipoActivo: false,
@@ -59,12 +52,38 @@ describe("EquipoComponentesSection", () => {
     expect(screen.getByText(/dado de baja/i)).toBeInTheDocument();
   });
 
+  it("sin nombre de tipo muestra '—' y no avisa 'Dado de baja'", async () => {
+    const componentes = [
+      {
+        id: "c-sin-tipo",
+        equipoId: EQUIPO_ID,
+        insumoId: "11111111-1111-4111-8111-111111111111",
+        tipoNombre: null,
+        tipoActivo: false,
+        descripcion: "Slot 1",
+        numeroSerie: null,
+        capacidad: null,
+        activo: true,
+        deletedAt: null,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
+    ];
+
+    renderWithProviders(<EquipoComponentesSection equipoId={EQUIPO_ID} componentes={componentes} />, {
+      user: buildUser({ permisos: ["EQUIPOS:ALTAS", "EQUIPOS:MODIFICACION", "EQUIPOS:BORRADO"] }),
+    });
+
+    const fila = await screen.findByTestId("componente-c-sin-tipo");
+    expect(within(fila).getAllByText("—").length).toBeGreaterThan(0);
+    expect(screen.queryByText(/dado de baja/i)).not.toBeInTheDocument();
+  });
+
   it("un componente con tipo activo NO muestra el aviso 'Dado de baja'", async () => {
     const componentes = [
       {
         id: "c2",
         equipoId: EQUIPO_ID,
-        tipoComponenteCodigo: "RAM",
         insumoId: "11111111-1111-4111-8111-111111111111",
         tipoNombre: "Memoria RAM",
         tipoActivo: true,
@@ -103,7 +122,6 @@ describe("EquipoComponentesSection", () => {
     const base = {
       id: "c9",
       equipoId: EQUIPO_ID,
-      tipoComponenteCodigo: "RAM",
       insumoId: "11111111-1111-4111-8111-111111111111",
       tipoNombre: "Memoria RAM",
       descripcion: null,
@@ -142,7 +160,6 @@ describe("EquipoComponentesSection", () => {
       {
         id: "c1",
         equipoId: EQUIPO_ID,
-        tipoComponenteCodigo: "RAM",
         insumoId: "11111111-1111-4111-8111-111111111111",
         tipoNombre: "Memoria RAM",
         tipoActivo: true,
@@ -169,7 +186,6 @@ describe("EquipoComponentesSection", () => {
       {
         id: "c-vacio",
         equipoId: EQUIPO_ID,
-        tipoComponenteCodigo: "RAM",
         insumoId: "11111111-1111-4111-8111-111111111111",
         tipoNombre: "Memoria RAM",
         tipoActivo: true,
@@ -212,7 +228,6 @@ describe("EquipoComponentesSection", () => {
       {
         id: "activo-1",
         equipoId: EQUIPO_ID,
-        tipoComponenteCodigo: "RAM",
         insumoId: "11111111-1111-4111-8111-111111111111",
         tipoNombre: "Memoria RAM",
         tipoActivo: true,
@@ -227,7 +242,6 @@ describe("EquipoComponentesSection", () => {
       {
         id: "baja-1",
         equipoId: EQUIPO_ID,
-        tipoComponenteCodigo: "DISCO",
         insumoId: "11111111-1111-4111-8111-111111111111",
         tipoNombre: "Disco rígido",
         tipoActivo: true,
@@ -272,7 +286,6 @@ describe("EquipoComponentesSection", () => {
         return HttpResponse.json({
           id: "baja-1",
           equipoId: EQUIPO_ID,
-          tipoComponenteCodigo: "DISCO",
           descripcion: null,
           numeroSerie: null,
           capacidad: "1TB",
@@ -288,7 +301,6 @@ describe("EquipoComponentesSection", () => {
       {
         id: "baja-1",
         equipoId: EQUIPO_ID,
-        tipoComponenteCodigo: "DISCO",
         insumoId: "11111111-1111-4111-8111-111111111111",
         tipoNombre: "Disco rígido",
         tipoActivo: true,

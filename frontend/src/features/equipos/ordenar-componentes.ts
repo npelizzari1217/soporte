@@ -5,21 +5,21 @@
  * listado muestra el historial completo, no solo los vigentes, así que
  * separar por estado ayuda a escanear rápido lo que sigue en uso.
  *
- * Clave de orden: `tipoNombre ?? tipoComponenteCodigo` (nombre resuelto del
- * catálogo MASTER; el código crudo si no hay match), desempatando por
+ * Clave de orden: `tipoNombre` (nombre de la familia del repuesto; cadena
+ * vacía si no se pudo resolver, así que esos componentes van primero),
+ * desempatando por
  * `descripcion` y luego `capacidad`. `localeCompare` con locale "es" para
  * un orden alfabético correcto (acentos, ñ).
  */
 export interface ComponenteOrdenable {
   activo: boolean;
-  tipoComponenteCodigo: string;
   tipoNombre: string | null;
   descripcion: string | null;
   capacidad: string | null;
 }
 
 function claveOrden(componente: ComponenteOrdenable): string {
-  return componente.tipoNombre ?? componente.tipoComponenteCodigo;
+  return componente.tipoNombre ?? "";
 }
 
 function comparar(a: ComponenteOrdenable, b: ComponenteOrdenable): number {
