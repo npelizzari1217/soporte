@@ -507,7 +507,7 @@ cabeza de alguien deja de existir cuando esa persona no está.
 | Sin e2e dedicado para las 4 rutas de `/correo` | La cobertura del guard es estructural (a nivel clase). Es la superficie más sensible del módulo |
 | `SmtpEmailSender.send()` loguea el `error.message` crudo de nodemailer | Algunos servidores SMTP devuelven el usuario dentro de la respuesta 535 |
 | Postgres de producción con `TimeZone = America/Sao_Paulo` | Hoy coincide con Argentina solo porque Brasil abolió el horario de verano en 2019 |
-| `rotate-jwt.ps1` e `install-cert-soporte.ps1` sin versionar, solo en el VPS | Si el VPS se pierde, esos scripts se pierden con él. Ya pasó con `rotate-admin-pw.ps1`, que además estaba roto |
+| **`rotate-jwt.ps1` está bloqueado hasta reescribirlo.** Versionado el 2026-09-29 junto con `install-cert-soporte.ps1`; los dos vivían solo en el VPS | Tal como estaba, reportaba "OK" y dejaba backend y frontend con claves distintas: no reconstruye el frontend, que inlinea `JWT_SECRET` en el build. Su primera sentencia es un `throw` y la cabecera lista los seis defectos. Mientras tanto se rota a mano con un deploy (runbook, "Scripts de operaciones sin pipeline"). Antes del próximo deploy hay que renombrar las copias sin versionar del VPS |
 | Corridas de tests **interrumpidas** dejan bases huérfanas en el Postgres local | No es un bug de los specs: cuando terminan, limpian bien. Hay que barrer cada tanto, cruzando siempre contra el registro de clientes antes de dropear |
 
 ## Nota

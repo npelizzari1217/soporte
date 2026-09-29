@@ -464,6 +464,54 @@ peor. Pasó el 2026-08-20.
 
 ---
 
+## Scripts de operaciones sin pipeline
+
+Dos scripts que vivían **solo en el VPS**, sin versionar, entraron al repo el 2026-09-29. Ninguno
+lo invoca `deploy.ps1`: se corren a mano, como administrator.
+
+> **Antes del primer deploy que los traiga, renombrar las copias sin versionar del VPS.** Con
+> `C:\soporte\rotate-jwt.ps1` y `C:\soporte\install-cert-soporte.ps1` sin versionar en disco, el
+> `git pull --ff-only` de `deploy.ps1` falla con "untracked working tree files would be
+> overwritten" — la misma falla del 2026-08-20 con `rotate-admin-pw.ps1`. El deploy corta sin
+> tocar nada, pero con los servicios ya detenidos por el dump:
+>
+> ```powershell
+> cd C:\soporte
+> Rename-Item rotate-jwt.ps1 rotate-jwt.ps1.viejo-sin-versionar
+> Rename-Item install-cert-soporte.ps1 install-cert-soporte.ps1.viejo-sin-versionar
+> ```
+
+### `install-cert-soporte.ps1` — certificado TLS con win-acme
+
+Emite o renueva el certificado de `soporte.sesitec.net` (Let's Encrypt) sobre el sitio de IIS.
+Baja win-acme a `C:\tools\win-acme` si no está y corre `wacs.exe` con validación por archivo en
+`C:\soporte\iis`.
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File C:\soporte\install-cert-soporte.ps1
+```
+
+Supone que el sitio de IIS de soporte tiene **id 3** y baja la **última** release de win-acme,
+sin versión fija ni checksum. Revisar las dos cosas antes de correrlo en otro server.
+
+### `rotate-jwt.ps1` — **BLOQUEADO, no usar**
+
+Su primera sentencia es un `throw` a propósito. Tal como estaba en el VPS reporta "OK" y deja
+backend y frontend con claves distintas: el frontend **inlinea `JWT_SECRET` en el build**
+(`frontend/next.config.ts`, clave `env`), y el script no lo reconstruye ni reinicia servicios.
+La cabecera del script lista los seis defectos que tiene que resolver la reescritura.
+
+Mientras tanto, rotar `JWT_SECRET` a mano. Solo invalida sesiones: no hay datos cifrados con esa
+clave, a diferencia de `EMAIL_CRYPTO_KEY`.
+
+1. Generar la clave en el server, sin tipearla ni pegarla, y escribirla con el **mismo valor**
+   en la línea `JWT_SECRET=` de `backend\.env` y de `frontend\.env.local`.
+2. Correr el dump y `deploy.ps1` como en cualquier deploy: el build del frontend toma la clave
+   nueva y los dos servicios arrancan con ella.
+3. Todos los usuarios tienen que volver a loguearse.
+
+---
+
 ## Cuando algo falla
 
 **El script aborta en el primer error y te deja el rollback impreso al final de la corrida
