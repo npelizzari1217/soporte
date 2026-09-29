@@ -6,9 +6,11 @@
  * 1. `~/proyectos/CLAUDE.md` §2.2: 100% ASCII y sin BOM. PowerShell 5.1 lee un
  *    `.ps1` sin BOM como ANSI, y un solo caracter acentuado corrompe el parseo.
  *    `rotate-jwt.ps1` llego del VPS con un guion largo en un comentario.
- * 2. `rotate-jwt.ps1` esta BLOQUEADO hasta que se reescriba: reporta OK y deja
- *    backend y frontend con claves distintas. Su primera sentencia tiene que ser
- *    el `throw`; si alguien lo corre de lugar, este spec lo marca.
+ * 2. Ningun script de la raiz usa `setx`: rotate-jwt.ps1 rota JWT_SECRET sin
+ *    volver a dejar una variable de entorno MACHINE (la que causaba que la
+ *    clave vieja ganara sobre backend/.env, ver DEPLOY-VPS-runbook.md, seccion
+ *    "rotate-jwt.ps1"). Un `setx` nuevo en cualquier .ps1 reintroduce el mismo
+ *    problema por otra via.
  */
 import { describe, expect, it } from 'vitest';
 import { readdirSync, readFileSync } from 'node:fs';
@@ -34,9 +36,8 @@ describe('Scripts de operaciones del VPS (*.ps1 de la raiz)', () => {
     expect(noAscii, `primer byte no ASCII en el offset ${noAscii}`).toBe(-1);
   });
 
-  it('rotate-jwt.ps1 corta en su primera sentencia (esta bloqueado hasta reescribirlo)', () => {
-    const lineas = readFileSync(join(RAIZ, 'rotate-jwt.ps1'), 'ascii').split(/\r?\n/);
-    const primeraSentencia = lineas.find((l) => l.trim() !== '' && !l.trim().startsWith('#'));
-    expect(primeraSentencia).toMatch(/^throw '/);
+  it.each(scriptsPs1)('%s no usa setx (la variable MACHINE no debe volver)', (nombre) => {
+    const contenido = readFileSync(join(RAIZ, nombre), 'ascii');
+    expect(contenido.toLowerCase()).not.toContain('setx');
   });
 });

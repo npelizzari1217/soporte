@@ -154,11 +154,18 @@ propia verificación.
 5. **Si cambió algún lockfile**, aborta y pide instalación manual.
 6. **Carga `backend/.env`** al entorno del proceso; exige `DATABASE_URL_MASTER`.
 7. **`EMAIL_CRYPTO_KEY`**: la genera **solo si no existe**.
-8. **Builds**: `generate:master`, `generate:tenant`, build del backend, build del frontend.
-9. **Detiene los servicios**, migra master, migra el fan-out a tenants.
-10. **Backfill de config de correo** — solo la primera vez, con dos guardas.
-11. **Arranca los servicios**, espera 10 s y exige `Running`.
-12. **Smoke interno** contra 3101 y 3100.
+8. **`JWT_SECRET`**: lee la única línea `JWT_SECRET=` de `backend/.env` (fuente única) y la
+   empuja a los dos lugares que importan — el entorno de este proceso, para que el build del
+   frontend la hornee, y el `AppEnvironmentExtra` del servicio `soporte-backend` (NSSM),
+   mezclando sin pisar el resto de sus variables. Si `frontend/.env.local` tiene un valor
+   distinto, avisa por consola sin fallar: el build usa el del proceso. Ver más abajo,
+   "`rotate-jwt.ps1`", para el porqué completo.
+9. **Builds**: `generate:master`, `generate:tenant`, build del backend, build del frontend (este
+   último hornea `BACKEND_URL` y `JWT_SECRET`).
+10. **Detiene los servicios**, migra master, migra el fan-out a tenants.
+11. **Backfill de config de correo** — solo la primera vez, con dos guardas.
+12. **Arranca los servicios**, espera 10 s y exige `Running`.
+13. **Smoke interno** contra 3101 y 3100.
 
 ### Por qué los builds van ANTES de migrar
 
@@ -494,21 +501,56 @@ powershell -NoProfile -ExecutionPolicy Bypass -File C:\soporte\install-cert-sopo
 Supone que el sitio de IIS de soporte tiene **id 3** y baja la **última** release de win-acme,
 sin versión fija ni checksum. Revisar las dos cosas antes de correrlo en otro server.
 
-### `rotate-jwt.ps1` — **BLOQUEADO, no usar**
+### `rotate-jwt.ps1` — rotación de `JWT_SECRET`
 
-Su primera sentencia es un `throw` a propósito. Tal como estaba en el VPS reporta "OK" y deja
-backend y frontend con claves distintas: el frontend **inlinea `JWT_SECRET` en el build**
-(`frontend/next.config.ts`, clave `env`), y el script no lo reconstruye ni reinicia servicios.
-La cabecera del script lista los seis defectos que tiene que resolver la reescritura.
+**`backend/.env` es la única fuente de `JWT_SECRET`.** Hasta el 2026-09-29 la clave vivía en
+TRES lugares con el mismo valor — `backend\.env`, `frontend\.env.local`, y una variable de
+entorno MACHINE vieja, dejada por una asignación persistente a nivel de sistema hecha en su
+momento —, y ni `dotenv/config` (backend `src/main.ts`) ni la carga de entorno de Next pisan una
+variable de proceso que YA existe. El build del frontend siempre usó la de `backend\.env`:
+`deploy.ps1` carga ese archivo en su proceso pisando lo heredado, y `frontend/next.config.ts` la
+hornea **en tiempo de build** (el middleware Edge verifica con esa clave horneada). Pero el
+servicio NSSM del backend no recibía `JWT_SECRET` y heredaba la MACHINE, que `dotenv` no pisa.
+Además los servicios
+de Windows (sshd incluido, por donde corre este script) suelen no ver un cambio de variable
+MACHINE hasta un reboot, así que ni depender de ella a mano era confiable.
 
-Mientras tanto, rotar `JWT_SECRET` a mano. Solo invalida sesiones: no hay datos cifrados con esa
-clave, a diferencia de `EMAIL_CRYPTO_KEY`.
+**El procedimiento manual que este runbook describía antes era incorrecto, y peor que no rotar**:
+editar los dos `.env` y correr `deploy.ps1` reconstruía el frontend con la clave **nueva**
+mientras el backend seguía firmando con la **vieja**, heredada de la MACHINE. Con claves
+distintas en cada lado, nadie puede loguearse.
 
-1. Generar la clave en el server, sin tipearla ni pegarla, y escribirla con el **mismo valor**
-   en la línea `JWT_SECRET=` de `backend\.env` y de `frontend\.env.local`.
-2. Correr el dump y `deploy.ps1` como en cualquier deploy: el build del frontend toma la clave
-   nueva y los dos servicios arrancan con ella.
-3. Todos los usuarios tienen que volver a loguearse.
+`rotate-jwt.ps1` resuelve esto: genera la clave nueva en el server, la escribe en los dos `.env`,
+la mezcla en el `AppEnvironmentExtra` del servicio `soporte-backend` (NSSM, sin pisar el resto de
+sus variables), **borra la variable MACHINE**, reconstruye el frontend con la clave nueva en el
+proceso, y reinicia los dos servicios. Rotar `JWT_SECRET` solo invalida sesiones — no hay datos
+cifrados con esa clave, a diferencia de `EMAIL_CRYPTO_KEY` — pero la corrida real **cierra la
+sesión de todos los usuarios**: no correrlo en horario de uso sin avisar.
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File C:\soporte\rotate-jwt.ps1 -DryRun
+powershell -NoProfile -ExecutionPolicy Bypass -File C:\soporte\rotate-jwt.ps1
+```
+
+Por ssh, el shell por defecto suele ser `cmd`: una invocación por línea, nada encadenado después
+del switch. `[CmdletBinding()]` corta ante un argumento desconocido antes de ejecutar nada, pero
+la lección real es no depender de eso (ver `-DryRun;` en la corrida real de
+`rotate-email-crypto-key.ps1` del 2026-09-29, sección 5 de este documento).
+
+**Exit codes:**
+
+- **0**: rotación OK. Los dos `.env`, el NSSM del backend, la variable MACHINE, el build del
+  frontend y los dos servicios quedaron consistentes con la clave nueva.
+- **1**: nada fue tocado — validación, generación de la clave, o `-DryRun`. Los servicios nunca
+  se detuvieron.
+- **3**: falló **después** de detener los servicios. El script intenta reiniciarlos igual (con la
+  clave vieja si `backend\.env` no llegó a reescribirse, o ya con la nueva si sí).
+  **Recuperación: correr `deploy.ps1`.** Desde el paso 8 de arriba, carga `JWT_SECRET` desde
+  `backend/.env` al build del frontend y al NSSM del backend, y deja todo consistente con lo que
+  haya quedado escrito en el `.env` — sin importar en qué mitad del script cortó
+  `rotate-jwt.ps1`.
+
+Ninguna clave se imprime en ningún mensaje, en ningún exit code.
 
 ---
 
