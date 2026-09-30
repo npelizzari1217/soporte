@@ -905,6 +905,12 @@ model MovimientoInsumo {
   sector     Sector?            @relation(fields: [sectorId], references: [id], onDelete: Restrict)
   itemCompra ItemCompra?        @relation(fields: [itemCompraId], references: [id], onDelete: Restrict)
 
+  /// Lado inverso de los dos vínculos de `componentes_equipo` (sdd/stock-usado-componentes):
+  /// la SALIDA que respaldó una instalación y la ENTRADA USADO de una devolución. Uno a
+  /// uno por los UNIQUE de la otra tabla; no agregan columnas acá.
+  componenteInstalado ComponenteEquipo? @relation("ComponenteInstalacion")
+  componenteDevuelto  ComponenteEquipo? @relation("ComponenteBaja")
+
   /// Índice compuesto que sirve a las dos consultas del módulo: el stock
   /// (`SUM(cantidad) WHERE insumo_id = ?`, cubierto por el prefijo) y la
   /// bitácora de la ficha, ordenada por fecha. Uno solo alcanza — un
@@ -942,8 +948,26 @@ model ComponenteEquipo {
   updatedAt            DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt            DateTime? @map("deleted_at") @db.Timestamptz
 
-  equipo EquipoInformatico @relation(fields: [equipoId], references: [id])
-  insumo Insumo            @relation(fields: [insumoId], references: [id], onDelete: Restrict)
+  /// SALIDA de stock que respaldó la instalación (sdd/stock-usado-componentes).
+  /// NULL: componente cargado a mano o anterior al ciclo. UNIQUE: un movimiento
+  /// respalda a lo sumo un componente.
+  instalacionMovimientoId String? @unique @map("instalacion_movimiento_id") @db.Uuid
+  /// Registro del retiro. CHECK (baja_destino IN ('STOCK_USADO','DESCARTE')) — fuente
+  /// única: `DESTINOS_RETIRO_COMPONENTE`
+  /// (`src/equipos/domain/entities/componente-equipo.entity.ts`), comparada contra el
+  /// CHECK real por el spec de constraints. El CHECK `componentes_equipo_baja_coherente_check`
+  /// (ver migración) fija qué columnas van juntas; un legado tiene las cuatro en NULL.
+  bajaDestino      String? @map("baja_destino") @db.VarChar(20)
+  bajaMotivo       String? @map("baja_motivo") @db.Text
+  /// ENTRADA USADO que devolvió el componente al stock (solo `STOCK_USADO`).
+  bajaMovimientoId String? @unique @map("baja_movimiento_id") @db.Uuid
+  /// Soft ref → master.usuarios.id, sin FK cross-DB.
+  bajaUsuarioId    String? @map("baja_usuario_id") @db.Uuid
+
+  equipo                EquipoInformatico @relation(fields: [equipoId], references: [id])
+  insumo                Insumo            @relation(fields: [insumoId], references: [id], onDelete: Restrict)
+  instalacionMovimiento MovimientoInsumo? @relation("ComponenteInstalacion", fields: [instalacionMovimientoId], references: [id], onDelete: Restrict)
+  bajaMovimiento        MovimientoInsumo? @relation("ComponenteBaja", fields: [bajaMovimientoId], references: [id], onDelete: Restrict)
 
   @@index([equipoId])
   @@index([insumoId])
