@@ -358,11 +358,15 @@ export class EquiposController {
       numeroSerie: dto.numeroSerie ?? null,
       capacidad: dto.capacidad ?? null,
     };
+    // ADR-7: `condicion` solo tiene sentido con descuento (es la del saldo del
+    // que sale la unidad). Con `descontarStock=false` no hay movimiento y se
+    // ignora, en vez de dar 400 al diálogo que desmarca la casilla tras elegir USADO.
     const result =
       (dto.descontarStock ?? true)
         ? await this.instalarComponenteDesdeDepositoUseCase.execute({
             ...datos,
             usuarioId: user.sub,
+            condicion: dto.condicion,
           })
         : await this.agregarComponenteUseCase.execute(datos);
 

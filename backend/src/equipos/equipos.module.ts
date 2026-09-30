@@ -230,13 +230,20 @@ import { SoporteController } from './interface/controllers/soporte.controller';
         txRunner: ITenantTransactionRunner,
         agregarComponenteUseCase: AgregarComponenteUseCase,
         registrarSalidaInsumoUseCase: RegistrarSalidaInsumoUseCase,
+        componenteRepo: IComponenteEquipoRepository,
       ) =>
         new InstalarComponenteDesdeDepositoUseCase(
           txRunner,
           agregarComponenteUseCase,
           registrarSalidaInsumoUseCase,
+          componenteRepo,
         ),
-      inject: [TENANT_TX_RUNNER, AgregarComponenteUseCase, RegistrarSalidaInsumoUseCase],
+      inject: [
+        TENANT_TX_RUNNER,
+        AgregarComponenteUseCase,
+        RegistrarSalidaInsumoUseCase,
+        COMPONENTE_EQUIPO_REPOSITORY,
+      ],
     },
     {
       provide: EliminarComponenteUseCase,

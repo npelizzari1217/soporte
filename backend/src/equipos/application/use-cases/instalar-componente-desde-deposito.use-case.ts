@@ -3,6 +3,8 @@ import { ITenantTransactionRunner } from '../../../shared/infrastructure/persist
 import { ComponenteEquipoEntity } from '../../domain/entities/componente-equipo.entity';
 import { AgregarComponenteUseCase } from './agregar-componente.use-case';
 import { RegistrarSalidaInsumoUseCase } from '../../../insumos/application/use-cases/registrar-salida-insumo.use-case';
+import { CondicionStock } from '../../../insumos/domain/entities/tipo-movimiento-insumo';
+import { IComponenteEquipoRepository } from '../../domain/ports/i-componente-equipo.repository';
 
 /**
  * Excepción de uso INTERNO de este archivo: envuelve el `DomainError` de una
@@ -51,6 +53,11 @@ export interface InstalarComponenteDesdeDepositoDto {
   descripcion?: string | null;
   numeroSerie?: string | null;
   capacidad?: string | null;
+  /**
+   * Condición del saldo del que sale la unidad. Omitida = `NUEVO`; la decide
+   * y valida `RegistrarSalidaInsumoUseCase` (saldo de esa condición, ADR-6).
+   */
+  condicion?: CondicionStock;
 }
 
 /**
@@ -100,6 +107,7 @@ export class InstalarComponenteDesdeDepositoUseCase {
     private readonly txRunner: Pick<ITenantTransactionRunner, 'run'>,
     private readonly agregarComponenteUseCase: Pick<AgregarComponenteUseCase, 'execute'>,
     private readonly registrarSalidaInsumoUseCase: Pick<RegistrarSalidaInsumoUseCase, 'execute'>,
+    private readonly componenteRepo: Pick<IComponenteEquipoRepository, 'save'>,
   ) {}
 
   async execute(
@@ -127,12 +135,19 @@ export class InstalarComponenteDesdeDepositoUseCase {
           cantidad: 1,
           usuarioId: dto.usuarioId,
           equipoId: dto.equipoId,
+          condicion: dto.condicion,
         });
         if (salidaResult.isFail()) {
           // LANZAR, no propagar el `Result.fail`: es lo único que hace que
           // Postgres revierta también el componente recién creado arriba.
           throw new FalloSalidaDeStock(salidaResult.getError());
         }
+
+        // ADR-4: el componente guarda la SALIDA que respaldó su instalación,
+        // en la misma transacción. Es lo que permite saber, al retirarlo, si
+        // la unidad salió del depósito (`bajaSinSalidaPrevia`).
+        componente.vincularInstalacion(salidaResult.getValue().id);
+        await this.componenteRepo.save(componente);
 
         return Result.ok<ComponenteEquipoEntity, DomainError>(componente);
       });

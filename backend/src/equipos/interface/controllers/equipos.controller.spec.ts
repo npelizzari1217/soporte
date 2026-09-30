@@ -249,6 +249,38 @@ describe('EquiposController (T12.6)', () => {
       expect(result.insumoId).toBe(insumoId);
     });
 
+    it.each(['NUEVO', 'USADO'] as const)(
+      'con descuento, la condición %s pedida llega al caso de uso',
+      async (condicion) => {
+        const { controller, instalarComponenteDesdeDepositoUseCase } = buildController();
+        instalarComponenteDesdeDepositoUseCase.execute.mockResolvedValue(
+          Result.ok(makeComponente()),
+        );
+
+        await controller.agregarComponente(actor, 'equipo-uuid', { insumoId, condicion } as any);
+
+        expect(instalarComponenteDesdeDepositoUseCase.execute).toHaveBeenCalledWith(
+          expect.objectContaining({ condicion }),
+        );
+      },
+    );
+
+    it('descontarStock false con condicion → la condición se ignora y no se pasa (ADR-7)', async () => {
+      const { controller, instalarComponenteDesdeDepositoUseCase, agregarComponenteUseCase } =
+        buildController();
+      agregarComponenteUseCase.execute.mockResolvedValue(Result.ok(makeComponente()));
+
+      await controller.agregarComponente(actor, 'equipo-uuid', {
+        insumoId,
+        descontarStock: false,
+        condicion: 'USADO',
+      } as any);
+
+      const payload = agregarComponenteUseCase.execute.mock.calls[0][0];
+      expect(payload).not.toHaveProperty('condicion');
+      expect(instalarComponenteDesdeDepositoUseCase.execute).not.toHaveBeenCalled();
+    });
+
     it('descontarStock true → instala desde el depósito', async () => {
       const { controller, instalarComponenteDesdeDepositoUseCase, agregarComponenteUseCase } =
         buildController();

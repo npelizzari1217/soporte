@@ -175,9 +175,9 @@ describe('InstalarComponenteDesdeDepositoUseCase — Concurrencia real (WU-4, is
     );
   }
 
-  async function sembrarEntrada(cantidad: number): Promise<void> {
+  async function sembrarEntrada(cantidad: number, condicion: 'NUEVO' | 'USADO' = 'NUEVO') {
     await tenantClient.movimientoInsumo.create({
-      data: { insumoId, tipo: 'ENTRADA', cantidad, usuarioId: DUMMY_USUARIO_ID },
+      data: { insumoId, tipo: 'ENTRADA', condicion, cantidad, usuarioId: DUMMY_USUARIO_ID },
     });
   }
 
@@ -200,6 +200,7 @@ describe('InstalarComponenteDesdeDepositoUseCase — Concurrencia real (WU-4, is
       txRunner,
       agregarComponenteUseCase,
       registrarSalidaInsumoUseCase,
+      componenteRepo,
     );
   }
 
@@ -251,6 +252,49 @@ describe('InstalarComponenteDesdeDepositoUseCase — Concurrencia real (WU-4, is
         where: { equipoId: { in: equipoIds } },
       });
       expect(componentesCreados).toHaveLength(1);
+    },
+    60_000,
+  );
+
+  it(
+    `${CONCURRENCIA} instalaciones simultáneas USADO con saldo USADO 1 (y NUEVO 100): ` +
+      `UNA gana y queda vinculada a su SALIDA USADO; las demás fallan`,
+    async () => {
+      await sembrarEntrada(100, 'NUEVO');
+      await sembrarEntrada(1, 'USADO');
+
+      const resultados = await conTenant(() =>
+        Promise.all(
+          equipoIds.map((equipoId) =>
+            makeUseCase().execute({
+              equipoId,
+              insumoId,
+              usuarioId: DUMMY_USUARIO_ID,
+              condicion: 'USADO',
+            }),
+          ),
+        ),
+      );
+
+      expect(maxConcurrenteObservado()).toBeGreaterThan(1);
+      expect(resultados.filter((r) => r.isOk())).toHaveLength(1);
+      const fallidos = resultados.filter((r) => r.isFail());
+      expect(fallidos).toHaveLength(CONCURRENCIA - 1);
+      for (const fallido of fallidos) {
+        expect(fallido.getError()).toBeInstanceOf(StockInsuficienteError);
+      }
+
+      const salidas = await tenantClient.movimientoInsumo.findMany({
+        where: { insumoId, tipo: 'SALIDA' },
+      });
+      expect(salidas).toHaveLength(1);
+      expect(salidas[0].condicion).toBe('USADO');
+
+      const componentes = await tenantClient.componenteEquipo.findMany({
+        where: { equipoId: { in: equipoIds } },
+      });
+      expect(componentes).toHaveLength(1);
+      expect(componentes[0].instalacionMovimientoId).toBe(salidas[0].id);
     },
     60_000,
   );

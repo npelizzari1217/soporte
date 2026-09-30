@@ -77,3 +77,13 @@ Rama `feat/stock-usado-componentes-wu05` (base wu04). Modo estandar (feature).
 - Specs: entidad, mapper (nuevo), caso de uso reactivar, controller (catalogo 15 clases, dos filas 422, reactivar 422).
 - Cortes (regla de tamaño, ~1120 lineas en total): `wu05` = entidad, errores, controller y catalogo (433); `wu05-2` = migracion, schema, mapper y specs de constraints y mapper (542, `size:exception` declarado en el commit); `wu05-3` = puerto y repo `retirar` + reactivar con su spec. Cada parte se verifico sola (lint, typecheck, `vitest run src/equipos prisma_tenant`) regenerando el cliente Prisma con el schema de esa parte.
 - Gates: ver reporte del orquestador.
+
+## WU-6 — Instalacion con condicion y vinculo a la SALIDA (tareas 6.1 a 6.7)
+
+Rama `feat/stock-usado-componentes-wu06` (base wu05-3). Modo estandar (feature).
+
+- 6.1 `CreateComponenteHttpDto` suma `condicion?` (`@IsIn(CONDICIONES_STOCK)`); `ComponenteResponseDto` (y por herencia `ComponenteConTipoResponseDto`) publica `bajaDestino`, `bajaMotivo`, `bajaMovimientoId`, `bajaUsuarioId` y `bajaSinSalidaPrevia`.
+- 6.2 Controller: `condicion` viaja solo en la rama con descuento; con `descontarStock=false` no se pasa (ADR-7).
+- 6.3 `InstalarComponenteDesdeDepositoUseCase`: `condicion?` a la SALIDA; tras ella, `componente.vincularInstalacion(salida.id)` y `componenteRepo.save` en la misma transaccion (puerto `Pick<..., 'save'>` como ultimo parametro). `equipos.module.ts` inyecta `COMPONENTE_EQUIPO_REPOSITORY`. `AgregarComponenteUseCase` ya persiste el componente antes, asi que `save` (upsert) actualiza la fila con el vinculo.
+- 6.4 a 6.6 Specs: caso de uso (vinculo y orden, condicion NUEVO/USADO, saldo insuficiente sin guardar), DTO (catalogo y 400), controller (con y sin descuento), respuesta con el registro de retiro, concurrencia real (10 altas USADO con saldo USADO 1 y NUEVO 100: una gana, SALIDA USADO y vinculo) y e2e (USADO con saldo USADO, sin condicion con NUEVO 0 y USADO 5 => 422 sin escrituras, NUEVO, `descontarStock=false` con condicion, condicion invalida 400). El e2e ya usa `usarLockMasterTest()`. La comprobacion de `bajaSinSalidaPrevia = false` tras retirar queda para WU-7 (el retiro aun no existe); aqui se cubre la derivacion en el spec del DTO.
+- Corte (regla de tamaño, ~415 lineas en total): `wu06` = campos del registro de retiro en la respuesta del componente y su spec (78); `wu06-2` = resto (instalacion con condicion, vinculo, controller, concurrencia, e2e). Cada parte se verifico sola (lint, typecheck, `vitest run src/equipos`); el arbol final corrio `pnpm test` completo: 486 archivos, 5766 tests en verde.

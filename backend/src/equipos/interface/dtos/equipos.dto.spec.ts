@@ -309,6 +309,20 @@ describe('CreateComponenteHttpDto — contrato del alta única', () => {
     },
   );
 
+  it.each(['NUEVO', 'USADO'])('acepta la condición %s del catálogo', async (condicion) => {
+    const dto = plainToInstance(CreateComponenteHttpDto, { insumoId, condicion });
+    expect(await validate(dto)).toHaveLength(0);
+  });
+
+  it.each(['REFURBISHED', 'usado', '', 1])(
+    'rechaza la condición %j fuera del catálogo (400 en el pipe)',
+    async (condicion) => {
+      const dto = plainToInstance(CreateComponenteHttpDto, { insumoId, condicion });
+      const error = (await validate(dto)).find((e) => e.property === 'condicion');
+      expect(error?.constraints).toHaveProperty('isIn');
+    },
+  );
+
   it('un tipoComponenteCodigo sobrante se descarta con whitelist, sin error', async () => {
     const dto = plainToInstance(CreateComponenteHttpDto, {
       insumoId,

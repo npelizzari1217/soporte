@@ -259,13 +259,13 @@ Commit sugerido: `feat(equipos): registro de retiro en componentes y reactivar c
 
 **Branch**: `feat/stock-usado-componentes-wu06` · **Base**: wu05
 
-- [ ] 6.1 `equipos.dto.ts`: `CreateComponenteHttpDto` con `@IsOptional() @IsIn(CONDICIONES_STOCK) condicion?`. `ComponenteResponseDto` y `ComponenteConTipoResponseDto` suman `bajaDestino`, `bajaMotivo`, `bajaMovimientoId`, `bajaUsuarioId` y `bajaSinSalidaPrevia` (ADR-7). (Req: El componente conserva el registro de su retiro)
-- [ ] 6.2 `equipos.controller.ts`: con `descontarStock` verdadero pasa `condicion` al caso de uso; con `false` **no la pasa** (se ignora, ADR-7).
-- [ ] 6.3 `instalar-componente-desde-deposito.use-case.ts`: `condicion?` (default `NUEVO`) a la SALIDA; tras el `execute` de la salida, `componente.vincularInstalacion(salida.id)` y `componenteRepo.save(componente)` dentro de la misma transacción (suma `Pick<IComponenteEquipoRepository, 'save'>`). Módulo `equipos.module.ts` alineado. (Req: Un solo flujo de alta con descuento de stock opcional)
-- [ ] 6.4 Specs: descuento por defecto ⇒ SALIDA `NUEVO`; condición `USADO` ⇒ SALIDA `USADO`; saldo de la condición insuficiente ⇒ rechazo sin componente ni movimiento; vínculo `instalacionMovimientoId` seteado; `descontarStock: false` con `condicion` ⇒ ignorada y sin movimiento; DTO (`condicion` inválida da 400); controller.
-- [ ] 6.5 Concurrencia de instalación (molde existente): dos altas concurrentes sobre saldo USADO 1 ⇒ una sola.
-- [ ] 6.6 E2E (`usarLockMasterTest()`): alta con `condicion: 'USADO'` con saldo USADO ⇒ componente y SALIDA USADO; alta sin condición con saldo NUEVO 0 y USADO 5 ⇒ rechazo y nada escrito; alta con `descontarStock: false` no cambia saldos; el componente instalado con descuento informa `bajaSinSalidaPrevia = false` tras retirarse (comprobado en WU-7).
-- [ ] 6.7 Quality gates (backend): `cd backend && pnpm lint && pnpm typecheck && pnpm vitest run src/equipos` y `pnpm test`.
+- [x] 6.1 `equipos.dto.ts`: `CreateComponenteHttpDto` con `@IsOptional() @IsIn(CONDICIONES_STOCK) condicion?`. `ComponenteResponseDto` y `ComponenteConTipoResponseDto` suman `bajaDestino`, `bajaMotivo`, `bajaMovimientoId`, `bajaUsuarioId` y `bajaSinSalidaPrevia` (ADR-7). (Req: El componente conserva el registro de su retiro)
+- [x] 6.2 `equipos.controller.ts`: con `descontarStock` verdadero pasa `condicion` al caso de uso; con `false` **no la pasa** (se ignora, ADR-7).
+- [x] 6.3 `instalar-componente-desde-deposito.use-case.ts`: `condicion?` (default `NUEVO`) a la SALIDA; tras el `execute` de la salida, `componente.vincularInstalacion(salida.id)` y `componenteRepo.save(componente)` dentro de la misma transacción (suma `Pick<IComponenteEquipoRepository, 'save'>`). Módulo `equipos.module.ts` alineado. (Req: Un solo flujo de alta con descuento de stock opcional)
+- [x] 6.4 Specs: descuento por defecto ⇒ SALIDA `NUEVO`; condición `USADO` ⇒ SALIDA `USADO`; saldo de la condición insuficiente ⇒ rechazo sin componente ni movimiento; vínculo `instalacionMovimientoId` seteado; `descontarStock: false` con `condicion` ⇒ ignorada y sin movimiento; DTO (`condicion` inválida da 400); controller.
+- [x] 6.5 Concurrencia de instalación (molde existente): dos altas concurrentes sobre saldo USADO 1 ⇒ una sola.
+- [x] 6.6 E2E (`usarLockMasterTest()`): alta con `condicion: 'USADO'` con saldo USADO ⇒ componente y SALIDA USADO; alta sin condición con saldo NUEVO 0 y USADO 5 ⇒ rechazo y nada escrito; alta con `descontarStock: false` no cambia saldos; el componente instalado con descuento informa `bajaSinSalidaPrevia = false` tras retirarse (comprobado en WU-7).
+- [x] 6.7 Quality gates (backend): `cd backend && pnpm lint && pnpm typecheck && pnpm vitest run src/equipos` y `pnpm test`.
 
 **Escenarios**: Descuento por defecto; Descuento del saldo USADO; Stock insuficiente en la
 condición elegida; Falla la SALIDA y se revierte el alta; Alta sin descuento.

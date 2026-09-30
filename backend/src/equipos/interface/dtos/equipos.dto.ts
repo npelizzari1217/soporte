@@ -17,6 +17,7 @@
 import {
   IsBoolean,
   IsDateString,
+  IsIn,
   IsOptional,
   IsString,
   Max,
@@ -26,6 +27,10 @@ import {
   IsUUID,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
+import {
+  CONDICIONES_STOCK,
+  CondicionStock,
+} from '../../../insumos/domain/entities/tipo-movimiento-insumo';
 import { EsNumeroConDecimales } from '../../../shared/interface/validators/es-numero-con-decimales';
 import {
   TICKET_TITULO_MAX_LENGTH,
@@ -264,6 +269,14 @@ export class CreateComponenteHttpDto {
   @IsOptional()
   @IsBoolean()
   descontarStock?: boolean;
+
+  /**
+   * Condición del saldo del que sale la unidad. Omitida = `NUEVO`. Solo rige
+   * con `descontarStock` verdadero: con `false` el controller la ignora (ADR-7).
+   */
+  @IsOptional()
+  @IsIn(CONDICIONES_STOCK)
+  condicion?: CondicionStock;
 
   @IsOptional()
   @IsString()
