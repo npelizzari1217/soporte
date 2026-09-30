@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { SeguimientoNoModificableError } from '../errors/unidades-insumo.errors';
 import { CompatibilidadModelo, crearCompatibilidadModelo } from './compatibilidad-modelo';
 import {
   InsumoCodigoAlternativoEntity,
@@ -6,7 +7,7 @@ import {
 } from './insumo-codigo-alternativo.entity';
 import {
   InsumoEntity,
-  InsumoProps,
+  CrearInsumoProps,
   INSUMO_CODIGOS_ALTERNATIVOS_MAX,
   INSUMO_COMPATIBILIDAD_MAX,
   INSUMO_CODIGO_MAX_LENGTH,
@@ -17,7 +18,7 @@ import {
 } from './insumo.entity';
 
 /** Props válidas mínimas; cada test pisa solo el campo que está ejercitando. */
-function propsBase(parciales: Partial<InsumoProps> = {}): InsumoProps {
+function propsBase(parciales: Partial<CrearInsumoProps> = {}): CrearInsumoProps {
   return {
     codigo: 'TON-001',
     nombre: 'Tóner negro',
@@ -640,5 +641,144 @@ describe('InsumoEntity', () => {
       expect(insumo.activo).toBe(true);
       expect(insumo.isDeleted()).toBe(false);
     });
+  });
+});
+
+describe('InsumoEntity — seguimiento', () => {
+  it('un insumo NINGUNO no cambia: create() sin seguimiento queda NINGUNO', () => {
+    const insumo = InsumoEntity.create(propsBase());
+
+    expect(insumo.seguimiento).toBe('NINGUNO');
+  });
+
+  it('create() acepta seguimiento SERIE explícito', () => {
+    expect(InsumoEntity.create(propsBase({ seguimiento: 'SERIE' })).seguimiento).toBe('SERIE');
+  });
+
+  it('reconstitute() conserva el seguimiento y lo lee NINGUNO si falta', () => {
+    const fecha = new Date('2026-01-01');
+    const serie = InsumoEntity.reconstitute(
+      propsBase({ seguimiento: 'SERIE' }),
+      'i-1',
+      fecha,
+      fecha,
+      null,
+    );
+    const sin = InsumoEntity.reconstitute(propsBase(), 'i-2', fecha, fecha, null);
+
+    expect(serie.seguimiento).toBe('SERIE');
+    expect(sin.seguimiento).toBe('NINGUNO');
+  });
+
+  it('actualizar() no toca el seguimiento: solo lo cambia el caso de uso de activación', () => {
+    const insumo = InsumoEntity.create(propsBase({ seguimiento: 'SERIE' }));
+
+    insumo.actualizar({ nombre: 'Otro nombre', unidadMedidaId: 'otra' });
+
+    expect(insumo.seguimiento).toBe('SERIE');
+  });
+});
+
+describe('InsumoEntity.puedeCambiarSeguimiento()', () => {
+  const conteos = {
+    saldoTotal: 0,
+    unidadesEnDeposito: 0,
+    unidadesInstaladas: 0,
+    unidadMedidaEntera: true,
+  };
+
+  describe('NINGUNO → SERIE', () => {
+    const insumo = () => InsumoEntity.create(propsBase());
+
+    it('se permite con saldo cero y unidad de medida entera', () => {
+      expect(insumo().puedeCambiarSeguimiento('SERIE', conteos).isOk()).toBe(true);
+    });
+
+    it('se rechaza con saldo distinto de cero y nombra el saldo', () => {
+      const r = insumo().puedeCambiarSeguimiento('SERIE', { ...conteos, saldoTotal: 5 });
+
+      expect(r.getError()).toBeInstanceOf(SeguimientoNoModificableError);
+      expect(r.getError().message).toContain('5');
+    });
+
+    it('se rechaza con saldo negativo: no es cero', () => {
+      expect(
+        insumo()
+          .puedeCambiarSeguimiento('SERIE', { ...conteos, saldoTotal: -1 })
+          .isFail(),
+      ).toBe(true);
+    });
+
+    it('se rechaza con unidad de medida no entera', () => {
+      const r = insumo().puedeCambiarSeguimiento('SERIE', {
+        ...conteos,
+        unidadMedidaEntera: false,
+      });
+
+      expect(r.getError()).toBeInstanceOf(SeguimientoNoModificableError);
+      expect(r.getError().message).toContain('entera');
+    });
+
+    it('ignora los conteos de unidades: no le aplican a esta dirección', () => {
+      const r = insumo().puedeCambiarSeguimiento('SERIE', {
+        ...conteos,
+        unidadesEnDeposito: 3,
+        unidadesInstaladas: 2,
+      });
+
+      expect(r.isOk()).toBe(true);
+    });
+  });
+
+  describe('SERIE → NINGUNO', () => {
+    const insumo = () => InsumoEntity.create(propsBase({ seguimiento: 'SERIE' }));
+
+    it('se permite sin unidades EN_DEPOSITO ni INSTALADA (ENTREGADA y DESCARTADA no cuentan)', () => {
+      expect(insumo().puedeCambiarSeguimiento('NINGUNO', conteos).isOk()).toBe(true);
+    });
+
+    it('se rechaza con unidades EN_DEPOSITO', () => {
+      const r = insumo().puedeCambiarSeguimiento('NINGUNO', { ...conteos, unidadesEnDeposito: 2 });
+
+      expect(r.getError()).toBeInstanceOf(SeguimientoNoModificableError);
+    });
+
+    it('se rechaza con unidades INSTALADA', () => {
+      const r = insumo().puedeCambiarSeguimiento('NINGUNO', { ...conteos, unidadesInstaladas: 1 });
+
+      expect(r.getError()).toBeInstanceOf(SeguimientoNoModificableError);
+    });
+
+    it('ignora el saldo y la unidad de medida: no le aplican a esta dirección', () => {
+      const r = insumo().puedeCambiarSeguimiento('NINGUNO', {
+        ...conteos,
+        saldoTotal: 9,
+        unidadMedidaEntera: false,
+      });
+
+      expect(r.isOk()).toBe(true);
+    });
+  });
+
+  it('pedir el seguimiento que ya tiene es un no-op válido, aun con conteos que lo impedirían', () => {
+    const serie = InsumoEntity.create(propsBase({ seguimiento: 'SERIE' }));
+    const ninguno = InsumoEntity.create(propsBase());
+    const ocupado = {
+      saldoTotal: 4,
+      unidadesEnDeposito: 4,
+      unidadesInstaladas: 1,
+      unidadMedidaEntera: false,
+    };
+
+    expect(serie.puedeCambiarSeguimiento('SERIE', ocupado).isOk()).toBe(true);
+    expect(ninguno.puedeCambiarSeguimiento('NINGUNO', ocupado).isOk()).toBe(true);
+  });
+
+  it('es pura: no cambia el seguimiento de la entidad', () => {
+    const insumo = InsumoEntity.create(propsBase());
+
+    insumo.puedeCambiarSeguimiento('SERIE', conteos);
+
+    expect(insumo.seguimiento).toBe('NINGUNO');
   });
 });

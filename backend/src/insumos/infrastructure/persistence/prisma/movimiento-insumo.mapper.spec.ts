@@ -316,4 +316,23 @@ describe('MovimientoInsumoMapper', () => {
     expect(reconstruido.createdAt).toEqual(fechaDeLaBase);
     expect(reconstruido.createdAt).not.toEqual(movimiento.createdAt);
   });
+
+  describe('unidadId', () => {
+    it('toDomain() lee la unidad de la fila, o null si es un movimiento por cantidad', () => {
+      expect(MovimientoInsumoMapper.toDomain(filaMovimiento()).unidadId).toBeNull();
+      expect(
+        MovimientoInsumoMapper.toDomain(
+          filaMovimiento({ unidadId: 'unidad-1', cantidad: new Prisma.Decimal('1.00') }),
+        ).unidadId,
+      ).toBe('unidad-1');
+    });
+
+    it('toPersistence() lleva la unidad de la entidad, y null explícito si no tiene', () => {
+      const conUnidad = crearMovimiento({ unidadId: 'unidad-1', cantidad: 1 });
+
+      expect(MovimientoInsumoMapper.toPersistence(conUnidad).unidadId).toBe('unidad-1');
+      const sinUnidad = MovimientoInsumoMapper.toPersistence(crearMovimiento());
+      expect(sinUnidad).toHaveProperty('unidadId', null);
+    });
+  });
 });

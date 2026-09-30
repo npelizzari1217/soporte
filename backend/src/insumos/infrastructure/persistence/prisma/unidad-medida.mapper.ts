@@ -13,7 +13,7 @@ export class UnidadMedidaMapper {
    */
   static toDomain(row: PrismaUnidadMedida): UnidadMedidaEntity {
     return UnidadMedidaEntity.reconstitute(
-      { codigo: row.codigo, nombre: row.nombre, activo: row.activo },
+      { codigo: row.codigo, nombre: row.nombre, activo: row.activo, entera: row.entera },
       row.id,
       row.createdAt,
       row.updatedAt,
@@ -37,12 +37,13 @@ export class UnidadMedidaMapper {
    */
   static toPersistence(
     entity: UnidadMedidaEntity,
-  ): Omit<PrismaUnidadMedida, 'updatedAt' | 'createdAt' | 'entera'> {
+  ): Omit<PrismaUnidadMedida, 'updatedAt' | 'createdAt'> {
     return {
       id: entity.id,
       codigo: entity.codigo,
       nombre: entity.nombre,
       activo: entity.activo,
+      entera: entity.entera,
       deletedAt: entity.deletedAt,
     };
   }

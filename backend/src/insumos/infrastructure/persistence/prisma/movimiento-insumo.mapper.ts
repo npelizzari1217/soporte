@@ -32,10 +32,7 @@ import {
  * `DEFAULT clock_timestamp()` de la columna sea quien decida la fecha, y no
  * el reloj del proceso Node.
  */
-export type FilaMovimientoInsumo = Omit<
-  PrismaMovimientoInsumo,
-  'cantidad' | 'createdAt' | 'unidadId'
-> & {
+export type FilaMovimientoInsumo = Omit<PrismaMovimientoInsumo, 'cantidad' | 'createdAt'> & {
   cantidad: Prisma.Decimal | number;
 };
 
@@ -70,6 +67,7 @@ export class MovimientoInsumoMapper {
         equipoId: row.equipoId ?? null,
         sectorId: row.sectorId ?? null,
         itemCompraId: row.itemCompraId ?? null,
+        unidadId: row.unidadId ?? null,
       },
       row.id,
       row.createdAt,
@@ -105,6 +103,10 @@ export class MovimientoInsumoMapper {
    * relee la fila real y devuelve el asiento reconstituido con ESA fecha —
    * nunca la de este objeto en memoria.
    *
+   * `unidadId` se lee de la entidad por el mismo motivo que `itemCompraId`: un
+   * movimiento de una unidad que se persistiera SIN ella rompería el saldo de
+   * un insumo `SERIE` sin error visible.
+   *
    * Los cuatro nullables viajan como `null` EXPLÍCITO y no como campo ausente:
    * para Prisma no son lo mismo, y un `undefined` que se colara del caller se
    * leería como "no tocar la columna" en vez de "sin motivo". La entidad ya
@@ -133,6 +135,7 @@ export class MovimientoInsumoMapper {
       equipoId: entity.equipoId,
       sectorId: entity.sectorId,
       itemCompraId: entity.itemCompraId,
+      unidadId: entity.unidadId,
     };
   }
 }

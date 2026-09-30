@@ -10,7 +10,17 @@ export interface UnidadMedidaProps {
   codigo: string;
   nombre: string;
   activo: boolean;
+  /**
+   * `true` si se mide en piezas enteras (UNI, PAR): requisito para que un
+   * insumo se siga por número de serie. Lo edita el administrador (F3); la
+   * regla de no desmarcarla si un insumo `SERIE` la usa es de la capa de
+   * aplicación, que necesita contar insumos.
+   */
+  entera: boolean;
 }
+
+/** Props que acepta `UnidadMedidaEntity.create()`: `entera` es opcional y por defecto `false`. */
+export type CrearUnidadMedidaProps = Omit<UnidadMedidaProps, 'entera'> & { entera?: boolean };
 
 /**
  * Topes de largo, espejando `unidades_medida.codigo VarChar(20)` y
@@ -111,9 +121,9 @@ export class UnidadMedidaEntity extends BaseEntity<UnidadMedidaProps> {
    * @returns La entidad creada.
    * @throws Error si `codigo` o `nombre` exceden el tope de su columna.
    */
-  static create(props: UnidadMedidaProps, id?: string): UnidadMedidaEntity {
+  static create(props: CrearUnidadMedidaProps, id?: string): UnidadMedidaEntity {
     validarLargos(props.codigo, props.nombre);
-    return new UnidadMedidaEntity(props, id);
+    return new UnidadMedidaEntity({ ...props, entera: props.entera ?? false }, id);
   }
 
   /**
@@ -123,7 +133,7 @@ export class UnidadMedidaEntity extends BaseEntity<UnidadMedidaProps> {
    * explotar una lectura por un valor histórico convertiría un dato viejo en
    * una caída de sistema.
    *
-   * @param props Código, nombre y estado leídos de la base.
+   * @param props Código, nombre y estado leídos de la base. `entera` ausente se lee como `false`; `UnidadMedidaMapper` lo manda siempre.
    * @param id Id persistido.
    * @param createdAt Alta original.
    * @param updatedAt Última modificación.
@@ -131,13 +141,13 @@ export class UnidadMedidaEntity extends BaseEntity<UnidadMedidaProps> {
    * @returns La entidad reconstituida.
    */
   static reconstitute(
-    props: UnidadMedidaProps,
+    props: CrearUnidadMedidaProps,
     id: string,
     createdAt: Date,
     updatedAt: Date,
     deletedAt: Date | null,
   ): UnidadMedidaEntity {
-    const entity = new UnidadMedidaEntity(props, id);
+    const entity = new UnidadMedidaEntity({ ...props, entera: props.entera ?? false }, id);
     Object.assign(entity, { _createdAt: createdAt, _updatedAt: updatedAt });
     entity._deletedAt = deletedAt;
     return entity;
@@ -158,6 +168,11 @@ export class UnidadMedidaEntity extends BaseEntity<UnidadMedidaProps> {
     return this.props.activo;
   }
 
+  /** `true` si la unidad mide piezas enteras. */
+  get entera(): boolean {
+    return this.props.entera;
+  }
+
   /**
    * Actualiza los campos editables (PATCH semántico — `undefined` no toca el
    * campo). La unicidad de `codigo` se valida en la capa de aplicación
@@ -166,13 +181,16 @@ export class UnidadMedidaEntity extends BaseEntity<UnidadMedidaProps> {
    * @param datos Campos a modificar; los ausentes quedan intactos.
    * @returns Nada; lanza si algún valor excede el tope de su columna.
    */
-  actualizar(datos: { codigo?: string; nombre?: string }): void {
+  actualizar(datos: { codigo?: string; nombre?: string; entera?: boolean }): void {
     validarLargos(datos.codigo, datos.nombre);
     if (datos.codigo !== undefined) {
       this.props.codigo = datos.codigo;
     }
     if (datos.nombre !== undefined) {
       this.props.nombre = datos.nombre;
+    }
+    if (datos.entera !== undefined) {
+      this.props.entera = datos.entera;
     }
     this.touch();
   }

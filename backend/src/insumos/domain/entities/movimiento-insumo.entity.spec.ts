@@ -515,3 +515,50 @@ describe('MovimientoInsumoEntity', () => {
     );
   });
 });
+
+describe('MovimientoInsumoEntity — unidadId', () => {
+  it('un movimiento sin unidad queda con unidadId null y acepta cualquier cantidad válida', () => {
+    const r = MovimientoInsumoEntity.create(propsBase({ cantidad: 2.5 }));
+
+    expect(r.getValue().unidadId).toBeNull();
+    expect(r.getValue().cantidad).toBe(2.5);
+  });
+
+  it('un movimiento con unidad y cantidad 1 la conserva', () => {
+    const r = MovimientoInsumoEntity.create(propsBase({ unidadId: 'unidad-1', cantidad: 1 }));
+
+    expect(r.getValue().unidadId).toBe('unidad-1');
+  });
+
+  it.each([2, 0.5, 1.01])('unidadId ⇒ cantidad = 1: con cantidad %s lanza', (cantidad) => {
+    expect(() =>
+      MovimientoInsumoEntity.create(propsBase({ unidadId: 'unidad-1', cantidad })),
+    ).toThrow(/cantidad 1/);
+  });
+
+  it('unidadId null explícito no activa la regla de cantidad', () => {
+    expect(MovimientoInsumoEntity.create(propsBase({ unidadId: null, cantidad: 7 })).isOk()).toBe(
+      true,
+    );
+  });
+
+  it('reconstitute() conserva la unidad y lee null si falta (fila histórica)', () => {
+    const base = {
+      insumoId: 'i',
+      tipo: 'SALIDA' as const,
+      condicion: 'NUEVO' as const,
+      cantidad: 1,
+      usuarioId: 'u',
+      motivo: null,
+      equipoId: null,
+      sectorId: null,
+      itemCompraId: null,
+    };
+    const fecha = new Date('2026-01-01');
+
+    expect(
+      MovimientoInsumoEntity.reconstitute({ ...base, unidadId: 'unidad-1' }, 'm-1', fecha).unidadId,
+    ).toBe('unidad-1');
+    expect(MovimientoInsumoEntity.reconstitute(base, 'm-2', fecha).unidadId).toBeNull();
+  });
+});

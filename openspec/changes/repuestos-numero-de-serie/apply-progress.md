@@ -55,3 +55,28 @@ rama `feat/repuestos-numero-de-serie-wu02` (2.1, 2.2, 2.5) y `feat/repuestos-num
 | Runtime harness | N/A: dominio puro y errores; sin frontera de runtime |
 | Rollback boundary | Revertir el commit de la parte 1: solo agrega archivos y dos entradas al spec del catálogo de equipos |
 
+### Parte 2 (wu02-2): 2.3, 2.4, 2.6 hechas
+
+- `InsumoEntity.seguimiento` (por defecto `NINGUNO`, `actualizar()` no lo toca) y
+  `puedeCambiarSeguimiento(destino, conteos)`: pura, recibe los conteos ya leídos (saldo total,
+  unidades `EN_DEPOSITO` e `INSTALADA`, `entera`); pedir el valor actual es un no-op válido.
+- `UnidadMedidaEntity.entera` (por defecto `false`, editable en `actualizar()`).
+  `MovimientoInsumoEntity.unidadId` opcional con `unidadId => cantidad = 1` (`throw` de contrato,
+  espeja el CHECK). `saldosDesdeUnidades(conteo)` en `tipo-movimiento-insumo.ts`; `calcularStock()`
+  y `calcularSaldos()` no cambian.
+- `reconstitute()` de las tres entidades acepta los campos nuevos como opcionales (`NINGUNO`,
+  `false`, `null`) para no tocar cada spec que arma entidades; los mappers los mandan siempre y sus
+  specs lo verifican.
+- Mappers: `InsumoMapper.toPersistence()` devuelve `seguimiento` (rama `create`; quitarlo de la rama
+  `update` es WU-3a: hasta entonces un `save()` con entidad vieja lo reescribiría, pero ningún camino
+  lo cambia todavía). `UnidadMedidaMapper` y `MovimientoInsumoMapper` mandan `entera` y `unidadId`.
+  Mappers nuevos `UnidadInsumoMapper` y `EventoUnidadInsumoMapper` (append-only, sin `createdAt`).
+
+### Work Unit Evidence (WU-2 completo)
+
+| Evidence | Value |
+|---|---|
+| Focused test command | `pnpm vitest run src/insumos src/equipos/domain`: verde en cada parte (parte 1 aislada, parte 2 sobre la parte 1) |
+| Runtime harness | N/A: dominio puro y mappers sin IO; la persistencia real de estos campos la ejerce WU-3a con la base efímera |
+| Rollback boundary | Revertir la parte 2 (entidades existentes y mappers) y luego la parte 1 (archivos nuevos); cada una es revertible por separado |
+

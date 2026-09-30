@@ -218,16 +218,17 @@ Commit sugerido: `feat(insumos): esquema de unidades por numero de serie`.
 
 - [x] 2.1 `UnidadInsumoEntity` con la máquina de estados completa de ADR-1 (tabla de transiciones; pendiente solo sale por ajuste negativo; una `INSTALADA` siempre tiene serial; `ENTREGADA → EN_DEPOSITO` en NUEVO o USADO; `DESCARTADA → EN_DEPOSITO` con serial o pendiente). Specs de transiciones válidas e inválidas y de `cargarSerial` solo sobre `EN_DEPOSITO`. (Req: estado de la unidad; serie pendiente)
 - [x] 2.2 `EventoUnidadInsumoEntity` (append-only, `componenteId` opcional) y specs.
-- [ ] 2.3 `InsumoEntity.seguimiento` y `puedeCambiarSeguimiento()` (recibe los conteos ya leídos); `UnidadMedidaEntity.entera`; `MovimientoInsumoEntity.unidadId` **opcional** con la regla `unidadId ⇒ cantidad = 1`; `saldosDesdeUnidades(conteo)` en `tipo-movimiento-insumo.ts` sin tocar `calcularStock()` ni `calcularSaldos()`. Specs.
-- [ ] 2.4 Mappers (insumo, unidad de medida, movimiento, unidad, evento). `InsumoMapper.toPersistence()` devuelve `seguimiento` para la rama `create`; la exclusión de la rama `update` es WU-3a. Specs de mapper.
+- [x] 2.3 `InsumoEntity.seguimiento` y `puedeCambiarSeguimiento()` (recibe los conteos ya leídos); `UnidadMedidaEntity.entera`; `MovimientoInsumoEntity.unidadId` **opcional** con la regla `unidadId ⇒ cantidad = 1`; `saldosDesdeUnidades(conteo)` en `tipo-movimiento-insumo.ts` sin tocar `calcularStock()` ni `calcularSaldos()`. Specs.
+- [x] 2.4 Mappers (insumo, unidad de medida, movimiento, unidad, evento). `InsumoMapper.toPersistence()` devuelve `seguimiento` para la rama `create`; la exclusión de la rama `update` es WU-3a. Specs de mapper.
 - [x] 2.5 Errores de dominio de insumos de ADR-8 (`SerialDuplicadoError`, `UnidadNoDisponibleError`, `UnidadRequeridaError`, `UnidadNoAdmitidaError`, `SerialesNoCoincidenError`, `SerialRequeridoError`, `CantidadNoEnteraError`, `SeguimientoNoModificableError`, `UnidadMedidaNoEnteraError`, `UnidadMedidaEnUsoPorSerieError`, `UnidadMedidaCambiadaError`, `MotivoRecuperacionRequeridoError`, `UnidadNoEncontradaError`) y de equipos (`SerialDeUnidadNoEditableError`, `UnidadDelComponenteNoDisponibleError`) en sus `*.errors.ts`. Sin mapeo HTTP todavía.
-- [ ] 2.6 Quality gates (backend): `cd backend && pnpm lint && pnpm typecheck && pnpm vitest run src/insumos/domain src/insumos/infrastructure src/equipos/domain` y `pnpm test`.
+- [x] 2.6 Quality gates (backend): `cd backend && pnpm lint && pnpm typecheck && pnpm vitest run src/insumos/domain src/insumos/infrastructure src/equipos/domain` y `pnpm test`.
 
 **Escenarios**: Insumo NINGUNO sin cambios (entidad); Movimiento sin unidad / Insumo NINGUNO con
 unidad (regla de entidad); Saldo de un insumo SERIE (`saldosDesdeUnidades`); Estado inválido
 (entidad).
 **PR boundary**: ~600 líneas reales, base wu01. Si supera 400: corte entre (2.1, 2.2, 2.5) y
 (2.3, 2.4); si se separa el tipo de la entidad de sus mappers, `size:exception` con ese motivo.
+**Real**: ~2.300 líneas en dos commits con la costura de este work unit (parte 1 con 2.1, 2.2 y 2.5: ~1.400, la entidad con su spec por tabla de transiciones pesa ~760; parte 2 con 2.3 y 2.4: ~880, specs de las entidades y de los cinco mappers). Las dos partes llevan `size:exception`: ninguna baja de 400 sin separar el código de sus tests.
 **Ayuda**: sin deuda.
 Commit sugerido: `feat(insumos): dominio de unidad de insumo con maquina de estados`.
 

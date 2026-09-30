@@ -16,6 +16,7 @@ import type {
   InsumoModeloEquipo as PrismaInsumoModeloEquipo,
   Prisma,
 } from '.prisma/tenant';
+import type { SeguimientoInsumo } from '../../../domain/entities/unidad-insumo.entity';
 import { InsumoEntity } from '../../../domain/entities/insumo.entity';
 import { InsumoCodigoAlternativoEntity } from '../../../domain/entities/insumo-codigo-alternativo.entity';
 import { CompatibilidadModelo } from '../../../domain/entities/compatibilidad-modelo';
@@ -137,6 +138,8 @@ export class InsumoMapper {
         unidadMedidaId: row.unidadMedidaId,
         stockMinimo: row.stockMinimo !== null ? Number(row.stockMinimo) : null,
         activo: row.activo,
+        // VarChar sin enum de Prisma: seguro por el CHECK `insumos_seguimiento_check`.
+        seguimiento: row.seguimiento as SeguimientoInsumo,
         codigosAlternativos: row.codigosAlternativos.map(InsumoCodigoAlternativoMapper.toDomain),
         compatibilidad: row.compatibilidad.map(CompatibilidadModeloMapper.toDomain),
       },
@@ -171,12 +174,18 @@ export class InsumoMapper {
    * existía — mismo mecanismo que ya usaba `CompatibilidadModeloMapper` en
    * este archivo, y que ahora también usa `InsumoCodigoAlternativoMapper`.
    *
+   * `seguimiento` viaja para la rama CREATE. Que el UPDATE del `upsert` NO lo
+   * pise (un `EditarInsumo` con la entidad leída antes de una activación lo
+   * reescribiría con el valor viejo, W3) lo resuelve `save()` en WU-3a: quita
+   * la clave de la rama `update`. El escritor único es
+   * `CambiarSeguimientoInsumoUseCase`.
+   *
    * @param entity Insumo de dominio a persistir.
    * @returns El shape de fila que espera Prisma, sin `updatedAt` (lo maneja el ORM) ni `createdAt`.
    */
   static toPersistence(entity: InsumoEntity): Omit<
     PrismaInsumo,
-    'updatedAt' | 'stockMinimo' | 'createdAt' | 'seguimiento'
+    'updatedAt' | 'stockMinimo' | 'createdAt'
   > & {
     stockMinimo: Prisma.Decimal | number | string | null;
   } {
@@ -188,6 +197,7 @@ export class InsumoMapper {
       unidadMedidaId: entity.unidadMedidaId,
       stockMinimo: entity.stockMinimo,
       activo: entity.activo,
+      seguimiento: entity.seguimiento,
       deletedAt: entity.deletedAt,
     };
   }

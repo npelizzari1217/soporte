@@ -1,6 +1,9 @@
 import { BaseEntity } from '../../../shared/domain/base-entity';
 import { CompatibilidadModelo } from './compatibilidad-modelo';
 import { InsumoCodigoAlternativoEntity } from './insumo-codigo-alternativo.entity';
+import { SeguimientoInsumo } from './unidad-insumo.entity';
+import { Result } from '../../../shared/domain/result';
+import { SeguimientoNoModificableError } from '../errors/unidades-insumo.errors';
 
 /**
  * InsumoProps — shape del catálogo de insumos del tenant (tóner, resmas,
@@ -24,6 +27,36 @@ export interface InsumoProps {
    * elegibilidad de cada modelo las valida la capa de aplicación.
    */
   compatibilidad: CompatibilidadModelo[];
+  /**
+   * Cómo se sigue el stock: por cantidad (`NINGUNO`, el de siempre) o una
+   * unidad por pieza con número de serie (`SERIE`). Solo lo cambia
+   * `CambiarSeguimientoInsumoUseCase`; `actualizar()` no lo toca.
+   */
+  seguimiento: SeguimientoInsumo;
+}
+
+/**
+ * Props que acepta `InsumoEntity.create()`: `seguimiento` es opcional y por
+ * defecto `NINGUNO`, así que el alta de un insumo sin serie no cambia.
+ */
+export type CrearInsumoProps = Omit<InsumoProps, 'seguimiento'> & {
+  seguimiento?: SeguimientoInsumo;
+};
+
+/**
+ * Conteos que `InsumoEntity.puedeCambiarSeguimiento()` necesita, ya leídos por
+ * el caso de uso dentro de la transacción y bajo los locks de ADR-12: la
+ * entidad no consulta nada.
+ */
+export interface ConteosParaCambioDeSeguimiento {
+  /** Saldo total del libro (NUEVO + USADO). Solo se mira al pasar a `SERIE`. */
+  saldoTotal: number;
+  /** Unidades `EN_DEPOSITO`. Solo se mira al volver a `NINGUNO`. */
+  unidadesEnDeposito: number;
+  /** Unidades `INSTALADA`. Solo se mira al volver a `NINGUNO`. */
+  unidadesInstaladas: number;
+  /** `entera` de la unidad de medida vigente del insumo. Solo se mira al pasar a `SERIE`. */
+  unidadMedidaEntera: boolean;
 }
 
 /**
@@ -248,7 +281,7 @@ export class InsumoEntity extends BaseEntity<InsumoProps> {
    *   está fuera de rango o de escala, o si `codigosAlternativos` o
    *   `compatibilidad` superan su techo de cardinalidad.
    */
-  static create(props: InsumoProps, id?: string): InsumoEntity {
+  static create(props: CrearInsumoProps, id?: string): InsumoEntity {
     validarLargos(props.codigo, props.nombre);
     validarStockMinimo(props.stockMinimo);
     validarCantidadDeCodigos(props.codigosAlternativos);
@@ -256,6 +289,7 @@ export class InsumoEntity extends BaseEntity<InsumoProps> {
     return new InsumoEntity(
       {
         ...props,
+        seguimiento: props.seguimiento ?? 'NINGUNO',
         codigosAlternativos: [...props.codigosAlternativos],
         compatibilidad: [...props.compatibilidad],
       },
@@ -271,7 +305,7 @@ export class InsumoEntity extends BaseEntity<InsumoProps> {
    * existiera el techo, por ejemplo— convertiría un valor legado en una caída
    * de sistema.
    *
-   * @param props Campos del insumo leídos de la base, con sus códigos alternativos y su compatibilidad.
+   * @param props Campos del insumo leídos de la base, con sus códigos alternativos y su compatibilidad. `seguimiento` ausente se lee como `NINGUNO`; `InsumoMapper` lo manda siempre.
    * @param id Id persistido.
    * @param createdAt Alta original.
    * @param updatedAt Última modificación.
@@ -279,7 +313,7 @@ export class InsumoEntity extends BaseEntity<InsumoProps> {
    * @returns La entidad reconstituida.
    */
   static reconstitute(
-    props: InsumoProps,
+    props: CrearInsumoProps,
     id: string,
     createdAt: Date,
     updatedAt: Date,
@@ -288,6 +322,7 @@ export class InsumoEntity extends BaseEntity<InsumoProps> {
     const entity = new InsumoEntity(
       {
         ...props,
+        seguimiento: props.seguimiento ?? 'NINGUNO',
         codigosAlternativos: [...props.codigosAlternativos],
         compatibilidad: [...props.compatibilidad],
       },
@@ -326,6 +361,56 @@ export class InsumoEntity extends BaseEntity<InsumoProps> {
   /** `false` si el insumo está deshabilitado. */
   get activo(): boolean {
     return this.props.activo;
+  }
+
+  /** `NINGUNO` (stock por cantidad) o `SERIE` (una unidad por pieza). */
+  get seguimiento(): SeguimientoInsumo {
+    return this.props.seguimiento;
+  }
+
+  /**
+   * Regla del cambio de `seguimiento` (ADR-3). Es pura: recibe los conteos ya
+   * leídos bajo lock y no cambia nada; el cambio lo persiste
+   * `IInsumoRepository.cambiarSeguimiento`.
+   *
+   * - `NINGUNO → SERIE`: saldo total cero (no se convierte stock existente en
+   *   unidades) y unidad de medida entera.
+   * - `SERIE → NINGUNO`: cero unidades `EN_DEPOSITO` y cero `INSTALADA`. Las
+   *   `ENTREGADA` y `DESCARTADA` no lo impiden.
+   * - Pedir el seguimiento que ya tiene es un no-op válido.
+   *
+   * @param destino Seguimiento pedido.
+   * @param conteos Conteos leídos por el caso de uso.
+   * @returns `SeguimientoNoModificableError` con el motivo, o ok.
+   */
+  puedeCambiarSeguimiento(
+    destino: SeguimientoInsumo,
+    conteos: ConteosParaCambioDeSeguimiento,
+  ): Result<void, SeguimientoNoModificableError> {
+    if (destino === this.props.seguimiento) return Result.ok(undefined);
+    if (destino === 'SERIE') {
+      if (conteos.saldoTotal !== 0) {
+        return Result.fail(
+          new SeguimientoNoModificableError(
+            `el saldo es ${conteos.saldoTotal} y debe ser cero: el stock existente no se convierte en unidades.`,
+          ),
+        );
+      }
+      if (!conteos.unidadMedidaEntera) {
+        return Result.fail(
+          new SeguimientoNoModificableError('la unidad de medida del insumo no es entera.'),
+        );
+      }
+      return Result.ok(undefined);
+    }
+    if (conteos.unidadesEnDeposito !== 0 || conteos.unidadesInstaladas !== 0) {
+      return Result.fail(
+        new SeguimientoNoModificableError(
+          `quedan ${conteos.unidadesEnDeposito} unidad(es) en el depósito y ${conteos.unidadesInstaladas} instalada(s).`,
+        ),
+      );
+    }
+    return Result.ok(undefined);
   }
 
   /**

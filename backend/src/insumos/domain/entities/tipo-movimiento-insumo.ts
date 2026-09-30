@@ -178,3 +178,30 @@ export function calcularSaldos(sumas: SumasPorCondicionYTipo): SaldosInsumo {
   }
   return { ...saldos, total: totalEnCentesimas / 100 };
 }
+
+/**
+ * Conteo de unidades `EN_DEPOSITO` de un insumo `SERIE` por condición: el
+ * insumo de `saldosDesdeUnidades`.
+ */
+export type ConteoPorCondicion = Readonly<Record<CondicionStock, number>>;
+
+/**
+ * Saldo de un insumo `SERIE` a partir del conteo de sus unidades `EN_DEPOSITO`
+ * (ADR-2): cada unidad cuenta 1 en su condición y el total es la suma. Es la
+ * rama `SERIE` de la consulta de stock; `calcularStock()` y `calcularSaldos()`
+ * no cambian, y para todo insumo `SERIE` el resultado coincide con
+ * `calcularSaldos()` del libro (invariante que verifica el helper de
+ * integración).
+ *
+ * @param conteo Unidades `EN_DEPOSITO` por condición, con ambas presentes.
+ * @returns El mismo shape que `calcularSaldos`.
+ */
+export function saldosDesdeUnidades(conteo: ConteoPorCondicion): SaldosInsumo {
+  const saldos = { NUEVO: 0, USADO: 0 };
+  let total = 0;
+  for (const condicion of CONDICIONES_STOCK) {
+    saldos[condicion] = conteo[condicion];
+    total += conteo[condicion];
+  }
+  return { ...saldos, total };
+}

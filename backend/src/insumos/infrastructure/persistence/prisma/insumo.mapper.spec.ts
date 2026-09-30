@@ -151,6 +151,38 @@ describe('InsumoMapper', () => {
     expect(entity.isDeleted()).toBe(true);
   });
 
+  it('toDomain() lee el seguimiento de la fila', () => {
+    expect(InsumoMapper.toDomain(filaInsumo({ seguimiento: 'SERIE' })).seguimiento).toBe('SERIE');
+    expect(InsumoMapper.toDomain(filaInsumo({ seguimiento: 'NINGUNO' })).seguimiento).toBe(
+      'NINGUNO',
+    );
+  });
+
+  /**
+   * La rama `create` del upsert necesita `seguimiento`; que la rama `update` lo
+   * descarte es de `save()` (WU-3a). El mapper lo emite siempre.
+   */
+  it('toPersistence() devuelve el seguimiento, por defecto NINGUNO y SERIE si la entidad lo es', () => {
+    const base = {
+      codigo: 'TON-001',
+      nombre: 'Tóner negro',
+      familiaId: 'familia-1',
+      unidadMedidaId: 'unidad-1',
+      stockMinimo: null,
+      activo: true,
+      codigosAlternativos: [],
+      compatibilidad: [],
+    };
+
+    expect(InsumoMapper.toPersistence(InsumoEntity.create(base, 'i-1')).seguimiento).toBe(
+      'NINGUNO',
+    );
+    expect(
+      InsumoMapper.toPersistence(InsumoEntity.create({ ...base, seguimiento: 'SERIE' }, 'i-2'))
+        .seguimiento,
+    ).toBe('SERIE');
+  });
+
   it('toPersistence() convierte un InsumoEntity al shape de fila Prisma', () => {
     const entity = InsumoEntity.create(
       {
