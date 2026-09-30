@@ -4,7 +4,8 @@
 
 Definir el seguimiento por unidad física de los insumos marcados como
 serializados (`seguimiento = SERIE`): cada pieza es una unidad con serial único,
-condición propia y un ciclo de vida (`EN_DEPOSITO`, `INSTALADA`, `DESCARTADA`),
+condición propia y un ciclo de vida (`EN_DEPOSITO`, `INSTALADA`, `ENTREGADA`,
+`DESCARTADA`),
 con corrección de serial auditada e historial por serial. Los insumos
 `NINGUNO` no cambian. Los nombres de tablas, columnas y endpoints, el bloqueo, el
 lugar donde viven el registro de auditoría y el historial, y la forma de validar
@@ -48,9 +49,10 @@ rechazar `SERIE` en un insumo cuya unidad de medida no es entera (por ejemplo
 litros o kilos), tanto al activarlo como en el alta, y DEBE rechazar el cambio de
 unidad de medida de un insumo `SERIE` a una no entera. Las reglas DEBEN aplicarse
 en el backend con independencia de la interfaz. La forma de determinar qué unidad
-de medida es entera queda a decisión de diseño. Un insumo `SERIE` NO DEBE volver a
-`NINGUNO` mientras tenga unidades que no estén `DESCARTADA` (supuesto de spec, a
-confirmar en diseño).
+de medida es entera queda a decisión de diseño. Un insumo `SERIE` DEBE poder
+volver a `NINGUNO` solo si no tiene ninguna unidad `EN_DEPOSITO` ni `INSTALADA`
+(decisión del dueño). Las unidades `ENTREGADA` y `DESCARTADA` no lo impiden, NO
+DEBEN modificarse ni borrarse al volver a `NINGUNO` y conservan su historial.
 
 #### Scenario: Activar con saldo cero
 
@@ -72,18 +74,27 @@ confirmar en diseño).
 
 #### Scenario: Volver a NINGUNO con unidades vivas
 
-- GIVEN un insumo `SERIE` con una unidad `EN_DEPOSITO`
+- GIVEN un insumo `SERIE` con una unidad `EN_DEPOSITO` o una `INSTALADA`
 - WHEN se lo cambia a `NINGUNO`
 - THEN el sistema rechaza el cambio y las unidades no se modifican
+
+#### Scenario: Volver a NINGUNO con unidades entregadas o descartadas
+
+- GIVEN un insumo `SERIE` cuyas unidades están todas `ENTREGADA` o `DESCARTADA`
+- WHEN se lo cambia a `NINGUNO`
+- THEN el insumo queda en `NINGUNO`, las unidades conservan su estado y su historial sigue consultable
 
 ### Requirement: La unidad tiene un serial, una condición y un estado
 
 El sistema DEBE representar cada pieza de un insumo `SERIE` como una unidad con
 serial, condición (`NUEVO` o `USADO`) y un estado con valor `EN_DEPOSITO`,
-`INSTALADA` o `DESCARTADA`, y NO DEBE aceptar valores fuera de esos conjuntos. Una
-unidad `INSTALADA` DEBE referir el equipo donde está; una `EN_DEPOSITO` o
-`DESCARTADA` NO DEBE referir equipo. Una unidad `DESCARTADA` es una baja
-definitiva de existencias: no cuenta en ningún saldo.
+`INSTALADA`, `ENTREGADA` o `DESCARTADA`, y NO DEBE aceptar valores fuera de esos
+conjuntos. Una unidad `INSTALADA` DEBE referir el equipo donde está; una
+`EN_DEPOSITO`, `ENTREGADA` o `DESCARTADA` NO DEBE referir equipo. Una unidad
+`ENTREGADA` salió del depósito por una SALIDA manual (por ejemplo, entregada a un
+sector): sigue existiendo fuera del depósito y su destino queda en el historial.
+Una unidad `DESCARTADA` es una baja definitiva (pérdida, rotura, descarte). Ni
+`ENTREGADA` ni `DESCARTADA` cuentan en ningún saldo.
 
 #### Scenario: Unidad instalada refiere su equipo
 
@@ -94,8 +105,14 @@ definitiva de existencias: no cuenta en ningún saldo.
 #### Scenario: Estado inválido
 
 - GIVEN una unidad existente
-- WHEN se intenta guardar un estado fuera de `EN_DEPOSITO`, `INSTALADA` y `DESCARTADA`
+- WHEN se intenta guardar un estado fuera de `EN_DEPOSITO`, `INSTALADA`, `ENTREGADA` y `DESCARTADA`
 - THEN el sistema rechaza la operación
+
+#### Scenario: Unidad entregada no refiere equipo ni cuenta en el saldo
+
+- GIVEN una unidad "E1" `EN_DEPOSITO` NUEVO con serial
+- WHEN se registra una SALIDA de "E1" hacia un sector
+- THEN "E1" queda `ENTREGADA`, sin equipo, y el saldo NUEVO baja en 1
 
 ### Requirement: El serial es obligatorio, se normaliza y es único por insumo
 
@@ -191,12 +208,12 @@ generar un movimiento de stock, pero DEBE quedar en el historial de la unidad.
 Para un insumo `SERIE`, el sistema DEBE guardar la condición en la unidad. Su
 saldo por condición DEBE ser la cantidad de unidades `EN_DEPOSITO` de esa
 condición, incluidas las de serie pendiente, y el total la suma de ambos. Las
-unidades `INSTALADA` y `DESCARTADA` NO DEBEN contar. El saldo `NUEVO` sigue siendo
-el único que evalúa la reposición.
+unidades `INSTALADA`, `ENTREGADA` y `DESCARTADA` NO DEBEN contar. El saldo `NUEVO`
+sigue siendo el único que evalúa la reposición.
 
 #### Scenario: Saldo por condición
 
-- GIVEN un insumo `SERIE` con 3 unidades `EN_DEPOSITO` NUEVO (una pendiente), 2 `EN_DEPOSITO` USADO, 1 `INSTALADA` y 1 `DESCARTADA`
+- GIVEN un insumo `SERIE` con 3 unidades `EN_DEPOSITO` NUEVO (una pendiente), 2 `EN_DEPOSITO` USADO, 1 `INSTALADA`, 1 `ENTREGADA` y 1 `DESCARTADA`
 - WHEN se consulta su stock
 - THEN el saldo NUEVO es 3, el saldo USADO es 2 y el total es 5
 
@@ -245,8 +262,11 @@ lugar del registro y el permiso requerido quedan a decisión de diseño.
 
 El sistema DEBE mostrar, por unidad, su historial cronológico desde este cambio en
 adelante: ingreso (recepción, entrada, ajuste o alta sin descuento), cada equipo
-donde estuvo instalada, cada retiro con su destino y motivo, el descarte, las
-correcciones de serial y la carga de un serial pendiente. El sistema NO DEBE
+donde estuvo instalada, cada retiro con su destino y motivo, la entrega por una
+SALIDA con su destino (el sector o el equipo que la salida informa, y su motivo si
+lo tiene; este cambio no agrega un campo de destinatario), el descarte o la baja
+por ajuste negativo con su motivo, las correcciones de serial y la carga de un
+serial pendiente. El sistema NO DEBE
 reconstruir historia anterior a este cambio. La ficha del insumo DEBE permitir
 ver las unidades con su serial, condición y estado, y abrir el historial de cada
 una. Dónde vive el historial (registro propio o derivado del libro) queda a
@@ -263,6 +283,12 @@ decisión de diseño.
 - GIVEN una unidad instalada y luego retirada con `DESCARTE` y motivo "placa quemada"
 - WHEN se abre su historial
 - THEN muestra el descarte con su motivo y la unidad figura `DESCARTADA`
+
+#### Scenario: Historial de una unidad entregada
+
+- GIVEN una unidad recibida y luego entregada por una SALIDA al sector "Administración"
+- WHEN se abre su historial
+- THEN muestra el ingreso y la entrega con el sector "Administración", y la unidad figura `ENTREGADA`
 
 #### Scenario: Unidad sin historia anterior
 
@@ -282,7 +308,7 @@ misma unidad. Un spec de integración DEBE verificar el invariante.
 #### Scenario: Invariante tras una secuencia de operaciones
 
 - GIVEN un insumo `SERIE` sin unidades
-- WHEN se recibe 2 unidades, se instala una, se la retira al stock y se descarta la otra por ajuste negativo
+- WHEN se reciben 3 unidades, se instala una, se la retira al stock, se entrega otra por SALIDA y se descarta la tercera por ajuste negativo
 - THEN en cada paso las unidades `EN_DEPOSITO` por condición igualan el saldo del libro
 
 #### Scenario: Concurrencia sobre la misma unidad
@@ -303,8 +329,10 @@ Las operaciones que mueven una unidad entre estados (instalar, devolver al
 depósito, descartar) DEBERÍAN poder aplicarse a varias unidades dentro de una
 misma transacción, con reversión total si una falla y sin depender del flujo de
 un componente individual, para que el ciclo futuro de baja de equipo completo las
-reutilice. La forma de la interfaz queda a decisión de diseño. Este cambio NO
-DEBE implementar la baja de equipo completo.
+reutilice. Ese ciclo solo lleva unidades `INSTALADA` a `EN_DEPOSITO` `USADO` o a
+`DESCARTADA`; la entrega (`ENTREGADA`) es propia de la SALIDA manual desde el
+depósito y no forma parte de la baja de equipo. La forma de la interfaz queda a
+decisión de diseño. Este cambio NO DEBE implementar la baja de equipo completo.
 
 #### Scenario: Varias unidades en una transacción
 

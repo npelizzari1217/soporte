@@ -71,14 +71,31 @@ Consecuencia asumida, igual que en ciclos anteriores: `EQUIPOS:ALTAS` crea unida
 | `componentes_equipo.unidad_id` | `UUID NULL` FK RESTRICT; `CHECK (unidad_id IS NULL OR numero_serie IS NULL)`; `UNIQUE (unidad_id) WHERE unidad_id IS NOT NULL AND deleted_at IS NULL` |
 | `eventos_unidad_insumo` | ver ADR-9 |
 
-CHECK con nombre en `unidades_insumo`: condición y estado contra sus catálogos;
-`(estado = 'INSTALADA') = (equipo_id IS NOT NULL)`; `numero_serie IS NOT NULL OR estado =
-'EN_DEPOSITO'` (una pendiente no puede estar instalada ni descartada); `(numero_serie IS NULL) =
+CHECK con nombre en `unidades_insumo`: condición contra `CONDICIONES_STOCK` y estado contra
+`ESTADOS_UNIDAD_INSUMO` = `EN_DEPOSITO`, `INSTALADA`, `ENTREGADA`, `DESCARTADA`;
+`(estado = 'INSTALADA') = (equipo_id IS NOT NULL)` (una `ENTREGADA` no refiere equipo: su destino
+vive en el movimiento de la SALIDA, ADR-9); `numero_serie IS NOT NULL OR estado = 'EN_DEPOSITO'`
+(una pendiente no puede estar instalada, entregada ni descartada); `(numero_serie IS NULL) =
 (numero_serie_normalizado IS NULL)`. Unicidad: `UNIQUE (insumo_id, numero_serie_normalizado) WHERE
 numero_serie_normalizado IS NOT NULL`, que abarca todos los estados, incluido `DESCARTADA`.
 
 **Serie pendiente = `numero_serie` NULL**, no un flag. Un solo hecho, y el CHECK anterior impide por
-construcción instalar o descartar una pendiente.
+construcción instalar, entregar o descartar una pendiente.
+
+**Máquina de estados** (fuente única: `UnidadInsumoEntity`):
+
+| Desde | Hacia | Operación | Movimiento |
+|---|---|---|---|
+| (nueva) | `EN_DEPOSITO` | entrada, ajuste positivo, recepción, retiro legado | ENTRADA / AJUSTE_POSITIVO |
+| (nueva) | `INSTALADA` | alta sin descuento (D3) | — |
+| `EN_DEPOSITO` (con serial) | `INSTALADA` | instalar | SALIDA |
+| `EN_DEPOSITO` (con serial) | `ENTREGADA` | SALIDA manual | SALIDA |
+| `EN_DEPOSITO` (con serial) | `DESCARTADA` | ajuste negativo | AJUSTE_NEGATIVO |
+| `INSTALADA` | `EN_DEPOSITO` USADO | retiro `STOCK_USADO` | ENTRADA |
+| `INSTALADA` | `DESCARTADA` | retiro `DESCARTE` | — |
+| `DESCARTADA` (por retiro) | `INSTALADA` | reactivar | — |
+
+`ENTREGADA` es terminal en este ciclo: no hay operación que la devuelva al depósito.
 
 | Alternativa | Por qué no |
 |---|---|
@@ -100,7 +117,8 @@ export function saldosDesdeUnidades(conteo: ConteoPorCondicion): SaldosInsumo; /
 `ConsultarStockInsumoUseCase` es el **único lector** que ramifica:
 `SERIE ? saldosDesdeUnidades(unidadRepo.contarEnDepositoPorCondicion(id)) :
 calcularSaldos(movimientoRepo.sumByTipo(id))`. La respuesta suma `seguimiento` y
-`pendientesDeSerie`. `estadoReposicion` sigue sobre NUEVO.
+`pendientesDeSerie`. `estadoReposicion` sigue sobre NUEVO. `INSTALADA`, `ENTREGADA` y `DESCARTADA`
+no cuentan.
 
 Salida y ajuste negativo `SERIE` no comparan saldos: autorizan si la unidad elegida está
 `EN_DEPOSITO`, con serial, en ese insumo y (si viene) en la condición pedida, leída `FOR UPDATE`
@@ -129,9 +147,10 @@ cada unidad coincide con su estado.
 2. `insumoRepo.leerParaCambioDeSeguimiento(id)` con `SELECT … FOR UPDATE`: espera a las entradas en
    vuelo que tienen la fila `FOR SHARE` (ADR-5).
 3. Recién entonces lee (nueva instantánea de `READ COMMITTED`) el saldo del libro y el conteo de
-   unidades no `DESCARTADA`.
+   unidades `EN_DEPOSITO` o `INSTALADA`.
 4. `NINGUNO → SERIE`: exige `calcularSaldos(...).total === 0` y unidad de medida `entera`.
-   `SERIE → NINGUNO`: exige cero unidades `EN_DEPOSITO` o `INSTALADA` (supuesto de spec, confirmado).
+   `SERIE → NINGUNO` (decisión del dueño): exige cero unidades `EN_DEPOSITO` y cero `INSTALADA`. Las
+   `ENTREGADA` y `DESCARTADA` no lo impiden, no se tocan y conservan su historial.
    Error: `SeguimientoNoModificableError` (422) con el motivo.
 
 El alta (`POST /insumos`) acepta `seguimiento` con la única regla de la unidad entera (saldo 0 por
@@ -155,14 +174,14 @@ export class OperacionesUnidadInsumo {
   ingresar(insumoId: string, piezas: { numeroSerie: string | null }[],
     o: ContextoUnidad & { condicion: CondicionStock; tipo: 'ENTRADA' | 'AJUSTE_POSITIVO';
       itemCompraId?: string | null; equipoId?: string | null }): Promise<Result<UnidadConMovimiento[], DomainError>>;
-  darDeBajaDeDeposito(insumoId: string, unidadIds: string[],
+  sacarDelDeposito(insumoId: string, unidadIds: string[],
     o: ContextoUnidad & { tipo: 'SALIDA' | 'AJUSTE_NEGATIVO'; condicion?: CondicionStock;
-      equipoId?: string | null; sectorId?: string | null }): Promise<Result<UnidadConMovimiento[], DomainError>>;
+      equipoId?: string | null; sectorId?: string | null }): Promise<Result<UnidadConMovimiento[], DomainError>>; // SALIDA → ENTREGADA; AJUSTE_NEGATIVO → DESCARTADA
   instalar(items: ItemEnEquipo[], o: ContextoUnidad): Promise<Result<UnidadConMovimiento[], DomainError>>;          // EN_DEPOSITO → INSTALADA + SALIDA
   devolverAlDeposito(items: ItemEnEquipo[], o: ContextoUnidad): Promise<Result<UnidadConMovimiento[], DomainError>>; // INSTALADA → EN_DEPOSITO USADO + ENTRADA USADO
   descartarInstaladas(items: ItemEnEquipo[], o: ContextoUnidad): Promise<Result<UnidadInsumoEntity[], DomainError>>; // INSTALADA → DESCARTADA, sin movimiento
   reinstalar(items: ItemEnEquipo[], o: ContextoUnidad): Promise<Result<UnidadInsumoEntity[], DomainError>>;          // DESCARTADA → INSTALADA, sin movimiento
-  altaInstalada(insumoId: string, numeroSerie: string, equipoId: string, o: ContextoUnidad): Promise<Result<UnidadInsumoEntity, DomainError>>;
+  altaInstalada(insumoId: string, numeroSerie: string, equipoId: string, o: ContextoUnidad & { condicion: CondicionStock }): Promise<Result<UnidadInsumoEntity, DomainError>>;
   cargarSerial(unidadId: string, numeroSerie: string, o: ContextoUnidad): Promise<Result<UnidadInsumoEntity, DomainError>>;
   corregirSerial(unidadId: string, numeroSerie: string, o: ContextoUnidad): Promise<Result<UnidadInsumoEntity, DomainError>>; // motivo obligatorio
 }
@@ -185,8 +204,9 @@ Contrato común:
   ADR-1). El insumo debe ser `SERIE`.
 
 Esto cubre D6: la baja de equipo completo llamará `devolverAlDeposito` o `descartarInstaladas` con
-todas las unidades del equipo y un `motivo` compartido; el catálogo cerrado de motivos queda para ese
-ciclo. Rechazado: una operación por unidad con transacción propia (el lote no sería atómico) y
+todas las unidades `INSTALADA` del equipo y un `motivo` compartido; el catálogo cerrado de motivos
+queda para ese ciclo. Ese ciclo no produce `ENTREGADA`: la entrega es propia de la SALIDA manual
+desde el depósito (`sacarDelDeposito`). Rechazado: una operación por unidad con transacción propia (el lote no sería atómico) y
 métodos en la entidad `InsumoEntity` (necesitan repositorios).
 
 ### ADR-5: movimientos `SERIE` — el seguimiento se lee dentro de la transacción
@@ -195,8 +215,14 @@ métodos en la entidad `InsumoEntity` (necesitan repositorios).
 |---|---|---|
 | Entrada manual | Como hoy; rechaza `seriales` (`UnidadNoAdmitidaError`) | `seriales` obligatorio, `length === cantidad`, sin pendientes (`SerialesNoCoincidenError`) → `ingresar` |
 | Ajuste positivo | Como hoy | Igual que la entrada, `tipo: 'AJUSTE_POSITIVO'`; el motivo ya lo exige la entidad |
-| Salida | Como hoy; rechaza `unidadId` | `unidadId` obligatorio (`UnidadRequeridaError`), `cantidad` 1 → `darDeBajaDeDeposito` (la unidad queda `DESCARTADA`: supuesto de spec, confirmado) |
-| Ajuste negativo | Como hoy | Igual que la salida, con motivo |
+| Salida | Como hoy; rechaza `unidadId` | `unidadId` obligatorio (`UnidadRequeridaError`), `cantidad` 1 → `sacarDelDeposito`; la unidad queda `ENTREGADA` (decisión del dueño) |
+| Ajuste negativo | Como hoy | Igual que la salida, con motivo; la unidad queda `DESCARTADA` |
+
+**Destino de la entrega.** El DTO de la salida ya trae `sectorId`, `equipoId` (trazabilidad) y
+`motivo`; no hay campo de destinatario y este ciclo no lo agrega. El destino queda en el movimiento
+SALIDA y el evento `ENTREGA` lo referencia por `movimiento_id` (ADR-9); quien quiera nombrar a una
+persona lo escribe en el motivo. Un `equipoId` en la salida no instala la unidad: para eso está el
+alta de componente.
 | Consulta de stock | `calcularSaldos` | `saldosDesdeUnidades` (ADR-2) |
 
 `condicion` en salida y ajuste negativo `SERIE`: opcional; si viene y no coincide con la unidad,
@@ -236,13 +262,18 @@ mercadería físicamente en depósito, y el delta acumulado no sabría qué falt
   `unidadId`, el camino de hoy; si el insumo es `SERIE`, la salida lo rechaza con
   `UnidadRequeridaError`. `numeroSerie` y `condicion` del body se ignoran con `unidadId`.
 - **Alta sin descuento (D3)**: con insumo `SERIE`, `numeroSerie` es obligatorio;
-  `operaciones.altaInstalada()` crea la unidad `INSTALADA` sin movimiento, con evento
+  `operaciones.altaInstalada()` crea la unidad `INSTALADA` con la condición indicada (NUEVO por
+  defecto; con `descontarStock: false` la condición no se ignora cuando el insumo es `SERIE`,
+  porque es un dato de la unidad), sin movimiento, con evento
   `ALTA_INSTALADA`, y el componente nace con `unidadId`. Con `NINGUNO`, como hoy.
 - **Retiro `STOCK_USADO`**: `registrarDevolucionDeComponente` suma `unidadId?` y `numeroSerie?`
   y ramifica: componente con unidad → `devolverAlDeposito` (la unidad vuelve USADO con su serial);
   componente **legado** de un insumo hoy `SERIE` → `numeroSerie` obligatorio en el body del retiro
-  (el diálogo lo precarga con el serial de texto) e `ingresar` USADO con `equipoId`; insumo
-  `NINGUNO`, como hoy. Sus guards de insumo y familia (ADR-4 del ciclo anterior) no cambian.
+  e `ingresar` USADO con `equipoId`; **no** admite serie pendiente: sin serial,
+  `SerialRequeridoError` (422) y no cambia nada (decisión del dueño). El diálogo precarga el serial
+  con el `numeroSerie` de texto del componente cuando no está vacío y es válido (recortado, 1–255;
+  la unicidad la decide el backend); si no, el campo queda vacío y obligatorio. Insumo `NINGUNO`,
+  como hoy. Sus guards de insumo y familia (ADR-4 del ciclo anterior) no cambian.
 - **Retiro `DESCARTE`**: con unidad, `descartarInstaladas` (sin movimiento).
 - **Reactivar**: pasa a correr en transacción; con unidad, `reinstalar`. Si el insumo ya no es
   `SERIE`, `SeguimientoNoModificableError`: reinstalar crearía una unidad viva en un insumo
@@ -267,12 +298,12 @@ mercadería físicamente en depósito, y el delta acumulado no sabría qué falt
 | `GET /insumos/:id/unidades/:unidadId/historial` | `EventoUnidadResponseDto[]` cronológico |
 | `POST …/unidades/:unidadId/serial` | `{ numeroSerie }` |
 | `POST …/unidades/:unidadId/correccion-serial` | `{ numeroSerie, motivo }` (`transformarMotivo`, 500) |
-| `CreateComponenteHttpDto` | `unidadId?` |
+| `CreateComponenteHttpDto` | `unidadId?`; con `descontarStock=false` el controller pasa `condicion` solo para que el caso de uso la aplique a la unidad de un insumo `SERIE` (D3); con `NINGUNO` se sigue ignorando |
 | `RetirarComponenteHttpDto` | `numeroSerie?` (solo retiro legado de insumo `SERIE`) |
 | `ComponenteResponseDto` | `unidadId`; `numeroSerie` resuelto (ADR-7) |
 
 Errores nuevos (insumos): `SerialDuplicadoError` (409), `UnidadNoDisponibleError`,
-`UnidadRequeridaError`, `UnidadNoAdmitidaError`, `SerialesNoCoincidenError`,
+`UnidadRequeridaError`, `UnidadNoAdmitidaError`, `SerialesNoCoincidenError`, `SerialRequeridoError`,
 `CantidadNoEnteraError`, `SeguimientoNoModificableError`, `UnidadMedidaNoEnteraError`,
 `UnidadNoEncontradaError` (404) — 422 salvo indicación. Equipos: `SerialDeUnidadNoEditableError`.
 Todos con mapeo explícito en su controller.
@@ -281,7 +312,7 @@ Todos con mapeo explícito en su controller.
 
 Tabla append-only: `id`, `unidad_id` FK, `tipo` (`CHECK` contra `TIPOS_EVENTO_UNIDAD`: `INGRESO`,
 `ALTA_INSTALADA`, `SERIAL_CARGADO`, `CORRECCION_SERIAL`, `INSTALACION`, `RETIRO_A_DEPOSITO`,
-`DESCARTE`, `BAJA_DE_DEPOSITO`, `REACTIVACION`), `movimiento_id` FK `UNIQUE` NULL, `equipo_id` FK
+`DESCARTE`, `ENTREGA`, `BAJA_DE_DEPOSITO`, `REACTIVACION`), `movimiento_id` FK `UNIQUE` NULL, `equipo_id` FK
 NULL, `serial_anterior`, `serial_nuevo`, `motivo`, `usuario_id` (soft ref), `created_at
 clock_timestamp()`; índice `(unidad_id, created_at)`. El puerto solo tiene `insert` y
 `listarPorUnidad`. La corrección de serial es un evento `CORRECCION_SERIAL` con los dos seriales,
@@ -293,7 +324,10 @@ motivo y usuario: el registro auditado **es** el historial.
 | Derivado de libro + componentes + tabla de correcciones | Tres fuentes unidas por fecha; el orden entre ellas no es confiable |
 | Tabla solo de correcciones | Resuelve P8 pero no P7 |
 
-El evento referencia el movimiento por id; no copia cantidad ni condición.
+El evento referencia el movimiento por id; no copia cantidad ni condición. `ENTREGA` (SALIDA manual,
+la unidad queda `ENTREGADA`) y `BAJA_DE_DEPOSITO` (AJUSTE_NEGATIVO, queda `DESCARTADA`) llevan
+siempre `movimiento_id`; el historial muestra el destino de la entrega leyendo `sector_id`,
+`equipo_id` y `motivo` de ese movimiento, sin copiarlos al evento.
 
 ### ADR-10: una entrega, rollback por estado
 
@@ -387,7 +421,7 @@ Ficha
 | Concurrencia | Mismo serial en dos entradas ⇒ una; misma unidad en dos instalaciones o salidas ⇒ una; activación contra entrada en vuelo ⇒ la activación ve el saldo y rechaza | Molde de `prisma-movimiento-insumo.repository.concurrencia.integration.spec.ts` |
 | E2E | Endpoints nuevos con y sin permiso (403); 409 de serial; 422 de cada error; recepción con seriales; alta de componente con unidad y D3 | Todo spec que trunque `soporte_master_test` llama `usarLockMasterTest()` |
 | Frontend | Selector de unidad solo con disponibles; cantidad fija en 1; N inputs de serial; recepción con blancos; alta con unidad o serial según seguimiento; retiro legado precargado; invalidación de `["insumo", id, "unidades"]` además de stock y movimientos | MSW + `renderWithProviders` |
-| Adversarial (verify) | Quitar el `FOR UPDATE` ⇒ rojo en concurrencia; contar `INSTALADA` en el saldo ⇒ rojo en el invariante; quitar el `FOR SHARE` ⇒ rojo en activación | `rules.verify` |
+| Adversarial (verify) | Quitar el `FOR UPDATE` ⇒ rojo en concurrencia; contar `INSTALADA` o `ENTREGADA` en el saldo ⇒ rojo en el invariante; salida que deja `DESCARTADA` ⇒ rojo; quitar el `FOR SHARE` ⇒ rojo en activación | `rules.verify` |
 
 TDD no se inyecta: es una feature.
 
@@ -426,7 +460,7 @@ reescrituras de spec y borrados cuentan). Feature Branch Chain sobre el tracker
 | 1 | Migración, `schema.prisma`, catálogos de dominio, seed de `entera`, spec de constraints, migración manual de bases locales | — | ~300 |
 | 2 | Dominio: `UnidadInsumoEntity`, evento, `seguimiento`, `entera`, `unidadId` en el movimiento, mappers | 1 | ~380 |
 | 3 | Persistencia: repos de unidad y evento, `bloquearStock`, lecturas `FOR SHARE`/`FOR UPDATE`, integración y concurrencia de serial | 2 | ~380 (corte: repo de eventos aparte) |
-| 4 | Operaciones de depósito: `ingresar`, `darDeBajaDeDeposito`, `cargarSerial`, `corregirSerial`, helper del invariante | 3 | ~380 |
+| 4 | Operaciones de depósito: `ingresar`, `sacarDelDeposito` (`ENTREGADA` / `DESCARTADA`), `cargarSerial`, `corregirSerial`, helper del invariante | 3 | ~380 |
 | 5 | Operaciones de equipo: `instalar`, `devolverAlDeposito`, `descartarInstaladas`, `reinstalar`, `altaInstalada`, integración de lote | 4 | ~350 |
 | 6 | Seguimiento del catálogo: alta, `CambiarSeguimientoInsumoUseCase`, guard de edición, borde y e2e | 3 | ~350 |
 | 7a | Entrada y ajuste positivo `SERIE` (transacción + `FOR SHARE`) | 4, 6 | ~330 |
@@ -455,13 +489,20 @@ tests en la misma WU.
 
 ## Open Questions
 
-Ninguna bloquea. Decisiones tomadas que la spec o el dueño deben ver:
+Ninguna bloquea. Resueltas por el dueño el 2026-09-30 y ya reflejadas en las tres specs:
 
-- [ ] Los supuestos de spec quedan confirmados: salida y ajuste negativo `SERIE` dejan la unidad
-      `DESCARTADA`; `SERIE → NINGUNO` exige cero unidades `EN_DEPOSITO` o `INSTALADA`.
-- [ ] Nuevo en el diseño, a llevar al delta de `componentes-catalogo-unico`: retirar al stock un
-      componente legado de un insumo hoy `SERIE` exige serial (se crea la unidad USADO); reactivar un
-      componente con unidad exige que el insumo siga `SERIE`.
+- [x] La SALIDA manual `SERIE` deja la unidad `ENTREGADA` (estado nuevo, fuera del depósito, con su
+      destino en el historial); el AJUSTE_NEGATIVO la deja `DESCARTADA` (ADR-1, ADR-5, ADR-9).
+- [x] Retirar al stock un componente legado de un insumo hoy `SERIE` exige serial, precargado desde el
+      serial de texto cuando es válido, sin serie pendiente; reactivar un componente con unidad exige
+      que el insumo siga `SERIE` (ADR-7).
+- [x] `SERIE → NINGUNO` solo sin unidades `EN_DEPOSITO` ni `INSTALADA`; las `ENTREGADA` y
+      `DESCARTADA` conservan su historial (ADR-3).
+
+Decisiones del diseño que siguen a la vista:
+
+- [ ] `ENTREGADA` es terminal en este ciclo: una pieza entregada que vuelve no tiene camino de
+      reingreso (la unicidad abarca todos los estados).
 - [ ] `entera` no es editable en el ABM de unidades de medida en este ciclo: una unidad creada por un
       tenant no admite `SERIE` hasta un ciclo que la exponga.
 - [ ] Una pieza dada de baja por ajuste negativo y luego encontrada no puede reingresar con su serial

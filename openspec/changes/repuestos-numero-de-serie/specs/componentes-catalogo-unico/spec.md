@@ -1,12 +1,12 @@
 # Delta for Componentes Catálogo Único
 
 Para insumos `NINGUNO` nada cambia. Para insumos `SERIE` el componente instalado
-queda vinculado a una unidad (spec `unidades-insumo-serie`). Supuestos de spec, a
-confirmar en diseño: (a) el retiro `STOCK_USADO` de un componente legado (sin
-unidad) de un insumo `SERIE` crea una unidad `EN_DEPOSITO` `USADO`, con el serial
-que el usuario informe o en serie pendiente si no informa ninguno; (b) instalar
-una unidad la marca `INSTALADA` en el equipo. El motivo de baja de un equipo
-completo no se cierra aquí.
+queda vinculado a una unidad (spec `unidades-insumo-serie`). Confirmado por el
+dueño: (a) el retiro `STOCK_USADO` de un componente legado (sin unidad) de un
+insumo `SERIE` exige un serial y crea con él una unidad `EN_DEPOSITO` `USADO`; no
+admite serie pendiente; (b) instalar una unidad la marca `INSTALADA` en el equipo;
+(c) reactivar un componente con unidad exige que el insumo siga en `SERIE`. El
+motivo de baja de un equipo completo no se cierra aquí.
 
 ## ADDED Requirements
 
@@ -222,9 +222,11 @@ DEBE referenciar esa unidad con cantidad 1 y la unidad DEBE volver a
 `EN_DEPOSITO` con condición `USADO`, conservando su serial y sin equipo; con
 `DESCARTE` la unidad DEBE pasar a `DESCARTADA` sin movimiento y sin cambio de
 saldo. El retiro y el cambio de la unidad DEBEN ser atómicos. Con `STOCK_USADO`
-de un componente legado sin unidad de un insumo `SERIE`, el sistema DEBE crear
-una unidad `EN_DEPOSITO` `USADO` con el serial informado por el usuario, o en
-serie pendiente si no lo informa, cumpliendo la unicidad normalizada.
+de un componente legado sin unidad de un insumo `SERIE`, el sistema DEBE exigir un
+serial y crear con él una unidad `EN_DEPOSITO` `USADO`, cumpliendo la unicidad
+normalizada; NO DEBE crear una unidad en serie pendiente, y sin serial DEBE
+rechazar el retiro sin cambiar nada. La interfaz DEBE precargar ese serial con el
+serial de texto del componente cuando no está vacío y es válido.
 (Previously: el retiro solo movía saldo por cantidad; ahora, si el componente tiene unidad, la devuelve al depósito o la descarta.)
 
 #### Scenario: Devolver al stock como usado
@@ -331,8 +333,14 @@ serie pendiente si no lo informa, cumpliendo la unicidad normalizada.
 #### Scenario: Retiro al stock de un legado sin serial informado
 
 - GIVEN un componente legado sin unidad de un insumo `SERIE`, con motivo informado
-- WHEN se lo retira con destino `STOCK_USADO` sin serial
-- THEN se crea una unidad `EN_DEPOSITO` `USADO` en serie pendiente y el saldo USADO aumenta en 1
+- WHEN se lo retira con destino `STOCK_USADO` sin serial o con serial vacío
+- THEN el sistema rechaza el retiro, el componente sigue activo y no se crea ninguna unidad ni movimiento
+
+#### Scenario: Serial precargado en el retiro de un legado
+
+- GIVEN un componente legado sin unidad de un insumo `SERIE` con serial de texto "L1"
+- WHEN el usuario elige devolverlo al stock
+- THEN el diálogo muestra el serial precargado con "L1" y el usuario puede cambiarlo antes de confirmar
 
 ### Requirement: Reactivar un componente depende del destino de su retiro
 
@@ -345,8 +353,9 @@ una pieza devuelta al stock se usa el alta con descuento de saldo USADO. Al
 reactivar un componente descartado vinculado a una unidad, la unidad `DESCARTADA`
 DEBE volver a `INSTALADA` en el mismo equipo, en la misma transacción, sin
 movimiento y sin cambio de saldo; el componente y la unidad NO DEBEN quedar en
-estados inconsistentes. Reactivar un componente legado sin unidad NO DEBE crear
-una unidad.
+estados inconsistentes. Si el insumo del componente ya no está en `SERIE`, el
+sistema DEBE rechazar la reactivación de un componente con unidad sin cambiar
+nada. Reactivar un componente legado sin unidad NO DEBE crear una unidad.
 (Previously: la reactivación solo cambiaba el componente; ahora, si tiene unidad descartada, la unidad vuelve a INSTALADA.)
 
 #### Scenario: Reactivar tras devolver al stock
@@ -380,6 +389,12 @@ una unidad.
 - GIVEN un componente retirado con `DESCARTE` cuya unidad "S1" está `DESCARTADA`
 - WHEN se lo reactiva
 - THEN el componente está activo, "S1" está `INSTALADA` en el mismo equipo, no hay movimientos nuevos y los saldos no cambian
+
+#### Scenario: Reactivar un componente con unidad de un insumo que volvió a NINGUNO
+
+- GIVEN un componente retirado con `DESCARTE` cuya unidad "S1" está `DESCARTADA`, y su insumo cambiado a `NINGUNO`
+- WHEN se intenta reactivarlo
+- THEN el sistema rechaza la reactivación, el componente sigue retirado y "S1" sigue `DESCARTADA`
 
 #### Scenario: Reactivar un componente legado sin unidad
 

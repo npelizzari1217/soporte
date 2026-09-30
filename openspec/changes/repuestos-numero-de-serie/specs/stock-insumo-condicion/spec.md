@@ -2,10 +2,10 @@
 
 Para los insumos `NINGUNO` no cambia nada. Para los insumos `SERIE` (spec
 `unidades-insumo-serie`) el saldo sale de las unidades y cada movimiento
-referencia exactamente una unidad con cantidad 1. Supuesto de spec, a confirmar
-en diseño: una SALIDA o un AJUSTE_NEGATIVO manual de un insumo `SERIE` da de baja
-la unidad elegida (estado `DESCARTADA`), porque la unidad no queda instalada en
-ningún equipo.
+referencia exactamente una unidad con cantidad 1. Decisión del dueño: una SALIDA
+manual de un insumo `SERIE` (por ejemplo, la entrega de una pieza a un sector)
+deja la unidad elegida `ENTREGADA`, porque la pieza sigue existiendo fuera del
+depósito; un AJUSTE_NEGATIVO (pérdida, rotura) la deja `DESCARTADA`.
 
 ## ADDED Requirements
 
@@ -81,8 +81,10 @@ negativa ninguna condición. Ante el incumplimiento el sistema DEBE rechazar con
 el error de stock insuficiente existente y NO DEBE persistir el movimiento. En un
 insumo `SERIE`, la SALIDA y el AJUSTE_NEGATIVO DEBEN elegir una unidad
 `EN_DEPOSITO`, con serial, de la condición indicada; NO DEBEN aceptar una unidad
-en serie pendiente, `INSTALADA` ni `DESCARTADA`, y la unidad elegida pasa a
-`DESCARTADA`. Un AJUSTE_NEGATIVO de un insumo `SERIE` DEBE exigir un motivo no
+en serie pendiente, `INSTALADA`, `ENTREGADA` ni `DESCARTADA`. Con la SALIDA la
+unidad elegida pasa a `ENTREGADA` y el historial registra su destino (el sector o
+el equipo que la salida informa, y su motivo si lo tiene); con el AJUSTE_NEGATIVO
+pasa a `DESCARTADA`. Un AJUSTE_NEGATIVO de un insumo `SERIE` DEBE exigir un motivo no
 vacío.
 (Previously: sin elección de unidad; ahora, en insumos SERIE, se elige una unidad en depósito con serial y el ajuste negativo exige motivo.)
 
@@ -115,8 +117,8 @@ vacío.
 #### Scenario: Salida de una unidad elegida por serial
 
 - GIVEN un insumo `SERIE` con las unidades "A1" y "A2" `EN_DEPOSITO` NUEVO
-- WHEN se registra una SALIDA NUEVO eligiendo la unidad "A1"
-- THEN existe un movimiento SALIDA de cantidad 1 de "A1", "A1" queda `DESCARTADA` y el saldo NUEVO es 1
+- WHEN se registra una SALIDA NUEVO eligiendo la unidad "A1" con destino el sector "Administración"
+- THEN existe un movimiento SALIDA de cantidad 1 de "A1" con ese sector, "A1" queda `ENTREGADA` y el saldo NUEVO es 1
 
 #### Scenario: Salida sin elegir unidad o con unidad no disponible
 
