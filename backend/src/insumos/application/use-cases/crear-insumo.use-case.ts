@@ -1,7 +1,11 @@
 import { DomainError, Result } from '../../../shared/domain/result';
 import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { InsumoEntity, normalizarNombreInsumo } from '../../domain/entities/insumo.entity';
+import type { SeguimientoInsumo } from '../../domain/entities/unidad-insumo.entity';
+import { UnidadMedidaInexistenteError } from '../../domain/errors/insumos.errors';
+import { UnidadMedidaNoEnteraError } from '../../domain/errors/unidades-medida.errors';
 import { IInsumoRepository } from '../../domain/ports/i-insumo.repository';
+import { IUnidadMedidaRepository } from '../../domain/ports/i-unidad-medida.repository';
 import { NumeradorInsumo } from '../../domain/services/numerador-insumo.service';
 import {
   CodigoAlternativoInput,
@@ -30,6 +34,11 @@ export interface CrearInsumoDto {
   nombre: string;
   familiaId: string;
   unidadMedidaId: string;
+  /**
+   * Seguimiento inicial. Ausente equivale a `NINGUNO`. `SERIE` exige una
+   * unidad de medida entera (`UnidadMedidaNoEnteraError`).
+   */
+  seguimiento?: SeguimientoInsumo;
   /** Punto de reposición. Ausente o `null` es "sin punto definido", que no es cero. */
   stockMinimo?: number | null;
   /** Lista COMPLETA de códigos alternativos del insumo. Ausente equivale a vacía. */
@@ -69,7 +78,8 @@ export class CrearInsumoUseCase {
       'findConflictosDeCodigoAlternativo' | 'save'
     >,
     private readonly familiaRepo: LectorCatalogoFamilias,
-    private readonly unidadMedidaRepo: LectorCatalogoUnidades,
+    private readonly unidadMedidaRepo: LectorCatalogoUnidades &
+      Pick<IUnidadMedidaRepository, 'leerParaUso'>,
     private readonly modeloEquipoRepo: LectorCatalogoModelosEquipo,
     private readonly numerador: Pick<NumeradorInsumo, 'generarCodigo'>,
     private readonly txRunner: Pick<ITenantTransactionRunner, 'run'>,
@@ -81,6 +91,7 @@ export class CrearInsumoUseCase {
    * @returns El insumo creado, o el primer error de negocio que lo impide:
    *   `FamiliaInsumoInexistenteError`, `FamiliaInsumoDeshabilitadaError`,
    *   `UnidadMedidaInexistenteError`, `UnidadMedidaDeshabilitadaError`,
+   *   `UnidadMedidaNoEnteraError` (`SERIE` con unidad no entera),
    *   `CodigoAlternativoDuplicadoError`, `CompatibilidadDuplicadaError`,
    *   `ModeloEquipoInexistenteError`, `ModeloEquipoDeshabilitadoError` o
    *   `SecuenciaCodigoInsumoAgotadaError`.
@@ -125,6 +136,22 @@ export class CrearInsumoUseCase {
     // en la MISMA transacción — mismo patrón que `CrearCompraUseCase`
     // (ADR-C5) y `CrearTicketUseCase` (ADR-5).
     return this.txRunner.run(async () => {
+      // L0 (ADR-12): la unidad elegida se lee `FOR SHARE` SIEMPRE, antes del
+      // advisory de numeración (LC) que toma `generarCodigo`. Dos altas
+      // comparten L0 y se ordenan en LC; una edición de `entera` (L0
+      // exclusivo) espera a que esta transacción termine.
+      const lecturaUnidad = await this.unidadMedidaRepo.leerParaUso(dto.unidadMedidaId);
+      if (!lecturaUnidad) {
+        return Result.fail<InsumoEntity, DomainError>(
+          new UnidadMedidaInexistenteError(dto.unidadMedidaId),
+        );
+      }
+      if (dto.seguimiento === 'SERIE' && !lecturaUnidad.entera) {
+        return Result.fail<InsumoEntity, DomainError>(
+          new UnidadMedidaNoEnteraError(dto.unidadMedidaId),
+        );
+      }
+
       const codigoResult = await this.numerador.generarCodigo(esRepuesto);
       if (codigoResult.isFail()) {
         return Result.fail<InsumoEntity, DomainError>(codigoResult.getError());
@@ -135,6 +162,7 @@ export class CrearInsumoUseCase {
         nombre,
         familiaId: dto.familiaId,
         unidadMedidaId: dto.unidadMedidaId,
+        seguimiento: dto.seguimiento,
         stockMinimo: dto.stockMinimo ?? null,
         activo: true,
         codigosAlternativos: codigosAlternativos.getValue(),

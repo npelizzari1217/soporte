@@ -2,8 +2,14 @@ import { DomainError, Result } from '../../../shared/domain/result';
 import { CompatibilidadModelo } from '../../domain/entities/compatibilidad-modelo';
 import { InsumoCodigoAlternativoEntity } from '../../domain/entities/insumo-codigo-alternativo.entity';
 import { InsumoEntity, normalizarNombreInsumo } from '../../domain/entities/insumo.entity';
-import { InsumoNoEncontradoError } from '../../domain/errors/insumos.errors';
+import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
+import {
+  InsumoNoEncontradoError,
+  UnidadMedidaInexistenteError,
+} from '../../domain/errors/insumos.errors';
+import { UnidadMedidaNoEnteraError } from '../../domain/errors/unidades-medida.errors';
 import { IInsumoRepository } from '../../domain/ports/i-insumo.repository';
+import { IUnidadMedidaRepository } from '../../domain/ports/i-unidad-medida.repository';
 import {
   CodigoAlternativoInput,
   CompatibilidadInput,
@@ -80,11 +86,13 @@ export class EditarInsumoUseCase {
   constructor(
     private readonly insumoRepo: Pick<
       IInsumoRepository,
-      'findById' | 'findConflictosDeCodigoAlternativo' | 'save'
+      'findById' | 'findConflictosDeCodigoAlternativo' | 'save' | 'bloquearParaCambioDeSeguimiento'
     >,
     private readonly familiaRepo: LectorCatalogoFamilias,
-    private readonly unidadMedidaRepo: LectorCatalogoUnidades,
+    private readonly unidadMedidaRepo: LectorCatalogoUnidades &
+      Pick<IUnidadMedidaRepository, 'leerParaUso'>,
     private readonly modeloEquipoRepo: LectorCatalogoModelosEquipo,
+    private readonly txRunner: Pick<ITenantTransactionRunner, 'run'>,
   ) {}
 
   /**
@@ -93,7 +101,8 @@ export class EditarInsumoUseCase {
    * @returns El insumo editado, o el primer error de negocio que lo impide:
    *   `InsumoNoEncontradoError`, `FamiliaInsumoInexistenteError`,
    *   `FamiliaInsumoDeshabilitadaError`, `UnidadMedidaInexistenteError`,
-   *   `UnidadMedidaDeshabilitadaError`, `CodigoAlternativoDuplicadoError`,
+   *   `UnidadMedidaDeshabilitadaError`, `UnidadMedidaNoEnteraError` (insumo `SERIE`
+   *   con una unidad no entera), `CodigoAlternativoDuplicadoError`,
    *   `CompatibilidadDuplicadaError`, `ModeloEquipoInexistenteError` o
    *   `ModeloEquipoDeshabilitadoError`.
    */
@@ -143,23 +152,52 @@ export class EditarInsumoUseCase {
       compatibilidad = resuelta.getValue();
     }
 
-    insumo.actualizar({
-      nombre,
-      familiaId: dto.familiaId,
-      unidadMedidaId: dto.unidadMedidaId,
-      stockMinimo: dto.stockMinimo,
+    const aplicarYGuardar = async (): Promise<Result<InsumoEntity, DomainError>> => {
+      insumo.actualizar({
+        nombre,
+        familiaId: dto.familiaId,
+        unidadMedidaId: dto.unidadMedidaId,
+        stockMinimo: dto.stockMinimo,
+      });
+
+      if (codigosAlternativos !== undefined) {
+        insumo.reemplazarCodigosAlternativos(codigosAlternativos);
+      }
+
+      if (compatibilidad !== undefined) {
+        insumo.reemplazarCompatibilidad(compatibilidad);
+      }
+
+      await this.insumoRepo.save(insumo);
+
+      return Result.ok(insumo);
+    };
+
+    const cambiaLaUnidad =
+      dto.unidadMedidaId !== undefined && dto.unidadMedidaId !== insumo.unidadMedidaId;
+    if (!cambiaLaUnidad) {
+      return aplicarYGuardar();
+    }
+
+    // Cambio de unidad (ADR-12): L0 sobre la unidad DESTINO y luego L1
+    // `FOR NO KEY UPDATE`, en una transacción. La decisión usa el
+    // `seguimiento` de la lectura con L1, no el de la lectura sin lock de
+    // arriba: una activación en vuelo lo pudo cambiar. Sin L0 la activación y
+    // esta edición podrían cruzarse y dejar un insumo `SERIE` con unidad no entera.
+    const destino = dto.unidadMedidaId as string;
+    return this.txRunner.run(async () => {
+      const lecturaUnidad = await this.unidadMedidaRepo.leerParaUso(destino);
+      if (!lecturaUnidad) {
+        return Result.fail<InsumoEntity, DomainError>(new UnidadMedidaInexistenteError(destino));
+      }
+      const bloqueado = await this.insumoRepo.bloquearParaCambioDeSeguimiento(dto.id);
+      if (!bloqueado) {
+        return Result.fail<InsumoEntity, DomainError>(new InsumoNoEncontradoError(dto.id));
+      }
+      if (bloqueado.seguimiento === 'SERIE' && !lecturaUnidad.entera) {
+        return Result.fail<InsumoEntity, DomainError>(new UnidadMedidaNoEnteraError(destino));
+      }
+      return aplicarYGuardar();
     });
-
-    if (codigosAlternativos !== undefined) {
-      insumo.reemplazarCodigosAlternativos(codigosAlternativos);
-    }
-
-    if (compatibilidad !== undefined) {
-      insumo.reemplazarCompatibilidad(compatibilidad);
-    }
-
-    await this.insumoRepo.save(insumo);
-
-    return Result.ok(insumo);
   }
 }
