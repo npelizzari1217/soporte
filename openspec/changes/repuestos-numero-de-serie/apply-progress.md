@@ -413,3 +413,38 @@ Solo specs, en `orden-de-locks.concurrencia.integration.spec.ts` (base `soporte_
 |---|---|
 | Focused test command | `pnpm vitest run src/insumos/infrastructure/persistence/prisma/orden-de-locks.concurrencia.integration.spec.ts` 10/10; lint y typecheck en cero |
 | Rollback boundary | Revertir el commit: solo specs |
+
+
+## WU-7b — Salida y ajuste negativo con L1, consulta `SERIE`, invariante, caso 6 (rama `wu07b`)
+
+- `RegistrarSalidaInsumoUseCase(insumoRepo, movimientoRepo, txRunner, familiaRepo, operaciones)` y rama negativa del
+  ajuste: primer lock L1 (`leerSeguimientoParaMovimiento`) dentro de la transaccion. `NINGUNO`: como hoy, `unidadId` =>
+  `UnidadNoAdmitidaError`. `SERIE`: `unidadId` obligatorio (`UnidadRequeridaError`), cantidad 1 (si no,
+  `SerialesNoCoincidenError(cantidad, 1)`), `sacarDelDeposito` (`SALIDA` => `ENTREGADA`; `AJUSTE_NEGATIVO` => `DESCARTADA`,
+  admite pendiente). Un `AJUSTE_POSITIVO` SERIE con `unidadId` => `UnidadNoAdmitidaError`. Sin comparar saldo.
+- `ConsultarStockInsumoUseCase(insumoRepo, movimientoRepo, familiaRepo, unidadRepo)`: unico lector que ramifica;
+  `StockDeInsumo` suma `seguimiento` y `pendientesDeSerie` (la respuesta HTTP NO los expone todavia: WU-8).
+- Helpers de test: `insumos/testing/operaciones-unidad-real.ts` (servicio con repos Prisma) y
+  `operaciones-unidad-en-memoria.ts` (servicio REAL sobre unidades en memoria, para specs unitarios).
+  Call sites de `RegistrarSalidaInsumoUseCase` en specs de equipos/insumos actualizados.
+- Specs: unitarios de salida/ajuste/consulta; `invariante-serie.integration.spec.ts` (secuencia con invariante tras
+  cada paso, dos salidas de la misma unidad, salida rechazada conserva L3); `orden-de-locks` casos 6a/6b y testigos
+  "sin L2 mientras espera L1" para salida y ajuste negativo (NINGUNO y SERIE).
+- La recuperacion (ADR-14) no esta en la secuencia: se agrega en WU-8d.
+
+### Mutaciones adversariales (7b.5), todas revertidas
+
+- (a) `contarEnDepositoPorCondicion` cuenta tambien `ENTREGADA`: ROJOS la secuencia y la concurrencia de `invariante-serie`.
+- (b) `SALIDA` deja `DESCARTADA` (`descartarDeDeposito` en vez de `entregar`): ROJOS invariante (2) y 2 unitarios de salida.
+- (c) `bloquearPorIds` sin `FOR NO KEY UPDATE`: ROJO solo "salida rechazada conserva L3"; las dos salidas concurrentes de la
+  misma unidad siguen VERDES porque L2 (advisory por insumo) ya las serializa y el CAS es el respaldo: el lock de fila L3
+  solo se observa con un testigo NOWAIT sobre la fila.
+- (d) salida toma L2 antes que L1: ROJOS los testigos de salida (NINGUNO y SERIE).
+
+### Work Unit Evidence (WU-7b)
+
+| Evidence | Value |
+|---|---|
+| Focused test command | `pnpm vitest run src/insumos src/equipos src/compras`; `pnpm lint`; `pnpm typecheck` |
+| Runtime harness | `invariante-serie.integration.spec.ts` y `orden-de-locks.concurrencia.integration.spec.ts` sobre `soporte_tenant_test` |
+| Rollback boundary | Revertir el commit: casos de uso, wiring del modulo y specs; sin migraciones ni borde HTTP |

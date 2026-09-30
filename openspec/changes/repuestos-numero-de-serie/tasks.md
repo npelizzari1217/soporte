@@ -378,13 +378,13 @@ Commit sugerido: `test(insumos): orden de locks entre entrada y cambio de seguim
 
 **Branch**: `feat/repuestos-numero-de-serie-wu07b` · **Base**: wu07a2
 
-- [ ] 7b.1 `registrar-salida-insumo.use-case.ts` y rama negativa de `registrar-ajuste-insumo.use-case.ts`: primer lock L1 `FOR SHARE`; `NINGUNO`: como hoy, un `unidadId` ⇒ `UnidadNoAdmitidaError`; `SERIE`: `unidadId` obligatorio (`UnidadRequeridaError`), cantidad 1, salida con serial → `sacarDelDeposito` (queda `ENTREGADA`); ajuste con motivo, admite pendiente (F1), queda `DESCARTADA`; `UnidadNoDisponibleError` (no `StockInsuficienteError`) si la unidad no está `EN_DEPOSITO` o no coincide la condición pedida.
-- [ ] 7b.2 `ConsultarStockInsumoUseCase`: único lector que ramifica: `SERIE ? saldosDesdeUnidades(contarEnDepositoPorCondicion) : calcularSaldos(sumByTipo)`; la respuesta suma `seguimiento` y `pendientesDeSerie`; `estadoReposicion` sobre NUEVO.
-- [ ] 7b.3 `invariante-serie.integration.spec.ts` (base efímera) con el helper de WU-4b: secuencia entrada → salida → instalar → retirar USADO → descartar → devolución de entrega → recuperación (la recuperación se habilita en WU-8d; aquí se deja el paso con las operaciones de servicio de WU-4b y se completa ahí si falta) verificando el invariante tras cada paso.
-- [ ] 7b.4 `orden-de-locks` **caso 6**: salida `NINGUNO` contra `NINGUNO → SERIE` ⇒ sin `40P01`.
-- [ ] 7b.5 **Mutaciones adversariales locales** (cada una debe poner un spec en rojo; revertir): (a) contar `INSTALADA` o `ENTREGADA` en el saldo ⇒ rojo en el invariante; (b) salida que deja `DESCARTADA` en vez de `ENTREGADA` ⇒ rojo; (c) quitar el lock de fila de las unidades ⇒ rojo en concurrencia de salida (misma unidad en dos salidas ⇒ una).
-- [ ] 7b.6 Specs unitarios: salida sin unidad, con unidad no disponible, con unidad pendiente; ajuste negativo con unidad y motivo, de una pendiente, sin motivo; saldo de un insumo SERIE por condición; reposición sobre NUEVO.
-- [ ] 7b.7 Quality gates (backend): `cd backend && pnpm lint && pnpm typecheck && pnpm vitest run src/insumos` y `pnpm test`.
+- [x] 7b.1 `registrar-salida-insumo.use-case.ts` y rama negativa de `registrar-ajuste-insumo.use-case.ts`: primer lock L1 `FOR SHARE`; `NINGUNO`: como hoy, un `unidadId` ⇒ `UnidadNoAdmitidaError`; `SERIE`: `unidadId` obligatorio (`UnidadRequeridaError`), cantidad 1, salida con serial → `sacarDelDeposito` (queda `ENTREGADA`); ajuste con motivo, admite pendiente (F1), queda `DESCARTADA`; `UnidadNoDisponibleError` (no `StockInsuficienteError`) si la unidad no está `EN_DEPOSITO` o no coincide la condición pedida.
+- [x] 7b.2 `ConsultarStockInsumoUseCase`: único lector que ramifica: `SERIE ? saldosDesdeUnidades(contarEnDepositoPorCondicion) : calcularSaldos(sumByTipo)`; la respuesta suma `seguimiento` y `pendientesDeSerie`; `estadoReposicion` sobre NUEVO.
+- [x] 7b.3 `invariante-serie.integration.spec.ts` (base efímera) con el helper de WU-4b: secuencia entrada → salida → instalar → retirar USADO → descartar → devolución de entrega → recuperación (la recuperación se habilita en WU-8d; aquí se deja el paso con las operaciones de servicio de WU-4b y se completa ahí si falta) verificando el invariante tras cada paso.
+- [x] 7b.4 `orden-de-locks` **caso 6**: salida `NINGUNO` contra `NINGUNO → SERIE` ⇒ sin `40P01`.
+- [x] 7b.5 **Mutaciones adversariales locales** (cada una debe poner un spec en rojo; revertir): (a) contar `INSTALADA` o `ENTREGADA` en el saldo ⇒ rojo en el invariante; (b) salida que deja `DESCARTADA` en vez de `ENTREGADA` ⇒ rojo; (c) quitar el lock de fila de las unidades ⇒ rojo en concurrencia de salida (misma unidad en dos salidas ⇒ una).
+- [x] 7b.6 Specs unitarios: salida sin unidad, con unidad no disponible, con unidad pendiente; ajuste negativo con unidad y motivo, de una pendiente, sin motivo; saldo de un insumo SERIE por condición; reposición sobre NUEVO.
+- [x] 7b.7 Quality gates (backend): `cd backend && pnpm lint && pnpm typecheck && pnpm vitest run src/insumos` y `pnpm test`.
 
 **Escenarios**: Salida de una unidad elegida por serial; Salida sin elegir unidad o con unidad no
 disponible; Ajuste negativo con unidad y motivo; Ajuste negativo de una unidad en serie pendiente;
@@ -392,6 +392,7 @@ Ajuste negativo SERIE sin motivo; Saldo de un insumo SERIE; Saldo por condición
 NUEVO; Invariante tras una secuencia de operaciones; Concurrencia sobre la misma unidad;
 Unidad entregada no refiere equipo ni cuenta en el saldo; Insumo NINGUNO con unidad.
 **PR boundary**: ~600 líneas reales, base wu07a2. Corte si se pasa: (7b.1, 7b.4, 7b.6) / (7b.2, 7b.3).
+**Real**: ~1190 lineas, entregadas en 4 ramas encadenadas: wu07b (salida, 343), wu07b-2 (ajuste negativo y caso 6, 311), wu07b-3 (consulta de stock, 153), wu07b-4 (invariante de integracion y artefactos, 386).
 **Ayuda**: repetir `rg -n "salida|ajuste|saldo" backend/ayuda/`; los ajustes siguen pidiendo `AJUSTAR` y motivo (ADR-11). Sin deuda si sigue verdadero.
 Commit sugerido: `feat(insumos): salida, ajuste negativo y consulta de stock por unidad`.
 
