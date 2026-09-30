@@ -1,9 +1,9 @@
 change: repuestos-numero-de-serie
-phase: explore
+phase: propose
 artifact_store: openspec
 research:
-  selected: pending
-product_decisions: pending (P1-P12, ver exploration.md seccion 3)
+  selected: false
+product_decisions: confirmed 2026-09-30 (recomendadas: P1a P2a P3a P4a P5a P6a P7a P8a P9a P10a P11a; P12 sin research)
 artifacts:
   exploration: true
   proposal: false
