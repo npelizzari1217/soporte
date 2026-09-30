@@ -1,0 +1,16 @@
+change: repuestos-numero-de-serie
+phase: explore
+artifact_store: openspec
+research:
+  selected: pending
+product_decisions: pending (P1-P12, ver exploration.md seccion 3)
+artifacts:
+  exploration: true
+  proposal: false
+  specs: false
+  design: false
+  tasks: false
+tasks_progress:
+  completed: []
+  pending: []
+last_updated: 2026-09-30
