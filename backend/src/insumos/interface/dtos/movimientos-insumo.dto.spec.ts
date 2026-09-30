@@ -506,6 +506,8 @@ describe('toStockInsumoResponseDto', () => {
       admiteUsado: true,
       stockMinimo: null,
       estadoReposicion: 'SIN_PUNTO_DEFINIDO',
+      seguimiento: 'NINGUNO' as const,
+      pendientesDeSerie: 0,
     });
 
     expect(dto.stock).toBe(8);
@@ -521,6 +523,8 @@ describe('toStockInsumoResponseDto', () => {
       admiteUsado: false,
       stockMinimo: 10,
       estadoReposicion: 'BAJO_MINIMO',
+      seguimiento: 'NINGUNO' as const,
+      pendientesDeSerie: 0,
     });
 
     expect(dto).toEqual({
@@ -546,6 +550,8 @@ describe('toStockInsumoResponseDto', () => {
       admiteUsado: false,
       stockMinimo: null,
       estadoReposicion: 'SIN_PUNTO_DEFINIDO',
+      seguimiento: 'NINGUNO' as const,
+      pendientesDeSerie: 0,
     });
 
     expect(dto.stockMinimo).toBeNull();

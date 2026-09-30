@@ -414,7 +414,8 @@ import { MovimientosInsumoController } from './interface/controllers/movimientos
       ],
     },
     {
-      // La consulta tampoco lo recibe: usa `sumByTipo()`, la lectura SIN lock.
+      // La consulta tampoco lo recibe: usa `sumByTipo()` y el conteo de unidades,
+      // lecturas SIN lock.
       // Mostrar un número en pantalla no puede hacer esperar a los técnicos que
       // están sacando cosas del depósito.
       provide: ConsultarStockInsumoUseCase,
@@ -422,8 +423,14 @@ import { MovimientosInsumoController } from './interface/controllers/movimientos
         insumoRepo: IInsumoRepository,
         movimientoRepo: IMovimientoInsumoRepository,
         familiaRepo: IFamiliaInsumoRepository,
-      ) => new ConsultarStockInsumoUseCase(insumoRepo, movimientoRepo, familiaRepo),
-      inject: [INSUMO_REPOSITORY, MOVIMIENTO_INSUMO_REPOSITORY, FAMILIA_INSUMO_REPOSITORY],
+        unidadRepo: IUnidadInsumoRepository,
+      ) => new ConsultarStockInsumoUseCase(insumoRepo, movimientoRepo, familiaRepo, unidadRepo),
+      inject: [
+        INSUMO_REPOSITORY,
+        MOVIMIENTO_INSUMO_REPOSITORY,
+        FAMILIA_INSUMO_REPOSITORY,
+        UNIDAD_INSUMO_REPOSITORY,
+      ],
     },
     {
       // El LISTADO tampoco recibe el runner, por el mismo motivo que la
