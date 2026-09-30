@@ -734,12 +734,17 @@ describe('Equipos e2e — instalar componente desde depósito (WU-4, issue #153)
   // ─── Retiro y reemplazo (verify W1/W2 de catalogo-unico-componentes) ───
 
   describe('Retiro sin stock y reemplazo como retiro más alta', () => {
-    async function httpDelete(url: string, headers: Headers): Promise<number> {
-      const res = await fetch(url, { method: 'DELETE', headers });
-      return res.status;
+    // El DELETE del componente se retiró (WU-8b): el retiro sin stock es `DESCARTE`.
+    async function retirarDescartando(url: string, headers: Headers): Promise<number> {
+      const { status } = await httpPost(
+        `${url}/baja`,
+        { destino: 'DESCARTE', motivo: 'Retiro sin devolución al stock' },
+        headers,
+      );
+      return status;
     }
 
-    it('Retiro sin stock: DELETE deja el componente borrado lógicamente y NO registra ningún movimiento', async () => {
+    it('Retiro sin stock: DESCARTE deja el componente borrado lógicamente y NO registra ningún movimiento', async () => {
       const { familiaId } = await crearFamiliaRepuesto();
       const unidadMedidaId = await crearUnidadMedida();
       const insumoId = await crearInsumoRepuesto(familiaId, unidadMedidaId);
@@ -757,12 +762,12 @@ describe('Equipos e2e — instalar componente desde depósito (WU-4, issue #153)
       const antes = await movimientosDe(insumoId);
       expect(antes).toHaveLength(2);
 
-      const status = await httpDelete(
+      const status = await retirarDescartando(
         `${installUrl(equipoId)}/${alta.data.id}`,
         bearer(actor.accessToken),
       );
 
-      expect(status).toBe(204);
+      expect(status).toBe(200);
       const [componente] = await componentesDe(equipoId);
       expect(componente.deletedAt).not.toBeNull();
       // Sin devolución: mismos movimientos, mismo saldo (5 - 1 = 4).
@@ -794,11 +799,11 @@ describe('Equipos e2e — instalar componente desde depósito (WU-4, issue #153)
       );
       expect(altaA.status).toBe(201);
 
-      const retiro = await httpDelete(
+      const retiro = await retirarDescartando(
         `${installUrl(equipoId)}/${altaA.data.id}`,
         bearer(actor.accessToken),
       );
-      expect(retiro).toBe(204);
+      expect(retiro).toBe(200);
 
       const altaB = await httpPost<ComponenteResponseDto>(
         installUrl(equipoId),

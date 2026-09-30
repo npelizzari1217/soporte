@@ -56,7 +56,6 @@ describe('EquiposController (T12.6)', () => {
     const listarEquiposUseCase = { execute: vi.fn() };
     const eliminarEquipoUseCase = { execute: vi.fn() };
     const agregarComponenteUseCase = { execute: vi.fn() };
-    const eliminarComponenteUseCase = { execute: vi.fn() };
     const editarComponenteUseCase = { execute: vi.fn() };
     const reactivarComponenteUseCase = { execute: vi.fn() };
     const exportarEquiposUseCase = { execute: vi.fn() };
@@ -70,7 +69,6 @@ describe('EquiposController (T12.6)', () => {
       listarEquiposUseCase as any,
       eliminarEquipoUseCase as any,
       agregarComponenteUseCase as any,
-      eliminarComponenteUseCase as any,
       editarComponenteUseCase as any,
       reactivarComponenteUseCase as any,
       exportarEquiposUseCase as any,
@@ -86,7 +84,6 @@ describe('EquiposController (T12.6)', () => {
       listarEquiposUseCase,
       eliminarEquipoUseCase,
       agregarComponenteUseCase,
-      eliminarComponenteUseCase,
       editarComponenteUseCase,
       reactivarComponenteUseCase,
       exportarEquiposUseCase,
@@ -374,28 +371,6 @@ describe('EquiposController (T12.6)', () => {
     });
   });
 
-  describe('DELETE /equipos/:id/componentes/:componenteId', () => {
-    it('elimina el componente', async () => {
-      const { controller, eliminarComponenteUseCase } = buildController();
-      eliminarComponenteUseCase.execute.mockResolvedValue(Result.ok(undefined));
-
-      await expect(
-        controller.eliminarComponente('equipo-uuid', 'componente-1'),
-      ).resolves.toBeUndefined();
-    });
-
-    it('componente inexistente → 404', async () => {
-      const { controller, eliminarComponenteUseCase } = buildController();
-      eliminarComponenteUseCase.execute.mockResolvedValue(
-        Result.fail(new ComponenteNoEncontradoError('no-existe')),
-      );
-
-      await expect(controller.eliminarComponente('equipo-uuid', 'no-existe')).rejects.toThrow(
-        NotFoundException,
-      );
-    });
-  });
-
   describe('POST /equipos/:id/componentes/:componenteId/baja', () => {
     const actor = { sub: 'usuario-jwt-uuid' } as any;
     const makeComponente = () =>
@@ -602,7 +577,6 @@ describe('EquiposController.exportar — GET /equipos/export (sdd/exportar-lista
       stub() as any, // listarEquiposUseCase
       stub() as any, // eliminarEquipoUseCase
       stub() as any, // agregarComponenteUseCase
-      stub() as any, // eliminarComponenteUseCase
       stub() as any, // editarComponenteUseCase
       stub() as any, // reactivarComponenteUseCase
       exportarEquipos as any, // exportarEquiposUseCase

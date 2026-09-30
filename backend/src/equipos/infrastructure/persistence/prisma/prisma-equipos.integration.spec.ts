@@ -19,7 +19,7 @@
  * afectados" PR11, riesgo técnico #6 (índice único parcial numero_serie).
  * Tarea: T11.1, T11.2, T11.3.
  */
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { PrismaService } from '../../../../shared/infrastructure/persistence/prisma.service';
 import { TenantContext } from '../../../../shared/tenancy/tenant-context';
 import { TenantPrismaClient } from '../../../../shared/infrastructure/persistence/prisma-clients';
@@ -360,7 +360,13 @@ describe('Equipos Persistence Repos — Integration (PR11)', () => {
         await componenteRepo.save(componente1);
         await componenteRepo.save(componente2);
         await componenteRepo.save(componenteABorrar);
-        await componenteRepo.delete(componenteABorrar.id);
+        componenteABorrar.retirar({
+          destino: 'DESCARTE',
+          motivo: 'Fixture: pieza descartada',
+          usuarioId: randomUUID(),
+          bajaMovimientoId: null,
+        });
+        await componenteRepo.retirar(componenteABorrar);
 
         const activos = await componenteRepo.findActiveByEquipoId(equipo.id);
         expect(activos.map((c) => c.id).sort()).toEqual([componente1.id, componente2.id].sort());

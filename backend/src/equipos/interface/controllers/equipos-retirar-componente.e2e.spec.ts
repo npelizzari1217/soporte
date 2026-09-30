@@ -80,6 +80,11 @@ async function httpPatch<T = unknown>(
   return { status: res.status, data };
 }
 
+async function httpDelete(url: string, headers: Headers = {}): Promise<{ status: number }> {
+  const res = await fetch(url, { method: 'DELETE', headers });
+  return { status: res.status };
+}
+
 function bearer(token: string): Headers {
   return { Authorization: `Bearer ${token}` };
 }
@@ -583,6 +588,23 @@ describe('Equipos e2e — retirar componente con destino (WU-8a)', () => {
       });
       expect(fila.deletedAt).toBeNull();
       expect(await movimientosDe(insumoId)).toHaveLength(antes);
+    });
+  });
+
+  describe('DELETE retirado', () => {
+    it('DELETE /equipos/:id/componentes/:componenteId ya no existe -> 404 y el componente sigue activo', async () => {
+      const { actor, equipoId, componenteId } = await escenarioBase(['EQUIPOS:BORRADO']);
+
+      const { status } = await httpDelete(
+        `${baseUrl}/equipos/${equipoId}/componentes/${componenteId}`,
+        bearer(actor.accessToken),
+      );
+
+      expect(status).toBe(404);
+      const fila = await tenantClient.componenteEquipo.findUniqueOrThrow({
+        where: { id: componenteId },
+      });
+      expect(fila.deletedAt).toBeNull();
     });
   });
 });

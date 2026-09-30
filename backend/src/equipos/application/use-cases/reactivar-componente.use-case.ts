@@ -21,7 +21,7 @@ export interface ReactivarComponenteDto {
  * Flujo:
  * 1. Carga el componente → `ComponenteNoEncontradoError` si no existe.
  * 2. Si ya está activo → `ComponenteYaActivoError` (mismo criterio que
- *    `EliminarComponenteUseCase` rechaza la baja de algo ya borrado).
+ *    `RetirarComponenteUseCase` rechaza el retiro de algo ya dado de baja).
  * 3. Si volvió al stock como USADO (`bajaDestino === 'STOCK_USADO'`) →
  *    `ComponenteDevueltoAlStockError`: reactivarlo lo contaría dos veces.
  * 4. `reactivar()` (limpia `deletedAt` y el registro de retiro) y persiste. Vale

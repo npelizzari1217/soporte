@@ -12,7 +12,6 @@
  *   PATCH  /equipos/:id                                       → EditarEquipoUseCase          `EQUIPOS:MODIFICACION`
  *   DELETE /equipos/:id                                       → EliminarEquipoUseCase        `EQUIPOS:BORRADO`
  *   POST   /equipos/:id/componentes                           → InstalarComponenteDesdeDepositoUseCase (descontarStock, por defecto) o AgregarComponenteUseCase (descontarStock=false) `EQUIPOS:ALTAS`
- *   DELETE /equipos/:id/componentes/:componenteId             → EliminarComponenteUseCase    `EQUIPOS:BORRADO`
  *   POST   /equipos/:id/componentes/:componenteId/baja        → RetirarComponenteUseCase     `EQUIPOS:BORRADO`
  *   PATCH  /equipos/:id/componentes/:componenteId             → EditarComponenteUseCase      `EQUIPOS:MODIFICACION`
  *   PATCH  /equipos/:id/componentes/:componenteId/reactivar   → ReactivarComponenteUseCase   `EQUIPOS:MODIFICACION`
@@ -62,7 +61,6 @@ import { ListarEquiposUseCase } from '../../application/use-cases/listar-equipos
 import { EliminarEquipoUseCase } from '../../application/use-cases/eliminar-equipo.use-case';
 import { AgregarComponenteUseCase } from '../../application/use-cases/agregar-componente.use-case';
 import { InstalarComponenteDesdeDepositoUseCase } from '../../application/use-cases/instalar-componente-desde-deposito.use-case';
-import { EliminarComponenteUseCase } from '../../application/use-cases/eliminar-componente.use-case';
 import { EditarComponenteUseCase } from '../../application/use-cases/editar-componente.use-case';
 import { RetirarComponenteUseCase } from '../../application/use-cases/retirar-componente.use-case';
 import { ReactivarComponenteUseCase } from '../../application/use-cases/reactivar-componente.use-case';
@@ -175,7 +173,6 @@ export class EquiposController {
     private readonly listarEquiposUseCase: ListarEquiposUseCase,
     private readonly eliminarEquipoUseCase: EliminarEquipoUseCase,
     private readonly agregarComponenteUseCase: AgregarComponenteUseCase,
-    private readonly eliminarComponenteUseCase: EliminarComponenteUseCase,
     private readonly editarComponenteUseCase: EditarComponenteUseCase,
     private readonly reactivarComponenteUseCase: ReactivarComponenteUseCase,
     // Agregado al final (no reordena los anteriores) — mismo criterio que
@@ -379,24 +376,6 @@ export class EquiposController {
       throw toHttpException(result.getError());
     }
     return toComponenteResponseDto(result.getValue());
-  }
-
-  /**
-   * DELETE /equipos/:id/componentes/:componenteId
-   * Baja lógica (soft delete) de un componente.
-   * @throws 404 componente inexistente
-   */
-  @Delete(':id/componentes/:componenteId')
-  @RequiereAcciones('EQUIPOS:BORRADO')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  async eliminarComponente(
-    @Param('id') equipoId: string,
-    @Param('componenteId') componenteId: string,
-  ): Promise<void> {
-    const result = await this.eliminarComponenteUseCase.execute({ equipoId, componenteId });
-    if (result.isFail()) {
-      throw toHttpException(result.getError());
-    }
   }
 
   /**

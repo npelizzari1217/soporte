@@ -66,11 +66,4 @@ export class PrismaComponenteEquipoRepository implements IComponenteEquipoReposi
     });
     return count > 0;
   }
-
-  async delete(id: string): Promise<void> {
-    await this.client.componenteEquipo.update({
-      where: { id },
-      data: { deletedAt: new Date() },
-    });
-  }
 }

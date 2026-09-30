@@ -31,14 +31,6 @@ export interface IComponenteEquipoRepository {
    * dos retiros concurrentes.
    */
   retirar(componente: ComponenteEquipoEntity): Promise<boolean>;
-
-  /**
-   * Baja lógica (soft delete) del componente por id.
-   *
-   * @deprecated Se retira en WU-8b junto con `EliminarComponenteUseCase`, su
-   *   único llamador; el retiro con destino lo reemplaza (`retirar`).
-   */
-  delete(id: string): Promise<void>;
 }
 
 /** Token de inyección de dependencias para IComponenteEquipoRepository en NestJS. */

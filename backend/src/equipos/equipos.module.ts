@@ -71,7 +71,6 @@ import { ListarEquiposUseCase } from './application/use-cases/listar-equipos.use
 import { EliminarEquipoUseCase } from './application/use-cases/eliminar-equipo.use-case';
 import { AgregarComponenteUseCase } from './application/use-cases/agregar-componente.use-case';
 import { InstalarComponenteDesdeDepositoUseCase } from './application/use-cases/instalar-componente-desde-deposito.use-case';
-import { EliminarComponenteUseCase } from './application/use-cases/eliminar-componente.use-case';
 import { EditarComponenteUseCase } from './application/use-cases/editar-componente.use-case';
 import { RetirarComponenteUseCase } from './application/use-cases/retirar-componente.use-case';
 import { ReactivarComponenteUseCase } from './application/use-cases/reactivar-componente.use-case';
@@ -246,12 +245,6 @@ import { SoporteController } from './interface/controllers/soporte.controller';
         RegistrarSalidaInsumoUseCase,
         COMPONENTE_EQUIPO_REPOSITORY,
       ],
-    },
-    {
-      provide: EliminarComponenteUseCase,
-      useFactory: (componenteRepo: IComponenteEquipoRepository) =>
-        new EliminarComponenteUseCase(componenteRepo),
-      inject: [COMPONENTE_EQUIPO_REPOSITORY],
     },
     {
       provide: EditarComponenteUseCase,

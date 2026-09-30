@@ -318,11 +318,11 @@ Commit sugerido: `feat(equipos): endpoint de retiro con destino y correccion de 
 
 **Branch**: `feat/stock-usado-componentes-wu08b` · **Base**: wu08a
 
-- [ ] 8b.1 Borrar la ruta `DELETE :id/componentes/:componenteId` del controller, `eliminar-componente.use-case.ts` y su spec, su provider en `equipos.module.ts` y sus referencias en specs de controller.
-- [ ] 8b.2 Quitar `delete` de `IComponenteEquipoRepository` y de `PrismaComponenteEquipoRepository` (su único llamador de producción era el caso de uso borrado; `eliminar-equipo.use-case.ts` usa `equipoRepo.delete`, otro puerto). Ajustar `prisma-equipos.integration.spec.ts:363`: el fixture del componente dado de baja pasa a `componenteRepo.retirar` con destino `DESCARTE`.
-- [ ] 8b.3 E2E: `DELETE :id/componentes/:componenteId` ⇒ 404.
-- [ ] 8b.4 Verificar sin referencias: `rg "EliminarComponenteUseCase|componenteRepo.delete" backend/src`.
-- [ ] 8b.5 Quality gates (backend): `cd backend && pnpm lint && pnpm typecheck && pnpm vitest run src/equipos` y `pnpm test`.
+- [x] 8b.1 Borrar la ruta `DELETE :id/componentes/:componenteId` del controller, `eliminar-componente.use-case.ts` y su spec, su provider en `equipos.module.ts` y sus referencias en specs de controller.
+- [x] 8b.2 Quitar `delete` de `IComponenteEquipoRepository` y de `PrismaComponenteEquipoRepository` (su único llamador de producción era el caso de uso borrado; `eliminar-equipo.use-case.ts` usa `equipoRepo.delete`, otro puerto). Ajustar `prisma-equipos.integration.spec.ts:363`: el fixture del componente dado de baja pasa a `componenteRepo.retirar` con destino `DESCARTE`.
+- [x] 8b.3 E2E: `DELETE :id/componentes/:componenteId` ⇒ 404.
+- [x] 8b.4 Verificar sin referencias: `rg "EliminarComponenteUseCase|componenteRepo.delete" backend/src`.
+- [x] 8b.5 Quality gates (backend): `cd backend && pnpm lint && pnpm typecheck && pnpm vitest run src/equipos` y `pnpm test`.
 
 **Escenarios**: Retiro sin destino (el borrado sin destino deja de existir).
 **PR boundary**: ~150 líneas, borrado puro, base wu08a. Los borrados cuentan; ~2x real posible,

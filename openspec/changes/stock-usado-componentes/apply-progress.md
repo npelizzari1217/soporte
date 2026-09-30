@@ -108,3 +108,14 @@ Rama `feat/stock-usado-componentes-wu08a` (base wu07). Modo estandar (feature).
 - 8a.3 Specs de DTO (destino, recorte, 501 y 500 caracteres) y de controller (ok, 422 x2, 404, metadata de permiso).
 - 8a.4 `equipos-retirar-componente.e2e.spec.ts` (`usarLockMasterTest()`, un actor por test por el UNIQUE de `db_name`): 401; 403 con permisos de insumos y sin BORRADO; `STOCK_USADO` solo con `EQUIPOS:BORRADO` (saldo USADO +1); `DESCARTE` sin movimiento; sin motivo 422; sin destino o invalido 400; motivo de 501 caracteres 400 en ambos destinos; ya retirado 422; reactivar tras `STOCK_USADO` 422; tras `DESCARTE` y de un legado, activo con saldo intacto.
 - 8a.5 Ayuda: `permisos-y-roles.md` ya no afirma que sin la casilla de Insumos nadie registra movimientos; nombra las tres excepciones. Unica edicion de Ayuda del ciclo.
+
+## WU-8b — Borrado del `DELETE` de componentes (tareas 8b.1 a 8b.5)
+
+Rama `feat/stock-usado-componentes-wu08b` (base wu08a-2). Modo estandar (refactor).
+
+- 8b.1 Borrados `eliminar-componente.use-case.ts` y su spec; fuera la ruta `DELETE :id/componentes/:componenteId`, su inyeccion y su provider en el modulo, y las referencias en `equipos.controller.spec.ts` (mock, constructor y bloque `describe`). Comentario de `reactivar-componente.use-case.ts` ahora nombra a `RetirarComponenteUseCase`.
+- 8b.2 `delete` fuera de `IComponenteEquipoRepository` y del repo Prisma. Fixture de `prisma-equipos.integration.spec.ts` pasa a `entidad.retirar({destino: 'DESCARTE', ...})` + `componenteRepo.retirar`.
+- 8b.3 E2E en `equipos-retirar-componente.e2e.spec.ts`: el `DELETE` responde 404 y el componente sigue activo.
+- Hallazgo: `equipos-instalar-desde-deposito.e2e.spec.ts` (2 casos, "Retiro sin stock" y "Reemplazo como retiro mas alta") usaba el `DELETE`; pasan a `POST .../baja` con `DESCARTE` (200 en lugar de 204), con las mismas aserciones de stock.
+- 8b.4 `rg "EliminarComponenteUseCase|componenteRepo.delete|eliminar-componente" backend/src`: vacio.
+- 8b.5 Gates: lint y typecheck en cero; `vitest run src/equipos` verde; `pnpm test` completo 488 archivos, 5811 tests en verde.
