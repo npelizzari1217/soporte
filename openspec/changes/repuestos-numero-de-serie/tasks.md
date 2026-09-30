@@ -254,9 +254,9 @@ Commit sugerido: `feat(insumos): repositorio de unidades y lecturas con lock de 
 
 **Branch**: `feat/repuestos-numero-de-serie-wu03b` · **Base**: wu03a
 
-- [ ] 3b.1 Puerto `i-evento-unidad-insumo.repository.ts` con solo `insert` y `listarPorUnidad`; `prisma-evento-unidad-insumo.repository.ts` y mapper; orden cronológico por `(created_at, id)`. Token en `insumos.module.ts`.
-- [ ] 3b.2 Integración (base efímera): insertar eventos de cada tipo, listar en orden, `movimiento_id` UNIQUE rechaza un segundo evento sobre el mismo movimiento, `componente_id` se guarda sin FK. (Req: historial consultable)
-- [ ] 3b.3 Quality gates (backend): `cd backend && pnpm lint && pnpm typecheck && pnpm vitest run src/insumos/infrastructure` y `pnpm test`.
+- [x] 3b.1 Puerto `i-evento-unidad-insumo.repository.ts` con solo `insert` y `listarPorUnidad`; `prisma-evento-unidad-insumo.repository.ts` y mapper; orden cronológico por `(created_at, id)`. Token en `insumos.module.ts`.
+- [x] 3b.2 Integración (base efímera): insertar eventos de cada tipo, listar en orden, `movimiento_id` UNIQUE rechaza un segundo evento sobre el mismo movimiento, `componente_id` se guarda sin FK. (Req: historial consultable)
+- [x] 3b.3 Quality gates (backend): `cd backend && pnpm lint && pnpm typecheck && pnpm vitest run src/insumos/infrastructure` y `pnpm test`.
 
 **Escenarios**: Unidad sin historia anterior (lista vacía); Vida completa de una unidad (base del
 orden).

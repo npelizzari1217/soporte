@@ -163,3 +163,21 @@ cada código de sus pruebas): parte 1 (`wu03a`) = 3a.1 y 3a.3; parte 2 (`wu03a-2
 | Focused test command | `pnpm vitest run src/shared/infrastructure src/insumos`: 87 archivos, 1515 tests verdes sobre el árbol completo |
 | Full suite | `pnpm test`: 499 archivos, 6067 tests verdes (los `FAIL orden-de-arranque` del log son la salida esperada de subprocesos que el spec provoca a propósito; el archivo pasa) |
 | Rollback boundary | Revertir el commit de la parte 3: `save()` vuelve a escribir `seguimiento` en el UPDATE y desaparece `cambiarSeguimiento` |
+
+## WU-3b — repositorio de eventos de unidad de insumo (3b.1 a 3b.3 hechas)
+
+- 3b.1: puerto `IEventoUnidadInsumoRepository` (solo `insert` y `listarPorUnidad`, token
+  `EVENTO_UNIDAD_INSUMO_REPOSITORY`) y `PrismaEventoUnidadInsumoRepository`, que reutiliza el
+  `EventoUnidadInsumoMapper` de WU-2. `insert` usa `create` (un id o `movimiento_id` repetidos rebotan
+  con P2002) y conserva el id generado por la entidad; `listarPorUnidad` ordena por `(created_at, id)`.
+  Provider registrado en `insumos.module.ts`, sin exportar.
+- 3b.2: integración sobre `soporte_tenant_test`: lista vacía, round-trip de los 12 tipos, orden
+  cronológico y desempate por id con `created_at` idéntico, `movimiento_id` UNIQUE (el primero
+  sobrevive), `componente_id` sin FK.
+- 3b.3: lint y typecheck sin errores; `pnpm vitest run src/insumos/infrastructure`: 22 archivos, 338
+  tests verdes; `pnpm test`: 500 archivos, 6072 tests verdes.
+
+| Evidence | Value |
+|---|---|
+| Focused test command | `pnpm vitest run src/insumos/infrastructure`: 338 verdes |
+| Rollback boundary | Revertir el commit: archivos nuevos y un provider sin exportar |

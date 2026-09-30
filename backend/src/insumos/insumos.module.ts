@@ -78,7 +78,9 @@ import {
 } from './domain/ports/i-movimiento-insumo.repository';
 import { PrismaMovimientoInsumoRepository } from './infrastructure/persistence/prisma/prisma-movimiento-insumo.repository';
 import { UNIDAD_INSUMO_REPOSITORY } from './domain/ports/i-unidad-insumo.repository';
+import { EVENTO_UNIDAD_INSUMO_REPOSITORY } from './domain/ports/i-evento-unidad-insumo.repository';
 import { PrismaUnidadInsumoRepository } from './infrastructure/persistence/prisma/prisma-unidad-insumo.repository';
+import { PrismaEventoUnidadInsumoRepository } from './infrastructure/persistence/prisma/prisma-evento-unidad-insumo.repository';
 import {
   ITenantTransactionRunner,
   TENANT_TX_RUNNER,
@@ -156,6 +158,8 @@ import { MovimientosInsumoController } from './interface/controllers/movimientos
     // Unidades por número de serie (sdd/repuestos-numero-de-serie, ADR-4). No se
     // exporta: la única puerta de las unidades será `OperacionesUnidadInsumo`.
     { provide: UNIDAD_INSUMO_REPOSITORY, useClass: PrismaUnidadInsumoRepository },
+    // Bitácora append-only de las unidades (ADR-9). Tampoco se exporta.
+    { provide: EVENTO_UNIDAD_INSUMO_REPOSITORY, useClass: PrismaEventoUnidadInsumoRepository },
     {
       provide: CrearUnidadMedidaUseCase,
       useFactory: (repo: IUnidadMedidaRepository) => new CrearUnidadMedidaUseCase(repo),
