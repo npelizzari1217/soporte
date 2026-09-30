@@ -5,7 +5,7 @@
  * `GET /equipos/:id` ahora embebe `componentes[]` (item 1 backend-gaps —
  * cierra G7): `EquipoDetailView` pasa esa lista real como dato inicial a
  * `EquipoComponentesSection`, que la usa para sembrar su cache local
- * (`["componentes", equipoId]`). Las mutaciones (agregar/eliminar/editar/
+ * (`["componentes", equipoId]`). Las mutaciones (agregar/retirar/editar/
  * reactivar) NO actualizan esa cache optimistamente: invalidan
  * `["equipo", equipoId]` y el `useEffect` de sincronización de props la
  * refresca con el detalle fresco ya enriquecido.
@@ -73,6 +73,14 @@ export interface Componente {
   bajaSinSalidaPrevia?: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+/** Cuerpo de `POST /equipos/:id/componentes/:cid/baja` (espejo del backend). */
+export const DESTINOS_RETIRO = ["STOCK_USADO", "DESCARTE"] as const;
+export type DestinoRetiro = (typeof DESTINOS_RETIRO)[number];
+export interface RetirarComponenteDto {
+  destino: DestinoRetiro;
+  motivo?: string;
 }
 
 /**

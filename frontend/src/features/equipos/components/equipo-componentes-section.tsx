@@ -40,17 +40,17 @@
  */
 import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Can } from "@/components/shared/can";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { formatearInstante } from "@/shared/lib/formato-fecha";
-import { useEliminarComponente, useReactivarComponente } from "../hooks/use-equipo-mutations";
+import { useReactivarComponente } from "../hooks/use-equipo-mutations";
 import { ordenarComponentes } from "../ordenar-componentes";
 import type { ComponenteConTipo } from "../types";
 import { ComponenteEditDialog } from "./componente-edit-dialog";
+import { ComponenteRetiroDialog } from "./componente-retiro-dialog";
 
 /** Aplicada a cada una de las 4 celdas de dato cuando el componente está dado de baja. */
 const CELL_INACTIVO = "text-muted-foreground line-through";
@@ -68,7 +68,6 @@ export function EquipoComponentesSection({ equipoId, componentes }: EquipoCompon
     initialData: componentes,
     staleTime: Infinity,
   });
-  const eliminarMutation = useEliminarComponente(equipoId);
   const reactivarMutation = useReactivarComponente(equipoId);
 
   // El cache local (`staleTime: Infinity`) solo se actualiza por las mutaciones
@@ -136,15 +135,7 @@ export function EquipoComponentesSection({ equipoId, componentes }: EquipoCompon
                         <ComponenteEditDialog equipoId={equipoId} componente={componente} />
                       </Can>
                       <Can permiso="EQUIPOS:BORRADO">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          aria-label="Dar de baja componente"
-                          onClick={() => eliminarMutation.mutate(componente.id)}
-                        >
-                          <Trash2 className="h-4 w-4" aria-hidden="true" />
-                        </Button>
+                        <ComponenteRetiroDialog equipoId={equipoId} componente={componente} />
                       </Can>
                     </div>
                   ) : (

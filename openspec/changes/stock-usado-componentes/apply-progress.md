@@ -147,3 +147,13 @@ Rama `feat/stock-usado-componentes-wu11` (base wu10). Modo estandar (feature).
 - 11.2 `componente-create-dialog.tsx`: `useSelectorCondicion` (de WU-10) con `descontarStock ? insumoId : ""` (sin descuento no se consulta el stock) y `CondicionStockSelector` solo con la casilla marcada; el payload lleva `condicion` solo con descuento y selector visible; el selector se reinicia al abrir. `useAgregarComponente` no cambia.
 - 11.3 Tests en `componente-create-dialog.test.tsx`: NUEVO preseleccionado y USADO elegible; fijo con un solo saldo; sin selector si no admite usado; desmarcar la casilla tras elegir USADO no envia `condicion`; sin acceso al stock (403) selector habilitado en NUEVO.
 - 11.4 Gates: lint y type-check en cero; `vitest run src/features/equipos` 136 verdes; suite completa ver reporte.
+
+## WU-12 — Frontend equipos: dialogo de retiro y `useRetirarComponente` (tareas 12.1-12.3, 12.5, 12.6; 12.4 pasa a WU-12b)
+
+Rama `feat/stock-usado-componentes-wu12` (base wu11). Modo estandar (feature).
+
+- 12.1 `useRetirarComponente` (`POST .../baja`) reemplaza a `useEliminarComponente`; invalida `["equipo", id]` y el stock y los movimientos del `insumoId` que devuelve la respuesta. Sin toast de error: el 422 lo muestra el dialogo. `RetirarComponenteDto` y `DESTINOS_RETIRO` en `types.ts`.
+- 12.2 `componente-retiro-dialog.tsx` (radios "Devolver al stock como usado" / "Descartar por rotura", motivo opcional salvo descarte) y `retirarComponenteSchema` (motivo obligatorio para DESCARTE, tope 500 tras `trim`). Tests: descarte sin motivo bloquea, con motivo envia recortado, devolucion sin motivo permitida, 501 caracteres bloquea, 422 visible con el dialogo abierto, invalidaciones y cierre.
+- 12.3 La seccion usa el dialogo bajo `<Can permiso="EQUIPOS:BORRADO">`; test de que la papelera abre el dialogo. Texto del dialogo de edicion: "darlo de baja" en lugar de "eliminarlo".
+- 12.4 NO hecha aqui: el tamano de WU-12 ya iba en ~350 lineas, se mueve a WU-12b segun tasks.md. Los campos `baja*` de `Componente` siguen opcionales.
+- 12.5 `rg "useEliminarComponente" frontend/src`: vacio.

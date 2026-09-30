@@ -322,4 +322,32 @@ describe("EquipoComponentesSection", () => {
 
     await waitFor(() => expect(metodoRecibido).toBe("PATCH"));
   });
+
+  it("la papelera de un componente activo abre el diálogo de retiro en vez de dar de baja directo", async () => {
+    const user = userEvent.setup();
+    const componentes = [
+      {
+        id: "activo-1",
+        equipoId: EQUIPO_ID,
+        insumoId: "11111111-1111-4111-8111-111111111111",
+        tipoNombre: "Memoria RAM",
+        tipoActivo: true,
+        descripcion: null,
+        numeroSerie: null,
+        capacidad: "8GB",
+        activo: true,
+        deletedAt: null,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
+    ];
+
+    renderWithProviders(<EquipoComponentesSection equipoId={EQUIPO_ID} componentes={componentes} />, {
+      user: buildUser({ permisos: ["EQUIPOS:BORRADO"] }),
+    });
+
+    await user.click(await screen.findByRole("button", { name: /dar de baja componente/i }));
+
+    expect(await screen.findByRole("dialog")).toHaveTextContent(/devolver al stock como usado/i);
+  });
 });

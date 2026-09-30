@@ -17,6 +17,7 @@ import type {
   EditarComponenteDto,
   EditarEquipoDto,
   Equipo,
+  RetirarComponenteDto,
 } from "../types";
 
 export function useCrearEquipo() {
@@ -83,28 +84,31 @@ export function useAgregarComponente(equipoId: string) {
 }
 
 /**
- * `DELETE` es baja LÓGICA (soft delete) — el componente sigue apareciendo en
- * el listado enriquecido (tachado, con "Reactivar"), NO se saca de la
- * lista. Por eso ya no actualiza `["componentes", equipoId]` de forma
- * optimista (eso lo sacaría de la vista): invalida `["equipo", equipoId]`
- * para re-traer el detalle fresco (que ya incluye activos + dados de
- * baja) — el `useEffect` de `EquipoComponentesSection` sincroniza el cache
- * local por props. Mismo criterio en `useEditarComponente`/`useReactivarComponente`.
+ * `POST /equipos/:id/componentes/:cid/baja`: retiro con destino (devolver al
+ * stock como usado o descartar). Es baja LÓGICA: el componente sigue apareciendo
+ * en el listado enriquecido (con su rótulo de destino), NO se saca de la lista.
+ * Por eso no actualiza `["componentes", equipoId]` de forma optimista: invalida
+ * `["equipo", equipoId]` para re-traer el detalle fresco — el `useEffect` de
+ * `EquipoComponentesSection` sincroniza el cache local por props. Como la
+ * devolución al stock mueve saldo, invalida además el stock y los movimientos
+ * del repuesto. Mismo criterio de cache en `useEditarComponente`/`useReactivarComponente`.
+ * El error (p. ej. el 422 de motivo faltante) lo muestra el diálogo, no un toast.
  */
-export function useEliminarComponente(equipoId: string) {
+export function useRetirarComponente(equipoId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (componenteId: string) =>
-      apiFetch<void>(`equipos/${equipoId}/componentes/${componenteId}`, { method: "DELETE" }),
-    onSuccess: () => {
+    mutationFn: ({ componenteId, dto }: { componenteId: string; dto: RetirarComponenteDto }) =>
+      apiFetch<Componente>(`equipos/${equipoId}/componentes/${componenteId}/baja`, { method: "POST", json: dto }),
+    onSuccess: (componente) => {
       queryClient.invalidateQueries({ queryKey: ["equipo", equipoId] });
+      queryClient.invalidateQueries({ queryKey: ["insumo", componente.insumoId, "stock"] });
+      queryClient.invalidateQueries({ queryKey: ["insumo", componente.insumoId, "movimientos"] });
       notifySuccess("Componente dado de baja.");
     },
-    onError: notifyError,
   });
 }
 
-/** Edita un componente ACTIVO (PATCH semántico). Ver nota de cache en `useEliminarComponente`. */
+/** Edita un componente ACTIVO (PATCH semántico). Ver nota de cache en `useRetirarComponente`. */
 export function useEditarComponente(equipoId: string) {
   const queryClient = useQueryClient();
   return useMutation({
@@ -121,7 +125,7 @@ export function useEditarComponente(equipoId: string) {
   });
 }
 
-/** Reactiva un componente dado de baja (limpia `deletedAt`). Ver nota de cache en `useEliminarComponente`. */
+/** Reactiva un componente dado de baja (limpia `deletedAt`). Ver nota de cache en `useRetirarComponente`. */
 export function useReactivarComponente(equipoId: string) {
   const queryClient = useQueryClient();
   return useMutation({

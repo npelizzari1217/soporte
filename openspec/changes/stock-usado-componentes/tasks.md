@@ -381,12 +381,12 @@ Commit sugerido: `feat(equipos): selector de condicion del saldo en el alta de c
 
 **Branch**: `feat/stock-usado-componentes-wu12` · **Base**: wu11
 
-- [ ] 12.1 `hooks/use-equipo-mutations.ts`: `useRetirarComponente` (`POST /equipos/:id/componentes/:cid/baja`) reemplaza a `useEliminarComponente` (se borra); invalida `["equipo", id]`, `["insumo", insumoId, "stock"]` y `["insumo", insumoId, "movimientos"]`.
-- [ ] 12.2 `componente-retiro-dialog.tsx` (nuevo): los dos desenlaces "devolver al stock como usado" y "descartar por rotura"; el motivo se exige solo para el descarte (Zod con máximo 500; la autoridad es el backend, que además lo exige para `STOCK_USADO` sin SALIDA vinculada y devuelve 422 que el diálogo muestra). Test: descarte sin motivo bloquea el envío; devolución sin motivo permitida; al confirmar la lista y los saldos se actualizan. (Escenario: Diálogo de retiro)
-- [ ] 12.3 `equipo-componentes-section.tsx`: el `<Can permiso="EQUIPOS:BORRADO">` (`:138`) envuelve la acción que abre el diálogo de retiro (la papelera ya no borra directo).
-- [ ] 12.4 Rótulos de fila con `deletedAt`: `STOCK_USADO` ⇒ "Devuelto al stock", `DESCARTE` ⇒ "Descartado", `null` ⇒ "Dado de baja" actual; con `bajaSinSalidaPrevia` se agrega "sin salida registrada del depósito". El botón Reactivar se renderiza solo si `bajaDestino !== 'STOCK_USADO'`, además del `<Can permiso="EQUIPOS:MODIFICACION">` (`:154`). Tests en `equipo-componentes-section.test.tsx` con fixtures de los tres destinos más legado. (Escenario: Interfaz de reactivar)
-- [ ] 12.5 Borrar el uso y el test del hook viejo; verificar sin referencias: `rg "useEliminarComponente" frontend/src`.
-- [ ] 12.6 Quality gates (frontend): `cd frontend && pnpm lint && pnpm type-check && pnpm test`.
+- [x] 12.1 `hooks/use-equipo-mutations.ts`: `useRetirarComponente` (`POST /equipos/:id/componentes/:cid/baja`) reemplaza a `useEliminarComponente` (se borra); invalida `["equipo", id]`, `["insumo", insumoId, "stock"]` y `["insumo", insumoId, "movimientos"]`.
+- [x] 12.2 `componente-retiro-dialog.tsx` (nuevo): los dos desenlaces "devolver al stock como usado" y "descartar por rotura"; el motivo se exige solo para el descarte (Zod con máximo 500; la autoridad es el backend, que además lo exige para `STOCK_USADO` sin SALIDA vinculada y devuelve 422 que el diálogo muestra). Test: descarte sin motivo bloquea el envío; devolución sin motivo permitida; al confirmar la lista y los saldos se actualizan. (Escenario: Diálogo de retiro)
+- [x] 12.3 `equipo-componentes-section.tsx`: el `<Can permiso="EQUIPOS:BORRADO">` (`:138`) envuelve la acción que abre el diálogo de retiro (la papelera ya no borra directo).
+- [x] 12.4 (movida a WU-12b: WU-12 ya iba en ~350 lineas) Rótulos de fila con `deletedAt`: `STOCK_USADO` ⇒ "Devuelto al stock", `DESCARTE` ⇒ "Descartado", `null` ⇒ "Dado de baja" actual; con `bajaSinSalidaPrevia` se agrega "sin salida registrada del depósito". El botón Reactivar se renderiza solo si `bajaDestino !== 'STOCK_USADO'`, además del `<Can permiso="EQUIPOS:MODIFICACION">` (`:154`). Tests en `equipo-componentes-section.test.tsx` con fixtures de los tres destinos más legado. (Escenario: Interfaz de reactivar)
+- [x] 12.5 Borrar el uso y el test del hook viejo; verificar sin referencias: `rg "useEliminarComponente" frontend/src`.
+- [x] 12.6 Quality gates (frontend): `cd frontend && pnpm lint && pnpm type-check && pnpm test`.
 
 **Escenarios**: Diálogo de retiro; Interfaz de reactivar; Devolver una pieza que vino con el
 equipo (marca visible); Registro de una devolución y de un descarte (presentación).
