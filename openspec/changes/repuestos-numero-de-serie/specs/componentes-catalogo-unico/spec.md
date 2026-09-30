@@ -209,7 +209,11 @@ del retiro quedan a decisión de diseño.
 
 Consecuencia de permisos asumida: quien tiene `EQUIPOS:BORRADO` puede sumar
 existencias USADO al depósito sin tener permisos de insumos, del mismo modo que
-`EQUIPOS:ALTAS` ya descuenta stock al instalar sin permisos de insumos.
+`EQUIPOS:ALTAS` ya descuenta stock al instalar sin permisos de insumos. El dueño lo
+confirmó para las unidades de un insumo `SERIE`: `EQUIPOS:ALTAS` instala unidades y
+crea unidades instaladas sin descuento, `EQUIPOS:BORRADO` las devuelve al depósito
+o las descarta y `EQUIPOS:MODIFICACION` las reinstala al reactivar, sin permisos de
+insumos (spec `unidades-insumo-serie`).
 
 Con `STOCK_USADO`, el retiro DEBE admitir un insumo deshabilitado y una familia
 dada de baja o deshabilitada, porque la pieza existe físicamente (decisión del

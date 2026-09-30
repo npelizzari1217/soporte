@@ -48,8 +48,12 @@ distinto de cero, y NO DEBE convertir stock existente en unidades. El sistema DE
 rechazar `SERIE` en un insumo cuya unidad de medida no es entera (por ejemplo
 litros o kilos), tanto al activarlo como en el alta, y DEBE rechazar el cambio de
 unidad de medida de un insumo `SERIE` a una no entera. Las reglas DEBEN aplicarse
-en el backend con independencia de la interfaz. La forma de determinar qué unidad
-de medida es entera queda a decisión de diseño. Un insumo `SERIE` DEBE poder
+en el backend con independencia de la interfaz. Que una unidad de medida sea
+entera DEBE ser un atributo de la unidad de medida que el tenant marca o desmarca
+desde el ABM de unidades de medida (decisión del dueño); las unidades de medida
+existentes quedan como el sistema las siembre. El sistema DEBE rechazar desmarcar
+`entera` en una unidad de medida mientras algún insumo `SERIE` la use, sin cambiar
+nada. Un insumo `SERIE` DEBE poder
 volver a `NINGUNO` solo si no tiene ninguna unidad `EN_DEPOSITO` ni `INSTALADA`
 (decisión del dueño). Las unidades `ENTREGADA` y `DESCARTADA` no lo impiden, NO
 DEBEN modificarse ni borrarse al volver a `NINGUNO` y conservan su historial.
@@ -72,6 +76,24 @@ DEBEN modificarse ni borrarse al volver a `NINGUNO` y conservan su historial.
 - WHEN se lo cambia a `SERIE`
 - THEN el sistema rechaza el cambio
 
+#### Scenario: Marcar entera una unidad de medida propia
+
+- GIVEN una unidad de medida creada por el tenant, no entera
+- WHEN el usuario la marca como entera desde el ABM de unidades
+- THEN la unidad queda entera y un insumo con saldo 0 que la usa puede pasar a `SERIE`
+
+#### Scenario: Desmarcar entera una unidad usada por un insumo SERIE
+
+- GIVEN una unidad de medida entera usada por un insumo `SERIE`
+- WHEN el usuario la desmarca como entera
+- THEN el sistema rechaza la edición y la unidad sigue entera
+
+#### Scenario: Cambio de seguimiento concurrente con un movimiento
+
+- GIVEN un insumo con una entrada en curso
+- WHEN se cambia su seguimiento en cualquiera de las dos direcciones al mismo tiempo
+- THEN las dos operaciones terminan sin error de sistema, y el cambio se decide con el saldo y las unidades que dejó la entrada
+
 #### Scenario: Volver a NINGUNO con unidades vivas
 
 - GIVEN un insumo `SERIE` con una unidad `EN_DEPOSITO` o una `INSTALADA`
@@ -92,9 +114,11 @@ serial, condición (`NUEVO` o `USADO`) y un estado con valor `EN_DEPOSITO`,
 conjuntos. Una unidad `INSTALADA` DEBE referir el equipo donde está; una
 `EN_DEPOSITO`, `ENTREGADA` o `DESCARTADA` NO DEBE referir equipo. Una unidad
 `ENTREGADA` salió del depósito por una SALIDA manual (por ejemplo, entregada a un
-sector): sigue existiendo fuera del depósito y su destino queda en el historial.
-Una unidad `DESCARTADA` es una baja definitiva (pérdida, rotura, descarte). Ni
-`ENTREGADA` ni `DESCARTADA` cuentan en ningún saldo.
+sector): sigue existiendo fuera del depósito, su destino queda en el historial y
+PUEDE volver al depósito por una devolución de entrega. Una unidad `DESCARTADA` es
+una baja definitiva (pérdida, rotura, descarte): solo vuelve a `INSTALADA` al
+reactivar el componente descartado que la contenía. Ni `ENTREGADA` ni `DESCARTADA`
+cuentan en ningún saldo.
 
 #### Scenario: Unidad instalada refiere su equipo
 
@@ -160,10 +184,14 @@ normalización tiene una única fuente en el dominio del backend.
 El sistema DEBE permitir que una recepción de compra de un insumo `SERIE` se
 complete con unidades sin serial. Cada una DEBE crearse `EN_DEPOSITO`, condición
 `NUEVO`, marcada como serie pendiente, y DEBE contar en el saldo. Una unidad en
-serie pendiente NO DEBE poder instalarse en un equipo ni salir del depósito
-(salida ni ajuste negativo) hasta que se le cargue un serial. La unidad en serie
-pendiente NO DEBE participar de la unicidad de serial. Una unidad con serial
-cargado NO DEBE volver a serie pendiente.
+serie pendiente NO DEBE poder instalarse en un equipo ni salir del depósito por
+una SALIDA hasta que se le cargue un serial; nunca DEBE quedar `INSTALADA` ni
+`ENTREGADA` sin serial. Una unidad en serie pendiente SÍ DEBE poder darse de baja
+con un AJUSTE_NEGATIVO con motivo obligatorio, sin cargarle serial (decisión del
+dueño): queda `DESCARTADA` sin serial, y ese es el único camino por el que una
+unidad sin serial sale del depósito. La unidad en serie pendiente NO DEBE
+participar de la unicidad de serial. Una unidad con serial cargado NO DEBE volver
+a serie pendiente.
 
 #### Scenario: Recepción sin seriales
 
@@ -182,6 +210,18 @@ cargado NO DEBE volver a serie pendiente.
 - GIVEN un insumo `SERIE` con una unidad con serial y otra pendiente
 - WHEN el usuario abre el selector de unidades para instalar o dar salida
 - THEN solo se ofrece la unidad con serial
+
+#### Scenario: Baja de una unidad pendiente por ajuste negativo
+
+- GIVEN una unidad `EN_DEPOSITO` NUEVO en serie pendiente
+- WHEN se registra un AJUSTE_NEGATIVO eligiéndola con motivo "no llegó en la caja"
+- THEN la unidad queda `DESCARTADA` sin serial, existe el movimiento AJUSTE_NEGATIVO de cantidad 1 con el motivo y el saldo NUEVO baja en 1
+
+#### Scenario: Baja de una pendiente sin motivo
+
+- GIVEN una unidad en serie pendiente
+- WHEN se registra un AJUSTE_NEGATIVO eligiéndola sin motivo
+- THEN el sistema rechaza la operación y la unidad sigue pendiente `EN_DEPOSITO`
 
 ### Requirement: El serial pendiente se completa desde la ficha del insumo
 
@@ -222,6 +262,44 @@ sigue siendo el único que evalúa la reposición.
 - GIVEN un insumo `SERIE` con `stockMinimo` 4, 2 unidades NUEVO y 6 USADO `EN_DEPOSITO`
 - WHEN se consulta su estado de reposición
 - THEN el estado es el de un saldo de 2 frente al mínimo de 4
+
+### Requirement: Una unidad entregada puede volver al depósito
+
+El sistema DEBE permitir registrar la devolución de una unidad `ENTREGADA` al
+depósito (decisión del dueño). El usuario DEBE elegir si vuelve como `NUEVO` o
+`USADO` (una pieza entregada por las dudas puede volver sin uso), sujeto a la
+regla vigente de USADO solo en repuestos. La devolución DEBE conservar la misma
+unidad, con su serial y su historial; DEBE registrar un movimiento ENTRADA de
+cantidad 1 con esa unidad y la condición elegida, y DEBE dejar la unidad
+`EN_DEPOSITO` en esa condición, en la misma transacción. DEBE quedar en el
+historial. El sistema DEBE rechazar la devolución de una unidad que no está
+`ENTREGADA`, y la de una unidad cuyo insumo ya no está en `SERIE`, sin cambiar nada.
+La elegibilidad del insumo DEBE ser la de la ENTRADA manual. Una unidad
+`DESCARTADA` NO DEBE poder volver por esta vía.
+
+#### Scenario: Devolución de una pieza sin uso
+
+- GIVEN una unidad "E1" NUEVO entregada a un sector
+- WHEN se registra su devolución eligiendo `NUEVO`
+- THEN "E1" queda `EN_DEPOSITO` NUEVO con el mismo serial, existe una ENTRADA NUEVO de cantidad 1 de "E1" y el saldo NUEVO aumenta en 1
+
+#### Scenario: Devolución de una pieza usada
+
+- GIVEN una unidad "E2" NUEVO `ENTREGADA` de un insumo repuesto
+- WHEN se registra su devolución eligiendo `USADO`
+- THEN "E2" queda `EN_DEPOSITO` USADO, existe una ENTRADA USADO de cantidad 1 de "E2" y el saldo USADO aumenta en 1
+
+#### Scenario: Devolución de una unidad que no está entregada
+
+- GIVEN una unidad `EN_DEPOSITO`, `INSTALADA` o `DESCARTADA`
+- WHEN se intenta registrar su devolución de entrega
+- THEN el sistema rechaza la operación y la unidad no cambia
+
+#### Scenario: Devolución con el insumo ya en NINGUNO
+
+- GIVEN una unidad `ENTREGADA` de un insumo que volvió a `NINGUNO`
+- WHEN se intenta registrar su devolución
+- THEN el sistema rechaza la operación y la unidad sigue `ENTREGADA`
 
 ### Requirement: La corrección de un serial exige motivo y queda auditada
 
@@ -264,7 +342,8 @@ El sistema DEBE mostrar, por unidad, su historial cronológico desde este cambio
 adelante: ingreso (recepción, entrada, ajuste o alta sin descuento), cada equipo
 donde estuvo instalada, cada retiro con su destino y motivo, la entrega por una
 SALIDA con su destino (el sector o el equipo que la salida informa, y su motivo si
-lo tiene; este cambio no agrega un campo de destinatario), el descarte o la baja
+lo tiene; este cambio no agrega un campo de destinatario), cada devolución de
+entrega con la condición elegida, el descarte o la baja
 por ajuste negativo con su motivo, las correcciones de serial y la carga de un
 serial pendiente. El sistema NO DEBE
 reconstruir historia anterior a este cambio. La ficha del insumo DEBE permitir
@@ -330,8 +409,8 @@ depósito, descartar) DEBERÍAN poder aplicarse a varias unidades dentro de una
 misma transacción, con reversión total si una falla y sin depender del flujo de
 un componente individual, para que el ciclo futuro de baja de equipo completo las
 reutilice. Ese ciclo solo lleva unidades `INSTALADA` a `EN_DEPOSITO` `USADO` o a
-`DESCARTADA`; la entrega (`ENTREGADA`) es propia de la SALIDA manual desde el
-depósito y no forma parte de la baja de equipo. La forma de la interfaz queda a
+`DESCARTADA`; la entrega (`ENTREGADA`) y su devolución son propias de la SALIDA
+manual desde el depósito y no forman parte de la baja de equipo. La forma de la interfaz queda a
 decisión de diseño. Este cambio NO DEBE implementar la baja de equipo completo.
 
 #### Scenario: Varias unidades en una transacción
@@ -345,6 +424,29 @@ decisión de diseño. Este cambio NO DEBE implementar la baja de equipo completo
 - GIVEN un lote donde una de las unidades ya no está `INSTALADA`
 - WHEN se aplica la operación
 - THEN se rechaza el lote y ninguna unidad cambia
+
+### Requirement: Los permisos de equipos mueven unidades sin permisos de insumos
+
+El sistema DEBE permitir, igual que hoy con las cantidades (decisión del dueño),
+que quien tiene `EQUIPOS:ALTAS` instale una unidad desde el depósito y cree una
+unidad `INSTALADA` en el alta sin descuento, que quien tiene `EQUIPOS:BORRADO`
+devuelva al depósito o descarte la unidad de un componente que retira, y que quien
+tiene `EQUIPOS:MODIFICACION` reinstale la unidad al reactivar un componente, sin
+exigir ningún permiso de INSUMOS. Las operaciones sobre unidades desde la ficha
+del insumo (salida, ajuste, carga y corrección de serial, devolución de entrega)
+DEBEN seguir exigiendo permisos de INSUMOS.
+
+#### Scenario: Instalar una unidad sin permisos de insumos
+
+- GIVEN un usuario con `EQUIPOS:ALTAS` y sin ningún permiso de INSUMOS
+- WHEN agrega un componente con descuento eligiendo una unidad `EN_DEPOSITO`
+- THEN la operación se completa y la unidad queda `INSTALADA`
+
+#### Scenario: Devolver una unidad al retirar sin permisos de insumos
+
+- GIVEN un usuario con `EQUIPOS:BORRADO` y sin ningún permiso de INSUMOS
+- WHEN retira con destino `STOCK_USADO` un componente con unidad
+- THEN la operación se completa y la unidad queda `EN_DEPOSITO` `USADO`
 
 ### Requirement: Los componentes legados conservan su serial de texto y no reciben unidad
 

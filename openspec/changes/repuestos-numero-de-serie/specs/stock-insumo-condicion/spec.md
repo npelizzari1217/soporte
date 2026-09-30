@@ -16,8 +16,10 @@ una unidad y cantidad 1, y NO DEBE persistir un movimiento de un insumo `SERIE`
 sin unidad, con más de una, ni con cantidad distinta de 1. Un movimiento de un
 insumo `NINGUNO` NO DEBE referenciar unidad. Una operación sobre N piezas DEBE
 generar N movimientos, uno por unidad, en una sola transacción. La condición del
-movimiento DEBE ser la condición de su unidad. Los movimientos existentes antes de
-este cambio NO DEBEN modificarse.
+movimiento DEBE ser la condición de su unidad; en la devolución de una unidad
+`ENTREGADA` es la condición que elige el usuario, que pasa a ser la de la unidad
+(spec `unidades-insumo-serie`). Los movimientos existentes antes de este cambio NO
+DEBEN modificarse.
 
 #### Scenario: Entrada de varias piezas
 
@@ -80,13 +82,16 @@ de modo que dos operaciones concurrentes sobre el mismo insumo no puedan dejar
 negativa ninguna condición. Ante el incumplimiento el sistema DEBE rechazar con
 el error de stock insuficiente existente y NO DEBE persistir el movimiento. En un
 insumo `SERIE`, la SALIDA y el AJUSTE_NEGATIVO DEBEN elegir una unidad
-`EN_DEPOSITO`, con serial, de la condición indicada; NO DEBEN aceptar una unidad
-en serie pendiente, `INSTALADA`, `ENTREGADA` ni `DESCARTADA`. Con la SALIDA la
-unidad elegida pasa a `ENTREGADA` y el historial registra su destino (el sector o
-el equipo que la salida informa, y su motivo si lo tiene); con el AJUSTE_NEGATIVO
-pasa a `DESCARTADA`. Un AJUSTE_NEGATIVO de un insumo `SERIE` DEBE exigir un motivo no
-vacío.
-(Previously: sin elección de unidad; ahora, en insumos SERIE, se elige una unidad en depósito con serial y el ajuste negativo exige motivo.)
+`EN_DEPOSITO` de la condición indicada, y NO DEBEN aceptar una unidad
+`INSTALADA`, `ENTREGADA` ni `DESCARTADA`. La SALIDA DEBE exigir una unidad con
+serial y NO DEBE aceptar una en serie pendiente; el AJUSTE_NEGATIVO SÍ DEBE aceptar
+una unidad en serie pendiente, sin exigir que se le cargue serial (decisión del
+dueño). Con la SALIDA la unidad elegida pasa a `ENTREGADA` y el historial registra
+su destino (el sector o el equipo que la salida informa, y su motivo si lo tiene);
+con el AJUSTE_NEGATIVO pasa a `DESCARTADA`, con serial o sin él. Un AJUSTE_NEGATIVO
+de un insumo `SERIE` DEBE exigir un motivo no vacío. Un movimiento que indique una
+unidad sobre un insumo `NINGUNO` DEBE rechazarse.
+(Previously: sin elección de unidad; ahora, en insumos SERIE, se elige una unidad en depósito, con serial salvo en el ajuste negativo, y el ajuste negativo exige motivo.)
 
 #### Scenario: Salida mayor que el saldo de su condición
 
@@ -131,6 +136,12 @@ vacío.
 - GIVEN un insumo `SERIE` con la unidad "B1" `EN_DEPOSITO` USADO
 - WHEN se registra un AJUSTE_NEGATIVO USADO eligiendo "B1" con motivo "pieza extraviada"
 - THEN se registra el movimiento con motivo, "B1" queda `DESCARTADA` y el saldo USADO baja en 1
+
+#### Scenario: Ajuste negativo de una unidad en serie pendiente
+
+- GIVEN un insumo `SERIE` con una unidad `EN_DEPOSITO` NUEVO en serie pendiente
+- WHEN se registra un AJUSTE_NEGATIVO eligiéndola con motivo "faltante en la recepción"
+- THEN se registra el movimiento con motivo, la unidad queda `DESCARTADA` sin serial y el saldo NUEVO baja en 1
 
 #### Scenario: Ajuste negativo SERIE sin motivo
 
