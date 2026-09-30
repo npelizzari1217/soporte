@@ -157,3 +157,11 @@ Rama `feat/stock-usado-componentes-wu12` (base wu11). Modo estandar (feature).
 - 12.3 La seccion usa el dialogo bajo `<Can permiso="EQUIPOS:BORRADO">`; test de que la papelera abre el dialogo. Texto del dialogo de edicion: "darlo de baja" en lugar de "eliminarlo".
 - 12.4 NO hecha aqui: el tamano de WU-12 ya iba en ~350 lineas, se mueve a WU-12b segun tasks.md. Los campos `baja*` de `Componente` siguen opcionales.
 - 12.5 `rg "useEliminarComponente" frontend/src`: vacio.
+
+## WU-12b — Rotulos de destino y reactivar condicionado (tareas 12b.1 y 12b.2, es la 12.4 movida)
+
+Rama `feat/stock-usado-componentes-wu12b` (base wu12). Modo estandar (feature).
+
+- 12b.1 `equipo-componentes-section.tsx`: `rotuloBaja` (STOCK_USADO "Devuelto al stock", DESCARTE "Descartado", `null` o ausente "Dado de baja"); con `bajaSinSalidaPrevia` se agrega "sin salida registrada del depósito"; Reactivar no se renderiza si `bajaDestino === "STOCK_USADO"`. Tests con fixtures de los tres destinos mas legado (rotulos, marca, Reactivar oculto o presente).
+- Hallazgo: `prettier --write` reformatea archivos enteros en este repo (no esta aplicado); se evita para no inflar el diff.
+- 12b.2 Gates: lint y type-check en cero; suite completa ver reporte.

@@ -399,8 +399,8 @@ Commit sugerido: `feat(equipos): dialogo de retiro con dos desenlaces en la secc
 
 **Branch**: `feat/stock-usado-componentes-wu12b` · **Base**: wu12
 
-- [ ] 12b.1 Mover aquí la tarea 12.4 completa (rótulos, marca "sin salida registrada del depósito", Reactivar oculto tras `STOCK_USADO`) y sus tests con fixtures de los tres destinos más legado.
-- [ ] 12b.2 Quality gates (frontend): `cd frontend && pnpm lint && pnpm type-check && pnpm test`.
+- [x] 12b.1 Mover aquí la tarea 12.4 completa (rótulos, marca "sin salida registrada del depósito", Reactivar oculto tras `STOCK_USADO`) y sus tests con fixtures de los tres destinos más legado.
+- [x] 12b.2 Quality gates (frontend): `cd frontend && pnpm lint && pnpm type-check && pnpm test`.
 
 **PR boundary**: ~150 líneas, base wu12. Si WU-12 entra en presupuesto, esta unidad no existe.
 **Ayuda**: deuda anotada en commit y PR.
