@@ -73,6 +73,22 @@ export interface IMovimientoInsumoRepository {
   insert(movimiento: MovimientoInsumoEntity): Promise<MovimientoInsumoEntity>;
 
   /**
+   * Toma el advisory lock transaccional `insumo-stock:<id>` (L2 de la
+   * invariante de orden de locks, ADR-12 de sdd/repuestos-numero-de-serie) SIN
+   * leer nada. Lo usan los caminos que necesitan serializar por insumo pero
+   * deciden sobre otra cosa (las unidades, el seguimiento); `lockAndSumByTipo()`
+   * lo llama y le suma la lectura del libro.
+   *
+   * Exige una transacción activa y lanza si no la hay: fuera de ella el lock
+   * se libera al terminar la sentencia y no serializa a nadie. Se toma DESPUÉS
+   * de L1 (la fila del insumo) y ANTES de L3 (las filas de unidades).
+   *
+   * @param insumoId Insumo cuyo stock se bloquea.
+   * @throws Error si no hay una transacción activa del tenant.
+   */
+  bloquearStock(insumoId: string): Promise<void>;
+
+  /**
    * Toma el advisory lock transaccional del insumo y devuelve el desglose de
    * su bitácora por tipo, en UNA consulta agregada — no trae las filas.
    *

@@ -30,6 +30,7 @@ import {
   TIPOS_MOVIMIENTO_INSUMO,
 } from '../../../domain/entities/tipo-movimiento-insumo';
 import { MovimientoInsumoMapper } from './movimiento-insumo.mapper';
+import { exigirTransaccionActiva } from '../../../../shared/infrastructure/persistence/exigir-transaccion-activa';
 
 /**
  * Prefijo de la clave del advisory lock. Va acá, en una constante, y no
@@ -83,6 +84,23 @@ export class PrismaMovimientoInsumoRepository implements IMovimientoInsumoReposi
   }
 
   /**
+   * Toma el advisory lock transaccional `insumo-stock:<id>` (L2 de ADR-12) sin
+   * leer nada. Ver el contrato en `IMovimientoInsumoRepository.bloquearStock`.
+   *
+   * Exige transacción activa (`exigirTransaccionActiva`): fuera de ella el lock
+   * se libera al terminar la sentencia y no serializaría a nadie. Es el único
+   * punto que conoce la clave, y `lockAndSumByTipo()` pasa por acá.
+   *
+   * @param insumoId Insumo cuyo stock se bloquea.
+   * @throws Error si no hay una transacción activa del tenant.
+   */
+  async bloquearStock(insumoId: string): Promise<void> {
+    const client = this.client;
+    exigirTransaccionActiva(this.tenantContext, 'PrismaMovimientoInsumoRepository.bloquearStock()');
+    await client.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${PREFIJO_LOCK_STOCK + insumoId}))`;
+  }
+
+  /**
    * Toma el advisory lock transaccional del insumo y devuelve el desglose de
    * su bitácora por tipo. Ver el contrato completo en
    * `IMovimientoInsumoRepository.lockAndSumByTipo`.
@@ -113,18 +131,10 @@ export class PrismaMovimientoInsumoRepository implements IMovimientoInsumoReposi
   async lockAndSumByTipo(insumoId: string): Promise<SumasPorCondicionYTipo> {
     const client = this.client;
 
-    if (this.tenantContext.get()?.enTransaccion !== true) {
-      throw new Error(
-        'PrismaMovimientoInsumoRepository.lockAndSumByTipo() requiere una transacción activa ' +
-          '(ITenantTransactionRunner.run): fuera de ella Postgres libera el advisory lock al ' +
-          'terminar la sentencia y dos escritores del mismo insumo verían las mismas sumas.',
-      );
-    }
-
-    // El lock se toma ANTES de leer y se libera solo al cerrar la transacción
-    // (commit o rollback) — nunca hay que liberarlo a mano. Serializa por
-    // INSUMO: dos técnicos sacando cosas distintas no se esperan entre sí.
-    await client.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${PREFIJO_LOCK_STOCK + insumoId}))`;
+    // La precondición y el lock viven en `bloquearStock()`: es el ÚNICO lugar
+    // que toma `insumo-stock:<id>` (L2 de ADR-12). Antes de leer, y sin
+    // liberarlo a mano: se suelta solo al cerrar la transacción.
+    await this.bloquearStock(insumoId);
 
     return this.sumarPorTipo(client, insumoId);
   }

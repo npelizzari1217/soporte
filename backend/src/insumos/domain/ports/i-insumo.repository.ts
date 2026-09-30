@@ -1,4 +1,5 @@
 import { InsumoEntity } from '../entities/insumo.entity';
+import type { SeguimientoInsumo } from '../entities/unidad-insumo.entity';
 
 /**
  * Prefijo de la serie de `codigo` autogenerado (issue #162). Las dos series
@@ -174,6 +175,37 @@ export interface IInsumoRepository {
    * construcción que las resuelva enteras.
    */
   save(insumo: InsumoEntity): Promise<void>;
+
+  /**
+   * Lee el `seguimiento` del insumo con `FOR SHARE` (L1 de ADR-12,
+   * sdd/repuestos-numero-de-serie). Lo toma todo caso de uso de stock o de
+   * unidades ANTES de decidir la rama: mientras la transacción viva, nadie
+   * puede cambiar el seguimiento (el cambio pide `FOR NO KEY UPDATE`, que
+   * choca con este lock).
+   *
+   * Exige transacción activa y lanza si no la hay.
+   *
+   * @param id Id del insumo.
+   * @returns El seguimiento, o `null` si el insumo no existe.
+   * @throws Error si no hay una transacción activa del tenant.
+   */
+  leerSeguimientoParaMovimiento(id: string): Promise<SeguimientoInsumo | null>;
+
+  /**
+   * Toma la fila del insumo con `FOR NO KEY UPDATE` (L1 de ADR-12) para
+   * cambiarle el seguimiento, y devuelve `seguimiento` y `unidadMedidaId`
+   * leídos bajo el lock. Espera a las entradas y salidas en vuelo (que tienen
+   * L1 `FOR SHARE`) sin tener todavía L2, y por eso no hay ciclo.
+   *
+   * Exige transacción activa y lanza si no la hay.
+   *
+   * @param id Id del insumo.
+   * @returns Los dos campos, o `null` si el insumo no existe.
+   * @throws Error si no hay una transacción activa del tenant.
+   */
+  bloquearParaCambioDeSeguimiento(
+    id: string,
+  ): Promise<{ seguimiento: SeguimientoInsumo; unidadMedidaId: string } | null>;
 
   /**
    * Retorna la última secuencia de la SERIE `prefijo` (`INS` o `REP`) usada en

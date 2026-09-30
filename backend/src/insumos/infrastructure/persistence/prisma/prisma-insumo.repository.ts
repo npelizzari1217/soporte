@@ -18,6 +18,8 @@ import {
   PrefijoCodigoInsumo,
 } from '../../../domain/ports/i-insumo.repository';
 import { InsumoEntity } from '../../../domain/entities/insumo.entity';
+import type { SeguimientoInsumo } from '../../../domain/entities/unidad-insumo.entity';
+import { exigirTransaccionActiva } from '../../../../shared/infrastructure/persistence/exigir-transaccion-activa';
 import {
   CompatibilidadModeloMapper,
   InsumoCodigoAlternativoMapper,
@@ -334,5 +336,52 @@ export class PrismaInsumoRepository implements IInsumoRepository {
 
     const partes = rows[0].codigo.split('-');
     return parseInt(partes[partes.length - 1], 10) || 0;
+  }
+
+  /**
+   * `FOR SHARE` sobre la fila (L1 de ADR-12). Contrato en
+   * `IInsumoRepository.leerSeguimientoParaMovimiento`.
+   *
+   * @param id Id del insumo.
+   * @returns El seguimiento, o `null` si el insumo no existe.
+   * @throws Error si no hay una transacción activa del tenant.
+   */
+  async leerSeguimientoParaMovimiento(id: string): Promise<SeguimientoInsumo | null> {
+    const client = this.client;
+    exigirTransaccionActiva(
+      this.tenantContext,
+      'PrismaInsumoRepository.leerSeguimientoParaMovimiento()',
+    );
+    const filas = await client.$queryRaw<Array<{ seguimiento: string }>>`
+      SELECT seguimiento FROM insumos WHERE id = ${id}::uuid FOR SHARE
+    `;
+    // VarChar sin enum de Prisma: seguro por el CHECK `insumos_seguimiento_check`.
+    return filas.length > 0 ? (filas[0].seguimiento as SeguimientoInsumo) : null;
+  }
+
+  /**
+   * `FOR NO KEY UPDATE` sobre la fila (L1 de ADR-12). Contrato en
+   * `IInsumoRepository.bloquearParaCambioDeSeguimiento`.
+   *
+   * @param id Id del insumo.
+   * @returns `seguimiento` y `unidadMedidaId` bajo el lock, o `null` si no existe.
+   * @throws Error si no hay una transacción activa del tenant.
+   */
+  async bloquearParaCambioDeSeguimiento(
+    id: string,
+  ): Promise<{ seguimiento: SeguimientoInsumo; unidadMedidaId: string } | null> {
+    const client = this.client;
+    exigirTransaccionActiva(
+      this.tenantContext,
+      'PrismaInsumoRepository.bloquearParaCambioDeSeguimiento()',
+    );
+    const filas = await client.$queryRaw<Array<{ seguimiento: string; unidad_medida_id: string }>>`
+      SELECT seguimiento, unidad_medida_id FROM insumos WHERE id = ${id}::uuid FOR NO KEY UPDATE
+    `;
+    if (filas.length === 0) return null;
+    return {
+      seguimiento: filas[0].seguimiento as SeguimientoInsumo,
+      unidadMedidaId: filas[0].unidad_medida_id,
+    };
   }
 }

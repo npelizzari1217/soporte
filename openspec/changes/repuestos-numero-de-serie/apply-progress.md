@@ -80,3 +80,31 @@ rama `feat/repuestos-numero-de-serie-wu02` (2.1, 2.2, 2.5) y `feat/repuestos-num
 | Runtime harness | N/A: dominio puro y mappers sin IO; la persistencia real de estos campos la ejerce WU-3a con la base efímera |
 | Rollback boundary | Revertir la parte 2 (entidades existentes y mappers) y luego la parte 1 (archivos nuevos); cada una es revertible por separado |
 
+
+## WU-3a — Persistencia de unidades, `exigirTransaccionActiva`, lecturas con lock, `save()` sin `seguimiento`
+
+WU-3a se entregó en tres partes por el presupuesto de 400 líneas (cortes por el costado que separa
+cada código de sus pruebas): parte 1 (`wu03a`) = 3a.1 y 3a.3; parte 2 (`wu03a-2`) = 3a.2, 3a.5 y
+3a.6; parte 3 (`wu03a-3`) = 3a.4.
+
+### Parte 1 (wu03a): 3a.1 y 3a.3 hechas
+
+- `exigirTransaccionActiva(tenantContext, operacion)` en `shared/infrastructure/persistence/`: lo llaman
+  `bloquearStock`, `lockAndSumByTipo` (vía `bloquearStock`) y todas las lecturas con lock nuevas. El
+  mensaje conserva "requiere una transacción activa" (lo afirma el spec existente).
+- L0: `IUnidadMedidaRepository.leerParaUso` (`FOR SHARE`, devuelve `{ entera }`) y
+  `bloquearParaEdicion(id, 'CAMBIA_CODIGO' | 'SIN_CAMBIO_DE_CODIGO')` (`FOR UPDATE` /
+  `FOR NO KEY UPDATE`, devuelve la entidad; lo usa WU-12b).
+- L1: `IInsumoRepository.leerSeguimientoParaMovimiento` (`FOR SHARE`) y `bloquearParaCambioDeSeguimiento`
+  (`FOR NO KEY UPDATE`, devuelve `seguimiento` y `unidadMedidaId`).
+- L2: `IMovimientoInsumoRepository.bloquearStock`; `lockAndSumByTipo` pasa por ella.
+- Cada lock se prueba desde una sesión testigo con `NOWAIT` (`55P03`) o `pg_try_advisory_xact_lock`,
+  con su caso hermano compatible que sí pasa, y cada lectura falla fuera de una transacción.
+
+### Work Unit Evidence (WU-3a parte 1)
+
+| Evidence | Value |
+|---|---|
+| Focused test command | `pnpm vitest run src/shared/infrastructure src/insumos`: verde (ver el reporte de la parte) |
+| Runtime harness | Base `soporte_tenant_test` real y sesión testigo con `NOWAIT` desde afuera de la transacción |
+| Rollback boundary | Revertir el commit de la parte 1: agrega métodos a tres puertos y un helper; `lockAndSumByTipo` mantiene su comportamiento |
