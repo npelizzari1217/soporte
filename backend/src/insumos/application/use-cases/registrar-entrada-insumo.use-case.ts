@@ -184,11 +184,25 @@ export class RegistrarEntradaInsumoUseCase {
   async execute(
     dto: RegistrarEntradaInsumoDto,
   ): Promise<Result<MovimientoInsumoEntity, DomainError>> {
+    const resultado = await this.executeTodos(dto);
+    return resultado.isFail()
+      ? Result.fail(resultado.getError())
+      : Result.ok(resultado.getValue()[0]);
+  }
+
+  /**
+   * Igual que `execute()` pero devuelve TODOS los movimientos asentados: uno en
+   * `NINGUNO`, uno por unidad (en el orden de las piezas) en `SERIE`. Es lo que
+   * publica el borde HTTP.
+   *
+   * @param dto Mismos datos que `execute()`.
+   * @returns Los movimientos asentados, o el error de dominio de `execute()`.
+   */
+  async executeTodos(
+    dto: RegistrarEntradaInsumoDto,
+  ): Promise<Result<MovimientoInsumoEntity[], DomainError>> {
     try {
-      const resultado = await this.txRunner.run(() => this.ejecutarBajoL1(dto));
-      return resultado.isFail()
-        ? Result.fail(resultado.getError())
-        : Result.ok(resultado.getValue()[0]);
+      return await this.txRunner.run(() => this.ejecutarBajoL1(dto));
     } catch (error) {
       // El único fallo posterior a escribir es la unicidad del serial (P2002):
       // se desenvuelve AFUERA del `run()` para que la transacción ya haya

@@ -782,6 +782,25 @@ describe('RegistrarEntradaInsumoUseCase', () => {
       expect(c.movimientoRepo.insert).not.toHaveBeenCalled();
     });
 
+    it('executeTodos devuelve TODOS los movimientos de la entrada SERIE y execute solo el primero', async () => {
+      const c = armar('SERIE');
+      const primero = movimientoDeUnidad();
+      const segundo = movimientoDeUnidad();
+      c.operaciones.ingresar.mockResolvedValue(
+        Result.ok([
+          { unidad: {}, movimiento: primero },
+          { unidad: {}, movimiento: segundo },
+        ]),
+      );
+      const dto = { ...dtoBase, cantidad: 2, seriales: ['SN-1', 'SN-2'] };
+
+      const todos = await c.useCase.executeTodos(dto);
+      const uno = await c.useCase.execute(dto);
+
+      expect(todos.getValue()).toEqual([primero, segundo]);
+      expect(uno.getValue()).toBe(primero);
+    });
+
     it.each([
       ['sin seriales', undefined],
       ['con menos seriales que la cantidad', ['SN-1']],

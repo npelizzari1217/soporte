@@ -450,6 +450,8 @@ describe('toMovimientoInsumoResponseDto', () => {
       sectorId: SECTOR_ID,
       itemCompraId: null,
       condicion: 'NUEVO',
+      unidadId: null,
+      numeroSerie: null,
       createdAt: movimiento.createdAt.toISOString(),
     });
   });
@@ -534,7 +536,25 @@ describe('toStockInsumoResponseDto', () => {
       admiteUsado: false,
       stockMinimo: 10,
       estadoReposicion: 'BAJO_MINIMO',
+      seguimiento: 'NINGUNO',
+      pendientesDeSerie: 0,
     });
+  });
+
+  it('publica seguimiento y pendientesDeSerie de un insumo SERIE', () => {
+    const dto = toStockInsumoResponseDto({
+      insumoId: INSUMO_ID,
+      stock: 4,
+      saldos: { NUEVO: 4, USADO: 0 },
+      admiteUsado: false,
+      stockMinimo: null,
+      estadoReposicion: 'SIN_PUNTO_DEFINIDO',
+      seguimiento: 'SERIE' as const,
+      pendientesDeSerie: 3,
+    });
+
+    expect(dto.seguimiento).toBe('SERIE');
+    expect(dto.pendientesDeSerie).toBe(3);
   });
 
   /**
@@ -729,5 +749,48 @@ describe('toListarMovimientosInsumoResponseDto', () => {
 
     expect(dto.items).toEqual([]);
     expect(dto.total).toBe(12);
+  });
+});
+
+describe('seriales y unidadId del body de movimiento', () => {
+  async function restricciones(body: Record<string, unknown>): Promise<string[]> {
+    return restriccionesDe(plainToInstance(RegistrarMovimientoInsumoHttpDto, bodyMovimiento(body)));
+  }
+
+  it('acepta seriales recortados y un unidadId uuid', async () => {
+    const dto = plainToInstance(
+      RegistrarMovimientoInsumoHttpDto,
+      bodyMovimiento({ seriales: ['  SN-1  ', 'SN-2'], unidadId: EQUIPO_ID }),
+    );
+    expect(await restriccionesDe(dto)).toEqual([]);
+    expect(dto.seriales).toEqual(['SN-1', 'SN-2']);
+  });
+
+  it('rechaza más de 100 seriales', async () => {
+    const seriales = Array.from({ length: 101 }, (_, i) => `SN-${i}`);
+    expect(await restricciones({ seriales })).toContain('arrayMaxSize');
+  });
+
+  it('rechaza un serial vacío o solo espacios', async () => {
+    expect(await restricciones({ seriales: ['   '] })).toContain('esSerialDeUnidad');
+    expect(await restricciones({ seriales: [''] })).toContain('esSerialDeUnidad');
+  });
+
+  it('rechaza un serial de más de 255 caracteres', async () => {
+    expect(await restricciones({ seriales: ['a'.repeat(256)] })).toContain('esSerialDeUnidad');
+  });
+
+  it('mide el largo NORMALIZADO: 128 "ß" caben cargados pero normalizan a 256', async () => {
+    expect(await restricciones({ seriales: ['ß'.repeat(128)] })).toContain('esSerialDeUnidad');
+    expect(await restricciones({ seriales: ['ß'.repeat(127)] })).toEqual([]);
+  });
+
+  it('rechaza seriales que no es un arreglo de strings', async () => {
+    expect(await restricciones({ seriales: 'SN-1' })).toContain('isArray');
+    expect(await restricciones({ seriales: [5] })).toContain('esSerialDeUnidad');
+  });
+
+  it('rechaza un unidadId que no es uuid', async () => {
+    expect(await restricciones({ unidadId: 'no-es-uuid' })).toContain('isUuid');
   });
 });

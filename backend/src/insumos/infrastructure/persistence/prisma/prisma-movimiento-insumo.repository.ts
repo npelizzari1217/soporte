@@ -29,7 +29,7 @@ import {
   SumasPorCondicionYTipo,
   TIPOS_MOVIMIENTO_INSUMO,
 } from '../../../domain/entities/tipo-movimiento-insumo';
-import { MovimientoInsumoMapper } from './movimiento-insumo.mapper';
+import { INCLUIR_SERIAL_DE_LA_UNIDAD, MovimientoInsumoMapper } from './movimiento-insumo.mapper';
 import { exigirTransaccionActiva } from '../../../../shared/infrastructure/persistence/exigir-transaccion-activa';
 
 /**
@@ -79,6 +79,7 @@ export class PrismaMovimientoInsumoRepository implements IMovimientoInsumoReposi
   async insert(movimiento: MovimientoInsumoEntity): Promise<MovimientoInsumoEntity> {
     const fila = await this.client.movimientoInsumo.create({
       data: MovimientoInsumoMapper.toPersistence(movimiento),
+      include: INCLUIR_SERIAL_DE_LA_UNIDAD,
     });
     return MovimientoInsumoMapper.toDomain(fila);
   }
@@ -206,6 +207,7 @@ export class PrismaMovimientoInsumoRepository implements IMovimientoInsumoReposi
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         take: paginacion?.limit,
         skip: paginacion?.offset,
+        include: INCLUIR_SERIAL_DE_LA_UNIDAD,
       }),
       client.movimientoInsumo.count({ where }),
     ]);

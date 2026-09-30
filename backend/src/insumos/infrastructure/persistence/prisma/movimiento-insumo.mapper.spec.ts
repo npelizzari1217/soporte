@@ -45,6 +45,17 @@ function crearMovimiento(
 
 describe('MovimientoInsumoMapper', () => {
   describe('toDomain()', () => {
+    it('lleva el serial de la unidad cuando la lectura lo incluye, y null si no', () => {
+      const conUnidad = MovimientoInsumoMapper.toDomain(
+        filaMovimiento({ unidadId: 'u-1', unidad: { numeroSerie: 'SN-1' } }),
+      );
+      const sinUnidad = MovimientoInsumoMapper.toDomain(filaMovimiento());
+
+      expect(conUnidad.numeroSerie).toBe('SN-1');
+      expect(conUnidad.unidadId).toBe('u-1');
+      expect(sinUnidad.numeroSerie).toBeNull();
+    });
+
     it('convierte una fila Prisma a MovimientoInsumoEntity', () => {
       const entity = MovimientoInsumoMapper.toDomain(filaMovimiento());
 

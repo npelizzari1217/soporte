@@ -181,6 +181,22 @@ export class RegistrarAjusteInsumoUseCase {
   async execute(
     dto: RegistrarAjusteInsumoDto,
   ): Promise<Result<MovimientoInsumoEntity, DomainError>> {
+    const resultado = await this.executeTodos(dto);
+    return resultado.isFail()
+      ? Result.fail(resultado.getError())
+      : Result.ok(resultado.getValue()[0]);
+  }
+
+  /**
+   * Igual que `execute()` pero devuelve TODOS los movimientos asentados: uno
+   * salvo el ajuste positivo de un insumo `SERIE`, que asienta uno por unidad.
+   *
+   * @param dto Mismos datos que `execute()`.
+   * @returns Los movimientos asentados, o el error de dominio de `execute()`.
+   */
+  async executeTodos(
+    dto: RegistrarAjusteInsumoDto,
+  ): Promise<Result<MovimientoInsumoEntity[], DomainError>> {
     const elegible = await validarInsumoElegible(this.insumoRepo, dto.insumoId);
 
     if (elegible.isFail()) {
@@ -232,7 +248,7 @@ export class RegistrarAjusteInsumoUseCase {
         // escritores del insumo; solo el cambio de seguimiento espera.
         const seguimiento = await this.insumoRepo.leerSeguimientoParaMovimiento(asiento.insumoId);
         if (seguimiento === null) {
-          return Result.fail<MovimientoInsumoEntity, DomainError>(
+          return Result.fail<MovimientoInsumoEntity[], DomainError>(
             new InsumoNoEncontradoError(asiento.insumoId),
           );
         }
@@ -243,7 +259,7 @@ export class RegistrarAjusteInsumoUseCase {
           (seguimiento === 'NINGUNO' && (dto.seriales != null || dto.unidadId != null)) ||
           (seguimiento === 'SERIE' && esPositivo && dto.unidadId != null)
         ) {
-          return Result.fail<MovimientoInsumoEntity, DomainError>(
+          return Result.fail<MovimientoInsumoEntity[], DomainError>(
             new UnidadNoAdmitidaError(asiento.insumoId),
           );
         }
@@ -262,20 +278,20 @@ export class RegistrarAjusteInsumoUseCase {
             equipoId: dto.equipoId,
           });
           return ingresada.isFail()
-            ? Result.fail<MovimientoInsumoEntity, DomainError>(ingresada.getError())
-            : Result.ok<MovimientoInsumoEntity, DomainError>(ingresada.getValue()[0]);
+            ? Result.fail<MovimientoInsumoEntity[], DomainError>(ingresada.getError())
+            : Result.ok<MovimientoInsumoEntity[], DomainError>(ingresada.getValue());
         }
 
         if (seguimiento === 'SERIE') {
           // El negativo de un insumo `SERIE` da de baja UNA unidad (queda
           // `DESCARTADA`); admite la pendiente y no compara saldo.
           if (dto.unidadId == null) {
-            return Result.fail<MovimientoInsumoEntity, DomainError>(
+            return Result.fail<MovimientoInsumoEntity[], DomainError>(
               new UnidadRequeridaError(asiento.insumoId),
             );
           }
           if (dto.cantidad !== 1) {
-            return Result.fail<MovimientoInsumoEntity, DomainError>(
+            return Result.fail<MovimientoInsumoEntity[], DomainError>(
               new SerialesNoCoincidenError(dto.cantidad, 1),
             );
           }
@@ -288,8 +304,8 @@ export class RegistrarAjusteInsumoUseCase {
             sectorId: dto.sectorId,
           });
           return baja.isFail()
-            ? Result.fail<MovimientoInsumoEntity, DomainError>(baja.getError())
-            : Result.ok<MovimientoInsumoEntity, DomainError>(baja.getValue()[0].movimiento);
+            ? Result.fail<MovimientoInsumoEntity[], DomainError>(baja.getError())
+            : Result.ok<MovimientoInsumoEntity[], DomainError>([baja.getValue()[0].movimiento]);
         }
 
         // Desde acá y hasta el commit, nadie más puede evaluar el stock de este
@@ -315,7 +331,7 @@ export class RegistrarAjusteInsumoUseCase {
           // hace falta que lo haga: hasta acá no se escribió ninguna fila. Lo
           // único que la transacción sostenía era el lock, y el `run()` lo
           // libera al cerrar igual.
-          return Result.fail<MovimientoInsumoEntity, DomainError>(
+          return Result.fail<MovimientoInsumoEntity[], DomainError>(
             new StockInsuficienteError(asiento.insumoId, asiento.cantidad, disponible),
           );
         }
@@ -325,7 +341,7 @@ export class RegistrarAjusteInsumoUseCase {
         // diferir del reloj del proceso con el que se construyó acá arriba.
         const asentado = await this.movimientoRepo.insert(asiento);
 
-        return Result.ok<MovimientoInsumoEntity, DomainError>(asentado);
+        return Result.ok<MovimientoInsumoEntity[], DomainError>([asentado]);
       });
     } catch (error) {
       // La unicidad del serial (P2002) se desenvuelve AFUERA del `run()`.

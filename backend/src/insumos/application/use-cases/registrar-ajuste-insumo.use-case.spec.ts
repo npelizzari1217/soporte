@@ -748,6 +748,26 @@ describe('RegistrarAjusteInsumoUseCase', () => {
       expect(c.movimientoRepo.insert).not.toHaveBeenCalled();
     });
 
+    it('executeTodos devuelve un movimiento por unidad en el ajuste positivo SERIE', async () => {
+      const c = buildColaboradores({ seguimiento: 'SERIE' });
+      const a = movimientoDeUnidad();
+      const b = movimientoDeUnidad();
+      c.operaciones.ingresar.mockResolvedValue(
+        Result.ok([
+          { unidad: {}, movimiento: a },
+          { unidad: {}, movimiento: b },
+        ]),
+      );
+
+      const result = await c.useCase.executeTodos({
+        ...dtoDe('AJUSTE_POSITIVO'),
+        cantidad: 2,
+        seriales: ['SN-1', 'SN-2'],
+      });
+
+      expect(result.getValue()).toEqual([a, b]);
+    });
+
     it('AJUSTE_POSITIVO SERIE sin motivo: MotivoAjusteRequeridoError, sin ingresar', async () => {
       const c = buildColaboradores({ seguimiento: 'SERIE' });
 

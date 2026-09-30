@@ -448,3 +448,19 @@ Solo specs, en `orden-de-locks.concurrencia.integration.spec.ts` (base `soporte_
 | Focused test command | `pnpm vitest run src/insumos src/equipos src/compras`; `pnpm lint`; `pnpm typecheck` |
 | Runtime harness | `invariante-serie.integration.spec.ts` y `orden-de-locks.concurrencia.integration.spec.ts` sobre `soporte_tenant_test` |
 | Rollback boundary | Revertir el commit: casos de uso, wiring del modulo y specs; sin migraciones ni borde HTTP |
+
+## WU-8a — Borde de movimientos (parte 1 de 2: DTOs, respuestas y lectura del serial)
+
+Rama `feat/repuestos-numero-de-serie-wu08a`. Tarea 8a.1 hecha; 8a.2-8a.4 en `wu08a-2`.
+
+- `RegistrarMovimientoInsumoHttpDto`: `seriales?` (`@ArrayMaxSize(100)`, recorte por elemento, `@EsSerialDeUnidad({each})`) y
+  `unidadId?` (`@IsUUID`). El validador nuevo (`interface/validators/es-serial-de-unidad.ts`) mide el largo recortado Y el
+  NORMALIZADO (1..255): `'ß'.repeat(128)` normaliza a 256 y es 400, no el 500 del `throw` de la entidad (carry-over WU-8).
+- `MovimientoInsumoResponseDto` suma `unidadId` y `numeroSerie`; `StockInsumoResponseDto` suma `seguimiento` y
+  `pendientesDeSerie`. `MovimientoInsumoEntity.numeroSerie` es un atributo de LECTURA (no es columna): lo completa
+  `reconstitute()` desde `include: { unidad: { select: { numeroSerie } } }` en `insert()` y `listarPorInsumo()` del repositorio
+  (`INCLUIR_SERIAL_DE_LA_UNIDAD`). Es el serial VIGENTE de la unidad (una correccion posterior lo cambia en el historial).
+- `executeTodos()` en `RegistrarEntradaInsumoUseCase` y `RegistrarAjusteInsumoUseCase` devuelve TODOS los movimientos (uno por
+  unidad en SERIE); `execute()` delega y conserva el primero, asi que recepcion/equipos no cambian.
+- Respuesta ampliada (decision): `MovimientosRegistradosResponseDto` = el PRIMER asiento con su forma de siempre mas
+  `movimientos: MovimientoInsumoResponseDto[]` con todos. Compatible con el frontend actual, que lee el objeto plano.

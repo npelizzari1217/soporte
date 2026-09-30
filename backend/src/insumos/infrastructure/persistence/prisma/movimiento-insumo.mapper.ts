@@ -36,6 +36,16 @@ export type FilaMovimientoInsumo = Omit<PrismaMovimientoInsumo, 'cantidad' | 'cr
   cantidad: Prisma.Decimal | number;
 };
 
+/** Fila del movimiento con el serial de su unidad, cuando la lectura lo incluye. */
+export type FilaMovimientoConUnidad = PrismaMovimientoInsumo & {
+  unidad?: { numeroSerie: string | null } | null;
+};
+
+/** `include` que trae el serial de la unidad del asiento (insert y listado). */
+export const INCLUIR_SERIAL_DE_LA_UNIDAD = {
+  unidad: { select: { numeroSerie: true } },
+} as const;
+
 export class MovimientoInsumoMapper {
   /**
    * Convierte la fila de `movimientos_insumo` a `MovimientoInsumoEntity`.
@@ -54,7 +64,7 @@ export class MovimientoInsumoMapper {
    * @param row Fila de `movimientos_insumo` tal como la devuelve Prisma.
    * @returns El asiento reconstituido, con su id y su fecha de alta.
    */
-  static toDomain(row: PrismaMovimientoInsumo): MovimientoInsumoEntity {
+  static toDomain(row: FilaMovimientoConUnidad): MovimientoInsumoEntity {
     return MovimientoInsumoEntity.reconstitute(
       {
         insumoId: row.insumoId,
@@ -71,6 +81,7 @@ export class MovimientoInsumoMapper {
       },
       row.id,
       row.createdAt,
+      row.unidad?.numeroSerie ?? null,
     );
   }
 

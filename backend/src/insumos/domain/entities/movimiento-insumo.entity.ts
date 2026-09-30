@@ -230,6 +230,14 @@ function validarMotivo(motivo: string | null): void {
  * Ref design: openspec/changes/insumos-entrega-2/design.md, decisiones 3 y 4.
  */
 export class MovimientoInsumoEntity extends BaseEntity<MovimientoInsumoProps> {
+  /**
+   * Serial de la unidad del asiento, resuelto en la LECTURA. No es columna del
+   * asiento ni participa de `create()`: solo lo completa `reconstitute()` cuando
+   * el repositorio trae la unidad. `null` si el asiento es por cantidad o el
+   * caller no lo resolvió.
+   */
+  private _numeroSerie: string | null = null;
+
   private constructor(props: MovimientoInsumoProps, id?: string) {
     super(props, id);
   }
@@ -309,14 +317,17 @@ export class MovimientoInsumoEntity extends BaseEntity<MovimientoInsumoProps> {
    * @param props Campos del movimiento leídos de la base, con el motivo ya normalizado en su momento. `unidadId` ausente se lee como `null`; `MovimientoInsumoMapper` lo manda siempre.
    * @param id Id persistido.
    * @param createdAt Momento en que se asentó el movimiento.
+   * @param numeroSerie Serial de la unidad del asiento, si la lectura lo trajo.
    * @returns La entidad reconstituida.
    */
   static reconstitute(
     props: Omit<MovimientoInsumoProps, 'unidadId'> & { unidadId?: string | null },
     id: string,
     createdAt: Date,
+    numeroSerie: string | null = null,
   ): MovimientoInsumoEntity {
     const entity = new MovimientoInsumoEntity({ ...props, unidadId: props.unidadId ?? null }, id);
+    entity._numeroSerie = numeroSerie;
     Object.assign(entity, { _createdAt: createdAt, _updatedAt: createdAt });
     entity._deletedAt = null;
     return entity;
@@ -376,5 +387,10 @@ export class MovimientoInsumoEntity extends BaseEntity<MovimientoInsumoProps> {
   /** Unidad por número de serie que mueve el asiento, o `null` si es por cantidad. */
   get unidadId(): string | null {
     return this.props.unidadId;
+  }
+
+  /** Serial de la unidad del asiento, si el repositorio lo resolvió al leer; si no, `null`. */
+  get numeroSerie(): string | null {
+    return this._numeroSerie;
   }
 }

@@ -400,7 +400,7 @@ Commit sugerido: `feat(insumos): salida, ajuste negativo y consulta de stock por
 
 **Branch**: `feat/repuestos-numero-de-serie-wu08a` · **Base**: wu07b
 
-- [ ] 8a.1 `RegistrarMovimientoInsumoHttpDto` (lo hereda el ajuste): `seriales?: string[]` (`@ArrayMaxSize(100)`, cada uno recortado, 1 a 255), `unidadId?: uuid`. `MovimientoInsumoResponseDto`: `unidadId`, `numeroSerie` (include). `StockInsumoResponseDto`: `seguimiento`, `pendientesDeSerie`.
+- [x] 8a.1 `RegistrarMovimientoInsumoHttpDto` (lo hereda el ajuste): `seriales?: string[]` (`@ArrayMaxSize(100)`, cada uno recortado, 1 a 255), `unidadId?: uuid`. `MovimientoInsumoResponseDto`: `unidadId`, `numeroSerie` (include). `StockInsumoResponseDto`: `seguimiento`, `pendientesDeSerie`.
 - [ ] 8a.2 Mapeo HTTP explícito en `movimientos-insumo.controller.ts` de los errores de ADR-8 (`UnidadNoAdmitidaError`, `UnidadRequeridaError`, `UnidadNoDisponibleError`, `SerialesNoCoincidenError`, `SerialDuplicadoError` 409, `CantidadNoEnteraError`). Decoradores de permiso sin cambio.
 - [ ] 8a.3 e2e (`usarLockMasterTest()`): como ningún insumo es `SERIE` por HTTP hasta WU-12a, el e2e prepara el insumo `SERIE` **por SQL directo** en el tenant efímero; casos: entrada con seriales, salida con `unidadId`, ajuste negativo; 403 sin permiso; 409 de serial duplicado; 422 de cada error; `NINGUNO` rechaza `seriales` y `unidadId` con 422.
 - [ ] 8a.4 Quality gates (backend): `cd backend && pnpm lint && pnpm typecheck && pnpm vitest run src/insumos/interface` y `pnpm test`.
