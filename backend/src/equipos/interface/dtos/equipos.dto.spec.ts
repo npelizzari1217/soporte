@@ -16,7 +16,9 @@ import {
   EditarEquipoHttpDto,
   CreateComponenteHttpDto,
   EditarComponenteHttpDto,
+  toComponenteResponseDto,
 } from './equipos.dto';
+import { ComponenteEquipoEntity } from '../../domain/entities/componente-equipo.entity';
 import {
   EquipoInformaticoEntity,
   EquipoInformaticoProps,
@@ -319,5 +321,69 @@ describe('CreateComponenteHttpDto — contrato del alta única', () => {
     expect(
       (dto as unknown as { tipoComponenteCodigo?: string }).tipoComponenteCodigo,
     ).toBeUndefined();
+  });
+});
+
+describe('toComponenteResponseDto — registro del retiro (ADR-7)', () => {
+  const props = { equipoId: 'equipo-uuid', insumoId: 'insumo-uuid' };
+
+  it('un componente activo informa el retiro vacío y bajaSinSalidaPrevia false', () => {
+    const dto = toComponenteResponseDto(
+      ComponenteEquipoEntity.create({
+        ...props,
+        descripcion: null,
+        numeroSerie: null,
+        capacidad: null,
+      }).getValue(),
+    );
+
+    expect(dto).toMatchObject({
+      bajaDestino: null,
+      bajaMotivo: null,
+      bajaMovimientoId: null,
+      bajaUsuarioId: null,
+      bajaSinSalidaPrevia: false,
+    });
+  });
+
+  it('un retiro al stock sin SALIDA vinculada informa bajaSinSalidaPrevia true', () => {
+    const componente = ComponenteEquipoEntity.create({
+      ...props,
+      descripcion: null,
+      numeroSerie: null,
+      capacidad: null,
+    }).getValue();
+    componente.retirar({
+      destino: 'STOCK_USADO',
+      motivo: 'Vino de otro equipo',
+      usuarioId: 'usuario-uuid',
+      bajaMovimientoId: 'mov-uuid',
+    });
+
+    expect(toComponenteResponseDto(componente)).toMatchObject({
+      bajaDestino: 'STOCK_USADO',
+      bajaMotivo: 'Vino de otro equipo',
+      bajaMovimientoId: 'mov-uuid',
+      bajaUsuarioId: 'usuario-uuid',
+      bajaSinSalidaPrevia: true,
+    });
+  });
+
+  it('con SALIDA vinculada, el retiro al stock informa bajaSinSalidaPrevia false', () => {
+    const componente = ComponenteEquipoEntity.create({
+      ...props,
+      descripcion: null,
+      numeroSerie: null,
+      capacidad: null,
+    }).getValue();
+    componente.vincularInstalacion('salida-uuid');
+    componente.retirar({
+      destino: 'STOCK_USADO',
+      motivo: null,
+      usuarioId: 'usuario-uuid',
+      bajaMovimientoId: 'mov-uuid',
+    });
+
+    expect(toComponenteResponseDto(componente).bajaSinSalidaPrevia).toBe(false);
   });
 });

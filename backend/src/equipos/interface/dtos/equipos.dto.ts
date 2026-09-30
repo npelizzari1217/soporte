@@ -369,6 +369,13 @@ export interface ComponenteResponseDto {
   capacidad: string | null;
   activo: boolean;
   deletedAt: string | null;
+  /** Registro del retiro (ADR-7): `null` mientras el componente está activo. */
+  bajaDestino: string | null;
+  bajaMotivo: string | null;
+  bajaMovimientoId: string | null;
+  bajaUsuarioId: string | null;
+  /** `true` si volvió al stock como usado sin una SALIDA de instalación vinculada. */
+  bajaSinSalidaPrevia: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -384,6 +391,11 @@ export function toComponenteResponseDto(componente: ComponenteEquipoEntity): Com
     capacidad: componente.capacidad,
     activo: componente.activo,
     deletedAt: componente.deletedAt ? componente.deletedAt.toISOString() : null,
+    bajaDestino: componente.bajaDestino,
+    bajaMotivo: componente.bajaMotivo,
+    bajaMovimientoId: componente.bajaMovimientoId,
+    bajaUsuarioId: componente.bajaUsuarioId,
+    bajaSinSalidaPrevia: componente.bajaSinSalidaPrevia,
     createdAt: componente.createdAt.toISOString(),
     updatedAt: componente.updatedAt.toISOString(),
   };
