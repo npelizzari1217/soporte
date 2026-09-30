@@ -11,7 +11,8 @@
  *   está disponible (`isError`, por ejemplo sin `INSUMOS:LECTURA`): en ese caso
  *   el backend decide y el selector queda habilitado, sin saldos y en NUEVO.
  *   Mientras la consulta está en vuelo no se muestra.
- * - **NUEVO preseleccionado.**
+ * - **NUEVO preseleccionado**, también cada vez que cambia el `insumoId`: la
+ *   condición elegida para un insumo no se arrastra a otro.
  * - **Fijo y deshabilitado** cuando exactamente un saldo es mayor que cero.
  *
  * `paraEnviar` es `undefined` cuando el selector no se ve: el payload no lleva
@@ -42,6 +43,14 @@ export interface SelectorCondicion {
 export function useSelectorCondicion(insumoId: string): SelectorCondicion {
   const stockQuery = useStockInsumo(insumoId, { refetchOnMount: false });
   const [elegida, setElegida] = useState<CondicionStock>("NUEVO");
+  const [insumoPrevio, setInsumoPrevio] = useState(insumoId);
+  // Ajuste de estado durante el render (patrón de React para derivar estado de
+  // una prop): al cambiar el insumo se vuelve a NUEVO sin un render intermedio
+  // con la condición vieja.
+  if (insumoPrevio !== insumoId) {
+    setInsumoPrevio(insumoId);
+    setElegida("NUEVO");
+  }
 
   const stock = stockQuery.data;
   const visible = stockQuery.isError || stock?.admiteUsado === true;
