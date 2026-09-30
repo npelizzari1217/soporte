@@ -128,3 +128,13 @@ Rama `feat/stock-usado-componentes-wu09` (base wu08b). Modo estandar (feature).
 - 9.2 `insumo-detail-view.tsx`: "Stock nuevo", "Stock usado" (solo si `admiteUsado` o USADO > 0) y "Stock total"; la reposicion sigue leyendo el `estadoReposicion` resuelto por el backend (sobre NUEVO); columna "Condicion" en la bitacora. El hook `use-stock-insumo` no cambia.
 - 9.3 Tests en `insumo-detail-view.test.tsx`: NUEVO 4 + USADO 2 = 6, sin usado, admite usado en cero, usado sin admitirlo, reposicion con USADO alto, condicion por movimiento. Los tests previos que buscaban el saldo por texto se pasan a `valorDe("Stock total")` porque NUEVO y total coinciden.
 - 9.4 Gates: lint y type-check en cero; `vitest run src/features/insumos` 244 verdes; suite completa ver reporte.
+
+## WU-10 — Frontend insumos: selector de condicion en entrada, salida y ajuste (tareas 10.1 a 10.4)
+
+Rama `feat/stock-usado-componentes-wu10` (base wu09). Modo estandar (feature).
+
+- 10.1 `hooks/use-selector-condicion.ts` (regla a1: visible con `admiteUsado` o con la consulta de stock en error; NUEVO por defecto; fijo y deshabilitado con un solo saldo positivo; `paraEnviar` undefined si no se ve) y `components/condicion-stock-selector.tsx` (presentacional, reutilizable en WU-11).
+- 10.2 Los tres dialogos usan el selector via `camposAdicionales` y envian `condicion`; `condicion` opcional en `registrarMovimientoInsumoSchema` y en `RegistrarMovimientoInsumoDto`. Las mutaciones ya invalidaban `["insumo", id, "stock"]` y `["insumo", id, "movimientos"]` (sin cambios). El dialogo de recepcion de compra no se toca.
+- Ajuste de `useStockInsumo`: opcion `refetchOnMount: false` para el consumidor secundario; sin ella, montar el selector con la ficha ya cargada provocaba un GET de stock extra (rompia dos tests de refresco de `insumo-detail-view`).
+- 10.3 `movimiento-condicion.test.tsx` (describe.each de las tres puertas: oculto, ambos saldos con USADO, fijo, sin acceso a stock) mas el 422 de salida NUEVO sin saldo suficiente.
+- 10.4 Gates: lint y type-check en cero; `pnpm test` 211 archivos, 1595 tests en verde.

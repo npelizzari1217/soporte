@@ -350,10 +350,10 @@ Commit sugerido: `feat(insumos): ficha con saldos nuevo y usado y condicion de c
 
 **Branch**: `feat/stock-usado-componentes-wu10` · **Base**: wu09
 
-- [ ] 10.1 Componente de selector reutilizable de condición (`NUEVO` preseleccionado; visible solo si `admiteUsado`; si exactamente un saldo es mayor que cero se fija en ese saldo y se deshabilita; si la consulta de stock no está disponible, habilitado, sin saldos y en NUEVO, ADR-7 selector a1) con su test.
-- [ ] 10.2 `movimiento-*-dialog.tsx` (entrada, salida, ajuste): usan el selector y envían `condicion` en el payload; el diálogo de recepción de compra **no** lo muestra. Invalidan `["insumo", insumoId, "stock"]` y `["insumo", insumoId, "movimientos"]`. Schemas Zod con `condicion` opcional.
-- [ ] 10.3 Tests por diálogo: selector oculto sin `admiteUsado`; fijo con un solo saldo; payload con `condicion: 'USADO'`; salida NUEVO con stock insuficiente en la condición muestra el error del backend.
-- [ ] 10.4 Quality gates (frontend): `cd frontend && pnpm lint && pnpm type-check && pnpm test`.
+- [x] 10.1 Componente de selector reutilizable de condición (`NUEVO` preseleccionado; visible solo si `admiteUsado`; si exactamente un saldo es mayor que cero se fija en ese saldo y se deshabilita; si la consulta de stock no está disponible, habilitado, sin saldos y en NUEVO, ADR-7 selector a1) con su test.
+- [x] 10.2 `movimiento-*-dialog.tsx` (entrada, salida, ajuste): usan el selector y envían `condicion` en el payload; el diálogo de recepción de compra **no** lo muestra. Invalidan `["insumo", insumoId, "stock"]` y `["insumo", insumoId, "movimientos"]`. Schemas Zod con `condicion` opcional.
+- [x] 10.3 Tests por diálogo: selector oculto sin `admiteUsado`; fijo con un solo saldo; payload con `condicion: 'USADO'`; salida NUEVO con stock insuficiente en la condición muestra el error del backend.
+- [x] 10.4 Quality gates (frontend): `cd frontend && pnpm lint && pnpm type-check && pnpm test`.
 
 **Escenarios**: Entrada manual de usados; Ajuste positivo de usados; Salida dentro del saldo de
 su condición (interfaz); Selector fijo con un solo saldo (a1).

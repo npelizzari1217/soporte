@@ -8,7 +8,7 @@
 import { z } from "zod";
 import { conDosDecimales, formatearNumeroEsAr, parsearNumeroEsAr } from "@/shared/lib/formato-numero";
 import { mensajeDemasiadoLargo } from "@/shared/lib/mensaje-tope";
-import type { TipoAjusteInsumo } from "./types";
+import { CONDICIONES_STOCK, type TipoAjusteInsumo } from "./types";
 
 /**
  * Topes de `movimientos_insumo`, espejo de las constantes de
@@ -126,6 +126,9 @@ export const registrarMovimientoInsumoSchema = z.object({
     ),
   equipoId: z.string().uuid().optional().or(z.literal("")),
   sectorId: z.string().uuid().optional().or(z.literal("")),
+  // Espejo de `condicion` opcional del DTO (ADR-7). No sale de un input registrado:
+  // el selector la resuelve (`useSelectorCondicion`) y el diálogo la inyecta al enviar.
+  condicion: z.enum(CONDICIONES_STOCK).optional(),
 });
 export type RegistrarMovimientoInsumoFormValues = z.infer<typeof registrarMovimientoInsumoSchema>;
 
