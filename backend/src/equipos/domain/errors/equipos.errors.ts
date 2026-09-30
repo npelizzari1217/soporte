@@ -321,3 +321,36 @@ export class ExportacionDemasiadoGrandeError extends DomainError {
     );
   }
 }
+
+/**
+ * SerialDeUnidadNoEditableError — el número de serie de un componente que
+ * refiere una unidad de insumo no se edita desde el componente: el serial es de
+ * la unidad y se corrige por la corrección de serial del insumo, que deja
+ * historial.
+ * → HTTP 422 en la capa de presentación.
+ */
+export class SerialDeUnidadNoEditableError extends DomainError {
+  readonly code = 'SERIAL_DE_UNIDAD_NO_EDITABLE';
+
+  constructor(componenteId: string) {
+    super(
+      `El número de serie del componente "${componenteId}" pertenece a su unidad de insumo y no se edita desde el componente.`,
+    );
+  }
+}
+
+/**
+ * UnidadDelComponenteNoDisponibleError — al reactivar un componente, su unidad
+ * ya no está descartada por ese componente (la recuperaron o la movieron), así
+ * que no se puede reinstalar.
+ * → HTTP 422 en la capa de presentación.
+ */
+export class UnidadDelComponenteNoDisponibleError extends DomainError {
+  readonly code = 'UNIDAD_DEL_COMPONENTE_NO_DISPONIBLE';
+
+  constructor(componenteId: string) {
+    super(
+      `La unidad del componente "${componenteId}" ya no está disponible para reinstalarla: su último movimiento no fue el descarte de este componente.`,
+    );
+  }
+}

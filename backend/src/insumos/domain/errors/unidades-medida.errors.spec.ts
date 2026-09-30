@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  UnidadMedidaCambiadaError,
+  UnidadMedidaEnUsoPorSerieError,
+  UnidadMedidaNoEnteraError,
   UnidadMedidaNoEncontradaError,
   UnidadMedidaCodigoDuplicadoError,
 } from './unidades-medida.errors';
@@ -26,5 +29,18 @@ describe('Errores de dominio de unidades de medida', () => {
     const error = new UnidadMedidaCodigoDuplicadoError('UN');
     expect(error.message).toContain('(activa o inactiva)');
     expect(error.message).not.toContain('dada de baja');
+  });
+
+  it.each([
+    [new UnidadMedidaNoEnteraError('um-1'), 'UNIDAD_MEDIDA_NO_ENTERA'],
+    [new UnidadMedidaEnUsoPorSerieError('um-1'), 'UNIDAD_MEDIDA_EN_USO_POR_SERIE'],
+    [new UnidadMedidaCambiadaError('um-1'), 'UNIDAD_MEDIDA_CAMBIADA'],
+  ])('%s expone su code estable y nombra el id', (error, code) => {
+    expect(error.code).toBe(code);
+    expect(error.message).toContain('um-1');
+  });
+
+  it('UnidadMedidaCambiadaError indica que es reintentable', () => {
+    expect(new UnidadMedidaCambiadaError('i-1').message).toContain('Reintent');
   });
 });

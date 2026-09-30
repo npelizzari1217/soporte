@@ -31,3 +31,51 @@ export class UnidadMedidaCodigoDuplicadoError extends DomainError {
     );
   }
 }
+
+/**
+ * UnidadMedidaNoEnteraError — un insumo con seguimiento por serie exige una
+ * unidad de medida entera (piezas, pares): una unidad por pieza no se mide en
+ * litros ni en metros.
+ * → HTTP 422 en la capa de presentación.
+ */
+export class UnidadMedidaNoEnteraError extends DomainError {
+  readonly code = 'UNIDAD_MEDIDA_NO_ENTERA';
+
+  constructor(unidadMedidaId: string) {
+    super(
+      `La unidad de medida "${unidadMedidaId}" no es entera: un insumo con número de serie exige una unidad entera.`,
+    );
+  }
+}
+
+/**
+ * UnidadMedidaEnUsoPorSerieError — no se puede desmarcar `entera` mientras
+ * algún insumo con seguimiento por serie use la unidad de medida.
+ * → HTTP 422 en la capa de presentación.
+ */
+export class UnidadMedidaEnUsoPorSerieError extends DomainError {
+  readonly code = 'UNIDAD_MEDIDA_EN_USO_POR_SERIE';
+
+  constructor(unidadMedidaId: string) {
+    super(
+      `La unidad de medida "${unidadMedidaId}" la usa algún insumo con número de serie y debe seguir siendo entera.`,
+    );
+  }
+}
+
+/**
+ * UnidadMedidaCambiadaError — entre la lectura del insumo y su bloqueo otra
+ * edición le cambió la unidad de medida, así que la validación de `entera`
+ * hecha sobre la unidad vieja ya no vale. Es reintentable: el cliente repite
+ * el pedido.
+ * → HTTP 409 en la capa de presentación.
+ */
+export class UnidadMedidaCambiadaError extends DomainError {
+  readonly code = 'UNIDAD_MEDIDA_CAMBIADA';
+
+  constructor(insumoId: string) {
+    super(
+      `La unidad de medida del insumo "${insumoId}" cambió mientras se procesaba el pedido. Reintentá la operación.`,
+    );
+  }
+}

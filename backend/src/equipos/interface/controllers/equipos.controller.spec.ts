@@ -654,8 +654,8 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
     (valor) => typeof valor === 'function' && valor.prototype instanceof DomainError,
   );
 
-  it('el catálogo tiene EXACTAMENTE 15 clases de error (16 previas menos TipoComponenteInactivo, ComponenteVinculadoTipoInmutable y TipoComponenteCodigoRequerido, retiradas en sdd/catalogo-unico-componentes WU-5 y WU-6, más MotivoRetiroRequerido y ComponenteDevueltoAlStock de sdd/stock-usado-componentes)', () => {
-    expect(CLASES_DE_ERROR).toHaveLength(15);
+  it('el catálogo tiene EXACTAMENTE 17 clases de error (16 previas menos TipoComponenteInactivo, ComponenteVinculadoTipoInmutable y TipoComponenteCodigoRequerido, retiradas en sdd/catalogo-unico-componentes WU-5 y WU-6, más MotivoRetiroRequerido y ComponenteDevueltoAlStock de sdd/stock-usado-componentes, más SerialDeUnidadNoEditable y UnidadDelComponenteNoDisponible de sdd/repuestos-numero-de-serie)', () => {
+    expect(CLASES_DE_ERROR).toHaveLength(17);
   });
 
   const TABLA: Array<[string, () => DomainError, 404 | 422]> = [
@@ -687,6 +687,19 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
     [
       'ComponenteDevueltoAlStockError',
       () => new EquiposErrors.ComponenteDevueltoAlStockError('componente-1'),
+      422,
+    ],
+    // Unidades por número de serie (sdd/repuestos-numero-de-serie, ADR-8): sin
+    // mapeo explícito todavía (llega con el WU de interfaz de equipos), así que
+    // caen en el default 422, que es también su código definitivo.
+    [
+      'SerialDeUnidadNoEditableError',
+      () => new EquiposErrors.SerialDeUnidadNoEditableError('componente-1'),
+      422,
+    ],
+    [
+      'UnidadDelComponenteNoDisponibleError',
+      () => new EquiposErrors.UnidadDelComponenteNoDisponibleError('componente-1'),
       422,
     ],
     // `TicketSoporteNoEncontradoError` es 404 en `SoporteController` (que tiene
