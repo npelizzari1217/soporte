@@ -349,6 +349,94 @@ describe('OperacionesUnidadInsumo — Integration', () => {
     expect(fila.estado).toBe('ENTREGADA');
   });
 
+  it('recuperarDescartadas de un lote (con serial y pendiente) deja EN_DEPOSITO, con ENTRADA y evento RECUPERACION, y cumple el invariante', async () => {
+    const alta = await conTenant(() =>
+      txRunner.run(() =>
+        servicio.ingresar(insumoId, [{ numeroSerie: 'R-1' }, { numeroSerie: null }], {
+          usuarioId,
+          condicion: 'NUEVO',
+          tipo: 'ENTRADA',
+        }),
+      ),
+    );
+    const ids = alta.getValue().map((x) => x.unidad.id);
+    const baja = await conTenant(() =>
+      txRunner.run(() =>
+        servicio.sacarDelDeposito(insumoId, ids, {
+          usuarioId,
+          tipo: 'AJUSTE_NEGATIVO',
+          motivo: 'error',
+        }),
+      ),
+    );
+    expect(baja.isOk()).toBe(true);
+    const antes = await contar();
+
+    const r = await conTenant(() =>
+      txRunner.run(() =>
+        servicio.recuperarDescartadas(insumoId, ids, {
+          usuarioId,
+          condicion: 'USADO',
+          motivo: 'recuperada',
+        }),
+      ),
+    );
+
+    expect(r.getValue()).toHaveLength(2);
+    const filas = await tenantClient.unidadInsumo.findMany({ where: { id: { in: ids } } });
+    expect(filas.map((f) => [f.estado, f.condicion, f.numeroSerie].join('|')).sort()).toEqual([
+      'EN_DEPOSITO|USADO|',
+      'EN_DEPOSITO|USADO|R-1',
+    ]);
+    expect(await contar()).toEqual({
+      unidades: antes.unidades,
+      movimientos: antes.movimientos + 2,
+      eventos: antes.eventos + 2,
+    });
+    const evento = await tenantClient.eventoUnidadInsumo.findFirstOrThrow({
+      where: { unidadId: ids[0], tipo: 'RECUPERACION' },
+    });
+    expect(evento.movimientoId).toBe(r.getValue()[0].movimiento.id);
+    expect(await conTenant(() => leerYVerificarInvarianteSerie(repos(), insumoId))).toEqual([]);
+  });
+
+  it('una recuperación con una unidad no descartada se devuelve como Result.fail y, aun con commit, no escribe la descartada', async () => {
+    const alta = await conTenant(() =>
+      txRunner.run(() =>
+        servicio.ingresar(insumoId, [{ numeroSerie: 'R-2' }, { numeroSerie: 'R-3' }], {
+          usuarioId,
+          condicion: 'NUEVO',
+          tipo: 'ENTRADA',
+        }),
+      ),
+    );
+    const [descartada, enDeposito] = alta.getValue().map((x) => x.unidad.id);
+    await conTenant(() =>
+      txRunner.run(() =>
+        servicio.sacarDelDeposito(insumoId, [descartada], {
+          usuarioId,
+          tipo: 'AJUSTE_NEGATIVO',
+          motivo: 'error',
+        }),
+      ),
+    );
+    const antes = await contar();
+
+    const r = await conTenant(() =>
+      txRunner.run(() =>
+        servicio.recuperarDescartadas(insumoId, [descartada, enDeposito], {
+          usuarioId,
+          condicion: 'NUEVO',
+        }),
+      ),
+    );
+
+    expect(r.getError()).toBeInstanceOf(UnidadNoDisponibleError);
+    expect(await contar()).toEqual(antes);
+    const fila = await tenantClient.unidadInsumo.findUniqueOrThrow({ where: { id: descartada } });
+    expect(fila.estado).toBe('DESCARTADA');
+  });
+
   it('cargarSerial completa una pendiente con su evento y un serial repetido lanza FalloOperacionDeUnidad y revierte', async () => {
     const alta = await conTenant(() =>
       txRunner.run(() =>

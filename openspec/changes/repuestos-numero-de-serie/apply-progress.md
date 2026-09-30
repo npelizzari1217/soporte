@@ -536,3 +536,15 @@ Rama `feat/repuestos-numero-de-serie-wu08c-2`. Tareas 8c.3 y 8c.4 hechas (8c.1 a
 - e2e ampliado en `unidades-insumo.e2e.spec.ts` (mismo arnés; `sembrarInsumo` acepta `repuesto`): NUEVO, USADO, G2 (insumo y
   familia deshabilitados), guards 422, insumo dado de baja 404, 400, 404 de unidad ajena, 403, e historial con
   `DEVOLUCION_DE_ENTREGA`.
+
+## WU-8d - Recuperar pieza descartada (G1, ADR-14)
+
+Rama `feat/repuestos-numero-de-serie-wu08d`. Parte 1 de 2 (servicio). Tareas 8d.1 y 8d.3 hechas; 8d.2, 8d.4 y 8d.5 al cerrar la parte 2.
+
+- `OperacionesUnidadInsumo.recuperarDescartadas(insumoId, unidadIds, {usuarioId, motivo?, condicion})`: `DESCARTADA -> EN_DEPOSITO`
+  (serial o pendiente; una pendiente vuelve pendiente), ENTRADA de 1 en la condicion elegida y evento `RECUPERACION`. Comparte
+  el cuerpo con `devolverEntregas` mediante el privado `restituirAlDeposito` (mismo orden L1, L2, L3). No reevalua unicidad.
+- `invariante-serie.integration.spec.ts`: la secuencia cierra con la recuperacion de una descartada con serial (USADO) y de
+  la pendiente dada de baja (vuelve pendiente); el invariante y la consulta de stock se verifican tras cada paso.
+- Mutacion adversarial (8d.3): omitir la ENTRADA de la recuperacion (evento sin movimiento) dejo la secuencia en rojo con
+  "USADO: hay 2 unidades EN_DEPOSITO y el libro da saldo 1."; revertida y verde.

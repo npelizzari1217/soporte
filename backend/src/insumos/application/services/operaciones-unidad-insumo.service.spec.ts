@@ -436,6 +436,101 @@ describe('OperacionesUnidadInsumo', () => {
     });
   });
 
+  describe('recuperarDescartadas', () => {
+    function descartada(
+      id: string,
+      over: { serial?: string | null; condicion?: 'NUEVO' | 'USADO' } = {},
+    ) {
+      const u = unidad(id, over);
+      u.descartarDeDeposito();
+      return u;
+    }
+
+    it('recupera en la condición elegida: CAS desde DESCARTADA, ENTRADA de 1 con el motivo y evento RECUPERACION', async () => {
+      const t = armar({ unidades: [descartada(U1, { condicion: 'NUEVO' })] });
+      const r = await t.servicio.recuperarDescartadas(INSUMO, [U1], {
+        usuarioId: 'u',
+        condicion: 'USADO',
+        motivo: 'se dio de baja por error',
+      });
+      expect(r.getValue()[0].unidad).toMatchObject({
+        estado: 'EN_DEPOSITO',
+        condicion: 'USADO',
+        numeroSerie: 'SN-1',
+      });
+      expect(t.llamadas.filter((l) => l.startsWith('W:cas'))).toEqual(['W:cas:DESCARTADA']);
+      expect(
+        t.movimientos.map((m) => [m.tipo, m.condicion, m.cantidad, m.unidadId, m.motivo]),
+      ).toEqual([['ENTRADA', 'USADO', 1, U1, 'se dio de baja por error']]);
+      expect(t.eventos.map((e) => [e.tipo, e.movimientoId, e.motivo])).toEqual([
+        ['RECUPERACION', t.movimientos[0].id, 'se dio de baja por error'],
+      ]);
+    });
+
+    it('una pendiente descartada vuelve pendiente (sin serial) y no consulta la unicidad', async () => {
+      const t = armar({ unidades: [descartada(U1, { serial: null })] });
+      const r = await t.servicio.recuperarDescartadas(INSUMO, [U1], {
+        usuarioId: 'u',
+        condicion: 'NUEVO',
+        motivo: 'm',
+      });
+      expect(r.getValue()[0].unidad).toMatchObject({ estado: 'EN_DEPOSITO', numeroSerie: null });
+    });
+
+    it('respeta el orden de locks de ADR-12: L1, L2 y L3 antes de la primera escritura', async () => {
+      const t = armar({ unidades: [descartada(U1), descartada(U2)] });
+      await t.servicio.recuperarDescartadas(INSUMO, [U2, U1], {
+        usuarioId: 'u',
+        condicion: 'NUEVO',
+      });
+      expect(t.llamadas.slice(0, 3)).toEqual([`L1:${INSUMO}`, `L2:${INSUMO}`, `L3:${U1},${U2}`]);
+    });
+
+    it('rechaza una unidad que no está DESCARTADA sin escribir la otra', async () => {
+      const t = armar({ unidades: [descartada(U1), unidad(U2)] });
+      const r = await t.servicio.recuperarDescartadas(INSUMO, [U1, U2], {
+        usuarioId: 'u',
+        condicion: 'NUEVO',
+      });
+      expect(r.getError()).toBeInstanceOf(UnidadNoDisponibleError);
+      expect(t.escribio()).toBe(false);
+    });
+
+    it('con el insumo en NINGUNO devuelve SeguimientoNoModificableError sin tomar más locks', async () => {
+      const t = armar({ seguimiento: 'NINGUNO' });
+      const r = await t.servicio.recuperarDescartadas(INSUMO, [U1], {
+        usuarioId: 'u',
+        condicion: 'NUEVO',
+      });
+      expect(r.getError()).toBeInstanceOf(SeguimientoNoModificableError);
+      expect(t.llamadas).toEqual([`L1:${INSUMO}`]);
+    });
+
+    it('rechaza una unidad ajena, una inexistente y una repetida sin escribir', async () => {
+      const ajena = descartada(U2, { serial: 'X' });
+      const enOtro = UnidadInsumoEntity.crearEnDeposito(
+        { insumoId: OTRO_INSUMO, condicion: 'NUEVO', numeroSerie: 'Z' },
+        U2,
+      ).getValue();
+      enOtro.descartarDeDeposito();
+      expect(ajena.insumoId).toBe(INSUMO);
+      const casos: Array<[string[], UnidadInsumoEntity[], unknown]> = [
+        [[U1, U2], [descartada(U1), enOtro], UnidadNoAdmitidaError],
+        [[U1, U3], [descartada(U1)], UnidadNoEncontradaError],
+        [[U1, U1], [descartada(U1)], UnidadNoDisponibleError],
+      ];
+      for (const [ids, unidades, clase] of casos) {
+        const t = armar({ unidades });
+        const r = await t.servicio.recuperarDescartadas(INSUMO, ids, {
+          usuarioId: 'u',
+          condicion: 'NUEVO',
+        });
+        expect(r.getError()).toBeInstanceOf(clase);
+        expect(t.escribio()).toBe(false);
+      }
+    });
+  });
+
   describe('cargarSerial', () => {
     it('completa una pendiente: normaliza, CAS sin cambiar de estado y evento SERIAL_CARGADO sin movimiento ni motivo', async () => {
       const t = armar({ unidades: [unidad(U1, { serial: null })] });

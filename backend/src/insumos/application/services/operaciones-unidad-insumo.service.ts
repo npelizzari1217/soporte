@@ -233,11 +233,54 @@ export class OperacionesUnidadInsumo {
     unidadIds: readonly string[],
     o: ContextoUnidad & { condicion: CondicionStock },
   ): Promise<Result<UnidadConMovimiento[], DomainError>> {
+    return this.restituirAlDeposito(insumoId, unidadIds, o, {
+      accion: 'devolver una entrega',
+      transicionar: (unidad) => unidad.devolverEntrega(o.condicion),
+      tipoEvento: 'DEVOLUCION_DE_ENTREGA',
+    });
+  }
+
+  /**
+   * Recupera piezas descartadas (G1, ADR-14): `DESCARTADA → EN_DEPOSITO` en la
+   * condición elegida, con una ENTRADA de cantidad 1 y el evento `RECUPERACION`.
+   * Sirve a cualquier origen de la baja (instalada, del depósito o pendiente): la
+   * unidad conserva su serial, y una pendiente vuelve pendiente. No reevalúa la
+   * unicidad del serial, que la unidad nunca dejó de ocupar. El motivo obligatorio
+   * y las exenciones de G2 las decide el caso de uso, no este servicio.
+   *
+   * @param insumoId Insumo al que pertenecen las piezas; con `NINGUNO` una unidad viva no tendría dueño.
+   * @param unidadIds Unidades a recuperar, sin repetir.
+   * @param o Usuario, motivo y condición con la que vuelven.
+   * @returns Las unidades con su movimiento, en el orden de `unidadIds`; o el primer error de validación, sin haber escrito nada.
+   */
+  async recuperarDescartadas(
+    insumoId: string,
+    unidadIds: readonly string[],
+    o: ContextoUnidad & { condicion: CondicionStock },
+  ): Promise<Result<UnidadConMovimiento[], DomainError>> {
+    return this.restituirAlDeposito(insumoId, unidadIds, o, {
+      accion: 'recuperar una pieza descartada',
+      transicionar: (unidad) => unidad.recuperar(o.condicion),
+      tipoEvento: 'RECUPERACION',
+    });
+  }
+
+  /** Cuerpo común de las operaciones que devuelven al depósito una unidad sacada de él (ADR-13, ADR-14). */
+  private async restituirAlDeposito(
+    insumoId: string,
+    unidadIds: readonly string[],
+    o: ContextoUnidad,
+    variante: {
+      accion: string;
+      transicionar: (unidad: UnidadInsumoEntity) => Result<void, DomainError>;
+      tipoEvento: 'DEVOLUCION_DE_ENTREGA' | 'RECUPERACION';
+    },
+  ): Promise<Result<UnidadConMovimiento[], DomainError>> {
     const bloqueo = await this.bloquearInsumo(
       insumoId,
       () =>
         new SeguimientoNoModificableError(
-          `el insumo "${insumoId}" no se sigue por número de serie, así que no admite devolver una entrega.`,
+          `el insumo "${insumoId}" no se sigue por número de serie, así que no admite ${variante.accion}.`,
         ),
     );
     if (bloqueo.isFail()) return Result.fail(bloqueo.getError());
@@ -257,13 +300,13 @@ export class OperacionesUnidadInsumo {
       if (unidad.insumoId !== insumoId) return Result.fail(new UnidadNoAdmitidaError(insumoId));
 
       const estadoLeido = unidad.estado;
-      const transicion = unidad.devolverEntrega(o.condicion);
+      const transicion = variante.transicionar(unidad);
       if (transicion.isFail()) return Result.fail(transicion.getError());
 
       const armada = this.armarEscritura(unidad, estadoLeido, {
         insumoId,
         tipo: 'ENTRADA',
-        tipoEvento: 'DEVOLUCION_DE_ENTREGA',
+        tipoEvento: variante.tipoEvento,
         o,
       });
       if (armada.isFail()) return Result.fail(armada.getError());
@@ -724,6 +767,7 @@ export class OperacionesUnidadInsumo {
         | 'ENTREGA'
         | 'BAJA_DE_DEPOSITO'
         | 'DEVOLUCION_DE_ENTREGA'
+        | 'RECUPERACION'
         | 'INSTALACION'
         | 'RETIRO_A_DEPOSITO';
       o: ContextoUnidad;

@@ -9,8 +9,8 @@
  * Tambien cubre la concurrencia de la salida sobre una misma unidad y que la
  * salida rechazada conserva el lock de fila de la unidad (L3).
  *
- * La recuperacion de una pieza descartada (ADR-14) se habilita en WU-8d y se
- * agrega como ultimo paso de la secuencia ahi.
+ * La secuencia cierra con la recuperacion de una pieza descartada (ADR-14): la
+ * unidad vuelve a EN_DEPOSITO y el libro sube 1 en la condicion elegida.
  *
  * Fixtures con prefijo por corrida. No toca `soporte_master_test`, asi que no
  * necesita `usarLockMasterTest()`.
@@ -182,7 +182,7 @@ describe('Invariante del insumo SERIE — Integration', () => {
     expect(stock.seguimiento).toBe('SERIE');
   }
 
-  it('secuencia entrada -> salida -> instalar -> retirar USADO -> descartar -> devolucion de entrega: el invariante vale tras cada paso', async () => {
+  it('secuencia entrada -> salida -> instalar -> retirar USADO -> descartar -> devolucion de entrega -> recuperacion: el invariante vale tras cada paso', async () => {
     const entrada4 = await conTenant(() =>
       entrada.execute({
         insumoId,
@@ -260,6 +260,35 @@ describe('Invariante del insumo SERIE — Integration', () => {
     ).toBe(true);
     expect(await estadoDe(a1)).toBe('EN_DEPOSITO');
     await verificar('devolucion de la entrega de A1', { NUEVO: 2, USADO: 1, pendientes: 0 });
+
+    // A3 fue descartada desde un equipo; la recuperacion la deja USADO en el deposito, con su serial.
+    expect(
+      (
+        await enTx(() =>
+          servicio.recuperarDescartadas(insumoId, [a3], {
+            usuarioId,
+            condicion: 'USADO',
+            motivo: 'se descarto por error',
+          }),
+        )
+      ).isOk(),
+    ).toBe(true);
+    expect(await estadoDe(a3)).toBe('EN_DEPOSITO');
+    await verificar('recuperacion de A3', { NUEVO: 2, USADO: 2, pendientes: 0 });
+
+    // La pendiente dada de baja vuelve pendiente: cuenta en el saldo y en los pendientes.
+    expect(
+      (
+        await enTx(() =>
+          servicio.recuperarDescartadas(insumoId, [idPendiente], {
+            usuarioId,
+            condicion: 'NUEVO',
+            motivo: 'la recepcion la encontro',
+          }),
+        )
+      ).isOk(),
+    ).toBe(true);
+    await verificar('recuperacion de la pendiente', { NUEVO: 3, USADO: 2, pendientes: 1 });
   }, 60_000);
 
   it('dos salidas concurrentes de la MISMA unidad: una entrega y la otra recibe UnidadNoDisponibleError', async () => {
