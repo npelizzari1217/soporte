@@ -625,6 +625,31 @@ El procedimiento es el de la sección siguiente ("Restore de datos"), con el dum
 fechas, los pasos (detener servicios, `pg_restore --clean --if-exists` de master y de cada tenant,
 revertir el código, arrancar) son los mismos.
 
+### Rollback del tracker `stock-usado-componentes`
+
+Este release es **aditivo**: agrega `condicion` a `movimientos_insumo` y las columnas `baja_*` a
+`componentes_equipo`, con sus CHECK. El binario viejo no lee esas columnas e inserta con el default,
+así que el `git reset --hard` funciona sin restaurar datos **salvo en dos puntos** que hay que medir
+antes de decidir. El detector es de solo lectura; se corre en cada tenant activo (con `psql` contra
+la base de ese tenant, nunca contra master):
+
+```sql
+SELECT
+  (SELECT count(*) FROM movimientos_insumo WHERE condicion = 'USADO')          AS movimientos_usado,
+  (SELECT count(*) FROM componentes_equipo WHERE baja_destino IS NOT NULL)     AS retiros_con_destino;
+```
+
+| Resultado | Qué significa |
+|---|---|
+| Los dos en 0 en **todos** los tenants | `git reset --hard <commit-de-rollback>` y `.\deploy.ps1`. Las migraciones quedan aplicadas y no molestan al binario viejo. |
+| `movimientos_usado` > 0 | El binario viejo suma los usados al saldo único y puede consumirlos como nuevos. El alcance del error es ese número. |
+| `retiros_con_destino` > 0 | El binario viejo no escribe las columnas de retiro: su reactivar sobre **cualquier** componente con destino (`STOCK_USADO` o `DESCARTE`) deja `deleted_at` en NULL con `baja_destino` presente, y el CHECK `componentes_equipo_baja_coherente_check` lo rechaza (500 en esas filas). Sobre `STOCK_USADO` es deseable (evita el doble conteo); sobre `DESCARTE` es una pérdida de función acotada a esas filas. Los retiros legados siguen reactivándose. |
+
+Con cualquiera de los dos valores > 0, la vía preferida es **corregir hacia adelante**. Si el
+revert es inevitable, la vía fiel es restaurar el dump de `predeploy-dump.ps1` siguiendo la sección
+siguiente ("Restore de datos"); se pierde lo escrito después del deploy. Revertir sin restaurar
+acepta las dos consecuencias de la tabla, con su alcance ya medido por el detector.
+
 ### Restore de datos (si el backfill de fechas hay que revertirlo)
 
 Caso puntual: el backfill de `sdd/sesion-utc-y-backfill-de-fechas` (issue #173, ADR-6) resta 3
@@ -733,6 +758,23 @@ Los dos andan. **`post-deploy-smoke-matriz-permisos.mjs` estuvo roto** entre
 `usuario_cliente_modulos`, tabla que ese refactor eliminó a propósito, así que fallaba en **todo
 deploy** y su rojo se leyó como ruido durante meses. Un chequeo que falla siempre no chequea
 nada.
+
+### Verificación de `stock-usado-componentes`
+
+En un tenant activo, con `psql` contra su base:
+
+```sql
+\d movimientos_insumo    -- columna condicion NOT NULL default 'NUEVO' y su CHECK
+\d componentes_equipo    -- columnas baja_* y el CHECK componentes_equipo_baja_coherente_check
+```
+
+Luego, en la ficha de un repuesto con stock previo: el saldo **NUEVO** tiene que ser igual al stock
+que tenía antes del deploy y el **USADO** tiene que ser 0.
+
+Si la migración tenant falló en algún tenant, los deploys siguientes fallan con `P3009`: la
+recuperación (`prisma migrate resolve --rolled-back` con `--config prisma.tenant.config.ts` y el
+`DATABASE_URL_TENANT` de ese tenant, y luego re-correr `deploy.ps1`) es la descrita en "Nota
+histórica: precondición de componentes sin repuesto (retirada)".
 
 ### El smoke de la matriz depende del build
 
