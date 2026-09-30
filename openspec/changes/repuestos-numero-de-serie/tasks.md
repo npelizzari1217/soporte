@@ -289,9 +289,9 @@ Commit sugerido: `feat(insumos): operaciones de unidad para ingresar y sacar del
 
 - [x] 4b.1 `devolverEntregas(insumoId, unidadIds, { condicion })`: `ENTREGADA → EN_DEPOSITO` en NUEVO o USADO + ENTRADA de 1 + evento `DEVOLUCION_DE_ENTREGA`; rechaza unidad no `ENTREGADA` con `UnidadNoDisponibleError`; insumo `NINGUNO` con `SeguimientoNoModificableError`. (Req: Una unidad entregada puede volver al depósito)
 - [x] 4b.2 `cargarSerial(unidadId, numeroSerie)`: solo `EN_DEPOSITO` pendiente; normaliza, P2002 ⇒ `SerialDuplicadoError`; evento `SERIAL_CARGADO` sin movimiento ni motivo. `corregirSerial(unidadId, numeroSerie, motivo)`: motivo obligatorio normalizado (tope 500); evento `CORRECCION_SERIAL` con `serial_anterior`, `serial_nuevo`, motivo y usuario; rechaza una unidad `INSTALADA`. (Req: corrección auditada)
-- [ ] 4b.3 Helper `insumos/testing/invariante-serie.ts`: compara `conteo EN_DEPOSITO` contra `calcularSaldos(libro)` por condición y verifica que el último evento de cada unidad coincide con su estado. Spec del helper. El spec de integración del invariante completo entra en WU-7b.
-- [ ] 4b.4 Specs unitarios (fakes) y de integración de lote para `devolverEntregas`, `cargarSerial` (completar pendiente; serial repetido), `corregirSerial` (válida, sin motivo, a un serial existente, sobre `INSTALADA`).
-- [ ] 4b.5 Quality gates (backend): `cd backend && pnpm lint && pnpm typecheck && pnpm vitest run src/insumos/application/services src/insumos/testing` y `pnpm test`.
+- [x] 4b.3 Helper `insumos/testing/invariante-serie.ts`: compara `conteo EN_DEPOSITO` contra `calcularSaldos(libro)` por condición y verifica que el último evento de cada unidad coincide con su estado. Spec del helper. El spec de integración del invariante completo entra en WU-7b.
+- [x] 4b.4 Specs unitarios (fakes) y de integración de lote para `devolverEntregas`, `cargarSerial` (completar pendiente; serial repetido), `corregirSerial` (válida, sin motivo, a un serial existente, sobre `INSTALADA`).
+- [x] 4b.5 Quality gates (backend): `cd backend && pnpm lint && pnpm typecheck && pnpm vitest run src/insumos/application/services src/insumos/testing` y `pnpm test`.
 
 **Escenarios**: Devolución de una pieza sin uso / usada; Devolución de una unidad que no está
 entregada; Devolución con el insumo ya en NINGUNO; Completar un serial pendiente; Completar con un

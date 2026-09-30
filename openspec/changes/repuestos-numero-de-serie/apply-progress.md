@@ -241,3 +241,20 @@ cada código de sus pruebas): parte 1 (`wu03a`) = 3a.1 y 3a.3; parte 2 (`wu03a-2
 - 4b.2: ambas leen la unidad sin lock para conocer su insumo, toman L1 y L2 de ese insumo y releen con L3. Sin
   movimiento. `cargarSerial` asienta `SERIAL_CARGADO` (sin motivo); `corregirSerial` exige motivo (error nuevo
   `MotivoCorreccionSerialInvalidoError`, vacío o de más de 500) y rechaza `INSTALADA`; asienta `CORRECCION_SERIAL`.
+
+## WU-4b parte 3 — helper del invariante (4b.3 a 4b.5 hechas)
+
+- 4b.3: `insumos/testing/invariante-serie.ts`: `verificarInvarianteSerie` (función pura: conteo `EN_DEPOSITO` contra
+  `calcularSaldos(libro)` por condición, y último evento que mueve el estado contra el estado de cada unidad;
+  `SERIAL_CARGADO` y `CORRECCION_SERIAL` no mueven el estado) y `leerYVerificarInvarianteSerie` (lee los repos).
+  El integration de devolución lo usa tras el lote.
+- 4b.4: specs unitarios e integración de `devolverEntregas`, `cargarSerial` (pendiente y serial repetido) y
+  `corregirSerial` (válida, sin motivo, a un serial existente, sobre `INSTALADA`); los `Result.fail` se prueban con
+  commit posterior.
+
+### Work Unit Evidence (WU-4b)
+
+| Evidence | Value |
+|---|---|
+| Focused test command | `pnpm vitest run src/insumos` verde; `pnpm test`: 503 archivos, 6117 tests verdes |
+| Rollback boundary | Revertir cada commit: sin migraciones ni cambios de módulo |

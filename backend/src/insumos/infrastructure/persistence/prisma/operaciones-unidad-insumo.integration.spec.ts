@@ -28,6 +28,7 @@ import {
   SerialDuplicadoError,
   UnidadNoDisponibleError,
 } from '../../../domain/errors/unidades-insumo.errors';
+import { leerYVerificarInvarianteSerie } from '../../../testing/invariante-serie';
 
 const MASTER_TEST_URL =
   process.env.DATABASE_URL_MASTER ??
@@ -279,7 +280,13 @@ describe('OperacionesUnidadInsumo — Integration', () => {
     return ids;
   }
 
-  it('devolverEntregas de un lote de 2 deja EN_DEPOSITO en la condición elegida, con ENTRADA y evento', async () => {
+  const repos = () => ({
+    unidadRepo: new PrismaUnidadInsumoRepository(tenantContext),
+    movimientoRepo: new PrismaMovimientoInsumoRepository(tenantContext),
+    eventoRepo: new PrismaEventoUnidadInsumoRepository(tenantContext),
+  });
+
+  it('devolverEntregas de un lote de 2 deja EN_DEPOSITO en la condición elegida, con ENTRADA y evento, y cumple el invariante', async () => {
     const ids = await altaYEntrega(['D-1', 'D-2']);
     const antes = await contar();
 
@@ -304,6 +311,8 @@ describe('OperacionesUnidadInsumo — Integration', () => {
       where: { unidadId: ids[0], tipo: 'DEVOLUCION_DE_ENTREGA' },
     });
     expect(evento.movimientoId).toBe(r.getValue()[0].movimiento.id);
+    const violaciones = await conTenant(() => leerYVerificarInvarianteSerie(repos(), insumoId));
+    expect(violaciones).toEqual([]);
   });
 
   it('una devolución con una unidad no entregada se devuelve como Result.fail y, aun con commit, no escribe la entregada', async () => {
