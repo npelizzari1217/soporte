@@ -46,6 +46,7 @@ import {
   IFamiliaInsumoRepository,
 } from '../insumos/domain/ports/i-familia-insumo.repository';
 import { RegistrarSalidaInsumoUseCase } from '../insumos/application/use-cases/registrar-salida-insumo.use-case';
+import { RegistrarEntradaInsumoUseCase } from '../insumos/application/use-cases/registrar-entrada-insumo.use-case';
 
 import {
   EQUIPO_INFORMATICO_REPOSITORY,
@@ -70,8 +71,8 @@ import { ListarEquiposUseCase } from './application/use-cases/listar-equipos.use
 import { EliminarEquipoUseCase } from './application/use-cases/eliminar-equipo.use-case';
 import { AgregarComponenteUseCase } from './application/use-cases/agregar-componente.use-case';
 import { InstalarComponenteDesdeDepositoUseCase } from './application/use-cases/instalar-componente-desde-deposito.use-case';
-import { EliminarComponenteUseCase } from './application/use-cases/eliminar-componente.use-case';
 import { EditarComponenteUseCase } from './application/use-cases/editar-componente.use-case';
+import { RetirarComponenteUseCase } from './application/use-cases/retirar-componente.use-case';
 import { ReactivarComponenteUseCase } from './application/use-cases/reactivar-componente.use-case';
 import { CrearTicketSoporteUseCase } from './application/use-cases/crear-ticket-soporte.use-case';
 import { RegistrarSolucionUseCase } from './application/use-cases/registrar-solucion.use-case';
@@ -230,25 +231,38 @@ import { SoporteController } from './interface/controllers/soporte.controller';
         txRunner: ITenantTransactionRunner,
         agregarComponenteUseCase: AgregarComponenteUseCase,
         registrarSalidaInsumoUseCase: RegistrarSalidaInsumoUseCase,
+        componenteRepo: IComponenteEquipoRepository,
       ) =>
         new InstalarComponenteDesdeDepositoUseCase(
           txRunner,
           agregarComponenteUseCase,
           registrarSalidaInsumoUseCase,
+          componenteRepo,
         ),
-      inject: [TENANT_TX_RUNNER, AgregarComponenteUseCase, RegistrarSalidaInsumoUseCase],
-    },
-    {
-      provide: EliminarComponenteUseCase,
-      useFactory: (componenteRepo: IComponenteEquipoRepository) =>
-        new EliminarComponenteUseCase(componenteRepo),
-      inject: [COMPONENTE_EQUIPO_REPOSITORY],
+      inject: [
+        TENANT_TX_RUNNER,
+        AgregarComponenteUseCase,
+        RegistrarSalidaInsumoUseCase,
+        COMPONENTE_EQUIPO_REPOSITORY,
+      ],
     },
     {
       provide: EditarComponenteUseCase,
       useFactory: (componenteRepo: IComponenteEquipoRepository) =>
         new EditarComponenteUseCase(componenteRepo),
       inject: [COMPONENTE_EQUIPO_REPOSITORY],
+    },
+    {
+      // sdd/stock-usado-componentes (ADR-4): retiro atomico. Compone la ENTRADA
+      // de devolucion (`registrarDevolucionDeComponente`, sin exposicion HTTP)
+      // con la marca condicional de retiro en una transaccion propia.
+      provide: RetirarComponenteUseCase,
+      useFactory: (
+        txRunner: ITenantTransactionRunner,
+        componenteRepo: IComponenteEquipoRepository,
+        registrarEntrada: RegistrarEntradaInsumoUseCase,
+      ) => new RetirarComponenteUseCase(txRunner, componenteRepo, registrarEntrada),
+      inject: [TENANT_TX_RUNNER, COMPONENTE_EQUIPO_REPOSITORY, RegistrarEntradaInsumoUseCase],
     },
     {
       provide: ReactivarComponenteUseCase,

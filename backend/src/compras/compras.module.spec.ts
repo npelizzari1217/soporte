@@ -223,6 +223,7 @@ function fakeEntradaInsumo(): Pick<RegistrarEntradaInsumoUseCase, 'execute'> & {
       MovimientoInsumoEntity.create({
         insumoId: dto.insumoId,
         tipo: 'ENTRADA',
+        condicion: 'NUEVO',
         cantidad: dto.cantidad,
         usuarioId: dto.usuarioId,
       }),
@@ -654,6 +655,7 @@ describe('ComprasModule wiring (PR-22, sdd/redisenio-modulo-compras)', () => {
         insumoId: 'insumo-fixture-1',
         cantidad: 1,
         usuarioId: 'user-1',
+        condicion: 'NUEVO',
         itemCompraId: ITEM_ID,
       });
     });

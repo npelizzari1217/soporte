@@ -53,6 +53,8 @@ import {
   normalizarMotivoMovimiento,
 } from '../../domain/entities/movimiento-insumo.entity';
 import {
+  CondicionStock,
+  CONDICIONES_STOCK,
   TipoAjusteInsumo,
   TipoMovimientoInsumo,
   TIPOS_AJUSTE_INSUMO,
@@ -74,7 +76,7 @@ import { ListarMovimientosInsumoResult } from '../../application/use-cases/lista
  * @param value Valor crudo del campo `motivo`, tal como llega del body.
  * @returns El motivo recortado, `null` si no tiene contenido, o el valor intacto si no es string.
  */
-function transformarMotivo({ value }: { value: unknown }): unknown {
+export function transformarMotivo({ value }: { value: unknown }): unknown {
   return typeof value === 'string' ? normalizarMotivoMovimiento(value) : value;
 }
 
@@ -147,6 +149,21 @@ export class RegistrarMovimientoInsumoHttpDto {
   @IsOptional()
   @IsUUID()
   sectorId?: string | null;
+
+  /**
+   * Condición del stock que se mueve. OPCIONAL: ausente equivale a `NUEVO`, y
+   * ese default lo resuelve cada caso de uso, su único dueño. El catálogo se
+   * importa del dominio; un valor fuera de él es un 400 que nombra el campo.
+   * Que `USADO` solo se admita en repuestos es una regla de negocio (422), no
+   * de forma. Lo hereda `RegistrarAjusteInsumoHttpDto`.
+   *
+   * La recepción de una compra NO tiene este campo: no hay DTO HTTP de
+   * recepción que lo declare, y con `whitelist: true` un `condicion` sobrante
+   * se descarta; la recepción siempre asienta `NUEVO`.
+   */
+  @IsOptional()
+  @IsIn(CONDICIONES_STOCK)
+  condicion?: CondicionStock;
 }
 
 /**
@@ -195,6 +212,8 @@ export interface MovimientoInsumoResponseDto {
   sectorId: string | null;
   /** Ítem de compra cuya recepción originó el asiento; `null` si la carga fue manual. */
   itemCompraId: string | null;
+  /** Condición del stock que movió el asiento. */
+  condicion: CondicionStock;
   createdAt: string;
 }
 
@@ -208,7 +227,12 @@ export interface MovimientoInsumoResponseDto {
  */
 export interface StockInsumoResponseDto {
   insumoId: string;
+  /** Total: la suma de los saldos de todas las condiciones. */
   stock: number;
+  /** Saldo por condición; la reposición se evalúa sobre `NUEVO`. */
+  saldos: Record<CondicionStock, number>;
+  /** Si el insumo admite stock USADO (familia vigente de repuestos), ya resuelto por el backend. */
+  admiteUsado: boolean;
   stockMinimo: number | null;
   estadoReposicion: EstadoReposicionInsumo;
 }
@@ -232,6 +256,7 @@ export function toMovimientoInsumoResponseDto(
     equipoId: entidad.equipoId,
     sectorId: entidad.sectorId,
     itemCompraId: entidad.itemCompraId,
+    condicion: entidad.condicion,
     createdAt: entidad.createdAt.toISOString(),
   };
 }
@@ -251,6 +276,8 @@ export function toStockInsumoResponseDto(stock: StockDeInsumo): StockInsumoRespo
   return {
     insumoId: stock.insumoId,
     stock: stock.stock,
+    saldos: { NUEVO: stock.saldos.NUEVO, USADO: stock.saldos.USADO },
+    admiteUsado: stock.admiteUsado,
     stockMinimo: stock.stockMinimo,
     estadoReposicion: stock.estadoReposicion,
   };

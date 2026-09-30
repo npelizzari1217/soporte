@@ -281,9 +281,12 @@ import { MovimientosInsumoController } from './interface/controllers/movimientos
       // su constructor es lo que le impide tomar el advisory lock por
       // descuido; pasarle el runner acá lo volvería posible de nuevo.
       provide: RegistrarEntradaInsumoUseCase,
-      useFactory: (insumoRepo: IInsumoRepository, movimientoRepo: IMovimientoInsumoRepository) =>
-        new RegistrarEntradaInsumoUseCase(insumoRepo, movimientoRepo),
-      inject: [INSUMO_REPOSITORY, MOVIMIENTO_INSUMO_REPOSITORY],
+      useFactory: (
+        insumoRepo: IInsumoRepository,
+        movimientoRepo: IMovimientoInsumoRepository,
+        familiaRepo: IFamiliaInsumoRepository,
+      ) => new RegistrarEntradaInsumoUseCase(insumoRepo, movimientoRepo, familiaRepo),
+      inject: [INSUMO_REPOSITORY, MOVIMIENTO_INSUMO_REPOSITORY, FAMILIA_INSUMO_REPOSITORY],
     },
     {
       // La SALIDA y el AJUSTE sí lo reciben: los dos pueden restar, y leer las
@@ -294,8 +297,14 @@ import { MovimientosInsumoController } from './interface/controllers/movimientos
         insumoRepo: IInsumoRepository,
         movimientoRepo: IMovimientoInsumoRepository,
         txRunner: ITenantTransactionRunner,
-      ) => new RegistrarSalidaInsumoUseCase(insumoRepo, movimientoRepo, txRunner),
-      inject: [INSUMO_REPOSITORY, MOVIMIENTO_INSUMO_REPOSITORY, TENANT_TX_RUNNER],
+        familiaRepo: IFamiliaInsumoRepository,
+      ) => new RegistrarSalidaInsumoUseCase(insumoRepo, movimientoRepo, txRunner, familiaRepo),
+      inject: [
+        INSUMO_REPOSITORY,
+        MOVIMIENTO_INSUMO_REPOSITORY,
+        TENANT_TX_RUNNER,
+        FAMILIA_INSUMO_REPOSITORY,
+      ],
     },
     {
       provide: RegistrarAjusteInsumoUseCase,
@@ -303,17 +312,26 @@ import { MovimientosInsumoController } from './interface/controllers/movimientos
         insumoRepo: IInsumoRepository,
         movimientoRepo: IMovimientoInsumoRepository,
         txRunner: ITenantTransactionRunner,
-      ) => new RegistrarAjusteInsumoUseCase(insumoRepo, movimientoRepo, txRunner),
-      inject: [INSUMO_REPOSITORY, MOVIMIENTO_INSUMO_REPOSITORY, TENANT_TX_RUNNER],
+        familiaRepo: IFamiliaInsumoRepository,
+      ) => new RegistrarAjusteInsumoUseCase(insumoRepo, movimientoRepo, txRunner, familiaRepo),
+      inject: [
+        INSUMO_REPOSITORY,
+        MOVIMIENTO_INSUMO_REPOSITORY,
+        TENANT_TX_RUNNER,
+        FAMILIA_INSUMO_REPOSITORY,
+      ],
     },
     {
       // La consulta tampoco lo recibe: usa `sumByTipo()`, la lectura SIN lock.
       // Mostrar un número en pantalla no puede hacer esperar a los técnicos que
       // están sacando cosas del depósito.
       provide: ConsultarStockInsumoUseCase,
-      useFactory: (insumoRepo: IInsumoRepository, movimientoRepo: IMovimientoInsumoRepository) =>
-        new ConsultarStockInsumoUseCase(insumoRepo, movimientoRepo),
-      inject: [INSUMO_REPOSITORY, MOVIMIENTO_INSUMO_REPOSITORY],
+      useFactory: (
+        insumoRepo: IInsumoRepository,
+        movimientoRepo: IMovimientoInsumoRepository,
+        familiaRepo: IFamiliaInsumoRepository,
+      ) => new ConsultarStockInsumoUseCase(insumoRepo, movimientoRepo, familiaRepo),
+      inject: [INSUMO_REPOSITORY, MOVIMIENTO_INSUMO_REPOSITORY, FAMILIA_INSUMO_REPOSITORY],
     },
     {
       // El LISTADO tampoco recibe el runner, por el mismo motivo que la

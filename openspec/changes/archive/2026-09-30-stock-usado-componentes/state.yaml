@@ -1,0 +1,16 @@
+change: stock-usado-componentes
+phase: archive
+artifact_store: openspec
+research:
+  selected: false
+product_decisions: confirmed 2026-09-30 (recomendadas: a1 b1 c3 d1 e3 f2 g1 h2; sin research)
+artifacts:
+  exploration: true
+  proposal: true
+  specs: true
+  design: true
+  tasks: true
+tasks_progress:
+  completed: []
+  pending: []
+last_updated: 2026-09-30

@@ -295,13 +295,17 @@ describe('Movimientos de insumo e2e — celdas separadas y topes del borde', () 
   /** Siembra familia + unidad + insumo con el administrador y devuelve el id del insumo. */
   async function sembrarInsumo(
     tokenAdmin: string,
-    opciones: { stockMinimo?: number | null } = {},
+    opciones: { stockMinimo?: number | null; esRepuesto?: boolean } = {},
   ): Promise<string> {
     const marca = sufijo();
 
     const familia = await httpPost<{ id: string }>(
       `${baseUrl}/familias-insumo`,
-      { codigo: `FAM_${marca}`, nombre: 'Familia de prueba' },
+      {
+        codigo: `FAM_${marca}`,
+        nombre: 'Familia de prueba',
+        esRepuesto: opciones.esRepuesto ?? false,
+      },
       bearer(tokenAdmin),
     );
     expect(familia.status).toBe(201);
@@ -335,7 +339,7 @@ describe('Movimientos de insumo e2e — celdas separadas y topes del borde', () 
    */
   async function prepararEscenario(
     permisos: CodigoAccion[],
-    opciones: { stockMinimo?: number | null } = {},
+    opciones: { stockMinimo?: number | null; esRepuesto?: boolean } = {},
   ): Promise<{ tokenAdmin: string; token: string; usuarioId: string; insumoId: string }> {
     const administrador = await crearAdministrador();
     const insumoId = await sembrarInsumo(administrador.token, opciones);
@@ -485,6 +489,8 @@ describe('Movimientos de insumo e2e — celdas separadas y topes del borde', () 
       expect(conLectura.data).toEqual({
         insumoId: escenario.insumoId,
         stock: 10,
+        saldos: { NUEVO: 10, USADO: 0 },
+        admiteUsado: false,
         stockMinimo: 5,
         estadoReposicion: 'SUFICIENTE',
       });
@@ -1120,6 +1126,104 @@ describe('Movimientos de insumo e2e — celdas separadas y topes del borde', () 
       );
 
       expect(status).toBe(400);
+    });
+  });
+  describe('Condición del stock (NUEVO / USADO)', () => {
+    const PERMISOS: CodigoAccion[] = ['INSUMOS:ALTAS', 'INSUMOS:AJUSTAR', 'INSUMOS:LECTURA'];
+
+    it('entrada USADO en un repuesto: sube el saldo USADO y el listado informa la condición', async () => {
+      const e = await prepararEscenario(PERMISOS, { esRepuesto: true });
+
+      const entrada = await httpPost<MovimientoInsumoResponseDto>(
+        urlEntrada(e.insumoId),
+        { cantidad: 5, condicion: 'USADO' },
+        bearer(e.token),
+      );
+      const stock = await httpGet<StockInsumoResponseDto>(urlStock(e.insumoId), bearer(e.token));
+      const lista = await httpGet<ListarMovimientosInsumoResponseDto>(
+        urlMovimientos(e.insumoId),
+        bearer(e.token),
+      );
+
+      expect(entrada.status).toBe(201);
+      expect(entrada.data.condicion).toBe('USADO');
+      expect(stock.data.saldos).toEqual({ NUEVO: 0, USADO: 5 });
+      expect(stock.data.stock).toBe(5);
+      expect(stock.data.admiteUsado).toBe(true);
+      expect(lista.data.items.map((m) => m.condicion)).toEqual(['USADO']);
+    });
+
+    it('sin condición la entrada es NUEVO', async () => {
+      const e = await prepararEscenario(PERMISOS, { esRepuesto: true });
+
+      const entrada = await httpPost<MovimientoInsumoResponseDto>(
+        urlEntrada(e.insumoId),
+        { cantidad: 2 },
+        bearer(e.token),
+      );
+
+      expect(entrada.status).toBe(201);
+      expect(entrada.data.condicion).toBe('NUEVO');
+    });
+
+    it('USADO en un insumo que no es repuesto da 422 en entrada, salida y ajuste', async () => {
+      const e = await prepararEscenario(PERMISOS, { esRepuesto: false });
+
+      const entrada = await httpPost(
+        urlEntrada(e.insumoId),
+        { cantidad: 1, condicion: 'USADO' },
+        bearer(e.token),
+      );
+      const salida = await httpPost(
+        urlSalida(e.insumoId),
+        { cantidad: 1, condicion: 'USADO' },
+        bearer(e.token),
+      );
+      const ajuste = await httpPost(
+        urlAjuste(e.insumoId),
+        { tipo: 'AJUSTE_POSITIVO', cantidad: 1, motivo: 'Conteo', condicion: 'USADO' },
+        bearer(e.token),
+      );
+      const stock = await httpGet<StockInsumoResponseDto>(urlStock(e.insumoId), bearer(e.token));
+
+      expect([entrada.status, salida.status, ajuste.status]).toEqual([422, 422, 422]);
+      expect(stock.data.admiteUsado).toBe(false);
+      expect(stock.data.saldos).toEqual({ NUEVO: 0, USADO: 0 });
+    });
+
+    it('una condición fuera del catálogo da 400', async () => {
+      const e = await prepararEscenario(PERMISOS, { esRepuesto: true });
+
+      const { status } = await httpPost(
+        urlEntrada(e.insumoId),
+        { cantidad: 1, condicion: 'REFURBISHED' },
+        bearer(e.token),
+      );
+
+      expect(status).toBe(400);
+    });
+
+    it('salida NUEVO con saldo NUEVO 0 y USADO 5 da stock insuficiente', async () => {
+      const e = await prepararEscenario(PERMISOS, { esRepuesto: true });
+      await httpPost(urlEntrada(e.insumoId), { cantidad: 5, condicion: 'USADO' }, bearer(e.token));
+
+      const salida = await httpPost(urlSalida(e.insumoId), { cantidad: 1 }, bearer(e.token));
+      const stock = await httpGet<StockInsumoResponseDto>(urlStock(e.insumoId), bearer(e.token));
+
+      expect(salida.status).toBe(422);
+      expect(stock.data.saldos).toEqual({ NUEVO: 0, USADO: 5 });
+    });
+
+    it('GET stock devuelve NUEVO, USADO y el total, y la reposición sigue a NUEVO', async () => {
+      const e = await prepararEscenario(PERMISOS, { esRepuesto: true, stockMinimo: 5 });
+      await httpPost(urlEntrada(e.insumoId), { cantidad: 2 }, bearer(e.token));
+      await httpPost(urlEntrada(e.insumoId), { cantidad: 10, condicion: 'USADO' }, bearer(e.token));
+
+      const stock = await httpGet<StockInsumoResponseDto>(urlStock(e.insumoId), bearer(e.token));
+
+      expect(stock.data.saldos).toEqual({ NUEVO: 2, USADO: 10 });
+      expect(stock.data.stock).toBe(12);
+      expect(stock.data.estadoReposicion).toBe('BAJO_MINIMO');
     });
   });
 });

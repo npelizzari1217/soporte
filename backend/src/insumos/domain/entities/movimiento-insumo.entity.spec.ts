@@ -8,7 +8,12 @@ import {
   MOVIMIENTO_INSUMO_MOTIVO_MAX_LENGTH,
   normalizarMotivoMovimiento,
 } from './movimiento-insumo.entity';
-import { esAjuste, TIPOS_AJUSTE_INSUMO, TIPOS_MOVIMIENTO_INSUMO } from './tipo-movimiento-insumo';
+import {
+  CONDICION_STOCK_POR_DEFECTO,
+  esAjuste,
+  TIPOS_AJUSTE_INSUMO,
+  TIPOS_MOVIMIENTO_INSUMO,
+} from './tipo-movimiento-insumo';
 
 /**
  * Los tipos que NO exigen motivo, derivados del catálogo con el mismo type
@@ -24,6 +29,7 @@ function propsBase(
   return {
     insumoId: 'id-insumo',
     tipo: 'ENTRADA',
+    condicion: 'NUEVO',
     cantidad: 10,
     usuarioId: 'id-usuario',
     ...parciales,
@@ -70,6 +76,16 @@ describe('MovimientoInsumoEntity', () => {
       expect(movimiento.motivo).toBe('Reposición de impresora');
       expect(movimiento.id).not.toBe('');
       expect(movimiento.createdAt).toBeInstanceOf(Date);
+    });
+
+    // Escenario "Movimiento sin condición explícita": cae en NUEVO.
+    it('aplica la condición por defecto NUEVO cuando no se declara ninguna', () => {
+      expect(crear().condicion).toBe(CONDICION_STOCK_POR_DEFECTO);
+      expect(crear().condicion).toBe('NUEVO');
+    });
+
+    it('conserva la condición explícita', () => {
+      expect(crear({ condicion: 'USADO' }).condicion).toBe('USADO');
     });
 
     it('genera un id distinto por movimiento cuando el caller no provee uno', () => {
@@ -394,6 +410,7 @@ describe('MovimientoInsumoEntity', () => {
     const props = {
       insumoId: 'id-insumo',
       tipo: 'SALIDA' as const,
+      condicion: 'NUEVO' as const,
       cantidad: 7,
       usuarioId: 'id-usuario',
       motivo: null,
@@ -440,6 +457,15 @@ describe('MovimientoInsumoEntity', () => {
      * `new Date()`, una lectura mostraría un movimiento "modificado hoy" que
      * nadie tocó nunca.
      */
+    it('preserva la condición persistida', () => {
+      const createdAt = new Date('2026-01-15T10:30:00.000Z');
+
+      expect(
+        MovimientoInsumoEntity.reconstitute({ ...props, condicion: 'USADO' }, 'id-p', createdAt)
+          .condicion,
+      ).toBe('USADO');
+    });
+
     it('espeja updatedAt de createdAt y deja deletedAt en null, porque la tabla no tiene esas columnas', () => {
       const createdAt = new Date('2026-01-15T10:30:00.000Z');
       const movimiento = MovimientoInsumoEntity.reconstitute(props, 'id-persistido', createdAt);

@@ -46,6 +46,7 @@ import { PrismaOperacionCompraRepository } from '../../infrastructure/persistenc
 import { RegistrarOperacionCompra } from '../services/registrar-operacion-compra';
 import { RegistrarRecepcionDeItemUseCase } from './registrar-recepcion-de-item.use-case';
 
+import { PrismaFamiliaInsumoRepository } from '../../../insumos/infrastructure/persistence/prisma/prisma-familia-insumo.repository';
 import { PrismaInsumoRepository } from '../../../insumos/infrastructure/persistence/prisma/prisma-insumo.repository';
 import { PrismaMovimientoInsumoRepository } from '../../../insumos/infrastructure/persistence/prisma/prisma-movimiento-insumo.repository';
 import { RegistrarEntradaInsumoUseCase } from '../../../insumos/application/use-cases/registrar-entrada-insumo.use-case';
@@ -69,6 +70,7 @@ describe('Recepción de compra → entrada de stock (insumos-entrega-3, unidades
   let operacionRepo: PrismaOperacionCompraRepository;
   let insumoRepo: PrismaInsumoRepository;
   let movimientoRepo: PrismaMovimientoInsumoRepository;
+  let familiaInsumoRepo: PrismaFamiliaInsumoRepository;
 
   /** Prefijo único por corrida: dos procesos en paralelo no se pisan. */
   const PREFIJO = `RECSTK_${randomBytes(2).toString('hex')}`;
@@ -104,7 +106,7 @@ describe('Recepción de compra → entrada de stock (insumos-entrega-3, unidades
       compraRepo,
       new RegistrarOperacionCompra(operacionRepo),
       txRunner,
-      new RegistrarEntradaInsumoUseCase(insumoRepo, movimientoRepo),
+      new RegistrarEntradaInsumoUseCase(insumoRepo, movimientoRepo, familiaInsumoRepo),
     );
   }
 
@@ -169,6 +171,7 @@ describe('Recepción de compra → entrada de stock (insumos-entrega-3, unidades
     operacionRepo = new PrismaOperacionCompraRepository(tenantContext);
     insumoRepo = new PrismaInsumoRepository(tenantContext);
     movimientoRepo = new PrismaMovimientoInsumoRepository(tenantContext);
+    familiaInsumoRepo = new PrismaFamiliaInsumoRepository(tenantContext);
 
     const familia = await tenantClient.familiaInsumo.create({
       data: { codigo: `${PREFIJO}_FAM`, nombre: 'Familia de test' },
@@ -335,7 +338,11 @@ describe('Recepción de compra → entrada de stock (insumos-entrega-3, unidades
   // haya dejado de existir. Sin este caso, un guard borrado por completo
   // dejaría el test de arriba en verde.
   it('el mismo insumo deshabilitado sigue rechazando la entrada MANUAL, sin origen de compra', async () => {
-    const entrada = new RegistrarEntradaInsumoUseCase(insumoRepo, movimientoRepo);
+    const entrada = new RegistrarEntradaInsumoUseCase(
+      insumoRepo,
+      movimientoRepo,
+      familiaInsumoRepo,
+    );
 
     const result = await withTenant(() =>
       entrada.execute({ insumoId: insumoDeshabilitadoId, cantidad: 2, usuarioId }),

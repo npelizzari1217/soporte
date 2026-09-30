@@ -10,7 +10,10 @@
  * Tarea: T11.2.
  */
 import type { ComponenteEquipo as PrismaComponenteEquipo } from '.prisma/tenant';
-import { ComponenteEquipoEntity } from '../../../domain/entities/componente-equipo.entity';
+import {
+  ComponenteEquipoEntity,
+  DestinoRetiroComponente,
+} from '../../../domain/entities/componente-equipo.entity';
 
 export class ComponenteEquipoMapper {
   /** Convierte una fila de DB Prisma → ComponenteEquipoEntity de dominio. */
@@ -22,6 +25,12 @@ export class ComponenteEquipoMapper {
         descripcion: row.descripcion ?? null,
         numeroSerie: row.numeroSerie ?? null,
         capacidad: row.capacidad ?? null,
+        instalacionMovimientoId: row.instalacionMovimientoId ?? null,
+        // El CHECK de la base garantiza el catálogo; el cast es del tipo, no una validación.
+        bajaDestino: (row.bajaDestino as DestinoRetiroComponente | null) ?? null,
+        bajaMotivo: row.bajaMotivo ?? null,
+        bajaMovimientoId: row.bajaMovimientoId ?? null,
+        bajaUsuarioId: row.bajaUsuarioId ?? null,
       },
       row.id,
       row.createdAt,
@@ -43,6 +52,11 @@ export class ComponenteEquipoMapper {
       descripcion: entity.descripcion,
       numeroSerie: entity.numeroSerie,
       capacidad: entity.capacidad,
+      instalacionMovimientoId: entity.instalacionMovimientoId,
+      bajaDestino: entity.bajaDestino,
+      bajaMotivo: entity.bajaMotivo,
+      bajaMovimientoId: entity.bajaMovimientoId,
+      bajaUsuarioId: entity.bajaUsuarioId,
       deletedAt: entity.deletedAt,
       createdAt: entity.createdAt,
     };

@@ -32,12 +32,17 @@ import type { StockInsumo } from "../types";
 
 /**
  * @param insumoId Insumo cuya existencia se consulta.
+ * @param opciones `refetchOnMount: false` para un consumidor SECUNDARIO (el selector de condición de los diálogos): comparte la caché de la ficha y no debe provocar un GET extra al montarse con datos ya cargados; sin datos, igual consulta. La invalidación de las mutaciones lo sigue refrescando.
  * @returns La query con el saldo, el punto de reposición y el estado ya resuelto.
  */
-export function useStockInsumo(insumoId: string): UseQueryResult<StockInsumo, Error> {
+export function useStockInsumo(
+  insumoId: string,
+  opciones: { refetchOnMount?: boolean } = {},
+): UseQueryResult<StockInsumo, Error> {
   return useQuery({
     // El `0` va escrito y no heredado: ver el JSDoc de módulo.
     staleTime: 0,
+    refetchOnMount: opciones.refetchOnMount ?? true,
     queryKey: ["insumo", insumoId, "stock"],
     queryFn: () => apiFetch<StockInsumo>(`insumos/${insumoId}/stock`),
     enabled: !!insumoId,

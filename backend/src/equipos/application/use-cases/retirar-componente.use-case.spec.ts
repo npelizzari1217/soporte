@@ -1,0 +1,232 @@
+import { describe, it, expect, vi } from 'vitest';
+import { RetirarComponenteUseCase } from './retirar-componente.use-case';
+import { ComponenteEquipoEntity } from '../../domain/entities/componente-equipo.entity';
+import { MovimientoInsumoEntity } from '../../../insumos/domain/entities/movimiento-insumo.entity';
+import { Result } from '../../../shared/domain/result';
+import {
+  ComponenteDadoDeBajaError,
+  ComponenteNoEncontradoError,
+  MotivoRetiroRequeridoError,
+} from '../../domain/errors/equipos.errors';
+import { CondicionUsadoNoAdmitidaError } from '../../../insumos/domain/errors/insumos.errors';
+
+/**
+ * `RetirarComponenteUseCase` (sdd/stock-usado-componentes, ADR-4).
+ *
+ * Unit: la ENTRADA y el repo van mockeados. Que la excepcion interna revierta
+ * de verdad contra Postgres lo prueba el spec de integracion; aca se prueba la
+ * orquestacion: orden ENTRADA -> marca, y que un fallo lance dentro de `run()`.
+ */
+describe('RetirarComponenteUseCase', () => {
+  const USUARIO = 'usuario-uuid';
+
+  function makeComponente(instalacionMovimientoId: string | null = null) {
+    return ComponenteEquipoEntity.create({
+      equipoId: 'equipo-1',
+      insumoId: 'insumo-1',
+      descripcion: null,
+      numeroSerie: null,
+      capacidad: null,
+      instalacionMovimientoId,
+    }).getValue();
+  }
+
+  function makeEntrada() {
+    return MovimientoInsumoEntity.create({
+      insumoId: 'insumo-1',
+      tipo: 'ENTRADA',
+      condicion: 'USADO',
+      cantidad: 1,
+      usuarioId: USUARIO,
+      equipoId: 'equipo-1',
+    }).getValue();
+  }
+
+  /** Runner fake: ejecuta el callback y deja propagar la excepcion, como el real al revertir. */
+  function makeSetup(
+    componente: ComponenteEquipoEntity | null,
+    opciones: { entrada?: unknown; marcado?: boolean } = {},
+  ) {
+    const orden: string[] = [];
+    const txRunner = { run: vi.fn((fn: () => unknown) => fn()) };
+    const componenteRepo = {
+      findById: vi.fn().mockResolvedValue(componente),
+      retirar: vi.fn(async () => {
+        orden.push('retirar');
+        return opciones.marcado ?? true;
+      }),
+    };
+    const registrarEntrada = {
+      registrarDevolucionDeComponente: vi.fn(async () => {
+        orden.push('entrada');
+        return opciones.entrada ?? Result.ok(makeEntrada());
+      }),
+    };
+    const useCase = new RetirarComponenteUseCase(
+      txRunner as never,
+      componenteRepo as never,
+      registrarEntrada as never,
+    );
+    return { useCase, txRunner, componenteRepo, registrarEntrada, orden };
+  }
+
+  const dto = (componenteId: string, extra: Record<string, unknown> = {}) => ({
+    equipoId: 'equipo-1',
+    componenteId,
+    destino: 'STOCK_USADO' as const,
+    usuarioId: USUARIO,
+    ...extra,
+  });
+
+  it('STOCK_USADO: la ENTRADA va ANTES de la marca y el componente apunta a ella', async () => {
+    const componente = makeComponente('salida-1');
+    const { useCase, orden, registrarEntrada, txRunner } = makeSetup(componente);
+
+    const result = await useCase.execute(dto(componente.id, { motivo: '  se cambio  ' }));
+
+    expect(result.isOk()).toBe(true);
+    expect(orden).toEqual(['entrada', 'retirar']);
+    expect(txRunner.run).toHaveBeenCalledTimes(1);
+    expect(registrarEntrada.registrarDevolucionDeComponente).toHaveBeenCalledWith({
+      insumoId: 'insumo-1',
+      equipoId: 'equipo-1',
+      usuarioId: USUARIO,
+      motivo: 'se cambio',
+    });
+    expect(componente.bajaDestino).toBe('STOCK_USADO');
+    expect(componente.bajaMotivo).toBe('se cambio');
+    expect(componente.bajaMovimientoId).not.toBeNull();
+    expect(componente.isDeleted()).toBe(true);
+  });
+
+  it('STOCK_USADO con SALIDA vinculada y sin motivo: completa con bajaSinSalidaPrevia = false', async () => {
+    const componente = makeComponente('salida-1');
+    const { useCase } = makeSetup(componente);
+
+    const result = await useCase.execute(dto(componente.id));
+
+    expect(result.isOk()).toBe(true);
+    expect(componente.bajaSinSalidaPrevia).toBe(false);
+  });
+
+  it('STOCK_USADO sin SALIDA vinculada y con motivo: completa con bajaSinSalidaPrevia = true', async () => {
+    const componente = makeComponente(null);
+    const { useCase } = makeSetup(componente);
+
+    const result = await useCase.execute(dto(componente.id, { motivo: 'venia de otro equipo' }));
+
+    expect(result.isOk()).toBe(true);
+    expect(componente.bajaSinSalidaPrevia).toBe(true);
+  });
+
+  it('STOCK_USADO sin SALIDA vinculada y sin motivo: rechazo, sin transaccion ni movimiento', async () => {
+    const componente = makeComponente(null);
+    const { useCase, txRunner, registrarEntrada } = makeSetup(componente);
+
+    const result = await useCase.execute(dto(componente.id));
+
+    expect(result.isFail()).toBe(true);
+    expect(result.getError()).toBeInstanceOf(MotivoRetiroRequeridoError);
+    expect(txRunner.run).not.toHaveBeenCalled();
+    expect(registrarEntrada.registrarDevolucionDeComponente).not.toHaveBeenCalled();
+  });
+
+  it.each([undefined, null, '', '   '])(
+    'DESCARTE con motivo %j: rechazo sin tocar nada',
+    async (motivo) => {
+      const componente = makeComponente('salida-1');
+      const { useCase, txRunner } = makeSetup(componente);
+
+      const result = await useCase.execute(dto(componente.id, { destino: 'DESCARTE', motivo }));
+
+      expect(result.getError()).toBeInstanceOf(MotivoRetiroRequeridoError);
+      expect(txRunner.run).not.toHaveBeenCalled();
+    },
+  );
+
+  it('DESCARTE con motivo de mas de 500 caracteres: el contrato lanza y no toca nada', async () => {
+    const componente = makeComponente('salida-1');
+    const { useCase, txRunner } = makeSetup(componente);
+
+    await expect(
+      useCase.execute(dto(componente.id, { destino: 'DESCARTE', motivo: 'x'.repeat(501) })),
+    ).rejects.toThrow(/excede 500/);
+    expect(txRunner.run).not.toHaveBeenCalled();
+  });
+
+  it('DESCARTE con motivo: no toca stock y la baja no lleva movimiento', async () => {
+    const componente = makeComponente('salida-1');
+    const { useCase, registrarEntrada, componenteRepo } = makeSetup(componente);
+
+    const result = await useCase.execute(
+      dto(componente.id, { destino: 'DESCARTE', motivo: 'quemado' }),
+    );
+
+    expect(result.isOk()).toBe(true);
+    expect(registrarEntrada.registrarDevolucionDeComponente).not.toHaveBeenCalled();
+    expect(componenteRepo.retirar).toHaveBeenCalledWith(componente);
+    expect(componente.bajaMovimientoId).toBeNull();
+    expect(componente.bajaDestino).toBe('DESCARTE');
+  });
+
+  it('componente ya retirado: rechazo sin movimiento', async () => {
+    const componente = makeComponente('salida-1');
+    componente.retirar({
+      destino: 'DESCARTE',
+      motivo: 'x',
+      usuarioId: USUARIO,
+      bajaMovimientoId: null,
+    });
+    const { useCase, registrarEntrada, txRunner } = makeSetup(componente);
+
+    const result = await useCase.execute(dto(componente.id, { destino: 'DESCARTE', motivo: 'y' }));
+
+    expect(result.getError()).toBeInstanceOf(ComponenteDadoDeBajaError);
+    expect(txRunner.run).not.toHaveBeenCalled();
+    expect(registrarEntrada.registrarDevolucionDeComponente).not.toHaveBeenCalled();
+  });
+
+  it('componente inexistente o de OTRO equipo: ComponenteNoEncontradoError', async () => {
+    const otro = makeComponente('salida-1');
+    for (const encontrado of [null, otro]) {
+      const { useCase } = makeSetup(encontrado);
+      const result = await useCase.execute({ ...dto('x'), equipoId: 'equipo-2' });
+      expect(result.getError()).toBeInstanceOf(ComponenteNoEncontradoError);
+    }
+  });
+
+  it('la ENTRADA falla (insumo no repuesto): lanza dentro de run(), no marca y devuelve el error original', async () => {
+    const componente = makeComponente('salida-1');
+    const error = new CondicionUsadoNoAdmitidaError('insumo-1');
+    const { useCase, componenteRepo, txRunner } = makeSetup(componente, {
+      entrada: Result.fail(error),
+    });
+
+    const result = await useCase.execute(dto(componente.id));
+
+    expect(result.isFail()).toBe(true);
+    expect(result.getError()).toBe(error);
+    expect(componenteRepo.retirar).not.toHaveBeenCalled();
+    // El fallo se propago como excepcion por `run()` (lo que revierte en Postgres).
+    await expect(txRunner.run.mock.results[0].value).rejects.toThrow(/retiro del componente/);
+  });
+
+  it('la marca toca 0 filas (retiro concurrente): lanza dentro de run() para revertir la ENTRADA', async () => {
+    const componente = makeComponente('salida-1');
+    const { useCase, txRunner, orden } = makeSetup(componente, { marcado: false });
+
+    const result = await useCase.execute(dto(componente.id));
+
+    expect(orden).toEqual(['entrada', 'retirar']);
+    expect(result.getError()).toBeInstanceOf(ComponenteDadoDeBajaError);
+    await expect(txRunner.run.mock.results[0].value).rejects.toThrow(/retiro del componente/);
+  });
+
+  it('una excepcion ajena (base caida) propaga sin convertirse en Result', async () => {
+    const componente = makeComponente('salida-1');
+    const { useCase, componenteRepo } = makeSetup(componente);
+    componenteRepo.retirar.mockRejectedValueOnce(new Error('conexion perdida'));
+
+    await expect(useCase.execute(dto(componente.id))).rejects.toThrow('conexion perdida');
+  });
+});

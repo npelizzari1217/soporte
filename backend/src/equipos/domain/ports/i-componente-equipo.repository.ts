@@ -24,8 +24,13 @@ export interface IComponenteEquipoRepository {
   /** Persiste el componente (upsert). */
   save(componente: ComponenteEquipoEntity): Promise<void>;
 
-  /** Baja lógica (soft delete) del componente por id. */
-  delete(id: string): Promise<void>;
+  /**
+   * Marca el retiro del componente: escribe deleted_at y las columnas de retiro
+   * con `updateMany ... WHERE id = ? AND deleted_at IS NULL`. Devuelve `true` si
+   * tocó la fila y `false` si ya estaba retirada: es la exclusión mutua entre
+   * dos retiros concurrentes.
+   */
+  retirar(componente: ComponenteEquipoEntity): Promise<boolean>;
 }
 
 /** Token de inyección de dependencias para IComponenteEquipoRepository en NestJS. */

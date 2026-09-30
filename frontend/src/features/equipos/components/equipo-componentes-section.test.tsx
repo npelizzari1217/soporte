@@ -322,4 +322,129 @@ describe("EquipoComponentesSection", () => {
 
     await waitFor(() => expect(metodoRecibido).toBe("PATCH"));
   });
+
+  it("la papelera de un componente activo abre el diálogo de retiro en vez de dar de baja directo", async () => {
+    const user = userEvent.setup();
+    const componentes = [
+      {
+        id: "activo-1",
+        equipoId: EQUIPO_ID,
+        insumoId: "11111111-1111-4111-8111-111111111111",
+        tipoNombre: "Memoria RAM",
+        tipoActivo: true,
+        descripcion: null,
+        numeroSerie: null,
+        capacidad: "8GB",
+        activo: true,
+        deletedAt: null,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
+    ];
+
+    renderWithProviders(<EquipoComponentesSection equipoId={EQUIPO_ID} componentes={componentes} />, {
+      user: buildUser({ permisos: ["EQUIPOS:BORRADO"] }),
+    });
+
+    await user.click(await screen.findByRole("button", { name: /dar de baja componente/i }));
+
+    expect(await screen.findByRole("dialog")).toHaveTextContent(/devolver al stock como usado/i);
+  });
+
+  describe("rótulos de baja y Reactivar según el destino", () => {
+    const base = {
+      equipoId: EQUIPO_ID,
+      insumoId: "11111111-1111-4111-8111-111111111111",
+      tipoNombre: "Disco rígido",
+      tipoActivo: true,
+      descripcion: null,
+      numeroSerie: null,
+      capacidad: "1TB",
+      activo: false,
+      deletedAt: "2026-02-01T00:00:00.000Z",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-02-01T00:00:00.000Z",
+    };
+    const componentes = [
+      {
+        ...base,
+        id: "devuelto",
+        bajaDestino: "STOCK_USADO" as const,
+        bajaSinSalidaPrevia: false,
+      },
+      {
+        ...base,
+        id: "sin-salida",
+        bajaDestino: "STOCK_USADO" as const,
+        bajaSinSalidaPrevia: true,
+      },
+      { ...base, id: "descartado", bajaDestino: "DESCARTE" as const },
+      { ...base, id: "legado", bajaDestino: null },
+    ];
+
+    function renderTodos() {
+      renderWithProviders(
+        <EquipoComponentesSection
+          equipoId={EQUIPO_ID}
+          componentes={componentes}
+        />,
+        {
+          user: buildUser({
+            permisos: ["EQUIPOS:MODIFICACION", "EQUIPOS:BORRADO"],
+          }),
+        },
+      );
+    }
+
+    it("rotula cada baja con su destino y conserva 'Dado de baja' para el legado", async () => {
+      renderTodos();
+
+      const devuelto = within(await screen.findByTestId("componente-devuelto"));
+      expect(devuelto.getByText(/devuelto al stock:/i)).toBeInTheDocument();
+      expect(
+        devuelto.queryByText(/sin salida registrada del depósito/i),
+      ).not.toBeInTheDocument();
+      expect(
+        within(screen.getByTestId("componente-descartado")).getByText(
+          /descartado:/i,
+        ),
+      ).toBeInTheDocument();
+      expect(
+        within(screen.getByTestId("componente-legado")).getByText(
+          /dado de baja:/i,
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it("marca 'sin salida registrada del depósito' solo cuando la devolución no tenía salida previa", async () => {
+      renderTodos();
+
+      const sinSalida = within(
+        await screen.findByTestId("componente-sin-salida"),
+      );
+      expect(
+        sinSalida.getByText(/sin salida registrada del depósito/i),
+      ).toBeInTheDocument();
+    });
+
+    it("oculta Reactivar tras devolver al stock y lo conserva para descartado y legado", async () => {
+      renderTodos();
+
+      await screen.findByTestId("componente-devuelto");
+      for (const id of ["devuelto", "sin-salida"]) {
+        expect(
+          within(screen.getByTestId(`componente-${id}`)).queryByRole("button", {
+            name: /reactivar/i,
+          }),
+        ).toBeNull();
+      }
+      for (const id of ["descartado", "legado"]) {
+        expect(
+          within(screen.getByTestId(`componente-${id}`)).getByRole("button", {
+            name: /reactivar/i,
+          }),
+        ).toBeInTheDocument();
+      }
+    });
+  });
 });

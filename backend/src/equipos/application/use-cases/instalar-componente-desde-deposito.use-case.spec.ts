@@ -37,6 +37,7 @@ describe('InstalarComponenteDesdeDepositoUseCase', () => {
     return MovimientoInsumoEntity.create({
       insumoId,
       tipo: 'SALIDA',
+      condicion: 'NUEVO',
       cantidad: 1,
       usuarioId: 'usuario-uuid',
       equipoId: 'equipo-uuid',
@@ -56,11 +57,13 @@ describe('InstalarComponenteDesdeDepositoUseCase', () => {
     txRunner?: unknown;
     agregarComponenteUseCase?: unknown;
     registrarSalidaInsumoUseCase?: unknown;
+    componenteRepo?: unknown;
   }) {
     return new InstalarComponenteDesdeDepositoUseCase(
       (overrides.txRunner ?? makeTxRunner()) as never,
       (overrides.agregarComponenteUseCase ?? { execute: vi.fn() }) as never,
       (overrides.registrarSalidaInsumoUseCase ?? { execute: vi.fn() }) as never,
+      (overrides.componenteRepo ?? { save: vi.fn() }) as never,
     );
   }
 
@@ -103,6 +106,7 @@ describe('InstalarComponenteDesdeDepositoUseCase', () => {
       cantidad: 1,
       usuarioId: 'usuario-uuid',
       equipoId: 'equipo-uuid',
+      condicion: undefined,
     });
 
     // Orden: el componente se crea ANTES de intentar la salida (mismo
@@ -110,6 +114,84 @@ describe('InstalarComponenteDesdeDepositoUseCase', () => {
     const ordenComponente = agregarComponenteUseCase.execute.mock.invocationCallOrder[0];
     const ordenSalida = registrarSalidaInsumoUseCase.execute.mock.invocationCallOrder[0];
     expect(ordenComponente).toBeLessThan(ordenSalida);
+  });
+
+  it('vincula la SALIDA al componente y lo guarda DESPUÉS de la salida, dentro del run()', async () => {
+    const insumoId = 'insumo-uuid';
+    const componente = makeComponente(insumoId);
+    const movimiento = makeMovimiento(insumoId);
+    const componenteRepo = { save: vi.fn().mockResolvedValue(undefined) };
+    const registrarSalidaInsumoUseCase = {
+      execute: vi.fn().mockResolvedValue(Result.ok(movimiento)),
+    };
+    const useCase = makeUseCase({
+      agregarComponenteUseCase: { execute: vi.fn().mockResolvedValue(Result.ok(componente)) },
+      registrarSalidaInsumoUseCase,
+      componenteRepo,
+    });
+
+    const result = await useCase.execute({
+      equipoId: 'equipo-uuid',
+      insumoId,
+      usuarioId: 'usuario-uuid',
+    });
+
+    expect(result.isOk()).toBe(true);
+    expect(componente.instalacionMovimientoId).toBe(movimiento.id);
+    expect(componenteRepo.save).toHaveBeenCalledWith(componente);
+    expect(registrarSalidaInsumoUseCase.execute.mock.invocationCallOrder[0]).toBeLessThan(
+      componenteRepo.save.mock.invocationCallOrder[0],
+    );
+  });
+
+  it.each(['NUEVO', 'USADO'] as const)(
+    'la condición %s pedida viaja a la SALIDA',
+    async (condicion) => {
+      const insumoId = 'insumo-uuid';
+      const registrarSalidaInsumoUseCase = {
+        execute: vi.fn().mockResolvedValue(Result.ok(makeMovimiento(insumoId))),
+      };
+      const useCase = makeUseCase({
+        agregarComponenteUseCase: {
+          execute: vi.fn().mockResolvedValue(Result.ok(makeComponente(insumoId))),
+        },
+        registrarSalidaInsumoUseCase,
+      });
+
+      await useCase.execute({
+        equipoId: 'equipo-uuid',
+        insumoId,
+        usuarioId: 'usuario-uuid',
+        condicion,
+      });
+
+      expect(registrarSalidaInsumoUseCase.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ condicion }),
+      );
+    },
+  );
+
+  it('saldo de la condición insuficiente: rechaza sin vincular ni guardar el componente', async () => {
+    const insumoId = 'insumo-uuid';
+    const error = new StockInsuficienteError(insumoId, 1, 0);
+    const componenteRepo = { save: vi.fn() };
+    const useCase = makeUseCase({
+      agregarComponenteUseCase: {
+        execute: vi.fn().mockResolvedValue(Result.ok(makeComponente(insumoId))),
+      },
+      registrarSalidaInsumoUseCase: { execute: vi.fn().mockResolvedValue(Result.fail(error)) },
+      componenteRepo,
+    });
+
+    const result = await useCase.execute({
+      equipoId: 'equipo-uuid',
+      insumoId,
+      usuarioId: 'usuario-uuid',
+      condicion: 'USADO',
+    });
+
+    expect(result.getError()).toBe(error);
+    expect(componenteRepo.save).not.toHaveBeenCalled();
   });
 
   it('stock insuficiente: la salida falla y el use case devuelve el MISMO StockInsuficienteError, lanzando DENTRO del run() para que revierta también el componente', async () => {

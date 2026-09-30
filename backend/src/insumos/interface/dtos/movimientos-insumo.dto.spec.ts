@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import 'reflect-metadata';
 import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
+import { ValidationPipe } from '@nestjs/common';
+import { RegistrarRecepcionDeItemHttpDto } from '../../../compras/interface/dtos/compras.dto';
 import {
   ListarMovimientosInsumoQueryDto,
   RegistrarAjusteInsumoHttpDto,
@@ -9,6 +11,7 @@ import {
   toListarMovimientosInsumoResponseDto,
   toMovimientoInsumoResponseDto,
   toStockInsumoResponseDto,
+  transformarMotivo,
 } from './movimientos-insumo.dto';
 import {
   MovimientoInsumoEntity,
@@ -273,6 +276,66 @@ describe('RegistrarMovimientoInsumoHttpDto', () => {
   });
 });
 
+describe('condicion — catálogo del dominio y ausencia en la recepción', () => {
+  it.each([['NUEVO'], ['USADO']])('acepta la condición %s', async (condicion) => {
+    const dto = plainToInstance(RegistrarMovimientoInsumoHttpDto, bodyMovimiento({ condicion }));
+
+    expect(await validate(dto)).toHaveLength(0);
+    expect(dto.condicion).toBe(condicion);
+  });
+
+  it('acepta el body sin condición: el default NUEVO lo pone el caso de uso', async () => {
+    const dto = plainToInstance(RegistrarMovimientoInsumoHttpDto, bodyMovimiento());
+
+    expect(await validate(dto)).toHaveLength(0);
+    expect(dto.condicion).toBeUndefined();
+  });
+
+  it.each([['REFURBISHED'], ['nuevo'], ['']])(
+    'rechaza la condición %j por isIn',
+    async (condicion) => {
+      const dto = plainToInstance(RegistrarMovimientoInsumoHttpDto, bodyMovimiento({ condicion }));
+
+      expect(await restriccionesDe(dto)).toContain('isIn');
+    },
+  );
+
+  it('el DTO del ajuste hereda la condición y su validación', async () => {
+    const valido = plainToInstance(
+      RegistrarAjusteInsumoHttpDto,
+      bodyAjuste({ condicion: 'USADO' }),
+    );
+    const invalido = plainToInstance(RegistrarAjusteInsumoHttpDto, bodyAjuste({ condicion: 'X' }));
+
+    expect(await validate(valido)).toHaveLength(0);
+    expect(await restriccionesDe(invalido)).toContain('isIn');
+  });
+
+  /**
+   * La recepción de una compra no tiene DTO HTTP con `condicion`: el body va
+   * por `whitelist: true` del `ValidationPipe` global, que descarta lo no
+   * declarado. Se prueba con el pipe real y la clase del DTO de recepción.
+   */
+  it('el ValidationPipe descarta una condicion sobrante en la recepción de compra', async () => {
+    const pipe = new ValidationPipe({ whitelist: true, transform: true });
+
+    const resultado = await pipe.transform(
+      { cantidadRecibida: 1, condicion: 'USADO' },
+      { type: 'body', metatype: RegistrarRecepcionDeItemHttpDto },
+    );
+
+    expect(resultado).not.toHaveProperty('condicion');
+  });
+});
+
+describe('transformarMotivo', () => {
+  it('recorta, colapsa el vacío a null y deja pasar lo que no es string', () => {
+    expect(transformarMotivo({ value: '  hola  ' })).toBe('hola');
+    expect(transformarMotivo({ value: '   ' })).toBeNull();
+    expect(transformarMotivo({ value: 5 })).toBe(5);
+  });
+});
+
 describe('RegistrarAjusteInsumoHttpDto', () => {
   it('acepta las dos direcciones del ajuste', async () => {
     const positivo = plainToInstance(
@@ -348,6 +411,7 @@ describe('toMovimientoInsumoResponseDto', () => {
     const resultado = MovimientoInsumoEntity.create({
       insumoId: INSUMO_ID,
       tipo: 'AJUSTE_NEGATIVO',
+      condicion: 'NUEVO',
       cantidad: 3.5,
       usuarioId: USUARIO_ID,
       motivo: '  Conteo físico del 06/09  ',
@@ -362,6 +426,7 @@ describe('toMovimientoInsumoResponseDto', () => {
     const resultado = MovimientoInsumoEntity.create({
       insumoId: INSUMO_ID,
       tipo: 'ENTRADA',
+      condicion: 'NUEVO',
       cantidad: 4,
       usuarioId: USUARIO_ID,
       itemCompraId: ITEM_COMPRA_ID,
@@ -384,6 +449,7 @@ describe('toMovimientoInsumoResponseDto', () => {
       equipoId: EQUIPO_ID,
       sectorId: SECTOR_ID,
       itemCompraId: null,
+      condicion: 'NUEVO',
       createdAt: movimiento.createdAt.toISOString(),
     });
   });
@@ -395,6 +461,18 @@ describe('toMovimientoInsumoResponseDto', () => {
    * SÍ trae el origen —no es un assert de ausencia sobre un fixture vacío— y su
    * hermano invertido es el asiento manual de arriba, que lo trae en `null`.
    */
+  it('publica la condición USADO del asiento', () => {
+    const movimiento = MovimientoInsumoEntity.create({
+      insumoId: INSUMO_ID,
+      tipo: 'ENTRADA',
+      condicion: 'USADO',
+      cantidad: 1,
+      usuarioId: USUARIO_ID,
+    }).getValue();
+
+    expect(toMovimientoInsumoResponseDto(movimiento).condicion).toBe('USADO');
+  });
+
   it('publica el itemCompraId de la entrada que nació de una recepción de compra', () => {
     const movimiento = construirEntradaDeRecepcion();
 
@@ -419,10 +497,28 @@ describe('toMovimientoInsumoResponseDto', () => {
 });
 
 describe('toStockInsumoResponseDto', () => {
+  /** `stock` es el total y `saldos` los desglosa: un fixture con los dos saldos distintos de cero. */
+  it('publica el total en stock, los saldos por condición y admiteUsado', () => {
+    const dto = toStockInsumoResponseDto({
+      insumoId: INSUMO_ID,
+      stock: 8,
+      saldos: { NUEVO: 3, USADO: 5 },
+      admiteUsado: true,
+      stockMinimo: null,
+      estadoReposicion: 'SIN_PUNTO_DEFINIDO',
+    });
+
+    expect(dto.stock).toBe(8);
+    expect(dto.saldos).toEqual({ NUEVO: 3, USADO: 5 });
+    expect(dto.admiteUsado).toBe(true);
+  });
+
   it('mapea el saldo con su punto de reposición y el estado ya resuelto', () => {
     const dto = toStockInsumoResponseDto({
       insumoId: INSUMO_ID,
       stock: 2,
+      saldos: { NUEVO: 2, USADO: 0 },
+      admiteUsado: false,
       stockMinimo: 10,
       estadoReposicion: 'BAJO_MINIMO',
     });
@@ -430,6 +526,8 @@ describe('toStockInsumoResponseDto', () => {
     expect(dto).toEqual({
       insumoId: INSUMO_ID,
       stock: 2,
+      saldos: { NUEVO: 2, USADO: 0 },
+      admiteUsado: false,
       stockMinimo: 10,
       estadoReposicion: 'BAJO_MINIMO',
     });
@@ -444,6 +542,8 @@ describe('toStockInsumoResponseDto', () => {
     const dto = toStockInsumoResponseDto({
       insumoId: INSUMO_ID,
       stock: 0,
+      saldos: { NUEVO: 0, USADO: 0 },
+      admiteUsado: false,
       stockMinimo: null,
       estadoReposicion: 'SIN_PUNTO_DEFINIDO',
     });
@@ -546,6 +646,7 @@ describe('toListarMovimientosInsumoResponseDto', () => {
     return MovimientoInsumoEntity.create({
       insumoId: INSUMO_ID,
       tipo: 'SALIDA',
+      condicion: 'NUEVO',
       cantidad: 2,
       usuarioId: USUARIO_ID,
       motivo: 'Reposición del piso 3',
@@ -556,6 +657,7 @@ describe('toListarMovimientosInsumoResponseDto', () => {
     return MovimientoInsumoEntity.create({
       insumoId: INSUMO_ID,
       tipo: 'ENTRADA',
+      condicion: 'NUEVO',
       cantidad: 6,
       usuarioId: USUARIO_ID,
       itemCompraId: ITEM_COMPRA_ID,

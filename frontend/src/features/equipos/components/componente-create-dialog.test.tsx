@@ -128,6 +128,21 @@ function capturarPost(): { body: () => Record<string, unknown> } {
   return { body: () => capturedBody };
 }
 
+function mockStock(saldos: { NUEVO: number; USADO: number }, admiteUsado: boolean) {
+  server.use(
+    http.get(`/api/insumos/${MOUSE_ID}/stock`, () =>
+      HttpResponse.json({
+        insumoId: MOUSE_ID,
+        saldo: saldos.NUEVO + saldos.USADO,
+        saldos,
+        admiteUsado,
+        stockMinimo: null,
+        estadoReposicion: "SIN_MINIMO",
+      }),
+    ),
+  );
+}
+
 function renderDialog() {
   return renderWithProviders(<ComponenteCreateDialog equipoId={EQUIPO_ID} />, {
     user: buildUser({ permisos: ["equipo:gestionar"] }),
@@ -309,5 +324,91 @@ describe("ComponenteCreateDialog", () => {
 
     await waitFor(() => expect(submitButton).toBeDisabled());
     await waitFor(() => expect(screen.queryByLabelText(/descripción/i)).not.toBeInTheDocument());
+  });
+
+  describe("selector de condición", () => {
+    const CON_AMBOS = { NUEVO: 3, USADO: 2 };
+
+    it("con descuento y ambos saldos muestra NUEVO preseleccionado y USADO elegible; el POST lleva la condición elegida", async () => {
+      mockStock(CON_AMBOS, true);
+      const post = capturarPost();
+      renderDialog();
+      const user = await abrirDialog();
+      await user.selectOptions(await screen.findByLabelText(/repuesto del catálogo/i), MOUSE_ID);
+
+      const selector = await screen.findByLabelText("Condición");
+      expect(selector).toHaveValue("NUEVO");
+      expect(selector).toBeEnabled();
+      await user.selectOptions(selector, "USADO");
+      await user.click(screen.getByRole("button", { name: /agregar$/i }));
+
+      await waitFor(() => expect(post.body().insumoId).toBe(MOUSE_ID));
+      expect(post.body().condicion).toBe("USADO");
+      expect(post.body().descontarStock).toBe(true);
+    });
+
+    it("con un solo saldo positivo queda fijo y deshabilitado en ese saldo", async () => {
+      mockStock({ NUEVO: 0, USADO: 2 }, true);
+      const post = capturarPost();
+      renderDialog();
+      const user = await abrirDialog();
+      await user.selectOptions(await screen.findByLabelText(/repuesto del catálogo/i), MOUSE_ID);
+
+      const selector = await screen.findByLabelText("Condición");
+      expect(selector).toHaveValue("USADO");
+      expect(selector).toBeDisabled();
+      await user.click(screen.getByRole("button", { name: /agregar$/i }));
+
+      await waitFor(() => expect(post.body().insumoId).toBe(MOUSE_ID));
+      expect(post.body().condicion).toBe("USADO");
+    });
+
+    it("si el insumo no admite usado no hay selector y el POST no lleva condición", async () => {
+      mockStock({ NUEVO: 3, USADO: 0 }, false);
+      const post = capturarPost();
+      renderDialog();
+      const user = await abrirDialog();
+      await user.selectOptions(await screen.findByLabelText(/repuesto del catálogo/i), MOUSE_ID);
+      await waitFor(() => expect(screen.queryByLabelText("Condición")).not.toBeInTheDocument());
+      await user.click(screen.getByRole("button", { name: /agregar$/i }));
+
+      await waitFor(() => expect(post.body().insumoId).toBe(MOUSE_ID));
+      expect(post.body()).not.toHaveProperty("condicion");
+    });
+
+    it("desmarcar la casilla tras elegir USADO oculta el selector y no envía condición", async () => {
+      mockStock(CON_AMBOS, true);
+      const post = capturarPost();
+      renderDialog();
+      const user = await abrirDialog();
+      await user.selectOptions(await screen.findByLabelText(/repuesto del catálogo/i), MOUSE_ID);
+      await user.selectOptions(await screen.findByLabelText("Condición"), "USADO");
+      await user.click(screen.getByRole("checkbox", { name: /descontar del depósito/i }));
+
+      expect(screen.queryByLabelText("Condición")).not.toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: /agregar$/i }));
+
+      await waitFor(() => expect(post.body().insumoId).toBe(MOUSE_ID));
+      expect(post.body().descontarStock).toBe(false);
+      expect(post.body()).not.toHaveProperty("condicion");
+    });
+
+    it("sin acceso a la consulta de stock el selector queda habilitado en NUEVO y el POST lleva NUEVO", async () => {
+      server.use(
+        http.get(`/api/insumos/${MOUSE_ID}/stock`, () => HttpResponse.json({ message: "Forbidden" }, { status: 403 })),
+      );
+      const post = capturarPost();
+      renderDialog();
+      const user = await abrirDialog();
+      await user.selectOptions(await screen.findByLabelText(/repuesto del catálogo/i), MOUSE_ID);
+
+      const selector = await screen.findByLabelText("Condición");
+      expect(selector).toHaveValue("NUEVO");
+      expect(selector).toBeEnabled();
+      await user.click(screen.getByRole("button", { name: /agregar$/i }));
+
+      await waitFor(() => expect(post.body().insumoId).toBe(MOUSE_ID));
+      expect(post.body().condicion).toBe("NUEVO");
+    });
   });
 });

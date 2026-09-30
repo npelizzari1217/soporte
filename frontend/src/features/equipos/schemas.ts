@@ -7,6 +7,7 @@ import {
 } from "@/shared/lib/limites-ticket";
 import { parseImporte } from "./depreciacion";
 import { conDosDecimales } from "@/shared/lib/formato-numero";
+import { CONDICIONES_STOCK } from "@/features/insumos/types";
 
 /**
  * Topes de largo/rango de `equipos_informaticos`/`componentes_equipo`, espejo
@@ -222,6 +223,8 @@ export type EditarComponenteFormValues = z.infer<typeof editarComponenteSchema>;
 export const agregarComponenteSchema = z.object({
   insumoId: z.string().uuid("Elegí un repuesto del catálogo"),
   descontarStock: z.boolean(),
+  /** Solo tiene sentido con `descontarStock`; el diálogo lo agrega al payload desde el selector. */
+  condicion: z.enum(CONDICIONES_STOCK).optional(),
   descripcion: z
     .string()
     .max(
@@ -264,3 +267,32 @@ export const crearTicketSoporteSchema = z.object({
   descripcionProblema: z.string().optional(),
 });
 export type CrearTicketSoporteFormValues = z.infer<typeof crearTicketSoporteSchema>;
+
+/** Tope del motivo del retiro, espejo del backend (400 por encima, tras `trim`). */
+export const RETIRO_MOTIVO_MAX_LENGTH = 500;
+
+/**
+ * Formulario del retiro de un componente. El motivo es obligatorio solo para el
+ * descarte; para la devolución al stock es opcional acá porque el backend lo
+ * exige únicamente cuando no hay una SALIDA vinculada (y responde 422, que el
+ * diálogo muestra). La autoridad es el backend.
+ */
+export const retirarComponenteSchema = z
+  .object({
+    destino: z.enum(["STOCK_USADO", "DESCARTE"]),
+    motivo: z.string().optional(),
+  })
+  .superRefine((valores, ctx) => {
+    const motivo = (valores.motivo ?? "").trim();
+    if (valores.destino === "DESCARTE" && motivo === "") {
+      ctx.addIssue({ code: "custom", path: ["motivo"], message: "Indicá el motivo del descarte" });
+    }
+    if (motivo.length > RETIRO_MOTIVO_MAX_LENGTH) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["motivo"],
+        message: mensajeDemasiadoLargo("El motivo", RETIRO_MOTIVO_MAX_LENGTH),
+      });
+    }
+  });
+export type RetirarComponenteFormValues = z.infer<typeof retirarComponenteSchema>;

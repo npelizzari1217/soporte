@@ -1,7 +1,7 @@
 import { BaseEntity } from '../../../shared/domain/base-entity';
 import { Result } from '../../../shared/domain/result';
 import { MotivoAjusteRequeridoError } from '../errors/insumos.errors';
-import { esAjuste, TipoMovimientoInsumo } from './tipo-movimiento-insumo';
+import { CondicionStock, esAjuste, TipoMovimientoInsumo } from './tipo-movimiento-insumo';
 
 /**
  * MovimientoInsumoProps — shape completo de un asiento de la bitácora de
@@ -12,6 +12,8 @@ export interface MovimientoInsumoProps {
   insumoId: string;
   /** Por qué cambió la existencia. Catálogo CERRADO, espejado por el `CHECK` de la tabla. */
   tipo: TipoMovimientoInsumo;
+  /** Condición del stock que mueve el asiento. Catálogo CERRADO, espejado por el `CHECK` de la tabla. */
+  condicion: CondicionStock;
   /** Siempre POSITIVA: el signo lo da el `tipo`, no el número. */
   cantidad: number;
   /** Soft ref → `master.usuarios.id`. Sin FK cross-DB: cada inquilino es una base física distinta. */
@@ -250,6 +252,7 @@ export class MovimientoInsumoEntity extends BaseEntity<MovimientoInsumoProps> {
         {
           insumoId: props.insumoId,
           tipo: props.tipo,
+          condicion: props.condicion,
           cantidad: props.cantidad,
           usuarioId: props.usuarioId,
           motivo,
@@ -303,6 +306,11 @@ export class MovimientoInsumoEntity extends BaseEntity<MovimientoInsumoProps> {
   /** Por qué cambió la existencia: `ENTRADA`, `SALIDA`, `AJUSTE_POSITIVO` o `AJUSTE_NEGATIVO`. */
   get tipo(): TipoMovimientoInsumo {
     return this.props.tipo;
+  }
+
+  /** Condición del stock que mueve el asiento: `NUEVO` o `USADO`. */
+  get condicion(): CondicionStock {
+    return this.props.condicion;
   }
 
   /** Cantidad movida, siempre positiva. La dirección la deriva quien suma la bitácora. */

@@ -12,7 +12,7 @@
  *   PATCH  /equipos/:id                                       → EditarEquipoUseCase          `EQUIPOS:MODIFICACION`
  *   DELETE /equipos/:id                                       → EliminarEquipoUseCase        `EQUIPOS:BORRADO`
  *   POST   /equipos/:id/componentes                           → InstalarComponenteDesdeDepositoUseCase (descontarStock, por defecto) o AgregarComponenteUseCase (descontarStock=false) `EQUIPOS:ALTAS`
- *   DELETE /equipos/:id/componentes/:componenteId             → EliminarComponenteUseCase    `EQUIPOS:BORRADO`
+ *   POST   /equipos/:id/componentes/:componenteId/baja        → RetirarComponenteUseCase     `EQUIPOS:BORRADO`
  *   PATCH  /equipos/:id/componentes/:componenteId             → EditarComponenteUseCase      `EQUIPOS:MODIFICACION`
  *   PATCH  /equipos/:id/componentes/:componenteId/reactivar   → ReactivarComponenteUseCase   `EQUIPOS:MODIFICACION`
  *
@@ -61,8 +61,8 @@ import { ListarEquiposUseCase } from '../../application/use-cases/listar-equipos
 import { EliminarEquipoUseCase } from '../../application/use-cases/eliminar-equipo.use-case';
 import { AgregarComponenteUseCase } from '../../application/use-cases/agregar-componente.use-case';
 import { InstalarComponenteDesdeDepositoUseCase } from '../../application/use-cases/instalar-componente-desde-deposito.use-case';
-import { EliminarComponenteUseCase } from '../../application/use-cases/eliminar-componente.use-case';
 import { EditarComponenteUseCase } from '../../application/use-cases/editar-componente.use-case';
+import { RetirarComponenteUseCase } from '../../application/use-cases/retirar-componente.use-case';
 import { ReactivarComponenteUseCase } from '../../application/use-cases/reactivar-componente.use-case';
 import { ExportarEquiposUseCase } from '../../application/use-cases/exportar-equipos.use-case';
 
@@ -75,6 +75,8 @@ import {
   ComponenteNoEncontradoError,
   ComponenteDadoDeBajaError,
   ComponenteYaActivoError,
+  ComponenteDevueltoAlStockError,
+  MotivoRetiroRequeridoError,
   ExportacionDemasiadoGrandeError,
   InsumoRepuestoInexistenteError,
   InsumoNoEsRepuestoError,
@@ -86,6 +88,7 @@ import {
   CreateComponenteHttpDto,
   CreateEquipoHttpDto,
   EditarComponenteHttpDto,
+  RetirarComponenteHttpDto,
   EditarEquipoHttpDto,
   EquipoDetalleResponseDto,
   EquipoResponseDto,
@@ -113,6 +116,9 @@ export function toHttpException(
     error instanceof ModeloEquipoDeshabilitadoError ||
     error instanceof ComponenteDadoDeBajaError ||
     error instanceof ComponenteYaActivoError ||
+    // Reactivar tras devolver al stock (sdd/stock-usado-componentes): doble conteo.
+    error instanceof ComponenteDevueltoAlStockError ||
+    error instanceof MotivoRetiroRequeridoError ||
     // `insumoId` es otro valor del BODY que referencia un catálogo (WU-3,
     // sdd/repuestos-vinculo-componente): mismo criterio 422 que
     // `modeloEquipoId`.
@@ -167,7 +173,6 @@ export class EquiposController {
     private readonly listarEquiposUseCase: ListarEquiposUseCase,
     private readonly eliminarEquipoUseCase: EliminarEquipoUseCase,
     private readonly agregarComponenteUseCase: AgregarComponenteUseCase,
-    private readonly eliminarComponenteUseCase: EliminarComponenteUseCase,
     private readonly editarComponenteUseCase: EditarComponenteUseCase,
     private readonly reactivarComponenteUseCase: ReactivarComponenteUseCase,
     // Agregado al final (no reordena los anteriores) — mismo criterio que
@@ -177,6 +182,8 @@ export class EquiposController {
     // WU-4 (sdd/repuestos-instalar-desde-deposito, issue #153) — mismo
     // criterio: agregado al final.
     private readonly instalarComponenteDesdeDepositoUseCase: InstalarComponenteDesdeDepositoUseCase,
+    // sdd/stock-usado-componentes (WU-8a) — agregado al final por el mismo criterio.
+    private readonly retirarComponenteUseCase: RetirarComponenteUseCase,
   ) {}
 
   /**
@@ -353,11 +360,15 @@ export class EquiposController {
       numeroSerie: dto.numeroSerie ?? null,
       capacidad: dto.capacidad ?? null,
     };
+    // ADR-7: `condicion` solo tiene sentido con descuento (es la del saldo del
+    // que sale la unidad). Con `descontarStock=false` no hay movimiento y se
+    // ignora, en vez de dar 400 al diálogo que desmarca la casilla tras elegir USADO.
     const result =
       (dto.descontarStock ?? true)
         ? await this.instalarComponenteDesdeDepositoUseCase.execute({
             ...datos,
             usuarioId: user.sub,
+            condicion: dto.condicion,
           })
         : await this.agregarComponenteUseCase.execute(datos);
 
@@ -368,21 +379,35 @@ export class EquiposController {
   }
 
   /**
-   * DELETE /equipos/:id/componentes/:componenteId
-   * Baja lógica (soft delete) de un componente.
-   * @throws 404 componente inexistente
+   * POST /equipos/:id/componentes/:componenteId/baja
+   * Retira un componente con dos desenlaces: `STOCK_USADO` lo devuelve al
+   * depósito como ENTRADA USADO y `DESCARTE` solo lo da de baja. `usuarioId`
+   * sale de `JWT.sub`, nunca del body. Exige `EQUIPOS:BORRADO` y ningún permiso
+   * de insumos: el asiento de stock lo registra el caso de uso.
+   * @throws 400 `destino` ausente o inválido
+   * @throws 404 componente inexistente o de otro equipo
+   * @throws 422 componente ya dado de baja, o `DESCARTE` sin motivo
    */
-  @Delete(':id/componentes/:componenteId')
+  @Post(':id/componentes/:componenteId/baja')
   @RequiereAcciones('EQUIPOS:BORRADO')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  async eliminarComponente(
+  @HttpCode(HttpStatus.OK)
+  async retirarComponente(
+    @CurrentUser() user: JwtPayload,
     @Param('id') equipoId: string,
     @Param('componenteId') componenteId: string,
-  ): Promise<void> {
-    const result = await this.eliminarComponenteUseCase.execute({ equipoId, componenteId });
+    @Body() dto: RetirarComponenteHttpDto,
+  ): Promise<ComponenteResponseDto> {
+    const result = await this.retirarComponenteUseCase.execute({
+      equipoId,
+      componenteId,
+      destino: dto.destino,
+      motivo: dto.motivo,
+      usuarioId: user.sub,
+    });
     if (result.isFail()) {
       throw toHttpException(result.getError());
     }
+    return toComponenteResponseDto(result.getValue());
   }
 
   /**

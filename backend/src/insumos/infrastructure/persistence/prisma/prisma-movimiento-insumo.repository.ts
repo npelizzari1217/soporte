@@ -22,10 +22,13 @@ import {
   IMovimientoInsumoRepository,
   PaginaDeMovimientosInsumo,
   PaginacionMovimientosInsumo,
-  SumasPorTipoMovimiento,
 } from '../../../domain/ports/i-movimiento-insumo.repository';
 import { MovimientoInsumoEntity } from '../../../domain/entities/movimiento-insumo.entity';
-import { TIPOS_MOVIMIENTO_INSUMO } from '../../../domain/entities/tipo-movimiento-insumo';
+import {
+  CONDICIONES_STOCK,
+  SumasPorCondicionYTipo,
+  TIPOS_MOVIMIENTO_INSUMO,
+} from '../../../domain/entities/tipo-movimiento-insumo';
 import { MovimientoInsumoMapper } from './movimiento-insumo.mapper';
 
 /**
@@ -107,7 +110,7 @@ export class PrismaMovimientoInsumoRepository implements IMovimientoInsumoReposi
    * @returns Las sumas por tipo, con `0` en los tipos sin movimientos.
    * @throws Error si no hay una transacción activa del tenant.
    */
-  async lockAndSumByTipo(insumoId: string): Promise<SumasPorTipoMovimiento> {
+  async lockAndSumByTipo(insumoId: string): Promise<SumasPorCondicionYTipo> {
     const client = this.client;
 
     if (this.tenantContext.get()?.enTransaccion !== true) {
@@ -145,7 +148,7 @@ export class PrismaMovimientoInsumoRepository implements IMovimientoInsumoReposi
    * @param insumoId Insumo cuya bitácora se suma.
    * @returns Las sumas por tipo, con `0` en los tipos sin movimientos.
    */
-  async sumByTipo(insumoId: string): Promise<SumasPorTipoMovimiento> {
+  async sumByTipo(insumoId: string): Promise<SumasPorCondicionYTipo> {
     return this.sumarPorTipo(this.client, insumoId);
   }
 
@@ -201,42 +204,49 @@ export class PrismaMovimientoInsumoRepository implements IMovimientoInsumoReposi
   }
 
   /**
-   * `SUM(cantidad) GROUP BY tipo` de un insumo, completado con los tipos del
-   * catálogo que no tienen filas.
+   * `SUM(cantidad) GROUP BY condicion, tipo` de un insumo, completado con los
+   * ceros de las dos condiciones y los cuatro tipos que no tienen filas.
    *
    * Va en un método compartido y no copiado en los dos lugares porque las dos
    * lecturas prometen EXACTAMENTE el mismo desglose: dos copias discreparían
-   * el día que entre un quinto tipo, y el número que autoriza una salida
-   * dejaría de ser el que la ficha muestra.
+   * el día que entre un tipo o una condición nueva, y el número que autoriza
+   * una salida dejaría de ser el que la ficha muestra.
    *
-   * El desglose se arma desde `TIPOS_MOVIMIENTO_INSUMO` y no desde las filas
-   * que devuelve el `GROUP BY`: un agregado no emite filas para los tipos sin
-   * movimientos, y el contrato promete los cuatro tipos siempre presentes.
+   * El desglose se arma desde los dos catálogos y no desde las filas que
+   * devuelve el `GROUP BY`: un agregado no emite filas para las combinaciones
+   * sin movimientos, y el contrato promete las ocho siempre presentes.
    *
    * @param client Cliente del tenant ya resuelto —el normal o el transaccional, según quién llame.
    * @param insumoId Insumo cuya bitácora se suma.
-   * @returns Las sumas por tipo, con `0` en los tipos sin movimientos.
+   * @returns Las sumas por condición y tipo, con `0` donde no hay movimientos.
    */
   private async sumarPorTipo(
     client: InstanceType<typeof TenantPrismaClient>,
     insumoId: string,
-  ): Promise<SumasPorTipoMovimiento> {
+  ): Promise<SumasPorCondicionYTipo> {
     const filas = await client.movimientoInsumo.groupBy({
-      by: ['tipo'],
+      by: ['condicion', 'tipo'],
       where: { insumoId },
       _sum: { cantidad: true },
     });
 
-    const porTipo = new Map(filas.map((fila) => [fila.tipo, Number(fila._sum.cantidad ?? 0)]));
+    const porClave = new Map(
+      filas.map((fila) => [`${fila.condicion}|${fila.tipo}`, Number(fila._sum.cantidad ?? 0)]),
+    );
 
     // Único cast del método, y es de construcción: las claves salen de
-    // `TIPOS_MOVIMIENTO_INSUMO`, que ES el catálogo del que se deriva
-    // `TipoMovimientoInsumo`. `Object.fromEntries` no conserva las claves
-    // literales de la tupla, así que TypeScript no puede probarlo solo; lo
-    // prueba el spec de integración, que compara las claves devueltas contra
-    // el catálogo.
+    // `CONDICIONES_STOCK` y `TIPOS_MOVIMIENTO_INSUMO`, que SON los catálogos de
+    // los que se derivan los tipos. `Object.fromEntries` no conserva las
+    // claves literales de la tupla, así que TypeScript no puede probarlo solo;
+    // lo prueba el spec de integración, que compara las claves devueltas
+    // contra los catálogos.
     return Object.fromEntries(
-      TIPOS_MOVIMIENTO_INSUMO.map((tipo) => [tipo, porTipo.get(tipo) ?? 0]),
-    ) as SumasPorTipoMovimiento;
+      CONDICIONES_STOCK.map((condicion) => [
+        condicion,
+        Object.fromEntries(
+          TIPOS_MOVIMIENTO_INSUMO.map((tipo) => [tipo, porClave.get(`${condicion}|${tipo}`) ?? 0]),
+        ),
+      ]),
+    ) as SumasPorCondicionYTipo;
   }
 }

@@ -1,12 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
+  calcularSaldos,
   calcularStock,
+  CONDICION_STOCK_POR_DEFECTO,
+  CONDICIONES_STOCK,
   DIRECCION_POR_TIPO_MOVIMIENTO,
   esAjuste,
   TIPOS_AJUSTE_INSUMO,
   TIPOS_MOVIMIENTO_INSUMO,
   TipoMovimientoInsumo,
 } from './tipo-movimiento-insumo';
+import { sumasCon, sumasEnCero } from '../../testing/sumas-movimiento';
 
 describe('Dirección de los tipos de movimiento de insumo', () => {
   /**
@@ -35,6 +39,17 @@ describe('Dirección de los tipos de movimiento de insumo', () => {
     for (const tipo of TIPOS_MOVIMIENTO_INSUMO) {
       expect(esAjuste(tipo)).toBe((TIPOS_AJUSTE_INSUMO as readonly string[]).includes(tipo));
     }
+  });
+});
+
+describe('Condiciones del stock', () => {
+  it('el catálogo es cerrado: NUEVO y USADO', () => {
+    expect([...CONDICIONES_STOCK]).toEqual(['NUEVO', 'USADO']);
+  });
+
+  it('la condición por defecto pertenece al catálogo y es NUEVO', () => {
+    expect(CONDICIONES_STOCK).toContain(CONDICION_STOCK_POR_DEFECTO);
+    expect(CONDICION_STOCK_POR_DEFECTO).toBe('NUEVO');
   });
 });
 
@@ -107,5 +122,44 @@ describe('calcularStock', () => {
 
   it('conserva los dos decimales de la columna', () => {
     expect(calcularStock(sumas({ ENTRADA: 10.25, SALIDA: 0.75 }))).toBe(9.5);
+  });
+});
+
+describe('calcularSaldos', () => {
+  it('calcula cada condición con la misma fórmula, de forma independiente', () => {
+    const saldos = calcularSaldos(
+      sumasCon({
+        NUEVO: { ENTRADA: 10, SALIDA: 3, AJUSTE_POSITIVO: 1 },
+        USADO: { ENTRADA: 5, AJUSTE_NEGATIVO: 2 },
+      }),
+    );
+
+    expect(saldos).toEqual({ NUEVO: 8, USADO: 3, total: 11 });
+  });
+
+  it('deja en 0 la condición sin movimientos', () => {
+    const saldos = calcularSaldos(sumasCon({ NUEVO: { ENTRADA: 7 } }));
+
+    expect(saldos).toEqual({ NUEVO: 7, USADO: 0, total: 7 });
+  });
+
+  it('un insumo sin bitácora tiene los dos saldos y el total en 0', () => {
+    expect(calcularSaldos(sumasEnCero())).toEqual({ NUEVO: 0, USADO: 0, total: 0 });
+  });
+
+  /**
+   * Con floats, 0.1 + 0.2 da 0.30000000000000004: el total se suma en
+   * centésimas y sale exacto.
+   */
+  it('suma el total en centésimas, sin error de coma flotante', () => {
+    const saldos = calcularSaldos(sumasCon({ NUEVO: { ENTRADA: 0.1 }, USADO: { ENTRADA: 0.2 } }));
+
+    expect(saldos.total).toBe(0.3);
+  });
+
+  it('devuelve el negativo tal cual, sin recortarlo a cero', () => {
+    const saldos = calcularSaldos(sumasCon({ NUEVO: { SALIDA: 2 }, USADO: { ENTRADA: 5 } }));
+
+    expect(saldos).toEqual({ NUEVO: -2, USADO: 5, total: 3 });
   });
 });

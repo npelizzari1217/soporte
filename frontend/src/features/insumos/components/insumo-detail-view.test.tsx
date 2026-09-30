@@ -88,6 +88,8 @@ const UNIDADES: UnidadMedida[] = [
 const STOCK_SUFICIENTE: StockInsumo = {
   insumoId: INSUMO.id,
   stock: 12,
+  saldos: { NUEVO: 12, USADO: 0 },
+  admiteUsado: false,
   stockMinimo: 5,
   estadoReposicion: "SUFICIENTE",
 };
@@ -121,6 +123,7 @@ const MOVIMIENTO_BASE: MovimientoInsumo = {
   id: "mov-base",
   insumoId: INSUMO.id,
   tipo: "ENTRADA",
+  condicion: "NUEVO",
   cantidad: 10,
   usuarioId: USUARIO_ANA.id,
   motivo: null,
@@ -154,6 +157,11 @@ function mockFicha(
   );
 }
 
+/** El contenedor rótulo + valor de un dato de la ficha. */
+function valorDe(rotulo: string): HTMLElement {
+  return screen.getByText(rotulo).parentElement as HTMLElement;
+}
+
 describe("InsumoDetailView — identificación y existencia", () => {
   it("muestra el código, el nombre, la familia, la unidad y el estado del insumo", async () => {
     mockFicha([INSUMO, OTRO_INSUMO], STOCK_SUFICIENTE);
@@ -181,8 +189,10 @@ describe("InsumoDetailView — identificación y existencia", () => {
     mockFicha([INSUMO], STOCK_SUFICIENTE);
     renderWithProviders(<InsumoDetailView insumoId={INSUMO.id} />, { user: LECTOR });
 
-    expect(await screen.findByText("12,00")).toBeInTheDocument();
-    expect(screen.getByText("5,00")).toBeInTheDocument();
+    expect(await screen.findByText("Stock nuevo")).toBeInTheDocument();
+    expect(valorDe("Stock nuevo")).toHaveTextContent("12,00");
+    expect(valorDe("Stock total")).toHaveTextContent("12,00");
+    expect(valorDe("Stock mínimo")).toHaveTextContent("5,00");
   });
 });
 
@@ -209,6 +219,8 @@ describe("InsumoDetailView — estado de reposición", () => {
       insumoId: INSUMO.id,
       // Saldo POR ENCIMA del punto: si la ficha recalculara, diría "suficiente".
       stock: 40,
+      saldos: { NUEVO: 40, USADO: 0 },
+      admiteUsado: false,
       stockMinimo: 5,
       estadoReposicion: "BAJO_MINIMO",
     });
@@ -222,6 +234,8 @@ describe("InsumoDetailView — estado de reposición", () => {
     mockFicha([INSUMO], {
       insumoId: INSUMO.id,
       stock: 3,
+      saldos: { NUEVO: 3, USADO: 0 },
+      admiteUsado: false,
       stockMinimo: null,
       estadoReposicion: "SIN_PUNTO_DEFINIDO",
     });
@@ -232,6 +246,94 @@ describe("InsumoDetailView — estado de reposición", () => {
     expect(screen.queryByText("Hay que reponer")).not.toBeInTheDocument();
     // El punto no configurado sí es una afirmación sobre el dato: no hay número.
     expect(screen.getByText("—")).toBeInTheDocument();
+  });
+});
+
+/**
+ * Saldos por condición: el backend devuelve el total, el saldo NUEVO y el USADO,
+ * y la ficha los muestra sin recalcular nada. La reposición llega resuelta sobre
+ * NUEVO: un USADO alto no puede esconder la falta de nuevos.
+ */
+describe("InsumoDetailView — saldos nuevo y usado", () => {
+  it("con NUEVO 4 y USADO 2 muestra ambos saldos y el total 6", async () => {
+    mockFicha([INSUMO], {
+      ...STOCK_SUFICIENTE,
+      stock: 6,
+      saldos: { NUEVO: 4, USADO: 2 },
+      admiteUsado: true,
+    });
+    renderWithProviders(<InsumoDetailView insumoId={INSUMO.id} />, { user: LECTOR });
+
+    expect(await screen.findByText("Stock usado")).toBeInTheDocument();
+    expect(valorDe("Stock nuevo")).toHaveTextContent("4,00");
+    expect(valorDe("Stock usado")).toHaveTextContent("2,00");
+    expect(valorDe("Stock total")).toHaveTextContent("6,00");
+  });
+
+  it("insumo que no admite usado y sin usados: no muestra el saldo usado", async () => {
+    mockFicha([INSUMO], STOCK_SUFICIENTE);
+    renderWithProviders(<InsumoDetailView insumoId={INSUMO.id} />, { user: LECTOR });
+
+    expect(await screen.findByText("Stock nuevo")).toBeInTheDocument();
+    expect(screen.queryByText("Stock usado")).not.toBeInTheDocument();
+  });
+
+  it("si admite usado y el saldo es cero, igual lo muestra en cero", async () => {
+    mockFicha([INSUMO], { ...STOCK_SUFICIENTE, admiteUsado: true });
+    renderWithProviders(<InsumoDetailView insumoId={INSUMO.id} />, { user: LECTOR });
+
+    expect(await screen.findByText("Stock usado")).toBeInTheDocument();
+    expect(valorDe("Stock usado")).toHaveTextContent("0,00");
+  });
+
+  it("sin admitir usado pero con saldo usado mayor que cero, lo muestra", async () => {
+    mockFicha([INSUMO], {
+      ...STOCK_SUFICIENTE,
+      stock: 14,
+      saldos: { NUEVO: 12, USADO: 2 },
+      admiteUsado: false,
+    });
+    renderWithProviders(<InsumoDetailView insumoId={INSUMO.id} />, { user: LECTOR });
+
+    expect(await screen.findByText("Stock usado")).toBeInTheDocument();
+    expect(valorDe("Stock usado")).toHaveTextContent("2,00");
+  });
+
+  it("USADO alto con NUEVO en cero: la reposición sigue diciendo que hay que reponer", async () => {
+    mockFicha([INSUMO], {
+      insumoId: INSUMO.id,
+      stock: 20,
+      saldos: { NUEVO: 0, USADO: 20 },
+      admiteUsado: true,
+      stockMinimo: 5,
+      estadoReposicion: "BAJO_MINIMO",
+    });
+    renderWithProviders(<InsumoDetailView insumoId={INSUMO.id} />, { user: LECTOR });
+
+    expect(await screen.findByText("Hay que reponer")).toBeInTheDocument();
+    expect(valorDe("Stock total")).toHaveTextContent("20,00");
+  });
+
+  it("la bitácora muestra la condición de cada movimiento", async () => {
+    mockFicha(
+      [INSUMO],
+      STOCK_SUFICIENTE,
+      {
+        items: [
+          { ...MOVIMIENTO_BASE, id: "mov-n", condicion: "NUEVO", cantidad: 3 },
+          { ...MOVIMIENTO_BASE, id: "mov-u", condicion: "USADO", cantidad: 1 },
+        ],
+        total: 2,
+        pagina: 1,
+        porPagina: 10,
+      },
+    );
+    renderWithProviders(<InsumoDetailView insumoId={INSUMO.id} />, { user: LECTOR });
+
+    expect(await screen.findByRole("columnheader", { name: "Condición" })).toBeInTheDocument();
+    const filas = screen.getAllByRole("row");
+    expect(within(filas[1]).getByText("Nuevo")).toBeInTheDocument();
+    expect(within(filas[2]).getByText("Usado")).toBeInTheDocument();
   });
 });
 
@@ -612,7 +714,7 @@ describe("InsumoDetailView — registrar entrada", () => {
     mockFicha([INSUMO], STOCK_SUFICIENTE);
     renderWithProviders(<InsumoDetailView insumoId={INSUMO.id} />, { user: LECTOR });
 
-    expect(await screen.findByText("12,00")).toBeInTheDocument();
+    await waitFor(() => expect(valorDe("Stock total")).toHaveTextContent("12,00"));
     expect(screen.queryByRole("button", { name: /registrar entrada/i })).not.toBeInTheDocument();
   });
 
@@ -645,7 +747,7 @@ describe("InsumoDetailView — registrar entrada", () => {
       user: buildUser({ permisos: ["INSUMOS:LECTURA", "INSUMOS:ALTAS"] }),
     });
 
-    expect(await screen.findByText("12,00")).toBeInTheDocument();
+    await waitFor(() => expect(valorDe("Stock total")).toHaveTextContent("12,00"));
 
     await user.click(screen.getByRole("button", { name: /registrar entrada/i }));
     await user.type(await screen.findByLabelText(/^cantidad$/i), "10");
@@ -710,7 +812,7 @@ describe("InsumoDetailView — registrar salida", () => {
     mockFicha([INSUMO], STOCK_SUFICIENTE);
     renderWithProviders(<InsumoDetailView insumoId={INSUMO.id} />, { user: LECTOR });
 
-    expect(await screen.findByText("12,00")).toBeInTheDocument();
+    await waitFor(() => expect(valorDe("Stock total")).toHaveTextContent("12,00"));
     expect(screen.queryByRole("button", { name: /registrar salida/i })).not.toBeInTheDocument();
   });
 
@@ -741,7 +843,7 @@ describe("InsumoDetailView — registrar salida", () => {
       user: buildUser({ permisos: ["INSUMOS:LECTURA", "INSUMOS:ALTAS"] }),
     });
 
-    expect(await screen.findByText("12,00")).toBeInTheDocument();
+    await waitFor(() => expect(valorDe("Stock total")).toHaveTextContent("12,00"));
 
     await user.click(screen.getByRole("button", { name: /registrar salida/i }));
     await user.type(await screen.findByLabelText(/^cantidad$/i), "10");
@@ -776,7 +878,7 @@ describe("InsumoDetailView — registrar ajuste", () => {
     mockFicha([INSUMO], STOCK_SUFICIENTE);
     renderWithProviders(<InsumoDetailView insumoId={INSUMO.id} />, { user: LECTOR });
 
-    expect(await screen.findByText("12,00")).toBeInTheDocument();
+    await waitFor(() => expect(valorDe("Stock total")).toHaveTextContent("12,00"));
     expect(screen.queryByRole("button", { name: /registrar ajuste/i })).not.toBeInTheDocument();
   });
 
@@ -860,7 +962,7 @@ describe("InsumoDetailView — registrar ajuste", () => {
       user: buildUser({ permisos: ["INSUMOS:LECTURA", "INSUMOS:AJUSTAR"] }),
     });
 
-    expect(await screen.findByText("12,00")).toBeInTheDocument();
+    await waitFor(() => expect(valorDe("Stock total")).toHaveTextContent("12,00"));
 
     await user.click(screen.getByRole("button", { name: /registrar ajuste/i }));
     await user.type(await screen.findByLabelText(/^cantidad$/i), "3");

@@ -29,9 +29,12 @@ import { PrismaMovimientoInsumoRepository } from './prisma-movimiento-insumo.rep
 import { MovimientoInsumoMapper } from './movimiento-insumo.mapper';
 import { MovimientoInsumoEntity } from '../../../domain/entities/movimiento-insumo.entity';
 import {
+  CONDICIONES_STOCK,
+  CondicionStock,
   TIPOS_MOVIMIENTO_INSUMO,
   TipoMovimientoInsumo,
 } from '../../../domain/entities/tipo-movimiento-insumo';
+import { sumasCon, sumasEnCero } from '../../../testing/sumas-movimiento';
 
 const TENANT_TEST_URL =
   process.env.DATABASE_URL_TENANT ??
@@ -106,6 +109,7 @@ describe('PrismaMovimientoInsumoRepository — Integration', () => {
     return MovimientoInsumoEntity.create({
       insumoId,
       tipo,
+      condicion: 'NUEVO',
       cantidad,
       usuarioId,
       ...extra,
@@ -129,6 +133,7 @@ describe('PrismaMovimientoInsumoRepository — Integration', () => {
     asientos: Array<{
       tipo: TipoMovimientoInsumo;
       cantidad: number;
+      condicion?: CondicionStock;
       id?: string;
       createdAt?: Date;
       itemCompraId?: string;
@@ -140,6 +145,7 @@ describe('PrismaMovimientoInsumoRepository — Integration', () => {
         tipo: a.tipo,
         cantidad: a.cantidad,
         usuarioId,
+        ...(a.condicion !== undefined ? { condicion: a.condicion } : {}),
         ...(a.id !== undefined ? { id: a.id } : {}),
         ...(a.createdAt !== undefined ? { createdAt: a.createdAt } : {}),
         ...(a.itemCompraId !== undefined ? { itemCompraId: a.itemCompraId } : {}),
@@ -692,8 +698,8 @@ describe('PrismaMovimientoInsumoRepository — Integration', () => {
 
       const sumas = await txRunner.run(() => repo.lockAndSumByTipo(insumoId));
 
-      expect(sumas.ENTRADA).toBe(15);
-      expect(sumas.SALIDA).toBe(3);
+      expect(sumas.NUEVO.ENTRADA).toBe(15);
+      expect(sumas.NUEVO.SALIDA).toBe(3);
     });
 
     /**
@@ -711,10 +717,10 @@ describe('PrismaMovimientoInsumoRepository — Integration', () => {
 
       const sumas = await txRunner.run(() => repo.lockAndSumByTipo(insumoId));
 
-      expect(sumas.ENTRADA).toBe(10);
-      expect(sumas.SALIDA).toBe(3);
-      expect(sumas.AJUSTE_POSITIVO).toBe(0);
-      expect(sumas.AJUSTE_NEGATIVO).toBe(0);
+      expect(sumas.NUEVO.ENTRADA).toBe(10);
+      expect(sumas.NUEVO.SALIDA).toBe(3);
+      expect(sumas.NUEVO.AJUSTE_POSITIVO).toBe(0);
+      expect(sumas.NUEVO.AJUSTE_NEGATIVO).toBe(0);
     });
 
     /**
@@ -727,7 +733,10 @@ describe('PrismaMovimientoInsumoRepository — Integration', () => {
 
       const sumas = await txRunner.run(() => repo.lockAndSumByTipo(insumoId));
 
-      expect(Object.keys(sumas).sort()).toEqual([...TIPOS_MOVIMIENTO_INSUMO].sort());
+      expect(Object.keys(sumas).sort()).toEqual([...CONDICIONES_STOCK].sort());
+      for (const condicion of CONDICIONES_STOCK) {
+        expect(Object.keys(sumas[condicion]).sort()).toEqual([...TIPOS_MOVIMIENTO_INSUMO].sort());
+      }
     });
 
     /**
@@ -743,12 +752,41 @@ describe('PrismaMovimientoInsumoRepository — Integration', () => {
 
       const sumas = await txRunner.run(() => repo.lockAndSumByTipo(insumoId));
 
-      expect(sumas).toEqual({
-        ENTRADA: 0,
-        SALIDA: 0,
-        AJUSTE_POSITIVO: 0,
-        AJUSTE_NEGATIVO: 0,
-      });
+      expect(sumas).toEqual(sumasEnCero());
+    });
+
+    /**
+     * El desglose se agrupa por (condición, tipo): los movimientos USADO no se
+     * mezclan con los NUEVO. Se siembran por SQL directo porque ningún caso de
+     * uso escribe USADO todavía. Hay filas en las dos condiciones y en los
+     * mismos tipos, para que un GROUP BY que ignorara la condición sume 15 y
+     * no 10 / 5.
+     */
+    it('agrupa por condición: NUEVO y USADO quedan independientes', async () => {
+      await sembrar(insumoId, [
+        { tipo: 'ENTRADA', cantidad: 10, condicion: 'NUEVO' },
+        { tipo: 'SALIDA', cantidad: 4, condicion: 'NUEVO' },
+        { tipo: 'ENTRADA', cantidad: 5, condicion: 'USADO' },
+        { tipo: 'AJUSTE_NEGATIVO', cantidad: 1.5, condicion: 'USADO' },
+      ]);
+
+      const sumas = await txRunner.run(() => repo.lockAndSumByTipo(insumoId));
+
+      expect(sumas).toEqual(
+        sumasCon({
+          NUEVO: { ENTRADA: 10, SALIDA: 4 },
+          USADO: { ENTRADA: 5, AJUSTE_NEGATIVO: 1.5 },
+        }),
+      );
+    });
+
+    it('un insumo sin movimientos USADO devuelve la condición USADO en cero', async () => {
+      await sembrar(insumoId, [{ tipo: 'ENTRADA', cantidad: 10 }]);
+
+      const sumas = await txRunner.run(() => repo.lockAndSumByTipo(insumoId));
+
+      expect(sumas.NUEVO.ENTRADA).toBe(10);
+      expect(sumas.USADO).toEqual(sumasEnCero().USADO);
     });
 
     it('no suma los movimientos de otro insumo', async () => {
@@ -757,7 +795,7 @@ describe('PrismaMovimientoInsumoRepository — Integration', () => {
 
       const sumas = await txRunner.run(() => repo.lockAndSumByTipo(insumoId));
 
-      expect(sumas.ENTRADA).toBe(10);
+      expect(sumas.NUEVO.ENTRADA).toBe(10);
     });
 
     /**
@@ -774,9 +812,9 @@ describe('PrismaMovimientoInsumoRepository — Integration', () => {
 
       const sumas = await txRunner.run(() => repo.lockAndSumByTipo(insumoId));
 
-      expect(typeof sumas.ENTRADA).toBe('number');
-      expect(sumas.ENTRADA).toBe(3.75);
-      expect(typeof sumas.AJUSTE_NEGATIVO).toBe('number');
+      expect(typeof sumas.NUEVO.ENTRADA).toBe('number');
+      expect(sumas.NUEVO.ENTRADA).toBe(3.75);
+      expect(typeof sumas.NUEVO.AJUSTE_NEGATIVO).toBe('number');
     });
 
     /**
@@ -791,7 +829,7 @@ describe('PrismaMovimientoInsumoRepository — Integration', () => {
         return repo.lockAndSumByTipo(insumoId);
       });
 
-      expect(sumas.ENTRADA).toBe(8);
+      expect(sumas.NUEVO.ENTRADA).toBe(8);
     });
 
     /**
@@ -831,8 +869,8 @@ describe('PrismaMovimientoInsumoRepository — Integration', () => {
 
       const sumas = await repo.sumByTipo(insumoId);
 
-      expect(sumas.ENTRADA).toBe(10);
-      expect(sumas.SALIDA).toBe(4);
+      expect(sumas.NUEVO.ENTRADA).toBe(10);
+      expect(sumas.NUEVO.SALIDA).toBe(4);
     });
 
     /**
@@ -849,7 +887,7 @@ describe('PrismaMovimientoInsumoRepository — Integration', () => {
 
       const sumas = await repo.sumByTipo(insumoId);
 
-      expect(sumas).toEqual({
+      expect(sumas.NUEVO).toEqual({
         ENTRADA: 10,
         SALIDA: 0,
         AJUSTE_POSITIVO: 0,
@@ -871,12 +909,41 @@ describe('PrismaMovimientoInsumoRepository — Integration', () => {
 
       const sumas = await repo.sumByTipo(insumoId);
 
-      expect(sumas).toEqual({
-        ENTRADA: 0,
-        SALIDA: 0,
-        AJUSTE_POSITIVO: 0,
-        AJUSTE_NEGATIVO: 0,
-      });
+      expect(sumas).toEqual(sumasEnCero());
+    });
+
+    /**
+     * El desglose se agrupa por (condición, tipo): los movimientos USADO no se
+     * mezclan con los NUEVO. Se siembran por SQL directo porque ningún caso de
+     * uso escribe USADO todavía. Hay filas en las dos condiciones y en los
+     * mismos tipos, para que un GROUP BY que ignorara la condición sume 15 y
+     * no 10 / 5.
+     */
+    it('agrupa por condición: NUEVO y USADO quedan independientes', async () => {
+      await sembrar(insumoId, [
+        { tipo: 'ENTRADA', cantidad: 10, condicion: 'NUEVO' },
+        { tipo: 'SALIDA', cantidad: 4, condicion: 'NUEVO' },
+        { tipo: 'ENTRADA', cantidad: 5, condicion: 'USADO' },
+        { tipo: 'AJUSTE_NEGATIVO', cantidad: 1.5, condicion: 'USADO' },
+      ]);
+
+      const sumas = await repo.sumByTipo(insumoId);
+
+      expect(sumas).toEqual(
+        sumasCon({
+          NUEVO: { ENTRADA: 10, SALIDA: 4 },
+          USADO: { ENTRADA: 5, AJUSTE_NEGATIVO: 1.5 },
+        }),
+      );
+    });
+
+    it('un insumo sin movimientos USADO devuelve la condición USADO en cero', async () => {
+      await sembrar(insumoId, [{ tipo: 'ENTRADA', cantidad: 10 }]);
+
+      const sumas = await repo.sumByTipo(insumoId);
+
+      expect(sumas.NUEVO.ENTRADA).toBe(10);
+      expect(sumas.USADO).toEqual(sumasEnCero().USADO);
     });
 
     it('no suma los movimientos de otro insumo', async () => {
@@ -885,7 +952,7 @@ describe('PrismaMovimientoInsumoRepository — Integration', () => {
 
       const sumas = await repo.sumByTipo(insumoId);
 
-      expect(sumas.ENTRADA).toBe(10);
+      expect(sumas.NUEVO.ENTRADA).toBe(10);
     });
 
     /**
@@ -901,9 +968,9 @@ describe('PrismaMovimientoInsumoRepository — Integration', () => {
 
       const sumas = await repo.sumByTipo(insumoId);
 
-      expect(typeof sumas.ENTRADA).toBe('number');
-      expect(sumas.ENTRADA).toBe(3.75);
-      expect(typeof sumas.AJUSTE_NEGATIVO).toBe('number');
+      expect(typeof sumas.NUEVO.ENTRADA).toBe('number');
+      expect(sumas.NUEVO.ENTRADA).toBe(3.75);
+      expect(typeof sumas.NUEVO.AJUSTE_NEGATIVO).toBe('number');
     });
 
     /**
@@ -925,7 +992,7 @@ describe('PrismaMovimientoInsumoRepository — Integration', () => {
             'sumByTipo() quedó esperando el advisory lock del insumo: está tomando el lock que promete no tomar.',
           );
         }
-        expect(sumas.ENTRADA).toBe(4);
+        expect(sumas.NUEVO.ENTRADA).toBe(4);
       } finally {
         await lock.liberar();
       }
@@ -964,7 +1031,7 @@ describe('PrismaMovimientoInsumoRepository — Integration', () => {
 
       const sumas = await txRunner.run(() => repo.sumByTipo(insumoId));
 
-      expect(sumas.ENTRADA).toBe(6);
+      expect(sumas.NUEVO.ENTRADA).toBe(6);
     });
   });
 

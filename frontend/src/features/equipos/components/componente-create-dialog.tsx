@@ -17,11 +17,17 @@
  * cliente: la autoridad es el servidor, y filtrar de nuevo sería una segunda
  * definición de "vinculable" que puede discrepar de la real.
  *
+ * Con la casilla marcada aparece el selector de condición (WU-11, ADR-7):
+ * elige el saldo, nuevo o usado, del repuesto del que se descuenta. El payload
+ * lleva `condicion` SOLO con descuento y con el selector visible; sin
+ * `INSUMOS:LECTURA` el selector queda habilitado, en NUEVO y sin saldos (decide
+ * el backend). Sin descuento no se consulta el stock ni se envía `condicion`.
+ *
  * `submit()` envía `values.campo || undefined` (no `null`): el alta es un POST,
  * un campo vacío se omite del body en vez de mandarse como "borrar".
  */
 import { useState } from "react";
-import { Controller, useForm } from "react-hook-form";
+import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -30,6 +36,8 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { useAgregarComponente } from "../hooks/use-equipo-mutations";
 import { useInsumos } from "@/features/insumos/hooks/use-insumos";
+import { useSelectorCondicion } from "@/features/insumos/hooks/use-selector-condicion";
+import { CondicionStockSelector } from "@/features/insumos/components/condicion-stock-selector";
 import { agregarComponenteSchema, type AgregarComponenteFormValues } from "../schemas";
 
 export interface ComponenteCreateDialogProps {
@@ -61,12 +69,17 @@ export function ComponenteCreateDialog({ equipoId }: ComponenteCreateDialogProps
   });
 
   const repuestos = repuestosQuery.data ?? [];
+  const insumoId = useWatch({ control, name: "insumoId" });
+  const descontarStock = useWatch({ control, name: "descontarStock" });
+  // Sin descuento el id va vacío: la consulta de stock no corre y no hay selector.
+  const selector = useSelectorCondicion(descontarStock ? insumoId : "");
 
   function submit(values: AgregarComponenteFormValues) {
     agregarMutation.mutate(
       {
         insumoId: values.insumoId,
         descontarStock: values.descontarStock,
+        condicion: values.descontarStock ? selector.paraEnviar : undefined,
         descripcion: values.descripcion || undefined,
         numeroSerie: values.numeroSerie || undefined,
         capacidad: values.capacidad || undefined,
@@ -83,7 +96,10 @@ export function ComponenteCreateDialog({ equipoId }: ComponenteCreateDialogProps
         // Reset al ABRIR (no al cerrar ni tras el éxito): así el formulario
         // arranca siempre con los valores vigentes (casilla marcada, resto
         // vacío), incluso si un alta anterior quedó a medio completar.
-        if (next) reset(EMPTY);
+        if (next) {
+          reset(EMPTY);
+          selector.reiniciar();
+        }
       }}
     >
       <DialogTrigger asChild>
@@ -149,6 +165,7 @@ export function ComponenteCreateDialog({ equipoId }: ComponenteCreateDialogProps
               Si lo desmarcás, el componente se registra sin descontar una unidad del stock del repuesto.
             </p>
           </div>
+          {descontarStock && <CondicionStockSelector id="crear-componente-condicion" selector={selector} />}
           <div className="flex justify-end gap-2 pt-2">
             <Button type="submit" isLoading={agregarMutation.isPending}>
               Agregar

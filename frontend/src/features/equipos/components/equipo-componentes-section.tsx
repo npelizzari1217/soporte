@@ -40,17 +40,28 @@
  */
 import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Can } from "@/components/shared/can";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { formatearInstante } from "@/shared/lib/formato-fecha";
-import { useEliminarComponente, useReactivarComponente } from "../hooks/use-equipo-mutations";
+import { useReactivarComponente } from "../hooks/use-equipo-mutations";
 import { ordenarComponentes } from "../ordenar-componentes";
 import type { ComponenteConTipo } from "../types";
 import { ComponenteEditDialog } from "./componente-edit-dialog";
+import { ComponenteRetiroDialog } from "./componente-retiro-dialog";
+
+/**
+ * Rótulo de una baja según su destino: `STOCK_USADO` = devuelto al stock,
+ * `DESCARTE` = descartado; `null`/ausente es una baja anterior al retiro con
+ * destino (legado) y conserva el rótulo genérico.
+ */
+function rotuloBaja(componente: ComponenteConTipo): string {
+  if (componente.bajaDestino === "STOCK_USADO") return "Devuelto al stock";
+  if (componente.bajaDestino === "DESCARTE") return "Descartado";
+  return "Dado de baja";
+}
 
 /** Aplicada a cada una de las 4 celdas de dato cuando el componente está dado de baja. */
 const CELL_INACTIVO = "text-muted-foreground line-through";
@@ -68,7 +79,6 @@ export function EquipoComponentesSection({ equipoId, componentes }: EquipoCompon
     initialData: componentes,
     staleTime: Infinity,
   });
-  const eliminarMutation = useEliminarComponente(equipoId);
   const reactivarMutation = useReactivarComponente(equipoId);
 
   // El cache local (`staleTime: Infinity`) solo se actualiza por las mutaciones
@@ -136,34 +146,30 @@ export function EquipoComponentesSection({ equipoId, componentes }: EquipoCompon
                         <ComponenteEditDialog equipoId={equipoId} componente={componente} />
                       </Can>
                       <Can permiso="EQUIPOS:BORRADO">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          aria-label="Dar de baja componente"
-                          onClick={() => eliminarMutation.mutate(componente.id)}
-                        >
-                          <Trash2 className="h-4 w-4" aria-hidden="true" />
-                        </Button>
+                        <ComponenteRetiroDialog equipoId={equipoId} componente={componente} />
                       </Can>
                     </div>
                   ) : (
                     // Reactivar es una MODIFICACIÓN de estado (no hay acción
                     // "REACTIVAR" propia en el catálogo, R1) — mismo permiso
                     // que editar.
-                    <Can permiso="EQUIPOS:MODIFICACION">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        // Loading solo en la fila que se reactiva (la mutación es una
-                        // por sección, compartida entre inactivos): mirar `variables`.
-                        isLoading={reactivarMutation.isPending && reactivarMutation.variables === componente.id}
-                        onClick={() => reactivarMutation.mutate(componente.id)}
-                      >
-                        Reactivar
-                      </Button>
-                    </Can>
+                    // Tras devolver la pieza al stock el backend rechaza reactivarla
+                    // (422 COMPONENTE_DEVUELTO_AL_STOCK): no se ofrece el botón.
+                    componente.bajaDestino !== "STOCK_USADO" && (
+                      <Can permiso="EQUIPOS:MODIFICACION">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          // Loading solo en la fila que se reactiva (la mutación es una
+                          // por sección, compartida entre inactivos): mirar `variables`.
+                          isLoading={reactivarMutation.isPending && reactivarMutation.variables === componente.id}
+                          onClick={() => reactivarMutation.mutate(componente.id)}
+                        >
+                          Reactivar
+                        </Button>
+                      </Can>
+                    )
                   )}
                 </TableCell>
               </TableRow>
@@ -173,7 +179,11 @@ export function EquipoComponentesSection({ equipoId, componentes }: EquipoCompon
                   Creado: {formatearInstante(componente.createdAt)} · Actualizado:{" "}
                   {formatearInstante(componente.updatedAt)}
                   {!componente.activo && componente.deletedAt && (
-                    <> · Dado de baja: {formatearInstante(componente.deletedAt)}</>
+                    <>
+                      {" "}
+                      · {rotuloBaja(componente)}: {formatearInstante(componente.deletedAt)}
+                      {componente.bajaSinSalidaPrevia && <> · sin salida registrada del depósito</>}
+                    </>
                   )}
                 </TableCell>
               </TableRow>

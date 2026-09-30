@@ -294,9 +294,10 @@ describe('Equipos e2e — instalar componente desde depósito (WU-4, issue #153)
     insumoId: string,
     cantidad: number,
     usuarioId: string,
+    condicion: 'NUEVO' | 'USADO' = 'NUEVO',
   ): Promise<void> {
     await tenantClient.movimientoInsumo.create({
-      data: { insumoId, tipo: 'ENTRADA', cantidad, usuarioId },
+      data: { insumoId, tipo: 'ENTRADA', condicion, cantidad, usuarioId },
     });
   }
 
@@ -446,6 +447,101 @@ describe('Equipos e2e — instalar componente desde depósito (WU-4, issue #153)
         0,
       );
       expect(suma).toBe(4);
+    });
+  });
+
+  // ─── Condición del saldo (stock-usado-componentes, WU-6) ──────────────
+
+  describe('Condición del saldo del que sale la unidad', () => {
+    async function prepararInsumo(entradas: { nuevo: number; usado: number }) {
+      const { familiaId } = await crearFamiliaRepuesto();
+      const unidadMedidaId = await crearUnidadMedida();
+      const insumoId = await crearInsumoRepuesto(familiaId, unidadMedidaId);
+      const actor = await crearActorConPermisos(['EQUIPOS:ALTAS']);
+      if (entradas.nuevo > 0) await sembrarEntrada(insumoId, entradas.nuevo, actor.usuarioId);
+      if (entradas.usado > 0) {
+        await sembrarEntrada(insumoId, entradas.usado, actor.usuarioId, 'USADO');
+      }
+      const equipoId = await crearEquipoDirecto();
+      return { insumoId, actor, equipoId };
+    }
+
+    it('condicion USADO con saldo USADO: crea el componente y una SALIDA USADO vinculada', async () => {
+      const { insumoId, actor, equipoId } = await prepararInsumo({ nuevo: 0, usado: 2 });
+
+      const { status } = await httpPost<ComponenteResponseDto>(
+        installUrl(equipoId),
+        { insumoId, condicion: 'USADO' },
+        bearer(actor.accessToken),
+      );
+
+      expect(status).toBe(201);
+      const salidas = (await movimientosDe(insumoId)).filter((m) => m.tipo === 'SALIDA');
+      expect(salidas).toHaveLength(1);
+      expect(salidas[0].condicion).toBe('USADO');
+      const componentes = await componentesDe(equipoId);
+      expect(componentes).toHaveLength(1);
+      expect(componentes[0].instalacionMovimientoId).toBe(salidas[0].id);
+    });
+
+    it('sin condicion, con NUEVO 0 y USADO 5: 422 y no se escribe nada', async () => {
+      const { insumoId, actor, equipoId } = await prepararInsumo({ nuevo: 0, usado: 5 });
+
+      const { status } = await httpPost(
+        installUrl(equipoId),
+        { insumoId },
+        bearer(actor.accessToken),
+      );
+
+      expect(status).toBe(422);
+      expect(await componentesDe(equipoId)).toHaveLength(0);
+      expect((await movimientosDe(insumoId)).filter((m) => m.tipo === 'SALIDA')).toHaveLength(0);
+    });
+
+    it('sin condicion con saldo NUEVO: la SALIDA es NUEVO y el componente queda vinculado', async () => {
+      const { insumoId, actor, equipoId } = await prepararInsumo({ nuevo: 3, usado: 5 });
+
+      const { status } = await httpPost(
+        installUrl(equipoId),
+        { insumoId },
+        bearer(actor.accessToken),
+      );
+
+      expect(status).toBe(201);
+      const salidas = (await movimientosDe(insumoId)).filter((m) => m.tipo === 'SALIDA');
+      expect(salidas.map((m) => m.condicion)).toEqual(['NUEVO']);
+      const componentes = await componentesDe(equipoId);
+      expect(componentes[0].instalacionMovimientoId).toBe(salidas[0].id);
+    });
+
+    it('descontarStock false con condicion USADO: se ignora, sin movimiento y sin vínculo', async () => {
+      const { insumoId, actor, equipoId } = await prepararInsumo({ nuevo: 0, usado: 0 });
+
+      const { status } = await httpPost(
+        installUrl(equipoId),
+        { insumoId, descontarStock: false, condicion: 'USADO' },
+        bearer(actor.accessToken),
+      );
+
+      expect(status).toBe(201);
+      expect(await movimientosDe(insumoId)).toHaveLength(0);
+      const componentes = await componentesDe(equipoId);
+      expect(componentes).toHaveLength(1);
+      expect(componentes[0].instalacionMovimientoId).toBeNull();
+    });
+
+    it('condicion fuera del catálogo: 400 y no se escribe nada', async () => {
+      const { insumoId, actor, equipoId } = await prepararInsumo({ nuevo: 1, usado: 1 });
+
+      const { status } = await httpPost(
+        installUrl(equipoId),
+        { insumoId, condicion: 'REFURBISHED' },
+        bearer(actor.accessToken),
+      );
+
+      expect(status).toBe(400);
+      expect(await componentesDe(equipoId)).toHaveLength(0);
+      expect((await movimientosDe(insumoId)).filter((m) => m.tipo === 'SALIDA')).toHaveLength(0);
     });
   });
 
@@ -638,12 +734,17 @@ describe('Equipos e2e — instalar componente desde depósito (WU-4, issue #153)
   // ─── Retiro y reemplazo (verify W1/W2 de catalogo-unico-componentes) ───
 
   describe('Retiro sin stock y reemplazo como retiro más alta', () => {
-    async function httpDelete(url: string, headers: Headers): Promise<number> {
-      const res = await fetch(url, { method: 'DELETE', headers });
-      return res.status;
+    // El DELETE del componente se retiró (WU-8b): el retiro sin stock es `DESCARTE`.
+    async function retirarDescartando(url: string, headers: Headers): Promise<number> {
+      const { status } = await httpPost(
+        `${url}/baja`,
+        { destino: 'DESCARTE', motivo: 'Retiro sin devolución al stock' },
+        headers,
+      );
+      return status;
     }
 
-    it('Retiro sin stock: DELETE deja el componente borrado lógicamente y NO registra ningún movimiento', async () => {
+    it('Retiro sin stock: DESCARTE deja el componente borrado lógicamente y NO registra ningún movimiento', async () => {
       const { familiaId } = await crearFamiliaRepuesto();
       const unidadMedidaId = await crearUnidadMedida();
       const insumoId = await crearInsumoRepuesto(familiaId, unidadMedidaId);
@@ -661,12 +762,12 @@ describe('Equipos e2e — instalar componente desde depósito (WU-4, issue #153)
       const antes = await movimientosDe(insumoId);
       expect(antes).toHaveLength(2);
 
-      const status = await httpDelete(
+      const status = await retirarDescartando(
         `${installUrl(equipoId)}/${alta.data.id}`,
         bearer(actor.accessToken),
       );
 
-      expect(status).toBe(204);
+      expect(status).toBe(200);
       const [componente] = await componentesDe(equipoId);
       expect(componente.deletedAt).not.toBeNull();
       // Sin devolución: mismos movimientos, mismo saldo (5 - 1 = 4).
@@ -698,11 +799,11 @@ describe('Equipos e2e — instalar componente desde depósito (WU-4, issue #153)
       );
       expect(altaA.status).toBe(201);
 
-      const retiro = await httpDelete(
+      const retiro = await retirarDescartando(
         `${installUrl(equipoId)}/${altaA.data.id}`,
         bearer(actor.accessToken),
       );
-      expect(retiro).toBe(204);
+      expect(retiro).toBe(200);
 
       const altaB = await httpPost<ComponenteResponseDto>(
         installUrl(equipoId),

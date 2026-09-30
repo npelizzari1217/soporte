@@ -7,7 +7,9 @@ import {
   TipoMovimientoInsumo,
   TIPOS_AJUSTE_INSUMO,
 } from '../../domain/entities/tipo-movimiento-insumo';
-import { SumasPorTipoMovimiento } from '../../domain/ports/i-movimiento-insumo.repository';
+import { SumasPorCondicionYTipo } from '../../domain/entities/tipo-movimiento-insumo';
+import { EstadoFamiliaFake, familiaRepoFake } from '../../testing/familia-repo-fake';
+import { sumasCon } from '../../testing/sumas-movimiento';
 
 describe('RegistrarAjusteInsumoUseCase', () => {
   function propsDeInsumo(activo: boolean) {
@@ -46,14 +48,8 @@ describe('RegistrarAjusteInsumoUseCase', () => {
     );
   }
 
-  function sumas(parcial: Partial<Record<TipoMovimientoInsumo, number>>): SumasPorTipoMovimiento {
-    return {
-      ENTRADA: 0,
-      SALIDA: 0,
-      AJUSTE_POSITIVO: 0,
-      AJUSTE_NEGATIVO: 0,
-      ...parcial,
-    };
+  function sumas(parcial: Partial<Record<TipoMovimientoInsumo, number>>): SumasPorCondicionYTipo {
+    return sumasCon({ NUEVO: parcial });
   }
 
   /**
@@ -71,7 +67,11 @@ describe('RegistrarAjusteInsumoUseCase', () => {
    * spec de la SALIDA, porque el contrato que verifica es el mismo.
    */
   function buildColaboradores(
-    opciones: { insumo?: InsumoEntity | null; sumas?: SumasPorTipoMovimiento } = {},
+    opciones: {
+      insumo?: InsumoEntity | null;
+      sumas?: SumasPorCondicionYTipo;
+      familia?: EstadoFamiliaFake;
+    } = {},
   ) {
     const insumo = opciones.insumo === undefined ? insumoVigente() : opciones.insumo;
     const desglose = opciones.sumas ?? sumas({ ENTRADA: 100 });
@@ -118,9 +118,22 @@ describe('RegistrarAjusteInsumoUseCase', () => {
       },
     };
 
-    const useCase = new RegistrarAjusteInsumoUseCase(insumoRepo, movimientoRepo, txRunner);
+    const familiaRepo = familiaRepoFake(opciones.familia);
+    const useCase = new RegistrarAjusteInsumoUseCase(
+      insumoRepo,
+      movimientoRepo,
+      txRunner,
+      familiaRepo,
+    );
 
-    return { useCase, insumoRepo, movimientoRepo, transacciones, llamadasFueraDeTransaccion };
+    return {
+      useCase,
+      insumoRepo,
+      movimientoRepo,
+      familiaRepo,
+      transacciones,
+      llamadasFueraDeTransaccion,
+    };
   }
 
   /**
@@ -186,7 +199,12 @@ describe('RegistrarAjusteInsumoUseCase', () => {
     const txRunner: Pick<ITenantTransactionRunner, 'run'> = {
       run: async <T>(fn: () => Promise<T>): Promise<T> => fn(),
     };
-    const useCase = new RegistrarAjusteInsumoUseCase(insumoRepo, movimientoRepo, txRunner);
+    const useCase = new RegistrarAjusteInsumoUseCase(
+      insumoRepo,
+      movimientoRepo,
+      txRunner,
+      familiaRepoFake(),
+    );
 
     const result = await useCase.execute(dtoDe('AJUSTE_POSITIVO'));
 
@@ -592,5 +610,75 @@ describe('RegistrarAjusteInsumoUseCase', () => {
     );
     expect(c.transacciones.abiertas).toBe(0);
     expect(c.movimientoRepo.insert).not.toHaveBeenCalled();
+  });
+
+  // ─── Condición del saldo (stock-usado-componentes) ───────────────────────
+
+  describe('condición NUEVO / USADO', () => {
+    it('sin condición asienta NUEVO y no consulta la familia', async () => {
+      const c = buildColaboradores({ familia: { esRepuesto: false } });
+
+      const result = await c.useCase.execute(dtoDe('AJUSTE_POSITIVO'));
+
+      expect(result.getValue().condicion).toBe('NUEVO');
+      expect(c.familiaRepo.findById).not.toHaveBeenCalled();
+    });
+
+    it('rechaza un ajuste negativo USADO mayor que el saldo USADO aunque haya NUEVO', async () => {
+      const c = buildColaboradores({
+        sumas: sumasCon({ NUEVO: { ENTRADA: 100 }, USADO: { ENTRADA: 1 } }),
+      });
+
+      const result = await c.useCase.execute({
+        ...dtoDe('AJUSTE_NEGATIVO'),
+        cantidad: 2,
+        condicion: 'USADO',
+      });
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError().code).toBe('STOCK_INSUFICIENTE');
+      expect(c.movimientoRepo.insert).not.toHaveBeenCalled();
+    });
+
+    it('asienta un ajuste negativo USADO dentro del saldo USADO', async () => {
+      const c = buildColaboradores({ sumas: sumasCon({ USADO: { ENTRADA: 2 } }) });
+
+      const result = await c.useCase.execute({
+        ...dtoDe('AJUSTE_NEGATIVO'),
+        cantidad: 2,
+        condicion: 'USADO',
+      });
+
+      expect(result.isOk()).toBe(true);
+      expect(result.getValue().condicion).toBe('USADO');
+    });
+
+    it('un ajuste positivo USADO no exige saldo previo', async () => {
+      const c = buildColaboradores({ sumas: sumasCon({}) });
+
+      const result = await c.useCase.execute({ ...dtoDe('AJUSTE_POSITIVO'), condicion: 'USADO' });
+
+      expect(result.isOk()).toBe(true);
+      expect(result.getValue().condicion).toBe('USADO');
+    });
+
+    it('el ajuste USADO sigue sin exigir el insumo habilitado, como el ajuste NUEVO', async () => {
+      const c = buildColaboradores({ insumo: insumoDeshabilitado() });
+
+      const result = await c.useCase.execute({ ...dtoDe('AJUSTE_POSITIVO'), condicion: 'USADO' });
+
+      expect(result.isOk()).toBe(true);
+    });
+
+    it('rechaza USADO sobre un insumo que no es repuesto, antes de abrir la transacción', async () => {
+      const c = buildColaboradores({ familia: { esRepuesto: false } });
+
+      const result = await c.useCase.execute({ ...dtoDe('AJUSTE_POSITIVO'), condicion: 'USADO' });
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError().code).toBe('CONDICION_USADO_NO_ADMITIDA');
+      expect(c.transacciones.abiertas).toBe(0);
+      expect(c.movimientoRepo.insert).not.toHaveBeenCalled();
+    });
   });
 });

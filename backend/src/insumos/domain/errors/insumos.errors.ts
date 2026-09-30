@@ -325,6 +325,30 @@ export class StockInsuficienteError extends DomainError {
 }
 
 /**
+ * CondicionUsadoNoAdmitidaError — se intentó asentar un movimiento con
+ * condición USADO sobre un insumo cuya familia no admite usados.
+ *
+ * El stock USADO existe solo para los repuestos (familia con `esRepuesto`):
+ * una pieza recuperada de un equipo vuelve al depósito como usada, pero un
+ * tóner o una resma no tienen "usado". La regla necesita leer la familia del
+ * insumo, así que no la puede atajar ni el DTO ni un CHECK de base.
+ *
+ * Una familia inexistente o con baja lógica cuenta como no admitida: no hay
+ * forma de afirmar que el insumo sea un repuesto.
+ * → HTTP 422 en la capa de presentación.
+ */
+export class CondicionUsadoNoAdmitidaError extends DomainError {
+  readonly code = 'CONDICION_USADO_NO_ADMITIDA';
+
+  constructor(insumoId: string) {
+    super(
+      `El insumo con id "${insumoId}" no admite stock usado: solo los insumos de una familia ` +
+        `de repuestos pueden tener movimientos con condición USADO. Registre el movimiento como NUEVO.`,
+    );
+  }
+}
+
+/**
  * SecuenciaCodigoInsumoAgotadaError — la serie de `codigo` autogenerado
  * (`INS-{SEQ4}` o `REP-{SEQ4}`, issue #162) superaría los 4 dígitos (> 9999)
  * al generar el próximo código.

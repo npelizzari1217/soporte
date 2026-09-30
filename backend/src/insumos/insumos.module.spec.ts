@@ -158,10 +158,10 @@ describe('InsumosModule wiring', () => {
    * que le impide tomar el lock por descuido.
    */
   it.each([
-    ['RegistrarEntradaInsumoUseCase', RegistrarEntradaInsumoUseCase, 2],
-    ['RegistrarSalidaInsumoUseCase', RegistrarSalidaInsumoUseCase, 3],
-    ['RegistrarAjusteInsumoUseCase', RegistrarAjusteInsumoUseCase, 3],
-    ['ConsultarStockInsumoUseCase', ConsultarStockInsumoUseCase, 2],
+    ['RegistrarEntradaInsumoUseCase', RegistrarEntradaInsumoUseCase, 3],
+    ['RegistrarSalidaInsumoUseCase', RegistrarSalidaInsumoUseCase, 4],
+    ['RegistrarAjusteInsumoUseCase', RegistrarAjusteInsumoUseCase, 4],
+    ['ConsultarStockInsumoUseCase', ConsultarStockInsumoUseCase, 3],
     ['ListarMovimientosInsumoUseCase', ListarMovimientosInsumoUseCase, 2],
   ])('inyecta en %s los puertos que su constructor declara', (_nombre, useCase, cantidad) => {
     const providers = (Reflect.getMetadata('providers', InsumosModule) ?? []) as Array<{
@@ -173,5 +173,24 @@ describe('InsumosModule wiring', () => {
     expect(registro?.inject).toHaveLength(cantidad);
     expect(registro?.inject?.[0]).toBe(INSUMO_REPOSITORY);
     expect(registro?.inject?.[1]).toBe(MOVIMIENTO_INSUMO_REPOSITORY);
+  });
+
+  /**
+   * La condición USADO se valida contra la familia del insumo: los tres casos
+   * de uso que asientan movimientos reciben el catálogo de familias, y como
+   * ÚLTIMO parámetro de su constructor.
+   */
+  it.each([
+    ['RegistrarEntradaInsumoUseCase', RegistrarEntradaInsumoUseCase],
+    ['RegistrarSalidaInsumoUseCase', RegistrarSalidaInsumoUseCase],
+    ['RegistrarAjusteInsumoUseCase', RegistrarAjusteInsumoUseCase],
+  ])('inyecta en %s el catálogo de familias como último puerto', (_nombre, useCase) => {
+    const providers = (Reflect.getMetadata('providers', InsumosModule) ?? []) as Array<{
+      provide?: unknown;
+      inject?: unknown[];
+    }>;
+    const registro = providers.find((p) => p.provide === useCase);
+
+    expect(registro?.inject?.[registro.inject.length - 1]).toBe(FAMILIA_INSUMO_REPOSITORY);
   });
 });

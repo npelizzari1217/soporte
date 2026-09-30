@@ -53,10 +53,17 @@ export class PrismaComponenteEquipoRepository implements IComponenteEquipoReposi
     });
   }
 
-  async delete(id: string): Promise<void> {
-    await this.client.componenteEquipo.update({
-      where: { id },
-      data: { deletedAt: new Date() },
+  async retirar(componente: ComponenteEquipoEntity): Promise<boolean> {
+    const { count } = await this.client.componenteEquipo.updateMany({
+      where: { id: componente.id, deletedAt: null },
+      data: {
+        deletedAt: componente.deletedAt,
+        bajaDestino: componente.bajaDestino,
+        bajaMotivo: componente.bajaMotivo,
+        bajaMovimientoId: componente.bajaMovimientoId,
+        bajaUsuarioId: componente.bajaUsuarioId,
+      },
     });
+    return count > 0;
   }
 }

@@ -60,6 +60,8 @@ import {
 } from "../hooks/use-insumo-mutations";
 import { registrarAjusteInsumoSchema, type RegistrarAjusteInsumoFormValues } from "../schemas";
 import type { TipoAjusteInsumo } from "../types";
+import { CondicionStockSelector } from "./condicion-stock-selector";
+import { useSelectorCondicion } from "../hooks/use-selector-condicion";
 import { construirNotaEquiposNoDisponibles, MovimientoInsumoDialog } from "./movimiento-insumo-dialog";
 
 export interface MovimientoAjusteDialogProps {
@@ -96,6 +98,7 @@ const NOTA_EQUIPOS_NO_DISPONIBLES = construirNotaEquiposNoDisponibles("el ajuste
  */
 export function MovimientoAjusteDialog({ insumoId, stockDisponible }: MovimientoAjusteDialogProps) {
   const [open, setOpen] = useState(false);
+  const condicion = useSelectorCondicion(insumoId);
   const registrarMutation = useRegistrarAjusteInsumo(insumoId);
 
   const {
@@ -117,12 +120,15 @@ export function MovimientoAjusteDialog({ insumoId, stockDisponible }: Movimiento
   // overlay/X) a través de `onOpenChange`.
   function handleOpenChange(next: boolean) {
     setOpen(next);
-    if (!next) reset();
+    if (!next) {
+      reset();
+      condicion.reiniciar();
+    }
   }
 
   function submit(values: RegistrarAjusteInsumoFormValues) {
     const dto: RegistrarAjusteInsumoDto = {
-      ...construirMovimientoInsumoDto(values),
+      ...construirMovimientoInsumoDto({ ...values, condicion: condicion.paraEnviar }),
       tipo: values.tipo,
     };
     registrarMutation.mutate(dto, {
@@ -148,6 +154,7 @@ export function MovimientoAjusteDialog({ insumoId, stockDisponible }: Movimiento
       registroEquipo={register("equipoId")}
       registroSector={register("sectorId")}
       camposAdicionales={
+        <>
         <div className="flex flex-col gap-1">
           <label htmlFor="ajuste-tipo" className="text-sm font-medium text-foreground">
             Tipo de ajuste
@@ -162,6 +169,8 @@ export function MovimientoAjusteDialog({ insumoId, stockDisponible }: Movimiento
             </p>
           )}
         </div>
+        <CondicionStockSelector id="ajuste-condicion" selector={condicion} />
+        </>
       }
     />
   );

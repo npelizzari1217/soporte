@@ -1124,6 +1124,31 @@ describe('Compras e2e — contrato HTTP real de las 16 rutas (cierra W-B/W-A del
     });
 
     /**
+     * La recepción no acepta `condicion`: el DTO no la declara y el
+     * `ValidationPipe` global (`whitelist`, sin `forbidNonWhitelisted`) la
+     * descarta en silencio, así que el request pasa (200) y el asiento queda
+     * NUEVO aunque el body pidiera USADO.
+     */
+    it('una condicion USADO en el body de la recepción se descarta y el asiento queda NUEVO', async () => {
+      const actor = await crearActorConPermisos(PERMISOS);
+      const insumoId = await crearInsumoEnCatalogo();
+      const { compraId, itemId } = await compraConItemListoParaRecibir(actor.accessToken, 10, {
+        insumoId,
+      });
+
+      const recibir = await httpPost<ItemCompraResponseDto>(
+        `${baseUrl}/compras/${compraId}/items/${itemId}/registrar-recepcion`,
+        { cantidadRecibida: 3, condicion: 'USADO' },
+        bearer(actor.accessToken),
+      );
+
+      expect(recibir.status).toBe(200);
+      const filas = await tenantClient.movimientoInsumo.findMany({ where: { insumoId } });
+      expect(filas).toHaveLength(1);
+      expect(filas[0].condicion).toBe('NUEVO');
+    });
+
+    /**
      * Hermano invertido del anterior, y el que protege a los ítems ya
      * cargados: sin insumo declarado la recepción tiene que comportarse
      * exactamente como antes de esta entrega. El insumo del fixture existe y

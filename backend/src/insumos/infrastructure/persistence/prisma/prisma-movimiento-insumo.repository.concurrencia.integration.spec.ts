@@ -40,8 +40,11 @@ import { TenantContext } from '../../../../shared/tenancy/tenant-context';
 import { TenantPrismaClient } from '../../../../shared/infrastructure/persistence/prisma-clients';
 import { PrismaTenantTransactionRunner } from '../../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { PrismaMovimientoInsumoRepository } from './prisma-movimiento-insumo.repository';
+import { PrismaInsumoRepository } from './prisma-insumo.repository';
+import { PrismaFamiliaInsumoRepository } from './prisma-familia-insumo.repository';
+import { RegistrarSalidaInsumoUseCase } from '../../../application/use-cases/registrar-salida-insumo.use-case';
 import { MovimientoInsumoEntity } from '../../../domain/entities/movimiento-insumo.entity';
-import { SumasPorTipoMovimiento } from '../../../domain/ports/i-movimiento-insumo.repository';
+import { SumasPorCondicionYTipo } from '../../../domain/entities/tipo-movimiento-insumo';
 
 const MASTER_TEST_URL =
   process.env.DATABASE_URL_MASTER ??
@@ -129,7 +132,8 @@ function instrumentarConcurrenciaDelPool(pool: Pool): () => number {
 }
 
 /**
- * Stock a partir del desglose por tipo. La regla de en qué dirección pesa cada
+ * Stock NUEVO a partir del desglose por condición y tipo (los movimientos de
+ * este spec son todos NUEVO). La regla de en qué dirección pesa cada
  * tipo es de NEGOCIO y vive en `calcularStock()`
  * (`domain/entities/tipo-movimiento-insumo.ts`), no en el repositorio — el
  * puerto devuelve un desglose justamente para no fijarla.
@@ -139,8 +143,9 @@ function instrumentarConcurrenciaDelPool(pool: Pool): () => number {
  * bajo prueba haría que un error en esa función se cancelara contra sí mismo.
  * Es una comprobación independiente, no una copia por descuido.
  */
-function stockDe(sumas: SumasPorTipoMovimiento): number {
-  return sumas.ENTRADA + sumas.AJUSTE_POSITIVO - sumas.SALIDA - sumas.AJUSTE_NEGATIVO;
+function stockDe(sumas: SumasPorCondicionYTipo): number {
+  const { ENTRADA, AJUSTE_POSITIVO, SALIDA, AJUSTE_NEGATIVO } = sumas.NUEVO;
+  return ENTRADA + AJUSTE_POSITIVO - SALIDA - AJUSTE_NEGATIVO;
 }
 
 /** Ventana de tiempo en la que una transacción tuvo el lock del insumo. */
@@ -175,6 +180,8 @@ describe('PrismaMovimientoInsumoRepository — Concurrencia real del advisory lo
   let insumoId: string;
   /** El OTRO insumo: sin él no existe el caso que descarta un lock global. */
   let otroInsumoId: string;
+  /** Insumo de una familia de repuestos: el único que admite movimientos USADO. */
+  let repuestoId: string;
 
   beforeAll(async () => {
     // Solo para reusar buildTenantUrl(): esta instancia NUNCA abre su propio
@@ -218,13 +225,26 @@ describe('PrismaMovimientoInsumoRepository — Concurrencia real del advisory lo
       },
     });
     otroInsumoId = otroInsumo.id;
+
+    const familiaRepuesto = await tenantClient.familiaInsumo.create({
+      data: { codigo: `${PREFIJO}R`, nombre: 'Familia de repuestos', esRepuesto: true },
+    });
+    const repuesto = await tenantClient.insumo.create({
+      data: {
+        codigo: `${PREFIJO}C`,
+        nombre: 'Repuesto bajo prueba',
+        familiaId: familiaRepuesto.id,
+        unidadMedidaId: unidad.id,
+      },
+    });
+    repuestoId = repuesto.id;
   }, 30_000);
 
   // Orden obligado por las FK con RESTRICT: la bitácora, después los insumos,
   // al final los catálogos. Los pools se cierran recién después.
   afterAll(async () => {
     await tenantClient.movimientoInsumo.deleteMany({
-      where: { insumoId: { in: [insumoId, otroInsumoId] } },
+      where: { insumoId: { in: [insumoId, otroInsumoId, repuestoId] } },
     });
     await tenantClient.insumo.deleteMany({ where: { codigo: { startsWith: PREFIJO } } });
     await tenantClient.familiaInsumo.deleteMany({ where: { codigo: { startsWith: PREFIJO } } });
@@ -237,7 +257,7 @@ describe('PrismaMovimientoInsumoRepository — Concurrencia real del advisory lo
 
   beforeEach(async () => {
     await tenantClient.movimientoInsumo.deleteMany({
-      where: { insumoId: { in: [insumoId, otroInsumoId] } },
+      where: { insumoId: { in: [insumoId, otroInsumoId, repuestoId] } },
     });
   });
 
@@ -301,6 +321,7 @@ describe('PrismaMovimientoInsumoRepository — Concurrencia real del advisory lo
               MovimientoInsumoEntity.create({
                 insumoId,
                 tipo: 'SALIDA',
+                condicion: 'NUEVO',
                 cantidad: CANTIDAD_POR_SALIDA,
                 usuarioId,
               }).getValue(),
@@ -398,5 +419,51 @@ describe('PrismaMovimientoInsumoRepository — Concurrencia real del advisory lo
 
     expect(libreDurante).toBe(false);
     await expect(lockEstaLibre(insumoId)).resolves.toBe(true);
+  }, 60_000);
+
+  /**
+   * La condición NO cambia la exclusión mutua: el lock es por insumo y la
+   * decisión se toma sobre el saldo de la condición del asiento. Con UN solo
+   * USADO en el depósito, dos salidas USADO simultáneas de una unidad no
+   * pueden pasar las dos. Se corre el caso de uso REAL —el que decide con
+   * `calcularSaldos(sumas)[condicion]` bajo el lock—, no una réplica de su
+   * lógica, y el saldo NUEVO alto es el que delataría una decisión tomada
+   * sobre el total o sobre la condición equivocada.
+   */
+  it('dos salidas USADO simultáneas con saldo USADO 1 dejan una sola persistida y USADO en 0', async () => {
+    await tenantClient.movimientoInsumo.createMany({
+      data: [
+        { insumoId: repuestoId, tipo: 'ENTRADA', condicion: 'NUEVO', cantidad: 100, usuarioId },
+        { insumoId: repuestoId, tipo: 'ENTRADA', condicion: 'USADO', cantidad: 1, usuarioId },
+      ],
+    });
+
+    const casoDeUso = new RegistrarSalidaInsumoUseCase(
+      new PrismaInsumoRepository(tenantContext),
+      repo,
+      txRunner,
+      new PrismaFamiliaInsumoRepository(tenantContext),
+    );
+
+    const resultados = await conTenant(() =>
+      Promise.all(
+        Array.from({ length: 2 }, () =>
+          casoDeUso.execute({ insumoId: repuestoId, cantidad: 1, condicion: 'USADO', usuarioId }),
+        ),
+      ),
+    );
+
+    // Sin concurrencia real el resultado saldría del encolamiento del pool.
+    expect(maxConcurrenteObservado()).toBeGreaterThan(1);
+
+    expect(resultados.filter((r) => r.isOk())).toHaveLength(1);
+    const rechazadas = resultados.filter((r) => r.isFail());
+    expect(rechazadas).toHaveLength(1);
+    expect(rechazadas[0].getError().code).toBe('STOCK_INSUFICIENTE');
+
+    const sumas = await conTenant(() => txRunner.run(() => repo.lockAndSumByTipo(repuestoId)));
+    expect(sumas.USADO.SALIDA).toBe(1);
+    expect(sumas.USADO.ENTRADA - sumas.USADO.SALIDA).toBe(0);
+    expect(sumas.NUEVO.SALIDA).toBe(0);
   }, 60_000);
 });

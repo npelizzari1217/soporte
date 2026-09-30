@@ -11,6 +11,7 @@ function filaMovimiento(
     id: 'movimiento-1',
     insumoId: 'insumo-1',
     tipo: 'SALIDA',
+    condicion: 'NUEVO',
     cantidad: new Prisma.Decimal('3.00'),
     usuarioId: 'usuario-1',
     motivo: null,
@@ -34,6 +35,7 @@ function crearMovimiento(
   return MovimientoInsumoEntity.create({
     insumoId: 'insumo-1',
     tipo: 'ENTRADA',
+    condicion: 'NUEVO',
     cantidad: 3,
     usuarioId: 'usuario-1',
     ...props,
@@ -59,6 +61,13 @@ describe('MovimientoInsumoMapper', () => {
      * Se assertea el TIPO además del valor: un `toBe` contra un `Decimal` de
      * igual valor no distingue las dos cosas.
      */
+    it('lee la condición de la fila', () => {
+      expect(MovimientoInsumoMapper.toDomain(filaMovimiento()).condicion).toBe('NUEVO');
+      expect(
+        MovimientoInsumoMapper.toDomain(filaMovimiento({ condicion: 'USADO' })).condicion,
+      ).toBe('USADO');
+    });
+
     it('convierte el Decimal de cantidad a number', () => {
       const entity = MovimientoInsumoMapper.toDomain(
         filaMovimiento({ cantidad: new Prisma.Decimal('12.34') }),
@@ -215,6 +224,13 @@ describe('MovimientoInsumoMapper', () => {
      * consultando la columna—. El assert compara contra el valor de la entidad,
      * no contra un literal: un `null` fijo lo rompe.
      */
+    it('emite la condición de la entidad', () => {
+      expect(MovimientoInsumoMapper.toPersistence(crearMovimiento()).condicion).toBe('NUEVO');
+      expect(
+        MovimientoInsumoMapper.toPersistence(crearMovimiento({ condicion: 'USADO' })).condicion,
+      ).toBe('USADO');
+    });
+
     it('emite el itemCompraId de la entidad, no un null fijo', () => {
       const movimiento = crearMovimiento({ itemCompraId: 'item-compra-1' });
 

@@ -10,6 +10,7 @@ import { Result } from '../../../shared/domain/result';
 import { MovimientoInsumoEntity } from '../../domain/entities/movimiento-insumo.entity';
 import { TipoMovimientoInsumo } from '../../domain/entities/tipo-movimiento-insumo';
 import {
+  CondicionUsadoNoAdmitidaError,
   InsumoDeshabilitadoError,
   InsumoNoEncontradoError,
   MotivoAjusteRequeridoError,
@@ -45,6 +46,7 @@ function construirMovimiento(tipo: TipoMovimientoInsumo, cantidad = 2): Movimien
   return MovimientoInsumoEntity.create({
     insumoId: INSUMO_ID,
     tipo,
+    condicion: 'NUEVO',
     cantidad,
     usuarioId: USUARIO_ID,
     motivo: tipo.startsWith('AJUSTE') ? 'Conteo físico' : null,
@@ -179,6 +181,57 @@ describe('MovimientosInsumoController', () => {
     });
   });
 
+  describe('condicion — se reenvía a las tres rutas y USADO no admitido es 422', () => {
+    it('reenvía la condición de la entrada, la salida y el ajuste', async () => {
+      const ok = () => ({
+        execute: vi.fn().mockResolvedValue(Result.ok(construirMovimiento('ENTRADA'))),
+      });
+      const { controller, entradaUseCase, salidaUseCase, ajusteUseCase } = buildController({
+        entrada: ok(),
+        salida: ok(),
+        ajuste: ok(),
+      });
+
+      await controller.registrarEntrada(actor(), INSUMO_ID, { cantidad: 1, condicion: 'USADO' });
+      await controller.registrarSalida(actor(), INSUMO_ID, { cantidad: 1, condicion: 'USADO' });
+      await controller.registrarAjuste(actor(), INSUMO_ID, {
+        tipo: 'AJUSTE_POSITIVO',
+        cantidad: 1,
+        motivo: 'Conteo',
+        condicion: 'USADO',
+      });
+
+      for (const caso of [entradaUseCase, salidaUseCase, ajusteUseCase]) {
+        expect(caso.execute).toHaveBeenCalledWith(expect.objectContaining({ condicion: 'USADO' }));
+      }
+    });
+
+    it('sin condición en el body no inventa un default: lo resuelve el caso de uso', async () => {
+      const { controller, entradaUseCase } = buildController({
+        entrada: { execute: vi.fn().mockResolvedValue(Result.ok(construirMovimiento('ENTRADA'))) },
+      });
+
+      await controller.registrarEntrada(actor(), INSUMO_ID, { cantidad: 1 });
+
+      const [args] = entradaUseCase.execute.mock.calls[0] as [{ condicion?: string }];
+      expect(args.condicion).toBeUndefined();
+    });
+
+    it('CondicionUsadoNoAdmitidaError sale como 422 con el mensaje del dominio', async () => {
+      const error = new CondicionUsadoNoAdmitidaError(INSUMO_ID);
+      const { controller } = buildController({
+        entrada: { execute: vi.fn().mockResolvedValue(Result.fail(error)) },
+      });
+
+      const lanzado = await controller
+        .registrarEntrada(actor(), INSUMO_ID, { cantidad: 1, condicion: 'USADO' })
+        .catch((e: unknown) => e);
+
+      expect(lanzado).toBeInstanceOf(UnprocessableEntityException);
+      expect((lanzado as UnprocessableEntityException).message).toBe(error.message);
+    });
+  });
+
   describe('POST /insumos/:insumoId/movimientos/salida', () => {
     it('registra la salida con el usuarioId del JWT', async () => {
       const movimiento = construirMovimiento('SALIDA', 3);
@@ -291,6 +344,8 @@ describe('MovimientosInsumoController', () => {
             Result.ok({
               insumoId: INSUMO_ID,
               stock: 2,
+              saldos: { NUEVO: 2, USADO: 0 },
+              admiteUsado: false,
               stockMinimo: 10,
               estadoReposicion: 'BAJO_MINIMO',
             }),
@@ -303,6 +358,8 @@ describe('MovimientosInsumoController', () => {
       expect(respuesta).toEqual({
         insumoId: INSUMO_ID,
         stock: 2,
+        saldos: { NUEVO: 2, USADO: 0 },
+        admiteUsado: false,
         stockMinimo: 10,
         estadoReposicion: 'BAJO_MINIMO',
       });

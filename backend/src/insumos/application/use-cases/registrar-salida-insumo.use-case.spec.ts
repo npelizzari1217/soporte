@@ -3,7 +3,9 @@ import { RegistrarSalidaInsumoUseCase } from './registrar-salida-insumo.use-case
 import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { InsumoEntity } from '../../domain/entities/insumo.entity';
 import { TipoMovimientoInsumo } from '../../domain/entities/tipo-movimiento-insumo';
-import { SumasPorTipoMovimiento } from '../../domain/ports/i-movimiento-insumo.repository';
+import { SumasPorCondicionYTipo } from '../../domain/entities/tipo-movimiento-insumo';
+import { EstadoFamiliaFake, familiaRepoFake } from '../../testing/familia-repo-fake';
+import { sumasCon } from '../../testing/sumas-movimiento';
 
 describe('RegistrarSalidaInsumoUseCase', () => {
   function propsDeInsumo(activo: boolean) {
@@ -42,14 +44,8 @@ describe('RegistrarSalidaInsumoUseCase', () => {
     );
   }
 
-  function sumas(parcial: Partial<Record<TipoMovimientoInsumo, number>>): SumasPorTipoMovimiento {
-    return {
-      ENTRADA: 0,
-      SALIDA: 0,
-      AJUSTE_POSITIVO: 0,
-      AJUSTE_NEGATIVO: 0,
-      ...parcial,
-    };
+  function sumas(parcial: Partial<Record<TipoMovimientoInsumo, number>>): SumasPorCondicionYTipo {
+    return sumasCon({ NUEVO: parcial });
   }
 
   /**
@@ -66,7 +62,11 @@ describe('RegistrarSalidaInsumoUseCase', () => {
    * anota si ocurrió con la transacción abierta o no.
    */
   function buildColaboradores(
-    opciones: { insumo?: InsumoEntity | null; sumas?: SumasPorTipoMovimiento } = {},
+    opciones: {
+      insumo?: InsumoEntity | null;
+      sumas?: SumasPorCondicionYTipo;
+      familia?: EstadoFamiliaFake;
+    } = {},
   ) {
     const insumo = opciones.insumo === undefined ? insumoVigente() : opciones.insumo;
     const desglose = opciones.sumas ?? sumas({ ENTRADA: 100 });
@@ -113,9 +113,22 @@ describe('RegistrarSalidaInsumoUseCase', () => {
       },
     };
 
-    const useCase = new RegistrarSalidaInsumoUseCase(insumoRepo, movimientoRepo, txRunner);
+    const familiaRepo = familiaRepoFake(opciones.familia);
+    const useCase = new RegistrarSalidaInsumoUseCase(
+      insumoRepo,
+      movimientoRepo,
+      txRunner,
+      familiaRepo,
+    );
 
-    return { useCase, insumoRepo, movimientoRepo, transacciones, llamadasFueraDeTransaccion };
+    return {
+      useCase,
+      insumoRepo,
+      movimientoRepo,
+      familiaRepo,
+      transacciones,
+      llamadasFueraDeTransaccion,
+    };
   }
 
   const dtoBase = { insumoId: 'ins-1', cantidad: 10, usuarioId: 'usr-7' };
@@ -155,7 +168,12 @@ describe('RegistrarSalidaInsumoUseCase', () => {
     const txRunner: Pick<ITenantTransactionRunner, 'run'> = {
       run: async <T>(fn: () => Promise<T>): Promise<T> => fn(),
     };
-    const useCase = new RegistrarSalidaInsumoUseCase(insumoRepo, movimientoRepo, txRunner);
+    const useCase = new RegistrarSalidaInsumoUseCase(
+      insumoRepo,
+      movimientoRepo,
+      txRunner,
+      familiaRepoFake(),
+    );
 
     const result = await useCase.execute(dtoBase);
 
@@ -444,5 +462,61 @@ describe('RegistrarSalidaInsumoUseCase', () => {
     await expect(c.useCase.execute({ ...dtoBase, cantidad: 0 })).rejects.toThrow(/cantidad/);
     expect(c.transacciones.abiertas).toBe(0);
     expect(c.movimientoRepo.insert).not.toHaveBeenCalled();
+  });
+
+  // ─── Condición del saldo (stock-usado-componentes) ───────────────────────
+
+  describe('condición NUEVO / USADO', () => {
+    it('sin condición asienta NUEVO y no consulta la familia', async () => {
+      const c = buildColaboradores({ familia: { esRepuesto: false } });
+
+      const result = await c.useCase.execute(dtoBase);
+
+      expect(result.getValue().condicion).toBe('NUEVO');
+      expect(c.familiaRepo.findById).not.toHaveBeenCalled();
+    });
+
+    it('rechaza una salida NUEVO cuando el saldo NUEVO es 0 aunque haya USADO', async () => {
+      const c = buildColaboradores({ sumas: sumasCon({ USADO: { ENTRADA: 5 } }) });
+
+      const result = await c.useCase.execute({ ...dtoBase, cantidad: 1, condicion: 'NUEVO' });
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError().code).toBe('STOCK_INSUFICIENTE');
+      expect(c.movimientoRepo.insert).not.toHaveBeenCalled();
+    });
+
+    it('rechaza una salida USADO cuando el saldo USADO no alcanza aunque haya NUEVO', async () => {
+      const c = buildColaboradores({
+        sumas: sumasCon({ NUEVO: { ENTRADA: 100 }, USADO: { ENTRADA: 1 } }),
+      });
+
+      const result = await c.useCase.execute({ ...dtoBase, cantidad: 2, condicion: 'USADO' });
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError().code).toBe('STOCK_INSUFICIENTE');
+      expect(c.movimientoRepo.insert).not.toHaveBeenCalled();
+    });
+
+    it('asienta una salida USADO dentro del saldo USADO sin tocar el saldo NUEVO', async () => {
+      const c = buildColaboradores({ sumas: sumasCon({ USADO: { ENTRADA: 5 } }) });
+
+      const result = await c.useCase.execute({ ...dtoBase, cantidad: 5, condicion: 'USADO' });
+
+      expect(result.isOk()).toBe(true);
+      expect(result.getValue().condicion).toBe('USADO');
+      expect(c.movimientoRepo.insert).toHaveBeenCalledTimes(1);
+    });
+
+    it('rechaza USADO sobre un insumo que no es repuesto, antes de abrir la transacción', async () => {
+      const c = buildColaboradores({ familia: { esRepuesto: false } });
+
+      const result = await c.useCase.execute({ ...dtoBase, condicion: 'USADO' });
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError().code).toBe('CONDICION_USADO_NO_ADMITIDA');
+      expect(c.transacciones.abiertas).toBe(0);
+      expect(c.movimientoRepo.insert).not.toHaveBeenCalled();
+    });
   });
 });

@@ -1,6 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { ComponenteEquipoEntity, ComponenteEquipoProps } from './componente-equipo.entity';
-import { InsumoRepuestoInexistenteError } from '../errors/equipos.errors';
+import {
+  COMPONENTE_MOTIVO_RETIRO_MAX_LENGTH,
+  ComponenteEquipoEntity,
+  ComponenteEquipoProps,
+  DESTINOS_RETIRO_COMPONENTE,
+} from './componente-equipo.entity';
+import {
+  InsumoRepuestoInexistenteError,
+  MotivoRetiroRequeridoError,
+} from '../errors/equipos.errors';
 
 /**
  * ComponenteEquipoEntity — sdd/catalogo-unico-componentes: sin tipo propio
@@ -166,5 +174,193 @@ describe('ComponenteEquipoEntity', () => {
 
     expect(componente.activo).toBe(true);
     expect(componente.deletedAt).toBeNull();
+  });
+
+  /**
+   * Registro del retiro (sdd/stock-usado-componentes, ADR-4/ADR-5).
+   */
+  describe('retiro', () => {
+    function nuevo(instalacionMovimientoId?: string): ComponenteEquipoEntity {
+      const componente = ComponenteEquipoEntity.create({
+        equipoId: 'equipo-1',
+        insumoId: 'insumo-1',
+        descripcion: null,
+        numeroSerie: null,
+        capacidad: null,
+      }).getValue();
+      if (instalacionMovimientoId) componente.vincularInstalacion(instalacionMovimientoId);
+      return componente;
+    }
+
+    it('DESTINOS_RETIRO_COMPONENTE es el catálogo cerrado de dos destinos', () => {
+      expect([...DESTINOS_RETIRO_COMPONENTE]).toEqual(['STOCK_USADO', 'DESCARTE']);
+    });
+
+    it('un componente recién creado no tiene registro de retiro', () => {
+      const componente = nuevo();
+      expect(componente.instalacionMovimientoId).toBeNull();
+      expect(componente.bajaDestino).toBeNull();
+      expect(componente.bajaMotivo).toBeNull();
+      expect(componente.bajaMovimientoId).toBeNull();
+      expect(componente.bajaUsuarioId).toBeNull();
+      expect(componente.bajaSinSalidaPrevia).toBe(false);
+    });
+
+    it('vincularInstalacion() guarda la SALIDA', () => {
+      const componente = nuevo();
+      componente.vincularInstalacion('mov-salida');
+      expect(componente.instalacionMovimientoId).toBe('mov-salida');
+    });
+
+    describe('validarRetiro()', () => {
+      it('DESCARTE sin motivo o con motivo en blanco → MotivoRetiroRequeridoError', () => {
+        for (const motivo of [undefined, null, '', '   ']) {
+          const result = nuevo('mov-salida').validarRetiro('DESCARTE', motivo);
+          expect(result.isFail()).toBe(true);
+          expect(result.getError()).toBeInstanceOf(MotivoRetiroRequeridoError);
+        }
+      });
+
+      it('STOCK_USADO sin SALIDA vinculada y sin motivo → MotivoRetiroRequeridoError', () => {
+        const result = nuevo().validarRetiro('STOCK_USADO', '  ');
+        expect(result.isFail()).toBe(true);
+        expect(result.getError()).toBeInstanceOf(MotivoRetiroRequeridoError);
+      });
+
+      it('STOCK_USADO CON SALIDA vinculada acepta el retiro sin motivo (null)', () => {
+        const result = nuevo('mov-salida').validarRetiro('STOCK_USADO', undefined);
+        expect(result.isOk()).toBe(true);
+        expect(result.getValue()).toBeNull();
+      });
+
+      it('normaliza el motivo (recorte de bordes) en las combinaciones que lo aceptan', () => {
+        expect(nuevo().validarRetiro('DESCARTE', '  Placa quemada  ').getValue()).toBe(
+          'Placa quemada',
+        );
+        expect(nuevo().validarRetiro('STOCK_USADO', ' Pieza sana ').getValue()).toBe('Pieza sana');
+        expect(nuevo('mov-salida').validarRetiro('STOCK_USADO', ' Se cambió ').getValue()).toBe(
+          'Se cambió',
+        );
+      });
+
+      it('el tope de 500 se mide sobre el motivo normalizado: 500 pasa, 501 lanza', () => {
+        const tope = COMPONENTE_MOTIVO_RETIRO_MAX_LENGTH;
+        expect(tope).toBe(500);
+        expect(
+          nuevo()
+            .validarRetiro('DESCARTE', ` ${'a'.repeat(tope)} `)
+            .isOk(),
+        ).toBe(true);
+        expect(() => nuevo().validarRetiro('DESCARTE', 'a'.repeat(tope + 1))).toThrow(
+          /motivo excede 500/,
+        );
+      });
+    });
+
+    describe('retirar()', () => {
+      it('DESCARTE: da de baja y registra destino, motivo y usuario, sin movimiento', () => {
+        const componente = nuevo();
+        componente.retirar({
+          destino: 'DESCARTE',
+          motivo: 'Placa quemada',
+          usuarioId: 'user-1',
+          bajaMovimientoId: null,
+        });
+        expect(componente.activo).toBe(false);
+        expect(componente.bajaDestino).toBe('DESCARTE');
+        expect(componente.bajaMotivo).toBe('Placa quemada');
+        expect(componente.bajaUsuarioId).toBe('user-1');
+        expect(componente.bajaMovimientoId).toBeNull();
+        expect(componente.bajaSinSalidaPrevia).toBe(false);
+      });
+
+      it('STOCK_USADO con SALIDA vinculada: registra la ENTRADA y NO marca sin salida previa', () => {
+        const componente = nuevo('mov-salida');
+        componente.retirar({
+          destino: 'STOCK_USADO',
+          motivo: null,
+          usuarioId: 'user-1',
+          bajaMovimientoId: 'mov-entrada',
+        });
+        expect(componente.activo).toBe(false);
+        expect(componente.bajaMovimientoId).toBe('mov-entrada');
+        expect(componente.bajaSinSalidaPrevia).toBe(false);
+      });
+
+      it('bajaSinSalidaPrevia se DERIVA: STOCK_USADO sin SALIDA vinculada es true; DESCARTE es false', () => {
+        const devuelto = nuevo();
+        devuelto.retirar({
+          destino: 'STOCK_USADO',
+          motivo: 'Vino con el equipo',
+          usuarioId: 'user-1',
+          bajaMovimientoId: 'mov-entrada',
+        });
+        expect(devuelto.bajaSinSalidaPrevia).toBe(true);
+
+        const descartado = nuevo();
+        descartado.retirar({
+          destino: 'DESCARTE',
+          motivo: 'Roto',
+          usuarioId: 'user-1',
+          bajaMovimientoId: null,
+        });
+        expect(descartado.bajaSinSalidaPrevia).toBe(false);
+      });
+
+      it('lanza ante violaciones de contrato: ya retirado, STOCK_USADO sin ENTRADA, DESCARTE con ENTRADA', () => {
+        const retirado = nuevo();
+        retirado.retirar({
+          destino: 'DESCARTE',
+          motivo: 'x',
+          usuarioId: 'u',
+          bajaMovimientoId: null,
+        });
+        expect(() =>
+          retirado.retirar({
+            destino: 'DESCARTE',
+            motivo: 'x',
+            usuarioId: 'u',
+            bajaMovimientoId: null,
+          }),
+        ).toThrow(/ya está dado de baja/);
+        expect(() =>
+          nuevo().retirar({
+            destino: 'STOCK_USADO',
+            motivo: 'x',
+            usuarioId: 'u',
+            bajaMovimientoId: null,
+          }),
+        ).toThrow(/exige la ENTRADA/);
+        expect(() =>
+          nuevo().retirar({
+            destino: 'DESCARTE',
+            motivo: 'x',
+            usuarioId: 'u',
+            bajaMovimientoId: 'm',
+          }),
+        ).toThrow(/no lleva movimiento/);
+      });
+    });
+
+    describe('reactivar()', () => {
+      it('limpia deletedAt Y las cuatro columnas de retiro, y conserva la instalación', () => {
+        const componente = nuevo('mov-salida');
+        componente.retirar({
+          destino: 'DESCARTE',
+          motivo: 'Roto',
+          usuarioId: 'user-1',
+          bajaMovimientoId: null,
+        });
+
+        componente.reactivar();
+
+        expect(componente.activo).toBe(true);
+        expect(componente.bajaDestino).toBeNull();
+        expect(componente.bajaMotivo).toBeNull();
+        expect(componente.bajaMovimientoId).toBeNull();
+        expect(componente.bajaUsuarioId).toBeNull();
+        expect(componente.instalacionMovimientoId).toBe('mov-salida');
+      });
+    });
   });
 });

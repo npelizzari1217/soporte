@@ -29,7 +29,7 @@
 import { useMutation, useQueryClient, type UseMutationResult } from "@tanstack/react-query";
 import { apiFetch } from "@/shared/api/client";
 import { notifyError, notifySuccess } from "@/shared/lib/toast";
-import type { MovimientoInsumo, TipoAjusteInsumo } from "../types";
+import type { CondicionStock, MovimientoInsumo, TipoAjusteInsumo } from "../types";
 import type { RegistrarMovimientoInsumoFormValues } from "../schemas";
 
 /**
@@ -44,6 +44,8 @@ export interface RegistrarMovimientoInsumoDto {
   motivo?: string;
   equipoId?: string;
   sectorId?: string;
+  /** Solo viaja cuando el diálogo muestra el selector; sin ella el backend aplica `NUEVO`. */
+  condicion?: CondicionStock;
 }
 
 /**
@@ -75,6 +77,7 @@ export function construirMovimientoInsumoDto(
     motivo: values.motivo || undefined,
     equipoId: values.equipoId || undefined,
     sectorId: values.sectorId || undefined,
+    condicion: values.condicion,
   };
 }
 

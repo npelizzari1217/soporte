@@ -16,7 +16,10 @@
  */
 import type { MovimientoInsumo as PrismaMovimientoInsumo, Prisma } from '.prisma/tenant';
 import { MovimientoInsumoEntity } from '../../../domain/entities/movimiento-insumo.entity';
-import { TipoMovimientoInsumo } from '../../../domain/entities/tipo-movimiento-insumo';
+import {
+  CondicionStock,
+  TipoMovimientoInsumo,
+} from '../../../domain/entities/tipo-movimiento-insumo';
 
 /**
  * Shape del INSERT de un movimiento. `cantidad` se ensancha a
@@ -56,6 +59,8 @@ export class MovimientoInsumoMapper {
       {
         insumoId: row.insumoId,
         tipo: row.tipo as TipoMovimientoInsumo,
+        // VarChar sin enum de Prisma: seguro por `movimientos_insumo_condicion_check`.
+        condicion: row.condicion as CondicionStock,
         cantidad: Number(row.cantidad),
         usuarioId: row.usuarioId,
         motivo: row.motivo ?? null,
@@ -118,6 +123,7 @@ export class MovimientoInsumoMapper {
       id: entity.id,
       insumoId: entity.insumoId,
       tipo: entity.tipo,
+      condicion: entity.condicion,
       cantidad: entity.cantidad,
       usuarioId: entity.usuarioId,
       motivo: entity.motivo,

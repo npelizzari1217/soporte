@@ -88,7 +88,7 @@ export function ComponenteEditDialog({ equipoId, componente }: ComponenteEditDia
             </p>
             <p className="text-xs text-muted-foreground">
               El tipo lo determina el repuesto del catálogo: no se puede cambiar editando este componente. Para que
-              tenga otro tipo hay que reemplazarlo (eliminarlo y agregar uno nuevo).
+              tenga otro tipo hay que reemplazarlo (darlo de baja y agregar uno nuevo).
             </p>
           </div>
           <div className="flex flex-col gap-1">

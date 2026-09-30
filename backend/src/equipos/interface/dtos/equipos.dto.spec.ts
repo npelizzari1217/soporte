@@ -16,7 +16,10 @@ import {
   EditarEquipoHttpDto,
   CreateComponenteHttpDto,
   EditarComponenteHttpDto,
+  RetirarComponenteHttpDto,
+  toComponenteResponseDto,
 } from './equipos.dto';
+import { ComponenteEquipoEntity } from '../../domain/entities/componente-equipo.entity';
 import {
   EquipoInformaticoEntity,
   EquipoInformaticoProps,
@@ -307,6 +310,20 @@ describe('CreateComponenteHttpDto — contrato del alta única', () => {
     },
   );
 
+  it.each(['NUEVO', 'USADO'])('acepta la condición %s del catálogo', async (condicion) => {
+    const dto = plainToInstance(CreateComponenteHttpDto, { insumoId, condicion });
+    expect(await validate(dto)).toHaveLength(0);
+  });
+
+  it.each(['REFURBISHED', 'usado', '', 1])(
+    'rechaza la condición %j fuera del catálogo (400 en el pipe)',
+    async (condicion) => {
+      const dto = plainToInstance(CreateComponenteHttpDto, { insumoId, condicion });
+      const error = (await validate(dto)).find((e) => e.property === 'condicion');
+      expect(error?.constraints).toHaveProperty('isIn');
+    },
+  );
+
   it('un tipoComponenteCodigo sobrante se descarta con whitelist, sin error', async () => {
     const dto = plainToInstance(CreateComponenteHttpDto, {
       insumoId,
@@ -319,5 +336,115 @@ describe('CreateComponenteHttpDto — contrato del alta única', () => {
     expect(
       (dto as unknown as { tipoComponenteCodigo?: string }).tipoComponenteCodigo,
     ).toBeUndefined();
+  });
+});
+
+describe('toComponenteResponseDto — registro del retiro (ADR-7)', () => {
+  const props = { equipoId: 'equipo-uuid', insumoId: 'insumo-uuid' };
+
+  it('un componente activo informa el retiro vacío y bajaSinSalidaPrevia false', () => {
+    const dto = toComponenteResponseDto(
+      ComponenteEquipoEntity.create({
+        ...props,
+        descripcion: null,
+        numeroSerie: null,
+        capacidad: null,
+      }).getValue(),
+    );
+
+    expect(dto).toMatchObject({
+      bajaDestino: null,
+      bajaMotivo: null,
+      bajaMovimientoId: null,
+      bajaUsuarioId: null,
+      bajaSinSalidaPrevia: false,
+    });
+  });
+
+  it('un retiro al stock sin SALIDA vinculada informa bajaSinSalidaPrevia true', () => {
+    const componente = ComponenteEquipoEntity.create({
+      ...props,
+      descripcion: null,
+      numeroSerie: null,
+      capacidad: null,
+    }).getValue();
+    componente.retirar({
+      destino: 'STOCK_USADO',
+      motivo: 'Vino de otro equipo',
+      usuarioId: 'usuario-uuid',
+      bajaMovimientoId: 'mov-uuid',
+    });
+
+    expect(toComponenteResponseDto(componente)).toMatchObject({
+      bajaDestino: 'STOCK_USADO',
+      bajaMotivo: 'Vino de otro equipo',
+      bajaMovimientoId: 'mov-uuid',
+      bajaUsuarioId: 'usuario-uuid',
+      bajaSinSalidaPrevia: true,
+    });
+  });
+
+  it('con SALIDA vinculada, el retiro al stock informa bajaSinSalidaPrevia false', () => {
+    const componente = ComponenteEquipoEntity.create({
+      ...props,
+      descripcion: null,
+      numeroSerie: null,
+      capacidad: null,
+    }).getValue();
+    componente.vincularInstalacion('salida-uuid');
+    componente.retirar({
+      destino: 'STOCK_USADO',
+      motivo: null,
+      usuarioId: 'usuario-uuid',
+      bajaMovimientoId: 'mov-uuid',
+    });
+
+    expect(toComponenteResponseDto(componente).bajaSinSalidaPrevia).toBe(false);
+  });
+});
+
+describe('RetirarComponenteHttpDto — destino obligatorio y motivo normalizado', () => {
+  const errorDe = async (body: unknown, campo: string) =>
+    (await validate(plainToInstance(RetirarComponenteHttpDto, body))).find(
+      (e) => e.property === campo,
+    );
+
+  it.each(['STOCK_USADO', 'DESCARTE'])('acepta el destino %s', async (destino) => {
+    expect(await validate(plainToInstance(RetirarComponenteHttpDto, { destino }))).toHaveLength(0);
+  });
+
+  it.each([{}, { destino: 'OTRO' }, { destino: '' }, { destino: 1 }])(
+    'rechaza destino ausente o invalido (%j) por isIn',
+    async (body) => {
+      const error = await errorDe(body, 'destino');
+      expect(error?.constraints).toHaveProperty('isIn');
+    },
+  );
+
+  it('el motivo es opcional y se recorta; uno de solo espacios colapsa a null', async () => {
+    const recortado = plainToInstance(RetirarComponenteHttpDto, {
+      destino: 'DESCARTE',
+      motivo: '  roto  ',
+    });
+    expect(recortado.motivo).toBe('roto');
+    const vacio = plainToInstance(RetirarComponenteHttpDto, { destino: 'DESCARTE', motivo: '   ' });
+    expect(vacio.motivo).toBeNull();
+    expect(await validate(vacio)).toHaveLength(0);
+  });
+
+  it.each(['STOCK_USADO', 'DESCARTE'])(
+    'rechaza un motivo de mas de 500 caracteres con destino %s, por maxLength',
+    async (destino) => {
+      const error = await errorDe({ destino, motivo: 'a'.repeat(501) }, 'motivo');
+      expect(error?.constraints).toHaveProperty('maxLength');
+    },
+  );
+
+  it('acepta un motivo de 500 caracteres y mide despues del recorte', async () => {
+    const dto = plainToInstance(RetirarComponenteHttpDto, {
+      destino: 'DESCARTE',
+      motivo: ` ${'a'.repeat(500)} `,
+    });
+    expect(await validate(dto)).toHaveLength(0);
   });
 });

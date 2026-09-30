@@ -242,6 +242,43 @@ export class ComponenteYaActivoError extends DomainError {
 }
 
 /**
+ * MotivoRetiroRequeridoError — el retiro exige un motivo con contenido: siempre
+ * en `DESCARTE`, y en `STOCK_USADO` cuando no consta una SALIDA vinculada.
+ * → HTTP 422 en la capa de presentación.
+ *
+ * Ref spec: sdd/stock-usado-componentes (registro de retiro).
+ */
+export class MotivoRetiroRequeridoError extends DomainError {
+  readonly code = 'MOTIVO_RETIRO_REQUERIDO';
+
+  constructor(causa: 'DESCARTE' | 'SIN_SALIDA_REGISTRADA') {
+    super(
+      causa === 'DESCARTE'
+        ? 'El motivo es obligatorio para descartar un componente.'
+        : 'El motivo es obligatorio para devolver al stock un componente sin salida registrada del depósito.',
+    );
+  }
+}
+
+/**
+ * ComponenteDevueltoAlStockError — se intentó reactivar un componente que volvió
+ * al stock como USADO: reactivarlo lo contaría dos veces (en el stock y en el
+ * equipo).
+ * → HTTP 422 en la capa de presentación.
+ *
+ * Ref spec: sdd/stock-usado-componentes (reactivar depende del destino).
+ */
+export class ComponenteDevueltoAlStockError extends DomainError {
+  readonly code = 'COMPONENTE_DEVUELTO_AL_STOCK';
+
+  constructor(id: string) {
+    super(
+      `El componente con id "${id}" volvió al stock como usado y no puede reactivarse. Instalalo de nuevo desde el depósito.`,
+    );
+  }
+}
+
+/**
  * TicketSoporteNoEncontradoError — el satélite `ticket_soporte` con el
  * id/ticketId indicado no existe.
  * → HTTP 404 en la capa de presentación.

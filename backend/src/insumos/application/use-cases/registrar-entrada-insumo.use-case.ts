@@ -1,8 +1,16 @@
 import { DomainError, Result } from '../../../shared/domain/result';
 import { MovimientoInsumoEntity } from '../../domain/entities/movimiento-insumo.entity';
+import {
+  CONDICION_STOCK_POR_DEFECTO,
+  CondicionStock,
+} from '../../domain/entities/tipo-movimiento-insumo';
+import { IFamiliaInsumoRepository } from '../../domain/ports/i-familia-insumo.repository';
 import { IInsumoRepository } from '../../domain/ports/i-insumo.repository';
 import { IMovimientoInsumoRepository } from '../../domain/ports/i-movimiento-insumo.repository';
-import { validarInsumoElegible } from '../services/validar-insumo.service';
+import {
+  validarCondicionAdmitida,
+  validarInsumoElegible,
+} from '../services/validar-insumo.service';
 
 /**
  * DTO de entrada de `RegistrarEntradaInsumoUseCase`.
@@ -21,6 +29,11 @@ export interface RegistrarEntradaInsumoDto {
   cantidad: number;
   /** Quién registra el movimiento. Lo pone el borde desde el usuario autenticado. */
   usuarioId: string;
+  /**
+   * Condición del stock que suma la entrada. Ausente equivale a `NUEVO`; `USADO`
+   * solo lo admiten los insumos de una familia de repuestos.
+   */
+  condicion?: CondicionStock;
   /** Explicación opcional del asiento. Solo el AJUSTE la exige. */
   motivo?: string | null;
   /** Trazabilidad, no stock: no participa de la suma. */
@@ -121,6 +134,7 @@ export class RegistrarEntradaInsumoUseCase {
   constructor(
     private readonly insumoRepo: Pick<IInsumoRepository, 'findById'>,
     private readonly movimientoRepo: Pick<IMovimientoInsumoRepository, 'insert'>,
+    private readonly familiaRepo: Pick<IFamiliaInsumoRepository, 'findById'>,
   ) {}
 
   /**
@@ -153,11 +167,82 @@ export class RegistrarEntradaInsumoUseCase {
 
     const insumo = elegible.getValue();
 
-    // El id sale de la entidad recién leída y no del DTO: es el valor
-    // canónico que la base ya reconoció como fila existente.
-    const movimiento = MovimientoInsumoEntity.create({
+    const condicion = dto.condicion ?? CONDICION_STOCK_POR_DEFECTO;
+    const admitida = await validarCondicionAdmitida(this.familiaRepo, insumo, condicion);
+
+    if (admitida.isFail()) {
+      return Result.fail(admitida.getError());
+    }
+
+    return this.asentar(insumo.id, condicion, dto);
+  }
+
+  /**
+   * Asienta la devolución al depósito de una pieza retirada de un equipo: una
+   * ENTRADA de UNA unidad en condición USADO, vinculada al equipo de origen.
+   *
+   * Es un método con nombre de ORIGEN, y no un booleano en el DTO, por el mismo
+   * criterio que `itemCompraId`: una llave de "saltear validación" no tiene
+   * dueño; un método que solo llama el retiro de componentes, sí. No se expone
+   * por HTTP.
+   *
+   * Sus guards difieren de `execute()` en lo justo: la pieza existe físicamente
+   * aunque el catálogo se haya deshabilitado después, así que se ADMITE el
+   * insumo deshabilitado y la familia dada de baja o deshabilitada. Se sigue
+   * rechazando el insumo inexistente o con baja lógica (no se imputa stock a
+   * una fila que el catálogo no muestra) y la familia que no es de repuestos
+   * (el alcance de USADO no cambia).
+   *
+   * @param dto Insumo del componente, equipo de origen, usuario que retira y
+   *   motivo ya normalizado.
+   * @returns El movimiento asentado, o `InsumoNoEncontradoError` /
+   *   `CondicionUsadoNoAdmitidaError` según el guard que falle.
+   */
+  async registrarDevolucionDeComponente(dto: {
+    insumoId: string;
+    equipoId: string;
+    usuarioId: string;
+    motivo?: string | null;
+  }): Promise<Result<MovimientoInsumoEntity, DomainError>> {
+    const elegible = await validarInsumoElegible(this.insumoRepo, dto.insumoId);
+
+    if (elegible.isFail()) {
+      return Result.fail(elegible.getError());
+    }
+
+    const insumo = elegible.getValue();
+
+    const admitida = await validarCondicionAdmitida(this.familiaRepo, insumo, 'USADO', {
+      admitirFamiliaNoVigente: true,
+    });
+
+    if (admitida.isFail()) {
+      return Result.fail(admitida.getError());
+    }
+
+    return this.asentar(insumo.id, 'USADO', {
       insumoId: insumo.id,
+      cantidad: 1,
+      usuarioId: dto.usuarioId,
+      motivo: dto.motivo,
+      equipoId: dto.equipoId,
+    });
+  }
+
+  /**
+   * Construye el asiento y lo inserta. El id sale de la entidad recién leída y
+   * no del DTO: es el valor canónico que la base ya reconoció como fila
+   * existente.
+   */
+  private async asentar(
+    insumoId: string,
+    condicion: CondicionStock,
+    dto: RegistrarEntradaInsumoDto,
+  ): Promise<Result<MovimientoInsumoEntity, DomainError>> {
+    const movimiento = MovimientoInsumoEntity.create({
+      insumoId,
       tipo: 'ENTRADA',
+      condicion,
       cantidad: dto.cantidad,
       usuarioId: dto.usuarioId,
       motivo: dto.motivo,

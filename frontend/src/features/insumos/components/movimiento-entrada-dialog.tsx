@@ -35,6 +35,8 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRegistrarEntradaInsumo, construirMovimientoInsumoDto } from "../hooks/use-insumo-mutations";
 import { registrarMovimientoInsumoSchema, type RegistrarMovimientoInsumoFormValues } from "../schemas";
+import { CondicionStockSelector } from "./condicion-stock-selector";
+import { useSelectorCondicion } from "../hooks/use-selector-condicion";
 import { construirNotaEquiposNoDisponibles, MovimientoInsumoDialog } from "./movimiento-insumo-dialog";
 
 export interface MovimientoEntradaDialogProps {
@@ -56,6 +58,7 @@ const NOTA_EQUIPOS_NO_DISPONIBLES = construirNotaEquiposNoDisponibles("la entrad
  */
 export function MovimientoEntradaDialog({ insumoId, activo }: MovimientoEntradaDialogProps) {
   const [open, setOpen] = useState(false);
+  const condicion = useSelectorCondicion(insumoId);
   const registrarMutation = useRegistrarEntradaInsumo(insumoId);
   const entradaDeshabilitada = !activo;
 
@@ -73,11 +76,14 @@ export function MovimientoEntradaDialog({ insumoId, activo }: MovimientoEntradaD
   // overlay/X) a través de `onOpenChange`.
   function handleOpenChange(next: boolean) {
     setOpen(next);
-    if (!next) reset();
+    if (!next) {
+      reset();
+      condicion.reiniciar();
+    }
   }
 
   function submit(values: RegistrarMovimientoInsumoFormValues) {
-    registrarMutation.mutate(construirMovimientoInsumoDto(values), {
+    registrarMutation.mutate(construirMovimientoInsumoDto({ ...values, condicion: condicion.paraEnviar }), {
       onSuccess: () => handleOpenChange(false),
     });
   }
@@ -99,6 +105,7 @@ export function MovimientoEntradaDialog({ insumoId, activo }: MovimientoEntradaD
       errorMotivo={errors.motivo}
       registroEquipo={register("equipoId")}
       registroSector={register("sectorId")}
+      camposAdicionales={<CondicionStockSelector id="entrada-condicion" selector={condicion} />}
     />
   );
 }

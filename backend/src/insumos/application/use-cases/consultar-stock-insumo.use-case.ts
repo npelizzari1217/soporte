@@ -3,10 +3,14 @@ import {
   EstadoReposicionInsumo,
   evaluarReposicion,
 } from '../../domain/entities/estado-reposicion-insumo';
-import { calcularStock } from '../../domain/entities/tipo-movimiento-insumo';
+import { calcularSaldos, CondicionStock } from '../../domain/entities/tipo-movimiento-insumo';
+import { IFamiliaInsumoRepository } from '../../domain/ports/i-familia-insumo.repository';
 import { IInsumoRepository } from '../../domain/ports/i-insumo.repository';
 import { IMovimientoInsumoRepository } from '../../domain/ports/i-movimiento-insumo.repository';
-import { validarInsumoElegible } from '../services/validar-insumo.service';
+import {
+  validarCondicionAdmitida,
+  validarInsumoElegible,
+} from '../services/validar-insumo.service';
 
 /**
  * StockDeInsumo — lo que la ficha de un insumo necesita para mostrar su
@@ -25,11 +29,22 @@ import { validarInsumoElegible } from '../services/validar-insumo.service';
  */
 export interface StockDeInsumo {
   insumoId: string;
-  /** Saldo actual, derivado de la bitácora con `calcularStock()`. Puede ser negativo. */
+  /** Saldo TOTAL (NUEVO + USADO), en centésimas exactas. Puede ser negativo. */
   stock: number;
+  /** Saldo por condición, cada uno derivado de la bitácora con `calcularStock()`. */
+  saldos: Record<CondicionStock, number>;
+  /**
+   * Si la familia del insumo admite la condición USADO (regla de
+   * `validarCondicionAdmitida`). Viaja resuelto para que el consumidor no
+   * derive la regla por su cuenta.
+   */
+  admiteUsado: boolean;
   /** Punto de reposición del insumo, o `null` si no tiene uno definido. */
   stockMinimo: number | null;
-  /** Lectura del saldo contra el punto de reposición, ya resuelta. */
+  /**
+   * Lectura del saldo NUEVO contra el punto de reposición, ya resuelta. El
+   * USADO no cuenta: un repuesto usado no reemplaza a uno nuevo para reponer.
+   */
   estadoReposicion: EstadoReposicionInsumo;
 }
 
@@ -54,7 +69,7 @@ export interface StockDeInsumo {
  * asimetría con la que `RegistrarEntradaInsumoUseCase` a propósito NO recibe
  * `lockAndSumByTipo`.
  *
- * La fórmula del saldo NO vive acá: `calcularStock()` la resuelve en el
+ * La fórmula del saldo NO vive acá: `calcularSaldos()` la resuelve (compone `calcularStock()`) en el
  * dominio, así que el número que se muestra en la ficha es exactamente el
  * mismo que el registro de una salida usa para autorizar. Dos copias
  * discreparían el día que entre un tipo nuevo.
@@ -75,6 +90,7 @@ export class ConsultarStockInsumoUseCase {
   constructor(
     private readonly insumoRepo: Pick<IInsumoRepository, 'findById'>,
     private readonly movimientoRepo: Pick<IMovimientoInsumoRepository, 'sumByTipo'>,
+    private readonly familiaRepo: Pick<IFamiliaInsumoRepository, 'findById'>,
   ) {}
 
   /**
@@ -95,13 +111,17 @@ export class ConsultarStockInsumoUseCase {
     // canónico que la base ya reconoció, mismo criterio que el registro de una
     // salida.
     const sumas = await this.movimientoRepo.sumByTipo(insumo.id);
-    const stock = calcularStock(sumas);
+    const saldos = calcularSaldos(sumas);
+    const admiteUsado = (await validarCondicionAdmitida(this.familiaRepo, insumo, 'USADO')).isOk();
 
     return Result.ok({
       insumoId: insumo.id,
-      stock,
+      stock: saldos.total,
+      saldos: { NUEVO: saldos.NUEVO, USADO: saldos.USADO },
+      admiteUsado,
       stockMinimo: insumo.stockMinimo,
-      estadoReposicion: evaluarReposicion(stock, insumo.stockMinimo),
+      // La reposición mira solo lo NUEVO: los usados no ocultan la falta.
+      estadoReposicion: evaluarReposicion(saldos.NUEVO, insumo.stockMinimo),
     });
   }
 }

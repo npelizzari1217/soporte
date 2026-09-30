@@ -5,7 +5,7 @@
  * `GET /equipos/:id` ahora embebe `componentes[]` (item 1 backend-gaps —
  * cierra G7): `EquipoDetailView` pasa esa lista real como dato inicial a
  * `EquipoComponentesSection`, que la usa para sembrar su cache local
- * (`["componentes", equipoId]`). Las mutaciones (agregar/eliminar/editar/
+ * (`["componentes", equipoId]`). Las mutaciones (agregar/retirar/editar/
  * reactivar) NO actualizan esa cache optimistamente: invalidan
  * `["equipo", equipoId]` y el `useEffect` de sincronización de props la
  * refresca con el detalle fresco ya enriquecido.
@@ -18,6 +18,7 @@
  * del catálogo MASTER — el único lugar confiable para mostrar el nombre de
  * un componente ya asignado (soporta tipos dados de baja).
  */
+import type { CondicionStock } from "@/features/insumos/types";
 
 export interface Equipo {
   id: string;
@@ -62,8 +63,24 @@ export interface Componente {
   activo: boolean;
   /** `null` si está activo; fecha de baja lógica si fue soft-deleted. */
   deletedAt: string | null;
+  /** Campos de baja: el backend los envía siempre; son opcionales acá para no obligar a cada fixture. Desenlace del retiro; `null` si está activo o si la baja es anterior al retiro con destino (legado). */
+  bajaDestino?: "STOCK_USADO" | "DESCARTE" | null;
+  bajaMotivo?: string | null;
+  /** Movimiento de ENTRADA que devolvió la pieza al stock (solo con `STOCK_USADO`). */
+  bajaMovimientoId?: string | null;
+  bajaUsuarioId?: string | null;
+  /** `true` si la pieza devuelta no tenía una SALIDA del depósito vinculada. */
+  bajaSinSalidaPrevia?: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+/** Cuerpo de `POST /equipos/:id/componentes/:cid/baja` (espejo del backend). */
+export const DESTINOS_RETIRO = ["STOCK_USADO", "DESCARTE"] as const;
+export type DestinoRetiro = (typeof DESTINOS_RETIRO)[number];
+export interface RetirarComponenteDto {
+  destino: DestinoRetiro;
+  motivo?: string;
 }
 
 /**
@@ -118,6 +135,8 @@ export interface EditarEquipoDto {
 export interface CreateComponenteDto {
   insumoId: string;
   descontarStock: boolean;
+  /** Saldo del que se descuenta; solo se envía con `descontarStock: true` y el selector visible. */
+  condicion?: CondicionStock;
   descripcion?: string | null;
   numeroSerie?: string | null;
   capacidad?: string | null;

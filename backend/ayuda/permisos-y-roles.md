@@ -149,9 +149,23 @@ sin pasar por esta grilla.
 
 **`ALTAS` es el permiso del trabajo de todos los días.** Es el que necesita
 quien saca un tóner del depósito para instalarlo, o quien asienta la mercadería
-que acaba de llegar. Sin esa casilla la persona no puede registrar ningún
-movimiento, y la existencia que muestra el sistema deja de reflejar lo que hay
-en el depósito.
+que acaba de llegar. Sin esa casilla la persona no puede registrar entradas ni
+salidas a mano desde Insumos, y la existencia que muestra el sistema deja de
+reflejar lo que hay en el depósito.
+
+Hay tres trabajos que mueven el stock sin pedir esta casilla, porque el permiso
+que ya tienen alcanza:
+
+- **Instalar un repuesto en un equipo** con `ALTAS` de la fila **Equipos**: la
+  salida del depósito se registra sola.
+- **Devolver un componente al stock** con `BORRADO` de la fila **Equipos**: al
+  retirarlo, la pieza vuelve al depósito como usada.
+- **Recibir una compra** con `MODIFICACION` de la fila **Compras**: la mercadería
+  recibida entra al depósito.
+
+Fuera de esos tres casos, una entrada o una salida manual sí necesita `ALTAS` en
+**Insumos**. Los ajustes van aparte: piden `AJUSTAR`, como se explica a
+continuación.
 
 **`AJUSTAR` es otra cosa, y conviene darla con más cuidado.** No existe en
 ninguna otra fila de la grilla, así que la casilla no se entiende sola mirándola:

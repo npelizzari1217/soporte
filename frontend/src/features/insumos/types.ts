@@ -173,6 +173,16 @@ export const ESTADOS_REPOSICION_INSUMO = [
 export type EstadoReposicionInsumo = (typeof ESTADOS_REPOSICION_INSUMO)[number];
 
 /**
+ * Catálogo CERRADO de condiciones de stock, espejo exacto de `CONDICIONES_STOCK`
+ * del backend (`backend/src/insumos/domain/entities/tipo-movimiento-insumo.ts`).
+ * La autoridad es el backend; la unión se DERIVA del array.
+ */
+export const CONDICIONES_STOCK = ["NUEVO", "USADO"] as const;
+
+/** Condición de un movimiento o de un saldo, derivada de `CONDICIONES_STOCK`. */
+export type CondicionStock = (typeof CONDICIONES_STOCK)[number];
+
+/**
  * Espejo de `StockInsumoResponseDto` — lo que devuelve
  * `GET /insumos/:insumoId/stock`.
  *
@@ -187,8 +197,12 @@ export type EstadoReposicionInsumo = (typeof ESTADOS_REPOSICION_INSUMO)[number];
  */
 export interface StockInsumo {
   insumoId: string;
-  /** Saldo actual derivado de la bitácora. Es una FOTO: sirve para mostrar, no para decidir. */
+  /** Total: la suma de los saldos de todas las condiciones. Es una FOTO: sirve para mostrar, no para decidir. */
   stock: number;
+  /** Saldo por condición; la reposición se evalúa sobre `NUEVO`. */
+  saldos: Record<CondicionStock, number>;
+  /** Si el insumo admite stock USADO (familia de repuestos vigente), ya resuelto por el backend. */
+  admiteUsado: boolean;
   /** Punto de reposición del insumo, o `null` si no tiene uno definido. */
   stockMinimo: number | null;
   /** Lectura del saldo contra el punto de reposición, resuelta por el backend. */
@@ -248,6 +262,8 @@ export interface MovimientoInsumo {
   id: string;
   insumoId: string;
   tipo: TipoMovimientoInsumo;
+  /** Condición del stock que el asiento afecta. */
+  condicion: CondicionStock;
   /** Magnitud del asiento, siempre positiva. El signo lo da `tipo`. */
   cantidad: number;
   /** Quién firmó el asiento. Es un identificador: la pantalla NUNCA lo muestra crudo. */
