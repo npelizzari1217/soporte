@@ -19,6 +19,7 @@ function filaInsumo(
     familiaId: 'familia-1',
     unidadMedidaId: 'unidad-1',
     stockMinimo: new Prisma.Decimal('5.00'),
+    seguimiento: 'NINGUNO',
     activo: true,
     createdAt: new Date('2026-01-01'),
     updatedAt: new Date('2026-01-02'),

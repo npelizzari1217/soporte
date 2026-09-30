@@ -163,6 +163,14 @@ describe('TenantSeederAdapter (T7.4, integración — Postgres real, DB efímera
     });
     expect(unidades.map((u) => u.codigo).sort()).toEqual([...CODIGOS_UNIDADES_MEDIDA].sort());
     expect(unidades.every((u) => u.activo)).toBe(true);
+
+    // sdd/repuestos-numero-de-serie: solo UNI y PAR admiten cantidades enteras solamente.
+    expect(Object.fromEntries(unidades.map((u) => [u.codigo, u.entera]))).toEqual({
+      UNI: true,
+      PAR: true,
+      CM: false,
+      MM: false,
+    });
   }, 30_000);
 
   it('[CRITICAL] correr seed() una segunda vez NO duplica filas ni falla (R19, ampliado F3-S1)', async () => {

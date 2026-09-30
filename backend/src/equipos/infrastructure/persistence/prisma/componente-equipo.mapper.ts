@@ -44,7 +44,9 @@ export class ComponenteEquipoMapper {
    * Incluye `createdAt` para que el repo lo use en el CREATE y lo excluya
    * del UPDATE (nunca pisar el timestamp de creación existente en DB).
    */
-  static toPersistence(entity: ComponenteEquipoEntity): Omit<PrismaComponenteEquipo, 'updatedAt'> {
+  static toPersistence(
+    entity: ComponenteEquipoEntity,
+  ): Omit<PrismaComponenteEquipo, 'updatedAt' | 'unidadId'> {
     return {
       id: entity.id,
       equipoId: entity.equipoId,

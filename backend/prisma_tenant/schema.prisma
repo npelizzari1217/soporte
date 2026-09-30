@@ -595,6 +595,8 @@ model EquipoInformatico {
   tickets          TicketSoporte[]
   planesPreventivo PlanPreventivo[]
   movimientos      MovimientoInsumo[]
+  unidadesInsumo   UnidadInsumo[]
+  eventosUnidad    EventoUnidadInsumo[]
 
   @@map("equipos_informaticos")
 }
@@ -644,22 +646,22 @@ model ModeloEquipo {
 }
 
 model FamiliaInsumo {
-  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  codigo    String    @unique @db.VarChar(30)
-  nombre    String    @db.VarChar(100)
-  activo    Boolean   @default(true)
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  codigo     String    @unique @db.VarChar(30)
+  nombre     String    @db.VarChar(100)
+  activo     Boolean   @default(true)
   /// Repuesto de equipo (mouse, teclado, CPU...) vs. consumible (tóner,
   /// cartucho...). Sembrado en `true` para el piso universal de repuestos
   /// (WU-1, sdd/repuestos-familias); el `@default(false)` es solo el piso de
   /// las filas existentes y de quien no lo marque en el ABM — Prisma resuelve
   /// este DEFAULT del lado del cliente y lo manda en el INSERT, así que el
   /// ABM siempre lo envía explícito.
-  esRepuesto Boolean  @default(false) @map("es_repuesto")
+  esRepuesto Boolean   @default(false) @map("es_repuesto")
   /// `clock_timestamp()` — issue #172. Ver el comentario de
   /// `ModeloEquipo.createdAt`, arriba, para el porqué completo.
-  createdAt DateTime  @default(dbgenerated("clock_timestamp()")) @map("created_at") @db.Timestamptz
-  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
-  deletedAt DateTime? @map("deleted_at") @db.Timestamptz
+  createdAt  DateTime  @default(dbgenerated("clock_timestamp()")) @map("created_at") @db.Timestamptz
+  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz
 
   insumos Insumo[]
 
@@ -671,6 +673,9 @@ model UnidadMedida {
   codigo    String    @unique @db.VarChar(20)
   nombre    String    @db.VarChar(50)
   activo    Boolean   @default(true)
+  /// La cantidad de un insumo de esta unidad solo admite enteros (sdd/repuestos-numero-de-serie,
+  /// ADR-1). La migración la marca en `UNI` y `PAR`; editable desde el ABM de unidades.
+  entera    Boolean   @default(false)
   /// `clock_timestamp()` — issue #172. Ver el comentario de
   /// `ModeloEquipo.createdAt`, arriba, para el porqué completo.
   createdAt DateTime  @default(dbgenerated("clock_timestamp()")) @map("created_at") @db.Timestamptz
@@ -690,6 +695,10 @@ model Insumo {
   unidadMedidaId String    @map("unidad_medida_id") @db.Uuid
   /// Punto de reposición. Nullable: no todo insumo tiene uno. CHECK (>= 0).
   stockMinimo    Decimal?  @map("stock_minimo") @db.Decimal(10, 2)
+  /// CHECK (seguimiento IN ('NINGUNO','SERIE')) — fuente única: `SEGUIMIENTOS_INSUMO`
+  /// (`src/insumos/domain/entities/unidad-insumo.entity.ts`), comparada contra el CHECK real
+  /// por el spec de constraints. `SERIE`: una `UnidadInsumo` por pieza.
+  seguimiento    String    @default("NINGUNO") @db.VarChar(10)
   activo         Boolean   @default(true)
   /// `clock_timestamp()` — issue #172. Ver el comentario de
   /// `ModeloEquipo.createdAt`, arriba, para el porqué completo.
@@ -711,6 +720,8 @@ model Insumo {
   /// `ComponenteEquipo.insumo`; no todo componente tiene una — el camino de
   /// texto libre sigue siendo válido.
   componentes         ComponenteEquipo[]
+  /// Piezas individuales de un insumo `SERIE`.
+  unidades            UnidadInsumo[]
 
   @@index([familiaId])
   @@index([unidadMedidaId])
@@ -777,8 +788,8 @@ model InsumoModeloEquipo {
 // escondido.
 
 model MovimientoInsumo {
-  id       String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  insumoId String @map("insumo_id") @db.Uuid
+  id        String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  insumoId  String  @map("insumo_id") @db.Uuid
   /// CHECK (tipo IN (4 valores)) — catálogo CERRADO, ver migración. Fuente
   /// única de verdad: `TIPOS_MOVIMIENTO_INSUMO`
   /// (`src/insumos/domain/entities/tipo-movimiento-insumo.ts`), comparada
@@ -788,16 +799,16 @@ model MovimientoInsumo {
   /// `OperacionCompra.tipo`: una tercera copia de la lista es una tercera cosa
   /// que se desactualiza sola. Esta ya lo hizo — decía tres valores después de
   /// que el ajuste se partiera en sus dos direcciones.
-  tipo     String @db.VarChar(20)
+  tipo      String  @db.VarChar(20)
   /// CHECK (condicion IN ('NUEVO','USADO')) — fuente única de verdad:
   /// `CONDICIONES_STOCK` (`src/insumos/domain/entities/tipo-movimiento-insumo.ts`),
   /// comparada contra el CHECK real por el spec de constraints. El default se
   /// conserva a propósito: las filas previas y un binario anterior caen en NUEVO.
-  condicion String @default("NUEVO") @db.VarChar(10)
+  condicion String  @default("NUEVO") @db.VarChar(10)
   /// CHECK (cantidad > 0). El SIGNO lo da el `tipo`, no el número: admitir
   /// negativos daría dos formas de escribir la misma salida —SALIDA de 5 o
   /// ENTRADA de -5— y ninguna suma sabría cuál es la buena.
-  cantidad Decimal @db.Decimal(10, 2)
+  cantidad  Decimal @db.Decimal(10, 2)
   /// Soft ref → master.usuarios.id. Sin FK cross-DB: cada inquilino es una
   /// base física distinta — mismo criterio que `OperacionCompra.usuarioId`.
   usuarioId String  @map("usuario_id") @db.Uuid
@@ -911,6 +922,13 @@ model MovimientoInsumo {
   componenteInstalado ComponenteEquipo? @relation("ComponenteInstalacion")
   componenteDevuelto  ComponenteEquipo? @relation("ComponenteBaja")
 
+  /// Pieza a la que refiere el movimiento (insumo `SERIE`); NULL en el resto. CHECK
+  /// (unidad_id IS NULL OR cantidad = 1). Índice PARCIAL `WHERE unidad_id IS NOT NULL`
+  /// en la migración.
+  unidadId String?             @map("unidad_id") @db.Uuid
+  unidad   UnidadInsumo?       @relation("MovimientoUnidad", fields: [unidadId], references: [id], onDelete: Restrict)
+  evento   EventoUnidadInsumo?
+
   /// Índice compuesto que sirve a las dos consultas del módulo: el stock
   /// (`SUM(cantidad) WHERE insumo_id = ?`, cubierto por el prefijo) y la
   /// bitácora de la ficha, ordenada por fecha. Uno solo alcanza — un
@@ -924,12 +942,13 @@ model MovimientoInsumo {
   /// entradas por recepción llevan origen: las salidas, los ajustes y las
   /// entradas manuales quedan en NULL y son la mayoría de la tabla.
   @@index([itemCompraId])
+  @@index([unidadId])
   @@map("movimientos_insumo")
 }
 
 model ComponenteEquipo {
-  id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  equipoId             String    @map("equipo_id") @db.Uuid
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  equipoId    String    @map("equipo_id") @db.Uuid
   /// FK real → `insumos.id`, obligatoria (sdd/catalogo-unico-componentes): el
   /// componente sale siempre del catálogo de repuestos y su tipo se deriva de
   /// la familia del insumo. La migración `componentes_insumo_obligatorio` aborta
@@ -940,13 +959,13 @@ model ComponenteEquipo {
   /// puede borrar por debajo sin que la base lo frene (`insumos` solo tiene
   /// baja lógica, pero declararlo evita que un futuro `migrate dev` regenere
   /// el default de Prisma).
-  insumoId             String    @map("insumo_id") @db.Uuid
-  descripcion          String?   @db.VarChar(255)
-  numeroSerie          String?   @map("numero_serie") @db.VarChar(255)
-  capacidad            String?   @db.VarChar(100)
-  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt            DateTime  @updatedAt @map("updated_at") @db.Timestamptz
-  deletedAt            DateTime? @map("deleted_at") @db.Timestamptz
+  insumoId    String    @map("insumo_id") @db.Uuid
+  descripcion String?   @db.VarChar(255)
+  numeroSerie String?   @map("numero_serie") @db.VarChar(255)
+  capacidad   String?   @db.VarChar(100)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz
 
   /// SALIDA de stock que respaldó la instalación (sdd/stock-usado-componentes).
   /// NULL: componente cargado a mano o anterior al ciclo. UNIQUE: un movimiento
@@ -957,17 +976,24 @@ model ComponenteEquipo {
   /// (`src/equipos/domain/entities/componente-equipo.entity.ts`), comparada contra el
   /// CHECK real por el spec de constraints. El CHECK `componentes_equipo_baja_coherente_check`
   /// (ver migración) fija qué columnas van juntas; un legado tiene las cuatro en NULL.
-  bajaDestino      String? @map("baja_destino") @db.VarChar(20)
-  bajaMotivo       String? @map("baja_motivo") @db.Text
+  bajaDestino             String? @map("baja_destino") @db.VarChar(20)
+  bajaMotivo              String? @map("baja_motivo") @db.Text
   /// ENTRADA USADO que devolvió el componente al stock (solo `STOCK_USADO`).
-  bajaMovimientoId String? @unique @map("baja_movimiento_id") @db.Uuid
+  bajaMovimientoId        String? @unique @map("baja_movimiento_id") @db.Uuid
   /// Soft ref → master.usuarios.id, sin FK cross-DB.
-  bajaUsuarioId    String? @map("baja_usuario_id") @db.Uuid
+  bajaUsuarioId           String? @map("baja_usuario_id") @db.Uuid
+  /// Unidad de la que se instaló el componente (sdd/repuestos-numero-de-serie). CHECK
+  /// (unidad_id IS NULL OR numero_serie IS NULL): con unidad, el serial no es texto libre.
+  /// UNIQUE PARCIAL `(unidad_id) WHERE unidad_id IS NOT NULL AND deleted_at IS NULL` solo en
+  /// la migración: Prisma no modela índices parciales.
+  unidadId                String? @map("unidad_id") @db.Uuid
 
   equipo                EquipoInformatico @relation(fields: [equipoId], references: [id])
   insumo                Insumo            @relation(fields: [insumoId], references: [id], onDelete: Restrict)
   instalacionMovimiento MovimientoInsumo? @relation("ComponenteInstalacion", fields: [instalacionMovimientoId], references: [id], onDelete: Restrict)
   bajaMovimiento        MovimientoInsumo? @relation("ComponenteBaja", fields: [bajaMovimientoId], references: [id], onDelete: Restrict)
+
+  unidad UnidadInsumo? @relation("ComponenteUnidad", fields: [unidadId], references: [id], onDelete: Restrict)
 
   @@index([equipoId])
   @@index([insumoId])
@@ -1146,7 +1172,7 @@ model ItemCompra {
   updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt DateTime? @map("deleted_at") @db.Timestamptz
 
-  compra Compra @relation(fields: [compraId], references: [id])
+  compra Compra  @relation(fields: [compraId], references: [id])
   /// `onDelete` EXPLÍCITO y NO redundante: el default de Prisma para una
   /// relación OPCIONAL es `SetNull`, que contradice el `ON DELETE RESTRICT`
   /// que escribió la migración. Sin declararlo, el próximo `migrate dev`
@@ -1339,4 +1365,59 @@ model CalendarioLaboralDiaCliente {
   updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
   @@map("calendario_laboral_dias_cliente")
+}
+
+/// Pieza individual de un insumo `SERIE` (sdd/repuestos-numero-de-serie, ADR-1).
+/// Serie pendiente = `numeroSerie` NULL. Los CHECK con nombre y el UNIQUE parcial
+/// `(insumo_id, numero_serie_normalizado) WHERE numero_serie_normalizado IS NOT NULL` viven en la
+/// migración `unidades_insumo_serie`; condición, estado y forma normalizada tienen su fuente única
+/// en `src/insumos/domain/entities/unidad-insumo.entity.ts`.
+model UnidadInsumo {
+  id                     String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  insumoId               String   @map("insumo_id") @db.Uuid
+  /// Forma cargada, recortada.
+  numeroSerie            String?  @map("numero_serie") @db.VarChar(255)
+  /// Única fuente: `normalizarSerial()`; la base solo compara.
+  numeroSerieNormalizado String?  @map("numero_serie_normalizado") @db.VarChar(255)
+  condicion              String   @db.VarChar(10)
+  estado                 String   @db.VarChar(15)
+  /// Solo una unidad `INSTALADA` refiere su equipo (CHECK).
+  equipoId               String?  @map("equipo_id") @db.Uuid
+  createdAt              DateTime @default(dbgenerated("clock_timestamp()")) @map("created_at") @db.Timestamptz
+  updatedAt              DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  insumo      Insumo               @relation(fields: [insumoId], references: [id], onDelete: Restrict)
+  equipo      EquipoInformatico?   @relation(fields: [equipoId], references: [id], onDelete: Restrict)
+  movimientos MovimientoInsumo[]   @relation("MovimientoUnidad")
+  componentes ComponenteEquipo[]   @relation("ComponenteUnidad")
+  eventos     EventoUnidadInsumo[]
+
+  @@index([insumoId, estado])
+  @@index([equipoId])
+  @@map("unidades_insumo")
+}
+
+/// Bitácora append-only de una unidad (ADR-9). `tipo` con CHECK contra `TIPOS_EVENTO_UNIDAD`.
+/// `componenteId` y `usuarioId` van SIN FK a propósito: la instalación escribe el evento antes que
+/// el componente (orden de locks, ADR-12) y `usuarioId` es soft ref a master.usuarios.id.
+model EventoUnidadInsumo {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  unidadId       String   @map("unidad_id") @db.Uuid
+  tipo           String   @db.VarChar(25)
+  /// UNIQUE: un movimiento origina a lo sumo un evento.
+  movimientoId   String?  @unique @map("movimiento_id") @db.Uuid
+  equipoId       String?  @map("equipo_id") @db.Uuid
+  componenteId   String?  @map("componente_id") @db.Uuid
+  serialAnterior String?  @map("serial_anterior") @db.VarChar(255)
+  serialNuevo    String?  @map("serial_nuevo") @db.VarChar(255)
+  motivo         String?  @db.Text
+  usuarioId      String   @map("usuario_id") @db.Uuid
+  createdAt      DateTime @default(dbgenerated("clock_timestamp()")) @map("created_at") @db.Timestamptz
+
+  unidad     UnidadInsumo       @relation(fields: [unidadId], references: [id], onDelete: Restrict)
+  movimiento MovimientoInsumo?  @relation(fields: [movimientoId], references: [id], onDelete: Restrict)
+  equipo     EquipoInformatico? @relation(fields: [equipoId], references: [id], onDelete: Restrict)
+
+  @@index([unidadId, createdAt])
+  @@map("eventos_unidad_insumo")
 }

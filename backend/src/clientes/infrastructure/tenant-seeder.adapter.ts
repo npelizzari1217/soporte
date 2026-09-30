@@ -177,8 +177,8 @@ const FAMILIAS_INSUMO_REPUESTO = [
  * backfill de los tenants que ya existen.
  */
 const UNIDADES_MEDIDA = [
-  { codigo: 'UNI', nombre: 'Unidad' },
-  { codigo: 'PAR', nombre: 'Pares' },
+  { codigo: 'UNI', nombre: 'Unidad', entera: true },
+  { codigo: 'PAR', nombre: 'Pares', entera: true },
   { codigo: 'CM', nombre: 'Centímetro' },
   { codigo: 'MM', nombre: 'Milímetro' },
 ];

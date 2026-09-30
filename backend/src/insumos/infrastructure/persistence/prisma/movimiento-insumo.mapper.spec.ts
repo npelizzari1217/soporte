@@ -18,6 +18,7 @@ function filaMovimiento(
     equipoId: null,
     sectorId: null,
     itemCompraId: null,
+    unidadId: null,
     createdAt: new Date('2026-09-06T10:00:00.000Z'),
     ...overrides,
   };
@@ -298,6 +299,7 @@ describe('MovimientoInsumoMapper', () => {
     const fila = MovimientoInsumoMapper.toPersistence(movimiento);
     const reconstruido = MovimientoInsumoMapper.toDomain({
       ...fila,
+      unidadId: null,
       cantidad: new Prisma.Decimal(fila.cantidad),
       createdAt: fechaDeLaBase,
     });

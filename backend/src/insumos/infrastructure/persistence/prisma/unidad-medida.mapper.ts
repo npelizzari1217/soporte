@@ -37,7 +37,7 @@ export class UnidadMedidaMapper {
    */
   static toPersistence(
     entity: UnidadMedidaEntity,
-  ): Omit<PrismaUnidadMedida, 'updatedAt' | 'createdAt'> {
+  ): Omit<PrismaUnidadMedida, 'updatedAt' | 'createdAt' | 'entera'> {
     return {
       id: entity.id,
       codigo: entity.codigo,

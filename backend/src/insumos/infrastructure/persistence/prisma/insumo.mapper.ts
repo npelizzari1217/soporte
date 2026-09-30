@@ -176,7 +176,7 @@ export class InsumoMapper {
    */
   static toPersistence(entity: InsumoEntity): Omit<
     PrismaInsumo,
-    'updatedAt' | 'stockMinimo' | 'createdAt'
+    'updatedAt' | 'stockMinimo' | 'createdAt' | 'seguimiento'
   > & {
     stockMinimo: Prisma.Decimal | number | string | null;
   } {

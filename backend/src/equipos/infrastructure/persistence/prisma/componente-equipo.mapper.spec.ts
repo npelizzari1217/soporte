@@ -20,6 +20,7 @@ function fila(override: Partial<PrismaComponenteEquipo> = {}): PrismaComponenteE
     bajaMotivo: null,
     bajaMovimientoId: null,
     bajaUsuarioId: null,
+    unidadId: null,
     ...override,
   };
 }

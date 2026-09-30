@@ -32,7 +32,10 @@ import {
  * `DEFAULT clock_timestamp()` de la columna sea quien decida la fecha, y no
  * el reloj del proceso Node.
  */
-export type FilaMovimientoInsumo = Omit<PrismaMovimientoInsumo, 'cantidad' | 'createdAt'> & {
+export type FilaMovimientoInsumo = Omit<
+  PrismaMovimientoInsumo,
+  'cantidad' | 'createdAt' | 'unidadId'
+> & {
   cantidad: Prisma.Decimal | number;
 };
 
