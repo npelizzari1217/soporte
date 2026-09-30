@@ -98,3 +98,13 @@ Rama `feat/stock-usado-componentes-wu07` (base wu06-2). Modo estandar (feature).
 - 7.4/7.5 `retirar-componente.integration.spec.ts` (base efimera del tenant de test, pool propio instrumentado): ENTRADA USADO con `equipoId` y saldos, DESCARTE sin movimiento, `bajaSinSalidaPrevia = false` tras instalar con descuento y retirar (pendiente de WU-6), ENTRADA fallida, marca en 0 filas sin movimiento residual, y 8 retiros simultaneos => una ENTRADA.
 - 7.6 Mutacion local (no commiteada): quitar `deletedAt: null` del `where` de `retirar` deja en rojo el caso de concurrencia (los otros 5 siguen verdes). Repo restaurado.
 - Gates: ver reporte del orquestador.
+
+## WU-8a — Endpoint de retiro y correccion de la Ayuda de permisos (tareas 8a.1 a 8a.6)
+
+Rama `feat/stock-usado-componentes-wu08a` (base wu07). Modo estandar (feature).
+
+- 8a.1 `RetirarComponenteHttpDto`: `destino` con `IsIn(DESTINOS_RETIRO_COMPONENTE)`, `motivo` opcional con `transformarMotivo` y `MaxLength` (mide despues del recorte). El tope de 500 evita un 500: `validarRetiro` lanza si el motivo lo excede, asi que el borde lo frena con 400 en ambos destinos.
+- 8a.2 `POST :id/componentes/:componenteId/baja` (`EQUIPOS:BORRADO`, `@CurrentUser()`, 200). `MotivoRetiroRequeridoError` y `ComponenteDadoDeBajaError` (422) y `ComponenteNoEncontradoError` (404) ya estaban mapeados en `toHttpException`. El `DELETE` sigue hasta WU-8b. El caso de uso ya estaba registrado en el modulo.
+- 8a.3 Specs de DTO (destino, recorte, 501 y 500 caracteres) y de controller (ok, 422 x2, 404, metadata de permiso).
+- 8a.4 `equipos-retirar-componente.e2e.spec.ts` (`usarLockMasterTest()`, un actor por test por el UNIQUE de `db_name`): 401; 403 con permisos de insumos y sin BORRADO; `STOCK_USADO` solo con `EQUIPOS:BORRADO` (saldo USADO +1); `DESCARTE` sin movimiento; sin motivo 422; sin destino o invalido 400; motivo de 501 caracteres 400 en ambos destinos; ya retirado 422; reactivar tras `STOCK_USADO` 422; tras `DESCARTE` y de un legado, activo con saldo intacto.
+- 8a.5 Ayuda: `permisos-y-roles.md` ya no afirma que sin la casilla de Insumos nadie registra movimientos; nombra las tres excepciones. Unica edicion de Ayuda del ciclo.
