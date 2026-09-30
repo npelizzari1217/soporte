@@ -370,3 +370,21 @@ Rama `wu07a-2` (7a.2):
   `UnidadNoAdmitidaError`. El ajuste NEGATIVO no cambia: su rama `SERIE` es de WU-7b. Constructor nuevo: 5to argumento
   `operaciones`. P2002 desenvuelto afuera del `run()`.
 
+Rama `wu07a-3` (7a.3 a 7a.5):
+
+- `registrarDevolucionDeComponente` corre en `txRunner.run()` (re-entrante: el retiro ya tiene la suya) con L1 primero.
+  Suma `unidadId?`, `componenteId?` (obligatorio con `unidadId`: lo necesita el evento `RETIRO_A_DEPOSITO`) y
+  `numeroSerie?`. Con unidad => `operaciones.devolverAlDeposito`; componente legado de un insumo hoy `SERIE` =>
+  `numeroSerie` obligatorio e `ingresar` USADO con `equipoId`, y sin serial (ausente o en blanco) =>
+  `SerialRequeridoError` sin cambiar nada; `NINGUNO` como hoy. La exención de G2 (insumo deshabilitado) vive solo acá:
+  nunca se pide `exigirHabilitado`, y la entrada manual sigue rechazando el insumo deshabilitado (test de entrada SERIE).
+  `RetirarComponenteUseCase` todavía NO pasa `unidadId`/`componenteId`/`numeroSerie` (el componente no tiene `unidadId`
+  hasta WU-10/11): queda para el WU de equipos.
+
+### Work Unit Evidence (WU-7a)
+
+| Evidence | Value |
+|---|---|
+| Focused test command | `pnpm vitest run src/insumos src/compras src/equipos` verde en cada rama; `pnpm lint` y `pnpm typecheck` en cero |
+| Rollback boundary | Revertir cada commit por separado (el de 7a.3 no depende de 7a.2): sin migraciones ni borde HTTP |
+

@@ -7,7 +7,10 @@ import {
 } from '../../domain/entities/tipo-movimiento-insumo';
 import { FalloOperacionDeUnidad } from '../../domain/errors/fallo-operacion-de-unidad';
 import { InsumoNoEncontradoError } from '../../domain/errors/insumos.errors';
-import { UnidadNoAdmitidaError } from '../../domain/errors/unidades-insumo.errors';
+import {
+  SerialRequeridoError,
+  UnidadNoAdmitidaError,
+} from '../../domain/errors/unidades-insumo.errors';
 import { IFamiliaInsumoRepository } from '../../domain/ports/i-familia-insumo.repository';
 import { IInsumoRepository } from '../../domain/ports/i-insumo.repository';
 import { IMovimientoInsumoRepository } from '../../domain/ports/i-movimiento-insumo.repository';
@@ -161,7 +164,7 @@ export class RegistrarEntradaInsumoUseCase {
     private readonly movimientoRepo: Pick<IMovimientoInsumoRepository, 'insert'>,
     private readonly familiaRepo: Pick<IFamiliaInsumoRepository, 'findById'>,
     private readonly txRunner: Pick<ITenantTransactionRunner, 'run'>,
-    private readonly operaciones: Pick<OperacionesUnidadInsumo, 'ingresar'>,
+    private readonly operaciones: Pick<OperacionesUnidadInsumo, 'ingresar' | 'devolverAlDeposito'>,
   ) {}
 
   /**
@@ -276,16 +279,59 @@ export class RegistrarEntradaInsumoUseCase {
    * (el alcance de USADO no cambia).
    *
    * @param dto Insumo del componente, equipo de origen, usuario que retira y
-   *   motivo ya normalizado.
+   *   motivo ya normalizado; `unidadId`/`componenteId` si el componente lleva
+   *   unidad y `numeroSerie` si es un componente legado de un insumo `SERIE`.
    * @returns El movimiento asentado, o `InsumoNoEncontradoError` /
-   *   `CondicionUsadoNoAdmitidaError` según el guard que falle.
+   *   `CondicionUsadoNoAdmitidaError` según el guard que falle, o
+   *   `SerialRequeridoError` si el componente es legado de un insumo `SERIE`
+   *   y no trae serial.
    */
   async registrarDevolucionDeComponente(dto: {
     insumoId: string;
     equipoId: string;
     usuarioId: string;
     motivo?: string | null;
+    /** Unidad que lleva el componente; si viene, la pieza vuelve con su serial. */
+    unidadId?: string | null;
+    /** Componente que lleva la unidad. Obligatorio con `unidadId` (queda en el evento). */
+    componenteId?: string | null;
+    /** Serial de un componente LEGADO cuyo insumo hoy es `SERIE`. */
+    numeroSerie?: string | null;
   }): Promise<Result<MovimientoInsumoEntity, DomainError>> {
+    try {
+      return await this.txRunner.run(() => this.devolverBajoL1(dto));
+    } catch (error) {
+      if (error instanceof FalloOperacionDeUnidad) return Result.fail(error.errorDeDominio);
+      throw error;
+    }
+  }
+
+  /**
+   * Cuerpo de la devolución, dentro de la transacción del retiro. Ramas:
+   * componente con unidad → `devolverAlDeposito`; componente legado de un
+   * insumo hoy `SERIE` → `numeroSerie` obligatorio e `ingresar` USADO (ADR-7,
+   * sin serie pendiente: `SerialRequeridoError` sin cambiar nada); insumo
+   * `NINGUNO` → como siempre.
+   *
+   * **La exención de insumo deshabilitado (G2) es de ESTE camino y de ningún
+   * otro**: acá nunca se pide `exigirHabilitado`.
+   */
+  private async devolverBajoL1(dto: {
+    insumoId: string;
+    equipoId: string;
+    usuarioId: string;
+    motivo?: string | null;
+    unidadId?: string | null;
+    componenteId?: string | null;
+    numeroSerie?: string | null;
+  }): Promise<Result<MovimientoInsumoEntity, DomainError>> {
+    // L1 primero; con `unidadId` el servicio lo vuelve a leer (FOR SHARE es
+    // re-entrante) antes de tomar L2 y L3.
+    const seguimiento = await this.insumoRepo.leerSeguimientoParaMovimiento(dto.insumoId);
+    if (seguimiento === null) {
+      return Result.fail(new InsumoNoEncontradoError(dto.insumoId));
+    }
+
     const elegible = await validarInsumoElegible(this.insumoRepo, dto.insumoId);
 
     if (elegible.isFail()) {
@@ -300,6 +346,45 @@ export class RegistrarEntradaInsumoUseCase {
 
     if (admitida.isFail()) {
       return Result.fail(admitida.getError());
+    }
+
+    if (dto.unidadId != null) {
+      if (dto.componenteId == null) {
+        throw new Error('La devolución de un componente con unidad exige su componenteId.');
+      }
+      const devueltas = await this.operaciones.devolverAlDeposito(
+        [{ unidadId: dto.unidadId, equipoId: dto.equipoId, componenteId: dto.componenteId }],
+        { usuarioId: dto.usuarioId, motivo: dto.motivo },
+      );
+      return devueltas.isFail()
+        ? Result.fail(devueltas.getError())
+        : Result.ok(devueltas.getValue()[0].movimiento);
+    }
+
+    if (seguimiento === 'SERIE') {
+      // Componente legado: no tiene unidad, así que el serial lo trae el retiro.
+      // Una pendiente no se admite (decisión del dueño): sin serial, nada cambia.
+      const serial = dto.numeroSerie?.trim() ?? '';
+      if (serial === '') {
+        return Result.fail(
+          new SerialRequeridoError(
+            `el insumo "${insumo.id}" se sigue por número de serie y el componente no tiene unidad: hace falta el serial para devolverlo al depósito.`,
+          ),
+        );
+      }
+      const ingresada = await ingresarPorSerie(this.operaciones, {
+        insumoId: insumo.id,
+        cantidad: 1,
+        seriales: [serial],
+        condicion: 'USADO',
+        tipo: 'ENTRADA',
+        usuarioId: dto.usuarioId,
+        motivo: dto.motivo,
+        equipoId: dto.equipoId,
+      });
+      return ingresada.isFail()
+        ? Result.fail(ingresada.getError())
+        : Result.ok(ingresada.getValue()[0]);
     }
 
     return this.asentar(insumo.id, 'USADO', {

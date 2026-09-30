@@ -347,9 +347,9 @@ Commit sugerido: `feat(insumos): cambio de seguimiento con orden global de locks
 
 - [x] 7a.1 `registrar-entrada-insumo.use-case.ts`: el primer lock es `leerSeguimientoParaMovimiento` (L1 `FOR SHARE`), el `seguimiento` que decide la rama es el de esa lectura. `NINGUNO`: como hoy; `seriales` ⇒ `UnidadNoAdmitidaError`. `SERIE`: `seriales` obligatorio, `length === cantidad`, sin pendientes (`SerialesNoCoincidenError`), cantidad entera → `ingresar`. Opción interna `completarConPendientes` (no es campo del DTO HTTP) que rellena con unidades pendientes hasta la cantidad (ADR-6). La entrada `NINGUNO` no toma L2.
 - [x] 7a.2 `registrar-ajuste-insumo.use-case.ts`, rama positiva: igual que la entrada con `tipo: 'AJUSTE_POSITIVO'`; el motivo ya lo exige la entidad.
-- [ ] 7a.3 `registrarDevolucionDeComponente`: suma `unidadId?` y `numeroSerie?`; componente con unidad → `devolverAlDeposito`; componente **legado** de un insumo hoy `SERIE` → `numeroSerie` obligatorio e `ingresar` USADO con `equipoId`; **sin serial** ⇒ `SerialRequeridoError` (422) sin cambiar nada (no admite serie pendiente). Conserva los guards de insumo y familia del ciclo anterior.
-- [ ] 7a.4 Specs unitarios (fakes): ramas `NINGUNO`/`SERIE`; entrada SERIE con seriales / sin serial o repetido; ajuste positivo SERIE con y sin motivo; `unidadId` en `NINGUNO` ⇒ `UnidadNoAdmitidaError`; retiro legado con serial y sin serial.
-- [ ] 7a.5 Quality gates (backend): `cd backend && pnpm lint && pnpm typecheck && pnpm vitest run src/insumos/application` y `pnpm test`.
+- [x] 7a.3 `registrarDevolucionDeComponente`: suma `unidadId?` y `numeroSerie?`; componente con unidad → `devolverAlDeposito`; componente **legado** de un insumo hoy `SERIE` → `numeroSerie` obligatorio e `ingresar` USADO con `equipoId`; **sin serial** ⇒ `SerialRequeridoError` (422) sin cambiar nada (no admite serie pendiente). Conserva los guards de insumo y familia del ciclo anterior.
+- [x] 7a.4 Specs unitarios (fakes): ramas `NINGUNO`/`SERIE`; entrada SERIE con seriales / sin serial o repetido; ajuste positivo SERIE con y sin motivo; `unidadId` en `NINGUNO` ⇒ `UnidadNoAdmitidaError`; retiro legado con serial y sin serial.
+- [x] 7a.5 Quality gates (backend): `cd backend && pnpm lint && pnpm typecheck && pnpm vitest run src/insumos/application` y `pnpm test`.
 
 **Escenarios**: Entrada manual SERIE con seriales; Entrada manual SERIE sin serial o repetido;
 Ajuste positivo SERIE; Ajuste positivo SERIE sin motivo; Insumo NINGUNO con unidad; Entrada manual

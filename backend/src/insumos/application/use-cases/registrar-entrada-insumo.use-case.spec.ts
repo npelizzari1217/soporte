@@ -60,7 +60,7 @@ describe('RegistrarEntradaInsumoUseCase', () => {
   }
 
   function buildOperaciones() {
-    return { ingresar: vi.fn() };
+    return { ingresar: vi.fn(), devolverAlDeposito: vi.fn() };
   }
 
   /**
@@ -878,6 +878,134 @@ describe('RegistrarEntradaInsumoUseCase', () => {
 
       expect(result.getError().code).toBe('INSUMO_DESHABILITADO');
       expect(operaciones.ingresar).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('registrarDevolucionDeComponente con seguimiento', () => {
+    const devolucion = {
+      insumoId: 'ins-1',
+      equipoId: 'eq-1',
+      usuarioId: 'usr-7',
+      motivo: 'retiro',
+    };
+
+    function armar(seguimiento: SeguimientoInsumo, insumo = insumoVigente()) {
+      const movimientoRepo = buildMovimientoRepo();
+      const operaciones = buildOperaciones();
+      const useCase = new RegistrarEntradaInsumoUseCase(
+        buildInsumoRepo(insumo, seguimiento),
+        movimientoRepo,
+        familiaRepoFake({ esRepuesto: true }),
+        txRunnerFake(),
+        operaciones,
+      );
+      return { useCase, movimientoRepo, operaciones };
+    }
+
+    function movimientoUsado(): MovimientoInsumoEntity {
+      return MovimientoInsumoEntity.create({
+        insumoId: 'ins-1',
+        tipo: 'ENTRADA',
+        condicion: 'USADO',
+        cantidad: 1,
+        usuarioId: 'usr-7',
+        equipoId: 'eq-1',
+      }).getValue();
+    }
+
+    it('componente con unidad: devolverAlDeposito con su componente, sin asentar otra entrada', async () => {
+      const c = armar('SERIE');
+      const movimiento = movimientoUsado();
+      c.operaciones.devolverAlDeposito.mockResolvedValue(Result.ok([{ unidad: {}, movimiento }]));
+
+      const result = await c.useCase.registrarDevolucionDeComponente({
+        ...devolucion,
+        unidadId: 'uni-1',
+        componenteId: 'comp-1',
+      });
+
+      expect(result.getValue()).toBe(movimiento);
+      expect(c.operaciones.devolverAlDeposito).toHaveBeenCalledWith(
+        [{ unidadId: 'uni-1', equipoId: 'eq-1', componenteId: 'comp-1' }],
+        { usuarioId: 'usr-7', motivo: 'retiro' },
+      );
+      expect(c.movimientoRepo.insert).not.toHaveBeenCalled();
+    });
+
+    it('componente legado de un insumo SERIE con serial: ingresa una unidad USADO con el equipo', async () => {
+      const c = armar('SERIE');
+      const movimiento = movimientoUsado();
+      c.operaciones.ingresar.mockResolvedValue(Result.ok([{ unidad: {}, movimiento }]));
+
+      const result = await c.useCase.registrarDevolucionDeComponente({
+        ...devolucion,
+        numeroSerie: 'SN-9',
+      });
+
+      expect(result.getValue()).toBe(movimiento);
+      expect(c.operaciones.ingresar).toHaveBeenCalledWith(
+        'ins-1',
+        [{ numeroSerie: 'SN-9' }],
+        expect.objectContaining({ condicion: 'USADO', tipo: 'ENTRADA', equipoId: 'eq-1' }),
+      );
+    });
+
+    it.each([
+      ['ausente', undefined],
+      ['vacio', '   '],
+    ])(
+      'componente legado de un insumo SERIE con serial %s: SerialRequeridoError y no cambia nada',
+      async (_caso, numeroSerie) => {
+        const c = armar('SERIE');
+
+        const result = await c.useCase.registrarDevolucionDeComponente({
+          ...devolucion,
+          numeroSerie,
+        });
+
+        expect(result.getError().code).toBe('SERIAL_REQUERIDO');
+        expect(c.operaciones.ingresar).not.toHaveBeenCalled();
+        expect(c.movimientoRepo.insert).not.toHaveBeenCalled();
+      },
+    );
+
+    it('insumo NINGUNO: como siempre, una ENTRADA USADO del equipo', async () => {
+      const c = armar('NINGUNO');
+
+      const result = await c.useCase.registrarDevolucionDeComponente(devolucion);
+
+      expect(result.getValue().condicion).toBe('USADO');
+      expect(c.movimientoRepo.insert).toHaveBeenCalledTimes(1);
+      expect(c.operaciones.ingresar).not.toHaveBeenCalled();
+    });
+
+    it('G2: un insumo DESHABILITADO se admite en la devolucion con unidad', async () => {
+      const c = armar('SERIE', insumoDeshabilitado());
+      c.operaciones.devolverAlDeposito.mockResolvedValue(
+        Result.ok([{ unidad: {}, movimiento: movimientoUsado() }]),
+      );
+
+      const result = await c.useCase.registrarDevolucionDeComponente({
+        ...devolucion,
+        unidadId: 'uni-1',
+        componenteId: 'comp-1',
+      });
+
+      expect(result.isOk()).toBe(true);
+    });
+
+    it('un serial repetido en la base (P2002) se devuelve como Result.fail', async () => {
+      const c = armar('SERIE');
+      c.operaciones.ingresar.mockRejectedValue(
+        new FalloOperacionDeUnidad(new SerialDuplicadoError('SN-9')),
+      );
+
+      const result = await c.useCase.registrarDevolucionDeComponente({
+        ...devolucion,
+        numeroSerie: 'SN-9',
+      });
+
+      expect(result.getError().code).toBe('SERIAL_DUPLICADO');
     });
   });
 });
