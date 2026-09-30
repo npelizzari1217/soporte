@@ -789,6 +789,11 @@ model MovimientoInsumo {
   /// que se desactualiza sola. Esta ya lo hizo — decía tres valores después de
   /// que el ajuste se partiera en sus dos direcciones.
   tipo     String @db.VarChar(20)
+  /// CHECK (condicion IN ('NUEVO','USADO')) — fuente única de verdad:
+  /// `CONDICIONES_STOCK` (`src/insumos/domain/entities/tipo-movimiento-insumo.ts`),
+  /// comparada contra el CHECK real por el spec de constraints. El default se
+  /// conserva a propósito: las filas previas y un binario anterior caen en NUEVO.
+  condicion String @default("NUEVO") @db.VarChar(10)
   /// CHECK (cantidad > 0). El SIGNO lo da el `tipo`, no el número: admitir
   /// negativos daría dos formas de escribir la misma salida —SALIDA de 5 o
   /// ENTRADA de -5— y ninguna suma sabría cuál es la buena.

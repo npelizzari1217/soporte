@@ -63,6 +63,7 @@ describe('ListarMovimientosInsumoUseCase', () => {
       {
         insumoId: ID_CANONICO,
         tipo,
+        condicion: 'NUEVO',
         cantidad,
         usuarioId: 'usr-1',
         motivo: null,

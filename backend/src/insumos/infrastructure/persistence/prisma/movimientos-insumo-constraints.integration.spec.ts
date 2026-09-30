@@ -24,6 +24,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { PrismaService } from '../../../../shared/infrastructure/persistence/prisma.service';
 import { TenantPrismaClient } from '../../../../shared/infrastructure/persistence/prisma-clients';
 import {
+  CONDICIONES_STOCK,
   TIPOS_AJUSTE_INSUMO,
   TIPOS_MOVIMIENTO_INSUMO,
 } from '../../../domain/entities/tipo-movimiento-insumo';
@@ -132,6 +133,49 @@ describe('Movimientos de insumo — constraints de la migración', () => {
       expect(filas).toHaveLength(1);
       const enLaDb = [...filas[0].def.matchAll(/'([A-Z_]+)'/g)].map((m) => m[1]).sort();
       expect(enLaDb).toEqual([...TIPOS_MOVIMIENTO_INSUMO].sort());
+    });
+  });
+
+  describe('condicion — catálogo CERRADO por CHECK', () => {
+    it('rechaza una condición fuera del catálogo', async () => {
+      await expect(
+        tenantClient.movimientoInsumo.create({
+          data: { insumoId, tipo: 'ENTRADA', condicion: 'RECUPERADO', cantidad: 1, usuarioId },
+        }),
+      ).rejects.toThrow(/movimientos_insumo_condicion_check/);
+    });
+
+    it.each([...CONDICIONES_STOCK])('acepta la condición %s', async (condicion) => {
+      const creado = await tenantClient.movimientoInsumo.create({
+        data: { insumoId, tipo: 'ENTRADA', condicion, cantidad: 1, usuarioId },
+      });
+
+      expect(creado.condicion).toBe(condicion);
+    });
+
+    // La migración es aditiva y conserva el default: un INSERT sin la columna
+    // (una fila previa, o un binario anterior) queda NUEVO.
+    it('un INSERT sin condicion queda NUEVO', async () => {
+      const filas = await tenantClient.$queryRaw<{ condicion: string }[]>`
+        INSERT INTO movimientos_insumo (insumo_id, tipo, cantidad, usuario_id)
+        VALUES (${insumoId}::uuid, 'ENTRADA', 1, ${usuarioId}::uuid)
+        RETURNING condicion
+      `;
+
+      expect(filas).toHaveLength(1);
+      expect(filas[0].condicion).toBe('NUEVO');
+    });
+
+    it('el CHECK real enumera exactamente CONDICIONES_STOCK', async () => {
+      const filas = await tenantClient.$queryRaw<{ def: string }[]>`
+        SELECT pg_get_constraintdef(oid) AS def
+        FROM pg_constraint
+        WHERE conname = 'movimientos_insumo_condicion_check'
+      `;
+
+      expect(filas).toHaveLength(1);
+      const enLaDb = [...filas[0].def.matchAll(/'([A-Z_]+)'/g)].map((m) => m[1]).sort();
+      expect(enLaDb).toEqual([...CONDICIONES_STOCK].sort());
     });
   });
 

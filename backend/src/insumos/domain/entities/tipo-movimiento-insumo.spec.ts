@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   calcularStock,
+  CONDICION_STOCK_POR_DEFECTO,
+  CONDICIONES_STOCK,
   DIRECCION_POR_TIPO_MOVIMIENTO,
   esAjuste,
   TIPOS_AJUSTE_INSUMO,
@@ -35,6 +37,17 @@ describe('Dirección de los tipos de movimiento de insumo', () => {
     for (const tipo of TIPOS_MOVIMIENTO_INSUMO) {
       expect(esAjuste(tipo)).toBe((TIPOS_AJUSTE_INSUMO as readonly string[]).includes(tipo));
     }
+  });
+});
+
+describe('Condiciones del stock', () => {
+  it('el catálogo es cerrado: NUEVO y USADO', () => {
+    expect([...CONDICIONES_STOCK]).toEqual(['NUEVO', 'USADO']);
+  });
+
+  it('la condición por defecto pertenece al catálogo y es NUEVO', () => {
+    expect(CONDICIONES_STOCK).toContain(CONDICION_STOCK_POR_DEFECTO);
+    expect(CONDICION_STOCK_POR_DEFECTO).toBe('NUEVO');
   });
 });
 

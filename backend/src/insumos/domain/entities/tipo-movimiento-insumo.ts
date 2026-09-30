@@ -36,6 +36,20 @@ export const TIPOS_MOVIMIENTO_INSUMO = [
 ] as const;
 
 /**
+ * Catálogo CERRADO de condiciones del stock de un insumo: cada movimiento
+ * pertenece a una y el saldo se lleva por separado para cada una. Es la ÚNICA
+ * fuente de verdad: el CHECK `movimientos_insumo_condicion_check` se compara
+ * contra este array en el spec de constraints.
+ */
+export const CONDICIONES_STOCK = ['NUEVO', 'USADO'] as const;
+
+/** Condición de un movimiento, derivada de `CONDICIONES_STOCK`. */
+export type CondicionStock = (typeof CONDICIONES_STOCK)[number];
+
+/** Condición que se asume cuando el movimiento no declara ninguna. */
+export const CONDICION_STOCK_POR_DEFECTO: CondicionStock = 'NUEVO';
+
+/**
  * Los dos tipos de AJUSTE, que son la misma operación de negocio con distinto
  * signo. Existen separados y no como un único `AJUSTE` porque `cantidad` es
  * siempre positiva y la dirección la da el tipo: con un solo valor, un ajuste
