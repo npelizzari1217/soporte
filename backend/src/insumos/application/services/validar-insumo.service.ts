@@ -9,8 +9,10 @@ import {
   normalizarFabricanteCodigoAlternativo,
 } from '../../domain/entities/insumo-codigo-alternativo.entity';
 import { InsumoEntity } from '../../domain/entities/insumo.entity';
+import { CondicionStock } from '../../domain/entities/tipo-movimiento-insumo';
 import {
   CodigoAlternativoDuplicadoError,
+  CondicionUsadoNoAdmitidaError,
   CompatibilidadDuplicadaError,
   FamiliaInsumoDeshabilitadaError,
   FamiliaInsumoInexistenteError,
@@ -217,6 +219,57 @@ export async function validarInsumoElegible(
   }
 
   return Result.ok(insumo);
+}
+
+/**
+ * Verifica que la CONDICIÓN de un movimiento sea admitida para el insumo: el
+ * stock USADO existe solo para los repuestos (familia con `esRepuesto`).
+ *
+ * `NUEVO` es la condición de siempre y se admite SIN consultar nada: los
+ * insumos que no son repuestos no pagan una lectura de familia por movimiento.
+ * Con `USADO` se lee la familia del insumo y se rechaza si no existe, tiene
+ * baja lógica o no es de repuestos.
+ *
+ * La opción `admitirFamiliaNoVigente` la pide únicamente la devolución de un
+ * componente al stock: la pieza existe físicamente aunque su familia se haya
+ * dado de baja o deshabilitado después, así que esos dos estados no rechazan.
+ * `esRepuesto = false` rechaza igual: el alcance de USADO no cambia. Es un
+ * parámetro de esta función y no un campo de ningún DTO, para que el borde no
+ * tenga por dónde abrirlo.
+ *
+ * @param familias Lector del catálogo de familias del tenant.
+ * @param insumo Insumo sobre el que se asienta el movimiento.
+ * @param condicion Condición pedida.
+ * @param opciones `admitirFamiliaNoVigente` admite familia con baja lógica o
+ *   deshabilitada.
+ * @returns `Result.ok()` si la condición es admitida; `CondicionUsadoNoAdmitidaError` si no.
+ */
+export async function validarCondicionAdmitida(
+  familias: LectorCatalogoFamilias,
+  insumo: InsumoEntity,
+  condicion: CondicionStock,
+  opciones: { admitirFamiliaNoVigente?: boolean } = {},
+): Promise<Result<void, DomainError>> {
+  if (condicion === 'NUEVO') {
+    return Result.ok(undefined);
+  }
+
+  const familia = await familias.findById(insumo.familiaId);
+
+  if (!familia) {
+    return Result.fail(new CondicionUsadoNoAdmitidaError(insumo.id));
+  }
+
+  const vigente = !familia.isDeleted() && familia.activo;
+  if (!vigente && opciones.admitirFamiliaNoVigente !== true) {
+    return Result.fail(new CondicionUsadoNoAdmitidaError(insumo.id));
+  }
+
+  if (!familia.esRepuesto) {
+    return Result.fail(new CondicionUsadoNoAdmitidaError(insumo.id));
+  }
+
+  return Result.ok(undefined);
 }
 
 /**

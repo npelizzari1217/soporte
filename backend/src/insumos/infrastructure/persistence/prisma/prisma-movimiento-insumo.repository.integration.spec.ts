@@ -109,6 +109,7 @@ describe('PrismaMovimientoInsumoRepository — Integration', () => {
     return MovimientoInsumoEntity.create({
       insumoId,
       tipo,
+      condicion: 'NUEVO',
       cantidad,
       usuarioId,
       ...extra,

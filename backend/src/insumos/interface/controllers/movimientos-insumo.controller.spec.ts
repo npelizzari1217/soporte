@@ -45,6 +45,7 @@ function construirMovimiento(tipo: TipoMovimientoInsumo, cantidad = 2): Movimien
   return MovimientoInsumoEntity.create({
     insumoId: INSUMO_ID,
     tipo,
+    condicion: 'NUEVO',
     cantidad,
     usuarioId: USUARIO_ID,
     motivo: tipo.startsWith('AJUSTE') ? 'Conteo físico' : null,

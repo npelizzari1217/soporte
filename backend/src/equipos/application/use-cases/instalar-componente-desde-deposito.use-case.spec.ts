@@ -37,6 +37,7 @@ describe('InstalarComponenteDesdeDepositoUseCase', () => {
     return MovimientoInsumoEntity.create({
       insumoId,
       tipo: 'SALIDA',
+      condicion: 'NUEVO',
       cantidad: 1,
       usuarioId: 'usuario-uuid',
       equipoId: 'equipo-uuid',

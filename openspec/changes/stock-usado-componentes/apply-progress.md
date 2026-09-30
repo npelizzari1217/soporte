@@ -23,3 +23,13 @@ Rama `feat/stock-usado-componentes-wu02`. Modo estandar (feature).
 - 2.5 Integracion (base `soporte_tenant_test`, patron existente del archivo): agrupacion por condicion con filas NUEVO y USADO sembradas por SQL directo, en `lockAndSumByTipo` y `sumByTipo`; insumo sin USADO da USADO en cero; claves contra los dos catalogos. Concurrencia ajustada al nuevo tipo.
 - 2.6 Gates: `pnpm lint`, `pnpm typecheck` y `vitest run src/insumos src/compras src/equipos` (138 archivos, 2380 tests) en verde; suite completa `pnpm test` (483 archivos, 5638 tests) en verde.
 - Presupuesto: 431 lineas de codigo y specs; `size:exception` declarado (sin costura limpia).
+
+## WU-3a — Condicion decidida en entrada, salida y ajuste (tareas 3a.1 a 3a.8)
+
+WU-3a excedio 400 lineas (~1.020 entre codigo y specs) y se partio en TRES commits, cada uno verde y con su codigo junto a sus tests: rama `feat/stock-usado-componentes-wu03a` (parte 1), `...-wu03a-2` (parte 2) y `...-wu03a-3` (parte 3). La costura de `tasks.md` (entrada+devolucion / salida+ajuste) se subdividio porque la mitad de entrada sola pasaba de 400.
+
+### Parte 1 (rama wu03a): regla de la condicion y `create()` obligatoria — tareas 3a.1 (entidad) y 3a.2
+
+- `condicion` obligatoria en `MovimientoInsumoEntity.create()`; entrada, salida y ajuste pasan `'NUEVO'` explicito hasta la parte 2 y 3. Los specs que construyen la entidad la reciben explicita.
+- `CondicionUsadoNoAdmitidaError` (`CONDICION_USADO_NO_ADMITIDA`) y `validarCondicionAdmitida(familias, insumo, condicion, { admitirFamiliaNoVigente })`. Spec propio `validar-condicion-admitida.spec.ts` con el helper `insumos/testing/familia-repo-fake.ts`.
+

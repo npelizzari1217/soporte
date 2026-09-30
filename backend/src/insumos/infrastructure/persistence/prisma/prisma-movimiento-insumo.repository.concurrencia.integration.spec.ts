@@ -303,6 +303,7 @@ describe('PrismaMovimientoInsumoRepository — Concurrencia real del advisory lo
               MovimientoInsumoEntity.create({
                 insumoId,
                 tipo: 'SALIDA',
+                condicion: 'NUEVO',
                 cantidad: CANTIDAD_POR_SALIDA,
                 usuarioId,
               }).getValue(),

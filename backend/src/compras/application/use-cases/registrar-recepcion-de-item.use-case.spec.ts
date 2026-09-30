@@ -134,6 +134,7 @@ describe('RegistrarRecepcionDeItemUseCase', () => {
         return MovimientoInsumoEntity.create({
           insumoId: dto.insumoId,
           tipo: 'ENTRADA',
+          condicion: 'NUEVO',
           cantidad: dto.cantidad,
           usuarioId: dto.usuarioId,
           motivo: dto.motivo,

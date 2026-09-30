@@ -158,6 +158,7 @@ export class RegistrarEntradaInsumoUseCase {
     const movimiento = MovimientoInsumoEntity.create({
       insumoId: insumo.id,
       tipo: 'ENTRADA',
+      condicion: 'NUEVO',
       cantidad: dto.cantidad,
       usuarioId: dto.usuarioId,
       motivo: dto.motivo,

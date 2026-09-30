@@ -35,6 +35,7 @@ function crearMovimiento(
   return MovimientoInsumoEntity.create({
     insumoId: 'insumo-1',
     tipo: 'ENTRADA',
+    condicion: 'NUEVO',
     cantidad: 3,
     usuarioId: 'usuario-1',
     ...props,

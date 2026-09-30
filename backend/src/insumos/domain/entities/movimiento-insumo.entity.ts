@@ -1,12 +1,7 @@
 import { BaseEntity } from '../../../shared/domain/base-entity';
 import { Result } from '../../../shared/domain/result';
 import { MotivoAjusteRequeridoError } from '../errors/insumos.errors';
-import {
-  CONDICION_STOCK_POR_DEFECTO,
-  CondicionStock,
-  esAjuste,
-  TipoMovimientoInsumo,
-} from './tipo-movimiento-insumo';
+import { CondicionStock, esAjuste, TipoMovimientoInsumo } from './tipo-movimiento-insumo';
 
 /**
  * MovimientoInsumoProps — shape completo de un asiento de la bitácora de
@@ -53,10 +48,8 @@ export interface MovimientoInsumoProps {
  */
 export type CrearMovimientoInsumoProps = Omit<
   MovimientoInsumoProps,
-  'motivo' | 'equipoId' | 'sectorId' | 'itemCompraId' | 'condicion'
+  'motivo' | 'equipoId' | 'sectorId' | 'itemCompraId'
 > & {
-  /** Opcional en esta etapa: si falta, `create()` aplica `CONDICION_STOCK_POR_DEFECTO`. */
-  condicion?: CondicionStock;
   motivo?: string | null;
   equipoId?: string | null;
   sectorId?: string | null;
@@ -259,7 +252,7 @@ export class MovimientoInsumoEntity extends BaseEntity<MovimientoInsumoProps> {
         {
           insumoId: props.insumoId,
           tipo: props.tipo,
-          condicion: props.condicion ?? CONDICION_STOCK_POR_DEFECTO,
+          condicion: props.condicion,
           cantidad: props.cantidad,
           usuarioId: props.usuarioId,
           motivo,

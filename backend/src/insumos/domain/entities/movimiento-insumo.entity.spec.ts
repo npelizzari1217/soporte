@@ -29,6 +29,7 @@ function propsBase(
   return {
     insumoId: 'id-insumo',
     tipo: 'ENTRADA',
+    condicion: 'NUEVO',
     cantidad: 10,
     usuarioId: 'id-usuario',
     ...parciales,

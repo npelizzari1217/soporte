@@ -223,6 +223,7 @@ function fakeEntradaInsumo(): Pick<RegistrarEntradaInsumoUseCase, 'execute'> & {
       MovimientoInsumoEntity.create({
         insumoId: dto.insumoId,
         tipo: 'ENTRADA',
+        condicion: 'NUEVO',
         cantidad: dto.cantidad,
         usuarioId: dto.usuarioId,
       }),

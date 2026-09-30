@@ -348,6 +348,7 @@ describe('toMovimientoInsumoResponseDto', () => {
     const resultado = MovimientoInsumoEntity.create({
       insumoId: INSUMO_ID,
       tipo: 'AJUSTE_NEGATIVO',
+      condicion: 'NUEVO',
       cantidad: 3.5,
       usuarioId: USUARIO_ID,
       motivo: '  Conteo físico del 06/09  ',
@@ -362,6 +363,7 @@ describe('toMovimientoInsumoResponseDto', () => {
     const resultado = MovimientoInsumoEntity.create({
       insumoId: INSUMO_ID,
       tipo: 'ENTRADA',
+      condicion: 'NUEVO',
       cantidad: 4,
       usuarioId: USUARIO_ID,
       itemCompraId: ITEM_COMPRA_ID,
@@ -546,6 +548,7 @@ describe('toListarMovimientosInsumoResponseDto', () => {
     return MovimientoInsumoEntity.create({
       insumoId: INSUMO_ID,
       tipo: 'SALIDA',
+      condicion: 'NUEVO',
       cantidad: 2,
       usuarioId: USUARIO_ID,
       motivo: 'Reposición del piso 3',
@@ -556,6 +559,7 @@ describe('toListarMovimientosInsumoResponseDto', () => {
     return MovimientoInsumoEntity.create({
       insumoId: INSUMO_ID,
       tipo: 'ENTRADA',
+      condicion: 'NUEVO',
       cantidad: 6,
       usuarioId: USUARIO_ID,
       itemCompraId: ITEM_COMPRA_ID,
