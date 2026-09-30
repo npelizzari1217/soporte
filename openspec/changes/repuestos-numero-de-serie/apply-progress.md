@@ -526,3 +526,13 @@ Rama `feat/repuestos-numero-de-serie-wu08c`. Parte 1 de 2 (caso de uso). Tareas 
 - La exención vive solo acá: un spec prueba que la entrada manual (insumo deshabilitado, USADO con familia no vigente) y el
   ajuste positivo manual (USADO con familia no vigente) siguen rechazando.
 - Registrado en `insumos.module.ts` (sin exportar); la ruta llega en la parte 2.
+
+### WU-8c — parte 2 de 2 (ruta y e2e)
+
+Rama `feat/repuestos-numero-de-serie-wu08c-2`. Tareas 8c.3 y 8c.4 hechas (8c.1 a 8c.4 completas).
+
+- Ruta `POST /insumos/:insumoId/unidades/:unidadId/devolucion-entrega` (`INSUMOS:ALTAS`, 201, `MovimientoInsumoResponseDto`) en
+  `UnidadesInsumoController`; body `DevolverEntregaHttpDto` `{ condicion, motivo? }` (400 por condición fuera de NUEVO/USADO).
+- e2e ampliado en `unidades-insumo.e2e.spec.ts` (mismo arnés; `sembrarInsumo` acepta `repuesto`): NUEVO, USADO, G2 (insumo y
+  familia deshabilitados), guards 422, insumo dado de baja 404, 400, 404 de unidad ajena, 403, e historial con
+  `DEVOLUCION_DE_ENTREGA`.

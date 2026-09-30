@@ -7,12 +7,14 @@
  *   GET  /insumos/:insumoId/unidades/:unidadId/historial      [INSUMOS:LECTURA]
  *   POST /insumos/:insumoId/unidades/:unidadId/serial         [INSUMOS:ALTAS]
  *   POST /insumos/:insumoId/unidades/:unidadId/correccion-serial [INSUMOS:AJUSTAR]
+ *   POST /insumos/:insumoId/unidades/:unidadId/devolucion-entrega [INSUMOS:ALTAS]
  *
  * Completar un serial pendiente es parte de dar de alta (`ALTAS`); corregir uno
  * ya cargado explica una diferencia, igual que el ajuste (`AJUSTAR`). El
  * `usuarioId` sale siempre del JWT, nunca del body. Los errores se mapean con
  * `toHttpExceptionMovimiento` (409 serial duplicado, 404 unidad/insumo
- * inexistente, 422 el resto de las reglas).
+ * inexistente, 422 el resto de las reglas). La devolución de una entrega es una
+ * ENTRADA de una pieza que vuelve físicamente (`ALTAS`, ADR-13).
  */
 import {
   Body,
@@ -37,10 +39,16 @@ import { ListarUnidadesInsumoUseCase } from '../../application/use-cases/listar-
 import { ConsultarHistorialUnidadUseCase } from '../../application/use-cases/consultar-historial-unidad.use-case';
 import { CargarSerialUnidadUseCase } from '../../application/use-cases/cargar-serial-unidad.use-case';
 import { CorregirSerialUnidadUseCase } from '../../application/use-cases/corregir-serial-unidad.use-case';
+import { DevolverEntregaUseCase } from '../../application/use-cases/devolver-entrega.use-case';
 import { toHttpExceptionMovimiento } from './movimientos-insumo.controller';
+import {
+  MovimientoInsumoResponseDto,
+  toMovimientoInsumoResponseDto,
+} from '../dtos/movimientos-insumo.dto';
 import {
   CargarSerialUnidadHttpDto,
   CorregirSerialUnidadHttpDto,
+  DevolverEntregaHttpDto,
   EventoUnidadResponseDto,
   ListarUnidadesInsumoQueryDto,
   UnidadInsumoResponseDto,
@@ -56,6 +64,7 @@ export class UnidadesInsumoController {
     private readonly consultarHistorialUseCase: ConsultarHistorialUnidadUseCase,
     private readonly cargarSerialUseCase: CargarSerialUnidadUseCase,
     private readonly corregirSerialUseCase: CorregirSerialUnidadUseCase,
+    private readonly devolverEntregaUseCase: DevolverEntregaUseCase,
   ) {}
 
   /**
@@ -158,5 +167,34 @@ export class UnidadesInsumoController {
     });
     if (result.isFail()) throw toHttpExceptionMovimiento(result.getError());
     return toUnidadInsumoResponseDto({ unidad: result.getValue(), equipoNombre: null });
+  }
+
+  /**
+   * POST /insumos/:insumoId/unidades/:unidadId/devolucion-entrega — una unidad entregada vuelve al depósito.
+   *
+   * @throws 400 id mal formado, condición fuera de NUEVO/USADO o motivo por encima de 500
+   * @throws 403 sin `INSUMOS:ALTAS`
+   * @throws 404 unidad inexistente o de otro insumo
+   * @throws 422 unidad no entregada, insumo sin serie o dado de baja, USADO fuera de repuestos
+   */
+  @Post(':unidadId/devolucion-entrega')
+  @UseGuards(AccionesGuard)
+  @RequiereAcciones('INSUMOS:ALTAS')
+  @HttpCode(HttpStatus.CREATED)
+  async devolverEntrega(
+    @CurrentUser() user: JwtPayload,
+    @Param('insumoId', new ParseUUIDPipe()) insumoId: string,
+    @Param('unidadId', new ParseUUIDPipe()) unidadId: string,
+    @Body() dto: DevolverEntregaHttpDto,
+  ): Promise<MovimientoInsumoResponseDto> {
+    const result = await this.devolverEntregaUseCase.execute({
+      insumoId,
+      unidadId,
+      condicion: dto.condicion,
+      motivo: dto.motivo ?? null,
+      usuarioId: user.sub,
+    });
+    if (result.isFail()) throw toHttpExceptionMovimiento(result.getError());
+    return toMovimientoInsumoResponseDto(result.getValue());
   }
 }

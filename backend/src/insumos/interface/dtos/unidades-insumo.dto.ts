@@ -17,7 +17,7 @@ import {
   EstadoUnidadInsumo,
   TipoEventoUnidad,
 } from '../../domain/entities/unidad-insumo.entity';
-import { CondicionStock } from '../../domain/entities/tipo-movimiento-insumo';
+import { CONDICIONES_STOCK, CondicionStock } from '../../domain/entities/tipo-movimiento-insumo';
 import { transformarMotivo } from './movimientos-insumo.dto';
 import { UnidadListada } from '../../application/use-cases/listar-unidades-insumo.use-case';
 import { EventoDeHistorial } from '../../application/use-cases/consultar-historial-unidad.use-case';
@@ -51,6 +51,18 @@ export class CorregirSerialUnidadHttpDto {
   @Transform(recortarSerial)
   @EsSerialDeUnidad()
   numeroSerie!: string;
+
+  @IsOptional()
+  @IsString()
+  @Transform(transformarMotivo)
+  @MaxLength(MOVIMIENTO_INSUMO_MOTIVO_MAX_LENGTH)
+  motivo?: string | null;
+}
+
+/** Body de `POST …/unidades/:unidadId/devolucion-entrega`: la condición la elige el usuario. */
+export class DevolverEntregaHttpDto {
+  @IsIn(CONDICIONES_STOCK)
+  condicion!: CondicionStock;
 
   @IsOptional()
   @IsString()

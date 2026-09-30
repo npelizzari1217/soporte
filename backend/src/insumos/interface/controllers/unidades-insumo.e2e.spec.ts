@@ -1,7 +1,7 @@
 /**
  * unidades-insumo.e2e.spec.ts — levanta la app REAL y pega por HTTP a las rutas
  * de unidades de un insumo `SERIE` (repuestos-numero-de-serie, WU-8b): listar,
- * historial, cargar serial y corregir serial. Como ningún insumo es `SERIE` por
+ * historial, cargar serial, corregir serial y devolución de entrega (WU-8c). Como ningún insumo es `SERIE` por
  * HTTP hasta WU-12a, el insumo y lo que aún no tiene ruta (unidad pendiente,
  * eventos de instalación) se preparan por SQL directo en el tenant efímero.
  *
@@ -35,7 +35,10 @@ import { UsuarioEntity } from '../../../auth/domain/entities/usuario.entity';
 import { RoleEntity } from '../../../auth/domain/entities/role.entity';
 import { Argon2HashProvider } from '../../../auth/infrastructure/argon2-hash.provider';
 import { CodigoAccion } from '../../../shared/domain/acciones';
-import { MovimientosRegistradosResponseDto } from '../dtos/movimientos-insumo.dto';
+import {
+  MovimientoInsumoResponseDto,
+  MovimientosRegistradosResponseDto,
+} from '../dtos/movimientos-insumo.dto';
 import { EventoUnidadResponseDto, UnidadInsumoResponseDto } from '../dtos/unidades-insumo.dto';
 import { usarLockMasterTest } from '../../../testing/lock-master-test';
 
@@ -260,7 +263,10 @@ describe('Unidades de insumo SERIE e2e — borde HTTP', () => {
   }
 
   /** Siembra familia + unidad + insumo con el administrador y devuelve el id del insumo. */
-  async function sembrarInsumo(tokenAdmin: string, opciones: { serie: boolean }): Promise<string> {
+  async function sembrarInsumo(
+    tokenAdmin: string,
+    opciones: { serie: boolean; repuesto?: boolean },
+  ): Promise<string> {
     const marca = sufijo();
 
     const familia = await httpPost<{ id: string }>(
@@ -268,7 +274,7 @@ describe('Unidades de insumo SERIE e2e — borde HTTP', () => {
       {
         codigo: `FAM_${marca}`,
         nombre: 'Familia de prueba',
-        esRepuesto: false,
+        esRepuesto: opciones.repuesto ?? false,
       },
       bearer(tokenAdmin),
     );
@@ -317,7 +323,7 @@ describe('Unidades de insumo SERIE e2e — borde HTTP', () => {
   }
 
   async function prepararEscenario(
-    opciones: { serie: boolean } = { serie: true },
+    opciones: { serie: boolean; repuesto?: boolean } = { serie: true },
   ): Promise<Escenario> {
     const administrador = await crearAdministrador();
     const insumoId = await sembrarInsumo(administrador.token, opciones);
@@ -617,6 +623,143 @@ describe('Unidades de insumo SERIE e2e — borde HTTP', () => {
       expect(motivoBlanco.status).toBe(422);
       expect(existente.status).toBe(409);
       expect(instalada.status).toBe(422);
+    });
+  });
+
+  describe('POST …/unidades/:unidadId/devolucion-entrega', () => {
+    /** Ingresa una unidad y la entrega por la SALIDA manual; devuelve su id. */
+    async function entregada(e: Escenario, serial = 'SN-1'): Promise<string> {
+      const [u] = await ingresar(e, [serial]);
+      const salida = await httpPost(
+        `${base(e.insumoId)}/movimientos/salida`,
+        { cantidad: 1, unidadId: u },
+        bearer(e.token),
+      );
+      expect(salida.status).toBe(201);
+      return u;
+    }
+
+    const ruta = (e: Escenario, id: string): string =>
+      `${base(e.insumoId)}/unidades/${id}/devolucion-entrega`;
+
+    it('NUEVO: la unidad vuelve EN_DEPOSITO con su serial y deja DEVOLUCION_DE_ENTREGA', async () => {
+      const e = await prepararEscenario();
+      const u = await entregada(e);
+
+      const res = await httpPost<MovimientoInsumoResponseDto>(
+        ruta(e, u),
+        { condicion: 'NUEVO', motivo: '  No se usó  ' },
+        bearer(e.token),
+      );
+
+      expect(res.status).toBe(201);
+      expect(res.data).toMatchObject({
+        tipo: 'ENTRADA',
+        cantidad: 1,
+        condicion: 'NUEVO',
+        unidadId: u,
+        insumoId: e.insumoId,
+        motivo: 'No se usó',
+      });
+      const unidades = await httpGet<UnidadInsumoResponseDto[]>(
+        `${base(e.insumoId)}/unidades?estado=EN_DEPOSITO`,
+        bearer(e.tokenLectura),
+      );
+      expect(unidades.data).toMatchObject([{ id: u, numeroSerie: 'SN-1', condicion: 'NUEVO' }]);
+      const h = await historial(e, u);
+      expect(h.map((x) => x.tipo)).toEqual(['INGRESO', 'ENTREGA', 'DEVOLUCION_DE_ENTREGA']);
+      expect(h[2].movimientoId).toBe(res.data.id);
+    });
+
+    it('USADO en un insumo de repuestos deja la unidad EN_DEPOSITO USADO', async () => {
+      const e = await prepararEscenario({ serie: true, repuesto: true });
+      const u = await entregada(e);
+
+      const res = await httpPost<MovimientoInsumoResponseDto>(
+        ruta(e, u),
+        { condicion: 'USADO' },
+        bearer(e.token),
+      );
+
+      expect(res.status).toBe(201);
+      expect(res.data.condicion).toBe('USADO');
+      const unidades = await httpGet<UnidadInsumoResponseDto[]>(
+        `${base(e.insumoId)}/unidades?estado=EN_DEPOSITO`,
+        bearer(e.tokenLectura),
+      );
+      expect(unidades.data[0]).toMatchObject({ id: u, condicion: 'USADO' });
+    });
+
+    it('G2: admite un insumo deshabilitado y una familia deshabilitada con USADO', async () => {
+      const e = await prepararEscenario({ serie: true, repuesto: true });
+      const u = await entregada(e);
+      await tenantPool.query(`UPDATE insumos SET activo = false WHERE id = $1`, [e.insumoId]);
+      await tenantPool.query(
+        `UPDATE familias_insumo SET activo = false WHERE id = (SELECT familia_id FROM insumos WHERE id = $1)`,
+        [e.insumoId],
+      );
+
+      const res = await httpPost<MovimientoInsumoResponseDto>(
+        ruta(e, u),
+        { condicion: 'USADO' },
+        bearer(e.token),
+      );
+
+      expect(res.status).toBe(201);
+    });
+
+    it('422 en cada guard (no entregada, USADO sin repuestos, NINGUNO) y 404 del insumo dado de baja', async () => {
+      const e = await prepararEscenario();
+      const [enDeposito] = await ingresar(e, ['SN-1']);
+      const u = await entregada(e, 'SN-2');
+
+      const noEntregada = await httpPost(
+        ruta(e, enDeposito),
+        { condicion: 'NUEVO' },
+        bearer(e.token),
+      );
+      const usadoSinRepuestos = await httpPost(ruta(e, u), { condicion: 'USADO' }, bearer(e.token));
+      await tenantPool.query(`UPDATE insumos SET seguimiento = 'NINGUNO' WHERE id = $1`, [
+        e.insumoId,
+      ]);
+      const ninguno = await httpPost(ruta(e, u), { condicion: 'NUEVO' }, bearer(e.token));
+      await tenantPool.query(`UPDATE insumos SET seguimiento = 'SERIE' WHERE id = $1`, [
+        e.insumoId,
+      ]);
+      await tenantPool.query(`UPDATE insumos SET deleted_at = now() WHERE id = $1`, [e.insumoId]);
+      const deBaja = await httpPost(ruta(e, u), { condicion: 'NUEVO' }, bearer(e.token));
+
+      expect(noEntregada.status).toBe(422);
+      expect(usadoSinRepuestos.status).toBe(422);
+      expect(ninguno.status).toBe(422);
+      expect(deBaja.status).toBe(404);
+      const { rows } = await tenantPool.query<{ estado: string }>(
+        `SELECT estado FROM unidades_insumo WHERE id = $1`,
+        [u],
+      );
+      expect(rows[0].estado).toBe('ENTREGADA');
+    });
+
+    it('400 por condición inválida o ausente; 404 de unidad ajena', async () => {
+      const e = await prepararEscenario();
+      const u = await entregada(e);
+      const otro = { ...e, insumoId: await sembrarInsumo(e.tokenAdmin, { serie: true }) };
+      const [ajena] = await ingresar(otro, ['SN-9']);
+
+      const invalida = await httpPost(ruta(e, u), { condicion: 'ROTO' }, bearer(e.token));
+      const ausente = await httpPost(ruta(e, u), {}, bearer(e.token));
+      const deOtro = await httpPost(ruta(e, ajena), { condicion: 'NUEVO' }, bearer(e.token));
+
+      expect(invalida.status).toBe(400);
+      expect(ausente.status).toBe(400);
+      expect(deOtro.status).toBe(404);
+    });
+
+    it('403 sin INSUMOS:ALTAS', async () => {
+      const e = await prepararEscenario();
+      const u = await entregada(e);
+      const res = await httpPost(ruta(e, u), { condicion: 'NUEVO' }, bearer(e.tokenLectura));
+      expect(res.status).toBe(403);
     });
   });
 
