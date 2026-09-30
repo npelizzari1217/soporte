@@ -159,7 +159,7 @@ describe('InsumosModule wiring', () => {
   it.each([
     ['RegistrarEntradaInsumoUseCase', RegistrarEntradaInsumoUseCase, 5],
     ['RegistrarSalidaInsumoUseCase', RegistrarSalidaInsumoUseCase, 4],
-    ['RegistrarAjusteInsumoUseCase', RegistrarAjusteInsumoUseCase, 4],
+    ['RegistrarAjusteInsumoUseCase', RegistrarAjusteInsumoUseCase, 5],
     ['ConsultarStockInsumoUseCase', ConsultarStockInsumoUseCase, 3],
     ['ListarMovimientosInsumoUseCase', ListarMovimientosInsumoUseCase, 2],
   ])('inyecta en %s los puertos que su constructor declara', (_nombre, useCase, cantidad) => {

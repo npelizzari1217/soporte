@@ -387,12 +387,21 @@ import { MovimientosInsumoController } from './interface/controllers/movimientos
         movimientoRepo: IMovimientoInsumoRepository,
         txRunner: ITenantTransactionRunner,
         familiaRepo: IFamiliaInsumoRepository,
-      ) => new RegistrarAjusteInsumoUseCase(insumoRepo, movimientoRepo, txRunner, familiaRepo),
+        operaciones: OperacionesUnidadInsumo,
+      ) =>
+        new RegistrarAjusteInsumoUseCase(
+          insumoRepo,
+          movimientoRepo,
+          txRunner,
+          familiaRepo,
+          operaciones,
+        ),
       inject: [
         INSUMO_REPOSITORY,
         MOVIMIENTO_INSUMO_REPOSITORY,
         TENANT_TX_RUNNER,
         FAMILIA_INSUMO_REPOSITORY,
+        OperacionesUnidadInsumo,
       ],
     },
     {

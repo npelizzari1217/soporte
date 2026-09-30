@@ -362,3 +362,11 @@ Rama `wu07a` (7a.1):
 - Helpers de test nuevos: `insumos/testing/tx-runner-fake.ts` y `insumos/testing/entrada-insumo-real.ts` (la entrada con
   colaboradores Prisma reales, para los specs de integración de compras y equipos).
 
+Rama `wu07a-2` (7a.2):
+
+- `RegistrarAjusteInsumoUseCase` lee L1 (`leerSeguimientoParaMovimiento`) como primer lock dentro del `run()` (las
+  validaciones sin lock y el armado del asiento siguen antes, como hoy). `SERIE` + `AJUSTE_POSITIVO` => `ingresarPorSerie`
+  con `tipo: 'AJUSTE_POSITIVO'` (el motivo lo sigue exigiendo la entidad, antes de entrar); `NINGUNO` con `seriales` =>
+  `UnidadNoAdmitidaError`. El ajuste NEGATIVO no cambia: su rama `SERIE` es de WU-7b. Constructor nuevo: 5to argumento
+  `operaciones`. P2002 desenvuelto afuera del `run()`.
+
