@@ -194,6 +194,7 @@ describe('InstalarComponenteDesdeDepositoUseCase — Concurrencia real (WU-4, is
       insumoRepo,
       movimientoRepo,
       txRunner,
+      familiaInsumoRepo,
     );
     return new InstalarComponenteDesdeDepositoUseCase(
       txRunner,

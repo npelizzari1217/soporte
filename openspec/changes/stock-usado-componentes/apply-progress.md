@@ -38,3 +38,9 @@ WU-3a excedio 400 lineas (~1.020 entre codigo y specs) y se partio en TRES commi
 - Entrada con `condicion?` (default NUEVO), ADR-6 antes de insertar y familiaRepo como tercer parametro; `registrarDevolucionDeComponente` (cantidad 1, USADO, admite insumo deshabilitado y familia no vigente, rechaza `esRepuesto = false`). `execute()` sigue rechazando insumo deshabilitado con cualquier condicion.
 - Recepcion de compra manda `condicion: 'NUEVO'` explicito.
 
+### Parte 3 (rama wu03a-3): salida, ajuste y concurrencia — tareas 3a.4, 3a.6 (salida y ajuste), 3a.7 y 3a.8
+
+- Salida y ajuste con `condicion?` (default NUEVO), ADR-6 antes de la transaccion y decision de no negatividad sobre `calcularSaldos(sumas)[asiento.condicion]` bajo el lock. El ajuste sigue sin exigir insumo habilitado. familiaRepo como ultimo parametro del constructor; `insumos.module.ts` lo inyecta en los tres casos de uso y su spec lo verifica.
+- Concurrencia: dos salidas USADO de 1 con saldo USADO 1 (y NUEVO 100) sobre el caso de uso real: una persistida, una `STOCK_INSUFICIENTE`, USADO final 0. Verificacion adversarial local: decidir sobre `.NUEVO` en la salida pone en rojo ese spec y dos specs de aplicacion.
+- Gates: `pnpm lint`, `pnpm typecheck` y `vitest run src/insumos src/compras src/equipos` en verde; `pnpm test` completo sobre el arbol final: 484 archivos, 5675 tests en verde.
+

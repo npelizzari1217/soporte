@@ -1,11 +1,19 @@
 import { DomainError, Result } from '../../../shared/domain/result';
 import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { MovimientoInsumoEntity } from '../../domain/entities/movimiento-insumo.entity';
-import { calcularSaldos } from '../../domain/entities/tipo-movimiento-insumo';
+import {
+  calcularSaldos,
+  CONDICION_STOCK_POR_DEFECTO,
+  CondicionStock,
+} from '../../domain/entities/tipo-movimiento-insumo';
 import { StockInsuficienteError } from '../../domain/errors/insumos.errors';
+import { IFamiliaInsumoRepository } from '../../domain/ports/i-familia-insumo.repository';
 import { IInsumoRepository } from '../../domain/ports/i-insumo.repository';
 import { IMovimientoInsumoRepository } from '../../domain/ports/i-movimiento-insumo.repository';
-import { validarInsumoElegible } from '../services/validar-insumo.service';
+import {
+  validarCondicionAdmitida,
+  validarInsumoElegible,
+} from '../services/validar-insumo.service';
 
 /**
  * DTO de entrada de `RegistrarSalidaInsumoUseCase`. Misma forma que el de la
@@ -22,6 +30,8 @@ export interface RegistrarSalidaInsumoDto {
   cantidad: number;
   /** Quién registra el movimiento. Lo pone el borde desde el usuario autenticado. */
   usuarioId: string;
+  /** Condición del saldo que resta. Ausente equivale a `NUEVO`; `USADO` solo en repuestos. */
+  condicion?: CondicionStock;
   /** Explicación opcional del asiento. Solo el AJUSTE la exige. */
   motivo?: string | null;
   /** A qué equipo fue lo que salió. Trazabilidad, no stock: no participa de la suma. */
@@ -81,6 +91,7 @@ export class RegistrarSalidaInsumoUseCase {
       'insert' | 'lockAndSumByTipo'
     >,
     private readonly txRunner: Pick<ITenantTransactionRunner, 'run'>,
+    private readonly familiaRepo: Pick<IFamiliaInsumoRepository, 'findById'>,
   ) {}
 
   /**
@@ -104,6 +115,16 @@ export class RegistrarSalidaInsumoUseCase {
 
     const insumo = elegible.getValue();
 
+    // La condición se valida ANTES de la transacción, con el mismo criterio que
+    // las precondiciones del asiento: no depende del stock y no justifica tomar
+    // el lock del insumo para rechazar.
+    const condicion = dto.condicion ?? CONDICION_STOCK_POR_DEFECTO;
+    const admitida = await validarCondicionAdmitida(this.familiaRepo, insumo, condicion);
+
+    if (admitida.isFail()) {
+      return Result.fail(admitida.getError());
+    }
+
     // El movimiento se construye ANTES de entrar a la sección crítica: sus
     // precondiciones —cantidad finita, positiva, en escala, y motivo dentro
     // del tope— no dependen del stock, y evaluarlas adentro tomaría el lock
@@ -113,7 +134,7 @@ export class RegistrarSalidaInsumoUseCase {
     const movimiento = MovimientoInsumoEntity.create({
       insumoId: insumo.id,
       tipo: 'SALIDA',
-      condicion: 'NUEVO',
+      condicion,
       cantidad: dto.cantidad,
       usuarioId: dto.usuarioId,
       motivo: dto.motivo,
@@ -138,9 +159,9 @@ export class RegistrarSalidaInsumoUseCase {
       // al cerrar la transacción. La lectura va ANTES del insert porque leer
       // después mediría un stock que ya incluye la salida en evaluación.
       const sumas = await this.movimientoRepo.lockAndSumByTipo(asiento.insumoId);
-      // Hasta que la condición se elija por operación, NUEVO es la única que se escribe.
-      // Hasta que la condición se elija por operación, NUEVO es la única que se escribe.
-      const disponible = calcularSaldos(sumas).NUEVO;
+      // El saldo que se compara es el de la condición del asiento: un USADO no
+      // cubre una salida NUEVO ni al revés.
+      const disponible = calcularSaldos(sumas)[asiento.condicion];
 
       // El límite es el saldo EXACTO: sacar todo lo que hay deja el stock en
       // cero, que no es negativo, y vaciar el depósito es una operación

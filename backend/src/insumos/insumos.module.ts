@@ -297,8 +297,14 @@ import { MovimientosInsumoController } from './interface/controllers/movimientos
         insumoRepo: IInsumoRepository,
         movimientoRepo: IMovimientoInsumoRepository,
         txRunner: ITenantTransactionRunner,
-      ) => new RegistrarSalidaInsumoUseCase(insumoRepo, movimientoRepo, txRunner),
-      inject: [INSUMO_REPOSITORY, MOVIMIENTO_INSUMO_REPOSITORY, TENANT_TX_RUNNER],
+        familiaRepo: IFamiliaInsumoRepository,
+      ) => new RegistrarSalidaInsumoUseCase(insumoRepo, movimientoRepo, txRunner, familiaRepo),
+      inject: [
+        INSUMO_REPOSITORY,
+        MOVIMIENTO_INSUMO_REPOSITORY,
+        TENANT_TX_RUNNER,
+        FAMILIA_INSUMO_REPOSITORY,
+      ],
     },
     {
       provide: RegistrarAjusteInsumoUseCase,
@@ -306,8 +312,14 @@ import { MovimientosInsumoController } from './interface/controllers/movimientos
         insumoRepo: IInsumoRepository,
         movimientoRepo: IMovimientoInsumoRepository,
         txRunner: ITenantTransactionRunner,
-      ) => new RegistrarAjusteInsumoUseCase(insumoRepo, movimientoRepo, txRunner),
-      inject: [INSUMO_REPOSITORY, MOVIMIENTO_INSUMO_REPOSITORY, TENANT_TX_RUNNER],
+        familiaRepo: IFamiliaInsumoRepository,
+      ) => new RegistrarAjusteInsumoUseCase(insumoRepo, movimientoRepo, txRunner, familiaRepo),
+      inject: [
+        INSUMO_REPOSITORY,
+        MOVIMIENTO_INSUMO_REPOSITORY,
+        TENANT_TX_RUNNER,
+        FAMILIA_INSUMO_REPOSITORY,
+      ],
     },
     {
       // La consulta tampoco lo recibe: usa `sumByTipo()`, la lectura SIN lock.
