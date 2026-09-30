@@ -461,6 +461,17 @@ describe('EquiposController (T12.6)', () => {
       );
     });
 
+    it('componente devuelto al stock → 422', async () => {
+      const { controller, reactivarComponenteUseCase } = buildController();
+      reactivarComponenteUseCase.execute.mockResolvedValue(
+        Result.fail(new EquiposErrors.ComponenteDevueltoAlStockError('componente-1')),
+      );
+
+      await expect(controller.reactivarComponente('equipo-uuid', 'componente-1')).rejects.toThrow(
+        UnprocessableEntityException,
+      );
+    });
+
     it('declara @RequiereAcciones("EQUIPOS:MODIFICACION")', () => {
       const meta = Reflect.getMetadata(
         ACCIONES_KEY,
@@ -560,8 +571,8 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
     (valor) => typeof valor === 'function' && valor.prototype instanceof DomainError,
   );
 
-  it('el catálogo tiene EXACTAMENTE 13 clases de error (16 previas menos TipoComponenteInactivo, ComponenteVinculadoTipoInmutable y TipoComponenteCodigoRequerido, retiradas en sdd/catalogo-unico-componentes WU-5 y WU-6)', () => {
-    expect(CLASES_DE_ERROR).toHaveLength(13);
+  it('el catálogo tiene EXACTAMENTE 15 clases de error (16 previas menos TipoComponenteInactivo, ComponenteVinculadoTipoInmutable y TipoComponenteCodigoRequerido, retiradas en sdd/catalogo-unico-componentes WU-5 y WU-6, más MotivoRetiroRequerido y ComponenteDevueltoAlStock de sdd/stock-usado-componentes)', () => {
+    expect(CLASES_DE_ERROR).toHaveLength(15);
   });
 
   const TABLA: Array<[string, () => DomainError, 404 | 422]> = [
@@ -581,6 +592,18 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
     [
       'ComponenteYaActivoError',
       () => new EquiposErrors.ComponenteYaActivoError('componente-1'),
+      422,
+    ],
+    // Registro de retiro (sdd/stock-usado-componentes): los dos son reglas de
+    // negocio sobre un recurso que existe → 422.
+    [
+      'MotivoRetiroRequeridoError',
+      () => new EquiposErrors.MotivoRetiroRequeridoError('DESCARTE'),
+      422,
+    ],
+    [
+      'ComponenteDevueltoAlStockError',
+      () => new EquiposErrors.ComponenteDevueltoAlStockError('componente-1'),
       422,
     ],
     // `TicketSoporteNoEncontradoError` es 404 en `SoporteController` (que tiene

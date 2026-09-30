@@ -75,6 +75,8 @@ import {
   ComponenteNoEncontradoError,
   ComponenteDadoDeBajaError,
   ComponenteYaActivoError,
+  ComponenteDevueltoAlStockError,
+  MotivoRetiroRequeridoError,
   ExportacionDemasiadoGrandeError,
   InsumoRepuestoInexistenteError,
   InsumoNoEsRepuestoError,
@@ -113,6 +115,9 @@ export function toHttpException(
     error instanceof ModeloEquipoDeshabilitadoError ||
     error instanceof ComponenteDadoDeBajaError ||
     error instanceof ComponenteYaActivoError ||
+    // Reactivar tras devolver al stock (sdd/stock-usado-componentes): doble conteo.
+    error instanceof ComponenteDevueltoAlStockError ||
+    error instanceof MotivoRetiroRequeridoError ||
     // `insumoId` es otro valor del BODY que referencia un catálogo (WU-3,
     // sdd/repuestos-vinculo-componente): mismo criterio 422 que
     // `modeloEquipoId`.
