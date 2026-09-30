@@ -21,6 +21,15 @@ const OTRO_INSUMO = '22222222-2222-4222-8222-222222222222';
 const U1 = '00000000-0000-4000-8000-000000000001';
 const U2 = '00000000-0000-4000-8000-000000000002';
 const U3 = '00000000-0000-4000-8000-000000000003';
+const EQ = 'eq-1';
+const C1 = 'comp-1';
+const C2 = 'comp-2';
+const C3 = 'comp-3';
+const item = (unidadId: string, componenteId: string, equipoId = EQ) => ({
+  unidadId,
+  equipoId,
+  componenteId,
+});
 
 /** Fakes que registran el orden de cada llamada para afirmar "nunca escribir antes de validar". */
 function armar(opciones: {
@@ -536,6 +545,92 @@ describe('OperacionesUnidadInsumo', () => {
         'W:cas:ENTREGADA',
         'W:cas:DESCARTADA',
       ]);
+    });
+  });
+  describe('operaciones de equipo', () => {
+    const instalada = (id: string, over: Parameters<typeof unidad>[1] = {}) => {
+      const u = unidad(id, over);
+      u.instalar(EQ);
+      return u;
+    };
+    describe('instalar', () => {
+      it('instala un lote de N: CAS, SALIDA con equipo y evento INSTALACION con equipo y componente', async () => {
+        const t = armar({ unidades: [unidad(U1), unidad(U2, { condicion: 'USADO' })] });
+        const r = await t.servicio.instalar([item(U1, C1), item(U2, C2)], {
+          usuarioId: 'u-1',
+          motivo: ' alta ',
+        });
+        expect(r.getValue().map((x) => [x.unidad.estado, x.unidad.equipoId])).toEqual([
+          ['INSTALADA', EQ],
+          ['INSTALADA', EQ],
+        ]);
+        expect(
+          t.movimientos.map((m) => [m.tipo, m.condicion, m.cantidad, m.equipoId, m.unidadId]),
+        ).toEqual([
+          ['SALIDA', 'NUEVO', 1, EQ, U1],
+          ['SALIDA', 'USADO', 1, EQ, U2],
+        ]);
+        expect(t.eventos.map((e) => [e.tipo, e.equipoId, e.componenteId, e.motivo])).toEqual([
+          ['INSTALACION', EQ, C1, 'alta'],
+          ['INSTALACION', EQ, C2, 'alta'],
+        ]);
+        expect(t.eventos[0].movimientoId).toBe(t.movimientos[0].id);
+      });
+
+      it('toma L1 y L2 de todos los insumos y L3 de todas las unidades, en orden de id, antes de escribir', async () => {
+        const t = armar({
+          unidades: [unidad(U1, { insumo: OTRO_INSUMO }), unidad(U2), unidad(U3)],
+        });
+        await t.servicio.instalar([item(U3, C3), item(U1, C1), item(U2, C2)], { usuarioId: 'u' });
+        const primerasNueve = t.llamadas.filter((l) => !l.startsWith('R:')).slice(0, 5);
+        expect(primerasNueve).toEqual([
+          `L1:${INSUMO}`,
+          `L1:${OTRO_INSUMO}`,
+          `L2:${INSUMO}`,
+          `L2:${OTRO_INSUMO}`,
+          `L3:${U1},${U2},${U3}`,
+        ]);
+        expect(t.llamadas.findIndex((l) => l.startsWith('W:'))).toBeGreaterThan(
+          t.llamadas.findIndex((l) => l.startsWith('L3:')),
+        );
+      });
+
+      it('rechaza una pendiente, una no EN_DEPOSITO, una repetida o inexistente, sin escribir nada del lote', async () => {
+        const casos: Array<[ReturnType<typeof item>[], UnidadInsumoEntity[], unknown]> = [
+          [
+            [item(U1, C1), item(U2, C2)],
+            [unidad(U1), unidad(U2, { serial: null })],
+            UnidadNoDisponibleError,
+          ],
+          [[item(U1, C1), item(U2, C2)], [unidad(U1), instalada(U2)], UnidadNoDisponibleError],
+          [[item(U1, C1), item(U1, C2)], [unidad(U1)], UnidadNoDisponibleError],
+          [[item(U1, C1), item(U2, C2)], [unidad(U1)], UnidadNoEncontradaError],
+        ];
+        for (const [items, unidades, clase] of casos) {
+          const t = armar({ unidades });
+          const r = await t.servicio.instalar(items, { usuarioId: 'u' });
+          expect(r.getError()).toBeInstanceOf(clase);
+          expect(t.escribio()).toBe(false);
+        }
+      });
+
+      it('un insumo que no es SERIE o inexistente se rechaza tras L1, sin L2 ni escritura', async () => {
+        const ninguno = armar({ seguimiento: 'NINGUNO', unidades: [unidad(U1)] });
+        const r = await ninguno.servicio.instalar([item(U1, C1)], { usuarioId: 'u' });
+        expect(r.getError()).toBeInstanceOf(UnidadNoAdmitidaError);
+        expect(ninguno.llamadas.filter((l) => l.startsWith('L2') || l.startsWith('W'))).toEqual([]);
+
+        const inexistente = armar({ seguimiento: null, unidades: [unidad(U1)] });
+        expect(
+          (await inexistente.servicio.instalar([item(U1, C1)], { usuarioId: 'u' })).getError(),
+        ).toBeInstanceOf(InsumoNoEncontradoError);
+      });
+
+      it('un lote vacío no toma locks ni escribe', async () => {
+        const t = armar({});
+        expect((await t.servicio.instalar([], { usuarioId: 'u' })).getValue()).toEqual([]);
+        expect(t.llamadas).toEqual([]);
+      });
     });
   });
 });

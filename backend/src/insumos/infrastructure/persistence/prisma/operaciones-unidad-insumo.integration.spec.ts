@@ -78,6 +78,7 @@ describe('OperacionesUnidadInsumo — Integration', () => {
   const PREFIJO = `OPU_${randomBytes(2).toString('hex')}_`;
   const usuarioId = randomUUID();
   let insumoId: string;
+  let equipoId: string;
 
   beforeAll(async () => {
     prismaServiceParaUrl = new PrismaService(MASTER_TEST_URL);
@@ -95,6 +96,8 @@ describe('OperacionesUnidadInsumo — Integration', () => {
       new PrismaEventoUnidadInsumoRepository(tenantContext),
     );
 
+    equipoId = (await tenantClient.equipoInformatico.create({ data: { nombre: `${PREFIJO}EQ0` } }))
+      .id;
     const familia = await tenantClient.familiaInsumo.create({
       data: { codigo: `${PREFIJO}F`, nombre: 'Familia de prueba' },
     });
@@ -464,5 +467,103 @@ describe('OperacionesUnidadInsumo — Integration', () => {
 
     expect(r.getError()).toBeInstanceOf(UnidadNoDisponibleError);
     expect(await contar()).toEqual(antes);
+  });
+
+  describe('operaciones de equipo (WU-5)', () => {
+    /** Da de alta piezas EN_DEPOSITO y devuelve sus ids. */
+    async function alta(seriales: string[]): Promise<string[]> {
+      const r = await conTenant(() =>
+        txRunner.run(() =>
+          servicio.ingresar(
+            insumoId,
+            seriales.map((numeroSerie) => ({ numeroSerie })),
+            { usuarioId, condicion: 'NUEVO', tipo: 'ENTRADA' },
+          ),
+        ),
+      );
+      return r.getValue().map((x) => x.unidad.id);
+    }
+
+    const itemsDe = (ids: string[]) =>
+      ids.map((unidadId) => ({ unidadId, equipoId, componenteId: randomUUID() }));
+
+    const estadoDe = async (id: string) =>
+      (await tenantClient.unidadInsumo.findUniqueOrThrow({ where: { id } })).estado;
+
+    it('instalar un lote de 2 en una transacción: INSTALADA, SALIDA y evento INSTALACION con el componente, y cumple el invariante', async () => {
+      const ids = await alta(['IN-1', 'IN-2']);
+      const items = itemsDe(ids);
+      const antes = await contar();
+
+      const r = await conTenant(() =>
+        txRunner.run(() => servicio.instalar(items, { usuarioId, motivo: 'alta de equipo' })),
+      );
+
+      expect(r.getValue()).toHaveLength(2);
+      const filas = await tenantClient.unidadInsumo.findMany({ where: { id: { in: ids } } });
+      expect(filas.map((f) => [f.estado, f.equipoId])).toEqual([
+        ['INSTALADA', equipoId],
+        ['INSTALADA', equipoId],
+      ]);
+      expect(await contar()).toEqual({
+        unidades: antes.unidades,
+        movimientos: antes.movimientos + 2,
+        eventos: antes.eventos + 2,
+      });
+      const evento = await tenantClient.eventoUnidadInsumo.findFirstOrThrow({
+        where: { unidadId: items[0].unidadId, tipo: 'INSTALACION' },
+      });
+      expect(evento).toMatchObject({
+        equipoId,
+        componenteId: items[0].componenteId,
+        movimientoId: r.getValue()[0].movimiento.id,
+        motivo: 'alta de equipo',
+      });
+      expect(await conTenant(() => leerYVerificarInvarianteSerie(repos(), insumoId))).toEqual([]);
+    });
+
+    it('un lote con una serie pendiente se devuelve como Result.fail y, aun con commit, no instala la válida', async () => {
+      const [valida] = await alta(['F-1']);
+      const pendiente = (
+        await conTenant(() =>
+          txRunner.run(() =>
+            servicio.ingresar(insumoId, [{ numeroSerie: null }], {
+              usuarioId,
+              condicion: 'NUEVO',
+              tipo: 'ENTRADA',
+            }),
+          ),
+        )
+      ).getValue()[0].unidad.id;
+      const antes = await contar();
+
+      const r = await conTenant(() =>
+        txRunner.run(() => servicio.instalar(itemsDe([valida, pendiente]), { usuarioId })),
+      );
+
+      expect(r.getError()).toBeInstanceOf(UnidadNoDisponibleError);
+      expect(await contar()).toEqual(antes);
+      expect(await estadoDe(valida)).toBe('EN_DEPOSITO');
+    });
+
+    it('dos clientes con lotes en orden opuesto sobre las mismas unidades: uno instala, el otro ve la unidad instalada, sin 40P01 ni bloqueo', async () => {
+      const ids = await alta(['X-1', 'X-2', 'X-3']);
+      const [a, b, c] = ids;
+
+      medidorDelPool.reiniciar();
+      const resultados = await conTenant(() =>
+        Promise.all([
+          txRunner.run(() => servicio.instalar(itemsDe([a, b, c]), { usuarioId })),
+          txRunner.run(() => servicio.instalar(itemsDe([c, b, a]), { usuarioId })),
+        ]),
+      );
+
+      expect(medidorDelPool.max()).toBeGreaterThan(1);
+      expect(resultados.filter((r) => r.isOk())).toHaveLength(1);
+      const fallido = resultados.find((r) => r.isFail());
+      expect(fallido?.getError()).toBeInstanceOf(UnidadNoDisponibleError);
+      expect(await Promise.all(ids.map(estadoDe))).toEqual(['INSTALADA', 'INSTALADA', 'INSTALADA']);
+      expect((await contar()).movimientos).toBe(3 + 3); // tres entradas y tres salidas
+    }, 30_000);
   });
 });

@@ -305,7 +305,7 @@ Commit sugerido: `feat(insumos): operaciones de unidad para devolver entregas y 
 
 **Branch**: `feat/repuestos-numero-de-serie-wu05` · **Base**: wu04b
 
-- [ ] 5.1 `instalar(items, o)`: `EN_DEPOSITO → INSTALADA` + SALIDA + evento `INSTALACION` con `equipoId` y `componenteId` (id ya generado por la entidad, sin FK); rechaza pendiente (`UnidadNoDisponibleError`).
+- [x] 5.1 `instalar(items, o)`: `EN_DEPOSITO → INSTALADA` + SALIDA + evento `INSTALACION` con `equipoId` y `componenteId` (id ya generado por la entidad, sin FK); rechaza pendiente (`UnidadNoDisponibleError`).
 - [ ] 5.2 `devolverAlDeposito(items, o)`: `INSTALADA → EN_DEPOSITO` USADO + ENTRADA USADO + evento `RETIRO_A_DEPOSITO`. `descartarInstaladas(items, o)`: `INSTALADA → DESCARTADA` sin movimiento + evento `DESCARTE` con `componenteId`.
 - [ ] 5.3 `reinstalar(items, o)`: toma L1, L2 y L3; exige `DESCARTADA` **y** que el último evento sea el `DESCARTE` de ese mismo `componenteId`; si no, `UnidadDelComponenteNoDisponibleError`; si el insumo ya no es `SERIE`, `SeguimientoNoModificableError`; evento `REACTIVACION`.
 - [ ] 5.4 `altaInstalada(insumoId, numeroSerie, equipoId, o)`: unidad `INSTALADA` con la condición indicada, sin movimiento, evento `ALTA_INSTALADA` con `componenteId`; P2002 ⇒ `SerialDuplicadoError`.

@@ -258,3 +258,15 @@ cada código de sus pruebas): parte 1 (`wu03a`) = 3a.1 y 3a.3; parte 2 (`wu03a-2
 |---|---|
 | Focused test command | `pnpm vitest run src/insumos` verde; `pnpm test`: 503 archivos, 6117 tests verdes |
 | Rollback boundary | Revertir cada commit: sin migraciones ni cambios de módulo |
+
+## WU-5 parte 1 — `instalar` (5.1 hecha)
+
+- Corte por tamaño (regla de la orquestación), tres partes: parte 1 (rama `wu05`) = `instalar` con los helpers del lote
+  (`leerLoteEnEquipo`, `bloquearInsumos`); parte 2 (rama `-2`) = `devolverAlDeposito` y `descartarInstaladas`; parte 3
+  (rama `-3`) = `reinstalar`, `altaInstalada`, el error nuevo y el spec de orden de locks con la mutación adversarial.
+- 5.1: `instalar(items, o)` admite un lote que abarca varios insumos: lee cada unidad sin lock solo para conocer su
+  insumo, toma L1 de todos los insumos, L2 de todos, L3 de todas las unidades (ids ordenados) y recién entonces valida y
+  escribe: CAS `EN_DEPOSITO → INSTALADA`, SALIDA de cantidad 1 con `equipoId` y evento `INSTALACION` con `equipoId` y
+  `componenteId`. Una serie pendiente, una unidad repetida, inexistente o no `EN_DEPOSITO` se rechazan sin escribir nada
+  del lote. `bloquearInsumo` pasó a delegar en `bloquearInsumos` (mismo orden L1, L2 para un insumo).
+

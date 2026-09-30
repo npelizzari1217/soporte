@@ -33,6 +33,14 @@ export interface UnidadConMovimiento {
   movimiento: MovimientoInsumoEntity;
 }
 
+/** Una unidad dentro de un equipo y el componente que la lleva (ADR-4, ADR-9). */
+export interface ItemEnEquipo {
+  unidadId: string;
+  equipoId: string;
+  /** Id que la entidad del componente ya generó, aunque su fila se inserte después (sin FK). */
+  componenteId: string;
+}
+
 /** Una escritura ya armada y validada, lista para ejecutarse sin decidir nada más. */
 interface EscrituraDeUnidad {
   unidad: UnidadInsumoEntity;
@@ -257,6 +265,47 @@ export class OperacionesUnidadInsumo {
   }
 
   /**
+   * Instala piezas del depósito en equipos: `EN_DEPOSITO → INSTALADA` con una
+   * SALIDA de cantidad 1 (con `equipoId`) y el evento `INSTALACION`, que lleva
+   * `equipoId` y `componenteId`. Una serie pendiente se rechaza (instalar exige
+   * serial). El lote puede abarcar varios equipos e insumos; los locks salen en
+   * el orden de ADR-12 (L1, L2 de todos los insumos, luego L3) y los de
+   * `componentes_equipo` (L4) los toma el caso de uso DESPUÉS.
+   *
+   * @param items Una por unidad: unidad, equipo destino y componente que la llevará.
+   * @param o Usuario y motivo compartido por todo el lote.
+   * @returns Las unidades con su movimiento, en el orden de `items`; o el primer error de validación, sin haber escrito nada.
+   */
+  async instalar(
+    items: readonly ItemEnEquipo[],
+    o: ContextoUnidad,
+  ): Promise<Result<UnidadConMovimiento[], DomainError>> {
+    const lote = await this.leerLoteEnEquipo(items);
+    if (lote.isFail()) return Result.fail(lote.getError());
+
+    const escrituras: EscrituraDeUnidad[] = [];
+    for (const item of items) {
+      const unidad = lote.getValue().get(item.unidadId) as UnidadInsumoEntity;
+      const estadoLeido = unidad.estado;
+      const transicion = unidad.instalar(item.equipoId);
+      if (transicion.isFail()) return Result.fail(transicion.getError());
+
+      const armada = this.armarEscritura(unidad, estadoLeido, {
+        insumoId: unidad.insumoId,
+        tipo: 'SALIDA',
+        tipoEvento: 'INSTALACION',
+        o,
+        equipoId: item.equipoId,
+        componenteId: item.componenteId,
+      });
+      if (armada.isFail()) return Result.fail(armada.getError());
+      escrituras.push(armada.getValue());
+    }
+
+    return Result.ok(await this.escribir(escrituras));
+  }
+
+  /**
    * Completa el serial de una unidad en serie pendiente: solo `EN_DEPOSITO` y sin
    * serial. Asienta el evento `SERIAL_CARGADO` sin movimiento ni motivo (el libro
    * no cambia). Una unidad que ya tiene serial se corrige con `corregirSerial`.
@@ -352,6 +401,45 @@ export class OperacionesUnidadInsumo {
   }
 
   /**
+   * Lee el lote de una operación de equipo respetando ADR-12: las unidades se
+   * leen sin lock solo para conocer sus insumos (nunca cambian), después L1 y L2
+   * de TODOS los insumos en orden de id y por último L3 de todas las unidades,
+   * en orden de id. Rechaza ids repetidos y unidades inexistentes.
+   *
+   * @param items Lote de la operación.
+   * @param errorSiNoEsSerie Error si un insumo del lote no es `SERIE`; por defecto `UnidadNoAdmitidaError`.
+   * @returns Las unidades leídas bajo lock, por id.
+   */
+  private async leerLoteEnEquipo(
+    items: readonly ItemEnEquipo[],
+    errorSiNoEsSerie?: (insumoId: string) => DomainError,
+  ): Promise<Result<Map<string, UnidadInsumoEntity>, DomainError>> {
+    if (items.length === 0) return Result.ok(new Map());
+
+    const ids = items.map((item) => item.unidadId);
+    const repetida = ids.find((id, i) => ids.indexOf(id) !== i);
+    if (repetida !== undefined) {
+      return Result.fail(new UnidadNoDisponibleError(repetida, 'está repetida en el lote.'));
+    }
+
+    const insumoIds = new Set<string>();
+    for (const id of ids) {
+      const foto = await this.unidadRepo.findById(id);
+      if (foto === null) return Result.fail(new UnidadNoEncontradaError(id));
+      insumoIds.add(foto.insumoId);
+    }
+
+    const bloqueo = await this.bloquearInsumos([...insumoIds].sort(), errorSiNoEsSerie);
+    if (bloqueo.isFail()) return Result.fail(bloqueo.getError());
+
+    const leidas = await this.unidadRepo.bloquearPorIds([...ids].sort());
+    const porId = new Map(leidas.map((unidad) => [unidad.id, unidad]));
+    const faltante = ids.find((id) => !porId.has(id));
+    if (faltante !== undefined) return Result.fail(new UnidadNoEncontradaError(faltante));
+    return Result.ok(porId);
+  }
+
+  /**
    * Lee UNA unidad respetando el orden de ADR-12: el insumo de la unidad sale de
    * una lectura sin lock (nunca cambia), L1 y L2 de ese insumo, y recién después
    * L3 con la relectura bajo lock, que es la que manda.
@@ -377,14 +465,31 @@ export class OperacionesUnidadInsumo {
    *
    * @param errorSiNoEsSerie Error a devolver si el insumo no es `SERIE`; por defecto `UnidadNoAdmitidaError`.
    */
-  private async bloquearInsumo(
+  private bloquearInsumo(
     insumoId: string,
-    errorSiNoEsSerie: () => DomainError = () => new UnidadNoAdmitidaError(insumoId),
+    errorSiNoEsSerie?: () => DomainError,
   ): Promise<Result<void, DomainError>> {
-    const seguimiento = await this.insumoRepo.leerSeguimientoParaMovimiento(insumoId);
-    if (seguimiento === null) return Result.fail(new InsumoNoEncontradoError(insumoId));
-    if (seguimiento !== 'SERIE') return Result.fail(errorSiNoEsSerie());
-    await this.movimientoRepo.bloquearStock(insumoId);
+    return this.bloquearInsumos([insumoId], errorSiNoEsSerie);
+  }
+
+  /**
+   * L1 de TODOS los insumos y después L2 de todos (ADR-12: un nivel completo
+   * antes del siguiente, cada uno en el orden recibido, que debe ser el de id).
+   * Valida que cada insumo exista y sea `SERIE`; corta en el primero que no, sin
+   * tomar L2.
+   */
+  private async bloquearInsumos(
+    insumoIds: readonly string[],
+    errorSiNoEsSerie: (insumoId: string) => DomainError = (id) => new UnidadNoAdmitidaError(id),
+  ): Promise<Result<void, DomainError>> {
+    for (const insumoId of insumoIds) {
+      const seguimiento = await this.insumoRepo.leerSeguimientoParaMovimiento(insumoId);
+      if (seguimiento === null) return Result.fail(new InsumoNoEncontradoError(insumoId));
+      if (seguimiento !== 'SERIE') return Result.fail(errorSiNoEsSerie(insumoId));
+    }
+    for (const insumoId of insumoIds) {
+      await this.movimientoRepo.bloquearStock(insumoId);
+    }
     return Result.ok(undefined);
   }
 
@@ -395,11 +500,13 @@ export class OperacionesUnidadInsumo {
     datos: {
       insumoId: string;
       tipo: 'ENTRADA' | 'AJUSTE_POSITIVO' | 'SALIDA' | 'AJUSTE_NEGATIVO';
-      tipoEvento: 'INGRESO' | 'ENTREGA' | 'BAJA_DE_DEPOSITO' | 'DEVOLUCION_DE_ENTREGA';
+      tipoEvento:
+        'INGRESO' | 'ENTREGA' | 'BAJA_DE_DEPOSITO' | 'DEVOLUCION_DE_ENTREGA' | 'INSTALACION';
       o: ContextoUnidad;
       itemCompraId?: string | null;
       equipoId?: string | null;
       sectorId?: string | null;
+      componenteId?: string | null;
     },
   ): Result<EscrituraDeUnidad, DomainError> {
     const movimiento = MovimientoInsumoEntity.create({
@@ -420,6 +527,9 @@ export class OperacionesUnidadInsumo {
       unidadId: unidad.id,
       tipo: datos.tipoEvento,
       movimientoId: movimiento.getValue().id,
+      // El evento nombra el equipo solo en las operaciones de equipo; en el resto el destino vive en el movimiento.
+      equipoId: datos.componenteId === undefined ? null : datos.equipoId,
+      componenteId: datos.componenteId,
       motivo: datos.o.motivo,
       usuarioId: datos.o.usuarioId,
     });
