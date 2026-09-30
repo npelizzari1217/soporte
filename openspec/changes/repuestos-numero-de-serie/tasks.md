@@ -365,9 +365,9 @@ Commit sugerido: `feat(insumos): entrada y ajuste positivo por serie con lectura
 
 **Branch**: `feat/repuestos-numero-de-serie-wu07a2` · **Base**: wu07a
 
-- [ ] 7a2.1 Casos en `orden-de-locks.concurrencia.integration.spec.ts` (base efímera, dos clientes): (3) `SERIE → NINGUNO` contra una entrada `SERIE` en vuelo ⇒ sin `40P01`, la entrada comitea y el cambio se rechaza porque ve las unidades nuevas; (4) `NINGUNO → SERIE` contra una entrada `NINGUNO` en vuelo ⇒ sin `40P01`, el cambio ve saldo distinto de cero y se rechaza; (5) orden inverso de 3 y 4 (el cambio comitea primero) ⇒ la entrada, al obtener L1, sigue la rama nueva y da 422 (`SerialesNoCoincidenError` o `UnidadNoAdmitidaError`). (Req: Cambio de seguimiento concurrente con un movimiento)
-- [ ] 7a2.2 **Mutación adversarial local**: que la entrada tome L2 antes de L1 (o que el cambio tome L2 antes que L1) ⇒ casos 3 a 5 deben detectarlo (`40P01`); revertir y dejar verde. Declarar el resultado en el PR.
-- [ ] 7a2.3 Quality gates (backend): `cd backend && pnpm lint && pnpm typecheck && pnpm vitest run src/insumos/infrastructure/prisma/orden-de-locks.concurrencia.integration.spec.ts` y `pnpm test`.
+- [x] 7a2.1 Casos en `orden-de-locks.concurrencia.integration.spec.ts` (base efímera, dos clientes): (3) `SERIE → NINGUNO` contra una entrada `SERIE` en vuelo ⇒ sin `40P01`, la entrada comitea y el cambio se rechaza porque ve las unidades nuevas; (4) `NINGUNO → SERIE` contra una entrada `NINGUNO` en vuelo ⇒ sin `40P01`, el cambio ve saldo distinto de cero y se rechaza; (5) orden inverso de 3 y 4 (el cambio comitea primero) ⇒ la entrada, al obtener L1, sigue la rama nueva y da 422 (`SerialesNoCoincidenError` o `UnidadNoAdmitidaError`). (Req: Cambio de seguimiento concurrente con un movimiento)
+- [x] 7a2.2 **Mutación adversarial local**: que la entrada tome L2 antes de L1 (o que el cambio tome L2 antes que L1) ⇒ casos 3 a 5 deben detectarlo (`40P01`); revertir y dejar verde. Declarar el resultado en el PR.
+- [x] 7a2.3 Quality gates (backend): `cd backend && pnpm lint && pnpm typecheck && pnpm vitest run src/insumos/infrastructure/prisma/orden-de-locks.concurrencia.integration.spec.ts` y `pnpm test`.
 
 **Escenarios**: Cambio de seguimiento concurrente con un movimiento (las tres variantes).
 **PR boundary**: ~250 líneas, base wu07a. Solo specs (más helpers de barrera); revert limpio.

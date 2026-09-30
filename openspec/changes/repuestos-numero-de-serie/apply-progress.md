@@ -388,3 +388,28 @@ Rama `wu07a-3` (7a.3 a 7a.5):
 | Focused test command | `pnpm vitest run src/insumos src/compras src/equipos` verde en cada rama; `pnpm lint` y `pnpm typecheck` en cero |
 | Rollback boundary | Revertir cada commit por separado (el de 7a.3 no depende de 7a.2): sin migraciones ni borde HTTP |
 
+
+## WU-7a2 — Casos 3 a 5 de `orden-de-locks` (rama `wu07a2`)
+
+Solo specs, en `orden-de-locks.concurrencia.integration.spec.ts` (base `soporte_tenant_test`, prefijo por corrida):
+
+- Caso 3 (`SERIE -> NINGUNO` contra entrada `SERIE` retenida), caso 4 (`NINGUNO -> SERIE` contra entrada `NINGUNO`
+  retenida), casos 5a y 5b (el cambio comitea primero; la entrada da `SerialesNoCoincidenError` /
+  `UnidadNoAdmitidaError`). Helper `retenerYEsperar`: primera operacion retenida con outer `txRunner.run` + compuerta,
+  segunda lanzada y confirmada bloqueada con `pg_blocking_pids` acotado.
+- Testigos nuevos de la entrada (SERIE y NINGUNO): mientras espera L1 el try-lock de L2 del testigo se obtiene.
+- Limpieza de eventos/movimientos/unidades del insumo en `beforeEach`/`afterAll` (FK `Restrict`).
+
+### Mutacion adversarial (7a2.2)
+
+- Entrada toma L2 antes que L1 (`bloquearStock` antes de `leerSeguimientoParaMovimiento`): casos 3 a 5 siguen VERDES
+  (el orden de los pedidos no cierra ciclo, sin `40P01`); los 2 testigos de la entrada se ponen ROJOS
+  (`expected false to be true`). Revertida.
+- Cambio toma L2 antes que L1: rojo el testigo previo de WU-6 ("mientras espera L1 ... NO tiene L2"). Revertida.
+
+### Work Unit Evidence (WU-7a2)
+
+| Evidence | Value |
+|---|---|
+| Focused test command | `pnpm vitest run src/insumos/infrastructure/persistence/prisma/orden-de-locks.concurrencia.integration.spec.ts` 10/10; lint y typecheck en cero |
+| Rollback boundary | Revertir el commit: solo specs |

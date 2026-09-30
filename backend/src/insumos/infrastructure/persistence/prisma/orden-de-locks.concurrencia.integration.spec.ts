@@ -1,8 +1,8 @@
 /**
  * [INTEGRATION] Orden global de locks (ADR-12, invariante L) de
- * sdd/repuestos-numero-de-serie, casos 1 y 2: el cambio de seguimiento contra
- * `EditarInsumo` y contra otro cambio de seguimiento, con los repositorios
- * Prisma reales sobre `soporte_tenant_test`.
+ * sdd/repuestos-numero-de-serie, casos 1 a 5: el cambio de seguimiento contra
+ * `EditarInsumo`, contra otro cambio de seguimiento y contra la entrada (en los
+ * dos ordenes), con los repositorios Prisma reales sobre `soporte_tenant_test`.
  *
  * Dos tipos de prueba, a proposito:
  *
@@ -33,7 +33,14 @@ import { PrismaUnidadInsumoRepository } from './prisma-unidad-insumo.repository'
 import { PrismaUnidadMedidaRepository } from './prisma-unidad-medida.repository';
 import { CambiarSeguimientoInsumoUseCase } from '../../../application/use-cases/cambiar-seguimiento-insumo.use-case';
 import { EditarInsumoUseCase } from '../../../application/use-cases/editar-insumo.use-case';
+import { RegistrarEntradaInsumoUseCase } from '../../../application/use-cases/registrar-entrada-insumo.use-case';
 import { UnidadMedidaCambiadaError } from '../../../domain/errors/unidades-medida.errors';
+import {
+  SeguimientoNoModificableError,
+  SerialesNoCoincidenError,
+  UnidadNoAdmitidaError,
+} from '../../../domain/errors/unidades-insumo.errors';
+import { construirEntradaReal } from '../../../testing/entrada-insumo-real';
 
 const MASTER_TEST_URL =
   process.env.DATABASE_URL_MASTER ??
@@ -42,7 +49,7 @@ const TENANT_TEST_DB_NAME = 'soporte_tenant_test';
 const PREFIJO_LOCK_STOCK = 'insumo-stock:';
 const ESPERA_MAXIMA_MS = 5_000;
 
-describe('Orden de locks (ADR-12), casos 1 y 2 — Integration', () => {
+describe('Orden de locks (ADR-12), casos 1 a 5 — Integration', () => {
   let prismaServiceParaUrl: PrismaService;
   let pool: Pool;
   let tenantClient: InstanceType<typeof TenantPrismaClient>;
@@ -50,6 +57,7 @@ describe('Orden de locks (ADR-12), casos 1 y 2 — Integration', () => {
   let txRunner: PrismaTenantTransactionRunner;
   let cambiar: CambiarSeguimientoInsumoUseCase;
   let editar: EditarInsumoUseCase;
+  let entrada: RegistrarEntradaInsumoUseCase;
 
   const PREFIJO = `ODL_${randomBytes(2).toString('hex')}_`;
   let insumoId: string;
@@ -81,6 +89,14 @@ describe('Orden de locks (ADR-12), casos 1 y 2 — Integration', () => {
       txRunner,
     );
 
+    entrada = construirEntradaReal({
+      tenantContext,
+      txRunner,
+      insumoRepo,
+      movimientoRepo: new PrismaMovimientoInsumoRepository(tenantContext),
+      familiaRepo: new PrismaFamiliaInsumoRepository(tenantContext),
+    });
+
     const familia = await tenantClient.familiaInsumo.create({
       data: { codigo: `${PREFIJO}F`, nombre: 'Familia de prueba' },
     });
@@ -106,7 +122,15 @@ describe('Orden de locks (ADR-12), casos 1 y 2 — Integration', () => {
     ).id;
   }, 30_000);
 
+  /** Borra lo que dejaron las entradas, en el orden de las FK (todas `Restrict`). */
+  async function limpiarMovimientosYUnidades(): Promise<void> {
+    await tenantClient.eventoUnidadInsumo.deleteMany({ where: { unidad: { insumoId } } });
+    await tenantClient.movimientoInsumo.deleteMany({ where: { insumoId } });
+    await tenantClient.unidadInsumo.deleteMany({ where: { insumoId } });
+  }
+
   afterAll(async () => {
+    await limpiarMovimientosYUnidades();
     await tenantClient.insumo.deleteMany({ where: { codigo: { startsWith: PREFIJO } } });
     await tenantClient.familiaInsumo.deleteMany({ where: { codigo: { startsWith: PREFIJO } } });
     await tenantClient.unidadMedida.deleteMany({ where: { codigo: { startsWith: PREFIJO } } });
@@ -116,6 +140,7 @@ describe('Orden de locks (ADR-12), casos 1 y 2 — Integration', () => {
   }, 30_000);
 
   beforeEach(async () => {
+    await limpiarMovimientosYUnidades();
     await tenantClient.insumo.update({
       where: { id: insumoId },
       data: { seguimiento: 'NINGUNO', unidadMedidaId: unidadEntera },
@@ -308,6 +333,178 @@ describe('Orden de locks (ADR-12), casos 1 y 2 — Integration', () => {
         testigo.release();
       }
       const r = (await operacion) as { isOk(): boolean };
+      expect(r.isOk()).toBe(true);
+    }, 30_000);
+  });
+
+  const USUARIO_ID = '00000000-0000-4000-8000-0000000000a1';
+
+  async function fijarSeguimiento(seguimiento: 'NINGUNO' | 'SERIE'): Promise<void> {
+    await tenantClient.insumo.update({ where: { id: insumoId }, data: { seguimiento } });
+  }
+
+  type Resultado = { isOk(): boolean; isFail(): boolean; getError(): unknown };
+
+  /**
+   * Retiene una operacion con sus locks tomados (transaccion externa + compuerta) y
+   * lanza la otra, que debe quedar esperando a la primera. Devuelve los dos resultados
+   * cuando la primera comitea. `retenida` se abre SIEMPRE, aunque algo falle antes.
+   */
+  async function retenerYEsperar(
+    primera: () => Promise<unknown>,
+    segunda: () => Promise<unknown>,
+  ): Promise<{ primera: Resultado; segunda: Resultado }> {
+    const testigo = await pool.connect();
+    const retenida = compuerta();
+    const primeraLista = compuerta();
+    let pidPrimera = 0;
+    let rPrimera: Promise<unknown> | undefined;
+    let rSegunda: Promise<unknown> | undefined;
+    try {
+      rPrimera = conTenant(() =>
+        txRunner.run(async () => {
+          const r = await primera();
+          pidPrimera = await pidDeLaTransaccionActual();
+          primeraLista.abrir();
+          await retenida.esperar;
+          return r;
+        }),
+      );
+      await Promise.race([primeraLista.esperar, rPrimera]);
+      rSegunda = conTenant(segunda);
+      await esperarBloqueadoPor(testigo, pidPrimera);
+    } finally {
+      retenida.abrir();
+      testigo.release();
+    }
+    return {
+      primera: (await rPrimera) as Resultado,
+      segunda: (await rSegunda) as Resultado,
+    };
+  }
+
+  async function unidadesDelInsumo(): Promise<number> {
+    return tenantClient.unidadInsumo.count({ where: { insumoId } });
+  }
+
+  it('caso 3: SERIE -> NINGUNO contra una entrada SERIE en vuelo: sin 40P01, la entrada comitea y el cambio se rechaza porque ve las unidades nuevas', async () => {
+    await fijarSeguimiento('SERIE');
+    const { primera, segunda } = await retenerYEsperar(
+      // La entrada toma L1 (FOR SHARE), L2 y L3, y queda retenida sin comitear.
+      () =>
+        entrada.execute({
+          insumoId,
+          cantidad: 1,
+          usuarioId: USUARIO_ID,
+          seriales: [`${PREFIJO}S3`],
+        }),
+      // El cambio pide L1 (FOR NO KEY UPDATE) y espera a la entrada.
+      () => cambiar.execute({ insumoId, seguimiento: 'NINGUNO' }),
+    );
+    expect(primera.isOk()).toBe(true);
+    expect(segunda.isFail()).toBe(true);
+    expect(segunda.getError()).toBeInstanceOf(SeguimientoNoModificableError);
+    expect(await seguimientoActual()).toBe('SERIE');
+    expect(await unidadesDelInsumo()).toBe(1);
+  }, 30_000);
+
+  it('caso 4: NINGUNO -> SERIE contra una entrada NINGUNO en vuelo: sin 40P01, el cambio ve saldo distinto de cero y se rechaza', async () => {
+    const { primera, segunda } = await retenerYEsperar(
+      () => entrada.execute({ insumoId, cantidad: 2, usuarioId: USUARIO_ID }),
+      () => cambiar.execute({ insumoId, seguimiento: 'SERIE' }),
+    );
+    expect(primera.isOk()).toBe(true);
+    expect(segunda.isFail()).toBe(true);
+    expect(segunda.getError()).toBeInstanceOf(SeguimientoNoModificableError);
+    expect(await seguimientoActual()).toBe('NINGUNO');
+  }, 30_000);
+
+  it('caso 5a: orden inverso de 4 (el cambio comitea primero): la entrada, al obtener L1, sigue la rama SERIE y da SerialesNoCoincidenError', async () => {
+    const { primera, segunda } = await retenerYEsperar(
+      // Saldo cero: el cambio NINGUNO -> SERIE es valido y queda retenido con L1 y L2.
+      () => cambiar.execute({ insumoId, seguimiento: 'SERIE' }),
+      // La entrada se escribio para NINGUNO (sin seriales): al obtener L1 ya es SERIE.
+      () => entrada.execute({ insumoId, cantidad: 1, usuarioId: USUARIO_ID }),
+    );
+    expect(primera.isOk()).toBe(true);
+    expect(segunda.isFail()).toBe(true);
+    expect(segunda.getError()).toBeInstanceOf(SerialesNoCoincidenError);
+    expect(await seguimientoActual()).toBe('SERIE');
+    expect(await unidadesDelInsumo()).toBe(0);
+  }, 30_000);
+
+  it('caso 5b: orden inverso de 3 (el cambio comitea primero): la entrada con seriales, al obtener L1, sigue la rama NINGUNO y da UnidadNoAdmitidaError', async () => {
+    await fijarSeguimiento('SERIE');
+    const { primera, segunda } = await retenerYEsperar(
+      // Sin unidades ni saldo: el cambio SERIE -> NINGUNO es valido y queda retenido.
+      () => cambiar.execute({ insumoId, seguimiento: 'NINGUNO' }),
+      () =>
+        entrada.execute({
+          insumoId,
+          cantidad: 1,
+          usuarioId: USUARIO_ID,
+          seriales: [`${PREFIJO}S5`],
+        }),
+    );
+    expect(primera.isOk()).toBe(true);
+    expect(segunda.isFail()).toBe(true);
+    expect(segunda.getError()).toBeInstanceOf(UnidadNoAdmitidaError);
+    expect(await seguimientoActual()).toBe('NINGUNO');
+    expect(await unidadesDelInsumo()).toBe(0);
+  }, 30_000);
+
+  describe('testigo del orden en la entrada: L1 primero, L2 despues', () => {
+    async function verificarSinL2MientrasEsperaL1(
+      lanzar: () => Promise<unknown>,
+    ): Promise<Resultado> {
+      const bloqueador = await pool.connect();
+      const testigo = await pool.connect();
+      let operacion: Promise<unknown> | undefined;
+      try {
+        // Un cliente externo tiene L1 exclusivo (como un cambio de seguimiento en vuelo).
+        await bloqueador.query('BEGIN');
+        await bloqueador.query('SELECT id FROM insumos WHERE id = $1 FOR NO KEY UPDATE', [
+          insumoId,
+        ]);
+        const { rows: pidRows } = await bloqueador.query('SELECT pg_backend_pid() AS pid');
+
+        operacion = conTenant(lanzar);
+        await esperarBloqueadoPor(testigo, pidRows[0].pid);
+
+        // La entrada espera L1: si ya tuviera L2 (orden invertido) el try-lock daria `false`.
+        await testigo.query('BEGIN');
+        const { rows } = await testigo.query(
+          'SELECT pg_try_advisory_xact_lock(hashtext($1)) AS obtenido',
+          [PREFIJO_LOCK_STOCK + insumoId],
+        );
+        await testigo.query('ROLLBACK');
+        expect(rows[0].obtenido).toBe(true);
+      } finally {
+        await bloqueador.query('COMMIT').catch(() => undefined);
+        bloqueador.release();
+        testigo.release();
+      }
+      return (await operacion) as Resultado;
+    }
+
+    it('entrada SERIE: mientras espera L1 todavia NO tiene L2', async () => {
+      await fijarSeguimiento('SERIE');
+      const r = await verificarSinL2MientrasEsperaL1(() =>
+        entrada.execute({
+          insumoId,
+          cantidad: 1,
+          usuarioId: USUARIO_ID,
+          seriales: [`${PREFIJO}W1`],
+        }),
+      );
+      expect(r.isOk()).toBe(true);
+      expect(await unidadesDelInsumo()).toBe(1);
+    }, 30_000);
+
+    it('entrada NINGUNO: mientras espera L1 no tiene L2', async () => {
+      const r = await verificarSinL2MientrasEsperaL1(() =>
+        entrada.execute({ insumoId, cantidad: 1, usuarioId: USUARIO_ID }),
+      );
       expect(r.isOk()).toBe(true);
     }, 30_000);
   });
