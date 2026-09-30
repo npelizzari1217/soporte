@@ -422,6 +422,17 @@ Commit sugerido: `docs(deploy): rollback del tracker stock-usado-componentes y d
 
 ---
 
+
+## WU-14 — Cierre de verify: escenarios PARTIAL
+
+**Branch**: `feat/stock-usado-componentes-wu14` · **Base**: wu13 · Origen: `verify-report.md`
+(PASS WITH WARNINGS, W3–W4). Corrección acotada única del ciclo; solo tests.
+
+- [x] 14.1 Integración del retiro completo (`RetirarComponenteUseCase` sobre base real): devolver al stock un componente cuyo insumo está **deshabilitado** completa con ENTRADA USADO; ídem con la **familia dada de baja lógica** o deshabilitada. Verificación adversarial local: quitar `admitirFamiliaNoVigente` o volver a exigir insumo habilitado en la devolución deja el test en rojo.
+- [x] 14.2 Integración de la migración `20260930120000_movimientos_insumo_condicion` sobre movimientos preexistentes (base efímera reproducida hasta la migración anterior, filas insertadas antes de aplicarla): tras aplicarla todas quedan `NUEVO` y el saldo NUEVO iguala al stock previo.
+- [x] 14.3 Quality gates (backend): `cd backend && pnpm lint && pnpm typecheck && pnpm test`.
+
+**PR boundary**: ~250 líneas, base wu13.
 ## Secuencia operativa (no son tareas de apply)
 
 > Estos pasos **no son checkboxes**: no se marcan durante `sdd-apply`, no bloquean

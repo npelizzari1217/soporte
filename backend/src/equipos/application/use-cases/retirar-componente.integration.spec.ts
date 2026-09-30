@@ -262,6 +262,87 @@ describe('RetirarComponenteUseCase - base real (WU-7, ADR-4)', () => {
     expect(fila.bajaUsuarioId).toBe(DUMMY_USUARIO_ID);
   });
 
+  describe('STOCK_USADO con el catalogo del repuesto ya no vigente (la pieza existe fisicamente)', () => {
+    async function retirarAStockUsado(componenteId: string) {
+      return conTenant(() =>
+        makeRetirar().execute({
+          equipoId,
+          componenteId,
+          destino: 'STOCK_USADO',
+          motivo: 'recambio',
+          usuarioId: DUMMY_USUARIO_ID,
+        }),
+      );
+    }
+
+    async function afirmarEntradaUsado(componenteId: string) {
+      const entradas = await tenantClient.movimientoInsumo.findMany({
+        where: { insumoId, tipo: 'ENTRADA', condicion: 'USADO' },
+      });
+      expect(entradas).toHaveLength(1);
+      expect(await saldo('USADO')).toBe(1);
+      const fila = await tenantClient.componenteEquipo.findUniqueOrThrow({
+        where: { id: componenteId },
+      });
+      expect(fila.bajaDestino).toBe('STOCK_USADO');
+      expect(fila.bajaMovimientoId).toBe(entradas[0].id);
+    }
+
+    it('insumo DESHABILITADO: el retiro completa con ENTRADA USADO', async () => {
+      const componenteId = await sembrarComponente();
+      await tenantClient.insumo.update({ where: { id: insumoId }, data: { activo: false } });
+      try {
+        const result = await retirarAStockUsado(componenteId);
+        expect(result.isOk()).toBe(true);
+        await afirmarEntradaUsado(componenteId);
+      } finally {
+        await tenantClient.insumo.update({ where: { id: insumoId }, data: { activo: true } });
+      }
+    });
+
+    it('familia DADA DE BAJA logica: el retiro completa con ENTRADA USADO', async () => {
+      const componenteId = await sembrarComponente();
+      const { familiaId } = await tenantClient.insumo.findUniqueOrThrow({
+        where: { id: insumoId },
+      });
+      await tenantClient.familiaInsumo.update({
+        where: { id: familiaId },
+        data: { deletedAt: new Date() },
+      });
+      try {
+        const result = await retirarAStockUsado(componenteId);
+        expect(result.isOk()).toBe(true);
+        await afirmarEntradaUsado(componenteId);
+      } finally {
+        await tenantClient.familiaInsumo.update({
+          where: { id: familiaId },
+          data: { deletedAt: null },
+        });
+      }
+    });
+
+    it('familia DESHABILITADA: el retiro completa con ENTRADA USADO', async () => {
+      const componenteId = await sembrarComponente();
+      const { familiaId } = await tenantClient.insumo.findUniqueOrThrow({
+        where: { id: insumoId },
+      });
+      await tenantClient.familiaInsumo.update({
+        where: { id: familiaId },
+        data: { activo: false },
+      });
+      try {
+        const result = await retirarAStockUsado(componenteId);
+        expect(result.isOk()).toBe(true);
+        await afirmarEntradaUsado(componenteId);
+      } finally {
+        await tenantClient.familiaInsumo.update({
+          where: { id: familiaId },
+          data: { activo: true },
+        });
+      }
+    });
+  });
+
   it('DESCARTE: no crea ningun movimiento y registra el destino y el motivo', async () => {
     const componenteId = await sembrarComponente();
 

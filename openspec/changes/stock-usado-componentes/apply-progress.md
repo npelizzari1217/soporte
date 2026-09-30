@@ -172,3 +172,11 @@ Rama `feat/stock-usado-componentes-wu13` (base wu12b). Modo estandar.
 
 - 13.1 a 13.3 `DEPLOY-VPS-runbook.md`: seccion "Rollback del tracker `stock-usado-componentes`" (detector de solo lectura, tabla de tres casos, preferencia por corregir hacia adelante o restaurar el dump) y "Verificacion de `stock-usado-componentes`" en "Despues del deploy" (`\d` de las dos tablas, saldos NUEVO/USADO, P3009 por referencia). Sin `.ps1` nuevo ni cambio de `deploy.ps1`.
 - 13.5 `retirar-componente.integration.spec.ts`: `instrumentarConcurrenciaDelPool` devuelve `{ maximo, reiniciar }` y se reinicia antes del `Promise.all`; espia sobre `registrarDevolucionDeComponente` con `>= 2` llamadas. Mutacion local: quitar `deletedAt: null` del where de `retirar` deja rojo el caso de concurrencia (1 failed | 5 passed); restaurado, 6 verdes.
+
+## WU-14 — Cobertura del retiro con catalogo no vigente y de la migracion sobre movimientos previos (tareas 14.1 a 14.3; cierra W3/W4 del verify)
+
+Rama `feat/stock-usado-componentes-wu14`. Solo tests, sin cambio de produccion.
+
+- 14.1 `retirar-componente.integration.spec.ts` (base real): tres casos de `STOCK_USADO` con insumo deshabilitado, familia con baja logica y familia deshabilitada; cada uno completa con ENTRADA USADO, saldo USADO 1 y `baja_movimiento_id` apuntando a ella. Mutaciones locales (restauradas): `admitirFamiliaNoVigente: false` deja rojos los dos de familia (2 failed | 7 passed); exigir `exigirHabilitado: true` en la devolucion deja rojo el del insumo (1 failed | 8 passed).
+- 14.2 `prisma_tenant/movimientos-insumo-condicion.integration.spec.ts` (tenant efimero, replay hasta la migracion anterior): cuatro movimientos insertados sin la columna; tras aplicar la migracion todos quedan NUEVO y el saldo NUEVO iguala al previo (8). Mutacion local: `DEFAULT 'USADO'` en la migracion deja el caso rojo.
+- 14.3 Gates: lint y typecheck en cero; suite completa backend 489 archivos, 5815 tests verdes.
