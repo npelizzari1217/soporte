@@ -7,6 +7,7 @@ import {
 } from "@/shared/lib/limites-ticket";
 import { parseImporte } from "./depreciacion";
 import { conDosDecimales } from "@/shared/lib/formato-numero";
+import { CONDICIONES_STOCK } from "@/features/insumos/types";
 
 /**
  * Topes de largo/rango de `equipos_informaticos`/`componentes_equipo`, espejo
@@ -222,6 +223,8 @@ export type EditarComponenteFormValues = z.infer<typeof editarComponenteSchema>;
 export const agregarComponenteSchema = z.object({
   insumoId: z.string().uuid("Elegí un repuesto del catálogo"),
   descontarStock: z.boolean(),
+  /** Solo tiene sentido con `descontarStock`; el diálogo lo agrega al payload desde el selector. */
+  condicion: z.enum(CONDICIONES_STOCK).optional(),
   descripcion: z
     .string()
     .max(

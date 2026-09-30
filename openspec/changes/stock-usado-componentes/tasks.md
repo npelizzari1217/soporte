@@ -366,10 +366,10 @@ Commit sugerido: `feat(insumos): selector de condicion en entrada, salida y ajus
 
 **Branch**: `feat/stock-usado-componentes-wu11` · **Base**: wu10
 
-- [ ] 11.1 `frontend/src/features/equipos/schemas.ts` y `types.ts`: `condicion` opcional en el alta; `Componente` con `bajaDestino`, `bajaMotivo`, `bajaMovimientoId`, `bajaUsuarioId`, `bajaSinSalidaPrevia` (contrato de WU-6).
-- [ ] 11.2 `componente-create-dialog.tsx`: con "Descontar del depósito" marcado muestra el selector de condición con los saldos del insumo elegido (reutiliza el de WU-10); el payload incluye `condicion` **solo** con descuento; con la casilla desmarcada no se envía. Sin `INSUMOS:LECTURA` el selector queda habilitado, en NUEVO y sin saldos. `useAgregarComponente` sigue invalidando stock y movimientos.
-- [ ] 11.3 Tests: NUEVO preseleccionado y USADO elegible con ambos saldos; fijo con un solo saldo; payload con `condicion` solo con descuento; desmarcar la casilla tras elegir USADO no envía `condicion`.
-- [ ] 11.4 Quality gates (frontend): `cd frontend && pnpm lint && pnpm type-check && pnpm test`.
+- [x] 11.1 `frontend/src/features/equipos/schemas.ts` y `types.ts`: `condicion` opcional en el alta; `Componente` con `bajaDestino`, `bajaMotivo`, `bajaMovimientoId`, `bajaUsuarioId`, `bajaSinSalidaPrevia` (contrato de WU-6).
+- [x] 11.2 `componente-create-dialog.tsx`: con "Descontar del depósito" marcado muestra el selector de condición con los saldos del insumo elegido (reutiliza el de WU-10); el payload incluye `condicion` **solo** con descuento; con la casilla desmarcada no se envía. Sin `INSUMOS:LECTURA` el selector queda habilitado, en NUEVO y sin saldos. `useAgregarComponente` sigue invalidando stock y movimientos.
+- [x] 11.3 Tests: NUEVO preseleccionado y USADO elegible con ambos saldos; fijo con un solo saldo; payload con `condicion` solo con descuento; desmarcar la casilla tras elegir USADO no envía `condicion`.
+- [x] 11.4 Quality gates (frontend): `cd frontend && pnpm lint && pnpm type-check && pnpm test`.
 
 **Escenarios**: Selector de saldo en el alta; Un solo saldo disponible; Descuento del saldo USADO
 (interfaz); Alta sin descuento.

@@ -138,3 +138,12 @@ Rama `feat/stock-usado-componentes-wu10` (base wu09). Modo estandar (feature).
 - Ajuste de `useStockInsumo`: opcion `refetchOnMount: false` para el consumidor secundario; sin ella, montar el selector con la ficha ya cargada provocaba un GET de stock extra (rompia dos tests de refresco de `insumo-detail-view`).
 - 10.3 `movimiento-condicion.test.tsx` (describe.each de las tres puertas: oculto, ambos saldos con USADO, fijo, sin acceso a stock) mas el 422 de salida NUEVO sin saldo suficiente.
 - 10.4 Gates: lint y type-check en cero; `pnpm test` 211 archivos, 1595 tests en verde.
+
+## WU-11 — Frontend equipos: selector de condicion en el alta (tareas 11.1 a 11.4)
+
+Rama `feat/stock-usado-componentes-wu11` (base wu10). Modo estandar (feature).
+
+- 11.1 `types.ts`: `CreateComponenteDto.condicion?` y los campos `baja*` de `Componente` (opcionales en el tipo para no obligar a cada fixture; el backend los envia siempre). `schemas.ts`: `condicion` opcional en `agregarComponenteSchema`.
+- 11.2 `componente-create-dialog.tsx`: `useSelectorCondicion` (de WU-10) con `descontarStock ? insumoId : ""` (sin descuento no se consulta el stock) y `CondicionStockSelector` solo con la casilla marcada; el payload lleva `condicion` solo con descuento y selector visible; el selector se reinicia al abrir. `useAgregarComponente` no cambia.
+- 11.3 Tests en `componente-create-dialog.test.tsx`: NUEVO preseleccionado y USADO elegible; fijo con un solo saldo; sin selector si no admite usado; desmarcar la casilla tras elegir USADO no envia `condicion`; sin acceso al stock (403) selector habilitado en NUEVO.
+- 11.4 Gates: lint y type-check en cero; `vitest run src/features/equipos` 136 verdes; suite completa ver reporte.
