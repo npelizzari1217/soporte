@@ -632,5 +632,75 @@ describe('OperacionesUnidadInsumo', () => {
         expect(t.llamadas).toEqual([]);
       });
     });
+
+    describe('devolverAlDeposito', () => {
+      it('devuelve un lote USADO con ENTRADA USADO y evento RETIRO_A_DEPOSITO con equipo, componente y motivo compartido', async () => {
+        const t = armar({ unidades: [instalada(U1), instalada(U2)] });
+        const r = await t.servicio.devolverAlDeposito([item(U1, C1), item(U2, C2)], {
+          usuarioId: 'u',
+          motivo: 'baja del equipo',
+        });
+        expect(
+          r.getValue().map((x) => [x.unidad.estado, x.unidad.condicion, x.unidad.equipoId]),
+        ).toEqual([
+          ['EN_DEPOSITO', 'USADO', null],
+          ['EN_DEPOSITO', 'USADO', null],
+        ]);
+        expect(t.movimientos.map((m) => [m.tipo, m.condicion, m.cantidad, m.motivo])).toEqual([
+          ['ENTRADA', 'USADO', 1, 'baja del equipo'],
+          ['ENTRADA', 'USADO', 1, 'baja del equipo'],
+        ]);
+        expect(t.eventos.map((e) => [e.tipo, e.equipoId, e.componenteId, e.motivo])).toEqual([
+          ['RETIRO_A_DEPOSITO', EQ, C1, 'baja del equipo'],
+          ['RETIRO_A_DEPOSITO', EQ, C2, 'baja del equipo'],
+        ]);
+        expect(t.llamadas.filter((l) => l.startsWith('W:cas'))).toEqual([
+          'W:cas:INSTALADA',
+          'W:cas:INSTALADA',
+        ]);
+      });
+
+      it('si falla la segunda unidad (no instalada, o instalada en otro equipo) no escribe la primera', async () => {
+        for (const segunda of [unidad(U2), instalada(U2)]) {
+          const t = armar({ unidades: [instalada(U1), segunda] });
+          const r = await t.servicio.devolverAlDeposito(
+            [item(U1, C1), item(U2, C2, segunda.estado === 'INSTALADA' ? 'eq-otro' : EQ)],
+            { usuarioId: 'u' },
+          );
+          expect(r.getError()).toBeInstanceOf(UnidadNoDisponibleError);
+          expect(t.escribio()).toBe(false);
+        }
+      });
+    });
+
+    describe('descartarInstaladas', () => {
+      it('descarta un lote sin movimiento y con evento DESCARTE con equipo, componente y motivo', async () => {
+        const t = armar({ unidades: [instalada(U1), instalada(U2)] });
+        const r = await t.servicio.descartarInstaladas([item(U1, C1), item(U2, C2)], {
+          usuarioId: 'u',
+          motivo: 'rota',
+        });
+        expect(r.getValue().map((x) => [x.estado, x.equipoId])).toEqual([
+          ['DESCARTADA', null],
+          ['DESCARTADA', null],
+        ]);
+        expect(t.movimientos).toHaveLength(0);
+        expect(
+          t.eventos.map((e) => [e.tipo, e.equipoId, e.componenteId, e.motivo, e.movimientoId]),
+        ).toEqual([
+          ['DESCARTE', EQ, C1, 'rota', null],
+          ['DESCARTE', EQ, C2, 'rota', null],
+        ]);
+      });
+
+      it('si falla una unidad del lote no escribe ninguna', async () => {
+        const t = armar({ unidades: [instalada(U1), unidad(U2)] });
+        const r = await t.servicio.descartarInstaladas([item(U1, C1), item(U2, C2)], {
+          usuarioId: 'u',
+        });
+        expect(r.getError()).toBeInstanceOf(UnidadNoDisponibleError);
+        expect(t.escribio()).toBe(false);
+      });
+    });
   });
 });

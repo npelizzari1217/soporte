@@ -270,3 +270,12 @@ cada código de sus pruebas): parte 1 (`wu03a`) = 3a.1 y 3a.3; parte 2 (`wu03a-2
   `componenteId`. Una serie pendiente, una unidad repetida, inexistente o no `EN_DEPOSITO` se rechazan sin escribir nada
   del lote. `bloquearInsumo` pasó a delegar en `bloquearInsumos` (mismo orden L1, L2 para un insumo).
 
+## WU-5 parte 2 — `devolverAlDeposito` y `descartarInstaladas` (5.2 hecha)
+
+- 5.2: ambas reutilizan `leerLoteEnEquipo` (L1 y L2 de todos los insumos, L3 de todas las unidades) y exigen la unidad
+  `INSTALADA` en el equipo del item (`UnidadNoDisponibleError` si está en otro equipo o en otro estado). El lote comparte
+  un motivo. `devolverAlDeposito`: `INSTALADA → EN_DEPOSITO` USADO, ENTRADA USADO con `equipoId` y evento
+  `RETIRO_A_DEPOSITO` (equipo y componente). `descartarInstaladas`: `INSTALADA → DESCARTADA` sin movimiento y evento
+  `DESCARTE` (equipo y componente), el que `reinstalar` busca como último. Un fallo en cualquier unidad no escribe ninguna;
+  el spec de integración lo prueba con commit posterior al `Result.fail` y verifica el invariante de serie tras la devolución.
+

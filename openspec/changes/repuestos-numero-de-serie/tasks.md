@@ -306,7 +306,7 @@ Commit sugerido: `feat(insumos): operaciones de unidad para devolver entregas y 
 **Branch**: `feat/repuestos-numero-de-serie-wu05` · **Base**: wu04b
 
 - [x] 5.1 `instalar(items, o)`: `EN_DEPOSITO → INSTALADA` + SALIDA + evento `INSTALACION` con `equipoId` y `componenteId` (id ya generado por la entidad, sin FK); rechaza pendiente (`UnidadNoDisponibleError`).
-- [ ] 5.2 `devolverAlDeposito(items, o)`: `INSTALADA → EN_DEPOSITO` USADO + ENTRADA USADO + evento `RETIRO_A_DEPOSITO`. `descartarInstaladas(items, o)`: `INSTALADA → DESCARTADA` sin movimiento + evento `DESCARTE` con `componenteId`.
+- [x] 5.2 `devolverAlDeposito(items, o)`: `INSTALADA → EN_DEPOSITO` USADO + ENTRADA USADO + evento `RETIRO_A_DEPOSITO`. `descartarInstaladas(items, o)`: `INSTALADA → DESCARTADA` sin movimiento + evento `DESCARTE` con `componenteId`.
 - [ ] 5.3 `reinstalar(items, o)`: toma L1, L2 y L3; exige `DESCARTADA` **y** que el último evento sea el `DESCARTE` de ese mismo `componenteId`; si no, `UnidadDelComponenteNoDisponibleError`; si el insumo ya no es `SERIE`, `SeguimientoNoModificableError`; evento `REACTIVACION`.
 - [ ] 5.4 `altaInstalada(insumoId, numeroSerie, equipoId, o)`: unidad `INSTALADA` con la condición indicada, sin movimiento, evento `ALTA_INSTALADA` con `componenteId`; P2002 ⇒ `SerialDuplicadoError`.
 - [ ] 5.5 Specs unitarios (fakes) y de integración de lote: la baja de equipo completo las reutiliza en lote (N unidades, un motivo compartido); fallo en una del lote revierte todo; reinstalar tras una recuperación (evento posterior) rechaza. **Mutación adversarial local**: invertir L2 y L3 en el servicio ⇒ el spec de lote con dos clientes debe detectarlo (espera o `40P01`); revertir.

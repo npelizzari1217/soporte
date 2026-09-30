@@ -41,6 +41,14 @@ export interface ItemEnEquipo {
   componenteId: string;
 }
 
+/** Una escritura sin movimiento: unidad (CAS o INSERT) y evento. */
+interface EscrituraSinMovimiento {
+  unidad: UnidadInsumoEntity;
+  /** `null` si la unidad es nueva (INSERT); si no, el estado leído bajo lock (CAS). */
+  estadoEsperado: EstadoUnidadInsumo | null;
+  evento: EventoUnidadInsumoEntity;
+}
+
 /** Una escritura ya armada y validada, lista para ejecutarse sin decidir nada más. */
 interface EscrituraDeUnidad {
   unidad: UnidadInsumoEntity;
@@ -306,6 +314,85 @@ export class OperacionesUnidadInsumo {
   }
 
   /**
+   * Devuelve al depósito piezas instaladas (retiro `STOCK_USADO`):
+   * `INSTALADA → EN_DEPOSITO` en condición USADO, con una ENTRADA USADO de
+   * cantidad 1 y el evento `RETIRO_A_DEPOSITO`. Sirve a la baja de un equipo
+   * completo: N unidades y un motivo compartido en una sola transacción.
+   *
+   * @param items Una por unidad; `equipoId` debe ser el equipo donde está instalada.
+   * @param o Usuario y motivo compartido por todo el lote.
+   * @returns Las unidades con su movimiento, en el orden de `items`; o el primer error de validación, sin haber escrito nada.
+   */
+  async devolverAlDeposito(
+    items: readonly ItemEnEquipo[],
+    o: ContextoUnidad,
+  ): Promise<Result<UnidadConMovimiento[], DomainError>> {
+    const lote = await this.leerLoteEnEquipo(items);
+    if (lote.isFail()) return Result.fail(lote.getError());
+
+    const escrituras: EscrituraDeUnidad[] = [];
+    for (const item of items) {
+      const unidad = lote.getValue().get(item.unidadId) as UnidadInsumoEntity;
+      const instalada = this.exigirInstaladaEn(unidad, item);
+      if (instalada.isFail()) return Result.fail(instalada.getError());
+
+      const estadoLeido = unidad.estado;
+      const transicion = unidad.devolverAlDeposito();
+      if (transicion.isFail()) return Result.fail(transicion.getError());
+
+      const armada = this.armarEscritura(unidad, estadoLeido, {
+        insumoId: unidad.insumoId,
+        tipo: 'ENTRADA',
+        tipoEvento: 'RETIRO_A_DEPOSITO',
+        o,
+        equipoId: item.equipoId,
+        componenteId: item.componenteId,
+      });
+      if (armada.isFail()) return Result.fail(armada.getError());
+      escrituras.push(armada.getValue());
+    }
+
+    return Result.ok(await this.escribir(escrituras));
+  }
+
+  /**
+   * Descarta piezas instaladas (retiro `DESCARTE`): `INSTALADA → DESCARTADA`,
+   * sin movimiento y con el evento `DESCARTE` (equipo y componente). Es el
+   * evento que `reinstalar` busca como último para reactivar el componente.
+   *
+   * @param items Una por unidad; `equipoId` debe ser el equipo donde está instalada.
+   * @param o Usuario y motivo compartido por todo el lote.
+   * @returns Las unidades descartadas, en el orden de `items`; o el primer error de validación, sin haber escrito nada.
+   */
+  async descartarInstaladas(
+    items: readonly ItemEnEquipo[],
+    o: ContextoUnidad,
+  ): Promise<Result<UnidadInsumoEntity[], DomainError>> {
+    const lote = await this.leerLoteEnEquipo(items);
+    if (lote.isFail()) return Result.fail(lote.getError());
+
+    const escrituras: EscrituraSinMovimiento[] = [];
+    for (const item of items) {
+      const unidad = lote.getValue().get(item.unidadId) as UnidadInsumoEntity;
+      const instalada = this.exigirInstaladaEn(unidad, item);
+      if (instalada.isFail()) return Result.fail(instalada.getError());
+
+      const estadoLeido = unidad.estado;
+      const transicion = unidad.descartarInstalada();
+      if (transicion.isFail()) return Result.fail(transicion.getError());
+
+      escrituras.push({
+        unidad,
+        estadoEsperado: estadoLeido,
+        evento: this.armarEventoDeEquipo('DESCARTE', unidad, item, o),
+      });
+    }
+
+    await this.escribirSinMovimiento(escrituras);
+    return Result.ok(escrituras.map((e) => e.unidad));
+  }
+
+  /**
    * Completa el serial de una unidad en serie pendiente: solo `EN_DEPOSITO` y sin
    * serial. Asienta el evento `SERIAL_CARGADO` sin movimiento ni motivo (el libro
    * no cambia). Una unidad que ya tiene serial se corrige con `corregirSerial`.
@@ -439,6 +526,39 @@ export class OperacionesUnidadInsumo {
     return Result.ok(porId);
   }
 
+  /** La unidad debe estar `INSTALADA` en el equipo del item (la baja de un equipo no toca piezas de otro). */
+  private exigirInstaladaEn(
+    unidad: UnidadInsumoEntity,
+    item: ItemEnEquipo,
+  ): Result<void, DomainError> {
+    if (unidad.estado === 'INSTALADA' && unidad.equipoId !== item.equipoId) {
+      return Result.fail(
+        new UnidadNoDisponibleError(
+          unidad.id,
+          `está instalada en otro equipo y no en "${item.equipoId}".`,
+        ),
+      );
+    }
+    return Result.ok(undefined);
+  }
+
+  /** Evento de una operación de equipo sin movimiento. */
+  private armarEventoDeEquipo(
+    tipo: 'DESCARTE',
+    unidad: UnidadInsumoEntity,
+    item: ItemEnEquipo,
+    o: ContextoUnidad,
+  ): EventoUnidadInsumoEntity {
+    return EventoUnidadInsumoEntity.create({
+      unidadId: unidad.id,
+      tipo,
+      equipoId: item.equipoId,
+      componenteId: item.componenteId,
+      motivo: o.motivo,
+      usuarioId: o.usuarioId,
+    });
+  }
+
   /**
    * Lee UNA unidad respetando el orden de ADR-12: el insumo de la unidad sale de
    * una lectura sin lock (nunca cambia), L1 y L2 de ese insumo, y recién después
@@ -501,7 +621,12 @@ export class OperacionesUnidadInsumo {
       insumoId: string;
       tipo: 'ENTRADA' | 'AJUSTE_POSITIVO' | 'SALIDA' | 'AJUSTE_NEGATIVO';
       tipoEvento:
-        'INGRESO' | 'ENTREGA' | 'BAJA_DE_DEPOSITO' | 'DEVOLUCION_DE_ENTREGA' | 'INSTALACION';
+        | 'INGRESO'
+        | 'ENTREGA'
+        | 'BAJA_DE_DEPOSITO'
+        | 'DEVOLUCION_DE_ENTREGA'
+        | 'INSTALACION'
+        | 'RETIRO_A_DEPOSITO';
       o: ContextoUnidad;
       itemCompraId?: string | null;
       equipoId?: string | null;
@@ -550,5 +675,17 @@ export class OperacionesUnidadInsumo {
       resultado.push({ unidad, movimiento: guardado });
     }
     return resultado;
+  }
+
+  /** Ejecuta las escrituras sin movimiento: unidad (INSERT o CAS) y evento. */
+  private async escribirSinMovimiento(escrituras: EscrituraSinMovimiento[]): Promise<void> {
+    for (const { unidad, estadoEsperado, evento } of escrituras) {
+      if (estadoEsperado === null) {
+        await this.unidadRepo.insertar(unidad);
+      } else {
+        await this.unidadRepo.guardarConEstadoEsperado(unidad, estadoEsperado);
+      }
+      await this.eventoRepo.insert(evento);
+    }
   }
 }

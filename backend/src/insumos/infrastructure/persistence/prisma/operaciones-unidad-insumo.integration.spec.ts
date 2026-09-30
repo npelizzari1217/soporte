@@ -487,6 +487,14 @@ describe('OperacionesUnidadInsumo — Integration', () => {
     const itemsDe = (ids: string[]) =>
       ids.map((unidadId) => ({ unidadId, equipoId, componenteId: randomUUID() }));
 
+    async function altaEInstalacion(seriales: string[]) {
+      const ids = await alta(seriales);
+      const items = itemsDe(ids);
+      const r = await conTenant(() => txRunner.run(() => servicio.instalar(items, { usuarioId })));
+      expect(r.isOk()).toBe(true);
+      return items;
+    }
+
     const estadoDe = async (id: string) =>
       (await tenantClient.unidadInsumo.findUniqueOrThrow({ where: { id } })).estado;
 
@@ -544,6 +552,75 @@ describe('OperacionesUnidadInsumo — Integration', () => {
       expect(r.getError()).toBeInstanceOf(UnidadNoDisponibleError);
       expect(await contar()).toEqual(antes);
       expect(await estadoDe(valida)).toBe('EN_DEPOSITO');
+    });
+
+    it('devolverAlDeposito de un lote con un motivo compartido deja EN_DEPOSITO USADO con ENTRADA USADO, y cumple el invariante', async () => {
+      const items = await altaEInstalacion(['R-1', 'R-2']);
+      const antes = await contar();
+
+      const r = await conTenant(() =>
+        txRunner.run(() => servicio.devolverAlDeposito(items, { usuarioId, motivo: 'baja' })),
+      );
+
+      expect(r.getValue()).toHaveLength(2);
+      const filas = await tenantClient.unidadInsumo.findMany({
+        where: { id: { in: items.map((i) => i.unidadId) } },
+      });
+      expect(filas.map((f) => [f.estado, f.condicion, f.equipoId])).toEqual([
+        ['EN_DEPOSITO', 'USADO', null],
+        ['EN_DEPOSITO', 'USADO', null],
+      ]);
+      expect((await contar()).movimientos).toBe(antes.movimientos + 2);
+      const eventos = await tenantClient.eventoUnidadInsumo.findMany({
+        where: { tipo: 'RETIRO_A_DEPOSITO', unidad: { insumoId } },
+      });
+      expect(eventos.map((e) => e.motivo)).toEqual(['baja', 'baja']);
+      expect(await conTenant(() => leerYVerificarInvarianteSerie(repos(), insumoId))).toEqual([]);
+    });
+
+    it('si una unidad del lote de devolución ya no está instalada, el lote entero no escribe', async () => {
+      const items = await altaEInstalacion(['P-1', 'P-2']);
+      await conTenant(() =>
+        txRunner.run(() => servicio.descartarInstaladas([items[1]], { usuarioId })),
+      );
+      const antes = await contar();
+
+      const r = await conTenant(() =>
+        txRunner.run(() => servicio.devolverAlDeposito(items, { usuarioId })),
+      );
+
+      expect(r.getError()).toBeInstanceOf(UnidadNoDisponibleError);
+      expect(await contar()).toEqual(antes);
+      expect(await estadoDe(items[0].unidadId)).toBe('INSTALADA');
+    });
+
+    it('descartarInstaladas deja DESCARTADA sin movimiento y con evento DESCARTE del componente y el motivo compartido', async () => {
+      const items = await altaEInstalacion(['D-1', 'D-2']);
+      const antes = await contar();
+
+      const r = await conTenant(() =>
+        txRunner.run(() => servicio.descartarInstaladas(items, { usuarioId, motivo: 'rota' })),
+      );
+
+      expect(r.getValue()).toHaveLength(2);
+      const filas = await tenantClient.unidadInsumo.findMany({
+        where: { id: { in: items.map((i) => i.unidadId) } },
+      });
+      expect(filas.map((f) => [f.estado, f.equipoId])).toEqual([
+        ['DESCARTADA', null],
+        ['DESCARTADA', null],
+      ]);
+      expect(await contar()).toEqual({ ...antes, eventos: antes.eventos + 2 });
+      const evento = await tenantClient.eventoUnidadInsumo.findFirstOrThrow({
+        where: { unidadId: items[0].unidadId, tipo: 'DESCARTE' },
+      });
+      expect(evento).toMatchObject({
+        equipoId,
+        componenteId: items[0].componenteId,
+        motivo: 'rota',
+        movimientoId: null,
+      });
+      expect(await conTenant(() => leerYVerificarInvarianteSerie(repos(), insumoId))).toEqual([]);
     });
 
     it('dos clientes con lotes en orden opuesto sobre las mismas unidades: uno instala, el otro ve la unidad instalada, sin 40P01 ni bloqueo', async () => {
