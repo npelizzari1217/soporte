@@ -410,10 +410,11 @@ Commit sugerido: `feat(equipos): rotulos de destino del retiro y reactivar condi
 
 **Branch**: `feat/stock-usado-componentes-wu13` · **Base**: wu12 (o wu12b si existe)
 
-- [ ] 13.1 `DEPLOY-VPS-runbook.md`: sección "Rollback del tracker `stock-usado-componentes`" (ADR-8) con el detector de solo lectura por tenant (`movimientos_usado` y `retiros_con_destino`), la interpretación de los tres casos (los dos en 0 ⇒ `git reset --hard` al commit de rollback y las migraciones quedan; `movimientos_usado` > 0 ⇒ el binario viejo suma los usados al saldo único; `retiros_con_destino` > 0 ⇒ el binario viejo no puede reactivar componentes con destino, 500 por el CHECK coherente) y la preferencia por corregir hacia adelante o restaurar el dump de `predeploy-dump.ps1`.
-- [ ] 13.2 Documentar la verificación post-deploy (`\d movimientos_insumo`, `\d componentes_equipo`, ficha de un repuesto con NUEVO = stock previo y USADO = 0) y la recuperación de una migración fallida (P3009, `prisma migrate resolve --rolled-back` y reintentar `deploy.ps1`, ya documentada).
-- [ ] 13.3 No se agrega ningún `.ps1` ni se modifica `deploy.ps1` (no toca la tabla §2.2 de `~/proyectos/CLAUDE.md`).
-- [ ] 13.4 Quality gates (backend, solo por el `.md`): `cd backend && pnpm lint && pnpm typecheck` (sin cambios de código; confirman que el árbol sigue en verde).
+- [x] 13.1 `DEPLOY-VPS-runbook.md`: sección "Rollback del tracker `stock-usado-componentes`" (ADR-8) con el detector de solo lectura por tenant (`movimientos_usado` y `retiros_con_destino`), la interpretación de los tres casos (los dos en 0 ⇒ `git reset --hard` al commit de rollback y las migraciones quedan; `movimientos_usado` > 0 ⇒ el binario viejo suma los usados al saldo único; `retiros_con_destino` > 0 ⇒ el binario viejo no puede reactivar componentes con destino, 500 por el CHECK coherente) y la preferencia por corregir hacia adelante o restaurar el dump de `predeploy-dump.ps1`.
+- [x] 13.2 Documentar la verificación post-deploy (`\d movimientos_insumo`, `\d componentes_equipo`, ficha de un repuesto con NUEVO = stock previo y USADO = 0) y la recuperación de una migración fallida (P3009, `prisma migrate resolve --rolled-back` y reintentar `deploy.ps1`, ya documentada).
+- [x] 13.3 No se agrega ningún `.ps1` ni se modifica `deploy.ps1` (no toca la tabla §2.2 de `~/proyectos/CLAUDE.md`).
+- [x] 13.4 Quality gates (backend, solo por el `.md`): `cd backend && pnpm lint && pnpm typecheck` (sin cambios de código; confirman que el árbol sigue en verde).
+- [x] 13.5 Endurecimiento de `retirar-componente.integration.spec.ts` (hallazgo de la verificación independiente de WU-7): la instrumentación del pool devuelve `reiniciar()` y se llama justo antes del `Promise.all`; el caso de concurrencia afirma que `registrarDevolucionDeComponente` se invocó al menos 2 veces. Solo tests, sin cambio de producción.
 
 **PR boundary**: ~80 líneas, base wu12. Sin código ejecutable.
 **Ayuda**: sin deuda.

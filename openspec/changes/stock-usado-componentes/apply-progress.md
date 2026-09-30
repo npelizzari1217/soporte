@@ -165,3 +165,10 @@ Rama `feat/stock-usado-componentes-wu12b` (base wu12). Modo estandar (feature).
 - 12b.1 `equipo-componentes-section.tsx`: `rotuloBaja` (STOCK_USADO "Devuelto al stock", DESCARTE "Descartado", `null` o ausente "Dado de baja"); con `bajaSinSalidaPrevia` se agrega "sin salida registrada del depósito"; Reactivar no se renderiza si `bajaDestino === "STOCK_USADO"`. Tests con fixtures de los tres destinos mas legado (rotulos, marca, Reactivar oculto o presente).
 - Hallazgo: `prettier --write` reformatea archivos enteros en este repo (no esta aplicado); se evita para no inflar el diff.
 - 12b.2 Gates: lint y type-check en cero; suite completa ver reporte.
+
+## WU-13 — Runbook: rollback del tracker y detector (tareas 13.1 a 13.5)
+
+Rama `feat/stock-usado-componentes-wu13` (base wu12b). Modo estandar.
+
+- 13.1 a 13.3 `DEPLOY-VPS-runbook.md`: seccion "Rollback del tracker `stock-usado-componentes`" (detector de solo lectura, tabla de tres casos, preferencia por corregir hacia adelante o restaurar el dump) y "Verificacion de `stock-usado-componentes`" en "Despues del deploy" (`\d` de las dos tablas, saldos NUEVO/USADO, P3009 por referencia). Sin `.ps1` nuevo ni cambio de `deploy.ps1`.
+- 13.5 `retirar-componente.integration.spec.ts`: `instrumentarConcurrenciaDelPool` devuelve `{ maximo, reiniciar }` y se reinicia antes del `Promise.all`; espia sobre `registrarDevolucionDeComponente` con `>= 2` llamadas. Mutacion local: quitar `deletedAt: null` del where de `retirar` deja rojo el caso de concurrencia (1 failed | 5 passed); restaurado, 6 verdes.

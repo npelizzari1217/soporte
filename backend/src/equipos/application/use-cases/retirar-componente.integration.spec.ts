@@ -16,6 +16,7 @@
  * Wiring manual sin Nest DI, con repos reales sobre el mismo `TenantContext`.
  */
 import { randomBytes } from 'node:crypto';
+import { vi } from 'vitest';
 import { Pool, type PoolClient } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaService } from '../../../shared/infrastructure/persistence/prisma.service';
@@ -49,7 +50,10 @@ const POOL_MAX = CONCURRENCIA + 5;
 const DUMMY_USUARIO_ID = '01900000-0000-7000-8000-000000000301';
 
 /** Ver JSDoc de cabecera y el spec de referencia — instrumenta `pool.connect()` (variante Promise, la de `$transaction`). */
-function instrumentarConcurrenciaDelPool(pool: Pool): () => number {
+function instrumentarConcurrenciaDelPool(pool: Pool): {
+  maximo: () => number;
+  reiniciar: () => void;
+} {
   let conexionesActivas = 0;
   let maxObservado = 0;
   const connectOriginal = pool.connect.bind(pool);
@@ -77,7 +81,14 @@ function instrumentarConcurrenciaDelPool(pool: Pool): () => number {
   };
 
   pool.connect = connectInstrumentado as unknown as typeof pool.connect;
-  return () => maxObservado;
+  return {
+    maximo: () => maxObservado,
+    // El maximo es de toda la suite: se reinicia justo antes del bloque concurrente
+    // para que la prueba no dependa de lo que ejecutaron los casos anteriores.
+    reiniciar: () => {
+      maxObservado = conexionesActivas;
+    },
+  };
 }
 
 describe('RetirarComponenteUseCase - base real (WU-7, ADR-4)', () => {
@@ -85,7 +96,7 @@ describe('RetirarComponenteUseCase - base real (WU-7, ADR-4)', () => {
   let pool: Pool;
   let tenantClient: InstanceType<typeof TenantPrismaClient>;
   let tenantContext: TenantContext;
-  let maxConcurrenteObservado: () => number;
+  let pruebaConcurrencia: ReturnType<typeof instrumentarConcurrenciaDelPool>;
 
   let equipoRepo: PrismaEquipoInformaticoRepository;
   let componenteRepo: PrismaComponenteEquipoRepository;
@@ -105,7 +116,7 @@ describe('RetirarComponenteUseCase - base real (WU-7, ADR-4)', () => {
     const tenantUrl = prismaServiceParaUrl.buildTenantUrl(TENANT_TEST_DB_NAME);
 
     pool = new Pool({ connectionString: tenantUrl, max: POOL_MAX });
-    maxConcurrenteObservado = instrumentarConcurrenciaDelPool(pool);
+    pruebaConcurrencia = instrumentarConcurrenciaDelPool(pool);
     tenantClient = new TenantPrismaClient({ adapter: new PrismaPg(pool) });
 
     tenantContext = new TenantContext();
@@ -369,6 +380,13 @@ describe('RetirarComponenteUseCase - base real (WU-7, ADR-4)', () => {
   it(`${CONCURRENCIA} retiros simultaneos del MISMO componente: UNA ENTRADA y el resto rechazado`, async () => {
     const componenteId = await sembrarComponente();
 
+    // Determinismo: la exclusion mutua solo se ejercita si al menos dos retiros
+    // llegan a la ENTRADA (y por ende a la marca condicional).
+    const espiaDevolucion = vi.spyOn(
+      RegistrarEntradaInsumoUseCase.prototype,
+      'registrarDevolucionDeComponente',
+    );
+    pruebaConcurrencia.reiniciar();
     const resultados = await conTenant(() =>
       Promise.all(
         Array.from({ length: CONCURRENCIA }, () =>
@@ -383,12 +401,15 @@ describe('RetirarComponenteUseCase - base real (WU-7, ADR-4)', () => {
       ),
     );
 
-    const maxConcurrente = maxConcurrenteObservado();
+    const llamadasADevolucion = espiaDevolucion.mock.calls.length;
+    espiaDevolucion.mockRestore();
+    const maxConcurrente = pruebaConcurrencia.maximo();
     console.info(
       `[concurrencia] retirar-componente - maximo de conexiones simultaneas: ${maxConcurrente} (pool max=${POOL_MAX}).`,
     );
     // Prueba de CONCURRENCIA REAL antes que el resultado de negocio.
     expect(maxConcurrente).toBeGreaterThan(1);
+    expect(llamadasADevolucion).toBeGreaterThanOrEqual(2);
 
     expect(resultados.filter((r) => r.isOk())).toHaveLength(1);
     const fallidos = resultados.filter((r) => r.isFail());
