@@ -497,3 +497,19 @@ Rama `feat/repuestos-numero-de-serie-wu08b`. Las tareas 8b.1 a 8b.4 se marcan al
   por `toHttpExceptionMovimiento`. La unidad de otro insumo es 404 (no se distingue de la inexistente).
 - e2e `unidades-insumo.e2e.spec.ts` (`usarLockMasterTest()`): listar y filtrar, historial de vida completa (eventos de
   instalacion sembrados por SQL hasta WU-10/11), descartada, entregada con sector, sin historia, 404 ajena y 403.
+
+## WU-8b — Borde de unidades (parte 2 de 2: escrituras)
+
+Rama `feat/repuestos-numero-de-serie-wu08b-2`. Tareas 8b.1 a 8b.4 hechas.
+
+- `CargarSerialUnidadUseCase` y `CorregirSerialUnidadUseCase`: dentro de `txRunner.run()` leen la unidad sin lock (solo para
+  verificar que es del insumo de la URL: si no, `UnidadNoEncontradaError` 404) y delegan en `OperacionesUnidadInsumo`, cuya
+  primera lectura es L1 y sigue L2 y L3 (ADR-12). `FalloOperacionDeUnidad` (P2002) se desenvuelve AFUERA del `run()` como
+  `SerialDuplicadoError` (409). Reciben `Pick<ITenantTransactionRunner, 'run'>`.
+- DTOs: `numeroSerie` con `@Transform` (trim) + `@EsSerialDeUnidad` (400 por largo recortado o normalizado, 1..255);
+  `motivo` de la correccion opcional en el borde (`transformarMotivo`, `@MaxLength(500)`) para que la regla la haga cumplir el
+  servicio: sin motivo o en blanco es `MotivoCorreccionSerialInvalidoError` (422), no un 400.
+- Rutas: `POST …/unidades/:unidadId/serial` (`INSUMOS:ALTAS`) y `POST …/unidades/:unidadId/correccion-serial`
+  (`INSUMOS:AJUSTAR`), ambas 201 con `UnidadInsumoResponseDto`; `usuarioId` del JWT.
+- e2e (mismo archivo): carga valida y repetida (409), ya con serial (422), 400 por largo normalizado y vacio; correccion valida
+  (evento con anterior, nuevo y motivo), sin motivo (422), a un serial existente (409), sobre instalada (422); 403 por ruta.

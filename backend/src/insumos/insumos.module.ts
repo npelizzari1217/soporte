@@ -131,6 +131,8 @@ import { MovimientosInsumoController } from './interface/controllers/movimientos
 import { UnidadesInsumoController } from './interface/controllers/unidades-insumo.controller';
 import { ListarUnidadesInsumoUseCase } from './application/use-cases/listar-unidades-insumo.use-case';
 import { ConsultarHistorialUnidadUseCase } from './application/use-cases/consultar-historial-unidad.use-case';
+import { CargarSerialUnidadUseCase } from './application/use-cases/cargar-serial-unidad.use-case';
+import { CorregirSerialUnidadUseCase } from './application/use-cases/corregir-serial-unidad.use-case';
 
 @Module({
   imports: [AuthModule],
@@ -293,7 +295,8 @@ import { ConsultarHistorialUnidadUseCase } from './application/use-cases/consult
         TENANT_TX_RUNNER,
       ],
     },
-    // Borde de unidades (WU-8b): lecturas sin locks.
+    // Borde de unidades (WU-8b). Las lecturas no toman locks; las escrituras abren
+    // la transacción y delegan en `OperacionesUnidadInsumo` (L1 primero).
     {
       provide: ListarUnidadesInsumoUseCase,
       useFactory: (insumoRepo: IInsumoRepository, unidadRepo: IUnidadInsumoRepository) =>
@@ -312,6 +315,24 @@ import { ConsultarHistorialUnidadUseCase } from './application/use-cases/consult
         EVENTO_UNIDAD_INSUMO_REPOSITORY,
         MOVIMIENTO_INSUMO_REPOSITORY,
       ],
+    },
+    {
+      provide: CargarSerialUnidadUseCase,
+      useFactory: (
+        unidadRepo: IUnidadInsumoRepository,
+        txRunner: ITenantTransactionRunner,
+        operaciones: OperacionesUnidadInsumo,
+      ) => new CargarSerialUnidadUseCase(unidadRepo, txRunner, operaciones),
+      inject: [UNIDAD_INSUMO_REPOSITORY, TENANT_TX_RUNNER, OperacionesUnidadInsumo],
+    },
+    {
+      provide: CorregirSerialUnidadUseCase,
+      useFactory: (
+        unidadRepo: IUnidadInsumoRepository,
+        txRunner: ITenantTransactionRunner,
+        operaciones: OperacionesUnidadInsumo,
+      ) => new CorregirSerialUnidadUseCase(unidadRepo, txRunner, operaciones),
+      inject: [UNIDAD_INSUMO_REPOSITORY, TENANT_TX_RUNNER, OperacionesUnidadInsumo],
     },
     {
       provide: CambiarSeguimientoInsumoUseCase,

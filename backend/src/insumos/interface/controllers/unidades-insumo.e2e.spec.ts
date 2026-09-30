@@ -1,7 +1,7 @@
 /**
  * unidades-insumo.e2e.spec.ts — levanta la app REAL y pega por HTTP a las rutas
- * de unidades de un insumo `SERIE` (repuestos-numero-de-serie, WU-8b): listar e
- * historial (la parte 2 suma cargar y corregir serial). Como ningún insumo es `SERIE` por
+ * de unidades de un insumo `SERIE` (repuestos-numero-de-serie, WU-8b): listar,
+ * historial, cargar serial y corregir serial. Como ningún insumo es `SERIE` por
  * HTTP hasta WU-12a, el insumo y lo que aún no tiene ruta (unidad pendiente,
  * eventos de instalación) se preparan por SQL directo en el tenant efímero.
  *
@@ -312,6 +312,7 @@ describe('Unidades de insumo SERIE e2e — borde HTTP', () => {
     token: string;
     tokenLectura: string;
     tokenSinLectura: string;
+    tokenSoloAltas: string;
     insumoId: string;
   }
 
@@ -330,11 +331,13 @@ describe('Unidades de insumo SERIE e2e — borde HTTP', () => {
       'INSUMOS:ALTAS',
       'INSUMOS:AJUSTAR',
     ]);
+    const soloAltas = await agregarActor(administrador.clienteId, ['INSUMOS:ALTAS']);
     return {
       tokenAdmin: administrador.token,
       token: actor.token,
       tokenLectura: lector.token,
       tokenSinLectura: sinLectura.token,
+      tokenSoloAltas: soloAltas.token,
       insumoId,
     };
   }
@@ -522,15 +525,124 @@ describe('Unidades de insumo SERIE e2e — borde HTTP', () => {
     });
   });
 
+  describe('POST …/unidades/:unidadId/serial', () => {
+    it('completa un serial pendiente y deja el evento SERIAL_CARGADO', async () => {
+      const e = await prepararEscenario();
+      const pendiente = await crearPendiente(e.insumoId);
+
+      const res = await httpPost<UnidadInsumoResponseDto>(
+        `${base(e.insumoId)}/unidades/${pendiente}/serial`,
+        { numeroSerie: '  SN-NUEVO  ' },
+        bearer(e.token),
+      );
+
+      expect(res.status).toBe(201);
+      expect(res.data.numeroSerie).toBe('SN-NUEVO');
+      const h = await historial(e, pendiente);
+      expect(h.map((x) => x.tipo)).toEqual(['SERIAL_CARGADO']);
+      expect(h[0].serialNuevo).toBe('SN-NUEVO');
+    });
+
+    it('409 con un serial repetido; 422 si ya tiene serial; 400 por largo normalizado', async () => {
+      const e = await prepararEscenario();
+      const [u1] = await ingresar(e, ['SN-1']);
+      const pendiente = await crearPendiente(e.insumoId);
+      const ruta = (id: string): string => `${base(e.insumoId)}/unidades/${id}/serial`;
+
+      const repetido = await httpPost(ruta(pendiente), { numeroSerie: 'sn-1' }, bearer(e.token));
+      const yaTiene = await httpPost(ruta(u1), { numeroSerie: 'OTRO' }, bearer(e.token));
+      const largo = await httpPost(
+        ruta(pendiente),
+        { numeroSerie: 'ß'.repeat(130) },
+        bearer(e.token),
+      );
+      const vacio = await httpPost(ruta(pendiente), { numeroSerie: '   ' }, bearer(e.token));
+
+      expect(repetido.status).toBe(409);
+      expect(yaTiene.status).toBe(422);
+      expect(largo.status).toBe(400);
+      expect(vacio.status).toBe(400);
+    });
+  });
+
+  describe('POST …/unidades/:unidadId/correccion-serial', () => {
+    it('corrección válida: cambia el serial y registra anterior, nuevo y motivo', async () => {
+      const e = await prepararEscenario();
+      const [u1] = await ingresar(e, ['SN-1']);
+
+      const res = await httpPost<UnidadInsumoResponseDto>(
+        `${base(e.insumoId)}/unidades/${u1}/correccion-serial`,
+        { numeroSerie: 'SN-1B', motivo: 'Error de tipeo' },
+        bearer(e.token),
+      );
+
+      expect(res.status).toBe(201);
+      expect(res.data.numeroSerie).toBe('SN-1B');
+      const h = await historial(e, u1);
+      const correccion = h.find((x) => x.tipo === 'CORRECCION_SERIAL');
+      expect(correccion).toMatchObject({
+        serialAnterior: 'SN-1',
+        serialNuevo: 'SN-1B',
+        motivo: 'Error de tipeo',
+      });
+    });
+
+    it('422 sin motivo; 409 a un serial existente; 422 sobre una instalada', async () => {
+      const e = await prepararEscenario();
+      const [u1, u2] = await ingresar(e, ['SN-1', 'SN-2']);
+      const ruta = (id: string): string => `${base(e.insumoId)}/unidades/${id}/correccion-serial`;
+      await tenantPool.query(
+        `UPDATE unidades_insumo SET estado = 'INSTALADA', equipo_id = $2 WHERE id = $1`,
+        [u2, await crearEquipo('Equipo')],
+      );
+
+      const sinMotivo = await httpPost(ruta(u1), { numeroSerie: 'SN-X' }, bearer(e.token));
+      const motivoBlanco = await httpPost(
+        ruta(u1),
+        { numeroSerie: 'SN-X', motivo: '   ' },
+        bearer(e.token),
+      );
+      const existente = await httpPost(
+        ruta(u1),
+        { numeroSerie: 'sn-2', motivo: 'Corrige' },
+        bearer(e.token),
+      );
+      const instalada = await httpPost(
+        ruta(u2),
+        { numeroSerie: 'SN-Y', motivo: 'Corrige' },
+        bearer(e.token),
+      );
+
+      expect(sinMotivo.status).toBe(422);
+      expect(motivoBlanco.status).toBe(422);
+      expect(existente.status).toBe(409);
+      expect(instalada.status).toBe(422);
+    });
+  });
+
   describe('permisos por ruta', () => {
     it('403 en cada ruta sin su permiso', async () => {
       const e = await prepararEscenario();
       const [u1] = await ingresar(e, ['SN-1']);
+      const pendiente = await crearPendiente(e.insumoId);
       const unidades = `${base(e.insumoId)}/unidades`;
 
       const listar = await httpGet(unidades, bearer(e.tokenSinLectura));
       const historialSin = await httpGet(`${unidades}/${u1}/historial`, bearer(e.tokenSinLectura));
-      expect([listar.status, historialSin.status]).toEqual([403, 403]);
+      const cargar = await httpPost(
+        `${unidades}/${pendiente}/serial`,
+        { numeroSerie: 'SN-Z' },
+        bearer(e.tokenLectura),
+      );
+      const corregir = await httpPost(
+        `${unidades}/${u1}/correccion-serial`,
+        { numeroSerie: 'SN-Z', motivo: 'm' },
+        bearer(e.tokenSoloAltas),
+      );
+
+      expect([listar.status, historialSin.status, cargar.status, corregir.status]).toEqual([
+        403, 403, 403, 403,
+      ]);
     });
   });
 });

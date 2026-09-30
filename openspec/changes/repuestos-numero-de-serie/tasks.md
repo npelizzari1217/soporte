@@ -416,16 +416,17 @@ Commit sugerido: `feat(insumos): seriales y unidad en el borde de movimientos`.
 
 **Branch**: `feat/repuestos-numero-de-serie-wu08b` · **Base**: wu08a
 
-- [ ] 8b.1 Casos de uso `ListarUnidadesInsumoUseCase` (`estado`, `disponibles=true` = `EN_DEPOSITO` con serial; el ajuste negativo pide `estado=EN_DEPOSITO` e incluye pendientes), `ConsultarHistorialUnidadUseCase` (cronológico; lee `sector_id`, `equipo_id` y `motivo` del movimiento referenciado sin copiarlos), `CargarSerialUnidadUseCase`, `CorregirSerialUnidadUseCase` (transacción, L1 primero, delega en el servicio).
-- [ ] 8b.2 `unidades-insumo.controller.ts`: `GET /insumos/:id/unidades` y `GET …/unidades/:unidadId/historial` con `INSUMOS:LECTURA`; `POST …/unidades/:unidadId/serial` con `INSUMOS:ALTAS`; `POST …/unidades/:unidadId/correccion-serial` con `INSUMOS:AJUSTAR` (`{ numeroSerie, motivo }`, `transformarMotivo`, 500). DTOs (`UnidadInsumoResponseDto`, `EventoUnidadResponseDto`). `UnidadNoEncontradaError` 404. Mapeo explícito de errores. Sin chequeos de permiso dentro de los métodos.
-- [ ] 8b.3 e2e (`usarLockMasterTest()`): listar y filtrar; historial de una vida completa, de una descartada, de una entregada (destino visible) y de una sin historia; cargar serial válido / repetido; corrección válida / sin motivo / a un serial existente / sobre instalada; 403 por cada ruta sin su permiso.
-- [ ] 8b.4 Quality gates (backend): `cd backend && pnpm lint && pnpm typecheck && pnpm vitest run src/insumos` y `pnpm test`.
+- [x] 8b.1 Casos de uso `ListarUnidadesInsumoUseCase` (`estado`, `disponibles=true` = `EN_DEPOSITO` con serial; el ajuste negativo pide `estado=EN_DEPOSITO` e incluye pendientes), `ConsultarHistorialUnidadUseCase` (cronológico; lee `sector_id`, `equipo_id` y `motivo` del movimiento referenciado sin copiarlos), `CargarSerialUnidadUseCase`, `CorregirSerialUnidadUseCase` (transacción, L1 primero, delega en el servicio).
+- [x] 8b.2 `unidades-insumo.controller.ts`: `GET /insumos/:id/unidades` y `GET …/unidades/:unidadId/historial` con `INSUMOS:LECTURA`; `POST …/unidades/:unidadId/serial` con `INSUMOS:ALTAS`; `POST …/unidades/:unidadId/correccion-serial` con `INSUMOS:AJUSTAR` (`{ numeroSerie, motivo }`, `transformarMotivo`, 500). DTOs (`UnidadInsumoResponseDto`, `EventoUnidadResponseDto`). `UnidadNoEncontradaError` 404. Mapeo explícito de errores. Sin chequeos de permiso dentro de los métodos.
+- [x] 8b.3 e2e (`usarLockMasterTest()`): listar y filtrar; historial de una vida completa, de una descartada, de una entregada (destino visible) y de una sin historia; cargar serial válido / repetido; corrección válida / sin motivo / a un serial existente / sobre instalada; 403 por cada ruta sin su permiso.
+- [x] 8b.4 Quality gates (backend): `cd backend && pnpm lint && pnpm typecheck && pnpm vitest run src/insumos` y `pnpm test`.
 
 **Escenarios**: Completar un serial pendiente; Completar con un serial repetido; Corrección válida;
 Corrección sin motivo; Corrección a un serial existente; Corregir una unidad instalada; Vida
 completa de una unidad; Historial de una unidad descartada; Historial de una unidad entregada;
 Unidad sin historia anterior; Selector sin pendientes (filtro `disponibles`).
 **PR boundary**: ~600 líneas, base wu08a. Corte si se pasa: lecturas / escrituras.
+**Real**: partido en `wu08b` (lecturas, 1156 líneas, size:exception por el arnés e2e) y `wu08b-2` (escrituras).
 **Ayuda**: sin deuda (UI en WU-15/16a).
 Commit sugerido: `feat(insumos): endpoints de unidades, historial y correccion de serial`.
 

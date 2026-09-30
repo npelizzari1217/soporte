@@ -5,23 +5,42 @@
  * Rutas (`@RequiereAcciones` POR MÉTODO, nunca a nivel de clase):
  *   GET  /insumos/:insumoId/unidades                          [INSUMOS:LECTURA]
  *   GET  /insumos/:insumoId/unidades/:unidadId/historial      [INSUMOS:LECTURA]
+ *   POST /insumos/:insumoId/unidades/:unidadId/serial         [INSUMOS:ALTAS]
+ *   POST /insumos/:insumoId/unidades/:unidadId/correccion-serial [INSUMOS:AJUSTAR]
  *
- * Las dos lecturas llevan `INSUMOS:LECTURA`. Las escrituras (cargar y corregir
- * serial) llegan en la parte 2 de WU-8b. Los errores se mapean con
+ * Completar un serial pendiente es parte de dar de alta (`ALTAS`); corregir uno
+ * ya cargado explica una diferencia, igual que el ajuste (`AJUSTAR`). El
+ * `usuarioId` sale siempre del JWT, nunca del body. Los errores se mapean con
  * `toHttpExceptionMovimiento` (409 serial duplicado, 404 unidad/insumo
  * inexistente, 422 el resto de las reglas).
  */
-import { Controller, Get, Param, ParseUUIDPipe, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 
 import { JwtAuthGuard } from '../../../auth/infrastructure/guards/jwt-auth.guard';
 import { TenantGuard } from '../../../auth/infrastructure/guards/tenant.guard';
 import { AccionesGuard } from '../../../auth/infrastructure/guards/acciones.guard';
-import { RequiereAcciones } from '../../../auth/infrastructure/guards/decorators';
+import { CurrentUser, RequiereAcciones } from '../../../auth/infrastructure/guards/decorators';
+import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
 
 import { ListarUnidadesInsumoUseCase } from '../../application/use-cases/listar-unidades-insumo.use-case';
 import { ConsultarHistorialUnidadUseCase } from '../../application/use-cases/consultar-historial-unidad.use-case';
+import { CargarSerialUnidadUseCase } from '../../application/use-cases/cargar-serial-unidad.use-case';
+import { CorregirSerialUnidadUseCase } from '../../application/use-cases/corregir-serial-unidad.use-case';
 import { toHttpExceptionMovimiento } from './movimientos-insumo.controller';
 import {
+  CargarSerialUnidadHttpDto,
+  CorregirSerialUnidadHttpDto,
   EventoUnidadResponseDto,
   ListarUnidadesInsumoQueryDto,
   UnidadInsumoResponseDto,
@@ -35,6 +54,8 @@ export class UnidadesInsumoController {
   constructor(
     private readonly listarUnidadesUseCase: ListarUnidadesInsumoUseCase,
     private readonly consultarHistorialUseCase: ConsultarHistorialUnidadUseCase,
+    private readonly cargarSerialUseCase: CargarSerialUnidadUseCase,
+    private readonly corregirSerialUseCase: CorregirSerialUnidadUseCase,
   ) {}
 
   /**
@@ -78,5 +99,64 @@ export class UnidadesInsumoController {
     const result = await this.consultarHistorialUseCase.execute(insumoId, unidadId);
     if (result.isFail()) throw toHttpExceptionMovimiento(result.getError());
     return result.getValue().map(toEventoUnidadResponseDto);
+  }
+
+  /**
+   * POST /insumos/:insumoId/unidades/:unidadId/serial — completa un serial pendiente.
+   *
+   * @throws 400 id mal formado o serial fuera de 1 a 255 (recortado y normalizado)
+   * @throws 403 sin `INSUMOS:ALTAS`
+   * @throws 404 unidad inexistente o de otro insumo
+   * @throws 409 el serial ya lo tiene otra unidad del insumo
+   * @throws 422 la unidad ya tiene serial (se corrige) o no admite la carga
+   */
+  @Post(':unidadId/serial')
+  @UseGuards(AccionesGuard)
+  @RequiereAcciones('INSUMOS:ALTAS')
+  @HttpCode(HttpStatus.CREATED)
+  async cargarSerial(
+    @CurrentUser() user: JwtPayload,
+    @Param('insumoId', new ParseUUIDPipe()) insumoId: string,
+    @Param('unidadId', new ParseUUIDPipe()) unidadId: string,
+    @Body() dto: CargarSerialUnidadHttpDto,
+  ): Promise<UnidadInsumoResponseDto> {
+    const result = await this.cargarSerialUseCase.execute({
+      insumoId,
+      unidadId,
+      numeroSerie: dto.numeroSerie,
+      usuarioId: user.sub,
+    });
+    if (result.isFail()) throw toHttpExceptionMovimiento(result.getError());
+    return toUnidadInsumoResponseDto({ unidad: result.getValue(), equipoNombre: null });
+  }
+
+  /**
+   * POST /insumos/:insumoId/unidades/:unidadId/correccion-serial — corrige un serial ya cargado.
+   *
+   * @throws 400 id mal formado, serial fuera de rango o motivo por encima de 500
+   * @throws 403 sin `INSUMOS:AJUSTAR`
+   * @throws 404 unidad inexistente o de otro insumo
+   * @throws 409 el serial nuevo ya lo tiene otra unidad del insumo
+   * @throws 422 motivo vacío, unidad instalada o pendiente
+   */
+  @Post(':unidadId/correccion-serial')
+  @UseGuards(AccionesGuard)
+  @RequiereAcciones('INSUMOS:AJUSTAR')
+  @HttpCode(HttpStatus.CREATED)
+  async corregirSerial(
+    @CurrentUser() user: JwtPayload,
+    @Param('insumoId', new ParseUUIDPipe()) insumoId: string,
+    @Param('unidadId', new ParseUUIDPipe()) unidadId: string,
+    @Body() dto: CorregirSerialUnidadHttpDto,
+  ): Promise<UnidadInsumoResponseDto> {
+    const result = await this.corregirSerialUseCase.execute({
+      insumoId,
+      unidadId,
+      numeroSerie: dto.numeroSerie,
+      usuarioId: user.sub,
+      motivo: dto.motivo ?? null,
+    });
+    if (result.isFail()) throw toHttpExceptionMovimiento(result.getError());
+    return toUnidadInsumoResponseDto({ unidad: result.getValue(), equipoNombre: null });
   }
 }
