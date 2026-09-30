@@ -74,17 +74,9 @@ condición, si se ignora o se rechaza queda a decisión de diseño.
 
 ### Requirement: El retiro sigue siendo el borrado lógico sin movimiento de stock
 
-(Reason: el requerimiento se declaró explícitamente provisorio, "hasta que entre
-el cambio `stock-usado-componentes`". Este cambio lo reemplaza por el retiro con
-dos desenlaces, que devuelve la pieza al stock como USADO o la descarta con
-motivo. Retirar sin destino ya no es un comportamiento vigente.)
+(Reason: el requerimiento se declaró explícitamente provisorio, "hasta que entre el cambio `stock-usado-componentes`". Este cambio lo reemplaza por el retiro con dos desenlaces, que devuelve la pieza al stock como USADO o la descarta con motivo. Retirar sin destino ya no es un comportamiento vigente.)
 
-(Migration: los retiros anteriores a este cambio no se modifican; quedan como
-"retiros legados", sin destino, sin motivo y sin movimiento, y pueden
-reactivarse. Todo retiro nuevo pasa por los requerimientos "El retiro de un
-componente tiene dos desenlaces" y "Un componente que vino con el equipo puede
-devolverse al stock con motivo". El destino del endpoint de borrado actual queda
-a decisión de diseño.)
+(Migration: los retiros anteriores a este cambio no se modifican; quedan como "retiros legados", sin destino, sin motivo y sin movimiento, y pueden reactivarse. Todo retiro nuevo pasa por los requerimientos "El retiro de un componente tiene dos desenlaces" y "Un componente que vino con el equipo puede devolverse al stock con motivo". El destino del endpoint de borrado actual queda a decisión de diseño.)
 
 ## ADDED Requirements
 
