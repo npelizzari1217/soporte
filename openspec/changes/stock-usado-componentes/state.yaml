@@ -7,7 +7,7 @@ product_decisions: confirmed 2026-09-30 (recomendadas: a1 b1 c3 d1 e3 f2 g1 h2; 
 artifacts:
   exploration: true
   proposal: true
-  specs: false
+  specs: true
   design: false
   tasks: false
 tasks_progress:
