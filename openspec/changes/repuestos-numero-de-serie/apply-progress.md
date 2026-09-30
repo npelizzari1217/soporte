@@ -138,3 +138,28 @@ cada código de sus pruebas): parte 1 (`wu03a`) = 3a.1 y 3a.3; parte 2 (`wu03a-2
 | Focused test command | `pnpm vitest run src/shared/infrastructure src/insumos`: verde (ver el reporte de la parte) |
 | Runtime harness | Base `soporte_tenant_test` real, pool instrumentado y sesión testigo con `NOWAIT` |
 | Rollback boundary | Revertir el commit de la parte 2: archivos nuevos y un provider sin exportar en `insumos.module.ts` |
+
+### Parte 3 (wu03a-3): 3a.4 y 3a.7 hechas
+
+- W3: `PrismaInsumoRepository.save()` escribe `seguimiento` en el CREATE y NO en el UPDATE (quita la
+  clave del shape de la rama `update`); `IInsumoRepository.cambiarSeguimiento(id, valor)` es el único
+  escritor y lanza si el insumo no existe (`updateMany` con conteo 0).
+- Integración (`lecturas-con-lock-de-fila.integration.spec.ts`, describe W3): una entidad leída antes del
+  cambio no pisa el `SERIE` nuevo al guardarse; el resto de los campos sí se actualiza; el CREATE sí
+  escribe el seguimiento de la entidad nueva; `cambiarSeguimiento` de un insumo inexistente lanza.
+- 3a.7: las compuertas se corrieron sobre el árbol completo de la WU (las tres partes juntas) y sobre
+  cada parte por separado.
+
+### Mutación adversarial local de 3a.4 (revertida)
+
+| Mutación | Resultado observado |
+|---|---|
+| Escribir `seguimiento` en la rama `update` de `save()` (`...data` en vez de `...dataSinSeguimiento`) | ROJO: `expected 'NINGUNO' to be 'SERIE'` en "una entidad leída antes del cambio no pisa el seguimiento nuevo al guardarse" (1 failed / 16 passed) |
+
+### Work Unit Evidence (WU-3a parte 3 y WU completa)
+
+| Evidence | Value |
+|---|---|
+| Focused test command | `pnpm vitest run src/shared/infrastructure src/insumos`: 87 archivos, 1515 tests verdes sobre el árbol completo |
+| Full suite | `pnpm test`: 499 archivos, 6067 tests verdes (los `FAIL orden-de-arranque` del log son la salida esperada de subprocesos que el spec provoca a propósito; el archivo pasa) |
+| Rollback boundary | Revertir el commit de la parte 3: `save()` vuelve a escribir `seguimiento` en el UPDATE y desaparece `cambiarSeguimiento` |

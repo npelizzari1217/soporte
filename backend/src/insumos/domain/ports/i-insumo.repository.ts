@@ -208,6 +208,17 @@ export interface IInsumoRepository {
   ): Promise<{ seguimiento: SeguimientoInsumo; unidadMedidaId: string } | null>;
 
   /**
+   * ÚNICO escritor de `insumos.seguimiento` (W3): `save()` no lo escribe en el
+   * UPDATE, para que guardar una entidad leída antes de un cambio no lo pise
+   * con el valor viejo. Va después de `bloquearParaCambioDeSeguimiento()`.
+   *
+   * @param id Id del insumo.
+   * @param valor Nuevo seguimiento.
+   * @throws Error si el insumo no existe (0 filas afectadas).
+   */
+  cambiarSeguimiento(id: string, valor: SeguimientoInsumo): Promise<void>;
+
+  /**
    * Retorna la última secuencia de la SERIE `prefijo` (`INS` o `REP`) usada en
    * `codigo` (formato `{PREFIJO}-{SEQ4}`, ej. `INS-0007`). `0` si la serie
    * todavía no tiene ningún código con ese formato en el tenant.

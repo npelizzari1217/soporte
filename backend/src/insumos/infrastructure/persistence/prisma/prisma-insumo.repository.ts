@@ -251,6 +251,10 @@ export class PrismaInsumoRepository implements IInsumoRepository {
    */
   async save(insumo: InsumoEntity): Promise<void> {
     const data = InsumoMapper.toPersistence(insumo);
+    // W3: `seguimiento` viaja en el CREATE pero NO en el UPDATE. Una entidad
+    // leída antes de un cambio de seguimiento lo reescribiría con el valor
+    // viejo; el único escritor es `cambiarSeguimiento()`.
+    const { seguimiento: _seguimiento, ...dataSinSeguimiento } = data;
 
     const codigos = insumo.codigosAlternativos.map((codigo) =>
       InsumoCodigoAlternativoMapper.toPersistence(codigo),
@@ -270,7 +274,7 @@ export class PrismaInsumoRepository implements IInsumoRepository {
         compatibilidad: { create: compatibilidad },
       },
       update: {
-        ...data,
+        ...dataSinSeguimiento,
         codigosAlternativos: {
           // Con la lista vacía el filtro es `{}`: se van todos. Un
           // `notIn: []` dependería de cómo Prisma traduce el conjunto vacío.
@@ -383,5 +387,24 @@ export class PrismaInsumoRepository implements IInsumoRepository {
       seguimiento: filas[0].seguimiento as SeguimientoInsumo,
       unidadMedidaId: filas[0].unidad_medida_id,
     };
+  }
+
+  /**
+   * Único escritor de `seguimiento` (W3). `updateMany` y no `update`: así la
+   * ausencia de la fila es un conteo de cero que se convierte en un error
+   * claro, en vez de un `P2025` crudo.
+   *
+   * @param id Id del insumo.
+   * @param valor Nuevo seguimiento.
+   * @throws Error si el insumo no existe.
+   */
+  async cambiarSeguimiento(id: string, valor: SeguimientoInsumo): Promise<void> {
+    const { count } = await this.client.insumo.updateMany({
+      where: { id },
+      data: { seguimiento: valor },
+    });
+    if (count === 0) {
+      throw new Error(`PrismaInsumoRepository.cambiarSeguimiento(): el insumo ${id} no existe.`);
+    }
   }
 }

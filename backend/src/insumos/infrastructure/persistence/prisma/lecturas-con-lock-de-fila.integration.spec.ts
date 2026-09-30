@@ -1,6 +1,6 @@
 /**
  * [INTEGRATION] Lecturas con lock de fila de la invariante L (ADR-12 de
- * sdd/repuestos-numero-de-serie), contra
+ * sdd/repuestos-numero-de-serie) y escritor único de `seguimiento` (W3), contra
  * `soporte_tenant_test`.
  *
  * Cada lock se prueba DESDE AFUERA: una sesión testigo, sin Prisma, intenta
@@ -22,6 +22,7 @@ import { PrismaTenantTransactionRunner } from '../../../../shared/infrastructure
 import { PrismaInsumoRepository } from './prisma-insumo.repository';
 import { PrismaUnidadMedidaRepository } from './prisma-unidad-medida.repository';
 import { PrismaMovimientoInsumoRepository } from './prisma-movimiento-insumo.repository';
+import { InsumoEntity } from '../../../domain/entities/insumo.entity';
 
 const MASTER_TEST_URL =
   process.env.DATABASE_URL_MASTER ??
@@ -30,7 +31,7 @@ const TENANT_TEST_DB_NAME = 'soporte_tenant_test';
 
 type ModoDeLock = 'FOR KEY SHARE' | 'FOR SHARE' | 'FOR NO KEY UPDATE' | 'FOR UPDATE';
 
-describe('lecturas con lock de fila (ADR-12)', () => {
+describe('lecturas con lock de fila (ADR-12) y W3', () => {
   let prismaServiceParaUrl: PrismaService;
   let pool: Pool;
   let poolTestigo: Pool;
@@ -124,6 +125,63 @@ describe('lecturas con lock de fila (ADR-12)', () => {
       cliente.release();
     }
   }
+
+  async function seguimientoEnBase(): Promise<string> {
+    const fila = await tenantClient.insumo.findUniqueOrThrow({ where: { id: insumoId } });
+    return fila.seguimiento;
+  }
+
+  describe('W3 — save() no escribe seguimiento en el UPDATE; cambiarSeguimiento() es el único escritor', () => {
+    it('una entidad leída antes del cambio no pisa el seguimiento nuevo al guardarse', async () => {
+      const entidadVieja = await conTenant(async () => (await insumoRepo.findById(insumoId))!);
+      expect(entidadVieja.seguimiento).toBe('NINGUNO');
+
+      await conTenant(() => insumoRepo.cambiarSeguimiento(insumoId, 'SERIE'));
+      await conTenant(() => insumoRepo.save(entidadVieja));
+
+      expect(await seguimientoEnBase()).toBe('SERIE');
+    });
+
+    it('el UPDATE de save() sigue escribiendo el resto de los campos', async () => {
+      const entidad = await conTenant(async () => (await insumoRepo.findById(insumoId))!);
+      entidad.actualizar({ nombre: 'Nombre editado', stockMinimo: 7 });
+      await conTenant(() => insumoRepo.save(entidad));
+
+      const fila = await tenantClient.insumo.findUniqueOrThrow({ where: { id: insumoId } });
+      expect(fila.nombre).toBe('Nombre editado');
+      expect(Number(fila.stockMinimo)).toBe(7);
+      await tenantClient.insumo.update({
+        where: { id: insumoId },
+        data: { nombre: 'Insumo bajo prueba', stockMinimo: null },
+      });
+    });
+
+    it('el CREATE de save() sí escribe el seguimiento de la entidad nueva', async () => {
+      const nueva = InsumoEntity.create({
+        codigo: `${PREFIJO}N`,
+        nombre: 'Insumo nuevo SERIE',
+        familiaId,
+        unidadMedidaId,
+        stockMinimo: null,
+        activo: true,
+        seguimiento: 'SERIE',
+        codigosAlternativos: [],
+        compatibilidad: [],
+      });
+      await conTenant(() => insumoRepo.save(nueva));
+
+      const fila = await tenantClient.insumo.findUniqueOrThrow({ where: { id: nueva.id } });
+      expect(fila.seguimiento).toBe('SERIE');
+    });
+
+    it('cambiarSeguimiento() sobre un insumo inexistente lanza', async () => {
+      await expect(
+        conTenant(() =>
+          insumoRepo.cambiarSeguimiento('00000000-0000-4000-8000-000000000000', 'SERIE'),
+        ),
+      ).rejects.toThrow(/no existe/);
+    });
+  });
 
   describe('fuera de una transacción', () => {
     const casos: Array<[string, () => Promise<unknown>]> = [
