@@ -101,7 +101,19 @@ el error de stock insuficiente existente y NO DEBE persistir el movimiento.
 
 El sistema DEBE permitir que una ENTRADA manual y un AJUSTE (positivo o
 negativo) indiquen la condición `USADO`, sujeto a la regla de alcance a
-repuestos. Sin condición indicada DEBEN registrarse como `NUEVO`.
+repuestos. Sin condición indicada DEBEN registrarse como `NUEVO`. La condición
+NO DEBE cambiar la elegibilidad vigente del insumo: la ENTRADA manual sobre un
+insumo deshabilitado DEBE seguir rechazándose con cualquier condición, y el
+AJUSTE conserva su regla actual, que no exige que el insumo esté habilitado. La
+única exención para un insumo deshabilitado es el retiro de un componente al
+stock (spec `componentes-catalogo-unico`).
+
+#### Scenario: Entrada manual USADO de un insumo deshabilitado sigue rechazada
+
+- GIVEN un insumo de familia repuesto que está deshabilitado
+- WHEN se registra una ENTRADA manual con condición `USADO`
+- THEN el sistema la rechaza por insumo deshabilitado y no persiste el
+  movimiento
 
 #### Scenario: Entrada manual de usados
 

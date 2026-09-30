@@ -19,7 +19,7 @@ Entrada: `exploration.md` de esta carpeta. Research no seleccionada. **No es un 
 5. **Retiro con dos desenlaces**, con permiso `EQUIPOS:BORRADO` (sin permiso nuevo):
    - devolver al stock como USADO: ENTRADA USADO de 1 unidad y borrado lógico en una sola transacción;
    - descartar por rotura: motivo obligatorio en texto libre (máx. 500, normalización de `MOVIMIENTO_INSUMO_MOTIVO_MAX_LENGTH`), sin movimiento de stock.
-6. **Componente que vino con el equipo** (instalado sin SALIDA): PUEDE devolverse como USADO con motivo obligatorio; el registro de retiro lo marca ("no había salido del depósito").
+6. **Componente sin salida registrada** (vino con el equipo, o se instaló antes de este cambio): PUEDE devolverse como USADO con motivo obligatorio; el registro de retiro lo marca ("sin salida registrada del depósito"). Una pieza sana de un repuesto deshabilitado también PUEDE volver al stock como USADO (dueño, 2026-09-30).
 7. **Reactivar**: bloqueado tras un retiro `STOCK_USADO`; permitido tras `DESCARTE` y en retiros legados (sin destino).
 8. **ENTRADA manual y AJUSTE** pueden apuntar a USADO; la recepción de compra queda fija en NUEVO (el campo no se expone).
 9. **Registro del retiro**: columnas en `componentes_equipo` (destino, motivo, vínculo al movimiento de devolución y, según diseño, usuario). Sin tabla nueva ni tipo de movimiento de dirección cero.
@@ -95,7 +95,7 @@ Recomendación de la exploración; el diseño la cierra.
 | Destino del `DELETE` actual del componente | Retirarlo o dejarlo como alias del descarte |
 | Mecanismo de mitigación del rollback | Orden de despliegue o feature flag |
 | Forma de `SumasPorTipoMovimiento` y del saldo devuelto | `{NUEVO, USADO}` más total derivado |
-| `bajaUsuarioId` y cómo se marca "no había salido del depósito" | Columnas en `componentes_equipo` |
+| `bajaUsuarioId` y cómo se marca "sin salida registrada del depósito" | Columnas en `componentes_equipo` |
 | `condicion` con `descontarStock=false`: ¿ignorar o 400? | Sin recomendación cerrada |
 | Índice `(insumoId, condicion)` | Opcional |
 

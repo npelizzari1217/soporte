@@ -107,6 +107,12 @@ Consecuencia de permisos asumida: quien tiene `EQUIPOS:BORRADO` puede sumar
 existencias USADO al depósito sin tener permisos de insumos, del mismo modo que
 `EQUIPOS:ALTAS` ya descuenta stock al instalar sin permisos de insumos.
 
+Con `STOCK_USADO`, el retiro DEBE admitir un insumo deshabilitado y una familia
+dada de baja o deshabilitada, porque la pieza existe físicamente (decisión del
+dueño, 2026-09-30). Esta exención vale solo para el retiro: NO DEBE extenderse a
+la ENTRADA ni al AJUSTE manuales. El retiro NO DEBE admitir un insumo dado de
+baja ni un insumo cuya familia no es de repuesto.
+
 #### Scenario: Devolver al stock como usado
 
 - GIVEN un componente activo, instalado con descuento, de un insumo con saldo
@@ -114,6 +120,21 @@ existencias USADO al depósito sin tener permisos de insumos, del mismo modo que
 - WHEN un usuario con `EQUIPOS:BORRADO` lo retira con destino `STOCK_USADO`
 - THEN el componente queda soft-deleted, existe una ENTRADA USADO de 1 unidad
   del insumo con el `equipoId`, el saldo USADO es 1 y el saldo NUEVO no cambia
+
+#### Scenario: Retiro al stock de un repuesto deshabilitado
+
+- GIVEN un componente activo, instalado con descuento, cuyo insumo está
+  deshabilitado
+- WHEN se lo retira con destino `STOCK_USADO`
+- THEN el retiro se completa, existe una ENTRADA USADO de 1 unidad y el saldo
+  USADO del insumo aumenta en 1
+
+#### Scenario: Retiro al stock con familia dada de baja
+
+- GIVEN un componente activo, instalado con descuento, cuyo insumo pertenece a
+  una familia de repuesto dada de baja o deshabilitada
+- WHEN se lo retira con destino `STOCK_USADO`
+- THEN el retiro se completa y existe una ENTRADA USADO de 1 unidad
 
 #### Scenario: Descartar por rotura
 
@@ -177,13 +198,19 @@ existencias USADO al depósito sin tener permisos de insumos, del mismo modo que
 
 ### Requirement: Un componente que vino con el equipo puede devolverse al stock con motivo obligatorio
 
-El sistema DEBE permitir devolver al stock como USADO un componente que nunca
-salió del depósito (instalado con `descontarStock: false`, es decir, sin SALIDA
-asociada), pero DEBE exigir en ese caso un motivo no vacío de a lo sumo 500
-caracteres. El sistema DEBE marcar el registro de retiro de ese componente para
-que quede constancia de que "no había salido del depósito". Un componente
-instalado con descuento NO DEBE requerir motivo para devolverse al stock, y su
-registro NO DEBE llevar esa marca.
+El sistema DEBE permitir devolver al stock como USADO un componente sin SALIDA
+registrada del depósito, pero DEBE exigir en ese caso un motivo no vacío de a lo
+sumo 500 caracteres. Un componente no tiene SALIDA registrada cuando se instaló
+con `descontarStock: false` o cuando se instaló antes de este cambio, con o sin
+descuento: el sistema no registraba el vínculo entre el componente y su SALIDA.
+El registro de retiro de ese componente DEBE mostrar la marca "sin salida
+registrada del depósito". Un componente instalado con descuento a partir de este
+cambio NO DEBE requerir motivo para devolverse al stock, y su registro NO DEBE
+llevar esa marca.
+
+Consecuencia asumida (dueño, 2026-09-30): un componente instalado con descuento
+antes de este cambio también exige motivo para volver al stock y muestra la
+marca, aunque en su momento haya salido del depósito.
 
 #### Scenario: Devolver una pieza que vino con el equipo
 
@@ -191,8 +218,16 @@ registro NO DEBE llevar esa marca.
 - WHEN se lo retira con destino `STOCK_USADO` y motivo "disco del equipo
   comprado"
 - THEN se registra la ENTRADA USADO de 1 unidad, el componente queda
-  soft-deleted y su registro de retiro queda marcado como "no había salido del
-  depósito"
+  soft-deleted y su registro de retiro muestra la marca "sin salida registrada
+  del depósito"
+
+#### Scenario: Devolver una pieza instalada antes de este cambio
+
+- GIVEN un componente instalado con descuento antes de este cambio
+- WHEN se lo retira con destino `STOCK_USADO` sin motivo
+- THEN el sistema rechaza el retiro y el componente sigue activo
+- AND con un motivo, el retiro se completa y su registro muestra la marca "sin
+  salida registrada del depósito"
 
 #### Scenario: Devolver una pieza que vino con el equipo sin motivo
 
@@ -203,10 +238,11 @@ registro NO DEBE llevar esa marca.
 
 #### Scenario: Pieza instalada con descuento
 
-- GIVEN un componente instalado con `descontarStock: true`
+- GIVEN un componente instalado con `descontarStock: true` a partir de este
+  cambio
 - WHEN se lo retira con destino `STOCK_USADO` sin motivo
-- THEN el retiro se completa y el registro no lleva la marca "no había salido
-  del depósito"
+- THEN el retiro se completa y el registro no lleva la marca "sin salida
+  registrada del depósito"
 
 ### Requirement: Reactivar un componente depende del destino de su retiro
 
@@ -247,14 +283,18 @@ una pieza devuelta al stock se usa el alta con descuento de saldo USADO.
 
 El sistema DEBE guardar en el propio componente, al retirarlo, el destino
 (`STOCK_USADO` o `DESCARTE`), el motivo (cuando exista), el vínculo al
-movimiento de devolución (solo con `STOCK_USADO`), la marca "no había salido del
-depósito" cuando corresponda y el usuario que lo retiró, y DEBE exponerlos al
-consultar el componente. Un componente retirado antes de este cambio DEBE
-mostrar estos campos vacíos (retiro legado). El sistema NO DEBE crear una tabla
-nueva de retiros ni un tipo de movimiento de dirección cero. Con el vínculo al
-movimiento y el `equipoId` del movimiento DEBE poder responderse de qué equipo
-vino una pieza usada. Los nombres y la forma exacta de las columnas, y cómo se
-registra el usuario, quedan a decisión de diseño.
+movimiento de devolución (solo con `STOCK_USADO`) y el usuario que lo retiró, y
+DEBE exponerlos al consultar el componente junto con la marca "sin salida
+registrada del depósito" cuando corresponda. La marca NO DEBE guardarse como
+dato propio: DEBE derivarse de que el destino es `STOCK_USADO` y el componente no
+tiene vínculo a la SALIDA de su instalación (`instalacion_movimiento_id` nulo),
+vínculo que la instalación con descuento DEBE registrar a partir de este cambio.
+Un componente retirado antes de este cambio DEBE mostrar los campos de retiro
+vacíos (retiro legado). El sistema NO DEBE crear una tabla nueva de retiros ni un
+tipo de movimiento de dirección cero. Con el vínculo al movimiento y el
+`equipoId` del movimiento DEBE poder responderse de qué equipo vino una pieza
+usada. El usuario se registra como referencia al usuario de la base de control,
+sin clave foránea entre bases (`baja_usuario_id`), según el diseño.
 
 #### Scenario: Registro de una devolución
 

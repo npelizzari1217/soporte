@@ -1,5 +1,5 @@
 change: stock-usado-componentes
-phase: spec-design
+phase: tasks
 artifact_store: openspec
 research:
   selected: false
@@ -8,7 +8,7 @@ artifacts:
   exploration: true
   proposal: true
   specs: true
-  design: false
+  design: true
   tasks: false
 tasks_progress:
   completed: []
