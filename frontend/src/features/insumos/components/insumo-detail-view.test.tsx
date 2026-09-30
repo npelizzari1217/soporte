@@ -1090,3 +1090,77 @@ describe("InsumoDetailView — editar y cambiar estado (ABM, gate AdminClienteGu
     await waitFor(() => expect(enviado).toEqual({ activo: true }));
   });
 });
+
+/**
+ * La copy y el link de vuelta siguen a la FAMILIA del ítem (`esRepuesto`), no a
+ * la ruta: la misma vista se monta en `/insumos/[id]` y en `/repuestos/[id]`.
+ */
+describe("InsumoDetailView — vocabulario según la familia", () => {
+  const FAMILIA_REPUESTO: FamiliaInsumo = {
+    id: "fam-rep",
+    codigo: "PERIFERICOS",
+    nombre: "Periféricos",
+    activo: true,
+    esRepuesto: true,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  };
+  const REPUESTO: Insumo = {
+    ...INSUMO,
+    id: "44444444-4444-4444-4444-444444444444",
+    codigo: "REP-0001",
+    nombre: "Mouse óptico USB",
+    familiaId: FAMILIA_REPUESTO.id,
+  };
+
+  function mockCatalogo(): void {
+    mockFicha([INSUMO, REPUESTO], { ...STOCK_SUFICIENTE, insumoId: REPUESTO.id });
+    server.use(http.get("/api/familias-insumo", () => HttpResponse.json([...FAMILIAS, FAMILIA_REPUESTO])));
+  }
+
+  it.each(["insumos", "repuestos"] as const)(
+    "un repuesto se nombra «repuesto» y vuelve a Repuestos, entre por %s",
+    async (seccion) => {
+      mockCatalogo();
+      renderWithProviders(<InsumoDetailView insumoId={REPUESTO.id} seccion={seccion} />, { user: LECTOR });
+
+      expect(await screen.findByRole("button", { name: "Deshabilitar" })).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: /Repuestos/ })).toHaveAttribute("href", "/repuestos");
+      expect(screen.queryByRole("link", { name: /Insumos/ })).not.toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole("button", { name: "Deshabilitar" }));
+      expect(await screen.findByText("Deshabilitar repuesto")).toBeInTheDocument();
+      expect(screen.queryByText(/deshabilitar insumo/i)).not.toBeInTheDocument();
+    },
+  );
+
+  it.each(["insumos", "repuestos"] as const)(
+    "un consumible se nombra «insumo» y vuelve a Insumos, entre por %s",
+    async (seccion) => {
+      mockCatalogo();
+      renderWithProviders(<InsumoDetailView insumoId={INSUMO.id} seccion={seccion} />, { user: LECTOR });
+
+      expect(await screen.findByRole("button", { name: "Deshabilitar" })).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: /Insumos/ })).toHaveAttribute("href", "/insumos");
+      expect(screen.queryByRole("link", { name: /Repuestos/ })).not.toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole("button", { name: "Deshabilitar" }));
+      expect(await screen.findByText("Deshabilitar insumo")).toBeInTheDocument();
+    },
+  );
+
+  it("el repuesto sin movimientos lo dice con «repuesto»", async () => {
+    mockCatalogo();
+    renderWithProviders(<InsumoDetailView insumoId={REPUESTO.id} seccion="repuestos" />, { user: LECTOR });
+
+    expect(await screen.findByText(/para este repuesto/i)).toBeInTheDocument();
+  });
+
+  it("el repuesto ausente del catálogo, entrando por Repuestos, lo dice con «repuesto»", async () => {
+    mockCatalogo();
+    renderWithProviders(<InsumoDetailView insumoId="no-existe" seccion="repuestos" />, { user: LECTOR });
+
+    expect(await screen.findByText(/no se encontró el repuesto/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Repuestos/ })).toHaveAttribute("href", "/repuestos");
+  });
+});

@@ -1,8 +1,10 @@
 "use client";
 
 /**
- * InsumoDetailView — CONTAINER montado por `/insumos/[id]`: la ficha de un
- * insumo del catálogo con su existencia actual.
+ * InsumoDetailView — CONTAINER montado por `/insumos/[id]` y `/repuestos/[id]`:
+ * la ficha de un insumo del catálogo con su existencia actual. Es UNA sola
+ * vista: la copy ("insumo"/"repuesto") y el link de vuelta siguen a la FAMILIA
+ * del ítem (`esRepuesto`), y la ruta solo desempata si la familia no resuelve.
  *
  * **El insumo se resuelve del CATÁLOGO, no de un endpoint propio.** No existe
  * `GET /insumos/:id` —`InsumosController` solo expone el listado, el alta y los
@@ -35,6 +37,7 @@
  * `layout.tsx` aguas arriba. La autoridad sigue siendo el backend (ADR-4).
  */
 import { useState } from "react";
+import Link from "next/link";
 import { DetailSkeleton } from "@/components/shared/skeletons";
 import { ErrorState } from "@/components/shared/error-state";
 import { PageHeader } from "@/components/shared/page-header";
@@ -165,7 +168,7 @@ function Campo({ rotulo, children }: { rotulo: string; children: React.ReactNode
  * catálogo y se puede volver a elegir (ver el JSDoc de `InsumosListView`
  * sobre por qué este módulo no comparte vocabulario con equipos).
  */
-function EstadoActivoInsumoAction({ insumo }: { insumo: Insumo }) {
+function EstadoActivoInsumoAction({ insumo, nombreItem }: { insumo: Insumo; nombreItem: NombreItem }) {
   const mutation = useCambiarEstadoActivoInsumo(insumo.id);
   return (
     <ConfirmDialog
@@ -174,7 +177,7 @@ function EstadoActivoInsumoAction({ insumo }: { insumo: Insumo }) {
           {insumo.activo ? "Deshabilitar" : "Habilitar"}
         </Button>
       }
-      title={insumo.activo ? "Deshabilitar insumo" : "Habilitar insumo"}
+      title={insumo.activo ? `Deshabilitar ${nombreItem}` : `Habilitar ${nombreItem}`}
       description={`¿Confirmás ${insumo.activo ? "deshabilitar" : "habilitar"} "${insumo.nombre}"?`}
       confirmLabel={insumo.activo ? "Deshabilitar" : "Habilitar"}
       confirmVariant={insumo.activo ? "destructive" : "default"}
@@ -184,15 +187,28 @@ function EstadoActivoInsumoAction({ insumo }: { insumo: Insumo }) {
   );
 }
 
+/** Cómo se nombra el ítem en la copy: depende de la familia (`esRepuesto`). */
+type NombreItem = "insumo" | "repuesto";
+
+/** Sección de la ruta que montó la ficha; es la pista mientras la familia no resuelve. */
+export type SeccionFicha = "insumos" | "repuestos";
+
 export interface InsumoDetailViewProps {
   insumoId: string;
+  /**
+   * Sección de la ruta (`/insumos/[id]` o `/repuestos/[id]`). Solo es la
+   * PISTA para cuando la familia no se puede resolver (catálogo caído): con
+   * la familia a la vista manda su `esRepuesto`, así un repuesto abierto por
+   * un link viejo `/insumos/:id` igual dice "repuesto" y vuelve a Repuestos.
+   */
+  seccion?: SeccionFicha;
 }
 
 /**
  * @param insumoId Insumo cuya ficha se muestra, tomado del segmento de la ruta.
  * @returns La ficha del insumo con su existencia, gateada por `INSUMOS:LECTURA`.
  */
-export function InsumoDetailView({ insumoId }: InsumoDetailViewProps) {
+export function InsumoDetailView({ insumoId, seccion = "insumos" }: InsumoDetailViewProps) {
   /**
    * La página de la bitácora vive en ESTADO LOCAL y no en la URL, a diferencia
    * de los filtros de los listados (ADR-2).
@@ -242,7 +258,36 @@ export function InsumoDetailView({ insumoId }: InsumoDetailViewProps) {
   const familias = { entradas: familiasQuery.data, cargando: familiasQuery.isLoading };
   const unidades = { entradas: unidadesQuery.data, cargando: unidadesQuery.isLoading };
 
+  /**
+   * "repuesto" o "insumo" según la FAMILIA del ítem (`esRepuesto`), no según
+   * la ruta: un repuesto abierto por `/insumos/:id` sigue diciendo "repuesto".
+   * La ruta solo desempata cuando no hay familia que mirar.
+   */
+  function seccionDe(insumo: Insumo | undefined): SeccionFicha {
+    const familia = familiasQuery.data?.find((f) => f.id === insumo?.familiaId);
+    if (!familia) return seccion;
+    return familia.esRepuesto ? "repuestos" : "insumos";
+  }
+
+  function volver(sec: SeccionFicha) {
+    return (
+      <Link
+        href={`/${sec}`}
+        className="text-sm text-primary underline-offset-4 hover:underline"
+      >
+        {sec === "repuestos" ? "← Repuestos" : "← Insumos"}
+      </Link>
+    );
+  }
+
   function contenido() {
+    // Mientras la familia carga no se sabe cómo nombrar el ítem: se espera el
+    // esqueleto en vez de mostrar un término que después cambie.
+    if (resolucion.estado === "ENCONTRADA" && familiasQuery.isLoading) {
+      return <DetailSkeleton />;
+    }
+    const sec = seccionDe(resolucion.estado === "ENCONTRADA" ? resolucion.entrada : undefined);
+    const nombre: NombreItem = sec === "repuestos" ? "repuesto" : "insumo";
     switch (resolucion.estado) {
       case "CARGANDO":
         return <DetailSkeleton />;
@@ -250,24 +295,33 @@ export function InsumoDetailView({ insumoId }: InsumoDetailViewProps) {
         // El catálogo no llegó: es un problema de la pantalla. NO se dice nada
         // sobre si el insumo existe, porque no hay con qué saberlo.
         return (
-          <ErrorState
-            message="No se pudo cargar el insumo."
-            onRetry={() => insumosQuery.refetch().catch(notifyError)}
-          />
+          <div className="flex flex-col gap-4">
+            {volver(sec)}
+            <ErrorState
+              message={`No se pudo cargar el ${nombre}.`}
+              onRetry={() => insumosQuery.refetch().catch(notifyError)}
+            />
+          </div>
         );
       case "FUERA_DE_CATALOGO":
         // El catálogo resolvió y no lo trae: recién acá la ausencia prueba
         // algo. Es el 404 de pantalla, y no lleva "Reintentar" porque
         // reintentar no lo va a hacer aparecer.
-        return <ErrorState message="No se encontró el insumo en el catálogo." />;
+        return (
+          <div className="flex flex-col gap-4">
+            {volver(sec)}
+            <ErrorState message={`No se encontró el ${nombre} en el catálogo.`} />
+          </div>
+        );
       case "ENCONTRADA":
-        return ficha(resolucion.entrada);
+        return ficha(resolucion.entrada, sec, nombre);
     }
   }
 
-  function ficha(insumo: Insumo) {
+  function ficha(insumo: Insumo, sec: SeccionFicha, nombre: NombreItem) {
     return (
       <div className="flex flex-col gap-6">
+        <div className="-mb-4">{volver(sec)}</div>
         <PageHeader
           title={insumo.nombre}
           description={insumo.codigo}
@@ -279,13 +333,14 @@ export function InsumoDetailView({ insumoId }: InsumoDetailViewProps) {
               <div className="flex items-center gap-2">
                 <InsumoFormDialog
                   insumo={insumo}
+                  nombreItem={nombre}
                   trigger={
                     <Button variant="outline" size="sm">
                       Editar
                     </Button>
                   }
                 />
-                <EstadoActivoInsumoAction insumo={insumo} />
+                <EstadoActivoInsumoAction insumo={insumo} nombreItem={nombre} />
               </div>
             </SoloAdminCliente>
           }
@@ -325,7 +380,7 @@ export function InsumoDetailView({ insumoId }: InsumoDetailViewProps) {
                 (`features/compras`). */}
             <Can permiso="INSUMOS:ALTAS">
               <div className="flex gap-2">
-                <MovimientoEntradaDialog insumoId={insumo.id} activo={insumo.activo} />
+                <MovimientoEntradaDialog insumoId={insumo.id} activo={insumo.activo} nombreItem={nombre} />
                 <MovimientoSalidaDialog insumoId={insumo.id} stockDisponible={stockQuery.data?.stock} />
               </div>
             </Can>
@@ -342,18 +397,18 @@ export function InsumoDetailView({ insumoId }: InsumoDetailViewProps) {
               <MovimientoAjusteDialog insumoId={insumo.id} stockDisponible={stockQuery.data?.stock} />
             </Can>
           </div>
-          {existencia()}
+          {existencia(nombre)}
         </section>
 
         <section className="flex flex-col gap-3 rounded-lg border border-border p-4">
           <h2 className="text-sm font-semibold text-foreground">Movimientos</h2>
-          {bitacora()}
+          {bitacora(nombre)}
         </section>
       </div>
     );
   }
 
-  function existencia() {
+  function existencia(nombre: NombreItem) {
     if (stockQuery.isLoading) {
       return (
         <div role="status" aria-busy="true" aria-label="Cargando existencia" className="space-y-2">
@@ -368,7 +423,7 @@ export function InsumoDetailView({ insumoId }: InsumoDetailViewProps) {
     if (stockQuery.isError || !stockQuery.data) {
       return (
         <ErrorState
-          message="No se pudo cargar la existencia del insumo."
+          message={`No se pudo cargar la existencia del ${nombre}.`}
           onRetry={() => stockQuery.refetch().catch(notifyError)}
         />
       );
@@ -412,7 +467,7 @@ export function InsumoDetailView({ insumoId }: InsumoDetailViewProps) {
    * reordena ni se recorta la página recibida, porque hacerlo sobre una ventana
    * de 10 filas rompería el orden global de la bitácora.
    */
-  function bitacora() {
+  function bitacora(nombre: NombreItem) {
     const columnas: Column<MovimientoInsumo>[] = [
       // `createdAt` es un instante real (`@db.Timestamptz`), no una fecha de
       // calendario: va con hora, en el reloj de quien mira.
@@ -464,11 +519,11 @@ export function InsumoDetailView({ insumoId }: InsumoDetailViewProps) {
           getRowKey={(fila) => fila.id}
           isLoading={movimientosQuery.isLoading}
           error={
-            movimientosQuery.isError ? "No se pudieron cargar los movimientos del insumo." : undefined
+            movimientosQuery.isError ? `No se pudieron cargar los movimientos del ${nombre}.` : undefined
           }
           onRetry={() => movimientosQuery.refetch().catch(notifyError)}
           emptyTitle="Sin movimientos"
-          emptyDescription="Todavía no se registraron movimientos para este insumo."
+          emptyDescription={`Todavía no se registraron movimientos para este ${nombre}.`}
         />
         {/*
           El paginador se dibuja con la ventana EFECTIVA que devolvió el
@@ -491,7 +546,7 @@ export function InsumoDetailView({ insumoId }: InsumoDetailViewProps) {
   return (
     <Can
       permiso="INSUMOS:LECTURA"
-      fallback={<ErrorState message="No tiene permiso para ver la ficha del insumo." />}
+      fallback={<ErrorState message={`No tiene permiso para ver la ficha del ${seccion === "repuestos" ? "repuesto" : "insumo"}.`} />}
     >
       {contenido()}
     </Can>

@@ -65,6 +65,8 @@ import type { CreateInsumoDto, EditInsumoDto, Insumo } from "../types";
 export interface InsumoFormDialogProps {
   trigger: ReactNode;
   insumo?: Insumo;
+  /** Cómo se nombra el ítem en el título: "insumo" (default) o "repuesto". */
+  nombreItem?: "insumo" | "repuesto";
 }
 
 /** Nota bajo el select cuando el catálogo correspondiente resolvió VACÍO. */
@@ -80,7 +82,7 @@ const NOTA_UNIDADES_VACIAS = "No hay unidades de medida cargadas. Creá una desd
 const NOTA_FAMILIAS_NO_DISPONIBLES = "No se pudieron cargar las familias de insumo.";
 const NOTA_UNIDADES_NO_DISPONIBLES = "No se pudieron cargar las unidades de medida.";
 
-export function InsumoFormDialog({ trigger, insumo }: InsumoFormDialogProps) {
+export function InsumoFormDialog({ trigger, insumo, nombreItem = "insumo" }: InsumoFormDialogProps) {
   const [open, setOpen] = useState(false);
   const isEdit = !!insumo;
   const familiasQuery = useFamiliasInsumo();
@@ -187,7 +189,7 @@ export function InsumoFormDialog({ trigger, insumo }: InsumoFormDialogProps) {
       <DialogTrigger asChild>{trigger}</DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{isEdit ? "Editar insumo" : "Nuevo insumo"}</DialogTitle>
+          <DialogTitle>{isEdit ? `Editar ${nombreItem}` : `Nuevo ${nombreItem}`}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit(submit)} className="flex flex-col gap-4" noValidate>
           <div className="flex flex-col gap-1">
