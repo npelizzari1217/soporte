@@ -513,3 +513,16 @@ Rama `feat/repuestos-numero-de-serie-wu08b-2`. Tareas 8b.1 a 8b.4 hechas.
   (`INSUMOS:AJUSTAR`), ambas 201 con `UnidadInsumoResponseDto`; `usuarioId` del JWT.
 - e2e (mismo archivo): carga valida y repetida (409), ya con serial (422), 400 por largo normalizado y vacio; correccion valida
   (evento con anterior, nuevo y motivo), sin motivo (422), a un serial existente (409), sobre instalada (422); 403 por ruta.
+
+## WU-8c — Devolución de entrega (F2, ADR-13)
+
+Rama `feat/repuestos-numero-de-serie-wu08c`. Parte 1 de 2 (caso de uso). Tareas 8c.1 y 8c.2 hechas; 8c.3 y 8c.4 al cerrar la parte 2 (ruta y e2e).
+
+- `DevolverEntregaUseCase(insumoRepo, unidadRepo, familiaRepo, txRunner, operaciones)`: dentro de una transacción lee L1
+  (`leerSeguimientoParaMovimiento`), verifica que la unidad sea del insumo de la URL (si no, `UnidadNoEncontradaError` 404),
+  aplica la exención de G2 (`validarInsumoElegible` sin `exigirHabilitado`; `validarCondicionAdmitida` con
+  `admitirFamiliaNoVigente: true`) y delega en `operaciones.devolverEntregas` (L2, L3, ENTRADA de 1 y evento
+  `DEVOLUCION_DE_ENTREGA`). Devuelve el `MovimientoInsumoEntity`. `FalloOperacionDeUnidad` se desenvuelve afuera del `run()`.
+- La exención vive solo acá: un spec prueba que la entrada manual (insumo deshabilitado, USADO con familia no vigente) y el
+  ajuste positivo manual (USADO con familia no vigente) siguen rechazando.
+- Registrado en `insumos.module.ts` (sin exportar); la ruta llega en la parte 2.

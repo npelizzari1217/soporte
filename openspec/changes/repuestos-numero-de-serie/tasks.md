@@ -434,8 +434,8 @@ Commit sugerido: `feat(insumos): endpoints de unidades, historial y correccion d
 
 **Branch**: `feat/repuestos-numero-de-serie-wu08c` · **Base**: wu08b
 
-- [ ] 8c.1 `DevolverEntregaUseCase` (`POST /insumos/:insumoId/unidades/:unidadId/devolucion-entrega`, `INSUMOS:ALTAS`, body `{ condicion, motivo? }`): transacción, L1 → `operaciones.devolverEntregas()` (L2, L3) → ENTRADA de 1 con `unidadId` y la condición elegida → evento `DEVOLUCION_DE_ENTREGA`. Guards: insumo `SERIE`; unidad `ENTREGADA`; `USADO` sigue la regla de repuestos. **Exención G2**: `validarInsumoElegible` sin `exigirHabilitado` (sigue debiendo existir y estar vigente) y `validarCondicionAdmitida(..., { admitirFamiliaNoVigente: true })`; la exención vive solo en este caso de uso; la entrada y el ajuste manuales no la reciben.
-- [ ] 8c.2 Specs unitarios: devolución NUEVO y USADO, unidad no entregada, insumo `NINGUNO`, insumo deshabilitado admitido, familia no vigente admitida pero `esRepuesto = false` con USADO rechazada.
+- [x] 8c.1 `DevolverEntregaUseCase` (`POST /insumos/:insumoId/unidades/:unidadId/devolucion-entrega`, `INSUMOS:ALTAS`, body `{ condicion, motivo? }`): transacción, L1 → `operaciones.devolverEntregas()` (L2, L3) → ENTRADA de 1 con `unidadId` y la condición elegida → evento `DEVOLUCION_DE_ENTREGA`. Guards: insumo `SERIE`; unidad `ENTREGADA`; `USADO` sigue la regla de repuestos. **Exención G2**: `validarInsumoElegible` sin `exigirHabilitado` (sigue debiendo existir y estar vigente) y `validarCondicionAdmitida(..., { admitirFamiliaNoVigente: true })`; la exención vive solo en este caso de uso; la entrada y el ajuste manuales no la reciben.
+- [x] 8c.2 Specs unitarios: devolución NUEVO y USADO, unidad no entregada, insumo `NINGUNO`, insumo deshabilitado admitido, familia no vigente admitida pero `esRepuesto = false` con USADO rechazada.
 - [ ] 8c.3 e2e (`usarLockMasterTest()`): ruta, 403 sin `ALTAS`, 422 de cada guard, respuesta `MovimientoInsumoResponseDto`; el historial muestra `DEVOLUCION_DE_ENTREGA`.
 - [ ] 8c.4 Quality gates (backend): `cd backend && pnpm lint && pnpm typecheck && pnpm vitest run src/insumos` y `pnpm test`.
 
