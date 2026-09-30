@@ -8,7 +8,7 @@ artifacts:
   exploration: true
   proposal: true
   specs: true
-  design: false
+  design: true
   tasks: false
 tasks_progress:
   completed: []
