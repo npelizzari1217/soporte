@@ -62,3 +62,18 @@ Rama `feat/stock-usado-componentes-wu04` (base wu03b). Modo estandar (feature).
 - 4.3 Specs de DTO (catalogo, herencia del ajuste, `ValidationPipe` real descarta `condicion` sobre `RegistrarRecepcionDeItemHttpDto`) y de controller (reenvio, 422).
 - 4.4 E2E insumos (ya usa `usarLockMasterTest()`): entrada USADO, USADO no repuesto 422 x3, 400 fuera de catalogo, salida NUEVO con USADO 5, GET stock con saldos y reposicion sobre NUEVO, listado con condicion. E2E compras: `condicion: 'USADO'` en la recepcion queda NUEVO.
 - Gates: ver reporte del orquestador (lint, typecheck, `vitest run src/insumos src/compras`, `pnpm test`).
+
+## WU-5 — Esquema de componentes: migracion, schema, entidad, mapper, constraints, reactivar (tareas 5.1 a 5.9)
+
+Rama `feat/stock-usado-componentes-wu05` (base wu04). Modo estandar (feature).
+
+- 5.1/5.2 Migracion `20260930130000_componentes_equipo_retiro` (columnas nullable, dos UNIQUE, dos FK RESTRICT, los dos CHECK del diseño) y `schema.prisma` con las cinco columnas y las relaciones `instalacionMovimiento`/`bajaMovimiento` (lado inverso en `MovimientoInsumo`). Cliente regenerado. No se corrio `prisma format`: reescribia alineaciones ajenas al cambio.
+- 5.3 Entidad: `DESTINOS_RETIRO_COMPONENTE`, props opcionales (los llamadores existentes de `create`/`reconstitute` no cambian), `vincularInstalacion`, `validarRetiro` (Result; el tope de 500 lanza, mismo criterio que la bitacora), `retirar` (lanza ante violaciones de contrato), `bajaSinSalidaPrevia` derivada, `reactivar` limpia las cuatro columnas y conserva `instalacionMovimientoId`. Errores `MotivoRetiroRequeridoError` y `ComponenteDevueltoAlStockError` (catalogo 13 a 15).
+- 5.4 Mapper y repositorio leen/escriben las columnas; puerto `retirar(): Promise<boolean>` con `updateMany WHERE id AND deleted_at IS NULL`. `delete` se MANTIENE (marcado `@deprecated`) hasta WU-8b, segun la tarea.
+- 5.5 `ReactivarComponenteUseCase` rechaza `STOCK_USADO` con `ComponenteDevueltoAlStockError`; controller mapea ambos errores nuevos a 422 explicito.
+- 5.6 `prisma_tenant/componentes-equipo-retiro.integration.spec.ts` (base efimera reproducida hasta la migracion anterior, con un legado ya dado de baja): 16 casos. Hallazgo: Postgres evalua los CHECK por orden alfabetico, asi que un destino desconocido dispara `..._coherente_check` antes que `..._destino_check`; el spec asserta cualquiera de los dos y fija el catalogo exacto contra la definicion.
+- 5.7 Migracion aplicada a `soporte_tenant_test` (`migrate:tenant` con `DATABASE_URL_TENANT`) y a las 2 bases de `migrate:tenants`; `\d componentes_equipo` verificado.
+- 5.8 Mutacion local (no commiteada): quitar `deleted_at IS NOT NULL` de la rama DESCARTE del CHECK coherente deja en rojo "un componente ACTIVO con destino de retiro es rechazado". Migracion restaurada byte a byte.
+- Specs: entidad, mapper (nuevo), caso de uso reactivar, controller (catalogo 15 clases, dos filas 422, reactivar 422).
+- Cortes (regla de tamaño, ~1120 lineas en total): `wu05` = entidad, errores, controller y catalogo (433); `wu05-2` = migracion, schema, mapper y specs de constraints y mapper (542, `size:exception` declarado en el commit); `wu05-3` = puerto y repo `retirar` + reactivar con su spec. Cada parte se verifico sola (lint, typecheck, `vitest run src/equipos prisma_tenant`) regenerando el cliente Prisma con el schema de esa parte.
+- Gates: ver reporte del orquestador.
