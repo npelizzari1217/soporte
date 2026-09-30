@@ -12,6 +12,7 @@ import {
   MotivoCorreccionSerialInvalidoError,
   SeguimientoNoModificableError,
   SerialDuplicadoError,
+  UnidadDelComponenteNoDisponibleError,
   UnidadNoAdmitidaError,
   UnidadNoDisponibleError,
   UnidadNoEncontradaError,
@@ -90,7 +91,7 @@ export class OperacionesUnidadInsumo {
       IUnidadInsumoRepository,
       'insertar' | 'bloquearPorIds' | 'guardarConEstadoEsperado' | 'findById'
     >,
-    private readonly eventoRepo: Pick<IEventoUnidadInsumoRepository, 'insert'>,
+    private readonly eventoRepo: Pick<IEventoUnidadInsumoRepository, 'insert' | 'listarPorUnidad'>,
   ) {}
 
   /**
@@ -393,6 +394,104 @@ export class OperacionesUnidadInsumo {
   }
 
   /**
+   * Reinstala piezas al reactivar el componente que las descartó:
+   * `DESCARTADA → INSTALADA`, sin movimiento y con el evento `REACTIVACION`.
+   * Exige la unidad `DESCARTADA` Y que su último evento sea el `DESCARTE` de ESTE
+   * componente (ADR-14): si la pieza se recuperó, se reinstaló en otro equipo o
+   * se dio de baja por otra vía, devuelve `UnidadDelComponenteNoDisponibleError`.
+   * Si el insumo ya no es `SERIE`, `SeguimientoNoModificableError`: reinstalar
+   * crearía una unidad viva en un insumo `NINGUNO`.
+   *
+   * @param items Una por unidad: equipo donde se reactiva y componente que la descartó.
+   * @param o Usuario y motivo compartido por todo el lote.
+   * @returns Las unidades reinstaladas, en el orden de `items`; o el primer error de validación, sin haber escrito nada.
+   */
+  async reinstalar(
+    items: readonly ItemEnEquipo[],
+    o: ContextoUnidad,
+  ): Promise<Result<UnidadInsumoEntity[], DomainError>> {
+    const lote = await this.leerLoteEnEquipo(
+      items,
+      (insumoId) =>
+        new SeguimientoNoModificableError(
+          `el insumo "${insumoId}" ya no se sigue por número de serie, así que no admite reinstalar una unidad.`,
+        ),
+    );
+    if (lote.isFail()) return Result.fail(lote.getError());
+
+    const escrituras: EscrituraSinMovimiento[] = [];
+    for (const item of items) {
+      const unidad = lote.getValue().get(item.unidadId) as UnidadInsumoEntity;
+      const historia = await this.eventoRepo.listarPorUnidad(unidad.id);
+      const ultimo = historia[historia.length - 1];
+      if (
+        unidad.estado !== 'DESCARTADA' ||
+        ultimo === undefined ||
+        ultimo.tipo !== 'DESCARTE' ||
+        ultimo.componenteId !== item.componenteId
+      ) {
+        return Result.fail(new UnidadDelComponenteNoDisponibleError(item.componenteId));
+      }
+
+      const estadoLeido = unidad.estado;
+      const transicion = unidad.reinstalar(item.equipoId);
+      if (transicion.isFail()) return Result.fail(transicion.getError());
+
+      escrituras.push({
+        unidad,
+        estadoEsperado: estadoLeido,
+        evento: this.armarEventoDeEquipo('REACTIVACION', unidad, item, o),
+      });
+    }
+
+    await this.escribirSinMovimiento(escrituras);
+    return Result.ok(escrituras.map((e) => e.unidad));
+  }
+
+  /**
+   * Da de alta una unidad YA instalada (alta de componente sin descuento, D3):
+   * unidad `INSTALADA` con la condición indicada, sin movimiento (el stock no se
+   * toca) y el evento `ALTA_INSTALADA` con `equipoId` y `componenteId`.
+   *
+   * @param insumoId Insumo `SERIE` de la pieza.
+   * @param numeroSerie Serial crudo; obligatorio, una instalada siempre lo tiene.
+   * @param equipoId Equipo donde queda instalada.
+   * @param o Usuario, motivo, condición y el id ya generado del componente.
+   * @returns La unidad creada; o el primer error de validación, sin haber escrito nada.
+   * @throws FalloOperacionDeUnidad si el serial ya lo tiene otra unidad del insumo (P2002).
+   */
+  async altaInstalada(
+    insumoId: string,
+    numeroSerie: string,
+    equipoId: string,
+    o: ContextoUnidad & { condicion: CondicionStock; componenteId: string },
+  ): Promise<Result<UnidadInsumoEntity, DomainError>> {
+    const bloqueo = await this.bloquearInsumo(insumoId);
+    if (bloqueo.isFail()) return Result.fail(bloqueo.getError());
+
+    const creada = UnidadInsumoEntity.crearInstalada({
+      insumoId,
+      condicion: o.condicion,
+      numeroSerie,
+      equipoId,
+    });
+    if (creada.isFail()) return Result.fail(creada.getError());
+    const unidad = creada.getValue();
+
+    const evento = EventoUnidadInsumoEntity.create({
+      unidadId: unidad.id,
+      tipo: 'ALTA_INSTALADA',
+      equipoId,
+      componenteId: o.componenteId,
+      serialNuevo: unidad.numeroSerie,
+      motivo: o.motivo,
+      usuarioId: o.usuarioId,
+    });
+    await this.escribirSinMovimiento([{ unidad, estadoEsperado: null, evento }]);
+    return Result.ok(unidad);
+  }
+
+  /**
    * Completa el serial de una unidad en serie pendiente: solo `EN_DEPOSITO` y sin
    * serial. Asienta el evento `SERIAL_CARGADO` sin movimiento ni motivo (el libro
    * no cambia). Una unidad que ya tiene serial se corrige con `corregirSerial`.
@@ -544,7 +643,7 @@ export class OperacionesUnidadInsumo {
 
   /** Evento de una operación de equipo sin movimiento. */
   private armarEventoDeEquipo(
-    tipo: 'DESCARTE',
+    tipo: 'DESCARTE' | 'REACTIVACION',
     unidad: UnidadInsumoEntity,
     item: ItemEnEquipo,
     o: ContextoUnidad,

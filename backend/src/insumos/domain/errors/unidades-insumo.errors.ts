@@ -164,3 +164,27 @@ export class UnidadNoEncontradaError extends DomainError {
     super(`Unidad con id "${id}" no encontrada para este insumo.`);
   }
 }
+
+/**
+ * UnidadDelComponenteNoDisponibleError — al reactivar un componente, su unidad
+ * ya no está descartada por ese componente (la recuperaron o la movieron), así
+ * que `reinstalar` no puede devolverla al equipo.
+ *
+ * Comparte NOMBRE y `code` con el error homónimo de
+ * `src/equipos/domain/errors/equipos.errors.ts`, y eso es DELIBERADO: es la misma
+ * condición de negocio y el cliente debe ver el mismo código. Está DUPLICADO y no
+ * importado porque `equipos` ya importa puertos de `insumos`: importar en sentido
+ * inverso cerraría un ciclo entre los dos módulos (mismo criterio que
+ * `ModeloEquipoInexistenteError`). El caso de uso de reactivar, en `equipos`, la
+ * traduce por `code`.
+ * → HTTP 422 en la capa de presentación.
+ */
+export class UnidadDelComponenteNoDisponibleError extends DomainError {
+  readonly code = 'UNIDAD_DEL_COMPONENTE_NO_DISPONIBLE';
+
+  constructor(componenteId: string) {
+    super(
+      `La unidad del componente "${componenteId}" ya no está disponible para reinstalarla: su último movimiento no fue el descarte de este componente.`,
+    );
+  }
+}

@@ -279,3 +279,34 @@ cada código de sus pruebas): parte 1 (`wu03a`) = 3a.1 y 3a.3; parte 2 (`wu03a-2
   `DESCARTE` (equipo y componente), el que `reinstalar` busca como último. Un fallo en cualquier unidad no escribe ninguna;
   el spec de integración lo prueba con commit posterior al `Result.fail` y verifica el invariante de serie tras la devolución.
 
+## WU-5 parte 3 — `reinstalar`, `altaInstalada`, orden de locks (5.3 a 5.6 hechas)
+
+- 5.3: `reinstalar(items, o)` usa el mismo lote (L1, L2, L3). Con un insumo que ya no es `SERIE` devuelve
+  `SeguimientoNoModificableError`. Exige la unidad `DESCARTADA` y que el último evento de `listarPorUnidad` (leído bajo L3)
+  sea el `DESCARTE` del mismo `componenteId`; si no, `UnidadDelComponenteNoDisponibleError`. Transición
+  `DESCARTADA → INSTALADA` en el equipo del item, sin movimiento, evento `REACTIVACION`.
+- 5.4: `altaInstalada(insumoId, numeroSerie, equipoId, o)` toma L1 y L2, crea la unidad `INSTALADA` con la condición
+  indicada, sin movimiento, con evento `ALTA_INSTALADA` (equipo, componente y serial). El P2002 lo lanza el repositorio
+  como `FalloOperacionDeUnidad` (`SerialDuplicadoError`).
+- Desvío menor: `UnidadDelComponenteNoDisponibleError` ya existía en `equipos.errors.ts`, pero `insumos` no puede importar
+  `equipos` (ciclo, mismo criterio que `ModeloEquipoInexistenteError`). Se duplicó en `unidades-insumo.errors.ts` con el
+  mismo nombre y `code`; el caso de uso de reactivar (WU-11) la traduce por `code`.
+- 5.5: specs unitarios de lote (N unidades, fallo en una no escribe ninguna, reinstalar tras recuperación o con otro
+  componente, insumo vuelto a `NINGUNO`, alta con serial repetido) e integración con commit posterior a cada
+  `Result.fail`. Dos clientes con lotes en orden opuesto: uno instala y el otro ve la unidad instalada, sin `40P01`. Spec de
+  orden: un cliente externo tiene L3 de la unidad, el servicio queda esperando y un testigo comprueba que el advisory L2
+  del insumo ya está tomado (`pg_try_advisory_xact_lock` devuelve `false`); espera acotada a 5 s.
+
+### Mutación adversarial local de 5.5 (revertida)
+
+| Mutación | Resultado observado |
+|---|---|
+| Tomar L3 (`bloquearPorIds`) ANTES de L1/L2 en `leerLoteEnEquipo` | ROJO: 3 tests. El de integración de orden (el testigo obtiene el advisory L2 con el servicio bloqueado en L3: `expected true to be false`) y 2 unitarios de orden de llamadas (`instalar` L1, L2, L3 y `reinstalar`). El spec de dos clientes en orden opuesto NO lo detecta (con L3 siempre en orden de id no hay ciclo), así que la detección la da el testigo de L2. |
+
+### Work Unit Evidence (WU-5)
+
+| Evidence | Value |
+|---|---|
+| Focused test command | `pnpm vitest run src/insumos`: 78 archivos, verdes en cada parte (1469, 1476 y el total final en el informe) |
+| Rollback boundary | Revertir cada commit: sin migraciones ni cambios de módulo; `OperacionesUnidadInsumo` sigue sin llamadores |
+

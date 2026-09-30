@@ -307,10 +307,10 @@ Commit sugerido: `feat(insumos): operaciones de unidad para devolver entregas y 
 
 - [x] 5.1 `instalar(items, o)`: `EN_DEPOSITO → INSTALADA` + SALIDA + evento `INSTALACION` con `equipoId` y `componenteId` (id ya generado por la entidad, sin FK); rechaza pendiente (`UnidadNoDisponibleError`).
 - [x] 5.2 `devolverAlDeposito(items, o)`: `INSTALADA → EN_DEPOSITO` USADO + ENTRADA USADO + evento `RETIRO_A_DEPOSITO`. `descartarInstaladas(items, o)`: `INSTALADA → DESCARTADA` sin movimiento + evento `DESCARTE` con `componenteId`.
-- [ ] 5.3 `reinstalar(items, o)`: toma L1, L2 y L3; exige `DESCARTADA` **y** que el último evento sea el `DESCARTE` de ese mismo `componenteId`; si no, `UnidadDelComponenteNoDisponibleError`; si el insumo ya no es `SERIE`, `SeguimientoNoModificableError`; evento `REACTIVACION`.
-- [ ] 5.4 `altaInstalada(insumoId, numeroSerie, equipoId, o)`: unidad `INSTALADA` con la condición indicada, sin movimiento, evento `ALTA_INSTALADA` con `componenteId`; P2002 ⇒ `SerialDuplicadoError`.
-- [ ] 5.5 Specs unitarios (fakes) y de integración de lote: la baja de equipo completo las reutiliza en lote (N unidades, un motivo compartido); fallo en una del lote revierte todo; reinstalar tras una recuperación (evento posterior) rechaza. **Mutación adversarial local**: invertir L2 y L3 en el servicio ⇒ el spec de lote con dos clientes debe detectarlo (espera o `40P01`); revertir.
-- [ ] 5.6 Quality gates (backend): `cd backend && pnpm lint && pnpm typecheck && pnpm vitest run src/insumos/application/services` y `pnpm test`.
+- [x] 5.3 `reinstalar(items, o)`: toma L1, L2 y L3; exige `DESCARTADA` **y** que el último evento sea el `DESCARTE` de ese mismo `componenteId`; si no, `UnidadDelComponenteNoDisponibleError`; si el insumo ya no es `SERIE`, `SeguimientoNoModificableError`; evento `REACTIVACION`.
+- [x] 5.4 `altaInstalada(insumoId, numeroSerie, equipoId, o)`: unidad `INSTALADA` con la condición indicada, sin movimiento, evento `ALTA_INSTALADA` con `componenteId`; P2002 ⇒ `SerialDuplicadoError`.
+- [x] 5.5 Specs unitarios (fakes) y de integración de lote: la baja de equipo completo las reutiliza en lote (N unidades, un motivo compartido); fallo en una del lote revierte todo; reinstalar tras una recuperación (evento posterior) rechaza. **Mutación adversarial local**: invertir L2 y L3 en el servicio ⇒ el spec de lote con dos clientes debe detectarlo (espera o `40P01`); revertir.
+- [x] 5.6 Quality gates (backend): `cd backend && pnpm lint && pnpm typecheck && pnpm vitest run src/insumos/application/services` y `pnpm test`.
 
 **Escenarios**: Varias unidades en una transacción; Falla en una del lote; Instalar una unidad
 pendiente; Alta sin descuento con serial / con serial repetido (servicio); Reactivar un componente
@@ -319,6 +319,7 @@ servicio).
 **PR boundary**: ~650 líneas, base wu04b. Corte si se pasa: (instalar, devolver, descartar) /
 (reinstalar, altaInstalada). `size:exception` solo si la integración de lote no puede separarse.
 **Ayuda**: sin deuda.
+**Real**: partido en tres ramas por la política de tamaño: `wu05` (instalar, ~330 líneas), `wu05-2` (devolver y descartar, ~295), `wu05-3` (reinstalar, altaInstalada, error duplicado y spec de orden de locks, ~440, `size:exception`).
 Commit sugerido: `feat(insumos): operaciones de unidad para instalar, retirar y reinstalar`.
 
 ## WU-6 — Cambio de seguimiento en aplicación (sin borde HTTP), L0 y LC en crear, guard en editar

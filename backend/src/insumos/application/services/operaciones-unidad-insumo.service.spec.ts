@@ -8,6 +8,7 @@ import {
   SeguimientoNoModificableError,
   SerialDuplicadoError,
   SerialRequeridoError,
+  UnidadDelComponenteNoDisponibleError,
   UnidadNoAdmitidaError,
   UnidadNoDisponibleError,
   UnidadNoEncontradaError,
@@ -35,6 +36,8 @@ const item = (unidadId: string, componenteId: string, equipoId = EQ) => ({
 function armar(opciones: {
   seguimiento?: SeguimientoInsumo | null;
   unidades?: UnidadInsumoEntity[];
+  /** Historia previa por unidad, para el guard de `reinstalar`. */
+  historias?: Record<string, EventoUnidadInsumoEntity[]>;
 }) {
   const llamadas: string[] = [];
   const escritas: Array<{ id: string; estado: EstadoUnidadInsumo }> = [];
@@ -81,6 +84,10 @@ function armar(opciones: {
       insert: async (e) => {
         llamadas.push('W:evento');
         eventos.push(e);
+      },
+      listarPorUnidad: async (id) => {
+        llamadas.push(`H:${id}`);
+        return opciones.historias?.[id] ?? [];
       },
     },
   );
@@ -553,6 +560,17 @@ describe('OperacionesUnidadInsumo', () => {
       u.instalar(EQ);
       return u;
     };
+    const descartada = (id: string) => {
+      const u = instalada(id);
+      u.descartarInstalada();
+      return u;
+    };
+    const evento = (
+      unidadId: string,
+      tipo: 'DESCARTE' | 'RECUPERACION',
+      componenteId: string | null,
+    ) => EventoUnidadInsumoEntity.create({ unidadId, tipo, componenteId, usuarioId: 'u' });
+
     describe('instalar', () => {
       it('instala un lote de N: CAS, SALIDA con equipo y evento INSTALACION con equipo y componente', async () => {
         const t = armar({ unidades: [unidad(U1), unidad(U2, { condicion: 'USADO' })] });
@@ -700,6 +718,121 @@ describe('OperacionesUnidadInsumo', () => {
         });
         expect(r.getError()).toBeInstanceOf(UnidadNoDisponibleError);
         expect(t.escribio()).toBe(false);
+      });
+    });
+
+    describe('reinstalar', () => {
+      it('reinstala la unidad descartada por ese componente: INSTALADA en el equipo, sin movimiento y con evento REACTIVACION', async () => {
+        const t = armar({
+          unidades: [descartada(U1), descartada(U2)],
+          historias: { [U1]: [evento(U1, 'DESCARTE', C1)], [U2]: [evento(U2, 'DESCARTE', C2)] },
+        });
+        const r = await t.servicio.reinstalar([item(U1, C1), item(U2, C2)], { usuarioId: 'u' });
+        expect(r.getValue().map((u) => [u.estado, u.equipoId])).toEqual([
+          ['INSTALADA', EQ],
+          ['INSTALADA', EQ],
+        ]);
+        expect(t.movimientos).toHaveLength(0);
+        expect(t.eventos.map((e) => [e.tipo, e.equipoId, e.componenteId])).toEqual([
+          ['REACTIVACION', EQ, C1],
+          ['REACTIVACION', EQ, C2],
+        ]);
+        expect(t.llamadas.filter((l) => l.startsWith('L'))).toEqual([
+          `L1:${INSUMO}`,
+          `L2:${INSUMO}`,
+          `L3:${U1},${U2}`,
+        ]);
+      });
+
+      it('rechaza si el último evento no es el DESCARTE de ese componente: otro componente, recuperación posterior o sin historia', async () => {
+        const casos: Array<Record<string, EventoUnidadInsumoEntity[]>> = [
+          { [U1]: [evento(U1, 'DESCARTE', C2)] },
+          { [U1]: [evento(U1, 'DESCARTE', C1), evento(U1, 'RECUPERACION', null)] },
+          {},
+        ];
+        for (const historias of casos) {
+          const t = armar({ unidades: [descartada(U1)], historias });
+          const r = await t.servicio.reinstalar([item(U1, C1)], { usuarioId: 'u' });
+          expect(r.getError()).toBeInstanceOf(UnidadDelComponenteNoDisponibleError);
+          expect(t.escribio()).toBe(false);
+        }
+      });
+
+      it('rechaza una unidad que ya no está DESCARTADA (recuperada o reinstalada en otro equipo)', async () => {
+        const t = armar({
+          unidades: [unidad(U1)],
+          historias: { [U1]: [evento(U1, 'DESCARTE', C1)] },
+        });
+        const r = await t.servicio.reinstalar([item(U1, C1)], { usuarioId: 'u' });
+        expect(r.getError()).toBeInstanceOf(UnidadDelComponenteNoDisponibleError);
+        expect(t.escribio()).toBe(false);
+      });
+
+      it('un insumo que volvió a NINGUNO devuelve SeguimientoNoModificableError sin escribir', async () => {
+        const t = armar({
+          seguimiento: 'NINGUNO',
+          unidades: [descartada(U1)],
+          historias: { [U1]: [evento(U1, 'DESCARTE', C1)] },
+        });
+        const r = await t.servicio.reinstalar([item(U1, C1)], { usuarioId: 'u' });
+        expect(r.getError()).toBeInstanceOf(SeguimientoNoModificableError);
+        expect(t.escribio()).toBe(false);
+      });
+
+      it('una falla en la segunda unidad del lote no escribe la primera', async () => {
+        const t = armar({
+          unidades: [descartada(U1), descartada(U2)],
+          historias: { [U1]: [evento(U1, 'DESCARTE', C1)], [U2]: [evento(U2, 'DESCARTE', C3)] },
+        });
+        const r = await t.servicio.reinstalar([item(U1, C1), item(U2, C2)], { usuarioId: 'u' });
+        expect(r.getError()).toBeInstanceOf(UnidadDelComponenteNoDisponibleError);
+        expect(t.escribio()).toBe(false);
+      });
+    });
+
+    describe('altaInstalada', () => {
+      it('crea la unidad INSTALADA con la condición indicada, sin movimiento, con evento ALTA_INSTALADA con equipo y componente', async () => {
+        const t = armar({});
+        const r = await t.servicio.altaInstalada(INSUMO, ' sn 9 ', EQ, {
+          usuarioId: 'u',
+          condicion: 'USADO',
+          componenteId: C1,
+        });
+        expect(r.getValue()).toMatchObject({
+          estado: 'INSTALADA',
+          equipoId: EQ,
+          condicion: 'USADO',
+          numeroSerie: 'sn 9',
+          numeroSerieNormalizado: 'SN9',
+        });
+        expect(t.llamadas).toEqual([`L1:${INSUMO}`, `L2:${INSUMO}`, 'W:insertar', 'W:evento']);
+        expect(t.movimientos).toHaveLength(0);
+        expect(t.eventos[0]).toMatchObject({
+          tipo: 'ALTA_INSTALADA',
+          equipoId: EQ,
+          componenteId: C1,
+          serialNuevo: 'sn 9',
+          movimientoId: null,
+        });
+      });
+
+      it('rechaza un serial vacío, un insumo que no es SERIE o inexistente, sin escribir', async () => {
+        const vacio = armar({});
+        const o = { usuarioId: 'u', condicion: 'NUEVO' as const, componenteId: C1 };
+        expect((await vacio.servicio.altaInstalada(INSUMO, '  ', EQ, o)).getError()).toBeInstanceOf(
+          SerialRequeridoError,
+        );
+        expect(vacio.escribio()).toBe(false);
+
+        const ninguno = armar({ seguimiento: 'NINGUNO' });
+        expect(
+          (await ninguno.servicio.altaInstalada(INSUMO, 'X', EQ, o)).getError(),
+        ).toBeInstanceOf(UnidadNoAdmitidaError);
+        const inexistente = armar({ seguimiento: null });
+        expect(
+          (await inexistente.servicio.altaInstalada(INSUMO, 'X', EQ, o)).getError(),
+        ).toBeInstanceOf(InsumoNoEncontradoError);
+        expect(ninguno.escribio() || inexistente.escribio()).toBe(false);
       });
     });
   });

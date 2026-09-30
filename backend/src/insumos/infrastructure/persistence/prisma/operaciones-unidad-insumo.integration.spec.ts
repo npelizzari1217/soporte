@@ -26,6 +26,7 @@ import { FalloOperacionDeUnidad } from '../../../domain/errors/fallo-operacion-d
 import {
   MotivoCorreccionSerialInvalidoError,
   SerialDuplicadoError,
+  UnidadDelComponenteNoDisponibleError,
   UnidadNoDisponibleError,
 } from '../../../domain/errors/unidades-insumo.errors';
 import { leerYVerificarInvarianteSerie } from '../../../testing/invariante-serie';
@@ -37,6 +38,7 @@ const TENANT_TEST_DB_NAME = 'soporte_tenant_test';
 
 const CONCURRENCIA = 6;
 const POOL_MAX = CONCURRENCIA + 5;
+const PREFIJO_LOCK_STOCK = 'insumo-stock:';
 
 /** Mide conexiones CHECKED-OUT simultáneas; ver el molde en el spec del repositorio de unidades. */
 function instrumentarConcurrenciaDelPool(pool: Pool): { max: () => number; reiniciar: () => void } {
@@ -594,33 +596,115 @@ describe('OperacionesUnidadInsumo — Integration', () => {
       expect(await estadoDe(items[0].unidadId)).toBe('INSTALADA');
     });
 
-    it('descartarInstaladas deja DESCARTADA sin movimiento y con evento DESCARTE del componente y el motivo compartido', async () => {
+    it('descartarInstaladas deja DESCARTADA sin movimiento y reinstalar la devuelve al equipo con evento REACTIVACION', async () => {
       const items = await altaEInstalacion(['D-1', 'D-2']);
       const antes = await contar();
 
-      const r = await conTenant(() =>
+      const descartadas = await conTenant(() =>
         txRunner.run(() => servicio.descartarInstaladas(items, { usuarioId, motivo: 'rota' })),
       );
+      expect(descartadas.getValue()).toHaveLength(2);
+      expect(await estadoDe(items[0].unidadId)).toBe('DESCARTADA');
+      expect(await contar()).toEqual({ ...antes, eventos: antes.eventos + 2 });
 
+      const r = await conTenant(() =>
+        txRunner.run(() => servicio.reinstalar(items, { usuarioId })),
+      );
       expect(r.getValue()).toHaveLength(2);
       const filas = await tenantClient.unidadInsumo.findMany({
         where: { id: { in: items.map((i) => i.unidadId) } },
       });
       expect(filas.map((f) => [f.estado, f.equipoId])).toEqual([
-        ['DESCARTADA', null],
-        ['DESCARTADA', null],
+        ['INSTALADA', equipoId],
+        ['INSTALADA', equipoId],
       ]);
-      expect(await contar()).toEqual({ ...antes, eventos: antes.eventos + 2 });
+      expect((await contar()).movimientos).toBe(antes.movimientos);
       const evento = await tenantClient.eventoUnidadInsumo.findFirstOrThrow({
-        where: { unidadId: items[0].unidadId, tipo: 'DESCARTE' },
+        where: { unidadId: items[0].unidadId, tipo: 'REACTIVACION' },
+      });
+      expect(evento).toMatchObject({ equipoId, componenteId: items[0].componenteId });
+      expect(await conTenant(() => leerYVerificarInvarianteSerie(repos(), insumoId))).toEqual([]);
+    });
+
+    it('reinstalar tras una recuperación (evento posterior) o con otro componente rechaza y, aun con commit, no escribe', async () => {
+      const [item] = await altaEInstalacion(['V-1']);
+      await conTenant(() =>
+        txRunner.run(() => servicio.descartarInstaladas([item], { usuarioId })),
+      );
+      // La recuperación llega con WU-8d: se asienta su evento directo para fijar el estado.
+      await tenantClient.eventoUnidadInsumo.create({
+        data: { unidadId: item.unidadId, tipo: 'RECUPERACION', usuarioId },
+      });
+      const antes = await contar();
+
+      const tras = await conTenant(() =>
+        txRunner.run(() => servicio.reinstalar([item], { usuarioId })),
+      );
+      expect(tras.getError()).toBeInstanceOf(UnidadDelComponenteNoDisponibleError);
+
+      const otro = await conTenant(() =>
+        txRunner.run(() =>
+          servicio.reinstalar([{ ...item, componenteId: randomUUID() }], { usuarioId }),
+        ),
+      );
+      expect(otro.getError()).toBeInstanceOf(UnidadDelComponenteNoDisponibleError);
+      expect(await contar()).toEqual(antes);
+      expect(await estadoDe(item.unidadId)).toBe('DESCARTADA');
+    });
+
+    it('altaInstalada crea la unidad INSTALADA sin movimiento y un serial repetido lanza FalloOperacionDeUnidad y revierte', async () => {
+      const componenteId = randomUUID();
+      const antes = await contar();
+
+      const r = await conTenant(() =>
+        txRunner.run(() =>
+          servicio.altaInstalada(insumoId, ' al 1 ', equipoId, {
+            usuarioId,
+            condicion: 'USADO',
+            componenteId,
+          }),
+        ),
+      );
+
+      expect(r.getValue().estado).toBe('INSTALADA');
+      expect(await contar()).toEqual({
+        unidades: antes.unidades + 1,
+        movimientos: antes.movimientos,
+        eventos: antes.eventos + 1,
+      });
+      const fila = await tenantClient.unidadInsumo.findUniqueOrThrow({
+        where: { id: r.getValue().id },
+      });
+      expect(fila).toMatchObject({
+        estado: 'INSTALADA',
+        equipoId,
+        condicion: 'USADO',
+        numeroSerieNormalizado: 'AL1',
+      });
+      const evento = await tenantClient.eventoUnidadInsumo.findFirstOrThrow({
+        where: { unidadId: fila.id },
       });
       expect(evento).toMatchObject({
+        tipo: 'ALTA_INSTALADA',
         equipoId,
-        componenteId: items[0].componenteId,
-        motivo: 'rota',
+        componenteId,
         movimientoId: null,
       });
-      expect(await conTenant(() => leerYVerificarInvarianteSerie(repos(), insumoId))).toEqual([]);
+
+      const repetido = await conTenant(() =>
+        txRunner.run(() =>
+          servicio.altaInstalada(insumoId, 'AL1', equipoId, {
+            usuarioId,
+            condicion: 'NUEVO',
+            componenteId: randomUUID(),
+          }),
+        ),
+      ).catch((e: unknown) => e);
+      expect(repetido).toBeInstanceOf(FalloOperacionDeUnidad);
+      expect((repetido as FalloOperacionDeUnidad).errorDeDominio).toBeInstanceOf(
+        SerialDuplicadoError,
+      );
+      expect((await contar()).unidades).toBe(antes.unidades + 1);
     });
 
     it('dos clientes con lotes en orden opuesto sobre las mismas unidades: uno instala, el otro ve la unidad instalada, sin 40P01 ni bloqueo', async () => {
@@ -641,6 +725,54 @@ describe('OperacionesUnidadInsumo — Integration', () => {
       expect(fallido?.getError()).toBeInstanceOf(UnidadNoDisponibleError);
       expect(await Promise.all(ids.map(estadoDe))).toEqual(['INSTALADA', 'INSTALADA', 'INSTALADA']);
       expect((await contar()).movimientos).toBe(3 + 3); // tres entradas y tres salidas
+    }, 30_000);
+
+    it('ADR-12: mientras espera L3 (la fila de la unidad) ya tiene L2 (el advisory del insumo); invertirlo lo deja sin L2 y este spec lo detecta', async () => {
+      const [item] = await altaEInstalacion(['LK-1']);
+      const bloqueador = await pool.connect();
+      const testigo = await pool.connect();
+      let operacion: Promise<unknown> | undefined;
+      try {
+        // Un cliente externo tiene L3 de la unidad instalada.
+        await bloqueador.query('BEGIN');
+        await bloqueador.query('SELECT id FROM unidades_insumo WHERE id = $1 FOR NO KEY UPDATE', [
+          item.unidadId,
+        ]);
+        const { rows: pidRows } = await bloqueador.query('SELECT pg_backend_pid() AS pid');
+
+        // El servicio pide devolverla: debe tomar L1, L2 y quedar esperando L3.
+        operacion = conTenant(() =>
+          txRunner.run(() => servicio.devolverAlDeposito([item], { usuarioId })),
+        );
+
+        let esperando = false;
+        const limite = Date.now() + 5_000;
+        while (!esperando && Date.now() < limite) {
+          const { rows } = await testigo.query(
+            'SELECT count(*)::int AS n FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))',
+            [pidRows[0].pid],
+          );
+          esperando = rows[0].n > 0;
+          if (!esperando) await new Promise((resolve) => setTimeout(resolve, 25));
+        }
+        expect(esperando).toBe(true);
+
+        // Con L2 en manos del servicio, el intento del testigo por ese advisory debe fallar.
+        await testigo.query('BEGIN');
+        const { rows } = await testigo.query(
+          'SELECT pg_try_advisory_xact_lock(hashtext($1)) AS obtenido',
+          [PREFIJO_LOCK_STOCK + insumoId],
+        );
+        await testigo.query('ROLLBACK');
+        expect(rows[0].obtenido).toBe(false);
+      } finally {
+        await bloqueador.query('COMMIT').catch(() => undefined);
+        bloqueador.release();
+        testigo.release();
+      }
+      const r = (await operacion) as { isOk(): boolean };
+      expect(r.isOk()).toBe(true);
+      expect(await estadoDe(item.unidadId)).toBe('EN_DEPOSITO');
     }, 30_000);
   });
 });

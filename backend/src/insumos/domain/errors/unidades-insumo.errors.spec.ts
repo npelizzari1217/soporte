@@ -8,6 +8,7 @@ import {
   SerialDuplicadoError,
   SerialesNoCoincidenError,
   SerialRequeridoError,
+  UnidadDelComponenteNoDisponibleError,
   UnidadNoAdmitidaError,
   UnidadNoDisponibleError,
   UnidadNoEncontradaError,
@@ -31,6 +32,11 @@ describe('Errores de dominio de las unidades por número de serie', () => {
       'u-8',
     ],
     [new UnidadNoEncontradaError('u-7'), 'UNIDAD_NO_ENCONTRADA', 'u-7'],
+    [
+      new UnidadDelComponenteNoDisponibleError('comp-6'),
+      'UNIDAD_DEL_COMPONENTE_NO_DISPONIBLE',
+      'comp-6',
+    ],
   ])('%s expone su code estable y nombra el dato', (error, code, dato) => {
     expect(error).toBeInstanceOf(DomainError);
     expect(error.code).toBe(code);
