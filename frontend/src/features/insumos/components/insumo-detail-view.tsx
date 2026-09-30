@@ -63,7 +63,13 @@ import { MovimientoEntradaDialog } from "./movimiento-entrada-dialog";
 import { MovimientoSalidaDialog } from "./movimiento-salida-dialog";
 import { MovimientoAjusteDialog } from "./movimiento-ajuste-dialog";
 import { InsumoFormDialog } from "./insumo-form-dialog";
-import type { EstadoReposicionInsumo, Insumo, MovimientoInsumo, TipoMovimientoInsumo } from "../types";
+import type {
+  CondicionStock,
+  EstadoReposicionInsumo,
+  Insumo,
+  MovimientoInsumo,
+  TipoMovimientoInsumo,
+} from "../types";
 
 /** Placeholder de la celda sin valor, el mismo que usan los listados. */
 const SIN_VALOR = "—";
@@ -131,6 +137,12 @@ const SIGNO_MOVIMIENTO: Record<TipoMovimientoInsumo, "+" | "-"> = {
  */
 const ETIQUETA_ORIGEN_RECEPCION = "Recepción de compra";
 const ETIQUETA_ORIGEN_MANUAL = "Carga manual";
+
+/** Cómo se lee cada condición de stock; el `Record` obliga a cubrir una condición nueva. */
+const ETIQUETA_CONDICION: Record<CondicionStock, string> = {
+  NUEVO: "Nuevo",
+  USADO: "Usado",
+};
 
 /** Tamaño de página de la bitácora, el mismo que usa el listado de compras. */
 const MOVIMIENTOS_POR_PAGINA = 10;
@@ -366,7 +378,13 @@ export function InsumoDetailView({ insumoId }: InsumoDetailViewProps) {
 
     return (
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <Campo rotulo="Stock actual">{formatearNumeroEsAr(stock.stock)}</Campo>
+        <Campo rotulo="Stock nuevo">{formatearNumeroEsAr(stock.saldos.NUEVO)}</Campo>
+        {/* El saldo usado solo se muestra si el insumo lo admite o si ya hay
+            usados: un insumo que nunca los tuvo no necesita una celda en cero. */}
+        {(stock.admiteUsado || stock.saldos.USADO > 0) && (
+          <Campo rotulo="Stock usado">{formatearNumeroEsAr(stock.saldos.USADO)}</Campo>
+        )}
+        <Campo rotulo="Stock total">{formatearNumeroEsAr(stock.stock)}</Campo>
         <Campo rotulo="Stock mínimo">
           {/* Acá el guion SÍ es una afirmación sobre el dato, y es correcta: el
               `null` significa "sin punto de reposición definido", no "no se
@@ -374,6 +392,8 @@ export function InsumoDetailView({ insumoId }: InsumoDetailViewProps) {
           {stock.stockMinimo === null ? SIN_VALOR : formatearNumeroEsAr(stock.stockMinimo)}
         </Campo>
         <Campo rotulo="Reposición">
+          {/* Se evalúa sobre el stock NUEVO (lo resuelve el backend): los usados
+              no ocultan la falta de nuevos. */}
           <Badge variant={VARIANTE_REPOSICION[stock.estadoReposicion]}>
             {ETIQUETA_REPOSICION[stock.estadoReposicion]}
           </Badge>
@@ -403,6 +423,11 @@ export function InsumoDetailView({ insumoId }: InsumoDetailViewProps) {
         header: "Cantidad",
         // El signo sale del TIPO. `cantidad` llega siempre positiva.
         render: (fila) => `${SIGNO_MOVIMIENTO[fila.tipo]}${formatearNumeroEsAr(fila.cantidad)}`,
+      },
+      {
+        key: "condicion",
+        header: "Condición",
+        render: (fila) => ETIQUETA_CONDICION[fila.condicion],
       },
       {
         key: "usuarioId",

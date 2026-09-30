@@ -334,10 +334,10 @@ Commit sugerido: `refactor(equipos): retirar el DELETE de componentes reemplazad
 
 **Branch**: `feat/stock-usado-componentes-wu09` · **Base**: wu08b
 
-- [ ] 9.1 `frontend/src/features/insumos/types.ts` y `schemas.ts`: `StockInsumo` con `saldos: { NUEVO; USADO }` y `admiteUsado`; `MovimientoInsumo` con `condicion`; `CONDICIONES_STOCK` espejo del backend (la autoridad es el DTO del backend, regla derivada).
-- [ ] 9.2 `hooks/use-stock-insumo.ts` sin cambios de contrato salvo tipos; `insumo-detail-view.tsx`: muestra saldo NUEVO, saldo USADO (solo si `admiteUsado` o mayor que 0) y el total; el estado de reposición se muestra sobre NUEVO; la tabla de movimientos gana la columna "Condición". (Req: La consulta de stock devuelve ambos saldos y el listado muestra la condición)
-- [ ] 9.3 Tests (MSW + `renderWithProviders`): ficha con NUEVO 4 y USADO 2 muestra ambos y total 6; ficha sin USADO; cada movimiento muestra su condición; reposición sobre NUEVO con USADO alto.
-- [ ] 9.4 Quality gates (frontend): `cd frontend && pnpm lint && pnpm type-check && pnpm test`.
+- [x] 9.1 `frontend/src/features/insumos/types.ts` y `schemas.ts`: `StockInsumo` con `saldos: { NUEVO; USADO }` y `admiteUsado`; `MovimientoInsumo` con `condicion`; `CONDICIONES_STOCK` espejo del backend (la autoridad es el DTO del backend, regla derivada).
+- [x] 9.2 `hooks/use-stock-insumo.ts` sin cambios de contrato salvo tipos; `insumo-detail-view.tsx`: muestra saldo NUEVO, saldo USADO (solo si `admiteUsado` o mayor que 0) y el total; el estado de reposición se muestra sobre NUEVO; la tabla de movimientos gana la columna "Condición". (Req: La consulta de stock devuelve ambos saldos y el listado muestra la condición)
+- [x] 9.3 Tests (MSW + `renderWithProviders`): ficha con NUEVO 4 y USADO 2 muestra ambos y total 6; ficha sin USADO; cada movimiento muestra su condición; reposición sobre NUEVO con USADO alto.
+- [x] 9.4 Quality gates (frontend): `cd frontend && pnpm lint && pnpm type-check && pnpm test`.
 
 **Escenarios**: Ficha del insumo; Consulta de stock; Listado de movimientos; Usados no ocultan la
 falta de nuevos (presentación).

@@ -119,3 +119,12 @@ Rama `feat/stock-usado-componentes-wu08b` (base wu08a-2). Modo estandar (refacto
 - Hallazgo: `equipos-instalar-desde-deposito.e2e.spec.ts` (2 casos, "Retiro sin stock" y "Reemplazo como retiro mas alta") usaba el `DELETE`; pasan a `POST .../baja` con `DESCARTE` (200 en lugar de 204), con las mismas aserciones de stock.
 - 8b.4 `rg "EliminarComponenteUseCase|componenteRepo.delete|eliminar-componente" backend/src`: vacio.
 - 8b.5 Gates: lint y typecheck en cero; `vitest run src/equipos` verde; `pnpm test` completo 488 archivos, 5811 tests en verde.
+
+## WU-9 — Frontend insumos: ficha con dos saldos y columna condicion (tareas 9.1 a 9.4)
+
+Rama `feat/stock-usado-componentes-wu09` (base wu08b). Modo estandar (feature).
+
+- 9.1 `types.ts`: `CONDICIONES_STOCK` y `CondicionStock` espejo del backend; `StockInsumo` gana `saldos` y `admiteUsado`; `MovimientoInsumo` gana `condicion`.
+- 9.2 `insumo-detail-view.tsx`: "Stock nuevo", "Stock usado" (solo si `admiteUsado` o USADO > 0) y "Stock total"; la reposicion sigue leyendo el `estadoReposicion` resuelto por el backend (sobre NUEVO); columna "Condicion" en la bitacora. El hook `use-stock-insumo` no cambia.
+- 9.3 Tests en `insumo-detail-view.test.tsx`: NUEVO 4 + USADO 2 = 6, sin usado, admite usado en cero, usado sin admitirlo, reposicion con USADO alto, condicion por movimiento. Los tests previos que buscaban el saldo por texto se pasan a `valorDe("Stock total")` porque NUEVO y total coinciden.
+- 9.4 Gates: lint y type-check en cero; `vitest run src/features/insumos` 244 verdes; suite completa ver reporte.
