@@ -139,6 +139,20 @@ export class MotivoRecuperacionRequeridoError extends DomainError {
 }
 
 /**
+ * MotivoCorreccionSerialInvalidoError — corregir el serial de una unidad exige un
+ * motivo con contenido y de hasta 500 caracteres: el evento auditado es el único
+ * registro de por qué cambió.
+ * → HTTP 422 en la capa de presentación.
+ */
+export class MotivoCorreccionSerialInvalidoError extends DomainError {
+  readonly code = 'MOTIVO_CORRECCION_SERIAL_INVALIDO';
+
+  constructor(unidadId: string, detalle: string) {
+    super(`Corregir el serial de la unidad "${unidadId}" ${detalle}`);
+  }
+}
+
+/**
  * UnidadNoEncontradaError — el `id` de unidad no existe o no pertenece al
  * insumo de la URL.
  * → HTTP 404 en la capa de presentación.

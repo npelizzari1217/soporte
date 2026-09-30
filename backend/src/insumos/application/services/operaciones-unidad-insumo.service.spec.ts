@@ -4,6 +4,7 @@ import { MovimientoInsumoEntity } from '../../domain/entities/movimiento-insumo.
 import { EstadoUnidadInsumo, UnidadInsumoEntity } from '../../domain/entities/unidad-insumo.entity';
 import { MotivoAjusteRequeridoError } from '../../domain/errors/insumos.errors';
 import {
+  MotivoCorreccionSerialInvalidoError,
   SeguimientoNoModificableError,
   SerialDuplicadoError,
   SerialRequeridoError,
@@ -50,6 +51,10 @@ function armar(opciones: {
       },
     },
     {
+      findById: async (id) => {
+        llamadas.push(`R:${id}`);
+        return unidades.find((u) => u.id === id) ?? null;
+      },
       bloquearPorIds: async (ids) => {
         llamadas.push(`L3:${ids.join(',')}`);
         return unidades.filter((u) => ids.includes(u.id));
@@ -412,6 +417,125 @@ describe('OperacionesUnidadInsumo', () => {
         expect(r.getError()).toBeInstanceOf(clase);
         expect(t.escribio()).toBe(false);
       }
+    });
+  });
+
+  describe('cargarSerial', () => {
+    it('completa una pendiente: normaliza, CAS sin cambiar de estado y evento SERIAL_CARGADO sin movimiento ni motivo', async () => {
+      const t = armar({ unidades: [unidad(U1, { serial: null })] });
+      const r = await t.servicio.cargarSerial(U1, ' ab 1 ', { usuarioId: 'u', motivo: 'ignorado' });
+      expect(r.getValue()).toMatchObject({
+        numeroSerie: 'ab 1',
+        numeroSerieNormalizado: 'AB1',
+        estado: 'EN_DEPOSITO',
+      });
+      expect(t.llamadas).toEqual([
+        `R:${U1}`,
+        `L1:${INSUMO}`,
+        `L2:${INSUMO}`,
+        `L3:${U1}`,
+        'W:cas:EN_DEPOSITO',
+        'W:evento',
+      ]);
+      expect(t.movimientos).toHaveLength(0);
+      expect(t.eventos[0]).toMatchObject({
+        tipo: 'SERIAL_CARGADO',
+        movimientoId: null,
+        motivo: null,
+        serialNuevo: 'ab 1',
+        usuarioId: 'u',
+      });
+    });
+
+    it('rechaza una unidad que ya tiene serial, una no EN_DEPOSITO y un serial vacío, sin escribir', async () => {
+      const entregada = unidad(U2);
+      entregada.entregar();
+      const t = armar({ unidades: [unidad(U1), entregada, unidad(U3, { serial: null })] });
+      const r1 = await t.servicio.cargarSerial(U1, 'X', { usuarioId: 'u' });
+      const r2 = await t.servicio.cargarSerial(U2, 'X', { usuarioId: 'u' });
+      const r3 = await t.servicio.cargarSerial(U3, '   ', { usuarioId: 'u' });
+      expect(r1.getError()).toBeInstanceOf(UnidadNoDisponibleError);
+      expect(r2.getError()).toBeInstanceOf(UnidadNoDisponibleError);
+      expect(r3.getError()).toBeInstanceOf(SerialRequeridoError);
+      expect(t.escribio()).toBe(false);
+    });
+
+    it('una unidad inexistente o de un insumo que no es SERIE se rechaza sin escribir', async () => {
+      const t = armar({ unidades: [] });
+      const r1 = await t.servicio.cargarSerial(U1, 'X', { usuarioId: 'u' });
+      expect(r1.getError()).toBeInstanceOf(UnidadNoEncontradaError);
+
+      const ninguno = armar({ seguimiento: 'NINGUNO', unidades: [unidad(U1, { serial: null })] });
+      const r2 = await ninguno.servicio.cargarSerial(U1, 'X', { usuarioId: 'u' });
+      expect(r2.getError()).toBeInstanceOf(UnidadNoAdmitidaError);
+      expect(ninguno.escribio()).toBe(false);
+    });
+  });
+
+  describe('corregirSerial', () => {
+    it('corrige con motivo: evento CORRECCION_SERIAL con serial anterior, nuevo, motivo y usuario', async () => {
+      const t = armar({ unidades: [unidad(U1, { serial: 'OLD-1' })] });
+      const r = await t.servicio.corregirSerial(U1, ' new 1', {
+        usuarioId: 'u-7',
+        motivo: ' typo ',
+      });
+      expect(r.getValue()).toMatchObject({ numeroSerie: 'new 1', numeroSerieNormalizado: 'NEW1' });
+      expect(t.llamadas.filter((l) => l.startsWith('W:'))).toEqual([
+        'W:cas:EN_DEPOSITO',
+        'W:evento',
+      ]);
+      expect(t.movimientos).toHaveLength(0);
+      expect(t.eventos[0]).toMatchObject({
+        tipo: 'CORRECCION_SERIAL',
+        serialAnterior: 'OLD-1',
+        serialNuevo: 'new 1',
+        motivo: 'typo',
+        usuarioId: 'u-7',
+        movimientoId: null,
+      });
+    });
+
+    it('sin motivo, con motivo en blanco o de más de 500 caracteres falla antes de tomar locks', async () => {
+      const t = armar({ unidades: [unidad(U1)] });
+      for (const motivo of [undefined, null, '   ', 'x'.repeat(501)]) {
+        const r = await t.servicio.corregirSerial(U1, 'NUEVO', { usuarioId: 'u', motivo });
+        expect(r.getError()).toBeInstanceOf(MotivoCorreccionSerialInvalidoError);
+      }
+      expect(t.llamadas).toEqual([]);
+      const ok = await t.servicio.corregirSerial(U1, 'NUEVO', {
+        usuarioId: 'u',
+        motivo: 'x'.repeat(500),
+      });
+      expect(ok.isOk()).toBe(true);
+    });
+
+    it('rechaza una unidad INSTALADA, una pendiente y un serial vacío sin escribir', async () => {
+      const instalada = unidad(U1);
+      instalada.instalar('eq-1');
+      const t = armar({
+        unidades: [instalada, unidad(U2, { serial: null }), unidad(U3)],
+      });
+      const r1 = await t.servicio.corregirSerial(U1, 'X', { usuarioId: 'u', motivo: 'm' });
+      const r2 = await t.servicio.corregirSerial(U2, 'X', { usuarioId: 'u', motivo: 'm' });
+      const r3 = await t.servicio.corregirSerial(U3, '  ', { usuarioId: 'u', motivo: 'm' });
+      expect(r1.getError()).toBeInstanceOf(UnidadNoDisponibleError);
+      expect(r2.getError()).toBeInstanceOf(UnidadNoDisponibleError);
+      expect(r3.getError()).toBeInstanceOf(SerialRequeridoError);
+      expect(t.escribio()).toBe(false);
+    });
+
+    it('corrige también una unidad ENTREGADA o DESCARTADA (conserva su estado en el CAS)', async () => {
+      const entregada = unidad(U1);
+      entregada.entregar();
+      const descartada = unidad(U2);
+      descartada.descartarDeDeposito();
+      const t = armar({ unidades: [entregada, descartada] });
+      await t.servicio.corregirSerial(U1, 'A', { usuarioId: 'u', motivo: 'm' });
+      await t.servicio.corregirSerial(U2, 'B', { usuarioId: 'u', motivo: 'm' });
+      expect(t.llamadas.filter((l) => l.startsWith('W:cas'))).toEqual([
+        'W:cas:ENTREGADA',
+        'W:cas:DESCARTADA',
+      ]);
     });
   });
 });

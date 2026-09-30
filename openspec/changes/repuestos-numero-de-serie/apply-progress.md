@@ -235,3 +235,9 @@ cada código de sus pruebas): parte 1 (`wu03a`) = 3a.1 y 3a.3; parte 2 (`wu03a-2
   `bloquearInsumo`. El servicio NO exige el insumo habilitado: la exención de G2 la decide el caso de uso (WU-8c).
 - Corte por tamaño (regla de la orquestación), tres partes: parte 1 (esta) = `devolverEntregas`; parte 2 (rama `-2`)
   = `cargarSerial` y `corregirSerial` con su error nuevo; parte 3 (rama `-3`) = helper del invariante y su spec.
+
+## WU-4b parte 2 — `cargarSerial` y `corregirSerial` (4b.2 hecha)
+
+- 4b.2: ambas leen la unidad sin lock para conocer su insumo, toman L1 y L2 de ese insumo y releen con L3. Sin
+  movimiento. `cargarSerial` asienta `SERIAL_CARGADO` (sin motivo); `corregirSerial` exige motivo (error nuevo
+  `MotivoCorreccionSerialInvalidoError`, vacío o de más de 500) y rechaza `INSTALADA`; asienta `CORRECCION_SERIAL`.

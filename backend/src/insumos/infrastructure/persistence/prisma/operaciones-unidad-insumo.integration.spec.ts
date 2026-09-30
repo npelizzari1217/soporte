@@ -24,6 +24,7 @@ import { PrismaEventoUnidadInsumoRepository } from './prisma-evento-unidad-insum
 import { OperacionesUnidadInsumo } from '../../../application/services/operaciones-unidad-insumo.service';
 import { FalloOperacionDeUnidad } from '../../../domain/errors/fallo-operacion-de-unidad';
 import {
+  MotivoCorreccionSerialInvalidoError,
   SerialDuplicadoError,
   UnidadNoDisponibleError,
 } from '../../../domain/errors/unidades-insumo.errors';
@@ -125,6 +126,7 @@ describe('OperacionesUnidadInsumo — Integration', () => {
 
   afterAll(async () => {
     await limpiar();
+    await tenantClient.equipoInformatico.deleteMany({ where: { nombre: { startsWith: PREFIJO } } });
     await tenantClient.insumo.deleteMany({ where: { codigo: { startsWith: PREFIJO } } });
     await tenantClient.familiaInsumo.deleteMany({ where: { codigo: { startsWith: PREFIJO } } });
     await tenantClient.unidadMedida.deleteMany({ where: { codigo: { startsWith: PREFIJO } } });
@@ -331,5 +333,127 @@ describe('OperacionesUnidadInsumo — Integration', () => {
     expect(await contar()).toEqual(antes);
     const fila = await tenantClient.unidadInsumo.findUniqueOrThrow({ where: { id: entregada } });
     expect(fila.estado).toBe('ENTREGADA');
+  });
+
+  it('cargarSerial completa una pendiente con su evento y un serial repetido lanza FalloOperacionDeUnidad y revierte', async () => {
+    const alta = await conTenant(() =>
+      txRunner.run(() =>
+        servicio.ingresar(insumoId, [{ numeroSerie: 'C-1' }, { numeroSerie: null }], {
+          usuarioId,
+          condicion: 'NUEVO',
+          tipo: 'ENTRADA',
+        }),
+      ),
+    );
+    const pendiente = alta.getValue()[1].unidad.id;
+
+    const repetido = await conTenant(() =>
+      txRunner.run(() => servicio.cargarSerial(pendiente, ' c-1', { usuarioId })),
+    ).catch((e: unknown) => e);
+    expect(repetido).toBeInstanceOf(FalloOperacionDeUnidad);
+    expect((repetido as FalloOperacionDeUnidad).errorDeDominio).toBeInstanceOf(
+      SerialDuplicadoError,
+    );
+    const sinCambios = await tenantClient.unidadInsumo.findUniqueOrThrow({
+      where: { id: pendiente },
+    });
+    expect(sinCambios.numeroSerie).toBeNull();
+    expect(
+      await tenantClient.eventoUnidadInsumo.count({
+        where: { unidadId: pendiente, tipo: 'SERIAL_CARGADO' },
+      }),
+    ).toBe(0);
+
+    const movimientosAntes = (await contar()).movimientos;
+    const ok = await conTenant(() =>
+      txRunner.run(() => servicio.cargarSerial(pendiente, 'C-2', { usuarioId })),
+    );
+    expect(ok.getValue().numeroSerieNormalizado).toBe('C-2');
+    const fila = await tenantClient.unidadInsumo.findUniqueOrThrow({ where: { id: pendiente } });
+    expect(fila).toMatchObject({ numeroSerie: 'C-2', numeroSerieNormalizado: 'C-2' });
+    const evento = await tenantClient.eventoUnidadInsumo.findFirstOrThrow({
+      where: { unidadId: pendiente, tipo: 'SERIAL_CARGADO' },
+    });
+    expect(evento).toMatchObject({ movimientoId: null, motivo: null, serialNuevo: 'C-2' });
+    expect((await contar()).movimientos).toBe(movimientosAntes);
+  });
+
+  it('corregirSerial audita anterior, nuevo, motivo y usuario; sin motivo y a un serial existente no escriben', async () => {
+    const alta = await conTenant(() =>
+      txRunner.run(() =>
+        servicio.ingresar(insumoId, [{ numeroSerie: 'K-1' }, { numeroSerie: 'K-2' }], {
+          usuarioId,
+          condicion: 'NUEVO',
+          tipo: 'ENTRADA',
+        }),
+      ),
+    );
+    const [primera] = alta.getValue().map((x) => x.unidad.id);
+
+    const sinMotivo = await conTenant(() =>
+      txRunner.run(() => servicio.corregirSerial(primera, 'K-9', { usuarioId })),
+    );
+    expect(sinMotivo.getError()).toBeInstanceOf(MotivoCorreccionSerialInvalidoError);
+    const antes = await contar();
+    expect(
+      (await tenantClient.unidadInsumo.findUniqueOrThrow({ where: { id: primera } })).numeroSerie,
+    ).toBe('K-1');
+
+    const aExistente = await conTenant(() =>
+      txRunner.run(() => servicio.corregirSerial(primera, 'k-2', { usuarioId, motivo: 'typo' })),
+    ).catch((e: unknown) => e);
+    expect(aExistente).toBeInstanceOf(FalloOperacionDeUnidad);
+    expect(await contar()).toEqual(antes);
+    expect(
+      (await tenantClient.unidadInsumo.findUniqueOrThrow({ where: { id: primera } })).numeroSerie,
+    ).toBe('K-1');
+
+    const ok = await conTenant(() =>
+      txRunner.run(() => servicio.corregirSerial(primera, 'K-3', { usuarioId, motivo: ' typo ' })),
+    );
+    expect(ok.isOk()).toBe(true);
+    const evento = await tenantClient.eventoUnidadInsumo.findFirstOrThrow({
+      where: { unidadId: primera, tipo: 'CORRECCION_SERIAL' },
+    });
+    expect(evento).toMatchObject({
+      serialAnterior: 'K-1',
+      serialNuevo: 'K-3',
+      motivo: 'typo',
+      usuarioId,
+      movimientoId: null,
+    });
+    expect(
+      (await tenantClient.unidadInsumo.findUniqueOrThrow({ where: { id: primera } }))
+        .numeroSerieNormalizado,
+    ).toBe('K-3');
+  });
+
+  it('corregirSerial sobre una unidad INSTALADA se devuelve como Result.fail y, aun con commit, no escribe', async () => {
+    const alta = await conTenant(() =>
+      txRunner.run(() =>
+        servicio.ingresar(insumoId, [{ numeroSerie: 'I-1' }], {
+          usuarioId,
+          condicion: 'NUEVO',
+          tipo: 'ENTRADA',
+        }),
+      ),
+    );
+    const id = alta.getValue()[0].unidad.id;
+    // La instalación llega con WU-5; acá se fija el estado directo para probar el rechazo.
+    const equipo = await tenantClient.equipoInformatico.create({
+      data: { nombre: `${PREFIJO}EQ` },
+    });
+    await tenantClient.unidadInsumo.update({
+      where: { id },
+      data: { estado: 'INSTALADA', equipoId: equipo.id },
+    });
+    const antes = await contar();
+
+    const r = await conTenant(() =>
+      txRunner.run(() => servicio.corregirSerial(id, 'I-9', { usuarioId, motivo: 'typo' })),
+    );
+
+    expect(r.getError()).toBeInstanceOf(UnidadNoDisponibleError);
+    expect(await contar()).toEqual(antes);
   });
 });

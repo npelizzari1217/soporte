@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { DomainError } from '../../../shared/domain/result';
 import {
   CantidadNoEnteraError,
+  MotivoCorreccionSerialInvalidoError,
   MotivoRecuperacionRequeridoError,
   SeguimientoNoModificableError,
   SerialDuplicadoError,
@@ -24,6 +25,11 @@ describe('Errores de dominio de las unidades por número de serie', () => {
     [new CantidadNoEnteraError(1.5), 'CANTIDAD_NO_ENTERA', '1.5'],
     [new SeguimientoNoModificableError('saldo 4'), 'SEGUIMIENTO_NO_MODIFICABLE', 'saldo 4'],
     [new MotivoRecuperacionRequeridoError('u-9'), 'MOTIVO_RECUPERACION_REQUERIDO', 'u-9'],
+    [
+      new MotivoCorreccionSerialInvalidoError('u-8', 'exige un motivo.'),
+      'MOTIVO_CORRECCION_SERIAL_INVALIDO',
+      'u-8',
+    ],
     [new UnidadNoEncontradaError('u-7'), 'UNIDAD_NO_ENCONTRADA', 'u-7'],
   ])('%s expone su code estable y nombra el dato', (error, code, dato) => {
     expect(error).toBeInstanceOf(DomainError);

@@ -1,10 +1,15 @@
 import { DomainError, Result } from '../../../shared/domain/result';
 import { EventoUnidadInsumoEntity } from '../../domain/entities/evento-unidad-insumo.entity';
-import { MovimientoInsumoEntity } from '../../domain/entities/movimiento-insumo.entity';
+import {
+  MOVIMIENTO_INSUMO_MOTIVO_MAX_LENGTH,
+  MovimientoInsumoEntity,
+  normalizarMotivoMovimiento,
+} from '../../domain/entities/movimiento-insumo.entity';
 import { CondicionStock } from '../../domain/entities/tipo-movimiento-insumo';
 import { EstadoUnidadInsumo, UnidadInsumoEntity } from '../../domain/entities/unidad-insumo.entity';
 import { InsumoNoEncontradoError } from '../../domain/errors/insumos.errors';
 import {
+  MotivoCorreccionSerialInvalidoError,
   SeguimientoNoModificableError,
   SerialDuplicadoError,
   UnidadNoAdmitidaError,
@@ -67,7 +72,7 @@ export class OperacionesUnidadInsumo {
     private readonly movimientoRepo: Pick<IMovimientoInsumoRepository, 'bloquearStock' | 'insert'>,
     private readonly unidadRepo: Pick<
       IUnidadInsumoRepository,
-      'insertar' | 'bloquearPorIds' | 'guardarConEstadoEsperado'
+      'insertar' | 'bloquearPorIds' | 'guardarConEstadoEsperado' | 'findById'
     >,
     private readonly eventoRepo: Pick<IEventoUnidadInsumoRepository, 'insert'>,
   ) {}
@@ -249,6 +254,120 @@ export class OperacionesUnidadInsumo {
     }
 
     return Result.ok(await this.escribir(escrituras));
+  }
+
+  /**
+   * Completa el serial de una unidad en serie pendiente: solo `EN_DEPOSITO` y sin
+   * serial. Asienta el evento `SERIAL_CARGADO` sin movimiento ni motivo (el libro
+   * no cambia). Una unidad que ya tiene serial se corrige con `corregirSerial`.
+   *
+   * @param unidadId Unidad pendiente.
+   * @param numeroSerie Serial crudo; se normaliza para la unicidad por insumo.
+   * @param o Usuario que carga el serial.
+   * @returns La unidad con el serial cargado; o el primer error de validación, sin haber escrito nada.
+   * @throws FalloOperacionDeUnidad si el serial ya lo tiene otra unidad del insumo (P2002).
+   */
+  async cargarSerial(
+    unidadId: string,
+    numeroSerie: string,
+    o: ContextoUnidad,
+  ): Promise<Result<UnidadInsumoEntity, DomainError>> {
+    const leida = await this.leerUnidadBajoLock(unidadId);
+    if (leida.isFail()) return Result.fail(leida.getError());
+    const unidad = leida.getValue();
+
+    const estadoLeido = unidad.estado;
+    const cargada = unidad.cargarSerial(numeroSerie);
+    if (cargada.isFail()) return Result.fail(cargada.getError());
+
+    const evento = EventoUnidadInsumoEntity.create({
+      unidadId: unidad.id,
+      tipo: 'SERIAL_CARGADO',
+      serialNuevo: unidad.numeroSerie,
+      usuarioId: o.usuarioId,
+    });
+    await this.unidadRepo.guardarConEstadoEsperado(unidad, estadoLeido);
+    await this.eventoRepo.insert(evento);
+    return Result.ok(unidad);
+  }
+
+  /**
+   * Corrige el serial de una unidad que ya lo tiene, con el motivo obligatorio:
+   * el evento `CORRECCION_SERIAL` (serial anterior, serial nuevo, motivo y
+   * usuario) es el registro auditado. Se rechaza una unidad `INSTALADA` (su
+   * serial se corrige desde el componente) y una pendiente (se carga).
+   *
+   * @param unidadId Unidad con serial.
+   * @param numeroSerie Serial nuevo, crudo.
+   * @param o Usuario y motivo (obligatorio, con contenido y de hasta 500 caracteres).
+   * @returns La unidad corregida; o el primer error de validación, sin haber escrito nada.
+   * @throws FalloOperacionDeUnidad si el serial nuevo ya lo tiene otra unidad del insumo (P2002).
+   */
+  async corregirSerial(
+    unidadId: string,
+    numeroSerie: string,
+    o: ContextoUnidad,
+  ): Promise<Result<UnidadInsumoEntity, DomainError>> {
+    const motivo = normalizarMotivoMovimiento(o.motivo);
+    if (motivo === null) {
+      return Result.fail(new MotivoCorreccionSerialInvalidoError(unidadId, 'exige un motivo.'));
+    }
+    if (motivo.length > MOVIMIENTO_INSUMO_MOTIVO_MAX_LENGTH) {
+      return Result.fail(
+        new MotivoCorreccionSerialInvalidoError(
+          unidadId,
+          `el motivo excede ${MOVIMIENTO_INSUMO_MOTIVO_MAX_LENGTH} caracteres.`,
+        ),
+      );
+    }
+
+    const leida = await this.leerUnidadBajoLock(unidadId);
+    if (leida.isFail()) return Result.fail(leida.getError());
+    const unidad = leida.getValue();
+
+    if (unidad.estado === 'INSTALADA') {
+      return Result.fail(
+        new UnidadNoDisponibleError(
+          unidad.id,
+          'está instalada en un equipo; su serial no se corrige desde la unidad.',
+        ),
+      );
+    }
+
+    const estadoLeido = unidad.estado;
+    const corregida = unidad.corregirSerial(numeroSerie);
+    if (corregida.isFail()) return Result.fail(corregida.getError());
+
+    const evento = EventoUnidadInsumoEntity.create({
+      unidadId: unidad.id,
+      tipo: 'CORRECCION_SERIAL',
+      serialAnterior: corregida.getValue(),
+      serialNuevo: unidad.numeroSerie,
+      motivo,
+      usuarioId: o.usuarioId,
+    });
+    await this.unidadRepo.guardarConEstadoEsperado(unidad, estadoLeido);
+    await this.eventoRepo.insert(evento);
+    return Result.ok(unidad);
+  }
+
+  /**
+   * Lee UNA unidad respetando el orden de ADR-12: el insumo de la unidad sale de
+   * una lectura sin lock (nunca cambia), L1 y L2 de ese insumo, y recién después
+   * L3 con la relectura bajo lock, que es la que manda.
+   */
+  private async leerUnidadBajoLock(
+    unidadId: string,
+  ): Promise<Result<UnidadInsumoEntity, DomainError>> {
+    const foto = await this.unidadRepo.findById(unidadId);
+    if (foto === null) return Result.fail(new UnidadNoEncontradaError(unidadId));
+
+    const bloqueo = await this.bloquearInsumo(foto.insumoId);
+    if (bloqueo.isFail()) return Result.fail(bloqueo.getError());
+
+    const [unidad] = await this.unidadRepo.bloquearPorIds([unidadId]);
+    if (unidad === undefined) return Result.fail(new UnidadNoEncontradaError(unidadId));
+    return Result.ok(unidad);
   }
 
   /**
