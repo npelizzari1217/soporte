@@ -425,6 +425,8 @@ describe('toStockInsumoResponseDto', () => {
     const dto = toStockInsumoResponseDto({
       insumoId: INSUMO_ID,
       stock: 2,
+      saldos: { NUEVO: 2, USADO: 0 },
+      admiteUsado: false,
       stockMinimo: 10,
       estadoReposicion: 'BAJO_MINIMO',
     });
@@ -446,6 +448,8 @@ describe('toStockInsumoResponseDto', () => {
     const dto = toStockInsumoResponseDto({
       insumoId: INSUMO_ID,
       stock: 0,
+      saldos: { NUEVO: 0, USADO: 0 },
+      admiteUsado: false,
       stockMinimo: null,
       estadoReposicion: 'SIN_PUNTO_DEFINIDO',
     });

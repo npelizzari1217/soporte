@@ -44,3 +44,11 @@ WU-3a excedio 400 lineas (~1.020 entre codigo y specs) y se partio en TRES commi
 - Concurrencia: dos salidas USADO de 1 con saldo USADO 1 (y NUEVO 100) sobre el caso de uso real: una persistida, una `STOCK_INSUFICIENTE`, USADO final 0. Verificacion adversarial local: decidir sobre `.NUEVO` en la salida pone en rojo ese spec y dos specs de aplicacion.
 - Gates: `pnpm lint`, `pnpm typecheck` y `vitest run src/insumos src/compras src/equipos` en verde; `pnpm test` completo sobre el arbol final: 484 archivos, 5675 tests en verde.
 
+
+## WU-3b — Consulta de stock con saldos y reposicion sobre NUEVO (tareas 3b.1 a 3b.3)
+
+Rama `feat/stock-usado-componentes-wu03b`. Modo estandar (feature).
+
+- `ConsultarStockInsumoUseCase` recibe `familiaRepo` (`Pick<..., 'findById'>`) como tercer parametro y devuelve `{ stock (total), saldos: { NUEVO, USADO }, admiteUsado, stockMinimo, estadoReposicion }`. `admiteUsado` reutiliza `validarCondicionAdmitida(familias, insumo, 'USADO')` (una sola definicion de la regla ADR-6: familia vigente y de repuestos). La reposicion se evalua sobre `saldos.NUEVO`.
+- `insumos.module.ts` inyecta `FAMILIA_INSUMO_REPOSITORY`; su spec pasa de 2 a 3 puertos. El fixture de `toStockInsumoResponseDto` en `movimientos-insumo.dto.spec.ts` suma los campos nuevos (unico ajuste de borde forzado por el typecheck; el DTO HTTP y el controller siguen sin publicar `saldos` ni `admiteUsado`: WU-4).
+- Specs: NUEVO 2 + USADO 10 con minimo 5 => BAJO_MINIMO; NUEVO 8 => SUFICIENTE; sin USADO => USADO 0 y total = NUEVO; USADO negativo entra al total; `admiteUsado` true/false/familia inexistente o no vigente.

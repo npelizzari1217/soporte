@@ -4,6 +4,7 @@ import { InsumoEntity } from '../../domain/entities/insumo.entity';
 import { TipoMovimientoInsumo } from '../../domain/entities/tipo-movimiento-insumo';
 import { SumasPorCondicionYTipo } from '../../domain/entities/tipo-movimiento-insumo';
 import { sumasCon } from '../../testing/sumas-movimiento';
+import { EstadoFamiliaFake, familiaRepoFake } from '../../testing/familia-repo-fake';
 
 describe('ConsultarStockInsumoUseCase', () => {
   function propsDeInsumo(opciones: { activo?: boolean; stockMinimo?: number | null } = {}) {
@@ -49,7 +50,11 @@ describe('ConsultarStockInsumoUseCase', () => {
    * que no lo tuviera, ese assert pasaría en verde por construcción.
    */
   function buildColaboradores(
-    opciones: { insumo?: InsumoEntity | null; sumas?: SumasPorCondicionYTipo } = {},
+    opciones: {
+      insumo?: InsumoEntity | null;
+      sumas?: SumasPorCondicionYTipo;
+      familia?: EstadoFamiliaFake;
+    } = {},
   ) {
     const encontrado = opciones.insumo === undefined ? insumo() : opciones.insumo;
     const desglose = opciones.sumas ?? sumas({ ENTRADA: 10 });
@@ -60,9 +65,11 @@ describe('ConsultarStockInsumoUseCase', () => {
       lockAndSumByTipo: vi.fn().mockResolvedValue(desglose),
     };
 
-    const useCase = new ConsultarStockInsumoUseCase(insumoRepo, movimientoRepo);
+    const familiaRepo = familiaRepoFake(opciones.familia);
 
-    return { useCase, insumoRepo, movimientoRepo };
+    const useCase = new ConsultarStockInsumoUseCase(insumoRepo, movimientoRepo, familiaRepo);
+
+    return { useCase, insumoRepo, movimientoRepo, familiaRepo };
   }
 
   // ─── El saldo ────────────────────────────────────────────────────────────
@@ -197,9 +204,88 @@ describe('ConsultarStockInsumoUseCase', () => {
     expect(result.getValue()).toEqual({
       insumoId: 'ins-1',
       stock: 50,
+      saldos: { NUEVO: 50, USADO: 0 },
+      admiteUsado: true,
       stockMinimo: 20,
       estadoReposicion: 'SUFICIENTE',
     });
+  });
+
+  // ─── Saldos por condición y reposición sobre NUEVO ───────────────────────
+
+  /** Los usados no ocultan la falta de nuevos: la reposición mira solo NUEVO. */
+  it('marca BAJO_MINIMO con NUEVO bajo el punto aunque el total lo supere por los usados', async () => {
+    const c = buildColaboradores({
+      insumo: insumo({ stockMinimo: 5 }),
+      sumas: sumasCon({ NUEVO: { ENTRADA: 2 }, USADO: { ENTRADA: 10 } }),
+    });
+
+    const result = await c.useCase.execute('ins-1');
+
+    expect(result.getValue().saldos).toEqual({ NUEVO: 2, USADO: 10 });
+    expect(result.getValue().stock).toBe(12);
+    expect(result.getValue().estadoReposicion).toBe('BAJO_MINIMO');
+  });
+
+  it('marca SUFICIENTE con NUEVO sobre el punto y sin usados', async () => {
+    const c = buildColaboradores({
+      insumo: insumo({ stockMinimo: 5 }),
+      sumas: sumasCon({ NUEVO: { ENTRADA: 8 } }),
+    });
+
+    const result = await c.useCase.execute('ins-1');
+
+    expect(result.getValue().saldos).toEqual({ NUEVO: 8, USADO: 0 });
+    expect(result.getValue().estadoReposicion).toBe('SUFICIENTE');
+  });
+
+  it('sin movimientos USADO devuelve USADO en cero y el total igual a NUEVO', async () => {
+    const c = buildColaboradores({ sumas: sumasCon({ NUEVO: { ENTRADA: 7, SALIDA: 2 } }) });
+
+    const result = await c.useCase.execute('ins-1');
+
+    expect(result.getValue().saldos.USADO).toBe(0);
+    expect(result.getValue().stock).toBe(5);
+    expect(result.getValue().stock).toBe(result.getValue().saldos.NUEVO);
+  });
+
+  it('un saldo USADO negativo no se recorta y entra al total', async () => {
+    const c = buildColaboradores({
+      sumas: sumasCon({ NUEVO: { ENTRADA: 4 }, USADO: { SALIDA: 1 } }),
+    });
+
+    const result = await c.useCase.execute('ins-1');
+
+    expect(result.getValue().saldos).toEqual({ NUEVO: 4, USADO: -1 });
+    expect(result.getValue().stock).toBe(3);
+  });
+
+  // ─── admiteUsado ─────────────────────────────────────────────────────────
+
+  it('admiteUsado es true para una familia de repuestos vigente', async () => {
+    const c = buildColaboradores({ familia: { esRepuesto: true } });
+
+    const result = await c.useCase.execute('ins-1');
+
+    expect(result.getValue().admiteUsado).toBe(true);
+  });
+
+  it('admiteUsado es false para una familia que no es de repuestos', async () => {
+    const c = buildColaboradores({ familia: { esRepuesto: false } });
+
+    const result = await c.useCase.execute('ins-1');
+
+    expect(result.getValue().admiteUsado).toBe(false);
+  });
+
+  it('admiteUsado es false si la familia no existe o no está vigente', async () => {
+    for (const familia of [{ inexistente: true }, { activo: false }, { dadaDeBaja: true }]) {
+      const c = buildColaboradores({ familia });
+
+      const result = await c.useCase.execute('ins-1');
+
+      expect(result.getValue().admiteUsado).toBe(false);
+    }
   });
 
   // ─── Elegibilidad del insumo ─────────────────────────────────────────────

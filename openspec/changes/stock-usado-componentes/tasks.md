@@ -200,13 +200,14 @@ Commit sugerido: `feat(insumos): condicion decidida por saldo en entrada, salida
 
 **Branch**: `feat/stock-usado-componentes-wu03b` · **Base**: wu03a
 
-- [ ] 3b.1 `consultar-stock-insumo.use-case.ts`: devuelve `{ saldos: { NUEVO, USADO }, stock (total), admiteUsado }`; `admiteUsado` sale de la familia (`esRepuesto`); el estado de reposición se calcula sobre `saldos.NUEVO`. Spec (fakes con `sumasCon`). (Req: El estado de reposición se calcula solo sobre el saldo NUEVO)
-- [ ] 3b.2 Specs: `stockMinimo` 5, NUEVO 2 y USADO 10 ⇒ reposición necesaria; NUEVO 8 y USADO 0 ⇒ suficiente; insumo sin movimientos USADO ⇒ USADO 0 y total igual a NUEVO.
-- [ ] 3b.3 Quality gates (backend): `cd backend && pnpm lint && pnpm typecheck && pnpm vitest run src/insumos/application` y `pnpm test`.
+- [x] 3b.1 `consultar-stock-insumo.use-case.ts`: devuelve `{ saldos: { NUEVO, USADO }, stock (total), admiteUsado }`; `admiteUsado` sale de la familia (`esRepuesto`); el estado de reposición se calcula sobre `saldos.NUEVO`. Spec (fakes con `sumasCon`). (Req: El estado de reposición se calcula solo sobre el saldo NUEVO)
+- [x] 3b.2 Specs: `stockMinimo` 5, NUEVO 2 y USADO 10 ⇒ reposición necesaria; NUEVO 8 y USADO 0 ⇒ suficiente; insumo sin movimientos USADO ⇒ USADO 0 y total igual a NUEVO.
+- [x] 3b.3 Quality gates (backend): `cd backend && pnpm lint && pnpm typecheck && pnpm vitest run src/insumos/application` y `pnpm test`.
 
 **Escenarios**: Usados no ocultan la falta de nuevos; Nuevos suficientes; Consulta de stock
 (caso de uso); Insumo sin movimientos USADO.
 **PR boundary**: ~130 líneas, base wu03a.
+**Real**: ~150 líneas entre código y specs (un commit).
 **Ayuda**: sin deuda.
 Commit sugerido: `feat(insumos): consulta de stock con saldos por condicion y reposicion sobre nuevos`.
 

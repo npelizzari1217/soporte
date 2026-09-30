@@ -326,9 +326,12 @@ import { MovimientosInsumoController } from './interface/controllers/movimientos
       // Mostrar un número en pantalla no puede hacer esperar a los técnicos que
       // están sacando cosas del depósito.
       provide: ConsultarStockInsumoUseCase,
-      useFactory: (insumoRepo: IInsumoRepository, movimientoRepo: IMovimientoInsumoRepository) =>
-        new ConsultarStockInsumoUseCase(insumoRepo, movimientoRepo),
-      inject: [INSUMO_REPOSITORY, MOVIMIENTO_INSUMO_REPOSITORY],
+      useFactory: (
+        insumoRepo: IInsumoRepository,
+        movimientoRepo: IMovimientoInsumoRepository,
+        familiaRepo: IFamiliaInsumoRepository,
+      ) => new ConsultarStockInsumoUseCase(insumoRepo, movimientoRepo, familiaRepo),
+      inject: [INSUMO_REPOSITORY, MOVIMIENTO_INSUMO_REPOSITORY, FAMILIA_INSUMO_REPOSITORY],
     },
     {
       // El LISTADO tampoco recibe el runner, por el mismo motivo que la

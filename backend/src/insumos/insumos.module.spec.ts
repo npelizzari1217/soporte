@@ -161,7 +161,7 @@ describe('InsumosModule wiring', () => {
     ['RegistrarEntradaInsumoUseCase', RegistrarEntradaInsumoUseCase, 3],
     ['RegistrarSalidaInsumoUseCase', RegistrarSalidaInsumoUseCase, 4],
     ['RegistrarAjusteInsumoUseCase', RegistrarAjusteInsumoUseCase, 4],
-    ['ConsultarStockInsumoUseCase', ConsultarStockInsumoUseCase, 2],
+    ['ConsultarStockInsumoUseCase', ConsultarStockInsumoUseCase, 3],
     ['ListarMovimientosInsumoUseCase', ListarMovimientosInsumoUseCase, 2],
   ])('inyecta en %s los puertos que su constructor declara', (_nombre, useCase, cantidad) => {
     const providers = (Reflect.getMetadata('providers', InsumosModule) ?? []) as Array<{
