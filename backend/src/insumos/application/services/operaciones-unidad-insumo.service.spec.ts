@@ -4,6 +4,7 @@ import { MovimientoInsumoEntity } from '../../domain/entities/movimiento-insumo.
 import { EstadoUnidadInsumo, UnidadInsumoEntity } from '../../domain/entities/unidad-insumo.entity';
 import { MotivoAjusteRequeridoError } from '../../domain/errors/insumos.errors';
 import {
+  SeguimientoNoModificableError,
   SerialDuplicadoError,
   SerialRequeridoError,
   UnidadNoAdmitidaError,
@@ -243,7 +244,6 @@ describe('OperacionesUnidadInsumo', () => {
         tipo: 'SALIDA',
       });
       expect(r1.getError()).toBeInstanceOf(UnidadNoAdmitidaError);
-      expect(ajena.escribio()).toBe(false);
 
       const faltante = armar({ unidades: [unidad(U1)] });
       const r2 = await faltante.servicio.sacarDelDeposito(INSUMO, [U1, U2], {
@@ -325,6 +325,93 @@ describe('OperacionesUnidadInsumo', () => {
       const r = await t.servicio.sacarDelDeposito(INSUMO, [], { usuarioId: 'u', tipo: 'SALIDA' });
       expect(r).toEqual(Result.ok([]));
       expect(t.escribio()).toBe(false);
+    });
+  });
+  describe('devolverEntregas', () => {
+    function entregada(id: string, over: { condicion?: 'NUEVO' | 'USADO'; serial?: string } = {}) {
+      const u = unidad(id, over);
+      u.entregar();
+      return u;
+    }
+
+    it('devuelve en la condición elegida: CAS desde ENTREGADA, ENTRADA de 1 y evento DEVOLUCION_DE_ENTREGA', async () => {
+      const t = armar({ unidades: [entregada(U1), entregada(U2)] });
+      const r = await t.servicio.devolverEntregas(INSUMO, [U1, U2], {
+        usuarioId: 'u',
+        condicion: 'USADO',
+        motivo: 'volvió usada',
+      });
+      const lote = r.getValue();
+      expect(lote.map((x) => [x.unidad.estado, x.unidad.condicion])).toEqual([
+        ['EN_DEPOSITO', 'USADO'],
+        ['EN_DEPOSITO', 'USADO'],
+      ]);
+      expect(t.llamadas.filter((l) => l.startsWith('W:cas'))).toEqual([
+        'W:cas:ENTREGADA',
+        'W:cas:ENTREGADA',
+      ]);
+      expect(t.movimientos.map((m) => [m.tipo, m.condicion, m.cantidad, m.unidadId])).toEqual([
+        ['ENTRADA', 'USADO', 1, U1],
+        ['ENTRADA', 'USADO', 1, U2],
+      ]);
+      expect(t.eventos.map((e) => [e.tipo, e.movimientoId])).toEqual([
+        ['DEVOLUCION_DE_ENTREGA', t.movimientos[0].id],
+        ['DEVOLUCION_DE_ENTREGA', t.movimientos[1].id],
+      ]);
+    });
+
+    it('una pieza sin uso vuelve como NUEVO y conserva su serial', async () => {
+      const t = armar({ unidades: [entregada(U1, { condicion: 'USADO' })] });
+      const r = await t.servicio.devolverEntregas(INSUMO, [U1], {
+        usuarioId: 'u',
+        condicion: 'NUEVO',
+      });
+      expect(r.getValue()[0].unidad).toMatchObject({ condicion: 'NUEVO', numeroSerie: 'SN-1' });
+    });
+
+    it('respeta el orden de locks de ADR-12: L1, L2 y L3 antes de la primera escritura', async () => {
+      const t = armar({ unidades: [entregada(U1), entregada(U2)] });
+      await t.servicio.devolverEntregas(INSUMO, [U2, U1], { usuarioId: 'u', condicion: 'NUEVO' });
+      expect(t.llamadas.slice(0, 3)).toEqual([`L1:${INSUMO}`, `L2:${INSUMO}`, `L3:${U1},${U2}`]);
+    });
+
+    it('rechaza una unidad que no está ENTREGADA sin escribir la otra', async () => {
+      const t = armar({ unidades: [entregada(U1), unidad(U2)] });
+      const r = await t.servicio.devolverEntregas(INSUMO, [U1, U2], {
+        usuarioId: 'u',
+        condicion: 'NUEVO',
+      });
+      expect(r.getError()).toBeInstanceOf(UnidadNoDisponibleError);
+      expect(t.escribio()).toBe(false);
+    });
+
+    it('con el insumo en NINGUNO devuelve SeguimientoNoModificableError sin tomar más locks', async () => {
+      const t = armar({ seguimiento: 'NINGUNO' });
+      const r = await t.servicio.devolverEntregas(INSUMO, [U1], {
+        usuarioId: 'u',
+        condicion: 'NUEVO',
+      });
+      expect(r.getError()).toBeInstanceOf(SeguimientoNoModificableError);
+      expect(t.llamadas).toEqual([`L1:${INSUMO}`]);
+    });
+
+    it('rechaza una unidad ajena, una inexistente y una repetida sin escribir', async () => {
+      const ajena = unidad(U2, { insumo: OTRO_INSUMO });
+      ajena.entregar();
+      const casos: Array<[string[], UnidadInsumoEntity[], unknown]> = [
+        [[U1, U2], [entregada(U1), ajena], UnidadNoAdmitidaError],
+        [[U1, U3], [entregada(U1)], UnidadNoEncontradaError],
+        [[U1, U1], [entregada(U1)], UnidadNoDisponibleError],
+      ];
+      for (const [ids, unidades, clase] of casos) {
+        const t = armar({ unidades });
+        const r = await t.servicio.devolverEntregas(INSUMO, ids, {
+          usuarioId: 'u',
+          condicion: 'NUEVO',
+        });
+        expect(r.getError()).toBeInstanceOf(clase);
+        expect(t.escribio()).toBe(false);
+      }
     });
   });
 });

@@ -259,4 +259,77 @@ describe('OperacionesUnidadInsumo — Integration', () => {
     expect(movimientos).toBe(2); // la entrada y una sola salida
     expect(eventos).toBe(2); // INGRESO y una sola ENTREGA
   }, 30_000);
+  /** Da de alta piezas y las entrega; devuelve los ids, para las pruebas de devolución. */
+  async function altaYEntrega(seriales: string[]): Promise<string[]> {
+    const alta = await conTenant(() =>
+      txRunner.run(() =>
+        servicio.ingresar(
+          insumoId,
+          seriales.map((numeroSerie) => ({ numeroSerie })),
+          { usuarioId, condicion: 'NUEVO', tipo: 'ENTRADA' },
+        ),
+      ),
+    );
+    const ids = alta.getValue().map((x) => x.unidad.id);
+    await conTenant(() =>
+      txRunner.run(() => servicio.sacarDelDeposito(insumoId, ids, { usuarioId, tipo: 'SALIDA' })),
+    );
+    return ids;
+  }
+
+  it('devolverEntregas de un lote de 2 deja EN_DEPOSITO en la condición elegida, con ENTRADA y evento', async () => {
+    const ids = await altaYEntrega(['D-1', 'D-2']);
+    const antes = await contar();
+
+    const r = await conTenant(() =>
+      txRunner.run(() =>
+        servicio.devolverEntregas(insumoId, ids, { usuarioId, condicion: 'USADO' }),
+      ),
+    );
+
+    expect(r.getValue()).toHaveLength(2);
+    const filas = await tenantClient.unidadInsumo.findMany({ where: { id: { in: ids } } });
+    expect(filas.map((f) => [f.estado, f.condicion, f.numeroSerie].join('|')).sort()).toEqual([
+      'EN_DEPOSITO|USADO|D-1',
+      'EN_DEPOSITO|USADO|D-2',
+    ]);
+    expect(await contar()).toEqual({
+      unidades: antes.unidades,
+      movimientos: antes.movimientos + 2,
+      eventos: antes.eventos + 2,
+    });
+    const evento = await tenantClient.eventoUnidadInsumo.findFirstOrThrow({
+      where: { unidadId: ids[0], tipo: 'DEVOLUCION_DE_ENTREGA' },
+    });
+    expect(evento.movimientoId).toBe(r.getValue()[0].movimiento.id);
+  });
+
+  it('una devolución con una unidad no entregada se devuelve como Result.fail y, aun con commit, no escribe la entregada', async () => {
+    const [entregada] = await altaYEntrega(['E-1']);
+    const alta = await conTenant(() =>
+      txRunner.run(() =>
+        servicio.ingresar(insumoId, [{ numeroSerie: 'E-2' }], {
+          usuarioId,
+          condicion: 'NUEVO',
+          tipo: 'ENTRADA',
+        }),
+      ),
+    );
+    const enDeposito = alta.getValue()[0].unidad.id;
+    const antes = await contar();
+
+    const r = await conTenant(() =>
+      txRunner.run(() =>
+        servicio.devolverEntregas(insumoId, [entregada, enDeposito], {
+          usuarioId,
+          condicion: 'NUEVO',
+        }),
+      ),
+    );
+
+    expect(r.getError()).toBeInstanceOf(UnidadNoDisponibleError);
+    expect(await contar()).toEqual(antes);
+    const fila = await tenantClient.unidadInsumo.findUniqueOrThrow({ where: { id: entregada } });
+    expect(fila.estado).toBe('ENTREGADA');
+  });
 });

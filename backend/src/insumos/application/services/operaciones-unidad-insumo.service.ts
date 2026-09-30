@@ -5,6 +5,7 @@ import { CondicionStock } from '../../domain/entities/tipo-movimiento-insumo';
 import { EstadoUnidadInsumo, UnidadInsumoEntity } from '../../domain/entities/unidad-insumo.entity';
 import { InsumoNoEncontradoError } from '../../domain/errors/insumos.errors';
 import {
+  SeguimientoNoModificableError,
   SerialDuplicadoError,
   UnidadNoAdmitidaError,
   UnidadNoDisponibleError,
@@ -194,14 +195,76 @@ export class OperacionesUnidadInsumo {
   }
 
   /**
+   * Devuelve al depósito piezas entregadas (F2, ADR-13): `ENTREGADA → EN_DEPOSITO`
+   * en la condición elegida (NUEVO si no se usó, USADO si se usó), con una
+   * ENTRADA de cantidad 1 y el evento `DEVOLUCION_DE_ENTREGA`. La unidad conserva
+   * su serial. No exige el insumo habilitado: la exención de G2 la decide el caso
+   * de uso, este servicio no vuelve a imponer `exigirHabilitado`.
+   *
+   * @param insumoId Insumo al que pertenecen las piezas; con `NINGUNO` una unidad viva no tendría dueño.
+   * @param unidadIds Unidades a devolver, sin repetir.
+   * @param o Usuario, motivo opcional y condición con la que vuelven.
+   * @returns Las unidades con su movimiento, en el orden de `unidadIds`; o el primer error de validación, sin haber escrito nada.
+   */
+  async devolverEntregas(
+    insumoId: string,
+    unidadIds: readonly string[],
+    o: ContextoUnidad & { condicion: CondicionStock },
+  ): Promise<Result<UnidadConMovimiento[], DomainError>> {
+    const bloqueo = await this.bloquearInsumo(
+      insumoId,
+      () =>
+        new SeguimientoNoModificableError(
+          `el insumo "${insumoId}" no se sigue por número de serie, así que no admite devolver una entrega.`,
+        ),
+    );
+    if (bloqueo.isFail()) return Result.fail(bloqueo.getError());
+
+    const repetida = unidadIds.find((id, i) => unidadIds.indexOf(id) !== i);
+    if (repetida !== undefined) {
+      return Result.fail(new UnidadNoDisponibleError(repetida, 'está repetida en el lote.'));
+    }
+
+    const leidas = await this.unidadRepo.bloquearPorIds([...unidadIds].sort());
+    const porId = new Map(leidas.map((unidad) => [unidad.id, unidad]));
+
+    const escrituras: EscrituraDeUnidad[] = [];
+    for (const unidadId of unidadIds) {
+      const unidad = porId.get(unidadId);
+      if (unidad === undefined) return Result.fail(new UnidadNoEncontradaError(unidadId));
+      if (unidad.insumoId !== insumoId) return Result.fail(new UnidadNoAdmitidaError(insumoId));
+
+      const estadoLeido = unidad.estado;
+      const transicion = unidad.devolverEntrega(o.condicion);
+      if (transicion.isFail()) return Result.fail(transicion.getError());
+
+      const armada = this.armarEscritura(unidad, estadoLeido, {
+        insumoId,
+        tipo: 'ENTRADA',
+        tipoEvento: 'DEVOLUCION_DE_ENTREGA',
+        o,
+      });
+      if (armada.isFail()) return Result.fail(armada.getError());
+      escrituras.push(armada.getValue());
+    }
+
+    return Result.ok(await this.escribir(escrituras));
+  }
+
+  /**
    * L1 y L2 del insumo, y su validación: existe y se sigue por serie. La lectura
    * `FOR SHARE` es lo primero que toca la base, así que también es el chequeo de
    * transacción activa.
+   *
+   * @param errorSiNoEsSerie Error a devolver si el insumo no es `SERIE`; por defecto `UnidadNoAdmitidaError`.
    */
-  private async bloquearInsumo(insumoId: string): Promise<Result<void, DomainError>> {
+  private async bloquearInsumo(
+    insumoId: string,
+    errorSiNoEsSerie: () => DomainError = () => new UnidadNoAdmitidaError(insumoId),
+  ): Promise<Result<void, DomainError>> {
     const seguimiento = await this.insumoRepo.leerSeguimientoParaMovimiento(insumoId);
     if (seguimiento === null) return Result.fail(new InsumoNoEncontradoError(insumoId));
-    if (seguimiento !== 'SERIE') return Result.fail(new UnidadNoAdmitidaError(insumoId));
+    if (seguimiento !== 'SERIE') return Result.fail(errorSiNoEsSerie());
     await this.movimientoRepo.bloquearStock(insumoId);
     return Result.ok(undefined);
   }
@@ -213,7 +276,7 @@ export class OperacionesUnidadInsumo {
     datos: {
       insumoId: string;
       tipo: 'ENTRADA' | 'AJUSTE_POSITIVO' | 'SALIDA' | 'AJUSTE_NEGATIVO';
-      tipoEvento: 'INGRESO' | 'ENTREGA' | 'BAJA_DE_DEPOSITO';
+      tipoEvento: 'INGRESO' | 'ENTREGA' | 'BAJA_DE_DEPOSITO' | 'DEVOLUCION_DE_ENTREGA';
       o: ContextoUnidad;
       itemCompraId?: string | null;
       equipoId?: string | null;

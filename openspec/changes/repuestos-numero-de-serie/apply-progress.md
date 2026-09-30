@@ -225,3 +225,13 @@ cada código de sus pruebas): parte 1 (`wu03a`) = 3a.1 y 3a.3; parte 2 (`wu03a-2
 | Focused test command | `pnpm vitest run src/insumos`: 77 archivos, 1435 tests verdes |
 | Full suite | `pnpm test`: 502 archivos, 6091 tests verdes |
 | Rollback boundary | Revertir cada commit: archivos nuevos y un provider sin exportar en `insumos.module.ts` |
+
+## WU-4b parte 1 — `devolverEntregas` (4b.1 hecha)
+
+- 4b.1: `devolverEntregas(insumoId, unidadIds, { condicion })` toma L1, L2 y L3 (ids ordenados) y valida antes de
+  escribir: unidad existente, del insumo, `ENTREGADA` (`UnidadNoDisponibleError` si no) e id no repetido. Escribe
+  CAS desde `ENTREGADA`, ENTRADA de cantidad 1 en la condición elegida y evento `DEVOLUCION_DE_ENTREGA`. Con el
+  insumo en `NINGUNO` devuelve `SeguimientoNoModificableError` (ADR-13) mediante un parámetro nuevo de
+  `bloquearInsumo`. El servicio NO exige el insumo habilitado: la exención de G2 la decide el caso de uso (WU-8c).
+- Corte por tamaño (regla de la orquestación), tres partes: parte 1 (esta) = `devolverEntregas`; parte 2 (rama `-2`)
+  = `cargarSerial` y `corregirSerial` con su error nuevo; parte 3 (rama `-3`) = helper del invariante y su spec.
