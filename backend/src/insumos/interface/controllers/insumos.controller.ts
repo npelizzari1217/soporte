@@ -42,6 +42,7 @@ import { CambiarEstadoActivoInsumoUseCase } from '../../application/use-cases/ca
 import { ListarInsumosUseCase } from '../../application/use-cases/listar-insumos.use-case';
 import { DomainError } from '../../../shared/domain/result';
 import {
+  CondicionUsadoNoAdmitidaError,
   InsumoNoEncontradoError,
   SecuenciaCodigoInsumoAgotadaError,
 } from '../../domain/errors/insumos.errors';
@@ -71,7 +72,7 @@ import {
  * `NumeradorCompraAgotadoError` (compras).
  *
  * @param error Error de dominio devuelto por un use case.
- * @returns 404 si el insumo no existe; 409 si la serie de códigos se agotó; 422 para el resto.
+ * @returns 404 si el insumo no existe; 409 si la serie de códigos se agotó; 422 para el resto, incluida la condición USADO no admitida.
  */
 export function toHttpException(
   error: DomainError,
@@ -81,6 +82,12 @@ export function toHttpException(
   }
   if (error instanceof SecuenciaCodigoInsumoAgotadaError) {
     return new ConflictException(error.message);
+  }
+  // Explícito aunque coincida con el default: USADO en un insumo que no es
+  // repuesto es una regla de negocio (422), y el mapeo no debe depender de que
+  // el default siga siendo 422.
+  if (error instanceof CondicionUsadoNoAdmitidaError) {
+    return new UnprocessableEntityException(error.message);
   }
   return new UnprocessableEntityException(error.message);
 }

@@ -215,11 +215,11 @@ Commit sugerido: `feat(insumos): consulta de stock con saldos por condicion y re
 
 **Branch**: `feat/stock-usado-componentes-wu04` · **Base**: wu03b
 
-- [ ] 4.1 `movimientos-insumo.dto.ts`: `RegistrarMovimientoInsumoHttpDto` con `@IsOptional() @IsIn(CONDICIONES_STOCK) condicion?` (lo hereda el DTO del ajuste); un valor fuera del catálogo da 400. `MovimientoInsumoResponseDto` suma `condicion`. Exportar `transformarMotivo` (lo usa WU-8a). Recepción de compra: el DTO **no** declara `condicion` y el `ValidationPipe` global la descarta (ADR-7). (Req: Todo movimiento lleva una condición; La recepción siempre registra NUEVO)
-- [ ] 4.2 `movimientos-insumo.controller.ts`: pasa `condicion` a entrada, salida y ajuste. `insumos.controller.ts`: mapeo explícito de `CondicionUsadoNoAdmitidaError` a 422; `StockInsumoResponseDto` conserva `stock` como total y suma `saldos: { NUEVO, USADO }` y `admiteUsado`.
-- [ ] 4.3 Specs de borde: `movimientos-insumo.dto.spec.ts` (condición inválida da 400; omitida válida; `condicion` sobrante en recepción se descarta con `whitelist`), specs de controller.
-- [ ] 4.4 E2E (`usarLockMasterTest()` si trunca `soporte_master_test`): entrada USADO en repuesto ⇒ saldo USADO sube; USADO en no repuesto ⇒ 422 en entrada, salida y ajuste; salida NUEVO con saldo NUEVO 0 y USADO 5 ⇒ stock insuficiente; `GET stock` devuelve NUEVO, USADO y total; listado de movimientos informa `condicion`; recepción con `condicion: 'USADO'` en el body queda `NUEVO`.
-- [ ] 4.5 Quality gates (backend): `cd backend && pnpm lint && pnpm typecheck && pnpm vitest run src/insumos/interface` y `pnpm test`.
+- [x] 4.1 `movimientos-insumo.dto.ts`: `RegistrarMovimientoInsumoHttpDto` con `@IsOptional() @IsIn(CONDICIONES_STOCK) condicion?` (lo hereda el DTO del ajuste); un valor fuera del catálogo da 400. `MovimientoInsumoResponseDto` suma `condicion`. Exportar `transformarMotivo` (lo usa WU-8a). Recepción de compra: el DTO **no** declara `condicion` y el `ValidationPipe` global la descarta (ADR-7). (Req: Todo movimiento lleva una condición; La recepción siempre registra NUEVO)
+- [x] 4.2 `movimientos-insumo.controller.ts`: pasa `condicion` a entrada, salida y ajuste. `insumos.controller.ts`: mapeo explícito de `CondicionUsadoNoAdmitidaError` a 422; `StockInsumoResponseDto` conserva `stock` como total y suma `saldos: { NUEVO, USADO }` y `admiteUsado`.
+- [x] 4.3 Specs de borde: `movimientos-insumo.dto.spec.ts` (condición inválida da 400; omitida válida; `condicion` sobrante en recepción se descarta con `whitelist`), specs de controller.
+- [x] 4.4 E2E (`usarLockMasterTest()` si trunca `soporte_master_test`): entrada USADO en repuesto ⇒ saldo USADO sube; USADO en no repuesto ⇒ 422 en entrada, salida y ajuste; salida NUEVO con saldo NUEVO 0 y USADO 5 ⇒ stock insuficiente; `GET stock` devuelve NUEVO, USADO y total; listado de movimientos informa `condicion`; recepción con `condicion: 'USADO'` en el body queda `NUEVO`.
+- [x] 4.5 Quality gates (backend): `cd backend && pnpm lint && pnpm typecheck && pnpm vitest run src/insumos/interface` y `pnpm test`.
 
 **Escenarios**: Valor de condición inválido; Consulta de stock; Listado de movimientos; El flujo
 de recepción no acepta condición; USADO sobre un insumo no repuesto (422 en HTTP); Entrada

@@ -52,3 +52,13 @@ Rama `feat/stock-usado-componentes-wu03b`. Modo estandar (feature).
 - `ConsultarStockInsumoUseCase` recibe `familiaRepo` (`Pick<..., 'findById'>`) como tercer parametro y devuelve `{ stock (total), saldos: { NUEVO, USADO }, admiteUsado, stockMinimo, estadoReposicion }`. `admiteUsado` reutiliza `validarCondicionAdmitida(familias, insumo, 'USADO')` (una sola definicion de la regla ADR-6: familia vigente y de repuestos). La reposicion se evalua sobre `saldos.NUEVO`.
 - `insumos.module.ts` inyecta `FAMILIA_INSUMO_REPOSITORY`; su spec pasa de 2 a 3 puertos. El fixture de `toStockInsumoResponseDto` en `movimientos-insumo.dto.spec.ts` suma los campos nuevos (unico ajuste de borde forzado por el typecheck; el DTO HTTP y el controller siguen sin publicar `saldos` ni `admiteUsado`: WU-4).
 - Specs: NUEVO 2 + USADO 10 con minimo 5 => BAJO_MINIMO; NUEVO 8 => SUFICIENTE; sin USADO => USADO 0 y total = NUEVO; USADO negativo entra al total; `admiteUsado` true/false/familia inexistente o no vigente.
+
+## WU-4 — Borde HTTP: condicion en movimientos y stock (tareas 4.1 a 4.5)
+
+Rama `feat/stock-usado-componentes-wu04` (base wu03b). Modo estandar (feature).
+
+- 4.1 `RegistrarMovimientoInsumoHttpDto` suma `condicion?` con `@IsIn(CONDICIONES_STOCK)` (lo hereda el ajuste); `MovimientoInsumoResponseDto` publica `condicion`; `transformarMotivo` exportada (WU-8a).
+- 4.2 Controller pasa `condicion` a entrada, salida y ajuste sin inventar default (lo resuelve el caso de uso). `toHttpException` mapea `CondicionUsadoNoAdmitidaError` a 422 de forma explicita. `StockInsumoResponseDto`: `stock` total + `saldos` + `admiteUsado`.
+- 4.3 Specs de DTO (catalogo, herencia del ajuste, `ValidationPipe` real descarta `condicion` sobre `RegistrarRecepcionDeItemHttpDto`) y de controller (reenvio, 422).
+- 4.4 E2E insumos (ya usa `usarLockMasterTest()`): entrada USADO, USADO no repuesto 422 x3, 400 fuera de catalogo, salida NUEVO con USADO 5, GET stock con saldos y reposicion sobre NUEVO, listado con condicion. E2E compras: `condicion: 'USADO'` en la recepcion queda NUEVO.
+- Gates: ver reporte del orquestador (lint, typecheck, `vitest run src/insumos src/compras`, `pnpm test`).

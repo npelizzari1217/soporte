@@ -155,6 +155,7 @@ export class MovimientosInsumoController {
       motivo: dto.motivo ?? null,
       equipoId: dto.equipoId ?? null,
       sectorId: dto.sectorId ?? null,
+      condicion: dto.condicion,
     });
 
     if (result.isFail()) {
@@ -197,6 +198,7 @@ export class MovimientosInsumoController {
       motivo: dto.motivo ?? null,
       equipoId: dto.equipoId ?? null,
       sectorId: dto.sectorId ?? null,
+      condicion: dto.condicion,
     });
 
     if (result.isFail()) {
@@ -241,6 +243,7 @@ export class MovimientosInsumoController {
       motivo: dto.motivo ?? null,
       equipoId: dto.equipoId ?? null,
       sectorId: dto.sectorId ?? null,
+      condicion: dto.condicion,
     });
 
     if (result.isFail()) {
