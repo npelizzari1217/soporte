@@ -1,5 +1,5 @@
 change: stock-usado-componentes
-phase: apply
+phase: verify
 artifact_store: openspec
 research:
   selected: false
