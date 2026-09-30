@@ -17,8 +17,8 @@ sin unidad, con más de una, ni con cantidad distinta de 1. Un movimiento de un
 insumo `NINGUNO` NO DEBE referenciar unidad. Una operación sobre N piezas DEBE
 generar N movimientos, uno por unidad, en una sola transacción. La condición del
 movimiento DEBE ser la condición de su unidad; en la devolución de una unidad
-`ENTREGADA` es la condición que elige el usuario, que pasa a ser la de la unidad
-(spec `unidades-insumo-serie`). Los movimientos existentes antes de este cambio NO
+`ENTREGADA` y en la recuperación de una unidad `DESCARTADA` es la condición que
+elige el usuario, que pasa a ser la de la unidad (spec `unidades-insumo-serie`). Los movimientos existentes antes de este cambio NO
 DEBEN modificarse.
 
 #### Scenario: Entrada de varias piezas
@@ -156,9 +156,12 @@ negativo) indiquen la condición `USADO`, sujeto a la regla de alcance a
 repuestos. Sin condición indicada DEBEN registrarse como `NUEVO`. La condición
 NO DEBE cambiar la elegibilidad vigente del insumo: la ENTRADA manual sobre un
 insumo deshabilitado DEBE seguir rechazándose con cualquier condición, y el
-AJUSTE conserva su regla actual, que no exige que el insumo esté habilitado. La
-única exención para un insumo deshabilitado es el retiro de un componente al
-stock (spec `componentes-catalogo-unico`). En un insumo `SERIE`, la ENTRADA y el
+AJUSTE conserva su regla actual, que no exige que el insumo esté habilitado. Las
+únicas exenciones para un insumo deshabilitado son las de una pieza que existe
+físicamente: el retiro de un componente al stock (spec
+`componentes-catalogo-unico`) y, en insumos `SERIE`, la devolución de una unidad
+entregada y la recuperación de una unidad descartada (spec
+`unidades-insumo-serie`, decisión del dueño). En un insumo `SERIE`, la ENTRADA y el
 AJUSTE_POSITIVO DEBEN informar un serial nuevo por cada pieza, cumpliendo la
 unicidad normalizada, y crear una unidad `EN_DEPOSITO` con la condición
 indicada; el AJUSTE_POSITIVO DEBE exigir un motivo no vacío. La ENTRADA manual de

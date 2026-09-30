@@ -217,8 +217,10 @@ insumos (spec `unidades-insumo-serie`).
 
 Con `STOCK_USADO`, el retiro DEBE admitir un insumo deshabilitado y una familia
 dada de baja o deshabilitada, porque la pieza existe físicamente (decisión del
-dueño, 2026-09-30). Esta exención vale solo para el retiro: NO DEBE extenderse a
-la ENTRADA ni al AJUSTE manuales. El retiro NO DEBE admitir un insumo dado de
+dueño, 2026-09-30). Por el mismo motivo, el dueño la extendió a dos operaciones
+sobre unidades de un insumo `SERIE`: la devolución de una unidad entregada y la
+recuperación de una unidad descartada (spec `unidades-insumo-serie`). NO DEBE
+extenderse a la ENTRADA ni al AJUSTE manuales. El retiro NO DEBE admitir un insumo dado de
 baja ni un insumo cuya familia no es de repuesto.
 
 Cuando el componente está vinculado a una unidad, con `STOCK_USADO` la ENTRADA
@@ -359,7 +361,12 @@ DEBE volver a `INSTALADA` en el mismo equipo, en la misma transacción, sin
 movimiento y sin cambio de saldo; el componente y la unidad NO DEBEN quedar en
 estados inconsistentes. Si el insumo del componente ya no está en `SERIE`, el
 sistema DEBE rechazar la reactivación de un componente con unidad sin cambiar
-nada. Reactivar un componente legado sin unidad NO DEBE crear una unidad.
+nada. La reactivación de un componente con unidad DEBE exigir que la unidad siga
+`DESCARTADA` por el descarte de ese mismo componente; si la unidad se recuperó al
+depósito, se instaló en otro equipo o se dio de baja por otra vía, el sistema DEBE
+rechazar la reactivación sin cambiar nada, y para volver a instalar la pieza se
+usa el alta con descuento eligiendo la unidad. Reactivar un componente legado sin
+unidad NO DEBE crear una unidad.
 (Previously: la reactivación solo cambiaba el componente; ahora, si tiene unidad descartada, la unidad vuelve a INSTALADA.)
 
 #### Scenario: Reactivar tras devolver al stock
@@ -399,6 +406,12 @@ nada. Reactivar un componente legado sin unidad NO DEBE crear una unidad.
 - GIVEN un componente retirado con `DESCARTE` cuya unidad "S1" está `DESCARTADA`, y su insumo cambiado a `NINGUNO`
 - WHEN se intenta reactivarlo
 - THEN el sistema rechaza la reactivación, el componente sigue retirado y "S1" sigue `DESCARTADA`
+
+#### Scenario: Reactivar un componente cuya unidad se recuperó
+
+- GIVEN un componente retirado con `DESCARTE` cuya unidad "S1" se recuperó después al depósito
+- WHEN se intenta reactivar el componente
+- THEN el sistema rechaza la reactivación, el componente sigue retirado y "S1" sigue `EN_DEPOSITO`
 
 #### Scenario: Reactivar un componente legado sin unidad
 

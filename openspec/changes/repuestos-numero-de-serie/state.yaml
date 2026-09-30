@@ -1,5 +1,5 @@
 change: repuestos-numero-de-serie
-phase: propose
+phase: tasks
 artifact_store: openspec
 research:
   selected: false

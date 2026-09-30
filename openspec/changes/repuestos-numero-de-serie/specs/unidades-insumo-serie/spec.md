@@ -94,6 +94,12 @@ DEBEN modificarse ni borrarse al volver a `NINGUNO` y conservan su historial.
 - WHEN se cambia su seguimiento en cualquiera de las dos direcciones al mismo tiempo
 - THEN las dos operaciones terminan sin error de sistema, y el cambio se decide con el saldo y las unidades que dejó la entrada
 
+#### Scenario: Activación mientras se cambia la unidad de medida
+
+- GIVEN un insumo `NINGUNO` con saldo 0 cuya unidad de medida se está cambiando en otra operación
+- WHEN se lo cambia a `SERIE` al mismo tiempo y la otra operación confirma primero
+- THEN el sistema rechaza la activación con un error que indica reintentar, sin error de sistema y sin cambiar el seguimiento
+
 #### Scenario: Volver a NINGUNO con unidades vivas
 
 - GIVEN un insumo `SERIE` con una unidad `EN_DEPOSITO` o una `INSTALADA`
@@ -116,9 +122,10 @@ conjuntos. Una unidad `INSTALADA` DEBE referir el equipo donde está; una
 `ENTREGADA` salió del depósito por una SALIDA manual (por ejemplo, entregada a un
 sector): sigue existiendo fuera del depósito, su destino queda en el historial y
 PUEDE volver al depósito por una devolución de entrega. Una unidad `DESCARTADA` es
-una baja definitiva (pérdida, rotura, descarte): solo vuelve a `INSTALADA` al
-reactivar el componente descartado que la contenía. Ni `ENTREGADA` ni `DESCARTADA`
-cuentan en ningún saldo.
+una baja (pérdida, rotura, descarte) que PUEDE revertirse: vuelve al depósito por
+la recuperación de una pieza descartada, o a `INSTALADA` al reactivar el
+componente cuyo descarte la dejó así, si sigue descartada por ese descarte. Ni
+`ENTREGADA` ni `DESCARTADA` cuentan en ningún saldo.
 
 #### Scenario: Unidad instalada refiere su equipo
 
@@ -274,8 +281,10 @@ cantidad 1 con esa unidad y la condición elegida, y DEBE dejar la unidad
 `EN_DEPOSITO` en esa condición, en la misma transacción. DEBE quedar en el
 historial. El sistema DEBE rechazar la devolución de una unidad que no está
 `ENTREGADA`, y la de una unidad cuyo insumo ya no está en `SERIE`, sin cambiar nada.
-La elegibilidad del insumo DEBE ser la de la ENTRADA manual. Una unidad
-`DESCARTADA` NO DEBE poder volver por esta vía.
+La devolución DEBE admitir un insumo deshabilitado y una familia dada de baja o
+deshabilitada, con la misma exención que el retiro de un componente al stock,
+porque la pieza existe físicamente (decisión del dueño); NO DEBE admitir un insumo
+dado de baja. Una unidad `DESCARTADA` NO DEBE poder volver por esta vía.
 
 #### Scenario: Devolución de una pieza sin uso
 
@@ -300,6 +309,65 @@ La elegibilidad del insumo DEBE ser la de la ENTRADA manual. Una unidad
 - GIVEN una unidad `ENTREGADA` de un insumo que volvió a `NINGUNO`
 - WHEN se intenta registrar su devolución
 - THEN el sistema rechaza la operación y la unidad sigue `ENTREGADA`
+
+#### Scenario: Devolución de una pieza de un insumo deshabilitado
+
+- GIVEN una unidad "E3" `ENTREGADA` de un insumo `SERIE` que después se deshabilitó
+- WHEN se registra su devolución eligiendo `NUEVO`
+- THEN "E3" queda `EN_DEPOSITO` NUEVO y existe la ENTRADA de cantidad 1 de "E3"
+
+### Requirement: Una unidad descartada puede recuperarse
+
+El sistema DEBE permitir recuperar una unidad `DESCARTADA` (decisión del dueño): la
+unidad DEBE volver a `EN_DEPOSITO` como la misma unidad, con su serial y su
+historial, en la condición `NUEVO` o `USADO` que elige el usuario (USADO sujeto a
+la regla de repuestos), con un motivo obligatorio de texto libre no vacío de a lo
+sumo 500 caracteres. DEBE registrar un movimiento ENTRADA de cantidad 1 con esa
+unidad, la condición elegida y el motivo, en la misma transacción, y DEBE quedar
+en el historial. Una unidad descartada sin serial (serie pendiente) DEBE volver al
+depósito en serie pendiente, con las reglas de toda unidad pendiente. La
+recuperación NO DEBE modificar el componente cuyo descarte dejó la unidad
+`DESCARTADA`. El sistema DEBE rechazar sin cambiar nada la recuperación de una
+unidad que no está `DESCARTADA`, la de una unidad cuyo insumo ya no está en
+`SERIE` y la que no trae motivo. La recuperación DEBE admitir un insumo
+deshabilitado y una familia dada de baja o deshabilitada, con la misma exención
+que la devolución de entrega; NO DEBE admitir un insumo dado de baja.
+
+#### Scenario: Recuperar una pieza dada de baja por error
+
+- GIVEN una unidad "D1" `DESCARTADA` por un ajuste negativo
+- WHEN se la recupera eligiendo `NUEVO` con motivo "apareció en el depósito"
+- THEN "D1" queda `EN_DEPOSITO` NUEVO con el mismo serial, existe una ENTRADA NUEVO de cantidad 1 de "D1" con el motivo, el saldo NUEVO aumenta en 1 y el historial muestra la recuperación
+
+#### Scenario: Recuperar como usada una pieza descartada desde un equipo
+
+- GIVEN una unidad "D2" `DESCARTADA` por el retiro con `DESCARTE` de su componente
+- WHEN se la recupera eligiendo `USADO` con motivo "la placa funcionaba"
+- THEN "D2" queda `EN_DEPOSITO` USADO, el saldo USADO aumenta en 1 y el componente sigue retirado sin cambios
+
+#### Scenario: Recuperar una pendiente descartada
+
+- GIVEN una unidad sin serial `DESCARTADA` por un ajuste negativo
+- WHEN se la recupera con motivo
+- THEN la unidad queda `EN_DEPOSITO` en serie pendiente y cuenta en el saldo
+
+#### Scenario: Recuperar sin motivo
+
+- GIVEN una unidad `DESCARTADA`
+- WHEN se intenta recuperarla sin motivo, con motivo vacío o de más de 500 caracteres
+- THEN el sistema rechaza la operación y la unidad sigue `DESCARTADA`
+
+#### Scenario: Recuperar una unidad que no está descartada
+
+- GIVEN una unidad `EN_DEPOSITO`, `INSTALADA` o `ENTREGADA`
+- WHEN se intenta recuperarla
+- THEN el sistema rechaza la operación y la unidad no cambia
+
+#### Scenario: Recuperar con el insumo deshabilitado
+
+- GIVEN una unidad `DESCARTADA` de un insumo `SERIE` deshabilitado
+- WHEN se la recupera con motivo
+- THEN la unidad queda `EN_DEPOSITO`
 
 ### Requirement: La corrección de un serial exige motivo y queda auditada
 
@@ -343,7 +411,8 @@ adelante: ingreso (recepción, entrada, ajuste o alta sin descuento), cada equip
 donde estuvo instalada, cada retiro con su destino y motivo, la entrega por una
 SALIDA con su destino (el sector o el equipo que la salida informa, y su motivo si
 lo tiene; este cambio no agrega un campo de destinatario), cada devolución de
-entrega con la condición elegida, el descarte o la baja
+entrega con la condición elegida, cada recuperación con su condición y su motivo,
+el descarte o la baja
 por ajuste negativo con su motivo, las correcciones de serial y la carga de un
 serial pendiente. El sistema NO DEBE
 reconstruir historia anterior a este cambio. La ficha del insumo DEBE permitir
@@ -433,8 +502,8 @@ unidad `INSTALADA` en el alta sin descuento, que quien tiene `EQUIPOS:BORRADO`
 devuelva al depósito o descarte la unidad de un componente que retira, y que quien
 tiene `EQUIPOS:MODIFICACION` reinstale la unidad al reactivar un componente, sin
 exigir ningún permiso de INSUMOS. Las operaciones sobre unidades desde la ficha
-del insumo (salida, ajuste, carga y corrección de serial, devolución de entrega)
-DEBEN seguir exigiendo permisos de INSUMOS.
+del insumo (salida, ajuste, carga y corrección de serial, devolución de entrega,
+recuperación de una pieza descartada) DEBEN seguir exigiendo permisos de INSUMOS.
 
 #### Scenario: Instalar una unidad sin permisos de insumos
 

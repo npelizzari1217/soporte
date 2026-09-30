@@ -50,6 +50,7 @@ D4 → ADR-9; D5 → ADR-3; D6 → ADR-4.
 `POST …/unidades/:unidadId/correccion-serial`, `INSUMOS:AJUSTAR` (es explicar una diferencia, igual
 que el ajuste); `POST …/unidades/:unidadId/devolucion-entrega`, `INSUMOS:ALTAS` (ADR-13: es una
 ENTRADA de algo que vuelve físicamente, no la corrección de un conteo, así que no pide `AJUSTAR`);
+`POST …/unidades/:unidadId/recuperacion`, `INSUMOS:AJUSTAR` (ADR-14: revierte una baja);
 `POST`/`PATCH /unidades-medida` con `entera` conservan el gate actual del ABM de catálogos. Los
 endpoints de movimientos, recepción y componentes conservan sus decoradores. Se eligen rutas
 separadas y no una con permiso según el estado de la unidad, porque `@RequiereAcciones` es metadata
@@ -103,10 +104,11 @@ pendiente descartada queda sin serial para siempre: `cargarSerial` solo acepta `
 | `ENTREGADA` | `EN_DEPOSITO` NUEVO o USADO (elegida) | devolución de entrega (F2, ADR-13) | ENTRADA |
 | `INSTALADA` | `EN_DEPOSITO` USADO | retiro `STOCK_USADO` | ENTRADA |
 | `INSTALADA` | `DESCARTADA` | retiro `DESCARTE` | — |
-| `DESCARTADA` (por retiro) | `INSTALADA` | reactivar | — |
+| `DESCARTADA` (por retiro) | `INSTALADA` | reactivar el componente que la descartó (último evento `DESCARTE` de ese componente) | — |
+| `DESCARTADA` (cualquier origen) | `EN_DEPOSITO` NUEVO o USADO (elegida), con serial o pendiente | recuperar pieza descartada (G1, ADR-14) | ENTRADA |
 
-`ENTREGADA` ya no es terminal (F2). `DESCARTADA` es terminal salvo la reactivación de un componente
-descartado; una `DESCARTADA` por ajuste negativo no vuelve.
+Ningún estado es terminal: `ENTREGADA` vuelve por devolución de entrega (F2) y `DESCARTADA` por
+recuperación (G1) o, si la descartó un componente, por la reactivación de ese componente.
 
 | Alternativa | Por qué no |
 |---|---|
@@ -154,23 +156,34 @@ cada unidad coincide con su estado.
 **Choice**: `CambiarSeguimientoInsumoUseCase` (`PATCH /insumos/:id/seguimiento`, body
 `{ seguimiento }`). Las dos direcciones siguen el orden global de ADR-12, en `txRunner.run()`:
 
-1. **L0**: `unidadMedidaRepo.leerParaUso(unidadMedidaId)` con `FOR SHARE` (solo `NINGUNO → SERIE`,
-   que lee `entera`).
-2. **L1**: `insumoRepo.bloquearParaCambioDeSeguimiento(id)` con `SELECT … FOR NO KEY UPDATE`: espera
-   a toda transacción de stock en vuelo, que tiene la fila `FOR SHARE`.
-3. **L2**: `movimientoRepo.bloquearStock(id)` (advisory lock; `lockAndSumByTipo` pasa a llamarlo).
-4. Recién entonces lee (nueva instantánea de `READ COMMITTED`) el saldo del libro y el conteo de
+1. Lectura **sin lock** del `unidad_medida_id` actual del insumo (solo `NINGUNO → SERIE`).
+2. **L0**: `unidadMedidaRepo.leerParaUso(unidadMedidaId)` con `FOR SHARE` sobre esa unidad, que lee
+   `entera`.
+3. **L1**: `insumoRepo.bloquearParaCambioDeSeguimiento(id)` con `SELECT … FOR NO KEY UPDATE`: espera
+   a toda transacción de stock en vuelo, que tiene la fila `FOR SHARE`. Esa lectura devuelve el
+   `seguimiento` y el `unidad_medida_id` vigentes.
+4. **Re-lectura (W1)**: si el `unidad_medida_id` de la lectura con L1 difiere del del paso 1 (un
+   `EditarInsumo` comiteó en el medio), se aborta con `UnidadMedidaCambiadaError` (409,
+   reintentable: el cliente vuelve a pedir el cambio) y se revierte. **No** se toma L0 sobre la
+   unidad nueva, porque eso sería un L0 después de L1.
+5. **L2**: `movimientoRepo.bloquearStock(id)` (advisory lock; `lockAndSumByTipo` pasa a llamarlo).
+6. Recién entonces lee (nueva instantánea de `READ COMMITTED`) el saldo del libro y el conteo de
    unidades `EN_DEPOSITO` o `INSTALADA`.
-5. `NINGUNO → SERIE`: exige `calcularSaldos(...).total === 0` y unidad de medida `entera`.
+7. `NINGUNO → SERIE`: exige `calcularSaldos(...).total === 0` y unidad de medida `entera`.
    `SERIE → NINGUNO` (decisión del dueño): exige cero unidades `EN_DEPOSITO` y cero `INSTALADA`. Las
    `ENTREGADA` y `DESCARTADA` no lo impiden, no se tocan y conservan su historial; mientras el
-   insumo sea `NINGUNO`, una `ENTREGADA` no puede volver (ADR-13).
+   insumo sea `NINGUNO`, una `ENTREGADA` no puede volver (ADR-13) ni una `DESCARTADA` recuperarse
+   (ADR-14).
    Error: `SeguimientoNoModificableError` (422) con el motivo.
 
-El alta (`POST /insumos`) acepta `seguimiento` con la regla de la unidad entera, leída con L0 (saldo
-0 por construcción). `EditarInsumoUseCase`, cuando cambia `unidadMedidaId`, corre en transacción con
-L0 sobre la unidad destino y L1 `FOR NO KEY UPDATE` sobre el insumo, y rechaza la unidad no entera
-en un insumo `SERIE` (`UnidadMedidaNoEnteraError`, 422).
+El alta (`POST /insumos`) acepta `seguimiento` con la regla de la unidad entera. `CrearInsumoUseCase`
+toma siempre, en este orden, L0 (`FOR SHARE` sobre la unidad de medida elegida), el advisory
+`insumo-codigo:<prefijo>` que ya toma `PrismaInsumoRepository.findLastSecuenciaCodigo` (nivel LC de
+ADR-12) y recién después hace el `INSERT` (saldo 0 por construcción). `EditarInsumoUseCase`, cuando
+cambia `unidadMedidaId`, corre en transacción con L0 sobre la unidad destino y L1 `FOR NO KEY
+UPDATE` sobre el insumo; el `seguimiento` y la unidad actual que decide son los que devuelve esa
+lectura con L1, no los de la entidad leída antes. Rechaza la unidad no entera en un insumo `SERIE`
+(`UnidadMedidaNoEnteraError`, 422).
 
 **Solo este caso de uso cambia `seguimiento` (W3).** `PrismaInsumoRepository.save()` es un
 `upsert` con update anidado: un `EditarInsumo` o un `CambiarEstadoActivoInsumo` que leyó la entidad
@@ -195,8 +208,9 @@ demás cambios ya se guardaron y deja reintentar solo el seguimiento.
 **editable** desde el ABM de unidades (casilla nueva). `CrearUnidadMedidaUseCase` y
 `EditarUnidadMedidaUseCase` lo aceptan. Desmarcarlo se rechaza mientras algún insumo `SERIE` use la
 unidad (`UnidadMedidaEnUsoPorSerieError`, 422): la edición toma el lock de escritura de la fila de
-la unidad (L0) y luego cuenta los insumos `SERIE`; una activación en vuelo tiene la fila `FOR SHARE`,
-así que la edición espera y la ve. Una lista cerrada por código se rechaza porque `codigo` es
+la unidad (L0) —`SELECT … FOR UPDATE` siempre que el DTO traiga `codigo`, porque cambiar una
+columna única es un cambio de clave; `FOR NO KEY UPDATE` si no— y luego cuenta los insumos
+`SERIE`; una activación en vuelo tiene la fila `FOR SHARE`, así que la edición espera y la ve. Una lista cerrada por código se rechaza porque `codigo` es
 editable: renombrar `UNI` rompería un insumo `SERIE` vigente. La validación de cantidad entera en
 cada operación `SERIE` no depende de la unidad de medida: la exige `OperacionesUnidadInsumo`
 (`CantidadNoEnteraError`, 422).
@@ -205,7 +219,7 @@ cada operación `SERIE` no depende de la unidad de medida: la exige `Operaciones
 
 ```ts
 export interface ContextoUnidad { usuarioId: string; motivo?: string | null }
-export interface ItemEnEquipo { unidadId: string; equipoId: string }
+export interface ItemEnEquipo { unidadId: string; equipoId: string; componenteId: string } // componenteId: id ya generado por la entidad, aunque la fila se inserte después (ADR-9)
 
 export class OperacionesUnidadInsumo {
   ingresar(insumoId: string, piezas: { numeroSerie: string | null }[],
@@ -216,11 +230,13 @@ export class OperacionesUnidadInsumo {
       equipoId?: string | null; sectorId?: string | null }): Promise<Result<UnidadConMovimiento[], DomainError>>; // SALIDA → ENTREGADA (con serial); AJUSTE_NEGATIVO → DESCARTADA (con serial o pendiente, F1)
   devolverEntregas(insumoId: string, unidadIds: string[],
     o: ContextoUnidad & { condicion: CondicionStock }): Promise<Result<UnidadConMovimiento[], DomainError>>; // ENTREGADA → EN_DEPOSITO en la condición elegida + ENTRADA (F2)
+  recuperarDescartadas(insumoId: string, unidadIds: string[],
+    o: ContextoUnidad & { condicion: CondicionStock }): Promise<Result<UnidadConMovimiento[], DomainError>>; // DESCARTADA → EN_DEPOSITO en la condición elegida + ENTRADA; motivo obligatorio (G1)
   instalar(items: ItemEnEquipo[], o: ContextoUnidad): Promise<Result<UnidadConMovimiento[], DomainError>>;          // EN_DEPOSITO → INSTALADA + SALIDA
   devolverAlDeposito(items: ItemEnEquipo[], o: ContextoUnidad): Promise<Result<UnidadConMovimiento[], DomainError>>; // INSTALADA → EN_DEPOSITO USADO + ENTRADA USADO
   descartarInstaladas(items: ItemEnEquipo[], o: ContextoUnidad): Promise<Result<UnidadInsumoEntity[], DomainError>>; // INSTALADA → DESCARTADA, sin movimiento
   reinstalar(items: ItemEnEquipo[], o: ContextoUnidad): Promise<Result<UnidadInsumoEntity[], DomainError>>;          // DESCARTADA → INSTALADA, sin movimiento
-  altaInstalada(insumoId: string, numeroSerie: string, equipoId: string, o: ContextoUnidad & { condicion: CondicionStock }): Promise<Result<UnidadInsumoEntity, DomainError>>;
+  altaInstalada(insumoId: string, numeroSerie: string, equipoId: string, o: ContextoUnidad & { condicion: CondicionStock; componenteId: string }): Promise<Result<UnidadInsumoEntity, DomainError>>;
   cargarSerial(unidadId: string, numeroSerie: string, o: ContextoUnidad): Promise<Result<UnidadInsumoEntity, DomainError>>;
   corregirSerial(unidadId: string, numeroSerie: string, o: ContextoUnidad): Promise<Result<UnidadInsumoEntity, DomainError>>; // motivo obligatorio
 }
@@ -274,8 +290,9 @@ alta de componente.
 `UnidadNoDisponibleError`. El frontend no la envía.
 
 **La carrera con el cambio de seguimiento.** Todo caso de uso que escribe stock o unidades —entrada,
-recepción, devolución de componente, devolución de entrega, salida, ajuste, instalar, retiro,
-reactivar— abre transacción y su **primer lock** es L1: `insumoRepo.leerSeguimientoParaMovimiento(id)`
+recepción, devolución de componente, devolución de entrega, recuperación de pieza descartada,
+salida, ajuste, instalar, retiro, reactivar, `cargarSerial`, `corregirSerial`— abre transacción y
+su **primer lock** es L1: `insumoRepo.leerSeguimientoParaMovimiento(id)`
 (`SELECT seguimiento … FOR SHARE`). El seguimiento que decide la rama es el de esa lectura. Recién
 después toma L2 (si su operación lo pide) y L3. Los `FOR SHARE` no se bloquean entre sí, así que las
 entradas `NINGUNO` siguen sin serializarse entre ellas y sin tomar el advisory lock (la decisión
@@ -303,15 +320,18 @@ mercadería físicamente en depósito, y el delta acumulado no sabría qué falt
 
 - **Instalar con descuento** (`InstalarComponenteDesdeDepositoUseCase`): con `unidadId`, dentro de
   la transacción y **en este orden** (ADR-12: locks antes de la primera escritura),
-  `operaciones.instalar([{ unidadId, equipoId }])` → `agregarComponente` (componente con
-  `unidadId`, `numeroSerie` NULL) → `vincularInstalacion(salida.id)`. Sin
+  `agregarComponente.preparar()` (valida y construye la entidad con `unidadId` y `numeroSerie`
+  NULL, sin escribir; `AgregarComponenteUseCase` se parte en `preparar` + `execute` = preparar y
+  guardar) → `operaciones.instalar([{ unidadId, equipoId, componenteId: componente.id }])` →
+  `vincularInstalacion(salida.id)` → un único `save()` (L4). Sin
   `unidadId`, el camino de hoy; si el insumo es `SERIE`, la salida lo rechaza con
   `UnidadRequeridaError`. `numeroSerie` y `condicion` del body se ignoran con `unidadId`.
 - **Alta sin descuento (D3)**: con insumo `SERIE`, `numeroSerie` es obligatorio;
   `operaciones.altaInstalada()` crea la unidad `INSTALADA` con la condición indicada (NUEVO por
   defecto; con `descontarStock: false` la condición no se ignora cuando el insumo es `SERIE`,
   porque es un dato de la unidad), sin movimiento, con evento
-  `ALTA_INSTALADA`, y después (L4) el componente nace con `unidadId`. Con `NINGUNO`, como hoy.
+  `ALTA_INSTALADA`, y después (L4) el componente nace con `unidadId`; mismo patrón `preparar()` →
+  operación de unidad con `componenteId` → `save()`. Con `NINGUNO`, como hoy.
 - **Retiro `STOCK_USADO`**: `registrarDevolucionDeComponente` suma `unidadId?` y `numeroSerie?`
   y ramifica: componente con unidad → `devolverAlDeposito` (la unidad vuelve USADO con su serial);
   componente **legado** de un insumo hoy `SERIE` → `numeroSerie` obligatorio en el body del retiro
@@ -321,8 +341,12 @@ mercadería físicamente en depósito, y el delta acumulado no sabría qué falt
   la unicidad la decide el backend); si no, el campo queda vacío y obligatorio. Insumo `NINGUNO`,
   como hoy. Sus guards de insumo y familia (ADR-4 del ciclo anterior) no cambian.
 - **Retiro `DESCARTE`**: con unidad, `descartarInstaladas` (sin movimiento).
-- **Reactivar**: pasa a correr en transacción; con unidad, primero `reinstalar` (toma L1 y L3) y
-  después el `save()` del componente (L4). Si el insumo ya no es
+- **Reactivar**: pasa a correr en transacción; con unidad, primero `reinstalar` (toma L1, L2 y L3,
+  como toda operación de ADR-4) y después el `save()` del componente (L4). `reinstalar` exige que la
+  unidad esté `DESCARTADA` **y** que su último evento sea el `DESCARTE` de este mismo componente
+  (`eventos_unidad_insumo.componente_id`, ADR-9); si no —porque la pieza se recuperó (ADR-14), se
+  reinstaló en otro equipo o se volvió a dar de baja por otra vía—, `UnidadDelComponenteNoDisponibleError`
+  (422) y no cambia nada. Si el insumo ya no es
   `SERIE`, `SeguimientoNoModificableError`: reinstalar crearía una unidad viva en un insumo
   `NINGUNO`. Se conserva la asimetría vigente: tras `STOCK_USADO` sigue rechazado.
 - **Editar componente**: con unidad, `numeroSerie` en el PATCH se rechaza con
@@ -343,6 +367,7 @@ mercadería físicamente en depósito, y el delta acumulado no sabría qué falt
 | `MovimientoInsumoResponseDto` | `unidadId`, `numeroSerie` (include) |
 | `GET /insumos/:id/unidades?estado=&disponibles=` | `UnidadInsumoResponseDto[]` (`id`, `numeroSerie`, `condicion`, `estado`, `equipoId`, `equipoNombre`); `disponibles=true` = `EN_DEPOSITO` con serial (salida, instalar); el selector del ajuste negativo pide `estado=EN_DEPOSITO` e incluye las pendientes (F1) |
 | `POST …/unidades/:unidadId/devolucion-entrega` | `{ condicion, motivo? }` → `MovimientoInsumoResponseDto` (ADR-13) |
+| `POST …/unidades/:unidadId/recuperacion` | `{ condicion, motivo }` (`transformarMotivo`, 500) → `MovimientoInsumoResponseDto` (ADR-14) |
 | `GET /insumos/:id/unidades/:unidadId/historial` | `EventoUnidadResponseDto[]` cronológico |
 | `POST …/unidades/:unidadId/serial` | `{ numeroSerie }` |
 | `POST …/unidades/:unidadId/correccion-serial` | `{ numeroSerie, motivo }` (`transformarMotivo`, 500) |
@@ -353,15 +378,22 @@ mercadería físicamente en depósito, y el delta acumulado no sabría qué falt
 Errores nuevos (insumos): `SerialDuplicadoError` (409), `UnidadNoDisponibleError`,
 `UnidadRequeridaError`, `UnidadNoAdmitidaError`, `SerialesNoCoincidenError`, `SerialRequeridoError`,
 `CantidadNoEnteraError`, `SeguimientoNoModificableError`, `UnidadMedidaNoEnteraError`,
-`UnidadMedidaEnUsoPorSerieError`, `UnidadNoEncontradaError` (404) — 422 salvo indicación. Equipos: `SerialDeUnidadNoEditableError`.
+`UnidadMedidaEnUsoPorSerieError`, `UnidadMedidaCambiadaError` (409, reintentable),
+`MotivoRecuperacionRequeridoError`, `UnidadNoEncontradaError` (404) — 422 salvo indicación.
+Equipos: `SerialDeUnidadNoEditableError`, `UnidadDelComponenteNoDisponibleError`.
 Todos con mapeo explícito en su controller.
 
 ### ADR-9: historial y corrección — bitácora propia `eventos_unidad_insumo` (D4)
 
 Tabla append-only: `id`, `unidad_id` FK, `tipo` (`CHECK` contra `TIPOS_EVENTO_UNIDAD`: `INGRESO`,
 `ALTA_INSTALADA`, `SERIAL_CARGADO`, `CORRECCION_SERIAL`, `INSTALACION`, `RETIRO_A_DEPOSITO`,
-`DESCARTE`, `ENTREGA`, `DEVOLUCION_DE_ENTREGA`, `BAJA_DE_DEPOSITO`, `REACTIVACION`), `movimiento_id` FK `UNIQUE` NULL, `equipo_id` FK
-NULL, `serial_anterior`, `serial_nuevo`, `motivo`, `usuario_id` (soft ref), `created_at
+`DESCARTE`, `ENTREGA`, `DEVOLUCION_DE_ENTREGA`, `BAJA_DE_DEPOSITO`, `RECUPERACION`, `REACTIVACION`),
+`movimiento_id` FK `UNIQUE` NULL, `equipo_id` FK NULL, `componente_id UUID NULL` (lo llevan
+`INSTALACION`, `ALTA_INSTALADA`, `RETIRO_A_DEPOSITO`, `DESCARTE` y `REACTIVACION`: es lo que permite
+a reactivar saber si el último `DESCARTE` fue de ese componente, ADR-7). Va **sin FK**, como
+`usuario_id`: por el orden de ADR-12 la instalación escribe el evento antes que el componente, con
+el id que `BaseEntity` ya generó en memoria, y una FK fallaría; la coherencia la garantiza
+`OperacionesUnidadInsumo` y la verifica el spec del invariante. `serial_anterior`, `serial_nuevo`, `motivo`, `usuario_id` (soft ref), `created_at
 clock_timestamp()`; índice `(unidad_id, created_at)`. El puerto solo tiene `insert` y
 `listarPorUnidad`. La corrección de serial es un evento `CORRECCION_SERIAL` con los dos seriales,
 motivo y usuario: el registro auditado **es** el historial.
@@ -374,6 +406,7 @@ motivo y usuario: el registro auditado **es** el historial.
 
 El evento referencia el movimiento por id; no copia cantidad ni condición. `ENTREGA` (SALIDA manual,
 la unidad queda `ENTREGADA`), `DEVOLUCION_DE_ENTREGA` (ENTRADA en la condición elegida, vuelve a
+`EN_DEPOSITO`), `RECUPERACION` (ENTRADA en la condición elegida, con motivo, vuelve a
 `EN_DEPOSITO`) y `BAJA_DE_DEPOSITO` (AJUSTE_NEGATIVO, queda `DESCARTADA`, también desde pendiente)
 llevan siempre `movimiento_id`; el historial muestra el destino de la entrega leyendo `sector_id`,
 `equipo_id` y `motivo` de ese movimiento, sin copiarlos al evento.
@@ -414,7 +447,8 @@ lock de un nivel menor después de uno mayor:
 
 | Nivel | Lock | Quién lo toma |
 |---|---|---|
-| L0 | Fila de `unidades_medida`: `FOR SHARE` para leer `entera`; lock de escritura para editarla | Alta con `SERIE`, activación, `EditarInsumo` con cambio de unidad; `EditarUnidadMedida` |
+| L0 | Fila de `unidades_medida`: `FOR SHARE` para leer `entera`; `FOR UPDATE` para editarla si el DTO trae `codigo`, `FOR NO KEY UPDATE` si no | `CrearInsumo` (siempre), activación `NINGUNO → SERIE`, `EditarInsumo` con cambio de unidad; `EditarUnidadMedida` |
+| LC | Advisory `insumo-codigo:<prefijo>` (ya existe: `PrismaInsumoRepository.findLastSecuenciaCodigo`) | Solo `CrearInsumo`, entre L0 y su `INSERT` |
 | L1 | Fila de `insumos`: `FOR SHARE` (`leerSeguimientoParaMovimiento`); `FOR NO KEY UPDATE` para cambiarla | Todo caso de uso de stock o unidades (lista de ADR-5); cambio de seguimiento en las dos direcciones; `EditarInsumo` con cambio de unidad |
 | L2 | Advisory lock `insumo-stock:<id>` (`bloquearStock`) | Salida, ajuste, cambio de seguimiento y toda operación de `OperacionesUnidadInsumo`; la entrada `NINGUNO` no lo toma |
 | L3 | Filas de `unidades_insumo`: `FOR NO KEY UPDATE` | `OperacionesUnidadInsumo` |
@@ -424,6 +458,15 @@ lock de un nivel menor después de uno mayor:
 el orden lo prohíbe. El caso que señaló la validación —la entrada `SERIE` con L1 `FOR SHARE`
 esperando L2 mientras el cambio de seguimiento tenía L2 y esperaba la fila— desaparece porque el
 cambio de seguimiento toma L1 **antes** que L2: con una entrada en vuelo espera en L1 sin tener L2.
+La activación lee el `unidad_medida_id` sin lock para saber qué fila de L0 tomar; si al obtener L1
+la unidad cambió, aborta con `UnidadMedidaCambiadaError` en vez de tomar L0 sobre la nueva, que
+sería un L0 después de L1 (ADR-3, paso 4).
+
+**LC no crea inversión.** Solo `CrearInsumo` toma `insumo-codigo:<prefijo>`, siempre después de L0
+`FOR SHARE` y antes de un `INSERT` en `insumos` cuya fila nueva nadie más ve, y no toma ningún lock
+del orden después. Dos altas comparten L0 (`FOR SHARE` es compatible consigo mismo) y se ordenan en
+LC. `EditarUnidadMedida` tiene L0 exclusivo pero no toma LC ni ningún otro nivel, así que a lo sumo
+espera o hace esperar, sin ciclo.
 
 **Los `FOR KEY SHARE` implícitos de las FK.** Todo `INSERT` en `movimientos_insumo`,
 `unidades_insumo`, `componentes_equipo` y `eventos_unidad_insumo` toma `FOR KEY SHARE` sobre las filas
@@ -433,22 +476,27 @@ inversión porque `FOR KEY SHARE` **solo** choca con `FOR UPDATE` y con cambios 
 ningún camino usa ninguno de los dos sobre esas tablas: el cambio de seguimiento y el CAS de unidades
 usan `FOR NO KEY UPDATE` (elegido por eso, no `FOR UPDATE`), los ids no se actualizan, `insumos.codigo`
 es inmutable (issue #166) y el índice único de `numero_serie_normalizado` es parcial y no puede ser
-referenciado por una FK. `unidades_medida.codigo` sí es editable y su `UPDATE` es un cambio de clave,
-pero esa transacción no toma ningún otro lock del orden. Los locks de otros agregados tomados antes
+referenciado por una FK. `unidades_medida.codigo` sí es editable y su `UPDATE` es un cambio de clave:
+por eso `EditarUnidadMedida` toma `FOR UPDATE` de entrada (L0) cuando el DTO trae `codigo`, en vez de
+escalar de un lock menor a uno mayor en medio de la transacción, y no toma ningún otro lock del
+orden. Los locks de otros agregados tomados antes
 de L1 (la fila del ítem de compra en la recepción; la fila nueva del componente en la instalación
 `NINGUNO`, invisible para las demás transacciones) son válidos porque ningún camino los toma después
 de L1–L3.
 
 **Tests.** `orden-de-locks.concurrencia.integration.spec.ts`, con dos clientes y pausas controladas
-(`pg_sleep` dentro de la transacción o una barrera entre promesas):
+(`pg_sleep` dentro de la transacción o una barrera entre promesas). Cada caso entra en la WU que
+trae el camino que ejercita (W2):
 
-1. `SERIE → NINGUNO` contra una entrada `SERIE` en vuelo: termina sin `40P01`; la entrada comitea y
-   el cambio se rechaza porque ve las unidades nuevas `EN_DEPOSITO`.
-2. `NINGUNO → SERIE` contra una entrada `NINGUNO` en vuelo: sin `40P01`; el cambio ve el saldo
-   distinto de cero y se rechaza.
-3. Orden inverso de los dos: el cambio comitea primero y la entrada, al obtener L1, sigue la rama del
-   seguimiento nuevo y se rechaza con 422 (`SerialesNoCoincidenError` o `UnidadNoAdmitidaError`).
-4. Salida `NINGUNO` contra `NINGUNO → SERIE`: sin `40P01`.
+| # | Caso | Resultado esperado | WU |
+|---|---|---|---|
+| 1 | `NINGUNO → SERIE` contra `EditarInsumo` que cambia la unidad de medida en vuelo | Sin `40P01`; la activación aborta con `UnidadMedidaCambiadaError` | 6 |
+| 2 | Dos cambios de seguimiento concurrentes sobre el mismo insumo | Sin `40P01`; se serializan en L1 | 6 |
+| 3 | `SERIE → NINGUNO` contra una entrada `SERIE` en vuelo | Sin `40P01`; la entrada comitea y el cambio se rechaza porque ve las unidades nuevas | 7a |
+| 4 | `NINGUNO → SERIE` contra una entrada `NINGUNO` en vuelo | Sin `40P01`; el cambio ve saldo distinto de cero y se rechaza | 7a |
+| 5 | Orden inverso de 3 y 4: el cambio comitea primero | La entrada, al obtener L1, sigue la rama nueva y da 422 (`SerialesNoCoincidenError` o `UnidadNoAdmitidaError`) | 7a |
+| 6 | Salida `NINGUNO` contra `NINGUNO → SERIE` | Sin `40P01` | 7b |
+| 7 | Desmarcar `entera` contra una activación en vuelo | Sin `40P01`; la edición espera en L0 y se rechaza | 12b |
 
 Rechazado: reintentar ante `40P01` (esconde el defecto y deja un 500 posible bajo carga) y un único
 advisory lock sin lock de fila (la entrada `NINGUNO` tendría que tomarlo y se serializarían las
@@ -464,14 +512,52 @@ ENTRADA de cantidad 1 con `unidadId` y esa condición → evento `DEVOLUCION_DE_
 
 Guards: el insumo debe estar en `SERIE` (con `NINGUNO` una unidad viva no tendría dueño;
 `SeguimientoNoModificableError`); la unidad debe estar `ENTREGADA` (`UnidadNoDisponibleError`);
-`USADO` sigue la regla de repuestos (`validarCondicionAdmitida`); la elegibilidad del insumo es la de
-la ENTRADA manual (vigente y habilitado), porque la spec reserva la exención de habilitado al retiro
-de un componente.
+`USADO` sigue la regla de repuestos. **Insumo deshabilitado (G2, decisión del dueño): se admite**,
+con la misma exención que el retiro de un componente, porque la pieza existe físicamente:
+`validarInsumoElegible` sin `exigirHabilitado` (el insumo sigue debiendo existir y estar vigente) y
+`validarCondicionAdmitida(..., { admitirFamiliaNoVigente: true })` (la familia dada de baja o
+deshabilitada no rechaza; `esRepuesto = false` con USADO sí). La exención vive en este caso de uso
+con nombre de origen, igual que `registrarDevolucionDeComponente`; la ENTRADA y el AJUSTE manuales
+no la reciben.
 
 **Permiso `INSUMOS:ALTAS`**: es una ENTRADA de una pieza que vuelve físicamente, el trabajo diario
 del depósito; `AJUSTAR` es para explicar diferencias contra un conteo, y exigirlo haría que quien
 entregó la pieza no pueda registrar que volvió. Rechazado: reusar la entrada manual con un serial
 existente (chocaría con la unicidad y crearía otra unidad, perdiendo la historia).
+
+### ADR-14: recuperar pieza descartada (G1)
+
+`RecuperarUnidadDescartadaUseCase` (`POST /insumos/:insumoId/unidades/:unidadId/recuperacion`,
+body `{ condicion, motivo }`). La unidad `DESCARTADA` vuelve a `EN_DEPOSITO` con la **misma
+identidad**, serial e historial, en la condición que elige el usuario (como en F2). En la
+transacción, con el orden de ADR-12: L1 → `operaciones.recuperarDescartadas()` (L2, L3) → ENTRADA
+de cantidad 1 con `unidadId`, esa condición y el motivo → evento `RECUPERACION`. El invariante de
+ADR-2 se mantiene: `EN_DEPOSITO` y el libro suben 1 en la misma condición.
+
+**Permiso `INSUMOS:AJUSTAR`**: revierte una baja, que es explicar una diferencia contra lo
+registrado, igual que el ajuste; por eso también exige motivo (`MotivoRecuperacionRequeridoError`,
+misma normalización y tope de 500). Movimiento ENTRADA y no AJUSTE_POSITIVO, por indicación del
+orquestador; el dueño puede preferir AJUSTE_POSITIVO para que el libro espeje la baja, y cambiarlo
+es una línea del servicio.
+
+**Pendiente descartada (F1) → se recupera como pendiente.** La unidad vuelve `EN_DEPOSITO` sin
+serial, cuenta en el saldo y queda sujeta a las reglas de siempre de una pendiente: `cargarSerial`
+la completa y solo el ajuste negativo la vuelve a sacar. Se elige porque es coherente con los CHECK
+sin tocarlos (`numero_serie IS NOT NULL OR estado IN ('EN_DEPOSITO','DESCARTADA')`) y no abre un
+segundo camino de carga de serial. Rechazado: exigir el serial antes de recuperar, que obligaría a
+`cargarSerial` a aceptar unidades `DESCARTADA` (un estado más en su guard) o a recibir el serial en
+el body de la recuperación (dos operaciones en una).
+
+**Unidad descartada por el `DESCARTE` de un componente.** La recuperación deja la unidad en el
+depósito y **no** toca el componente, que sigue retirado con `bajaDestino = DESCARTE`. Reactivar ese
+componente después se rechaza con `UnidadDelComponenteNoDisponibleError` (ADR-7): el último evento
+de la unidad ya no es el `DESCARTE` de ese componente. Para volver a instalar la pieza se usa el
+alta con descuento eligiendo la unidad.
+
+Guards: el insumo debe estar en `SERIE` (`SeguimientoNoModificableError`); la unidad debe estar
+`DESCARTADA` (`UnidadNoDisponibleError`); insumo deshabilitado y familia no vigente **admitidos**,
+con la misma exención que ADR-13 (G2). La unicidad no se reevalúa: la unidad conserva su serial,
+que ya ocupaba el índice.
 
 ---
 
@@ -485,12 +571,13 @@ Entrada / recepción SERIE
                                                         ├ INSERT movimiento (unidadId, cantidad 1)
                                                         └ INSERT evento INGRESO
 Cambio de seguimiento (las dos direcciones)
-  tx ─ L0 unidad de medida (FOR SHARE) ─ L1 insumo (FOR NO KEY UPDATE) ─ L2 advisory ─ conteos ─ UPDATE
+  tx ─ leer unidad_medida_id ─ L0 unidad (FOR SHARE) ─ L1 insumo (FOR NO KEY UPDATE)
+     ─ ¿unidad cambió? ⇒ 409 UnidadMedidaCambiadaError ─ L2 advisory ─ conteos ─ UPDATE
 Instalar
-  ComponenteCreateDialog ── unidadId ──▶ Instalar ─ tx ─┬ Operaciones.instalar ─ L1 ─ L2 ─ L3 unidad
-                                                       │   EN_DEPOSITO→INSTALADA + SALIDA + evento
-                                                       ├ L4 AgregarComponente (unidadId)
-                                                       └ vincularInstalacion(salida.id)
+  ComponenteCreateDialog ── unidadId ──▶ Instalar ─ tx ─┬ AgregarComponente.preparar (sin escribir)
+                                                       ├ Operaciones.instalar ─ L1 ─ L2 ─ L3 unidad
+                                                       │   EN_DEPOSITO→INSTALADA + SALIDA + evento(componenteId)
+                                                       └ vincularInstalacion(salida.id) ─ L4 save
 Ficha
   GET /stock ── SERIE ? conteo EN_DEPOSITO : calcularSaldos(libro)
   GET /unidades · GET /historial ◀── eventos_unidad_insumo
@@ -512,7 +599,7 @@ Ficha
 | `backend/src/shared/infrastructure/persistence/exigir-transaccion-activa.ts` (+spec) | Create | Chequeo de `enTransaccion` extraído de `lockAndSumByTipo` |
 | `.../prisma/orden-de-locks.concurrencia.integration.spec.ts` | Create | ADR-12 |
 | `.../use-cases/{crear,editar}-unidad-medida.use-case.ts`, `unidades-medida.dto.ts` (+specs, e2e) | Modify | `entera` (F3) |
-| `.../use-cases/devolver-entrega.use-case.ts` (+spec) | Create | ADR-13 |
+| `.../use-cases/devolver-entrega.use-case.ts`, `recuperar-unidad-descartada.use-case.ts` (+specs) | Create | ADR-13, ADR-14 |
 | `.../prisma/prisma-unidad-insumo.repository.ts`, `prisma-evento-unidad-insumo.repository.ts`, mappers (+integración) | Create | ADR-1, ADR-4 |
 | `.../prisma/*-constraints.integration.spec.ts` | Modify/Create | CHECK contra catálogos |
 | `.../application/services/operaciones-unidad-insumo.service.ts` (+spec, +integración de lote) | Create | ADR-4 |
@@ -526,7 +613,7 @@ Ficha
 | `.../use-cases/{instalar-componente-desde-deposito,agregar-componente,retirar-componente,reactivar-componente,editar-componente}.use-case.ts` (+specs, integración) | Modify | ADR-7 |
 | `.../interface/dtos/equipos.dto.ts`, `equipos.controller.ts` (+e2e) | Modify | ADR-8 |
 | `frontend/src/features/insumos/{types,schemas}.ts`, `insumo-form-dialog.tsx`, `insumo-detail-view.tsx` | Modify | Seguimiento, sección de unidades |
-| `frontend/src/features/insumos/components/{unidades-insumo-section,unidad-historial-dialog,unidad-serial-dialog,unidad-devolucion-entrega-dialog,selector-unidad,seriales-input}.tsx`, `hooks/use-unidades-insumo.ts` (+tests) | Create | ADR-8, ADR-13 |
+| `frontend/src/features/insumos/components/{unidades-insumo-section,unidad-historial-dialog,unidad-serial-dialog,unidad-reingreso-dialog,selector-unidad,seriales-input}.tsx`, `hooks/use-unidades-insumo.ts` (+tests) | Create | ADR-8, ADR-13, ADR-14 (`unidad-reingreso-dialog` sirve a la devolución de entrega y a la recuperación: condición NUEVO/USADO y motivo, obligatorio solo en la recuperación) |
 | `frontend/src/features/insumos/components/unidad-medida-form-dialog.tsx`, `unidad-medida-list.tsx` (+tests) | Modify | Casilla `entera` (F3) |
 | `frontend/src/features/insumos/components/movimiento-*-dialog.tsx` (+tests) | Modify | Seriales y selector de unidad |
 | `frontend/src/features/compras/components/registrar-avance-dialog.tsx`, schemas (+tests) | Modify | Seriales en la recepción |
@@ -540,9 +627,9 @@ Ficha
 | Capa | Qué | Cómo |
 |---|---|---|
 | Unit (dominio) | `normalizarSerial` (mayúsculas, espacios internos, vacío); transiciones válidas e inválidas (pendiente: solo `DESCARTADA` por ajuste negativo; `ENTREGADA → EN_DEPOSITO` en las dos condiciones); `unidadId ⇒ cantidad 1`; `saldosDesdeUnidades`; `puedeCambiarSeguimiento` | Specs puros |
-| Unit (aplicación) | Ramas `NINGUNO`/`SERIE` de cada caso de uso; `unidadId` en `NINGUNO` ⇒ `UnidadNoAdmitidaError`; validar-todo-antes-de-escribir (un fallo en la unidad 2 no escribe la 1); recepción fraccional, parcial y con pendientes; ajuste negativo de una pendiente; devolución de entrega NUEVO y USADO, con insumo `NINGUNO` rechazada; D3; retiro legado con serial; reactivar con insumo ya `NINGUNO`; desmarcar `entera` en uso rechazado | Fakes; `sumas-movimiento.ts` |
+| Unit (aplicación) | Ramas `NINGUNO`/`SERIE` de cada caso de uso; `unidadId` en `NINGUNO` ⇒ `UnidadNoAdmitidaError`; validar-todo-antes-de-escribir (un fallo en la unidad 2 no escribe la 1); recepción fraccional, parcial y con pendientes; ajuste negativo de una pendiente; devolución de entrega NUEVO y USADO, con insumo `NINGUNO` rechazada y con insumo deshabilitado admitida (G2); recuperación NUEVO y USADO, sin motivo rechazada, de una pendiente descartada (vuelve pendiente), con insumo deshabilitado admitida; reactivar tras recuperar ⇒ `UnidadDelComponenteNoDisponibleError`; D3; retiro legado con serial; reactivar con insumo ya `NINGUNO`; desmarcar `entera` en uso rechazado; activación con unidad de medida cambiada ⇒ `UnidadMedidaCambiadaError` | Fakes; `sumas-movimiento.ts` |
 | Integración | CHECK y catálogos con `pg_get_constraintdef` (incluida la rama de pendiente descartada); índice único con serial normalizado y en `DESCARTADA`; CAS; P2002 → `SerialDuplicadoError`; lote que revierte entero; `save()` con entidad vieja no revierte `seguimiento` (W3); **invariante** paso a paso (escenario de la spec) | Base tenant efímera; `soporte_tenant_test` migrada a mano en WU-1 |
-| Concurrencia | Mismo serial en dos entradas ⇒ una; misma unidad en dos instalaciones o salidas ⇒ una; los cuatro casos de ADR-12 sin `40P01`; desmarcar `entera` contra una activación en vuelo | Molde de `prisma-movimiento-insumo.repository.concurrencia.integration.spec.ts` |
+| Concurrencia | Mismo serial en dos entradas ⇒ una; misma unidad en dos instalaciones o salidas ⇒ una; los siete casos de ADR-12 sin `40P01`, cada uno en su WU | Molde de `prisma-movimiento-insumo.repository.concurrencia.integration.spec.ts` |
 | E2E | Endpoints nuevos con y sin permiso (403); 409 de serial; 422 de cada error; recepción con seriales; alta de componente con unidad y D3 | Todo spec que trunque `soporte_master_test` llama `usarLockMasterTest()` |
 | Frontend | Selector de unidad solo con disponibles; cantidad fija en 1; N inputs de serial; recepción con blancos; alta con unidad o serial según seguimiento; retiro legado precargado; invalidación de `["insumo", id, "unidades"]` además de stock y movimientos | MSW + `renderWithProviders` |
 | Adversarial (verify) | Quitar el lock de fila de las unidades ⇒ rojo en concurrencia; invertir L1 y L2 en el cambio de seguimiento ⇒ `40P01` en el spec de orden; contar `INSTALADA` o `ENTREGADA` en el saldo ⇒ rojo en el invariante; salida que deja `DESCARTADA` ⇒ rojo; escribir `seguimiento` en la rama `update` de `save()` ⇒ rojo | `rules.verify` |
@@ -581,38 +668,41 @@ reescrituras de spec y borrados cuentan). Feature Branch Chain sobre el tracker
 
 | # | Unidad | Depende de | Estimación (+/−) |
 |---|---|---|---|
-| 1 | Migración (con el CHECK de pendiente relajado, F1), `schema.prisma`, catálogos de dominio, seed de `entera`, spec de constraints, migración manual de bases locales | — | ~300 |
+| 1 | Migración (con el CHECK de pendiente relajado, F1, y `eventos_unidad_insumo.componente_id`), `schema.prisma`, catálogos de dominio, seed de `entera`, spec de constraints, migración manual de bases locales | — | ~300 |
 | 2 | Dominio: `UnidadInsumoEntity` (máquina de estados completa), evento, `seguimiento`, `entera`, `unidadId` en el movimiento, mappers | 1 | ~380 |
 | 3 | Persistencia: repos de unidad y evento, `exigirTransaccionActiva`, `bloquearStock`, lecturas con lock de fila (L0, L1, L3), `save()` sin `seguimiento` en `update` + test, integración y concurrencia de serial | 2 | ~400 (corte: repo de eventos aparte) |
 | 4a | Operaciones de depósito I: `ingresar`, `sacarDelDeposito` (`ENTREGADA`; `DESCARTADA` también desde pendiente) | 3 | ~350 |
 | 4b | Operaciones de depósito II: `devolverEntregas`, `cargarSerial`, `corregirSerial`, helper del invariante | 4a | ~300 |
-| 5 | Operaciones de equipo: `instalar`, `devolverAlDeposito`, `descartarInstaladas`, `reinstalar`, `altaInstalada`, integración de lote | 4b | ~350 |
-| 6 | Seguimiento en aplicación, **sin borde HTTP**: `CambiarSeguimientoInsumoUseCase` (dos direcciones, ADR-12), `seguimiento` en `CrearInsumoUseCase`, guard de `EditarInsumo`, spec `orden-de-locks` | 3 | ~380 |
-| 7a | Entrada, ajuste positivo, `completarConPendientes` (ADR-6) y rama `SERIE` de `registrarDevolucionDeComponente` | 4b, 6 | ~380 |
-| 7b | Salida, ajuste negativo (con pendiente, F1), consulta `SERIE`; spec del invariante | 7a | ~380 |
+| 5 | Operaciones de equipo: `instalar`, `devolverAlDeposito`, `descartarInstaladas`, `reinstalar` (guard del último `DESCARTE` por `componente_id`), `altaInstalada`, integración de lote | 4b | ~380 |
+| 6 | Seguimiento en aplicación, **sin borde HTTP**: `CambiarSeguimientoInsumoUseCase` (dos direcciones, re-lectura de la unidad, ADR-3), L0 y LC en `CrearInsumoUseCase`, guard de `EditarInsumo` con L0/L1, spec `orden-de-locks` con los casos 1 y 2 | 3 | ~380 |
+| 7a | Entrada con L1, ajuste positivo, `completarConPendientes` (ADR-6), rama `SERIE` de `registrarDevolucionDeComponente`; casos 3–5 de `orden-de-locks` | 4b, 6 | ~400 (corte: los casos 3–5 en su propio PR, 7a') |
+| 7b | Salida y ajuste con L1, ajuste negativo (con pendiente, F1), consulta `SERIE`; spec del invariante; caso 6 de `orden-de-locks` | 7a | ~380 |
 | 8a | Borde de movimientos: `seriales`/`unidadId` en DTOs, `UnidadNoAdmitidaError`, respuestas, e2e | 7b | ~300 |
 | 8b | Borde de unidades: listar, historial, cargar y corregir serial, e2e | 8a | ~350 |
-| 8c | Devolución de entrega: `DevolverEntregaUseCase`, ruta, e2e | 8b | ~250 |
+| 8c | Devolución de entrega: `DevolverEntregaUseCase` con la exención de G2, ruta, e2e | 8b | ~250 |
+| 8d | Recuperar pieza descartada (G1): `recuperarDescartadas`, `RecuperarUnidadDescartadaUseCase`, ruta, e2e | 8c | ~350 |
 | 9 | Recepción `SERIE` (compras) | 7a | ~250 |
-| 10 | Equipos: entidad, mapper con serial resuelto, editar, instalar con unidad (orden de ADR-12), D3, borde, e2e | 5, 7b | ~400 (corte: D3 aparte) |
-| 11 | Equipos: retiro con unidad y legado con serial, reactivar en transacción, concurrencia | 10 | ~350 |
-| 12a | **Llave**: `PATCH /insumos/:id/seguimiento`, `seguimiento` en el DTO de alta y en las respuestas, e2e | 8c, 9, 11 | ~250 |
-| 12b | Unidades de medida `entera` (F3): DTOs, crear y editar, `UnidadMedidaEnUsoPorSerieError`, concurrencia con activación, e2e | 12a | ~300 |
+| 10 | Equipos: entidad, mapper con serial resuelto, editar, `AgregarComponente.preparar`, instalar con unidad (orden de ADR-12), D3, borde, e2e | 5, 7b | ~400 (corte: D3 aparte) |
+| 11 | Equipos: retiro con unidad y legado con serial, reactivar en transacción (`UnidadDelComponenteNoDisponibleError`, incluido el caso tras recuperar), concurrencia | 8d, 10 | ~380 |
+| 12a | **Llave**: `PATCH /insumos/:id/seguimiento`, `seguimiento` en el DTO de alta y en las respuestas, e2e | 8d, 9, 11 | ~250 |
+| 12b | Unidades de medida `entera` (F3): DTOs, crear y editar (L0 con `FOR UPDATE` si viene `codigo`), `UnidadMedidaEnUsoPorSerieError`, caso 7 de `orden-de-locks`, e2e | 12a | ~300 |
 | 13 | Frontend: tipos, schemas, seguimiento en el ABM y orden de las dos llamadas | 12a | ~350 |
 | 14 | Frontend: casilla `entera` en el ABM de unidades | 12b, 13 | ~150 |
 | 15 | Frontend: sección de unidades e historial en la ficha | 8b, 13 | ~350 |
-| 16 | Frontend: cargar y corregir serial; devolución de entrega | 8c, 15 | ~400 (corte: devolución de entrega aparte) |
+| 16a | Frontend: cargar y corregir serial | 8b, 15 | ~250 |
+| 16b | Frontend: `unidad-reingreso-dialog` para la devolución de entrega y la recuperación (G1) | 8d, 16a | ~350 |
 | 17 | Frontend: seriales y selector de unidad en los diálogos de movimiento (pendientes solo en el ajuste negativo) | 15 | ~400 (corte: entrada/ajuste+ y salida/ajuste−) |
 | 18 | Frontend: seriales en la recepción | 9, 13 | ~250 |
 | 19 | Frontend: equipos (unidad o serial en el alta, serial precargado en el retiro legado) | 11, 15 | ~350 |
 | 20 | Runbook: rollback y detector | 11 | ~80 |
 
-Orden de la cadena: 1, 2, 3, 4a, 4b, 5, 6, 7a, 7b, 8a, 8b, 8c, 9, 10, 11, 12a, 12b, 13, 14, 15, 16,
-17, 18, 19, 20 (25 PR si ningún corte planeado se activa; 29 si se activan los cuatro). El forecast
+Orden de la cadena: 1, 2, 3, 4a, 4b, 5, 6, 7a, 7b, 8a, 8b, 8c, 8d, 9, 10, 11, 12a, 12b, 13, 14, 15,
+16a, 16b, 17, 18, 19, 20 (27 PR si ningún corte planeado se activa; 31 si se activan los cuatro:
+WU-3, WU-7a, WU-10 y WU-17). El forecast
 formal es trabajo de `sdd-tasks`.
 
 **Por qué cada WU queda en verde (W2).** Ningún insumo puede ser `SERIE` por HTTP hasta **WU-12a**,
-la llave, que entra cuando todas las ramas `SERIE` del backend ya existen con sus tests (7a, 7b, 8a–8c,
+la llave, que entra cuando todas las ramas `SERIE` del backend ya existen con sus tests (7a, 7b, 8a–8d,
 9, 10, 11). Antes, `seguimiento` existe solo en la capa de aplicación (WU-6) y los specs lo ejercen
 sin borde. `unidadId` es opcional en `MovimientoInsumoEntity.create()` desde WU-2, así que ningún
 llamador cambia antes de su WU. La casilla `entera` (12b) va después de la llave: hasta entonces
@@ -641,9 +731,14 @@ Ninguna bloquea. Resueltas por el dueño el 2026-09-30 y ya reflejadas en las tr
 - [x] F4: `EQUIPOS:ALTAS`, `EQUIPOS:BORRADO` y `EQUIPOS:MODIFICACION` mueven unidades sin permisos de
       INSUMOS (Autorización).
 
-Decisiones del diseño que siguen a la vista:
+Resueltas por el dueño en la segunda ronda (2026-09-30):
 
-- [ ] Una pieza dada de baja por ajuste negativo y luego encontrada no puede reingresar con su serial
-      (la unicidad abarca `DESCARTADA`, por spec); recuperarla queda fuera de alcance.
-- [ ] La devolución de entrega exige el insumo habilitado, como la ENTRADA manual (ADR-13); una pieza
-      de un insumo deshabilitado vuelve rehabilitándolo antes.
+- [x] G1: una `DESCARTADA` se recupera con motivo, en la condición elegida, con `INSUMOS:AJUSTAR`;
+      una pendiente descartada vuelve pendiente; reactivar el componente que la descartó se rechaza
+      después (ADR-14, ADR-7).
+- [x] G2: la devolución de entrega y la recuperación admiten un insumo deshabilitado, con la exención
+      del retiro (ADR-13, ADR-14).
+
+Supuestos del orquestador que el dueño puede revertir sin rediseño:
+
+- [ ] Recuperación como ENTRADA (no AJUSTE_POSITIVO) y con `INSUMOS:AJUSTAR` (ADR-14).
