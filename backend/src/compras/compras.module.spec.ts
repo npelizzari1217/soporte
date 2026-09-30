@@ -655,6 +655,7 @@ describe('ComprasModule wiring (PR-22, sdd/redisenio-modulo-compras)', () => {
         insumoId: 'insumo-fixture-1',
         cantidad: 1,
         usuarioId: 'user-1',
+        condicion: 'NUEVO',
         itemCompraId: ITEM_ID,
       });
     });

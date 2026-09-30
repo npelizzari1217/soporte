@@ -134,7 +134,7 @@ describe('RegistrarRecepcionDeItemUseCase', () => {
         return MovimientoInsumoEntity.create({
           insumoId: dto.insumoId,
           tipo: 'ENTRADA',
-          condicion: 'NUEVO',
+          condicion: dto.condicion ?? 'NUEVO',
           cantidad: dto.cantidad,
           usuarioId: dto.usuarioId,
           motivo: dto.motivo,
@@ -307,8 +307,22 @@ describe('RegistrarRecepcionDeItemUseCase', () => {
         insumoId: INSUMO_ID,
         cantidad: 4,
         usuarioId: 'usuario-uuid',
+        condicion: 'NUEVO',
         itemCompraId: item.id,
       });
+    });
+
+    // Lo que se compra entra siempre como NUEVO, sin depender del default del
+    // caso de uso de la entrada: la condición viaja explícita desde la recepción.
+    it('la entrada de la recepción declara la condición NUEVO de forma explícita', async () => {
+      const { compra, item } = compraConItemOrdenado(10, 8, INSUMO_ID);
+      const c = makeCollaborators(compra);
+
+      await c.useCase.execute(baseDto(compra, item, { cantidadRecibida: 4 }));
+
+      const dtoEntrada = c.registrarEntradaInsumo.execute.mock
+        .calls[0][0] as RegistrarEntradaInsumoDto;
+      expect(dtoEntrada.condicion).toBe('NUEVO');
     });
 
     // El `itemCompraId` es lo que exime al insumo deshabilitado del guard de

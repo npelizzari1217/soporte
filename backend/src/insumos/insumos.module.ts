@@ -281,9 +281,12 @@ import { MovimientosInsumoController } from './interface/controllers/movimientos
       // su constructor es lo que le impide tomar el advisory lock por
       // descuido; pasarle el runner acá lo volvería posible de nuevo.
       provide: RegistrarEntradaInsumoUseCase,
-      useFactory: (insumoRepo: IInsumoRepository, movimientoRepo: IMovimientoInsumoRepository) =>
-        new RegistrarEntradaInsumoUseCase(insumoRepo, movimientoRepo),
-      inject: [INSUMO_REPOSITORY, MOVIMIENTO_INSUMO_REPOSITORY],
+      useFactory: (
+        insumoRepo: IInsumoRepository,
+        movimientoRepo: IMovimientoInsumoRepository,
+        familiaRepo: IFamiliaInsumoRepository,
+      ) => new RegistrarEntradaInsumoUseCase(insumoRepo, movimientoRepo, familiaRepo),
+      inject: [INSUMO_REPOSITORY, MOVIMIENTO_INSUMO_REPOSITORY, FAMILIA_INSUMO_REPOSITORY],
     },
     {
       // La SALIDA y el AJUSTE sí lo reciben: los dos pueden restar, y leer las

@@ -33,3 +33,8 @@ WU-3a excedio 400 lineas (~1.020 entre codigo y specs) y se partio en TRES commi
 - `condicion` obligatoria en `MovimientoInsumoEntity.create()`; entrada, salida y ajuste pasan `'NUEVO'` explicito hasta la parte 2 y 3. Los specs que construyen la entidad la reciben explicita.
 - `CondicionUsadoNoAdmitidaError` (`CONDICION_USADO_NO_ADMITIDA`) y `validarCondicionAdmitida(familias, insumo, condicion, { admitirFamiliaNoVigente })`. Spec propio `validar-condicion-admitida.spec.ts` con el helper `insumos/testing/familia-repo-fake.ts`.
 
+### Parte 2 (rama wu03a-2): entrada y devolucion de componente — tareas 3a.3, 3a.5 y el cableado de la entrada en 3a.6
+
+- Entrada con `condicion?` (default NUEVO), ADR-6 antes de insertar y familiaRepo como tercer parametro; `registrarDevolucionDeComponente` (cantidad 1, USADO, admite insumo deshabilitado y familia no vigente, rechaza `esRepuesto = false`). `execute()` sigue rechazando insumo deshabilitado con cualquier condicion.
+- Recepcion de compra manda `condicion: 'NUEVO'` explicito.
+

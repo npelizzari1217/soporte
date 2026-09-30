@@ -170,6 +170,9 @@ export class RegistrarRecepcionDeItemUseCase {
           insumoId,
           cantidad: deltaEnCentesimas / 100,
           usuarioId: dto.usuarioId,
+          // Lo que se compra entra siempre como NUEVO: un usado solo nace de
+          // retirar una pieza de un equipo, nunca de una recepción.
+          condicion: 'NUEVO',
           // El origen es lo que da la trazabilidad Y lo que exime al insumo
           // deshabilitado del guard de habilitado. Va sin `motivo`: una frase
           // que repita "vino de tal compra" sería el mismo hecho escrito dos

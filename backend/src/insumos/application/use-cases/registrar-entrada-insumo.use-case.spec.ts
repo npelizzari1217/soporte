@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { RegistrarEntradaInsumoUseCase } from './registrar-entrada-insumo.use-case';
 import { InsumoEntity } from '../../domain/entities/insumo.entity';
 import { SumasPorCondicionYTipo } from '../../domain/entities/tipo-movimiento-insumo';
+import { familiaRepoFake } from '../../testing/familia-repo-fake';
 import { sumasCon } from '../../testing/sumas-movimiento';
 
 describe('RegistrarEntradaInsumoUseCase', () => {
@@ -79,7 +80,11 @@ describe('RegistrarEntradaInsumoUseCase', () => {
 
   it('asienta la entrada cuando el insumo está vigente y habilitado', async () => {
     const movimientoRepo = buildMovimientoRepo();
-    const useCase = new RegistrarEntradaInsumoUseCase(buildInsumoRepo(), movimientoRepo);
+    const useCase = new RegistrarEntradaInsumoUseCase(
+      buildInsumoRepo(),
+      movimientoRepo,
+      familiaRepoFake(),
+    );
 
     const result = await useCase.execute(dtoBase);
 
@@ -108,7 +113,11 @@ describe('RegistrarEntradaInsumoUseCase', () => {
       insert: vi.fn().mockResolvedValue(asentadoPorLaBase),
       lockAndSumByTipo: vi.fn().mockResolvedValue(SUMAS_CARGADAS),
     };
-    const useCase = new RegistrarEntradaInsumoUseCase(buildInsumoRepo(), movimientoRepo);
+    const useCase = new RegistrarEntradaInsumoUseCase(
+      buildInsumoRepo(),
+      movimientoRepo,
+      familiaRepoFake(),
+    );
 
     const result = await useCase.execute(dtoBase);
 
@@ -123,7 +132,11 @@ describe('RegistrarEntradaInsumoUseCase', () => {
    * mitad de lo que la Entrega 2 existe para contestar.
    */
   it('asienta el usuarioId que recibe, sin derivarlo de ningún otro dato', async () => {
-    const useCase = new RegistrarEntradaInsumoUseCase(buildInsumoRepo(), buildMovimientoRepo());
+    const useCase = new RegistrarEntradaInsumoUseCase(
+      buildInsumoRepo(),
+      buildMovimientoRepo(),
+      familiaRepoFake(),
+    );
 
     const result = await useCase.execute({ ...dtoBase, usuarioId: 'usr-99' });
 
@@ -131,7 +144,11 @@ describe('RegistrarEntradaInsumoUseCase', () => {
   });
 
   it('deja el motivo y la trazabilidad en null cuando la entrada no los trae', async () => {
-    const useCase = new RegistrarEntradaInsumoUseCase(buildInsumoRepo(), buildMovimientoRepo());
+    const useCase = new RegistrarEntradaInsumoUseCase(
+      buildInsumoRepo(),
+      buildMovimientoRepo(),
+      familiaRepoFake(),
+    );
 
     const result = await useCase.execute(dtoBase);
 
@@ -147,7 +164,11 @@ describe('RegistrarEntradaInsumoUseCase', () => {
    * de decir "sin motivo".
    */
   it('conserva el motivo recortado y la trazabilidad de equipo y sector', async () => {
-    const useCase = new RegistrarEntradaInsumoUseCase(buildInsumoRepo(), buildMovimientoRepo());
+    const useCase = new RegistrarEntradaInsumoUseCase(
+      buildInsumoRepo(),
+      buildMovimientoRepo(),
+      familiaRepoFake(),
+    );
 
     const result = await useCase.execute({
       ...dtoBase,
@@ -162,7 +183,11 @@ describe('RegistrarEntradaInsumoUseCase', () => {
   });
 
   it('colapsa a null un motivo que después de recortar queda vacío', async () => {
-    const useCase = new RegistrarEntradaInsumoUseCase(buildInsumoRepo(), buildMovimientoRepo());
+    const useCase = new RegistrarEntradaInsumoUseCase(
+      buildInsumoRepo(),
+      buildMovimientoRepo(),
+      familiaRepoFake(),
+    );
 
     const result = await useCase.execute({ ...dtoBase, motivo: '   ' });
 
@@ -180,7 +205,11 @@ describe('RegistrarEntradaInsumoUseCase', () => {
    */
   it('asienta el origen del ítem de compra que generó la entrada', async () => {
     const movimientoRepo = buildMovimientoRepo();
-    const useCase = new RegistrarEntradaInsumoUseCase(buildInsumoRepo(), movimientoRepo);
+    const useCase = new RegistrarEntradaInsumoUseCase(
+      buildInsumoRepo(),
+      movimientoRepo,
+      familiaRepoFake(),
+    );
 
     const result = await useCase.execute({ ...dtoBase, itemCompraId: 'item-77' });
 
@@ -196,7 +225,11 @@ describe('RegistrarEntradaInsumoUseCase', () => {
    * en la regla del insumo deshabilitado de más abajo.
    */
   it('deja el origen en null cuando la entrada no viene de una compra', async () => {
-    const useCase = new RegistrarEntradaInsumoUseCase(buildInsumoRepo(), buildMovimientoRepo());
+    const useCase = new RegistrarEntradaInsumoUseCase(
+      buildInsumoRepo(),
+      buildMovimientoRepo(),
+      familiaRepoFake(),
+    );
 
     const result = await useCase.execute(dtoBase);
 
@@ -221,7 +254,11 @@ describe('RegistrarEntradaInsumoUseCase', () => {
    */
   it('no toma el advisory lock del stock: la entrada solo suma', async () => {
     const movimientoRepo = buildMovimientoRepo();
-    const useCase = new RegistrarEntradaInsumoUseCase(buildInsumoRepo(), movimientoRepo);
+    const useCase = new RegistrarEntradaInsumoUseCase(
+      buildInsumoRepo(),
+      movimientoRepo,
+      familiaRepoFake(),
+    );
 
     await useCase.execute(dtoBase);
 
@@ -232,7 +269,11 @@ describe('RegistrarEntradaInsumoUseCase', () => {
 
   it('rechaza con INSUMO_NO_ENCONTRADO si el insumo no existe en el catálogo', async () => {
     const movimientoRepo = buildMovimientoRepo();
-    const useCase = new RegistrarEntradaInsumoUseCase(buildInsumoRepo(null), movimientoRepo);
+    const useCase = new RegistrarEntradaInsumoUseCase(
+      buildInsumoRepo(null),
+      movimientoRepo,
+      familiaRepoFake(),
+    );
 
     const result = await useCase.execute({ ...dtoBase, insumoId: 'inexistente' });
 
@@ -251,6 +292,7 @@ describe('RegistrarEntradaInsumoUseCase', () => {
     const useCase = new RegistrarEntradaInsumoUseCase(
       buildInsumoRepo(insumoDadoDeBaja()),
       movimientoRepo,
+      familiaRepoFake(),
     );
 
     const result = await useCase.execute(dtoBase);
@@ -279,6 +321,7 @@ describe('RegistrarEntradaInsumoUseCase', () => {
     const useCase = new RegistrarEntradaInsumoUseCase(
       buildInsumoRepo(insumoDeshabilitado()),
       movimientoRepo,
+      familiaRepoFake(),
     );
 
     const result = await useCase.execute(dtoBase);
@@ -312,6 +355,7 @@ describe('RegistrarEntradaInsumoUseCase', () => {
     const useCase = new RegistrarEntradaInsumoUseCase(
       buildInsumoRepo(insumoDeshabilitado()),
       movimientoRepo,
+      familiaRepoFake(),
     );
 
     const result = await useCase.execute({ ...dtoBase, itemCompraId: 'item-77' });
@@ -332,6 +376,7 @@ describe('RegistrarEntradaInsumoUseCase', () => {
     const useCase = new RegistrarEntradaInsumoUseCase(
       buildInsumoRepo(insumoDeshabilitado()),
       movimientoRepo,
+      familiaRepoFake(),
     );
 
     const result = await useCase.execute({ ...dtoBase, itemCompraId: null });
@@ -353,6 +398,7 @@ describe('RegistrarEntradaInsumoUseCase', () => {
     const useCase = new RegistrarEntradaInsumoUseCase(
       buildInsumoRepo(insumoDadoDeBaja()),
       movimientoRepo,
+      familiaRepoFake(),
     );
 
     const result = await useCase.execute({ ...dtoBase, itemCompraId: 'item-77' });
@@ -372,6 +418,7 @@ describe('RegistrarEntradaInsumoUseCase', () => {
     const useCase = new RegistrarEntradaInsumoUseCase(
       buildInsumoRepo(insumoDadoDeBaja(false)),
       buildMovimientoRepo(),
+      familiaRepoFake(),
     );
 
     const result = await useCase.execute(dtoBase);
@@ -389,9 +436,193 @@ describe('RegistrarEntradaInsumoUseCase', () => {
    */
   it('propaga la violación de precondición de la cantidad sin asentar el movimiento', async () => {
     const movimientoRepo = buildMovimientoRepo();
-    const useCase = new RegistrarEntradaInsumoUseCase(buildInsumoRepo(), movimientoRepo);
+    const useCase = new RegistrarEntradaInsumoUseCase(
+      buildInsumoRepo(),
+      movimientoRepo,
+      familiaRepoFake(),
+    );
 
     await expect(useCase.execute({ ...dtoBase, cantidad: 0 })).rejects.toThrow(/cantidad/);
     expect(movimientoRepo.insert).not.toHaveBeenCalled();
+  });
+
+  // ─── Condición del saldo (stock-usado-componentes) ───────────────────────
+
+  describe('condición NUEVO / USADO', () => {
+    it('sin condición asienta NUEVO y no consulta la familia', async () => {
+      const familiaRepo = familiaRepoFake({ esRepuesto: false });
+      const useCase = new RegistrarEntradaInsumoUseCase(
+        buildInsumoRepo(),
+        buildMovimientoRepo(),
+        familiaRepo,
+      );
+
+      const result = await useCase.execute(dtoBase);
+
+      expect(result.getValue().condicion).toBe('NUEVO');
+      expect(familiaRepo.findById).not.toHaveBeenCalled();
+    });
+
+    it('asienta una entrada manual USADO sobre un repuesto', async () => {
+      const movimientoRepo = buildMovimientoRepo();
+      const useCase = new RegistrarEntradaInsumoUseCase(
+        buildInsumoRepo(),
+        movimientoRepo,
+        familiaRepoFake(),
+      );
+
+      const result = await useCase.execute({ ...dtoBase, condicion: 'USADO' });
+
+      expect(result.isOk()).toBe(true);
+      expect(result.getValue().condicion).toBe('USADO');
+      expect(movimientoRepo.insert).toHaveBeenCalledTimes(1);
+    });
+
+    it('rechaza USADO sobre un insumo que no es repuesto', async () => {
+      const movimientoRepo = buildMovimientoRepo();
+      const useCase = new RegistrarEntradaInsumoUseCase(
+        buildInsumoRepo(),
+        movimientoRepo,
+        familiaRepoFake({ esRepuesto: false }),
+      );
+
+      const result = await useCase.execute({ ...dtoBase, condicion: 'USADO' });
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError().code).toBe('CONDICION_USADO_NO_ADMITIDA');
+      expect(movimientoRepo.insert).not.toHaveBeenCalled();
+    });
+
+    it('la entrada manual USADO sobre un insumo deshabilitado sigue rechazada', async () => {
+      const movimientoRepo = buildMovimientoRepo();
+      const useCase = new RegistrarEntradaInsumoUseCase(
+        buildInsumoRepo(insumoDeshabilitado()),
+        movimientoRepo,
+        familiaRepoFake(),
+      );
+
+      const result = await useCase.execute({ ...dtoBase, condicion: 'USADO' });
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError().code).toBe('INSUMO_DESHABILITADO');
+      expect(movimientoRepo.insert).not.toHaveBeenCalled();
+    });
+
+    it('rechaza USADO manual cuando la familia tiene baja lógica o está deshabilitada', async () => {
+      for (const familia of [{ dadaDeBaja: true }, { activo: false }, { inexistente: true }]) {
+        const movimientoRepo = buildMovimientoRepo();
+        const useCase = new RegistrarEntradaInsumoUseCase(
+          buildInsumoRepo(),
+          movimientoRepo,
+          familiaRepoFake(familia),
+        );
+
+        const result = await useCase.execute({ ...dtoBase, condicion: 'USADO' });
+
+        expect(result.getError().code).toBe('CONDICION_USADO_NO_ADMITIDA');
+        expect(movimientoRepo.insert).not.toHaveBeenCalled();
+      }
+    });
+  });
+
+  // ─── Devolución de un componente al stock ────────────────────────────────
+
+  describe('registrarDevolucionDeComponente()', () => {
+    const dtoDevolucion = {
+      insumoId: 'ins-1',
+      equipoId: 'eq-1',
+      usuarioId: 'usr-7',
+      motivo: 'Pieza sana',
+    };
+
+    it('asienta una ENTRADA USADO de una unidad vinculada al equipo, con el motivo', async () => {
+      const movimientoRepo = buildMovimientoRepo();
+      const useCase = new RegistrarEntradaInsumoUseCase(
+        buildInsumoRepo(),
+        movimientoRepo,
+        familiaRepoFake(),
+      );
+
+      const result = await useCase.registrarDevolucionDeComponente(dtoDevolucion);
+
+      expect(result.isOk()).toBe(true);
+      const movimiento = result.getValue();
+      expect(movimiento.tipo).toBe('ENTRADA');
+      expect(movimiento.condicion).toBe('USADO');
+      expect(movimiento.cantidad).toBe(1);
+      expect(movimiento.equipoId).toBe('eq-1');
+      expect(movimiento.usuarioId).toBe('usr-7');
+      expect(movimiento.motivo).toBe('Pieza sana');
+      expect(movimiento.itemCompraId).toBeNull();
+    });
+
+    it('admite un insumo deshabilitado, a diferencia de la entrada manual', async () => {
+      const useCase = new RegistrarEntradaInsumoUseCase(
+        buildInsumoRepo(insumoDeshabilitado()),
+        buildMovimientoRepo(),
+        familiaRepoFake(),
+      );
+
+      const result = await useCase.registrarDevolucionDeComponente(dtoDevolucion);
+
+      expect(result.isOk()).toBe(true);
+    });
+
+    it('admite una familia dada de baja o deshabilitada: la pieza existe físicamente', async () => {
+      for (const familia of [{ dadaDeBaja: true }, { activo: false }]) {
+        const useCase = new RegistrarEntradaInsumoUseCase(
+          buildInsumoRepo(insumoDeshabilitado()),
+          buildMovimientoRepo(),
+          familiaRepoFake(familia),
+        );
+
+        const result = await useCase.registrarDevolucionDeComponente(dtoDevolucion);
+
+        expect(result.isOk()).toBe(true);
+      }
+    });
+
+    it('rechaza una familia que no es de repuestos', async () => {
+      const movimientoRepo = buildMovimientoRepo();
+      const useCase = new RegistrarEntradaInsumoUseCase(
+        buildInsumoRepo(),
+        movimientoRepo,
+        familiaRepoFake({ esRepuesto: false, dadaDeBaja: true }),
+      );
+
+      const result = await useCase.registrarDevolucionDeComponente(dtoDevolucion);
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError().code).toBe('CONDICION_USADO_NO_ADMITIDA');
+      expect(movimientoRepo.insert).not.toHaveBeenCalled();
+    });
+
+    it('rechaza una familia inexistente', async () => {
+      const useCase = new RegistrarEntradaInsumoUseCase(
+        buildInsumoRepo(),
+        buildMovimientoRepo(),
+        familiaRepoFake({ inexistente: true }),
+      );
+
+      const result = await useCase.registrarDevolucionDeComponente(dtoDevolucion);
+
+      expect(result.getError().code).toBe('CONDICION_USADO_NO_ADMITIDA');
+    });
+
+    it('rechaza un insumo inexistente o con baja lógica', async () => {
+      for (const insumo of [null, insumoDadoDeBaja()]) {
+        const movimientoRepo = buildMovimientoRepo();
+        const useCase = new RegistrarEntradaInsumoUseCase(
+          buildInsumoRepo(insumo),
+          movimientoRepo,
+          familiaRepoFake(),
+        );
+
+        const result = await useCase.registrarDevolucionDeComponente(dtoDevolucion);
+
+        expect(result.getError().code).toBe('INSUMO_NO_ENCONTRADO');
+        expect(movimientoRepo.insert).not.toHaveBeenCalled();
+      }
+    });
   });
 });

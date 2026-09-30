@@ -158,7 +158,7 @@ describe('InsumosModule wiring', () => {
    * que le impide tomar el lock por descuido.
    */
   it.each([
-    ['RegistrarEntradaInsumoUseCase', RegistrarEntradaInsumoUseCase, 2],
+    ['RegistrarEntradaInsumoUseCase', RegistrarEntradaInsumoUseCase, 3],
     ['RegistrarSalidaInsumoUseCase', RegistrarSalidaInsumoUseCase, 3],
     ['RegistrarAjusteInsumoUseCase', RegistrarAjusteInsumoUseCase, 3],
     ['ConsultarStockInsumoUseCase', ConsultarStockInsumoUseCase, 2],
