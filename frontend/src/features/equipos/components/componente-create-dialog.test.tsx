@@ -410,5 +410,63 @@ describe("ComponenteCreateDialog", () => {
       await waitFor(() => expect(post.body().insumoId).toBe(MOUSE_ID));
       expect(post.body().condicion).toBe("NUEVO");
     });
+
+    describe("al cambiar de repuesto", () => {
+      const OTRO_ID = "44444444-4444-4444-8444-444444444444";
+
+      function mockDosRepuestos(saldosOtro: { NUEVO: number; USADO: number }) {
+        server.use(
+          http.get("/api/insumos", () =>
+            HttpResponse.json([REPUESTOS_CATALOGO[0], { ...REPUESTOS_CATALOGO[0], id: OTRO_ID, codigo: "RAM-002", nombre: "Memoria RAM" }]),
+          ),
+          http.get(`/api/insumos/${OTRO_ID}/stock`, () =>
+            HttpResponse.json({
+              insumoId: OTRO_ID,
+              saldo: saldosOtro.NUEVO + saldosOtro.USADO,
+              saldos: saldosOtro,
+              admiteUsado: true,
+              stockMinimo: null,
+              estadoReposicion: "SIN_MINIMO",
+            }),
+          ),
+        );
+      }
+
+      it("el selector vuelve a NUEVO y el POST lleva NUEVO aunque antes se eligió USADO", async () => {
+        mockStock(CON_AMBOS, true);
+        mockDosRepuestos(CON_AMBOS);
+        const post = capturarPost();
+        renderDialog();
+        const user = await abrirDialog();
+        const repuesto = await screen.findByLabelText(/repuesto del catálogo/i);
+        await screen.findByRole("option", { name: /ram-002/i });
+        await user.selectOptions(repuesto, MOUSE_ID);
+        await user.selectOptions(await screen.findByLabelText("Condición"), "USADO");
+        expect(screen.getByLabelText("Condición")).toHaveValue("USADO");
+
+        await user.selectOptions(repuesto, OTRO_ID);
+
+        await waitFor(() => expect(screen.getByLabelText("Condición")).toHaveValue("NUEVO"));
+        await user.click(screen.getByRole("button", { name: /agregar$/i }));
+        await waitFor(() => expect(post.body().insumoId).toBe(OTRO_ID));
+        expect(post.body().condicion).toBe("NUEVO");
+      });
+
+      it("si el nuevo repuesto solo tiene saldo USADO, el selector queda fijo en USADO", async () => {
+        mockStock(CON_AMBOS, true);
+        mockDosRepuestos({ NUEVO: 0, USADO: 4 });
+        renderDialog();
+        const user = await abrirDialog();
+        const repuesto = await screen.findByLabelText(/repuesto del catálogo/i);
+        await screen.findByRole("option", { name: /ram-002/i });
+        await user.selectOptions(repuesto, MOUSE_ID);
+        await user.selectOptions(await screen.findByLabelText("Condición"), "USADO");
+
+        await user.selectOptions(repuesto, OTRO_ID);
+
+        await waitFor(() => expect(screen.getByLabelText("Condición")).toBeDisabled());
+        expect(screen.getByLabelText("Condición")).toHaveValue("USADO");
+      });
+    });
   });
 });
