@@ -310,3 +310,36 @@ cada código de sus pruebas): parte 1 (`wu03a`) = 3a.1 y 3a.3; parte 2 (`wu03a-2
 | Focused test command | `pnpm vitest run src/insumos`: 78 archivos, verdes en cada parte (1469, 1476 y el total final en el informe) |
 | Rollback boundary | Revertir cada commit: sin migraciones ni cambios de módulo; `OperacionesUnidadInsumo` sigue sin llamadores |
 
+
+## WU-6 — Cambio de seguimiento, L0 y LC en crear, guard en editar (6.1 a 6.5 hechas)
+
+- 6.1: `CambiarSeguimientoInsumoUseCase` en `txRunner.run()`: lectura sin lock, L0 `leerParaUso` (al pasar a `SERIE`),
+  L1 `bloquearParaCambioDeSeguimiento`, re-lectura W1 (`UnidadMedidaCambiadaError` si la unidad cambió, sin L0 nuevo),
+  L2 `bloquearStock`, y recién entonces la entidad se relee y se cuentan saldo (`sumByTipo`) o unidades
+  (`contarPorEstado`). Decide con `puedeCambiarSeguimiento` y escribe con `cambiarSeguimiento` (no-op si no cambia).
+  Desvío menor respecto de ADR-3 paso 1: L0 se toma siempre que el destino es `SERIE` (también si el insumo ya lo era),
+  para no depender de una lectura sin lock del seguimiento; es inocuo (mismo orden, `FOR SHARE`). Registrado en el módulo
+  de Nest, sin borde HTTP.
+- 6.2: `CrearInsumoUseCase` acepta `seguimiento`; dentro de `run()` toma L0 (`leerParaUso`) ANTES de `generarCodigo`
+  (que toma LC) y rechaza `SERIE` con unidad no entera (`UnidadMedidaNoEnteraError`). `EditarInsumoUseCase` recibe
+  `txRunner`; si `unidadMedidaId` cambia corre en transacción con L0 sobre la unidad destino y L1, y decide con el
+  `seguimiento` de la lectura con L1 (`UnidadMedidaNoEnteraError` si es `SERIE` y la unidad no es entera).
+- 6.3: specs unitarios del caso de uso nuevo (10) y casos nuevos en los specs de crear y editar; los mocks de unidades
+  ganaron `leerParaUso`, y los de editar `bloquearParaCambioDeSeguimiento` y `txRunner`.
+- 6.4: `orden-de-locks.concurrencia.integration.spec.ts` con los casos 1 y 2 (compuerta que retiene a la primera
+  transacción con sus locks; `pg_blocking_pids` acotado a 5 s, sin bucles residuales) y dos TESTIGOS de orden: bloqueado
+  en L1 el servicio NO tiene L2 (`pg_try_advisory_xact_lock` devuelve `true`), bloqueado en L0 NO tiene L1
+  (`FOR NO KEY UPDATE NOWAIT` libre).
+
+### Mutación adversarial local de 6.4 (revertida)
+
+| Mutación | Resultado observado |
+|---|---|
+| `bloquearStock` (L2) ANTES de `bloquearParaCambioDeSeguimiento` (L1) | ROJO: el testigo de integración (`expected false to be true`: el servicio ya tenía L2 mientras esperaba L1) y 3 unitarios de orden. Los casos 1 y 2 (dos clientes) siguen verdes: no detectan la inversión, la detecta el testigo. |
+
+### Work Unit Evidence (WU-6)
+
+| Evidence | Value |
+|---|---|
+| Focused test command | `pnpm vitest run src/insumos`: 80 archivos, 1508 tests verdes |
+| Rollback boundary | Revertir el commit: el caso de uso nuevo no tiene borde HTTP; `CrearInsumoUseCase` y `EditarInsumoUseCase` vuelven a su firma anterior |
