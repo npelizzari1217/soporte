@@ -181,3 +181,20 @@ cada código de sus pruebas): parte 1 (`wu03a`) = 3a.1 y 3a.3; parte 2 (`wu03a-2
 |---|---|
 | Focused test command | `pnpm vitest run src/insumos/infrastructure`: 338 verdes |
 | Rollback boundary | Revertir el commit: archivos nuevos y un provider sin exportar |
+
+## WU-4a parte 1 — `OperacionesUnidadInsumo`: contrato común e `ingresar` (4a.1 y 4a.2 hechas)
+
+- 4a.1: `application/services/operaciones-unidad-insumo.service.ts`. Toma L1 (`leerSeguimientoParaMovimiento`,
+  que también exige la transacción activa) y L2 (`bloquearStock`) antes de cualquier otra cosa; el insumo
+  inexistente da `InsumoNoEncontradoError` y uno que no es `SERIE` da `UnidadNoAdmitidaError`. Arma todas las
+  entidades (unidad, movimiento, evento) y recién después escribe en el orden unidad, movimiento, evento
+  (FK). `CantidadNoEnteraError` no aplica dentro del servicio: cada movimiento es de cantidad 1 por
+  construcción; la validan los casos de uso que reciben una cantidad del usuario. Registrado en
+  `insumos.module.ts` sin exportar.
+- 4a.2: `ingresar()` valida serial vacío, serial repetido dentro del lote (normalizado) y motivo del ajuste
+  positivo antes de escribir; devuelve `UnidadConMovimiento[]` en el orden de `piezas`.
+- Specs: unitario con fakes que registran el orden de llamadas (`service.spec.ts`) e integración de lote
+  (`operaciones-unidad-insumo.integration.spec.ts`): 3 piezas en una transacción y P2002 en la tercera que
+  revierte las tres.
+- Corte por tamaño (regla de la orquestación): parte 1 = contrato común + `ingresar`; parte 2 (rama `-2`) =
+  `sacarDelDeposito`, sus specs, la concurrencia y la mutación adversarial de 4a.5.

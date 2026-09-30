@@ -77,8 +77,15 @@ import {
   MOVIMIENTO_INSUMO_REPOSITORY,
 } from './domain/ports/i-movimiento-insumo.repository';
 import { PrismaMovimientoInsumoRepository } from './infrastructure/persistence/prisma/prisma-movimiento-insumo.repository';
-import { UNIDAD_INSUMO_REPOSITORY } from './domain/ports/i-unidad-insumo.repository';
-import { EVENTO_UNIDAD_INSUMO_REPOSITORY } from './domain/ports/i-evento-unidad-insumo.repository';
+import { OperacionesUnidadInsumo } from './application/services/operaciones-unidad-insumo.service';
+import {
+  IUnidadInsumoRepository,
+  UNIDAD_INSUMO_REPOSITORY,
+} from './domain/ports/i-unidad-insumo.repository';
+import {
+  EVENTO_UNIDAD_INSUMO_REPOSITORY,
+  IEventoUnidadInsumoRepository,
+} from './domain/ports/i-evento-unidad-insumo.repository';
 import { PrismaUnidadInsumoRepository } from './infrastructure/persistence/prisma/prisma-unidad-insumo.repository';
 import { PrismaEventoUnidadInsumoRepository } from './infrastructure/persistence/prisma/prisma-evento-unidad-insumo.repository';
 import {
@@ -160,6 +167,22 @@ import { MovimientosInsumoController } from './interface/controllers/movimientos
     { provide: UNIDAD_INSUMO_REPOSITORY, useClass: PrismaUnidadInsumoRepository },
     // Bitácora append-only de las unidades (ADR-9). Tampoco se exporta.
     { provide: EVENTO_UNIDAD_INSUMO_REPOSITORY, useClass: PrismaEventoUnidadInsumoRepository },
+    // Única puerta de las unidades (ADR-4). Sin exportar hasta que la consuman los casos de uso.
+    {
+      provide: OperacionesUnidadInsumo,
+      useFactory: (
+        insumoRepo: IInsumoRepository,
+        movimientoRepo: IMovimientoInsumoRepository,
+        unidadRepo: IUnidadInsumoRepository,
+        eventoRepo: IEventoUnidadInsumoRepository,
+      ) => new OperacionesUnidadInsumo(insumoRepo, movimientoRepo, unidadRepo, eventoRepo),
+      inject: [
+        INSUMO_REPOSITORY,
+        MOVIMIENTO_INSUMO_REPOSITORY,
+        UNIDAD_INSUMO_REPOSITORY,
+        EVENTO_UNIDAD_INSUMO_REPOSITORY,
+      ],
+    },
     {
       provide: CrearUnidadMedidaUseCase,
       useFactory: (repo: IUnidadMedidaRepository) => new CrearUnidadMedidaUseCase(repo),
