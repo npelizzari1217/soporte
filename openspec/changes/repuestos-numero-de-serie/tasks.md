@@ -345,7 +345,7 @@ Commit sugerido: `feat(insumos): cambio de seguimiento con orden global de locks
 
 **Branch**: `feat/repuestos-numero-de-serie-wu07a` · **Base**: wu06
 
-- [ ] 7a.1 `registrar-entrada-insumo.use-case.ts`: el primer lock es `leerSeguimientoParaMovimiento` (L1 `FOR SHARE`), el `seguimiento` que decide la rama es el de esa lectura. `NINGUNO`: como hoy; `seriales` ⇒ `UnidadNoAdmitidaError`. `SERIE`: `seriales` obligatorio, `length === cantidad`, sin pendientes (`SerialesNoCoincidenError`), cantidad entera → `ingresar`. Opción interna `completarConPendientes` (no es campo del DTO HTTP) que rellena con unidades pendientes hasta la cantidad (ADR-6). La entrada `NINGUNO` no toma L2.
+- [x] 7a.1 `registrar-entrada-insumo.use-case.ts`: el primer lock es `leerSeguimientoParaMovimiento` (L1 `FOR SHARE`), el `seguimiento` que decide la rama es el de esa lectura. `NINGUNO`: como hoy; `seriales` ⇒ `UnidadNoAdmitidaError`. `SERIE`: `seriales` obligatorio, `length === cantidad`, sin pendientes (`SerialesNoCoincidenError`), cantidad entera → `ingresar`. Opción interna `completarConPendientes` (no es campo del DTO HTTP) que rellena con unidades pendientes hasta la cantidad (ADR-6). La entrada `NINGUNO` no toma L2.
 - [ ] 7a.2 `registrar-ajuste-insumo.use-case.ts`, rama positiva: igual que la entrada con `tipo: 'AJUSTE_POSITIVO'`; el motivo ya lo exige la entidad.
 - [ ] 7a.3 `registrarDevolucionDeComponente`: suma `unidadId?` y `numeroSerie?`; componente con unidad → `devolverAlDeposito`; componente **legado** de un insumo hoy `SERIE` → `numeroSerie` obligatorio e `ingresar` USADO con `equipoId`; **sin serial** ⇒ `SerialRequeridoError` (422) sin cambiar nada (no admite serie pendiente). Conserva los guards de insumo y familia del ciclo anterior.
 - [ ] 7a.4 Specs unitarios (fakes): ramas `NINGUNO`/`SERIE`; entrada SERIE con seriales / sin serial o repetido; ajuste positivo SERIE con y sin motivo; `unidadId` en `NINGUNO` ⇒ `UnidadNoAdmitidaError`; retiro legado con serial y sin serial.
@@ -357,6 +357,7 @@ USADO de un insumo deshabilitado sigue rechazada; Entrada manual de usados; Ajus
 usados; Retiro al stock de un componente legado de un insumo SERIE / de un legado sin serial
 informado (a nivel caso de uso); Las unidades sin serial entran como serie pendiente (caso de uso).
 **PR boundary**: ~450 líneas reales, base wu06. Si pasa de 400, dividir (7a.1, 7a.2) / 7a.3.
+**Real**: partido en tres ramas encadenadas: wu07a (7a.1, entrada con `seriales` y `completarConPendientes`, ~620 líneas, `size:exception`: el caso de uso, su cableado y sus specs no se separan), wu07a-2 (7a.2, ajuste positivo) y wu07a-3 (7a.3 a 7a.5, devolución de componente).
 **Ayuda**: repetir `rg -n "entrada|ajuste" backend/ayuda/compras-insumos-stock.md backend/ayuda/permisos-y-roles.md`; no cambia nada visible (sin borde). Sin deuda.
 Commit sugerido: `feat(insumos): entrada y ajuste positivo por serie con lectura de seguimiento bajo lock`.
 

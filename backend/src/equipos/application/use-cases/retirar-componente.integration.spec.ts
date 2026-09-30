@@ -20,6 +20,7 @@ import { vi } from 'vitest';
 import { Pool, type PoolClient } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaService } from '../../../shared/infrastructure/persistence/prisma.service';
+import { construirEntradaReal } from '../../../insumos/testing/entrada-insumo-real';
 import { TenantContext } from '../../../shared/tenancy/tenant-context';
 import { TenantPrismaClient } from '../../../shared/infrastructure/persistence/prisma-clients';
 import { PrismaTenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
@@ -198,7 +199,13 @@ describe('RetirarComponenteUseCase - base real (WU-7, ADR-4)', () => {
     return new RetirarComponenteUseCase(
       makeTxRunner(),
       repo,
-      new RegistrarEntradaInsumoUseCase(insumoRepo, movimientoRepo, familiaInsumoRepo),
+      construirEntradaReal({
+        tenantContext,
+        txRunner: makeTxRunner(),
+        insumoRepo,
+        movimientoRepo,
+        familiaRepo: familiaInsumoRepo,
+      }),
     );
   }
 

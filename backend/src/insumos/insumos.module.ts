@@ -334,18 +334,33 @@ import { MovimientosInsumoController } from './interface/controllers/movimientos
 
     { provide: MOVIMIENTO_INSUMO_REPOSITORY, useClass: PrismaMovimientoInsumoRepository },
     {
-      // La ENTRADA NO recibe el runner de transacciones, y esa ausencia es la
-      // decisión: una entrada SUMA, así que no puede dejar el saldo negativo y
-      // no tiene nada que decidir bajo la sección crítica. El `Pick` angosto de
-      // su constructor es lo que le impide tomar el advisory lock por
-      // descuido; pasarle el runner acá lo volvería posible de nuevo.
+      // La ENTRADA recibe el runner para leer el `seguimiento` bajo L1
+      // (`FOR SHARE`) antes de decidir la rama (ADR-5), pero su `Pick` de
+      // `movimientoRepo` sigue sin `lockAndSumByTipo`: la rama `NINGUNO` no toma
+      // el advisory lock del stock. El L2 de la rama `SERIE` lo toma
+      // `OperacionesUnidadInsumo`.
       provide: RegistrarEntradaInsumoUseCase,
       useFactory: (
         insumoRepo: IInsumoRepository,
         movimientoRepo: IMovimientoInsumoRepository,
         familiaRepo: IFamiliaInsumoRepository,
-      ) => new RegistrarEntradaInsumoUseCase(insumoRepo, movimientoRepo, familiaRepo),
-      inject: [INSUMO_REPOSITORY, MOVIMIENTO_INSUMO_REPOSITORY, FAMILIA_INSUMO_REPOSITORY],
+        txRunner: ITenantTransactionRunner,
+        operaciones: OperacionesUnidadInsumo,
+      ) =>
+        new RegistrarEntradaInsumoUseCase(
+          insumoRepo,
+          movimientoRepo,
+          familiaRepo,
+          txRunner,
+          operaciones,
+        ),
+      inject: [
+        INSUMO_REPOSITORY,
+        MOVIMIENTO_INSUMO_REPOSITORY,
+        FAMILIA_INSUMO_REPOSITORY,
+        TENANT_TX_RUNNER,
+        OperacionesUnidadInsumo,
+      ],
     },
     {
       // La SALIDA y el AJUSTE sí lo reciben: los dos pueden restar, y leer las

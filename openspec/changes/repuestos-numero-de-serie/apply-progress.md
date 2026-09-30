@@ -343,3 +343,22 @@ cada código de sus pruebas): parte 1 (`wu03a`) = 3a.1 y 3a.3; parte 2 (`wu03a-2
 |---|---|
 | Focused test command | `pnpm vitest run src/insumos`: 80 archivos, 1508 tests verdes |
 | Rollback boundary | Revertir el commit: el caso de uso nuevo no tiene borde HTTP; `CrearInsumoUseCase` y `EditarInsumoUseCase` vuelven a su firma anterior |
+
+
+## WU-7a — Entrada y ajuste positivo por serie, devolución de componente (partido en tres ramas)
+
+Rama `wu07a` (7a.1):
+
+- `RegistrarEntradaInsumoUseCase` siempre corre en `txRunner.run()` (re-entrante). Primer lock: L1
+  `leerSeguimientoParaMovimiento` (`null` => `InsumoNoEncontradoError`); el `seguimiento` de esa lectura decide la
+  rama. `NINGUNO`: como hoy (un INSERT, sin L2) y `seriales` => `UnidadNoAdmitidaError`. `SERIE`: `ingresarPorSerie`
+  (nuevo, `application/services/ingresar-por-serie.ts`, compartido con el ajuste): cantidad entera
+  (`CantidadNoEnteraError`), `seriales.length === cantidad` salvo `completarConPendientes` (rellena con `null`, ADR-6;
+  opción interna, no está en el DTO HTTP), y delega en `OperacionesUnidadInsumo.ingresar`. El `FalloOperacionDeUnidad`
+  (P2002) se desenvuelve afuera del `run()`.
+- Constructor nuevo: `(insumoRepo, movimientoRepo, familiaRepo, txRunner, operaciones)`. Cableado en `insumos.module.ts`.
+- `execute()` devuelve el PRIMER movimiento (contrato de `Result<MovimientoInsumoEntity>` intacto para el controller y la
+  recepción); con `SERIE` y N piezas los demás quedan en la bitácora. Lo amplía WU-8a (respuestas del borde).
+- Helpers de test nuevos: `insumos/testing/tx-runner-fake.ts` y `insumos/testing/entrada-insumo-real.ts` (la entrada con
+  colaboradores Prisma reales, para los specs de integración de compras y equipos).
+
