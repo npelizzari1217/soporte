@@ -13,7 +13,11 @@ import {
   InsumoNoEncontradoError,
   StockInsuficienteError,
 } from '../../domain/errors/insumos.errors';
-import { UnidadNoAdmitidaError } from '../../domain/errors/unidades-insumo.errors';
+import {
+  SerialesNoCoincidenError,
+  UnidadNoAdmitidaError,
+  UnidadRequeridaError,
+} from '../../domain/errors/unidades-insumo.errors';
 import { IFamiliaInsumoRepository } from '../../domain/ports/i-familia-insumo.repository';
 import { IInsumoRepository } from '../../domain/ports/i-insumo.repository';
 import { IMovimientoInsumoRepository } from '../../domain/ports/i-movimiento-insumo.repository';
@@ -68,6 +72,12 @@ export interface RegistrarAjusteInsumoDto {
    * `UnidadNoAdmitidaError`.
    */
   seriales?: readonly string[] | null;
+  /**
+   * Unidad que da de baja un `AJUSTE_NEGATIVO` de un insumo `SERIE` (con serial
+   * o pendiente, F1): obligatoria ahí y rechazada con `UnidadNoAdmitidaError` en
+   * cualquier otro caso.
+   */
+  unidadId?: string | null;
 }
 
 /**
@@ -154,7 +164,7 @@ export class RegistrarAjusteInsumoUseCase {
     >,
     private readonly txRunner: Pick<ITenantTransactionRunner, 'run'>,
     private readonly familiaRepo: Pick<IFamiliaInsumoRepository, 'findById'>,
-    private readonly operaciones: Pick<OperacionesUnidadInsumo, 'ingresar'>,
+    private readonly operaciones: Pick<OperacionesUnidadInsumo, 'ingresar' | 'sacarDelDeposito'>,
   ) {}
 
   /**
@@ -229,7 +239,10 @@ export class RegistrarAjusteInsumoUseCase {
 
         const esPositivo = DIRECCION_POR_TIPO_MOVIMIENTO[asiento.tipo] === 1;
 
-        if (seguimiento === 'NINGUNO' && dto.seriales != null) {
+        if (
+          (seguimiento === 'NINGUNO' && (dto.seriales != null || dto.unidadId != null)) ||
+          (seguimiento === 'SERIE' && esPositivo && dto.unidadId != null)
+        ) {
           return Result.fail<MovimientoInsumoEntity, DomainError>(
             new UnidadNoAdmitidaError(asiento.insumoId),
           );
@@ -251,6 +264,32 @@ export class RegistrarAjusteInsumoUseCase {
           return ingresada.isFail()
             ? Result.fail<MovimientoInsumoEntity, DomainError>(ingresada.getError())
             : Result.ok<MovimientoInsumoEntity, DomainError>(ingresada.getValue()[0]);
+        }
+
+        if (seguimiento === 'SERIE') {
+          // El negativo de un insumo `SERIE` da de baja UNA unidad (queda
+          // `DESCARTADA`); admite la pendiente y no compara saldo.
+          if (dto.unidadId == null) {
+            return Result.fail<MovimientoInsumoEntity, DomainError>(
+              new UnidadRequeridaError(asiento.insumoId),
+            );
+          }
+          if (dto.cantidad !== 1) {
+            return Result.fail<MovimientoInsumoEntity, DomainError>(
+              new SerialesNoCoincidenError(dto.cantidad, 1),
+            );
+          }
+          const baja = await this.operaciones.sacarDelDeposito(asiento.insumoId, [dto.unidadId], {
+            tipo: 'AJUSTE_NEGATIVO',
+            usuarioId: dto.usuarioId,
+            motivo: dto.motivo,
+            condicion: dto.condicion,
+            equipoId: dto.equipoId,
+            sectorId: dto.sectorId,
+          });
+          return baja.isFail()
+            ? Result.fail<MovimientoInsumoEntity, DomainError>(baja.getError())
+            : Result.ok<MovimientoInsumoEntity, DomainError>(baja.getValue()[0].movimiento);
         }
 
         // Desde acá y hasta el commit, nadie más puede evaluar el stock de este
