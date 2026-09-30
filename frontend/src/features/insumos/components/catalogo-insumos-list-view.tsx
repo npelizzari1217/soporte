@@ -37,10 +37,9 @@
  * abierta porque otras pantallas los necesitan para poblar sus `<select>`. La
  * autoridad de autorización sigue siendo el backend (ADR-4); esto es UI.
  *
- * La navegación de fila apunta SIEMPRE a `/insumos/:id`, nunca a
- * `/repuestos/:id`: la ficha (`InsumoDetailView`) es una sola, no distingue
- * `esRepuesto`, y duplicarla como `/repuestos/[id]` hubiera sido más
- * duplicación sin ganar nada — un repuesto también es, ante todo, un insumo.
+ * La fila navega a la ficha de SU sección: `/insumos/:id` o `/repuestos/:id`.
+ * La ficha (`InsumoDetailView`) es una sola vista montada en las dos rutas;
+ * adapta su copy a la familia del ítem, así que no se duplica.
  */
 import { Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -165,7 +164,7 @@ export function CatalogoInsumosListView({
             isLoading={insumosQuery.isLoading}
             error={insumosQuery.isError ? `No se pudieron cargar los ${tituloMinuscula}.` : undefined}
             onRetry={() => insumosQuery.refetch().catch(notifyError)}
-            onRowClick={(row) => router.push(`/insumos/${row.id}`)}
+            onRowClick={(row) => router.push(`/${esRepuesto ? "repuestos" : "insumos"}/${row.id}`)}
             emptyTitle={`Sin ${tituloMinuscula}`}
             emptyDescription={`Todavía no hay ${nombreSingular}s cargados en el catálogo.`}
           />

@@ -96,13 +96,13 @@ describe("RepuestosListView — gate INSUMOS:LECTURA", () => {
   });
 });
 
-describe("RepuestosListView — navegación a la ficha del insumo", () => {
-  it("al hacer click en una fila navega a /insumos/:id — la ficha es única, no hay /repuestos/:id", async () => {
+describe("RepuestosListView — navegación a la ficha del repuesto", () => {
+  it("al hacer click en una fila navega a /repuestos/:id, no a /insumos/:id", async () => {
     mockCatalogos([MOUSE]);
     renderWithProviders(<RepuestosListView />, { user: LECTOR });
 
     await userEvent.click(await screen.findByText("MOU-001"));
 
-    expect(pushMock).toHaveBeenCalledWith(`/insumos/${MOUSE.id}`);
+    expect(pushMock).toHaveBeenCalledWith(`/repuestos/${MOUSE.id}`);
   });
 });

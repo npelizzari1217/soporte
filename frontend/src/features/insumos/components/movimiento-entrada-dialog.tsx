@@ -43,10 +43,9 @@ export interface MovimientoEntradaDialogProps {
   insumoId: string;
   /** Estado vigente del insumo (`insumo.activo`); deshabilita el trigger cuando es `false`. */
   activo: boolean;
+  /** Cómo se nombra el ítem en la copy: "insumo" (default) o "repuesto". */
+  nombreItem?: "insumo" | "repuesto";
 }
-
-/** `title` del trigger cuando el insumo está deshabilitado. */
-const MOTIVO_ENTRADA_DESHABILITADA = "El insumo está deshabilitado: no se pueden registrar entradas.";
 
 /** Párrafo bajo el select de equipo cuando `GET /equipos` devuelve 403. */
 const NOTA_EQUIPOS_NO_DISPONIBLES = construirNotaEquiposNoDisponibles("la entrada");
@@ -56,7 +55,8 @@ const NOTA_EQUIPOS_NO_DISPONIBLES = construirNotaEquiposNoDisponibles("la entrad
  * @param activo Estado vigente del insumo; con `false` el trigger queda deshabilitado.
  * @returns El diálogo de alta de una entrada, con su trigger propio.
  */
-export function MovimientoEntradaDialog({ insumoId, activo }: MovimientoEntradaDialogProps) {
+export function MovimientoEntradaDialog({ insumoId, activo, nombreItem = "insumo" }: MovimientoEntradaDialogProps) {
+  const motivoDeshabilitada = `El ${nombreItem} está deshabilitado: no se pueden registrar entradas.`;
   const [open, setOpen] = useState(false);
   const condicion = useSelectorCondicion(insumoId);
   const registrarMutation = useRegistrarEntradaInsumo(insumoId);
@@ -95,7 +95,7 @@ export function MovimientoEntradaDialog({ insumoId, activo }: MovimientoEntradaD
       titulo="Registrar entrada"
       idPrefijo="entrada"
       deshabilitado={entradaDeshabilitada}
-      motivoDeshabilitado={MOTIVO_ENTRADA_DESHABILITADA}
+      motivoDeshabilitado={motivoDeshabilitada}
       notaEquiposNoDisponibles={NOTA_EQUIPOS_NO_DISPONIBLES}
       isPending={registrarMutation.isPending}
       onSubmit={handleSubmit(submit)}

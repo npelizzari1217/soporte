@@ -8,8 +8,9 @@
  * invertido — mismas columnas, mismo gate `INSUMOS:LECTURA` (decisión del
  * dueño del repo: no hay permiso `REPUESTOS` propio).
  *
- * La fila navega a `/insumos/:id`, no a `/repuestos/:id`: ver el JSDoc de
- * `CatalogoInsumosListView` para el porqué de la ficha única.
+ * La fila navega a `/repuestos/:id` (decisión del dueño, 2026-09-30): el
+ * repuesto se abre dentro de su sección. La ficha es la MISMA vista que la de
+ * insumos (`InsumoDetailView`), que nombra "repuesto" según la familia.
  */
 import { CatalogoInsumosListView } from "./catalogo-insumos-list-view";
 
