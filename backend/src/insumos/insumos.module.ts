@@ -132,6 +132,7 @@ import { UnidadesInsumoController } from './interface/controllers/unidades-insum
 import { ListarUnidadesInsumoUseCase } from './application/use-cases/listar-unidades-insumo.use-case';
 import { ConsultarHistorialUnidadUseCase } from './application/use-cases/consultar-historial-unidad.use-case';
 import { DevolverEntregaUseCase } from './application/use-cases/devolver-entrega.use-case';
+import { RecuperarUnidadDescartadaUseCase } from './application/use-cases/recuperar-unidad-descartada.use-case';
 import { CargarSerialUnidadUseCase } from './application/use-cases/cargar-serial-unidad.use-case';
 import { CorregirSerialUnidadUseCase } from './application/use-cases/corregir-serial-unidad.use-case';
 
@@ -344,6 +345,30 @@ import { CorregirSerialUnidadUseCase } from './application/use-cases/corregir-se
         txRunner: ITenantTransactionRunner,
         operaciones: OperacionesUnidadInsumo,
       ) => new DevolverEntregaUseCase(insumoRepo, unidadRepo, familiaRepo, txRunner, operaciones),
+      inject: [
+        INSUMO_REPOSITORY,
+        UNIDAD_INSUMO_REPOSITORY,
+        FAMILIA_INSUMO_REPOSITORY,
+        TENANT_TX_RUNNER,
+        OperacionesUnidadInsumo,
+      ],
+    },
+    {
+      provide: RecuperarUnidadDescartadaUseCase,
+      useFactory: (
+        insumoRepo: IInsumoRepository,
+        unidadRepo: IUnidadInsumoRepository,
+        familiaRepo: IFamiliaInsumoRepository,
+        txRunner: ITenantTransactionRunner,
+        operaciones: OperacionesUnidadInsumo,
+      ) =>
+        new RecuperarUnidadDescartadaUseCase(
+          insumoRepo,
+          unidadRepo,
+          familiaRepo,
+          txRunner,
+          operaciones,
+        ),
       inject: [
         INSUMO_REPOSITORY,
         UNIDAD_INSUMO_REPOSITORY,

@@ -451,10 +451,10 @@ Commit sugerido: `feat(insumos): devolucion de una pieza entregada al deposito`.
 **Branch**: `feat/repuestos-numero-de-serie-wu08d` · **Base**: wu08c
 
 - [x] 8d.1 `recuperarDescartadas(insumoId, unidadIds, { condicion })` en el servicio: `DESCARTADA → EN_DEPOSITO` con serial o pendiente (una pendiente vuelve pendiente), ENTRADA de 1 con la condición elegida y el motivo, evento `RECUPERACION`; no reevalúa unicidad. Specs del servicio e integración de lote; el invariante sube 1 en la misma condición.
-- [ ] 8d.2 `RecuperarUnidadDescartadaUseCase` (`POST …/unidades/:unidadId/recuperacion`, `INSUMOS:AJUSTAR`, body `{ condicion, motivo }` con `transformarMotivo`, 500): motivo obligatorio (`MotivoRecuperacionRequeridoError`); guards de `SERIE` (`SeguimientoNoModificableError`) y `DESCARTADA` (`UnidadNoDisponibleError`); insumo deshabilitado y familia no vigente **admitidos** con la exención de G2. Movimiento ENTRADA (supuesto del orquestador: cambiarlo a AJUSTE_POSITIVO es una línea del servicio).
+- [x] 8d.2 `RecuperarUnidadDescartadaUseCase` (`POST …/unidades/:unidadId/recuperacion`, `INSUMOS:AJUSTAR`, body `{ condicion, motivo }` con `transformarMotivo`, 500): motivo obligatorio (`MotivoRecuperacionRequeridoError`); guards de `SERIE` (`SeguimientoNoModificableError`) y `DESCARTADA` (`UnidadNoDisponibleError`); insumo deshabilitado y familia no vigente **admitidos** con la exención de G2. Movimiento ENTRADA (supuesto del orquestador: cambiarlo a AJUSTE_POSITIVO es una línea del servicio).
 - [x] 8d.3 Completar el paso de recuperación en `invariante-serie.integration.spec.ts` si WU-7b lo dejó pendiente. **Mutación adversarial local**: que la recuperación no escriba la ENTRADA ⇒ rojo en el invariante; revertir.
-- [ ] 8d.4 Specs unitarios y e2e (`usarLockMasterTest()`): recuperar NUEVO y USADO, una pendiente descartada (vuelve pendiente), sin motivo, unidad no descartada, insumo deshabilitado; 403 sin `AJUSTAR`; reactivar el componente tras recuperar queda cubierto en WU-11.
-- [ ] 8d.5 Quality gates (backend): `cd backend && pnpm lint && pnpm typecheck && pnpm vitest run src/insumos` y `pnpm test`.
+- [x] 8d.4 Specs unitarios y e2e (`usarLockMasterTest()`): recuperar NUEVO y USADO, una pendiente descartada (vuelve pendiente), sin motivo, unidad no descartada, insumo deshabilitado; 403 sin `AJUSTAR`; reactivar el componente tras recuperar queda cubierto en WU-11.
+- [x] 8d.5 Quality gates (backend): `cd backend && pnpm lint && pnpm typecheck && pnpm vitest run src/insumos` y `pnpm test`.
 
 **Escenarios**: Recuperar una pieza dada de baja por error; Recuperar como usada una pieza
 descartada desde un equipo; Recuperar una pendiente descartada; Recuperar sin motivo; Recuperar una

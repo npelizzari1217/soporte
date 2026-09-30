@@ -763,6 +763,197 @@ describe('Unidades de insumo SERIE e2e — borde HTTP', () => {
     });
   });
 
+  describe('POST …/unidades/:unidadId/recuperacion', () => {
+    /** Da de baja una unidad del depósito por el ajuste negativo manual; devuelve su id. */
+    async function descartada(e: Escenario, unidadId: string): Promise<string> {
+      const baja = await httpPost(
+        `${base(e.insumoId)}/movimientos/ajuste`,
+        { tipo: 'AJUSTE_NEGATIVO', cantidad: 1, unidadId, motivo: 'faltante' },
+        bearer(e.token),
+      );
+      expect(baja.status).toBe(201);
+      return unidadId;
+    }
+
+    const ruta = (e: Escenario, id: string): string =>
+      `${base(e.insumoId)}/unidades/${id}/recuperacion`;
+
+    const enDeposito = async (e: Escenario) =>
+      (
+        await httpGet<UnidadInsumoResponseDto[]>(
+          `${base(e.insumoId)}/unidades?estado=EN_DEPOSITO`,
+          bearer(e.tokenLectura),
+        )
+      ).data;
+
+    it('NUEVO: la pieza dada de baja por error vuelve EN_DEPOSITO con su serial y deja RECUPERACION', async () => {
+      const e = await prepararEscenario();
+      const [u] = await ingresar(e, ['SN-1']);
+      await descartada(e, u);
+
+      const res = await httpPost<MovimientoInsumoResponseDto>(
+        ruta(e, u),
+        { condicion: 'NUEVO', motivo: '  Se dio de baja por error  ' },
+        bearer(e.token),
+      );
+
+      expect(res.status).toBe(201);
+      expect(res.data).toMatchObject({
+        tipo: 'ENTRADA',
+        cantidad: 1,
+        condicion: 'NUEVO',
+        unidadId: u,
+        insumoId: e.insumoId,
+        motivo: 'Se dio de baja por error',
+      });
+      expect(await enDeposito(e)).toMatchObject([
+        { id: u, numeroSerie: 'SN-1', condicion: 'NUEVO' },
+      ]);
+      const h = await historial(e, u);
+      expect(h.map((x) => x.tipo)).toEqual(['INGRESO', 'BAJA_DE_DEPOSITO', 'RECUPERACION']);
+      expect(h[2]).toMatchObject({ movimientoId: res.data.id, motivo: 'Se dio de baja por error' });
+    });
+
+    it('USADO: una pieza descartada desde un equipo vuelve como usada', async () => {
+      const e = await prepararEscenario({ serie: true, repuesto: true });
+      const [u] = await ingresar(e, ['SN-1']);
+      const equipoId = await crearEquipo(`EQ_${sufijo()}`);
+      await tenantPool.query(`UPDATE unidades_insumo SET estado = 'DESCARTADA' WHERE id = $1`, [u]);
+      await sembrarEvento(u, 'DESCARTE', equipoId, 'retiro');
+
+      const res = await httpPost<MovimientoInsumoResponseDto>(
+        ruta(e, u),
+        { condicion: 'USADO', motivo: 'la pieza estaba bien' },
+        bearer(e.token),
+      );
+
+      expect(res.status).toBe(201);
+      expect(res.data.condicion).toBe('USADO');
+      expect(await enDeposito(e)).toMatchObject([
+        { id: u, numeroSerie: 'SN-1', condicion: 'USADO' },
+      ]);
+    });
+
+    it('una pendiente descartada vuelve pendiente (sin serial)', async () => {
+      const e = await prepararEscenario();
+      const pendiente = await crearPendiente(e.insumoId);
+      await descartada(e, pendiente);
+
+      const res = await httpPost(
+        ruta(e, pendiente),
+        { condicion: 'NUEVO', motivo: 'm' },
+        bearer(e.token),
+      );
+
+      expect(res.status).toBe(201);
+      expect(await enDeposito(e)).toMatchObject([{ id: pendiente, numeroSerie: null }]);
+    });
+
+    it('G2: admite un insumo deshabilitado y una familia deshabilitada con USADO', async () => {
+      const e = await prepararEscenario({ serie: true, repuesto: true });
+      const [u] = await ingresar(e, ['SN-1']);
+      await descartada(e, u);
+      await tenantPool.query(`UPDATE insumos SET activo = false WHERE id = $1`, [e.insumoId]);
+      await tenantPool.query(
+        `UPDATE familias_insumo SET activo = false WHERE id = (SELECT familia_id FROM insumos WHERE id = $1)`,
+        [e.insumoId],
+      );
+
+      const res = await httpPost(ruta(e, u), { condicion: 'USADO', motivo: 'm' }, bearer(e.token));
+
+      expect(res.status).toBe(201);
+    });
+
+    it('422 sin motivo o con motivo en blanco, y sin cambiar la unidad', async () => {
+      const e = await prepararEscenario();
+      const [u] = await ingresar(e, ['SN-1']);
+      await descartada(e, u);
+
+      const sinMotivo = await httpPost(ruta(e, u), { condicion: 'NUEVO' }, bearer(e.token));
+      const enBlanco = await httpPost(
+        ruta(e, u),
+        { condicion: 'NUEVO', motivo: '   ' },
+        bearer(e.token),
+      );
+
+      expect([sinMotivo.status, enBlanco.status]).toEqual([422, 422]);
+      expect(await enDeposito(e)).toEqual([]);
+    });
+
+    it('422 en cada guard (no descartada, USADO sin repuestos, NINGUNO) y 404 del insumo dado de baja', async () => {
+      const e = await prepararEscenario();
+      const [vigente, baja] = await ingresar(e, ['SN-1', 'SN-2']);
+      await descartada(e, baja);
+      const cuerpo = { condicion: 'NUEVO', motivo: 'm' };
+
+      const noDescartada = await httpPost(ruta(e, vigente), cuerpo, bearer(e.token));
+      const usadoSinRepuestos = await httpPost(
+        ruta(e, baja),
+        { condicion: 'USADO', motivo: 'm' },
+        bearer(e.token),
+      );
+      await tenantPool.query(`UPDATE insumos SET seguimiento = 'NINGUNO' WHERE id = $1`, [
+        e.insumoId,
+      ]);
+      const ninguno = await httpPost(ruta(e, baja), cuerpo, bearer(e.token));
+      await tenantPool.query(`UPDATE insumos SET seguimiento = 'SERIE' WHERE id = $1`, [
+        e.insumoId,
+      ]);
+      await tenantPool.query(`UPDATE insumos SET deleted_at = now() WHERE id = $1`, [e.insumoId]);
+      const deBaja = await httpPost(ruta(e, baja), cuerpo, bearer(e.token));
+
+      expect([noDescartada.status, usadoSinRepuestos.status, ninguno.status]).toEqual([
+        422, 422, 422,
+      ]);
+      expect(deBaja.status).toBe(404);
+      const { rows } = await tenantPool.query<{ estado: string }>(
+        `SELECT estado FROM unidades_insumo WHERE id = $1`,
+        [baja],
+      );
+      expect(rows[0].estado).toBe('DESCARTADA');
+    });
+
+    it('400 por condición inválida o motivo de más de 500; 404 de unidad ajena', async () => {
+      const e = await prepararEscenario();
+      const [u] = await ingresar(e, ['SN-1']);
+      await descartada(e, u);
+      const otro = { ...e, insumoId: await sembrarInsumo(e.tokenAdmin, { serie: true }) };
+      const [ajena] = await ingresar(otro, ['SN-9']);
+
+      const invalida = await httpPost(
+        ruta(e, u),
+        { condicion: 'ROTO', motivo: 'm' },
+        bearer(e.token),
+      );
+      const ausente = await httpPost(ruta(e, u), { motivo: 'm' }, bearer(e.token));
+      const largo = await httpPost(
+        ruta(e, u),
+        { condicion: 'NUEVO', motivo: 'x'.repeat(501) },
+        bearer(e.token),
+      );
+      const deOtro = await httpPost(
+        ruta(e, ajena),
+        { condicion: 'NUEVO', motivo: 'm' },
+        bearer(e.token),
+      );
+
+      expect([invalida.status, ausente.status, largo.status]).toEqual([400, 400, 400]);
+      expect(deOtro.status).toBe(404);
+    });
+
+    it('403 sin INSUMOS:AJUSTAR (ni con ALTAS)', async () => {
+      const e = await prepararEscenario();
+      const [u] = await ingresar(e, ['SN-1']);
+      await descartada(e, u);
+      const cuerpo = { condicion: 'NUEVO', motivo: 'm' };
+
+      const soloAltas = await httpPost(ruta(e, u), cuerpo, bearer(e.tokenSoloAltas));
+      const lector = await httpPost(ruta(e, u), cuerpo, bearer(e.tokenLectura));
+
+      expect([soloAltas.status, lector.status]).toEqual([403, 403]);
+    });
+  });
+
   describe('permisos por ruta', () => {
     it('403 en cada ruta sin su permiso', async () => {
       const e = await prepararEscenario();

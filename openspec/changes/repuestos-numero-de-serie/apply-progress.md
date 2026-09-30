@@ -548,3 +548,19 @@ Rama `feat/repuestos-numero-de-serie-wu08d`. Parte 1 de 2 (servicio). Tareas 8d.
   la pendiente dada de baja (vuelve pendiente); el invariante y la consulta de stock se verifican tras cada paso.
 - Mutacion adversarial (8d.3): omitir la ENTRADA de la recuperacion (evento sin movimiento) dejo la secuencia en rojo con
   "USADO: hay 2 unidades EN_DEPOSITO y el libro da saldo 1."; revertida y verde.
+
+### WU-8d - parte 2 de 2 (caso de uso, ruta y e2e)
+
+Rama `feat/repuestos-numero-de-serie-wu08d-2`. Tareas 8d.2, 8d.4 y 8d.5 hechas (8d.1 a 8d.5 completas).
+
+- `RecuperarUnidadDescartadaUseCase(insumoRepo, unidadRepo, familiaRepo, txRunner, operaciones)`: copia la forma de
+  `DevolverEntregaUseCase` (L1 -> 404 de unidad ajena -> motivo obligatorio -> exencion G2 -> `operaciones.recuperarDescartadas`);
+  `FalloOperacionDeUnidad` se desenvuelve afuera del `run()`. Motivo vacio, en blanco o de mas de 500 es
+  `MotivoRecuperacionRequeridoError` (422). Registrado en `insumos.module.ts` (sin exportar).
+- Ruta `POST /insumos/:insumoId/unidades/:unidadId/recuperacion` (`INSUMOS:AJUSTAR`, 201, `MovimientoInsumoResponseDto`) con
+  `RecuperarUnidadDescartadaHttpDto` `{condicion, motivo?}`: el motivo es opcional en el borde (400 solo por mas de 500) para que
+  la regla la haga cumplir el caso de uso con 422.
+- e2e en `unidades-insumo.e2e.spec.ts` (mismo arnes): NUEVO, USADO desde un equipo, pendiente, G2, 422 por motivo y por guards,
+  404 de insumo dado de baja y de unidad ajena, 400, 403 sin `AJUSTAR`, e historial con `RECUPERACION`.
+- Ayuda: `permisos-y-roles.md` corregido (fila de la tabla y parrafo de `AJUSTAR`: ya no es "la unica operacion"; cubre tambien
+  corregir un serial y recuperar una pieza). Deuda de UI en WU-16b.

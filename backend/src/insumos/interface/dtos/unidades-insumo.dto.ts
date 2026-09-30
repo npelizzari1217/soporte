@@ -71,6 +71,22 @@ export class DevolverEntregaHttpDto {
   motivo?: string | null;
 }
 
+/**
+ * Body de `POST …/unidades/:unidadId/recuperacion`: la condición la elige el
+ * usuario. El motivo es opcional en el borde para que la regla la haga cumplir
+ * el caso de uso: sin motivo o en blanco es 422, no un 400.
+ */
+export class RecuperarUnidadDescartadaHttpDto {
+  @IsIn(CONDICIONES_STOCK)
+  condicion!: CondicionStock;
+
+  @IsOptional()
+  @IsString()
+  @Transform(transformarMotivo)
+  @MaxLength(MOVIMIENTO_INSUMO_MOTIVO_MAX_LENGTH)
+  motivo?: string | null;
+}
+
 export interface UnidadInsumoResponseDto {
   id: string;
   insumoId: string;
