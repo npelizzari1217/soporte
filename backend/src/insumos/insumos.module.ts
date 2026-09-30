@@ -112,6 +112,7 @@ import { NumeradorInsumo } from './domain/services/numerador-insumo.service';
 
 import { CrearInsumoUseCase } from './application/use-cases/crear-insumo.use-case';
 import { EditarInsumoUseCase } from './application/use-cases/editar-insumo.use-case';
+import { CambiarSeguimientoInsumoUseCase } from './application/use-cases/cambiar-seguimiento-insumo.use-case';
 import { CambiarEstadoActivoInsumoUseCase } from './application/use-cases/cambiar-estado-activo-insumo.use-case';
 import { ListarInsumosUseCase } from './application/use-cases/listar-insumos.use-case';
 import { ListarInsumosPorModeloEquipoUseCase } from './application/use-cases/listar-insumos-por-modelo-equipo.use-case';
@@ -284,6 +285,30 @@ import { MovimientosInsumoController } from './interface/controllers/movimientos
         FAMILIA_INSUMO_REPOSITORY,
         UNIDAD_MEDIDA_REPOSITORY,
         MODELO_EQUIPO_REPOSITORY,
+      ],
+    },
+    {
+      provide: CambiarSeguimientoInsumoUseCase,
+      useFactory: (
+        insumoRepo: IInsumoRepository,
+        unidadMedidaRepo: IUnidadMedidaRepository,
+        movimientoRepo: IMovimientoInsumoRepository,
+        unidadRepo: IUnidadInsumoRepository,
+        txRunner: ITenantTransactionRunner,
+      ) =>
+        new CambiarSeguimientoInsumoUseCase(
+          insumoRepo,
+          unidadMedidaRepo,
+          movimientoRepo,
+          unidadRepo,
+          txRunner,
+        ),
+      inject: [
+        INSUMO_REPOSITORY,
+        UNIDAD_MEDIDA_REPOSITORY,
+        MOVIMIENTO_INSUMO_REPOSITORY,
+        UNIDAD_INSUMO_REPOSITORY,
+        TENANT_TX_RUNNER,
       ],
     },
     {
