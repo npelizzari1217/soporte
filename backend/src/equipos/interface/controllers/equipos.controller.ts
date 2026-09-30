@@ -13,6 +13,7 @@
  *   DELETE /equipos/:id                                       → EliminarEquipoUseCase        `EQUIPOS:BORRADO`
  *   POST   /equipos/:id/componentes                           → InstalarComponenteDesdeDepositoUseCase (descontarStock, por defecto) o AgregarComponenteUseCase (descontarStock=false) `EQUIPOS:ALTAS`
  *   DELETE /equipos/:id/componentes/:componenteId             → EliminarComponenteUseCase    `EQUIPOS:BORRADO`
+ *   POST   /equipos/:id/componentes/:componenteId/baja        → RetirarComponenteUseCase     `EQUIPOS:BORRADO`
  *   PATCH  /equipos/:id/componentes/:componenteId             → EditarComponenteUseCase      `EQUIPOS:MODIFICACION`
  *   PATCH  /equipos/:id/componentes/:componenteId/reactivar   → ReactivarComponenteUseCase   `EQUIPOS:MODIFICACION`
  *
@@ -63,6 +64,7 @@ import { AgregarComponenteUseCase } from '../../application/use-cases/agregar-co
 import { InstalarComponenteDesdeDepositoUseCase } from '../../application/use-cases/instalar-componente-desde-deposito.use-case';
 import { EliminarComponenteUseCase } from '../../application/use-cases/eliminar-componente.use-case';
 import { EditarComponenteUseCase } from '../../application/use-cases/editar-componente.use-case';
+import { RetirarComponenteUseCase } from '../../application/use-cases/retirar-componente.use-case';
 import { ReactivarComponenteUseCase } from '../../application/use-cases/reactivar-componente.use-case';
 import { ExportarEquiposUseCase } from '../../application/use-cases/exportar-equipos.use-case';
 
@@ -88,6 +90,7 @@ import {
   CreateComponenteHttpDto,
   CreateEquipoHttpDto,
   EditarComponenteHttpDto,
+  RetirarComponenteHttpDto,
   EditarEquipoHttpDto,
   EquipoDetalleResponseDto,
   EquipoResponseDto,
@@ -182,6 +185,8 @@ export class EquiposController {
     // WU-4 (sdd/repuestos-instalar-desde-deposito, issue #153) — mismo
     // criterio: agregado al final.
     private readonly instalarComponenteDesdeDepositoUseCase: InstalarComponenteDesdeDepositoUseCase,
+    // sdd/stock-usado-componentes (WU-8a) — agregado al final por el mismo criterio.
+    private readonly retirarComponenteUseCase: RetirarComponenteUseCase,
   ) {}
 
   /**
@@ -392,6 +397,38 @@ export class EquiposController {
     if (result.isFail()) {
       throw toHttpException(result.getError());
     }
+  }
+
+  /**
+   * POST /equipos/:id/componentes/:componenteId/baja
+   * Retira un componente con dos desenlaces: `STOCK_USADO` lo devuelve al
+   * depósito como ENTRADA USADO y `DESCARTE` solo lo da de baja. `usuarioId`
+   * sale de `JWT.sub`, nunca del body. Exige `EQUIPOS:BORRADO` y ningún permiso
+   * de insumos: el asiento de stock lo registra el caso de uso.
+   * @throws 400 `destino` ausente o inválido
+   * @throws 404 componente inexistente o de otro equipo
+   * @throws 422 componente ya dado de baja, o `DESCARTE` sin motivo
+   */
+  @Post(':id/componentes/:componenteId/baja')
+  @RequiereAcciones('EQUIPOS:BORRADO')
+  @HttpCode(HttpStatus.OK)
+  async retirarComponente(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') equipoId: string,
+    @Param('componenteId') componenteId: string,
+    @Body() dto: RetirarComponenteHttpDto,
+  ): Promise<ComponenteResponseDto> {
+    const result = await this.retirarComponenteUseCase.execute({
+      equipoId,
+      componenteId,
+      destino: dto.destino,
+      motivo: dto.motivo,
+      usuarioId: user.sub,
+    });
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+    return toComponenteResponseDto(result.getValue());
   }
 
   /**

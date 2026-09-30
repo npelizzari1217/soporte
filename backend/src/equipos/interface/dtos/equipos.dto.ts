@@ -31,6 +31,8 @@ import {
   CONDICIONES_STOCK,
   CondicionStock,
 } from '../../../insumos/domain/entities/tipo-movimiento-insumo';
+import { transformarMotivo } from '../../../insumos/interface/dtos/movimientos-insumo.dto';
+import { MOVIMIENTO_INSUMO_MOTIVO_MAX_LENGTH } from '../../../insumos/domain/entities/movimiento-insumo.entity';
 import { EsNumeroConDecimales } from '../../../shared/interface/validators/es-numero-con-decimales';
 import {
   TICKET_TITULO_MAX_LENGTH,
@@ -52,6 +54,8 @@ import {
   COMPONENTE_DESCRIPCION_MAX_LENGTH,
   COMPONENTE_NUMERO_SERIE_MAX_LENGTH,
   COMPONENTE_CAPACIDAD_MAX_LENGTH,
+  DESTINOS_RETIRO_COMPONENTE,
+  DestinoRetiroComponente,
 } from '../../domain/entities/componente-equipo.entity';
 import { TicketSoporteEntity } from '../../domain/entities/ticket-soporte.entity';
 import { ComponenteEquipoConTipo } from '../../application/use-cases/obtener-equipo.use-case';
@@ -315,6 +319,25 @@ export class EditarComponenteHttpDto {
   @IsString()
   @MaxLength(COMPONENTE_CAPACIDAD_MAX_LENGTH)
   capacidad?: string | null;
+}
+
+/**
+ * Body de `POST /equipos/:id/componentes/:componenteId/baja` (sdd/stock-usado-componentes).
+ * `destino` es obligatorio: elegir entre devolver la pieza al stock usado o
+ * descartarla lo decide el usuario, no el sistema. El motivo es opcional en
+ * `STOCK_USADO` y obligatorio en `DESCARTE`; esa segunda regla es de dominio
+ * (422), no de forma, así que no se duplica acá. El motivo se normaliza igual
+ * que en los movimientos de insumo.
+ */
+export class RetirarComponenteHttpDto {
+  @IsIn(DESTINOS_RETIRO_COMPONENTE)
+  destino!: DestinoRetiroComponente;
+
+  @IsOptional()
+  @IsString()
+  @Transform(transformarMotivo)
+  @MaxLength(MOVIMIENTO_INSUMO_MOTIVO_MAX_LENGTH)
+  motivo?: string | null;
 }
 
 // ─── Response DTOs ────────────────────────────────────────────────────────────

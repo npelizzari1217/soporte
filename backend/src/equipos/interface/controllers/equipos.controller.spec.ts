@@ -61,6 +61,7 @@ describe('EquiposController (T12.6)', () => {
     const reactivarComponenteUseCase = { execute: vi.fn() };
     const exportarEquiposUseCase = { execute: vi.fn() };
     const instalarComponenteDesdeDepositoUseCase = { execute: vi.fn() };
+    const retirarComponenteUseCase = { execute: vi.fn() };
 
     const controller = new EquiposController(
       crearEquipoUseCase as any,
@@ -74,6 +75,7 @@ describe('EquiposController (T12.6)', () => {
       reactivarComponenteUseCase as any,
       exportarEquiposUseCase as any,
       instalarComponenteDesdeDepositoUseCase as any,
+      retirarComponenteUseCase as any,
     );
 
     return {
@@ -89,6 +91,7 @@ describe('EquiposController (T12.6)', () => {
       reactivarComponenteUseCase,
       exportarEquiposUseCase,
       instalarComponenteDesdeDepositoUseCase,
+      retirarComponenteUseCase,
     };
   }
 
@@ -393,6 +396,79 @@ describe('EquiposController (T12.6)', () => {
     });
   });
 
+  describe('POST /equipos/:id/componentes/:componenteId/baja', () => {
+    const actor = { sub: 'usuario-jwt-uuid' } as any;
+    const makeComponente = () =>
+      ComponenteEquipoEntity.create({
+        equipoId: 'equipo-uuid',
+        insumoId: 'insumo-1',
+        descripcion: null,
+        numeroSerie: null,
+        capacidad: null,
+      }).getValue();
+
+    it('retira el componente; usuarioId sale del JWT y el destino y el motivo del body', async () => {
+      const { controller, retirarComponenteUseCase } = buildController();
+      retirarComponenteUseCase.execute.mockResolvedValue(Result.ok(makeComponente()));
+
+      const result = await controller.retirarComponente(actor, 'equipo-uuid', 'componente-1', {
+        destino: 'STOCK_USADO',
+        motivo: 'Funciona',
+      });
+
+      expect(retirarComponenteUseCase.execute).toHaveBeenCalledWith({
+        equipoId: 'equipo-uuid',
+        componenteId: 'componente-1',
+        destino: 'STOCK_USADO',
+        motivo: 'Funciona',
+        usuarioId: 'usuario-jwt-uuid',
+      });
+      expect(result.id).toBeDefined();
+    });
+
+    it('DESCARTE sin motivo (MotivoRetiroRequeridoError) → 422', async () => {
+      const { controller, retirarComponenteUseCase } = buildController();
+      retirarComponenteUseCase.execute.mockResolvedValue(
+        Result.fail(new EquiposErrors.MotivoRetiroRequeridoError('DESCARTE')),
+      );
+
+      await expect(
+        controller.retirarComponente(actor, 'equipo-uuid', 'componente-1', { destino: 'DESCARTE' }),
+      ).rejects.toThrow(UnprocessableEntityException);
+    });
+
+    it('componente ya dado de baja → 422', async () => {
+      const { controller, retirarComponenteUseCase } = buildController();
+      retirarComponenteUseCase.execute.mockResolvedValue(
+        Result.fail(new EquiposErrors.ComponenteDadoDeBajaError('componente-1')),
+      );
+
+      await expect(
+        controller.retirarComponente(actor, 'equipo-uuid', 'componente-1', {
+          destino: 'STOCK_USADO',
+        }),
+      ).rejects.toThrow(UnprocessableEntityException);
+    });
+
+    it('componente inexistente → 404', async () => {
+      const { controller, retirarComponenteUseCase } = buildController();
+      retirarComponenteUseCase.execute.mockResolvedValue(
+        Result.fail(new EquiposErrors.ComponenteNoEncontradoError('componente-1')),
+      );
+
+      await expect(
+        controller.retirarComponente(actor, 'equipo-uuid', 'componente-1', {
+          destino: 'STOCK_USADO',
+        }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('declara @RequiereAcciones("EQUIPOS:BORRADO")', () => {
+      const meta = Reflect.getMetadata(ACCIONES_KEY, EquiposController.prototype.retirarComponente);
+      expect(meta).toEqual(['EQUIPOS:BORRADO']);
+    });
+  });
+
   describe('PATCH /equipos/:id/componentes/:componenteId', () => {
     it('edita el componente', async () => {
       const { controller, editarComponenteUseCase } = buildController();
@@ -531,6 +607,7 @@ describe('EquiposController.exportar — GET /equipos/export (sdd/exportar-lista
       stub() as any, // reactivarComponenteUseCase
       exportarEquipos as any, // exportarEquiposUseCase
       stub() as any, // instalarComponenteDesdeDepositoUseCase
+      stub() as any, // retirarComponenteUseCase
     );
     return { controller, exportarEquipos };
   }

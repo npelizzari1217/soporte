@@ -16,6 +16,7 @@ import {
   EditarEquipoHttpDto,
   CreateComponenteHttpDto,
   EditarComponenteHttpDto,
+  RetirarComponenteHttpDto,
   toComponenteResponseDto,
 } from './equipos.dto';
 import { ComponenteEquipoEntity } from '../../domain/entities/componente-equipo.entity';
@@ -399,5 +400,51 @@ describe('toComponenteResponseDto — registro del retiro (ADR-7)', () => {
     });
 
     expect(toComponenteResponseDto(componente).bajaSinSalidaPrevia).toBe(false);
+  });
+});
+
+describe('RetirarComponenteHttpDto — destino obligatorio y motivo normalizado', () => {
+  const errorDe = async (body: unknown, campo: string) =>
+    (await validate(plainToInstance(RetirarComponenteHttpDto, body))).find(
+      (e) => e.property === campo,
+    );
+
+  it.each(['STOCK_USADO', 'DESCARTE'])('acepta el destino %s', async (destino) => {
+    expect(await validate(plainToInstance(RetirarComponenteHttpDto, { destino }))).toHaveLength(0);
+  });
+
+  it.each([{}, { destino: 'OTRO' }, { destino: '' }, { destino: 1 }])(
+    'rechaza destino ausente o invalido (%j) por isIn',
+    async (body) => {
+      const error = await errorDe(body, 'destino');
+      expect(error?.constraints).toHaveProperty('isIn');
+    },
+  );
+
+  it('el motivo es opcional y se recorta; uno de solo espacios colapsa a null', async () => {
+    const recortado = plainToInstance(RetirarComponenteHttpDto, {
+      destino: 'DESCARTE',
+      motivo: '  roto  ',
+    });
+    expect(recortado.motivo).toBe('roto');
+    const vacio = plainToInstance(RetirarComponenteHttpDto, { destino: 'DESCARTE', motivo: '   ' });
+    expect(vacio.motivo).toBeNull();
+    expect(await validate(vacio)).toHaveLength(0);
+  });
+
+  it.each(['STOCK_USADO', 'DESCARTE'])(
+    'rechaza un motivo de mas de 500 caracteres con destino %s, por maxLength',
+    async (destino) => {
+      const error = await errorDe({ destino, motivo: 'a'.repeat(501) }, 'motivo');
+      expect(error?.constraints).toHaveProperty('maxLength');
+    },
+  );
+
+  it('acepta un motivo de 500 caracteres y mide despues del recorte', async () => {
+    const dto = plainToInstance(RetirarComponenteHttpDto, {
+      destino: 'DESCARTE',
+      motivo: ` ${'a'.repeat(500)} `,
+    });
+    expect(await validate(dto)).toHaveLength(0);
   });
 });
