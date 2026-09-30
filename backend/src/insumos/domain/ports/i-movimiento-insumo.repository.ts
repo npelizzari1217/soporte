@@ -1,25 +1,5 @@
 import { MovimientoInsumoEntity } from '../entities/movimiento-insumo.entity';
-import { TipoMovimientoInsumo } from '../entities/tipo-movimiento-insumo';
-
-/**
- * SumasPorTipoMovimiento — cuánto suma la bitácora de un insumo en CADA tipo
- * del catálogo, sin interpretar ninguno.
- *
- * Es deliberadamente un desglose y no un saldo: el repositorio devuelve el
- * dato crudo —`SUM(cantidad) GROUP BY tipo`— y NO decide en qué dirección
- * pesa cada tipo. Esa regla es de negocio y no le corresponde a la capa de
- * persistencia fijarla de hecho: un repositorio que devolviera un solo número
- * ya la habría tomado, y cambiarla después obligaría a tocar SQL en vez de una
- * regla. El catálogo ya pasó una vez de tres tipos a cuatro —el ajuste se
- * partió en `AJUSTE_POSITIVO` y `AJUSTE_NEGATIVO` (decisión 4)—, y esa
- * corrección no tocó esta firma: es la prueba de que el desglose es el lugar
- * correcto para el corte.
- *
- * Todos los tipos están presentes, con `0` cuando no hay filas: un `GROUP BY`
- * no emite filas vacías, así que la implementación completa los faltantes para
- * que el consumidor no tenga que resolver una ausencia como cero cada vez.
- */
-export type SumasPorTipoMovimiento = Readonly<Record<TipoMovimientoInsumo, number>>;
+import { SumasPorCondicionYTipo } from '../entities/tipo-movimiento-insumo';
 
 /**
  * PaginacionMovimientosInsumo — cuánto de la bitácora se pide y desde dónde.
@@ -123,12 +103,12 @@ export interface IMovimientoInsumoRepository {
    * que sirve para DECIDIR sobre el stock.
    *
    * @param insumoId Insumo cuya bitácora se bloquea y se suma.
-   * @returns Las sumas por tipo, con `0` en los tipos sin movimientos. Todos los tipos en cero si el insumo no tiene bitácora.
+   * @returns Las sumas por condición y por tipo, con `0` donde no hay movimientos. Los 2x4 en cero si el insumo no tiene bitácora. El saldo se deriva con `calcularSaldos()`.
    */
-  lockAndSumByTipo(insumoId: string): Promise<SumasPorTipoMovimiento>;
+  lockAndSumByTipo(insumoId: string): Promise<SumasPorCondicionYTipo>;
 
   /**
-   * Devuelve el desglose de la bitácora de un insumo por tipo, SIN tomar
+   * Devuelve el desglose de la bitácora de un insumo por condición y tipo, SIN tomar
    * ningún lock y SIN exigir transacción. Es la lectura de consulta: el stock
    * que se muestra en la ficha del insumo.
    *
@@ -154,9 +134,9 @@ export interface IMovimientoInsumoRepository {
    * prohibirla.
    *
    * @param insumoId Insumo cuya bitácora se suma.
-   * @returns Las sumas por tipo, con `0` en los tipos sin movimientos. Todos los tipos en cero si el insumo no tiene bitácora.
+   * @returns Las sumas por condición y por tipo, con `0` donde no hay movimientos. Los 2x4 en cero si el insumo no tiene bitácora. El saldo se deriva con `calcularSaldos()`.
    */
-  sumByTipo(insumoId: string): Promise<SumasPorTipoMovimiento>;
+  sumByTipo(insumoId: string): Promise<SumasPorCondicionYTipo>;
 
   /**
    * Devuelve las FILAS de la bitácora de un insumo, paginadas y ordenadas, con

@@ -3,7 +3,8 @@ import { RegistrarSalidaInsumoUseCase } from './registrar-salida-insumo.use-case
 import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { InsumoEntity } from '../../domain/entities/insumo.entity';
 import { TipoMovimientoInsumo } from '../../domain/entities/tipo-movimiento-insumo';
-import { SumasPorTipoMovimiento } from '../../domain/ports/i-movimiento-insumo.repository';
+import { SumasPorCondicionYTipo } from '../../domain/entities/tipo-movimiento-insumo';
+import { sumasCon } from '../../testing/sumas-movimiento';
 
 describe('RegistrarSalidaInsumoUseCase', () => {
   function propsDeInsumo(activo: boolean) {
@@ -42,14 +43,8 @@ describe('RegistrarSalidaInsumoUseCase', () => {
     );
   }
 
-  function sumas(parcial: Partial<Record<TipoMovimientoInsumo, number>>): SumasPorTipoMovimiento {
-    return {
-      ENTRADA: 0,
-      SALIDA: 0,
-      AJUSTE_POSITIVO: 0,
-      AJUSTE_NEGATIVO: 0,
-      ...parcial,
-    };
+  function sumas(parcial: Partial<Record<TipoMovimientoInsumo, number>>): SumasPorCondicionYTipo {
+    return sumasCon({ NUEVO: parcial });
   }
 
   /**
@@ -66,7 +61,7 @@ describe('RegistrarSalidaInsumoUseCase', () => {
    * anota si ocurrió con la transacción abierta o no.
    */
   function buildColaboradores(
-    opciones: { insumo?: InsumoEntity | null; sumas?: SumasPorTipoMovimiento } = {},
+    opciones: { insumo?: InsumoEntity | null; sumas?: SumasPorCondicionYTipo } = {},
   ) {
     const insumo = opciones.insumo === undefined ? insumoVigente() : opciones.insumo;
     const desglose = opciones.sumas ?? sumas({ ENTRADA: 100 });

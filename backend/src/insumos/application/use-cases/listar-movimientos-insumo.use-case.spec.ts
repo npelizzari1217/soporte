@@ -3,10 +3,8 @@ import { ListarMovimientosInsumoUseCase } from './listar-movimientos-insumo.use-
 import { InsumoEntity } from '../../domain/entities/insumo.entity';
 import { MovimientoInsumoEntity } from '../../domain/entities/movimiento-insumo.entity';
 import { TipoMovimientoInsumo } from '../../domain/entities/tipo-movimiento-insumo';
-import {
-  PaginaDeMovimientosInsumo,
-  SumasPorTipoMovimiento,
-} from '../../domain/ports/i-movimiento-insumo.repository';
+import { PaginaDeMovimientosInsumo } from '../../domain/ports/i-movimiento-insumo.repository';
+import { sumasCon } from '../../testing/sumas-movimiento';
 
 describe('ListarMovimientosInsumoUseCase', () => {
   /**
@@ -76,12 +74,7 @@ describe('ListarMovimientosInsumoUseCase', () => {
     );
   }
 
-  const SUMAS_CUALQUIERA: SumasPorTipoMovimiento = {
-    ENTRADA: 10,
-    SALIDA: 0,
-    AJUSTE_POSITIVO: 0,
-    AJUSTE_NEGATIVO: 0,
-  };
+  const SUMAS_CUALQUIERA = sumasCon({ NUEVO: { ENTRADA: 10 } });
 
   /**
    * El repositorio falso expone LOS CUATRO métodos del puerto, aunque el caso

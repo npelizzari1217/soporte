@@ -7,7 +7,8 @@ import {
   TipoMovimientoInsumo,
   TIPOS_AJUSTE_INSUMO,
 } from '../../domain/entities/tipo-movimiento-insumo';
-import { SumasPorTipoMovimiento } from '../../domain/ports/i-movimiento-insumo.repository';
+import { SumasPorCondicionYTipo } from '../../domain/entities/tipo-movimiento-insumo';
+import { sumasCon } from '../../testing/sumas-movimiento';
 
 describe('RegistrarAjusteInsumoUseCase', () => {
   function propsDeInsumo(activo: boolean) {
@@ -46,14 +47,8 @@ describe('RegistrarAjusteInsumoUseCase', () => {
     );
   }
 
-  function sumas(parcial: Partial<Record<TipoMovimientoInsumo, number>>): SumasPorTipoMovimiento {
-    return {
-      ENTRADA: 0,
-      SALIDA: 0,
-      AJUSTE_POSITIVO: 0,
-      AJUSTE_NEGATIVO: 0,
-      ...parcial,
-    };
+  function sumas(parcial: Partial<Record<TipoMovimientoInsumo, number>>): SumasPorCondicionYTipo {
+    return sumasCon({ NUEVO: parcial });
   }
 
   /**
@@ -71,7 +66,7 @@ describe('RegistrarAjusteInsumoUseCase', () => {
    * spec de la SALIDA, porque el contrato que verifica es el mismo.
    */
   function buildColaboradores(
-    opciones: { insumo?: InsumoEntity | null; sumas?: SumasPorTipoMovimiento } = {},
+    opciones: { insumo?: InsumoEntity | null; sumas?: SumasPorCondicionYTipo } = {},
   ) {
     const insumo = opciones.insumo === undefined ? insumoVigente() : opciones.insumo;
     const desglose = opciones.sumas ?? sumas({ ENTRADA: 100 });

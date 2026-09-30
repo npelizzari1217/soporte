@@ -3,7 +3,7 @@ import {
   EstadoReposicionInsumo,
   evaluarReposicion,
 } from '../../domain/entities/estado-reposicion-insumo';
-import { calcularStock } from '../../domain/entities/tipo-movimiento-insumo';
+import { calcularSaldos } from '../../domain/entities/tipo-movimiento-insumo';
 import { IInsumoRepository } from '../../domain/ports/i-insumo.repository';
 import { IMovimientoInsumoRepository } from '../../domain/ports/i-movimiento-insumo.repository';
 import { validarInsumoElegible } from '../services/validar-insumo.service';
@@ -54,7 +54,7 @@ export interface StockDeInsumo {
  * asimetría con la que `RegistrarEntradaInsumoUseCase` a propósito NO recibe
  * `lockAndSumByTipo`.
  *
- * La fórmula del saldo NO vive acá: `calcularStock()` la resuelve en el
+ * La fórmula del saldo NO vive acá: `calcularSaldos()` la resuelve (compone `calcularStock()`) en el
  * dominio, así que el número que se muestra en la ficha es exactamente el
  * mismo que el registro de una salida usa para autorizar. Dos copias
  * discreparían el día que entre un tipo nuevo.
@@ -95,7 +95,8 @@ export class ConsultarStockInsumoUseCase {
     // canónico que la base ya reconoció, mismo criterio que el registro de una
     // salida.
     const sumas = await this.movimientoRepo.sumByTipo(insumo.id);
-    const stock = calcularStock(sumas);
+    // Hasta que la condición se elija por operación, NUEVO es la única que se escribe.
+    const stock = calcularSaldos(sumas).NUEVO;
 
     return Result.ok({
       insumoId: insumo.id,

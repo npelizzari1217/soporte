@@ -2,7 +2,7 @@ import { DomainError, Result } from '../../../shared/domain/result';
 import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { MovimientoInsumoEntity } from '../../domain/entities/movimiento-insumo.entity';
 import {
-  calcularStock,
+  calcularSaldos,
   DIRECCION_POR_TIPO_MOVIMIENTO,
   TipoAjusteInsumo,
 } from '../../domain/entities/tipo-movimiento-insumo';
@@ -184,7 +184,9 @@ export class RegistrarAjusteInsumoUseCase {
       // al cerrar la transacción. La lectura va ANTES del insert porque leer
       // después mediría un stock que ya incluye el ajuste en evaluación.
       const sumas = await this.movimientoRepo.lockAndSumByTipo(asiento.insumoId);
-      const disponible = calcularStock(sumas);
+      // Hasta que la condición se elija por operación, NUEVO es la única que se escribe.
+      // Hasta que la condición se elija por operación, NUEVO es la única que se escribe.
+      const disponible = calcularSaldos(sumas).NUEVO;
 
       // Solo la dirección que RESTA puede dejar el saldo negativo, y la
       // pregunta se le hace a la tabla del dominio en vez de compararla contra

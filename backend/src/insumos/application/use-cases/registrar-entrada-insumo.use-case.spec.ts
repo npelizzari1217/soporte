@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { RegistrarEntradaInsumoUseCase } from './registrar-entrada-insumo.use-case';
 import { InsumoEntity } from '../../domain/entities/insumo.entity';
-import { SumasPorTipoMovimiento } from '../../domain/ports/i-movimiento-insumo.repository';
+import { SumasPorCondicionYTipo } from '../../domain/entities/tipo-movimiento-insumo';
+import { sumasCon } from '../../testing/sumas-movimiento';
 
 describe('RegistrarEntradaInsumoUseCase', () => {
   function propsDeInsumo(activo: boolean) {
@@ -53,12 +54,9 @@ describe('RegistrarEntradaInsumoUseCase', () => {
    * lo único que puede mantener ese assert en verde es que genuinamente no se
    * invoque.
    */
-  const SUMAS_CARGADAS: SumasPorTipoMovimiento = {
-    ENTRADA: 40,
-    SALIDA: 12,
-    AJUSTE_POSITIVO: 1,
-    AJUSTE_NEGATIVO: 3,
-  };
+  const SUMAS_CARGADAS: SumasPorCondicionYTipo = sumasCon({
+    NUEVO: { ENTRADA: 40, SALIDA: 12, AJUSTE_POSITIVO: 1, AJUSTE_NEGATIVO: 3 },
+  });
 
   /**
    * `insert` resuelve con el MISMO asiento que recibió — no `undefined` — a

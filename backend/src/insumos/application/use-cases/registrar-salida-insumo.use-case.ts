@@ -1,7 +1,7 @@
 import { DomainError, Result } from '../../../shared/domain/result';
 import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { MovimientoInsumoEntity } from '../../domain/entities/movimiento-insumo.entity';
-import { calcularStock } from '../../domain/entities/tipo-movimiento-insumo';
+import { calcularSaldos } from '../../domain/entities/tipo-movimiento-insumo';
 import { StockInsuficienteError } from '../../domain/errors/insumos.errors';
 import { IInsumoRepository } from '../../domain/ports/i-insumo.repository';
 import { IMovimientoInsumoRepository } from '../../domain/ports/i-movimiento-insumo.repository';
@@ -67,7 +67,7 @@ export interface RegistrarSalidaInsumoDto {
  *   stock atrapado, sin forma de llegar a cero salvo rehabilitando el insumo o
  *   asentando un ajuste que mentiría sobre lo que pasó.
  *
- * La fórmula del saldo NO vive acá: `calcularStock()` la resuelve en el
+ * La fórmula del saldo NO vive acá: `calcularSaldos()` la resuelve (compone `calcularStock()`) en el
  * dominio, para que la consulta que muestra el stock en la ficha del insumo
  * derive el mismo número que este caso de uso usa para autorizar.
  *
@@ -137,7 +137,9 @@ export class RegistrarSalidaInsumoUseCase {
       // al cerrar la transacción. La lectura va ANTES del insert porque leer
       // después mediría un stock que ya incluye la salida en evaluación.
       const sumas = await this.movimientoRepo.lockAndSumByTipo(asiento.insumoId);
-      const disponible = calcularStock(sumas);
+      // Hasta que la condición se elija por operación, NUEVO es la única que se escribe.
+      // Hasta que la condición se elija por operación, NUEVO es la única que se escribe.
+      const disponible = calcularSaldos(sumas).NUEVO;
 
       // El límite es el saldo EXACTO: sacar todo lo que hay deja el stock en
       // cero, que no es negativo, y vaciar el depósito es una operación

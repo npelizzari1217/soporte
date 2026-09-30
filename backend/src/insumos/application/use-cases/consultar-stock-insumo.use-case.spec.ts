@@ -2,7 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { ConsultarStockInsumoUseCase } from './consultar-stock-insumo.use-case';
 import { InsumoEntity } from '../../domain/entities/insumo.entity';
 import { TipoMovimientoInsumo } from '../../domain/entities/tipo-movimiento-insumo';
-import { SumasPorTipoMovimiento } from '../../domain/ports/i-movimiento-insumo.repository';
+import { SumasPorCondicionYTipo } from '../../domain/entities/tipo-movimiento-insumo';
+import { sumasCon } from '../../testing/sumas-movimiento';
 
 describe('ConsultarStockInsumoUseCase', () => {
   function propsDeInsumo(opciones: { activo?: boolean; stockMinimo?: number | null } = {}) {
@@ -37,14 +38,8 @@ describe('ConsultarStockInsumoUseCase', () => {
     );
   }
 
-  function sumas(parcial: Partial<Record<TipoMovimientoInsumo, number>>): SumasPorTipoMovimiento {
-    return {
-      ENTRADA: 0,
-      SALIDA: 0,
-      AJUSTE_POSITIVO: 0,
-      AJUSTE_NEGATIVO: 0,
-      ...parcial,
-    };
+  function sumas(parcial: Partial<Record<TipoMovimientoInsumo, number>>): SumasPorCondicionYTipo {
+    return sumasCon({ NUEVO: parcial });
   }
 
   /**
@@ -54,7 +49,7 @@ describe('ConsultarStockInsumoUseCase', () => {
    * que no lo tuviera, ese assert pasaría en verde por construcción.
    */
   function buildColaboradores(
-    opciones: { insumo?: InsumoEntity | null; sumas?: SumasPorTipoMovimiento } = {},
+    opciones: { insumo?: InsumoEntity | null; sumas?: SumasPorCondicionYTipo } = {},
   ) {
     const encontrado = opciones.insumo === undefined ? insumo() : opciones.insumo;
     const desglose = opciones.sumas ?? sumas({ ENTRADA: 10 });

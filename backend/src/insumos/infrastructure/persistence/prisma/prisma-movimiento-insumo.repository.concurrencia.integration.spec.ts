@@ -41,7 +41,7 @@ import { TenantPrismaClient } from '../../../../shared/infrastructure/persistenc
 import { PrismaTenantTransactionRunner } from '../../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { PrismaMovimientoInsumoRepository } from './prisma-movimiento-insumo.repository';
 import { MovimientoInsumoEntity } from '../../../domain/entities/movimiento-insumo.entity';
-import { SumasPorTipoMovimiento } from '../../../domain/ports/i-movimiento-insumo.repository';
+import { SumasPorCondicionYTipo } from '../../../domain/entities/tipo-movimiento-insumo';
 
 const MASTER_TEST_URL =
   process.env.DATABASE_URL_MASTER ??
@@ -129,7 +129,8 @@ function instrumentarConcurrenciaDelPool(pool: Pool): () => number {
 }
 
 /**
- * Stock a partir del desglose por tipo. La regla de en qué dirección pesa cada
+ * Stock NUEVO a partir del desglose por condición y tipo (los movimientos de
+ * este spec son todos NUEVO). La regla de en qué dirección pesa cada
  * tipo es de NEGOCIO y vive en `calcularStock()`
  * (`domain/entities/tipo-movimiento-insumo.ts`), no en el repositorio — el
  * puerto devuelve un desglose justamente para no fijarla.
@@ -139,8 +140,9 @@ function instrumentarConcurrenciaDelPool(pool: Pool): () => number {
  * bajo prueba haría que un error en esa función se cancelara contra sí mismo.
  * Es una comprobación independiente, no una copia por descuido.
  */
-function stockDe(sumas: SumasPorTipoMovimiento): number {
-  return sumas.ENTRADA + sumas.AJUSTE_POSITIVO - sumas.SALIDA - sumas.AJUSTE_NEGATIVO;
+function stockDe(sumas: SumasPorCondicionYTipo): number {
+  const { ENTRADA, AJUSTE_POSITIVO, SALIDA, AJUSTE_NEGATIVO } = sumas.NUEVO;
+  return ENTRADA + AJUSTE_POSITIVO - SALIDA - AJUSTE_NEGATIVO;
 }
 
 /** Ventana de tiempo en la que una transacción tuvo el lock del insumo. */

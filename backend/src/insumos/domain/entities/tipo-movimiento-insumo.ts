@@ -142,3 +142,39 @@ export function calcularStock(
 
   return saldoEnCentesimas / 100;
 }
+
+/**
+ * Desglose crudo de la bitácora de un insumo por condición y por tipo: lo que
+ * devuelven `lockAndSumByTipo()` y `sumByTipo()`. Las dos condiciones y los
+ * cuatro tipos están siempre presentes, con `0` donde no hay movimientos.
+ */
+export type SumasPorCondicionYTipo = Readonly<
+  Record<CondicionStock, Readonly<Record<TipoMovimientoInsumo, number>>>
+>;
+
+/** Saldo de un insumo por condición, más el total de ambas. */
+export interface SaldosInsumo {
+  NUEVO: number;
+  USADO: number;
+  total: number;
+}
+
+/**
+ * Deriva el saldo de cada condición aplicando `calcularStock` —la única fórmula
+ * por tipo— a su desglose, y suma el total en centésimas: nunca en coma
+ * flotante, por el mismo motivo que `calcularStock`.
+ *
+ * @param sumas Desglose por condición y tipo, tal como lo devuelve el repositorio.
+ * @returns Saldo `NUEVO`, saldo `USADO` y total. Pueden ser negativos; se
+ *   devuelven tal cual, igual que en `calcularStock`.
+ */
+export function calcularSaldos(sumas: SumasPorCondicionYTipo): SaldosInsumo {
+  const saldos = { NUEVO: 0, USADO: 0 };
+  let totalEnCentesimas = 0;
+  for (const condicion of CONDICIONES_STOCK) {
+    const saldo = calcularStock(sumas[condicion]);
+    saldos[condicion] = saldo;
+    totalEnCentesimas += enCentesimas(saldo);
+  }
+  return { ...saldos, total: totalEnCentesimas / 100 };
+}

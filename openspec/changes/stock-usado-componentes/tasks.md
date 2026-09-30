@@ -156,17 +156,19 @@ Commit sugerido: `feat(insumos): condicion NUEVO/USADO en la bitacora de movimie
 
 **Branch**: `feat/stock-usado-componentes-wu02` · **Base**: wu01
 
-- [ ] 2.1 `tipo-movimiento-insumo.ts`: `SumasPorCondicionYTipo`, `SaldosInsumo` y `calcularSaldos(sumas)` que aplica `calcularStock` (sin cambios de firma) a cada condición recorriendo `CONDICIONES_STOCK` y suma el total en centésimas (`enCentesimas`), nunca en coma flotante (ADR-1). Spec: saldos independientes, condición vacía en 0, total en centésimas. (Req: El saldo se calcula por insumo y condición con una única fórmula)
-- [ ] 2.2 Puerto `i-movimiento-insumo.repository.ts` y `prisma-movimiento-insumo.repository.ts`: `lockAndSumByTipo()` y `sumByTipo()` conservan el nombre y devuelven `SumasPorCondicionYTipo`; `sumarPorTipo()` agrupa por `['condicion','tipo']` y completa los 2x4 ceros desde los dos catálogos. Actualizar el JSDoc.
-- [ ] 2.3 Helper de test `backend/src/insumos/testing/sumas-movimiento.ts` (`sumasEnCero()`, `sumasCon({ NUEVO: {...} })`); migrar los fakes de cada spec que implementa el puerto.
-- [ ] 2.4 Llamadores existentes (entrada, salida, ajuste, consulta de stock): leer `calcularSaldos(sumas)` y decidir **sobre `NUEVO`** (única condición que se escribe hasta WU-3); conducta idéntica a la de hoy. Specs ajustados con el helper.
-- [ ] 2.5 Integración del repositorio (base efímera): `sumarPorTipo` agrupa por condición con movimientos `NUEVO` y `USADO` insertados por SQL directo. Ajustar `prisma-movimiento-insumo.repository.concurrencia.integration.spec.ts` al nuevo tipo. (Escenarios: Saldos independientes por condición; Insumo sin movimientos USADO)
-- [ ] 2.6 Quality gates (backend): `cd backend && pnpm lint && pnpm typecheck && pnpm vitest run src/insumos` y `pnpm test`.
+- [x] 2.1 `tipo-movimiento-insumo.ts`: `SumasPorCondicionYTipo`, `SaldosInsumo` y `calcularSaldos(sumas)` que aplica `calcularStock` (sin cambios de firma) a cada condición recorriendo `CONDICIONES_STOCK` y suma el total en centésimas (`enCentesimas`), nunca en coma flotante (ADR-1). Spec: saldos independientes, condición vacía en 0, total en centésimas. (Req: El saldo se calcula por insumo y condición con una única fórmula)
+- [x] 2.2 Puerto `i-movimiento-insumo.repository.ts` y `prisma-movimiento-insumo.repository.ts`: `lockAndSumByTipo()` y `sumByTipo()` conservan el nombre y devuelven `SumasPorCondicionYTipo`; `sumarPorTipo()` agrupa por `['condicion','tipo']` y completa los 2x4 ceros desde los dos catálogos. Actualizar el JSDoc.
+- [x] 2.3 Helper de test `backend/src/insumos/testing/sumas-movimiento.ts` (`sumasEnCero()`, `sumasCon({ NUEVO: {...} })`); migrar los fakes de cada spec que implementa el puerto.
+- [x] 2.4 Llamadores existentes (entrada, salida, ajuste, consulta de stock): leer `calcularSaldos(sumas)` y decidir **sobre `NUEVO`** (única condición que se escribe hasta WU-3); conducta idéntica a la de hoy. Specs ajustados con el helper.
+- [x] 2.5 Integración del repositorio (base efímera): `sumarPorTipo` agrupa por condición con movimientos `NUEVO` y `USADO` insertados por SQL directo. Ajustar `prisma-movimiento-insumo.repository.concurrencia.integration.spec.ts` al nuevo tipo. (Escenarios: Saldos independientes por condición; Insumo sin movimientos USADO)
+- [x] 2.6 Quality gates (backend): `cd backend && pnpm lint && pnpm typecheck && pnpm vitest run src/insumos` y `pnpm test`.
 
 **Escenarios**: Saldos independientes por condición; Insumo sin movimientos USADO.
 **PR boundary**: ~380 líneas, base wu01. Riesgo por el ripple de fakes. Sin costura limpia
 (el cambio de tipo del puerto rompe la compilación de los llamadores): si supera 400 reales,
 `size:exception` con ese motivo.
+**Real**: 431 lineas de codigo y specs (291+/140-), mas tasks.md y apply-progress.md; supera 400 y se
+commitea con `size:exception: sin costura limpia (el tipo del puerto rompe la compilacion de todos los llamadores)`.
 **Ayuda**: sin deuda (sin cambio visible).
 Commit sugerido: `refactor(insumos): saldo por condicion desde el repositorio de movimientos`.
 
